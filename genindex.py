@@ -21,7 +21,7 @@ def update_index():
         if f.endswith(".html"):
             items += f"""
             <li>
-                <a href="/{REPORT_DIR}/{f}" target="_blank">{f.replace('.html','')}</a>
+                <a href="/report_daily/{f}" target="_blank">{f.replace('.html','')}</a>
             </li>
             """
 
