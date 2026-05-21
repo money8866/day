@@ -903,13 +903,26 @@ def strategy(df, code):
         ma22.iloc[-2]
     )
 
+    vol_ma5 = df["vol"].rolling(5, min_periods=1).mean()
+
+    cond = (
+        (df["close"] / df["close"].shift(1) < 0.95)
+        &
+        (df["vol"] > vol_ma5)
+        &
+        (df["vol"] > df["vol"].shift(1))
+    )
+
+    cond7 = cond.rolling(ztts).sum() == 0
+
     TJ = (
         cond1 and
         cond2 and
         cond3 and
         cond4 and
         cond5 and
-        cond6
+        cond6 and 
+        cond7
     )
 
     if not TJ:
