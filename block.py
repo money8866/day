@@ -119,7 +119,7 @@ def get_last_trade_date():
 
 TRADE_DATE = get_last_trade_date()
 
-
+#TRADE_DATE = "20260520" # for test
 # =========================================================
 # 日线数据
 # =========================================================
@@ -439,15 +439,37 @@ def analyze_themes(daily_df, industry_df):
 
     for theme, cfg in THEME_MAP.items():
 
-        mask = industry_df.apply(
+        # =========================
+        # 行业匹配
+        # =========================
+        industry_mask = industry_df.apply(
+            lambda x:
+                (x.get("l2_name") in cfg["industry"])
+                or (x.get("l3_name") in cfg["industry"]),
+            axis=1
+        )
+
+        # =========================
+        # 关键词匹配
+        # =========================
+        keyword_mask = industry_df.apply(
 
             lambda x:
 
-                (x.get("l2_name") in cfg["industry"])
-                or (x.get("l3_name") in cfg["industry"]),
+                any(
+                    kw in str(x.get("concept", ""))
+                    or kw in str(x.get("name", ""))
+                    or kw in str(x.get("主营业务", ""))
+                    for kw in cfg.get("keywords", [])
+                ),
 
             axis=1
         )
+
+        # =========================
+        # 双融合
+        # =========================
+        mask = industry_mask | keyword_mask
 
         sub = industry_df[mask]
 
@@ -480,7 +502,9 @@ def analyze_themes(daily_df, industry_df):
             "龙头代码": leader_code,
             "龙头名称": leader_name,
             "龙头强度": leader_score,
-            "是否退潮": is_decline(state)
+            "是否退潮": is_decline(state),
+            "成分股数": len(stocks)
+
         })
 
     return result

@@ -9,11 +9,10 @@ import pandas as pd
 import numpy as np
 import akshare as ak
 import time
-import webbrowser
 from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from xhtml2pdf import pisa # type: ignore
+
 import block # type: ignore
 import emotion
 import tushare as ts
@@ -110,7 +109,7 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 TRADE_DATE = get_last_trade_date()
-#TRADE_DATE = "20260518" # for test
+#TRADE_DATE = "20260520" # for test
 
 print("当前交易日:", TRADE_DATE)
 # =========================
@@ -507,6 +506,46 @@ def batch_news_sentiment(
 
     return result_df
 
+def calc_max_drawdown(close, window=20):
+
+    if len(close) < window:
+        return 0
+
+    price = close.tail(window)
+
+    rolling_max = price.cummax()
+
+    drawdown = (price - rolling_max) / rolling_max
+
+    return abs(drawdown.min()) * 100
+
+
+def calc_trend_score(close, window=20):
+
+    if len(close) < window:
+        return 0
+
+    price = close.tail(window)
+
+    # 趋势斜率
+    x = np.arange(window)
+    slope = np.polyfit(x, price.values, 1)[0]
+
+    trend = slope / price.mean() * 100
+
+    # 最大回撤
+    rolling_max = price.cummax()
+    drawdown = (price - rolling_max) / rolling_max
+    mdd = abs(drawdown.min()) * 100
+
+    # 波动率
+    vol = price.pct_change().std() * 100
+
+    # 趋势 / 风险
+    score = trend / (mdd * 0.7 + vol * 0.3 + 1e-6)
+
+    return score
+
 def calc_trend_slope(close, window=20):
 
     if len(close) < window:
@@ -523,6 +562,7 @@ def calc_trend_slope(close, window=20):
         return 0
 
     return slope / mean_price * 100
+
 def calc_trend_stability(close, window=20):
 
     if len(close) < window:
@@ -625,55 +665,65 @@ def calc_big_money_factor(df):
         flow_consistency * 30
     )    
 
-def calc_dual_layer_score_v4(df):
+def calc_dual_layer_score_v5(df):
 
     C = df['close']
 
     # =========================
-    # 趋势核心（权重提高）
+    # 趋势核心
     # =========================
     trend_strength = calc_trend_slope(C, 20)
+
     trend_stability = calc_trend_stability(C, 20)
 
+    # 新增：趋势回撤质量
+    trend_quality = calc_trend_score(C, 20)
+
+    # =========================
+    # 趋势增强（趋势+稳定+回撤）
+    # =========================
     trend_power = (
-        trend_strength * 0.7 +
-        trend_stability * 0.3
+        trend_strength * 0.50 +
+        trend_stability * 0.30 +
+        trend_quality * 0.20
     )
 
-    trend_power = np.tanh(trend_power) * 10   # 放大器
+    # 防极值
+    trend_power = np.tanh(trend_power / 5) * 10
 
     # =========================
     # 量能结构
     # =========================
     volume_structure = calc_volume_structure(df)
+
     accumulation = calc_accumulation_factor(df)
+
     big_money = calc_big_money_factor(df)
 
     # =========================
-    # 结构分（不再过度normalize）
+    # 结构分（加入回撤质量）
     # =========================
     structure_score = (
-        trend_strength * 40 +
-        trend_stability * 25 +
-        volume_structure * 20 +
-        accumulation * 15
+        trend_strength * 35 +
+        trend_stability * 15 +
+        trend_quality * 20 +
+        volume_structure * 15 +
+        accumulation * 10 +
+        big_money * 5
     )
 
     # =========================
-    # 不再做风险压制（你已移除高位风险）
-    # =========================
-
-    # =========================
-    # 最终融合（加法结构）
+    # 最终融合
     # =========================
     final_score = (
-        structure_score * 0.7 +
-        trend_power * 10
+        structure_score * 0.65 +
+        trend_power * 12
     )
 
     return {
         "趋势强度": round(trend_strength, 3),
         "趋势稳定": round(trend_stability, 3),
+        "趋势质量": round(trend_quality, 3),
         "结构分": round(structure_score, 2),
         "趋势增强": round(trend_power, 2),
         "最终评分": round(final_score, 2)
@@ -873,7 +923,7 @@ def strategy(df, code):
     # =========================
     # TJ
     # =========================
-    cond1 = ztts > 3 and ztts <= 20
+    cond1 = ztts > 2 and ztts <= 20
 
     ref_close = C.shift(ztts + 1).iloc[-1]
 
@@ -903,17 +953,6 @@ def strategy(df, code):
         ma22.iloc[-2]
     )
 
-    vol_ma5 = df["vol"].rolling(5, min_periods=1).mean()
-
-    cond = (
-        (df["close"] / df["close"].shift(1) < 0.95)
-        &
-        (df["vol"] > vol_ma5)
-        &
-        (df["vol"] > df["vol"].shift(1))
-    )
-
-    cond7 = cond.rolling(ztts).sum() == 0
 
     TJ = (
         cond1 and
@@ -921,8 +960,7 @@ def strategy(df, code):
         cond3 and
         cond4 and
         cond5 and
-        cond6 and 
-        cond7
+        cond6
     )
 
     if not TJ:
@@ -1398,17 +1436,6 @@ strong {{
 
     print(f"HTML报告已生成: {output_file}")
 
-    # ========= 自动打开浏览器 =========
-    webbrowser.open(
-        Path(output_file).absolute().as_uri()
-    )
-
-    pdfkit.from_string(
-        html,
-        pdf_file,
-        configuration=config
-    )
-#    html_to_pdf(html,pdf_file)
 
 # =========================
 # 市场数据
@@ -1601,7 +1628,7 @@ def run():
         if hist is None:
             continue
 
-        factor = calc_dual_layer_score_v4(
+        factor = calc_dual_layer_score_v5(
             hist
         )
 

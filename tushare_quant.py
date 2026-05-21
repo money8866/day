@@ -9,11 +9,11 @@ import pandas as pd
 import numpy as np
 import akshare as ak
 import time
-import webbrowser
+
 from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from xhtml2pdf import pisa # type: ignore
+
 import block # type: ignore
 import emotion
 import tushare as ts
@@ -1385,17 +1385,7 @@ strong {{
 
     print(f"HTML报告已生成: {output_file}")
 
-    # ========= 自动打开浏览器 =========
-    webbrowser.open(
-        Path(output_file).absolute().as_uri()
-    )
 
-    pdfkit.from_string(
-        html,
-        pdf_file,
-        configuration=config
-    )
-#    html_to_pdf(html,pdf_file)
 
 # =========================
 # 市场数据
@@ -1702,7 +1692,7 @@ def run():
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
 1、大盘情绪(含涨跌停数等几个数据指标)和仓位建议
-2、今日主线板块和近几日动态变化分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
+2、通过以上数据及全网板块热点分析,给出今日主线板块和近几日动态变化分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
 3、个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
 4、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
