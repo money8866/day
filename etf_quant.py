@@ -29,9 +29,10 @@ import requests
 import numpy as np
 import pandas as pd
 import tushare as ts
-
+import tushare_quant,block,emotion
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import sqlite3
 
 # =========================================================
 # 环境变量
@@ -56,6 +57,108 @@ REPORT_DIR = os.path.join(BASE_DIR, "report_daily")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(REPORT_DIR, exist_ok=True)
+DB_PATH = os.path.join(
+    CACHE_DIR,
+    "etf_result.db"
+)
+
+def init_style_table():
+
+    conn = sqlite3.connect(DB_PATH)
+
+    cursor = conn.cursor()
+
+    cursor.execute("""
+
+        CREATE TABLE IF NOT EXISTS style_history (
+
+            date TEXT,
+
+            风格 TEXT,
+
+            当前得分 REAL,
+
+            热度 REAL,
+
+            趋势强度 REAL,
+
+            成交额 REAL,
+
+            轮动强度 REAL,
+
+            风格状态 TEXT
+
+        )
+
+    """)
+
+    conn.commit()
+
+    conn.close()
+
+def save_style_history(style_df):
+
+    conn = sqlite3.connect(DB_PATH)
+
+    today = TRADE_DATE
+
+    style_df = style_df.copy()
+
+    style_df['date'] = today
+
+    # =========================
+    # 删除当天旧数据（防止重复）
+    # =========================
+    conn.execute(
+
+        "DELETE FROM style_history WHERE date=?",
+
+        (today,)
+    )
+
+    # =========================
+    # 写入数据库
+    # =========================
+    style_df.to_sql(
+
+        'style_history',
+
+        conn,
+
+        if_exists='append',
+
+        index=False
+    )
+
+    conn.commit()
+
+    conn.close()
+
+def load_style_history(days=10):
+
+    conn = sqlite3.connect(DB_PATH)
+
+    start_date = (
+        datetime.now() - timedelta(days=days)
+    ).strftime('%Y-%m-%d')
+
+    query = f"""
+
+        SELECT *
+        FROM style_history
+
+        WHERE date >= '{start_date}'
+
+        ORDER BY date ASC
+
+    """
+
+    df = pd.read_sql(query, conn)
+
+    conn.close()
+
+    return df
+
 
 # =========================================================
 # ETF池
@@ -157,7 +260,7 @@ def get_last_trade_date():
 
     now = datetime.now()
 
-    if now.hour < 9:
+    if now.hour < 15:
 
         query_date = (
             now - timedelta(days=1)
@@ -858,60 +961,249 @@ def etf_score(df, industry, index_df):
 # =========================================================
 # 市场风格
 # =========================================================
-def market_style(result_df):
+def calc_style_score(df):
+
+    return (
+        df["pct_chg"].mean() * 2
+        + (df["pct_chg"] > 3).sum() * 3
+        + (df["pct_chg"] > 5).sum() * 5
+        + df["amount"].sum() / 1e8
+    )
+
+def calc_style_trend(close):
+
+    ma5 = close.rolling(5).mean()
+    ma10 = close.rolling(10).mean()
+
+    score = 0
+
+    if ma5.iloc[-1] > ma10.iloc[-1]:
+        score += 50
+
+    if close.iloc[-1] > ma5.iloc[-1]:
+        score += 50
+
+    return score
+
+import pandas as pd
+import numpy as np
+
+# =========================================================
+# 市场风格轮动分析
+# =========================================================
+def market_style(result_df, history_style_df=None):
 
     styles = {
 
-        '科技成长': [
-            '半导体',
-            '人工智能',
-            '算力',
-            '软件'
+        'AI科技成长': [
+            '人工智能','AI','算力','CPO','光模块',
+            '液冷','服务器','半导体','芯片','先进封装',
+            '存储','EDA','软件','信创','鸿蒙',
+            '数据要素','云计算','大模型',
+            '机器人','人形机器人','自动驾驶'
         ],
 
-        '防御红利': [
-            '红利',
-            '银行'
+        '消费成长': [
+            '消费电子','苹果','MR','VR',
+            '智能穿戴','游戏','传媒',
+            '影视','旅游','食品','白酒','医美'
         ],
 
-        '金融进攻': [
-            '证券'
+        '高端制造': [
+            '新能源车','锂电','储能',
+            '风电','光伏','军工',
+            '工业母机','机器人',
+            '高铁','航空发动机'
+        ],
+
+        '金融地产': [
+            '证券','互联网金融',
+            '银行','保险','地产','REITs'
+        ],
+
+        '红利防御': [
+            '红利','高股息','央企',
+            '公用事业','电力',
+            '煤炭','运营商','港口'
         ],
 
         '周期资源': [
-            '黄金'
+            '黄金','有色','铜',
+            '稀土','钢铁','化工',
+            '石油','天然气'
+        ],
+
+        '医药医疗': [
+            '创新药','CXO','医疗器械',
+            '中药','生物医药','AI医疗'
+        ],
+
+        '全球出海': [
+            '跨境电商','出口',
+            '航运','面板',
+            '家电','汽车出口'
         ]
     }
 
     all_result = []
 
+    # =====================================================
+    # 当前风格评分
+    # =====================================================
     for style, sectors in styles.items():
 
-        score = result_df[
+        df_style = result_df[
             result_df['行业'].isin(sectors)
-        ]['总评分'].mean()
+        ]
+
+        if len(df_style) == 0:
+            continue
+
+        # =========================
+        # 基础强度
+        # =========================
+        score = (
+            df_style['总评分'].mean()
+        )
+
+        # =========================
+        # 热度
+        # =========================
+        hot = (
+            (df_style['涨跌幅'] > 3).sum() * 2
+            + (df_style['涨跌幅'] > 5).sum() * 5
+        )
+
+        # =========================
+        # 成交额
+        # =========================
+        amount_score = (
+            df_style['成交额'].sum() / 1e8
+        )
+
+        # =========================
+        # 趋势强度
+        # =========================
+        trend_score = (
+            (df_style['涨跌幅'] > 0).mean() * 100
+        )
+
+        total_score = (
+            score * 0.5
+            + hot * 0.2
+            + trend_score * 0.2
+            + amount_score * 0.1
+        )
 
         all_result.append({
 
             '风格': style,
 
-            '得分': round(score, 2)
+            '当前得分': round(total_score, 2),
+
+            '热度': round(hot, 2),
+
+            '趋势强度': round(trend_score, 2),
+
+            '成交额': round(amount_score, 2)
         })
 
     style_df = pd.DataFrame(all_result)
+    save_style_history(style_df)
+    history_style_df = load_style_history()
 
-    return style_df.sort_values(
-        '得分',
+    # =====================================================
+    # 风格轮动（核心）
+    # =====================================================
+    if history_style_df is not None and len(history_style_df) > 0:
+
+        latest_history = history_style_df.groupby(
+            '风格'
+        ).tail(1)
+
+        style_df = style_df.merge(
+
+            latest_history[['风格', '当前得分']],
+
+            on='风格',
+
+            how='left',
+
+            suffixes=('', '_昨日')
+        )
+
+        # =========================
+        # 轮动强度
+        # =========================
+        style_df['轮动强度'] = (
+
+            style_df['当前得分']
+            - style_df['当前得分_昨日']
+
+        ).round(2)
+
+        # =========================
+        # 风格状态
+        # =========================
+        style_df['风格状态'] = np.where(
+
+            style_df['轮动强度'] > 15,
+
+            '主升加强',
+
+            np.where(
+
+                style_df['轮动强度'] > 5,
+
+                '持续活跃',
+
+                np.where(
+
+                    style_df['轮动强度'] < -10,
+
+                    '退潮',
+
+                    '震荡'
+                )
+            )
+        )
+
+    else:
+
+        style_df['轮动强度'] = 0
+        style_df['风格状态'] = '未知'
+
+    # =====================================================
+    # 排序
+    # =====================================================
+    style_df = style_df.sort_values(
+
+        ['当前得分', '轮动强度'],
+
         ascending=False
     )
+
+    return style_df
 
 # =========================================================
 # DeepSeek日报
 # =========================================================
-def deepseek_report(result_df, style_df, risk_state):
+def deepseek_report(result_df, style_df, risk_state,emotion_text,sector_text,sector_text_his):
 
     prompt = f"""
 你是中国顶级ETF基金经理。
+
+当前市场情绪：
+
+{emotion_text}
+
+当前最强主线列表：
+
+{sector_text}
+
+近10日最强主线列表:
+
+{sector_text_his}
 
 当前市场状态：
 
@@ -925,19 +1217,18 @@ ETF数据：
 
 {result_df.to_string(index=False)}
 
-请输出：
+请综合分析以下内容,加上你从全网搜索的板块情绪,输出：
 
 # ETF日报{TRADE_DATE}
 
 内容：
 
 1、当前主线
-2、S级机会
-3、适合低吸方向
-4、接近高潮方向（注意风险）
-5、风险方向
-6、明日策略（含代码、名称、价格）
-7、仓位建议
+2、适合低吸方向
+3、接近高潮方向（注意风险）
+4、风险方向
+5、明日策略（含代码、名称、价格）
+6、仓位建议
 格式要求：Markdown格式，适合手机阅读
 """
 
@@ -1059,12 +1350,55 @@ def main():
 
     print("=" * 60)
 
+    init_style_table()
+    
     # =====================================================
     # 指数
     # =====================================================
     index_df = get_index_data()
 
     index_df = calc_indicators(index_df)
+
+
+
+    # =========================板块分析
+    sector_df = block.analyze_hot_sectors()
+
+    # =========================
+    # 市场情绪
+    # =========================
+    emotion_result = emotion.analyze_market_emotion(
+        sector_df
+    )
+
+    emotion_text = ""
+
+    if emotion_result:
+
+        emotion_text = str(emotion_result)
+
+    print(emotion_text)
+
+
+    if not sector_df.empty:
+
+        print("\n========== 最强主线板块 ==========\n")
+
+        top_sector = sector_df.head(20)
+
+        print(top_sector)
+
+    else:
+
+        top_sector = pd.DataFrame()
+
+    sector_text = ""
+    if not top_sector.empty:
+
+        sector_text = top_sector.to_string(index=False)
+
+    sector_df_his = block.load_history()
+    sector_text_his = sector_df_his.to_string(index=False)
 
     # =====================================================
     # 市场风险
@@ -1132,7 +1466,18 @@ def main():
                 latest['close'],
                 2
             ),
+            # =========================
+            # 当日表现
+            # =========================
+            '涨跌幅': round(
+                latest['pct_chg'],
+                2
+            ),
 
+            '成交额': round(
+                latest['amount'] / 1e8,
+                2
+            ),
             'RS强度': rs,
 
             '5日涨幅': round(
@@ -1151,6 +1496,7 @@ def main():
             ),
 
             '波段阶段': stage,
+            
 
             '波段涨幅': round(
                 rise,
@@ -1172,7 +1518,7 @@ def main():
     # DataFrame
     # =====================================================
     result_df = pd.DataFrame(all_result)
-
+    print(result_df)
     result_df = result_df.sort_values(
         '总评分',
         ascending=False
@@ -1217,7 +1563,8 @@ def main():
 
         style_df,
 
-        risk_state
+        risk_state,
+        emotion_text,sector_text,sector_text_his
     )
 
     # =====================================================

@@ -1,7 +1,7 @@
 import os
 import time
 import random
-import akshare as ak
+import pickle
 import tushare as ts
 import pandas as pd
 import json
@@ -55,6 +55,30 @@ DB_PATH = os.path.join(CACHE_DIR, "hot_sector.db")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+
+# =========================================================
+# 文件路径
+# =========================================================
+CONCEPT_LIST_PATH = os.path.join(
+    CACHE_DIR,
+    "ths_concept_list.csv"
+)
+
+CONCEPT_DETAIL_PATH = os.path.join(
+    CACHE_DIR,
+    "ths_concept_detail.pkl"
+)
+
+STOCK_CONCEPT_PATH = os.path.join(
+    CACHE_DIR,
+    "stock_concept_map.pkl"
+)
+
+CONCEPT_STOCK_PATH = os.path.join(
+    CACHE_DIR,
+    "concept_stock_map.pkl"
+)
+
 # =========================================================
 # 主题映射（替代概念）
 # =========================================================
@@ -80,6 +104,7 @@ def load_theme_map():
 
     return theme_map
 
+
 THEME_MAP = load_theme_map()
 
 
@@ -90,7 +115,7 @@ def get_last_trade_date():
     # =========================
     # 9点前：视为上一自然日
     # =========================
-    if now.hour < 9:
+    if now.hour < 15:
 
         query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
 
@@ -120,6 +145,337 @@ def get_last_trade_date():
 TRADE_DATE = get_last_trade_date()
 
 #TRADE_DATE = "20260520" # for test
+
+# =========================================================
+# 下载同花顺概念列表
+# =========================================================
+# =========================================================
+# 下载同花顺概念列表（带缓存）
+# =========================================================
+def download_ths_concepts():
+
+    print("获取同花顺概念列表...")
+
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_LIST_PATH):
+        print(f"读取缓存: {CONCEPT_LIST_PATH}")
+        return pd.read_csv(CONCEPT_LIST_PATH, encoding="utf-8-sig")
+
+    # ========= 重新生成 =========
+    df = pro.ths_index(
+        exchange='A',
+        type='N'
+    )
+
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df.to_csv(
+        CONCEPT_LIST_PATH,
+        index=False,
+        encoding='utf-8-sig'
+    )
+
+    print(f"概念列表已保存: {CONCEPT_LIST_PATH}")
+
+    return df
+
+
+# =========================================================
+# 下载概念成分股（带缓存）
+# =========================================================
+def download_ths_members(concept_df):
+
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_DETAIL_PATH):
+        print(f"读取缓存: {CONCEPT_DETAIL_PATH}")
+
+        with open(CONCEPT_DETAIL_PATH, "rb") as f:
+            return pickle.load(f)
+
+    # ========= 重新生成 =========
+    all_rows = []
+    total = len(concept_df)
+
+    for i, row in concept_df.iterrows():
+
+        ts_code = row["ts_code"]
+        name = row["name"]
+
+        print(f"[{i+1}/{total}] 下载: {name}")
+
+        try:
+            df = pro.ths_member(ts_code=ts_code)
+
+            if df is None or df.empty:
+                continue
+
+            df["concept_name"] = name
+            all_rows.append(df)
+
+            time.sleep(0.25)
+
+        except Exception as e:
+            print(f"失败: {name} {e}")
+
+    if not all_rows:
+        return pd.DataFrame()
+
+    result = pd.concat(all_rows, ignore_index=True)
+
+    # ========= 写缓存 =========
+    with open(CONCEPT_DETAIL_PATH, "wb") as f:
+        pickle.dump(result, f)
+
+    print(f"概念成分股已保存: {CONCEPT_DETAIL_PATH}")
+
+    return result
+
+# =========================================================
+# 构建 股票 -> 概念
+# =========================================================
+# =========================================================
+# 构建 股票 -> 概念（带缓存）
+# =========================================================
+def build_stock_concept_map(member_df):
+
+    # ========= 缓存命中 =========
+    if os.path.exists(STOCK_CONCEPT_PATH):
+        print(f"读取缓存: {STOCK_CONCEPT_PATH}")
+
+        with open(STOCK_CONCEPT_PATH, "rb") as f:
+            return pickle.load(f)
+
+    # ========= 重新生成 =========
+    stock_map = defaultdict(list)
+
+    for _, row in member_df.iterrows():
+
+        ts_code = row["ts_code"]
+        concept = row["concept_name"]
+
+        stock_map[ts_code].append(concept)
+
+    stock_map = {
+        k: ";".join(sorted(set(v)))
+        for k, v in stock_map.items()
+    }
+
+    # ========= 写缓存 =========
+    with open(STOCK_CONCEPT_PATH, "wb") as f:
+        pickle.dump(stock_map, f)
+
+    print(f"股票概念映射已保存: {STOCK_CONCEPT_PATH}")
+
+    return stock_map
+
+# =========================================================
+# 构建 概念 -> 股票
+# =========================================================
+# =========================================================
+# 构建 概念 -> 股票（带缓存）
+# =========================================================
+def build_concept_stock_map(member_df):
+
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_STOCK_PATH):
+        print(f"读取缓存: {CONCEPT_STOCK_PATH}")
+
+        with open(CONCEPT_STOCK_PATH, "rb") as f:
+            return pickle.load(f)
+
+    # ========= 重新生成 =========
+    concept_map = defaultdict(list)
+
+    for _, row in member_df.iterrows():
+
+        ts_code = row["ts_code"]
+        concept = row["concept_name"]
+
+        concept_map[concept].append(ts_code)
+
+    concept_map = {
+        k: sorted(set(v))
+        for k, v in concept_map.items()
+    }
+
+    # ========= 写缓存 =========
+    with open(CONCEPT_STOCK_PATH, "wb") as f:
+        pickle.dump(concept_map, f)
+
+    print(f"概念股票映射已保存: {CONCEPT_STOCK_PATH}")
+
+    return concept_map
+
+
+# =========================================================
+# 读取股票概念缓存
+# =========================================================
+def load_stock_concept_map():
+
+    with open(STOCK_CONCEPT_PATH, "rb") as f:
+
+        return pickle.load(f)
+
+
+# =========================================================
+# 读取概念股票缓存
+# =========================================================
+def load_concept_stock_map():
+
+    with open(CONCEPT_STOCK_PATH, "rb") as f:
+
+        return pickle.load(f)
+
+# =========================================================
+# 主线分析（行业 + 概念关键词）
+# =========================================================
+def analyze_themes1(
+
+    daily_df,
+
+    industry_df,
+
+    min_stocks=5
+):
+
+    result = []
+
+    for theme, cfg in THEME_MAP.items():
+
+        # -------------------------------------------------
+        # 行业匹配
+        # -------------------------------------------------
+        industry_mask = industry_df.apply(
+
+            lambda x:
+
+                (x.get("l2_name") in cfg["industry"])
+
+                or
+
+                (x.get("l3_name") in cfg["industry"]),
+
+            axis=1
+        )
+
+        # -------------------------------------------------
+        # 概念关键词匹配
+        # -------------------------------------------------
+        keyword_mask = industry_df.apply(
+
+            lambda x:
+
+                any(
+
+                    kw in str(x.get("concept", ""))
+
+                    for kw in cfg["keywords"]
+                ),
+
+            axis=1
+        )
+
+        # -------------------------------------------------
+        # 双融合
+        # -------------------------------------------------
+        mask = industry_mask | keyword_mask
+
+        sub = industry_df[mask]
+
+        stocks = sub["ts_code"].dropna().unique().tolist()
+
+        if len(stocks) < min_stocks:
+            continue
+
+        df = daily_df[
+            daily_df["ts_code"].isin(stocks)
+        ]
+
+        if df.empty:
+            continue
+
+        # -------------------------------------------------
+        # 板块评分
+        # -------------------------------------------------
+        score = calc_sector_score(df)
+
+        # 龙头
+        leader = (
+            df.sort_values(
+                "pct_chg",
+                ascending=False
+            )
+            .iloc[0]
+        )
+
+        result.append({
+
+            "主线": theme,
+
+            "评分": round(score, 2),
+
+            "成分股数": len(stocks),
+
+            "龙头代码": leader["ts_code"],
+
+            "龙头涨幅": round(
+                leader["pct_chg"],
+                2
+            )
+        })
+
+    result = pd.DataFrame(result)
+
+    if not result.empty:
+
+        result = result.sort_values(
+            "评分",
+            ascending=False
+        )
+
+    return result
+
+
+# =========================================================
+# 初始化概念缓存
+# =========================================================
+def init_concept_cache():
+
+    concept_df = download_ths_concepts()
+
+    member_df = download_ths_members(concept_df)
+
+    stock_map = build_stock_concept_map(member_df)
+
+    concept_map = build_concept_stock_map(member_df)
+
+    print("概念缓存初始化完成")
+
+    return stock_map, concept_map
+
+
+
+# =========================================================
+# 生成 concept dataframe
+# =========================================================
+def build_concept_df(stock_map):
+
+    rows = []
+
+    for ts_code, concept in stock_map.items():
+
+        rows.append({
+
+            "ts_code": ts_code,
+
+            "concept": concept
+        })
+
+    return pd.DataFrame(rows)
+
+
+
 # =========================================================
 # 日线数据
 # =========================================================
@@ -424,7 +780,8 @@ def analyze_industry(daily_df, industry_df):
                 "龙头代码": leader_code,
                 "龙头名称": leader_name,
                 "龙头强度": leader_score,
-                "是否退潮": is_decline(state)
+                "是否退潮": is_decline(state),
+                "成分股数": len(stocks)                
             })
 
     return result
@@ -439,37 +796,43 @@ def analyze_themes(daily_df, industry_df):
 
     for theme, cfg in THEME_MAP.items():
 
-        # =========================
+        # -------------------------------------------------
         # 行业匹配
-        # =========================
+        # -------------------------------------------------
         industry_mask = industry_df.apply(
+
             lambda x:
+
                 (x.get("l2_name") in cfg["industry"])
-                or (x.get("l3_name") in cfg["industry"]),
+
+                or
+
+                (x.get("l3_name") in cfg["industry"]),
+
             axis=1
         )
 
-        # =========================
-        # 关键词匹配
-        # =========================
+        # -------------------------------------------------
+        # 概念关键词匹配
+        # -------------------------------------------------
         keyword_mask = industry_df.apply(
 
             lambda x:
 
                 any(
+
                     kw in str(x.get("concept", ""))
-                    or kw in str(x.get("name", ""))
-                    or kw in str(x.get("主营业务", ""))
-                    for kw in cfg.get("keywords", [])
+
+                    for kw in cfg["keywords"]
                 ),
 
             axis=1
         )
-
         # =========================
         # 双融合
         # =========================
         mask = industry_mask | keyword_mask
+        
 
         sub = industry_df[mask]
 
@@ -618,13 +981,32 @@ def analyze_hot_sectors():
     name_map = get_stock_name_map()
     
     daily_df = daily_df.merge(
-    name_map,
-    on="ts_code",
-    how="left"
+        name_map,
+        on="ts_code",
+        how="left"
 )
 
+    # 第一次运行执行
+    stock_map, concept_map = init_concept_cache()
+
+    # -------------------------------------------------
+    # 读取缓存
+    # -------------------------------------------------
+    stock_map = load_stock_concept_map()
+
+    # concept dataframe
+    concept_df = build_concept_df(stock_map)
 
     industry_df = get_sw_industry_map()
+
+    # -------------------------------------------------
+    # 合并进行业表
+    # -------------------------------------------------
+    industry_df = industry_df.merge(
+         concept_df,
+         on="ts_code",
+         how="left"
+    )
 
     industry_res = analyze_industry(daily_df, industry_df)
 
@@ -654,9 +1036,22 @@ def analyze_hot_sectors():
 # =========================================================
 if __name__ == "__main__":
 
+
     df = analyze_hot_sectors()
     
     print(df.head(20))
 
 
+
+
+    # -------------------------------------------------
+    # 合并进行业表
+    # -------------------------------------------------
+    # industry_df = industry_df.merge(
+    #     concept_df,
+    #     on="ts_code",
+    #     how="left"
+    # )
+
+    
 

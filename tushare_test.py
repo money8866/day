@@ -81,7 +81,7 @@ def get_last_trade_date():
     # =========================
     # 9点前：视为上一自然日
     # =========================
-    if now.hour < 9:
+    if now.hour < 15:
 
         query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
 

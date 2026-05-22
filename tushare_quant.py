@@ -82,7 +82,7 @@ def get_last_trade_date():
     # =========================
     # 9点前：视为上一自然日
     # =========================
-    if now.hour < 9:
+    if now.hour < 15:
 
         query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
 
@@ -850,7 +850,7 @@ def strategy(df, code):
     ST1 = (StockName.upper().startswith('ST') or
         StockName.upper().startswith('*ST')) or (code.startswith('1') or (code.startswith('2')))
 #
-    if  not ST or ST1:
+    if  ST1:
         return False
 
     # =========================
@@ -903,13 +903,84 @@ def strategy(df, code):
         ma22.iloc[-2]
     )
 
+    # =========================
+    # ZTTS 量能结构增强条件
+    # =========================
+
+    ztts_window = recent_close.index  # 或直接用 df tail
+
+    ztts_df = df.iloc[-ztts:]  # ZTTS区间数据
+
+    VOL_ma = ztts_df['vol'].rolling(5).mean()
+
+    # 1. 缩量：低于均量 70%
+    cond_low_vol = (ztts_df['vol'] < VOL_ma * 0.8).any()
+
+    # 2. 温和放量：1.1~1.8倍均量
+    cond_mid_vol = (
+        (ztts_df['vol'] > VOL_ma * 1.1) &
+        (ztts_df['vol'] < VOL_ma * 1.8)
+    ).any()
+
+    # 3. 回撤不超过10%
+    # =========================
+    # 回撤
+    # =========================
+    cum_max = ztts_df['close'].cummax()
+
+    drawdown = (
+        (ztts_df['close'] - cum_max)
+        / cum_max
+    )
+
+    max_dd = drawdown.min()
+
+    # 最大回撤不超过10%
+    cond_dd = max_dd >= -0.10
+
+
+    # =========================
+    # 无放量下跌K线
+    # =========================
+
+    vol_ma5 = ztts_df['vol'].rolling(5).mean()
+
+    # 阴线
+    down_k = (
+        ztts_df['close'] < ztts_df['open']
+    )
+
+    # 放量
+    big_vol = (
+        ztts_df['vol'] > vol_ma5 * 1.2
+    )
+
+    # 大跌
+    big_drop = (
+        ztts_df['pct_chg'] < -5
+    )
+
+    # 放量大跌阴线
+    bad_k = (
+        down_k &
+        big_vol &
+        big_drop
+    )
+
+    # 不允许出现
+    cond_no_bad_k = ~bad_k.any()
+
+
+    # 必须同时满足
+    cond7 = cond_low_vol and cond_no_bad_k
     TJ = (
         cond1 and
         cond2 and
         cond3 and
         cond4 and
         cond5 and
-        cond6
+        cond6 and
+        cond7
     )
 
     if not TJ:
@@ -923,7 +994,7 @@ def strategy(df, code):
     )
 
     cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3]))
-    cond_xh2 = C.iloc[-1] / ma5.iloc[-1] <1.08 and C.iloc[-1] / ma5.iloc[-1] > 0.97
+    cond_xh2 = C.iloc[-1] / C.iloc[-2]>0.99 and C.iloc[-1] / C.iloc[-2]<1.098 and  C.iloc[-1] / ma5.iloc[-1] <1.08 and C.iloc[-1] / ma5.iloc[-1] > 0.99
 
 
     XH = cond_xh1 and cond_xh2
@@ -1486,18 +1557,23 @@ def save_result(df):
 def load_history(days=10):
 
     conn = sqlite3.connect(DB_PATH)
+    today = TRADE_DATE
+    start_date = (
+        datetime.now() - timedelta(days=days)
+    ).strftime('%Y-%m-%d')
 
-    query = """
-
+    query = f"""
         SELECT *
         FROM stock_result
+        WHERE date >= '{start_date}'
+        AND date < '{today}'
         ORDER BY date DESC, rank ASC
-
     """
 
     df = pd.read_sql(query, conn)
 
     conn.close()
+    #print (df)
 
     return df
 
@@ -1617,7 +1693,8 @@ def run():
     init_db()
     save_result(result_df)
     stock_text = result_df.to_string(index=False)
-    
+    stock_his_df=load_history()
+    stock_his_text = str(stock_his_df)
 
     # =========================板块分析
     sector_df = block.analyze_hot_sectors()
@@ -1673,9 +1750,12 @@ def run():
 
 {sector_text_his}
 
-以下股票是量化模型筛选出的趋势突破候选：
+今日量化候选股票池：
 
 {stock_text}
+
+过去十日量化候选股票池:
+{stock_his_text}
 
 
 请对以上每一个股票，实时搜索年报/季报数据、机构研报和资讯公告，进一步分析并筛选：
@@ -1694,7 +1774,8 @@ def run():
 1、大盘情绪(含涨跌停数等几个数据指标)和仓位建议
 2、通过以上数据及全网板块热点分析,给出今日主线板块和近几日动态变化分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
 3、个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
-4、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
+4、历史个股分析:输出1-2个调整到位可能启动的个股,要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
+5、附上属于主线板块的个股列表(严格按今日量化候选股票池输出,按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
 
 """
@@ -1741,9 +1822,9 @@ def run():
     prompt = f"""
 请仔细阅读以下两份报告，分别来自不同的AI模型，
 内容都是基于同一份市场数据和个股数据分析得出的。
-请综合分析互相验证和辩论,以确定性为标准,输出一个最终的复盘总结和个股推荐。
 Deepseek的报告:{report_ds};
 Doubao的报告:{report_doubao};
+请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取DeepSeek的报告即可,输出一个最终的复盘总结和个股推荐。
 
 输出内容：
 标题：每日复盘({TRADE_DATE})
@@ -1751,7 +1832,8 @@ Doubao的报告:{report_doubao};
 1、大盘情绪(含涨跌停数等几个数据指标)和仓位建议
 2、主线板块分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
 3、个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
-4、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
+4、历史个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
+5、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
 格式要求：
 1、不要Markdown表格，适合窄屏手机阅读，避免长段落
