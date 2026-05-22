@@ -35,7 +35,7 @@ FACTOR_WEIGHTS = {
     'news': 20           # 新闻热度权重
 }
 
-MIN_RELEVANCE_SCORE = 60  # 最低相关性分数
+MIN_RELEVANCE_SCORE = 30  # 最低相关性分数（降低阈值）
 
 ##=========== TUshare
 load_dotenv()
@@ -266,6 +266,64 @@ def supplement_with_algorithm(industry_df, cfg, stock_concept_map):
     return stocks
 
 # =========================================================
+# 判断股票趋势是否良好
+# =========================================================
+def check_trend(daily_df, ts_code, days=20):
+    """检查股票趋势是否良好"""
+    stock_data = daily_df[daily_df["ts_code"] == ts_code]
+    
+    # 如果数据不足，跳过趋势检查（返回True表示通过）
+    if len(stock_data) < days:
+        return True, 0
+    
+    # 计算均线
+    stock_data = stock_data.sort_values("trade_date")
+    close_prices = stock_data["close"].values[-days:]
+    
+    # 5日均线
+    ma5 = close_prices[-5:].mean()
+    # 20日均线
+    ma20 = close_prices.mean()
+    
+    # 趋势评分：5日均线在20日均线上方且收盘价在5日均线上方
+    trend_score = 0
+    if ma5 > ma20:
+        trend_score += 50
+    if close_prices[-1] > ma5:
+        trend_score += 30
+    if close_prices[-1] > ma20:
+        trend_score += 20
+    
+    return trend_score >= 60, trend_score
+
+# =========================================================
+# 判断是否放巨量
+# =========================================================
+def check_volume_spike(daily_df, ts_code, threshold=3):
+    """检查是否放巨量（成交量超过N日均量的threshold倍）"""
+    stock_data = daily_df[daily_df["ts_code"] == ts_code]
+    
+    # 如果数据不足，跳过成交量检查（返回False表示未放巨量）
+    if len(stock_data) < 10:
+        return False, 0
+    
+    stock_data = stock_data.sort_values("trade_date")
+    volumes = stock_data["vol"].values
+    
+    # 最近10日均量
+    avg_vol = volumes[-10:-1].mean()
+    # 今日成交量
+    today_vol = volumes[-1]
+    
+    # 量比
+    volume_ratio = today_vol / avg_vol if avg_vol > 0 else 0
+    
+    # 判断是否巨量
+    is_spike = volume_ratio >= threshold
+    
+    return is_spike, volume_ratio
+
+# =========================================================
 # 多因子验证
 # =========================================================
 def validate_theme_relevance(ts_code, cfg, stock_concept_map, industry_df):
@@ -353,11 +411,19 @@ def analyze_themes_advanced(
             theme_stocks = list(set(theme_stocks + supplemented))
             print(f"  - 算法补充后: {len(theme_stocks)} 只")
         
-        # 3. 使用多因子验证过滤边缘标的
+        # 3. 使用多因子验证过滤边缘标的（增加趋势和成交量筛选）
         validated_stocks = []
         for ts_code in theme_stocks:
             relevance = validate_theme_relevance(ts_code, cfg, stock_concept_map, industry_df)
-            if relevance >= MIN_RELEVANCE_SCORE:
+            
+            # 检查趋势是否良好
+            has_good_trend, _ = check_trend(daily_df, ts_code)
+            
+            # 检查是否放巨量（避免出货风险）
+            is_spike, _ = check_volume_spike(daily_df, ts_code)
+            
+            # 综合条件：相关性达标 + 趋势良好 + 未放巨量
+            if relevance >= MIN_RELEVANCE_SCORE and has_good_trend and not is_spike:
                 validated_stocks.append(ts_code)
         
         print(f"  - 验证通过: {len(validated_stocks)} 只")
@@ -388,10 +454,12 @@ def analyze_themes_advanced(
         
         # 8. 双创弹性标的（创业板/科创板，波动大）
         innovation_stocks = df[df["ts_code"].str.startswith(("300", "688"))]
+        elastic_stock_code = None
+        elastic_stock_pct = None
         if not innovation_stocks.empty:
             elastic_stock = innovation_stocks.sort_values("pct_chg", ascending=False).iloc[0]
-        else:
-            elastic_stock = None
+            elastic_stock_code = elastic_stock["ts_code"]
+            elastic_stock_pct = round(elastic_stock["pct_chg"], 2)
         
         result.append({
             "主线": theme,
@@ -401,8 +469,8 @@ def analyze_themes_advanced(
             "龙头涨幅": round(leader["pct_chg"], 2),
             "中军代码": middle_stock["ts_code"],
             "中军涨幅": round(middle_stock["pct_chg"], 2),
-            "双创弹性代码": elastic_stock["ts_code"] if elastic_stock else None,
-            "双创弹性涨幅": round(elastic_stock["pct_chg"], 2) if elastic_stock else None,
+            "双创弹性代码": elastic_stock_code,
+            "双创弹性涨幅": elastic_stock_pct,
             "平均涨幅": round(df["pct_chg"].mean(), 2),
             "上涨比例": round((df["pct_chg"] > 0).mean() * 100, 2)
         })

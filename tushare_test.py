@@ -110,7 +110,7 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 TRADE_DATE = get_last_trade_date()
-#TRADE_DATE = "20260521" # for test
+TRADE_DATE = "20260521" # for test
 
 print("当前交易日:", TRADE_DATE)
 # =========================
@@ -995,7 +995,7 @@ def strategy(df, code):
     )
 
     cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3]))
-    cond_xh2 = C.iloc[-1] / C.iloc[-2]>0.99 and C.iloc[-1] / C.iloc[-2]<1.098 and  C.iloc[-1] / ma5.iloc[-1] <1.08 and C.iloc[-1] / ma5.iloc[-1] > 0.99
+    cond_xh2 = C.iloc[-1] / C.iloc[-2]>0.99  and  C.iloc[-1] / ma5.iloc[-1] <1.2 and C.iloc[-1] / ma5.iloc[-1] > 0.99
 
 
     XH = cond_xh1 and cond_xh2
@@ -1696,7 +1696,7 @@ def run():
     stock_text = result_df.to_string(index=False)
     stock_his_df=load_history()
     stock_his_text = str(stock_his_df)
-    
+    return 
     # =========================板块分析
     sector_df = block.analyze_hot_sectors()
 
