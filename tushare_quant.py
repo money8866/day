@@ -937,7 +937,7 @@ def strategy(df, code):
     max_dd = drawdown.min()
 
     # 最大回撤不超过10%
-    cond_dd = max_dd >= -0.10
+    cond_dd = max_dd >= -0.15
 
 
     # =========================
@@ -974,6 +974,7 @@ def strategy(df, code):
 
     # 必须同时满足
     cond7 = cond_low_vol and cond_no_bad_k
+    
     TJ = (
         cond1 and
         cond2 and
