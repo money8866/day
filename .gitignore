@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+
+# Env
+.env
+venv/
+
+# Cache
+cache_dir/
+cache/
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+*.parquet
+*.csv
+
+# Mac
+.DS_Store

@@ -207,8 +207,9 @@ def get_hist_data(ts_code):
 
             # 缓存中已存在目标日期
             if (df['trade_date'] == TRADE_DATE).any():
-
-                return df.sort_values('trade_date')
+                # 只返回 TRADE_DATE 及之前的数据
+                filtered_df = df[df['trade_date'] <= TRADE_DATE]
+                return filtered_df.sort_values('trade_date')
 
         except Exception as e:
 

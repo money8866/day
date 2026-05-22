@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import akshare as ak
 import time
+
 from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -109,7 +110,7 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 TRADE_DATE = get_last_trade_date()
-#TRADE_DATE = "20260520" # for test
+#TRADE_DATE = "20260521" # for test
 
 print("当前交易日:", TRADE_DATE)
 # =========================
@@ -206,8 +207,9 @@ def get_hist_data(ts_code):
 
             # 缓存中已存在目标日期
             if (df['trade_date'] == TRADE_DATE).any():
-
-                return df.sort_values('trade_date')
+                # 只返回 TRADE_DATE 及之前的数据
+                filtered_df = df[df['trade_date'] <= TRADE_DATE]
+                return filtered_df.sort_values('trade_date')
 
         except Exception as e:
 
@@ -506,46 +508,6 @@ def batch_news_sentiment(
 
     return result_df
 
-def calc_max_drawdown(close, window=20):
-
-    if len(close) < window:
-        return 0
-
-    price = close.tail(window)
-
-    rolling_max = price.cummax()
-
-    drawdown = (price - rolling_max) / rolling_max
-
-    return abs(drawdown.min()) * 100
-
-
-def calc_trend_score(close, window=20):
-
-    if len(close) < window:
-        return 0
-
-    price = close.tail(window)
-
-    # 趋势斜率
-    x = np.arange(window)
-    slope = np.polyfit(x, price.values, 1)[0]
-
-    trend = slope / price.mean() * 100
-
-    # 最大回撤
-    rolling_max = price.cummax()
-    drawdown = (price - rolling_max) / rolling_max
-    mdd = abs(drawdown.min()) * 100
-
-    # 波动率
-    vol = price.pct_change().std() * 100
-
-    # 趋势 / 风险
-    score = trend / (mdd * 0.7 + vol * 0.3 + 1e-6)
-
-    return score
-
 def calc_trend_slope(close, window=20):
 
     if len(close) < window:
@@ -562,7 +524,6 @@ def calc_trend_slope(close, window=20):
         return 0
 
     return slope / mean_price * 100
-
 def calc_trend_stability(close, window=20):
 
     if len(close) < window:
@@ -665,65 +626,55 @@ def calc_big_money_factor(df):
         flow_consistency * 30
     )    
 
-def calc_dual_layer_score_v5(df):
+def calc_dual_layer_score_v4(df):
 
     C = df['close']
 
     # =========================
-    # 趋势核心
+    # 趋势核心（权重提高）
     # =========================
     trend_strength = calc_trend_slope(C, 20)
-
     trend_stability = calc_trend_stability(C, 20)
 
-    # 新增：趋势回撤质量
-    trend_quality = calc_trend_score(C, 20)
-
-    # =========================
-    # 趋势增强（趋势+稳定+回撤）
-    # =========================
     trend_power = (
-        trend_strength * 0.50 +
-        trend_stability * 0.30 +
-        trend_quality * 0.20
+        trend_strength * 0.7 +
+        trend_stability * 0.3
     )
 
-    # 防极值
-    trend_power = np.tanh(trend_power / 5) * 10
+    trend_power = np.tanh(trend_power) * 10   # 放大器
 
     # =========================
     # 量能结构
     # =========================
     volume_structure = calc_volume_structure(df)
-
     accumulation = calc_accumulation_factor(df)
-
     big_money = calc_big_money_factor(df)
 
     # =========================
-    # 结构分（加入回撤质量）
+    # 结构分（不再过度normalize）
     # =========================
     structure_score = (
-        trend_strength * 35 +
-        trend_stability * 15 +
-        trend_quality * 20 +
-        volume_structure * 15 +
-        accumulation * 10 +
-        big_money * 5
+        trend_strength * 40 +
+        trend_stability * 25 +
+        volume_structure * 20 +
+        accumulation * 15
     )
 
     # =========================
-    # 最终融合
+    # 不再做风险压制（你已移除高位风险）
+    # =========================
+
+    # =========================
+    # 最终融合（加法结构）
     # =========================
     final_score = (
-        structure_score * 0.65 +
-        trend_power * 12
+        structure_score * 0.7 +
+        trend_power * 10
     )
 
     return {
         "趋势强度": round(trend_strength, 3),
         "趋势稳定": round(trend_stability, 3),
-        "趋势质量": round(trend_quality, 3),
         "结构分": round(structure_score, 2),
         "趋势增强": round(trend_power, 2),
         "最终评分": round(final_score, 2)
@@ -900,7 +851,7 @@ def strategy(df, code):
     ST1 = (StockName.upper().startswith('ST') or
         StockName.upper().startswith('*ST')) or (code.startswith('1') or (code.startswith('2')))
 #
-    if  not ST or ST1:
+    if  ST1:
         return False
 
     # =========================
@@ -923,7 +874,7 @@ def strategy(df, code):
     # =========================
     # TJ
     # =========================
-    cond1 = ztts > 2 and ztts <= 20
+    cond1 = ztts > 3 and ztts <= 20
 
     ref_close = C.shift(ztts + 1).iloc[-1]
 
@@ -953,14 +904,84 @@ def strategy(df, code):
         ma22.iloc[-2]
     )
 
+    # =========================
+    # ZTTS 量能结构增强条件
+    # =========================
 
+    ztts_window = recent_close.index  # 或直接用 df tail
+
+    ztts_df = df.iloc[-ztts:]  # ZTTS区间数据
+
+    VOL_ma = ztts_df['vol'].rolling(5).mean()
+
+    # 1. 缩量：低于均量 70%
+    cond_low_vol = (ztts_df['vol'] < VOL_ma * 0.8).any()
+
+    # 2. 温和放量：1.1~1.8倍均量
+    cond_mid_vol = (
+        (ztts_df['vol'] > VOL_ma * 1.1) &
+        (ztts_df['vol'] < VOL_ma * 1.8)
+    ).any()
+
+    # 3. 回撤不超过10%
+    # =========================
+    # 回撤
+    # =========================
+    cum_max = ztts_df['close'].cummax()
+
+    drawdown = (
+        (ztts_df['close'] - cum_max)
+        / cum_max
+    )
+
+    max_dd = drawdown.min()
+
+    # 最大回撤不超过10%
+    cond_dd = max_dd >= -0.10
+
+
+    # =========================
+    # 无放量下跌K线
+    # =========================
+
+    vol_ma5 = ztts_df['vol'].rolling(5).mean()
+
+    # 阴线
+    down_k = (
+        ztts_df['close'] < ztts_df['open']
+    )
+
+    # 放量
+    big_vol = (
+        ztts_df['vol'] > vol_ma5 * 1.2
+    )
+
+    # 大跌
+    big_drop = (
+        ztts_df['pct_chg'] < -5
+    )
+
+    # 放量大跌阴线
+    bad_k = (
+        down_k &
+        big_vol &
+        big_drop
+    )
+
+    # 不允许出现
+    cond_no_bad_k = ~bad_k.any()
+
+
+    # 必须同时满足
+    cond7 = cond_low_vol and cond_no_bad_k
     TJ = (
         cond1 and
         cond2 and
         cond3 and
         cond4 and
         cond5 and
-        cond6
+        cond6 and
+        cond7
     )
 
     if not TJ:
@@ -974,7 +995,7 @@ def strategy(df, code):
     )
 
     cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3]))
-    cond_xh2 = C.iloc[-1] / ma5.iloc[-1] <1.08 and C.iloc[-1] / ma5.iloc[-1] > 0.97
+    cond_xh2 = C.iloc[-1] / C.iloc[-2]>0.99 and C.iloc[-1] / C.iloc[-2]<1.098 and  C.iloc[-1] / ma5.iloc[-1] <1.08 and C.iloc[-1] / ma5.iloc[-1] > 0.99
 
 
     XH = cond_xh1 and cond_xh2
@@ -1437,6 +1458,7 @@ strong {{
     print(f"HTML报告已生成: {output_file}")
 
 
+
 # =========================
 # 市场数据
 # =========================
@@ -1536,18 +1558,23 @@ def save_result(df):
 def load_history(days=10):
 
     conn = sqlite3.connect(DB_PATH)
+    today = TRADE_DATE
+    start_date = (
+        datetime.now() - timedelta(days=days)
+    ).strftime('%Y-%m-%d')
 
-    query = """
-
+    query = f"""
         SELECT *
         FROM stock_result
+        WHERE date >= '{start_date}'
+        AND date < '{today}'
         ORDER BY date DESC, rank ASC
-
     """
 
     df = pd.read_sql(query, conn)
 
     conn.close()
+    #print (df)
 
     return df
 
@@ -1628,7 +1655,7 @@ def run():
         if hist is None:
             continue
 
-        factor = calc_dual_layer_score_v5(
+        factor = calc_dual_layer_score_v4(
             hist
         )
 
@@ -1667,8 +1694,9 @@ def run():
     init_db()
     save_result(result_df)
     stock_text = result_df.to_string(index=False)
+    stock_his_df=load_history()
+    stock_his_text = str(stock_his_df)
     
-
     # =========================板块分析
     sector_df = block.analyze_hot_sectors()
 
@@ -1723,9 +1751,12 @@ def run():
 
 {sector_text_his}
 
-以下股票是量化模型筛选出的趋势突破候选：
+今日量化候选股票池：
 
 {stock_text}
+
+过去十日量化候选股票池:
+{stock_his_text}
 
 
 请对以上每一个股票，实时搜索年报/季报数据、机构研报和资讯公告，进一步分析并筛选：
@@ -1742,9 +1773,10 @@ def run():
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
 1、大盘情绪(含涨跌停数等几个数据指标)和仓位建议
-2、今日主线板块和近几日动态变化分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
+2、通过以上数据及全网板块热点分析,给出今日主线板块和近几日动态变化分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
 3、个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
-4、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
+4、历史个股分析:输出1-2个调整到位可能启动的个股,要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
+5、附上属于主线板块的个股列表(严格按今日量化候选股票池输出,按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
 
 """
@@ -1791,9 +1823,9 @@ def run():
     prompt = f"""
 请仔细阅读以下两份报告，分别来自不同的AI模型，
 内容都是基于同一份市场数据和个股数据分析得出的。
-请综合分析互相验证和辩论,以确定性为标准,输出一个最终的复盘总结和个股推荐。
 Deepseek的报告:{report_ds};
 Doubao的报告:{report_doubao};
+请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取DeepSeek的报告即可,输出一个最终的复盘总结和个股推荐。
 
 输出内容：
 标题：每日复盘({TRADE_DATE})
@@ -1801,7 +1833,8 @@ Doubao的报告:{report_doubao};
 1、大盘情绪(含涨跌停数等几个数据指标)和仓位建议
 2、主线板块分析(给出主线龙头和成交量最大趋势最强的中军，并分析主线板块的阶段和持续性，给出数据支撑和逻辑理由）
 3、个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
-4、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
+4、历史个股分析:输出分析后筛选出的股票列表，要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
+5、附上属于主线板块的个股列表(按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
 格式要求：
 1、不要Markdown表格，适合窄屏手机阅读，避免长段落
