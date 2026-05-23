@@ -1,0 +1,30 @@
+L216:             ma20_v = c.rolling(20).mean().iloc[-1]; ma60_v = c.rolling(60).mean().iloc[-1]
+L217:             price = c.iloc[-1]
+L218:             sc = 0
+L219:             if ma5_v > ma10_v > ma20_v: sc += 25
+L220:             if ma20_v > ma60_v: sc += 20
+L221:             vr = v / v.rolling(20).mean()
+L222:             if vr.iloc[-3:].mean() > 1.3: sc += 15
+L223:             high_21 = h.iloc[-21:-1].max()
+L224:             if price > high_21 * 0.98: sc += 15
+L225:             pos120 = (price - l.rolling(120).min().iloc[-1]) / (h.rolling(120).max().iloc[-1] - l.rolling(120).min().iloc[-1]) * 100
+L226:             if pos120 < 70: sc += 10
+L227:             pct5 = (price / c.iloc[-6] - 1) * 100
+L228:             if 3 < pct5 < 20: sc += 10
+L229:             rh = h.iloc[-45:-5].max(); rl = l.iloc[-45:-5].min()
+L230:             if rl > 0 and (rh - rl) / rl * 100 < 25: sc += 5
+L231:             if sc < MIN_TECH_SCORE: continue
+L232:             entry_type, entry_bonus = detect_entry_type(price, ma5_v, ma10_v, ma20_v, ma60_v, high_21)
+L233:             sc += entry_bonus
+L234:             sec_cnt = sum(1 for hs in hot if tc in hs['stocks'])
+L235:             if tc not in fin_cache: fin_cache[tc] = get_fin(tc)
+L236:             fin = fin_cache[tc]; fin_s = ai_financial_score(fin, pe, sec_cnt)
+L237:             repeat_tracker[tc] += 1
+L238:             day_picks.append({'ts_code': tc, 'close': price, 'pe': pe, 'mv_yi': mv, 'tech_score': sc, 'fin_score': fin_s, 'sector_count': sec_cnt, 'repeat': repeat_tracker[tc], 'pct_5d': round(pct5, 2), 'entry_type': entry_type})
+L239: 
+L240:         if not day_picks: continue
+L241:         try:
+L242:             sb = pro.stock_basic(fields='ts_code,name')
+L243:             nm = dict(zip(sb['ts_code'], sb['name']))
+L244:             for p in day_picks: p['name'] = nm.get(p['ts_code'], p['ts_code'])
+L245:         except: pass

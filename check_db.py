@@ -1,16 +1,27 @@
-import pandas as pd
+# -*- coding: utf-8 -*-
 import sqlite3
 
-db_path = 'cache_db/tdx_concept.db'
-conn = sqlite3.connect(db_path)
+for db in ['cache_db/dc_concept.db', 'cache_db/tdx_concept.db']:
+    print(f'=== {db} ===')
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cur.fetchall()
+        for t in tables:
+            name = t[0]
+            cur.execute(f'SELECT COUNT(*) FROM [{name}]')
+            cnt = cur.fetchone()[0]
+            cur.execute(f'PRAGMA table_info([{name}])')
+            cols = [r[1] for r in cur.fetchall()]
+            print(f'TABLE:{name} ROWS:{cnt} COLS:{cols[:8]}')
 
-# 检查股票日线数据
-df = pd.read_sql('SELECT * FROM daily_data LIMIT 5', conn)
-print('=== daily_data ===')
-print(df)
-
-# 获取总记录数
-total = pd.read_sql('SELECT COUNT(*) FROM daily_data', conn)
-print(f'\n总记录数: {total.iloc[0, 0]}')
-
-conn.close()
+            # sample first 3 rows
+            cur.execute(f'SELECT * FROM [{name}] LIMIT 3')
+            rows = cur.fetchall()
+            for row in rows:
+                print(f'  ROW: {str(row)[:200]}')
+        conn.close()
+    except Exception as e:
+        print(f'ERR:{e}')
+    print()

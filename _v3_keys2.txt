@@ -1,0 +1,225 @@
+L41: L41:     dates = sorted(cal['cal_date'].tolist())
+L42: L42:     print(f"区间: {dates[0]} ~ {dates[-1]} ({len(dates)}天)")
+L43: L43:     
+L44: L44:     concept_map, theme_map, stock_concept_map, sw_df = load_maps()
+L45: L45:     
+L46: L46:     HOLD = 5
+L47: L47:     STOP = -0.05
+L48: L48:     
+L49: L49:     # 模拟连续运行
+L50: L50:     repeat_tracker = defaultdict(int)   # 累计入选次数
+L51: L51:     first_appear = defaultdict(str)
+L52: L52:     all_trades = []
+L53: L53:     fin_cache = {}
+L54: L54:     
+L55: L55:     # 每隔1天采样（模拟每日运行）
+L56: L56:     for i in range(0, len(dates) - HOLD, 1):
+L57: L57:         td = dates[i]
+L58: L58:         ed = dates[min(i + HOLD, len(dates)-1)]
+L59: L59:         
+L60: L60:         # Step1: 主线（用回测版行业动量）
+L61: L61:         try:
+L62: L62:             df = pro.daily(trade_date=td, fields='ts_code,close,pct_chg,amount')
+L63: L63:             if df.empty: continue
+L64: L64:         except: continue
+L65: L65:         
+L66: L66:         if sw_df.empty or 'l2_name' not in sw_df.columns: continue
+L67: L67:         sw_merge = sw_df[['ts_code','l2_name']].dropna(subset=['l2_name'])
+L68: L68:         df = df.merge(sw_merge, on='ts_code', how='left').dropna(subset=['l2_name'])
+L69: L69:         if df.empty: continue
+L70: L70:         
+L71: L71:         ip = df.groupby('l2_name').agg(
+L72: L72:             avg_pct=('pct_chg','mean'), total_amount=('amount','sum'),
+L73: L73:             stock_count=('ts_code','count'), up_ratio=('pct_chg',lambda x:(x>0).mean()),
+L74: L74:             limit_up=('pct_chg',lambda x:(x>=9.5).sum())
+L75: L75:         ).reset_index()
+L76: L76:         ip = ip[ip['stock_count']>=5]
+L77: L77:         ip['score'] = ip['avg_pct']*1.5+ip['limit_up']*3+ip['up_ratio']*8+np.log1p(ip['total_amount']/1e8)*2
+L78: L78:         top = ip.sort_values('score',ascending=False).head(8)
+L79: L79:         
+L80: L80:         hot = []
+L81: L81:         for _,r in top.iterrows():
+L82: L82:             ind = r['l2_name']
+L83: L83:             stocks = set(sw_df[sw_df['l2_name']==ind]['ts_code'].dropna().unique().tolist())
+L84: L84:             for cn,cl in concept_map.items():
+L85: L85:                 if ind in cn: stocks.update(cl)
+L86: L86:             for tc,cs in stock_concept_map.items():
+L87: L87:                 if ind in str(cs): stocks.add(tc)
+L88: L88:             hot.append({'name':ind,'score':r['score'],'momentum':0,'leader':'','stocks':stocks})
+L89: L89:         
+L90: L90:         if not hot: continue
+L91: L91:         
+L92: L92:         # Step2: 中军筛选
+L93: L93:         try:
+L94: L94:             basic = pro.daily_basic(trade_date=td, fields='ts_code,close,pe,total_mv')
+L95: L95:         except: continue
+L96: L96:         if basic.empty: continue
+L97: L97:         basic['mv_yi'] = basic['total_mv']/10000
+L98: L98:         cands = basic[(basic['mv_yi']>=MV_MIN)&(basic['mv_yi']<=MV_MAX)]
+L99: L99:         cands = cands[~cands['ts_code'].str.startswith(('8','4','9'))]
+L100: L100:         cands = cands[(cands['pe']>0)&(cands['pe']<=PE_MAX)]
+L101: L101:         all_ss = set().union(*[h['stocks'] for h in hot])
+L102: L102:         cands = cands[cands['ts_code'].isin(all_ss)]
+L103: L103:         
+L104: L104:         start_h = (datetime.strptime(td,'%Y%m%d')-timedelta(days=200)).strftime('%Y%m%d')
+L105: L105:         
+L106: L106:         day_picks = []
+L107: L107:         for _,row in cands.iterrows():
+L108: L108:             tc = row['ts_code']
+L109: L109:             pe = row['pe']
+L110: L110:             try:
+L111: L111:                 dh = pro.daily(ts_code=tc, start_date=start_h, end_date=td)
+L112: L112:                 if len(dh)<60: continue
+L113: L113:                 dh = dh.sort_values('trade_date').reset_index(drop=True)
+L114: L114:                 c,h,l,v = dh['close'],dh['high'],dh['low'],dh['vol']
+L115: L115:                 ma5,ma10,ma20,ma60 = c.rolling(5).mean(),c.rolling(10).mean(),c.rolling(20).mean(),c.rolling(60).mean()
+L116: L116:                 
+L117: L117:                 sc=0
+L118: L118:                 if ma5.iloc[-1]>ma10.iloc[-1]>ma20.iloc[-1]: sc+=25
+L119: L119:                 if ma20.iloc[-1]>ma60.iloc[-1]: sc+=20
+L120: L120:                 vr = v/v.rolling(20).mean()
+L121: L121:                 if vr.iloc[-3:].mean()>1.3: sc+=15
+L122: L122:                 if c.iloc[-1]>h.iloc[-21:-1].max()*0.98: sc+=15
+L123: L123:                 pos120=(c.iloc[-1]-l.rolling(120).min().iloc[-1])/(h.rolling(120).max().iloc[-1]-l.rolling(120).min().iloc[-1])*100
+L124: L124:                 if pos120<70: sc+=10
+L125: L125:                 pct5=(c.iloc[-1]/c.iloc[-6]-1)*100
+L126: L126:                 if 3<pct5<20: sc+=10
+L127: L127:                 rh=h.iloc[-45:-5].max(); rl=l.iloc[-45:-5].min()
+L128: L128:                 if (rh-rl)/rl*100<25: sc+=5
+L129: L129:                 if sc<MIN_TECH_SCORE: continue
+L130: L130:                 
+L131: L131:                 sec_cnt = sum(1 for hs in hot if tc in hs['stocks'])
+L132: L132:                 
+L133: L133:                 # 财务
+L134: L134:                 if tc not in fin_cache:
+L135: L135:                     fin_cache[tc] = get_fin(tc)
+L136: L136:                 fin = fin_cache[tc]
+L137: L137:                 fin_s, _ = ai_financial_score(fin, pe, sec_cnt, sc)
+L138: L138:                 
+L139: L139:                 # 更新入选次数
+L140: L140:                 repeat_tracker[tc] += 1
+L141: L141:                 if first_appear[tc]=='' or td < first_appear[tc]:
+L142: L142:                     first_appear[tc] = td
+L143: L143:                 
+L144: L144:                 day_picks.append({
+L145: L145:                     'ts_code':tc, 'name':'', 'close':row['close'],
+L146: L146:                     'pe':pe, 'mv_yi':row['mv_yi'], 'tech_score':sc,
+L147: L147:                     'fin_score':fin_s, 'sector_count':sec_cnt,
+L148: L148:                     'repeat':repeat_tracker[tc], 'pct_5d':round(pct5,2)
+L149: L149:                 })
+L150: L150:             except: continue
+L151: L151:         
+L152: L152:         if not day_picks: continue
+L153: L153:         
+L154: L154:         # 获取名字
+L155: L155:         sb = pro.stock_basic(fields='ts_code,name')
+L156: L156:         nm = dict(zip(sb['ts_code'],sb['name']))
+L157: L157:         for p in day_picks:
+L158: L158:             p['name'] = nm.get(p['ts_code'], p['ts_code'])
+L159: L159:         
+L160: L160:         # 按V3逻辑分级
+L161: L161:         # A级: repeat>=2 + fin>=20
+L162: L162:         a_picks = [p for p in day_picks if p['repeat']>=MIN_REPEAT and p['fin_score']>=FIN_SCORE_MIN]
+L163: L163:         a_picks.sort(key=lambda x: (x['fin_score'], x['repeat'], x['sector_count']), reverse=True)
+L164: L164:         
+L165: L165:         # 只对A级模拟交易
+L166: L166:         for pick in a_picks[:3]:  # TOP3
+L167: L167:             tc = pick['ts_code']
+L168: L168:             buy = pick['close']
+L169: L169:             try:
+L170: L170:                 exit_df = pro.daily(ts_code=tc, start_date=td, end_date=ed)
+L171: L171:                 if exit_df.empty: continue
+L172: L172:                 exit_df = exit_df.sort_values('trade_date').reset_index(drop=True)
+L173: L173:                 
+L174: L174:                 # 止损模拟
+L175: L175:                 stopped = False
+L176: L176:                 sell = buy
+L177: L177:                 actual_hold = len(exit_df)-1
+L178: L178:                 for j in range(1, len(exit_df)):
+L179: L179:                     if exit_df.loc[j,'low']/buy-1 <= STOP:
+L180: L180:                         sell = buy*(1+STOP)
+L181: L181:                         actual_hold = j
+L182: L182:                         stopped = True
+L183: L183:                         break
+L184: L184:                 if not stopped:
+L185: L185:                     sell = exit_df.iloc[-1]['close']
+L186: L186:                 
+L187: L187:                 ret = (sell/buy-1)*100
+L188: L188:                 max_gain = (exit_df['high'].max()/buy-1)*100
+L189: L189:                 max_dd = (exit_df['low'].min()/buy-1)*100
+L190: L190:                 
+L191: L191:                 all_trades.append({
+L192: L192:                     'date':td, 'exit_date':exit_df.iloc[-1]['trade_date'] if not stopped else exit_df.loc[actual_hold,'trade_date'],
+L193: L193:                     'name':pick['name'], 'ts_code':tc,
+L194: L194:                     'buy':buy, 'sell':round(sell,2),
+L195: L195:                     'return_pct':round(ret,2), 'max_gain':round(max_gain,2),
+L196: L196:                     'max_dd':round(max_dd,2), 'stopped':stopped,
+L197: L197:                     'fin_score':pick['fin_score'], 'tech_score':pick['tech_score'],
+L198: L198:                     'sector_count':pick['sector_count'], 'repeat':pick['repeat'],
+L199: L199:                     'pe':pick['pe']
+L200: L200:                 })
+L201: L201:             except: continue
+L202: L202:         
+L203: L203:         if (i+1) % 5 == 0:
+L204: L204:             print(f"  进度: {td} | 累计交易{len(all_trades)}笔 | 候选池{len(repeat_tracker)}只")
+L205: L205:         
+L206: L206:         time.sleep(0.5)
+L207: L207:     
+L208: L208:     # ============================================================
+L209: L209:     # 统计
+L210: L210:     # ============================================================
+L211: L211:     if not all_trades:
+L212: L212:         print("⚠️ 无交易"); return
+L213: L213:     
+L214: L214:     rdf = pd.DataFrame(all_trades)
+L215: L215:     total = len(rdf)
+L216: L216:     wins = (rdf['return_pct']>0).sum()
+L217: L217:     losses = (rdf['return_pct']<=0).sum()
+L218: L218:     wr = wins/total*100
+L219: L219:     avg_ret = rdf['return_pct'].mean()
+L220: L220:     cum = (1+rdf['return_pct']/100).prod()-1
+L221: L221:     avg_w = rdf[rdf['return_pct']>0]['return_pct'].mean() if wins else 0
+L222: L222:     avg_l = abs(rdf[rdf['return_pct']<=0]['return_pct'].mean()) if losses else 1
+L223: L223:     plr = avg_w/avg_l if avg_l>0 else 999
+L224: L224:     
+L225: L225:     print(f"\n{'='*80}")
+L226: L226:     print(f"📊 V3回测结果 (二次入选+AI评分+止损)")
+L227: L227:     print(f"{'='*80}")
+L228: L228:     print(f"交易: {total}笔 | 胜率: {wr:.1f}%")
+L229: L229:     print(f"均收: {avg_ret:+.2f}% | 复合累计: {cum*100:+.2f}%")
+L230: L230:     print(f"盈亏比: {plr:.2f} (均盈{avg_w:.2f}%/均亏{avg_l:.2f}%)")
+L231: L231:     print(f"止损: {rdf['stopped'].sum()}笔({rdf['stopped'].mean()*100:.0f}%)")
+L232: L232:     
+L233: L233:     print(f"\n📈 基本面分 vs 收益:")
+L234: L234:     for lo,hi,lb in [(24,30,'≥24'),(20,23,'20-23')]:
+L235: L235:         sub=rdf[(rdf['fin_score']>=lo)&(rdf['fin_score']<=hi)]
+L236: L236:         if len(sub)>0:
+L237: L237:             print(f"  {lb}: {len(sub)}笔 均收{sub['return_pct'].mean():+.2f}% 胜率{(sub['return_pct']>0).mean()*100:.0f}%")
+L238: L238:     
+L239: L239:     print(f"\n🔁 入选次数 vs 收益:")
+L240: L240:     for rp in sorted(rdf['repeat'].unique()):
+L241: L241:         sub=rdf[rdf['repeat']==rp]
+L242: L242:         print(f"  {rp}次: {len(sub)}笔 均收{sub['return_pct'].mean():+.2f}% 胜率{(sub['return_pct']>0).mean()*100:.0f}%")
+L243: L243:     
+L244: L244:     print(f"\n🏆 TOP5盈利:")
+L245: L245:     for _,r in rdf.nlargest(5,'return_pct').iterrows():
+L246: L246:         print(f"  {r['name']} {r['date']}→{r['exit_date']} {r['return_pct']:+.2f}% "
+L247: L247:               f"基本面={r['fin_score']} 入选{r['repeat']}次 PE={r['pe']:.0f}")
+L248: L248:     
+L249: L249:     print(f"\n💀 TOP5亏损:")
+L250: L250:     for _,r in rdf.nsmallest(5,'return_pct').iterrows():
+L251: L251:         st="⚡" if r['stopped'] else ""
+L252: L252:         print(f"  {r['name']} {r['date']}→{r['exit_date']} {r['return_pct']:+.2f}% "
+L253: L253:               f"基本面={r['fin_score']} PE={r['pe']:.0f} {st}")
+L254: L254:     
+L255: L255:     # 对比表
+L256: L256:     print(f"\n📊 V2 vs V3 对比:")
+L257: L257:     print(f"  V2(无二次入选): 胜率46% 盈亏比1.53 累计+25.8%")
+L258: L258:     print(f"  V3(二次入选):   胜率{wr:.0f}% 盈亏比{plr:.2f} 累计{cum*100:+.1f}%")
+L259: L259:     
+L260: L260:     out = os.path.join(BASE_DIR, 'backtest_v3.csv')
+L261: L261:     rdf.to_csv(out, index=False, encoding='utf-8-sig')
+L262: L262:     print(f"\n💾 {out}")
+L263: L263: 
+L264: L264: if __name__ == '__main__':
+L265: L265:     main()

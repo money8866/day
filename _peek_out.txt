@@ -1,0 +1,39 @@
+L400:             price = c.iloc[-1]
+L401: 
+L402:             score = 0
+L403:             if ma5 > ma10 > ma20: score += 25
+L404:             if ma20 > ma60: score += 20
+L405:             vr = v / v.rolling(20).mean()
+L406:             if vr.iloc[-3:].mean() > 1.3: score += 15
+L407:             high_21 = h.iloc[-21:-1].max()
+L408: 
+L409:             # V4: 先判定回档类型
+L410:             entry_type, entry_bonus, entry_suggestion = detect_entry_type(
+L411:                 price, ma5, ma10, ma20, ma60, high_21)
+L412:             score += entry_bonus
+L413: 
+L414:             # 过滤：far_away/breakout类型必须已突破21日高点，回档类豁免
+L415:             if entry_type in ('far_away', 'breakout') and price <= high_21 * 0.98:
+L416:                 continue
+L417: 
+L418:             pos120 = (price - l.rolling(120).min().iloc[-1]) / (h.rolling(120).max().iloc[-1] - l.rolling(120).min().iloc[-1]) * 100
+L419:             if pos120 < 70: score += 10
+L420:             pct5 = (price / c.iloc[-6] - 1) * 100
+L421:             if 3 < pct5 < 20: score += 10
+L422:             rh = h.iloc[-45:-5].max(); rl = l.iloc[-45:-5].min()
+L423:             if (rh-rl)/rl*100 < 25: score += 5
+L424: 
+L425:             if score < MIN_TECH_SCORE: continue
+L426: 
+L427:             sector_count = sum(1 for hs in hot_sectors if tc in hs["stocks"])
+L428:             sector_names = [hs['name'] for hs in hot_sectors if tc in hs['stocks']]
+L429: 
+L430:             results.append({
+L431:                 'ts_code': tc, 'close': price, 'mv_yi': row['mv_yi'],
+L432:                 'pe': pe, 'tech_score': score, 'pct_5d': round(pct5,2),
+L433:                 'price_pos_120': round(pos120,1), 'turnover_rate': row['turnover_rate'],
+L434:                 'sector_count': sector_count, 'sector_names': '; '.join(sector_names),
+L435:                 'entry_type': entry_type, 'entry_suggestion': entry_suggestion,
+L436:                 'ma5': round(ma5,2), 'ma10': round(ma10,2),
+L437:             })
+L438:             time.sleep(0.12)
