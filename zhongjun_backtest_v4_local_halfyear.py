@@ -4,7 +4,7 @@ V4 半年回测 - 本地通达信日线（优化版，无API限频）
 回测区间: 20241125 ~ 20260522 (约6个月)
 优化: 批量预缓存Tushare数据，避免逐天API调用
 """
-import sys; sys.stdout.reconfigure(encoding='utf-8')
+import sys; sys.stdout.flush()
 import os, struct, pickle
 import numpy as np
 import pandas as pd
@@ -170,11 +170,20 @@ def main():
                     daily_basic_cache[td] = df
             except:
                 pass
-        print(f'  {dates[bi]}~{dates[min(bi+BATCH-1, len(dates)-1)]}: cached {len(daily_basic_cache)}/{len(dates)} days')
+        print(f'  {dates[bi]}~{dates[min(bi+BATCH-1, len(dates)-1)]}: {len(daily_basic_cache)}/{len(dates)} days', flush=True)
+    print(f'Daily basic done: {len(daily_basic_cache)}/{len(dates)} days', flush=True)
     print(f'Daily basic cached: {len(daily_basic_cache)}/{len(dates)} days')
 
     fin_cache = load_fin_cache()
-    print(f'Fin cache: {len(fin_cache)}')
+    print(f'Fin cache: {len(fin_cache)}', flush=True)
+
+    # stock_basic 只调一次（全局名称映射）
+    try:
+        sb = pro.stock_basic(fields='ts_code,name')
+        nm_cache = dict(zip(sb['ts_code'], sb['name']))
+    except:
+        nm_cache = {}
+    print(f'Stock basic cached: {len(nm_cache)}', flush=True)
 
     repeat_tracker = defaultdict(int)
     all_trades = []
@@ -185,10 +194,6 @@ def main():
         td_dt = datetime.strptime(td, '%Y%m%d')
         td_str = td_dt.strftime('%Y-%m-%d')
 
-        hot = get_hot_sectors_fallback(td, sw_df, top_n=8)
-        if not hot: continue
-        all_ss = set().union(*[h['stocks'] for h in hot])
-
         if td not in daily_basic_cache:
             skipped_no_basic += 1
             continue
@@ -196,7 +201,6 @@ def main():
         cands = basic[(basic['mv_yi'] >= MV_MIN) & (basic['mv_yi'] <= MV_MAX)]
         cands = cands[~cands['ts_code'].str.startswith(('8','4','9'))]
         cands = cands[(cands['pe'] > 0) & (cands['pe'] <= PE_MAX)]
-        cands = cands[cands['ts_code'].isin(all_ss)]
 
         day_picks = []
         for _, row in cands.iterrows():
@@ -231,18 +235,14 @@ def main():
             if sc < MIN_TECH_SCORE: continue
             entry_type, entry_bonus = detect_entry_type(price, ma5_v, ma10_v, ma20_v, ma60_v, high_21)
             sc += entry_bonus
-            sec_cnt = sum(1 for hs in hot if tc in hs['stocks'])
+            sec_cnt = 0  # 无热点板块过滤，所有标的sec_cnt=0
             if tc not in fin_cache: fin_cache[tc] = get_fin(tc)
             fin = fin_cache[tc]; fin_s = ai_financial_score(fin, pe, sec_cnt)
             repeat_tracker[tc] += 1
             day_picks.append({'ts_code': tc, 'close': price, 'pe': pe, 'mv_yi': mv, 'tech_score': sc, 'fin_score': fin_s, 'sector_count': sec_cnt, 'repeat': repeat_tracker[tc], 'pct_5d': round(pct5, 2), 'entry_type': entry_type})
 
         if not day_picks: continue
-        try:
-            sb = pro.stock_basic(fields='ts_code,name')
-            nm = dict(zip(sb['ts_code'], sb['name']))
-            for p in day_picks: p['name'] = nm.get(p['ts_code'], p['ts_code'])
-        except: pass
+        for p in day_picks: p['name'] = nm_cache.get(p['ts_code'], p['ts_code'])
 
         a_picks = [p for p in day_picks if p['repeat'] >= MIN_REPEAT and p['fin_score'] >= FIN_SCORE_MIN]
         a_picks.sort(key=lambda x: (x['fin_score'], x['repeat'], x['sector_count']), reverse=True)
@@ -294,7 +294,7 @@ def main():
             buy_date_str = actual_buy_date.strftime('%Y-%m-%d') if isinstance(actual_buy_date, datetime) else str(actual_buy_date)
             all_trades.append({'date': td, 'actual_buy_date': buy_date_str, 'exit_date': exit_date, 'name': pick['name'], 'ts_code': tc, 'orig_buy': round(orig_buy, 2), 'actual_buy': round(actual_buy_price, 2), 'sell': round(sell, 2), 'pullback_wait': pullback_wait, 'return_pct': round(ret, 2), 'max_gain': round(max_gain, 2), 'max_dd': round(max_dd, 2), 'stopped': stopped, 'fin_score': pick['fin_score'], 'tech_score': pick['tech_score'], 'sector_count': pick['sector_count'], 'repeat': pick['repeat'], 'pe': pick['pe'], 'entry_type': entry_type})
 
-        if (i + 1) % 20 == 0: print(f'  [{i+1}/{len(dates)}] {td} trades={len(all_trades)} skip_pb={skipped_breakout} no_basic={skipped_no_basic}')
+        if (i + 1) % 20 == 0: print(f'  [{i+1}/{len(dates)}] {td} trades={len(all_trades)}', flush=True)
 
     save_fin_cache(fin_cache)
 

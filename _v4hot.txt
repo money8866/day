@@ -1,0 +1,20 @@
+L106: def get_hot_sectors_fallback(trade_date, sw_df, top_n=8):
+L107:     try:
+L108:         env = Path(os.path.join(BASE_DIR, '.env')).read_text()
+L109:         for line in env.splitlines():
+L110:             if line.startswith('TUSHARE_TOKEN='): ts.set_token(line.split('=', 1)[1].strip())
+L111:         pro = ts.pro_api()
+L112:         df = pro.daily(trade_date=trade_date, fields='ts_code,close,pct_chg,amount')
+L113:         if df.empty: return []
+L114:     except: return []
+L115:     if sw_df.empty or 'l2_name' not in sw_df.columns: return []
+L188:         hot = get_hot_sectors_fallback(td, sw_df, top_n=8)
+L189:         if not hot: continue
+L190:         all_ss = set().union(*[h['stocks'] for h in hot])
+L191: 
+L192:         if td not in daily_basic_cache:
+L193:             skipped_no_basic += 1
+L194:             continue
+L195:         basic = daily_basic_cache[td]
+L196:         cands = basic[(basic['mv_yi'] >= MV_MIN) & (basic['mv_yi'] <= MV_MAX)]
+L197:         cands = cands[~cands['ts_code'].str.startswith(('8','4','9'))]
