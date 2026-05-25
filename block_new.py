@@ -89,7 +89,7 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 # TRADE_DATE = get_last_trade_date()
-TRADE_DATE = "20260521"  # 使用已有数据的日期进行测试
+#TRADE_DATE = "20260521"  # 使用已有数据的日期进行测试
 
 # =========================================================
 # 下载东方财富概念列表（带缓存）

@@ -3,7 +3,12 @@
 主线龙头分歧策略 - 日常调度 + 信号输出
 运行: python main.py
 """
-import os, sys, json
+import os, sys, json, io
+
+# 修复Windows控制台GBK编码不支持emoji的问题
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 import pandas as pd
 from datetime import datetime
 
@@ -26,7 +31,7 @@ from tushare_quant import get_last_trade_date
 def run_daily_scan():
     """日常扫描: 市场→板块→龙头→分歧→仓位→信号"""
     print("=" * 60)
-    print("  🐉 主线龙头分歧策略 - 日常扫描")
+    print("  主线龙头分歧策略 - 日常扫描")
     print("  %s" % datetime.now().strftime("%Y-%m-%d %H:%M"))
     print("=" * 60)
 

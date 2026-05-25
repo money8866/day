@@ -3,7 +3,12 @@
 盘后日线分析 - 收盘后运行，输出当日完整市场复盘
 python daily_analysis.py
 """
-import os, sys, json
+import os, sys, json, io
+
+# 修复Windows控制台GBK编码不支持emoji的问题
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta

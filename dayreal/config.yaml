@@ -1,0 +1,40 @@
+files:
+  concepts_csv: concepts.csv
+  stocks_csv: stocks.csv
+  position_csv: position_config.csv
+
+warning:
+  ma5_threshold: 0.02
+  stock_check_interval: 10
+  concept_check_interval: 60
+
+notification:
+  enabled: false
+  method: print
+
+tdx:
+  servers:
+    - host: "180.153.18.170"
+      port: 7709
+    - host: "180.153.18.171"
+      port: 7709
+    - host: "180.153.39.51"
+      port: 7709
+    - host: "119.147.164.60"
+      port: 7709
+    - host: "60.191.117.167"
+      port: 7709
+    - host: "218.108.47.69"
+      port: 7709
+    - host: "218.108.98.244"
+      port: 7709
+    - host: "123.125.108.23"
+      port: 7709
+    - host: "123.125.108.24"
+      port: 7709
+    - host: "59.173.18.69"
+      port: 7709
+    - host: "221.231.141.60"
+      port: 7709
+    - host: "jstdx.gtjas.com"
+      port: 7709
