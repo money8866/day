@@ -13,6 +13,11 @@ venv/
 # Cache
 cache_dir/
 cache/
+cache_daily/
+cache_db/
+cache_kpl/
+cache_sector/
+news_cache/
 *.db
 *.sqlite
 
