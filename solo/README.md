@@ -1,93 +1,95 @@
-# 实时对话应用示例
+# 主线板块 + 中军分析系统（通达信版）
 
-这是一个演示实时对话功能的 Web 应用示例。
+## 功能说明
 
-## 项目说明
+- **板块来源**: 使用 Tushare 通达信接口（ths_index/ths_member）获取概念和行业数据
+- **行情数据**: 可选择 Tushare 或通达信本地日线数据
+- **中军识别**: 综合评分体系，包含二次候选加分
 
-由于 Trae SOLO 目前没有公开的 API 来直接向手机端发送实时对话，这个项目展示了如何构建一个具有实时对话功能的 Web 应用。
+## 安装依赖
 
-## 功能特性
-
-- 💬 实时对话界面
-- 🌓 深色/浅色主题切换
-- 📱 响应式设计，支持移动端
-- ⚙️ 可配置的设置选项
-- 💾 设置本地存储
-- 🎨 现代化的 UI 设计
-
-## 项目结构
-
+```bash
+pip install -r requirements.txt
 ```
-solo/
-├── index.html          # 主 HTML 文件
-├── styles.css          # 样式文件
-├── app.js             # JavaScript 逻辑
-├── README.md          # 说明文档
-└── .trae/
-    └── documents/
-        ├── prd.md     # 产品需求文档
-        └── arch.md    # 技术架构文档
-```
+
+## 配置
+
+确保 TUSHARE.env 文件存在于 mystock 目录中，包含 Tushare Token
 
 ## 使用方法
 
-1. 直接在浏览器中打开 `index.html` 文件
-2. 在输入框中输入消息并发送
-3. 体验实时对话功能
+### 首次运行（需要初始化板块缓存）
 
-## 技术栈
-
-- HTML5
-- CSS3
-- 原生 JavaScript
-- 响应式设计
-- LocalStorage 存储
-
-## 如何向手机端发送消息（概念演示）
-
-虽然 Trae SOLO 没有公开 API，但这里展示了构建实时通信系统的常见方式：
-
-### 1. 使用 WebSocket（推荐）
-
-```javascript
-// 服务器端 (Node.js + ws 库示例)
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080 });
-
-wss.on('connection', (ws) => {
-    ws.on('message', (message) => {
-        // 广播给所有连接的客户端
-        wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(message);
-            }
-        });
-    });
-});
+```bash
+python main_with_backbone_tdx.py --refresh
 ```
 
-### 2. 使用 Server-Sent Events (SSE)
+### 指定日期运行
 
-```javascript
-// 客户端接收
-const eventSource = new EventSource('/api/stream');
-eventSource.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    displayMessage(message);
-};
+```bash
+python main_with_backbone_tdx.py --date 20260522
 ```
 
-### 3. 使用第三方服务
+### 使用通达信本地日线数据
 
-- Firebase Realtime Database
-- Pusher
-- Socket.io
-- 等等
+```bash
+python main_with_backbone_tdx.py --tdx
+```
 
-## 关于 Trae SOLO
+### 完整命令示例
 
-Trae SOLO 是字节跳动推出的 AI 编程工具，支持手机端、网页端和桌面端的多端同步。目前它主要作为一个应用程序使用，没有公开的 API 供开发者集成。
+```bash
+python main_with_backbone_tdx.py --date 20260522 --tdx --refresh
+```
 
-## 许可证
+## 中军评分标准（最终版）
 
-MIT
+| 序号 | 特征 | 条件 | 分值 |
+|:---:|:---|:---|:---:|
+| 1 | **市值** | 100-1000亿（统一） | 20 |
+| 2 | **成交金额** | >=50亿 | 25 |
+| 2 | **成交金额** | >=20亿 | 20 |
+| 2 | **成交金额** | >=5亿 | 15 |
+| 3 | **量比** | >=2 | 20 |
+| 4 | **换手率** | 5%-10% | 15 |
+| 5 | **均线排列** | MA5>MA20>MA60 或金叉 | 20 |
+| 6 | **平台突破** | 震荡后放量突破 | 15 |
+| 7 | **趋势强度** | >=0.5（游资风格算法，看这一波启动以来） | 15 |
+| 8 | **二次候选** ⭐ | 30天内再次进入 | +15 |
+
+**满分: 150分（不含二次候选加分）**
+
+## 游资风格趋势强度算法说明
+
+### 算法逻辑
+
+1. **确定启动点**：在最近20天内寻找
+   - 方法1：寻找成交量开始放大的那一天（放量突破）
+   - 方法2：寻找最近的局部低点作为启动点
+
+2. **计算趋势核心指标**：
+   - 启动价、现价
+   - 累计涨幅
+   - 日均涨幅
+
+3. **趋势质量评估**：
+   - 趋势稳定性：价格沿趋势线的标准差（越小越稳定）
+   - 量能配合：趋势后期成交量与前期的比值
+
+4. **综合评分**：
+   - 基础分：日均涨幅（需>=0.3%/天）
+   - 稳定性加分：趋势稳定（波动率<2）加0.5分
+   - 量能加分：量能放大（>1.2倍）加0.3分
+   - 合理涨幅加分：累计涨幅在5%-40%之间加0.2分
+
+### 输出信息
+
+- 趋势强度（综合评分）
+- 这一波启动天数
+- 启动价、现价、累计涨幅
+- 日均涨幅、趋势稳定性、量能放大倍数
+
+## 输出文件
+
+- 分析结果: `../cache_backbone_tdx/backbone_analysis_{日期}.csv`
+- 历史记录: `../cache_backbone_tdx/backbone_history.csv`
