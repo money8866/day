@@ -4,13 +4,13 @@ files:
   position_csv: position_config.csv
 
 warning:
-  ma5_threshold: 0.02
+  ma5_threshold: 0.01
   stock_check_interval: 10
   concept_check_interval: 60
 
 notification:
-  enabled: false
-  method: print
+  enabled: true
+  method: server
 
 tdx:
   servers:

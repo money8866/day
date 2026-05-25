@@ -76,10 +76,11 @@ dayreal_dir = r"C:\Users\kongx\mystock\dayreal"
 os.makedirs(dayreal_dir, exist_ok=True)
 stock_csv_path = os.path.join(dayreal_dir, "stocks.csv")
 
-output_df = filtered_df[["ts_code"]].copy()
+output_df = filtered_df[["ts_code", "name"]].copy()
 output_df["ts_code"] = output_df["ts_code"].str.split(".").str[0]
+output_df.columns = ["代码", "名称"]
 
-output_df.to_csv(stock_csv_path, index=False, header=False, encoding="utf-8-sig")
+output_df.to_csv(stock_csv_path, index=False, encoding="utf-8-sig")
 print(f"已保存到: {stock_csv_path}")
 
 conn.close()

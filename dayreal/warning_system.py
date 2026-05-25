@@ -106,6 +106,38 @@ class WarningSystem:
             elif method == 'server':
                 self._send_server_message(title, message)
 
+    def notify_batch(self, warning_list):
+        """批量通知，将多个个股预警合并成一条消息发送"""
+        if not warning_list:
+            return
+        
+        # 先逐个打印到终端
+        for warning_info in warning_list:
+            message = self._format_stock_warning(warning_info)
+            print(message)
+        
+        # 如果启用通知，合并成一条微信消息
+        if self.config.get('notification.enabled', False):
+            method = self.config.get('notification.method', 'print')
+            if method == 'server':
+                # 合并所有预警消息
+                title = f"【个股预警】{len(warning_list)}只股票"
+                message_parts = [f"【{len(warning_list)}只股票接近5日均线】"]
+                
+                for i, warning_info in enumerate(warning_list, 1):
+                    name = warning_info.get('name', '')
+                    code = warning_info.get('code', '')
+                    price = warning_info.get('price', 0)
+                    ma5 = warning_info.get('ma5', 0)
+                    diff_ratio = warning_info.get('diff_ratio', 0)
+                    
+                    message_parts.append(
+                        f"{i}. {name}({code}) 价格:{price:.2f} MA5:{ma5:.2f} 偏离:{diff_ratio*100:.2f}%"
+                    )
+                
+                message = "\n".join(message_parts)
+                self._send_server_message(title, message)
+
     def _format_stock_warning(self, warning_info):
         return (
             f"【个股预警】\n"

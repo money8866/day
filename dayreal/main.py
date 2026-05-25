@@ -102,9 +102,14 @@ def main():
         else:
             print(f"  未找到该板块股票")
 
-    for stock_code in individual_stocks:
-        market = 1 if stock_code.startswith('6') else 0
-        stock_list.append((market, stock_code))
+    stock_name_map = {}
+    
+    for stock_item in individual_stocks:
+        code = stock_item['code']
+        name = stock_item.get('name', '')
+        market = 1 if code.startswith('6') else 0
+        stock_list.append((market, code))
+        stock_name_map[code] = name
 
     stock_list = list(set(stock_list))
     print(f"\n总共监控 {len(stock_list)} 只股票\n")
@@ -123,6 +128,8 @@ def main():
     last_stock_check = datetime.now()
     last_concept_check = datetime.now()
     base_sleep_interval = 2
+    
+    last_warning_time = {}  # 记录上次预警时间，实现10分钟重复限制
 
     try:
         while True:
@@ -267,6 +274,8 @@ def main():
                     last_concept_check = now
 
                 if need_check_stocks:
+                    round_warnings = []
+                    
                     for quote in quotes:
                         code = quote.get('code', '')
                         market = 1 if code.startswith('6') else 0
@@ -275,8 +284,18 @@ def main():
                         if key in ma5_data:
                             warning_info = warning.check_stock(quote, ma5_data[key])
                             if warning_info:
-                                warning.notify(warning_info)
-
+                                warning_info['name'] = stock_name_map.get(code, '')
+                                
+                                # 检查10分钟内是否已经预警过
+                                last_time = last_warning_time.get(code)
+                                if last_time is None or (now - last_time).total_seconds() >= 1800:
+                                    round_warnings.append(warning_info)
+                                    last_warning_time[code] = now
+                    
+                    # 合并一轮轮巡的预警结果，只发一条微信消息
+                    if round_warnings:
+                        warning.notify_batch(round_warnings)
+                    
                     last_stock_check = now
 
             time.sleep(base_sleep_interval)

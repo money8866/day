@@ -74,7 +74,7 @@ class Config:
             return []
         
         stocks = []
-        with open(csv_path, 'r', encoding='utf-8') as f:
+        with open(csv_path, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
         
         if lines:
@@ -82,15 +82,15 @@ class Config:
             if first_line.startswith('code') or first_line.startswith('代码'):
                 reader = csv.DictReader(lines)
                 for row in reader:
-                    if 'code' in row:
-                        stocks.append(row['code'].strip())
-                    elif '代码' in row:
-                        stocks.append(row['代码'].strip())
+                    code = row.get('code', row.get('代码', '')).strip()
+                    name = row.get('name', row.get('名称', '')).strip()
+                    if code and len(code) == 6:
+                        stocks.append({'code': code, 'name': name})
             else:
                 for line in lines:
                     code = line.strip()
                     if code and len(code) == 6:
-                        stocks.append(code)
+                        stocks.append({'code': code, 'name': ''})
         return stocks
     
     def load_base_position(self, csv_path=None, target_date=None):

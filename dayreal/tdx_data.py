@@ -125,17 +125,24 @@ class TdxData:
         if not self.connect():
             return []
 
-        try:
-            blocks = self.api.get_and_parse_block_info(concept_name)
-            if blocks:
-                stock_list = [(1, stock['code']) if stock['code'].startswith('6') else (0, stock['code']) 
-                             for stock in blocks]
-                self.concept_stocks_cache[concept_name] = stock_list
-                return stock_list
-            return []
-        except Exception as e:
-            print(f"获取概念板块股票失败: {e}")
-            return []
+        for retry in range(3):
+            try:
+                blocks = self.api.get_and_parse_block_info(concept_name)
+                if blocks:
+                    stock_list = [(1, stock['code']) if stock['code'].startswith('6') else (0, stock['code']) 
+                                 for stock in blocks]
+                    self.concept_stocks_cache[concept_name] = stock_list
+                    return stock_list
+                return []
+            except Exception as e:
+                if retry < 2:
+                    print(f"获取概念板块股票失败(重试 {retry+1}/3): {e}")
+                    self.api.disconnect()
+                    time.sleep(0.5)
+                    self.connect()
+                else:
+                    print(f"获取概念板块股票失败: {e}")
+                    return []
 
     def get_history_kline(self, market, code, category=9, count=10):
         if not self.connect():
