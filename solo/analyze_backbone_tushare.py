@@ -1,78 +1,133 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-2026年5月25日 主线板块 + 中军综合分析
+主线板块 + 中军综合分析（Tushare版）
 """
-import os, sys, pickle, warnings, time
+import os
+import sys
+import pickle
+import warnings
+import time
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
 import numpy as np
 import pandas as pd
 import tushare as ts
-from collections import defaultdict
 
 warnings.filterwarnings('ignore')
 
-# 配置
-PYTHON_PATH = r"C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\python.exe"
-TUSHARE_TOKEN = 'bdd5007be4e91aadf516c81fa4d12b14b0bbee164a302a1cef33859d'
-pro = ts.pro_api(TUSHARE_TOKEN)
+# =========================
+# 环境变量
+# =========================
+load_dotenv()
 
-TDX_PATH = r"C:\new_tdx\vipdoc"
-TRADE_DATE = "20260525"
-BASE_DIR = r"c:\Users\kongx\mystock"
-CACHE_DIR = r"c:\Users\kongx\mystock\solo\cache_backbone_tdx"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# .env 文件在 mystock 目录下
+DOTENV_PATH = os.path.join(os.path.dirname(BASE_DIR), ".env")
+load_dotenv(DOTENV_PATH)
+
+# 使用 solo 目录下的 cache_backbone_tushare 作为缓存目录
+CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
+pro = ts.pro_api(TUSHARE_TOKEN)
 
-def parse_tdx_day_file(filepath):
-    """解析通达信 .day 文件"""
-    if not os.path.exists(filepath):
+# =========================
+# 获取最近交易日
+# =========================
+def get_last_trade_date():
+    now = datetime.now()
+    
+    # 9点前：视为上一自然日
+    if now.hour < 15:
+        query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
+    else:
+        query_date = now.strftime('%Y%m%d')
+    
+    # 获取交易日历
+    cal = pro.trade_cal(
+        exchange='',
+        start_date='20200101',
+        end_date=query_date
+    )
+    
+    # 只保留开市日
+    cal = cal[cal['is_open'] == 1]
+    
+    # 最近交易日
+    last_trade_date = cal[
+        cal['cal_date'] <= query_date
+    ]['cal_date'].max()
+    
+    return str(last_trade_date)
+
+# TRADE_DATE = get_last_trade_date()
+TRADE_DATE = "20260522"  # 可手动指定测试
+print("当前交易日:", TRADE_DATE)
+
+# =========================
+# 获取历史数据（带缓存）
+# =========================
+def get_hist_data(ts_code, n_days=120):
+    cache_file = os.path.join(
+        CACHE_DIR,
+        f"{ts_code}.csv"
+    )
+    
+    # 优先读取缓存
+    if os.path.exists(cache_file):
+        try:
+            df = pd.read_csv(cache_file)
+            df['trade_date'] = df['trade_date'].astype(str)
+            
+            # 缓存中已存在目标日期
+            if (df['trade_date'] == TRADE_DATE).any():
+                # 只返回 TRADE_DATE 及之前的数据
+                filtered_df = df[df['trade_date'] <= TRADE_DATE].copy()
+                filtered_df = filtered_df.sort_values('trade_date').tail(n_days)
+                return filtered_df
+        except Exception as e:
+            print(f"{ts_code} 缓存读取失败: {e}")
+    
+    # 下载最新数据
+    try:
+        df = pro.daily(
+            ts_code=ts_code,
+            start_date='20250101',
+            end_date=TRADE_DATE
+        )
+        
+        if df.empty:
+            return None
+        
+        df = df.sort_values('trade_date')
+        
+        # 保存缓存
+        df.to_csv(
+            cache_file,
+            index=False
+        )
+        
+        # 防止频率限制
+        time.sleep(0.01)
+        
+        return df.tail(n_days)
+    except Exception as e:
+        print(f"{ts_code} 下载失败:", e)
         return None
-    data = []
-    with open(filepath, "rb") as f:
-        while True:
-            chunk = f.read(32)
-            if not chunk or len(chunk) < 32:
-                break
-            date_int = int.from_bytes(chunk[0:4], "little")
-            open_p = int.from_bytes(chunk[4:8], "little") / 100
-            high_p = int.from_bytes(chunk[8:12], "little") / 100
-            low_p = int.from_bytes(chunk[12:16], "little") / 100
-            close_p = int.from_bytes(chunk[16:20], "little") / 100
-            volume = int.from_bytes(chunk[20:24], "little")
-            amount = int.from_bytes(chunk[24:28], "little") / 100.0
-            dt = pd.to_datetime(str(date_int), format='%Y%m%d')
-            data.append({
-                "date": dt, "date_int": date_int,
-                "open": open_p, "high": high_p, "low": low_p,
-                "close": close_p, "vol": volume, "amount": amount
-            })
-    return data
 
-
-def get_tdx_kline(ts_code, end_date_str, n_days=120):
-    """读取TDX日线数据"""
-    code = ts_code.split('.')[0]
-    market = ts_code.split('.')[1].lower()
-    subdir = "lday"
-    filename = f"{market}{code}.day"
-    filepath = os.path.join(TDX_PATH, market, subdir, filename)
-    raw = parse_tdx_day_file(filepath)
-    if not raw:
-        return None
-    end_dt = pd.to_datetime(end_date_str, format='%Y%m%d')
-    filtered = [r for r in raw if r['date'] <= end_dt]
-    if len(filtered) < 60:
-        return None
-    recent = filtered[-n_days:]
-    df = pd.DataFrame(recent)
-    df['pct_chg'] = df['close'].pct_change() * 100
-    return df
-
-
+# =========================
+# 获取概念板块映射
+# =========================
 def get_concept_map():
-    """从缓存数据获取概念板块映射"""
-    print("\n[2/6] 从缓存数据获取概念板块映射...")
-    concept_detail_path = os.path.join(BASE_DIR, "cache_daily", "ths_concept_detail.pkl")
+    print("\n[1/6] 从缓存获取概念板块映射...")
+    concept_detail_path = os.path.join(
+        os.path.dirname(BASE_DIR), 
+        "cache_daily", 
+        "ths_concept_detail.pkl"
+    )
     
     if not os.path.exists(concept_detail_path):
         print(f"   缓存文件不存在: {concept_detail_path}")
@@ -95,23 +150,27 @@ def get_concept_map():
         print(f"   加载失败: {e}")
         return {}
 
-
+# =========================
+# 获取股票名称映射
+# =========================
 def get_stock_name_map():
-    """获取股票名称映射"""
     try:
-        concept_detail_path = os.path.join(BASE_DIR, "cache_daily", "ths_concept_detail.pkl")
+        concept_detail_path = os.path.join(
+            os.path.dirname(BASE_DIR), 
+            "cache_daily", 
+            "ths_concept_detail.pkl"
+        )
         df = pd.read_pickle(concept_detail_path)
         name_map = dict(zip(df['con_code'], df['con_name']))
         return name_map
     except:
         return {}
 
-
-def analyze_sectors(daily_basic, concept_map, trade_date):
-    """分析板块"""
-    print("\n" + "=" * 80)
-    print("【主线板块分析】")
-    print("=" * 80)
+# =========================
+# 分析板块
+# =========================
+def analyze_sectors(daily_basic, concept_map):
+    print("\n[2/6] 分析主线板块...")
     
     sector_results = []
     
@@ -134,7 +193,8 @@ def analyze_sectors(daily_basic, concept_map, trade_date):
         for stock_code in stocks:
             if stock_count >= 30:  # 每板块最多取30只
                 break
-            df = get_tdx_kline(stock_code, trade_date, 30)
+            
+            df = get_hist_data(stock_code, 30)
             if df is not None and len(df) > 5:
                 sector_stocks_data.append(df)
                 stock_count += 1
@@ -153,11 +213,11 @@ def analyze_sectors(daily_basic, concept_map, trade_date):
                 total_momentum += pct
                 if pct >= 9.5:
                     zt_count += 1
-                # 获取成交金额
+                # 获取成交金额（tushare amount单位为千元）
                 if not df.empty:
                     last_row = df.iloc[-1]
                     if 'amount' in last_row:
-                        total_amount += last_row['amount']
+                        total_amount += last_row['amount'] / 1000  # 转万元
         
         avg_momentum = total_momentum / len(sector_stocks_data) if sector_stocks_data else 0
         avg_amount = total_amount / len(sector_stocks_data) if sector_stocks_data else 0
@@ -170,7 +230,7 @@ def analyze_sectors(daily_basic, concept_map, trade_date):
             '平均涨幅': round(avg_momentum, 2),
             '涨停数': zt_count,
             '动量': round(avg_momentum * 10, 2),
-            '平均成交额(万)': round(avg_amount / 10000, 2) if avg_amount else 0
+            '平均成交额(万)': round(avg_amount, 2) if avg_amount else 0
         })
     
     # 排序
@@ -178,9 +238,10 @@ def analyze_sectors(daily_basic, concept_map, trade_date):
     
     return sector_results[:15]
 
-
+# =========================
+# 计算趋势强度
+# =========================
 def calculate_trend_strength(df):
-    """计算趋势强度（游资风格）"""
     if len(df) < 20:
         return 0, None
     
@@ -237,9 +298,10 @@ def calculate_trend_strength(df):
     
     return min(total_score, 20), trend_info
 
-
+# =========================
+# 检查平台突破
+# =========================
 def check_platform_breakout(df):
-    """检查平台突破"""
     if len(df) < 30:
         return False, 0
     
@@ -251,7 +313,6 @@ def check_platform_breakout(df):
     # 计算平台价格区间
     platform_high = platform_data['high'].max()
     platform_low = platform_data['low'].min()
-    platform_mid = (platform_high + platform_low) / 2
     
     # 平台波动小于25%视为平台
     platform_range = (platform_high - platform_low) / platform_low if platform_low > 0 else 1
@@ -270,9 +331,10 @@ def check_platform_breakout(df):
     else:
         return False, 0
 
-
+# =========================
+# 检查均线排列
+# =========================
 def check_ma_pattern(df):
-    """检查均线排列"""
     if len(df) < 30:
         return 0
     
@@ -310,9 +372,10 @@ def check_ma_pattern(df):
     except:
         return 0
 
-
+# =========================
+# 分析单只股票的中军特征
+# =========================
 def analyze_backbone_stock(stock_code, df, daily_basic_row, name_map):
-    """分析单只股票的中军特征"""
     if df is None or len(df) < 30:
         return None
     
@@ -334,15 +397,15 @@ def analyze_backbone_stock(stock_code, df, daily_basic_row, name_map):
         return None  # 市值不达标，直接跳过
     
     # 2. 成交金额评分（>=30亿25分，>=10亿20分，>=2亿15分）
-    # 从通达信日线获取成交额（通达信amount单位是万元）
+    # 从 tushare 获取成交额（单位：千元）
     amount = 0
     if len(df) > 0:
         last_row = df.iloc[-1]
         if 'amount' in last_row:
-            amount = last_row['amount']
+            amount = last_row['amount']  # 千元
     
-    amount_wan = amount  # 通达信amount单位是万元
-    amount_billion = amount / 10000  # 转换为亿元
+    amount_wan = amount / 10  # 转万元
+    amount_billion = amount / 100000  # 转亿元
     
     if amount_billion >= 30:
         score += 25
@@ -377,18 +440,18 @@ def analyze_backbone_stock(stock_code, df, daily_basic_row, name_map):
     else:
         return None  # 换手率太低
     
-    # 5. 均线排列评分
+    # 4. 均线排列评分
     ma_score = check_ma_pattern(df)
     score += ma_score
     details['均线评分'] = ma_score
     
-    # 6. 平台突破评分
+    # 5. 平台突破评分
     breakout, breakout_score = check_platform_breakout(df)
     score += breakout_score
     details['平台突破'] = breakout
     details['平台突破评分'] = breakout_score
     
-    # 7. 趋势强度评分
+    # 6. 趋势强度评分
     trend_score, trend_info = calculate_trend_strength(df)
     score += trend_score
     details['趋势强度评分'] = trend_score
@@ -405,12 +468,11 @@ def analyze_backbone_stock(stock_code, df, daily_basic_row, name_map):
     
     return details
 
-
-def analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map, trade_date):
-    """对前N名板块进行中军分析"""
-    print("\n" + "=" * 80)
-    print("【中军分析】")
-    print("=" * 80)
+# =========================
+# 对前N名板块进行中军分析
+# =========================
+def analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map):
+    print("\n[3/6] 分析中军候选...")
     
     # 创建市值查询字典
     market_cap_dict = {}
@@ -435,7 +497,7 @@ def analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map, tr
                 break
             
             # 获取日线数据
-            df = get_tdx_kline(stock_code, trade_date, 120)
+            df = get_hist_data(stock_code, 120)
             if df is None or len(df) < 60:
                 continue
             
@@ -464,17 +526,21 @@ def analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map, tr
     
     return all_backbone_candidates
 
-
+# =========================
+# 主程序
+# =========================
 def main():
     print("\n" + "=" * 80)
-    print("  2026年5月22日 主线板块 + 中军综合分析（真实数据）")
+    print(f"  {TRADE_DATE} 主线板块 + 中军综合分析（Tushare版）")
     print("=" * 80)
     
-    # 1. 获取市值数据
-    print("\n[1/6] 获取市值和成交数据...")
+    # 1. 获取市值和成交数据
+    print("\n[4/6] 获取市值和成交数据...")
     try:
-        daily_basic = pro.daily_basic(trade_date=TRADE_DATE, 
-                                       fields='ts_code,total_mv,circ_mv,turnover_rate')
+        daily_basic = pro.daily_basic(
+            trade_date=TRADE_DATE, 
+            fields='ts_code,total_mv,circ_mv,turnover_rate'
+        )
         print(f"   获取 {len(daily_basic)} 只股票的市值数据")
     except Exception as e:
         print(f"   获取失败: {e}")
@@ -487,17 +553,17 @@ def main():
     name_map = get_stock_name_map()
     
     # 4. 分析板块
-    sectors = analyze_sectors(daily_basic, concept_map, TRADE_DATE)
+    sectors = analyze_sectors(daily_basic, concept_map)
     
-    print("\n主线板块（前15名）:")
+    print("\n[5/6] 主线板块（前15名）:")
     print("-" * 110)
     print(f"{'排名':^4} | {'板块名称':^20} | {'类型':^4} | {'成分':^5} | {'分析':^5} | {'均涨':^8} | {'涨停':^5} | {'动量':^8}")
     print("-" * 110)
     for i, s in enumerate(sectors[:15], 1):
-        print(f"{i:^4} | {s['板块名称']:^20s} | {s['板块类型']:^4} | {s['成分股数']:^5d} | {s['分析股数']:^5d} | {s['平均涨幅']:^8.2f}% | {s['涨停数']:^5d} | {s['动量']:^8.2f}")
+        print(f"{i:^4} | {s['板块名称']:^20s} | {s['板块类型']:^4} | {s['成分股数']:^5} | {s['分析股数']:^5} | {s['平均涨幅']:^8.2f}% | {s['涨停数']:^5} | {s['动量']:^8.2f}")
     
     # 5. 中军分析
-    backbone_candidates = analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map, TRADE_DATE)
+    backbone_candidates = analyze_backbone_for_sectors(sectors, concept_map, daily_basic, name_map)
     
     print("\n" + "=" * 80)
     print("【中军候选排名（总分>=70）】")
@@ -517,7 +583,7 @@ def main():
         result_df = pd.DataFrame(backbone_candidates)
         result_file = os.path.join(CACHE_DIR, f"backbone_candidates_{TRADE_DATE}.csv")
         result_df.to_csv(result_file, index=False, encoding='utf-8-sig')
-        print(f"\n完整结果已保存至: {result_file}")
+        print(f"\n[6/6] 完整结果已保存至: {result_file}")
         
         # 保存板块结果
         sector_df = pd.DataFrame(sectors[:15])
@@ -540,10 +606,9 @@ def main():
             if '累计涨幅' in candidate:
                 print(f"   趋势特征: 累计涨幅 {candidate['累计涨幅']}%, 启动 {candidate['启动天数']}天, 日均 {candidate['日均涨幅']}%, 波动率 {candidate['波动率']}")
     else:
-        print("\n没有找到符合条件的中军候选股票")
+        print("\n无符合条件的中军候选股票")
     
     return backbone_candidates
-
 
 if __name__ == "__main__":
     main()
