@@ -23,7 +23,7 @@ import sqlite3
 # =========================
 # 环境变量
 # =========================
-load_dotenv()
+load_dotenv("config/.env")
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 MINI_MAX_API_KEY = os.getenv("MINI_MAX_API_KEY")
@@ -874,7 +874,7 @@ def strategy(df, code):
     # =========================
     # TJ
     # =========================
-    cond1 = ztts > 3 and ztts <= 20
+    cond1 = ztts >= 3 and ztts <= 30
 
     ref_close = C.shift(ztts + 1).iloc[-1]
 
@@ -1799,9 +1799,9 @@ def run():
     report_ds = report
 
 ##==Doubao==##
-    print("\n========== Doubao ==========\n")
+    print("\n========== Kimi ==========\n")
 
-    report = ask_doubao(prompt)
+    report = kimi(prompt)
     
 
     print(report)
@@ -1810,7 +1810,7 @@ def run():
     with open(
         os.path.join(
             REPORT_DIR,
-            f"Doubao_Self_{TRADE_DATE}.md"
+            f"KIMI_Self_{TRADE_DATE}.md"
         ),
         "w",
         encoding="utf-8"
@@ -1825,7 +1825,7 @@ def run():
 请仔细阅读以下两份报告，分别来自不同的AI模型，
 内容都是基于同一份市场数据和个股数据分析得出的。
 Deepseek的报告:{report_ds};
-Doubao的报告:{report_doubao};
+Kimi的报告:{report_doubao};
 请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取DeepSeek的报告即可,输出一个最终的复盘总结和个股推荐。
 
 输出内容：
@@ -1845,7 +1845,7 @@ Doubao的报告:{report_doubao};
 最后加上“提醒:股市有风险、买股须谨慎;以上分析仅供参考，不构成投资建议。”
 """
 
-    report = deepseek(prompt)
+    report = minimax(prompt)
     
     print("\n========== Final Report ==========\n")
 

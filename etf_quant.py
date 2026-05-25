@@ -37,7 +37,7 @@ import sqlite3
 # =========================================================
 # 环境变量
 # =========================================================
-load_dotenv()
+load_dotenv("config/.env")
 
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")

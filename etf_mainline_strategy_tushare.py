@@ -1,12 +1,19 @@
 """
-ETF主线轮动策略 - Tushare版 (中午运行)
+ETF主线轮动策略 - Tushare版 (收盘后运行)
 策略: 1只持仓 + 60天调仓 + 20日动量 (夏普1.96)
 ETF池: 37只行业ETF (全验证)
 数据源: Tushare API
 """
+from dotenv import load_dotenv
 import os, datetime, pandas as pd, numpy as np, json, time
+load_dotenv("config/.env") 
+TS_TOKEN = os.getenv("TUSHARE_TOKEN")
+WECHAT_KEY = os.getenv("WECHAT_KEY")
+import tushare as ts
+import requests
+ts.set_token(TS_TOKEN)
+pro = ts.pro_api()
 
-TS_TOKEN = 'bdd5007be4e91aadf516c81fa4d12b14b0bbee164a302a1cef33859d'
 STATE_FILE = os.path.join(os.path.dirname(__file__), "etf_mainline_state_tushare.json")
 MOM_PERIOD = 20
 REBAL_DAYS = 60
@@ -25,7 +32,7 @@ ETF_POOL = {
     '食品饮料': '159736', '酒': '512690', '家电': '159996',
     '证券': '512880', '银行': '512800', '红利': '515180',
     '黄金': '518880', '沪深300': '510300', '创业板': '159915',
-    '上证50': '510050',
+    '上证50': '510050','双创ETF':'588300','科创ETF':'588050',
 }
 
 
@@ -66,17 +73,70 @@ def fetch_etf_daily(ts_pro, codes, start_date="20200101"):
             time.sleep(1)
     return all_data
 
+def get_last_trade_date():
 
+    now = datetime.datetime.now()
+
+    # =========================
+    # 9点前：视为上一自然日
+    # =========================
+    if now.hour < 15:
+
+        query_date = (now - datetime.timedelta(days=1)).strftime('%Y%m%d')
+
+    else:
+
+        query_date = now.strftime('%Y%m%d')
+
+    # =========================
+    # 获取交易日历
+    # =========================
+    cal = pro.trade_cal(
+        exchange='',
+        start_date='20200101',
+        end_date=query_date
+    )
+
+    # 只保留开市日
+    cal = cal[cal['is_open'] == 1]
+
+    # 最近交易日
+    last_trade_date = cal[
+        cal['cal_date'] <= query_date
+    ]['cal_date'].max()
+
+    return str(last_trade_date)
+
+TRADE_DATE = get_last_trade_date()
+#TRADE_DATE = "20260518" # for test
+
+print("当前交易日:", TRADE_DATE)
+
+
+# =========================
+# 微信
+# =========================
+def send_wechat(msg, key):
+
+    url = f"https://sctapi.ftqq.com/{key}.send"
+
+    data = {
+        "title": f"ETF每日分析 - {TRADE_DATE}",
+        "desp": msg
+    }
+
+    requests.post(url, data=data)
+    
 def main():
-    import tushare as ts
-    ts.set_token(TS_TOKEN)
-    pro = ts.pro_api()
 
-    today = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.datetime.strptime(TRADE_DATE, "%Y%m%d")
+    result_message = ""
 
     print("=" * 60)
     print("  ETF主线轮动策略 Tushare版 (1只+60天+20日动量)")
     print("=" * 60)
+
+    result_message += f"  ETF主线轮动策略(1只+60天+20日动量)\n"
 
     # Build ts_code mapping: 512480 -> 512480.SH, 159995 -> 159995.SZ
     codes_ts = {}
@@ -139,7 +199,11 @@ def main():
     print(f"\n  --- 动量排名 TOP 10 (20日涨幅) ---")
     for i, r in enumerate(rankings[:10]):
         print(f"  {i+1:>2}. {r['name']:<8s} {r['code']}  动量:{r['momentum_20d']:>+7.2f}%  "
-              f"收盘:{r['close']:.3f}  日涨:{r['day_chg']:>+5.2f}%")
+              f"收盘:{r['close']:.3f}  日涨:{r['day_chg']:>+5.2f}%\n")
+
+    result_message += f"  ---动量排名 TOP 5 ---\n"
+    for i, r in enumerate(rankings[:5]):
+        result_message += f"  {i+1:>2}. {r['name']:<8s} {r['code']}  动量:{r['momentum_20d']:>+7.2f}%  收盘:{r['close']:.3f}  日涨:{r['day_chg']:>+5.2f}%\n"
 
     # Count trade days
     def count_trade_days(start_str, end_date):
@@ -155,37 +219,57 @@ def main():
     need_rebalance = False
     days_since = 0
 
+
     if state is None:
         need_rebalance = True
         print(f"\n  [首次运行] 初始化策略...")
     else:
         days_since = count_trade_days(state["last_rebalance_date"], today)
         print(f"\n  当前持仓: {state['holding_name']} ({state['holding_code']})")
+        result_message += f"**当前持仓:{state['holding_name']} ({state['holding_code']})**\n"
+        
         print(f"  买入日期: {state['last_rebalance_date']}")
+        result_message += f"买入日期 {state['last_rebalance_date']}\n"
+        
         print(f"  买入价格: {state['buy_price']:.3f}")
+        result_message += f"买入价格 {state['buy_price']:.3f}\n"
+        
         print(f"  已过交易日: {days_since}/{REBAL_DAYS}")
+        result_message += f"已过交易日 {days_since}/{REBAL_DAYS}\n"
+
         hc = state.get("holding_code")
         if hc and hc in all_data:
             latest = all_data[hc]["close"].iloc[-1]
             pnl = (latest - state["buy_price"]) / state["buy_price"] * 100
             print(f"  当前价格: {latest:.3f}  持仓收益: {pnl:+.2f}%")
+            result_message += f"  持仓收益 {pnl:+.2f}%" 
         if days_since >= REBAL_DAYS:
             need_rebalance = True
 
     if need_rebalance:
         target = rankings[0]
         print(f"\n  {'='*40}")
+        result_message += f"{'='*40}\n"
+        
         print(f"  [调仓信号] 需要调仓!")
+        result_message += f"[调仓信号] 需要调仓!\n"
+        
         print(f"  目标: {target['name']} ({target['code']})")
+        result_message += f"目标 {target['name']} ({target['code']})\n"
+        
         print(f"  动量: {target['momentum_20d']:+.2f}%")
+        result_message += f"动量 {target['momentum_20d']:+.2f}%\n"
+        
         print(f"  现价: {target['close']:.3f}")
-
+        result_message += f"现价 {target['close']:.3f}\n"
+        
         if state and state.get("holding_code"):
             old = state["holding_code"]
             if old in all_data:
                 old_close = all_data[old]["close"].iloc[-1]
                 old_pnl = (old_close - state["buy_price"]) / state["buy_price"] * 100
-                print(f"  卖出: {state['holding_name']}  收益: {old_pnl:+.2f}%")
+                print(f"  卖出: {state['holding_name']}  收益: {old_pnl:+.2f}%\n")
+                result_message += f"卖出 {state['holding_name']}  收益 {old_pnl:+.2f}%\n"
 
         new_state = {
             "last_rebalance_date": max_date.strftime("%Y-%m-%d"),
@@ -196,20 +280,30 @@ def main():
             "rebalance_count": (state.get("rebalance_count", 0) + 1) if state else 1,
         }
         save_state(new_state)
-        print(f"  状态已更新! 累计第{new_state['rebalance_count']}次调仓")
+        result_message += f"状态已更新! 累计第{new_state['rebalance_count']}次调仓\n"
+        print(f"状态已更新! 累计第{new_state['rebalance_count']}次调仓")
     else:
         remain = REBAL_DAYS - days_since
         print(f"\n  距下次调仓还有 {remain} 个交易日")
+        result_message += f"\n  距下次调仓还有 {remain} 个交易日\n"
+        
         next_top = rankings[0]
         if next_top["code"] != state.get("holding_code"):
+            result_message += f"[提示] 当前动量第一: {next_top['name']} ({next_top['momentum_20d']:+.2f}%)\n"
             print(f"  [提示] 当前动量第一: {next_top['name']} ({next_top['momentum_20d']:+.2f}%)")
             print(f"  与持仓不同，下次调仓将切换")
+            result_message += f"与持仓不同，下次调仓将切换\n"   
 
     print(f"\n  --- 动量垫底 5 ---")
     for i, r in enumerate(rankings[-5:]):
         print(f"  {len(rankings)-4+i:>2}. {r['name']:<8s} {r['code']}  动量:{r['momentum_20d']:>+7.2f}%")
-
+        
     print(f"\n  {'='*60}")
+    
+    send_wechat(
+        result_message.replace("\n", "\n\n"),
+        os.getenv("WECHAT_SCKEY")
+    )   
 
 
 if __name__ == "__main__":

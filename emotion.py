@@ -20,7 +20,7 @@ REPORT_DIR = os.path.join(BASE_DIR, "report_daily")
 # =========================
 # 环境变量
 # =========================
-load_dotenv()
+load_dotenv("config/.env")
 
 # =========================
 # Tushare

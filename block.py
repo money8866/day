@@ -31,7 +31,7 @@ ACC_W = 0.4
 
 ##=========== TUshare
 
-load_dotenv()
+load_dotenv("config/.env")
 
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 
