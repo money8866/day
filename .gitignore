@@ -1,0 +1,42 @@
+#config
+config/
+
+
+# Python
+__pycache__/
+*.pyc
+
+# Env
+.env
+venv/
+
+# Cache
+cache_dir/
+cache/
+cache_daily/
+cache_db/
+cache_kpl/
+cache_sector/
+news_cache/
+solo/cache_backbone_tushare/
+*.db
+*.sqlite
+*.pkl
+*.db
+
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+*.parquet
+*.csv
+
+# Mac
+.DS_Store

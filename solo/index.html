@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时对话应用</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>💬 实时对话</h1>
+                <button class="toggle-theme" id="toggleTheme">🌓</button>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="chat">
+                    <span>💭</span> 对话
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <span>⚙️</span> 设置
+                </a>
+            </nav>
+        </div>
+        
+        <div class="main-content">
+            <div class="page" id="chatPage">
+                <div class="chat-header">
+                    <h2>对话助手</h2>
+                    <div class="status-indicator online"></div>
+                </div>
+                
+                <div class="messages-container" id="messagesContainer">
+                    <div class="message assistant">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <div class="message-text">你好！我是你的对话助手。有什么可以帮助你的吗？</div>
+                            <div class="message-time">刚刚</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="输入消息..."
+                            autocomplete="off"
+                        >
+                        <button class="send-btn" id="sendBtn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 2L11 13"></path>
+                                <path d="M22 2l-7 20-4-9-9-4 20-7z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="page" id="settingsPage" style="display: none;">
+                <div class="settings-header">
+                    <h2>设置</h2>
+                </div>
+                <div class="settings-content">
+                    <div class="setting-card">
+                        <div class="setting-header">
+                            <h3>主题设置</h3>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">深色模式</span>
+                            <label class="switch">
+                                <input type="checkbox" id="darkModeSwitch">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-card">
+                        <div class="setting-header">
+                            <h3>消息设置</h3>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">自动回复</span>
+                            <label class="switch">
+                                <input type="checkbox" id="autoReplySwitch" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">回复延迟 (ms)</span>
+                            <input type="range" id="replyDelay" min="500" max="3000" value="1000" class="slider-input">
+                            <span id="delayValue">1000</span>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-card">
+                        <div class="setting-header">
+                            <h3>关于</h3>
+                        </div>
+                        <p class="about-text">这是一个演示实时对话功能的示例应用。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

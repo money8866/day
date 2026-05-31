@@ -1,0 +1,77 @@
+┌─────────────────────────────────────────────────────────────┐
+│  涨停跟踪系统 - 历史回溯功能快速参考                          │
+└─────────────────────────────────────────────────────────────┘
+
+【1】快速回溯
+═══════════════════════════════════════════════════════════════
+# 回溯最近20天（推荐首次使用）
+python full_backtrack.py
+
+# 回溯最近5天
+python limit_track_review.py --backtrack --days 5
+
+# 强制刷新
+python limit_track_review.py --backtrack --force
+
+
+【2】查询历史数据
+═══════════════════════════════════════════════════════════════
+# 查询所有
+python limit_track_review.py --query
+
+# 日期范围
+python limit_track_review.py --query --start-date 20260501 --end-date 20260529
+
+# 高概率筛选
+python limit_track_review.py --query --min-prob 60
+
+
+【3】导出数据
+═══════════════════════════════════════════════════════════════
+# 导出CSV
+python limit_track_review.py --query --export data.csv
+
+# 筛选+导出
+python limit_track_review.py --query --min-prob 50 --export high_prob.csv
+
+
+【4】验证数据库
+═══════════════════════════════════════════════════════════════
+python verify_db.py
+
+
+【5】Python中使用
+═══════════════════════════════════════════════════════════════
+from limit_track_review import query_history, save_to_sqlite
+
+# 查询
+df = query_history(date_range=('20260501', '20260529'), min_prob=60)
+
+# 保存
+save_to_sqlite('20260530', stocks_data, analysis_data)
+
+
+【6】数据库位置
+═══════════════════════════════════════════════════════════════
+d:\mystock\solo\cache_limit_track\limit_history.db
+
+
+【7】每日使用
+═══════════════════════════════════════════════════════════════
+# 早上（自动用上一个交易日）
+python limit_track_review.py
+
+# 下午16点后（用当天数据）
+python limit_track_review.py
+
+# 强制刷新
+python limit_track_review.py --force
+
+
+┌─────────────────────────────────────────────────────────────┐
+│  📊 数据统计（已回溯5天）                                    │
+├─────────────────────────────────────────────────────────────┤
+│  总记录数: 134                                              │
+│  交易日: 5                                                  │
+│  日均涨停: 26.8 只                                          │
+└─────────────────────────────────────────────────────────────┘
