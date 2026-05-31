@@ -1,6 +1,6 @@
 @echo off
 
-cd /d C:\Users\kongx\mystock
+cd /d d:\mystock
 
 C:\Users\kongx\AppData\Local\Python\bin\python.exe tushare_quant.py
 

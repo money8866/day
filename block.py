@@ -147,6 +147,18 @@ def get_last_trade_date():
         query_date = now.strftime('%Y%m%d')
 
     # =========================
+    # 缓存交易日历（start_date固定20200101，缓存一次永久使用）
+    # =========================
+    cal_cache = os.path.join(CACHE_DIR, "trade_cal.pkl")
+    if os.path.exists(cal_cache):
+        with open(cal_cache, "rb") as f:
+            cal = pickle.load(f)
+        if 'cal_date' in cal.columns and cal['cal_date'].max() >= query_date:
+            cal = cal[cal['is_open'] == 1]
+            last_trade_date = cal[cal['cal_date'] <= query_date]['cal_date'].max()
+            return str(last_trade_date)
+
+    # =========================
     # 获取交易日历
     # =========================
     cal = pro.trade_cal(
@@ -154,6 +166,9 @@ def get_last_trade_date():
         start_date='20200101',
         end_date=query_date
     )
+
+    with open(cal_cache, "wb") as f:
+        pickle.dump(cal, f)
 
     # 只保留开市日
     cal = cal[cal['is_open'] == 1]
@@ -932,6 +947,7 @@ def get_stock_name_map():
 
     return df
 
+
 def find_leader(sector_df):
     """
     寻找板块龙头：优先选择涨停的股票，再根据强度评分选择
@@ -1214,20 +1230,30 @@ def analyze_concepts(daily_df):
 
 
 # =========================================================
-# 主题分析（替代概念）
+# 主题分析（替代概念）- 使用 theme_portfolio_strategy_cached.py 的准确匹配算法
 # =========================================================
-def analyze_themes(daily_df, industry_df):
+def analyze_themes(daily_df, industry_df, stock_concept_list):
+    """
+    分析主题板块强度
+    匹配逻辑来自 theme_portfolio_strategy_cached.py 的 build_theme_portfolio
+    规则：
+    1. 行业匹配：SW L1/L2/L3 在 industry_list 中
+    2. 概念匹配：stock_concept 精确匹配 concept_list（非 keywords）
+    3. 行业匹配 OR 概念匹配 = 成份股
+    4. keywords 仅用于评分排序，exclude_keywords 仅用于过滤
+    """
     result = []
 
+    # 预构建股票名称字典（加速exclude过滤）
+    stock_name_dict = dict(zip(daily_df["ts_code"], daily_df["name"]))
+
     for theme, cfg in THEME_MAP.items():
-        # 获取配置项，支持 theme.json 格式
         industry_list = cfg.get("industry", [])
+        concept_list = cfg.get("concept", [])
         keyword_list = cfg.get("keywords", [])
         exclude_keywords = cfg.get("exclude_keywords", [])
 
-        # -------------------------------------------------
-        # 行业匹配（支持 l1_name, l2_name, l3_name）
-        # -------------------------------------------------
+        # ── 行业匹配（SW L1/L2/L3，保留行业df的准确映射）──
         industry_mask = industry_df.apply(
             lambda x, ind_list=industry_list: (
                 (x.get("l1_name") in ind_list) or
@@ -1236,36 +1262,35 @@ def analyze_themes(daily_df, industry_df):
             ),
             axis=1
         )
+        industry_stocks = set(industry_df.loc[industry_mask, "ts_code"].dropna().unique())
 
-        # -------------------------------------------------
-        # 概念关键词匹配
-        # -------------------------------------------------
-        keyword_mask = industry_df.apply(
-            lambda x, kw_list=keyword_list: any(
-                kw in str(x.get("concept", "")) for kw in kw_list
-            ),
-            axis=1
-        )
+        # ── 概念匹配（精确匹配概念名称）──
+        concept_stocks = set()
+        for ts_code, concepts in stock_concept_list.items():
+            for c in concept_list:
+                if c in concepts:
+                    concept_stocks.add(ts_code)
+                    break
 
-        # -------------------------------------------------
-        # 排除关键词过滤（剔除包含 exclude_keywords 的个股）
-        # -------------------------------------------------
-        exclude_mask = industry_df.apply(
-            lambda x, ex_kw=exclude_keywords: not any(
-                kw in str(x.get("concept", "")) for kw in ex_kw
-            ),
-            axis=1
-        )
+        stocks = list(industry_stocks | concept_stocks)
 
-        # =========================
-        # 三重融合：行业匹配 OR 关键词匹配 AND 不被排除
-        # =========================
-        mask = (industry_mask | keyword_mask) & exclude_mask
-        
+        if len(stocks) < MIN_STOCKS:
+            continue
 
-        sub = industry_df[mask]
-
-        stocks = sub["ts_code"].dropna().unique().tolist()
+        # ── exclude_keywords过滤（与theme_portfolio策略一致）──
+        if exclude_keywords:
+            filtered = []
+            for ts_code in stocks:
+                stock_name = stock_name_dict.get(ts_code, "")
+                concept_str = ";".join(stock_concept_list.get(ts_code, []))
+                skip = False
+                for ek in exclude_keywords:
+                    if ek in concept_str or ek in stock_name:
+                        skip = True
+                        break
+                if not skip:
+                    filtered.append(ts_code)
+            stocks = filtered
 
         if len(stocks) < MIN_STOCKS:
             continue
@@ -1280,15 +1305,14 @@ def analyze_themes(daily_df, industry_df):
 
         state = update_state(theme, score)
 
-        strength = calc_strength(score, state)
+        # 规模归一化
+        size_scale = min((80 / max(len(stocks), 5)) ** 0.6, 2.5)
+        strength = calc_strength(score, state) * size_scale
 
         leader_code, leader_name, leader_score = find_leader(df)
-        
-        # 获取龙头的连板高度（而不是板块最大连板高度）
         leader_lb_height = get_stock_lb_height(leader_code)
 
         result.append({
-
             "类型": "主题",
             "主线": theme,
             "评分": score,
@@ -1303,7 +1327,6 @@ def analyze_themes(daily_df, industry_df):
             "连板高度": leader_lb_height,
             "是否退潮": is_decline(state),
             "成分股数": len(stocks)
-
         })
 
     return result
@@ -1334,7 +1357,8 @@ def init_db():
             leader_name TEXT,
             leader_score REAL,
             momentum REAL,
-            acc REAL
+            acc REAL,
+            retreat INTEGER DEFAULT 0
         )
 
     """)
@@ -1342,6 +1366,15 @@ def init_db():
     conn.commit()
 
     conn.close()
+
+    # 兼容旧表：添加retreat列（若已存在则忽略）
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("ALTER TABLE hot_sector ADD COLUMN retreat INTEGER DEFAULT 0")
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 def save_top20(df):
 
@@ -1362,9 +1395,9 @@ def save_top20(df):
         conn.execute("""
 
             INSERT INTO hot_sector
-            (date, rank, type, name, score, leader_code,leader_name, leader_score, momentum, acc)
+            (date, rank, type, name, score, leader_code,leader_name, leader_score, momentum, acc, retreat)
 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
         """, (
 
@@ -1377,7 +1410,8 @@ def save_top20(df):
             getattr(row, "龙头名称", ""),
             getattr(row, "龙头强度", 0),
             getattr(row, "动量", 0),
-            getattr(row, "加速度", 0)
+            getattr(row, "加速度", 0),
+            1 if getattr(row, "是否退潮", False) else 0
 
         ))
 
@@ -1448,11 +1482,22 @@ def analyze_hot_sectors():
 
     industry_res = analyze_industry(daily_df, industry_df)
 
-    theme_res = analyze_themes(daily_df, industry_df)
+    # 构建主题概念匹配数据（精确匹配概念名称，非关键词）
+    stock_concept_list = {k: v.split(";") for k, v in stock_map.items()}
+
+    theme_res = analyze_themes(daily_df, industry_df, stock_concept_list)
     
     concept_res = analyze_concepts(daily_df)
 
     all_res = industry_res + theme_res + concept_res
+
+    print(f"行业{len(industry_res)} + 主题{len(theme_res)} + 概念{len(concept_res)}")
+
+    # 打印主题排名
+    theme_sorted = sorted(theme_res, key=lambda x: x.get("主线强度", 0), reverse=True)
+    print("主题板块强度排名:")
+    for t in theme_sorted[:5]:
+        print(f"  {t['主线']:16s} 强度={t['主线强度']:.1f} 评分={t['评分']:.1f} 成分股={t['成分股数']}")
 
     if not all_res:
         return pd.DataFrame()

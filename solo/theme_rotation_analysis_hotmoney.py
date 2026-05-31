@@ -1025,7 +1025,7 @@ def preload_bulk_daily_data(all_ts_codes, start_date, end_date):
         return
 
     print(f"\n⏳ 批量预加载 {len(need_codes)} 只股票日线数据 ({start_date}~{end_date})...")
-    batch_size = 2000
+    batch_size = 150
     total = 0
     for i in range(0, len(need_codes), batch_size):
         batch = need_codes[i:i + batch_size]
@@ -1035,11 +1035,12 @@ def preload_bulk_daily_data(all_ts_codes, start_date, end_date):
                 for ts_code in df['ts_code'].unique():
                     sub = df[df['ts_code'] == ts_code].copy()
                     sub['trade_date'] = sub['trade_date'].astype(str)
-                    _bulk_daily_cache[ts_code] = sub.sort_values('trade_date').reset_index(drop=True)
+                    sub = sub.sort_values('trade_date').reset_index(drop=True)
+                    _bulk_daily_cache[ts_code] = sub
                 total += len(df['ts_code'].unique())
         except Exception as e:
             print(f"  ⚠ 批量加载部分失败: {e}")
-        time.sleep(0.2)
+        time.sleep(0.3)
     print(f"✅ 批量预加载完成: {total} / {len(need_codes)} 只股票")
 
 def get_trade_dates(n_days=25):
@@ -1130,10 +1131,10 @@ def load_theme_portfolio_from_csv():
 # 获取股票历史数据
 # =========================
 def get_stock_history(ts_code, n_days=25):
-    # 优先使用批量预加载缓存
+    # 优先使用批量预加载缓存（带校验）
     if ts_code in _bulk_daily_cache:
         df = _bulk_daily_cache[ts_code].copy()
-        if df is not None and not df.empty and len(df) >= 3:
+        if df is not None and not df.empty and len(df) >= 20 and 'pct_chg' in df.columns:
             return df.sort_values('trade_date').reset_index(drop=True)
     
     trade_dates = get_trade_dates(n_days)
@@ -1633,14 +1634,23 @@ def calculate_theme_historical_rankings(theme_stocks_map, trade_dates):
 # =========================
 def identify_theme_leaders(theme_stocks, name_map):
     leaders = []
+    leader_count = 0
     
     for ts_code in list(theme_stocks)[:50]:
         result = calculate_comprehensive_leader_score(ts_code, name_map)
         
         if result is not None:
             leaders.append(result)
+        leader_count += 1
+        if leader_count % 20 == 0:
+            print(f"   已分析 {leader_count}/{min(50, len(theme_stocks))} 只, 通过 {len(leaders)} 只")
     
     leaders.sort(key=lambda x: x['total_score'], reverse=True)
+    if leaders:
+        scores_str = f"{leaders[-1]['total_score']:.1f}~{leaders[0]['total_score']:.1f}"
+        print(f"   龙头评分完成: {len(leaders)} 只通过 (阈值30), 范围: {scores_str}")
+    else:
+        print("   龙头评分完成: 0 只通过 ❌")
     return leaders[:10]
 
 # =========================
@@ -2345,28 +2355,27 @@ def main():
     print("="*100)
     
     # ── 构建微信推送内容 ──
-    push_title = f"📊 盘后复盘 {TRADE_DATE}"
+    push_title = f"📊 游资风格复盘 {TRADE_DATE}"
     push_lines = []
     if market_emotion:
-        push_lines.append(f"【大盘情绪】{market_emotion.get('情绪指数','N/A')}分 {market_emotion.get('市场阶段','N/A')}")
-        push_lines.append(f"涨停{market_emotion.get('涨停家数',0)}家 跌停{market_emotion.get('跌停家数',0)}家 建议仓位{market_emotion.get('最终建议仓位','N/A')}")
-        push_lines.append("")
+        push_lines.append(f"【大盘情绪】{market_emotion.get('情绪指数','N/A')}分 {market_emotion.get('市场阶段','N/A')}\n\n")
+        push_lines.append(f"涨停{market_emotion.get('涨停家数',0)}家 跌停{market_emotion.get('跌停家数',0)}家 建议仓位{market_emotion.get('最终建议仓位','N/A')}\n\n")
     push_lines.append(f"【主题 TOP 5】")
     for rank, (theme, score) in enumerate(ranked_themes[:5], 1):
         leaders = theme_leaders.get(theme, [])
         leader_names = "、".join([l['name'] for l in leaders[:3]])
-        push_lines.append(f"{rank}. {theme}({score:.0f}分) {leader_names}")
-    push_lines.append("")
+        push_lines.append(f"{rank}. {theme}({score:.0f}分) {leader_names}\n\n")
+    push_lines.append("\n\n")
     strategies = get_strategy_recommendations(ranked_themes, theme_leaders, theme_summary)
     push_lines.append("【策略一·强者恒强】")
     for s in strategies['strategy1'][:3]:
-        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}\n\n")
     push_lines.append("【策略二·低吸潜伏】")
     for s in strategies['strategy2'][:3]:
-        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}\n\n")
     push_lines.append("【策略三·轮动切换】")
     for s in strategies['strategy3'][:3]:
-        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}\n\n")
     send_serverchan_push(push_title, "\n".join(push_lines))
 
 if __name__ == "__main__":

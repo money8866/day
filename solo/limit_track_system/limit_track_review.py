@@ -411,34 +411,49 @@ def calculate_ma5_deviation(daily_df, zt_date, zt_close, zt_open=None):
 
 def analyze_stabilization_signal(daily_df, zt_history):
     """
-    分析调整企稳信号 - 学习工业富联特征（增强版）
-    
-    工业富联特征：
-    - 5月22日：低位带下影小阳线（企稳信号1）
-    - 5月26日、27日：小阳线连续（企稳信号2）
-    
-    新增特征：十字星、底分型、MACD、量能底背离
-    
+    分析调整企稳信号
+
+    严格过滤：
+    - 当天涨停/跌停（|pct_chg| >= 9%）→ 不是企稳，直接排除
+    - 当天涨幅 > 5% → 不是企稳，是拉升中
+    - 当天跌幅 > 7% → 破位下跌，不是企稳
+
     参数:
         daily_df: 日线数据
         zt_history: 涨停历史
-        
+
     返回:
         dict: 包含信号得分、特征描述
     """
     try:
         if daily_df is None or daily_df.empty or len(daily_df) < 20:
             return {'score': 0, 'features': [], 'description': '数据不足'}
-        
+
         daily_df = daily_df.sort_values('trade_date').copy()
+
+        # ═══ 核心过滤：排除当天极端涨跌 ═══
+        latest_chg = daily_df['pct_chg'].iloc[-1] if 'pct_chg' in daily_df.columns else 0
+        latest_close = daily_df['close'].iloc[-1]
+
+        # 涨停/跌停 → 直接排除
+        if latest_chg >= 9.0:
+            return {'score': 0, 'features': [], 'description': f'当天涨停(+{latest_chg:.1f}%)，非企稳'}
+        if latest_chg <= -9.0:
+            return {'score': 0, 'features': [], 'description': f'当天跌停({latest_chg:.1f}%)，非企稳'}
+        # 大跌也不企稳
+        if latest_chg <= -7.0:
+            return {'score': 0, 'features': [], 'description': f'当天大跌({latest_chg:.1f}%)，破位'}
+        # 大涨也不企稳
+        if latest_chg >= 5.0:
+            return {'score': 0, 'features': [], 'description': f'当天大涨({latest_chg:.1f}%)，拉升中非企稳'}
+
         score = 0
         features = []
         description = []
-        
-        # 获取最近K线
+
         recent_k = daily_df.tail(15).copy()
-        
-        # ======== 特征1：低位下影小阳线（工业富联5月22日特征）====
+
+        # ======== 特征1：低位下影小阳线 =====
         if len(recent_k) >= 5:
             for i in range(-5, 0):
                 if abs(i) >= len(recent_k):
@@ -448,25 +463,26 @@ def analyze_stabilization_signal(daily_df, zt_history):
                 close_p = kline['close']
                 high_p = kline['high']
                 low_p = kline['low']
-                
+
                 body_size = abs(close_p - open_p) / open_p
                 lower_shadow = (min(open_p, close_p) - low_p) / open_p
-                upper_shadow = (high_p - max(open_p, close_p)) / open_p
-                
+
                 if close_p > open_p and body_size < 0.03 and lower_shadow > 0.015 and body_size < lower_shadow:
                     score += 25
                     features.append(f"低位下影小阳线（{kline['trade_date']}）")
                     description.append("出现企稳下影线")
                     break
-        
-        # ======== 特征2：连续小阳线（工业富联26、27号特征）====
+
+        # ======== 特征2：连续小阳线 =====
         positive_count = 0
         for i in range(-6, 0):
             if len(recent_k) > abs(i):
                 kline = recent_k.iloc[i]
-                if kline['close'] > kline['open'] and (kline['close'] - kline['open']) / kline['open'] < 0.04:
+                kline_chg = kline.get('pct_chg', 0)
+                # 必须是小阳线（涨幅<4%），且不是涨停日
+                if kline['close'] > kline['open'] and 0 < kline_chg < 4:
                     positive_count += 1
-        
+
         if positive_count >= 3:
             score += 30
             features.append(f"连续{positive_count}个小阳线")
@@ -478,7 +494,7 @@ def analyze_stabilization_signal(daily_df, zt_history):
         elif positive_count >= 1:
             score += 10
             features.append(f"{positive_count}个小阳线")
-        
+
         # ======== 特征3：十字星/螺旋桨 =====
         if len(recent_k) >= 3:
             for i in range(-3, 0):
@@ -489,16 +505,16 @@ def analyze_stabilization_signal(daily_df, zt_history):
                 close_p = kline['close']
                 high_p = kline['high']
                 low_p = kline['low']
-                
+
                 body_size = abs(close_p - open_p) / open_p
                 total_range = (high_p - low_p) / low_p
-                
+
                 if body_size < 0.01 and total_range > 0.02:
                     score += 15
-                    features.append(f"企稳十字星")
+                    features.append("企稳十字星")
                     description.append("变盘信号")
                     break
-        
+
         # ======== 特征4：底分型 =====
         if len(recent_k) >= 5:
             for i in range(-4, -1):
@@ -508,13 +524,13 @@ def analyze_stabilization_signal(daily_df, zt_history):
                 k1 = recent_k.iloc[idx-1]
                 k2 = recent_k.iloc[idx]
                 k3 = recent_k.iloc[idx+1]
-                
+
                 if k2['low'] < k1['low'] and k2['low'] < k3['low'] and k2['close'] > k2['open']:
                     score += 20
                     features.append("底分型信号")
                     description.append("底部形态")
                     break
-        
+
         # ======== 特征5：MACD金叉/底背离 =====
         if len(daily_df) >= 30:
             daily_df['ema12'] = daily_df['close'].ewm(span=12).mean()
@@ -522,39 +538,37 @@ def analyze_stabilization_signal(daily_df, zt_history):
             daily_df['dif'] = daily_df['ema12'] - daily_df['ema26']
             daily_df['dea'] = daily_df['dif'].ewm(span=9).mean()
             daily_df['macd'] = (daily_df['dif'] - daily_df['dea']) * 2
-            
+
             recent_macd = daily_df.tail(10)
             if len(recent_macd) >= 2 and recent_macd.iloc[-1]['macd'] > 0 and recent_macd.iloc[-2]['macd'] <= 0:
                 score += 20
                 features.append("MACD金叉")
                 description.append("金叉信号")
-            
-            if recent_macd.iloc[-1]['close'] < recent_macd.iloc[-5]['close'] and recent_macd.iloc[-1]['dif'] > recent_macd.iloc[-5]['dif']:
-                score += 15
-                features.append("MACD底背离")
-                description.append("背离信号")
-        
+
+            if len(recent_macd) >= 5:
+                if recent_macd.iloc[-1]['close'] < recent_macd.iloc[-5]['close'] and recent_macd.iloc[-1]['dif'] > recent_macd.iloc[-5]['dif']:
+                    score += 15
+                    features.append("MACD底背离")
+                    description.append("背离信号")
+
         # ======== 特征6：缩量整理 =====
         if len(recent_k) >= 8:
             recent_vol = recent_k['vol'].iloc[-5:].mean()
             prev_vol = recent_k['vol'].iloc[-10:-5].mean() if len(recent_k) >= 10 else recent_vol
-            
+
             if prev_vol > 0 and recent_vol / prev_vol < 0.7:
                 score += 20
                 features.append("缩量整理")
                 description.append("缩量企稳")
             elif prev_vol > 0 and recent_vol / prev_vol < 0.85:
                 score += 10
-        
-        # ======== 特征7：价格在合理区间（回调10-25%）====
+
+        # ======== 特征7：价格在合理回调区间（10-25%）====
         if zt_history:
-            last_zt_date = zt_history[0]['date']
             zt_close = zt_history[0].get('close', 0)
-            latest_close = recent_k['close'].iloc[-1]
-            
             if zt_close > 0:
                 callback_ratio = (zt_close - latest_close) / zt_close * 100
-                
+
                 if 8 <= callback_ratio <= 22:
                     score += 20
                     features.append(f"回调{callback_ratio:.1f}%")
@@ -562,24 +576,23 @@ def analyze_stabilization_signal(daily_df, zt_history):
                 elif 3 <= callback_ratio < 8:
                     score += 10
                     features.append(f"小幅回调{callback_ratio:.1f}%")
-        
+
         # ======== 特征8：站上均线 =====
         if len(recent_k) >= 10:
             recent_k['ma5'] = recent_k['close'].rolling(5).mean()
             recent_k['ma10'] = recent_k['close'].rolling(10).mean()
-            recent_k['ma20'] = recent_k['close'].rolling(20).mean()
-            
+
             last_close = recent_k['close'].iloc[-1]
             last_ma5 = recent_k['ma5'].iloc[-1]
             last_ma10 = recent_k['ma10'].iloc[-1]
-            
+
             if last_close > last_ma5 and last_ma5 > last_ma10:
                 score += 15
                 features.append("均线多头")
                 description.append("站上均线")
             elif last_close > last_ma5:
                 score += 8
-        
+
         return {
             'score': min(score, 100),
             'features': features,
@@ -1585,45 +1598,164 @@ def analyze_with_deepseek(ts_code, trade_date, wave2_prob, wave2_scores, stock_i
         return None
 
 
-def generate_review_report(trade_date, stocks_analyzed, market_emotion=None, hot_sectors=None):
-    """生成每日复盘报告 - 集成大盘情绪和板块分析"""
+def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
+    """
+    批量AI分析：将技术面筛选的候选股票 + 热点板块提交给DeepSeek，
+    由AI评选出二波机会最大/空间最大/基本面无雷风险最低的TOP5股票
+
+    参数:
+        candidates: 技术面筛选的候选股票列表
+        hot_sectors: 热点板块DataFrame
+        trade_date: 交易日期
+
+    返回:
+        list: TOP5股票列表, 每项包含代码/名称/调整天数/信号类别/介入价/止损价/空间分析/逻辑分析
+    """
+    if not candidates or not DEEPSEEK_KEY:
+        return []
+
+    # 构建候选股票文本
+    stock_lines = []
+    for i, s in enumerate(candidates, 1):
+        features_str = " | ".join(s.get('features', [])) if s.get('features') else s.get('breakout_detail', '')
+        stock_lines.append(
+            f"{i}. {s['name']}({s['ts_code']}) "
+            f"行业:{s.get('industry','')} "
+            f"调整{s['adjustment_days']}天 "
+            f"信号:{s['signal_type']} "
+            f"回调{s.get('callback_pct',0):.1f}% "
+            f"现价:{s['latest_close']} "
+            f"企稳分:{s.get('stabilization_score',0)} "
+            f"突破分:{s.get('breakout_score',0)} "
+            f"特征:{features_str}"
+        )
+
+    stocks_text = "\n".join(stock_lines)
+
+    # 构建热点板块文本
+    sector_text = "无板块数据"
+    if hot_sectors is not None and not hot_sectors.empty:
+        sector_lines = []
+        for _, r in hot_sectors.head(15).iterrows():
+            sector_lines.append(
+                f"  {r.get('主线','')} 强度{r.get('主线强度',0):.0f} "
+                f"龙头{r.get('龙头名称','')}"
+            )
+        sector_text = "\n".join(sector_lines)
+
+    prompt = f"""你是一位顶尖的A股游资量化分析师。以下是技术面筛选出的候选股票列表和当前热点板块。
+
+=== 候选股票（技术面已通过企稳/突破信号筛选）===
+{stocks_text}
+
+=== 当前热点板块 TOP15 ===
+{sector_text}
+
+请从以上候选股票中，评选出二波机会最大、上涨空间最大、基本面雷区风险最低的TOP5股票。
+
+对每只入选股票，请严格按以下格式输出（每只股票一行，用|分隔各字段）：
+
+股票代码|股票名称|调整天数|信号类别|介入价格建议|止损价格建议|空间分析|逻辑分析
+
+要求：
+1. 调整天数 = 涨停后至今的交易日数
+2. 信号类别从以下选择：企稳信号 / 放量突破 / 企稳+突破共振
+3. 介入价格 = 具体数字（元），结合现价和支撑位给出
+4. 止损价格 = 具体数字（元），支撑位下方3-5%
+5. 空间分析 = 一句话描述目标价和上涨空间（如"目标12元,空间25%"）
+6. 逻辑分析 = 一句话说明入选逻辑（结合热点板块、技术形态、回调充分度）
+
+最后输出一行 ===END=== 作为结束。"""
+    
+    headers = {
+        'Authorization': f'Bearer {DEEPSEEK_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是一位专业的A股游资量化分析师，擅长分析首板后二次启动机会。"},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1500
+    }
+    
+    try:
+        print("  正在调用DeepSeek API进行批量分析...")
+        resp = requests.post('https://api.deepseek.com/v1/chat/completions',
+                            headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        result = resp.json()
+        content = result['choices'][0]['message']['content']
+        print("  DeepSeek分析完成")
+        
+        # 解析AI返回结果
+        top5 = []
+        lines = content.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('===') or line.startswith('END'):
+                continue
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) >= 8:
+                entry = {
+                    'ts_code': parts[0],
+                    'name': parts[1],
+                    'adjustment_days': parts[2],
+                    'signal_type': parts[3],
+                    'entry_price': parts[4],
+                    'stop_loss': parts[5],
+                    'space_analysis': parts[6],
+                    'logic': parts[7],
+                    'raw_line': line
+                }
+                top5.append(entry)
+        
+        # 如果AI返回的格式不对（没按|分割），尝试重新解析
+        if not top5:
+            # 按序号找
+            import re
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('===') or line.startswith('END'):
+                    continue
+                # 尝试匹配 "1. 股票代码..." 格式
+                match = re.match(r'^\d+[\.\s]+(\d{6}\.\w{2})', line)
+                if match:
+                    entry = {
+                        'ts_code': match.group(1),
+                        'name': '',
+                        'adjustment_days': '',
+                        'signal_type': '',
+                        'entry_price': '',
+                        'stop_loss': '',
+                        'space_analysis': '',
+                        'logic': line,
+                        'raw_line': line
+                    }
+                    top5.append(entry)
+        
+        print(f"  AI返回TOP5数量: {len(top5)}")
+        return top5
+        
+    except Exception as e:
+        print(f"  DeepSeek批量分析失败: {e}")
+        return []
+
+
+def generate_review_report(trade_date, technical_candidates, top5, hot_sectors):
+    """生成每日复盘报告 - 筛选概况 + AI TOP5推荐"""
     report = []
     report.append("="*70)
-    report.append(f"🚀 涨停二波追踪 | {trade_date}")
+    report.append(f"涨停二波追踪 | {trade_date}")
     report.append("="*70)
     report.append("")
-    
-    # ===== 0. 大盘情绪分析 =====
-    if market_emotion:
-        report.append("🌡️  大盘情绪")
-        emotion_score = market_emotion.get('情绪分', 0)
-        market_stage = market_emotion.get('市场阶段', '未知')
-        risk_level = market_emotion.get('风险等级', '未知')
-        
-        # 情绪图标
-        if emotion_score >= 70:
-            emotion_icon = '🔥'
-        elif emotion_score >= 40:
-            emotion_icon = '☀️'
-        elif emotion_score >= 25:
-            emotion_icon = '🌥️'
-        else:
-            emotion_icon = '❄️'
-        
-        report.append(f"   {emotion_icon} 情绪分: {emotion_score:.1f} | 阶段: {market_stage}")
-        
-        if '大盘涨跌幅' in market_emotion:
-            report.append(f"   📈 大盘: {market_emotion.get('大盘点位', '')} | {market_emotion.get('大盘涨跌幅', '')}%")
-        if '涨停家数' in market_emotion:
-            report.append(f"   🏛️  涨停: {market_emotion.get('涨停家数', 0)} | 跌停: {market_emotion.get('跌停家数', 0)} | 炸板率: {market_emotion.get('炸板率', 0)}%")
-        if '最终建议仓位' in market_emotion:
-            report.append(f"   💼 仓位: {market_emotion.get('情绪仓位', '')} | 上限: {market_emotion.get('趋势仓位上限', '')} | 建议: {market_emotion.get('最终建议仓位', '')}")
-        
-        report.append("")
-    
-    # ===== 0.5 主线板块分析 =====
+
+    # ===== 1. 热点板块 =====
     if hot_sectors is not None and not hot_sectors.empty:
-        report.append("🏆  主线板块 TOP 10")
+        report.append("🏆 热点板块 TOP 10")
         top10 = hot_sectors.head(10)
         for i, row in top10.iterrows():
             sector_name = row.get('主线', '未知')
@@ -1631,130 +1763,85 @@ def generate_review_report(trade_date, stocks_analyzed, market_emotion=None, hot
             sector_type = row.get('类型', '未知')
             leader_name = row.get('龙头名称', '')
             decline_flag = ' ↓' if row.get('是否退潮', False) else ''
-            
-            line = f"   {i+1}. {sector_type} | {sector_name}"
+            line = f"  {i+1}. {sector_type} | {sector_name}"
             if leader_name:
                 line += f" ({leader_name})"
             line += f" | 强度: {sector_score:.0f}{decline_flag}"
             report.append(line)
-        
         report.append("")
-    
-    # ===== 1. 筛选统计 =====
-    # 放宽主线板块筛选，只要有行业信息就算
-    main_sector_stocks = [s for s in stocks_analyzed if s.get('industry') and s.get('industry') != '未知']
-    # 潜在候选 - 放宽条件
-    potential_candidates = [s for s in stocks_analyzed if s.get('stabilization', {}).get('score', 0) >= 20]
-    
-    report.append("📊 今日概况")
-    report.append(f"   分析标的: {len(stocks_analyzed)} 只（已过滤ST）")
-    report.append(f"   主线板块: {len(main_sector_stocks)} 只（近20天前15板块）")
-    report.append(f"   潜在候选: {len(potential_candidates)} 只（高位震荡缩量）")
+
+    # ===== 2. 技术面筛选概况 =====
+    report.append("📊 技术面筛选概况")
+    report.append(f"  分析标的: {len(technical_candidates)} 只通过技术面筛选")
+    stab_count = sum(1 for s in technical_candidates if s['signal_type'] == '企稳信号' or s['signal_type'] == '企稳+突破共振')
+    break_count = sum(1 for s in technical_candidates if '突破' in s['signal_type'])
+    report.append(f"  企稳信号: {stab_count}只 | 放量突破: {break_count}只 | 共振: {len(technical_candidates) - stab_count - (break_count - stab_count)}只")
     report.append("")
-    
-    # ===== 2. 重点推荐（优先主线板块、高概率） =====
-    report.append("🎯 重点推荐 TOP 8")
+
+    # 候选列表
+    if technical_candidates:
+        report.append("📋 技术面候选列表")
+        for i, s in enumerate(technical_candidates, 1):
+            features_str = " | ".join(s.get('features', [])) if s.get('features') else s.get('breakout_detail', '')[:40]
+            report.append(f"  {i}. {s['name']}({s['ts_code']}) 调整{s['adjustment_days']}天 {s['signal_type']} 回调{s.get('callback_pct',0):.1f}% 现价{s['latest_close']}")
+            if features_str:
+                report.append(f"     {features_str}")
+        report.append("")
+
+    # ===== 3. AI TOP5 推荐 =====
+    report.append("="*70)
+    report.append("🌟 AI评选 TOP5 二波机会股")
+    report.append("="*70)
     report.append("")
-    
-    # 优先排序：主线板块 > 潜在候选 > 二波概率
-    sorted_stocks = sorted(main_sector_stocks, 
-                          key=lambda x: (x.get('is_potential_candidate', False), x['wave2_prob']), 
-                          reverse=True)[:8]
-    
-    for i, stock in enumerate(sorted_stocks, 1):
-        stock_name = stock.get('name', stock.get('ts_code', '未知'))
-        candidate_tag = "⭐" if stock.get('is_potential_candidate', False) else ""
-        main_tag = "🏆" if stock.get('is_main_sector', False) else ""
-        
-        # 基本信息行
-        report.append(f"{i}. {stock_name} {stock['ts_code']} {candidate_tag}{main_tag}")
-        
-        # 第一行：概率 + 调整天数 + 行业
-        wave2_prob = stock['wave2_prob']
-        adj_days = stock.get('adjustment_days', 0)
-        industry = stock.get('industry', '未知')
-        report.append(f"   概率: {wave2_prob}% | 调整: {adj_days}天 | {industry}")
-        
-        # 第二行：价格相对 + 量比
-        price_rel = stock.get('price_relative', 0)
-        vol_rat = stock.get('vol_ratio', 1)
-        report.append(f"   位置: {price_rel:.2f} | 量比: {vol_rat:.2f}")
-        
-        # 第三行：板块热度 + 洗盘/出货信号
-        sector_line = ""
-        sector_info = stock.get('sector_info', {})
-        if sector_info:
-            hot_trend = sector_info.get('hot_trend', 'unknown')
-            hot_emoji = '🔥' if hot_trend == 'hot' else ('📈' if hot_trend == 'warming' else '❄️')
-            sector_line += f"{hot_emoji}{hot_trend}"
-        
-        wash_shipment = stock.get('wash_shipment', {})
-        if wash_shipment and wash_shipment.get('signal') != 'unknown':
-            signal = wash_shipment.get('signal', 'unknown')
-            wash_prob = wash_shipment.get('wash_prob', 0)
-            shipment_prob = wash_shipment.get('shipment_prob', 0)
-            signal_emoji = '🟢' if signal == 'wash' else ('🔴' if signal == 'shipment' else '🟡')
-            if sector_line:
-                sector_line += " | "
-            sector_line += f"{signal_emoji}洗{wash_prob:.0f}%出{shipment_prob:.0f}%"
-        
-        if sector_line:
-            report.append(f"   {sector_line}")
-        
-        # 分析摘要
-        if stock.get('deepseek_analysis'):
-            analysis = stock['deepseek_analysis'][:80]
-            report.append(f"   {analysis}...")
-        
-        report.append("")
-    
-    # ===== 2.5 调整企稳信号专区（最多3只）=====
-    stabilization_candidates = select_top_stabilization_candidates(stocks_analyzed, max_count=3)
-    if stabilization_candidates:
-        report.append("🔔 调整企稳信号（工业富联特征）")
-        report.append("")
-        for i, stock in enumerate(stabilization_candidates, 1):
-            stock_name = stock.get('name', stock.get('ts_code', '未知'))
-            stab = stock.get('stabilization', {})
-            stab_score = stab.get('score', 0)
-            features = stab.get('features', [])
-            desc = stab.get('description', '')
-            wave2_prob = stock.get('wave2_prob', 0)
-            adj_days = stock.get('adjustment_days', 0)
-            
-            report.append(f"{i}. {stock_name} {stock['ts_code']}")
-            report.append(f"   企稳分数: {stab_score} | 二波概率: {wave2_prob}% | 调整: {adj_days}天")
-            if features:
-                report.append(f"   特征: {', '.join(features[:3])}")
-            if desc and desc != '暂无明显信号':
-                report.append(f"   描述: {desc}")
+
+    if top5:
+        for i, stock in enumerate(top5, 1):
+            # 尝试从technical_candidates中补全name
+            name = stock.get('name', '')
+            if not name or name == stock.get('ts_code', ''):
+                match = next((c for c in technical_candidates if c['ts_code'] == stock.get('ts_code', '')), None)
+                if match:
+                    name = match['name']
+
+            report.append(f"{'='*60}")
+            report.append(f"  #{i}  {name} {stock.get('ts_code', '')}")
+            report.append(f"  {'='*60}")
+
+            adj = stock.get('adjustment_days', '')
+            sig = stock.get('signal_type', '')
+            entry = stock.get('entry_price', '')
+            stop = stock.get('stop_loss', '')
+            space = stock.get('space_analysis', '')
+            logic = stock.get('logic', '')
+
+            report.append(f"  调整天数: {adj}")
+            report.append(f"  信号类别: {sig}")
+            report.append(f"  介入价格: {entry}")
+            report.append(f"  止损价格: {stop}")
+            report.append(f"  空间分析: {space}")
+            report.append(f"  逻辑分析: {logic}")
             report.append("")
-    
-    # ===== 3. 潜在候选专区 =====
-    if potential_candidates:
-        report.append("💎 潜在候选（高位震荡缩量）")
+
+        # 简版列表
+        report.append(f"{'='*60}")
+        report.append("📌 TOP5 速览")
+        report.append(f"{'='*60}")
+        for i, stock in enumerate(top5, 1):
+            name = stock.get('name', stock.get('ts_code', ''))
+            report.append(f"  {i}. {name} {stock.get('entry_price','')} → {stock.get('stop_loss','')}(止损) {stock.get('space_analysis','')}")
+    else:
+        report.append("  ⚠ 无AI推荐结果（请检查DeepSeek API配置）")
         report.append("")
-        sorted_potential = sorted(potential_candidates, key=lambda x: x['wave2_prob'], reverse=True)[:6]
-        
-        for i, stock in enumerate(sorted_potential, 1):
-            stock_name = stock.get('name', stock.get('ts_code', '未知'))
-            report.append(f"{i}. {stock_name}")
-            report.append(f"   概率: {stock['wave2_prob']}% | 调整: {stock.get('adjustment_days', 0)}天 | {stock.get('industry', '未知')}")
-            price_rel = stock.get('price_relative', 0)
-            vol_rat = stock.get('vol_ratio', 1)
-            report.append(f"   位置: {price_rel:.2f} | 量比: {vol_rat:.2f}")
-            report.append("")
-    
+
     # ===== 4. 风险提示 =====
-    report.append("⚠️ 风险提示")
-    report.append("   • 热点切换快，注意节奏")
-    report.append("   • 建议仓位控制在30%以内")
-    report.append("   • 严格止损-5%~7%")
     report.append("")
-    report.append("="*70)
-    report.append("💡 免责声明：仅供学习，不构成投资建议")
-    report.append("="*70)
-    
+    report.append("-"*60)
+    report.append("⚠️ 风险提示")
+    report.append("  • 热点切换快，注意节奏，控制仓位30%以内")
+    report.append("  • 严格按止损价执行，亏损超过5%果断离场")
+    report.append("  • 免责声明：仅供学习参考，不构成投资建议")
+    report.append("-"*60)
+
     return '\n'.join(report)
 
 
@@ -1790,7 +1877,7 @@ def send_to_wechat(title, content, key=None):
 
 
 def daily_limit_track(trade_date, force_refresh=False):
-    """每日涨停跟踪主函数"""
+    """每日涨停跟踪主函数 - 简化版：纯技术面筛选 + AI批量分析TOP5"""
     print("="*60)
     print(f"📊 每日涨停跟踪与复盘")
     print(f"交易日期: {trade_date}")
@@ -1836,10 +1923,9 @@ def daily_limit_track(trade_date, force_refresh=False):
     print("\n[4/6] 保存涨停记录...")
     save_daily_limit_record(trade_date, qualified_stocks)
     
-    # 5. 复盘前20天涨停股票（排除当天涨停）
-    print("\n[5/6] 复盘前20天涨停股票...")
+    # 5. 复盘前20天涨停股票（纯技术面筛选）
+    print("\n[5/6] 复盘前20天涨停股票（技术面筛选）...")
     
-    # 获取前19天的涨停股票（排除当天）
     start_date = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=20)).strftime('%Y%m%d')
     recent_stocks, stock_history = get_stocks_zt_in_range(
         start_date,
@@ -1849,211 +1935,127 @@ def daily_limit_track(trade_date, force_refresh=False):
     
     print(f"前19天涨停过的股票总数（排除当天）: {len(recent_stocks)}")
     
-    # 分析每只股票的二波概率，优先筛选高位震荡缩量特征
-    stocks_analyzed = []
-    for ts_code in recent_stocks[:50]:  # 限制分析数量
+    # 技术面筛选：分析每只股票的企稳信号和放量突破信号
+    technical_candidates = []  # 传给AI的技术面候选
+    for ts_code in recent_stocks[:50]:
         zt_history = stock_history.get(ts_code, [])
+        if not zt_history:
+            continue
         
-        # 先获取股票基本信息（行业）
-        industry = '未知'
+        # 获取股票名称/行业
+        name = ts_code
+        industry = ""
         try:
-            basic_info = pro.stock_basic(ts_code=ts_code)
-            if basic_info is not None and not basic_info.empty:
-                industry = basic_info.iloc[0].get('industry', '未知')
-        except:
-            pass
-        
-        # 调用二波概率计算（传入行业信息）
-        wave2_prob, wave2_scores = calculate_wave2_probability(ts_code, trade_date, zt_history, industry)
-        
-        # 提取特征用于筛选
-        price_relative = wave2_scores.get('price_relative', 0)
-        vol_ratio = wave2_scores.get('vol_ratio', 1)
-        
-        # 优先筛选高位震荡缩量特征的股票
-        is_potential_candidate = 0.85 <= price_relative <= 1.15 and vol_ratio < 0.8
-        
-        # 提取板块和洗盘/出货信息
-        sector_info = wave2_scores.get('sector_info', {})
-        wash_shipment = wave2_scores.get('wash_shipment', {})
-        
-        # ===== 新增功能开始 =====
-        
-        # 1. 过滤ST股票
-        stock_name = ts_code  # 默认用代码
-        is_stock = False
-        try:
-            basic_info = pro.stock_basic(ts_code=ts_code)
-            if basic_info is not None and not basic_info.empty:
-                stock_name = basic_info.iloc[0].get('name', ts_code)
-                name_upper = stock_name.upper()
+            basic = pro.stock_basic(ts_code=ts_code)
+            if basic is not None and not basic.empty:
+                name = basic.iloc[0].get('name', ts_code)
+                industry = basic.iloc[0].get('industry', '')
+                name_upper = name.upper()
                 if 'ST' in name_upper or '*' in name_upper or '退市' in name_upper:
-                    is_stock = True
+                    continue
         except:
             pass
         
-        if is_stock:
-            print(f"  跳过ST股票: {stock_name}")
+        # 获取日线数据
+        daily_start = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=60)).strftime('%Y%m%d')
+        daily_df = get_stock_daily_data(ts_code, daily_start, trade_date)
+        if daily_df is None or daily_df.empty or len(daily_df) < 20:
             continue
         
-        # 2. 识别近20天主线板块
-        is_main_sector = False
-        main_sector = False
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            
-            # 查询近20天各行业涨停数量
-            start_date_main = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=20)).strftime('%Y%m%d')
-            cursor.execute('''
-                SELECT industry, COUNT(*) as zt_count
-                FROM limit_stocks
-                WHERE trade_date BETWEEN ? AND ?
-                GROUP BY industry
-                ORDER BY zt_count DESC
-                LIMIT 15
-            ''', (start_date_main, trade_date))
-            
-            main_sectors_list = [row[0] for row in cursor.fetchall()]
-            conn.close()
-            
-            # 判断当前股票是否属于主线板块（前15个）
-            if industry and industry != '未知' and industry in main_sectors_list:
-                is_main_sector = True
-                
-        except Exception as e:
-            print(f"  主线板块识别失败: {e}")
-            is_main_sector = False
-        
-        # 3. 计算涨停后调整天数
-        adjustment_days = 0
-        if zt_history:
-            last_zt_date = zt_history[0]['date']
-            try:
-                zt_dt = datetime.strptime(last_zt_date, '%Y%m%d')
-                today_dt = datetime.strptime(trade_date, '%Y%m%d')
-                delta = today_dt - zt_dt
-                adjustment_days = delta.days
-            except:
-                adjustment_days = 0
-        
-        # ===== 新增过滤和分析开始 =====
-        
-        # 优化：先获取一次日线数据供后续所有分析使用，避免重复请求
-        daily_df = None
-        zt_open = None
-        if zt_history:
-            last_zt_date = zt_history[0]['date']
-            start = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=60)).strftime('%Y%m%d')
-            daily_df = get_stock_daily_data(ts_code, start, trade_date)
-            
-            # 从日线数据获取涨停日开盘价
-            if daily_df is not None and not daily_df.empty:
-                zt_row = daily_df[daily_df['trade_date'] == last_zt_date]
-                if not zt_row.empty:
-                    zt_open = zt_row.iloc[0].get('open', None)
-        
-        # 1. 市值过滤（>40亿，阈值宽松以便演示）
-        if not filter_market_cap(ts_code, min_cap=40, daily_df=daily_df):
-            print(f"  跳过市值不足: {stock_name}")
+        daily_df = daily_df.sort_values('trade_date').reset_index(drop=True)
+        latest_price = daily_df['close'].iloc[-1]
+
+        # ═══ 兜底过滤：当天极端涨跌一律排除 ═══
+        latest_chg = daily_df['pct_chg'].iloc[-1] if 'pct_chg' in daily_df.columns else 0
+        if abs(latest_chg) >= 9.0:
             continue
+        # 当天大涨>5%或大跌>7%也不是"涨停后回调"信号
+        if latest_chg >= 5.0 or latest_chg <= -7.0:
+            continue
+
+        # 如果今天就是涨停日 → 排除
+        zt_date = zt_history[0]['date']
+        if zt_date == daily_df['trade_date'].iloc[-1]:
+            continue
+
+        # 计算涨停后调整天数（交易日）
+        adjustment_days = count_trading_days_between(zt_date, trade_date)
+
+        # 计算涨停日收盘价和回调幅度
+        zt_row = daily_df[daily_df['trade_date'] == zt_date]
+        zt_close = 0
+        if not zt_row.empty:
+            zt_close = zt_row.iloc[0]['close']
+        callback_pct = (zt_close - latest_price) / zt_close * 100 if zt_close > 0 else 0
         
-        # 2. 5日线乖离过滤（暂时关闭以便演示功能）
-        ma5_ok = True
-        ma5_deviation = 0
-        zt_distance = 0
-        # if zt_history and daily_df is not None:
-        #     last_zt_date = zt_history[0]['date']
-        #     zt_close = zt_history[0].get('close', 0)
-        #     
-        #     ma5_ok, ma5_deviation, zt_distance = calculate_ma5_deviation(daily_df, last_zt_date, zt_close, zt_open)
-        #     if not ma5_ok:
-        #         print(f"  跳过乖离过大/远离涨停价: {stock_name}")
-        #         continue
+        # ── 企稳信号分析 ──
+        stab = analyze_stabilization_signal(daily_df, zt_history)
+        stab_score = stab.get('score', 0)
+        stab_features = stab.get('features', [])
         
-        # 3. 企稳信号分析（工业富联特征，增强版：十字星、底分型、MACD等）
-        stabilization = {'score': 0, 'features': [], 'description': '数据不足'}
-        if zt_history and daily_df is not None:
-            stabilization = analyze_stabilization_signal(daily_df, zt_history)
+        # ── 放量突破信号分析 ──
+        breakout = detect_volume_breakout(daily_df, zt_history)
+        has_breakout = breakout.get('is_breakout', False)
+        breakout_score = breakout.get('score', 0)
+        breakout_type = breakout.get('signal_type', '')
+        breakout_detail = breakout.get('detail', '')
         
-        # 4. 主线板块识别（优化版：板块动量、趋势分析）
-        is_main_sector = False
-        if industry and industry != '未知':
-            try:
-                main_sectors = get_main_sectors(trade_date, lookback_days=20, top_n=15)
-                is_main_sector = industry in main_sectors
-            except Exception as e:
-                print(f"  主线板块识别失败: {e}")
-        
-        # ===== 新增过滤和分析结束 =====
-        
-        deepseek_result = None
-        # 优化：只有企稳分数>=30或二波概率>=60才调用AI，节省API次数
-        should_call_deepseek = (stabilization.get('score', 0) >= 30 or wave2_prob >= 60)
-        if should_call_deepseek:
-            deepseek_result = analyze_with_deepseek(ts_code, trade_date, wave2_prob, wave2_scores, {})
-        
-        # 获取股票名称
-        if deepseek_result:
-            if isinstance(deepseek_result, dict):
-                stock_name = deepseek_result.get('name', ts_code)
-        
-        stocks_analyzed.append({
-            'ts_code': ts_code,
-            'name': stock_name,
-            'wave2_prob': wave2_prob,
-            'wave2_scores': wave2_scores,
-            'deepseek_analysis': deepseek_result.get('analysis') if deepseek_result and isinstance(deepseek_result, dict) else None,
-            'industry': industry,
-            'price_relative': price_relative,
-            'vol_ratio': vol_ratio,
-            'is_potential_candidate': is_potential_candidate,
-            'sector_info': sector_info,
-            'wash_shipment': wash_shipment,
-            'is_main_sector': is_main_sector,
-            'adjustment_days': adjustment_days,
-            'stabilization': stabilization,
-            'ma5_deviation': ma5_deviation,
-            'ma5_ok': ma5_ok
-        })
-        
-        # 限制API调用频率，每10只显示进度
-        if (len(stocks_analyzed) + 1) % 10 == 0:
-            print(f"  已分析: {len(stocks_analyzed)} 只股票")
+        # 只要满足任一技术面条件即纳入候选
+        if stab_score >= 25 or has_breakout:
+            signal_type = ""
+            if stab_score >= 25 and has_breakout:
+                signal_type = "企稳+突破共振"
+            elif stab_score >= 25:
+                signal_type = "企稳信号"
+            else:
+                signal_type = breakout_type
+            
+            entry_price = round(latest_price, 2)
+            
+            technical_candidates.append({
+                'ts_code': ts_code,
+                'name': name,
+                'industry': industry,
+                'adjustment_days': adjustment_days,
+                'signal_type': signal_type,
+                'stabilization_score': stab_score,
+                'breakout_score': breakout_score,
+                'callback_pct': round(callback_pct, 1),
+                'latest_close': entry_price,
+                'features': stab_features[:3],
+                'breakout_detail': breakout_detail
+            })
     
-    print(f"  ✓ 复盘完成，共分析: {len(stocks_analyzed)} 只股票")
+    print(f"技术面筛选通过: {len(technical_candidates)} 只（将提交AI分析）")
     
-    # 5.5 大盘情绪和板块分析（集成 emotion.py 和 block.py）
-    print("\n[5.5/6] 大盘情绪和板块分析...")
-    market_emotion = None
+    # 5.5 热点板块数据
+    print("\n[5.5/6] 加载热点板块数据...")
     hot_sectors = None
-    
     try:
-        # 临时修改工作目录到 mystock，避免路径问题
-        original_cwd = os.getcwd()
-        os.chdir(MYSTOCK_DIR)
-        
-        # 导入 block.py 和 emotion.py
-        import block as blk
-        import emotion as emo
-        
-        # 首先分析热门板块
-        hot_sectors = blk.analyze_hot_sectors()
-        
-        # 然后分析市场情绪
-        market_emotion = emo.analyze_market_emotion(hot_sectors)
-        
-        # 恢复原工作目录
-        os.chdir(original_cwd)
-        
+        hot_sectors = load_hot_sectors_from_db(trade_date)
+        if hot_sectors.empty:
+            print("  ⚠ 数据库无板块数据，运行block.py分析...")
+            original_cwd = os.getcwd()
+            os.chdir(MYSTOCK_DIR)
+            import block as blk
+            hot_sectors = blk.analyze_hot_sectors()
+            os.chdir(original_cwd)
     except Exception as e:
-        print(f"⚠️ 大盘情绪/板块分析失败: {e}")
-        market_emotion = None
-        hot_sectors = None
+        print(f"  ⚠ 加载板块数据失败: {e}")
     
-    # 6. 生成报告（传入大盘和板块分析结果）
-    print("\n[6/6] 生成复盘报告...")
-    report = generate_review_report(trade_date, stocks_analyzed, market_emotion, hot_sectors)
+    # 6. AI批量分析
+    print("\n[6/6] AI批量分析 - 评选TOP5...")
+    if technical_candidates and DEEPSEEK_KEY:
+        top5 = analyze_with_deepseek_bulk(technical_candidates, hot_sectors, trade_date)
+    else:
+        top5 = []
+        if not DEEPSEEK_KEY:
+            print("  ⚠ 未配置DEEPSEEK_KEY，跳过AI分析")
+        if not technical_candidates:
+            print("  ⚠ 无技术面候选股票")
+    
+    # 生成报告
+    report = generate_review_report(trade_date, technical_candidates, top5, hot_sectors)
     
     report_file = os.path.join(REVIEW_DIR, f"review_{trade_date}.txt")
     with open(report_file, 'w', encoding='utf-8') as f:
@@ -2224,6 +2226,433 @@ def query_and_export(start_date=None, end_date=None, min_prob=None, output_file=
     return df
 
 
+# ============ 新增信号扫描功能 ============
+
+HOT_SECTOR_DB = os.path.join(MYSTOCK_DIR, "cache_daily", "hot_sector.db")
+
+
+def count_trading_days_between(start_date, end_date):
+    """计算两个日期之间的交易日数（含end_date, 不含start_date）"""
+    if start_date >= end_date:
+        return 0
+    count = 0
+    d = datetime.strptime(start_date, '%Y%m%d')
+    end = datetime.strptime(end_date, '%Y%m%d')
+    while d < end:
+        d += timedelta(days=1)
+        if is_trading_day(d.strftime('%Y%m%d')):
+            count += 1
+    return count
+
+
+def load_main_sector_names_from_block_db(trade_date):
+    """
+    从block.py的分析结果数据库中读取当日TOP板块名称
+    用于判断个股是否属于主线板块
+
+    返回:
+        set: 板块名称集合
+    """
+    if not os.path.exists(HOT_SECTOR_DB):
+        return set()
+    try:
+        conn = sqlite3.connect(HOT_SECTOR_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM hot_sector WHERE date=? AND rank<=15 ORDER BY rank ASC", (trade_date,))
+        names = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        return names
+    except Exception:
+        return set()
+
+
+def load_hot_sectors_from_db(trade_date):
+    """
+    从block.py的分析结果数据库中读取当日热门板块
+    避免重新运行analyze_hot_sectors()（很慢）
+
+    返回:
+        pd.DataFrame: 与 analyze_hot_sectors() 相同格式, 失败则返回空DataFrame
+    """
+    if not os.path.exists(HOT_SECTOR_DB):
+        print(f"⚠ block板块数据库不存在: {HOT_SECTOR_DB}")
+        return pd.DataFrame()
+
+    try:
+        conn = sqlite3.connect(HOT_SECTOR_DB)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM hot_sector WHERE date=?", (trade_date,))
+        count = cursor.fetchone()[0]
+        if count == 0:
+            print(f"⚠ {trade_date} 无板块数据，请先运行 block.py")
+            conn.close()
+            return pd.DataFrame()
+
+        cursor.execute("""
+            SELECT rank, type, name, score, leader_code, leader_name, leader_score, momentum, acc, retreat
+            FROM hot_sector WHERE date=? ORDER BY rank ASC
+        """, (trade_date,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        records = []
+        for r in rows:
+            records.append({
+                "类型": r[1],
+                "主线": r[2],
+                "主线强度": r[3],
+                "龙头代码": r[4],
+                "龙头名称": r[5],
+                "龙头强度": r[6],
+                "动量": r[7],
+                "加速度": r[8],
+                "是否退潮": bool(r[9])
+            })
+
+        df = pd.DataFrame(records)
+        print(f"✅ 从数据库加载 {len(df)} 个板块数据 ({trade_date})")
+        return df
+
+    except Exception as e:
+        print(f"⚠ 读取板块数据库失败: {e}")
+        return pd.DataFrame()
+
+def detect_volume_breakout(daily_df, zt_history):
+    """
+    检测放量突破信号 - 涨停回调后的首日放量上攻
+
+    判断逻辑:
+    1. 涨停后至少调整3天
+    2. 今天不是涨停/跌停/大涨大跌日
+    3. 今日涨幅 > 3% 且量比 > 1.5（首日放量上攻）
+    4. 或今日放量突破5日线（量比 > 2.0 且站上MA5）
+
+    参数:
+        daily_df: 日线数据（已排序）
+        zt_history: 涨停历史
+
+    返回:
+        dict: 信号分析结果
+    """
+    try:
+        if daily_df is None or daily_df.empty or len(daily_df) < 10:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': '数据不足'}
+
+        daily_df = daily_df.sort_values('trade_date').copy()
+        recent = daily_df.tail(10)
+        latest = recent.iloc[-1]
+        latest_close = latest['close']
+        latest_chg = latest.get('pct_chg', 0)
+
+        # ═══ 核心过滤：今天的表现 ═══
+        # 涨停/跌停 → 不是突破信号（涨停本身就是极限，跌停是崩溃）
+        if latest_chg >= 9.0:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'当天涨停(+{latest_chg:.1f}%)，已到极限'}
+        if latest_chg <= -9.0:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'当天跌停({latest_chg:.1f}%)，破位'}
+        # 涨幅过大不是突破（已接近涨停，次日接力困难）
+        if latest_chg >= 7.0:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'当天大涨(+{latest_chg:.1f}%)，非突破启动'}
+        # 跌幅过大不是突破（破位了）
+        if latest_chg <= -5.0:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'当天大跌({latest_chg:.1f}%)，破位下行'}
+
+        # 计算均线
+        daily_df['ma5'] = daily_df['close'].rolling(5).mean()
+        daily_df['ma10'] = daily_df['close'].rolling(10).mean()
+        daily_df['ma20'] = daily_df['close'].rolling(20).mean()
+
+        latest_ma5 = daily_df['ma5'].iloc[-1]
+        latest_ma10 = daily_df['ma10'].iloc[-1]
+
+        # 成交量分析：今天量 vs 之前5日均量
+        vol = recent['vol'].values
+        avg_vol_5 = vol[-5:].mean()
+        avg_vol_prev5 = vol[-10:-5].mean() if len(vol) >= 10 else avg_vol_5
+        today_vol_ratio = latest['vol'] / avg_vol_prev5 if avg_vol_prev5 > 0 else 1
+
+        # 距今涨停天数（交易日）
+        days_since_zt = 99
+        if zt_history:
+            last_zt_date = zt_history[0]['date']
+            # 如果今天就是涨停日 → 排除
+            if last_zt_date == daily_df['trade_date'].iloc[-1]:
+                return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': '今天刚涨停，需等待回调'}
+            try:
+                from datetime import datetime as dt
+                zt_dt = dt.strptime(last_zt_date, '%Y%m%d')
+                today_dt = dt.strptime(daily_df['trade_date'].iloc[-1], '%Y%m%d')
+                days_since_zt = (today_dt - zt_dt).days
+            except:
+                pass
+
+        # 涨停后至少调整3天
+        if days_since_zt < 3:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'涨停后仅{days_since_zt}天，调整不足'}
+
+        score = 0
+        signals = []
+
+        # ── 信号A：首日放量上攻 ──
+        if 3 < latest_chg < 7 and today_vol_ratio >= 1.5:
+            score += 40
+            signals.append(f"首日放量上攻(+{latest_chg:.1f}%,量比{today_vol_ratio:.1f})")
+
+        # ── 信号B：放量突破5日线 ──
+        if latest_close > latest_ma5 and today_vol_ratio >= 2.0:
+            score += 35
+            signals.append(f"放量突破5日线(量比{today_vol_ratio:.1f})")
+
+        # ── 信号C：放量突破10日线 ──
+        if latest_close > latest_ma10 and today_vol_ratio >= 2.5:
+            score += 30
+            signals.append(f"放量突破10日线(量比{today_vol_ratio:.1f})")
+
+        # ── 信号D：温和放量站上MA5 ──
+        if 1.3 <= today_vol_ratio < 2.0 and latest_close > latest_ma5 and 2 < latest_chg < 5:
+            score += 25
+            signals.append(f"温和放量站上MA5(+{latest_chg:.1f}%)")
+
+        # ── 信号E：量价齐升突破前高 ──
+        if len(recent) >= 5:
+            high_5 = recent['high'].iloc[-5:].max()
+            if latest_close >= high_5 * 0.99 and today_vol_ratio >= 1.8 and latest_chg < 7:
+                score += 30
+                signals.append("放量突破近期高点")
+
+        # 涨停后回调幅度合理（10-25%最佳）
+        if zt_history:
+            zt_close = zt_history[0].get('close', 0)
+            if zt_close > 0:
+                callback = (zt_close - latest_close) / zt_close * 100
+                if 8 <= callback <= 22:
+                    score += 15
+                elif 3 <= callback < 8:
+                    score += 8
+
+        if not signals:
+            return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': '无放量突破信号'}
+
+        signal_type = signals[0]
+        if score >= 50:
+            level = "强信号"
+        elif score >= 30:
+            level = "中信号"
+        else:
+            level = "弱信号"
+
+        return {
+            'is_breakout': True,
+            'score': min(score, 100),
+            'signal_type': signal_type,
+            'detail': '; '.join(signals),
+            'level': level,
+            'vol_ratio': today_vol_ratio,
+            'days_since_zt': days_since_zt,
+            'latest_chg': latest_chg,
+            'latest_close': latest_close
+        }
+    except Exception as e:
+        return {'is_breakout': False, 'score': 0, 'signal_type': '', 'detail': f'分析失败: {str(e)}'}
+
+
+def scan_stock_signals(end_date=None, max_stocks=200):
+    """
+    扫描过去20天涨停股票，找出企稳信号和放量突破信号
+    
+    参数:
+        end_date: 截止日期(YYYYMMDD)，默认今天
+        max_stocks: 最多扫描股票数
+        
+    返回:
+        dict: 扫描结果
+    """
+    if end_date is None:
+        end_date = datetime.now().strftime('%Y%m%d')
+    
+    if not is_trading_day(end_date):
+        end_date = get_last_n_trading_days(1)[0] if get_last_n_trading_days(1) else end_date
+    
+    print("="*70)
+    print(f"🔍 涨停后信号扫描 | {end_date}")
+    print("="*70)
+    
+    # 1. 从DB获取过去20天涨停股票
+    start_date = (datetime.strptime(end_date, '%Y%m%d') - timedelta(days=25)).strftime('%Y%m%d')
+    recent_stocks, stock_history = get_stocks_zt_in_range(start_date, end_date, lookback_days=20)
+    
+    if not recent_stocks:
+        print("⚠ 过去20天无涨停记录，请先运行 --backtrack")
+        return {}
+    
+    print(f"过去20天涨停过的股票: {len(recent_stocks)} 只（扫描前{max_stocks}只）")
+    
+    # 2. 逐只扫描信号
+    results = {
+        'stabilization': [],   # 企稳信号
+        'volume_breakout': [], # 放量突破
+        'total_scanned': 0
+    }
+    
+    scanned = 0
+    for ts_code in recent_stocks[:max_stocks]:
+        scanned += 1
+        zt_history = stock_history.get(ts_code, [])
+        if not zt_history:
+            continue
+        
+        # 获取日线数据
+        daily_start = (datetime.strptime(end_date, '%Y%m%d') - timedelta(days=60)).strftime('%Y%m%d')
+        daily_df = get_stock_daily_data(ts_code, daily_start, end_date)
+        if daily_df is None or daily_df.empty or len(daily_df) < 20:
+            continue
+        
+        daily_df = daily_df.sort_values('trade_date').reset_index(drop=True)
+        
+        # 获取名称
+        name = ts_code
+        try:
+            basic = pro.stock_basic(ts_code=ts_code)
+            if basic is not None and not basic.empty:
+                name = basic.iloc[0].get('name', ts_code)
+                name_upper = name.upper()
+                if 'ST' in name_upper or '*' in name_upper or '退市' in name_upper:
+                    continue
+        except:
+            pass
+        
+        # ── 企稳信号分析 ──
+        stab = analyze_stabilization_signal(daily_df, zt_history)
+        if stab.get('score', 0) >= 25:
+            latest_price = daily_df['close'].iloc[-1]
+            zt_close = zt_history[0].get('close', 0) if zt_history else 0
+            callback = (zt_close - latest_price) / zt_close * 100 if zt_close > 0 else 0
+            
+            results['stabilization'].append({
+                'ts_code': ts_code,
+                'name': name,
+                'score': stab['score'],
+                'features': stab['features'],
+                'description': stab['description'],
+                'callback': callback,
+                'latest_close': latest_price
+            })
+        
+        # ── 放量突破信号分析 ──
+        breakout = detect_volume_breakout(daily_df, zt_history)
+        if breakout.get('is_breakout', False):
+            results['volume_breakout'].append({
+                'ts_code': ts_code,
+                'name': name,
+                'score': breakout['score'],
+                'level': breakout.get('level', ''),
+                'signal_type': breakout['signal_type'],
+                'detail': breakout['detail'],
+                'vol_ratio': breakout.get('vol_ratio', 0),
+                'latest_chg': breakout.get('latest_chg', 0),
+                'days_since_zt': breakout.get('days_since_zt', 0),
+                'latest_close': breakout.get('latest_close', 0)
+            })
+        
+        if scanned % 20 == 0:
+            print(f"  已扫描 {scanned}/{min(len(recent_stocks), max_stocks)} 只..."
+                  f" 企稳{len(results['stabilization'])} 突破{len(results['volume_breakout'])}")
+    
+    results['total_scanned'] = scanned
+    print(f"\n✅ 扫描完成: 扫描{scanned}只, "
+          f"企稳信号{len(results['stabilization'])}只, "
+          f"放量突破{len(results['volume_breakout'])}只")
+    
+    # 排序
+    results['stabilization'].sort(key=lambda x: x['score'], reverse=True)
+    results['volume_breakout'].sort(key=lambda x: x['score'], reverse=True)
+    
+    return results
+
+
+def print_signal_scan_report(results):
+    """打印信号扫描报告"""
+    if not results or not results.get('stabilization') and not results.get('volume_breakout'):
+        print("\n⚠ 未扫描到任何信号")
+        return
+    
+    print("\n" + "="*70)
+    print("📋 涨停后信号扫描报告")
+    print("="*70)
+    print(f"扫描总数: {results.get('total_scanned', 0)} 只")
+    print(f"企稳信号: {len(results['stabilization'])} 只")
+    print(f"放量突破: {len(results['volume_breakout'])} 只")
+    
+    # ── 企稳信号 ──
+    stab = results['stabilization']
+    if stab:
+        print("\n" + "-"*70)
+        print(f"🟢 一、企稳信号 (共{len(stab)}只, 展示前20)")
+        print("-"*70)
+        
+        # 按信号特征分组显示
+        for i, s in enumerate(stab[:20], 1):
+            features_str = " | ".join(s['features'][:3])
+            callback_str = f"回调{s['callback']:.1f}%" if s['callback'] != 0 else ""
+            print(f"\n{i:2d}. {s['name']:8s}({s['ts_code']}) 评分{s['score']:.0f} {callback_str}")
+            print(f"    信号: {features_str}")
+    
+    # ── 放量突破 ──
+    breakout = results['volume_breakout']
+    if breakout:
+        print("\n" + "-"*70)
+        print(f"🔴 二、放量突破 (共{len(breakout)}只, 展示前20)")
+        print("-"*70)
+        
+        # 按信号强弱分组
+        strong = [b for b in breakout if b.get('level') == '强信号']
+        medium = [b for b in breakout if b.get('level') == '中信号']
+        weak = [b for b in breakout if b.get('level') == '弱信号']
+        
+        def print_breakout_group(label, items):
+            if items:
+                print(f"\n  [{label}]")
+                for s in items[:10]:
+                    detail = s['detail'][:60]
+                    print(f"    {s['name']:8s}({s['ts_code']}) 评分{s['score']:.0f} "
+                          f"涨幅+{s['latest_chg']:.1f}% 量比{s['vol_ratio']:.1f} 调整{s['days_since_zt']}天")
+                    print(f"      {detail}")
+        
+        print_breakout_group("🔥 强信号", strong)
+        print_breakout_group("📈 中信号", medium)
+        print_breakout_group("🔸 弱信号", weak)
+    
+    # ── 汇总推荐 ──
+    print("\n" + "="*70)
+    print("🎯 综合推荐（企稳+突破信号共振）")
+    print("="*70)
+    ts_codes_stab = {s['ts_code'] for s in stab}
+    ts_codes_break = {b['ts_code'] for b in breakout}
+    both = ts_codes_stab & ts_codes_break
+    
+    if both:
+        for ts_code in both:
+            s = next((x for x in stab if x['ts_code'] == ts_code), None)
+            b = next((x for x in breakout if x['ts_code'] == ts_code), None)
+            if s and b:
+                print(f"  {s['name']:8s}({ts_code}) 企稳{s['score']:.0f}+突破{b['score']:.0f}")
+    else:
+        # 各自取前3作为推荐
+        print("  [企稳信号 TOP 3]")
+        for s in stab[:3]:
+            print(f"  {s['name']:8s}({s['ts_code']}) 评分{s['score']:.0f} {' | '.join(s['features'][:2])}")
+        print("  [放量突破 TOP 3]")
+        for b in breakout[:3]:
+            print(f"  {b['name']:8s}({b['ts_code']}) 评分{b['score']:.0f} {b['detail'][:50]}")
+    
+    print(f"\n{'='*70}")
+    print("信号扫描完成")
+    print(f"{'='*70}")
+
+
+# ============ 信号扫描功能结束 ============
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='每日涨停跟踪与复盘系统')
@@ -2247,6 +2676,8 @@ if __name__ == "__main__":
                        help='最低二波概率')
     parser.add_argument('--export',
                        help='导出CSV文件路径')
+    parser.add_argument('--scan-signals', action='store_true',
+                       help='扫描涨停后企稳/突破信号')
     
     args = parser.parse_args()
     
@@ -2256,6 +2687,14 @@ if __name__ == "__main__":
     # 清理缓存模式
     if args.clear_cache:
         clear_cache()
+        sys.exit(0)
+    
+    # 信号扫描模式
+    if args.scan_signals:
+        init_sqlite_db()
+        end = args.trade_date or args.end_date or datetime.now().strftime('%Y%m%d')
+        results = scan_stock_signals(end_date=end, max_stocks=200)
+        print_signal_scan_report(results)
         sys.exit(0)
     
     # 回溯历史数据模式
