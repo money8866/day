@@ -1322,7 +1322,7 @@ def ask_qwen(prompt):
     )
 
     completion = client.chat.completions.create(
-        model="qwen-plus",
+        model="qwen3-max",
         messages=[
             {"role": "user", "content": prompt}
         ]
@@ -1882,6 +1882,9 @@ def run():
 4、历史个股分析:输出1-2个调整到位可能启动的个股(只要爆发力最强和近期主线关联最紧密的两个,考虑主线轮动因素),要求理由清晰且有数据支撑，并给出买卖点/未来上涨空间预估
 5、附上属于主线板块的个股列表(严格按今日量化候选股票池输出,按个股综合评分从高到低排序,显示序号)，并给出每只股票的综合评分和相关主线，供读者参考
 
+禁止猜测。
+禁止根据经验判断。
+所有结论必须引用输入数据。
 
 """
     print("\n========== DeepSeek ==========\n")
@@ -1891,7 +1894,7 @@ def run():
     with open(
         os.path.join(
             REPORT_DIR,
-            f"QwenPlus_Self_{TRADE_DATE}.md"
+            f"Qwen3Max_Self_{TRADE_DATE}.md"    
         ),
         "w",
         encoding="utf-8"

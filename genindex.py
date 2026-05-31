@@ -101,22 +101,23 @@ def generate_index_html():
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #0f1419;
-            color: #e7e9ea;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            color: #333;
             line-height: 1.6;
             padding: 20px;
         }}
         .container {{ max-width: 1200px; margin: 0 auto; }}
         .header {{
-            background: linear-gradient(135deg, #1a1f25 0%, #2d333b 100%);
+            background: linear-gradient(135deg, #1a5fb4 0%, #3584e4 100%);
             padding: 40px;
-            border-radius: 16px;
+            border-radius: 12px;
             margin-bottom: 30px;
             text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }}
-        .header h1 {{ color: #4ade80; font-size: 32px; margin-bottom: 10px; }}
-        .header .subtitle {{ color: #8b949e; font-size: 16px; }}
+        .header h1 {{ color: #fff; font-size: 32px; margin-bottom: 10px; }}
+        .header .subtitle {{ color: rgba(255,255,255,0.9); font-size: 16px; }}
         .stats {{
             display: flex;
             justify-content: center;
@@ -126,59 +127,60 @@ def generate_index_html():
         .stat {{
             text-align: center;
         }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #58a6ff; }}
-        .stat-label {{ color: #6e7681; font-size: 14px; }}
+        .stat-value {{ font-size: 28px; font-weight: bold; color: #fff; }}
+        .stat-label {{ color: rgba(255,255,255,0.8); font-size: 14px; }}
         table {{
             width: 100%;
             border-collapse: collapse;
-            background: #161b22;
+            background: #fff;
             border-radius: 12px;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }}
         th, td {{
             padding: 16px 20px;
             text-align: left;
-            border-bottom: 1px solid #30363d;
+            border-bottom: 1px solid #eee;
         }}
         th {{
-            background: #1c2128;
-            color: #8b949e;
+            background: #fafafa;
+            color: #666;
             font-weight: 500;
             font-size: 14px;
         }}
-        tr:hover {{ background: #1c2128; }}
+        tr:hover {{ background: #f9f9f9; }}
         .date {{
-            color: #58a6ff;
+            color: #1a5fb4;
             font-weight: 500;
             white-space: nowrap;
         }}
-        .time {{ color: #6e7681; font-size: 14px; white-space: nowrap; }}
+        .time {{ color: #999; font-size: 14px; white-space: nowrap; }}
         .report-link {{
             display: inline-block;
-            background: #238636;
-            color: white;
+            background: #1a5fb4;
+            color: #fff;
             padding: 4px 12px;
-            border-radius: 12px;
+            border-radius: 4px;
             font-size: 13px;
             margin: 2px 4px;
             text-decoration: none;
             transition: background 0.2s;
         }}
-        .report-link:hover {{ background: #2ea043; }}
+        .report-link:hover {{ background: #3584e4; }}
         .footer {{
             text-align: center;
-            color: #6e7681;
+            color: #999;
             margin-top: 30px;
             padding: 20px;
             font-size: 13px;
         }}
-        .update-time {{ color: #4ade80; }}
+        .update-time {{ color: #1a5fb4; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📈 每日复盘报告索引</h1>
+            <h1>&#128200; 每日复盘报告索引</h1>
             <div class="subtitle">整合A股各维度复盘分析报告</div>
             <div class="stats">
                 <div class="stat">
@@ -205,7 +207,7 @@ def generate_index_html():
                 </tr>
             </thead>
             <tbody>
-                {report_rows if report_rows else '<tr><td colspan="3" style="text-align:center;color:#6e7681;">暂无报告数据</td></tr>'}
+                {report_rows if report_rows else '<tr><td colspan="3" style="text-align:center;color:#999;">暂无报告数据</td></tr>'}
             </tbody>
         </table>
 
