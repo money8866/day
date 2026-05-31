@@ -222,7 +222,12 @@ def generate_index_html():
     with open(index_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
 
+    root_index_file = os.path.join(BASE_DIR, "index.html")
+    with open(root_index_file, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
     print(f"索引页面已生成: {index_file}")
+    print(f"根目录索引已生成: {root_index_file}")
     return index_file
 
 if __name__ == '__main__':
