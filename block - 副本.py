@@ -2,7 +2,6 @@ import os
 import time
 import random
 import pickle
-import glob
 import tushare as ts
 import pandas as pd
 import json
@@ -85,45 +84,23 @@ CONCEPT_STOCK_PATH = os.path.join(
 # =========================================================
 
 def load_theme_map():
-    """
-    加载主题配置（从 theme.json 读取）
-    如果 theme.json 比缓存更新，自动清除旧缓存
-    """
-    theme_file = os.path.join(BASE_DIR, "theme.json")
-    
-    if not os.path.exists(theme_file):
-        raise FileNotFoundError(f"配置不存在: {theme_file}")
-    
-    # 检查 theme.json 是否比缓存更新
-    theme_mtime = os.path.getmtime(theme_file)
-    
-    old_cache_stock = os.path.join(CACHE_DIR, "stock_concept_map.pkl")
-    old_cache_concept = os.path.join(CACHE_DIR, "concept_stock_map.pkl")
-    
-    # 旧的非日期缓存文件如果存在，说明是旧格式，需要删除
-    for old_cache in [old_cache_stock, old_cache_concept]:
-        if os.path.exists(old_cache):
-            cache_mtime = os.path.getmtime(old_cache)
-            if theme_mtime > cache_mtime:
-                print(f"检测到 theme.json 已更新，清除旧缓存...")
-                try:
-                    os.remove(old_cache)
-                except:
-                    pass
-                # 同时删除带日期的旧缓存
-                for date_cache in glob.glob(os.path.join(CACHE_DIR, f"{os.path.basename(old_cache).split('.')[0]}_*.pkl")):
-                    try:
-                        os.remove(date_cache)
-                    except:
-                        pass
 
-    # 读取 theme.json
-    with open(theme_file, "r", encoding="utf-8") as f:
-        theme_data = json.load(f)
-    
-    theme_map = theme_data.get("HOT_THEMES", {})
-    
-    print(f"主题配置加载完成，共 {len(theme_map)} 个主题")
+    file_path = os.path.join(
+        BASE_DIR,
+        "theme_map.json"
+    )
+
+    if not os.path.exists(file_path):
+
+        raise FileNotFoundError(
+            f"配置不存在: {file_path}"
+        )
+
+    with open(file_path, "r", encoding="utf-8") as f:
+
+        theme_map = json.load(f)
+
+    print("主题配置加载完成")
 
     return theme_map
 
@@ -257,24 +234,26 @@ def download_ths_members(concept_df):
 # =========================================================
 # 构建 股票 -> 概念
 # =========================================================
-# 构建 股票 -> 概念（带缓存，按天更新）
+# =========================================================
+# 构建 股票 -> 概念（带缓存）
 # =========================================================
 def build_stock_concept_map(member_df):
-    # 缓存文件名加上日期，按天更新
-    cache_file = os.path.join(CACHE_DIR, f"stock_concept_map_{TRADE_DATE}.pkl")
 
-    # ========= 缓存命中（当天） =========
-    if os.path.exists(cache_file):
-        print(f"读取当日缓存: {cache_file}")
-        with open(cache_file, "rb") as f:
+    # ========= 缓存命中 =========
+    if os.path.exists(STOCK_CONCEPT_PATH):
+        print(f"读取缓存: {STOCK_CONCEPT_PATH}")
+
+        with open(STOCK_CONCEPT_PATH, "rb") as f:
             return pickle.load(f)
 
     # ========= 重新生成 =========
     stock_map = defaultdict(list)
 
     for _, row in member_df.iterrows():
-        ts_code = row["con_code"]
+
+        ts_code = row["ts_code"]
         concept = row["concept_name"]
+
         stock_map[ts_code].append(concept)
 
     stock_map = {
@@ -283,10 +262,10 @@ def build_stock_concept_map(member_df):
     }
 
     # ========= 写缓存 =========
-    with open(cache_file, "wb") as f:
+    with open(STOCK_CONCEPT_PATH, "wb") as f:
         pickle.dump(stock_map, f)
 
-    print(f"股票概念映射已保存: {cache_file}")
+    print(f"股票概念映射已保存: {STOCK_CONCEPT_PATH}")
 
     return stock_map
 
@@ -296,24 +275,23 @@ def build_stock_concept_map(member_df):
 # =========================================================
 # 构建 概念 -> 股票（带缓存）
 # =========================================================
-# 构建 概念 -> 股票（带缓存，按天更新）
-# =========================================================
 def build_concept_stock_map(member_df):
-    # 缓存文件名加上日期，按天更新
-    cache_file = os.path.join(CACHE_DIR, f"concept_stock_map_{TRADE_DATE}.pkl")
 
-    # ========= 缓存命中（当天） =========
-    if os.path.exists(cache_file):
-        print(f"读取当日缓存: {cache_file}")
-        with open(cache_file, "rb") as f:
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_STOCK_PATH):
+        print(f"读取缓存: {CONCEPT_STOCK_PATH}")
+
+        with open(CONCEPT_STOCK_PATH, "rb") as f:
             return pickle.load(f)
 
     # ========= 重新生成 =========
     concept_map = defaultdict(list)
 
     for _, row in member_df.iterrows():
+
         ts_code = row["ts_code"]
         concept = row["concept_name"]
+
         concept_map[concept].append(ts_code)
 
     concept_map = {
@@ -322,10 +300,10 @@ def build_concept_stock_map(member_df):
     }
 
     # ========= 写缓存 =========
-    with open(cache_file, "wb") as f:
+    with open(CONCEPT_STOCK_PATH, "wb") as f:
         pickle.dump(concept_map, f)
 
-    print(f"概念股票映射已保存: {cache_file}")
+    print(f"概念股票映射已保存: {CONCEPT_STOCK_PATH}")
 
     return concept_map
 
@@ -334,8 +312,9 @@ def build_concept_stock_map(member_df):
 # 读取股票概念缓存
 # =========================================================
 def load_stock_concept_map():
-    cache_file = os.path.join(CACHE_DIR, f"stock_concept_map_{TRADE_DATE}.pkl")
-    with open(cache_file, "rb") as f:
+
+    with open(STOCK_CONCEPT_PATH, "rb") as f:
+
         return pickle.load(f)
 
 
@@ -343,11 +322,123 @@ def load_stock_concept_map():
 # 读取概念股票缓存
 # =========================================================
 def load_concept_stock_map():
-    cache_file = os.path.join(CACHE_DIR, f"concept_stock_map_{TRADE_DATE}.pkl")
-    with open(cache_file, "rb") as f:
+
+    with open(CONCEPT_STOCK_PATH, "rb") as f:
 
         return pickle.load(f)
 
+# =========================================================
+# 主线分析（行业 + 概念关键词）
+# =========================================================
+def analyze_themes1(
+
+    daily_df,
+
+    industry_df,
+
+    min_stocks=5
+):
+
+    result = []
+
+    for theme, cfg in THEME_MAP.items():
+
+        # -------------------------------------------------
+        # 行业匹配
+        # -------------------------------------------------
+        industry_mask = industry_df.apply(
+
+            lambda x:
+
+                (x.get("l2_name") in cfg["industry"])
+
+                or
+
+                (x.get("l3_name") in cfg["industry"]),
+
+            axis=1
+        )
+
+        # -------------------------------------------------
+        # 概念关键词匹配
+        # -------------------------------------------------
+        keyword_mask = industry_df.apply(
+
+            lambda x:
+
+                any(
+
+                    kw in str(x.get("concept", ""))
+
+                    for kw in cfg["keywords"]
+                ),
+
+            axis=1
+        )
+
+        # -------------------------------------------------
+        # 双融合
+        # -------------------------------------------------
+        mask = industry_mask | keyword_mask
+
+        sub = industry_df[mask]
+
+        stocks = sub["ts_code"].dropna().unique().tolist()
+
+        if len(stocks) < min_stocks:
+            continue
+
+        df = daily_df[
+            daily_df["ts_code"].isin(stocks)
+        ]
+
+        if df.empty:
+            continue
+
+        # -------------------------------------------------
+        # 板块评分
+        # -------------------------------------------------
+        leader_height, zt_ratio, max_lb = calc_leader_height_factor(stocks)
+        score = calc_sector_score(df, stocks)
+
+        # 龙头
+        leader = (
+            df.sort_values(
+                "pct_chg",
+                ascending=False
+            )
+            .iloc[0]
+        )
+
+        result.append({
+
+            "主线": theme,
+
+            "评分": round(score, 2),
+
+            "成分股数": len(stocks),
+
+            "龙头代码": leader["ts_code"],
+
+            "龙头涨幅": round(
+                leader["pct_chg"],
+                2
+            ),
+            "龙头高度": leader_height,
+            "涨停占比": zt_ratio,
+            "连板高度": max_lb
+        })
+
+    result = pd.DataFrame(result)
+
+    if not result.empty:
+
+        result = result.sort_values(
+            "评分",
+            ascending=False
+        )
+
+    return result
 
 
 # =========================================================
@@ -1217,23 +1308,24 @@ def analyze_concepts(daily_df):
 # 主题分析（替代概念）
 # =========================================================
 def analyze_themes(daily_df, industry_df):
+
     result = []
 
     for theme, cfg in THEME_MAP.items():
-        # 获取配置项，支持 theme.json 格式
-        industry_list = cfg.get("industry", [])
-        keyword_list = cfg.get("keywords", [])
-        exclude_keywords = cfg.get("exclude_keywords", [])
 
         # -------------------------------------------------
-        # 行业匹配（支持 l1_name, l2_name, l3_name）
+        # 行业匹配
         # -------------------------------------------------
         industry_mask = industry_df.apply(
-            lambda x, ind_list=industry_list: (
-                (x.get("l1_name") in ind_list) or
-                (x.get("l2_name") in ind_list) or
-                (x.get("l3_name") in ind_list)
-            ),
+
+            lambda x:
+
+                (x.get("l2_name") in cfg["industry"])
+
+                or
+
+                (x.get("l3_name") in cfg["industry"]),
+
             axis=1
         )
 
@@ -1241,26 +1333,22 @@ def analyze_themes(daily_df, industry_df):
         # 概念关键词匹配
         # -------------------------------------------------
         keyword_mask = industry_df.apply(
-            lambda x, kw_list=keyword_list: any(
-                kw in str(x.get("concept", "")) for kw in kw_list
-            ),
+
+            lambda x:
+
+                any(
+
+                    kw in str(x.get("concept", ""))
+
+                    for kw in cfg["keywords"]
+                ),
+
             axis=1
         )
-
-        # -------------------------------------------------
-        # 排除关键词过滤（剔除包含 exclude_keywords 的个股）
-        # -------------------------------------------------
-        exclude_mask = industry_df.apply(
-            lambda x, ex_kw=exclude_keywords: not any(
-                kw in str(x.get("concept", "")) for kw in ex_kw
-            ),
-            axis=1
-        )
-
         # =========================
-        # 三重融合：行业匹配 OR 关键词匹配 AND 不被排除
+        # 双融合
         # =========================
-        mask = (industry_mask | keyword_mask) & exclude_mask
+        mask = industry_mask | keyword_mask
         
 
         sub = industry_df[mask]

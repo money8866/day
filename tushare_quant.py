@@ -1316,22 +1316,39 @@ def ask_doubao(prompt):
 from openai import OpenAI
 ##== 千问 ==##
 def ask_qwen(prompt):
-    client = OpenAI(
-        api_key=QWEN_API_KEY,
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-    )
-
-    completion = client.chat.completions.create(
-        model="qwen3-max",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
     try:
-        return completion.choices[0].message.content
+        client = OpenAI(
+            api_key=QWEN_API_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+
+        completion = client.chat.completions.create(
+            model="qwen3-max",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是专业A股机构分析师"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            # 稳定输出参数
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=40960
+        )
+
+        if completion and completion.choices and len(completion.choices) > 0:
+            message = completion.choices[0].message
+            if message and hasattr(message, 'content'):
+                return message.content
+        print("千问接口返回数据格式异常")
+        return ""
     except Exception as e:
-        print("千问接口错误:", e)
-        return       ""
+        print(f"千问接口错误: {str(e)}")
+        return ""
     
 
 
@@ -1839,13 +1856,33 @@ def run():
     stock_his_df=load_history()
     stock_his_text = str(stock_his_df)
 
+    limit_stats = emotion.get_limit_stats()
+    max_lb_height = emotion.calc_max_limit_height()
 
-    #return 
+    limit_info = f"""
+涨跌停数据：
+- 涨停数量: {limit_stats['zt_count']}只
+- 跌停数量: {limit_stats['dt_count']}只
+- 炸板率: {limit_stats['broken_rate']}%
+- 最高连板高度: {max_lb_height}连板
+"""
+
+    try:
+        lb_df = pro.limit_step(trade_date=TRADE_DATE)
+        if lb_df is not None and not lb_df.empty:
+            lb_text = lb_df.to_string(index=False)
+            limit_info += f"\n连板天梯详情：\n{lb_text}"
+    except Exception as e:
+        print(f"连板天梯获取失败: {e}")
+
+    #return
     prompt = f"""
 
 当前市场情绪：
 
 {emotion_text}
+
+{limit_info}
 
 当前最强主线列表：
 
@@ -1885,9 +1922,12 @@ def run():
 禁止猜测。
 禁止根据经验判断。
 所有结论必须引用输入数据。
+特别注意：
+- 涨停数量、跌停数量、炸板率、连板高度等数据必须使用上面提供的实际数据
+- 不要添加任何未在输入数据中出现的具体股票事实（如"某股5连板"等）
 
 """
-    print("\n========== DeepSeek ==========\n")
+    print("\n========== Qwen3Max ==========\n")
     report = ask_qwen(prompt)
     print(report)
 
@@ -1905,7 +1945,7 @@ def run():
     report_ds = report
 
 ##==Doubao==##
-    print("\n========== Kimi ==========\n")
+    print("\n========== Minimax ==========\n")
 
     report = minimax(prompt)
     
@@ -1926,13 +1966,13 @@ def run():
     report_doubao = report
 
 ##==Final==##
-    print("\n========== Final ==========\n")
+    print("\n========== Final Report (Deepseek)==========\n")
     prompt = f"""
 请仔细阅读以下两份报告，分别来自不同的AI模型，
 内容都是基于同一份市场数据和个股数据分析得出的。
-Deepseek的报告:{report_ds};
-Kimi的报告:{report_doubao};
-请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取DeepSeek的报告即可,输出一个最终的复盘总结和个股推荐。
+Qwen3Max的报告:{report_ds};
+Minimax的报告:{report_doubao};
+请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取Qwen3Max的报告即可,输出一个最终的复盘总结和个股推荐。
 
 输出内容：
 标题：每日复盘({TRADE_DATE})

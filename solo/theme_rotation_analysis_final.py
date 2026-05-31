@@ -922,18 +922,49 @@ def get_trade_dates(n_days=25):
     return _trade_dates_cache
 
 # =========================
-# 从CSV文件加载主题成份股
+# 从SQLite数据库加载主题成份股（备用：从CSV文件加载）
 # =========================
 def load_theme_portfolio_from_csv():
+    # 优先从SQLite数据库加载
+    db_path = os.path.join(CACHE_DIR, "theme_portfolio.db")
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio'")
+            if cursor.fetchone():
+                cursor.execute("SELECT COUNT(*) FROM portfolio")
+                count = cursor.fetchone()[0]
+                if count > 0:
+                    cursor.execute("SELECT ts_code, name, theme_name FROM portfolio")
+                    rows = cursor.fetchall()
+                    conn.close()
+
+                    theme_stocks_map = {}
+                    name_map = {}
+                    for ts_code, name, theme_name in rows:
+                        if theme_name not in theme_stocks_map:
+                            theme_stocks_map[theme_name] = []
+                        theme_stocks_map[theme_name].append(ts_code)
+                        if ts_code not in name_map:
+                            name_map[ts_code] = name
+
+                    print(f"从数据库加载主题投资组合: {len(theme_stocks_map)} 个主题，{len(name_map)} 只股票")
+                    return theme_stocks_map, name_map
+            conn.close()
+        except Exception as e:
+            print(f"从数据库加载失败，尝试CSV文件: {e}")
+    
+    # 回退到从CSV文件加载
     csv_pattern = os.path.join(CACHE_DIR, "theme_portfolio_*.csv")
     csv_files = glob.glob(csv_pattern)
     
     if not csv_files:
-        print("未找到主题投资组合CSV文件，请先运行 theme_portfolio_strategy_cached.py")
+        print("未找到主题投资组合数据，请先运行 theme_portfolio_strategy_cached.py")
         return {}, {}
     
     latest_file = max(csv_files, key=os.path.getmtime)
-    print(f"加载主题投资组合: {latest_file}")
+    print(f"从CSV文件加载主题投资组合: {latest_file}")
     
     df = pd.read_csv(latest_file, encoding='utf-8-sig')
     
@@ -2973,7 +3004,7 @@ def save_final_results(ranked_themes, theme_leaders, theme_summary, trade_dates)
     ranking_df = pd.DataFrame(ranking_data)
     ranking_file = os.path.join(CACHE_DIR, f"theme_ranking_final_{trade_dates[-1]}.csv")
     ranking_df.to_csv(ranking_file, index=False, encoding='utf-8-sig')
-    print(f"\n✓ 主题排名已保存: {ranking_file}")
+    print(f"\n✓ 主题排名已保存至DB和CSV: {ranking_file}")
     
     leaders_data = []
     for theme, leaders in theme_leaders.items():
@@ -3002,7 +3033,7 @@ def save_final_results(ranked_themes, theme_leaders, theme_summary, trade_dates)
     leaders_df = pd.DataFrame(leaders_data)
     leaders_file = os.path.join(CACHE_DIR, f"theme_leaders_final_{trade_dates[-1]}.csv")
     leaders_df.to_csv(leaders_file, index=False, encoding='utf-8-sig')
-    print(f"✓ 龙头股列表已保存: {leaders_file}")
+    print(f"✓ 龙头股列表已保存至DB和CSV: {leaders_file}")
 
 # =========================
 # 微信推送功能

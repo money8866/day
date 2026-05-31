@@ -36,6 +36,8 @@ load_dotenv(DOTENV_PATH)
 CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+SCKEY = os.getenv("WECHAT_SCKEY")
+
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 pro = ts.pro_api(TUSHARE_TOKEN)
 
@@ -45,6 +47,57 @@ QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 # 从父目录导入千问AI接口
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tushare_quant import ask_qwen
+
+try:
+    from openai import OpenAI
+    QWEN_SEARCH_AVAILABLE = True
+except ImportError:
+    QWEN_SEARCH_AVAILABLE = False
+
+
+def ask_qwen_with_search(prompt):
+    """千问通义千问联网搜索版 - 可搜索网络资讯验证基本面"""
+    if not QWEN_API_KEY:
+        return ""
+    if not QWEN_SEARCH_AVAILABLE:
+        return ask_qwen(prompt)
+    try:
+        client = OpenAI(
+            api_key=QWEN_API_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        completion = client.chat.completions.create(
+            model="qwen3-max",
+            messages=[
+                {"role": "system", "content": "你是专业A股机构分析师，请联网搜索核实每只股票的近期基本面信息"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=40960,
+            extra_body={"enable_search": True}
+        )
+        if completion and completion.choices and len(completion.choices) > 0:
+            message = completion.choices[0].message
+            if message and hasattr(message, 'content'):
+                return message.content
+        return ""
+    except Exception as e:
+        print(f"千问联网搜索失败，回退普通模式: {e}")
+        return ask_qwen(prompt)
+
+
+def send_serverchan_push(title, content):
+    """通过Server酱发送微信推送"""
+    if not SCKEY:
+        print("⚠ 未配置WECHAT_SCKEY，跳过微信推送")
+        return
+    url = f"https://sctapi.ftqq.com/{SCKEY}.send"
+    try:
+        resp = requests.post(url, data={"title": title[:100], "desp": content[:20000]}, timeout=15)
+        print(f"📱 微信推送完成: {resp.status_code}")
+    except Exception as e:
+        print(f"❌ 微信推送失败: {e}")
 
 
 def get_last_trade_date():
@@ -250,11 +303,17 @@ def qwen_stock_validator(selected_stocks, market_emotion, theme_info):
     prompt = f"""你是一位资深的A股短线游资专家，精通情绪周期、主力动向和技术分析。
 
 【重要约束 - 请严格遵守】
-1. 你只能使用下方提供的候选个股列表中的数据，禁止编造任何未提供的数据
-2. 对于价格、涨跌幅等数据，必须以上方"当前价格"和"今日涨跌幅"为准
-3. 如果某项数据标记为"N/A"，请明确说明"数据未提供"，不得自行假设或推测
-4. 买卖点建议必须基于提供的当前价格计算，绝对不能使用你自行编造的价格
-5. 所有分析结论必须来源于提供的数据特征，不得凭空臆测
+1. 请使用联网搜索核实每只股票的**近期基本面信息**，包括但不限于：
+   - 近三个月有无定增预案或减持公告
+   - 未来半年有无解禁压力
+   - 有无重大诉讼或财务风险
+   - 机构持仓是否有明显变化
+   - 是否属于ST或业绩变脸股
+2. 你只能使用下方提供的候选个股列表中的数据，禁止编造任何未提供的数据
+3. 对于价格、涨跌幅等数据，必须以上方"当前价格"和"今日涨跌幅"为准
+4. 如果某项数据标记为"N/A"，请明确说明"数据未提供"，不得自行假设或推测
+5. 买卖点建议必须基于提供的当前价格计算，绝对不能使用你自行编造的价格
+6. 所有分析结论必须来源于提供的数据特征或联网搜索到的真实信息，不得凭空臆测
 
 当前市场背景：
 {emotion_text}
@@ -264,13 +323,14 @@ def qwen_stock_validator(selected_stocks, market_emotion, theme_info):
 
 请进行深度AI验证分析：
 
-## 1. 基本面风险过滤（必须逐个排查）
+## 1. 基本面风险过滤（必须逐个排查，请联网搜索核实）
 对每个股票排查以下风险：
 - 近三个月有无定增预案或减持公告
 - 未来半年有无解禁压力
 - 有无重大诉讼或财务风险
 - 机构持仓是否稳定
 - 是否属于ST或业绩变脸股
+- 近期有无负面新闻或舆情风险
 
 ## 2. 情绪面强化分析
 结合当前大盘情绪和市场阶段：
@@ -312,7 +372,7 @@ def qwen_stock_validator(selected_stocks, market_emotion, theme_info):
     
     try:
         print("\n========== Qwen千问AI选股验证 ==========\n")
-        report = ask_qwen(prompt)
+        report = ask_qwen_with_search(prompt)
         print(report)
         return selected_stocks, report
     except Exception as e:
@@ -951,6 +1011,36 @@ def cached_daily(ts_code, start_date, end_date):
         return pd.DataFrame()
 
 _trade_dates_cache = None
+_bulk_daily_cache = {}  # {ts_code: DataFrame} 批量预加载缓存
+
+
+def preload_bulk_daily_data(all_ts_codes, start_date, end_date):
+    """批量预加载所有股票日线数据（一次API调用），避免逐只股票分别请求"""
+    global _bulk_daily_cache
+    if not all_ts_codes:
+        return
+
+    need_codes = [c for c in all_ts_codes if c not in _bulk_daily_cache]
+    if not need_codes:
+        return
+
+    print(f"\n⏳ 批量预加载 {len(need_codes)} 只股票日线数据 ({start_date}~{end_date})...")
+    batch_size = 2000
+    total = 0
+    for i in range(0, len(need_codes), batch_size):
+        batch = need_codes[i:i + batch_size]
+        try:
+            df = pro.daily(ts_code=','.join(batch), start_date=start_date, end_date=end_date)
+            if df is not None and not df.empty:
+                for ts_code in df['ts_code'].unique():
+                    sub = df[df['ts_code'] == ts_code].copy()
+                    sub['trade_date'] = sub['trade_date'].astype(str)
+                    _bulk_daily_cache[ts_code] = sub.sort_values('trade_date').reset_index(drop=True)
+                total += len(df['ts_code'].unique())
+        except Exception as e:
+            print(f"  ⚠ 批量加载部分失败: {e}")
+        time.sleep(0.2)
+    print(f"✅ 批量预加载完成: {total} / {len(need_codes)} 只股票")
 
 def get_trade_dates(n_days=25):
     global _trade_dates_cache
@@ -972,18 +1062,49 @@ def get_trade_dates(n_days=25):
     return _trade_dates_cache
 
 # =========================
-# 从CSV文件加载主题成份股
+# 从SQLite数据库加载主题成份股（备用：从CSV文件加载）
 # =========================
 def load_theme_portfolio_from_csv():
+    # 优先从SQLite数据库加载
+    db_path = os.path.join(CACHE_DIR, "theme_portfolio.db")
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio'")
+            if cursor.fetchone():
+                cursor.execute("SELECT COUNT(*) FROM portfolio")
+                count = cursor.fetchone()[0]
+                if count > 0:
+                    cursor.execute("SELECT ts_code, name, theme_name FROM portfolio")
+                    rows = cursor.fetchall()
+                    conn.close()
+
+                    theme_stocks_map = {}
+                    name_map = {}
+                    for ts_code, name, theme_name in rows:
+                        if theme_name not in theme_stocks_map:
+                            theme_stocks_map[theme_name] = []
+                        theme_stocks_map[theme_name].append(ts_code)
+                        if ts_code not in name_map:
+                            name_map[ts_code] = name
+
+                    print(f"从数据库加载主题投资组合: {len(theme_stocks_map)} 个主题，{len(name_map)} 只股票")
+                    return theme_stocks_map, name_map
+            conn.close()
+        except Exception as e:
+            print(f"从数据库加载失败，尝试CSV文件: {e}")
+    
+    # 回退到从CSV文件加载
     csv_pattern = os.path.join(CACHE_DIR, "theme_portfolio_*.csv")
     csv_files = glob.glob(csv_pattern)
     
     if not csv_files:
-        print("未找到主题投资组合CSV文件，请先运行 theme_portfolio_strategy_cached.py")
+        print("未找到主题投资组合数据，请先运行 theme_portfolio_strategy_cached.py")
         return {}, {}
     
     latest_file = max(csv_files, key=os.path.getmtime)
-    print(f"加载主题投资组合: {latest_file}")
+    print(f"从CSV文件加载主题投资组合: {latest_file}")
     
     df = pd.read_csv(latest_file, encoding='utf-8-sig')
     
@@ -1009,6 +1130,12 @@ def load_theme_portfolio_from_csv():
 # 获取股票历史数据
 # =========================
 def get_stock_history(ts_code, n_days=25):
+    # 优先使用批量预加载缓存
+    if ts_code in _bulk_daily_cache:
+        df = _bulk_daily_cache[ts_code].copy()
+        if df is not None and not df.empty and len(df) >= 3:
+            return df.sort_values('trade_date').reset_index(drop=True)
+    
     trade_dates = get_trade_dates(n_days)
     start_date = trade_dates[0]
     end_date = trade_dates[-1]
@@ -1762,6 +1889,15 @@ def get_strategy_recommendations(ranked_themes, theme_leaders, theme_summary):
             leader_copy['theme_rank_change'] = theme_summary.get(theme, {}).get('rank_change', 0)
             all_leaders.append(leader_copy)
     
+    # 按ts_code去重（防止同一股票因跨主题重复出现）
+    seen_codes = set()
+    deduped_leaders = []
+    for l in all_leaders:
+        if l['ts_code'] not in seen_codes:
+            seen_codes.add(l['ts_code'])
+            deduped_leaders.append(l)
+    all_leaders = deduped_leaders
+    
     strong_leaders = [
         l for l in all_leaders
         if l['total_score'] > 80
@@ -2090,6 +2226,14 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
     print("每日盘后复盘报告 - 游资风格优化版")
     print("="*100)
     
+    # 收集所有股票代码
+    all_ts_codes = set()
+    for theme_stocks in theme_stocks_map.values():
+        all_ts_codes.update(list(theme_stocks)[:50])
+    
+    # 批量预加载所有日线数据（大幅提速）
+    preload_bulk_daily_data(list(all_ts_codes), trade_dates[0], trade_dates[-1])
+    
     theme_summary = calculate_theme_historical_rankings(theme_stocks_map, trade_dates)
     
     theme_scores = {}
@@ -2199,6 +2343,31 @@ def main():
     print("\n\n" + "="*100)
     print("游资风格复盘分析完成！")
     print("="*100)
+    
+    # ── 构建微信推送内容 ──
+    push_title = f"📊 盘后复盘 {TRADE_DATE}"
+    push_lines = []
+    if market_emotion:
+        push_lines.append(f"【大盘情绪】{market_emotion.get('情绪指数','N/A')}分 {market_emotion.get('市场阶段','N/A')}")
+        push_lines.append(f"涨停{market_emotion.get('涨停家数',0)}家 跌停{market_emotion.get('跌停家数',0)}家 建议仓位{market_emotion.get('最终建议仓位','N/A')}")
+        push_lines.append("")
+    push_lines.append(f"【主题 TOP 5】")
+    for rank, (theme, score) in enumerate(ranked_themes[:5], 1):
+        leaders = theme_leaders.get(theme, [])
+        leader_names = "、".join([l['name'] for l in leaders[:3]])
+        push_lines.append(f"{rank}. {theme}({score:.0f}分) {leader_names}")
+    push_lines.append("")
+    strategies = get_strategy_recommendations(ranked_themes, theme_leaders, theme_summary)
+    push_lines.append("【策略一·强者恒强】")
+    for s in strategies['strategy1'][:3]:
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+    push_lines.append("【策略二·低吸潜伏】")
+    for s in strategies['strategy2'][:3]:
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+    push_lines.append("【策略三·轮动切换】")
+    for s in strategies['strategy3'][:3]:
+        push_lines.append(f"  {s['name']}({s['ts_code'][:6]}) 评分{s['total_score']:.0f}")
+    send_serverchan_push(push_title, "\n".join(push_lines))
 
 if __name__ == "__main__":
     main()
