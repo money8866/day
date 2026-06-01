@@ -1484,120 +1484,6 @@ def calculate_wave2_probability(ts_code, trade_date, zt_history, industry=None):
     return wave2_prob, features
 
 
-def analyze_with_deepseek(ts_code, trade_date, wave2_prob, wave2_scores, stock_info):
-    """使用 DeepSeek 分析股票基本面和风格 - 优化版：增加板块热点轮动分析"""
-    if not DEEPSEEK_KEY:
-        return None
-    
-    # 获取股票基本信息
-    try:
-        basic_info = pro.stock_basic(ts_code=ts_code)
-        if basic_info is not None and not basic_info.empty:
-            name = basic_info.iloc[0]['name']
-            industry = basic_info.iloc[0]['industry']
-            market = basic_info.iloc[0]['market']
-        else:
-            name = ts_code
-            industry = "未知"
-            market = "未知"
-    except:
-        name = ts_code
-        industry = "未知"
-        market = "未知"
-    
-    # 获取近期财务数据
-    try:
-        financials = pro.fina_indicator(ts_code=ts_code, start_date='20240101')
-        if financials is not None and not financials.empty:
-            latest = financials.iloc[0]
-            roe = latest.get('roe', 'N/A')
-            gross_margin = latest.get('gross_profit_margin', 'N/A')
-            debt_ratio = latest.get('debt_ratio', 'N/A')
-        else:
-            roe = gross_margin = debt_ratio = 'N/A'
-    except:
-        roe = gross_margin = debt_ratio = 'N/A'
-    
-    # 提取特征信息
-    pullback_pct = wave2_scores.get('pullback_pct', 0)
-    price_relative = wave2_scores.get('price_relative', 0)
-    vol_ratio = wave2_scores.get('vol_ratio', 1)
-    
-    prompt = f"""你是一位专业的A股游资量化分析师。请分析以下股票是否符合"首板后二次启动"的投资逻辑。
-
-股票信息：
-- 代码：{ts_code}
-- 名称：{name}
-- 行业：{industry}
-- 市场：{market}
-- 交易日期：{trade_date}
-
-财务指标：
-- ROE：{roe}
-- 毛利率：{gross_margin}
-- 负债率：{debt_ratio}
-
-关键特征分析：
-- 回调幅度：{pullback_pct:.1f}%
-- 价格相对位置：{price_relative:.2f}（相对于涨停价）
-- 成交量缩量比：{vol_ratio:.2f}（相对于涨停时）
-
-二波量化评分（满分100）：
-- 回调幅度得分：{wave2_scores.get('wave2_scores', {}).get('pullback', 0)}/25
-- 均线多头得分：{wave2_scores.get('wave2_scores', {}).get('ma多头', 0)}/20
-- 高位震荡得分：{wave2_scores.get('wave2_scores', {}).get('高位震荡', 0)}/15
-- 缩量特征得分：{wave2_scores.get('wave2_scores', {}).get('缩量特征', 0)}/20
-- 突破前期高点得分：{wave2_scores.get('wave2_scores', {}).get('突破前期高点', 0)}/10
-- 近期涨停次数得分：{wave2_scores.get('wave2_scores', {}).get('近期涨停次数', 0)}/10
-- 市场情绪得分：{wave2_scores.get('wave2_scores', {}).get('市场情绪', 0)}/5
-
-综合二波概率：{wave2_prob}%
-
-请从以下角度分析（请用中文回复，简洁有条理，每点不超过2行）：
-
-1. **基本面匹配度**（20字内）：该股基本面是否符合游资炒作风格？
-2. **板块热点轮动**（30字内）：该股所属行业是否处于当前热点？
-3. **高位震荡缩量**（30字内）：是否符合高位震荡缩量的洗盘特征？
-4. **游资操盘特征**（40字内）：该股是否具备游资喜欢的特征？
-5. **二波启动信号**（40字内）：是否有明显的二波启动迹象？
-6. **风险提示**（30字内）：主要风险点是什么？
-
-请严格按照格式输出，每项用"**标题**：内容"的格式。
-"""
-    
-    headers = {
-        'Authorization': f'Bearer {DEEPSEEK_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": "你是一位专业的A股游资量化分析师，擅长分析游资炒作机会。"},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 800
-    }
-    
-    try:
-        resp = requests.post('https://api.deepseek.com/v1/chat/completions', 
-                            headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
-        result = resp.json()
-        analysis = result['choices'][0]['message']['content']
-        
-        return {
-            'name': name,
-            'industry': industry,
-            'analysis': analysis,
-            'wave2_prob': wave2_prob
-        }
-    except Exception as e:
-        print(f"DeepSeek 分析失败: {e}")
-        return None
-
-
 def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
     """
     批量AI分析：将技术面筛选的候选股票 + 热点板块提交给DeepSeek，
@@ -1609,10 +1495,10 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
         trade_date: 交易日期
 
     返回:
-        list: TOP5股票列表, 每项包含代码/名称/调整天数/信号类别/介入价/止损价/空间分析/逻辑分析
+        tuple: (top5列表, AI原始回复文本)
     """
     if not candidates or not DEEPSEEK_KEY:
-        return []
+        return [], ""
 
     # 构建候选股票文本
     stock_lines = []
@@ -1651,7 +1537,7 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
 === 当前热点板块 TOP15 ===
 {sector_text}
 
-请从以上候选股票中，评选出二波机会最大、上涨空间最大、基本面雷区风险最低的TOP5股票。
+请从以上候选股票中，属于上面的TOP15热点板块的股票,从中评选出二波机会最大、上涨空间最大、基本面雷区风险最低的TOP5股票。
 
 对每只入选股票，请严格按以下格式输出（每只股票一行，用|分隔各字段）：
 
@@ -1675,7 +1561,7 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "你是一位专业的A股游资量化分析师，擅长分析首板后二次启动机会。"},
+            {"role": "system", "content": "你是一位专业的A股游资量化分析师，擅长抓热点,分析首板后二次启动机会。"},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.3,
@@ -1688,12 +1574,12 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
                             headers=headers, json=payload, timeout=120)
         resp.raise_for_status()
         result = resp.json()
-        content = result['choices'][0]['message']['content']
-        print("  DeepSeek分析完成")
+        raw_content = result['choices'][0]['message']['content']
+        print(f"  DeepSeek分析完成")
         
         # 解析AI返回结果
         top5 = []
-        lines = content.strip().split('\n')
+        lines = raw_content.strip().split('\n')
         for line in lines:
             line = line.strip()
             if not line or line.startswith('===') or line.startswith('END'):
@@ -1715,13 +1601,11 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
         
         # 如果AI返回的格式不对（没按|分割），尝试重新解析
         if not top5:
-            # 按序号找
             import re
             for line in lines:
                 line = line.strip()
                 if not line or line.startswith('===') or line.startswith('END'):
                     continue
-                # 尝试匹配 "1. 股票代码..." 格式
                 match = re.match(r'^\d+[\.\s]+(\d{6}\.\w{2})', line)
                 if match:
                     entry = {
@@ -1738,11 +1622,11 @@ def analyze_with_deepseek_bulk(candidates, hot_sectors, trade_date):
                     top5.append(entry)
         
         print(f"  AI返回TOP5数量: {len(top5)}")
-        return top5
+        return top5, raw_content
         
     except Exception as e:
         print(f"  DeepSeek批量分析失败: {e}")
-        return []
+        return [], ""
 
 
 def generate_review_report(trade_date, technical_candidates, top5, hot_sectors):
@@ -1843,6 +1727,38 @@ def generate_review_report(trade_date, technical_candidates, top5, hot_sectors):
     report.append("-"*60)
 
     return '\n'.join(report)
+
+
+def build_wechat_push_content(top5, candidates):
+    """生成简洁的微信推送内容，只展示AI TOP5个股"""
+    lines = []
+    lines.append("🌟 AI精选 TOP5")
+    lines.append("")
+
+    # 通过候选列表补全股票名称
+    name_map = {c['ts_code']: c['name'] for c in candidates}
+
+    for i, stock in enumerate(top5, 1):
+        ts_code = stock.get('ts_code', '')
+        name = stock.get('name', '') or name_map.get(ts_code, '')
+        entry = stock.get('entry_price', '')
+        stop = stock.get('stop_loss', '')
+        space = stock.get('space_analysis', '')
+        logic = stock.get('logic', '')
+
+        lines.append(f"─" * 35)
+        lines.append(f"  #{i}  {name}  {ts_code}")
+        lines.append(f"  介入: {entry}  止损: {stop}")
+        if space:
+            lines.append(f"  空间: {space}")
+        if logic:
+            lines.append(f"  逻辑: {logic}")
+
+    lines.append("")
+    lines.append("─" * 35)
+    lines.append("⚠️ 严格止损，仅供参考")
+
+    return '\n'.join(lines)
 
 
 def send_to_wechat(title, content, key=None):
@@ -2046,7 +1962,7 @@ def daily_limit_track(trade_date, force_refresh=False):
     # 6. AI批量分析
     print("\n[6/6] AI批量分析 - 评选TOP5...")
     if technical_candidates and DEEPSEEK_KEY:
-        top5 = analyze_with_deepseek_bulk(technical_candidates, hot_sectors, trade_date)
+        top5, _ = analyze_with_deepseek_bulk(technical_candidates, hot_sectors, trade_date)
     else:
         top5 = []
         if not DEEPSEEK_KEY:
@@ -2054,7 +1970,7 @@ def daily_limit_track(trade_date, force_refresh=False):
         if not technical_candidates:
             print("  ⚠ 无技术面候选股票")
     
-    # 生成报告
+    # 生成报告（保存到文件）
     report = generate_review_report(trade_date, technical_candidates, top5, hot_sectors)
     
     report_file = os.path.join(REVIEW_DIR, f"review_{trade_date}.txt")
@@ -2063,10 +1979,11 @@ def daily_limit_track(trade_date, force_refresh=False):
     
     print(f"✓ 报告已保存: {report_file}")
     
-    # 7. 推送微信
+    # 7. 推送微信（简洁版：只推TOP5）
     print("\n📱 推送微信通知...")
-    title = f"📊 每日涨停复盘 {trade_date}"
-    success = send_to_wechat(title, report)
+    title = f"📊 涨停二波追踪 {trade_date}"
+    push_content = build_wechat_push_content(top5, technical_candidates) if top5 else "今日无AI推荐结果"
+    success = send_to_wechat(title, push_content)
     
     if success:
         print("✓ 微信推送成功")

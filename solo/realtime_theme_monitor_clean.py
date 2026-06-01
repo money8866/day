@@ -102,7 +102,7 @@ class RealtimeThemeMonitor:
             if (ip, port) not in seen:
                 self.servers.append((ip, port))
                 seen.add((ip, port))
-        print(f"📡 加载通达信服务器池: {len(self.servers)} 台 (来自 pytdx hq_hosts + 补充)")
+        print(f" 加载通达信服务器池: {len(self.servers)} 台 (来自 pytdx hq_hosts + 补充)")
 
         self.sckey = os.getenv("WECHAT_SCKEY")
 
@@ -137,7 +137,7 @@ class RealtimeThemeMonitor:
         conn.close()
 
         total_stocks = sum(len(v) for v in self.theme_stocks.values())
-        print(f"✅ 从数据库加载: {len(self.theme_stocks)} 个主题, {total_stocks} 只股票")
+        print(f" 从数据库加载: {len(self.theme_stocks)} 个主题, {total_stocks} 只股票")
         print(f"   主题列表: {', '.join(self.theme_names)}")
 
     def load_ref_prices(self):
@@ -163,7 +163,7 @@ class RealtimeThemeMonitor:
             import pickle
             with open(cache_file, 'rb') as f:
                 self.ref_prices = pickle.load(f)
-            print(f"✅ 从缓存加载昨日收盘价: {len(self.ref_prices)} 只")
+            print(f" 从缓存加载昨日收盘价: {len(self.ref_prices)} 只")
             return
 
         all_codes = list(self.stock_themes.keys())
@@ -185,7 +185,7 @@ class RealtimeThemeMonitor:
         import pickle
         with open(cache_file, 'wb') as f:
             pickle.dump(self.ref_prices, f)
-        print(f"✅ 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只")
+        print(f" 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只")
 
     # ════════════════════════════════════════════
     # 2. 通达信连接
@@ -226,7 +226,7 @@ class RealtimeThemeMonitor:
             self.sorted_servers = [(h, p) for h, p, _ in results]
             self.best_server = self.sorted_servers[0]
             self.server_index = 0
-            print(f"✅ 最快服务器: {self.best_server[0]}:{self.best_server[1]} ({results[0][2]:.1f}ms)")
+            print(f" 最快服务器: {self.best_server[0]}:{self.best_server[1]} ({results[0][2]:.1f}ms)")
             print(f"   可用服务器: {len(self.sorted_servers)} 台")
         else:
             print("⚠ 未找到可用服务器，使用默认列表轮巡")
@@ -237,7 +237,7 @@ class RealtimeThemeMonitor:
         if self.connected:
             return True
         if not TDX_AVAILABLE:
-            print("❌ 通达信不可用")
+            print(" 通达信不可用")
             return False
 
         try:
@@ -250,10 +250,10 @@ class RealtimeThemeMonitor:
             self.api = TdxHq_API(heartbeat=True)
             self.connected = self.api.connect(host, port)
             if self.connected:
-                print(f"✅ 通达信连接成功: {host}:{port}")
+                print(f" 通达信连接成功: {host}:{port}")
                 return True
         except Exception as e:
-            print(f"❌ 连接 {host}:{port} 失败: {e}")
+            print(f" 连接 {host}:{port} 失败: {e}")
         return False
 
     def reconnect_round_robin(self):
@@ -278,11 +278,11 @@ class RealtimeThemeMonitor:
                     self.connected = True
                     self.best_server = (host, port)
                     self.server_index = idx
-                    print(" ✅")
+                    print(" ")
                     return True
-                print(" ✗")
+                print(" ")
             except Exception as e:
-                print(f" ✗ ({e})")
+                print(f"  ({e})")
 
         self.connected = False
         return False
@@ -482,7 +482,7 @@ class RealtimeThemeMonitor:
                     'score': score,
                     'accel': round(score_accel, 2),
                     'top_stocks': top_stocks,
-                    'msg': f"📈 领涨主题【{theme_name}】强度{score:+.1f}% 加速{score_accel:+.1f}% 先锋:{top_stocks}"
+                    'msg': f" 领涨主题【{theme_name}】强度{score:+.1f}% 加速{score_accel:+.1f}% 先锋:{top_stocks}"
                 })
                 self.last_theme_alert[cooldown_key] = time.time()
 
@@ -518,7 +518,7 @@ class RealtimeThemeMonitor:
                 'theme': fm['theme'],
                 'pct_chg': fm['pct_chg'],
                 'surge_delta': fm['surge_delta'],
-                'msg': f"🚀 先锋启动【{fm['name']}({fm['ts_code'][:6]})】{fm['pct_chg']:+.1f}% 主题:{fm['theme']} 跳涨{fm['surge_delta']:+.1f}%"
+                'msg': f" 先锋启动【{fm['name']}({fm['ts_code'][:6]})】{fm['pct_chg']:+.1f}% 主题:{fm['theme']} 跳涨{fm['surge_delta']:+.1f}%"
             })
             self.last_first_mover_alert[cooldown_key] = time.time()
 
@@ -541,13 +541,13 @@ class RealtimeThemeMonitor:
         if up_r > 80:
             alerts.append({
                 'type': 'market_overheat',
-                'msg': f"🔥🔥 市场过热! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 ⚠建议减仓至30%"
+                'msg': f" 市场过热! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 ⚠建议减仓至30%"
             })
             self.last_market_alert = time.time()
         elif down_r > 50:
             alerts.append({
                 'type': 'market_fear',
-                'msg': f"❄️❄️ 大面积亏钱! 下跌{ms['down']}/{ms['total']}({down_r}%) 跌停{dt}家 ⚠建议减仓至20%"
+                'msg': f"️️ 大面积亏钱! 下跌{ms['down']}/{ms['total']}({down_r}%) 跌停{dt}家 ⚠建议减仓至20%"
             })
             self.last_market_alert = time.time()
         elif dt > 20 and down_r > 30:
@@ -559,7 +559,7 @@ class RealtimeThemeMonitor:
         elif up_r > 60 and zt > 30:
             alerts.append({
                 'type': 'market_warming',
-                'msg': f"🌡️ 市场回暖! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 可适当加仓至60%"
+                'msg': f"️ 市场回暖! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 可适当加仓至60%"
             })
             self.last_market_alert = time.time()
 
@@ -633,18 +633,18 @@ class RealtimeThemeMonitor:
         sentiment_score = max(0, min(100, round(sentiment_score, 1)))
 
         if sentiment_score >= 70:
-            sentiment_label = "🔥 强势"
+            sentiment_label = " 强势"
         elif sentiment_score >= 45:
-            sentiment_label = "🌤 中性偏暖"
+            sentiment_label = " 中性偏暖"
         elif sentiment_score >= 25:
-            sentiment_label = "🌥 中性偏弱"
+            sentiment_label = " 中性偏弱"
         else:
-            sentiment_label = "❄ 弱势"
+            sentiment_label = " 弱势"
 
         ts = now.strftime('%H:%M:%S')
 
         # ── 4. 构建推送内容 ──
-        title = f"📊 开盘分析 {now.strftime('%m-%d')}"
+        title = f" 开盘分析 {now.strftime('%m-%d')}"
 
         lines_text = ""
         for rank, name, avg_pct, up_r, ldr, amt, cnt in lines:
@@ -652,7 +652,7 @@ class RealtimeThemeMonitor:
             direction = "+" if avg_pct >= 0 else ""
             lines_text += f"| {rank} | **{name}** | {direction}{avg_pct:.1f}% {bar} | {up_r:.0f}% | {ldr} | {amt}亿 | {cnt}只 |\n"
 
-        content = f"""## 📊 开盘竞价全景分析
+        content = f"""##  开盘竞价全景分析
 
 **时间:** {ts}
 **市场情绪分:** {sentiment_score} — {sentiment_label}
@@ -677,7 +677,7 @@ class RealtimeThemeMonitor:
 
         # 控制台也打一份
         print(f"\n{'='*55}")
-        print(f"📊 开盘分析 [{ts}]  情绪分: {sentiment_score} {sentiment_label}")
+        print(f" 开盘分析 [{ts}]  情绪分: {sentiment_score} {sentiment_label}")
         print(f"{'='*55}")
         print(f"{'排名':<4} {'板块':<10} {'强度':<8} {'↑占比':<6} {'龙头':<18} {'成交额':<10} {'成分'}")
         print(f"{'-'*55}")
@@ -695,17 +695,17 @@ class RealtimeThemeMonitor:
         url = f"https://sctapi.ftqq.com/{self.sckey}.send"
         try:
             resp = requests.post(url, data={"title": title, "desp": content}, timeout=10)
-            print(f"📱 推送成功: {title[:30]}")
+            print(f" 推送成功: {title[:30]}")
             return resp
         except Exception as e:
-            print(f"❌ 推送失败: {e}")
+            print(f" 推送失败: {e}")
 
     # ════════════════════════════════════════════
     # 7. 主循环
     # ════════════════════════════════════════════
     def run(self):
         print("=" * 60)
-        print("🔥 游资级别实时主题盯盘系统")
+        print(" 游资级别实时主题盯盘系统")
         print("   数据源: theme_portfolio.db + 通达信实时行情")
         print("   更新周期: 60秒")
         print("   推送: Server酱微信")
@@ -719,10 +719,10 @@ class RealtimeThemeMonitor:
         if not self.connect():
             print("⏳ 首次连接失败，启动服务器轮巡...")
             if not self.reconnect_round_robin():
-                print("❌ 所有通达信服务器均不可用，退出")
+                print(" 所有通达信服务器均不可用，退出")
                 return
 
-        print(f"\n📊 开始监控 {len(self.theme_stocks)} 个主题 {sum(len(v) for v in self.theme_stocks.values())} 只股票")
+        print(f"\n 开始监控 {len(self.theme_stocks)} 个主题 {sum(len(v) for v in self.theme_stocks.values())} 只股票")
         print("   交易时段: 9:30-11:30, 13:00-15:00")
         print("   (按 Ctrl+C 停止)\n")
 
@@ -758,7 +758,7 @@ class RealtimeThemeMonitor:
                         print(f"   第{retry+1}轮轮巡失败，5秒后重试...")
                         time.sleep(5)
                     if not ok:
-                        print(f"   ❌ 所有服务器均不可用，等待下一周期")
+                        print(f"    所有服务器均不可用，等待下一周期")
                         time.sleep(5)
                         continue
 
@@ -793,7 +793,7 @@ class RealtimeThemeMonitor:
                 time.sleep(60 - (datetime.now().second % 60))
 
         except KeyboardInterrupt:
-            print("\n🛑 监控已停止")
+            print("\n 监控已停止")
         finally:
             self.disconnect()
 
@@ -820,18 +820,18 @@ class RealtimeThemeMonitor:
         ms = results['market_stats']
 
         print(f"\n{'='*50}")
-        print(f"📊 [{now}] 大盘监控")
+        print(f" [{now}] 大盘监控")
         print(f"   上涨 {ms['up']}/{ms['total']}({ms['up_ratio']}%) 涨停{ms['zt_count']} | 下跌{ms['down']}跌停{ms['dt_count']}")
 
         top5 = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)[:5]
-        print(f"\n🔥 主题强度 TOP5:")
+        print(f"\n 主题强度 TOP5:")
         for theme, score in top5:
             print(f"   {theme}: {score:+.1f}%")
 
         # 先锋股（如果有）
         fms = results.get('first_movers', [])
         if fms:
-            print(f"\n🚀 先锋启动:")
+            print(f"\n 先锋启动:")
             for fm in fms[:3]:
                 print(f"   {fm['name']}({fm['ts_code'][:6]}): {fm['pct_chg']:+.1f}% 主题:{fm['theme']}")
 
@@ -848,27 +848,27 @@ class RealtimeThemeMonitor:
 
         # ── 主题异动推送 ──
         if theme_msgs:
-            title = f"🔥 主题异动 {ts} ({len(theme_msgs)}条)"
-            content = f"## 🔥 实时主题异动\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(theme_msgs)
-            content += "\n\n---\n💡 **策略**：优先关注领涨主题的龙头股，等待回调低吸机会"
+            title = f" 主题异动 {ts} ({len(theme_msgs)}条)"
+            content = f"##  实时主题异动\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(theme_msgs)
+            content += "\n\n---\n **策略**：优先关注领涨主题的龙头股，等待回调低吸机会"
             self.send_wechat(title, content)
 
         # ── 先锋启动推送 ──
         if fm_msgs:
-            title = f"🚀 先锋启动 {ts} ({len(fm_msgs)}只)"
-            content = f"## 🚀 实时先锋启动\n\n**时间: {ts}**\n\n" + "\n".join(fm_msgs)
-            content += "\n\n💡 优先关注同主题内还未启动的 core/follower"
+            title = f" 先锋启动 {ts} ({len(fm_msgs)}只)"
+            content = f"##  实时先锋启动\n\n**时间: {ts}**\n\n" + "\n".join(fm_msgs)
+            content += "\n\n 优先关注同主题内还未启动的 core/follower"
             self.send_wechat(title, content)
 
         # ── 市场情绪预警 ──
         if market_msgs:
             title = f"⚠️ 市场情绪预警 {ts}"
             content = f"## ⚠️ 市场情绪预警\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(market_msgs)
-            content += "\n\n---\n📊 数据基于实时主题成分股统计"
+            content += "\n\n---\n 数据基于实时主题成分股统计"
             self.send_wechat(title, content)
 
         # ── 控制台输出 ──
-        print(f"\n📱 [{ts}] 推送:")
+        print(f"\n [{ts}] 推送:")
         for a in alerts:
             print(f"   {a['msg']}")
 

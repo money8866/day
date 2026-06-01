@@ -102,7 +102,7 @@ class RealtimeThemeMonitor:
             if (ip, port) not in seen:
                 self.servers.append((ip, port))
                 seen.add((ip, port))
-        print(f"📡 加载通达信服务器池: {len(self.servers)} 台 (来自 pytdx hq_hosts + 补充)")
+        print(f"[旗] 加载通达信服务器池: {len(self.servers)} 台 (来自 pytdx hq_hosts + 补充)")
 
         self.sckey = os.getenv("WECHAT_SCKEY")
 
@@ -137,7 +137,7 @@ class RealtimeThemeMonitor:
         conn.close()
 
         total_stocks = sum(len(v) for v in self.theme_stocks.values())
-        print(f"✅ 从数据库加载: {len(self.theme_stocks)} 个主题, {total_stocks} 只股票")
+        print(f"[OK] 从数据库加载: {len(self.theme_stocks)} 个主题, {total_stocks} 只股票")
         print(f"   主题列表: {', '.join(self.theme_names)}")
 
     def load_ref_prices(self):
@@ -163,7 +163,7 @@ class RealtimeThemeMonitor:
             import pickle
             with open(cache_file, 'rb') as f:
                 self.ref_prices = pickle.load(f)
-            print(f"✅ 从缓存加载昨日收盘价: {len(self.ref_prices)} 只")
+            print(f"[OK] 从缓存加载昨日收盘价: {len(self.ref_prices)} 只")
             return
 
         all_codes = list(self.stock_themes.keys())
@@ -185,7 +185,7 @@ class RealtimeThemeMonitor:
         import pickle
         with open(cache_file, 'wb') as f:
             pickle.dump(self.ref_prices, f)
-        print(f"✅ 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只")
+        print(f"[OK] 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只")
 
     # ════════════════════════════════════════════
     # 2. 通达信连接
@@ -226,7 +226,7 @@ class RealtimeThemeMonitor:
             self.sorted_servers = [(h, p) for h, p, _ in results]
             self.best_server = self.sorted_servers[0]
             self.server_index = 0
-            print(f"✅ 最快服务器: {self.best_server[0]}:{self.best_server[1]} ({results[0][2]:.1f}ms)")
+            print(f"[OK] 最快服务器: {self.best_server[0]}:{self.best_server[1]} ({results[0][2]:.1f}ms)")
             print(f"   可用服务器: {len(self.sorted_servers)} 台")
         else:
             print("⚠ 未找到可用服务器，使用默认列表轮巡")
@@ -237,7 +237,7 @@ class RealtimeThemeMonitor:
         if self.connected:
             return True
         if not TDX_AVAILABLE:
-            print("❌ 通达信不可用")
+            print("[X] 通达信不可用")
             return False
 
         try:
@@ -250,10 +250,10 @@ class RealtimeThemeMonitor:
             self.api = TdxHq_API(heartbeat=True)
             self.connected = self.api.connect(host, port)
             if self.connected:
-                print(f"✅ 通达信连接成功: {host}:{port}")
+                print(f"[OK] 通达信连接成功: {host}:{port}")
                 return True
         except Exception as e:
-            print(f"❌ 连接 {host}:{port} 失败: {e}")
+            print(f"[X] 连接 {host}:{port} 失败: {e}")
         return False
 
     def reconnect_round_robin(self):
@@ -278,7 +278,7 @@ class RealtimeThemeMonitor:
                     self.connected = True
                     self.best_server = (host, port)
                     self.server_index = idx
-                    print(" ✅")
+                    print(" [OK]")
                     return True
                 print(" ✗")
             except Exception as e:
@@ -541,7 +541,7 @@ class RealtimeThemeMonitor:
         if up_r > 80:
             alerts.append({
                 'type': 'market_overheat',
-                'msg': f"🔥🔥 市场过热! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 ⚠建议减仓至30%"
+                'msg': f"[火][火] 市场过热! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 ⚠建议减仓至30%"
             })
             self.last_market_alert = time.time()
         elif down_r > 50:
@@ -633,7 +633,7 @@ class RealtimeThemeMonitor:
         sentiment_score = max(0, min(100, round(sentiment_score, 1)))
 
         if sentiment_score >= 70:
-            sentiment_label = "🔥 强势"
+            sentiment_label = "[火] 强势"
         elif sentiment_score >= 45:
             sentiment_label = "🌤 中性偏暖"
         elif sentiment_score >= 25:
@@ -698,14 +698,14 @@ class RealtimeThemeMonitor:
             print(f"📱 推送成功: {title[:30]}")
             return resp
         except Exception as e:
-            print(f"❌ 推送失败: {e}")
+            print(f"[X] 推送失败: {e}")
 
     # ════════════════════════════════════════════
     # 7. 主循环
     # ════════════════════════════════════════════
     def run(self):
         print("=" * 60)
-        print("🔥 游资级别实时主题盯盘系统")
+        print("[火] 游资级别实时主题盯盘系统")
         print("   数据源: theme_portfolio.db + 通达信实时行情")
         print("   更新周期: 60秒")
         print("   推送: Server酱微信")
@@ -719,7 +719,7 @@ class RealtimeThemeMonitor:
         if not self.connect():
             print("⏳ 首次连接失败，启动服务器轮巡...")
             if not self.reconnect_round_robin():
-                print("❌ 所有通达信服务器均不可用，退出")
+                print("[X] 所有通达信服务器均不可用，退出")
                 return
 
         print(f"\n📊 开始监控 {len(self.theme_stocks)} 个主题 {sum(len(v) for v in self.theme_stocks.values())} 只股票")
@@ -758,7 +758,7 @@ class RealtimeThemeMonitor:
                         print(f"   第{retry+1}轮轮巡失败，5秒后重试...")
                         time.sleep(5)
                     if not ok:
-                        print(f"   ❌ 所有服务器均不可用，等待下一周期")
+                        print(f"   [X] 所有服务器均不可用，等待下一周期")
                         time.sleep(5)
                         continue
 
@@ -824,7 +824,7 @@ class RealtimeThemeMonitor:
         print(f"   上涨 {ms['up']}/{ms['total']}({ms['up_ratio']}%) 涨停{ms['zt_count']} | 下跌{ms['down']}跌停{ms['dt_count']}")
 
         top5 = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)[:5]
-        print(f"\n🔥 主题强度 TOP5:")
+        print(f"\n[火] 主题强度 TOP5:")
         for theme, score in top5:
             print(f"   {theme}: {score:+.1f}%")
 
@@ -848,8 +848,8 @@ class RealtimeThemeMonitor:
 
         # ── 主题异动推送 ──
         if theme_msgs:
-            title = f"🔥 主题异动 {ts} ({len(theme_msgs)}条)"
-            content = f"## 🔥 实时主题异动\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(theme_msgs)
+            title = f"[火] 主题异动 {ts} ({len(theme_msgs)}条)"
+            content = f"## [火] 实时主题异动\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(theme_msgs)
             content += "\n\n---\n💡 **策略**：优先关注领涨主题的龙头股，等待回调低吸机会"
             self.send_wechat(title, content)
 
