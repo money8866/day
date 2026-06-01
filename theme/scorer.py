@@ -58,10 +58,8 @@ def _preload_daily(stock_list, trade_date, days=30):
 
 
 def _normalize(series):
-    mn, mx = series.min(), series.max()
-    if mx - mn < 1e-9:
-        return pd.Series(np.zeros(len(series)))
-    return (series - mn) / (mx - mn + 1e-9)
+    """百分位排名归一化（抗极端值）"""
+    return series.rank(pct=True).fillna(0)
 
 
 def calc_all_theme_scores(trade_date):

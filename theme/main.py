@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from config import OUTPUT_DIR, TOP_N
 from db import init_db, save_top10_to_portfolio_db
-from scorer import calc_all_theme_scores
+from scorer import calc_all_theme_scores, _get_pro
 from stage import detect_stages_for_all
 from leader import identify_leaders
 from rotation import build_rotation, select_tomorrow_watch, compute_rotation_matrix
@@ -102,20 +102,37 @@ def generate_report(trade_date, scored_themes, stages, leaders, watch, rotations
 
 
 def _get_prev_trade_date():
-    """自动获取上一个交易日"""
-    import tushare as ts
-    from config import TS_TOKEN
-    pro = ts.pro_api(TS_TOKEN)
-    today = datetime.now().strftime("%Y%m%d")
-    cal = pro.trade_cal(exchange="SSE", start_date=(datetime.now()-timedelta(days=10)).strftime("%Y%m%d"), end_date=today)
-    if cal is not None and not cal.empty:
-        trading_days = cal[cal["is_open"] == 1]["cal_date"].sort_values().tolist()
-        if len(trading_days) >= 2 and trading_days[-1] == today:
-            return trading_days[-2]
-        if len(trading_days) >= 1 and trading_days[-1] != today:
-            return trading_days[-1]
-    return (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+    now = datetime.now()
+    pro = _get_pro()
+    # =========================
+    # 9点前：视为上一自然日
+    # =========================
+    if now.hour < 15:
 
+        query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
+
+    else:
+
+        query_date = now.strftime('%Y%m%d')
+
+    # =========================
+    # 获取交易日历
+    # =========================
+    cal = pro.trade_cal(
+        exchange='',
+        start_date='20200101',
+        end_date=query_date
+    )
+
+    # 只保留开市日
+    cal = cal[cal['is_open'] == 1]
+
+    # 最近交易日
+    last_trade_date = cal[
+        cal['cal_date'] <= query_date
+    ]['cal_date'].max()
+
+    return str(last_trade_date)
 
 def run(trade_date=None):
     if trade_date is None:

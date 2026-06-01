@@ -8,6 +8,8 @@
 """
 import sqlite3
 import os
+import subprocess
+import time
 from datetime import datetime
 
 # 东方财富用户数据路径
@@ -101,8 +103,26 @@ def update_hot_track_block(ts_codes):
         conn.close()
 
         print(f"  ✓ 已写入{len(unique_em)}只股票到'{BLOCK_KEY}'板块 (ver {old_ver}→{new_ver})")
+        restart_emweb()
         return True
 
     except Exception as e:
         print(f"  ✗ 写入东方财富自选板块失败: {e}")
         return False
+
+
+def restart_emweb():
+    """重启东方财富客户端，触发云同步。"""
+    em_exe = r"C:\eastmoney\swc8\EMWeb.exe"
+    if not os.path.exists(em_exe):
+        print("  ⚠ 未找到EMWeb.exe，跳过重启")
+        return
+
+    print("   重启东方财富客户端同步到手机...")
+    # 先杀掉所有东财进程
+    subprocess.run("taskkill /f /im EMWeb.exe 2>nul", shell=True, capture_output=True)
+    subprocess.run("taskkill /f /im ETWeb.exe 2>nul", shell=True, capture_output=True)
+    time.sleep(2)
+    # 重新启动
+    subprocess.Popen([em_exe], shell=True)
+    print("   ✓ 东方财富已重启，请稍后查看手机端同步")

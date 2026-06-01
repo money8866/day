@@ -747,19 +747,26 @@ class RealtimeThemeMonitor:
                 # ── 获取行情 ──
                 ok = self.fetch_all_quotes()
                 if not ok:
-                    print(f"[{now.strftime('%H:%M:%S')}] ⚠ 行情获取失败，启动服务器轮巡重连...")
+                    print(f"[{now.strftime('%H:%M:%S')}] ⚠ 行情获取失败，尝试重连+重试...")
                     self.connected = False
-                    for retry in range(2):
-                        if self.reconnect_round_robin():
-                            print(f"   轮巡成功，继续监控")
+                    # 尝试最多2次：每次先换服务器重连，再多次重试取行情
+                    for attempt in range(2):
+                        if not self.reconnect_round_robin():
+                            print(f"   第{attempt+1}次重连失败，5秒后重试...")
+                            time.sleep(5)
+                            continue
+                        # 同一条连接上最多重试3次取行情
+                        for quote_retry in range(3):
                             ok = self.fetch_all_quotes()
                             if ok:
                                 break
-                        print(f"   第{retry+1}轮轮巡失败，5秒后重试...")
-                        time.sleep(5)
+                            print(f"   连接成功但取行情失败，第{quote_retry+1}次重试...")
+                            time.sleep(2)
+                        if ok:
+                            break
                     if not ok:
-                        print(f"   ❌ 所有服务器均不可用，等待下一周期")
-                        time.sleep(5)
+                        print(f"   ❌ 放弃本轮，等待下一周期")
+                        time.sleep(10)
                         continue
 
                 # ── 9:32 开盘分析（仅一次） ──

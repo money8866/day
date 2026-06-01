@@ -535,13 +535,14 @@ def build_theme_portfolio(hot_themes, concept_map, name_map, stock_concepts, mar
                 leader = filtered_stocks[0]
             leader['layer'] = 'leader'
             leader_count = 1
-            
-            remaining = filtered_stocks[1:]
+
+            leader_ts_code = leader['ts_code']
+            remaining = [s for s in filtered_stocks if s['ts_code'] != leader_ts_code]
             core_stocks = sorted(remaining, key=lambda x: (x['industry_match'], x['mcap'] + x['amount'] * 10), reverse=True)[:6]
             for s in core_stocks:
                 s['layer'] = 'core'
             core_count = len(core_stocks)
-            
+
             core_ts_codes = set(s['ts_code'] for s in core_stocks)
             remaining = [s for s in remaining if s['ts_code'] not in core_ts_codes]
             follower_stocks = sorted(remaining, key=lambda x: (x['industry_match'], x['composite_score']), reverse=True)[:20]
