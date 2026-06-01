@@ -2315,6 +2315,17 @@ def main():
     save_daily_snapshot(result_df, position_pct, emotion_score)
 
     # =====================================================
+    # 检查卖出信号
+    # =====================================================
+    sell_actions = check_sell_signals(result_df, portfolio_df)
+    if sell_actions:
+        print(f"\n[卖出检查] 发现 {len(sell_actions)} 个卖出信号")
+        execute_sell_actions(sell_actions)
+        # 重新加载持仓
+        portfolio_df = load_portfolio()
+        portfolio_text = analyze_portfolio(result_df, portfolio_df)
+
+    # =====================================================
     # 新开仓逻辑：当出现买入信号且未持仓时记录交易
     # =====================================================
     new_positions = []
