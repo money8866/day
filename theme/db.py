@@ -17,6 +17,7 @@ def init_db():
         # 检测旧版遗留表(有theme_code列的旧表) → 只清理一次
         old_cols = conn.execute("PRAGMA table_info(theme_scores)").fetchall()
         old_col_names = {c[1] for c in old_cols}
+        
         if "theme_code" in old_col_names:
             conn.executescript("""
                 DROP TABLE IF EXISTS theme_scores;
@@ -26,12 +27,15 @@ def init_db():
                 DROP TABLE IF EXISTS theme_cons;
             """)
             print("  已清理旧版表结构(theme_code→theme_name)")
-
+            old_col_names = set()  # 重置，重新创建表
+        
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS theme_scores (
                 trade_date TEXT,
                 theme_name TEXT,
                 score REAL,
+                emotion_score REAL,
+                trend_score REAL,
                 avg_pct REAL,
                 limit_ratio REAL,
                 up_ratio REAL,
@@ -57,6 +61,22 @@ def init_db():
                 PRIMARY KEY(trade_date, theme_name)
             );
         """)
+        
+        # 检查并添加缺失的字段（升级旧表）
+        if "emotion_score" not in old_col_names and old_col_names:
+            try:
+                conn.execute("ALTER TABLE theme_scores ADD COLUMN emotion_score REAL")
+                print("  已添加 emotion_score 字段")
+            except sqlite3.OperationalError:
+                pass
+        
+        if "trend_score" not in old_col_names and old_col_names:
+            try:
+                conn.execute("ALTER TABLE theme_scores ADD COLUMN trend_score REAL")
+                print("  已添加 trend_score 字段")
+            except sqlite3.OperationalError:
+                pass
+        
         conn.commit()
     finally:
         conn.close()
@@ -111,14 +131,14 @@ def get_all_stock_codes():
 
 # ───── theme_scores ─────
 
-def save_theme_score(trade_date, theme_name, score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score):
+def save_theme_score(trade_date, theme_name, score, emotion_score, trend_score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score):
     conn = get_conn()
     try:
         conn.execute(
             """INSERT OR REPLACE INTO theme_scores
-               (trade_date, theme_name, score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (trade_date, theme_name, score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score)
+               (trade_date, theme_name, score, emotion_score, trend_score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (trade_date, theme_name, score, emotion_score, trend_score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score)
         )
         conn.commit()
     finally:
@@ -127,11 +147,15 @@ def save_theme_score(trade_date, theme_name, score, avg_pct, limit_ratio, up_rat
 def load_theme_scores(trade_date):
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT theme_name, score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score "
+        cursor = conn.execute(
+            "SELECT theme_name, score, emotion_score, trend_score, avg_pct, limit_ratio, up_ratio, amount, leader_premium, height_score "
             "FROM theme_scores WHERE trade_date=? ORDER BY score DESC", (trade_date,)
-        ).fetchall()
-        return rows
+        )
+        # 获取列名
+        col_names = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        # 转换为字典列表
+        return [dict(zip(col_names, row)) for row in rows]
     finally:
         conn.close()
 

@@ -119,6 +119,22 @@ def init_portfolio_table():
             emotion REAL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            ts_code TEXT,
+            industry TEXT,
+            signal TEXT,
+            suggest_price REAL,
+            position_pct REAL,
+            score REAL,
+            status TEXT DEFAULT 'pending',
+            triggered_date TEXT,
+            triggered_price REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -199,6 +215,141 @@ def save_daily_snapshot(result_df, position_pct, emotion_score):
         ))
     conn.commit()
     conn.close()
+
+def save_pending_order(ts_code, industry, signal, suggest_price, position_pct, score):
+    """保存待买入的策略建议"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO pending_orders
+        (trade_date, ts_code, industry, signal, suggest_price, position_pct, score, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    """, (TRADE_DATE, ts_code, industry, signal, suggest_price, position_pct, score))
+    conn.commit()
+    conn.close()
+    print(f"   [待买入] 保存策略建议: {industry}({ts_code}) 建议价:{suggest_price}")
+
+def load_pending_orders(status='pending'):
+    """加载待处理的策略建议"""
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql(
+        f"SELECT * FROM pending_orders WHERE status='{status}' ORDER BY trade_date DESC",
+        conn
+    )
+    conn.close()
+    return df
+
+def check_and_trigger_orders(result_df):
+    """
+    检查昨日策略建议是否触发买入
+    条件：今日最低价 <= 建议买入价
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # 获取昨日待处理订单
+    yesterday = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=1)).strftime('%Y%m%d')
+    pending_df = pd.read_sql(
+        f"SELECT * FROM pending_orders WHERE status='pending' AND trade_date='{yesterday}'",
+        conn
+    )
+    
+    triggered_orders = []
+    
+    if pending_df.empty:
+        conn.close()
+        return triggered_orders
+    
+    print(f"\n[检查待买入订单] 昨日待处理: {len(pending_df)} 条")
+    
+    for _, order in pending_df.iterrows():
+        ts_code = order['ts_code']
+        industry = order['industry']
+        suggest_price = order['suggest_price']
+        signal = order['signal']
+        score = order['score']
+        
+        # 检查是否已持仓
+        holding_df = pd.read_sql(
+            f"SELECT * FROM portfolio WHERE ts_code='{ts_code}' AND status='holding'",
+            conn
+        )
+        if not holding_df.empty:
+            print(f"   [跳过] {industry} 已持仓")
+            continue
+        
+        # 获取今日行情数据
+        try:
+            df = pro.fund_daily(ts_code=ts_code, start_date=TRADE_DATE, end_date=TRADE_DATE)
+            if df.empty:
+                continue
+            
+            today_low = df.iloc[0]['low']
+            today_close = df.iloc[0]['close']
+            
+            # 判断是否触发买入：最低价 <= 建议价
+            if today_low <= suggest_price:
+                print(f"   [触发买入] {industry}({ts_code}) 今日最低:{today_low} <= 建议价:{suggest_price}")
+                
+                # 计算实际买入价（取建议价和收盘价的较小值）
+                actual_price = min(suggest_price, today_close)
+                
+                # 加入持仓
+                stop_loss = round(actual_price * 0.95, 3)
+                take_profit = round(actual_price * 1.20, 3)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO portfolio
+                    (ts_code, industry, buy_date, buy_price, current_price, shares, stop_loss, take_profit, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'holding')
+                """, (ts_code, industry, TRADE_DATE, actual_price, today_close, 100, stop_loss, take_profit))
+                
+                # 记录交易日志
+                cursor.execute("""
+                    INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (TRADE_DATE, ts_code, industry, 'buy', actual_price, 100, 0, f"策略触发:{signal}"))
+                
+                # 更新订单状态
+                cursor.execute("""
+                    UPDATE pending_orders SET status='triggered', triggered_date=?, triggered_price=?
+                    WHERE id=?
+                """, (TRADE_DATE, actual_price, order['id']))
+                
+                triggered_orders.append({
+                    'industry': industry,
+                    'ts_code': ts_code,
+                    'signal': signal,
+                    'suggest_price': suggest_price,
+                    'actual_price': actual_price,
+                    'today_low': today_low
+                })
+            else:
+                print(f"   [未触发] {industry} 今日最低:{today_low} > 建议价:{suggest_price}")
+                
+        except Exception as e:
+            print(f"   [错误] {industry}: {e}")
+            continue
+    
+    conn.commit()
+    conn.close()
+    
+    return triggered_orders
+
+def cleanup_expired_orders(days=5):
+    """清理过期的待买入订单"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    expire_date = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=days)).strftime('%Y%m%d')
+    cursor.execute("""
+        UPDATE pending_orders SET status='expired' 
+        WHERE status='pending' AND trade_date < ?
+    """, (expire_date,))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if affected > 0:
+        print(f"   [清理] {affected} 条过期订单已标记")
+    return affected
 
 def load_daily_snapshot(date_str=None, days=5):
     """加载历史每日快照"""
@@ -296,6 +447,106 @@ def analyze_portfolio(result_df, portfolio_df):
         )
 
     return "\n".join(lines)
+
+def check_sell_signals(result_df, portfolio_df):
+    """
+    检查持仓是否需要卖出
+    卖出条件：
+    1. 触发止损（当前价 <= 止损价）
+    2. 触发止盈（当前价 >= 止盈价）
+    3. 信号变为卖出信号
+    4. 评分大幅下降（评分 < 40）
+    """
+    if portfolio_df.empty:
+        return []
+    
+    sell_actions = []
+    conn = sqlite3.connect(DB_PATH)
+    
+    for _, p in portfolio_df.iterrows():
+        ts_code = p['ts_code']
+        industry = p['industry']
+        buy_price = p['buy_price']
+        stop_loss = p['stop_loss']
+        take_profit = p['take_profit']
+        buy_date = p['buy_date']
+        
+        # 匹配今日数据
+        today_data = result_df[result_df['ETF'] == ts_code]
+        if today_data.empty:
+            continue
+        
+        row = today_data.iloc[0]
+        current_price = row['收盘价']
+        signal = row.get('信号', '')
+        score = row.get('总评分', 0)
+        stage = row.get('波段阶段', '')
+        
+        sell_reason = None
+        
+        # 1. 止损检查
+        if current_price <= stop_loss:
+            sell_reason = f"止损触发: {current_price} <= {stop_loss}"
+        
+        # 2. 止盈检查
+        elif current_price >= take_profit:
+            sell_reason = f"止盈触发: {current_price} >= {take_profit}"
+        
+        # 3. 卖出信号检查
+        elif signal in ['趋势衰竭', '高位滞涨', '破位下跌']:
+            sell_reason = f"卖出信号: {signal}"
+        
+        # 4. 评分大幅下降
+        elif score < 40:
+            pnl_pct = (current_price - buy_price) / buy_price * 100
+            if pnl_pct > 0:  # 有盈利时才考虑卖出
+                sell_reason = f"评分下降: {score} < 40"
+        
+        if sell_reason:
+            pnl = round((current_price - buy_price) / buy_price * 100, 2)
+            sell_actions.append({
+                'ts_code': ts_code,
+                'industry': industry,
+                'buy_price': buy_price,
+                'current_price': current_price,
+                'pnl_pct': pnl,
+                'reason': sell_reason,
+                'buy_date': buy_date
+            })
+    
+    conn.close()
+    return sell_actions
+
+def execute_sell_actions(sell_actions):
+    """执行卖出操作"""
+    if not sell_actions:
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    for action in sell_actions:
+        ts_code = action['ts_code']
+        industry = action['industry']
+        current_price = action['current_price']
+        pnl_pct = action['pnl_pct']
+        reason = action['reason']
+        
+        print(f"\n[卖出] {industry}({ts_code}): 价格{current_price}, 盈亏{pnl_pct:+.2f}%, 原因:{reason}")
+        
+        # 更新持仓状态
+        cursor.execute("""
+            UPDATE portfolio SET status='closed' WHERE ts_code=? AND status='holding'
+        """, (ts_code,))
+        
+        # 记录交易日志
+        cursor.execute("""
+            INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (TRADE_DATE, ts_code, industry, 'sell', current_price, 100, pnl_pct, reason))
+    
+    conn.commit()
+    conn.close()
 
 def init_style_table():
 
@@ -546,7 +797,7 @@ def get_last_trade_date():
     return trade_date
 
 TRADE_DATE = get_last_trade_date()
-
+#TRADE_DATE = "20260529"
 print("当前交易日:", TRADE_DATE)
 
 # =========================================================
@@ -1799,6 +2050,20 @@ def main():
     else:
         print("\n[持仓] 当前无持仓")
 
+    # =====================================================
+    # 检查昨日策略建议是否触发买入
+    # =====================================================
+    triggered_orders = check_and_trigger_orders(None)
+    if triggered_orders:
+        print(f"\n[触发买入] 今日触发 {len(triggered_orders)} 条策略")
+        for order in triggered_orders:
+            print(f"  - {order['industry']}: 建议价{order['suggest_price']} -> 买入价{order['actual_price']}")
+        # 重新加载持仓
+        portfolio_df = load_portfolio()
+
+    # 清理过期订单
+    cleanup_expired_orders(days=5)
+
     # 加载昨日报告摘要
     last_report_summary = load_last_report()
     if last_report_summary:
@@ -2093,14 +2358,16 @@ def main():
         
         # 满足所有条件才开仓
         if signal in buy_signals and not already_holding and emotion_ok and score_ok and is_main_sector and no_decline_risk:
-            print(f"\n[开仓] 新仓信号: {industry}({ts_code}) - {signal}, 价格: {price}, 评分: {score}")
-            # 记录开仓交易
-            save_portfolio_action(ts_code, industry, 'buy', price, shares=100, reason=signal)
+            print(f"\n[策略建议] 新仓信号: {industry}({ts_code}) - {signal}, 价格: {price}, 评分: {score}")
+            # 保存待买入订单（次日检查是否触发）
+            suggest_price = round(price * 1.01, 3)  # 建议价格为今日收盘价上浮1%
+            save_pending_order(ts_code, industry, signal, suggest_price, position_pct, score)
             new_positions.append({
                 'industry': industry,
                 'ts_code': ts_code,
                 'signal': signal,
-                'price': price
+                'suggest_price': suggest_price,
+                'current_price': price
             })
     
     # 重新加载持仓（包含新开仓）

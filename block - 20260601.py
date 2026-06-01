@@ -182,7 +182,7 @@ def get_last_trade_date():
 
 TRADE_DATE = get_last_trade_date()
 
-#TRADE_DATE = "20260529" # for test
+#TRADE_DATE = "20260526" # for test
 print(f"板块分析日期: {TRADE_DATE}")
 # =========================================================
 # 下载同花顺概念列表
@@ -1277,22 +1277,16 @@ def analyze_themes(daily_df, industry_df, stock_concept_list):
         if len(stocks) < MIN_STOCKS:
             continue
 
-        # ── exclude_keywords过滤（概念名开头匹配+股票名匹配）──
+        # ── exclude_keywords过滤（与theme_portfolio策略一致）──
         if exclude_keywords:
             filtered = []
             for ts_code in stocks:
                 stock_name = stock_name_dict.get(ts_code, "")
-                concepts = stock_concept_list.get(ts_code, [])
+                concept_str = ";".join(stock_concept_list.get(ts_code, []))
                 skip = False
                 for ek in exclude_keywords:
-                    if ek in stock_name:
+                    if ek in concept_str or ek in stock_name:
                         skip = True
-                        break
-                    for c in concepts:
-                        if c.startswith(ek):
-                            skip = True
-                            break
-                    if skip:
                         break
                 if not skip:
                     filtered.append(ts_code)
@@ -1311,9 +1305,9 @@ def analyze_themes(daily_df, industry_df, stock_concept_list):
 
         state = update_state(theme, score)
 
-        # 主题加成：避免被大规模成份股稀释，保持主题与概念平起平坐
-        THEME_BONUS = 1.5
-        strength = calc_strength(score, state) * THEME_BONUS
+        # 规模归一化
+        size_scale = min((80 / max(len(stocks), 5)) ** 0.6, 2.5)
+        strength = calc_strength(score, state) * size_scale
 
         leader_code, leader_name, leader_score = find_leader(df)
         leader_lb_height = get_stock_lb_height(leader_code)
@@ -1446,22 +1440,9 @@ def load_history(days=10):
 
 
 # =========================================================
-# 板块分析结果缓存路径
-# =========================================================
-SECTOR_RESULT_CACHE = os.path.join(CACHE_DIR, f"sector_analysis_{TRADE_DATE}.pkl")
-
-# =========================================================
 # 主函数（V4 + V5融合）
 # =========================================================
 def analyze_hot_sectors():
-    """
-    分析主线板块强度
-    缓存策略：按交易日缓存，同一天内多次调用直接返回缓存结果
-    """
-    if os.path.exists(SECTOR_RESULT_CACHE):
-        print(f"读取板块分析缓存: {SECTOR_RESULT_CACHE}")
-        with open(SECTOR_RESULT_CACHE, "rb") as f:
-            return pickle.load(f)
 
     print("\n=== 主线系统 V4 + V5 ===\n")
 
@@ -1477,14 +1458,22 @@ def analyze_hot_sectors():
         how="left"
 )
 
+    # 第一次运行执行
     stock_map, concept_map = init_concept_cache()
 
+    # -------------------------------------------------
+    # 读取缓存
+    # -------------------------------------------------
     stock_map = load_stock_concept_map()
 
+    # concept dataframe
     concept_df = build_concept_df(stock_map)
 
     industry_df = get_sw_industry_map()
 
+    # -------------------------------------------------
+    # 合并进行业表
+    # -------------------------------------------------
     industry_df = industry_df.merge(
          concept_df,
          on="ts_code",
@@ -1493,6 +1482,7 @@ def analyze_hot_sectors():
 
     industry_res = analyze_industry(daily_df, industry_df)
 
+    # 构建主题概念匹配数据（精确匹配概念名称，非关键词）
     stock_concept_list = {k: v.split(";") for k, v in stock_map.items()}
 
     theme_res = analyze_themes(daily_df, industry_df, stock_concept_list)
@@ -1503,6 +1493,7 @@ def analyze_hot_sectors():
 
     print(f"行业{len(industry_res)} + 主题{len(theme_res)} + 概念{len(concept_res)}")
 
+    # 打印主题排名
     theme_sorted = sorted(theme_res, key=lambda x: x.get("主线强度", 0), reverse=True)
     print("主题板块强度排名:")
     for t in theme_sorted[:5]:
@@ -1522,10 +1513,6 @@ def analyze_hot_sectors():
 
     init_db()
     save_top20(df)
-
-    with open(SECTOR_RESULT_CACHE, "wb") as f:
-        pickle.dump(df, f)
-    print(f"板块分析结果已缓存: {SECTOR_RESULT_CACHE}")
 
     return df
 

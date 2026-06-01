@@ -51,43 +51,67 @@ def generate_report(trade_date, scored_themes, stages, leaders, watch, rotations
 
     top = sorted(scored_themes, key=lambda x: x["score"], reverse=True)
 
-    # TOP 10
-    lines.append("## 一、题材强度排名 TOP10")
+    # 主线迁移图
+    lines.append("## 主线迁移图")
     lines.append("")
-    lines.append("| 排名 | 题材 | 评分 | 阶段 | 龙头 | 中军 | 弹性补涨 |")
-    lines.append("|------|------|------|------|------|------|------|")
+    if len(top) >= 1:
+        # 获取昨日数据
+        from db import load_theme_scores
+        prev_date = _get_prev_trade_date(trade_date)
+        yesterday_scores = load_theme_scores(prev_date)
+        yesterday_top = sorted(yesterday_scores, key=lambda x: x["score"], reverse=True)[:1]
+        
+        yesterday_theme = yesterday_top[0]["theme_name"] if yesterday_top else "无"
+        today_theme = top[0]["theme_name"]
+        
+        # 计算迁移概率（简化为情绪分变化）
+        yesterday_emotion = yesterday_top[0].get("emotion_score") if yesterday_top else None
+        today_emotion = top[0].get("emotion_score")
+        
+        # 处理 None 值
+        if yesterday_emotion is None or today_emotion is None:
+            migration_prob = 70  # 默认迁移概率
+        else:
+            migration_prob = min(max(70 + (today_emotion - yesterday_emotion), 30), 95)
+        
+        lines.append(f"- 昨日：{yesterday_theme}")
+        lines.append(f"- 今日：{today_theme}")
+        lines.append(f"- 迁移概率：{migration_prob:.0f}%")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # 主线榜 TOP10
+    lines.append("## 主线榜 TOP10")
+    lines.append("")
     for i, item in enumerate(top[:10]):
-        stage = stage_map.get(item["theme_name"], "震荡")
-        ldr = leader_map.get(item["theme_name"], {})
-        lines.append(f"| {i+1} | {item['theme_name']} | {item['score']:.1f} | {stage} | {ldr.get('leader','')} | {ldr.get('core','')} | {ldr.get('supplement','')} |")
-    lines.append("")
-
-    # 11-20
-    if len(top) > 10:
-        lines.append("## 二、题材强度排名 11-20")
+        theme_name = item["theme_name"]
+        emotion = item.get("emotion_score", 0)
+        trend = item.get("trend_score", 0)
+        score = item.get("score", 0)
+        stage = stage_map.get(theme_name, "震荡")
+        ldr = leader_map.get(theme_name, {})
+        
+        lines.append(f"### {i+1}. {theme_name}")
         lines.append("")
-        lines.append("| 排名 | 题材 | 评分 | 阶段 |")
-        lines.append("|------|------|------|------|")
-        for i, item in enumerate(top[10:20], start=11):
-            lines.append(f"| {i} | {item['theme_name']} | {item['score']:.1f} | {stage_map.get(item['theme_name'], '震荡')} |")
+        lines.append(f"- 情绪：{emotion:.0f}")
+        lines.append(f"- 趋势：{trend:.0f}")
+        lines.append(f"- 综合：{score:.0f}")
+        lines.append(f"- 阶段：{stage}")
         lines.append("")
-
-    # Watch pool
-    if watch:
-        lines.append("## 三、次日观察方向（加速题材）")
-        lines.append("")
-        lines.append("| 题材 | 评分 | 加速度 |")
-        lines.append("|------|------|--------|")
-        for w in watch:
-            lines.append(f"| {w['theme_name']} | {w['score']:.1f} | +{w['accelerate']:.1f} |")
-        lines.append("")
-
-    # Rotation matrix
-    if rotations:
-        lines.append("## 四、轮动路径（近30天）")
-        lines.append("")
-        for (out_t, in_t), cnt in rotations.most_common(10):
-            lines.append(f"- {out_t} → {in_t}: {cnt}次")
+        if ldr.get("leader"):
+            lines.append(f"**龙头：** {ldr['leader']}")
+            lines.append("")
+        if ldr.get("core"):
+            lines.append(f"**中军：** {ldr['core']}")
+            lines.append("")
+        if ldr.get("supplement"):
+            supp_list = ldr["supplement"].split("、")
+            lines.append("**补涨：**")
+            for supp in supp_list:
+                lines.append(f"- {supp}")
+            lines.append("")
+        lines.append("---")
         lines.append("")
 
     lines.append("---")
@@ -101,20 +125,20 @@ def generate_report(trade_date, scored_themes, stages, leaders, watch, rotations
     return "\n".join(lines)
 
 
-def _get_prev_trade_date():
-    now = datetime.now()
-    pro = _get_pro()
-    # =========================
-    # 9点前：视为上一自然日
-    # =========================
-    if now.hour < 15:
-
-        query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
-
+def _get_prev_trade_date(ref_date=None):
+    if ref_date is None:
+        now = datetime.now()
+        # =========================
+        # 9点前：视为上一自然日
+        # =========================
+        if now.hour < 15:
+            query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
+        else:
+            query_date = now.strftime('%Y%m%d')
     else:
+        query_date = (datetime.strptime(ref_date, "%Y%m%d") - timedelta(days=1)).strftime('%Y%m%d')
 
-        query_date = now.strftime('%Y%m%d')
-
+    pro = _get_pro()
     # =========================
     # 获取交易日历
     # =========================
@@ -201,8 +225,8 @@ def run(trade_date=None):
 
     write_csv(
         os.path.join(OUTPUT_DIR, "theme_rank.csv"),
-        ["rank", "theme_name", "score", "stage"],
-        [(i+1, t["theme_name"], f"{t['score']:.2f}", stages[i]["stage"]) for i, t in enumerate(top[:TOP_N])]
+        ["rank", "theme_name", "emotion_score", "trend_score", "score", "stage"],
+        [(i+1, t["theme_name"], f"{t.get('emotion_score', 0):.0f}", f"{t.get('trend_score', 0):.0f}", f"{t['score']:.0f}", stages[i]["stage"]) for i, t in enumerate(top[:TOP_N])]
     )
     if leaders:
         write_csv(

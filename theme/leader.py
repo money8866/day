@@ -13,9 +13,10 @@ def _get_pro():
 
 
 def identify_leaders(trade_date, scored_themes):
-    """游资风格：识别每题材龙头/中军/补涨"""
+    """自动识别每题材的龙头/中军/补涨"""
     pro = _get_pro()
 
+    # 1. 获取今日涨停数据
     limit_df = None
     try:
         limit_df = pro.limit_list_d(trade_date=trade_date)
@@ -33,16 +34,18 @@ def identify_leaders(trade_date, scored_themes):
             except (ValueError, TypeError):
                 limit_stock_boards[r["ts_code"]] = 1
 
-    mf_df = None
+    # 2. 获取股票基础信息（市值）
+    basic_df = None
     try:
-        mf_df = pro.moneyflow(trade_date=trade_date)
+        basic_df = pro.daily_basic(trade_date=trade_date, fields="ts_code,total_mv")
     except:
         pass
-    mf_map = {}
-    if mf_df is not None and not mf_df.empty:
-        for _, r in mf_df.iterrows():
-            mf_map[r["ts_code"]] = r
+    mv_map = {}
+    if basic_df is not None and not basic_df.empty:
+        for _, r in basic_df.iterrows():
+            mv_map[r["ts_code"]] = r["total_mv"]
 
+    # 3. 获取日线数据
     start_date = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=20)).strftime("%Y%m%d")
 
     results = []
@@ -50,9 +53,8 @@ def identify_leaders(trade_date, scored_themes):
         theme_name = item["theme_name"]
         stocks = get_theme_stock_codes(theme_name)
 
-        stock_scores = []
+        # 加载日线数据
         daily_cache = {}
-
         BATCH = 150
         for i in range(0, len(stocks), BATCH):
             batch = stocks[i:i + BATCH]
@@ -65,54 +67,170 @@ def identify_leaders(trade_date, scored_themes):
                 pass
             time.sleep(0.15)
 
+        # 计算各股票得分
+        stock_data = []
         for s in stocks:
             try:
-                chg_rank_score = 0
-                amount_rank_score = 0
-                limit_cnt_score = 0
-                mf_score = 0
-                pct_chg_val = 0
+                if s not in daily_cache:
+                    continue
+                df = daily_cache[s]
+                if df.empty or df["trade_date"].iloc[-1] != trade_date:
+                    continue
+                today = df.iloc[-1]
+                pct_chg = today["pct_chg"]
+                amount = today["amount"]
 
-                if s in daily_cache:
-                    df = daily_cache[s]
-                    if not df.empty and df["trade_date"].iloc[-1] == trade_date:
-                        today = df.iloc[-1]
-                        pct = today["pct_chg"]
-                        amount = today["amount"]
-                        pct_chg_val = pct
-                        chg_rank_score = (pct + 10) / 20 * 40
-                        amount_rank_score = min(amount / 1e8, 30)
+                # 连板高度
+                lb_height = limit_stock_boards.get(s, 0)
 
-                if s in limit_stock_boards:
-                    limit_cnt_score = min(limit_stock_boards[s] * 10, 20)
+                # 市值
+                total_mv = mv_map.get(s, 0)
 
-                if s in mf_map:
-                    mf = mf_map[s]
-                    try:
-                        net = float(mf["net_mf_vol"]) if "net_mf_vol" in mf.index else 0
-                        if net > 0:
-                            mf_score = min(net / 1e6, 10)
-                    except:
-                        pass
+                # 成交量（今日 vs 昨日）
+                volume_growth = 0
+                if len(df) >= 2:
+                    vol_today = today["vol"]
+                    vol_yesterday = df.iloc[-2]["vol"]
+                    if vol_yesterday > 0:
+                        volume_growth = (vol_today / vol_yesterday - 1) * 100
 
-                total_score = chg_rank_score + amount_rank_score + limit_cnt_score + mf_score
-                stock_scores.append({"ts_code": s, "score": total_score, "pct_chg": pct_chg_val})
+                # 趋势分（MA5 > MA10）
+                trend_score = 0
+                if len(df) >= 10:
+                    ma5 = df["close"].iloc[-5:].mean()
+                    ma10 = df["close"].iloc[-10:].mean()
+                    if ma5 > ma10:
+                        trend_score = 100
+                    else:
+                        trend_score = 50
+
+                stock_data.append({
+                    "ts_code": s,
+                    "pct_chg": pct_chg,
+                    "amount": amount,
+                    "lb_height": lb_height,
+                    "total_mv": total_mv,
+                    "volume_growth": volume_growth,
+                    "trend_score": trend_score
+                })
             except:
                 continue
 
-        if not stock_scores:
+        if not stock_data:
             continue
 
-        stock_scores.sort(key=lambda x: x["score"], reverse=True)
+        # ==========================================
+        # 1. 识别龙头
+        # ==========================================
+        leader_candidates = []
+        for sd in stock_data:
+            # 市场辨识度：简化为（成交额排名 + 涨幅排名）/ 2
+            amount_rank = 0
+            pct_rank = 0
+            sorted_by_amount = sorted(stock_data, key=lambda x: x["amount"], reverse=True)
+            sorted_by_pct = sorted(stock_data, key=lambda x: x["pct_chg"], reverse=True)
+            for i, s in enumerate(sorted_by_amount):
+                if s["ts_code"] == sd["ts_code"]:
+                    amount_rank = (len(sorted_by_amount) - i) / len(sorted_by_amount) * 100
+                    break
+            for i, s in enumerate(sorted_by_pct):
+                if s["ts_code"] == sd["ts_code"]:
+                    pct_rank = (len(sorted_by_pct) - i) / len(sorted_by_pct) * 100
+                    break
+            recognition_score = (amount_rank + pct_rank) / 2
 
-        # rank 1 = 龙头, rank 2 = 中军, rank 3~6 = 弹性补涨
-        leader_code = stock_scores[0]["ts_code"] if len(stock_scores) > 0 else ""
-        core_code = stock_scores[1]["ts_code"] if len(stock_scores) > 1 else ""
-        supp_codes = [stock_scores[i]["ts_code"] for i in range(2, min(6, len(stock_scores)))]
+            # 各指标归一化到 0-100
+            lb_score = min(sd["lb_height"] * 20, 100)  # 5板以上给100
+            pct_score = min(max((sd["pct_chg"] + 10) * 5, 0), 100)
+            amount_score = min(sd["amount"] / 1e8 * 3.33, 100)  # 30亿成交额给100
 
+            leader_score = (
+                0.40 * lb_score +
+                0.30 * pct_score +
+                0.20 * amount_score +
+                0.10 * recognition_score
+            )
+            leader_candidates.append({
+                "ts_code": sd["ts_code"],
+                "score": leader_score,
+                "pct_chg": sd["pct_chg"]
+            })
+
+        leader_candidates.sort(key=lambda x: x["score"], reverse=True)
+        leader = leader_candidates[0] if leader_candidates else None
+
+        # ==========================================
+        # 2. 识别中军
+        # ==========================================
+        core_candidates = []
+        for sd in stock_data:
+            if sd["total_mv"] < 200:  # 市值 < 200亿，排除
+                continue
+            amount_score = min(sd["amount"] / 1e8 * 3.33, 100)
+            mv_score = min(sd["total_mv"] / 10, 100)  # 1000亿市值给100
+            pct_score = min(max((sd["pct_chg"] + 10) * 5, 0), 100)
+            core_score = (
+                0.50 * amount_score +
+                0.30 * mv_score +
+                0.20 * pct_score
+            )
+            core_candidates.append({
+                "ts_code": sd["ts_code"],
+                "score": core_score
+            })
+
+        core_candidates.sort(key=lambda x: x["score"], reverse=True)
+        core = core_candidates[0] if core_candidates else None
+
+        # ==========================================
+        # 3. 识别补涨
+        # ==========================================
+        supplement_candidates = []
+        leader_pct = leader["pct_chg"] if leader else 100
+        for sd in stock_data:
+            if sd["pct_chg"] >= leader_pct:  # 涨幅 >= 龙头，排除
+                continue
+            if sd["lb_height"] >= 2:  # 已连续涨停，排除
+                continue
+
+            pct_score = min(max((sd["pct_chg"] + 10) * 5, 0), 100)
+            volume_score = min(max(sd["volume_growth"] + 50, 0), 100)  # -50% 到 +50% 归一化
+            trend_score = sd["trend_score"]
+
+            # 强度排名：简化为成交额排名
+            strength_score = 0
+            sorted_by_amount = sorted(stock_data, key=lambda x: x["amount"], reverse=True)
+            for i, s in enumerate(sorted_by_amount):
+                if s["ts_code"] == sd["ts_code"]:
+                    strength_score = (len(sorted_by_amount) - i) / len(sorted_by_amount) * 100
+                    break
+
+            supplement_score = (
+                0.35 * pct_score +
+                0.25 * volume_score +
+                0.20 * trend_score +
+                0.20 * strength_score
+            )
+            supplement_candidates.append({
+                "ts_code": sd["ts_code"],
+                "score": supplement_score
+            })
+
+        supplement_candidates.sort(key=lambda x: x["score"], reverse=True)
+        supplement = supplement_candidates[:3]  # 取前3名
+
+        # ==========================================
         # 批量查询名称
+        # ==========================================
         code_name_map = {}
-        all_codes = [c for c in [leader_code, core_code] + supp_codes if c]
+        all_codes = []
+        if leader:
+            all_codes.append(leader["ts_code"])
+        if core:
+            all_codes.append(core["ts_code"])
+        for s in supplement:
+            all_codes.append(s["ts_code"])
+
         for code in all_codes:
             try:
                 basic = pro.stock_basic(ts_code=code, fields="name")
@@ -122,10 +240,9 @@ def identify_leaders(trade_date, scored_themes):
             except:
                 pass
 
-        leader_name = code_name_map.get(leader_code, "")
-        core_name = code_name_map.get(core_code, "")
-        # 弹性补涨：多个名字用逗号连接
-        supp_names = [code_name_map.get(c, "") for c in supp_codes]
+        leader_name = code_name_map.get(leader["ts_code"], "") if leader else ""
+        core_name = code_name_map.get(core["ts_code"], "") if core else ""
+        supp_names = [code_name_map.get(s["ts_code"], "") for s in supplement]
         supp_names = [n for n in supp_names if n]
         supp_name = "、".join(supp_names)
 
@@ -135,9 +252,9 @@ def identify_leaders(trade_date, scored_themes):
             "leader": leader_name,
             "core": core_name,
             "supplement": supp_name,
-            "leader_code": leader_code,
-            "core_code": core_code,
-            "supp_codes": supp_codes
+            "leader_code": leader["ts_code"] if leader else "",
+            "core_code": core["ts_code"] if core else "",
+            "supp_codes": [s["ts_code"] for s in supplement]
         })
         time.sleep(0.1)
 

@@ -586,6 +586,8 @@ class DatabaseManager:
                 trade_date TEXT NOT NULL,
                 theme_name TEXT NOT NULL,
                 today_score REAL,
+                emotion_score REAL,
+                trend_score REAL,
                 avg_score_10d REAL,
                 avg_rank_10d REAL,
                 score_trend TEXT,
@@ -637,27 +639,30 @@ class DatabaseManager:
         conn.commit()
         conn.close()
     
-    def save_theme_scores(self, trade_date, ranked_themes, theme_summary):
+    def save_theme_scores(self, trade_date, ranked_themes, theme_summary, theme_real_data=None):
         """保存主题打分数据"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         for theme, today_score in ranked_themes:
             summary = theme_summary.get(theme, {})
+            real_data = theme_real_data.get(theme, {}) if theme_real_data else {}
             cursor.execute('''
-                INSERT OR REPLACE INTO theme_scores 
-                (trade_date, theme_name, today_score, avg_score_10d, avg_rank_10d, score_trend, rank_change)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO theme_scores
+                (trade_date, theme_name, today_score, emotion_score, trend_score, avg_score_10d, avg_rank_10d, score_trend, rank_change)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 trade_date,
                 theme,
                 today_score,
+                real_data.get('emotion_score', 0),
+                real_data.get('trend_score', 0),
                 summary.get('avg_score_10d', 0),
                 summary.get('avg_rank_10d', 0),
                 summary.get('score_trend', '未知'),
                 summary.get('rank_change', 0)
             ))
-        
+
         conn.commit()
         conn.close()
         print(f"✓ 主题打分已保存至数据库: {len(ranked_themes)} 条记录")
@@ -1739,15 +1744,163 @@ def calculate_theme_historical_rankings_old(theme_stocks_map, trade_dates):
 # =========================
 def identify_theme_leaders(theme_stocks, name_map):
     leaders = []
-    
+
     for ts_code in list(theme_stocks)[:50]:
         result = calculate_comprehensive_leader_score(ts_code, name_map)
-        
+
         if result is not None:
             leaders.append(result)
-    
+
     leaders.sort(key=lambda x: x['total_score'], reverse=True)
     return leaders[:10]
+
+# =========================
+# 识别龙头/中军/补涨（自动识别）
+# =========================
+def identify_leader_core_supplement(theme_stocks, name_map, trade_date):
+    """
+    龙头：score = 0.4 * 连板高度 + 0.3 * 涨幅 + 0.2 * 成交额 + 0.1 * 市场辨识度
+    中军：市值 > 200亿，score = 0.5 * 成交额 + 0.3 * 市值 + 0.2 * 涨幅
+    补涨：涨幅 < 龙头，未连续涨停，score = 0.35 * 今日涨幅 + 0.25 * 放量 + 0.20 * 趋势 + 0.20 * 强度排名
+    """
+    if not theme_stocks:
+        return None, None, []
+
+    # 获取日线数据
+    start_date = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=25)).strftime('%Y%m%d')
+    daily_data = {}
+    stock_info = {}
+
+    try:
+        df = pro.daily(ts_code=','.join(list(theme_stocks)[:50]),
+                       start_date=start_date, end_date=trade_date)
+        if df is not None and not df.empty:
+            for ts_code, grp in df.groupby('ts_code'):
+                daily_data[ts_code] = grp.sort_values('trade_date')
+        time.sleep(0.2)
+    except Exception as e:
+        print(f"获取日线数据失败: {e}")
+
+    # 获取市值数据
+    mv_data = {}
+    try:
+        basic_df = pro.daily_basic(trade_date=trade_date, fields='ts_code,total_mv')
+        if basic_df is not None and not basic_df.empty:
+            mv_data = {r['ts_code']: r['total_mv'] for _, r in basic_df.iterrows()}
+    except:
+        pass
+
+    # 获取连板数据
+    lb_data = {}
+    try:
+        lb_df = pro.limit_step(trade_date=trade_date)
+        if lb_df is not None and not lb_df.empty:
+            for _, r in lb_df.iterrows():
+                lb_data[r['ts_code']] = int(r.get('nums', 1))
+    except:
+        pass
+
+    # 计算各股票数据
+    stock_scores = []
+    for ts_code in list(theme_stocks)[:50]:
+        if ts_code not in daily_data:
+            continue
+        df = daily_data[ts_code]
+        if df.empty or df['trade_date'].iloc[-1] != trade_date:
+            continue
+
+        today = df.iloc[-1]
+        pct_chg = today['pct_chg']
+        amount = today['amount']
+        vol_yesterday = df.iloc[-2]['vol'] if len(df) >= 2 else today['vol']
+        volume_growth = ((today['vol'] / vol_yesterday) - 1) * 100 if vol_yesterday > 0 else 0
+
+        # 趋势（MA5 > MA10）
+        trend_score = 0
+        if len(df) >= 10:
+            ma5 = df['close'].iloc[-5:].mean()
+            ma10 = df['close'].iloc[-10:].mean()
+            trend_score = 100 if ma5 > ma10 else 50
+
+        # 连板高度
+        lb_height = lb_data.get(ts_code, 0)
+
+        # 市值
+        total_mv = mv_data.get(ts_code, 0)
+
+        stock_scores.append({
+            'ts_code': ts_code,
+            'name': name_map.get(ts_code, ts_code),
+            'pct_chg': pct_chg,
+            'amount': amount,
+            'volume_growth': volume_growth,
+            'trend_score': trend_score,
+            'lb_height': lb_height,
+            'total_mv': total_mv
+        })
+
+    if not stock_scores:
+        return None, None, []
+
+    # ========== 1. 识别龙头 ==========
+    leader_candidates = []
+    for sd in stock_scores:
+        amount_rank = sum(1 for s in stock_scores if s['amount'] > sd['amount'])
+        pct_rank = sum(1 for s in stock_scores if s['pct_chg'] > sd['pct_chg'])
+        recognition = ((amount_rank + pct_rank) / 2 / len(stock_scores)) * 100
+
+        lb_score = min(sd['lb_height'] * 20, 100)
+        pct_score = min(max((sd['pct_chg'] + 10) * 5, 0), 100)
+        amount_score = min(sd['amount'] / 1e8 * 3.33, 100)
+
+        leader_score = (0.40 * lb_score + 0.30 * pct_score +
+                        0.20 * amount_score + 0.10 * recognition)
+        leader_candidates.append({**sd, 'leader_score': leader_score})
+
+    leader_candidates.sort(key=lambda x: x['leader_score'], reverse=True)
+    leader = leader_candidates[0] if leader_candidates else None
+
+    # ========== 2. 识别中军 ==========
+    core_candidates = []
+    for sd in stock_scores:
+        if sd['total_mv'] < 200:  # 市值 < 200亿
+            continue
+        amount_score = min(sd['amount'] / 1e8 * 3.33, 100)
+        mv_score = min(sd['total_mv'] / 10, 100)
+        pct_score = min(max((sd['pct_chg'] + 10) * 5, 0), 100)
+        core_score = 0.50 * amount_score + 0.30 * mv_score + 0.20 * pct_score
+        core_candidates.append({**sd, 'core_score': core_score})
+
+    core_candidates.sort(key=lambda x: x['core_score'], reverse=True)
+    core = core_candidates[0] if core_candidates else None
+
+    # ========== 3. 识别补涨 ==========
+    supplement_candidates = []
+    leader_pct = leader['pct_chg'] if leader else 100
+    for sd in stock_scores:
+        if sd['pct_chg'] >= leader_pct:
+            continue
+        if sd['lb_height'] >= 2:
+            continue
+
+        pct_score = min(max((sd['pct_chg'] + 10) * 5, 0), 100)
+        volume_score = min(max(sd['volume_growth'] + 50, 0), 100)
+
+        strength_rank = sum(1 for s in stock_scores if s['amount'] > sd['amount'])
+        strength_score = (strength_rank / len(stock_scores)) * 100
+
+        supplement_score = (0.35 * pct_score + 0.25 * volume_score +
+                           0.20 * sd['trend_score'] + 0.20 * strength_score)
+        supplement_candidates.append({**sd, 'supplement_score': supplement_score})
+
+    supplement_candidates.sort(key=lambda x: x['supplement_score'], reverse=True)
+    supplements = supplement_candidates[:3]
+
+    leader_name = leader['name'] if leader else ""
+    core_name = core['name'] if core else ""
+    supplement_names = [s['name'] for s in supplements]
+
+    return leader_name, core_name, supplement_names
 
 # =========================
 # 今日主题评分与轮动分析
@@ -2460,7 +2613,7 @@ def output_tomorrow_recommendation(ranked_themes, theme_leaders, theme_summary):
 # =========================
 # 保存文本复盘报告
 # =========================
-def save_text_report(ranked_themes, theme_leaders, theme_summary, trade_dates, market_emotion=None, fastest_rising=None, long_term_potentials=None, short_term_potentials=None):
+def save_text_report(ranked_themes, theme_leaders, theme_summary, trade_dates, market_emotion=None, fastest_rising=None, long_term_potentials=None, short_term_potentials=None, theme_real_data=None):
     report_lines = []
     report_lines.append("="*100)
     report_lines.append("每日盘后复盘报告")
@@ -2704,31 +2857,43 @@ def save_text_report(ranked_themes, theme_leaders, theme_summary, trade_dates, m
         f.write(report_text)
     
     print(f"\n✓ 文本复盘报告已保存: {report_file}")
-    
+
     # ========== 保存至SQLite数据库 ==========
-    db_manager.save_theme_scores(trade_dates[-1], ranked_themes, theme_summary)
+    db_manager.save_theme_scores(trade_dates[-1], ranked_themes, theme_summary, theme_real_data)
     db_manager.save_leader_scores(trade_dates[-1], theme_leaders, theme_summary)
     db_manager.save_strategy_recommendations(trade_dates[-1], strategies)
 
 # =========================
-# 基于今日真实盘面计算主题评分（游资风格）
+# 主题风格检测
+# =========================
+def get_theme_style(theme_name):
+    emotion_keywords = ["AI", "算力", "机器人", "华为", "鸿蒙", "智能驾驶", "低空", "商业航天", "人形机器人", "半导体", "芯片", "应用", "终端"]
+    trend_keywords = ["电力", "煤炭", "有色", "资源", "能源", "石油", "黄金", "银行", "保险", "券商", "消费", "白酒", "医药"]
+    for kw in emotion_keywords:
+        if kw in theme_name:
+            return "emotion"
+    for kw in trend_keywords:
+        if kw in theme_name:
+            return "trend"
+    return "emotion"
+
+# =========================
+# 基于今日真实盘面计算主题评分（双评分系统）
 # =========================
 def calculate_today_market_scores(theme_stocks_map, trade_date):
     """
-    完全基于今日真实盘面数据计算主题评分
-    核心逻辑：
-    1. 今日板块平均涨跌幅（权重最大）
-    2. 今日涨停家数
-    3. 上涨占比和强势股占比
-    4. 跌停家数惩罚
+    双评分系统：
+    1. 情绪分（游资视角）：涨停占比、连板占比、龙头高度、晋级率、炸板修正、20cm数量
+    2. 趋势分（机构视角）：20日涨幅、10日涨幅、强势股比例、成交额增量、均线结构
+    3. 综合分：根据主题风格动态加权
     """
     print(f"\n{'='*80}")
-    print(f"今日主题评分 - 完全基于 {trade_date} 真实盘面数据")
+    print(f"今日主题评分 - 双评分系统 {trade_date}")
     print(f"{'='*80}")
-    
-    # 获取今日涨跌停股票列表
+
     zt_stocks = set()
     dt_stocks = set()
+    zt_df = None
     
     try:
         zt_df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
@@ -2781,55 +2946,161 @@ def calculate_today_market_scores(theme_stocks_map, trade_date):
         
         if len(stock_changes) < 3:
             continue
-        
+
         avg_change = np.mean(stock_changes)
         up_ratio = up_count / total_count if total_count > 0 else 0
         strong_ratio = strong_count / total_count if total_count > 0 else 0
-        
-        # ========== 游资风格的评分 ==========
-        base_score = 50
-        
-        # 1. 今日板块涨跌幅（核心权重）
-        change_score = avg_change * 12  # 权重最大
-        base_score += change_score
-        
-        # 2. 涨停家数加分
-        zt_score = min(zt_count * 6, 30)
-        base_score += zt_score
-        
-        # 3. 上涨占比加分
-        up_ratio_score = min(up_ratio * 60, 35)
-        base_score += up_ratio_score
-        
-        # 4. 强势股加分（>=5%）
-        strong_score = min(strong_ratio * 90, 25)
-        base_score += strong_score
-        
-        # 5. 跌停惩罚
-        dt_penalty = min(dt_count * 10, 25)
-        base_score -= dt_penalty
-        
-        theme_scores[theme] = max(0, base_score)
+
+        # 获取连板数据
+        max_lb = 0
+        lb_count = 0
+        try:
+            lb_df_local = pro.limit_step(trade_date=trade_date)
+            if lb_df_local is not None and not lb_df_local.empty:
+                for ts_code in list(stocks)[:30]:
+                    lb_rows = lb_df_local[lb_df_local['ts_code'] == ts_code]
+                    if not lb_rows.empty:
+                        lb = int(lb_rows['nums'].iloc[0]) if 'nums' in lb_rows.columns else 1
+                        if lb >= 2:
+                            lb_count += 1
+                            max_lb = max(max_lb, lb)
+        except:
+            pass
+
+        zt_ratio = zt_count / total_count if total_count > 0 else 0
+        lb_ratio = lb_count / total_count if total_count > 0 else 0
+
+        # ========== 情绪分计算（游资视角）==========
+        limit_score = zt_ratio * 100
+        lb_score = lb_ratio * 100
+
+        if max_lb >= 8:
+            height_score = 100
+        elif max_lb >= 6:
+            height_score = 90
+        elif max_lb >= 5:
+            height_score = 80
+        elif max_lb >= 4:
+            height_score = 60
+        elif max_lb >= 3:
+            height_score = 40
+        elif max_lb >= 2:
+            height_score = 20
+        else:
+            height_score = 0
+
+        promote_rate = (lb_count / zt_count * 100) if zt_count > 0 else 0
+
+        broken_rate = 0
+        if zt_df is not None and not zt_df.empty:
+            try:
+                broken_count = zt_df[zt_df['open_num'] > 0].shape[0] if 'open_num' in zt_df.columns else 0
+                broken_rate = (broken_count / len(zt_df)) * 100 if len(zt_df) > 0 else 0
+            except:
+                broken_rate = 0
+
+        cm20_ratio = (cm20_count / total_count) * 100 if total_count > 0 else 0
+
+        emotion_score = (
+            0.30 * limit_score +
+            0.20 * lb_score +
+            0.15 * height_score +
+            0.15 * promote_rate +
+            0.10 * (100 - broken_rate) +
+            0.10 * cm20_ratio
+        )
+        emotion_score = max(0, min(100, emotion_score))
+
+        # ========== 趋势分计算（机构视角）==========
+        pct_20d_list = []
+        pct_10d_list = []
+        ma_structure_count = 0
+        amount_growth_list = []
+        start_date_20 = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d')
+
+        for ts_code in list(stocks)[:15]:
+            try:
+                df_20d = pro.daily(ts_code=ts_code, start_date=start_date_20, end_date=trade_date)
+                if df_20d is not None and not df_20d.empty and len(df_20d) >= 20:
+                    df_20d = df_20d.sort_values('trade_date')
+                    close_start = df_20d['close'].iloc[0]
+                    close_end = df_20d['close'].iloc[-1]
+                    pct_20d = ((close_end / close_start) - 1) * 100 if close_start > 0 else 0
+                    pct_20d_list.append(pct_20d)
+
+                    if len(df_20d) >= 10:
+                        close_10d_ago = df_20d['close'].iloc[-10]
+                        pct_10d = ((close_end / close_10d_ago) - 1) * 100 if close_10d_ago > 0 else 0
+                        pct_10d_list.append(pct_10d)
+
+                    ma5 = df_20d['close'].iloc[-5:].mean()
+                    ma10 = df_20d['close'].iloc[-10:].mean()
+                    ma20 = df_20d['close'].iloc[-20:].mean()
+                    if ma5 > ma10 > ma20:
+                        ma_structure_count += 1
+
+                    if len(df_20d) >= 20:
+                        ma5_vol = df_20d['amount'].iloc[-5:].mean()
+                        ma20_vol = df_20d['amount'].iloc[-20:].mean()
+                        if ma20_vol > 0:
+                            amount_growth = (ma5_vol / ma20_vol - 1) * 100
+                            amount_growth_list.append(amount_growth)
+                time.sleep(0.05)
+            except:
+                continue
+
+        avg_pct_20d = np.mean(pct_20d_list) if pct_20d_list else 0
+        avg_pct_10d = np.mean(pct_10d_list) if pct_10d_list else 0
+        avg_ma_structure = (ma_structure_count / len(pct_20d_list) * 100) if pct_20d_list else 0
+        avg_amount_growth = np.mean(amount_growth_list) if amount_growth_list else 0
+
+        pct_20d_score = min(max((avg_pct_20d + 20) * 2.5, 0), 100)
+        pct_10d_score = min(max((avg_pct_10d + 10) * 5, 0), 100)
+        amount_growth_score = min(max(avg_amount_growth + 50, 0), 100)
+
+        trend_score = (
+            0.30 * pct_20d_score +
+            0.20 * pct_10d_score +
+            0.20 * strong_ratio * 100 +
+            0.15 * amount_growth_score +
+            0.15 * avg_ma_structure
+        )
+        trend_score = max(0, min(100, trend_score))
+
+        # ========== 综合评分 ==========
+        theme_style = get_theme_style(theme)
+        if theme_style == "emotion":
+            final_score = emotion_score * 0.7 + trend_score * 0.3
+        else:
+            final_score = emotion_score * 0.3 + trend_score * 0.7
+
+        theme_scores[theme] = final_score
         theme_real_data[theme] = {
             'avg_change': avg_change,
             'zt_count': zt_count,
             'dt_count': dt_count,
             'up_ratio': up_ratio,
             'strong_ratio': strong_ratio,
-            'total_stocks': total_count
+            'total_stocks': total_count,
+            'max_lb': max_lb,
+            'lb_count': lb_count,
+            'cm20_count': cm20_count,
+            'emotion_score': emotion_score,
+            'trend_score': trend_score,
+            'theme_style': theme_style
         }
-    
+
     # 排序
     ranked_themes = sorted(theme_scores.items(), key=lambda x: x[1], reverse=True)
-    
-    print(f"\n今日TOP 10主题（真实盘面数据）:")
+
+    print(f"\n今日TOP 10主题（双评分系统）:")
     for rank, (theme, score) in enumerate(ranked_themes[:10], 1):
         data = theme_real_data[theme]
-        print(f"\n{rank}. 【{theme}】")
-        print(f"   评分: {score:.1f}")
-        print(f"   今日平均: {data['avg_change']:+.2f}% | 涨停: {data['zt_count']} | 跌停: {data['dt_count']}")
-        print(f"   上涨占比: {data['up_ratio']:.1%} | 强势股: {data['strong_ratio']:.1%}")
-    
+        style_icon = "🔥" if data['theme_style'] == "emotion" else "📊"
+        print(f"\n{rank}. 【{theme}】{style_icon}")
+        print(f"   综合分: {score:.1f} | 情绪分: {data['emotion_score']:.0f} | 趋势分: {data['trend_score']:.0f}")
+        print(f"   今日平均: {data['avg_change']:+.2f}% | 涨停: {data['zt_count']} | 连板: {data['lb_count']} | 20cm: {data['cm20_count']}")
+
     return ranked_themes, theme_scores, theme_real_data
 
 
@@ -2841,16 +3112,24 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
     print("每日盘后复盘报告 (最终版)")
     print(f"日期: {trade_dates[-1]}")
     print("="*100)
-    
+
     # 计算主题历史排名和平均分（保留用于趋势分析）
     theme_summary = calculate_theme_historical_rankings(theme_stocks_map, trade_dates)
-    
-    # ========== 关键修改：使用今日真实盘面评分 ==========
+
+    # ========== 关键修改：使用今日真实盘面评分（双评分系统） ==========
     ranked_themes, theme_scores, theme_real_data = calculate_today_market_scores(
         theme_stocks_map, trade_dates[-1]
     )
-    
-    # ========== 仍然计算龙头股用于个股分析 ==========
+
+    # ========== 计算龙头/中军/补涨（自动识别） ==========
+    theme_lcs = {}
+    for theme_name, theme_stocks in theme_stocks_map.items():
+        leader, core, supplements = identify_leader_core_supplement(
+            list(theme_stocks), name_map, trade_dates[-1]
+        )
+        theme_lcs[theme_name] = {'leader': leader, 'core': core, 'supplements': supplements}
+
+    # ========== 计算龙头股用于个股分析（兼容旧逻辑） ==========
     theme_leaders = {}
     for theme_name, theme_stocks in theme_stocks_map.items():
         leaders = identify_theme_leaders(list(theme_stocks), name_map)
@@ -2881,13 +3160,28 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
         summary = theme_summary.get(theme, {})
         avg_10d = summary.get('avg_score_10d', 0)
         avg_rank = summary.get('avg_rank_10d', 0)
-        
+        real_data = theme_real_data.get(theme, {})
+        lcs = theme_lcs.get(theme, {})
+
         print(f"\n第{rank}名: 【{theme}】")
-        print(f"  今日评分: {today_score:.1f} | 近10日平均分: {avg_10d:.1f} | 近10日平均排名: {avg_rank:.1f}")
+        style = real_data.get('theme_style', 'emotion')
+        style_icon = "🔥" if style == "emotion" else "📊"
+        style_name = "情绪型" if style == "emotion" else "趋势型"
+        print(f"  {style_icon} {style_name}")
+        print(f"  综合分: {today_score:.1f} | 情绪分: {real_data.get('emotion_score', 0):.0f} | 趋势分: {real_data.get('trend_score', 0):.0f}")
+        print(f"  近10日平均分: {avg_10d:.1f} | 近10日平均排名: {avg_rank:.1f}")
         print(f"  趋势: {summary.get('score_trend', '未知')} | 排名变化: {summary.get('rank_change', 0):+d}")
-        
+
+        # 龙头/中军/补涨
+        if lcs['leader']:
+            print(f"  🏆 龙头: {lcs['leader']}")
+        if lcs['core']:
+            print(f"  💪 中军: {lcs['core']}")
+        if lcs['supplements']:
+            print(f"  📈 补涨: {', '.join(lcs['supplements'])}")
+
         if theme in theme_leaders and theme_leaders[theme]:
-            print(f"  龙头股 TOP 3:")
+            print(f"  强势股 TOP 3:")
             for i, leader in enumerate(theme_leaders[theme][:3], 1):
                 ma_data = leader['ma_data']
                 print(f"    {i}. {leader['name']:10s} ({leader['ts_code']:10s})")
@@ -2899,25 +3193,33 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
     print("\n\n" + "="*100)
     print("TOP 5 板块调整后回升概率分析")
     print("="*100)
-    
+
     for rank, (theme, today_score) in enumerate(ranked_themes[:5], 1):
         print(f"\n{'='*80}")
         print(f"第{rank}名: 【{theme}】")
         print(f"{'='*80}")
-        
+
         summary = theme_summary.get(theme, {})
         avg_10d = summary.get('avg_score_10d', 0)
-        
+        real_data = theme_real_data.get(theme, {})
+        lcs = theme_lcs.get(theme, {})
+
+        print(f"\n🏆 龙头: {lcs.get('leader', 'N/A')} | 💪 中军: {lcs.get('core', 'N/A')}")
+        if lcs.get('supplements'):
+            print(f"📈 补涨: {', '.join(lcs['supplements'])}")
+        print(f"综合分: {today_score:.1f} | 情绪分: {real_data.get('emotion_score', 0):.0f} | 趋势分: {real_data.get('trend_score', 0):.0f}")
+
+        avg_rebound_prob = 0
         if theme in theme_leaders and theme_leaders[theme]:
             rebound_stocks = []
-            
+
             for leader in theme_leaders[theme][:5]:
                 ma_data = leader['ma_data']
-                
+
                 rebound_prob, rebound_level, rebound_reasons = calculate_rebound_probability(
                     ma_data, get_stock_history(leader['ts_code'], 25), leader['change_5']
                 )
-                
+
                 rebound_stocks.append({
                     'name': leader['name'],
                     'ts_code': leader['ts_code'],
@@ -2929,14 +3231,14 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
                     'volume_ratio': leader['volume_ratio'],
                     'recent_5_change': leader['change_5']
                 })
-            
+
             rebound_stocks.sort(key=lambda x: x['rebound_prob'], reverse=True)
-            
+
             avg_rebound_prob = np.mean([s['rebound_prob'] for s in rebound_stocks])
-            
-            print(f"\n板块回升概率评估: {avg_rebound_prob:.0f}%")
+
+            print(f"板块回升概率评估: {avg_rebound_prob:.0f}%")
             print(f"近10日表现: 平均分{avg_10d:.1f}，{summary.get('score_trend', '未知')}趋势")
-            
+
             print(f"\n回升候选 TOP 3:")
             for i, stock in enumerate(rebound_stocks[:3], 1):
                 print(f"  {i}. {stock['name']:10s} ({stock['ts_code']:10s})")
@@ -2954,14 +3256,21 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
     for rank, (theme, today_score, rank_change, score_change) in enumerate(fastest_rising, 1):
         summary = theme_summary.get(theme, {})
         avg_10d = summary.get('avg_score_10d', 0)
-        
+        real_data = theme_real_data.get(theme, {})
+        lcs = theme_lcs.get(theme, {})
+
         print(f"\n{'='*80}")
         print(f"第{rank}名: 【{theme}】")
         print(f"{'='*80}")
         print(f"  ⬆️ 排名变化: {rank_change:+d} 位 | 评分变化: {score_change:+.1f}")
-        print(f"  今日评分: {today_score:.1f} | 近10日平均分: {avg_10d:.1f}")
-        print(f"  趋势: {summary.get('score_trend', '未知')}")
-        
+        print(f"  综合分: {today_score:.1f} | 情绪分: {real_data.get('emotion_score', 0):.0f} | 趋势分: {real_data.get('trend_score', 0):.0f}")
+        print(f"  近10日平均分: {avg_10d:.1f} | 趋势: {summary.get('score_trend', '未知')}")
+
+        if lcs['leader'] or lcs['core']:
+            print(f"  🏆 龙头: {lcs.get('leader', 'N/A')} | 💪 中军: {lcs.get('core', 'N/A')}")
+        if lcs['supplements']:
+            print(f"  📈 补涨: {', '.join(lcs['supplements'])}")
+
         if theme in theme_leaders and theme_leaders[theme]:
             print(f"\n  🚀 当日最强龙头:")
             leader = theme_leaders[theme][0]
@@ -2969,7 +3278,7 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
             print(f"    {leader['name']:10s} ({leader['ts_code']:10s})")
             print(f"       总分:{leader['total_score']:.1f} | 5日:{leader['change_5']:+.1f}% | 20日:{leader['change_20']:+.1f}%")
             print(f"       {leader['score_details']['回落风险等级']} | {leader['score_details']['二波信号等级']}")
-            
+
             print(f"\n  💡 主题成分股 TOP 3:")
             for i, stock in enumerate(theme_leaders[theme][:3], 1):
                 print(f"    {i}. {stock['name']:10s} ({stock['ts_code']:10s})")
@@ -2980,7 +3289,7 @@ def generate_report(theme_stocks_map, name_map, trade_dates, market_emotion=None
     output_theme_analysis(ranked_themes, theme_summary, theme_leaders)
     output_leader_analysis(theme_leaders)
     output_tomorrow_recommendation(ranked_themes, theme_leaders, theme_summary)
-    save_text_report(ranked_themes, theme_leaders, theme_summary, trade_dates, market_emotion, fastest_rising, long_term_potentials, short_term_potentials)
+    save_text_report(ranked_themes, theme_leaders, theme_summary, trade_dates, market_emotion, fastest_rising, long_term_potentials, short_term_potentials, theme_real_data)
     
     return ranked_themes, theme_leaders, theme_summary
 
@@ -3139,7 +3448,7 @@ def calculate_single_day_theme_scores(theme_stocks_map, trade_date):
             }
         
         # 保存到数据库
-        db_manager.save_theme_scores(trade_date, ranked_themes, theme_summary)
+        db_manager.save_theme_scores(trade_date, ranked_themes, theme_summary, theme_real_data)
         
         print(f"✅ 交易日 {trade_date} 主题评分计算完成")
         print(f"   共 {len(ranked_themes)} 个主题")

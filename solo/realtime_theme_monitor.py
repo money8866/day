@@ -173,6 +173,7 @@ class RealtimeThemeMonitor:
 
         if len(all_codes) > 3000:
             daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
+            import pandas as pd
             daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
 
         if not daily.empty:

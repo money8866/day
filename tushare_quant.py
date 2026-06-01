@@ -112,7 +112,7 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 TRADE_DATE = get_last_trade_date()
-#TRADE_DATE = "20260417" # for test
+#TRADE_DATE = "20260529" # for test
 
 print("当前交易日:", TRADE_DATE)
 # =========================
@@ -1048,8 +1048,8 @@ def strategy(df, code, emotion_stage):
     )
 
     #cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3]))
-    cond_xh1 = (C.iloc[-1] > highest_close and VOL.iloc[-1] > highest_vol)
-    cond_xh2 = C.iloc[-1] / C.iloc[-2]>1.01  and  C.iloc[-1] / ma5.iloc[-1] <1.2 and C.iloc[-1] / ma5.iloc[-1] > 0.99
+    cond_xh1 = (C.iloc[-1] > highest_close)
+    cond_xh2 = C.iloc[-1] / ma5.iloc[-1] <1.15 and C.iloc[-1] / ma5.iloc[-1] > 0.95
     cond_xh3 = C.iloc[-2] > highest_close or C.iloc[-3] > highest_close or C.iloc[-1] > C.iloc[-ztts-1]
     cond_xh4 = C.iloc[-1] / C.iloc[-2]<0.99 and C.iloc[-1] > ma5.iloc[-1] * 0.95 and VOL.iloc[-1] < VOL.iloc[-2]
     
@@ -1927,14 +1927,14 @@ def run():
 - 不要添加任何未在输入数据中出现的具体股票事实（如"某股5连板"等）
 
 """
-    print("\n========== Qwen3Max ==========\n")
-    report = ask_qwen(prompt)
+    print("\n========== Deepseek ==========\n")
+    report = deepseek(prompt)
     print(report)
 
     with open(
         os.path.join(
             REPORT_DIR,
-            f"Qwen3Max_Self_{TRADE_DATE}.md"    
+            f"Deepseek_Self_{TRADE_DATE}.md"    
         ),
         "w",
         encoding="utf-8"
@@ -1970,9 +1970,9 @@ def run():
     prompt = f"""
 请仔细阅读以下两份报告，分别来自不同的AI模型，
 内容都是基于同一份市场数据和个股数据分析得出的。
-Qwen3Max的报告:{report_ds};
+Deepseek的报告:{report_ds};
 Minimax的报告:{report_doubao};
-请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取Qwen3Max的报告即可,输出一个最终的复盘总结和个股推荐。
+请仅针对对当日个股和历史个股分析部分互相验证和辩论,以确定性为标准,其余部分取Deepseek的报告即可,输出一个最终的复盘总结和个股推荐。
 
 输出内容：
 标题：每日复盘({TRADE_DATE})
