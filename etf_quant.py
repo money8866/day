@@ -87,11 +87,21 @@ def init_portfolio_table():
             buy_price REAL,
             current_price REAL,
             shares INTEGER DEFAULT 0,
+            target_weight REAL DEFAULT 0,  -- 目标权重（占总资产的百分比）
             stop_loss REAL DEFAULT 0,
             take_profit REAL DEFAULT 0,
             status TEXT DEFAULT 'holding'
         )
     """)
+    
+    # 数据库迁移：添加缺失的 target_weight 字段
+    try:
+        cursor.execute("ALTER TABLE portfolio ADD COLUMN target_weight REAL DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        # 字段已存在，忽略
+        pass
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS trade_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,7 +158,7 @@ def load_portfolio():
     conn.close()
     return df
 
-def save_portfolio_action(ts_code, industry, action, price, shares=0, pnl=0, reason=''):
+def save_portfolio_action(ts_code, industry, action, price, shares=0, pnl=0, reason='', target_weight=0):
     """记录交易操作"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -160,9 +170,9 @@ def save_portfolio_action(ts_code, industry, action, price, shares=0, pnl=0, rea
         take_profit = round(price * 1.20, 3)  # +20%止盈
         cursor.execute("""
             INSERT OR REPLACE INTO portfolio
-            (ts_code, industry, buy_date, buy_price, current_price, shares, stop_loss, take_profit, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'holding')
-        """, (ts_code, industry, today, price, price, shares, stop_loss, take_profit))
+            (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')
+        """, (ts_code, industry, today, price, price, shares, target_weight, stop_loss, take_profit))
     elif action == 'sell':
         cursor.execute("""
             UPDATE portfolio SET status='closed' WHERE ts_code=? AND status='holding'
@@ -268,6 +278,7 @@ def check_and_trigger_orders(result_df):
         suggest_price = order['suggest_price']
         signal = order['signal']
         score = order['score']
+        position_pct = order.get('position_pct', 100)  # 获取当日建议的整体仓位
         
         # 检查是否已持仓
         holding_df = pd.read_sql(
@@ -294,14 +305,17 @@ def check_and_trigger_orders(result_df):
                 # 计算实际买入价（取建议价和收盘价的较小值）
                 actual_price = min(suggest_price, today_close)
                 
+                # 计算目标权重：新开仓时按整体仓位的一定比例分配（假设单只ETF占整体仓位的20%）
+                target_weight = position_pct * 0.2  # 假设每只ETF分配20%的整体仓位
+                
                 # 加入持仓
                 stop_loss = round(actual_price * 0.95, 3)
                 take_profit = round(actual_price * 1.20, 3)
                 cursor.execute("""
                     INSERT OR REPLACE INTO portfolio
-                    (ts_code, industry, buy_date, buy_price, current_price, shares, stop_loss, take_profit, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'holding')
-                """, (ts_code, industry, TRADE_DATE, actual_price, today_close, 100, stop_loss, take_profit))
+                    (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')
+                """, (ts_code, industry, TRADE_DATE, actual_price, today_close, 100, target_weight, stop_loss, take_profit))
                 
                 # 记录交易日志
                 cursor.execute("""
@@ -399,6 +413,7 @@ def analyze_portfolio(result_df, portfolio_df):
         buy_date = p['buy_date']
         stop_loss = p['stop_loss']
         take_profit = p['take_profit']
+        target_weight = p.get('target_weight', 0)  # 获取目标权重
 
         # 匹配今日数据
         today_data = result_df[result_df['ETF'] == ts_code]
@@ -442,7 +457,8 @@ def analyze_portfolio(result_df, portfolio_df):
         lines.append(
             f"  - {industry}({ts_code}): 买入价{buy_price}({buy_date}), "
             f"现价{current_price}, 盈亏{pnl_pct:+.2f}%, "
-            f"持有{hold_days}天, 评分{score}{score_change}, "
+            f"持有{hold_days}天, 目标权重{target_weight:.1f}%, "
+            f"评分{score}{score_change}, "
             f"波段={stage}, 信号={signal} {alert}"
         )
 
@@ -547,6 +563,75 @@ def execute_sell_actions(sell_actions):
     
     conn.commit()
     conn.close()
+
+def rebalance_portfolio(portfolio_df, current_position_pct, result_df):
+    """
+    仓位再平衡：当整体市场仓位建议变化时，调整已有持仓的目标权重
+    如果目标权重下降超过一定比例，给出减仓建议
+    """
+    if portfolio_df.empty:
+        return []
+    
+    rebalance_actions = []
+    conn = sqlite3.connect(DB_PATH)
+    
+    print(f"\n[仓位再平衡] 当前整体仓位: {current_position_pct}%")
+    
+    # 计算每只持仓的权重变化
+    for _, p in portfolio_df.iterrows():
+        ts_code = p['ts_code']
+        industry = p['industry']
+        current_weight = p.get('target_weight', 0)
+        buy_price = p['buy_price']
+        current_price = p['current_price']
+        
+        # 获取今日评分和信号
+        today_data = result_df[result_df['ETF'] == ts_code]
+        score = today_data.iloc[0]['总评分'] if not today_data.empty else 0
+        signal = today_data.iloc[0]['信号'] if not today_data.empty else ''
+        
+        # 计算新的目标权重（假设每只ETF分配整体仓位的20%）
+        new_target_weight = current_position_pct * 0.2
+        
+        # 计算权重变化比例
+        if current_weight > 0:
+            weight_change = (new_target_weight - current_weight) / current_weight * 100
+        else:
+            weight_change = 0
+        
+        # 如果目标权重下降超过30%，建议减仓
+        if weight_change < -30 and current_weight > 0:
+            # 计算需要卖出的比例
+            sell_ratio = abs(weight_change) / 100
+            pnl_pct = round((current_price - buy_price) / buy_price * 100, 2)
+            
+            # 判断是否应该减仓
+            # 如果有盈利或者跌幅不大，建议减仓
+            if pnl_pct > 0 or pnl_pct > -5:
+                action = '减仓'
+                reason = f"整体仓位调整: 目标权重从{current_weight:.1f}%降至{new_target_weight:.1f}%, 建议减仓{sell_ratio*100:.0f}%"
+                print(f"   [{action}] {industry}({ts_code}): {reason}")
+                rebalance_actions.append({
+                    'ts_code': ts_code,
+                    'industry': industry,
+                    'action': action,
+                    'current_weight': current_weight,
+                    'new_target_weight': new_target_weight,
+                    'reason': reason,
+                    'score': score,
+                    'signal': signal,
+                    'pnl_pct': pnl_pct
+                })
+        
+        # 更新目标权重
+        conn.execute(
+            "UPDATE portfolio SET target_weight=? WHERE ts_code=? AND status='holding'",
+            (new_target_weight, ts_code)
+        )
+    
+    conn.commit()
+    conn.close()
+    return rebalance_actions
 
 def init_style_table():
 
@@ -2324,6 +2409,18 @@ def main():
         # 重新加载持仓
         portfolio_df = load_portfolio()
         portfolio_text = analyze_portfolio(result_df, portfolio_df)
+
+    # =====================================================
+    # 仓位再平衡：当整体仓位变化时调整持仓权重
+    # =====================================================
+    rebalance_actions = rebalance_portfolio(portfolio_df, position_pct, result_df)
+    if rebalance_actions:
+        print(f"\n[仓位再平衡] 发现 {len(rebalance_actions)} 个减仓建议")
+        # 更新持仓分析文本，加入减仓建议
+        for action in rebalance_actions:
+            portfolio_text += f"\n  - {action['industry']}({action['ts_code']}): {action['reason']}"
+        # 重新加载持仓
+        portfolio_df = load_portfolio()
 
     # =====================================================
     # 新开仓逻辑：当出现买入信号且未持仓时记录交易

@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import random
 import pickle
@@ -57,6 +56,29 @@ DB_PATH = os.path.join(CACHE_DIR, "hot_sector.db")
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+
+# =========================================================
+# 文件路径
+# =========================================================
+CONCEPT_LIST_PATH = os.path.join(
+    CACHE_DIR,
+    "ths_concept_list.csv"
+)
+
+CONCEPT_DETAIL_PATH = os.path.join(
+    CACHE_DIR,
+    "ths_concept_detail.pkl"
+)
+
+STOCK_CONCEPT_PATH = os.path.join(
+    CACHE_DIR,
+    "stock_concept_map.pkl"
+)
+
+CONCEPT_STOCK_PATH = os.path.join(
+    CACHE_DIR,
+    "concept_stock_map.pkl"
+)
 
 # =========================================================
 # 主题映射（替代概念）
@@ -163,108 +185,106 @@ TRADE_DATE = get_last_trade_date()
 #TRADE_DATE = "20260529" # for test
 print(f"板块分析日期: {TRADE_DATE}")
 # =========================================================
-# 东财板块列表（替换同花顺接口）
+# 下载同花顺概念列表
 # =========================================================
-CONCEPT_EXCLUDE_KEYWORDS = [
-    "融资融券", "国企改革", "标准普尔", "富时罗素",
-    "MSCI", "深股通", "沪股通", "证金持股", "社保重仓",
-    "中字头", "央企改革", "地方国资", "高股息",
-    "机构重仓", "QFII重仓", "昨日高振幅", "破增发价股",
-    "破发股", "超跌股", "近期新高", "历史新高", "百日新高",
-    "大盘股", "大盘价值", "大盘成长",
-    "中盘股", "中盘价值", "中盘成长",
-    "小盘股", "小盘价值", "小盘成长",
-    "一季报", "半年报", "年报", "季报预", "业绩预",
-]
+# =========================================================
+# 下载同花顺概念列表（带缓存）
+# =========================================================
+def download_ths_concepts():
 
-def fetch_dc_index_all(trade_date, idx_type="概念板块"):
-    """
-    使用东财 dc_index 接口拉取板块（概念/行业）
-    - 单次最大 5000 条批量获取
-    - 排除融资融券/国企改革等大容量概念
-    - 缓存为 CSV 便于查阅
-    """
-    cache_file = os.path.join(CACHE_DIR, f"dc_index_{idx_type}_{trade_date}.csv")
-    if os.path.exists(cache_file):
-        print(f"读取东财{idx_type}缓存: {cache_file}")
-        return pd.read_csv(cache_file, dtype={"ts_code": str})
+    print("获取同花顺概念列表...")
 
-    print(f"调用东财 dc_index 拉取{idx_type}...")
-    try:
-        # 注意：不要传 limit/fields 参数，否则 Tushare 某些版本会返回空
-        if idx_type:
-            df = pro.dc_index(trade_date=trade_date, idx_type=idx_type)
-        else:
-            df = pro.dc_index(trade_date=trade_date)
-        time.sleep(0.2)
-    except Exception as e:
-        print(f"dc_index 拉取失败: {e}")
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_LIST_PATH):
+        print(f"读取缓存: {CONCEPT_LIST_PATH}")
+        return pd.read_csv(CONCEPT_LIST_PATH, encoding="utf-8-sig")
+
+    # ========= 重新生成 =========
+    df = pro.ths_index(
+        exchange='A',
+        type='N'
+    )
+
+    if df is None or df.empty:
         return pd.DataFrame()
 
-    # 排除大容量概念（融资融券、国企改革等）
-    before = len(df)
-    for kw in CONCEPT_EXCLUDE_KEYWORDS:
-        df = df[~df["name"].str.contains(kw, na=False)]
-    after = len(df)
-    if before > after:
-        print(f"  排除{idx_type}: {before - after}个（融资融券/国企改革等）")
+    df.to_csv(
+        CONCEPT_LIST_PATH,
+        index=False,
+        encoding='utf-8-sig'
+    )
 
-    df.to_csv(cache_file, index=False, encoding="utf-8-sig")
-    print(f"东财{idx_type}已缓存: {cache_file}, 共{len(df)}个")
+    print(f"概念列表已保存: {CONCEPT_LIST_PATH}")
+
     return df
 
 
-def fetch_dc_member_all(trade_date):
-    """
-    使用东财 dc_member 接口批量获取板块成份股
-    - 合并概念+行业板块
-    - 单次最多传25个板块代码
-    - 缓存为 CSV 便于查阅
-    """
-    cache_file = os.path.join(CACHE_DIR, f"dc_member_{trade_date}.csv")
-    if os.path.exists(cache_file):
-        print(f"读取东财成份股缓存: {cache_file}")
-        return pd.read_csv(cache_file, dtype={"ts_code": str, "con_code": str})
+# =========================================================
+# 下载概念成分股（带缓存）
+# =========================================================
+def download_ths_members(concept_df):
 
-    # 获取概念板块和行业板块列表
-    concept_df = fetch_dc_index_all(trade_date, idx_type="概念板块")
-    industry_df = fetch_dc_index_all(trade_date, idx_type="行业板块")
+    # ========= 缓存命中 =========
+    if os.path.exists(CONCEPT_DETAIL_PATH):
+        print(f"读取缓存: {CONCEPT_DETAIL_PATH}")
 
-    boards = pd.concat([concept_df[["ts_code", "name"]], industry_df[["ts_code", "name"]]], ignore_index=True)
-    name_map = dict(zip(boards["ts_code"], boards["name"]))
-    codes = boards["ts_code"].tolist()
+        with open(CONCEPT_DETAIL_PATH, "rb") as f:
+            return pickle.load(f)
 
-    print(f"东财板块共{len(codes)}个（概念{len(concept_df)}+行业{len(industry_df)}），开始拉取成份股...")
+    # ========= 重新生成 =========
+    all_rows = []
+    total = len(concept_df)
 
-    all_members = []
-    # 注意: dc_member 不支持逗号分隔多 code 批量传参，必须逐个调用
-    total = len(codes)
-    for i, code in enumerate(codes):
+    for i, row in concept_df.iterrows():
+
+        ts_code = row["ts_code"]
+        name = row["name"]
+
+        print(f"[{i+1}/{total}] 下载: {name}")
+
         try:
-            m = pro.dc_member(trade_date=trade_date, ts_code=code)
-            if m is not None and not m.empty:
-                m["concept_name"] = m["ts_code"].map(name_map)
-                m = m.dropna(subset=["concept_name"])
-                all_members.append(m)
-            if (i + 1) % 50 == 0:
-                print(f"  进度: {i+1}/{total}")
-            time.sleep(0.08)
+            df = pro.ths_member(ts_code=ts_code)
+
+            if df is None or df.empty:
+                continue
+
+            df["concept_name"] = name
+            all_rows.append(df)
+
+            time.sleep(0.25)
+
         except Exception as e:
-            pass  # 个别板块无成份股，静默跳过
+            print(f"失败: {name} {e}")
 
-    if not all_members:
+    if not all_rows:
         return pd.DataFrame()
-    df = pd.concat(all_members, ignore_index=True).drop_duplicates(subset=["con_code", "concept_name"])
-    df.to_csv(cache_file, index=False, encoding="utf-8-sig")
-    print(f"东财成份股拉取完成: {len(df)}条")
-    return df
 
+    result = pd.concat(all_rows, ignore_index=True)
+
+    # ========= 写缓存 =========
+    with open(CONCEPT_DETAIL_PATH, "wb") as f:
+        pickle.dump(result, f)
+
+    print(f"概念成分股已保存: {CONCEPT_DETAIL_PATH}")
+
+    return result
 
 # =========================================================
 # 构建 股票 -> 概念
 # =========================================================
+# 构建 股票 -> 概念（带缓存，按天更新）
+# =========================================================
 def build_stock_concept_map(member_df):
-    """从 dc_member 构建 股票->概念 映射（直接内存构建，上游 CSV 已缓存）"""
+    # 缓存文件名加上日期，按天更新
+    cache_file = os.path.join(CACHE_DIR, f"stock_concept_map_{TRADE_DATE}.pkl")
+
+    # ========= 缓存命中（当天） =========
+    if os.path.exists(cache_file):
+        print(f"读取当日缓存: {cache_file}")
+        with open(cache_file, "rb") as f:
+            return pickle.load(f)
+
+    # ========= 重新生成 =========
     stock_map = defaultdict(list)
 
     for _, row in member_df.iterrows():
@@ -277,39 +297,89 @@ def build_stock_concept_map(member_df):
         for k, v in stock_map.items()
     }
 
+    # ========= 写缓存 =========
+    with open(cache_file, "wb") as f:
+        pickle.dump(stock_map, f)
+
+    print(f"股票概念映射已保存: {cache_file}")
+
     return stock_map
 
 # =========================================================
+# 构建 概念 -> 股票
+# =========================================================
+# =========================================================
+# 构建 概念 -> 股票（带缓存）
+# =========================================================
+# 构建 概念 -> 股票（带缓存，按天更新）
+# =========================================================
 def build_concept_stock_map(member_df):
-    """从 dc_member 构建 概念->股票 映射（直接内存构建，上游 CSV 已缓存）"""
+    # 缓存文件名加上日期，按天更新
+    cache_file = os.path.join(CACHE_DIR, f"concept_stock_map_{TRADE_DATE}.pkl")
+
+    # ========= 缓存命中（当天） =========
+    if os.path.exists(cache_file):
+        print(f"读取当日缓存: {cache_file}")
+        with open(cache_file, "rb") as f:
+            return pickle.load(f)
+
+    # ========= 重新生成 =========
     concept_map = defaultdict(list)
 
     for _, row in member_df.iterrows():
-        stock_code = row["con_code"]
+        ts_code = row["ts_code"]
         concept = row["concept_name"]
-        concept_map[concept].append(stock_code)
+        concept_map[concept].append(ts_code)
 
     concept_map = {
         k: sorted(set(v))
         for k, v in concept_map.items()
     }
 
+    # ========= 写缓存 =========
+    with open(cache_file, "wb") as f:
+        pickle.dump(concept_map, f)
+
+    print(f"概念股票映射已保存: {cache_file}")
+
     return concept_map
 
 
 # =========================================================
-# 初始化概念缓存（东财接口）
+# 读取股票概念缓存
+# =========================================================
+def load_stock_concept_map():
+    cache_file = os.path.join(CACHE_DIR, f"stock_concept_map_{TRADE_DATE}.pkl")
+    with open(cache_file, "rb") as f:
+        return pickle.load(f)
+
+
+# =========================================================
+# 读取概念股票缓存
+# =========================================================
+def load_concept_stock_map():
+    cache_file = os.path.join(CACHE_DIR, f"concept_stock_map_{TRADE_DATE}.pkl")
+    with open(cache_file, "rb") as f:
+
+        return pickle.load(f)
+
+
+
+# =========================================================
+# 初始化概念缓存
 # =========================================================
 def init_concept_cache():
-    """使用东财 dc_index + dc_member 接口初始化概念缓存"""
-    member_df = fetch_dc_member_all(TRADE_DATE)
-    if member_df.empty:
-        print("东财接口数据为空，返回空缓存")
-        return {}, {}
+
+    concept_df = download_ths_concepts()
+
+    member_df = download_ths_members(concept_df)
 
     stock_map = build_stock_concept_map(member_df)
+
     concept_map = build_concept_stock_map(member_df)
-    print("概念缓存初始化完成（东财接口）")
+
+    print("概念缓存初始化完成")
+
     return stock_map, concept_map
 
 
@@ -1087,21 +1157,18 @@ def analyze_industry(daily_df, industry_df):
 
 
 # =========================================================
-# 概念板块分析（使用东财接口数据）
+# 概念板块分析（直接分析同花顺概念）
 # =========================================================
 def analyze_concepts(daily_df):
     
     result = []
     
-    # 读取东财 dc_member 缓存（CSV）
-    dc_member_cache = os.path.join(CACHE_DIR, f"dc_member_{TRADE_DATE}.csv")
-    if not os.path.exists(dc_member_cache):
-        print("[概念分析] 东财经成份股缓存不存在，尝试拉取...")
-        member_df = fetch_dc_member_all(TRADE_DATE)
-        if member_df.empty:
-            return result
-    else:
-        member_df = pd.read_csv(dc_member_cache, dtype={"ts_code": str, "con_code": str})
+    if not os.path.exists(CONCEPT_DETAIL_PATH):
+        print("[概念分析] 概念成分股数据不存在")
+        return result
+    
+    with open(CONCEPT_DETAIL_PATH, "rb") as f:
+        member_df = pickle.load(f)
     
     daily_codes = set(daily_df["ts_code"].unique())
     
@@ -1379,135 +1446,6 @@ def load_history(days=10):
 
 
 # =========================================================
-# 主题风格判定
-# =========================================================
-def get_theme_style(theme_name):
-    """判定主题风格：emotion（情绪驱动/游资风格）或 trend（趋势驱动/机构风格）"""
-    emotion_keywords = [
-        "AI", "机器人", "算力", "芯片", "半导体", "数字经济", "信创", "数据要素",
-        "华为", "智能", "无人", "低空", "量子", "脑机", "虚拟", "web3",
-        "AI算力链", "人形机器人", "AI应用", "AI医疗", "智能驾驶", "AI+"
-    ]
-    trend_keywords = [
-        "电力", "煤炭", "石油", "银行", "红利", "有色", "化工", "钢铁",
-        "公用事业", "铁路", "公路", "港口", "航运", "保险", "建筑", "建材",
-        "家电", "白酒", "食品", "医药", "新能源(光伏)"
-    ]
-    for kw in emotion_keywords:
-        if kw in theme_name:
-            return "emotion"
-    for kw in trend_keywords:
-        if kw in theme_name:
-            return "trend"
-    return "emotion"
-
-
-# =========================================================
-# 主题双因子独立评分（情绪分 + 趋势分 + 综合分）
-# 独立于行业和概念，直接复用 theme_trend_sentiment_score.py 的评分算法
-# =========================================================
-def analyze_themes_dual_factor():
-    """
-    主题双因子独立评分（情绪分 + 趋势分 + 综合分）
-    与 analyze_themes() 完全独立，不再与概念/行业混合输出
-    直接调用 d:\\mystock\\solo\\theme_trend_sentiment_score.py 的 main()
-    该文件已集成"行业最强"双因子评分算法（情绪分+趋势分+综合分）+ 高潮警示
-
-    返回 DataFrame 列：主题, 风格, 情绪分, 趋势分, 综合分, 强度, 龙头, 中军, 成分股数, 高潮预警
-    """
-    print("\n=== 主题双因子独立评分（情绪分 + 趋势分 + 综合分）===\n")
-    print("  -> 调用 d:\\mystock\\solo\\theme_trend_sentiment_score.main()")
-
-    try:
-        solo_dir = r"d:\mystock\solo"
-        if solo_dir not in sys.path:
-            sys.path.insert(0, solo_dir)
-
-        import importlib
-        tts_module = importlib.import_module("theme_trend_sentiment_score")
-        importlib.reload(tts_module)
-        tts_module.main()
-    except Exception as e:
-        print(f"[ThemeScore] 调用 theme_trend_sentiment_score.main() 失败: {e}")
-        import traceback
-        traceback.print_exc()
-        return pd.DataFrame()
-
-    try:
-        db_path = os.path.join(
-            r"d:\mystock\solo\cache_backbone_tushare",
-            "theme_trend_sentiment.db"
-        )
-        if not os.path.exists(db_path):
-            print(f"[ThemeScore] 未找到评分数据库: {db_path}")
-            return pd.DataFrame()
-
-        conn = sqlite3.connect(db_path)
-        df_result = pd.read_sql(
-            "SELECT * FROM theme_scores WHERE trade_date = ? ORDER BY composite_score DESC",
-            conn,
-            params=(TRADE_DATE,)
-        )
-        conn.close()
-    except Exception as e:
-        print(f"[ThemeScore] 读取 SQLite 失败: {e}")
-        return pd.DataFrame()
-
-    if df_result.empty:
-        return df_result
-
-    style_map = {tn: get_theme_style(tn) for tn in df_result["theme"].tolist()}
-
-    out_rows = []
-    for _, r in df_result.iterrows():
-        theme = r["theme"]
-        composite = float(r["composite_score"])
-        if composite >= 80:
-            strength_label = "🟢强"
-        elif composite >= 65:
-            strength_label = "🟡中"
-        elif composite >= 50:
-            strength_label = "🟠弱"
-        else:
-            strength_label = "⚪观望"
-
-        climax_flag = int(r.get("climax_warning", 0) or 0)
-        if climax_flag == 1:
-            strength_label = f"⚠️高潮{strength_label}"
-
-        leader_name = r.get("leader_name", "") or ""
-        leader_code = r.get("leader_code", "") or ""
-        leader_score = r.get("leader_score", 0) or 0
-        core_name = r.get("core_name", "") or ""
-        core_code = r.get("core_code", "") or ""
-        core_score = r.get("core_score", 0) or 0
-
-        leader_display = f"{leader_name}" if leader_name else ""
-        core_display = f"{core_name}" if core_name else ""
-
-        out_rows.append({
-            "主题": theme,
-            "风格": style_map.get(theme, "emotion"),
-            "情绪分": float(r["sentiment_score"]),
-            "趋势分": float(r["trend_score"]),
-            "综合分": composite,
-            "强度": strength_label,
-            "龙头": leader_display,
-            "中军": core_display,
-            "成分股数": int(r["n_stocks"]),
-            "高潮预警": climax_flag,
-        })
-
-    df_result = pd.DataFrame(out_rows)
-    df_result = df_result.sort_values("综合分", ascending=False).reset_index(drop=True)
-
-    print(f"\n[ThemeScore] 主题双因子评分完成，共 {len(df_result)} 个主题（来源: theme_trend_sentiment_score）")
-    print(df_result[["主题", "风格", "情绪分", "趋势分", "综合分", "强度", "龙头", "中军", "成分股数", "高潮预警"]].to_string(index=False))
-
-    return df_result
-
-
-# =========================================================
 # 板块分析结果缓存路径
 # =========================================================
 SECTOR_RESULT_CACHE = os.path.join(CACHE_DIR, f"sector_analysis_{TRADE_DATE}.pkl")
@@ -1519,33 +1457,11 @@ def analyze_hot_sectors():
     """
     分析主线板块强度
     缓存策略：按交易日缓存，同一天内多次调用直接返回缓存结果
-
-    返回：(行业+概念合并结果 df, 主题双因子评分 theme_df)
     """
     if os.path.exists(SECTOR_RESULT_CACHE):
         print(f"读取板块分析缓存: {SECTOR_RESULT_CACHE}")
-        try:
-            with open(SECTOR_RESULT_CACHE, "rb") as f:
-                cached = pickle.load(f)
-            if (
-                isinstance(cached, tuple)
-                and len(cached) == 2
-                and isinstance(cached[0], pd.DataFrame)
-                and isinstance(cached[1], pd.DataFrame)
-            ):
-                return cached
-            else:
-                print("  -> 缓存格式不兼容（非 (df, theme_df) 二元组），删除并重新计算")
-                try:
-                    os.remove(SECTOR_RESULT_CACHE)
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"  -> 缓存读取失败: {e}，重新计算")
-            try:
-                os.remove(SECTOR_RESULT_CACHE)
-            except Exception:
-                pass
+        with open(SECTOR_RESULT_CACHE, "rb") as f:
+            return pickle.load(f)
 
     print("\n=== 主线系统 V4 + V5 ===\n")
 
@@ -1563,16 +1479,8 @@ def analyze_hot_sectors():
 
     stock_map, concept_map = init_concept_cache()
 
-    if not stock_map:
-        print("概念缓存为空，跳过概念/行业分析")
-        concept_df = pd.DataFrame()
-        industry_res = []
-        concept_res = []
-        all_res = []
-        theme_df = pd.DataFrame()
-        return pd.DataFrame(), theme_df
+    stock_map = load_stock_concept_map()
 
-    # stock_map 已从 init_concept_cache 获得，避免重复读缓存
     concept_df = build_concept_df(stock_map)
 
     industry_df = get_sw_industry_map()
@@ -1583,21 +1491,25 @@ def analyze_hot_sectors():
          how="left"
     )
 
-    # ---- 行业分析 ----
     industry_res = analyze_industry(daily_df, industry_df)
 
-    # ---- 概念分析 ----
+    stock_concept_list = {k: v.split(";") for k, v in stock_map.items()}
+
+    theme_res = analyze_themes(daily_df, industry_df, stock_concept_list)
+    
     concept_res = analyze_concepts(daily_df)
 
-    # ---- 行业 + 概念 合并（主题独立输出，不再混入） ----
-    all_res = industry_res + concept_res
-    print(f"行业{len(industry_res)} + 概念{len(concept_res)} = {len(all_res)}")
+    all_res = industry_res + theme_res + concept_res
 
-    # ---- 主题双因子独立评分（情绪分 + 趋势分 + 综合分） ----
-    theme_df = analyze_themes_dual_factor()
+    print(f"行业{len(industry_res)} + 主题{len(theme_res)} + 概念{len(concept_res)}")
+
+    theme_sorted = sorted(theme_res, key=lambda x: x.get("主线强度", 0), reverse=True)
+    print("主题板块强度排名:")
+    for t in theme_sorted[:5]:
+        print(f"  {t['主线']:16s} 强度={t['主线强度']:.1f} 评分={t['评分']:.1f} 成分股={t['成分股数']}")
 
     if not all_res:
-        return pd.DataFrame(), theme_df
+        return pd.DataFrame()
 
     df = pd.DataFrame(all_res)
 
@@ -1611,32 +1523,21 @@ def analyze_hot_sectors():
     init_db()
     save_top20(df)
 
-    # 只有 theme_df 有数据时才写入缓存，避免缓存空结果
-    if theme_df is not None and not theme_df.empty:
-        with open(SECTOR_RESULT_CACHE, "wb") as f:
-            pickle.dump((df, theme_df), f)
-        print(f"板块分析结果已缓存: {SECTOR_RESULT_CACHE}")
-    else:
-        print(f"[ThemeScore] 主题评分为空，跳过缓存保存")
+    with open(SECTOR_RESULT_CACHE, "wb") as f:
+        pickle.dump(df, f)
+    print(f"板块分析结果已缓存: {SECTOR_RESULT_CACHE}")
 
-    return df, theme_df
+    return df
 
 # =========================================================
 # 运行
 # =========================================================
 if __name__ == "__main__":
 
-    df, theme_df = analyze_hot_sectors()
 
-    print("\n=== 行业+概念合并结果（Top20） ===")
+    df = analyze_hot_sectors()
+    
     print(df.head(20))
-
-    print("\n=== 主题双因子评分（Top20） ===")
-    if theme_df is not None and not theme_df.empty:
-        cols = [c for c in ["主题", "风格", "情绪分", "趋势分", "综合分", "强度", "龙头", "中军", "成分股数", "高潮预警"] if c in theme_df.columns]
-        pd.set_option("display.max_columns", 20)
-        pd.set_option("display.width", 200)
-        print(theme_df[cols].head(20).to_string(index=False))
 
 
 

@@ -1002,7 +1002,8 @@ def analyze_market_emotion(sector_df):
 # 运行
 # =========================================================
 if __name__ == "__main__":
-    sector_df = blk.analyze_hot_sectors()
-
-    df = analyze_market_emotion(sector_df)
+    _, sector_df = blk.analyze_hot_sectors()
+    if sector_df is not None and not sector_df.empty:
+        sector_df = sector_df.rename(columns={"主题": "name", "综合分": "评分"})
+        df = analyze_market_emotion(sector_df)
 
