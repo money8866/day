@@ -738,8 +738,18 @@ def get_theme_analysis():
     for i, r in enumerate(sorted_by_trend[:3]):
         if r['trend_score'] >= 40:
             td = r.get("trend_detail", {}) or {}
+            theme_state = r.get("theme_state", "弱势")
+            # 状态图标
+            state_icon = ""
+            if theme_state == "高潮": state_icon = "⚠️"
+            elif theme_state == "主升": state_icon = "↑"
+            elif theme_state == "启动": state_icon = "↗"
+            elif theme_state == "分歧转一致": state_icon = "⭐"
+            elif theme_state == "分歧": state_icon = "~"
+            elif theme_state == "退潮": state_icon = "↓"
+            else: state_icon = "○"
             icon = "🟢" if r['trend_score'] >= 70 else "🟡" if r['trend_score'] >= 50 else "⚪"
-            short_term_lines.append(f"  {icon} {r['theme']:<10} 趋势{r['trend_score']:.1f} 情绪{r['sentiment_score']:.1f}  10日{td.get('avg_ret_10', 0):+.1f}%")
+            short_term_lines.append(f"  {icon} {r['theme']:<10} 趋势{r['trend_score']:.1f} 情绪{r['sentiment_score']:.1f} {state_icon}{theme_state:<8} 10日{td.get('avg_ret_10', 0):+.1f}%")
     short_term_lines.append("")
     
     theme_analysis_text = "\n".join(mid_term_lines + short_term_lines)
@@ -759,14 +769,18 @@ def get_theme_analysis():
         for d in signals["dip_buy"][:3]:
             signal_lines.append(f"  {d['theme']}: 趋势{d['trend_score']:.0f} 情绪{d['sentiment_score']:.0f}")
     theme_signals_text = "\n".join(signal_lines)
+    
+    # 构建主题状态映射（用于ETF策略）
+    theme_state_map = {r['theme']: r.get('theme_state', '弱势') for r in results}
 
-    return theme_analysis_text, theme_signals_text, results
+    return theme_analysis_text, theme_signals_text, results, theme_state_map
 
 # =========================================================
 # DeepSeek日报
 # =========================================================
 def deepseek_report(result_df, style_df, risk_state, emotion_text, sector_text,
-                    theme_analysis_text, theme_signals_text, portfolio_text="", new_positions=None, etf_pool=None):
+                    theme_analysis_text, theme_signals_text, portfolio_text="", new_positions=None, etf_pool=None,
+                    theme_state_map=None):
     # ETF数据（包含规模和代码信息）
     if etf_pool is None:
         etf_pool = ETF_POOL
@@ -780,6 +794,30 @@ def deepseek_report(result_df, style_df, risk_state, emotion_text, sector_text,
     for _, row in analyzed_etfs.iterrows():
         etf_mapping_text += f"{row['行业']:<12}{row['ETF']:<15}{'已分析'}\n"
     
+    # 主题状态说明（根据状态映射构建）
+    theme_state_text = ""
+    if theme_state_map:
+        theme_state_lines = ["\n【主题状态机】(ETF操作参考)"]
+        # 启动/主升/分歧转一致 - 优先买入
+        good_states = [k for k, v in theme_state_map.items() if v in ['启动', '主升', '分歧转一致']]
+        if good_states:
+            theme_state_lines.append(f"  🟢 启动/主升/转一致: {', '.join(good_states)}")
+        # 高潮 - 谨慎
+        climax_states = [k for k, v in theme_state_map.items() if v == '高潮']
+        if climax_states:
+            theme_state_lines.append(f"  ⚠️ 高潮(考虑卖出): {', '.join(climax_states)}")
+        # 退潮 - 回避
+        retreat_states = [k for k, v in theme_state_map.items() if v == '退潮']
+        if retreat_states:
+            theme_state_lines.append(f"  🔴 退潮(建议卖出): {', '.join(retreat_states)}")
+        # 分歧
+        dispute_states = [k for k, v in theme_state_map.items() if v == '分歧']
+        if dispute_states:
+            theme_state_lines.append(f"  🟡 分歧(观望): {', '.join(dispute_states)}")
+        theme_state_text = "\n".join(theme_state_lines)
+    else:
+        theme_state_text = ""
+    
     prompt = f"""
 你是中国顶级ETF基金经理，每天给出延续性分析。
 【大盘市场情绪(仓位核心参考)】
@@ -790,6 +828,8 @@ def deepseek_report(result_df, style_df, risk_state, emotion_text, sector_text,
 
 【市场主题信号】
 {theme_signals_text}
+
+{theme_state_text}
 
 {etf_mapping_text}
 
@@ -827,10 +867,115 @@ ETF数据（评分TOP30）：
         return str(e)
 
 def save_report(content):
+    """保存报告（Markdown + HTML）"""
+    # 保存 Markdown
     report_file = os.path.join(REPORT_DIR, f"AI_ETF_Report_{TRADE_DATE}.md")
     with open(report_file, 'w', encoding='utf-8') as f:
         f.write(content)
+    print(f"[报告] 已保存: {report_file}")
+    
+    # 生成 HTML 版本（供 genindex.py 索引）
+    html_content = generate_html_report(content)
+    html_file = os.path.join(REPORT_DIR, f"AI_ETF_Report_{TRADE_DATE}.html")
+    with open(html_file, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f"[报告] HTML已生成: {html_file}")
+    
     return report_file
+
+def generate_html_report(md_content):
+    """将 Markdown 内容转换为 HTML"""
+    import re
+    # 简单的 Markdown 转 HTML
+    html = md_content
+    
+    # 标题
+    html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
+    html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+    html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
+    
+    # 粗体和斜体
+    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
+    
+    # 列表
+    html = re.sub(r'^- (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
+    html = re.sub(r'^(\d+)\. (.+)$', r'<li>\2</li>', html, flags=re.MULTILINE)
+    
+    # 代码块
+    html = re.sub(r'```[\s\S]*?```', lambda m: f'<pre>{m.group()}</pre>', html)
+    html = re.sub(r'`(.+?)`', r'<code>\1</code>', html)
+    
+    # 换行和分段
+    html = html.replace('\n\n', '</p><p>')
+    html = '<p>' + html + '</p>'
+    html = html.replace('<p></p>', '')
+    html = html.replace('<p><li', '<li')
+    html = html.replace('</li></p>', '</li>')
+    html = html.replace('</p><h', '<h')
+    html = html.replace('</li></p><h', '</li><h')
+    
+    # 表格样式
+    html = re.sub(r'\|(.+)\|', lambda m: '<tr>' + ''.join(f'<td>{c.strip()}</td>' for c in m.group(1).split('|') if c.strip()) + '</tr>', html)
+    
+    # 生成完整 HTML 页面
+    full_html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF日报 {TRADE_DATE}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }}
+        h1, h2, h3 {{ color: #1a1a2e; margin-top: 1.5em; }}
+        h1 {{ border-bottom: 2px solid #00d4ff; padding-bottom: 10px; }}
+        pre {{ background: #1a1a2e; color: #0f0; padding: 15px; border-radius: 8px; overflow-x: auto; }}
+        code {{ background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-family: monospace; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 1em 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+        th {{ background: #1a1a2e; color: white; }}
+        tr:nth-child(even) {{ background: #f9f9f9; }}
+        li {{ margin: 5px 0; }}
+        .header {{
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }}
+        .header h1 {{ color: #00d4ff; border: none; margin: 0; }}
+        a {{ color: #00d4ff; }}
+        .back-link {{
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: #1a1a2e;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+        }}
+        .back-link:hover {{ background: #00d4ff; color: #1a1a2e; }}
+    </style>
+</head>
+<body>
+    <a href="genindex.html" class="back-link">← 返回索引</a>
+    <div class="header">
+        <h1>📊 ETF 日报</h1>
+        <p>日期: {TRADE_DATE}</p>
+    </div>
+    {html}
+</body>
+</html>'''
+    
+    return full_html
 
 def send_report(content):
     if not SERVERCHAN_KEY:
@@ -866,7 +1011,7 @@ def main():
     
     # 获取主题分析
     print("=" * 60)
-    theme_analysis_text, theme_signals_text, theme_results = get_theme_analysis()
+    theme_analysis_text, theme_signals_text, theme_results, theme_state_map = get_theme_analysis()
     print(theme_analysis_text)
     print(theme_signals_text)
     
@@ -1008,8 +1153,19 @@ def main():
     # 保存每日持仓快照
     save_daily_holding_snapshot(portfolio_df, result_df, ma_position)
     
-    # 卖出检查
+    # 卖出检查（增加主题状态检查：高潮/退潮主题应卖出）
     sell_actions = check_sell_signals(result_df, portfolio_df)
+    # 如果持仓对应主题处于退潮状态，也应卖出
+    for _, p in portfolio_df.iterrows():
+        ind = p.get('industry', '')
+        ts_code = p.get('ts_code', '')
+        # 找到该行业对应的主题
+        for theme, state in theme_state_map.items():
+            if THEME_TO_ETF_INDUSTRY.get(theme) == ind:
+                if state == '退潮' and ts_code not in [a['ts_code'] for a in sell_actions]:
+                    print(f"[警示] {ind}对应主题{theme}处于退潮状态，建议卖出")
+                    sell_actions.append({'ts_code': ts_code, 'industry': ind, 'reason': '主题退潮'})
+                break
     if sell_actions:
         print(f"[卖出检查] {len(sell_actions)} 个")
         execute_sell_actions(sell_actions)
@@ -1017,16 +1173,43 @@ def main():
         portfolio_text = analyze_portfolio(result_df, portfolio_df, ma_position)
     
     # 新开仓（聚焦前排，最多3只）
+    # 根据主题状态过滤：启动/主升/分歧转一致 可以买入；高潮/退潮/分歧 降低优先级
     new_positions = []
     bought_count = 0
+    # 优先队列：启动/主升/分歧转一致 > 其他
+    priority_etfs = []
+    normal_etfs = []
     for _, row in result_df.iterrows():
         if row['信号'] in ['主线启动', '第一次分歧低吸', '主升浪'] and portfolio_df[portfolio_df['ts_code'] == row['ETF']].empty:
             if row['行业'] in target_industries and row['总评分'] >= 60 and emotion_score > 50:
-                save_pending_order(row['ETF'], row['行业'], row['信号'], round(row['收盘价'] * 1.01, 3), position_pct, row['总评分'])
-                new_positions.append({'industry': row['行业'], 'ts_code': row['ETF'], 'signal': row['信号'], 'price': row['收盘价']})
-                bought_count += 1
-                if bought_count >= 3:
-                    break
+                # 检查对应主题状态
+                theme_state = theme_state_map.get(row['行业'], '弱势')
+                if theme_state in ['启动', '主升', '分歧转一致']:
+                    priority_etfs.append(row)
+                elif theme_state in ['高潮', '退潮', '分歧']:
+                    # 降低优先级，但仍可考虑
+                    normal_etfs.append(row)
+                else:
+                    normal_etfs.append(row)
+    
+    # 优先买入状态良好的ETF
+    for row in priority_etfs:
+        if bought_count >= 3:
+            break
+        theme_state = theme_state_map.get(row['行业'], '弱势')
+        print(f"[买入] {row['行业']}({row['ETF']}) 状态:{theme_state} 评分:{row['总评分']}")
+        save_pending_order(row['ETF'], row['行业'], row['信号'], round(row['收盘价'] * 1.01, 3), position_pct, row['总评分'])
+        new_positions.append({'industry': row['行业'], 'ts_code': row['ETF'], 'signal': row['信号'], 'price': row['收盘价'], 'theme_state': theme_state})
+        bought_count += 1
+    
+    # 如果还有仓位，补充状态一般的ETF（最多再买1只）
+    if bought_count < 3 and normal_etfs:
+        for row in normal_etfs[:1]:
+            theme_state = theme_state_map.get(row['行业'], '弱势')
+            print(f"[买入-补充] {row['行业']}({row['ETF']}) 状态:{theme_state} 评分:{row['总评分']}")
+            save_pending_order(row['ETF'], row['行业'], row['信号'], round(row['收盘价'] * 1.01, 3), position_pct, row['总评分'])
+            new_positions.append({'industry': row['行业'], 'ts_code': row['ETF'], 'signal': row['信号'], 'price': row['收盘价'], 'theme_state': theme_state})
+            bought_count += 1
     
     # 市场风格
     style_df = market_style(result_df)
@@ -1036,7 +1219,8 @@ def main():
     # AI日报
     print("\nAI日报生成中...")
     report = deepseek_report(result_df, style_df, risk_state, emotion_text, sector_text,
-                            theme_analysis_text, theme_signals_text, portfolio_text, new_positions)
+                            theme_analysis_text, theme_signals_text, portfolio_text, new_positions,
+                            theme_state_map=theme_state_map)
     
     report_file = save_report(report)
     print("\n" + "=" * 60)
