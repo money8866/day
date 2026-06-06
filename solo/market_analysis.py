@@ -624,6 +624,10 @@ def analyze_market():
         save_result(results, position, reason, style_allocations, overview,
                     trend_score, index_trend, theme_trend, market_status)
         
+        # 保存到数据库
+        save_to_database(TRADE_DATE, results, position, reason, 
+                        trend_score, index_trend, theme_trend, market_status)
+        
         return results, position, reason, style_allocations, overview
     
     return None, 0, "", [], None

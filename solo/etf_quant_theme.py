@@ -22,21 +22,6 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import sqlite3
 
-# =========================
-# 终极方案：patch os.path.expanduser，不让 tushare 访问用户根目录
-# =========================
-original_expanduser = os.path.expanduser
-safe_cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache_daily')
-os.makedirs(safe_cache_dir, exist_ok=True)
-
-def safe_expanduser(path):
-    if '~/tk.csv' in path or '\\tk.csv' in path or 'tk.csv' in path:
-        return os.path.join(safe_cache_dir, 'tk.csv')
-    return original_expanduser(path)
-
-os.path.expanduser = safe_expanduser
-print(f"[修复] os.path.expanduser 已打补丁")
-
 # 添加上级目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -58,57 +43,150 @@ ts.pro_api(TUSHARE_TOKEN)
 # 现在导入其他模块
 pro = ts.pro_api()
 
+# 缓存/报告目录统一到 d:\stock\ 下
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "cache_daily")
-PARENT_DIR = os.path.dirname(BASE_DIR)
-REPORT_DIR = os.path.join(PARENT_DIR, 'report_daily')
+STOCK_DATA_DIR = r"d:\mystock"
+CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
+REPORT_DIR = os.path.join(STOCK_DATA_DIR, "report_daily")
+DB_PATH = os.path.join(REPORT_DIR, "etf_result.db")
+NEWS_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "news_cache")
+
+os.makedirs(STOCK_DATA_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(REPORT_DIR, exist_ok=True)
-DB_PATH = os.path.join(CACHE_DIR, "etf_result.db")
+os.makedirs(NEWS_CACHE_DIR, exist_ok=True)
 
 # =========================================================
 # 持仓管理
 # =========================================================
+def migrate_old_data():
+    """将旧的portfolio表数据迁移到新表"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # 检查旧表是否存在
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio'")
+        if not cursor.fetchone():
+            conn.close()
+            return
+        
+        # 迁移数据到新表
+        cursor.execute("SELECT * FROM portfolio WHERE status='holding'")
+        old_data = cursor.fetchall()
+        
+        for row in old_data:
+            # 插入到active_holdings
+            cursor.execute("""
+                INSERT OR IGNORE INTO active_holdings 
+                (ts_code, industry, buy_date, buy_price, shares, target_weight, stop_loss, take_profit, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (row[0], row[1], row[2], row[3], row[4] if len(row) > 4 else 0, 
+                  row[5] if len(row) > 5 else 0, row[6] if len(row) > 6 else 0, 
+                  row[7] if len(row) > 7 else 0, row[8] if len(row) > 8 else 'holding'))
+        
+        print(f"[迁移] 已迁移 {len(old_data)} 条持仓数据")
+        conn.commit()
+    except Exception as e:
+        print(f"[迁移] 数据迁移出错: {e}")
+    conn.close()
+
 def init_portfolio_table():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
+    # 新的持仓表：按日期存储
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS portfolio (
-            ts_code TEXT PRIMARY KEY, industry TEXT, buy_date TEXT, buy_price REAL,
-            current_price REAL, shares INTEGER DEFAULT 0, target_weight REAL DEFAULT 0,
-            stop_loss REAL DEFAULT 0, take_profit REAL DEFAULT 0, status TEXT DEFAULT 'holding'
+        CREATE TABLE IF NOT EXISTS daily_holding (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            ts_code TEXT,
+            industry TEXT,
+            weight REAL DEFAULT 0,
+            buy_date TEXT,
+            buy_price REAL,
+            current_price REAL,
+            pnl_pct REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    try:
-        cursor.execute("ALTER TABLE portfolio ADD COLUMN target_weight REAL DEFAULT 0")
-        conn.commit()
-    except:
-        pass
+    
+    # 活跃持仓表：存储当前状态
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS active_holdings (
+            ts_code TEXT PRIMARY KEY,
+            industry TEXT,
+            buy_date TEXT,
+            buy_price REAL,
+            current_price REAL,
+            shares INTEGER DEFAULT 0,
+            target_weight REAL DEFAULT 0,
+            stop_loss REAL DEFAULT 0,
+            take_profit REAL DEFAULT 0,
+            status TEXT DEFAULT 'holding'
+        )
+    """)
+    
+    # 交易日志表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS trade_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, trade_date TEXT, ts_code TEXT,
-            industry TEXT, action TEXT, price REAL, shares INTEGER, pnl REAL DEFAULT 0, reason TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            ts_code TEXT,
+            industry TEXT,
+            action TEXT,
+            price REAL,
+            shares INTEGER,
+            pnl REAL DEFAULT 0,
+            reason TEXT
         )
     """)
+    
+    # ETF每日快照表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_snapshot (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, trade_date TEXT, ts_code TEXT, industry TEXT,
-            score REAL, signal TEXT, stage TEXT, pct_chg REAL, position_pct REAL, emotion REAL
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            ts_code TEXT,
+            industry TEXT,
+            score REAL,
+            signal TEXT,
+            stage TEXT,
+            pct_chg REAL,
+            position_pct REAL,
+            emotion REAL
         )
     """)
+    
+    # 待处理订单表
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pending_orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, trade_date TEXT, ts_code TEXT, industry TEXT,
-            signal TEXT, suggest_price REAL, position_pct REAL, score REAL, status TEXT DEFAULT 'pending',
-            triggered_date TEXT, triggered_price REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            ts_code TEXT,
+            industry TEXT,
+            signal TEXT,
+            suggest_price REAL,
+            position_pct REAL,
+            score REAL,
+            status TEXT DEFAULT 'pending',
+            triggered_date TEXT,
+            triggered_price REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
     conn.commit()
     conn.close()
+    
+    # 尝试迁移旧数据
+    migrate_old_data()
 
 def load_portfolio():
+    print(DB_PATH)
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM portfolio WHERE status='holding'", conn)
+    df = pd.read_sql("SELECT * FROM active_holdings WHERE status='holding'", conn)
+    print(df)
     conn.close()
     return df
 
@@ -118,26 +196,87 @@ def save_portfolio_action(ts_code, industry, action, price, shares=0, pnl=0, rea
     today = TRADE_DATE
     if action == 'buy':
         cursor.execute("""
-            INSERT OR REPLACE INTO portfolio
+            INSERT OR REPLACE INTO active_holdings
             (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')
         """, (ts_code, industry, today, price, price, shares, target_weight, round(price * 0.95, 3), round(price * 1.20, 3)))
     elif action == 'sell':
-        cursor.execute("UPDATE portfolio SET status='closed' WHERE ts_code=? AND status='holding'", (ts_code,))
+        cursor.execute("UPDATE active_holdings SET status='closed' WHERE ts_code=? AND status='holding'", (ts_code,))
     cursor.execute("INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                    (today, ts_code, industry, action, price, shares, pnl, reason))
     conn.commit()
     conn.close()
 
-def update_portfolio_prices(result_df):
+def update_portfolio_prices(result_df, target_position_pct=25):
     conn = sqlite3.connect(DB_PATH)
-    portfolio = pd.read_sql("SELECT * FROM portfolio WHERE status='holding'", conn)
+    cursor = conn.cursor()
+    portfolio = pd.read_sql("SELECT * FROM active_holdings WHERE status='holding'", conn)
+    
+    # 重新计算权重
+    hold_count = len(portfolio)
+    per_etf_weight = target_position_pct / hold_count if hold_count > 0 else 0
+    
+    # 更新价格和权重，并保存每日持仓快照
     for _, row in portfolio.iterrows():
         match = result_df[result_df['ETF'] == row['ts_code']]
+        current_price = row['buy_price']
+        pnl_pct = 0
         if not match.empty:
-            conn.execute("UPDATE portfolio SET current_price=? WHERE ts_code=? AND status='holding'", (match.iloc[0]['收盘价'], row['ts_code']))
+            current_price = match.iloc[0]['收盘价']
+            pnl_pct = round((current_price - row['buy_price']) / row['buy_price'] * 100, 2)
+        
+        # 更新活跃持仓
+        cursor.execute("UPDATE active_holdings SET current_price=?, target_weight=? WHERE ts_code=? AND status='holding'",
+                      (current_price, per_etf_weight, row['ts_code']))
+        
+        # 保存每日持仓
+        cursor.execute("""
+            INSERT OR REPLACE INTO daily_holding
+            (trade_date, ts_code, industry, weight, buy_date, buy_price, current_price, pnl_pct)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (TRADE_DATE, row['ts_code'], row['industry'], per_etf_weight, row['buy_date'], row['buy_price'], current_price, pnl_pct))
+    
     conn.commit()
     conn.close()
+
+def save_daily_holding_snapshot(portfolio_df, result_df, target_position_pct=25):
+    """保存每日持仓快照"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    hold_count = len(portfolio_df)
+    per_etf_weight = target_position_pct / hold_count if hold_count > 0 else 0
+    
+    # 删除当日旧数据
+    cursor.execute("DELETE FROM daily_holding WHERE trade_date=?", (TRADE_DATE,))
+    
+    for _, row in portfolio_df.iterrows():
+        match = result_df[result_df['ETF'] == row['ts_code']]
+        current_price = row['buy_price'] if 'buy_price' in row else 0
+        pnl_pct = 0
+        if not match.empty:
+            current_price = match.iloc[0]['收盘价']
+            pnl_pct = round((current_price - row['buy_price']) / row['buy_price'] * 100, 2)
+        
+        cursor.execute("""
+            INSERT INTO daily_holding
+            (trade_date, ts_code, industry, weight, buy_date, buy_price, current_price, pnl_pct)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (TRADE_DATE, row['ts_code'], row['industry'], row.get('target_weight', per_etf_weight), 
+                 row['buy_date'], row['buy_price'], current_price, pnl_pct))
+    
+    conn.commit()
+    conn.close()
+
+def load_daily_holding(date_str=None):
+    """加载每日持仓数据"""
+    conn = sqlite3.connect(DB_PATH)
+    if date_str:
+        df = pd.read_sql("SELECT * FROM daily_holding WHERE trade_date=? ORDER BY id", conn, params=(date_str,))
+    else:
+        df = pd.read_sql("SELECT * FROM daily_holding WHERE trade_date=? ORDER BY id", conn, params=(TRADE_DATE,))
+    conn.close()
+    return df
 
 def save_daily_snapshot(result_df, position_pct, emotion_score):
     conn = sqlite3.connect(DB_PATH)
@@ -169,7 +308,7 @@ def check_and_trigger_orders(result_df):
         return triggered_orders
     print(f"\n[检查待买入订单] 昨日待处理: {len(pending_df)} 条")
     for _, order in pending_df.iterrows():
-        holding_df = pd.read_sql(f"SELECT * FROM portfolio WHERE ts_code='{order['ts_code']}' AND status='holding'", conn)
+        holding_df = pd.read_sql(f"SELECT * FROM active_holdings WHERE ts_code='{order['ts_code']}' AND status='holding'", conn)
         if not holding_df.empty:
             continue
         try:
@@ -180,8 +319,8 @@ def check_and_trigger_orders(result_df):
             today_close = df.iloc[0]['close']
             if today_low <= order['suggest_price']:
                 actual_price = min(order['suggest_price'], today_close)
-                cursor.execute("INSERT OR REPLACE INTO portfolio (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')",
-                               (order['ts_code'], order['industry'], TRADE_DATE, actual_price, today_close, 100, order['position_pct'] * 0.2, round(actual_price * 0.95, 3), round(actual_price * 1.20, 3)))
+                cursor.execute("INSERT OR REPLACE INTO active_holdings (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')",
+                               (order['ts_code'], order['industry'], TRADE_DATE, actual_price, actual_price, 100, order['position_pct'] * 0.2, round(actual_price * 0.95, 3), round(actual_price * 1.20, 3)))
                 cursor.execute("INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                (TRADE_DATE, order['ts_code'], order['industry'], 'buy', actual_price, 100, 0, f"策略触发:{order['signal']}"))
                 cursor.execute("UPDATE pending_orders SET status='triggered', triggered_date=?, triggered_price=? WHERE id=?", (TRADE_DATE, actual_price, order['id']))
@@ -225,14 +364,21 @@ def load_last_report():
             pass
     return ""
 
-def analyze_portfolio(result_df, portfolio_df):
+def analyze_portfolio(result_df, portfolio_df, target_position_pct=25):
     if portfolio_df.empty:
         return ""
     lines = []
+    
+    # 计算当前总持仓权重
+    total_current_weight = portfolio_df['target_weight'].sum()
+    cash_pct = 100 - total_current_weight
+    
+    lines.append(f"  【总仓位】当前持仓: {total_current_weight:.1f}% | 目标仓位: {target_position_pct}% | 现金: {cash_pct:.1f}%\n")
+    
     for _, p in portfolio_df.iterrows():
         today_data = result_df[result_df['ETF'] == p['ts_code']]
         if today_data.empty:
-            lines.append(f"  - {p['industry']}({p['ts_code']}): 买入价{p['buy_price']}({p['buy_date']}), 今日无数据")
+            lines.append(f"  - {p['industry']}({p['ts_code']}): 权重{p.get('target_weight', 0):.1f}% | 买入价{p['buy_price']}({p['buy_date']}), 今日无数据")
             continue
         row = today_data.iloc[0]
         pnl_pct = round((row['收盘价'] - p['buy_price']) / p['buy_price'] * 100, 2)
@@ -242,7 +388,7 @@ def analyze_portfolio(result_df, portfolio_df):
             alert = "[!!止损!!]"
         elif row['收盘价'] >= p['take_profit']:
             alert = "[!!止盈!!]"
-        lines.append(f"  - {p['industry']}({p['ts_code']}): 买入{p['buy_price']} 现价{row['收盘价']} 盈亏{pnl_pct:+.2f}% 持有{hold_days}天 {alert}")
+        lines.append(f"  - {p['industry']}({p['ts_code']}): 权重{p.get('target_weight', 0):.1f}% | 买入{p['buy_price']} 现价{row['收盘价']} 盈亏{pnl_pct:+.2f}% 持有{hold_days}天 {alert}")
     return "\n".join(lines)
 
 def check_sell_signals(result_df, portfolio_df):
@@ -272,26 +418,37 @@ def execute_sell_actions(sell_actions):
     cursor = conn.cursor()
     for action in sell_actions:
         print(f"\n[卖出] {action['industry']}: 价格{action['current_price']}, 盈亏{action['pnl_pct']:+.2f}%")
-        cursor.execute("UPDATE portfolio SET status='closed' WHERE ts_code=? AND status='holding'", (action['ts_code'],))
+        cursor.execute("UPDATE active_holdings SET status='closed' WHERE ts_code=? AND status='holding'", (action['ts_code'],))
         cursor.execute("INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                        (TRADE_DATE, action['ts_code'], action['industry'], 'sell', action['current_price'], 100, action['pnl_pct'], action['reason']))
     conn.commit()
     conn.close()
 
-def rebalance_portfolio(portfolio_df, current_position_pct, result_df):
+def rebalance_portfolio(portfolio_df, target_position_pct, result_df):
     if portfolio_df.empty:
         return []
     rebalance_actions = []
     conn = sqlite3.connect(DB_PATH)
+    
+    # 计算每只持仓的目标权重：平均分配
+    hold_count = len(portfolio_df)
+    if hold_count > 0:
+        per_etf_weight = target_position_pct / hold_count
+    else:
+        per_etf_weight = 0
+    
     for _, p in portfolio_df.iterrows():
         today_data = result_df[result_df['ETF'] == p['ts_code']]
-        new_target_weight = current_position_pct * 0.2
+        new_target_weight = per_etf_weight
         if p.get('target_weight', 0) > 0:
-            weight_change = (new_target_weight - p['target_weight']) / p['target_weight'] * 100
-            if weight_change < -30:
-                print(f"   [减仓建议] {p['industry']}: 权重从{p['target_weight']:.1f}%降至{new_target_weight:.1f}%")
+            weight_change = (new_target_weight - p['target_weight']) / p['target_weight'] * 100 if p['target_weight'] > 0 else 100
+            if abs(weight_change) > 20:  # 只有变化超过20%才建议调仓
+                if weight_change < 0:
+                    print(f"   [减仓建议] {p['industry']}: 权重从{p['target_weight']:.1f}%降至{new_target_weight:.1f}%")
+                else:
+                    print(f"   [加仓建议] {p['industry']}: 权重从{p['target_weight']:.1f}%增至{new_target_weight:.1f}%")
                 rebalance_actions.append({'ts_code': p['ts_code'], 'industry': p['industry'], 'new_weight': new_target_weight})
-        conn.execute("UPDATE portfolio SET target_weight=? WHERE ts_code=? AND status='holding'", (new_target_weight, p['ts_code']))
+        conn.execute("UPDATE active_holdings SET target_weight=? WHERE ts_code=? AND status='holding'", (new_target_weight, p['ts_code']))
     conn.commit()
     conn.close()
     return rebalance_actions
@@ -631,7 +788,7 @@ def deepseek_report(result_df, style_df, risk_state, emotion_text, sector_text,
 【主题趋势+情绪分析】（核心参考）
 {theme_analysis_text}
 
-【主题交易信号】
+【市场主题信号】
 {theme_signals_text}
 
 {etf_mapping_text}
@@ -642,13 +799,13 @@ ETF数据（评分TOP30）：
 市场风格：
 {style_df.to_string(index=False)}
 
-当前持仓：
+当前持仓（注意下面的总仓位信息）：
 {portfolio_text}
 
 请输出：
 1、大盘分析
 2、市场主线(趋势和情绪双重分析,重点突出仓位建议)
-3、持仓跟踪分析（持有/减仓/清仓/加仓）,不要用表格,用适合手机查看的格式
+3、持仓跟踪分析（持有/减仓/清仓/加仓）,不要用表格,用适合手机查看的格式。**重要：**根据上面的【总仓位】信息，当前持仓各ETF权重相加应该等于总持仓权重，现金=100-总持仓。
 4、低吸方向
 5、高潮方向（注意风险）
 6、明日策略（**重要：每个策略必须包含对应ETF代码，格式：板块名称(ETF代码)，如：电力ETF(159611.SZ)）
@@ -670,7 +827,7 @@ ETF数据（评分TOP30）：
         return str(e)
 
 def save_report(content):
-    report_file = os.path.join(CACHE_DIR, f"AI_ETF_Report_{TRADE_DATE}.md")
+    report_file = os.path.join(REPORT_DIR, f"AI_ETF_Report_{TRADE_DATE}.md")
     with open(report_file, 'w', encoding='utf-8') as f:
         f.write(content)
     return report_file
@@ -722,7 +879,7 @@ def main():
     ma = importlib.import_module("market_analysis")
     ma_results, ma_position, ma_reason, ma_style_allocations, ma_overview = ma.analyze_market()
     
-    # 计算市场趋势总评分
+    # 从数据库或重新计算获取趋势评分（用于显示）
     theme_csv = os.path.join(BASE_DIR, "cache_backbone_tushare", "theme_trend_sentiment.csv")
     theme_top3_scores = None
     if os.path.exists(theme_csv):
@@ -744,7 +901,7 @@ def main():
     status_icon = "🚀" if "主升浪" in ms else ("📈" if "上升" in ms or "良好" in ms else ("⚠️" if "退潮" in ms or "主跌" in ms else "📊"))
     emotion_lines.append(f"  {status_icon} 市场状态: 【{ms}】")
     emotion_lines.append(f"  总趋势分: {ts:.1f} | 指数趋势: {it:.1f} | 主题趋势: {tt:.1f}")
-    emotion_lines.append(f"  建议仓位: {tp}%")
+    emotion_lines.append(f"  建议仓位: {ma_position}%")
     emotion_lines.append("")
     
     if ma_overview:
@@ -844,10 +1001,12 @@ def main():
     print(result_df)
     
     # 持仓更新
-    update_portfolio_prices(result_df)
+    update_portfolio_prices(result_df, ma_position)
     portfolio_df = load_portfolio()
-    portfolio_text = analyze_portfolio(result_df, portfolio_df)
+    portfolio_text = analyze_portfolio(result_df, portfolio_df, ma_position)
     save_daily_snapshot(result_df, position_pct, emotion_score)
+    # 保存每日持仓快照
+    save_daily_holding_snapshot(portfolio_df, result_df, ma_position)
     
     # 卖出检查
     sell_actions = check_sell_signals(result_df, portfolio_df)
@@ -855,7 +1014,7 @@ def main():
         print(f"[卖出检查] {len(sell_actions)} 个")
         execute_sell_actions(sell_actions)
         portfolio_df = load_portfolio()
-        portfolio_text = analyze_portfolio(result_df, portfolio_df)
+        portfolio_text = analyze_portfolio(result_df, portfolio_df, ma_position)
     
     # 新开仓（聚焦前排，最多3只）
     new_positions = []

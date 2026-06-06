@@ -156,18 +156,20 @@ def read_stock_picker():
         if not df.empty:
             result = []
             for _, row in df.iterrows():
-                # 兼容两种字段命名：一种是旧的，一种是新的
+                # 修正字段名：CSV文件中是 close, theme_name, mcap, turnover_rate
                 ts_code = row.get('code', row.get('ts_code', ''))
-                close = row.get('price', row.get('close', 0))
-                mcap = row.get('mcap', row.get('market_cap', 0))
+                close_val = row.get('close', 0) or 0
+                mcap_val = row.get('mcap', 0) or 0
+                turnover_val = row.get('turnover_rate', 0) or 0
                 
                 result.append({
                     'ts_code': ts_code,
                     'name': row.get('name', ''),
-                    'close': close,
-                    'pct_chg': row.get('pct_chg', 0),
-                    'market_cap': mcap,
-                    'theme': row.get('theme', ''),
+                    'close': close_val,
+                    'pct_chg': row.get('pct_chg', 0) or 0,
+                    'market_cap': mcap_val,
+                    'turnover_rate': turnover_val,
+                    'theme': row.get('theme_name', ''),  # 修正：CSV中是 theme_name
                     'theme_type': row.get('theme_type', ''),
                     'buy_type': row.get('buy_type', ''),
                     'reason': row.get('reason', '')

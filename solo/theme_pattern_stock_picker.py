@@ -54,10 +54,17 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 pro = ts.pro_api(TS_TOKEN)
 
 # 今日日期
-TRADE_DATE = datetime.now().strftime('%Y%m%d')
-# TRADE_DATE = '20260602'  # 临时回溯日期
+if len(sys.argv) > 1:
+    TRADE_DATE = sys.argv[1]
+else:
+    TRADE_DATE = datetime.now().strftime('%Y%m%d')
 
-print(f"[Init] 交易日期: {TRADE_DATE}  K线区间: 20260306 ~ {TRADE_DATE}")
+# 计算开始日期（TRADE_DATE前推60个交易日，约3个月）
+dt = datetime.strptime(TRADE_DATE, '%Y%m%d')
+start_dt = dt - timedelta(days=90)
+START_DATE = start_dt.strftime('%Y%m%d')
+
+print(f"[Init] 交易日期: {TRADE_DATE}  K线区间: {START_DATE} ~ {TRADE_DATE}")
 
 # =================
 # 工具函数
@@ -85,13 +92,68 @@ def get_theme_data():
     import theme_trend_sentiment_score as theme_score
     
     hot_themes = theme_score.load_theme_json()
-    theme_scores_file = os.path.join(CACHE_DIR, 'theme_trend_sentiment.csv')
     
-    if os.path.exists(theme_scores_file):
-        theme_scores = pd.read_csv(theme_scores_file)
-    else:
-        print("[Error] 主题分析数据不存在，请先运行 theme_trend_sentiment_score.py")
-        return None, None
+    # 首先尝试从 SQLite 数据库读取指定日期的数据
+    theme_scores = None
+    db_path = os.path.join(CACHE_DIR, 'theme_trend_sentiment.db')
+    
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            # 查询指定日期的主题数据
+            query = "SELECT * FROM theme_scores WHERE trade_date = ?"
+            theme_scores = pd.read_sql(query, conn, params=(TRADE_DATE,))
+            conn.close()
+            
+            if not theme_scores.empty:
+                print(f"[Theme] 从数据库读取 {TRADE_DATE} 主题数据成功")
+                # 重命名列以匹配代码逻辑
+                if 'trade_date' in theme_scores.columns:
+                    theme_scores = theme_scores.drop(columns=['trade_date'])
+                # 检查是否有 t_avg_slope_60 列，如果没有需要计算
+                if 't_avg_slope_60' not in theme_scores.columns:
+                    # 从数据库获取历史数据计算60日平均
+                    try:
+                        conn = sqlite3.connect(db_path)
+                        # 获取所有历史日期
+                        cur = conn.cursor()
+                        cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT 60")
+                        all_dates = [row[0] for row in cur.fetchall()]
+                        
+                        if len(all_dates) > 0:
+                            # 获取这些日期的所有数据
+                            placeholders = ','.join(['?' for _ in all_dates])
+                            query = f"SELECT theme, trend_score FROM theme_scores WHERE trade_date IN ({placeholders})"
+                            all_history = pd.read_sql(query, conn, params=all_dates)
+                            
+                            # 计算每个主题的平均趋势分
+                            theme_avg = all_history.groupby('theme')['trend_score'].mean().reset_index()
+                            theme_avg.columns = ['theme', 't_avg_slope_60']
+                            
+                            # 合并到当前数据
+                            theme_scores = pd.merge(theme_scores, theme_avg, on='theme', how='left')
+                            print(f"[Theme] 计算得到60日平均趋势分")
+                        conn.close()
+                    except Exception as e:
+                        print(f"[Theme] 计算60日平均失败: {e}")
+        except Exception as e:
+            print(f"[Theme] 从数据库读取失败: {e}")
+    
+    # 如果数据库没有，尝试读取带日期的 CSV 文件
+    if theme_scores is None or theme_scores.empty:
+        theme_scores_file_dated = os.path.join(CACHE_DIR, f'theme_trend_sentiment_{TRADE_DATE}.csv')
+        theme_scores_file = os.path.join(CACHE_DIR, 'theme_trend_sentiment.csv')
+        
+        if os.path.exists(theme_scores_file_dated):
+            theme_scores = pd.read_csv(theme_scores_file_dated)
+            print(f"[Theme] 从文件读取 {theme_scores_file_dated}")
+        elif os.path.exists(theme_scores_file):
+            theme_scores = pd.read_csv(theme_scores_file)
+            print(f"[Theme] 从文件读取 {theme_scores_file}")
+        else:
+            print("[Error] 主题分析数据不存在，请先运行 theme_trend_sentiment_score.py")
+            return None, None
     
     return hot_themes, theme_scores
 
@@ -111,37 +173,51 @@ def get_stock_data(hot_themes):
     
     # 获取市值数据
     mcap_date = TRADE_DATE
+    daily_basic = pd.DataFrame()
     try:
         daily_basic = pro.daily_basic(trade_date=mcap_date, fields='ts_code,close,pe,total_mv,circ_mv,turnover_rate,volume_ratio')
-    except:
-        print(f"   {mcap_date}市值数据为空，尝试获取前几个交易日...")
+        if daily_basic.empty:
+            print(f"   {mcap_date}市值数据为空，尝试获取前几个交易日...")
+    except Exception as e:
+        print(f"   {mcap_date}市值数据获取失败: {e}，尝试获取前几个交易日...")
+    
+    if daily_basic.empty:
+        dt_mcap = datetime.strptime(TRADE_DATE, '%Y%m%d')
         for offset in range(1, 10):
-            prev_date = (datetime.now() - timedelta(days=offset)).strftime('%Y%m%d')
-            print(f"   尝试日期: {prev_date}")
+            prev_date = (dt_mcap - timedelta(days=offset)).strftime('%Y%m%d')
             try:
                 daily_basic = pro.daily_basic(trade_date=prev_date, fields='ts_code,close,pe,total_mv,circ_mv,turnover_rate,volume_ratio')
                 if not daily_basic.empty:
                     mcap_date = prev_date
-                    print(f"   成功获取{mcap_date}的市值数据")
+                    print(f"   成功获取{mcap_date}的市值数据，共{len(daily_basic)}条")
                     break
             except:
                 continue
         if daily_basic.empty:
+            print(f"   警告: 无法获取市值数据，将使用0值")
             daily_basic = pd.DataFrame(columns=['ts_code', 'close', 'pe', 'total_mv', 'circ_mv', 'turnover_rate', 'volume_ratio'])
     
+    print(f"   市值数据: {len(daily_basic)}条，有效市值: {(daily_basic['total_mv'] > 0).sum() if not daily_basic.empty else 0}条")
+    
     # 匹配主题成分股
-    theme_stock_map, name_map_basic, stock_industry, stock_concepts = theme_score.match_theme_stocks(hot_themes, dc_df, stock_basic)
+    theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_score.match_theme_stocks(hot_themes, dc_df, stock_basic)
     
     # 创建市值映射（单位：亿）
     mcap_map = {}
+    # 创建换手率映射
+    turnover_map = {}
     if not daily_basic.empty:
         for _, row in daily_basic.iterrows():
             ts_code = row['ts_code']
             total_mv = row.get('total_mv', 0)
             if total_mv and total_mv > 0:
-                mcap_map[ts_code] = total_mv / 100000  # 转换为亿
+                mcap_map[ts_code] = total_mv / 10000  # 万元转换为亿元
+            # 获取换手率
+            turnover_rate = row.get('turnover_rate', 0)
+            if turnover_rate and turnover_rate > 0:
+                turnover_map[ts_code] = turnover_rate
     
-    return stock_basic, daily_basic, theme_stock_map, name_map_basic, mcap_map
+    return stock_basic, daily_basic, theme_stock_map, name_map_basic, mcap_map, turnover_map
 
 # =================
 # 步骤3：获取K线数据并计算指标
@@ -151,8 +227,8 @@ def get_kline_data(stock_codes):
     kline_data = {}
     
     for code in stock_codes:
-        # 优先读取本地缓存
-        cache_file = os.path.join(CACHE_DIR, f'{code}.csv')
+        # 优先读取本地缓存（按日期命名的缓存）
+        cache_file = os.path.join(CACHE_DIR, f'{code}_{TRADE_DATE}.csv')
         if os.path.exists(cache_file):
             df_cache = pd.read_csv(cache_file)
             if len(df_cache) >= 60:
@@ -161,20 +237,29 @@ def get_kline_data(stock_codes):
         
         # 否则调用tushare获取
         try:
-            df = pro.daily(ts_code=code, start_date='20260306', end_date=TRADE_DATE)
+            df = pro.daily(ts_code=code, start_date=START_DATE, end_date=TRADE_DATE)
             if len(df) >= 60:
                 df = df.sort_values('trade_date').reset_index(drop=True)
                 df.to_csv(cache_file, index=False)
                 kline_data[code] = df
         except Exception as e:
-            pass
+            # 如果日期缓存没有，尝试通用缓存，但要裁剪到目标日期
+            cache_file_general = os.path.join(CACHE_DIR, f'{code}.csv')
+            if os.path.exists(cache_file_general):
+                df_general = pd.read_csv(cache_file_general)
+                # 只保留到目标日期的数据
+                df_general = df_general[df_general['trade_date'] <= int(TRADE_DATE)].copy()
+                if len(df_general) >= 60:
+                    df_general = df_general.sort_values('trade_date').reset_index(drop=True)
+                    df_general.to_csv(cache_file, index=False)
+                    kline_data[code] = df_general
     
     return kline_data
 
 # =================
 # 步骤4：计算技术指标和筛选
 # =================
-def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, name_map_basic, mcap_map):
+def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, name_map_basic, mcap_map, turnover_map):
     """计算技术指标并筛选股票"""
     final_candidates = []
     good_themes = []
@@ -271,10 +356,10 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             close = closes[-1]
             pct_today = pct_changes[-1] if len(pct_changes) > 0 else 0
             
-            # 获取市值数据
+            # 获取市值数据和换手率
             mcap = mcap_map.get(code, 0)
             name = name_map_basic.get(code, code)
-            turnover = 0
+            turnover = turnover_map.get(code, 0)
             
             # 计算技术指标
             avg_amount_20 = amounts[-20:].mean() / 100000 if len(amounts) >= 20 else 0
@@ -431,37 +516,72 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 if len(zj_df) >= 20:
                     zhongjun_data_dict[zj_code] = zj_df
         
+        # 调试统计
+        debug_stats = {
+            'total': 0,
+            'no_data': 0,
+            'zt_filter': 0,
+            'mcap_filter': 0,
+            'amount_filter': 0,
+            'pct5d_filter': 0,
+            'trend_filter': 0,  # 均线趋势过滤
+            'score_filter': 0,
+            'valid': 0
+        }
+        
         for s in all_scored:
             code = s['code']
             df = kline_data.get(code)
+            debug_stats['total'] += 1
+            
             if df is None or len(df) < 25:
+                debug_stats['no_data'] += 1
                 continue
             
             df_sorted = df.sort_values('trade_date')
             volumes = df_sorted['vol'].astype(float).values
+            closes = df_sorted['close'].astype(float).values
             
             # 基础条件检查（快速筛选）
-            # 1. 排除涨停股
+            # 1. 排除当日涨停股
             pct_chg_today = s.get('pct_chg', 0)
             if pct_chg_today >= 9.5:
+                debug_stats['zt_filter'] += 1
                 continue
             
-            # 2. 排除近期连续涨停
-            recent_5_pct = df_sorted['pct_chg'].astype(float).values[-6:-1] if len(df_sorted) >= 6 else df_sorted['pct_chg'].astype(float).values
-            zt_count_recent = sum(1 for p in recent_5_pct if p >= 9.5)
-            if zt_count_recent >= 2:
-                continue
-            
-            # 3. 市值限制200-2000亿
+            # 2. 市值限制100-2000亿（放宽下限）
             mcap = s.get('mcap', 0)
-            if not mcap or mcap <= 0 or mcap < 200 or mcap > 2000:
+            if not mcap or mcap <= 0 or mcap < 100 or mcap > 2000:
+                debug_stats['mcap_filter'] += 1
                 continue
             
-            # 4. 成交额>=8亿
+            # 3. 成交额>=5亿（放宽下限）
             recent_20 = df_sorted.iloc[-21:-1] if len(df_sorted) >= 21 else df_sorted
             avg_amount_20 = recent_20['amount'].astype(float).mean() / 100000
-            if avg_amount_20 < 8:
+            if avg_amount_20 < 5:
+                debug_stats['amount_filter'] += 1
                 continue
+            
+            # 4. 排除近期涨幅过大的股票（5日涨幅超过20%）
+            if len(df_sorted) >= 6:
+                close_today = df_sorted.iloc[-1]['close']
+                close_5d_ago = df_sorted.iloc[-6]['close']
+                if close_5d_ago > 0:
+                    pct_5d = (close_today - close_5d_ago) / close_5d_ago * 100
+                    if pct_5d > 20:
+                        debug_stats['pct5d_filter'] += 1
+                        continue
+            
+            # 5. 均线趋势检查（新增）：至少MA20不能持续向下
+            if len(closes) >= 25:
+                ma20_vals = pd.Series(closes).rolling(20).mean().values
+                # MA20近5日斜率
+                if len(ma20_vals) >= 5:
+                    ma20_slope = (ma20_vals[-1] - ma20_vals[-5]) / ma20_vals[-5] * 100
+                    # 如果MA20向下超过2%，认为是下降趋势，不适合补涨
+                    if ma20_slope < -2:
+                        debug_stats['trend_filter'] += 1
+                        continue
             
             # 使用高级检测器分析
             # 获取第一个中军作为对比基准
@@ -470,15 +590,18 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 first_zj_code = next(iter(zhongjun_data_dict.keys()))
                 zhongjun_df = zhongjun_data_dict[first_zj_code]
             
-            analysis_result = buzhang_detector.analyze_stock(df_sorted, zhongjun_df)
+            analysis_result = buzhang_detector.analyze_stock(df_sorted, zhongjun_df, s.get('mcap', 0), s.get('turnover_rate', 0))
             
             if not analysis_result.get('valid', False):
                 continue
             
-            # 综合评分
+            # 综合评分（提高到50）
             overall_score = analysis_result.get('overall_score', 0)
-            if overall_score < 40:
+            if overall_score < 50:
+                debug_stats['score_filter'] += 1
                 continue
+            
+            debug_stats['valid'] += 1
             
             # 计算量能放大比例用于显示
             vol_ratio = 1.0
@@ -491,17 +614,20 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             # 收集检测到的形态
             detected_patterns = analysis_result.get('detected_patterns', [])
             pattern_descriptions = {
-                'shrinkage_callback': '缩量回调',
-                'platform_breakout': '平台突破',
-                'volume_spike': '量能异动',
-                'golden_cross_strength': '金叉强势',
-                'bullish_engulfing': '看涨吞没',
-                'rubbing_line': '揉搓洗盘'
+                'big_amount': '大成交额',
+                'big_market_cap': '大市值',
+                'price_trend': '价格健康',
+                'volume_coordination': '量价配合',
+                'technicals': '技术面良好'
             }
             
             # 构建补涨中军记录
             buzhang_stock = s.copy()
             buzhang_stock['avg_amount_20'] = round(avg_amount_20, 2)
+            # 计算近3天平均成交量
+            recent_3_volumes = volumes[-3:] if len(volumes) >= 3 else volumes
+            avg_volume_3 = recent_3_volumes.mean() if len(recent_3_volumes) > 0 else 0
+            buzhang_stock['avg_volume_3'] = avg_volume_3
             buzhang_stock['vol_ratio'] = round(vol_ratio, 2)
             buzhang_stock['buzhang_score'] = round(overall_score, 2)
             buzhang_stock['final_score'] = round(overall_score, 2)
@@ -513,8 +639,13 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             
             buzhang_pool.append(buzhang_stock)
         
-        # 按补涨评分排序
-        buzhang_pool.sort(key=lambda x: -x.get('buzhang_score', 0))
+        # 打印调试信息
+        print(f"       补涨筛选: 总{debug_stats['total']}只 | 无数据{debug_stats['no_data']} | 涨停{debug_stats['zt_filter']} | "
+              f"市值{debug_stats['mcap_filter']} | 成交{debug_stats['amount_filter']} | 涨幅{debug_stats['pct5d_filter']} | "
+              f"趋势{debug_stats['trend_filter']} | 评分{debug_stats['score_filter']} | 通过{debug_stats['valid']}只")
+        
+        # 按3天平均成交量排序
+        buzhang_pool.sort(key=lambda x: (-x.get('avg_volume_3', 0), -x.get('buzhang_score', 0)))
         
         # 生成补涨中军候选
         buzhang_candidates = []
@@ -621,20 +752,30 @@ def print_results(candidates):
         
         if mid_term_zhongjun:
             print("中军")
-            print(f"{'代码':<12}{'名称':<10}{'主题':<12}{'价格':<8}{'今日涨跌':<10}{'换手率':<8}{'市值':<10}{'推荐理由':<20}")
-            print("-" * 120)
+            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
+            print("-" * 100)
             for stock in mid_term_zhongjun:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                print(f"{stock['code']:<12}{stock['name']:<10}{stock['theme_name']:<12}{stock['close']:<8.2f}{stock['pct_chg']:<10.2f}{stock['turnover_rate']:<8.2f}{mcap_display:<10}{stock['reason']}")
+                close_val = stock.get('close', 0) or 0
+                pct_val = stock.get('pct_chg', 0) or 0
+                turnover_val = stock.get('turnover_rate', 0) or 0
+                theme_val = stock.get('theme_name', '') or ''
+                reason_val = stock.get('reason', '') or ''
+                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
         
         if mid_term_buzhang:
             print("补涨中军")
-            print(f"{'代码':<12}{'名称':<10}{'主题':<12}{'价格':<8}{'今日涨跌':<10}{'换手率':<8}{'市值':<10}{'推荐理由':<20}")
-            print("-" * 120)
+            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
+            print("-" * 100)
             for stock in mid_term_buzhang:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                print(f"{stock['code']:<12}{stock['name']:<10}{stock['theme_name']:<12}{stock['close']:<8.2f}{stock['pct_chg']:<10.2f}{stock['turnover_rate']:<8.2f}{mcap_display:<10}{stock['reason']}")
+                close_val = stock.get('close', 0) or 0
+                pct_val = stock.get('pct_chg', 0) or 0
+                turnover_val = stock.get('turnover_rate', 0) or 0
+                theme_val = stock.get('theme_name', '') or ''
+                reason_val = stock.get('reason', '') or ''
+                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
     
     # 第二部分：短线主线（当日最强主线TOP3）
@@ -647,20 +788,30 @@ def print_results(candidates):
         
         if short_term_zhongjun:
             print("中军")
-            print(f"{'代码':<12}{'名称':<10}{'主题':<12}{'价格':<8}{'今日涨跌':<10}{'换手率':<8}{'市值':<10}{'推荐理由':<20}")
-            print("-" * 120)
+            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
+            print("-" * 100)
             for stock in short_term_zhongjun:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                print(f"{stock['code']:<12}{stock['name']:<10}{stock['theme_name']:<12}{stock['close']:<8.2f}{stock['pct_chg']:<10.2f}{stock['turnover_rate']:<8.2f}{mcap_display:<10}{stock['reason']}")
+                close_val = stock.get('close', 0) or 0
+                pct_val = stock.get('pct_chg', 0) or 0
+                turnover_val = stock.get('turnover_rate', 0) or 0
+                theme_val = stock.get('theme_name', '') or ''
+                reason_val = stock.get('reason', '') or ''
+                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
         
         if short_term_buzhang:
             print("补涨中军")
-            print(f"{'代码':<12}{'名称':<10}{'主题':<12}{'价格':<8}{'今日涨跌':<10}{'换手率':<8}{'市值':<10}{'推荐理由':<20}")
-            print("-" * 120)
+            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
+            print("-" * 100)
             for stock in short_term_buzhang:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                print(f"{stock['code']:<12}{stock['name']:<10}{stock['theme_name']:<12}{stock['close']:<8.2f}{stock['pct_chg']:<10.2f}{stock['turnover_rate']:<8.2f}{mcap_display:<10}{stock['reason']}")
+                close_val = stock.get('close', 0) or 0
+                pct_val = stock.get('pct_chg', 0) or 0
+                turnover_val = stock.get('turnover_rate', 0) or 0
+                theme_val = stock.get('theme_name', '') or ''
+                reason_val = stock.get('reason', '') or ''
+                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
     
     # 标准说明
@@ -680,14 +831,13 @@ def print_results(candidates):
     print("  条件8：近5日未跌破MA10")
     print("综合评分 = 0.35 * theme_score + 0.25 * trend_score + 0.20 * RS20_score + 0.20 * amount_score")
     print()
-    print("补涨中军：使用高级形态识别算法")
-    print("  1. 缩量回调（权重25%）：股价回调但成交量萎缩")
-    print("  2. 平台突破（权重20%）：长期横盘后放量突破")
-    print("  3. 量能异动（权重20%）：成交量异常放大")
-    print("  4. 金叉强势（权重15%）：均线金叉后价格走强")
-    print("  5. 看涨吞没（权重10%）：今日阳线吞没昨日阴线")
-    print("  6. 揉搓洗盘（权重10%）：长上下影线波动剧烈")
-    print("基础条件：排除涨停股、市值200-2000亿、成交额>=8亿")
+    print("补涨中军：关注大容量、大成交、基本面健康")
+    print("  1. 大成交额（权重40%）：近20日平均成交额高，表明资金关注")
+    print("  2. 大市值（权重20%）：市值大，表明机构认可度高")
+    print("  3. 价格趋势健康（权重15%）：MA20向上，价格在MA5之上")
+    print("  4. 量价配合（权重15%）：量价齐升，温和放量")
+    print("  5. 技术面健康（权重10%）：均线多头排列，成交量活跃")
+    print("基础条件：排除涨停股、市值200-2000亿、成交额>=8亿、5日涨幅<=18%")
     print("最终输出：TOP10 趋势中军 + TOP5 补涨中军")
     print("=" * 120)
 
@@ -696,9 +846,15 @@ def print_results(candidates):
 # =================
 def save_results(candidates):
     df = pd.DataFrame(candidates)
+    # 写带日期的副本到 report_daily（用于历史查阅）
     output_file = os.path.join(REPORT_DIR, f'theme_pattern_stocks_{TRADE_DATE}.csv')
     df.to_csv(output_file, index=False, encoding='utf-8-sig')
-    print(f"\n结果已保存: {output_file}")
+    print(f"\n结果已保存(带日期): {output_file}")
+    # 写无日期的副本到 cache_backbone_tushare（供 tushare_quant.py 读取）
+    cache_file = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_pattern_stocks.csv')
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+    df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+    print(f"结果已同步到缓存: {cache_file}")
     return output_file
 
 # =================
@@ -715,7 +871,7 @@ def main():
         return
     
     print("\n[Step 2] 获取成分股和基本面数据...")
-    stock_basic, daily_basic, theme_stock_map, name_map_basic, mcap_map = get_stock_data(hot_themes)
+    stock_basic, daily_basic, theme_stock_map, name_map_basic, mcap_map, turnover_map = get_stock_data(hot_themes)
     
     print("\n[Step 3] 获取K线数据...")
     all_codes = []
@@ -727,7 +883,7 @@ def main():
     print(f"   成功获取K线: {len(kline_data)}只")
     
     print("\n[Step 4] 计算技术指标和筛选...")
-    candidates, good_themes = calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, name_map_basic, mcap_map)
+    candidates, good_themes = calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, name_map_basic, mcap_map, turnover_map)
     
     print_results(candidates)
     

@@ -1,8 +1,9 @@
+
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-高级补涨中军检测器 - 寻找起爆前的量价形态
-6种经典形态识别算法
+高级补涨中军检测器 - 简化版
+核心逻辑：大容量、大成交、基本面健康、题材热门
 """
 
 import numpy as np
@@ -11,26 +12,38 @@ from typing import Dict, Any, Optional, List
 
 
 class AdvancedBuzhangDetector:
-    """高级补涨中军检测器 - 寻找起爆前的量价形态"""
+    """高级补涨中军检测器 - 简化版"""
 
     def __init__(self):
-        # 形态权重配置
-        self.pattern_weights = {
-            'shrinkage_callback': 0.25,      # 缩量回调
-            'platform_breakout': 0.20,       # 平台突破
-            'rubbing_line': 0.10,            # 揉搓洗盘
-            'bullish_engulfing': 0.10,       # 看涨吞没
-            'golden_cross_strength': 0.15,   # 金叉强势
-            'volume_spike': 0.20,            # 成交量异动
+        # 权重配置（总和100%）
+        self.weights = {
+            'big_amount': 0.35,          # 大成交额（35%）
+            'turnover_rate': 0.20,       # 换手率（20%）
+            'big_market_cap': 0.15,      # 大市值（15%）
+            'price_trend': 0.15,         # 价格趋势健康（15%）
+            'volume_coordination': 0.10, # 量价配合（10%）
+            'technicals': 0.05,          # 技术面健康（5%）
+        }
+        # 指标名称
+        self.metric_names = {
+            'big_amount': '大成交额',
+            'turnover_rate': '换手率',
+            'big_market_cap': '大市值',
+            'price_trend': '价格趋势',
+            'volume_coordination': '量价配合',
+            'technicals': '技术面健康'
         }
 
-    def analyze_stock(self, df: pd.DataFrame, zhongjun_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    def analyze_stock(self, df: pd.DataFrame, zhongjun_df: Optional[pd.DataFrame] = None, 
+                     market_cap: Optional[float] = None, turnover_rate: Optional[float] = None) -> Dict[str, Any]:
         """
         分析单只股票的补涨潜力
 
         Args:
             df: 股票K线数据（按日期排序）
             zhongjun_df: 板块中军K线数据（用于相对强度分析）
+            market_cap: 市值（单位：亿）
+            turnover_rate: 换手率（%）
 
         Returns:
             分析结果字典
@@ -40,371 +53,243 @@ class AdvancedBuzhangDetector:
 
         df = df.sort_values('trade_date').reset_index(drop=True)
 
-        # 1. 计算基础指标
         closes = df['close'].astype(float).values
         volumes = df['vol'].astype(float).values
         amounts = df['amount'].astype(float).values
         pct_changes = df['pct_chg'].astype(float).values
-        highs = df['high'].astype(float).values
-        lows = df['low'].astype(float).values
 
-        # 计算均线
-        ma5 = pd.Series(closes).rolling(5).mean().values
-        ma10 = pd.Series(closes).rolling(10).mean().values
-        ma20 = pd.Series(closes).rolling(20).mean().values
-        ma60 = pd.Series(closes).rolling(60).mean().values
+        metrics = {}
+        detected = []
 
-        # 成交量均线
-        vol_ma5 = pd.Series(volumes).rolling(5).mean().values
-        vol_ma10 = pd.Series(volumes).rolling(10).mean().values
-        vol_ma20 = pd.Series(volumes).rolling(20).mean().values
+        # 1. 大成交额评分
+        amount_score = self._score_big_amount(amounts)
+        metrics['big_amount'] = amount_score
+        if amount_score > 40:
+            detected.append('大成交额')
 
-        # 2. 检查6种形态
-        pattern_scores = {}
-        detected_patterns = []
+        # 2. 换手率评分
+        turnover_score = self._score_turnover_rate(turnover_rate)
+        metrics['turnover_rate'] = turnover_score
+        if turnover_score > 40:
+            detected.append('换手活跃')
 
-        # 形态1: 缩量回调（权重25%）
-        shrinkage_score = self._check_shrinkage_callback(df, volumes, vol_ma5, vol_ma20, closes, ma20)
-        if shrinkage_score > 0:
-            pattern_scores['shrinkage_callback'] = shrinkage_score
-            detected_patterns.append('shrinkage_callback')
+        # 3. 大市值评分
+        mc_score = self._score_big_market_cap(market_cap)
+        metrics['big_market_cap'] = mc_score
+        if mc_score > 40:
+            detected.append('大市值')
 
-        # 形态2: 平台突破（权重20%）
-        breakout_score = self._check_platform_breakout(df, closes, ma5, ma10, ma20, volumes)
-        if breakout_score > 0:
-            pattern_scores['platform_breakout'] = breakout_score
-            detected_patterns.append('platform_breakout')
+        # 4. 价格趋势健康
+        trend_score = self._score_price_trend(closes)
+        metrics['price_trend'] = trend_score
+        if trend_score > 40:
+            detected.append('价格健康')
 
-        # 形态3: 揉搓线（权重10%）
-        rubbing_score = self._check_rubbing_line(df, highs, lows, closes)
-        if rubbing_score > 0:
-            pattern_scores['rubbing_line'] = rubbing_score
-            detected_patterns.append('rubbing_line')
+        # 5. 量价配合
+        vol_score = self._score_volume_coordination(closes, volumes, amounts)
+        metrics['volume_coordination'] = vol_score
+        if vol_score > 40:
+            detected.append('量价配合')
 
-        # 形态4: 看涨吞没（权重10%）
-        engulfing_score = self._check_bullish_engulfing(df, closes, pct_changes)
-        if engulfing_score > 0:
-            pattern_scores['bullish_engulfing'] = engulfing_score
-            detected_patterns.append('bullish_engulfing')
+        # 6. 技术面健康
+        tech_score = self._score_technicals(closes, volumes)
+        metrics['technicals'] = tech_score
+        if tech_score > 40:
+            detected.append('技术面良好')
 
-        # 形态5: 金叉强势（权重15%）
-        golden_score = self._check_golden_cross_strength(df, closes, ma5, ma10, ma20, volumes)
-        if golden_score > 0:
-            pattern_scores['golden_cross_strength'] = golden_score
-            detected_patterns.append('golden_cross_strength')
-
-        # 形态6: 量能异动（权重20%）
-        volume_score = self._check_volume_spike(df, volumes, vol_ma5, vol_ma20, amounts)
-        if volume_score > 0:
-            pattern_scores['volume_spike'] = volume_score
-            detected_patterns.append('volume_spike')
-
-        # 3. 计算综合评分
-        overall_score = 0
-        for pattern, score in pattern_scores.items():
-            weight = self.pattern_weights.get(pattern, 0)
-            overall_score += score * weight
-
-        # 4. 相对强度分析（如果提供了中军数据）
-        relative_strength = 0
-        if zhongjun_df is not None and len(zhongjun_df) >= 20:
-            relative_strength = self._calc_relative_strength(df, zhongjun_df)
-            # 相对强度加成
-            if relative_strength > 0 and len(detected_patterns) >= 2:
-                overall_score += relative_strength * 0.1
-
-        # 5. 验证有效性
-        valid = overall_score >= 40 and len(detected_patterns) >= 1
+        # 计算综合评分
+        total_score = 0
+        for key, val in metrics.items():
+            total_score += val * self.weights[key]
 
         return {
-            'valid': valid,
-            'overall_score': overall_score,
-            'detected_patterns': detected_patterns,
-            'pattern_scores': pattern_scores,
-            'relative_strength': relative_strength,
-            'volume_ratio': self._calc_volume_ratio(volumes),
-            'trend_direction': self._判断趋势方向(ma5, ma10, ma20),
+            'valid': True,
+            'overall_score': total_score,
+            'metrics': metrics,
+            'detected_patterns': detected,
+            'pattern_scores': metrics
         }
 
-    def _check_shrinkage_callback(self, df: pd.DataFrame, volumes: np.ndarray,
-                                   vol_ma5: np.ndarray, vol_ma20: np.ndarray,
-                                   closes: np.ndarray, ma20: np.ndarray) -> float:
-        """
-        缩量回调形态
-        特征：股价回调但成交量萎缩，可能是主力洗盘
-        """
-        if len(closes) < 30:
+    def _score_big_amount(self, amounts: np.ndarray) -> float:
+        """大成交额评分"""
+        if len(amounts) < 5:
             return 0
-
-        # 最近5日成交量明显萎缩
-        recent_5_vol_avg = np.mean(volumes[-5:])
-        prev_10_vol_avg = np.mean(volumes[-15:-5])
-
-        # 检查是否缩量（缩量比例）
-        shrinkage_ratio = recent_5_vol_avg / prev_10_vol_avg if prev_10_vol_avg > 0 else 1
-
-        # 股价在MA20附近或之上
-        current_price = closes[-1]
-        ma20_current = ma20[-1]
-
-        # 最近有回调迹象（股价从近期高点回调但未破MA20）
-        recent_high = np.max(closes[-10:])
-        callback_ratio = (recent_high - current_price) / recent_high if recent_high > 0 else 0
-
-        # 评分逻辑
+        
+        # 近20日平均成交额（万元转亿元）
+        avg_20 = np.mean(amounts[-21:-1]) / 10000 if len(amounts) >= 21 else np.mean(amounts) / 10000
+        
         score = 0
-        if shrinkage_ratio < 0.7:  # 缩量明显
-            score += 40
-        elif shrinkage_ratio < 0.85:
-            score += 25
-
-        if 0.03 < callback_ratio < 0.15:  # 回调幅度适中（3%-15%）
-            score += 30
-
-        if current_price >= ma20_current * 0.98:  # 守住MA20
-            score += 30
-
-        return min(score, 100)
-
-    def _check_platform_breakout(self, df: pd.DataFrame, closes: np.ndarray,
-                                  ma5: np.ndarray, ma10: np.ndarray, ma20: np.ndarray,
-                                  volumes: np.ndarray) -> float:
-        """
-        平台突破形态
-        特征：长期横盘后放量突破
-        """
-        if len(closes) < 60:
-            return 0
-
-        # 检查是否在平台整理（最近20日振幅<15%）
-        recent_20_closes = closes[-20:]
-        platform_high = np.max(recent_20_closes)
-        platform_low = np.min(recent_20_closes)
-        platform_range = (platform_high - platform_low) / platform_low if platform_low > 0 else 0
-
-        # 检查是否突破平台
-        current_price = closes[-1]
-        ma20_slope = (ma20[-1] - ma20[-10]) / ma20[-10] * 100 if ma20[-10] > 0 else 0
-
-        # 突破时成交量是否放大
-        vol_today = volumes[-1]
-        vol_ma20 = np.mean(volumes[-21:-1])
-
-        score = 0
-
-        # 平台整理条件
-        if platform_range < 0.15:
-            score += 35
-
-            # 突破平台
-            if current_price > platform_high * 0.98:
-                score += 30
-
-            # MA20向上
-            if ma20_slope > 0.5:
+        if avg_20 >= 80:  # 80亿+
+            score = 100
+        elif avg_20 >= 50:  # 50亿+
+            score = 80
+        elif avg_20 >= 30:  # 30亿+
+            score = 60
+        elif avg_20 >= 20:  # 20亿+
+            score = 40
+        elif avg_20 >= 10:  # 10亿+
+            score = 20
+        
+        # 当日成交活跃，额外加分
+        if len(amounts) >= 5:
+            avg_5 = np.mean(amounts[-5:-1])
+            if amounts[-1] > avg_5 * 1.5:
                 score += 20
-
-            # 放量突破
-            if vol_today > vol_ma20 * 1.5:
-                score += 15
-
+        
         return min(score, 100)
 
-    def _check_rubbing_line(self, df: pd.DataFrame, highs: np.ndarray,
-                            lows: np.ndarray, closes: np.ndarray) -> float:
-        """
-        揉搓线形态
-        特征：长上下影线，波动剧烈但收盘接近
-        """
-        if len(closes) < 5:
+    def _score_turnover_rate(self, turnover_rate: Optional[float]) -> float:
+        """换手率评分（25%以下越高越好）"""
+        if turnover_rate is None or turnover_rate <= 0:
             return 0
-
-        # 最近5日出现揉搓线特征
+        
         score = 0
-        for i in range(-5, 0):
-            high = highs[i]
-            low = lows[i]
-            close = closes[i]
+        # 换手率评分逻辑（优化版）：
+        # - 25%以下：越高越好，代表交投活跃，机构进出方便
+        # - 15%-25%：非常活跃，评分最高
+        # - 10%-15%：活跃，评分较高
+        # - 5%-10%：适度活跃，评分良好
+        # - 1%-5%：一般活跃，评分一般
+        # - <1%：不够活跃，机构进出困难
+        # - >25%：过度投机，风险较高
+        
+        if 15.0 < turnover_rate <= 25.0:
+            # 非常活跃，最佳区间，评分最高
+            score = 100
+        elif 10.0 < turnover_rate <= 15.0:
+            # 活跃区间，评分较高
+            score = 90
+        elif 5.0 < turnover_rate <= 10.0:
+            # 适度活跃，评分良好
+            score = 80
+        elif 1.0 < turnover_rate <= 5.0:
+            # 一般活跃，评分一般
+            score = 70
+        elif 0.5 <= turnover_rate <= 1.0:
+            # 不够活跃
+            score = 50
+        elif turnover_rate > 25.0:
+            # 过度投机，风险较高
+            score = 40
+        else:
+            # 换手率太低（<0.5%），机构进出困难
+            score = 30
+        
+        return score
 
-            body = abs(close - (high + low) / 2)
-            total_range = high - low
-
-            if total_range > 0:
-                # 上下影线长度
-                upper_shadow = high - max(closes[i], (high + low) / 2)
-                lower_shadow = min(closes[i], (high + low) / 2) - low
-                body_ratio = body / total_range
-
-                # 揉搓线特征：上下影线较长，实体较小
-                if upper_shadow > total_range * 0.2 and lower_shadow > total_range * 0.2:
-                    if body_ratio < 0.3:  # 实体小
-                        score += 20
-                        break
-
-        return min(score, 100)
-
-    def _check_bullish_engulfing(self, df: pd.DataFrame, closes: np.ndarray,
-                                   pct_changes: np.ndarray) -> float:
-        """
-        看涨吞没形态
-        特征：今日阳线吞没昨日阴线
-        """
-        if len(closes) < 3:
+    def _score_big_market_cap(self, market_cap: Optional[float]) -> float:
+        """大市值评分"""
+        if market_cap is None or market_cap <= 0:
             return 0
-
+        
         score = 0
+        if market_cap >= 1500:  # 1500亿+
+            score = 100
+        elif market_cap >= 1000:  # 1000亿+
+            score = 80
+        elif market_cap >= 600:  # 600亿+
+            score = 60
+        elif market_cap >= 400:  # 400亿+
+            score = 40
+        elif market_cap >= 200:  # 200亿+
+            score = 20
+        
+        return score
 
-        # 检查最近3日
-        for i in range(-3, 0):
-            if i == -len(closes):
-                continue
-
-            today_close = closes[i]
-            yesterday_close = closes[i - 1]
-
-            # 今日上涨，昨日下跌
-            if pct_changes[i] > 2 and pct_changes[i - 1] < -1:
-                # 阳线实体吞没阴线
-                today_body = today_close - max(closes[i - 1], closes[i])
-                yesterday_body = min(closes[i - 1], closes[i - 1]) - closes[i - 1]
-
-                if today_body > abs(yesterday_body) * 1.5:
-                    score += 50
-                    break
-
-        return min(score, 100)
-
-    def _check_golden_cross_strength(self, df: pd.DataFrame, closes: np.ndarray,
-                                      ma5: np.ndarray, ma10: np.ndarray,
-                                      ma20: np.ndarray, volumes: np.ndarray) -> float:
-        """
-        金叉强势形态
-        特征：均线金叉后价格走强
-        """
-        if len(closes) < 25:
+    def _score_price_trend(self, closes: np.ndarray) -> float:
+        """价格趋势健康评分"""
+        if len(closes) < 20:
             return 0
-
+        
         score = 0
-
-        # MA5上穿MA10金叉
-        golden_cross_idx = None
-        for i in range(-15, -5):
-            if ma5[i - 1] < ma10[i - 1] and ma5[i] >= ma10[i]:
-                golden_cross_idx = i
-                break
-
-        if golden_cross_idx is not None:
-            # 金叉后价格持续走强
-            price_after_golden = np.mean(closes[golden_cross_idx:])
-            price_before_golden = np.mean(closes[golden_cross_idx - 5:golden_cross_idx])
-
-            if price_after_golden > price_before_golden * 1.02:
+        
+        # MA20向上
+        ma20 = self._sma(closes, 20)
+        if len(ma20) >= 5:
+            slope = (ma20[-1] - ma20[-5]) / ma20[-5]
+            if slope > 0.01:  # 0.5日涨幅1%以上
                 score += 40
-
-            # 成交量配合
-            vol_after = np.mean(volumes[golden_cross_idx:])
-            vol_before = np.mean(volumes[golden_cross_idx - 10:golden_cross_idx - 5])
-            if vol_after > vol_before * 1.2:
+        
+        # 价格在MA5之上
+        if len(closes) >= 5:
+            ma5 = self._sma(closes, 5)
+            if closes[-1] > ma5[-1]:
                 score += 30
-
-            # 均线多头排列
-            if ma5[-1] > ma10[-1] > ma20[-1]:
+        
+        # 近5日没有暴跌
+        if len(closes) >= 10:
+            recent_max = np.max(closes[-10:-1])
+            if closes[-1] > recent_max * 0.85:  # 回撤不超过15%
                 score += 30
-
+        
         return min(score, 100)
 
-    def _check_volume_spike(self, df: pd.DataFrame, volumes: np.ndarray,
-                             vol_ma5: np.ndarray, vol_ma20: np.ndarray,
-                             amounts: np.ndarray) -> float:
-        """
-        量能异动形态
-        特征：成交量异常放大
-        """
-        if len(volumes) < 25:
+    def _score_volume_coordination(self, closes: np.ndarray, volumes: np.ndarray, amounts: np.ndarray) -> float:
+        """量价配合评分"""
+        if len(closes) < 10 or len(volumes) < 10:
             return 0
-
+        
         score = 0
-
-        # 3日均量与20日均量比
-        vol_3_avg = np.mean(volumes[-3:])
-        vol_20_avg = np.mean(volumes[-21:-1])
-        vol_ratio = vol_3_avg / vol_20_avg if vol_20_avg > 0 else 1
-
-        # 成交额放大
-        amount_3_avg = np.mean(amounts[-3:])
-        amount_20_avg = np.mean(amounts[-21:-1])
-        amount_ratio = amount_3_avg / amount_20_avg if amount_20_avg > 0 else 1
-
-        # 放量程度
-        if vol_ratio > 2.0:
-            score += 50
-        elif vol_ratio > 1.5:
-            score += 35
-        elif vol_ratio > 1.2:
-            score += 20
-
-        # 成交额同步放大
-        if amount_ratio > 1.5:
-            score += 30
-        elif amount_ratio > 1.2:
-            score += 15
-
-        # 温和放量更佳（不要暴量）
-        if 1.3 < vol_ratio < 2.5:
-            score += 20
-
+        
+        # 量价齐升：最近3日
+        if len(closes) >= 5 and len(volumes) >= 5:
+            price_up = (closes[-1] > closes[-2]) and (closes[-2] > closes[-3])
+            vol_up = (volumes[-1] > volumes[-2]) and (volumes[-2] > volumes[-3])
+            if price_up and vol_up:
+                score += 40
+        
+        # 温和放量，不是爆量
+        if len(volumes) >= 20:
+            avg_vol_20 = np.mean(volumes[-21:-1])
+            avg_vol_5 = np.mean(volumes[-5:-1])
+            if 1.2 <= avg_vol_5 / avg_vol_20 <= 3:  # 20%~3倍量
+                score += 30
+        
+        # 没有连续放量暴跌
+        if len(closes) >= 3 and len(volumes) >= 3:
+            bad_signals = 0
+            for i in range(-3, 0):
+                if closes[i] < closes[i-1] * 0.97 and volumes[i] > volumes[i-1] * 1.5:
+                    bad_signals += 1
+            if bad_signals == 0:
+                score += 30
+        
         return min(score, 100)
 
-    def _calc_relative_strength(self, df: pd.DataFrame, zhongjun_df: pd.DataFrame) -> float:
-        """
-        计算相对强度（与板块中军对比）
-        """
-        if df is None or zhongjun_df is None:
+    def _score_technicals(self, closes: np.ndarray, volumes: np.ndarray) -> float:
+        """技术面健康评分"""
+        if len(closes) < 20:
             return 0
+        
+        score = 0
+        
+        # 均线多头排列
+        ma5 = self._sma(closes, 5)
+        ma10 = self._sma(closes, 10)
+        ma20 = self._sma(closes, 20)
+        if len(ma5) >= 1 and len(ma10) >= 1 and len(ma20) >= 1:
+            if ma5[-1] > ma10[-1] > ma20[-1]:
+                score += 50
+        
+        # 成交量活跃，不是极度缩量
+        if len(volumes) >= 10:
+            avg_vol = np.mean(volumes[-10:-1])
+            if volumes[-1] > avg_vol * 0.6:  # 不低于平均60%
+                score += 50
+        
+        return min(score, 100)
 
-        closes = df['close'].astype(float).values
-        zj_closes = zhongjun_df['close'].astype(float).values
+    def _sma(self, data: np.ndarray, window: int) -> np.ndarray:
+        """简单移动平均"""
+        if len(data) < window:
+            return data
+        weights = np.ones(window) / window
+        return np.convolve(data, weights, mode='valid')
 
-        if len(closes) < 20 or len(zj_closes) < 20:
-            return 0
+    def get_metric_name(self, metric_id: str) -> str:
+        """获取指标名称"""
+        return self.metric_names.get(metric_id, metric_id)
 
-        # 计算20日相对强弱
-        stock_ret = (closes[-1] - closes[-20]) / closes[-20] * 100
-        zj_ret = (zj_closes[-1] - zj_closes[-20]) / zj_closes[-20] * 100
-
-        relative = stock_ret - zj_ret
-
-        # 相对强度评分
-        if relative > 5:
-            return 30  # 明显跑赢
-        elif relative > 0:
-            return 15  # 小幅跑赢
-        else:
-            return 0
-
-    def _calc_volume_ratio(self, volumes: np.ndarray) -> float:
-        """计算量比（3日均量/20日均量）"""
-        if len(volumes) < 23:
-            return 1.0
-        vol_3_avg = np.mean(volumes[-3:])
-        vol_20_avg = np.mean(volumes[-23:-3])
-        return vol_3_avg / vol_20_avg if vol_20_avg > 0 else 1.0
-
-    def _判断趋势方向(self, ma5: np.ndarray, ma10: np.ndarray, ma20: np.ndarray) -> str:
-        """判断趋势方向"""
-        if len(ma5) < 10:
-            return "震荡"
-
-        # 各均线斜率
-        ma5_slope = (ma5[-1] - ma5[-5]) / ma5[-5] * 100
-        ma10_slope = (ma10[-1] - ma10[-5]) / ma10[-5] * 100
-        ma20_slope = (ma20[-1] - ma20[-5]) / ma20[-5] * 100
-
-        avg_slope = (ma5_slope + ma10_slope + ma20_slope) / 3
-
-        if avg_slope > 1:
-            return "上升"
-        elif avg_slope < -1:
-            return "下降"
-        else:
-            return "震荡"
+    def _get_pattern_name(self, pattern_id: str) -> str:
+        """获取模式名称（兼容老接口）"""
+        return self.metric_names.get(pattern_id, pattern_id)
