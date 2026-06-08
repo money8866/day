@@ -495,9 +495,9 @@ def analyze_market():
     
     # 获取主要指数数据
     indices = {
-        "沪深300": "000300.SH",
         "上证指数": "000001.SH",
-        "创业板指": "399006.SZ"
+        "沪深300": "000300.SH",
+        "中证2000": "932000.CSI"
     }
     
     results = []
@@ -586,12 +586,12 @@ def analyze_market():
         
         for i, r in enumerate(results):
             # 根据指数对应风格
-            if r['name'] == '沪深300':
-                style = '大蓝筹/白马股'
-            elif r['name'] == '上证指数':
-                style = '传统行业/权重股'
-            elif r['name'] == '创业板指':
-                style = '成长股/科技股'
+            if r['name'] == '上证指数':
+                style = '综合指数'
+            elif r['name'] == '沪深300':
+                style = '大盘股'
+            elif r['name'] == '中证2000':
+                style = '小盘股'
             else:
                 style = '其他'
             
@@ -748,18 +748,18 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None):
     # 提取指数趋势分
     sh_score = 0
     hs300_score = 0
-    cyb_score = 0
+    zz2000_score = 0
     
     for r in index_results:
         if r['name'] == '上证指数':
             sh_score = r['trend_score']
         elif r['name'] == '沪深300':
             hs300_score = r['trend_score']
-        elif r['name'] == '创业板指':
-            cyb_score = r['trend_score']
+        elif r['name'] == '中证2000':
+            zz2000_score = r['trend_score']
     
     # 计算指数趋势分
-    index_trend = sh_score * 0.5 + hs300_score * 0.3 + cyb_score * 0.2
+    index_trend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
     
     # 计算主题趋势分（TOP3主题平均分）
     if theme_top3_scores and len(theme_top3_scores) >= 3:
@@ -1061,7 +1061,7 @@ def check_consecutive_trend(index_name, trend_type, consecutive_days=3):
 def analyze_sentiment_trend_alerts():
     """分析并返回情绪和趋势的提醒"""
     alerts = []
-    indices = ['沪深300', '上证指数', '创业板指']
+    indices = ['沪深300', '上证指数', '中证2000']
     
     for idx in indices:
         # 检查连续高情绪

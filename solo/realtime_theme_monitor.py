@@ -30,14 +30,12 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'conf
 # ── 控制台编码修复（支持 emoji/Unicode） ──
 # 已移除 UTF-8 wrapper，改用环境变量 PYTHONIOENCODING
 
-# ── 通达信 ──
+# ── 通达信（使用 mootdx） ──
 try:
-    from pytdx.hq import TdxHq_API
-    from pytdx.config.hosts import hq_hosts
+    from mootdx.quotes import TdxHq_API, config
     TDX_AVAILABLE = True
 except ImportError:
     TDX_AVAILABLE = False
-    hq_hosts = []
 
 # ── Tushare（仅用于盘后初始化缓存） ──
 try:
@@ -83,26 +81,58 @@ class RealtimeThemeMonitor:
         # ── 开盘分析标记 ──
         self.opening_analysis_done = False
 
-        # ── 服务器列表（从 pytdx hq_hosts 池加载，去重） ──
+        # ── 服务器列表（使用 mootdx 服务器配置 + 已知可用服务器） ──
         seen = set()
         self.servers = []
-        for name, ip, port in hq_hosts:
-            key = (ip, port)
-            if key not in seen:
-                seen.add(key)
-                self.servers.append(key)
-        # 额外补充稳定主站（可能不在hq_hosts中）
+        
+        # 从 mootdx config 加载默认服务器列表
+        if TDX_AVAILABLE:
+            try:
+                for host_info in config.HQ_HOSTS:
+                    # HQ_HOSTS 格式: (name, ip, port)
+                    if len(host_info) >= 3:
+                        ip = host_info[1]
+                        port = host_info[2]
+                        if ip and (ip, port) not in seen:
+                            self.servers.append((ip, port))
+                            seen.add((ip, port))
+            except Exception:
+                pass
+        
+        # 已知可用的通达信行情服务器（银河证券、国泰君安等）
         extras = [
-            ("180.153.18.170", 7709), ("180.153.18.171", 7709),
-            ("180.153.18.172", 80),   ("202.108.253.130", 7709),
-            ("202.108.253.131", 7709), ("202.108.253.139", 80),
-            ("119.147.164.60", 7709), ("jstdx.gtjas.com", 7709),
+            # 银河证券服务器
+            ("120.76.1.198", 7709),      # 银河证券阿里云行情
+            ("222.73.48.27", 7709),      # 银河证券上证云行情
+            ("120.76.4.28", 7719),       # 银河证券金融终端阿里云
+            ("1.202.143.37", 7709),      # 银河证券富丰电信
+            ("111.203.134.118", 7709),   # 银河证券富丰联通
+            ("117.133.128.226", 7709),   # 银河证券富丰移动
+            ("103.251.85.214", 7709),    # 银河证券上证云上海一
+            ("114.141.177.40", 7709),    # 银河证券上证云上海二
+            ("27.151.2.113", 7709),      # 银河证券上证云福州一
+            ("27.151.2.38", 7709),       # 银河证券上证云福州二
+            ("202.100.166.12", 7709),    # 银河证券上证云新疆
+            # 备用服务器
+            ("119.147.212.81", 7727),    # 备用线路1
+            ("119.147.212.80", 7727),    # 备用线路2
+            # 原 pytdx 常用服务器
+            ("180.153.18.170", 7709),
+            ("180.153.18.171", 7709),
+            ("202.108.253.130", 7709),
+            ("202.108.253.131", 7709),
+            ("119.147.164.60", 7709),
+            ("jstdx.gtjas.com", 7709),   # 国泰君安
+            ("shtdx.gtjas.com", 7709),   # 国泰君安
+            ("61.152.249.56", 7709),
+            ("60.191.117.167", 7709),
+            ("218.108.98.244", 7709),
         ]
         for ip, port in extras:
             if (ip, port) not in seen:
                 self.servers.append((ip, port))
                 seen.add((ip, port))
-        print(f"📡 加载通达信服务器池: {len(self.servers)} 台 (来自 pytdx hq_hosts + 补充)")
+        print(f"📡 加载通达信服务器池: {len(self.servers)} 台 (mootdx config + 已知可用服务器)")
 
         self.sckey = os.getenv("WECHAT_SCKEY")
 
@@ -707,7 +737,7 @@ class RealtimeThemeMonitor:
     def run(self):
         print("=" * 60)
         print("🔥 游资级别实时主题盯盘系统")
-        print("   数据源: theme_portfolio.db + 通达信实时行情")
+        print("   数据源: theme_portfolio.db + mootdx通达信实时行情")
         print("   更新周期: 60秒")
         print("   推送: Server酱微信")
         print("=" * 60)
@@ -733,6 +763,11 @@ class RealtimeThemeMonitor:
         try:
             while True:
                 now = datetime.now()
+
+                # ── 15:05 自动终止 ──
+                if now.hour == 15 and now.minute >= 5:
+                    print(f"\n[{now.strftime('%H:%M:%S')}] 🛑 收盘时间到，自动退出")
+                    break
 
                 # ── 非交易时段跳过 ──
                 if not self.is_trading_time(now):

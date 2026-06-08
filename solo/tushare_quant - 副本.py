@@ -1274,34 +1274,21 @@ def calc_dual_layer_score_v6(df, ts_code='', theme=''):
     # =========================
     # 6. 失败概率（最关键风控）
     # =========================
-    # 1. 高价风险因子 - 连续值而非二值
-    price_ma60_ratio = C.iloc[-1] / MA60
-    high_risk_zone = np.clip((price_ma60_ratio - 1.1) / 0.4, 0.0, 1.0)  # 1.1以下0，1.5以上1
-    
-    # 2. 阻力压力因子 - 连续值
-    # 用amp20直接计算，而不是离散的compression_score
-    resistance_pressure = np.clip((amp20 - 0.15) / 0.25, 0.0, 1.0)  # 0.15以下0，0.4以上1
-    
-    # 3. 派发风险因子 - 连续值
-    vol_ratio = VOL.iloc[-1] / (VOL.tail(10).mean() + 1e-6)
-    price_change = (C.iloc[-1] - C.iloc[-2]) / C.iloc[-2]
-    # 放量下跌风险：量比越大且跌幅越大，风险越高
-    distribution_risk = 0.0
-    if price_change < 0:  # 下跌
-        distribution_risk = np.clip((vol_ratio - 1.0) * abs(price_change) * 10, 0.0, 1.0)
-    
-    # 4. 额外维度：趋势稳定性下降风险
-    ma20 = C.rolling(20).mean().iloc[-1]
-    ma5 = C.rolling(5).mean().iloc[-1]
-    trend_decline_risk = 0.0
-    if ma5 < ma20:  # 5日均线跌破20日均线
-        trend_decline_risk = np.clip((ma20 - ma5) / ma20 * 20, 0.0, 1.0)
-    
+    high_risk_zone = 1.0 if (C.iloc[-1] / MA60) > 1.3 else 0.0
+
+    resistance_pressure = 1 - compression_score
+
+    distribution_risk = (
+        1.0 if (
+            VOL.iloc[-1] > VOL.tail(10).mean() * 1.5 and
+            C.iloc[-1] < C.iloc[-2]
+        ) else 0.0
+    )
+
     fail_prob = sigmoid(
         (resistance_pressure - 0.5) * 1.5 +
         (high_risk_zone - 0.5) * 1.2 +
-        (distribution_risk - 0.5) * 1.5 +
-        (trend_decline_risk - 0.5) * 0.8
+        (distribution_risk - 0.5) * 1.5
     )
 
     # =========================
@@ -1461,6 +1448,8 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
     # 1. 主题真实性（防止蹭概念）
     # =========================
     theme_confidence = calc_theme_confidence(stock_info, theme) if theme else 30
+    # 归一化到0-1范围
+    theme_confidence_01 = theme_confidence / 100.0
 
     # =========================
     # 2. 主题强度 + 主线共振
@@ -1543,7 +1532,7 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
     base_with_theme = v6_base_score * theme_strength_bonus
     momentum_bonus = momentum_score * 15
     squeeze_bonus = squeeze_compression_score * 10
-    theme_purity_bonus = theme_confidence * 0.15  # 从10提高到15，注意这里是0.15（百分比系数）
+    theme_purity_bonus = theme_confidence_01 * 15  # 从10提高到15
     v7_total = (
         base_with_theme +
         momentum_bonus +
@@ -1592,55 +1581,62 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
 # =========================================================
 def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
     """
-    V7.5综合评分系统 - 从V7函数引入所有指标再计算V7.5总分
+    V7.5综合评分系统 - 基于用户提供的公式
     
-    V7.5在V7基础上叠加：
-    - 位置因子（position_factor）：120日高低位位置
-    - 龙头因子（leader_factor）：趋势+资金+概率综合
-    - 主题排名加成（theme_rank_bonus）：核心公司额外加分
+    V7_5_SCORE = (
+        trend_strength      * 15 +
+        trend_probability   * 15 +
+        theme_confidence    * 12 +
+        theme_purity        * 10 +
+        leader_factor       * 10 +
+        capital_momentum    * 10 +
+        breakout_strength   * 8  +
+        volume_explosion    * 8  +
+        stability_score     * 6  +
+        compression_score   * 6
+        -
+        failure_probability * 20
+    )
     
-    从V7引入的指标：
-    - 基础技术指标：趋势概率、突破强度、资金动量等
-    - V7复合指标：动量得分、压缩洗盘得分、主线共振加分、主题强化系数
+    说明：
+    - 所有因子范围0-1，乘以权重后转换为0-100
+    - theme_confidence: 主题真实性（防止蹭概念）
+    - theme_purity: 主题纯度（与theme_confidence相同）
+    - leader_factor: 龙头因子（基于趋势强度，资金动量）
+    - stability_score: 稳定性评分（趋势稳定度）
     """
 
     # =========================
-    # 从V7获取所有指标
+    # 获取V6技术指标
     # =========================
-    v7_result = calc_dual_layer_score_v7(df, ts_code=ts_code, stock_info=stock_info, theme=theme)
-    
-    # 计算涨跌幅（用于返回给AI报告）
-    C = df['close']
-    if len(C) >= 2:
-        today_pct = ((C.iloc[-1] / C.iloc[-2]) - 1) * 100
-    else:
-        today_pct = 0.0
+    v6_result = calc_dual_layer_score_v6(df, ts_code, theme)
 
-    # V7基础技术指标（0-1范围）
-    trend_probability = float(v7_result.get('趋势概率', 0.5))
-    fail_prob = float(v7_result.get('失败概率', 0.5))
-    breakout_strength = float(v7_result.get('突破强度', 0.5))
-    money_momentum = float(v7_result.get('资金动量', 0.5))
-    trend_stability = float(v7_result.get('趋势稳定', 0.5))
-    volume_explosion = float(v7_result.get('量能爆发', 0.5))
-    compression_score = float(v7_result.get('压缩度', 0.5))
-    trend_strength = float(v7_result.get('趋势强度', 0.5))
-
-    # V7复合指标
-    theme_confidence = float(v7_result.get('主题纯度', 30))
-    theme_strength_bonus = float(v7_result.get('主题强化系数', 1.0))
-    mainline_resonance = float(v7_result.get('主线共振加分', 0))
-    momentum_score = float(v7_result.get('动量得分', 0))
-    squeeze_compression_score = float(v7_result.get('压缩洗盘得分', 0))
-    theme = v7_result.get('所属主题', theme)
+    # V6各指标（0-1范围）
+    trend_probability = float(v6_result.get('趋势概率', 0.5))
+    fail_prob = float(v6_result.get('失败概率', 0.5))
+    breakout_strength = float(v6_result.get('突破强度', 0.5))
+    money_momentum = float(v6_result.get('资金动量', 0.5))
+    trend_stability = float(v6_result.get('趋势稳定', 0.5))
+    volume_explosion = float(v6_result.get('量能爆发', 0.5))
+    compression_score = float(v6_result.get('压缩度', 0.5))
+    trend_strength = float(v6_result.get('趋势强度', 0.5))
 
     # =========================
-    # V7.5独有：位置因子
+    # 自动选择纯度最高的主题
     # =========================
-    position_factor = calc_position_factor(df)
+    if not theme and stock_info:
+        theme = _find_best_theme(stock_info)
 
     # =========================
-    # V7.5独有：龙头因子
+    # 1. 主题真实性（theme_confidence）
+    # =========================
+    theme_confidence = calc_theme_confidence(stock_info, theme) if theme else 30
+    # 归一化到0-1范围
+    theme_confidence_01 = theme_confidence / 100.0
+
+    # =========================
+    # 2. 龙头因子（leader_factor）
+    # 基于趋势强度，资金动量和趋势概率
     # =========================
     leader_factor = (
         trend_strength * 0.40 +
@@ -1649,51 +1645,47 @@ def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
     )
 
     # =========================
-    # V7.5独有：主题排名加成
+    # 3. 主题排名加成（如果股票是主题核心公司）
     # =========================
     theme_rank_bonus = 0
     if stock_info and theme:
+        # 检查是否是核心公司
         try:
             cfg_path = os.path.join(BASE_DIR, 'theme.json')
             if os.path.exists(cfg_path):
                 with open(cfg_path, 'r', encoding='utf-8') as f:
                     theme_cfg = json.load(f).get('HOT_THEMES', {})
+                
                 if theme in theme_cfg:
                     core_companies = theme_cfg[theme].get('core_companies', [])
                     if ts_code in core_companies:
-                        theme_rank_bonus = 15  # 核心公司额外15分
+                        theme_rank_bonus = 0.2  # 核心公司额外0.2分
         except:
             pass
 
     # =========================
-    # 计算V7.5综合评分
-    # 基于V7指标 + V7.5独有因子
+    # 4. 计算V7.5综合评分
     # =========================
-    score = (
-        # 基础技术指标（来自V7）
-        trend_strength * 18 +
-        trend_probability * 12 +
-        money_momentum * 12 +
-        breakout_strength * 10 +
-        volume_explosion * 8 +
-        trend_stability * 6 +
-        compression_score * 4 +
-        # V7复合指标（动量、压缩洗盘、主线共振）
-        momentum_score * 10 +
-        squeeze_compression_score * 6 +
-        mainline_resonance +
-        # V7.5独有因子
-        position_factor * 4 +
-        leader_factor * 18 +
-        theme_confidence * 0.5 +
-        theme_rank_bonus
+    # 基础分：所有因子乘以权重得到0-100的分数
+    base_score = (
+        # 正向因子（乘以权重）
+        trend_strength * 15 +        # 趋势强度
+        trend_probability * 15 +      # 趋势概率
+        theme_confidence_01 * 12 +   # 主题真实性
+        theme_confidence_01 * 10 +   # 主题纯度（与真实性相同）
+        (leader_factor + theme_rank_bonus) * 10 +  # 龙头因子 + 核心公司加成
+        money_momentum * 10 +        # 资金动量
+        breakout_strength * 8 +      # 突破强度
+        volume_explosion * 8 +       # 量能爆发
+        trend_stability * 6 +        # 稳定性评分
+        compression_score * 6         # 压缩度
     )
 
-    # 风险惩罚
-    score -= fail_prob * 5
+    # 减去失败概率惩罚
+    failure_penalty = fail_prob * 20
 
-    # 主题强度放大系数
-    v75_total = score * theme_strength_bonus
+    # V7.5总分
+    v75_total = base_score - failure_penalty
 
     # 确保在0-100范围内
     v75_total = np.clip(v75_total, 0, 100)
@@ -1702,64 +1694,29 @@ def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
     # 输出结果
     # =========================
     return {
-        # V7技术指标
+        # V6技术指标
         "趋势概率": round(trend_probability, 4),
         "失败概率": round(fail_prob, 4),
-        "洗盘概率": round(v7_result.get('洗盘概率', 0), 4),
-        "交易优势": round(v7_result.get('交易优势', 0), 4),
+        "洗盘概率": round(v6_result.get('洗盘概率', 0), 4),
+        "交易优势": round(v6_result.get('交易优势', 0), 4),
         "趋势强度": round(trend_strength, 3),
         "趋势稳定": round(trend_stability, 3),
         "资金动量": round(money_momentum, 3),
         "突破强度": round(breakout_strength, 3),
         "压缩度": round(compression_score, 3),
         "量能爆发": round(volume_explosion, 3),
-        "风险等级": v7_result.get('风险等级', '低'),
+        "风险等级": v6_result.get('风险等级', '低'),
 
-        # V7复合指标
+        # V7.5新指标
         "所属主题": theme,
         "主题纯度": round(theme_confidence, 2),
-        "主题强化系数": round(theme_strength_bonus, 2),
-        "主线共振加分": round(mainline_resonance, 2),
-        "动量得分": round(momentum_score, 2),
-        "压缩洗盘得分": round(squeeze_compression_score, 2),
-        
-        # V7.5独有指标
         "龙头因子": round(leader_factor, 3),
         "主题排名加成": round(theme_rank_bonus, 2),
-        "位置因子": round(position_factor, 3),
-        "涨跌幅": round(today_pct, 2),  # 添加涨跌幅给AI报告
 
         # V7.5总分
         "V7总评分": round(v75_total, 2)
     }
 
-
-
-def calc_position_factor(df):
-
-    low120 = df["low"].tail(120).min()
-    high120 = df["high"].tail(120).max()
-
-    close = df["close"].iloc[-1]
-
-    pos = (close - low120) / (high120 - low120)
-
-    if pos < 0.30:
-        score = 0.2
-
-    elif pos < 0.50:
-        score = 0.4
-
-    elif pos < 0.70:
-        score = 0.7
-
-    elif pos < 0.90:
-        score = 1.0
-
-    else:
-        score = 0.8
-
-    return score
 
 
 def _calc_momentum_score(df):
@@ -3826,24 +3783,6 @@ def get_tracking_stocks():
         except Exception as e:
             print(f"获取K线数据失败: {e}")
         
-        # =====批量获取行业信息（用于V75主题纯度计算）=====
-        industry_dict = {}
-        try:
-            if pro is not None:
-                all_codes = recent_stocks['code'].tolist()
-                for i in range(0, len(all_codes), 100):
-                    batch_codes = all_codes[i:i+100]
-                    df_basic = pro.stock_basic(
-                        ts_code=",".join(batch_codes),
-                        list_status='L',
-                        fields='ts_code,industry'
-                    )
-                    if df_basic is not None and not df_basic.empty:
-                        for _, r in df_basic.iterrows():
-                            industry_dict[r['ts_code']] = r['industry']
-        except Exception as e:
-            print(f"获取行业信息失败: {e}")
-        
         # 生成跟踪分析股票列表
         tracking_stocks = []
         for _, row in recent_stocks.iterrows():
@@ -3922,52 +3861,34 @@ def get_tracking_stocks():
                 pass
             
             if is_valid:
-                # =====改用V75评分系统=====
-                stock_industry = industry_dict.get(ts_code, '')
-                stock_info = {
-                    "name": row['name'],
-                    "industries": [stock_industry] if stock_industry else [],
-                    "concepts": [],
-                    "business_text": ""
-                }
-                
-                last_score = 0.0
-                try:
-                    df_hist = get_hist_data(ts_code)
-                    if df_hist is not None and len(df_hist) >= 60:
-                        v75_result = calc_dual_layer_score_v75(df_hist, ts_code=ts_code, stock_info=stock_info)
-                        last_score = v75_result.get('V7总评分', 0)
-                    else:
-                        # 数据不足，回退到旧评分
-                        last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
-                        if last_score > 100:
+                # 处理旧数据的异常高分：如果分数超过100，重新计算或截断
+                last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
+                if last_score > 100:
+                    # 对于历史异常数据，重新计算评分或截断到合理范围
+                    try:
+                        df_hist = get_hist_data(ts_code)
+                        if df_hist is not None and len(df_hist) >= 60:
+                            # 重新计算时用V7，但是这里没有主题信息，所以用V6也可以
+                            score_result = calc_dual_layer_score_v6(df_hist, ts_code)
+                            last_score = score_result.get('总排序评分', min(last_score, 50))
+                        else:
                             last_score = min(last_score, 50)
-                except Exception as e:
-                    # 计算失败，回退到旧评分
-                    last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
-                    if last_score > 100:
+                    except:
                         last_score = min(last_score, 50)
-                
-                # 优先使用kline_data中的最新交易日价格
-                latest_kline = kline_data.get(ts_code)
-                if latest_kline is not None:
-                    latest_close = float(latest_kline['close'])
-                else:
-                    latest_close = float(row['close']) if str(row['close']).strip() not in ['', 'None'] else 0.0
                 
                 tracking_stocks.append({
                     'code': ts_code,
                     'name': row['name'],
-                    'last_date': TRADE_DATE,
-                    'last_close': latest_close,
+                    'last_date': row['date'],
+                    'last_close': float(row['close']) if str(row['close']).strip() not in ['', 'None'] else 0.0,
                     'last_score': last_score,
                     'range_5d_pct': range_pct,
                     'max_pct': max_pct,
                     'bias_rate': bias_rate
                 })
         
-        # 按V75评分排序，取前10只
-        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['last_score'])[:10]
+        # 按评分排序，取前20只
+        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['last_score'])[:20]
         
         # 生成文本格式
         lines = []
@@ -4621,28 +4542,12 @@ def run(target_date=None):
             
             # 从row中安全获取值，转为Python原生类型
             try:
-                # 设置主题名称
-                if code == '002747.SZ':
-                    theme_name = '人形机器人'
-                elif code in ['300814.SZ', '301205.SZ', '000070.SZ', '002902.SZ']:
-                    theme_name = 'AI算力链'
-                elif code == '002979.SZ':
-                    theme_name = '工业机器人'
-                else:
-                    theme_name = str(row.get('所属主题', ''))
-                
-                # 直接从K线数据计算真实涨跌幅，避免数据错误
-                if len(df) >= 2:
-                    today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100
-                else:
-                    today_pct = float(row.get('涨跌幅', 0))
-                
                 v7_result = {
                     '代码': code,
                     '名称': name,
                     '现价': float(row.get('现价', 0)),
-                    '涨跌幅': today_pct,
-                    '所属主题': theme_name,
+                    '涨跌幅': float(row.get('涨跌幅', 0)),
+                    '所属主题': str(row.get('所属主题', '')),
                     'V7总评分': float(row.get('V7总评分', 50)),
                     '风险等级': str(row.get('风险等级', '低')),
                     '趋势概率': float(row.get('趋势概率', 0.5)),
@@ -4727,8 +4632,6 @@ def run(target_date=None):
             # 重命名字段以匹配filter_by_top_themes的期望
             tracking_df = tracking_df.rename(columns={'code': '代码', 'name': '名称'})
             tracking_df = filter_by_top_themes(tracking_df)
-            
-                       
             # 转换回列表格式
             tracking_stocks = tracking_df.to_dict('records')
             
