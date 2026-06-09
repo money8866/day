@@ -49,6 +49,7 @@ except:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
 DB_PATH = os.path.join(CACHE_DIR, "theme_portfolio.db")
+# 股票CSV已弃用，改用 theme.json 获取龙头/中军配置
 
 
 class RealtimeThemeMonitor:
@@ -65,6 +66,10 @@ class RealtimeThemeMonitor:
         self.theme_stocks = {}      # theme_name -> [(ts_code, name, layer)]
         self.theme_names = []       # 有序主题列表
         self.stock_themes = {}      # ts_code -> [theme_name, ...]
+        
+        # ── theme.json 配置 ──
+        self.theme_config = {}      # theme_name -> 主题配置字典
+        self.theme_json_path = os.path.join(BASE_DIR, 'theme.json')
 
         # ── 主题历史强度（用于趋势判定） ──
         self.theme_score_history = defaultdict(lambda: deque(maxlen=15))
@@ -143,37 +148,203 @@ class RealtimeThemeMonitor:
     # ════════════════════════════════════════════
     # 1. 数据加载
     # ════════════════════════════════════════════
+    def _load_theme_json(self):
+        """从 theme.json 加载主题配置（龙头/中军/核心公司）"""
+        if not os.path.exists(self.theme_json_path):
+            print(f"⚠ 未找到 {self.theme_json_path}，无法加载主题配置")
+            return
+        
+        try:
+            with open(self.theme_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.theme_config = data.get('HOT_THEMES', {})
+            print(f"✅ 从theme.json加载: {len(self.theme_config)} 个主题配置")
+            
+            # 打印每个主题的龙头公司
+            for theme_name, cfg in self.theme_config.items():
+                leaders = cfg.get('leader_companies', [])
+                cores = cfg.get('core_companies', [])
+                if leaders:
+                    print(f"   📌 {theme_name}: 龙头[{', '.join(leaders[:3])}] 核心{len(cores)}家")
+        except Exception as e:
+            print(f"⚠ theme.json加载失败: {e}，无法加载主题配置")
+            self.theme_config = {}
+    
+    def _get_stock_layer(self, name, theme_name):
+        """
+        根据 theme.json 判定股票层级
+        返回: 'leader'(龙头) / 'middle'(中军) / 'member'(成分股)
+        """
+        cfg = self.theme_config.get(theme_name)
+        if not cfg:
+            return 'member'
+        
+        leader_companies = cfg.get('leader_companies', [])
+        core_companies = cfg.get('core_companies', [])
+        
+        # 检查是否为龙头公司（leader_companies中的前3名）
+        for leader_name in leader_companies:
+            if leader_name in name:
+                return 'leader'
+        
+        # 检查是否为核心公司（core_companies中）
+        for core_name in core_companies:
+            if core_name in name:
+                return 'middle'
+        
+        return 'member'
+
+    def _load_all_stocks_from_tushare(self):
+        """
+        从Tushare获取全市场股票列表（带缓存）
+        返回: name_to_code字典 {name: ts_code}
+        """
+        cache_file = os.path.join(CACHE_DIR, "all_stocks_name_map.pkl")
+        
+        # 检查缓存（缓存有效期1天）
+        if os.path.exists(cache_file):
+            cache_mtime = os.path.getmtime(cache_file)
+            import time
+            if time.time() - cache_mtime < 86400:  # 24小时内有效
+                import pickle
+                with open(cache_file, 'rb') as f:
+                    return pickle.load(f)
+        
+        if not TS_AVAILABLE:
+            print("⚠ Tushare不可用，无法获取全市场股票列表")
+            return {}
+        
+        try:
+            # 获取全市场股票列表（主板+科创板+创业板）
+            stocks = []
+            for status in ['L', 'D', 'P']:  # 上市、退市、暂停
+                df = pro.stock_basic(exchange='', list_status=status, 
+                                    fields='ts_code,symbol,name,list_date')
+                if not df.empty:
+                    stocks.append(df)
+            
+            import pandas as pd
+            df_all = pd.concat(stocks, ignore_index=True)
+            
+            # 只保留上市状态的股票（沪市.SH 深市.SZ）
+            df_all = df_all[df_all['ts_code'].str.endswith(('.SH', '.SZ'))]
+            
+            # 构建名称到代码的映射
+            name_to_code = {}
+            for _, row in df_all.iterrows():
+                name = str(row['name']).strip()
+                ts_code = str(row['ts_code']).strip()
+                if name and ts_code:
+                    # 精确匹配
+                    if name not in name_to_code:
+                        name_to_code[name] = ts_code
+            
+            # 缓存
+            import pickle
+            with open(cache_file, 'wb') as f:
+                pickle.dump(name_to_code, f)
+            
+            print(f"✅ 从Tushare获取全市场股票列表: {len(name_to_code)} 只")
+            return name_to_code
+            
+        except Exception as e:
+            print(f"⚠ 从Tushare获取股票列表失败: {e}")
+            return {}
+
+    def _match_theme_stocks(self, name_to_code):
+        """
+        根据theme.json中的core_companies和leader_companies匹配股票代码
+        返回: theme_stocks, stock_themes
+        """
+        theme_stocks = {}
+        stock_themes = {}
+        matched_count = 0
+        total_companies = 0
+        
+        for theme_name, cfg in self.theme_config.items():
+            theme_stocks[theme_name] = []
+            
+            # 获取龙头公司和核心公司
+            leader_companies = cfg.get('leader_companies', [])
+            core_companies = cfg.get('core_companies', [])
+            
+            # 合并所有公司（龙头在前）
+            all_companies = leader_companies + core_companies
+            total_companies += len(all_companies)
+            
+            for company_name in all_companies:
+                # 尝试精确匹配
+                ts_code = name_to_code.get(company_name)
+                
+                if ts_code:
+                    # 确定层级
+                    if company_name in leader_companies:
+                        layer = 'leader'
+                    else:
+                        layer = 'middle'
+                    
+                    theme_stocks[theme_name].append((ts_code, company_name, layer))
+                    
+                    # 记录股票所属主题
+                    if ts_code not in stock_themes:
+                        stock_themes[ts_code] = []
+                    if theme_name not in stock_themes[ts_code]:
+                        stock_themes[ts_code].append(theme_name)
+                    
+                    matched_count += 1
+                else:
+                    print(f"   ⚠ 未找到股票: {company_name} (主题:{theme_name})")
+        
+        print(f"✅ 股票匹配完成: {matched_count}/{total_companies} 只匹配成功")
+        return theme_stocks, stock_themes
+
     def load_theme_db(self):
-        if not os.path.exists(DB_PATH):
-            print(f"错误：未找到 {DB_PATH}，请先运行 theme_portfolio_strategy_cached.py")
+        # 加载 theme.json 配置
+        self._load_theme_json()
+        
+        if not self.theme_config:
+            print("❌ theme.json配置为空，无法加载主题数据")
             sys.exit(1)
-
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-
-        cur.execute("SELECT ts_code, name, theme_name, layer FROM portfolio")
-        rows = cur.fetchall()
-
-        for ts_code, name, theme_name, layer in rows:
-            if theme_name not in self.theme_stocks:
-                self.theme_stocks[theme_name] = []
-                self.theme_names.append(theme_name)
-            self.theme_stocks[theme_name].append((ts_code, name, layer))
-
-            if ts_code not in self.stock_themes:
-                self.stock_themes[ts_code] = []
-            self.stock_themes[ts_code].append(theme_name)
-
-        conn.close()
-
+        
+        # 从Tushare获取全市场股票列表
+        print("⏳ 正在获取全市场股票列表...")
+        name_to_code = self._load_all_stocks_from_tushare()
+        
+        if not name_to_code:
+            print("❌ 无法获取股票列表，退出")
+            sys.exit(1)
+        
+        # 根据theme.json配置匹配股票
+        print("⏳ 正在匹配主题股票...")
+        self.theme_stocks, self.stock_themes = self._match_theme_stocks(name_to_code)
+        
+        # 构建主题名称列表
+        self.theme_names = list(self.theme_config.keys())
+        
         total_stocks = sum(len(v) for v in self.theme_stocks.values())
-        print(f"✅ 从数据库加载: {len(self.theme_stocks)} 个主题, {total_stocks} 只股票")
+        unique_stocks = len(self.stock_themes)
+        
+        # 统计跨主题股票
+        multi_theme_stocks = {code: len(themes) for code, themes in self.stock_themes.items() if len(themes) > 1}
+        
+        print(f"✅ 从theme.json加载:")
+        print(f"   主题数: {len(self.theme_stocks)} 个")
+        print(f"   股票数: {unique_stocks} 只 (共 {total_stocks} 只次)")
+        print(f"   跨主题: {len(multi_theme_stocks)} 只")
         print(f"   主题列表: {', '.join(self.theme_names)}")
+        
+        # 打印跨主题股票示例
+        if multi_theme_stocks:
+            print(f"   跨主题股票示例:")
+            for code, count in list(multi_theme_stocks.items())[:5]:
+                themes = self.stock_themes.get(code, [])
+                print(f"      {code}: {count}个主题 ({', '.join(themes)})")
 
     def load_ref_prices(self):
         """从Tushare获取昨日收盘价（有缓存则用缓存）"""
         if not TS_AVAILABLE:
-            print("⚠ Tushare不可用，无法加载昨日收盘价，将仅使用涨跌幅判断")
+            print("⚠ Tushare不可用，无法获取收盘价")
             return
 
         from datetime import datetime as dt
@@ -189,13 +360,8 @@ class RealtimeThemeMonitor:
         trade_date = str(cal[cal['cal_date'] <= query_date]['cal_date'].max())
 
         cache_file = os.path.join(CACHE_DIR, f"ref_prices_{trade_date}.pkl")
-        if os.path.exists(cache_file):
-            import pickle
-            with open(cache_file, 'rb') as f:
-                self.ref_prices = pickle.load(f)
-            print(f"✅ 从缓存加载昨日收盘价: {len(self.ref_prices)} 只")
-            return
-
+        
+        # 全量重新获取，不使用缓存
         all_codes = list(self.stock_themes.keys())
         print(f"⏳ 获取{trade_date}日线数据，共{len(all_codes)}只...")
         daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
@@ -206,17 +372,28 @@ class RealtimeThemeMonitor:
             import pandas as pd
             daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
 
+        tushare_count = 0
         if not daily.empty:
             for _, row in daily.iterrows():
                 self.ref_prices[row['ts_code']] = {
                     'close': row['close'],
                     'pct_chg': row['pct_chg']
                 }
+                tushare_count += 1
+
+        # 检查缺失的股票
+        missing = [code for code in all_codes if code not in self.ref_prices]
+        if missing:
+            print(f"⚠ Tushare缺失 {len(missing)} 只股票收盘价")
+            for code in missing[:5]:  # 只显示前5个
+                print(f"   {code}")
+            if len(missing) > 5:
+                print(f"   ... 还有 {len(missing)-5} 只")
 
         import pickle
         with open(cache_file, 'wb') as f:
             pickle.dump(self.ref_prices, f)
-        print(f"✅ 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只")
+        print(f"✅ 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只 (Tushare:{tushare_count}, 缺失:{len(missing)})")
 
     # ════════════════════════════════════════════
     # 2. 通达信连接
@@ -330,63 +507,151 @@ class RealtimeThemeMonitor:
     # 3. 行情获取
     # ════════════════════════════════════════════
     def fetch_all_quotes(self):
-        """批量获取所有股票最新行情（通达信 get_security_quotes）"""
-        if not self.connected and not self.connect():
-            return False
-
+        """通过新浪财经API获取全市场实时行情，失败时自动切换东方财富备用源"""
         stock_codes = list(self.stock_themes.keys())
-        tdx_list = []
-        for code in stock_codes:
-            if code.endswith('.SH'):
-                tdx_list.append((0, code.replace('.SH', '')))
-            elif code.endswith('.SZ'):
-                tdx_list.append((1, code.replace('.SZ', '')))
-
-        batch_size = 80
         quote_map = {}
-        errors = 0
+        first_round = len(self.quotes) == 0
+        source = None
 
-        for i in range(0, len(tdx_list), batch_size):
-            batch = tdx_list[i:i + batch_size]
+        # ── 优先：新浪财经批量接口 ──
+        for offset in range(0, len(stock_codes), 180):
+            batch = stock_codes[offset:offset + 180]
+            sina_list = []
+            for code in batch:
+                if code.endswith('.SH'):
+                    sina_list.append('sh' + code.replace('.SH', ''))
+                elif code.endswith('.SZ'):
+                    sina_list.append('sz' + code.replace('.SZ', ''))
+
+            url = f"https://hq.sinajs.cn/list={','.join(sina_list)}"
             try:
-                quotes = self.api.get_security_quotes(batch)
-                if quotes:
-                    for q in quotes:
-                        raw_code = str(q['code'])
-                        market = q['market']
-                        # 转回ts_code格式
-                        ts_c = raw_code + ('.SH' if market == 0 else '.SZ')
-                        price = float(q['price'])
-                        last_close = float(q['last_close'])
-                        vol = int(q['vol']) if hasattr(q, 'vol') else 0
-                        amount_val = float(q['amount']) if hasattr(q, 'amount') else 0
+                resp = requests.get(url, headers={
+                    'Referer': 'https://finance.sina.com.cn',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }, timeout=8)
+                resp.encoding = 'gbk'
+                lines = resp.text.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    try:
+                        var_part = line.split('=', 1)[1]
+                        if var_part.count('"') < 2:
+                            continue
+                        data_str = var_part.split('"')[1]
+                        fields = data_str.split(',')
 
-                        if last_close > 0 and price > 0:
-                            pct_chg = (price - last_close) / last_close * 100
+                        var_name = line.split('hq_str_')[1].split('=')[0]
+                        if var_name.startswith('sz'):
+                            ts_c = var_name[2:].zfill(6) + '.SZ'
+                        elif var_name.startswith('sh'):
+                            ts_c = var_name[2:].zfill(6) + '.SH'
+                        else:
+                            continue
+
+                        if len(fields) < 32:
+                            continue
+
+                        prev_close = float(fields[2])
+                        price = float(fields[3])
+                        high = float(fields[4])
+                        low = float(fields[5])
+                        volume = float(fields[8])
+                        amount = float(fields[9])
+
+                        if prev_close > 0 and price > 0:
+                            pct_chg = (price - prev_close) / prev_close * 100
                         else:
                             pct_chg = 0
 
                         quote_map[ts_c] = {
                             'price': price,
                             'pct_chg': round(pct_chg, 2),
-                            'amount': amount_val,
-                            'vol': vol,
-                            'last_close': last_close
+                            'amount': amount,
+                            'vol': int(volume),
+                            'last_close': prev_close,
+                            'high': high,
+                            'low': low,
                         }
+                    except (IndexError, ValueError):
+                        continue
+                source = '新浪财经API'
             except Exception as e:
-                errors += 1
-                if errors > 3:
-                    self.connected = False
-                    print(f"   ⚠ 连续{errors}次查询异常，触发服务器轮巡...")
+                if first_round:
+                    print(f"   ⚠ 新浪API异常: {e}，尝试东方财富备用源...")
+                quote_map = {}  # 清空已获取数据，切换备用源
+                break
+
+        # ── 备用：东方财富接口 ──
+        if not quote_map:
+            em_url = 'https://push2.eastmoney.com/api/qt/ulist.np/get'
+            em_fields = 'f12,f14,f3,f4,f5,f6,f7'
+            secids = []
+            for code in stock_codes:
+                if code.endswith('.SH'):
+                    secids.append('1.' + code.replace('.SH', ''))
+                elif code.endswith('.SZ'):
+                    secids.append('0.' + code.replace('.SZ', ''))
+
+            # 东方财富每次最多200只，分批请求
+            for offset in range(0, len(secids), 180):
+                batch_secids = secids[offset:offset + 180]
+                params = {
+                    'fltt': 2,
+                    'invt': 2,
+                    'fields': em_fields,
+                    'secids': ','.join(batch_secids)
+                }
+                try:
+                    resp = requests.get(em_url, params=params, headers={
+                        'User-Agent': 'Mozilla/5.0',
+                        'Referer': 'https://www.eastmoney.com'
+                    }, timeout=8)
+                    data = resp.json()
+                    diff = data.get('data', {}).get('diff', [])
+                    for item in diff:
+                        f12 = item.get('f12', '')  # 代码
+                        f3 = item.get('f3', 0)    # 涨跌幅%
+                        f4 = item.get('f4', 0)    # 涨跌额
+                        f5 = item.get('f5', 0)    # 成交量
+                        f6 = item.get('f6', 0)    # 成交额
+                        # 根据代码判断市场: 6开头=SH, 0/3开头=SZ
+                        if f12.startswith(('6', '9')):
+                            ts_c = f12.zfill(6) + '.SH'
+                        else:
+                            ts_c = f12.zfill(6) + '.SZ'
+                        # 东方财富无昨收，用当前价和涨跌额反推
+                        if f3 != 0 and f4 != 0:
+                            price = round(f4 / (f3 / 100), 2)
+                            prev_close = round(price - f4, 2)
+                        else:
+                            price = 0
+                            prev_close = 0
+                        quote_map[ts_c] = {
+                            'price': price,
+                            'pct_chg': round(f3, 2),
+                            'amount': f6,
+                            'vol': int(f5),
+                            'last_close': prev_close,
+                            'high': 0,
+                            'low': 0,
+                        }
+                    source = '东方财富API'
+                except Exception as e:
+                    if first_round:
+                        print(f"   ⚠ 东方财富API异常: {e}，行情获取失败")
                     return False
-            time.sleep(0.05)
+
+        if first_round and quote_map:
+            total = len(stock_codes)
+            print(f"   ✅ 行情获取: {len(quote_map)}/{total} 只 ({source})")
 
         if quote_map:
             self.prev_quotes = self.quotes.copy()
             self.quotes = quote_map
-        else:
-            self.connected = False
-        return bool(quote_map)
+            return True
+        return False
 
     # ════════════════════════════════════════════
     # 4. 分析引擎
@@ -435,8 +700,8 @@ class RealtimeThemeMonitor:
 
                 theme_vol += q.get('amount', 0)
 
-                # ── 检测主题内的先锋股 ──
-                if layer == 'leader' and pct >= 3:
+                # ── 检测主题内的先锋股（优先检测龙头，其次中军） ──
+                if layer in ('leader', 'middle') and pct >= 3:
                     prev = self.prev_quotes.get(ts_code)
                     prev_pct = prev['pct_chg'] if prev else 0
                     delta = pct - prev_pct
@@ -445,6 +710,7 @@ class RealtimeThemeMonitor:
                             'ts_code': ts_code,
                             'name': name,
                             'theme': theme_name,
+                            'layer': layer,
                             'pct_chg': pct,
                             'surge_delta': round(delta, 2)
                         })
@@ -541,15 +807,23 @@ class RealtimeThemeMonitor:
             cooldown_key = f"fm_{fm['ts_code']}"
             if time.time() - self.last_first_mover_alert.get(cooldown_key, 0) < 1800:
                 continue
-
+            
+            # 层级标记
+            layer_mark = {
+                'leader': '⭐龙头',
+                'middle': '▲中军'
+            }
+            layer_tag = layer_mark.get(fm.get('layer', ''), '')
+            
             alerts.append({
                 'type': 'first_mover',
                 'stock': fm['name'],
                 'code': fm['ts_code'],
                 'theme': fm['theme'],
+                'layer': fm.get('layer', ''),
                 'pct_chg': fm['pct_chg'],
                 'surge_delta': fm['surge_delta'],
-                'msg': f"🚀 先锋启动【{fm['name']}({fm['ts_code'][:6]})】{fm['pct_chg']:+.1f}% 主题:{fm['theme']} 跳涨{fm['surge_delta']:+.1f}%"
+                'msg': f"🚀 先锋启动{layer_tag}【{fm['name']}({fm['ts_code'][:6]})】{fm['pct_chg']:+.1f}% 主题:{fm['theme']} 跳涨{fm['surge_delta']:+.1f}%"
             })
             self.last_first_mover_alert[cooldown_key] = time.time()
 
@@ -597,7 +871,7 @@ class RealtimeThemeMonitor:
         return alerts
 
     def get_theme_top_movers(self, theme_name, n=3):
-        """获取主题内涨幅前n的个股"""
+        """获取主题内涨幅前n的个股，带层级标记"""
         stocks = self.theme_stocks.get(theme_name, [])
         movers = []
         for ts_code, name, layer in stocks:
@@ -605,7 +879,15 @@ class RealtimeThemeMonitor:
             if q:
                 movers.append((name, q['pct_chg'], layer))
         movers.sort(key=lambda x: x[1], reverse=True)
-        return [f"{m[0]}({m[1]:+.1f}%)" for m in movers[:n]]
+        
+        # 层级标记映射
+        layer_mark = {
+            'leader': '⭐龙头',
+            'middle': '▲中军',
+            'member': '○成分'
+        }
+        
+        return [f"{m[0]}{layer_mark.get(m[2], '')}({m[1]:+.1f}%)" for m in movers[:n]]
 
     # ════════════════════════════════════════════
     # 5. 开盘分析（9:32）
@@ -674,37 +956,27 @@ class RealtimeThemeMonitor:
 
         ts = now.strftime('%H:%M:%S')
 
-        # ── 4. 构建推送内容 ──
+        # ── 4. 构建推送内容（纯文本，每行独立） ──
         title = f"📊 开盘分析 {now.strftime('%m-%d')}"
 
-        lines_text = ""
+        content_lines = [
+            f"📊 开盘竞价全景分析",
+            f"时间: {ts}",
+            f"情绪分: {sentiment_score} — {sentiment_label}",
+            f"上涨: {ms['up']}/{ms['total']}({ms['up_ratio']}%)  涨停: {ms['zt_count']}  跌停: {ms['dt_count']}",
+            f"---",
+            f"【五维竞争力 TOP10】",
+        ]
         for rank, name, avg_pct, up_r, ldr, amt, cnt in lines:
             bar = "█" * max(1, min(10, int(abs(avg_pct) + 0.5)))
             direction = "+" if avg_pct >= 0 else ""
-            lines_text += f"| {rank} | **{name}** | {direction}{avg_pct:.1f}% {bar} | {up_r:.0f}% | {ldr} | {amt}亿 | {cnt}只 |\n"
+            content_lines.append(
+                f"#{rank} {name}  {direction}{avg_pct:.1f}%{bar}  ↑{up_r:.0f}%  龙头:{ldr}  {amt}亿  {cnt}只"
+            )
+        content_lines.append(f"---")
+        content_lines.append(f"①板块平均涨幅  ②上涨占比  ③龙头涨幅  ④成交额  ⑤成分股数")
 
-        content = f"""## 📊 开盘竞价全景分析
-
-**时间:** {ts}
-**市场情绪分:** {sentiment_score} — {sentiment_label}
-
-| | | 上涨: {ms['up']}/{ms['total']}({ms['up_ratio']}%) | 涨停: {ms['zt_count']} | 跌停: {ms['dt_count']} | | |
-|---|---|---|---|---|---|---|
-
-### 五维竞争力 TOP10
-
-| 排名 | 板块 | ①竞价强度 | ②上涨占比 | ③龙头涨幅 | ④开盘成交额 | ⑤成分股 |
-|:---:|:---|:---:|:---:|:---:|:---:|:---:|
-{lines_text}
-
----
-*①开盘竞价强度 = 板块个股平均涨跌幅*
-*②核心池上涨占比 = 板块内上涨个股占比*
-*③龙头涨幅 = 层layer=leader的个股涨幅*
-*④开盘成交额 = 板块个股总成交额（亿元）*
-*⑤成分股 = 板块内成功获取行情的个股数*
-"""
-        self.send_wechat(title, content)
+        self.send_wechat(title, '\n'.join(content_lines))
 
         # 控制台也打一份
         print(f"\n{'='*55}")
@@ -724,8 +996,29 @@ class RealtimeThemeMonitor:
             print("⚠ 未配置WECHAT_SCKEY")
             return
         url = f"https://sctapi.ftqq.com/{self.sckey}.send"
+        # 换行归一化：Server酱按Markdown渲染，\n\n = 段落空行，\n = 被合并
+        # 解决：每行以2空格结尾（Markdown硬换行），去掉Markdown标题/表格/分割线
+        # 规则：①空行→忽略 ②---→改为短线分隔 ③**粗体**→去掉符号 ④##标题→保留文字
+        lines = []
+        import re
+        for raw_line in content.replace('\r\n', '\n').split('\n'):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            # 去掉Markdown粗体符号 **text** → text
+            stripped = re.sub(r'\*\*(.+?)\*\*', r'\1', stripped)
+            # 去掉Markdown标题前缀 ## / ###
+            stripped = re.sub(r'^#{1,6}\s*', '', stripped)
+            # Markdown水平分割线 → 短线分隔符
+            if re.match(r'^-{3,}$', stripped):
+                lines.append('━━━━━━━━━━━━' + '  ')
+                continue
+            # 其他行：行尾2空格 = Markdown硬换行
+            lines.append(stripped + '  ')
+        normalized = '\n'.join(lines)
+
         try:
-            resp = requests.post(url, data={"title": title, "desp": content}, timeout=10)
+            resp = requests.post(url, data={"title": title, "desp": normalized}, timeout=10)
             print(f"📱 推送成功: {title[:30]}")
             return resp
         except Exception as e:
@@ -881,7 +1174,7 @@ class RealtimeThemeMonitor:
         print(f"{'='*50}")
 
     def push_alerts(self, alerts, now):
-        """批量推送微信通知"""
+        """批量推送微信通知（纯文本格式，避免Markdown渲染异常）"""
         ts = now.strftime('%H:%M:%S')
 
         # 分类
@@ -892,23 +1185,43 @@ class RealtimeThemeMonitor:
         # ── 主题异动推送 ──
         if theme_msgs:
             title = f"🔥 主题异动 {ts} ({len(theme_msgs)}条)"
-            content = f"## 🔥 实时主题异动\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(theme_msgs)
-            content += "\n\n---\n💡 **策略**：优先关注领涨主题的龙头股，等待回调低吸机会"
-            self.send_wechat(title, content)
+            content_lines = [
+                f"🔥 实时主题异动",
+                f"时间: {ts}",
+                f"---",
+            ]
+            content_lines.extend(theme_msgs)
+            content_lines.extend([
+                f"---",
+                f"💡 策略：优先关注领涨主题的龙头股，等待回调低吸机会",
+            ])
+            self.send_wechat(title, '\n'.join(content_lines))
 
         # ── 先锋启动推送 ──
         if fm_msgs:
             title = f"🚀 先锋启动 {ts} ({len(fm_msgs)}只)"
-            content = f"## 🚀 实时先锋启动\n\n**时间: {ts}**\n\n" + "\n".join(fm_msgs)
-            content += "\n\n💡 优先关注同主题内还未启动的 core/follower"
-            self.send_wechat(title, content)
+            content_lines = [
+                f"🚀 实时先锋启动",
+                f"时间: {ts}",
+            ]
+            content_lines.extend(fm_msgs)
+            content_lines.append(f"💡 优先关注同主题内还未启动的个股")
+            self.send_wechat(title, '\n'.join(content_lines))
 
         # ── 市场情绪预警 ──
         if market_msgs:
             title = f"⚠️ 市场情绪预警 {ts}"
-            content = f"## ⚠️ 市场情绪预警\n\n**时间: {ts}**\n\n---\n\n" + "\n\n".join(market_msgs)
-            content += "\n\n---\n📊 数据基于实时主题成分股统计"
-            self.send_wechat(title, content)
+            content_lines = [
+                f"⚠️ 市场情绪预警",
+                f"时间: {ts}",
+                f"---",
+            ]
+            content_lines.extend(market_msgs)
+            content_lines.extend([
+                f"---",
+                f"📊 数据基于实时主题成分股统计",
+            ])
+            self.send_wechat(title, '\n'.join(content_lines))
 
         # ── 控制台输出 ──
         print(f"\n📱 [{ts}] 推送:")

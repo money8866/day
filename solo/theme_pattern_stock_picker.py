@@ -289,8 +289,8 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             
             if avg_scores:
                 sorted_avg = sorted(avg_scores.items(), key=lambda x: -x[1])
-                top_2_avg = [x[0] for x in sorted_avg[:2]]
-                if theme_name in top_2_avg:
+                top_5_avg = [x[0] for x in sorted_avg[:5]]
+                if theme_name in top_5_avg: 
                     is_mid_trend = True
             
             # 当日趋势分排序
@@ -300,8 +300,8 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 today_scores[theme_name_iter] = row.get('trend_score', 0)
             
             sorted_today = sorted(today_scores.items(), key=lambda x: -x[1])
-            top_3_today = [x[0] for x in sorted_today[:3]]
-            if theme_name in top_3_today:
+            top_5_today = [x[0] for x in sorted_today[:5]]
+            if theme_name in top_5_today:   
                 is_short_trend = True
         
         if not is_mid_trend and not is_short_trend:
@@ -387,53 +387,90 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                         break
             
             # =================
-            # 中军筛选条件
+            # 中军筛选条件（改为分数制）
             # =================
-            is_zhongjun = True
+            # 总分100分，60分以上为中军
+            total_score = 0
             
-            # 1. 主题类型
+            # 1. 主题类型（20分）
             if is_mid_trend or is_short_trend:
-                pass  # 符合条件
+                total_score += 20
             else:
-                is_zhongjun = False
+                # 非TOP5主题直接跳过
+                continue
             
-            # 2. avg_amount_20 >= 15亿
-            if avg_amount_20 < 15:
-                is_zhongjun = False
+            # 2. 日均成交额（20分）- 放宽到8亿
+            if avg_amount_20 >= 15:
+                total_score += 20
+            elif avg_amount_20 >= 8:
+                total_score += 15
+            elif avg_amount_20 >= 5:
+                total_score += 10
+            else:
+                total_score += 5  # 允许较低成交额但扣分
             
-            # 3. 均线多头 close > MA5 > MA10 > MA20
-            if not (close > ma5 and ma5 > ma10 and ma10 > ma20):
-                is_zhongjun = False
+            # 3. 均线多头（15分）
+            if close > ma5 and ma5 > ma10 and ma10 > ma20:
+                total_score += 15  # 完美多头
+            elif close > ma20:
+                total_score += 10  # 至少在20日均线上
+            else:
+                total_score += 5   # 低于20日均线但仍考虑
             
-            # 4. MA20向上
-            if ma20_slope <= 0:
-                is_zhongjun = False
+            # 4. MA20向上（15分）
+            if ma20_slope > 1:
+                total_score += 15
+            elif ma20_slope > 0:
+                total_score += 10
+            elif ma20_slope > -1:
+                total_score += 5    # 轻微下降也允许
             
-            # 5. close >= HHV60 * 0.95
-            if close < hhv60 * 0.95:
-                is_zhongjun = False
+            # 5. 接近新高（15分）- 放宽到80%
+            if close >= hhv60 * 0.95:
+                total_score += 15
+            elif close >= hhv60 * 0.90:
+                total_score += 12
+            elif close >= hhv60 * 0.85:
+                total_score += 8
+            elif close >= hhv60 * 0.80:
+                total_score += 5     # 放宽到80%
             
-            # 6. RS20 >= 5
-            if RS20 < 5:
-                is_zhongjun = False
+            # 6. RS20相对强度（10分）- 大幅放宽，允许负值
+            if RS20 >= 5:
+                total_score += 10
+            elif RS20 >= 2:
+                total_score += 8
+            elif RS20 >= 0:
+                total_score += 5
+            elif RS20 >= -5:
+                total_score += 2     # 小幅跑输也允许
+            else:
+                total_score += 0
             
-            # 7. 20日涨停数 <= 2
-            if zt_count_20 > 2:
-                is_zhongjun = False
+            # 7. 20日涨停数（3分）
+            if zt_count_20 == 0:
+                total_score += 3
+            elif zt_count_20 == 1:
+                total_score += 2
+            elif zt_count_20 == 2:
+                total_score += 1
             
-            # 8. 近5日未跌破MA10
-            if ma10_broken:
-                is_zhongjun = False
+            # 8. 近5日未跌破MA10（2分）
+            if not ma10_broken:
+                total_score += 2
             
-            # 计算中军评分
+            # 判断是否为中军（60分阈值）
+            is_zhongjun = total_score >= 60
+            
+            # 计算中军综合评分（用于排序）
             zhongjun_score = 0
             if is_zhongjun:
                 # 主题分
                 theme_score_part = min(theme_score_val / 80 * 100, 100)
                 # 趋势分
                 trend_score_part = min(ma20_slope / 2 * 100, 100)
-                # RS20分
-                RS20_score_part = min(RS20 / 10 * 100, 100)
+                # RS20分（放宽后的计算）
+                RS20_score_part = min(max(RS20 / 10 * 100, 0), 100)
                 # 成交分
                 amount_score_part = min(avg_amount_20 / 30 * 100, 100)
                 
@@ -742,9 +779,9 @@ def print_results(candidates):
     short_term_candidates = [c for c in candidates if c.get('theme_type') == '短线主线']
     supplement_candidates = [c for c in candidates if c.get('theme_type') == '补充']
     
-    # 第一部分：中期趋势主题（60日趋势平均分TOP2）
+    # 第一部分：中期趋势主题（60日趋势平均分TOP5）
     if mid_term_candidates:
-        print("中期趋势主题（60日趋势平均分TOP2）")
+        print("中期趋势主题（60日趋势平均分TOP5）")
         print("-" * 120)
         
         mid_term_zhongjun = [c for c in mid_term_candidates if c.get('buy_type') == '中军']
@@ -778,9 +815,9 @@ def print_results(candidates):
                 print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
     
-    # 第二部分：短线主线（当日最强主线TOP3）
+    # 第二部分：短线主线（当日最强主线5）
     if short_term_candidates:
-        print("短线主线（当日最强主线TOP3）")
+        print("短线主线（当日最强主线TOP5）")
         print("-" * 120)
         
         short_term_zhongjun = [c for c in short_term_candidates if c.get('buy_type') == '中军']
@@ -818,17 +855,18 @@ def print_results(candidates):
     print("=" * 120)
     print("趋势中军池标准说明")
     print("=" * 120)
-    print("中期趋势主题：基于60日趋势平均分TOP2，适合中线布局")
+    print("中期趋势主题：基于60日趋势平均分TOP5，适合中线布局")
     print("短线主题：基于当日综合分TOP3，适合短线操作")
-    print("趋势中军：满足以下条件的个股，按综合评分排序取TOP10")
-    print("  条件1：主题类型为中期趋势或短线主线")
-    print("  条件2：avg_amount_20 >= 15亿")
-    print("  条件3：close > MA5 > MA10 > MA20（均线多头）")
-    print("  条件4：MA20向上")
-    print("  条件5：close >= HHV60 * 0.95（接近新高）")
-    print("  条件6：RS20 >= 5（相对强势）")
-    print("  条件7：20日涨停数 <= 2")
-    print("  条件8：近5日未跌破MA10")
+    print("趋势中军：满足以下分数制条件的个股，按综合评分排序取TOP10")
+    print("  评分规则（总分100分，60分以上为中军）：")
+    print("  ├─ 主题类型（20分）：必须是TOP5中期趋势或短线主线")
+    print("  ├─ 日均成交额（20分）：≥15亿=20分，≥8亿=15分，≥5亿=10分")
+    print("  ├─ 均线多头（15分）：完美多头=15分，在MA20上=10分")
+    print("  ├─ MA20向上（15分）：>1%=15分，>0=10分，>-1%=5分")
+    print("  ├─ 接近新高（15分）：≥95%=15分，≥80%=5分")
+    print("  ├─ RS20（10分）：≥5=10分，≥2=8分，≥0=5分，≥-5=2分")
+    print("  ├─ 20日涨停数（3分）：0次=3分，1次=2分，2次=1分")
+    print("  └─ 近5日未破MA10（2分）")
     print("综合评分 = 0.35 * theme_score + 0.25 * trend_score + 0.20 * RS20_score + 0.20 * amount_score")
     print()
     print("补涨中军：关注大容量、大成交、基本面健康")

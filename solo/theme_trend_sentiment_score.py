@@ -1016,7 +1016,7 @@ def save_to_sqlite(results):
         rank INTEGER, theme TEXT, n_stocks INTEGER, trend_score REAL, sentiment_score REAL, composite_score REAL,
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
-        theme_state TEXT, trade_date TEXT
+        trade_date TEXT, theme_state TEXT
     )""")
     
     # 检查表结构，如果缺少theme_state列则添加
@@ -1025,11 +1025,15 @@ def save_to_sqlite(results):
     if "theme_state" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN theme_state TEXT DEFAULT '弱势'")
     
-    # 获取更新后的列
-    cur.execute("PRAGMA table_info(theme_scores)")
-    columns = [row[1] for row in cur.fetchall()]
-    placeholders = ','.join(['?' for _ in columns])
-    col_str = ', '.join(columns)
+    # 固定列名顺序（不与PRAGMA动态顺序耦合，避免ALTER TABLE导致的列顺序错乱）
+    fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
+                     "climax_warning", "leader_name", "leader_code", "leader_score",
+                     "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
+                     "up_ratio", "zt_count", "trade_date", "theme_state"]
+    # 确保表中实际存在这些列
+    existing_columns = [c for c in fixed_columns if c in columns]
+    col_str = ', '.join(existing_columns)
+    placeholders = ','.join(['?' for _ in existing_columns])
     
     # 插入数据
     for r in results:
@@ -1038,13 +1042,30 @@ def save_to_sqlite(results):
         climax_warning = 1 if (r["trend_score"] >= 70 and r["sentiment_score"] >= 85) else 0
         theme_state = r.get("theme_state", "弱势")
         
-        values = (
-            r["rank"], r["theme"], r["n_stocks"], r["trend_score"], r["sentiment_score"], r["composite_score"], climax_warning,
-            r.get("leader_name", ""), r.get("leader_code", ""), r.get("leader_score", 0),
-            r.get("core_name", ""), r.get("core_code", ""), r.get("core_score", 0),
-            td.get("avg_ret_5", 0), td.get("avg_ret_10", 0), td.get("avg_ret_20", 0), sd.get("up_ratio", 0), sd.get("zt_count", 0),
-            theme_state, TRADE_DATE
-        )
+        # 按fixed_columns顺序构建values
+        col_to_val = {
+            "rank": r["rank"],
+            "theme": r["theme"],
+            "n_stocks": r["n_stocks"],
+            "trend_score": r["trend_score"],
+            "sentiment_score": r["sentiment_score"],
+            "composite_score": r["composite_score"],
+            "climax_warning": climax_warning,
+            "leader_name": r.get("leader_name", ""),
+            "leader_code": r.get("leader_code", ""),
+            "leader_score": r.get("leader_score", 0),
+            "core_name": r.get("core_name", ""),
+            "core_code": r.get("core_code", ""),
+            "core_score": r.get("core_score", 0),
+            "ret_5": td.get("avg_ret_5", 0),
+            "ret_10": td.get("avg_ret_10", 0),
+            "ret_20": td.get("avg_ret_20", 0),
+            "up_ratio": sd.get("up_ratio", 0),
+            "zt_count": sd.get("zt_count", 0),
+            "trade_date": TRADE_DATE,
+            "theme_state": theme_state,
+        }
+        values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
     conn.commit()
     conn.close()

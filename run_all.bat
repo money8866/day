@@ -31,10 +31,20 @@ echo =============================================
 python solo\theme_pattern_stock_picker.py
 echo.
 
+
+echo [Step 5/5] 汇总输出...
+echo =============================================
+python solo\tushare_quant.py
+echo.
+
 echo [Step 5/5] 汇总输出...
 echo =============================================
 python solo\daily_analysis_summarizer.py
 echo.
+
+echo [Step 6/5] 主题成份生成...
+echo =============================================
+python solo\theme_portfolio_strategy_cached_dc.py
 
 echo [Step 6/5] 汇总输出...
 echo =============================================

@@ -103,10 +103,12 @@ def init_db():
     conn.commit()
     conn.close()
 
-def cache_get(name, **kwargs):
+def cache_get(name, trade_date=None, **kwargs):
+    if trade_date is None:
+        trade_date = TRADE_DATE
     key = "_".join([name] + [f"{k}_{v}" for k, v in sorted(kwargs.items())])
     safe = key.replace("/", "_").replace(":", "_")
-    cache_key = f"tsc_{safe}_{TRADE_DATE}"
+    cache_key = f"tsc_{safe}_{trade_date}"
     
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -130,10 +132,12 @@ def cache_get(name, **kwargs):
         conn.close()
     return None
 
-def cache_set(name, data, expire_hours=None, **kwargs):
+def cache_set(name, data, trade_date=None, expire_hours=None, **kwargs):
+    if trade_date is None:
+        trade_date = TRADE_DATE
     key = "_".join([name] + [f"{k}_{v}" for k, v in sorted(kwargs.items())])
     safe = key.replace("/", "_").replace(":", "_")
-    cache_key = f"tsc_{safe}_{TRADE_DATE}"
+    cache_key = f"tsc_{safe}_{trade_date}"
     
     # 默认永不过期（expire_hours 为 None 或 <=0 时）
     if expire_hours and expire_hours > 0:
@@ -167,31 +171,37 @@ init_db()
 # ================
 # 获取指数数据
 # ================
-def get_index_kline(ts_code="000300.SH"):
-    cache_key = f"index_kline_{ts_code}_{START_DATE}_{TRADE_DATE}"
-    cached = cache_get(cache_key)
+def get_index_kline(ts_code="000300.SH", trade_date=None):
+    if trade_date is None:
+        trade_date = TRADE_DATE
+        start_date = START_DATE
+    else:
+        start_date = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
     
-    # 检查缓存数据是否包含最新日期（避免缓存昨天的数据）
+    cache_key = f"index_kline_{ts_code}_{start_date}_{trade_date}"
+    cached = cache_get(name="index_kline", trade_date=trade_date, ts_code=ts_code)
+    
+    # 检查缓存数据是否包含目标日期（避免缓存其他日期的数据）
     if cached is not None:
-        if 'trade_date' in cached.columns:
+        if 'trade_date' in cached.columns and not cached.empty:
             max_date = cached['trade_date'].max()
-            if max_date == TRADE_DATE:
-                print(f"[Index] 缓存命中且包含最新数据: {ts_code}")
+            if max_date == trade_date:
+                print(f"[Index] 缓存命中且包含目标日期: {ts_code} ({trade_date})")
                 return cached
             else:
-                print(f"[Index] 缓存数据过期（最新日期: {max_date}, 需要: {TRADE_DATE}），重新拉取")
+                print(f"[Index] 缓存数据不匹配（最新日期: {max_date}, 需要: {trade_date}），重新拉取")
         else:
             print(f"[Index] 缓存数据格式异常，重新拉取")
     
-    print(f"[Index] 拉取 {ts_code} 数据: {START_DATE} ~ {TRADE_DATE}")
-    df = pro.index_daily(ts_code=ts_code, start_date=START_DATE, end_date=TRADE_DATE)
+    print(f"[Index] 拉取 {ts_code} 数据: {start_date} ~ {trade_date}")
+    df = pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
     if df is None or df.empty:
-        df = pro.daily(ts_code=ts_code, start_date=START_DATE, end_date=TRADE_DATE)
+        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
     
     if df is not None and not df.empty:
         df = df.sort_values('trade_date').reset_index(drop=True)
-        cache_set(cache_key, df)
-        print(f"[Index] 数据已缓存")
+        cache_set(name="index_kline", data=df, trade_date=trade_date, ts_code=ts_code)
+        print(f"[Index] 数据已缓存: {trade_date}")
     else:
         print(f"[Index] 未获取到数据")
     
@@ -320,35 +330,97 @@ def calc_sentiment_score(df):
         return 50.0, "无数据"
     
     latest = df.iloc[-1]
+    pct_chg = latest['pct_chg'] if 'pct_chg' in df.columns else 0
     
-    # 1. 成交量变化 (25分)
+    # ==============================
+    # 1. 涨跌方向与强度 (30分) - 核心指标
+    # ==============================
+    # 上涨得正分，下跌得负分
+    direction_score = 0
+    if pct_chg >= 2:
+        direction_score = 30  # 大涨
+    elif pct_chg >= 1:
+        direction_score = 20  # 上涨
+    elif pct_chg >= 0:
+        direction_score = 10  # 平盘微涨
+    elif pct_chg >= -1:
+        direction_score = 5   # 小幅下跌
+    elif pct_chg >= -2:
+        direction_score = 0   # 下跌
+    else:
+        direction_score = -20 # 大跌（额外扣分）
+    
+    # ==============================
+    # 2. 成交量变化 (25分) - 区分涨跌
+    # ==============================
     vol5 = df['vol'].tail(5).mean()
     vol20 = df['vol'].tail(20).mean()
     vol_ratio = vol5 / vol20 if vol20 > 0 else 1
     
-    vol_score = min(25, max(0, 12.5 + (vol_ratio - 1) * 20))
+    vol_score = 12.5 + (vol_ratio - 1) * 20
     
-    # 2. 涨跌停比例 (模拟，用大盘振幅替代) (25分)
+    # 关键修正：放量下跌是恐慌信号，应扣分
+    if pct_chg < -1 and vol_ratio > 1.2:
+        vol_score -= 10  # 放量大跌额外扣10分
+    elif pct_chg > 1 and vol_ratio > 1.2:
+        vol_score += 5   # 放量大涨额外加5分
+    
+    vol_score = min(25, max(0, vol_score))
+    
+    # ==============================
+    # 3. 振幅与涨跌结合 (20分)
+    # ==============================
     amplitude = (latest['high'] - latest['low']) / latest['low'] * 100
-    amp_score = min(25, max(0, 12.5 + (amplitude - 2) * 3))
     
-    # 3. 近期波动情况 (25分)
-    vol20 = df['pct_chg'].tail(20).std()
-    volatility = vol20 if not pd.isna(vol20) else 1.5
-    vola_score = min(25, max(0, 12.5 + (2 - volatility) * 5))
+    # 振幅大但下跌是负面信号
+    if pct_chg < 0:
+        # 下跌时振幅大 = 恐慌，扣分
+        amp_score = max(0, 10 - amplitude)
+    else:
+        # 上涨时振幅大 = 强势，加分
+        amp_score = min(20, 10 + amplitude * 0.5)
     
-    # 4. 近期连涨连跌 (25分)
-    streak = 0
+    # ==============================
+    # 4. 连涨连跌趋势 (25分)
+    # ==============================
+    up_streak = 0
+    down_streak = 0
+    
+    # 计算连涨天数
     for i in range(1, 6):
         if len(df) > i:
             if df['pct_chg'].iloc[-i] > 0:
-                streak += 1
+                up_streak += 1
             else:
                 break
     
-    streak_score = min(25, max(0, 12.5 + streak * 3))
+    # 计算连跌天数
+    for i in range(1, 6):
+        if len(df) > i:
+            if df['pct_chg'].iloc[-i] < 0:
+                down_streak += 1
+            else:
+                break
     
-    sentiment_score = vol_score + amp_score + vola_score + streak_score
+    # 连涨加分，连跌扣分
+    streak_score = 12.5 + up_streak * 3 - down_streak * 4
+    streak_score = min(25, max(0, streak_score))
+    
+    # ==============================
+    # 5. 近期波动率惩罚 (额外)
+    # ==============================
+    vol20 = df['pct_chg'].tail(20).std()
+    volatility = vol20 if not pd.isna(vol20) else 1.5
+    
+    # 高波动惩罚（市场不稳定）
+    vol_penalty = 0
+    if volatility > 2.5:
+        vol_penalty = (volatility - 2.5) * 3  # 高波动扣分
+    
+    # ==============================
+    # 综合评分
+    # ==============================
+    sentiment_score = direction_score + vol_score + amp_score + streak_score - vol_penalty
     sentiment_score = max(0, min(100, sentiment_score))
     
     if sentiment_score >= 70:
@@ -411,8 +483,11 @@ def suggest_position(results):
 # ================
 # 大盘整体概况（成交额/涨跌家数/涨停跌停/炸板率）
 # ================
-def get_market_overview():
+def get_market_overview(trade_date=None):
     """获取大盘整体概况数据"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
     overview = {
         "sh_index": 0, "sh_pct": 0,
         "total_amount": 0,
@@ -423,13 +498,13 @@ def get_market_overview():
 
     try:
         # 上证指数（用 index_daily 接口）
-        sh_df = pro.index_daily(ts_code="000001.SH", start_date=TRADE_DATE, end_date=TRADE_DATE)
+        sh_df = pro.index_daily(ts_code="000001.SH", start_date=trade_date, end_date=trade_date)
         if sh_df is not None and not sh_df.empty:
             overview["sh_index"] = sh_df.iloc[0]["close"]
             overview["sh_pct"] = sh_df.iloc[0]["pct_chg"]
 
         # 全市场成交额（日线所有股票 amount 之和，千元→亿元）
-        daily_df = pro.daily(trade_date=TRADE_DATE)
+        daily_df = pro.daily(trade_date=trade_date)
         if daily_df is not None and not daily_df.empty:
             total_amt = daily_df["amount"].sum() / 100000  # 千元→亿元
             overview["total_amount"] = round(total_amt, 0)
@@ -441,19 +516,19 @@ def get_market_overview():
         time.sleep(0.3)
 
         # 涨停池
-        zt_df = pro.limit_list_ths(trade_date=TRADE_DATE, limit_type="涨停池")
+        zt_df = pro.limit_list_ths(trade_date=trade_date, limit_type="涨停池")
         if zt_df is not None and not zt_df.empty:
             overview["zt_count"] = len(zt_df)
         time.sleep(0.15)
 
         # 跌停池
-        dt_df = pro.limit_list_ths(trade_date=TRADE_DATE, limit_type="跌停池")
+        dt_df = pro.limit_list_ths(trade_date=trade_date, limit_type="跌停池")
         if dt_df is not None and not dt_df.empty:
             overview["dt_count"] = len(dt_df)
         time.sleep(0.15)
 
         # 炸板池
-        zb_df = pro.limit_list_ths(trade_date=TRADE_DATE, limit_type="炸板池")
+        zb_df = pro.limit_list_ths(trade_date=trade_date, limit_type="炸板池")
         if zb_df is not None and not zb_df.empty:
             overview["zb_count"] = len(zb_df)
         time.sleep(0.15)
@@ -469,9 +544,11 @@ def get_market_overview():
     return overview
 
 
-def print_market_overview(overview):
+def print_market_overview(overview, trade_date=None):
     """打印大盘整体概况"""
-    print(f"\n📊 大盘整体概况（{TRADE_DATE}）")
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    print(f"\n📊 大盘整体概况（{trade_date}）")
     print(f"  {'='*50}")
     print(f"  上证指数: {overview['sh_index']:.2f}  ({overview['sh_pct']:+.2f}%)")
     print(f"  全市场成交额: {overview['total_amount']:.0f}亿")
@@ -484,14 +561,16 @@ def print_market_overview(overview):
 # ================
 # 主分析流程
 # ================
-def analyze_market():
+def analyze_market(trade_date=None):
+    if trade_date is None:
+        trade_date = TRADE_DATE
     print("=" * 80)
-    print("📊 大盘分析与仓位建议")
+    print(f"📊 大盘分析与仓位建议 ({trade_date})")
     print("=" * 80)
 
     # 大盘整体概况
-    overview = get_market_overview()
-    print_market_overview(overview)
+    overview = get_market_overview(trade_date)
+    print_market_overview(overview, trade_date)
     
     # 获取主要指数数据
     indices = {
@@ -505,7 +584,7 @@ def analyze_market():
     for name, code in indices.items():
         print(f"\n📈 正在分析: {name} ({code})")
         
-        df = get_index_kline(code)
+        df = get_index_kline(code, trade_date)
         
         if df is None or df.empty:
             print(f"   ❌ 无数据")
@@ -535,7 +614,7 @@ def analyze_market():
     # 综合建议（游资策略：综合考虑所有指数，寻找结构性机会）
     if results:
         # 获取 TOP3 主题趋势分
-        theme_top3_scores = get_top3_theme_scores()
+        theme_top3_scores = get_top3_theme_scores(trade_date)
         
         # 计算市场趋势总评分
         trend_score, index_trend, theme_trend = calculate_market_trend_score(results, theme_top3_scores)
@@ -622,10 +701,10 @@ def analyze_market():
         
         # 保存结果
         save_result(results, position, reason, style_allocations, overview,
-                    trend_score, index_trend, theme_trend, market_status)
+                    trend_score, index_trend, theme_trend, market_status, trade_date)
         
         # 保存到数据库
-        save_to_database(TRADE_DATE, results, position, reason, 
+        save_to_database(trade_date, results, position, reason, 
                         trend_score, index_trend, theme_trend, market_status)
         
         return results, position, reason, style_allocations, overview
@@ -636,14 +715,16 @@ def analyze_market():
 # 保存结果
 # ================
 def save_result(results, position, reason, style_allocations=None, overview=None, 
-                trend_score=None, index_trend=None, theme_trend=None, market_status=None):
-    out_file = os.path.join(safe_cache_dir, f"market_analysis_{TRADE_DATE}.csv")
+                trend_score=None, index_trend=None, theme_trend=None, market_status=None, trade_date=None):
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    out_file = os.path.join(safe_cache_dir, f"market_analysis_{trade_date}.csv")
     df = pd.DataFrame(results)
     df.to_csv(out_file, index=False, encoding='utf-8-sig')
     print(f"\n✅ 结果已保存: {out_file}")
     
     # 简单保存文本
-    txt_file = os.path.join(safe_cache_dir, f"market_analysis_{TRADE_DATE}.txt")
+    txt_file = os.path.join(safe_cache_dir, f"market_analysis_{trade_date}.txt")
     with open(txt_file, 'w', encoding='utf-8') as f:
         f.write("=" * 80 + "\n")
         f.write("大盘分析与仓位建议\n")
@@ -687,27 +768,15 @@ def save_result(results, position, reason, style_allocations=None, overview=None
 # ================
 # 读取TOP3主题趋势分
 # ================
-def get_top3_theme_scores():
+def get_top3_theme_scores(trade_date=None):
     """
     从 theme_trend_sentiment_score.py 生成的结果中读取 TOP3 主题趋势分
     返回: [score1, score2, score3] 或 None
     """
-    # 尝试读取 CSV 文件
-    theme_csv = os.path.join(safe_cache_dir, "theme_trend_sentiment.csv")
-    if os.path.exists(theme_csv):
-        try:
-            df = pd.read_csv(theme_csv, encoding='utf-8-sig')
-            if not df.empty and 'trend_score' in df.columns:
-                # 按 rank 排序，取前3个
-                df = df.sort_values('rank').head(3)
-                scores = df['trend_score'].tolist()
-                if scores:
-                    print(f"[Theme] TOP3主题趋势分: {scores}")
-                    return scores
-        except Exception as e:
-            print(f"[Theme] 读取主题评分失败: {e}")
+    if trade_date is None:
+        trade_date = TRADE_DATE
     
-    # 尝试读取 SQLite 数据库
+    # 先尝试从数据库读取指定日期的主题数据
     theme_db = os.path.join(safe_cache_dir, "theme_trend_sentiment.db")
     if os.path.exists(theme_db):
         try:
@@ -718,15 +787,30 @@ def get_top3_theme_scores():
                 WHERE trade_date = ? 
                 ORDER BY rank ASC 
                 LIMIT 3
-            ''', (TRADE_DATE,))
+            ''', (trade_date,))
             rows = cursor.fetchall()
             conn.close()
             if rows:
                 scores = [row[0] for row in rows]
-                print(f"[Theme] TOP3主题趋势分: {scores}")
+                print(f"[Theme] 从数据库读取 {trade_date} TOP3主题趋势分: {scores}")
                 return scores
         except Exception as e:
-            print(f"[Theme] 读取主题数据库失败: {e}")
+            print(f"[Theme] 从数据库读取主题评分失败: {e}")
+    
+    # 如果没有，尝试从 CSV 读取最新数据
+    theme_csv = os.path.join(safe_cache_dir, "theme_trend_sentiment.csv")
+    if os.path.exists(theme_csv):
+        try:
+            df = pd.read_csv(theme_csv, encoding='utf-8-sig')
+            if not df.empty and 'trend_score' in df.columns:
+                # 按 rank 排序，取前3个
+                df = df.sort_values('rank').head(3)
+                scores = df['trend_score'].tolist()
+                if scores:
+                    print(f"[Theme] 从 CSV 读取 TOP3主题趋势分: {scores}")
+                    return scores
+        except Exception as e:
+            print(f"[Theme] 读取主题评分失败: {e}")
     
     print("[Theme] 未找到主题评分数据")
     return None

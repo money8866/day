@@ -24,23 +24,33 @@ REPORT_DIR = os.path.join(PARENT_DIR, 'report_daily')
 os.makedirs(REPORT_DIR, exist_ok=True)
 load_dotenv(os.path.join(PARENT_DIR, 'config', '.env'))
 
-def read_market_analysis():
-    """读取大盘分析结果（新版包含市场总评分）"""
+def read_market_analysis(trade_date=None):
+    """读取大盘分析结果（新版包含市场总评分）
+    
+    Args:
+        trade_date: 交易日期，格式为 YYYYMMDD，None 表示最新
+    """
     db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
     if not os.path.exists(db_path):
         return None
     
     conn = sqlite3.connect(db_path)
     
-    df = pd.read_sql("SELECT * FROM index_analysis ORDER BY trade_date DESC LIMIT 10", conn)
+    if trade_date:
+        df = pd.read_sql(f"SELECT * FROM index_analysis WHERE trade_date = '{trade_date}'", conn)
+    else:
+        df = pd.read_sql("SELECT * FROM index_analysis ORDER BY trade_date DESC LIMIT 10", conn)
     
     if df.empty:
         conn.close()
         return None
     
-    trade_date = df['trade_date'].iloc[0]
+    if trade_date:
+        selected_date = trade_date
+    else:
+        selected_date = df['trade_date'].iloc[0]
     
-    df = df[df['trade_date'] == trade_date]
+    df = df[df['trade_date'] == selected_date]
     
     result = []
     for _, row in df.iterrows():
@@ -57,7 +67,7 @@ def read_market_analysis():
     # 读取总体分析（新版包含市场总评分）
     overall_info = {}
     try:
-        df_overall = pd.read_sql(f"SELECT * FROM overall_analysis WHERE trade_date = '{trade_date}'", conn)
+        df_overall = pd.read_sql(f"SELECT * FROM overall_analysis WHERE trade_date = '{selected_date}'", conn)
         if not df_overall.empty:
             row = df_overall.iloc[0]
             overall_info = {
@@ -73,11 +83,63 @@ def read_market_analysis():
         overall_info = {}
     
     conn.close()
-    return {'indices': result, 'overall': overall_info, 'trade_date': trade_date}
+    return {'indices': result, 'overall': overall_info, 'trade_date': selected_date}
 
-def read_theme_analysis():
-    """读取主题分析结果"""
+def read_theme_analysis(trade_date=None):
+    """读取主题分析结果
+    
+    Args:
+        trade_date: 交易日期，格式为 YYYYMMDD，None 表示最新
+    """
     csv_file = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.csv')
+    
+    # 如果有日期，优先尝试从数据库读取
+    if trade_date:
+        db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                df = pd.read_sql(f"SELECT * FROM theme_scores WHERE trade_date = '{trade_date}'", conn)
+                conn.close()
+                if not df.empty:
+                    result = []
+                    for _, row in df.iterrows():
+                        theme_name = row.get('theme', row.get('theme_name', ''))
+                        trend_score = row.get('trend_score', 0)
+                        sentiment_score = row.get('sentiment_score', 0)
+                        
+                        if sentiment_score >= 70:
+                            sentiment_status = "情绪高涨"
+                        elif sentiment_score >= 50:
+                            sentiment_status = "情绪温和"
+                        elif sentiment_score >= 30:
+                            sentiment_status = "情绪低迷"
+                        else:
+                            sentiment_status = "情绪退潮"
+                        
+                        if trend_score >= 60:
+                            trend_status = "上升趋势"
+                        elif trend_score >= 45:
+                            trend_status = "震荡偏强"
+                        elif trend_score >= 30:
+                            trend_status = "震荡偏弱"
+                        else:
+                            trend_status = "下降趋势"
+                        
+                        result.append({
+                            'theme_name': theme_name,
+                            'trend_score': trend_score,
+                            'trend_status': trend_status,
+                            'sentiment_score': sentiment_score,
+                            'sentiment_status': sentiment_status,
+                            'change': row.get('t_avg_ret_5', row.get('change', 0)),
+                            'volume_ratio': row.get('s_avg_vol_ratio', row.get('volume_ratio', 0))
+                        })
+                    return {'themes': result, 'trade_date': trade_date}
+            except Exception as e:
+                print(f"⚠️ 从数据库读取主题分析失败: {e}")
+    
+    # 尝试从CSV读取
     if os.path.exists(csv_file):
         df = pd.read_csv(csv_file, encoding='utf-8-sig')
         result = []
@@ -116,8 +178,12 @@ def read_theme_analysis():
         return {'themes': result}
     return None
 
-def read_60day_avg_trend_scores():
-    """读取60日趋势平均分"""
+def read_60day_avg_trend_scores(end_date=None):
+    """读取60日趋势平均分
+    
+    Args:
+        end_date: 结束日期，格式为 YYYYMMDD，None 表示最新
+    """
     db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
     if not os.path.exists(db_path):
         return None
@@ -126,13 +192,23 @@ def read_60day_avg_trend_scores():
     cursor = conn.cursor()
     
     try:
-        cursor.execute("""
-            SELECT theme, AVG(trend_score) as avg_trend_score, COUNT(*) as day_count
-            FROM theme_scores
-            GROUP BY theme
-            HAVING day_count >= 10
-            ORDER BY avg_trend_score DESC
-        """)
+        if end_date:
+            cursor.execute("""
+                SELECT theme, AVG(trend_score) as avg_trend_score, COUNT(*) as day_count
+                FROM theme_scores
+                WHERE trade_date <= ?
+                GROUP BY theme
+                HAVING day_count >= 10
+                ORDER BY avg_trend_score DESC
+            """, (end_date,))
+        else:
+            cursor.execute("""
+                SELECT theme, AVG(trend_score) as avg_trend_score, COUNT(*) as day_count
+                FROM theme_scores
+                GROUP BY theme
+                HAVING day_count >= 10
+                ORDER BY avg_trend_score DESC
+            """)
         rows = cursor.fetchall()
         result = []
         for row in rows:
@@ -142,7 +218,7 @@ def read_60day_avg_trend_scores():
                 'day_count': row[2]
             })
         conn.close()
-        return {'themes': result}
+        return {'themes': result, 'end_date': end_date}
     except Exception as e:
         print(f"⚠️ 读取60日趋势分失败: {e}")
         conn.close()

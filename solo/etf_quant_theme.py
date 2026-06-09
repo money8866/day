@@ -669,8 +669,8 @@ def get_theme_analysis():
     """获取主题趋势+情绪分析结果（延迟导入 + 缓存检查，避免 import 时自动执行模块级代码）
     
     输出内容：
-    - 60日趋势平均分TOP2中线主题
-    - 当日趋势分TOP3短线主线
+    - 60日趋势平均分TOP5中线主题
+    - 当日趋势分TOP5短线主线
     """
     # 先查缓存：SQLite 里已有今天数据就直接读，不跑 theme_score 模块
     theme_db = os.path.join(
@@ -710,8 +710,8 @@ def get_theme_analysis():
             print(f"[主题分析] 获取失败: {e}")
             return "【主题分析】获取失败", "【交易信号】获取失败", []
 
-    # ====== 1. 60日趋势平均分TOP2中线主题 ======
-    mid_term_lines = ["【中线主题TOP2（60日趋势平均分）】"]
+    # ====== 1. 60日趋势平均分TOP5中线主题 ======
+    mid_term_lines = ["【中线主题TOP5（60日趋势平均分）】"]
     try:
         # 延迟导入 theme_score 以加载 get_60day_avg_trend_score
         if not cached_results:
@@ -720,7 +720,7 @@ def get_theme_analysis():
         theme_60day_avg = theme_score.get_60day_avg_trend_score()
         if theme_60day_avg:
             sorted_60day = sorted(theme_60day_avg.items(), key=lambda x: -x[1])
-            for i, (theme, avg_score) in enumerate(sorted_60day[:2]):
+            for i, (theme, avg_score) in enumerate(sorted_60day[:5]):
                 # 找今天对应的 trend_score
                 r = next((x for x in results if x['theme'] == theme), None)
                 today_trend = r['trend_score'] if r else 0
@@ -733,10 +733,10 @@ def get_theme_analysis():
         mid_term_lines.append(f"  获取失败: {e}")
     mid_term_lines.append("")
     
-    # ====== 2. 当日趋势分TOP3短线主线 ======
-    short_term_lines = ["【短线主线TOP3（当日趋势分）】"]
+    # ====== 2. 当日趋势分TOP5短线主线 ======
+    short_term_lines = ["【短线主线TOP5（当日趋势分）】"]
     sorted_by_trend = sorted(results, key=lambda x: x['trend_score'], reverse=True)
-    for i, r in enumerate(sorted_by_trend[:3]):
+    for i, r in enumerate(sorted_by_trend[:5]):
         if r['trend_score'] >= 40:
             td = r.get("trend_detail", {}) or {}
             theme_state = r.get("theme_state", "弱势")
@@ -759,15 +759,15 @@ def get_theme_analysis():
     signal_lines = ["【主题交易信号】"]
     if signals.get("climax_warning"):
         signal_lines.append("\n🚨【高潮警示】")
-        for w in signals["climax_warning"][:3]:
+        for w in signals["climax_warning"][:5]:
             signal_lines.append(f"  ⚠️ {w['theme']}: 趋势{w['trend_score']:.0f} 情绪{w['sentiment_score']:.0f}")
     if signals.get("buy"):
         signal_lines.append("\n🟢【买入信号】")
-        for s in signals["buy"][:3]:
+        for s in signals["buy"][:5]:
             signal_lines.append(f"  {s['theme']}: 趋势{s['trend_score']:.0f} RSI:{s['rsi']}")
     if signals.get("dip_buy"):
-        signal_lines.append("\n💎【低吸博弈】")
-        for d in signals["dip_buy"][:3]:
+        signal_lines.append("\n💎【低吸博弈TOP5】")
+        for d in signals["dip_buy"][:5]:                    
             signal_lines.append(f"  {d['theme']}: 趋势{d['trend_score']:.0f} 情绪{d['sentiment_score']:.0f}")
     theme_signals_text = "\n".join(signal_lines)
     
