@@ -365,10 +365,12 @@ def build_theme_portfolio(hot_themes, concept_map, name_map, stock_concepts, mar
                         break
 
         # 方式4：core_companies强制纳入（确保核心公司不被遗漏）
+        # 注意：使用 stock_list_df 来构建公司名称映射，因为 name_map 可能不包含所有股票
         core_companies = theme_data.get('core_companies', [])
         if core_companies:
-            for ts_code, name in name_map.items():
-                if any(company in name for company in core_companies):
+            for ts_code, row in stock_info_dict.items():
+                stock_name = row.get('name', '')
+                if any(company in stock_name for company in core_companies):
                     matched_stocks.add(ts_code)
 
         theme_stock_map[theme_name] = matched_stocks
