@@ -184,8 +184,8 @@ def get_index_kline(ts_code="000300.SH", trade_date=None):
     # 检查缓存数据是否包含目标日期（避免缓存其他日期的数据）
     if cached is not None:
         if 'trade_date' in cached.columns and not cached.empty:
-            max_date = cached['trade_date'].max()
-            if max_date == trade_date:
+            max_date = str(cached['trade_date'].max())
+            if max_date == str(trade_date):
                 print(f"[Index] 缓存命中且包含目标日期: {ts_code} ({trade_date})")
                 return cached
             else:
@@ -876,7 +876,7 @@ def get_market_status_and_position(trend_score):
     75~85   → 强趋势  → 60~80%
     65~75   → 趋势良好 → 50~70%
     55~65   → 震荡    → 30~50%
-    45~55   → 转弱    → 20~30%
+    45~55   → 弱势    → 20~30%
     35~45   → 退潮    → 10~20%
     <35     → 主跌段  → 0~10%
     """
@@ -897,7 +897,7 @@ def get_market_status_and_position(trend_score):
         position_range = "30~50%"
         position = 40
     elif trend_score >= 45:
-        status = "转弱"
+        status = "弱势"
         position_range = "20~30%"
         position = 25
     elif trend_score >= 35:
@@ -1185,6 +1185,114 @@ def analyze_sentiment_trend_alerts():
             })
     
     return alerts
+
+
+def get_limit_up_down_stats(trade_date=None):
+    """
+    获取涨跌停数据和炸板率（移植自 tushare_quant.py）
+    返回: {zt_count, dt_count, zt_codes, dt_codes, broken_rate, zhaban_count}
+    """
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
+    zt_codes = []
+    dt_codes = []
+    broken_rate = 0.0
+    zhaban_count = 0
+    
+    try:
+        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）
+        daily = pro.daily(trade_date=trade_date)
+        if daily is not None and not daily.empty:
+            # 计算涨跌停阈值（简化版：主板10%，科创板/创业板20%）
+            daily['is_kcb'] = daily['ts_code'].str.startswith(('688', '301'))
+            daily['is_cn'] = daily['ts_code'].str.startswith('300')
+            daily['limit_up'] = daily.apply(
+                lambda x: 20.0 if x['is_kcb'] or x['is_cn'] else 10.0, axis=1
+            )
+            daily['limit_down'] = -daily['limit_up']
+            
+            # 真实涨停：收盘价涨幅接近涨停价（>=99%的涨停幅度）
+            zt_mask = (daily['pct_chg'] >= daily['limit_up'] * 0.99) & (daily['pct_chg'] < daily['limit_up'] + 0.1)
+            # 真实跌停：收盘价跌幅接近跌停价
+            dt_mask = (daily['pct_chg'] <= daily['limit_down'] * 0.99) & (daily['pct_chg'] > daily['limit_down'] - 0.1)
+            
+            zt_codes = daily[zt_mask]['ts_code'].tolist()
+            dt_codes = daily[dt_mask]['ts_code'].tolist()
+            
+            print(f"[涨跌停] 涨停(真实收盘): {len(zt_codes)}只")
+            print(f"[涨跌停] 跌停(真实收盘): {len(dt_codes)}只")
+            
+            # 获取炸板数据（盘中触及涨停但未封住）
+            try:
+                limit_df = pro.limit_list_d(trade_date=trade_date)
+                if limit_df is not None and not limit_df.empty:
+                    # limit='D'表示最终封住, limit='Z'表示炸板
+                    zhaban_codes = limit_df[limit_df['limit'] == 'Z']['ts_code'].astype(str).tolist()
+                    zhaban_count = len(zhaban_codes)
+                    
+                    # 炸板率 = 炸板数 ÷ (封住数 + 炸板数)
+                    total_touch = len(zt_codes) + zhaban_count
+                    if total_touch > 0:
+                        broken_rate = (zhaban_count / total_touch) * 100
+                    print(f"[涨跌停] 炸板率: {broken_rate:.1f}% (炸板{zhaban_count}只/触及涨停{total_touch}只)")
+            except Exception as e:
+                print(f"[涨跌停] 获取炸板数据失败: {e}")
+        
+        # 如果以上方法都失败，使用ths接口作为备选
+        if not zt_codes and not dt_codes:
+            print("[涨跌停] 使用ths接口备选...")
+            try:
+                ths_zt = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+                if ths_zt is not None and not ths_zt.empty:
+                    zt_codes = ths_zt['ts_code'].astype(str).tolist()
+                    print(f"[涨跌停] 涨停(ths备选): {len(zt_codes)}只")
+            except Exception as e:
+                print(f"[涨跌停] ths涨停失败: {e}")
+            
+            try:
+                ths_dt = pro.limit_list_ths(trade_date=trade_date, limit_type='跌停池')
+                if ths_dt is not None and not ths_dt.empty:
+                    dt_codes = ths_dt['ts_code'].astype(str).tolist()
+                    print(f"[涨跌停] 跌停(ths备选): {len(dt_codes)}只")
+            except Exception as e:
+                print(f"[涨跌停] ths跌停失败: {e}")
+    
+    except Exception as e:
+        print(f"[涨跌停] 获取失败: {e}")
+    
+    result = {
+        "zt_count": len(zt_codes),
+        "dt_count": len(dt_codes),
+        "zt_codes": zt_codes,
+        "dt_codes": dt_codes,
+        "broken_rate": round(broken_rate, 1),
+        "zhaban_count": zhaban_count,
+        "trade_date": trade_date,
+        "updated": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    # 保存到缓存文件（供实时监控读取）
+    save_limit_stats_to_cache(result)
+    
+    return result
+
+
+def save_limit_stats_to_cache(data):
+    """将涨跌停统计数据保存到缓存文件"""
+    import json
+    
+    # 保存每日统计文件
+    daily_cache_file = os.path.join(BASE_DIR, 'cache_daily', f'full_market_stats_{data["trade_date"]}.json')
+    os.makedirs(os.path.dirname(daily_cache_file), exist_ok=True)
+    
+    try:
+        with open(daily_cache_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[涨跌停] 缓存已保存: {daily_cache_file}")
+    except Exception as e:
+        print(f"[涨跌停] 保存缓存失败: {e}")
+
 
 if __name__ == '__main__':
     # 初始化数据库

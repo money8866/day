@@ -49,7 +49,18 @@ except:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
 DB_PATH = os.path.join(CACHE_DIR, "theme_portfolio.db")
-# 股票CSV已弃用，改用 theme.json 获取龙头/中军配置
+# 三大指数代码（用于趋势分/情绪分计算）
+INDEX_CODES = {
+    "上证指数": "000001.SH",
+    "沪深300": "000300.SH",
+    "中证2000": "932000.CSI",   # Tushare代码（历史K线用）
+}
+# 新浪财经指数代码映射（fetch_index_quotes 用）
+SINA_INDEX_CODES = {
+    "上证指数": "sh000001",
+    "沪深300": "sh000300",
+    "中证2000": "sz399303",     # 新浪无932000，用国证2000替代
+}
 
 
 class RealtimeThemeMonitor:
@@ -61,12 +72,13 @@ class RealtimeThemeMonitor:
         # ── 行情缓存（每分钟更新） ──
         self.quotes = {}            # ts_code -> {price, pct_chg, amount, vol}
         self.prev_quotes = {}       # 上一分钟快照
+        self.index_quotes_cache = {}  # 三大指数实时行情 name -> {pct_chg,...}
 
         # ── 主题数据 ──
         self.theme_stocks = {}      # theme_name -> [(ts_code, name, layer)]
         self.theme_names = []       # 有序主题列表
         self.stock_themes = {}      # ts_code -> [theme_name, ...]
-        
+
         # ── theme.json 配置 ──
         self.theme_config = {}      # theme_name -> 主题配置字典
         self.theme_json_path = os.path.join(BASE_DIR, 'theme.json')
@@ -75,10 +87,14 @@ class RealtimeThemeMonitor:
         self.theme_score_history = defaultdict(lambda: deque(maxlen=15))
         self.theme_volume_history = defaultdict(lambda: deque(maxlen=15))
 
+        # ── 指数历史K线（盘后缓存，用于MA5/10/20） ──
+        self.index_klines = {}      # name -> DataFrame
+
         # ── 冷却控制（避免重复推送） ──
         self.last_theme_alert = {}      # theme_name -> timestamp
         self.last_market_alert = 0
         self.last_first_mover_alert = defaultdict(float)
+        self.last_score_alert = 0       # 趋势总评分预警冷却
 
         # ── 开盘参考价（昨日收盘） ──
         self.ref_prices = {}            # ts_code -> yesterday_close
@@ -360,7 +376,7 @@ class RealtimeThemeMonitor:
         trade_date = str(cal[cal['cal_date'] <= query_date]['cal_date'].max())
 
         cache_file = os.path.join(CACHE_DIR, f"ref_prices_{trade_date}.pkl")
-        
+
         # 全量重新获取，不使用缓存
         all_codes = list(self.stock_themes.keys())
         print(f"⏳ 获取{trade_date}日线数据，共{len(all_codes)}只...")
@@ -394,6 +410,705 @@ class RealtimeThemeMonitor:
         with open(cache_file, 'wb') as f:
             pickle.dump(self.ref_prices, f)
         print(f"✅ 已获取并缓存昨日收盘价: {len(self.ref_prices)} 只 (Tushare:{tushare_count}, 缺失:{len(missing)})")
+
+    # ── 8. 指数K线缓存加载（用于均线趋势分） ──
+    def load_index_klines(self):
+        """
+        从盘后缓存加载三大指数最近90根日线K线，用于MA5/MA10/MA20计算。
+        优先级：pickle缓存 > SQLite cache > Tushare
+        """
+        import pickle
+        trade_date = self._get_last_trade_date()
+        self.index_klines = {}   # name -> DataFrame(cols: close, vol, high, low, pct_chg)
+
+        print(f"⏳ 加载指数K线缓存 ({trade_date})...")
+
+        for name, ts_code in INDEX_CODES.items():
+            cache_file = os.path.join(CACHE_DIR, f"index_kline_{ts_code}_{trade_date}.pkl")
+            df = None
+
+            # 优先加载 pickle 缓存
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'rb') as f:
+                        df = pickle.load(f)
+                    if df is not None and len(df) >= 20:
+                        self.index_klines[name] = df
+                        continue
+                except Exception:
+                    pass
+
+            # 从 SQLite 缓存读取（market_analysis.py 生成的 cache.db）
+            db_file = os.path.join(CACHE_DIR, "cache.db")
+            if df is None and os.path.exists(db_file):
+                try:
+                    import sqlite3
+                    from io import StringIO
+                    conn = sqlite3.connect(db_file)
+                    cur = conn.cursor()
+                    cur.execute("SELECT data FROM cache_data WHERE key LIKE ? LIMIT 1",
+                                (f"%index_kline_{ts_code}%",))
+                    row = cur.fetchone()
+                    conn.close()
+                    if row:
+                        import pandas as pd
+                        df = pd.read_csv(StringIO(row[0]))
+                        if len(df) >= 20:
+                            self.index_klines[name] = df
+                            continue
+                except Exception:
+                    pass
+
+            # 最后回退到 Tushare
+            if df is None or len(df) < 20:
+                if TS_AVAILABLE:
+                    try:
+                        import pandas as pd
+                        start = (dt_strptime(trade_date, '%Y%m%d') - timedelta(days=150)).strftime('%Y%m%d')
+                        df = pro.index_daily(ts_code=ts_code, start_date=start, end_date=trade_date)
+                        if df is not None and not df.empty:
+                            df = df.sort_values('trade_date').reset_index(drop=True)
+                            self.index_klines[name] = df
+                    except Exception:
+                        pass
+
+        for name, df in self.index_klines.items():
+            print(f"   ✅ {name}({INDEX_CODES[name]}): {len(df)} 根K线，最新收盘={df['close'].iloc[-1]:.2f}")
+
+    def _get_last_trade_date(self):
+        """返回最近一个交易日 YYYYMMDD"""
+        from datetime import datetime
+        now = datetime.now()
+        if now.hour < 15:
+            q = (now - timedelta(days=1)).strftime('%Y%m%d')
+        else:
+            q = now.strftime('%Y%m%d')
+        # 根据缓存文件存在性回退
+        for offset in range(7):
+            cand = (datetime.strptime(q, '%Y%m%d') - timedelta(days=offset)).strftime('%Y%m%d')
+            for ts_code in INDEX_CODES.values():
+                p = os.path.join(CACHE_DIR, f"index_kline_{ts_code}_{cand}.pkl")
+                if os.path.exists(p):
+                    return cand
+        # 默认用最新 query_date
+        return q
+
+    # ── 14. 汇总：市场情绪综合评分（三大指数 + 主题） ──
+    def compute_market_sentiment_report(self):
+        """
+        每次采集行情后调用：
+        1. 拉取三大指数实时行情
+        2. 对每个指数计算趋势分/情绪分
+        3. 计算市场趋势总评分与仓位建议
+        4. 返回字典用于推送和摘要
+        """
+        if not self.quotes:
+            return None
+
+        overview = self.compute_market_overview()
+
+        # 获取指数实时行情
+        self.fetch_index_quotes()
+
+        # 逐指数计算
+        index_results = []
+        for name in INDEX_CODES.keys():
+            ts = self.calc_trend_score(name, overview['up'], overview['total'])
+            ss = self.calc_sentiment_score(name, overview['up'], overview['total'])
+            iq = self.index_quotes_cache.get(name, {})
+            pct = iq.get('pct_chg', 0) if iq else 0
+            index_results.append({
+                'name': name,
+                'trend_score': ts,
+                'sentiment_score': ss,
+                'pct_chg': round(float(pct), 2) if pct else 0,
+            })
+
+        trend_score, index_trend, theme_trend, market_status, pos, pos_range = \
+            self.calculate_total_market_score(index_results)
+
+        report = {
+            'overview': overview,
+            'index_results': index_results,
+            'trend_score': trend_score,
+            'index_trend': index_trend,
+            'theme_trend': theme_trend,
+            'market_status': market_status,
+            'position': pos,
+            'position_range': pos_range,
+        }
+        self._last_report = report
+        return report
+
+    # ── 15. 基于趋势总评分的市场情绪预警 ──
+    def detect_market_sentiment_v2(self, report):
+        """
+        替代原简单阈值逻辑：用趋势总评分 + 指数趋势 + 仓位 来生成预警
+        丰富预警内容：三大指数涨跌、涨停跌停、趋势分情绪分
+        """
+        now = time.time()
+        alerts = []
+        if report is None:
+            return alerts
+
+        # 冷却检查（统一用 last_market_alert，避免重复推送）
+        if now - self.last_market_alert < 600:  # 至少10分钟冷却
+            return alerts
+
+        overview = report['overview']
+        ts = report['trend_score']
+        status = report['market_status']
+        pos = report['position']
+        index_results = report.get('index_results', [])
+
+        # 获取全市场统计数据（优先使用）
+        full_stats = self.get_full_market_stats()
+        if full_stats:
+            up_ratio = full_stats.get('up_ratio', overview['up_ratio'])
+            down_ratio = full_stats.get('down_ratio', overview['down_ratio'])
+            zt_count = full_stats.get('zt_count', overview['zt'])
+            dt_count = full_stats.get('dt_count', overview['dt'])
+            total_count = full_stats.get('total', overview['total'])
+            up_count = full_stats.get('up_count', overview['up'])
+            down_count = full_stats.get('down_count', overview['down'])
+        else:
+            up_ratio = overview['up_ratio']
+            down_ratio = overview['down_ratio']
+            zt_count = overview['zt']
+            dt_count = overview['dt']
+            total_count = overview['total']
+            up_count = overview['up']
+            down_count = overview['down']
+
+        # 获取昨日数据
+        yesterday_data = self.get_yesterday_market_data()
+
+        # 构建三大指数涨跌摘要（完整名称）
+        index_summary = ""
+        if index_results:
+            parts = []
+            for r in index_results:
+                pct = r.get('pct_chg', 0) or 0
+                emoji = "🔴" if pct < 0 else "🟢" if pct > 0 else "⚪"
+                parts.append(f"{r['name']}{emoji}{pct:+.2f}%")
+            index_summary = " ".join(parts)
+
+        # 构建趋势分/情绪分摘要（完整名称）
+        score_summary = ""
+        if index_results:
+            parts = []
+            for r in index_results:
+                parts.append(f"{r['name']}趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}")
+            score_summary = " ".join(parts)
+
+        # 涨跌停摘要（全市场）
+        zt_dt = f"涨停{zt_count} 跌停{dt_count}"
+        
+        # 昨日对比摘要
+        yesterday_summary = ""
+        if yesterday_data:
+            y_ts = yesterday_data.get('trend_score', '?')
+            y_zt = yesterday_data.get('zt_count', '?')
+            y_dt = yesterday_data.get('dt_count', '?')
+            y_br = yesterday_data.get('broken_rate', '?')
+            yesterday_summary = f"\n📊 昨日: 评分{y_ts} 涨停{y_zt} 跌停{y_dt} 炸板率{y_br}%"
+
+        # 1) 过热/强势信号
+        if ts >= 85 and up_ratio > 70:
+            msg = f"🔥🔥【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
+            msg += f"📈 {index_summary}\n"
+            msg += f"📊 {score_summary}\n"
+            msg += f"上涨{up_count}/{total_count}({up_ratio}%) {zt_dt}"
+            msg += yesterday_summary
+            alerts.append({'type': 'market_overheat', 'msg': msg})
+        # 2) 强势信号
+        elif ts >= 75:
+            msg = f"🚀【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
+            msg += f"📈 {index_summary}\n"
+            msg += f"📊 {score_summary}\n"
+            msg += f"上涨{up_count}/{total_count}({up_ratio}%) {zt_dt}"
+            msg += yesterday_summary
+            alerts.append({'type': 'market_strong', 'msg': msg})
+        # 3) 弱势/退潮（已含冷却）
+        elif ts <= 35:
+            msg = f"❄️❄️【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
+            msg += f"📉 {index_summary}\n"
+            msg += f"📊 {score_summary}\n"
+            msg += f"下跌{down_count}/{total_count}({down_ratio}%) {zt_dt}"
+            msg += yesterday_summary
+            alerts.append({'type': 'market_fear', 'msg': msg})
+        # 4) 普通情绪（市场状态中间档，冷却10分钟）
+        else:
+            msg = f"📊【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
+            msg += f"📍 {index_summary}\n"
+            msg += f"📈 上涨{up_ratio}% 下跌{down_ratio}% {zt_dt}"
+            msg += yesterday_summary
+            alerts.append({'type': 'market_neutral', 'msg': msg})
+
+        if alerts:
+            self.last_market_alert = now
+            self.last_score_alert = now
+        return alerts
+
+    def get_yesterday_market_data(self):
+        """获取昨日市场分析数据"""
+        import sqlite3
+        import datetime
+        
+        try:
+            # 获取昨日日期
+            today = datetime.date.today()
+            yesterday = today - datetime.timedelta(days=1)
+            yesterday_str = yesterday.strftime('%Y%m%d')
+            
+            db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 获取昨日整体分析
+            cursor.execute("SELECT trend_score FROM overall_analysis WHERE trade_date=? ORDER BY id DESC LIMIT 1", (yesterday_str,))
+            row = cursor.fetchone()
+            if row:
+                result = {'trend_score': round(row[0], 0) if row[0] else '?'}
+            else:
+                result = {'trend_score': '?'}
+            
+            # 获取昨日涨跌停统计（从缓存文件）
+            yesterday_cache = os.path.join(BASE_DIR, 'cache_daily', f'full_market_stats_{yesterday_str}.json')
+            if os.path.exists(yesterday_cache):
+                import json
+                with open(yesterday_cache, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    result['zt_count'] = data.get('zt_count', '?')
+                    result['dt_count'] = data.get('dt_count', '?')
+                    result['broken_rate'] = data.get('broken_rate', '?')
+            else:
+                result['zt_count'] = '?'
+                result['dt_count'] = '?'
+                result['broken_rate'] = '?'
+            
+            conn.close()
+            return result
+        except Exception as e:
+            return None
+
+    # ── 9. 三大指数实时行情 ──
+    def fetch_index_quotes(self):
+        """
+        实时获取三大指数行情（新浪财经），返回 dict: name -> {pct_chg, price, vol, high, low, last_close}
+        """
+        result = {}
+        url = "https://hq.sinajs.cn/list=" + ",".join(SINA_INDEX_CODES.values())
+        try:
+            resp = requests.get(url, headers={
+                'Referer': 'https://finance.sina.com.cn',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }, timeout=6)
+            resp.encoding = 'gbk'
+            lines = resp.text.strip().split('\n')
+            for line in lines:
+                if '=' not in line:
+                    continue
+                var_name = line.split('=')[0].strip().replace('var ', '').replace('hq_str_', '')
+                content = line.split('"')[1] if '"' in line else ''
+                fields = content.split(',')
+                if len(fields) < 10:
+                    continue
+                name = next((k for k, v in SINA_INDEX_CODES.items() if v == var_name), None)
+                if not name:
+                    continue
+                # 字段：0name,1open,2last_close,3price,4high,5low,... 8vol, 9amount
+                try:
+                    price = float(fields[3])
+                    last_close = float(fields[2])
+                    high = float(fields[4])
+                    low = float(fields[5])
+                    vol = float(fields[8])
+                    amount = float(fields[9])
+                    pct_chg = (price - last_close) / last_close * 100 if last_close > 0 else 0
+                    result[name] = {
+                        'price': price,
+                        'pct_chg': pct_chg,
+                        'vol': int(vol),
+                        'amount': amount,
+                        'high': high,
+                        'low': low,
+                        'last_close': last_close,
+                    }
+                except (ValueError, IndexError):
+                    continue
+        except Exception as e:
+            if not self.index_quotes_cache.get('_warned'):
+                print(f"   ⚠ 指数实时行情获取失败: {e}")
+                self.index_quotes_cache['_warned'] = True
+
+        if result:
+            self.index_quotes_cache.update(result)
+        return result
+
+    # ── 10. 市场概览：涨跌家数/涨跌停/炸板 ──
+    def compute_market_overview(self):
+        total = 0
+        up = 0
+        down = 0
+        zt = 0
+        dt = 0
+        for ts_code, q in self.quotes.items():
+            total += 1
+            pct = q.get('pct_chg', 0)
+            if pct > 0: up += 1
+            elif pct < 0: down += 1
+            if pct >= 9.5: zt += 1
+            elif pct <= -9.5: dt += 1
+        return {
+            'total': total,
+            'up': up,
+            'down': down,
+            'zt': zt,
+            'dt': dt,
+            'up_ratio': round(up / total * 100, 1) if total else 0,
+            'down_ratio': round(down / total * 100, 1) if total else 0,
+        }
+
+    # ── 10.5 新浪全市场统计（后台任务） ──
+    def fetch_full_market_stats_sina(self):
+        """
+        使用新浪批量接口获取全市场涨跌停统计（约70秒）
+        返回: {total, zt_count, dt_count, up_count, down_count, up_ratio, down_ratio}
+        """
+        import threading
+        
+        def _fetch():
+            try:
+                import requests
+                import time
+                import json
+
+                # A股代码前缀
+                prefixes = [
+                    ('sh', ['600', '601', '603', '605', '608', '609']),
+                    ('sz', ['000', '001', '002', '300', '301']),
+                    ('bj', ['83', '87', '88']),
+                ]
+                
+                codes = []
+                for market, pres in prefixes:
+                    for pre in pres:
+                        for i in range(0, 1000):
+                            codes.append(f"{market}{pre}{i:03d}")
+                
+                headers = {
+                    "Referer": "https://finance.sina.com.cn/",
+                    "User-Agent": "Mozilla/5.0"
+                }
+                
+                total = 0
+                zt_count = 0
+                dt_count = 0
+                up_count = 0
+                down_count = 0
+                batch_size = 99
+                
+                for i in range(0, len(codes), batch_size):
+                    batch = codes[i:i+batch_size]
+                    url = f"https://hq.sinajs.cn/list={','.join(batch)}"
+                    
+                    try:
+                        r = requests.get(url, headers=headers, timeout=10)
+                        r.encoding = "gbk"
+                        lines = r.text.strip().split('\n')
+                        
+                        for line in lines:
+                            if '=' not in line or '""' in line:
+                                continue
+                            parts = line.split('"')
+                            if len(parts) < 2:
+                                continue
+                            data = parts[1].split(',')
+                            if len(data) < 4:
+                                continue
+                            try:
+                                last_close = float(data[2])
+                                price = float(data[3])
+                                if last_close <= 0 or price <= 0:
+                                    continue
+                                pct = (price - last_close) / last_close * 100
+                                total += 1
+                                if pct >= 9.5: zt_count += 1
+                                elif pct <= -9.5: dt_count += 1
+                                if pct > 0: up_count += 1
+                                elif pct < 0: down_count += 1
+                            except:
+                                continue
+                    except:
+                        continue
+                    time.sleep(0.1)
+                
+                if total > 0:
+                    self.full_market_stats = {
+                        'total': total,
+                        'zt_count': zt_count,
+                        'dt_count': dt_count,
+                        'up_count': up_count,
+                        'down_count': down_count,
+                        'up_ratio': round(up_count / total * 100, 1),
+                        'down_ratio': round(down_count / total * 100, 1),
+                        'updated': time.strftime('%H:%M:%S')
+                    }
+                    print(f"📊 全市场统计更新: 涨停{zt_count} 跌停{dt_count} 上涨{up_ratio}%")
+                    
+                    # 保存缓存
+                    cache_file = os.path.join(CACHE_DIR, 'cache_daily', 'full_market_stats.json')
+                    try:
+                        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                        with open(cache_file, 'w', encoding='utf-8') as f:
+                            json.dump(self.full_market_stats, f, ensure_ascii=False)
+                    except:
+                        pass
+            except Exception as e:
+                print(f"⚠ 全市场统计获取失败: {e}")
+        
+        # 在后台线程运行
+        t = threading.Thread(target=_fetch, daemon=True)
+        t.start()
+        return "后台获取中..."
+
+    # ── 10.6 获取全市场统计（优先缓存） ──
+    def get_full_market_stats(self):
+        """获取全市场统计（优先返回缓存）"""
+        # 如果有最新数据（15分钟内），直接返回
+        if hasattr(self, 'full_market_stats') and self.full_market_stats:
+            return self.full_market_stats
+        
+        # 尝试读取缓存文件（直接在cache_daily目录）
+        cache_file = os.path.join(BASE_DIR, 'cache_daily', 'full_market_stats.json')
+        if os.path.exists(cache_file):
+            try:
+                import json
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                pass
+        
+        return None
+
+    # ── 11. 趋势评分算法（来自market_analysis.py calc_trend_score） ──
+    def calc_trend_score(self, index_name, up_count=0, total_count=0):
+        """
+        对单个指数计算趋势分：
+        MA_SCORE(40) + INDEX_SCORE(30) + BREADTH_SCORE(30)
+        历史K线从 self.index_klines 读取，当日收盘价/振幅/成交量从 self.index_quotes_cache 补充
+        """
+        df = self.index_klines.get(index_name)
+        if df is None or len(df) < 20:
+            return 50.0
+
+        latest_quote = self.index_quotes_cache.get(index_name, {})
+        cur_price = latest_quote.get('price')
+        cur_vol = latest_quote.get('vol')
+
+        # 构造临时序列：将历史K线与当日行情拼接（若当日行情可用）
+        closes = list(df['close'].values) if 'close' in df.columns else list(df['close_y'].values) if 'close_y' in df.columns else list(df['close'].values)
+        vols = list(df['vol'].values) if 'vol' in df.columns else [0]*len(closes)
+
+        if cur_price and cur_price > 0:
+            closes.append(float(cur_price))
+            vols.append(float(cur_vol) if cur_vol else vols[-1] if vols else 0)
+
+        import numpy as np
+        closes_arr = np.array(closes, dtype=float)
+        ma5 = float(closes_arr[-5:].mean()) if len(closes_arr) >= 5 else closes_arr[-1]
+        ma10 = float(closes_arr[-10:].mean()) if len(closes_arr) >= 10 else closes_arr[-1]
+        ma20 = float(closes_arr[-20:].mean()) if len(closes_arr) >= 20 else closes_arr[-1]
+        cur_close = closes_arr[-1]
+
+        # MA_SCORE（40分）
+        ma_score = 0
+        if ma5 > ma10 > ma20: ma_score = 40
+        elif ma5 > ma10: ma_score = 30
+        elif ma5 > ma20: ma_score = 20
+        elif ma5 < ma10 < ma20: ma_score = 10
+        else: ma_score = 15
+
+        # INDEX_SCORE（30分）
+        index_score = 0
+        if cur_close > ma20: index_score = 30
+        elif cur_close > ma10: index_score = 20
+        elif cur_close > ma5: index_score = 10
+        else: index_score = 0
+
+        # BREADTH_SCORE（30分）
+        breadth_score = 0
+        if total_count > 0:
+            r = up_count / total_count * 100
+            if r > 70: breadth_score = 30
+            elif r >= 60: breadth_score = 25
+            elif r >= 50: breadth_score = 20
+            elif r >= 40: breadth_score = 10
+            elif r >= 30: breadth_score = 5
+            else: breadth_score = 0
+        else:
+            # 无成分股数据时：根据指数涨幅给出基础分
+            pct = latest_quote.get('pct_chg', 0) or 0
+            if pct > 2: breadth_score = 30
+            elif pct > 1: breadth_score = 20
+            elif pct > 0: breadth_score = 15
+            elif pct > -1: breadth_score = 10
+            else: breadth_score = 5
+
+        trend_score = max(0, min(100, ma_score + index_score + breadth_score))
+        return round(float(trend_score), 1)
+
+    # ── 12. 情绪评分算法（来自market_analysis.py calc_sentiment_score） ──
+    def calc_sentiment_score(self, index_name, up_count=0, total_count=0):
+        df = self.index_klines.get(index_name)
+        if df is None or len(df) < 20:
+            return 50.0
+
+        latest_quote = self.index_quotes_cache.get(index_name, {})
+        cur_price = latest_quote.get('price')
+        cur_vol = latest_quote.get('vol')
+        cur_high = latest_quote.get('high')
+        cur_low = latest_quote.get('low')
+        cur_last_close = latest_quote.get('last_close')
+
+        # 历史 pct_chg
+        if 'pct_chg' in df.columns:
+            pct_list = list(df['pct_chg'].values)
+        else:
+            pct_list = []
+            closes = list(df['close'].values)
+            for i in range(1, len(closes)):
+                if closes[i-1] and closes[i]:
+                    pct_list.append((closes[i]-closes[i-1])/closes[i-1]*100)
+
+        # 当日涨跌幅
+        pct_chg = 0.0
+        if cur_price and cur_last_close:
+            pct_chg = (float(cur_price) - float(cur_last_close)) / float(cur_last_close) * 100
+
+        # 1) 涨跌方向与强度(30分)
+        if pct_chg >= 2: direction_score = 30
+        elif pct_chg >= 1: direction_score = 20
+        elif pct_chg >= 0: direction_score = 10
+        elif pct_chg >= -1: direction_score = 5
+        elif pct_chg >= -2: direction_score = 0
+        else: direction_score = -20
+
+        # 2) 成交量变化(25分)
+        import numpy as np
+        vols = list(df['vol'].values) if 'vol' in df.columns else [0]*len(df)
+        if cur_vol:
+            vols.append(float(cur_vol))
+        vol_arr = np.array(vols, dtype=float)
+        vol5 = float(vol_arr[-5:].mean()) if len(vol_arr) >= 5 else 0
+        vol20 = float(vol_arr[-20:].mean()) if len(vol_arr) >= 20 else vol5
+        vol_ratio = vol5 / vol20 if vol20 > 0 else 1
+        vol_score = 12.5 + (vol_ratio - 1) * 20
+        # 修正:放量下跌恐慌,放量大涨强势
+        if pct_chg < -1 and vol_ratio > 1.2:
+            vol_score -= 10
+        elif pct_chg > 1 and vol_ratio > 1.2:
+            vol_score += 5
+        vol_score = min(25, max(0, vol_score))
+
+        # 3) 振幅(20分)
+        if cur_high and cur_low and cur_low > 0:
+            amplitude = (float(cur_high) - float(cur_low)) / float(cur_low) * 100
+        else:
+            amplitude = 0
+        if pct_chg < 0:
+            amp_score = max(0, 10 - amplitude)
+        else:
+            amp_score = min(20, 10 + amplitude * 0.5)
+
+        # 4) 连涨连跌(25分)
+        up_streak = 0
+        down_streak = 0
+        if pct_chg is not None and pct_chg != 0:
+            recent = list(pct_list) + [pct_chg]
+        else:
+            recent = list(pct_list)
+        # 从尾部往前数
+        for i in range(1, 6):
+            if len(recent) >= i:
+                v = recent[-i]
+                if v > 0: up_streak += 1
+                else: break
+            else:
+                break
+        for i in range(1, 6):
+            if len(recent) >= i:
+                v = recent[-i]
+                if v < 0: down_streak += 1
+                else: break
+            else:
+                break
+        streak_score = min(25, max(0, 12.5 + up_streak * 3 - down_streak * 4))
+
+        # 5) 波动率惩罚
+        if pct_list:
+            vol_std = float(np.array(pct_list[-20:], dtype=float).std()) if len(pct_list) >= 10 else 0
+        else:
+            vol_std = 0
+        vol_penalty = max(0, (vol_std - 2.5) * 3) if vol_std > 2.5 else 0
+
+        sentiment_score = direction_score + vol_score + amp_score + streak_score - vol_penalty
+        sentiment_score = max(0, min(100, sentiment_score))
+        return round(float(sentiment_score), 1)
+
+    # ── 13. 市场趋势总评分（来自market_analysis.py calculate_market_trend_score） ──
+    def calculate_total_market_score(self, results_per_index):
+        """
+        results_per_index: [{name, trend_score, sentiment_score, pct_chg}, ...]
+        返回: (trend_score, index_trend, theme_trend, market_status, position)
+        """
+        # IndexTrend = SH*0.5 + HS300*0.3 + ZZ2000*0.2
+        sh_score = next((r['trend_score'] for r in results_per_index if r['name'] == '上证指数'), 50)
+        hs_score = next((r['trend_score'] for r in results_per_index if r['name'] == '沪深300'), 50)
+        zz_score = next((r['trend_score'] for r in results_per_index if r['name'] == '中证2000'), 50)
+        index_trend = round(sh_score * 0.5 + hs_score * 0.3 + zz_score * 0.2, 1)
+
+        # ThemeTrend：以当前主题TOP3平均强度作为趋势分(替代原算法中的历史主题趋势分)
+        if self.theme_score_history and hasattr(self, '_recent_theme_scores'):
+            theme_trend = self._recent_theme_scores
+        else:
+            # fallback: 用主题强度均值映射到0-100
+            top_avg = 0
+            if self.theme_score_history:
+                vals = []
+                for theme, hist in self.theme_score_history.items():
+                    if hist:
+                        vals.append(hist[-1])
+                if vals:
+                    top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
+            # 映射: -5 ~ +5% -> 30 ~ 100
+            theme_trend = round(min(100, max(30, 50 + top_avg * 6)), 1)
+        self._recent_theme_scores = theme_trend
+
+        # TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
+        trend_score = round(index_trend * 0.4 + theme_trend * 0.6, 1)
+        if theme_trend > 90: trend_score += 10
+        elif theme_trend > 85: trend_score += 5
+        trend_score = min(100, max(0, trend_score))
+
+        # 市场状态 & 建议仓位
+        if trend_score >= 85:
+            market_status, pos_range, pos = "主升浪", "80~100%", 90
+        elif trend_score >= 75:
+            market_status, pos_range, pos = "强趋势", "60~80%", 70
+        elif trend_score >= 65:
+            market_status, pos_range, pos = "趋势良好", "50~70%", 60
+        elif trend_score >= 55:
+            market_status, pos_range, pos = "震荡", "30~50%", 40
+        elif trend_score >= 45:
+            market_status, pos_range, pos = "弱势", "20~30%", 25
+        elif trend_score >= 35:
+            market_status, pos_range, pos = "退潮", "10~20%", 15
+        else:
+            market_status, pos_range, pos = "主跌段", "0~10%", 5
+
+        return trend_score, index_trend, theme_trend, market_status, pos, pos_range
 
     # ════════════════════════════════════════════
     # 2. 通达信连接
@@ -830,45 +1545,29 @@ class RealtimeThemeMonitor:
         return alerts
 
     def detect_market_sentiment(self, results):
-        """检测整体市场情绪预警"""
-        ms = results['market_stats']
-        now = datetime.now()
-        alerts = []
-
-        up_r = ms['up_ratio']
-        down_r = ms['down_ratio']
-        zt = ms['zt_count']
-        dt = ms['dt_count']
-
-        if time.time() - self.last_market_alert < 600:
+        """检测整体市场情绪预警（使用 market_analysis 算法）"""
+        report = getattr(self, '_last_report', None)
+        if report is None:
+            # 回退：按旧简单阈值
+            ms = results['market_stats']
+            alerts = []
+            if time.time() - self.last_market_alert < 600:
+                return alerts
+            if ms['up_ratio'] > 80:
+                alerts.append({
+                    'type': 'market_overheat',
+                    'msg': f"🔥🔥 市场过热! 上涨{ms['up']}/{ms['total']}({ms['up_ratio']}%) 涨停{ms['zt_count']}家"
+                })
+                self.last_market_alert = time.time()
+            elif ms['down_ratio'] > 50:
+                alerts.append({
+                    'type': 'market_fear',
+                    'msg': f"❄️❄️ 大面积亏钱! 下跌{ms['down']}/{ms['total']}({ms['down_ratio']}%) 跌停{ms['dt_count']}家"
+                })
+                self.last_market_alert = time.time()
             return alerts
-
-        if up_r > 80:
-            alerts.append({
-                'type': 'market_overheat',
-                'msg': f"🔥🔥 市场过热! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 ⚠建议减仓至30%"
-            })
-            self.last_market_alert = time.time()
-        elif down_r > 50:
-            alerts.append({
-                'type': 'market_fear',
-                'msg': f"❄️❄️ 大面积亏钱! 下跌{ms['down']}/{ms['total']}({down_r}%) 跌停{dt}家 ⚠建议减仓至20%"
-            })
-            self.last_market_alert = time.time()
-        elif dt > 20 and down_r > 30:
-            alerts.append({
-                'type': 'market_crash_warning',
-                'msg': f"⚠️ 亏钱效应显著! 跌停{dt}家 下跌占比{down_r}% 建议控制仓位≤40%"
-            })
-            self.last_market_alert = time.time()
-        elif up_r > 60 and zt > 30:
-            alerts.append({
-                'type': 'market_warming',
-                'msg': f"🌡️ 市场回暖! 上涨{ms['up']}/{ms['total']}({up_r}%) 涨停{zt}家 可适当加仓至60%"
-            })
-            self.last_market_alert = time.time()
-
-        return alerts
+        # 新算法
+        return self.detect_market_sentiment_v2(report)
 
     def get_theme_top_movers(self, theme_name, n=3):
         """获取主题内涨幅前n的个股，带层级标记"""
@@ -894,79 +1593,65 @@ class RealtimeThemeMonitor:
     # ════════════════════════════════════════════
     def run_opening_analysis(self):
         """
-        9:32分开盘分析：基于第一次完整行情快照，输出五大维度报告。
+        9:32分开盘分析：基于market_analysis算法，输出三大指数+主题+仓位建议。
         """
         now = datetime.now()
         results = self.analyze()
         if not results or not results['theme_scores']:
             return
 
+        # 使用新算法的报告
+        report = self.compute_market_sentiment_report()
         ms = results['market_stats']
-        total = ms['total'] if ms['total'] > 0 else 1
 
-        # ── 1. 主题排序 ──
+        # ── 1. 主题排序 TOP10 ──
         sorted_themes = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)
         top10 = sorted_themes[:10]
 
-        # ── 2. 计算各板块的五维数据 ──
         lines = []
         for rank, (theme_name, avg_pct) in enumerate(top10, 1):
             stocks = self.theme_stocks.get(theme_name, [])
-
             up_count = 0
             total_in_theme = 0
             leader_pct = None
             leader_name = ""
             theme_amount = 0
-
             for ts_code, name, layer in stocks:
                 q = self.quotes.get(ts_code)
                 if not q:
                     continue
                 total_in_theme += 1
-                if q['pct_chg'] > 0:
-                    up_count += 1
+                if q['pct_chg'] > 0: up_count += 1
                 theme_amount += q.get('amount', 0)
-
                 if layer == 'leader' and (leader_pct is None or q['pct_chg'] > leader_pct):
                     leader_pct = q['pct_chg']
                     leader_name = name
-
             up_ratio = up_count / total_in_theme * 100 if total_in_theme > 0 else 0
             leader_str = f"{leader_name}{leader_pct:+.1f}%" if leader_name else "—"
             amount_yi = round(theme_amount / 1e8, 2)
-
             lines.append((rank, theme_name, avg_pct, up_ratio, leader_str, amount_yi, total_in_theme))
-
-        # ── 3. 市场情绪分 ──
-        up_r = ms['up_ratio']
-        zt_r = ms['zt_count'] / total * 100
-        dt_r = ms['dt_count'] / total * 100
-        sentiment_score = up_r * 0.5 + zt_r * 2.0 - dt_r * 2.0
-        sentiment_score = max(0, min(100, round(sentiment_score, 1)))
-
-        if sentiment_score >= 70:
-            sentiment_label = "🔥 强势"
-        elif sentiment_score >= 45:
-            sentiment_label = "🌤 中性偏暖"
-        elif sentiment_score >= 25:
-            sentiment_label = "🌥 中性偏弱"
-        else:
-            sentiment_label = "❄ 弱势"
 
         ts = now.strftime('%H:%M:%S')
 
-        # ── 4. 构建推送内容（纯文本，每行独立） ──
         title = f"📊 开盘分析 {now.strftime('%m-%d')}"
-
         content_lines = [
             f"📊 开盘竞价全景分析",
             f"时间: {ts}",
-            f"情绪分: {sentiment_score} — {sentiment_label}",
-            f"上涨: {ms['up']}/{ms['total']}({ms['up_ratio']}%)  涨停: {ms['zt_count']}  跌停: {ms['dt_count']}",
-            f"---",
-            f"【五维竞争力 TOP10】",
         ]
+
+        if report:
+            content_lines.append(f"市场状态: {report['market_status']}")
+            content_lines.append(f"趋势总评分: {report['trend_score']:.1f} 建议仓位: {report['position']}%({report['position_range']})")
+            content_lines.append(f"---")
+            content_lines.append(f"【三大指数】趋势/情绪/涨幅")
+            for r in report['index_results']:
+                content_lines.append(f"  {r['name']}: 趋势{r['trend_score']:.0f} 情绪{r['sentiment_score']:.0f} 涨幅{r.get('pct_chg', 0):+.2f}%")
+            content_lines.append(f"---")
+
+        content_lines.append(f"【盘面统计】")
+        content_lines.append(f"上涨: {ms['up']}/{ms['total']}({ms['up_ratio']}%)  涨停: {ms['zt_count']}  跌停: {ms['dt_count']}")
+        content_lines.append(f"---")
+        content_lines.append(f"【五维竞争力 TOP10】")
         for rank, name, avg_pct, up_r, ldr, amt, cnt in lines:
             bar = "█" * max(1, min(10, int(abs(avg_pct) + 0.5)))
             direction = "+" if avg_pct >= 0 else ""
@@ -978,15 +1663,19 @@ class RealtimeThemeMonitor:
 
         self.send_wechat(title, '\n'.join(content_lines))
 
-        # 控制台也打一份
-        print(f"\n{'='*55}")
-        print(f"📊 开盘分析 [{ts}]  情绪分: {sentiment_score} {sentiment_label}")
-        print(f"{'='*55}")
+        # 控制台
+        print(f"\n{'='*60}")
+        print(f"📊 开盘分析 [{ts}]")
+        if report:
+            print(f"   市场状态: {report['market_status']}  趋势总评分: {report['trend_score']:.1f}  仓位: {report['position']}%")
+            for r in report['index_results']:
+                print(f"   {r['name']}: 趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}/涨幅{r.get('pct_chg', 0):+.2f}%")
+        print(f"{'='*60}")
         print(f"{'排名':<4} {'板块':<10} {'强度':<8} {'↑占比':<6} {'龙头':<18} {'成交额':<10} {'成分'}")
-        print(f"{'-'*55}")
+        print(f"{'-'*60}")
         for rank, name, avg_pct, up_r, ldr, amt, cnt in lines:
             print(f"{rank:<4} {name:<10} {avg_pct:+.1f}%   {up_r:.0f}%   {ldr:<16} {amt:<8} {cnt}")
-        print(f"{'='*55}\n")
+        print(f"{'='*60}\n")
 
     # ════════════════════════════════════════════
     # 6. 推送
@@ -1029,8 +1718,9 @@ class RealtimeThemeMonitor:
     # ════════════════════════════════════════════
     def run(self):
         print("=" * 60)
-        print("🔥 游资级别实时主题盯盘系统")
-        print("   数据源: theme_portfolio.db + mootdx通达信实时行情")
+        print("🔥 游资级别实时主题盯盘系统 (market_analysis算法)")
+        print("   数据源: theme_portfolio.db + mootdx通达信实时行情 + 盘后K线缓存")
+        print("   评分模型: MA趋势+指数站位+市场广度 + 情绪评分(量价振幅)")
         print("   更新周期: 60秒")
         print("   推送: Server酱微信")
         print("=" * 60)
@@ -1038,6 +1728,9 @@ class RealtimeThemeMonitor:
         # ── 加载数据 ──
         self.load_theme_db()
         self.load_ref_prices()
+
+        # 加载三大指数盘后K线缓存（用于MA5/MA10/MA20）
+        self.load_index_klines()
 
         # ── 连接 ──
         if not self.connect():
@@ -1073,37 +1766,35 @@ class RealtimeThemeMonitor:
                 first_run = False
                 cycle += 1
 
-                # ── 获取行情 ──
+                # ── 获取行情（个股 + 指数） ──
                 ok = self.fetch_all_quotes()
                 if not ok:
                     print(f"[{now.strftime('%H:%M:%S')}] ⚠ 行情获取失败，尝试重连+重试...")
                     self.connected = False
-                    # 尝试最多2次：每次先换服务器重连，再多次重试取行情
                     for attempt in range(2):
                         if not self.reconnect_round_robin():
                             print(f"   第{attempt+1}次重连失败，5秒后重试...")
                             time.sleep(5)
                             continue
-                        # 同一条连接上最多重试3次取行情
                         for quote_retry in range(3):
                             ok = self.fetch_all_quotes()
-                            if ok:
-                                break
+                            if ok: break
                             print(f"   连接成功但取行情失败，第{quote_retry+1}次重试...")
                             time.sleep(2)
-                        if ok:
-                            break
+                        if ok: break
                     if not ok:
                         print(f"   ❌ 放弃本轮，等待下一周期")
                         time.sleep(10)
                         continue
+
+                # ── 计算趋势评分+市场情绪(新算法) ──
+                _ = self.compute_market_sentiment_report()
 
                 # ── 9:32 开盘分析（仅一次） ──
                 if not self.opening_analysis_done and now.hour == 9 and 32 <= now.minute <= 35:
                     print(f"\n[{now.strftime('%H:%M:%S')}] ⏰ 触发开盘分析...")
                     self.run_opening_analysis()
                     self.opening_analysis_done = True
-                    # 开盘分析后短暂休息，继续下一周期采集
                     time.sleep(5)
                     continue
 
@@ -1113,9 +1804,17 @@ class RealtimeThemeMonitor:
                     time.sleep(10)
                     continue
 
-                # ── 每3分钟输出一次摘要（减少刷屏） ──
+                # 补充新算法报告到 results（供 print_summary / push_alerts 使用）
+                results['sentiment_report'] = getattr(self, '_last_report', None)
+
+                # ── 每3分钟输出一次摘要 ──
                 if cycle % 3 == 1:
                     self.print_summary(results)
+
+                # ── 每15分钟更新一次全市场统计（后台线程） ──
+                if cycle % 90 == 1:  # 60秒×90=5400秒=15分钟
+                    print(f"⏳ 后台更新全市场统计...")
+                    self.fetch_full_market_stats_sina()
 
                 # ── 检测 → 推送 ──
                 all_alerts = []
@@ -1151,27 +1850,32 @@ class RealtimeThemeMonitor:
         return False
 
     def print_summary(self, results):
-        """控制台输出摘要"""
+        """控制台输出摘要（含趋势评分+仓位建议）"""
         now = datetime.now().strftime('%H:%M:%S')
         ms = results['market_stats']
+        report = results.get('sentiment_report')
 
-        print(f"\n{'='*50}")
+        print(f"\n{'='*60}")
         print(f"📊 [{now}] 大盘监控")
         print(f"   上涨 {ms['up']}/{ms['total']}({ms['up_ratio']}%) 涨停{ms['zt_count']} | 下跌{ms['down']}跌停{ms['dt_count']}")
+
+        if report:
+            idx = [f"{r['name']}趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}" for r in report['index_results']]
+            print(f"   指数评分: " + " | ".join(idx))
+            print(f"   市场状态【{report['market_status']}】趋势总评分{report['trend_score']:.1f} 建议仓位{report['position']}%({report['position_range']})")
 
         top5 = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)[:5]
         print(f"\n🔥 主题强度 TOP5:")
         for theme, score in top5:
             print(f"   {theme}: {score:+.1f}%")
 
-        # 先锋股（如果有）
         fms = results.get('first_movers', [])
         if fms:
             print(f"\n🚀 先锋启动:")
             for fm in fms[:3]:
                 print(f"   {fm['name']}({fm['ts_code'][:6]}): {fm['pct_chg']:+.1f}% 主题:{fm['theme']}")
 
-        print(f"{'='*50}")
+        print(f"{'='*60}")
 
     def push_alerts(self, alerts, now):
         """批量推送微信通知（纯文本格式，避免Markdown渲染异常）"""
@@ -1230,5 +1934,81 @@ class RealtimeThemeMonitor:
 
 
 if __name__ == "__main__":
+    import subprocess
+
+    # ── 单实例锁定（检查同名进程 + 文件锁） ──
+    lock_file = os.path.join(BASE_DIR, "realtime_theme_monitor.lock")
+
+    # 检查并杀掉其他同名脚本进程
+    try:
+        current_pid = os.getpid()
+        # 先找所有同名进程PID
+        query_cmd = (
+            "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+            f"| Where-Object {{$_.CommandLine -like '*realtime_theme_monitor*' -and $_.ProcessId -ne {current_pid}}} "
+            "| Select-Object -ExpandProperty ProcessId"
+        )
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-Command', query_cmd],
+            capture_output=True, text=True,
+            encoding='utf-8', errors='ignore'
+        )
+        old_pids = [int(p.strip()) for p in result.stdout.split() if p.strip().isdigit()]
+        if old_pids:
+            print(f"⚠️  检测到 {len(old_pids)} 个旧的监控进程: {old_pids}，正在停止...")
+            kill_cmd = "Get-Process python -ErrorAction SilentlyContinue "
+            kill_cmd += f"| Where-Object {{$_.Id -in {[int(p) for p in old_pids]}}} | Stop-Process -Force -ErrorAction SilentlyContinue"
+            subprocess.run(['powershell', '-NoProfile', '-Command', kill_cmd],
+                           capture_output=True)
+            time.sleep(1)
+            print("   已停止旧进程")
+    except Exception as e:
+        pass  # 检查失败时继续使用文件锁
+
+    # 文件锁作为备用机制
+    lock_fd = open(lock_file, 'w')
+    locked = False
+    try:
+        import msvcrt
+        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+        lock_fd.write(str(os.getpid()))
+        locked = True
+    except (ImportError, OSError, IOError):
+        try:
+            import fcntl
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_fd.write(str(os.getpid()))
+            locked = True
+        except (ImportError, OSError):
+            pass
+
+    if not locked:
+        print("⚠️  文件锁被占用，等待 2 秒后重试...")
+        lock_fd.close()
+        time.sleep(2)
+        try:
+            os.remove(lock_file)
+        except:
+            pass
+        lock_fd = open(lock_file, 'w')
+        try:
+            import msvcrt
+            msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+            lock_fd.write(str(os.getpid()))
+            locked = True
+        except:
+            pass
+
+    if not locked:
+        print("⚠️  无法获取文件锁，请删除 " + lock_file + " 后重试，退出。")
+        sys.exit(0)
+
     monitor = RealtimeThemeMonitor()
     monitor.run()
+
+    # ── 退出时释放锁 ──
+    try:
+        lock_fd.close()
+        os.remove(lock_file)
+    except:
+        pass

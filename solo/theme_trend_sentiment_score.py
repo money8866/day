@@ -356,8 +356,8 @@ def get_index_kline(ts_code="000300.SH", start=None, end=None):
     # 检查缓存数据是否包含最新日期（避免缓存昨天的数据）
     if cached is not None:
         if 'trade_date' in cached.columns:
-            max_date = cached['trade_date'].max()
-            if max_date == end:
+            max_date = str(cached['trade_date'].max())
+            if max_date == str(end):
                 print(f"[Index] 缓存命中且包含最新数据: {ts_code}")
                 return cached
             else:
@@ -1299,7 +1299,9 @@ def main():
         leader_name = leader_stock["name"] if leader_stock else ""
         leader_code = leader_stock["ts_code"] if leader_stock else ""
 
-        core_candidates = [r for r in top_rows if r.get("total_mv", 0) > 2000000 and r.get("purity", 0) >= 1]
+        # 中军：排除龙头股，从市值大(>200亿) + 纯度高的股票中选择
+        leader_code_exclude = leader_stock["ts_code"] if leader_stock else ""
+        core_candidates = [r for r in top_rows if r.get("total_mv", 0) > 2000000 and r.get("purity", 0) >= 1 and r.get("ts_code", "") != leader_code_exclude]
         core_scores = []
         for r in core_candidates:
             amt = r.get("amount_latest", 0)

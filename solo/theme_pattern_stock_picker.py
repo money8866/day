@@ -46,18 +46,22 @@ os.path.expanduser = lambda path: original_expanduser(path).replace('\\', '/')
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 TS_TOKEN = os.getenv('TUSHARE_TOKEN', '')
 CACHE_DIR = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+DAILY_CACHE_DIR = r"d:\mystock\cache_daily"
 REPORT_DIR = os.path.join(BASE_DIR, 'report_daily')
 os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(DAILY_CACHE_DIR, exist_ok=True)
 os.makedirs(REPORT_DIR, exist_ok=True)
 
 # 初始化Tushare
 pro = ts.pro_api(TS_TOKEN)
 
-# 今日日期
+# 交易日期（默认使用昨天，因为当天数据还未完全更新）
 if len(sys.argv) > 1:
     TRADE_DATE = sys.argv[1]
 else:
-    TRADE_DATE = datetime.now().strftime('%Y%m%d')
+    # 获取昨天的日期
+    yesterday = datetime.now() - timedelta(days=1)
+    TRADE_DATE = yesterday.strftime('%Y%m%d')
 
 # 计算开始日期（TRADE_DATE前推60个交易日，约3个月）
 dt = datetime.strptime(TRADE_DATE, '%Y%m%d')
@@ -223,36 +227,82 @@ def get_stock_data(hot_themes):
 # 步骤3：获取K线数据并计算指标
 # =================
 def get_kline_data(stock_codes):
-    """获取K线数据并缓存"""
+    """获取K线数据（优先读取共享日线缓存，不足时批量补充）"""
     kline_data = {}
+    missing_codes = []
     
+    # 第一遍：从共享缓存读取
     for code in stock_codes:
-        # 优先读取本地缓存（按日期命名的缓存）
-        cache_file = os.path.join(CACHE_DIR, f'{code}_{TRADE_DATE}.csv')
+        cache_file = os.path.join(DAILY_CACHE_DIR, f'{code}.csv')
         if os.path.exists(cache_file):
-            df_cache = pd.read_csv(cache_file)
-            if len(df_cache) >= 60:
-                kline_data[code] = df_cache
-                continue
+            try:
+                df_cache = pd.read_csv(cache_file)
+                df_cache['trade_date'] = df_cache['trade_date'].astype(str)
+                # 只保留目标日期之前的数据
+                df_cache = df_cache[df_cache['trade_date'] <= TRADE_DATE].copy()
+                if len(df_cache) >= 60:
+                    df_cache = df_cache.sort_values('trade_date').reset_index(drop=True)
+                    kline_data[code] = df_cache
+                    continue
+            except Exception:
+                pass
+        missing_codes.append(code)
+    
+    # 批量补充缺失的数据
+    if missing_codes:
+        print(f"  [get_kline_data] 需批量下载 {len(missing_codes)} 只股票的日线数据")
+        batch_size = 200
+        total_downloaded = 0
+        for i in range(0, len(missing_codes), batch_size):
+            batch = missing_codes[i:i + batch_size]
+            try:
+                ts_list = ",".join(batch)
+                df = pro.daily(
+                    ts_code=ts_list,
+                    start_date=START_DATE,
+                    end_date=TRADE_DATE
+                )
+                if df is not None and not df.empty:
+                    for ts_code in batch:
+                        stock_df = df[df['ts_code'] == ts_code]
+                        if not stock_df.empty:
+                            stock_df = stock_df.sort_values('trade_date')
+                            save_path = os.path.join(DAILY_CACHE_DIR, f"{ts_code}.csv")
+                            # 合并已有缓存（保留更早的历史数据）
+                            if os.path.exists(save_path):
+                                try:
+                                    old_df = pd.read_csv(save_path)
+                                    old_df['trade_date'] = old_df['trade_date'].astype(str)
+                                    stock_df['trade_date'] = stock_df['trade_date'].astype(str)
+                                    merged = pd.concat([old_df, stock_df], ignore_index=True)
+                                    merged = merged.drop_duplicates(subset=['trade_date'], keep='last')
+                                    merged = merged.sort_values('trade_date').reset_index(drop=True)
+                                    merged.to_csv(save_path, index=False)
+                                except Exception:
+                                    stock_df.to_csv(save_path, index=False)
+                            else:
+                                stock_df.to_csv(save_path, index=False)
+                    total_downloaded += len(df['ts_code'].unique())
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"  [get_kline_data] 批次下载失败: {e}")
+        print(f"  [get_kline_data] 批量下载完成，共 {total_downloaded} 只")
         
-        # 否则调用tushare获取
-        try:
-            df = pro.daily(ts_code=code, start_date=START_DATE, end_date=TRADE_DATE)
-            if len(df) >= 60:
-                df = df.sort_values('trade_date').reset_index(drop=True)
-                df.to_csv(cache_file, index=False)
-                kline_data[code] = df
-        except Exception as e:
-            # 如果日期缓存没有，尝试通用缓存，但要裁剪到目标日期
-            cache_file_general = os.path.join(CACHE_DIR, f'{code}.csv')
-            if os.path.exists(cache_file_general):
-                df_general = pd.read_csv(cache_file_general)
-                # 只保留到目标日期的数据
-                df_general = df_general[df_general['trade_date'] <= int(TRADE_DATE)].copy()
-                if len(df_general) >= 60:
-                    df_general = df_general.sort_values('trade_date').reset_index(drop=True)
-                    df_general.to_csv(cache_file, index=False)
-                    kline_data[code] = df_general
+        # 第二遍：从缓存读取之前缺失的代码
+        for code in missing_codes:
+            if code in kline_data:
+                continue
+            cache_file = os.path.join(DAILY_CACHE_DIR, f'{code}.csv')
+            if os.path.exists(cache_file):
+                try:
+                    df_cache = pd.read_csv(cache_file)
+                    df_cache['trade_date'] = df_cache['trade_date'].astype(str)
+                    df_cache = df_cache[df_cache['trade_date'] <= TRADE_DATE].copy()
+                    if len(df_cache) >= 60:
+                        df_cache = df_cache.sort_values('trade_date').reset_index(drop=True)
+                        kline_data[code] = df_cache
+                except Exception:
+                    pass
     
     return kline_data
 
@@ -547,7 +597,7 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
         theme_zhongjun_codes = [s['code'] for s in zhongjun_candidates]
         zhongjun_data_dict = {}
         for zj_code in theme_zhongjun_codes:
-            cache_file = os.path.join(CACHE_DIR, f"{zj_code}.csv")
+            cache_file = os.path.join(DAILY_CACHE_DIR, f"{zj_code}.csv")
             if os.path.exists(cache_file):
                 zj_df = pd.read_csv(cache_file)
                 if len(zj_df) >= 20:
@@ -609,13 +659,29 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                         debug_stats['pct5d_filter'] += 1
                         continue
             
-            # 5. 均线趋势检查（新增）：至少MA20不能持续向下
+            # 5. 均线趋势检查：股价站上五日线且十日线向上运行
             if len(closes) >= 25:
+                ma5_vals = pd.Series(closes).rolling(5).mean().values
+                ma10_vals = pd.Series(closes).rolling(10).mean().values
                 ma20_vals = pd.Series(closes).rolling(20).mean().values
-                # MA20近5日斜率
+                
+                # 条件1：股价必须站上五日线
+                close = closes[-1]
+                ma5 = ma5_vals[-1]
+                if close <= ma5:
+                    debug_stats['trend_filter'] += 1
+                    continue
+                
+                # 条件2：十日线必须向上运行（近5日斜率为正）
+                if len(ma10_vals) >= 5:
+                    ma10_slope = (ma10_vals[-1] - ma10_vals[-5]) / ma10_vals[-5] * 100
+                    if ma10_slope <= 0:
+                        debug_stats['trend_filter'] += 1
+                        continue
+                
+                # 条件3：MA20不能持续向下
                 if len(ma20_vals) >= 5:
                     ma20_slope = (ma20_vals[-1] - ma20_vals[-5]) / ma20_vals[-5] * 100
-                    # 如果MA20向下超过2%，认为是下降趋势，不适合补涨
                     if ma20_slope < -2:
                         debug_stats['trend_filter'] += 1
                         continue
@@ -875,7 +941,8 @@ def print_results(candidates):
     print("  3. 价格趋势健康（权重15%）：MA20向上，价格在MA5之上")
     print("  4. 量价配合（权重15%）：量价齐升，温和放量")
     print("  5. 技术面健康（权重10%）：均线多头排列，成交量活跃")
-    print("基础条件：排除涨停股、市值200-2000亿、成交额>=8亿、5日涨幅<=18%")
+    print("基础条件：排除涨停股、市值100-2000亿、成交额>=5亿、5日涨幅<=20%")
+    print("均线条件：股价站上五日线、十日线向上运行、MA20不持续向下")
     print("最终输出：TOP10 趋势中军 + TOP5 补涨中军")
     print("=" * 120)
 
