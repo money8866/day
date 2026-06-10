@@ -462,6 +462,14 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
             for code in to_remove:
                 del matched[code]
 
+        # 方式4：core_companies强制纳入（确保核心公司不被遗漏）
+        core_companies = cfg.get("core_companies", [])
+        if core_companies:
+            for code, name in name_map_basic.items():
+                if any(company in name for company in core_companies):
+                    if code not in matched:
+                        matched[code] = {"via": "core_company", "industry_match": True}
+
         theme_stock_map[theme_name] = matched
     return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
 
