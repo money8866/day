@@ -290,45 +290,37 @@ print("当前交易日1:", TRADE_DATE)
 # BARSLAST
 # =========================
 def barslast(series):
-    """向量化版本：找到最近True的距离
-    
-    特殊规则：如果第1天是True，不更新last_true，后续False返回NaN
-    """
-    arr = series.values.astype(bool)
-    n = len(arr)
-    
-    # 找到所有True的位置
-    true_positions = np.where(arr)[0]
-    
-    if len(true_positions) == 0:
-        return pd.Series([np.nan] * n, index=series.index)
-    
-    # 特殊处理：如果第1天是True，需要跳过它（不作为有效信号）
-    start_idx = 0
-    if arr[0]:
-        # 第1天True，跳过它，从后续找有效True
-        valid_positions = true_positions[true_positions > 0]
-        if len(valid_positions) == 0:
-            # 只有第1天是True，全部返回NaN
-            return pd.Series([np.nan] * n, index=series.index)
-        true_positions = valid_positions
-        start_idx = 1  # 第1天返回NaN
-    
-    # 使用searchsorted快速定位每个位置最近的True
-    indices = np.arange(n)
-    idx = np.searchsorted(true_positions, indices, side='right') - 1
-    
-    # 计算距离
-    result = np.where(idx >= 0, indices - true_positions[idx], np.nan)
-    
-    # 第1天符合条件返回NaN
-    if start_idx == 1:
-        result[0] = np.nan
-    
-    # True的位置返回0
-    for pos in true_positions:
-        result[pos] = 0
-    
+
+    result = []
+
+    last_true = -1
+
+    for i, val in enumerate(series):
+
+        if val:
+
+            if i == 0:
+
+                # 第1天符合条件的不纳入结果，返回 NaN，不更新 last_true
+
+                result.append(np.nan)
+
+            else:
+
+                # 更新 last_true 并返回 0
+
+                last_true = i
+
+                result.append(0)
+
+        else:
+
+            if last_true == -1:
+                result.append(np.nan)
+
+            else:
+                result.append(i - last_true)
+
     return pd.Series(result, index=series.index)
 
 
@@ -1895,654 +1887,6 @@ def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
     }
 
 
-def calc_yri_score(ts_code, stock_info, theme, v7_result, df):
-    """
-    YRI (Y Recognition Index) 辨识度评分
-    
-    核心逻辑：衡量股票在市场中的共识辨识度
-    高辨识度 = 市场公认的核心标的，资金聚焦度高
-    
-    评分维度：
-    1. 核心公司身份 (30分)：是否为 theme.json 定义的核心/龙头公司
-    2. 市场活跃度 (25分)：换手率排名、成交额活跃度
-    3. 近期表现 (20分)：近期涨幅、涨停次数
-    4. 市值规模 (15分)：大市值通常辨识度更高
-    5. 主题龙头地位 (10分)：在主题中的综合排名
-    
-    返回：0-100 的辨识度评分
-    """
-    try:
-        yri_score = 0
-        details = {}
-        
-        # 1. 核心公司身份 (30分)
-        core_company_score = 0
-        if theme and stock_info:
-            try:
-                cfg_path = os.path.join(BASE_DIR, 'theme.json')
-                if os.path.exists(cfg_path):
-                    with open(cfg_path, 'r', encoding='utf-8') as f:
-                        theme_cfg = json.load(f).get('HOT_THEMES', {})
-                    if theme in theme_cfg:
-                        theme_data = theme_cfg[theme]
-                        stock_name = stock_info.get('name', '')
-                        
-                        # 龙头公司 +30分
-                        leader_companies = theme_data.get('leader_companies', [])
-                        if stock_name in leader_companies:
-                            core_company_score = 30
-                        else:
-                            # 核心公司 +20分
-                            core_companies = theme_data.get('core_companies', [])
-                            if stock_name in core_companies:
-                                core_company_score = 20
-                            else:
-                                # 检查ts_code匹配
-                                if ts_code in leader_companies:
-                                    core_company_score = 30
-                                elif ts_code in core_companies:
-                                    core_company_score = 20
-            except Exception:
-                pass
-        yri_score += core_company_score
-        details['核心身份'] = core_company_score
-        
-        # 2. 市场活跃度 (25分)
-        activity_score = 0
-        if df is not None and len(df) >= 20:
-            try:
-                recent_df = df.tail(20)
-                # 计算近5日平均换手率
-                if 'vol' in recent_df.columns and len(recent_df) >= 5:
-                    recent_5d = recent_df.tail(5)
-                    avg_vol_5d = recent_5d['vol'].mean()
-                    avg_vol_20d = recent_df['vol'].mean()
-                    vol_ratio = avg_vol_5d / avg_vol_20d if avg_vol_20d > 0 else 1.0
-                    
-                    # 换手率评分
-                    if vol_ratio >= 2.0:
-                        activity_score = 25
-                    elif vol_ratio >= 1.5:
-                        activity_score = 20
-                    elif vol_ratio >= 1.2:
-                        activity_score = 15
-                    elif vol_ratio >= 1.0:
-                        activity_score = 10
-                    else:
-                        activity_score = 5
-            except Exception:
-                pass
-        yri_score += activity_score
-        details['市场活跃度'] = activity_score
-        
-        # 3. 近期表现 (20分)
-        performance_score = 0
-        if df is not None and len(df) >= 20:
-            try:
-                C = df['close']
-                # 5日涨幅
-                pct5 = (C.iloc[-1] / C.iloc[-5] - 1) * 100 if len(C) >= 5 else 0
-                # 20日涨幅
-                pct20 = (C.iloc[-1] / C.iloc[-20] - 1) * 100 if len(C) >= 20 else 0
-                
-                # 综合表现评分
-                if pct5 >= 15 or pct20 >= 30:
-                    performance_score = 20
-                elif pct5 >= 10 or pct20 >= 20:
-                    performance_score = 16
-                elif pct5 >= 5 or pct20 >= 10:
-                    performance_score = 12
-                elif pct5 >= 0 or pct20 >= 0:
-                    performance_score = 8
-                else:
-                    performance_score = 4
-            except Exception:
-                pass
-        yri_score += performance_score
-        details['近期表现'] = performance_score
-        
-        # 4. 市值规模 (15分)
-        market_cap_score = 0
-        if stock_info:
-            try:
-                market_cap = stock_info.get('total_market_cap') or stock_info.get('market_cap')
-                if market_cap and market_cap > 0:
-                    # 转换为亿元
-                    if market_cap > 1e12:
-                        market_cap_yi = market_cap / 1e8
-                    else:
-                        market_cap_yi = market_cap / 1e8
-                    
-                    if market_cap_yi >= 1000:
-                        market_cap_score = 15
-                    elif market_cap_yi >= 500:
-                        market_cap_score = 13
-                    elif market_cap_yi >= 200:
-                        market_cap_score = 11
-                    elif market_cap_yi >= 100:
-                        market_cap_score = 9
-                    elif market_cap_yi >= 50:
-                        market_cap_score = 7
-                    else:
-                        market_cap_score = 5
-            except Exception:
-                pass
-        yri_score += market_cap_score
-        details['市值规模'] = market_cap_score
-        
-        # 5. 主题龙头地位 (10分)
-        theme_leader_score = 0
-        if theme and v7_result:
-            try:
-                # 基于V7结果中的主题相关指标
-                theme_confidence = float(v7_result.get('主题纯度', 30))
-                theme_strength_bonus = float(v7_result.get('主题强化系数', 1.0))
-                
-                # 综合主题地位
-                if theme_confidence >= 70 and theme_strength_bonus >= 1.3:
-                    theme_leader_score = 10
-                elif theme_confidence >= 50 and theme_strength_bonus >= 1.1:
-                    theme_leader_score = 8
-                elif theme_confidence >= 30:
-                    theme_leader_score = 6
-                else:
-                    theme_leader_score = 4
-            except Exception:
-                pass
-        yri_score += theme_leader_score
-        details['主题龙头地位'] = theme_leader_score
-        
-        # 确保在0-100范围内
-        yri_score = min(100, max(0, yri_score))
-        
-        return round(yri_score, 1), details
-    
-    except Exception as e:
-        print(f"[YRI辨识度] 计算失败: {e}")
-        return 50, {}
-
-
-def calc_tli_score(theme, top_n=10, days=60):
-    """
-    TLI (Theme Life Index) 主题生命力评分
-    
-    核心逻辑：衡量主题在最近N天内的持续活跃程度
-    高生命力 = 主题持续出现在市场前排，资金关注度高
-    
-    计算方法：
-    1. 查询最近60天主题排名数据
-    2. 统计主题出现在前10名的次数
-    3. 根据出现频率和平均排名打分
-    
-    参数：
-        theme: 主题名称
-        top_n: 前排定义（默认前10名）
-        days: 统计天数（默认60天）
-    
-    返回：0-100 的主题生命力评分
-    """
-    try:
-        if not theme:
-            return 50, {"错误": "主题为空"}
-        
-        db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-        if not os.path.exists(db_path):
-            return 50, {"错误": "数据库不存在"}
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # 查询最近60天内该主题的排名情况
-        cursor.execute("""
-            SELECT trade_date, rank, composite_score 
-            FROM theme_scores 
-            WHERE theme = ? 
-            AND trade_date >= date('now', '-{} days')
-            ORDER BY trade_date DESC
-        """.format(days), (theme,))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        if not rows:
-            return 50, {"说明": "无历史数据"}
-        
-        # 统计指标
-        total_days = len(rows)
-        top10_count = sum(1 for row in rows if row[1] <= top_n)
-        top5_count = sum(1 for row in rows if row[1] <= 5)
-        top3_count = sum(1 for row in rows if row[1] <= 3)
-        
-        avg_rank = sum(row[1] for row in rows) / total_days if total_days > 0 else 50
-        avg_score = sum(row[2] for row in rows) / total_days if total_days > 0 else 0
-        
-        # 计算生命力评分 (0-100)
-        # 基础分：前10出现频率
-        base_score = (top10_count / total_days) * 60 if total_days > 0 else 0
-        
-        # 加分项：前5和前3次数
-        bonus_top5 = (top5_count / total_days) * 20 if total_days > 0 else 0
-        bonus_top3 = (top3_count / total_days) * 15 if total_days > 0 else 0
-        
-        # 平均排名修正：平均排名越靠前，加分越多
-        rank_bonus = 0
-        if avg_rank <= 3:
-            rank_bonus = 5
-        elif avg_rank <= 5:
-            rank_bonus = 3
-        elif avg_rank <= 10:
-            rank_bonus = 1
-        
-        tli_score = base_score + bonus_top5 + bonus_top3 + rank_bonus
-        tli_score = min(100, max(0, tli_score))
-        
-        details = {
-            "统计天数": total_days,
-            "前10次数": top10_count,
-            "前5次数": top5_count,
-            "前3次数": top3_count,
-            "平均排名": round(avg_rank, 1),
-            "平均综合分": round(avg_score, 1),
-            "前10频率": f"{top10_count/total_days*100:.1f}%" if total_days > 0 else "0%"
-        }
-        
-        return round(tli_score, 1), details
-    
-    except Exception as e:
-        print(f"[TLI生命力] 计算失败: {e}")
-        return 50, {"错误": str(e)}
-
-
-
-
-def calc_sector_position_score(ts_code, stock_info, theme, v75_result, df):
-    """sector_position 板块位置评分 V3 - 龙头拉开机制 + 板块分层系统（无连板因子）
-    
-    核心逻辑：
-    1. 板块分层系统：S/A/B/C级主线分层基础分
-    2. 龙头拉开机制：真龙头非线性加成，后排惩罚
-    
-    评分公式：
-    final_score = 板块分层基础分 + 龙头加成
-    
-    参数设计：
-    - S级（≥80分）：基础分50，真龙头+50=100，准龙头+30=80，后排-20=0
-    - A级（60-80分）：基础分30，真龙头+50=80，准龙头+30=60，后排-20=0
-    - B级（40-60分）：基础分15，真龙头+50=65，准龙头+30=45，后排-20=0
-    - C级（<40分）：基础分0，真龙头+50=50，准龙头+30=30，后排-20=0
-    
-    效果：
-    - S级龙头自然拉到100分
-    - S级核心80分
-    - 后排自动掉到0-30分
-    """
-    try:
-        if not theme:
-            return 50, {}
-        
-        # =========================
-        # 1. 板块分层系统 - 获取主线等级
-        # =========================
-        theme_tier = 'C'  # 默认C级
-        theme_composite_score = 50
-        theme_data = None
-        
-        try:
-            theme_data = das.read_theme_analysis(TRADE_DATE)
-            if theme_data and theme_data.get('themes'):
-                for t in theme_data['themes']:
-                    if t.get('theme_name') == theme:
-                        theme_composite_score = float(t.get('composite_score', 50))
-                        # 分层：S≥80, A 60-80, B 40-60, C <40
-                        if theme_composite_score >= 80:
-                            theme_tier = 'S'
-                        elif theme_composite_score >= 60:
-                            theme_tier = 'A'
-                        elif theme_composite_score >= 40:
-                            theme_tier = 'B'
-                        break
-        except:
-            pass
-        
-        # 板块分层基础分
-        tier_base_score = {'S': 50, 'A': 30, 'B': 15, 'C': 0}.get(theme_tier, 0)
-        
-        # =========================
-        # 2. 龙头识别 - 多维度判断
-        # =========================
-        is_leader = False
-        is_core = False
-        sector_rank = 10  # 默认后排
-
-        
-        # 2.1 从主题分析数据获取龙头标记和连板高度
-        if theme_data and theme_data.get('themes'):
-            for t in theme_data['themes']:
-                if t.get('theme_name') == theme:
-                    lc = t.get('leader_code', '')
-                    cc = t.get('core_code', '')
-                    
-                    # 龙头代码匹配
-                    if lc and str(ts_code) in str(lc):
-                        is_leader = True
-                        sector_rank = 1
-                    elif cc and str(ts_code) in str(cc):
-                        is_core = True
-                        sector_rank = 2
-                    
-                    break
-                    break
-        
-        # 2.2 从theme.json配置判断
-        if sector_rank >= 10 and stock_info:
-            try:
-                cfg_path = os.path.join(BASE_DIR, 'theme.json')
-                if os.path.exists(cfg_path):
-                    with open(cfg_path, 'r', encoding='utf-8') as f:
-                        tc = json.load(f).get('HOT_THEMES', {})
-                    if theme in tc:
-                        td = tc[theme]
-                        sn = stock_info.get('name', '')
-                        if sn in td.get('leader_companies', []):
-                            is_leader = True
-                            sector_rank = 1
-                        elif sn in td.get('core_companies', []):
-                            is_core = True
-                            sector_rank = 2
-            except:
-                pass
-        
-        # 2.3 从V7指标推断（涨幅、成交额占比）
-        if sector_rank >= 10 and v75_result and df is not None:
-            try:
-                # 今日涨幅
-                if len(df) >= 2:
-                    today_pct = (df['close'].iloc[-1] / df['close'].iloc[-2] - 1) * 100
-                    
-                    # 涨幅≥7% 且 量能爆发 → 可能是龙头
-                    vol_explosion = float(v75_result.get('量能爆发', 0))
-                    if today_pct >= 7 and vol_explosion >= 0.7:
-                        is_leader = True
-                        sector_rank = 1
-                    elif today_pct >= 5 and vol_explosion >= 0.5:
-                        is_core = True
-                        sector_rank = 2
-                
-                # 主题纯度高 + 强化系数高
-                tc = float(v75_result.get('主题纯度', 30))
-                tsb = float(v75_result.get('主题强化系数', 1.0))
-                if tc >= 70 and tsb >= 1.3:
-                    if sector_rank > 2:
-                        sector_rank = 2
-                        is_core = True
-                elif tc >= 50 and tsb >= 1.1:
-                    if sector_rank > 3:
-                        sector_rank = 3
-            except:
-                pass
-        
-        # =========================
-        # 3. 龙头拉开机制 - 非线性加成
-        # =========================
-        leader_bonus = 0
-        if is_leader:
-            leader_bonus = 50  # 真龙头 +50分
-        elif is_core:
-            leader_bonus = 30  # 准龙头 +30分
-        elif sector_rank >= 10:
-            leader_bonus = -20  # 后排 -20分惩罚
-        
-
-        # =========================
-        # 5. 综合评分计算
-        # =========================
-        # 基础分：板块分层
-        base_score = tier_base_score
-        
-        # 龙头加成
-        final_score = base_score + leader_bonus
-        
-        # 限制在0-100范围
-        final_score = min(100, max(0, final_score))
-        
-        # =========================
-        # 6. 返回结果
-        # =========================
-        details = {
-            '板块等级': theme_tier,
-            '板块综合分': round(theme_composite_score, 1),
-            '板块排名': sector_rank,
-            '是否龙头': is_leader,
-            '是否核心': is_core,
-            '分层基础分': tier_base_score,
-            '龙头加成': leader_bonus
-        }
-        
-        return round(final_score, 1), details
-        
-    except Exception as e:
-        print(f'[sector_position] 失败: {e}')
-        import traceback
-        traceback.print_exc()
-        return 50, {}
-
-
-def calc_capital_dominance_score(ts_code, stock_info, theme, v75_result, df):
-    """capital_dominance 资金主导力评分 (0-100)
-    
-    量能集中度(40分) + 资金活跃度(35分) + 主力买入迹象(25分)
-    """
-    try:
-        score = 0
-        # 1. 量能集中度 (40分)
-        vol_conc = 0
-        if df is not None and len(df) >= 20:
-            try:
-                v = df['vol'].values
-                c = df['close'].values
-                amt_5d = (v[-5:] * c[-5:]).mean()
-                amt_20d = (v * c).mean()
-                ar = amt_5d / amt_20d if amt_20d > 0 else 1.0
-                if ar >= 2.0: vol_conc = 40
-                elif ar >= 1.5: vol_conc = 32
-                elif ar >= 1.2: vol_conc = 24
-                elif ar >= 1.0: vol_conc = 16
-                else: vol_conc = 10
-            except:
-                pass
-        score += vol_conc
-        # 2. 资金活跃度 (35分)
-        cap_act = 0
-        if v75_result:
-            try:
-                ve = float(v75_result.get('量能爆发', 0))
-                mm = float(v75_result.get('资金动量', 0))
-                cap_act = min(35, round((ve * 0.5 + mm * 0.5) * 35))
-            except:
-                pass
-        score += cap_act
-        # 3. 主力买入迹象 (25分)
-        buying = 0
-        if df is not None and len(df) >= 2:
-            try:
-                cv = df['close'].values
-                vv = df['vol'].values
-                tp = (cv[-1] / cv[-2] - 1) * 100
-                vr = vv[-1] / max(vv[-20:].mean(), 0.01)
-                if tp >= 5 and vr >= 2.0: buying = 25
-                elif tp >= 3 and vr >= 1.5: buying = 20
-                elif tp >= 2 and vr >= 1.3: buying = 15
-                elif tp >= 1 and vr >= 1.2: buying = 10
-                elif tp > 0: buying = 5
-                else: buying = 2
-            except:
-                pass
-        score += buying
-        score = min(100, max(0, score))
-        return round(score, 1), {'量能集中度': vol_conc, '资金活跃度': cap_act, '主力买入': buying}
-    except Exception as e:
-        print(f'[capital_dominance] 失败: {e}')
-        return 50, {}
-
-def calc_dual_layer_score_v9(df, ts_code='', stock_info=None, theme=''):
-    """
-    V9综合评分系统 V3 - 龙头拉开机制 + 板块分层系统
-
-    核心升级：
-    1. 龙头拉开机制：板块位置评分非线性加成，龙头自然拉开到80+
-    2. 板块分层系统：S/A/B/C级主线分层，后排自动掉到40以下
-    3. 开仓模型统一：V9评分与开仓模型统一，减少回撤
-
-    核心公式：
-    FinalScore = V7.5 * 0.35 + OpenScore * 0.25 + YRI * 0.15 + TLI * 0.10 + sector_position * 0.10 + capital_dominance * 0.05
-
-    其中：
-    - V7.5: V7.5综合评分（趋势+资金+结构）
-    - OpenScore: 游资开仓评分（V9.7：主线强度+龙头地位+成交额+资金体量）
-    - YRI: 辨识度评分（Y Recognition Index）
-    - TLI: 主题生命力评分（Theme Life Index）
-    - sector_position: 板块位置评分（V2：龙头拉开机制+板块分层+连板高度）
-    - capital_dominance: 资金主导力评分（量能集中度+资金活跃度+主力买入迹象）
-    
-    效果：
-    - S级主线龙头：板块位置 = 15(分层) + 40(龙头) + 50(7板) = 105 → 限100
-    - A级主线核心：板块位置 = 10(分层) + 20(核心) + 20(3板) = 50
-    - B级后排：板块位置 = 5(分层) - 10(后排惩罚) = -5 → 限0
-    """
-
-    # =========================
-    # 1. 获取 V7.5 评分
-    # =========================
-    v75_result = calc_dual_layer_score_v75(df, ts_code=ts_code, stock_info=stock_info, theme=theme)
-    v75_score = float(v75_result.get('V7总评分', 0))
-
-    # =========================
-    # 2. 获取 OpenScore（开仓评分）
-    # =========================
-    open_score = 0
-    structure_type = "未知"
-    open_recommendation = ""
-    try:
-        open_score, structure_type, open_recommendation = calc_hot_money_open_score_v9(
-            v75_result, df, stock_info, theme=theme
-        )
-        open_score = float(open_score)
-    except Exception as e:
-        print(f"[V9] OpenScore计算失败: {e}")
-        open_score = v75_score * 0.8
-
-    # =========================
-    # 3. 计算 YRI（辨识度评分）
-    # =========================
-    yri_score, yri_details = calc_yri_score(ts_code, stock_info, theme, v75_result, df)
-
-    # =========================
-    # 4. 计算 TLI（主题生命力）
-    # =========================
-    tli_score, tli_details = calc_tli_score(theme, top_n=10, days=60)
-
-    # =========================
-    # 5. 计算 sector_position（板块位置）
-    # =========================
-    sector_pos_score, sector_pos_details = calc_sector_position_score(ts_code, stock_info, theme, v75_result, df)
-
-    # =========================
-    # 6. 计算 capital_dominance（资金主导力）
-    # =========================
-    cap_dom_score, cap_dom_details = calc_capital_dominance_score(ts_code, stock_info, theme, v75_result, df)
-
-    # =========================
-    # 7. V9 综合评分 V4 - 拉开机制
-    # =========================
-    # 7a. 加权平均基础分（权重微调：增强YRI辨识度）
-    base_score = (
-        v75_score * 0.30 +
-        open_score * 0.25 +
-        yri_score * 0.20 +
-        tli_score * 0.10 +
-        sector_pos_score * 0.10 +
-        cap_dom_score * 0.05
-    )
-
-    # 7b. 爆发力加分：任何维度超过50分的部分×0.3累加
-    # 让在任一方面表现突出的股票拉开差距
-    components = [v75_score, open_score, yri_score, tli_score, sector_pos_score, cap_dom_score]
-    standout_bonus = sum(max(0, c - 50) * 0.30 for c in components)
-
-    # 7c. 龙头加分：板块位置显示为龙头再额外加
-    leader_bonus = 0
-    if sector_pos_details:
-        is_leader_flag = sector_pos_details.get('是否龙头', False)
-        is_core_flag = sector_pos_details.get('是否核心', False)
-        if is_leader_flag:
-            leader_bonus = 12
-        elif is_core_flag:
-            leader_bonus = 6
-
-    # 7d. 综合得分
-    final_score = base_score + standout_bonus + leader_bonus
-    final_score = min(100, max(0, final_score))
-    
-    # 7e. 记录拉开明细
-    pull_away_details = {
-        '加权基础分': round(base_score, 1),
-        '爆发力加分': round(standout_bonus, 1),
-        '龙头加分': leader_bonus,
-        '各维度': {f'c{i}': round(c, 1) for i, c in enumerate(components)}
-    }
-
-    # =========================
-    # 8. 组装结果
-    # =========================
-    result = v75_result.copy()
-
-    # 提取板块位置详情中的关键信息
-    theme_tier = sector_pos_details.get('板块等级', 'C') if sector_pos_details else 'C'
-    is_leader = sector_pos_details.get('是否龙头', False) if sector_pos_details else False
-    leader_height = sector_pos_details.get('连板高度', 0) if sector_pos_details else 0
-    
-    # V9评分说明 - 显示分层信息
-    tier_emoji = {'S': '🔴', 'A': '🟠', 'B': '🟡', 'C': '⚪'}.get(theme_tier, '⚪')
-    leader_mark = '👑龙头' if is_leader else ('⭐核心' if sector_pos_details.get('是否核心') else '')
-    height_mark = f' {leader_height}板' if leader_height > 0 else ''
-    
-    score_desc = (
-        f"V9={final_score:.1f} = "
-        f"基({base_score:.1f}) + 爆({standout_bonus:.1f}) + 龙({leader_bonus}) | "
-        f"V7.5({v75_score:.1f})×0.30 + 开({open_score:.1f})×0.25 + "
-        f"YRI({yri_score:.1f})×0.20 + TLI({tli_score:.1f})×0.10 + "
-        f"板块({sector_pos_score:.1f})×0.10 + 资金({cap_dom_score:.1f})×0.05"
-    )
-    
-    if theme_tier or leader_mark:
-        score_desc += f" | {tier_emoji}{theme_tier}级{leader_mark}{height_mark}"
-
-    result.update({
-        "V7.5评分": round(v75_score, 2),
-        "开仓评分": round(open_score, 2),
-        "辨识度评分": round(yri_score, 2),
-        "生命力评分": round(tli_score, 2),
-        "板块位置评分": round(sector_pos_score, 2),
-        "资金主导力评分": round(cap_dom_score, 2),
-
-        "V9总评分": round(final_score, 2),
-
-        "结构类型": structure_type,
-        "板块等级": theme_tier,
-        "是否龙头": is_leader,
-
-        "辨识度详情": yri_details,
-        "生命力详情": tli_details,
-        "板块位置详情": sector_pos_details,
-        "资金主导力详情": cap_dom_details,
-        "拉开明细": pull_away_details,
-
-        "V9评分说明": score_desc,
-        "开仓建议": open_recommendation
-    })
-
-    return result
-
 
 def calc_position_factor(df):
 
@@ -3391,8 +2735,8 @@ def calc_hot_money_open_score_v9(v7_result, df, stock_info, theme=''):
                             break
             except Exception as e:
                 print(f"[开仓评分V9] 获取主线排名失败: {e}")
-        #暂时不用主线排名
-        open_score += 0
+        
+        open_score += rank_bonus
         
         # 确保在0-100范围内
         open_score = min(100, max(0, open_score))
@@ -3707,7 +3051,7 @@ def rank_top_stocks_for_open(df_list, results_list):
             '现价': v7_result.get('现价', 0),
             '涨跌幅': v7_result.get('涨跌幅', 0),
             '所属主题': v7_result.get('所属主题', ''),
-            'V9总评分': v7_result.get('V9总评分', v7_result.get('V7总评分', 0)),
+            'V7总评分': v7_result.get('V7总评分', 0),
             '失败概率': v7_result.get('失败概率', 0),
             '量能爆发': v7_result.get('量能爆发', 0),
             '突破强度': v7_result.get('突破强度', 0),
@@ -3747,7 +3091,7 @@ def print_hot_money_open_report(ranked_stocks, top_n=10):
         print(f"\n【第{i}名】{stock['名称']} ({stock['代码']})")
         print(f"  结构类型: {stock['结构类型']}")
         print(f"  开仓评分: {stock['开仓评分']}")
-        print(f"  V9基础分: {stock['V9总评分']} | 失败概率: {stock['失败概率']:.1%}")
+        print(f"  V7基础分: {stock['V7总评分']} | 失败概率: {stock['失败概率']:.1%}")
         print(f"  今日涨幅: {stock['涨跌幅']:.2f}%")
         print(f"  量能爆发: {stock['量能爆发']:.2f} | 突破强度: {stock['突破强度']:.2f}")
         print(f"  推荐理由: {stock['推荐理由']}")
@@ -3755,12 +3099,12 @@ def print_hot_money_open_report(ranked_stocks, top_n=10):
     print("\n" + "-" * 80)
     print("📋 完整排名表:")
     print("-" * 80)
-    print(f"{'排名':<4} {'代码':<12} {'名称':<8} {'结构类型':<10} {'开仓分':<8} {'V9分':<8} {'主题':<12}")
+    print(f"{'排名':<4} {'代码':<12} {'名称':<8} {'结构类型':<10} {'开仓分':<8} {'V7分':<8} {'主题':<12}")
     print("-" * 80)
     
     for i, stock in enumerate(ranked_stocks, 1):
         print(f"{i:<4} {stock['代码']:<12} {stock['名称']:<8} {stock['结构类型']:<10} "
-              f"{stock['开仓评分']:<8.1f} {stock['V9总评分']:<8.1f} {stock['所属主题']:<12}")
+              f"{stock['开仓评分']:<8.1f} {stock['V7总评分']:<8.1f} {stock['所属主题']:<12}")
     
     print("=" * 80)
     
@@ -4163,121 +3507,251 @@ def calc_up_down_volume_ratio(
 # 主策略
 # =========================
 def strategy(df, code, emotion_stage):
-    """优化版本：向量化计算 + 提前过滤 + 缓存复用"""
+
     
-    # ===== 快速前置过滤（低成本判断优先）=====
     if len(df) < 80:
         return False
+
+    C = df['close']
+
+    O = df['open']
+
+    H = df['high']
+    L = df['low']
     
-    # ST股票过滤（代码前缀判断，无需查询字典）
-    if code.startswith('1') or code.startswith('2'):
+    VOL = df['vol']
+    
+    StockName = get_stock_name(code)
+
+    # =========================
+    # 创业板 科创板
+    # =========================
+    #ST = (
+    #    code.startswith('688') or
+    ##    code.startswith('300') or
+    #    code.startswith('301') 
+    #)
+
+    # =========================
+    # 创业板 科创板
+    # =========================
+
+
+    ST = (code.startswith('3') or code.startswith('688'))  
+
+    ST1 = (StockName.upper().startswith('ST') or
+        StockName.upper().startswith('*ST')) or (code.startswith('1') or (code.startswith('2')))
+#
+    if  ST1:
         return False
-    
-    # 两个月涨幅过滤
+
+    # =========================
+    # 过热过滤：两个月涨幅 > 100% 剔除
+    # =========================
     if len(df) >= 40:
-        close_values = df['close'].values
-        ret_2m = close_values[-1] / close_values[-40] - 1
+        ret_2m = df['close'].iloc[-1] / df['close'].iloc[-40] - 1
         if ret_2m > 1.0:
             return False
-    
-    # ===== 数据提取（一次提取，多次使用）=====
-    C = df['close'].values
-    O = df['open'].values
-    H = df['high'].values
-    L = df['low'].values
-    VOL = df['vol'].values
-    
-    # ===== 创业板/科创板判断 =====
-    ST = code.startswith('3') or code.startswith('688')
-    
-    # ST名称过滤（延后到这里，只在必要时调用）
-    StockName = get_stock_name(code)
-    ST1 = (StockName.upper().startswith('ST') or 
-            StockName.upper().startswith('*ST'))
-    if ST1:
-        return False
-    
-    # ===== 启动过滤：60日振幅 =====
+
+    # =========================
+    # 启动过滤：必须是“相对新启动结构”
+    # =========================
     if len(df) >= 60:
-        hh = H[-60:].max()
-        ll = L[-60:].min()
-        if (hh / ll - 1) > 1.8:
+        hh = df['high'].iloc[-60:].max()
+        ll = df['low'].iloc[-60:].min()
+        range_ratio = (hh / ll - 1)
+
+        # 如果60日振幅过大（已走过主升），过滤
+        if range_ratio > 1.8:
             return False
-    
-    # ===== 均线计算（一次计算，多次使用）=====
-    C_series = df['close']
-    ma5 = C_series.rolling(5).mean().values
-    ma20 = C_series.rolling(20).mean().values
-    ma22 = C_series.rolling(22).mean().values
-    ma60 = C_series.rolling(60).mean().values
-    
-    # 均线条件
-    if C[-1] >= ma20[-1] * 1.2 and C[-1] / ma60[-1] > 1.5:
-        return False
-    
-    # ===== 涨停判断（向量化）=====
-    ZT_1day = (C_series.shift(1) / C_series.shift(2) < 1.08) & (C_series / C_series.shift(1) > 1.098)
-    ZT_2day = (C_series.shift(1) / C_series.shift(2) >= 1.051) & (C_series / C_series.shift(1) >= 1.051) & (C_series / C_series.shift(2) >= 1.11)
+        
+    # =========================
+    # 启动确认（趋势初期）
+    # =========================
+    ma20 = C.rolling(20).mean()
+    ma60 = C.rolling(60).mean()
+
+    # 必须处于均线修复或突破初期
+    if C.iloc[-1] < ma20.iloc[-1] * 1.2:
+        pass
+    else:
+        # 允许突破，但不能过度偏离
+        if C.iloc[-1] / ma60.iloc[-1] > 1.5:
+            return False
+    # =========================
+    # 涨停或连续两日大涨
+    # =========================
+    # 条件1：单日涨停（涨幅>9.8%）
+    ZT_1day = (
+        (C.shift(1) / C.shift(2) < 1.08) &
+        (C / C.shift(1) > 1.098) 
+    )
+    # 条件2：连续两日每日上涨5%以上
+    ZT_2day = (
+        (C.shift(1) / C.shift(2) >= 1.051) &
+        (C / C.shift(1) >= 1.051) &
+        (C / C.shift(2) >= 1.11)  # 两日累计涨幅>=10%
+    )
+    # 合并条件：满足任意一个即可
     ZT = ZT_1day | ZT_2day
-    
-    # 使用向量化的barslast
     ZTTS = barslast(ZT)
-    
-    # 原版逻辑：如果今天涨停(ztts=0)，取前一个信号
+
     ztts = ZTTS.iloc[-1]
-    if ztts == 0:
+    if ztts ==0:
         ztts = ZTTS.iloc[-2]
-    
+
     if np.isnan(ztts):
         return False
-    
+
     ztts = int(ztts)
-    
-    # ===== 条件1：ZTTS范围 =====
-    if ztts < 2 or ztts > 30:
-        return False
-    
-    # ===== 缓存ztts区间数据（避免重复切片）=====
-    ztts_close = C[-ztts:]
-    ztts_df = df.iloc[-ztts:]
-    ztts_vol = ztts_df['vol'].values
-    vol_ma5 = ztts_df['vol'].rolling(5).mean().values  # 只计算一次
-    
-    # ===== TJ条件判断 =====
-    ref_close = C[-ztts-1]
-    cond2 = (ztts_close < ref_close).sum() == 0
-    cond3 = (ztts_close.max() / ztts_close.min()) < 1.3
-    cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
-    cond5 = H[-ztts:].max() >= H[-120:].max() * 0.9
-    cond6 = ma22[-1] >= ma22[-2]
-    
-    # 量能条件（复用vol_ma5）
-    cond_low_vol = (ztts_vol < vol_ma5 * 0.9).any()
-    
-    # 回撤计算（向量化）
-    cum_max = np.maximum.accumulate(ztts_close)
-    drawdown = (ztts_close - cum_max) / cum_max
-    cond_dd = drawdown.min() >= -0.15
-    
-    # 放量大跌判断（复用vol_ma5）
-    down_k = ztts_df['close'].values < ztts_df['open'].values
-    big_vol = ztts_vol > vol_ma5 * 1.5
-    big_drop = ztts_df['pct_chg'].values < -5
-    cond_no_bad_k = ~(down_k & big_vol & big_drop).any()
-    
+
+    # =========================
+    # TJ
+    # =========================
+    cond1 = ztts >= 2 and ztts <= 30
+
+    ref_close = C.shift(ztts + 1).iloc[-1]
+
+    recent_close = C.iloc[-ztts:]
+
+    cond2 = (recent_close < ref_close).sum() == 0
+
+    cond3 = (
+        recent_close.max() /
+        recent_close.min()
+    ) < 1.3
+
+    cond4 = (
+        C.iloc[-1] /
+        H.shift(ztts).iloc[-1]
+    ) < 1.2
+
+    cond5 = (
+        H.iloc[-ztts:].max() >=
+        H.iloc[-120:].max() * 0.9
+    )
+
+    ma22 = C.rolling(22).mean()
+    ma5 = C.rolling(5).mean()
+    cond6 = (
+        ma22.iloc[-1] >=
+        ma22.iloc[-2]
+    )
+
+    # =========================
+    # ZTTS 量能结构增强条件
+    # =========================
+
+    ztts_window = recent_close.index  # 或直接用 df tail
+
+    ztts_df = df.iloc[-ztts:]  # ZTTS区间数据
+
+    VOL_ma = ztts_df['vol'].rolling(5).mean()
+
+    # 1. 缩量：低于均量 70%
+    cond_low_vol = (ztts_df['vol'] < VOL_ma * 0.9).any()
+
+    # 2. 温和放量：1.1~1.8倍均量
+    cond_mid_vol = (
+        (ztts_df['vol'] > VOL_ma * 1.1) &
+        (ztts_df['vol'] < VOL_ma * 1.8)
+    ).any()
+
+    # 3. 回撤不超过10%
+    # =========================
+    # 回撤
+    # =========================
+    cum_max = ztts_df['close'].cummax()
+
+    drawdown = (
+        (ztts_df['close'] - cum_max)
+        / cum_max
+    )
+
+    max_dd = drawdown.min()
+
+    # 最大回撤不超过10%
+    cond_dd = max_dd >= -0.15
+
+
+    # =========================
+    # 无放量下跌K线
+    # =========================
+
+    vol_ma5 = ztts_df['vol'].rolling(5).mean()
+
+    # 阴线
+    down_k = (
+        ztts_df['close'] < ztts_df['open']
+    )
+
+    # 放量
+    big_vol = (
+        ztts_df['vol'] > vol_ma5 * 1.5
+    )
+
+    # 大跌
+    big_drop = (
+        ztts_df['pct_chg'] < -5
+    )
+
+    # 放量大跌阴线
+    bad_k = (
+        down_k &
+        big_vol &
+        big_drop
+    )
+
+    # 不允许出现
+    cond_no_bad_k = ~bad_k.any()
+
+
+    # 必须同时满足
     cond7 = cond_low_vol and cond_no_bad_k
     
-    TJ = cond3 and cond4 and cond5 and cond6 and cond7
+    TJ = (
+        cond1 and
+        cond3 and
+        cond4 and
+        cond5 and
+        cond6 and
+        cond7
+    )
+
     if not TJ:
         return False
     
-    # ===== XH 判断 =====
-    highest_close = C[-ztts-1:-1].max()
-    cond_xh1 = (C[-1] > highest_close) or (H[-1] > H[-2] and H[-1] > H[-3] and C[-1]/C[-2] > 1.05)
-    cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.15 and C[-1] / ma5[-1] > 0.97
-    
-    return cond_xh1 and cond_xh2
 
+    # =========================
+    # XH
+    # =========================
+    highest_close = (
+        C.iloc[-ztts-1:-1].max()
+    )
+
+    highest_vol = (
+        VOL.iloc[-ztts-1:-1].max()
+    )
+
+    cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3] and C.iloc[-1]/C.iloc[-2])>1.05)
+    #cond_xh1 = (C.iloc[-1] > highest_close)
+    cond_xh2 = C.iloc[-1]>C.iloc[-2] and C.iloc[-1] / ma5.iloc[-1] <1.15 and C.iloc[-1] / ma5.iloc[-1] > 0.97
+    cond_xh3 = C.iloc[-2] > highest_close or C.iloc[-3] > highest_close or C.iloc[-1] > C.iloc[-ztts-1]
+    cond_xh4 = C.iloc[-1] / C.iloc[-2]<0.99 and C.iloc[-1] > ma5.iloc[-1] * 0.95 and VOL.iloc[-1] < VOL.iloc[-2]
+    
+    XH = (cond_xh1 and cond_xh2) 
+    
+    return XH
+
+# =========================
+# 主线板块分析（Tushare版）
+# =========================
+
+# =========================
+# 获取全部股票日线
+# =========================
+
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 def get_daily_df():
 
@@ -5068,7 +4542,7 @@ def get_tracking_stocks():
                 pass
             
             if is_valid:
-                # =====改用开仓评分系统评测=====
+                # =====改用V75评分系统=====
                 stock_industry = industry_dict.get(ts_code, '')
                 stock_info = {
                     "name": row['name'],
@@ -5078,22 +4552,11 @@ def get_tracking_stocks():
                 }
                 
                 last_score = 0.0
-                open_score = 0.0
-                structure_type = "未知"
-                open_recommendation = ""
-                
                 try:
                     df_hist = get_hist_data(ts_code)
                     if df_hist is not None and len(df_hist) >= 60:
-                        # 获取V9评分
-                        v9_result = calc_dual_layer_score_v9(df_hist, ts_code=ts_code, stock_info=stock_info)
-                        last_score = v9_result.get('V9总评分', 0)
-                        
-                        # 获取开仓评分和状态
                         v75_result = calc_dual_layer_score_v75(df_hist, ts_code=ts_code, stock_info=stock_info)
-                        open_score, structure_type, open_recommendation = calc_hot_money_open_score_v9(
-                            v75_result, df_hist, stock_info
-                        )
+                        last_score = v75_result.get('V7总评分', 0)
                     else:
                         # 数据不足，回退到旧评分
                         last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
@@ -5101,7 +4564,6 @@ def get_tracking_stocks():
                             last_score = min(last_score, 50)
                 except Exception as e:
                     # 计算失败，回退到旧评分
-                    print(f"开仓评分计算失败 {ts_code}: {e}")
                     last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
                     if last_score > 100:
                         last_score = min(last_score, 50)
@@ -5110,10 +4572,8 @@ def get_tracking_stocks():
                 latest_kline = kline_data.get(ts_code)
                 if latest_kline is not None:
                     latest_close = float(latest_kline['close'])
-                    pct_chg = float(latest_kline.get('pct_chg', 0))
                 else:
                     latest_close = float(row['close']) if str(row['close']).strip() not in ['', 'None'] else 0.0
-                    pct_chg = 0.0
                 
                 tracking_stocks.append({
                     'code': ts_code,
@@ -5121,13 +4581,9 @@ def get_tracking_stocks():
                     'last_date': TRADE_DATE,
                     'last_close': latest_close,
                     'last_score': last_score,
-                    'open_score': open_score,
-                    'structure_type': structure_type,
-                    'open_recommendation': open_recommendation,
                     'range_5d_pct': range_pct,
                     'max_pct': max_pct,
-                    'bias_rate': bias_rate,
-                    'pct_chg': pct_chg
+                    'bias_rate': bias_rate
                 })
         
         # 按V75评分排序，取前10只
@@ -5139,11 +4595,11 @@ def get_tracking_stocks():
             lines.append("=" * 80)
             lines.append("跟踪分析股票池（最高涨幅≤20%、5日均线上、5日乖离率<5%）")
             lines.append("=" * 80)
-            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'开仓分':<8} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10} {'当日涨跌':<10}")
-            lines.append("-" * 90)
+            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'评分':<10} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10}")
+            lines.append("-" * 80)
             for stock in tracking_stocks:
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['last_score']:<8.2f} {stock.get('open_score', 0):<8.2f} {stock.get('structure_type', '未知'):<8} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}% {stock['bias_rate']:<10.2f}% {stock.get('pct_chg', 0):<+10.2f}%")
-            lines.append("=" * 90)
+                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['last_score']:<10.2f} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}% {stock['bias_rate']:<10.2f}%")
+            lines.append("=" * 80)
         
        
         return tracking_stocks, "\n".join(lines), ""
@@ -5396,7 +4852,13 @@ def filter_by_top_themes(result_df, top_n=5):
     result_df['主题匹配度'] = [match_scores[i] for i in range(len(match_scores)) if keep[i]]
     
     print(f"[主题过滤] 过滤后 {before} -> {len(result_df)} 只")
-   
+    
+    # 打印匹配详情
+    if len(result_df) > 0:
+        print(f"\n[主题匹配详情] TOP10:")
+        for i, r in result_df.head(10).iterrows():
+            print(f"  {i+1}. {r['名称']}({r['代码']}) -> {r['所属主题']} (成份股)")
+    
     return result_df
 
 
@@ -5709,7 +5171,7 @@ def run(target_date=None, simple_mode=False):
         except:
             pass
 
-        factor = calc_dual_layer_score_v9(
+        factor = calc_dual_layer_score_v75(
             hist, ts_code, stock_info, theme
         )
 
@@ -5737,7 +5199,7 @@ def run(target_date=None, simple_mode=False):
     result_df = result_df.sort_values(
 
         by=[
-            'V9总评分'
+            'V7总评分'
             
         ],
 
@@ -5749,9 +5211,9 @@ def run(target_date=None, simple_mode=False):
     # 保存时要把V7总评分作为score字段
     # 创建一个临时副本，修改score字段后保存
     result_df_save = result_df.copy()
-    if 'V9总评分' in result_df_save.columns:
-        # 用V9总评分覆盖score列（如果有）或作为新列
-        result_df_save['总排序评分'] = result_df_save['V9总评分']
+    if 'V7总评分' in result_df_save.columns:
+        # 用V7总评分覆盖score列（如果有）或作为新列
+        result_df_save['总排序评分'] = result_df_save['V7总评分']
     save_result(result_df_save)
 
     # ===== 主题过滤：只保留短线TOP5+中线TOP5覆盖的个股 =====
@@ -5763,9 +5225,9 @@ def run(target_date=None, simple_mode=False):
     top10_df = result_df.head(30)
     print("\n========== Top30 个股 ==========\n")
     # 显示所属主题字段（如果存在）
-    display_cols = ['代码', '名称', '现价', '涨跌幅', 'V9总评分', '风险等级','所属主题','趋势概率','突破强度','压缩度','量能爆发']
+    display_cols = ['代码', '名称', '现价', '涨跌幅', 'V7总评分', '风险等级','所属主题','趋势概率','突破强度','压缩度','量能爆发']
     if '所属主题' in top10_df.columns:
-        display_cols = ['代码', '名称', '现价', '涨跌幅', '所属主题', 'V9总评分', '风险等级','趋势概率','突破强度','压缩度','量能爆发']
+        display_cols = ['代码', '名称', '现价', '涨跌幅', '所属主题', 'V7总评分', '风险等级','趋势概率','突破强度','压缩度','量能爆发']
     print(top10_df[display_cols])
     
     # =========================
@@ -5819,7 +5281,7 @@ def run(target_date=None, simple_mode=False):
                     '现价': float(row.get('现价', 0)),
                     '涨跌幅': today_pct,
                     '所属主题': theme_name,
-                    'V9总评分': float(row.get('V9总评分', 50)),
+                    'V7总评分': float(row.get('V7总评分', 50)),
                     '风险等级': str(row.get('风险等级', '低')),
                     '趋势概率': float(row.get('趋势概率', 0.5)),
                     '失败概率': float(row.get('失败概率', 0.5)),
@@ -5860,7 +5322,7 @@ def run(target_date=None, simple_mode=False):
             for i, s in enumerate(top3_stocks, 1):
                 lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
                 lines.append(f"  结构类型: {s['结构类型']}")
-                lines.append(f"  开仓评分: {s['开仓评分']:.1f} | V9基础分: {s['V9总评分']:.1f}")
+                lines.append(f"  开仓评分: {s['开仓评分']:.1f} | V7基础分: {s['V7总评分']:.1f}")
                 lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 失败概率: {s['失败概率']:.1%}")
                 lines.append(f"  量能爆发: {s['量能爆发']:.2f} | 突破强度: {s['突破强度']:.2f}")
                 lines.append(f"  推荐理由: {s['推荐理由']}")
@@ -5922,11 +5384,11 @@ def run(target_date=None, simple_mode=False):
                 lines.append("=" * 80)
                 lines.append("跟踪分析股票池（最高涨幅≤20%、5日均线上、5日乖离率<5%）")
                 lines.append("=" * 80)
-                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'开仓分':<8} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10} {'当日涨跌':<10}")
-                lines.append("-" * 90)
+                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'评分':<10} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10}")
+                lines.append("-" * 80)
                 for stock in tracking_stocks:
-                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('last_score', 0):<8.2f} {stock.get('open_score', 0):<8.2f} {stock.get('structure_type', '未知'):<8} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('bias_rate', 0):<10.2f}% {stock.get('pct_chg', 0):<+10.2f}%")
-                lines.append("=" * 90)
+                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('last_score', 0):<10.2f} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('bias_rate', 0):<10.2f}%")
+                lines.append("=" * 80)
             tracking_stocks_text = "\n".join(lines)
     except Exception as e:
         print(f"获取跟踪分析个股失败: {e}")

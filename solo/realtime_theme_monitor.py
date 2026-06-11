@@ -45,6 +45,17 @@ try:
 except:
     TS_AVAILABLE = False
 
+# ── 主题评分算法（来自 theme_trend_sentiment_score.py） ──
+import numpy as np
+try:
+    from theme_trend_sentiment_score import (
+        per_stock_features, calc_trend_score, calc_sentiment_score,
+        sigmoid, linear
+    )
+    THEME_SCORE_AVAILABLE = True
+except Exception as e:
+    print(f"⚠ 主题评分模块加载失败: {e}，将使用简化评分")
+    THEME_SCORE_AVAILABLE = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
@@ -89,6 +100,9 @@ class RealtimeThemeMonitor:
 
         # ── 指数历史K线（盘后缓存，用于MA5/10/20） ──
         self.index_klines = {}      # name -> DataFrame
+
+        # ── 成分股历史K线（用于主题趋势/情绪分计算） ──
+        self.stock_klines = {}      # ts_code -> DataFrame (trade_date, close, high, low, vol, pct_chg)
 
         # ── 冷却控制（避免重复推送） ──
         self.last_theme_alert = {}      # theme_name -> timestamp
@@ -492,6 +506,122 @@ class RealtimeThemeMonitor:
                     return cand
         # 默认用最新 query_date
         return q
+
+    # ── 成分股K线加载（用于主题趋势/情绪分计算） ──
+    def load_component_klines(self, days=65):
+        """加载所有成分股的历史K线数据用于趋势/情绪分计算"""
+        if not TS_AVAILABLE or not THEME_SCORE_AVAILABLE:
+            print("⚠ Tushare或主题评分模块不可用，跳过K线加载")
+            return
+
+        import pandas as pd
+        all_codes = list(self.stock_themes.keys())
+        if not all_codes:
+            return
+
+        trade_date = self._get_last_trade_date()
+        start_date = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=days)).strftime('%Y%m%d')
+
+        print(f"⏳ 加载成分股K线: {len(all_codes)} 只, {start_date}~{trade_date}...")
+
+        # 分批获取（每批50只）
+        batch_size = 50
+        total_loaded = 0
+        for i in range(0, len(all_codes), batch_size):
+            batch = all_codes[i:i+batch_size]
+            try:
+                df = pro.daily(ts_code=",".join(batch), start_date=start_date, end_date=trade_date)
+                if df is not None and not df.empty:
+                    for code, grp in df.groupby('ts_code'):
+                        grp_sorted = grp.sort_values('trade_date').reset_index(drop=True)
+                        # 只保留需要的列
+                        grp_sorted = grp_sorted[['trade_date', 'close', 'high', 'low', 'vol', 'pct_chg']]
+                        self.stock_klines[code] = grp_sorted
+                        total_loaded += 1
+                time.sleep(0.2)  # 避免频率限制
+            except Exception as e:
+                print(f"⚠ K线获取失败 (batch {i//batch_size + 1}): {e}")
+                continue
+
+        print(f"✅ 成分股K线加载完成: {total_loaded}/{len(all_codes)} 只")
+
+    # ── 计算主题趋势/情绪/综合分（每15分钟） ──
+    def compute_theme_scores_realtime(self):
+        """使用实时行情计算各主题的综合评分并输出TOP10"""
+        if not THEME_SCORE_AVAILABLE:
+            return
+
+        if not self.stock_klines:
+            print("⚠ 无成分股K线数据，跳过主题评分")
+            return
+
+        if not self.quotes:
+            return
+
+        # 获取沪深300指数10日收益率（市场基准）
+        market_ret_10 = 0.0
+        hs300_kline = self.index_klines.get("沪深300")
+        if hs300_kline is not None and len(hs300_kline) >= 11:
+            closes = hs300_kline["close"].astype(float).values
+            market_ret_10 = (closes[-1] / closes[-11] - 1) * 100
+
+        results = []
+        for theme_name, stock_list in self.theme_stocks.items():
+            stock_feats = []
+            for ts_code, name, layer in stock_list:
+                kdf = self.stock_klines.get(ts_code)
+                if kdf is None or len(kdf) < 20:
+                    continue
+
+                # 复制K线数据并用实时行情更新最后一行
+                df_work = kdf.copy()
+                quote = self.quotes.get(ts_code)
+                if quote and quote.get('pct_chg') is not None:
+                    # 更新最后一行：使用实时pct_chg和价格
+                    last_idx = len(df_work) - 1
+                    df_work.loc[last_idx, 'pct_chg'] = quote['pct_chg']
+                    # close/high/low 用当前价格更新
+                    if quote.get('price'):
+                        df_work.loc[last_idx, 'close'] = quote['price']
+                    if quote.get('vol'):
+                        df_work.loc[last_idx, 'vol'] = quote['vol']
+
+                feat = per_stock_features(df_work)
+                if feat:
+                    feat['ts_code'] = ts_code
+                    feat['name'] = name
+                    feat['layer'] = layer
+                    # 添加换手率（新浪API无此字段，使用默认值3.0）
+                    feat['turnover'] = 3.0
+                    stock_feats.append(feat)
+
+            if len(stock_feats) < 3:
+                results.append({
+                    'theme': theme_name,
+                    'n_stocks': len(stock_feats),
+                    'trend_score': 0.0,
+                    'sentiment_score': 0.0,
+                    'composite_score': 0.0
+                })
+                continue
+
+            # 计算趋势分和情绪分
+            t_score, _ = calc_trend_score(stock_feats, market_ret_10)
+            s_score, _ = calc_sentiment_score(stock_feats, market_ret_10)
+            c_score = 0.55 * t_score + 0.45 * s_score
+
+            results.append({
+                'theme': theme_name,
+                'n_stocks': len(stock_feats),
+                'trend_score': t_score,
+                'sentiment_score': s_score,
+                'composite_score': c_score
+            })
+
+        # 按综合分排序
+        results.sort(key=lambda x: x['composite_score'], reverse=True)
+
+        return results
 
     # ── 14. 汇总：市场情绪综合评分（三大指数 + 主题） ──
     def compute_market_sentiment_report(self):
@@ -1732,6 +1862,9 @@ class RealtimeThemeMonitor:
         # 加载三大指数盘后K线缓存（用于MA5/MA10/MA20）
         self.load_index_klines()
 
+        # 加载成分股K线数据（用于主题趋势/情绪分计算）
+        self.load_component_klines()
+
         # ── 连接 ──
         if not self.connect():
             print("⏳ 首次连接失败，启动服务器轮巡...")
@@ -1815,6 +1948,24 @@ class RealtimeThemeMonitor:
                 if cycle % 90 == 1:  # 60秒×90=5400秒=15分钟
                     print(f"⏳ 后台更新全市场统计...")
                     self.fetch_full_market_stats_sina()
+
+                    # ── 每15分钟计算并输出主题综合分TOP10 ──
+                    theme_scores = self.compute_theme_scores_realtime()
+                    if theme_scores:
+                        print(f"\n{'='*60}")
+                        print(f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M:%S')}]")
+                        print(f"{'排名':<4} {'主题':<14} {'综合分':<8} {'趋势分':<8} {'情绪分':<8} {'成分股数'}")
+                        print(f"{'-'*60}")
+                        for i, r in enumerate(theme_scores[:10], 1):
+                            print(f"{i:<4} {r['theme']:<14} {r['composite_score']:>6.1f}   {r['trend_score']:>6.1f}   {r['sentiment_score']:>6.1f}   {r['n_stocks']}")
+                        print(f"{'='*60}\n")
+
+                        # ── 推送主题综合分TOP10到微信 ──
+                        lines = []
+                        for i, r in enumerate(theme_scores[:10], 1):
+                            lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f})")
+                        content = f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                        self.send_wechat(f"📊 主题综合评分 TOP10 {now.strftime('%H:%M')}", content)
 
                 # ── 检测 → 推送 ──
                 all_alerts = []

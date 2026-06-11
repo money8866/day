@@ -613,6 +613,15 @@ def linear(x, lo, hi, out_lo=0.0, out_hi=1.0):
 
 
 def calc_trend_score(stock_feats, market_index_ret):
+    """
+    趋势评分 V2: TrendScore = trend_component + structure_component + leader_component + stability_component
+    
+    各组件（均归一化至0-100）：
+    - trend_component(35%): 多周期收益 + 斜率 + 加速度
+    - structure_component(25%): 均线排列 + 中长期结构健康
+    - leader_component(20%): 龙头表现 + 今日前排动量
+    - stability_component(20%): 抗回撤 + 相对强度 + 趋势一致性
+    """
     if not stock_feats:
         return 0.0, {}
 
@@ -621,14 +630,8 @@ def calc_trend_score(stock_feats, market_index_ret):
     avg_ret_10 = np.mean([s["ret_10"] for s in stock_feats])
     avg_ret_20 = np.mean([s["ret_20"] for s in stock_feats])
 
+    # ===== 1. trend_component: 多周期收益 + 斜率 + 加速度 (35%) =====
     ret_score = (linear(avg_ret_5, -10, 15) * 0.5 + linear(avg_ret_10, -15, 25) * 0.3 + linear(avg_ret_20, -25, 40) * 0.2)
-
-    pct_above_ma5 = sum(1 for s in stock_feats if s["ma5_b"] > 0) / n
-    pct_above_ma10 = sum(1 for s in stock_feats if s["ma10_b"] > 0) / n
-    pct_above_ma20 = sum(1 for s in stock_feats if s["ma20_b"] > 0) / n
-    pct_above_ma60 = sum(1 for s in stock_feats if s["ma60_b"] > 0) / n
-    pct_above_ma240 = sum(1 for s in stock_feats if s["ma240_b"] > 0) / n
-    ma_score = pct_above_ma5 * 0.30 + pct_above_ma10 * 0.25 + pct_above_ma20 * 0.20 + pct_above_ma60 * 0.15 + pct_above_ma240 * 0.10
 
     avg_slope10 = np.mean([s["slope_10"] for s in stock_feats])
     avg_slope60 = np.mean([s["slope_60"] for s in stock_feats])
@@ -638,31 +641,55 @@ def calc_trend_score(stock_feats, market_index_ret):
     avg_acc = np.mean([s["acc_5_10"] for s in stock_feats])
     acc_score = sigmoid(avg_acc, k=0.3, c=0)
 
+    trend_component = (ret_score * 0.50 + slope_score * 0.35 + acc_score * 0.15) * 100  # 0-100
+    trend_component = max(0.0, min(100.0, trend_component))
+
+    # ===== 2. structure_component: 均线排列 + 中长期结构健康 (25%) =====
+    pct_above_ma5 = sum(1 for s in stock_feats if s["ma5_b"] > 0) / n
+    pct_above_ma10 = sum(1 for s in stock_feats if s["ma10_b"] > 0) / n
+    pct_above_ma20 = sum(1 for s in stock_feats if s["ma20_b"] > 0) / n
+    pct_above_ma60 = sum(1 for s in stock_feats if s["ma60_b"] > 0) / n
+    pct_above_ma240 = sum(1 for s in stock_feats if s["ma240_b"] > 0) / n
+
+    ma_score = pct_above_ma5 * 0.30 + pct_above_ma10 * 0.25 + pct_above_ma20 * 0.20 + pct_above_ma60 * 0.15 + pct_above_ma240 * 0.10
+
+    # 中长期趋势确认
+    mid_trend_ok = 1 if (avg_slope60 > 0 and avg_slope240 >= 0 and avg_slope10 > 0 and avg_ret_20 >= 0) else 0
+
+    structure_component = (ma_score * 0.80 + mid_trend_ok * 0.20) * 100  # 0-100
+    structure_component = max(0.0, min(100.0, structure_component))
+
+    # ===== 3. leader_component: 龙头表现 + 今日前排动量 (20%) =====
     pcts = sorted([s["pct_chg"] for s in stock_feats], reverse=True)
     top3 = pcts[: min(3, len(pcts))]
     top3_avg = np.mean(top3) if top3 else 0
-    leader_score = linear(top3_avg, -5, 15)
+    leader_strength = linear(top3_avg, -5, 15)
 
+    # 今日前排表现
+    pcts_today = [s["pct_chg"] for s in stock_feats]
+    avg_pct_today = np.mean(pcts_today)
+    today_momentum = linear(avg_pct_today, -3, 5)
+
+    leader_component = (leader_strength * 0.60 + today_momentum * 0.40) * 100  # 0-100
+    leader_component = max(0.0, min(100.0, leader_component))
+
+    # ===== 4. stability_component: 抗回撤 + 相对强度 + 趋势一致性 (20%) =====
     avg_dd = np.mean([s["max_dd_10"] for s in stock_feats])
     dd_score = linear(-avg_dd, -2, 10)
 
     rel_ret = avg_ret_10 - market_index_ret
     rel_score = sigmoid(rel_ret, k=0.2, c=0)
 
-    # =========================
-    # 当日动量（新增）：考虑当日涨跌对趋势的影响（权重较小，避免过度反应）
-    # =========================
-    pcts_today = [s["pct_chg"] for s in stock_feats]
-    avg_pct_today = np.mean(pcts_today)
+    # 趋势一致性：短期vs中期收益比率
+    consistency_score = linear(avg_ret_5 / max(avg_ret_20, 0.01), 0, 0.5) if avg_ret_20 > 0 else 0.5
+
+    stability_component = (dd_score * 0.40 + rel_score * 0.40 + consistency_score * 0.20) * 100  # 0-100
+    stability_component = max(0.0, min(100.0, stability_component))
+
+    # ===== 5. 当日分歧微调 =====
     up_n = sum(1 for p in pcts_today if p > 0)
-    down_n = sum(1 for p in pcts_today if p < 0)
     breadth_today = up_n / n if n > 0 else 0.5
-    
-    # 当日动量分：综合考虑平均涨幅和上涨比例
-    today_momentum_score = linear(avg_pct_today, -3, 3) * 0.6 + linear(breadth_today, 0.2, 0.8) * 0.4
-    
-    # 当日分歧微调（温和调整，不误判趋势结束）
-    # 只有在大幅下跌+普跌时才轻微下调，否则基本不变
+
     if avg_pct_today < -2.0 and breadth_today < 0.3:
         today_adjust = 0.92  # 大幅分歧，小幅下调8%
     elif avg_pct_today < -1.0 and breadth_today < 0.4:
@@ -670,25 +697,15 @@ def calc_trend_score(stock_feats, market_index_ret):
     else:
         today_adjust = 1.0  # 正常波动，不影响趋势分
 
-    # 严格趋势判断：
-    # 1. 60日和240日斜率必须是正的（向上趋势）
-    # 2. 10日趋势斜率也要是正的
-    # 3. 中期收益为正
-    mid_trend_ok = (avg_slope60 > 0) and (avg_slope240 >= 0) and (avg_slope10 > 0) and (avg_ret_20 >= 0)
-
-    # 最终评分：当日动量权重较小（8%），保持趋势分稳定
+    # ===== TrendScore = 4组件加权和 =====
     score01 = (
-        ret_score * 0.26 +           # 收益分
-        ma_score * 0.22 +            # 均线分
-        slope_score * 0.18 +         # 斜率分
-        acc_score * 0.06 +           # 加速度分
-        leader_score * 0.06 +        # 龙头分
-        dd_score * 0.05 +            # 回撤分
-        rel_score * 0.09 +           # 相对强度分
-        today_momentum_score * 0.08  # 当日动量分（权重较小，避免过度反应）
-    ) * today_adjust  # 温和调整
-    
-    score01 = max(0.0, min(1.0, score01))
+        trend_component * 0.35 +
+        structure_component * 0.25 +
+        leader_component * 0.20 +
+        stability_component * 0.20
+    ) * today_adjust
+
+    score01 = max(0.0, min(100.0, score01))
 
     detail = {
         "avg_ret_5": round(avg_ret_5, 2), "avg_ret_10": round(avg_ret_10, 2), "avg_ret_20": round(avg_ret_20, 2),
@@ -697,13 +714,28 @@ def calc_trend_score(stock_feats, market_index_ret):
         "pct_above_ma240": round(pct_above_ma240 * 100, 1),
         "avg_slope_10": round(avg_slope10, 3), "avg_slope_60": round(avg_slope60, 3), "avg_slope_240": round(avg_slope240, 3),
         "avg_acc_5_10": round(avg_acc, 2), "top3_avg_pct": round(top3_avg, 2),
-        "avg_max_dd_10": round(avg_dd, 2), "rel_ret_10": round(rel_ret, 2), "mid_trend_ok": 1 if mid_trend_ok else 0,
+        "avg_max_dd_10": round(avg_dd, 2), "rel_ret_10": round(rel_ret, 2), "mid_trend_ok": mid_trend_ok,
         "avg_pct_today": round(avg_pct_today, 2), "breadth_today": round(breadth_today * 100, 1), "today_adjust": today_adjust,
+        # V2组件细分
+        "trend_component": round(trend_component, 1),
+        "structure_component": round(structure_component, 1),
+        "leader_component": round(leader_component, 1),
+        "stability_component": round(stability_component, 1),
     }
-    return round(score01 * 100, 1), detail
+    return round(score01, 1), detail
 
 
 def calc_sentiment_score(stock_feats, market_index_ret):
+    """
+    情绪评分 V2: SentimentScore = breadth + profit_effect + liquidity + mainline_strength + dispersion_score
+    
+    各组件（均归一化至0-100）：
+    - breadth(25%): 上涨家数占比
+    - profit_effect(20%): 赚钱效应（中位/均值涨幅 + Top1）
+    - liquidity(20%): 量能放大 + 换手率活跃度
+    - mainline_strength(20%): 涨停强度 + 强势股 + 主线共振
+    - dispersion_score(15%): 收益率离散度（高离散 = 主题有明确领涨股）
+    """
     if not stock_feats:
         return 0.0, {}
 
@@ -714,35 +746,166 @@ def calc_sentiment_score(stock_feats, market_index_ret):
     zt_n = sum(1 for s in stock_feats if s["zt_flag"] == 1)
     strong_n = sum(1 for s in stock_feats if s["strong_flag"] == 1)
 
+    # ===== 1. breadth: 上涨家数占比 (25%) =====
     breadth = up_n / n
-    breadth_score = linear(breadth, 0.2, 0.85)
-    zt_ratio = zt_n / n
-    zt_score = linear(zt_ratio, 0, 0.15)
-    strong_ratio = strong_n / n
-    strong_score = linear(strong_ratio, 0, 0.30)
-    avg_vol_ratio = np.mean([s["vol_ratio"] for s in stock_feats])
-    vol_score = linear(avg_vol_ratio, 0.6, 1.8)
-    avg_turnover = np.mean([s["turnover"] for s in stock_feats])
-    turnover_score = linear(avg_turnover, 1.0, 8.0)
+    breadth_score = linear(breadth, 0.2, 0.85) * 100  # 0-100
+    breadth_score = max(0.0, min(100.0, breadth_score))
+
+    # ===== 2. profit_effect: 赚钱效应 (20%) =====
     median_pct = float(np.median(pcts))
     mean_pct = float(np.mean(pcts))
-    profit_score = sigmoid(median_pct * 0.6 + mean_pct * 0.4, k=0.25, c=0)
     top1 = max(pcts) if pcts else 0
+    profit_score = sigmoid(median_pct * 0.6 + mean_pct * 0.4, k=0.25, c=0) * 100  # 0-100
+    top1_score = linear(top1, 0, 10) * 100  # 0-100
+    
+    profit_effect = profit_score * 0.60 + top1_score * 0.40
+    profit_effect = max(0.0, min(100.0, profit_effect))
+
+    # ===== 3. liquidity: 量能 + 换手率 (20%) =====
+    avg_vol_ratio = np.mean([s["vol_ratio"] for s in stock_feats])
+    avg_turnover = np.mean([s["turnover"] for s in stock_feats])
+    vol_score = linear(avg_vol_ratio, 0.6, 1.8) * 100  # 0-100
+    turnover_score = linear(avg_turnover, 1.0, 8.0) * 100  # 0-100
+    
+    liquidity = vol_score * 0.50 + turnover_score * 0.50
+    liquidity = max(0.0, min(100.0, liquidity))
+
+    # ===== 4. mainline_strength: 主线强度 (20%) =====
+    zt_ratio = zt_n / n
+    zt_score = linear(zt_ratio, 0, 0.15) * 100  # 0-100
+    strong_ratio = strong_n / n
+    strong_score = linear(strong_ratio, 0, 0.30) * 100  # 0-100
+    
     resonance = 1.0 if (zt_n >= 1 and top1 >= 7) else 0.0
     if zt_n >= 2 and top1 >= 9:
         resonance = 1.2
-    resonance_score = min(resonance, 1.0)
+    resonance_score = min(resonance, 1.0) * 100  # 0-100
+    
+    mainline_strength = zt_score * 0.40 + strong_score * 0.35 + resonance_score * 0.25
+    mainline_strength = max(0.0, min(100.0, mainline_strength))
 
-    score01 = breadth_score * 0.25 + zt_score * 0.20 + strong_score * 0.15 + vol_score * 0.10 + turnover_score * 0.10 + profit_score * 0.10 + resonance_score * 0.10
-    score01 = max(0.0, min(1.0, score01))
+    # ===== 5. dispersion_score: 收益率离散度 (15%) =====
+    # 高离散 = 有明确领涨股 + 跟风股分化，主题活跃但非普涨过热
+    # 低离散 = 普涨（可能过热）或普跌（退潮）
+    pct_std = np.std(pcts) if len(pcts) > 1 else 0
+    dispersion = linear(pct_std, 1, 5) * 100  # 0-100
+    
+    # 防止极端值：非常高的离散可能只是个别妖股
+    dispersion = min(dispersion, 90)
+    dispersion = max(0.0, min(100.0, dispersion))
+
+    # ===== SentimentScore = 5组件加权和 =====
+    score01 = (
+        breadth_score * 0.25 +
+        profit_effect * 0.20 +
+        liquidity * 0.20 +
+        mainline_strength * 0.20 +
+        dispersion * 0.15
+    )
+    score01 = max(0.0, min(100.0, score01))
 
     detail = {
         "up_ratio": round(breadth * 100, 1), "down_ratio": round(down_n / n * 100, 1),
         "zt_count": zt_n, "zt_ratio": round(zt_ratio * 100, 1), "strong_ratio": round(strong_ratio * 100, 1),
         "avg_vol_ratio": round(avg_vol_ratio, 2), "avg_turnover": round(avg_turnover, 2),
         "median_pct": round(median_pct, 2), "mean_pct": round(mean_pct, 2), "top1_pct": round(top1, 2), "resonance": round(resonance, 2),
+        "pct_std": round(pct_std, 2),
+        # V2组件细分
+        "breadth_score": round(breadth_score, 1),
+        "profit_effect": round(profit_effect, 1),
+        "liquidity": round(liquidity, 1),
+        "mainline_strength": round(mainline_strength, 1),
+        "dispersion_score": round(dispersion, 1),
     }
-    return round(score01 * 100, 1), detail
+    return round(score01, 1), detail
+
+
+def calc_regime_score(market_index_df):
+    """
+    RegimeScore 市场制度评分 (0-100)
+    
+    衡量整体市场环境状态，用于调整主题评分的可信度：
+    - market_breadth(35%): 全市场上涨占比（通过指数成份股涨跌比估算）
+    - market_trend(35%): 指数多周期趋势（5/10/20日收益加权）
+    - risk_appetite(30%): 风险偏好（指数斜率强度 + 波动率环境）
+    
+    参数：
+        market_index_df: 沪深300指数K线DataFrame
+    
+    返回：
+        (regime_score, detail_dict)
+    """
+    if market_index_df is None or market_index_df.empty:
+        return 50.0, {"说明": "无指数数据"}
+    
+    try:
+        df = market_index_df.sort_values("trade_date")
+        closes = df["close"].astype(float).values
+        
+        if len(closes) < 5:
+            return 50.0, {"说明": "指数数据不足"}
+        
+        n = len(closes)
+        last = n - 1
+        
+        def safe_pct(a, b):
+            return (a / b - 1.0) * 100.0 if b and b > 0 else 0.0
+        
+        # ===== 1. market_trend: 指数多周期趋势 (35%) =====
+        ret_5 = safe_pct(closes[last], closes[last - 5]) if last - 5 >= 0 else 0
+        ret_10 = safe_pct(closes[last], closes[last - 10]) if last - 10 >= 0 else 0
+        ret_20 = safe_pct(closes[last], closes[last - 20]) if last - 20 >= 0 else 0
+        
+        trend_score = (
+            linear(ret_5, -5, 8) * 0.40 +
+            linear(ret_10, -8, 12) * 0.35 +
+            linear(ret_20, -12, 18) * 0.25
+        ) * 100
+        
+        # ===== 2. 斜率强度 =====
+        if n >= 10:
+            x = np.arange(10)
+            y = closes[last - 9:last + 1]
+            slope = np.polyfit(x, y, 1)[0]
+            slope_norm = (slope / np.mean(y)) * 100 if np.mean(y) > 0 else 0
+        else:
+            slope_norm = 0
+        
+        # ===== 3. risk_appetite: 风险偏好 (30%) =====
+        # 斜率 > 0 且温和 = 健康上升
+        # 斜率 > 0 且陡峭 = 可能过热
+        # 斜率 < 0 = 下跌环境
+        slope_score = sigmoid(slope_norm, k=0.5, c=0) * 100
+        
+        # 20日波动率（越高表示市场越活跃）
+        if n >= 21:
+            ret_20d = [(closes[i] / closes[i - 1] - 1) * 100 for i in range(last - 19, last + 1)]
+            vol_20 = np.std(ret_20d)
+            vol_score = linear(vol_20, 0.5, 2.0) * 100  # 适度波动=健康
+        else:
+            vol_score = 50
+        
+        risk_appetite = slope_score * 0.60 + vol_score * 0.40
+        risk_appetite = max(0.0, min(100.0, risk_appetite))
+        
+        # RegimeScore
+        regime_score = trend_score * 0.50 + risk_appetite * 0.50
+        regime_score = max(0.0, min(100.0, regime_score))
+        
+        detail = {
+            "ret_5": round(ret_5, 2),
+            "ret_10": round(ret_10, 2),
+            "ret_20": round(ret_20, 2),
+            "slope_norm": round(slope_norm, 3),
+            "vol_20": round(vol_20, 2) if n >= 21 else 0,
+            "market_trend": round(trend_score, 1),
+            "risk_appetite": round(risk_appetite, 1),
+        }
+        return round(regime_score, 1), detail
+    
+    except Exception as e:
+        print(f"[RegimeScore] 计算失败: {e}")
+        return 50.0, {"说明": str(e)}
 
 
 def calc_rsi(prices, period=14):
@@ -1060,20 +1223,22 @@ def save_to_sqlite(results):
         rank INTEGER, theme TEXT, n_stocks INTEGER, trend_score REAL, sentiment_score REAL, composite_score REAL,
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
-        trade_date TEXT, theme_state TEXT
+        trade_date TEXT, theme_state TEXT, regime_score REAL
     )""")
     
-    # 检查表结构，如果缺少theme_state列则添加
+    # 检查表结构，如果缺少列则添加
     cur.execute("PRAGMA table_info(theme_scores)")
     columns = [row[1] for row in cur.fetchall()]
     if "theme_state" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN theme_state TEXT DEFAULT '弱势'")
+    if "regime_score" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN regime_score REAL DEFAULT 50")
     
     # 固定列名顺序（不与PRAGMA动态顺序耦合，避免ALTER TABLE导致的列顺序错乱）
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
                      "climax_warning", "leader_name", "leader_code", "leader_score",
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
-                     "up_ratio", "zt_count", "trade_date", "theme_state"]
+                     "up_ratio", "zt_count", "trade_date", "theme_state", "regime_score"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
@@ -1108,6 +1273,7 @@ def save_to_sqlite(results):
             "zt_count": sd.get("zt_count", 0),
             "trade_date": TRADE_DATE,
             "theme_state": theme_state,
+            "regime_score": r.get("regime_score", 50),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
@@ -1230,6 +1396,10 @@ def main():
         if len(closes) >= 11:
             market_ret_10 = (closes[-1] / closes[-11] - 1) * 100
     print(f"[Index] 沪深300 近10日收益: {market_ret_10:+.2f}%")
+    
+    # 计算市场制度评分（RegimeScore）
+    regime_score, regime_detail = calc_regime_score(idx_df)
+    print(f"[Regime] 市场制度评分: {regime_score:.1f}")
 
     # 获取前一日主题数据（用于判断状态变化）
     prev_theme_data = get_prev_day_theme_data()
@@ -1246,7 +1416,7 @@ def main():
     for theme_name, cfg in hot_themes.items():
         matched = theme_stock_map.get(theme_name, {})
         if not matched:
-            results.append({"theme": theme_name, "n_stocks": 0, "trend_score": 0.0, "sentiment_score": 0.0, "composite_score": 0.0})
+            results.append({"theme": theme_name, "n_stocks": 0, "trend_score": 0.0, "sentiment_score": 0.0, "composite_score": 0.0, "regime_score": regime_score})
             continue
 
         mcap_dict = {}
@@ -1319,12 +1489,14 @@ def main():
         t_score, t_detail = calc_trend_score(top_rows, market_ret_10)
         s_score, s_detail = calc_sentiment_score(all_rows, market_ret_10)  # 情绪分用全成份股计算
         
-        composite = round(0.55 * t_score + 0.45 * s_score, 1)
+        # Composite = SentimentScore * 0.55 + TrendScore * 0.35 + RegimeScore * 0.10
+        composite = round(s_score * 0.55 + t_score * 0.35 + regime_score * 0.10, 1)
 
         # 判断主题状态
         theme_result = {
             "theme": theme_name, "n_stocks": all_total, "trend_score": t_score, "sentiment_score": s_score,
-            "composite_score": composite, "trend_detail": t_detail, "sentiment_detail": s_detail,
+            "composite_score": composite, "regime_score": regime_score,
+            "trend_detail": t_detail, "sentiment_detail": s_detail,
         }
         prev_data = prev_theme_data.get(theme_name)
         theme_state = calc_theme_state(theme_result, prev_data)
@@ -1438,6 +1610,9 @@ def run_theme_analysis():
         closes = idx_df["close"].astype(float).values
         if len(closes) >= 11:
             market_ret_10 = (closes[-1] / closes[-11] - 1) * 100
+    
+    # 计算市场制度评分（RegimeScore）
+    regime_score, regime_detail = calc_regime_score(idx_df)
 
     kline_groups = {}
     if not kline_df.empty:
@@ -1449,7 +1624,7 @@ def run_theme_analysis():
     for theme_name, cfg in hot_themes.items():
         matched = theme_stock_map.get(theme_name, {})
         if not matched:
-            results.append({"theme": theme_name, "n_stocks": 0, "trend_score": 0.0, "sentiment_score": 0.0, "composite_score": 0.0})
+            results.append({"theme": theme_name, "n_stocks": 0, "trend_score": 0.0, "sentiment_score": 0.0, "composite_score": 0.0, "regime_score": regime_score})
             continue
 
         mcap_dict = {}
@@ -1522,11 +1697,13 @@ def run_theme_analysis():
         t_score, t_detail = calc_trend_score(top_rows, market_ret_10)
         s_score, s_detail = calc_sentiment_score(all_rows, market_ret_10)  # 情绪分用全成份股计算
         
-        composite = round(0.55 * t_score + 0.45 * s_score, 1)
+        # Composite = SentimentScore * 0.55 + TrendScore * 0.35 + RegimeScore * 0.10
+        composite = round(s_score * 0.55 + t_score * 0.35 + regime_score * 0.10, 1)
 
         results.append({
             "theme": theme_name, "n_stocks": all_total, "trend_score": t_score, "sentiment_score": s_score,
-            "composite_score": composite, "trend_detail": t_detail, "sentiment_detail": s_detail
+            "composite_score": composite, "regime_score": regime_score,
+            "trend_detail": t_detail, "sentiment_detail": s_detail
         })
         rows_per_theme[theme_name] = top_rows
 
@@ -1679,6 +1856,9 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
             if len(closes) >= 11:
                 market_ret_10 = (closes[-1] / closes[-11] - 1) * 100
         
+        # 计算市场制度评分（RegimeScore）
+        regime_score, regime_detail = calc_regime_score(idx_df)
+        
         kline_groups = {}
         if not kline_df.empty:
             for code, sub in kline_df.groupby('ts_code'):
@@ -1690,7 +1870,7 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
         for theme_name, cfg in hot_themes.items():
             matched = theme_stock_map.get(theme_name, {})
             if not matched:
-                results.append({'theme': theme_name, 'n_stocks': 0, 'trend_score': 0.0, 'sentiment_score': 0.0, 'composite_score': 0.0})
+                results.append({'theme': theme_name, 'n_stocks': 0, 'trend_score': 0.0, 'sentiment_score': 0.0, 'composite_score': 0.0, 'regime_score': regime_score})
                 continue
             
             mcap_dict = {}
@@ -1763,7 +1943,8 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
             t_score, t_detail = calc_trend_score(top_rows, market_ret_10)
             s_score, s_detail = calc_sentiment_score(all_rows, market_ret_10)  # 情绪分用全成份股计算
             
-            composite = round(0.55 * t_score + 0.45 * s_score, 1)
+            # Composite = SentimentScore * 0.55 + TrendScore * 0.35 + RegimeScore * 0.10
+            composite = round(s_score * 0.55 + t_score * 0.35 + regime_score * 0.10, 1)
             
             leader_scores = []
             for r in top_rows:
@@ -1793,7 +1974,8 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
             
             results.append({
                 'theme': theme_name, 'n_stocks': all_total, 'trend_score': t_score, 'sentiment_score': s_score,
-                'composite_score': composite, 'trend_detail': t_detail, 'sentiment_detail': s_detail,
+                'composite_score': composite, 'regime_score': regime_score,
+                'trend_detail': t_detail, 'sentiment_detail': s_detail,
                 'leader_name': leader_name, 'leader_code': leader_code, 'leader_score': round(leader_scores[0][1], 1) if leader_scores else 0,
                 'core_name': core_name, 'core_code': core_code, 'core_score': round(core_scores[0][1], 1) if core_scores else 0,
             })

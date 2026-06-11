@@ -290,45 +290,37 @@ print("当前交易日1:", TRADE_DATE)
 # BARSLAST
 # =========================
 def barslast(series):
-    """向量化版本：找到最近True的距离
-    
-    特殊规则：如果第1天是True，不更新last_true，后续False返回NaN
-    """
-    arr = series.values.astype(bool)
-    n = len(arr)
-    
-    # 找到所有True的位置
-    true_positions = np.where(arr)[0]
-    
-    if len(true_positions) == 0:
-        return pd.Series([np.nan] * n, index=series.index)
-    
-    # 特殊处理：如果第1天是True，需要跳过它（不作为有效信号）
-    start_idx = 0
-    if arr[0]:
-        # 第1天True，跳过它，从后续找有效True
-        valid_positions = true_positions[true_positions > 0]
-        if len(valid_positions) == 0:
-            # 只有第1天是True，全部返回NaN
-            return pd.Series([np.nan] * n, index=series.index)
-        true_positions = valid_positions
-        start_idx = 1  # 第1天返回NaN
-    
-    # 使用searchsorted快速定位每个位置最近的True
-    indices = np.arange(n)
-    idx = np.searchsorted(true_positions, indices, side='right') - 1
-    
-    # 计算距离
-    result = np.where(idx >= 0, indices - true_positions[idx], np.nan)
-    
-    # 第1天符合条件返回NaN
-    if start_idx == 1:
-        result[0] = np.nan
-    
-    # True的位置返回0
-    for pos in true_positions:
-        result[pos] = 0
-    
+
+    result = []
+
+    last_true = -1
+
+    for i, val in enumerate(series):
+
+        if val:
+
+            if i == 0:
+
+                # 第1天符合条件的不纳入结果，返回 NaN，不更新 last_true
+
+                result.append(np.nan)
+
+            else:
+
+                # 更新 last_true 并返回 0
+
+                last_true = i
+
+                result.append(0)
+
+        else:
+
+            if last_true == -1:
+                result.append(np.nan)
+
+            else:
+                result.append(i - last_true)
+
     return pd.Series(result, index=series.index)
 
 
@@ -4163,121 +4155,251 @@ def calc_up_down_volume_ratio(
 # 主策略
 # =========================
 def strategy(df, code, emotion_stage):
-    """优化版本：向量化计算 + 提前过滤 + 缓存复用"""
+
     
-    # ===== 快速前置过滤（低成本判断优先）=====
     if len(df) < 80:
         return False
+
+    C = df['close']
+
+    O = df['open']
+
+    H = df['high']
+    L = df['low']
     
-    # ST股票过滤（代码前缀判断，无需查询字典）
-    if code.startswith('1') or code.startswith('2'):
+    VOL = df['vol']
+    
+    StockName = get_stock_name(code)
+
+    # =========================
+    # 创业板 科创板
+    # =========================
+    #ST = (
+    #    code.startswith('688') or
+    ##    code.startswith('300') or
+    #    code.startswith('301') 
+    #)
+
+    # =========================
+    # 创业板 科创板
+    # =========================
+
+
+    ST = (code.startswith('3') or code.startswith('688'))  
+
+    ST1 = (StockName.upper().startswith('ST') or
+        StockName.upper().startswith('*ST')) or (code.startswith('1') or (code.startswith('2')))
+#
+    if  ST1:
         return False
-    
-    # 两个月涨幅过滤
+
+    # =========================
+    # 过热过滤：两个月涨幅 > 100% 剔除
+    # =========================
     if len(df) >= 40:
-        close_values = df['close'].values
-        ret_2m = close_values[-1] / close_values[-40] - 1
+        ret_2m = df['close'].iloc[-1] / df['close'].iloc[-40] - 1
         if ret_2m > 1.0:
             return False
-    
-    # ===== 数据提取（一次提取，多次使用）=====
-    C = df['close'].values
-    O = df['open'].values
-    H = df['high'].values
-    L = df['low'].values
-    VOL = df['vol'].values
-    
-    # ===== 创业板/科创板判断 =====
-    ST = code.startswith('3') or code.startswith('688')
-    
-    # ST名称过滤（延后到这里，只在必要时调用）
-    StockName = get_stock_name(code)
-    ST1 = (StockName.upper().startswith('ST') or 
-            StockName.upper().startswith('*ST'))
-    if ST1:
-        return False
-    
-    # ===== 启动过滤：60日振幅 =====
+
+    # =========================
+    # 启动过滤：必须是“相对新启动结构”
+    # =========================
     if len(df) >= 60:
-        hh = H[-60:].max()
-        ll = L[-60:].min()
-        if (hh / ll - 1) > 1.8:
+        hh = df['high'].iloc[-60:].max()
+        ll = df['low'].iloc[-60:].min()
+        range_ratio = (hh / ll - 1)
+
+        # 如果60日振幅过大（已走过主升），过滤
+        if range_ratio > 1.8:
             return False
-    
-    # ===== 均线计算（一次计算，多次使用）=====
-    C_series = df['close']
-    ma5 = C_series.rolling(5).mean().values
-    ma20 = C_series.rolling(20).mean().values
-    ma22 = C_series.rolling(22).mean().values
-    ma60 = C_series.rolling(60).mean().values
-    
-    # 均线条件
-    if C[-1] >= ma20[-1] * 1.2 and C[-1] / ma60[-1] > 1.5:
-        return False
-    
-    # ===== 涨停判断（向量化）=====
-    ZT_1day = (C_series.shift(1) / C_series.shift(2) < 1.08) & (C_series / C_series.shift(1) > 1.098)
-    ZT_2day = (C_series.shift(1) / C_series.shift(2) >= 1.051) & (C_series / C_series.shift(1) >= 1.051) & (C_series / C_series.shift(2) >= 1.11)
+        
+    # =========================
+    # 启动确认（趋势初期）
+    # =========================
+    ma20 = C.rolling(20).mean()
+    ma60 = C.rolling(60).mean()
+
+    # 必须处于均线修复或突破初期
+    if C.iloc[-1] < ma20.iloc[-1] * 1.2:
+        pass
+    else:
+        # 允许突破，但不能过度偏离
+        if C.iloc[-1] / ma60.iloc[-1] > 1.5:
+            return False
+    # =========================
+    # 涨停或连续两日大涨
+    # =========================
+    # 条件1：单日涨停（涨幅>9.8%）
+    ZT_1day = (
+        (C.shift(1) / C.shift(2) < 1.08) &
+        (C / C.shift(1) > 1.098) 
+    )
+    # 条件2：连续两日每日上涨5%以上
+    ZT_2day = (
+        (C.shift(1) / C.shift(2) >= 1.051) &
+        (C / C.shift(1) >= 1.051) &
+        (C / C.shift(2) >= 1.11)  # 两日累计涨幅>=10%
+    )
+    # 合并条件：满足任意一个即可
     ZT = ZT_1day | ZT_2day
-    
-    # 使用向量化的barslast
     ZTTS = barslast(ZT)
-    
-    # 原版逻辑：如果今天涨停(ztts=0)，取前一个信号
+
     ztts = ZTTS.iloc[-1]
-    if ztts == 0:
+    if ztts ==0:
         ztts = ZTTS.iloc[-2]
-    
+
     if np.isnan(ztts):
         return False
-    
+
     ztts = int(ztts)
-    
-    # ===== 条件1：ZTTS范围 =====
-    if ztts < 2 or ztts > 30:
-        return False
-    
-    # ===== 缓存ztts区间数据（避免重复切片）=====
-    ztts_close = C[-ztts:]
-    ztts_df = df.iloc[-ztts:]
-    ztts_vol = ztts_df['vol'].values
-    vol_ma5 = ztts_df['vol'].rolling(5).mean().values  # 只计算一次
-    
-    # ===== TJ条件判断 =====
-    ref_close = C[-ztts-1]
-    cond2 = (ztts_close < ref_close).sum() == 0
-    cond3 = (ztts_close.max() / ztts_close.min()) < 1.3
-    cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
-    cond5 = H[-ztts:].max() >= H[-120:].max() * 0.9
-    cond6 = ma22[-1] >= ma22[-2]
-    
-    # 量能条件（复用vol_ma5）
-    cond_low_vol = (ztts_vol < vol_ma5 * 0.9).any()
-    
-    # 回撤计算（向量化）
-    cum_max = np.maximum.accumulate(ztts_close)
-    drawdown = (ztts_close - cum_max) / cum_max
-    cond_dd = drawdown.min() >= -0.15
-    
-    # 放量大跌判断（复用vol_ma5）
-    down_k = ztts_df['close'].values < ztts_df['open'].values
-    big_vol = ztts_vol > vol_ma5 * 1.5
-    big_drop = ztts_df['pct_chg'].values < -5
-    cond_no_bad_k = ~(down_k & big_vol & big_drop).any()
-    
+
+    # =========================
+    # TJ
+    # =========================
+    cond1 = ztts >= 2 and ztts <= 30
+
+    ref_close = C.shift(ztts + 1).iloc[-1]
+
+    recent_close = C.iloc[-ztts:]
+
+    cond2 = (recent_close < ref_close).sum() == 0
+
+    cond3 = (
+        recent_close.max() /
+        recent_close.min()
+    ) < 1.3
+
+    cond4 = (
+        C.iloc[-1] /
+        H.shift(ztts).iloc[-1]
+    ) < 1.2
+
+    cond5 = (
+        H.iloc[-ztts:].max() >=
+        H.iloc[-120:].max() * 0.9
+    )
+
+    ma22 = C.rolling(22).mean()
+    ma5 = C.rolling(5).mean()
+    cond6 = (
+        ma22.iloc[-1] >=
+        ma22.iloc[-2]
+    )
+
+    # =========================
+    # ZTTS 量能结构增强条件
+    # =========================
+
+    ztts_window = recent_close.index  # 或直接用 df tail
+
+    ztts_df = df.iloc[-ztts:]  # ZTTS区间数据
+
+    VOL_ma = ztts_df['vol'].rolling(5).mean()
+
+    # 1. 缩量：低于均量 70%
+    cond_low_vol = (ztts_df['vol'] < VOL_ma * 0.9).any()
+
+    # 2. 温和放量：1.1~1.8倍均量
+    cond_mid_vol = (
+        (ztts_df['vol'] > VOL_ma * 1.1) &
+        (ztts_df['vol'] < VOL_ma * 1.8)
+    ).any()
+
+    # 3. 回撤不超过10%
+    # =========================
+    # 回撤
+    # =========================
+    cum_max = ztts_df['close'].cummax()
+
+    drawdown = (
+        (ztts_df['close'] - cum_max)
+        / cum_max
+    )
+
+    max_dd = drawdown.min()
+
+    # 最大回撤不超过10%
+    cond_dd = max_dd >= -0.15
+
+
+    # =========================
+    # 无放量下跌K线
+    # =========================
+
+    vol_ma5 = ztts_df['vol'].rolling(5).mean()
+
+    # 阴线
+    down_k = (
+        ztts_df['close'] < ztts_df['open']
+    )
+
+    # 放量
+    big_vol = (
+        ztts_df['vol'] > vol_ma5 * 1.5
+    )
+
+    # 大跌
+    big_drop = (
+        ztts_df['pct_chg'] < -5
+    )
+
+    # 放量大跌阴线
+    bad_k = (
+        down_k &
+        big_vol &
+        big_drop
+    )
+
+    # 不允许出现
+    cond_no_bad_k = ~bad_k.any()
+
+
+    # 必须同时满足
     cond7 = cond_low_vol and cond_no_bad_k
     
-    TJ = cond3 and cond4 and cond5 and cond6 and cond7
+    TJ = (
+        cond1 and
+        cond3 and
+        cond4 and
+        cond5 and
+        cond6 and
+        cond7
+    )
+
     if not TJ:
         return False
     
-    # ===== XH 判断 =====
-    highest_close = C[-ztts-1:-1].max()
-    cond_xh1 = (C[-1] > highest_close) or (H[-1] > H[-2] and H[-1] > H[-3] and C[-1]/C[-2] > 1.05)
-    cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.15 and C[-1] / ma5[-1] > 0.97
-    
-    return cond_xh1 and cond_xh2
 
+    # =========================
+    # XH
+    # =========================
+    highest_close = (
+        C.iloc[-ztts-1:-1].max()
+    )
+
+    highest_vol = (
+        VOL.iloc[-ztts-1:-1].max()
+    )
+
+    cond_xh1 = (C.iloc[-1] > highest_close or (H.iloc[-1] >H.iloc[-2] and H.iloc[-1] > H.iloc[-3] and C.iloc[-1]/C.iloc[-2])>1.05)
+    #cond_xh1 = (C.iloc[-1] > highest_close)
+    cond_xh2 = C.iloc[-1]>C.iloc[-2] and C.iloc[-1] / ma5.iloc[-1] <1.15 and C.iloc[-1] / ma5.iloc[-1] > 0.97
+    cond_xh3 = C.iloc[-2] > highest_close or C.iloc[-3] > highest_close or C.iloc[-1] > C.iloc[-ztts-1]
+    cond_xh4 = C.iloc[-1] / C.iloc[-2]<0.99 and C.iloc[-1] > ma5.iloc[-1] * 0.95 and VOL.iloc[-1] < VOL.iloc[-2]
+    
+    XH = (cond_xh1 and cond_xh2) 
+    
+    return XH
+
+# =========================
+# 主线板块分析（Tushare版）
+# =========================
+
+# =========================
+# 获取全部股票日线
+# =========================
+
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 def get_daily_df():
 

@@ -55,15 +55,59 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 # 初始化Tushare
 pro = ts.pro_api(TS_TOKEN)
 
-# 交易日期（默认使用昨天，因为当天数据还未完全更新）
-if len(sys.argv) > 1:
-    TRADE_DATE = sys.argv[1]
-else:
-    # 获取昨天的日期
-    yesterday = datetime.now() - timedelta(days=1)
-    TRADE_DATE = yesterday.strftime('%Y%m%d')
+# =========================
+# 获取最近交易日
+# =========================
 
-# 计算开始日期（TRADE_DATE前推60个交易日，约3个月）
+def get_last_trade_date():
+    """获取最近的交易日"""
+
+    now = datetime.now()
+
+    # =========================
+    # 9点前：视为上一自然日
+    # =========================
+    if now.hour < 15:
+
+        query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
+
+    else:
+
+        query_date = now.strftime('%Y%m%d')
+
+    # =========================
+    # 如果没有 tushare，根据当前时间计算交易日
+    # =========================
+    if pro is None:
+        # 简单处理：跳过周末
+        from datetime import date
+        d = date.today()
+        if d.weekday() == 5:  # 周六
+            d = d - timedelta(days=1)
+        elif d.weekday() == 6:  # 周日
+            d = d - timedelta(days=2)
+        return d.strftime('%Y%m%d')
+
+    # =========================
+    # 获取交易日历
+    # =========================
+    cal = pro.trade_cal(
+        exchange='',
+        start_date='20200101',
+        end_date=query_date
+    )
+
+    # 只保留开市日
+    cal = cal[cal['is_open'] == 1]
+
+    # 最近交易日
+    last_trade_date = cal[
+        cal['cal_date'] <= query_date
+    ]['cal_date'].max()
+
+    return str(last_trade_date)
+
+TRADE_DATE = get_last_trade_date()
 dt = datetime.strptime(TRADE_DATE, '%Y%m%d')
 start_dt = dt - timedelta(days=90)
 START_DATE = start_dt.strftime('%Y%m%d')
@@ -649,7 +693,8 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 debug_stats['amount_filter'] += 1
                 continue
             
-            # 4. 排除近期涨幅过大的股票（5日涨幅超过20%）
+            # 4. 排除近期涨幅过大的股票
+            # 5日涨幅超过20% -> 过滤（短期过热）
             if len(df_sorted) >= 6:
                 close_today = df_sorted.iloc[-1]['close']
                 close_5d_ago = df_sorted.iloc[-6]['close']
@@ -659,7 +704,25 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                         debug_stats['pct5d_filter'] += 1
                         continue
             
-            # 5. 均线趋势检查：股价站上五日线且十日线向上运行
+            # 5. 排除中期涨幅过大的股票（10日涨幅超过50% -> 过滤，已非补涨标的）
+            if len(df_sorted) >= 11:
+                close_10d_ago = df_sorted.iloc[-11]['close']
+                if close_10d_ago > 0:
+                    pct_10d = (close_today - close_10d_ago) / close_10d_ago * 100
+                    if pct_10d > 50:
+                        debug_stats['pct5d_filter'] += 1
+                        continue
+            
+            # 6. 排除长期涨幅过大的股票（20日涨幅超过80% -> 过滤，已严重透支）
+            if len(df_sorted) >= 21:
+                close_20d_ago = df_sorted.iloc[-21]['close']
+                if close_20d_ago > 0:
+                    pct_20d = (close_today - close_20d_ago) / close_20d_ago * 100
+                    if pct_20d > 80:
+                        debug_stats['pct5d_filter'] += 1
+                        continue
+            
+            # 7. 均线趋势检查：股价站上五日线且十日线向上运行
             if len(closes) >= 25:
                 ma5_vals = pd.Series(closes).rolling(5).mean().values
                 ma10_vals = pd.Series(closes).rolling(10).mean().values
