@@ -702,6 +702,7 @@ class RealtimeThemeMonitor:
             up_count = full_stats.get('up_count', overview['up'])
             down_count = full_stats.get('down_count', overview['down'])
         else:
+            # 如果没有全市场统计数据，使用主题股票数据（虽然不准确，但至少有数据）
             up_ratio = overview['up_ratio']
             down_ratio = overview['down_ratio']
             zt_count = overview['zt']
@@ -709,6 +710,11 @@ class RealtimeThemeMonitor:
             total_count = overview['total']
             up_count = overview['up']
             down_count = overview['down']
+            
+            # 触发后台获取全市场统计（仅在整点附近）
+            if now.minute == 0 or (hasattr(self, '_last_full_stats_request') and now.minute != self._last_full_stats_request):
+                self._last_full_stats_request = now.minute
+                self.fetch_full_market_stats_sina()
 
         # 获取昨日数据
         yesterday_data = self.get_yesterday_market_data()
@@ -983,7 +989,7 @@ class RealtimeThemeMonitor:
                         'down_count': down_count,
                         'up_ratio': round(up_count / total * 100, 1),
                         'down_ratio': round(down_count / total * 100, 1),
-                        'updated': time.strftime('%H:%M:%S')
+                        'updated': time.strftime('%Y-%m-%d %H:%M:%S')
                     }
                     print(f"📊 全市场统计更新: 涨停{zt_count} 跌停{dt_count} 上涨{up_ratio}%")
                     
@@ -1003,22 +1009,20 @@ class RealtimeThemeMonitor:
         t.start()
         return "后台获取中..."
 
-    # ── 10.6 获取全市场统计（优先缓存） ──
+    # ── 10.6 获取全市场统计（优先使用内存数据） ──
     def get_full_market_stats(self):
-        """获取全市场统计（优先返回缓存）"""
-        # 如果有最新数据（15分钟内），直接返回
+        """获取全市场统计
+        优先返回内存中的最新数据，如果没有则返回None触发重新获取
+        """
+        # 如果有最新数据，直接返回
         if hasattr(self, 'full_market_stats') and self.full_market_stats:
-            return self.full_market_stats
-        
-        # 尝试读取缓存文件（直接在cache_daily目录）
-        cache_file = os.path.join(BASE_DIR, 'cache_daily', 'full_market_stats.json')
-        if os.path.exists(cache_file):
-            try:
-                import json
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                pass
+            # 检查数据是否是今天的
+            updated = self.full_market_stats.get('updated', '')
+            if updated.startswith(time.strftime('%Y-%m-%d')):
+                return self.full_market_stats
+            else:
+                # 数据是昨天的，清空并返回None
+                self.full_market_stats = None
         
         return None
 

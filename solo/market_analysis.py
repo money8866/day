@@ -1261,6 +1261,25 @@ def get_limit_up_down_stats(trade_date=None):
     except Exception as e:
         print(f"[涨跌停] 获取失败: {e}")
     
+    # 获取涨跌比例数据
+    up_count = 0
+    down_count = 0
+    total_count = 0
+    up_ratio = 0.0
+    down_ratio = 0.0
+    
+    try:
+        daily = pro.daily(trade_date=trade_date)
+        if daily is not None and not daily.empty:
+            up_count = int((daily['pct_chg'] > 0).sum())
+            down_count = int((daily['pct_chg'] < 0).sum())
+            total_count = len(daily)
+            if total_count > 0:
+                up_ratio = round(up_count / total_count * 100, 1)
+                down_ratio = round(down_count / total_count * 100, 1)
+    except Exception as e:
+        print(f"[涨跌比例] 获取失败: {e}")
+    
     result = {
         "zt_count": len(zt_codes),
         "dt_count": len(dt_codes),
@@ -1269,7 +1288,13 @@ def get_limit_up_down_stats(trade_date=None):
         "broken_rate": round(broken_rate, 1),
         "zhaban_count": zhaban_count,
         "trade_date": trade_date,
-        "updated": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        "updated": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        # 新增涨跌比例数据
+        "up_count": up_count,
+        "down_count": down_count,
+        "total": total_count,
+        "up_ratio": up_ratio,
+        "down_ratio": down_ratio
     }
     
     # 保存到缓存文件（供实时监控读取）
