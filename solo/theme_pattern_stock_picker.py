@@ -637,6 +637,9 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
         buzhang_pool = []
         buzhang_detector = AdvancedBuzhangDetector()
         
+        # 获取该主题的核心公司列表（用于豁免成交额要求）
+        core_companies = theme_cfg.get('core_companies', [])
+        
         # 获取该主题的中军（用于相对强度分析）
         theme_zhongjun_codes = [s['code'] for s in zhongjun_candidates]
         zhongjun_data_dict = {}
@@ -673,84 +676,121 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             volumes = df_sorted['vol'].astype(float).values
             closes = df_sorted['close'].astype(float).values
             
+            # 获取股票名称（用于核心公司判断）
+            stock_name = s.get('name', '')
+            is_core_company = any(company in stock_name for company in core_companies)
+            
             # 基础条件检查（快速筛选）
-            # 1. 排除当日涨停股
+            # 1. 排除当日涨停股（涨停股不应出现在补涨中军）
+            #    核心公司：排除当日涨停即可，不排除近1-2日涨停
+            #    普通公司：排除当日涨停
             pct_chg_today = s.get('pct_chg', 0)
             if pct_chg_today >= 9.5:
                 debug_stats['zt_filter'] += 1
                 continue
             
-            # 2. 市值限制100-2000亿（放宽下限）
-            mcap = s.get('mcap', 0)
-            if not mcap or mcap <= 0 or mcap < 100 or mcap > 2000:
-                debug_stats['mcap_filter'] += 1
-                continue
+            # 检查近1日是否有涨停（普通公司排除，核心公司允许）
+            if not is_core_company and len(df_sorted) >= 2:
+                pct_chg_1d_ago = df_sorted.iloc[-2]['pct_chg']
+                if pct_chg_1d_ago >= 9.5:
+                    debug_stats['zt_filter'] += 1
+                    continue
             
-            # 3. 成交额>=5亿（放宽下限）
+            # 2. 市值限制100-3000亿（放宽上限，核心公司不限制）
+            mcap = s.get('mcap', 0)
+            if not is_core_company:
+                if not mcap or mcap <= 0 or mcap < 100 or mcap > 3000:
+                    debug_stats['mcap_filter'] += 1
+                    continue
+            else:
+                if not mcap or mcap <= 0 or mcap < 50:
+                    debug_stats['mcap_filter'] += 1
+                    continue
+            
+            # 3. 成交额>=3亿（放宽下限），核心公司豁免此要求
             recent_20 = df_sorted.iloc[-21:-1] if len(df_sorted) >= 21 else df_sorted
-            avg_amount_20 = recent_20['amount'].astype(float).mean() / 100000
-            if avg_amount_20 < 5:
+            avg_amount_20 = recent_20['amount'].astype(float).mean() / 100000  # tushare amount单位是元，转亿元
+            
+            if not is_core_company and avg_amount_20 < 3:
                 debug_stats['amount_filter'] += 1
                 continue
             
-            # 4. 排除近期涨幅过大的股票
-            # 5日涨幅超过20% -> 过滤（短期过热）
-            if len(df_sorted) >= 6:
-                close_today = df_sorted.iloc[-1]['close']
-                close_5d_ago = df_sorted.iloc[-6]['close']
-                if close_5d_ago > 0:
-                    pct_5d = (close_today - close_5d_ago) / close_5d_ago * 100
-                    if pct_5d > 20:
+            # 4. 排除短期涨幅过大的股票（大幅放宽）
+            # 10天内最高价比最低价超过50% -> 过滤（原30%）
+            close_today = df_sorted.iloc[-1]['close']  # 保存今日收盘价供后续使用
+            if len(df_sorted) >= 10:
+                recent_10d = df_sorted.iloc[-10:]
+                high_10d = recent_10d['high'].max()
+                low_10d = recent_10d['low'].min()
+                if low_10d > 0:
+                    range_ratio = (high_10d - low_10d) / low_10d * 100
+                    if range_ratio > 50:
                         debug_stats['pct5d_filter'] += 1
                         continue
             
-            # 5. 排除中期涨幅过大的股票（10日涨幅超过50% -> 过滤，已非补涨标的）
+            # 排除中期涨幅过大的股票（10日涨幅超过80% -> 过滤，原50%）
             if len(df_sorted) >= 11:
                 close_10d_ago = df_sorted.iloc[-11]['close']
                 if close_10d_ago > 0:
                     pct_10d = (close_today - close_10d_ago) / close_10d_ago * 100
-                    if pct_10d > 50:
+                    if pct_10d > 80:
                         debug_stats['pct5d_filter'] += 1
                         continue
             
-            # 6. 排除长期涨幅过大的股票（20日涨幅超过80% -> 过滤，已严重透支）
+            # 排除长期涨幅过大的股票（20日涨幅超过120% -> 过滤，原80%）
             if len(df_sorted) >= 21:
                 close_20d_ago = df_sorted.iloc[-21]['close']
                 if close_20d_ago > 0:
                     pct_20d = (close_today - close_20d_ago) / close_20d_ago * 100
-                    if pct_20d > 80:
+                    if pct_20d > 120:
                         debug_stats['pct5d_filter'] += 1
                         continue
             
-            # 7. 均线趋势检查：股价站上五日线且十日线向上运行
+            # 5. 均线趋势检查（大幅放宽）
+            # 核心公司：只要求股价在MA20上方
+            # 普通公司：股价站上MA20或MA5，十日线斜率>-0.5%
             if len(closes) >= 25:
                 ma5_vals = pd.Series(closes).rolling(5).mean().values
                 ma10_vals = pd.Series(closes).rolling(10).mean().values
                 ma20_vals = pd.Series(closes).rolling(20).mean().values
                 
-                # 条件1：股价必须站上五日线
                 close = closes[-1]
-                ma5 = ma5_vals[-1]
-                if close <= ma5:
-                    debug_stats['trend_filter'] += 1
-                    continue
                 
-                # 条件2：十日线必须向上运行（近5日斜率为正）
-                if len(ma10_vals) >= 5:
-                    ma10_slope = (ma10_vals[-1] - ma10_vals[-5]) / ma10_vals[-5] * 100
-                    if ma10_slope <= 0:
+                if is_core_company:
+                    # 核心公司：只需股价在MA20上方，MA20不持续向下
+                    ma20 = ma20_vals[-1]
+                    if close <= ma20:
                         debug_stats['trend_filter'] += 1
                         continue
-                
-                # 条件3：MA20不能持续向下
-                if len(ma20_vals) >= 5:
-                    ma20_slope = (ma20_vals[-1] - ma20_vals[-5]) / ma20_vals[-5] * 100
-                    if ma20_slope < -2:
+                    # MA20斜率
+                    if len(ma20_vals) >= 5:
+                        ma20_slope = (ma20_vals[-1] - ma20_vals[-5]) / ma20_vals[-5] * 100
+                        if ma20_slope < -3:
+                            debug_stats['trend_filter'] += 1
+                            continue
+                else:
+                    # 普通公司：股价站上MA5或MA10（任一满足即可）
+                    ma5 = ma5_vals[-1]
+                    ma10 = ma10_vals[-1]
+                    if close <= ma5 and close <= ma10:
                         debug_stats['trend_filter'] += 1
                         continue
+                    
+                    # 十日线斜率>-0.5%（允许小幅走平）
+                    if len(ma10_vals) >= 5:
+                        ma10_slope = (ma10_vals[-1] - ma10_vals[-5]) / ma10_vals[-5] * 100
+                        if ma10_slope <= -0.5:
+                            debug_stats['trend_filter'] += 1
+                            continue
+                    
+                    # MA20不持续向下
+                    if len(ma20_vals) >= 5:
+                        ma20_slope = (ma20_vals[-1] - ma20_vals[-5]) / ma20_vals[-5] * 100
+                        if ma20_slope < -3:
+                            debug_stats['trend_filter'] += 1
+                            continue
             
             # 使用高级检测器分析
-            # 获取第一个中军作为对比基准
             zhongjun_df = None
             if zhongjun_data_dict:
                 first_zj_code = next(iter(zhongjun_data_dict.keys()))
@@ -761,9 +801,10 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             if not analysis_result.get('valid', False):
                 continue
             
-            # 综合评分（提高到50）
+            # 综合评分：核心公司35分通过，普通公司40分通过（原50分）
             overall_score = analysis_result.get('overall_score', 0)
-            if overall_score < 50:
+            pass_score = 35 if is_core_company else 40
+            if overall_score < pass_score:
                 debug_stats['score_filter'] += 1
                 continue
             
@@ -852,8 +893,8 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 print(f"     中军: {candidate['name']} (评分{candidate['final_score']:.1f}) - {buy_type_display} - 市值{candidate['mcap']}亿 - {candidate['reason']}")
                 theme_count += 1
         
-        # 补涨中军（成交额大的优先，取2个，且不与中军重复）
-        buzhang_sorted = sorted(buzhang_candidates, key=lambda x: (-x.get('avg_amount_20', 0), -x.get('buzhang_score', 0)))[:2]
+        # 补涨中军（成交额大的优先，取3个，且不与中军重复）
+        buzhang_sorted = sorted(buzhang_candidates, key=lambda x: (-x.get('avg_amount_20', 0), -x.get('buzhang_score', 0)))[:3]
         for candidate in buzhang_sorted:
             if candidate['code'] not in selected_codes:
                 final_candidates.append(candidate)

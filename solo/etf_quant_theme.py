@@ -695,20 +695,33 @@ def get_theme_analysis():
     if cached_results:
         print(f"[主题分析] 从缓存读取 {len(cached_results)} 个主题评分（{TRADE_DATE}）")
         results = cached_results
-        signals = {"climax_warning": [], "buy": [], "dip_buy": []}
-        for r in results:
-            if r.get("climax_warning", 0) == 1:
-                signals["climax_warning"].append(r)
     else:
         try:
             # 延迟导入：只在需要时才导入 theme_trend_sentiment_score
             import importlib
             theme_score = importlib.import_module("theme_trend_sentiment_score")
             print("\n[主题分析] 正在获取主题趋势+情绪分析...")
-            results, signals = theme_score.run_theme_analysis()
+            results = theme_score.run_theme_analysis()
         except Exception as e:
             print(f"[主题分析] 获取失败: {e}")
             return "【主题分析】获取失败", "【交易信号】获取失败", []
+
+    # 基于轮动周期生成交易信号
+    signals = {"climax_warning": [], "buy": [], "dip_buy": []}
+    for r in results:
+        cycle = r.get("rotation_cycle", "")
+        t_score = r.get("trend_score", 0) or 0
+        s_score = r.get("sentiment_score", 0) or 0
+        if cycle == "高潮风险":
+            signals["climax_warning"].append(r)
+        elif cycle == "新启动":
+            signals["buy"].append(r)
+        elif cycle == "中期轮动" and t_score >= 50:
+            # 中期轮动且趋势分>=50 的也作为买入参考
+            signals["buy"].append(r)
+        # 低吸：趋势良好但情绪偏低的主题（趋势分>=55 且 情绪分<50）
+        if t_score >= 55 and s_score < 50:
+            signals["dip_buy"].append(r)
 
     # ====== 1. 60日趋势平均分TOP5中线主题 ======
     mid_term_lines = ["【中线主题TOP5（60日趋势平均分）】"]
@@ -755,20 +768,23 @@ def get_theme_analysis():
     
     theme_analysis_text = "\n".join(mid_term_lines + short_term_lines)
 
-    # 交易信号（精简）
-    signal_lines = ["【主题交易信号】"]
+    # 交易信号（基于轮动周期）
+    signal_lines = ["【主题交易信号（基于轮动周期）】"]
     if signals.get("climax_warning"):
-        signal_lines.append("\n🚨【高潮警示】")
+        signal_lines.append("\n🚨【高潮风险】注意止盈减仓")
         for w in signals["climax_warning"][:5]:
-            signal_lines.append(f"  ⚠️ {w['theme']}: 趋势{w['trend_score']:.0f} 情绪{w['sentiment_score']:.0f}")
+            desc = w.get("rotation_desc", "")
+            signal_lines.append(f"  ⚠️ {w['theme']}: 趋势{w['trend_score']:.0f} 情绪{w['sentiment_score']:.0f} | {desc}")
     if signals.get("buy"):
-        signal_lines.append("\n🟢【买入信号】")
+        signal_lines.append("\n🟢【买入关注】新启动/中期轮动")
         for s in signals["buy"][:5]:
-            signal_lines.append(f"  {s['theme']}: 趋势{s['trend_score']:.0f} RSI:{s['rsi']}")
+            desc = s.get("rotation_desc", "")
+            signal_lines.append(f"  {s['theme']}: 趋势{s['trend_score']:.0f} 情绪{s['sentiment_score']:.0f} | {desc}")
     if signals.get("dip_buy"):
-        signal_lines.append("\n💎【低吸博弈TOP5】")
+        signal_lines.append("\n💎【低吸博弈】趋势良好+情绪回调")
         for d in signals["dip_buy"][:5]:                    
-            signal_lines.append(f"  {d['theme']}: 趋势{d['trend_score']:.0f} 情绪{d['sentiment_score']:.0f}")
+            desc = d.get("rotation_desc", "")
+            signal_lines.append(f"  {d['theme']}: 趋势{d['trend_score']:.0f} 情绪{d['sentiment_score']:.0f} | {desc}")
     theme_signals_text = "\n".join(signal_lines)
     
     # 构建主题状态映射（用于ETF策略）

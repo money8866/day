@@ -17,12 +17,13 @@ class AdvancedBuzhangDetector:
     def __init__(self):
         # 权重配置（总和100%）
         self.weights = {
-            'big_amount': 0.35,          # 大成交额（35%）
-            'turnover_rate': 0.20,       # 换手率（20%）
+            'big_amount': 0.30,          # 大成交额（30%）
+            'turnover_rate': 0.15,       # 换手率（15%）
             'big_market_cap': 0.15,      # 大市值（15%）
             'price_trend': 0.15,         # 价格趋势健康（15%）
             'volume_coordination': 0.10, # 量价配合（10%）
             'technicals': 0.05,          # 技术面健康（5%）
+            'gain_control': 0.10,        # 涨幅控制（10%）- 新增：防止过度拉升的股票被选为补涨中军
         }
         # 指标名称
         self.metric_names = {
@@ -31,7 +32,8 @@ class AdvancedBuzhangDetector:
             'big_market_cap': '大市值',
             'price_trend': '价格趋势',
             'volume_coordination': '量价配合',
-            'technicals': '技术面健康'
+            'technicals': '技术面健康',
+            'gain_control': '涨幅控制'
         }
 
     def analyze_stock(self, df: pd.DataFrame, zhongjun_df: Optional[pd.DataFrame] = None, 
@@ -79,19 +81,25 @@ class AdvancedBuzhangDetector:
         if mc_score > 40:
             detected.append('大市值')
 
-        # 4. 价格趋势健康
+        # 4. 涨幅控制评分（新增）- 防止过度拉升的股票被选为补涨中军
+        gain_score = self._score_gain_control(closes, pct_changes)
+        metrics['gain_control'] = gain_score
+        if gain_score > 40:
+            detected.append('涨幅健康')
+
+        # 5. 价格趋势健康
         trend_score = self._score_price_trend(closes)
         metrics['price_trend'] = trend_score
         if trend_score > 40:
             detected.append('价格健康')
 
-        # 5. 量价配合
+        # 6. 量价配合
         vol_score = self._score_volume_coordination(closes, volumes, amounts)
         metrics['volume_coordination'] = vol_score
         if vol_score > 40:
             detected.append('量价配合')
 
-        # 6. 技术面健康
+        # 7. 技术面健康
         tech_score = self._score_technicals(closes, volumes)
         metrics['technicals'] = tech_score
         if tech_score > 40:
@@ -101,6 +109,17 @@ class AdvancedBuzhangDetector:
         total_score = 0
         for key, val in metrics.items():
             total_score += val * self.weights[key]
+
+        # 如果涨幅控制评分过低，直接标记为无效（大幅放宽，避免过度过滤强势主题股）
+        if gain_score < 10:
+            return {
+                'valid': False,
+                'overall_score': total_score,
+                'metrics': metrics,
+                'detected_patterns': detected,
+                'pattern_scores': metrics,
+                'reason': '涨幅过高，不适合作为补涨中军'
+            }
 
         return {
             'valid': True,
@@ -115,8 +134,8 @@ class AdvancedBuzhangDetector:
         if len(amounts) < 5:
             return 0
         
-        # 近20日平均成交额（万元转亿元）
-        avg_20 = np.mean(amounts[-21:-1]) / 10000 if len(amounts) >= 21 else np.mean(amounts) / 10000
+        # 近20日平均成交额（元转亿元）
+        avg_20 = np.mean(amounts[-21:-1]) / 100000000 if len(amounts) >= 21 else np.mean(amounts) / 100000000
         
         score = 0
         if avg_20 >= 80:  # 80亿+
@@ -263,13 +282,21 @@ class AdvancedBuzhangDetector:
         
         score = 0
         
-        # 均线多头排列
+        # 均线多头排列（放宽条件：允许MA5 > MA10或股价在所有均线上方）
         ma5 = self._sma(closes, 5)
         ma10 = self._sma(closes, 10)
         ma20 = self._sma(closes, 20)
-        if len(ma5) >= 1 and len(ma10) >= 1 and len(ma20) >= 1:
+        if len(ma5) >= 1 and len(ma10) >= 1 and len(ma20) >= 1 and len(closes) >= 1:
+            close = closes[-1]
+            # 条件1：完美多头排列
             if ma5[-1] > ma10[-1] > ma20[-1]:
                 score += 50
+            # 条件2：股价在所有均线上方且MA5 > MA10（放宽条件）
+            elif close > ma5[-1] and close > ma10[-1] and close > ma20[-1] and ma5[-1] > ma10[-1]:
+                score += 40
+            # 条件3：股价在MA20上方（最宽松条件）
+            elif close > ma20[-1]:
+                score += 25
         
         # 成交量活跃，不是极度缩量
         if len(volumes) >= 10:
@@ -293,3 +320,70 @@ class AdvancedBuzhangDetector:
     def _get_pattern_name(self, pattern_id: str) -> str:
         """获取模式名称（兼容老接口）"""
         return self.metric_names.get(pattern_id, pattern_id)
+
+    def _score_gain_control(self, closes: np.ndarray, pct_changes: np.ndarray) -> float:
+        """
+        涨幅控制评分 - 防止过度拉升的股票被选为补涨中军
+        
+        补涨中军应该是涨幅相对合理、尚未过度炒作的股票，而不是已经大幅拉升的股票。
+        如果一只股票近期涨幅过大，应该被排除出补涨中军候选。
+        """
+        if len(closes) < 20:
+            return 0
+        
+        score = 100
+        
+        # 1. 检查短期涨幅（近5日）
+        if len(closes) >= 10:
+            recent_5d = closes[-6:-1] if len(closes) >= 6 else closes
+            if len(recent_5d) >= 2:
+                gain_5d = (closes[-1] - recent_5d[0]) / recent_5d[0] * 100
+                # 近5日涨幅超过30%，扣分
+                if gain_5d > 30:
+                    score -= 40
+                elif gain_5d > 20:
+                    score -= 20
+                elif gain_5d > 15:
+                    score -= 10
+        
+        # 2. 检查中期涨幅（近20日）
+        if len(closes) >= 30:
+            recent_20d = closes[-21:-1]
+            if len(recent_20d) >= 2:
+                gain_20d = (closes[-1] - recent_20d[0]) / recent_20d[0] * 100
+                # 近20日涨幅超过60%，扣分
+                if gain_20d > 60:
+                    score -= 40
+                elif gain_20d > 40:
+                    score -= 25
+                elif gain_20d > 30:
+                    score -= 15
+        
+        # 3. 检查长期涨幅（近60日）
+        if len(closes) >= 70:
+            recent_60d = closes[-61:-1]
+            if len(recent_60d) >= 2:
+                gain_60d = (closes[-1] - recent_60d[0]) / recent_60d[0] * 100
+                # 近60日涨幅超过100%，扣分
+                if gain_60d > 100:
+                    score -= 50
+                elif gain_60d > 80:
+                    score -= 35
+                elif gain_60d > 60:
+                    score -= 20
+        
+        # 4. 检查是否有连续涨停或大幅拉升（仅检查最近5日，避免过滤已充分调整的股票）
+        if len(pct_changes) >= 8:
+            recent_pct = pct_changes[-5:]  # 改为检查最近5日，避免过滤已调整的股票
+            # 检查是否有连续大涨（连续3日涨幅≥5%）
+            streak = 0
+            for pct in recent_pct:
+                if pct >= 5:
+                    streak += 1
+                    if streak >= 3:
+                        score -= 30
+                        break
+                else:
+                    streak = 0
+        
+        return max(0, min(score, 100))

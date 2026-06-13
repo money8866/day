@@ -699,9 +699,27 @@ def analyze_market(trade_date=None):
         for r, style, style_pos, style_reason in style_allocations:
             print(f"  {r['name']:<12} {style:<12} {r['trend_status']:<12} {style_pos}%{' ':>6} {style_reason:<30}")
         
+        # ===== 涨跌停 & 连板统计 =====
+        print(f"\n{'='*80}")
+        print("📊 涨跌停 & 连板统计")
+        print('='*80)
+        limit_stats = get_limit_up_down_stats(trade_date)
+        max_lb = calc_max_limit_height(trade_date)
+        limit_stats['max_limit_height'] = max_lb
+        
+        print(f"  涨停: {limit_stats['zt_count']}只 | 跌停: {limit_stats['dt_count']}只")
+        print(f"  炸板: {limit_stats['zhaban_count']}只 | 炸板率: {limit_stats['broken_rate']:.1f}%")
+        print(f"  最高连板: {max_lb}板")
+        print(f"  上涨: {limit_stats['up_count']}只({limit_stats['up_ratio']}%) | 下跌: {limit_stats['down_count']}只({limit_stats['down_ratio']}%)")
+        
+        # 保存涨跌停数据到数据库（供实时监控读取）
+        save_limit_stats_to_cache(limit_stats)
+        save_limit_stats_to_database(limit_stats)
+        
         # 保存结果
         save_result(results, position, reason, style_allocations, overview,
-                    trend_score, index_trend, theme_trend, market_status, trade_date)
+                    trend_score, index_trend, theme_trend, market_status, trade_date,
+                    limit_stats, max_lb)
         
         # 保存到数据库
         save_to_database(trade_date, results, position, reason, 
@@ -715,7 +733,8 @@ def analyze_market(trade_date=None):
 # 保存结果
 # ================
 def save_result(results, position, reason, style_allocations=None, overview=None, 
-                trend_score=None, index_trend=None, theme_trend=None, market_status=None, trade_date=None):
+                trend_score=None, index_trend=None, theme_trend=None, market_status=None, trade_date=None,
+                limit_stats=None, max_lb=0):
     if trade_date is None:
         trade_date = TRADE_DATE
     out_file = os.path.join(safe_cache_dir, f"market_analysis_{trade_date}.csv")
@@ -764,6 +783,15 @@ def save_result(results, position, reason, style_allocations=None, overview=None
             f.write(f"  {'-'*12} {'-'*12} {'-'*12} {'-'*10} {'-'*30}\n")
             for r, style, style_pos, style_reason in style_allocations:
                 f.write(f"  {r['name']:<12} {style:<12} {r['trend_status']:<12} {style_pos:<10}% {style_reason:<30}\n")
+        
+        # 涨跌停 & 连板统计
+        if limit_stats:
+            f.write(f"\n【涨跌停 & 连板统计】\n")
+            f.write(f"  涨停: {limit_stats['zt_count']}只 | 跌停: {limit_stats['dt_count']}只\n")
+            f.write(f"  炸板: {limit_stats['zhaban_count']}只 | 炸板率: {limit_stats['broken_rate']:.1f}%\n")
+            f.write(f"  最高连板: {max_lb}板\n")
+            f.write(f"  上涨: {limit_stats['up_count']}只({limit_stats['up_ratio']}%)")
+            f.write(f" | 下跌: {limit_stats['down_count']}只({limit_stats['down_ratio']}%)\n")
 
 # ================
 # 读取TOP3主题趋势分
@@ -954,6 +982,26 @@ def init_database():
         )
     ''')
     
+    # 创建涨跌停统计表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS limit_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT NOT NULL UNIQUE,
+            zt_count INTEGER DEFAULT 0,
+            dt_count INTEGER DEFAULT 0,
+            broken_rate REAL DEFAULT 0.0,
+            zhaban_count INTEGER DEFAULT 0,
+            max_limit_height INTEGER DEFAULT 0,
+            up_count INTEGER DEFAULT 0,
+            down_count INTEGER DEFAULT 0,
+            total INTEGER DEFAULT 0,
+            up_ratio REAL DEFAULT 0.0,
+            down_ratio REAL DEFAULT 0.0,
+            updated TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     # 添加新列（如果已存在表但缺少新列）
     try:
         cursor.execute("ALTER TABLE overall_analysis ADD COLUMN trend_score REAL")
@@ -1014,6 +1062,41 @@ def save_to_database(trade_date, results, total_position, position_reason,
         print(f"\n✅ 数据已保存到数据库: {db_path}")
     except Exception as e:
         print(f"\n❌ 数据库保存失败: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def save_limit_stats_to_database(data):
+    """保存涨跌停统计数据到数据库（供 realtime_theme_monitor.py 调用）"""
+    db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT OR REPLACE INTO limit_stats 
+            (trade_date, zt_count, dt_count, broken_rate, zhaban_count, max_limit_height,
+             up_count, down_count, total, up_ratio, down_ratio, updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('trade_date', TRADE_DATE),
+            data.get('zt_count', 0),
+            data.get('dt_count', 0),
+            data.get('broken_rate', 0.0),
+            data.get('zhaban_count', 0),
+            data.get('max_limit_height', 0),
+            data.get('up_count', 0),
+            data.get('down_count', 0),
+            data.get('total', 0),
+            data.get('up_ratio', 0.0),
+            data.get('down_ratio', 0.0),
+            data.get('updated', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        ))
+        conn.commit()
+        print(f"[涨跌停DB] 已保存至 limit_stats: {data.get('trade_date')}")
+    except Exception as e:
+        print(f"[涨跌停DB] 保存失败: {e}")
         conn.rollback()
     finally:
         conn.close()
@@ -1303,6 +1386,44 @@ def get_limit_up_down_stats(trade_date=None):
     return result
 
 
+def calc_max_limit_height(trade_date=None):
+    """计算最高连板高度（移植自 tushare_quant.py）"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
+    try:
+        # 优先使用 akshare 免费接口
+        import akshare as ak
+        try:
+            zt_df = ak.stock_zt_pool_em(date=trade_date)
+            if zt_df is not None and not zt_df.empty:
+                if '连板数' in zt_df.columns:
+                    zt_df['连板数'] = pd.to_numeric(zt_df['连板数'], errors='coerce').fillna(1).astype(int)
+                    max_lb = int(zt_df['连板数'].max())
+                    print(f"[连板高度] akshare获取成功: 最高连板 {max_lb} 板")
+                    return max_lb
+                elif '连扳数' in zt_df.columns:
+                    zt_df['连扳数'] = pd.to_numeric(zt_df['连扳数'], errors='coerce').fillna(1).astype(int)
+                    max_lb = int(zt_df['连扳数'].max())
+                    print(f"[连板高度] akshare获取成功: 最高连板 {max_lb} 板")
+                    return max_lb
+        except Exception as ak_error:
+            print(f"[连板高度] akshare获取失败: {ak_error}")
+        
+        # akshare失败时，尝试 tushare pro 接口
+        if pro is not None:
+            zt_df = pro.limit_step(trade_date=trade_date)
+            if zt_df is not None and not zt_df.empty:
+                if 'nums' in zt_df.columns:
+                    max_lb = int(zt_df['nums'].max())
+                    print(f"[连板高度] tushare limit_step: 最高连板 {max_lb} 板")
+                    return max_lb
+    except Exception as e:
+        print(f"[连板高度] 计算失败: {e}")
+    
+    return 0
+
+
 def save_limit_stats_to_cache(data):
     """将涨跌停统计数据保存到缓存文件"""
     import json
@@ -1348,6 +1469,13 @@ if __name__ == '__main__':
         # 保存到数据库
         save_to_database(TRADE_DATE, results, total_position, position_reason, 
                         ts, it, tt, ms)
+        
+        # 获取并保存涨跌停 & 连板数据
+        limit_stats = get_limit_up_down_stats(TRADE_DATE)
+        max_lb = calc_max_limit_height(TRADE_DATE)
+        limit_stats['max_limit_height'] = max_lb
+        save_limit_stats_to_cache(limit_stats)
+        save_limit_stats_to_database(limit_stats)
         
         # 检查提醒
         print("\n" + "=" * 80)

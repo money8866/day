@@ -34,66 +34,6 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 pro = ts.pro_api(TUSHARE_TOKEN)
 
-# SQLite 缓存（与theme_trend_sentiment_score.py共用）
-DB_PATH = os.path.join(CACHE_DIR, 'cache.db')
-
-def _init_sqlite_cache():
-    """初始化SQLite缓存表"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cache_data (
-            key TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            expire_time INTEGER,
-            created_at INTEGER
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def _sqlite_cache_get(cache_key):
-    """从SQLite缓存读取DataFrame"""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        cursor = conn.cursor()
-        cursor.execute('SELECT data, expire_time FROM cache_data WHERE key = ?', (cache_key,))
-        row = cursor.fetchone()
-        if row:
-            data_str, expire_time = row
-            if expire_time and expire_time > 0 and int(time.time()) > expire_time:
-                cursor.execute('DELETE FROM cache_data WHERE key = ?', (cache_key,))
-                conn.commit()
-                return None
-            from io import StringIO
-            return pd.read_csv(StringIO(data_str))
-    except:
-        pass
-    finally:
-        conn.close()
-    return None
-
-def _sqlite_cache_set(cache_key, df):
-    """写入SQLite缓存"""
-    from io import StringIO
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        buffer = StringIO()
-        df.to_csv(buffer, index=False)
-        data_str = buffer.getvalue()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO cache_data (key, data, expire_time, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (cache_key, data_str, 0, int(time.time())))
-        conn.commit()
-    except:
-        pass
-    finally:
-        conn.close()
-
-_init_sqlite_cache()
-
 # =========================
 # 缓存管理器（按交易日过期）
 # =========================
@@ -250,24 +190,12 @@ print("当前交易日:", TRADE_DATE)
 def get_concept_and_stock_info():
     print("\n[1/5] 加载东方财富概念+行业板块映射...")
     cache_file = os.path.join(CACHE_DIR, "dc_all_members.pkl")
-    sqlite_key = f"tsc_dc_all_members_{TRADE_DATE}"
 
-    # 1) 优先读 SQLite 缓存（与 theme_trend_sentiment_score.py 共用）
-    sqlite_df = _sqlite_cache_get(sqlite_key)
-    if sqlite_df is not None and not sqlite_df.empty and "is_industry" in sqlite_df.columns:
-        print(f"   从SQLite缓存加载成功，共 {len(sqlite_df)} 条记录")
-        return build_maps_from_df(sqlite_df)
-
-    # 2) 回退到 pickle 缓存
     if os.path.exists(cache_file):
         try:
             df = pd.read_pickle(cache_file)
             if df is not None and len(df) > 0:
-                print(f"   从pickle缓存加载成功，共 {len(df)} 条记录")
-                # 同步写入 SQLite 缓存（下次直接命中）
-                if "is_industry" not in df.columns:
-                    df["is_industry"] = False
-                _sqlite_cache_set(sqlite_key, df)
+                print(f"   从缓存加载成功，共 {len(df)} 条记录")
                 return build_maps_from_df(df)
         except:
             pass
@@ -296,7 +224,7 @@ def get_concept_and_stock_info():
             print(f"   行业板块 {len(industry_df)} 个")
 
         if not all_boards:
-            return {}, {}, {}, {}, {}
+            return {}, {}, {}
 
         boards_df = pd.concat(all_boards, ignore_index=True)
         board_name_map = dict(zip(boards_df['ts_code'], boards_df['name']))
@@ -327,7 +255,6 @@ def get_concept_and_stock_info():
             industry_ts_codes = set(industry_df['ts_code'].tolist())
             df['is_industry'] = df['ts_code'].isin(industry_ts_codes)
             df.to_pickle(cache_file)
-            _sqlite_cache_set(sqlite_key, df)  # 同步写入 SQLite 缓存
             print(f"   成功获取 {len(df)} 条成份股记录（共{total_boards}个板块）")
             return build_maps_from_df(df)
     except Exception as e:
@@ -408,7 +335,7 @@ def _has_concept_overlap(code, stock_concepts, stock_dc_industries, theme_concep
 
     concepts = stock_concepts.get(code, [])
     if not concepts:
-        return False  # 无概念数据 → 不通过概念重叠检查（靠行业匹配+关键词才能进入）
+        return False  # 无概念数据不通过（需要确认关系）
     if not theme_concept_list:
         return True
     all_terms = [t for t in list(theme_concept_list) + list(theme_keywords) if t]
@@ -593,11 +520,6 @@ def build_theme_portfolio(hot_themes, dc_concept_map, dc_industry_map, name_map,
 
         theme_stock_map[theme_name] = matched
 
-    # ====================================================================
-    # Phase 4: 多主题去重（基于新评分体系）
-    # ====================================================================
-    theme_stock_map = _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts)
-
     # ===== 筛选输出 =====
     for theme_name, theme_data in hot_themes.items():
         print(f"\n处理主题: {theme_name}")
@@ -732,69 +654,6 @@ def _compute_chain_score(code, stock_name, concepts, info, concept_list, keyword
         score -= 5
 
     return max(score, 0)
-
-
-def _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts):
-    """
-    多主题去重：将出现在多个主题的股票只保留在评分最佳的主题中
-    
-    规则：
-    1. chain_distance=0（核心产业链）的股票不参与去重
-    2. 龙头/核心公司（via=leader_company/core_company）强制保留
-    3. 其余按 score 分配最佳主题（保留最高分）
-    4. 分数差 <= 3 且 industry_match=True 的保留
-    """
-    from collections import defaultdict
-
-    stock_theme_count = defaultdict(int)
-    for theme_name, stocks in theme_stock_map.items():
-        for code in stocks:
-            stock_theme_count[code] += 1
-
-    multi_stocks = {code for code, cnt in stock_theme_count.items() if cnt > 1}
-    if not multi_stocks:
-        return theme_stock_map
-
-    removed_count = 0
-    for code in list(multi_stocks):
-        theme_entries = []
-        for theme_name, stocks in theme_stock_map.items():
-            if code in stocks:
-                meta = stocks[code]
-                via = meta.get("via", "")
-                is_core_chain = meta.get("chain_distance", 1) == 0
-                is_force = via in ("leader_company", "core_company")
-                score = meta.get("score", 0)
-                im = meta.get("industry_match", False)
-                theme_entries.append((theme_name, via, is_core_chain, is_force, score, im))
-
-        all_exempt = all(is_cc or is_f for _, _, is_cc, is_f, _, _ in theme_entries)
-        if all_exempt:
-            continue
-
-        forced_keep = {t for t, _, _, is_f, _, _ in theme_entries if is_f}
-
-        theme_scores = sorted(theme_entries, key=lambda x: -x[4])
-        best_score = theme_scores[0][4]
-
-        keep_themes = set(forced_keep)
-        for t, _, is_cc, is_f, sc, im in theme_scores:
-            if t in forced_keep:
-                continue
-            if sc == best_score:
-                keep_themes.add(t)
-            elif best_score - sc <= 3 and im and not theme_scores[0][5]:
-                keep_themes.add(t)
-
-        for theme_name, _, is_cc, is_f, _, _ in theme_entries:
-            if theme_name not in keep_themes and not is_cc and not is_f:
-                del theme_stock_map[theme_name][code]
-                removed_count += 1
-
-    if removed_count:
-        print(f"[Match] 多主题去重: {removed_count} 条（跨主题股票配到最佳主题）")
-
-    return theme_stock_map
 
 
 # =========================

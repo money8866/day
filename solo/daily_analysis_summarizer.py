@@ -412,6 +412,21 @@ def generate_summary(market_data, theme_data, stock_data, avg_trend_60_data, tra
                     if stock.get('reason'):
                         summary += f"     推荐理由: {stock.get('reason', '')}\n"
                     summary += "\n"
+            
+            buzhang_mid = [s for s in mid_term_stocks if s.get('buy_type') == '补涨中军']
+            if buzhang_mid:
+                summary += "  📊 补涨中军（趋势健康）\n"
+                for i, stock in enumerate(buzhang_mid, 1):
+                    pct_chg = stock.get('pct_chg', 0)
+                    pct_str = f"{pct_chg:+.2f}%"
+                    trend_icon = "🟢" if pct_chg > 0 else ("🔴" if pct_chg < 0 else "⚪")
+                    summary += f"  {i}. {trend_icon} {stock.get('name', '')} ({stock.get('ts_code', '')})\n"
+                    summary += f"     收盘价: {stock.get('close', 0):.2f} | 涨跌幅: {pct_str}\n"
+                    summary += f"     所属主题: {stock.get('theme', '')}\n"
+                    summary += f"     市值: {stock.get('market_cap', 0):.1f}亿\n"
+                    if stock.get('reason'):
+                        summary += f"     推荐理由: {stock.get('reason', '')}\n"
+                    summary += "\n"
         
         if short_term_stocks:
             summary += "  ⚡ 短线主题（基于今日趋势分TOP3）\n"
@@ -436,6 +451,21 @@ def generate_summary(market_data, theme_data, stock_data, avg_trend_60_data, tra
             if longtou_short:
                 summary += "  🔥 龙头（首阴/强势）\n"
                 for i, stock in enumerate(longtou_short, 1):
+                    pct_chg = stock.get('pct_chg', 0)
+                    pct_str = f"{pct_chg:+.2f}%"
+                    trend_icon = "🟢" if pct_chg > 0 else ("🔴" if pct_chg < 0 else "⚪")
+                    summary += f"  {i}. {trend_icon} {stock.get('name', '')} ({stock.get('ts_code', '')})\n"
+                    summary += f"     收盘价: {stock.get('close', 0):.2f} | 涨跌幅: {pct_str}\n"
+                    summary += f"     所属主题: {stock.get('theme', '')}\n"
+                    summary += f"     市值: {stock.get('market_cap', 0):.1f}亿\n"
+                    if stock.get('reason'):
+                        summary += f"     推荐理由: {stock.get('reason', '')}\n"
+                    summary += "\n"
+            
+            buzhang_short = [s for s in short_term_stocks if s.get('buy_type') == '补涨中军']
+            if buzhang_short:
+                summary += "  📊 补涨中军（趋势健康）\n"
+                for i, stock in enumerate(buzhang_short, 1):
                     pct_chg = stock.get('pct_chg', 0)
                     pct_str = f"{pct_chg:+.2f}%"
                     trend_icon = "🟢" if pct_chg > 0 else ("🔴" if pct_chg < 0 else "⚪")
@@ -495,13 +525,22 @@ def summarize_with_deepseek(text):
 1. 大盘分析：多个指数的趋势、情绪、收盘价和涨跌幅
 2. 主题分析：多个主题的趋势、情绪、5日涨跌和量比
 3. 操盘策略：低吸机会、重点关注主题、注意风险的主题
-4. 精选个股：符合条件的个股列表，包括中军突破和龙头首阴两类
+4. 精选个股：符合条件的个股列表，包括三类：
+   - 中军：趋势稳健的核心标的，适合中线布局
+   - 补涨中军：大成交额、大市值、趋势健康的补涨标的
+   - 龙头首阴：强势股回调，关注反包机会
 
 请给出：
 1. 大盘核心观点（言简意赅，总结当前市场的主要趋势和风险,提示明日的操作建议）
 2. 主题轮动机会分析（重点关注主题的持续和轮动趋势,说明主题轮动的原因和影响）
-3. 个股机会分析（哪些个股值得重点关注，中期趋势主题和短线博弈的中军和龙头首阴分别说明）
+3. 个股机会分析：
+   【必须】按中期趋势主题和短线主题分别列出中军、补涨中军
+   【必须】如果报告"中期趋势主题"的"补涨中军"部分列出了某只股票，必须在中期趋势的"补涨中军"分类中提及
+   【必须】如果报告"短线主题"的"补涨中军"部分列出了某只股票，必须在短线的"补涨中军"分类中提及
+   【必须】列出报告中的所有补涨中军，不要遗漏
+   【重要】严格按照报告中的分类来归类个股，不要自行判断！
    【重要】提到每只个股时，务必写出完整的股票代码（如：中际旭创 (300308.SZ)）！
+   【重要】补涨中军就是补涨中军，龙头首阴就是龙头首阴，两者不能混淆！
 4. 操作建议（仓位控制、方向选择、风险提示）
 
 用简洁专业的语言输出，突出重点，便于快速阅读。"""

@@ -48,6 +48,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache_backbone_tushare")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# 导入 tushare_quant 模块用于下载K线数据
+try:
+    import tushare_quant as tq
+    TQ_AVAILABLE = True
+except ImportError:
+    TQ_AVAILABLE = False
+    print("[Warning] tushare_quant 模块未找到，将使用内置方法")
+
 # SQLite 缓存数据库配置
 DB_PATH = os.path.join(CACHE_DIR, 'cache.db')
 
@@ -99,17 +107,6 @@ OUTPUT_DB = os.path.join(CACHE_DIR, "theme_trend_sentiment.db")
 N_DAYS = 60
 TOP_N_PER_THEME = 30
 MIN_STOCKS = 3
-
-TOP_TREND_N = 5
-RSI_BUY_THRESHOLD = 70
-TURNOVER_SELL_PERCENTILE = 90
-
-CLIMAX_TREND_THRESHOLD = 65
-CLIMAX_SENTIMENT_THRESHOLD = 75
-CLIMAX_SENTIMENT_RANK1 = True
-
-DIP_TREND_THRESHOLD = 55  # 提高趋势分阈值
-DIP_SENTIMENT_CEILING = 50
 
 
 def _strip_ii(name):
@@ -256,8 +253,12 @@ def load_theme_json():
 def get_dc_members():
     cached = cache_get("dc_all_members")
     if cached is not None:
-        print(f"[DC] 缓存命中: {len(cached)} 条成份股记录")
-        return cached
+        # 检查缓存是否有 is_industry 列，没有则说明是旧缓存，需重新拉取
+        if "is_industry" in cached.columns:
+            print(f"[DC] 缓存命中: {len(cached)} 条成份股记录")
+            return cached
+        else:
+            print("[DC] 缓存缺 is_industry 列，重新拉取")
 
     if pro is None:
         print("[DC] 缺少 Tushare token，无法拉取东财板块")
@@ -265,27 +266,55 @@ def get_dc_members():
 
     print("[DC] 调用 Tushare dc_index / dc_member 拉取板块成份股...")
     concept_df = pro.dc_index(trade_date=TRADE_DATE, idx_type="概念板块")
-    time.sleep(0.2)
+    time.sleep(0.15)
     industry_df = pro.dc_index(trade_date=TRADE_DATE, idx_type="行业板块")
-    time.sleep(0.2)
+    time.sleep(0.15)
+    
+    # 建立 board code -> 是否行业板块 的映射（替代靠名字猜测）
+    industry_board_codes = set(industry_df["ts_code"].tolist())
+    
     boards = pd.concat([concept_df[["ts_code", "name"]], industry_df[["ts_code", "name"]]], ignore_index=True)
     name_map = dict(zip(boards["ts_code"], boards["name"]))
     codes = boards["ts_code"].tolist()
 
     all_members = []
+    fetched_codes = set()
     total = len(codes)
     for i, code in enumerate(codes):
         try:
             m = pro.dc_member(trade_date=TRADE_DATE, ts_code=code)
             if m is not None and not m.empty:
                 m["concept_name"] = m["ts_code"].map(name_map)
+                m["is_industry"] = code in industry_board_codes
                 m = m.dropna(subset=["concept_name"])
                 all_members.append(m)
+                fetched_codes.add(code)
             if (i + 1) % 100 == 0:
                 print(f"[DC] 进度: {i+1}/{total}")
-            time.sleep(0.08)
+            time.sleep(0.15)
         except Exception as e:
             pass
+
+    # 找出漏掉的板块（异常 + 空返回），重试
+    missing_codes = [c for c in codes if c not in fetched_codes]
+    if missing_codes:
+        print(f"[DC] {len(missing_codes)} 个板块未拉到，重试中...")
+        time.sleep(1)
+        for code in missing_codes[:]:
+            try:
+                m = pro.dc_member(trade_date=TRADE_DATE, ts_code=code)
+                if m is not None and not m.empty:
+                    m["concept_name"] = m["ts_code"].map(name_map)
+                    m["is_industry"] = code in industry_board_codes
+                    m = m.dropna(subset=["concept_name"])
+                    all_members.append(m)
+                    fetched_codes.add(code)
+                time.sleep(0.15)
+            except Exception:
+                pass
+        still_missing = [c for c in codes if c not in fetched_codes]
+        if still_missing:
+            print(f"[DC] 仍有 {len(still_missing)} 个板块无法拉取: {[name_map.get(c, c) for c in still_missing[:5]]}...")
 
     if not all_members:
         return pd.DataFrame()
@@ -302,7 +331,7 @@ def get_stock_basic():
     if pro is None:
         return pd.DataFrame()
     df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,symbol,name,industry,list_date")
-    time.sleep(0.1)
+    time.sleep(0.15)
     cache_set("stock_basic", df)
     return df
 
@@ -316,7 +345,7 @@ def get_daily_basic(trade_date=None):
     if pro is None:
         return pd.DataFrame()
     df = pro.daily_basic(trade_date=trade_date, fields="ts_code,total_mv,circ_mv,turnover_rate,pe,pb")
-    time.sleep(0.1)
+    time.sleep(0.15)
     cache_set("daily_basic", df, trade_date=trade_date)
     return df
 
@@ -344,8 +373,29 @@ def get_daily_kline(ts_codes, start, end):
     all_parts = []
     need_fetch_codes = []
     
-    # 先尝试从单只股票缓存里读取
+    # 定义本地缓存目录
+    LOCAL_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache_daily")
+    
+    # 先尝试从本地CSV缓存读取（优先级最高）
     for code in ts_codes:
+        csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                if not df.empty:
+                    # 将 trade_date 转换为字符串类型，避免类型比较错误
+                    df['trade_date'] = df['trade_date'].astype(str)
+                    # 过滤日期范围
+                    df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
+                    if not df.empty:
+                        # 添加均线列
+                        df = _add_ma_columns(df)
+                        all_parts.append(df)
+                        continue
+            except Exception as e:
+                print(f"[KLine] 读取CSV失败 {csv_path}: {e}")
+        
+        # 再尝试从SQLite缓存读取
         cache_key = f"daily_kline_{code}_{start}_{end}"
         cached = cache_get(cache_key)
         if cached is not None:
@@ -357,7 +407,31 @@ def get_daily_kline(ts_codes, start, end):
         else:
             need_fetch_codes.append(code)
     
-    # 需要拉取的股票按批次拉取
+    # 需要拉取的股票：先尝试用 tushare_quant 生成CSV缓存
+    if need_fetch_codes and TQ_AVAILABLE:
+        print(f"[KLine] 使用 tushare_quant 批量预取 {len(need_fetch_codes)} 只股票数据")
+        try:
+            tq.batch_prefetch_hist_data(need_fetch_codes, start_date=start)
+            # 重新从CSV读取刚生成的缓存
+            for code in need_fetch_codes[:]:  # 使用副本迭代
+                csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
+                if os.path.exists(csv_path):
+                    try:
+                        df = pd.read_csv(csv_path)
+                        if not df.empty:
+                            # 将 trade_date 转换为字符串类型，避免类型比较错误
+                            df['trade_date'] = df['trade_date'].astype(str)
+                            df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
+                            if not df.empty:
+                                df = _add_ma_columns(df)
+                                all_parts.append(df)
+                                need_fetch_codes.remove(code)
+                    except Exception as e:
+                        print(f"[KLine] 读取tq生成的CSV失败 {csv_path}: {e}")
+        except Exception as e:
+            print(f"[KLine] tushare_quant 调用失败: {e}")
+    
+    # 剩余需要拉取的股票按批次从API拉取
     if need_fetch_codes:
         chunks = [need_fetch_codes[i : i + 80] for i in range(0, len(need_fetch_codes), 80)]
         for ci, chunk in enumerate(chunks):
@@ -373,10 +447,10 @@ def get_daily_kline(ts_codes, start, end):
                             cache_key = f"daily_kline_{code}_{start}_{end}"
                             cache_set(cache_key, code_df)
                             all_parts.append(code_df)
-                time.sleep(0.2)
+                time.sleep(0.15)
             except Exception as e:
                 print(f"[KLine] 批次 {ci + 1}/{len(chunks)} 失败: {e}")
-                time.sleep(0.5)
+                time.sleep(0.15)
     
     df = pd.concat(all_parts, ignore_index=True) if all_parts else pd.DataFrame()
     return df
@@ -408,106 +482,396 @@ def get_index_kline(ts_code="000300.SH", start=None, end=None):
         df = pro.index_daily(ts_code=ts_code, start_date=start, end_date=end)
     except Exception:
         df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
-    time.sleep(0.1)
+    time.sleep(0.15)
     if df is not None and not df.empty:
         cache_set("idx_kline", df, ts_code=ts_code, start=start, end=end)
         print(f"[Index] 数据已缓存")
     return df
 
 
+def _has_concept_overlap(code, stock_concepts, theme_concept_list, theme_keywords, stock_dc_industries=None):
+    """检查股票的概念是否与主题的概念或关键词有重叠（子串匹配）
+    
+    额外检查：如果股票所在的 DC 行业板块名与 theme concept 精确匹配，直接通过。
+    这解决了行业板块（如"半导体材料"）的成员在概念标签中不包含该名的问题。
+    """
+    # 检查 DC 行业板块名是否与 theme concept 精确匹配
+    if stock_dc_industries and theme_concept_list:
+        inds = stock_dc_industries.get(code, [])
+        for ind in inds:
+            if ind in theme_concept_list:
+                return True
+    
+    concepts = stock_concepts.get(code, [])
+    if not concepts:
+        return False  # 无概念数据 → 不通过概念重叠检查（靠行业匹配+关键词才能进入）
+    
+    # 如果主题没有配置 concept，检查是否有关键词匹配
+    if not theme_concept_list:
+        # 如果有关键词，需要至少一个关键词匹配才能通过
+        if theme_keywords:
+            for kw in theme_keywords:
+                for c in concepts:
+                    if kw in c:
+                        return True
+                # 也检查股票名称
+                #（注意：股票名称匹配在 _compute_chain_score 中单独处理）
+            return False  # 没有关键词匹配，不通过概念重叠检查
+        return True  # 既无概念也无关键词，纯行业匹配主题
+    
+    all_theme_terms = list(theme_concept_list) + list(theme_keywords)
+    all_theme_terms = [t for t in all_theme_terms if t]
+    if not all_theme_terms:
+        return True  # 主题无概念/关键词时不阻截
+    
+    for sc in concepts:
+        for tt in all_theme_terms:
+            if tt in sc or sc in tt:
+                return True
+    return False
+
+
+def _is_force_include(code, stock_name, core_companies, leader_companies):
+    """判断股票是否属于强制纳入名单（龙头/核心公司）"""
+    if leader_companies and any(c in stock_name for c in leader_companies):
+        return True, "leader_company"
+    if core_companies and any(c in stock_name for c in core_companies):
+        return True, "core_company"
+    return False, ""
+
+
+def _should_exclude(code, stock_name, concepts, exclude_keywords, core_companies, leader_companies):
+    """检查股票是否应被排除（跳过强制纳入名单）"""
+    if not exclude_keywords:
+        return False
+    is_force, _ = _is_force_include(code, stock_name, core_companies, leader_companies)
+    if is_force:
+        return False
+    return _match_exclude(code, stock_name, concepts, exclude_keywords)
+
+
+def _compute_chain_score(code, stock_name, concepts, info, concept_list, keyword_list,
+                         core_companies, leader_companies, chain_distance):
+    """
+    产业链约束匹配评分
+    
+    score = industry_base + concept_bonus + keyword_bonus + leader_proximity - chain_penalty
+    
+    规则：
+    - industry_base:   DC行业板块匹配+10, stock_basic行业匹配+5
+    - concept_bonus:   股票概念与theme concept精确匹配, +5/个
+    - keyword_bonus:   关键词在股票名中出现+2/个, 在概念中出现+1/个
+    - leader_proximity: leader_companies +15, core_companies +10, 有概念重叠+3
+    - chain_penalty:   chain_distance==1 时 -5
+    """
+    score = 0
+
+    # 1) industry_base
+    source = info.get("source", "")
+    if source == "dc_industry_board" or source == "dc_industry":
+        score += 10
+    elif source == "stock_basic_industry":
+        score += 5
+    elif source == "concept_as_industry":
+        score += 8
+    # concept_only gets no industry base
+
+    # 2) concept_bonus: 股票东财概念标签与 theme concept 精确匹配
+    concept_matched = 0
+    for cc in concepts:
+        if cc in concept_list:
+            concept_matched += 1
+    score += concept_matched * 5
+
+    # 3) keyword_bonus: 关键词匹配
+    kw_name_count = sum(1 for kw in keyword_list if kw in stock_name)
+    score += kw_name_count * 2
+    kw_concept_count = 0
+    for kw in keyword_list:
+        if kw not in stock_name:  # 避免重复计数
+            for c in concepts:
+                if kw in c:
+                    kw_concept_count += 1
+                    break
+    score += kw_concept_count * 1
+
+    # 4) leader_proximity
+    is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
+    if is_force:
+        if force_type == "leader_company":
+            score += 15
+        else:
+            score += 10
+    elif concept_matched > 0:
+        score += 3  # 概念重叠的邻近加分
+
+    # 5) chain_penalty
+    if chain_distance == 1:
+        score -= 5
+
+    return max(score, 0)
+
+
 def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
+    """
+    ===== 产业链约束匹配模型 =====
+    
+    匹配原则：
+    1. Industry Gate：股票必须通过行业板块匹配（东财行业板块 or stock_basic），否则直接排除
+    2. Chain Distance 分层（0=核心, 1=上下游, 2+/3=排除）：
+       - 0 (核心产业链)：industry match + 概念/关键词重叠 或 龙头/核心公司
+       - 1 (上下游)：industry match only，无概念重叠但有部分关键词关联
+       - 2+：纯行业关联无验证信息 → 排除
+    3. exclude_keywords 硬过滤（跳过强制纳入公司）
+    4. leader_companies 锚定：龙头公司强制 chain_distance=0，最高评分
+    5. 最终评分：industry_base + concept_bonus + keyword_bonus + leader_proximity - chain_penalty
+    
+    输出每只股票的：
+    - via: 匹配路径
+    - industry_match: 是否行业匹配
+    - chain_distance: 产业链层级 (0/1)
+    - score: 综合评分
+    """
     stock_basic_industry = {}
     name_map_basic = {}
-    for _, row in stock_basic_df.iterrows():
-        stock_basic_industry[row["ts_code"]] = row.get("industry", "")
-        name_map_basic[row["ts_code"]] = row.get("name", "")
+    if stock_basic_df is not None and not stock_basic_df.empty:
+        for _, row in stock_basic_df.iterrows():
+            stock_basic_industry[row["ts_code"]] = row.get("industry", "")
+            name_map_basic[row["ts_code"]] = row.get("name", "")
 
     # 拆分东财数据为行业和概念
-    stock_concepts = defaultdict(list)
-    stock_dc_industries = defaultdict(list)
+    stock_concepts = defaultdict(list)          # code -> [概念板块名, ...]
+    stock_dc_industries = defaultdict(list)     # code -> [行业板块名, ...]
+    dc_concept_board_members = defaultdict(set)   # 概念板块名 -> {code, ...}
+    dc_industry_board_members = defaultdict(set)  # 行业板块名 -> {code, ...}
     if dc_df is not None and not dc_df.empty:
         for _, r in dc_df.iterrows():
             con_code = r["con_code"]
-            concept_name = r["concept_name"]
-            if con_code and concept_name:
-                # 判断是行业板块还是概念板块（通过名称特征）
-                is_industry = ('行业' in concept_name or 'Ⅱ' in concept_name or 'Ⅲ' in concept_name or 'Ⅰ' in concept_name)
+            board_name = r["concept_name"]
+            if con_code and board_name:
+                is_industry = r.get("is_industry", False)
                 if is_industry:
-                    stock_dc_industries[con_code].append(concept_name)
+                    stock_dc_industries[con_code].append(board_name)
+                    dc_industry_board_members[board_name].add(con_code)
                 else:
-                    stock_concepts[con_code].append(concept_name)
+                    stock_concepts[con_code].append(board_name)
+                    dc_concept_board_members[board_name].add(con_code)
 
     theme_stock_map = {}
+    
     for theme_name, cfg in hot_themes.items():
         industry_list = cfg.get("industry", [])
         concept_list = cfg.get("concept", [])
         keyword_list = cfg.get("keywords", [])
         exclude_keywords = cfg.get("exclude_keywords", [])
-
-        matched = {}
-        
-        # 方式1：东财行业板块匹配（优先）
-        for code, dc_inds in stock_dc_industries.items():
-            hit = False
-            for ind in dc_inds:
-                if ind in industry_list or any(v in ind for v in industry_list):
-                    hit = True
-                    break
-            if hit:
-                matched[code] = {"via": "dc_industry", "industry_match": True}
-        
-        # 方式2：东财概念板块匹配
-        for code, concepts in stock_concepts.items():
-            hit = False
-            for c in concept_list:
-                if c in concepts:
-                    hit = True
-                    break
-            if hit:
-                if code in matched:
-                    matched[code]["via"] = matched[code]["via"] + "+dc_concept"
-                else:
-                    matched[code] = {"via": "dc_concept", "industry_match": False}
-        
-        # 方式3：stock_basic行业兜底匹配
-        for code, ind in stock_basic_industry.items():
-            if ind and _in_industry_list(ind, industry_list):
-                if code not in matched:
-                    matched[code] = {"via": "stock_basic_industry", "industry_match": True}
-        
-        # 应用exclude_keywords过滤
-        if exclude_keywords:
-            to_remove = []
-            for code in matched:
-                stock_name = name_map_basic.get(code, "")
-                concepts = stock_concepts.get(code, [])
-                skip = False
-                for ek in exclude_keywords:
-                    if ek in stock_name:
-                        skip = True
-                        break
-                    for c in concepts:
-                        if c.startswith(ek):
-                            skip = True
-                            break
-                    if skip:
-                        break
-                if skip:
-                    to_remove.append(code)
-            
-            for code in to_remove:
-                del matched[code]
-
-        # 方式4：core_companies强制纳入（确保核心公司不被遗漏）
         core_companies = cfg.get("core_companies", [])
-        if core_companies:
-            for code, name in name_map_basic.items():
-                if any(company in name for company in core_companies):
-                    if code not in matched:
-                        matched[code] = {"via": "core_company", "industry_match": True}
+        leader_companies = cfg.get("leader_companies", [])
+
+        # ====================================================================
+        # Phase 1: Industry Gate — 股票必须通过行业匹配进入候选池
+        # ====================================================================
+        candidates = {}  # code -> {industry_match, source}
+
+        # 方式A（最强）：industry 列表中的名称直接匹配东财行业板块
+        for ind_name in industry_list:
+            if ind_name in dc_industry_board_members:
+                for code in dc_industry_board_members[ind_name]:
+                    if code not in candidates:
+                        candidates[code] = {"industry_match": True, "source": "dc_industry_board"}
+
+        # 方式B（强）：股票所属东财行业板块与 theme industry 匹配
+        for code, industries in stock_dc_industries.items():
+            if code not in candidates:
+                for ind in industries:
+                    if _in_industry_list(ind, industry_list):
+                        candidates[code] = {"industry_match": True, "source": "dc_industry"}
+                        break
+
+        # 方式C（中）：stock_basic 行业匹配（单一行业标签）
+        for code, ind in stock_basic_industry.items():
+            if code not in candidates and ind:
+                if _in_industry_list(ind, industry_list):
+                    candidates[code] = {"industry_match": True, "source": "stock_basic_industry"}
+
+        # 方式D（兜底）：theme 无 industry 配置 → 用 concept 板块成员作为候选（标记为 industry_match=False）
+        if not industry_list:
+            for conc_name in concept_list:
+                if conc_name in dc_concept_board_members:
+                    for code in dc_concept_board_members[conc_name]:
+                        if code not in candidates:
+                            candidates[code] = {"industry_match": False, "source": "concept_only"}
+                # 如果 concept 名恰好是行业板块名
+                if conc_name in dc_industry_board_members:
+                    for code in dc_industry_board_members[conc_name]:
+                        if code not in candidates:
+                            candidates[code] = {"industry_match": True, "source": "concept_as_industry"}
+
+        # ====================================================================
+        # Phase 2: Chain Distance 计算 + 评分
+        # ====================================================================
+        matched = {}
+        for code, info in candidates.items():
+            stock_name = name_map_basic.get(code, "")
+            concepts = stock_concepts.get(code, [])
+
+            # --- 2a) exclude_keywords 硬过滤（跳过强制纳入公司）---
+            if _should_exclude(code, stock_name, concepts, exclude_keywords, core_companies, leader_companies):
+                continue
+
+            # --- 2b) 概念重叠检查 ---
+            has_concept_overlap = _has_concept_overlap(
+                code, stock_concepts, concept_list, keyword_list, stock_dc_industries
+            )
+
+            # --- 2c) 关键词检查（在股票名或概念标签中）---
+            kw_matches = []
+            for kw in keyword_list:
+                if kw in stock_name:
+                    kw_matches.append(kw)
+                else:
+                    for c in concepts:
+                        if kw in c:
+                            kw_matches.append(kw)
+                            break
+
+            # --- 2d) 强制纳入检查 ---
+            is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
+
+            # --- 2e) 判定 chain_distance ---
+            if is_force:
+                chain_distance = 0
+            elif has_concept_overlap:
+                chain_distance = 0      # 核心产业链：行业+概念双重确认
+            elif kw_matches:
+                chain_distance = 1      # 上下游：行业确认 + 关键词提示
+            elif info.get("source") == "concept_only":
+                chain_distance = 1      # 无行业配置的主题概念匹配 → 弱关联
+            else:
+                chain_distance = 2      # 纯行业匹配无验证 → 外延收益 → 排除
+
+            if chain_distance >= 2:
+                continue
+
+            # --- 2f) 计算综合评分 ---
+            score = _compute_chain_score(
+                code, stock_name, concepts, info,
+                concept_list, keyword_list,
+                core_companies, leader_companies,
+                chain_distance
+            )
+
+            # --- 2g) 构建 meta 信息 ---
+            via = info.get("source", "unknown")
+            if is_force:
+                via = force_type
+
+            matched[code] = {
+                "via": via,
+                "industry_match": info.get("industry_match", False),
+                "chain_distance": chain_distance,
+                "score": score
+            }
+
+        # ====================================================================
+        # Phase 3: 强制纳入龙头/核心公司（即使无行业匹配）
+        # ====================================================================
+        for code, name in name_map_basic.items():
+            is_leader = leader_companies and any(c in name for c in leader_companies)
+            is_core = core_companies and any(c in name for c in core_companies)
+            if (is_leader or is_core) and code not in matched:
+                score = 25 if is_leader else 20
+                matched[code] = {
+                    "via": "leader_company" if is_leader else "core_company",
+                    "industry_match": True,
+                    "chain_distance": 0,
+                    "score": score
+                }
 
         theme_stock_map[theme_name] = matched
+
+    # ====================================================================
+    # Phase 4: 多主题去重（基于新评分体系）
+    # ====================================================================
+    theme_stock_map = _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts)
+
     return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+
+def _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts):
+    """
+    多主题去重：将出现在多个主题的股票只保留在评分最佳的主题中
+    
+    规则：
+    1. chain_distance=0（核心产业链）的股票不参与去重
+    2. 龙头/核心公司（via=leader_company/core_company）强制保留
+    3. 其余按 score 分配最佳主题（保留最高分）
+    4. 分数差 <= 3 且 industry_match=True 的保留
+    """
+    from collections import defaultdict
+
+    stock_theme_count = defaultdict(int)
+    for theme_name, stocks in theme_stock_map.items():
+        for code in stocks:
+            stock_theme_count[code] += 1
+
+    multi_stocks = {code for code, cnt in stock_theme_count.items() if cnt > 1}
+    if not multi_stocks:
+        return theme_stock_map
+
+    removed_count = 0
+    for code in list(multi_stocks):
+        theme_entries = []
+        for theme_name, stocks in theme_stock_map.items():
+            if code in stocks:
+                meta = stocks[code]
+                via = meta.get("via", "")
+                is_core_chain = meta.get("chain_distance", 1) == 0
+                is_force = via in ("leader_company", "core_company")
+                score = meta.get("score", 0)
+                im = meta.get("industry_match", False)
+                theme_entries.append((theme_name, via, is_core_chain, is_force, score, im))
+
+        # 如果股票在所有主题都是核心产业链(chain=0)或强制纳入 → 跳过不去重
+        all_exempt = all(is_cc or is_f for _, _, is_cc, is_f, _, _ in theme_entries)
+        if all_exempt:
+            continue
+
+        # 强制纳入的公司保留
+        forced_keep = {t for t, _, _, is_f, _, _ in theme_entries if is_f}
+
+        # 按 score 降序
+        theme_scores = sorted(theme_entries, key=lambda x: -x[4])
+        best_score = theme_scores[0][4]
+
+        keep_themes = set(forced_keep)
+        for t, _, is_cc, is_f, sc, im in theme_scores:
+            if t in forced_keep:
+                continue
+            if sc == best_score:
+                keep_themes.add(t)
+            elif best_score - sc <= 3 and im and not theme_scores[0][5]:
+                # 分数相近且当前最佳无行业匹配 → 保留有行业匹配的
+                keep_themes.add(t)
+
+        for theme_name, _, is_cc, is_f, _, _ in theme_entries:
+            if theme_name not in keep_themes and not is_cc and not is_f:
+                del theme_stock_map[theme_name][code]
+                removed_count += 1
+
+    if removed_count:
+        print(f"[Match] 多主题去重: {removed_count} 条（跨主题股票配到最佳主题）")
+
+    return theme_stock_map
+
+def _match_exclude(code, stock_name, concepts, exclude_keywords):
+    """检查股票是否匹配排除关键词（子串匹配）"""
+    for ek in exclude_keywords:
+        if ek in stock_name:
+            return True
+        for c in concepts:
+            if ek in c:
+                return True
+    return False
 
 
 def per_stock_features(df_one):
@@ -867,171 +1231,184 @@ def calc_theme_state(r, prev_data=None):
         return "弱势"
 
 
-def calc_turnover_percentile(turnover_list, current_turnover):
-    if not turnover_list or len(turnover_list) == 0:
-        return 50.0
-    sorted_list = sorted(turnover_list)
-    idx = sum(1 for x in sorted_list if x <= current_turnover)
-    return (idx / len(sorted_list)) * 100
+def calc_rotation_cycle(theme_name, current_t_score, current_s_score):
+    """
+    基于近20天全市场主题的趋势分排名动态，判断轮动周期阶段。
+    
+    核心思想：用排名百分位（相对位置）替代绝对分数进行分析。
+    排名百分位 0~100%，越高表示该主题在当天所有主题中趋势越强。
+    
+    返回 (cycle_stage, cycle_desc):
+      - "短期爆发"：     排名快速跃升，斜率>6，短期加速>15%，刚进入高位，爆发力强
+      - "中期持续"：     排名稳定在中高位(55%~85%)，窄幅波动(<6%)，情绪配合，持续性好
+      - "上升中"：       排名持续提升(斜率>2)，从低位向高位迈进，趋势明确
+      - "高潮风险"：     排名持续在极高位置(>=90%)，情绪偏强(>=60)，亢奋赶顶
+      - "退潮回避"：     排名从高位持续下滑至低位(<35%)，资金离场，或无明确轮动信号
+    """
+    if not os.path.exists(OUTPUT_DB):
+        return "未知", "无历史数据"
 
+    try:
+        conn = sqlite3.connect(OUTPUT_DB)
+        cur = conn.cursor()
 
-def generate_trading_signals(results, rows_per_theme, kline_groups):
-    signals = {"buy": [], "sell": [], "hold": [], "climax_warning": [], "dip_buy": []}
+        # 获取所有交易日（最近21天，确保当天也在内）
+        cur.execute("""
+            SELECT DISTINCT trade_date FROM theme_scores 
+            WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT 21
+        """, (TRADE_DATE,))
+        all_dates = [r[0] for r in cur.fetchall()]
+        all_dates.sort()
 
-    trend_sorted = sorted([r for r in results if r["n_stocks"] >= MIN_STOCKS], key=lambda x: x["trend_score"], reverse=True)
-    top_trend = trend_sorted[:TOP_TREND_N]
-    top_trend_names = set([r["theme"] for r in top_trend])
+        if len(all_dates) < 6:
+            conn.close()
+            return "未知", "历史数据不足"
 
-    valid_results = [r for r in results if r["n_stocks"] >= MIN_STOCKS]
-    sentiment_sorted = sorted(valid_results, key=lambda x: x["sentiment_score"], reverse=True)
-    sentiment_rank1 = sentiment_sorted[0]["theme"] if sentiment_sorted else None
+        # 对每个交易日，计算该主题的趋势分排名百分位
+        rank_history = []
+        sentiment_history = []
 
-    climax_theme_names = set()
-
-    for r in results:
-        theme = r["theme"]
-        td = r.get("trend_detail", {}) or {}
-        sd = r.get("sentiment_detail", {}) or {}
-
-        stock_feats = rows_per_theme.get(theme, [])
-        if not stock_feats:
-            signals["hold"].append({"theme": theme, "trend_score": 0.0, "sentiment_score": 0.0, "rsi": 50.0, "turnover_percentile": 50.0, "in_top_trend": False, "reason": "成份股不足"})
-            continue
-
-        all_prices = []
-        all_turnovers = []
-        for sf in stock_feats:
-            code = sf["ts_code"]
-            kdf = kline_groups.get(code)
-            if kdf is None or kdf.empty:
+        for d in all_dates:
+            # 当日所有主题的趋势分
+            cur.execute("""
+                SELECT trend_score, sentiment_score FROM theme_scores
+                WHERE trade_date = ?
+            """, (d,))
+            rows = cur.fetchall()
+            if len(rows) < 5:
                 continue
-            kdf_sorted = kdf.sort_values("trade_date")
-            closes = kdf_sorted["close"].astype(float).values
-            turnovers = kdf_sorted.get("turnover_rate", pd.Series([])).astype(float).values
-            all_prices.append(closes)
-            all_turnovers.append(turnovers)
 
-        if all_prices:
-            min_len = min(len(p) for p in all_prices)
-            aligned_prices = [p[-min_len:] for p in all_prices]
-            avg_prices = np.mean(aligned_prices, axis=0)
-            rsi = calc_rsi(avg_prices, 14)
+            scores = [r[0] for r in rows]
+
+            # 该主题当日的分
+            cur.execute("""
+                SELECT trend_score, sentiment_score FROM theme_scores
+                WHERE theme = ? AND trade_date = ?
+            """, (theme_name, d))
+            self_row = cur.fetchone()
+            if self_row is None:
+                continue
+
+            # 排名百分位：得分 ≤ 该主题的比例（越高越好）
+            better = sum(1 for s in scores if s <= self_row[0])
+            rank_pct = better / len(scores) * 100
+            rank_history.append(rank_pct)
+            sentiment_history.append(self_row[1])
+
+        conn.close()
+
+        if len(rank_history) < 5:
+            return "未知", "历史数据不足(需≥5天)"
+
+        n = len(rank_history)
+        current_rank_pct = rank_history[-1]
+        current_senti = sentiment_history[-1]
+
+        # ---- 排名轨迹特征 ----
+        seg_len = max(1, n // 3)
+        rank_early = np.mean(rank_history[:seg_len])
+        rank_mid = np.mean(rank_history[seg_len:2*seg_len])
+        rank_late = np.mean(rank_history[-seg_len:])
+
+        # 近10天排名线性斜率（正=提升）
+        recent_n = min(10, n)
+        recent_ranks = rank_history[-recent_n:]
+        x = np.arange(recent_n)
+        if len(recent_ranks) >= 3 and np.std(recent_ranks) > 0:
+            rank_slope = np.polyfit(x, recent_ranks, 1)[0]
         else:
-            rsi = 50.0
+            rank_slope = 0
 
-        avg_turnover = sd.get("avg_turnover", 0.0)
-        turnover_history = []
-        for t_list in all_turnovers:
-            turnover_history.extend(t_list)
-        turnover_percentile = calc_turnover_percentile(turnover_history, avg_turnover)
+        # 短期加速：最近3天 vs 前3天
+        last_3 = np.mean(rank_history[-3:]) if n >= 3 else current_rank_pct
+        prior_3 = np.mean(rank_history[-6:-3]) if n >= 6 else rank_early
+        short_accel = last_3 - prior_3
 
-        pct_above_ma5 = td.get("pct_above_ma5", 0.0)
-        pct_above_ma10 = td.get("pct_above_ma10", 0.0)
-        above_ma_both = pct_above_ma5 >= 50 and pct_above_ma10 >= 50
-        below_ma_both = pct_above_ma5 < 30 and pct_above_ma10 < 30
+        # 中期加速：后半段 vs 前半段
+        first_half = np.mean(rank_history[:n//2]) if n >= 4 else rank_early
+        second_half = np.mean(rank_history[-n//2:]) if n >= 4 else rank_late
+        mid_accel = second_half - first_half
 
-        signal_detail = {"theme": theme, "trend_score": r["trend_score"], "sentiment_score": r["sentiment_score"], "rsi": round(rsi, 1), "turnover_percentile": round(turnover_percentile, 1), "in_top_trend": theme in top_trend_names}
+        rank_high = max(rank_history)
+        rank_volatility = np.std(rank_history[-seg_len:]) if n >= seg_len else np.std(rank_history)
 
-        is_rank1 = (theme == sentiment_rank1 and CLIMAX_SENTIMENT_RANK1)
-        is_climax_sentiment = r["sentiment_score"] >= CLIMAX_SENTIMENT_THRESHOLD
-        is_climax_trend = r["trend_score"] >= CLIMAX_TREND_THRESHOLD
-        is_climax = (is_climax_trend and is_climax_sentiment) or (is_rank1 and is_climax_trend)
-        if is_climax:
-            climax_theme_names.add(theme)
-            signals["climax_warning"].append({"theme": theme, "trend_score": r["trend_score"], "sentiment_score": r["sentiment_score"], "composite_score": r["composite_score"],
-                                              "zt_count": sd.get("zt_count", 0), "zt_ratio": sd.get("zt_ratio", 0), "up_ratio": sd.get("up_ratio", 0), "rsi": round(rsi, 1),
-                                              "turnover_percentile": round(turnover_percentile, 1), "is_rank1": is_rank1, "reason": f"情绪分过高({r['sentiment_score']:.0f})+趋势良好({r['trend_score']:.0f})，如明日继续冲高应止盈减仓！"})
+        # 近5天情绪均值
+        s_5 = np.mean(sentiment_history[-5:]) if n >= 5 else current_senti
+        
+        # 近10天排名均值
+        r_10 = np.mean(rank_history[-10:]) if n >= 10 else current_rank_pct
 
-        mid_trend_ok = td.get("mid_trend_ok", 0) == 1
-        # 低吸条件更严格：
-        # 1. 趋势分 >= 55
-        # 2. 情绪分 < 50
-        # 3. mid_trend_ok 为真（趋势向上）
-        # 4. 至少有50%的股票在MA10或MA20上方（均线支撑）
-        pct_above_ma10 = td.get("pct_above_ma10", 0)
-        pct_above_ma20 = td.get("pct_above_ma20", 0)
-        has_ma_support = (pct_above_ma10 >= 50) or (pct_above_ma20 >= 50)
-        is_dip = (r["trend_score"] >= DIP_TREND_THRESHOLD and 
-                  r["sentiment_score"] < DIP_SENTIMENT_CEILING and 
-                  mid_trend_ok and 
-                  has_ma_support)
-        if is_dip:
-            signals["dip_buy"].append({"theme": theme, "trend_score": r["trend_score"], "sentiment_score": r["sentiment_score"], "composite_score": r["composite_score"],
-                                        "rsi": round(rsi, 1), "turnover_percentile": round(turnover_percentile, 1), "reason": f"趋势向上({r['trend_score']:.0f})情绪回调中({r['sentiment_score']:.0f})，均线有支撑，可低吸博弈情绪回升"})
+        # ---- 基于排名动态的轮动判定 ----
+        # 目标：全市场只选出 3~5 个真正有参与价值的主题，其余归为退潮/未知
 
-        is_emotion_ok = (rsi < RSI_BUY_THRESHOLD) and (r["sentiment_score"] < CLIMAX_SENTIMENT_THRESHOLD)
-        not_in_climax = theme not in climax_theme_names
-        if theme in top_trend_names and is_emotion_ok and above_ma_both and not_in_climax:
-            signal_detail["reason"] = f"趋势排名前{TOP_TREND_N} + RSI({rsi:.1f})<{RSI_BUY_THRESHOLD} + 情绪分<{CLIMAX_SENTIMENT_THRESHOLD} + 站上均线"
-            signals["buy"].append(signal_detail)
-        elif turnover_percentile >= TURNOVER_SELL_PERCENTILE or below_ma_both:
-            if turnover_percentile >= TURNOVER_SELL_PERCENTILE:
-                signal_detail["reason"] = f"换手率({avg_turnover:.2f}%)处于历史{turnover_percentile:.1f}%分位，情绪极端"
-            else:
-                signal_detail["reason"] = "跌破短期均线，趋势转弱"
-            signals["sell"].append(signal_detail)
+        # ① 高潮风险：排名极度靠前 + 情绪偏强
+        if current_rank_pct >= 90 and s_5 >= 60:
+            return "高潮风险", f"趋势排名在全部主题中持续顶尖({current_rank_pct:.0f}%分位)，情绪偏强，亢奋赶顶期"
+
+        # ② 高潮风险：长期高位横盘
+        if rank_late >= 85 and rank_volatility < 4 and rank_high >= 92:
+            return "高潮风险", f"排名高位横盘(近{seg_len}天波动<4%，稳定在{rank_late:.0f}%分位)，随时见顶"
+
+        # ③ 短期爆发：从低位强势攀升至高排名 + 斜率非常陡峭 + 短期加速极强
+        if (rank_early < 35 and current_rank_pct >= 75 and
+                rank_slope > 6 and short_accel > 15 and current_senti >= 45):
+            return "短期爆发", f"排名从{rank_early:.0f}%分位快速跃升{current_rank_pct-rank_early:.0f}个百分点，斜率{rank_slope:.1f}，短期加速{short_accel:.1f}%，爆发启动"
+
+        # ④ 短期爆发：近期加速至高位 + 斜率陡峭
+        if (current_rank_pct >= 72 and rank_slope > 7 and 
+                short_accel > 12 and s_5 >= 45):
+            return "短期爆发", f"近{recent_n}天排名斜率{rank_slope:.1f}，短期加速{short_accel:.1f}%，快速突破至{current_rank_pct:.0f}%分位，强势爆发"
+
+        # ⑤ 中期持续：排名稳定在中高位(55%~85%) + 波动小 + 情绪配合 + 无大幅异动
+        if n >= 7:
+            recent_7_median = np.median(rank_history[-7:])
         else:
-            signal_detail["reason"] = "观望"
-            signals["hold"].append(signal_detail)
+            recent_7_median = current_rank_pct
+        if (55 <= current_rank_pct <= 85 and 50 <= recent_7_median <= 88 and
+                rank_volatility < 6 and s_5 >= 42 and abs(short_accel) < 6):
+            return "中期持续", f"排名稳定在{current_rank_pct:.0f}%分位(近7日中位数{recent_7_median:.0f}%)，波动{rank_volatility:.1f}%，趋势持续健康"
 
-    signals["buy"].sort(key=lambda x: x["trend_score"], reverse=True)
-    signals["sell"].sort(key=lambda x: x["turnover_percentile"], reverse=True)
-    signals["climax_warning"].sort(key=lambda x: (x["trend_score"] + x["sentiment_score"]), reverse=True)
-    signals["dip_buy"].sort(key=lambda x: x["trend_score"], reverse=True)
+        # ⑥ 中期持续：高位稳健运行 + 情绪稳定
+        if (65 <= r_10 <= 85 and rank_volatility < 7 and 
+                s_5 >= 45 and abs(rank_slope) < 3):
+            return "中期持续", f"近10天平均排名{r_10:.0f}%分位，波动有序，趋势稳健运行"
 
-    return signals
+        # ⑦ 上升中：排名持续提升 + 从低位向高位迈进
+        if (rank_slope > 2 and mid_accel > 8 and 
+                current_rank_pct >= 40 and current_rank_pct < 70 and s_5 >= 40):
+            return "上升中", f"排名从{first_half:.0f}%分位升至{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，中期加速{mid_accel:.1f}%，趋势明确上升"
 
+        # ⑧ 上升中：低位启动后持续攀升
+        if (rank_early < 40 and current_rank_pct >= 50 and 
+                rank_slope > 3 and s_5 >= 38):
+            return "上升中", f"排名从低位({rank_early:.0f}%)持续攀升至{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，处于上升通道"
 
-def print_trading_signals(signals):
-    print("\n" + "=" * 80)
-    print("板块买卖判断（战术层面）")
-    print("=" * 80)
+        # ⑨ 退潮回避：从高位持续下滑至低位
+        if (rank_early > 65 and current_rank_pct <= 35 and
+                rank_slope < -2.5 and short_accel < -6):
+            return "退潮回避", f"排名从{rank_early:.0f}%分位持续下滑至{current_rank_pct:.0f}%分位，资金持续流出"
 
-    print(f"\n🚨【高潮警示】（情绪分>={CLIMAX_SENTIMENT_THRESHOLD}或情绪分第一名 + 趋势>={CLIMAX_TREND_THRESHOLD} = 警惕冲高回落/止盈减仓）")
-    if signals["climax_warning"]:
-        print("-" * 80)
-        for i, w in enumerate(signals["climax_warning"], 1):
-            rank1_tag = " 👑情绪分NO.1" if w.get("is_rank1") else ""
-            print(f"  ⚠️ {i:2d}. {w['theme']:14s}{rank1_tag} | 趋势:{w['trend_score']:5.1f} 情绪:{w['sentiment_score']:5.1f} 综合:{w['composite_score']:5.1f}")
-            print(f"       涨停:{w['zt_count']}家({w['zt_ratio']:.1f}%) 上涨:{w['up_ratio']:.1f}% RSI:{w['rsi']:5.1f} 换手分位:{w['turnover_percentile']:.1f}%")
-            print(f"       → {w['reason']}")
-        print("-" * 80)
-    else:
-        print("  暂无（当前无高情绪+高趋势共振主题）")
+        # ⑩ 退潮回避：长期低迷 + 情绪不振
+        if rank_early < 35 and current_rank_pct < 35 and rank_slope < 1 and s_5 < 45:
+            return "退潮回避", f"排名长期低迷({current_rank_pct:.0f}%分位)，情绪不振，回避为主"
 
-    print(f"\n💎【低吸博弈】（趋势>={DIP_TREND_THRESHOLD} + 情绪分<{DIP_SENTIMENT_CEILING} = 趋势良好情绪回调，可低吸）")
-    if signals["dip_buy"]:
-        print("-" * 80)
-        for i, d in enumerate(signals["dip_buy"], 1):
-            print(f"  💎 {i:2d}. {d['theme']:14s} | 趋势:{d['trend_score']:5.1f} 情绪:{d['sentiment_score']:5.1f} 综合:{d['composite_score']:5.1f} RSI:{d['rsi']:5.1f}")
-            print(f"       → {d['reason']}")
-        print("-" * 80)
-    else:
-        print("  暂无（当前无趋势良好+情绪偏低的低吸机会）")
+        # ⑪ 退潮回避：快速破位
+        if max(rank_early, rank_mid) > 60 and current_rank_pct <= 35 and short_accel < -12:
+            return "退潮回避", f"排名短期从{max(rank_early,rank_mid):.0f}%分位跌破至{current_rank_pct:.0f}%分位，破位信号"
 
-    print(f"\n【买入信号】（趋势前{TOP_TREND_N} + RSI<{RSI_BUY_THRESHOLD} + 均线多头）")
-    if signals["buy"]:
-        for i, s in enumerate(signals["buy"], 1):
-            print(f"  {i:2d}. {s['theme']:14s} | 趋势分:{s['trend_score']:5.1f} 情绪分:{s['sentiment_score']:5.1f} RSI:{s['rsi']:5.1f} | {s['reason']}")
-    else:
-        print("  暂无")
+        # ⑫ 上升中兜底：排名持续提升但未达爆发标准
+        if (rank_slope > 2.5 and current_rank_pct >= 45 and s_5 >= 38):
+            return "上升中", f"排名{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，趋势持续提升中"
 
-    print(f"\n【卖出/减仓信号】（换手率>{TURNOVER_SELL_PERCENTILE}%分位 OR 跌破均线）")
-    if signals["sell"]:
-        for i, s in enumerate(signals["sell"], 1):
-            print(f"  {i:2d}. {s['theme']:14s} | 趋势分:{s['trend_score']:5.1f} 情绪分:{s['sentiment_score']:5.1f} 换手分位:{s['turnover_percentile']:5.1f}% | {s['reason']}")
-    else:
-        print("  暂无")
+        # ⑬ 其余全部归为退潮回避
+        if current_rank_pct >= 50:
+            return "退潮回避", f"排名{current_rank_pct:.0f}%分位，趋势强度尚可但未达轮动信号标准，观望"
+        else:
+            return "退潮回避", f"排名{current_rank_pct:.0f}%分位，趋势偏弱或无明确信号"
 
-    print("\n【观望信号】")
-    if signals["hold"]:
-        for i, s in enumerate(signals["hold"][:5], 1):
-            print(f"  {i:2d}. {s['theme']:14s} | {s['reason']}")
-        if len(signals["hold"]) > 5:
-            print(f"  ... 还有 {len(signals['hold'])-5} 个")
-    else:
-        print("  暂无")
-    print("\n" + "=" * 80)
+    except Exception as e:
+        print(f"[旋转周期] 分析失败 {theme_name}: {e}")
+        return "未知", "分析异常"
 
 
 def save_to_csv(results):
@@ -1045,7 +1422,20 @@ def save_to_csv(results):
         row.update({f"t_{k}": v for k, v in (r.get("trend_detail") or {}).items()})
         row.update({f"s_{k}": v for k, v in (r.get("sentiment_detail") or {}).items()})
         flat.append(row)
-    pd.DataFrame(flat).to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
+
+    # 被占用时自动换文件名重试
+    path = OUTPUT_CSV
+    for attempt in range(3):
+        try:
+            pd.DataFrame(flat).to_csv(path, index=False, encoding="utf-8-sig")
+            return
+        except PermissionError:
+            if attempt == 0:
+                path = OUTPUT_CSV.replace(".csv", f"_{TRADE_DATE}.csv")
+            else:
+                from datetime import datetime
+                path = OUTPUT_CSV.replace(".csv", f"_{datetime.now().strftime('%H%M%S')}.csv")
+            print(f"[Save] CSV 被占用，尝试保存到: {path}")
 
 
 def save_to_sqlite(results):
@@ -1060,20 +1450,24 @@ def save_to_sqlite(results):
         rank INTEGER, theme TEXT, n_stocks INTEGER, trend_score REAL, sentiment_score REAL, composite_score REAL,
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
-        trade_date TEXT, theme_state TEXT
+        trade_date TEXT, theme_state TEXT, rotation_cycle TEXT DEFAULT '', rotation_desc TEXT DEFAULT ''
     )""")
     
-    # 检查表结构，如果缺少theme_state列则添加
+    # 检查表结构，如果缺少某些列则添加
     cur.execute("PRAGMA table_info(theme_scores)")
     columns = [row[1] for row in cur.fetchall()]
     if "theme_state" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN theme_state TEXT DEFAULT '弱势'")
+    if "rotation_cycle" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN rotation_cycle TEXT DEFAULT ''")
+    if "rotation_desc" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN rotation_desc TEXT DEFAULT ''")
     
-    # 固定列名顺序（不与PRAGMA动态顺序耦合，避免ALTER TABLE导致的列顺序错乱）
+    # 固定列名顺序
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
                      "climax_warning", "leader_name", "leader_code", "leader_score",
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
-                     "up_ratio", "zt_count", "trade_date", "theme_state"]
+                     "up_ratio", "zt_count", "trade_date", "theme_state", "rotation_cycle", "rotation_desc"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
@@ -1108,6 +1502,8 @@ def save_to_sqlite(results):
             "zt_count": sd.get("zt_count", 0),
             "trade_date": TRADE_DATE,
             "theme_state": theme_state,
+            "rotation_cycle": r.get("rotation_cycle", ""),
+            "rotation_desc": r.get("rotation_desc", ""),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
@@ -1115,7 +1511,7 @@ def save_to_sqlite(results):
     conn.close()
 
 
-def save_report_text(results, signals):
+def save_report_text(results):
     """输出精简版分析报告"""
     report_path = os.path.join(REPORT_DIR, f"theme_analysis_{TRADE_DATE}.txt")
 
@@ -1126,6 +1522,16 @@ def save_report_text(results, signals):
     w("=" * 80)
     w(f"  主题趋势分析报告 - {TRADE_DATE}")
     w("=" * 80)
+    w()
+
+    # ========== 轮动周期全景 ==========
+    w("\n轮动周期全景:")
+    w("-" * 60)
+    for cycle in ["新启动", "中期轮动", "高潮风险", "退潮回避"]:
+        themes_in_cycle = [r for r in results if r.get("rotation_cycle") == cycle]
+        if themes_in_cycle:
+            names = ", ".join([f"{r['theme']}({r['trend_score']:.0f}/{r['sentiment_score']:.0f})" for r in themes_in_cycle])
+            w(f"  {cycle}: {names}")
     w()
 
     # ========== 重点机会：分歧转一致 ==========
@@ -1330,6 +1736,11 @@ def main():
         theme_state = calc_theme_state(theme_result, prev_data)
         theme_result["theme_state"] = theme_state
 
+        # 轮动周期判定（基于20天趋势/情绪变化轨迹）
+        rotation_cycle, rotation_desc = calc_rotation_cycle(theme_name, t_score, s_score)
+        theme_result["rotation_cycle"] = rotation_cycle
+        theme_result["rotation_desc"] = rotation_desc
+
         leader_scores = []
         for r in top_rows:
             lb = r.get("lb_height", 0)
@@ -1373,29 +1784,33 @@ def main():
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    climax_themes = set()
-    for r in results:
-        if r["trend_score"] >= 70 and r["sentiment_score"] >= 85:
-            climax_themes.add(r["theme"])
-
-    print("\n" + "=" * 110)
-    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'5日%':<7}{'10日%':<7}{'20日%':<7}{'上涨%':<6}{'涨停':<6}{'共振':<6}{'状态'}")
-    print("-" * 110)
+    print("\n" + "=" * 120)
+    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'5日%':<7}{'10日%':<7}{'上涨%':<6}{'涨停':<6}{'轮动周期':<16}")
+    print("-" * 120)
     for r in results:
         td = r.get("trend_detail", {}) or {}
         sd = r.get("sentiment_detail", {}) or {}
-        if r["theme"] in climax_themes:
-            status = "⚠️高潮"
-        elif r["trend_score"] >= 70:
-            status = "🟢强"
-        elif r["trend_score"] >= 50:
-            status = "🟡中"
-        else:
-            status = "⚪弱"
+        cycle = r.get("rotation_cycle", "未知")
+        desc = r.get("rotation_desc", "")
+        # 缩短 desc 显示
+        short_desc = desc if len(desc) <= 14 else desc[:12] + ".."
+        cycle_label = f"{cycle}/{short_desc}" if short_desc else cycle
         print(f"{r['rank']:<4}{r['theme']:<14}{r['n_stocks']:<6}{r['trend_score']:<8}{r['sentiment_score']:<8}{r['composite_score']:<8}"
-              f"{td.get('avg_ret_5', 0):<7}{td.get('avg_ret_10', 0):<7}{td.get('avg_ret_20', 0):<7}"
-              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{sd.get('resonance', 0):<6}{status}")
-    print("=" * 110)
+              f"{td.get('avg_ret_5', 0):<7}{td.get('avg_ret_10', 0):<7}"
+              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{cycle_label:<16}")
+    print("=" * 120)
+
+    # 轮动周期简报
+    cycle_counts = {}
+    for r in results:
+        cycle = r.get("rotation_cycle", "未知")
+        cycle_counts[cycle] = cycle_counts.get(cycle, 0) + 1
+    print("\n" + "-" * 80)
+    print("轮动周期分布:")
+    for cycle, cnt in sorted(cycle_counts.items(), key=lambda x: -x[1]):
+        themes_in_cycle = [r["theme"] for r in results if r.get("rotation_cycle") == cycle]
+        print(f"  {cycle:<8}: {cnt:>2}个 → {', '.join(themes_in_cycle)}")
+    print("-" * 80)
 
     print("\n" + "=" * 110)
     print("主题龙头/中军一览")
@@ -1408,18 +1823,15 @@ def main():
         print(f"{r['rank']:<4}{r['theme']:<14}{ld:<18}{r.get('leader_score', 0):<10}{cd:<18}{r.get('core_score', 0):<10}")
     print("=" * 110)
 
-    signals = generate_trading_signals(results, rows_per_theme, kline_groups)
-    print_trading_signals(signals)
-
     save_to_csv(results)
     save_to_sqlite(results)
-    save_report_text(results, signals)
+    save_report_text(results)
     print(f"\n[Save] CSV: {OUTPUT_CSV}")
     print(f"[Save] DB : {OUTPUT_DB}")
 
 
 def run_theme_analysis():
-    """供外部调用的主题分析入口，返回 (results, signals)"""
+    """供外部调用的主题分析入口，返回 results"""
     hot_themes = load_theme_json()
     dc_df = get_dc_members()
     stock_basic = get_stock_basic()
@@ -1534,9 +1946,7 @@ def run_theme_analysis():
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    signals = generate_trading_signals(results, rows_per_theme, kline_groups)
-
-    return results, signals
+    return results
 
 
 def get_prev_day_theme_data():
@@ -1547,15 +1957,15 @@ def get_prev_day_theme_data():
     conn = sqlite3.connect(OUTPUT_DB)
     cur = conn.cursor()
     
-    # 获取最新的交易日期（排除当天）
-    cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT 2")
-    dates = [row[0] for row in cur.fetchall()]
+    # 获取当前 TRADE_DATE 之前的最新一个交易日数据
+    cur.execute("SELECT DISTINCT trade_date FROM theme_scores WHERE trade_date < ? ORDER BY trade_date DESC LIMIT 1", (TRADE_DATE,))
+    row = cur.fetchone()
     
-    if len(dates) < 2:
+    if row is None:
         conn.close()
         return {}
     
-    prev_date = dates[1]  # 前一日
+    prev_date = row[0]
     
     # 检查表结构，获取所有列名
     cur.execute("PRAGMA table_info(theme_scores)")
@@ -1802,6 +2212,14 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
         results.sort(key=lambda x: x['composite_score'], reverse=True)
         for i, r in enumerate(results, 1):
             r['rank'] = i
+        
+        # 补充 theme_state / rotation_cycle / rotation_desc（按日期顺序处理时，前一交易日数据已在 DB 中）
+        for r in results:
+            theme_state = calc_theme_state(r, get_prev_day_theme_data().get(r['theme']))
+            r['theme_state'] = theme_state
+            rotation_cycle, rotation_desc = calc_rotation_cycle(r['theme'], r['trend_score'], r['sentiment_score'])
+            r['rotation_cycle'] = rotation_cycle
+            r['rotation_desc'] = rotation_desc
         
         # 保存到数据库
         save_to_sqlite(results)
