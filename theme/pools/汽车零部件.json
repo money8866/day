@@ -1,0 +1,249 @@
+{
+  "theme_name": "汽车零部件",
+  "macro_theme": "新能源汽车",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "301656.SZ",
+      "stock_name": "联合动力",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.0683,
+      "amount": 632481.67828,
+      "total_mv": 4609984.1745
+    },
+    {
+      "stock_code": "002976.SZ",
+      "stock_name": "瑞玛精密",
+      "theme_score": 79.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0033,
+      "amount": 134034.2114,
+      "total_mv": 492215.8589
+    },
+    {
+      "stock_code": "603319.SH",
+      "stock_name": "美湖股份",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7333,
+      "amount": 1729719.17,
+      "total_mv": 1231113.3311
+    },
+    {
+      "stock_code": "002997.SZ",
+      "stock_name": "瑞鹄模具",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9963,
+      "amount": 193549.22651,
+      "total_mv": 614986.0529
+    },
+    {
+      "stock_code": "002190.SZ",
+      "stock_name": "成飞集成",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9959,
+      "amount": 278700.15543,
+      "total_mv": 971080.3315
+    },
+    {
+      "stock_code": "002965.SZ",
+      "stock_name": "祥鑫科技",
+      "theme_score": 76.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6985,
+      "amount": 1391253.28562,
+      "total_mv": 1050375.4609
+    },
+    {
+      "stock_code": "301667.SZ",
+      "stock_name": "纳百川",
+      "theme_score": 76.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.816,
+      "amount": 171953.47691,
+      "total_mv": 852150.7176
+    },
+    {
+      "stock_code": "603119.SH",
+      "stock_name": "浙江荣泰",
+      "theme_score": 76.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2254,
+      "amount": 2239951.757,
+      "total_mv": 3499163.7632
+    },
+    {
+      "stock_code": "601689.SH",
+      "stock_name": "拓普集团",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2382,
+      "amount": 2480571.151,
+      "total_mv": 10534759.286
+    },
+    {
+      "stock_code": "301488.SZ",
+      "stock_name": "豪恩汽电",
+      "theme_score": 75.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.9061,
+      "amount": 596507.23662,
+      "total_mv": 1325720.0
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301022.SZ",
+      "stock_name": "海泰科",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.7742
+    },
+    {
+      "stock_code": "688021.SH",
+      "stock_name": "奥福科技",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.4036
+    },
+    {
+      "stock_code": "301298.SZ",
+      "stock_name": "东利机械",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.5373
+    },
+    {
+      "stock_code": "603352.SH",
+      "stock_name": "至信股份",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.7041
+    },
+    {
+      "stock_code": "920055.BJ",
+      "stock_name": "隆源股份",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.9047
+    },
+    {
+      "stock_code": "300707.SZ",
+      "stock_name": "威唐工业",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.412
+    },
+    {
+      "stock_code": "920221.BJ",
+      "stock_name": "易实精密",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.338
+    },
+    {
+      "stock_code": "603190.SH",
+      "stock_name": "亚通精工",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.6348
+    },
+    {
+      "stock_code": "002806.SZ",
+      "stock_name": "华锋股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1993
+    },
+    {
+      "stock_code": "300825.SZ",
+      "stock_name": "阿尔特",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1944
+    },
+    {
+      "stock_code": "603335.SH",
+      "stock_name": "迪生力",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 9.9727
+    },
+    {
+      "stock_code": "603049.SH",
+      "stock_name": "中策橡胶",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.5261
+    },
+    {
+      "stock_code": "600081.SH",
+      "stock_name": "东风科技",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.6979
+    },
+    {
+      "stock_code": "603922.SH",
+      "stock_name": "ST金鸿顺",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -4.8956
+    },
+    {
+      "stock_code": "920168.BJ",
+      "stock_name": "通宝光电",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.5076
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "联合动力",
+  "secondary_leaders": [
+    "瑞玛精密",
+    "美湖股份"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 108,
+    "expansion_count": 211,
+    "latent_count": 0,
+    "core_avg_pct": 1.1828055555555557,
+    "expansion_avg_pct": 0.5486047393364928,
+    "total_amount": 83367041.63839997
+  }
+}

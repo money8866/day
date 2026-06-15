@@ -1,0 +1,249 @@
+{
+  "theme_name": "贵金属与黄金",
+  "macro_theme": "资源",
+  "trade_date": "20260612",
+  "theme_stage": "主升期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "600988.SH",
+      "stock_name": "赤峰黄金",
+      "theme_score": 81.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.4664,
+      "amount": 2872817.675,
+      "total_mv": 5771548.7476
+    },
+    {
+      "stock_code": "300139.SZ",
+      "stock_name": "晓程科技",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4931,
+      "amount": 1556253.88168,
+      "total_mv": 1157650.0
+    },
+    {
+      "stock_code": "000506.SZ",
+      "stock_name": "招金黄金",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016,
+      "amount": 507082.91346,
+      "total_mv": 1275541.3859
+    },
+    {
+      "stock_code": "600489.SH",
+      "stock_name": "中金黄金",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2151,
+      "amount": 2278888.793,
+      "total_mv": 10426569.3252
+    },
+    {
+      "stock_code": "600547.SH",
+      "stock_name": "山东黄金",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.1169,
+      "amount": 2320019.237,
+      "total_mv": 12810994.15
+    },
+    {
+      "stock_code": "002237.SZ",
+      "stock_name": "恒邦股份",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8584,
+      "amount": 393182.41397,
+      "total_mv": 1860391.5008
+    },
+    {
+      "stock_code": "001337.SZ",
+      "stock_name": "四川黄金",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1069,
+      "amount": 634967.80612,
+      "total_mv": 1767360.0
+    },
+    {
+      "stock_code": "002155.SZ",
+      "stock_name": "湖南黄金",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8577,
+      "amount": 1699327.48537,
+      "total_mv": 3786304.1387
+    },
+    {
+      "stock_code": "601069.SH",
+      "stock_name": "西部黄金",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6894,
+      "amount": 565290.886,
+      "total_mv": 2379529.7093
+    },
+    {
+      "stock_code": "000975.SZ",
+      "stock_name": "山金国际",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.8752,
+      "amount": 1229465.54728,
+      "total_mv": 5852805.4174
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301500.SZ",
+      "stock_name": "飞南资源",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 15.2432
+    },
+    {
+      "stock_code": "002716.SZ",
+      "stock_name": "湖南白银",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8018
+    },
+    {
+      "stock_code": "000737.SZ",
+      "stock_name": "北方铜业",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "600857.SH",
+      "stock_name": "宁波中百",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0282
+    },
+    {
+      "stock_code": "600961.SH",
+      "stock_name": "株冶集团",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "600531.SH",
+      "stock_name": "豫光金铅",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "000603.SZ",
+      "stock_name": "盛达资源",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.552
+    },
+    {
+      "stock_code": "002345.SZ",
+      "stock_name": "潮宏基",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0338
+    },
+    {
+      "stock_code": "001360.SZ",
+      "stock_name": "南矿集团",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9765
+    },
+    {
+      "stock_code": "000060.SZ",
+      "stock_name": "中金岭南",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4393
+    },
+    {
+      "stock_code": "000878.SZ",
+      "stock_name": "云南铜业",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.4005
+    },
+    {
+      "stock_code": "601020.SH",
+      "stock_name": "华钰矿业",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.0633
+    },
+    {
+      "stock_code": "603257.SH",
+      "stock_name": "中国瑞林",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.0557
+    },
+    {
+      "stock_code": "601121.SH",
+      "stock_name": "宝地矿业",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.0654
+    },
+    {
+      "stock_code": "002552.SZ",
+      "stock_name": "宝鼎科技",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.837
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "赤峰黄金",
+  "secondary_leaders": [
+    "晓程科技",
+    "招金黄金"
+  ],
+  "next_day_signal": {
+    "direction": "strength",
+    "focus_pool": "core"
+  },
+  "pool_stats": {
+    "core_count": 14,
+    "expansion_count": 58,
+    "latent_count": 0,
+    "core_avg_pct": 6.294271428571429,
+    "expansion_avg_pct": 3.9572551724137934,
+    "total_amount": 89234025.68422
+  }
+}

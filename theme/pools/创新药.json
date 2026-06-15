@@ -1,0 +1,209 @@
+{
+  "theme_name": "创新药",
+  "macro_theme": "生物医药",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "688621.SH",
+      "stock_name": "阳光诺和",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.7165,
+      "amount": 120919.979,
+      "total_mv": 585312.0
+    },
+    {
+      "stock_code": "300725.SZ",
+      "stock_name": "药石科技",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.56,
+      "amount": 154264.32925,
+      "total_mv": 749352.5279
+    },
+    {
+      "stock_code": "603259.SH",
+      "stock_name": "药明康德",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.7197,
+      "amount": 6018412.066,
+      "total_mv": 29751042.5925
+    },
+    {
+      "stock_code": "301230.SZ",
+      "stock_name": "泓博医药",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.0308,
+      "amount": 208724.43432,
+      "total_mv": 481015.4408
+    },
+    {
+      "stock_code": "688222.SH",
+      "stock_name": "成都先导",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6493,
+      "amount": 328949.99,
+      "total_mv": 1046175.48
+    },
+    {
+      "stock_code": "688331.SH",
+      "stock_name": "荣昌生物",
+      "theme_score": 65.25,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 8.2803,
+      "amount": 1753376.15,
+      "total_mv": 6429398.5314
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "000739.SZ",
+      "stock_name": "普洛药业",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 4.2829
+    },
+    {
+      "stock_code": "688131.SH",
+      "stock_name": "皓元医药",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.6893
+    },
+    {
+      "stock_code": "688428.SH",
+      "stock_name": "诺诚健华",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.8747
+    },
+    {
+      "stock_code": "300199.SZ",
+      "stock_name": "翰宇药业",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4002
+    },
+    {
+      "stock_code": "688710.SH",
+      "stock_name": "益诺思",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1459
+    },
+    {
+      "stock_code": "600222.SH",
+      "stock_name": "太龙药业",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8108
+    },
+    {
+      "stock_code": "300347.SZ",
+      "stock_name": "泰格医药",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3023
+    },
+    {
+      "stock_code": "603456.SH",
+      "stock_name": "九洲药业",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.9261
+    },
+    {
+      "stock_code": "603127.SH",
+      "stock_name": "昭衍新药",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5999
+    },
+    {
+      "stock_code": "600276.SH",
+      "stock_name": "恒瑞医药",
+      "theme_score": 67.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.2141
+    },
+    {
+      "stock_code": "603229.SH",
+      "stock_name": "奥翔药业",
+      "theme_score": 66.75,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -1.5029
+    },
+    {
+      "stock_code": "300683.SZ",
+      "stock_name": "海特生物",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.7995
+    },
+    {
+      "stock_code": "688506.SH",
+      "stock_name": "百利天恒",
+      "theme_score": 65.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 6.2368
+    },
+    {
+      "stock_code": "688046.SH",
+      "stock_name": "药康生物",
+      "theme_score": 65.5,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.125
+    },
+    {
+      "stock_code": "300149.SZ",
+      "stock_name": "睿智医药",
+      "theme_score": 65.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.6042
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "阳光诺和",
+  "secondary_leaders": [
+    "药石科技",
+    "药明康德"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 6,
+    "expansion_count": 183,
+    "latent_count": 0,
+    "core_avg_pct": 5.492766666666667,
+    "expansion_avg_pct": 1.7868032786885246,
+    "total_amount": 51918813.036049984
+  }
+}

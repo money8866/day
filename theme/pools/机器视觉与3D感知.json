@@ -1,0 +1,145 @@
+{
+  "theme_name": "机器视觉与3D感知",
+  "macro_theme": "物理AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 70,
+  "core_pool": [],
+  "expansion_pool": [
+    {
+      "stock_code": "688322.SH",
+      "stock_name": "奥比中光",
+      "theme_score": 67.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2209
+    },
+    {
+      "stock_code": "302132.SZ",
+      "stock_name": "中航成飞",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7813
+    },
+    {
+      "stock_code": "300322.SZ",
+      "stock_name": "硕贝德",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0253
+    },
+    {
+      "stock_code": "300480.SZ",
+      "stock_name": "光力科技",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6034
+    },
+    {
+      "stock_code": "301458.SZ",
+      "stock_name": "钧崴电子",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.3426
+    },
+    {
+      "stock_code": "600206.SH",
+      "stock_name": "有研新材",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.6507
+    },
+    {
+      "stock_code": "603459.SH",
+      "stock_name": "红板科技",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.9721
+    },
+    {
+      "stock_code": "301682.SZ",
+      "stock_name": "宏明电子",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.4656
+    },
+    {
+      "stock_code": "000823.SZ",
+      "stock_name": "超声电子",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.3979
+    },
+    {
+      "stock_code": "301488.SZ",
+      "stock_name": "豪恩汽电",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.9061
+    },
+    {
+      "stock_code": "688469.SH",
+      "stock_name": "芯联集成",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.2486
+    },
+    {
+      "stock_code": "301638.SZ",
+      "stock_name": "南网数字",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.4586
+    },
+    {
+      "stock_code": "920491.BJ",
+      "stock_name": "奥迪威",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.8171
+    },
+    {
+      "stock_code": "002829.SZ",
+      "stock_name": "星网宇达",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.4902
+    },
+    {
+      "stock_code": "600879.SH",
+      "stock_name": "航天电子",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.5467
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 0,
+    "expansion_count": 123,
+    "latent_count": 0,
+    "core_avg_pct": 0,
+    "expansion_avg_pct": -0.05406747967479678,
+    "total_amount": 106722685.4596
+  }
+}

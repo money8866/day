@@ -1,0 +1,179 @@
+{
+  "theme_name": "卫星运营",
+  "macro_theme": "商业航天",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "300353.SZ",
+      "stock_name": "东土科技",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.5324,
+      "amount": 1201983.67969,
+      "total_mv": 1368751.5531
+    },
+    {
+      "stock_code": "600498.SH",
+      "stock_name": "烽火通信",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5088,
+      "amount": 13867755.37,
+      "total_mv": 8574111.3139
+    },
+    {
+      "stock_code": "688418.SH",
+      "stock_name": "震有科技",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.9123,
+      "amount": 263452.205,
+      "total_mv": 841656.3052
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "002583.SZ",
+      "stock_name": "海能达",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.9095
+    },
+    {
+      "stock_code": "601698.SH",
+      "stock_name": "中国卫通",
+      "theme_score": 68.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.9155
+    },
+    {
+      "stock_code": "000547.SZ",
+      "stock_name": "航天发展",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016
+    },
+    {
+      "stock_code": "300620.SZ",
+      "stock_name": "光库科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.5797
+    },
+    {
+      "stock_code": "002194.SZ",
+      "stock_name": "武汉凡谷",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6195
+    },
+    {
+      "stock_code": "000063.SZ",
+      "stock_name": "中兴通讯",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8614
+    },
+    {
+      "stock_code": "002544.SZ",
+      "stock_name": "普天科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6694
+    },
+    {
+      "stock_code": "002792.SZ",
+      "stock_name": "通宇通讯",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4769
+    },
+    {
+      "stock_code": "002881.SZ",
+      "stock_name": "美格智能",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.633
+    },
+    {
+      "stock_code": "300342.SZ",
+      "stock_name": "天银机电",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.2077
+    },
+    {
+      "stock_code": "600776.SH",
+      "stock_name": "东方通信",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.6287
+    },
+    {
+      "stock_code": "003031.SZ",
+      "stock_name": "中瓷电子",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.676
+    },
+    {
+      "stock_code": "002115.SZ",
+      "stock_name": "三维通信",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.5887
+    },
+    {
+      "stock_code": "603236.SH",
+      "stock_name": "移远通信",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.1576
+    },
+    {
+      "stock_code": "920640.BJ",
+      "stock_name": "富士达",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1673
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "东土科技",
+  "secondary_leaders": [
+    "烽火通信",
+    "震有科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 3,
+    "expansion_count": 89,
+    "latent_count": 0,
+    "core_avg_pct": 5.9845,
+    "expansion_avg_pct": 0.9097483146067417,
+    "total_amount": 118982782.82420002
+  }
+}

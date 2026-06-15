@@ -1,0 +1,703 @@
+{
+  "version": "3.0",
+  "description": "一级二级主题配置 - 主题股池引擎V3",
+  "updated_at": "2026-06-14",
+
+  "macro_themes": {
+    "AI": {
+      "name": "人工智能",
+      "description": "AI全产业链：从算力基础设施到应用终端",
+      "keywords": ["AI", "人工智能", "大模型", "算力", "AIGC", "智能体"],
+      "sub_themes": {
+        "AI芯片": {
+          "name": "AI芯片",
+          "concept_boards": ["算力", "AI芯片", "GPU", "AI服务器"],
+          "industry_filter": ["半导体", "计算机设备"],
+          "exclude_keywords": ["游戏", "消费电子", "手机"],
+          "core_companies": ["英伟达概念", "AMD概念", "寒武纪", "海光信息", "景嘉微", "浪潮信息", "中科曙光"],
+          "description": "GPU、AI芯片、AI服务器、算力芯片"
+        },
+        "CPO光模块": {
+          "name": "CPO光模块",
+          "concept_boards": ["CPO", "光模块", "光通信", "光纤"],
+          "industry_filter": ["通信设备", "光学光电子"],
+          "exclude_keywords": ["游戏", "消费电子", "家电"],
+          "core_companies": ["中际旭创", "新易盛", "天孚通信", "光迅科技", "博创科技"],
+          "description": "CPO、光模块、光芯片、激光器、光纤通信"
+        },
+        "高速连接": {
+          "name": "高速连接",
+          "concept_boards": ["高速铜缆", "PCB", "连接器", "SerDes"],
+          "industry_filter": ["电子制造", "通信设备", "元件"],
+          "exclude_keywords": ["家电", "白电"],
+          "core_companies": ["沪电股份", "深南电路", "生益科技", "电连技术", "意华股份"],
+          "description": "高速铜缆、PCB板、连接器、SerDes芯片、高速传输"
+        },
+        "AI存储芯片": {
+          "name": "AI存储芯片",
+          "concept_boards": ["存储芯片", "DRAM", "NAND", "HBM"],
+          "industry_filter": ["半导体", "半导体材料"],
+          "exclude_keywords": ["消费电子", "手机"],
+          "core_companies": ["长江存储", "长鑫存储", "兆易创新", "北京君正", "澜起科技"],
+          "description": "DRAM、NAND、HBM、存储芯片设计与制造"
+        },
+        "AI服务器": {
+          "name": "AI服务器",
+          "concept_boards": ["AI服务器", "数据中心", "云计算", "IDC"],
+          "industry_filter": ["计算机设备", "通信服务"],
+          "exclude_keywords": ["游戏", "消费电子"],
+          "core_companies": ["工业富联", "浪潮信息", "中科曙光", "华为概念", "联想"],
+          "description": "AI服务器、云计算基础设施、IDC数据中心"
+        },
+        "数据中心瓶颈硬件链": {
+          "name": "数据中心瓶颈硬件链",
+          "concept_boards": ["数据中心", "液冷", "服务器电源"],
+          "industry_filter": ["电源设备", "计算机设备"],
+          "exclude_keywords": ["GPU", "光模块", "消费电子"],
+          "core_companies": ["英维克", "申菱环境", "高澜股份", "科华数据", "科士达"],
+          "description": "液冷散热、UPS电源、IDC运营、数据中心基础设施"
+        },
+        "AI应用": {
+          "name": "AI应用",
+          "concept_boards": ["AI应用", "人工智能", "AI办公", "AI教育"],
+          "industry_filter": ["软件开发", "IT服务", "数字媒体"],
+          "exclude_keywords": ["GPU", "服务器", "光模块"],
+          "core_companies": ["科大讯飞", "金山办公", "拓尔思", "同花顺", "万兴科技"],
+          "description": "AI+办公、AI+搜索、AI+客服、企业智能体"
+        },
+        "AI模型与AI Agent": {
+          "name": "AI模型与AI Agent",
+          "concept_boards": ["多模态AI", "AI应用", "智能体"],
+          "industry_filter": ["软件开发", "IT服务"],
+          "exclude_keywords": ["GPU", "芯片", "服务器"],
+          "core_companies": ["科大讯飞", "昆仑万维", "三六零", "拓尔思"],
+          "description": "大语言模型、AI Agent、RAG、企业AI生产力"
+        },
+        "AI终端": {
+          "name": "AI终端",
+          "concept_boards": ["AI手机", "AIPC", "AI眼镜", "智能穿戴", "MR"],
+          "industry_filter": ["消费电子", "光学光电子"],
+          "exclude_keywords": ["家电", "白电"],
+          "core_companies": ["立讯精密", "歌尔股份", "蓝思科技", "鹏鼎控股", "水晶光电"],
+          "description": "AI手机、AI PC、AI眼镜、端侧大模型"
+        },
+        "AI文化娱乐": {
+          "name": "AI文化娱乐",
+          "concept_boards": ["AIGC", "短剧", "数字人", "元宇宙"],
+          "industry_filter": ["数字媒体", "影视院线", "出版"],
+          "exclude_keywords": ["GPU", "服务器", "工业软件"],
+          "core_companies": ["中文在线", "昆仑万维", "万兴科技", "奥飞娱乐"],
+          "description": "AI视频、AI短剧、AI游戏、数字人、虚拟偶像"
+        }
+      }
+    },
+
+    "半导体": {
+      "name": "半导体",
+      "description": "半导体全产业链：设备、材料、设计、制造、封测",
+      "keywords": ["半导体", "芯片", "集成电路", "晶圆", "光刻"],
+      "sub_themes": {
+        "半导体设备": {
+          "name": "半导体设备",
+          "concept_boards": ["半导体设备", "光刻机", "刻蚀设备"],
+          "industry_filter": ["自动化设备", "专用设备"],
+          "exclude_keywords": ["光刻胶", "电子特气", "硅片", "封测"],
+          "core_companies": ["北方华创", "中微公司", "拓荆科技", "盛美上海", "华海清科", "芯源微"],
+          "description": "刻蚀设备、薄膜沉积、光刻机、清洗设备、量测设备"
+        },
+        "半导体材料": {
+          "name": "半导体材料",
+          "concept_boards": ["半导体材料", "光刻胶", "电子化学品"],
+          "industry_filter": ["电子化学品", "化学原料"],
+          "exclude_keywords": ["刻蚀设备", "光刻机", "封测"],
+          "core_companies": ["沪硅产业", "雅克科技", "南大光电", "华特气体", "安集科技"],
+          "description": "光刻胶、电子特气、硅片、靶材、CMP材料"
+        },
+        "先进封装": {
+          "name": "先进封装",
+          "concept_boards": ["先进封装", "Chiplet", "HBM"],
+          "industry_filter": ["半导体封测"],
+          "exclude_keywords": ["光刻机", "刻蚀", "硅片"],
+          "core_companies": ["长电科技", "通富微电", "华天科技", "甬矽电子", "晶方科技"],
+          "description": "Chiplet、CoWoS、3D封装、TSV、封装基板"
+        },
+        "存储芯片": {
+          "name": "存储芯片",
+          "concept_boards": ["存储芯片", "HBM", "DRAM"],
+          "industry_filter": ["半导体"],
+          "exclude_keywords": ["光刻机", "光刻胶", "封测"],
+          "core_companies": ["兆易创新", "北京君正", "澜起科技", "聚辰股份", "江波龙", "佰维存储"],
+          "description": "HBM、DRAM、NAND、内存接口芯片、存算一体"
+        },
+        "芯片设计": {
+          "name": "芯片设计",
+          "concept_boards": ["国产芯片", "EDA", "FPGA", "GPU"],
+          "industry_filter": ["半导体", "软件开发"],
+          "exclude_keywords": ["设备", "材料", "封测"],
+          "core_companies": ["韦尔股份", "卓胜微", "圣邦股份", "紫光国微", "寒武纪", "海光信息"],
+          "description": "EDA、FPGA、ASIC、SoC、AI芯片、模拟芯片"
+        },
+        "功率半导体": {
+          "name": "功率半导体",
+          "concept_boards": ["碳化硅", "第三代半导体", "氮化镓", "IGBT"],
+          "industry_filter": ["半导体"],
+          "exclude_keywords": ["存储", "MCU", "封测"],
+          "core_companies": ["斯达半导", "时代电气", "士兰微", "华润微", "扬杰科技", "天岳先进"],
+          "description": "SiC、GaN、IGBT、MOSFET、第三代半导体"
+        },
+        "晶圆代工与IDM": {
+          "name": "晶圆代工与IDM",
+          "concept_boards": ["中芯概念", "半导体"],
+          "industry_filter": ["半导体"],
+          "exclude_keywords": ["设计", "EDA", "设备", "材料", "封测"],
+          "core_companies": ["中芯国际", "华虹公司", "晶合集成", "士兰微", "华润微"],
+          "description": "晶圆代工、Foundry、IDM、成熟制程、先进制程"
+        }
+      }
+    },
+
+    "新能源": {
+      "name": "新能源",
+      "description": "新能源电力产业链：发电、储能、电网",
+      "keywords": ["新能源", "光伏", "风电", "储能", "电力", "绿电"],
+      "sub_themes": {
+        "电力链": {
+          "name": "电力链",
+          "concept_boards": ["绿色电力", "虚拟电厂", "智能电网", "核电"],
+          "industry_filter": ["电力", "风电设备", "光伏设备", "电网设备"],
+          "exclude_keywords": ["煤矿", "煤炭", "医药", "半导体"],
+          "core_companies": ["长江电力", "华能国际", "三峡能源", "龙源电力", "国电南瑞", "许继电气"],
+          "description": "火电、水电、核电、风电、光伏、电网"
+        },
+        "电网数字化": {
+          "name": "电网数字化",
+          "concept_boards": ["智能电网", "虚拟电厂", "电力物联网"],
+          "industry_filter": ["电网设备", "软件开发"],
+          "exclude_keywords": ["发电", "煤炭"],
+          "core_companies": ["国电南瑞", "许继电气", "平高电气", "中国西电", "四方股份"],
+          "description": "智能电网、虚拟电厂、电力物联网、配电网数字化"
+        },
+        "新型储能": {
+          "name": "新型储能",
+          "concept_boards": ["储能", "钠离子电池", "虚拟电厂"],
+          "industry_filter": ["电池", "电网设备"],
+          "exclude_keywords": [],
+          "core_companies": ["阳光电源", "固德威", "德业股份", "锦浪科技", "上能电气"],
+          "description": "电化学储能、储能系统、储能变流器"
+        },
+        "固态电池": {
+          "name": "固态电池",
+          "concept_boards": ["固态电池", "锂电池", "钠离子电池"],
+          "industry_filter": ["电池", "化学制品"],
+          "exclude_keywords": [],
+          "core_companies": ["宁德时代", "比亚迪", "亿纬锂能", "国轩高科", "欣旺达"],
+          "description": "固态电池、半固态电池、新型电池技术"
+        },
+        "光伏产业链": {
+          "name": "光伏产业链",
+          "concept_boards": ["光伏", "HJT", "TOPCon", "光伏设备"],
+          "industry_filter": ["光伏设备", "电池组件"],
+          "exclude_keywords": [],
+          "core_companies": ["隆基绿能", "通威股份", "晶科能源", "晶澳科技", "天合光能", "TCL中环"],
+          "description": "硅料、硅片、电池片、组件、逆变器"
+        },
+        "风电产业链": {
+          "name": "风电产业链",
+          "concept_boards": ["风电", "海上风电", "风电设备"],
+          "industry_filter": ["风电设备", "电网设备"],
+          "exclude_keywords": [],
+          "core_companies": ["金风科技", "明阳智能", "东方电缆", "中天科技", "天顺风能"],
+          "description": "风电整机、叶片、塔筒、海缆"
+        }
+      }
+    },
+
+    "新能源汽车": {
+      "name": "新能源汽车",
+      "description": "电动化交通产业：整车、动力系统、智能化、充换电",
+      "keywords": ["新能源汽车", "电动车", "智能驾驶", "动力电池"],
+      "sub_themes": {
+        "新能源汽车整车制造": {
+          "name": "新能源汽车整车制造",
+          "concept_boards": ["新能源车", "特斯拉概念"],
+          "industry_filter": ["汽车整车", "汽车零部件"],
+          "exclude_keywords": ["光伏", "风电", "电池", "电驱"],
+          "core_companies": ["比亚迪", "赛力斯", "长安汽车", "长城汽车", "上汽集团", "广汽集团"],
+          "description": "新能源乘用车、新能源商用车、整车制造"
+        },
+        "动力系统": {
+          "name": "动力系统",
+          "concept_boards": ["动力电池", "锂电池", "新能源车"],
+          "industry_filter": ["电池", "汽车零部件", "电机"],
+          "exclude_keywords": ["光伏"],
+          "core_companies": ["宁德时代", "比亚迪", "汇川技术", "三花智控", "拓普集团"],
+          "description": "动力电池、电驱电控、热管理、800V高压平台"
+        },
+        "新能源汽车智能化": {
+          "name": "新能源汽车智能化",
+          "concept_boards": ["智能驾驶", "激光雷达", "自动驾驶", "车载摄像头"],
+          "industry_filter": ["汽车电子", "电子元件", "软件开发"],
+          "exclude_keywords": [],
+          "core_companies": ["德赛西威", "华阳集团", "经纬恒润", "伯特利", "科博达"],
+          "description": "ADAS、激光雷达、域控制器、智能座舱"
+        },
+        "充换电与能源补给": {
+          "name": "充换电与能源补给",
+          "concept_boards": ["充电桩", "换电", "储能"],
+          "industry_filter": ["电网设备", "电源设备"],
+          "exclude_keywords": [],
+          "core_companies": ["特锐德", "国电南瑞", "许继电气", "万马股份", "盛弘股份"],
+          "description": "充电桩、换电站、充电模块、充电运营"
+        },
+        "新能源汽车材料链": {
+          "name": "新能源汽车材料链",
+          "concept_boards": ["锂电池", "锂矿", "钴", "镍"],
+          "industry_filter": ["能源金属", "化学制品"],
+          "exclude_keywords": [],
+          "core_companies": ["天齐锂业", "赣锋锂业", "华友钴业", "中伟股份", "容百科技"],
+          "description": "锂、钴、镍、正极材料、负极材料、电解液"
+        }
+      }
+    },
+
+    "生物医药": {
+      "name": "生物医药",
+      "description": "大健康产业：创新药、CXO、医疗器械、生物技术",
+      "keywords": ["医药", "生物", "医疗", "创新药", "CXO"],
+      "sub_themes": {
+        "创新医药主线": {
+          "name": "创新医药主线",
+          "concept_boards": ["创新药", "ADC", "GLP-1", "PD-1"],
+          "industry_filter": ["化学制药", "生物制品"],
+          "exclude_keywords": ["CXO", "中药", "医疗器械"],
+          "core_companies": ["恒瑞医药", "百济神州", "信达生物", "君实生物", "康方生物", "荣昌生物"],
+          "description": "创新药、ADC、双抗、mRNA、抗体药物"
+        },
+        "CXO周期修复链": {
+          "name": "CXO周期修复链",
+          "concept_boards": ["CRO", "CDMO", "CXO"],
+          "industry_filter": ["医疗服务", "化学制药"],
+          "exclude_keywords": ["中药", "保健品"],
+          "core_companies": ["药明康德", "药明生物", "凯莱英", "康龙化成", "泰格医药", "昭衍新药"],
+          "description": "CRO、CDMO、临床CRO、药物发现"
+        },
+        "医疗AI智能化": {
+          "name": "医疗AI智能化",
+          "concept_boards": ["AI医疗", "医疗信息化", "互联网医疗"],
+          "industry_filter": ["软件开发", "IT服务", "医疗器械"],
+          "exclude_keywords": [],
+          "core_companies": ["卫宁健康", "创业慧康", "嘉和美康", "久远银海"],
+          "description": "AI辅助诊断、医疗信息化、互联网医院"
+        },
+        "合成生物": {
+          "name": "合成生物",
+          "concept_boards": ["合成生物", "生物制造"],
+          "industry_filter": ["化学制品", "生物制品"],
+          "exclude_keywords": ["创新药", "医疗器械"],
+          "core_companies": ["华大智造", "凯赛生物", "华恒生物", "川宁生物"],
+          "description": "合成生物学、生物制造、生物基材料"
+        },
+        "脑机接口": {
+          "name": "脑机接口",
+          "concept_boards": ["脑机接口", "脑科学"],
+          "industry_filter": ["医疗器械"],
+          "exclude_keywords": ["软件", "互联网", "游戏"],
+          "core_companies": ["三博脑科", "冠昊生物", "汉威科技"],
+          "description": "脑机接口、神经调控、脑科学"
+        },
+        "中药": {
+          "name": "中药",
+          "concept_boards": ["中药", "中医药"],
+          "industry_filter": ["中药"],
+          "exclude_keywords": ["创新药", "生物制品"],
+          "core_companies": ["片仔癀", "云南白药", "同仁堂", "华润三九", "东阿阿胶"],
+          "description": "中药配方颗粒、中成药、中药材"
+        },
+        "医疗器械": {
+          "name": "医疗器械",
+          "concept_boards": ["医疗器械", "医疗设备", "IVD"],
+          "industry_filter": ["医疗器械", "医疗设备"],
+          "exclude_keywords": [],
+          "core_companies": ["迈瑞医疗", "联影医疗", "开立医疗", "鱼跃医疗", "新产业"],
+          "description": "医疗设备、IVD、高值耗材、手术机器人"
+        }
+      }
+    },
+
+    "国防军工": {
+      "name": "国防军工",
+      "description": "国防军工产业链：装备、航天、电子、材料",
+      "keywords": ["军工", "国防", "航空", "航天", "舰船"],
+      "sub_themes": {
+        "军工": {
+          "name": "军工",
+          "concept_boards": ["军工", "军民融合", "大飞机", "无人机"],
+          "industry_filter": ["航天装备", "航空装备", "军工电子", "地面兵装", "航海装备"],
+          "exclude_keywords": ["民用", "消费电子", "手机"],
+          "core_companies": ["航发动力", "中航沈飞", "中航西飞", "中航光电", "航天电器", "中国船舶"],
+          "description": "战斗机、航空发动机、导弹、雷达、舰船"
+        },
+        "核聚变": {
+          "name": "核聚变",
+          "concept_boards": ["核聚变", "可控核聚变"],
+          "industry_filter": ["电源设备", "专业工程", "金属新材料"],
+          "exclude_keywords": ["摩托车", "农机", "军工电子", "房地产"],
+          "core_companies": ["国光电气", "弘讯科技", "永鼎股份", "融发核电"],
+          "description": "核聚变装置核心部件、超导材料、电源系统"
+        },
+        "船舶制造": {
+          "name": "船舶制造",
+          "concept_boards": ["船舶制造", "海工装备"],
+          "industry_filter": ["航海装备", "船舶制造"],
+          "exclude_keywords": ["航空", "导弹"],
+          "core_companies": ["中国船舶", "中国重工", "中国动力", "中船防务", "中国海防"],
+          "description": "军用舰船、民用船舶、海工装备"
+        },
+        "军工电子与信息化": {
+          "name": "军工电子与信息化",
+          "concept_boards": ["军工电子", "卫星导航", "雷达"],
+          "industry_filter": ["军工电子", "通信设备"],
+          "exclude_keywords": ["民用", "消费电子"],
+          "core_companies": ["中航光电", "航天电器", "紫光国微", "振华科技", "火炬电子"],
+          "description": "军用芯片、雷达、电子对抗、军用通信"
+        }
+      }
+    },
+
+    "资源": {
+      "name": "资源",
+      "description": "资源品与周期股：有色、稀土、化工、煤炭",
+      "keywords": ["资源", "有色", "稀土", "煤炭", "化工", "黄金"],
+      "sub_themes": {
+        "有色资源": {
+          "name": "有色资源",
+          "concept_boards": ["有色金属", "铜", "铝", "锂", "钴"],
+          "industry_filter": ["工业金属", "能源金属", "小金属"],
+          "exclude_keywords": ["钢铁", "煤炭", "稀土"],
+          "core_companies": ["紫金矿业", "中国铝业", "江西铜业", "洛阳钼业", "华友钴业", "天齐锂业"],
+          "description": "铜、铝、锌、镍、锂、钴、钨、钼"
+        },
+        "煤炭链": {
+          "name": "煤炭链",
+          "concept_boards": ["煤炭", "煤化工"],
+          "industry_filter": ["煤炭开采", "煤化工"],
+          "exclude_keywords": [],
+          "core_companies": ["中国神华", "陕西煤业", "兖矿能源", "中煤能源", "潞安环能"],
+          "description": "动力煤、炼焦煤、煤化工"
+        },
+        "稀土永磁": {
+          "name": "稀土永磁",
+          "concept_boards": ["稀土", "永磁材料", "稀土永磁"],
+          "industry_filter": ["稀土", "磁性材料"],
+          "exclude_keywords": [],
+          "core_companies": ["北方稀土", "盛和资源", "金力永磁", "正海磁材", "中科三环"],
+          "description": "稀土开采、稀土加工、永磁材料"
+        },
+        "贵金属与黄金": {
+          "name": "贵金属与黄金",
+          "concept_boards": ["黄金", "贵金属"],
+          "industry_filter": ["贵金属"],
+          "exclude_keywords": [],
+          "core_companies": ["山东黄金", "中金黄金", "紫金矿业", "赤峰黄金", "银泰黄金"],
+          "description": "黄金、白银、铂族金属"
+        },
+        "基础化工": {
+          "name": "基础化工",
+          "concept_boards": ["化工", "氟化工", "磷化工", "氯碱"],
+          "industry_filter": ["化学原料", "化学制品"],
+          "exclude_keywords": [],
+          "core_companies": ["万华化学", "华鲁恒升", "扬农化工", "龙佰集团", "巨化股份"],
+          "description": "煤化工、氟化工、磷化工、氯碱、农药化肥"
+        },
+        "钢铁": {
+          "name": "钢铁",
+          "concept_boards": ["钢铁", "特钢"],
+          "industry_filter": ["普钢", "特钢"],
+          "exclude_keywords": [],
+          "core_companies": ["宝钢股份", "中信特钢", "华菱钢铁", "首钢股份", "鞍钢股份"],
+          "description": "普钢、特钢、不锈钢"
+        }
+      }
+    },
+
+    "金融": {
+      "name": "金融",
+      "description": "大金融板块：券商、银行、保险、金融科技",
+      "keywords": ["金融", "银行", "证券", "券商", "保险"],
+      "sub_themes": {
+        "券商": {
+          "name": "券商",
+          "concept_boards": ["券商", "证券"],
+          "industry_filter": ["证券", "多元金融"],
+          "exclude_keywords": ["保险", "银行"],
+          "core_companies": ["中信证券", "华泰证券", "东方财富", "国泰君安", "中国银河", "招商证券"],
+          "description": "证券公司、投行、财富管理"
+        },
+        "银行": {
+          "name": "银行",
+          "concept_boards": ["银行"],
+          "industry_filter": ["银行"],
+          "exclude_keywords": [],
+          "core_companies": ["工商银行", "招商银行", "建设银行", "农业银行", "中国银行", "兴业银行"],
+          "description": "国有大行、股份制银行、城商行"
+        },
+        "保险": {
+          "name": "保险",
+          "concept_boards": ["保险"],
+          "industry_filter": ["保险"],
+          "exclude_keywords": [],
+          "core_companies": ["中国平安", "中国人寿", "中国太保", "新华保险", "中国人保"],
+          "description": "寿险、财险、保险资管"
+        },
+        "金融科技": {
+          "name": "金融科技",
+          "concept_boards": ["金融科技", "数字货币", "区块链"],
+          "industry_filter": ["软件开发", "IT服务"],
+          "exclude_keywords": [],
+          "core_companies": ["恒生电子", "同花顺", "东方财富", "指南针", "财富趋势"],
+          "description": "金融IT、数字货币、支付、风控"
+        },
+        "多元金融": {
+          "name": "多元金融",
+          "concept_boards": ["多元金融", "信托", "租赁"],
+          "industry_filter": ["多元金融"],
+          "exclude_keywords": [],
+          "core_companies": ["中油资本", "中航产融", "五矿资本", "越秀资本"],
+          "description": "信托、租赁、AMC、金控平台"
+        }
+      }
+    },
+
+    "消费": {
+      "name": "消费",
+      "description": "消费产业链：必选消费、新消费、消费电子",
+      "keywords": ["消费", "白酒", "家电", "食品饮料", "新消费"],
+      "sub_themes": {
+        "必选消费红利链": {
+          "name": "必选消费红利链",
+          "concept_boards": ["白酒", "食品饮料", "家电"],
+          "industry_filter": ["食品加工", "白酒", "白色家电", "食品饮料"],
+          "exclude_keywords": ["AI", "半导体", "新能源"],
+          "core_companies": ["贵州茅台", "五粮液", "泸州老窖", "伊利股份", "海天味业", "美的集团", "格力电器"],
+          "description": "白酒、乳制品、调味品、啤酒、白电"
+        },
+        "情绪消费成长链": {
+          "name": "情绪消费成长链",
+          "concept_boards": ["新消费", "短剧", "谷子经济", "潮玩"],
+          "industry_filter": ["互联网服务", "商贸零售", "社会服务"],
+          "exclude_keywords": ["白酒", "银行"],
+          "core_companies": ["泡泡玛特", "中文在线", "芒果超媒", "分众传媒"],
+          "description": "潮玩、盲盒、短剧、直播电商、IP运营"
+        },
+        "消费电子": {
+          "name": "消费电子",
+          "concept_boards": ["消费电子", "苹果产业链", "智能穿戴"],
+          "industry_filter": ["消费电子", "电子制造"],
+          "exclude_keywords": [],
+          "core_companies": ["立讯精密", "歌尔股份", "蓝思科技", "鹏鼎控股", "东山精密", "领益智造"],
+          "description": "苹果产业链、安卓产业链、智能穿戴"
+        },
+        "智能驾驶": {
+          "name": "智能驾驶",
+          "concept_boards": ["智能驾驶", "激光雷达", "自动驾驶"],
+          "industry_filter": ["汽车电子", "电子元件", "软件开发"],
+          "exclude_keywords": [],
+          "core_companies": ["德赛西威", "华阳集团", "经纬恒润", "伯特利", "保隆科技"],
+          "description": "ADAS、激光雷达、域控制器、智能座舱"
+        },
+        "白酒": {
+          "name": "白酒",
+          "concept_boards": ["白酒"],
+          "industry_filter": ["白酒"],
+          "exclude_keywords": [],
+          "core_companies": ["贵州茅台", "五粮液", "泸州老窖", "山西汾酒", "洋河股份", "酒鬼酒"],
+          "description": "高端白酒、次高端白酒、区域白酒"
+        },
+        "家电家装": {
+          "name": "家电家装",
+          "concept_boards": ["家电", "智能家居", "家装"],
+          "industry_filter": ["白色家电", "小家电", "家居用品"],
+          "exclude_keywords": [],
+          "core_companies": ["美的集团", "海尔智家", "格力电器", "科沃斯", "石头科技", "欧派家居"],
+          "description": "白电、小家电、智能家居、定制家居"
+        }
+      }
+    },
+
+    "物理AI": {
+      "name": "物理AI",
+      "description": "物理AI（具身智能）：大模型赋予机器人感知、决策与操作能力",
+      "keywords": ["物理AI", "具身智能", "世界模型", "机器人智能"],
+      "sub_themes": {
+        "具身智能大模型": {
+          "name": "具身智能大模型",
+          "concept_boards": ["人工智能", "多模态AI", "具身智能"],
+          "industry_filter": ["软件开发", "IT服务", "计算机设备"],
+          "exclude_keywords": ["减速器", "丝杠", "电机"],
+          "core_companies": ["科大讯飞", "商汤科技", "云从科技", "海康威视"],
+          "description": "具身智能、世界模型、多模态感知、运动规划"
+        },
+        "机器视觉与3D感知": {
+          "name": "机器视觉与3D感知",
+          "concept_boards": ["机器视觉", "传感器", "3D相机"],
+          "industry_filter": ["计算机设备", "自动化设备"],
+          "exclude_keywords": ["减速器", "丝杠"],
+          "core_companies": ["奥普特", "海康威视", "大华股份", "奥比中光", "虹软科技"],
+          "description": "3D视觉、深度相机、工业相机、激光雷达"
+        },
+        "传感器": {
+          "name": "传感器",
+          "concept_boards": ["传感器", "MEMS", "物联网"],
+          "industry_filter": ["电子元件", "半导体"],
+          "exclude_keywords": [],
+          "core_companies": ["韦尔股份", "歌尔股份", "士兰微", "赛微电子", "敏芯股份"],
+          "description": "MEMS传感器、图像传感器、力传感器、惯性传感器"
+        },
+        "边缘计算与AI芯片": {
+          "name": "边缘计算与AI芯片",
+          "concept_boards": ["边缘计算", "AI芯片", "物联网"],
+          "industry_filter": ["半导体", "计算机设备"],
+          "exclude_keywords": [],
+          "core_companies": ["寒武纪", "海光信息", "瑞芯微", "全志科技", "乐鑫科技"],
+          "description": "边缘AI芯片、NPU、DPU、物联网芯片"
+        },
+        "数字孪生与工业仿真": {
+          "name": "数字孪生与工业仿真",
+          "concept_boards": ["数字孪生", "工业软件", "工业互联网"],
+          "industry_filter": ["软件开发", "IT服务"],
+          "exclude_keywords": [],
+          "core_companies": ["中望软件", "华大九天", "宝信软件", "用友网络"],
+          "description": "数字孪生、工业仿真、CAD/CAE、工业互联网"
+        }
+      }
+    },
+
+    "人形机器人": {
+      "name": "人形机器人",
+      "description": "人形机器人全产业链：执行器、减速器、电机、传感器、灵巧手、整机",
+      "keywords": ["人形机器人", "机器人", "具身智能", "执行器", "减速器"],
+      "sub_themes": {
+        "执行器总成": {
+          "name": "执行器总成",
+          "concept_boards": ["机器人", "人形机器人", "执行器"],
+          "industry_filter": ["自动化设备", "电机", "汽车零部件"],
+          "exclude_keywords": ["减速器", "传感器", "灵巧手"],
+          "core_companies": ["三花智控", "拓普集团", "禾川科技", "江苏雷利", "伟创电气"],
+          "description": "旋转执行器、直线执行器、一体化关节、关节模组"
+        },
+        "精密减速器": {
+          "name": "精密减速器",
+          "concept_boards": ["减速器", "机器人"],
+          "industry_filter": ["自动化设备", "通用设备"],
+          "exclude_keywords": ["电机", "传感器", "灵巧手"],
+          "core_companies": ["绿的谐波", "双环传动", "中大力德", "丰立智能", "国茂股份"],
+          "description": "谐波减速器、RV减速器、行星减速器"
+        },
+        "伺服电机与运动控制": {
+          "name": "伺服电机与运动控制",
+          "concept_boards": ["伺服电机", "运动控制", "机器人"],
+          "industry_filter": ["电机", "自动化设备"],
+          "exclude_keywords": ["减速器", "传感器"],
+          "core_companies": ["汇川技术", "禾川科技", "雷赛智能", "信捷电气", "伟创电气"],
+          "description": "伺服电机、伺服驱动器、运动控制器"
+        },
+        "灵巧手": {
+          "name": "灵巧手",
+          "concept_boards": ["机器人", "灵巧手", "机械手"],
+          "industry_filter": ["自动化设备"],
+          "exclude_keywords": ["减速器", "电机"],
+          "core_companies": ["鸣志电器", "江苏雷利", "鼎智科技", "汉宇集团"],
+          "description": "灵巧手、机械手、末端执行器"
+        },
+        "行星滚柱丝杠": {
+          "name": "行星滚柱丝杠",
+          "concept_boards": ["丝杠", "机器人", "直线模组"],
+          "industry_filter": ["通用设备", "自动化设备"],
+          "exclude_keywords": ["减速器", "电机"],
+          "core_companies": ["恒立液压", "贝斯特", "秦川机床", "新剑传动"],
+          "description": "行星滚柱丝杠、滚珠丝杠、直线模组"
+        },
+        "人形机器人整机与集成": {
+          "name": "人形机器人整机与集成",
+          "concept_boards": ["人形机器人", "机器人"],
+          "industry_filter": ["自动化设备"],
+          "exclude_keywords": [],
+          "core_companies": ["优必选", "小鹏汽车", "小米集团", "傅利叶智能"],
+          "description": "人形机器人整机、系统集成"
+        }
+      }
+    },
+
+    "低空经济": {
+      "name": "低空经济",
+      "description": "低空经济全产业链：飞行器制造、运营服务、基础设施、数据控制",
+      "keywords": ["低空经济", "eVTOL", "无人机", "飞行汽车"],
+      "sub_themes": {
+        "低空飞行器制造": {
+          "name": "低空飞行器制造",
+          "concept_boards": ["低空经济", "eVTOL", "飞行汽车", "无人机"],
+          "industry_filter": ["汽车零部件", "电机", "航空装备"],
+          "exclude_keywords": ["卫星", "北斗", "导弹", "军工"],
+          "core_companies": ["万丰奥威", "中无人机", "纵横股份", "宗申动力", "卧龙电驱"],
+          "description": "eVTOL、无人机、飞行汽车、航空电机"
+        },
+        "低空运营服务": {
+          "name": "低空运营服务",
+          "concept_boards": ["低空经济", "快递", "航空运输"],
+          "industry_filter": ["航空运输", "物流"],
+          "exclude_keywords": ["卫星", "军工"],
+          "core_companies": ["顺丰控股", "美团", "亿航智能"],
+          "description": "低空物流、低空出行、无人机配送"
+        },
+        "低空基础设施": {
+          "name": "低空基础设施",
+          "concept_boards": ["低空经济", "通用航空"],
+          "industry_filter": ["通信服务", "机场", "基础建设"],
+          "exclude_keywords": ["卫星", "北斗", "导弹", "军工"],
+          "core_companies": ["中信海直", "威海广泰", "四川九洲"],
+          "description": "起降场、空管系统、低空通信、充电设施"
+        },
+        "低空数据与控制": {
+          "name": "低空数据与控制",
+          "concept_boards": ["低空经济", "空管", "导航"],
+          "industry_filter": ["通信设备", "软件开发"],
+          "exclude_keywords": ["导弹", "军工"],
+          "core_companies": ["四川九洲", "川大智胜", "莱斯信息"],
+          "description": "空管系统、低空导航、飞行控制系统"
+        }
+      }
+    },
+
+    "商业航天": {
+      "name": "商业航天",
+      "description": "商业航天全产业链：卫星制造发射、卫星运营、卫星应用",
+      "keywords": ["商业航天", "卫星", "火箭", "卫星互联网"],
+      "sub_themes": {
+        "卫星制造与发射": {
+          "name": "卫星制造与发射",
+          "concept_boards": ["商业航天", "卫星"],
+          "industry_filter": ["航天装备"],
+          "exclude_keywords": ["导弹", "军工", "雷达"],
+          "core_companies": ["中国卫星", "航天电子", "天银机电", "银河航天"],
+          "description": "卫星制造、卫星总装、商业火箭、发射服务"
+        },
+        "卫星运营": {
+          "name": "卫星运营",
+          "concept_boards": ["卫星互联网", "卫星通信"],
+          "industry_filter": ["通信卫星运营", "通信服务"],
+          "exclude_keywords": ["导弹", "军工"],
+          "core_companies": ["中国卫通", "华力创通", "海格通信"],
+          "description": "卫星通信、卫星互联网、地面站运营"
+        },
+        "卫星应用": {
+          "name": "卫星应用",
+          "concept_boards": ["卫星导航", "北斗", "遥感"],
+          "industry_filter": ["通信设备", "软件开发"],
+          "exclude_keywords": ["导弹", "军工电子"],
+          "core_companies": ["华力创通", "海格通信", "北斗星通", "合众思壮", "中国长城"],
+          "description": "北斗导航、卫星遥感、卫星定位"
+        }
+      }
+    }
+  }
+}

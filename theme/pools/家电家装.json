@@ -1,0 +1,249 @@
+{
+  "theme_name": "家电家装",
+  "macro_theme": "消费",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "603486.SH",
+      "stock_name": "科沃斯",
+      "theme_score": 75.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.1552,
+      "amount": 613248.227,
+      "total_mv": 3153970.1069
+    },
+    {
+      "stock_code": "603519.SH",
+      "stock_name": "立霸股份",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0,
+      "amount": 269939.955,
+      "total_mv": 363271.1724
+    },
+    {
+      "stock_code": "688609.SH",
+      "stock_name": "九联科技",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.3976,
+      "amount": 317981.767,
+      "total_mv": 549094.4487
+    },
+    {
+      "stock_code": "300342.SZ",
+      "stock_name": "天银机电",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.2077,
+      "amount": 2759643.44855,
+      "total_mv": 2268837.4332
+    },
+    {
+      "stock_code": "002242.SZ",
+      "stock_name": "九阳股份",
+      "theme_score": 72.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.0806,
+      "amount": 121813.67493,
+      "total_mv": 663824.79
+    },
+    {
+      "stock_code": "002402.SZ",
+      "stock_name": "和而泰",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.2515,
+      "amount": 654165.98929,
+      "total_mv": 2197666.9743
+    },
+    {
+      "stock_code": "300403.SZ",
+      "stock_name": "汉宇集团",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.7944,
+      "amount": 104578.72169,
+      "total_mv": 612045.0
+    },
+    {
+      "stock_code": "300279.SZ",
+      "stock_name": "和晶科技",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.6163,
+      "amount": 107503.29562,
+      "total_mv": 327696.6583
+    },
+    {
+      "stock_code": "002050.SZ",
+      "stock_name": "三花智控",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.926,
+      "amount": 5721472.44725,
+      "total_mv": 18856110.4427
+    },
+    {
+      "stock_code": "301280.SZ",
+      "stock_name": "珠城科技",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6032,
+      "amount": 103937.4457,
+      "total_mv": 766543.2606
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300543.SZ",
+      "stock_name": "朗科智能",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.9938
+    },
+    {
+      "stock_code": "301578.SZ",
+      "stock_name": "辰奕智能",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.1338
+    },
+    {
+      "stock_code": "300686.SZ",
+      "stock_name": "智动力",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.2562
+    },
+    {
+      "stock_code": "000651.SZ",
+      "stock_name": "格力电器",
+      "theme_score": 69.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.0779
+    },
+    {
+      "stock_code": "000333.SZ",
+      "stock_name": "美的集团",
+      "theme_score": 69.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.4839
+    },
+    {
+      "stock_code": "600690.SH",
+      "stock_name": "海尔智家",
+      "theme_score": 69.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.0947
+    },
+    {
+      "stock_code": "300247.SZ",
+      "stock_name": "融捷健康",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2315
+    },
+    {
+      "stock_code": "603215.SH",
+      "stock_name": "比依股份",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.0959
+    },
+    {
+      "stock_code": "002614.SZ",
+      "stock_name": "奥佳华",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.4493
+    },
+    {
+      "stock_code": "301332.SZ",
+      "stock_name": "德尔玛",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.3513
+    },
+    {
+      "stock_code": "003028.SZ",
+      "stock_name": "振邦智能",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.1632
+    },
+    {
+      "stock_code": "603311.SH",
+      "stock_name": "金海高科",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.0789
+    },
+    {
+      "stock_code": "000801.SZ",
+      "stock_name": "四川九洲",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.037
+    },
+    {
+      "stock_code": "001259.SZ",
+      "stock_name": "利仁科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1007
+    },
+    {
+      "stock_code": "002052.SZ",
+      "stock_name": "同洲电子",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0578
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "科沃斯",
+  "secondary_leaders": [
+    "立霸股份",
+    "九联科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 19,
+    "expansion_count": 192,
+    "latent_count": 0,
+    "core_avg_pct": 1.1644157894736842,
+    "expansion_avg_pct": 0.3766562500000001,
+    "total_amount": 118760647.99412002
+  }
+}

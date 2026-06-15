@@ -1,0 +1,249 @@
+{
+  "theme_name": "医疗器械",
+  "macro_theme": "生物医药",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "688114.SH",
+      "stock_name": "华大智造",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.0965,
+      "amount": 669109.104,
+      "total_mv": 2161718.8445
+    },
+    {
+      "stock_code": "300633.SZ",
+      "stock_name": "开立医疗",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.6784,
+      "amount": 105282.94354,
+      "total_mv": 838204.3974
+    },
+    {
+      "stock_code": "002223.SZ",
+      "stock_name": "鱼跃医疗",
+      "theme_score": 76.75,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.5276,
+      "amount": 256807.86267,
+      "total_mv": 2602430.1077
+    },
+    {
+      "stock_code": "300760.SZ",
+      "stock_name": "迈瑞医疗",
+      "theme_score": 76.75,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.8322,
+      "amount": 1885965.177,
+      "total_mv": 18312714.815
+    },
+    {
+      "stock_code": "688271.SH",
+      "stock_name": "联影医疗",
+      "theme_score": 75.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.604,
+      "amount": 879842.25,
+      "total_mv": 9397049.3792
+    },
+    {
+      "stock_code": "301602.SZ",
+      "stock_name": "超研股份",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.9946,
+      "amount": 65421.17395,
+      "total_mv": 666480.9167
+    },
+    {
+      "stock_code": "603014.SH",
+      "stock_name": "威高血净",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.997,
+      "amount": 323510.589,
+      "total_mv": 1526055.6031
+    },
+    {
+      "stock_code": "300358.SZ",
+      "stock_name": "楚天科技",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3256,
+      "amount": 123444.61888,
+      "total_mv": 566353.3234
+    },
+    {
+      "stock_code": "688139.SH",
+      "stock_name": "海尔生物",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.5379,
+      "amount": 179989.445,
+      "total_mv": 856746.3399
+    },
+    {
+      "stock_code": "688277.SH",
+      "stock_name": "天智航",
+      "theme_score": 72.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.2448,
+      "amount": 154982.353,
+      "total_mv": 797986.0595
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300030.SZ",
+      "stock_name": "阳普医疗",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.4129
+    },
+    {
+      "stock_code": "300832.SZ",
+      "stock_name": "新产业",
+      "theme_score": 69.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.3886
+    },
+    {
+      "stock_code": "300244.SZ",
+      "stock_name": "迪安诊断",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.0083
+    },
+    {
+      "stock_code": "688583.SH",
+      "stock_name": "思看科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 16.4651
+    },
+    {
+      "stock_code": "688198.SH",
+      "stock_name": "佰仁医疗",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.4619
+    },
+    {
+      "stock_code": "301515.SZ",
+      "stock_name": "港通医疗",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.7859
+    },
+    {
+      "stock_code": "920925.BJ",
+      "stock_name": "锦好医疗",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.519
+    },
+    {
+      "stock_code": "688212.SH",
+      "stock_name": "澳华内镜",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.382
+    },
+    {
+      "stock_code": "688108.SH",
+      "stock_name": "赛诺医疗",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3099
+    },
+    {
+      "stock_code": "300482.SZ",
+      "stock_name": "万孚生物",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2216
+    },
+    {
+      "stock_code": "688026.SH",
+      "stock_name": "洁特生物",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7757
+    },
+    {
+      "stock_code": "688068.SH",
+      "stock_name": "热景生物",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.7619
+    },
+    {
+      "stock_code": "300685.SZ",
+      "stock_name": "艾德生物",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.8468
+    },
+    {
+      "stock_code": "301188.SZ",
+      "stock_name": "力诺药包",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.3748
+    },
+    {
+      "stock_code": "688399.SH",
+      "stock_name": "硕世生物",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.6963
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "华大智造",
+  "secondary_leaders": [
+    "开立医疗",
+    "鱼跃医疗"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 41,
+    "expansion_count": 304,
+    "latent_count": 0,
+    "core_avg_pct": 1.9394853658536586,
+    "expansion_avg_pct": 1.2169664473684212,
+    "total_amount": 139482881.2004699
+  }
+}

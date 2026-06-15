@@ -1,0 +1,219 @@
+{
+  "theme_name": "边缘计算与AI芯片",
+  "macro_theme": "物理AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "603083.SH",
+      "stock_name": "剑桥科技",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.9617,
+      "amount": 7035763.777,
+      "total_mv": 6738613.5755
+    },
+    {
+      "stock_code": "688256.SH",
+      "stock_name": "寒武纪",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.681,
+      "amount": 18376258.023,
+      "total_mv": 77908328.156
+    },
+    {
+      "stock_code": "300458.SZ",
+      "stock_name": "全志科技",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.1974,
+      "amount": 913379.78729,
+      "total_mv": 3014695.7169
+    },
+    {
+      "stock_code": "603893.SH",
+      "stock_name": "瑞芯微",
+      "theme_score": 72.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.2686,
+      "amount": 1360849.51,
+      "total_mv": 6757384.3246
+    },
+    {
+      "stock_code": "688619.SH",
+      "stock_name": "罗普特",
+      "theme_score": 70.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -3.0303,
+      "amount": 52965.264,
+      "total_mv": 284832.8325
+    },
+    {
+      "stock_code": "688591.SH",
+      "stock_name": "泰凌微",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.1827,
+      "amount": 163301.681,
+      "total_mv": 735079.0359
+    },
+    {
+      "stock_code": "300672.SZ",
+      "stock_name": "国科微",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3343,
+      "amount": 3629377.68274,
+      "total_mv": 5824858.7872
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300292.SZ",
+      "stock_name": "吴通控股",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.6842
+    },
+    {
+      "stock_code": "300212.SZ",
+      "stock_name": "*ST易录",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1756
+    },
+    {
+      "stock_code": "688262.SH",
+      "stock_name": "国芯科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0
+    },
+    {
+      "stock_code": "688049.SH",
+      "stock_name": "炬芯科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3186
+    },
+    {
+      "stock_code": "301536.SZ",
+      "stock_name": "星宸科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8639
+    },
+    {
+      "stock_code": "301275.SZ",
+      "stock_name": "汉朔科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.435
+    },
+    {
+      "stock_code": "688003.SH",
+      "stock_name": "天准科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.3798
+    },
+    {
+      "stock_code": "300496.SZ",
+      "stock_name": "中科创达",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6567
+    },
+    {
+      "stock_code": "000063.SZ",
+      "stock_name": "中兴通讯",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8614
+    },
+    {
+      "stock_code": "300608.SZ",
+      "stock_name": "思特奇",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.5762
+    },
+    {
+      "stock_code": "002544.SZ",
+      "stock_name": "普天科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6694
+    },
+    {
+      "stock_code": "603042.SH",
+      "stock_name": "华脉科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.5862
+    },
+    {
+      "stock_code": "688609.SH",
+      "stock_name": "九联科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.3976
+    },
+    {
+      "stock_code": "002587.SZ",
+      "stock_name": "奥拓电子",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8012
+    },
+    {
+      "stock_code": "000530.SZ",
+      "stock_name": "冰山冷热",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.4983
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "剑桥科技",
+  "secondary_leaders": [
+    "寒武纪",
+    "全志科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 7,
+    "expansion_count": 460,
+    "latent_count": 0,
+    "core_avg_pct": 1.076,
+    "expansion_avg_pct": 0.3173697826086957,
+    "total_amount": 456398747.99789023
+  }
+}

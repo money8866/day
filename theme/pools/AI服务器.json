@@ -1,0 +1,168 @@
+{
+  "theme_name": "AI服务器",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 95,
+  "core_pool": [
+    {
+      "stock_code": "000032.SZ",
+      "stock_name": "深桑达A",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0,
+      "amount": 1922674.71884,
+      "total_mv": 2299119.2564
+    },
+    {
+      "stock_code": "603019.SH",
+      "stock_name": "中科曙光",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.9586,
+      "amount": 2890628.599,
+      "total_mv": 12019496.1656
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "600869.SH",
+      "stock_name": "远东股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9322
+    },
+    {
+      "stock_code": "300465.SZ",
+      "stock_name": "高伟达",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0677
+    },
+    {
+      "stock_code": "301275.SZ",
+      "stock_name": "汉朔科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.435
+    },
+    {
+      "stock_code": "002929.SZ",
+      "stock_name": "润建股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6178
+    },
+    {
+      "stock_code": "000063.SZ",
+      "stock_name": "中兴通讯",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8614
+    },
+    {
+      "stock_code": "300608.SZ",
+      "stock_name": "思特奇",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.5762
+    },
+    {
+      "stock_code": "002771.SZ",
+      "stock_name": "真视通",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8893
+    },
+    {
+      "stock_code": "300846.SZ",
+      "stock_name": "首都在线",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.673
+    },
+    {
+      "stock_code": "000158.SZ",
+      "stock_name": "常山北明",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.4182
+    },
+    {
+      "stock_code": "600589.SH",
+      "stock_name": "大位科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.8484
+    },
+    {
+      "stock_code": "300052.SZ",
+      "stock_name": "中青宝",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.023
+    },
+    {
+      "stock_code": "300017.SZ",
+      "stock_name": "网宿科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8505
+    },
+    {
+      "stock_code": "600602.SH",
+      "stock_name": "云赛智联",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.5795
+    },
+    {
+      "stock_code": "002400.SZ",
+      "stock_name": "省广集团",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0408
+    },
+    {
+      "stock_code": "300002.SZ",
+      "stock_name": "神州泰岳",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2504
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "深桑达A",
+  "secondary_leaders": [
+    "中科曙光"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 2,
+    "expansion_count": 335,
+    "latent_count": 0,
+    "core_avg_pct": 5.4793,
+    "expansion_avg_pct": 0.585253432835821,
+    "total_amount": 340528045.5399699
+  }
+}

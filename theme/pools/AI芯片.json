@@ -1,0 +1,219 @@
+{
+  "theme_name": "AI芯片",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "301536.SZ",
+      "stock_name": "星宸科技",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8639,
+      "amount": 1379899.45033,
+      "total_mv": 3837186.896
+    },
+    {
+      "stock_code": "688256.SH",
+      "stock_name": "寒武纪",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.681,
+      "amount": 18376258.023,
+      "total_mv": 77908328.156
+    },
+    {
+      "stock_code": "688041.SH",
+      "stock_name": "海光信息",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.395,
+      "amount": 14328304.434,
+      "total_mv": 65081466.548
+    },
+    {
+      "stock_code": "688795.SH",
+      "stock_name": "摩尔线程",
+      "theme_score": 71.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.1351,
+      "amount": 2364994.038,
+      "total_mv": 28697572.7889
+    },
+    {
+      "stock_code": "688802.SH",
+      "stock_name": "沐曦股份",
+      "theme_score": 71.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4031,
+      "amount": 2061822.614,
+      "total_mv": 27802548.9
+    },
+    {
+      "stock_code": "300474.SZ",
+      "stock_name": "景嘉微",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2984,
+      "amount": 628907.18242,
+      "total_mv": 2661699.7027
+    },
+    {
+      "stock_code": "688008.SH",
+      "stock_name": "澜起科技",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.6703,
+      "amount": 14891803.524,
+      "total_mv": 27484834.0722
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688049.SH",
+      "stock_name": "炬芯科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3186
+    },
+    {
+      "stock_code": "300053.SZ",
+      "stock_name": "航宇微",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.5974
+    },
+    {
+      "stock_code": "002049.SZ",
+      "stock_name": "紫光国微",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.126
+    },
+    {
+      "stock_code": "000032.SZ",
+      "stock_name": "深桑达A",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "601609.SH",
+      "stock_name": "金田股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9912
+    },
+    {
+      "stock_code": "002392.SZ",
+      "stock_name": "北京利尔",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4291
+    },
+    {
+      "stock_code": "301259.SZ",
+      "stock_name": "艾布鲁",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8056
+    },
+    {
+      "stock_code": "002657.SZ",
+      "stock_name": "中科金财",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8968
+    },
+    {
+      "stock_code": "300657.SZ",
+      "stock_name": "弘信电子",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.5667
+    },
+    {
+      "stock_code": "603629.SH",
+      "stock_name": "利通电子",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.2247
+    },
+    {
+      "stock_code": "688343.SH",
+      "stock_name": "云天励飞",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.5137
+    },
+    {
+      "stock_code": "300418.SZ",
+      "stock_name": "昆仑万维",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.758
+    },
+    {
+      "stock_code": "300324.SZ",
+      "stock_name": "旋极信息",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8421
+    },
+    {
+      "stock_code": "688168.SH",
+      "stock_name": "安博通",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3457
+    },
+    {
+      "stock_code": "605111.SH",
+      "stock_name": "新洁能",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0209
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "星宸科技",
+  "secondary_leaders": [
+    "寒武纪",
+    "海光信息"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 7,
+    "expansion_count": 216,
+    "latent_count": 0,
+    "core_avg_pct": -0.4795714285714285,
+    "expansion_avg_pct": 0.07995787037037036,
+    "total_amount": 335722459.55917996
+  }
+}

@@ -666,6 +666,7 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
         exclude_keywords = cfg.get("exclude_keywords", [])
         core_companies = cfg.get("core_companies", [])
         leader_companies = cfg.get("leader_companies", [])
+        dna_concept_required = cfg.get("dna_concept_required", [])
 
         # ====================================================================
         # Phase 1: Industry Gate — 股票必须通过行业匹配进入候选池
@@ -705,6 +706,38 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
                     for code in dc_industry_board_members[conc_name]:
                         if code not in candidates:
                             candidates[code] = {"industry_match": True, "source": "concept_as_industry"}
+
+        # ====================================================================
+        # Phase 1.5: DNA Gate — business_dna_tags 强约束
+        #   如果 dna_concept_required 非空，股票必须至少匹配其中1个
+        #   东财概念板块名，否则直接过滤（防止行业溢出到无关主题）
+        # ====================================================================
+        if dna_concept_required:
+            filtered_candidates = {}
+            for code, info in candidates.items():
+                # 检查股票的东财概念是否与 dna_concept_required 有匹配
+                concepts_for_stock = stock_concepts.get(code, [])
+                industries_for_stock = stock_dc_industries.get(code, [])
+                dna_match = False
+                for cc in concepts_for_stock:
+                    for dc in dna_concept_required:
+                        if dc in cc or cc in dc:
+                            dna_match = True
+                            break
+                    if dna_match:
+                        break
+                # 行业板块也可能包含业务标签（如"半导体"）
+                if not dna_match:
+                    for ind in industries_for_stock:
+                        for dc in dna_concept_required:
+                            if dc in ind or ind in dc:
+                                dna_match = True
+                                break
+                        if dna_match:
+                            break
+                if dna_match:
+                    filtered_candidates[code] = info
+            candidates = filtered_candidates
 
         # ====================================================================
         # Phase 2: Chain Distance 计算 + 评分

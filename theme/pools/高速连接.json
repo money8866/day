@@ -1,0 +1,168 @@
+{
+  "theme_name": "高速连接",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "分歧期",
+  "theme_strength_score": 95,
+  "core_pool": [
+    {
+      "stock_code": "000737.SZ",
+      "stock_name": "北方铜业",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0,
+      "amount": 1475986.82911,
+      "total_mv": 2681840.7405
+    },
+    {
+      "stock_code": "002171.SZ",
+      "stock_name": "楚江新材",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.5124,
+      "amount": 2231944.47917,
+      "total_mv": 2205572.568
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688388.SH",
+      "stock_name": "嘉元科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.9684
+    },
+    {
+      "stock_code": "600601.SH",
+      "stock_name": "方正科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9829
+    },
+    {
+      "stock_code": "301176.SZ",
+      "stock_name": "逸豪新材",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.9915
+    },
+    {
+      "stock_code": "301217.SZ",
+      "stock_name": "铜冠铜箔",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7986
+    },
+    {
+      "stock_code": "688003.SH",
+      "stock_name": "天准科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.3798
+    },
+    {
+      "stock_code": "601212.SH",
+      "stock_name": "白银有色",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5971
+    },
+    {
+      "stock_code": "002741.SZ",
+      "stock_name": "光华科技",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.2385
+    },
+    {
+      "stock_code": "688323.SH",
+      "stock_name": "瑞华泰",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.3474
+    },
+    {
+      "stock_code": "603175.SH",
+      "stock_name": "超颖电子",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.872
+    },
+    {
+      "stock_code": "002636.SZ",
+      "stock_name": "金安国纪",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.9906
+    },
+    {
+      "stock_code": "300657.SZ",
+      "stock_name": "弘信电子",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.5667
+    },
+    {
+      "stock_code": "301526.SZ",
+      "stock_name": "国际复材",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.5236
+    },
+    {
+      "stock_code": "300586.SZ",
+      "stock_name": "美联新材",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.1487
+    },
+    {
+      "stock_code": "600110.SH",
+      "stock_name": "诺德股份",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.892
+    },
+    {
+      "stock_code": "300252.SZ",
+      "stock_name": "金信诺",
+      "theme_score": 65.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4863
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "北方铜业",
+  "secondary_leaders": [
+    "楚江新材"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "latent"
+  },
+  "pool_stats": {
+    "core_count": 2,
+    "expansion_count": 148,
+    "latent_count": 0,
+    "core_avg_pct": 7.7562,
+    "expansion_avg_pct": -0.05090608108108105,
+    "total_amount": 293742918.57893
+  }
+}

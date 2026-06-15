@@ -1,0 +1,249 @@
+{
+  "theme_name": "半导体设备",
+  "macro_theme": "半导体",
+  "trade_date": "20260612",
+  "theme_stage": "分歧期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "688037.SH",
+      "stock_name": "芯源微",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.8095,
+      "amount": 3380267.786,
+      "total_mv": 5153392.0585
+    },
+    {
+      "stock_code": "002371.SZ",
+      "stock_name": "北方华创",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6573,
+      "amount": 10273824.8167,
+      "total_mv": 48360107.3069
+    },
+    {
+      "stock_code": "688409.SH",
+      "stock_name": "富创精密",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5974,
+      "amount": 3216491.681,
+      "total_mv": 5573036.0322
+    },
+    {
+      "stock_code": "688082.SH",
+      "stock_name": "盛美上海",
+      "theme_score": 74.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.2746,
+      "amount": 4763934.738,
+      "total_mv": 14702790.7271
+    },
+    {
+      "stock_code": "003043.SZ",
+      "stock_name": "华亚智能",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.5121,
+      "amount": 670755.72871,
+      "total_mv": 1091934.4721
+    },
+    {
+      "stock_code": "688072.SH",
+      "stock_name": "拓荆科技",
+      "theme_score": 71.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.5398,
+      "amount": 10452863.386,
+      "total_mv": 18238787.7482
+    },
+    {
+      "stock_code": "688147.SH",
+      "stock_name": "微导纳米",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.3124,
+      "amount": 2882379.295,
+      "total_mv": 4391963.1587
+    },
+    {
+      "stock_code": "688419.SH",
+      "stock_name": "耐科装备",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.9383,
+      "amount": 696221.447,
+      "total_mv": 662108.6468
+    },
+    {
+      "stock_code": "688120.SH",
+      "stock_name": "华海清科",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4673,
+      "amount": 3672777.162,
+      "total_mv": 9103052.7368
+    },
+    {
+      "stock_code": "688012.SH",
+      "stock_name": "中微公司",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.2639,
+      "amount": 12488246.432,
+      "total_mv": 28476483.0209
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "603120.SH",
+      "stock_name": "肯特催化",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0038
+    },
+    {
+      "stock_code": "301611.SZ",
+      "stock_name": "珂玛科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4078
+    },
+    {
+      "stock_code": "688167.SH",
+      "stock_name": "炬光科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.0598
+    },
+    {
+      "stock_code": "002409.SZ",
+      "stock_name": "雅克科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.35
+    },
+    {
+      "stock_code": "688605.SH",
+      "stock_name": "先锋精科",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3652
+    },
+    {
+      "stock_code": "301629.SZ",
+      "stock_name": "矽电股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.2634
+    },
+    {
+      "stock_code": "688729.SH",
+      "stock_name": "屹唐股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.9857
+    },
+    {
+      "stock_code": "301297.SZ",
+      "stock_name": "富乐德",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2108
+    },
+    {
+      "stock_code": "688652.SH",
+      "stock_name": "京仪装备",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2924
+    },
+    {
+      "stock_code": "300604.SZ",
+      "stock_name": "长川科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1745
+    },
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1802
+    },
+    {
+      "stock_code": "688478.SH",
+      "stock_name": "晶升股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.6362
+    },
+    {
+      "stock_code": "603005.SH",
+      "stock_name": "晶方科技",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -7.0052
+    },
+    {
+      "stock_code": "688146.SH",
+      "stock_name": "中船特气",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -13.665
+    },
+    {
+      "stock_code": "603690.SH",
+      "stock_name": "至纯科技",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.2544
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "芯源微",
+  "secondary_leaders": [
+    "北方华创",
+    "富创精密"
+  ],
+  "next_day_signal": {
+    "direction": "weakness",
+    "focus_pool": "latent"
+  },
+  "pool_stats": {
+    "core_count": 11,
+    "expansion_count": 103,
+    "latent_count": 0,
+    "core_avg_pct": 2.4681545454545453,
+    "expansion_avg_pct": -2.166617475728156,
+    "total_amount": 229562818.97454
+  }
+}

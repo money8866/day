@@ -6,7 +6,8 @@
 核心目标: 生成【次日可执行交易计划】
 
 输入数据:
-- theme2.json (一级产业 + 二级主题 + 成份股)
+- theme_graph_v3.json (一级产业 + 二级主题配置)
+- theme/pools/*.json (已生成的主题股池数据)
 - 东方财富板块数据 (涨跌/资金/涨停/成交额)
 - 个股行情数据 (价格/均线/成交量/涨跌幅)
 
@@ -272,13 +273,73 @@ def cache_set(name, data, expire_hours=None, **kwargs):
 # ==================== 数据获取函数 ====================
 
 def load_theme2_json():
-    """加载 theme2.json (CATEGORIES 结构)"""
-    path = os.path.join(BASE_DIR, "theme2.json")
+    """加载 theme_graph_v3.json (macro_themes 结构)"""
+    # 尝试从 theme 目录加载
+    theme_dir = os.path.join(os.path.dirname(BASE_DIR), "theme")
+    path = os.path.join(theme_dir, "theme_graph_v3.json")
+    
+    if not os.path.exists(path):
+        # 备用路径：当前目录
+        path = os.path.join(BASE_DIR, "theme_graph_v3.json")
+    
     if not os.path.exists(path):
         raise FileNotFoundError(f"未找到 {path}")
+    
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return data.get("CATEGORIES", {}), data.get("THEME_FLAT_MAP", {})
+    
+    # 转换为 HOT_THEMES 格式
+    hot_themes = {}
+    theme_to_category = {}
+    macro_themes = data.get("macro_themes", {})
+    
+    for macro_name, macro_data in macro_themes.items():
+        sub_themes = macro_data.get("sub_themes", {})
+        for sub_name, sub_data in sub_themes.items():
+            # 转换配置格式
+            hot_themes[sub_name] = {
+                "industry": sub_data.get("industry_filter", []),
+                "concept": sub_data.get("concept_boards", []),
+                "keywords": sub_data.get("keywords", []),
+                "exclude_keywords": sub_data.get("exclude_keywords", []),
+                "core_companies": sub_data.get("core_companies", []),
+                "leader_companies": sub_data.get("core_companies", []),  # 复用core_companies
+                "description": sub_data.get("description", "")
+            }
+            theme_to_category[sub_name] = macro_data.get("name", macro_name)
+    
+    return hot_themes, theme_to_category
+
+def load_theme_pools(trade_date=None):
+    """
+    加载已生成的主题股池数据
+    从 theme/pools/ 目录读取所有主题的股池文件
+    """
+    theme_dir = os.path.join(os.path.dirname(BASE_DIR), "theme")
+    pools_dir = os.path.join(theme_dir, "pools")
+    
+    if not os.path.exists(pools_dir):
+        print(f"[Pool] 股池目录不存在: {pools_dir}")
+        return None
+    
+    theme_pool_map = {}
+    
+    import glob
+    pool_files = glob.glob(os.path.join(pools_dir, "*.json"))
+    
+    for pool_file in pool_files:
+        try:
+            with open(pool_file, "r", encoding="utf-8") as f:
+                pool_data = json.load(f)
+            
+            theme_name = pool_data.get("theme_name")
+            if theme_name:
+                theme_pool_map[theme_name] = pool_data
+        except Exception as e:
+            print(f"[Pool] 加载股池文件失败 {pool_file}: {e}")
+    
+    print(f"[Pool] 加载 {len(theme_pool_map)} 个主题股池")
+    return theme_pool_map
 
 def get_dc_members():
     """
@@ -795,6 +856,11 @@ def match_theme_stocks_v2(hot_themes, dc_df, stock_basic_df):
             is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
 
             # --- 2e) 判定 chain_distance ---
+            # 关键优化：当主题同时有industry和concept配置时，
+            # 只有industry匹配但无concept/keyword验证的股票应该被排除
+            has_theme_validation = concept_list or keyword_list  # 主题是否有concept或keyword配置
+            has_industry_match_only = info.get("industry_match", False) and not (has_concept_overlap_flag or kw_matches)
+            
             if is_force:
                 chain_distance = 0
             elif has_concept_overlap_flag:
@@ -803,6 +869,9 @@ def match_theme_stocks_v2(hot_themes, dc_df, stock_basic_df):
                 chain_distance = 1      # 上下游：行业确认 + 关键词提示
             elif info.get("source") == "concept_only":
                 chain_distance = 1      # 无行业配置的主题概念匹配 → 弱关联
+            elif has_industry_match_only and has_theme_validation:
+                # 【关键】主题有concept/keyword但股票只有industry匹配 → 排除
+                chain_distance = 2      # 纯行业匹配无验证 → 外延收益 → 排除
             else:
                 chain_distance = 2      # 纯行业匹配无验证 → 外延收益 → 排除
 
@@ -996,6 +1065,46 @@ def per_stock_features(df_one):
         else:
             break
     
+    # ========== V9 所需字段 ==========
+    
+    # 近3日涨停次数
+    zt_count_3d = 0
+    for j in range(max(0, last - 2), last + 1):
+        p = float(pct[j]) if pct[j] is not None else 0
+        if p >= 9.5:
+            zt_count_3d += 1
+    
+    # 趋势状态判断
+    if slope10 > 0.5 and slope60 > 0.2:
+        trend_status = "上升"
+    elif slope10 > 0.2 and slope60 > 0:
+        trend_status = "初升"
+    elif slope10 < -0.5 and slope60 < -0.2:
+        trend_status = "下降"
+    elif abs(slope10) < 0.3:
+        trend_status = "震荡"
+    else:
+        trend_status = "震荡"
+    
+    # 加速指标 (0-100): 基于5日涨幅和动量
+    # ret_5=25% → acceleration=85(临界), ret_5=10% → acceleration=84(未超限)
+    acceleration = min(100, max(0, ret_5 * 3.4 + 50))
+    
+    # 风险分 (0-100): 基于最大回撤和波动率
+    volatility = np.std(pct[max(0, last-9):last+1]) if len(pct) >= 10 else 10
+    risk_score = min(100, max(0, abs(max_dd_10) * 2 + volatility * 3))
+    
+    # 放量突破：今日成交量 > 5日均量 * 1.5 且 涨幅 > 1%
+    volume_breakout = vol_ratio > 1.5 and pct[last] > 1.0 if pct[last] is not None else False
+    
+    # 二次启动：近10日有回调后再次放量上涨
+    second_start = False
+    if last >= 10:
+        # 检查是否有回调（近5日有2日下跌）然后反弹
+        down_days = sum(1 for j in range(last - 4, last + 1) if pct[j] < 0)
+        if down_days >= 2 and pct[last] > 2.0 and vol_ratio > 1.3:
+            second_start = True
+    
     return {
         "ret_5": ret_5, "ret_10": ret_10, "ret_20": ret_20,
         "ma5_b": ma5_b, "ma10_b": ma10_b, "ma20_b": ma20_b,
@@ -1007,6 +1116,14 @@ def per_stock_features(df_one):
         "turnover": float(df_one.iloc[last].get("turnover_rate", 0) or 0),
         "amount_latest": amount_latest, "lb_height": lb_height,
         "close": close[last], "ma20": ma20, "ma60": ma60,
+        # V9 新增字段
+        "pct_chg_5d": ret_5,  # 5日涨幅
+        "zt_count_3d": zt_count_3d,  # 近3日涨停次数
+        "trend_status": trend_status,  # 趋势状态
+        "acceleration": acceleration,  # 加速指标
+        "risk_score": risk_score,  # 风险分
+        "volume_breakout": volume_breakout,  # 放量突破
+        "second_start": second_start,  # 二次启动
     }
 
 def sigmoid(x, k=0.15, c=0.0):
@@ -1683,6 +1800,292 @@ def generate_trading_signal_v8(stock_feat, theme_state, quality_score, trade_mod
     }
 
 
+# ==================== V9 核心函数 ====================
+
+def calc_v9_stock_filter(stock_feat):
+    """
+    V9 个股过滤模型 - 判断个股是否"可交易"
+    
+    返回: (is_tradable, entry_type, filter_reason)
+    
+    Entry_Type:
+        🟢 试错启动（第一次放量）
+        🟡 轮动切入（未加速）
+        🔵 主升延续（低风险）
+        🔴 不可交易（剔除）
+    """
+    pct_chg = stock_feat.get("pct_chg", 0)           # 当日涨幅
+    pct_chg_5d = stock_feat.get("pct_chg_5d", 0)    # 5日涨幅
+    zt_count_3d = stock_feat.get("zt_count_3d", 0)  # 近3日涨停次数
+    trend_status = stock_feat.get("trend_status", "震荡")  # 趋势状态
+    acceleration = stock_feat.get("acceleration", 50) # 加速指标 0-100
+    risk_score = stock_feat.get("risk_score", 0)     # 风险分 0-100
+    volume_breakout = stock_feat.get("volume_breakout", False)  # 放量突破
+    second_start = stock_feat.get("second_start", False)  # 二次启动
+    
+    # === V9 强制剔除规则 ===
+    
+    # 1. 5日涨幅 > 25% 的补涨股（已兑现）
+    if pct_chg_5d > 25:
+        return False, "🔴不可交易", "5日涨幅过大(已兑现)"
+    
+    # 2. 连续涨停 >= 2 的个股（情绪尾部）
+    if zt_count_3d >= 2:
+        return False, "🔴不可交易", "连续涨停(情绪尾部)"
+    
+    # 3. 趋势下降 + 当日大涨（诱多）
+    if trend_status == "下降" and pct_chg > 3:
+        return False, "🔴不可交易", "下降趋势诱多"
+    
+    # 4. 已处于"加速>85"的龙头（末端）
+    if acceleration > 85:
+        return False, "🔴不可交易", "已加速末端"
+    
+    # 5. 风险分 > 50 且涨幅 > 10%（高位博弈）
+    if risk_score > 50 and pct_chg > 10:
+        return False, "🔴不可交易", "高位博弈风险大"
+    
+    # === V9 保留条件检查 ===
+    
+    # 最优交易区：5日涨幅 0~15%
+    in_optimal_zone = 0 <= pct_chg_5d <= 15
+    
+    # 趋势：震荡 → 初升
+    good_trend = trend_status in ["震荡", "初升", "上升"]
+    
+    # 结构：首次放量 / 二次启动
+    good_structure = volume_breakout or second_start
+    
+    # === 判断 Entry_Type ===
+    
+    if acceleration < 50 and volume_breakout and in_optimal_zone and good_trend:
+        # 🟢 试错启动（第一次放量）
+        entry_type = "🟢试错启动"
+    elif acceleration < 60 and in_optimal_zone and good_trend:
+        # 🟡 轮动切入（未加速）
+        entry_type = "🟡轮动切入"
+    elif acceleration < 75 and pct_chg_5d < 15 and risk_score < 50:
+        # 🔵 主升延续（低风险）
+        entry_type = "🔵主升延续"
+    else:
+        # 不符合条件
+        return False, "🔴不可交易", "未满足交易条件"
+    
+    # 最终检查：主线强度代理（使用质量分）
+    quality_score = stock_feat.get("quality_score", 50)
+    if quality_score < 40:
+        return False, "🔴不可交易", "质量分不足"
+    
+    return True, entry_type, "可交易"
+
+
+def calc_v9_theme_score(theme_data, stock_feats, t_detail, s_detail, c_detail, parent_industry_status=None):
+    """
+    V9.1 主题评分模型（新增一级产业传导机制）
+    
+    Theme_Score = 
+        0.25 * 主线强度 
+      + 0.20 * 开仓价值 
+      + 0.15 * 切换概率 
+      + 0.15 * 动量 slope（新增关键）
+      + 0.15 * 轮动/确认强度 
+      + 0.10 * (1 - 风险归一化)
+      + Parent_Trend_Boost（一级传导修正）
+    
+    底部回暖激活机制：
+    - 如果一级=底部回暖，使用Bottom_Activation_Score
+    - 允许低分主题进入候选池（主线分≥30，slope>0）
+    """
+    trend_score = theme_data.get("trend_score", 50)
+    sentiment_score = theme_data.get("sentiment_score", 50)
+    crowding_score = c_detail.get("crowding_score", 50) if c_detail else 50
+    
+    # 主线强度
+    main_strength = trend_score
+    
+    # 开仓价值 - 用质量分和趋势结合
+    entry_score = sum(s.get("quality_score", 50) for s in stock_feats) / len(stock_feats) if stock_feats else 50
+    
+    # 切换概率 - 用情绪分
+    switch_prob = sentiment_score
+    
+    # 轮动强度 - 用拥挤度代理（低拥挤=高轮动机会）
+    rotation_strength = 100 - crowding_score
+    
+    # 确认强度 - 用上涨家数比例
+    confirmation = s_detail.get("up_ratio", 50) if s_detail else 50
+    
+    # 风险归一化
+    risk_normalized = crowding_score / 100
+    
+    # === V9.1新增：动量 slope ===
+    avg_slope = 0
+    if stock_feats:
+        slope_10_list = [s.get("slope_10", 0) for s in stock_feats]
+        avg_slope = np.mean(slope_10_list) if slope_10_list else 0
+    # 将slope归一化到0-100
+    slope_normalized = sigmoid(avg_slope * 10, k=0.5, c=50) if avg_slope != 0 else 50
+    
+    # === V9.1新增：Parent_Trend_Boost（一级产业传导修正）===
+    parent_boost = 0
+    if parent_industry_status:
+        status = parent_industry_status.get("status", "")
+        industry_score = parent_industry_status.get("industry_score", 50)
+        
+        if status == "底部回暖":
+            # 底部回暖：+20%权重给slope>0的低位主题
+            if avg_slope > 0:
+                parent_boost = 15 * (industry_score / 100)  # 最高+15
+        elif status == "启动":
+            # 启动：+10%权重给龙头+中军
+            parent_boost = 10 * (industry_score / 100)
+        elif status == "主升":
+            # 主升：强化趋势龙头（限制加速股已在个股过滤中处理）
+            parent_boost = 5 * (industry_score / 100)
+        elif status == "高潮":
+            # 高潮：-30%二评评分（防追高）
+            parent_boost = -15
+        elif status == "退潮":
+            # 退潮：直接降低优先级
+            parent_boost = -20
+    
+    # === 底部回暖激活机制 ===
+    is_bottom_activation = parent_industry_status and parent_industry_status.get("status") == "底部回暖"
+    
+    if is_bottom_activation:
+        # Bottom_Activation_Score：低位主题激活评分
+        # 0.4*slope + 0.3*成交活跃度 + 0.3*相对低位性
+        volume_activity = entry_score  # 用质量分代理成交活跃度
+        # 相对低位性：price处于历史低位（用ma20斜率代理）
+        low_position = max(0, min(100, 50 + avg_slope * 20)) if avg_slope is not None else 50
+        
+        bottom_score = (
+            0.4 * slope_normalized +
+            0.3 * volume_activity +
+            0.3 * low_position
+        )
+        
+        # 允许低分主题进入：主线分≥30即可，slope>0必须
+        if main_strength >= 30 and avg_slope > 0:
+            # 使用bottom_score作为最终分，但加上parent_boost
+            base_score = bottom_score * 0.7 + parent_boost
+        else:
+            base_score = -100  # 不满足底部激活条件
+    else:
+        # 正常评分
+        base_score = (
+            0.25 * main_strength +
+            0.20 * entry_score +
+            0.15 * switch_prob +
+            0.15 * slope_normalized +  # V9.1新增slope
+            0.15 * confirmation +
+            0.10 * (1 - risk_normalized) * 100
+        ) + parent_boost
+    
+    # === 结构健康度：未加速成份股比例 ===
+    non_accelerated = sum(1 for s in stock_feats if s.get("acceleration", 50) < 70)
+    structure_health = (non_accelerated / len(stock_feats) * 100) if stock_feats else 50
+    
+    # === 可交易个股质量分 ===
+    tradable_quality = sum(s.get("quality_score", 50) for s in stock_feats) / len(stock_feats) if stock_feats else 50
+    
+    # 最终分 = 基础分 + 结构健康度加成（修正：使用加权而不是简单相加）
+    # 结构健康度权重20%，可交易质量权重10%
+    final_score = base_score * 0.70 + structure_health * 0.20 + tradable_quality * 0.10
+    
+    # V9.1新增：返回额外诊断信息
+    diagnostics = {
+        "parent_boost": parent_boost,
+        "slope_normalized": slope_normalized,
+        "avg_slope": avg_slope,
+        "is_bottom_activation": is_bottom_activation,
+        "structure_health": round(structure_health, 1),
+        "tradable_quality": round(tradable_quality, 1),
+    }
+    
+    return max(0, min(100, final_score)), diagnostics
+
+
+def calc_v9_entry_type(theme_data, stock_feats, parent_industry_status=None):
+    """
+    V9.1 计算主题整体 Entry_Type
+    基于主题内可交易个股的Entry_Type分布 + 一级产业状态
+    
+    新增"底部启动"类型：当一级=底部回暖 且主题slope>0时
+    """
+    if not stock_feats:
+        return "🔴不可交易"
+    
+    entry_types = [s.get("entry_type", "🔴不可交易") for s in stock_feats]
+    
+    # 统计各类型数量
+    trial_start = sum(1 for t in entry_types if "试错" in t)
+    rotation = sum(1 for t in entry_types if "轮动" in t)
+    main_cont = sum(1 for t in entry_types if "主升" in t)
+    not_tradable = sum(1 for t in entry_types if "不可" in t)
+    
+    total = len(entry_types)
+    
+    # === V9.1新增：一级产业底部回暖检测 ===
+    is_bottom = parent_industry_status and parent_industry_status.get("status") == "底部回暖"
+    avg_slope = 0
+    if stock_feats:
+        slopes = [s.get("slope_10", 0) for s in stock_feats]
+        avg_slope = np.mean(slopes) if slopes else 0
+    
+    # 判断主题整体Entry_Type
+    if not_tradable == total:
+        return "🔴不可交易"
+    elif is_bottom and avg_slope > 0 and (trial_start + rotation) >= total * 0.4:
+        # 底部回暖 + slope>0 + 有试错/轮动股 → 底部启动
+        return "🟢底部启动"
+    elif trial_start + rotation >= total * 0.6:
+        return "🟢试错启动" if trial_start >= rotation else "🟡轮动切入"
+    elif main_cont >= total * 0.5:
+        return "🔵主升延续"
+    elif rotation >= total * 0.4:
+        return "🟡轮动切入"
+    else:
+        return "🟡轮动切入"
+
+
+def filter_v9_stocks(stock_feats):
+    """
+    V9 个股筛选 - 返回可交易的股票列表
+    """
+    tradable = []
+    for s in stock_feats:
+        is_tradable, entry_type, reason = calc_v9_stock_filter(s)
+        if is_tradable:
+            s["entry_type"] = entry_type
+            s["filter_reason"] = reason
+            tradable.append(s)
+    
+    # 按质量分排序
+    tradable.sort(key=lambda x: x.get("quality_score", 0), reverse=True)
+    
+    # === V9 选股策略 ===
+    
+    # 1. 龙头候选：成份内涨幅排名Top 1~2，但必须满足5日涨幅 < 20%
+    leaders = [s for s in tradable if s.get("pct_chg_5d", 0) < 20][:2]
+    
+    # 2. 中军：评分 Top 30%，且趋势非下降
+    mid_tier = [s for s in tradable 
+                if s.get("trend_status", "震荡") != "下降"
+                and s not in leaders][:max(1, len(tradable) // 3)]
+    
+    # 3. 补涨：未加速，近3日未涨停
+    catch_up = [s for s in tradable 
+                if s.get("acceleration", 50) < 60
+                and s.get("zt_count_3d", 0) == 0
+                and s not in leaders
+                and s not in mid_tier]
+    
+    # 合并结果，最多3只
+    result = leaders + mid_tier + catch_up
+    return result[:3]
+
+
 def get_prev_day_theme_data():
     """获取前一日主题数据"""
     if not os.path.exists(OUTPUT_DB):
@@ -1754,18 +2157,23 @@ def save_to_sqlite_v7(results):
 def get_industry_trend_analysis(results):
     """获取一级产业评分动态分析"""
     try:
-        # 从当前结果中提取一级产业信息
-        industry_scores = defaultdict(list)
+        # 从当前结果中提取一级产业信息（去重）
+        industry_scores = defaultdict(dict)  # 使用dict去重
         for r in results:
             category = r.get("category", "其他")
-            if category:
-                industry_scores[category].append({
-                    "theme": r["theme"],
+            theme_name = r.get("theme", "")
+            if category and theme_name:
+                # 使用theme_name作为key，避免重复
+                industry_scores[category][theme_name] = {
+                    "theme": theme_name,
                     "macro_score": r.get("macro_score", 0),
                     "theme_score": r.get("theme_score", 0),
                     "final_score": r.get("final_score", 0),
                     "emotion_score": r.get("emotion_score", 0),
-                })
+                }
+        
+        # 转换为列表格式
+        industry_scores = {k: list(v.values()) for k, v in industry_scores.items()}
         
         # 从数据库读取历史数据
         industry_history = defaultdict(list)
@@ -1779,12 +2187,8 @@ def get_industry_trend_analysis(results):
                 )
                 trade_dates = trade_dates_df['trade_date'].tolist()
                 
-                # 需要从theme2.json获取主题到一级产业的映射
-                categories, _ = load_theme2_json()
-                theme_to_category = {}
-                for cat_name, cat_cfg in categories.items():
-                    for theme_name in cat_cfg.get("themes", {}):
-                        theme_to_category[theme_name] = cat_name
+                # 需要从theme_graph_v3.json获取主题到一级产业的映射
+                _, theme_to_category = load_theme2_json()
                 
                 # 统计每个一级产业的历史评分
                 for td in trade_dates:
@@ -1976,13 +2380,16 @@ def save_report_v8(results):
         w("【最优3股】")
         stock_list = r.get("top_stocks", [])[:3]
         if stock_list:
-            w(f"  排名  角色    股票名称      代码       现价    涨幅    换手率  量比   质量分  稳定性  结构形态")
-            w(f"  ----  ----    --------      ----       ----   ----    ------  ----  ------  ------  --------")
+            w(f"  排名  角色    股票名称      代码       现价    涨幅    换手率  量比   质量分  稳定性  结构形态  交易类型")
+            w(f"  ----  ----    --------      ----       ----   ----    ------  ----  ------  ------  --------  --------")
             for j, s in enumerate(stock_list, 1):
                 role = "龙头" if j == 1 else ("中军" if j == 2 else "弹性")
                 stability = s.get("leader_stability", 0)
                 stability_tag = "PASS" if stability >= 70 else ("WARN" if stability >= 50 else "FAIL")
-                w(f"  {j:2d}    {role:4s}    {s['name']:10s}  {s['ts_code']:10s}  {s['close']:6.2f}  {s['pct_chg']:+.2f}%   {s['turnover']:5.2f}%  {s['vol_ratio']:4.2f}  {s['quality_score']:5d}   {stability_tag}    {s['pattern']}")
+                entry_type = s.get("entry_type", "🔴不可交易")  # V9 Entry_Type
+                # 简化entry_type显示（去掉emoji）
+                entry_short = entry_type.replace("🟢", "").replace("🟡", "").replace("🔵", "").replace("🔴", "")
+                w(f"  {j:2d}    {role:4s}    {s['name']:10s}  {s['ts_code']:10s}  {s['close']:6.2f}  {s['pct_chg']:+.2f}%   {s['turnover']:5.2f}%  {s['vol_ratio']:4.2f}  {s['quality_score']:5d}   {stability_tag}    {s['pattern']}  {entry_short}")
         w("")
         
         # 交易计划
@@ -2021,7 +2428,7 @@ def save_report_v8(results):
     return report_content
 
 
-def generate_ai_report(results, raw_report):
+def generate_ai_report(results, raw_report, industry_analysis=None):
     """使用Deepseek对报告进行AI分析，生成阅读性更强的报告"""
     if not raw_report:
         print("[AI报告] 原始报告为空，跳过AI分析")
@@ -2363,20 +2770,12 @@ def main(trade_date=None):
     print(f"分析日期: {TRADE_DATE}")
     print("=" * 80)
     
-    # 1. 加载 theme2.json
-    categories, theme_flat_map = load_theme2_json()
-    print(f"[Theme2] 加载 {len(categories)} 个一级产业")
+    # 1. 加载 theme_graph_v3.json（已转换为 HOT_THEMES 格式）
+    hot_themes, theme_to_category = load_theme2_json()
+    print(f"[Theme3] 加载 {len(hot_themes)} 个二级主题")
     
-    # 2. 扁平化主题 (CATEGORIES -> HOT_THEMES 格式)
-    hot_themes = {}
-    theme_to_category = {}
-    for cat_name, cat_data in categories.items():
-        themes = cat_data.get("themes", {})
-        for theme_name, theme_cfg in themes.items():
-            hot_themes[theme_name] = theme_cfg
-            theme_to_category[theme_name] = cat_name
-    
-    print(f"[Theme2] 扁平化后 {len(hot_themes)} 个主题")
+    # 2. 加载已生成的主题股池数据
+    theme_pool_map = load_theme_pools(TRADE_DATE)
     
     # 3. 获取市场数据
     dc_df = get_dc_members()
@@ -2384,13 +2783,48 @@ def main(trade_date=None):
     daily_basic = get_daily_basic()
     print(f"[Data] stock_basic: {len(stock_basic)}  daily_basic: {len(daily_basic)}")
     
-    # 4. 匹配主题和股票
-    theme_stock_map, name_map_basic, stock_industry, stock_concepts = match_theme_stocks_v2(hot_themes, dc_df, stock_basic)
+    # 4. 从股池数据构建主题-股票映射（替代 match_theme_stocks_v2）
+    # 格式: {theme_name: {code: {score, role, ...}, ...}}
+    theme_stock_map = {}
+    name_map_basic = {}
+    stock_industry = {}
+    stock_concepts = defaultdict(list)
     
+    if stock_basic is not None and not stock_basic.empty:
+        for _, row in stock_basic.iterrows():
+            name_map_basic[row["ts_code"]] = row.get("name", "")
+            stock_industry[row["ts_code"]] = row.get("industry", "")
+    
+    # 从股池数据提取成份股
     all_codes = set()
-    for tn, m in theme_stock_map.items():
-        all_codes.update(m.keys())
-    print(f"[Match] 命中成份股去重: {len(all_codes)} 只")
+    if theme_pool_map:
+        for theme_name, pool_data in theme_pool_map.items():
+            if theme_name not in hot_themes:
+                continue
+            
+            theme_stock_map[theme_name] = {}
+            # 合并核心池、扩展池、潜伏池
+            for pool_type in ["core_pool", "expansion_pool", "latent_pool"]:
+                pool = pool_data.get(pool_type, [])
+                for stock in pool:
+                    code = stock.get("stock_code")
+                    if code:
+                        theme_stock_map[theme_name][code] = {
+                            "score": stock.get("theme_score", 50),
+                            "role": stock.get("role", ""),
+                            "via": "pool",
+                            "chain_distance": 0 if pool_type == "core_pool" else 1
+                        }
+                        all_codes.add(code)
+        print(f"[Pool] 从股池数据加载 {len(all_codes)} 只成份股")
+    else:
+        # 备用方案：使用传统匹配算法
+        print("[Pool] 未找到股池数据，使用传统匹配算法")
+        theme_stock_map, name_map_basic, stock_industry, stock_concepts = match_theme_stocks_v2(hot_themes, dc_df, stock_basic)
+        
+        for tn, m in theme_stock_map.items():
+            all_codes.update(m.keys())
+        print(f"[Match] 命中成份股去重: {len(all_codes)} 只")
     
     # 5. 获取K线数据
     kline_df = get_daily_kline(list(all_codes), START_DATE, TRADE_DATE)
@@ -2420,6 +2854,9 @@ def main(trade_date=None):
     # 计算每个主题的评分
     results = []
     theme_stock_details = {}  # 存储每只股票的质量分和特征
+    
+    # V9.1: 一级产业状态映射（将在循环中逐步填充）
+    industry_status_map = {}
     
     for theme_name, cfg in hot_themes.items():
         matched = theme_stock_map.get(theme_name, {})
@@ -2580,9 +3017,55 @@ def main(trade_date=None):
             "crowding_detail": c_detail,
         }
         
+        # ========== V9.1: 一级产业传导评分修正 ==========
+        # 获取对应的一级产业状态
+        parent_industry_status = industry_status_map.get(category_name)
+        if not parent_industry_status:
+            # 尝试从theme_to_category映射获取
+            parent_industry_status = industry_status_map.get(category_name)
+        
+        # 计算V9.1主题评分（包含Parent_Trend_Boost和Bottom_Activation_Score）
+        theme_data_v9 = {
+            "trend_score": t_score,
+            "sentiment_score": s_score,
+        }
+        v9_score, v9_diagnostics = calc_v9_theme_score(
+            theme_data_v9, quality_stocks, t_detail, s_detail, c_detail, parent_industry_status
+        )
+        
+        # 计算V9.1 Entry_Type（包含"底部启动"类型）
+        entry_type = calc_v9_entry_type(theme_data_v9, quality_stocks, parent_industry_status)
+        
+        # 用V9评分覆盖原评分
+        result["v9_final_score"] = round(v9_score, 1)
+        result["v9_entry_type"] = entry_type
+        result["v9_diagnostics"] = v9_diagnostics
+        result["parent_industry_status"] = parent_industry_status
+        # 如果V9分数比原分数更合理，使用V9分数
+        if v9_score > 0:
+            result["final_score"] = round(v9_score, 1)
+        
         # V8.1: 按质量分排序，取前10只 (要求quality_score >= 50，放宽标准)
         quality_stocks.sort(key=lambda x: x["quality_score"], reverse=True)
-        top3_stocks = [s for s in quality_stocks if s["quality_score"] >= 50][:10]
+        
+        # ========== V9: 应用个股过滤 ==========
+        # 对每只股票进行V9过滤，标记Entry_Type
+        v9_tradable_stocks = []
+        for s in quality_stocks:
+            is_tradable, entry_type, filter_reason = calc_v9_stock_filter(s)
+            s["is_v9_tradable"] = is_tradable
+            s["entry_type"] = entry_type
+            s["v9_filter_reason"] = filter_reason
+            if is_tradable:
+                v9_tradable_stocks.append(s)
+        
+        # V9: 使用过滤后的可交易股票，取最多3只
+        top3_stocks = [s for s in v9_tradable_stocks if s["quality_score"] >= 50][:3]
+        
+        # 如果V9过滤后不足3只，尝试放宽条件
+        if len(top3_stocks) < 3:
+            fallback_stocks = [s for s in v9_tradable_stocks if s not in top3_stocks]
+            top3_stocks.extend(fallback_stocks[:3 - len(top3_stocks)])
         
         # 生成每只股票的交易信号 (V8增强版)
         stock_signals = []
@@ -2597,6 +3080,8 @@ def main(trade_date=None):
                 "close": s.get("close", 0),
                 "turnover": s.get("turnover", 0),
                 "vol_ratio": s.get("vol_ratio", 1),
+                "entry_type": s.get("entry_type", "🔴不可交易"),  # V9
+                "v9_filter_reason": s.get("v9_filter_reason", ""),  # V9
                 **signal
             })
         
@@ -2702,7 +3187,56 @@ def main(trade_date=None):
         all_sorted = sorted(filtered_results, key=lambda x: x["final_score"], reverse=True)
         final_results = all_sorted[:max(3, len(all_sorted))]
     
+    # 9.8 去重：确保没有重复的主题
+    seen_themes = set()
+    unique_results = []
+    for r in final_results:
+        theme_name = r.get("theme", "")
+        if theme_name not in seen_themes:
+            seen_themes.add(theme_name)
+            unique_results.append(r)
+    final_results = unique_results
+    
     print(f"[V8.1] 最终可交易主题: {len(final_results)} 个")
+    
+    # ========== V9.1: 一级产业传导评分修正 ==========
+    # 先计算industry_analysis（用于获取一级产业状态）
+    industry_analysis = get_industry_trend_analysis(filtered_results)
+    industry_status_map = {ind["industry"]: ind for ind in industry_analysis}
+    
+    # 对final_results应用V9.1 Parent_Trend_Boost修正
+    for r in final_results:
+        category_name = r.get("category", "")
+        parent_industry_status = industry_status_map.get(category_name)
+        
+        if parent_industry_status:
+            # 计算V9.1主题评分
+            stock_feats = r.get("top_stocks", [])
+            t_detail = r.get("trend_detail", {})
+            s_detail = r.get("sentiment_detail", {})
+            c_detail = r.get("crowding_detail", {})
+            
+            theme_data_v9 = {
+                "trend_score": r.get("theme_score", 50),
+                "sentiment_score": r.get("emotion_score", 50),
+            }
+            
+            v9_score, v9_diagnostics = calc_v9_theme_score(
+                theme_data_v9, stock_feats, t_detail, s_detail, c_detail, parent_industry_status
+            )
+            
+            # 计算V9.1 Entry_Type
+            entry_type = calc_v9_entry_type(theme_data_v9, stock_feats, parent_industry_status)
+            
+            # 更新result
+            r["v9_final_score"] = round(v9_score, 1)
+            r["v9_entry_type"] = entry_type
+            r["v9_diagnostics"] = v9_diagnostics
+            r["parent_industry_status"] = parent_industry_status
+            
+            # 如果V9分数更合理，使用V9分数
+            if v9_score > 0:
+                r["final_score"] = round(v9_score, 1)
     
     # 9.8 优化每主题的股票选择（V8.1规则）
     for r in final_results:
@@ -2746,7 +3280,7 @@ def main(trade_date=None):
     
     # 10. 输出结果
     print("\n" + "=" * 80)
-    print(f"【明日可交易主题决策引擎 V8.1】")
+    print(f"【明日可交易主题决策引擎 V9.1】")
     print(f"共 {len(final_results)} 个可交易主题")
     print("=" * 80)
     
@@ -2754,6 +3288,11 @@ def main(trade_date=None):
         theme_state = r["theme_state"]
         crowding = r["crowding_score"]
         trade_mode = r.get("trade_mode", "MID")
+        
+        # V9.1: 获取一级产业状态
+        parent_status = r.get("parent_industry_status", {})
+        parent_status_text = parent_status.get("status", "") if parent_status else ""
+        parent_industry = r.get("category", "")
         
         # 状态标签 (避免emoji)
         state_label = {
@@ -2766,9 +3305,19 @@ def main(trade_date=None):
         crowding_warn = "[WARN:拥挤]" if crowding > 70 else ""
         
         mode_icon = "🚀" if trade_mode == "SHORT" else "📈"
+        
+        # V9.1: 显示Entry_Type
+        v9_entry_type = r.get("v9_entry_type", "🔴不可交易")
+        v9_diag = r.get("v9_diagnostics", {})
+        parent_boost = v9_diag.get("parent_boost", 0)
+        is_bottom = v9_diag.get("is_bottom_activation", False)
+        
         print(f"\n{'─' * 80}")
         print(f"{i}. {r['theme']}  {mode_icon} [{trade_mode}] {state_label} {crowding_warn}")
-        print(f"   final_score = {r['final_score']}")
+        print(f"   [V9.1] 一级产业: {parent_industry} | 状态: {parent_status_text} | Entry_Type: {v9_entry_type}")
+        print(f"   final_score = {r['final_score']} (V9评分={r.get('v9_final_score', r['final_score'])})")
+        if parent_boost != 0:
+            print(f"   Parent_Trend_Boost: {parent_boost:+.1f} | 底部激活: {'是' if is_bottom else '否'}")
         print(f"   macro={r['macro_score']} theme={r['theme_score']} emotion={r['emotion_score']} leader={r.get('leader_stability_score', 0)} cycle={r['cycle_score']} crowding={r['crowding_score']}")
         print(f"   阶段={r['theme_state']}  模式={trade_mode}")
         
@@ -2776,11 +3325,15 @@ def main(trade_date=None):
         for j, s in enumerate(r.get("top_stocks", []), 1):
             role = s.get("role", "弹性")
             stability = s.get("leader_stability", 0)
+            entry_type = s.get("entry_type", "🔴不可交易")  # V9 Entry_Type
             min_stable = 45 if trade_mode == "SHORT" else 65
             stability_tag = "✅" if stability >= min_stable else ("⚠️" if stability >= 45 else "❌")
-            print(f"   {j}. [{role}] {s['name']} ({s['ts_code']})")
+            print(f"   {j}. [{role}] {s['name']} ({s['ts_code']}) {entry_type}")
             print(f"      现价:{s['close']:.2f} 涨幅:{s['pct_chg']:+.2f}% 换手:{s['turnover']:.2f}% 量比:{s['vol_ratio']:.2f}")
             print(f"      质量分={s['quality_score']} 稳定性={stability_tag}{stability} 结构={s['pattern']}")
+            # V9: 显示过滤原因
+            if s.get("v9_filter_reason"):
+                print(f"      V9过滤: {s['v9_filter_reason']}")
         
         print(f"\n   🎯 交易计划:")
         if r.get("top_stocks"):
@@ -2801,14 +3354,14 @@ def main(trade_date=None):
     raw_report = save_report_v8(final_results)
     
     # 调用Deepseek进行AI分析，生成阅读性更强的报告
+    industry_analysis = get_industry_trend_analysis(final_results)
     global SKIP_AI_ANALYSIS
     if not SKIP_AI_ANALYSIS:
-        generate_ai_report(final_results, raw_report)
+        generate_ai_report(final_results, raw_report, industry_analysis)
     else:
         print("[Info] 已跳过AI分析")
     
     # 无论是否AI分析，都生成包含产业分析的HTML报告
-    industry_analysis = get_industry_trend_analysis(final_results)
     html_report = generate_html_report("", final_results, industry_analysis)
     html_report_path = os.path.join(REPORT_DIR, f"theme_v7_ai_report_{TRADE_DATE}.html")
     with open(html_report_path, "w", encoding="utf-8") as f:

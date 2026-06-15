@@ -1,0 +1,189 @@
+{
+  "theme_name": "具身智能大模型",
+  "macro_theme": "物理AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "002657.SZ",
+      "stock_name": "中科金财",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8968,
+      "amount": 893755.6368,
+      "total_mv": 732812.0492
+    },
+    {
+      "stock_code": "002611.SZ",
+      "stock_name": "东方精工",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.1669,
+      "amount": 1958914.75093,
+      "total_mv": 2241024.1519
+    },
+    {
+      "stock_code": "688327.SH",
+      "stock_name": "云从科技",
+      "theme_score": 71.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3047,
+      "amount": 597959.652,
+      "total_mv": 1372767.4343
+    },
+    {
+      "stock_code": "002230.SZ",
+      "stock_name": "科大讯飞",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9806,
+      "amount": 2943754.76896,
+      "total_mv": 9702000.4778
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300244.SZ",
+      "stock_name": "迪安诊断",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.0083
+    },
+    {
+      "stock_code": "688507.SH",
+      "stock_name": "索辰科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.9516
+    },
+    {
+      "stock_code": "300377.SZ",
+      "stock_name": "赢时胜",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 20.0
+    },
+    {
+      "stock_code": "000681.SZ",
+      "stock_name": "视觉中国",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9276
+    },
+    {
+      "stock_code": "300825.SZ",
+      "stock_name": "阿尔特",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1944
+    },
+    {
+      "stock_code": "301638.SZ",
+      "stock_name": "南网数字",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.4586
+    },
+    {
+      "stock_code": "300803.SZ",
+      "stock_name": "指南针",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9911
+    },
+    {
+      "stock_code": "603990.SH",
+      "stock_name": "麦迪科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.98
+    },
+    {
+      "stock_code": "601609.SH",
+      "stock_name": "金田股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9912
+    },
+    {
+      "stock_code": "600539.SH",
+      "stock_name": "狮头股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0337
+    },
+    {
+      "stock_code": "600229.SH",
+      "stock_name": "城市传媒",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9467
+    },
+    {
+      "stock_code": "688003.SH",
+      "stock_name": "天准科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.3798
+    },
+    {
+      "stock_code": "300496.SZ",
+      "stock_name": "中科创达",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6567
+    },
+    {
+      "stock_code": "002929.SZ",
+      "stock_name": "润建股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6178
+    },
+    {
+      "stock_code": "300608.SZ",
+      "stock_name": "思特奇",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.5762
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "中科金财",
+  "secondary_leaders": [
+    "东方精工",
+    "云从科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 4,
+    "expansion_count": 709,
+    "latent_count": 0,
+    "core_avg_pct": 3.59695,
+    "expansion_avg_pct": 1.0614658674188997,
+    "total_amount": 453170703.3407605
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "theme_name": "低空运营服务",
+  "macro_theme": "低空经济",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "002352.SZ",
+      "stock_name": "顺丰控股",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.0874,
+      "amount": 832008.76919,
+      "total_mv": 18091598.556
+    },
+    {
+      "stock_code": "000099.SZ",
+      "stock_name": "中信海直",
+      "theme_score": 75.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.981,
+      "amount": 417124.63223,
+      "total_mv": 1350615.8085
+    },
+    {
+      "stock_code": "002120.SZ",
+      "stock_name": "韵达股份",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.8405,
+      "amount": 222425.29694,
+      "total_mv": 1925069.6805
+    },
+    {
+      "stock_code": "300719.SZ",
+      "stock_name": "安达维尔",
+      "theme_score": 72.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.8099,
+      "amount": 269727.2363,
+      "total_mv": 356172.2372
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "001696.SZ",
+      "stock_name": "宗申动力",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0193
+    },
+    {
+      "stock_code": "688772.SH",
+      "stock_name": "珠海冠宇",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 15.9287
+    },
+    {
+      "stock_code": "688507.SH",
+      "stock_name": "索辰科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.9516
+    },
+    {
+      "stock_code": "301306.SZ",
+      "stock_name": "西测测试",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.2401
+    },
+    {
+      "stock_code": "302132.SZ",
+      "stock_name": "中航成飞",
+      "theme_score": 69.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7813
+    },
+    {
+      "stock_code": "003009.SZ",
+      "stock_name": "中天火箭",
+      "theme_score": 69.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9982
+    },
+    {
+      "stock_code": "600862.SH",
+      "stock_name": "中航高科",
+      "theme_score": 69.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0292
+    },
+    {
+      "stock_code": "002985.SZ",
+      "stock_name": "北摩高科",
+      "theme_score": 68.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 10.0147
+    },
+    {
+      "stock_code": "000768.SZ",
+      "stock_name": "中航西飞",
+      "theme_score": 68.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 10.0096
+    },
+    {
+      "stock_code": "002468.SZ",
+      "stock_name": "申通快递",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2221
+    },
+    {
+      "stock_code": "600233.SH",
+      "stock_name": "圆通速递",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2979
+    },
+    {
+      "stock_code": "603990.SH",
+      "stock_name": "麦迪科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.98
+    },
+    {
+      "stock_code": "600567.SH",
+      "stock_name": "山鹰国际",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9237
+    },
+    {
+      "stock_code": "600576.SH",
+      "stock_name": "祥源文旅",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9644
+    },
+    {
+      "stock_code": "000547.SZ",
+      "stock_name": "航天发展",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "顺丰控股",
+  "secondary_leaders": [
+    "中信海直",
+    "韵达股份"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 4,
+    "expansion_count": 332,
+    "latent_count": 0,
+    "core_avg_pct": 6.4297,
+    "expansion_avg_pct": 1.654998795180723,
+    "total_amount": 172229284.92201993
+  }
+}

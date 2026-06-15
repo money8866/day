@@ -1,0 +1,249 @@
+{
+  "theme_name": "AI文化娱乐",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "002657.SZ",
+      "stock_name": "中科金财",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8968,
+      "amount": 893755.6368,
+      "total_mv": 732812.0492
+    },
+    {
+      "stock_code": "603466.SH",
+      "stock_name": "风语筑",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.7248,
+      "amount": 1204892.257,
+      "total_mv": 681068.5347
+    },
+    {
+      "stock_code": "300364.SZ",
+      "stock_name": "中文在线",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3663,
+      "amount": 675578.01799,
+      "total_mv": 1596872.2587
+    },
+    {
+      "stock_code": "300418.SZ",
+      "stock_name": "昆仑万维",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.758,
+      "amount": 1339118.04393,
+      "total_mv": 4782899.2092
+    },
+    {
+      "stock_code": "300624.SZ",
+      "stock_name": "万兴科技",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.0823,
+      "amount": 311661.85657,
+      "total_mv": 1011148.9745
+    },
+    {
+      "stock_code": "300182.SZ",
+      "stock_name": "捷成股份",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4779,
+      "amount": 1234531.45493,
+      "total_mv": 1467767.9232
+    },
+    {
+      "stock_code": "603598.SH",
+      "stock_name": "引力传媒",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.7353,
+      "amount": 399719.61,
+      "total_mv": 509700.681
+    },
+    {
+      "stock_code": "300052.SZ",
+      "stock_name": "中青宝",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.023,
+      "amount": 267920.01984,
+      "total_mv": 310302.5714
+    },
+    {
+      "stock_code": "688039.SH",
+      "stock_name": "当虹科技",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.1824,
+      "amount": 128364.44,
+      "total_mv": 466185.0022
+    },
+    {
+      "stock_code": "300017.SZ",
+      "stock_name": "网宿科技",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8505,
+      "amount": 2074959.52006,
+      "total_mv": 3571324.9159
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300949.SZ",
+      "stock_name": "奥雅股份",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.7865
+    },
+    {
+      "stock_code": "001330.SZ",
+      "stock_name": "博纳影业",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9533
+    },
+    {
+      "stock_code": "300556.SZ",
+      "stock_name": "丝路视觉",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.4304
+    },
+    {
+      "stock_code": "603189.SH",
+      "stock_name": "*ST网达",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.705
+    },
+    {
+      "stock_code": "300081.SZ",
+      "stock_name": "ST恒信",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.0151
+    },
+    {
+      "stock_code": "002717.SZ",
+      "stock_name": "*ST岭南",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.3058
+    },
+    {
+      "stock_code": "000892.SZ",
+      "stock_name": "欢瑞世纪",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.809
+    },
+    {
+      "stock_code": "300170.SZ",
+      "stock_name": "汉得信息",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6722
+    },
+    {
+      "stock_code": "000032.SZ",
+      "stock_name": "深桑达A",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "600576.SH",
+      "stock_name": "祥源文旅",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9644
+    },
+    {
+      "stock_code": "300496.SZ",
+      "stock_name": "中科创达",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6567
+    },
+    {
+      "stock_code": "300036.SZ",
+      "stock_name": "超图软件",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.6525
+    },
+    {
+      "stock_code": "300166.SZ",
+      "stock_name": "东方国信",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.7065
+    },
+    {
+      "stock_code": "300148.SZ",
+      "stock_name": "天舟文化",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.9009
+    },
+    {
+      "stock_code": "300232.SZ",
+      "stock_name": "洲明科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6346
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "中科金财",
+  "secondary_leaders": [
+    "风语筑",
+    "中文在线"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 34,
+    "expansion_count": 213,
+    "latent_count": 0,
+    "core_avg_pct": 0.8373529411764705,
+    "expansion_avg_pct": 0.7285845070422536,
+    "total_amount": 148542088.09984997
+  }
+}

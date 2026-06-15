@@ -1,0 +1,249 @@
+{
+  "theme_name": "军工电子与信息化",
+  "macro_theme": "国防军工",
+  "trade_date": "20260612",
+  "theme_stage": "分歧期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "000547.SZ",
+      "stock_name": "航天发展",
+      "theme_score": 82.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016,
+      "amount": 1879983.16462,
+      "total_mv": 3300836.9755
+    },
+    {
+      "stock_code": "688788.SH",
+      "stock_name": "科思科技",
+      "theme_score": 81.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 17.7096,
+      "amount": 283288.865,
+      "total_mv": 848253.6626
+    },
+    {
+      "stock_code": "301306.SZ",
+      "stock_name": "西测测试",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.2401,
+      "amount": 817581.25073,
+      "total_mv": 1140497.2
+    },
+    {
+      "stock_code": "002935.SZ",
+      "stock_name": "天奥电子",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0099,
+      "amount": 250133.90704,
+      "total_mv": 941507.5678
+    },
+    {
+      "stock_code": "302132.SZ",
+      "stock_name": "中航成飞",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7813,
+      "amount": 1396142.36599,
+      "total_mv": 17050615.0703
+    },
+    {
+      "stock_code": "300252.SZ",
+      "stock_name": "金信诺",
+      "theme_score": 77.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4863,
+      "amount": 1194277.37954,
+      "total_mv": 1133742.5201
+    },
+    {
+      "stock_code": "688552.SH",
+      "stock_name": "航天南湖",
+      "theme_score": 77.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.0472,
+      "amount": 163297.193,
+      "total_mv": 975658.464
+    },
+    {
+      "stock_code": "002025.SZ",
+      "stock_name": "航天电器",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.0427,
+      "amount": 1717410.38408,
+      "total_mv": 2916593.7381
+    },
+    {
+      "stock_code": "600590.SH",
+      "stock_name": "泰豪科技",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0568,
+      "amount": 512666.358,
+      "total_mv": 1006386.305
+    },
+    {
+      "stock_code": "002413.SZ",
+      "stock_name": "雷科防务",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.7805,
+      "amount": 934448.63801,
+      "total_mv": 1365517.6504
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688167.SH",
+      "stock_name": "炬光科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.0598
+    },
+    {
+      "stock_code": "301183.SZ",
+      "stock_name": "东田微",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4424
+    },
+    {
+      "stock_code": "688053.SH",
+      "stock_name": "ST思科瑞",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.2568
+    },
+    {
+      "stock_code": "688469.SH",
+      "stock_name": "芯联集成",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.2486
+    },
+    {
+      "stock_code": "002383.SZ",
+      "stock_name": "合众思壮",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.6667
+    },
+    {
+      "stock_code": "002222.SZ",
+      "stock_name": "福晶科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3748
+    },
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1802
+    },
+    {
+      "stock_code": "688195.SH",
+      "stock_name": "腾景科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.7109
+    },
+    {
+      "stock_code": "002600.SZ",
+      "stock_name": "领益智造",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.788
+    },
+    {
+      "stock_code": "603319.SH",
+      "stock_name": "美湖股份",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7333
+    },
+    {
+      "stock_code": "002845.SZ",
+      "stock_name": "同兴达",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -7.199
+    },
+    {
+      "stock_code": "300975.SZ",
+      "stock_name": "商络电子",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.9767
+    },
+    {
+      "stock_code": "300241.SZ",
+      "stock_name": "瑞丰光电",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.2215
+    },
+    {
+      "stock_code": "688007.SH",
+      "stock_name": "光峰科技",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.7868
+    },
+    {
+      "stock_code": "002273.SZ",
+      "stock_name": "水晶光电",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.381
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "航天发展",
+  "secondary_leaders": [
+    "科思科技",
+    "西测测试"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "latent"
+  },
+  "pool_stats": {
+    "core_count": 64,
+    "expansion_count": 39,
+    "latent_count": 0,
+    "core_avg_pct": 1.7312093750000002,
+    "expansion_avg_pct": -1.0531358974358975,
+    "total_amount": 99725550.25327002
+  }
+}

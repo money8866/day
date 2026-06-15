@@ -1,0 +1,156 @@
+{
+  "theme_name": "多元金融",
+  "macro_theme": "金融",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 83,
+  "core_pool": [
+    {
+      "stock_code": "603300.SH",
+      "stock_name": "海南华铁",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.621,
+      "amount": 222721.391,
+      "total_mv": 1015238.2887
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "600517.SH",
+      "stock_name": "国网英大",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.0877
+    },
+    {
+      "stock_code": "000563.SZ",
+      "stock_name": "陕国投A",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.5211
+    },
+    {
+      "stock_code": "000415.SZ",
+      "stock_name": "渤海租赁",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 4.8346
+    },
+    {
+      "stock_code": "600901.SH",
+      "stock_name": "江苏金租",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.5198
+    },
+    {
+      "stock_code": "600816.SH",
+      "stock_name": "建元信托",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.9157
+    },
+    {
+      "stock_code": "000987.SZ",
+      "stock_name": "越秀资本",
+      "theme_score": 67.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.5961
+    },
+    {
+      "stock_code": "600390.SH",
+      "stock_name": "五矿资本",
+      "theme_score": 67.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.1042
+    },
+    {
+      "stock_code": "002961.SZ",
+      "stock_name": "瑞达期货",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.7453
+    },
+    {
+      "stock_code": "603093.SH",
+      "stock_name": "南华期货",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8107
+    },
+    {
+      "stock_code": "000617.SZ",
+      "stock_name": "中油资本",
+      "theme_score": 66.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.8258
+    },
+    {
+      "stock_code": "002423.SZ",
+      "stock_name": "中粮资本",
+      "theme_score": 63.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.252
+    },
+    {
+      "stock_code": "600120.SH",
+      "stock_name": "浙江东方",
+      "theme_score": 63.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.0548
+    },
+    {
+      "stock_code": "000567.SZ",
+      "stock_name": "海德股份",
+      "theme_score": 63.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.9091
+    },
+    {
+      "stock_code": "600830.SH",
+      "stock_name": "香溢融通",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.337
+    },
+    {
+      "stock_code": "600318.SH",
+      "stock_name": "新力金融",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2472
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "海南华铁",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 1,
+    "expansion_count": 29,
+    "latent_count": 0,
+    "core_avg_pct": 2.621,
+    "expansion_avg_pct": 2.3737241379310348,
+    "total_amount": 6193441.980959999
+  }
+}

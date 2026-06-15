@@ -24,18 +24,29 @@ from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
 # =========================
-# Windows GBK 控制台输出修复:强制 UTF-8 编码
+# Windows GBK 控制台输出修复:使用环境变量 PYTHONIOENCODING
+# (禁止 sys.stdout = io.TextIOWrapper, 会导致底层 buffer 被 GC 后 close, 引发 I/O on closed file)
 # =========================
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+if sys.platform == 'win32':
+    import locale
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', '.env'))
-
-# ── 控制台编码修复(支持 emoji/Unicode) ──
-# 已移除 UTF-8 wrapper,改用环境变量 PYTHONIOENCODING
+# 优先加载项目根目录下 .env；向后兼容 config/.env
+_pwd = os.path.dirname(os.path.abspath(__file__))
+for _env_path in (
+    os.path.join(_pwd, '.env'),
+    os.path.join(_pwd, '..', 'config', '.env'),
+):
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+        break
 
 # ── 通达信(使用 mootdx) ──
 try:
@@ -392,31 +403,43 @@ class RealtimeThemeMonitor:
         else:
             query_date = now.strftime('%Y%m%d')
 
-        cal = pro.trade_cal(exchange='', start_date='20260101', end_date=query_date)
-        cal = cal[cal['is_open'] == 1]
-        trade_date = str(cal[cal['cal_date'] <= query_date]['cal_date'].max())
+        trade_date = self._get_last_trade_date()  # 使用独立函数,避免依赖Tushare
 
         cache_file = os.path.join(CACHE_DIR, f"ref_prices_{trade_date}.pkl")
 
-        # 全量重新获取,不使用缓存
+        # 优先尝试Tushare获取昨日收盘价
         all_codes = list(self.stock_themes.keys())
         print(f"⏳ 获取{trade_date}日线数据,共{len(all_codes)}只...")
-        daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
-        time.sleep(0.3)
-
-        if len(all_codes) > 3000:
-            daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
-            import pandas as pd
-            daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
 
         tushare_count = 0
-        if not daily.empty:
-            for _, row in daily.iterrows():
-                self.ref_prices[row['ts_code']] = {
-                    'close': row['close'],
-                    'pct_chg': row['pct_chg']
-                }
-                tushare_count += 1
+        if TS_AVAILABLE:
+            try:
+                daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
+                time.sleep(0.3)
+
+                if len(all_codes) > 3000:
+                    daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
+                    import pandas as pd
+                    daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
+
+                if not daily.empty:
+                    for _, row in daily.iterrows():
+                        self.ref_prices[row['ts_code']] = {
+                            'close': row['close'],
+                            'pct_chg': row['pct_chg']
+                        }
+                    tushare_count = len(daily)
+            except Exception as e:
+                print(f"   ⚠ Tushare获取失败: {e}, 将从新浪行情获取昨收")
+                tushare_count = 0
+        else:
+            print("   ⚠ Tushare不可用,将从新浪行情获取昨收")
+
+        # 如果Tushare没获取到,尝试从新浪行情获取昨收
+        if tushare_count == 0 or len(self.ref_prices) < len(all_codes):
+            missing_codes = [code for code in all_codes if code not in self.ref_prices]
+            print(f"   ⏳ 补充获取 {len(missing_codes)} 只股票昨收...")
+            self._fetch_ref_prices_from_sina(missing_codes)
 
         # 检查缺失的股票
         missing = [code for code in all_codes if code not in self.ref_prices]
@@ -439,6 +462,9 @@ class RealtimeThemeMonitor:
         优先级:pickle缓存 > SQLite cache > Tushare
         """
         import pickle
+        from datetime import datetime as dt_dt
+
+        # 直接从 Tushare 交易日历获取最近交易日,不再依赖缓存文件存在性
         trade_date = self._get_last_trade_date()
         self.index_klines = {}   # name -> DataFrame(cols: close, vol, high, low, pct_chg)
 
@@ -448,7 +474,7 @@ class RealtimeThemeMonitor:
             cache_file = os.path.join(CACHE_DIR, f"index_kline_{ts_code}_{trade_date}.pkl")
             df = None
 
-            # 优先加载 pickle 缓存
+            # 1) 优先加载 pickle 缓存
             if os.path.exists(cache_file):
                 try:
                     with open(cache_file, 'rb') as f:
@@ -459,7 +485,7 @@ class RealtimeThemeMonitor:
                 except Exception:
                     pass
 
-            # 从 SQLite 缓存读取(market_analysis.py 生成的 cache.db)
+            # 2) 从 SQLite cache.db 读取(实际 key 格式: tsc_index_kline_ts_code_000001.SH_20260612)
             db_file = os.path.join(CACHE_DIR, "cache.db")
             if df is None and os.path.exists(db_file):
                 try:
@@ -467,8 +493,9 @@ class RealtimeThemeMonitor:
                     from io import StringIO
                     conn = sqlite3.connect(db_file)
                     cur = conn.cursor()
+                    # 修正:实际 key 格式含 ts_code_ 前缀
                     cur.execute("SELECT data FROM cache_data WHERE key LIKE ? LIMIT 1",
-                                (f"%index_kline_{ts_code}%",))
+                                (f"%tsc_index_kline_ts_code_{ts_code}_%",))
                     row = cur.fetchone()
                     conn.close()
                     if row:
@@ -480,17 +507,24 @@ class RealtimeThemeMonitor:
                 except Exception:
                     pass
 
-            # 最后回退到 Tushare
+            # 3) 回退到 Tushare (932000.CSI 走中证指数接口,其他走标准 index_daily)
             if df is None or len(df) < 20:
                 if TS_AVAILABLE:
                     try:
                         import pandas as pd
-                        start = (dt_strptime(trade_date, '%Y%m%d') - timedelta(days=150)).strftime('%Y%m%d')
-                        df = pro.index_daily(ts_code=ts_code, start_date=start, end_date=trade_date)
+                        start = (dt_dt.strptime(trade_date, '%Y%m%d') - timedelta(days=150)).strftime('%Y%m%d')
+                        if ts_code.startswith('932000'):
+                            # 中证指数走 index_dailybasic 或用 sh000300 替代
+                            # 932000.CSI = 国证2000, 用 sz399303 替代(新浪映射中已有)
+                            alt_code = '000300.SH'  # 暂时用沪深300替代,避免中证接口报错
+                            df = pro.index_daily(ts_code=alt_code, start_date=start, end_date=trade_date)
+                        else:
+                            df = pro.index_daily(ts_code=ts_code, start_date=start, end_date=trade_date)
                         if df is not None and not df.empty:
                             df = df.sort_values('trade_date').reset_index(drop=True)
                             self.index_klines[name] = df
-                    except Exception:
+                    except Exception as e:
+                        print(f"   ⚠ {name} Tushare回退失败: {e}")
                         pass
 
         for name, df in self.index_klines.items():
@@ -513,6 +547,60 @@ class RealtimeThemeMonitor:
                     return cand
         # 默认用最新 query_date
         return q
+
+    def _fetch_ref_prices_from_sina(self, codes):
+        """从新浪财经获取股票昨收数据作为Tushare的备选"""
+        if not codes:
+            return
+        # 分批获取，每批最多180只
+        for offset in range(0, len(codes), 180):
+            batch = codes[offset:offset+180]
+            sina_list = []
+            for code in batch:
+                if code.endswith('.SH'):
+                    sina_list.append('sh' + code.replace('.SH', ''))
+                elif code.endswith('.SZ'):
+                    sina_list.append('sz' + code.replace('.SZ', ''))
+            
+            url = f"https://hq.sinajs.cn/list={','.join(sina_list)}"
+            try:
+                resp = requests.get(url, headers={
+                    'Referer': 'https://finance.sina.com.cn',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }, timeout=8)
+                resp.encoding = 'gbk'
+                lines = resp.text.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    try:
+                        var_part = line.split('=', 1)[1]
+                        if var_part.count('"') < 2:
+                            continue
+                        data_str = var_part.split('"')[1]
+                        fields = data_str.split(',')
+                        
+                        var_name = line.split('hq_str_')[1].split('=')[0]
+                        if var_name.startswith('sz'):
+                            ts_c = var_name[2:].zfill(6) + '.SZ'
+                        elif var_name.startswith('sh'):
+                            ts_c = var_name[2:].zfill(6) + '.SH'
+                        else:
+                            continue
+                        
+                        if len(fields) >= 3:
+                            prev_close = float(fields[2])
+                            self.ref_prices[ts_c] = {
+                                'close': prev_close,
+                                'pct_chg': 0
+                            }
+                    except:
+                        continue
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"   ⚠ 新浪行情获取失败: {e}")
+                continue
 
     # ── 成分股K线加载(用于主题趋势/情绪分计算) ──
     def load_component_klines(self, days=65):
@@ -1090,13 +1178,18 @@ class RealtimeThemeMonitor:
         cur_price = latest_quote.get('price')
         cur_vol = latest_quote.get('vol')
 
-        # 构造临时序列:将历史K线与当日行情拼接(若当日行情可用)
-        closes = list(df['close'].values) if 'close' in df.columns else list(df['close_y'].values) if 'close_y' in df.columns else list(df['close'].values)
+        # 构造临时序列:将历史K线与当日实时行情融合
+        # 关键修复:用实时价(cur_price)替换历史最后一天收盘,确保均线反映今日行情
+        closes = list(df['close'].values) if 'close' in df.columns else list(df['close_y'].values)
         vols = list(df['vol'].values) if 'vol' in df.columns else [0]*len(closes)
 
         if cur_price and cur_price > 0:
-            closes.append(float(cur_price))
-            vols.append(float(cur_vol) if cur_vol else vols[-1] if vols else 0)
+            # 用实时价替换最后一根K线收盘,保证均线实时反映今日走势
+            if len(closes) > 0:
+                closes[-1] = float(cur_price)
+            else:
+                closes.append(float(cur_price))
+            # 注意:不替换vol,Sina vol是累计量,不能与历史日成交量比较
 
         import numpy as np
         closes_arr = np.array(closes, dtype=float)
@@ -1245,28 +1338,68 @@ class RealtimeThemeMonitor:
         """
         results_per_index: [{name, trend_score, sentiment_score, pct_chg}, ...]
         返回: (trend_score, index_trend, theme_trend, market_status, position)
+        修正:指数趋势分应融合实时涨跌幅,让当日涨幅参与综合判断
         """
-        # IndexTrend = SH*0.5 + HS300*0.3 + ZZ2000*0.2
-        sh_score = next((r['trend_score'] for r in results_per_index if r['name'] == '上证指数'), 50)
-        hs_score = next((r['trend_score'] for r in results_per_index if r['name'] == '沪深300'), 50)
-        zz_score = next((r['trend_score'] for r in results_per_index if r['name'] == '中证2000'), 50)
-        index_trend = round(sh_score * 0.5 + hs_score * 0.3 + zz_score * 0.2, 1)
+        # ── 1. 融合实时涨跌的动态指数趋势分 ──
+        # 每个指数的综合分 = MA趋势分(70%) + 实时涨幅分(30%)
+        # 实时涨幅分:按当日涨跌幅直接给分,反映当日市场强度
+        enhanced_scores = []
+        for r in results_per_index:
+            ma_trend = r.get('trend_score', 50)
+            pct_chg = r.get('pct_chg', 0) or 0
+            # 实时涨幅分: +2%以上80分,+1.5%以上70分,+1%以上60分,+0.5%以上50分,正数40分,负数30分
+            if pct_chg >= 2.0: rt_score = 80
+            elif pct_chg >= 1.5: rt_score = 70
+            elif pct_chg >= 1.0: rt_score = 60
+            elif pct_chg >= 0.5: rt_score = 50
+            elif pct_chg > 0: rt_score = 40
+            elif pct_chg >= -0.5: rt_score = 30
+            elif pct_chg >= -1.5: rt_score = 20
+            else: rt_score = 10
+            # 综合:均线权重70% + 实时涨幅权重30%
+            enhanced = ma_trend * 0.7 + rt_score * 0.3
+            enhanced_scores.append({
+                'name': r['name'],
+                'ma_trend': ma_trend,
+                'rt_score': rt_score,
+                'enhanced': enhanced,
+                'pct_chg': pct_chg
+            })
+
+        # ── 2. 加权指数趋势(动态权重:涨幅大的指数权重更高) ──
+        total_pct = sum(max(r['pct_chg'], 0) for r in enhanced_scores)
+        if total_pct > 0:
+            index_trend = sum(
+                r['enhanced'] * (max(r['pct_chg'], 0.1) / total_pct)
+                for r in enhanced_scores
+            )
+        else:
+            # 传统固定权重
+            sh_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '上证指数'), 50)
+            hs_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '沪深300'), 50)
+            zz_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '中证2000'), 50)
+            index_trend = round(sh_score * 0.5 + hs_score * 0.3 + zz_score * 0.2, 1)
+
+        index_trend = round(index_trend, 1)
 
         # ThemeTrend:以当前主题TOP3平均强度作为趋势分(替代原算法中的历史主题趋势分)
-        if self.theme_score_history and hasattr(self, '_recent_theme_scores'):
-            theme_trend = self._recent_theme_scores
+        if self.theme_score_history and len(self.theme_score_history) > 0:
+            # 有历史数据时:用最近均值映射
+            vals = []
+            for theme, hist in self.theme_score_history.items():
+                if hist:
+                    vals.append(hist[-1])
+            if vals:
+                top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
+                theme_trend = round(min(100, max(30, 50 + top_avg * 6)), 1)
+            else:
+                theme_trend = 50
         else:
-            # fallback: 用主题强度均值映射到0-100
-            top_avg = 0
-            if self.theme_score_history:
-                vals = []
-                for theme, hist in self.theme_score_history.items():
-                    if hist:
-                        vals.append(hist[-1])
-                if vals:
-                    top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
-            # 映射: -5 ~ +5% -> 30 ~ 100
-            theme_trend = round(min(100, max(30, 50 + top_avg * 6)), 1)
+            # 无历史数据时的fallback:基于指数增强分推算主题强度
+            # enhanced_scores 是[0,100]区间的综合指数趋势分
+            # 主题趋势 ≈ 指数增强均值的0.7倍 + 30(基准偏移),合理范围[45,75]
+            avg_enhanced = sum(r['enhanced'] for r in enhanced_scores) / len(enhanced_scores) if enhanced_scores else 50
+            theme_trend = round(min(75, max(45, avg_enhanced * 0.7 + 30)), 1)
         self._recent_theme_scores = theme_trend
 
         # TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6

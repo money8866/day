@@ -1,0 +1,312 @@
+{
+  "date": "20260612",
+  "new_themes": [
+    {
+      "theme": "电子",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 20,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "北方华创",
+        "寒武纪",
+        "佰维存储"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "5G概念",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 9,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "烽火通信",
+        "中际旭创",
+        "工业富联"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子_2",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 10,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "东山精密",
+        "香农芯创",
+        "生益科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "东方财富热股",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 1,
+      "strong_stock_count": 1,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "洛阳钼业",
+        "云南锗业",
+        "中钨高新"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子_4",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 5,
+      "zt_count": 5,
+      "strong_stock_count": 5,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "逸豪新材",
+        "福光股份",
+        "汉朔科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电池技术",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 3,
+      "zt_count": 3,
+      "strong_stock_count": 3,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "珠海冠宇",
+        "嘉元科技",
+        "芳源股份"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "航空装备Ⅲ",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 4,
+      "strong_stock_count": 4,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "通易航天",
+        "晨曦航空",
+        "晟楠科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    }
+  ],
+  "merged_themes": [],
+  "split_themes": [],
+  "dead_themes": [],
+  "active_theme_graph": [],
+  "theme_table": [
+    {
+      "theme": "电子_4",
+      "stage": "BIRTH",
+      "score": 90.0,
+      "capital_trend": "inflow",
+      "status": "Active",
+      "stock_count": 5,
+      "zt_count": 5,
+      "strong_stock_count": 5,
+      "volume_ratio": 1.0,
+      "capital_streak": 1,
+      "leader_stocks": [
+        "逸豪新材",
+        "福光股份",
+        "汉朔科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电池技术",
+      "stage": "BIRTH",
+      "score": 84.0,
+      "capital_trend": "inflow",
+      "status": "Active",
+      "stock_count": 3,
+      "zt_count": 3,
+      "strong_stock_count": 3,
+      "volume_ratio": 1.0,
+      "capital_streak": 1,
+      "leader_stocks": [
+        "珠海冠宇",
+        "嘉元科技",
+        "芳源股份"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "航空装备Ⅲ",
+      "stage": "BIRTH",
+      "score": 84.0,
+      "capital_trend": "inflow",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 4,
+      "strong_stock_count": 4,
+      "volume_ratio": 1.0,
+      "capital_streak": 1,
+      "leader_stocks": [
+        "通易航天",
+        "晨曦航空",
+        "晟楠科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "5G概念",
+      "stage": "BIRTH",
+      "score": 65.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 9,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.9,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "烽火通信",
+        "中际旭创",
+        "工业富联"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子_2",
+      "stage": "BIRTH",
+      "score": 65.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 10,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.7,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "东山精密",
+        "香农芯创",
+        "生益科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子",
+      "stage": "BIRTH",
+      "score": 63.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 20,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.8,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "北方华创",
+        "寒武纪",
+        "佰维存储"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "东方财富热股",
+      "stage": "BIRTH",
+      "score": 58.1,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "洛阳钼业",
+        "云南锗业",
+        "中钨高新"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    }
+  ],
+  "market_state": {
+    "mainline_themes": [],
+    "rotation_themes": [
+      "电子_4",
+      "电池技术",
+      "航空装备Ⅲ",
+      "5G概念",
+      "电子_2",
+      "电子",
+      "东方财富热股"
+    ],
+    "fade_themes": []
+  },
+  "stats": {
+    "total_active": 7,
+    "total_historical": 7,
+    "new_count": 7,
+    "merged_count": 0,
+    "split_count": 0,
+    "dead_count": 0
+  }
+}

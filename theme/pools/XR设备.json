@@ -1,0 +1,145 @@
+{
+  "theme_name": "XR设备",
+  "macro_theme": "消费电子",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 70,
+  "core_pool": [],
+  "expansion_pool": [
+    {
+      "stock_code": "300244.SZ",
+      "stock_name": "迪安诊断",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.0083
+    },
+    {
+      "stock_code": "600576.SH",
+      "stock_name": "祥源文旅",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9644
+    },
+    {
+      "stock_code": "000032.SZ",
+      "stock_name": "深桑达A",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "603466.SH",
+      "stock_name": "风语筑",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.7248
+    },
+    {
+      "stock_code": "300657.SZ",
+      "stock_name": "弘信电子",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.5667
+    },
+    {
+      "stock_code": "002657.SZ",
+      "stock_name": "中科金财",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8968
+    },
+    {
+      "stock_code": "300826.SZ",
+      "stock_name": "测绘股份",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.0043
+    },
+    {
+      "stock_code": "301302.SZ",
+      "stock_name": "华如科技",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.8701
+    },
+    {
+      "stock_code": "300322.SZ",
+      "stock_name": "硕贝德",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0253
+    },
+    {
+      "stock_code": "300331.SZ",
+      "stock_name": "苏大维格",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0595
+    },
+    {
+      "stock_code": "002241.SZ",
+      "stock_name": "歌尔股份",
+      "theme_score": 64.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2764
+    },
+    {
+      "stock_code": "000430.SZ",
+      "stock_name": "张家界",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.5409
+    },
+    {
+      "stock_code": "688621.SH",
+      "stock_name": "阳光诺和",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.7165
+    },
+    {
+      "stock_code": "600208.SH",
+      "stock_name": "衢州发展",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.6087
+    },
+    {
+      "stock_code": "000810.SZ",
+      "stock_name": "创维数字",
+      "theme_score": 63.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.498
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 0,
+    "expansion_count": 165,
+    "latent_count": 0,
+    "core_avg_pct": 0,
+    "expansion_avg_pct": 0.7867424242424242,
+    "total_amount": 110395573.62921003
+  }
+}

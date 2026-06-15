@@ -1,0 +1,249 @@
+{
+  "theme_name": "券商",
+  "macro_theme": "金融",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "600906.SH",
+      "stock_name": "财达证券",
+      "theme_score": 82.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0787,
+      "amount": 1111616.209,
+      "total_mv": 2268255.0
+    },
+    {
+      "stock_code": "601696.SH",
+      "stock_name": "中银证券",
+      "theme_score": 81.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0095,
+      "amount": 1079967.355,
+      "total_mv": 3205812.0
+    },
+    {
+      "stock_code": "600030.SH",
+      "stock_name": "中信证券",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0576,
+      "amount": 7027638.104,
+      "total_mv": 38963217.6134
+    },
+    {
+      "stock_code": "300059.SZ",
+      "stock_name": "东方财富",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.6866,
+      "amount": 8477080.46867,
+      "total_mv": 28479959.775
+    },
+    {
+      "stock_code": "601688.SH",
+      "stock_name": "华泰证券",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5251,
+      "amount": 4626352.326,
+      "total_mv": 18026646.9806
+    },
+    {
+      "stock_code": "601881.SH",
+      "stock_name": "中国银河",
+      "theme_score": 79.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.6789,
+      "amount": 822853.705,
+      "total_mv": 13558658.7974
+    },
+    {
+      "stock_code": "600999.SH",
+      "stock_name": "招商证券",
+      "theme_score": 79.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.6102,
+      "amount": 1988372.735,
+      "total_mv": 15384155.9198
+    },
+    {
+      "stock_code": "600109.SH",
+      "stock_name": "国金证券",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.6583,
+      "amount": 697902.438,
+      "total_mv": 3145854.8086
+    },
+    {
+      "stock_code": "601236.SH",
+      "stock_name": "红塔证券",
+      "theme_score": 77.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.2632,
+      "amount": 330577.715,
+      "total_mv": 3207415.6646
+    },
+    {
+      "stock_code": "000686.SZ",
+      "stock_name": "东北证券",
+      "theme_score": 77.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.8108,
+      "amount": 329568.63398,
+      "total_mv": 1832574.6324
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "600390.SH",
+      "stock_name": "五矿资本",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.1042
+    },
+    {
+      "stock_code": "600517.SH",
+      "stock_name": "国网英大",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.0877
+    },
+    {
+      "stock_code": "000737.SZ",
+      "stock_name": "北方铜业",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "300085.SZ",
+      "stock_name": "银之杰",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.8947
+    },
+    {
+      "stock_code": "000768.SZ",
+      "stock_name": "中航西飞",
+      "theme_score": 65.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 10.0096
+    },
+    {
+      "stock_code": "300033.SZ",
+      "stock_name": "同花顺",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.47
+    },
+    {
+      "stock_code": "600338.SH",
+      "stock_name": "西藏珠峰",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8953
+    },
+    {
+      "stock_code": "600208.SH",
+      "stock_name": "衢州发展",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.6087
+    },
+    {
+      "stock_code": "600362.SH",
+      "stock_name": "江西铜业",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.2496
+    },
+    {
+      "stock_code": "600895.SH",
+      "stock_name": "张江高科",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.5744
+    },
+    {
+      "stock_code": "603733.SH",
+      "stock_name": "仙鹤股份",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7847
+    },
+    {
+      "stock_code": "600826.SH",
+      "stock_name": "兰生股份",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.6591
+    },
+    {
+      "stock_code": "601999.SH",
+      "stock_name": "出版传媒",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.1296
+    },
+    {
+      "stock_code": "000987.SZ",
+      "stock_name": "越秀资本",
+      "theme_score": 63.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.5961
+    },
+    {
+      "stock_code": "600108.SH",
+      "stock_name": "亚盛集团",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.8287
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "财达证券",
+  "secondary_leaders": [
+    "中银证券",
+    "中信证券"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 50,
+    "expansion_count": 121,
+    "latent_count": 0,
+    "core_avg_pct": 3.99237,
+    "expansion_avg_pct": 1.8680727272727273,
+    "total_amount": 121675290.92266995
+  }
+}

@@ -1,0 +1,249 @@
+{
+  "theme_name": "新能源汽车材料链",
+  "macro_theme": "新能源汽车",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "688388.SH",
+      "stock_name": "嘉元科技",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.9684,
+      "amount": 3712242.512,
+      "total_mv": 2636984.2227
+    },
+    {
+      "stock_code": "688772.SH",
+      "stock_name": "珠海冠宇",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 15.9287,
+      "amount": 2276932.953,
+      "total_mv": 2134170.052
+    },
+    {
+      "stock_code": "603799.SH",
+      "stock_name": "华友钴业",
+      "theme_score": 81.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.6596,
+      "amount": 5545125.587,
+      "total_mv": 9525365.4899
+    },
+    {
+      "stock_code": "301217.SZ",
+      "stock_name": "铜冠铜箔",
+      "theme_score": 79.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7986,
+      "amount": 6496831.67555,
+      "total_mv": 11755440.4139
+    },
+    {
+      "stock_code": "300769.SZ",
+      "stock_name": "德方纳米",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.6375,
+      "amount": 2375498.04198,
+      "total_mv": 1806092.0414
+    },
+    {
+      "stock_code": "002192.SZ",
+      "stock_name": "融捷股份",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.4087,
+      "amount": 4041356.65913,
+      "total_mv": 2330145.7917
+    },
+    {
+      "stock_code": "600110.SH",
+      "stock_name": "诺德股份",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.892,
+      "amount": 3628316.808,
+      "total_mv": 2245324.126
+    },
+    {
+      "stock_code": "002466.SZ",
+      "stock_name": "天齐锂业",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.459,
+      "amount": 6140893.9855,
+      "total_mv": 10707614.5063
+    },
+    {
+      "stock_code": "002460.SZ",
+      "stock_name": "赣锋锂业",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.7444,
+      "amount": 5831443.93216,
+      "total_mv": 14920077.3789
+    },
+    {
+      "stock_code": "301150.SZ",
+      "stock_name": "中一科技",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.4134,
+      "amount": 1137639.95141,
+      "total_mv": 1499691.1928
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301121.SZ",
+      "stock_name": "紫建电子",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0282
+    },
+    {
+      "stock_code": "600241.SH",
+      "stock_name": "时代万恒",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3812
+    },
+    {
+      "stock_code": "001359.SZ",
+      "stock_name": "平安电工",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "600500.SH",
+      "stock_name": "中化国际",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9861
+    },
+    {
+      "stock_code": "600869.SH",
+      "stock_name": "远东股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9322
+    },
+    {
+      "stock_code": "301348.SZ",
+      "stock_name": "蓝箭电子",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.984
+    },
+    {
+      "stock_code": "688819.SH",
+      "stock_name": "天能股份",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 7.5439
+    },
+    {
+      "stock_code": "002759.SZ",
+      "stock_name": "天际股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.0045
+    },
+    {
+      "stock_code": "002213.SZ",
+      "stock_name": "大为股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.496
+    },
+    {
+      "stock_code": "002580.SZ",
+      "stock_name": "圣阳股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2207
+    },
+    {
+      "stock_code": "300410.SZ",
+      "stock_name": "正业科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2915
+    },
+    {
+      "stock_code": "002125.SZ",
+      "stock_name": "湘潭电化",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4192
+    },
+    {
+      "stock_code": "688733.SH",
+      "stock_name": "壹石通",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.0183
+    },
+    {
+      "stock_code": "920239.BJ",
+      "stock_name": "长虹能源",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2977
+    },
+    {
+      "stock_code": "920523.BJ",
+      "stock_name": "德瑞锂电",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.7163
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "嘉元科技",
+  "secondary_leaders": [
+    "珠海冠宇",
+    "华友钴业"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 56,
+    "expansion_count": 368,
+    "latent_count": 0,
+    "core_avg_pct": 4.689748214285714,
+    "expansion_avg_pct": 1.1857345108695652,
+    "total_amount": 466881588.43751043
+  }
+}

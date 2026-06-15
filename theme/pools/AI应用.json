@@ -1,0 +1,249 @@
+{
+  "theme_name": "AI应用",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "300244.SZ",
+      "stock_name": "迪安诊断",
+      "theme_score": 75.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.0083,
+      "amount": 1756811.54902,
+      "total_mv": 1236834.3038
+    },
+    {
+      "stock_code": "300377.SZ",
+      "stock_name": "赢时胜",
+      "theme_score": 75.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 20.0,
+      "amount": 1213709.48395,
+      "total_mv": 1117492.583
+    },
+    {
+      "stock_code": "300033.SZ",
+      "stock_name": "同花顺",
+      "theme_score": 75.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.47,
+      "amount": 5553820.42685,
+      "total_mv": 15614269.44
+    },
+    {
+      "stock_code": "001229.SZ",
+      "stock_name": "魅视科技",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.1597,
+      "amount": 212007.8923,
+      "total_mv": 400462.4232
+    },
+    {
+      "stock_code": "300085.SZ",
+      "stock_name": "银之杰",
+      "theme_score": 73.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.8947,
+      "amount": 2237238.91301,
+      "total_mv": 1883197.0258
+    },
+    {
+      "stock_code": "002607.SZ",
+      "stock_name": "中公教育",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0,
+      "amount": 410094.83651,
+      "total_mv": 1276651.6735
+    },
+    {
+      "stock_code": "300192.SZ",
+      "stock_name": "科德教育",
+      "theme_score": 71.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.309,
+      "amount": 104549.657,
+      "total_mv": 530908.1897
+    },
+    {
+      "stock_code": "002955.SZ",
+      "stock_name": "鸿合科技",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.2066,
+      "amount": 514754.29721,
+      "total_mv": 765056.8355
+    },
+    {
+      "stock_code": "002212.SZ",
+      "stock_name": "天融信",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.3068,
+      "amount": 381756.73491,
+      "total_mv": 748953.2132
+    },
+    {
+      "stock_code": "300010.SZ",
+      "stock_name": "ST豆神",
+      "theme_score": 71.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2552,
+      "amount": 80934.9622,
+      "total_mv": 500120.2635
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688507.SH",
+      "stock_name": "索辰科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.9516
+    },
+    {
+      "stock_code": "000681.SZ",
+      "stock_name": "视觉中国",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9276
+    },
+    {
+      "stock_code": "603859.SH",
+      "stock_name": "能科科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.925
+    },
+    {
+      "stock_code": "300663.SZ",
+      "stock_name": "科蓝软件",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.9829
+    },
+    {
+      "stock_code": "300857.SZ",
+      "stock_name": "协创数据",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.408
+    },
+    {
+      "stock_code": "002380.SZ",
+      "stock_name": "科远智慧",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.5755
+    },
+    {
+      "stock_code": "300170.SZ",
+      "stock_name": "汉得信息",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6722
+    },
+    {
+      "stock_code": "300803.SZ",
+      "stock_name": "指南针",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9911
+    },
+    {
+      "stock_code": "603990.SH",
+      "stock_name": "麦迪科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.98
+    },
+    {
+      "stock_code": "601609.SH",
+      "stock_name": "金田股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9912
+    },
+    {
+      "stock_code": "600539.SH",
+      "stock_name": "狮头股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0337
+    },
+    {
+      "stock_code": "600229.SH",
+      "stock_name": "城市传媒",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9467
+    },
+    {
+      "stock_code": "688003.SH",
+      "stock_name": "天准科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.3798
+    },
+    {
+      "stock_code": "300496.SZ",
+      "stock_name": "中科创达",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6567
+    },
+    {
+      "stock_code": "002315.SZ",
+      "stock_name": "焦点科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4481
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "迪安诊断",
+  "secondary_leaders": [
+    "赢时胜",
+    "同花顺"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 17,
+    "expansion_count": 731,
+    "latent_count": 0,
+    "core_avg_pct": 4.879594117647058,
+    "expansion_avg_pct": 1.0180484268125856,
+    "total_amount": 468443612.5665604
+  }
+}

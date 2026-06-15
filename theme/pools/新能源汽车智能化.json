@@ -1,0 +1,145 @@
+{
+  "theme_name": "新能源汽车智能化",
+  "macro_theme": "新能源汽车",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 70,
+  "core_pool": [],
+  "expansion_pool": [
+    {
+      "stock_code": "603319.SH",
+      "stock_name": "美湖股份",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7333
+    },
+    {
+      "stock_code": "301536.SZ",
+      "stock_name": "星宸科技",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8639
+    },
+    {
+      "stock_code": "688326.SH",
+      "stock_name": "经纬恒润",
+      "theme_score": 64.75,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.8381
+    },
+    {
+      "stock_code": "300131.SZ",
+      "stock_name": "英唐智控",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3557
+    },
+    {
+      "stock_code": "688167.SH",
+      "stock_name": "炬光科技",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.0598
+    },
+    {
+      "stock_code": "300747.SZ",
+      "stock_name": "锐科激光",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.8219
+    },
+    {
+      "stock_code": "301183.SZ",
+      "stock_name": "东田微",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4424
+    },
+    {
+      "stock_code": "603936.SH",
+      "stock_name": "博敏电子",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.3069
+    },
+    {
+      "stock_code": "301488.SZ",
+      "stock_name": "豪恩汽电",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.9061
+    },
+    {
+      "stock_code": "688469.SH",
+      "stock_name": "芯联集成",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.2486
+    },
+    {
+      "stock_code": "002222.SZ",
+      "stock_name": "福晶科技",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3748
+    },
+    {
+      "stock_code": "688609.SH",
+      "stock_name": "九联科技",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.3976
+    },
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1802
+    },
+    {
+      "stock_code": "300790.SZ",
+      "stock_name": "宇瞳光学",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.1048
+    },
+    {
+      "stock_code": "688313.SH",
+      "stock_name": "仕佳光子",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.604
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 0,
+    "expansion_count": 43,
+    "latent_count": 0,
+    "core_avg_pct": 0,
+    "expansion_avg_pct": -0.7057604651162791,
+    "total_amount": 60846919.32817999
+  }
+}

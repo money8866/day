@@ -1,0 +1,199 @@
+{
+  "theme_name": "数据中心瓶颈硬件链",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "600869.SH",
+      "stock_name": "远东股份",
+      "theme_score": 75.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9322,
+      "amount": 7578771.586,
+      "total_mv": 7197360.9553
+    },
+    {
+      "stock_code": "002837.SZ",
+      "stock_name": "英维克",
+      "theme_score": 71.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.5788,
+      "amount": 4102450.24615,
+      "total_mv": 8420902.7647
+    },
+    {
+      "stock_code": "002965.SZ",
+      "stock_name": "祥鑫科技",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6985,
+      "amount": 1391253.28562,
+      "total_mv": 1050375.4609
+    },
+    {
+      "stock_code": "002518.SZ",
+      "stock_name": "科士达",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.1756,
+      "amount": 556755.28226,
+      "total_mv": 2647959.7275
+    },
+    {
+      "stock_code": "002335.SZ",
+      "stock_name": "科华数据",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.8199,
+      "amount": 1009423.65013,
+      "total_mv": 2665051.3802
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "002580.SZ",
+      "stock_name": "圣阳股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2207
+    },
+    {
+      "stock_code": "000032.SZ",
+      "stock_name": "深桑达A",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "601609.SH",
+      "stock_name": "金田股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9912
+    },
+    {
+      "stock_code": "002334.SZ",
+      "stock_name": "英威腾",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.816
+    },
+    {
+      "stock_code": "301128.SZ",
+      "stock_name": "强瑞技术",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.1669
+    },
+    {
+      "stock_code": "000063.SZ",
+      "stock_name": "中兴通讯",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8614
+    },
+    {
+      "stock_code": "002771.SZ",
+      "stock_name": "真视通",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.8893
+    },
+    {
+      "stock_code": "002639.SZ",
+      "stock_name": "雪人集团",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.0482
+    },
+    {
+      "stock_code": "002871.SZ",
+      "stock_name": "伟隆股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.7619
+    },
+    {
+      "stock_code": "300017.SZ",
+      "stock_name": "网宿科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8505
+    },
+    {
+      "stock_code": "600522.SH",
+      "stock_name": "中天科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.3599
+    },
+    {
+      "stock_code": "688158.SH",
+      "stock_name": "优刻得",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2146
+    },
+    {
+      "stock_code": "300249.SZ",
+      "stock_name": "依米康",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.7855
+    },
+    {
+      "stock_code": "300684.SZ",
+      "stock_name": "中石科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.1888
+    },
+    {
+      "stock_code": "300065.SZ",
+      "stock_name": "海兰信",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3731
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "远东股份",
+  "secondary_leaders": [
+    "英维克",
+    "祥鑫科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 5,
+    "expansion_count": 337,
+    "latent_count": 0,
+    "core_avg_pct": 2.33924,
+    "expansion_avg_pct": 0.2956044510385757,
+    "total_amount": 415645204.7420298
+  }
+}

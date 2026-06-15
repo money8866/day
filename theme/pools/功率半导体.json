@@ -1,0 +1,249 @@
+{
+  "theme_name": "功率半导体",
+  "macro_theme": "半导体",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "301348.SZ",
+      "stock_name": "蓝箭电子",
+      "theme_score": 84.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.984,
+      "amount": 599149.34734,
+      "total_mv": 720480.0
+    },
+    {
+      "stock_code": "600460.SH",
+      "stock_name": "士兰微",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.1043,
+      "amount": 2843162.228,
+      "total_mv": 5349990.9817
+    },
+    {
+      "stock_code": "688234.SH",
+      "stock_name": "天岳先进",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.7708,
+      "amount": 2579162.214,
+      "total_mv": 5994731.3893
+    },
+    {
+      "stock_code": "603290.SH",
+      "stock_name": "斯达半导",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.1983,
+      "amount": 802353.983,
+      "total_mv": 2610260.7794
+    },
+    {
+      "stock_code": "688396.SH",
+      "stock_name": "华润微",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.538,
+      "amount": 2961800.968,
+      "total_mv": 8075520.9344
+    },
+    {
+      "stock_code": "300373.SZ",
+      "stock_name": "扬杰科技",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.5033,
+      "amount": 2576276.55043,
+      "total_mv": 5253086.4047
+    },
+    {
+      "stock_code": "605111.SH",
+      "stock_name": "新洁能",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0209,
+      "amount": 1808111.992,
+      "total_mv": 2474136.1016
+    },
+    {
+      "stock_code": "688187.SH",
+      "stock_name": "时代电气",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.1216,
+      "amount": 1120704.753,
+      "total_mv": 7152258.8233
+    },
+    {
+      "stock_code": "002156.SZ",
+      "stock_name": "通富微电",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.7762,
+      "amount": 8685952.43749,
+      "total_mv": 8683689.5305
+    },
+    {
+      "stock_code": "600360.SH",
+      "stock_name": "华微电子",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1108,
+      "amount": 686087.346,
+      "total_mv": 1030396.8612
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "603936.SH",
+      "stock_name": "博敏电子",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.3069
+    },
+    {
+      "stock_code": "300283.SZ",
+      "stock_name": "温州宏丰",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.9627
+    },
+    {
+      "stock_code": "300666.SZ",
+      "stock_name": "江丰电子",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.2654
+    },
+    {
+      "stock_code": "688596.SH",
+      "stock_name": "正帆科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.5306
+    },
+    {
+      "stock_code": "603283.SH",
+      "stock_name": "赛腾股份",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.0589
+    },
+    {
+      "stock_code": "300831.SZ",
+      "stock_name": "ST派瑞",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.1947
+    },
+    {
+      "stock_code": "001270.SZ",
+      "stock_name": "铖昌科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.913
+    },
+    {
+      "stock_code": "300708.SZ",
+      "stock_name": "聚灿光电",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0
+    },
+    {
+      "stock_code": "301369.SZ",
+      "stock_name": "联动科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.101
+    },
+    {
+      "stock_code": "301021.SZ",
+      "stock_name": "英诺激光",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.9348
+    },
+    {
+      "stock_code": "000547.SZ",
+      "stock_name": "航天发展",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016
+    },
+    {
+      "stock_code": "002851.SZ",
+      "stock_name": "麦格米特",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.9912
+    },
+    {
+      "stock_code": "002255.SZ",
+      "stock_name": "海陆重工",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.9115
+    },
+    {
+      "stock_code": "688689.SH",
+      "stock_name": "银河微电",
+      "theme_score": 67.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0
+    },
+    {
+      "stock_code": "002079.SZ",
+      "stock_name": "苏州固锝",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.605
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "蓝箭电子",
+  "secondary_leaders": [
+    "士兰微",
+    "天岳先进"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 49,
+    "expansion_count": 101,
+    "latent_count": 0,
+    "core_avg_pct": -0.7277734693877551,
+    "expansion_avg_pct": -0.8298663366336634,
+    "total_amount": 247102804.84125003
+  }
+}

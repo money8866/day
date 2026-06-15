@@ -1,0 +1,168 @@
+{
+  "theme_name": "情绪消费成长链",
+  "macro_theme": "消费",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 88,
+  "core_pool": [
+    {
+      "stock_code": "300364.SZ",
+      "stock_name": "中文在线",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3663,
+      "amount": 675578.01799,
+      "total_mv": 1596872.2587
+    },
+    {
+      "stock_code": "301313.SZ",
+      "stock_name": "凡拓数创",
+      "theme_score": 67.0,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 6.6355,
+      "amount": 1974285.16512,
+      "total_mv": 613478.662
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "002354.SZ",
+      "stock_name": "天娱数科",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -5.7644
+    },
+    {
+      "stock_code": "300043.SZ",
+      "stock_name": "星辉娱乐",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.1111
+    },
+    {
+      "stock_code": "002624.SZ",
+      "stock_name": "完美世界",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3028
+    },
+    {
+      "stock_code": "300113.SZ",
+      "stock_name": "顺网科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1001
+    },
+    {
+      "stock_code": "000892.SZ",
+      "stock_name": "欢瑞世纪",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.809
+    },
+    {
+      "stock_code": "600229.SH",
+      "stock_name": "城市传媒",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9467
+    },
+    {
+      "stock_code": "600576.SH",
+      "stock_name": "祥源文旅",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9644
+    },
+    {
+      "stock_code": "300182.SZ",
+      "stock_name": "捷成股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.4779
+    },
+    {
+      "stock_code": "300494.SZ",
+      "stock_name": "盛天网络",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.431
+    },
+    {
+      "stock_code": "001206.SZ",
+      "stock_name": "依依股份",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0255
+    },
+    {
+      "stock_code": "300703.SZ",
+      "stock_name": "创源股份",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.2667
+    },
+    {
+      "stock_code": "002348.SZ",
+      "stock_name": "高乐股份",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.2017
+    },
+    {
+      "stock_code": "300291.SZ",
+      "stock_name": "百纳千成",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.1898
+    },
+    {
+      "stock_code": "002292.SZ",
+      "stock_name": "奥飞娱乐",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.2967
+    },
+    {
+      "stock_code": "300133.SZ",
+      "stock_name": "华策影视",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.8523
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "中文在线",
+  "secondary_leaders": [
+    "凡拓数创"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 2,
+    "expansion_count": 162,
+    "latent_count": 0,
+    "core_avg_pct": 3.5009,
+    "expansion_avg_pct": 1.4949882716049383,
+    "total_amount": 45768515.26959998
+  }
+}

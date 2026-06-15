@@ -1,0 +1,156 @@
+{
+  "theme_name": "先进封装",
+  "macro_theme": "半导体",
+  "trade_date": "20260612",
+  "theme_stage": "分歧期",
+  "theme_strength_score": 90,
+  "core_pool": [
+    {
+      "stock_code": "301348.SZ",
+      "stock_name": "蓝箭电子",
+      "theme_score": 72.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.984,
+      "amount": 599149.34734,
+      "total_mv": 720480.0
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "600584.SH",
+      "stock_name": "长电科技",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.2113
+    },
+    {
+      "stock_code": "002156.SZ",
+      "stock_name": "通富微电",
+      "theme_score": 68.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.7762
+    },
+    {
+      "stock_code": "002185.SZ",
+      "stock_name": "华天科技",
+      "theme_score": 68.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1194
+    },
+    {
+      "stock_code": "603005.SH",
+      "stock_name": "晶方科技",
+      "theme_score": 67.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -7.0052
+    },
+    {
+      "stock_code": "688362.SH",
+      "stock_name": "甬矽电子",
+      "theme_score": 67.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -8.7357
+    },
+    {
+      "stock_code": "688352.SH",
+      "stock_name": "颀中科技",
+      "theme_score": 65.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.0588
+    },
+    {
+      "stock_code": "688525.SH",
+      "stock_name": "佰维存储",
+      "theme_score": 65.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.1194
+    },
+    {
+      "stock_code": "300400.SZ",
+      "stock_name": "劲拓股份",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.8878
+    },
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1802
+    },
+    {
+      "stock_code": "603991.SH",
+      "stock_name": "领先股份",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.9466
+    },
+    {
+      "stock_code": "688135.SH",
+      "stock_name": "利扬芯片",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.2064
+    },
+    {
+      "stock_code": "688535.SH",
+      "stock_name": "华海诚科",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -9.2683
+    },
+    {
+      "stock_code": "920125.BJ",
+      "stock_name": "鸿仕达",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.5941
+    },
+    {
+      "stock_code": "600520.SH",
+      "stock_name": "三佳科技",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.5346
+    },
+    {
+      "stock_code": "688720.SH",
+      "stock_name": "艾森股份",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -7.6156
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "蓝箭电子",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "weakness",
+    "focus_pool": "latent"
+  },
+  "pool_stats": {
+    "core_count": 1,
+    "expansion_count": 40,
+    "latent_count": 0,
+    "core_avg_pct": 19.984,
+    "expansion_avg_pct": -3.7002425000000003,
+    "total_amount": 129560163.62663999
+  }
+}

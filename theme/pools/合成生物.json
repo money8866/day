@@ -1,0 +1,156 @@
+{
+  "theme_name": "合成生物",
+  "macro_theme": "生物医药",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 90,
+  "core_pool": [
+    {
+      "stock_code": "688114.SH",
+      "stock_name": "华大智造",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.0965,
+      "amount": 669109.104,
+      "total_mv": 2161718.8445
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301565.SZ",
+      "stock_name": "中仑新材",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.3923
+    },
+    {
+      "stock_code": "002597.SZ",
+      "stock_name": "金禾实业",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9901
+    },
+    {
+      "stock_code": "688639.SH",
+      "stock_name": "华恒生物",
+      "theme_score": 65.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.9126
+    },
+    {
+      "stock_code": "300401.SZ",
+      "stock_name": "花园生物",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.303
+    },
+    {
+      "stock_code": "300199.SZ",
+      "stock_name": "翰宇药业",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4002
+    },
+    {
+      "stock_code": "300970.SZ",
+      "stock_name": "华绿生物",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.0856
+    },
+    {
+      "stock_code": "600573.SH",
+      "stock_name": "惠泉啤酒",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.1037
+    },
+    {
+      "stock_code": "301301.SZ",
+      "stock_name": "川宁生物",
+      "theme_score": 63.5,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.222
+    },
+    {
+      "stock_code": "688065.SH",
+      "stock_name": "凯赛生物",
+      "theme_score": 63.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.4889
+    },
+    {
+      "stock_code": "688363.SH",
+      "stock_name": "华熙生物",
+      "theme_score": 63.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 7.2046
+    },
+    {
+      "stock_code": "300243.SZ",
+      "stock_name": "瑞丰高材",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.3102
+    },
+    {
+      "stock_code": "603276.SH",
+      "stock_name": "恒兴新材",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.4009
+    },
+    {
+      "stock_code": "605589.SH",
+      "stock_name": "圣泉集团",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.3637
+    },
+    {
+      "stock_code": "603538.SH",
+      "stock_name": "美诺华",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8118
+    },
+    {
+      "stock_code": "000592.SZ",
+      "stock_name": "平潭发展",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4324
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "华大智造",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 1,
+    "expansion_count": 118,
+    "latent_count": 0,
+    "core_avg_pct": 13.0965,
+    "expansion_avg_pct": 1.7566389830508475,
+    "total_amount": 34316384.86398999
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "theme_name": "传感器",
+  "macro_theme": "物理AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 74.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1802,
+      "amount": 1348847.81802,
+      "total_mv": 2802911.877
+    },
+    {
+      "stock_code": "688286.SH",
+      "stock_name": "敏芯股份",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.1752,
+      "amount": 107344.941,
+      "total_mv": 352672.0257
+    },
+    {
+      "stock_code": "300322.SZ",
+      "stock_name": "硕贝德",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0253,
+      "amount": 1690880.50105,
+      "total_mv": 1297767.6296
+    },
+    {
+      "stock_code": "300480.SZ",
+      "stock_name": "光力科技",
+      "theme_score": 70.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.6034,
+      "amount": 1206558.53992,
+      "total_mv": 1337614.2538
+    },
+    {
+      "stock_code": "002185.SZ",
+      "stock_name": "华天科技",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.1194,
+      "amount": 5051142.32854,
+      "total_mv": 5337418.3273
+    },
+    {
+      "stock_code": "603986.SH",
+      "stock_name": "兆易创新",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.4199,
+      "amount": 20201561.53,
+      "total_mv": 33755979.7083
+    },
+    {
+      "stock_code": "688135.SH",
+      "stock_name": "利扬芯片",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.2064,
+      "amount": 418797.877,
+      "total_mv": 792087.1915
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301638.SZ",
+      "stock_name": "南网数字",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.4586
+    },
+    {
+      "stock_code": "603160.SH",
+      "stock_name": "汇顶科技",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -1.9611
+    },
+    {
+      "stock_code": "301275.SZ",
+      "stock_name": "汉朔科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.435
+    },
+    {
+      "stock_code": "002937.SZ",
+      "stock_name": "兴瑞科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.7316
+    },
+    {
+      "stock_code": "000988.SZ",
+      "stock_name": "华工科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.5058
+    },
+    {
+      "stock_code": "002079.SZ",
+      "stock_name": "苏州固锝",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.605
+    },
+    {
+      "stock_code": "000901.SZ",
+      "stock_name": "航天科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.4502
+    },
+    {
+      "stock_code": "688595.SH",
+      "stock_name": "芯海科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -6.9486
+    },
+    {
+      "stock_code": "603662.SH",
+      "stock_name": "柯力传感",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9697
+    },
+    {
+      "stock_code": "300259.SZ",
+      "stock_name": "新天科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0716
+    },
+    {
+      "stock_code": "002138.SZ",
+      "stock_name": "顺络电子",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.9527
+    },
+    {
+      "stock_code": "301678.SZ",
+      "stock_name": "新恒汇",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.4341
+    },
+    {
+      "stock_code": "603083.SH",
+      "stock_name": "剑桥科技",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.9617
+    },
+    {
+      "stock_code": "301303.SZ",
+      "stock_name": "真兰仪表",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.4428
+    },
+    {
+      "stock_code": "300561.SZ",
+      "stock_name": "汇金科技",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.0996
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "赛微电子",
+  "secondary_leaders": [
+    "敏芯股份",
+    "硕贝德"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 7,
+    "expansion_count": 453,
+    "latent_count": 0,
+    "core_avg_pct": -0.24417142857142854,
+    "expansion_avg_pct": 0.24488454746136862,
+    "total_amount": 394961968.9520699
+  }
+}

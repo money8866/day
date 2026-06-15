@@ -1,0 +1,247 @@
+{
+  "market_state": {
+    "regime": "试错",
+    "mainline_count": 1,
+    "rotation_signal": "无切换"
+  },
+  "mainlines": [
+    {
+      "name": "5G通信",
+      "score": 42.2,
+      "leader": "烽火通信",
+      "leader_score": 38.5,
+      "stage": "BIRTH",
+      "logic": "5G通信产业链资金汇聚",
+      "core_stocks": [
+        "中际旭创",
+        "工业富联",
+        "光迅科技",
+        "中天科技"
+      ],
+      "lagging_stocks": [
+        "中天科技",
+        "新易盛",
+        "中兴通讯",
+        "天孚通信",
+        "亨通光电"
+      ],
+      "capital_flow": {
+        "trend": "分歧",
+        "strength": 50
+      },
+      "next_rotation": "暂未明确",
+      "_stock_count": 9,
+      "_zt_count": 0,
+      "_strong_count": 0,
+      "_sub_count": 0,
+      "_cf_score": 38.5,
+      "_struct_score": 60.0,
+      "_mom_score": 20.0,
+      "_cap_streak": 0,
+      "_leader_pct": 3.5088
+    }
+  ],
+  "rotation": {
+    "from": "",
+    "to": "",
+    "probability": 0
+  },
+  "trade_signal": {
+    "action": "reduce",
+    "target": "",
+    "reason": "市场快速轮动(42.2分)，控制仓位"
+  },
+  "capital_flow_graph": [],
+  "market_conclusion": {
+    "dominant_mainline": "5G通信",
+    "rotation_candidates": [],
+    "trade_direction_next_1_3_days": "市场快速轮动，控制仓位，仅参与评分最高的主线低吸"
+  },
+  "new_themes": [
+    {
+      "theme": "半导体概念",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 20,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "北方华创",
+        "寒武纪",
+        "佰维存储"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "5G概念",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 9,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "烽火通信",
+        "中际旭创",
+        "工业富联"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 10,
+      "zt_count": 0,
+      "strong_stock_count": 0,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "东山精密",
+        "香农芯创",
+        "生益科技"
+      ],
+      "sub_themes": [
+        "电子_4",
+        "半导体概念"
+      ],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "有色金属",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 1,
+      "strong_stock_count": 1,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "洛阳钼业",
+        "云南锗业",
+        "中钨高新"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "电子_4",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 5,
+      "zt_count": 5,
+      "strong_stock_count": 5,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "逸豪新材",
+        "福光股份",
+        "汉朔科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "固态电池",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 3,
+      "zt_count": 3,
+      "strong_stock_count": 3,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "珠海冠宇",
+        "嘉元科技",
+        "芳源股份"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    },
+    {
+      "theme": "航空装备Ⅲ",
+      "stage": "BIRTH",
+      "score": 0.0,
+      "capital_trend": "neutral",
+      "status": "Active",
+      "stock_count": 4,
+      "zt_count": 4,
+      "strong_stock_count": 4,
+      "volume_ratio": 1.0,
+      "capital_streak": 0,
+      "leader_stocks": [
+        "通易航天",
+        "晨曦航空",
+        "晟楠科技"
+      ],
+      "sub_themes": [],
+      "parent_theme": null,
+      "birth_date": "20260612"
+    }
+  ],
+  "dead_themes": [],
+  "active_theme_graph": [
+    {
+      "from": "半导体概念",
+      "to": "电子",
+      "weight": 0.7,
+      "overlap_stocks": [
+        "300346.SZ",
+        "600584.SH",
+        "002371.SZ",
+        "001309.SZ",
+        "688126.SH",
+        "688012.SH",
+        "300604.SZ",
+        "688525.SH",
+        "002409.SZ",
+        "688041.SH"
+      ],
+      "overlap_ratio": 1.0
+    },
+    {
+      "from": "电子",
+      "to": "电子_4",
+      "weight": 0.63,
+      "overlap_stocks": [
+        "688662.SH",
+        "301176.SZ",
+        "300566.SZ",
+        "688010.SH",
+        "301275.SZ"
+      ],
+      "overlap_ratio": 1.0
+    }
+  ],
+  "stats": {
+    "total_raw_themes": 7,
+    "mainline_count": 1,
+    "noise_removed_count": 5,
+    "merged_count": 5,
+    "new_count": 7,
+    "dead_count": 0
+  }
+}

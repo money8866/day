@@ -1,0 +1,229 @@
+{
+  "theme_name": "船舶制造",
+  "macro_theme": "国防军工",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "300008.SZ",
+      "stock_name": "天海防务",
+      "theme_score": 73.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.0794,
+      "amount": 574894.72353,
+      "total_mv": 1143955.286
+    },
+    {
+      "stock_code": "600685.SH",
+      "stock_name": "中船防务",
+      "theme_score": 73.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.4634,
+      "amount": 360778.49,
+      "total_mv": 3673703.0764
+    },
+    {
+      "stock_code": "600482.SH",
+      "stock_name": "中国动力",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.4782,
+      "amount": 1901201.132,
+      "total_mv": 7081465.1609
+    },
+    {
+      "stock_code": "600150.SH",
+      "stock_name": "中国船舶",
+      "theme_score": 72.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2772,
+      "amount": 3618109.098,
+      "total_mv": 26256892.6738
+    },
+    {
+      "stock_code": "300589.SZ",
+      "stock_name": "江龙船艇",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.9342,
+      "amount": 176325.47209,
+      "total_mv": 490213.0588
+    },
+    {
+      "stock_code": "300065.SZ",
+      "stock_name": "海兰信",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3731,
+      "amount": 605785.19831,
+      "total_mv": 1338455.1418
+    },
+    {
+      "stock_code": "601890.SH",
+      "stock_name": "亚星锚链",
+      "theme_score": 70.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.4565,
+      "amount": 215422.699,
+      "total_mv": 832759.2
+    },
+    {
+      "stock_code": "600869.SH",
+      "stock_name": "远东股份",
+      "theme_score": 69.5,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 9.9322,
+      "amount": 7578771.586,
+      "total_mv": 7197360.9553
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "300600.SZ",
+      "stock_name": "国瑞科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8948
+    },
+    {
+      "stock_code": "000547.SZ",
+      "stock_name": "航天发展",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.016
+    },
+    {
+      "stock_code": "601868.SH",
+      "stock_name": "中国能建",
+      "theme_score": 65.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.7605
+    },
+    {
+      "stock_code": "300810.SZ",
+      "stock_name": "中科海讯",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.508
+    },
+    {
+      "stock_code": "002490.SZ",
+      "stock_name": "山东墨龙",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.271
+    },
+    {
+      "stock_code": "603268.SH",
+      "stock_name": "松发股份",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0428
+    },
+    {
+      "stock_code": "300930.SZ",
+      "stock_name": "屹通新材",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.9814
+    },
+    {
+      "stock_code": "301161.SZ",
+      "stock_name": "唯万密封",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.2302
+    },
+    {
+      "stock_code": "300265.SZ",
+      "stock_name": "通光线缆",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.7266
+    },
+    {
+      "stock_code": "000880.SZ",
+      "stock_name": "潍柴重机",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0833
+    },
+    {
+      "stock_code": "001208.SZ",
+      "stock_name": "华菱线缆",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1026
+    },
+    {
+      "stock_code": "300397.SZ",
+      "stock_name": "天和防务",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0737
+    },
+    {
+      "stock_code": "300129.SZ",
+      "stock_name": "泰胜风能",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3102
+    },
+    {
+      "stock_code": "300123.SZ",
+      "stock_name": "ST亚光",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3796
+    },
+    {
+      "stock_code": "300402.SZ",
+      "stock_name": "宝色股份",
+      "theme_score": 61.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.1171
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "天海防务",
+  "secondary_leaders": [
+    "中船防务",
+    "中国动力"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 8,
+    "expansion_count": 72,
+    "latent_count": 0,
+    "core_avg_pct": 3.5047249999999996,
+    "expansion_avg_pct": 0.6346930555555556,
+    "total_amount": 94847208.13895999
+  }
+}

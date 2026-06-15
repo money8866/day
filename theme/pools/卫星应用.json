@@ -1,0 +1,145 @@
+{
+  "theme_name": "卫星应用",
+  "macro_theme": "商业航天",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 70,
+  "core_pool": [],
+  "expansion_pool": [
+    {
+      "stock_code": "002151.SZ",
+      "stock_name": "北斗星通",
+      "theme_score": 68.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.303
+    },
+    {
+      "stock_code": "002465.SZ",
+      "stock_name": "海格通信",
+      "theme_score": 66.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.5882
+    },
+    {
+      "stock_code": "002935.SZ",
+      "stock_name": "天奥电子",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0099
+    },
+    {
+      "stock_code": "603738.SH",
+      "stock_name": "泰晶科技",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9915
+    },
+    {
+      "stock_code": "603528.SH",
+      "stock_name": "多伦科技",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0309
+    },
+    {
+      "stock_code": "002383.SZ",
+      "stock_name": "合众思壮",
+      "theme_score": 66.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.6667
+    },
+    {
+      "stock_code": "300045.SZ",
+      "stock_name": "华力创通",
+      "theme_score": 65.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3582
+    },
+    {
+      "stock_code": "002583.SZ",
+      "stock_name": "海能达",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.9095
+    },
+    {
+      "stock_code": "920961.BJ",
+      "stock_name": "创远信科",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.994
+    },
+    {
+      "stock_code": "600590.SH",
+      "stock_name": "泰豪科技",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0568
+    },
+    {
+      "stock_code": "002413.SZ",
+      "stock_name": "雷科防务",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.7805
+    },
+    {
+      "stock_code": "000066.SZ",
+      "stock_name": "中国长城",
+      "theme_score": 64.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.1472
+    },
+    {
+      "stock_code": "688066.SH",
+      "stock_name": "*ST航图",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.268
+    },
+    {
+      "stock_code": "002446.SZ",
+      "stock_name": "盛路通信",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.5974
+    },
+    {
+      "stock_code": "603712.SH",
+      "stock_name": "七一二",
+      "theme_score": 64.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.997
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "",
+  "secondary_leaders": [],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 0,
+    "expansion_count": 75,
+    "latent_count": 0,
+    "core_avg_pct": 0,
+    "expansion_avg_pct": 1.6878933333333335,
+    "total_amount": 43000669.12411001
+  }
+}

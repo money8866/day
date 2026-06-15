@@ -1,0 +1,249 @@
+{
+  "theme_name": "CPO光模块",
+  "macro_theme": "AI",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "603083.SH",
+      "stock_name": "剑桥科技",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.9617,
+      "amount": 7035763.777,
+      "total_mv": 6738613.5755
+    },
+    {
+      "stock_code": "300308.SZ",
+      "stock_name": "中际旭创",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2242,
+      "amount": 40003007.2501,
+      "total_mv": 128140460.2509
+    },
+    {
+      "stock_code": "002281.SZ",
+      "stock_name": "光迅科技",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.2093,
+      "amount": 8899007.57984,
+      "total_mv": 16534432.8887
+    },
+    {
+      "stock_code": "300502.SZ",
+      "stock_name": "新易盛",
+      "theme_score": 80.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.7148,
+      "amount": 33734137.2997,
+      "total_mv": 70613524.0179
+    },
+    {
+      "stock_code": "002902.SZ",
+      "stock_name": "铭普光磁",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.8231,
+      "amount": 970269.34786,
+      "total_mv": 772239.7777
+    },
+    {
+      "stock_code": "600498.SH",
+      "stock_name": "烽火通信",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5088,
+      "amount": 13867755.37,
+      "total_mv": 8574111.3139
+    },
+    {
+      "stock_code": "300570.SZ",
+      "stock_name": "太辰光",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2234,
+      "amount": 7149201.81802,
+      "total_mv": 4203664.0544
+    },
+    {
+      "stock_code": "300394.SZ",
+      "stock_name": "天孚通信",
+      "theme_score": 78.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.4388,
+      "amount": 13857715.112,
+      "total_mv": 30646730.9878
+    },
+    {
+      "stock_code": "688313.SH",
+      "stock_name": "仕佳光子",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.604,
+      "amount": 3434748.747,
+      "total_mv": 6737760.1915
+    },
+    {
+      "stock_code": "300620.SZ",
+      "stock_name": "光库科技",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.5797,
+      "amount": 4333263.29721,
+      "total_mv": 7123573.4205
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688388.SH",
+      "stock_name": "嘉元科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.9684
+    },
+    {
+      "stock_code": "688662.SH",
+      "stock_name": "富信科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 17.8125
+    },
+    {
+      "stock_code": "600869.SH",
+      "stock_name": "远东股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9322
+    },
+    {
+      "stock_code": "688635.SH",
+      "stock_name": "长进光子",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -8.296
+    },
+    {
+      "stock_code": "002579.SZ",
+      "stock_name": "中京电子",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2426
+    },
+    {
+      "stock_code": "300292.SZ",
+      "stock_name": "吴通控股",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.6842
+    },
+    {
+      "stock_code": "603459.SH",
+      "stock_name": "红板科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.9721
+    },
+    {
+      "stock_code": "603803.SH",
+      "stock_name": "瑞斯康达",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.8621
+    },
+    {
+      "stock_code": "000586.SZ",
+      "stock_name": "汇源通信",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.1652
+    },
+    {
+      "stock_code": "300814.SZ",
+      "stock_name": "中富电路",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.9901
+    },
+    {
+      "stock_code": "300857.SZ",
+      "stock_name": "协创数据",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.408
+    },
+    {
+      "stock_code": "301165.SZ",
+      "stock_name": "锐捷网络",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -1.2346
+    },
+    {
+      "stock_code": "600601.SH",
+      "stock_name": "方正科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9829
+    },
+    {
+      "stock_code": "002025.SZ",
+      "stock_name": "航天电器",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.0427
+    },
+    {
+      "stock_code": "600184.SH",
+      "stock_name": "光电股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.605
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "剑桥科技",
+  "secondary_leaders": [
+    "中际旭创",
+    "光迅科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 34,
+    "expansion_count": 117,
+    "latent_count": 0,
+    "core_avg_pct": -0.9755941176470586,
+    "expansion_avg_pct": -1.5034547008547008,
+    "total_amount": 533329961.9198401
+  }
+}

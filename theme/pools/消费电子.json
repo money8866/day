@@ -1,0 +1,249 @@
+{
+  "theme_name": "消费电子",
+  "macro_theme": "消费",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "300686.SZ",
+      "stock_name": "智动力",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.2562,
+      "amount": 402955.6918,
+      "total_mv": 466256.7296
+    },
+    {
+      "stock_code": "300784.SZ",
+      "stock_name": "利安科技",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.6906,
+      "amount": 109800.65323,
+      "total_mv": 260942.464
+    },
+    {
+      "stock_code": "301067.SZ",
+      "stock_name": "显盈科技",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.9421,
+      "amount": 241261.45472,
+      "total_mv": 336436.56
+    },
+    {
+      "stock_code": "603629.SH",
+      "stock_name": "利通电子",
+      "theme_score": 79.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.2247,
+      "amount": 4953552.204,
+      "total_mv": 3991198.8
+    },
+    {
+      "stock_code": "002600.SZ",
+      "stock_name": "领益智造",
+      "theme_score": 77.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.788,
+      "amount": 3325115.27337,
+      "total_mv": 10238786.3507
+    },
+    {
+      "stock_code": "301536.SZ",
+      "stock_name": "星宸科技",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.8639,
+      "amount": 1379899.45033,
+      "total_mv": 3837186.896
+    },
+    {
+      "stock_code": "002888.SZ",
+      "stock_name": "惠威科技",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.5725,
+      "amount": 124340.09137,
+      "total_mv": 289676.3743
+    },
+    {
+      "stock_code": "300322.SZ",
+      "stock_name": "硕贝德",
+      "theme_score": 76.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0253,
+      "amount": 1690880.50105,
+      "total_mv": 1297767.6296
+    },
+    {
+      "stock_code": "300709.SZ",
+      "stock_name": "精研科技",
+      "theme_score": 76.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4349,
+      "amount": 1747535.83677,
+      "total_mv": 900238.9827
+    },
+    {
+      "stock_code": "300433.SZ",
+      "stock_name": "蓝思科技",
+      "theme_score": 76.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.6082,
+      "amount": 10273850.6612,
+      "total_mv": 21716739.9392
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "920267.BJ",
+      "stock_name": "鑫汇科",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.1292
+    },
+    {
+      "stock_code": "301567.SZ",
+      "stock_name": "贝隆精密",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3906
+    },
+    {
+      "stock_code": "688496.SH",
+      "stock_name": "*ST清越",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9524
+    },
+    {
+      "stock_code": "920876.BJ",
+      "stock_name": "慧为智能",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.0526
+    },
+    {
+      "stock_code": "603459.SH",
+      "stock_name": "红板科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.9721
+    },
+    {
+      "stock_code": "300221.SZ",
+      "stock_name": "银禧科技",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.9007
+    },
+    {
+      "stock_code": "920212.BJ",
+      "stock_name": "智新电子",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2357
+    },
+    {
+      "stock_code": "920346.BJ",
+      "stock_name": "威贸电子",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.7441
+    },
+    {
+      "stock_code": "300822.SZ",
+      "stock_name": "贝仕达克",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.6393
+    },
+    {
+      "stock_code": "920005.BJ",
+      "stock_name": "鼎佳精密",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2847
+    },
+    {
+      "stock_code": "002855.SZ",
+      "stock_name": "捷荣技术",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.572
+    },
+    {
+      "stock_code": "920701.BJ",
+      "stock_name": "豪声电子",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.4882
+    },
+    {
+      "stock_code": "688332.SH",
+      "stock_name": "中科蓝讯",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1068
+    },
+    {
+      "stock_code": "300909.SZ",
+      "stock_name": "汇创达",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.7778
+    },
+    {
+      "stock_code": "300496.SZ",
+      "stock_name": "中科创达",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6567
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "智动力",
+  "secondary_leaders": [
+    "利安科技",
+    "显盈科技"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 137,
+    "expansion_count": 105,
+    "latent_count": 0,
+    "core_avg_pct": -0.5831299270072993,
+    "expansion_avg_pct": -0.2417723809523809,
+    "total_amount": 333649505.0659902
+  }
+}

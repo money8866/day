@@ -1,0 +1,249 @@
+{
+  "theme_name": "煤炭链",
+  "macro_theme": "资源",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "601898.SH",
+      "stock_name": "中煤能源",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.7971,
+      "amount": 673320.09,
+      "total_mv": 21452517.3812
+    },
+    {
+      "stock_code": "601088.SH",
+      "stock_name": "中国神华",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.4318,
+      "amount": 4365216.882,
+      "total_mv": 100075049.8787
+    },
+    {
+      "stock_code": "600188.SH",
+      "stock_name": "兖矿能源",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.6494,
+      "amount": 1445443.386,
+      "total_mv": 23034575.3859
+    },
+    {
+      "stock_code": "000552.SZ",
+      "stock_name": "甘肃能化",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3137,
+      "amount": 253982.599,
+      "total_mv": 1423582.7182
+    },
+    {
+      "stock_code": "600123.SH",
+      "stock_name": "兰花科创",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1729,
+      "amount": 277320.185,
+      "total_mv": 1029794.7747
+    },
+    {
+      "stock_code": "601918.SH",
+      "stock_name": "新集能源",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.2208,
+      "amount": 844778.819,
+      "total_mv": 2577589.091
+    },
+    {
+      "stock_code": "600256.SH",
+      "stock_name": "广汇能源",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2654,
+      "amount": 2648804.1,
+      "total_mv": 4218721.9562
+    },
+    {
+      "stock_code": "601101.SH",
+      "stock_name": "昊华能源",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.9496,
+      "amount": 520198.581,
+      "total_mv": 1807197.3971
+    },
+    {
+      "stock_code": "600985.SH",
+      "stock_name": "淮北矿业",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.218,
+      "amount": 518612.187,
+      "total_mv": 4476195.9744
+    },
+    {
+      "stock_code": "600348.SH",
+      "stock_name": "华阳股份",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.5549,
+      "amount": 316591.121,
+      "total_mv": 3268395.0
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "600722.SH",
+      "stock_name": "金牛化工",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.5287
+    },
+    {
+      "stock_code": "000937.SZ",
+      "stock_name": "冀中能源",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.7175
+    },
+    {
+      "stock_code": "600508.SH",
+      "stock_name": "上海能源",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.7365
+    },
+    {
+      "stock_code": "600971.SH",
+      "stock_name": "恒源煤电",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.3196
+    },
+    {
+      "stock_code": "600408.SH",
+      "stock_name": "安泰集团",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.3699
+    },
+    {
+      "stock_code": "600546.SH",
+      "stock_name": "山煤国际",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8419
+    },
+    {
+      "stock_code": "601001.SH",
+      "stock_name": "晋控煤业",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3145
+    },
+    {
+      "stock_code": "601666.SH",
+      "stock_name": "平煤股份",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.8791
+    },
+    {
+      "stock_code": "002128.SZ",
+      "stock_name": "电投能源",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -2.734
+    },
+    {
+      "stock_code": "600395.SH",
+      "stock_name": "盘江股份",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.5425
+    },
+    {
+      "stock_code": "000571.SZ",
+      "stock_name": "新大洲A",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.8727
+    },
+    {
+      "stock_code": "600844.SH",
+      "stock_name": "金煤科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.7361
+    },
+    {
+      "stock_code": "600740.SH",
+      "stock_name": "山西焦化",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3716
+    },
+    {
+      "stock_code": "000830.SZ",
+      "stock_name": "鲁西化工",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3796
+    },
+    {
+      "stock_code": "601011.SH",
+      "stock_name": "宝泰隆",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4561
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "中煤能源",
+  "secondary_leaders": [
+    "中国神华",
+    "兖矿能源"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 17,
+    "expansion_count": 74,
+    "latent_count": 0,
+    "core_avg_pct": 1.8909941176470586,
+    "expansion_avg_pct": 1.4197445945945943,
+    "total_amount": 54396035.737780005
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "theme_name": "稀土永磁",
+  "macro_theme": "资源",
+  "trade_date": "20260612",
+  "theme_stage": "主升期",
+  "theme_strength_score": 88,
+  "core_pool": [
+    {
+      "stock_code": "600392.SH",
+      "stock_name": "盛和资源",
+      "theme_score": 72.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0973,
+      "amount": 4421181.7,
+      "total_mv": 4522292.5506
+    },
+    {
+      "stock_code": "600111.SH",
+      "stock_name": "北方稀土",
+      "theme_score": 71.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.0194,
+      "amount": 7537641.2,
+      "total_mv": 17869270.457
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "301323.SZ",
+      "stock_name": "新莱福",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 20.0046
+    },
+    {
+      "stock_code": "600259.SH",
+      "stock_name": "中稀有色",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0089
+    },
+    {
+      "stock_code": "000831.SZ",
+      "stock_name": "中国稀土",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.1829
+    },
+    {
+      "stock_code": "601609.SH",
+      "stock_name": "金田股份",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9912
+    },
+    {
+      "stock_code": "000970.SZ",
+      "stock_name": "中科三环",
+      "theme_score": 67.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.4968
+    },
+    {
+      "stock_code": "300263.SZ",
+      "stock_name": "隆华科技",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.8858
+    },
+    {
+      "stock_code": "000969.SZ",
+      "stock_name": "安泰科技",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.982
+    },
+    {
+      "stock_code": "000758.SZ",
+      "stock_name": "中色股份",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.9526
+    },
+    {
+      "stock_code": "300748.SZ",
+      "stock_name": "金力永磁",
+      "theme_score": 65.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.249
+    },
+    {
+      "stock_code": "600988.SH",
+      "stock_name": "赤峰黄金",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.4664
+    },
+    {
+      "stock_code": "300631.SZ",
+      "stock_name": "久吾高科",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.7523
+    },
+    {
+      "stock_code": "603072.SH",
+      "stock_name": "天和磁材",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.9053
+    },
+    {
+      "stock_code": "000612.SZ",
+      "stock_name": "焦作万方",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.034
+    },
+    {
+      "stock_code": "002167.SZ",
+      "stock_name": "东方锆业",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.5271
+    },
+    {
+      "stock_code": "002057.SZ",
+      "stock_name": "中钢天源",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.8169
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "盛和资源",
+  "secondary_leaders": [
+    "北方稀土"
+  ],
+  "next_day_signal": {
+    "direction": "strength",
+    "focus_pool": "core"
+  },
+  "pool_stats": {
+    "core_count": 2,
+    "expansion_count": 51,
+    "latent_count": 0,
+    "core_avg_pct": 3.05835,
+    "expansion_avg_pct": 2.6440156862745097,
+    "total_amount": 81520665.43712002
+  }
+}

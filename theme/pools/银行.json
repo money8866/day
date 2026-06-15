@@ -1,0 +1,249 @@
+{
+  "theme_name": "银行",
+  "macro_theme": "金融",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 85,
+  "core_pool": [
+    {
+      "stock_code": "601398.SH",
+      "stock_name": "工商银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.5666,
+      "amount": 3254698.074,
+      "total_mv": 277284068.0152
+    },
+    {
+      "stock_code": "601939.SH",
+      "stock_name": "建设银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.9434,
+      "amount": 1252558.838,
+      "total_mv": 279912408.1611
+    },
+    {
+      "stock_code": "600036.SH",
+      "stock_name": "招商银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.575,
+      "amount": 4373132.356,
+      "total_mv": 99214872.5943
+    },
+    {
+      "stock_code": "601988.SH",
+      "stock_name": "中国银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.4516,
+      "amount": 2079619.276,
+      "total_mv": 202671607.031
+    },
+    {
+      "stock_code": "601288.SH",
+      "stock_name": "农业银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.7964,
+      "amount": 3086106.29,
+      "total_mv": 237988463.0336
+    },
+    {
+      "stock_code": "601166.SH",
+      "stock_name": "兴业银行",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.7496,
+      "amount": 2789975.318,
+      "total_mv": 39384081.1889
+    },
+    {
+      "stock_code": "601328.SH",
+      "stock_name": "交通银行",
+      "theme_score": 75.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.439,
+      "amount": 2525128.503,
+      "total_mv": 63091741.9352
+    },
+    {
+      "stock_code": "000001.SZ",
+      "stock_name": "平安银行",
+      "theme_score": 75.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.7422,
+      "amount": 2263042.93057,
+      "total_mv": 21812252.0546
+    },
+    {
+      "stock_code": "600016.SH",
+      "stock_name": "民生银行",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.6807,
+      "amount": 912227.152,
+      "total_mv": 15893017.9162
+    },
+    {
+      "stock_code": "600015.SH",
+      "stock_name": "华夏银行",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.1577,
+      "amount": 587366.194,
+      "total_mv": 11124534.9991
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "002457.SZ",
+      "stock_name": "青龙管业",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0255
+    },
+    {
+      "stock_code": "601229.SH",
+      "stock_name": "上海银行",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.407
+    },
+    {
+      "stock_code": "600928.SH",
+      "stock_name": "西安银行",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.1519
+    },
+    {
+      "stock_code": "603323.SH",
+      "stock_name": "苏农银行",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.7311
+    },
+    {
+      "stock_code": "601187.SH",
+      "stock_name": "厦门银行",
+      "theme_score": 69.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.3047
+    },
+    {
+      "stock_code": "002807.SZ",
+      "stock_name": "江阴银行",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.2457
+    },
+    {
+      "stock_code": "600908.SH",
+      "stock_name": "无锡银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.6364
+    },
+    {
+      "stock_code": "002936.SZ",
+      "stock_name": "郑州银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.7143
+    },
+    {
+      "stock_code": "601009.SH",
+      "stock_name": "南京银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.2842
+    },
+    {
+      "stock_code": "002966.SZ",
+      "stock_name": "苏州银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.227
+    },
+    {
+      "stock_code": "002839.SZ",
+      "stock_name": "张家港行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.939
+    },
+    {
+      "stock_code": "601528.SH",
+      "stock_name": "瑞丰银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.3305
+    },
+    {
+      "stock_code": "601825.SH",
+      "stock_name": "沪农商行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.9091
+    },
+    {
+      "stock_code": "601577.SH",
+      "stock_name": "长沙银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 1.875
+    },
+    {
+      "stock_code": "601665.SH",
+      "stock_name": "齐鲁银行",
+      "theme_score": 68.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.1553
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "工商银行",
+  "secondary_leaders": [
+    "建设银行",
+    "招商银行"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 17,
+    "expansion_count": 252,
+    "latent_count": 0,
+    "core_avg_pct": 1.9582411764705885,
+    "expansion_avg_pct": 1.704027380952381,
+    "total_amount": 178550647.2464399
+  }
+}

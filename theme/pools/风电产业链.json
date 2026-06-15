@@ -1,0 +1,199 @@
+{
+  "theme_name": "风电产业链",
+  "macro_theme": "新能源",
+  "trade_date": "20260612",
+  "theme_stage": "发酵期",
+  "theme_strength_score": 93,
+  "core_pool": [
+    {
+      "stock_code": "002202.SZ",
+      "stock_name": "金风科技",
+      "theme_score": 71.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.4198,
+      "amount": 3712737.59962,
+      "total_mv": 9051579.0705
+    },
+    {
+      "stock_code": "603092.SH",
+      "stock_name": "德力佳",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4006,
+      "amount": 121429.908,
+      "total_mv": 2373200.5933
+    },
+    {
+      "stock_code": "000809.SZ",
+      "stock_name": "和展能源",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.5116,
+      "amount": 289422.63423,
+      "total_mv": 351361.0908
+    },
+    {
+      "stock_code": "002531.SZ",
+      "stock_name": "天顺风能",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2371,
+      "amount": 455132.10973,
+      "total_mv": 1721409.7544
+    },
+    {
+      "stock_code": "601615.SH",
+      "stock_name": "明阳智能",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0,
+      "amount": 1132871.377,
+      "total_mv": 2738672.511
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688349.SH",
+      "stock_name": "三一重能",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 7.3848
+    },
+    {
+      "stock_code": "603248.SH",
+      "stock_name": "锡华科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0776
+    },
+    {
+      "stock_code": "300129.SZ",
+      "stock_name": "泰胜风能",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.3102
+    },
+    {
+      "stock_code": "300850.SZ",
+      "stock_name": "新强联",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.8305
+    },
+    {
+      "stock_code": "301557.SZ",
+      "stock_name": "常友科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -3.2634
+    },
+    {
+      "stock_code": "601026.SH",
+      "stock_name": "道生天合",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3836
+    },
+    {
+      "stock_code": "301232.SZ",
+      "stock_name": "飞沃科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.1627
+    },
+    {
+      "stock_code": "688660.SH",
+      "stock_name": "电气风电",
+      "theme_score": 66.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 3.4973
+    },
+    {
+      "stock_code": "300772.SZ",
+      "stock_name": "运达股份",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3732
+    },
+    {
+      "stock_code": "600072.SH",
+      "stock_name": "中船科技",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.6701
+    },
+    {
+      "stock_code": "601218.SH",
+      "stock_name": "吉鑫科技",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.6316
+    },
+    {
+      "stock_code": "603507.SH",
+      "stock_name": "振江股份",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.841
+    },
+    {
+      "stock_code": "002487.SZ",
+      "stock_name": "大金重工",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.8297
+    },
+    {
+      "stock_code": "300690.SZ",
+      "stock_name": "双一科技",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.0769
+    },
+    {
+      "stock_code": "301155.SZ",
+      "stock_name": "海力风电",
+      "theme_score": 66.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.3895
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "金风科技",
+  "secondary_leaders": [
+    "德力佳",
+    "和展能源"
+  ],
+  "next_day_signal": {
+    "direction": "transition",
+    "focus_pool": "expansion"
+  },
+  "pool_stats": {
+    "core_count": 5,
+    "expansion_count": 26,
+    "latent_count": 0,
+    "core_avg_pct": 3.01898,
+    "expansion_avg_pct": 1.2516,
+    "total_amount": 13445452.4892
+  }
+}
