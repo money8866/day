@@ -9,8 +9,17 @@
 4. 合并成详细文本后用AI提炼总结
 5. 通过Server酱发送到微信
 """
-import os
 import sys
+
+# Windows GBK 控制台输出修复:安全方式（Python 3.7+）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+import os
 import json
 import sqlite3
 import requests
@@ -578,9 +587,6 @@ def send_to_wechat(text):
         
         url = f"https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send"
         title = f"{datetime.now().strftime('%Y-%m-%d')} 股票分析报告"
-        
-        if len(text) > 2000:
-            text = text[:2000] + "\n...（内容过长，已截断）"
         
         data = {
             "title": title,

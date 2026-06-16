@@ -1,167 +1,223 @@
 {
   "theme_name": "基础化工",
   "macro_theme": "资源",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
   "theme_strength_score": 93,
   "core_pool": [
     {
-      "stock_code": "600426.SH",
-      "stock_name": "华鲁恒升",
-      "theme_score": 80.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 6.1049,
-      "amount": 1498936.39,
-      "total_mv": 5992760.4326
+      "stock_code": "600160.SH",
+      "stock_name": "巨化股份",
+      "theme_score": 83.75,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 9.908,
+      "amount": 6233341.594,
+      "total_mv": 12578116.9914
     },
     {
       "stock_code": "600309.SH",
       "stock_name": "万华化学",
-      "theme_score": 79.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 6.7312,
-      "amount": 4241418.179,
-      "total_mv": 22436090.1435
-    },
-    {
-      "stock_code": "600470.SH",
-      "stock_name": "六国化工",
-      "theme_score": 79.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 5.6437,
-      "amount": 460146.241,
-      "total_mv": 312438.4
-    },
-    {
-      "stock_code": "600160.SH",
-      "stock_name": "巨化股份",
       "theme_score": 77.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.3902,
-      "amount": 4833825.914,
-      "total_mv": 11444223.6374
+      "pct_chg": 2.5534,
+      "amount": 4696203.608,
+      "total_mv": 23008966.4511
+    },
+    {
+      "stock_code": "600596.SH",
+      "stock_name": "新安股份",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.4318,
+      "amount": 1578135.765,
+      "total_mv": 2043289.9322
+    },
+    {
+      "stock_code": "600141.SH",
+      "stock_name": "兴发集团",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 9.0483,
+      "amount": 2960976.767,
+      "total_mv": 4475279.2275
+    },
+    {
+      "stock_code": "605020.SH",
+      "stock_name": "永和股份",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.1351,
+      "amount": 1390453.344,
+      "total_mv": 1809319.9169
     },
     {
       "stock_code": "600078.SH",
       "stock_name": "澄星股份",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.6031,
+      "amount": 776931.353,
+      "total_mv": 918435.0524
+    },
+    {
+      "stock_code": "601678.SH",
+      "stock_name": "滨化股份",
       "theme_score": 76.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.3089,
-      "amount": 1049795.652,
-      "total_mv": 869704.5264
+      "pct_chg": 2.385,
+      "amount": 1233724.895,
+      "total_mv": 1236158.6019
     },
     {
-      "stock_code": "002407.SZ",
-      "stock_name": "多氟多",
-      "theme_score": 76.5,
+      "stock_code": "600426.SH",
+      "stock_name": "华鲁恒升",
+      "theme_score": 76.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.8754,
-      "amount": 10430392.5117,
-      "total_mv": 4722446.0012
+      "pct_chg": -0.0706,
+      "amount": 1548632.866,
+      "total_mv": 5988529.751
     },
     {
-      "stock_code": "603120.SH",
-      "stock_name": "肯特催化",
-      "theme_score": 75.5,
+      "stock_code": "603379.SH",
+      "stock_name": "三美股份",
+      "theme_score": 76.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0038,
-      "amount": 572307.798,
-      "total_mv": 522873.6
+      "pct_chg": 5.8352,
+      "amount": 1508685.61,
+      "total_mv": 4107913.44
     },
     {
-      "stock_code": "002971.SZ",
-      "stock_name": "和远气体",
-      "theme_score": 75.5,
+      "stock_code": "600096.SH",
+      "stock_name": "云天化",
+      "theme_score": 76.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0095,
-      "amount": 3325475.35002,
-      "total_mv": 1228814.265
-    },
-    {
-      "stock_code": "000510.SZ",
-      "stock_name": "新金路",
-      "theme_score": 75.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9943,
-      "amount": 1381382.89785,
-      "total_mv": 1256228.9319
-    },
-    {
-      "stock_code": "600722.SH",
-      "stock_name": "金牛化工",
-      "theme_score": 75.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -4.5287,
-      "amount": 1319562.446,
-      "total_mv": 702770.2253
+      "pct_chg": 5.473,
+      "amount": 1995314.348,
+      "total_mv": 5691377.0622
     }
   ],
   "expansion_pool": [
+    {
+      "stock_code": "301196.SZ",
+      "stock_name": "唯科科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 19.9975
+    },
+    {
+      "stock_code": "301687.SZ",
+      "stock_name": "新广益",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 17.075
+    },
     {
       "stock_code": "001359.SZ",
       "stock_name": "平安电工",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0
+      "pct_chg": 9.9963
     },
     {
-      "stock_code": "600500.SH",
-      "stock_name": "中化国际",
+      "stock_code": "002440.SZ",
+      "stock_name": "闰土股份",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9861
+      "pct_chg": 10.0331
     },
     {
-      "stock_code": "301373.SZ",
-      "stock_name": "凌玮科技",
+      "stock_code": "603681.SH",
+      "stock_name": "永冠新材",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "002585.SZ",
+      "stock_name": "双星新材",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0173
+    },
+    {
+      "stock_code": "688323.SH",
+      "stock_name": "瑞华泰",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 15.1276
+    },
+    {
+      "stock_code": "300174.SZ",
+      "stock_name": "元力股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.1684
+    },
+    {
+      "stock_code": "603407.SH",
+      "stock_name": "长裕集团",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0096
+    },
+    {
+      "stock_code": "920402.BJ",
+      "stock_name": "硅烷科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.4448
+    },
+    {
+      "stock_code": "300834.SZ",
+      "stock_name": "星辉环材",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.5013
+    },
+    {
+      "stock_code": "002971.SZ",
+      "stock_name": "和远气体",
       "theme_score": 69.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.3845
+      "pct_chg": -2.1541
     },
     {
-      "stock_code": "002759.SZ",
-      "stock_name": "天际股份",
+      "stock_code": "002064.SZ",
+      "stock_name": "华峰化学",
+      "theme_score": 69.25,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 5.5072
+    },
+    {
+      "stock_code": "603120.SH",
+      "stock_name": "肯特催化",
       "theme_score": 69.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.0045
-    },
-    {
-      "stock_code": "002409.SZ",
-      "stock_name": "雅克科技",
-      "theme_score": 69.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -1.35
-    },
-    {
-      "stock_code": "603310.SH",
-      "stock_name": "巍华新材",
-      "theme_score": 69.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": -0.7002
-    },
-    {
-      "stock_code": "002109.SZ",
-      "stock_name": "ST兴化",
-      "theme_score": 69.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 1.4652
+      "pct_chg": -2.8354
     },
     {
       "stock_code": "600319.SH",
@@ -169,81 +225,25 @@
       "theme_score": 69.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 0.7123
-    },
-    {
-      "stock_code": "002601.SZ",
-      "stock_name": "龙佰集团",
-      "theme_score": 68.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 6.4539
-    },
-    {
-      "stock_code": "603020.SH",
-      "stock_name": "爱普股份",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0422
-    },
-    {
-      "stock_code": "001378.SZ",
-      "stock_name": "德冠新材",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9947
-    },
-    {
-      "stock_code": "002637.SZ",
-      "stock_name": "赞宇科技",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.974
-    },
-    {
-      "stock_code": "603285.SH",
-      "stock_name": "键邦股份",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -1.4208
-    },
-    {
-      "stock_code": "601117.SH",
-      "stock_name": "中国化学",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.3161
-    },
-    {
-      "stock_code": "688386.SH",
-      "stock_name": "泛亚微透",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0918
+      "pct_chg": -1.1315
     }
   ],
   "latent_pool": [],
-  "leader_stock": "华鲁恒升",
+  "leader_stock": "巨化股份",
   "secondary_leaders": [
     "万华化学",
-    "六国化工"
+    "新安股份"
   ],
   "next_day_signal": {
     "direction": "transition",
     "focus_pool": "expansion"
   },
   "pool_stats": {
-    "core_count": 51,
-    "expansion_count": 499,
+    "core_count": 54,
+    "expansion_count": 496,
     "latent_count": 0,
-    "core_avg_pct": 2.274870588235294,
-    "expansion_avg_pct": 0.8053262525050099,
-    "total_amount": 318444755.67986983
+    "core_avg_pct": 2.899285185185185,
+    "expansion_avg_pct": 1.709083064516129,
+    "total_amount": 295394985.6459696
   }
 }

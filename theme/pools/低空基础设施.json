@@ -1,117 +1,89 @@
 {
   "theme_name": "低空基础设施",
   "macro_theme": "低空经济",
-  "trade_date": "20260612",
-  "theme_stage": "发酵期",
-  "theme_strength_score": 100,
+  "trade_date": "20260615",
+  "theme_stage": "主升期",
+  "theme_strength_score": 93,
   "core_pool": [
+    {
+      "stock_code": "002023.SZ",
+      "stock_name": "海特高新",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.8421,
+      "amount": 643284.54398,
+      "total_mv": 902367.7662
+    },
     {
       "stock_code": "000099.SZ",
       "stock_name": "中信海直",
-      "theme_score": 76.5,
+      "theme_score": 70.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 9.981,
-      "amount": 417124.63223,
-      "total_mv": 1350615.8085
+      "pct_chg": -1.6083,
+      "amount": 605524.99394,
+      "total_mv": 1328894.2447
     },
     {
-      "stock_code": "300719.SZ",
-      "stock_name": "安达维尔",
-      "theme_score": 75.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 13.8099,
-      "amount": 269727.2363,
-      "total_mv": 356172.2372
-    },
-    {
-      "stock_code": "001696.SZ",
-      "stock_name": "宗申动力",
-      "theme_score": 75.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0193,
-      "amount": 2105919.05576,
-      "total_mv": 2615241.4853
-    },
-    {
-      "stock_code": "600862.SH",
-      "stock_name": "中航高科",
-      "theme_score": 72.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0292,
-      "amount": 620203.951,
-      "total_mv": 2628683.6649
-    },
-    {
-      "stock_code": "002085.SZ",
-      "stock_name": "万丰奥威",
-      "theme_score": 72.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0405,
-      "amount": 1081763.11803,
-      "total_mv": 2885561.3297
-    },
-    {
-      "stock_code": "000768.SZ",
-      "stock_name": "中航西飞",
-      "theme_score": 71.75,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 10.0096,
-      "amount": 636860.2833,
-      "total_mv": 6356474.7686
-    },
-    {
-      "stock_code": "002985.SZ",
-      "stock_name": "北摩高科",
-      "theme_score": 71.75,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 10.0147,
-      "amount": 190610.97656,
-      "total_mv": 995228.9464
-    },
-    {
-      "stock_code": "002111.SZ",
-      "stock_name": "威海广泰",
-      "theme_score": 71.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.1183,
-      "amount": 114398.98836,
-      "total_mv": 510197.965
-    },
-    {
-      "stock_code": "002984.SZ",
-      "stock_name": "森麒麟",
-      "theme_score": 70.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 7.418,
-      "amount": 351836.9532,
-      "total_mv": 1560648.0277
+      "stock_code": "002436.SZ",
+      "stock_name": "兴森科技",
+      "theme_score": 67.0,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 6.0582,
+      "amount": 6352671.18249,
+      "total_mv": 6813991.3141
     }
   ],
   "expansion_pool": [
     {
-      "stock_code": "688507.SH",
-      "stock_name": "索辰科技",
+      "stock_code": "300975.SZ",
+      "stock_name": "商络电子",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 19.9516
+      "pct_chg": 12.9444
     },
     {
-      "stock_code": "688772.SH",
-      "stock_name": "珠海冠宇",
+      "stock_code": "301218.SZ",
+      "stock_name": "华是科技",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 15.9287
+      "pct_chg": 12.9591
+    },
+    {
+      "stock_code": "688598.SH",
+      "stock_name": "金博股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 16.1357
+    },
+    {
+      "stock_code": "300902.SZ",
+      "stock_name": "国安达",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 14.3432
+    },
+    {
+      "stock_code": "001696.SZ",
+      "stock_name": "宗申动力",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.0438
+    },
+    {
+      "stock_code": "002520.SZ",
+      "stock_name": "日发精机",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2122
     },
     {
       "stock_code": "300397.SZ",
@@ -119,121 +91,89 @@
       "theme_score": 68.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0737
+      "pct_chg": 3.4612
     },
     {
-      "stock_code": "002023.SZ",
-      "stock_name": "海特高新",
-      "theme_score": 68.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.518
+      "stock_code": "002111.SZ",
+      "stock_name": "威海广泰",
+      "theme_score": 68.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.7299
     },
     {
-      "stock_code": "000547.SZ",
-      "stock_name": "航天发展",
+      "stock_code": "000733.SZ",
+      "stock_name": "振华科技",
       "theme_score": 67.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.016
+      "pct_chg": 10.0085
     },
     {
-      "stock_code": "600576.SH",
-      "stock_name": "祥源文旅",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9644
-    },
-    {
-      "stock_code": "603990.SH",
-      "stock_name": "麦迪科技",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.98
-    },
-    {
-      "stock_code": "002520.SZ",
-      "stock_name": "日发精机",
+      "stock_code": "002984.SZ",
+      "stock_name": "森麒麟",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.6202
+      "pct_chg": 3.7185
     },
     {
-      "stock_code": "600038.SH",
-      "stock_name": "中直股份",
+      "stock_code": "002510.SZ",
+      "stock_name": "天汽模",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.6972
+      "pct_chg": 2.2258
     },
     {
-      "stock_code": "600340.SH",
-      "stock_name": "*ST华幸",
+      "stock_code": "300719.SZ",
+      "stock_name": "安达维尔",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.1008
+      "pct_chg": -3.7116
     },
     {
-      "stock_code": "600316.SH",
-      "stock_name": "洪都航空",
+      "stock_code": "002085.SZ",
+      "stock_name": "万丰奥威",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.633
+      "pct_chg": 0.9566
     },
     {
-      "stock_code": "600990.SH",
-      "stock_name": "四创电子",
+      "stock_code": "002985.SZ",
+      "stock_name": "北摩高科",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.1322
+      "pct_chg": 3.7679
     },
     {
-      "stock_code": "300342.SZ",
-      "stock_name": "天银机电",
+      "stock_code": "301379.SZ",
+      "stock_name": "天山电子",
       "theme_score": 67.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 6.2077
-    },
-    {
-      "stock_code": "301565.SZ",
-      "stock_name": "中仑新材",
-      "theme_score": 67.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 6.3923
-    },
-    {
-      "stock_code": "301306.SZ",
-      "stock_name": "西测测试",
-      "theme_score": 67.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.2401
+      "pct_chg": 6.879
     }
   ],
   "latent_pool": [],
-  "leader_stock": "中信海直",
+  "leader_stock": "海特高新",
   "secondary_leaders": [
-    "安达维尔",
-    "宗申动力"
+    "中信海直",
+    "兴森科技"
   ],
   "next_day_signal": {
-    "direction": "transition",
-    "focus_pool": "expansion"
+    "direction": "strength",
+    "focus_pool": "core"
   },
   "pool_stats": {
-    "core_count": 9,
-    "expansion_count": 295,
+    "core_count": 3,
+    "expansion_count": 301,
     "latent_count": 0,
-    "core_avg_pct": 9.382277777777778,
-    "expansion_avg_pct": 1.4846701694915254,
-    "total_amount": 174763319.49852994
+    "core_avg_pct": 3.7640000000000007,
+    "expansion_avg_pct": 2.06520365448505,
+    "total_amount": 160306712.69887003
   }
 }

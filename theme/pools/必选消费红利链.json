@@ -1,9 +1,9 @@
 {
   "theme_name": "必选消费红利链",
   "macro_theme": "消费",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
-  "theme_strength_score": 85,
+  "theme_strength_score": 93,
   "core_pool": [
     {
       "stock_code": "000858.SZ",
@@ -11,19 +11,9 @@
       "theme_score": 78.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 0.1629,
-      "amount": 2870646.29471,
-      "total_mv": 31021811.176
-    },
-    {
-      "stock_code": "000568.SZ",
-      "stock_name": "泸州老窖",
-      "theme_score": 78.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": -0.5615,
-      "amount": 1215345.9773,
-      "total_mv": 12511162.4355
+      "pct_chg": -0.3629,
+      "amount": 1916505.15187,
+      "total_mv": 30909244.5438
     },
     {
       "stock_code": "600519.SH",
@@ -31,9 +21,29 @@
       "theme_score": 78.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 1.0094,
-      "amount": 6477910.214,
-      "total_mv": 161499292.1148
+      "pct_chg": -1.6108,
+      "amount": 5303656.129,
+      "total_mv": 158897872.3031
+    },
+    {
+      "stock_code": "000568.SZ",
+      "stock_name": "泸州老窖",
+      "theme_score": 78.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.3765,
+      "amount": 941223.38947,
+      "total_mv": 12464061.5887
+    },
+    {
+      "stock_code": "600696.SH",
+      "stock_name": "退市岩石",
+      "theme_score": 77.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 10.0,
+      "amount": 1808.012,
+      "total_mv": 22074.9824
     },
     {
       "stock_code": "000995.SZ",
@@ -41,9 +51,19 @@
       "theme_score": 76.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.8501,
-      "amount": 117224.88374,
-      "total_mv": 195326.208
+      "pct_chg": 0.9083,
+      "amount": 111046.624,
+      "total_mv": 197100.288
+    },
+    {
+      "stock_code": "000799.SZ",
+      "stock_name": "酒鬼酒",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.6956,
+      "amount": 450037.02288,
+      "total_mv": 1262674.0163
     },
     {
       "stock_code": "603369.SH",
@@ -51,39 +71,29 @@
       "theme_score": 75.25,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 2.8314,
-      "amount": 370236.054,
-      "total_mv": 3124480.8927
+      "pct_chg": 2.2346,
+      "amount": 338573.479,
+      "total_mv": 3194301.6948
     },
     {
-      "stock_code": "603919.SH",
-      "stock_name": "金徽酒",
+      "stock_code": "603589.SH",
+      "stock_name": "口子窖",
       "theme_score": 75.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.0303,
-      "amount": 151756.095,
-      "total_mv": 948576.1944
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.0741,
+      "amount": 142250.219,
+      "total_mv": 1236312.9486
     },
     {
-      "stock_code": "000799.SZ",
-      "stock_name": "酒鬼酒",
-      "theme_score": 74.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 0.398,
-      "amount": 402435.55301,
-      "total_mv": 1229531.2603
-    },
-    {
-      "stock_code": "600559.SH",
-      "stock_name": "老白干酒",
-      "theme_score": 74.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 1.7298,
-      "amount": 239439.034,
-      "total_mv": 1129713.0933
+      "stock_code": "002304.SZ",
+      "stock_name": "洋河股份",
+      "theme_score": 74.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.2093,
+      "amount": 275458.50153,
+      "total_mv": 6491271.8239
     },
     {
       "stock_code": "000596.SZ",
@@ -91,117 +101,43 @@
       "theme_score": 74.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 0.4359,
-      "amount": 199969.63479,
-      "total_mv": 4627893.0
-    },
-    {
-      "stock_code": "600702.SH",
-      "stock_name": "舍得酒业",
-      "theme_score": 74.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 0.5016,
-      "amount": 189870.013,
-      "total_mv": 1266813.0524
+      "pct_chg": -0.514,
+      "amount": 314933.74233,
+      "total_mv": 4604106.0
     }
   ],
   "expansion_pool": [
     {
-      "stock_code": "002461.SZ",
-      "stock_name": "珠江啤酒",
-      "theme_score": 69.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 5.1512
-    },
-    {
-      "stock_code": "600238.SH",
-      "stock_name": "*ST椰岛",
-      "theme_score": 69.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 0.2041
-    },
-    {
-      "stock_code": "603777.SH",
-      "stock_name": "来伊份",
+      "stock_code": "603519.SH",
+      "stock_name": "立霸股份",
       "theme_score": 68.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.5019
-    },
-    {
-      "stock_code": "603311.SH",
-      "stock_name": "金海高科",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -1.0789
-    },
-    {
-      "stock_code": "000801.SZ",
-      "stock_name": "四川九洲",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 4.037
-    },
-    {
-      "stock_code": "002568.SZ",
-      "stock_name": "百润股份",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.8802
+      "pct_chg": 2.9326
     },
     {
       "stock_code": "001259.SZ",
       "stock_name": "利仁科技",
-      "theme_score": 67.5,
+      "theme_score": 68.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.1007
+      "pct_chg": 2.5983
     },
     {
-      "stock_code": "002052.SZ",
-      "stock_name": "同洲电子",
+      "stock_code": "300279.SZ",
+      "stock_name": "和晶科技",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.0578
+      "pct_chg": 3.8806
     },
     {
-      "stock_code": "002418.SZ",
-      "stock_name": "康盛股份",
+      "stock_code": "300403.SZ",
+      "stock_name": "汉宇集团",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.2404
-    },
-    {
-      "stock_code": "688609.SH",
-      "stock_name": "九联科技",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -3.3976
-    },
-    {
-      "stock_code": "600619.SH",
-      "stock_name": "海立股份",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.3287
-    },
-    {
-      "stock_code": "001268.SZ",
-      "stock_name": "联合精密",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -2.4151
+      "pct_chg": 2.8571
     },
     {
       "stock_code": "603779.SH",
@@ -209,41 +145,105 @@
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.6266
+      "pct_chg": 0.4981
     },
     {
-      "stock_code": "600132.SH",
-      "stock_name": "重庆啤酒",
-      "theme_score": 66.75,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 2.5401
+      "stock_code": "301252.SZ",
+      "stock_name": "同星科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.0508
     },
     {
-      "stock_code": "000729.SZ",
-      "stock_name": "燕京啤酒",
-      "theme_score": 66.75,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 2.2688
+      "stock_code": "002418.SZ",
+      "stock_name": "康盛股份",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.1325
+    },
+    {
+      "stock_code": "002402.SZ",
+      "stock_name": "和而泰",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.4538
+    },
+    {
+      "stock_code": "000404.SZ",
+      "stock_name": "长虹华意",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2872
+    },
+    {
+      "stock_code": "002860.SZ",
+      "stock_name": "星帅尔",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.2086
+    },
+    {
+      "stock_code": "002050.SZ",
+      "stock_name": "三花智控",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.0977
+    },
+    {
+      "stock_code": "301280.SZ",
+      "stock_name": "珠城科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4232
+    },
+    {
+      "stock_code": "001268.SZ",
+      "stock_name": "联合精密",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.5332
+    },
+    {
+      "stock_code": "603311.SH",
+      "stock_name": "金海高科",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.4542
+    },
+    {
+      "stock_code": "600186.SH",
+      "stock_name": "莲花控股",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.7537
     }
   ],
   "latent_pool": [],
   "leader_stock": "五粮液",
   "secondary_leaders": [
-    "泸州老窖",
-    "贵州茅台"
+    "贵州茅台",
+    "泸州老窖"
   ],
   "next_day_signal": {
     "direction": "transition",
     "focus_pool": "expansion"
   },
   "pool_stats": {
-    "core_count": 26,
-    "expansion_count": 203,
+    "core_count": 29,
+    "expansion_count": 200,
     "latent_count": 0,
-    "core_avg_pct": 1.902953846153846,
-    "expansion_avg_pct": 1.1542743842364533,
-    "total_amount": 67858710.69057
+    "core_avg_pct": 2.7404275862068963,
+    "expansion_avg_pct": 0.12625849999999997,
+    "total_amount": 61837781.513549976
   }
 }

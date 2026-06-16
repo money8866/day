@@ -108,6 +108,442 @@ N_DAYS = 60
 TOP_N_PER_THEME = 30
 MIN_STOCKS = 3
 
+# ==================== DC热榜数据获取 ====================
+
+# 热榜缓存目录
+DC_HOT_CACHE_DIR = os.path.join(CACHE_DIR, "dc_hot")
+os.makedirs(DC_HOT_CACHE_DIR, exist_ok=True)
+
+
+def get_prev_trade_date(trade_date=None):
+    """获取前一个交易日"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
+    if pro is None:
+        # 简单处理：往前推1-3天
+        dt = datetime.strptime(trade_date, "%Y%m%d")
+        for i in range(1, 4):
+            prev_dt = dt - timedelta(days=i)
+            if prev_dt.weekday() < 5:  # 非周末
+                return prev_dt.strftime("%Y%m%d")
+        return (dt - timedelta(days=1)).strftime("%Y%m%d")
+    
+    # 从交易日历获取
+    cal = pro.trade_cal(exchange='', start_date='20200101', end_date=trade_date)
+    cal = cal[cal['is_open'] == 1]
+    cal = cal[cal['cal_date'] < trade_date].sort_values('cal_date', ascending=False)
+    if not cal.empty:
+        return str(cal.iloc[0]['cal_date'])
+    return None
+
+
+def get_dc_hot(trade_date=None, force_refresh=False):
+    """获取东方财富热榜数据（A股市场人气榜）
+    
+    缓存策略：
+    1. 每日数据保存为CSV文件，按日期永久保存
+    2. 单次最大2000条，循环获取全部数据
+    3. 如果CSV文件存在则直接读取，无需重复下载
+    
+    Args:
+        trade_date: 交易日期，默认为当前交易日
+        force_refresh: 是否强制刷新
+    
+    Returns:
+        DataFrame 包含 ts_code, ts_name, hot_rank, hot_value, pct_change 等
+    """
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
+    # CSV文件路径
+    csv_path = os.path.join(DC_HOT_CACHE_DIR, f"dc_hot_{trade_date}.csv")
+    
+    # 检查CSV缓存
+    if os.path.exists(csv_path) and not force_refresh:
+        try:
+            df = pd.read_csv(csv_path)
+            if not df.empty:
+                print(f"[DC_HOT] CSV缓存命中: {trade_date}, {len(df)} 条")
+                return df
+        except Exception as e:
+            print(f"[DC_HOT] 读取CSV失败: {e}")
+    
+    if pro is None:
+        print("[DC_HOT] 缺少 Tushare token，无法获取热榜")
+        return pd.DataFrame()
+    
+    print(f"[DC_HOT] 拉取热榜数据: {trade_date}")
+    
+    all_data = []
+    offset = 0
+    limit = 2000  # 单次最大2000条
+    max_iterations = 10  # 最多循环10次
+    
+    try:
+        for iteration in range(max_iterations):
+            # 获取A股市场人气榜
+            df = pro.dc_hot(
+                trade_date=trade_date,
+                market="A股市场",
+                hot_type="人气榜",
+                is_new="Y",  # 最新数据
+                limit=limit,
+                offset=offset,
+                fields="ts_code,ts_name,rank,hot,pct_change,current_price"
+            )
+            time.sleep(0.15)
+            
+            if df is None or df.empty:
+                print(f"[DC_HOT] 第{iteration+1}次拉取无数据，停止")
+                break
+            
+            all_data.append(df)
+            print(f"[DC_HOT] 第{iteration+1}次拉取: {len(df)} 条, offset={offset}")
+            
+            # 如果返回数据少于limit，说明已经获取完毕
+            if len(df) < limit:
+                break
+            
+            offset += limit
+        
+        if not all_data:
+            return pd.DataFrame()
+        
+        # 合并所有数据
+        df = pd.concat(all_data, ignore_index=True)
+        
+        # 去重（按ts_code保留排名最高的）
+        if 'rank' in df.columns:
+            df = df.sort_values('rank').drop_duplicates(subset=['ts_code'], keep='first')
+        
+        # 重命名列
+        df = df.rename(columns={
+            "rank": "hot_rank",
+            "hot": "hot_value",
+            "pct_change": "pct_chg"
+        })
+        
+        # 确保 ts_code 格式一致
+        df['ts_code'] = df['ts_code'].astype(str)
+        df['trade_date'] = trade_date
+        
+        # 保存为CSV（永久保存）
+        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+        print(f"[DC_HOT] 拉取完成: 共{len(df)} 条，已保存到 {csv_path}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"[DC_HOT] 拉取失败: {e}")
+    
+    return pd.DataFrame()
+
+
+def get_dc_hot_multi_days(days=2, force_refresh=False):
+    """获取多个交易日的热榜数据
+    
+    策略：获取交易日和前交易日的数据，如果前交易日有缓存就无需再下载
+    
+    Args:
+        days: 获取最近几天的数据，默认2天
+        force_refresh: 是否强制刷新
+    
+    Returns:
+        dict: {trade_date: DataFrame}
+    """
+    result = {}
+    current_date = TRADE_DATE
+    
+    for i in range(days):
+        if i == 0:
+            trade_date = current_date
+        else:
+            trade_date = get_prev_trade_date(current_date)
+            if trade_date is None:
+                break
+            current_date = trade_date  # 更新为前一日，继续往前找
+        
+        # 检查CSV是否存在
+        csv_path = os.path.join(DC_HOT_CACHE_DIR, f"dc_hot_{trade_date}.csv")
+        
+        if os.path.exists(csv_path) and not force_refresh:
+            print(f"[DC_HOT] {trade_date} 已有缓存，跳过下载")
+            df = pd.read_csv(csv_path)
+        else:
+            df = get_dc_hot(trade_date, force_refresh=force_refresh)
+        
+        if not df.empty:
+            result[trade_date] = df
+    
+    return result
+
+
+# 全局热榜数据（按需加载）
+_dc_hot_df = None
+_dc_hot_date = None
+
+def load_dc_hot():
+    """加载热榜数据（延迟加载，自动获取最近7天数据，支持回退到最近有数据的日期）"""
+    global _dc_hot_df, _dc_hot_date
+    if _dc_hot_df is None or _dc_hot_date != TRADE_DATE:
+        # 自动获取最近7天的数据（覆盖周末+节假日）
+        multi_data = get_dc_hot_multi_days(days=7)
+        
+        # 优先用当天数据，如果当天没有则回退到最近有数据的交易日
+        _dc_hot_df = multi_data.get(TRADE_DATE, pd.DataFrame())
+        if _dc_hot_df.empty:
+            # 按日期降序排序，找第一个非空数据
+            sorted_dates = sorted(multi_data.keys(), reverse=True)
+            for fallback_date in sorted_dates:
+                df = multi_data[fallback_date]
+                if not df.empty:
+                    _dc_hot_df = df
+                    print(f"[DC_HOT] ⚠ 当天({TRADE_DATE})热榜未更新，回退到 {fallback_date} 的数据 ({len(df)} 条)")
+                    break
+            if _dc_hot_df.empty:
+                print(f"[DC_HOT] ⚠ 最近7天均无热榜数据，热度评分暂不可用")
+        else:
+            print(f"[DC_HOT] 使用当天数据: {TRADE_DATE}, {len(_dc_hot_df)} 条")
+        
+        _dc_hot_date = TRADE_DATE
+    return _dc_hot_df
+
+
+def get_stock_hot_rank(ts_code):
+    """获取个股的热榜排名（排名越高分数越高）
+    
+    注意：热榜只提供前100个股的热度，因此热榜分作为加分项
+    
+    排名1-10: +10分
+    排名11-30: +8分
+    排名31-50: +6分
+    排名51-70: +4分
+    排名71-100: +2分
+    未上榜: +0分
+    """
+    hot_df = load_dc_hot()
+    if hot_df is None or hot_df.empty:
+        return 0  # 默认0分（加分项）
+    
+    match = hot_df[hot_df['ts_code'] == ts_code]
+    if match.empty:
+        return 0  # 未上榜，不加分
+    
+    rank = match.iloc[0]['hot_rank']
+    if pd.isna(rank):
+        return 0
+    
+    rank = int(rank)
+    if rank <= 10:
+        return 10
+    elif rank <= 30:
+        return 8
+    elif rank <= 50:
+        return 6
+    elif rank <= 70:
+        return 4
+    elif rank <= 100:
+        return 2
+    else:
+        return 0
+
+
+def get_stock_hot_rank_position(ts_code):
+    """获取个股的热榜排名位置（返回实际排名数字，未上榜返回极大值）"""
+    hot_df = load_dc_hot()
+    if hot_df is None or hot_df.empty:
+        return 9999  # 未上榜返回极大值
+    
+    match = hot_df[hot_df['ts_code'] == ts_code]
+    if match.empty:
+        return 9999  # 未上榜
+    
+    rank = match.iloc[0]['hot_rank']
+    if pd.isna(rank):
+        return 9999
+    
+    return int(rank)
+
+
+def calc_theme_hot_score(stock_feats):
+    """计算主题综合热度得分（基于热榜数据）
+    
+    公式：S_theme = Σ(wi * 1/ln(1+Ri))
+    
+    参数：
+        stock_feats: 主题成分股特征列表，每个元素包含 'ts_code', 'mcap'（市值）等字段
+    
+    返回：
+        hot_score: 主题综合热度得分
+        detail: 详细信息（包含成分股热榜排名、是否有龙头进入Top10等）
+    """
+    if not stock_feats:
+        return 0.0, {}
+    
+    import math
+    
+    total_score = 0.0
+    total_weight = 0.0
+    hot_ranks = []
+    top10_count = 0
+    top5_count = 0
+    
+    for feat in stock_feats:
+        ts_code = feat.get('ts_code', '')
+        if not ts_code:
+            continue
+        
+        # 获取热榜排名
+        rank = get_stock_hot_rank_position(ts_code)
+        if rank == 9999:
+            continue  # 未上榜不参与计算
+        
+        hot_ranks.append(rank)
+        
+        # 统计Top10和Top5数量
+        if rank <= 5:
+            top5_count += 1
+            top10_count += 1
+        elif rank <= 10:
+            top10_count += 1
+        
+        # 计算权重（使用市值权重，如果没有市值则使用等权重）
+        mcap = feat.get('mcap', 1)
+        if mcap <= 0:
+            mcap = 1
+        
+        weight = mcap
+        
+        # 计算得分：wi * 1/ln(1+Ri)
+        if rank > 0:
+            score_i = weight / math.log(1 + rank)
+            total_score += score_i
+            total_weight += weight
+    
+    # 归一化得分
+    if total_weight > 0:
+        normalized_score = (total_score / total_weight) * 100
+    else:
+        normalized_score = 0.0
+    
+    # 计算热度集中度（前10名占比）
+    total_stocks = len([f for f in stock_feats if f.get('ts_code')])
+    hot_concentration = top10_count / total_stocks if total_stocks > 0 else 0.0
+    
+    detail = {
+        'hot_score': round(normalized_score, 2),
+        'top5_count': top5_count,
+        'top10_count': top10_count,
+        'hot_concentration': round(hot_concentration * 100, 1),
+        'n_participate': len(hot_ranks),
+        'avg_rank': round(sum(hot_ranks) / len(hot_ranks), 1) if hot_ranks else 0,
+        'min_rank': min(hot_ranks) if hot_ranks else 0
+    }
+    
+    return normalized_score, detail
+
+
+def get_theme_hot_score_percentile(theme_name, current_score, days=60):
+    """获取主题热度得分的历史分位数
+    
+    参数：
+        theme_name: 主题名称
+        current_score: 当前得分
+        days: 统计天数
+    
+    返回：
+        percentile: 历史分位数（0-100）
+        historical_scores: 历史得分列表
+    """
+    historical_scores = []
+    
+    # 从数据库获取历史数据
+    db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 获取最近days天的交易日期
+            cursor.execute("""
+                SELECT DISTINCT trade_date FROM theme_scores 
+                ORDER BY trade_date DESC LIMIT ?
+            """, (days,))
+            dates = [row[0] for row in cursor.fetchall()]
+            
+            if dates:
+                # 先检查表中是否有 hot_score 列
+                cursor.execute("PRAGMA table_info(theme_scores)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'hot_score' in columns:
+                    placeholders = ",".join("?" * len(dates))
+                    cursor.execute(f"""
+                        SELECT hot_score FROM theme_scores 
+                        WHERE theme = ? AND trade_date IN ({placeholders})
+                    """, (theme_name,) + tuple(dates))
+                    
+                    for row in cursor.fetchall():
+                        if row[0] is not None:
+                            historical_scores.append(float(row[0]))
+            
+            conn.close()
+        except Exception as e:
+            print(f"获取历史热度得分失败: {e}")
+    
+    # 计算分位数
+    if not historical_scores:
+        return 50.0, []
+    
+    historical_scores.sort()
+    n = len(historical_scores)
+    
+    # 找到当前得分的位置
+    count_below = sum(1 for s in historical_scores if s < current_score)
+    count_equal = sum(1 for s in historical_scores if s == current_score)
+    
+    if n == 0:
+        percentile = 50.0
+    else:
+        percentile = (count_below + count_equal * 0.5) / n * 100
+    
+    return round(percentile, 1), historical_scores
+
+
+def judge_hot_phase(hot_score, percentile, top10_count, top5_count, total_stocks):
+    """判断主题热度阶段
+    
+    参数：
+        hot_score: 主题热度得分
+        percentile: 历史分位数
+        top10_count: 进入热榜Top10的成分股数量
+        top5_count: 进入热榜Top5的成分股数量
+        total_stocks: 成分股总数
+    
+    返回：
+        phase: 阶段标签（潜伏/升温/高潮/拥挤）
+        warning: 预警信息
+    """
+    phase = "正常"
+    warning = ""
+    
+    # 高潮期判断：龙头霸占Top5且热度达到历史95%以上
+    if top5_count >= 2 and percentile >= 95:
+        phase = "⚠️ 拥挤"
+        warning = "拥挤预警：多只龙头霸占热榜Top5，且热度达历史高位，建议减仓"
+    elif top10_count >= 3 and percentile >= 90:
+        phase = "🔥 高潮"
+        warning = "高潮提示：多只成分股进入热榜Top10，情绪高涨"
+    elif hot_score > 0 and top10_count == 0 and percentile < 70:
+        phase = "🌱 潜伏"
+        warning = "潜伏信号：主题热度开始抬升，但龙头尚未进入热榜Top10，或为最佳入场时机"
+    elif hot_score > 0 and percentile >= 70 and percentile < 90:
+        phase = "📈 升温"
+        warning = "升温阶段：主题热度持续上升中"
+    
+    return phase, warning
+
 
 def _strip_ii(name):
     if not isinstance(name, str) or not name:
@@ -255,7 +691,7 @@ def get_dc_members():
     if cached is not None:
         # 检查缓存是否有 is_industry 列，没有则说明是旧缓存，需重新拉取
         if "is_industry" in cached.columns:
-            print(f"[DC] 缓存命中: {len(cached)} 条成份股记录")
+            #print(f"[DC] 缓存命中: {len(cached)} 条成份股记录")
             return cached
         else:
             print("[DC] 缓存缺 is_industry 列，重新拉取")
@@ -405,6 +841,9 @@ def get_daily_kline(ts_codes, start, end):
                 cache_set(cache_key, cached)  # 更新缓存（写入带均线的版本）
             all_parts.append(cached)
         else:
+            # 跳过已确认无法获取的股票（黑名单），避免重复请求
+            if _is_failed_stock(code):
+                continue
             need_fetch_codes.append(code)
     
     # 需要拉取的股票：先尝试用 tushare_quant 生成CSV缓存
@@ -447,13 +886,62 @@ def get_daily_kline(ts_codes, start, end):
                             cache_key = f"daily_kline_{code}_{start}_{end}"
                             cache_set(cache_key, code_df)
                             all_parts.append(code_df)
+                            if code in need_fetch_codes:
+                                need_fetch_codes.remove(code)
                 time.sleep(0.15)
             except Exception as e:
                 print(f"[KLine] 批次 {ci + 1}/{len(chunks)} 失败: {e}")
                 time.sleep(0.15)
+
+    # 对始终取不到的股票做诊断并加入黑名单避免重复请求
+    if need_fetch_codes:
+        _mark_failed_stocks(need_fetch_codes)
     
     df = pd.concat(all_parts, ignore_index=True) if all_parts else pd.DataFrame()
     return df
+
+
+def _mark_failed_stocks(codes):
+    """记录无法获取K线数据的股票到黑名单，避免重复请求"""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS failed_stocks (
+        ts_code TEXT PRIMARY KEY,
+        fail_date TEXT,
+        fail_count INTEGER DEFAULT 1
+    )""")
+    for code in codes:
+        cur.execute("SELECT fail_count FROM failed_stocks WHERE ts_code=?", (code,))
+        row = cur.fetchone()
+        if row:
+            cur.execute("UPDATE failed_stocks SET fail_count=?, fail_date=? WHERE ts_code=?",
+                        (row[0] + 1, TRADE_DATE, code))
+        else:
+            cur.execute("INSERT INTO failed_stocks (ts_code, fail_date, fail_count) VALUES (?,?,1)",
+                        (code, TRADE_DATE))
+    conn.commit()
+    conn.close()
+    print(f"[KLine] ⚠ 以下 {len(codes)} 只股票无法获取K线数据（已加入黑名单，不再重试）:")
+    for code in codes:
+        print(f"       {code}")
+    print(f"       原因推测：退市/停牌/代码格式错误/无交易数据")
+
+
+FAILED_STOCKS_CACHE = None
+def _is_failed_stock(ts_code):
+    """检查是否在黑名单中"""
+    global FAILED_STOCKS_CACHE
+    if FAILED_STOCKS_CACHE is None:
+        FAILED_STOCKS_CACHE = set()
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT ts_code FROM failed_stocks")
+            FAILED_STOCKS_CACHE = {row[0] for row in cur.fetchall()}
+            conn.close()
+        except Exception:
+            pass
+    return ts_code in FAILED_STOCKS_CACHE
 
 
 def get_index_kline(ts_code="000300.SH", start=None, end=None):
@@ -1101,6 +1589,13 @@ def calc_trend_score(stock_feats, market_index_ret):
 
 
 def calc_sentiment_score(stock_feats, market_index_ret):
+    """计算情绪分（热榜分作为加分项）
+    
+    热榜分数计算：
+    - 热榜只提供前100个股的热度，因此热榜分作为加分项
+    - 热榜分数取主题内所有个股的平均热榜分（0-10分）
+    - 最终情绪分 = 基础分（0-100） + 热榜加分（0-10）
+    """
     if not stock_feats:
         return 0.0, {}
 
@@ -1117,10 +1612,16 @@ def calc_sentiment_score(stock_feats, market_index_ret):
     zt_score = linear(zt_ratio, 0, 0.15)
     strong_ratio = strong_n / n
     strong_score = linear(strong_ratio, 0, 0.30)
-    avg_vol_ratio = np.mean([s["vol_ratio"] for s in stock_feats])
+    
+    # 处理 NaN 值
+    vol_ratios = [s.get("vol_ratio", 0) for s in stock_feats]
+    avg_vol_ratio = float(np.nanmean(vol_ratios)) if vol_ratios else 0.0
     vol_score = linear(avg_vol_ratio, 0.6, 1.8)
-    avg_turnover = np.mean([s["turnover"] for s in stock_feats])
+    
+    turnovers = [s.get("turnover", 0) for s in stock_feats]
+    avg_turnover = float(np.nanmean(turnovers)) if turnovers else 0.0
     turnover_score = linear(avg_turnover, 1.0, 8.0)
+    
     median_pct = float(np.median(pcts))
     mean_pct = float(np.mean(pcts))
     profit_score = sigmoid(median_pct * 0.6 + mean_pct * 0.4, k=0.25, c=0)
@@ -1130,7 +1631,16 @@ def calc_sentiment_score(stock_feats, market_index_ret):
         resonance = 1.2
     resonance_score = min(resonance, 1.0)
 
-    score01 = breadth_score * 0.25 + zt_score * 0.20 + strong_score * 0.15 + vol_score * 0.10 + turnover_score * 0.10 + profit_score * 0.10 + resonance_score * 0.10
+    # 基础分数（0-100）
+    base_score = breadth_score * 0.25 + zt_score * 0.20 + strong_score * 0.15 + vol_score * 0.10 + turnover_score * 0.10 + profit_score * 0.10 + resonance_score * 0.10
+
+    # 热榜加分（0-10分，作为加分项）
+    hot_scores = [s.get("hot_rank_score", 0) for s in stock_feats]
+    avg_hot_score = np.mean(hot_scores) if hot_scores else 0
+    hot_bonus = avg_hot_score / 10.0  # 归一化到 0-1（加分项）
+
+    # 最终分数 = 基础分 + 热榜加分
+    score01 = base_score + hot_bonus * 0.10  # 热榜加分最多提升10%
     score01 = max(0.0, min(1.0, score01))
 
     detail = {
@@ -1138,6 +1648,7 @@ def calc_sentiment_score(stock_feats, market_index_ret):
         "zt_count": zt_n, "zt_ratio": round(zt_ratio * 100, 1), "strong_ratio": round(strong_ratio * 100, 1),
         "avg_vol_ratio": round(avg_vol_ratio, 2), "avg_turnover": round(avg_turnover, 2),
         "median_pct": round(median_pct, 2), "mean_pct": round(mean_pct, 2), "top1_pct": round(top1, 2), "resonance": round(resonance, 2),
+        "avg_hot_score": round(avg_hot_score, 1),  # 平均热榜分（0-10）
     }
     return round(score01 * 100, 1), detail
 
@@ -1162,15 +1673,22 @@ def calc_rsi(prices, period=14):
 
 
 def calc_theme_state(r, prev_data=None):
-    """判断主题状态
+    """判断主题状态（优化版：更符合A股抱团逻辑）
     
-    状态定义：
-    - 启动：趋势分从低位快速上升，情绪分开始活跃
-    - 主升：趋势分>=60且持续上升，情绪分>=60
-    - 高潮：趋势分>=70，情绪分>=85，涨停数>=5
-    - 分歧：趋势分>=50但当日下跌，情绪分下降
-    - 分歧转一致：前期分歧后趋势分回升，情绪分回升，上涨比例>60%
-    - 退潮：趋势分持续下降，情绪分<40
+    状态定义（基于资金抱团、龙头效应、趋势持续性）：
+    - 抱团主升：核心龙头持续新高，资金高度集中，趋势陡峭上行
+    - 强趋势：趋势分高且持续上升，情绪活跃，赚钱效应明显
+    - 分歧转一致：前期分歧后资金回流，快速修复
+    - 启动：低位反转，资金开始进场，涨停数增加
+    - 分歧：高位震荡，多空博弈，等待方向选择
+    - 退潮：资金撤离，情绪低迷，趋势向下
+    
+    A股抱团逻辑要点：
+    1. 龙头稳定性 > 整体涨幅
+    2. 资金集中度（成交额占比）是核心
+    3. 上涨家数占比反映板块强度
+    4. 趋势斜率判断持续性
+    5. 连板高度反映情绪热度
     
     Args:
         r: 当前主题数据
@@ -1184,264 +1702,204 @@ def calc_theme_state(r, prev_data=None):
     td = r.get("trend_detail", {}) or {}
     sd = r.get("sentiment_detail", {}) or {}
     
+    # 趋势指标
     avg_ret_5 = td.get("avg_ret_5", 0)
     avg_ret_10 = td.get("avg_ret_10", 0)
     avg_pct_today = td.get("avg_pct_today", 0)
     pct_above_ma5 = td.get("pct_above_ma5", 0)
     avg_slope_10 = td.get("avg_slope_10", 0)
     mid_trend_ok = td.get("mid_trend_ok", 0)
+    leader_stability = td.get("leader_stability", 0)  # 龙头稳定性
     
+    # 情绪指标
     zt_count = sd.get("zt_count", 0)
     up_ratio = sd.get("up_ratio", 0)
+    turnover_rate = sd.get("turnover_rate", 0)  # 换手率
+    volume_ratio = sd.get("volume_ratio", 0)    # 量比
     
     # 获取前一日数据
-    prev_t_score = 0
-    prev_s_score = 0
-    prev_up_ratio = 0
+    prev_t_score = t_score
+    prev_s_score = s_score
+    prev_up_ratio = up_ratio
     if prev_data:
-        prev_t_score = prev_data.get("trend_score", 0)
-        prev_s_score = prev_data.get("sentiment_score", 0)
+        prev_t_score = prev_data.get("trend_score", t_score)
+        prev_s_score = prev_data.get("sentiment_score", s_score)
         prev_sd = prev_data.get("sentiment_detail", {}) or {}
-        prev_up_ratio = prev_sd.get("up_ratio", 0)
+        prev_up_ratio = prev_sd.get("up_ratio", up_ratio)
     
-    # 1. 高潮：趋势分>=70，情绪分>=85，涨停数>=5
-    if t_score >= 70 and s_score >= 85 and zt_count >= 5:
-        return "高潮"
+    # ========== 1. 抱团主升（最核心状态）==========
+    # 条件：龙头稳定 + 趋势高位 + 情绪高涨
+    if (t_score >= 75 and 
+        s_score >= 75 and 
+        zt_count >= 4 and              # 涨停数>=4
+        up_ratio >= 65):               # 上涨家数占比>=65%
+        return "抱团主升"
     
-    # 2. 退潮：趋势分持续下降，情绪分<40
-    if t_score < 50 and s_score < 40 and avg_slope_10 < 0:
-        return "退潮"
+    # ========== 2. 强趋势 ==========
+    # 条件：趋势分>=60且情绪分>=60即可
+    if t_score >= 60 and s_score >= 60:
+        return "强趋势"
     
-    # 3. 分歧转一致：前期分歧后趋势分回升
-    # 条件：
-    # - 前一日趋势分>=50且<65（分歧状态）
-    # - 当日趋势分回升（t_score > prev_t_score）
-    # - 情绪分回升（s_score > prev_s_score）
-    # - 上涨比例>60%
-    # - 涨停数>=3
+    # ========== 3. 分歧转一致 ==========
+    # 条件：前期分歧后资金回流，快速修复
     if (prev_data and 
-        50 <= prev_t_score < 65 and 
-        t_score > prev_t_score and 
-        s_score > prev_s_score and 
-        up_ratio > 60 and 
-        zt_count >= 3):
+        45 <= prev_t_score < 60 and  # 前一日处于分歧区间
+        t_score > prev_t_score + 3 and  # 趋势分快速回升
+        s_score > prev_s_score + 5 and  # 情绪分快速回升
+        up_ratio >= 65 and              # 上涨家数占比高
+        zt_count >= 3):                 # 涨停数增加
         return "分歧转一致"
     
-    # 4. 分歧：趋势分>=50但当日下跌，情绪分下降
-    if (t_score >= 50 and 
-        avg_pct_today < 0 and 
-        up_ratio < 50 and 
-        s_score < prev_s_score):
-        return "分歧"
-    
-    # 5. 启动：趋势分从低位快速上升
-    # 条件：
-    # - 趋势分>=45且<60
-    # - 5日涨幅从负转正或快速上升
-    # - 情绪分开始活跃（涨停数>=3）
-    # - 成交量放大
-    if (45 <= t_score < 60 and 
-        avg_ret_5 > 0 and 
-        avg_ret_10 < 0 and 
-        zt_count >= 3 and 
-        t_score > prev_t_score):
+    # ========== 4. 启动（收紧条件，更稀缺）==========
+    # 条件：低位反转，资金快速进场，必须同时满足多个强化条件
+    if (40 <= t_score < 60 and 
+        avg_ret_5 > 5 and              # 5日涨幅>5%（提高门槛）
+        avg_ret_10 < avg_ret_5 * 0.5 and  # 10日涨幅远低于5日（真正刚启动）
+        zt_count >= 3 and              # 涨停数>=3（提高门槛）
+        volume_ratio > 1.3):           # 成交量明显放大
         return "启动"
     
-    # 6. 主升：趋势分>=60且持续上升，情绪分>=60
-    if (t_score >= 60 and 
-        s_score >= 60 and 
-        avg_slope_10 > 0 and 
-        pct_above_ma5 >= 60 and 
-        mid_trend_ok == 1):
-        return "主升"
+    # ========== 5. 分歧 ==========
+    # 条件：高位震荡，多空博弈
+    if (t_score >= 55 and 
+        abs(avg_pct_today) < 1 and     # 当日窄幅震荡
+        up_ratio < 55 and              # 上涨家数不足
+        zt_count > 0 and               # 仍有涨停（有资金在维护）
+        t_score < prev_t_score + 2):   # 趋势分停滞
+        return "分歧"
     
-    # 默认：根据趋势分和情绪分判断
-    if t_score >= 60:
-        return "强势"
-    elif t_score >= 50:
+    # ========== 6. 退潮 ==========
+    # 条件：资金撤离，情绪低迷
+    if (t_score < 50 and 
+        s_score < 45 and 
+        avg_slope_10 < -0.05 and       # 趋势向下
+        up_ratio < 40 and              # 下跌家数占优
+        zt_count == 0):                # 无涨停
+        return "退潮"
+    
+    # ========== 7. 弱趋势（弱势整理）==========
+    if (t_score >= 50 and 
+        s_score >= 45 and 
+        abs(avg_slope_10) < 0.05):     # 趋势平缓
+        return "弱趋势"
+    
+    # 默认：根据趋势分判断
+    if t_score >= 50:
         return "震荡"
     else:
         return "弱势"
 
 
-def calc_rotation_cycle(theme_name, current_t_score, current_s_score):
+def analyze_style_trend(results):
     """
-    基于近20天全市场主题的趋势分排名动态，判断轮动周期阶段。
+    风格维度中期跟踪分析：按 style 聚合题材，识别市场主线与轮动支线。
     
-    核心思想：用排名百分位（相对位置）替代绝对分数进行分析。
-    排名百分位 0~100%，越高表示该主题在当天所有主题中趋势越强。
+    输出每个风格的：
+      - 平均综合分、平均趋势分、平均情绪分
+      - 包含题材数量及题材列表
+      - 处于"启动/上升中/短期爆发/中期持续"的可交易题材数量
+      - 5日/10日平均涨幅
+      - 风格内涨停总数
+      - 风格状态标签（主线/支线/冷门）
     
-    返回 (cycle_stage, cycle_desc):
-      - "短期爆发"：     排名快速跃升，斜率>6，短期加速>15%，刚进入高位，爆发力强
-      - "中期持续"：     排名稳定在中高位(55%~85%)，窄幅波动(<6%)，情绪配合，持续性好
-      - "上升中"：       排名持续提升(斜率>2)，从低位向高位迈进，趋势明确
-      - "高潮风险"：     排名持续在极高位置(>=90%)，情绪偏强(>=60)，亢奋赶顶
-      - "退潮回避"：     排名从高位持续下滑至低位(<35%)，资金离场，或无明确轮动信号
+    返回 (style_rankings, style_summary):
+      - style_rankings: 按综合分排名的风格列表
+      - style_summary: 风格维度的描述文本
     """
-    if not os.path.exists(OUTPUT_DB):
-        return "未知", "无历史数据"
-
-    try:
-        conn = sqlite3.connect(OUTPUT_DB)
-        cur = conn.cursor()
-
-        # 获取所有交易日（最近21天，确保当天也在内）
-        cur.execute("""
-            SELECT DISTINCT trade_date FROM theme_scores 
-            WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT 21
-        """, (TRADE_DATE,))
-        all_dates = [r[0] for r in cur.fetchall()]
-        all_dates.sort()
-
-        if len(all_dates) < 6:
-            conn.close()
-            return "未知", "历史数据不足"
-
-        # 对每个交易日，计算该主题的趋势分排名百分位
-        rank_history = []
-        sentiment_history = []
-
-        for d in all_dates:
-            # 当日所有主题的趋势分
-            cur.execute("""
-                SELECT trend_score, sentiment_score FROM theme_scores
-                WHERE trade_date = ?
-            """, (d,))
-            rows = cur.fetchall()
-            if len(rows) < 5:
-                continue
-
-            scores = [r[0] for r in rows]
-
-            # 该主题当日的分
-            cur.execute("""
-                SELECT trend_score, sentiment_score FROM theme_scores
-                WHERE theme = ? AND trade_date = ?
-            """, (theme_name, d))
-            self_row = cur.fetchone()
-            if self_row is None:
-                continue
-
-            # 排名百分位：得分 ≤ 该主题的比例（越高越好）
-            better = sum(1 for s in scores if s <= self_row[0])
-            rank_pct = better / len(scores) * 100
-            rank_history.append(rank_pct)
-            sentiment_history.append(self_row[1])
-
-        conn.close()
-
-        if len(rank_history) < 5:
-            return "未知", "历史数据不足(需≥5天)"
-
-        n = len(rank_history)
-        current_rank_pct = rank_history[-1]
-        current_senti = sentiment_history[-1]
-
-        # ---- 排名轨迹特征 ----
-        seg_len = max(1, n // 3)
-        rank_early = np.mean(rank_history[:seg_len])
-        rank_mid = np.mean(rank_history[seg_len:2*seg_len])
-        rank_late = np.mean(rank_history[-seg_len:])
-
-        # 近10天排名线性斜率（正=提升）
-        recent_n = min(10, n)
-        recent_ranks = rank_history[-recent_n:]
-        x = np.arange(recent_n)
-        if len(recent_ranks) >= 3 and np.std(recent_ranks) > 0:
-            rank_slope = np.polyfit(x, recent_ranks, 1)[0]
-        else:
-            rank_slope = 0
-
-        # 短期加速：最近3天 vs 前3天
-        last_3 = np.mean(rank_history[-3:]) if n >= 3 else current_rank_pct
-        prior_3 = np.mean(rank_history[-6:-3]) if n >= 6 else rank_early
-        short_accel = last_3 - prior_3
-
-        # 中期加速：后半段 vs 前半段
-        first_half = np.mean(rank_history[:n//2]) if n >= 4 else rank_early
-        second_half = np.mean(rank_history[-n//2:]) if n >= 4 else rank_late
-        mid_accel = second_half - first_half
-
-        rank_high = max(rank_history)
-        rank_volatility = np.std(rank_history[-seg_len:]) if n >= seg_len else np.std(rank_history)
-
-        # 近5天情绪均值
-        s_5 = np.mean(sentiment_history[-5:]) if n >= 5 else current_senti
+    from collections import defaultdict
+    
+    style_data = defaultdict(lambda: {
+        "themes": [], "t_scores": [], "s_scores": [], "c_scores": [],
+        "ret_5_list": [], "ret_10_list": [], "zt_total": 0,
+        "tradeable_count": 0,
+    })
+    
+    # 可交易状态：抱团主升、强趋势、启动、分歧转一致
+    tradeable_states = {"抱团主升", "强趋势", "启动", "分歧转一致"}
+    
+    for r in results:
+        style = r.get("style", "未分类")
+        d = style_data[style]
+        d["themes"].append(r["theme"])
+        d["t_scores"].append(r["trend_score"])
+        d["s_scores"].append(r["sentiment_score"])
+        d["c_scores"].append(r["composite_score"])
         
-        # 近10天排名均值
-        r_10 = np.mean(rank_history[-10:]) if n >= 10 else current_rank_pct
-
-        # ---- 基于排名动态的轮动判定 ----
-        # 目标：全市场只选出 3~5 个真正有参与价值的主题，其余归为退潮/未知
-
-        # ① 高潮风险：排名极度靠前 + 情绪偏强
-        if current_rank_pct >= 90 and s_5 >= 60:
-            return "高潮风险", f"趋势排名在全部主题中持续顶尖({current_rank_pct:.0f}%分位)，情绪偏强，亢奋赶顶期"
-
-        # ② 高潮风险：长期高位横盘
-        if rank_late >= 85 and rank_volatility < 4 and rank_high >= 92:
-            return "高潮风险", f"排名高位横盘(近{seg_len}天波动<4%，稳定在{rank_late:.0f}%分位)，随时见顶"
-
-        # ③ 短期爆发：从低位强势攀升至高排名 + 斜率非常陡峭 + 短期加速极强
-        if (rank_early < 35 and current_rank_pct >= 75 and
-                rank_slope > 6 and short_accel > 15 and current_senti >= 45):
-            return "短期爆发", f"排名从{rank_early:.0f}%分位快速跃升{current_rank_pct-rank_early:.0f}个百分点，斜率{rank_slope:.1f}，短期加速{short_accel:.1f}%，爆发启动"
-
-        # ④ 短期爆发：近期加速至高位 + 斜率陡峭
-        if (current_rank_pct >= 72 and rank_slope > 7 and 
-                short_accel > 12 and s_5 >= 45):
-            return "短期爆发", f"近{recent_n}天排名斜率{rank_slope:.1f}，短期加速{short_accel:.1f}%，快速突破至{current_rank_pct:.0f}%分位，强势爆发"
-
-        # ⑤ 中期持续：排名稳定在中高位(55%~85%) + 波动小 + 情绪配合 + 无大幅异动
-        if n >= 7:
-            recent_7_median = np.median(rank_history[-7:])
+        td = r.get("trend_detail", {}) or {}
+        d["ret_5_list"].append(td.get("avg_ret_5", 0))
+        d["ret_10_list"].append(td.get("avg_ret_10", 0))
+        
+        sd = r.get("sentiment_detail", {}) or {}
+        d["zt_total"] += sd.get("zt_count", 0)
+        
+        # 使用 theme_state 替代 rotation_cycle
+        theme_state = r.get("theme_state", "弱势")
+        if theme_state in tradeable_states:
+            d["tradeable_count"] += 1
+    
+    # 计算风格指标并排序
+    style_summary = []
+    for style, d in style_data.items():
+        n = len(d["themes"])
+        avg_c = np.mean(d["c_scores"]) if d["c_scores"] else 0
+        avg_t = np.mean(d["t_scores"]) if d["t_scores"] else 0
+        avg_s = np.mean(d["s_scores"]) if d["s_scores"] else 0
+        avg_ret5 = np.mean(d["ret_5_list"]) if d["ret_5_list"] else 0
+        avg_ret10 = np.mean(d["ret_10_list"]) if d["ret_10_list"] else 0
+        
+        # 风格状态标签
+        if d["tradeable_count"] >= 2 and avg_t >= 60:
+            status = "◆ 主线"  # 核心主线
+        elif d["tradeable_count"] >= 1 and avg_t >= 50:
+            status = "◇ 支线"  # 轮动支线
+        elif avg_t >= 55:
+            status = "○ 活跃"  # 活跃但未形成主线
+        elif avg_t >= 40:
+            status = "△ 冷门"  # 冷门
         else:
-            recent_7_median = current_rank_pct
-        if (55 <= current_rank_pct <= 85 and 50 <= recent_7_median <= 88 and
-                rank_volatility < 6 and s_5 >= 42 and abs(short_accel) < 6):
-            return "中期持续", f"排名稳定在{current_rank_pct:.0f}%分位(近7日中位数{recent_7_median:.0f}%)，波动{rank_volatility:.1f}%，趋势持续健康"
-
-        # ⑥ 中期持续：高位稳健运行 + 情绪稳定
-        if (65 <= r_10 <= 85 and rank_volatility < 7 and 
-                s_5 >= 45 and abs(rank_slope) < 3):
-            return "中期持续", f"近10天平均排名{r_10:.0f}%分位，波动有序，趋势稳健运行"
-
-        # ⑦ 上升中：排名持续提升 + 从低位向高位迈进
-        if (rank_slope > 2 and mid_accel > 8 and 
-                current_rank_pct >= 40 and current_rank_pct < 70 and s_5 >= 40):
-            return "上升中", f"排名从{first_half:.0f}%分位升至{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，中期加速{mid_accel:.1f}%，趋势明确上升"
-
-        # ⑧ 上升中：低位启动后持续攀升
-        if (rank_early < 40 and current_rank_pct >= 50 and 
-                rank_slope > 3 and s_5 >= 38):
-            return "上升中", f"排名从低位({rank_early:.0f}%)持续攀升至{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，处于上升通道"
-
-        # ⑨ 退潮回避：从高位持续下滑至低位
-        if (rank_early > 65 and current_rank_pct <= 35 and
-                rank_slope < -2.5 and short_accel < -6):
-            return "退潮回避", f"排名从{rank_early:.0f}%分位持续下滑至{current_rank_pct:.0f}%分位，资金持续流出"
-
-        # ⑩ 退潮回避：长期低迷 + 情绪不振
-        if rank_early < 35 and current_rank_pct < 35 and rank_slope < 1 and s_5 < 45:
-            return "退潮回避", f"排名长期低迷({current_rank_pct:.0f}%分位)，情绪不振，回避为主"
-
-        # ⑪ 退潮回避：快速破位
-        if max(rank_early, rank_mid) > 60 and current_rank_pct <= 35 and short_accel < -12:
-            return "退潮回避", f"排名短期从{max(rank_early,rank_mid):.0f}%分位跌破至{current_rank_pct:.0f}%分位，破位信号"
-
-        # ⑫ 上升中兜底：排名持续提升但未达爆发标准
-        if (rank_slope > 2.5 and current_rank_pct >= 45 and s_5 >= 38):
-            return "上升中", f"排名{current_rank_pct:.0f}%分位，斜率{rank_slope:.1f}，趋势持续提升中"
-
-        # ⑬ 其余全部归为退潮回避
-        if current_rank_pct >= 50:
-            return "退潮回避", f"排名{current_rank_pct:.0f}%分位，趋势强度尚可但未达轮动信号标准，观望"
-        else:
-            return "退潮回避", f"排名{current_rank_pct:.0f}%分位，趋势偏弱或无明确信号"
-
-    except Exception as e:
-        print(f"[旋转周期] 分析失败 {theme_name}: {e}")
-        return "未知", "分析异常"
+            status = "× 弱势"  # 弱势
+        
+        style_summary.append({
+            "style": style, "count": n, "avg_trend": round(avg_t, 1),
+            "avg_sentiment": round(avg_s, 1), "composite": round(avg_c, 1),
+            "avg_ret_5": round(avg_ret5, 2), "avg_ret_10": round(avg_ret10, 2),
+            "zt_total": d["zt_total"], "tradeable": d["tradeable_count"],
+            "themes": d["themes"], "status": status,
+        })
+    
+    style_summary.sort(key=lambda x: x["composite"], reverse=True)
+    
+    # 生成描述文本
+    lines = []
+    lines.append("=" * 80)
+    lines.append("  风格维度中期跟踪（主线/支线识别）")
+    lines.append("=" * 80)
+    lines.append(f"{'风格':<12}{'题材':<4}{'综合分':<8}{'趋势分':<8}{'情绪分':<8}{'5日%':<7}{'10日%':<7}{'涨停':<5}{'可交易':<6}{'状态':<10}")
+    lines.append("-" * 80)
+    for s in style_summary:
+        lines.append(f"{s['style']:<12}{s['count']:<4}{s['composite']:<8}{s['avg_trend']:<8}{s['avg_sentiment']:<8}"
+                     f"{s['avg_ret_5']:<7}{s['avg_ret_10']:<7}{s['zt_total']:<5}{s['tradeable']:<6}{s['status']:<10}")
+    lines.append("-" * 80)
+    
+    # 主线与支线汇总
+    main_lines = [s for s in style_summary if "主线" in s["status"]]
+    branch_lines = [s for s in style_summary if "支线" in s["status"]]
+    active_lines = [s for s in style_summary if "活跃" in s["status"]]
+    
+    if main_lines:
+        lines.append(f"\n【当前市场主线】{', '.join(s['style'] for s in main_lines)}")
+        for s in main_lines:
+            lines.append(f"  {s['style']}: {', '.join(s['themes'])}")
+    if branch_lines:
+        lines.append(f"\n【轮动支线】{', '.join(s['style'] for s in branch_lines)}")
+        for s in branch_lines:
+            lines.append(f"  {s['style']}: {', '.join(s['themes'])}")
+    if active_lines:
+        lines.append(f"\n【活跃方向（待确认）】{', '.join(s['style'] for s in active_lines)}")
+    lines.append("=" * 80)
+    
+    style_text = "\n".join(lines)
+    return style_summary, style_text
 
 
 def save_to_csv(results):
@@ -1483,7 +1941,7 @@ def save_to_sqlite(results):
         rank INTEGER, theme TEXT, n_stocks INTEGER, trend_score REAL, sentiment_score REAL, composite_score REAL,
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
-        trade_date TEXT, theme_state TEXT, rotation_cycle TEXT DEFAULT '', rotation_desc TEXT DEFAULT ''
+        trade_date TEXT, theme_state TEXT, hot_score REAL, hot_percentile REAL, hot_phase TEXT, hot_warning TEXT
     )""")
     
     # 检查表结构，如果缺少某些列则添加
@@ -1491,16 +1949,21 @@ def save_to_sqlite(results):
     columns = [row[1] for row in cur.fetchall()]
     if "theme_state" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN theme_state TEXT DEFAULT '弱势'")
-    if "rotation_cycle" not in columns:
-        cur.execute("ALTER TABLE theme_scores ADD COLUMN rotation_cycle TEXT DEFAULT ''")
-    if "rotation_desc" not in columns:
-        cur.execute("ALTER TABLE theme_scores ADD COLUMN rotation_desc TEXT DEFAULT ''")
+    if "hot_score" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_score REAL DEFAULT 0")
+    if "hot_percentile" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_percentile REAL DEFAULT 50")
+    if "hot_phase" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_phase TEXT DEFAULT '正常'")
+    if "hot_warning" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_warning TEXT DEFAULT ''")
     
     # 固定列名顺序
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
                      "climax_warning", "leader_name", "leader_code", "leader_score",
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
-                     "up_ratio", "zt_count", "trade_date", "theme_state", "rotation_cycle", "rotation_desc"]
+                     "up_ratio", "zt_count", "trade_date", "theme_state",
+                     "hot_score", "hot_percentile", "hot_phase", "hot_warning"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
@@ -1535,8 +1998,10 @@ def save_to_sqlite(results):
             "zt_count": sd.get("zt_count", 0),
             "trade_date": TRADE_DATE,
             "theme_state": theme_state,
-            "rotation_cycle": r.get("rotation_cycle", ""),
-            "rotation_desc": r.get("rotation_desc", ""),
+            "hot_score": r.get("hot_score", 0),
+            "hot_percentile": r.get("hot_percentile", 50),
+            "hot_phase": r.get("hot_phase", "正常"),
+            "hot_warning": r.get("hot_warning", ""),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
@@ -1555,16 +2020,6 @@ def save_report_text(results):
     w("=" * 80)
     w(f"  主题趋势分析报告 - {TRADE_DATE}")
     w("=" * 80)
-    w()
-
-    # ========== 轮动周期全景 ==========
-    w("\n轮动周期全景:")
-    w("-" * 60)
-    for cycle in ["新启动", "中期轮动", "高潮风险", "退潮回避"]:
-        themes_in_cycle = [r for r in results if r.get("rotation_cycle") == cycle]
-        if themes_in_cycle:
-            names = ", ".join([f"{r['theme']}({r['trend_score']:.0f}/{r['sentiment_score']:.0f})" for r in themes_in_cycle])
-            w(f"  {cycle}: {names}")
     w()
 
     # ========== 重点机会：分歧转一致 ==========
@@ -1609,29 +2064,30 @@ def save_report_text(results):
     for r in results:
         theme_state = r.get("theme_state", "弱势")
         state_icon = ""
-        if theme_state == "高潮": state_icon = "高潮⚠️"
+        if theme_state == "抱团主升": state_icon = "抱团主升🔥"
+        elif theme_state == "高潮": state_icon = "高潮⚠️"
+        elif theme_state == "强趋势": state_icon = "强趋势↑"
         elif theme_state == "分歧转一致": state_icon = "转一致⭐"
         elif theme_state == "主升": state_icon = "主升↑"
         elif theme_state == "启动": state_icon = "启动↑"
         elif theme_state == "分歧": state_icon = "分歧~"
         elif theme_state == "退潮": state_icon = "退潮↓"
+        elif theme_state == "弱趋势": state_icon = "弱趋势→"
+        elif theme_state == "震荡": state_icon = "震荡→"
         else: state_icon = theme_state
         w(f"{r['rank']:<3} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} {r['composite_score']:<6.1f} {state_icon:<10}")
     w("-" * 80)
     w()
 
-    # ========== 重点主题龙头 ==========
-    top_themes = [r for r in results if r.get("theme_state") in ["分歧转一致", "主升", "启动", "高潮"]]
-    if top_themes:
-        w("【重点主题龙头股】")
-        w("-" * 60)
-        for r in top_themes[:6]:
-            ld = f"{r.get('leader_name', '')}({r.get('leader_code', '')})" if r.get("leader_name") else "-"
-            cd = f"{r.get('core_name', '')}({r.get('core_code', '')})" if r.get("core_name") else "-"
-            w(f"  {r['theme']:<12} 龙头:{ld:<16} 中军:{cd:<16}")
-        w()
+    w("=" * 80)
+
+    # ========== 渤海证券轮动监测 ==========
+    rotation_info = calc_rotation_monitoring(ndays=20)
+    w(rotation_info["details"])
 
     w("=" * 80)
+    w(f"报告生成: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    w()
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(buf))
@@ -1730,6 +2186,8 @@ def main():
             feat["purity"] = purity
             feat["total_mv"] = mv
             feat["industry_match"] = meta.get("industry_match", False)
+            # 添加热榜排名分数（50%权重）
+            feat["hot_rank_score"] = get_stock_hot_rank(code)
             rows.append(feat)
 
         if len(rows) < MIN_STOCKS:
@@ -1758,21 +2216,34 @@ def main():
         t_score, t_detail = calc_trend_score(top_rows, market_ret_10)
         s_score, s_detail = calc_sentiment_score(all_rows, market_ret_10)  # 情绪分用全成份股计算
         
+        # =========================
+        # 计算主题热度得分（基于热榜数据）
+        # =========================
+        hot_score, hot_detail = calc_theme_hot_score(all_rows)
+        hot_percentile, _ = get_theme_hot_score_percentile(theme_name, hot_score, days=60)
+        hot_phase, hot_warning = judge_hot_phase(
+            hot_score=hot_score,
+            percentile=hot_percentile,
+            top10_count=hot_detail.get('top10_count', 0),
+            top5_count=hot_detail.get('top5_count', 0),
+            total_stocks=all_total
+        )
+        
         composite = round(0.55 * t_score + 0.45 * s_score, 1)
 
         # 判断主题状态
         theme_result = {
             "theme": theme_name, "n_stocks": all_total, "trend_score": t_score, "sentiment_score": s_score,
             "composite_score": composite, "trend_detail": t_detail, "sentiment_detail": s_detail,
+            "hot_score": round(hot_score, 2), "hot_percentile": hot_percentile, "hot_phase": hot_phase, "hot_warning": hot_warning,
+            "hot_detail": hot_detail,
         }
         prev_data = prev_theme_data.get(theme_name)
         theme_state = calc_theme_state(theme_result, prev_data)
         theme_result["theme_state"] = theme_state
 
-        # 轮动周期判定（基于20天趋势/情绪变化轨迹）
-        rotation_cycle, rotation_desc = calc_rotation_cycle(theme_name, t_score, s_score)
-        theme_result["rotation_cycle"] = rotation_cycle
-        theme_result["rotation_desc"] = rotation_desc
+        # 风格属性（用于风格维度中期跟踪）
+        theme_result["style"] = cfg.get("style", "未分类")
 
         leader_scores = []
         for r in top_rows:
@@ -1817,33 +2288,41 @@ def main():
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    print("\n" + "=" * 120)
-    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'5日%':<7}{'10日%':<7}{'上涨%':<6}{'涨停':<6}{'轮动周期':<16}")
-    print("-" * 120)
+    print("\n" + "=" * 100)
+    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'热度':<8}{'热度%':<6}{'阶段':<10}{'5日%':<7}{'10日%':<7}{'上涨%':<6}{'涨停':<6}{'状态':<12}")
+    print("-" * 100)
     for r in results:
         td = r.get("trend_detail", {}) or {}
         sd = r.get("sentiment_detail", {}) or {}
-        cycle = r.get("rotation_cycle", "未知")
-        desc = r.get("rotation_desc", "")
-        # 缩短 desc 显示
-        short_desc = desc if len(desc) <= 14 else desc[:12] + ".."
-        cycle_label = f"{cycle}/{short_desc}" if short_desc else cycle
+        theme_state = r.get("theme_state", "弱势")
+        hot_phase = r.get("hot_phase", "正常")
         print(f"{r['rank']:<4}{r['theme']:<14}{r['n_stocks']:<6}{r['trend_score']:<8}{r['sentiment_score']:<8}{r['composite_score']:<8}"
+              f"{r.get('hot_score', 0):<8}{r.get('hot_percentile', 0):<6}{hot_phase:<10}"
               f"{td.get('avg_ret_5', 0):<7}{td.get('avg_ret_10', 0):<7}"
-              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{cycle_label:<16}")
-    print("=" * 120)
+              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{theme_state:<12}")
+    print("=" * 100)
 
-    # 轮动周期简报
-    cycle_counts = {}
+    # 输出热度预警信息
+    hot_warnings = [r for r in results if r.get('hot_warning')]
+    if hot_warnings:
+        print("\n" + "=" * 100)
+        print("🔥 热度预警提示")
+        print("=" * 100)
+        for r in hot_warnings:
+            print(f"⚠️ {r['theme']}: {r['hot_warning']}")
+        print("=" * 100)
+
+    # 主题状态分布
+    state_counts = {}
     for r in results:
-        cycle = r.get("rotation_cycle", "未知")
-        cycle_counts[cycle] = cycle_counts.get(cycle, 0) + 1
-    print("\n" + "-" * 80)
-    print("轮动周期分布:")
-    for cycle, cnt in sorted(cycle_counts.items(), key=lambda x: -x[1]):
-        themes_in_cycle = [r["theme"] for r in results if r.get("rotation_cycle") == cycle]
-        print(f"  {cycle:<8}: {cnt:>2}个 → {', '.join(themes_in_cycle)}")
-    print("-" * 80)
+        state = r.get("theme_state", "弱势")
+        state_counts[state] = state_counts.get(state, 0) + 1
+    print("\n" + "-" * 60)
+    print("主题状态分布:")
+    for state, cnt in sorted(state_counts.items(), key=lambda x: -x[1]):
+        themes_in_state = [r["theme"] for r in results if r.get("theme_state") == state]
+        print(f"  {state:<8}: {cnt:>2}个 → {', '.join(themes_in_state)}")
+    print("-" * 60)
 
     print("\n" + "=" * 110)
     print("主题龙头/中军一览")
@@ -1856,9 +2335,21 @@ def main():
         print(f"{r['rank']:<4}{r['theme']:<14}{ld:<18}{r.get('leader_score', 0):<10}{cd:<18}{r.get('core_score', 0):<10}")
     print("=" * 110)
 
+    # ========== 风格维度中期跟踪 ==========
+    style_rankings, style_text = analyze_style_trend(results)
+    print(style_text)
+    print()
+
     save_to_csv(results)
     save_to_sqlite(results)
     save_report_text(results)
+
+    # ========== 渤海证券轮动监测 ==========
+    print("\n" + "=" * 60)
+    rotation_info = calc_rotation_monitoring(ndays=20)
+    print(rotation_info["details"])
+    print("=" * 60)
+
     print(f"\n[Save] CSV: {OUTPUT_CSV}")
     print(f"[Save] DB : {OUTPUT_DB}")
 
@@ -1939,6 +2430,8 @@ def run_theme_analysis():
             feat["purity"] = purity
             feat["total_mv"] = mv
             feat["industry_match"] = meta.get("industry_match", False)
+            # 添加热榜排名分数（50%权重）
+            feat["hot_rank_score"] = get_stock_hot_rank(code)
             rows.append(feat)
 
         if len(rows) < MIN_STOCKS:
@@ -2035,6 +2528,202 @@ def get_prev_day_theme_data():
     
     conn.close()
     return prev_data
+
+
+def calc_rotation_monitoring(ndays=20):
+    """
+    渤海证券轮动监测 — 主线稳定性 + 轮动速率
+
+    核心融合逻辑：
+    - 输入：连续N个交易日（默认20）的各主题 composite_score（综合评分）
+    - 处理：
+      a) 每日按 composite_score 对所有主题排名（未出现主题取最后一名）
+      b) 轮动速率 = 相邻5日窗口排名变化绝对值之和 / 固定主题数 / 天数
+      c) 主线稳定性 = Top5留存率（20日均值）
+    - 主线存在条件：rotation_speed < 7.5 OR stability_index > 0.6
+
+    Args:
+        ndays: 分析天数，默认20个交易日
+
+    Returns:
+        dict: {
+            rotation_speed: float,       # 轮动速率（归一化值，代表每日每主题平均排名位移）
+            stability_index: float,      # 主线稳定性 0~1
+            market_stage: str,           # 市场阶段文本
+            n_themes: int,               # 参与统计的主题数
+            n_days_actual: int,          # 实际有效的交易日数
+            details: str                 # 详细分析文本
+        }
+    """
+    import sqlite3
+    from collections import defaultdict
+
+    if not os.path.exists(OUTPUT_DB):
+        return {"rotation_speed": 0, "stability_index": 0,
+                "market_stage": "数据不足", "n_themes": 0,
+                "n_days_actual": 0, "details": "数据库不存在"}
+
+    conn = sqlite3.connect(OUTPUT_DB)
+    cur = conn.cursor()
+
+    # 获取最近 ndays 个交易日
+    cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT ?",
+                (ndays * 2,))
+    all_dates = [row[0] for row in cur.fetchall()]
+    all_dates.reverse()  # 从旧到新
+    if len(all_dates) < 5:
+        conn.close()
+        return {"rotation_speed": 0, "stability_index": 0,
+                "market_stage": "数据不足（<5个交易日）", "n_themes": 0,
+                "n_days_actual": len(all_dates), "details": ""}
+
+    # 取最近 ndays 个交易日
+    dates = all_dates[-ndays:]
+    n_days_actual = len(dates)
+
+    # 获取所有主题 composite_score
+    placeholders = ','.join(['?' for _ in dates])
+    query = f"""
+        SELECT trade_date, theme, composite_score, trend_score, sentiment_score
+        FROM theme_scores
+        WHERE trade_date IN ({placeholders})
+          AND composite_score IS NOT NULL
+          AND composite_score > 0
+        ORDER BY trade_date, composite_score DESC
+    """
+    cur.execute(query, dates)
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"rotation_speed": 0, "stability_index": 0,
+                "market_stage": "数据不足", "n_themes": 0,
+                "n_days_actual": 0, "details": "无有效主题数据"}
+
+    # ========== 获取全量主题（所有出现过的主题构成固定集合）==========
+    all_theme_names = set()
+    for trade_date, theme, cs, ts, ss in rows:
+        all_theme_names.add(theme)
+    total_themes = len(all_theme_names)  # 固定分母（如58）
+    theme_list = sorted(all_theme_names)
+
+    # ========== 构建每日排名（含未出现主题=最后一名）==========
+    daily_raw = defaultdict(list)
+    for trade_date, theme, cs, ts, ss in rows:
+        daily_raw[trade_date].append((theme, cs))
+
+    # 构建每日全量排名：未出现的主题取 composite_score=0
+    daily_rankings = defaultdict(list)  # date -> [(theme, composite_score, rank), ...]
+    for date_key in sorted(daily_raw.keys()):
+        scored = {t: cs for t, cs in daily_raw[date_key]}
+        all_with_scores = [(t, scored.get(t, 0.0)) for t in theme_list]
+        all_with_scores.sort(key=lambda x: -x[1])  # 按综合分降序
+        for rank, (theme, cs) in enumerate(all_with_scores, 1):
+            daily_rankings[date_key].append((theme, cs, rank))
+
+    date_list = sorted(daily_rankings.keys())
+
+    # ========== 1. 计算轮动速率 ==========
+    # rotation_speed = sum(abs(rank_change)) / 58
+    # 对每个可用的5日窗口计算，按天数归一化后取平均
+    rotation_speeds = []
+
+    for i in range(len(date_list)):
+        for j in range(i + 1, min(i + 6, len(date_list))):
+            gap = j - i
+            if gap < 4:  # 至少间隔5天（0-4）
+                continue
+            date_a = date_list[i]
+            date_b = date_list[j]
+            ranking_a = {t: r for t, _, r in daily_rankings[date_a]}
+            ranking_b = {t: r for t, _, r in daily_rankings[date_b]}
+
+            # 固定分母：全量58个主题，缺失主题已有最后一名排名
+            total_rank_change = sum(abs(ranking_a[t] - ranking_b[t]) for t in theme_list)
+            avg_change = total_rank_change / total_themes / gap  # 每日每主题位移
+            rotation_speeds.append(avg_change)
+
+    rotation_speed = sum(rotation_speeds) / len(rotation_speeds) if rotation_speeds else 0
+
+    # ========== 2. 计算主线稳定性 ==========
+    # Top10留存率20日均值（按照主题数TOP_K = max(5, round(total_theme * 0.17))，渤海原值为5，我们为10
+    stability_values = []
+
+    for i in range(len(date_list) - 1):
+        date_curr = date_list[i]
+        date_next = date_list[i + 1]
+        top5_curr = set(t for t, _, r in daily_rankings[date_curr] if r <= 10)
+        top5_next = set(t for t, _, r in daily_rankings[date_next] if r <= 10)
+        if len(top5_curr) == 0 or len(top5_next) == 0:
+            continue
+        overlap = len(top5_curr & top5_next)
+        jaccard = overlap / max(len(top5_curr | top5_next), 1)
+        stability_values.append(jaccard)
+
+    stability_index = sum(stability_values) / len(stability_values) if stability_values else 0
+
+    # ========== 3. 判断市场阶段（二分类）==========
+    # 主线存在条件：rotation_speed < 7.5 OR stability_index > 0.6
+    # 否则：快速轮动
+    if rotation_speed < 7.5 or stability_index > 0.6:
+        # 确定具体缘由
+        reasons = []
+        if rotation_speed < 7.5:
+            reasons.append(f"旋转速率{rotation_speed:.2f}<7.5")
+        if stability_index > 0.6:
+            reasons.append(f"稳定性{stability_index:.2f}>0.6")
+        reason_str = " 且 ".join(reasons) if len(reasons) > 1 else reasons[0]
+        market_stage = "主线清晰"
+        stage_desc = f"{reason_str}，主线存在，可聚焦核心主题操作"
+    else:
+        market_stage = "快速轮动"
+        stage_desc = f"旋转速率{rotation_speed:.2f}≥7.5 且 稳定性{stability_index:.2f}≤0.6，主线缺失，宜低仓位防御等待信号"
+
+    # ========== 4. 构建详情文本 ==========
+    lines = []
+    lines.append("─" * 60)
+    lines.append("【渤海证券轮动监测】")
+    lines.append(f"分析区间: {date_list[0]} ~ {date_list[-1]} ({n_days_actual}个交易日)")
+    lines.append(f"参与主题: {total_themes} 个")
+    lines.append("─" * 60)
+
+    # 最新排名
+    latest_date = date_list[-1]
+    lines.append(f"\n最新({latest_date})主题排名 Top10:")
+    lines.append(f"{'排名':<4}{'主题':<18}{'composite_score':<10}")
+    for theme, cs, rank in daily_rankings[latest_date][:10]:
+        lines.append(f"  {rank:<2}  {theme:<18}{cs:<10.1f}")
+    lines.append("")
+
+    # 稳定性时间序列
+    lines.append("主线稳定性（Top10留存率）:")
+    for i in range(max(0, len(stability_values) - 5), len(stability_values)):
+        if i < len(stability_values) and i + 1 < len(date_list):
+            lines.append(f"  {date_list[i]}→{date_list[i+1]}: {stability_values[i]:.2f}")
+    lines.append(f"  20日均值: {stability_index:.3f}")
+    lines.append("")
+
+    # 轮动速率
+    lines.append(f"轮动速率（全量{total_themes}主题每日每主题排名位移）:")
+    lines.append(f"  rotation_speed = {rotation_speed:.2f}  (阈值 7.5)")
+    lines.append(f"  stability_index = {stability_index:.3f}  (阈值 0.6)")
+    lines.append("")
+
+    # 市场阶段结论
+    lines.append(f"【市场阶段】: {market_stage}")
+    lines.append(f"策略建议: {stage_desc}")
+    lines.append("─" * 60)
+
+    details = "\n".join(lines)
+
+    return {
+        "rotation_speed": round(rotation_speed, 3),
+        "stability_index": round(stability_index, 3),
+        "market_stage": market_stage,
+        "n_themes": total_themes,
+        "n_days_actual": n_days_actual,
+        "details": details
+    }
 
 
 def get_60day_avg_trend_score():
@@ -2178,6 +2867,8 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
                 feat['purity'] = purity
                 feat['total_mv'] = mv
                 feat['industry_match'] = meta.get('industry_match', False)
+                # 添加热榜排名分数（50%权重）
+                feat['hot_rank_score'] = get_stock_hot_rank(code)
                 rows.append(feat)
             
             if len(rows) < MIN_STOCKS:
@@ -2205,6 +2896,19 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
             
             t_score, t_detail = calc_trend_score(top_rows, market_ret_10)
             s_score, s_detail = calc_sentiment_score(all_rows, market_ret_10)  # 情绪分用全成份股计算
+            
+            # =========================
+            # 计算主题热度得分（基于热榜数据）
+            # =========================
+            hot_score, hot_detail = calc_theme_hot_score(all_rows)
+            hot_percentile, _ = get_theme_hot_score_percentile(theme_name, hot_score, days=60)
+            hot_phase, hot_warning = judge_hot_phase(
+                hot_score=hot_score,
+                percentile=hot_percentile,
+                top10_count=hot_detail.get('top10_count', 0),
+                top5_count=hot_detail.get('top5_count', 0),
+                total_stocks=all_total
+            )
             
             composite = round(0.55 * t_score + 0.45 * s_score, 1)
             
@@ -2239,6 +2943,8 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
                 'composite_score': composite, 'trend_detail': t_detail, 'sentiment_detail': s_detail,
                 'leader_name': leader_name, 'leader_code': leader_code, 'leader_score': round(leader_scores[0][1], 1) if leader_scores else 0,
                 'core_name': core_name, 'core_code': core_code, 'core_score': round(core_scores[0][1], 1) if core_scores else 0,
+                'hot_score': round(hot_score, 2), 'hot_percentile': hot_percentile, 'hot_phase': hot_phase, 'hot_warning': hot_warning,
+                'hot_detail': hot_detail,
             })
             rows_per_theme[theme_name] = top_rows
         
@@ -2246,13 +2952,10 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
         for i, r in enumerate(results, 1):
             r['rank'] = i
         
-        # 补充 theme_state / rotation_cycle / rotation_desc（按日期顺序处理时，前一交易日数据已在 DB 中）
+        # 补充 theme_state（按日期顺序处理时，前一交易日数据已在 DB 中）
         for r in results:
             theme_state = calc_theme_state(r, get_prev_day_theme_data().get(r['theme']))
             r['theme_state'] = theme_state
-            rotation_cycle, rotation_desc = calc_rotation_cycle(r['theme'], r['trend_score'], r['sentiment_score'])
-            r['rotation_cycle'] = rotation_cycle
-            r['rotation_desc'] = rotation_desc
         
         # 保存到数据库
         save_to_sqlite(results)
@@ -2306,6 +3009,14 @@ def backfill_last_n_days(n_days=60):
             traceback.print_exc()
     
     print(f"\n[全部完成] 共处理 {len(trade_dates)} 个交易日")
+
+    # 回溯完成后输出轮动监测
+    print("\n" + "=" * 60)
+    print("回溯完成后轮动监测报告")
+    print("=" * 60)
+    rotation_info = calc_rotation_monitoring(ndays=20)
+    print(rotation_info["details"])
+    print("=" * 60)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,80 @@
+# 多因子选股配置文件
+# 用户可根据需求调整各因子阈值和权重
+
+tushare:
+  token_env: TUSHARE_TOKEN  # 环境变量名
+  max_retry: 3              # API重试次数
+  retry_delay: 5           # 重试间隔(秒)
+
+cache:
+  enabled: true
+  dir: "cache"             # 缓存目录
+  expire_hours: 168        # 缓存过期时间(小时)，财报数据稳定，设7天
+
+# 因子阈值配置
+factors:
+  # 技术壁垒因子
+  tech_barrier:
+    roe_min: 0.12          # ROE > 12%
+    roe_consecutive_years: 2  # 连续2年ROE > 0
+    gross_margin_min: 0.20  # 毛利率 > 20%
+    rd_expense_ratio_min: 0.02  # 研发费用占营收 > 2%
+
+  # 供需缺口因子
+  supply_demand:
+    industry_growth_min: 0.02      # 行业增速 > 2% (日线代理)
+    capacity_utilization_min: 0.95  # 产能利用率 > 0.95
+    # 替代条件: 存货周转率同比提升 + 固定资产周转率提升
+    inventory_turnover_improvement: true
+    # 涨价信号阈值
+    price_signal_threshold: 0.95
+    # 涨价条件: 近1个月研报中"涨价"/"供不应求"出现次数
+    report_keyword_count: 2
+
+  # 业绩兑现因子
+  performance:
+    quarterly_profit_growth_min: 0.30  # 单季度净利润同比 > 30%
+    yearly_profit_growth_min: 0.30     # 单季度净利润同比 > 30%
+    # 业绩预告类型
+    forecast_types:
+      - "预盈"
+      - "扭亏"
+      - "预增"
+      - "略增"
+    forecast_min_change: 15.0          # 略增需增幅 > 15%
+
+  # 机构认可因子
+  institutional:
+    north_bound_days: 5          # 资金流连续上升天数
+    north_bound_ratio_min: 0     # 持股变化比例
+    north_bound_daily_min: 3e7    # 单日净买入 > 3000万元
+
+  # 行业景气度因子（新增）
+  industry_momentum:
+    revenue_growth_min: 0.10      # 收入增速标准化阈值 > 10%
+    profit_growth_min: 0.20      # 利润增速标准化阈值 > 20%
+    capex_growth_min: 0.0        # 资本开支增速（允许为负）
+    order_proxy_min: 0.0         # 订单代理增速（允许为负）
+    price_trend_above_ma: true  # 价格是否在MA20均线上方
+
+# 因子权重配置（5因子各占20%）
+weights:
+  tech_barrier: 0.20     # 技术壁垒
+  supply_demand: 0.20     # 供需缺口
+  performance: 0.20      # 业绩兑现
+  institutional: 0.20    # 机构认可
+  industry_momentum: 0.20  # 行业景气度（新增）
+
+# 选股范围
+universe:
+  # 上市状态: 1=正常
+  list_status: "L"
+  # 是否排除ST
+  exclude_st: true
+  # 排除科创板(可选,0=包含,1=排除)
+  exclude_star: false
+
+# 输出配置
+output:
+  dir: "output"
+  filename_prefix: "selected_stocks"

@@ -15,9 +15,17 @@
 
 最终输出：TOP10 趋势中军
 """
+import sys
+
+# Windows GBK 控制台输出修复:安全方式（Python 3.7+）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import os
-import sys
 import time
 import sqlite3
 import numpy as np
@@ -364,44 +372,21 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
         
         theme_cfg = hot_themes[theme_name]
         
-        # 获取该主题趋势评分
+        # 获取该主题趋势评分和状态
         theme_score_val = 0
+        theme_state = "弱势"
         if not theme_scores.empty and len(theme_scores[theme_scores['theme'] == theme_name]) > 0:
-            theme_score_val = theme_scores[theme_scores['theme'] == theme_name]['composite_score'].values[0]
+            theme_row = theme_scores[theme_scores['theme'] == theme_name].iloc[0]
+            theme_score_val = theme_row['composite_score']
+            theme_state = theme_row.get('theme_state', '弱势')
         
-        # 确定主题类型
-        is_mid_trend = False
-        is_short_trend = False
+        # 可交易状态：抱团主升、强趋势、启动、分歧转一致、主升
+        tradeable_states = {"抱团主升", "强趋势", "启动", "分歧转一致", "主升"}
         
-        if len(theme_scores) > 0:
-            # 计算60日均线斜率（中期趋势用）
-            avg_scores = {}
-            for idx, row in theme_scores.iterrows():
-                theme_name_iter = row['theme']
-                if 't_avg_slope_60' in row:
-                    avg_scores[theme_name_iter] = row['t_avg_slope_60']
-            
-            if avg_scores:
-                sorted_avg = sorted(avg_scores.items(), key=lambda x: -x[1])
-                top_5_avg = [x[0] for x in sorted_avg[:5]]
-                if theme_name in top_5_avg: 
-                    is_mid_trend = True
-            
-            # 当日趋势分排序
-            today_scores = {}
-            for idx, row in theme_scores.iterrows():
-                theme_name_iter = row['theme']
-                today_scores[theme_name_iter] = row.get('trend_score', 0)
-            
-            sorted_today = sorted(today_scores.items(), key=lambda x: -x[1])
-            top_5_today = [x[0] for x in sorted_today[:5]]
-            if theme_name in top_5_today:   
-                is_short_trend = True
-        
-        if not is_mid_trend and not is_short_trend:
+        if theme_state not in tradeable_states:
             continue
         
-        print(f"\n   【{theme_name}】({'中期趋势' if is_mid_trend else '短线主线'}):")
+        print(f"\n   【{theme_name}】({theme_state}):")
         
         theme_codes = list(stock_info.keys())
         all_scored = []
@@ -486,12 +471,17 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             # 总分100分，60分以上为中军
             total_score = 0
             
-            # 1. 主题类型（20分）
-            if is_mid_trend or is_short_trend:
+            # 1. 主题状态（20分）- 根据状态给予不同分数
+            if theme_state == "抱团主升":
                 total_score += 20
+            elif theme_state in ["强趋势", "主升"]:
+                total_score += 18
+            elif theme_state == "分歧转一致":
+                total_score += 15
+            elif theme_state == "启动":
+                total_score += 12
             else:
-                # 非TOP5主题直接跳过
-                continue
+                total_score += 10  # 其他可交易状态
             
             # 2. 日均成交额（20分）- 放宽到8亿
             if avg_amount_20 >= 15:
@@ -556,6 +546,15 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             # 判断是否为中军（60分阈值）
             is_zhongjun = total_score >= 60
             
+            # 判断主题类型（中期趋势 vs 短线主线）
+            # 基于60日平均趋势分，大于50分为中期趋势，否则为短线主线
+            is_mid_trend = False
+            if theme_scores is not None and not theme_scores.empty:
+                theme_row = theme_scores[theme_scores['theme'] == theme_name]
+                if not theme_row.empty:
+                    t_avg_slope_60 = theme_row.iloc[0].get('t_avg_slope_60', 0)
+                    is_mid_trend = t_avg_slope_60 >= 50
+            
             # 计算中军综合评分（用于排序）
             zhongjun_score = 0
             if is_zhongjun:
@@ -588,6 +587,7 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 'ma20_slope': ma20_slope,
                 'theme_name': theme_name,
                 'theme_type': '中期趋势' if is_mid_trend else '短线主线',
+                'theme_state': theme_state,
                 'theme_score': theme_score_val,
                 'is_zhongjun': is_zhongjun,
                 'final_score': zhongjun_score,
@@ -909,20 +909,22 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
         if theme_count > 0:
             good_themes.append({
                 'name': theme_name,
-                'type': '中期趋势' if is_mid_trend else '短线主线',
+                'state': theme_state,
                 'score': theme_score_val
             })
     
-    # 按主题类型排序，方便显示
+    # 按主题状态排序，方便显示
     def sort_key(stock):
-        # 优先级：中期趋势 > 短线主线 > 补充
-        theme_order = {
-            '中期趋势': 0,
-            '短线主线': 1,
-            '补充': 2
+        # 优先级：抱团主升 > 强趋势 > 主升 > 分歧转一致 > 启动 > 其他
+        state_order = {
+            '抱团主升': 0,
+            '强趋势': 1,
+            '主升': 2,
+            '分歧转一致': 3,
+            '启动': 4
         }
         return (
-            theme_order.get(stock.get('theme_type', '补充'), 2),
+            state_order.get(stock.get('theme_state', ''), 5),
             -stock.get('core_score', 0)
         )
     
@@ -944,24 +946,37 @@ def print_results(candidates):
     
     print(f"共筛选出 {len(candidates)} 只符合条件的股票\n")
     
-    # 按主题类型分组
-    mid_term_candidates = [c for c in candidates if c.get('theme_type') == '中期趋势']
-    short_term_candidates = [c for c in candidates if c.get('theme_type') == '短线主线']
-    supplement_candidates = [c for c in candidates if c.get('theme_type') == '补充']
+    # 按主题状态分组
+    state_order = ['抱团主升', '强趋势', '主升', '分歧转一致', '启动']
+    state_groups = {}
+    for state in state_order:
+        state_groups[state] = [c for c in candidates if c.get('theme_state') == state]
     
-    # 第一部分：中期趋势主题（60日趋势平均分TOP5）
-    if mid_term_candidates:
-        print("中期趋势主题（60日趋势平均分TOP5）")
+    # 按状态优先级输出
+    for state in state_order:
+        state_candidates = state_groups[state]
+        if not state_candidates:
+            continue
+        
+        state_icon = {
+            '抱团主升': '🔥',
+            '强趋势': '↑',
+            '主升': '↑',
+            '分歧转一致': '⭐',
+            '启动': '↑'
+        }.get(state, '')
+        
+        print(f"{state}{state_icon} 主题")
         print("-" * 120)
         
-        mid_term_zhongjun = [c for c in mid_term_candidates if c.get('buy_type') == '中军']
-        mid_term_buzhang = [c for c in mid_term_candidates if c.get('buy_type') == '补涨中军']
+        zhongjun = [c for c in state_candidates if c.get('buy_type') == '中军']
+        buzhang = [c for c in state_candidates if c.get('buy_type') == '补涨中军']
         
-        if mid_term_zhongjun:
+        if zhongjun:
             print("中军")
             print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
             print("-" * 100)
-            for stock in mid_term_zhongjun:
+            for stock in zhongjun:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
                 close_val = stock.get('close', 0) or 0
                 pct_val = stock.get('pct_chg', 0) or 0
@@ -971,47 +986,11 @@ def print_results(candidates):
                 print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
             print()
         
-        if mid_term_buzhang:
+        if buzhang:
             print("补涨中军")
             print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
             print("-" * 100)
-            for stock in mid_term_buzhang:
-                mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                close_val = stock.get('close', 0) or 0
-                pct_val = stock.get('pct_chg', 0) or 0
-                turnover_val = stock.get('turnover_rate', 0) or 0
-                theme_val = stock.get('theme_name', '') or ''
-                reason_val = stock.get('reason', '') or ''
-                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
-            print()
-    
-    # 第二部分：短线主线（当日最强主线5）
-    if short_term_candidates:
-        print("短线主线（当日最强主线TOP5）")
-        print("-" * 120)
-        
-        short_term_zhongjun = [c for c in short_term_candidates if c.get('buy_type') == '中军']
-        short_term_buzhang = [c for c in short_term_candidates if c.get('buy_type') == '补涨中军']
-        
-        if short_term_zhongjun:
-            print("中军")
-            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
-            print("-" * 100)
-            for stock in short_term_zhongjun:
-                mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
-                close_val = stock.get('close', 0) or 0
-                pct_val = stock.get('pct_chg', 0) or 0
-                turnover_val = stock.get('turnover_rate', 0) or 0
-                theme_val = stock.get('theme_name', '') or ''
-                reason_val = stock.get('reason', '') or ''
-                print(f"{stock['code']:<14}{stock['name']:<10}{theme_val:<10}{close_val:>8.2f}{pct_val:>8.2f}{turnover_val:>8.2f}{mcap_display:>10}  {reason_val}")
-            print()
-        
-        if short_term_buzhang:
-            print("补涨中军")
-            print(f"{'代码':<14}{'名称':<10}{'主题':<10}{'价格':>8}{'涨跌%':>8}{'换手%':>8}{'市值亿':>10}  {'推荐理由'}")
-            print("-" * 100)
-            for stock in short_term_buzhang:
+            for stock in buzhang:
                 mcap_display = f"{stock['mcap']:.1f}" if stock.get('has_real_mcap', False) else "--"
                 close_val = stock.get('close', 0) or 0
                 pct_val = stock.get('pct_chg', 0) or 0
@@ -1025,11 +1004,10 @@ def print_results(candidates):
     print("=" * 120)
     print("趋势中军池标准说明")
     print("=" * 120)
-    print("中期趋势主题：基于60日趋势平均分TOP5，适合中线布局")
-    print("短线主题：基于当日综合分TOP3，适合短线操作")
+    print("主题状态筛选：只选择可交易状态的主题（抱团主升、强趋势、主升、分歧转一致、启动）")
     print("趋势中军：满足以下分数制条件的个股，按综合评分排序取TOP10")
     print("  评分规则（总分100分，60分以上为中军）：")
-    print("  ├─ 主题类型（20分）：必须是TOP5中期趋势或短线主线")
+    print("  ├─ 主题状态（20分）：抱团主升=20分，强趋势/主升=18分，分歧转一致=15分，启动=12分")
     print("  ├─ 日均成交额（20分）：≥15亿=20分，≥8亿=15分，≥5亿=10分")
     print("  ├─ 均线多头（15分）：完美多头=15分，在MA20上=10分")
     print("  ├─ MA20向上（15分）：>1%=15分，>0=10分，>-1%=5分")

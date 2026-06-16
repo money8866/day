@@ -1,7 +1,7 @@
 {
   "theme_name": "CXO周期修复链",
   "macro_theme": "生物医药",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
   "theme_strength_score": 70,
   "core_pool": [],
@@ -9,90 +9,74 @@
     {
       "stock_code": "300759.SZ",
       "stock_name": "康龙化成",
-      "theme_score": 68.0,
+      "theme_score": 66.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.0387
+      "pct_chg": 0.4021
     },
     {
       "stock_code": "603259.SH",
       "stock_name": "药明康德",
-      "theme_score": 68.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.7197
-    },
-    {
-      "stock_code": "300347.SZ",
-      "stock_name": "泰格医药",
-      "theme_score": 65.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 0.3023
+      "theme_score": 66.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.341
     },
     {
       "stock_code": "603127.SH",
       "stock_name": "昭衍新药",
-      "theme_score": 65.5,
+      "theme_score": 64.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.5999
+      "pct_chg": 0.6765
+    },
+    {
+      "stock_code": "300347.SZ",
+      "stock_name": "泰格医药",
+      "theme_score": 64.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.0547
     },
     {
       "stock_code": "002821.SZ",
       "stock_name": "凯莱英",
-      "theme_score": 64.75,
+      "theme_score": 63.5,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 2.9927
-    },
-    {
-      "stock_code": "300363.SZ",
-      "stock_name": "博腾股份",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.6792
-    },
-    {
-      "stock_code": "688222.SH",
-      "stock_name": "成都先导",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 4.6493
-    },
-    {
-      "stock_code": "301230.SZ",
-      "stock_name": "泓博医药",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 6.0308
-    },
-    {
-      "stock_code": "688621.SH",
-      "stock_name": "阳光诺和",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 8.7165
-    },
-    {
-      "stock_code": "300725.SZ",
-      "stock_name": "药石科技",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.56
+      "pct_chg": -2.0938
     },
     {
       "stock_code": "000739.SZ",
       "stock_name": "普洛药业",
       "theme_score": 63.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 4.2829
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.4269
+    },
+    {
+      "stock_code": "300363.SZ",
+      "stock_name": "博腾股份",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.9168
+    },
+    {
+      "stock_code": "688222.SH",
+      "stock_name": "成都先导",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.4213
+    },
+    {
+      "stock_code": "300725.SZ",
+      "stock_name": "药石科技",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.156
     },
     {
       "stock_code": "688131.SH",
@@ -100,31 +84,47 @@
       "theme_score": 62.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.6893
+      "pct_chg": -1.4666
     },
     {
-      "stock_code": "688710.SH",
-      "stock_name": "益诺思",
+      "stock_code": "301509.SZ",
+      "stock_name": "金凯生科",
       "theme_score": 61.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.1459
+      "pct_chg": 1.4195
     },
     {
-      "stock_code": "600222.SH",
-      "stock_name": "太龙药业",
+      "stock_code": "301096.SZ",
+      "stock_name": "百诚医药",
       "theme_score": 61.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.8108
+      "pct_chg": 4.813
     },
     {
-      "stock_code": "603456.SH",
-      "stock_name": "九洲药业",
+      "stock_code": "300012.SZ",
+      "stock_name": "华测检测",
       "theme_score": 61.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.9261
+      "pct_chg": 3.5945
+    },
+    {
+      "stock_code": "603229.SH",
+      "stock_name": "奥翔药业",
+      "theme_score": 60.75,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -1.4085
+    },
+    {
+      "stock_code": "301230.SZ",
+      "stock_name": "泓博医药",
+      "theme_score": 60.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.7121
     }
   ],
   "latent_pool": [],
@@ -139,7 +139,7 @@
     "expansion_count": 38,
     "latent_count": 0,
     "core_avg_pct": 0,
-    "expansion_avg_pct": 2.254576315789474,
-    "total_amount": 14315943.365809998
+    "expansion_avg_pct": -0.005378947368421011,
+    "total_amount": 10633518.391909998
   }
 }

@@ -5,9 +5,17 @@
 - 分析大盘情绪和趋势
 - 游资标准仓位建议
 """
+import sys
+
+# Windows GBK 控制台输出修复:安全方式（Python 3.7+）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import os
-import sys
 import time
 import sqlite3
 import numpy as np
@@ -308,17 +316,20 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     trend_score = ma_score + index_score + breadth_score
     trend_score = max(0, min(100, trend_score))
     
-    # 判断趋势状态
-    if ma5 > ma10 > ma20 and latest['close'] > ma5:
+    # 判断趋势状态（综合趋势分和均线排列）
+    # 趋势分是主要依据，均线排列作为辅助判断
+    if trend_score >= 75 and ma5 > ma10 > ma20 and latest['close'] > ma5:
         trend_status = "上升趋势"
-    elif ma5 > ma10:
+    elif trend_score >= 65 and ma5 > ma10:
+        trend_status = "上升趋势"
+    elif trend_score >= 60:
         trend_status = "震荡偏强"
-    elif ma5 < ma10 < ma20:
-        trend_status = "下降趋势"
-    elif latest['close'] < ma20:
+    elif trend_score >= 45:
+        trend_status = "震荡整理"
+    elif trend_score >= 30:
         trend_status = "震荡偏弱"
     else:
-        trend_status = "震荡整理"
+        trend_status = "下降趋势"
     
     return trend_score, trend_status
 

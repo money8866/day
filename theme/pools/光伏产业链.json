@@ -1,49 +1,89 @@
 {
   "theme_name": "光伏产业链",
   "macro_theme": "新能源",
-  "trade_date": "20260612",
-  "theme_stage": "发酵期",
-  "theme_strength_score": 85,
+  "trade_date": "20260615",
+  "theme_stage": "主升期",
+  "theme_strength_score": 93,
   "core_pool": [
+    {
+      "stock_code": "688598.SH",
+      "stock_name": "金博股份",
+      "theme_score": 81.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 16.1357,
+      "amount": 936299.978,
+      "total_mv": 817215.3577
+    },
+    {
+      "stock_code": "300093.SZ",
+      "stock_name": "金刚光伏",
+      "theme_score": 79.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.1644,
+      "amount": 425617.4428,
+      "total_mv": 1252800.0
+    },
     {
       "stock_code": "002129.SZ",
       "stock_name": "TCL中环",
-      "theme_score": 79.25,
+      "theme_score": 78.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.4808,
-      "amount": 5413722.90685,
-      "total_mv": 4035029.5415
+      "pct_chg": 2.8056,
+      "amount": 3314248.48533,
+      "total_mv": 4148236.7831
+    },
+    {
+      "stock_code": "300316.SZ",
+      "stock_name": "晶盛机电",
+      "theme_score": 78.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.7689,
+      "amount": 2563012.24663,
+      "total_mv": 6829218.7514
+    },
+    {
+      "stock_code": "603806.SH",
+      "stock_name": "福斯特",
+      "theme_score": 77.75,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 9.9865,
+      "amount": 818559.925,
+      "total_mv": 4252254.381
+    },
+    {
+      "stock_code": "002079.SZ",
+      "stock_name": "苏州固锝",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.7808,
+      "amount": 539969.98277,
+      "total_mv": 1113793.9336
+    },
+    {
+      "stock_code": "300776.SZ",
+      "stock_name": "帝尔激光",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.1751,
+      "amount": 1878144.21616,
+      "total_mv": 4144171.4112
     },
     {
       "stock_code": "688599.SH",
       "stock_name": "天合光能",
-      "theme_score": 77.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.591,
-      "amount": 1122016.96,
-      "total_mv": 3431861.66
-    },
-    {
-      "stock_code": "603212.SH",
-      "stock_name": "赛伍技术",
-      "theme_score": 77.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 5.1691,
-      "amount": 619645.488,
-      "total_mv": 720984.5681
-    },
-    {
-      "stock_code": "601012.SH",
-      "stock_name": "隆基绿能",
       "theme_score": 76.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.3196,
-      "amount": 2557192.087,
-      "total_mv": 10200076.9221
+      "pct_chg": -1.6382,
+      "amount": 727777.454,
+      "total_mv": 3375640.0355
     },
     {
       "stock_code": "002459.SZ",
@@ -51,93 +91,29 @@
       "theme_score": 76.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.5618,
-      "amount": 967722.42433,
-      "total_mv": 2929095.9838
+      "pct_chg": -1.6949,
+      "amount": 613395.34163,
+      "total_mv": 2879450.2891
     },
     {
-      "stock_code": "600438.SH",
-      "stock_name": "通威股份",
-      "theme_score": 76.25,
+      "stock_code": "603185.SH",
+      "stock_name": "弘元绿能",
+      "theme_score": 76.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -3.5211,
-      "amount": 1290749.125,
-      "total_mv": 6167727.3165
-    },
-    {
-      "stock_code": "688223.SH",
-      "stock_name": "晶科能源",
-      "theme_score": 75.5,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 1.3752,
-      "amount": 836761.774,
-      "total_mv": 5299016.1591
-    },
-    {
-      "stock_code": "688598.SH",
-      "stock_name": "金博股份",
-      "theme_score": 75.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -1.9948,
-      "amount": 945898.551,
-      "total_mv": 703672.8632
-    },
-    {
-      "stock_code": "688726.SH",
-      "stock_name": "拉普拉斯",
-      "theme_score": 74.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0273,
-      "amount": 915814.187,
-      "total_mv": 2488702.8005
-    },
-    {
-      "stock_code": "300118.SZ",
-      "stock_name": "东方日升",
-      "theme_score": 74.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.149,
-      "amount": 901582.85981,
-      "total_mv": 1531038.618
+      "pct_chg": 5.0085,
+      "amount": 418197.4,
+      "total_mv": 1260276.6997
     }
   ],
   "expansion_pool": [
     {
-      "stock_code": "920007.BJ",
-      "stock_name": "酉立智能",
+      "stock_code": "920770.BJ",
+      "stock_name": "艾能聚",
       "theme_score": 69.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.9341
-    },
-    {
-      "stock_code": "301278.SZ",
-      "stock_name": "快可电子",
-      "theme_score": 69.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 1.5313
-    },
-    {
-      "stock_code": "600207.SH",
-      "stock_name": "安彩高科",
-      "theme_score": 69.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -5.6075
-    },
-    {
-      "stock_code": "301131.SZ",
-      "stock_name": "聚赛龙",
-      "theme_score": 69.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -0.3334
+      "pct_chg": 0.0
     },
     {
       "stock_code": "920167.BJ",
@@ -145,7 +121,15 @@
       "theme_score": 69.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.9308
+      "pct_chg": 1.4986
+    },
+    {
+      "stock_code": "688429.SH",
+      "stock_name": "时创能源",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.0183
     },
     {
       "stock_code": "920414.BJ",
@@ -153,39 +137,71 @@
       "theme_score": 69.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.9504
+      "pct_chg": 0.0
     },
     {
-      "stock_code": "600869.SH",
-      "stock_name": "远东股份",
+      "stock_code": "301278.SZ",
+      "stock_name": "快可电子",
+      "theme_score": 69.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.0773
+    },
+    {
+      "stock_code": "300602.SZ",
+      "stock_name": "飞荣达",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9322
+      "pct_chg": 11.7463
     },
     {
-      "stock_code": "300566.SZ",
-      "stock_name": "激智科技",
+      "stock_code": "301687.SZ",
+      "stock_name": "新广益",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 11.2414
+      "pct_chg": 17.075
     },
     {
-      "stock_code": "603045.SH",
-      "stock_name": "福达合金",
-      "theme_score": 69.25,
+      "stock_code": "002613.SZ",
+      "stock_name": "北玻股份",
+      "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -4.1442
+      "pct_chg": 10.1149
     },
     {
-      "stock_code": "688429.SH",
-      "stock_name": "时创能源",
-      "theme_score": 69.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 1.2071
+      "stock_code": "920179.BJ",
+      "stock_name": "凯德石英",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.362
+    },
+    {
+      "stock_code": "301458.SZ",
+      "stock_name": "钧崴电子",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 17.9289
+    },
+    {
+      "stock_code": "002585.SZ",
+      "stock_name": "双星新材",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0173
+    },
+    {
+      "stock_code": "920402.BJ",
+      "stock_name": "硅烷科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 18.4448
     },
     {
       "stock_code": "920985.BJ",
@@ -193,7 +209,7 @@
       "theme_score": 69.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": -0.9434
+      "pct_chg": 1.1429
     },
     {
       "stock_code": "603628.SH",
@@ -201,49 +217,33 @@
       "theme_score": 69.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 0.679
+      "pct_chg": -0.289
     },
     {
-      "stock_code": "300614.SZ",
-      "stock_name": "百川畅银",
-      "theme_score": 68.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 8.5532
-    },
-    {
-      "stock_code": "600821.SH",
-      "stock_name": "金开新能",
-      "theme_score": 68.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.5
-    },
-    {
-      "stock_code": "301046.SZ",
-      "stock_name": "能辉科技",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.2313
+      "stock_code": "920007.BJ",
+      "stock_name": "酉立智能",
+      "theme_score": 69.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.273
     }
   ],
   "latent_pool": [],
-  "leader_stock": "TCL中环",
+  "leader_stock": "金博股份",
   "secondary_leaders": [
-    "天合光能",
-    "赛伍技术"
+    "金刚光伏",
+    "TCL中环"
   ],
   "next_day_signal": {
-    "direction": "transition",
-    "focus_pool": "expansion"
+    "direction": "strength",
+    "focus_pool": "core"
   },
   "pool_stats": {
-    "core_count": 57,
-    "expansion_count": 391,
+    "core_count": 65,
+    "expansion_count": 383,
     "latent_count": 0,
-    "core_avg_pct": -0.15919824561403506,
-    "expansion_avg_pct": 0.3809337595907929,
-    "total_amount": 346786578.9098097
+    "core_avg_pct": 3.1615030769230765,
+    "expansion_avg_pct": 2.5621174934725848,
+    "total_amount": 318663111.6170101
   }
 }

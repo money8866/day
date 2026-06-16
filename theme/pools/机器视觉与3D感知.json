@@ -1,145 +1,179 @@
 {
   "theme_name": "机器视觉与3D感知",
   "macro_theme": "物理AI",
-  "trade_date": "20260612",
-  "theme_stage": "发酵期",
-  "theme_strength_score": 70,
-  "core_pool": [],
+  "trade_date": "20260615",
+  "theme_stage": "主升期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "603986.SH",
+      "stock_name": "兆易创新",
+      "theme_score": 65.25,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 7.5872,
+      "amount": 23934989.159,
+      "total_mv": 36317106.9618
+    },
+    {
+      "stock_code": "000988.SZ",
+      "stock_name": "华工科技",
+      "theme_score": 65.25,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 6.6022,
+      "amount": 12015771.0179,
+      "total_mv": 16186582.5773
+    },
+    {
+      "stock_code": "002185.SZ",
+      "stock_name": "华天科技",
+      "theme_score": 65.25,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 6.6625,
+      "amount": 4952838.08925,
+      "total_mv": 5693024.6542
+    }
+  ],
   "expansion_pool": [
     {
-      "stock_code": "688322.SH",
-      "stock_name": "奥比中光",
-      "theme_score": 67.25,
+      "stock_code": "000823.SZ",
+      "stock_name": "超声电子",
+      "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.2209
-    },
-    {
-      "stock_code": "302132.SZ",
-      "stock_name": "中航成飞",
-      "theme_score": 66.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 10.7813
-    },
-    {
-      "stock_code": "300322.SZ",
-      "stock_name": "硕贝德",
-      "theme_score": 64.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0253
-    },
-    {
-      "stock_code": "300480.SZ",
-      "stock_name": "光力科技",
-      "theme_score": 64.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 4.6034
+      "pct_chg": 10.0219
     },
     {
       "stock_code": "301458.SZ",
       "stock_name": "钧崴电子",
-      "theme_score": 63.25,
+      "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -4.3426
+      "pct_chg": 17.9289
     },
     {
-      "stock_code": "600206.SH",
-      "stock_name": "有研新材",
-      "theme_score": 63.25,
+      "stock_code": "300632.SZ",
+      "stock_name": "光莆股份",
+      "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -3.6507
+      "pct_chg": 13.6041
     },
     {
-      "stock_code": "603459.SH",
-      "stock_name": "红板科技",
-      "theme_score": 63.25,
+      "stock_code": "300259.SZ",
+      "stock_name": "新天科技",
+      "theme_score": 67.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -3.9721
+      "pct_chg": 12.7306
+    },
+    {
+      "stock_code": "603007.SH",
+      "stock_name": "顺景科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0935
+    },
+    {
+      "stock_code": "300912.SZ",
+      "stock_name": "凯龙高科",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.7647
     },
     {
       "stock_code": "301682.SZ",
       "stock_name": "宏明电子",
-      "theme_score": 63.25,
+      "theme_score": 67.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -3.4656
+      "pct_chg": 9.1977
     },
     {
-      "stock_code": "000823.SZ",
-      "stock_name": "超声电子",
-      "theme_score": 63.25,
+      "stock_code": "603459.SH",
+      "stock_name": "红板科技",
+      "theme_score": 67.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -4.3979
+      "pct_chg": 6.9248
     },
     {
-      "stock_code": "301488.SZ",
-      "stock_name": "豪恩汽电",
-      "theme_score": 63.25,
+      "stock_code": "600206.SH",
+      "stock_name": "有研新材",
+      "theme_score": 67.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.9061
+      "pct_chg": 7.7599
     },
     {
-      "stock_code": "688469.SH",
-      "stock_name": "芯联集成",
-      "theme_score": 62.75,
+      "stock_code": "688322.SH",
+      "stock_name": "奥比中光",
+      "theme_score": 66.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.2486
+      "pct_chg": 3.9193
     },
     {
-      "stock_code": "301638.SZ",
-      "stock_name": "南网数字",
-      "theme_score": 62.75,
+      "stock_code": "688511.SH",
+      "stock_name": "天微电子",
+      "theme_score": 66.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.4586
+      "pct_chg": 10.3586
     },
     {
-      "stock_code": "920491.BJ",
-      "stock_name": "奥迪威",
-      "theme_score": 62.75,
+      "stock_code": "688396.SH",
+      "stock_name": "华润微",
+      "theme_score": 66.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.8171
+      "pct_chg": 13.2401
     },
     {
-      "stock_code": "002829.SZ",
-      "stock_name": "星网宇达",
-      "theme_score": 62.75,
+      "stock_code": "603005.SH",
+      "stock_name": "晶方科技",
+      "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.4902
+      "pct_chg": 7.021
     },
     {
-      "stock_code": "600879.SH",
-      "stock_name": "航天电子",
-      "theme_score": 61.5,
+      "stock_code": "688595.SH",
+      "stock_name": "芯海科技",
+      "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.5467
+      "pct_chg": 6.6116
+    },
+    {
+      "stock_code": "002655.SZ",
+      "stock_name": "共达电声",
+      "theme_score": 65.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.0723
     }
   ],
   "latent_pool": [],
-  "leader_stock": "",
-  "secondary_leaders": [],
+  "leader_stock": "兆易创新",
+  "secondary_leaders": [
+    "华工科技",
+    "华天科技"
+  ],
   "next_day_signal": {
-    "direction": "transition",
-    "focus_pool": "expansion"
+    "direction": "strength",
+    "focus_pool": "core"
   },
   "pool_stats": {
-    "core_count": 0,
-    "expansion_count": 123,
+    "core_count": 3,
+    "expansion_count": 120,
     "latent_count": 0,
-    "core_avg_pct": 0,
-    "expansion_avg_pct": -0.05406747967479678,
-    "total_amount": 106722685.4596
+    "core_avg_pct": 6.950633333333333,
+    "expansion_avg_pct": 3.510454166666667,
+    "total_amount": 104108365.03317001
   }
 }

@@ -68,6 +68,7 @@ import numpy as np
 try:
     from theme_trend_sentiment_score import (
         per_stock_features, calc_trend_score, calc_sentiment_score,
+        calc_theme_hot_score, get_theme_hot_score_percentile, judge_hot_phase,
         sigmoid, linear
     )
     THEME_SCORE_AVAILABLE = True
@@ -125,7 +126,6 @@ class RealtimeThemeMonitor:
         # ── 冷却控制(避免重复推送) ──
         self.last_theme_alert = {}      # theme_name -> timestamp
         self.last_market_alert = 0
-        self.last_first_mover_alert = defaultdict(float)
         self.last_score_alert = 0       # 趋势总评分预警冷却
 
         # ── 开盘参考价(昨日收盘) ──
@@ -705,12 +705,27 @@ class RealtimeThemeMonitor:
             s_score, _ = calc_sentiment_score(stock_feats, market_ret_10)
             c_score = 0.55 * t_score + 0.45 * s_score
 
+            # 计算热榜评分和历史分位数（与 theme_trend_sentiment_score.py 保持一致）
+            hot_score, hot_detail = calc_theme_hot_score(stock_feats)
+            hot_percentile, _ = get_theme_hot_score_percentile(theme_name, hot_score, days=60)
+            hot_phase, hot_warning = judge_hot_phase(
+                hot_score=hot_score,
+                percentile=hot_percentile,
+                top10_count=hot_detail.get('top10_count', 0),
+                top5_count=hot_detail.get('top5_count', 0),
+                total_stocks=len(stock_feats)
+            )
+
             results.append({
                 'theme': theme_name,
                 'n_stocks': len(stock_feats),
                 'trend_score': t_score,
                 'sentiment_score': s_score,
-                'composite_score': c_score
+                'composite_score': c_score,
+                'hot_score': round(hot_score, 2),
+                'hot_percentile': hot_percentile,
+                'hot_phase': hot_phase,
+                'hot_warning': hot_warning
             })
 
         # 按综合分排序
@@ -1382,30 +1397,43 @@ class RealtimeThemeMonitor:
 
         index_trend = round(index_trend, 1)
 
-        # ThemeTrend:以当前主题TOP3平均强度作为趋势分(替代原算法中的历史主题趋势分)
+        # ThemeTrend:结合主题强度和市场广度计算，避免虚高
+        # 1. 获取主题平均涨幅（历史数据）
         if self.theme_score_history and len(self.theme_score_history) > 0:
-            # 有历史数据时:用最近均值映射
             vals = []
             for theme, hist in self.theme_score_history.items():
                 if hist:
                     vals.append(hist[-1])
             if vals:
                 top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
-                theme_trend = round(min(100, max(30, 50 + top_avg * 6)), 1)
+                # 基础theme_trend = 50 + 主题涨幅 * 系数，但需要市场广度修正
+                theme_trend_raw = min(100, max(30, 50 + top_avg * 6))
             else:
-                theme_trend = 50
+                top_avg = 0
+                theme_trend_raw = 50
         else:
-            # 无历史数据时的fallback:基于指数增强分推算主题强度
-            # enhanced_scores 是[0,100]区间的综合指数趋势分
-            # 主题趋势 ≈ 指数增强均值的0.7倍 + 30(基准偏移),合理范围[45,75]
-            avg_enhanced = sum(r['enhanced'] for r in enhanced_scores) / len(enhanced_scores) if enhanced_scores else 50
-            theme_trend = round(min(75, max(45, avg_enhanced * 0.7 + 30)), 1)
+            top_avg = 0
+            theme_trend_raw = 50
+
+        # 2. 获取市场广度（上涨比例）用于修正theme_trend
+        # 获取overview数据中的上涨比例
+        overview = self.compute_market_overview()
+        up_ratio = overview.get('up_ratio', 50) if overview else 50
+
+        # 3. 市场广度修正：上涨比例<50%时，主题趋势需要打折
+        # 广度修正系数 = 0.5 + (up_ratio / 100) * 0.5，即40%(弱市)→0.7, 70%(强市)→0.85
+        breadth_factor = 0.5 + (up_ratio / 100) * 0.5
+        theme_trend = round(theme_trend_raw * breadth_factor, 1)
+
         self._recent_theme_scores = theme_trend
 
         # TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
         trend_score = round(index_trend * 0.4 + theme_trend * 0.6, 1)
-        if theme_trend > 90: trend_score += 10
-        elif theme_trend > 85: trend_score += 5
+        # 移除不合理的加分规则，改为基于市场广度的修正
+        if up_ratio < 40:  # 市场极弱时额外减分
+            trend_score -= 10
+        elif up_ratio < 50:  # 市场偏弱时轻微减分
+            trend_score -= 5
         trend_score = min(100, max(0, trend_score))
 
         # 市场状态 & 建议仓位
@@ -1692,7 +1720,6 @@ class RealtimeThemeMonitor:
         results = {
             'theme_scores': {},
             'theme_volumes': {},
-            'first_movers': [],
             'market_stats': {},
             'timestamp': now
         }
@@ -1730,21 +1757,6 @@ class RealtimeThemeMonitor:
                     total_dt += 1
 
                 theme_vol += q.get('amount', 0)
-
-                # ── 检测主题内的先锋股(优先检测龙头,其次中军) ──
-                if layer in ('leader', 'middle') and pct >= 3:
-                    prev = self.prev_quotes.get(ts_code)
-                    prev_pct = prev['pct_chg'] if prev else 0
-                    delta = pct - prev_pct
-                    if delta >= 1.5:
-                        results['first_movers'].append({
-                            'ts_code': ts_code,
-                            'name': name,
-                            'theme': theme_name,
-                            'layer': layer,
-                            'pct_chg': pct,
-                            'surge_delta': round(delta, 2)
-                        })
 
             if scores:
                 avg_score = sum(scores) / len(scores)
@@ -1826,37 +1838,6 @@ class RealtimeThemeMonitor:
                     'msg': f"⚡ 异动主题【{theme_name}】强度{score:+.1f}% 飙升{score_accel:+.1f}% 先锋:{top_stocks}"
                 })
                 self.last_theme_alert[cooldown_key] = time.time()
-
-        return alerts
-
-    def detect_first_movers(self, results):
-        """检测全市场最先启动的先锋股"""
-        now = datetime.now()
-        alerts = []
-
-        for fm in results.get('first_movers', []):
-            cooldown_key = f"fm_{fm['ts_code']}"
-            if time.time() - self.last_first_mover_alert.get(cooldown_key, 0) < 1800:
-                continue
-
-            # 层级标记
-            layer_mark = {
-                'leader': '⭐龙头',
-                'middle': '▲中军'
-            }
-            layer_tag = layer_mark.get(fm.get('layer', ''), '')
-
-            alerts.append({
-                'type': 'first_mover',
-                'stock': fm['name'],
-                'code': fm['ts_code'],
-                'theme': fm['theme'],
-                'layer': fm.get('layer', ''),
-                'pct_chg': fm['pct_chg'],
-                'surge_delta': fm['surge_delta'],
-                'msg': f"🚀 先锋启动{layer_tag}【{fm['name']}({fm['ts_code'][:6]})】{fm['pct_chg']:+.1f}% 主题:{fm['theme']} 跳涨{fm['surge_delta']:+.1f}%"
-            })
-            self.last_first_mover_alert[cooldown_key] = time.time()
 
         return alerts
 
@@ -2138,25 +2119,28 @@ class RealtimeThemeMonitor:
                     # ── 每15分钟计算并输出主题综合分TOP10 ──
                     theme_scores = self.compute_theme_scores_realtime()
                     if theme_scores:
-                        print(f"\n{'='*60}")
+                        print(f"\n{'='*70}")
                         print(f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M:%S')}]")
-                        print(f"{'排名':<4} {'主题':<14} {'综合分':<8} {'趋势分':<8} {'情绪分':<8} {'成分股数'}")
-                        print(f"{'-'*60}")
+                        print(f"{'排名':<4} {'主题':<14} {'综合分':<8} {'趋势分':<8} {'情绪分':<8} {'热度分':<8} {'分位%':<6} {'阶段':<8}")
+                        print(f"{'-'*70}")
                         for i, r in enumerate(theme_scores[:10], 1):
-                            print(f"{i:<4} {r['theme']:<14} {r['composite_score']:>6.1f}   {r['trend_score']:>6.1f}   {r['sentiment_score']:>6.1f}   {r['n_stocks']}")
-                        print(f"{'='*60}\n")
+                            print(f"{i:<4} {r['theme']:<14} {r['composite_score']:>6.1f}   {r['trend_score']:>6.1f}   {r['sentiment_score']:>6.1f}   {r.get('hot_score', 0):>6.2f}   {r.get('hot_percentile', 0):<5.1f}   {r.get('hot_phase', '正常'):<8}")
+                        print(f"{'='*70}\n")
 
                         # ── 推送主题综合分TOP10到微信 ──
                         lines = []
                         for i, r in enumerate(theme_scores[:10], 1):
-                            lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f})")
+                            phase_tag = r.get('hot_phase', '')
+                            hot_info = f" 热度{r.get('hot_score', 0):.1f}({r.get('hot_percentile', 0):.0f}%)"
+                            if phase_tag and phase_tag != '正常':
+                                hot_info += f" {phase_tag}"
+                            lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}){hot_info}")
                         content = f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
                         self.send_wechat(f"📊 主题综合评分 TOP10 {now.strftime('%H:%M')}", content)
 
                 # ── 检测 → 推送 ──
                 all_alerts = []
                 all_alerts.extend(self.detect_theme_anomaly(results))
-                all_alerts.extend(self.detect_first_movers(results))
                 all_alerts.extend(self.detect_market_sentiment(results))
 
                 if all_alerts:
@@ -2206,12 +2190,6 @@ class RealtimeThemeMonitor:
         for theme, score in top5:
             print(f"   {theme}: {score:+.1f}%")
 
-        fms = results.get('first_movers', [])
-        if fms:
-            print(f"\n🚀 先锋启动:")
-            for fm in fms[:3]:
-                print(f"   {fm['name']}({fm['ts_code'][:6]}): {fm['pct_chg']:+.1f}% 主题:{fm['theme']}")
-
         print(f"{'='*60}")
 
     def push_alerts(self, alerts, now):
@@ -2220,7 +2198,6 @@ class RealtimeThemeMonitor:
 
         # 分类
         theme_msgs = [a['msg'] for a in alerts if a['type'] in ('theme_leader', 'theme_surge')]
-        fm_msgs = [a['msg'] for a in alerts if a['type'] == 'first_mover']
         market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_')]
 
         # ── 主题异动推送 ──
@@ -2236,17 +2213,6 @@ class RealtimeThemeMonitor:
                 f"---",
                 f"💡 策略:优先关注领涨主题的龙头股,等待回调低吸机会",
             ])
-            self.send_wechat(title, '\n'.join(content_lines))
-
-        # ── 先锋启动推送 ──
-        if fm_msgs:
-            title = f"🚀 先锋启动 {ts} ({len(fm_msgs)}只)"
-            content_lines = [
-                f"🚀 实时先锋启动",
-                f"时间: {ts}",
-            ]
-            content_lines.extend(fm_msgs)
-            content_lines.append(f"💡 优先关注同主题内还未启动的个股")
             self.send_wechat(title, '\n'.join(content_lines))
 
         # ── 市场情绪预警 ──
@@ -2271,37 +2237,9 @@ class RealtimeThemeMonitor:
 
 
 if __name__ == "__main__":
-    import subprocess
-
-    # ── 单实例锁定(简化版：PID文件检查) ──
+    # ── 单实例锁定(仅使用PID文件检查) ──
     lock_file = os.path.join(BASE_DIR, "realtime_theme_monitor.lock")
-
-    # 检查并杀掉其他同名脚本进程
-    try:
-        current_pid = os.getpid()
-        query_cmd = (
-            "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
-            f"| Where-Object {{$_.CommandLine -like '*realtime_theme_monitor*' -and $_.ProcessId -ne {current_pid}}} "
-            "| Select-Object -ExpandProperty ProcessId"
-        )
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command', query_cmd],
-            capture_output=True, text=True,
-            encoding='utf-8', errors='ignore'
-        )
-        old_pids = [int(p.strip()) for p in result.stdout.split() if p.strip().isdigit()]
-        if old_pids:
-            print(f"⚠️  检测到 {len(old_pids)} 个旧的监控进程: {old_pids},正在停止...")
-            for old_pid in old_pids:
-                try:
-                    os.kill(old_pid, 0)  # 检查进程是否存在
-                    os.kill(old_pid, 9)  # SIGKILL
-                except:
-                    pass
-            time.sleep(1)
-            print("   已停止旧进程")
-    except Exception as e:
-        pass
+    current_pid = os.getpid()
 
     # 检查锁文件
     if os.path.exists(lock_file):
@@ -2310,13 +2248,17 @@ if __name__ == "__main__":
                 old_pid_str = f.read().strip()
             if old_pid_str and old_pid_str.isdigit():
                 old_pid = int(old_pid_str)
-                try:
-                    os.kill(old_pid, 0)  # 检查进程是否存在
-                    print(f"⚠️  监控进程仍在运行 (PID: {old_pid}),退出。")
-                    sys.exit(0)
-                except OSError:
-                    # 进程不存在，删除残留锁文件
-                    print(f"✅ 清理残留锁文件 (旧进程 {old_pid} 已退出)")
+                if old_pid != current_pid:
+                    try:
+                        os.kill(old_pid, 0)  # 检查进程是否存在
+                        print(f"⚠️  监控进程仍在运行 (PID: {old_pid}),退出。")
+                        sys.exit(0)
+                    except OSError:
+                        # 进程不存在，删除残留锁文件
+                        print(f"✅ 清理残留锁文件 (旧进程 {old_pid} 已退出)")
+                        os.remove(lock_file)
+                else:
+                    # 锁文件中的PID是当前进程，删除它
                     os.remove(lock_file)
             else:
                 # 锁文件存在但内容无效，删除它
@@ -2330,7 +2272,7 @@ if __name__ == "__main__":
 
     # 写入当前PID到锁文件
     with open(lock_file, 'w') as f:
-        f.write(str(os.getpid()))
+        f.write(str(current_pid))
 
     monitor = RealtimeThemeMonitor()
     try:

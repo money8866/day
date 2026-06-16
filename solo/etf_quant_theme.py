@@ -9,10 +9,17 @@
 # 3、保留持仓管理和 DeepSeek 日报
 # 4、主题分析 + ETF 分析双驱动
 # =========================================================
+import sys
+
+# Windows GBK 控制台输出修复:安全方式（Python 3.7+）
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import os
-import io
-import sys
 import time
 import json
 import requests

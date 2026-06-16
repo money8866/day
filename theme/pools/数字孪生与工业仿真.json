@@ -1,19 +1,19 @@
 {
   "theme_name": "数字孪生与工业仿真",
   "macro_theme": "物理AI",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
   "theme_strength_score": 90,
   "core_pool": [
     {
-      "stock_code": "688507.SH",
-      "stock_name": "索辰科技",
-      "theme_score": 69.5,
-      "role": "龙头",
-      "reason": "涨幅领先+成交活跃",
-      "pct_chg": 19.9516,
-      "amount": 3374903.5,
-      "total_mv": 2207224.5797
+      "stock_code": "300166.SZ",
+      "stock_name": "东方国信",
+      "theme_score": 71.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 6.5278,
+      "amount": 1076140.81912,
+      "total_mv": 1746835.9774
     }
   ],
   "expansion_pool": [
@@ -23,7 +23,23 @@
       "theme_score": 69.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.925
+      "pct_chg": 0.7392
+    },
+    {
+      "stock_code": "000925.SZ",
+      "stock_name": "众合科技",
+      "theme_score": 68.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.6115
+    },
+    {
+      "stock_code": "300259.SZ",
+      "stock_name": "新天科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 12.7306
     },
     {
       "stock_code": "000032.SZ",
@@ -31,23 +47,7 @@
       "theme_score": 67.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0
-    },
-    {
-      "stock_code": "300166.SZ",
-      "stock_name": "东方国信",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -1.7065
-    },
-    {
-      "stock_code": "000925.SZ",
-      "stock_name": "众合科技",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -2.5485
+      "pct_chg": 9.9894
     },
     {
       "stock_code": "300002.SZ",
@@ -55,39 +55,55 @@
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.2504
-    },
-    {
-      "stock_code": "603466.SH",
-      "stock_name": "风语筑",
-      "theme_score": 67.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 5.7248
+      "pct_chg": 3.4388
     },
     {
       "stock_code": "002230.SZ",
       "stock_name": "科大讯飞",
-      "theme_score": 66.25,
+      "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.9806
+      "pct_chg": 2.6987
     },
     {
-      "stock_code": "300007.SZ",
-      "stock_name": "汉威科技",
-      "theme_score": 66.25,
+      "stock_code": "002925.SZ",
+      "stock_name": "盈趣科技",
+      "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.1845
+      "pct_chg": 3.539
     },
     {
       "stock_code": "300161.SZ",
       "stock_name": "华中数控",
-      "theme_score": 66.25,
+      "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.9238
+      "pct_chg": 3.1968
+    },
+    {
+      "stock_code": "300007.SZ",
+      "stock_name": "汉威科技",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.4229
+    },
+    {
+      "stock_code": "300825.SZ",
+      "stock_name": "阿尔特",
+      "theme_score": 67.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.2131
+    },
+    {
+      "stock_code": "688069.SH",
+      "stock_name": "德林海",
+      "theme_score": 66.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.8071
     },
     {
       "stock_code": "300486.SZ",
@@ -95,51 +111,35 @@
       "theme_score": 66.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -2.9727
+      "pct_chg": 0.3404
     },
     {
-      "stock_code": "002925.SZ",
-      "stock_name": "盈趣科技",
+      "stock_code": "688768.SH",
+      "stock_name": "容知日新",
+      "theme_score": 65.5,
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 4.6703
+    },
+    {
+      "stock_code": "002232.SZ",
+      "stock_name": "启明信息",
       "theme_score": 65.5,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": -0.8065
+      "pct_chg": 2.1433
     },
     {
-      "stock_code": "300008.SZ",
-      "stock_name": "天海防务",
+      "stock_code": "300935.SZ",
+      "stock_name": "盈建科",
       "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 5.0794
-    },
-    {
-      "stock_code": "300826.SZ",
-      "stock_name": "测绘股份",
-      "theme_score": 65.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 6.0043
-    },
-    {
-      "stock_code": "301302.SZ",
-      "stock_name": "华如科技",
-      "theme_score": 64.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 4.8701
-    },
-    {
-      "stock_code": "300466.SZ",
-      "stock_name": "赛摩智能",
-      "theme_score": 64.25,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 0.1312
+      "pct_chg": 8.0785
     }
   ],
   "latent_pool": [],
-  "leader_stock": "索辰科技",
+  "leader_stock": "东方国信",
   "secondary_leaders": [],
   "next_day_signal": {
     "direction": "transition",
@@ -149,8 +149,8 @@
     "core_count": 1,
     "expansion_count": 85,
     "latent_count": 0,
-    "core_avg_pct": 19.9516,
-    "expansion_avg_pct": 0.7599094117647059,
-    "total_amount": 37560982.162429996
+    "core_avg_pct": 6.5278,
+    "expansion_avg_pct": 1.8173376470588236,
+    "total_amount": 32705188.8841
   }
 }

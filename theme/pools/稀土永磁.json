@@ -1,9 +1,9 @@
 {
   "theme_name": "稀土永磁",
   "macro_theme": "资源",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "主升期",
-  "theme_strength_score": 88,
+  "theme_strength_score": 100,
   "core_pool": [
     {
       "stock_code": "600392.SH",
@@ -11,9 +11,9 @@
       "theme_score": 72.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0973,
-      "amount": 4421181.7,
-      "total_mv": 4522292.5506
+      "pct_chg": 2.2868,
+      "amount": 4303640.583,
+      "total_mv": 4625709.3182
     },
     {
       "stock_code": "600111.SH",
@@ -21,75 +21,73 @@
       "theme_score": 71.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.0194,
-      "amount": 7537641.2,
-      "total_mv": 17869270.457
-    }
-  ],
-  "expansion_pool": [
-    {
-      "stock_code": "301323.SZ",
-      "stock_name": "新莱福",
-      "theme_score": 69.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 20.0046
+      "pct_chg": 2.104,
+      "amount": 6968584.427,
+      "total_mv": 18245237.3046
     },
     {
       "stock_code": "600259.SH",
       "stock_name": "中稀有色",
-      "theme_score": 68.75,
+      "theme_score": 71.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.0089
+      "pct_chg": 6.3445,
+      "amount": 2503172.154,
+      "total_mv": 3360994.7409
     },
+    {
+      "stock_code": "600549.SH",
+      "stock_name": "厦门钨业",
+      "theme_score": 67.75,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 10.0,
+      "amount": 7936361.842,
+      "total_mv": 11316311.7677
+    },
+    {
+      "stock_code": "600206.SH",
+      "stock_name": "有研新材",
+      "theme_score": 67.0,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 7.7599,
+      "amount": 4779316.365,
+      "total_mv": 3009497.0953
+    }
+  ],
+  "expansion_pool": [
     {
       "stock_code": "000831.SZ",
       "stock_name": "中国稀土",
       "theme_score": 68.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.1829
+      "pct_chg": 4.2113
     },
     {
-      "stock_code": "601609.SH",
-      "stock_name": "金田股份",
-      "theme_score": 67.75,
+      "stock_code": "688456.SH",
+      "stock_name": "有研粉材",
+      "theme_score": 67.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9912
+      "pct_chg": 6.0583
+    },
+    {
+      "stock_code": "300224.SZ",
+      "stock_name": "正海磁材",
+      "theme_score": 65.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.5559
     },
     {
       "stock_code": "000970.SZ",
       "stock_name": "中科三环",
-      "theme_score": 67.25,
+      "theme_score": 65.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.4968
-    },
-    {
-      "stock_code": "300263.SZ",
-      "stock_name": "隆华科技",
-      "theme_score": 67.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 8.8858
-    },
-    {
-      "stock_code": "000969.SZ",
-      "stock_name": "安泰科技",
-      "theme_score": 66.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.982
-    },
-    {
-      "stock_code": "000758.SZ",
-      "stock_name": "中色股份",
-      "theme_score": 66.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9526
+      "pct_chg": -2.822
     },
     {
       "stock_code": "300748.SZ",
@@ -97,7 +95,7 @@
       "theme_score": 65.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.249
+      "pct_chg": 4.0411
     },
     {
       "stock_code": "600988.SH",
@@ -105,31 +103,23 @@
       "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 7.4664
+      "pct_chg": 7.4416
     },
     {
-      "stock_code": "300631.SZ",
-      "stock_name": "久吾高科",
+      "stock_code": "002943.SZ",
+      "stock_name": "宇晶股份",
       "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 6.7523
+      "pct_chg": 6.835
     },
     {
-      "stock_code": "603072.SH",
-      "stock_name": "天和磁材",
+      "stock_code": "688571.SH",
+      "stock_name": "杭华股份",
       "theme_score": 65.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 5.9053
-    },
-    {
-      "stock_code": "000612.SZ",
-      "stock_name": "焦作万方",
-      "theme_score": 65.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 8.034
+      "pct_chg": 8.2071
     },
     {
       "stock_code": "002167.SZ",
@@ -137,32 +127,73 @@
       "theme_score": 64.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.5271
+      "pct_chg": 3.8732
     },
     {
-      "stock_code": "002057.SZ",
-      "stock_name": "中钢天源",
+      "stock_code": "301323.SZ",
+      "stock_name": "新莱福",
       "theme_score": 64.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.8169
+      "pct_chg": 4.8372
+    },
+    {
+      "stock_code": "300263.SZ",
+      "stock_name": "隆华科技",
+      "theme_score": 64.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.5622
+    },
+    {
+      "stock_code": "000969.SZ",
+      "stock_name": "安泰科技",
+      "theme_score": 63.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.3271
+    },
+    {
+      "stock_code": "002645.SZ",
+      "stock_name": "华宏科技",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.2278
+    },
+    {
+      "stock_code": "002738.SZ",
+      "stock_name": "中矿资源",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.1576
+    },
+    {
+      "stock_code": "301265.SZ",
+      "stock_name": "华新科技",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.1382
     }
   ],
   "latent_pool": [],
   "leader_stock": "盛和资源",
   "secondary_leaders": [
-    "北方稀土"
+    "北方稀土",
+    "中稀有色"
   ],
   "next_day_signal": {
     "direction": "strength",
     "focus_pool": "core"
   },
   "pool_stats": {
-    "core_count": 2,
-    "expansion_count": 51,
+    "core_count": 5,
+    "expansion_count": 48,
     "latent_count": 0,
-    "core_avg_pct": 3.05835,
-    "expansion_avg_pct": 2.6440156862745097,
-    "total_amount": 81520665.43712002
+    "core_avg_pct": 5.699040000000001,
+    "expansion_avg_pct": 2.3356875,
+    "total_amount": 73843228.05523
   }
 }

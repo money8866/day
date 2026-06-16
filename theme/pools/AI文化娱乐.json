@@ -1,109 +1,109 @@
 {
   "theme_name": "AI文化娱乐",
   "macro_theme": "AI",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
-  "theme_strength_score": 85,
+  "theme_strength_score": 93,
   "core_pool": [
-    {
-      "stock_code": "002657.SZ",
-      "stock_name": "中科金财",
-      "theme_score": 79.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 5.8968,
-      "amount": 893755.6368,
-      "total_mv": 732812.0492
-    },
-    {
-      "stock_code": "603466.SH",
-      "stock_name": "风语筑",
-      "theme_score": 79.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 5.7248,
-      "amount": 1204892.257,
-      "total_mv": 681068.5347
-    },
     {
       "stock_code": "300364.SZ",
       "stock_name": "中文在线",
-      "theme_score": 78.75,
+      "theme_score": 83.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.3663,
-      "amount": 675578.01799,
-      "total_mv": 1596872.2587
+      "pct_chg": 7.7555,
+      "amount": 1085976.98704,
+      "total_mv": 1720717.2787
     },
     {
       "stock_code": "300418.SZ",
       "stock_name": "昆仑万维",
-      "theme_score": 76.25,
+      "theme_score": 80.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.758,
-      "amount": 1339118.04393,
-      "total_mv": 4782899.2092
+      "pct_chg": 5.3735,
+      "amount": 1936598.30414,
+      "total_mv": 5039906.1522
     },
     {
       "stock_code": "300624.SZ",
       "stock_name": "万兴科技",
-      "theme_score": 76.25,
+      "theme_score": 77.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.0823,
-      "amount": 311661.85657,
-      "total_mv": 1011148.9745
+      "pct_chg": 3.2887,
+      "amount": 316304.66594,
+      "total_mv": 1044402.8222
+    },
+    {
+      "stock_code": "000810.SZ",
+      "stock_name": "创维数字",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.0278,
+      "amount": 272113.89895,
+      "total_mv": 1253713.1811
+    },
+    {
+      "stock_code": "002657.SZ",
+      "stock_name": "中科金财",
+      "theme_score": 75.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.3921,
+      "amount": 743640.31566,
+      "total_mv": 743013.6091
+    },
+    {
+      "stock_code": "002354.SZ",
+      "stock_name": "天娱数科",
+      "theme_score": 75.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -0.266,
+      "amount": 3570652.24547,
+      "total_mv": 1240939.365
+    },
+    {
+      "stock_code": "603466.SH",
+      "stock_name": "风语筑",
+      "theme_score": 75.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.2227,
+      "amount": 828724.548,
+      "total_mv": 672741.0592
+    },
+    {
+      "stock_code": "002587.SZ",
+      "stock_name": "奥拓电子",
+      "theme_score": 74.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 3.1915,
+      "amount": 212396.3937,
+      "total_mv": 444408.3219
     },
     {
       "stock_code": "300182.SZ",
       "stock_name": "捷成股份",
-      "theme_score": 73.5,
+      "theme_score": 74.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -2.4779,
-      "amount": 1234531.45493,
-      "total_mv": 1467767.9232
+      "pct_chg": 4.1742,
+      "amount": 1031267.20312,
+      "total_mv": 1529035.9128
     },
     {
       "stock_code": "603598.SH",
       "stock_name": "引力传媒",
-      "theme_score": 73.5,
+      "theme_score": 74.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.7353,
-      "amount": 399719.61,
-      "total_mv": 509700.681
-    },
-    {
-      "stock_code": "300052.SZ",
-      "stock_name": "中青宝",
-      "theme_score": 73.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 1.023,
-      "amount": 267920.01984,
-      "total_mv": 310302.5714
-    },
-    {
-      "stock_code": "688039.SH",
-      "stock_name": "当虹科技",
-      "theme_score": 73.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.1824,
-      "amount": 128364.44,
-      "total_mv": 466185.0022
-    },
-    {
-      "stock_code": "300017.SZ",
-      "stock_name": "网宿科技",
-      "theme_score": 73.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 1.8505,
-      "amount": 2074959.52006,
-      "total_mv": 3571324.9159
+      "pct_chg": 2.328,
+      "amount": 305799.076,
+      "total_mv": 521566.7286
     }
   ],
   "expansion_pool": [
@@ -113,15 +113,47 @@
       "theme_score": 69.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.7865
+      "pct_chg": -1.1409
     },
     {
-      "stock_code": "001330.SZ",
-      "stock_name": "博纳影业",
+      "stock_code": "300184.SZ",
+      "stock_name": "力源信息",
       "theme_score": 69.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9533
+      "pct_chg": 11.1893
+    },
+    {
+      "stock_code": "300688.SZ",
+      "stock_name": "创业黑马",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.011
+    },
+    {
+      "stock_code": "301313.SZ",
+      "stock_name": "凡拓数创",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.5852
+    },
+    {
+      "stock_code": "002995.SZ",
+      "stock_name": "天地在线",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.8333
+    },
+    {
+      "stock_code": "300264.SZ",
+      "stock_name": "佳创视讯",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -2.6374
     },
     {
       "stock_code": "300556.SZ",
@@ -129,7 +161,7 @@
       "theme_score": 69.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.4304
+      "pct_chg": -3.8905
     },
     {
       "stock_code": "603189.SH",
@@ -137,39 +169,23 @@
       "theme_score": 69.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": -2.705
+      "pct_chg": 1.1295
     },
     {
-      "stock_code": "300081.SZ",
-      "stock_name": "ST恒信",
-      "theme_score": 69.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": -2.0151
-    },
-    {
-      "stock_code": "002717.SZ",
-      "stock_name": "*ST岭南",
+      "stock_code": "000925.SZ",
+      "stock_name": "众合科技",
       "theme_score": 68.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.3058
+      "pct_chg": 3.6115
     },
     {
-      "stock_code": "000892.SZ",
-      "stock_name": "欢瑞世纪",
-      "theme_score": 68.75,
+      "stock_code": "002635.SZ",
+      "stock_name": "安洁科技",
+      "theme_score": 67.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 2.809
-    },
-    {
-      "stock_code": "300170.SZ",
-      "stock_name": "汉得信息",
-      "theme_score": 68.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.6722
+      "pct_chg": 10.0252
     },
     {
       "stock_code": "000032.SZ",
@@ -177,39 +193,31 @@
       "theme_score": 67.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 10.0
+      "pct_chg": 9.9894
     },
     {
-      "stock_code": "600576.SH",
-      "stock_name": "祥源文旅",
-      "theme_score": 67.75,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 9.9644
-    },
-    {
-      "stock_code": "300496.SZ",
-      "stock_name": "中科创达",
+      "stock_code": "002467.SZ",
+      "stock_name": "二六三",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.6567
+      "pct_chg": 2.9126
     },
     {
-      "stock_code": "300036.SZ",
-      "stock_name": "超图软件",
+      "stock_code": "002878.SZ",
+      "stock_name": "元隆雅图",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.6525
+      "pct_chg": -0.5935
     },
     {
-      "stock_code": "300166.SZ",
-      "stock_name": "东方国信",
+      "stock_code": "000892.SZ",
+      "stock_name": "欢瑞世纪",
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -1.7065
+      "pct_chg": 2.1858
     },
     {
       "stock_code": "300148.SZ",
@@ -217,33 +225,25 @@
       "theme_score": 67.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 0.9009
-    },
-    {
-      "stock_code": "300232.SZ",
-      "stock_name": "洲明科技",
-      "theme_score": 67.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 4.6346
+      "pct_chg": 1.1905
     }
   ],
   "latent_pool": [],
-  "leader_stock": "中科金财",
+  "leader_stock": "中文在线",
   "secondary_leaders": [
-    "风语筑",
-    "中文在线"
+    "昆仑万维",
+    "万兴科技"
   ],
   "next_day_signal": {
     "direction": "transition",
     "focus_pool": "expansion"
   },
   "pool_stats": {
-    "core_count": 34,
-    "expansion_count": 213,
+    "core_count": 39,
+    "expansion_count": 208,
     "latent_count": 0,
-    "core_avg_pct": 0.8373529411764705,
-    "expansion_avg_pct": 0.7285845070422536,
-    "total_amount": 148542088.09984997
+    "core_avg_pct": 3.148205128205128,
+    "expansion_avg_pct": 1.5232658653846154,
+    "total_amount": 142198395.0930001
   }
 }

@@ -1,0 +1,1 @@
+python tushare_quant.py -d 20260610 --no-send --simple

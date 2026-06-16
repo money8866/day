@@ -1,0 +1,189 @@
+{
+  "theme_name": "HBM封装材料",
+  "macro_theme": "半导体",
+  "trade_date": "20260615",
+  "theme_stage": "主升期",
+  "theme_strength_score": 100,
+  "core_pool": [
+    {
+      "stock_code": "300398.SZ",
+      "stock_name": "飞凯材料",
+      "theme_score": 71.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.1384,
+      "amount": 3072739.84073,
+      "total_mv": 2463382.3253
+    },
+    {
+      "stock_code": "600520.SH",
+      "stock_name": "三佳科技",
+      "theme_score": 70.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0037,
+      "amount": 365971.512,
+      "total_mv": 468635.94
+    },
+    {
+      "stock_code": "600584.SH",
+      "stock_name": "长电科技",
+      "theme_score": 67.75,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 7.8352,
+      "amount": 12871558.147,
+      "total_mv": 13298929.0842
+    },
+    {
+      "stock_code": "688256.SH",
+      "stock_name": "寒武纪",
+      "theme_score": 66.5,
+      "role": "龙头",
+      "reason": "涨幅领先+成交活跃",
+      "pct_chg": 7.6613,
+      "amount": 20204543.688,
+      "total_mv": 83877111.3615
+    }
+  ],
+  "expansion_pool": [
+    {
+      "stock_code": "688603.SH",
+      "stock_name": "天承科技",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 20.0013
+    },
+    {
+      "stock_code": "600667.SH",
+      "stock_name": "太极实业",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.542
+    },
+    {
+      "stock_code": "688820.SH",
+      "stock_name": "盛合晶微",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.5613
+    },
+    {
+      "stock_code": "300400.SZ",
+      "stock_name": "劲拓股份",
+      "theme_score": 69.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0331
+    },
+    {
+      "stock_code": "688535.SH",
+      "stock_name": "华海诚科",
+      "theme_score": 69.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 4.3095
+    },
+    {
+      "stock_code": "688396.SH",
+      "stock_name": "华润微",
+      "theme_score": 69.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 13.2401
+    },
+    {
+      "stock_code": "603005.SH",
+      "stock_name": "晶方科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.021
+    },
+    {
+      "stock_code": "002137.SZ",
+      "stock_name": "实益达",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 10.0
+    },
+    {
+      "stock_code": "688630.SH",
+      "stock_name": "芯碁微装",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 11.2157
+    },
+    {
+      "stock_code": "688352.SH",
+      "stock_name": "颀中科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.3273
+    },
+    {
+      "stock_code": "688135.SH",
+      "stock_name": "利扬芯片",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.4161
+    },
+    {
+      "stock_code": "300456.SZ",
+      "stock_name": "赛微电子",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.6949
+    },
+    {
+      "stock_code": "002156.SZ",
+      "stock_name": "通富微电",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.5498
+    },
+    {
+      "stock_code": "688216.SH",
+      "stock_name": "气派科技",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 5.331
+    },
+    {
+      "stock_code": "688362.SH",
+      "stock_name": "甬矽电子",
+      "theme_score": 67.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.0137
+    }
+  ],
+  "latent_pool": [],
+  "leader_stock": "飞凯材料",
+  "secondary_leaders": [
+    "三佳科技",
+    "长电科技"
+  ],
+  "next_day_signal": {
+    "direction": "strength",
+    "focus_pool": "core"
+  },
+  "pool_stats": {
+    "core_count": 4,
+    "expansion_count": 36,
+    "latent_count": 0,
+    "core_avg_pct": 8.40965,
+    "expansion_avg_pct": 6.670866666666666,
+    "total_amount": 115405891.99115998
+  }
+}

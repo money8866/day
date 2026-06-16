@@ -1,7 +1,7 @@
 {
   "version": "3.0",
   "description": "一级二级主题配置 - 主题股池引擎V3",
-  "updated_at": "2026-06-14",
+  "updated_at": "2026-06-16",
 
   "macro_themes": {
     "AI": {
@@ -105,6 +105,14 @@
           "core_companies": ["北方华创", "中微公司", "拓荆科技", "盛美上海", "华海清科", "芯源微"],
           "description": "刻蚀设备、薄膜沉积、光刻机、清洗设备、量测设备"
         },
+        "光刻机链": {
+          "name": "光刻机链",
+          "concept_boards": ["光刻机", "半导体设备", "光学系统"],
+          "industry_filter": ["自动化设备", "光学光电子", "专用设备"],
+          "exclude_keywords": ["光刻胶", "电子特气", "硅片", "封测"],
+          "core_companies": ["上海微电子", "茂莱光学", "福晶科技", "苏大维格", "腾景科技", "炬光科技"],
+          "description": "光刻机、EUV/DUV光刻、光刻镜头、光学系统、光源、激光器"
+        },
         "半导体材料": {
           "name": "半导体材料",
           "concept_boards": ["半导体材料", "光刻胶", "电子化学品"],
@@ -121,6 +129,14 @@
           "core_companies": ["长电科技", "通富微电", "华天科技", "甬矽电子", "晶方科技"],
           "description": "Chiplet、CoWoS、3D封装、TSV、封装基板"
         },
+        "HBM封装材料": {
+          "name": "HBM封装材料",
+          "concept_boards": ["HBM", "封装材料", "先进封装"],
+          "industry_filter": ["电子化学品", "半导体材料"],
+          "exclude_keywords": ["设备", "制造", "封测"],
+          "core_companies": ["华海诚科", "联瑞新材", "强力新材", "飞凯材料", "雅克科技"],
+          "description": "HBM封装用环氧塑封料、底部填充材料、散热材料、介质材料"
+        },
         "存储芯片": {
           "name": "存储芯片",
           "concept_boards": ["存储芯片", "HBM", "DRAM"],
@@ -136,6 +152,14 @@
           "exclude_keywords": ["设备", "材料", "封测"],
           "core_companies": ["韦尔股份", "卓胜微", "圣邦股份", "紫光国微", "寒武纪", "海光信息"],
           "description": "EDA、FPGA、ASIC、SoC、AI芯片、模拟芯片"
+        },
+        "半导体EDA/IP": {
+          "name": "半导体EDA/IP",
+          "concept_boards": ["EDA", "半导体IP", "芯片设计软件"],
+          "industry_filter": ["软件开发", "半导体"],
+          "exclude_keywords": ["设备", "材料", "封测", "制造"],
+          "core_companies": ["华大九天", "概伦电子", "芯愿景", "广立微", "芯原股份"],
+          "description": "EDA设计软件、IP核、芯片自动化设计"
         },
         "功率半导体": {
           "name": "功率半导体",
@@ -208,6 +232,22 @@
           "exclude_keywords": [],
           "core_companies": ["金风科技", "明阳智能", "东方电缆", "中天科技", "天顺风能"],
           "description": "风电整机、叶片、塔筒、海缆"
+        },
+        "氢能": {
+          "name": "氢能",
+          "concept_boards": ["氢能源", "燃料电池", "电解水制氢"],
+          "industry_filter": ["电源设备", "燃气", "化学原料"],
+          "exclude_keywords": ["核电", "核聚变", "煤炭"],
+          "core_companies": ["亿华通", "潍柴动力", "美锦能源", "宝丰能源", "隆基绿能", "阳光电源"],
+          "description": "氢燃料电池、电解水制氢、储氢运氢、加氢站、绿氢"
+        },
+        "电力设备出海": {
+          "name": "电力设备出海",
+          "concept_boards": ["电力设备出海", "变压器出口", "海外电网"],
+          "industry_filter": ["电网设备", "电机", "电源设备"],
+          "exclude_keywords": ["发电设备", "风电整机", "光伏组件"],
+          "core_companies": ["思源电气", "华明装备", "金盘科技", "伊戈尔", "扬电科技", "三星医疗"],
+          "description": "变压器出口、开关设备出口、配电设备出口、海外EPC"
         }
       }
     },

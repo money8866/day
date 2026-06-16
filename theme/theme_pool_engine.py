@@ -443,12 +443,12 @@ def assign_pool(theme_score, role, stock_info):
     分配股池：核心/扩展/潜伏
     
     核心股池：ThemeScore >= 70 或具备龙头特征
-    扩展股池：35 <= ThemeScore < 70
-    潜伏股池：15 <= ThemeScore < 35
+    扩展股池：50 <= ThemeScore < 70
+    潜伏股池：25 <= ThemeScore < 50
     """
     if theme_score >= 70 or role == "龙头":
         return "core"
-    elif theme_score >= 50 or role in ["中军", "补涨"]:
+    elif theme_score >= 50:
         return "expansion"
     elif theme_score >= 25:
         return "latent"
@@ -775,8 +775,9 @@ class ThemePoolEngine:
                 if pool:
                     results[sub_name] = pool
                     
-                    # 保存到单独文件
-                    pool_path = os.path.join(POOL_DIR, f"{sub_name}.json")
+                    # 保存到单独文件（替换文件名中的非法字符）
+                    safe_sub_name = sub_name.replace("/", "或").replace("\\", "或").replace(":", "：").replace("*", "×").replace("?", "？").replace("\"", "'").replace("<", "《").replace(">", "》").replace("|", "｜")
+                    pool_path = os.path.join(POOL_DIR, f"{safe_sub_name}.json")
                     with open(pool_path, "w", encoding="utf-8") as f:
                         json.dump(pool, f, ensure_ascii=False, indent=2)
                     

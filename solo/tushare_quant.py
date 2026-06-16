@@ -38,6 +38,21 @@ import sqlite3
 import daily_analysis_summarizer as das
 
 # =========================
+# 产业资金定价AI模型（ICPM）导入
+# =========================
+_MF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multi_factor_picker')
+if _MF_DIR not in sys.path:
+    sys.path.insert(0, _MF_DIR)
+try:
+    from industry_pricing_model import IndustryPricingModel, extract_pricing_data
+    _ICPM_AVAILABLE = True
+except ImportError as e:
+    print(f"[ICPM] 导入失败，ICPM禁用: {e}")
+    _ICPM_AVAILABLE = False
+    IndustryPricingModel = None
+    extract_pricing_data = None
+
+# =========================
 # 环境变量
 # =========================
 load_dotenv("d:/mystock/config/.env")
@@ -65,8 +80,75 @@ os.makedirs(NEWS_CACHE_DIR, exist_ok=True)
 # =========================
 THEME_STOCKS_CACHE = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_pattern_stocks.csv')
 
+# DC热榜缓存目录
+DC_HOT_CACHE_DIR = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'dc_hot')
+
+
+def count_hot_list_appearances(ts_code, days=20):
+    """统计个股在热榜前20天出现的次数
+    
+    Args:
+        ts_code: 股票代码
+        days: 统计天数，默认20天
+    
+    Returns:
+        count: 出现次数
+    """
+    count = 0
+    
+    if not os.path.exists(DC_HOT_CACHE_DIR):
+        return count
+    
+    # 获取最近days天的日期
+    from datetime import datetime, timedelta
+    
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        date_str = date.strftime('%Y%m%d')
+        csv_path = os.path.join(DC_HOT_CACHE_DIR, f'dc_hot_{date_str}.csv')
+        
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                if ts_code in df['ts_code'].values:
+                    count += 1
+            except Exception as e:
+                pass
+    
+    return count
+
+
+def get_hot_list_bonus(count):
+    """根据热榜出现次数计算加分
+    
+    加分规则：
+    - 出现1-3次：+1分
+    - 出现4-6次：+3分
+    - 出现7-10次：+5分
+    - 出现11-15次：+8分
+    - 出现16-20次：+12分
+    """
+    if count >= 16:
+        return 12
+    elif count >= 11:
+        return 8
+    elif count >= 7:
+        return 5
+    elif count >= 4:
+        return 3
+    elif count >= 1:
+        return 1
+    else:
+        return 0
+
+
 def load_theme_pattern_stocks():
-    """读取主题选股结果"""
+    """读取主题选股结果
+    
+    基于主题状态区分中期趋势和短线主线：
+    - 中期趋势：抱团主升、强趋势（状态稳定且持续）
+    - 短线主线：启动、分歧转一致、主升（状态刚启动）
+    """
     if not os.path.exists(THEME_STOCKS_CACHE):
         return [], ""
     
@@ -75,9 +157,14 @@ def load_theme_pattern_stocks():
         if df.empty:
             return [], ""
         
-        # 按主题类型和买入类型分组
-        mid_term = df[df.get('theme_type', '') == '中期趋势']
-        short_term = df[df.get('theme_type', '') == '短线主线']
+        # 基于主题状态区分中期趋势和短线主线
+        # 中期趋势：状态稳定且持续（抱团主升、强趋势）
+        # 短线主线：状态刚启动（启动、分歧转一致、主升）
+        mid_term_states = {'抱团主升', '强趋势'}
+        short_term_states = {'启动', '分歧转一致', '主升'}
+        
+        mid_term = df[df.get('theme_state', '').isin(mid_term_states)]
+        short_term = df[df.get('theme_state', '').isin(short_term_states)]
         
         # 中期趋势：中军和补涨中军
         mid_term_zhongjun = mid_term[mid_term.get('buy_type', '') == '中军']
@@ -405,7 +492,9 @@ def get_hist_data(ts_code):
             if (df['trade_date'] == TRADE_DATE).any():
                 # 只返回 TRADE_DATE 及之前的数据
                 filtered_df = df[df['trade_date'] <= TRADE_DATE]
-                return filtered_df.sort_values('trade_date')
+                if not filtered_df.empty:
+                    return filtered_df.sort_values('trade_date')
+                # 数据为空，走拉取流程
 
         except Exception as e:
 
@@ -1220,8 +1309,14 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
     # =========================
     # 自动选择纯度最高的主题
     # =========================
+    all_themes = ''
     if not theme and stock_info:
         theme = _find_best_theme(stock_info)
+        all_themes = find_all_themes(stock_info)
+    
+    # 如果没有找到多主题，使用最佳主题
+    if not all_themes:
+        all_themes = theme or ''
 
     # =========================
     # 1. 主题真实性（防止蹭概念）
@@ -1236,7 +1331,7 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
     mainline_resonance = 0  # 新增：主线共振加分
     if theme:
         try:
-            theme_data = das.read_theme_analysis()
+            theme_data = das.read_theme_analysis(TRADE_DATE)
             if theme_data:
                 for t in theme_data.get('themes', []):
                     if t.get('theme_name') == theme:
@@ -1340,7 +1435,7 @@ def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
         "风险等级": v6_result.get('风险等级', '低'),
 
         # V7新指标
-        "所属主题": theme,
+        "所属主题": all_themes,
         "主题纯度": round(theme_confidence, 2),
         "主题强化系数": round(theme_strength_bonus, 2),
         "主线共振加分": round(mainline_resonance, 2),
@@ -2393,519 +2488,46 @@ def _find_best_theme(stock_info):
         return ''
 
 
-def calc_hot_money_open_score_v9(v7_result, df, stock_info, theme=''):
+def find_all_themes(stock_info, min_confidence=0.3):
     """
-    游资最强开仓评分算法 V9.7
+    查找股票所属的所有主题（支持多主题）
     
-    核心逻辑（V9.7升级）：
-    1. 主线强度（22%）：主题热度+主题排名
-    2. 龙头地位（18%）：趋势+资金
-    3. 成交额排名（18%）：近20日成交额比率（放量程度）
-    4. 资金体量（15%）：市值+承接力（体现"有承接的小票"）
-    5. 主题纯度（13%）：从V7结果获取
-    6. 结构位置（9%）：启动型/加速型/分歧型
-    7. 突破强度（3%）：从V7结果获取
-    8. 量能爆发（2%）：从V7结果获取
+    Args:
+        stock_info: 股票信息字典
+        min_confidence: 最小置信度阈值，默认0.3
     
-    资金体量因子逻辑：
-    - 小票（<50亿）：需要高承接力（换手率>5%）才能得高分
-    - 中小票（50-100亿）：需要中等承接力（换手率>3%）
-    - 中票（100-200亿）：需要基本承接力（换手率>2%）
-    - 大票（>200亿）：承接力要求较低（换手率>1.5%即可）
-    
-    加分项：
-    - 市值加成：中军（>150亿）+10~15分，小票加分
-    - 板块第一强：当日涨幅板块第一+8分
-    - 低失败概率：+3~5分
-    - 主线排名：TOP1:+10分，TOP2-3:+8分
-    
-    返回：
-        - open_score: 开仓评分 (0-100)
-        - structure_type: 结构类型（启动型/加速型/高位分歧）
-        - recommendation: 推荐理由
+    Returns:
+        所有匹配主题的字符串，用逗号分隔
     """
-    try:
-        if not v7_result or df is None:
-            return 0, "数据不足", ""
-        
-        # 确保df是DataFrame类型
-        if not isinstance(df, pd.DataFrame):
-            return 0, "数据不足", ""
-        
-        if len(df) < 20:
-            return 0, "数据不足", ""
-        
-        # 重置索引避免问题
-        df = df.reset_index(drop=True)
-        
-        C = df['close'].values  # 转为numpy数组
-        VOL = df['vol'].values
-        
-        # =========================
-        # 1. 获取V7基础指标
-        # =========================
-        volume_explosion = float(v7_result.get('量能爆发', 0))  # 0-1
-        breakout_strength = float(v7_result.get('突破强度', 0))  # 0-1
-        fail_prob = float(v7_result.get('失败概率', 0.5))  # 0-1
-        theme_confidence = float(v7_result.get('主题纯度', 30))  # 0-100
-        
-        # 今日涨幅
-        if len(C) >= 2:
-            today_pct = float((C[-1] / C[-2] - 1) * 100)
-        else:
-            today_pct = 0
-        
-        # =========================
-        # 2. 主题热度评分（theme_score）
-        # =========================
-        theme_rank_score = 50  # 默认值
-        theme_name = v7_result.get('所属主题', theme)
-        theme_sentiment_score = 0  # 主题情绪分
-        
-        if theme_name:
-            theme_name = str(theme_name).strip()
-            try:
-                theme_data = das.read_theme_analysis(TRADE_DATE)
-                if theme_data and theme_data.get('themes'):
-                    for t in theme_data['themes']:
-                        if t.get('theme_name') == theme_name:
-                            # 使用综合分作为主题热度评分（0-100）
-                            composite_score = float(t.get('composite_score', 50))
-                            theme_rank_score = min(100, max(0, composite_score))
-                            # 获取主题情绪分（如果有）
-                            theme_sentiment_score = float(t.get('sentiment_score', 0))
-                            break
-                    else:
-                        theme_rank_score = 50
-            except Exception as e:
-                print(f"[开仓评分V9] 获取主题热度失败: {e}")
-                theme_rank_score = 50
-        
-        # =========================
-        # 3. 主题纯度评分（purity_score）
-        # =========================
-        purity_score = theme_confidence  # 0-100
-        
-        # =========================
-        # 4. 龙头地位评分（leader_score）
-        # =========================
-        money_momentum = float(v7_result.get('资金动量', 0.5))
-        trend_stability = float(v7_result.get('趋势稳定', 0.5))
-        trend_probability = float(v7_result.get('趋势概率', 0.5))
-        trend_strength = float(v7_result.get('趋势强度', 0.5))
-        
-        leader_score = (
-            trend_strength * 0.40 +      # 趋势强度 40%
-            money_momentum * 0.35 +      # 资金动量 35%
-            trend_stability * 0.20 +     # 趋势稳定 20%
-            trend_probability * 0.05     # 趋势概率 5%
-        ) * 100  # 归一化到0-100
-        
-        # =========================
-        # 5. 成交额排名评分（turnover_rank_score）- 最重要独立因子
-        # =========================
-        turnover_rank_score = 50  # 默认中等
-        try:
-            if len(df) >= 20 and 'vol' in df.columns and 'close' in df.columns:
-                # 计算近20日成交额
-                recent_df = df.tail(20).copy()
-                recent_df['turnover'] = recent_df['vol'] * recent_df['close']
-                
-                # 今日成交额
-                today_turnover = recent_df['turnover'].iloc[-1]
-                
-                # 20日平均成交额
-                ma20_turnover = recent_df['turnover'].mean()
-                
-                # 换手率比率：今日成交额 / 20日均成交额
-                turnover_ratio = today_turnover / ma20_turnover if ma20_turnover > 0 else 1.0
-                
-                # 成交额比率评分：比率越高说明当日放量越明显
-                if turnover_ratio >= 3:
-                    turnover_rank_score = 100
-                elif turnover_ratio >= 2:
-                    turnover_rank_score = 85
-                elif turnover_ratio >= 1.5:
-                    turnover_rank_score = 70
-                elif turnover_ratio >= 1:
-                    turnover_rank_score = 55
-                else:
-                    turnover_rank_score = 35
-        except Exception:
-            turnover_rank_score = 50
-        
-        # =========================
-        # 5. 结构位置评分（structure_score）
-        # =========================
-        close_series = df['close']
-        MA20 = float(close_series.rolling(20).mean().iloc[-1])
-        MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        HHV20 = float(close_series.tail(20).max())
-        LLV20 = float(close_series.tail(20).min())
-        
-        current_price = float(C[-1])
-        price_position = current_price / MA20 if MA20 > 0 else 1.0
-        
-        structure_score = 0
-        structure_type = "未知"
-        structure_desc = ""
-        
-        # 判断结构类型
-        # 从20日低点的累计涨幅（判断是否刚启动还是已经涨了很多）
-        llv20_close = float(close_series.tail(20).min())
-        run_up_from_20d_low = (current_price - llv20_close) / max(llv20_close, 0.01)
-        
-        # 启动型：接近20日高点但尚未创新高 + 有涨幅
-        if current_price <= HHV20*1.05 and current_price >= HHV20 * 0.90 and today_pct > 1:
-            structure_type = "🟢启动型"
-            structure_score = 100
-            structure_desc = "接近前高，首板/突破形态，次日惯性较强"
-        # 加速型：均线多头 + 趋势延续（含创新高情形）
-        elif price_position > 1.05 and MA20 > MA60 and today_pct > 0:
-            structure_type = "🟡加速型"
-            structure_score = 75
-            structure_desc = "趋势加速中，稳健跟进"
-        # 高位分歧：价格已远超20日高点（5%以上）且累计涨幅已较大（防暴力拉升末端）
-        elif current_price > HHV20 * 1.05 and run_up_from_20d_low > 0.20:
-            structure_type = "🔴高位分歧"
-            structure_score = 50
-            structure_desc = "高位分歧，风险较大"
-        # 调整型：缩量回调到均线附近
-        elif price_position < 1.02 and volume_explosion < 0.3 and today_pct > -3:
-            structure_type = "🟡调整型"
-            structure_score = 20
-            structure_desc = "缩量调整，关注均线支撑"
-        else:
-            structure_type = "⚪震荡型"
-            structure_score = 40
-            structure_desc = "震荡整理，需观察方向"
-        
-        # =========================
-        # 6. 突破强度评分（breakout_score）
-        # =========================
-        breakout_score = breakout_strength * 100  # 0-1 -> 0-100
-        
-        # =========================
-        # 7. 量能爆发评分（volume_score）
-        # =========================
-        volume_score = volume_explosion * 100  # 0-1 -> 0-100
-        
-        # =========================
-        # 8. 资金体量因子（capital_volume_score）- 体现"有承接的小票"
-        # =========================
-        capital_volume_score = 50  # 默认中等
-        if stock_info and len(df) >= 20:
-            market_cap = stock_info.get('total_market_cap') or stock_info.get('market_cap')
-            if market_cap and market_cap > 0:
-                # 统一转换为亿元（复用之前的转换逻辑）
-                if market_cap > 1e12:
-                    market_cap_yi = market_cap / 1e8
-                elif market_cap > 1e8:
-                    market_cap_yi = market_cap / 1e8
-                else:
-                    market_cap_yi = market_cap / 1e8
-                
-                # 直接使用 df 中的数据（get_hist_data 已获取）
-                recent_df = df.tail(20).copy()
-                
-                # 优先使用 amount 字段（单位：千元），异常时用 vol*close 计算
-                if 'amount' in recent_df.columns and recent_df['amount'].iloc[-1] > 0:
-                    amount = recent_df['amount'].iloc[-1]
-                    # 验证 amount 是否合理（避免异常值）
-                    vol = recent_df['vol'].iloc[-1]
-                    close = recent_df['close'].iloc[-1]
-                    expected_amount = vol * close * 100 / 1000  # 转为千元
-                    
-                    if abs(amount - expected_amount) / expected_amount < 2.0:  # 允许2倍误差
-                        today_turnover_yi = amount / 1e3  # 千元转亿元
-                    else:
-                        # amount异常，用计算值
-                        today_turnover_yi = vol * close * 100 / 1e8
-                else:
-                    # 没有amount字段，用vol*close计算
-                    today_turnover_yi = recent_df['vol'].iloc[-1] * recent_df['close'].iloc[-1] * 100 / 1e8
-                
-                # 计算承接力：当日成交额 / 总市值（换手率）
-                turnover_ratio = today_turnover_yi / market_cap_yi if market_cap_yi > 0 else 0
-                
-                # 市值分档 + 承接力评分（使用亿元）
-                if market_cap_yi < 50:
-                    if turnover_ratio >= 0.05:
-                        capital_volume_score = 100
-                    elif turnover_ratio >= 0.03:
-                        capital_volume_score = 85
-                    elif turnover_ratio >= 0.02:
-                        capital_volume_score = 70
-                    else:
-                        capital_volume_score = 40
-                elif market_cap_yi < 100:
-                    if turnover_ratio >= 0.04:
-                        capital_volume_score = 90
-                    elif turnover_ratio >= 0.025:
-                        capital_volume_score = 75
-                    elif turnover_ratio >= 0.015:
-                        capital_volume_score = 60
-                    else:
-                        capital_volume_score = 45
-                elif market_cap_yi < 200:
-                    if turnover_ratio >= 0.03:
-                        capital_volume_score = 85
-                    elif turnover_ratio >= 0.02:
-                        capital_volume_score = 70
-                    else:
-                        capital_volume_score = 50
-                else:
-                    if turnover_ratio >= 0.025:
-                        capital_volume_score = 80
-                    elif turnover_ratio >= 0.015:
-                        capital_volume_score = 65
-                    else:
-                        capital_volume_score = 55
-                
+    if not stock_info:
+        return ''
 
+    try:
+        # 加载主题配置
+        cfg_path = os.path.join(BASE_DIR, 'theme.json')
+        if not os.path.exists(cfg_path):
+            return ''
+
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            theme_cfg = json.load(f).get('HOT_THEMES', {})
+
+        # 收集所有置信度超过阈值的主题
+        matched_themes = []
+        for theme_name in theme_cfg.keys():
+            confidence = calc_theme_confidence(stock_info, theme_name)
+            if confidence >= min_confidence:
+                # 带上置信度信息
+                matched_themes.append(f"{theme_name}({confidence:.2f})")
+
+        # 按置信度降序排序
+        matched_themes.sort(key=lambda x: float(x.split('(')[1].rstrip(')')), reverse=True)
         
-        # =========================
-        # 9. V9.7基础评分公式（优化版：降低市值影响，加大成交额权重）
-        # =========================
-        open_score = (
-            theme_rank_score * 0.22 +      # 主线强度 22%
-            leader_score * 0.18 +          # 龙头地位 18%
-            turnover_rank_score * 0.22 +  # 成交额排名 22%（提升4%，加大成交额影响力）
-            capital_volume_score * 0.10 + # 资金体量 10%（降低5%，减少市值影响）
-            purity_score * 0.13 +          # 主题纯度 13%
-            structure_score * 0.09 +       # 结构位置 9%
-            breakout_score * 0.03 +        # 突破强度 3%
-            volume_score * 0.03           # 量能爆发 3%（提升1%）
-        )
-        
-        # =========================
-        # 9. 市值加成（降低影响，小额加分）
-        # =========================
-        market_cap_bonus = 0
-        if stock_info:
-            # 从stock_info获取市值
-            market_cap = stock_info.get('total_market_cap') or stock_info.get('market_cap')
-            if market_cap and market_cap > 0:
-                # 转换为亿元
-                if market_cap > 1e12:  # 万亿转亿
-                    market_cap_yi = market_cap / 1e8
-                elif market_cap > 1e8:  # 已经是亿
-                    market_cap_yi = market_cap / 1e8
-                else:  # 元转亿
-                    market_cap_yi = market_cap / 1e8
-                
-                # 中军加成：大市值加分降低（原10~15分，改为5~8分）
-                if market_cap_yi >= 1000:
-                    market_cap_bonus = 8
-                elif market_cap_yi >= 500:
-                    market_cap_bonus = 6
-                elif market_cap_yi >= 150:
-                    market_cap_bonus = 5
-                # 小票加成：<50亿 +3分（原+5分）
-                elif market_cap_yi < 50:
-                    market_cap_bonus = 3
-        
-        open_score += market_cap_bonus
-        
-        # =========================
-        # 10. 双创板加成（科创板688 + 创业板300）
-        # =========================
-        shuangchuang_bonus = 0
-        code_str = str(stock_info.get('代码', '')) if stock_info else ''
-        if code_str:
-            if code_str.startswith('688'):
-                shuangchuang_bonus = 3  # 科创板弹性大，加8分
-            elif code_str.startswith('300'):
-                shuangchuang_bonus = 3  # 创业板加5分
-        open_score += shuangchuang_bonus
-        
-        # =========================
-        # 11. 板块第一强加成
-        # =========================
-        theme_first_bonus = 0
-        if theme_name:
-            try:
-                # 获取板块内涨幅最强的股票
-                theme_data = das.read_theme_analysis(TRADE_DATE)
-                if theme_data and theme_data.get('themes'):
-                    for t in theme_data['themes']:
-                        if t.get('theme_name') == theme_name:
-                            # 检查是否为板块第一强
-                            top_stocks = t.get('top_stocks', [])
-                            stock_name = stock_info.get('name', '') if stock_info else ''
-                            if top_stocks and len(top_stocks) > 0:
-                                # top_stocks 格式可能是 [(name, pct), ...]
-                                if isinstance(top_stocks[0], tuple):
-                                    if stock_name and stock_name in str(top_stocks[0][0]):
-                                        theme_first_bonus = 8
-                                elif top_stocks[0].get('name') == stock_name:
-                                    theme_first_bonus = 8
-                            break
-            except Exception:
-                pass
-        
-        open_score += 0
-        
-        # =========================
-        # 12. 失败概率微调（降级）
-        # =========================
-        fail_bonus = 0
-        if fail_prob < 0.15:
-            fail_bonus = 5
-        elif fail_prob < 0.25:
-            fail_bonus = 3
-        
-        open_score += fail_bonus
-        
-        # =========================
-        # 13. 主线排名加分（多日加权平均版）
-        # =========================
-        rank_bonus = 0
-        if theme_name:
-            try:
-                # 获取主题历史排名数据
-                db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-                if os.path.exists(db_path):
-                    conn = sqlite3.connect(db_path)
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT trade_date, rank FROM theme_scores 
-                        WHERE theme = ? 
-                        ORDER BY trade_date DESC
-                    """, (theme_name,))
-                    rows = cursor.fetchall()
-                    conn.close()
-                    
-                    if rows:
-                        # 计算各时间窗口的排名分数
-                        def rank_to_score(rank):
-                            if rank == 1:
-                                return 10
-                            elif rank <= 3:
-                                return 8
-                            elif rank <= 5:
-                                return 6
-                            elif rank <= 10:
-                                return 4
-                            else:
-                                return 0
-                        
-                        # 按天数分组
-                        scores_1d, scores_5d, scores_10d, scores_20d = [], [], [], []
-                        for trade_date, rank in rows:
-                            days_ago = (datetime.strptime(TRADE_DATE, '%Y%m%d') - 
-                                       datetime.strptime(trade_date, '%Y%m%d')).days
-                            s = rank_to_score(rank)
-                            
-                            if days_ago <= 1:
-                                scores_1d.append(s)
-                            if days_ago <= 5:
-                                scores_5d.append(s)
-                            if days_ago <= 10:
-                                scores_10d.append(s)
-                            if days_ago <= 20:
-                                scores_20d.append(s)
-                        
-                        # 各区间平均分，缺省用当天值
-                        avg_1d = np.mean(scores_1d) if scores_1d else 0
-                        avg_5d = np.mean(scores_5d) if scores_5d else avg_1d
-                        avg_10d = np.mean(scores_10d) if scores_10d else avg_5d
-                        avg_20d = np.mean(scores_20d) if scores_20d else avg_10d
-                        
-                        # 加权：当天30%、5天30%、10天20%、20天20%
-                        rank_bonus = (
-                            0.30 * avg_1d +
-                            0.30 * avg_5d +
-                            0.20 * avg_10d +
-                            0.20 * avg_20d
-                        )
-            except Exception as e:
-                print(f"[开仓评分V9] 获取主线排名失败: {e}")
-        open_score += rank_bonus
-        
-        # =========================
-        # 14. 90天压缩天数加分：近90天在窄幅区间震荡为压缩形态
-        # =========================
-        compression_bonus = 0
-        try:
-            if len(df) >= 90:
-                c90 = df['close'].values[-90:]
-                h90 = df['high'].values[-90:]
-                l90 = df['low'].values[-90:]
-                hh_90 = h90.max()
-                ll_90 = l90.min()
-                range_90 = (hh_90 - ll_90) / ll_90 if ll_90 > 0 else 0
-                # 振幅<30%视为压缩形态
-                if range_90 < 0.30:
-                    compression_bonus = 20
-        except Exception:
-            pass
-        open_score += compression_bonus
-        
-        # =========================
-        # 15. 距离60日高点距离加分
-        # =========================
-        distance_bonus = 0
-        try:
-            if len(df) >= 60:
-                hhv_60 = df['high'].values[-60:].max()
-                distance_60 = (C[-1] - hhv_60) / hhv_60 if hhv_60 > 0 else 0
-                if distance_60 > -0.02:
-                    distance_bonus = 25
-                elif distance_60 > -0.05:
-                    distance_bonus = 15
-        except Exception:
-            pass
-        open_score += distance_bonus
-        
-        # 确保在0-100范围内
-        open_score = min(100, max(0, open_score))
-        
-        # =========================
-        # 生成推荐理由
-        # =========================
-        recommendation = f"{structure_desc}"
-        recommendation += f" | 主题{theme_rank_score:.0f}分"
-        recommendation += f" | 纯度{purity_score:.0f}分"
-        recommendation += f" | 龙头{leader_score:.0f}分"
-        recommendation += f" | 成交额{turnover_rank_score:.0f}分"
-        recommendation += f" | 资金体量{capital_volume_score:.0f}分"
-        recommendation += f" | 结构{structure_score:.0f}分"
-        
-        # 显示加分项和扣分项
-        bonus_parts = []
-        if compression_bonus > 0:
-            bonus_parts.append(f"压缩+{compression_bonus}分")
-        if distance_bonus > 0:
-            bonus_parts.append(f"近60日高点+{distance_bonus}分")
-        if market_cap_bonus > 0:
-            bonus_parts.append(f"市值+{market_cap_bonus}分")
-        if theme_first_bonus > 0:
-            bonus_parts.append(f"板块第一+{theme_first_bonus}分")
-        if rank_bonus > 0:
-            bonus_parts.append(f"主线排名+{rank_bonus}分")
-        if fail_bonus > 0:
-            bonus_parts.append(f"低风险+{fail_bonus}分")
-        
-        if bonus_parts:
-            recommendation += f" | 修正:{','.join(bonus_parts)}"
-        
-        # 显示完整公式
-        recommendation += f" | V9.7开仓={open_score:.1f} (主线{theme_rank_score:.0f}×0.22 + 龙头{leader_score:.0f}×0.18 + 成交额{turnover_rank_score:.0f}×0.22 + 资金{capital_volume_score:.0f}×0.10 + 纯度{purity_score:.0f}×0.13 + 结构{structure_score:.0f}×0.09 + 突破{breakout_score:.0f}×0.03 + 量能{volume_score:.0f}×0.03)"
-        
-        # 特殊标记
-        if structure_type == "🟢启动型" and fail_prob < 0.25:
-            recommendation = "⭐重点关注: " + recommendation
-        elif structure_type == "🔴高位分歧":
-            recommendation = "⚠️谨慎: " + recommendation
-        
-        return round(open_score, 1), structure_type, recommendation
-    
+        return ','.join(matched_themes) if matched_themes else ''
+
     except Exception as e:
-        print(f"[开仓评分V9] 异常: {e}")
-        import traceback
-        traceback.print_exc()
-        return 0, "计算异常", ""
+        print(f"[V7多主题] 选择失败: {e}")
+        return ''
+
 
 
 def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
@@ -2926,10 +2548,11 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
     - 距120日新高<2%:  +10
 
     加减项（透明显示）：
-    - 结构加分：启动+15, 加速+5, 调整+3, 高位-5
-    - 追高扣分：5日>10%起扣，最多-30
-    - 压缩加分：90日振幅<30% → +15
-    - 主题热度分：60天内进入TOP3次数，每次+1分，最多+20分
+    - 结构加分：启动+15, 加速0, 调整+3, 高位-8
+    - 追高扣分：加重（5日>5%起扣，线性递增）
+    - 压缩加分：90日振幅<30% → +5（避免高分堆积）
+    - 主题热度分：60天内进入TOP3次数，每次+1分，最多+10分
+    - 总分使用非线性压缩公式：open = 100 * raw / (raw + 50) 防止天花板效应
     """
     try:
         if not v7_result or df is None or not isinstance(df, pd.DataFrame) or len(df) < 20:
@@ -2969,19 +2592,23 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
         structure_bonus = 0
 
         # 🟢 启动型：接近前高但未大幅透支 + 今日有量
-        if current_price <= HHV20 * 1.05 and current_price >= HHV20 * 0.90 and today_pct > 1:
+        # 严格条件：低点上来涨幅<20% + 均线乖离<8% + 接近前高
+        if (current_price <= HHV20 * 1.05 and current_price >= HHV20 * 0.90 and
+            today_pct > 1 and
+            run_up_from_20d_low < 0.20 and
+            price_position < 1.08):
             structure_type = "🟢启动型"
             structure_bonus = 15
-            structure_desc = "接近前高，首板/突破形态，次日惯性较强"
-        # 🟡 加速型：均线多头 + 趋势延续
+            structure_desc = f"接近前高，均线乖离{((price_position-1)*100):.0f}%，低点上来{run_up_from_20d_low*100:.0f}%，启动形态"
+        # 🟡 加速型：均线多头 + 趋势延续（本身已在趋势中，不加分）
         elif price_position > 1.05 and MA20 > MA60 and today_pct > 0:
             structure_type = "🟡加速型"
-            structure_bonus = 5
-            structure_desc = "趋势加速中，稳健跟进"
+            structure_bonus = 0
+            structure_desc = "趋势加速中"
         # 🔴 高位分歧：大幅透支 + 累计涨幅已大
         elif current_price > HHV20 * 1.05 and run_up_from_20d_low > 0.20:
             structure_type = "🔴高位分歧"
-            structure_bonus = -5
+            structure_bonus = -8
             structure_desc = "高位分歧，风险较大"
         # 🟡 调整型：缩量回调到均线附近
         elif price_position < 1.02 and volume_explosion < 0.3 and today_pct > -3:
@@ -3028,7 +2655,7 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
                 l90 = df['low'].values[-90:]
                 range90 = (h90.max() - l90.min()) / l90.min() if l90.min() > 0 else 0
                 if range90 < 0.30:
-                    compression_bonus = 15
+                    compression_bonus = 5
         except Exception:
             pass
 
@@ -3055,7 +2682,7 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
             pass
 
         # =========================
-        # 追高扣分
+        # 追高扣分（加重版：从5日涨5%开始扣，线性递增）
         # =========================
         recent_penalty = 0
         try:
@@ -3063,22 +2690,15 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
             ret_5 = (C[-1] / C[-6] - 1) * 100 if n >= 6 else 0
             ret_10 = (C[-1] / C[-11] - 1) * 100 if n >= 11 else 0
             ret_20 = (C[-1] / C[-21] - 1) * 100 if n >= 21 else 0
-            if ret_5 > 25:
-                recent_penalty += 20
-            elif ret_5 > 20:
-                recent_penalty += 15
-            elif ret_5 > 15:
-                recent_penalty += 10
-            elif ret_5 > 10:
-                recent_penalty += 5
-            if ret_10 > 40:
-                recent_penalty += 15
-            elif ret_10 > 30:
-                recent_penalty += 10
-            if ret_20 > 60:
-                recent_penalty += 10
-            elif ret_20 > 40:
-                recent_penalty += 5
+            # 5日涨幅扣分：5%起扣，每多1%多扣2分，最高扣20分
+            if ret_5 > 5:
+                recent_penalty += min((ret_5 - 5) * 2, 20)
+            # 10日涨幅额外扣分：20%起扣
+            if ret_10 > 20:
+                recent_penalty += min((ret_10 - 20) * 1.5, 15)
+            # 20日涨幅额外扣分：40%起扣
+            if ret_20 > 40:
+                recent_penalty += min((ret_20 - 40) * 1.0, 10)
             recent_penalty = min(recent_penalty, 30)
         except Exception:
             pass
@@ -3112,16 +2732,29 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
                     
                     conn.close()
                     
-                    # 热度分 = min(次数, 20)
-                    theme_hot_score = min(theme_top3_count, 20)
+                    # 热度分 = min(次数, 10)
+                    theme_hot_score = min(theme_top3_count, 10)
         except Exception as e:
             pass
 
         # =========================
-        # 总分
+        # 基本面因子分（技术壁垒+机构资金流）
         # =========================
-        open_score = base_score + structure_bonus + breakout_bonus + compression_bonus + theme_hot_score - recent_penalty
-        open_score = min(100, max(0, open_score))
+        ts_code = v7_result.get('代码', '')
+        tech_barrier_score = calc_tech_barrier_score(ts_code)
+        inst_flow_score = calc_institutional_flow_score(ts_code)
+
+        # =========================
+        # 总分（非线性压缩公式：天然防止天花板效应）
+        # raw = 基础 + 各加分 - 追高扣分
+        # open_score = 100 * raw / (raw + 50)
+        #    raw=30→38, raw=50→50, raw=70→58, raw=100→67
+        #    raw=150→75, raw=200→80（高分区间自然收敛）
+        # =========================
+        raw_score = base_score + structure_bonus + breakout_bonus + compression_bonus + theme_hot_score - recent_penalty
+        raw_score += tech_barrier_score + inst_flow_score
+        open_score = 100 * raw_score / (raw_score + 50) if raw_score > 0 else 0
+        open_score = min(95, max(0, open_score))  # 95硬上限防溢出
 
         # =========================
         # 推荐理由（参照V9风格）
@@ -3144,11 +2777,15 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
             bonus_parts.append(f"主题热度+{theme_hot_score}分({theme_top3_count}次TOP3)")
         if recent_penalty > 0:
             bonus_parts.append(f"追高-{recent_penalty}分")
+        if tech_barrier_score > 0:
+            bonus_parts.append(f"基本面+{tech_barrier_score}分")
+        if inst_flow_score > 0:
+            bonus_parts.append(f"资金流+{inst_flow_score}分")
 
         if bonus_parts:
             recommendation += f" | 修正:{','.join(bonus_parts)}"
 
-        recommendation += f" | V10开仓={open_score:.1f}"
+        recommendation += f" | V10开仓={open_score:.1f} (raw={raw_score:.0f})"
 
         # 特殊标记（参照V9）
         if structure_type == "🟢启动型" and float(v7_result.get('失败概率', 0.5)) < 0.25:
@@ -3165,339 +2802,6 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
         return 0, "计算异常", ""
 
 
-def calc_hot_money_open_score(v7_result, df, stock_info, theme=''):
-    """
-    游资最强开仓评分算法
-    
-    核心逻辑：
-    1. 资金有效性（今天有没有真流入）
-    2. 结构位置（决定次日惯性）
-    3. 主题强度（V8新增核心）
-    
-    返回：
-        - open_score: 开仓评分 (0-100)
-        - structure_type: 结构类型（启动型/加速型/高位分歧）
-        - recommendation: 推荐理由
-    """
-    try:
-        if not v7_result or df is None:
-            return 0, "数据不足", ""
-        
-        # 确保df是DataFrame类型
-        if not isinstance(df, pd.DataFrame):
-            return 0, "数据不足", ""
-        
-        if len(df) < 20:
-            return 0, "数据不足", ""
-        
-        # 重置索引避免问题
-        df = df.reset_index(drop=True)
-        
-        C = df['close'].values  # 转为numpy数组
-        VOL = df['vol'].values
-        
-        # =========================
-        # 1. 资金有效性评分
-        # =========================
-        volume_explosion = float(v7_result.get('量能爆发', 0))  # 0-1
-        breakout_strength = float(v7_result.get('突破强度', 0))  # 0-1
-        fail_prob = float(v7_result.get('失败概率', 0.5))  # 0-1
-        
-        # 今日涨幅
-        if len(C) >= 2:
-            today_pct = float((C[-1] / C[-2] - 1) * 100)
-        else:
-            today_pct = 0
-        
-        # 资金有效性评分
-        capital_score = 0
-        capital_detail = []
-        
-        if volume_explosion > 0.30:
-            capital_score += 30
-            capital_detail.append(f"量能爆发:{volume_explosion:.2f}")
-        elif volume_explosion > 0.20:
-            capital_score += 20
-            capital_detail.append(f"量能良好:{volume_explosion:.2f}")
-        
-        if breakout_strength > 0.25:
-            capital_score += 25
-            capital_detail.append(f"突破强度:{breakout_strength:.2f}")
-        elif breakout_strength > 0.20:
-            capital_score += 15
-            capital_detail.append(f"突破良好:{breakout_strength:.2f}")
-        
-        if today_pct > 3:
-            capital_score += 20
-            capital_detail.append(f"涨幅:{today_pct:.1f}%")
-        elif today_pct > 1:
-            capital_score += 10
-            capital_detail.append(f"涨幅温和:{today_pct:.1f}%")
-        elif today_pct < -3:
-            capital_score -= 10
-            capital_detail.append(f"跌幅过大:{today_pct:.1f}%")
-        
-        # 失败概率惩罚（超过40%要谨慎）
-        if fail_prob > 0.55:
-            capital_score -= 25  # 从-15提高到-25
-            capital_detail.append(f"失败概率高:{fail_prob:.1%}")
-        elif fail_prob > 0.45:
-            capital_score -= 15  # 从-5提高到-15
-            capital_detail.append(f"失败概率中等:{fail_prob:.1%}")
-        elif fail_prob > 0.35:
-            capital_score -= 5  # 新增这个档
-            capital_detail.append(f"失败概率一般:{fail_prob:.1%}")
-        
-        # =========================
-        # 2. 结构位置评分
-        # =========================
-        close_series = df['close']
-        MA20 = float(close_series.rolling(20).mean().iloc[-1])
-        MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        HHV20 = float(close_series.tail(20).max())
-        LLV20 = float(close_series.tail(20).min())
-        
-        current_price = float(C[-1])
-        price_position = current_price / MA20 if MA20 > 0 else 1.0
-        amp20 = (HHV20 - LLV20) / LLV20 if LLV20 > 0 else 0
-        
-        structure_score = 0
-        structure_type = "未知"
-        structure_desc = ""
-        
-        # 判断结构类型
-        # 首板/突破型：价格接近20日高点 + 涨幅适中
-        if current_price >= HHV20 * 0.95 and (1 < today_pct and today_pct <= 10):
-            structure_type = "🟢启动型"
-            structure_score = 35
-            structure_desc = "首板/突破形态，次日惯性较强"
-        # 加速型：均线多头 + 温和放量
-        elif price_position > 1.05 and MA20 > MA60 and (0 < today_pct and today_pct <= 7):
-            structure_type = "🟡加速型"
-            structure_score = 28
-            structure_desc = "趋势加速中，稳健跟进"
-        # 高位分歧型：超过20日高点太多 + 大幅波动
-        elif current_price > HHV20 * 1.08 or today_pct > 10:
-            structure_type = "🔴高位分歧"
-            structure_score = 5
-            structure_desc = "高位分歧，风险较大"
-        # 调整型：缩量回调到均线附近
-        elif price_position < 1.02 and volume_explosion < 0.3 and today_pct > -3:
-            structure_type = "🟡调整型"
-            structure_score = 20
-            structure_desc = "缩量调整，关注均线支撑"
-        else:
-            structure_type = "⚪震荡型"
-            structure_score = 15
-            structure_desc = "震荡整理，需观察方向"
-        
-        # =========================
-        # 3. 主题强度评分（从主题分析数据动态获取）
-        # =========================
-        theme_rank_score = 50  # 默认值
-        theme_name = v7_result.get('所属主题', theme)
-        # 清理主题名称
-        if theme_name:
-            theme_name = str(theme_name).strip()
-        
-        # 从主题分析数据获取实际综合分
-        if theme_name:
-            try:
-                theme_data = das.read_theme_analysis(TRADE_DATE)
-                if theme_data and theme_data.get('themes'):
-                    for t in theme_data['themes']:
-                        if t.get('theme_name') == theme_name:
-                            # 使用综合分作为主题热度评分（0-100）
-                            composite_score = float(t.get('composite_score', 50))
-                            theme_rank_score = min(100, max(0, composite_score))
-                            break
-                    else:
-                        # 未找到匹配主题，使用默认值
-                        theme_rank_score = 50
-            except Exception as e:
-                print(f"[开仓评分] 获取主题热度失败: {e}")
-                theme_rank_score = 50
-        
-        # =========================
-        # 4. 获取主题纯度
-        # =========================
-        theme_confidence = float(v7_result.get('主题纯度', 30))  # 0-100
-        
-        # =========================
-        # 5. 计算龙头得分 (leader_score)
-        # =========================
-        leader_score = 0
-        money_momentum = float(v7_result.get('资金动量', 0.5))
-        trend_stability = float(v7_result.get('趋势稳定', 0.5))
-        trend_probability = float(v7_result.get('趋势概率', 0.5))
-        trend_strength = float(v7_result.get('趋势强度', 0.5))
-        
-        # 龙头得分：强化趋势强度和资金动量
-        leader_score = (
-            money_momentum * 0.30 +
-            trend_strength * 0.35 +  # 新增趋势强度
-            trend_stability * 0.20 +
-            trend_probability * 0.15
-        ) * 100  # 归一化到0-100
-        
-        # =========================
-        # 6. 开仓优先级公式（提高主题纯度和龙头权重）
-        # =========================
-        # 新公式：theme_confidence和leader_score各占30%
-        # theme_rank: 20%
-        # theme_confidence: 30% (提高)
-        # leader_score: 30% (提高)
-        # structure_score: 10%
-        # breakout_strength: 5%
-        # volume_burst: 5%
-        
-        # 归一化指标
-        normalized_theme_rank = theme_rank_score  # 主题排名已经是0-100
-        normalized_theme_confidence = theme_confidence  # 主题纯度已经是0-100
-        normalized_structure_score = structure_score  # 结构得分已经是0-100
-        normalized_breakout = breakout_strength * 100  # 0-1 -> 0-100
-        normalized_volume = volume_explosion * 100  # 0-1 -> 0-100
-        
-
-        # 计算开仓优先级得分（基础分）
-        raw_score = (
-            normalized_theme_rank * 0.20 +
-            normalized_theme_confidence * 0.30 +  # 提高到30%
-            leader_score * 0.30 +  # 提高到30%
-            normalized_structure_score * 0.10 +
-            normalized_breakout * 0.05 +
-            normalized_volume * 0.05
-        )
-        # 放大评分，让最高分可以超过70-80分
-        open_score = raw_score * 1.15
-        
-        # 生成推荐理由
-        recommendation = f"{structure_desc}"
-        if capital_detail:
-            recommendation += f" | {'/'.join(capital_detail[:2])}"
-        # 显示开仓优先级公式各分项
-        recommendation += f" | 开仓评分={open_score:.1f} (基础分{raw_score:.1f}×1.15 = 主题{normalized_theme_rank:.0f}×0.20 + 纯度{normalized_theme_confidence:.0f}×0.30 + 龙头{leader_score:.0f}×0.30 + 结构{normalized_structure_score:.0f}×0.10 + 突破{normalized_breakout:.0f}×0.05 + 量能{normalized_volume:.0f}×0.05)"
-        
-        # 特殊标记
-        if structure_type == "🟢启动型" and fail_prob < 0.4:
-            recommendation = "⭐重点关注: " + recommendation
-        elif structure_type == "🔴高位分歧":
-            recommendation = "⚠️谨慎: " + recommendation
-        
-        return round(open_score, 1), structure_type, recommendation
-    
-    except Exception as e:
-        print(f"[开仓评分] 异常: {e}")
-        import traceback
-        traceback.print_exc()
-        return 0, "计算异常", ""
-
-def rank_top_stocks_for_open(df_list, results_list):
-    """
-    对TOP10股票进行游资开仓排名
-    
-    参数：
-        df_list: K线数据DataFrame列表
-        results_list: V7评分结果列表
-    
-    返回：
-        排序后的股票列表，包含开仓评分和推荐
-    """
-    ranked_stocks = []
-    
-    for i, (df, v7_result) in enumerate(zip(df_list, results_list)):
-        if v7_result is None or df is None:
-            continue
-        
-        # 确保df是DataFrame且有足够数据
-        if not isinstance(df, pd.DataFrame) or len(df) < 20:
-            continue
-            
-        # 确保必要字段存在
-        if 'close' not in df.columns or 'vol' not in df.columns:
-            continue
-            
-        try:
-            # V8开仓评分
-            open_score, structure_type, recommendation = calc_hot_money_open_score_v10(
-                 v7_result, df, v7_result, v7_result.get('所属主题', '')
-            )
-            
-        except Exception as e:
-            print(f"[开仓评分V10] {v7_result.get('代码', '')} 计算失败: {e}")
-            continue
-        
-        ranked_stocks.append({
-            '代码': v7_result.get('代码', ''),
-            '名称': v7_result.get('名称', ''),
-            '现价': v7_result.get('现价', 0),
-            '涨跌幅': v7_result.get('涨跌幅', 0),
-            '所属主题': v7_result.get('所属主题', ''),
-            'V9总评分': v7_result.get('V9总评分', v7_result.get('V7总评分', 0)),
-            '失败概率': v7_result.get('失败概率', 0),
-            '量能爆发': v7_result.get('量能爆发', 0),
-            '突破强度': v7_result.get('突破强度', 0),
-            '结构类型': structure_type,
-            '开仓评分': open_score,
-            '推荐理由': recommendation,
-            # 轮动周期属性（直接从 v7_result 透传）
-            '所属轮动周期': v7_result.get('所属轮动周期', ''),
-            '轮动周期描述': v7_result.get('轮动周期描述', ''),
-            '主题趋势分': v7_result.get('主题趋势分', 0),
-            '主题情绪分': v7_result.get('主题情绪分', 0),
-        })
-    
-    # 按开仓评分降序排序（去掉同主题只取2只的限制）
-    ranked_stocks.sort(key=lambda x: x['开仓评分'], reverse=True)
-    return ranked_stocks
-
-
-def print_hot_money_open_report(ranked_stocks, top_n=10):
-    """
-    打印游资开仓报告
-    """
-    print("\n" + "=" * 80)
-    print("🔥 游资最强开仓标的 (TOP " + str(top_n) + ")")
-    print("=" * 80)
-    
-    for i, stock in enumerate(ranked_stocks[:top_n], 1):
-        print(f"\n【第{i}名】{stock['名称']} ({stock['代码']})")
-        print(f"  结构类型: {stock['结构类型']}")
-        print(f"  开仓评分: {stock['开仓评分']}")
-        print(f"  V9基础分: {stock['V9总评分']} | 失败概率: {stock['失败概率']:.1%}")
-        print(f"  今日涨幅: {stock['涨跌幅']:.2f}%")
-        print(f"  量能爆发: {stock['量能爆发']:.2f} | 突破强度: {stock['突破强度']:.2f}")
-        # 轮动周期信息
-        rot = stock.get('所属轮动周期', '')
-        if rot:
-            desc = stock.get('轮动周期描述', '')
-            t_s = stock.get('主题趋势分', 0)
-            s_s = stock.get('主题情绪分', 0)
-            print(f"  所属主题: {stock.get('所属主题', '')} | 轮动周期: {rot} | 趋势分: {t_s:.0f} | 情绪分: {s_s:.0f}")
-            print(f"  轮动描述: {desc}")
-        else:
-            print(f"  所属主题: {stock.get('所属主题', '')}")
-        print(f"  推荐理由: {stock['推荐理由']}")
-    
-    print("\n" + "-" * 80)
-    print("📋 完整排名表:")
-    print("-" * 80)
-    print(f"{'排名':<4} {'代码':<12} {'名称':<8} {'结构类型':<10} {'开仓分':<8} {'V9分':<8} {'主题':<12} {'轮动周期':<10}")
-    print("-" * 80)
-    
-    for i, stock in enumerate(ranked_stocks, 1):
-        rot = stock.get('所属轮动周期', '')
-        print(f"{i:<4} {stock['代码']:<12} {stock['名称']:<8} {stock['结构类型']:<10} "
-              f"{stock['开仓评分']:<8.1f} {stock['V9总评分']:<8.1f} {stock['所属主题']:<12} {rot:<10}")
-    
-    print("=" * 80)
-    
-    return ranked_stocks[:top_n]
-
-
-# =========================================================
-# 主题纯度评分系统
-# =========================================================
 def calc_theme_confidence(stock_info, theme):
     """
     计算个股与主题的纯度/置信度评分（0-100）
@@ -3796,11 +3100,12 @@ def strategy(df, code, emotion_stage):
             return False
     
     # ===== 均线计算（一次计算，多次使用）=====
-    C_series = df['close']
+    close_arr = df['close'].values if hasattr(df['close'], 'values') else np.asarray(df['close'])
+    C_series = pd.Series(close_arr)
     ma5 = C_series.rolling(5).mean().values
     ma10 = C_series.rolling(10).mean().values
     ma20 = C_series.rolling(20).mean().values
-    ma22 = C_series.rolling(22).mean().values
+    ma22 = C_series.rolling(30).mean().values
     ma60 = C_series.rolling(60).mean().values
     
     # 均线条件
@@ -3829,6 +3134,10 @@ def strategy(df, code, emotion_stage):
     
     ztts = int(ztts)
     
+    # ===== 过滤：近5天累计涨幅超过20% = 乖离过大，跳过 =====
+    if len(C) >= 6 and (C[-1] / C[-6] - 1) > 0.3:
+        return False
+    
     # ===== 条件1：ZTTS范围 =====
     if ztts < 2 or ztts > 30:
         return False
@@ -3844,7 +3153,7 @@ def strategy(df, code, emotion_stage):
     cond2 = (ztts_close < ref_close).sum() == 0
     cond3 = (ztts_close.max() / ztts_close.min()) < 1.3
     cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
-    cond5 = H[-ztts:].max() >= H[-120:].max() * 0.9
+    cond5 = H[-ztts:].max() >= H[-60:].max() * 0.8
     cond6 = ma22[-1] >= ma22[-2]
     
     # 量能条件（复用vol_ma5）
@@ -3875,7 +3184,7 @@ def strategy(df, code, emotion_stage):
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
     
     cond_xh1 = ((C[-1] > highest_close) or (C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2] > 1.05 and C[-1]/C[-2] < 1.15 and vol_condition))
-    cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.15 and C[-1] / ma5[-1] > 0.97
+    cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
     
     # 前两日低点必须贴近5日线（1%以内）
     cond_low_near_ma5 = (abs(L[-2] - ma5[-2]) / ma5[-2] < 0.02) and (abs(L[-3] - ma5[-3]) / ma5[-3] < 0.02)
@@ -4472,27 +3781,6 @@ def get_tracking_stocks():
         # 去重，保留每只股票最近一次出现的信息
         recent_stocks = recent_stocks.drop_duplicates(subset=['code'], keep='first')
         
-        # 获取当日K线数据用于技术分析
-        kline_data = {}
-        try:
-            if pro is not None:
-                # 批量获取当日K线数据（最多100只）
-                all_codes = recent_stocks['code'].tolist()
-                if len(all_codes) > 0:
-                    # 分批获取，每批100只
-                    for i in range(0, len(all_codes), 100):
-                        batch_codes = all_codes[i:i+100]
-                        df = pro.daily(
-                            ts_code=",".join(batch_codes),
-                            start_date=TRADE_DATE,
-                            end_date=TRADE_DATE
-                        )
-                        if df is not None and not df.empty:
-                            for _, row in df.iterrows():
-                                kline_data[row['ts_code']] = row
-        except Exception as e:
-            print(f"获取K线数据失败: {e}")
-        
         # =====批量获取行业信息（用于V75主题纯度计算）=====
         industry_dict = {}
         try:
@@ -4558,6 +3846,9 @@ def get_tracking_stocks():
             # 条件2：收盘价在5日线以上且5日乖离率小于5%
             is_valid = False
             bias_rate = 0
+            cache_close = 0.0
+            cache_pct_chg = 0.0
+            cache_vol_ratio = 0.0
             
             # 直接从缓存读取K线数据计算MA5和形态
             try:
@@ -4569,13 +3860,21 @@ def get_tracking_stocks():
                     df = df.sort_values('trade_date').tail(10)  # 取最近10天
                     
                     if len(df) >= 5:
-                        # 计算5日均线
+                        # 计算5日均线和量比
                         df['ma5'] = df['close'].rolling(window=5).mean()
+                        df['vol_ma5'] = df['vol'].rolling(window=5).mean()
                         
                         # 最新的K线
                         latest_kline = df.iloc[-1]
                         close = float(latest_kline['close'])
                         ma5 = float(latest_kline['ma5']) if pd.notna(latest_kline['ma5']) else None
+                        
+                        # 保存今日数据（供后续回退使用）
+                        cache_close = float(latest_kline['close'])
+                        cache_pct_chg = float(latest_kline.get('pct_chg', 0))
+                        latest_vol = float(latest_kline['vol'])
+                        vol_ma5 = float(latest_kline['vol_ma5']) if pd.notna(latest_kline['vol_ma5']) and latest_kline['vol_ma5'] > 0 else None
+                        cache_vol_ratio = round(latest_vol / vol_ma5, 2) if vol_ma5 else 0.0
                         
                         # 条件1：收盘价必须在MA5以上
                         if ma5 is not None and pd.notna(ma5) and close > ma5 and ma5 > 0:
@@ -4610,10 +3909,10 @@ def get_tracking_stocks():
                         v9_result = calc_dual_layer_score_v9(df_hist, ts_code=ts_code, stock_info=stock_info)
                         last_score = v9_result.get('V9总评分', 0)
                         
-                        # 获取开仓评分和状态
-                        v75_result = calc_dual_layer_score_v75(df_hist, ts_code=ts_code, stock_info=stock_info)
-                        open_score, structure_type, open_recommendation = calc_hot_money_open_score_v9(
-                            v75_result, df_hist, stock_info
+                        # 获取开仓评分和状态（V10版）
+                        v7_result = calc_dual_layer_score_v75(df_hist, ts_code=ts_code, stock_info=stock_info)
+                        open_score, structure_type, open_recommendation = calc_hot_money_open_score_v10(
+                            v7_result, df_hist, stock_info
                         )
                     else:
                         # 数据不足，回退到旧评分
@@ -4627,12 +3926,12 @@ def get_tracking_stocks():
                     if last_score > 100:
                         last_score = min(last_score, 50)
                 
-                # 优先使用kline_data中的最新交易日价格
-                latest_kline = kline_data.get(ts_code)
-                if latest_kline is not None:
-                    latest_close = float(latest_kline['close'])
-                    pct_chg = float(latest_kline.get('pct_chg', 0))
+                # 优先从缓存文件获取今日价格和涨跌幅（已在MA5计算时读取）
+                if cache_close > 0:
+                    latest_close = cache_close
+                    pct_chg = cache_pct_chg
                 else:
+                    # 回退到历史数据库数据
                     latest_close = float(row['close']) if str(row['close']).strip() not in ['', 'None'] else 0.0
                     pct_chg = 0.0
                 
@@ -4648,11 +3947,12 @@ def get_tracking_stocks():
                     'range_5d_pct': range_pct,
                     'max_pct': max_pct,
                     'bias_rate': bias_rate,
-                    'pct_chg': pct_chg
+                    'pct_chg': pct_chg,
+                    'vol_ratio': cache_vol_ratio
                 })
         
         # 按V75评分排序，取前10只
-        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['last_score'])[:10]
+        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['last_score'])[:30]
         
         # 生成文本格式
         lines = []
@@ -4660,10 +3960,10 @@ def get_tracking_stocks():
             lines.append("=" * 80)
             lines.append("跟踪分析股票池（最高涨幅≤20%、5日均线上、5日乖离率<5%）")
             lines.append("=" * 80)
-            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'开仓分':<8} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10} {'当日涨跌':<10}")
+            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'当日涨跌':<8} {'量比':<6} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10}")
             lines.append("-" * 90)
             for stock in tracking_stocks:
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['last_score']:<8.2f} {stock.get('open_score', 0):<8.2f} {stock.get('structure_type', '未知'):<8} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}% {stock['bias_rate']:<10.2f}% {stock.get('pct_chg', 0):<+10.2f}%")
+                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['last_score']:<8.2f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock.get('structure_type', '未知'):<8} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}% {stock['bias_rate']:<10.2f}%")
             lines.append("=" * 90)
         
        
@@ -4821,7 +4121,7 @@ def calc_max_limit_height():
 def filter_by_top_themes(result_df, top_n=10):
     """
     根据60天历史数据筛选主题：只保留综合分排名进入TOP3至少3次的主题的成份股。
-    并在个股中注入主题轮动状态字段供AI分析。
+    并在个股中注入主题状态字段供AI分析。
     """
     if result_df.empty:
         return result_df
@@ -4855,15 +4155,15 @@ def filter_by_top_themes(result_df, top_n=10):
         
         for trade_date in trade_dates:
             day_df = pd.read_sql(
-                f"SELECT theme, trend_score, sentiment_score, composite_score, rotation_cycle, rotation_desc "
+                f"SELECT theme, trend_score, sentiment_score, composite_score, theme_state "
                 f"FROM theme_scores WHERE trade_date = '{trade_date}'",
                 conn
             )
             if day_df.empty:
                 continue
             
-            # 按综合分排序取TOP3
-            day_df = day_df.sort_values('composite_score', ascending=False).head(3)
+            # 按综合分排序取TOP5
+            day_df = day_df.sort_values('composite_score', ascending=False).head(5)
             
             for _, row in day_df.iterrows():
                 theme = row['theme']
@@ -4872,11 +4172,10 @@ def filter_by_top_themes(result_df, top_n=10):
                     theme_top3_counts[theme] = 0
                 theme_top3_counts[theme] += 1
                 
-                # 保存最新数据用于轮动状态
+                # 保存最新数据用于主题状态
                 if theme not in all_theme_data:
                     all_theme_data[theme] = {
-                        'rotation_cycle': row.get('rotation_cycle', ''),
-                        'rotation_desc': row.get('rotation_desc', ''),
+                        'theme_state': row.get('theme_state', ''),
                         'trend_score': row.get('trend_score', 0) or 0,
                         'sentiment_score': row.get('sentiment_score', 0) or 0,
                         'composite_score': row.get('composite_score', 0) or 0,
@@ -4897,15 +4196,14 @@ def filter_by_top_themes(result_df, top_n=10):
             print(f"  {theme}: {theme_top3_counts[theme]}次")
         print(f"  → 有效主题共 {len(valid_themes)} 个")
         
-        # 构建主题轮动映射
-        theme_rotation_map = {}
+        # 构建主题状态映射
+        theme_state_map = {}
         for theme in valid_themes:
             if theme in all_theme_data:
-                theme_rotation_map[theme] = all_theme_data[theme]
+                theme_state_map[theme] = all_theme_data[theme]
             else:
-                theme_rotation_map[theme] = {
-                    'rotation_cycle': '',
-                    'rotation_desc': '',
+                theme_state_map[theme] = {
+                    'theme_state': '',
                     'trend_score': 0,
                     'sentiment_score': 0,
                     'composite_score': 0,
@@ -4949,12 +4247,11 @@ def filter_by_top_themes(result_df, top_n=10):
         traceback.print_exc()
         return _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg)
 
-    # 4. 遍历股票，匹配主题并注入轮动状态
+    # 4. 遍历股票，匹配主题并注入主题状态
     keep = []
     matched_themes = []
     match_scores = []
-    theme_rotations = []
-    theme_states = []
+    theme_states_list = []
     theme_trends = []
     theme_sentiments = []
 
@@ -4970,19 +4267,17 @@ def filter_by_top_themes(result_df, top_n=10):
             keep.append(True)
             matched_themes.append(found_theme)
             match_scores.append(100)
-            rot = theme_rotation_map.get(found_theme, {})
-            theme_rotations.append(rot.get("rotation_cycle", ""))
-            theme_states.append(rot.get("rotation_desc", ""))
-            theme_trends.append(rot.get("trend_score", 0))
-            theme_sentiments.append(rot.get("sentiment_score", 0))
+            st = theme_state_map.get(found_theme, {})
+            theme_states_list.append(st.get("theme_state", ""))
+            theme_trends.append(st.get("trend_score", 0))
+            theme_sentiments.append(st.get("sentiment_score", 0))
             print(f"[主题过滤] {stock_name}({ts_code}) -> {found_theme}"
-                  f"  轮动:{rot.get('rotation_cycle','')}  描述:{rot.get('rotation_desc','')}")
+                  f"  状态:{st.get('theme_state','')}")
         else:
             keep.append(False)
             matched_themes.append('')
             match_scores.append(0)
-            theme_rotations.append('')
-            theme_states.append('')
+            theme_states_list.append('')
             theme_trends.append(0)
             theme_sentiments.append(0)
 
@@ -4992,8 +4287,7 @@ def filter_by_top_themes(result_df, top_n=10):
     kept_indices = [i for i in range(len(keep)) if keep[i]]
     result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
     result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
-    result_df['所属轮动周期'] = [theme_rotations[i] for i in kept_indices]
-    result_df['轮动周期描述'] = [theme_states[i] for i in kept_indices]
+    result_df['所属状态'] = [theme_states_list[i] for i in kept_indices]
     result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
     result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
 
@@ -5064,120 +4358,84 @@ def run(target_date=None, simple_mode=False):
         print(f"{'='*60}\n")
     
     # =========================
-    # 新版大盘分析 + 主题分析（替代 emotion + block）
+    # 主题状态全景（来自主题分析简报）
     # =========================
-    print("\n========== 市场趋势总评分 ==========\n")
-    market_data = das.read_market_analysis(TRADE_DATE)
-    if market_data and market_data.get('overall'):
-        ov = market_data['overall']
-        print(f"市场状态: {ov.get('market_status', 'N/A')}")
-        print(f"总趋势分: {ov.get('trend_score', 0):.1f} | 指数趋势: {ov.get('index_trend', 0):.1f} | 主题趋势: {ov.get('theme_trend', 0):.1f}")
-        print(f"建议仓位: {ov.get('position', 0)}%")
-    
-    emotion_text = ""
-    if market_data:
-        indices = market_data.get('indices', [])
-        for r in indices:
-            emotion_text += f"{r['index_name']}: 趋势{r['trend_score']:.1f}({r['trend_status']}) 涨跌{r['pct_change']:+.2f}%\n"
-        ov = market_data.get('overall', {})
-        if ov:
-            emotion_text = f"市场状态: {ov.get('market_status', 'N/A')} | 总趋势分: {ov.get('trend_score', 0):.1f}\n" + emotion_text
-            emotion_text += f"建议仓位: {ov.get('position', 0)}%\n"
-    
-    print("\n========== 主题趋势排名 ==========\n")
-    theme_data = das.read_theme_analysis(TRADE_DATE)
-    sector_text = ""
-    top_sector = pd.DataFrame()
-    if theme_data and theme_data.get('themes'):
-        themes = theme_data['themes']
-        # 按趋势分排序
-        themes_sorted = sorted(themes, key=lambda x: x.get('trend_score', 0), reverse=True)
-        sector_text_lines = []
-        for i, t in enumerate(themes_sorted[:20]):
-            sector_text_lines.append(f"{i+1}. {t['theme_name']:10s} 趋势{t['trend_score']:.1f}({t['trend_status']}) 情绪{t['sentiment_score']:.1f}({t['sentiment_status']}) 5日{t.get('change', 0):+.1f}%")
-        sector_text = "\n".join(sector_text_lines)
-        print(f"  共 {len(themes_sorted)} 个主题，TOP20 如下：")
-        for i, t in enumerate(themes_sorted[:10]):
-            print(f"    #{i+1} {t['theme_name']:<10} 趋势{t['trend_score']:.1f}")
-    
-    print("\n========== 前60天趋势分TOP10主题 ==========\n")
-    # 读取前60天的主题趋势分数据
-    import sqlite3
-    db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
+    print("\n========== 主题状态全景（来自主题分析简报）==========\n")
+    # 从 theme_trend_sentiment_score.py 输出的简报中读取主题状态全景内容
+    REPORT_DIR_TS = os.path.join(BASE_DIR, "..", "report_daily")
+    report_path = os.path.join(REPORT_DIR_TS, f"theme_analysis_{TRADE_DATE}.txt")
     sector_text_his = ""
+    cycle_text = ""
     try:
-        conn = sqlite3.connect(db_path)
-        # 获取所有主题在前60天的数据
-        dates_df = pd.read_sql("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT 60", conn)
-        if not dates_df.empty:
-            date_list = dates_df['trade_date'].tolist()
-            date_str = "','".join(date_list)
-            
-            # 直接查询所有数据
-            all_data = pd.read_sql(f"SELECT theme, composite_score, trend_score, sentiment_score FROM theme_scores WHERE trade_date IN ('{date_str}')", conn)
-            
-            if not all_data.empty:
-                # 按主题聚合计算平均分
-                theme_summary = all_data.groupby('theme').agg({
-                    'composite_score': 'mean',
-                    'trend_score': 'mean',
-                    'sentiment_score': 'mean'
-                }).reset_index()
-                
-                # 按平均趋势分排序取前10
-                theme_summary = theme_summary.sort_values('trend_score', ascending=False).head(10)
-                
-                sector_lines = []
-                for i, row in enumerate(theme_summary.itertuples(), 1):
-                    line = f"{i}. {row.theme:<12s} 综合{row.composite_score:.1f} 趋势{row.trend_score:.1f} 情绪{row.sentiment_score:.1f}"
-                    sector_lines.append(line)
-                    print(line)
-                
-                sector_text_his = "\n".join(sector_lines)
-        conn.close()
+        if os.path.exists(report_path):
+            with open(report_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            sector_text_his = content
+        else:
+            print(f"  未找到简报文件: {report_path}")
+            print("  请先运行 theme_trend_sentiment_score.py 生成分析报告")
+            sector_text_his = ""
     except Exception as e:
-        print(f"⚠️ 读取主题历史数据失败: {e}")
+        print(f"⚠️ 读取主题状态简报失败: {e}")
         sector_text_his = ""
     
     emotion_stage = "强"
     #else:
     #    emotion_stage = "弱"
     
-    market = get_market()
+
     
-    # ===== 大盘行情概览 =====
-    market_overview = ""
-    try:
-        # 从 market_analysis.py 获取指数数据（确保数据一致性）
-        import importlib
-        ma = importlib.import_module("market_analysis")
-        ma_results, ma_position, ma_reason, ma_style_allocations, ma_overview = ma.analyze_market(TRADE_DATE)
-        
-        # 提取指数数据
-        index_lines = []
-        for r in ma_results:
-            index_lines.append(f"  {r['name']}: {r['close']:.2f} ({r['pct_chg']:+.2f}%)")
-        
-        if index_lines:
-            market_overview = "【大盘行情】\n" + "\n".join(index_lines) + "\n"
-        
-        # 涨跌统计
-        if market is not None and not market.empty:
-            up = (market['pct_chg'] > 0).sum()
-            down = (market['pct_chg'] < 0).sum()
-            flat = (market['pct_chg'] == 0).sum()
-            total_amount = market['amount'].sum() / 100000  # 千元→亿
-            market_overview += f"  上涨{up}只 下跌{down}只 平盘{flat}只 | 总成交额{total_amount:.0f}亿\n"
-    except Exception as e:
-        market_overview = f"[大盘行情获取失败: {e}]\n"
+    # 市场情绪 → 使用 market_analysis.py 的大盘分析 
+    import importlib
+    ma = importlib.import_module("market_analysis")
+    ma_results, ma_position, ma_reason, ma_style_allocations, ma_overview = ma.analyze_market(TRADE_DATE)
     
-    # 拼入 emotion_text
-    emotion_text = market_overview + emotion_text
+    # 从数据库或重新计算获取趋势评分（用于显示）
+    theme_csv = os.path.join(BASE_DIR, "cache_backbone_tushare", "theme_trend_sentiment.csv")
+    theme_top3_scores = None
+    if os.path.exists(theme_csv):
+        try:
+            df_theme = pd.read_csv(theme_csv, encoding='utf-8-sig')
+            if not df_theme.empty and 'trend_score' in df_theme.columns:
+                df_theme = df_theme.sort_values('rank').head(3)
+                theme_top3_scores = df_theme['trend_score'].tolist()
+        except:
+            pass
     
+    ts, it, tt = ma.calculate_market_trend_score(ma_results, theme_top3_scores)
+    ms, pr, tp = ma.get_market_status_and_position(ts)
+    
+    # 构建 emotion_text 用于 DeepSeek 日报
+    emotion_lines = ["【大盘分析】"]
+    
+    # 市场趋势总评分
+    status_icon = "🚀" if "主升浪" in ms else ("📈" if "上升" in ms or "良好" in ms else ("⚠️" if "退潮" in ms or "主跌" in ms else "📊"))
+    emotion_lines.append(f"  {status_icon} 市场状态: 【{ms}】")
+    emotion_lines.append(f"  总趋势分: {ts:.1f} | 指数趋势: {it:.1f} | 主题趋势: {tt:.1f}")
+    emotion_lines.append(f"  建议仓位: {ma_position}%")
+    emotion_lines.append("")
+    
+    if ma_overview:
+        ov = ma_overview
+        emotion_lines.append(f"【市场概况】")
+        emotion_lines.append(f"  上证{ov['sh_index']:.2f}({ov['sh_pct']:+.2f}%) "
+                             f"成交{ov['total_amount']:.0f}亿 涨{ov['up_count']}跌{ov['down_count']} "
+                             f"涨停{ov['zt_count']}跌停{ov['dt_count']}炸板率{ov['zb_rate']}%")
+    emotion_lines.append("")
+    emotion_lines.append(f"【各指数分析】")
+    for r in ma_results:
+        emotion_lines.append(f"  {r['name']}: 趋势{r['trend_score']:.1f}({r['trend_status']}) 情绪{r['sentiment_score']:.1f}({r['sentiment_status']}) 涨跌{r['pct_chg']:+.2f}%")
+    emotion_lines.append(f"\n综合建议仓位: {ma_position}%")
+    emotion_lines.append(f"理由: {ma_reason}")
+    emotion_text = "\n".join(emotion_lines)
+    print(emotion_text)
+
     result = []
 
     # 批量预取：解决高频API调用问题
     # 在循环之前一次性下载所有股票数据到本地缓存
+
+    market = get_market()
     if market is not None and not market.empty:
         all_codes = market['ts_code'].tolist()
         print(f"\n[批量预取] 共 {len(all_codes)} 只股票，开始下载历史数据...")
@@ -5344,17 +4602,18 @@ def run(target_date=None, simple_mode=False):
     display_cols = ['代码', '名称', '现价', '涨跌幅', 'V9总评分', '风险等级','所属主题','趋势概率','突破强度','压缩度','量能爆发']
     if '所属主题' in top10_df.columns:
         display_cols = ['代码', '名称', '现价', '涨跌幅', '所属主题', 'V9总评分', '风险等级','趋势概率','突破强度','压缩度','量能爆发']
-    # 如果有轮动周期字段也显示
-    if '所属轮动周期' in top10_df.columns:
-        display_cols = ['代码', '名称', '现价', '涨跌幅', '所属主题', '所属轮动周期', 'V9总评分', '风险等级',
+    # 如果有主题状态字段也显示
+    if '所属状态' in top10_df.columns:
+        display_cols = ['代码', '名称', '现价', '涨跌幅', '所属主题', '所属状态', 'V9总评分', '风险等级',
                         '趋势概率', '突破强度', '压缩度', '量能爆发']
     print(top10_df[display_cols])
     
     # =========================
     # 游资最强开仓算法 V8
     # =========================
-    global hot_money_open_text
+    global hot_money_open_text, icpm_top10_list
     hot_money_open_text = ""  # 初始化全局变量
+    icpm_top10_list = []
     try:
         # 获取TOP10的K线数据
         df_list = []
@@ -5417,9 +4676,8 @@ def run(target_date=None, simple_mode=False):
                     # 市值信息（用于资金体量因子）
                     'total_market_cap': float(row.get('total_market_cap', 0)),
                     'market_cap': float(row.get('market_cap', 0)),
-                    # 轮动周期属性（来自 theme_trend_sentiment_score calc_rotation_cycle）
-                    '所属轮动周期': str(row.get('所属轮动周期', '')),
-                    '轮动周期描述': str(row.get('轮动周期描述', '')),
+                    # 主题状态属性（来自 theme_trend_sentiment_score calc_theme_state）
+                    '所属状态': str(row.get('所属状态', '')),
                     '主题趋势分': float(row.get('主题趋势分', 0)),
                     '主题情绪分': float(row.get('主题情绪分', 0)),
                 }
@@ -5449,13 +4707,11 @@ def run(target_date=None, simple_mode=False):
                 lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
                 lines.append(f"  结构类型: {s['结构类型']}")
                 lines.append(f"  开仓评分: {s['开仓评分']:.1f} | V9基础分: {s['V9总评分']:.1f}")
-                rot = s.get('所属轮动周期', '')
-                if rot:
-                    desc = s.get('轮动周期描述', '')
+                st = s.get('所属状态', '')
+                if st:
                     t_s = s.get('主题趋势分', 0)
                     s_s = s.get('主题情绪分', 0)
-                    lines.append(f"  所属主题: {s.get('所属主题', '')} | 轮动周期: {rot} | 趋势分: {t_s:.0f} | 情绪分: {s_s:.0f}")
-                    lines.append(f"  轮动描述: {desc}")
+                    lines.append(f"  所属主题: {s.get('所属主题', '')} | 状态: {st} | 趋势分: {t_s:.0f} | 情绪分: {s_s:.0f}")
                 else:
                     lines.append(f"  所属主题: {s.get('所属主题', '')}")
                 lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 失败概率: {s['失败概率']:.1%}")
@@ -5465,13 +4721,22 @@ def run(target_date=None, simple_mode=False):
             lines.append("完整排名:")
             lines.append("-" * 60)
             for i, s in enumerate(ranked_stocks, 1):
-                rot = s.get('所属轮动周期', '')
-                lines.append(f"{i}. {s['代码']} {s['名称']} | {s['结构类型']} | 开仓分:{s['开仓评分']:.1f} | {s['所属主题']} | 轮动:{rot}")
+                st = s.get('所属状态', '')
+                lines.append(f"{i}. {s['代码']} {s['名称']} | {s['结构类型']} | 开仓分:{s['开仓评分']:.1f} | {s['所属主题']} | 状态:{st}")
             lines.append("=" * 60)
             hot_money_text = "\n".join(lines)
             
             # 保存到全局变量供prompt使用
             hot_money_open_text = hot_money_text
+            # 保存Top10开仓股信息供ICPM诊断
+            icpm_top10_list = []
+            for s in ranked_stocks[:10]:
+                icpm_top10_list.append({
+                    'code': s.get('代码', ''),
+                    'name': s.get('名称', ''),
+                    'theme': s.get('所属主题', ''),
+                    'open_score': s.get('开仓评分', 0),
+                })
             #print(hot_money_text)
             # 在TOP10数据中标记明日开仓标的
             top3_codes = [s['代码'] for s in top3_stocks]
@@ -5486,8 +4751,7 @@ def run(target_date=None, simple_mode=False):
     
     stock_text = top10_df.to_string(index=False)
     all_stock_text = result_df.to_string(index=False)
-    stock_his_df=load_history(days=20)
-    stock_his_text = str(stock_his_df)
+      
 
     # =========================
     # 获取跟踪分析个股
@@ -5514,19 +4778,19 @@ def run(target_date=None, simple_mode=False):
             # 转换回列表格式，并按 V9评分 排序
             tracking_stocks = tracking_df.to_dict('records')
             
-            # 按 V9评分 降序排列，取前10只
-            tracking_stocks = sorted(tracking_stocks, key=lambda x: x.get('last_score', 0), reverse=True)[:10]
+            # 按 V9评分 降序排列，取前50只
+            tracking_stocks = sorted(tracking_stocks, key=lambda x: x.get('last_score', 0), reverse=True)[:50]
             
-            # 重新生成文本（加入主题轮动信息）
+            # 重新生成文本（加入主题状态信息）
             lines = []
             if tracking_stocks:
                 lines.append("=" * 80)
                 lines.append("跟踪分析股票池（主题过滤后，按综合评分排序）")
                 lines.append("=" * 80)
-                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'开仓分':<8} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10} {'当日涨跌':<10}")
+                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'当日涨跌':<8} {'量比':<6} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'主题状态':<10}")
                 lines.append("-" * 90)
                 for stock in tracking_stocks:
-                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('last_score', 0):<8.2f} {stock.get('open_score', 0):<8.2f} {stock.get('structure_type', '未知'):<8} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('bias_rate', 0):<10.2f}% {stock.get('pct_chg', 0):<+10.2f}%")
+                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('last_score', 0):<8.2f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock.get('structure_type', '未知'):<8} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('所属状态', ''):<10}")
                 lines.append("=" * 90)
                 # 加入每只股票的详细评价信息（供AI分析）
                 lines.append("")
@@ -5536,7 +4800,11 @@ def run(target_date=None, simple_mode=False):
                     lines.append(f"【第{i}名】{stock.get('名称', '')} ({stock.get('代码', '')})")
                     lines.append(f"  V9综合评分: {stock.get('last_score', 0):.2f} | 开仓评分: {stock.get('open_score', 0):.2f}")
                     lines.append(f"  结构类型: {stock.get('structure_type', '未知')}")
-                    lines.append(f"  最新价: {stock.get('last_close', 0):.2f} | 5日涨幅: {stock.get('range_5d_pct', 0):+.2f}% | 最高涨幅: {stock.get('max_pct', 0):+.2f}%")
+                    theme_str = stock.get('所属主题', '')
+                    state_str = stock.get('所属状态', '')
+                    lines.append(f"  最新价: {stock.get('last_close', 0):.2f} | 当日涨跌: {stock.get('pct_chg', 0):+.2f}% | 量比: {stock.get('vol_ratio', 0):.2f} | 5日涨幅: {stock.get('range_5d_pct', 0):+.2f}% | 最高涨幅: {stock.get('max_pct', 0):+.2f}%")
+                    if theme_str:
+                        lines.append(f"  所属主题: {theme_str} | 主题状态: {state_str}")
                     rec = stock.get('open_recommendation', '')
                     if rec:
                         lines.append(f"  评价: {rec}")
@@ -5554,17 +4822,6 @@ def run(target_date=None, simple_mode=False):
     else:
         print(f"\n========== 暂无跟踪分析个股 ==========\n")
 
-    limit_stats = get_limit_stats()
-    max_lb_height = calc_max_limit_height()
-
-    limit_info = f"""
-涨跌停数据：
-- 涨停数量: {limit_stats['zt_count']}只
-- 跌停数量: {limit_stats['dt_count']}只
-- 炸板率: {limit_stats['broken_rate']}%
-- 最高连板高度: {max_lb_height}连板
-"""
-
 
     # =========================
     # 读取主题选股结果
@@ -5576,6 +4833,87 @@ def run(target_date=None, simple_mode=False):
     else:
         print("\n========== 未找到主题选股结果 ==========")
 
+    # =========================
+    # ICPM 产业资金定价诊断（Top 10 开仓股）
+    # =========================
+    icpm_text = ""
+    if _ICPM_AVAILABLE and icpm_top10_list:
+        try:
+            from data_fetcher import DataFetcher
+            import yaml
+
+            config_path = os.path.join(_MF_DIR, 'config.yaml')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                icpm_config = yaml.safe_load(f)
+            icpm_token_env = icpm_config.get('tushare', {}).get('token_env', 'TUSHARE_TOKEN')
+            icpm_token = os.environ.get(icpm_token_env)
+            if not icpm_token:
+                for ep in [Path(__file__).resolve().parent.parent.parent / "config" / ".env",
+                           Path(__file__).resolve().parent.parent / "config" / ".env"]:
+                    if ep.exists():
+                        with open(ep, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line or line.startswith('#'):
+                                    continue
+                                if '=' in line:
+                                    k, v = line.split('=', 1)
+                                    if k.strip() == icpm_token_env:
+                                        icpm_token = v.strip().strip('"\'')
+                                        break
+                        break
+
+            if icpm_token:
+                fetcher = DataFetcher(icpm_token, icpm_config)
+                codes = [s['code'] for s in icpm_top10_list if s['code']]
+                start_year = str(datetime.now().year - 3)
+                financial_batch = fetcher.get_stock_financial_batch(codes, start_year=start_year, max_workers=5)
+
+                daily_basic = fetcher.get_daily_basic(TRADE_DATE)
+                moneyflow = fetcher.get_moneyflow(TRADE_DATE)
+                daily_basic_idx = {r['ts_code']: r for _, r in daily_basic.iterrows()} if daily_basic is not None and not daily_basic.empty else {}
+                moneyflow_idx = {r['ts_code']: r for _, r in moneyflow.iterrows()} if moneyflow is not None and not moneyflow.empty else {}
+
+                model = IndustryPricingModel(icpm_config)
+                icpm_lines = []
+                icpm_lines.append("=" * 80)
+                icpm_lines.append("产业资金定价诊断（ICPM）- 游资最强开仓Top10")
+                icpm_lines.append("=" * 80)
+                icpm_lines.append(f"{'股票':<16} {'生命周期':<22} {'主线':<6} {'资金':<10} {'决策':<6} {'开仓分':<8}")
+                icpm_lines.append("-" * 80)
+
+                for s in icpm_top10_list:
+                    code = s['code']
+                    name = s['name']
+                    theme = s['theme']
+                    if not code:
+                        continue
+                    kline = get_hist_data(code) if code else None
+                    data = extract_pricing_data(
+                        code, name, theme, '',
+                        financial_batch,
+                        daily_basic_idx.get(code),
+                        moneyflow_idx.get(code),
+                        kline_df=kline,
+                    )
+                    if data is None:
+                        continue
+                    result = model.diagnose(data)
+                    icpm_lines.append(
+                        f"{name+'('+code+')':<16} {result.lifecycle_stage:<22} "
+                        f"{result.mainline_strength:<6.2f} {result.capital_flow_state:<10} "
+                        f"{result.final_decision:<6} {s['open_score']:<8.1f}"
+                    )
+
+                icpm_lines.append("=" * 80)
+                icpm_text = "\n".join(icpm_lines)
+                print(icpm_text)
+        except Exception as e:
+            print(f"[ICPM] 诊断失败: {e}")
+            import traceback
+            traceback.print_exc()
+            icpm_text = ""
+
     #return
     prompt = f"""
 
@@ -5583,13 +4921,7 @@ def run(target_date=None, simple_mode=False):
 
 {emotion_text}
 
-{limit_info}
-
-当前最强主线列表：
-
-{sector_text}
-
-中线（60天）平均分最强的主线列表：
+今日主题分析情况：
 
 {sector_text_his}
 
@@ -5598,12 +4930,12 @@ def run(target_date=None, simple_mode=False):
 
 {theme_stocks_text}
 
-今日量化候选股票池（按综合评分排序前10名，含轮动周期属性）：
+今日量化候选股票池（按综合评分排序前10名，含主题状态属性）：
 
 {stock_text}
 
 
-完整量化候选股票池（按综合评分排序，含轮动周期属性）：
+完整量化候选股票池（按综合评分排序，含主题状态属性）：
 
 {all_stock_text}
 
@@ -5619,6 +4951,11 @@ def run(target_date=None, simple_mode=False):
 {hot_money_open_text}
 
 
+产业资金定价诊断（ICPM）- 生命周期/主线强度/资金状态/决策建议：
+
+{icpm_text}
+
+
 请对以上数据进行分析，具体要求：
 
 1. 仅过滤有基本面重大风险的个股：
@@ -5632,12 +4969,12 @@ def run(target_date=None, simple_mode=False):
 2. 对于无重大风险的前10名个股，保持原有的综合评分排序，不要重新筛选和排序
 
 3. 对完整量化候选股票池中的每只股票进行以下分析：
-   - 个股基本情况和所属板块
-   - 所属主题的**轮动周期**（新启动/中期轮动/高潮风险/退潮回避），不同周期对应不同策略：
-     * **新启动**：板块刚启动，可关注前排龙头低吸机会
-     * **中期轮动**：趋势健康，适合持股或做T
-     * **高潮风险**：情绪极度亢奋，注意止盈减仓，不追高
-     * **退潮回避**：资金流出，回避为主
+   - 个股基本情况和所属主题
+   - 所属主题的**状态**（抱团主升/强趋势/震荡/弱势等），不同状态对应不同策略：
+     * **抱团主升**：龙头稳定、趋势陡峭、情绪高涨，资金集中，适合持股
+     * **强趋势**：趋势分高且持续上升，情绪活跃，适合顺势操作
+     * **震荡**：趋势不明显，方向待确认，观望为主
+     * **弱势**：趋势下行，回避为主
    - 当前位置和走势分析
    - 未来上涨空间预估（给出合理的目标价位）
    - 买点建议（具体价位或技术形态）
@@ -5648,12 +4985,11 @@ def run(target_date=None, simple_mode=False):
 输出内容：
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
-1、大盘情绪(详细三大指数的数值和变化趋势,重点上证,含涨跌停数等几个数据指标)和仓位建议
-2、通过以上数据及全网板块热点分析,给出今日主线板块和中线强势主题动态变化分析：
-   - 寻找中线主题今日情绪处于低位的二波趋势机会,重点推荐该主题严格对应的补涨中军
-   - 在主线板块分析中，**必须明确区分并加粗标注"中军"和"补涨中军"**
-   - 在描述中，使用【**中军**】和【**补涨中军**】加粗标注股票类型
-   - 分析主线板块的阶段和持续性，给出数据支撑和逻辑理由
+1、大盘情绪：简明扼要，重点是仓位建议及理由，操作要点
+2、今日主题分析情况:
+   - 根据给的内容，显示整体市场主题轮动状态
+   - 分析今日主题状态情况，预测明日热点主题，简明扼要
+   - 对推荐的主题，从主题选股结果中输出该主题对应的补涨中军（加粗股票名称），不要输出中军个股
 3、自选量化股票池分析（仅对完整量化候选股票池中股票，不要加入其它的）：
    **【重要】必须按以下两个维度分别排序和分析，先输出开仓建议，再输出综合评分排序：**
    a) **本节只对游资最强开仓信号算法给的股票进行分析（明日重点关注）**：
@@ -5665,25 +5001,29 @@ def run(target_date=None, simple_mode=False):
         【第4名】股票名 (代码)
         【第5名】股票名 (代码)
         依此往后
-      - 对这些股票进行详细分析（包括开仓评分、结构类型、失败概率、量能爆发、综合评分排名、所属板块和主线关系等）
+      - 对这些股票进行详细分析（包括开仓评分、结构类型、失败概率、综合评分排名、所属主题及主题状态、操作建议）
       - **【重要】如果游资最强开仓信号中的前五名与按综合评分排序的前五名不同，必须明确指出并分析原因**
    
    b) **按综合评分排序**：严格按综合评分从高到低排序输出前10名个股，对每只股票单独分析，包括：
       - 股票名和代码（作为小标题，加粗显示）
       - 当前价格
       - 综合评分
-      - 所属板块和主线关系
+      - 所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
       - 技术面分析
-      - 未来上涨空间预估
+      - 未来上涨空间预估（AI估值分析）
       - 买点建议
       - 止损点建议
       - 风险提示（如果有）
       - 如遇重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
    
-4、跟踪分析个股：从近20日跟踪分析股票池中，精选符合技术形态的个股进行深度分析，重点关注：
-   - 这些是近期持续出现在量化池中但尚未大涨的个股
-   - 临近60日新高或刚刚突破创新高，在前几天震荡调整后放量上涨但没涨停
-   - 给出合适的跟踪关注点和潜在买点
+4、跟踪分析个股：从近20日跟踪分析股票池中，精选5个符合技术形态的个股进行深度分析，重点关注：
+    - 显示开仓分和失败概率
+    - 分析所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
+    - 技术面分析:A洗盘到30日均线或60日均线，且该均线是向上的趋势，B小阳线温和上涨
+    - 未来上涨空间预估（AI估值分析）
+    - 风险提示（如果有）
+    - 临近60日新高或刚刚突破创新高，在前几天震荡调整后放量上涨但没涨停
+    
 
 格式要求：
 - Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，加黑加粗显示

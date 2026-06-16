@@ -1,0 +1,7 @@
+tushare
+pandas
+numpy
+pyyaml
+requests
+loguru
+tabulate

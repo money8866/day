@@ -1,19 +1,59 @@
 {
   "theme_name": "钢铁",
   "macro_theme": "资源",
-  "trade_date": "20260612",
+  "trade_date": "20260615",
   "theme_stage": "发酵期",
   "theme_strength_score": 93,
   "core_pool": [
+    {
+      "stock_code": "603995.SH",
+      "stock_name": "甬金股份",
+      "theme_score": 77.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 8.5583,
+      "amount": 449612.378,
+      "total_mv": 779132.4481
+    },
+    {
+      "stock_code": "002075.SZ",
+      "stock_name": "沙钢股份",
+      "theme_score": 76.0,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 7.2829,
+      "amount": 303341.15883,
+      "total_mv": 840235.1454
+    },
     {
       "stock_code": "000708.SZ",
       "stock_name": "中信特钢",
       "theme_score": 75.5,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 1.7354,
-      "amount": 410792.23068,
-      "total_mv": 7101351.8083
+      "pct_chg": 0.0711,
+      "amount": 349057.82522,
+      "total_mv": 7106398.9667
+    },
+    {
+      "stock_code": "301160.SZ",
+      "stock_name": "翔楼新材",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2632,
+      "amount": 202370.72387,
+      "total_mv": 721686.9675
+    },
+    {
+      "stock_code": "002443.SZ",
+      "stock_name": "金洲管道",
+      "theme_score": 73.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -1.8987,
+      "amount": 307388.63716,
+      "total_mv": 564781.0392
     },
     {
       "stock_code": "600399.SH",
@@ -21,79 +61,19 @@
       "theme_score": 73.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.8462,
-      "amount": 339410.247,
-      "total_mv": 851947.2
-    },
-    {
-      "stock_code": "603995.SH",
-      "stock_name": "甬金股份",
-      "theme_score": 73.5,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.1529,
-      "amount": 219467.207,
-      "total_mv": 717708.5855
-    },
-    {
-      "stock_code": "002318.SZ",
-      "stock_name": "久立特材",
-      "theme_score": 72.75,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 4.8116,
-      "amount": 420334.18407,
-      "total_mv": 2256287.1925
+      "pct_chg": 3.0093,
+      "amount": 286398.446,
+      "total_mv": 877584.5
     },
     {
       "stock_code": "000825.SZ",
       "stock_name": "太钢不锈",
       "theme_score": 72.75,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.5912,
-      "amount": 165925.44455,
-      "total_mv": 2136092.9235
-    },
-    {
-      "stock_code": "002075.SZ",
-      "stock_name": "沙钢股份",
-      "theme_score": 72.75,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.1792,
-      "amount": 129906.57518,
-      "total_mv": 783195.6839
-    },
-    {
-      "stock_code": "301160.SZ",
-      "stock_name": "翔楼新材",
-      "theme_score": 72.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 1.5399,
-      "amount": 186930.05963,
-      "total_mv": 705715.3417
-    },
-    {
-      "stock_code": "688186.SH",
-      "stock_name": "广大特材",
-      "theme_score": 72.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": -2.1114,
-      "amount": 131071.723,
-      "total_mv": 468136.7352
-    },
-    {
-      "stock_code": "300881.SZ",
-      "stock_name": "盛德鑫泰",
-      "theme_score": 72.25,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.1185,
-      "amount": 82089.00393,
-      "total_mv": 445390.0
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.9333,
+      "amount": 157515.37294,
+      "total_mv": 2198751.6493
     },
     {
       "stock_code": "002478.SZ",
@@ -101,67 +81,87 @@
       "theme_score": 72.25,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 1.5919,
-      "amount": 168186.051,
-      "total_mv": 632364.5681
+      "pct_chg": 0.5698,
+      "amount": 145812.15707,
+      "total_mv": 635967.785
+    },
+    {
+      "stock_code": "002318.SZ",
+      "stock_name": "久立特材",
+      "theme_score": 72.25,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 1.6024,
+      "amount": 492692.8559,
+      "total_mv": 2292442.5091
+    },
+    {
+      "stock_code": "600507.SH",
+      "stock_name": "方大特钢",
+      "theme_score": 71.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.0,
+      "amount": 163097.815,
+      "total_mv": 992357.6048
     }
   ],
   "expansion_pool": [
     {
-      "stock_code": "000932.SZ",
-      "stock_name": "华菱钢铁",
-      "theme_score": 68.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 2.1277
-    },
-    {
-      "stock_code": "600019.SH",
-      "stock_name": "宝钢股份",
-      "theme_score": 67.25,
+      "stock_code": "600117.SH",
+      "stock_name": "西宁特钢",
+      "theme_score": 69.0,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 2.906
+      "pct_chg": 0.4405
+    },
+    {
+      "stock_code": "603878.SH",
+      "stock_name": "武进不锈",
+      "theme_score": 67.5,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 2.2258
     },
     {
       "stock_code": "000959.SZ",
       "stock_name": "首钢股份",
       "theme_score": 67.25,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 2.5078
+      "role": "弹性",
+      "reason": "主题关联",
+      "pct_chg": 4.5872
     },
     {
-      "stock_code": "000778.SZ",
-      "stock_name": "新兴铸管",
+      "stock_code": "000932.SZ",
+      "stock_name": "华菱钢铁",
       "theme_score": 66.75,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 2.25
-    },
-    {
-      "stock_code": "601121.SH",
-      "stock_name": "宝地矿业",
-      "theme_score": 66.5,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 5.0654
+      "pct_chg": 0.2604
+    },
+    {
+      "stock_code": "600019.SH",
+      "stock_name": "宝钢股份",
+      "theme_score": 66.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.8306
     },
     {
       "stock_code": "000898.SZ",
       "stock_name": "鞍钢股份",
       "theme_score": 66.0,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.0612
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.9901
     },
     {
-      "stock_code": "601686.SH",
-      "stock_name": "友发集团",
-      "theme_score": 64.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.4137
+      "stock_code": "000778.SZ",
+      "stock_name": "新兴铸管",
+      "theme_score": 65.5,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": -0.2445
     },
     {
       "stock_code": "000923.SZ",
@@ -169,23 +169,23 @@
       "theme_score": 64.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 3.6638
+      "pct_chg": 4.5553
     },
     {
-      "stock_code": "001203.SZ",
-      "stock_name": "大中矿业",
+      "stock_code": "600516.SH",
+      "stock_name": "方大炭素",
       "theme_score": 64.0,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": 4.916
+      "pct_chg": 5.2632
     },
     {
-      "stock_code": "600010.SH",
-      "stock_name": "包钢股份",
-      "theme_score": 64.0,
-      "role": "中军",
-      "reason": "市值较大+稳定换手",
-      "pct_chg": 3.4632
+      "stock_code": "600126.SH",
+      "stock_name": "杭钢股份",
+      "theme_score": 63.25,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 2.8148
     },
     {
       "stock_code": "600282.SH",
@@ -193,15 +193,23 @@
       "theme_score": 63.25,
       "role": "补涨",
       "reason": "低位+主题关联",
-      "pct_chg": 2.9787
+      "pct_chg": 2.0661
     },
     {
-      "stock_code": "600022.SH",
-      "stock_name": "山东钢铁",
-      "theme_score": 63.25,
-      "role": "弹性",
-      "reason": "主题关联",
-      "pct_chg": 3.9063
+      "stock_code": "601686.SH",
+      "stock_name": "友发集团",
+      "theme_score": 63.0,
+      "role": "补涨",
+      "reason": "低位+主题关联",
+      "pct_chg": 0.3883
+    },
+    {
+      "stock_code": "001203.SZ",
+      "stock_name": "大中矿业",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": -4.8249
     },
     {
       "stock_code": "600382.SH",
@@ -209,41 +217,33 @@
       "theme_score": 62.75,
       "role": "中军",
       "reason": "市值较大+稳定换手",
-      "pct_chg": -0.8516
+      "pct_chg": 0.8589
     },
     {
-      "stock_code": "600126.SH",
-      "stock_name": "杭钢股份",
-      "theme_score": 62.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 1.6566
-    },
-    {
-      "stock_code": "600307.SH",
-      "stock_name": "酒钢宏兴",
-      "theme_score": 62.0,
-      "role": "补涨",
-      "reason": "低位+主题关联",
-      "pct_chg": 1.9481
+      "stock_code": "600010.SH",
+      "stock_name": "包钢股份",
+      "theme_score": 62.75,
+      "role": "中军",
+      "reason": "市值较大+稳定换手",
+      "pct_chg": 0.8368
     }
   ],
   "latent_pool": [],
-  "leader_stock": "中信特钢",
+  "leader_stock": "甬金股份",
   "secondary_leaders": [
-    "抚顺特钢",
-    "甬金股份"
+    "沙钢股份",
+    "中信特钢"
   ],
   "next_day_signal": {
     "direction": "transition",
     "focus_pool": "expansion"
   },
   "pool_stats": {
-    "core_count": 14,
-    "expansion_count": 30,
+    "core_count": 12,
+    "expansion_count": 32,
     "latent_count": 0,
-    "core_avg_pct": 2.2891,
-    "expansion_avg_pct": 2.430306666666666,
-    "total_amount": 13835773.017000005
+    "core_avg_pct": 2.4101916666666665,
+    "expansion_avg_pct": 0.85458125,
+    "total_amount": 13384495.815410001
   }
 }

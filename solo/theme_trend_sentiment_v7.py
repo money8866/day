@@ -138,7 +138,7 @@ def deepseek_analyze(prompt):
             "Content-Type": "application/json"
         }
         data = {
-            "model": "deepseek-v4-pro",
+            "model": "deepseek-v4-flash",
             "messages": [
                 {
                     "role": "system",
@@ -2224,6 +2224,10 @@ def get_industry_trend_analysis(results):
             avg_final = np.mean([t["final_score"] for t in themes])
             avg_emotion = np.mean([t["emotion_score"] for t in themes])
             
+            # === 修复：综合分应该是产业分、主题分、情绪分的加权平均，而不是final_score的平均 ===
+            # 权重：产业分30% + 主题分30% + 情绪分40%
+            composite_score = 0.30 * avg_macro + 0.30 * avg_theme + 0.40 * avg_emotion
+            
             # 历史趋势
             history = industry_history.get(industry, [])
             trend_5d = "→"
@@ -2254,9 +2258,9 @@ def get_industry_trend_analysis(results):
                         trend_20d = "↓"
             
             # 判断产业状态
-            if avg_final >= 60 and trend_5d in ["↑", "↑↑"]:
+            if composite_score >= 60 and trend_5d in ["↑", "↑↑"]:
                 status = "强势上升"
-            elif avg_final >= 55:
+            elif composite_score >= 55:
                 status = "稳健运行"
             elif trend_5d in ["↑", "↑↑"]:
                 status = "底部回暖"
@@ -2270,8 +2274,8 @@ def get_industry_trend_analysis(results):
                 "theme_count": len(themes),
                 "avg_macro": round(avg_macro, 1),
                 "avg_theme": round(avg_theme, 1),
-                "avg_final": round(avg_final, 1),
                 "avg_emotion": round(avg_emotion, 1),
+                "avg_final": round(composite_score, 1),  # 综合分使用新计算的composite_score
                 "trend_5d": trend_5d,
                 "trend_20d": trend_20d,
                 "status": status,
