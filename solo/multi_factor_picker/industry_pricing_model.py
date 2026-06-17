@@ -56,17 +56,107 @@ except (ImportError, Exception):
 
 
 # ═══════════════════════════════════════════════
-# 主线产业链定义
+# 主线产业链定义（动态读取）
 # ═══════════════════════════════════════════════
 
-MAINLINE_THEMES = {
-    # AI算力产业链（含光通信/光芯片/服务器）
-    "AI算力链",
-    "半导体设备链",
-    "半导体材料链",
-    # 光通信/光芯片的子集关键词匹配仍归入 AI算力链
+# theme_trend_sentiment.db 路径
+_THEME_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "cache_backbone_tushare", "theme_trend_sentiment.db"
+)
+
+# 数据库不可用时的静态后备主线主题
+_FALLBACK_MAINLINE_THEMES = {
+    "AI算力链", "半导体设备链", "半导体材料链",
 }
-"""严格的主线主题白名单。只有这些产业链才能被标注为 high mainline_strength"""
+
+# 数据库不可用时的静态后备关键词
+_FALLBACK_MAINLINE_KEYWORDS = [
+    "光通信", "光模块", "光芯片", "HBM", "封装材料", "PCB", "AI",
+    "服务器", "算力", "GPU", "半导体", "存储芯片", "先进封装",
+]
+
+# 运行时缓存
+_MAINLINE_THEMES_CACHE = None
+_MAINLINE_THEMES_TIMESTAMP = 0
+
+def get_mainline_themes(top_n: int = 10, min_days: int = 10,
+                         cache_seconds: int = 300) -> set:
+    """
+    从 theme_trend_sentiment.db 获取近60天综合评分排名前 top_n 的主题作为主线主题
+
+    Args:
+        top_n: 取前 N 名（默认10）
+        min_days: 主题在60天内至少出现 min_days 天才算有效（默认10）
+        cache_seconds: 缓存时间（默认300秒，避免频繁读DB）
+
+    Returns:
+        主题名称的 set
+    """
+    global _MAINLINE_THEMES_CACHE, _MAINLINE_THEMES_TIMESTAMP
+    now = time.time()
+    if _MAINLINE_THEMES_CACHE is not None and now - _MAINLINE_THEMES_TIMESTAMP < cache_seconds:
+        return _MAINLINE_THEMES_CACHE
+
+    # 尝试从 DB 读取
+    if os.path.exists(_THEME_DB_PATH):
+        try:
+            import sqlite3
+            from collections import defaultdict
+            conn = sqlite3.connect(_THEME_DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC")
+            all_dates = [row[0] for row in cur.fetchall()]  # row is tuple, extract first element
+            recent_dates = all_dates[:60]
+            if recent_dates:
+                placeholders = ','.join(['?' for _ in recent_dates])
+                cur.execute(
+                    f"SELECT theme, composite_score FROM theme_scores "
+                    f"WHERE trade_date IN ({placeholders})",
+                    recent_dates
+                )
+                rows = cur.fetchall()
+                conn.close()
+
+                theme_scores = defaultdict(list)
+                for theme, score in rows:
+                    if score is not None and score > 0:
+                        theme_scores[theme].append(score)
+
+                # 计算平均值，过滤不足 min_days 的主题
+                theme_avg = {}
+                for theme, scores in theme_scores.items():
+                    if len(scores) >= min_days:
+                        theme_avg[theme] = sum(scores) / len(scores)
+
+                if theme_avg:
+                    sorted_themes = sorted(theme_avg.items(), key=lambda x: -x[1])
+                    result = {t for t, _ in sorted_themes[:top_n]}
+                    top_names = [t for t, _ in sorted_themes[:5]]
+                    print(f"[ICPM] 动态主线主题({top_n}个): {', '.join(top_names)} ...")
+                    _MAINLINE_THEMES_CACHE = result
+                    _MAINLINE_THEMES_TIMESTAMP = now
+                    return result
+        except Exception as e:
+            print(f"[ICPM] 读取主题DB失败: {e}")
+            try: conn.close()
+            except: pass
+
+    # 后备：使用静态关键词匹配
+    _MAINLINE_THEMES_CACHE = _FALLBACK_MAINLINE_THEMES
+    _MAINLINE_THEMES_TIMESTAMP = now
+    print(f"[ICPM] 使用静态后备主线主题: {_FALLBACK_MAINLINE_THEMES}")
+    return _FALLBACK_MAINLINE_THEMES
+
+
+def is_mainline_theme(theme: str) -> bool:
+    """判断主题是否为主线主题（精确匹配 + 关键词匹配）"""
+    mainline_set = get_mainline_themes()
+    if theme in mainline_set:
+        return True
+    # 后备关键词匹配
+    theme_lower = theme.lower()
+    return any(kw.lower() in theme_lower for kw in _FALLBACK_MAINLINE_KEYWORDS)
 
 
 # ═══════════════════════════════════════════════
@@ -244,14 +334,26 @@ def extract_pricing_data(
     if len(bal_sorted) >= 2:
         bal = bal_sorted
         lat, prv = bal.iloc[0], bal.iloc[1]
-        cl_c = float(lat.get('contract_liability', 0)) if pd.notna(lat.get('contract_liability')) else 0.0
-        cl_p = float(prv.get('contract_liability', 0)) if pd.notna(prv.get('contract_liability')) else 0.0
+        # 优先用 contract_liability（合同负债），若列不存在或全0则用 advance_payment（预收款）
+        if 'contract_liability' in bal.columns:
+            cl_c = float(lat.get('contract_liability', 0)) if pd.notna(lat.get('contract_liability')) else 0.0
+            cl_p = float(prv.get('contract_liability', 0)) if pd.notna(prv.get('contract_liability')) else 0.0
+        else:
+            cl_c, cl_p = 0.0, 0.0
         if cl_p > 0:
             cl_yoy = (cl_c - cl_p) / cl_p
-        ap_c = float(lat.get('advance_payment', 0)) if pd.notna(lat.get('advance_payment')) else 0.0
-        ap_p = float(prv.get('advance_payment', 0)) if pd.notna(prv.get('advance_payment')) else 0.0
-        if ap_p > 0:
-            ap_yoy = (ap_c - ap_p) / ap_p
+        if abs(cl_yoy) < 0.001 and 'advance_payment' in bal.columns:
+            # contract_liability 无有效数据，改用 advance_payment（预收款项）
+            ap_c = float(lat.get('advance_payment', 0)) if pd.notna(lat.get('advance_payment')) else 0.0
+            ap_p = float(prv.get('advance_payment', 0)) if pd.notna(prv.get('advance_payment')) else 0.0
+            if ap_p > 0:
+                cl_yoy = (ap_c - ap_p) / ap_p  # 用 advance_payment 替代
+        # 无论用哪个，都算 advance_payment_yoy（仅保留兼容）
+        if 'advance_payment' in bal.columns:
+            ap_c = float(lat.get('advance_payment', 0)) if pd.notna(lat.get('advance_payment')) else 0.0
+            ap_p = float(prv.get('advance_payment', 0)) if pd.notna(prv.get('advance_payment')) else 0.0
+            if ap_p > 0:
+                ap_yoy = (ap_c - ap_p) / ap_p
 
     # ── 市值 ──
     close, total_mv, circ_mv = 0.0, 0.0, 0.0
@@ -339,13 +441,14 @@ class IndustryPricingModel:
         主线强度评分 0~1
 
         规则：
-          - 主题属于 MAINLINE_THEMES 是必要条件
+          - 主题在 MAINLINE_THEMES 中或被 MAINLINE_KEYWORDS 命中 → is_mainline=True
           - profit_yoy > 30% → +0.3
           - revenue_yoy > 20% → +0.2
           - contract_liability_yoy > 20% → +0.2 (订单爆发)
           - ROE > 15% → +0.15
           - 资金净流入 → +0.15
           - 基础分 0.1
+          - 非主线最高 0.5（可进入 ACCUMULATION）
 
         Returns:
             (mainline_strength, is_mainline, details)
@@ -353,22 +456,14 @@ class IndustryPricingModel:
         base = 0.1
         details = {}
 
-        # 主题判定
-        is_mainline = data.theme in MAINLINE_THEMES
-        details["theme_in_mainline"] = data.theme
-        details["is_mainline_theme"] = is_mainline
+        # 主题判定：精确匹配 + 关键词匹配
+        is_mainline = is_mainline_theme(data.theme)
+        details["theme"] = data.theme
+        details["is_mainline"] = is_mainline
 
-        if not is_mainline:
-            # 非主线主题最高只能 0.3
-            strength = base
-            if data.profit_yoy > 0.3:
-                strength += 0.1
-            if data.revenue_yoy > 0.2:
-                strength += 0.1
-            return round(min(strength, 0.3), 3), False, details
-
-        # 主线主题：逐项加分
+        # 基础加分（主线和非主线都按财务表现加分，非主线封顶 0.5）
         score = base
+
         if data.profit_yoy > 0.5:
             score += 0.3
             details["profit_boom"] = True
@@ -398,9 +493,13 @@ class IndustryPricingModel:
             score += 0.15
             details["capital_inflow"] = True
 
-        strength = min(score, 1.0)
+        if is_mainline:
+            strength = min(score, 1.0)
+        else:
+            strength = min(score, 0.5)
+
         details["total_score"] = round(strength, 3)
-        return round(strength, 3), True, details
+        return round(strength, 3), is_mainline, details
 
     # ── 2. 订单爆发评分 ──
 
@@ -408,23 +507,39 @@ class IndustryPricingModel:
         """
         订单爆发评分 0~100
 
-        规则：
-          - contract_liability_yoy > 50% → 100
-          - contract_liability_yoy > 30% → 80
-          - contract_liability_yoy > 15% → 60
-          - contract_liability_yoy > 0% → 40
+        规则（优先使用 contract_liability_yoy，其次 advance_payment_yoy）：
+          - > 50% → 100
+          - > 30% → 80
+          - > 15% → 60
+          - > 0% → 40
+
+        后备（负债端数据不可用时用 revenue_yoy）：
+          - revenue_yoy > 50% → 80
+          - revenue_yoy > 25% → 60
+          - revenue_yoy > 10% → 40
           - 否则 0
         """
         cl = data.contract_liability_yoy
-        if cl > 0.5:
-            return 100, {"order_explosion": "爆发", "contract_liability_yoy": round(cl, 3)}
-        elif cl > 0.3:
-            return 80, {"order_explosion": "高增长", "contract_liability_yoy": round(cl, 3)}
-        elif cl > 0.15:
-            return 60, {"order_explosion": "增长中", "contract_liability_yoy": round(cl, 3)}
-        elif cl > 0:
-            return 40, {"order_explosion": "微增", "contract_liability_yoy": round(cl, 3)}
-        return 0, {"order_explosion": "无增长", "contract_liability_yoy": round(cl, 3)}
+        if abs(cl) > 0.01:
+            if cl > 0.5:
+                return 100, {"order_explosion": "爆发", "contract_liability_yoy": round(cl, 3)}
+            elif cl > 0.3:
+                return 80, {"order_explosion": "高增长", "contract_liability_yoy": round(cl, 3)}
+            elif cl > 0.15:
+                return 60, {"order_explosion": "增长中", "contract_liability_yoy": round(cl, 3)}
+            elif cl > 0:
+                return 40, {"order_explosion": "微增", "contract_liability_yoy": round(cl, 3)}
+            return 0, {"order_explosion": "无增长", "contract_liability_yoy": round(cl, 3)}
+
+        # 后备：contract_liability 数据不可用时用 revenue_yoy 估计
+        rev = data.revenue_yoy
+        if rev > 0.5:
+            return 80, {"order_explosion": "爆发(后备)", "revenue_yoy_fallback": round(rev, 3)}
+        elif rev > 0.25:
+            return 60, {"order_explosion": "高增长(后备)", "revenue_yoy_fallback": round(rev, 3)}
+        elif rev > 0.10:
+            return 40, {"order_explosion": "增长中(后备)", "revenue_yoy_fallback": round(rev, 3)}
+        return 0, {"order_explosion": "低增长", "revenue_yoy_fallback": round(rev, 3)}
 
     # ── 3. 预期评分 ──
 
@@ -560,23 +675,23 @@ class IndustryPricingModel:
         signals = []
         details = {}
 
-        # 涨幅 > 300%
-        if data.pct_200d > 3.0:
-            signals.append("涨幅超300%")
-            details["price_300pct"] = True
+        # 涨幅 > 200%
+        if data.pct_200d > 2.0:
+            signals.append("涨幅超200%")
+            details["price_200pct"] = True
 
         # 利润增长但股价下降
         if data.profit_yoy > 0 and data.pct_60d < -0.1:
             signals.append("利润增长但股价加速下降")
             details["profit_up_price_down"] = True
 
-        # 资金流出
-        if data.net_mf < -1e6:
+        # 资金净流出（net_mf < 0 即为流出，不依赖 capital_state 标签）
+        if data.net_mf < 0:
             signals.append("资金净流出")
             details["capital_outflow"] = True
 
         # 订单下降
-        if data.contract_liability_yoy < -0.1:
+        if data.contract_liability_yoy < -0.1 and data.revenue_yoy < -0.05:
             signals.append("订单下降")
             details["order_decline"] = True
 
@@ -614,7 +729,7 @@ class IndustryPricingModel:
 
         if order_score < 20 and data.profit_yoy < 0.1:
             return ("EARLY_STAGE", 0.3, "产业萌芽",
-                    "BUY", "小仓试错，主题刚出现，数据未验证")
+                    "HOLD", "观望，主题刚出现或数据未验证")
 
         if is_mainline_acc:
             return ("MAINLINE_ACCELERATION", 1.0, "主升浪",
@@ -624,12 +739,17 @@ class IndustryPricingModel:
             return ("ACCUMULATION", 0.7, "资金建仓",
                     "BUY", "核心布局区，订单放量+业绩加速+资金进入")
 
+        if (order_score < 20 and data.profit_yoy < -0.1
+                and mainline_strength < 0.3):
+            return ("DECLINE", 0.1, "退潮",
+                    "EXIT", "清仓，基本面差+无订单+非主线，产业逻辑未兑现")
+
         if capital_state == "OUTFLOW" and data.profit_yoy < 0:
             return ("DECLINE", 0.1, "退潮",
                     "EXIT", "清仓，产业逻辑结束+资金流出")
 
         return ("EARLY_STAGE", 0.2, "产业萌芽",
-                "BUY", "小仓试错，等待数据验证")
+                "HOLD", "观望，等待数据验证")
 
     # ── 8. 单只股票诊断入口 ──
 

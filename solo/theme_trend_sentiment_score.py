@@ -1957,17 +1957,26 @@ def save_to_sqlite(results):
         cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_phase TEXT DEFAULT '正常'")
     if "hot_warning" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN hot_warning TEXT DEFAULT ''")
+    if "top10_days_10d" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN top10_days_10d INTEGER DEFAULT 0")
+    if "top10_days_20d" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN top10_days_20d INTEGER DEFAULT 0")
     
     # 固定列名顺序
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
                      "climax_warning", "leader_name", "leader_code", "leader_score",
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
                      "up_ratio", "zt_count", "trade_date", "theme_state",
-                     "hot_score", "hot_percentile", "hot_phase", "hot_warning"]
+                     "hot_score", "hot_percentile", "hot_phase", "hot_warning",
+                     "top10_days_10d", "top10_days_20d"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
     placeholders = ','.join(['?' for _ in existing_columns])
+    
+    # 预先计算10日/20日稳定性
+    top10_10d = get_top10_stability(TRADE_DATE, days=10)
+    top10_20d = get_top10_stability(TRADE_DATE, days=20)
     
     # 插入数据
     for r in results:
@@ -1975,6 +1984,7 @@ def save_to_sqlite(results):
         sd = r.get("sentiment_detail", {}) or {}
         climax_warning = 1 if (r["trend_score"] >= 70 and r["sentiment_score"] >= 85) else 0
         theme_state = r.get("theme_state", "弱势")
+        theme_name = r.get("theme", "")
         
         # 按fixed_columns顺序构建values
         col_to_val = {
@@ -2002,6 +2012,8 @@ def save_to_sqlite(results):
             "hot_percentile": r.get("hot_percentile", 50),
             "hot_phase": r.get("hot_phase", "正常"),
             "hot_warning": r.get("hot_warning", ""),
+            "top10_days_10d": top10_10d.get(theme_name, 0),
+            "top10_days_20d": top10_20d.get(theme_name, 0),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
@@ -2284,13 +2296,20 @@ def main():
         results.append(theme_result)
         rows_per_theme[theme_name] = top_rows
 
+    # 预先计算10日/20日稳定性
+    top10_10d = get_top10_stability(TRADE_DATE, days=10)
+    top10_20d = get_top10_stability(TRADE_DATE, days=20)
+    for r in results:
+        r["top10_days_10d"] = top10_10d.get(r["theme"], 0)
+        r["top10_days_20d"] = top10_20d.get(r["theme"], 0)
+
     results.sort(key=lambda x: x["composite_score"], reverse=True)
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    print("\n" + "=" * 100)
-    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'热度':<8}{'热度%':<6}{'阶段':<10}{'5日%':<7}{'10日%':<7}{'上涨%':<6}{'涨停':<6}{'状态':<12}")
-    print("-" * 100)
+    print("\n" + "=" * 120)
+    print(f"{'排名':<4}{'主题':<14}{'成份':<6}{'趋势分':<8}{'情绪分':<8}{'综合分':<8}{'热度':<8}{'热度%':<6}{'阶段':<10}{'5日%':<7}{'10日%':<7}{'上涨%':<6}{'涨停':<6}{'状态':<10}{'10日稳':<7}{'20日稳':<7}")
+    print("-" * 120)
     for r in results:
         td = r.get("trend_detail", {}) or {}
         sd = r.get("sentiment_detail", {}) or {}
@@ -2299,8 +2318,9 @@ def main():
         print(f"{r['rank']:<4}{r['theme']:<14}{r['n_stocks']:<6}{r['trend_score']:<8}{r['sentiment_score']:<8}{r['composite_score']:<8}"
               f"{r.get('hot_score', 0):<8}{r.get('hot_percentile', 0):<6}{hot_phase:<10}"
               f"{td.get('avg_ret_5', 0):<7}{td.get('avg_ret_10', 0):<7}"
-              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{theme_state:<12}")
-    print("=" * 100)
+              f"{sd.get('up_ratio', 0):<6}{sd.get('zt_count', 0):<6}{theme_state:<10}"
+              f"{r.get('top10_days_10d', 0):<7}{r.get('top10_days_20d', 0):<7}")
+    print("=" * 120)
 
     # 输出热度预警信息
     hot_warnings = [r for r in results if r.get('hot_warning')]
@@ -2662,22 +2682,56 @@ def calc_rotation_monitoring(ndays=20):
 
     stability_index = sum(stability_values) / len(stability_values) if stability_values else 0
 
-    # ========== 3. 判断市场阶段（二分类）==========
-    # 主线存在条件：rotation_speed < 7.5 OR stability_index > 0.6
-    # 否则：快速轮动
-    if rotation_speed < 7.5 or stability_index > 0.6:
-        # 确定具体缘由
-        reasons = []
-        if rotation_speed < 7.5:
-            reasons.append(f"旋转速率{rotation_speed:.2f}<7.5")
-        if stability_index > 0.6:
-            reasons.append(f"稳定性{stability_index:.2f}>0.6")
-        reason_str = " 且 ".join(reasons) if len(reasons) > 1 else reasons[0]
-        market_stage = "主线清晰"
-        stage_desc = f"{reason_str}，主线存在，可聚焦核心主题操作"
+    # ========== 3. 判断市场阶段（四象限）==========
+    #
+    #              │ stability > 0.6    │ stability < 0.4
+    # ─────────────┼────────────────────┼────────────────────
+    # speed > 7.5  │ 象限一：主线明确   │ 象限三：混乱轮动
+    #              │ 轮动加快           │ 无主线
+    # ─────────────┼────────────────────┼────────────────────
+    # speed ≤ 7.5  │ 象限二：最强状态   │ 象限四：方向不明
+    #              │ 共识强化           │ 混沌期
+    #
+    speed_up = rotation_speed > 7.5
+    stable_high = stability_index > 0.6
+    stable_low = stability_index < 0.4
+
+    if speed_up and stable_high:
+        # 象限一：主线明确，轮动加快
+        market_stage = "主线明确，轮动加快"
+        stage_desc = (f"旋转速率{rotation_speed:.2f}>7.5（轮动加快），"
+                      f"稳定性{stability_index:.2f}>0.6（主线仍在），"
+                      f"坚守主线，只做核心龙头，不碰边缘题材")
+    elif not speed_up and stable_high:
+        # 象限二：最强状态 - 共识强化
+        market_stage = "共识强化🔥"
+        stage_desc = (f"旋转速率{rotation_speed:.2f}≤7.5（轮动放缓），"
+                      f"稳定性{stability_index:.2f}>0.6（共识稳固），"
+                      f"集中仓位，重仓主线，允许追高")
+    elif speed_up and stable_low:
+        # 象限三：混乱轮动，无主线
+        market_stage = "混乱轮动"
+        stage_desc = (f"旋转速率{rotation_speed:.2f}>7.5（轮动加快），"
+                      f"稳定性{stability_index:.2f}<0.4（无主线），"
+                      f"降低仓位，快进快出，不格局")
+    elif not speed_up and stable_low:
+        # 象限四：方向不明，混沌期
+        market_stage = "混沌期"
+        stage_desc = (f"旋转速率{rotation_speed:.2f}≤7.5（轮动放缓），"
+                      f"稳定性{stability_index:.2f}<0.4（无共识），"
+                      f"只做最强主题，不碰边缘题材，快进快出")
     else:
-        market_stage = "快速轮动"
-        stage_desc = f"旋转速率{rotation_speed:.2f}≥7.5 且 稳定性{stability_index:.2f}≤0.6，主线缺失，宜低仓位防御等待信号"
+        # 过渡态（0.4 ≤ stability ≤ 0.6）
+        if not speed_up:
+            market_stage = "过渡期（偏低速）"
+            stage_desc = (f"旋转速率{rotation_speed:.2f}≤7.5，"
+                          f"稳定性{stability_index:.2f}在0.4~0.6之间，"
+                          f"方向待确认，轻仓试探")
+        else:
+            market_stage = "过渡期（偏轮动）"
+            stage_desc = (f"旋转速率{rotation_speed:.2f}>7.5，"
+                          f"稳定性{stability_index:.2f}在0.4~0.6之间，"
+                          f"轮动加快但主线尚未完全散，谨慎操作")
 
     # ========== 4. 构建详情文本 ==========
     lines = []
@@ -2724,6 +2778,71 @@ def calc_rotation_monitoring(ndays=20):
         "n_days_actual": n_days_actual,
         "details": details
     }
+
+
+def get_top10_stability(trade_date, days=10):
+    """
+    计算每个主题在过去N个交易日内位于前十名的天数
+    
+    Args:
+        trade_date: 当前交易日期
+        days: 统计天数（10或20）
+    
+    Returns:
+        dict: {theme_name: top10_days_count}
+    """
+    import sqlite3
+    from collections import defaultdict
+    
+    if not os.path.exists(OUTPUT_DB):
+        return {}
+    
+    conn = sqlite3.connect(OUTPUT_DB)
+    cur = conn.cursor()
+    
+    # 获取最近的N个交易日（包含当天）
+    cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC")
+    all_dates = [row[0] for row in cur.fetchall()]
+    
+    # 找到目标日期的位置
+    if trade_date not in all_dates:
+        conn.close()
+        return {}
+    
+    idx = all_dates.index(trade_date)
+    recent_dates = all_dates[idx:idx + days]
+    
+    if len(recent_dates) < 2:  # 至少需要2天才能计算
+        conn.close()
+        return {}
+    
+    # 查询这些日期内每个主题的排名
+    placeholders = ','.join(['?' for _ in recent_dates])
+    cur.execute(f"""
+        SELECT trade_date, theme, rank 
+        FROM theme_scores 
+        WHERE trade_date IN ({placeholders})
+    """, recent_dates)
+    
+    # 统计每个主题在前十的天数
+    theme_top10_days = defaultdict(int)
+    theme_total_days = defaultdict(int)
+    
+    for td, theme, rank in cur.fetchall():
+        theme_total_days[theme] += 1
+        if rank <= 10:
+            theme_top10_days[theme] += 1
+    
+    conn.close()
+    
+    # 计算稳定性（出现在前十的天数）
+    stability = {}
+    for theme in theme_total_days:
+        # 只有在该主题出现天数>=3时才计算稳定性（避免数据太少）
+        if theme_total_days[theme] >= 3:
+            stability[theme] = theme_top10_days[theme]
+    
+    return stability
 
 
 def get_60day_avg_trend_score():
@@ -2948,9 +3067,16 @@ def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, them
             })
             rows_per_theme[theme_name] = top_rows
         
-        results.sort(key=lambda x: x['composite_score'], reverse=True)
+        results.sort(key=lambda x: x["composite_score"], reverse=True)
         for i, r in enumerate(results, 1):
             r['rank'] = i
+        
+        # 预先计算10日/20日稳定性
+        top10_10d = get_top10_stability(TRADE_DATE, days=10)
+        top10_20d = get_top10_stability(TRADE_DATE, days=20)
+        for r in results:
+            r["top10_days_10d"] = top10_10d.get(r["theme"], 0)
+            r["top10_days_20d"] = top10_20d.get(r["theme"], 0)
         
         # 补充 theme_state（按日期顺序处理时，前一交易日数据已在 DB 中）
         for r in results:

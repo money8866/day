@@ -3035,301 +3035,6 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
         return 0, "计算异常", ""
 
 
-def calc_integrated_score(v9_result, df, stock_info, theme=''):
-    """
-    整合评分算法 - 目标：次日上涨概率高、失败概率低
-    
-    核心设计理念：
-    1. 趋势强度优先：确保处于上升趋势
-    2. 资金健康验证：必须有真实资金流入才给高分
-    3. 位置安全第一：避免追高，寻找好的入场点
-    4. 热度持续性：主题和市场关注度双重验证
-    5. 基本面支撑：技术壁垒和业绩增长提供安全边际
-    
-    核心公式：
-    FinalScore = 趋势强度(30%) + 资金健康度(20%) + 位置安全性(15%) + 热度持续性(20%) + 基本面(15%)
-    
-    关键改进：
-    - 追高惩罚前置：高位股票直接压低分数
-    - 热榜排名加分：根据20天内最佳排名分段加分
-    - 基本面因子：技术壁垒+业绩增速+机构持仓
-    - 失败概率：综合多维度计算失败概率
-    """
-    try:
-        if not v9_result or df is None or not isinstance(df, pd.DataFrame) or len(df) < 20:
-            return 0, "数据不足", "", {}, 50
-
-        df = df.reset_index(drop=True)
-        C = df['close'].values
-        
-        # =========================
-        # 基础数据计算
-        # =========================
-        close_series = df['close']
-        MA20 = float(close_series.rolling(20).mean().iloc[-1])
-        MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        HHV20 = float(close_series.tail(20).max())
-        LLV20 = float(close_series.tail(20).min())
-        current_price = float(C[-1])
-        ts_code = v9_result.get('代码', '')
-        
-        if len(C) >= 2:
-            today_pct = float((C[-1] / C[-2] - 1) * 100)
-        else:
-            today_pct = 0
-
-        price_position = current_price / MA20 if MA20 > 0 else 1.0
-        run_up_from_20d_low = (current_price - LLV20) / max(LLV20, 0.01)
-        
-        # =========================
-        # 1. 趋势强度评分（30%）
-        # =========================
-        trend_score = 50  # 基础分
-        
-        # 均线多头排列
-        if current_price > MA20 > MA60:
-            trend_score += 25
-        elif current_price > MA20:
-            trend_score += 15
-        
-        # 近期涨幅（适度加分，避免过度追高）
-        if len(C) >= 10:
-            ret_10 = (C[-1] / C[-11] - 1) * 100
-            if ret_10 > 0 and ret_10 <= 15:
-                trend_score += min(ret_10, 10)
-        
-        # 突破强度
-        breakout_strength = float(v9_result.get('突破强度', 0))
-        trend_score += breakout_strength * 10
-        
-        trend_score = min(100, max(0, trend_score))
-        
-        # =========================
-        # 2. 资金健康度评分（20%）
-        # =========================
-        capital_score = 50  # 基础分
-        
-        # 量能爆发
-        volume_explosion = float(v9_result.get('量能爆发', 0))
-        if volume_explosion > 0.7:
-            capital_score += 30
-        elif volume_explosion > 0.4:
-            capital_score += 15
-        
-        # 资金主导力
-        cap_dom = float(v9_result.get('资金主导力', 0))
-        capital_score += cap_dom * 0.3
-        
-        # 机构资金流
-        inst_flow_score = calc_institutional_flow_score(ts_code)
-        capital_score += inst_flow_score * 2
-        
-        capital_score = min(100, max(0, capital_score))
-        
-        # =========================
-        # 3. 位置安全性评分（15%）
-        # =========================
-        position_score = 50  # 基础分
-        
-        # 距离前高位置（越接近前高且未透支越好）
-        dist_to_high = (HHV20 - current_price) / HHV20 if HHV20 > 0 else 0
-        if dist_to_high >= 0 and dist_to_high <= 0.05:
-            position_score += 20  # 接近前高准备突破
-        elif dist_to_high > 0.05 and dist_to_high <= 0.15:
-            position_score += 10  # 安全距离
-        
-        # 从低点涨幅（控制追高）
-        if run_up_from_20d_low <= 0.15:
-            position_score += 20  # 涨幅不大，安全
-        elif run_up_from_20d_low <= 0.25:
-            position_score += 10  # 适度涨幅
-        
-        # 90日振幅（压缩度）
-        if len(df) >= 90:
-            h90 = df['high'].values[-90:]
-            l90 = df['low'].values[-90:]
-            range90 = (h90.max() - l90.min()) / l90.min() if l90.min() > 0 else 0
-            if range90 < 0.30:
-                position_score += 10  # 压缩充分
-        
-        position_score = min(100, max(0, position_score))
-        
-        # =========================
-        # 4. 热度持续性评分（20%）
-        # =========================
-        hot_score = 50  # 基础分
-        
-        # 主题热度
-        theme_top3_count = int(v9_result.get('主题TOP3次数', 0))
-        hot_score += min(theme_top3_count, 10) * 3
-        
-        # 热榜排名加分（核心）
-        hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=20)
-        hot_score += hot_rank_bonus * 0.8  # 提升热榜权重
-        
-        # 主题生命力
-        tli = float(v9_result.get('主题生命力', 50))
-        hot_score += (tli - 50) * 0.3
-        
-        hot_score = min(100, max(0, hot_score))
-        
-        # =========================
-        # 5. 基本面评分（15%）
-        # =========================
-        fundamental_score = 50  # 基础分
-        
-        # 技术壁垒评分
-        tech_barrier = calc_tech_barrier_score(ts_code)
-        fundamental_score += tech_barrier * 0.3
-        
-        # 业绩增速
-        revenue_growth = float(v9_result.get('营收增速', 0))
-        if revenue_growth >= 20:
-            fundamental_score += 20
-        elif revenue_growth >= 10:
-            fundamental_score += 10
-        
-        # 利润增速
-        profit_growth = float(v9_result.get('利润增速', 0))
-        if profit_growth >= 30:
-            fundamental_score += 15
-        elif profit_growth >= 15:
-            fundamental_score += 8
-        
-        # 机构持仓比例
-        inst_hold_ratio = float(v9_result.get('机构持仓比例', 0))
-        if inst_hold_ratio >= 0.3:
-            fundamental_score += 10
-        elif inst_hold_ratio >= 0.1:
-            fundamental_score += 5
-        
-        fundamental_score = min(100, max(0, fundamental_score))
-        
-        # =========================
-        # 6. 追高惩罚（前置）
-        # =========================
-        penalty = 0
-        if len(C) >= 6:
-            ret_5 = (C[-1] / C[-6] - 1) * 100
-            if ret_5 > 8:
-                penalty += min((ret_5 - 8) * 3, 20)
-        
-        # =========================
-        # 7. 综合得分
-        # =========================
-        final_score = (
-            trend_score * 0.30 +
-            capital_score * 0.20 +
-            position_score * 0.15 +
-            hot_score * 0.20 +
-            fundamental_score * 0.15
-        ) - penalty
-        
-        final_score = min(95, max(0, final_score))
-        
-        # =========================
-        # 8. 失败概率计算
-        # =========================
-        # 基础失败概率50%，根据各维度调整
-        failure_prob = 50
-        
-        # 趋势越强，失败概率越低
-        failure_prob -= (trend_score - 50) * 0.3
-        
-        # 资金越健康，失败概率越低
-        failure_prob -= (capital_score - 50) * 0.25
-        
-        # 位置越安全，失败概率越低
-        failure_prob -= (position_score - 50) * 0.2
-        
-        # 热度越高，失败概率越低（但过热会增加失败概率）
-        if hot_score >= 85:
-            failure_prob += 5  # 过热风险
-        else:
-            failure_prob -= (hot_score - 50) * 0.15
-        
-        # 基本面越好，失败概率越低
-        failure_prob -= (fundamental_score - 50) * 0.2
-        
-        # 追高惩罚增加失败概率
-        failure_prob += penalty * 1.5
-        
-        # 近期涨幅过大增加失败概率
-        if len(C) >= 6:
-            ret_5 = (C[-1] / C[-6] - 1) * 100
-            if ret_5 > 15:
-                failure_prob += min((ret_5 - 15) * 2, 15)
-        
-        failure_prob = min(90, max(10, failure_prob))
-        
-        # =========================
-        # 详细信息
-        # =========================
-        details = {
-            '趋势强度': round(trend_score, 1),
-            '资金健康度': round(capital_score, 1),
-            '位置安全性': round(position_score, 1),
-            '热度持续性': round(hot_score, 1),
-            '基本面': round(fundamental_score, 1),
-            '追高惩罚': round(penalty, 1),
-            '综合得分': round(final_score, 1),
-            '失败概率': f"{round(failure_prob, 1)}%",
-            '热榜最佳排名': best_rank,
-            '热榜上榜次数': hot_appear_count,
-        }
-        
-        # 推荐理由
-        reason_parts = []
-        
-        # 趋势
-        if trend_score >= 80:
-            reason_parts.append("趋势强劲")
-        elif trend_score >= 60:
-            reason_parts.append("趋势良好")
-        
-        # 资金
-        if capital_score >= 80:
-            reason_parts.append("资金充沛")
-        elif capital_score >= 60:
-            reason_parts.append("资金健康")
-        
-        # 位置
-        if position_score >= 80:
-            reason_parts.append("位置安全")
-        elif position_score >= 60:
-            reason_parts.append("位置合理")
-        
-        # 热度
-        if hot_score >= 80:
-            reason_parts.append("热度持续")
-        elif hot_score >= 60:
-            reason_parts.append("有热度")
-        
-        # 基本面
-        if fundamental_score >= 80:
-            reason_parts.append("基本面优秀")
-        elif fundamental_score >= 60:
-            reason_parts.append("基本面稳健")
-        
-        # 热榜加分显示
-        if hot_rank_bonus > 0:
-            reason_parts.append(f"热榜Top{best_rank}+{hot_rank_bonus}分({hot_appear_count}次)")
-        
-        # 追高风险
-        if penalty > 0:
-            reason_parts.append(f"追高风险-{penalty:.0f}")
-        
-        recommendation = " | ".join(reason_parts) if reason_parts else "观察中"
-        
-        return round(final_score, 1), recommendation, details, round(failure_prob, 1)
-        
-    except Exception as e:
-        print(f"[整合评分] 异常: {e}")
-        import traceback
-        traceback.print_exc()
-        return 0, "计算异常", {}, 50
-
-
 def calc_theme_confidence(stock_info, theme):
     """
     计算个股与主题的纯度/置信度评分（0-100）
@@ -4437,30 +4142,22 @@ def get_tracking_stocks():
                         v9_result = calc_dual_layer_score_v9(df_hist, ts_code=ts_code, stock_info=stock_info)
                         last_score = v9_result.get('V9总评分', 0)
                         
-                        # 使用整合评分算法
-                        integrated_score, recommendation, details, failure_prob = calc_integrated_score(
-                            v9_result, df_hist, stock_info
+                        # 获取开仓评分和状态（V10版）
+                        v7_result = calc_dual_layer_score_v75(df_hist, ts_code=ts_code, stock_info=stock_info)
+                        open_score, structure_type, open_recommendation = calc_hot_money_open_score_v10(
+                            v7_result, df_hist, stock_info
                         )
-                        open_score = integrated_score
-                        structure_type = details.get('结构类型', '未知')
-                        open_recommendation = recommendation
                     else:
                         # 数据不足，回退到旧评分
                         last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
                         if last_score > 100:
                             last_score = min(last_score, 50)
-                        open_score = 0
-                        structure_type = "未知"
-                        open_recommendation = "数据不足"
                 except Exception as e:
                     # 计算失败，回退到旧评分
-                    print(f"整合评分计算失败 {ts_code}: {e}")
+                    print(f"开仓评分计算失败 {ts_code}: {e}")
                     last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
                     if last_score > 100:
                         last_score = min(last_score, 50)
-                    open_score = 0
-                    structure_type = "未知"
-                    open_recommendation = "计算失败"
                 
                 # 优先从缓存文件获取今日价格和涨跌幅（已在MA5计算时读取）
                 if cache_close > 0:
@@ -4487,8 +4184,8 @@ def get_tracking_stocks():
                     'vol_ratio': cache_vol_ratio
                 })
         
-        # 按整合评分排序，取前30只
-        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['open_score'])[:30]
+        # 按V75评分排序，取前10只
+        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['last_score'])[:30]
         
         # 生成文本格式
         lines = []
@@ -4496,11 +4193,11 @@ def get_tracking_stocks():
             lines.append("=" * 80)
             lines.append("跟踪分析股票池（最高涨幅≤20%、5日均线上、5日乖离率<5%）")
             lines.append("=" * 80)
-            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'整合评分':<8} {'当日涨跌':<8} {'量比':<6} {'5日涨幅':<10} {'最高涨幅':<10}")
-            lines.append("-" * 80)
+            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'当日涨跌':<8} {'量比':<6} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'乖离率':<10}")
+            lines.append("-" * 90)
             for stock in tracking_stocks:
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['open_score']:<8.1f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}%")
-            lines.append("=" * 80)
+                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['last_score']:<8.2f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock.get('structure_type', '未知'):<8} {stock['range_5d_pct']:<+10.2f}% {stock['max_pct']:<+10.2f}% {stock['bias_rate']:<10.2f}%")
+            lines.append("=" * 90)
         
        
         return tracking_stocks, "\n".join(lines), ""
@@ -5145,121 +4842,149 @@ def run(target_date=None, simple_mode=False):
     print(top10_df[display_cols])
     
     # =========================
-    # 整合评分算法（替代原游资开仓算法）
+    # 游资最强开仓算法 V8
     # =========================
     global hot_money_open_text, icpm_top10_list
-    hot_money_open_text = ""
+    hot_money_open_text = ""  # 初始化全局变量
     icpm_top10_list = []
-    
-    ranked_stocks = []
-    for _, row in result_df.iterrows():
-        ts_code = row['代码']
-        name = row['名称']
-        df = get_hist_data(ts_code)
+    try:
+        # 获取TOP10的K线数据
+        df_list = []
+        results_list = []
         
-        if df is None or len(df) < 20 or not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
-            continue
-        
-        try:
-            theme_name = str(row.get('所属主题', ''))
-            today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100 if len(df) >= 2 else float(row.get('涨跌幅', 0))
+        for _, row in top10_df.iterrows():
+            code = str(row.get('代码', ''))
+            name = str(row.get('名称', ''))
+            df = get_hist_data(code)
             
-            v9_result = {
-                '代码': ts_code, '名称': name, '现价': float(row.get('现价', 0)),
-                '涨跌幅': today_pct, '所属主题': theme_name,
-                'V9总评分': float(row.get('V9总评分', 50)), '风险等级': str(row.get('风险等级', '低')),
-                '趋势概率': float(row.get('趋势概率', 0.5)), '失败概率': float(row.get('失败概率', 0.5)),
-                '突破强度': float(row.get('突破强度', 0.5)), '压缩度': float(row.get('压缩度', 0.5)),
-                '量能爆发': float(row.get('量能爆发', 0.5)), '资金主导力': float(row.get('资金主导力', 0)),
-                '主题TOP3次数': int(row.get('主题TOP3次数', 0)), '主题生命力': float(row.get('主题生命力', 50)),
-                '营收增速': float(row.get('营收增速', 0)), '利润增速': float(row.get('利润增速', 0)),
-                '机构持仓比例': float(row.get('机构持仓比例', 0)),
-                '所属状态': str(row.get('所属状态', '')), '主题趋势分': float(row.get('主题趋势分', 0)),
-                '主题情绪分': float(row.get('主题情绪分', 0)),
-            }
+            if df is None or len(df) < 20:
+                continue
             
-            stock_info = {'name': name}
+            # 确保df是DataFrame且有close列
+            if not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
+                continue
+            
+            # 从row中安全获取值，转为Python原生类型
             try:
-                import theme_trend_sentiment_score as theme_ts
-                dc_df = theme_ts.get_dc_members()
-                if dc_df is not None and not dc_df.empty:
-                    stock_rows = dc_df[dc_df['con_code'] == ts_code]
-                    if not stock_rows.empty:
-                        concepts = set()
-                        industries = set()
-                        for _, r in stock_rows.iterrows():
-                            if r.get("is_industry", False):
-                                industries.add(r['concept_name'])
-                            else:
-                                concepts.add(r['concept_name'])
-                        stock_info['concepts'] = list(concepts)
-                        stock_info['industries'] = list(industries)
-            except:
-                pass
-            
-            integrated_score, recommendation, details, failure_prob = calc_integrated_score(v9_result, df, stock_info, theme_name)
-            
-            stock_data = {
-                '代码': ts_code, '名称': name, '现价': float(row.get('现价', 0)),
-                '涨跌幅': today_pct, '所属主题': theme_name,
-                '整合评分': integrated_score, '失败概率': failure_prob,
-                '推荐理由': recommendation,
-                '趋势强度': details.get('趋势强度', 0), '资金健康度': details.get('资金健康度', 0),
-                '位置安全性': details.get('位置安全性', 0), '热度持续性': details.get('热度持续性', 0),
-                '基本面': details.get('基本面', 0),
-                '热榜最佳排名': details.get('热榜最佳排名', 0), '热榜上榜次数': details.get('热榜上榜次数', 0),
-                '所属状态': str(row.get('所属状态', '')),
-                '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
-                '量能爆发': float(row.get('量能爆发', 0)), '突破强度': float(row.get('突破强度', 0)),
-            }
-            ranked_stocks.append(stock_data)
-            
-        except Exception as e:
-            print(f"[整合评分] {ts_code} {name} 失败: {e}")
-            continue
 
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
-
-    lines = []
-    lines.append("=" * 60)
-    lines.append("🔥 整合评分精选标的 (明日重点关注)")
-    lines.append("=" * 60)
+                theme_name = str(row.get('所属主题', ''))
+                
+                # 直接从K线数据计算真实涨跌幅，避免数据错误
+                if len(df) >= 2:
+                    today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100
+                else:
+                    today_pct = float(row.get('涨跌幅', 0))
+                
+                # 过滤当日涨停股票（区分主板和双创）
+                # 主板（600xxx, 601xxx, 603xxx, 605xxx, 000xxx, 001xxx, 002xxx, 003xxx）：9.98%
+                # 双创（300xxx, 688xxx, 301xxx）：19.88%
+                code_prefix = code[:3] if len(code) >= 3 else ''
+                is_double_innovation = code_prefix in ['300', '688', '301']
+                limit_up_threshold = 19.88 if is_double_innovation else 9.98
+                
+                #if today_pct >= limit_up_threshold:
+                #    market_type = "双创" if is_double_innovation else "主板"
+                #    print(f"[开仓过滤] {code} {name} 今日涨停({today_pct:.2f}%，{market_type}阈值{limit_up_threshold}%)，跳过")
+                #    continue
+                
+                v7_result = {
+                    '代码': code,
+                    '名称': name,
+                    '现价': float(row.get('现价', 0)),
+                    '涨跌幅': today_pct,
+                    '所属主题': theme_name,
+                    'V9总评分': float(row.get('V9总评分', 50)),
+                    '风险等级': str(row.get('风险等级', '低')),
+                    '趋势概率': float(row.get('趋势概率', 0.5)),
+                    '失败概率': float(row.get('失败概率', 0.5)),
+                    '洗盘概率': float(row.get('洗盘概率', 0.5)),
+                    '趋势强度': float(row.get('趋势强度', 0.5)),
+                    '趋势稳定': float(row.get('趋势稳定', 0.5)),
+                    '资金动量': float(row.get('资金动量', 0.5)),
+                    '突破强度': float(row.get('突破强度', 0.5)),
+                    '压缩度': float(row.get('压缩度', 0.5)),
+                    '量能爆发': float(row.get('量能爆发', 0.5)),
+                    # 主题纯度从V7打分结果中获取，不再硬编码
+                    '主题纯度': float(row.get('主题纯度', 0)),
+                    # 市值信息（用于资金体量因子）
+                    'total_market_cap': float(row.get('total_market_cap', 0)),
+                    'market_cap': float(row.get('market_cap', 0)),
+                    # 主题状态属性（来自 theme_trend_sentiment_score calc_theme_state）
+                    '所属状态': str(row.get('所属状态', '')),
+                    '主题趋势分': float(row.get('主题趋势分', 0)),
+                    '主题情绪分': float(row.get('主题情绪分', 0)),
+                }
+                df_list.append(df)
+                results_list.append(v7_result)
+            except Exception as e:
+                print(f"[开仓数据构建] {code} 失败: {e}")
+                continue
+        
+        if df_list and results_list:
+            # 执行游资开仓排名
+            ranked_stocks = rank_top_stocks_for_open(df_list, results_list)
+            #rint(ranked_stocks)
+            # 只保留启动型+加速型标的供AI分析输出
+            #ranked_stocks = [s for s in ranked_stocks if s.get('结构类型', '') in ('🟢启动型', '🟡加速型')]
+            # 排序：按开仓评分降序
+            ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('开仓评分', 0))
+            # 打印报告
+            top3_stocks = print_hot_money_open_report(ranked_stocks, top_n=10)
+            
+            # 生成游资开仓信号文本
+            lines = []
+            lines.append("=" * 60)
+            lines.append("🔥 游资最强开仓标的 (明日重点关注)")
+            lines.append("=" * 60)
+            for i, s in enumerate(top3_stocks, 0):
+                lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
+                lines.append(f"  结构类型: {s['结构类型']}")
+                lines.append(f"  开仓评分: {s['开仓评分']:.1f} | V9基础分: {s['V9总评分']:.1f}")
+                st = s.get('所属状态', '')
+                if st:
+                    t_s = s.get('主题趋势分', 0)
+                    s_s = s.get('主题情绪分', 0)
+                    lines.append(f"  所属主题: {s.get('所属主题', '')} | 状态: {st} | 趋势分: {t_s:.0f} | 情绪分: {s_s:.0f}")
+                else:
+                    lines.append(f"  所属主题: {s.get('所属主题', '')}")
+                lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 失败概率: {s['失败概率']:.1%}")
+                lines.append(f"  量能爆发: {s['量能爆发']:.2f} | 突破强度: {s['突破强度']:.2f}")
+                lines.append(f"  推荐理由: {s['推荐理由']}")
+                lines.append("")
+            lines.append("完整排名:")
+            lines.append("-" * 60)
+            for i, s in enumerate(ranked_stocks, 1):
+                st = s.get('所属状态', '')
+                lines.append(f"{i}. {s['代码']} {s['名称']} | {s['结构类型']} | 开仓分:{s['开仓评分']:.1f} | {s['所属主题']} | 状态:{st}")
+            lines.append("=" * 60)
+            hot_money_text = "\n".join(lines)
+            
+            # 保存到全局变量供prompt使用
+            hot_money_open_text = hot_money_text
+            # 保存Top30开仓股信息供ICPM诊断
+            icpm_top10_list = []
+            for s in ranked_stocks[:30]:
+                icpm_top10_list.append({
+                    'code': s.get('代码', ''),
+                    'name': s.get('名称', ''),
+                    'theme': s.get('所属主题', ''),
+                    'open_score': s.get('开仓评分', 0),
+                })
+            #print(hot_money_text)
+            # 在TOP10数据中标记明日开仓标的
+            top3_codes = [s['代码'] for s in top3_stocks]
+            result_df['明日开仓标的'] = result_df['代码'].apply(
+                lambda x: '🔥' if str(x) in top3_codes else ''
+            )
+    except Exception as e:
+        print(f"[游资开仓算法] 执行失败: {e}")
+        import traceback
+        traceback.print_exc()
+        hot_money_open_text = ""
     
-    top_stocks = ranked_stocks[:10]
-    for i, s in enumerate(top_stocks, 1):
-        lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
-        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 量能爆发: {s['量能爆发']:.2f}")
-        lines.append(f"  所属主题: {s['所属主题']} | 状态: {s['所属状态']}")
-        lines.append(f"  推荐理由: {s['推荐理由']}")
-        lines.append(f"  ├─趋势强度: {s['趋势强度']:.1f} | 资金健康度: {s['资金健康度']:.1f}")
-        lines.append(f"  ├─位置安全: {s['位置安全性']:.1f} | 热度持续: {s['热度持续性']:.1f}")
-        lines.append(f"  └─基本面: {s['基本面']:.1f}")
-        if s.get('热榜最佳排名') and 0 < s['热榜最佳排名'] <= 100:
-            lines.append(f"  热榜: Top{s['热榜最佳排名']}({s['热榜上榜次数']}次)")
-        lines.append("")
-    
-    lines.append("完整排名:")
-    lines.append("-" * 60)
-    for i, s in enumerate(ranked_stocks, 1):
-        lines.append(f"{i}. {s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f} | 失败概率:{s['失败概率']:.1f}% | {s['所属主题']}")
-    lines.append("=" * 60)
-    
-    hot_money_open_text = "\n".join(lines)
-    print(hot_money_open_text)
-    
-    icpm_top10_list = []
-    for s in ranked_stocks[:30]:
-        icpm_top10_list.append({
-            'code': s.get('代码', ''),
-            'name': s.get('名称', ''),
-            'theme': s.get('所属主题', ''),
-            'open_score': s.get('整合评分', 0),
-        })
-    
-    # 生成stock_text供后续使用
-    stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks[:10]])
-    all_stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks])
+    stock_text = top10_df.to_string(index=False)
+    all_stock_text = result_df.to_string(index=False)
+      
 
     # =========================
     # 获取跟踪分析个股
@@ -5293,20 +5018,21 @@ def run(target_date=None, simple_mode=False):
             lines = []
             if tracking_stocks:
                 lines.append("=" * 80)
-                lines.append("跟踪分析股票池（主题过滤后，按整合评分排序）")
+                lines.append("跟踪分析股票池（主题过滤后，按综合评分排序）")
                 lines.append("=" * 80)
-                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'整合评分':<8} {'当日涨跌':<8} {'量比':<6} {'5日涨幅':<10} {'最高涨幅':<10} {'主题状态':<10}")
-                lines.append("-" * 85)
+                lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'V9评分':<8} {'当日涨跌':<8} {'量比':<6} {'结构':<8} {'5日涨幅':<10} {'最高涨幅':<10} {'主题状态':<10}")
+                lines.append("-" * 90)
                 for stock in tracking_stocks:
-                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('open_score', 0):<8.1f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('所属状态', ''):<10}")
-                lines.append("=" * 85)
+                    lines.append(f"{stock['代码']:<12} {stock['名称']:<10} {stock.get('last_close', 0):<8.2f} {stock.get('last_score', 0):<8.2f} {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock.get('structure_type', '未知'):<8} {stock.get('range_5d_pct', 0):<+10.2f}% {stock.get('max_pct', 0):<+10.2f}% {stock.get('所属状态', ''):<10}")
+                lines.append("=" * 90)
                 # 加入每只股票的详细评价信息（供AI分析）
                 lines.append("")
-                lines.append("跟踪个股详细评价（按整合评分降序）：")
+                lines.append("跟踪个股详细评价（按V9评分降序）：")
                 lines.append("-" * 80)
                 for i, stock in enumerate(tracking_stocks, 1):
                     lines.append(f"【第{i}名】{stock.get('名称', '')} ({stock.get('代码', '')})")
-                    lines.append(f"  整合评分: {stock.get('open_score', 0):.1f}")
+                    lines.append(f"  V9综合评分: {stock.get('last_score', 0):.2f} | 开仓评分: {stock.get('open_score', 0):.2f}")
+                    lines.append(f"  结构类型: {stock.get('structure_type', '未知')}")
                     theme_str = stock.get('所属主题', '')
                     state_str = stock.get('所属状态', '')
                     lines.append(f"  最新价: {stock.get('last_close', 0):.2f} | 当日涨跌: {stock.get('pct_chg', 0):+.2f}% | 量比: {stock.get('vol_ratio', 0):.2f} | 5日涨幅: {stock.get('range_5d_pct', 0):+.2f}% | 最高涨幅: {stock.get('max_pct', 0):+.2f}%")
@@ -5314,9 +5040,9 @@ def run(target_date=None, simple_mode=False):
                         lines.append(f"  所属主题: {theme_str} | 主题状态: {state_str}")
                     rec = stock.get('open_recommendation', '')
                     if rec:
-                        lines.append(f"  推荐理由: {rec}")
+                        lines.append(f"  评价: {rec}")
                     lines.append("")
-                lines.append("=" * 80)
+                lines.append("=" * 90)
             tracking_stocks_text = "\n".join(lines)
     except Exception as e:
         print(f"获取跟踪分析个股失败: {e}")
@@ -5405,9 +5131,9 @@ def run(target_date=None, simple_mode=False):
                 icpm_exclude_codes = set()
 
                 icpm_lines.append("=" * 72)
-                icpm_lines.append("产业资金定价诊断（ICPM）- 整合评分Top30")
+                icpm_lines.append("产业资金定价诊断（ICPM）- 游资最强开仓Top30")
                 icpm_lines.append("=" * 72)
-                icpm_lines.append(f"{'股票':<16} {'生命周期':<12} {'主线强度':<8} {'资金状态':<8} {'决策':<6} {'整合评分':<8}")
+                icpm_lines.append(f"{'股票':<16} {'生命周期':<12} {'主线强度':<8} {'资金状态':<8} {'决策':<6} {'开仓分':<8}")
                 icpm_lines.append("-" * 72)
 
                 for s in icpm_top10_list:
@@ -5464,17 +5190,33 @@ def run(target_date=None, simple_mode=False):
                     ranked_stocks = [s for s in ranked_stocks if s.get('代码', '') not in icpm_exclude_codes]
                     filtered_count = original_count - len(ranked_stocks)
                     print(f"[ICPM] 过滤掉 {filtered_count} 只股票（减仓/清仓）: {icpm_exclude_codes}")
+                    # 重新计算 top3_stocks
+                    top3_stocks = print_hot_money_open_report(ranked_stocks, top_n=10)
                     # 重新生成 hot_money_text（包含过滤后的排名）
                     lines = []
                     lines.append("=" * 60)
-                    lines.append("🔥 整合评分精选标的 (ICPM过滤后)")
+                    lines.append("🔥 游资最强开仓标的 (明日重点关注)")
                     lines.append("=" * 60)
-                    for i, s in enumerate(ranked_stocks[:10], 1):
+                    for i, s in enumerate(top3_stocks, 0):
                         lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
-                        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-                        lines.append(f"  所属主题: {s['所属主题']} | 状态: {s.get('所属状态', '')}")
+                        lines.append(f"  结构类型: {s['结构类型']}")
+                        lines.append(f"  开仓评分: {s['开仓评分']:.1f} | V9基础分: {s['V9总评分']:.1f}")
+                        st = s.get('所属状态', '')
+                        if st:
+                            t_s = s.get('主题趋势分', 0)
+                            s_s = s.get('主题情绪分', 0)
+                            lines.append(f"  所属主题: {s.get('所属主题', '')} | 状态: {st} | 趋势分: {t_s:.0f} | 情绪分: {s_s:.0f}")
+                        else:
+                            lines.append(f"  所属主题: {s.get('所属主题', '')}")
+                        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 失败概率: {s['失败概率']:.1%}")
+                        lines.append(f"  量能爆发: {s['量能爆发']:.2f} | 突破强度: {s['突破强度']:.2f}")
                         lines.append(f"  推荐理由: {s['推荐理由']}")
                         lines.append("")
+                    lines.append("完整排名:")
+                    lines.append("-" * 60)
+                    for i, s in enumerate(ranked_stocks, 1):
+                        st = s.get('所属状态', '')
+                        lines.append(f"{i}. {s['代码']} {s['名称']} | {s['结构类型']} | 开仓分:{s['开仓评分']:.1f} | {s['所属主题']} | 状态:{st}")
                     lines.append("=" * 60)
                     hot_money_text = "\n".join(lines)
                     hot_money_open_text = hot_money_text  # 更新全局变量
@@ -5482,7 +5224,8 @@ def run(target_date=None, simple_mode=False):
                     if not ranked_stocks:
                         stock_text = "（ICPM过滤后无股票）"
                     else:
-                        stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks[:10]])
+                        top10_df = pd.DataFrame(ranked_stocks[:10])
+                        stock_text = top10_df.to_string(index=False)
         except Exception as e:
             print(f"[ICPM] 诊断失败: {e}")
             import traceback
@@ -5505,13 +5248,23 @@ def run(target_date=None, simple_mode=False):
 
 {theme_stocks_text}
 
+今日量化候选股票池（按综合评分排序前10名，含主题状态属性）：
+
+{stock_text}
+
+
+完整量化候选股票池（按综合评分排序，含主题状态属性）：
+
+{all_stock_text}
+
+
 近20日跟踪分析股票池（从历史自选股中筛选涨幅不大、未大涨过的个股，经主题过滤后按综合评分排序）：
 （这些是近期持续关注、尚未启动的股票，值得跟踪分析）
 
 {tracking_stocks_text}
 
-整合评分精选标的（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
-（这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
+游资最强开仓信号（基于V8算法筛选的明日重点标的）：
+（这是程序根据资金有效性、结构位置、主题强度等维度综合评分的结果，代表游资今日最强开仓偏好）
 
 {hot_money_open_text}
 
@@ -5556,25 +5309,35 @@ def run(target_date=None, simple_mode=False):
    - 分析今日主题状态情况，预测明日热点主题，简明扼要
    - 对推荐的主题，从主题选股结果中输出该主题对应的补涨中军（加粗股票名称），不要输出中军个股
 3、自选量化股票池分析（仅对完整量化候选股票池中股票，不要加入其它的）：
-   **【重要】按整合评分从高到低排序分析前10名个股：**
-   - **【必须】用以下格式显示：**
-     【第1名 - 明日首选】股票名 (代码)
-     【第2名】股票名 (代码)
-     【第3名】股票名 (代码)
-     依此往后
-   - 对每只股票进行详细分析，包括：
-     - 整合评分和失败概率
-     - 所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
-     - 技术面分析
-     - 未来上涨空间预估（AI估值分析）
-     - 给出产业资金定价诊断（ICPM）结果- 生命周期/主线强度/资金状态/决策建议：
-     - 买点建议
-     - 止损点建议
-     - 风险提示（如果有）
-     - 如遇重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
+   **【重要】必须按以下两个维度分别排序和分析，先输出开仓建议，再输出综合评分排序：**
+   a) **本节只对游资最强开仓信号算法给的股票进行分析（只对前10名输出，明日重点关注）**：
+      - **【必须】先输出启动型，再输出加速型的股票,根据游资最强开仓信号中的开仓评分，重新按开仓分从高到低排序**
+      - **【必须】用以下格式显示：**
+        【第1名 - 明日首选】股票名 (代码)
+        【第2名】股票名 (代码)
+        【第3名】股票名 (代码)
+        【第4名】股票名 (代码)
+        【第5名】股票名 (代码)
+        依此往后
+      - 对这些股票进行详细分析（包括开仓评分、结构类型、失败概率、综合评分排名、所属主题及主题状态、操作建议）
+      - 给出产业资金定价诊断（ICPM）结果- 生命周期/主线强度/资金状态/决策建议：
+      - **【重要】如果游资最强开仓信号中的前五名与按综合评分排序的前五名不同，必须明确指出并分析原因**
+   
+   b) **按综合评分排序**：严格按综合评分从高到低排序输出前10名个股，对每只股票单独分析，包括：
+      - 股票名和代码（作为小标题，加粗显示）
+      - 当前价格
+      - 综合评分
+      - 所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
+      - 技术面分析
+      - 未来上涨空间预估（AI估值分析）
+      - 给出产业资金定价诊断（ICPM）结果- 生命周期/主线强度/资金状态/决策建议：
+      - 买点建议
+      - 止损点建议
+      - 风险提示（如果有）
+      - 如遇重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
    
 4、跟踪分析个股：从近20日跟踪分析股票池中，精选5个符合技术形态的个股进行深度分析，重点关注：
-    - 显示整合评分和失败概率
+    - 显示开仓分和失败概率
     - 分析所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
     - 技术面分析:A洗盘到30日均线或60日均线，且该均线是向上的趋势，B小阳线温和上涨
     - 未来上涨空间预估（AI估值分析）
