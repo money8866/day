@@ -135,33 +135,23 @@ def get_hot_list_bonus(count):
         return 0
 
 
-def get_hot_list_best_rank_bonus(ts_code, days=60):
+def get_hot_list_best_rank_bonus(ts_code, days=20):
     """获取股票在热榜中的最佳排名并返回加分
     
-    加分规则：
-    1. 排名加分（基于最佳排名）：
-       - Top10: +12分
-       - Top20: +10分
-       - Top30: +8分
-       - Top50: +6分
-       - Top100: +4分
-       - 未进Top100: +0分
-    
-    2. 出现次数加分（基于60天内上榜次数）：
-       - 1次: +0分
-       - 2-3次: +2分
-       - 4-5次: +4分
-       - 6-10次: +6分
-       - 11次以上: +8分
-    
-    总加分 = 排名加分 + 出现次数加分
+    加分规则（按最佳排名分段）：
+    - Top10: +15分
+    - Top20: +12分
+    - Top30: +10分
+    - Top50: +8分
+    - Top100: +5分
+    - 未进Top100: +0分
     
     Args:
         ts_code: 股票代码
-        days: 统计天数，默认60天
+        days: 统计天数，默认20天
     
     Returns:
-        bonus: 总加分
+        bonus: 加分
         best_rank: 最佳排名（未进榜返回9999）
         appear_count: 出现次数
     """
@@ -190,34 +180,19 @@ def get_hot_list_best_rank_bonus(ts_code, days=60):
             except Exception:
                 pass
     
-    # 1. 排名加分
+    # 根据最佳排名计算加分
     if best_rank <= 10:
-        rank_bonus = 12
+        bonus = 15
     elif best_rank <= 20:
-        rank_bonus = 10
+        bonus = 12
     elif best_rank <= 30:
-        rank_bonus = 8
+        bonus = 10
     elif best_rank <= 50:
-        rank_bonus = 6
+        bonus = 8
     elif best_rank <= 100:
-        rank_bonus = 4
+        bonus = 5
     else:
-        rank_bonus = 0
-    
-    # 2. 出现次数加分
-    if appear_count <= 1:
-        count_bonus = 0
-    elif appear_count <= 3:
-        count_bonus = 2
-    elif appear_count <= 5:
-        count_bonus = 4
-    elif appear_count <= 10:
-        count_bonus = 6
-    else:
-        count_bonus = 8
-    
-    # 总加分
-    bonus = rank_bonus + count_bonus
+        bonus = 0
     
     return bonus, best_rank, appear_count
 
@@ -1020,8 +995,6 @@ def calc_volume_structure(df):
     obv_component = np.tanh(np.log1p(abs(obv_strength)) * 0.3)
     price_component = np.tanh(max(price_trend, 0) * 2)
     return vol_component * 0.4 + obv_component * 0.4 + price_component * 0.2
-
-
 def calc_accumulation_factor(df):
     if len(df) < 40:
         return 0
@@ -2299,7 +2272,7 @@ def calc_capital_dominance_score(ts_code, stock_info, theme, v75_result, df):
         print(f'[capital_dominance] 失败: {e}')
         return 50, {}
 
-def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0):
+def calc_unified_stock_score(df, ts_code='', theme=''):
     """
     统一股票评分算法 - 整合V9和整合评分
     
@@ -2344,55 +2317,31 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # =========================
         trend_score = 0
         
-        # 均线状态（互斥评分）
-        # 注意：完全多头排列不一定是最佳买点，可能是加速末端
-        # 5均低于10均有时是二波启动机会
+        # 均线状态（互斥评分，权重最高）
         if current_price > MA5 > MA10 > MA20 > MA60:
-            trend_score += 10  # 完全多头排列（降低加分，避免追高）
+            trend_score += 35  # 完全多头排列
         elif current_price > MA20 > MA60:
-            trend_score += 20  # 价格站上MA20，MA20在MA60之上（核心上升趋势）
-        elif current_price > MA20 and MA10 > MA20:
-            trend_score += 15  # 价格在MA20之上，10均在MA20之上
+            trend_score += 25  # 上升趋势
+        elif current_price > MA20 > MA10:
+            trend_score += 15  # 震荡偏强
         elif current_price > MA20:
-            trend_score += 12  # 价格站上MA20（可能是二波启动）
+            trend_score += 8   # 初步企稳
         elif current_price > MA10:
-            trend_score += 5   # 弱势
+            trend_score += 3   # 弱势
         else:
             trend_score -= 10   # 下降趋势
         
-        # MA20均线斜率（权重加大）
+        # MA20均线斜率
         if len(C) >= 25:
             ma20_slope = (MA20 - float(close_series.rolling(20).mean().iloc[-6])) / MA20
-            if ma20_slope > 0.05:
-                trend_score += 35  # 极强上升
-            elif ma20_slope > 0.03:
-                trend_score += 28  # 强上升
-            elif ma20_slope > 0.015:
-                trend_score += 20  # 温和上升
+            if ma20_slope > 0.03:
+                trend_score += 20  # 强上升
+            elif ma20_slope > 0.01:
+                trend_score += 12  # 温和上升
             elif ma20_slope > 0:
-                trend_score += 10  # 缓慢上升
-            elif ma20_slope > -0.015:
-                trend_score -= 5   # 轻微下降
+                trend_score += 5   # 缓慢上升
             else:
-                trend_score -= 15  # 明显下降
-        
-        # MA10均线斜率（新增，权重加大）
-        if len(C) >= 15:
-            ma10_current = float(close_series.rolling(10).mean().iloc[-1])
-            ma10_prev = float(close_series.rolling(10).mean().iloc[-6])
-            ma10_slope = (ma10_current - ma10_prev) / ma10_current if ma10_current > 0 else 0
-            if ma10_slope > 0.06:
-                trend_score += 30  # 极强上升
-            elif ma10_slope > 0.04:
-                trend_score += 24  # 强上升
-            elif ma10_slope > 0.02:
-                trend_score += 18  # 温和上升
-            elif ma10_slope > 0:
-                trend_score += 8   # 缓慢上升
-            elif ma10_slope > -0.02:
-                trend_score -= 3   # 轻微下降
-            else:
-                trend_score -= 12  # 明显下降
+                trend_score -= 5   # 下降
         
         # 近期涨幅（5日，适度加分）
         if len(C) >= 6:
@@ -2408,46 +2357,37 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             else:
                 trend_score -= 15  # 大幅下跌
         
-        # 突破前高（不加分，只记录状态用于其他计算）
+        # 突破前高
         breakout_strength = 0.5
         if current_price >= HHV20:
+            trend_score += 15  # 突破前高
             breakout_strength = 1.0
         elif current_price >= HHV20 * 0.97:
+            trend_score += 10  # 接近前高
             breakout_strength = 0.85
         elif current_price >= HHV20 * 0.90:
+            trend_score += 5   # 离前高较远
             breakout_strength = 0.6
         
-        trend_score = min(100, max(0, trend_score))  # 限制上限
+        trend_score = min(100, max(0, trend_score))
         
         # =========================
         # 2. 资金健康度评分（25%）
         # =========================
         capital_score = 50
         
-        # 量能分析（使用当日量比：当日成交量/5日均量）
-        vol_ratio = 1.0
+        # 量能分析
         if 'vol' in df.columns and len(df) >= 10:
-            vol_today = float(df['vol'].iloc[-1])
             vol_ma5 = float(df['vol'].tail(5).mean())
             vol_ma20 = float(df['vol'].tail(20).mean())
-            # 当日量比 = 当日成交量 / 5日均量（真实放量倍数）
-            vol_ratio = vol_today / vol_ma5 if vol_ma5 > 0 else 1.0
-            # 5日/20日量比用于平滑判断
-            vol_ma_ratio = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
+            vol_ratio = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
             
-            # 当日放量越大，加分越多
-            if vol_ratio > 3.0:
-                capital_score += 35  # 巨量爆发
-            elif vol_ratio > 2.0:
-                capital_score += 25  # 明显放量
+            if vol_ratio > 2.0:
+                capital_score += 30
             elif vol_ratio > 1.5:
-                capital_score += 15  # 温和放量
-            elif vol_ratio > 1.0:
-                capital_score += 5   # 轻微放量
-            
-            # 5日/20日量比辅助判断持续性
-            if vol_ma_ratio > 2.0:
-                capital_score += 10  # 持续放量
+                capital_score += 20
+            elif vol_ratio > 1.2:
+                capital_score += 10
         
         # 机构资金流
         inst_flow_score = calc_institutional_flow_score(ts_code)
@@ -2487,42 +2427,13 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # =========================
         hot_score = 50
         
-        # 主题生命力（降低加分幅度）
+        # 主题生命力
         tli_score, _ = calc_tli_score(theme, top_n=10, days=60)
-        hot_score += (tli_score - 50) * 0.3  # 从0.5降到0.3
+        hot_score += (tli_score - 50) * 0.5
         
         # 热榜排名加分
-        hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=60)
-        hot_score += hot_rank_bonus * 0.5  # 降低热榜加分权重
-        
-        # 过滤条件：非双创板股票且未上过热榜的，直接返回0分
-        # 双创板：创业板(300开头)、科创板(688开头)
-        is_innovation_board = ts_code.startswith('300') or ts_code.startswith('688')
-        if not is_innovation_board and hot_appear_count<=1:
-            return 0, "非双创板且未上热榜", {}, 90
-        
-        # 根据主题趋势分和情绪分调整热度（避免高潮后追高）
-        # 情绪分过高（>80）= 高潮期，可能回落，降低热度
-        # 趋势分下降（<30）= 主题走弱，降低热度
-        if theme_sentiment_score > 80:
-            # 情绪高潮，可能即将回落
-            hot_score -= 15
-        elif theme_sentiment_score > 70:
-            # 情绪偏高，谨慎
-            hot_score -= 8
-        elif theme_sentiment_score < 30:
-            # 情绪低迷，热度不足
-            hot_score -= 10
-        
-        if theme_trend_score < 30:
-            # 趋势走弱
-            hot_score -= 12
-        elif theme_trend_score < 40:
-            # 趋势偏弱
-            hot_score -= 5
-        elif theme_trend_score > 70:
-            # 趋势强劲，热度有支撑
-            hot_score += 5
+        hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=20)
+        hot_score += hot_rank_bonus
         
         # 主题TOP3次数
         if hasattr(getattr(globals().get('result_df', None), 'iloc', None), '__call__'):
@@ -2532,26 +2443,23 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         hot_score = min(100, max(0, hot_score))
         
         # =========================
-        # 5. 基本面评分（使用V2增强模块）
+        # 5. 基本面评分（10%）
         # =========================
-        # 调用新的基本面评分模块
-        try:
-            fund_result = calc_fundamental_score_v2(
-                ts_code=ts_code,
-                theme_name=theme,
-                theme_trend_score=theme_trend_score,
-                theme_sentiment_score=theme_sentiment_score,
-                hot_rank=best_rank if best_rank <= 100 else 9999,
-                hot_count=hot_appear_count
-            )
-            fundamental_score = fund_result['base_score']  # 使用base_score作为基本面分
-            synergy_coeff = fund_result['synergy_coeff']   # 共振系数用于后续调整
-            fund_logic = fund_result['logic']
-        except Exception as e:
-            print(f"[统一评分] 基本面V2评分失败: {e}")
-            fundamental_score = 50
-            synergy_coeff = 1.0
-            fund_logic = []
+        fundamental_score = 50
+        
+        # 技术壁垒
+        tech_barrier = calc_tech_barrier_score(ts_code)
+        fundamental_score += tech_barrier * 0.5
+        
+        # 60日涨幅趋势（作为业绩代理）
+        if len(C) >= 60:
+            ret_60 = (C[-1] / C[-60] - 1) * 100
+            if ret_60 >= 20:
+                fundamental_score += 15
+            elif ret_60 >= 10:
+                fundamental_score += 8
+            elif ret_60 >= 0:
+                fundamental_score += 3
         
         fundamental_score = min(100, max(0, fundamental_score))
         
@@ -2576,35 +2484,17 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             leader_bonus = 8   # 接近前高的核心
         
         # =========================
-        # 8. 综合得分 - 趋势强度主导
+        # 8. 综合得分
         # =========================
-        # 基础分 = 其他维度加权（降低热度权重）
-        base_score = (
-            capital_score * 0.30 +
-            position_score * 0.25 +
+        final_score = (
+            trend_score * 0.30 +
+            capital_score * 0.25 +
+            position_score * 0.15 +
             hot_score * 0.20 +
-            fundamental_score * 0.25
-        )
+            fundamental_score * 0.10
+        ) - penalty + leader_bonus
         
-        # 趋势强度作为乘数因子（趋势越强，总分越高）
-        # 缩窄倍数范围，避免顶部聚类
-        trend_multiplier = 0.7 + (trend_score / 100) * 0.6  # 0.7 ~ 1.3
-        
-        # 共振系数改为加法项而非乘法，避免双乘数叠加导致的顶部溢出
-        synergy_bonus = (synergy_coeff - 0.8) * 25  # 系数0.5→-7.5分, 1.0→+5分, 1.5→+17.5分
-        
-        # 综合分 = 基础分 × 趋势乘数 + 共振加分 - 惩罚 + 龙头加分
-        final_score = base_score * trend_multiplier + synergy_bonus - penalty + leader_bonus
-        
-        # 趋势强度额外加成：趋势分>70的股票获得额外加分
-        if trend_score >= 80:
-            final_score += 8  # 强趋势加成
-        elif trend_score >= 70:
-            final_score += 4   # 中等趋势加成
-        elif trend_score < 40:
-            final_score -= 8   # 弱趋势惩罚
-        
-        final_score = min(100, max(5, final_score))
+        final_score = min(95, max(0, final_score))
         
         # =========================
         # 9. 失败概率计算
@@ -2625,11 +2515,6 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             failure_prob += 10  # 缺乏热度风险
         
         failure_prob = min(90, max(10, failure_prob))
-        
-        # 失败概率修正：失败概率越低，加分越多（反向激励）
-        # 以30%为基准，每低1%加0.15分，每高1%扣0.15分
-        failure_bonus = (30 - failure_prob) * 0.15
-        final_score += failure_bonus
         
         # =========================
         # 10. 推荐理由
@@ -2676,13 +2561,10 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             '位置安全性': round(position_score, 1),
             '热度持续性': round(hot_score, 1),
             '基本面': round(fundamental_score, 1),
-            '共振系数': round(synergy_coeff, 2),
             '追高惩罚': round(penalty, 1),
             '龙头加分': leader_bonus,
-            '量能爆发': round(vol_ratio, 2),
             '热榜最佳排名': best_rank if best_rank <= 100 else 0,
             '热榜上榜次数': hot_appear_count,
-            '基本面逻辑': fund_logic[:3] if fund_logic else [],  # 最多保留3条核心逻辑
         }
         
         return round(final_score, 1), recommendation, details, round(failure_prob, 1)
@@ -2964,276 +2846,6 @@ def calc_institutional_flow_score(ts_code):
         return 0
     except Exception:
         return 0
-
-
-def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme_sentiment_score=0,
-                                stock_info=None, hot_rank=9999, hot_count=0):
-    """
-    行业景气度 + 个股基本面优势评分模块（短线增强型）
-    
-    目标：判断行业是否是资金主线，个股是否具备成为龙头的基本面支撑
-    
-    返回：
-        dict: {
-            "industry_score": 0-100,
-            "fundamental_score": 0-100,
-            "base_score": 0-100,
-            "synergy_coeff": 0.5-1.5,
-            "is_mainline": bool,
-            "stage": str,
-            "logic": [str, ...]
-        }
-    """
-    try:
-        logic = []
-        
-        # =========================
-        # 一、行业景气度评分（0~100）
-        # =========================
-        
-        # 【1】产业趋势强度（40%）
-        trend_strength = 50  # 基础分
-        if theme_trend_score >= 80:
-            trend_strength = 95  # 绝对主线
-            logic.append(f"产业趋势：绝对主线（趋势分{theme_trend_score:.0f}）")
-        elif theme_trend_score >= 65:
-            trend_strength = 80  # 强主线分支
-            logic.append(f"产业趋势：强主线分支（趋势分{theme_trend_score:.0f}）")
-        elif theme_trend_score >= 45:
-            trend_strength = 65  # 轮动热点
-            logic.append(f"产业趋势：轮动热点（趋势分{theme_trend_score:.0f}）")
-        elif theme_trend_score >= 30:
-            trend_strength = 45  # 边缘
-            logic.append(f"产业趋势：边缘方向（趋势分{theme_trend_score:.0f}）")
-        else:
-            trend_strength = 25  # 退潮
-            logic.append(f"产业趋势：退潮期（趋势分{theme_trend_score:.0f}）")
-        
-        # 【2】资金集中度（30%）
-        # 使用热榜出现次数和排名作为代理
-        concentration = 50
-        if hot_count >= 5:
-            if hot_rank <= 10:
-                concentration = 95  # 高集中龙头
-                logic.append("资金集中：高集中龙头，持续吸金")
-            elif hot_rank <= 30:
-                concentration = 80
-                logic.append("资金集中：核心标的，资金关注度高")
-            else:
-                concentration = 65
-                logic.append("资金集中：有一定资金关注")
-        elif hot_count >= 2:
-            concentration = 55
-            logic.append("资金集中：偶尔上榜")
-        else:
-            concentration = 40
-            logic.append("资金集中：无显著资金集中")
-        
-        # 【3】板块阶段（20%）
-        stage = "未知"
-        stage_score = 50
-        if theme_sentiment_score >= 80:
-            stage = "高潮期"
-            stage_score = 55  # 风险上升
-            logic.append("板块阶段：高潮期，谨慎追高")
-        elif theme_sentiment_score >= 60:
-            stage = "发酵期"
-            stage_score = 75
-            logic.append("板块阶段：发酵期，可参与")
-        elif theme_sentiment_score >= 40:
-            stage = "启动期"
-            stage_score = 90  # 最优
-            logic.append("板块阶段：启动期，最佳介入窗口")
-        else:
-            stage = "退潮期"
-            stage_score = 30
-            logic.append("板块阶段：退潮期，建议回避")
-        
-        # 【4】情绪热度（10%）
-        emotion_heat = 50
-        if hot_count >= 10:
-            emotion_heat = 90
-        elif hot_count >= 5:
-            emotion_heat = 75
-        elif hot_count >= 2:
-            emotion_heat = 60
-        elif hot_count >= 1:
-            emotion_heat = 45
-        else:
-            emotion_heat = 30
-        
-        # 计算行业景气度
-        industry_score = (
-            trend_strength * 0.40 +
-            concentration * 0.30 +
-            stage_score * 0.20 +
-            emotion_heat * 0.10
-        )
-        
-        # =========================
-        # 二、个股基本面优势评分（0~100）
-        # =========================
-        
-        # 【1】产业地位（40%）
-        position_score = 50
-        
-        # 尝试从stock_info获取市值信息
-        is_large_cap = False
-        if stock_info and 'total_market_cap' in stock_info:
-            # 总市值大于500亿视为大市值
-            if stock_info['total_market_cap'] > 500e8:
-                is_large_cap = True
-        
-        # 根据历史热榜排名判断是否为龙头
-        if hot_rank <= 10 and hot_count >= 3:
-            position_score = 95
-            logic.append("个股地位：核心龙头，市场认可度高")
-        elif hot_rank <= 30 and hot_count >= 2:
-            position_score = 80
-            logic.append("个股地位：强势标的，有辨识度")
-        elif hot_rank <= 50 or hot_count >= 1:
-            position_score = 65
-            logic.append("个股地位：有资金关注")
-        else:
-            position_score = 45
-            logic.append("个股地位：跟随标的，辨识度低")
-        
-        # 大市值扣分（短线资金偏好中小市值）
-        if is_large_cap:
-            position_score -= 10
-            logic.append("个股地位：大市值，弹性受限")
-        
-        position_score = max(0, min(100, position_score))
-        
-        # 【2】成长弹性（30%）
-        growth_score = 50
-        # 使用60日涨幅作为代理
-        try:
-            csv_path = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-            if os.path.exists(csv_path):
-                df = pd.read_csv(csv_path)
-                if len(df) >= 60:
-                    df = df.sort_values('trade_date', ascending=True)
-                    close_60d = float(df.iloc[-60]['close'])
-                    close_now = float(df.iloc[-1]['close'])
-                    ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
-                    
-                    if ret_60d >= 0.5:
-                        growth_score = 95
-                        logic.append(f"成长弹性：强趋势（60日涨幅{ret_60d*100:.0f}%）")
-                    elif ret_60d >= 0.3:
-                        growth_score = 80
-                        logic.append(f"成长弹性：良好（60日涨幅{ret_60d*100:.0f}%）")
-                    elif ret_60d >= 0.1:
-                        growth_score = 65
-                        logic.append(f"成长弹性：一般（60日涨幅{ret_60d*100:.0f}%）")
-                    else:
-                        growth_score = 45
-                        logic.append(f"成长弹性：偏弱（60日涨幅{ret_60d*100:.0f}%）")
-        except:
-            pass
-        
-        # 【3】事件催化（20%）
-        # 使用主题生命力作为代理
-        catalyst_score = 50
-        try:
-            tli_score, _ = calc_tli_score(theme_name, top_n=10, days=30)
-            if tli_score >= 80:
-                catalyst_score = 85
-                logic.append("事件催化：强催化窗口")
-            elif tli_score >= 60:
-                catalyst_score = 70
-                logic.append("事件催化：有催化预期")
-            elif tli_score >= 40:
-                catalyst_score = 55
-                logic.append("事件催化：催化减弱")
-            else:
-                catalyst_score = 40
-                logic.append("事件催化：无明显催化")
-        except:
-            pass
-        
-        # 【4】市场记忆度（10%）
-        memory_score = 50
-        if hot_count >= 5:
-            memory_score = 90  # 反复炒作
-            logic.append("市场记忆：历史龙头，反复活跃")
-        elif hot_count >= 2:
-            memory_score = 70
-            logic.append("市场记忆：有一定炒作基础")
-        else:
-            memory_score = 40
-            logic.append("市场记忆：缺乏辨识度")
-        
-        # 计算个股基本面优势
-        fundamental_score = (
-            position_score * 0.40 +
-            growth_score * 0.30 +
-            catalyst_score * 0.20 +
-            memory_score * 0.10
-        )
-        
-        # =========================
-        # 三、共振系数计算
-        # =========================
-        base = industry_score * 0.6 + fundamental_score * 0.4
-        
-        if base >= 85:
-            synergy_coeff = 1.30 + min(0.2, (base - 85) / 75)  # 1.30-1.50
-        elif base >= 70:
-            synergy_coeff = 1.10 + (base - 70) / 75  # 1.10-1.30
-        elif base >= 50:
-            synergy_coeff = 0.90 + (base - 50) / 100  # 0.90-1.10
-        else:
-            synergy_coeff = 0.60 + base / 125  # 0.60-0.90
-        
-        # =========================
-        # 四、短线过滤规则
-        # =========================
-        is_mainline = True
-        if industry_score < 40 and fundamental_score < 50:
-            synergy_coeff = min(synergy_coeff, 0.8)
-            is_mainline = False
-            logic.append("过滤规则：行业+个股双弱，强制降权")
-        
-        # 高潮期+高情绪 = 风险
-        if theme_sentiment_score >= 85 and hot_count >= 5:
-            synergy_coeff *= 0.9
-            logic.append("风险提示：高潮期+高热度，降低预期")
-        
-        synergy_coeff = round(max(0.5, min(1.5, synergy_coeff)), 2)
-        
-        # 最终结论
-        if synergy_coeff >= 1.2:
-            logic.append(f"结论：强共振环境（系数{synergy_coeff}），优先考虑")
-        elif synergy_coeff >= 1.0:
-            logic.append(f"结论：可交易环境（系数{synergy_coeff}）")
-        elif synergy_coeff >= 0.8:
-            logic.append(f"结论：普通环境（系数{synergy_coeff}），谨慎参与")
-        else:
-            logic.append(f"结论：弱势环境（系数{synergy_coeff}），建议回避")
-        
-        return {
-            "industry_score": round(industry_score, 1),
-            "fundamental_score": round(fundamental_score, 1),
-            "base_score": round(base, 1),
-            "synergy_coeff": synergy_coeff,
-            "is_mainline": is_mainline,
-            "stage": stage,
-            "logic": logic
-        }
-        
-    except Exception as e:
-        print(f"[基本面评分] 异常: {e}")
-        return {
-            "industry_score": 50,
-            "fundamental_score": 50,
-            "base_score": 50,
-            "synergy_coeff": 1.0,
-            "is_mainline": False,
-            "stage": "未知",
-            "logic": ["评分异常，使用默认值"]
-        }
 
 
 def rank_top_stocks_for_open(df_list, results_list):
@@ -3991,7 +3603,7 @@ def strategy(df, code, emotion_stage):
     vol_peak = VOL[-ztts-1:-1].max()
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
     
-    cond_xh1 = ((C[-1] > highest_close) or (C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2] > 1.05 and C[-1]/C[-2] < 1.15))
+    cond_xh1 = ((C[-1] > highest_close) or (C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2] > 1.05 and C[-1]/C[-2] < 1.15 and vol_condition))
     cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
     
     # 前两日低点必须贴近5日线（1%以内）
@@ -4963,20 +4575,8 @@ def calc_max_limit_height():
 # =========================
 def filter_by_top_themes(result_df, top_n=10):
     """
-    主题质量过滤 + 高潮风险控制
-    
-    核心逻辑：
-    1. 统计60天内各主题进入TOP5的次数（存在感）
-    2. 检测"脉冲热点"：近10天才突然进入前列，之前毫无存在感
-    3. 检测"高潮风险"：连续多日情绪分>70，回调概率大
-    4. 综合评估主题质量，过滤低质量主题的成份股
-    
-    参数：
-        result_df: 待过滤的股票DataFrame
-        top_n: 主题综合排名取前N名
-    
-    返回：
-        过滤后的DataFrame，注入主题相关字段
+    根据60天历史数据筛选主题：只保留综合分排名进入TOP3至少3次的主题的成份股。
+    并在个股中注入主题状态字段供AI分析。
     """
     if result_df.empty:
         return result_df
@@ -4990,45 +4590,25 @@ def filter_by_top_themes(result_df, top_n=10):
     try:
         conn = sqlite3.connect(db_path)
         
-        # 获取过去60天的所有交易日（从旧到新排序，基于TRADE_DATE回溯）
+        # 获取过去60天的所有交易日
         trade_dates_df = pd.read_sql(
-            f"SELECT DISTINCT trade_date FROM theme_scores "
-            f"WHERE trade_date <= '{TRADE_DATE}' "
-            f"ORDER BY trade_date ASC LIMIT 60",
+            "SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT 60",
             conn
         )
-        all_trade_dates = trade_dates_df['trade_date'].tolist()
+        trade_dates = trade_dates_df['trade_date'].tolist()
         
-        if not all_trade_dates:
+        if not trade_dates:
             print("[主题过滤] 无历史数据，跳过过滤")
             conn.close()
             return result_df
         
-        total_days = len(all_trade_dates)
-        print(f"[主题过滤] 分析最近 {total_days} 个交易日（截至{TRADE_DATE}）")
+        print(f"[主题过滤] 分析最近 {len(trade_dates)} 个交易日数据")
         
-        # 以最近10天为"近期"窗口
-        recent_window = min(10, total_days // 3)  # 至少取1/3时间
-        recent_dates = set(all_trade_dates[-recent_window:])  # 最近N天
-        early_dates = set(all_trade_dates[:-recent_window])    # 之前的天
+        # 统计每个主题进入TOP3的次数
+        theme_top3_counts = {}
+        all_theme_data = {}
         
-        # 数据结构
-        # theme_stats[theme] = {
-        #     'total_top5_count': 总上榜次数,
-        #     'recent_top5_count': 近N天上榜次数,
-        #     'early_top5_count': 之前上榜次数,
-        #     'first_seen_idx':  首次出现索引,
-        #     'consecutive_high_sentiment': 连续高潮天数,
-        #     'sentiment_scores': [近N天情绪分],
-        #     'latest_state': 最新状态,
-        #     'latest_trend': 最新趋势分,
-        #     'latest_sentiment': 最新情绪分,
-        #     'latest_composite': 最新综合分,
-        #     'last_3_sentiment': 最近3天情绪分,
-        # }
-        theme_stats = {}
-        
-        for day_idx, trade_date in enumerate(all_trade_dates):
+        for trade_date in trade_dates:
             day_df = pd.read_sql(
                 f"SELECT theme, trend_score, sentiment_score, composite_score, theme_state "
                 f"FROM theme_scores WHERE trade_date = '{trade_date}'",
@@ -5042,266 +4622,40 @@ def filter_by_top_themes(result_df, top_n=10):
             
             for _, row in day_df.iterrows():
                 theme = row['theme']
+                # 修复KeyError：使用get方法或先初始化
+                if theme not in theme_top3_counts:
+                    theme_top3_counts[theme] = 0
+                theme_top3_counts[theme] += 1
                 
-                if theme not in theme_stats:
-                    theme_stats[theme] = {
-                        'total_top5_count': 0,
-                        'recent_top5_count': 0,
-                        'early_top5_count': 0,
-                        'first_seen_idx': day_idx,
-                        'consecutive_high_sentiment': 0,
-                        'sentiment_scores': [],
-                        'latest_state': '',
-                        'latest_trend': 0,
-                        'latest_sentiment': 0,
-                        'latest_composite': 0,
-                        'last_3_sentiment': [],
+                # 保存最新数据用于主题状态
+                if theme not in all_theme_data:
+                    all_theme_data[theme] = {
+                        'theme_state': row.get('theme_state', ''),
+                        'trend_score': row.get('trend_score', 0) or 0,
+                        'sentiment_score': row.get('sentiment_score', 0) or 0,
+                        'composite_score': row.get('composite_score', 0) or 0,
                     }
-                
-                theme_stats[theme]['total_top5_count'] += 1
-                
-                # 区分近期和早期
-                if trade_date in recent_dates:
-                    theme_stats[theme]['recent_top5_count'] += 1
-                else:
-                    theme_stats[theme]['early_top5_count'] += 1
-                
-                # 记录情绪分数用于检测高潮（带上日期）
-                sentiment = float(row.get('sentiment_score', 0) or 0)
-                theme_stats[theme]['sentiment_scores'].append((trade_date, sentiment))
-                
-                # 保存最新数据（仅来自TOP5记录，可能不是最新日期的）
-                theme_stats[theme]['latest_state'] = row.get('theme_state', '')
-                theme_stats[theme]['latest_trend'] = float(row.get('trend_score', 0) or 0)
-                theme_stats[theme]['latest_sentiment'] = sentiment
-                theme_stats[theme]['latest_composite'] = float(row.get('composite_score', 0) or 0)
-        
-        # 补充：用最新交易日（TRADE_DATE）的数据覆盖所有主题的latest_*字段
-        # 因为TOP5记录可能不是最新日期（已退潮主题最后进TOP5可能很久以前）
-        latest_date = TRADE_DATE  # 直接用TRADE_DATE，all_trade_dates[-1]因LIMIT截断可能不是最新
-        if latest_date:
-            try:
-                extra_conn = sqlite3.connect(db_path)
-                latest_day_df = pd.read_sql(
-                    f"SELECT theme, trend_score, sentiment_score, composite_score, theme_state "
-                    f"FROM theme_scores WHERE trade_date = '{latest_date}'",
-                    extra_conn
-                )
-                extra_conn.close()
-                for _, row in latest_day_df.iterrows():
-                    theme = row['theme']
-                    if theme in theme_stats:
-                        # 用最新交易日的数据覆盖，无论是否在TOP5中
-                        theme_stats[theme]['latest_trend'] = float(row.get('trend_score', 0) or 0)
-                        theme_stats[theme]['latest_sentiment'] = float(row.get('sentiment_score', 0) or 0)
-                        theme_stats[theme]['latest_composite'] = float(row.get('composite_score', 0) or 0)
-                        theme_stats[theme]['latest_state'] = row.get('theme_state', '')
-                    else:
-                        # 即使从未进入TOP5，也保留其最新数据供参考
-                        theme_stats[theme] = {
-                            'total_top5_count': 0,
-                            'recent_top5_count': 0,
-                            'early_top5_count': 0,
-                            'first_seen_idx': 9999,
-                            'consecutive_high_sentiment': 0,
-                            'sentiment_scores': [],
-                            'latest_state': row.get('theme_state', ''),
-                            'latest_trend': float(row.get('trend_score', 0) or 0),
-                            'latest_sentiment': float(row.get('sentiment_score', 0) or 0),
-                            'latest_composite': float(row.get('composite_score', 0) or 0),
-                        }
-            except Exception as e:
-                print(f"[主题过滤] 补充最新交易日数据失败: {e}")
         
         conn.close()
         
-        if not theme_stats:
-            print("[主题过滤] 无主题数据，跳过过滤")
+        # 筛选进入TOP3至少5次的主题
+        valid_themes = {theme for theme, count in theme_top3_counts.items() if count >= 5}
+        
+        if not valid_themes:
+            print("[主题过滤] 无进入TOP3至少5次的主题，跳过过滤")
             return result_df
         
-        # 2. 计算每个主题的质量评分（0-100）
-        theme_quality = {}
-        
-        # 当天最近几天的数据用于检测连续高潮
-        today_recent_dates = all_trade_dates[-5:] if len(all_trade_dates) >= 5 else all_trade_dates
-        
-        for theme, stats in theme_stats.items():
-            # ----- 基础存在感（35%）-----
-            # 60天内进入TOP5≥12次得满分（收紧满分门槛）
-            presence_score = min(100, stats['total_top5_count'] * 8.3)
-            
-            # ----- 持续性（15%）-----
-            # 核心判断：是否持续活跃，而非"曾经活跃但现在已退潮"
-            if stats['total_top5_count'] >= 3:
-                # 近期占比越高越好（近期>0且有持续上榜）
-                # 如果近期=0，说明已经完全退潮，0分
-                if stats['recent_top5_count'] == 0:
-                    consistency_score = 10  # 已退潮主题，基本不合格
-                else:
-                    # 近期占比越高=持续活跃度越高
-                    recent_ratio = stats['recent_top5_count'] / stats['total_top5_count']
-                    # 近期占比>30%说明持续性好
-                    consistency_score = min(100, recent_ratio * 200 + stats['recent_top5_count'] * 5)
-            else:
-                consistency_score = 0  # 出现太少，直接0分
-            
-            # ----- 趋势活力（25%）← 新增维度 -----
-            # 核心：当前趋势分越高 = 越活跃，越低 = 越低迷
-            # 情绪分用于修正：过高减分（过热），过低减分（冷清）
-            trend_vitality = 50  # 基础分
-            
-            latest_trend = stats['latest_trend']
-            latest_sentiment = stats['latest_sentiment']
-            
-            # 趋势分是核心驱动力
-            if latest_trend >= 75:
-                trend_vitality = 90  # 强趋势主线
-            elif latest_trend >= 65:
-                trend_vitality = 80  # 趋势良好
-            elif latest_trend >= 55:
-                trend_vitality = 65  # 趋势一般
-            elif latest_trend >= 40:
-                trend_vitality = 45  # 趋势偏弱
-            else:
-                trend_vitality = 25  # 趋势低迷
-            
-            # 情绪分修正：极低情绪=冷清，贴切修正
-            if latest_sentiment >= 85:
-                trend_vitality -= 10  # 极端高潮，趋势可能见顶
-                print(f"[主题过滤] ⚠ {theme}: 趋势{latest_trend:.0f}但情绪{latest_sentiment:.0f}极端高潮，质量折价")
-            elif latest_sentiment <= 30:
-                trend_vitality -= 15  # 情绪冰点，无人问津
-                print(f"[主题过滤] ⚠ {theme}: 趋势{latest_trend:.0f}但情绪{latest_sentiment:.0f}低迷，质量折价")
-            elif latest_sentiment <= 40:
-                trend_vitality -= 8   # 情绪偏低
-            
-            # 趋势 < 50 且 情绪 < 50 = 双重低迷
-            if latest_trend < 50 and latest_sentiment < 50:
-                trend_vitality -= 10
-                print(f"[主题过滤] ⚠ {theme}: 趋势+情绪双弱({latest_trend:.0f}/{latest_sentiment:.0f})，持续低迷")
-            
-            trend_vitality = max(5, min(100, trend_vitality))
-            
-            # ----- 高潮风险检测（15%）-----
-            # 只检查最近5个交易日的情绪分
-            risk_score = 70  # 基础分
-            
-            # 从sentiment_scores中筛选最近5天的数据
-            recent_cutoff = all_trade_dates[-5] if len(all_trade_dates) >= 5 else all_trade_dates[0]
-            recent_sentiments = [
-                s for d, s in theme_stats[theme]['sentiment_scores']
-                if d >= recent_cutoff
-            ]
-            
-            if len(recent_sentiments) >= 2:
-                # 检测连续高潮：情绪分持续>70
-                high_sentiment_days = sum(1 for s in recent_sentiments if s >= 70)
-                
-                if high_sentiment_days >= 4 and len(recent_sentiments) >= 4:
-                    risk_score = 20
-                    print(f"[主题过滤] ⚠ {theme}: 最近{len(recent_sentiments)}天{high_sentiment_days}天情绪>70，高潮风险极高")
-                elif high_sentiment_days >= 3:
-                    risk_score = 35
-                    print(f"[主题过滤] ⚠ {theme}: 最近{len(recent_sentiments)}天{high_sentiment_days}天情绪>70，高潮风险偏高")
-                elif high_sentiment_days >= 2:
-                    risk_score = 50
-                
-                # 最新一天情绪分>85 = 极端高潮
-                if recent_sentiments[-1] >= 85:
-                    risk_score = min(risk_score, 15)
-                elif recent_sentiments[-1] >= 75:
-                    risk_score = min(risk_score, 35)
-            
-            # ----- 脉冲热点检测（10%）-----
-            # 如果近10天才首次进入TOP5，之前毫无记录 = 脉冲热点
-            pulse_risk = 70  # 基础分
-            
-            if stats['first_seen_idx'] >= total_days - recent_window:
-                # 首次出现在近期窗口
-                if stats['early_top5_count'] == 0 and stats['recent_top5_count'] >= 2:
-                    # 之前从未上榜，近几天突然出现多次 = 典型脉冲
-                    pulse_risk = 15
-                    print(f"[主题过滤] ⚠ {theme}: 脉冲热点，仅近{recent_window}天才进入前列")
-                elif stats['early_top5_count'] <= 2:
-                    pulse_risk = 35
-                    print(f"[主题过滤] ⚠ {theme}: 可能为脉冲热点，早期存在感低")
-            
-            # ----- 综合主题质量评分 -----
-            quality_score = (
-                presence_score * 0.35 +
-                consistency_score * 0.15 +
-                trend_vitality * 0.25 +
-                risk_score * 0.15 +
-                pulse_risk * 0.10
-            )
-            
-            theme_quality[theme] = {
-                'quality_score': quality_score,
-                'total_top5_count': stats['total_top5_count'],
-                'early_top5_count': stats['early_top5_count'],
-                'recent_top5_count': stats['recent_top5_count'],
-                'first_seen_idx': stats['first_seen_idx'],
-                'latest_state': stats['latest_state'],
-                'latest_trend': stats['latest_trend'],
-                'latest_sentiment': stats['latest_sentiment'],
-                'latest_composite': stats['latest_composite'],
-            }
-        
-        # 3. 筛选高质量主题
-        # 科技主线白名单：当前市场核心科技方向，即使评分略低也保留
-        # 这些主题代表中长期产业趋势，短期评分波动不应导致过滤
-        tech_mainline_whitelist = {
-            '人形机器人', 'AI算力链', 'AI服务器与算力基建', 'AI芯片', 'AI模型与AI Agent',
-            'AI应用', 'AI终端', 'AI能源链', '半导体设备', '半导体制造',
-            '半导体材料', '半导体封测', '存储芯片', '先进封装', '先进封装材料',
-            '光刻机链', '光通信', '物理AI', '智能驾驶', '低空经济', '商业航天',
-            '脑机接口', '固态电池', '氢能', '核聚变', 
-        }
-        
-        # 质量阈值：>=55分保留（收紧阈值，过滤退潮主题）
-        quality_threshold = 55
-        
-        # 宽容规则：总上榜≥10次且质量≥45分才保留
-        keep_themes = set()
-        for theme, data in theme_quality.items():
-            if data['quality_score'] >= quality_threshold:
-                keep_themes.add(theme)
-            elif data['total_top5_count'] >= 10 and data['quality_score'] >= 45:
-                # 频繁出现但质量评估偏低，给予有限宽容
-                keep_themes.add(theme)
-                print(f"[主题过滤] 宽容保留 {theme}: 上榜{data['total_top5_count']}次/质量{data['quality_score']:.0f}分")
-            elif theme in tech_mainline_whitelist and data['quality_score'] >= 35:
-                # 科技主线白名单保护：只要不是完全退潮（质量≥35），就保留
-                keep_themes.add(theme)
-                print(f"[主题过滤] 白名单保留 {theme}: 质量{data['quality_score']:.0f}分（科技主线保护）")
-        
-        if not keep_themes:
-            print("[主题过滤] 无高质量主题通过过滤")
-            # 降级：取质量分最高的3个主题
-            sorted_themes = sorted(theme_quality.items(), key=lambda x: -x[1]['quality_score'])
-            keep_themes = {t[0] for t in sorted_themes[:3]}
-            print(f"[主题过滤] 降级保留TOP3主题: {keep_themes}")
-        
-        # 打印质量评分
-        print(f"\n[主题过滤] 主题质量评分（阈值{quality_threshold}分，保留{len(keep_themes)}个）:")
-        for theme in sorted(keep_themes, key=lambda x: -theme_quality[x]['quality_score']):
-            d = theme_quality[theme]
-            print(f"  {theme}: 质量{d['quality_score']:.0f}分 | 上榜{d['total_top5_count']}次"
-                  f" (早期{d['early_top5_count']}+近期{d['recent_top5_count']})"
-                  f" | 情绪{d['latest_sentiment']:.0f} | 趋势{d['latest_trend']:.0f}")
-        print()
+        # 打印TOP3统计
+        print("\n[主题过滤] 60天TOP3统计（进入≥5次）:")
+        for theme in sorted(valid_themes, key=lambda x: -theme_top3_counts[x]):
+            print(f"  {theme}: {theme_top3_counts[theme]}次")
+        print(f"  → 有效主题共 {len(valid_themes)} 个")
         
         # 构建主题状态映射
         theme_state_map = {}
-        for theme in keep_themes:
-            if theme in theme_quality:
-                d = theme_quality[theme]
-                theme_state_map[theme] = {
-                    'theme_state': d['latest_state'],
-                    'trend_score': d['latest_trend'],
-                    'sentiment_score': d['latest_sentiment'],
-                    'composite_score': d['latest_composite'],
-                }
+        for theme in valid_themes:
+            if theme in all_theme_data:
+                theme_state_map[theme] = all_theme_data[theme]
             else:
                 theme_state_map[theme] = {
                     'theme_state': '',
@@ -5322,7 +4676,7 @@ def filter_by_top_themes(result_df, top_n=10):
     if os.path.exists(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
             all_themes = json.load(f).get('HOT_THEMES', {})
-            for theme_name in keep_themes:
+            for theme_name in valid_themes:
                 if theme_name in all_themes:
                     theme_cfg[theme_name] = all_themes[theme_name]
 
@@ -5346,7 +4700,7 @@ def filter_by_top_themes(result_df, top_n=10):
         print(f"[主题过滤] match_theme_stocks调用失败: {e}")
         import traceback
         traceback.print_exc()
-        return _filter_by_top_themes_fallback(result_df, keep_themes, theme_cfg)
+        return _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg)
 
     # 4. 遍历股票，匹配主题并注入主题状态
     keep = []
@@ -5627,11 +4981,7 @@ def run(target_date=None, simple_mode=False):
             today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100 if len(df) >= 2 else float(row.get('涨跌幅', 0))
             
             # 使用统一评分算法
-            theme_trend_score = float(row.get('主题趋势分', 0))
-            theme_sentiment_score = float(row.get('主题情绪分', 0))
-            integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
-                df, ts_code, theme_name, theme_trend_score, theme_sentiment_score
-            )
+            integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(df, ts_code, theme_name)
             
             stock_data = {
                 '代码': ts_code, '名称': name, '现价': float(row.get('现价', 0)),
@@ -5644,7 +4994,7 @@ def run(target_date=None, simple_mode=False):
                 '热榜最佳排名': details.get('热榜最佳排名', 0), '热榜上榜次数': details.get('热榜上榜次数', 0),
                 '所属状态': str(row.get('所属状态', '')),
                 '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
-                '量能爆发': details.get('量能爆发', 0), '突破强度': float(row.get('突破强度', 0)),
+                '量能爆发': float(row.get('量能爆发', 0)), '突破强度': float(row.get('突破强度', 0)),
             }
             ranked_stocks.append(stock_data)
             

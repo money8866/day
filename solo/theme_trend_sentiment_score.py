@@ -284,29 +284,24 @@ _dc_hot_df = None
 _dc_hot_date = None
 
 def load_dc_hot():
-    """加载热榜数据（延迟加载，自动获取最近7天数据，支持回退到最近有数据的日期）"""
+    """加载热榜数据（延迟加载，仅使用当天数据，不回退）"""
     global _dc_hot_df, _dc_hot_date
-    if _dc_hot_df is None or _dc_hot_date != TRADE_DATE:
-        # 自动获取最近7天的数据（覆盖周末+节假日）
-        multi_data = get_dc_hot_multi_days(days=7)
-        
-        # 优先用当天数据，如果当天没有则回退到最近有数据的交易日
-        _dc_hot_df = multi_data.get(TRADE_DATE, pd.DataFrame())
-        if _dc_hot_df.empty:
-            # 按日期降序排序，找第一个非空数据
-            sorted_dates = sorted(multi_data.keys(), reverse=True)
-            for fallback_date in sorted_dates:
-                df = multi_data[fallback_date]
-                if not df.empty:
-                    _dc_hot_df = df
-                    print(f"[DC_HOT] ⚠ 当天({TRADE_DATE})热榜未更新，回退到 {fallback_date} 的数据 ({len(df)} 条)")
-                    break
-            if _dc_hot_df.empty:
-                print(f"[DC_HOT] ⚠ 最近7天均无热榜数据，热度评分暂不可用")
-        else:
-            print(f"[DC_HOT] 使用当天数据: {TRADE_DATE}, {len(_dc_hot_df)} 条")
-        
-        _dc_hot_date = TRADE_DATE
+    # 先检查日期是否已加载，避免重复加载
+    if _dc_hot_date == TRADE_DATE:
+        return _dc_hot_df
+    
+    # 只获取当天的数据
+    multi_data = get_dc_hot_multi_days(days=1)
+    
+    # 仅使用当天数据，不回退到历史数据
+    _dc_hot_df = multi_data.get(TRADE_DATE, pd.DataFrame())
+    if _dc_hot_df.empty:
+        print(f"[DC_HOT] ⚠ 当天({TRADE_DATE})无热榜数据，将使用主题涨停数因子代替热度")
+        _dc_hot_df = None  # 设置为 None，表示无热榜数据
+    else:
+        print(f"[DC_HOT] 使用当天数据: {TRADE_DATE}, {len(_dc_hot_df)} 条")
+    
+    _dc_hot_date = TRADE_DATE
     return _dc_hot_df
 
 
@@ -367,7 +362,7 @@ def get_stock_hot_rank_position(ts_code):
 
 
 def calc_theme_hot_score(stock_feats):
-    """计算主题综合热度得分（基于热榜数据）
+    """计算主题综合热度得分（基于热榜数据，无热榜数据时使用涨停数代替）
     
     公式：S_theme = Σ(wi * 1/ln(1+Ri))
     
@@ -383,6 +378,40 @@ def calc_theme_hot_score(stock_feats):
     
     import math
     
+    # 先检查热榜数据是否可用
+    hot_df = load_dc_hot()
+    use_zt_backup = (hot_df is None)  # 无热榜数据时使用涨停数代替
+    
+    if use_zt_backup:
+        # 使用主题涨停数计算热度
+        total_stocks = len([f for f in stock_feats if f.get('ts_code')])
+        zt_count = sum(1 for f in stock_feats if f.get('zt_flag') == 1)
+        
+        # 涨停数热度得分：涨停数越多得分越高，最高100分
+        # 公式：score = min(zt_count * 20, 100)，即5只涨停得满分
+        if total_stocks > 0:
+            zt_ratio = zt_count / total_stocks
+            # 使用非线性转换：score = 100 * (zt_count / (zt_count + 2))
+            normalized_score = 100 * (zt_count / (zt_count + 2))
+        else:
+            normalized_score = 0.0
+        
+        detail = {
+            'hot_score': round(normalized_score, 2),
+            'zt_count': zt_count,
+            'zt_ratio': round(zt_ratio * 100, 1) if total_stocks > 0 else 0,
+            'source': 'zt_count_backup',
+            'n_participate': zt_count,
+            'top10_count': 0,
+            'top5_count': 0,
+            'hot_concentration': 0.0,
+            'avg_rank': 0,
+            'min_rank': 0
+        }
+        
+        return normalized_score, detail
+    
+    # 有热榜数据，使用原算法
     total_score = 0.0
     total_weight = 0.0
     hot_ranks = []
@@ -438,7 +467,8 @@ def calc_theme_hot_score(stock_feats):
         'hot_concentration': round(hot_concentration * 100, 1),
         'n_participate': len(hot_ranks),
         'avg_rank': round(sum(hot_ranks) / len(hot_ranks), 1) if hot_ranks else 0,
-        'min_rank': min(hot_ranks) if hot_ranks else 0
+        'min_rank': min(hot_ranks) if hot_ranks else 0,
+        'source': 'hot_list'
     }
     
     return normalized_score, detail
@@ -2740,22 +2770,6 @@ def calc_rotation_monitoring(ndays=20):
     lines.append(f"分析区间: {date_list[0]} ~ {date_list[-1]} ({n_days_actual}个交易日)")
     lines.append(f"参与主题: {total_themes} 个")
     lines.append("─" * 60)
-
-    # 最新排名
-    latest_date = date_list[-1]
-    lines.append(f"\n最新({latest_date})主题排名 Top10:")
-    lines.append(f"{'排名':<4}{'主题':<18}{'composite_score':<10}")
-    for theme, cs, rank in daily_rankings[latest_date][:10]:
-        lines.append(f"  {rank:<2}  {theme:<18}{cs:<10.1f}")
-    lines.append("")
-
-    # 稳定性时间序列
-    lines.append("主线稳定性（Top10留存率）:")
-    for i in range(max(0, len(stability_values) - 5), len(stability_values)):
-        if i < len(stability_values) and i + 1 < len(date_list):
-            lines.append(f"  {date_list[i]}→{date_list[i+1]}: {stability_values[i]:.2f}")
-    lines.append(f"  20日均值: {stability_index:.3f}")
-    lines.append("")
 
     # 轮动速率
     lines.append(f"轮动速率（全量{total_themes}主题每日每主题排名位移）:")
