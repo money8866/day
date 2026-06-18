@@ -667,17 +667,105 @@ def etf_score(df, industry, index_df):
     return round(score, 2), rs
 
 def market_style(result_df):
-    styles = {'AI科技成长': ['人工智能','算力','半导体','芯片','软件'], '消费成长': ['消费电子','游戏','白酒'], '红利防御': ['红利','煤炭','电力'], '周期资源': ['黄金','有色金属']}
-    all_result = []
-    for style, sectors in styles.items():
-        df_style = result_df[result_df['行业'].isin(sectors)]
-        if len(df_style) == 0:
-            continue
-        score = df_style['总评分'].mean()
-        hot = (df_style['涨跌幅'] > 3).sum() * 2
-        trend_score = (df_style['涨跌幅'] > 0).mean() * 100
-        all_result.append({'风格': style, '当前得分': round(score * 0.6 + hot * 0.2 + trend_score * 0.2, 2), '热度': hot, '趋势强度': trend_score})
-    return pd.DataFrame(all_result).sort_values('当前得分', ascending=False)
+    """市场风格分析（引用 theme_trend_sentiment_score 的风格状态）
+    
+    从数据库读取主题数据，按 style 聚合计算风格状态：
+    - 主线：可交易题材≥2且平均趋势分≥60
+    - 支线：可交易题材≥1且平均趋势分≥50
+    - 活跃：平均趋势分≥55
+    - 冷门：平均趋势分≥40
+    - 弱势：其他
+    """
+    # 从数据库读取主题数据
+    theme_db = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "solo", "cache_backbone_tushare", "theme_trend_sentiment.db"
+    )
+    
+    if not os.path.exists(theme_db):
+        print(f"[风格分析] 数据库不存在: {theme_db}")
+        return pd.DataFrame()
+    
+    try:
+        conn = sqlite3.connect(theme_db)
+        df = pd.read_sql(
+            "SELECT * FROM theme_scores WHERE trade_date = ? ORDER BY composite_score DESC",
+            conn,
+            params=(TRADE_DATE,)
+        )
+        conn.close()
+        
+        if df.empty:
+            print(f"[风格分析] 无 {TRADE_DATE} 数据")
+            return pd.DataFrame()
+        
+        if 'style' not in df.columns:
+            print("[风格分析] 数据库缺少 style 字段，请先运行 theme_trend_sentiment_score.py")
+            return pd.DataFrame()
+        
+        # 按风格聚合
+        from collections import defaultdict
+        style_data = defaultdict(lambda: {
+            "themes": [], "t_scores": [], "s_scores": [], "c_scores": [],
+            "zt_total": 0, "tradeable_count": 0
+        })
+        
+        # 可交易状态
+        tradeable_states = {"抱团主升", "强趋势", "启动", "分歧转一致"}
+        
+        for _, row in df.iterrows():
+            style = row.get("style", "未分类")
+            if not style or style == "未分类":
+                continue
+            d = style_data[style]
+            d["themes"].append(row["theme"])
+            d["t_scores"].append(row["trend_score"])
+            d["s_scores"].append(row["sentiment_score"])
+            d["c_scores"].append(row["composite_score"])
+            d["zt_total"] += row.get("zt_count", 0)
+            
+            theme_state = row.get("theme_state", "弱势")
+            if theme_state in tradeable_states:
+                d["tradeable_count"] += 1
+        
+        # 计算风格指标
+        all_result = []
+        for style, d in style_data.items():
+            n = len(d["themes"])
+            avg_c = np.mean(d["c_scores"]) if d["c_scores"] else 0
+            avg_t = np.mean(d["t_scores"]) if d["t_scores"] else 0
+            avg_s = np.mean(d["s_scores"]) if d["s_scores"] else 0
+            
+            # 风格状态标签
+            if d["tradeable_count"] >= 2 and avg_t >= 60:
+                status = "◆ 主线"
+            elif d["tradeable_count"] >= 1 and avg_t >= 50:
+                status = "◇ 支线"
+            elif avg_t >= 55:
+                status = "○ 活跃"
+            elif avg_t >= 40:
+                status = "△ 冷门"
+            else:
+                status = "× 弱势"
+            
+            all_result.append({
+                '风格': style,
+                '题材数': n,
+                '综合分': round(avg_c, 1),
+                '趋势分': round(avg_t, 1),
+                '情绪分': round(avg_s, 1),
+                '涨停': d["zt_total"],
+                '可交易': d["tradeable_count"],
+                '状态': status
+            })
+        
+        return pd.DataFrame(all_result).sort_values('综合分', ascending=False)
+        
+    except Exception as e:
+        print(f"[风格分析] 读取数据库失败: {e}")
+        return pd.DataFrame()
+
+
 
 # =========================================================
 # 主题分析结果获取（核心新增）
@@ -1114,6 +1202,30 @@ def main():
     top_sector = sector_df.head(10)
     sector_text = top_sector.to_string(index=False)
     
+    # ===== 获取风格状态（主线/支线/活跃/冷门/弱势）=====
+    style_df = market_style(None)
+    
+    # 构建风格状态映射：style -> status
+    style_status_map = {}
+    hot_styles = set()  # 热门风格（主线/支线）
+    cold_styles = set()  # 冷门风格（冷门/弱势）
+    
+    if not style_df.empty:
+        print("\n[风格状态]")
+        for _, row in style_df.iterrows():
+            style_status_map[row['风格']] = row['状态']
+            if row['状态'] in ['◆ 主线', '◇ 支线']:
+                hot_styles.add(row['风格'])
+                print(f"  {row['风格']}: {row['状态']} ✓热门")
+            elif row['状态'] in ['○ 活跃']:
+                hot_styles.add(row['风格'])  # 活跃也算热门
+                print(f"  {row['风格']}: {row['状态']} ✓活跃")
+            elif row['状态'] in ['△ 冷门', '× 弱势']:
+                cold_styles.add(row['风格'])
+                print(f"  {row['风格']}: {row['状态']} ✗避开")
+            else:
+                print(f"  {row['风格']}: {row['状态']}")
+    
     # ===== 主题->ETF映射：只分析前排主题相关的ETF =====
     top_theme_names = set()
     if theme_results:
@@ -1133,12 +1245,41 @@ def main():
         '银行': '银行',
     }
     
+    # 风格到ETF行业的映射
+    STYLE_TO_ETF_INDUSTRY = {
+        'AI硬件链': ['算力', '半导体'],
+        '半导体产业链': ['半导体'],
+        '电子产业链': ['消费电子', '智能驾驶'],
+        '高端制造': ['机器人', '军工', '商业航天'],
+        '新能源': ['电力'],
+        '周期': ['有色金属', '煤炭'],
+        '软件': ['软件'],
+        '金融': ['银行', '证券'],
+        '医药': ['医药'],
+        '消费': ['消费'],
+    }
+    
     # 收集需要分析的ETF行业名（去重）
     target_industries = set()
     for tn in top_theme_names:
         etf_ind = THEME_TO_ETF_INDUSTRY.get(tn)
         if etf_ind and etf_ind in ETF_POOL:
             target_industries.add(etf_ind)
+    
+    # 补充热门风格的ETF（主线/支线/活跃风格优先）
+    for style in hot_styles:
+        etf_inds = STYLE_TO_ETF_INDUSTRY.get(style, [])
+        for etf_ind in etf_inds:
+            if etf_ind in ETF_POOL:
+                target_industries.add(etf_ind)
+    
+    # 排除冷门风格的ETF
+    for style in cold_styles:
+        etf_inds = STYLE_TO_ETF_INDUSTRY.get(style, [])
+        for etf_ind in etf_inds:
+            if etf_ind in target_industries:
+                print(f"  [排除冷门] {etf_ind} 属于冷门风格 {style}")
+                target_industries.discard(etf_ind)
     
     if not target_industries:
         # 兜底：取当日最强主题TOP5的映射结果
@@ -1251,10 +1392,10 @@ def main():
             new_positions.append({'industry': row['行业'], 'ts_code': row['ETF'], 'signal': row['信号'], 'price': row['收盘价'], 'theme_state': theme_state})
             bought_count += 1
     
-    # 市场风格
-    style_df = market_style(result_df)
-    print("\n市场风格:")
-    print(style_df)
+    # 市场风格（已在前面获取）
+    if not style_df.empty:
+        print("\n市场风格:")
+        print(style_df)
     
     # AI日报
     print("\nAI日报生成中...")

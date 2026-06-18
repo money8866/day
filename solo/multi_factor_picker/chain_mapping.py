@@ -1053,6 +1053,13 @@ def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
     Returns:
         产业链标签
     """
+    # 处理 NaN 值（来自 pandas DataFrame）
+    import pandas as pd
+    if pd.isna(industry) or industry == 'nan':
+        industry = ''
+    if pd.isna(stock_name) or stock_name == 'nan':
+        stock_name = ''
+    
     ths_concepts = get_stock_ths_concepts(ts_code, config)
     return identify_stock_chain_v2(stock_name, industry, ths_concepts)
 

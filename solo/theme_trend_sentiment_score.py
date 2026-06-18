@@ -1971,7 +1971,8 @@ def save_to_sqlite(results):
         rank INTEGER, theme TEXT, n_stocks INTEGER, trend_score REAL, sentiment_score REAL, composite_score REAL,
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
-        trade_date TEXT, theme_state TEXT, hot_score REAL, hot_percentile REAL, hot_phase TEXT, hot_warning TEXT
+        trade_date TEXT, theme_state TEXT, hot_score REAL, hot_percentile REAL, hot_phase TEXT, hot_warning TEXT,
+        style TEXT DEFAULT ''
     )""")
     
     # 检查表结构，如果缺少某些列则添加
@@ -1991,6 +1992,8 @@ def save_to_sqlite(results):
         cur.execute("ALTER TABLE theme_scores ADD COLUMN top10_days_10d INTEGER DEFAULT 0")
     if "top10_days_20d" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN top10_days_20d INTEGER DEFAULT 0")
+    if "style" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN style TEXT DEFAULT ''")
     
     # 固定列名顺序
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
@@ -1998,7 +2001,7 @@ def save_to_sqlite(results):
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
                      "up_ratio", "zt_count", "trade_date", "theme_state",
                      "hot_score", "hot_percentile", "hot_phase", "hot_warning",
-                     "top10_days_10d", "top10_days_20d"]
+                     "top10_days_10d", "top10_days_20d", "style"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
@@ -2044,6 +2047,7 @@ def save_to_sqlite(results):
             "hot_warning": r.get("hot_warning", ""),
             "top10_days_10d": top10_10d.get(theme_name, 0),
             "top10_days_20d": top10_20d.get(theme_name, 0),
+            "style": r.get("style", ""),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)

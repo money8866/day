@@ -2637,7 +2637,40 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             leader_bonus = 8   # 接近前高的核心
         
         # =========================
-        # 8. 综合得分 - 趋势强度主导
+        # 8. 二波潜力加分（从 mainboard_second_wave.json 读取）
+        # =========================
+        second_wave_bonus = 0
+        recognition_bonus = 0
+        
+        # 尝试读取二波扫描结果
+        second_wave_file = os.path.join(BASE_DIR, 'report_daily', 'mainboard_second_wave.json')
+        if os.path.exists(second_wave_file):
+            try:
+                with open(second_wave_file, 'r', encoding='utf-8') as f:
+                    second_wave_data = json.load(f)
+                
+                # 查找当前股票
+                for stock in second_wave_data.get('data', []):
+                    if stock.get('ts_code') == ts_code:
+                        # 读取辨识度分和二波分
+                        recognition_score = stock.get('recognition_score', 0)
+                        second_wave_score = stock.get('second_wave_score', 0)
+                        
+                        # 折算比例：辨识度分最高加5分，二波分最高加8分
+                        recognition_bonus = (recognition_score / 100) * 5
+                        second_wave_bonus = (second_wave_score / 100) * 8
+                        
+                        if recognition_bonus > 0:
+                            recommendation = f"辨识度{recognition_score:.0f} | " + recommendation
+                        if second_wave_bonus > 0:
+                            recommendation = f"二波{second_wave_score:.0f} | " + recommendation
+                        
+                        break
+            except Exception as e:
+                pass  # 文件读取失败不影响主流程
+        
+        # =========================
+        # 9. 综合得分 - 趋势强度主导
         # =========================
         # 基础分 = 其他维度加权（降低热度权重）
         base_score = (
@@ -2654,8 +2687,8 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 共振系数改为加法项而非乘法，避免双乘数叠加导致的顶部溢出
         synergy_bonus = (synergy_coeff - 0.8) * 25  # 系数0.5→-7.5分, 1.0→+5分, 1.5→+17.5分
         
-        # 综合分 = 基础分 × 趋势乘数 + 共振加分 - 惩罚 + 龙头加分
-        final_score = base_score * trend_multiplier + synergy_bonus - penalty + leader_bonus
+        # 综合分 = 基础分 × 趋势乘数 + 共振加分 - 惩罚 + 龙头加分 + 二波加分
+        final_score = base_score * trend_multiplier + synergy_bonus - penalty + leader_bonus + second_wave_bonus + recognition_bonus
         
         # 趋势强度额外加成：趋势分>70的股票获得额外加分
         if trend_score >= 80:
@@ -2740,6 +2773,8 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             '共振系数': round(synergy_coeff, 2),
             '追高惩罚': round(penalty, 1),
             '龙头加分': leader_bonus,
+            '二波加分': round(second_wave_bonus, 1),
+            '辨识度加分': round(recognition_bonus, 1),
             '量能爆发': round(vol_ratio, 2),
             '热榜最佳排名': best_rank if best_rank <= 100 else 0,
             '热榜上榜次数': hot_appear_count,
