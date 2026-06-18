@@ -348,6 +348,42 @@ if not os.path.exists(REPORT_DIR):
     os.makedirs(REPORT_DIR)
 
 # =========================
+# 全局换手率缓存（当日批量加载）
+# =========================
+TURNOVER_CACHE = {}  # {ts_code: turnover_rate}
+
+def load_turnover_cache():
+    """批量加载当日换手率到缓存（从daily_basic表）"""
+    global TURNOVER_CACHE
+    if pro is None:
+        return
+    cache_file = os.path.join(CACHE_DIR, f"turnover_rate_{TRADE_DATE}.csv")
+    if os.path.exists(cache_file):
+        try:
+            df = pd.read_csv(cache_file)
+            TURNOVER_CACHE = dict(zip(df['ts_code'], df['turnover_rate']))
+            print(f"[缓存] 换手率已加载: {len(TURNOVER_CACHE)} 只")
+            return
+        except Exception:
+            pass
+    # 没有缓存则从API批量拉取
+    try:
+        df = pro.daily_basic(
+            trade_date=TRADE_DATE,
+            fields='ts_code,turnover_rate'
+        )
+        if df is not None and not df.empty:
+            TURNOVER_CACHE = dict(zip(df['ts_code'], df['turnover_rate']))
+            df.to_csv(cache_file, index=False)
+            print(f"[缓存] 换手率已保存: {cache_file}")
+    except Exception as e:
+        print(f"[缓存] 换手率加载失败: {e}")
+
+def get_cached_turnover(ts_code):
+    """从缓存获取换手率（单位：%）"""
+    return TURNOVER_CACHE.get(ts_code, 0.0)
+
+# =========================
 # 通达信目录（修改成你的）
 # =========================
 TDX_DIR = r"C:\new_tdx"
@@ -453,6 +489,10 @@ TRADE_DATE = get_last_trade_date()
 #TRADE_DATE = "20260529" # for test
 
 print("当前交易日1:", TRADE_DATE)
+
+# 启动时加载换手率缓存
+load_turnover_cache()
+
 # =========================
 # BARSLAST
 # =========================
@@ -1806,11 +1846,11 @@ def calc_yri_score(ts_code, stock_info, theme, v7_result, df):
                         vol_ratio_score = 3
                     
                     # 2.2 成交量绝对值评分（10分）- 成交额越大越活跃
-                    # 计算近5日平均成交额
+                    # 计算近5日平均成交额（amount单位是万元，vol单位是万手）
                     if 'amount' in recent_5d.columns:
-                        avg_amount_5d = recent_5d['amount'].mean() / 1e8  # 转为亿元
+                        avg_amount_5d = recent_5d['amount'].mean() / 10000  # 万元转亿
                     else:
-                        avg_amount_5d = (recent_5d['vol'].mean() * recent_5d['close'].mean()) / 1e8 if 'close' in recent_5d.columns else 0
+                        avg_amount_5d = (recent_5d['vol'].mean() * 100 * recent_5d['close'].mean()) / 1e8 if 'close' in recent_5d.columns else 0
                     
                     amount_score = 0
                     if avg_amount_5d >= 30:  # 日均成交额30亿+
@@ -2344,22 +2384,7 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # =========================
         trend_score = 0
         
-        # 均线状态（互斥评分）
-        # 注意：完全多头排列不一定是最佳买点，可能是加速末端
-        # 5均低于10均有时是二波启动机会
-        if current_price > MA5 > MA10 > MA20 > MA60:
-            trend_score += 10  # 完全多头排列（降低加分，避免追高）
-        elif current_price > MA20 > MA60:
-            trend_score += 20  # 价格站上MA20，MA20在MA60之上（核心上升趋势）
-        elif current_price > MA20 and MA10 > MA20:
-            trend_score += 15  # 价格在MA20之上，10均在MA20之上
-        elif current_price > MA20:
-            trend_score += 12  # 价格站上MA20（可能是二波启动）
-        elif current_price > MA10:
-            trend_score += 5   # 弱势
-        else:
-            trend_score -= 10   # 下降趋势
-        
+        # 均线斜率（趋势反转导向，不依赖均线排列）
         # MA20均线斜率（权重加大）
         if len(C) >= 25:
             ma20_slope = (MA20 - float(close_series.rolling(20).mean().iloc[-6])) / MA20
@@ -2394,19 +2419,21 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             else:
                 trend_score -= 12  # 明显下降
         
-        # 近期涨幅（5日，适度加分）
+        # 近期涨幅（5日，趋势反转导向：回调可能是二波机会）
         if len(C) >= 6:
             ret_5 = (C[-1] / C[-6] - 1) * 100
             if 3 <= ret_5 <= 12:
                 trend_score += 15  # 最佳区间：稳健上涨
-            elif 0 <= ret_5 < 3:
-                trend_score += 8   # 小幅上涨
             elif ret_5 > 12:
                 trend_score += 5   # 涨幅过大，谨慎
-            elif ret_5 >= -3:
-                trend_score -= 5   # 小幅回调
+            elif -8 <= ret_5 < 3:
+                trend_score += 10  # 小幅回调或横盘，可能是二波蓄力机会
+            elif -15 <= ret_5 < -8:
+                trend_score += 15  # 深度回调后，反转预期更强
+            elif ret_5 < -15:
+                trend_score += 5   # 跌幅过大，风险较高
             else:
-                trend_score -= 15  # 大幅下跌
+                trend_score -= 5
         
         # 突破前高（不加分，只记录状态用于其他计算）
         breakout_strength = 0.5
@@ -2494,6 +2521,40 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 热榜排名加分
         hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=60)
         hot_score += hot_rank_bonus * 0.5  # 降低热榜加分权重
+        
+        # 检查主题是否连续3天情绪排名前5（避免追涨高潮主题）
+        if theme:
+            try:
+                db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
+                if os.path.exists(db_path):
+                    conn = sqlite3.connect(db_path)
+                    # 获取最近5个交易日的排名数据
+                    dates_df = pd.read_sql(
+                        f"SELECT DISTINCT trade_date FROM theme_scores WHERE trade_date <= '{TRADE_DATE}' ORDER BY trade_date DESC LIMIT 5",
+                        conn
+                    )
+                    if not dates_df.empty:
+                        recent_dates = dates_df['trade_date'].tolist()
+                        consecutive_top5 = 0
+                        # 检查是否连续在TOP5情绪
+                        for td in recent_dates:
+                            rank_df = pd.read_sql(
+                                f"SELECT theme, sentiment_score FROM theme_scores WHERE trade_date = '{td}' ORDER BY sentiment_score DESC",
+                                conn
+                            )
+                            if not rank_df.empty:
+                                top5_themes = rank_df.head(5)['theme'].tolist()
+                                if theme in top5_themes:
+                                    consecutive_top5 += 1
+                                else:
+                                    break  # 不连续则停止
+                        # 连续3天TOP5情绪 = 追涨惩罚
+                        if consecutive_top5 >= 3:
+                            hot_score -= 15  # 连续高潮，追涨风险高
+                            recommendation = recommendation.replace("热榜Top1", "⚠️连续高潮")
+                    conn.close()
+            except Exception as e:
+                pass  # 查询失败不阻塞
         
         # 过滤条件：非双创板股票且未上过热榜的，直接返回0分
         # 双创板：创业板(300开头)、科创板(688开头)
@@ -2627,8 +2688,8 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         failure_prob = min(90, max(10, failure_prob))
         
         # 失败概率修正：失败概率越低，加分越多（反向激励）
-        # 以30%为基准，每低1%加0.15分，每高1%扣0.15分
-        failure_bonus = (30 - failure_prob) * 0.15
+        # 以30%为基准，每低1%加0.5分，每高1%扣0.5分
+        failure_bonus = (30 - failure_prob) * 0.5
         final_score += failure_bonus
         
         # =========================
@@ -3062,6 +3123,37 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
         else:
             emotion_heat = 30
         
+        # 科技/创新主题溢价：新兴产业赛道获得额外加分
+        # 传统产业（电力链、煤炭、银行等）即使短期趋势强，长期成长性也不如科技主题
+        tech_innovation_themes = {
+            '人形机器人', 'AI算力链', 'AI服务器与算力基建', 'AI芯片', 'AI模型与AI Agent',
+            'AI应用', 'AI终端', 'AI文化娱乐', 'AI能源链',
+            '半导体设备', '半导体制造', '半导体材料', '半导体封测', '半导体EDA/IP',
+            '存储芯片', '先进封装', '先进封装材料', 'IC设计',
+            '光刻机链', '光通信', 'PCB电子电路', '光学光电子', '消费电子', '被动元件',
+            '物理AI', '智能驾驶', '低空经济', '商业航天', '军工',
+            '脑机接口', '固态电池', '氢能', '核聚变', '新型储能',
+            '数据要素', '信创软件', '金融科技', '电网数字化', '工业母机',
+        }
+        traditional_themes = {
+            '电力链', '煤炭链', '银行', '保险', '券商', '贵金属', '工业金属', '小金属',
+            '能源金属', '新能源汽车链', '必选消费红利链', '情绪消费成长链',
+            '创新医药主线', '硫磺磷化工链', '电力设备出海',
+        }
+        
+        if theme_name in tech_innovation_themes:
+            tech_premium = 15  # 新兴产业溢价
+            if logic:
+                logic.insert(-4, f"产业趋势：科技创新主题溢价+{tech_premium}")
+        elif theme_name in traditional_themes:
+            tech_premium = -8  # 传统产业折价
+            if logic:
+                logic.insert(-4, f"产业趋势：传统行业折价{tech_premium}")
+        else:
+            tech_premium = 0
+        
+        trend_strength = max(10, min(100, trend_strength + tech_premium))
+        
         # 计算行业景气度
         industry_score = (
             trend_strength * 0.40 +
@@ -3077,12 +3169,16 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
         # 【1】产业地位（40%）
         position_score = 50
         
-        # 尝试从stock_info获取市值信息
+        # 尝试从stock_info获取市值信息，无stock_info时用hot_count代理
         is_large_cap = False
         if stock_info and 'total_market_cap' in stock_info:
             # 总市值大于500亿视为大市值
             if stock_info['total_market_cap'] > 500e8:
                 is_large_cap = True
+        elif hot_count >= 20:
+            # 60天内上热榜20次+ = 大市值指数成份股（如鹏鼎控股、茅台等）
+            # 这类股票有持续的市场关注度，但缺乏短线爆发弹性
+            is_large_cap = True
         
         # 根据历史热榜排名判断是否为龙头
         if hot_rank <= 10 and hot_count >= 3:
@@ -3901,9 +3997,9 @@ def strategy(df, code, emotion_stage):
         return False
     
     # ===== 启动过滤：60日振幅 =====
-    if len(df) >= 60:
-        hh = H[-60:].max()
-        ll = L[-60:].min()
+    if len(df) >= 20:
+        hh = H[-20:].max()
+        ll = L[-20:].min()
         if (hh / ll - 1) > 1.8:
             return False
     
@@ -3917,11 +4013,11 @@ def strategy(df, code, emotion_stage):
     ma60 = C_series.rolling(60).mean().values
     
     # 均线条件
-    if C[-1] >= ma20[-1] * 1.3 and C[-1] / ma60[-1] > 2:
+    if C[-1] >= ma20[-1] * 1.3 or C[-1] / ma60[-1] > 2:
         return False
     
     # 股价必须站上5日、10日、20日均线
-    if  C[-1] < ma10[-1] or C[-1] < ma20[-1]:
+    if  C[-1] < ma20[-1] or ma10[-1] < ma20[-1]*0.97 or ma5[-1] < ma10[-1]*0.97:
         return False
     
     # ===== 涨停判断（向量化）=====
@@ -4609,6 +4705,8 @@ def get_tracking_stocks():
         
         # 生成跟踪分析股票列表
         tracking_stocks = []
+        seen_codes = set()  # 去重集合
+        
         for _, row in recent_stocks.iterrows():
             ts_code = row['code']
             
@@ -4762,6 +4860,13 @@ def get_tracking_stocks():
                     latest_close = float(row['close']) if str(row['close']).strip() not in ['', 'None'] else 0.0
                     pct_chg = 0.0
                 
+                # 过滤条件：只保留今天下跌的个股（洗盘形态）
+                if pct_chg >= 0:
+                    continue
+                
+                # 去重：用代码做key，避免重复输出同一只股票
+                seen_codes.add(ts_code)
+                
                 tracking_stocks.append({
                     'code': ts_code,
                     'name': row['name'],
@@ -4791,7 +4896,7 @@ def get_tracking_stocks():
         lines = []
         if tracking_stocks:
             lines.append("=" * 100)
-            lines.append("跟踪分析股票池（最高涨幅≤20%、5日均线上、5日乖离率<5%）")
+            lines.append("跟踪分析股票池（今日下跌洗盘、最高涨幅≤20%、5日均线上、5日乖离率<5%）")
             lines.append("=" * 100)
             lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'整合评分':<8} {'失败概率':<8} {'当日涨跌':<8} {'量比':<6} {'5日涨幅':<10}")
             lines.append("-" * 100)
@@ -5251,29 +5356,41 @@ def filter_by_top_themes(result_df, top_n=10):
         # 科技主线白名单：当前市场核心科技方向，即使评分略低也保留
         # 这些主题代表中长期产业趋势，短期评分波动不应导致过滤
         tech_mainline_whitelist = {
-            '人形机器人', 'AI算力链', 'AI服务器与算力基建', 'AI芯片', 'AI模型与AI Agent',
-            'AI应用', 'AI终端', 'AI能源链', '半导体设备', '半导体制造',
+            '人形机器人', 'AI算力链', 'AI服务器与算力基建', 'AI芯片',
+            'AI终端', '半导体设备', '半导体制造', '数据中心瓶颈硬件链',
             '半导体材料', '半导体封测', '存储芯片', '先进封装', '先进封装材料',
-            '光刻机链', '光通信', '物理AI', '智能驾驶', '低空经济', '商业航天',
-            '脑机接口', '固态电池', '氢能', '核聚变', 
+            '光刻机链', '光通信', '物理AI', '低空经济', '商业航天',
+            '固态电池', '氢能', '核聚变', 
         }
         
         # 质量阈值：>=55分保留（收紧阈值，过滤退潮主题）
         quality_threshold = 55
         
-        # 宽容规则：总上榜≥10次且质量≥45分才保留
+        # 非白名单主题的强化阈值：需要更高质量才能通过
+        non_whitelist_threshold = 58  # 非白名单主题需要更严格的评分
+        
+        # 宽容规则（仅适用于白名单主题）：总上榜≥15次且质量≥48分
         keep_themes = set()
         for theme, data in theme_quality.items():
+            is_whitelist = theme in tech_mainline_whitelist
+            
             if data['quality_score'] >= quality_threshold:
                 keep_themes.add(theme)
-            elif data['total_top5_count'] >= 10 and data['quality_score'] >= 45:
-                # 频繁出现但质量评估偏低，给予有限宽容
+            elif is_whitelist and data['total_top5_count'] >= 15 and data['quality_score'] >= 48:
+                # 科技主线白名单保护：频繁出现且质量不太差，给予宽容
                 keep_themes.add(theme)
-                print(f"[主题过滤] 宽容保留 {theme}: 上榜{data['total_top5_count']}次/质量{data['quality_score']:.0f}分")
-            elif theme in tech_mainline_whitelist and data['quality_score'] >= 35:
+                print(f"[主题过滤] 白名单宽容保留 {theme}: 上榜{data['total_top5_count']}次/质量{data['quality_score']:.0f}分")
+            elif is_whitelist and data['quality_score'] >= 35:
                 # 科技主线白名单保护：只要不是完全退潮（质量≥35），就保留
                 keep_themes.add(theme)
                 print(f"[主题过滤] 白名单保留 {theme}: 质量{data['quality_score']:.0f}分（科技主线保护）")
+            elif not is_whitelist and data['quality_score'] >= non_whitelist_threshold:
+                # 非白名单主题需要更高阈值才能通过，避免追冷门题材
+                keep_themes.add(theme)
+            elif not is_whitelist and data['total_top5_count'] >= 20 and data['quality_score'] >= 52:
+                # 非白名单但极度频繁出现（≥20次），给予有限宽容
+                keep_themes.add(theme)
+                print(f"[主题过滤] 高频保留 {theme}: 上榜{data['total_top5_count']}次/质量{data['quality_score']:.0f}分（非白名单但持续活跃）")
         
         if not keep_themes:
             print("[主题过滤] 无高质量主题通过过滤")
@@ -5626,6 +5743,15 @@ def run(target_date=None, simple_mode=False):
         try:
             today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100 if len(df) >= 2 else float(row.get('涨跌幅', 0))
             
+            # 获取今日成交额（亿）和换手率
+            # amount在缓存中单位是千元，vol单位是万手
+            today_amount = 0.0
+            today_close = float(df['close'].iloc[-1])
+            if 'amount' in df.columns:
+                today_amount = round(float(df['amount'].iloc[-1]) / 100000, 2)  # 千元转亿：除10000
+            # 从全局缓存获取换手率（程序启动时已批量加载）
+            today_turnover = get_cached_turnover(ts_code)
+            
             # 使用统一评分算法
             theme_trend_score = float(row.get('主题趋势分', 0))
             theme_sentiment_score = float(row.get('主题情绪分', 0))
@@ -5634,8 +5760,9 @@ def run(target_date=None, simple_mode=False):
             )
             
             stock_data = {
-                '代码': ts_code, '名称': name, '现价': float(row.get('现价', 0)),
-                '涨跌幅': today_pct, '所属主题': theme_name,
+                '代码': ts_code, '名称': name, '现价': today_close,
+                '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
+                '所属主题': theme_name,
                 '整合评分': integrated_score, '失败概率': failure_prob,
                 '推荐理由': recommendation,
                 '趋势强度': details.get('趋势强度', 0), '资金健康度': details.get('资金健康度', 0),
@@ -5652,6 +5779,25 @@ def run(target_date=None, simple_mode=False):
             print(f"[整合评分] {ts_code} {name} 失败: {e}")
             continue
     
+    # =========================
+    # 每个主题只保留失败概率最低的3只个股（防止单主题过度集中）
+    # =========================
+    theme_groups = {}
+    for s in ranked_stocks:
+        theme = s['所属主题']
+        if theme not in theme_groups:
+            theme_groups[theme] = []
+        theme_groups[theme].append(s)
+    
+    filtered_stocks = []
+    for theme, stocks in theme_groups.items():
+        # 按失败概率升序排序
+        sorted_by_failure = sorted(stocks, key=lambda x: x['失败概率'])
+        # 每个主题只保留最多3只
+        filtered_stocks.extend(sorted_by_failure[:3])
+    
+    ranked_stocks = filtered_stocks
+    
     # 按整合评分排序
     ranked_stocks = sorted(ranked_stocks, key=lambda x: -x['整合评分'])
 
@@ -5660,11 +5806,12 @@ def run(target_date=None, simple_mode=False):
     lines.append("🔥 整合评分精选标的 (明日重点关注)")
     lines.append("=" * 60)
     
-    top_stocks = ranked_stocks[:10]
+    top_stocks = ranked_stocks[:20]
     for i, s in enumerate(top_stocks, 1):
         lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
         lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 量能爆发: {s['量能爆发']:.2f}")
+        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 现价: {s['现价']:.2f} | 换手率: {s['换手率']:.2f}%")
+        lines.append(f"  成交额: {s['成交额']:.2f}亿 | 量能爆发: {s['量能爆发']:.2f}")
         lines.append(f"  所属主题: {s['所属主题']} | 状态: {s['所属状态']}")
         lines.append(f"  推荐理由: {s['推荐理由']}")
         lines.append(f"  ├─趋势强度: {s['趋势强度']:.1f} | 资金健康度: {s['资金健康度']:.1f}")
@@ -5677,7 +5824,7 @@ def run(target_date=None, simple_mode=False):
     lines.append("完整排名:")
     lines.append("-" * 60)
     for i, s in enumerate(ranked_stocks, 1):
-        lines.append(f"{i}. {s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f} | 失败概率:{s['失败概率']:.1f}% | {s['所属主题']}")
+        lines.append(f"{i}. {s['代码']} {s['名称']} | 现价:{s['现价']:.2f} 涨幅:{s['涨跌幅']:.2f}% 成交额:{s['成交额']:.2f}亿 换手:{s['换手率']:.2f}% | 评分:{s['整合评分']:.1f} | 失败概率:{s['失败概率']:.1f}% | {s['所属主题']}")
     lines.append("=" * 60)
     
     hot_money_open_text = "\n".join(lines)
@@ -5741,7 +5888,7 @@ def run(target_date=None, simple_mode=False):
                 lines.append("-" * 80)
                 for i, stock in enumerate(tracking_stocks, 1):
                     lines.append(f"【第{i}名】{stock.get('名称', '')} ({stock.get('代码', '')})")
-                    lines.append(f"  整合评分: {stock.get('open_score', 0):.1f}")
+                    lines.append(f"  整合评分: {stock.get('open_score', 0):.1f} | 失败概率: {stock.get('failure_prob', 0):.1f}%")
                     theme_str = stock.get('所属主题', '')
                     state_str = stock.get('所属状态', '')
                     lines.append(f"  最新价: {stock.get('last_close', 0):.2f} | 当日涨跌: {stock.get('pct_chg', 0):+.2f}% | 量比: {stock.get('vol_ratio', 0):.2f} | 5日涨幅: {stock.get('range_5d_pct', 0):+.2f}% | 最高涨幅: {stock.get('max_pct', 0):+.2f}%")
@@ -5892,32 +6039,6 @@ def run(target_date=None, simple_mode=False):
                 icpm_lines.append("=" * 72)
                 icpm_text = "\n".join(icpm_lines)
                 print(icpm_text)
-
-                # 从 ranked_stocks 中删除 ICPM 提示减仓/清仓的股票
-                if icpm_exclude_codes:
-                    original_count = len(ranked_stocks)
-                    ranked_stocks = [s for s in ranked_stocks if s.get('代码', '') not in icpm_exclude_codes]
-                    filtered_count = original_count - len(ranked_stocks)
-                    print(f"[ICPM] 过滤掉 {filtered_count} 只股票（减仓/清仓）: {icpm_exclude_codes}")
-                    # 重新生成 hot_money_text（包含过滤后的排名）
-                    lines = []
-                    lines.append("=" * 60)
-                    lines.append("🔥 整合评分精选标的 (ICPM过滤后)")
-                    lines.append("=" * 60)
-                    for i, s in enumerate(ranked_stocks[:10], 1):
-                        lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
-                        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-                        lines.append(f"  所属主题: {s['所属主题']} | 状态: {s.get('所属状态', '')}")
-                        lines.append(f"  推荐理由: {s['推荐理由']}")
-                        lines.append("")
-                    lines.append("=" * 60)
-                    hot_money_text = "\n".join(lines)
-                    hot_money_open_text = hot_money_text  # 更新全局变量
-                    # 更新 stock_text
-                    if not ranked_stocks:
-                        stock_text = "（ICPM过滤后无股票）"
-                    else:
-                        stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks[:10]])
         except Exception as e:
             print(f"[ICPM] 诊断失败: {e}")
             import traceback
@@ -5926,7 +6047,7 @@ def run(target_date=None, simple_mode=False):
 
     #return
     prompt = f"""
-
+以下是我自己计算的量化分析结果：
 当前市场情绪：
 
 {emotion_text}
@@ -5934,55 +6055,24 @@ def run(target_date=None, simple_mode=False):
 今日主题分析情况：
 
 {sector_text_his}
+---------------------------------------
 
 主题个股池选股结果（来自 theme_pattern_stock_picker.py）：
 （这是根据主题趋势和情绪筛选出的优质个股，包含中期趋势主题和短线主线的龙头和中军）
-
 {theme_stocks_text}
+---------------------------------------
 
+整合评分精选量化股票池（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
+（这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
+{hot_money_open_text}
+产业资金定价诊断（ICPM）- 生命周期/主线强度/资金状态/决策建议：
+{icpm_text}
+---------------------------------------
 近20日跟踪分析股票池（从历史自选股中筛选涨幅不大、未大涨过的个股，经主题过滤后按综合评分排序）：
 （这些是近期持续关注、尚未启动的股票，值得跟踪分析）
-
 {tracking_stocks_text}
 
-整合评分精选标的（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
-（这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
-
-{hot_money_open_text}
-
-
-产业资金定价诊断（ICPM）- 生命周期/主线强度/资金状态/决策建议：
-
-{icpm_text}
-
-
-请对以上数据进行分析，具体要求：
-
-1. 仅过滤有基本面重大风险的个股：
-   - 近三个月内有定增预案
-   - 有大额减持公告
-   - 未来半年有大额解禁压力
-   - 有重大诉讼风险
-   - 有重大财务风险（如连续亏损、审计异常等）
-   - 有其他重大利空消息
-
-2. 对于无重大风险的前30名个股，保持原有的综合评分排序，不要重新筛选和排序
-
-3. 对完整量化候选股票池中的每只股票进行以下分析：
-   - 个股基本情况和所属主题
-   - 所属主题的**状态**（抱团主升/强趋势/震荡/弱势等），不同状态对应不同策略：
-     * **抱团主升**：龙头稳定、趋势陡峭、情绪高涨，资金集中，适合持股
-     * **强趋势**：趋势分高且持续上升，情绪活跃，适合顺势操作
-     * **震荡**：趋势不明显，方向待确认，观望为主
-     * **弱势**：趋势下行，回避为主
-   - 当前位置和走势分析
-   - 未来上涨空间预估（给出合理的目标价位）
-   - 买点建议（具体价位或技术形态）
-   - 止损点建议
-   - 简要的风险提示
-
-
-输出内容：
+请分析并输出内容：
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
 1、大盘情绪：简明扼要，重点是仓位建议及理由，操作要点
@@ -6000,14 +6090,27 @@ def run(target_date=None, simple_mode=False):
    - 对每只股票进行详细分析，包括：
      - 整合评分和失败概率
      - 所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
+           - 所属主题的**状态**（抱团主升/强趋势/震荡/弱势等），不同状态对应不同策略：
+                * **抱团主升**：龙头稳定、趋势陡峭、情绪高涨，资金集中，适合持股
+                * **强趋势**：趋势分高且持续上升，情绪活跃，适合顺势操作
+                * **震荡**：趋势不明显，方向待确认，观望为主
+                * **弱势**：趋势下行，回避为主
      - 技术面分析
-     - 未来上涨空间预估（AI估值分析）
+     - 未来上涨空间预估（请你智能搜索该股票今天最新数据，并做深度估值分析，给出合理的目标价位，确保符合该股票数据，不给出错误的目标价位）
      - 给出产业资金定价诊断（ICPM）结果- 生命周期/主线强度/资金状态/决策建议：
-     - 买点建议
-     - 止损点建议
-     - 风险提示（如果有）
-     - 如遇重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
-   
+     - 买点建议（具体价位或技术形态）
+     - 止损点建议（具体价位或技术形态）
+     - 风险提示：如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，突出建议勿追高！
+     - 如遇个股重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
+    其它要求：
+    A直接过滤掉有基本面重大风险的个股：
+    - 近三个月内有定增预案
+    - 有大额减持公告
+    - 未来半年有大额解禁压力
+    - 有重大诉讼风险
+    - 有重大财务风险（如连续亏损、审计异常等）
+    - 有其他重大利空消息
+    B对于无重大风险的前30名个股，保持原有的综合评分排序，不要重新筛选和排序
 4、跟踪分析个股：从近20日跟踪分析股票池中，精选5个符合技术形态的个股进行深度分析，重点关注：
     - 显示整合评分和失败概率
     - 分析所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）

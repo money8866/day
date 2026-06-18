@@ -215,15 +215,12 @@ def save_portfolio_action(ts_code, industry, action, price, shares=0, pnl=0, rea
     conn.close()
 
 def update_portfolio_prices(result_df, target_position_pct=25):
+    """更新持仓价格，但不修改买入时的目标权重"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     portfolio = pd.read_sql("SELECT * FROM active_holdings WHERE status='holding'", conn)
     
-    # 重新计算权重
-    hold_count = len(portfolio)
-    per_etf_weight = target_position_pct / hold_count if hold_count > 0 else 0
-    
-    # 更新价格和权重，并保存每日持仓快照
+    # 更新价格，但保留买入时设置的权重（不重新计算）
     for _, row in portfolio.iterrows():
         match = result_df[result_df['ETF'] == row['ts_code']]
         current_price = row['buy_price']
@@ -232,16 +229,16 @@ def update_portfolio_prices(result_df, target_position_pct=25):
             current_price = match.iloc[0]['收盘价']
             pnl_pct = round((current_price - row['buy_price']) / row['buy_price'] * 100, 2)
         
-        # 更新活跃持仓
-        cursor.execute("UPDATE active_holdings SET current_price=?, target_weight=? WHERE ts_code=? AND status='holding'",
-                      (current_price, per_etf_weight, row['ts_code']))
+        # 只更新价格，不修改target_weight（保留买入时的权重）
+        cursor.execute("UPDATE active_holdings SET current_price=? WHERE ts_code=? AND status='holding'",
+                      (current_price, row['ts_code']))
         
-        # 保存每日持仓
+        # 保存每日持仓快照（使用买入时的权重）
         cursor.execute("""
             INSERT OR REPLACE INTO daily_holding
             (trade_date, ts_code, industry, weight, buy_date, buy_price, current_price, pnl_pct)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (TRADE_DATE, row['ts_code'], row['industry'], per_etf_weight, row['buy_date'], row['buy_price'], current_price, pnl_pct))
+        """, (TRADE_DATE, row['ts_code'], row['industry'], row['target_weight'], row['buy_date'], row['buy_price'], current_price, pnl_pct))
     
     conn.commit()
     conn.close()
@@ -305,6 +302,11 @@ def save_pending_order(ts_code, industry, signal, suggest_price, position_pct, s
     print(f"   [待买入] 保存策略建议: {industry}({ts_code}) 建议价:{suggest_price}")
 
 def check_and_trigger_orders(result_df):
+    """检查并触发待买入订单
+    
+    触发条件：今日最低价 <= 建议价格
+    仓位计算：总仓位 / 最大持仓数（默认3只）
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     yesterday = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=1)).strftime('%Y%m%d')
@@ -314,9 +316,13 @@ def check_and_trigger_orders(result_df):
         conn.close()
         return triggered_orders
     print(f"\n[检查待买入订单] 昨日待处理: {len(pending_df)} 条")
+    
+    # 计算单只ETF的目标权重：总仓位 / 最大持仓数
+    max_holdings = 3  # 最多持有3只ETF
     for _, order in pending_df.iterrows():
         holding_df = pd.read_sql(f"SELECT * FROM active_holdings WHERE ts_code='{order['ts_code']}' AND status='holding'", conn)
         if not holding_df.empty:
+            print(f"   [跳过] {order['industry']} 已有持仓")
             continue
         try:
             df = pro.fund_daily(ts_code=order['ts_code'], start_date=TRADE_DATE, end_date=TRADE_DATE)
@@ -326,13 +332,17 @@ def check_and_trigger_orders(result_df):
             today_close = df.iloc[0]['close']
             if today_low <= order['suggest_price']:
                 actual_price = min(order['suggest_price'], today_close)
+                # 计算目标权重：总仓位 / 最大持仓数
+                target_weight = round(order['position_pct'] / max_holdings, 1)
                 cursor.execute("INSERT OR REPLACE INTO active_holdings (ts_code, industry, buy_date, buy_price, current_price, shares, target_weight, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')",
-                               (order['ts_code'], order['industry'], TRADE_DATE, actual_price, actual_price, 100, order['position_pct'] * 0.2, round(actual_price * 0.95, 3), round(actual_price * 1.20, 3)))
+                               (order['ts_code'], order['industry'], TRADE_DATE, actual_price, actual_price, 100, target_weight, round(actual_price * 0.95, 3), round(actual_price * 1.20, 3)))
                 cursor.execute("INSERT INTO trade_log (trade_date, ts_code, industry, action, price, shares, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                (TRADE_DATE, order['ts_code'], order['industry'], 'buy', actual_price, 100, 0, f"策略触发:{order['signal']}"))
                 cursor.execute("UPDATE pending_orders SET status='triggered', triggered_date=?, triggered_price=? WHERE id=?", (TRADE_DATE, actual_price, order['id']))
-                triggered_orders.append({'industry': order['industry'], 'ts_code': order['ts_code'], 'actual_price': actual_price})
-        except:
+                triggered_orders.append({'industry': order['industry'], 'ts_code': order['ts_code'], 'actual_price': actual_price, 'target_weight': target_weight})
+                print(f"   [触发买入] {order['industry']} 价格:{actual_price} 目标权重:{target_weight}%")
+        except Exception as e:
+            print(f"   [错误] {order['industry']}: {e}")
             continue
     conn.commit()
     conn.close()
