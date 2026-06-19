@@ -1,0 +1,313 @@
+{
+  "predict_date": "2026-06-19",
+  "target": "2026H1半年报",
+  "method": "因子引擎v1: A1季节性外推 + A2环比趋势 + A3行业景气 + A5基数效应 + A7现金流先行",
+  "predictions": {
+    "301308.SZ": {
+      "code": "301308.SZ",
+      "name": "江波龙",
+      "theme": "存储芯片",
+      "q1_rev_yi": 99.09,
+      "q1_ni_yi": 38.62,
+      "q1_rev_yoy": 133,
+      "q1_ni_yoy": 2644,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.417,
+        "A1_seasonal_h1_rev": 237.35,
+        "A1_q1_h1_ratio_ni": 0.4,
+        "A1_seasonal_h1_ni": 96.55,
+        "A2_qoq_rev": -56.5,
+        "A2_qoq_ni": 171.3,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 225.48,
+        "A3_peer_np_median": 1952.0,
+        "A3_vs_peers": "略超板块（跟随+alpha）",
+        "A5_2025h1_rev_yoy": 12.8,
+        "A5_2025h1_ni_yoy": -97.5,
+        "A5_base_effect": "中性基数",
+        "A7_q1_ocf": -28.75,
+        "A7_ocf_ni_ratio": -0.74,
+        "A7_quality": "负现金流（警惕）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 101.96,
+        "h1_2025_ni": 0.15,
+        "h1_rev": {
+          "low": 181.57,
+          "mid": 213.62,
+          "high": 245.66
+        },
+        "h1_ni": {
+          "low": 73.86,
+          "mid": 86.89,
+          "high": 99.93
+        },
+        "h1_rev_yoy": {
+          "low": 78.1,
+          "mid": 109.5,
+          "high": 140.9
+        },
+        "h1_ni_yoy": {
+          "low": 49919.4,
+          "mid": 58743.6,
+          "high": 67574.5
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    },
+    "688525.SH": {
+      "code": "688525.SH",
+      "name": "佰维存储",
+      "theme": "先进封装",
+      "q1_rev_yi": 68.14,
+      "q1_ni_yi": 28.99,
+      "q1_rev_yoy": 342,
+      "q1_ni_yoy": 1568,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.394,
+        "A1_seasonal_h1_rev": 172.73,
+        "A1_q1_h1_ratio_ni": 0.4,
+        "A1_seasonal_h1_ni": 72.47,
+        "A2_qoq_rev": -39.7,
+        "A2_qoq_ni": 239.8,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 164.09,
+        "A3_peer_np_median": 296.6,
+        "A3_vs_peers": "远超板块（alpha型）",
+        "A7_q1_ocf": -27.06,
+        "A7_ocf_ni_ratio": -0.93,
+        "A7_quality": "负现金流（警惕）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 39.12,
+        "h1_2025_ni": -2.26,
+        "h1_rev": {
+          "low": 132.14,
+          "mid": 155.46,
+          "high": 178.78
+        },
+        "h1_ni": {
+          "low": 55.44,
+          "mid": 65.22,
+          "high": 75.01
+        },
+        "h1_rev_yoy": {
+          "low": 237.8,
+          "mid": 297.4,
+          "high": 357.0
+        },
+        "h1_ni_yoy": {
+          "low": 2555.3,
+          "mid": 2988.5,
+          "high": 3422.0
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    },
+    "688766.SH": {
+      "code": "688766.SH",
+      "name": "普冉股份",
+      "theme": "存储芯片",
+      "q1_rev_yi": 14.47,
+      "q1_ni_yi": 2.51,
+      "q1_rev_yoy": 256,
+      "q1_ni_yoy": 1260,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.448,
+        "A1_seasonal_h1_rev": 32.29,
+        "A1_q1_h1_ratio_ni": 0.453,
+        "A1_seasonal_h1_ni": 5.54,
+        "A2_qoq_rev": -37.6,
+        "A2_qoq_ni": 21.0,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 30.68,
+        "A3_peer_np_median": 1952.0,
+        "A3_vs_peers": "跟随板块（beta型）",
+        "A7_q1_ocf": 2.44,
+        "A7_ocf_ni_ratio": 0.97,
+        "A7_quality": "高现金含量（利润扎实）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 9.07,
+        "h1_2025_ni": 0.41,
+        "h1_rev": {
+          "low": 24.7,
+          "mid": 29.06,
+          "high": 33.42
+        },
+        "h1_ni": {
+          "low": 4.24,
+          "mid": 4.99,
+          "high": 5.73
+        },
+        "h1_rev_yoy": {
+          "low": 172.4,
+          "mid": 220.5,
+          "high": 268.6
+        },
+        "h1_ni_yoy": {
+          "low": 940.9,
+          "mid": 1125.0,
+          "high": 1306.7
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    },
+    "603268.SH": {
+      "code": "603268.SH",
+      "name": "松发股份",
+      "theme": "军工",
+      "q1_rev_yi": 88.88,
+      "q1_ni_yi": 10.93,
+      "q1_rev_yoy": 15369,
+      "q1_ni_yoy": 5340,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.009,
+        "A1_seasonal_h1_rev": 10332.29,
+        "A1_q1_h1_ratio_ni": 0.4,
+        "A1_seasonal_h1_ni": 27.32,
+        "A2_qoq_rev": -58.9,
+        "A2_qoq_ni": -58.8,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 9815.68,
+        "A3_peer_np_median": 5339.7,
+        "A3_vs_peers": "跟随板块（beta型）",
+        "A7_q1_ocf": 39.96,
+        "A7_ocf_ni_ratio": 3.66,
+        "A7_quality": "高现金含量（利润扎实）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 66.8,
+        "h1_2025_ni": 6.47,
+        "h1_rev": {
+          "low": 7904.2,
+          "mid": 9299.06,
+          "high": 10693.92
+        },
+        "h1_ni": {
+          "low": 20.9,
+          "mid": 24.59,
+          "high": 28.28
+        },
+        "h1_rev_yoy": {
+          "low": 11733.0,
+          "mid": 13821.2,
+          "high": 15909.4
+        },
+        "h1_ni_yoy": {
+          "low": 223.0,
+          "mid": 280.0,
+          "high": 337.0
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    },
+    "300302.SZ": {
+      "code": "300302.SZ",
+      "name": "同有科技",
+      "theme": "AI算力基建",
+      "q1_rev_yi": 1.22,
+      "q1_ni_yi": 0.87,
+      "q1_rev_yoy": 156,
+      "q1_ni_yoy": 431,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.274,
+        "A1_seasonal_h1_rev": 4.46,
+        "A1_q1_h1_ratio_ni": 0.4,
+        "A1_seasonal_h1_ni": 2.17,
+        "A2_qoq_rev": -69.8,
+        "A2_qoq_ni": 265.5,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 4.24,
+        "A3_peer_np_median": 431.2,
+        "A3_vs_peers": "跟随板块（beta型）",
+        "A5_2025h1_rev_yoy": -31.1,
+        "A5_2025h1_ni_yoy": -140.7,
+        "A5_base_effect": "强低基数效应（2025H1大幅下滑）",
+        "A7_q1_ocf": -0.73,
+        "A7_ocf_ni_ratio": -0.84,
+        "A7_quality": "负现金流（警惕）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 1.74,
+        "h1_2025_ni": -0.18,
+        "h1_rev": {
+          "low": 3.41,
+          "mid": 4.01,
+          "high": 4.62
+        },
+        "h1_ni": {
+          "low": 1.66,
+          "mid": 1.95,
+          "high": 2.25
+        },
+        "h1_rev_yoy": {
+          "low": 96.3,
+          "mid": 130.9,
+          "high": 166.0
+        },
+        "h1_ni_yoy": {
+          "low": 1003.1,
+          "mid": 1160.9,
+          "high": 1324.1
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    },
+    "001389.SZ": {
+      "code": "001389.SZ",
+      "name": "广合科技",
+      "theme": "PCB电子电路",
+      "q1_rev_yi": 19.14,
+      "q1_ni_yi": 3.93,
+      "q1_rev_yoy": 71,
+      "q1_ni_yoy": 63,
+      "factors": {
+        "A1_q1_h1_ratio_rev": 0.461,
+        "A1_seasonal_h1_rev": 41.55,
+        "A1_q1_h1_ratio_ni": 0.489,
+        "A1_seasonal_h1_ni": 8.04,
+        "A2_qoq_rev": -65.1,
+        "A2_qoq_ni": -61.3,
+        "A2_momentum": "减速",
+        "A2_adjusted_h1_rev": 39.47,
+        "A3_peer_np_median": 320.3,
+        "A3_vs_peers": "跟随板块（beta型）",
+        "A7_q1_ocf": 3.2,
+        "A7_ocf_ni_ratio": 0.81,
+        "A7_quality": "高现金含量（利润扎实）"
+      },
+      "h1_predict": {
+        "h1_2025_rev": 24.25,
+        "h1_2025_ni": 4.92,
+        "h1_rev": {
+          "low": 31.79,
+          "mid": 37.39,
+          "high": 43.0
+        },
+        "h1_ni": {
+          "low": 6.15,
+          "mid": 7.24,
+          "high": 8.32
+        },
+        "h1_rev_yoy": {
+          "low": 31.1,
+          "mid": 54.2,
+          "high": 77.3
+        },
+        "h1_ni_yoy": {
+          "low": 25.1,
+          "mid": 47.3,
+          "high": 69.2
+        }
+      },
+      "confidence": "较高",
+      "confidence_pct": 1.0
+    }
+  }
+}

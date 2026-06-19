@@ -1,0 +1,467 @@
+{
+  "report_title": "IA机构核心池 - 机构调研与研报验证报告",
+  "report_date": "2026-06-19",
+  "query_period": "2026-03-19 至 2026-06-19",
+  "stocks": [
+    {
+      "name": "江波龙",
+      "code": "301308",
+      "sector": "存储芯片",
+      "current_price": 577.79,
+      "market_cap_yi": 2444.40,
+      "institution_research": {
+        "total_count_3m": 2,
+        "total_institutions_participated": "6家+",
+        "research_details": [
+          {
+            "date": "2026-03-16至03-19",
+            "type": "特定对象调研",
+            "participants": "中邮证券、国联安基金、国盛证券、新华资产、一村资本",
+            "key_points": [
+              "全球主要存储原厂战略重心向企业级市场倾斜，消费级存储市场面临结构性调整",
+              "美光将停止未来移动NAND产品开发，原厂在消费级领域战略收缩",
+              "公司将聚焦端侧AI、中高端消费级存储需求，构建差异化产品体系",
+              "以自研芯片和自有封测能力为基础，把握供应短缺与价格上涨机遇"
+            ]
+          },
+          {
+            "date": "2026-04-30",
+            "type": "业绩说明会",
+            "participants": "全体投资者（全景路演）",
+            "key_points": [
+              "2026Q1收入99.09亿元，同比+132.79%；归母净利润38.62亿元，同比+2644.05%",
+              "企业级存储产品已导入头部互联网企业供应链",
+              "端侧AI存储解决方案已与AMD完成联合调优",
+              "UFS4.1主控芯片采用5nm制程工艺，2026年开始规模化量产",
+              "重启H股上市申请（5月29日递交港交所）"
+            ]
+          }
+        ],
+        "notable_institutions": ["中邮证券", "国联安基金", "国盛证券", "新华资产", "一村资本"]
+      },
+      "research_reports": {
+        "total_count_3m": 2,
+        "reports": [
+          {
+            "date": "2026-05-07",
+            "institution": "国信证券",
+            "title": "1Q26归母净利润同比增长2644.05%，端侧应用多维拓展",
+            "rating": "增持",
+            "eps_this_year": 26.47,
+            "eps_next_year": 26.98,
+            "pe_this_year": 15.2,
+            "pe_next_year": 14.9
+          },
+          {
+            "date": "2026-05-07",
+            "institution": "爱建证券",
+            "title": "2025年报&2026Q1点评：国产存储模组龙头进入业绩爆发期",
+            "rating": "买入",
+            "eps_this_year": 47.64,
+            "eps_next_year": 52.27,
+            "pe_this_year": 10.1,
+            "pe_next_year": 9.21
+          }
+        ],
+        "rating_distribution": {"增持": 1, "买入": 1},
+        "avg_target_pe": 12.65
+      },
+      "core_viewpoints": [
+        "存储行业进入结构性上行周期，AI驱动需求爆发",
+        "企业级存储产品高增长，2025年收入17.83亿元同比+93.30%",
+        "端侧AI存储与AMD联合调优，商业化推进中",
+        "自研5nm UFS4.1主控芯片领先产业主流",
+        "全球存储芯片市场2026年预计收入5947亿美元，同比+163%"
+      ],
+      "valuation_analysis": {
+        "current_price": 577.79,
+        "eps_conservative": 26.47,
+        "eps_aggressive": 47.64,
+        "implied_price_conservative": "26.47*15.2=402.34",
+        "implied_price_aggressive": "47.64*10.1=481.16",
+        "valuation_space": "按国信证券EPS预测(26.47元)，当前PE约21.8倍，高于研报PE(15.2倍)，存在估值偏高风险；按爱建证券EPS预测(47.64元)，当前PE约12.1倍，低于研报PE(10.1倍)，仍有上行空间",
+        "note": "两家机构EPS预测差异较大，需关注实际业绩兑现情况"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "AI驱动存储需求爆发，行业进入超级上行周期",
+          "企业级+端侧AI双轮驱动，收入多元化",
+          "自研主控芯片构建技术壁垒",
+          "业绩爆发式增长，Q1归母净利润同比+2644%"
+        ],
+        "bear_points": [
+          "副总经理拟减持59.84万股",
+          "H股上市稀释风险",
+          "存储行业周期性波动风险",
+          "当前估值分歧较大，高EPS假设需验证"
+        ]
+      }
+    },
+    {
+      "name": "佰维存储",
+      "code": "688525",
+      "sector": "先进封装",
+      "current_price": 386.20,
+      "market_cap_yi": 1821.19,
+      "institution_research": {
+        "total_count_3m": 2,
+        "total_institutions_participated": "多次调研",
+        "research_details": [
+          {
+            "date": "2026-05-28",
+            "type": "机构调研（股东会）",
+            "participants": "现场出席2026年第二次临时股东会的股东/代理人",
+            "key_points": [
+              "惠州泰来科技：存储器封测及SiP封测基地，掌握16/32层叠Die、30-40μm超薄Die工艺",
+              "东莞芯成汉奇：覆盖2.5D、Chiplet、RDL、Fanout等先进封装",
+              "存货占资产比重高但供应链策略为'稳健灵活、动态优化'",
+              "Trendforce预测2026Q2 DRAM合约价仍将增长，NAND Flash全产品线连锁涨价",
+              "本轮存储涨价由AI需求驱动"
+            ]
+          },
+          {
+            "date": "2026-05-22",
+            "type": "业绩说明会",
+            "participants": "董事长孙成思、董秘/财务总监黄炎烽等",
+            "key_points": [
+              "2026Q1 AI端侧存储产品收入约11.75亿元，同比+496.45%，环比+53%",
+              "2025年AI新兴端侧存储产品收入约17.51亿元，AI眼镜约9.6亿元",
+              "Meta AI智能眼镜ROM+RAM存储器芯片，公司是国内主力供应商",
+              "15亿美元长期采购合同，2026年4月起24个月均匀采购，价格锁定",
+              "当前毛利率水平较高，后续仍有上升空间"
+            ]
+          }
+        ],
+        "notable_institutions": ["国信证券"]
+      },
+      "research_reports": {
+        "total_count_3m": 1,
+        "reports": [
+          {
+            "date": "2026-04-19",
+            "institution": "国信证券",
+            "title": "1Q26 AI端侧产品收入同比增长496%，签订晶圆采购合同保供应",
+            "rating": "增持",
+            "eps_this_year": 15.80,
+            "eps_next_year": 17.62,
+            "pe_this_year": 18.1,
+            "pe_next_year": 16.2
+          }
+        ],
+        "rating_distribution": {"增持": 1},
+        "avg_target_pe": 18.1
+      },
+      "core_viewpoints": [
+        "AI端侧存储产品爆发式增长，Q1收入同比+496%",
+        "先进封装布局完善，2.5D/Chiplet/Fanout全覆盖",
+        "Meta AI眼镜核心供应商，端侧AI卡位优势明显",
+        "15亿美元长采合同锁定成本，保障供应稳定性",
+        "存储涨价周期延续，Q2 DRAM/NAND合约价预计继续上涨"
+      ],
+      "valuation_analysis": {
+        "current_price": 386.20,
+        "eps_this_year": 15.80,
+        "eps_next_year": 17.62,
+        "current_pe": 24.4,
+        "target_pe": 18.1,
+        "valuation_space": "按国信证券EPS预测(15.80元)，目标价约286元(PE=18.1x)，当前386.2元已超出目标价约35%，估值偏高",
+        "note": "仅1家机构研报，样本较少；但Q1业绩超预期可能推动EPS上调"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "AI端侧存储产品爆发式增长",
+          "Meta AI眼镜核心供应商地位",
+          "先进封装技术全面布局",
+          "长采合同锁定成本，受益涨价周期"
+        ],
+        "bear_points": [
+          "存货占资产比重高，现金流紧张",
+          "研报覆盖少，估值参考有限",
+          "当前股价已大幅超过研报目标估值",
+          "经营活动现金流大幅减少"
+        ]
+      }
+    },
+    {
+      "name": "普冉股份",
+      "code": "688766",
+      "sector": "存储芯片",
+      "current_price": 590.00,
+      "market_cap_yi": 866.9,
+      "institution_research": {
+        "total_count_3m": 1,
+        "total_institutions_participated": "股东会参会投资者",
+        "research_details": [
+          {
+            "date": "2026-04（年度股东会）",
+            "type": "年度股东会",
+            "participants": "参会股东",
+            "key_points": [
+              "AI驱动NOR Flash量价齐升",
+              "收购SHM成增长新引擎",
+              "审议36项议案，包括1.86亿元超募资金补流",
+              "AI服务器等算力基建对存储配套芯片需求持续提升"
+            ]
+          }
+        ],
+        "notable_institutions": ["南方中证1000ETF", "华宝竞争优势混合", "广发改革混合"]
+      },
+      "research_reports": {
+        "total_count_3m": 0,
+        "reports": [],
+        "rating_distribution": {},
+        "avg_target_pe": null,
+        "note": "近3个月内无东财收录研报，但公司近期发布异动公告提示存储价格高位风险"
+      },
+      "core_viewpoints": [
+        "主营2D NAND及衍生产品(SLC NAND/eMMC)、NOR Flash、EEPROM等利基型存储",
+        "AI服务器算力基建带动存储配套芯片需求提升",
+        "6月17日发布异动公告：提醒存储行业周期变化及价格高位风险",
+        "对应市场规模相对较小，非主流大容量存储",
+        "收购SHM成为增长新引擎"
+      ],
+      "valuation_analysis": {
+        "current_price": 590.00,
+        "current_pe_ttm": 86.31,
+        "current_pb": 32.17,
+        "valuation_space": "动态PE 86.31倍，市净率32.17倍，估值处于极高水平。公司自身提示存储价格已处历史高位，需警惕回调风险",
+        "note": "无近期研报覆盖，估值参考缺乏"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "存储行业上行周期，产品量价齐升",
+          "AI算力基建带动配套需求",
+          "收购SHM拓展产品线"
+        ],
+        "bear_points": [
+          "公司自身提示存储价格高位风险",
+          "利基型存储市场规模相对较小",
+          "2D NAND产品趋势带来不确定性",
+          "估值极高(PE 86x, PB 32x)，无研报支撑",
+          "近期股价异动剧烈(3日累计涨幅超30%)"
+        ]
+      }
+    },
+    {
+      "name": "松发股份",
+      "code": "603268",
+      "sector": "船舶制造(原军工→转型)",
+      "current_price": 146.30,
+      "market_cap_yi": 1420.25,
+      "institution_research": {
+        "total_count_3m": 0,
+        "total_institutions_participated": "无公开调研记录",
+        "research_details": [],
+        "notable_institutions": ["UBS AG", "Morgan Stanley", "花旗", "兴全合泰混合"],
+        "note": "前十大流通股东含多家QFII/外资，但无近期调研记录公开"
+      },
+      "research_reports": {
+        "total_count_3m": 1,
+        "total_reports_all_period": 7,
+        "reports": [
+          {
+            "date": "2026-06-02",
+            "institution": "东吴证券",
+            "title": "民营造船新锐，技术与效率加持下量价利齐升",
+            "rating": "增持",
+            "eps_this_year": 7.40,
+            "eps_next_year": 12.83,
+            "pe_this_year": 17.61,
+            "pe_next_year": 10.15
+          }
+        ],
+        "other_recent_reports": [
+          {"date": "2026-05-07", "institution": "长江证券", "rating": "买入", "title": "从民营造船新秀迈向全球单体船厂龙头"},
+          {"date": "2026-05-06", "institution": "国联民生证券", "rating": "推荐", "title": "恒力重工的三大稀缺性"},
+          {"date": "2026-05-02", "institution": "中金公司", "rating": "跑赢行业", "title": "全球领先的民营造船新锐 船市景气加持高成长"},
+          {"date": "2026-04-28", "institution": "浙商证券", "rating": "买入", "title": "业绩符合预期 26Q1归母净利润同比增长330%"},
+          {"date": "2026-04-27", "institution": "申万宏源", "rating": "买入", "title": "26Q1业绩符合预期 重视行业高景气下稀缺的产能增量"},
+          {"date": "2026-05-25", "institution": "西部证券", "rating": "买入", "title": "业绩增长动能强劲，首予买入评级"}
+        ],
+        "rating_distribution": {"买入": 4, "增持": 1, "推荐": 1, "跑赢行业": 1},
+        "consensus_eps_2026": 5.98,
+        "consensus_np_2026_yi": 58.04,
+        "consensus_eps_2027": 11.44,
+        "consensus_np_2027_yi": 111.02
+      },
+      "core_viewpoints": [
+        "重大资产重组置入恒力重工100%股权，转型船舶制造",
+        "2026Q1归母净利润10.93亿元，同比+330.3%",
+        "恒力重工接单50艘VLCC，冠绝全球船厂",
+        "四大核心优势：规模大、位置佳、效率高、配套全(含船用发动机)",
+        "全球油轮运费持续提升，VLCC迎来下单热潮"
+      ],
+      "valuation_analysis": {
+        "current_price": 146.30,
+        "consensus_eps_2026": 5.98,
+        "consensus_eps_2027": 11.44,
+        "current_pe_2026": 24.5,
+        "current_pe_2027": 12.8,
+        "target_pe_2026": 17.61,
+        "valuation_space": "按5家机构一致预期EPS(5.98元)，当前PE约24.5倍，高于东吴目标PE(17.61倍)，估值偏高；但2027年PE仅12.8倍，若业绩兑现空间大",
+        "note": "机构覆盖充分(7篇研报)，一致预期明确，2026年净利润均值58亿元"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "民营造船龙头，深度受益船舶周期上行",
+          "VLCC接单全球第一，订单饱满",
+          "产能稀缺性强，一体化配套优势",
+          "业绩爆发增长，Q1同比+330%",
+          "机构覆盖充分，普遍看好"
+        ],
+        "bear_points": [
+          "多次定增(74亿+39.32亿+70亿)，股权稀释严重",
+          "股东人数从7372户增至19446户，筹码分散",
+          "当前PE(24.5x)高于机构目标PE(17.61x)",
+          "ST状态仍未摘帽",
+          "UBS等外资减持"
+        ]
+      }
+    },
+    {
+      "name": "同有科技",
+      "code": "300302",
+      "sector": "AI服务器与算力基建",
+      "current_price": 50.90,
+      "market_cap_yi": 243.95,
+      "institution_research": {
+        "total_count_3m": 1,
+        "total_institutions_participated": "全体投资者",
+        "research_details": [
+          {
+            "date": "2026-05-13",
+            "type": "业绩说明会",
+            "participants": "董事长周泽湘、董秘时志峰、财务总监鲁怡等",
+            "key_points": [
+              "2025年剔除偶发长期资产减值后，主业亏损同比大幅收窄",
+              "2026Q1已实现盈利，归母净利润8718万元，同比+431.25%",
+              "参股忆恒创源(企业级SSD国产前列)和泽石科技(主控芯片龙头)",
+              "美光与海力士分别对参股公司投资背书"
+            ]
+          }
+        ],
+        "notable_institutions": ["1家机构覆盖业绩预测"]
+      },
+      "research_reports": {
+        "total_count_3m": 0,
+        "reports": [],
+        "rating_distribution": {},
+        "avg_target_pe": null,
+        "note": "近3个月无东财收录研报，仅1家机构业绩预测"
+      },
+      "core_viewpoints": [
+        "2026Q1扭亏为盈，归母净利润8718万元同比+431.25%",
+        "参股忆恒创源(企业级SSD)和泽石科技(主控芯片)具有投资价值",
+        "美光、海力士投资参股公司，产业背书力度强",
+        "存储行业上行周期受益",
+        "2025年主业亏损收窄但仍亏损，盈利持续性待验证"
+      ],
+      "valuation_analysis": {
+        "current_price": 50.90,
+        "predicted_eps_2026": 0.87,
+        "predicted_np_2026_yi": 4.15,
+        "current_pe_2026": 58.5,
+        "valuation_space": "按1家机构EPS预测(0.87元)，当前PE约58.5倍，估值偏高。机构预测2026年净利润4.15亿元(同比+890%)，需验证盈利拐点",
+        "note": "研报覆盖极少，估值参考有限；股价波动剧烈，曾发布风险提示"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "Q1扭亏为盈，业绩拐点确认",
+          "参股公司忆恒创源/泽石科技具有高价值",
+          "国际大厂(美光/海力士)投资背书",
+          "存储行业上行周期受益"
+        ],
+        "bear_points": [
+          "历史长期亏损，盈利持续性待验证",
+          "研报覆盖极少，估值缺乏锚点",
+          "股价波动剧烈，券商发布风险提示",
+          "董事减持(佟易虹减持63万股)",
+          "PE高达58.5倍(按2026年预测)"
+        ]
+      }
+    },
+    {
+      "name": "广合科技",
+      "code": "001389",
+      "sector": "PCB电子电路",
+      "current_price": 201.46,
+      "market_cap_yi": 952.03,
+      "institution_research": {
+        "total_count_3m": 1,
+        "total_institutions_participated": "投资者关系活动",
+        "research_details": [
+          {
+            "date": "2026-05(近期)",
+            "type": "投资者关系活动",
+            "participants": "机构投资者",
+            "key_points": [
+              "已启动光模块PCB产品预研",
+              "九派基金已投出3个项目，围绕AI产业软硬件",
+              "PCIE7.0平台预研阶段，预计Q3后PCIE6.0正式量产",
+              "在手订单充裕，算力场景需求增长强劲",
+              "泰国工厂完成核心客户审核认证，一期产能释放，已实现盈利"
+            ]
+          }
+        ],
+        "notable_institutions": ["42家机构投资者", "CPE源峰", "景林投资", "惠理基金", "霸菱亚洲", "瑞银集团"]
+      },
+      "research_reports": {
+        "total_count_3m": 1,
+        "reports": [
+          {
+            "date": "2026-04-27",
+            "institution": "中邮证券",
+            "title": "产品结构升级，算力PCB进入高速成长期",
+            "rating": "买入",
+            "eps_this_year": 3.99,
+            "eps_next_year": 6.44,
+            "pe_this_year": 42.77,
+            "pe_next_year": 26.51
+          }
+        ],
+        "rating_distribution": {"买入": 1},
+        "avg_target_pe": 42.77,
+        "other_notes": "华安证券也发布观点：AI业务成为核心增长引擎，产品结构持续高端化"
+      },
+      "core_viewpoints": [
+        "AI业务成为核心增长引擎，产品结构持续高端化",
+        "已完成PCIE6.0平台转批量能力",
+        "AI服务器领域完成PCIe交换板(30L+)、UBB/IO板(28L-46L)、OAM板、GPU主板等高端产品认证",
+        "400G&800G交换机板已量产",
+        "泰国工厂成为算力产品销售第二引擎"
+      ],
+      "valuation_analysis": {
+        "current_price": 201.46,
+        "eps_this_year": 3.99,
+        "eps_next_year": 6.44,
+        "current_pe_2026": 50.5,
+        "current_pe_2027": 31.3,
+        "target_pe_2026": 42.77,
+        "valuation_space": "按中邮证券EPS预测(3.99元)，当前PE约50.5倍，高于目标PE(42.77倍)约18%。2027年PE降至31.3倍，若业绩增速兑现则有空间",
+        "note": "Q1业绩预告归母净利润3.8-4.0亿元，同比+58%-66%，业绩增长稳健"
+      },
+      "buy_summary": {
+        "bull_points": [
+          "AI服务器PCB核心供应商，产品结构高端化",
+          "在手订单充裕，算力需求增长强劲",
+          "泰国工厂成为第二增长引擎",
+          "光模块PCB预研布局前瞻",
+          "Q1业绩预增58%-66%"
+        ],
+        "bear_points": [
+          "当前PE(50.5x)高于机构目标PE(42.77x)",
+          "研报覆盖少(仅1篇)",
+          "限售股解禁压力(2027年4月63.97%解禁)",
+          "PCB行业竞争激烈"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "overall_findings": "IA机构核心池6只股票中，存储板块(江波龙/佰维/普冉)受益AI驱动涨价周期，业绩爆发但估值分歧大；松发股份转型造船后机构覆盖最充分；同有科技和广合科技研报覆盖较少，估值参考有限。",
+    "most_covered": "松发股份(7篇研报，6家机构)",
+    "least_covered": "普冉股份/同有科技(近3月0篇研报)",
+    "valuation_warning": "普冉股份(PE 86x)和同有科技(PE 58x)估值偏高且缺乏研报支撑，需警惕回调风险",
+    "strong_consensus": "松发股份机构一致看好(5买入+1增持+1跑赢行业)，江波龙业绩爆发确定性强"
+  }
+}

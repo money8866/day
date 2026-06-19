@@ -547,32 +547,47 @@ class IndustryPricingModel:
         """
         预期评分 0~100
 
-        规则：
-          - profit_yoy > 50% → 90+
-          - profit_yoy > 30% → 75
-          - revenue_yoy > 30% → 85
-          - revenue_yoy > 20% → 70
-          - 低增速但高 ROE + 高毛利 → 60
+        重要：利润同比和营收同比是【过去式】指标，不应给予过高权重
+        理由：
+        1. 财报数据滞后（季报/年报），不代表当前市场情绪
+        2. 利润高增长可能是【已兑现】的利好，或【一次性】损益
+        3. 主题今日高、明日可能回落，过去的业绩增长不能保证未来
+        因此：利润/营收同比仅作为【基础参考】，给予较低分差区间
+
+        规则（调整后）：
+          - profit_yoy > 50% → 基础65分（低增速主题：+10；高增速主题：+0）
+          - profit_yoy > 30% → 基础55分
+          - 营收 > 30% → 基础60分
+          - 营收 > 20% → 基础50分
+          - 低增速但高 ROE + 高毛利 → 基础50分
+          最终分差不超过20分（原逻辑下分差可达55分）
         """
         details = {}
-        if data.profit_yoy > 0.5:
-            score = 95 if data.revenue_yoy > 0.3 else 90
-            details["expectation"] = "极高增长"
-        elif data.profit_yoy > 0.3:
-            score = 85 if data.revenue_yoy > 0.2 else 75
-            details["expectation"] = "高增长"
-        elif data.revenue_yoy > 0.3:
-            score = 85
+
+        # 基础分锚定在40-60区间（压缩分差）
+        if data.revenue_yoy > 0.3:
+            score = 60
             details["expectation"] = "营收高增长"
         elif data.revenue_yoy > 0.2:
-            score = 70
+            score = 55
             details["expectation"] = "营收增长"
-        elif data.roe > 0.12 and data.gross_margin > 0.3:
+        elif data.profit_yoy > 0.5:
+            # 利润极高增长 → 但给予较低基础分（+5 bonus）
             score = 60
+            details["expectation"] = "利润极高（参考）"
+        elif data.profit_yoy > 0.3:
+            # 利润高增长 → 参考分
+            score = 55
+            details["expectation"] = "利润高增长（参考）"
+        elif data.roe > 0.12 and data.gross_margin > 0.3:
+            score = 50
             details["expectation"] = "稳健但增速不高"
         else:
             score = 40
             details["expectation"] = "低增长"
+
+        # 注意：此处分差从原来的40分压缩到20分
+        # 理由：避免利润同比从0%到90%产生55分巨大分差
 
         details["profit_yoy"] = round(data.profit_yoy, 3)
         details["revenue_yoy"] = round(data.revenue_yoy, 3)
