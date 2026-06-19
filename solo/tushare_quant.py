@@ -337,8 +337,7 @@ TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 # 尝试安全设置 tushare token
 pro = None
 try:
-    ts.set_token(TUSHARE_TOKEN)
-    pro = ts.pro_api()
+    pro = ts.pro_api(TUSHARE_TOKEN)
 except Exception as e:
     print(f"Token 设置失败: {e}")
     print("请正确配置 TUSHARE_TOKEN 后重新运行。")
@@ -1015,7 +1014,7 @@ def calc_volume_structure(df):
     C = df['close']
     V = df['vol']
 
-    vol_ratio = V.iloc[-1] / (V.tail(20).mean() + 1e-6)
+    vol_ratio = V.iloc[-1] / (V.iloc[:-1].tail(20).mean() + 1e-6) if len(V) > 20 else V.iloc[-1] / (V.mean() + 1e-6)
 
     price_trend = C.iloc[-1] / C.iloc[-20] - 1
 
@@ -1065,7 +1064,7 @@ def calc_big_money_factor(df):
     C = df['close']
     V = df['vol']
 
-    vol_ratio = V.iloc[-1] / (V.tail(20).mean() + 1e-6)
+    vol_ratio = V.iloc[-1] / (V.iloc[:-1].tail(20).mean() + 1e-6) if len(V) > 20 else V.iloc[-1] / (V.mean() + 1e-6)
 
     price_change = C.iloc[-1] / C.iloc[-2] - 1
 
@@ -1118,7 +1117,7 @@ def calc_dual_layer_score_v6(df, ts_code='', theme=''):
     # =========================
     # 弹性结构（游资核心）
     # =========================
-    HHV20 = H.tail(20).max()
+    HHV20 = H.iloc[:-1].tail(20).max() if len(H) > 1 else H.tail(20).max()
     LLV20 = L.tail(20).min()
 
     amp20 = (HHV20 - LLV20) / (LLV20 + 1e-6)
@@ -1161,7 +1160,7 @@ def calc_dual_layer_score_v6(df, ts_code='', theme=''):
     # =========================
     # 2. 突破结构（关键升级）
     # =========================
-    HHV60 = H.rolling(60).max().iloc[-1]
+    HHV60 = H.iloc[:-1].rolling(60).max().iloc[-1] if len(H) > 1 else H.rolling(60).max().iloc[-1]
     breakout_position = np.clip(
         (C.iloc[-1] / HHV60 - 0.90) / 0.15,
         0, 1
@@ -1177,7 +1176,7 @@ def calc_dual_layer_score_v6(df, ts_code='', theme=''):
     # =========================
     # 3. 压缩与爆发结构
     # =========================
-    HHV20 = H.tail(20).max()
+    HHV20 = H.iloc[:-1].tail(20).max() if len(H) > 1 else H.tail(20).max()
     LLV20 = L.tail(20).min()
     amp20 = (HHV20 - LLV20) / LLV20
 
@@ -1644,9 +1643,10 @@ def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
 
     # 第三部分：二波启动模式识别（用户偏好：拉升过→震荡调整→第二波刚启动）
     close_series = df['close']
-    hhv60_s = float(close_series.tail(60).max())
+    high_series = df['high']
+    hhv60_s = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(high_series.tail(60).max())
     llv60_s = float(close_series.tail(60).min())
-    hhv20_s = float(close_series.tail(20).max())
+    hhv20_s = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(high_series.tail(20).max())
     llv20_s = float(close_series.tail(20).min())
     
     close_price = float(close_series.iloc[-1])
@@ -2106,12 +2106,14 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 基础数据计算
         # =========================
         close_series = df['close']
+        high_series = df['high']
         MA5 = float(close_series.rolling(5).mean().iloc[-1])
         MA10 = float(close_series.rolling(10).mean().iloc[-1])
         MA20 = float(close_series.rolling(20).mean().iloc[-1])
         MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        HHV20 = float(close_series.tail(20).max())
-        HHV60 = float(close_series.tail(60).max())
+        # 修复: HHV用最高价(非收盘价)，且排除当天数据避免"今天创新高则HHV=今天高点"的循环
+        HHV20 = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(close_series.tail(20).max())
+        HHV60 = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(close_series.tail(60).max())
         LLV20 = float(close_series.tail(20).min())
         current_price = float(C[-1])
         
@@ -2176,8 +2178,8 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             else:
                 trend_score -= 5
         
-        # 计算120日高点
-        HHV120 = float(close_series.tail(120).max()) if len(C) >= 120 else HHV20
+        # 计算120日高点（用最高价，排除当天）
+        HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
         
         # 突破前高（不加分，只记录状态用于其他计算）
         breakout_strength = 0.5
@@ -2266,21 +2268,21 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # =========================
         capital_score = 50
         
-        # 量能分析（使用当日量比：当日成交量/5日均量）
+        # 量能分析（使用当日量比：当日成交量/5日均量，均线排除当天）
         vol_ratio = 1.0
-        vol_vs_high_ratio = 1.0  # 当日量能 vs 120日最高量能
+        vol_vs_high_ratio = 1.0  # 当日量能 vs 60日最高量能
         if 'vol' in df.columns and len(df) >= 10:
             vol_today = float(df['vol'].iloc[-1])
-            vol_ma5 = float(df['vol'].tail(5).mean())
-            vol_ma20 = float(df['vol'].tail(20).mean())
-            vol_ma60 = float(df['vol'].tail(60).mean())
-            # 当日量比 = 当日成交量 / 5日均量（真实放量倍数）
+            vol_hist = df['vol'].iloc[:-1]  # 排除当天的历史成交量
+            vol_ma5 = float(vol_hist.tail(5).mean()) if len(vol_hist) >= 5 else vol_today
+            vol_ma20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vol_today
+            # 当日量比 = 当日成交量 / 5日均量（均线不含当天，真实放量倍数）
             vol_ratio = vol_today / vol_ma5 if vol_ma5 > 0 else 1.0
             # 5日/20日量比用于平滑判断
             vol_ma_ratio = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
             
-            # 关键改进：当日量 vs 60日最高量（识别量能萎缩）
-            vol_max_60d = float(df['vol'].tail(60).max())
+            # 关键改进：当日量 vs 60日最高量（识别量能萎缩，max不含当天）
+            vol_max_60d = float(vol_hist.tail(60).max()) if len(vol_hist) >= 5 else vol_today
             vol_vs_high_ratio = vol_today / vol_max_60d if vol_max_60d > 0 else 1.0
             
             # 当日放量越大，加分越多
@@ -3432,10 +3434,12 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
         # K线形态基础数据
         # =========================
         close_series = df['close']
+        high_series = df['high']
         MA20 = float(close_series.rolling(20).mean().iloc[-1])
         MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        HHV20 = float(close_series.tail(20).max())
-        HHV60 = float(close_series.tail(60).max())
+        # 修复: HHV用最高价(非收盘价)，且排除当天数据
+        HHV20 = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(close_series.tail(20).max())
+        HHV60 = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(close_series.tail(60).max())
         LLV20 = float(close_series.tail(20).min())
         current_price = float(C[-1])
 
@@ -3503,11 +3507,12 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
             if ts_code_for_turnover:
                 today_turnover = get_cached_turnover(ts_code_for_turnover)
             
-            # 2. 量比（放大程度，占30%权重）
-            if len(df) >= 20:
-                recent_20d = df.tail(20)
-                recent_5d = recent_20d.tail(5)
-                vol_ratio_for_rank = recent_5d['vol'].mean() / recent_20d['vol'].mean() if recent_20d['vol'].mean() > 0 else 1.0
+            # 2. 量比（放大程度，占30%权重，均线排除当天）
+            if len(df) >= 22:
+                vol_hist = df['vol'].iloc[:-1]  # 排除当天
+                recent_5d = vol_hist.tail(5)
+                recent_20d = vol_hist.tail(20)
+                vol_ratio_for_rank = recent_5d.mean() / recent_20d.mean() if recent_20d.mean() > 0 else 1.0
             else:
                 vol_ratio_for_rank = 1.0
             
@@ -4669,6 +4674,80 @@ def load_history(days=10):
         print(f"加载历史数据失败，返回空数据: {e}")
         return pd.DataFrame(columns=['date', 'rank', 'code', 'name', 'close', 'amount', 'score'])
 
+
+def calc_tech_indicators(df):
+    """计算关键技术指标价格（供AI分析使用）
+    返回 MA5/MA10/MA20/MA60价格、20日/60日最高价、最近5日K线高低点
+    所有价格均基于真实收盘价/最高价计算，排除当天数据计算历史参考点
+    """
+    result = {}
+    if df is None or len(df) < 5 or not isinstance(df, pd.DataFrame):
+        return result
+    
+    try:
+        close = df['close']
+        high = df['high']
+        low = df['low'] if 'low' in df.columns else close
+        current_price = float(close.iloc[-1])
+        result['current_price'] = current_price
+        
+        # 均线价格
+        result['ma5'] = round(float(close.rolling(5).mean().iloc[-1]), 2) if len(close) >= 5 else current_price
+        result['ma10'] = round(float(close.rolling(10).mean().iloc[-1]), 2) if len(close) >= 10 else current_price
+        result['ma20'] = round(float(close.rolling(20).mean().iloc[-1]), 2) if len(close) >= 20 else current_price
+        result['ma60'] = round(float(close.rolling(60).mean().iloc[-1]), 2) if len(close) >= 60 else current_price
+        
+        # 历史高点（排除当天，作为参考压力位）
+        hist_high_20 = float(high.iloc[:-1].tail(20).max()) if len(close) > 1 else float(high.tail(20).max())
+        hist_high_60 = float(high.iloc[:-1].tail(60).max()) if len(close) > 1 else float(high.tail(60).max())
+        result['high_20d'] = round(hist_high_20, 2)
+        result['high_60d'] = round(hist_high_60, 2)
+        
+        # 历史低点
+        hist_low_20 = float(close.iloc[:-1].tail(20).min()) if len(close) > 1 else float(close.tail(20).min())
+        hist_low_60 = float(close.iloc[:-1].tail(60).min()) if len(close) > 1 else float(close.tail(60).min())
+        result['low_20d'] = round(hist_low_20, 2)
+        result['low_60d'] = round(hist_low_60, 2)
+        
+        # 距高点的百分比（正数=距高点空间，负数=已突破）
+        if hist_high_20 > 0:
+            result['dist_to_high20_pct'] = round(((hist_high_20 - current_price) / current_price) * 100, 1)
+        if hist_high_60 > 0:
+            result['dist_to_high60_pct'] = round(((hist_high_60 - current_price) / current_price) * 100, 1)
+        
+        # 距20/60日均线百分比（正数=在均线上方）
+        if result['ma20'] > 0:
+            result['dist_to_ma20_pct'] = round(((current_price - result['ma20']) / result['ma20']) * 100, 1)
+        if result['ma60'] > 0:
+            result['dist_to_ma60_pct'] = round(((current_price - result['ma60']) / result['ma60']) * 100, 1)
+        
+        # 近5日K线概况（最高最低）
+        recent_5 = df.tail(5)
+        if len(recent_5) >= 5:
+            result['recent5_high'] = round(float(recent_5['high'].max()), 2)
+            result['recent5_low'] = round(float(recent_5['low'].min()), 2) if 'low' in df.columns else round(float(recent_5['close'].min()), 2)
+            result['recent5_range_pct'] = round(((result['recent5_high'] - result['recent5_low']) / result['recent5_low']) * 100, 1)
+        
+        # 近10日涨跌幅
+        if len(df) >= 10:
+            price_10d_ago = float(close.iloc[-10])
+            if price_10d_ago > 0:
+                result['chg_10d_pct'] = round(((current_price - price_10d_ago) / price_10d_ago) * 100, 1)
+        
+        # 均线方向（向上/向下）
+        if len(close) >= 25:
+            ma20_prev = float(close.iloc[:-1].tail(20).mean())
+            result['ma20_trend'] = '向上' if result['ma20'] > ma20_prev else '向下'
+        if len(close) >= 65:
+            ma60_prev = float(close.iloc[:-1].tail(60).mean())
+            result['ma60_trend'] = '向上' if result['ma60'] > ma60_prev else '向下'
+        
+    except Exception as e:
+        pass
+    
+    return result
+
+
 def get_tracking_stocks():
     """筛选近20天内出现的、涨幅不大且符合技术形态条件的个股"""
     try:
@@ -4837,6 +4916,9 @@ def get_tracking_stocks():
                         position_score = details.get('位置安全性', 0)
                         heat_score = details.get('热度持续性', 0)
                         fundamental_score = details.get('基本面', 0)
+                        
+                        # 计算关键技术指标（供AI分析使用，防止编造价格）
+                        tech = calc_tech_indicators(df_hist)
                     else:
                         # 数据不足，回退到旧评分
                         last_score = float(row['score']) if str(row['score']).strip() not in ['', 'None'] else 0.0
@@ -4845,6 +4927,7 @@ def get_tracking_stocks():
                         open_score = 0
                         structure_type = "未知"
                         open_recommendation = "数据不足"
+                        tech = {}
                 except Exception as e:
                     # 计算失败，回退到旧评分
                     print(f"整合评分计算失败 {ts_code}: {e}")
@@ -4854,6 +4937,7 @@ def get_tracking_stocks():
                     open_score = 0
                     structure_type = "未知"
                     open_recommendation = "计算失败"
+                    tech = {}
                 
                 # 优先从缓存文件获取今日价格和涨跌幅（已在MA5计算时读取）
                 if cache_close > 0:
@@ -4890,32 +4974,60 @@ def get_tracking_stocks():
                     'capital_score': capital_score,
                     'position_score': position_score,
                     'heat_score': heat_score,
-                    'fundamental_score': fundamental_score
+                    'fundamental_score': fundamental_score,
+                    # 技术指标（供AI分析，防止编造价格）
+                    'ma5': tech.get('ma5', latest_close),
+                    'ma10': tech.get('ma10', latest_close),
+                    'ma20': tech.get('ma20', latest_close),
+                    'ma60': tech.get('ma60', latest_close),
+                    'high20': tech.get('high_20d', latest_close),
+                    'high60': tech.get('high_60d', latest_close),
+                    'dist_high20': tech.get('dist_to_high20_pct', 0),
+                    'dist_high60': tech.get('dist_to_high60_pct', 0),
+                    'ma20_trend': tech.get('ma20_trend', ''),
+                    'ma60_trend': tech.get('ma60_trend', ''),
+                    'chg_10d': tech.get('chg_10d_pct', 0),
                 })
         
         # 按整合评分排序，取前30只
         tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['open_score'])[:30]
         
-        # 生成文本格式
+        # 生成文本格式 - 与主程序Top10完全相同的格式（【技术价位】【参考位】标签已验证有效）
         lines = []
         if tracking_stocks:
             lines.append("=" * 100)
-            lines.append("跟踪分析股票池（今日下跌洗盘、最高涨幅≤20%、5日均线上、5日乖离率<5%）")
+            lines.append("🔥 跟踪分析股票池 - 【价格约束】")
             lines.append("=" * 100)
-            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'整合评分':<8} {'失败概率':<8} {'当日涨跌':<8} {'量比':<6} {'5日涨幅':<10}")
-            lines.append("-" * 100)
-            for stock in tracking_stocks:
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock['open_score']:<8.1f} {stock.get('failure_prob', 0):<8.1f}% {stock.get('pct_chg', 0):<+8.2f}% {stock.get('vol_ratio', 0):<6.2f} {stock['range_5d_pct']:<+10.2f}%")
+            lines.append("【价格约束】本区块所有股票的【技术价位】和【参考位】")
+            lines.append("【价格约束】均为基于真实日线数据的精确计算值，")
+            lines.append("【价格约束】进行技术面分析时必须严格使用下方标注的")
+            lines.append("【价格约束】MA价格、高点价格、现价等数据，")
+            lines.append("【价格约束】绝对禁止编造任何价格数字！")
+            lines.append("【价格约束】注意：若标注现价=338.90元 MA20=360.52元 20日高点=402.60元，")
+            lines.append("【价格约束】则分析中必须写完全相同的数字，不能写成现价=9.74元 MA20=9.58元等编造值！")
             lines.append("=" * 100)
-            
-            # 输出详细维度评分
+
+            # 每只股票使用与Top10完全相同的格式：【第N名】股票名(代码) + 【技术价位】+【参考位】
+            for i, stock in enumerate(tracking_stocks, 1):
+                lines.append(f"【第{i}名】{stock['name']} ({stock['code']})")
+                lines.append(f"  整合评分: {stock['open_score']:.1f} | 失败概率: {stock.get('failure_prob', 0):.1f}%")
+                lines.append(f"  今日涨幅: {stock.get('pct_chg', 0):.2f}% | 现价: {stock['last_close']:.2f}元 | 量比: {stock.get('vol_ratio', 0):.2f}")
+                lines.append(f"  5日涨幅: {stock['range_5d_pct']:+.1f}% | 近10日涨跌: {stock.get('chg_10d', 0):+.1f}%")
+                lines.append(f"  趋势强度: {stock.get('trend_score', 0):.1f} | 资金健康度: {stock.get('capital_score', 0):.1f}")
+                lines.append(f"  位置安全: {stock.get('position_score', 0):.1f} | 热度持续: {stock.get('heat_score', 0):.1f}")
+                lines.append(f"  结构类型: {stock.get('structure_type', '')}")
+                # 【技术价位】和【参考位】- 与主程序Top10完全相同的格式（已验证对AI有效）
+                lines.append(f"  【技术价位】MA5={stock.get('ma5', stock['last_close']):.2f}元 MA10={stock.get('ma10', stock['last_close']):.2f}元 MA20={stock.get('ma20', stock['last_close']):.2f}元({stock.get('ma20_trend','')}) MA60={stock.get('ma60', stock['last_close']):.2f}元({stock.get('ma60_trend','')})")
+                lines.append(f"  【参考位】20日高点={stock.get('high20', stock['last_close']):.2f}元 60日高点={stock.get('high60', stock['last_close']):.2f}元 距20高={stock.get('dist_high20', 0):+.1f}% 距60高={stock.get('dist_high60', 0):+.1f}%")
+                lines.append("")
+            lines.append("=" * 100)
+
+            # 再次强调价格约束（三重提醒）
             lines.append("")
-            lines.append("【详细维度评分】")
-            lines.append("-" * 100)
-            lines.append(f"{'代码':<12} {'名称':<10} {'趋势':<6} {'资金':<6} {'位置':<6} {'热度':<6} {'基本面':<6} {'结构类型':<10}")
-            lines.append("-" * 100)
-            for stock in tracking_stocks:
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock.get('trend_score', 0):<6.1f} {stock.get('capital_score', 0):<6.1f} {stock.get('position_score', 0):<6.1f} {stock.get('heat_score', 0):<6.1f} {stock.get('fundamental_score', 0):<6.1f} {stock.get('structure_type', ''):<10}")
+            lines.append("【价格约束三重提醒】以上每只股票的【技术价位】和【参考位】中的")
+            lines.append("所有价格数字均为基于真实日线数据计算的精确值。")
+            lines.append("进行分析时，请先确认价格数字，再给出技术分析结论。")
+            lines.append("特别提醒：如果股票标注MA20=360.52元，分析中不能写成MA20=9.58元！")
             lines.append("=" * 100)
         
        
@@ -5133,8 +5245,8 @@ def filter_by_top_themes(result_df, top_n=10):
             if day_df.empty:
                 continue
             
-            # 按综合分排序取TOP5
-            day_df = day_df.sort_values('composite_score', ascending=False).head(5)
+            # 按综合分排序取TOP10（扩大窗口，避免半导体类独占导致其他主题被过滤）
+            day_df = day_df.sort_values('composite_score', ascending=False).head(10)
             
             for _, row in day_df.iterrows():
                 theme = row['theme']
@@ -5222,9 +5334,8 @@ def filter_by_top_themes(result_df, top_n=10):
         today_recent_dates = all_trade_dates[-5:] if len(all_trade_dates) >= 5 else all_trade_dates
         
         for theme, stats in theme_stats.items():
-            # ----- 基础存在感（35%）-----
-            # 60天内进入TOP5≥12次得满分（收紧满分门槛）
-            presence_score = min(100, stats['total_top5_count'] * 8.3)
+            # 基础存在感（35%）：60天内进入TOP10的次数
+            presence_score = min(100, stats['total_top5_count'] * 4.2)
             
             # ----- 持续性（15%）-----
             # 核心判断：是否持续活跃，而非"曾经活跃但现在已退潮"
@@ -5262,10 +5373,7 @@ def filter_by_top_themes(result_df, top_n=10):
                 trend_vitality = 25  # 趋势低迷
             
             # 情绪分修正：极低情绪=冷清，贴切修正
-            if latest_sentiment >= 85:
-                trend_vitality -= 10  # 极端高潮，趋势可能见顶
-                print(f"[主题过滤] ⚠ {theme}: 趋势{latest_trend:.0f}但情绪{latest_sentiment:.0f}极端高潮，质量折价")
-            elif latest_sentiment <= 30:
+            if latest_sentiment <= 30:
                 trend_vitality -= 15  # 情绪冰点，无人问津
                 print(f"[主题过滤] ⚠ {theme}: 趋势{latest_trend:.0f}但情绪{latest_sentiment:.0f}低迷，质量折价")
             elif latest_sentiment <= 40:
@@ -5301,12 +5409,6 @@ def filter_by_top_themes(result_df, top_n=10):
                     print(f"[主题过滤] ⚠ {theme}: 最近{len(recent_sentiments)}天{high_sentiment_days}天情绪>70，高潮风险偏高")
                 elif high_sentiment_days >= 2:
                     risk_score = 50
-                
-                # 最新一天情绪分>85 = 极端高潮
-                if recent_sentiments[-1] >= 85:
-                    risk_score = min(risk_score, 15)
-                elif recent_sentiments[-1] >= 75:
-                    risk_score = min(risk_score, 35)
             
             # ----- 脉冲热点检测（10%）-----
             # 如果近10天才首次进入TOP5，之前毫无记录 = 脉冲热点
@@ -5739,6 +5841,9 @@ def run(target_date=None, simple_mode=False):
                 df, ts_code, theme_name, theme_trend_score, theme_sentiment_score
             )
             
+            # 计算关键技术指标价格（供AI分析使用，避免编造价格）
+            tech = calc_tech_indicators(df)
+            
             stock_data = {
                 '代码': ts_code, '名称': name, '现价': today_close,
                 '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
@@ -5752,6 +5857,22 @@ def run(target_date=None, simple_mode=False):
                 '所属状态': str(row.get('所属状态', '')),
                 '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
                 '量能爆发': details.get('量能爆发', 0), '突破强度': float(row.get('突破强度', 0)),
+                # 技术指标（供AI分析，防止编造价格）
+                'MA5价': tech.get('ma5', today_close),
+                'MA10价': tech.get('ma10', today_close),
+                'MA20价': tech.get('ma20', today_close),
+                'MA60价': tech.get('ma60', today_close),
+                '20日高点': tech.get('high_20d', today_close),
+                '60日高点': tech.get('high_60d', today_close),
+                '距20日高点%': tech.get('dist_to_high20_pct', 0),
+                '距60日高点%': tech.get('dist_to_high60_pct', 0),
+                '距MA20%': tech.get('dist_to_ma20_pct', 0),
+                '距MA60%': tech.get('dist_to_ma60_pct', 0),
+                'MA20方向': tech.get('ma20_trend', ''),
+                'MA60方向': tech.get('ma60_trend', ''),
+                '近5日最高': tech.get('recent5_high', today_close),
+                '近5日最低': tech.get('recent5_low', today_close),
+                '近10日涨跌%': tech.get('chg_10d_pct', 0),
             }
             ranked_stocks.append(stock_data)
             
@@ -5785,18 +5906,27 @@ def run(target_date=None, simple_mode=False):
     lines.append("=" * 60)
     lines.append("🔥 整合评分精选标的 (明日重点关注)")
     lines.append("=" * 60)
+    lines.append("【价格约束】本区块所有股票的【技术价位】和【参考位】")
+    lines.append("【价格约束】均为基于真实日线数据的精确计算值，")
+    lines.append("【价格约束】进行技术面分析时必须严格使用下方标注的")
+    lines.append("【价格约束】MA价格、高点价格、现价等数据，")
+    lines.append("【价格约束】绝对禁止编造任何价格数字！")
+    lines.append("=" * 60)
     
     top_stocks = ranked_stocks[:20]
     for i, s in enumerate(top_stocks, 1):
         lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
         lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 现价: {s['现价']:.2f} | 换手率: {s['换手率']:.2f}%")
+        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 现价: {s['现价']:.2f}元 | 换手率: {s['换手率']:.2f}%")
         lines.append(f"  成交额: {s['成交额']:.2f}亿 | 量能爆发: {s['量能爆发']:.2f}")
         lines.append(f"  所属主题: {s['所属主题']} | 状态: {s['所属状态']}")
         lines.append(f"  推荐理由: {s['推荐理由']}")
         lines.append(f"  ├─趋势强度: {s['趋势强度']:.1f} | 资金健康度: {s['资金健康度']:.1f}")
         lines.append(f"  ├─位置安全: {s['位置安全性']:.1f} | 热度持续: {s['热度持续性']:.1f}")
         lines.append(f"  └─基本面: {s['基本面']:.1f}")
+        # 关键技术价格（必须使用这些数据进行技术面分析，禁止编造价格）
+        lines.append(f"  【技术价位】MA5={s.get('MA5价', s['现价']):.2f}元 MA10={s.get('MA10价', s['现价']):.2f}元 MA20={s.get('MA20价', s['现价']):.2f}元({s.get('MA20方向','')}) MA60={s.get('MA60价', s['现价']):.2f}元({s.get('MA60方向','')})")
+        lines.append(f"  【参考位】20日高点={s.get('20日高点', s['现价']):.2f}元 60日高点={s.get('60日高点', s['现价']):.2f}元 距20高={s.get('距20日高点%', 0):+.1f}% 距60高={s.get('距60日高点%', 0):+.1f}% 近10日涨跌={s.get('近10日涨跌%', 0):+.1f}%")
         if s.get('热榜最佳排名') and 0 < s['热榜最佳排名'] <= 100:
             lines.append(f"  热榜: Top{s['热榜最佳排名']}({s['热榜上榜次数']}次)")
         lines.append("")
@@ -6095,11 +6225,15 @@ def run(target_date=None, simple_mode=False):
                 * **强趋势**：趋势分高且持续上升，情绪活跃，适合顺势操作
                 * **震荡**：趋势不明显，方向待确认，观望为主
                 * **弱势**：趋势下行，回避为主
-     - 技术面分析
-     - 未来上涨空间预估（请你智能搜索该股票今天最新数据，并做深度估值分析，给出合理的目标价位，确保符合该股票数据，不给出错误的目标价位）
+     - 技术面分析：
+       【价格使用强制约束】必须严格使用上方"【技术价位】"和"【参考位】"中标注的EXACT价格数字进行分析！
+       【价格验证】在分析前，请先在心中确认：该股票的"现价"、"MA20"、"60日高点"等数字与上方标注的完全一致。
+       【禁止项】绝对禁止编造任何价格数字！禁止将MA20=360.52写成MA20=9.58！禁止将20日高点=402.60写成10.23！禁止将现价=338.90写成9.74！
+       【允许项】可以在真实价格基础上进行趋势分析、位置判断。目标价可基于真实价位合理外推（如：突破MA20后看20日高点，突破20日高后看60日高），但目标价数字必须与提供的高点价格直接关联。
+     - 未来上涨空间预估：基于【技术价位】和【参考位】中的真实价格数据进行测算。如果显示"MA20=360.52元 20日高点=402.60元"，则分析中必须使用这些确切数字，不能写"9.58/10.23"之类的编造值。目标价必须基于实际价位合理外推，且单位必须与现价一致。
      - 给出产业资金定价诊断（ICPM）结果- 生命周期/主线强度/资金状态/决策建议：
-     - 买点建议（具体价位或技术形态）
-     - 止损点建议（具体价位或技术形态）
+     - 买点建议：必须基于"【技术价位】"中提供的真实MA5/MA10/MA20价格给出具体价位，禁止编造价格！如果标注MA20=360.52元，则买点应在360.52元附近或其上下合理区间。
+     - 止损点建议：必须基于"【技术价位】"中提供的真实MA价格或支撑位，禁止编造价格！
      - 风险提示：如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，突出建议勿追高！
      - 如遇个股重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
     其它要求：
@@ -6111,13 +6245,17 @@ def run(target_date=None, simple_mode=False):
     - 有重大财务风险（如连续亏损、审计异常等）
     - 有其他重大利空消息
     B对于无重大风险的前30名个股，保持原有的综合评分排序，不要重新筛选和排序
+    C【最高优先级】所有技术面分析中的价格（MA均线价格、目标价、买点、止损位、支撑位、阻力位、现价、高点等）必须严格使用上方"【技术价位】"和"【参考位】"中提供的EXACT真实数据，禁止凭空编造任何价格数字或百分比！此项约束优先级高于其他所有分析要求。
+    D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 4、跟踪分析个股：从近20日跟踪分析股票池中，精选5个符合技术形态的个股进行深度分析，重点关注：
     - 显示整合评分和失败概率
     - 分析所属主题和该主题的状态，从网络搜索内容分析个股近期表现的主题驱动因素（尤其是多主题共振）
-    - 技术面分析:A洗盘到30日均线或60日均线，且该均线是向上的趋势，B小阳线温和上涨
-    - 未来上涨空间预估（AI估值分析）
+    - 技术面分析:A洗盘到30日均线或60日均线（必须严格使用上方跟踪股区块标注的"【技术价位】"中的真实MA20/MA60价格！如果标注MA20=360.52元，则分析中必须写MA20=360.52元，不能写成其他数字！），且该均线是向上的趋势，B小阳线温和上涨
+    - 未来上涨空间预估（必须严格使用跟踪股区块"【技术价位】"和"【参考位】"中的真实价格数据测算目标位！如果标注20日高点=402.60元，则目标价必须基于402.60元这个数字进行合理外推，不能写成10.23元！）
     - 风险提示（如果有）
     - 临近60日新高或刚刚突破创新高，在前几天震荡调整后放量上涨但没涨停
+    【跟踪股最高约束】所有价格分析必须严格使用上方"近20日跟踪分析股票池"区块中标注的"【技术价位】"和"【参考位】"中的EXACT真实数据，禁止编造任何价格数字！若标注现价=338.90元，则分析中必须写338.90元，不能写成9.74元！此项约束优先级最高。
+    【跟踪股价格验证】分析完成后，请核对：每只股票的现价、MA20、MA60、高点价格是否与上方跟踪股区块"【技术价位】"和"【参考位】"中标注的完全一致，如有不符则分析错误，请立即修正。
     
 
 格式要求：

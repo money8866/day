@@ -46,8 +46,7 @@ try:
     TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 
     if TUSHARE_TOKEN and TUSHARE_TOKEN.strip() and not TUSHARE_TOKEN.startswith("YOUR_"):
-        ts.set_token(TUSHARE_TOKEN)
-        pro = ts.pro_api()
+        pro = ts.pro_api(TUSHARE_TOKEN)
         print(f"[初始化] Tushare Pro API 就绪 (token {len(TUSHARE_TOKEN)}位)")
     else:
         print("[错误] TUSHARE_TOKEN 未配置，请检查 d:/mystock/config/.env")
