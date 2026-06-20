@@ -21,6 +21,7 @@ BASE_DIR   = r'D:\mystock'
 CACHE_DIR  = os.path.join(BASE_DIR, 'cache_daily')
 OUTPUT_DIR = os.path.join(BASE_DIR, 'solo', 'report_daily')
 THEME_DIR  = os.path.join(BASE_DIR, 'report_daily')
+THEME_JSON = os.path.join(BASE_DIR, 'theme.json')
 
 # ========== Tushare初始化 ==========
 load_dotenv(os.path.join(BASE_DIR, 'config', '.env'))
@@ -28,20 +29,193 @@ TUSHARE_TOKEN = os.getenv('TUSHARE_TOKEN')
 ts.set_token(TUSHARE_TOKEN)
 pro = ts.pro_api()
 
-# ========== 股票名称映射 ==========
-def load_stock_name_map():
+# ========== 股票名称+行业映射 ==========
+def load_stock_info_map():
+    """加载股票名称+行业映射"""
     try:
-        df = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name')
-        return {row['ts_code']: row['name'] for _, row in df.iterrows()}
+        df = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name,industry')
+        info_map = {}
+        for _, row in df.iterrows():
+            info_map[row['ts_code']] = {
+                'name': row['name'],
+                'industry': row.get('industry', '')
+            }
+        print(f'  📋 股票信息映射：{len(info_map)}只')
+        return info_map
     except Exception as e:
-        print(f'  ⚠️ 加载股票名称失败：{e}')
+        print(f'  ⚠️ 加载股票信息失败：{e}')
         return {}
 
-STOCK_NAME_MAP = load_stock_name_map()
-print(f'  📋 股票名称映射：{len(STOCK_NAME_MAP)}只')
+STOCK_INFO_MAP = load_stock_info_map()
 
-# ========== 动态主题强度 ==========
-def load_theme_strength():
+# ========== 主题定义加载 ==========
+def load_theme_definitions():
+    """从theme.json加载主题定义"""
+    if not os.path.exists(THEME_JSON):
+        print(f'  ⚠️ 未找到{THEME_JSON}')
+        return {}
+    try:
+        with open(THEME_JSON, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        themes = data.get('HOT_THEMES', {})
+        print(f'  📊 加载主题定义：{len(themes)}个')
+        return themes
+    except Exception as e:
+        print(f'  ⚠️ 加载主题定义失败：{e}')
+        return {}
+
+THEME_DEFINITIONS = load_theme_definitions()
+
+# ========== 主题评分加载 ==========
+def load_theme_scores():
+    """从theme_evolution_*.json加载主题评分"""
+    pattern = os.path.join(THEME_DIR, 'theme_evolution_*.json')
+    files = glob.glob(pattern)
+    if not files:
+        print('  ⚠️ 未找到theme_evolution文件')
+        return {}
+    
+    latest_file = max(files, key=os.path.getmtime)
+    print(f'  📊 加载主题评分：{os.path.basename(latest_file)}')
+    
+    with open(latest_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    theme_score_map = {}  # theme_name → score
+    for theme in data.get('theme_table', []):
+        theme_score_map[theme['theme']] = theme.get('score', 50)
+    
+    print(f'  ✅ 加载{len(theme_score_map)}个主题评分')
+    return theme_score_map
+
+THEME_SCORE_MAP = load_theme_scores()
+
+# ========== SQLite主题缓存 ==========
+THEME_CACHE_DB = os.path.join(BASE_DIR, 'solo', 'bak0615', 'cache_backbone_tushare', 'theme_portfolio.db')
+
+def load_theme_portfolio_cache():
+    """从SQLite缓存加载主题-股票映射"""
+    import sqlite3
+    if not os.path.exists(THEME_CACHE_DB):
+        print(f'  ⚠️ 未找到主题缓存：{THEME_CACHE_DB}')
+        return {}, {}
+    
+    try:
+        conn = sqlite3.connect(THEME_CACHE_DB)
+        cursor = conn.cursor()
+        
+        # 加载themes表（主题定义）
+        cursor.execute('SELECT theme_name, industry, concept FROM themes')
+        themes = {}
+        for row in cursor.fetchall():
+            theme_name, industry, concept = row
+            themes[theme_name] = {
+                'industry': industry.split(',') if industry else [],
+                'concept': concept.split(',') if concept else []
+            }
+        
+        # 加载portfolio表（股票-主题映射）
+        cursor.execute('SELECT ts_code, stock_name, theme_name, role FROM portfolio')
+        stock_theme_map = {}  # ts_code → (theme_name, role)
+        for row in cursor.fetchall():
+            ts_code, stock_name, theme_name, role = row
+            if ts_code not in stock_theme_map:
+                stock_theme_map[ts_code] = []
+            stock_theme_map[ts_code].append((theme_name, role))
+        
+        conn.close()
+        print(f'  ✅ 加载主题缓存：{len(themes)}个主题，{len(stock_theme_map)}只股票')
+        return themes, stock_theme_map
+    except Exception as e:
+        print(f'  ⚠️ 加载主题缓存失败：{e}')
+        return {}, {}
+
+THEMES_CACHE, STOCK_THEME_CACHE = load_theme_portfolio_cache()
+
+# ========== 个股主题匹配 ==========
+def match_stock_theme(ts_code, stock_name, stock_industry):
+    """从SQLite缓存匹配个股所属主题"""
+    if not STOCK_THEME_CACHE:
+        return None, 0.0
+    
+    # 直接从缓存读取
+    if ts_code in STOCK_THEME_CACHE:
+        # 选择评分最高的主题
+        best_theme = None
+        best_bonus = 1.0
+        for theme_name, role in STOCK_THEME_CACHE[ts_code]:
+            # 获取主题评分
+            theme_score = THEME_SCORE_MAP.get(theme_name, 50)
+            # 根据角色和评分计算加成
+            if role == 'core' and theme_score >= 70:
+                bonus = 1.25  # S级核心股
+            elif role == 'core' and theme_score >= 50:
+                bonus = 1.20  # A级核心股
+            elif role == 'related' and theme_score >= 70:
+                bonus = 1.15  # S级相关股
+            elif role == 'related':
+                bonus = 1.10  # 普通相关股
+            else:
+                bonus = 1.05
+            
+            if bonus > best_bonus:
+                best_bonus = bonus
+                best_theme = theme_name
+        
+        return best_theme, best_bonus
+    
+    # 未匹配到，尝试简单匹配（兜底）
+    best_theme = None
+    best_score = 0.0
+    
+    for theme_name, theme_data in THEME_DEFINITIONS.items():
+        # 检查行业匹配（双向子串匹配）
+        industry_list = theme_data.get('industry', [])
+        industry_match = False
+        if stock_industry and industry_list:
+            for ind in industry_list:
+                # 双向子串匹配：ind在stock_industry中，或者stock_industry在ind中
+                if ind in stock_industry or stock_industry in ind:
+                    industry_match = True
+                    break
+                # 也检查去掉Ⅱ后缀的情况
+                stock_ind_stripped = stock_industry.replace('Ⅱ', '').strip()
+                ind_stripped = ind.replace('Ⅱ', '').strip()
+                if ind_stripped in stock_ind_stripped or stock_ind_stripped in ind_stripped:
+                    industry_match = True
+                    break
+        
+        # 检查关键词匹配（名称中是否包含关键词）
+        keyword_list = theme_data.get('keywords', [])
+        keyword_match = False
+        if stock_name:
+            for kw in keyword_list:
+                if kw in stock_name:
+                    keyword_match = True
+                    break
+        
+        # 如果行业或关键词匹配，计算主题评分
+        if industry_match or keyword_match:
+            theme_score = THEME_SCORE_MAP.get(theme_name, 50)
+            if theme_score > best_score:
+                best_theme = theme_name
+                best_score = theme_score
+    
+    return best_theme, best_score
+
+# ========== 主题加成计算 ==========
+def calc_theme_bonus(theme_score):
+    """根据主题评分计算加成系数"""
+    if theme_score >= 80:
+        return 1.20   # S级主线 +20%
+    elif theme_score >= 65:
+        return 1.10   # A级强势 +10%
+    elif theme_score >= 50:
+        return 1.00   # B级中性
+    elif theme_score >= 35:
+        return 0.85   # C级弱势 -15%
+    else:
+        return 0.70   # D级退潮 -30%
     """从report_daily/theme_evolution_*.json加载"""
     pattern = os.path.join(THEME_DIR, 'theme_evolution_*.json')
     files = glob.glob(pattern)
@@ -72,12 +246,7 @@ def load_theme_strength():
     print(f'  ✅ 加载{len(stock_score)}只主题龙头股评分')
     return stock_score
 
-THEME_STOCK_SCORE = load_theme_strength()
 
-def get_theme_bonus(stock_name):
-    """根据股票名称获取主题加成"""
-    if not stock_name or not THEME_STOCK_SCORE:
-        return 1.0
     
     score = THEME_STOCK_SCORE.get(stock_name, 0)
     if score == 0:
@@ -302,21 +471,15 @@ def score_one_stock_v49(csv_path):
 
         # ========== 主题加成 ==========
         code = df['ts_code'].iloc[0] if 'ts_code' in df.columns else os.path.basename(csv_path).replace('.csv', '')
+        stock_info = STOCK_INFO_MAP.get(code, {})
+        stock_name = stock_info.get('name', '')
+        stock_industry = stock_info.get('industry', '')
         
-        # 从stock_basic获取名称（如果有缓存）
-        stock_name = ''
-        try:
-            import tushare as ts
-            ts.set_token('bdd5007be4e91aadf516c81fa4d12b14b0bbee164a302a1cef33859d')
-            pro = ts.pro_api(use_pool=True)
-            info = pro.stock_basic(ts_code=code, fields='name')
-            if not info.empty:
-                stock_name = info.iloc[0]['name']
-        except:
-            # 静默失败，不加名称
-            pass
+        # 匹配个股所属主题
+        theme_name, theme_score = match_stock_theme(code, stock_name, stock_industry)
         
-        bonus = get_theme_bonus(stock_name)
+        # 计算主题加成
+        bonus = calc_theme_bonus(theme_score) if theme_name else 1.0
         total = min(100, raw * bonus)
 
         # ========== 信号判定（收紧阈值）==========
