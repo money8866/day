@@ -178,7 +178,8 @@ def extract_bull_data(row: pd.Series,
                        daily_basic: pd.DataFrame,
                        moneyflow: pd.DataFrame,
                        industry_growth_map: Dict,
-                       config: Dict = None) -> Optional[BullStockData]:
+                       config: Dict = None,
+                       report_rc_map: Dict = None) -> Optional[BullStockData]:
     """
     从原始数据提取 BullScore 所需数据
 
@@ -190,9 +191,7 @@ def extract_bull_data(row: pd.Series,
         moneyflow: 大单资金流
         industry_growth_map: 行业增速映射
         config: 配置
-
-    Returns:
-        BullStockData or None (若无财务数据)
+        report_rc_map: 卖方盈利预测一致预期 (ts_code -> dict)
     """
     ts_code = row['ts_code']
     name = row['name']
@@ -455,6 +454,33 @@ def extract_bull_data(row: pd.Series,
     # ── 产业链标签 ──
     chain_tag = identify_chain_with_cache(ts_code, name, industry, config or {})
 
+    # ── 卖方盈利预测一致性 (来自 report_rc) ──
+    analyst_count = 0
+    avg_eps_current_year = 0.0
+    avg_eps_next_year = 0.0
+    avg_np_current_year = 0.0
+    avg_np_next_year = 0.0
+    np_growth_current = 0.0
+    eps_growth_next = 0.0
+    buy_ratio = 0.0
+    rating_sentiment = 0.0
+    analyst_revision_30d = 0.0
+    latest_report_date = ""
+
+    if report_rc_map and ts_code in report_rc_map:
+        rc = report_rc_map[ts_code]
+        analyst_count = int(rc.get('analyst_count', 0))
+        avg_eps_current_year = float(rc.get('avg_eps_current_year', 0.0))
+        avg_eps_next_year = float(rc.get('avg_eps_next_year', 0.0))
+        avg_np_current_year = float(rc.get('avg_np_current_year', 0.0))
+        avg_np_next_year = float(rc.get('avg_np_next_year', 0.0))
+        np_growth_current = float(rc.get('np_growth_current', 0.0))
+        eps_growth_next = float(rc.get('eps_growth_next', 0.0))
+        buy_ratio = float(rc.get('buy_ratio', 0.0))
+        rating_sentiment = float(rc.get('rating_sentiment', 0.0))
+        analyst_revision_30d = float(rc.get('analyst_revision_30d', 0.0))
+        latest_report_date = str(rc.get('latest_report_date', ''))
+
     # 包装为 BullStockData
     data = BullStockData(
         ts_code=ts_code,
@@ -492,6 +518,17 @@ def extract_bull_data(row: pd.Series,
         pct_chg=pct_chg,
         industry_growth=industry_growth,
         capacity_utilization=capacity_utilization,
+        analyst_count=analyst_count,
+        avg_eps_current_year=avg_eps_current_year,
+        avg_eps_next_year=avg_eps_next_year,
+        avg_np_current_year=avg_np_current_year,
+        avg_np_next_year=avg_np_next_year,
+        np_growth_current=np_growth_current,
+        eps_growth_next=eps_growth_next,
+        buy_ratio=buy_ratio,
+        rating_sentiment=rating_sentiment,
+        analyst_revision_30d=analyst_revision_30d,
+        latest_report_date=latest_report_date,
     )
     return data
 
@@ -525,6 +562,14 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
     financial_batch = fetcher.get_stock_financial_batch(ts_code_list, start_year=start_year, max_workers=16)
     logger.info(f"财务数据拉取完成, 共 {len(financial_batch)} 只, 用时 {time.time()-fetch_start:.0f}秒")
 
+    # ============ 阶段1b: 拉取卖方盈利预测一致预期 ============
+    logger.info("阶段1b: 拉取卖方盈利预测 (report_rc，按ts_code逐只拉全量历史)...")
+    rc_start = time.time()
+    # 传入股票列表，让 fetcher 只拉这些股票的研报（有缓存则跳过）
+    stock_codes = stocks['ts_code'].tolist()
+    report_rc_map = fetcher.get_report_rc_batch(stock_list=stock_codes)
+    logger.info(f"卖方预期数据: {len(report_rc_map)} 只股票有研报覆盖, 用时 {time.time()-rc_start:.0f}秒")
+
     # ============ 阶段2: 提取因子数据 ============
     logger.info("阶段2: 提取因子数据...")
     check_start = time.time()
@@ -540,7 +585,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
             skip_count += 1
             continue
 
-        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, industry_growth_map, config)
+        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, industry_growth_map, config, report_rc_map)
         if bull_data is not None:
             all_bull_data.append(bull_data)
         else:

@@ -9,6 +9,8 @@
 - 禁止使用申万行业涨跌判断景气度
 - 必须使用真实产业链关系（终端需求 → 中游 → 上游）
 """
+import os
+import json
 from typing import Dict, List, Set
 import loguru
 
@@ -1096,6 +1098,316 @@ DERIVED_METRICS = {
     "fixed_asset_turnover": "revenue / fix_assets if fix_assets > 0",
     "contract_liability_yoy": "需要对比两年数据计算",
 }
+
+
+# ============================================================
+# 基于 theme.json 的产业链识别（增强版）
+# ============================================================
+
+# theme.json 路径（从上级目录加载）
+THEME_JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "theme.json")
+
+# 全局缓存
+_theme_json_cache = None
+
+
+def load_theme_json() -> Dict:
+    """加载 theme.json 配置"""
+    global _theme_json_cache
+    if _theme_json_cache is not None:
+        return _theme_json_cache
+    
+    if not os.path.exists(THEME_JSON_PATH):
+        logger.warning(f"未找到 theme.json: {THEME_JSON_PATH}")
+        return {}
+    
+    try:
+        with open(THEME_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _theme_json_cache = data.get("HOT_THEMES", {})
+        logger.info(f"加载 theme.json: {len(_theme_json_cache)} 个主题")
+        return _theme_json_cache
+    except Exception as e:
+        logger.warning(f"加载 theme.json 失败: {e}")
+        return {}
+
+
+def _in_industry_list(industry_name: str, industry_list: List[str]) -> bool:
+    """检查行业名是否在行业列表中（支持部分匹配）"""
+    if not industry_name or not industry_list:
+        return False
+    for ind in industry_list:
+        if ind in industry_name or industry_name in ind:
+            return True
+    return False
+
+
+def _match_keyword(search_text: str, keywords: List[str]) -> bool:
+    """检查搜索文本中是否包含关键词"""
+    if not search_text or not keywords:
+        return False
+    search_text = search_text.lower()
+    for kw in keywords:
+        if kw.lower() in search_text:
+            return True
+    return False
+
+
+def _is_core_company(stock_name: str, core_companies: List[str], leader_companies: List[str]) -> bool:
+    """检查是否为核心公司或龙头公司"""
+    if not stock_name:
+        return False
+    if core_companies and any(c in stock_name for c in core_companies):
+        return True
+    if leader_companies and any(c in stock_name for c in leader_companies):
+        return True
+    return False
+
+
+def _should_exclude(search_text: str, exclude_keywords: List[str], core_companies: List[str], leader_companies: List[str]) -> bool:
+    """检查是否应排除（核心公司不排除）"""
+    if not search_text or not exclude_keywords:
+        return False
+    # 核心公司不排除
+    stock_name = search_text.split()[0] if search_text else ""
+    if _is_core_company(stock_name, core_companies, leader_companies):
+        return False
+    search_text = search_text.lower()
+    for ek in exclude_keywords:
+        if ek.lower() in search_text:
+            return True
+    return False
+
+
+def identify_stock_chain_v3(stock_name: str, industry: str,
+                            ths_concepts: List[str] = None) -> str:
+    """
+    基于 theme.json 的产业链识别（增强版）
+    
+    匹配优先级：
+    1. 核心公司/龙头公司白名单（core_companies/leader_companies）
+    2. 行业匹配 + 概念/关键词验证
+    3. 纯概念匹配（当主题无行业配置时）
+    4. 纯关键词匹配
+    5. 兜底：旧版 identify_stock_chain_v2
+    """
+    hot_themes = load_theme_json()
+    if not hot_themes:
+        return identify_stock_chain_v2(stock_name, industry, ths_concepts)
+    
+    ths_concepts = ths_concepts or []
+    search_text = f"{stock_name} {industry} {' '.join(ths_concepts)}"
+    
+    best_score = 0.0
+    best_chain = ""
+    
+    for theme_name, cfg in hot_themes.items():
+        industry_list = cfg.get("industry", [])
+        concept_list = cfg.get("concept", [])
+        keyword_list = cfg.get("keywords", [])
+        exclude_keywords = cfg.get("exclude_keywords", [])
+        core_companies = cfg.get("core_companies", [])
+        leader_companies = cfg.get("leader_companies", [])
+        
+        # 跳过空配置
+        if not industry_list and not concept_list and not keyword_list:
+            continue
+        
+        # 核心/龙头公司：直接命中
+        if _is_core_company(stock_name, core_companies, leader_companies):
+            chain_name = THEME_TO_CHAIN.get(theme_name)
+            if chain_name:
+                return chain_name
+            continue
+        
+        # 排除检查
+        if _should_exclude(search_text, exclude_keywords, core_companies, leader_companies):
+            continue
+        
+        score = 0
+        has_industry_match = False
+        has_concept_match = False
+        has_keyword_match = False
+        
+        # 行业匹配（权重最高）
+        if industry_list:
+            if industry and _in_industry_list(industry, industry_list):
+                score += 50
+                has_industry_match = True
+        
+        # 概念匹配
+        if concept_list and ths_concepts:
+            match_count = sum(1 for conc in ths_concepts if conc in concept_list)
+            if match_count > 0:
+                score += 30 * match_count
+                has_concept_match = True
+        
+        # 关键词匹配
+        if keyword_list:
+            match_count = sum(1 for kw in keyword_list if kw.lower() in search_text.lower())
+            if match_count > 0:
+                score += 10 * min(match_count, 3)
+                has_keyword_match = True
+        
+        # 评分规则优化：
+        # - 行业+概念 → 80+ 分，高置信度
+        # - 行业+关键词 → 60+ 分，中等置信度
+        # - 纯概念匹配（主题无行业配置）→ 70 分
+        # - 纯关键词匹配（主题无行业配置）→ 50 分
+        # - 概念+关键词 → 60 分
+        # - 单概念匹配（主题有行业配置但股票无行业匹配）→ 40 分（放宽阈值）
+        if not industry_list:
+            if has_concept_match:
+                score = max(score, 70)
+            elif has_keyword_match:
+                score = max(score, 50)
+        
+        if has_concept_match and has_keyword_match and not has_industry_match:
+            score = max(score, 60)
+        
+        # 放宽纯概念匹配阈值：当主题有概念配置且股票匹配到概念时，最低给40分
+        if has_concept_match and not has_industry_match and score > 0:
+            score = max(score, 40)
+        
+        if score >= 40 and score > best_score:
+            best_score = score
+            best_chain = THEME_TO_CHAIN.get(theme_name)
+    
+    # 返回最高分的链
+    if best_chain:
+        return best_chain
+    
+    # 兜底：使用旧版识别
+    return identify_stock_chain_v2(stock_name, industry, ths_concepts)
+
+
+# theme.json 主题名 → chain_mapping 链名 映射
+THEME_TO_CHAIN = {
+    # AI算力相关
+    "光通信": "AI算力链",
+    "AI服务器与算力基建": "AI算力链",
+    "数据中心瓶颈硬件链": "AI算力链",
+    "AI应用": "AI算力链",
+    "AI文化娱乐": "AI算力链",
+    "AI模型与AI Agent": "AI算力链",
+    "AI终端": "AI算力链",
+    "AI芯片": "AI算力链",
+    "AI能源链": "AI算力链",
+    "物理AI": "AI算力链",
+    "智能驾驶": "AI算力链",
+    "金融科技": "AI算力链",
+    "数据要素": "AI算力链",
+    
+    # 半导体相关
+    "半导体设备": "半导体设备链",
+    "半导体材料": "半导体材料链",
+    "半导体设计": "AI算力链",
+    "半导体制造": "半导体设备链",
+    "光刻机链": "半导体设备链",
+    "先进封装": "半导体设备链",
+    "先进封装材料": "半导体材料链",
+    "存储芯片": "AI算力链",
+    "IC设计": "AI算力链",
+    "功率半导体": "AI算力链",
+    "半导体封测": "半导体设备链",
+    "半导体EDA/IP": "半导体设备链",
+    "被动元件": "消费电子链",
+    
+    # 消费电子相关
+    "PCB": "PCB链",
+    "PCB电子电路": "PCB链",
+    "消费电子": "消费电子链",
+    "光学光电子": "消费电子链",
+    "苹果产业链": "消费电子链",
+    "华为产业链": "消费电子链",
+    "小米产业链": "消费电子链",
+    "智能穿戴": "消费电子链",
+    "虚拟现实": "消费电子链",
+    "情绪消费成长链": "消费电子链",
+    
+    # 新能源相关
+    "新能源车": "新能源链",
+    "新能源汽车链": "新能源链",
+    "电池": "新能源链",
+    "光伏": "光伏链",
+    "风电": "新能源链",
+    "储能": "新能源链",
+    "新型储能": "新能源链",
+    "固态电池": "新能源链",
+    "电力链": "新能源链",
+    "电力设备出海": "新能源链",
+    "电网数字化": "新能源链",
+    "氢能": "新能源链",
+    "核聚变": "新能源链",
+    
+    # 机器人相关
+    "机器人": "机器人链",
+    "人形机器人": "机器人链",
+    "工业自动化": "机器人链",
+    "工业母机": "机器人链",
+    
+    # 军工相关
+    "军工": "军工链",
+    "航空航天": "军工链",
+    "低空经济": "低空经济链",
+    "商业航天": "军工链",
+    
+    # 医药相关
+    "医药": "医药链",
+    "创新医药主线": "医药链",
+    "创新药": "医药链",
+    "医疗器械": "医药链",
+    "CXO": "医药链",
+    "合成生物": "医药链",
+    
+    # 周期相关
+    "煤炭链": "新能源链",
+    "工业金属": "新能源链",
+    "贵金属": "新能源链",
+    "能源金属": "新能源链",
+    "小金属": "半导体材料链",
+    "硫磺磷化工链": "半导体材料链",
+    "氟化工制冷剂": "半导体材料链",
+    "培育钻石": "半导体材料链",
+    
+    # 必选消费
+    "必选消费红利链": "消费电子链",
+    
+    # 金融
+    "券商": "AI算力链",
+    "保险": "AI算力链",
+    "银行": "AI算力链",
+    
+    # 信创
+    "信创软件": "AI算力链",
+    
+    # 脑机接口
+    "脑机接口": "AI算力链",
+}
+
+
+def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
+                              config: dict = None) -> str:
+    """
+    带缓存的产业链识别（推荐使用）—— 使用 theme.json 增强版
+    
+    Args:
+        ts_code: 股票代码
+        stock_name: 股票名称
+        industry: 东财行业
+        config: 配置字典
+    
+    Returns:
+        产业链标签
+    """
+    import pandas as pd
+    if pd.isna(industry) or industry == 'nan':
+        industry = ''
+    if pd.isna(stock_name) or stock_name == 'nan':
+        stock_name = ''
+    
+    ths_concepts = get_stock_ths_concepts(ts_code, config)
+    return identify_stock_chain_v3(stock_name, industry, ths_concepts)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,18 @@ class StockFactorData:
     fixed_asset_turnover_change: float = 0.0  # 固定资产周转率变化
     # 产业链标签
     chain_tag: str = ""  # 所属产业链标签
+    # 卖方盈利预测一致性指标（新增，来自 report_rc）
+    analyst_count: int = 0          # 覆盖机构数
+    avg_eps_current_year: float = 0.0  # 当年一致预期 EPS
+    avg_eps_next_year: float = 0.0     # 明年一致预期 EPS
+    avg_np_current_year: float = 0.0   # 当年一致预期净利润(亿元)
+    avg_np_next_year: float = 0.0      # 明年一致预期净利润(亿元)
+    np_growth_current: float = 0.0     # 明年 vs 当年 净利润增速预测
+    eps_growth_next: float = 0.0       # 明年 vs 当年 EPS 增速预测
+    buy_ratio: float = 0.0             # 买入+增持+推荐 占比 (0~1)
+    rating_sentiment: float = 0.0      # 评级情绪分 (0~3)
+    analyst_revision_30d: float = 0.0  # 近30天上调幅度
+    latest_report_date: str = ""       # 最新研报日期
     # 北向资金
     north_bound_ratio_change: float = 0.0  # 北向持股比例变化
     north_bound_daily_net: float = 0.0  # 北向单日净买入
@@ -192,12 +204,12 @@ class FactorChecker:
 
     def check_performance(self, data: StockFactorData) -> FactorResult:
         """
-        检查业绩兑现因子
+        检查业绩兑现因子（已增强：加入卖方盈利预测一致性指标）
 
         规则(满足任一):
-        ① 最新单季度净利润环比 > 50%
-        ② 最新单季度净利润同比 > 100%
-        ③ 业绩预告为扭亏/预盈
+        ① 最新单季度净利润同比 > 30%
+        ② 业绩预告为扭亏/预盈/预增
+        ③ 卖方一致预期 明年净利润增速 > 20% 且 覆盖机构数 >= 3
         """
         details = {}
         reasons = []
@@ -205,7 +217,7 @@ class FactorChecker:
         passed = False
         perf_type = ""
 
-        # ① 季度净利润同比 (同季度对比)
+        # ---------- ① 历史: 季度净利润同比 ----------
         if data.quarterly_net_profit_prev > 0:
             qoq_growth = (data.quarterly_net_profit - data.quarterly_net_profit_prev) / data.quarterly_net_profit_prev
         else:
@@ -214,7 +226,7 @@ class FactorChecker:
         qoq_pass = qoq_growth > qoq_threshold
         details['qoq_growth'] = qoq_growth
 
-        # ② 业绩预告
+        # ---------- ② 业绩预告 ----------
         forecast_types = self.perf_config.get('forecast_types', ['预盈', '扭亏', '预增', '略增'])
         ft = data.forecast_type or ''
         forecast_min_change = self.perf_config.get('forecast_min_change', 15.0)
@@ -231,26 +243,78 @@ class FactorChecker:
         details['forecast_type'] = ft
         details['forecast_profit_change'] = data.forecast_profit_change
 
+        # ---------- ③ 新增：卖方盈利预测（一致预期） ----------
+        # 子因子 3a: 一致预期净利润增速
+        analyst_pass_growth = False
+        if data.analyst_count >= 3 and data.np_growth_current > 0.20:
+            analyst_pass_growth = True
+
+        # 子因子 3b: 情绪 (买入+增持占比 且 rating_sentiment > 2)
+        analyst_pass_sentiment = False
+        if data.analyst_count >= 3 and data.buy_ratio >= 0.60 and data.rating_sentiment >= 2.0:
+            analyst_pass_sentiment = True
+
+        # 子因子 3c: 近30天上调
+        analyst_pass_revision = False
+        if data.analyst_count >= 3 and data.analyst_revision_30d > 0.05:
+            analyst_pass_revision = True
+
+        # 3个子因子满足至少1个算通过（需要机构覆盖 >= 3）
+        analyst_pass = data.analyst_count >= 3 and (analyst_pass_growth or analyst_pass_sentiment or analyst_pass_revision)
+
+        details['analyst_count'] = data.analyst_count
+        details['np_growth_current'] = data.np_growth_current
+        details['eps_growth_next'] = data.eps_growth_next
+        details['buy_ratio'] = data.buy_ratio
+        details['rating_sentiment'] = data.rating_sentiment
+        details['analyst_revision_30d'] = data.analyst_revision_30d
+
+        # ---------- 最终通过判断 ----------
         if qoq_pass:
             passed = True
             perf_type = f"净利润同比+{qoq_growth*100:.0f}%"
         elif forecast_pass:
             passed = True
             perf_type = f"预告{ft}(+{data.forecast_profit_change:.0f}%)"
+        elif analyst_pass:
+            passed = True
+            parts = []
+            if analyst_pass_growth:
+                parts.append(f"一致预期+{data.np_growth_current*100:.0f}%")
+            if analyst_pass_sentiment:
+                parts.append(f"情绪{data.rating_sentiment:.1f}/买入占{data.buy_ratio*100:.0f}%")
+            if analyst_pass_revision:
+                parts.append(f"近30d上调+{data.analyst_revision_30d*100:.1f}%")
+            perf_type = f"卖方一致({','.join(parts)})"
 
         if not passed:
-            reasons.append(f"净利润同比+{qoq_growth*100:.0f}% ≤ {qoq_threshold*100:.0f}%; "
-                          f"预告类型={ft}(未在{forecast_types}或增幅不足)")
+            reasons.append(
+                f"净利润同比+{qoq_growth*100:.0f}% ≤ {qoq_threshold*100:.0f}%; "
+                f"预告={ft}(未满足); 机构覆盖={data.analyst_count}家"
+            )
 
         details['perf_type'] = perf_type
 
-        # 得分
+        # ---------- 综合得分：历史 45% + 预测 55% ----------
+        hist_score = 0.0
+        if ft in ['预增', '扭亏', '预盈']:
+            hist_score = 1.0
+        elif qoq_pass:
+            hist_score = min(qoq_growth / 1.0, 1.0)
+        elif passed:
+            hist_score = 0.3
+
+        g_score = min(max(data.np_growth_current, 0.0) / 0.5, 1.0)
+        b_score = min(data.buy_ratio / 0.8, 1.0) if data.analyst_count >= 3 else 0.0
+        r_score = min(max(data.analyst_revision_30d, 0.0) / 0.1, 1.0)
+        predict_score_raw = 0.45 * g_score + 0.35 * b_score + 0.20 * r_score
+        predict_score = predict_score_raw if data.analyst_count >= 3 else 0.2
+
         score = 0.0
         if passed:
-            if ft in ['预增', '扭亏', '预盈']:
-                score = 1.0
-            else:
-                score = min(qoq_growth / 1.0, 1.0)
+            score = round(0.45 * hist_score + 0.55 * predict_score, 3)
+        details['hist_score'] = hist_score
+        details['predict_score'] = round(predict_score_raw, 3)
 
         return FactorResult(
             passed=passed,

@@ -50,8 +50,15 @@ sys.path.append(parent_dir)
 original_expanduser = os.path.expanduser
 os.path.expanduser = lambda path: original_expanduser(path).replace('\\', '/')
 
-# 加载环境变量
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+# 加载环境变量（优先从根目录config读取）
+env_paths = [
+    os.path.join(parent_dir, 'config', '.env'),
+    os.path.join(BASE_DIR, '.env'),
+]
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        break
 TS_TOKEN = os.getenv('TUSHARE_TOKEN', '')
 CACHE_DIR = os.path.join(BASE_DIR, 'cache_backbone_tushare')
 DAILY_CACHE_DIR = r"d:\mystock\cache_daily"

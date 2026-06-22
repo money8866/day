@@ -906,25 +906,63 @@ class RealtimeThemeMonitor:
         return alerts
 
     def get_yesterday_market_data(self):
-        """获取昨日市场分析数据"""
+        """获取上一个交易日市场分析数据(用于盘前/盘中对比)
+        优先通过 Tushare trade_cal 接口获取上一个交易日,避免周末/节假日指向非交易日
+        """
         import sqlite3
         import datetime
 
         try:
-            # 获取昨日日期
-            today = datetime.date.today()
-            yesterday = today - datetime.timedelta(days=1)
-            yesterday_str = yesterday.strftime('%Y%m%d')
+            # 1. 优先通过 Tushare trade_cal 接口获取上一个交易日(最权威)
+            yesterday_str = None
+            if TS_AVAILABLE and pro is not None and os.getenv('TUSHARE_TOKEN'):
+                try:
+                    today = datetime.date.today()
+                    end_date = today.strftime('%Y%m%d')
+                    # 查询范围比 end_date 早一天,避免交易日历未来日期的影响
+                    query_end = (today - datetime.timedelta(days=1)).strftime('%Y%m%d')
+                    start_date = (today - datetime.timedelta(days=15)).strftime('%Y%m%d')
+                    cal_df = pro.trade_cal(
+                        exchange='SSE',
+                        start_date=start_date,
+                        end_date=query_end,
+                        is_open='1',
+                        fields='cal_date,is_open'
+                    )
+                    if cal_df is not None and not cal_df.empty:
+                        # 找今天之前最近的一个交易日(query_end 已是 end_date-1)
+                        past = cal_df.sort_values('cal_date', ascending=False)
+                        if not past.empty:
+                            yesterday_str = str(past.iloc[0]['cal_date'])
+                            print(f"[get_yesterday_market_data] Tushare trade_cal → 上一交易日: {yesterday_str}")
+                except Exception as e:
+                    print(f"⚠ Tushare trade_cal 获取上一个交易日失败: {e}")
+            else:
+                print(f"[get_yesterday_market_data] Tushare 不可用 (TS_AVAILABLE={TS_AVAILABLE}, pro={pro is not None}, token={'已设置' if os.getenv('TUSHARE_TOKEN') else '未设置'}), 走本地数据库兜底")
 
+            # 2. 兜底:从本地数据库 MAX(trade_date) 获取
+            if not yesterday_str:
+                db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT MAX(trade_date) FROM overall_analysis")
+                last_row = cursor.fetchone()
+                conn.close()
+                if last_row and last_row[0]:
+                    yesterday_str = last_row[0]
+                else:
+                    return None
+
+            # 3. 打开数据库连接查询数据
             db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
-            # 获取昨日整体分析
+            # 获取上一交易日整体分析
             cursor.execute("SELECT trend_score FROM overall_analysis WHERE trade_date=? ORDER BY id DESC LIMIT 1", (yesterday_str,))
             row = cursor.fetchone()
             if row:
-                result = {'trend_score': round(row[0], 0) if row[0] else '?'}
+                result = {'trend_score': round(row[0], 0) if row[0] is not None else '?'}
             else:
                 result = {'trend_score': '?'}
 
@@ -936,16 +974,17 @@ class RealtimeThemeMonitor:
             """, (yesterday_str,))
             limit_row = cursor.fetchone()
             if limit_row:
-                result['zt_count'] = limit_row[0] or '?'
-                result['dt_count'] = limit_row[1] or '?'
-                result['broken_rate'] = limit_row[2] or '?'
-                result['zhaban_count'] = limit_row[3] or '?'
-                result['max_limit_height'] = limit_row[4] or '?'
-                result['up_count'] = limit_row[5] or '?'
-                result['down_count'] = limit_row[6] or '?'
-                result['total'] = limit_row[7] or '?'
-                result['up_ratio'] = limit_row[8] or '?'
-                result['down_ratio'] = limit_row[9] or '?'
+                # 注意:0 是合法值(完全无涨跌停),不能用 'or' 判断,需显式判 None
+                result['zt_count'] = limit_row[0] if limit_row[0] is not None else '?'
+                result['dt_count'] = limit_row[1] if limit_row[1] is not None else '?'
+                result['broken_rate'] = limit_row[2] if limit_row[2] is not None else '?'
+                result['zhaban_count'] = limit_row[3] if limit_row[3] is not None else '?'
+                result['max_limit_height'] = limit_row[4] if limit_row[4] is not None else '?'
+                result['up_count'] = limit_row[5] if limit_row[5] is not None else '?'
+                result['down_count'] = limit_row[6] if limit_row[6] is not None else '?'
+                result['total'] = limit_row[7] if limit_row[7] is not None else '?'
+                result['up_ratio'] = limit_row[8] if limit_row[8] is not None else '?'
+                result['down_ratio'] = limit_row[9] if limit_row[9] is not None else '?'
             else:
                 # 回退:从缓存文件获取(兼容旧格式)
                 yesterday_cache = os.path.join(BASE_DIR, 'cache_daily', f'full_market_stats_{yesterday_str}.json')
@@ -1222,10 +1261,18 @@ class RealtimeThemeMonitor:
         else: ma_score = 15
 
         # INDEX_SCORE(30分)
+        # 修正:加入当日涨跌幅判断,指数下跌时适当扣分
         index_score = 0
-        if cur_close > ma20: index_score = 30
-        elif cur_close > ma10: index_score = 20
-        elif cur_close > ma5: index_score = 10
+        pct_chg = latest_quote.get('pct_chg', 0) or 0
+        if cur_close > ma20: 
+            index_score = 30
+            if pct_chg < -1.5: index_score -= 10
+            elif pct_chg < -0.5: index_score -= 5
+        elif cur_close > ma10: 
+            index_score = 20
+            if pct_chg < -1.5: index_score -= 5
+        elif cur_close > ma5: 
+            index_score = 10
         else: index_score = 0
 
         # BREADTH_SCORE(30分)
@@ -1348,57 +1395,35 @@ class RealtimeThemeMonitor:
         sentiment_score = max(0, min(100, sentiment_score))
         return round(float(sentiment_score), 1)
 
-    # ── 13. 市场趋势总评分(来自market_analysis.py calculate_market_trend_score) ──
+    # ── 13. 市场趋势总评分(与market_analysis.py calculate_market_trend_score对齐) ──
     def calculate_total_market_score(self, results_per_index):
         """
         results_per_index: [{name, trend_score, sentiment_score, pct_chg}, ...]
         返回: (trend_score, index_trend, theme_trend, market_status, position)
-        修正:指数趋势分应融合实时涨跌幅,让当日涨幅参与综合判断
+        
+        与market_analysis.py保持一致的算法:
+        IndexTrend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
+        ThemeTrend = TOP3主题平均分(无主题数据时用index_trend * 0.8)
+        TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
         """
-        # ── 1. 融合实时涨跌的动态指数趋势分 ──
-        # 每个指数的综合分 = MA趋势分(70%) + 实时涨幅分(30%)
-        # 实时涨幅分:按当日涨跌幅直接给分,反映当日市场强度
-        enhanced_scores = []
+        # ── 1. 提取指数趋势分(直接使用,不再额外修正) ──
+        sh_score = 0
+        hs300_score = 0
+        zz2000_score = 0
+        
         for r in results_per_index:
-            ma_trend = r.get('trend_score', 50)
-            pct_chg = r.get('pct_chg', 0) or 0
-            # 实时涨幅分: +2%以上80分,+1.5%以上70分,+1%以上60分,+0.5%以上50分,正数40分,负数30分
-            if pct_chg >= 2.0: rt_score = 80
-            elif pct_chg >= 1.5: rt_score = 70
-            elif pct_chg >= 1.0: rt_score = 60
-            elif pct_chg >= 0.5: rt_score = 50
-            elif pct_chg > 0: rt_score = 40
-            elif pct_chg >= -0.5: rt_score = 30
-            elif pct_chg >= -1.5: rt_score = 20
-            else: rt_score = 10
-            # 综合:均线权重70% + 实时涨幅权重30%
-            enhanced = ma_trend * 0.7 + rt_score * 0.3
-            enhanced_scores.append({
-                'name': r['name'],
-                'ma_trend': ma_trend,
-                'rt_score': rt_score,
-                'enhanced': enhanced,
-                'pct_chg': pct_chg
-            })
-
-        # ── 2. 加权指数趋势(动态权重:涨幅大的指数权重更高) ──
-        total_pct = sum(max(r['pct_chg'], 0) for r in enhanced_scores)
-        if total_pct > 0:
-            index_trend = sum(
-                r['enhanced'] * (max(r['pct_chg'], 0.1) / total_pct)
-                for r in enhanced_scores
-            )
-        else:
-            # 传统固定权重
-            sh_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '上证指数'), 50)
-            hs_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '沪深300'), 50)
-            zz_score = next((r['ma_trend'] for r in enhanced_scores if r['name'] == '中证2000'), 50)
-            index_trend = round(sh_score * 0.5 + hs_score * 0.3 + zz_score * 0.2, 1)
-
-        index_trend = round(index_trend, 1)
-
-        # ThemeTrend:结合主题强度和市场广度计算，避免虚高
-        # 1. 获取主题平均涨幅（历史数据）
+            if r['name'] == '上证指数':
+                sh_score = r['trend_score']
+            elif r['name'] == '沪深300':
+                hs300_score = r['trend_score']
+            elif r['name'] == '中证2000':
+                zz2000_score = r['trend_score']
+        
+        # 计算指数趋势分(固定权重,与market_analysis.py一致)
+        index_trend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
+        
+        # ── 2. 主题趋势分 ──
+        # 有主题历史数据时用TOP3主题平均分,无主题数据时用指数趋势*0.8
         if self.theme_score_history and len(self.theme_score_history) > 0:
             vals = []
             for theme, hist in self.theme_score_history.items():
@@ -1406,34 +1431,30 @@ class RealtimeThemeMonitor:
                     vals.append(hist[-1])
             if vals:
                 top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
-                # 基础theme_trend = 50 + 主题涨幅 * 系数，但需要市场广度修正
                 theme_trend_raw = min(100, max(30, 50 + top_avg * 6))
             else:
-                top_avg = 0
                 theme_trend_raw = 50
         else:
-            top_avg = 0
-            theme_trend_raw = 50
-
-        # 2. 获取市场广度（上涨比例）用于修正theme_trend
-        # 获取overview数据中的上涨比例
+            theme_trend_raw = index_trend * 0.8
+        
+        # 获取市场广度用于修正
         overview = self.compute_market_overview()
         up_ratio = overview.get('up_ratio', 50) if overview else 50
-
-        # 3. 市场广度修正：上涨比例<50%时，主题趋势需要打折
-        # 广度修正系数 = 0.5 + (up_ratio / 100) * 0.5，即40%(弱市)→0.7, 70%(强市)→0.85
-        breadth_factor = 0.5 + (up_ratio / 100) * 0.5
+        
+        # 市场广度修正(轻微):上涨比例<40%时打折
+        if up_ratio < 40:
+            breadth_factor = 0.85
+        elif up_ratio < 50:
+            breadth_factor = 0.95
+        else:
+            breadth_factor = 1.0
         theme_trend = round(theme_trend_raw * breadth_factor, 1)
 
         self._recent_theme_scores = theme_trend
 
         # TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
+        # 与market_analysis.py一致:不再额外减分
         trend_score = round(index_trend * 0.4 + theme_trend * 0.6, 1)
-        # 移除不合理的加分规则，改为基于市场广度的修正
-        if up_ratio < 40:  # 市场极弱时额外减分
-            trend_score -= 10
-        elif up_ratio < 50:  # 市场偏弱时轻微减分
-            trend_score -= 5
         trend_score = min(100, max(0, trend_score))
 
         # 市场状态 & 建议仓位
@@ -1451,6 +1472,37 @@ class RealtimeThemeMonitor:
             market_status, pos_range, pos = "退潮", "10~20%", 15
         else:
             market_status, pos_range, pos = "主跌段", "0~10%", 5
+
+        # ── 平滑处理:评分在阈值±3分内,保留前一次状态,避免频繁跳动 ──
+        HYSTERESIS = 3  # 滞回区间
+        if hasattr(self, '_last_pos') and self._last_pos is not None:
+            last_pos = self._last_pos
+            # 阈值映射: pos -> 最低评分阈值
+            pos_thresholds = [(90, 85), (70, 75), (60, 65), (40, 55), (25, 45), (15, 35), (5, 0)]
+            for p, threshold in pos_thresholds:
+                if pos == p:
+                    # 新仓位需要 trend_score 至少超过 threshold + HYSTERESIS 才升级
+                    # 旧仓位需要 trend_score 降到 threshold - HYSTERESIS 以下才降级
+                    if p < last_pos:
+                        # 升级:需要超过上一档阈值+滞回
+                        last_threshold = next((t for pp, t in pos_thresholds if pp == last_pos), 0)
+                        if trend_score < last_threshold + HYSTERESIS:
+                            pos = last_pos
+                            pos_range = self._last_pos_range
+                            market_status = self._last_status
+                    elif p > last_pos:
+                        # 降级:需要降到下一档阈值-滞回
+                        last_threshold = next((t for pp, t in pos_thresholds if pp == last_pos), 100)
+                        if trend_score > last_threshold - HYSTERESIS:
+                            pos = last_pos
+                            pos_range = self._last_pos_range
+                            market_status = self._last_status
+                    break
+        
+        # 保存当前状态供下次使用
+        self._last_pos = pos
+        self._last_pos_range = pos_range
+        self._last_status = market_status
 
         return trend_score, index_trend, theme_trend, market_status, pos, pos_range
 

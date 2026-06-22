@@ -615,13 +615,14 @@ def generate_report(csv_path: str, output_path: str) -> str:
 if __name__ == '__main__':
     output_dir = Path(__file__).parent / 'output'
 
-    # 找最新的 bull_stocks_*.csv（A/B级数据）
-    csv_files = sorted(output_dir.glob('bull_stocks_*.csv'), key=os.path.getmtime, reverse=True)
+    # 找最新的 bullscore/bull_stocks/elite_stocks_*.csv
+    csv_files = (
+        sorted(output_dir.glob('bullscore_*.csv'), key=os.path.getmtime, reverse=True) or
+        sorted(output_dir.glob('bull_stocks_*.csv'), key=os.path.getmtime, reverse=True) or
+        sorted(output_dir.glob('elite_stocks_*.csv'), key=os.path.getmtime, reverse=True)
+    )
     if not csv_files:
-        # 回退到 elite_stocks_*.csv
-        csv_files = sorted(output_dir.glob('elite_stocks_*.csv'), key=os.path.getmtime, reverse=True)
-    if not csv_files:
-        print(f"未找到 bull_stocks_*.csv 或 elite_stocks_*.csv 在 {output_dir}")
+        print(f"未找到 csv 数据文件在 {output_dir}")
         sys.exit(1)
 
     csv_file = csv_files[0]
