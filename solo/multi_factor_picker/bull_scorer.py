@@ -1,27 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-BullScore 中长线牛股评分系统
+BullScore 中长线牛股评分系统（BullScore v2）
 
-基于产业景气 + 订单验证 + 龙头地位 + 业绩质量 + 预期差 框架，
+基于产业景气 + 订单验证 + 龙头地位 + 业绩质量 + 预期差 + 估值安全 + 筹码面 框架，
 寻找未来1~3年有机会上涨200%以上的A股中长线牛股。
 
-评分结构：
+评分结构（BullScore v2）：
   BullScore =
-    0.25 × IndustryDemandScore    (产业景气)
-    0.15 × TechBarrierScore       (技术壁垒)
-    0.15 × OrderExplosionScore    (订单爆发)
-    0.15 × EarningsQualityScore   (业绩质量)
-    0.10 × LeaderScore            (龙头地位)
-    0.10 × ExpectationScore       (预期差)
-    0.05 × InstitutionScore       (机构认可)
-    0.05 × MarketCapElasticity    (市值弹性)
+    0.20 × IndustryDemandScore    (产业景气 — 降权25%→20%，避免TOP100都拿满分)
+  + 0.12 × TechBarrierScore       (技术壁垒 — 降权15%→12%，极端值需非线性处理)
+  + 0.15 × OrderExplosionScore    (订单爆发 — 百分比+绝对增量双维度)
+  + 0.15 × EarningsQualityScore  (业绩质量)
+  + 0.08 × LeaderScore            (龙头地位 — 基于市占率×技术护城河，降权10%→8%)
+  + 0.13 × ExpectationScore        (预期差 — 提权10%→13%，利润YoY非线性放大)
+  + 0.05 × InstitutionScore       (机构认可 — 分析师覆盖，避免与龙头信号重叠)
+  + 0.05 × MarketCapElasticity    (市值弹性 — 300~1500亿最优)
+  + 0.07 × ChipScore           (筹码面 — v2新增，主力资金+股东人数+增减持+回购+公募持仓)
+  + 0.05 × ValuationScore      (估值安全 — PEG+质押风险+解禁压力+现金流+审计意见)
 
-  FinalScore = 0.80 × BullScore + 0.20 × ThemeScore
+  FinalScore = 0.80 × BullScore + 0.20 × ThemeScore (主题加成)
 
-牛股等级：
-  >=95   S+级核心牛股   90~95  S级牛股
-  85~90  A级产业龙头    80~85  B级成长股
-  70~80  观察名单       <70   淘汰
+牛股等级（基于排名）：
+  TOP10    → A级产业龙头
+  TOP11-20 → B级成长股
+  其余     → 观察名单
 """
 import os
 import math
@@ -118,6 +120,29 @@ class BullStockData:
     industry_growth: float = 0.0  # 行业增速(日线代理)
     capacity_utilization: float = 0.0  # 产能利用率代理
 
+    # ── BullScore v2 新增字段 ──
+    # 筹码面数据
+    net_inflow_ratio: float = 0.0       # 近20日主力净流入/流通市值(%)
+    holder_num_change_ratio: float = 0.0  # 近3期股东人数缩减比例(缩减=正)
+    holder_trade_ratio: float = 0.0     # 近90日股东增减持/流通股本(%)
+    holder_trade_netbuy: int = 0        # 净增持(1)/净减持(-1)
+    repurchase_amount: float = 0.0      # 近1年回购金额(万元)
+    repurchase_ratio: float = 0.0       # 回购/总市值(%)
+    has_repurchase: int = 0            # 是否有回购
+    fund_holding_ratio: float = 0.0    # 公募持仓占比
+    fund_ratio_change: float = 0.0     # 公募持仓变化
+
+    # 估值安全数据
+    pledge_ratio: float = 0.0           # 质押比例(%)
+    pledge_risk_score: float = 100.0   # 质押风险分
+    unlock_ratio: float = 0.0           # 未来60天解禁/总股本(%)
+    unlock_risk_score: float = 100.0    # 解禁风险分
+    audit_risk_score: float = 100.0     # 审计风险分
+    cashflow_ratio: float = 0.0        # 经营现金流/营收
+
+    # 主营业务构成（用于主题匹配）
+    main_business_items: list = field(default_factory=list)  # [{bz_item, bz_ratio}, ...]
+
 
 @dataclass
 class BullScoreResult:
@@ -127,7 +152,7 @@ class BullScoreResult:
     industry: str
     chain_tag: str = ""
 
-    # 8 个子维度得分(0~100)
+    # 9 个子维度得分(0~100) — BullScore v2 共10个
     industry_demand_score: float = 0.0
     tech_barrier_score: float = 0.0
     order_explosion_score: float = 0.0
@@ -136,6 +161,8 @@ class BullScoreResult:
     expectation_score: float = 0.0
     institution_score: float = 0.0
     marketcap_score: float = 0.0
+    chip_score: float = 0.0           # BullScore v2 新增：筹码面(7%)
+    valuation_score: float = 0.0
 
     # 汇总
     bull_score: float = 0.0
@@ -216,7 +243,24 @@ def _norm_minmax(series: pd.Series) -> pd.Series:
     return (series - mn) / (mx - mn)
 
 
-def get_bull_level(score: float) -> str:
+def get_bull_level(score: float, rank: int = None) -> str:
+    """
+    根据排名和分数确定牛股等级
+    
+    新规则（基于排名）：
+    - TOP 10: A级产业龙头
+    - TOP 11-20: B级成长股
+    - 其余: 观察名单
+    """
+    if rank is not None:
+        if rank <= 10:
+            return "A级产业龙头"
+        elif rank <= 20:
+            return "B级成长股"
+        else:
+            return "观察名单"
+    
+    # 兜底：按分数（用于单只股票评分时）
     if score >= 95:
         return "S+级核心牛股"
     elif score >= 90:
@@ -324,21 +368,20 @@ class BullScorer:
     # ─────────────── 子维度评分 ───────────────
 
     def _score_industry_demand(self, data: BullStockData,
-                                group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+                                group_series: Dict[str, pd.Series],
+                                all_rev_series: pd.Series = None) -> Tuple[float, Dict]:
         """
-        产业景气度评分 (0~100)
+        产业景气度评分 (0~100) - 优化版：加入景气加速度和全市场排序
 
-        使用需求链框架，行业内分位数：
-        - TerminalDemand: revenue_yoy + gross_margin_change
-        - OrderStrength: contract_liability_yoy + advance_payment_yoy
-        - PriceStrength: gross_margin_change
-        - CapacityUtilization: fixed_asset_turnover_change
-        - IndustryCapex: capex_growth
+        优化点：
+        1. 避免TOP100产业景气都拿满分 → 引入"景气加速度"细分
+        2. 全市场营收增速分位数 → 在全市场范围内比较，提高区分度
+        3. 绝对营收增量分位数 → 大公司高增长更有分量
         """
         industry = data.industry
         details = {}
 
-        # 终端需求：营收增速 + 毛利率变化（供需紧张代理）
+        # 1. 终端需求：营收增速(行业内分位) + 毛利率变化
         rev_yoy_pct = _percentile_rank(
             group_series.get(f'revenue_yoy_{industry}', pd.Series()),
             data.revenue_yoy
@@ -349,9 +392,27 @@ class BullScorer:
         )
         terminal = 0.30 * rev_yoy_pct + 0.20 * gm_chg_pct
         details['terminal_demand_rank'] = rev_yoy_pct
-        details['terminal_demand'] = terminal * 100
 
-        # 订单强度：合同负债增速 + 预付款增速
+        # 2. 景气加速度：利润加速度(行业内分位) - 区分高增长vs更高增长
+        profit_acc = 0.0
+        if data.quarterly_net_profit_prev > 0:
+            profit_acc = _safe_div(
+                data.quarterly_net_profit - data.quarterly_net_profit_prev,
+                data.quarterly_net_profit_prev
+            )
+        profit_acc_pct = _percentile_rank(
+            group_series.get(f'profit_acceleration_{industry}', pd.Series()),
+            profit_acc
+        )
+        # 全市场营收加速：提供更多区分度
+        if all_rev_series is not None and len(all_rev_series) > 0:
+            rev_cross_pct = _percentile_rank(all_rev_series, data.revenue_yoy)
+        else:
+            rev_cross_pct = rev_yoy_pct
+        acc_combined = (rev_cross_pct * profit_acc_pct) ** 0.5 if rev_cross_pct > 0 and profit_acc_pct > 0 else profit_acc_pct
+        details['acceleration_rank'] = acc_combined
+
+        # 3. 订单强度：合同负债增速 + 预付款增速
         cl_pct = _percentile_rank(
             group_series.get(f'contract_liability_yoy_{industry}', pd.Series()),
             data.contract_liability_yoy
@@ -360,35 +421,48 @@ class BullScorer:
             group_series.get(f'advance_payment_yoy_{industry}', pd.Series()),
             data.advance_payment_yoy
         )
-        order_str = 0.25 * (0.6 * cl_pct + 0.4 * ap_pct)
-        details['order_strength_rank'] = (cl_pct + ap_pct) / 2
+        order_str = 0.6 * cl_pct + 0.4 * ap_pct
+        details['order_strength_rank'] = order_str
 
-        # 价格强度：毛利率变化
-        price_pct = 0.20 * gm_chg_pct
+        # 4. 价格强度：毛利率变化
         details['price_strength_rank'] = gm_chg_pct
 
-        # 产能利用率：固定资产周转率变化
+        # 5. 产能利用率：固定资产周转率变化
         cap_pct = _percentile_rank(
             group_series.get(f'fixed_asset_turnover_change_{industry}', pd.Series()),
             data.fixed_asset_turnover_change
         )
-        capacity = 0.15 * cap_pct
         details['capacity_utilization_rank'] = cap_pct
 
-        # 资本开支：capex增速
+        # 6. 资本开支：capex增速
         capex_pct = _percentile_rank(
             group_series.get(f'capex_growth_{industry}', pd.Series()),
             data.capex_growth
         )
-        ind_capex = 0.10 * capex_pct
         details['industry_capex_rank'] = capex_pct
 
-        score = (terminal + order_str + price_pct + capacity + ind_capex) * 100
+        # 综合评分：引入景气加速度(20%) + 绝对增量维度(10%) 提高区分度
+        score = (
+            0.25 * (0.30 * rev_yoy_pct + 0.20 * gm_chg_pct) +  # 终端需求
+            0.20 * acc_combined +                                 # 景气加速度
+            0.20 * order_str +                                    # 订单强度
+            0.15 * gm_chg_pct +                                   # 价格强度
+            0.10 * cap_pct +                                      # 产能利用
+            0.10 * capex_pct                                      # 资本开支
+        ) * 100
         details['raw_score'] = score
         return min(score, 100), details
 
+    # 高科技行业列表（研发属性加成系数）
+    HIGH_TECH_INDUSTRIES = {
+        '半导体', '软件开发', 'IT设备', '通信设备', '电子元件', '互联网',
+        '医药', '医疗', '生物', '新材料', '光伏', '新能源', '储能', '机器人',
+        '自动化', '军工', '航天', '航空', '化工', '软件', '计算机'
+    }
+    
     def _score_tech_barrier(self, data: BullStockData,
-                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+                             group_series: Dict[str, pd.Series],
+                             all_rd_series: pd.Series = None) -> Tuple[float, Dict]:
         """
         技术壁垒评分 (0~100)
 
@@ -397,7 +471,10 @@ class BullScorer:
         - ROE: 行业内分位
         - GrossMargin: 行业内分位
         - RDIntensity: 行业内分位
-        - PatentScore: 研发费用率 * ROE 的复合代理
+
+        跨行业研发标准化：
+        - 高科技行业研发费用率全市场分位（体现科技研发 alpha 差异）
+        - 伊利股份(0.5%) vs 寒武纪(30%) → 科技股明显更高
         """
         industry = data.industry
         details = {}
@@ -421,11 +498,19 @@ class BullScorer:
         )
         details['gross_margin_rank'] = gm_pct
 
-        # 研发费用率
+        # 研发费用率 - 行业内分位
         rd_pct = _percentile_rank(
             group_series.get(f'rd_ratio_{industry}', pd.Series()), data.rd_expense_ratio
         )
         details['rd_intensity_rank'] = rd_pct
+
+        # 跨行业研发标准化（全市场分位）- 体现科技研发 alpha 差异
+        # 伊利股份(0.5%研发) vs 半导体公司(15%+研发) → 差距拉大
+        if all_rd_series is not None and len(all_rd_series) > 0:
+            rd_cross_pct = _percentile_rank(all_rd_series, data.rd_expense_ratio)
+        else:
+            rd_cross_pct = rd_pct  # 兜底
+        details['rd_cross_industry_rank'] = rd_cross_pct
 
         # 专利代理：研发投入强度 × ROE（技术变现能力）
         patent_proxy = _safe_div(data.rd_expense_ratio * data.roe_current, 0.01)
@@ -434,8 +519,20 @@ class BullScorer:
         )
         details['patent_rank'] = patent_pct
 
-        score = (0.30 * roic_pct + 0.20 * roe_pct + 0.20 * gm_pct +
-                 0.20 * rd_pct + 0.10 * patent_pct) * 100
+        # 行业研发加成系数
+        industry_bonus = 1.0
+        if any(ht in industry for ht in self.HIGH_TECH_INDUSTRIES):
+            industry_bonus = 1.15  # 高科技行业 +15% 加成
+        elif any(keyword in industry for keyword in ['消费', '食品', '零售', '物流', '金融']):
+            industry_bonus = 0.85  # 传统行业 -15% 加成
+        details['industry_bonus'] = industry_bonus
+
+        # 综合得分：行业内分位 * 跨行业研发分位（几何平均，体现科技差异）
+        # 研发分位用几何平均：高科技公司得分更高，传统公司得分更低
+        rd_combined = (rd_pct * rd_cross_pct) ** 0.5 if rd_pct > 0 and rd_cross_pct > 0 else rd_pct
+
+        score = (0.30 * roic_pct + 0.20 * roe_pct + 0.15 * gm_pct +
+                 0.25 * rd_combined + 0.10 * patent_pct) * 100 * industry_bonus
         details['raw_score'] = score
         return min(score, 100), details
 
@@ -626,24 +723,41 @@ class BullScorer:
     def _score_expectation(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        预期差评分 (0~100) — 已增强：加入卖方盈利预测一致性指标
+        预期差评分 (0~100) - 优化版：加入非线性放大
 
-        - FutureProfitCAGR: 历史利润增速(过去3年CAGR代理)
-        - EarningsUpgradeCount: 业绩预告类型
-        - PEGInverse: 利润增速/估值(用ROE代理)
-        - NewBusinessContribution: 研发占比(未来增长投入)
-        - AnalystConsensus: 卖方一致预期 (机构覆盖数 × 一致预期增速 × 买入占比 × 近期上修)
+        优化点：
+        1. 极端利润增速(YoY>300%)非线性放大 → 突破线性评分上限
+        2. "盈利超预期"维度：利润增速 > 营收增速的部分（利润含金量）
+        3. 卖方一致预期信号加强权重
         """
         industry = data.industry
         details = {}
 
-        # 未来利润增速代理：近2年利润增速
+        # 1. 未来利润增速：行业内分位 + 非线性放大
         fut_cagr_pct = _percentile_rank(
             group_series.get(f'profit_yoy_{industry}', pd.Series()), data.profit_yoy
         )
+        # 非线性放大：利润YoY > 100%时额外加分，>300%时显著加分
+        growth_surprise = 0.0
+        if data.profit_yoy > 3.0:
+            growth_surprise = 0.30  # >300%增长额外+30分
+        elif data.profit_yoy > 1.5:
+            growth_surprise = 0.15  # >150%增长额外+15分
+        elif data.profit_yoy > 0.5:
+            growth_surprise = 0.05  # >50%增长额外+5分
         details['future_cagr_rank'] = fut_cagr_pct
+        details['growth_surprise'] = round(growth_surprise * 100, 1)
 
-        # 业绩上修代理：业绩预告类型
+        # 2. 盈利超预期：利润增速 > 营收增速 的差额(盈利质量超预期)
+        earnings_surprise = max(data.profit_yoy - data.revenue_yoy, 0.0)
+        # 标准化为分位：利润增速显著超过营收增速 → 盈利超预期信号强
+        earnings_surprise_pct = _percentile_rank(
+            group_series.get(f'profit_yoy_{industry}', pd.Series()),
+            earnings_surprise
+        ) if earnings_surprise > 0 else 0.0
+        details['earnings_surprise'] = round(earnings_surprise_pct * 100, 1)
+
+        # 3. 业绩上修代理：业绩预告类型
         upgrade_score = 0.0
         ft = data.forecast_type or ''
         if '预增' in ft:
@@ -654,12 +768,11 @@ class BullScorer:
             upgrade_score = 0.7
         elif '续盈' in ft:
             upgrade_score = 0.5
-        # 用 forecast_profit_change 进一步修正
         if data.forecast_profit_change > 50:
             upgrade_score = min(1.0, upgrade_score + 0.1)
         details['earnings_upgrade'] = upgrade_score
 
-        # PEG倒数代理 = 利润增速 / (1/ROE 代理估值)
+        # 4. PEG倒数代理 = 利润增速 / (1/ROE 代理估值)
         pe_inv = max(data.roe_current, 0.01)
         peg = _safe_div(data.profit_yoy + 0.01, pe_inv + 0.01)
         peg_pct = _percentile_rank(
@@ -667,7 +780,7 @@ class BullScorer:
         )
         details['peg_inverse_rank'] = peg_pct
 
-        # 新业务贡献代理：研发费用率
+        # 5. 新业务贡献代理：研发费用率
         rd_pct = _percentile_rank(
             group_series.get(f'rd_ratio_{industry}', pd.Series()), data.rd_expense_ratio
         )
@@ -676,81 +789,229 @@ class BullScorer:
         # ---------- 卖方盈利预测一致性 ----------
         analyst_expectation_score = 0.0
         if data.analyst_count >= 3:
-            # 3a: 一致预期净利润增速 (满分线 50%)
-            g_score = min(max(data.np_growth_current, 0.0) / 0.5, 1.0)
-            # 3b: 买入+增持占比 (满分线 80%)
+            # 一致预期净利润增速 (满分线 50%，>100%非线性加成)
+            np_growth = max(data.np_growth_current, 0.0)
+            if np_growth > 1.0:
+                g_score = min(1.0 + (np_growth - 1.0) * 0.2, 1.3)  # 超100%增速额外加成
+            else:
+                g_score = min(np_growth / 0.5, 1.0)
             b_score = min(data.buy_ratio / 0.8, 1.0)
-            # 3c: 近30天预测上修幅度 (满分线 10%)
             r_score = min(max(data.analyst_revision_30d, 0.0) / 0.1, 1.0)
-            # 3d: 评级情绪分 (满分线 2.5/3)
             s_score = min(data.rating_sentiment / 2.5, 1.0)
 
             analyst_expectation_score = (
                 0.40 * g_score + 0.25 * b_score + 0.20 * r_score + 0.15 * s_score
             )
         else:
-            # 机构覆盖不足 3 家：留一个较低底分，不惩罚到0
             analyst_expectation_score = 0.2
 
-        # 将一致预期综合分写回 data，供 _score_institution 复用（避免重复计算）
         data.analyst_expectation_score = analyst_expectation_score
-
         details['analyst_count'] = data.analyst_count
         details['np_growth_current'] = round(data.np_growth_current * 100, 1)
-        details['buy_ratio'] = round(data.buy_ratio * 100, 1)
-        details['analyst_revision_30d'] = round(data.analyst_revision_30d * 100, 1)
         details['analyst_expectation_score'] = round(analyst_expectation_score * 100, 1)
 
-        # 预期差综合分
-        # 机构覆盖可靠性加权：覆盖数越多 → 一致预期信号越可靠 → 权重越高
+        # 预期差综合分（非线性放大：growth_surprise 直接加成）
         has_analyst = data.analyst_count >= 3
         if has_analyst:
-            # analyst_expectation 权重随覆盖数提升：20家时最高 +15%
             coverage_bonus = min(data.analyst_count / 20.0, 1.0) * 0.15
-            analyst_weight = 0.30 + coverage_bonus          # 0.30~0.45
-            residual = 1.0 - analyst_weight                 # 0.70~0.55
-            score = (
-                residual * 0.50 * fut_cagr_pct +
+            analyst_weight = 0.30 + coverage_bonus
+            residual = 1.0 - analyst_weight
+            base_score = (
+                residual * 0.40 * fut_cagr_pct +
                 residual * 0.25 * upgrade_score +
                 residual * 0.15 * peg_pct +
                 residual * 0.10 * rd_pct +
+                residual * 0.10 * earnings_surprise_pct +
                 analyst_weight * analyst_expectation_score
             ) * 100
         else:
-            score = (0.40 * fut_cagr_pct + 0.30 * upgrade_score +
-                     0.20 * peg_pct + 0.10 * rd_pct) * 100
+            base_score = (0.35 * fut_cagr_pct + 0.30 * upgrade_score +
+                         0.20 * peg_pct + 0.10 * rd_pct + 0.05 * earnings_surprise_pct) * 100
 
+        # 非线性放大加成
+        score = base_score * (1.0 + growth_surprise)
         details['raw_score'] = round(score, 1)
         details['has_analyst_coverage'] = has_analyst
+        return min(score, 100), details
+
+    def _score_valuation(self, data: BullStockData,
+                         group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+        """
+        估值安全边际评分 (0~100) — BullScore v2 增强版
+
+        子因子权重：
+          PEG代理 (30%): 利润增速/ROE，PEG<1加分，PEG>2扣分
+          质押风险 (25%): pledge_stat质押比例，>50%危险
+          解禁压力 (20%): share_float未来60天解禁比例
+          营收质量 (15%): 经营现金流/营收比率
+          审计意见 (10%): 标准无保留=加分，否则预警
+        """
+        industry = data.industry
+        details = {}
+
+        # 1. PEG代理评分
+        pe_proxy = 1.0 / max(data.roe_current, 0.01) if data.roe_current > 0 else 50.0
+        peg_proxy = pe_proxy / max(data.profit_yoy * 100, 1.0) if data.profit_yoy > 0 else 5.0
+        if peg_proxy < 0.5:
+            peg_score = 1.0
+        elif peg_proxy < 1.0:
+            peg_score = 0.8
+        elif peg_proxy < 1.5:
+            peg_score = 0.6
+        elif peg_proxy < 2.0:
+            peg_score = 0.4
+        else:
+            peg_score = 0.1
+        details['peg_score'] = round(peg_score * 100, 1)
+
+        # 2. ROE/PE性价比
+        roe_pe_ratio = data.roe_current * max(data.profit_yoy, 0.01)
+        roe_pe_pct = _percentile_rank(
+            group_series.get(f'peg_inverse_{industry}', pd.Series()), roe_pe_ratio
+        )
+        details['roe_pe_rank'] = roe_pe_pct
+
+        # 3. 利润增长质量
+        quality_score = 0.0
+        if data.profit_yoy > 0.3 and data.roe_current > 0.10:
+            quality_score = 1.0
+        elif data.profit_yoy > 0.1 and data.roe_current > 0.08:
+            quality_score = 0.7
+        elif data.profit_yoy > 0 and data.roe_current > 0:
+            quality_score = 0.4
+        details['quality_score'] = quality_score * 100
+
+        # ── BullScore v2 新增子因子 ──
+        # 4. 质押风险（已由 data_fetcher 计算为 0~100 分）
+        pledge_score = data.pledge_risk_score  # 0~100
+        details['pledge_score'] = pledge_score
+
+        # 5. 解禁压力（已由 data_fetcher 计算为 0~100 分）
+        unlock_score = data.unlock_risk_score  # 0~100
+        details['unlock_score'] = unlock_score
+
+        # 6. 审计意见（已由 data_fetcher 计算为 0~100 分）
+        audit_score = data.audit_risk_score  # 0~100
+        details['audit_score'] = audit_score
+
+        # 7. 营收质量（经营现金流/营收）
+        cf_ratio_score = 0.0
+        if data.cashflow_ratio > 0.15:
+            cf_ratio_score = 1.0
+        elif data.cashflow_ratio > 0.08:
+            cf_ratio_score = 0.8
+        elif data.cashflow_ratio > 0.03:
+            cf_ratio_score = 0.5
+        elif data.cashflow_ratio > 0:
+            cf_ratio_score = 0.2
+        details['cashflow_ratio_score'] = cf_ratio_score * 100
+
+        # 综合评分：PEG(30%) + ROE/PE(25%) + 增长质量(15%) + 质押(15%) + 解禁(8%) + 审计(7%)
+        score = (
+            0.30 * peg_score +
+            0.25 * roe_pe_pct +
+            0.15 * quality_score +
+            0.15 * (pledge_score / 100) +
+            0.08 * (unlock_score / 100) +
+            0.07 * (audit_score / 100)
+        ) * 100
+        details['raw_score'] = round(score, 1)
+        return min(score, 100), details
+
+    def _score_chip(self, data: BullStockData,
+                     group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+        """
+        筹码面评分 (0~100) — BullScore v2 新增因子(7%)
+
+        子因子权重：
+          主力资金流向 (30%): 近20日净流入/流通市值
+          股东人数变化 (25%): 近3期股东人数缩减=筹码集中
+          股东增减持 (20%): 近90日净增持/流通股本
+          回购信号 (15%): 近1年有回购
+          公募持仓变化 (10%): 基金持仓占流通股比例变化
+        """
+        industry = data.industry
+        details = {}
+
+        # 1. 主力资金流向（行业内分位）
+        mf_pct = _percentile_rank(
+            group_series.get(f'net_inflow_ratio_{industry}', pd.Series()),
+            data.net_inflow_ratio
+        )
+        details['moneyflow_rank'] = mf_pct
+
+        # 2. 股东人数变化（缩减=筹码集中=加分）
+        hn_pct = _percentile_rank(
+            group_series.get(f'holder_change_ratio_{industry}', pd.Series()),
+            data.holder_num_change_ratio
+        )
+        details['holder_num_rank'] = hn_pct
+
+        # 3. 股东增减持（净增持=加分）
+        trade_score = 0.5  # 默认中性
+        if data.holder_trade_netbuy > 0:
+            trade_pct = _percentile_rank(
+                group_series.get(f'holder_trade_ratio_{industry}', pd.Series()),
+                data.holder_trade_ratio
+            )
+            trade_score = 0.5 + 0.5 * trade_pct
+        elif data.holder_trade_netbuy < 0:
+            trade_pct = _percentile_rank(
+                group_series.get(f'holder_trade_ratio_{industry}', pd.Series()),
+                abs(data.holder_trade_ratio)
+            )
+            trade_score = 0.5 - 0.5 * trade_pct
+        details['holder_trade_rank'] = trade_score
+
+        # 4. 回购信号
+        repurchase_score = 1.0 if data.has_repurchase else 0.3
+        details['repurchase_score'] = repurchase_score * 100
+
+        # 5. 公募持仓变化（行业内分位）
+        fund_pct = _percentile_rank(
+            group_series.get(f'fund_ratio_change_{industry}', pd.Series()),
+            data.fund_ratio_change
+        )
+        details['fund_holding_rank'] = fund_pct
+
+        # 综合评分
+        score = (
+            0.30 * mf_pct +
+            0.25 * hn_pct +
+            0.20 * trade_score +
+            0.15 * repurchase_score +
+            0.10 * fund_pct
+        ) * 100
+        details['raw_score'] = round(score, 1)
         return min(score, 100), details
 
     def _score_institution(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        机构认可评分 (0~100) — 修复版：用卖方分析师覆盖数据替代噪声大的北向单日流
+        机构认可评分 (0~100) - 修复版：资金流向+换手率，避免与龙头地位信号重叠
 
         - AnalystCountRank: 机构覆盖数量（行业分位，信号稳定可靠）
         - AnalystExpectationRank: 卖方一致预期评分（行业分位）
-        - ReliabilityBonus: 机构覆盖数 ≥ 20 家时给予可靠性加成（大数定律）
+        - ReliabilityBonus: 机构覆盖数 ≥ 20 家时给予可靠性加成
         """
         industry = data.industry
         details = {}
 
-        # 机构覆盖数量：行业分位（信号最稳定可靠）
+        # 机构覆盖数量：行业分位
         ac_pct = _percentile_rank(
             group_series.get(f'analyst_count_{industry}', pd.Series()),
             float(data.analyst_count)
         )
         details['analyst_count_rank'] = ac_pct
 
-        # 卖方一致预期评分：行业分位（已含增速/评级/上修）
+        # 卖方一致预期评分：行业分位
         ae_pct = _percentile_rank(
             group_series.get(f'analyst_expectation_{industry}', pd.Series()),
             data.analyst_expectation_score
         )
         details['analyst_expectation_rank'] = ae_pct
 
-        # 可靠性加成：覆盖数 ≥ 20 家时额外 +10 分（大数定律，信号更可靠）
+        # 可靠性加成：覆盖数 ≥ 20 家时额外 +10 分
         reliability_bonus = 10.0 if data.analyst_count >= 20 else 0.0
 
         score = (0.55 * ac_pct + 0.45 * ae_pct) * 100 + reliability_bonus
@@ -793,37 +1054,77 @@ class BullScorer:
 
         return score, details
 
-    def _compute_theme_score(self, chain_tag: str) -> float:
-        """根据产业链标签获取主题分"""
-        if not chain_tag:
-            return 0.0
+    # 主营业务关键词 → 主题 映射（用于 fina_mainbz 匹配）
+    THEME_KEYWORDS = {
+        "AI算力": ["算力", "服务器", "AI芯片", "GPU", "数据中心", "云端"],
+        "PCB": ["PCB", "印制电路板", "覆铜板", "CCL"],
+        "光模块": ["光模块", "光通信", "光器件", "光纤"],
+        "液冷服务器": ["液冷", "温控", "散热"],
+        "机器人": ["机器人", "人形机器人", "工业机器人", "伺服电机", "减速器"],
+        "商业航天": ["商业航天", "卫星", "火箭", "航天"],
+        "低空经济": ["低空经济", "eVTOL", "无人机", "通用航空"],
+        "半导体设备": ["半导体设备", "晶圆设备", "光刻", "刻蚀", "沉积"],
+        "半导体材料": ["半导体材料", "硅片", "光刻胶", "电子特气"],
+        "创新药": ["创新药", "生物药", "新药研发", "CXO", "创新生物"],
+        "数据要素": ["数据要素", "数据服务", "数据确权", "数据交易"],
+        "消费电子": ["消费电子", "智能手机", "智能穿戴", "TWS"],
+        "新能源车": ["新能源汽车", "电动车", "锂电池", "动力电池"],
+        "存储芯片": ["存储芯片", "NAND", "DRAM", "HBM", "存储器"],
+        "IC设计": ["芯片设计", "IC设计", "SoC", "FPGA"],
+    }
 
-        # 主题名到产业链的映射
-        theme_to_chain = {
-            "AI算力": "AI算力链", "PCB": "PCB链", "光模块": "AI算力链",
-            "液冷服务器": "AI算力链", "机器人": "机器人链", "商业航天": "低空经济链",
-            "低空经济": "低空经济链", "半导体设备": "半导体设备链",
-            "半导体材料": "半导体材料链", "创新药": "医药链",
-            "数据要素": "AI算力链", "消费电子": "消费电子链",
-            "新能源车": "新能源链"
-        }
+    def _compute_theme_score(self, theme_name: str,
+                               main_business_items: List = None) -> float:
+        """
+        根据主题名 + 主营业务构成获取主题分 - BullScore v2 增强版
 
-        # 反向找匹配的主题
-        matched_themes = []
-        for theme_name, chain in theme_to_chain.items():
-            if chain == chain_tag:
-                matched_themes.append(theme_name)
+        1. 先用 chain_tag（theme.json 主题名）查数据库 + 白名单
+        2. 再用 fina_mainbz 主营业务关键词做兜底匹配
+        """
+        if not theme_name or theme_name == 'nan':
+            theme_name = ""
 
-        if not matched_themes:
-            return 0.0
+        base_score = 0.0
 
-        # 取匹配主题的最高分
-        max_score = 0.0
-        for theme in matched_themes:
-            ts = self._theme_scores_cache.get(theme, 0.0)
-            max_score = max(max_score, ts)
+        # 1. 主题名匹配（数据库 + 白名单）
+        if theme_name:
+            db_score = self._theme_scores_cache.get(theme_name, 0.0)
+            if db_score > 0.01:
+                base_score = max(base_score, db_score)
 
-        return max_score
+            hot_theme_bonus = {
+                "AI算力": 85.0, "半导体设备": 80.0, "半导体材料": 78.0,
+                "机器人": 75.0, "低空经济": 72.0, "商业航天": 72.0,
+                "PCB": 70.0, "新能源车": 70.0, "创新药": 65.0,
+                "数据要素": 70.0, "军工": 65.0, "消费电子": 60.0,
+                "光模块": 78.0, "液冷服务器": 75.0, "存储芯片": 73.0,
+                "IC设计": 72.0,
+            }
+            for keyword, score in hot_theme_bonus.items():
+                if keyword in theme_name or theme_name in keyword:
+                    base_score = max(base_score, score)
+
+        # 2. 主营业务关键词匹配（fina_mainbz）
+        if main_business_items:
+            theme_scores_v2 = {}
+            for item in main_business_items:
+                bz_item = str(item.get('bz_item', ''))
+                bz_ratio = float(item.get('bz_ratio', 0.0)) / 100.0  # 转为0~1
+
+                for theme, keywords in self.THEME_KEYWORDS.items():
+                    for kw in keywords:
+                        if kw in bz_item:
+                            theme_scores_v2[theme] = theme_scores_v2.get(theme, 0.0) + bz_ratio
+                            break
+
+            if theme_scores_v2:
+                best_theme = max(theme_scores_v2, key=theme_scores_v2.get)
+                best_score = min(theme_scores_v2[best_theme], 1.0)  # 最多1.0
+                # 主营业务匹配得分（映射到 40~80 分区间）
+                theme_matched_score = 40.0 + 40.0 * best_score
+                base_score = max(base_score, theme_matched_score)
+
+        return base_score
 
     # ─────────────── 主入口 ───────────────
 
@@ -923,49 +1224,70 @@ class BullScorer:
                 m.np_growth_current * m.buy_ratio if m.analyst_count >= 3 else 0.0
                 for m in members])
 
-        # 3. 逐只计算评分
+            # ── BullScore v2 筹码面分位数 ──
+            # 主力资金流向
+            group_series[f'net_inflow_ratio_{ind}'] = _tos([m.net_inflow_ratio for m in members])
+            # 股东人数变化
+            group_series[f'holder_change_ratio_{ind}'] = _tos([m.holder_num_change_ratio for m in members])
+            # 股东增减持
+            group_series[f'holder_trade_ratio_{ind}'] = _tos([m.holder_trade_ratio for m in members])
+            # 公募持仓变化
+            group_series[f'fund_ratio_change_{ind}'] = _tos([m.fund_ratio_change for m in members])
+
+        # 3. 计算全市场研发费用率分位数（用于跨行业研发标准化）
+        all_rd_series = _tos([m.rd_expense_ratio for m in all_data])
+
+        # 4. 逐只计算评分
         results = []
         for data in all_data:
             try:
-                result = self._compute_single(data, group_series, industry_groups)
+                result = self._compute_single(data, group_series, industry_groups, all_rd_series)
                 results.append(result)
             except Exception as e:
                 logger.debug(f"评分异常 {data.ts_code}: {e}")
 
-        # 4. 按 final_score 排序
+        # 5. 按 final_score 排序
         results.sort(key=lambda r: r.final_score, reverse=True)
 
         return results
 
     def _compute_single(self, data: BullStockData,
                         group_series: Dict[str, pd.Series],
-                        group_data: Dict[str, List[BullStockData]]) -> BullScoreResult:
+                        group_data: Dict[str, List[BullStockData]],
+                        all_rd_series: pd.Series = None,
+                        all_rev_series: pd.Series = None) -> BullScoreResult:
         """计算单只股票评分"""
 
         # 各子维度评分
-        ind_demand, ind_detail = self._score_industry_demand(data, group_series)
-        tech_bar, tech_detail = self._score_tech_barrier(data, group_series)
+        ind_demand, ind_detail = self._score_industry_demand(data, group_series, all_rev_series)
+        tech_bar, tech_detail = self._score_tech_barrier(data, group_series, all_rd_series)
         order_exp, order_detail = self._score_order_explosion(data, group_series)
         earn_qual, earn_detail = self._score_earnings_quality(data, group_series)
         leader, leader_detail = self._score_leader(data, group_data)
         expect, expect_detail = self._score_expectation(data, group_series)
         inst, inst_detail = self._score_institution(data, group_series)
         mc_ela, mc_detail = self._score_marketcap_elasticity(data)
+        chip, chip_detail = self._score_chip(data, group_series)
+        val, val_detail = self._score_valuation(data, group_series)
 
-        # BullScore
+        # BullScore v2 — 权重调整：
+        # 产业景气 20%, 技术壁垒 12%, 订单爆发 15%, 业绩质量 15%
+        # 龙头地位 8%, 预期差 13%, 机构认可 5%, 市值弹性 5%, 筹码面 7%, 估值安全 5%
         bull_score = (
-            0.25 * ind_demand +
-            0.15 * tech_bar +
+            0.20 * ind_demand +
+            0.12 * tech_bar +
             0.15 * order_exp +
             0.15 * earn_qual +
-            0.10 * leader +
-            0.10 * expect +
+            0.08 * leader +
+            0.13 * expect +
             0.05 * inst +
-            0.05 * mc_ela
+            0.05 * mc_ela +
+            0.07 * chip +
+            0.05 * val
         )
 
-        # ThemeScore
-        theme_score = self._compute_theme_score(data.chain_tag)
+        # ThemeScore — v2: 同时传入 fina_mainbz 主营业务数据
+        theme_score = self._compute_theme_score(data.chain_tag, data.main_business_items)
 
         # FinalScore
         final_score = 0.80 * bull_score + 0.20 * theme_score
@@ -978,7 +1300,7 @@ class BullScorer:
             name=data.name,
             industry=data.industry,
             chain_tag=data.chain_tag,
-            theme=chain_to_theme(data.chain_tag),
+            theme=data.chain_tag,
             industry_demand_score=round(ind_demand, 2),
             tech_barrier_score=round(tech_bar, 2),
             order_explosion_score=round(order_exp, 2),
@@ -987,6 +1309,8 @@ class BullScorer:
             expectation_score=round(expect, 2),
             institution_score=round(inst, 2),
             marketcap_score=round(mc_ela, 2),
+            chip_score=round(chip, 2),
+            valuation_score=round(val, 2),  # 新增：估值安全边际
             bull_score=round(bull_score, 2),
             theme_score=round(theme_score, 2),
             final_score=round(final_score, 2),
@@ -1017,6 +1341,8 @@ class BullScorer:
                 'expectation': expect_detail,
                 'institution': inst_detail,
                 'marketcap': mc_detail,
+                'chip': chip_detail,
+                'valuation': val_detail,
             }
         )
 
@@ -1039,6 +1365,8 @@ class BullScorer:
                 'expectation_score': r.expectation_score,
                 'institution_score': r.institution_score,
                 'marketcap_score': r.marketcap_score,
+                'chip_score': r.chip_score,  # BullScore v2 新增
+                'valuation_score': r.valuation_score,
                 'bull_score': r.bull_score,
                 'theme_score': r.theme_score,
                 'final_score': r.final_score,

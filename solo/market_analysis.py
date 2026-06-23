@@ -628,7 +628,7 @@ def analyze_market(trade_date=None):
         theme_top3_scores = get_top3_theme_scores(trade_date)
         
         # 计算市场趋势总评分
-        trend_score, index_trend, theme_trend = calculate_market_trend_score(results, theme_top3_scores)
+        trend_score, index_trend, theme_trend = calculate_market_trend_score(results, theme_top3_scores, trade_date)
         market_status, position_range, position = get_market_status_and_position(trend_score)
         reason = f"当前市场处于【{market_status}】阶段"
         
@@ -858,7 +858,7 @@ def get_top3_theme_scores(trade_date=None):
 # ================
 # 计算市场趋势总评分（新评分体系）
 # ================
-def calculate_market_trend_score(index_results, theme_top3_scores=None):
+def calculate_market_trend_score(index_results, theme_top3_scores=None, trade_date=None):
     """
     计算市场趋势总评分：
     IndexTrend = sh_score * 0.5 + hs300_score * 0.3 + cyb_score * 0.2
@@ -867,6 +867,7 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None):
     
     如果 ThemeTrend > 90: TrendScore += 10
     如果 ThemeTrend > 85: TrendScore += 5
+    量能加分：今日成交量接近60日最大值时额外加分
     """
     # 提取指数趋势分
     sh_score = 0
@@ -901,6 +902,23 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None):
         trend_score += 10
     elif theme_trend > 85:
         trend_score += 5
+
+    # 量能加分：今日成交量是否为60日最大值
+    if trade_date:
+        try:
+            sh_df = get_index_kline("000001.SH", trade_date)
+            if sh_df is not None and len(sh_df) >= 20:
+                vol_latest = sh_df['vol'].iloc[-1]
+                vol_max_60d = sh_df['vol'].tail(60).max()
+                vol_ratio = vol_latest / vol_max_60d if vol_max_60d > 0 else 0
+                if vol_ratio >= 0.95:
+                    trend_score += 10
+                    print(f"  [量能加分] 今日成交量接近60日最大值(ratio={vol_ratio:.2f})，+10分")
+                elif vol_ratio >= 0.85:
+                    trend_score += 5
+                    print(f"  [量能加分] 今日成交量显著放大(ratio={vol_ratio:.2f})，+5分")
+        except Exception as e:
+            pass
     
     # 限制在 0-100 范围内
     trend_score = min(100, max(0, trend_score))
@@ -911,23 +929,23 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None):
 def get_market_status_and_position(trend_score):
     """
     根据趋势分返回市场状态和仓位建议：
-    85~100  → 主升浪  → 80~100%
-    75~85   → 强趋势  → 60~80%
-    65~75   → 趋势良好 → 50~70%
+    80~100  → 主升浪  → 80~100%
+    70~80   → 强趋势  → 60~80%
+    60~70   → 趋势良好 → 50~70%
     55~65   → 震荡    → 30~50%
     45~55   → 弱势    → 20~30%
     35~45   → 退潮    → 10~20%
     <35     → 主跌段  → 0~10%
     """
-    if trend_score >= 85:
+    if trend_score >= 80:
         status = "主升浪"
         position_range = "80~100%"
         position = 90
-    elif trend_score >= 75:
+    elif trend_score >= 70:
         status = "强趋势"
         position_range = "60~80%"
         position = 70
-    elif trend_score >= 65:
+    elif trend_score >= 60:
         status = "趋势良好"
         position_range = "50~70%"
         position = 60

@@ -1403,9 +1403,24 @@ class RealtimeThemeMonitor:
         
         与market_analysis.py保持一致的算法:
         IndexTrend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
-        ThemeTrend = TOP3主题平均分(无主题数据时用index_trend * 0.8)
+        ThemeTrend = TOP3主题平均分(无主题数据时用index_trend)
         TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
+        
+        优化:引入昨日基准+平滑过渡,避免盘中分数剧烈波动
         """
+        # ── 0. 获取昨日基准分数(用于平滑过渡) ──
+        yesterday_data = self.get_yesterday_market_data()
+        yesterday_trend_score = yesterday_data.get('trend_score') if yesterday_data else None
+        if yesterday_trend_score is not None and yesterday_trend_score != '?':
+            try:
+                yesterday_trend_score = float(yesterday_trend_score)
+                print(f"[平滑] 昨日基准分数: {yesterday_trend_score}")
+            except:
+                yesterday_trend_score = None
+                print(f"[平滑] 昨日分数转换失败: {yesterday_data}")
+        else:
+            print(f"[平滑] 无昨日基准: yesterday_data={yesterday_data}")
+        
         # ── 1. 提取指数趋势分(直接使用,不再额外修正) ──
         sh_score = 0
         hs300_score = 0
@@ -1423,19 +1438,24 @@ class RealtimeThemeMonitor:
         index_trend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
         
         # ── 2. 主题趋势分 ──
-        # 有主题历史数据时用TOP3主题平均分,无主题数据时用指数趋势*0.8
+        # 有足够主题历史数据(每主题≥5轮)时用TOP3主题平均分,不足时用指数趋势
+        MIN_HISTORY_CYCLES = 5
         if self.theme_score_history and len(self.theme_score_history) > 0:
-            vals = []
-            for theme, hist in self.theme_score_history.items():
-                if hist:
-                    vals.append(hist[-1])
-            if vals:
-                top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
-                theme_trend_raw = min(100, max(30, 50 + top_avg * 6))
+            sufficient_hist = all(len(hist) >= MIN_HISTORY_CYCLES for hist in self.theme_score_history.values() if hist)
+            if sufficient_hist:
+                vals = []
+                for theme, hist in self.theme_score_history.items():
+                    if hist:
+                        vals.append(hist[-1])
+                if vals:
+                    top_avg = sum(sorted(vals, reverse=True)[:3]) / min(3, len(vals))
+                    theme_trend_raw = min(100, max(30, 50 + top_avg * 6))
+                else:
+                    theme_trend_raw = index_trend
             else:
-                theme_trend_raw = 50
+                theme_trend_raw = index_trend
         else:
-            theme_trend_raw = index_trend * 0.8
+            theme_trend_raw = index_trend
         
         # 获取市场广度用于修正
         overview = self.compute_market_overview()
@@ -1452,17 +1472,84 @@ class RealtimeThemeMonitor:
 
         self._recent_theme_scores = theme_trend
 
-        # TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
-        # 与market_analysis.py一致:不再额外减分
-        trend_score = round(index_trend * 0.4 + theme_trend * 0.6, 1)
-        trend_score = min(100, max(0, trend_score))
+        # ── 3. 计算实时趋势分(与market_analysis.py同步加分逻辑) ──
+        trend_score_raw = round(index_trend * 0.4 + theme_trend * 0.6, 1)
+        
+        # 主题趋势加分(与market_analysis.py同步)
+        if theme_trend > 90:
+            trend_score_raw += 10
+        elif theme_trend > 85:
+            trend_score_raw += 5
+        
+        # 量能加分:检查今日成交量是否接近60日最大值(简化版:用指数实时成交量)
+        # 注:实时量能难以获取60日对比,暂用上涨比例替代判断
+        if up_ratio >= 70:
+            trend_score_raw += 5  # 大面积上涨视为量能放大
+        
+        trend_score_raw = min(100, max(0, trend_score_raw))
+        
+        # ── 4. 平滑过渡:引入昨日基准,避免盘中分数剧烈波动 ──
+        # 规则:
+        # - 开盘前30分钟:昨日基准权重70%,实时权重30%
+        # - 盘中逐步降低基准权重,收盘时实时权重100%
+        # - 单日波动限制:不能偏离昨日基准超过±15分
+        now = datetime.now()
+        if yesterday_trend_score is not None and now.hour < 15:
+            # 计算盘中时间进度(9:30~11:30上午2小时,13:00~15:00下午2小时)
+            minutes_since_open = 0
+            if 9 <= now.hour < 12:
+                # 上午时段(9:30~11:30)
+                if now.hour == 9:
+                    minutes_since_open = max(0, now.minute - 30)
+                else:
+                    minutes_since_open = (now.hour - 9) * 60 + now.minute - 30
+            elif 13 <= now.hour < 15:
+                # 下午时段(13:00~15:00)
+                minutes_since_open = 120 + (now.hour - 13) * 60 + now.minute
+            
+            # 时间进度权重(开盘时基准权重高,收盘时实时权重高)
+            if minutes_since_open <= 30:
+                base_weight = 0.70  # 开盘前30分钟,基准权重70%
+            elif minutes_since_open <= 120:
+                base_weight = 0.50  # 上午,基准权重50%
+            elif minutes_since_open <= 240:
+                base_weight = 0.30  # 下午前半段,基准权重30%
+            else:
+                base_weight = 0.10  # 收盘前,基准权重10%
+            
+            realtime_weight = 1.0 - base_weight
+            
+            # 平滑计算
+            trend_score_smooth = yesterday_trend_score * base_weight + trend_score_raw * realtime_weight
+            
+            # 单日波动限制:不能偏离昨日基准超过±15分
+            max_deviation = 15
+            trend_score = max(yesterday_trend_score - max_deviation, 
+                             min(yesterday_trend_score + max_deviation, trend_score_smooth))
+            
+            # 记录平滑信息(用于调试)
+            self._smooth_info = {
+                'yesterday_base': yesterday_trend_score,
+                'realtime_raw': trend_score_raw,
+                'base_weight': base_weight,
+                'minutes': minutes_since_open,
+                'smooth_result': round(trend_score, 1)
+            }
+            print(f"[平滑] 实时={trend_score_raw:.1f} 基准权重={base_weight:.0%} 平滑后={trend_score:.1f}")
+        else:
+            # 无昨日基准或收盘后,直接用实时分数
+            trend_score = trend_score_raw
+            self._smooth_info = None
+        
+        trend_score = round(trend_score, 1)
 
-        # 市场状态 & 建议仓位
-        if trend_score >= 85:
+        # 市场状态 & 建议仓位（与 market_analysis.py get_market_status_and_position 阈值对齐）
+        # 阈值: ≥80/70/60/55/45/35（不再使用滞回，避免忽上忽下）
+        if trend_score >= 80:
             market_status, pos_range, pos = "主升浪", "80~100%", 90
-        elif trend_score >= 75:
+        elif trend_score >= 70:
             market_status, pos_range, pos = "强趋势", "60~80%", 70
-        elif trend_score >= 65:
+        elif trend_score >= 60:
             market_status, pos_range, pos = "趋势良好", "50~70%", 60
         elif trend_score >= 55:
             market_status, pos_range, pos = "震荡", "30~50%", 40
@@ -1472,37 +1559,6 @@ class RealtimeThemeMonitor:
             market_status, pos_range, pos = "退潮", "10~20%", 15
         else:
             market_status, pos_range, pos = "主跌段", "0~10%", 5
-
-        # ── 平滑处理:评分在阈值±3分内,保留前一次状态,避免频繁跳动 ──
-        HYSTERESIS = 3  # 滞回区间
-        if hasattr(self, '_last_pos') and self._last_pos is not None:
-            last_pos = self._last_pos
-            # 阈值映射: pos -> 最低评分阈值
-            pos_thresholds = [(90, 85), (70, 75), (60, 65), (40, 55), (25, 45), (15, 35), (5, 0)]
-            for p, threshold in pos_thresholds:
-                if pos == p:
-                    # 新仓位需要 trend_score 至少超过 threshold + HYSTERESIS 才升级
-                    # 旧仓位需要 trend_score 降到 threshold - HYSTERESIS 以下才降级
-                    if p < last_pos:
-                        # 升级:需要超过上一档阈值+滞回
-                        last_threshold = next((t for pp, t in pos_thresholds if pp == last_pos), 0)
-                        if trend_score < last_threshold + HYSTERESIS:
-                            pos = last_pos
-                            pos_range = self._last_pos_range
-                            market_status = self._last_status
-                    elif p > last_pos:
-                        # 降级:需要降到下一档阈值-滞回
-                        last_threshold = next((t for pp, t in pos_thresholds if pp == last_pos), 100)
-                        if trend_score > last_threshold - HYSTERESIS:
-                            pos = last_pos
-                            pos_range = self._last_pos_range
-                            market_status = self._last_status
-                    break
-        
-        # 保存当前状态供下次使用
-        self._last_pos = pos
-        self._last_pos_range = pos_range
-        self._last_status = market_status
 
         return trend_score, index_trend, theme_trend, market_status, pos, pos_range
 

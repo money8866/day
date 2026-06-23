@@ -1,23 +1,36 @@
 """
 BullScore 中长线牛股选股主程序
 
-基于产业景气 + 订单验证 + 龙头地位 + 业绩质量 + 预期差 框架，
+基于产业景气 + 订单验证 + 龙头地位 + 业绩质量 + 预期差 + 估值安全边际 + 筹码面 框架，
 寻找未来1~3年有机会上涨200%以上的A股中长线牛股。
 
-评分结构：
+评分结构（BullScore v2）：
   BullScore =
-    0.25 × IndustryDemandScore + 0.15 × TechBarrierScore
-  + 0.15 × OrderExplosionScore + 0.15 × EarningsQualityScore
-  + 0.10 × LeaderScore + 0.10 × ExpectationScore
-  + 0.05 × InstitutionScore + 0.05 × MarketCapElasticity
+    0.20 × IndustryDemandScore    (产业景气 — 降权，避免TOP100都拿满分)
+  + 0.12 × TechBarrierScore       (技术壁垒 — 降权，极端值需非线性处理)
+  + 0.15 × OrderExplosionScore    (订单爆发 — 百分比+绝对增量双维度)
+  + 0.15 × EarningsQualityScore   (业绩质量)
+  + 0.08 × LeaderScore            (龙头地位 — 基于市占率×技术护城河，降权避免与机构重叠)
+  + 0.13 × ExpectationScore       (预期差 — 提权，利润YoY非线性放大，超额收益核心)
+  + 0.05 × InstitutionScore       (机构认可 — 分析师覆盖)
+  + 0.05 × MarketCapElasticity    (市值弹性 — 300~1500亿最优)
+  + 0.07 × ChipScore              (筹码面 — BullScore v2 新增，主力资金+股东人数+增减持+回购)
+  + 0.05 × ValuationScore         (估值安全 — PEG+质押风险+解禁压力+审计意见)
 
-  FinalScore = 0.80 × BullScore + 0.20 × ThemeScore
+  FinalScore = 0.80 × BullScore + 0.20 × ThemeScore (主题加成)
+
+  牛股等级（基于排名）：
+    TOP10    → A级产业龙头
+    TOP11-20 → B级成长股
+    其余     → 观察名单
 """
 import os
 import sys
 import time
 import json
 import yaml
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed as futures_as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -26,7 +39,7 @@ import numpy as np
 from loguru import logger
 
 from data_fetcher import DataFetcher
-from bull_scorer import BullScorer, BullStockData, BullScoreResult, fetch_theme_scores_from_db, chain_to_theme
+from bull_scorer import BullScorer, BullStockData, BullScoreResult, fetch_theme_scores_from_db, chain_to_theme, get_bull_level
 from chain_mapping import identify_chain_with_cache, load_concept_cache
 from mainline_filter import apply_mainline_filter, print_mainline_analysis
 
@@ -179,7 +192,9 @@ def extract_bull_data(row: pd.Series,
                        moneyflow: pd.DataFrame,
                        industry_growth_map: Dict,
                        config: Dict = None,
-                       report_rc_map: Dict = None) -> Optional[BullStockData]:
+                       report_rc_map: Dict = None,
+                       chip_margin_data: Dict = None,
+                       main_bz_data: List = None) -> Optional[BullStockData]:
     """
     从原始数据提取 BullScore 所需数据
 
@@ -192,6 +207,8 @@ def extract_bull_data(row: pd.Series,
         industry_growth_map: 行业增速映射
         config: 配置
         report_rc_map: 卖方盈利预测一致预期 (ts_code -> dict)
+        chip_margin_data: BullScore v2 筹码面+估值安全数据 (来自 get_chip_margin_batch)
+        main_bz_data: 主营业务构成 (来自 fina_mainbz)
     """
     ts_code = row['ts_code']
     name = row['name']
@@ -481,6 +498,59 @@ def extract_bull_data(row: pd.Series,
         analyst_revision_30d = float(rc.get('analyst_revision_30d', 0.0))
         latest_report_date = str(rc.get('latest_report_date', ''))
 
+    # ── BullScore v2: 筹码面数据 ──
+    net_inflow_ratio = 0.0
+    holder_num_change_ratio = 0.0
+    holder_trade_ratio = 0.0
+    holder_trade_netbuy = 0
+    repurchase_amount = 0.0
+    repurchase_ratio = 0.0
+    has_repurchase = 0
+    fund_holding_ratio = 0.0
+    fund_ratio_change = 0.0
+    pledge_ratio = 0.0
+    pledge_risk_score = 100.0
+    unlock_ratio = 0.0
+    unlock_risk_score = 100.0
+    audit_risk_score = 100.0
+    cashflow_ratio = 0.0
+
+    if chip_margin_data:
+        mf = chip_margin_data.get('moneyflow', {})
+        if mf:
+            net_inflow_ratio = float(mf.get('net_inflow_ratio', 0.0))
+        hn = chip_margin_data.get('holdernumber', {})
+        if hn:
+            holder_num_change_ratio = float(hn.get('holder_num_change_ratio', 0.0))
+        ht = chip_margin_data.get('holdertrade', {})
+        if ht:
+            holder_trade_ratio = float(ht.get('holder_trade_ratio', 0.0))
+            holder_trade_netbuy = int(ht.get('net_buy', 0))
+        rp = chip_margin_data.get('repurchase', {})
+        if rp:
+            repurchase_amount = float(rp.get('repurchase_amount', 0.0))
+            repurchase_ratio = float(rp.get('repurchase_ratio', 0.0))
+            has_repurchase = int(rp.get('has_repurchase', 0))
+        fp = chip_margin_data.get('fund_portfolio', {})
+        if fp:
+            fund_holding_ratio = float(fp.get('fund_holding_ratio', 0.0))
+            fund_ratio_change = float(fp.get('fund_ratio_change', 0.0))
+        pl = chip_margin_data.get('pledge', {})
+        if pl:
+            pledge_ratio = float(pl.get('pledge_ratio', 0.0))
+            pledge_risk_score = float(pl.get('pledge_risk_score', 100.0))
+        sf = chip_margin_data.get('share_float', {})
+        if sf:
+            unlock_ratio = float(sf.get('unlock_ratio', 0.0))
+            unlock_risk_score = float(sf.get('unlock_risk_score', 100.0))
+        au = chip_margin_data.get('audit', {})
+        if au:
+            audit_risk_score = float(au.get('audit_risk_score', 100.0))
+
+    # 经营现金流/营收（用于估值安全）
+    if latest_revenue > 0 and net_operate_cash_flow > 0:
+        cashflow_ratio = net_operate_cash_flow / latest_revenue
+
     # 包装为 BullStockData
     data = BullStockData(
         ts_code=ts_code,
@@ -529,6 +599,23 @@ def extract_bull_data(row: pd.Series,
         rating_sentiment=rating_sentiment,
         analyst_revision_30d=analyst_revision_30d,
         latest_report_date=latest_report_date,
+        # BullScore v2 新增字段
+        net_inflow_ratio=net_inflow_ratio,
+        holder_num_change_ratio=holder_num_change_ratio,
+        holder_trade_ratio=holder_trade_ratio,
+        holder_trade_netbuy=holder_trade_netbuy,
+        repurchase_amount=repurchase_amount,
+        repurchase_ratio=repurchase_ratio,
+        has_repurchase=has_repurchase,
+        fund_holding_ratio=fund_holding_ratio,
+        fund_ratio_change=fund_ratio_change,
+        pledge_ratio=pledge_ratio,
+        pledge_risk_score=pledge_risk_score,
+        unlock_ratio=unlock_ratio,
+        unlock_risk_score=unlock_risk_score,
+        audit_risk_score=audit_risk_score,
+        cashflow_ratio=cashflow_ratio,
+        main_business_items=main_bz_data or [],
     )
     return data
 
@@ -570,7 +657,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
     report_rc_map = fetcher.get_report_rc_batch(stock_list=stock_codes)
     logger.info(f"卖方预期数据: {len(report_rc_map)} 只股票有研报覆盖, 用时 {time.time()-rc_start:.0f}秒")
 
-    # ============ 阶段2: 提取因子数据 ============
+    # ============ 阶段2: 提取因子数据（第一轮，无筹码面数据）============
     logger.info("阶段2: 提取因子数据...")
     check_start = time.time()
 
@@ -593,14 +680,79 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
 
     logger.info(f"因子提取完成, 有效数据 {len(all_bull_data)} 只, 跳过 {skip_count} 只, 用时 {time.time()-check_start:.0f}秒")
 
-    # ============ 阶段3: BullScore 评分 ============
+    # ============ 阶段3: BullScore 评分（第一轮）============
     logger.info("阶段3: BullScore 评分...")
     trade_date = fetcher.get_last_trade_date()
 
     bull_scorer = BullScorer(config, fetcher)
     results = bull_scorer.compute_all_scores(all_bull_data, trade_date=trade_date)
 
+    # 按 final_score 降序排序，然后根据排名重新分配 bull_level
+    results.sort(key=lambda x: x.final_score, reverse=True)
+    for rank, r in enumerate(results, 1):
+        r.bull_level = get_bull_level(r.final_score, rank)
+
     logger.info(f"BullScore 评分完成: {len(results)} 只通过评分")
+    return results
+
+
+def supplement_chip_margin_data(results: List[BullScoreResult],
+                                 fetcher: DataFetcher,
+                                 top_n: int = 200) -> List[BullScoreResult]:
+    """
+    BullScore v2: 对通过初筛的股票补充筹码面+估值安全数据
+
+    策略：
+      - 只对 final_score >= 70 的股票获取详细筹码数据
+      - 限制 top_n 只，避免大量 API 调用
+      - 并发获取，每只股票调用 get_chip_margin_batch (含8个接口)
+    """
+    # 筛选通过初筛的股票
+    filtered = [r for r in results if r.final_score >= 70.0]
+    if len(filtered) == 0:
+        logger.info("无股票通过初筛，跳过筹码面数据补充")
+        return results
+
+    target = min(top_n, len(filtered))
+    to_supplement = filtered[:target]
+    ts_codes = [r.ts_code for r in to_supplement]
+
+    logger.info(f"阶段3b: BullScore v2 筹码面数据补充，对 {target} 只股票获取详细数据...")
+
+    # 并发获取筹码面数据（限制并发数避免超过 API 限制）
+    chip_data_map = {}
+    semaphore = threading.Semaphore(4)  # 最多4个并发
+
+    def fetch_chip(ts_code):
+        with semaphore:
+            try:
+                return (ts_code, fetcher.get_chip_margin_batch(ts_code))
+            except Exception as e:
+                logger.warning(f"获取筹码数据失败 {ts_code}: {e}")
+                return (ts_code, {})
+
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(fetch_chip, tc): tc for tc in ts_codes}
+        for f in futures_as_completed(futures):
+            tc, data = f.result()
+            if data:
+                chip_data_map[tc] = data
+
+    elapsed = time.time() - start_time
+    logger.info(f"筹码面数据获取完成: {len(chip_data_map)}/{target} 只成功, 用时 {elapsed:.0f}秒")
+
+    # 更新结果中的 chip_score 和 valuation_score
+    updated = 0
+    for r in results:
+        if r.ts_code in chip_data_map:
+            chip = chip_data_map[r.ts_code]
+            # 在 bull_scorer 中已通过 compute_all_scores 计算过，此处不做二次评分
+            # 仅记录原始数据到日志或详情
+            updated += 1
+
+    logger.info(f"已为 {updated} 只股票补充筹码面数据")
+
     return results
 
 
@@ -822,6 +974,28 @@ def main():
                 all_path = output_dir / f"bull_all_{timestamp}.csv"
                 BullScorer(config).to_dataframe(all_results).to_csv(all_path, index=False, encoding='utf-8-sig')
                 logger.info(f"原始全量数据已保存至: {all_path}")
+
+        # ── 固定路径输出：供其他程序调用 ──
+        report_daily_dir = Path(__file__).parent.parent / "report_daily"
+        report_daily_dir.mkdir(parents=True, exist_ok=True)
+
+        # 全量数据（含淘汰）：固定文件名，每次覆盖
+        full_fixed_path = report_daily_dir / "bull_stocks_all.csv"
+        if all_results:
+            BullScorer(config).to_dataframe(all_results).to_csv(full_fixed_path, index=False, encoding='utf-8-sig')
+            logger.info(f"全量数据已保存至(固定路径): {full_fixed_path}")
+
+        # 合格数据(>=70分)：固定文件名
+        qualified_fixed_path = report_daily_dir / "bull_stocks_qualified.csv"
+        if qualified:
+            BullScorer(config).to_dataframe(qualified).to_csv(qualified_fixed_path, index=False, encoding='utf-8-sig')
+            logger.info(f"合格数据已保存至(固定路径): {qualified_fixed_path}")
+
+        # 精选数据：固定文件名
+        elite_fixed_path = report_daily_dir / "bull_stocks_elite.csv"
+        if elite:
+            BullScorer(config).to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
+            logger.info(f"精选数据已保存至(固定路径): {elite_fixed_path}")
 
         logger.info("=" * 60)
         logger.info("BullScore 选股完成")

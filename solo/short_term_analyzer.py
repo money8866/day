@@ -17,8 +17,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # 复用 tushare_quant.py 的配置和工具
 from tushare_quant import (
-    pro, TRADE_DATE, TUSHARE_API_CACHE_DIR, 
-    CACHE_DIR, BASE_DIR, validate_trade_date
+    pro, TRADE_DATE, TUSHARE_API_CACHE_DIR,
+    CACHE_DIR, BASE_DIR, validate_trade_date,
+    detect_breakout, detect_wave2_reversal
 )
 
 
@@ -64,21 +65,32 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
 
         # 1. 优先读缓存
         df = None
+        cache_valid = False
         if os.path.exists(_cache_file):
             try:
                 df = pd.read_csv(_cache_file)
                 df['trade_date'] = df['trade_date'].astype(str)
-            except Exception:
+                # 检查缓存是否包含目标日期
+                target_date_str = str(trade_date or TRADE_DATE)
+                if target_date_str in df['trade_date'].values:
+                    cache_valid = True
+                else:
+                    print(f"[缓存过期] {ts_code} 缓存中缺少 {target_date_str}，重新获取")
+                    df = None
+            except Exception as e:
+                print(f"[缓存读取失败] {ts_code}: {e}")
                 df = None
 
-        # 2. 缓存缺失则调用 stk_factor_pro 专业版接口
+        # 2. 缓存缺失或过期则调用 stk_factor_pro 专业版接口
         if df is None or df.empty:
             df = pro.stk_factor_pro(ts_code=ts_code, start_date='20250101')
             if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
                 try:
                     df.to_csv(_cache_file, index=False)
-                except Exception:
-                    pass
+                    print(f"[缓存更新] {ts_code} 数据已更新")
+                except Exception as e:
+                    print(f"[缓存保存失败] {ts_code}: {e}")
 
         if df is None or df.empty:
             result["stage"] = "数据不足"
@@ -91,7 +103,8 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
         
         # 如果指定了日期，找到对应日期的数据
         if trade_date:
-            mask = df['trade_date'] == trade_date
+            # 确保日期比较时类型一致（缓存文件中的日期可能是整数或字符串）
+            mask = df['trade_date'].astype(str) == str(trade_date)
             if mask.any():
                 date_idx = df[mask].index[0]
                 latest = df.iloc[date_idx]
@@ -133,6 +146,8 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
 
         # 前1日 / 前5日指标（用于信号比较）
         prev_dif = float(prev1.get('macd_dif_bfq', 0) or 0) if prev1 is not None else dif
+        prev_dea = float(prev1.get('macd_dea_bfq', 0) or 0) if prev1 is not None else dea
+        prev_macd = float(prev1.get('macd_bfq', 0) or 0) if prev1 is not None else macd
         prev_rsi6 = float(prev1.get('rsi_bfq_6', 50) or 50) if prev1 is not None else rsi_6
         prev_rsi12 = float(prev1.get('rsi_bfq_12', 50) or 50) if prev1 is not None else rsi_12
         prev_kdj_k = float(prev1.get('kdj_k_bfq', 50) or 50) if prev1 is not None else kdj_k
@@ -181,30 +196,82 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
         trend_score = min(40, max(0, trend_score))
 
         # =========================
-        # ② 动量健康度（30分）
+        # ② 动量健康度（30分）- 强趋势股优化版
         # =========================
         momentum_score = 15
 
         avg_rsi = (rsi_6 + rsi_12 + rsi_24) / 3
 
-        if 50 <= avg_rsi <= 70:
-            momentum_score = 30
+        # 【A】RSI趋势方向判断
+        rsi6_rising = rsi_6 > prev_rsi6
+        rsi12_rising = rsi_12 > prev_rsi12
+
+        # 【B】趋势结构联动：均线多头排列时允许更高RSI
+        strong_trend = (ma5 > ma10 and ma10 > ma20 and ma20 > ma60 and close > ma5)
+
+        # 【C】RSI基础评分（对强趋势股放宽上限）
+        if 65 <= avg_rsi <= 82:
+            momentum_score = 30  # 最佳区间：强趋势股正常活跃区
+        elif 55 <= avg_rsi < 65:
+            momentum_score = 28  # 偏强区间，可能刚启动或温和上涨
+        elif 82 < avg_rsi <= 88:
+            if strong_trend and rsi6_rising:
+                momentum_score = 26  # 趋势完好+RSI仍上升=强势延续
+            else:
+                momentum_score = 18  # 趋势一般或RSI回落=过热风险
+        elif 50 <= avg_rsi < 55:
+            momentum_score = 20  # 中性偏弱
+        elif avg_rsi > 88:
+            if strong_trend and rsi6_rising:
+                momentum_score = 15  # 极端高位但趋势完好=趋势加速
+            else:
+                momentum_score = 5   # 极端高位+趋势弱=危险
         elif 40 <= avg_rsi < 50:
-            momentum_score = 20
-        elif 70 < avg_rsi <= 75:
-            momentum_score = 25
-        elif 75 < avg_rsi <= 85:
-            momentum_score = 15
-        elif avg_rsi > 85:
-            momentum_score = 5
-        elif avg_rsi < 40:
-            momentum_score = 10
+            momentum_score = 10  # 弱势
+        else:
+            momentum_score = 5   # <40，极弱
 
-        if kdj_j > 90 or kdj_j < 20:
+        # 【D】RSI趋势方向加分
+        if rsi6_rising:
+            momentum_score = min(30, momentum_score + 3)
+        if rsi12_rising:
+            momentum_score = min(30, momentum_score + 2)
+
+        # 【E】KDJ修正（对强趋势股放宽）
+        if kdj_j > 95:
             momentum_score = max(5, momentum_score - 5)
+        elif kdj_j < 15 and strong_trend:
+            momentum_score = min(30, momentum_score + 3)  # 强趋势中KDJ超卖=回调买点
 
+        # 【F】MACD共振
         if dif > dea:
-            momentum_score = min(30, momentum_score + 5)
+            momentum_score = min(30, momentum_score + 3)
+
+        # 【G】RSI顶背离检测（独立惩罚）
+        if prev1 is not None and len(df) >= 10:
+            prev10_close = float(df.iloc[-10].get('close', 0) or 0)
+            prev10_rsi6 = float(df.iloc[-10].get('rsi_bfq_6', 50) or 50)
+            if prev10_close > 0 and close > prev10_close * 1.05 and rsi_6 < prev10_rsi6:
+                momentum_score = max(5, momentum_score - 8)
+            elif prev10_close > 0 and close > prev10_close * 1.08 and rsi_6 < prev10_rsi6 * 0.95:
+                momentum_score = max(3, momentum_score - 12)
+
+        # 【H】量价齐升加分
+        if prev_close > 0 and prev_vol > 0:
+            price_up = close > prev_close
+            vol_up = volume > prev_vol
+            if price_up and vol_up:
+                momentum_score = min(30, momentum_score + 4)
+
+        # 【I】KDJ金叉加分
+        if kdj_k > kdj_d and prev_kdj_k <= prev_kdj_d:
+            momentum_score = min(30, momentum_score + 4)
+
+        # 【J】MACD积极信号加分
+        if macd > prev_macd:
+            momentum_score = min(30, momentum_score + 3)  # 绿柱缩短或红柱增长
+        if prev_macd < 0 and macd >= 0:
+            momentum_score = min(30, momentum_score + 5)  # 上穿0轴
 
         momentum_score = min(30, max(0, momentum_score))
 
@@ -575,334 +642,6 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
         result["signal"] = "规避"
         result["key_risk"] = f"计算错误: {str(e)}"
 
-    return result
-
-
-def detect_breakout(ts_code, pro, trade_date=None):
-    """
-    突破型策略检测函数
-    总分100分，75分以上视为有效突破，可列入观察/买入名单
-    
-    评分标准：
-    1. 价格突破 (30分): close > boll_upper
-    2. 趋势均线 (25分): ma5 > ma10 且 ma10 > ma20 且 close > ma5
-    3. 动能共振 (20分): macd > 0 且 dif > dea 且 kdj_j > 80
-    4. 空间与安全 (15分): rsi_6 > 65 且 rsi_6 < 85
-    5. 波动率辅助 (10分): atr > 0 且 close > ma60
-    
-    参数:
-        ts_code: 股票代码
-        pro: Tushare pro 实例
-        trade_date: 指定日期（None表示最新）
-    返回:
-        {
-            "breakout_score": int,      # 突破评分
-            "is_valid_breakout": bool,  # 是否有效突破(>=75分)
-            "breakdown": {...},         # 各维度得分
-            "signal": str               # 信号建议
-        }
-    """
-    result = {
-        "ts_code": ts_code,
-        "trade_date": trade_date or TRADE_DATE,
-        "breakout_score": 0,
-        "is_valid_breakout": False,
-        "breakdown": {
-            "price_breakout": 0,
-            "trend_ma": 0,
-            "momentum_resonance": 0,
-            "safety_zone": 0,
-            "volatility": 0
-        },
-        "signal": "非突破形态"
-    }
-    
-    try:
-        # 获取技术因子数据
-        _cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}_{TRADE_DATE}.csv")
-        
-        if os.path.exists(_cache_file):
-            df = pd.read_csv(_cache_file)
-        else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
-            df.to_csv(_cache_file, index=False)
-        
-        df['trade_date'] = df['trade_date'].astype(str)
-        # 按日期升序排列（确保df.iloc[-1]是最新数据）
-        df = df.sort_values('trade_date').reset_index(drop=True)
-        
-        if trade_date:
-            mask = df['trade_date'] == trade_date
-            if mask.any():
-                latest = df[mask].iloc[0]
-            else:
-                result["signal"] = "指定日期无数据"
-                return result
-        else:
-            latest = df.iloc[-1]
-        
-        # 提取因子
-        close = float(latest.get('close', 0) or 0)
-        boll_upper = float(latest.get('boll_upper_bfq', 0) or 0)
-        ma5 = float(latest.get('ma_bfq_5', 0) or 0)
-        ma10 = float(latest.get('ma_bfq_10', 0) or 0)
-        ma20 = float(latest.get('ma_bfq_20', 0) or 0)
-        ma60 = float(latest.get('ma_bfq_60', 0) or 0)
-        macd = float(latest.get('macd_bfq', 0) or 0)
-        dif = float(latest.get('macd_dif_bfq', 0) or 0)
-        dea = float(latest.get('macd_dea_bfq', 0) or 0)
-        kdj_j = float(latest.get('kdj_bfq', 50) or 50)
-        rsi_6 = float(latest.get('rsi_bfq_6', 50) or 50)
-        atr = float(latest.get('atr_bfq', 0) or 0)
-        
-        total_score = 0
-        
-        # 1. 价格突破 (30分): close > boll_upper
-        if close > boll_upper and boll_upper > 0:
-            result["breakdown"]["price_breakout"] = 30
-            total_score += 30
-        
-        # 2. 趋势均线 (25分): ma5 > ma10 且 ma10 > ma20 且 close > ma5
-        if ma5 > ma10 and ma10 > ma20 and close > ma5 and ma5 > 0:
-            result["breakdown"]["trend_ma"] = 25
-            total_score += 25
-        
-        # 3. 动能共振 (20分): macd > 0 且 dif > dea 且 kdj_j > 80
-        if macd > 0 and dif > dea and kdj_j > 80:
-            result["breakdown"]["momentum_resonance"] = 20
-            total_score += 20
-        
-        # 4. 空间与安全 (15分): rsi_6 > 65 且 rsi_6 < 85
-        if 65 < rsi_6 < 85:
-            result["breakdown"]["safety_zone"] = 15
-            total_score += 15
-        
-        # 5. 波动率辅助 (10分): atr > 0 且 close > ma60
-        if atr > 0 and close > ma60 and ma60 > 0:
-            result["breakdown"]["volatility"] = 10
-            total_score += 10
-        
-        result["breakout_score"] = total_score
-        result["is_valid_breakout"] = total_score >= 75
-        
-        if result["is_valid_breakout"]:
-            result["signal"] = "有效突破！列入观察/买入名单"
-        elif total_score >= 60:
-            result["signal"] = "突破待确认，建议观察"
-        elif total_score >= 40:
-            result["signal"] = "突破迹象初现，继续跟踪"
-        else:
-            result["signal"] = "非突破形态"
-        
-    except Exception as e:
-        result["signal"] = f"计算错误: {str(e)}"
-    
-    return result
-
-
-def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
-    """
-    二波反转策略检测函数
-    总分100分，80分以上视为完美的二波潜伏信号
-    
-    评分标准：
-    1. 强股基因 (30分): ma20 > ma60 且 dif > 0，前期有过 close > boll_upper
-    2. 调整健康 (30分): boll_mid <= close <= ma10，rsi_6 降至 45-60 之间
-    3. 反转信号 (20分): close > open（阳线），kdj_j 触底勾头向上
-    4. 量价配合 (20分): low 探底接近 ma20 后收回，volume 相比前期放量时显著萎缩
-    
-    信号延续：如果前1-2天出现完美二波信号，且股价未大幅拉升(涨幅<10%)，允许突破ma10/ma5仍视为有效
-    
-    参数:
-        ts_code: 股票代码
-        pro: Tushare pro 实例
-        trade_date: 指定日期（None表示最新）
-        lookback_days: 回溯天数，用于判断前期是否为强股
-    返回:
-        {
-            "wave2_score": int,          # 二波反转评分
-            "is_perfect_signal": bool,   # 是否完美信号(>=80分)
-            "breakdown": {...},          # 各维度得分
-            "signal": str                # 信号建议
-        }
-    """
-    result = {
-        "ts_code": ts_code,
-        "trade_date": trade_date or TRADE_DATE,
-        "wave2_score": 0,
-        "is_perfect_signal": False,
-        "breakdown": {
-            "strong_stock": 0,
-            "healthy_adjust": 0,
-            "reversal_signal": 0,
-            "volume_price": 0
-        },
-        "signal": "非二波形态"
-    }
-    
-    try:
-        # 获取技术因子数据
-        _cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}_{TRADE_DATE}.csv")
-        
-        if os.path.exists(_cache_file):
-            df = pd.read_csv(_cache_file)
-        else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
-            df.to_csv(_cache_file, index=False)
-        
-        df['trade_date'] = df['trade_date'].astype(str)
-        # 按日期升序排列（确保df.iloc[-1]是最新数据）
-        df = df.sort_values('trade_date').reset_index(drop=True)
-        
-        if trade_date:
-            mask = df['trade_date'] == trade_date
-            if mask.any():
-                latest = df[mask].iloc[0]
-            else:
-                result["signal"] = "指定日期无数据"
-                return result
-        else:
-            latest = df.iloc[-1]
-        
-        # 获取前N天数据用于判断
-        df_sorted = df.sort_values('trade_date')
-        mask_lookback = df_sorted['trade_date'] <= (trade_date or TRADE_DATE)
-        df_lookback = df_sorted[mask_lookback].tail(lookback_days)
-        
-        # 提取最新因子
-        close = float(latest.get('close', 0) or 0)
-        open_price = float(latest.get('open', 0) or 0)
-        low = float(latest.get('low', 0) or 0)
-        volume = float(latest.get('vol', 0) or 0)
-        ma5 = float(latest.get('ma_bfq_5', 0) or 0)
-        ma10 = float(latest.get('ma_bfq_10', 0) or 0)
-        ma20 = float(latest.get('ma_bfq_20', 0) or 0)
-        ma60 = float(latest.get('ma_bfq_60', 0) or 0)
-        boll_mid = float(latest.get('boll_mid_bfq', 0) or 0)
-        dif = float(latest.get('macd_dif_bfq', 0) or 0)
-        rsi_6 = float(latest.get('rsi_bfq_6', 50) or 50)
-        kdj_j = float(latest.get('kdj_bfq', 50) or 50)
-        
-        # 获取前一天的kdj_j用于判断勾头
-        prev_kdj_j = kdj_j
-        prev_close = close
-        if len(df_lookback) >= 2:
-            prev_day = df_lookback.iloc[-2]
-            prev_kdj_j = float(prev_day.get('kdj_bfq', 50) or 50)
-            prev_close = float(prev_day.get('close', close) or close)
-        
-        # 检查前1-2天是否有完美二波信号（信号延续）
-        has_recent_perfect_signal = False
-        days_since_perfect = 0
-        max_gain_since_perfect = 0
-        if len(df_lookback) >= 3:
-            # 检查前1天和前2天
-            for i in range(1, 3):
-                if len(df_lookback) > i:
-                    prev_day = df_lookback.iloc[-1 - i]
-                    # 模拟计算前一天的二波分数
-                    prev_close_val = float(prev_day.get('close', 0) or 0)
-                    prev_ma10_val = float(prev_day.get('ma_bfq_10', 0) or 0)
-                    prev_ma20_val = float(prev_day.get('ma_bfq_20', 0) or 0)
-                    prev_ma60_val = float(prev_day.get('ma_bfq_60', 0) or 0)
-                    prev_dif_val = float(prev_day.get('macd_dif_bfq', 0) or 0)
-                    prev_rsi_val = float(prev_day.get('rsi_bfq_6', 50) or 50)
-                    
-                    # 判断是否是完美二波信号
-                    if prev_ma20_val > prev_ma60_val and prev_dif_val > 0:
-                        prev_boll_mid = float(prev_day.get('boll_mid_bfq', 0) or 0)
-                        if prev_boll_mid > 0 and prev_ma10_val > 0:
-                            if prev_boll_mid <= prev_close_val <= prev_ma10_val and 45 <= prev_rsi_val <= 60:
-                                has_recent_perfect_signal = True
-                                days_since_perfect = i
-                                # 计算从完美信号以来的涨幅
-                                if prev_close_val > 0:
-                                    max_gain_since_perfect = (close - prev_close_val) / prev_close_val * 100
-                                break
-        
-        total_score = 0
-        
-        # 1. 强股基因 (30分): ma20 > ma60 且 dif > 0，前期有过 close > boll_upper
-        has_strong_gene = False
-        if ma20 > ma60 and dif > 0 and ma20 > 0:
-            # 检查前期是否有突破布林带上轨
-            for _, row in df_lookback.iterrows():
-                row_close = float(row.get('close', 0) or 0)
-                row_boll_upper = float(row.get('boll_upper_bfq', 0) or 0)
-                if row_close > row_boll_upper and row_boll_upper > 0:
-                    has_strong_gene = True
-                    break
-        
-        if has_strong_gene:
-            result["breakdown"]["strong_stock"] = 30
-            total_score += 30
-        
-        # 2. 调整健康 (30分): boll_mid <= close <= ma10，rsi_6 降至 45-60 之间
-        # 信号延续时放宽条件：允许突破ma10甚至ma5
-        adjust_score = 0
-        if boll_mid > 0 and ma10 > 0:
-            # 标准条件
-            if boll_mid <= close <= ma10 and 45 <= rsi_6 <= 60:
-                adjust_score = 30
-            # 信号延续且未大幅拉升：允许突破ma10但不超过ma5
-            elif has_recent_perfect_signal and max_gain_since_perfect < 10:
-                ma5_val = ma5 if ma5 > 0 else ma10 * 1.05  # 假设ma5约等于ma10*1.05
-                if close <= ma5_val and rsi_6 <= 70:
-                    adjust_score = 25  # 放宽条件扣5分
-        
-        result["breakdown"]["healthy_adjust"] = adjust_score
-        total_score += adjust_score
-        
-        # 3. 反转信号 (20分): close > open（阳线），kdj_j 触底勾头向上
-        reversal_score = 0
-        if close > open_price and kdj_j > prev_kdj_j:
-            # 额外检查kdj_j是否在低位或刚从低位回升
-            if kdj_j < 60:
-                reversal_score = 20
-        
-        result["breakdown"]["reversal_signal"] = reversal_score
-        total_score += reversal_score
-        
-        # 4. 量价配合 (20分): low 探底接近 ma20 后收回，volume 相比前期放量时显著萎缩
-        volume_score = 0
-        if ma20 > 0 and low > 0:
-            # 判断下影线是否试探ma20
-            low_to_ma20 = abs(low - ma20) / ma20 * 100
-            
-            # 判断成交量是否萎缩（相比前期最大成交量）
-            max_vol = df_lookback['vol'].max() if not df_lookback.empty else volume
-            vol_ratio = volume / max_vol if max_vol > 0 else 1
-            
-            # 标准条件
-            if low_to_ma20 <= 5 and vol_ratio <= 0.5:
-                volume_score = 20
-            # 信号延续时放宽量价条件
-            elif has_recent_perfect_signal and max_gain_since_perfect < 10:
-                if low_to_ma20 <= 8:
-                    volume_score = 15  # 信号延续时量价配合分数
-        
-        result["breakdown"]["volume_price"] = volume_score
-        total_score += volume_score
-        
-        # 信号延续加分：前1-2天有完美二波信号，且涨幅不大，额外加分
-        if has_recent_perfect_signal and max_gain_since_perfect < 10:
-            total_score += int(min(10, (10 - max_gain_since_perfect)))
-        
-        result["wave2_score"] = int(total_score)
-        result["is_perfect_signal"] = total_score >= 80
-        
-        if result["is_perfect_signal"]:
-            result["signal"] = "完美二波反转！可潜伏买入"
-        elif total_score >= 60:
-            result["signal"] = "二波形态初现，继续跟踪"
-        elif total_score >= 40:
-            result["signal"] = "疑似二波结构，等待确认"
-        else:
-            result["signal"] = "非二波形态"
-        
-    except Exception as e:
-        result["signal"] = f"计算错误: {str(e)}"
-    
     return result
 
 

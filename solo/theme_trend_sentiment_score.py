@@ -1130,10 +1130,66 @@ def _compute_chain_score(code, stock_name, concepts, info, concept_list, keyword
     return max(score, 0)
 
 
+THEME_STOCK_MAP_CACHE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "cache_daily", "theme_stock_map_latest.json"
+)
+
+
+def load_theme_stock_map_from_json():
+    """从 build_theme_stock_map.py 输出的 JSON 加载主题-个股映射，避免重复运算。
+    
+    返回: (theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts)
+    
+    如果 JSON 文件不存在，回退到完整运算。
+    """
+    if not os.path.exists(THEME_STOCK_MAP_CACHE_PATH):
+        print(f"[Warn] 主题映射缓存不存在，回退到 match_theme_stocks 运算: {THEME_STOCK_MAP_CACHE_PATH}")
+        hot_themes = load_theme_json()
+        dc_df = get_dc_members()
+        stock_basic = get_stock_basic()
+        return match_theme_stocks(hot_themes, dc_df, stock_basic)
+
+    try:
+        with open(THEME_STOCK_MAP_CACHE_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"[Error] 主题映射缓存读取失败: {e}，回退运算")
+        hot_themes = load_theme_json()
+        dc_df = get_dc_members()
+        stock_basic = get_stock_basic()
+        return match_theme_stocks(hot_themes, dc_df, stock_basic)
+
+    # 从 JSON 重建 theme_stock_map
+    theme_stock_map = {}
+    for theme_name, stock_list in data.get("themes", {}).items():
+        matched = {}
+        for s in stock_list:
+            matched[s["code"]] = {
+                "via": s.get("via", ""),
+                "chain_distance": s.get("chain_distance", 2),
+                "industry_match": s.get("industry_match", False),
+                "score": s.get("score", 0),
+            }
+        theme_stock_map[theme_name] = matched
+
+    # 从 stocks 重建 name_map_basic, stock_industry, stock_concepts
+    name_map_basic = {}
+    stock_basic_industry = {}
+    stock_concepts = {}
+    for code, info in data.get("stocks", {}).items():
+        name_map_basic[code] = info.get("name", code)
+        stock_basic_industry[code] = info.get("industry", "")
+        stock_concepts[code] = info.get("concepts", [])
+
+    print(f"[Cache] 从 JSON 加载主题-个股映射: {len(theme_stock_map)} 个主题, {len(name_map_basic)} 只个股")
+    return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+
 def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
     """
     ===== 产业链约束匹配模型 =====
-    
+
     匹配原则：
     1. Industry Gate：股票必须通过行业板块匹配（东财行业板块 or stock_basic），否则直接排除
     2. Chain Distance 分层（0=核心, 1=上下游, 2+/3=排除）：
@@ -1143,13 +1199,23 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
     3. exclude_keywords 硬过滤（跳过强制纳入公司）
     4. leader_companies 锚定：龙头公司强制 chain_distance=0，最高评分
     5. 最终评分：industry_base + concept_bonus + keyword_bonus + leader_proximity - chain_penalty
-    
+
     输出每只股票的：
     - via: 匹配路径
     - industry_match: 是否行业匹配
     - chain_distance: 产业链层级 (0/1)
     - score: 综合评分
     """
+    # 加载 stock_basic_industry → theme.json industry 别名映射
+    _ALIAS_MAP = None
+    _alias_path = os.path.join(os.path.dirname(__file__), 'stock_basic_industry_alias.json')
+    if os.path.exists(_alias_path):
+        try:
+            with open(_alias_path, 'r', encoding='utf-8') as f:
+                _ALIAS_MAP = json.load(f).get('mapping', {})
+        except Exception:
+            _ALIAS_MAP = None
+
     stock_basic_industry = {}
     name_map_basic = {}
     if stock_basic_df is not None and not stock_basic_df.empty:
@@ -1211,6 +1277,13 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
             if code not in candidates and ind:
                 if _in_industry_list(ind, industry_list):
                     candidates[code] = {"industry_match": True, "source": "stock_basic_industry"}
+                elif _ALIAS_MAP:
+                    # 未直匹配 → 尝试别名映射
+                    alias_targets = _ALIAS_MAP.get(ind, [])
+                    for alias_ind in alias_targets:
+                        if _in_industry_list(alias_ind, industry_list):
+                            candidates[code] = {"industry_match": True, "source": "stock_basic_industry_alias"}
+                            break
 
         # 方式D（兜底）：theme 无 industry 配置 → 用 concept 板块成员作为候选（标记为 industry_match=False）
         if not industry_list:
@@ -1224,6 +1297,24 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
                     for code in dc_industry_board_members[conc_name]:
                         if code not in candidates:
                             candidates[code] = {"industry_match": True, "source": "concept_as_industry"}
+
+        # 方式E（概念兜底）：有 industry 配置时，股票概念与 theme concept/keyword 重叠也可进入
+        # 解决行业归属断层但概念匹配的股票（如宏和科技→PCB、杰普特→光通信CPO）
+        # 关键词匹配要求 ≥3字符，避免"电力"、"金属"等2字泛词造成大量误入
+        if industry_list and (concept_list or keyword_list):
+            all_terms = [t for t in list(concept_list) + [k for k in keyword_list if len(k) >= 3] if t]
+            if all_terms:
+                for code, concepts in stock_concepts.items():
+                    if code not in candidates and concepts:
+                        for c in concepts:
+                            for tt in all_terms:
+                                # 只允许 tt 在 c 中（theme term 出现在概念名中）
+                                # 不允许 c 在 tt 中（避免"大数据"概念匹配"大数据金融"关键词）
+                                if tt in c:
+                                    candidates[code] = {"industry_match": False, "source": "concept_fallback"}
+                                    break
+                            if code in candidates:
+                                break
 
         # ====================================================================
         # Phase 1.5: DNA Gate — business_dna_tags 强约束
@@ -1266,8 +1357,12 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
             concepts = stock_concepts.get(code, [])
 
             # --- 2a) exclude_keywords 硬过滤（跳过强制纳入公司）---
-            if _should_exclude(code, stock_name, concepts, exclude_keywords, core_companies, leader_companies):
-                continue
+            # 仅对弱匹配来源（concept_fallback/concept_only）应用排除词，
+            # 已验证行业匹配的股票跳过（避免"参股银行"误杀方正证券）
+            source = info.get("source", "")
+            if source in ("concept_fallback", "concept_only"):
+                if _should_exclude(code, stock_name, concepts, exclude_keywords, core_companies, leader_companies):
+                    continue
 
             # --- 2b) 概念重叠检查 ---
             has_concept_overlap = _has_concept_overlap(
@@ -1291,6 +1386,8 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
             # --- 2e) 判定 chain_distance ---
             if is_force:
                 chain_distance = 0
+            elif info.get("source") == "concept_fallback":
+                chain_distance = 1      # 概念兜底：无行业确认，但有概念验证
             elif has_concept_overlap:
                 chain_distance = 0      # 核心产业链：行业+概念双重确认
             elif kw_matches:
@@ -1972,9 +2069,10 @@ def save_to_sqlite(results):
         climax_warning INTEGER DEFAULT 0, leader_name TEXT, leader_code TEXT, leader_score REAL,
         core_name TEXT, core_code TEXT, core_score REAL, ret_5 REAL, ret_10 REAL, ret_20 REAL, up_ratio REAL, zt_count INTEGER, 
         trade_date TEXT, theme_state TEXT, hot_score REAL, hot_percentile REAL, hot_phase TEXT, hot_warning TEXT,
-        style TEXT DEFAULT ''
+        top10_days_10d INTEGER DEFAULT 0, top10_days_20d INTEGER DEFAULT 0, style TEXT DEFAULT '',
+        confirmed_active_days INTEGER DEFAULT 0, cycle_phase TEXT DEFAULT '', leader_sequence TEXT DEFAULT ''
     )""")
-    
+
     # 检查表结构，如果缺少某些列则添加
     cur.execute("PRAGMA table_info(theme_scores)")
     columns = [row[1] for row in cur.fetchall()]
@@ -1994,14 +2092,21 @@ def save_to_sqlite(results):
         cur.execute("ALTER TABLE theme_scores ADD COLUMN top10_days_20d INTEGER DEFAULT 0")
     if "style" not in columns:
         cur.execute("ALTER TABLE theme_scores ADD COLUMN style TEXT DEFAULT ''")
-    
+    if "confirmed_active_days" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN confirmed_active_days INTEGER DEFAULT 0")
+    if "cycle_phase" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN cycle_phase TEXT DEFAULT ''")
+    if "leader_sequence" not in columns:
+        cur.execute("ALTER TABLE theme_scores ADD COLUMN leader_sequence TEXT DEFAULT ''")
+
     # 固定列名顺序
     fixed_columns = ["rank", "theme", "n_stocks", "trend_score", "sentiment_score", "composite_score",
                      "climax_warning", "leader_name", "leader_code", "leader_score",
                      "core_name", "core_code", "core_score", "ret_5", "ret_10", "ret_20",
                      "up_ratio", "zt_count", "trade_date", "theme_state",
                      "hot_score", "hot_percentile", "hot_phase", "hot_warning",
-                     "top10_days_10d", "top10_days_20d", "style"]
+                     "top10_days_10d", "top10_days_20d", "style",
+                     "confirmed_active_days", "cycle_phase", "leader_sequence"]
     # 确保表中实际存在这些列
     existing_columns = [c for c in fixed_columns if c in columns]
     col_str = ', '.join(existing_columns)
@@ -2048,6 +2153,9 @@ def save_to_sqlite(results):
             "top10_days_10d": top10_10d.get(theme_name, 0),
             "top10_days_20d": top10_20d.get(theme_name, 0),
             "style": r.get("style", ""),
+            "confirmed_active_days": r.get("confirmed_active_days", 0),
+            "cycle_phase": r.get("cycle_phase", ""),
+            "leader_sequence": r.get("leader_sequence", ""),
         }
         values = [col_to_val[c] for c in existing_columns]
         cur.execute(f"INSERT INTO theme_scores ({col_str}) VALUES ({placeholders})", values)
@@ -2055,8 +2163,10 @@ def save_to_sqlite(results):
     conn.close()
 
 
-def save_report_text(results):
-    """输出精简版分析报告"""
+def save_report_text(results, non_daytrip=None):
+    """输出精简版分析报告
+    non_daytrip: analyze_non_daytrip_themes 返回的字典，含 analysis_str
+    """
     report_path = os.path.join(REPORT_DIR, f"theme_analysis_{TRADE_DATE}.txt")
 
     buf = []
@@ -2067,6 +2177,10 @@ def save_report_text(results):
     w(f"  主题趋势分析报告 - {TRADE_DATE}")
     w("=" * 80)
     w()
+
+    # ========== 非一日游确认主题（最前置） ==========
+    if non_daytrip and non_daytrip.get("analysis_str"):
+        w(non_daytrip["analysis_str"])
 
     # ========== 重点机会：分歧转一致 ==========
     divergence_to_consensus = [r for r in results if r.get("theme_state") == "分歧转一致"]
@@ -2148,13 +2262,10 @@ def main():
     hot_themes = load_theme_json()
     print(f"[Theme] 加载 {len(hot_themes)} 个主题")
 
-    dc_df = get_dc_members()
-    stock_basic = get_stock_basic()
     daily_basic = get_daily_basic()
-    print(f"[Data] stock_basic: {len(stock_basic)}  daily_basic: {len(daily_basic)}")
+    print(f"[Data] daily_basic: {len(daily_basic)}")
 
-    theme_stock_map, name_map_basic, stock_industry, stock_concepts = match_theme_stocks(hot_themes, dc_df, stock_basic)
-
+    theme_stock_map, name_map_basic, stock_industry, stock_concepts = load_theme_stock_map_from_json()
     all_codes = set()
     for tn, m in theme_stock_map.items():
         all_codes.update(m.keys())
@@ -2337,6 +2448,21 @@ def main():
         r["top10_days_10d"] = top10_10d.get(r["theme"], 0)
         r["top10_days_20d"] = top10_20d.get(r["theme"], 0)
 
+    # ========== 非一日游确认分析 ==========
+    non_daytrip = analyze_non_daytrip_themes(TRADE_DATE, ndays=20)
+    if non_daytrip and non_daytrip.get("details_by_theme"):
+        for r in results:
+            theme_name = r["theme"]
+            detail = non_daytrip["details_by_theme"].get(theme_name, {})
+            r["confirmed_active_days"] = detail.get("confirmed_active_days", 0)
+            r["cycle_phase"] = detail.get("cycle_phase", "")
+            r["leader_sequence"] = detail.get("leader_sequence", "")
+    else:
+        for r in results:
+            r["confirmed_active_days"] = 0
+            r["cycle_phase"] = ""
+            r["leader_sequence"] = ""
+
     results.sort(key=lambda x: x["composite_score"], reverse=True)
     for i, r in enumerate(results, 1):
         r["rank"] = i
@@ -2378,6 +2504,38 @@ def main():
         print(f"  {state:<8}: {cnt:>2}个 → {', '.join(themes_in_state)}")
     print("-" * 60)
 
+    # ========== 非一日游确认主题（控制台输出） ==========
+    if non_daytrip and non_daytrip.get("confirmed"):
+        print("\n" + "=" * 110)
+        print("★ 非一日游确认主题（连续活跃 + 情绪共振）")
+        print("=" * 110)
+        print(f"{'排名':<4}{'主题':<14}{'连续':<6}{'周期阶段':<12}{'综合':<8}{'情绪':<8}{'涨停':<6}{'龙头':<18}{'轮动模式':<10}")
+        print("-" * 110)
+        for idx, d in enumerate(non_daytrip["confirmed"][:15], 1):
+            ld = d.get("current_leader", "")
+            leader_pat = d.get("leader_pattern", "")
+            if ld and leader_pat == "核心锚定":
+                ld_display = f"{ld}(核心)"
+            elif ld and leader_pat == "轮动接力":
+                ld_display = f"{ld}(轮动)"
+            else:
+                ld_display = ld if ld else "-"
+            print(f"{idx:<4}{d['theme']:<14}{d['confirmed_active_days']:<6}{d['cycle_phase']:<12}"
+                  f"{d['current_composite']:<8.1f}{d['current_sentiment']:<8.1f}"
+                  f"{d['current_zt']:<6}{ld_display:<18}{leader_pat:<10}")
+        # 休眠等待主题
+        dormant_themes = [
+            dt for dt in non_daytrip.get("details_by_theme", {}).values()
+            if dt.get("cycle_phase") == "休眠等待"
+        ]
+        if dormant_themes:
+            dormant_themes.sort(key=lambda x: -x.get("max_active_days", 0))
+            print("-" * 110)
+            print("💤 休眠等待（近20天曾活跃，当前退潮，等待二次确认）:")
+            for d in dormant_themes[:10]:
+                print(f"     - {d['theme']}(历史最长{d['max_active_days']}天)")
+        print("=" * 110)
+
     print("\n" + "=" * 110)
     print("主题龙头/中军一览")
     print("=" * 110)
@@ -2396,7 +2554,7 @@ def main():
 
     save_to_csv(results)
     save_to_sqlite(results)
-    save_report_text(results)
+    save_report_text(results, non_daytrip)
 
     # ========== 渤海证券轮动监测 ==========
     print("\n" + "=" * 60)
@@ -2411,10 +2569,8 @@ def main():
 def run_theme_analysis():
     """供外部调用的主题分析入口，返回 results"""
     hot_themes = load_theme_json()
-    dc_df = get_dc_members()
-    stock_basic = get_stock_basic()
     daily_basic = get_daily_basic()
-    theme_stock_map, name_map_basic, stock_industry, stock_concepts = match_theme_stocks(hot_themes, dc_df, stock_basic)
+    theme_stock_map, name_map_basic, stock_industry, stock_concepts = load_theme_stock_map_from_json()
 
     all_codes = set()
     for tn, m in theme_stock_map.items():
@@ -2706,8 +2862,8 @@ def calc_rotation_monitoring(ndays=20):
     for i in range(len(date_list) - 1):
         date_curr = date_list[i]
         date_next = date_list[i + 1]
-        top5_curr = set(t for t, _, r in daily_rankings[date_curr] if r <= 10)
-        top5_next = set(t for t, _, r in daily_rankings[date_next] if r <= 10)
+        top5_curr = set(t for t, _, r in daily_rankings[date_curr] if r <= 15)
+        top5_next = set(t for t, _, r in daily_rankings[date_next] if r <= 15)
         if len(top5_curr) == 0 or len(top5_next) == 0:
             continue
         overlap = len(top5_curr & top5_next)
@@ -2863,6 +3019,270 @@ def get_top10_stability(trade_date, days=10):
     return stability
 
 
+def analyze_non_daytrip_themes(trade_date=None, ndays=20):
+    """
+    非一日游确认主题分析 — 基于历史数据识别真正可持续的强势主题
+
+    核心判断逻辑（来自功率半导体等主题的回测规律）：
+      非一日游确认条件 = composite_score >= 60 AND sentiment_score >= 65 AND zt_count >= 2
+
+    周期阶段定义：
+      - 启动确认：连续1-2天，刚从低情绪跳升至确认线之上
+      - 中期延续：连续3-5天，稳定在确认线之上，龙头有切换但整体不破
+      - 高潮尾声：连续6天以上，或 composite_score 开始下降（趋势钝化）
+      - 休眠等待：当前不在确认线上，但近20天内曾出现过至少2天连续确认
+
+    板块内轮动龙头识别：
+      - 统计近几日连续出现的 leader_name 序列
+      - 若同一龙头连续出现 >= 3 天 → "核心锚定"
+      - 若龙头频繁切换但板块仍活跃 → "轮动接力"
+
+    Args:
+        trade_date: 当前交易日期，None 时取最近日期
+        ndays: 回看天数，默认20个交易日
+
+    Returns:
+        dict: {
+            "confirmed": list,        # 非一日游确认主题列表（按连续天数降序）
+            "total_confirmed": int,   # 当前处于确认状态的主题数
+            "analysis_str": str,      # 格式化输出字符串
+            "details_by_theme": dict  # {theme: {confirmed_active_days, cycle_phase, ...}}
+        }
+    """
+    import sqlite3
+    from collections import defaultdict
+
+    if not os.path.exists(OUTPUT_DB):
+        return {"confirmed": [], "total_confirmed": 0,
+                "analysis_str": "[非一日游] 数据库不存在，跳过",
+                "details_by_theme": {}}
+
+    conn = sqlite3.connect(OUTPUT_DB)
+    cur = conn.cursor()
+
+    # 获取最近 ndays 个交易日
+    cur.execute("SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC")
+    all_dates = [row[0] for row in cur.fetchall()]
+
+    if not all_dates:
+        conn.close()
+        return {"confirmed": [], "total_confirmed": 0,
+                "analysis_str": "[非一日游] 无历史数据",
+                "details_by_theme": {}}
+
+    if trade_date is None:
+        trade_date = all_dates[0]
+
+    # 以 trade_date 为锚点向前取 ndays 个交易日
+    try:
+        idx = all_dates.index(trade_date)
+    except ValueError:
+        idx = 0
+    recent_dates = list(reversed(all_dates[idx:idx + ndays]))  # 从旧到新
+
+    if len(recent_dates) < 2:
+        conn.close()
+        return {"confirmed": [], "total_confirmed": 0,
+                "analysis_str": f"[非一日游] 历史天数不足({len(recent_dates)})",
+                "details_by_theme": {}}
+
+    # 读取这些日期的主题数据
+    placeholders = ','.join(['?' for _ in recent_dates])
+    cur.execute(f"""
+        SELECT trade_date, theme, composite_score, trend_score, sentiment_score,
+               zt_count, leader_name, leader_score
+        FROM theme_scores
+        WHERE trade_date IN ({placeholders})
+        ORDER BY theme, trade_date
+    """, recent_dates)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"confirmed": [], "total_confirmed": 0,
+                "analysis_str": "[非一日游] 无有效数据",
+                "details_by_theme": {}}
+
+    # ============= 1. 按主题分组，计算连续活跃天数和龙头序列 =============
+    theme_hist = defaultdict(list)
+    for r in rows:
+        theme_hist[r[1]].append({
+            "trade_date": r[0],
+            "composite": r[2] or 0,
+            "trend": r[3] or 0,
+            "sentiment": r[4] or 0,
+            "zt_count": r[5] or 0,
+            "leader": r[6] or "",
+            "leader_score": r[7] or 0,
+        })
+
+    details = {}
+    confirmed_list = []
+
+    for theme, hist in theme_hist.items():
+        if len(hist) < 2:
+            continue
+
+        # 判断每天是否处于"确认线之上"
+        for day in hist:
+            day["is_confirmed"] = (day["composite"] >= 60 and
+                                   day["sentiment"] >= 65 and
+                                   day["zt_count"] >= 2)
+
+        # 从最新一天向前数，当前连续确认的天数（连续断了就停）
+        current_streak = 0
+        for day in reversed(hist):
+            if day["is_confirmed"]:
+                current_streak += 1
+            else:
+                break
+
+        # 近20天内历史最长连续确认天数
+        max_streak = 0
+        tmp_streak = 0
+        for day in hist:
+            if day["is_confirmed"]:
+                tmp_streak += 1
+                max_streak = max(max_streak, tmp_streak)
+            else:
+                tmp_streak = 0
+
+        # 板块内龙头序列（最近5天）
+        recent_leaders = [d["leader"] for d in hist[-5:] if d["leader"]]
+        unique_leaders = list(dict.fromkeys(recent_leaders))  # 去重保序
+        leader_pattern = ""
+        if len(recent_leaders) >= 3 and len(unique_leaders) == 1:
+            leader_pattern = "核心锚定"
+        elif len(unique_leaders) >= 2:
+            leader_pattern = "轮动接力"
+        else:
+            leader_pattern = "单一龙头"
+
+        leader_sequence = "→".join(unique_leaders[:3]) if unique_leaders else "无"
+
+        # 周期阶段判断
+        if current_streak == 0:
+            if max_streak >= 2:
+                cycle_phase = "休眠等待"
+            else:
+                cycle_phase = "未激活"
+        elif current_streak <= 2:
+            cycle_phase = "启动确认"
+        elif current_streak <= 5:
+            cycle_phase = "中期延续"
+        else:
+            # 检查综合分是否下降（高潮尾声信号）
+            if len(hist) >= 3:
+                recent_3 = hist[-3:]
+                avg_last = sum(d["composite"] for d in recent_3) / len(recent_3)
+                prev_3 = hist[-6:-3] if len(hist) >= 6 else hist[:3]
+                avg_prev = sum(d["composite"] for d in prev_3) / len(prev_3)
+                if avg_last < avg_prev - 3:
+                    cycle_phase = "高潮尾声"
+                else:
+                    cycle_phase = "中期延续"
+            else:
+                cycle_phase = "中期延续"
+
+        # 活跃期平均涨停数
+        confirmed_days_data = [d for d in hist if d["is_confirmed"]]
+        avg_zt = sum(d["zt_count"] for d in confirmed_days_data) / len(confirmed_days_data) if confirmed_days_data else 0
+
+        # 当前最新数据
+        latest = hist[-1]
+
+        detail = {
+            "theme": theme,
+            "confirmed_active_days": current_streak,
+            "max_active_days": max_streak,
+            "cycle_phase": cycle_phase,
+            "leader_sequence": leader_sequence,
+            "leader_pattern": leader_pattern,
+            "avg_zt": round(avg_zt, 1),
+            "current_composite": latest["composite"],
+            "current_sentiment": latest["sentiment"],
+            "current_trend": latest["trend"],
+            "current_zt": latest["zt_count"],
+            "current_leader": latest["leader"],
+        }
+        details[theme] = detail
+
+        if current_streak >= 1:
+            confirmed_list.append(detail)
+
+    # ============= 2. 按连续活跃天数降序、综合分降序排列 =============
+    confirmed_list.sort(key=lambda x: (-x["confirmed_active_days"], -x["current_composite"]))
+
+    # ============= 3. 构建输出字符串 =============
+    buf = []
+    buf.append("★ 非一日游确认主题（可持续强势，非一日游脉冲）★")
+    buf.append("-" * 80)
+    if confirmed_list:
+        buf.append(f"  当前确认主题数: {len(confirmed_list)} / {len(theme_hist)}")
+        buf.append("-" * 60)
+        for d in confirmed_list[:12]:
+            buf.append(f"  ● {d['theme']:<12} 连续{d['confirmed_active_days']}天[{d['cycle_phase']}]  "
+                       f"综:{d['current_composite']:.0f} 情:{d['current_sentiment']:.0f} "
+                       f"涨停:{d['current_zt']}家  龙头:{d['current_leader']}")
+            if d['leader_sequence'] and d['leader_sequence'] != "无":
+                buf.append(f"      近5日龙头: {d['leader_sequence']}  [{d['leader_pattern']}]")
+            if d['max_active_days'] > d['confirmed_active_days']:
+                buf.append(f"      历史最长活跃: {d['max_active_days']}天  平均涨停: {d['avg_zt']}家")
+        buf.append("-" * 80)
+        buf.append("")
+
+        # 周期分布统计
+        phase_count = defaultdict(int)
+        for d in confirmed_list:
+            phase_count[d["cycle_phase"]] += 1
+        phase_str = "、".join([f"{k}{v}个" for k, v in sorted(phase_count.items(), key=lambda x: -x[1])])
+        buf.append(f"  周期分布: {phase_str}")
+        buf.append("")
+
+        # 警示：高潮尾声主题
+        climax_soon = [d for d in confirmed_list if d["cycle_phase"] == "高潮尾声"]
+        if climax_soon:
+            buf.append("  ⚠️ 高潮尾声（趋势钝化，注意风险）:")
+            for d in climax_soon:
+                buf.append(f"     - {d['theme']}（连续{d['confirmed_active_days']}天，"
+                           f"综:{d['current_composite']:.0f}，情:{d['current_sentiment']:.0f}）")
+            buf.append("")
+
+        # 机会：启动确认主题
+        start_confirmed = [d for d in confirmed_list if d["cycle_phase"] == "启动确认"]
+        if start_confirmed:
+            buf.append("  ✨ 启动确认（新进入确认线，关注机会）:")
+            for d in start_confirmed:
+                buf.append(f"     - {d['theme']}（连续{d['confirmed_active_days']}天，"
+                           f"综:{d['current_composite']:.0f}，情:{d['current_sentiment']:.0f}，"
+                           f"涨停:{d['current_zt']}家，龙头:{d['current_leader']}）")
+            buf.append("")
+    else:
+        buf.append("  当前无确认主题（市场情绪偏弱，观望为主）")
+        buf.append("-" * 80)
+        buf.append("")
+
+    # 休眠等待主题（曾经确认过但当前未在确认线）
+    dormant = [d for d in details.values() if d["cycle_phase"] == "休眠等待"]
+    if dormant:
+        dormant.sort(key=lambda x: -x["max_active_days"])
+        buf.append("  💤 休眠等待（近20天曾活跃，当前退潮，等待二次确认）:")
+        for d in dormant[:8]:
+            buf.append(f"     - {d['theme']}（历史最长{d['max_active_days']}天，"
+                       f"当前综:{d['current_composite']:.0f}，情:{d['current_sentiment']:.0f}）")
+        buf.append("")
+
+    analysis_str = "\n".join(buf)
+
+    return {
+        "confirmed": confirmed_list,
+        "total_confirmed": len(confirmed_list),
+        "analysis_str": analysis_str,
+        "details_by_theme": details,
+    }
+
+
 def get_60day_avg_trend_score():
     """
     从SQLite数据库读取历史数据，计算每个主题的前60个交易日趋势分平均值
@@ -2916,7 +3336,7 @@ def get_60day_avg_trend_score():
     return theme_avg
 
 
-def main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, theme_stock_map, name_map_basic, stock_industry, stock_concepts):
+def main_for_date(target_date, hot_themes, daily_basic, theme_stock_map, name_map_basic, stock_industry, stock_concepts):
     """
     为指定日期运行分析（用于批量回溯，复用主题和成分股对应关系）
     """
@@ -3133,19 +3553,17 @@ def backfill_last_n_days(n_days=60):
     print(f"待处理的 {len(trade_dates)} 个交易日: {trade_dates[0]} 到 {trade_dates[-1]}")
     
     # 步骤2: 只执行一次主题和成分股对应关系计算
-    print("\n[初始化] 计算主题和成分股对应关系（只需一次）")
+    print("\n[初始化] 加载主题配置和成分股对应关系（只需一次）")
     hot_themes = load_theme_json()
-    dc_df = get_dc_members()
-    stock_basic = get_stock_basic()
     daily_basic = get_daily_basic()
-    theme_stock_map, name_map_basic, stock_industry, stock_concepts = match_theme_stocks(hot_themes, dc_df, stock_basic)
+    theme_stock_map, name_map_basic, stock_industry, stock_concepts = load_theme_stock_map_from_json()
     
     # 步骤3: 逐个日期处理
     print(f"\n[开始处理] 共 {len(trade_dates)} 个交易日")
     for i, target_date in enumerate(trade_dates, 1):
         print(f"\n[{i}/{len(trade_dates)}] 处理 {target_date}")
         try:
-            main_for_date(target_date, hot_themes, dc_df, stock_basic, daily_basic, 
+            main_for_date(target_date, hot_themes, daily_basic,
                           theme_stock_map, name_map_basic, stock_industry, stock_concepts)
         except Exception as e:
             print(f"处理 {target_date} 时出错: {e}")

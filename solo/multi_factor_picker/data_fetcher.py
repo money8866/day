@@ -756,3 +756,432 @@ class DataFetcher:
                 'latest_report_date': str(latest_date) if pd.notna(latest_date) else "",
             }
         return result
+
+    # ============================================================
+    # BullScore v2 新增接口（均带24小时缓存）
+    # ============================================================
+
+    def _load_dict_cache(self, key: str, expire_hours: int = 24) -> Optional[Dict]:
+        """读取 dict 缓存（JSON 格式，24小时有效）"""
+        cache_path = self.cache_dir / f"{key}.json"
+        if not cache_path.exists():
+            return None
+        try:
+            mtime = cache_path.stat().st_mtime
+            age_hours = (time.time() - mtime) / 3600
+            if age_hours > expire_hours:
+                return None  # 过期
+            import json as _json
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return _json.load(f)
+        except Exception:
+            return None
+
+    def _save_dict_cache(self, key: str, data: Dict) -> None:
+        """保存 dict 缓存（JSON 格式）"""
+        try:
+            import json as _json
+            cache_path = self.cache_dir / f"{key}.json"
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                _json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _safe_name(self, ts_code: str) -> str:
+        """生成安全的文件名后缀"""
+        return ts_code.replace('.', '_').replace('-', '_')
+
+    def get_moneyflow_ndays(self, ts_code: str, n_days: int = 20,
+                            end_date: str = None) -> Dict[str, float]:
+        """
+        获取近N日主力资金净流入汇总（24小时缓存）
+
+        Returns:
+            { net_mf_amount_sum(万元), net_inflow_ratio(%), avg_daily_net }
+        """
+        from datetime import datetime as dt2, timedelta
+        if end_date is None:
+            end_date = self.get_last_trade_date()
+        cache_key = f"mf_ndays_{self._safe_name(ts_code)}_{n_days}_{end_date}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        start_date = (dt2.strptime(end_date, '%Y%m%d') - timedelta(days=n_days + 10)).strftime('%Y%m%d')
+
+        try:
+            df = self._retry_call(self.pro.moneyflow, ts_code=ts_code,
+                                  start_date=start_date, end_date=end_date)
+            if df is None or len(df) == 0:
+                result = {'net_mf_amount_sum': 0.0, 'net_inflow_ratio': 0.0, 'avg_daily_net': 0.0}
+            else:
+                df = df.sort_values('trade_date')
+                df = df.tail(n_days)
+                net_sum = float(df['net_mf_amount'].sum())
+                db = self._retry_call(self.pro.daily_basic, ts_code=ts_code,
+                                      start_date=end_date, end_date=end_date)
+                circ_mv = float(db.iloc[0]['circ_mv']) if db is not None and len(db) > 0 else 0.0
+                ratio = (net_sum / circ_mv * 100) if circ_mv > 0 else 0.0
+                avg = net_sum / len(df) if len(df) > 0 else 0.0
+                result = {
+                    'net_mf_amount_sum': net_sum,
+                    'net_inflow_ratio': ratio,
+                    'avg_daily_net': avg,
+                }
+        except Exception:
+            result = {'net_mf_amount_sum': 0.0, 'net_inflow_ratio': 0.0, 'avg_daily_net': 0.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_stk_holdernumber(self, ts_code: str, n_periods: int = 3) -> Dict[str, float]:
+        """
+        股东人数变化（近N期，24小时缓存）
+
+        Returns:
+            { holder_num_latest, holder_num_change_ratio(缩减=正), holder_num_trend }
+        """
+        cache_key = f"holder_num_{self._safe_name(ts_code)}_{n_periods}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.stk_holdernumber, ts_code=ts_code, limit=n_periods)
+            if df is None or len(df) < 2:
+                result = {'holder_num_latest': 0.0, 'holder_num_change_ratio': 0.0, 'holder_num_trend': 0.0}
+            else:
+                df = df.sort_values('end_date')
+                latest = float(df.iloc[-1]['holder_num'])
+                oldest = float(df.iloc[0]['holder_num'])
+                change_ratio = (oldest - latest) / oldest if oldest > 0 else 0.0
+                if len(df) >= 2:
+                    changes = [(float(df.iloc[i]['holder_num']) - float(df.iloc[i+1]['holder_num'])) /
+                               float(df.iloc[i+1]['holder_num']) if float(df.iloc[i+1]['holder_num']) > 0 else 0.0
+                               for i in range(len(df)-1)]
+                    trend = sum(changes) / len(changes)
+                else:
+                    trend = 0.0
+                result = {
+                    'holder_num_latest': latest,
+                    'holder_num_change_ratio': change_ratio,
+                    'holder_num_trend': trend,
+                }
+        except Exception:
+            result = {'holder_num_latest': 0.0, 'holder_num_change_ratio': 0.0, 'holder_num_trend': 0.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_stk_holdertrade(self, ts_code: str, n_days: int = 90) -> Dict[str, float]:
+        """
+        股东增减持（近N日，24小时缓存）
+
+        Returns:
+            { holder_trade_vol(万股), holder_trade_ratio(%流通), net_buy }
+        """
+        from datetime import datetime as dt2, timedelta
+        end_date = self.get_last_trade_date()
+        start_date = (dt2.strptime(end_date, '%Y%m%d') - timedelta(days=n_days)).strftime('%Y%m%d')
+        cache_key = f"holder_trade_{self._safe_name(ts_code)}_{n_days}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.stk_holdertrade, ts_code=ts_code,
+                                  start_date=start_date, end_date=end_date)
+            if df is None or len(df) == 0:
+                result = {'holder_trade_vol': 0.0, 'holder_trade_ratio': 0.0, 'net_buy': 0}
+            else:
+                vol = float(df['vol'].sum())
+                buy_vol = float(df[df['vol'] > 0]['vol'].sum())
+                sell_vol = float(df[df['vol'] < 0]['vol'].sum())
+                net_buy = 1 if buy_vol > abs(sell_vol) else -1
+                db = self._retry_call(self.pro.daily_basic, ts_code=ts_code,
+                                      start_date=end_date, end_date=end_date)
+                circ_mv = 0.0
+                if db is not None and len(db) > 0:
+                    close = float(db.iloc[0]['close']) if pd.notna(db.iloc[0]['close']) else 0.0
+                    total_mv = float(db.iloc[0]['total_mv']) if pd.notna(db.iloc[0]['total_mv']) else 0.0
+                    if close > 0:
+                        circ_mv = total_mv / close * 10000
+                ratio = (buy_vol + sell_vol) / circ_mv * 100 if circ_mv > 0 else 0.0
+                result = {
+                    'holder_trade_vol': vol,
+                    'holder_trade_ratio': ratio,
+                    'net_buy': net_buy,
+                }
+        except Exception:
+            result = {'holder_trade_vol': 0.0, 'holder_trade_ratio': 0.0, 'net_buy': 0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_repurchase(self, ts_code: str, n_days: int = 365) -> Dict[str, float]:
+        """
+        股票回购信息（近N日，24小时缓存）
+
+        Returns:
+            { repurchase_amount(万元), repurchase_ratio(%股本), has_repurchase }
+        """
+        from datetime import datetime as dt2, timedelta
+        end_date = self.get_last_trade_date()
+        start_date = (dt2.strptime(end_date, '%Y%m%d') - timedelta(days=n_days)).strftime('%Y%m%d')
+        cache_key = f"repurchase_{self._safe_name(ts_code)}_{n_days}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.repurchase, ts_code=ts_code,
+                                  start_date=start_date, end_date=end_date)
+            if df is None or len(df) == 0:
+                result = {'repurchase_amount': 0.0, 'repurchase_ratio': 0.0, 'has_repurchase': 0}
+            else:
+                amount = float(df['amount'].sum())
+                db = self._retry_call(self.pro.daily_basic, ts_code=ts_code,
+                                      start_date=end_date, end_date=end_date)
+                total_mv = float(db.iloc[0]['total_mv']) if db is not None and len(db) > 0 and pd.notna(db.iloc[0]['total_mv']) else 0.0
+                ratio = amount / total_mv * 100 if total_mv > 0 else 0.0
+                result = {
+                    'repurchase_amount': amount,
+                    'repurchase_ratio': ratio,
+                    'has_repurchase': 1,
+                }
+        except Exception:
+            result = {'repurchase_amount': 0.0, 'repurchase_ratio': 0.0, 'has_repurchase': 0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_fund_portfolio(self, ts_code: str, n_periods: int = 2) -> Dict[str, float]:
+        """
+        公募基金持仓变化（近N期季报，24小时缓存）
+
+        Returns:
+            { fund_holding_ratio, fund_ratio_change }
+        """
+        cache_key = f"fund_portfolio_{self._safe_name(ts_code)}_{n_periods}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.fund_portfolio, ts_code=ts_code, limit=n_periods)
+            if df is None or len(df) == 0:
+                result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0}
+            else:
+                df = df.sort_values('end_date')
+                latest_ratio = float(df.iloc[-1]['amount']) if 'amount' in df.columns and pd.notna(df.iloc[-1]['amount']) else 0.0
+                change = 0.0
+                if len(df) >= 2:
+                    prev = float(df.iloc[0]['amount']) if pd.notna(df.iloc[0]['amount']) else 0.0
+                    change = latest_ratio - prev
+                result = {
+                    'fund_holding_ratio': latest_ratio,
+                    'fund_ratio_change': change,
+                }
+        except Exception:
+            result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_pledge_stat(self, ts_code: str) -> Dict[str, float]:
+        """
+        股权质押统计（24小时缓存）
+
+        Returns:
+            { pledge_ratio(%), pledge_risk_score }
+        """
+        cache_key = f"pledge_{self._safe_name(ts_code)}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.pledge_stat, ts_code=ts_code)
+            if df is None or len(df) == 0:
+                result = {'pledge_ratio': 0.0, 'pledge_risk_score': 100.0}
+            else:
+                df = df.sort_values('end_date')
+                latest = df.iloc[-1]
+                ratio = float(latest.get('pledge_ratio', 0.0)) if pd.notna(latest.get('pledge_ratio')) else 0.0
+                if ratio < 0.20:
+                    risk_score = 100.0
+                elif ratio < 0.35:
+                    risk_score = 80.0
+                elif ratio < 0.50:
+                    risk_score = 50.0
+                else:
+                    risk_score = 10.0
+                result = {'pledge_ratio': ratio, 'pledge_risk_score': risk_score}
+        except Exception:
+            result = {'pledge_ratio': 0.0, 'pledge_risk_score': 100.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_share_float(self, ts_code: str, n_days: int = 60) -> Dict[str, float]:
+        """
+        限售股解禁压力（未来N日，24小时缓存）
+
+        Returns:
+            { float_ratio(%), unlock_ratio(%), unlock_risk_score }
+        """
+        from datetime import datetime as dt2, timedelta
+        end_date = self.get_last_trade_date()
+        future_date = (dt2.strptime(end_date, '%Y%m%d') + timedelta(days=n_days)).strftime('%Y%m%d')
+        cache_key = f"share_float_{self._safe_name(ts_code)}_{n_days}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.share_float, ts_code=ts_code,
+                                  start_date=end_date, end_date=future_date)
+            if df is None or len(df) == 0:
+                result = {'float_ratio': 0.0, 'unlock_ratio': 0.0, 'unlock_risk_score': 100.0}
+            else:
+                float_share = float(df['float_share'].sum()) if 'float_share' in df.columns else 0.0
+                total_share = float(df['total_share'].iloc[0]) if 'total_share' in df.columns and len(df) > 0 else 0.0
+                unlock_ratio = float_share / total_share * 100 if total_share > 0 else 0.0
+                if unlock_ratio < 5:
+                    risk_score = 100.0
+                elif unlock_ratio < 10:
+                    risk_score = 80.0
+                elif unlock_ratio < 20:
+                    risk_score = 50.0
+                else:
+                    risk_score = 20.0
+                result = {'float_ratio': float_share, 'unlock_ratio': unlock_ratio, 'unlock_risk_score': risk_score}
+        except Exception:
+            result = {'float_ratio': 0.0, 'unlock_ratio': 0.0, 'unlock_risk_score': 100.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_fina_audit(self, ts_code: str) -> Dict[str, Any]:
+        """
+        审计意见（最新一期，24小时缓存）
+
+        Returns:
+            { audit_opinion, audit_risk_score }
+        """
+        cache_key = f"audit_{self._safe_name(ts_code)}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.fina_audit, ts_code=ts_code)
+            if df is None or len(df) == 0:
+                result = {'audit_opinion': '', 'audit_risk_score': 100.0}
+            else:
+                df = df.sort_values('end_date', ascending=False)
+                opinion = str(df.iloc[0]['audit_result']) if 'audit_result' in df.columns and pd.notna(df.iloc[0]['audit_result']) else ''
+                if '标准无保留' in opinion or '无保留意见' in opinion:
+                    risk_score = 100.0
+                elif '保留意见' in opinion:
+                    risk_score = 50.0
+                elif '无法表示' in opinion or '否定意见' in opinion:
+                    risk_score = 10.0
+                else:
+                    risk_score = 80.0
+                result = {'audit_opinion': opinion, 'audit_risk_score': risk_score}
+        except Exception:
+            result = {'audit_opinion': '', 'audit_risk_score': 100.0}
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_fina_mainbz(self, ts_code: str) -> List[Dict[str, Any]]:
+        """
+        主营业务构成（最新一期，24小时缓存）
+
+        Returns:
+            [{ bz_item, bz_ratio }, ...]
+        """
+        cache_key = f"mainbz_{self._safe_name(ts_code)}"
+
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.fina_mainbz, ts_code=ts_code)
+            if df is None or len(df) == 0:
+                result = []
+            else:
+                df = df.sort_values('end_date', ascending=False)
+                latest_date = df.iloc[0]['end_date']
+                df = df[df['end_date'] == latest_date].copy()
+                df['bz_ratio'] = pd.to_numeric(df['bz_ratio'], errors='coerce').fillna(0.0)
+                result = df[['bz_item', 'bz_ratio']].to_dict('records')
+        except Exception:
+            result = []
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_chip_margin_batch(self, ts_code: str) -> Dict[str, Any]:
+        """
+        一次性获取单只股票的筹码面+估值安全所需数据（合并调用，减少延迟）
+        内部8个接口均带缓存（24小时有效）
+
+        Returns:
+            合并后的 dict
+        """
+        import concurrent.futures
+
+        results = {}
+
+        def safe_call(func, key):
+            try:
+                return (key, func())
+            except Exception:
+                return (key, {})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            futures_list = [
+                executor.submit(safe_call, lambda: self.get_moneyflow_ndays(ts_code, 20), 'moneyflow'),
+                executor.submit(safe_call, lambda: self.get_stk_holdernumber(ts_code, 3), 'holdernumber'),
+                executor.submit(safe_call, lambda: self.get_stk_holdertrade(ts_code, 90), 'holdertrade'),
+                executor.submit(safe_call, lambda: self.get_repurchase(ts_code, 365), 'repurchase'),
+                executor.submit(safe_call, lambda: self.get_fund_portfolio(ts_code, 2), 'fund_portfolio'),
+                executor.submit(safe_call, lambda: self.get_pledge_stat(ts_code), 'pledge'),
+                executor.submit(safe_call, lambda: self.get_share_float(ts_code, 60), 'share_float'),
+                executor.submit(safe_call, lambda: self.get_fina_audit(ts_code), 'audit'),
+            ]
+            for f in concurrent.futures.as_completed(futures_list):
+                key, val = f.result()
+                results[key] = val
+
+        return results

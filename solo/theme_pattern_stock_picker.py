@@ -227,9 +227,6 @@ def get_stock_data(hot_themes):
     """获取成分股列表和基本面数据"""
     import theme_trend_sentiment_score as theme_score
     
-    # 获取行业和概念成分股
-    dc_df = theme_score.get_dc_members()
-    
     # 获取股票列表
     stock_basic = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name,industry,market,list_date')
     stock_basic = stock_basic[~stock_basic['name'].str.contains('ST|退', na=False)].copy()
@@ -262,8 +259,8 @@ def get_stock_data(hot_themes):
     
     print(f"   市值数据: {len(daily_basic)}条，有效市值: {(daily_basic['total_mv'] > 0).sum() if not daily_basic.empty else 0}条")
     
-    # 匹配主题成分股
-    theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_score.match_theme_stocks(hot_themes, dc_df, stock_basic)
+    # 从 JSON 缓存加载主题-个股映射（由 build_theme_stock_map.py 生成）
+    theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_score.load_theme_stock_map_from_json()
     
     # 创建市值映射（单位：亿）
     mcap_map = {}

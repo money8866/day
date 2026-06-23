@@ -1386,28 +1386,232 @@ THEME_TO_CHAIN = {
 }
 
 
+# ============================================================
+# 基于 theme_stock_map_latest.json 的产业链识别（直接查表）
+# ============================================================
+
+# theme_stock_map_latest.json 路径
+THEME_STOCK_MAP_PATH = r"D:\mystock\cache_daily\theme_stock_map_latest.json"
+
+# 全局缓存：股票代码 -> 主题名
+_stock_theme_cache = None
+
+
+def load_theme_stock_map() -> Dict[str, str]:
+    """
+    加载 theme_stock_map_latest.json，直接建立 股票代码 -> 主题名 的映射
+    
+    Returns:
+        Dict[str, str]: {ts_code: theme_name}
+    """
+    global _stock_theme_cache
+    if _stock_theme_cache is not None:
+        return _stock_theme_cache
+    
+    _stock_theme_cache = {}
+    
+    if not os.path.exists(THEME_STOCK_MAP_PATH):
+        logger.warning(f"未找到 theme_stock_map_latest.json: {THEME_STOCK_MAP_PATH}")
+        return {}
+    
+    try:
+        with open(THEME_STOCK_MAP_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        themes = data.get("themes", {})
+        for theme_name, stocks in themes.items():
+            for stock_info in stocks:
+                ts_code = stock_info.get("code", "")
+                if ts_code:
+                    _stock_theme_cache[ts_code] = theme_name
+        
+        logger.info(f"加载 theme_stock_map: {len(_stock_theme_cache)} 只股票 -> 主题映射")
+        return _stock_theme_cache
+    except Exception as e:
+        logger.warning(f"加载 theme_stock_map 失败: {e}")
+        return {}
+
+
 def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
                               config: dict = None) -> str:
     """
-    带缓存的产业链识别（推荐使用）—— 使用 theme.json 增强版
+    带缓存的产业链识别 —— 直接查表 theme_stock_map_latest.json
+    
+    不在表中的个股返回空字符串，不做兜底计算
     
     Args:
         ts_code: 股票代码
-        stock_name: 股票名称
-        industry: 东财行业
-        config: 配置字典
+        stock_name: 股票名称（未使用）
+        industry: 东财行业（未使用）
+        config: 配置字典（未使用）
     
     Returns:
-        产业链标签
+        产业链标签（主题名），未匹配则返回空字符串
     """
     import pandas as pd
-    if pd.isna(industry) or industry == 'nan':
-        industry = ''
-    if pd.isna(stock_name) or stock_name == 'nan':
-        stock_name = ''
+    if pd.isna(ts_code) or ts_code == 'nan':
+        return ""
     
-    ths_concepts = get_stock_ths_concepts(ts_code, config)
-    return identify_stock_chain_v3(stock_name, industry, ths_concepts)
+    # 直接查表
+    stock_theme_map = load_theme_stock_map()
+    return stock_theme_map.get(ts_code, "")
+
+
+# ============================================================
+# 旧版基于 theme.json 的产业链识别（保留兜底）
+# ============================================================
+
+# theme.json 路径（从上级目录加载）
+THEME_JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "theme.json")
+
+# 全局缓存
+_theme_json_cache = None
+
+
+def load_theme_json() -> Dict:
+    """加载 theme.json 配置"""
+    global _theme_json_cache
+    if _theme_json_cache is not None:
+        return _theme_json_cache
+    
+    if not os.path.exists(THEME_JSON_PATH):
+        logger.warning(f"未找到 theme.json: {THEME_JSON_PATH}")
+        return {}
+    
+    try:
+        with open(THEME_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _theme_json_cache = data.get("HOT_THEMES", {})
+        logger.info(f"加载 theme.json: {len(_theme_json_cache)} 个主题")
+        return _theme_json_cache
+    except Exception as e:
+        logger.warning(f"加载 theme.json 失败: {e}")
+        return {}
+
+
+def _in_industry_list(industry_name: str, industry_list: List[str]) -> bool:
+    """检查行业名是否在行业列表中（支持部分匹配）"""
+    if not industry_name or not industry_list:
+        return False
+    for ind in industry_list:
+        if ind in industry_name or industry_name in ind:
+            return True
+    return False
+
+
+def _match_keyword(search_text: str, keywords: List[str]) -> bool:
+    """检查搜索文本中是否包含关键词"""
+    if not search_text or not keywords:
+        return False
+    search_text = search_text.lower()
+    for kw in keywords:
+        if kw.lower() in search_text:
+            return True
+    return False
+
+
+def _is_core_company(stock_name: str, core_companies: List[str], leader_companies: List[str]) -> bool:
+    """检查是否为核心公司或龙头公司"""
+    if not stock_name:
+        return False
+    if core_companies and any(c in stock_name for c in core_companies):
+        return True
+    if leader_companies and any(c in stock_name for c in leader_companies):
+        return True
+    return False
+
+
+def _should_exclude(search_text: str, exclude_keywords: List[str], core_companies: List[str], leader_companies: List[str]) -> bool:
+    """检查是否应排除（核心公司不排除）"""
+    if not search_text or not exclude_keywords:
+        return False
+    stock_name = search_text.split()[0] if search_text else ""
+    if _is_core_company(stock_name, core_companies, leader_companies):
+        return False
+    search_text = search_text.lower()
+    for ek in exclude_keywords:
+        if ek.lower() in search_text:
+            return True
+    return False
+
+
+def identify_stock_chain_v3(stock_name: str, industry: str,
+                            ths_concepts: List[str] = None) -> str:
+    """
+    基于 theme.json 的产业链识别（增强版）- 仅作兜底使用
+    """
+    hot_themes = load_theme_json()
+    if not hot_themes:
+        return identify_stock_chain_v2(stock_name, industry, ths_concepts)
+    
+    ths_concepts = ths_concepts or []
+    search_text = f"{stock_name} {industry} {' '.join(ths_concepts)}"
+    
+    best_score = 0.0
+    best_chain = ""
+    
+    for theme_name, cfg in hot_themes.items():
+        industry_list = cfg.get("industry", [])
+        concept_list = cfg.get("concept", [])
+        keyword_list = cfg.get("keywords", [])
+        exclude_keywords = cfg.get("exclude_keywords", [])
+        core_companies = cfg.get("core_companies", [])
+        leader_companies = cfg.get("leader_companies", [])
+        
+        if not industry_list and not concept_list and not keyword_list:
+            continue
+        
+        if _is_core_company(stock_name, core_companies, leader_companies):
+            chain_name = THEME_TO_CHAIN.get(theme_name)
+            if chain_name:
+                return chain_name
+            continue
+        
+        if _should_exclude(search_text, exclude_keywords, core_companies, leader_companies):
+            continue
+        
+        score = 0
+        has_industry_match = False
+        has_concept_match = False
+        has_keyword_match = False
+        
+        if industry_list:
+            if industry and _in_industry_list(industry, industry_list):
+                score += 50
+                has_industry_match = True
+        
+        if concept_list and ths_concepts:
+            match_count = sum(1 for conc in ths_concepts if conc in concept_list)
+            if match_count > 0:
+                score += 30 * match_count
+                has_concept_match = True
+        
+        if keyword_list:
+            match_count = sum(1 for kw in keyword_list if kw.lower() in search_text.lower())
+            if match_count > 0:
+                score += 10 * min(match_count, 3)
+                has_keyword_match = True
+        
+        if not industry_list:
+            if has_concept_match:
+                score = max(score, 70)
+            elif has_keyword_match:
+                score = max(score, 50)
+        
+        if has_concept_match and has_keyword_match and not has_industry_match:
+            score = max(score, 60)
+        
+        if has_concept_match and not has_industry_match and score > 0:
+            score = max(score, 40)
+        
+        if score >= 40 and score > best_score:
+            best_score = score
+            best_chain = THEME_TO_CHAIN.get(theme_name)
+    
+    if best_chain:
+        return best_chain
+    
+    return identify_stock_chain_v2(stock_name, industry, ths_concepts)
 
 
 if __name__ == "__main__":

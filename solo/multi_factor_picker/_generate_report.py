@@ -56,7 +56,7 @@ if not FONT_REGISTERED:
 # ============================================================
 def load_data(csv_path):
     """加载 BullScore 结果 CSV"""
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, dtype={'ts_code': str})  # 确保代码列保持字符串格式
     df.columns = df.columns.str.strip()
 
     # 数值列转 float
@@ -494,16 +494,30 @@ def build_risk_analysis(df, styles):
 # ============================================================
 # 附录
 # ============================================================
+def _format_stock_code(ts_code):
+    """格式化股票代码，保留深圳股票前面的0"""
+    code = str(ts_code).strip()
+    # 提取纯数字部分（保留原始位数）
+    numeric = ''.join(c for c in code if c.isdigit())
+    # 判断市场：SH=6开头, SZ/BJ=0/3/4/8开头
+    if '.SZ' in code or numeric.startswith(('0', '3', '4', '8')):
+        # 深圳市场，保留完整6位代码
+        return numeric
+    else:
+        # 上海市场
+        return numeric
+
+
 def build_appendix(df, styles):
-    """构建附录：完整清单"""
+    """构建附录：前100只标的"""
     elements = []
     font_name = 'Chinese' if FONT_REGISTERED else 'Helvetica'
 
-    elements.append(Paragraph('五、附录：完整标的清单', styles['ChapterTitle']))
+    elements.append(Paragraph('五、附录：TOP100标的清单', styles['ChapterTitle']))
     elements.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#2d5a87')))
     elements.append(Spacer(1, 15))
 
-    elements.append(Paragraph('5.1 全部入选标的', styles['SectionTitle']))
+    elements.append(Paragraph('5.1 TOP100入选标的', styles['SectionTitle']))
 
     cols = ['序号', '代码', '名称', '产业链', '等级',
             '产景', '技术', '订单', '业绩', '龙头', '预期差', '机构', '市值弹性',
@@ -512,9 +526,12 @@ def build_appendix(df, styles):
                 'earnings_quality_score', 'leader_score', 'expectation_score',
                 'institution_score', 'marketcap_score', 'bull_score', 'theme_score', 'final_score']
 
+    # 只取前100个
+    df_top100 = df.head(100)
+
     all_data = [cols]
-    for idx, (_, row) in enumerate(df.iterrows(), 1):
-        code = str(row['ts_code']).replace('.SH','').replace('.SZ','').replace('.BJ','')
+    for idx, (_, row) in enumerate(df_top100.iterrows(), 1):
+        code = _format_stock_code(row['ts_code'])
         r = [str(idx), code, str(row.get('name', ''))[:4],
              str(row.get('theme', ''))[:6], str(row.get('bull_level', ''))[:6].replace('产业', '').replace('成长', '')[:4]]
         for k in col_keys:

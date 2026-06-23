@@ -1,0 +1,359 @@
+[
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260529",
+    "win_score": 58,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 3
+    },
+    "stage": "分歧期",
+    "signal": "等待方向确认",
+    "key_risk": "RSI偏高(77)，等待回踩或方向选择 | 冲高回落形态(上影线比例0.9)惩罚-15分",
+    "pattern_type": "趋势突破（均线多头+放量确认）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值77)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.661",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.4倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260601",
+    "win_score": 58,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 3
+    },
+    "stage": "分歧期",
+    "signal": "等待方向确认",
+    "key_risk": "RSI偏高(75)，等待回踩或方向选择 | 冲高回落形态(上影线比例0.8)惩罚-15分",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值75)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.443",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "量能平稳(量比0.7倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260602",
+    "win_score": 73,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 3
+    },
+    "stage": "弱转强初期",
+    "signal": "可参与趋势单",
+    "key_risk": "",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值78)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.527",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.0倍)",
+    "signal_resonance": "短线信号共振买入（量价、RSI、MACD、KDJ多维共振）"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260603",
+    "win_score": 63,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 3
+    },
+    "stage": "弱转强初期",
+    "signal": "可参与趋势单",
+    "key_risk": "RSI严重超买(81)惩罚-10分",
+    "pattern_type": "趋势突破（均线多头+放量确认）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值81)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.644",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "温和放量上涨(量比1.7倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260604",
+    "win_score": 63,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 3
+    },
+    "stage": "弱转强初期",
+    "signal": "可参与趋势单",
+    "key_risk": "RSI严重超买(81)惩罚-10分",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值81)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.450",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.3倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260605",
+    "win_score": 52,
+    "breakdown": {
+      "trend_score": 35,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "等待方向确认",
+    "key_risk": "多空力量平衡，需等待趋势确认 | 冲高回落形态(上影线比例0.9)惩罚-15分",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI强势偏热(均值68)",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+-0.025",
+    "kdj_signal": "KDJ日线死叉(90.6→81.9)",
+    "volume_signal": "量能平稳(量比0.7倍)",
+    "signal_resonance": "短线信号共振卖出（多指标走弱，建议回避）"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260608",
+    "win_score": 65,
+    "breakdown": {
+      "trend_score": 35,
+      "momentum_score": 30,
+      "position_score": 8,
+      "volatility_score": 2
+    },
+    "stage": "弱转强初期",
+    "signal": "可参与趋势单",
+    "key_risk": "连续下跌2天惩罚-10分",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI偏强区(均值61)",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+-0.285",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "量能平稳(量比0.8倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260609",
+    "win_score": 45,
+    "breakdown": {
+      "trend_score": 35,
+      "momentum_score": 30,
+      "position_score": 8,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "规避",
+    "key_risk": "胜率过低(45分)，观望 | 冲高回落形态(上影线比例0.6)惩罚-15分；连续下跌3天惩罚-15分",
+    "pattern_type": "强势延续（趋势+动量共振）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI偏强区(均值60)",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+-0.302",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "缩量整理(量比0.6倍)，观望情绪浓",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260610",
+    "win_score": 15,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 20,
+      "position_score": 18,
+      "volatility_score": 2
+    },
+    "stage": "退潮期",
+    "signal": "规避",
+    "key_risk": "胜率过低(15分)，观望 | 冲高回落形态(上影线比例0.8)惩罚-15分；连续下跌4天惩罚-20分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI偏强区(均值53)",
+    "macd_signal": "DIF向下拐头(5.260→4.747)，动量衰减",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "缩量整理(量比0.5倍)，观望情绪浓",
+    "signal_resonance": "短线信号共振卖出（多指标走弱，建议回避）"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260611",
+    "win_score": 17,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 20,
+      "position_score": 20,
+      "volatility_score": 2
+    },
+    "stage": "退潮期",
+    "signal": "规避",
+    "key_risk": "胜率过低(17分)，观望 | 冲高回落形态(上影线比例0.7)惩罚-15分；连续下跌5天惩罚-20分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI偏强区(均值52)",
+    "macd_signal": "DIF向下拐头(4.747→4.252)，动量衰减",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "缩量整理(量比0.6倍)，观望情绪浓",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260612",
+    "win_score": 2,
+    "breakdown": {
+      "trend_score": 5,
+      "momentum_score": 10,
+      "position_score": 20,
+      "volatility_score": 2
+    },
+    "stage": "退潮期",
+    "signal": "规避",
+    "key_risk": "胜率过低(2分)，观望 | 冲高回落形态(上影线比例0.9)惩罚-15分；连续下跌6天惩罚-20分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI偏弱区(均值47)",
+    "macd_signal": "DIF向下拐头(4.252→3.664)，动量衰减",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "量能平稳(量比0.7倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260615",
+    "win_score": 47,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 30,
+      "position_score": 20,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "规避",
+    "key_risk": "胜率过低(47分)，观望 | MACD顶背离惩罚-15分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI强势区金叉(34→50)，上升动量强化",
+    "macd_signal": "DIF向下拐头(3.664→3.418)，动量衰减",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.1倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260616",
+    "win_score": 45,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 30,
+      "position_score": 18,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "规避",
+    "key_risk": "胜率过低(45分)，观望 | MACD顶背离惩罚-15分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI强势区金叉(50→56)，上升动量强化",
+    "macd_signal": "DIF向下拐头(3.418→3.283)，动量衰减",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.3倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260617",
+    "win_score": 45,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 30,
+      "position_score": 18,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "规避",
+    "key_risk": "胜率过低(45分)，观望 | MACD顶背离惩罚-15分",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI强势区金叉(56→60)，上升动量强化",
+    "macd_signal": "DIF=3.240，方向中性",
+    "kdj_signal": "KDJ空头排列(J=50)",
+    "volume_signal": "量能平稳(量比1.4倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260618",
+    "win_score": 54,
+    "breakdown": {
+      "trend_score": 10,
+      "momentum_score": 30,
+      "position_score": 12,
+      "volatility_score": 2
+    },
+    "stage": "分歧期",
+    "signal": "等待方向确认",
+    "key_risk": "多空力量平衡，需等待趋势确认",
+    "pattern_type": "震荡整理（信号不共振）",
+    "ma_structure": "空头排列",
+    "rsi_signal": "RSI强势偏热(均值66)",
+    "macd_signal": "DIF向上拐头(3.240→3.370)，底部动量修复",
+    "kdj_signal": "KDJ日线金叉(32.7→45.2)",
+    "volume_signal": "温和放量上涨(量比2.0倍)",
+    "signal_resonance": "信号混乱，短线方向不明，观望"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260622",
+    "win_score": 72,
+    "breakdown": {
+      "trend_score": 40,
+      "momentum_score": 30,
+      "position_score": 0,
+      "volatility_score": 2
+    },
+    "stage": "弱转强初期",
+    "signal": "可参与趋势单",
+    "key_risk": "",
+    "pattern_type": "趋势突破（均线多头+放量确认）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值77)，注意回调",
+    "macd_signal": "MACD金叉(零轴上方)，DIF拐头向上+0.827",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "温和放量上涨(量比1.7倍)",
+    "signal_resonance": "短线信号共振买入（量价、RSI、MACD、KDJ多维共振）"
+  },
+  {
+    "ts_code": "300179.SZ",
+    "trade_date": "20260623",
+    "win_score": 0,
+    "breakdown": {
+      "trend_score": 0,
+      "momentum_score": 0,
+      "position_score": 0,
+      "volatility_score": 0
+    },
+    "stage": "数据不足",
+    "signal": "规避",
+    "key_risk": "指定日期 20260623 无数据",
+    "pattern_type": "",
+    "ma_structure": "",
+    "rsi_signal": "",
+    "macd_signal": "",
+    "kdj_signal": "",
+    "volume_signal": "",
+    "signal_resonance": ""
+  }
+]
