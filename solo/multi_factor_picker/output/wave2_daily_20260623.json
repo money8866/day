@@ -1,0 +1,14 @@
+{
+  "date": "20260623",
+  "results": [
+    {
+      "ts_code": "688519.SH",
+      "name": "688519.SH",
+      "pattern": "强势横盘",
+      "combo": "MACD金叉+MA20上方",
+      "wave1_gain": 94.8,
+      "pullback": 6.6,
+      "pullback_days": 4,
+      "rsi_now": 50.6,
+      "vol_ratio": 1.05,
+      "above_ma20": 

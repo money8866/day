@@ -863,11 +863,10 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None, trade_da
     计算市场趋势总评分：
     IndexTrend = sh_score * 0.5 + hs300_score * 0.3 + cyb_score * 0.2
     ThemeTrend = TOP3主题平均分
-    TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
+    TrendScore = IndexTrend * 0.5 + ThemeTrend * 0.5
     
-    如果 ThemeTrend > 90: TrendScore += 10
-    如果 ThemeTrend > 85: TrendScore += 5
-    量能加分：今日成交量接近60日最大值时额外加分
+    涨跌幅惩罚：主要指数大跌时适当扣分
+    情绪惩罚：情绪退潮扣分
     """
     # 提取指数趋势分
     sh_score = 0
@@ -891,34 +890,28 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None, trade_da
     elif theme_top3_scores:
         theme_trend = sum(theme_top3_scores) / len(theme_top3_scores)
     else:
-        # 如果没有主题数据，用指数趋势代替
         theme_trend = index_trend * 0.8
     
-    # 计算总趋势分
-    trend_score = index_trend * 0.4 + theme_trend * 0.6
+    # 计算总趋势分（指数和主题各占一半）
+    trend_score = index_trend * 0.5 + theme_trend * 0.5
     
-    # 主题趋势加分
-    if theme_trend > 90:
-        trend_score += 10
-    elif theme_trend > 85:
-        trend_score += 5
-
-    # 量能加分：今日成交量是否为60日最大值
-    if trade_date:
-        try:
-            sh_df = get_index_kline("000001.SH", trade_date)
-            if sh_df is not None and len(sh_df) >= 20:
-                vol_latest = sh_df['vol'].iloc[-1]
-                vol_max_60d = sh_df['vol'].tail(60).max()
-                vol_ratio = vol_latest / vol_max_60d if vol_max_60d > 0 else 0
-                if vol_ratio >= 0.95:
-                    trend_score += 10
-                    print(f"  [量能加分] 今日成交量接近60日最大值(ratio={vol_ratio:.2f})，+10分")
-                elif vol_ratio >= 0.85:
-                    trend_score += 5
-                    print(f"  [量能加分] 今日成交量显著放大(ratio={vol_ratio:.2f})，+5分")
-        except Exception as e:
-            pass
+    # 涨跌幅惩罚：主要指数大跌时扣分（适度）
+    for r in index_results:
+        pct_chg = r.get('pct_chg', 0)
+        if pct_chg < -1.0 and r['name'] == '上证指数':
+            penalty = abs(pct_chg) * 3  # 跌1%扣3分
+            trend_score -= penalty
+            print(f"  [惩罚] {r['name']}跌{pct_chg:.1f}%，扣{penalty:.0f}分")
+        if pct_chg < -3.0:
+            extra_penalty = abs(pct_chg) * 2
+            trend_score -= extra_penalty
+            print(f"  [惩罚] {r['name']}大跌{pct_chg:.1f}%，额外扣{extra_penalty:.0f}分")
+    
+    # 情绪惩罚：情绪退潮扣分
+    sentiment_statuses = [r.get('sentiment_status', '') for r in index_results]
+    if any(s == '情绪退潮' for s in sentiment_statuses):
+        trend_score -= 5
+        print(f"  [惩罚] 市场情绪退潮，扣5分")
     
     # 限制在 0-100 范围内
     trend_score = min(100, max(0, trend_score))
@@ -929,35 +922,35 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None, trade_da
 def get_market_status_and_position(trend_score):
     """
     根据趋势分返回市场状态和仓位建议：
-    80~100  → 主升浪  → 80~100%
-    70~80   → 强趋势  → 60~80%
-    60~70   → 趋势良好 → 50~70%
-    55~65   → 震荡    → 30~50%
-    45~55   → 弱势    → 20~30%
-    35~45   → 退潮    → 10~20%
-    <35     → 主跌段  → 0~10%
+    >=80  → 强趋势  → 70~80%
+    70~80 → 趋势良好 → 55~70%
+    60~70 → 震荡偏强 → 40~60%
+    50~60 → 震荡    → 30~50%
+    40~50 → 弱势    → 20~30%
+    30~40 → 退潮    → 10~20%
+    <30   → 主跌段  → 0~10%
     """
     if trend_score >= 80:
-        status = "主升浪"
-        position_range = "80~100%"
-        position = 90
-    elif trend_score >= 70:
         status = "强趋势"
-        position_range = "60~80%"
-        position = 70
-    elif trend_score >= 60:
+        position_range = "70~80%"
+        position = 75
+    elif trend_score >= 70:
         status = "趋势良好"
-        position_range = "50~70%"
+        position_range = "55~70%"
         position = 60
-    elif trend_score >= 55:
+    elif trend_score >= 60:
+        status = "震荡偏强"
+        position_range = "40~60%"
+        position = 50
+    elif trend_score >= 50:
         status = "震荡"
         position_range = "30~50%"
         position = 40
-    elif trend_score >= 45:
+    elif trend_score >= 40:
         status = "弱势"
         position_range = "20~30%"
         position = 25
-    elif trend_score >= 35:
+    elif trend_score >= 30:
         status = "退潮"
         position_range = "10~20%"
         position = 15

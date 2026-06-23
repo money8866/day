@@ -338,22 +338,22 @@
   {
     "ts_code": "300179.SZ",
     "trade_date": "20260623",
-    "win_score": 0,
+    "win_score": 57,
     "breakdown": {
-      "trend_score": 0,
-      "momentum_score": 0,
+      "trend_score": 40,
+      "momentum_score": 30,
       "position_score": 0,
-      "volatility_score": 0
+      "volatility_score": 2
     },
-    "stage": "数据不足",
-    "signal": "规避",
-    "key_risk": "指定日期 20260623 无数据",
-    "pattern_type": "",
-    "ma_structure": "",
-    "rsi_signal": "",
-    "macd_signal": "",
-    "kdj_signal": "",
-    "volume_signal": "",
-    "signal_resonance": ""
+    "stage": "分歧期",
+    "signal": "等待方向确认",
+    "key_risk": "RSI偏高(76)，等待回踩或方向选择 | 冲高回落形态(上影线比例0.8)惩罚-15分",
+    "pattern_type": "趋势突破（均线多头+放量确认）",
+    "ma_structure": "完整多头排列",
+    "rsi_signal": "RSI高位过热(均值76)，注意回调",
+    "macd_signal": "MACD多头(DIF>DEA)，DIF向上+0.562",
+    "kdj_signal": "KDJ多头排列(J=50)",
+    "volume_signal": "温和放量上涨(量比2.0倍)",
+    "signal_resonance": "短线信号共振买入（量价、RSI、MACD、KDJ多维共振）"
   }
 ]

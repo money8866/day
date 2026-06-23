@@ -1545,6 +1545,269 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
     return result
 
 
+def classify_wave2_pattern(df, surge_end_idx, recent_end_idx):
+    """
+    根据wave1高点之后的调整形态分类
+    df: 日线DataFrame（需包含close, high, low, vol, macd_dif, macd_dea, rsi_6）
+    surge_end_idx: wave1高点位置（index）
+    recent_end_idx: 最近分析日位置（index）
+    返回: (pattern_name, pattern_data_dict)
+    
+    形态类型：
+    - 强势横盘：回调<10%，调整天数<=15天
+    - V型急跌：10天内急跌>10%
+    - 放量回调：回调10-20%，量能比>0.8
+    - 缩量回调：回调10-20%，量能比<=0.8
+    - 三角收敛：振幅逐周递减
+    - 深度回调：回调>=20%
+    """
+    import numpy as np
+    
+    n = len(df)
+    if surge_end_idx >= recent_end_idx:
+        return None, {}
+
+    post = df.iloc[surge_end_idx:recent_end_idx+1].copy()
+    if len(post) < 3:
+        return '其他', {}
+
+    closes = post['close'].values
+    highs = post['high'].values
+    lows = post['low'].values
+    vols = post['vol'].values
+
+    wave1_high = closes[0]
+    pullback_max = (wave1_high - closes.min()) / wave1_high
+    pullback_days = len(post) - 1
+
+    # 基准：wave1前20日均量
+    if surge_end_idx >= 20:
+        base_vol = df.iloc[surge_end_idx-20:surge_end_idx]['vol'].mean()
+    else:
+        base_vol = vols.mean()
+    vol_ratio = vols.mean() / base_vol if base_vol > 0 else 1.0
+
+    # MA位置
+    ma5 = df.iloc[recent_end_idx:recent_end_idx+1]['ma5'].values[0] if 'ma5' in df.columns else np.nan
+    ma10 = df.iloc[recent_end_idx:recent_end_idx+1]['ma10'].values[0] if 'ma10' in df.columns else np.nan
+    ma20 = df.iloc[recent_end_idx:recent_end_idx+1]['ma20'].values[0] if 'ma20' in df.columns else np.nan
+    ma60 = df.iloc[recent_end_idx:recent_end_idx+1]['ma60'].values[0] if 'ma60' in df.columns else np.nan
+    current_price = closes[-1]
+
+    above_ma5 = current_price > ma5 if not np.isnan(ma5) else False
+    above_ma10 = current_price > ma10 if not np.isnan(ma10) else False
+    above_ma20 = current_price > ma20 if not np.isnan(ma20) else False
+    above_ma60 = current_price > ma60 if not np.isnan(ma60) else False
+
+    # V型：10天内急跌>10%
+    v_crash = False
+    if len(post) <= 10 and pullback_max > 0.10:
+        v_crash = True
+
+    # 三角收敛：振幅逐周递减
+    triangle = False
+    if len(post) >= 10:
+        weekly_ranges = []
+        for w in range(0, len(post)-2, 5):
+            chunk = post.iloc[w:min(w+5, len(post))]
+            if len(chunk) >= 3:
+                weekly_ranges.append(chunk['high'].max() - chunk['low'].min())
+        if len(weekly_ranges) >= 2:
+            if weekly_ranges[-1] < weekly_ranges[-2] * 0.85:
+                triangle = True
+
+    # MACD金叉：当前DIF>DEA
+    macd_dif = df.iloc[recent_end_idx:recent_end_idx+1]['macd_dif'].values[0] if 'macd_dif' in df.columns else np.nan
+    macd_dea = df.iloc[recent_end_idx:recent_end_idx+1]['macd_dea'].values[0] if 'macd_dea' in df.columns else np.nan
+    macd_crossed = (macd_dif > macd_dea) if (not np.isnan(macd_dif) and not np.isnan(macd_dea)) else False
+
+    # RSI
+    rsi_now = df.iloc[recent_end_idx:recent_end_idx+1]['rsi_6'].values[0] if 'rsi_6' in df.columns else 50.0
+    rsi_now = rsi_now if not np.isnan(rsi_now) else 50.0
+
+    # 量能比（近5日均量/基准量）
+    vol_ratio_5d = vols[-5:].mean() / base_vol if base_vol > 0 else 1.0
+
+    # 分类逻辑
+    if v_crash and pullback_days <= 10:
+        pattern = 'V型急跌'
+    elif pullback_max < 0.10 and pullback_days <= 15:
+        pattern = '强势横盘'
+    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio > 0.80:
+        pattern = '放量回调'
+    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio <= 0.80:
+        pattern = '缩量回调'
+    elif pullback_max >= 0.20 and triangle:
+        pattern = '三角收敛'
+    elif pullback_max >= 0.20:
+        pattern = '深度回调'
+    elif triangle:
+        pattern = '三角收敛'
+    else:
+        pattern = '其他'
+
+    return pattern, {
+        'pullback_max': pullback_max,
+        'pullback_days': pullback_days,
+        'vol_ratio': vol_ratio_5d,
+        'above_ma5': above_ma5,
+        'above_ma10': above_ma10,
+        'above_ma20': above_ma20,
+        'above_ma60': above_ma60,
+        'macd_crossed': macd_crossed,
+        'macd_dif': macd_dif,
+        'macd_dea': macd_dea,
+        'rsi_now': rsi_now,
+        'wave1_high': wave1_high,
+        'current_price': current_price,
+        'ma5': ma5, 'ma10': ma10, 'ma20': ma20, 'ma60': ma60,
+    }
+
+
+def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min=0.20):
+    """
+    检测股票是否符合二波形态
+    参数:
+        ts_code: 股票代码
+        pro: Tushare pro 实例
+        trade_date: 指定日期（None表示最新）
+        surge_days: 一波拉升窗口
+        surge_min: 一波最低涨幅
+    返回:
+        {
+            'ts_code': str,
+            'pattern': str,          # 形态类型
+            'has_valid_pattern': bool, # 是否符合有效二波形态
+            'wave1_gain': float,     # 一波涨幅
+            'pullback': float,       # 当前回调幅度
+            'pullback_days': int,    # 回调天数
+            'rsi_now': float,        # 当前RSI
+            'vol_ratio': float,      # 量能比
+            'above_ma20': bool,      # 是否在MA20上方
+            'above_ma60': bool,      # 是否在MA60上方
+            'macd_crossed': bool,    # MACD是否金叉
+            'base_score': int,       # 基础评分（基于形态成功率）
+        }
+    """
+    import datetime
+    import time
+    
+    result = {
+        'ts_code': ts_code,
+        'pattern': '其他',
+        'has_valid_pattern': False,
+        'wave1_gain': 0,
+        'pullback': 0,
+        'pullback_days': 0,
+        'rsi_now': 50,
+        'vol_ratio': 1.0,
+        'above_ma20': False,
+        'above_ma60': False,
+        'macd_crossed': False,
+        'base_score': 0,
+    }
+    
+    try:
+        end_date = trade_date or TRADE_DATE
+        lookback = 90
+        start_date = (datetime.datetime.strptime(end_date, '%Y%m%d') - datetime.timedelta(days=lookback+30)).strftime('%Y%m%d')
+
+        # 日线（优先用缓存）
+        daily = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        if daily is None or len(daily) < 40:
+            return result
+        daily = daily.sort_values('trade_date').reset_index(drop=True)
+
+        # 技术因子（使用 stk_factor_pro，MA/RSI 等已计算好）
+        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        time.sleep(0.06)
+
+        # 合并（stk_factor_pro 字段带 _bfq 后缀，重命名为简洁名）
+        df = daily.copy()
+        if factor is not None and len(factor) > 0:
+            factor_rename = {
+                'ma_bfq_5': 'ma5', 'ma_bfq_10': 'ma10', 'ma_bfq_20': 'ma20', 'ma_bfq_60': 'ma60',
+                'macd_bfq': 'macd', 'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea',
+                'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
+                'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d', 'kdj_j_bfq': 'kdj_j',
+                'boll_upper_bfq': 'boll_upper', 'boll_mid_bfq': 'boll_mid', 'boll_lower_bfq': 'boll_lower',
+                'cci_bfq': 'cci',
+            }
+            factor_subset = factor[['trade_date'] + list(factor_rename.keys())].rename(columns=factor_rename)
+            df = df.merge(factor_subset, on='trade_date', how='left')
+
+        df = df[df['vol'] > 0].reset_index(drop=True)
+        if len(df) < 40:
+            return result
+
+        # MA 已从 stk_factor_pro 获取，无需手动 rolling
+
+        ADJUST_MAX = 60
+        PULLBACK_MIN = 0.05
+        
+        # 找最近一波20%+拉升
+        for end_idx in range(len(df) - 1, ADJUST_MAX, -1):
+            window_start = end_idx - surge_days
+            if window_start < 0:
+                break
+
+            window_closes = df.iloc[window_start:end_idx+1]['close'].values
+            low_idx_in_window = df.iloc[window_start:end_idx+1]['close'].idxmin() - window_start
+            high_idx_in_window = df.iloc[window_start:end_idx+1]['close'].idxmax() - window_start
+
+            if high_idx_in_window <= low_idx_in_window:
+                continue
+            if (high_idx_in_window - low_idx_in_window) > surge_days - 2:
+                continue
+
+            wave1_gain = (window_closes[high_idx_in_window] - window_closes[low_idx_in_window]) / window_closes[low_idx_in_window]
+            if wave1_gain < surge_min:
+                continue
+
+            wave1_high_idx = window_start + high_idx_in_window
+            post_df = df.iloc[wave1_high_idx:]
+            if len(post_df) < 2:
+                continue
+
+            # 形态分类
+            pattern, pdata = classify_wave2_pattern(df, wave1_high_idx, len(df)-1)
+            if pattern is None or pattern == '其他':
+                continue
+
+            current_price = df.iloc[-1]['close']
+            wave1_high_price = df.iloc[wave1_high_idx]['close']
+            pullback = (wave1_high_price - current_price) / wave1_high_price
+
+            if pullback < PULLBACK_MIN:
+                continue
+
+            # 基本评分（基于历史回测数据）
+            success_rate = {
+                '强势横盘': 0.986, 'V型急跌': 0.949, '放量回调': 0.904,
+                '深度回调': 0.862, '其他': 0.856, '缩量回调': 0.776, '三角收敛': 0.758
+            }.get(pattern, 0.5)
+
+            result.update({
+                'pattern': pattern,
+                'has_valid_pattern': True,
+                'wave1_gain': round(wave1_gain * 100, 1),
+                'pullback': round(pullback * 100, 1),
+                'pullback_days': pdata.get('pullback_days', 0),
+                'rsi_now': round(pdata['rsi_now'], 1),
+                'vol_ratio': round(pdata['vol_ratio'], 2),
+                'above_ma20': pdata['above_ma20'],
+                'above_ma60': pdata['above_ma60'],
+                'macd_crossed': pdata['macd_crossed'],
+                'base_score': int(success_rate * 100),
+            })
+            return result
+
+    except Exception:
+        pass
+    
+    return result
+
+
 def north_moneyflow_score(ts_code, pro):
     """
     北向资金共振因子（0-20分）
@@ -6338,19 +6601,9 @@ def strategy(df, code, emotion_stage):
     vol_peak = VOL[-ztts-1:-1].max()
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
     #做突破
-    cond_xh1 = ((C[-1] > highest_close) or (C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2] > 1.05 and C[-1]/C[-2] < 1.15))
+    cond_xh1 = C[-1] > highest_close
     cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
-    
-    # 前两日低点必须贴近5日线（1%以内）
-    cond_low_near_ma5 = (abs(L[-2] - ma5[-2]) / ma5[-2] < 0.02) and (abs(L[-3] - ma5[-3]) / ma5[-3] < 0.02)
-    # 连涨天数少于4（从最近一天往前数）
-    consec_up = 0
-    for i in range(len(C)-1, 0, -1):
-        if C[i] > C[i-1]:
-            consec_up += 1
-        else:
-            break
-    cond_consec_up_lt_4 = consec_up < 4
+  
     
     return cond_xh1 and cond_xh2
 
@@ -7510,10 +7763,39 @@ def get_tracking_stocks():
                             break
                     
                                         
-                    # 二波信号
-                    wave2_result = detect_wave2_reversal(ts_code, pro)
-                    wave2_score = wave2_result.get('wave2_score', 0)
-                    wave2_signal_val = wave2_result.get('signal', '')
+                    # 二波信号（先检测形态）
+                    wave2_pattern_result = detect_wave2_pattern(ts_code, pro)
+                    wave2_pattern = wave2_pattern_result.get('pattern', '其他')
+                    
+                    # 根据股票板块类型过滤形态
+                    # 双创板（创业板/科创板）：只保留 V型急跌、深度回调、放量回调
+                    # 主板：只保留强势横盘、V型急跌、放量回调
+                    is_cyb_kcb = ts_code.startswith('3') or ts_code.startswith('688') or ts_code.startswith('689')
+                    if is_cyb_kcb:
+                        valid_patterns = ['V型急跌', '深度回调', '放量回调']
+                    else:
+                        valid_patterns = ['强势横盘', 'V型急跌', '放量回调']
+                    
+                    if not wave2_pattern_result.get('has_valid_pattern', False) or wave2_pattern not in valid_patterns:
+                        # 不符合二波形态或不在当前板块允许的形态列表中，直接过滤
+                        wave2_score = 0
+                        wave2_signal_val = '非二波形态'
+                    else:
+                        # 符合二波形态，计算二波评分
+                        wave2_result = detect_wave2_reversal(ts_code, pro)
+                        wave2_score = wave2_result.get('wave2_score', 0)
+                        wave2_signal_val = wave2_result.get('signal', '')
+                        # 形态成功率加分：根据历史回测成功率给予不同加分
+                        pattern_bonus = {
+                            '强势横盘': 30,   # 98.6%成功率
+                            'V型急跌': 20,    # 94.9%成功率
+                            '放量回调': 15,   # 90.4%成功率
+                            '深度回调': 15,   # 86.2%成功率
+                            '缩量回调': 5,    # 77.6%成功率
+                            '三角收敛': 5,    # 75.8%成功率
+                        }
+                        bonus = pattern_bonus.get(wave2_pattern, 0)
+                        wave2_score = min(wave2_score + bonus, 150)
                     
                     #print(f"[跟踪池] {ts_code} {stock_name}: 突破={breakout_score}分(前日{prev_breakout_score}), 二波={wave2_score}分")
                 except Exception as e:
@@ -7522,13 +7804,6 @@ def get_tracking_stocks():
                     wave2_score = 0
                     breakout_signal_val = ''
                     wave2_signal_val = ''
-                
-                # 过滤：只保留突破信号>=75分（有效突破）或二波信号>=60分的个股
-                # 同时过滤整合评分<=0的无效股票
-                if integrated_score <= 0 or ((breakout_score < 75 or prev_breakout_score >= 75) and wave2_score < 60):
-                    #print(f"[跟踪池] {ts_code} 突破/二波分数不足，跳过")
-                    continue
-               
 
                 tracking_stocks.append({
                     # 添加突破信号和二波信号到字典
@@ -7536,6 +7811,7 @@ def get_tracking_stocks():
                     'breakout_signal': breakout_signal_val,
                     'wave2_score': wave2_score,
                     'wave2_signal': wave2_signal_val,
+                    'wave2_pattern': wave2_pattern,  # 新增：二波形态类型
                     'code': ts_code,
                     'name': stock_name,
                     'last_date': str(row.get('date', TRADE_DATE)),
@@ -7646,117 +7922,51 @@ def get_tracking_stocks():
         print(f"\n[跟踪池] 技术过滤后剩余 {len(tracking_stocks)} 只")
         
         # 按Alpha评分从高到低排序，取前5只
-        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['alpha_score'])[:5]
+        tracking_stocks = sorted(tracking_stocks, key=lambda x: -x['wave2_score'])[:5]
         
-        # 生成AI需要的文本格式
+        # 生成AI需要的文本格式（精简版）
         lines = []
+        lines.append("=" * 60)
+        lines.append("🔥 跟踪分析股票池")
+        lines.append("=" * 60)
         if tracking_stocks:
-            lines.append("=" * 120)
-            lines.append("🔥 跟踪分析股票池（突破>=75分或二波>=60分，按Alpha评分排序）")
-            lines.append("=" * 120)
-            lines.append(f"{'代码':<12} {'名称':<10} {'最新价':<8} {'短线胜率':<8} {'整合评分':<8} {'突破分':<6} {'二波分':<6} {'主题':<12} {'非一日游阶段(天数)':<14} {'主题状态':<10}")
-            lines.append("-" * 120)
-            for stock in tracking_stocks:
+            for i, stock in enumerate(tracking_stocks, 1):
+                alpha_val = stock.get('alpha_score', 0)
+                alpha_sig = stock.get('alpha_signal', '')
+                alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
+                price = stock.get('last_close', 0)
+                in_date = stock.get('last_date', '')
+                lines.append(f"【跟踪第{i}名】{stock['name']} ({stock['code']}) 现价={price:.2f} 入库日={in_date}{alpha_str}")
+                # 所属主题 + 非一日游阶段 + 确认天数 + 龙头序列
                 cycle = stock.get('非一日游阶段', '') or stock.get('所属状态', '')
                 confirm_days = stock.get('确认天数', 0)
-                cycle_with_days = f"{cycle}({confirm_days}天)" if cycle and confirm_days > 0 else cycle
-                lines.append(f"{stock['code']:<12} {stock['name']:<10} {stock['last_close']:<8.2f} {stock.get('short_win_score', 0):<8} {stock['open_score']:<8.1f} {stock.get('breakout_score', 0):<6} {stock.get('wave2_score', 0):<6} {stock.get('所属主题', ''):<12} {cycle_with_days:<14} {stock.get('所属状态', ''):<10}")
-            lines.append("=" * 100)
-            
-            # 每只股票的详细评价信息（供AI分析）
-            lines.append("")
-            lines.append("跟踪个股详细评价（按短线胜率降序）：")
-            lines.append("-" * 100)
-            for i, stock in enumerate(tracking_stocks, 1):
-                lines.append(f"【第{i}名】{stock['name']} ({stock['code']})")
-                lines.append(f"  整合评分: {stock['open_score']:.1f} | 失败概率: {stock['failure_prob']:.1f}%")
-                lines.append(f"  现价: {stock['last_close']:.2f}元 | 入库价: {stock['last_db_price']:.2f}元 | 入库日期: {stock['last_date']}")
-                lines.append(f"  趋势强度: {stock['trend_score']:.1f} | 资金健康度: {stock['capital_score']:.1f}")
-                # 短线胜率评分
-                short_win_score = stock.get('short_win_score', 0)
-                short_stage = stock.get('short_stage', '')
-                short_signal = stock.get('short_signal', '')
-                short_key_risk = stock.get('short_key_risk', '')
-                short_pattern = stock.get('short_pattern_type', '')
-                short_ma = stock.get('short_ma_structure', '')
-                short_rsi = stock.get('short_rsi_signal', '')
-                short_macd = stock.get('short_macd_signal', '')
-                short_kdj = stock.get('short_kdj_signal', '')
-                short_vol = stock.get('short_volume_signal', '')
-                short_resonance = stock.get('short_resonance', '')
-                lines.append(f"  【短线胜率】评分={short_win_score} | 阶段={short_stage} | 信号={short_signal}")
-                if short_key_risk:
-                    lines.append(f"  【短线风险】{short_key_risk}")
-                # 短线信号详细输出（加粗重点提示：共振买入信号优先关注）
-                t_is_resonance_buy = '共振买入' in str(short_resonance)
-                if t_is_resonance_buy:
-                    lines.append(f"  ⚠️【重点★★★】短线信号共振买入——{short_resonance}")
-                if short_pattern:
-                    lines.append(f"  【短线形态】{short_pattern}")
-                if short_rsi:
-                    lines.append(f"  【RSI信号】{short_rsi}")
-                if short_macd:
-                    lines.append(f"  【MACD信号】{short_macd}")
-                if short_kdj:
-                    lines.append(f"  【KDJ信号】{short_kdj}")
-                if short_vol:
-                    lines.append(f"  【成交量信号】{short_vol}")
-                if short_resonance and not t_is_resonance_buy:
-                    lines.append(f"  【共振结论】{short_resonance}")
-                # 添加突破信号和二波反转信号
+                cycle_str = f"非一日游:{cycle}" if cycle else ""
+                days_str = f"{confirm_days}天" if confirm_days > 0 else ""
+                leader_seq = stock.get('龙头序列', '')
+                leader_str = f"龙头:{leader_seq}" if leader_seq else ""
+                info_parts = [stock.get('所属主题', '')]
+                if cycle_str: info_parts.append(cycle_str)
+                if days_str: info_parts.append(days_str)
+                if leader_str: info_parts.append(leader_str)
+                lines.append(f"  主题: {' | '.join(info_parts)}")
+                # 二波形态 + 二波评分
+                wave2_score = stock.get('wave2_score', 0)
+                wave2_pattern = stock.get('wave2_pattern', '')
+                wave2_signal = stock.get('wave2_signal', '')
+                lines.append(f"  二波: {wave2_pattern} 评分={wave2_score} | {wave2_signal}")
+                # 突破信号
                 breakout_signal = stock.get('breakout_signal', '')
                 breakout_score = stock.get('breakout_score', 0)
-                wave2_signal = stock.get('wave2_signal', '')
-                wave2_score = stock.get('wave2_score', 0)
                 if breakout_signal:
-                    lines.append(f"  【突破信号】评分={breakout_score} | {breakout_signal}")
-                if wave2_signal:
-                    lines.append(f"  【二波信号】评分={wave2_score} | {wave2_signal}")
-                lines.append(f"  位置安全: {stock['position_score']:.1f} | 热度持续: {stock['heat_score']:.1f} | Alpha: {stock['alpha_score']:.1f}({stock.get('alpha_signal','')})")
-                if stock.get('所属主题'):
-                    cycle = stock.get('非一日游阶段', '')
-                    confirm_days = stock.get('确认天数', 0)
-                    cycle_str = f" | 非一日游:{cycle}" if cycle else ""
-                    days_str = f"({confirm_days}天)" if confirm_days > 0 else ""
-                    leader_seq = stock.get('龙头序列', '')
-                    leader_str = f" | 龙头:{leader_seq}" if leader_seq else ""
-                    lines.append(f"  所属主题: {stock['所属主题']} | 主题状态: {stock['所属状态']}{cycle_str}{days_str}{leader_str}")
-                    lines.append(f"  主题趋势分: {stock['主题趋势分']:.1f} | 主题情绪分: {stock['主题情绪分']:.1f}")
-                if stock.get('open_recommendation'):
-                    lines.append(f"  推荐理由: {stock['open_recommendation']}")
-                lines.append(f"  【技术价位】MA5={stock['ma5']:.2f}元 MA10={stock['ma10']:.2f}元 MA20={stock['ma20']:.2f}元({stock['ma20_trend']}) MA60={stock['ma60']:.2f}元({stock['ma60_trend']})")
-                # 距高点%：正数=距高空间，负数=已突破比例
-                d20 = stock.get('dist_high20', 0)
-                d60 = stock.get('dist_high60', 0)
-                d120 = stock.get('dist_high120', 0)
-                d250 = stock.get('dist_high250', 0)
-                d_all = stock.get('dist_high_all', 0)
-                d20_desc = "已突破" if d20 < 0 else "未突破"
-                d60_desc = "已突破" if d60 < 0 else "未突破"
-                lines.append(f"  【参考位-短线】20日高点={stock['high20']:.2f}元({d20_desc}{abs(d20):.1f}%) 60日高点={stock['high60']:.2f}元({d60_desc}{abs(d60):.1f}%)")
-                # 长期套牢盘：明确传递给 AI，避免误判"上方无压力"
-                lines.append(f"  【参考位-长线】120日高点={stock['high120']:.2f}元 250日高点={stock['high250']:.2f}元 全历史高点={stock['high_all']:.2f}元")
-                lines.append(f"  【压力判断】上方是否有套牢盘={stock.get('has_upper_pressure', '无')}；压力位描述={stock.get('upper_pressure', '无')}")
-                # 筹码分布（cyq_chips / cyq_perf）- 主判断依据
-                chip_pct = stock.get('chip_above_pct', -1)
-                if chip_pct >= 0:
-                    avg_cost = stock.get('chip_avg_cost', stock['last_close'])
-                    winner = stock.get('chip_winner', 0)
-                    below_pct = stock.get('chip_below_pct', 0)
-                    pressure_desc = stock.get('chip_pressure_desc', '')
-                    nearest_p = stock.get('chip_nearest_pressure', 0)
-                    cost_50pct = stock.get('chip_cost_50pct', avg_cost)
-                    cost_85pct = stock.get('chip_cost_85pct', avg_cost)
-                    cost_95pct = stock.get('chip_cost_95pct', avg_cost)
-                    lines.append(f"  【筹码分布】平均成本={avg_cost:.2f}元 上方套牢盘={chip_pct:.1f}% 下方获利盘={below_pct:.1f}% 盈利筹码={winner:.1f}%")
-                    lines.append(f"  【筹码集中度】50%成本区间={cost_50pct:.2f}元 85%成本区间={cost_85pct:.2f}元 95%成本区间={cost_95pct:.2f}元")
-                    lines.append(f"  【筹码压力】最近压力位={nearest_p:.2f}元；压力等级={stock.get('chip_pressure_level', 'K线估算')}；{pressure_desc}")
-                    lines.append(f"  【筹码状态】{stock.get('chip_breakout_status', '')}")
-                    bt_score = stock.get('chip_breakthrough_score', 50)
-                    bt_level = stock.get('chip_breakthrough_level', '')
-                    lines.append(f"  【筹码突破评分】{bt_level} | 得分={bt_score:.1f}")
+                    lines.append(f"  突破: 评分={breakout_score} | {breakout_signal}")
+                # YRI辨识度
+                yri_total = stock.get('yri_total_score', 0)
+                if yri_total > 0:
+                    yri_tags = stock.get('yri_tags', '')
+                    yri_max_lb = stock.get('yri_max_consec_zt', 0)
+                    lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_max_lb}板 标签={yri_tags}")
                 lines.append("")
-            lines.append("=" * 100)
+            lines.append("=" * 60)
         #print(lines)
         return tracking_stocks, "\n".join(lines), ""
     except Exception as e:
@@ -8598,7 +8808,7 @@ def run(target_date=None, simple_mode=False):
         result_dx_df = filter_by_top_themes(result_dx_df)
 
     # =========================
-    # 使用统一评分算法一次计算所有股票
+    # 突破股池：统一评分 + 二波形态 + 筹码
     # =========================
     ranked_stocks = []
     for idx, row in result_df.iterrows():
@@ -8612,69 +8822,31 @@ def run(target_date=None, simple_mode=False):
         
         try:
             today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100 if len(df) >= 2 else float(row.get('涨跌幅', 0))
-            
-            # 获取今日成交额（亿）和换手率
-            # amount在缓存中单位是千元，vol单位是万手
             today_amount = 0.0
             today_close = float(df['close'].iloc[-1])
             if 'amount' in df.columns:
-                today_amount = round(float(df['amount'].iloc[-1]) / 100000, 2)  # 千元转亿：除10000
-            # 从全局缓存获取换手率（程序启动时已批量加载）
+                today_amount = round(float(df['amount'].iloc[-1]) / 100000, 2)
             today_turnover = get_cached_turnover(ts_code)
             
-            # 使用统一评分算法
             theme_trend_score = float(row.get('主题趋势分', 0))
             theme_sentiment_score = float(row.get('主题情绪分', 0))
             integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
                 df, ts_code, theme_name, theme_trend_score, theme_sentiment_score
             )
-            
-            # 计算关键技术指标价格（供AI分析使用，避免编造价格）
             tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
             
             stock_data = {
                 '代码': ts_code, '名称': name, '现价': today_close,
                 '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
-                '所属主题': theme_name,
-                '整合评分': integrated_score, '失败概率': failure_prob,
+                '所属主题': theme_name, '整合评分': integrated_score, '失败概率': failure_prob,
                 '推荐理由': recommendation,
-                '趋势强度': details.get('趋势强度', 0), '资金健康度': details.get('资金健康度', 0),
-                '位置安全性': details.get('位置安全性', 0), '热度持续性': details.get('热度持续性', 0),
-                '基本面': details.get('基本面', 0),
-                'Alpha评分': details.get('Alpha评分', 0),
-                'Alpha信号': details.get('Alpha信号', ''),
-                '热榜最佳排名': details.get('热榜最佳排名', 0), '热榜上榜次数': details.get('热榜上榜次数', 0),
+                'Alpha评分': details.get('Alpha评分', 0), 'Alpha信号': details.get('Alpha信号', ''),
+                '量能爆发': details.get('量能爆发', 0),
                 '所属状态': str(row.get('所属状态', '')),
                 '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
                 '非一日游阶段': str(row.get('非一日游阶段', '')),
                 '确认天数': int(row.get('确认天数', 0)),
                 '龙头序列': str(row.get('龙头序列', '')),
-                '量能爆发': details.get('量能爆发', 0), '突破强度': float(row.get('突破强度', 0)),
-                # 技术指标（供AI分析，防止编造价格）
-                'MA5价': tech.get('ma5', today_close),
-                'MA10价': tech.get('ma10', today_close),
-                'MA20价': tech.get('ma20', today_close),
-                'MA60价': tech.get('ma60', today_close),
-                '20日高点': tech.get('high_20d', today_close),
-                '60日高点': tech.get('high_60d', today_close),
-                '120日高点': tech.get('high_120d', today_close),
-                '250日高点': tech.get('high_250d', today_close),
-                '全历史高点': tech.get('high_all', today_close),
-                '距20日高点%': tech.get('dist_to_high20_pct', 0),
-                '距60日高点%': tech.get('dist_to_high60_pct', 0),
-                '距120日高点%': tech.get('dist_to_high120_pct', 0),
-                '距250日高点%': tech.get('dist_to_high250_pct', 0),
-                '距全历史高点%': tech.get('dist_to_highall_pct', 0),
-                '上方套牢盘描述': tech.get('upper_pressure_desc', ''),
-                '是否有上方套牢盘': '有' if tech.get('has_upper_pressure', False) else '无',
-                '距MA20%': tech.get('dist_to_ma20_pct', 0),
-                '距MA60%': tech.get('dist_to_ma60_pct', 0),
-                'MA20方向': tech.get('ma20_trend', ''),
-                'MA60方向': tech.get('ma60_trend', ''),
-                '近5日最高': tech.get('recent5_high', today_close),
-                '近5日最低': tech.get('recent5_low', today_close),
-                '近10日涨跌%': tech.get('chg_10d_pct', 0),
-                # 筹码分布（主压力判断数据源：cyq_chips / cyq_perf）
                 '筹码上方套牢盘%': tech.get('above_chips_pct', -1),
                 '筹码平均成本': tech.get('avg_cost', today_close),
                 '筹码胜率%': tech.get('winner_rate', 0),
@@ -8682,56 +8854,31 @@ def run(target_date=None, simple_mode=False):
                 '筹码压力描述': tech.get('pressure_desc', ''),
                 '筹码突破状态': tech.get('breakout_status', ''),
                 '筹码最近压力位': tech.get('nearest_pressure', 0),
-                '筹码支撑1价': tech.get('support_peak_1_price', 0),
-                '筹码支撑1占比%': tech.get('support_peak_1_pct', 0),
-                # 历史知名度（供AI判断主题地位：龙头/中军/弹性/跟风）
-                'YRI历史总分': details.get('YRI历史总分', 0),
-                'YRI标签': details.get('YRI标签', ''),
-                'YRI等级': details.get('YRI等级', ''),
-                'YRI股性画像': details.get('YRI股性画像', ''),
-                'YRI日均成交额(万)': details.get('YRI日均成交(万)', 0),
-                'YRI涨停次数': details.get('YRI涨停次数', 0),
+                'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                 'YRI最大连板': details.get('YRI最大连板', 0),
             }
             ranked_stocks.append(stock_data)
-            
         except Exception as e:
-            print(f"[整合评分] {ts_code} {name} 失败: {e}")
+            print(f"[突破评分] {ts_code} {name} 失败: {e}")
             continue
     
-    # =========================
-    # 每个主题只保留失败概率最低的3只个股（防止单主题过度集中）
-    # =========================
+    # 每个主题只保留失败概率最低的3只
     theme_groups = {}
     for s in ranked_stocks:
         theme = s['所属主题']
-        if theme not in theme_groups:
-            theme_groups[theme] = []
-        theme_groups[theme].append(s)
-    
+        theme_groups.setdefault(theme, []).append(s)
     filtered_stocks = []
     for theme, stocks in theme_groups.items():
-        # 按失败概率升序排序
-        sorted_by_failure = sorted(stocks, key=lambda x: x['失败概率'])
-        # 每个主题只保留最多3只
-        filtered_stocks.extend(sorted_by_failure[:3])
-    
+        filtered_stocks.extend(sorted(stocks, key=lambda x: x['失败概率'])[:3])
     ranked_stocks = filtered_stocks
     
-    # 为每个股票计算短线胜率（含筹码分布）
+    # 突破 + 二波信号 + 筹码增强
     for s in ranked_stocks:
         try:
-            # 取当前价作为筹码分布判断基准
-            current_price = s.get('现价', 0) or s.get('收盘价', 0)
-            above_pct = -1
+            current_price = s.get('现价', 0)
             try:
                 chip_res = get_chip_distribution(s['代码'], TRADE_DATE, current_price)
-                above_pct = chip_res.get('above_chips_pct', -1)
-                # 筹码突破真假评分
-                chip_bt = calc_chip_breakthrough_score(chip_res, current_price)
-                s['筹码突破评分'] = chip_bt['score']
-                s['筹码突破等级'] = chip_bt['level']
-                s['筹码上方套牢盘%'] = above_pct
+                s['筹码上方套牢盘%'] = chip_res.get('above_chips_pct', -1)
                 s['筹码平均成本'] = chip_res.get('avg_cost', current_price)
                 s['筹码胜率%'] = chip_res.get('winner_rate', 0)
                 s['筹码压力描述'] = chip_res.get('pressure_desc', '')
@@ -8739,49 +8886,86 @@ def run(target_date=None, simple_mode=False):
                 s['筹码压力等级'] = chip_res.get('pressure_level', 'K线估算')
                 s['筹码突破状态'] = chip_res.get('breakout_status', '')
             except Exception:
-                above_pct = -1
-
-            short_result = calculate_short_term_win_score(s['代码'], pro, above_pct)
-            s['短线胜率评分'] = short_result.get('win_score', 0)
-            s['短线阶段'] = short_result.get('stage', '')
-            s['短线信号'] = short_result.get('signal', '')
-            s['短线风险'] = short_result.get('key_risk', '')
-            s['短线形态'] = short_result.get('pattern_type', '')
-            s['短线均线'] = short_result.get('ma_structure', '')
-            s['短线RSI信号'] = short_result.get('rsi_signal', '')
-            s['短线MACD信号'] = short_result.get('macd_signal', '')
-            s['短线KDJ信号'] = short_result.get('kdj_signal', '')
-            s['短线成交量信号'] = short_result.get('volume_signal', '')
-            s['短线共振结论'] = short_result.get('signal_resonance', '')
+                pass
             
-            # 添加突破信号和二波反转信号
+            # 突破信号
             breakout_result = detect_breakout(s['代码'], pro)
             s['突破信号'] = breakout_result.get('signal', '')
             s['突破评分'] = breakout_result.get('breakout_score', 0)
             
-            wave2_result = detect_wave2_reversal(s['代码'], pro)
-            s['二波信号'] = wave2_result.get('signal', '')
-            s['二波评分'] = wave2_result.get('wave2_score', 0)
+            # 二波形态检测
+            wave2_pattern_result = detect_wave2_pattern(s['代码'], pro)
+            s['二波形态'] = wave2_pattern_result.get('pattern', '其他')
+            if not wave2_pattern_result.get('has_valid_pattern', False):
+                s['二波信号'] = '非二波形态'
+                s['二波评分'] = 0
+            else:
+                wave2_result = detect_wave2_reversal(s['代码'], pro)
+                s['二波信号'] = wave2_result.get('signal', '')
+                s['二波评分'] = wave2_result.get('wave2_score', 0)
+                pattern_bonus = {'强势横盘': 30, 'V型急跌': 20, '放量回调': 15, '深度回调': 10, '缩量回调': 5, '三角收敛': 5}
+                s['二波评分'] = min(s['二波评分'] + pattern_bonus.get(s['二波形态'], 0), 150)
         except Exception:
-            s['短线胜率评分'] = 0
-            s['短线阶段'] = ''
-            s['短线信号'] = ''
-            s['短线风险'] = ''
-            s['短线形态'] = ''
-            s['短线均线'] = ''
-            s['短线RSI信号'] = ''
-            s['短线MACD信号'] = ''
-            s['短线KDJ信号'] = ''
-            s['短线成交量信号'] = ''
-            s['短线共振结论'] = ''
-            s['突破信号'] = ''
-            s['突破评分'] = 0
-            s['二波信号'] = ''
-            s['二波评分'] = 0
+            s['突破信号'] = ''; s['突破评分'] = 0
+            s['二波信号'] = '非二波形态'; s['二波评分'] = 0
     
     # 按整合评分排序
     ranked_stocks = sorted(ranked_stocks, key=lambda x: -x['整合评分'])
-
+    lines = []
+    lines.append("=" * 60)
+    lines.append("🔥 突破股池 (按整合评分排序)")
+    lines.append("=" * 60)
+    
+    top_stocks = ranked_stocks[:10]
+    for i, s in enumerate(top_stocks, 1):
+        alpha_val = s.get('Alpha评分', 0)
+        alpha_sig = s.get('Alpha信号', '')
+        alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
+        lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}")
+        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
+        # 主题信息
+        cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
+        confirm_days = s.get('确认天数', 0)
+        cycle_str = f"非一日游:{cycle}" if cycle else ""
+        days_str = f"{confirm_days}天" if confirm_days > 0 else ""
+        leader_seq = s.get('龙头序列', '')
+        leader_str = f"龙头:{leader_seq}" if leader_seq else ""
+        info_parts = [s['所属主题']]
+        if cycle_str: info_parts.append(cycle_str)
+        if days_str: info_parts.append(days_str)
+        if leader_str: info_parts.append(leader_str)
+        lines.append(f"  主题: {' | '.join(info_parts)}")
+        # 突破
+        bs = s.get('突破信号', '')
+        bsc = s.get('突破评分', 0)
+        lines.append(f"  突破: 评分={bsc} | {bs}" if bs else f"  突破: 评分={bsc}")
+        # YRI
+        yri_total = s.get('YRI历史总分', 0)
+        if yri_total > 0:
+            yri_tags = s.get('YRI标签', '')
+            yri_lb = s.get('YRI最大连板', 0)
+            lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
+        # 筹码
+        chip_pct = s.get('筹码上方套牢盘%', -1)
+        if chip_pct >= 0:
+            avg_cost = s.get('筹码平均成本', s['现价'])
+            winner = s.get('筹码胜率%', 0)
+            nearest_p = s.get('筹码最近压力位', 0)
+            lines.append(f"  筹码: 成本={avg_cost:.2f}元 套牢={chip_pct:.1f}% 盈利={winner:.1f}% 压力位={nearest_p:.2f}元 {s.get('筹码突破状态','')}")
+        lines.append("")
+    
+    hot_money_open_text = "\n".join(lines)
+    print(hot_money_open_text)
+    
+    icpm_top10_list = []
+    for s in ranked_stocks[:10]:
+        icpm_top10_list.append({
+            'code': s.get('代码', ''),
+            'name': s.get('名称', ''),
+            'theme': s.get('所属主题', ''),
+            'open_score': s.get('整合评分', 0),
+        })
+        
     # =========================
     # 处理低吸股票池（result_dx）：同突破池一样的评分/技术指标/筹码/短线流程
     # =========================
@@ -8863,248 +9047,84 @@ def run(target_date=None, simple_mode=False):
                 print(f"[低吸评分] {ts_code} {name} 失败: {e}")
                 continue
 
-        # 低吸池也做短线/筹码/突破/二波信号增强
+        # 低吸池二波形态检测过滤
         for s in dx_ranked_stocks:
+            ts_code = s['代码']
             try:
-                current_price = s.get('现价', 0) or s.get('收盘价', 0)
-                above_pct = -1
-                try:
-                    chip_res = get_chip_distribution(s['代码'], TRADE_DATE, current_price)
-                    above_pct = chip_res.get('above_chips_pct', -1)
-                    chip_bt = calc_chip_breakthrough_score(chip_res, current_price)
-                    s['筹码突破评分'] = chip_bt['score']
-                    s['筹码突破等级'] = chip_bt['level']
-                    s['筹码上方套牢盘%'] = above_pct
-                    s['筹码平均成本'] = chip_res.get('avg_cost', current_price)
-                    s['筹码胜率%'] = chip_res.get('winner_rate', 0)
-                    s['筹码压力描述'] = chip_res.get('pressure_desc', '')
-                    s['筹码最近压力位'] = chip_res.get('nearest_pressure', 0)
-                    s['筹码压力等级'] = chip_res.get('pressure_level', 'K线估算')
-                    s['筹码突破状态'] = chip_res.get('breakout_status', '')
-                except Exception:
-                    above_pct = -1
-
-                short_result = calculate_short_term_win_score(s['代码'], pro, above_pct)
-                s['短线胜率评分'] = short_result.get('win_score', 0)
-                s['短线阶段'] = short_result.get('stage', '')
-                s['短线信号'] = short_result.get('signal', '')
-                s['短线风险'] = short_result.get('key_risk', '')
-                s['短线形态'] = short_result.get('pattern_type', '')
-                s['短线均线'] = short_result.get('ma_structure', '')
-                s['短线RSI信号'] = short_result.get('rsi_signal', '')
-                s['短线MACD信号'] = short_result.get('macd_signal', '')
-                s['短线KDJ信号'] = short_result.get('kdj_signal', '')
-                s['短线成交量信号'] = short_result.get('volume_signal', '')
-                s['短线共振结论'] = short_result.get('signal_resonance', '')
+                # 形态检测
+                wave2_pattern_result = detect_wave2_pattern(ts_code, pro)
+                s['二波形态'] = wave2_pattern_result.get('pattern', '其他')
                 
-                breakout_result = detect_breakout(s['代码'], pro)
-                s['突破信号'] = breakout_result.get('signal', '')
-                s['突破评分'] = breakout_result.get('breakout_score', 0)
+                # 根据板块类型过滤形态
+                is_cyb_kcb = ts_code.startswith('3') or ts_code.startswith('688') or ts_code.startswith('689')
+                valid_patterns = ['V型急跌', '深度回调', '放量回调'] if is_cyb_kcb else ['强势横盘', 'V型急跌', '放量回调']
                 
-                wave2_result = detect_wave2_reversal(s['代码'], pro)
-                s['二波信号'] = wave2_result.get('signal', '')
-                s['二波评分'] = wave2_result.get('wave2_score', 0)
+                if not wave2_pattern_result.get('has_valid_pattern', False) or s['二波形态'] not in valid_patterns:
+                    s['二波信号'] = '非二波形态'
+                    s['二波评分'] = 0
+                else:
+                    wave2_result = detect_wave2_reversal(ts_code, pro)
+                    s['二波信号'] = wave2_result.get('signal', '')
+                    s['二波评分'] = wave2_result.get('wave2_score', 0)
+                    pattern_bonus = {'强势横盘': 30, 'V型急跌': 20, '放量回调': 15, '深度回调': 15, '缩量回调': 5, '三角收敛': 5}
+                    s['二波评分'] = min(s['二波评分'] + pattern_bonus.get(s['二波形态'], 0), 150)
             except Exception:
-                s['短线胜率评分'] = 0
-                s['短线阶段'] = ''
-                s['短线信号'] = ''
-                s['短线风险'] = ''
-                s['短线形态'] = ''
-                s['短线均线'] = ''
-                s['短线RSI信号'] = ''
-                s['短线MACD信号'] = ''
-                s['短线KDJ信号'] = ''
-                s['短线成交量信号'] = ''
-                s['短线共振结论'] = ''
-                s['突破信号'] = ''
-                s['突破评分'] = 0
-                s['二波信号'] = ''
+                s['二波信号'] = '非二波形态'
                 s['二波评分'] = 0
 
         # 低吸池：只保留二波分≥40的（>=80完美信号，>=40疑似结构），按二波分从高到低排序
-        dx_ranked_stocks = [s for s in dx_ranked_stocks if s.get('二波评分', 0) >= 60]
+        # dx_ranked_stocks = [s for s in dx_ranked_stocks if s.get('二波评分', 0) >= 60]
         dx_ranked_stocks = sorted(dx_ranked_stocks, key=lambda x: -x['二波评分'])
 
     # =========================
-    # 构建低吸股票池输出文本（重点突出二波信号）
+    # 构建低吸股票池输出文本（精简版）
     # =========================
     dixi_lines = []
     dixi_lines.append("=" * 60)
     dixi_lines.append("🔥 今日低吸股票池 (低吸二波信号)")
     dixi_lines.append("=" * 60)
-    dixi_lines.append("【价格约束】本区块所有价格为基于真实日线数据的精确计算值")
-    dixi_lines.append("=" * 60)
     
     if dx_ranked_stocks:
         for i, s in enumerate(dx_ranked_stocks[:10], 1):
-            dixi_lines.append(f"【低吸第{i}名】{s['名称']} ({s['代码']})")
-            dixi_lines.append(f"  二波评分: {s['二波评分']:.1f} | 整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-            dixi_lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 现价: {s['现价']:.2f}元 | 换手率: {s['换手率']:.2f}%")
-            dixi_lines.append(f"  成交额: {s['成交额']:.2f}亿")
+            alpha_val = s.get('Alpha评分', 0)
+            alpha_sig = s.get('Alpha信号', '')
+            alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
+            price = s.get('现价', 0)
+            pct = s.get('涨跌幅', 0)
+            pct_str = f" {pct:+.2f}%" if pct != 0 else " 0.00%"
+            dixi_lines.append(f"【低吸第{i}名】{s['名称']} ({s['代码']}) 现价={price:.2f}{pct_str}{alpha_str}")
+            # 所属主题 + 非一日游阶段 + 确认天数 + 龙头序列
             cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
             confirm_days = s.get('确认天数', 0)
-            cycle_str = f" | 非一日游:{cycle}" if cycle else ""
-            days_str = f"({confirm_days}天)" if confirm_days > 0 else ""
+            cycle_str = f"非一日游:{cycle}" if cycle else ""
+            days_str = f"{confirm_days}天" if confirm_days > 0 else ""
             leader_seq = s.get('龙头序列', '')
-            leader_str = f" | 龙头:{leader_seq}" if leader_seq else ""
-            dixi_lines.append(f"  所属主题: {s['所属主题']}{cycle_str}{days_str}{leader_str}")
-            dixi_lines.append(f"  推荐理由: {s['推荐理由']}")
-            dixi_lines.append(f"  ├─趋势强度: {s['趋势强度']:.1f} | 资金健康度: {s['资金健康度']:.1f}")
-            dixi_lines.append(f"  └─位置安全: {s['位置安全性']:.1f} | 热度持续: {s['热度持续性']:.1f}")
-            # 短线胜率
-            short_win = s.get('短线胜率评分', 0)
-            short_stage = s.get('短线阶段', '')
-            short_signal = s.get('短线信号', '')
-            dixi_lines.append(f"  【短线胜率】评分={short_win} | 阶段={short_stage} | 信号={short_signal}")
-            # ⭐ 二波信号（重点突出，低吸池按二波分排序）
-            wave2_signal = s.get('二波信号', '')
+            leader_str = f"龙头:{leader_seq}" if leader_seq else ""
+            info_parts = [s.get('所属主题', '')]
+            if cycle_str: info_parts.append(cycle_str)
+            if days_str: info_parts.append(days_str)
+            if leader_str: info_parts.append(leader_str)
+            dixi_lines.append(f"  主题: {' | '.join(info_parts)}")
+            # 二波形态 + 二波评分
             wave2_score = s.get('二波评分', 0)
-            dixi_lines.append(f"  ⭐【二波信号】评分={wave2_score} | {wave2_signal}")
-            # 技术价位
-            dixi_lines.append(f"  【技术价位】MA5={s.get('MA5价', s['现价']):.2f} MA10={s.get('MA10价', s['现价']):.2f} MA20={s.get('MA20价', s['现价']):.2f}({s.get('MA20方向','')}) MA60={s.get('MA60价', s['现价']):.2f}({s.get('MA60方向','')})")
-            chip_pct = s.get('筹码上方套牢盘%', -1)
-            if chip_pct >= 0:
-                avg_cost = s.get('筹码平均成本', s['现价'])
-                dixi_lines.append(f"  【筹码分布】平均成本={avg_cost:.2f}元 上方套牢盘={chip_pct:.1f}% 筹码突破={s.get('筹码突破状态','')}")
-            # YRI
+            wave2_pattern = s.get('二波形态', '')
+            wave2_signal = s.get('二波信号', '')
+            dixi_lines.append(f"  二波: {wave2_pattern} 评分={wave2_score} | {wave2_signal}")
+            # YRI辨识度
             yri_total = s.get('YRI历史总分', 0)
             if yri_total > 0:
-                dixi_lines.append(f"  【YRI辨识度】总分={yri_total:.0f} 最大连板={s.get('YRI最大连板',0)}板 标签={s.get('YRI标签','')}")
+                yri_tags = s.get('YRI标签', '')
+                yri_max_lb = s.get('YRI最大连板', 0)
+                dixi_lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_max_lb}板 标签={yri_tags}")
             dixi_lines.append("")
     else:
         dixi_lines.append("  今日无低吸信号个股")
     dixi_stock_text = "\n".join(dixi_lines)
     print(dixi_stock_text)
 
-    lines = []
-    lines.append("=" * 60)
-    lines.append("🔥 整合评分精选标的 (明日重点关注)")
-    lines.append("=" * 60)
-    lines.append("【价格约束】本区块所有股票的【技术价位】和【参考位】")
-    lines.append("【价格约束】均为基于真实日线数据的精确计算值，")
-    lines.append("【价格约束】进行技术面分析时必须严格使用下方标注的")
-    lines.append("【价格约束】MA价格、高点价格、现价等数据，")
-    lines.append("【价格约束】绝对禁止编造任何价格数字！")
-    lines.append("=" * 60)
-    
-    top_stocks = ranked_stocks[:10]
-    for i, s in enumerate(top_stocks, 1):
-        lines.append(f"【第{i}名】{s['名称']} ({s['代码']})")
-        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
-        lines.append(f"  今日涨幅: {s['涨跌幅']:.2f}% | 现价: {s['现价']:.2f}元 | 换手率: {s['换手率']:.2f}%")
-        lines.append(f"  成交额: {s['成交额']:.2f}亿 | 量能爆发: {s['量能爆发']:.2f}")
-        cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
-        confirm_days = s.get('确认天数', 0)
-        cycle_str = f" | 非一日游:{cycle}" if cycle else ""
-        days_str = f"({confirm_days}天)" if confirm_days > 0 else ""
-        leader_seq = s.get('龙头序列', '')
-        leader_str = f" | 龙头:{leader_seq}" if leader_seq else ""
-        lines.append(f"  所属主题: {s['所属主题']}{cycle_str}{days_str}{leader_str}")
-        lines.append(f"  主题趋势: {s.get('主题趋势分', 0):.1f} | 主题情绪: {s.get('主题情绪分', 0):.1f}")
-        lines.append(f"  推荐理由: {s['推荐理由']}")
-        lines.append(f"  ├─趋势强度: {s['趋势强度']:.1f} | 资金健康度: {s['资金健康度']:.1f}")
-        lines.append(f"  ├─位置安全: {s['位置安全性']:.1f} | 热度持续: {s['热度持续性']:.1f} | Alpha: {s['Alpha评分']:.1f}({s.get('Alpha信号','')})")
-        lines.append(f"  └─基本面: {s['基本面']:.1f}")
-        # 短线胜率（必须引用此数据进行分析）
-        short_win = s.get('短线胜率评分', 0)
-        short_stage = s.get('短线阶段', '')
-        short_signal = s.get('短线信号', '')
-        short_risk = s.get('短线风险', '')
-        short_pattern = s.get('短线形态', '')
-        short_rsi = s.get('短线RSI信号', '')
-        short_macd = s.get('短线MACD信号', '')
-        short_kdj = s.get('短线KDJ信号', '')
-        short_vol = s.get('短线成交量信号', '')
-        short_resonance = s.get('短线共振结论', '')
-        lines.append(f"  【短线胜率】评分={short_win} | 阶段={short_stage} | 信号={short_signal}")
-        if short_risk:
-            lines.append(f"  【短线风险】{short_risk}")
-        # 短线信号详细输出（加粗重点提示：共振买入信号优先关注）
-        is_resonance_buy = '共振买入' in str(short_resonance)
-        if is_resonance_buy:
-            lines.append(f"  ⚠️【重点★★★】短线信号共振买入——{short_resonance}")
-        if short_pattern:
-            lines.append(f"  【短线形态】{short_pattern}")
-        if short_rsi:
-            lines.append(f"  【RSI信号】{short_rsi}")
-        if short_macd:
-            lines.append(f"  【MACD信号】{short_macd}")
-        if short_kdj:
-            lines.append(f"  【KDJ信号】{short_kdj}")
-        if short_vol:
-            lines.append(f"  【成交量信号】{short_vol}")
-        if short_resonance and not is_resonance_buy:
-            lines.append(f"  【共振结论】{short_resonance}")
-        # 添加突破信号和二波反转信号
-        breakout_signal = s.get('突破信号', '')
-        breakout_score = s.get('突破评分', 0)
-        wave2_signal = s.get('二波信号', '')
-        wave2_score = s.get('二波评分', 0)
-        if breakout_signal:
-            lines.append(f"  【突破信号】评分={breakout_score} | {breakout_signal}")
-        if wave2_signal:
-            lines.append(f"  【二波信号】评分={wave2_score} | {wave2_signal}")
-        # 关键技术价格（必须使用这些数据进行技术面分析，禁止编造价格）
-        lines.append(f"  【技术价位】MA5={s.get('MA5价', s['现价']):.2f}元 MA10={s.get('MA10价', s['现价']):.2f}元 MA20={s.get('MA20价', s['现价']):.2f}元({s.get('MA20方向','')}) MA60={s.get('MA60价', s['现价']):.2f}元({s.get('MA60方向','')})")
-        # 距高点%：正数=距高空间，负数=已突破比例
-        d20 = s.get('距20日高点%', 0)
-        d60 = s.get('距60日高点%', 0)
-        d120 = s.get('距120日高点%', 0)
-        d250 = s.get('距250日高点%', 0)
-        d_all = s.get('距全历史高点%', 0)
-        d20_desc = "已突破" if d20 < 0 else "未突破"
-        d60_desc = "已突破" if d60 < 0 else "未突破"
-        lines.append(f"  【参考位-短线】20日高点={s.get('20日高点', s['现价']):.2f}元({d20_desc}{abs(d20):.1f}%) 60日高点={s.get('60日高点', s['现价']):.2f}元({d60_desc}{abs(d60):.1f}%) 近10日涨跌={s.get('近10日涨跌%', 0):+.1f}%")
-        # 长期套牢盘：明确传递给 AI，避免误判"上方无压力"
-        lines.append(f"  【参考位-长线】120日高点={s.get('120日高点', s['现价']):.2f}元 250日高点={s.get('250日高点', s['现价']):.2f}元 全历史高点={s.get('全历史高点', s['现价']):.2f}元")
-        lines.append(f"  【压力判断】上方是否有套牢盘={s.get('是否有上方套牢盘', '无')}；压力位描述={s.get('上方套牢盘描述', '无')}")
-        # 筹码分布（cyq_chips / cyq_perf）- 主判断依据
-        chip_pct = s.get('筹码上方套牢盘%', -1)
-        if chip_pct >= 0:
-            avg_cost = s.get('筹码平均成本', s['现价'])
-            winner = s.get('筹码胜率%', 0)
-            pressure_desc = s.get('筹码压力描述', '')
-            nearest_p = s.get('筹码最近压力位', 0)
-            lines.append(f"  【筹码分布】平均成本={avg_cost:.2f}元 上方套牢盘={chip_pct:.1f}% 盈利筹码={winner:.1f}% 最近压力位={nearest_p:.2f}元")
-            lines.append(f"  【筹码结论】{s.get('筹码突破状态', '')}；压力等级={s.get('筹码压力等级', 'K线估算')}；{pressure_desc}")
-            bt_score = s.get('筹码突破评分', 0)
-            bt_level = s.get('筹码突破等级', '')
-            if bt_score > 0:
-                lines.append(f"  【筹码突破评分】{bt_level} | 得分={bt_score:.1f}")
-        if s.get('热榜最佳排名') and 0 < s['热榜最佳排名'] <= 100:
-            lines.append(f"  热榜: Top{s['热榜最佳排名']}({s['热榜上榜次数']}次)")
-        # YRI历史知名度（供AI判断主题地位：龙头/中军/弹性/跟风）
-        yri_total = s.get('YRI历史总分', 0)
-        yri_level = s.get('YRI等级', '')
-        yri_portrait = s.get('YRI股性画像', '')
-        yri_tags = s.get('YRI标签', '')
-        yri_avg_amt = s.get('YRI日均成交额(万)', 0)
-        yri_max_consec = s.get('YRI最大连板', 0)
-        # 始终打印YRI数据，即使为0也要标注，让AI知道该股缺乏历史辨识度
-        if yri_total > 0:
-            lines.append(f"  【YRI历史知名度】总分={yri_total:.0f} 最大连板={yri_max_consec}板 成交={yri_avg_amt:.0f}万/日 标签={yri_tags} 画像={yri_portrait}")
-        else:
-            lines.append(f"  【YRI历史知名度】总分=0 最大连板=0板 成交={yri_avg_amt:.0f}万/日 标签=无 画像=无（缺乏历史辨识度，应归类为补涨弹性或后排跟风）")
-        lines.append("")
-    
-    #lines.append("完整排名:")
-    ##lines.append("-" * 60)
-    #for i, s in enumerate(ranked_stocks, 1):
-    ##    lines.append(f"{i}. {s['代码']} {s['名称']} | 现价:{s['现价']:.2f} 涨幅:{s['涨跌幅']:.2f}% 成交额:{s['成交额']:.2f}亿 换手:{s['换手率']:.2f}% | 评分:{s['整合评分']:.1f} | 失败概率:{s['失败概率']:.1f}% | {s['所属主题']}")
-    #lines.append("=" * 60)
-    
-    hot_money_open_text = "\n".join(lines)
-    print(hot_money_open_text)
-    
-    icpm_top10_list = []
-    for s in ranked_stocks[:10]:
-        icpm_top10_list.append({
-            'code': s.get('代码', ''),
-            'name': s.get('名称', ''),
-            'theme': s.get('所属主题', ''),
-            'open_score': s.get('整合评分', 0),
-        })
-    
+
+
+    """
     # ===== 对前10名个股调用AI基本面+事件驱动分析 =====
     print(f"\n{'='*60}")
     print(f"🔥 对前10名个股进行AI基本面+事件驱动分析...")
@@ -9181,7 +9201,7 @@ def run(target_date=None, simple_mode=False):
                     parts.append(f"  {line}")
             parts.append("")
         news_analysis_text = "\n".join(parts)
-    
+    """
     # 生成stock_text供后续使用
     stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks[:10]])
     all_stock_text = "\n".join([f"{s['代码']} {s['名称']} | 评分:{s['整合评分']:.1f}" for s in ranked_stocks])
@@ -9279,17 +9299,13 @@ def run(target_date=None, simple_mode=False):
 {theme_stocks_text}
 ---------------------------------------
 
-整合评分精选量化股票池（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
+今日突破股票池（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
 （这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
 {hot_money_open_text}
 
 ---------------------------------------
 今日低吸股票池（低吸二波信号，按二波评分从高到低排序）：
 {dixi_stock_text}
-
----------------------------------------
-【前10名个股消息面情绪分析】（综合同花顺、新浪财经、东财快讯等多源信息，由DeepSeek-V4-Flash分析）
-{news_analysis_text}
 
 ---------------------------------------
 近20日跟踪分析股票池（从历史自选股中筛选未大涨过的个股，经主题过滤后按综合评分排序）：
@@ -9326,8 +9342,15 @@ def run(target_date=None, simple_mode=False):
      * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
      * "高潮尾声"主题提示情绪高潮后分歧风险，应降低预期
      * 明日预测必须优先选择"非一日游确认主题"中的标的，并说明其连续确认天数和周期阶段
-   【重要约束】：股票名必须从下方"主题个股池选股结果"和"整合评分精选量化股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
-3、自选量化股票池分析（【重要约束】仅对完整量化候选股票池中股票，只能显示前面10名，不能自行截取，也不要加入其它的）：
+   【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
+3、今日低吸股票池分析（低吸二波信号标的，按二波评分从高到低排序）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 如果"今日低吸股票池"中有个股，包含代码、名称、收盘价、涨跌幅，按二波评分降序分析每只：
+     - 二波评分和Alpha评分
+     - 所属主题、非一日游阶段（含连续确认天数）和龙头序列
+     - 【重点强调】二波信号分析：必须引用上方标注的二波形态和评分真实数据
+   - 如果无个股，直接输出"今日无符合条件的低吸二波标的"
+4、今日突破股票池分析（【重要约束】仅对突破股票池中股票，只能显示前面10名，不能自行截取，也不要加入其它的）：
    **【重要】按整合评分从高到低排序分析前10名个股：**
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
      【第1名 - 明日首选】股票名 (代码)
@@ -9336,16 +9359,13 @@ def run(target_date=None, simple_mode=False):
      依此往后
    - 对每只股票进行详细分析，包括：
      - 整合评分和失败概率
-     - 消息面情绪分析：【必须严格引用上方"【前10名个股消息面情绪分析】"中该股票的具体分析内容！禁止空泛描述！】
-       - 首先给出"消息面情绪共振强度"评分（0-100分，越高越好）及对应信号（强利好/中利好/中利空/强利空）
-       - 然后直接引用上方分析中的2-3条关键信息作为支撑论据（例如："分析中提到..."/"多源信息显示..."/"快讯提示..."）
-       - 引用内容可包括：行业政策动向、产业链上下游消息、公司公告、业绩预告/快报、机构研报观点、产能/订单/客户相关消息、题材概念催化事件等
-       - 【禁止输出"无明显事件驱动"/"信息真空"等笼统表述！如果上方分析中有内容，必须引用其中至少2条具体信息】
-       - 【重要】如果同时满足以下三个条件：整合评分≥60分、失败概率≤50%、消息面情绪分>80分，则在分析中标注【重点买入标的】
-     - 短线胜率分析：【必须引用上方"【短线胜率】"及"【短线形态】/突破信号/二波信号的真实数据】
-       - 短线胜率评分（0-100分）
-       - [突破信号]（加粗强调）
-       - [二波信号]（加粗强调）
+     - [突破信号]（加粗强调）
+     - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
+       主题地位：【必须】直接输出规则判定结果，格式如下：
+       "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
+       例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
+       【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
+     
      - 筹码分布分析：【必须引用上方"【筹码分布】"中的真实数据！重点加粗显示是否真突破】
        - 筹码平均成本：判断现价是否高于平均成本
        - 上方套牢盘比例：评估突破难度
@@ -9359,11 +9379,6 @@ def run(target_date=None, simple_mode=False):
        - 50-59分：中性（中线收益5-10%），收息/观望为主
        - <40分：减仓/卖出，长线回避
        【输出格式】Alpha评分=X分，信号=XXX | 中线建议：XXX | 长线建议：XXX
-     - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
-     - 主题地位：【必须】直接输出规则判定结果，格式如下：
-       "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
-       例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
-       【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
      - 风险提示：如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，突出建议勿追高！
      - 如遇个股重大基本面风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由。技术性风险无须提示和输出。
     其它要求：
@@ -9397,37 +9412,12 @@ def run(target_date=None, simple_mode=False):
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 
-3b、今日低吸股票池分析（低吸二波信号标的，按二波评分从高到低排序）：
-   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-   - 如果"今日低吸股票池"中有个股，按二波评分降序分析每只，包含：
-     - 二波评分和整合评分
-     - 所属主题、主题状态、非一日游阶段（含连续确认天数）和龙头序列
-     - 【重点强调】二波信号分析：必须引用上方标注的【二波信号】的真实数据（评分、信号类型），判断二波概率
-     - 筹码分布：引用平均成本、上方套牢盘比例
-     - 【最高约束】所有价格分析严格使用上方标注的真实数据，禁止编造
-   - 如果无个股，直接输出"今日无符合条件的低吸二波标的"
-
-4、跟踪分析个股：从近20日跟踪分析股票池中，输出前10名个股，不要跟前面的股票重复分析，有重复的显示入库的日期即可：严格按以下格式和列表输出：
-    - 显示整合评分和失败概率
-    - 显示入库日期和今日推荐理由
-     - 所属主题、主题状态和非一日游阶段（含连续确认天数），以及龙头股序列
-     - 主题地位：【必须】直接输出规则判定结果，格式如下：
-       "主题与地位: 所属主题为XXX（XXX）。主题地位：XXX。辨识度YRI总分=XX。"
-       例如："主题与地位: 所属主题为小金属（抱团主升）。主题地位：龙头。辨识度YRI总分=59"
-     - 如遇个股重大风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由
-     - 短线胜率分析：【必须引用上方"【短线胜率】"及"【短线形态】/突破信号/二波信号的真实数据】
-       - 短线胜率评分（0-100分）
-       - [突破信号]（加粗强调）
-       - [二波信号]（加粗强调）
-    - 筹码分布分析：【必须引用上方"【筹码分布】"中的真实数据！】
-      - 筹码平均成本：判断现价是否高于平均成本
-      - 上方套牢盘比例：评估突破难度
-      - 下方获利盘比例：评估支撑强度
-      - 最近压力位：标注关键压力位价格
-      - 筹码状态：是否已突破筹码平均成本
-    - 如遇个股重大基本面风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由。技术性风险无须提示和输出。
-    【跟踪股最高约束】所有价格分析必须严格使用上方"近20日跟踪分析股票池"区块中标注的"【技术价位】"和"【参考位】"中的EXACT真实数据，禁止编造任何价格数字！若标注现价=338.90元，则分析中必须写338.90元，不能写成9.74元！此项约束优先级最高。
-    【禁止编造当日涨跌】跟踪股分析中，绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在跟踪股区块中已明确标注，必须直接引用该数值。
+5、跟踪分析个股：从上方跟踪股票池中输出，包含代码、名称、收盘价、涨跌幅，严格按以下格式分析：
+    - 二波形态与二波评分
+    - 所属主题、非一日游阶段、确认天数、龙头序列
+    - 主题地位：直接输出"主题与地位: 所属主题为XXX。主题地位：XXX。辨识度YRI总分=XX。"
+    - 如遇重大风险标注"【警告】有重大风险"，否则不输出
+    【约束】禁止编造价格数据，严格使用上方现价。
     
 
 格式要求：

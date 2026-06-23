@@ -97,8 +97,8 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
             return None
         daily = daily.sort_values('trade_date').reset_index(drop=True)
 
-        # 技术因子（MACD/KDJ/RSI/布林/CCI）
-        factor = pro.stk_factor(ts_code=ts_code, start_date=start, end_date=end)
+        # 技术因子（MACD/KDJ/RSI/布林/CCI）- 使用 stk_factor_pro
+        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start, end_date=end)
         time.sleep(0.06)
 
         # 日线基本（换手率/量比）
@@ -110,12 +110,17 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
         mf = pro.moneyflow(ts_code=ts_code, start_date=start, end_date=end)
         time.sleep(0.06)
 
-        # 合并
-        df = daily.merge(factor[['trade_date','macd_dif','macd_dea','macd',
-                                   'kdj_k','kdj_d','kdj_j',
-                                   'rsi_6','rsi_12','rsi_24',
-                                   'boll_upper','boll_mid','boll_lower','cci']],
-                         on='trade_date', how='left')
+        # 合并（stk_factor_pro 字段带 _bfq 后缀）
+        factor_rename = {
+            'ma_bfq_5': 'ma5', 'ma_bfq_10': 'ma10', 'ma_bfq_20': 'ma20', 'ma_bfq_60': 'ma60',
+            'macd_bfq': 'macd', 'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea',
+            'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
+            'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d', 'kdj_j_bfq': 'kdj_j',
+            'boll_upper_bfq': 'boll_upper', 'boll_mid_bfq': 'boll_mid', 'boll_lower_bfq': 'boll_lower',
+            'cci_bfq': 'cci',
+        }
+        factor_subset = factor[['trade_date'] + list(factor_rename.keys())].rename(columns=factor_rename)
+        df = daily.merge(factor_subset, on='trade_date', how='left')
         df = df.merge(basic[['trade_date','turnover_rate','volume_ratio','pe_ttm','pb']],
                       on='trade_date', how='left')
         df = df.merge(mf[['trade_date','net_mf_amount','buy_lg_amount','sell_lg_amount']],
@@ -124,11 +129,7 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
         # 删除停牌日（成交量=0）
         df = df[df['vol'] > 0].reset_index(drop=True)
 
-        # 计算MA
-        df['ma5'] = df['close'].rolling(5).mean()
-        df['ma10'] = df['close'].rolling(10).mean()
-        df['ma20'] = df['close'].rolling(20).mean()
-        df['ma60'] = df['close'].rolling(60).mean()
+        # MA 已从 stk_factor_pro 获取，无需手动 rolling
 
         # 计算近N日涨跌幅
         df['pct_5d'] = df['close'].pct_change(5)

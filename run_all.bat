@@ -10,6 +10,8 @@ echo.
 set BASE=d:\mystock
 cd /d %BASE%
 
+python solo\build_theme_stock_map.py 
+
 echo [Step 1/7] 主题趋势分 + 情绪分...
 echo =============================================
 python solo\theme_trend_sentiment_score.py
