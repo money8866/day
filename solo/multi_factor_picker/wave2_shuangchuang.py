@@ -92,11 +92,13 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
             'ma_bfq_5': 'ma5', 'ma_bfq_10': 'ma10', 'ma_bfq_20': 'ma20', 'ma_bfq_60': 'ma60',
             'macd_bfq': 'macd', 'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea',
             'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
-            'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d', 'kdj_j_bfq': 'kdj_j',
+            'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d', 'kdj_bfq': 'kdj_j',
             'boll_upper_bfq': 'boll_upper', 'boll_mid_bfq': 'boll_mid', 'boll_lower_bfq': 'boll_lower',
             'cci_bfq': 'cci',
         }
-        factor_subset = factor[['trade_date'] + list(factor_rename.keys())].rename(columns=factor_rename)
+        valid_cols = ['trade_date'] + [k for k in factor_rename if k in factor.columns]
+        valid_rename = {k: v for k, v in factor_rename.items() if k in factor.columns}
+        factor_subset = factor[valid_cols].rename(columns=valid_rename)
         df = daily.merge(factor_subset, on='trade_date', how='left')
         df = df.merge(basic[['trade_date','turnover_rate','volume_ratio','pe_ttm','pb']],
                       on='trade_date', how='left')

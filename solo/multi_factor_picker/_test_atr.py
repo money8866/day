@@ -1,0 +1,12 @@
+# -*- coding: utf-8 -*-
+import tushare as ts
+ts.set_token('1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')
+pro = ts.pro_api()
+df = pro.stk_factor_pro(ts_code='300773.SZ', start_date='20260623', end_date='20260623')
+row = df.iloc[0]
+print(f'close_bfq: {row["close"]}')
+print(f'close_qfq: {row["close_qfq"]}')
+print(f'atr_bfq: {row["atr_bfq"]}')
+print(f'atr_qfq: {row["atr_qfq"]}')
+print(f'atr_bfq/close_bfq = {row["atr_bfq"]/row["close"]*100:.2f}%')
+print(f'atr_qfq/close_qfq = {row["atr_qfq"]/row["close_qfq"]*100:.2f}%')

@@ -362,18 +362,21 @@ def scan_stock(ts_code, lookback=90):
         # 基本面（缓存版）
         basic = cached_daily_basic(ts_code, start_date, end_date)
 
-        # 合并（stk_factor_pro 字段带 _bfq 后缀，统一重命名为简洁名）
+        # 合并（stk_factor_pro 字段：使用 _qfq 前复权版本，避免除权日指标失真）
         df = daily.copy()
         if factor is not None and len(factor) > 0:
             factor_rename = {
-                'ma_bfq_5': 'ma5', 'ma_bfq_10': 'ma10', 'ma_bfq_20': 'ma20', 'ma_bfq_60': 'ma60',
-                'macd_bfq': 'macd', 'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea',
-                'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
-                'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d', 'kdj_j_bfq': 'kdj_j',
-                'boll_upper_bfq': 'boll_upper', 'boll_mid_bfq': 'boll_mid', 'boll_lower_bfq': 'boll_lower',
-                'cci_bfq': 'cci',
+                'ma_qfq_5': 'ma5', 'ma_qfq_10': 'ma10', 'ma_qfq_20': 'ma20', 'ma_qfq_60': 'ma60',
+                'macd_qfq': 'macd', 'macd_dif_qfq': 'macd_dif', 'macd_dea_qfq': 'macd_dea',
+                'rsi_qfq_6': 'rsi_6', 'rsi_qfq_12': 'rsi_12', 'rsi_qfq_24': 'rsi_24',
+                'kdj_k_qfq': 'kdj_k', 'kdj_d_qfq': 'kdj_d', 'kdj_qfq': 'kdj_j',
+                'boll_upper_qfq': 'boll_upper', 'boll_mid_qfq': 'boll_mid', 'boll_lower_qfq': 'boll_lower',
+                'cci_qfq': 'cci',
             }
-            factor_subset = factor[['trade_date'] + list(factor_rename.keys())].rename(columns=factor_rename)
+            # 只取factor表中实际存在的列，避免缺失列名导致KeyError
+            valid_cols = ['trade_date'] + [k for k in factor_rename if k in factor.columns]
+            valid_rename = {k: v for k, v in factor_rename.items() if k in factor.columns}
+            factor_subset = factor[valid_cols].rename(columns=valid_rename)
             df = df.merge(factor_subset, on='trade_date', how='left')
         if basic is not None and len(basic) > 0:
             df = df.merge(basic[['trade_date','turnover_rate','volume_ratio','pe_ttm','pb']],
@@ -382,6 +385,16 @@ def scan_stock(ts_code, lookback=90):
         df = df[df['vol'] > 0].reset_index(drop=True)
         if len(df) < 40:
             return None
+
+        # ⚠️ 关键修复：用 close_qfq（前复权）替代 close（未复权）
+        # 未复权价在除权日产生虚假跳空，导致涨幅/回调幅度/RSI全部失真
+        if 'close_qfq' in df.columns:
+            df['close_bfq'] = df['close']
+            df['close'] = df['close_qfq']
+        if 'high_qfq' in df.columns:
+            df['high'] = df['high_qfq']
+        if 'low_qfq' in df.columns:
+            df['low'] = df['low_qfq']
 
         # 已从 stk_factor_pro 获取MA值，无需手动 rolling 计算
 

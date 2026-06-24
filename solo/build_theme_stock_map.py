@@ -5,7 +5,7 @@
 使用 theme_pattern_stock_picker.py 中的 match_theme_stocks 算法，
 生成所有主题与个股的对应关系 JSON 文件。
 
-输出文件：d:\mystock\cache_daily\theme_stock_map_{TRADE_DATE}.json
+输出文件：d:/mystock/cache_daily/theme_stock_map_{TRADE_DATE}.json
 
 JSON 结构：
 {
