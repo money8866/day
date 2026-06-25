@@ -1,30 +1,65 @@
 # -*- coding: utf-8 -*-
 """
-BullScore v2 — 新增筹码面 + 估值安全增强 + 主题加成修复 + 非线性放大
+BullScore v2.1 — 中长线牛股选股系统
 
-依赖 bull_scorer.py 的 BullScorer 基类，在其基础上叠加 3 个新因子 + 1 个增强因子。
+v2.1 核心增强：
+├── 历史辨识度评分 (YRI) — 从资金活跃度、涨停基因、空间记忆、股性画像、舆情热度五个维度评估
+├── Alpha因子评分 — 质量、成长、估值、动量、流动性、情绪六因子模型
+├── 龙头/中军识别器 — 自动判定股票类型：龙头、中军、龙二、补涨、普通
+└── AI分析集成 — 深度分析单只股票或对比分析多只股票
 
-评分结构（v2）：
-  BullScore_v2 =
-    0.18 × IndustryDemandScore    (产业景气 — 再降权2%，区分度仍不足)
-    0.15 × TechBarrierScore       (技术壁垒)
-    0.15 × OrderExplosionScore    (订单爆发)
-    0.15 × EarningsQualityScore   (业绩质量)
-    0.08 × LeaderScore            (龙头地位 — 降权2%，与机构信号有重叠)
-    0.13 × ExpectationScore       (预期差 — 提权3%，超额收益核心)
-    0.05 × InstitutionScore       (机构认可)
-    0.05 × MarketCapElasticity    (市值弹性)
-    0.07 × ChipScore              (★★★★ 新增 筹码面 — 资金流向+股东数+公募持仓)
-    0.07 × SafetyMarginScore      (★★★★ 增强 估值安全 — PEG+质押+解禁+回购+现金流)
+评分结构（v2.1）：
+  BullScore_v2.1 =
+    0.14 × IndustryDemandScore    (产业景气)
+    0.14 × OrderExplosionScore    (订单爆发)
+    0.10 × TechBarrierScore       (技术壁垒)
+    0.10 × EarningsQualityScore   (业绩质量)
+    0.08 × ExpectationScore       (预期差)
+    0.06 × LeaderScore            (龙头地位)
+    0.04 × InstitutionScore       (机构认可)
+    0.04 × MarketCapElasticity    (市值弹性)
+    0.07 × ChipScore              (筹码面)
+    0.07 × SafetyMarginScore      (估值安全)
+    ★ v2.1 新增：
+    0.08 × RecognitionScore       (历史辨识度 YRI)
+    0.08 × AlphaScore             (Alpha因子)
 
-  FinalScore = 0.82 × BullScore_v2 + 0.18 × ThemeScore_v2
+  FinalScore = 0.82 × BullScore_v2.1 + 0.18 × ThemeScore_v2
 
-  主题加成增加非线性放大：FinalScore × (1 + ThemeBonus_v2 × 0.25)
+  主题加成非线性放大：当 ThemeScore_v2 > 60 时，FinalScore × (1 + 0.15 × (ThemeScore_v2 - 60) / 40)
+
+历史辨识度评分器 (YRI):
+  - 资金活跃度（25%）：日均成交额、换手率、热度排名
+  - 涨停基因（25%）：涨停次数、最大连板数、连板频率
+  - 空间记忆（20%）：历史新高次数、波动弹性、趋势强度
+  - 股性画像（15%）：股性标签、风格特征
+  - 舆情热度（15%）：新闻曝光、研报覆盖、市场讨论度
+
+Alpha因子评分器:
+  - 质量因子（20%）：ROE稳定性、盈利质量、现金流
+  - 成长因子（20%）：营收增速、利润增速、研发投入
+  - 估值因子（15%）：PE/PB分位、估值性价比
+  - 动量因子（15%）：价格动量、趋势强度、相对强弱
+  - 流动性因子（15%）：成交额、换手率、买卖价差
+  - 情绪因子（15%）：资金流向、市场情绪beta
+
+龙头/中军识别逻辑:
+  - 龙头股：高辨识度 + 高弹性 + 涨停基因强 + 主题相关性高
+  - 中军股：大市值 + 高流动性 + 机构持仓多 + 业绩稳定
+  - 输出类型：龙头、中军、龙二、补涨、普通
+
+依赖的 Tushare 8000分及以上接口：
+  - pro.daily_basic — 日线基础数据
+  - pro.daily — 日线行情
+  - pro.moneyflow — 资金流向
+  - pro.stk_news — 股票新闻
+  - pro.stk_research — 股票研报
 """
 import os
 import sys
 import time
 import math
+import json
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -663,6 +698,888 @@ def nonlinear_boost(raw_score: float, magnitude: float,
     return min(100.0, raw_score * (1.0 + boost_ratio))
 
 
+# ════════════════════════════════════════════════════════
+# 历史辨识度评分器 (YRI - Year Recognition Index)
+# ════════════════════════════════════════════════════════
+
+class RecognitionScorer:
+    """
+    历史辨识度评分器 (0~100, 权重6%)
+    
+    基于YRI历史辨识度模型，从多个维度评估股票的市场关注度和辨识度：
+    
+    5个子因子：
+    ① 资金活跃度（25%）— 日均成交额、换手率、热度排名
+    ② 涨停基因（25%）— 涨停次数、最大连板数、连板频率
+    ③ 空间记忆（20%）— 历史新高次数、波动弹性、趋势强度
+    ④ 股性画像（15%）— 股性标签、风格特征
+    ⑤ 舆情热度（15%）— 新闻曝光、研报覆盖、市场讨论度
+    """
+    
+    def __init__(self, pro=None):
+        self._pro = pro
+        self._pro_owned = False
+        if pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+                self._pro_owned = True
+        
+        # 缓存
+        self._cache: Dict[str, Tuple[float, Dict]] = {}
+    
+    def _get_pro(self):
+        if self._pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+        return self._pro
+    
+    def _score_activity(self, ts_code: str) -> Tuple[float, Dict]:
+        """① 资金活跃度评分"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            # 获取最近20日数据
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            # 尝试获取 daily_basic 数据
+            db = pro.daily_basic(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d'),
+                fields='ts_code,trade_date,turnover_rate,volume_ratio,circ_mv'
+            )
+            
+            if db is None or len(db) < 10:
+                return 50.0, {"data_count": len(db) if db is not None else 0}
+            
+            avg_turnover = db['turnover_rate'].mean()
+            avg_volume_ratio = db['volume_ratio'].mean()
+            circ_mv = db.iloc[0].get('circ_mv', 1) / 1e8  # 亿元
+            
+            # 活跃度评分
+            # 换手率越高、量比越高、流通市值适中越好
+            turnover_score = min(100, avg_turnover * 5)  # 20%换手率=100分
+            volume_score = min(100, avg_volume_ratio * 30)  # 3.3量比=100分
+            
+            # 市值适中加分（太小流动性差，太大弹性不足）
+            if 50 <= circ_mv <= 500:
+                cap_score = 100
+            elif 20 <= circ_mv < 50 or 500 < circ_mv <= 1000:
+                cap_score = 75
+            elif circ_mv < 20:
+                cap_score = 40
+            else:
+                cap_score = 50
+            
+            score = 0.4 * turnover_score + 0.3 * volume_score + 0.3 * cap_score
+            
+            details['avg_turnover'] = round(avg_turnover, 2)
+            details['avg_volume_ratio'] = round(avg_volume_ratio, 2)
+            details['circ_mv_b'] = round(circ_mv, 1)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"activity score {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def _score_limit_up_history(self, ts_code: str) -> Tuple[float, Dict]:
+        """② 涨停基因评分"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            # 获取最近一年的日线数据，统计涨停次数
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365)
+            
+            df = pro.daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d')
+            )
+            
+            if df is None or len(df) == 0:
+                return 50.0, {"data_count": 0}
+            
+            # 计算涨停次数（涨幅>=9.9%视为涨停）
+            df['pct_chg'] = df['pct_chg'].fillna(0)
+            limit_up_count = len(df[df['pct_chg'] >= 9.9])
+            
+            # 计算连板能力（连续涨停的最大天数）
+            max_consecutive = 0
+            current_streak = 0
+            for pct in df['pct_chg'].values:
+                if pct >= 9.9:
+                    current_streak += 1
+                    max_consecutive = max(max_consecutive, current_streak)
+                else:
+                    current_streak = 0
+            
+            trading_days = len(df)
+            
+            # 评分
+            # 涨停频率
+            freq_score = min(100, (limit_up_count / trading_days) * 500)  # 20%涨停率=100分
+            # 连板能力
+            streak_score = min(100, max_consecutive * 25)  # 4连板=100分
+            
+            score = 0.6 * freq_score + 0.4 * streak_score
+            
+            details['limit_up_count'] = limit_up_count
+            details['max_consecutive_zt'] = max_consecutive
+            details['freq_pct'] = round(limit_up_count / trading_days * 100, 2)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"limit_up history {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def _score_price_momentum(self, ts_code: str) -> Tuple[float, Dict]:
+        """③ 空间记忆评分 — 新高能力和趋势强度"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=180)
+            
+            df = pro.daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d'),
+                fields='ts_code,trade_date,high,close'
+            )
+            
+            if df is None or len(df) < 60:
+                return 50.0, {"data_count": len(df) if df is not None else 0}
+            
+            df = df.sort_values('trade_date')
+            
+            # 统计创新高次数
+            highs = df['high'].values
+            new_high_count = 0
+            running_high = highs[0]
+            for h in highs[1:]:
+                if h > running_high:
+                    new_high_count += 1
+                    running_high = h
+            
+            # 计算波动率（弹性）
+            returns = df['close'].pct_change().dropna()
+            volatility = returns.std() * math.sqrt(252)  # 年化波动率
+            
+            # 计算趋势强度（近60日收益）
+            if len(df) >= 60:
+                trend_return = (df['close'].iloc[-1] / df['close'].iloc[-60] - 1) * 100
+            else:
+                trend_return = 0
+            
+            # 评分
+            high_score = min(100, new_high_count * 10)  # 10次新高=100分
+            vol_score = min(100, volatility * 200)  # 50%波动率=100分
+            trend_score = min(100, max(-100, trend_return) + 100)  # 归一化
+            
+            score = 0.4 * high_score + 0.3 * vol_score + 0.3 * trend_score
+            
+            details['new_high_count'] = new_high_count
+            details['volatility'] = round(volatility, 3)
+            details['trend_return_60d'] = round(trend_return, 2)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"momentum score {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def _score_stock_personality(self, market_cap: float, industry: str) -> Tuple[float, Dict]:
+        """④ 股性画像评分 — 根据市值和行业判断股性特征"""
+        details = {}
+        
+        # 根据市值和行业推断股性
+        personality_tags = []
+        
+        # 市值维度
+        if market_cap < 50e8:  # 50亿以下
+            personality_tags.append("小盘股")
+            personality_tags.append("高弹性")
+        elif market_cap < 200e8:  # 200亿以下
+            personality_tags.append("中盘股")
+            personality_tags.append("均衡型")
+        elif market_cap < 1000e8:  # 1000亿以下
+            personality_tags.append("大盘股")
+            personality_tags.append("稳健型")
+        else:
+            personality_tags.append("权重股")
+            personality_tags.append("防御型")
+        
+        # 行业维度
+        aggressive_industries = ["半导体", "AI", "算力", "机器人", "创新药", "新能源"]
+        stable_industries = ["银行", "保险", "地产", "公用事业", "消费"]
+        
+        if any(ind in industry for ind in aggressive_industries):
+            personality_tags.append("成长风格")
+        elif any(ind in industry for ind in stable_industries):
+            personality_tags.append("价值风格")
+        else:
+            personality_tags.append("均衡风格")
+        
+        # 根据股性标签评分
+        score = 60  # 基础分
+        
+        if "高弹性" in personality_tags:
+            score += 15
+        if "成长风格" in personality_tags:
+            score += 10
+        if "稳健型" in personality_tags:
+            score += 5
+        
+        # 小盘股额外加分（更容易成为龙头）
+        if "小盘股" in personality_tags:
+            score += 10
+        
+        score = min(100, score)
+        
+        details['personality_tags'] = personality_tags
+        return float(score), details
+    
+    def _score_sentiment(self, ts_code: str) -> Tuple[float, Dict]:
+        """⑤ 舆情热度评分 — 新闻和研报覆盖"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            # 获取最近30天的新闻
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            news = pro.stk_news(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d')
+            )
+            
+            news_count = len(news) if news is not None else 0
+            
+            # 获取最近的研报
+            reports = pro.stk_research(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d')
+            )
+            
+            report_count = len(reports) if reports is not None else 0
+            
+            # 评分
+            news_score = min(100, news_count * 5)  # 20条新闻=100分
+            report_score = min(100, report_count * 20)  # 5份研报=100分
+            
+            score = 0.6 * news_score + 0.4 * report_score
+            
+            details['news_count'] = news_count
+            details['report_count'] = report_count
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"sentiment score {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def compute(self, ts_code: str, market_cap: float = 0, industry: str = "") -> Tuple[float, Dict]:
+        """
+        综合历史辨识度评分 (0~100)
+        权重: 资金活跃度 25% + 涨停基因 25% + 空间记忆 20% + 股性画像 15% + 舆情热度 15%
+        """
+        cache_key = f"{ts_code}_{market_cap:.0f}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        s1, d1 = self._score_activity(ts_code)
+        s2, d2 = self._score_limit_up_history(ts_code)
+        s3, d3 = self._score_price_momentum(ts_code)
+        s4, d4 = self._score_stock_personality(market_cap, industry)
+        s5, d5 = self._score_sentiment(ts_code)
+        
+        score = 0.25 * s1 + 0.25 * s2 + 0.20 * s3 + 0.15 * s4 + 0.15 * s5
+        
+        result = (round(score, 1), {
+            "activity": {"score": s1, **d1},
+            "limit_up": {"score": s2, **d2},
+            "momentum": {"score": s3, **d3},
+            "personality": {"score": s4, **d4},
+            "sentiment": {"score": s5, **d5},
+        })
+        
+        self._cache[cache_key] = result
+        return result
+
+
+# ════════════════════════════════════════════════════════
+# Alpha因子评分器
+# ════════════════════════════════════════════════════════
+
+class AlphaScorer:
+    """
+    Alpha因子评分器 (0~100, 权重6%)
+    
+    基于多因子模型评估股票的超额收益潜力：
+    
+    6个子因子：
+    ① 质量因子（20%）— ROE稳定性、盈利质量、现金流
+    ② 成长因子（20%）— 营收增速、利润增速、一致性
+    ③ 估值因子（15%）— PE/PB分位、估值性价比
+    ④ 动量因子（15%）— 价格动量、趋势强度
+    ⑤ 流动性因子（15%）— 成交额、换手率、买卖价差
+    ⑥ 情绪因子（15%）— 资金流向、市场情绪beta
+    """
+    
+    def __init__(self, pro=None):
+        self._pro = pro
+        self._pro_owned = False
+        if pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+                self._pro_owned = True
+        
+        # 缓存
+        self._cache: Dict[str, Tuple[float, Dict]] = {}
+    
+    def _get_pro(self):
+        if self._pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+        return self._pro
+    
+    def _score_quality(self, roe: float, profit_yoy: float, cash_flow_ratio: float) -> Tuple[float, Dict]:
+        """① 质量因子评分"""
+        details = {}
+        
+        # ROE评分
+        if roe >= 25:
+            roe_score = 100
+        elif roe >= 15:
+            roe_score = 80
+        elif roe >= 10:
+            roe_score = 60
+        elif roe >= 5:
+            roe_score = 40
+        else:
+            roe_score = 20
+        
+        # 盈利稳定性评分（基于利润增速绝对值）
+        if abs(profit_yoy) < 30:
+            stability_score = 80
+        elif abs(profit_yoy) < 60:
+            stability_score = 60
+        else:
+            stability_score = 40
+        
+        # 现金流评分
+        if cash_flow_ratio >= 0.2:
+            cf_score = 100
+        elif cash_flow_ratio >= 0.1:
+            cf_score = 75
+        elif cash_flow_ratio >= 0:
+            cf_score = 50
+        else:
+            cf_score = 25
+        
+        score = 0.5 * roe_score + 0.3 * stability_score + 0.2 * cf_score
+        
+        details['roe'] = roe
+        details['profit_yoy'] = profit_yoy
+        details['cash_flow_ratio'] = cash_flow_ratio
+        return float(score), details
+    
+    def _score_growth(self, revenue_yoy: float, profit_yoy: float, rd_ratio: float) -> Tuple[float, Dict]:
+        """② 成长因子评分"""
+        details = {}
+        
+        # 营收增长评分
+        if revenue_yoy >= 50:
+            rev_score = 100
+        elif revenue_yoy >= 30:
+            rev_score = 80
+        elif revenue_yoy >= 15:
+            rev_score = 60
+        elif revenue_yoy >= 0:
+            rev_score = 40
+        else:
+            rev_score = 20
+        
+        # 利润增长评分
+        if profit_yoy >= 100:
+            profit_score = 100
+        elif profit_yoy >= 50:
+            profit_score = 80
+        elif profit_yoy >= 20:
+            profit_score = 60
+        elif profit_yoy >= 0:
+            profit_score = 40
+        else:
+            profit_score = 20
+        
+        # 研发投入评分
+        if rd_ratio >= 15:
+            rd_score = 100
+        elif rd_ratio >= 10:
+            rd_score = 80
+        elif rd_ratio >= 5:
+            rd_score = 60
+        elif rd_ratio >= 2:
+            rd_score = 40
+        else:
+            rd_score = 20
+        
+        score = 0.4 * rev_score + 0.4 * profit_score + 0.2 * rd_score
+        
+        details['revenue_yoy'] = revenue_yoy
+        details['profit_yoy'] = profit_yoy
+        details['rd_ratio'] = rd_ratio
+        return float(score), details
+    
+    def _score_valuation(self, pe: float, pb: float, industry: str = "") -> Tuple[float, Dict]:
+        """③ 估值因子评分"""
+        details = {}
+        
+        # 不同行业估值基准不同
+        pe_baselines = {
+            "半导体": 50, "AI": 60, "创新药": 45, "新能源": 35,
+            "消费": 25, "金融": 15, "公用事业": 20, "周期": 18
+        }
+        
+        baseline_pe = pe_baselines.get(industry, 30)
+        
+        # PE评分（适中为好）
+        if pe > 0:
+            if pe < baseline_pe * 0.5:
+                pe_score = 80  # 低估
+            elif pe < baseline_pe * 1.2:
+                pe_score = 60  # 合理
+            elif pe < baseline_pe * 2:
+                pe_score = 40  # 偏高
+            else:
+                pe_score = 20  # 高估
+        else:
+            pe_score = 50
+        
+        # PB评分
+        if pb > 0:
+            if pb < 2:
+                pb_score = 80
+            elif pb < 5:
+                pb_score = 60
+            elif pb < 10:
+                pb_score = 40
+            else:
+                pb_score = 20
+        else:
+            pb_score = 50
+        
+        score = 0.6 * pe_score + 0.4 * pb_score
+        
+        details['pe'] = pe
+        details['pb'] = pb
+        details['baseline_pe'] = baseline_pe
+        return float(score), details
+    
+    def _score_momentum(self, ts_code: str) -> Tuple[float, Dict]:
+        """④ 动量因子评分"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=60)
+            
+            df = pro.daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d'),
+                fields='ts_code,trade_date,close'
+            )
+            
+            if df is None or len(df) < 20:
+                return 50.0, {"data_count": len(df) if df is not None else 0}
+            
+            df = df.sort_values('trade_date')
+            
+            # 计算60日收益
+            ret_60d = (df['close'].iloc[-1] / df['close'].iloc[0] - 1) * 100
+            
+            # 计算相对强弱（RS）
+            if len(df) >= 20:
+                ret_20d = (df['close'].iloc[-1] / df['close'].iloc[-20] - 1) * 100
+                ret_60d_excl = (df['close'].iloc[-20] / df['close'].iloc[0] - 1) * 100
+                rs_ratio = ret_20d / (ret_60d_excl + 0.01) if ret_60d_excl != 0 else 1
+            else:
+                rs_ratio = 1
+            
+            # 动量评分
+            if ret_60d >= 30:
+                ret_score = 100
+            elif ret_60d >= 15:
+                ret_score = 80
+            elif ret_60d >= 5:
+                ret_score = 60
+            elif ret_60d >= -5:
+                ret_score = 40
+            else:
+                ret_score = 20
+            
+            # RS评分（近期相对强势加分）
+            if rs_ratio >= 1.5:
+                rs_score = 100
+            elif rs_ratio >= 1.2:
+                rs_score = 80
+            elif rs_ratio >= 1.0:
+                rs_score = 60
+            else:
+                rs_score = 40
+            
+            score = 0.6 * ret_score + 0.4 * rs_score
+            
+            details['ret_60d'] = round(ret_60d, 2)
+            details['rs_ratio'] = round(rs_ratio, 2)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"momentum alpha {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def _score_liquidity(self, ts_code: str) -> Tuple[float, Dict]:
+        """⑤ 流动性因子评分"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=20)
+            
+            df = pro.daily(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d'),
+                fields='ts_code,trade_date,amount,vol,close'
+            )
+            
+            if df is None or len(df) < 10:
+                return 50.0, {"data_count": len(df) if df is not None else 0}
+            
+            # 日均成交额（亿元）
+            avg_amount = df['amount'].mean() / 1e8
+            
+            # 日均换手率
+            turnover_rate = pro.daily_basic(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d'),
+                fields='turnover_rate'
+            )
+            
+            if turnover_rate is not None and len(turnover_rate) > 0:
+                avg_turnover = turnover_rate['turnover_rate'].mean()
+            else:
+                avg_turnover = 0
+            
+            # 流动性评分
+            if avg_amount >= 5:
+                amount_score = 100
+            elif avg_amount >= 2:
+                amount_score = 80
+            elif avg_amount >= 0.5:
+                amount_score = 60
+            elif avg_amount >= 0.1:
+                amount_score = 40
+            else:
+                amount_score = 20
+            
+            if avg_turnover >= 8:
+                turnover_score = 100
+            elif avg_turnover >= 4:
+                turnover_score = 80
+            elif avg_turnover >= 2:
+                turnover_score = 60
+            elif avg_turnover >= 0.5:
+                turnover_score = 40
+            else:
+                turnover_score = 20
+            
+            score = 0.6 * amount_score + 0.4 * turnover_score
+            
+            details['avg_amount_b'] = round(avg_amount, 2)
+            details['avg_turnover'] = round(avg_turnover, 2)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"liquidity alpha {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def _score_sentiment(self, ts_code: str) -> Tuple[float, Dict]:
+        """⑥ 情绪因子评分"""
+        details = {}
+        pro = self._get_pro()
+        if pro is None:
+            return 50.0, {"error": "no token"}
+        
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=20)
+            
+            # 获取资金流向数据
+            mf = pro.moneyflow(
+                ts_code=ts_code,
+                start_date=start_date.strftime('%Y%m%d'),
+                end_date=end_date.strftime('%Y%m%d')
+            )
+            
+            if mf is None or len(mf) == 0:
+                return 50.0, {"data_count": 0}
+            
+            # 计算累计净流入/流通市值比例
+            net_inflow = mf['net_amount'].sum() / 10000  # 亿元
+            mcap = mf.iloc[0].get('total_mv', 1) / 1e8  # 亿元
+            
+            if mcap > 0:
+                flow_ratio = net_inflow / mcap * 100
+            else:
+                flow_ratio = 0
+            
+            # 情绪评分
+            if flow_ratio >= 5:
+                score = 100
+            elif flow_ratio >= 2:
+                score = 80
+            elif flow_ratio >= 0:
+                score = 60
+            elif flow_ratio >= -2:
+                score = 40
+            else:
+                score = 20
+            
+            details['net_inflow_b'] = round(net_inflow, 2)
+            details['flow_ratio'] = round(flow_ratio, 2)
+            return float(score), details
+        
+        except Exception as e:
+            logger.debug(f"sentiment alpha {ts_code}: {e}")
+            return 50.0, {"error": str(e)[:40]}
+    
+    def compute(self, ts_code: str, roe: float = 0, profit_yoy: float = 0,
+                revenue_yoy: float = 0, rd_ratio: float = 0, pe: float = 0,
+                pb: float = 0, cash_flow_ratio: float = 0,
+                industry: str = "", market_cap: float = 0) -> Tuple[float, Dict]:
+        """
+        综合Alpha因子评分 (0~100)
+        权重: 质量因子 20% + 成长因子 20% + 估值因子 15% 
+              + 动量因子 15% + 流动性因子 15% + 情绪因子 15%
+        """
+        cache_key = f"{ts_code}_{roe:.1f}_{profit_yoy:.0f}_{pe:.0f}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        s1, d1 = self._score_quality(roe, profit_yoy, cash_flow_ratio)
+        s2, d2 = self._score_growth(revenue_yoy, profit_yoy, rd_ratio)
+        s3, d3 = self._score_valuation(pe, pb, industry)
+        s4, d4 = self._score_momentum(ts_code)
+        s5, d5 = self._score_liquidity(ts_code)
+        s6, d6 = self._score_sentiment(ts_code)
+        
+        score = 0.20 * s1 + 0.20 * s2 + 0.15 * s3 + 0.15 * s4 + 0.15 * s5 + 0.15 * s6
+        
+        result = (round(score, 1), {
+            "quality": {"score": s1, **d1},
+            "growth": {"score": s2, **d2},
+            "valuation": {"score": s3, **d3},
+            "momentum": {"score": s4, **d4},
+            "liquidity": {"score": s5, **d5},
+            "sentiment": {"score": s6, **d6},
+        })
+        
+        self._cache[cache_key] = result
+        return result
+
+
+# ════════════════════════════════════════════════════════
+# 龙头/中军识别器
+# ════════════════════════════════════════════════════════
+
+class LeaderRecognizer:
+    """
+    龙头/中军识别器
+    
+    识别逻辑：
+    - 龙头股：高辨识度 + 高弹性 + 涨停基因强 + 主题相关性高
+    - 中军股：大市值 + 高流动性 + 机构持仓多 + 业绩稳定
+    
+    输出：
+    - leader_type: "龙头" / "中军" / "龙二" / "补涨" / "普通"
+    - leader_score: 龙头评分 (0~100)
+    - central_score: 中军评分 (0~100)
+    """
+    
+    def __init__(self, pro=None):
+        self._pro = pro
+        if pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+        
+        # 缓存
+        self._cache: Dict[str, Dict] = {}
+    
+    def _get_pro(self):
+        if self._pro is None:
+            token = _get_token()
+            if token:
+                ts.set_token(token)
+                self._pro = ts.pro_api()
+        return self._pro
+    
+    def recognize(self, ts_code: str, market_cap: float, industry: str,
+                  recognition_score: float, alpha_score: float,
+                  theme_score: float, chip_score: float) -> Dict:
+        """
+        识别股票类型并评分
+        
+        Args:
+            ts_code: 股票代码
+            market_cap: 市值（元）
+            industry: 行业
+            recognition_score: 辨识度评分
+            alpha_score: Alpha评分
+            theme_score: 主题评分
+            chip_score: 筹码面评分
+        
+        Returns:
+            Dict with: leader_type, leader_score, central_score, features
+        """
+        cache_key = ts_code
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        market_cap_b = market_cap / 1e8  # 转换为亿元
+        
+        # 龙头评分因子
+        # 1. 辨识度（权重30%）
+        # 2. Alpha（权重25%）
+        # 3. 主题匹配（权重20%）
+        # 4. 筹码面（权重15%）
+        # 5. 市值适中（权重10%）- 太小不够分量，太大弹性不足
+        
+        leader_score = (
+            0.30 * recognition_score +
+            0.25 * alpha_score +
+            0.20 * min(theme_score, 100) +
+            0.15 * chip_score
+        )
+        
+        # 市值修正：中小盘更易成为龙头
+        if 50 <= market_cap_b <= 300:
+            cap_factor = 1.0
+        elif 300 < market_cap_b <= 500:
+            cap_factor = 0.85
+        elif 20 <= market_cap_b < 50:
+            cap_factor = 0.9
+        else:
+            cap_factor = 0.6
+        
+        leader_score *= cap_factor
+        
+        # 中军评分因子
+        # 1. 市值规模（权重30%）- 越大越好
+        # 2. 流动性（权重25%）- 通过chip_score反映
+        # 3. Alpha质量（权重25%）
+        # 4. 稳定性（权重20%）- 通过recognition_score中的稳健特征
+        
+        central_score = 50  # 基础分
+        
+        # 市值越大越可能是中军
+        if market_cap_b >= 500:
+            cap_score = 100
+        elif market_cap_b >= 300:
+            cap_score = 80
+        elif market_cap_b >= 150:
+            cap_score = 60
+        else:
+            cap_score = 30
+        
+        central_score = (
+            0.30 * cap_score +
+            0.25 * chip_score +
+            0.25 * alpha_score +
+            0.20 * recognition_score
+        )
+        
+        # 判定类型
+        features = []
+        leader_type = "普通"
+        
+        if leader_score >= 85:
+            leader_type = "龙头"
+            features.append("高辨识度龙头")
+        elif leader_score >= 75:
+            leader_type = "龙二"
+            features.append("强势股")
+        elif leader_score >= 65:
+            leader_type = "补涨"
+            features.append("活跃股")
+        
+        if central_score >= 80:
+            if leader_type == "普通":
+                leader_type = "中军"
+                features.append("中军股")
+            else:
+                features.append("兼具龙头与中军特征")
+        elif central_score >= 65:
+            features.append("准中军")
+        
+        # 添加特征描述
+        if recognition_score >= 80:
+            features.append("高辨识度")
+        if alpha_score >= 80:
+            features.append("Alpha强势")
+        if theme_score >= 80:
+            features.append("主题纯正")
+        if chip_score >= 80:
+            features.append("筹码健康")
+        
+        result = {
+            "leader_type": leader_type,
+            "leader_score": round(leader_score, 1),
+            "central_score": round(central_score, 1),
+            "features": features,
+            "market_cap_b": round(market_cap_b, 1),
+        }
+        
+        self._cache[cache_key] = result
+        return result
+
+
+# ════════════════════════════════════════════════════════
+# 原有非线性放大函数继续
+# ════════════════════════════════════════════════════════
+
 def expectation_nonlinear_boost(profit_yoy: float, base_score: float) -> float:
     """
     预期差非线性放大专用
@@ -687,13 +1604,13 @@ def expectation_nonlinear_boost(profit_yoy: float, base_score: float) -> float:
 
 @dataclass
 class BullScoreV2Result:
-    """BullScore v2 评分结果"""
+    """BullScore v2.1 评分结果"""
     ts_code: str
     name: str
     industry: str
     chain_tag: str = ""
 
-    # 原 BullScorer 的 7 因子 (从 bull_scorer.py 继承)
+    # 原 BullScorer 的 8 因子 (从 bull_scorer.py 继承)
     industry_demand_score: float = 0.0
     tech_barrier_score: float = 0.0
     order_explosion_score: float = 0.0
@@ -704,9 +1621,15 @@ class BullScoreV2Result:
     marketcap_score: float = 0.0
     valuation_score: float = 0.0
 
-    # ★★★ 新增因子
+    # ★★★ v2 新增因子
     chip_score: float = 0.0          # 筹码面
     safety_score: float = 0.0        # 估值安全(增强版)
+    
+    # ★★★ v2.1 新增因子
+    recognition_score: float = 0.0   # 历史辨识度评分 (YRI)
+    alpha_score: float = 0.0         # Alpha因子评分
+    leader_type: str = ""            # 龙头类型: 龙头/中军/龙二/补涨/普通
+    leader_features: List[str] = field(default_factory=list)  # 特征标签
 
     # 汇总
     bull_score_v2: float = 0.0
@@ -733,7 +1656,25 @@ class BullScoreV2Result:
 
 class BullScorerV2:
     """
-    BullScore v2 — 在 v1 基础上叠加筹码面 + 估值安全增强 + 主题加成修复
+    BullScore v2.1 — 在 v2 基础上叠加历史辨识度评分 + Alpha因子评分 + 龙头/中军识别
+    
+    评分结构：
+    ┌─────────────────────────────────────────────────────────────┐
+    │  BullScore v2.1 (100分)                                    │
+    │  ├── 原8因子 (70%)                                         │
+    │  │   ├── 产业景气 (14%)    │ 订单爆发 (14%)                │
+    │  │   ├── 技术壁垒 (10%)    │ 业绩质量 (10%)                │
+    │  │   ├── 预期差 (8%)       │ 龙头地位 (6%)                 │
+    │  │   ├── 机构认可 (4%)     │ 市值弹性 (4%)                 │
+    │  ├── 筹码面 (7%)                                           │
+    │  ├── 估值安全 (7%)                                         │
+    │  ├── 历史辨识度 (8%) ← 新增                                │
+    │  └── Alpha因子 (8%) ← 新增                                 │
+    └─────────────────────────────────────────────────────────────┘
+    
+    最终得分: FinalScore = 0.82 * BullScore_v2.1 + 0.18 * ThemeScore_v2
+    
+    龙头/中军识别: 基于市值(60亿-5000亿)、辨识度、Alpha、主题匹配度判定股票类型
     """
 
     def __init__(self, token: str = None):
@@ -741,14 +1682,27 @@ class BullScorerV2:
         ts.set_token(self.token)
         self.pro = ts.pro_api()
 
+        # 原有评分器
         self.chip_scorer = ChipScorer(self.pro)
         self.safety_scorer = SafetyScorer(self.pro)
         self.theme_scorer = ThemeScorerV2(self.pro)
+        
+        # 新增评分器
+        self.recognition_scorer = RecognitionScorer(self.pro)
+        self.alpha_scorer = AlphaScorer(self.pro)
+        self.leader_recognizer = LeaderRecognizer(self.pro)
 
         # 缓存
         self._chip_cache: Dict[str, Tuple[float, Dict]] = {}
         self._safety_cache: Dict[str, Tuple[float, Dict]] = {}
         self._theme_cache: Dict[str, Tuple[float, str, Dict]] = {}
+        self._recognition_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._alpha_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._leader_cache: Dict[str, Dict] = {}
+        
+        # 市值过滤范围（60亿-5000亿）
+        self.min_market_cap = 60 * 1e8   # 60亿
+        self.max_market_cap = 5000 * 1e8 # 5000亿
 
     def _get_chip_score(self, ts_code: str) -> Tuple[float, Dict]:
         """带缓存的筹码面评分"""
@@ -778,32 +1732,69 @@ class BullScorerV2:
             self._theme_cache[ts_code] = (score, theme, details)
         return self._theme_cache[ts_code]
 
+    def _get_recognition_score(self, ts_code: str, market_cap: float, industry: str) -> Tuple[float, Dict]:
+        """带缓存的历史辨识度评分"""
+        cache_key = f"{ts_code}_{market_cap:.0f}"
+        if cache_key not in self._recognition_cache:
+            self._recognition_cache[cache_key] = self.recognition_scorer.compute(ts_code, market_cap, industry)
+        return self._recognition_cache[cache_key]
+
+    def _get_alpha_score(self, ts_code: str, roe: float, profit_yoy: float,
+                         revenue_yoy: float, rd_ratio: float, pe: float, pb: float,
+                         cash_flow_ratio: float, industry: str, market_cap: float) -> Tuple[float, Dict]:
+        """带缓存的Alpha因子评分"""
+        cache_key = f"{ts_code}_{roe:.1f}_{profit_yoy:.0f}_{pe:.0f}"
+        if cache_key not in self._alpha_cache:
+            self._alpha_cache[cache_key] = self.alpha_scorer.compute(
+                ts_code, roe, profit_yoy, revenue_yoy, rd_ratio, pe, pb,
+                cash_flow_ratio, industry, market_cap
+            )
+        return self._alpha_cache[cache_key]
+
+    def _get_leader_recognition(self, ts_code: str, market_cap: float, industry: str,
+                                recognition_score: float, alpha_score: float,
+                                theme_score: float, chip_score: float) -> Dict:
+        """带缓存的龙头/中军识别"""
+        cache_key = ts_code
+        if cache_key not in self._leader_cache:
+            self._leader_cache[cache_key] = self.leader_recognizer.recognize(
+                ts_code, market_cap, industry, recognition_score, alpha_score,
+                theme_score, chip_score
+            )
+        return self._leader_cache[cache_key]
+
     def compute_v2(self,
                    base_result: 'BullScoreResult'  # 从 bull_scorer 继承的结果
                    ) -> BullScoreV2Result:
         """
-        在原有 BullScore 结果上叠加 v2 新增因子
-
-        原 BullScore 因子权重调整：
-          industry_demand 20%→18%
-          expectation 15%→13%
-          leader 10%→8%
-          institution 5%→5% (不变)
-          marketcap 5%→5% (不变)
-
-        新增：
-          chip_score (筹码面) — 7%
-          safety_score (估值安全增强) — 7%
-
+        BullScore v2.1 完整评分计算
+        
+        评分结构:
+          原8因子 (70%)：
+            - 产业景气 (14%) | 订单爆发 (14%)
+            - 技术壁垒 (10%) | 业绩质量 (10%)
+            - 预期差 (8%)    | 龙头地位 (6%)
+            - 机构认可 (4%)  | 市值弹性 (4%)
+          
+          筹码面 (7%)
+          估值安全 (7%)
+          历史辨识度 (8%) ← 新增
+          Alpha因子 (8%) ← 新增
+        
         总分公式：
-          BullScore_v2 = 0.18*ind + 0.15*tech + 0.15*order + 0.15*earn_qual
-                        + 0.08*leader + 0.13*expect + 0.05*inst
-                        + 0.05*mc + 0.07*chip + 0.07*safety
-
-          FinalScore = 0.82 * BullScore_v2 + 0.18 * ThemeScore_v2
-
+          BullScore_v2.1 = 0.14*ind + 0.14*order + 0.10*tech + 0.10*earn_qual
+                         + 0.08*expect + 0.06*leader + 0.04*inst + 0.04*mc
+                         + 0.07*chip + 0.07*safety + 0.08*recognition + 0.08*alpha
+        
+          FinalScore = 0.82 * BullScore_v2.1 + 0.18 * ThemeScore_v2
+        
           ★★ 如果 ThemeScore_v2 > 60，额外非线性放大：
              FinalScore = FinalScore * (1 + 0.15 * (ThemeScore_v2 - 60) / 40)
+        
+        新增功能：
+          - 历史辨识度评分：资金活跃度、涨停基因、空间记忆、股性画像、舆情热度
+          - Alpha因子评分：质量、成长、估值、动量、流动性、情绪因子
+          - 龙头/中军识别：自动判定股票类型（龙头、中军、龙二、补涨、普通）
         """
         # 1. 筹码面评分
         chip_score, chip_detail = self._get_chip_score(base_result.ts_code)
@@ -828,36 +1819,71 @@ class BullScorerV2:
             profit_yoy, base_result.expectation_score
         )
 
-        # 5. BullScore v2 计算
-        # 原权重调整版 + 新因子
-        ind_w = 0.18
-        tech_w = 0.15
-        order_w = 0.15
-        earn_w = 0.15
-        leader_w = 0.08
-        expect_w = 0.13
-        inst_w = 0.05
-        mc_w = 0.05
+        # 5. 历史辨识度评分 ← 新增
+        recognition_score, recognition_detail = self._get_recognition_score(
+            base_result.ts_code,
+            base_result.market_cap or 0,
+            base_result.industry or ""
+        )
+
+        # 6. Alpha因子评分 ← 新增
+        alpha_score, alpha_detail = self._get_alpha_score(
+            base_result.ts_code,
+            base_result.roe / 100 if base_result.roe else 0,
+            profit_yoy,
+            base_result.revenue_yoy / 100 if base_result.revenue_yoy else 0,
+            base_result.rd_expense_ratio / 100 if base_result.rd_expense_ratio else 0,
+            base_result.sub_details.get('valuation', {}).get('pe', 0),
+            base_result.sub_details.get('valuation', {}).get('pb', 0),
+            base_result.sub_details.get('earnings_quality', {}).get('cashflow_ratio', 0),
+            base_result.industry or "",
+            base_result.market_cap or 0
+        )
+
+        # 7. 龙头/中军识别 ← 新增
+        leader_result = self._get_leader_recognition(
+            base_result.ts_code,
+            base_result.market_cap or 0,
+            base_result.industry or "",
+            recognition_score,
+            alpha_score,
+            theme_score_v2,
+            chip_score
+        )
+
+        # 8. BullScore v2.1 计算 (调整权重)
+        ind_w = 0.14
+        order_w = 0.14
+        tech_w = 0.10
+        earn_w = 0.10
+        expect_w = 0.08
+        leader_w = 0.06
+        inst_w = 0.04
+        mc_w = 0.04
         chip_w = 0.07
         safety_w = 0.07
+        recognition_w = 0.08
+        alpha_w = 0.08
 
         bull_v2 = (
             ind_w * base_result.industry_demand_score +
-            tech_w * base_result.tech_barrier_score +
             order_w * base_result.order_explosion_score +
+            tech_w * base_result.tech_barrier_score +
             earn_w * base_result.earnings_quality_score +
-            leader_w * base_result.leader_score +
             expect_w * expect_boosted +    # 非线性放大后的预期差
+            leader_w * base_result.leader_score +
             inst_w * base_result.institution_score +
             mc_w * base_result.marketcap_score +
             chip_w * chip_score +
-            safety_w * safety_score
+            safety_w * safety_score +
+            recognition_w * recognition_score +
+            alpha_w * alpha_score
         )
 
-        # 6. 最终分 = 0.82 * BullScore_v2 + 0.18 * ThemeScore_v2
+        # 9. 最终分 = 0.82 * BullScore_v2.1 + 0.18 * ThemeScore_v2
         final = 0.82 * bull_v2 + 0.18 * theme_score_v2
 
-        # 7. 主题非线性放大加成
+        # 10. 主题非线性放大加成
         if theme_score_v2 > 60:
             bonus = 1.0 + 0.15 * (theme_score_v2 - 60) / 40
             final = final * bonus
@@ -870,13 +1896,17 @@ class BullScorerV2:
         sub_details['chip'] = chip_detail
         sub_details['safety'] = safety_detail
         sub_details['theme_v2'] = theme_detail
+        sub_details['recognition'] = recognition_detail
+        sub_details['alpha'] = alpha_detail
+        sub_details['leader'] = leader_result
         sub_details['expect_boosted'] = round(expect_boosted - base_result.expectation_score, 1)
         sub_details['weights'] = {
-            'ind_demand': ind_w, 'tech_barrier': tech_w,
-            'order': order_w, 'earnings': earn_w,
-            'leader': leader_w, 'expectation': expect_w,
+            'ind_demand': ind_w, 'order': order_w,
+            'tech_barrier': tech_w, 'earnings': earn_w,
+            'expectation': expect_w, 'leader': leader_w,
             'institution': inst_w, 'marketcap': mc_w,
             'chip': chip_w, 'safety': safety_w,
+            'recognition': recognition_w, 'alpha': alpha_w,
         }
 
         return BullScoreV2Result(
@@ -895,6 +1925,12 @@ class BullScorerV2:
             valuation_score=base_result.valuation_score,
             chip_score=round(chip_score, 2),
             safety_score=round(safety_score, 2),
+            # 新增字段
+            recognition_score=round(recognition_score, 2),
+            alpha_score=round(alpha_score, 2),
+            leader_type=leader_result.get('leader_type', ''),
+            leader_features=leader_result.get('features', []),
+            # 原有字段
             bull_score_v2=round(bull_v2, 2),
             theme=theme_name,
             theme_score_v2=round(theme_score_v2, 2),
@@ -923,18 +1959,32 @@ class BullScorerV2:
         return "未排名"
 
     def batch_compute(self, base_results: List['BullScoreResult'],
-                       batch_size: int = 5, delay: float = 0.3) -> List[BullScoreV2Result]:
+                       batch_size: int = 5, delay: float = 0.3,
+                       filter_market_cap: bool = True) -> List[BullScoreV2Result]:
         """
         批量计算，控制 Tushare API 调用频率
-
+        
         Args:
             base_results: 来自 bull_scorer.py 的基础评分结果
             batch_size: 每批并发数
             delay: 每批间隔(秒)，避免限频
+            filter_market_cap: 是否过滤市值（60亿-5000亿）
         """
+        # 市值过滤（60亿-5000亿）
+        if filter_market_cap:
+            filtered = []
+            for br in base_results:
+                mc = br.market_cap or 0
+                if self.min_market_cap <= mc <= self.max_market_cap:
+                    filtered.append(br)
+                else:
+                    logger.debug(f"市值过滤: {br.name} ({br.ts_code}) {mc/1e8:.1f}亿 超出范围")
+            logger.info(f"市值过滤前: {len(base_results)}只, 过滤后: {len(filtered)}只")
+            base_results = filtered
+        
         results = []
         total = len(base_results)
-        logger.info(f"BullScore v2 开始计算 {total} 只股票...")
+        logger.info(f"BullScore v2.1 开始计算 {total} 只股票...")
 
         for i in range(0, total, batch_size):
             batch = base_results[i:i+batch_size]
@@ -973,6 +2023,8 @@ class BullScorerV2:
             chip_d = r.sub_details.get('chip', {})
             safety_d = r.sub_details.get('safety', {})
             theme_d = r.sub_details.get('theme_v2', {})
+            recog_d = r.sub_details.get('recognition', {})
+            alpha_d = r.sub_details.get('alpha', {})
 
             rows.append({
                 'code': code, 'name': r.name, 'industry': r.industry,
@@ -987,10 +2039,15 @@ class BullScorerV2:
                 '机构认可': r.institution_score,
                 '市值弹性': r.marketcap_score,
                 '估值安全': r.safety_score,
-                # ★ 新增
+                # v2 新增
                 '筹码面': r.chip_score,
+                # v2.1 新增
+                '历史辨识度': r.recognition_score,
+                'Alpha因子': r.alpha_score,
+                '龙头类型': r.leader_type,
+                '特征标签': ','.join(r.leader_features),
                 # 总分
-                'Bull_v2分': round(r.bull_score_v2, 1),
+                'Bull_v2.1分': round(r.bull_score_v2, 1),
                 '主题分v2': r.theme_score_v2,
                 '最终分': r.final_score,
                 '等级': r.bull_level,
@@ -998,6 +2055,9 @@ class BullScorerV2:
                 '营收同比': r.revenue_yoy,
                 '利润同比': r.profit_yoy,
                 'ROE': r.roe,
+                '毛利率': r.gross_margin,
+                '研发投入%': r.rd_expense_ratio,
+                '市值(亿)': round(r.market_cap / 1e8, 1) if r.market_cap else '',
                 # 筹码面详情
                 '资金流入(亿)': chip_d.get('moneyflow', {}).get('net_inflow_b', ''),
                 '股东数变化%': chip_d.get('holder', {}).get('change_pct', ''),
@@ -1008,6 +2068,12 @@ class BullScorerV2:
                 '解禁占比%': safety_d.get('float', {}).get('float_ratio_60d', ''),
                 # 主题详情
                 '主题匹配方式': 'fina_mainbz' if not theme_d.get('fallback') else 'chain_tag',
+                # 辨识度详情
+                '涨停次数': recog_d.get('limit_up', {}).get('limit_up_count', ''),
+                '连板能力': recog_d.get('limit_up', {}).get('max_consecutive_zt', ''),
+                # Alpha详情
+                '60日收益%': alpha_d.get('momentum', {}).get('ret_60d', ''),
+                '日均成交额(亿)': alpha_d.get('liquidity', {}).get('avg_amount_b', ''),
             })
         return pd.DataFrame(rows)
 
@@ -1021,36 +2087,62 @@ class BullScorerV2:
         for r in results:
             levels[r.bull_level] = levels.get(r.bull_level, 0) + 1
 
-        print(f"\n{'='*90}")
-        print(f"BullScore v2 中长线牛股选股结果")
-        print(f"{'='*90}")
+        print(f"\n{'='*110}")
+        print(f"BullScore v2.1 中长线牛股选股结果")
+        print(f"{'='*110}")
         print(f"扫描范围: {len(results)} 只")
         print(f"\n牛股等级分布:")
         for lv in ["A级产业龙头", "B级成长股", "观察名单", "淘汰"]:
             print(f"  {lv}: {levels.get(lv, 0)}只")
+        
+        # 统计龙头类型分布
+        leader_types = {}
+        for r in results:
+            leader_types[r.leader_type] = leader_types.get(r.leader_type, 0) + 1
+        
+        print(f"\n龙头类型分布:")
+        for lt in ["龙头", "中军", "龙二", "补涨", "普通"]:
+            print(f"  {lt}: {leader_types.get(lt, 0)}只")
 
         top = results[:top_n]
-        print(f"\nTop {top_n} 龙头股:")
-        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'Bull':>6} {'主题分':>6} {'筹码':>6} {'安全':>6} {'最终':>6} {'等级':<12}"
+        print(f"\nTop {top_n} 牛股:")
+        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'龙头类型':<6} {'Bull':>6} {'辨识度':>6} {'Alpha':>6} {'筹码':>6} {'最终':>6} {'等级':<12}"
         print(header)
-        print("-" * 80)
+        print("-" * 100)
         for i, r in enumerate(top, 1):
             code = r.ts_code.split('.')[0]
-            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.bull_score_v2:>6.1f} {r.theme_score_v2:>6.1f} {r.chip_score:>6.1f} {r.safety_score:>6.1f} {r.final_score:>6.1f} {r.bull_level:<12}")
+            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.leader_type:<6} {r.bull_score_v2:>6.1f} {r.recognition_score:>6.1f} {r.alpha_score:>6.1f} {r.chip_score:>6.1f} {r.final_score:>6.1f} {r.bull_level:<12}")
 
         # 新增因子专项排名
-        print(f"\nTop 10 筹码面最强:")
+        print(f"\n★ Top 10 筹码面最强:")
         for r in sorted(results, key=lambda x: x.chip_score, reverse=True)[:10]:
-            print(f"  {r.name:<8} chip={r.chip_score:.1f}")
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) chip={r.chip_score:.1f}")
 
-        print(f"\nTop 10 估值最安全:")
+        print(f"\n★ Top 10 估值最安全:")
         for r in sorted(results, key=lambda x: x.safety_score, reverse=True)[:10]:
-            print(f"  {r.name:<8} safety={r.safety_score:.1f}")
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) safety={r.safety_score:.1f}")
 
-        print(f"\n差于原BullScore最多的（权重调整后排名变化）:")
-        for r in results[:5]:
+        print(f"\n★ Top 10 历史辨识度最高:")
+        for r in sorted(results, key=lambda x: x.recognition_score, reverse=True)[:10]:
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) recognition={r.recognition_score:.1f}")
+
+        print(f"\n★ Top 10 Alpha因子最强:")
+        for r in sorted(results, key=lambda x: x.alpha_score, reverse=True)[:10]:
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) alpha={r.alpha_score:.1f}")
+
+        print(f"\n★ 龙头股列表:")
+        leaders = [r for r in results if r.leader_type == "龙头"]
+        for r in leaders[:10]:
             code = r.ts_code.split('.')[0]
-            print(f"  {r.name:<8} ({code}) → v2: {r.final_score:.1f}")
+            features = ",".join(r.leader_features[:3])
+            print(f"  {r.name:<8} ({code}) theme={r.theme:<8} final={r.final_score:.1f} [{features}]")
+
+        print(f"\n★ 中军股列表:")
+        centrals = [r for r in results if r.leader_type == "中军"]
+        for r in centrals[:10]:
+            code = r.ts_code.split('.')[0]
+            features = ",".join(r.leader_features[:3])
+            print(f"  {r.name:<8} ({code}) theme={r.theme:<8} final={r.final_score:.1f} [{features}]")
 
 
 # ════════════════════════════════════════════════════════

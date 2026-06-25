@@ -1,16 +1,15 @@
 ﻿# -*- coding: utf-8 -*-
 from reportlab.lib.units import mm
 """
-二波形态精选 v2.5 — stk_factor_pro 前复权修正版
+二波形态精选 v2.6 — stk_factor_pro 四形态并列版
 基于52,949样本回测成果 + 250+列专业因子接口
+
+v2.6升级（2026-06-24）:
+  20. 四形态并列：强势横盘/深度回调/放量回调/V型急跌独立检测
+  21. 每种形态显示独立胜率：强势横盘98.6%/V型急跌97.2%/放量回调91.2%/深度回调87.2%
 
 v2.5升级（2026-06-24）:
   19. 新增--date参数：支持手动指定分析日期(YYYYMMDD)，解决Tushare数据延迟问题
-
-v2.3升级（2026-06-24）:
-  13. 创新低检测与过滤：调整期最低价 ≤ 一波启动前最低价 → 直接continue过滤
-      回测依据（双创板300只样本）：不创新低胜率41.2%，创新低胜率16.7%
-  14. 不创新低加分：is_higher_low=True → 共振评分+5分（主力未出逃，二波意愿强）
 
 v2.4升级（2026-06-24）:
   15. V型急跌权重加倍：从+5调整为+10（双创平均胜率97.2%最高）
@@ -81,8 +80,34 @@ CACHE_DIR = r'D:\mystock\cache_daily'
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ═══════════════════════════════════════════════════════
-# 缓存API调用（与 tushare_quant.py / wave2_daily.py 共用）
+# 缓存API调用（与 tushare_quant.py 共用缓存文件）
 # ═══════════════════════════════════════════════════════
+# 全局变量：跟踪批量下载日期（从文件读取，持久化存储）
+_STK_FACTOR_BATCH_STATUS_FILE = os.path.join(CACHE_DIR, "stk_factor_batch_status.txt")
+
+def _read_batch_status():
+    """读取批量下载状态文件"""
+    try:
+        if os.path.exists(_STK_FACTOR_BATCH_STATUS_FILE):
+            with open(_STK_FACTOR_BATCH_STATUS_FILE, 'r') as f:
+                content = f.read().strip()
+                if content:
+                    return content
+    except:
+        pass
+    return ""
+
+def _write_batch_status(date_str):
+    """写入批量下载状态文件"""
+    try:
+        with open(_STK_FACTOR_BATCH_STATUS_FILE, 'w') as f:
+            f.write(date_str)
+    except:
+        pass
+
+# 初始化批量下载日期（从文件读取）
+_stk_factor_batch_downloaded_date = _read_batch_status()
+
 def _read_cache(cache_file):
     try:
         if os.path.exists(cache_file):
@@ -101,6 +126,98 @@ def _save_cache(df, cache_file):
     except:
         pass
 
+def batch_cache_stk_factor_pro(target_date):
+    """批量缓存指定日期所有股票的 stk_factor_pro 数据"""
+    global _stk_factor_batch_downloaded_date
+    
+    if _stk_factor_batch_downloaded_date == target_date:
+        #print(f"[批量缓存] {target_date} 已下载过，跳过")
+        return
+    
+    print(f"[批量缓存] 开始下载 {target_date} 全市场 stk_factor_pro 数据...")
+    
+    try:
+        # 不带 ts_code 参数，使用 trade_date 获取当天所有股票数据
+        # ⚠️ 修复：使用 dict.fromkeys 去重，避免字段名重复导致 pandas 报错
+        _fields = list(dict.fromkeys([
+            "ts_code", "trade_date", "open", "open_hfq", "open_qfq",
+            "high", "high_hfq", "high_qfq", "low", "low_hfq", "low_qfq",
+            "close", "close_hfq", "close_qfq", "pre_close", "change", "pct_chg",
+            "vol", "amount", "turnover_rate", "turnover_rate_f", "volume_ratio",
+            "pe", "pe_ttm", "pb", "ps", "ps_ttm", "dv_ratio", "dv_ttm",
+            "total_share", "float_share", "free_share", "total_mv", "circ_mv", "adj_factor",
+            "asi_bfq", "asi_hfq", "asi_qfq", "asit_bfq", "asit_hfq", "asit_qfq",
+            "atr_bfq", "atr_qfq", "bbi_bfq", "bbi_hfq", "bbi_qfq",
+            "bias1_bfq", "bias1_hfq", "bias2_bfq", "bias2_hfq",
+            "bias3_bfq", "bias3_hfq", "bias3_qfq", "boll_lower_bfq", "boll_lower_hfq", "boll_lower_qfq",
+            "boll_mid_bfq", "boll_mid_hfq", "boll_mid_qfq", "boll_upper_bfq", "boll_upper_hfq", "boll_upper_qfq",
+            "brar_ar_bfq", "brar_ar_hfq", "brar_ar_qfq", "brar_br_bfq", "brar_br_hfq", "brar_br_qfq",
+            "cci_bfq", "cci_qfq", "cr_bfq", "cr_hfq", "cr_qfq",
+            "dfma_dif_bfq", "dfma_dif_hfq", "dfma_dif_qfq", "dfma_difma_bfq", "dfma_difma_hfq", "dfma_difma_qfq",
+            "dmi_adx_bfq", "dmi_adx_hfq", "dmi_adxr_bfq", "dmi_adxr_hfq", "dmi_adxr_qfq",
+            "dmi_mdi_bfq", "dmi_mdi_hfq", "dmi_pdi_bfq", "dmi_pdi_hfq",
+            "downdays", "updays", "dpo_bfq", "dpo_hfq", "dpo_qfq", "madpo_bfq", "madpo_hfq", "madpo_qfq",
+            "ema_bfq_10", "ema_bfq_20", "ema_bfq_250", "ema_bfq_30", "ema_bfq_5", "ema_bfq_60", "ema_bfq_90",
+            "ema_qfq_10", "ema_qfq_20", "ema_qfq_250", "ema_qfq_30", "ema_qfq_5", "ema_qfq_60", "ema_qfq_90",
+            "emv_bfq", "emv_hfq", "emv_qfq", "maemv_bfq", "maemv_hfq", "maemv_qfq",
+            "expma_12_bfq", "expma_12_hfq", "expma_12_qfq", "expma_50_bfq", "expma_50_hfq", "expma_50_qfq",
+            "kdj_bfq", "kdj_qfq", "kdj_d_bfq", "kdj_d_hfq", "kdj_d_qfq",
+            "kdj_k_bfq", "kdj_k_hfq", "kdj_k_qfq", "ktn_down_bfq", "ktn_down_hfq", "ktn_down_qfq",
+            "ktn_mid_bfq", "ktn_mid_hfq", "ktn_mid_qfq", "ktn_upper_bfq", "ktn_upper_hfq", "ktn_upper_qfq",
+            "lowdays", "topdays", "ma_bfq_10", "ma_bfq_20", "ma_bfq_250", "ma_bfq_30", "ma_bfq_5", "ma_bfq_60", "ma_bfq_90",
+            "ma_qfq_10", "ma_qfq_20", "ma_qfq_250", "ma_qfq_30", "ma_qfq_5", "ma_qfq_60", "ma_qfq_90",
+            "macd_bfq", "macd_hfq", "macd_qfq", "macd_dea_bfq", "macd_dea_qfq",
+            "macd_dif_bfq", "macd_dif_hfq", "mass_bfq", "mass_hfq", "mass_qfq",
+            "ma_mass_bfq", "ma_mass_hfq", "ma_mass_qfq", "mfi_bfq", "mfi_qfq",
+            "mtm_bfq", "mtm_hfq", "mtm_qfq", "mtmma_bfq", "mtmma_hfq", "mtmma_qfq",
+            "obv_bfq", "obv_qfq", "psy_bfq", "psy_hfq",
+            "psyma_bfq", "psyma_hfq", "psyma_qfq", "roc_bfq", "roc_hfq", "roc_qfq",
+            "maroc_bfq", "maroc_hfq", "maroc_qfq", "rsi_bfq_12", "rsi_bfq_24", "rsi_bfq_6",
+            "rsi_hfq_12", "rsi_hfq_24", "rsi_qfq_6", "rsi_qfq_12", "rsi_qfq_24", "rsi_qfq_6",
+            "taq_down_bfq", "taq_down_hfq", "taq_down_qfq", "taq_mid_bfq", "taq_mid_hfq", "taq_mid_qfq",
+            "taq_up_bfq", "taq_up_hfq", "taq_up_qfq", "trix_bfq", "trix_hfq", "trix_qfq",
+            "trma_bfq", "trma_hfq", "trma_qfq", "vr_bfq", "vr_hfq",
+            "wr_bfq", "wr_hfq", "wr1_bfq", "wr1_hfq", "wr1_qfq",
+            "xsii_td1_bfq", "xsii_td1_hfq", "xsii_td1_qfq", "xsii_td2_bfq", "xsii_td2_hfq", "xsii_td2_qfq",
+            "xsii_td3_bfq", "xsii_td3_hfq", "xsii_td3_qfq", "xsii_td4_bfq", "xsii_td4_hfq", "xsii_td4_qfq"
+        ]))
+        df_all = pro.stk_factor_pro(
+            trade_date=target_date,
+            fields=_fields
+        )
+        
+        if df_all is not None and not df_all.empty:
+            df_all['trade_date'] = df_all['trade_date'].astype(str)
+            
+            # 按股票代码分组保存
+            grouped = df_all.groupby('ts_code')
+            saved_count = 0
+            for code, group_df in grouped:
+                cache_file = os.path.join(CACHE_DIR, f"stk_pro_{code}.csv")
+                df_cache = _read_cache(cache_file)
+                if df_cache is not None:
+                    # ⚠️ 修复：重置索引避免重复索引问题
+                    df_cache = df_cache.reset_index(drop=True)
+                    group_df = group_df.reset_index(drop=True)
+                    combined = pd.concat([df_cache, group_df]).drop_duplicates(subset='trade_date').sort_values('trade_date').reset_index(drop=True)
+                    _save_cache(combined, cache_file)
+                else:
+                    # ⚠️ 修复：重置索引
+                    _save_cache(group_df.reset_index(drop=True), cache_file)
+                saved_count += 1
+            
+            # ⚠️ 修复：只有成功保存数据后才更新状态
+            _stk_factor_batch_downloaded_date = target_date
+            _write_batch_status(target_date)  # 持久化到文件
+            print(f"[批量缓存] 完成：{saved_count} 只股票已缓存")
+        else:
+            print(f"[批量缓存] 警告：{target_date} 无数据返回（可能还未到数据更新时间）")
+            # 不更新状态，让后续调用可以重新尝试
+            
+    except Exception as e:
+        print(f"[批量缓存] 失败: {e}")
+        # 不更新状态，让后续调用可以重新尝试
+
 def cached_daily(ts_code, start_date, end_date):
     cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
     df_cache = _read_cache(cache_file)
@@ -113,7 +230,8 @@ def cached_daily(ts_code, start_date, end_date):
             if actual_last_date >= end_date:
                 mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
                 subset = df_cache[mask].copy()
-                if len(subset) >= 40:
+                # 移除 >= 40 限制，避免当日补充数据时重复下载
+                if not subset.empty:
                     return subset.sort_values('trade_date').reset_index(drop=True)
     df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
     time.sleep(0.06)
@@ -127,31 +245,96 @@ def cached_daily(ts_code, start_date, end_date):
         _save_cache(df, cache_file)
     return df.sort_values('trade_date').reset_index(drop=True)
 
+def get_list_date(ts_code):
+    """获取股票上市日期"""
+    try:
+        # 先尝试从缓存文件获取
+        cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
+        df_cache = _read_cache(cache_file)
+        if df_cache is not None and not df_cache.empty:
+            # 返回缓存中最早的日期作为上市日期（近似）
+            return df_cache['trade_date'].min()
+        
+        # 如果缓存中没有，从API获取
+        df = pro.stock_basic(ts_code=ts_code)
+        if not df.empty:
+            list_date = df.iloc[0].get('list_date', '')
+            if list_date:
+                return str(list_date)
+    except Exception as e:
+        print(f"[获取上市日期失败] {ts_code}: {e}")
+    return None
+
+
 def cached_stk_factor_pro(ts_code, start_date, end_date):
+    """带缓存的 stk_factor_pro（支持批量缓存模式）
+    
+    优化策略：
+    1. 每天第一次调用时自动批量下载当天所有股票数据
+    2. 检查缓存是否覆盖请求范围
+    3. 按需补充前面缺失的历史数据（如果已有缓存则无需补充）
+    4. 对于次新股，跳过上市日期之前的日期
+    """
+    # 1. 每天第一次调用时先批量缓存当天数据
+    batch_cache_stk_factor_pro(end_date)
+    
     cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
     df_cache = _read_cache(cache_file)
+    
+    # 2. 获取上市日期（用于次新股判断，提前到缓存检查之前）
+    list_date = get_list_date(ts_code)
+    required_min = list_date if (list_date and list_date > start_date) else start_date
+    
+    # 3. 检查缓存是否覆盖请求范围（针对次新股放宽条件）
     if df_cache is not None and not df_cache.empty:
         cached_min = df_cache['trade_date'].min()
         cached_max = df_cache['trade_date'].max()
-        if cached_min <= start_date and cached_max >= end_date:
-            # 校验实际最后一行日期是否 >= end_date（避免缓存文件损坏导致返回旧数据）
-            actual_last_date = df_cache['trade_date'].iloc[-1]
-            if actual_last_date >= end_date:
-                mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-                subset = df_cache[mask].copy()
-                if not subset.empty:
-                    return subset.sort_values('trade_date').reset_index(drop=True)
-    df = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    time.sleep(0.06)
-    if df is not None and not df.empty:
-        df['trade_date'] = df['trade_date'].astype(str)
-        if df_cache is not None:
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-            _save_cache(combined, cache_file)
-        else:
-            _save_cache(df, cache_file)
-        return df.sort_values('trade_date').reset_index(drop=True)
-    return df
+        actual_last_date = df_cache['trade_date'].iloc[-1]
+        
+        # 如果是次新股，只需缓存覆盖上市日→end_date；否则需覆盖start_date→end_date
+        if cached_min <= required_min and cached_max >= end_date and actual_last_date >= end_date:
+            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
+            subset = df_cache[mask].copy()
+            if not subset.empty:
+                return subset.sort_values('trade_date').reset_index(drop=True)
+    
+    # 4. 缓存不完整，补充当前股票缺失的数据
+    if list_date and list_date > start_date:
+        print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
+    
+    print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
+    
+    # 缓存不完整，直接一次性下载整个范围（不逐日判断缺失）
+    print(f"[缓存补充] {ts_code} 正在补充 {required_min}~{end_date} ...")
+    try:
+        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
+        time.sleep(0.06)
+        
+        if df_new is not None and not df_new.empty:
+            df_new['trade_date'] = df_new['trade_date'].astype(str)
+            df_new = df_new.sort_values('trade_date').reset_index(drop=True)
+            
+            if df_cache is not None:
+                combined = pd.concat([df_cache, df_new]).drop_duplicates(subset='trade_date').sort_values('trade_date').reset_index(drop=True)
+                _save_cache(combined, cache_file)
+            else:
+                _save_cache(df_new, cache_file)
+            
+            mask = (df_new['trade_date'] >= start_date) & (df_new['trade_date'] <= end_date)
+            result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
+            if not result.empty:
+                return result
+    except Exception as e:
+        print(f"[缓存补充] {ts_code} 失败: {e}")
+    
+    # 保底：重新读取缓存
+    df_cache = _read_cache(cache_file)
+    if df_cache is not None and not df_cache.empty:
+        mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
+        subset = df_cache[mask].copy()
+        if not subset.empty:
+            return subset.sort_values('trade_date').reset_index(drop=True)
+    return df_cache
 
 def cached_daily_basic(ts_code, start_date, end_date):
     cache_file = os.path.join(CACHE_DIR, f"daily_basic_{ts_code}.csv")
@@ -302,7 +485,7 @@ class ResonanceScorer:
         if cci < -200:  _add(3, f'CCI={cci:.0f}极度超卖')
         elif cci < -100: _add(2, f'CCI={cci:.0f}超卖')
 
-        wr = v('wr_qfq', 50)
+        wr = v('wr_hfq', 50)
         if wr > 90:  _add(3, f'WR={wr:.0f}极度超卖')
         elif wr > 80: _add(2, f'WR={wr:.0f}超卖')
 
@@ -330,15 +513,15 @@ class ResonanceScorer:
                 _add(2, f'缩量({prev_vr:.2f})→放量({vol_ratio:.2f})启动')
 
         # ── 趋势类 ─────────────────────────────────────
-        macd_dif = v('macd_dif_qfq', 0)
+        macd_dif = v('macd_dif_hfq', 0)
         macd_dea = v('macd_dea_qfq', 0)
         if macd_dif > macd_dea:
             _add(2, 'MACD金叉')
 
         # DMI趋势反转
-        pdi = v('dmi_pdi_qfq', 20)
-        mdi = v('dmi_mdi_qfq', 20)
-        adx = v('dmi_adx_qfq', 20)
+        pdi = v('dmi_pdi_hfq', 20)
+        mdi = v('dmi_mdi_hfq', 20)
+        adx = v('dmi_adx_hfq', 20)
         if pdi > mdi:
             _add(1, f'PDI({pdi:.0f})>MDI({mdi:.0f})多头')
         else:
@@ -359,18 +542,18 @@ class ResonanceScorer:
             _add(1, 'MA60上方')
 
         # ── 情绪类 ─────────────────────────────────────
-        bias1 = v('bias1_qfq', 0)
-        bias2 = v('bias2_qfq', 0)
+        bias1 = v('bias1_hfq', 0)
+        bias2 = v('bias2_hfq', 0)
         if bias1 < -5:   _add(2, f'BIAS1={bias1:.1f}%极端超卖')
         elif bias1 < -3: _add(1, f'BIAS1={bias1:.1f}%超卖')
         if bias2 < -10:  _add(3, f'BIAS2={bias2:.1f}%极端超卖')
         elif bias2 < -7: _add(1, f'BIAS2={bias2:.1f}%超卖')
 
-        psy = v('psy_qfq', 50)
+        psy = v('psy_hfq', 50)
         if psy < 25:  _add(2, f'PSY={psy:.0f}极度悲观')
         elif psy < 37: _add(1, f'PSY={psy:.0f}偏悲观')
 
-        vr = v('vr_qfq', 100)
+        vr = v('vr_hfq', 100)
         if vr < 70:   _add(1, f'VR={vr:.0f}地量')
 
         # ── 主力类（新增 v2.1）───────────────────────────────────
@@ -447,10 +630,10 @@ class ResonanceScorer:
         """检测PDI上穿MDI（趋势反转确认）"""
         if idx < 1 or idx >= len(df):
             return {'found': False}
-        pdi_now  = float(df.iloc[idx].get('dmi_pdi_qfq', 0))
-        mdi_now  = float(df.iloc[idx].get('dmi_mdi_qfq', 0))
-        pdi_prev = float(df.iloc[idx-1].get('dmi_pdi_qfq', 0))
-        mdi_prev = float(df.iloc[idx-1].get('dmi_mdi_qfq', 0))
+        pdi_now  = float(df.iloc[idx].get('dmi_pdi_hfq', 0))
+        mdi_now  = float(df.iloc[idx].get('dmi_mdi_hfq', 0))
+        pdi_prev = float(df.iloc[idx-1].get('dmi_pdi_hfq', 0))
+        mdi_prev = float(df.iloc[idx-1].get('dmi_mdi_hfq', 0))
 
         if pdi_prev <= mdi_prev and pdi_now > mdi_now:
             return {
@@ -475,24 +658,59 @@ class WavePatternDetector:
         trade_date = get_effective_date(self.force_date)
         start = (datetime.date.today() - datetime.timedelta(days=lookback + 1)).strftime('%Y%m%d')
         try:
-            # 使用缓存版API
+            # 使用缓存版API获取历史因子数据
             df = cached_stk_factor_pro(ts_code, start, trade_date)
             if df is None or len(df) < 60:
                 return None
             df = df.sort_values('trade_date').reset_index(drop=True)
+
+            # 用 daily 补充今日数据（stk_factor_pro 有延迟）
+            df_daily = cached_daily(ts_code, trade_date, trade_date)
+            if df_daily is not None and not df_daily.empty:
+                today_data = df_daily.iloc[-1]
+                today_str = str(today_data['trade_date'])
+                # 如果今日数据比stk_factor_pro最新数据更新，则用daily数据补充
+                if today_str > df['trade_date'].iloc[-1]:
+                    new_row = {col: today_data.get(col, df.iloc[-1].get(col)) for col in df.columns}
+                    new_row['trade_date'] = today_str
+                    # 价格数据：daily返回的就是当日实际价（不复权）
+                    new_row['close'] = today_data['close']
+                    new_row['close_qfq'] = today_data['close']  # 今日价格直接作为前复权价
+                    new_row['close_hfq'] = today_data['close']
+                    new_row['open'] = today_data['open']
+                    new_row['open_qfq'] = today_data['open']
+                    new_row['open_hfq'] = today_data['open']
+                    new_row['high'] = today_data['high']
+                    new_row['high_qfq'] = today_data['high']
+                    new_row['high_hfq'] = today_data['high']
+                    new_row['low'] = today_data['low']
+                    new_row['low_qfq'] = today_data['low']
+                    new_row['low_hfq'] = today_data['low']
+                    new_row['vol'] = today_data['vol']
+                    new_row['amount'] = today_data.get('amount', 0)
+                    new_row['pct_chg'] = today_data.get('pct_chg', 0)
+                    new_row['turnover_rate'] = today_data.get('turnover_rate', 0)
+                    new_row['volume_ratio'] = today_data.get('volume_ratio', 1)
+                    new_row['pe_ttm'] = df.iloc[-1].get('pe_ttm', 0)
+                    new_row['pb'] = df.iloc[-1].get('pb', 0)
+                    # 因子数据暂用昨日值（因子更新有延迟）
+                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
             # 过滤停牌
             df = df[df['vol'] > 0].reset_index(drop=True)
             if len(df) < 60:
                 return None
 
+            # ⚠️ 修复DataFrame碎片化警告：在修改前先复制一次
+            df = df.copy()
+
             # 在 stk_factor_pro 中已计算好MA/RSI/换手率等，直接取用
             # 只需补算pct_5d/10d/20d
-            # ⚠️ 关键修复：用 close_qfq（前复权）替代 close（未复权）
-            # 未复权价在除权日会产生虚假跳空，导致RSI/BIAS/回调幅度全部失真
+            # ⚠️ 统一使用前复权（close_qfq）进行形态计算
+            # 前复权价格序列连续，适合技术分析和形态判断
             if 'close_qfq' in df.columns:
                 df['close_bfq'] = df['close']      # 保留原始价（止损/目标价需要）
-                df['close'] = df['close_qfq']       # 价格计算一律用前复权
+                df['close'] = df['close_qfq']       # 价格计算用前复权
             if 'high_qfq' in df.columns:
                 df['high'] = df['high_qfq']
             if 'low_qfq' in df.columns:
@@ -509,25 +727,40 @@ class WavePatternDetector:
     # ── 板块适配加分 ──────────────────────────────────────
     @staticmethod
     def _board_bonus(ts_code: str, pattern: str) -> tuple:
-        """板块形态适配加分：主板优选强势横盘，双创优选深度回调
+        """板块形态适配加分：基于52,949样本回测结果优化
 
-        回测依据：
-          主板强势横盘: 成功率98.6%, 盈亏比19.9x → 优选(+5)
-          主板深度回调: 成功率86.2%, 盈亏比1.3x  → 压制(-3)
-          双创深度回调: 成功率92.0%, 盈亏比12.2x → 优选(+5)
-          双创强势横盘: 成功率84.3%, 盈亏比16.6x → 压制(-3)
+        回测依据（双创板52,949样本，不创新低条件）：
+          V型急跌: 胜率97.2% → 双创优选(+8)
+          强势横盘: 胜率93.3% → 双创次选(+3)
+          放量回调: 胜率91.2% → 中性(+0)
+          深度回调: 胜率88.2% → 双创压制(-2)
+
+        沪深300（主板最优）：
+          强势横盘: 胜率98.6% → 主板优选(+5)
+          深度回调: 胜率86.2% → 主板压制(-3)
         """
         is_gem_kc = ts_code.startswith(('688', '300', '301'))  # 双创板
         is_main   = ts_code.startswith(('600', '601', '603', '605', '000', '002'))   # 主板(含上海60x)
 
-        if pattern == '强势横盘':
+        if pattern == 'V型急跌':
+            # V型急跌是双创最高胜率形态(97.2%)
+            if is_gem_kc:
+                return (8, '双创优选V型急跌(+8)')
+            elif is_main:
+                return (0, '')
+        elif pattern == '强势横盘':
             if is_main:
                 return (5, '主板优选强势横盘(+5)')
             elif is_gem_kc:
-                return (-3, '双创强势横盘较弱(-3)')
+                # 双创强势横盘93.3%，次优选择
+                return (3, '双创次选强势横盘(+3)')
+        elif pattern == '放量回调':
+            # 放量回调中性，无额外加分
+            return (0, '')
         elif pattern == '深度回调':
             if is_gem_kc:
-                return (5, '双创优选深度回调(+5)')
+                # 双创深度回调88.2%，略低于其他形态
+                return (-2, '双创深度回调较弱(-2)')
             elif is_main:
                 return (-3, '主板深度回调较弱(-3)')
         return (0, '')
@@ -768,7 +1001,7 @@ class WavePatternDetector:
             base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
             adj_vol = volumes[wave1_high_idx+1:entry_idx+1].mean()
             vol_ratio_adj = adj_vol / base_vol if base_vol > 0 else 1.0
-            if vol_ratio_adj > 1.2 and 0.10 <= pullback_pct < 0.25:
+            if vol_ratio_adj > 1.2 and 0.10 <= pullback_pct < 0.20:
                 continue  # 放量回调形态，跳过
 
             # ── 排除V型急跌形态 ──
@@ -905,8 +1138,8 @@ class WavePatternDetector:
             low_pos       = int(np.argmin(post_high))
             adjust_days   = low_pos
 
-            # 放量回调条件：回调10-25%，调整>=10天
-            if not (0.10 <= pullback_pct < 0.25 and adjust_days >= DEEP_ADJUST_MIN):
+            # 放量回调条件：回调10-<20%，调整>=10天（排除20-25%重叠区）
+            if not (0.10 <= pullback_pct < 0.20 and adjust_days >= DEEP_ADJUST_MIN):
                 continue
 
             entry_idx = wave1_high_idx + low_pos
@@ -1455,15 +1688,21 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
     _add_market_overview(elements, font_name, today_str, styles)
 
     # ── 今日精选 TOP3 ──────────────────────────────
-    # 主板强势横盘TOP3 + 双创深度回调TOP3
+    # 主板强势横盘TOP3 + 双创深度/放量/V型TOP3
     main_sideways = [r for r in all_results
                      if r['pattern'] == '强势横盘' and r['ts_code'].startswith(('600', '601', '603', '605', '000', '002'))]
     gem_deep = [r for r in all_results
                 if r['pattern'] == '深度回调' and r['ts_code'].startswith(('688', '300', '301'))]
+    gem_volume = [r for r in all_results
+                  if r['pattern'] == '放量回调' and r['ts_code'].startswith(('688', '300', '301'))]
+    gem_vshape = [r for r in all_results
+                  if r['pattern'] == 'V型急跌' and r['ts_code'].startswith(('688', '300', '301'))]
     main_sideways = sorted(main_sideways, key=lambda x: x.get('score', 0), reverse=True)[:3]
     gem_deep = sorted(gem_deep, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_volume = sorted(gem_volume, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_vshape = sorted(gem_vshape, key=lambda x: x.get('score', 0), reverse=True)[:3]
 
-    if main_sideways or gem_deep:
+    if main_sideways or gem_deep or gem_volume or gem_vshape:
         pick_title_style = ParagraphStyle('PICK_T', parent=styles['Normal'],
             fontName=font_name, fontSize=13, alignment=0, spaceAfter=2*mm,
             textColor=colors.HexColor('#1a5276'))
@@ -1488,8 +1727,30 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
                     pick_style))
 
         if gem_deep:
-            elements.append(Paragraph('【双创深度回调 TOP3】(成功率92%, 盈亏比12.2x)', pick_highlight))
+            elements.append(Paragraph('【双创深度回调 TOP3】(成功率87.2%, 盈亏比12.2x)', pick_highlight))
             for i, r in enumerate(gem_deep, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"入场{r.get('entry_date','')}  价格{r['entry_price']:.2f}  "
+                    f"止损{r['stop_loss']:.2f}  目标{r['target']:.2f}",
+                    pick_style))
+
+        if gem_volume:
+            elements.append(Paragraph('【双创放量回调 TOP3】(成功率91.2%, 盈亏比14.5x)', pick_highlight))
+            for i, r in enumerate(gem_volume, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"入场{r.get('entry_date','')}  价格{r['entry_price']:.2f}  "
+                    f"止损{r['stop_loss']:.2f}  目标{r['target']:.2f}",
+                    pick_style))
+
+        if gem_vshape:
+            elements.append(Paragraph('【双创V型急跌 TOP3】(成功率97.2%, 盈亏比16.1x)', pick_highlight))
+            for i, r in enumerate(gem_vshape, 1):
                 name = r.get('name', '') or r['ts_code']
                 elements.append(Paragraph(
                     f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
@@ -1507,11 +1768,11 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
         borderWidth=1, borderColor=colors.HexColor('#e74c3c'),
         borderPadding=6, backColor=colors.HexColor('#fdf2f2'))
     elements.append(Paragraph(
-        '💡 操作建议（基于16,828样本回测）：'
-        '双创板(688/300/301)优选<b>深度回调</b>（成功率92%, 盈亏比12.2x，评分+5加成）；'
-        '主板(60x/000/002)优选<b>强势横盘</b>（成功率98.6%, 盈亏比19.9x，评分+5加成）；'
-        '非优选组合已扣3分，优先关注高分标的。'
-        '通用最强信号：RSI低位回升+MA20不破 → 二波几乎必出',
+        '💡 操作建议（基于52,949样本回测）：'
+        '双创板(688/300/301)优选<b>V型急跌</b>（成功率97.2%，+8分）或<b>强势横盘</b>（成功率93.3%，+3分）；'
+        '主板(60x/000/002)优选<b>强势横盘</b>（成功率98.6%，+5分）；'
+        '深度回调和放量回调为中性选择（0分），深度回调在双创已降权(-2分)。'
+        '通用最强信号：RSI低位回升+MA20上方+不创新低 → 二波几乎必出',
         tip_style))
     elements.append(Spacer(1, 4*mm))
 
@@ -1585,7 +1846,7 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='二波形态精选 v2.0 (stk_factor_pro多指标共振)')
-    parser.add_argument('--pattern', choices=['sideways', 'deep', 'both', 'test'], default='test')
+    parser.add_argument('--pattern', choices=['sideways', 'deep', 'volume', 'vshape', 'all'], default='all')
     parser.add_argument('--pool', choices=['hs300', 'gem_kc', 'hot', 'all'], default='test')
     parser.add_argument('--codes', nargs='*', default=[])
     parser.add_argument('--output', choices=['csv', 'json', 'print'], default='print')
@@ -1667,9 +1928,9 @@ def main():
     # 批量扫描
     pools = {
         'hs300':  (get_hs300_pool(),  '沪深300',  ['sideways']),
-        'gem_kc': (get_gem_kc_pool(), '双创板',   ['deep']),
-        'hot':    (get_hot_leaders(50), '近期强势龙头', ['both']),
-        'all':    (get_hs300_pool() + get_gem_kc_pool(), '全市场', ['both']),
+        'gem_kc': (get_gem_kc_pool(), '双创板',   ['deep', 'volume', 'vshape']),
+        'hot':    (get_hot_leaders(50), '近期强势龙头', ['all']),
+        'all':    (get_hs300_pool() + get_gem_kc_pool(), '全市场', ['all']),
     }
 
     # CSV模式：用CSV中的股票替换pool
@@ -1678,12 +1939,12 @@ def main():
         print(f"  股票池: {pname} ({len(pool)} 只)")
 
         df_list = []
-        for pat in ['both']:
+        for pat in ['all']:
             df_p = detector.scan_pool(pool, pat, pname, today_only=args.today)
             if len(df_p):
                 df_list.append(df_p)
     else:
-        pool, pname, pats = pools.get(args.pool, ([], args.pool, ['both']))
+        pool, pname, pats = pools.get(args.pool, ([], args.pool, ['all']))
         if not pool:
             print("股票池为空！")
             return

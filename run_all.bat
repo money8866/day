@@ -28,6 +28,9 @@ echo =============================================
 python solo\etf_quant_theme.py
 echo.
 
+
+python etf_mainline_strategy_tushare.py
+
 echo [Step 4/7] 个股形态选股...
 echo =============================================
 python solo\theme_pattern_stock_picker.py

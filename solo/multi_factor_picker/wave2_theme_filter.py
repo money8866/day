@@ -383,6 +383,76 @@ def generate_pdf_report(results, non_daytrip_themes, output_path):
     # ── 昨日大盘概览 ──────────────────────
     _add_market_overview_to_pdf(elements, cn_font, styles)
 
+    # ── 今日精选 TOP3 ──────────────────────
+    # 按四种形态分组筛选TOP3
+    main_sideways = [r for r in results
+                     if r['pattern'] == '强势横盘' and r['ts_code'].startswith(('600', '601', '603', '605', '000', '002'))]
+    gem_deep = [r for r in results
+                if r['pattern'] == '深度回调' and r['ts_code'].startswith(('688', '300', '301'))]
+    gem_volume = [r for r in results
+                  if r['pattern'] == '放量回调' and r['ts_code'].startswith(('688', '300', '301'))]
+    gem_vshape = [r for r in results
+                  if r['pattern'] == 'V型急跌' and r['ts_code'].startswith(('688', '300', '301'))]
+    main_sideways = sorted(main_sideways, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_deep = sorted(gem_deep, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_volume = sorted(gem_volume, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_vshape = sorted(gem_vshape, key=lambda x: x.get('score', 0), reverse=True)[:3]
+
+    if main_sideways or gem_deep or gem_volume or gem_vshape:
+        pick_title_style = ParagraphStyle('PICK_T', parent=styles['Normal'],
+            fontName=cn_font, fontSize=12, alignment=0, spaceAfter=2*mm,
+            textColor=colors.HexColor('#1a5276'))
+        pick_style = ParagraphStyle('PICK', parent=styles['Normal'],
+            fontName=cn_font, fontSize=8.5, alignment=0, spaceAfter=1*mm,
+            textColor=colors.HexColor('#2c3e50'), leading=12)
+        pick_highlight = ParagraphStyle('PICK_H', parent=styles['Normal'],
+            fontName=cn_font, fontSize=9, alignment=0, spaceAfter=1*mm,
+            textColor=colors.HexColor('#c0392b'), leading=12)
+
+        elements.append(Paragraph('⭐ 今日精选', pick_title_style))
+
+        if main_sideways:
+            elements.append(Paragraph('【主板强势横盘 TOP3】(成功率98.6%, 盈亏比19.9x, 评分+5)', pick_highlight))
+            for i, r in enumerate(main_sideways, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"RSI={r['rsi']:.0f}  主题:{r.get('best_theme','')}",
+                    pick_style))
+
+        if gem_deep:
+            elements.append(Paragraph('【双创深度回调 TOP3】(成功率88.2%, 盈亏比12.2x, 评分-2)', pick_highlight))
+            for i, r in enumerate(gem_deep, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"RSI={r['rsi']:.0f}  主题:{r.get('best_theme','')}",
+                    pick_style))
+
+        if gem_volume:
+            elements.append(Paragraph('【双创放量回调 TOP3】(成功率91.2%, 盈亏比14.5x)', pick_highlight))
+            for i, r in enumerate(gem_volume, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"RSI={r['rsi']:.0f}  主题:{r.get('best_theme','')}",
+                    pick_style))
+
+        if gem_vshape:
+            elements.append(Paragraph('【双创V型急跌 TOP3】(成功率97.2%, 盈亏比16.1x, 评分+8)', pick_highlight))
+            for i, r in enumerate(gem_vshape, 1):
+                name = r.get('name', '') or r['ts_code']
+                elements.append(Paragraph(
+                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
+                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
+                    f"RSI={r['rsi']:.0f}  主题:{r.get('best_theme','')}",
+                    pick_style))
+
+        elements.append(Spacer(1, 4*mm))
+
     # 非一日游主题一览
     if non_daytrip_themes:
         elements.append(Spacer(1, 6))

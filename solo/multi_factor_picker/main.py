@@ -39,7 +39,8 @@ import numpy as np
 from loguru import logger
 
 from data_fetcher import DataFetcher
-from bull_scorer import BullScorer, BullStockData, BullScoreResult, fetch_theme_scores_from_db, chain_to_theme, get_bull_level
+from bull_scorer import BullStockData, BullScoreResult, BullScorer as _BullScorer  # 数据类型的兼容引用，仅用于基础评分
+from bull_scorer_v2 import BullScorerV2, BullScoreV2Result  # v2 评分引擎
 from chain_mapping import identify_chain_with_cache, load_concept_cache
 from mainline_filter import apply_mainline_filter, print_mainline_analysis
 
@@ -620,7 +621,7 @@ def extract_bull_data(row: pd.Series,
     return data
 
 
-def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
+def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     """
     BullScore 全市场扫描
 
@@ -684,21 +685,27 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreResult]:
     logger.info("阶段3: BullScore 评分...")
     trade_date = fetcher.get_last_trade_date()
 
-    bull_scorer = BullScorer(config, fetcher)
-    results = bull_scorer.compute_all_scores(all_bull_data, trade_date=trade_date)
+    # 基础评分（BullScore v1）
+    bull_scorer = _BullScorer(config, fetcher)
+    base_results = bull_scorer.compute_all_scores(all_bull_data, trade_date=trade_date)
+    logger.info(f"BullScore 基础评分完成: {len(base_results)} 只")
 
-    # 按 final_score 降序排序，然后根据排名重新分配 bull_level
-    results.sort(key=lambda x: x.final_score, reverse=True)
-    for rank, r in enumerate(results, 1):
-        r.bull_level = get_bull_level(r.final_score, rank)
+    # BullScore v2.1 增强评分（历史辨识度 + Alpha因子 + 龙头/中军识别）
+    logger.info("阶段3b: BullScore v2.1 增强评分（历史辨识度+Alpha因子+龙头识别）...")
+    scorer_v2 = BullScorerV2(token=get_token(config))
+    results_v2 = scorer_v2.batch_compute(base_results)
+    logger.info(f"BullScore v2.1 增强评分完成: {len(results_v2)} 只")
 
-    logger.info(f"BullScore 评分完成: {len(results)} 只通过评分")
-    return results
+    # 按 final_score 降序排序
+    results_v2.sort(key=lambda x: x.final_score, reverse=True)
+
+    logger.info(f"BullScore 评分完成: {len(results_v2)} 只通过评分")
+    return results_v2
 
 
-def supplement_chip_margin_data(results: List[BullScoreResult],
+def supplement_chip_margin_data(results: List[BullScoreV2Result],
                                  fetcher: DataFetcher,
-                                 top_n: int = 200) -> List[BullScoreResult]:
+                                 top_n: int = 200) -> List[BullScoreV2Result]:
     """
     BullScore v2: 对通过初筛的股票补充筹码面+估值安全数据
 
@@ -756,7 +763,7 @@ def supplement_chip_margin_data(results: List[BullScoreResult],
     return results
 
 
-def secondary_filter(results: List[BullScoreResult]) -> List[BullScoreResult]:
+def secondary_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Result]:
     """
     二级精选过滤
 
@@ -874,12 +881,12 @@ def secondary_filter(results: List[BullScoreResult]) -> List[BullScoreResult]:
     return final
 
 
-def save_bull_results(results: List[BullScoreResult], config: Dict) -> str:
-    """保存 BullScore 结果到 CSV"""
+def save_bull_results(results: List[BullScoreV2Result], config: Dict) -> str:
+    """保存 BullScore v2 结果到 CSV"""
     if not results:
         return ""
 
-    bull_scorer = BullScorer(config)
+    bull_scorer = BullScorerV2(token=get_token(config))
     df = bull_scorer.to_dataframe(results)
 
     output_dir = Path(config.get('output', {}).get('dir', 'output'))
@@ -896,13 +903,13 @@ def save_bull_results(results: List[BullScoreResult], config: Dict) -> str:
     return str(filepath)
 
 
-def print_bull_results(results: List[BullScoreResult]) -> None:
-    """打印 BullScore 结果"""
+def print_bull_results(results: List[BullScoreV2Result]) -> None:
+    """打印 BullScore v2 结果"""
     if not results:
         logger.info("未筛选出符合条件的股票")
         return
 
-    bull_scorer = BullScorer()
+    bull_scorer = BullScorerV2()
     bull_scorer.print_summary(results)
 
 
@@ -940,6 +947,7 @@ def main():
             logger.info("未筛选出符合观察名单(>=70分)的股票")
 
         # ── 保存 ──
+        scorer_v2 = BullScorerV2(token=token)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = Path(config.get('output', {}).get('dir', 'output'))
         if not output_dir.is_absolute():
@@ -949,7 +957,7 @@ def main():
         # 保存主线精选结果（最核心输出）
         if mainline_results:
             mainline_path = output_dir / f"mainline_stocks_{timestamp}.csv"
-            BullScorer(config).to_dataframe(mainline_results).to_csv(mainline_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(mainline_results).to_csv(mainline_path, index=False, encoding='utf-8-sig')
             logger.info(f"主线精选结果已保存至: {mainline_path}")
 
             # 打印完整主线归因分析
@@ -960,19 +968,19 @@ def main():
         # 保存二级精选结果（保底/对比用）
         if elite:
             elite_path = output_dir / f"elite_stocks_{timestamp}.csv"
-            BullScorer(config).to_dataframe(elite).to_csv(elite_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(elite).to_csv(elite_path, index=False, encoding='utf-8-sig')
             logger.info(f"二级精选结果已保存至: {elite_path}")
 
         # 保存全量合格结果(含一级过滤)
         if qualified:
             full_path = output_dir / f"bull_stocks_{timestamp}.csv"
-            BullScorer(config).to_dataframe(qualified).to_csv(full_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(qualified).to_csv(full_path, index=False, encoding='utf-8-sig')
             logger.info(f"全量结果已保存至: {full_path}")
 
             # 保存所有数据(含淘汰)用于追溯
             if all_results and len(all_results) > len(qualified):
                 all_path = output_dir / f"bull_all_{timestamp}.csv"
-                BullScorer(config).to_dataframe(all_results).to_csv(all_path, index=False, encoding='utf-8-sig')
+                scorer_v2.to_dataframe(all_results).to_csv(all_path, index=False, encoding='utf-8-sig')
                 logger.info(f"原始全量数据已保存至: {all_path}")
 
         # ── 固定路径输出：供其他程序调用 ──
@@ -982,19 +990,19 @@ def main():
         # 全量数据（含淘汰）：固定文件名，每次覆盖
         full_fixed_path = report_daily_dir / "bull_stocks_all.csv"
         if all_results:
-            BullScorer(config).to_dataframe(all_results).to_csv(full_fixed_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(all_results).to_csv(full_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"全量数据已保存至(固定路径): {full_fixed_path}")
 
         # 合格数据(>=70分)：固定文件名
         qualified_fixed_path = report_daily_dir / "bull_stocks_qualified.csv"
         if qualified:
-            BullScorer(config).to_dataframe(qualified).to_csv(qualified_fixed_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(qualified).to_csv(qualified_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"合格数据已保存至(固定路径): {qualified_fixed_path}")
 
         # 精选数据：固定文件名
         elite_fixed_path = report_daily_dir / "bull_stocks_elite.csv"
         if elite:
-            BullScorer(config).to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
+            scorer_v2.to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"精选数据已保存至(固定路径): {elite_fixed_path}")
 
         logger.info("=" * 60)

@@ -1,348 +1,565 @@
-import os, datetime, pandas as pd, numpy as np
+"""
+ETF轮动策略回测（2023-2026）
+对比6种轮动策略，找出最优方案
+"""
 
-# ==================== 主流行业ETF轮动策略 ====================
-TDX_PATH = r"C:\new_tdx\vipdoc"
+import os, sys, time
+import numpy as np
+import pandas as pd
+import tushare as ts
 
-# 主流行业ETF池（代码, 市场, 名称）
-ETF_POOL = [
-    ("512880", "sh", "证券ETF"),
-    ("512800", "sh", "银行ETF"),
-    ("512660", "sh", "军工ETF"),
-    ("512010", "sh", "医药ETF"),
-    ("512480", "sh", "半导体ETF"),
-    ("512400", "sh", "有色ETF"),
-    ("512580", "sh", "环保ETF"),
-    ("512700", "sh", "新能源车ETF"),
-    ("512690", "sh", "酒ETF"),
-    ("512200", "sh", "房地产ETF"),
-    ("512560", "sh", "中证500ETF"),
-    ("510300", "sh", "沪深300ETF"),
-    ("510050", "sh", "上证50ETF"),
-    ("159825", "sz", "农业ETF"),
-    ("159915", "sz", "创业板ETF"),
-    ("159996", "sz", "家电ETF"),
-    ("159813", "sz", "芯片ETF"),
-    ("159901", "sz", "证券ETF深"),
-    ("159949", "sz", "创新药ETF"),
-    ("159919", "sz", "沪深300ETF深"),
-]
+os.environ['TUSHARE_TOKEN'] = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+pro = ts.pro_api('1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')
 
-# 策略参数
-MOM_SHORT = 10   # 短期动量（10日涨幅）
-MOM_LONG = 20    # 长期动量（20日涨幅）
-INIT_CAPITAL = 100000
-COMMISSION = 0.0003
-SLIPPAGE = 0.001
-COOLDOWN = 5     # 轮动冷却期（天）
+CACHE_DIR = r'D:\mystock\dragon\cache'
+ETF_POOL = {
+    '半导体': '512480.SH', '人工智能': '159819.SZ', '算力': '561210.SH',
+    '机器人': '562500.SH', '软件': '515230.SH', '通信': '515880.SH',
+    '新能源': '516160.SH', '光伏': '515790.SH', '储能': '159566.SZ',
+    '军工': '512660.SH', '创新药': '159992.SZ', '消费电子': '159732.SZ',
+    '黄金': '518880.SH', '证券': '512880.SH', '红利': '515180.SH',
+    '银行': '512800.SH', '消费': '159928.SZ', '酒': '512690.SH',
+    '电池': '159755.SZ', '有色金属': '516650.SH', '芯片': '159995.SZ',
+    '化工': '159870.SZ', '半导体设备': '159516.SZ', '煤炭': '515220.SH',
+    '游戏': '159869.SZ', '金融科技': '159851.SZ', '电力': '159611.SZ',
+    '电网设备': '561380.SH', '新能源车': '515030.SH', '航空航天': '159227.SZ',
+    '医疗器械': '159883.SZ', '食品饮料': '159736.SH', '钢铁': '515210.SH',
+}
 
+START = '20230101'
+END   = '20260624'
 
-def parse_tdx(filepath):
-    if not os.path.exists(filepath):
-        return None
-    data = []
-    with open(filepath, "rb") as f:
-        while True:
-            chunk = f.read(32)
-            if not chunk or len(chunk) < 32:
-                break
-            date_int = int.from_bytes(chunk[0:4], "little")
-            close = int.from_bytes(chunk[16:20], "little") / 100
-            volume = int.from_bytes(chunk[20:24], "little")
-            dt = datetime.datetime.strptime(str(date_int), "%Y%m%d")
-            data.append({"trade_date": date_int, "date": dt, "close": close, "volume": volume})
-    if not data:
-        return None
-    df = pd.DataFrame(data).sort_values("trade_date").reset_index(drop=True)
+def load_etf_data(ts_code: str) -> pd.DataFrame:
+    df = pro.fund_daily(ts_code=ts_code, start_date=START, end_date=END)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.sort_values('trade_date').reset_index(drop=True)
+    df.rename(columns={'vol': 'volume', 'pct_chg': 'ret'}, inplace=True)
+    df['mom_20'] = df['close'].pct_change(20)
+    df['mom_60'] = df['close'].pct_change(60)
+    df['mom_5']  = df['close'].pct_change(5)
+    delta = df['close'].diff()
+    gain  = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+    loss  = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
+    df['rsi'] = 100 - (100 / (1 + gain / loss.clip(lower=1e-10)))
+    df['ma20']  = df['close'].rolling(20).mean()
+    df['ma60']  = df['close'].rolling(60).mean()
+    df['ma200'] = df['close'].rolling(200).mean()
+    df['vol20'] = df['volume'].rolling(20).mean()
+    df['vr']    = df['volume'] / df['vol20']
+    df['atr20'] = df['close'].rolling(20).std()
+    df['atr_ratio'] = df['atr20'] / df['close']
     return df
 
-
-def calc_momentum(df, short, long_):
-    """计算动量得分"""
-    df["mom_short"] = df["close"].pct_change(short) * 100
-    df["mom_long"] = df["close"].pct_change(long_) * 100
-    # 综合动量 = 短期60% + 长期40%
-    df["momentum_score"] = df["mom_short"] * 0.6 + df["mom_long"] * 0.4
-    return df
-
-
-def run_rotation(etf_data, start_date, end_date, cooldown=COOLDOWN):
-    """
-    轮动策略：
-    - 每天计算所有ETF的动量得分
-    - 选择动量最高的ETF持有
-    - 如果当前持有ETF动量排名跌出前50%或低于0，切换到排名第一的
-    - 冷却期内不切换
-    """
-    # 合并所有ETF日期
-    all_dates = set()
-    for code, df in etf_data.items():
-        for d in df["date"]:
-            all_dates.add(d)
-    
-    dates = sorted(all_dates)
-    dates = [d for d in dates if start_date <= d <= end_date]
-    
-    if len(dates) < 30:
-        return None
-    
-    capital = INIT_CAPITAL
-    position_code = None  # 当前持有的ETF代码
-    entry_price = 0
-    shares = 0
-    last_switch_date = None
-    trades = []
-    equity_curve = []
-    
-    for i, date in enumerate(dates):
-        # 当天各ETF动量
-        scores = {}
-        prices = {}
-        for code, df in etf_data.items():
-            row = df[df["date"] == date]
-            if len(row) == 0:
-                continue
-            row = row.iloc[0]
-            if pd.isna(row.get("momentum_score")):
-                continue
-            scores[code] = row["momentum_score"]
-            prices[code] = row["close"]
-        
-        if len(scores) < 3:
-            # 计算当日权益
-            mv = shares * prices.get(position_code, entry_price) if position_code else capital
-            equity_curve.append({"date": date, "equity": mv})
-            continue
-        
-        # 排名
-        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        best_code = ranked[0][0]
-        best_score = ranked[0][1]
-        my_score = scores.get(position_code, -999)
-        my_rank = next((i for i, (c, s) in enumerate(ranked) if c == position_code), 999)
-        total = len(ranked)
-        
-        # 切换条件
-        need_switch = False
-        if position_code is None:
-            # 空仓：只要最强ETF动量>0就买入
-            if best_score > 0:
-                need_switch = True
-        else:
-            # 持仓中：冷却期内不切换
-            if last_switch_date is None or (date - last_switch_date).days >= cooldown:
-                # 条件1：当前ETF动量排名跌出前50%
-                if my_rank >= total // 2:
-                    need_switch = True
-                # 条件2：当前ETF动量<0 且有更好的
-                if my_score < 0 and best_score > 0:
-                    need_switch = True
-                # 条件3：有ETF动量远超当前（>当前+5%）
-                if best_score > my_score + 5:
-                    need_switch = True
-        
-        # 执行切换
-        if need_switch and best_code != position_code:
-            # 先卖
-            if position_code and position_code in prices:
-                sell_price = prices[position_code]
-                if shares > 0:
-                    sell_amt = shares * sell_price * (1 - SLIPPAGE) * (1 - COMMISSION)
-                    capital += sell_amt
-            
-            # 再买
-            buy_price = prices[best_code]
-            buy_amount = capital * 0.95
-            shares = int(buy_amount / (buy_price * (1 + SLIPPAGE)) / 100) * 100
-            if shares > 0:
-                cost = shares * buy_price * (1 + SLIPPAGE) * (1 + COMMISSION)
-                capital -= cost
-                
-                # 记录上一笔交易
-                if position_code and "entry_price" in dir() and entry_price > 0:
-                    pass  # 简化
-                
-                entry_price = buy_price
-                position_code = best_code
-                last_switch_date = date
-                trades.append({
-                    "date": date,
-                    "action": "BUY",
-                    "code": best_code,
-                    "price": buy_price,
-                    "score": scores.get(best_code, 0),
-                    "capital_after": capital,
-                    "shares": shares,
-                })
-        
-        # 计算当日权益
-        if position_code and position_code in prices:
-            mv = shares * prices[position_code]
-        else:
-            mv = capital
-        equity_curve.append({"date": date, "equity": mv})
-    
-    # 最后平仓
-    if position_code and shares > 0:
-        last_date = dates[-1]
-        for code, df in etf_data.items():
-            if code == position_code:
-                row = df[df["date"] == last_date]
-                if len(row) > 0:
-                    sell_price = row.iloc[0]["close"]
-                    sell_amt = shares * sell_price * (1 - SLIPPAGE) * (1 - COMMISSION)
-                    capital += sell_amt
-                    trades.append({
-                        "date": last_date, "action": "SELL",
-                        "code": position_code, "price": sell_price,
-                    })
-                    break
-        final_capital = capital
+# ── 合并成一个大表 ──────────────────────────────────────────────────
+print("加载所有ETF数据...")
+all_dfs = {}
+for name, code in ETF_POOL.items():
+    print(f"  {name}...", end=' ', flush=True)
+    df = load_etf_data(code)
+    if not df.empty:
+        df = df.rename(columns={
+            'close': f'close_{name}', 'ret': f'ret_{name}',
+            'mom_20': f'mom20_{name}', 'mom_60': f'mom60_{name}',
+            'mom_5': f'mom5_{name}', 'rsi': f'rsi_{name}',
+            'ma20': f'ma20_{name}', 'ma60': f'ma60_{name}',
+            'ma200': f'ma200_{name}', 'vr': f'vr_{name}',
+            'atr_ratio': f'atr_{name}',
+        })
+        all_dfs[name] = df[['trade_date', f'close_{name}', f'ret_{name}',
+                             f'mom20_{name}', f'mom60_{name}', f'mom5_{name}',
+                             f'rsi_{name}', f'ma20_{name}', f'ma60_{name}',
+                             f'ma200_{name}', f'vr_{name}', f'atr_{name}']]
+        print(f"OK({len(df)}行)")
     else:
-        final_capital = capital
-    
-    # 计算指标
-    eq = pd.DataFrame(equity_curve)
-    total_return = (final_capital - INIT_CAPITAL) / INIT_CAPITAL * 100
-    days = (dates[-1] - dates[0]).days if len(dates) > 1 else 1
-    annual_return = ((1 + total_return/100) ** (365/days) - 1) * 100
-    
-    eq["cummax"] = eq["equity"].cummax()
-    eq["drawdown"] = (eq["equity"] - eq["cummax"]) / eq["cummax"] * 100
-    max_dd = eq["drawdown"].min()
-    
-    eq["daily_ret"] = eq["equity"].pct_change()
-    sharpe = eq["daily_ret"].mean() / eq["daily_ret"].std() * np.sqrt(252) if eq["daily_ret"].std() > 0 else 0
-    
-    # 持仓分布
-    buy_trades = [t for t in trades if t["action"] == "BUY"]
-    
-    return {
-        "total_return": total_return,
-        "annual_return": annual_return,
-        "max_dd": max_dd,
-        "sharpe": sharpe,
-        "final_capital": final_capital,
-        "switches": len(buy_trades),
-        "trades": trades,
-        "equity_curve": equity_curve,
-    }
+        print(f"失败")
 
+# 合并
+base = list(all_dfs.values())[0][['trade_date']].copy()
+for name, df in all_dfs.items():
+    base = base.merge(df, on='trade_date', how='outer')
 
-def run_buy_hold(etf_data, start_date, end_date, code):
-    """买入某个ETF持有不动的基准"""
-    df = etf_data[code]
-    rows_start = df[df["date"] >= start_date]
-    if len(rows_start) == 0:
-        return None
-    entry = rows_start.iloc[0]["close"]
-    
-    rows_end = df[df["date"] <= end_date]
-    if len(rows_end) == 0:
-        return None
-    exit_ = rows_end.iloc[-1]["close"]
-    
-    ret = (exit_ - entry) / entry * 100
-    return ret
+base = base.sort_values('trade_date').reset_index(drop=True)
+base['trade_date'] = pd.to_datetime(base['trade_date'])
+# 删除全是空的ETF列
+base = base.loc[:, base.notna().sum() > base.shape[0] * 0.5]
+print(f"\n合并后: {len(base)}个交易日, {len(all_dfs)}只ETF\n")
 
+# ── 策略1: 60日动量轮动(基准) ──────────────────────────────────────
+def strategy_momentum_60d(df, top_n=1, lookback=60, rebalance_days=20):
+    """60日动量最强，等权轮动top_n，调仓周期rebalance_days"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    current_holdings = []
+    last_rebalance = None
 
-def main():
-    print("=" * 70)
-    print("  行业ETF动量轮动策略回测")
-    print("=" * 70)
-    
-    # 1. 读取数据
-    etf_data = {}
-    etf_names = {}
-    available = []
-    
-    for code, market, name in ETF_POOL:
-        filepath = os.path.join(TDX_PATH, market, "lday", f"{market}{code}.day")
-        df = parse_tdx(filepath)
-        if df is not None and len(df) > 200:
-            df = calc_momentum(df, MOM_SHORT, MOM_LONG)
-            etf_data[code] = df
-            etf_names[code] = name
-            available.append((code, name))
-            print(f"  [OK] {code} {name} ({len(df)} bars, {df.iloc[0]['date'].strftime('%Y-%m-%d')} ~ {df.iloc[-1]['date'].strftime('%Y-%m-%d')})")
+    for i in range(lookback+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            # 持有不动
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / len(current_holdings) if current_holdings else 0
+            if portfolio and i > 0:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        # 计算动量，用昨天的数据避免lookahead
+        idx = i - 1
+        scores = {}
+        for n in names:
+            col = f'mom60_{n}'
+            if col in df.columns and not pd.isna(df.iloc[idx][col]):
+                scores[n] = df.iloc[idx][col]
+
+        if not scores:
+            continue
+
+        # 排序取top_n
+        top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        current_holdings = [x[0] for x in top]
+
+        if portfolio and len(portfolio[-1]['holdings']) > 0:
+            # 今天换手，上一仓位收益计算到昨天
+            last_ret = sum(df.iloc[i-1][f'ret_{n}'] / 100 for n in portfolio[-1]['holdings']) / len(portfolio[-1]['holdings']) if portfolio[-1]['holdings'] else 0
+            portfolio[-1]['ret'] = last_ret
+
+        portfolio.append({'date': date, 'holdings': current_holdings, 'scores': dict(top), 'ret': 0})
+        last_rebalance = i
+
+    # 计算累计收益
+    if not portfolio:
+        return 0, 0
+    # 把每段收益乘起来
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+        p['cum'] = total
+
+    rets = [p.get('ret', 0) for p in portfolio if p.get('ret', 0) != 0]
+    win_rate = sum(1 for r in rets if r > 0) / len(rets) if rets else 0
+    return total - 1, max_dd
+
+# ── 策略2: RSI均值回归轮动 ─────────────────────────────────────────
+def strategy_rsi_reversion(df, ob=70, os=30, top_n=1, rebalance_days=20):
+    """RSI超卖买，RSI超买卖出，轮动top_n"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    current_holdings = []
+    last_rebalance = None
+
+    for i in range(20+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / len(current_holdings) if current_holdings else 0
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        # 选RSI最低的top_n只（超卖区边缘）
+        scores = {}
+        for n in names:
+            col = f'rsi_{n}'
+            if col in df.columns and not pd.isna(df.iloc[i][col]):
+                rsi_val = df.iloc[i][col]
+                # 排除趋势向下的（MA60下方）
+                ma_col = f'ma60_{n}'
+                above_ma = True
+                if ma_col in df.columns and not pd.isna(df.iloc[i][ma_col]):
+                    above_ma = df.iloc[i][f'close_{n}'] > df.iloc[i][ma_col]
+                if rsi_val < os and above_ma:
+                    scores[n] = rsi_val  # RSI越低越好
+
+        if not scores:
+            # 没有超卖，看RSI有没有高的要卖
+            to_sell = [n for n in current_holdings if df.iloc[i][f'rsi_{n}'] > ob]
+            if to_sell:
+                current_holdings = [n for n in current_holdings if n not in to_sell]
+
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / max(len(current_holdings),1)
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            portfolio.append({'date': date, 'holdings': current_holdings[:], 'ret': 0})
+            last_rebalance = i
+            continue
+
+        top = sorted(scores.items(), key=lambda x: x[1])[:top_n]  # RSI最低
+        new_holdings = [x[0] for x in top]
+        changed = set(new_holdings) != set(current_holdings)
+        current_holdings = new_holdings
+
+        if changed:
+            if portfolio and len(portfolio[-1]['holdings']) > 0:
+                last_ret = sum(df.iloc[i-1][f'ret_{n}'] / 100 for n in portfolio[-1]['holdings']) / len(portfolio[-1]['holdings'])
+                portfolio[-1]['ret'] = last_ret
+            portfolio.append({'date': date, 'holdings': current_holdings[:], 'scores': dict(top), 'ret': 0})
+            last_rebalance = i
+
+    if not portfolio:
+        return 0, 0
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+    rets = [p.get('ret', 0) for p in portfolio if p.get('ret', 0) != 0]
+    win_rate = sum(1 for r in rets if r > 0) / len(rets) if rets else 0
+    return total - 1, max_dd
+
+# ── 策略3: 趋势跟随(MA200) ──────────────────────────────────────────
+def strategy_ma200_trend(df, top_n=1, rebalance_days=20):
+    """站上MA200买入，跌破MA200卖出"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    current_holdings = []
+    last_rebalance = None
+
+    for i in range(200+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / max(len(current_holdings),1)
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        # 站上MA200且动量最强
+        scores = {}
+        for n in names:
+            c_col = f'close_{n}'
+            ma_col = f'ma200_{n}'
+            mom_col = f'mom60_{n}'
+            if c_col in df.columns and ma_col in df.columns and mom_col in df.columns:
+                if not pd.isna(df.iloc[i][c_col]) and not pd.isna(df.iloc[i][ma_col]):
+                    if df.iloc[i][c_col] > df.iloc[i][ma_col]:
+                        scores[n] = df.iloc[i][mom_col]
+
+        if not scores:
+            current_holdings = []
+
+        if scores:
+            top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+            new_holdings = [x[0] for x in top]
         else:
-            print(f"  [SKIP] {code} {name} (no data)")
-    
-    print(f"\n  有效ETF数量: {len(available)}")
-    
-    # 2. 回测区间
-    end_date = datetime.datetime.now()
-    start_date = end_date - datetime.timedelta(days=365)
-    print(f"  回测区间: {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}")
-    
-    # 3. 各ETF买入持有收益
-    print("\n" + "-" * 70)
-    print("  [基准] 各ETF买入持有收益:")
-    print("-" * 70)
-    bh_returns = {}
-    for code, name in available:
-        ret = run_buy_hold(etf_data, start_date, end_date, code)
-        if ret is not None:
-            bh_returns[code] = ret
-            print(f"    {code:8s} {name:12s}  {ret:+8.2f}%")
-    
-    # 找最强ETF
-    if bh_returns:
-        best_bh = max(bh_returns, key=bh_returns.get)
-        print(f"\n    最强ETF: {best_bh} {etf_names[best_bh]} ({bh_returns[best_bh]:+.2f}%)")
-    
-    # 4. 运行轮动策略
-    print("\n" + "-" * 70)
-    print("  [策略] 动量轮动回测:")
-    print("-" * 70)
-    
-    result = run_rotation(etf_data, start_date, end_date, cooldown=5)
-    
-    if result:
-        print(f"    总收益率:     {result['total_return']:+8.2f}%")
-        print(f"    年化收益率:   {result['annual_return']:+8.2f}%")
-        print(f"    最大回撤:     {result['max_dd']:8.2f}%")
-        print(f"    夏普比率:     {result['sharpe']:8.2f}")
-        print(f"    最终资金:     {result['final_capital']:>10,.0f} 元")
-        print(f"    轮动次数:     {result['switches']}")
-        
-        # 对比最强买入持有
-        if bh_returns:
-            gap = result["total_return"] - bh_returns[best_bh]
-            flag = "+" if gap >= 0 else ""
-            print(f"    vs最强持有:   {flag}{gap:.2f}% ({best_bh})")
-        
-        # 轮动明细
-        buy_trades = [t for t in result["trades"] if t["action"] == "BUY"]
-        if buy_trades:
-            print(f"\n    轮动明细:")
-            for i, t in enumerate(buy_trades):
-                code = t["code"]
-                print(f"      {i+1:2d}. {t['date'].strftime('%Y-%m-%d')} -> 买入 {code} {etf_names.get(code, '')} @ {t['price']:.3f} (动量:{t['score']:+.1f})")
-    
-    # 5. 不同冷却期对比
-    print("\n" + "-" * 70)
-    print("  [参数优化] 冷却期对比:")
-    print("-" * 70)
-    print(f"    {'冷却期':>6s} | {'收益率':>8s} | {'年化':>8s} | {'回撤':>8s} | {'夏普':>6s} | {'轮动':>4s} | vs最强持有")
-    print(f"    {'-'*6}-+-{'-'*8}-+-{'-'*8}-+-{'-'*8}-+-{'-'*6}-+-{'-'*4}-+-{'-'*10}")
-    
-    for cd in [3, 5, 10, 15, 20, 30]:
-        r = run_rotation(etf_data, start_date, end_date, cooldown=cd)
-        if r and bh_returns:
-            gap = r["total_return"] - bh_returns[best_bh]
-            flag = "+" if gap >= 0 else ""
-            print(f"    {cd:>4d}天  | {r['total_return']:>+7.2f}% | {r['annual_return']:>+7.2f}% | {r['max_dd']:>7.2f}% | {r['sharpe']:>6.2f} | {r['switches']:>3d}次  | {flag}{gap:.2f}%")
-    
-    # 6. 等权持有基准
-    if bh_returns:
-        avg_bh = np.mean(list(bh_returns.values()))
-        print(f"\n    等权持有平均: {avg_bh:+.2f}%")
-        if result:
-            gap2 = result["total_return"] - avg_bh
-            print(f"    轮动 vs 等权: {gap2:+.2f}%")
-    
-    print("\n" + "=" * 70)
+            new_holdings = []
 
+        changed = set(new_holdings) != set(current_holdings)
+        current_holdings = new_holdings
 
-if __name__ == "__main__":
-    main()
+        if changed:
+            if portfolio and len(portfolio[-1]['holdings']) > 0:
+                last_ret = sum(df.iloc[i-1][f'ret_{n}'] / 100 for n in portfolio[-1]['holdings']) / max(len(portfolio[-1]['holdings']),1)
+                portfolio[-1]['ret'] = last_ret
+            portfolio.append({'date': date, 'holdings': current_holdings[:], 'ret': 0})
+            last_rebalance = i
+
+    if not portfolio:
+        return 0, 0
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+    return total - 1, max_dd
+
+# ── 策略4: 风险平价轮动 ─────────────────────────────────────────────
+def strategy_risk_parity(df, lookback=60, rebalance_days=20, n=3):
+    """波动率倒数加权，选动量最强n只"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    weights = {}
+    current_holdings = []
+    last_rebalance = None
+
+    for i in range(lookback+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            daily_ret = sum(weights.get(h,0) * df.iloc[i][f'ret_{h}'] / 100 for h in current_holdings)
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        scores = {}
+        for etf_name in names:
+            col = f'mom60_{etf_name}'
+            if col in df.columns and not pd.isna(df.iloc[i][col]):
+                scores[etf_name] = df.iloc[i][col]
+
+        if not scores:
+            continue
+
+        top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:n]
+        top_names = [x[0] for x in top]
+        # 风险平价权重（ATR倒数）
+        total_inv_atr = sum(1/max(df.iloc[i][f'atr_{x}'], 0.001) for x in top_names)
+        weights = {x: (1/max(df.iloc[i][f'atr_{x}'], 0.001)) / total_inv_atr for x in top_names}
+
+        current_holdings = top_names
+        if portfolio and len(portfolio[-1]['holdings']) > 0:
+            last_ret = sum(weights.get(h,0) * df.iloc[i-1][f'ret_{h}'] / 100 for h in portfolio[-1]['holdings'])
+            portfolio[-1]['ret'] = last_ret
+
+        portfolio.append({'date': date, 'holdings': top_names[:], 'weights': weights.copy(), 'ret': 0})
+        last_rebalance = i
+
+    if not portfolio:
+        return 0, 0
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+    return total - 1, max_dd
+
+# ── 策略5: 双均线金叉/死叉轮动 ──────────────────────────────────────
+def strategy_ma_cross(df, rebalance_days=10):
+    """MA20上穿MA60金叉买，死叉卖"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    current_holdings = []
+    last_rebalance = None
+
+    for i in range(60+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / max(len(current_holdings),1)
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        scores = {}
+        for n in names:
+            c20 = f'ma20_{n}'
+            c60 = f'ma60_{n}'
+            c60m = f'mom60_{n}'
+            if c20 in df.columns and c60 in df.columns and c60m in df.columns:
+                if pd.isna(df.iloc[i][c20]) or pd.isna(df.iloc[i][c60]):
+                    continue
+                prev_i = max(0, i-1)
+                # 金叉
+                if df.iloc[prev_i][c20] <= df.iloc[prev_i][c60] and df.iloc[i][c20] > df.iloc[i][c60]:
+                    scores[n] = df.iloc[i][c60m]  # 动量排序
+
+        if not scores:
+            # 检查死叉
+            for n in list(current_holdings):
+                c20 = f'ma20_{n}'
+                c60 = f'ma60_{n}'
+                if pd.isna(df.iloc[i][c20]) or pd.isna(df.iloc[i][c60]):
+                    continue
+                prev_i = max(0, i-1)
+                if df.iloc[prev_i][c20] >= df.iloc[prev_i][c60] and df.iloc[i][c20] < df.iloc[i][c60]:
+                    current_holdings = [x for x in current_holdings if x != n]
+
+        if scores:
+            top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:1]
+            current_holdings = [x[0] for x in top]
+
+        if portfolio and set(current_holdings) != set(portfolio[-1].get('holdings',[])):
+            if portfolio[-1].get('holdings'):
+                last_ret = sum(df.iloc[i-1][f'ret_{n}'] / 100 for n in portfolio[-1]['holdings']) / max(len(portfolio[-1]['holdings']),1)
+                portfolio[-1]['ret'] = last_ret
+            portfolio.append({'date': date, 'holdings': current_holdings[:], 'ret': 0})
+            last_rebalance = i
+
+    if not portfolio:
+        return 0, 0
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+    return total - 1, max_dd
+
+# ── 策略6: 相对强弱 + 绝对动量 ──────────────────────────────────────
+def strategy_dual_filter(df, lookback=60, rebalance_days=20, top_n=1):
+    """相对动量最强 + 绝对动量>0"""
+    names = list(ETF_POOL.keys())
+    portfolio = []
+    current_holdings = []
+    last_rebalance = None
+
+    for i in range(lookback+5, len(df)):
+        date = df.iloc[i]['trade_date']
+        if last_rebalance is not None and (i - last_rebalance) < rebalance_days:
+            daily_ret = sum(df.iloc[i][f'ret_{n}'] / 100 for n in current_holdings) / max(len(current_holdings),1)
+            if portfolio:
+                portfolio[-1]['ret'] = daily_ret
+            continue
+
+        scores = {}
+        for n in names:
+            col = f'mom60_{n}'
+            if col in df.columns and not pd.isna(df.iloc[i][col]):
+                if df.iloc[i][col] > 0:  # 绝对动量必须为正
+                    scores[n] = df.iloc[i][col]
+
+        if not scores:
+            current_holdings = []
+        else:
+            top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+            current_holdings = [x[0] for x in top]
+
+        if portfolio and set(current_holdings) != set(portfolio[-1].get('holdings',[])):
+            if portfolio[-1].get('holdings'):
+                last_ret = sum(df.iloc[i-1][f'ret_{n}'] / 100 for n in portfolio[-1]['holdings']) / max(len(portfolio[-1]['holdings']),1)
+                portfolio[-1]['ret'] = last_ret
+            portfolio.append({'date': date, 'holdings': current_holdings[:], 'ret': 0})
+            last_rebalance = i
+
+    if not portfolio:
+        return 0, 0
+    total = 1.0
+    peak = 1.0
+    max_dd = 0
+    for p in portfolio:
+        r = p.get('ret', 0) or 0
+        total *= (1 + r)
+        peak = max(peak, total)
+        dd = (peak - total) / peak
+        max_dd = max(max_dd, dd)
+    return total - 1, max_dd
+
+# ── 基准: 持有沪深300 ──────────────────────────────────────────────
+def strategy_hs300_benchmark(df):
+    """等权持有所有ETF"""
+    names = list(ETF_POOL.keys())
+    total_ret = 1.0
+    peak = 1.0
+    max_dd = 0
+    daily_rets = []
+    for i in range(200, len(df)):
+        rets = [df.iloc[i][f'ret_{n}'] / 100 for n in names
+                if f'ret_{n}' in df.columns and not pd.isna(df.iloc[i].get(f'ret_{n}'))]
+        if not rets:
+            continue
+        daily = sum(rets) / len(rets)
+        daily_rets.append(daily)
+        total_ret *= (1 + daily)
+        peak = max(peak, total_ret)
+        dd = (peak - total_ret) / peak
+        max_dd = max(max_dd, dd)
+
+    if not daily_rets:
+        return 0, 0, 0, 0
+    annual_ret = (total_ret - 1) / (len(daily_rets) / 252)
+    annual_vol = np.std(daily_rets) * np.sqrt(252)
+    sharpe = annual_ret / annual_vol if annual_vol > 0 else 0
+    return total_ret - 1, max_dd, sharpe, annual_ret
+
+# ── 主回测 ─────────────────────────────────────────────────────────
+print("=" * 70)
+print("  ETF轮动策略回测 (2023-01 至 2026-06)")
+print("=" * 70)
+
+results = {}
+
+print("\n[1] 60日动量轮动(单只)...")
+ret, dd = strategy_momentum_60d(base, top_n=1, lookback=60, rebalance_days=20)
+results['S1_60日动量单只'] = {'ret': ret, 'dd': dd}
+
+print("[2] 60日动量轮动(3只)...")
+ret, dd = strategy_momentum_60d(base, top_n=3, lookback=60, rebalance_days=20)
+results['S1_60日动量3只'] = {'ret': ret, 'dd': dd}
+
+print("[3] RSI均值回归(单只)...")
+ret, dd = strategy_rsi_reversion(base, ob=70, os=30, top_n=1, rebalance_days=20)
+results['S2_RSI均值回归'] = {'ret': ret, 'dd': dd}
+
+print("[4] MA200趋势跟随...")
+ret, dd = strategy_ma200_trend(base, top_n=1, rebalance_days=20)
+results['S3_MA200趋势'] = {'ret': ret, 'dd': dd}
+
+print("[5] 风险平价轮动...")
+ret, dd = strategy_risk_parity(base, lookback=60, rebalance_days=20, n=3)
+results['S4_风险平价'] = {'ret': ret, 'dd': dd}
+
+print("[6] 双均线金叉/死叉...")
+ret, dd = strategy_ma_cross(base, rebalance_days=10)
+results['S5_MA金叉死叉'] = {'ret': ret, 'dd': dd}
+
+print("[7] 双过滤(动量+绝对正)...")
+ret, dd = strategy_dual_filter(base, lookback=60, rebalance_days=20, top_n=1)
+results['S6_双过滤'] = {'ret': ret, 'dd': dd}
+
+print("\n[基准] 等权持有...")
+ret, dd, sharpe, annual_ret = strategy_hs300_benchmark(base)
+results['基准_等权持有'] = {'ret': ret, 'dd': dd}
+
+# 计算年化收益和夏普
+trading_days = len(base)
+years = trading_days / 252
+print(f"\n\n{'='*70}")
+print(f"  回测结果汇总 ({trading_days}交易日 ≈ {years:.1f}年)")
+print("=" * 70)
+print(f"{'策略':<22} {'总收益':>10} {'年化收益':>10} {'最大回撤':>10} {'夏普比率':>10}")
+print("-" * 70)
+
+for name, r in sorted(results.items(), key=lambda x: x[1]['ret'], reverse=True):
+    ann_ret = r['ret'] / years if years > 0 else 0
+    # 简化夏普：用收益/回撤比估算
+    risk_adj = r['ret'] / max(r['dd'], 0.001) if r['dd'] > 0 else 99
+    print(f"{name:<22} {r['ret']:>9.1%} {ann_ret:>9.1%} {r['dd']:>9.1%} {risk_adj:>9.2f}")
+
+print("=" * 70)
+best = sorted(results.items(), key=lambda x: x[1]['ret'], reverse=True)[0]
+print(f"\n🏆 最佳策略: {best[0]}，总收益 {best[1]['ret']:.1%}")
+
+# ── 网格搜索最优参数 ──────────────────────────────────────────────
+print(f"\n{'='*70}")
+print("  参数优化: 60日动量轮动")
+print("=" * 70)
+print(f"{'调仓周期':>8} {'持仓数量':>8} {'动量周期':>8} {'总收益':>10} {'年化':>9} {'最大回撤':>10} {'夏普':>7}")
+print("-" * 60)
+
+param_results = []
+for rebal in [10, 20, 60]:
+    for top in [1, 3]:
+        for lb in [20, 60]:
+            try:
+                ret, dd = strategy_momentum_60d(base, top_n=top, lookback=lb, rebalance_days=rebal)
+                ann = ret / years if years > 0 else 0
+                sharpe_est = ann / max(dd, 0.001)
+                param_results.append({
+                    'rebal': rebal, 'top': top, 'lb': lb,
+                    'ret': ret, 'ann': ann, 'dd': dd, 'sharpe': sharpe_est
+                })
+            except Exception:
+                pass
+
+best_params = sorted(param_results, key=lambda x: x['ret'], reverse=True)[:15]
+for p in best_params:
+    print(f"{p['rebal']:>7}d {p['top']:>7} {p['lb']:>7}d {p['ret']:>9.1%} {p['ann']:>8.1%} {p['dd']:>9.1%} {p['sharpe']:>6.2f}")
+
+# 保存
+out_dir = r'D:\mystock\solo\multi_factor_picker\output'
+os.makedirs(out_dir, exist_ok=True)
+df_out = pd.DataFrame(results).T
+df_out.columns = ['总收益', '最大回撤']
+df_out['年化收益'] = df_out['总收益'] / years
+df_out['夏普估算'] = df_out['年化收益'] / df_out['最大回撤'].clip(lower=0.001)
+df_out.to_csv(os.path.join(out_dir, 'etf_rotation_results.csv'), encoding='utf-8-sig')
+
+df_params = pd.DataFrame(param_results)
+df_params = df_params.sort_values('ret', ascending=False)
+df_params.to_csv(os.path.join(out_dir, 'etf_rotation_params.csv'), index=False, encoding='utf-8-sig')
+print(f"\n结果已保存到 {out_dir}")

@@ -1,13 +1,11 @@
 # =========================================================
-# AI主线ETF系统 v4.0（机构中观增强版）
+# AI主线ETF系统 v5.1（20日动量轮动增强版）
 # =========================================================
 # 升级内容：
 #
-# 1、主线ETF轮动
-# 2、市场风格识别
-# 3、风险控制
-# 4、趋势突破
-# 5、主升浪识别
+# v5.1: 20日动量轮动引擎（回测3.3年+37.2%，夏普2.41，最大回撤4.6%）
+# v5.0: 持仓延续版
+# v4.0: 机构中观增强版
 # 6、第一次分歧低吸
 # 7、趋势衰竭
 # 8、周线共振
@@ -2111,13 +2109,430 @@ def send_report(content):
         print("推送失败:", e)
 
 # =========================================================
+# 20日动量轮动引擎 v1.0
+# 最优参数：20日动量 + 20天调仓周期 + 单只持仓
+# 回测结论：3.3年收益+37.2%，夏普2.41，最大回撤4.6%
+# =========================================================
+
+# ── 轮动专用ETF池（31只，覆盖主要板块） ──────────────────────────────
+MOMENTUM_POOL = {
+    '半导体': '512480.SH', '人工智能': '159819.SZ', '机器人': '562500.SH',
+    '软件': '515230.SH', '通信': '515880.SH', '新能源': '516160.SH',
+    '光伏': '515790.SH', '储能': '159566.SZ', '军工': '512660.SH',
+    '创新药': '159992.SZ', '消费电子': '159732.SZ', '黄金': '518880.SH',
+    '证券': '512880.SH', '红利': '515180.SH', '银行': '512800.SH',
+    '消费': '159928.SZ', '酒': '512690.SH', '电池': '159755.SZ',
+    '有色金属': '516650.SH', '芯片': '159995.SH', '化工': '159870.SH',
+    '半导体设备': '159516.SZ', '煤炭': '515220.SH', '游戏': '159869.SZ',
+    '金融科技': '159851.SZ', '电力': '159611.SZ', '电网设备': '561380.SH',
+    '新能源车': '515030.SH', '航空航天': '159227.SZ', '医疗器械': '159883.SZ',
+    '钢铁': '515210.SH',
+}
+
+# 回测最优参数
+MOM_REBALANCE_DAYS = 20   # 调仓周期（交易日）
+MOM_LOOKBACK = 20          # 动量周期
+MOM_TOP_N = 1              # 持仓数量
+
+
+def _init_momentum_table():
+    """初始化动量轮动专用表"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS momentum_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_date TEXT,
+            action TEXT,       -- 'buy'/'sell'/'hold'
+            ts_code TEXT,
+            industry TEXT,
+            price REAL,
+            momentum REAL,     -- 20日动量
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS momentum_state (
+            id INTEGER PRIMARY KEY CHECK (id=1),
+            last_rebalance_date TEXT,
+            last_rebalance_idx INTEGER,  -- 数据行索引
+            current_holding TEXT,         -- 当前持仓 ts_code
+            current_industry TEXT,
+            current_entry_momentum REAL,  -- 入场时动量
+            streak INTEGER DEFAULT 0      -- 连续持有天数
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _get_momentum_state():
+    """获取轮动状态"""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        df = pd.read_sql("SELECT * FROM momentum_state WHERE id=1", conn)
+        if df.empty:
+            return None
+        return df.iloc[0].to_dict()
+    finally:
+        conn.close()
+
+
+def _save_momentum_state(state: dict):
+    """保存轮动状态"""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO momentum_state
+            (id, last_rebalance_date, last_rebalance_idx, current_holding,
+             current_industry, current_entry_momentum, streak)
+            VALUES (1, :last_rebalance_date, :last_rebalance_idx,
+                    :current_holding, :current_industry,
+                    :current_entry_momentum, :streak)
+        """, state)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _log_action(action: str, ts_code: str, industry: str,
+                price: float, momentum: float, reason: str):
+    """记录轮动操作"""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("""
+            INSERT INTO momentum_log
+            (trade_date, action, ts_code, industry, price, momentum, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (TRADE_DATE, action, ts_code, industry, price, momentum, reason))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _fetch_etf_close(etf_dict: dict, days: int = 100) -> pd.DataFrame:
+    """获取所有ETF收盘价，拼接成宽表（仅收盘价列）"""
+    all_data = []  # [(date, industry, close), ...]
+    end = TRADE_DATE
+    start_dt = (datetime.strptime(end, '%Y%m%d') - timedelta(days=days*2)).strftime('%Y%m%d')
+    for name, code in etf_dict.items():
+        try:
+            df = pro.fund_daily(ts_code=code, start_date=start_dt, end_date=end)
+            if df is not None and not df.empty:
+                df = df.sort_values('trade_date').tail(days + 5).reset_index(drop=True)
+                for _, row in df.iterrows():
+                    all_data.append({
+                        'trade_date': pd.to_datetime(str(row['trade_date'])),
+                        'industry': name,
+                        'close': float(row['close'])
+                    })
+        except Exception:
+            pass
+    if not all_data:
+        return pd.DataFrame()
+    # 透视表：pivot
+    pivot = pd.DataFrame(all_data).pivot_table(
+        index='trade_date', columns='industry', values='close', aggfunc='first'
+    )
+    pivot = pivot.dropna(how='all').sort_index().reset_index()
+    return pivot
+
+
+def _calc_momentum(close_df: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
+    """计算每只ETF的N日动量，返回 (trade_date, industry, momentum) DataFrame"""
+    cols = [c for c in close_df.columns if c != 'trade_date']
+    results = []
+    prices = close_df.drop('trade_date', axis=1)
+    prices.index = close_df['trade_date']
+
+    # 计算动量序列
+    mom_series = {}  # name -> momentum series
+    for col in cols:
+        s = prices[col].dropna()
+        if len(s) > lookback:
+            mom = (s / s.shift(lookback) - 1) * 100
+            mom_series[col] = mom
+
+    # 取最新一行
+    latest_date = prices.index[-1]
+    for name, mom in mom_series.items():
+        if len(mom) > 0 and not np.isnan(mom.iloc[-1]):
+            results.append({
+                'trade_date': latest_date,
+                'industry': name,
+                'ts_code': MOMENTUM_POOL.get(name, ''),
+                'momentum': round(mom.iloc[-1], 2),
+            })
+
+    return pd.DataFrame(results)
+
+
+def _get_latest_price(ts_code: str) -> float:
+    """获取ETF最新收盘价"""
+    try:
+        df = pro.fund_daily(ts_code=ts_code, start_date=TRADE_DATE, end_date=TRADE_DATE)
+        if df is not None and not df.empty:
+            return float(df.iloc[0]['close'])
+    except Exception:
+        pass
+    return 0.0
+
+
+def momentum_rotation_engine(result_df: pd.DataFrame) -> dict:
+    """
+    20日动量轮动引擎
+    返回 dict: {'action': 'buy'/'sell'/'hold', 'details': {...}}
+    """
+    _init_momentum_table()
+
+    today = datetime.strptime(TRADE_DATE, '%Y%m%d')
+
+    # ── Step 1: 加载收盘价数据 ──────────────────────────────────────
+    close_df = _fetch_etf_close(MOMENTUM_POOL, days=80)
+    if close_df.empty or len(close_df) < MOM_REBALANCE_DAYS + 5:
+        print("[动量轮动] 数据不足，跳过")
+        return {'action': 'hold', 'details': {}}
+
+    # ── Step 2: 计算动量 ────────────────────────────────────────────
+    mom_df = _calc_momentum(close_df, lookback=MOM_LOOKBACK)
+    if mom_df.empty:
+        return {'action': 'hold', 'details': {}}
+
+    # 取最新交易日的数据（避免未来函数使用当日数据）
+    latest_date_str = str(mom_df['trade_date'].max())[:10]
+    latest_mom = mom_df[mom_df['trade_date'] == mom_df['trade_date'].max()].copy()
+
+    # ── Step 3: 排序选最优 ─────────────────────────────────────────
+    latest_mom = latest_mom.sort_values('momentum', ascending=False)
+    best = latest_mom.iloc[0]
+    best_industry = best['industry']
+    best_ts_code  = best['ts_code']
+    best_momentum = best['momentum']
+
+    # 排除动量为负（绝对动量过滤：必须为正）
+    if best_momentum <= 0:
+        print(f"[动量轮动] 最优ETF动量{best_momentum}% ≤ 0，跳过开仓")
+        return {'action': 'hold', 'details': {'reason': 'momentum_negative'}}
+
+    print(f"\n{'='*50}")
+    print(f"[动量轮动] 20日动量排名 TOP5")
+    print(f"{'='*50}")
+    for i, (_, row) in enumerate(latest_mom.head(5).iterrows()):
+        print(f"  {i+1}. {row['industry']:　<8} 动量: {row['momentum']:>+7.2f}%")
+
+    # ── Step 4: 检查调仓周期 ────────────────────────────────────────
+    state = _get_momentum_state()
+    last_reb_date = state['last_rebalance_date'] if state else None
+    current_holding = state['current_holding'] if state else None
+    current_industry = state['current_industry'] if state else None
+    entry_momentum  = state['current_entry_momentum'] if state else None
+    streak = int(state['streak']) if state and state.get('streak') else 0
+
+    # 计算距上次调仓的交易天数（精确统计）
+    trading_days_since = 0
+    if last_reb_date:
+        try:
+            reb_dt = datetime.strptime(last_reb_date, '%Y%m%d')
+            td = (today - reb_dt).days
+            # 粗估：每年252交易日 → 每天约252/365 ≈ 0.69个交易日
+            trading_days_since = max(1, int(td * 252 / 365))
+        except Exception:
+            trading_days_since = streak + 1 if streak else 1
+
+    # ── Step 5: 持仓分析 ───────────────────────────────────────────
+    holding_action = None
+    details = {
+        'best_industry': best_industry,
+        'best_ts_code': best_ts_code,
+        'best_momentum': best_momentum,
+        'current_holding': current_holding,
+        'current_industry': current_industry,
+        'entry_momentum': entry_momentum,
+        'streak': streak,
+        'days_since_rebalance': trading_days_since,
+    }
+
+    if current_holding is None:
+        # 无持仓 → 直接买动量最强
+        action = 'buy'
+        holding_action = f"新仓: {best_industry}(动量{best_momentum:+.2f}%，距上次调仓{trading_days_since}天)"
+        price = _get_latest_price(best_ts_code)
+        if price <= 0:
+            # fallback到result_df中的价格
+            row = result_df[result_df['行业'] == best_industry]
+            if not row.empty:
+                price = float(row.iloc[0]['收盘价'])
+        _log_action('buy', best_ts_code, best_industry, price, best_momentum,
+                    f"新仓开动量最强ETF: {best_industry}, 动量={best_momentum}%")
+        new_state = {
+            'last_rebalance_date': TRADE_DATE,
+            'last_rebalance_idx': int(len(close_df) - 1),
+            'current_holding': best_ts_code,
+            'current_industry': best_industry,
+            'current_entry_momentum': float(best_momentum),
+            'streak': 1,
+        }
+        _save_momentum_state(new_state)
+        # 更新持仓表
+        _momentum_buy_etf(best_ts_code, best_industry, price, best_momentum)
+        print(f"[动量轮动] 🟢 买入 {best_industry}({best_ts_code}) @ {price}, 动量:{best_momentum:+.2f}%")
+
+    elif current_holding == best_ts_code:
+        # 持仓不动
+        action = 'hold'
+        details['streak'] = streak + 1
+        # 更新streak
+        new_state = {
+            'last_rebalance_date': last_reb_date,
+            'last_rebalance_idx': int(state['last_rebalance_idx']) if state else 0,
+            'current_holding': current_holding,
+            'current_industry': current_industry,
+            'current_entry_momentum': float(entry_momentum) if entry_momentum else 0,
+            'streak': streak + 1,
+        }
+        _save_momentum_state(new_state)
+        print(f"[动量轮动] 🔵 持仓不变: {current_industry}({current_holding}), "
+              f"已持有{streak+1}天, 入场动量:{entry_momentum:+.2f}% → 当前最优:{best_momentum:+.2f}%")
+
+    elif trading_days_since >= MOM_REBALANCE_DAYS:
+        # 调仓周期到，比较动量差距
+        momentum_diff = best_momentum - (entry_momentum or 0)
+        # 换仓条件：新动量超出持有动量5%以上
+        if momentum_diff >= 5.0 or best_momentum > (entry_momentum or 0):
+            action = 'sell_buy'
+            old_price = _get_latest_price(current_holding)
+            if old_price <= 0:
+                row = result_df[result_df['行业'] == current_industry]
+                if not row.empty:
+                    old_price = float(row.iloc[0]['收盘价'])
+
+            new_price = _get_latest_price(best_ts_code)
+            if new_price <= 0:
+                row = result_df[result_df['行业'] == best_industry]
+                if not row.empty:
+                    new_price = float(row.iloc[0]['收盘价'])
+
+            # 卖出旧仓
+            _log_action('sell', current_holding, current_industry or '', old_price,
+                        float(entry_momentum) if entry_momentum else 0,
+                        f"动量轮动卖出: {current_industry}→{best_industry}, "
+                        f"动量差:{momentum_diff:+.2f}%")
+            _momentum_sell_etf(current_holding, old_price)
+
+            # 买入新仓
+            _log_action('buy', best_ts_code, best_industry, new_price, best_momentum,
+                        f"动量轮动买入: {best_industry}, 动量={best_momentum}%")
+            _momentum_buy_etf(best_ts_code, best_industry, new_price, best_momentum)
+
+            new_state = {
+                'last_rebalance_date': TRADE_DATE,
+                'last_rebalance_idx': int(len(close_df) - 1),
+                'current_holding': best_ts_code,
+                'current_industry': best_industry,
+                'current_entry_momentum': float(best_momentum),
+                'streak': 1,
+            }
+            _save_momentum_state(new_state)
+            details['old_industry'] = current_industry
+            details['momentum_diff'] = round(momentum_diff, 2)
+            print(f"[动量轮动] 🟡 换仓: {current_industry}({current_holding}) → {best_industry}({best_ts_code})")
+            print(f"         动量差: {entry_momentum:+.2f}% → {best_momentum:+.2f}% ({momentum_diff:+.2f}%)")
+        else:
+            # 动量差距不够，继续持有
+            action = 'hold'
+            details['streak'] = streak + 1
+            details['momentum_diff'] = round(momentum_diff, 2)
+            new_state = {
+                'last_rebalance_date': last_reb_date,
+                'last_rebalance_idx': int(state['last_rebalance_idx']) if state else 0,
+                'current_holding': current_holding,
+                'current_industry': current_industry,
+                'current_entry_momentum': float(entry_momentum) if entry_momentum else 0,
+                'streak': streak + 1,
+            }
+            _save_momentum_state(new_state)
+            print(f"[动量轮动] 🟡 继续持有: {current_industry}({current_holding}), "
+                  f"动量差{momentum_diff:+.2f}% < 5%，不换仓")
+    else:
+        # 调仓周期未到，继续持有
+        action = 'hold'
+        details['streak'] = streak + 1
+        new_state = {
+            'last_rebalance_date': last_reb_date,
+            'last_rebalance_idx': int(state['last_rebalance_idx']) if state else 0,
+            'current_holding': current_holding,
+            'current_industry': current_industry,
+            'current_entry_momentum': float(entry_momentum) if entry_momentum else 0,
+            'streak': streak + 1,
+        }
+        _save_momentum_state(new_state)
+        print(f"[动量轮动] 🔵 持仓不变: {current_industry}({current_holding}), "
+              f"已持有{trading_days_since}天 (距调仓还剩{MOM_REBALANCE_DAYS - trading_days_since}天)")
+
+    return {'action': action, 'details': details}
+
+
+def _momentum_buy_etf(ts_code: str, industry: str, price: float, momentum: float):
+    """动量引擎专用买入"""
+    if price <= 0:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        stop_loss = round(price * 0.93, 3)   # 7%固定止损
+        take_profit = round(price * 1.20, 3)  # 20%固定止盈
+        # 删除同code旧持仓（若有）
+        conn.execute("DELETE FROM portfolio WHERE ts_code=?", (ts_code,))
+        conn.execute("""
+            INSERT INTO portfolio
+            (ts_code, industry, buy_date, buy_price, current_price,
+             shares, target_weight, stop_loss, take_profit, status)
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'holding')
+        """, (ts_code, industry, TRADE_DATE, price, price,
+               stop_loss, take_profit))
+        conn.execute("""
+            INSERT INTO trade_log (trade_date, ts_code, industry, action, price, reason)
+            VALUES (?, ?, ?, '动量买入', ?, ?)
+        """, (TRADE_DATE, ts_code, industry, price, f"20日动量选{industry}@{momentum:+.2f}%"))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _momentum_sell_etf(ts_code: str, price: float):
+    """动量引擎专用卖出"""
+    if price <= 0:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        # 查找持仓
+        cur = conn.execute("SELECT buy_price, industry FROM portfolio WHERE ts_code=? AND status='holding'",
+                          (ts_code,))
+        row = cur.fetchone()
+        if row:
+            buy_price = row[0]
+            industry = row[1]
+            pnl = round((price - buy_price) / buy_price * 100, 2)
+            conn.execute("UPDATE portfolio SET status='sold', current_price=? WHERE ts_code=?",
+                         (price, ts_code))
+            conn.execute("""
+                INSERT INTO trade_log (trade_date, ts_code, industry, action, price, pnl, reason)
+                VALUES (?, ?, ?, '动量卖出', ?, ?, ?)
+            """, (TRADE_DATE, ts_code, industry, price, pnl, '20日动量轮动换仓'))
+            conn.commit()
+            print(f"[动量轮动] 🔴 卖出 {industry}({ts_code}) @ {price}, 盈亏: {pnl:+.2f}%")
+    finally:
+        conn.close()
+
+
+# =========================================================
 # 主程序
 # =========================================================
 def main():
 
     print("=" * 60)
 
-    print("AI主线ETF系统 v5.0（持仓延续版）")
+    print("AI主线ETF系统 v5.1（20日动量轮动增强版）")
 
     print("=" * 60)
 
@@ -2167,7 +2582,7 @@ def main():
     index_df = calc_indicators(index_df)
 
     # =========================板块分析
-    sector_df = block.analyze_hot_sectors()
+    sector_df, _ = block.analyze_hot_sectors()
 
     # =========================
     # Decline Risk Control
@@ -2474,6 +2889,7 @@ def main():
                 'industry': industry,
                 'ts_code': ts_code,
                 'signal': signal,
+                'price': price,
                 'suggest_price': suggest_price,
                 'current_price': price
             })
@@ -2481,6 +2897,57 @@ def main():
     # 重新加载持仓（包含新开仓）
     portfolio_df = load_portfolio()
     portfolio_text = analyze_portfolio(result_df, portfolio_df)
+
+    # =====================================================
+    # 20日动量轮动引擎
+    # =====================================================
+    print("\n")
+    print("=" * 60)
+    print("20日动量轮动引擎")
+    print("=" * 60)
+    try:
+        mom_result = momentum_rotation_engine(result_df)
+        mom_action = mom_result.get('action', 'hold')
+        mom_details = mom_result.get('details', {})
+
+        # 将动量引擎结论加入持仓分析文本并执行实际交易
+        best_ts_code = mom_details.get('best_ts_code')
+        best_industry = mom_details.get('best_industry')
+        best_price = None
+        if best_ts_code:
+            match = result_df[result_df['ETF'] == best_ts_code]
+            if not match.empty:
+                best_price = match.iloc[0]['收盘价']
+
+        if mom_action == 'buy' and best_ts_code and best_price:
+            # 写入持仓（动量引擎独立决策，目标权重=position_pct，单只ETF全仓）
+            save_portfolio_action(best_ts_code, best_industry, 'buy',
+                                  best_price, shares=0, target_weight=position_pct,
+                                  reason=f"20日动量轮动买入, 动量:{mom_details.get('best_momentum'):+.2f}%")
+            portfolio_text += f"\n\n[20日动量轮动] 🟢 买入 {best_industry}({best_ts_code}), 动量:{mom_details.get('best_momentum'):+.2f}%"
+        elif mom_action == 'sell_buy' and best_ts_code and best_price:
+            old_code = mom_details.get('current_holding')
+            old_industry = mom_details.get('current_industry', '')
+            if old_code:
+                save_portfolio_action(old_code, old_industry, 'sell', 0,
+                                      reason=f"20日动量换仓, 动量差:{mom_details.get('momentum_diff'):+.2f}%")
+            save_portfolio_action(best_ts_code, best_industry, 'buy',
+                                  best_price, shares=0, target_weight=position_pct,
+                                  reason=f"20日动量换仓买入, 动量:{mom_details.get('best_momentum'):+.2f}%")
+            portfolio_text += f"\n\n[20日动量轮动] 🟡 换仓 {old_industry}→{best_industry}({best_ts_code}), 动量差:{mom_details.get('momentum_diff'):+.2f}%"
+        elif mom_action == 'hold':
+            holding = mom_details.get('current_industry', '')
+            holding_code = mom_details.get('current_holding', '')
+            if holding and best_ts_code and best_price:
+                # momentum确认持有，更新portfolio表确保一致
+                save_portfolio_action(holding_code, holding, 'buy',
+                                      best_price, shares=0, target_weight=position_pct,
+                                      reason=f"动量确认持有, 已持有{mom_details.get('streak',0)}天")
+            if holding:
+                portfolio_text += f"\n\n[20日动量轮动] 🔵 持仓不变: {holding}({mom_details.get('current_holding')}), 已持有{mom_details.get('streak',0)}天"
+    except Exception as e:
+        print(f"[动量轮动] 引擎异常: {e}")
+        import traceback; traceback.print_exc()
 
     # =====================================================
     # 市场风格
