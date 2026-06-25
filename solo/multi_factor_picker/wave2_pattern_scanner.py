@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from reportlab.lib.units import mm
 """
 二波形态精选 v2.7 — stk_factor_pro 四形态并列版 + 中长线趋势过滤
@@ -84,6 +84,8 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 # ═══════════════════════════════════════════════════════
 # 全局变量：跟踪批量下载日期（从文件读取，持久化存储）
 _STK_FACTOR_BATCH_STATUS_FILE = os.path.join(CACHE_DIR, "stk_factor_batch_status.txt")
+# 全局集合：跟踪已尝试补充缓存的股票（避免重复日志）
+_cache_supplement_attempted = set()
 
 def _read_batch_status():
     """读取批量下载状态文件"""
@@ -192,24 +194,48 @@ def batch_cache_stk_factor_pro(target_date):
             # 按股票代码分组保存
             grouped = df_all.groupby('ts_code')
             saved_count = 0
+            adj_changed_count = 0
             for code, group_df in grouped:
                 cache_file = os.path.join(CACHE_DIR, f"stk_pro_{code}.csv")
                 df_cache = _read_cache(cache_file)
-                if df_cache is not None:
+                group_df = group_df.reset_index(drop=True)
+                
+                if df_cache is not None and not df_cache.empty:
+                    # 检测复权因子是否变化（除权检测）
+                    # 如果 adj_factor 变化，说明发生了除权/复权，历史qfq价格全部失效
+                    # 需要删除旧缓存，让后续调用重新下载全量数据
+                    if 'adj_factor' in df_cache.columns and 'adj_factor' in group_df.columns:
+                        cache_last_adj = df_cache['adj_factor'].iloc[-1]
+                        new_adj = group_df['adj_factor'].iloc[-1]
+                        if cache_last_adj != new_adj and cache_last_adj != 0 and new_adj != 0:
+                            print(f"[除权检测] {code} 复权因子变化: {cache_last_adj} -> {new_adj}，删除旧缓存待全量更新")
+                            adj_changed_count += 1
+                            # 删除旧缓存文件，后续调用会自动重新下载全量
+                            try:
+                                if os.path.exists(cache_file):
+                                    os.remove(cache_file)
+                            except:
+                                pass
+                            # ⚠️ 不保存任何东西，让 cached_stk_factor_pro 触发全量下载
+                            saved_count += 1
+                            continue
+                    
                     # ⚠️ 修复：重置索引避免重复索引问题
+                    # keep='last' 确保相同日期使用新数据（复权因子更新时）
                     df_cache = df_cache.reset_index(drop=True)
-                    group_df = group_df.reset_index(drop=True)
-                    combined = pd.concat([df_cache, group_df]).drop_duplicates(subset='trade_date').sort_values('trade_date').reset_index(drop=True)
+                    combined = pd.concat([df_cache, group_df]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
                     _save_cache(combined, cache_file)
                 else:
-                    # ⚠️ 修复：重置索引
-                    _save_cache(group_df.reset_index(drop=True), cache_file)
+                    _save_cache(group_df, cache_file)
                 saved_count += 1
             
             # ⚠️ 修复：只有成功保存数据后才更新状态
             _stk_factor_batch_downloaded_date = target_date
             _write_batch_status(target_date)  # 持久化到文件
-            print(f"[批量缓存] 完成：{saved_count} 只股票已缓存")
+            if adj_changed_count > 0:
+                print(f"[批量缓存] 完成：{saved_count} 只股票已缓存，{adj_changed_count} 只除权待全量更新")
+            else:
+                print(f"[批量缓存] 完成：{saved_count} 只股票已缓存")
         else:
             print(f"[批量缓存] 警告：{target_date} 无数据返回（可能还未到数据更新时间）")
             # 不更新状态，让后续调用可以重新尝试
@@ -274,7 +300,10 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
     2. 检查缓存是否覆盖请求范围
     3. 按需补充前面缺失的历史数据（如果已有缓存则无需补充）
     4. 对于次新股，跳过上市日期之前的日期
+    5. 使用全局集合避免重复日志打印（每只股票只打印一次）
     """
+    global _cache_supplement_attempted
+    
     # 1. 每天第一次调用时先批量缓存当天数据
     batch_cache_stk_factor_pro(end_date)
     
@@ -299,13 +328,15 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
                 return subset.sort_values('trade_date').reset_index(drop=True)
     
     # 4. 缓存不完整，补充当前股票缺失的数据
-    if list_date and list_date > start_date:
-        print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
+    # ⚠️ 使用全局集合避免重复日志（每只股票只打印一次）
+    supplement_key = f"{ts_code}_{required_min}_{end_date}"
+    if supplement_key not in _cache_supplement_attempted:
+        _cache_supplement_attempted.add(supplement_key)
+        if list_date and list_date > start_date:
+            print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
+        else:
+            print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
     
-    print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
-    
-    # 缓存不完整，直接一次性下载整个范围（不逐日判断缺失）
-    print(f"[缓存补充] {ts_code} 正在补充 {required_min}~{end_date} ...")
     try:
         df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
         time.sleep(0.06)
@@ -315,7 +346,8 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
             df_new = df_new.sort_values('trade_date').reset_index(drop=True)
             
             if df_cache is not None:
-                combined = pd.concat([df_cache, df_new]).drop_duplicates(subset='trade_date').sort_values('trade_date').reset_index(drop=True)
+                # keep='last' 确保相同日期使用新数据（复权因子更新时）
+                combined = pd.concat([df_cache, df_new]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
                 _save_cache(combined, cache_file)
             else:
                 _save_cache(df_new, cache_file)
@@ -325,7 +357,8 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
             if not result.empty:
                 return result
     except Exception as e:
-        print(f"[缓存补充] {ts_code} 失败: {e}")
+        if supplement_key not in _cache_supplement_attempted:
+            print(f"[缓存补充] {ts_code} 失败: {e}")
     
     # 保底：重新读取缓存
     df_cache = _read_cache(cache_file)
@@ -1450,6 +1483,11 @@ class WavePatternDetector:
             if (i + 1) % 50 == 0 or i == 0:
                 eta = (time.time() - t0) / max(i + 1, 1) * (total - i - 1) if i > 0 else 0
                 print(f"  进度 {i+1}/{total} ({code})  ETA {eta:.0f}s")
+
+            # ⚠️ 北交所股票跳过（不交易）
+            # 北交所代码规则：8xxxxx、4xxxxx、9xxxxx（含92开头的北交所新股）
+            if code.startswith(('8', '4')) or (code.startswith('9') and code.endswith('.SZ')):
+                continue
 
             # 四种形态并列检测，避免重复
             found_patterns = set()

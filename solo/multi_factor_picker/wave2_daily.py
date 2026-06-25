@@ -120,7 +120,8 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
     if df is not None and not df.empty:
         df['trade_date'] = df['trade_date'].astype(str)
         if df_cache is not None:
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
+            # keep='last' 确保相同日期使用新数据（复权因子更新时）
+            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date')
             _save_cache(combined, cache_file)
         else:
             _save_cache(df, cache_file)
