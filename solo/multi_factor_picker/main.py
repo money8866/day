@@ -930,8 +930,8 @@ def main():
         all_results = bull_scan(config, fetcher)
 
         # ── 一级过滤: 观察名单以上 ──
-        qualified = [r for r in all_results if r.final_score >= 70]
-        logger.info(f"一级过滤(>=70分): {len(qualified)} 只")
+        qualified = [r for r in all_results if r.final_score >= 55]
+        logger.info(f"一级过滤(>=55分): {len(qualified)} 只")
 
         # ── 二级精选过滤（核心输出） ──
         elite = secondary_filter(all_results)

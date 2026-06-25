@@ -142,6 +142,10 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
             df['low'] = df['low_qfq']
 
         # MA 已从 stk_factor_pro 获取，无需手动 rolling
+        # 补充 MA120/MA250（手动 rolling）
+        if 'close' in df.columns:
+            df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+            df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         # 计算近N日涨跌幅
         df['pct_5d'] = df['close'].pct_change(5)
@@ -252,6 +256,8 @@ for code, df in all_data.items():
 
         ma20_at_low = row_at_low.get('ma20', 0)
         ma60_at_low = row_at_low.get('ma60', 0)
+        ma120_at_low = row_at_low.get('ma120', 0)
+        ma250_at_low = row_at_low.get('ma250', 0)
         rsi_at_low = row_at_low.get('rsi_6', 50) or 50
         rsi12_at_low = row_at_low.get('rsi_12', 50) or 50
         kdj_j_at_low = row_at_low.get('kdj_j', 50) or 50
@@ -266,6 +272,8 @@ for code, df in all_data.items():
 
         above_ma20 = low_price > ma20_at_low
         above_ma60 = low_price > ma60_at_low
+        above_ma120 = low_price > ma120_at_low if ma120_at_low and ma120_at_low > 0 else None
+        above_ma250 = low_price > ma250_at_low if ma250_at_low and ma250_at_low > 0 else None
         near_boll = (boll_lower > 0) and (low_price <= boll_lower * 1.02)
         macd_golden = (macd_dif - macd_dea) > -0.02  # 接近金叉
         net_mf = row_at_low.get('net_mf_amount', 0) or 0
@@ -292,8 +300,8 @@ for code, df in all_data.items():
         elif converge_ratio > 1.5 and adjust_days >= 10:
             pattern = '三角收敛'
 
-        # 放量回调：回调10-20% + 量能放大
-        elif 0.10 <= pullback_pct <= 0.25 and vol_ratio > 1.0:
+        # 放量回调：回调10-<20% + 量能放大
+        elif 0.10 <= pullback_pct < 0.20 and vol_ratio > 1.0:
             pattern = '放量回调'
 
         # V型急跌急涨：短时间大幅回调
@@ -345,6 +353,8 @@ for code, df in all_data.items():
             'converge_ratio': round(converge_ratio, 2),
             'above_ma20': above_ma20,
             'above_ma60': above_ma60,
+            'above_ma120': above_ma120,
+            'above_ma250': above_ma250,
             'near_boll_lower': near_boll,
             'macd_golden': macd_golden,
             'rsi_at_low': round(float(rsi_at_low), 1),
@@ -463,13 +473,25 @@ for pattern in ['强势横盘', '缩量回调', '深度回调', '三角收敛', 
             gain = sub.loc[mask, 'wave2_gain'].mean()
             print(f"  量能 {vr_name}: 成功率 {rate:.1f}% (n={cnt}), 平均涨幅 {gain:.2f}%")
 
-    # MA20/MA60分层
+    # MA20/MA60/MA120/MA250分层
     if (sub['above_ma20'] == True).sum() >= 5:
         rate = sub[sub['above_ma20'] == True]['wave2_confirmed'].mean() * 100
         print(f"  低点在MA20上方: 成功率 {rate:.1f}% (n={sub['above_ma20'].sum()})")
     if (sub['above_ma60'] == True).sum() >= 5:
         rate = sub[sub['above_ma60'] == True]['wave2_confirmed'].mean() * 100
         print(f"  低点在MA60上方: 成功率 {rate:.1f}% (n={sub['above_ma60'].sum()})")
+    if sub['above_ma120'].notna().sum() >= 5:
+        valid = sub[sub['above_ma120'].notna()]
+        cnt = valid['above_ma120'].sum()
+        if cnt >= 5:
+            rate = valid[valid['above_ma120'] == True]['wave2_confirmed'].mean() * 100
+            print(f"  低点在MA120上方: 成功率 {rate:.1f}% (n={cnt})")
+    if sub['above_ma250'].notna().sum() >= 5:
+        valid = sub[sub['above_ma250'].notna()]
+        cnt = valid['above_ma250'].sum()
+        if cnt >= 5:
+            rate = valid[valid['above_ma250'] == True]['wave2_confirmed'].mean() * 100
+            print(f"  低点在MA250上方: 成功率 {rate:.1f}% (n={cnt})")
 
 # ── Step 7: 最优入场条件提炼 ──────────────────────────
 print(f"\n{'='*90}")
@@ -494,6 +516,10 @@ for pattern in cases_df['pattern'].unique():
         ('CCI<-100 + MA20上方', sub[(sub['cci_at_low'] < -100) & (sub['above_ma20'] == True)]),
         ('MACD金叉 + MA20上方', sub[(sub['macd_golden'] == True) & (sub['above_ma20'] == True)]),
         ('RSI<35 + MA60上方', sub[(sub['rsi_at_low'] < 35) & (sub['above_ma60'] == True)]),
+        ('MA120上方 + RSI<50', sub[(sub['above_ma120'] == True) & (sub['rsi_at_low'] < 50)]),
+        ('MA250上方 + RSI<50', sub[(sub['above_ma250'] == True) & (sub['rsi_at_low'] < 50)]),
+        ('MA120+MA250双均线支撑', sub[(sub['above_ma120'] == True) & (sub['above_ma250'] == True)]),
+        ('MA60+MA120+MA250三均线支撑', sub[(sub['above_ma60'] == True) & (sub['above_ma120'] == True) & (sub['above_ma250'] == True)]),
     ]
     for combo_name, combo_df in combos:
         n = len(combo_df)

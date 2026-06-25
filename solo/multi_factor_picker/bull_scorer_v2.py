@@ -1,30 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-BullScore v2.1 — 中长线牛股选股系统
+BullScore v2.2 — 中长线牛股选股系统
 
+v2.2 核心变更（相比v2.1）：
+├── 移除筹码面因子 (ChipScore) — 因子冗余
+├── 预期差权重 8%→12% — 提权
+├── 机构认可权重 4%→7% — 多维度综合(公募+分析师+北向+评级)
+│
 v2.1 核心增强：
 ├── 历史辨识度评分 (YRI) — 从资金活跃度、涨停基因、空间记忆、股性画像、舆情热度五个维度评估
 ├── Alpha因子评分 — 质量、成长、估值、动量、流动性、情绪六因子模型
 ├── 龙头/中军识别器 — 自动判定股票类型：龙头、中军、龙二、补涨、普通
 └── AI分析集成 — 深度分析单只股票或对比分析多只股票
 
-评分结构（v2.1）：
-  BullScore_v2.1 =
+评分结构（v2.2）：
+  BullScore_v2.2 =
     0.14 × IndustryDemandScore    (产业景气)
     0.14 × OrderExplosionScore    (订单爆发)
     0.10 × TechBarrierScore       (技术壁垒)
     0.10 × EarningsQualityScore   (业绩质量)
-    0.08 × ExpectationScore       (预期差)
+    0.12 × ExpectationScore       (预期差 — 提权，利润YoY非线性放大)
     0.06 × LeaderScore            (龙头地位)
-    0.04 × InstitutionScore       (机构认可)
+    0.07 × InstitutionScore       (机构认可 — 多维度:分析师+公募+北向+评级)
     0.04 × MarketCapElasticity    (市值弹性)
-    0.07 × ChipScore              (筹码面)
+    ———————————————————————— 筹码面已移除
     0.07 × SafetyMarginScore      (估值安全)
     ★ v2.1 新增：
     0.08 × RecognitionScore       (历史辨识度 YRI)
     0.08 × AlphaScore             (Alpha因子)
 
-  FinalScore = 0.82 × BullScore_v2.1 + 0.18 × ThemeScore_v2
+  FinalScore = 0.82 × BullScore_v2.2 + 0.18 × ThemeScore_v2
 
   主题加成非线性放大：当 ThemeScore_v2 > 60 时，FinalScore × (1 + 0.15 × (ThemeScore_v2 - 60) / 40)
 
@@ -1767,26 +1772,26 @@ class BullScorerV2:
                    base_result: 'BullScoreResult'  # 从 bull_scorer 继承的结果
                    ) -> BullScoreV2Result:
         """
-        BullScore v2.1 完整评分计算
+        BullScore v2.2 完整评分计算
         
         评分结构:
           原8因子 (70%)：
             - 产业景气 (14%) | 订单爆发 (14%)
             - 技术壁垒 (10%) | 业绩质量 (10%)
-            - 预期差 (8%)    | 龙头地位 (6%)
-            - 机构认可 (4%)  | 市值弹性 (4%)
+            - 预期差 (12%)   | 龙头地位 (6%)
+            - 机构认可 (7%)  | 市值弹性 (4%)
           
-          筹码面 (7%)
+          筹码面已移除 (权重重新分配至预期差+机构认可)
           估值安全 (7%)
-          历史辨识度 (8%) ← 新增
-          Alpha因子 (8%) ← 新增
+          历史辨识度 (8%)
+          Alpha因子 (8%)
         
         总分公式：
-          BullScore_v2.1 = 0.14*ind + 0.14*order + 0.10*tech + 0.10*earn_qual
-                         + 0.08*expect + 0.06*leader + 0.04*inst + 0.04*mc
-                         + 0.07*chip + 0.07*safety + 0.08*recognition + 0.08*alpha
+          BullScore_v2.2 = 0.14*ind + 0.14*order + 0.10*tech + 0.10*earn_qual
+                         + 0.12*expect + 0.06*leader + 0.07*inst + 0.04*mc
+                         + 0.07*safety + 0.08*recognition + 0.08*alpha
         
-          FinalScore = 0.82 * BullScore_v2.1 + 0.18 * ThemeScore_v2
+          FinalScore = 0.82 * BullScore_v2.2 + 0.18 * ThemeScore_v2
         
           ★★ 如果 ThemeScore_v2 > 60，额外非线性放大：
              FinalScore = FinalScore * (1 + 0.15 * (ThemeScore_v2 - 60) / 40)
@@ -1851,16 +1856,16 @@ class BullScorerV2:
             chip_score
         )
 
-        # 8. BullScore v2.1 计算 (调整权重)
+        # 8. BullScore v2.2 计算 (筹码面已移除，权重重新分配)
         ind_w = 0.14
         order_w = 0.14
         tech_w = 0.10
         earn_w = 0.10
-        expect_w = 0.08
+        expect_w = 0.12    # 0.08→0.12 提权
         leader_w = 0.06
-        inst_w = 0.04
+        inst_w = 0.07      # 0.04→0.07 提权，多维度机构认可
         mc_w = 0.04
-        chip_w = 0.07
+        chip_w = 0.00      # 筹码面已移除
         safety_w = 0.07
         recognition_w = 0.08
         alpha_w = 0.08
@@ -1874,13 +1879,13 @@ class BullScorerV2:
             leader_w * base_result.leader_score +
             inst_w * base_result.institution_score +
             mc_w * base_result.marketcap_score +
-            chip_w * chip_score +
+            # chip_w * chip_score (筹码面已移除)
             safety_w * safety_score +
             recognition_w * recognition_score +
             alpha_w * alpha_score
         )
 
-        # 9. 最终分 = 0.82 * BullScore_v2.1 + 0.18 * ThemeScore_v2
+        # 9. 最终分 = 0.82 * BullScore_v2.2 + 0.18 * ThemeScore_v2
         final = 0.82 * bull_v2 + 0.18 * theme_score_v2
 
         # 10. 主题非线性放大加成
@@ -1905,7 +1910,7 @@ class BullScorerV2:
             'tech_barrier': tech_w, 'earnings': earn_w,
             'expectation': expect_w, 'leader': leader_w,
             'institution': inst_w, 'marketcap': mc_w,
-            'chip': chip_w, 'safety': safety_w,
+            'chip': 0.0, 'safety': safety_w,
             'recognition': recognition_w, 'alpha': alpha_w,
         }
 

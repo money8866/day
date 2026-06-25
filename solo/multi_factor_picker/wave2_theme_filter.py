@@ -610,7 +610,7 @@ def main():
     if not os.path.isabs(input_path):
         input_path = os.path.join(BASE_DIR, input_path)
 
-    with open(input_path, 'r', encoding='utf-8') as f:
+    with open(input_path, 'r', encoding='utf-8-sig') as f:
         signals = json.load(f)
 
     print(f"[加载] 信号: {len(signals)} 只")

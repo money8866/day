@@ -1,8 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
 from reportlab.lib.units import mm
 """
-二波形态精选 v2.6 — stk_factor_pro 四形态并列版
-基于52,949样本回测成果 + 250+列专业因子接口
+二波形态精选 v2.7 — stk_factor_pro 四形态并列版 + 中长线趋势过滤
+基于69,777样本回测成果 + 250+列专业因子接口
 
 v2.6升级（2026-06-24）:
   20. 四形态并列：强势横盘/深度回调/放量回调/V型急跌独立检测
@@ -536,10 +536,15 @@ class ResonanceScorer:
         close = v('close', 0)
         ma20 = v('ma_qfq_20', 0)
         ma60 = v('ma_qfq_60', 0)
+        ma120 = v('ma120', 0)
+        ma250 = v('ma250', 0)
+        
         if close > ma20 and ma20 > 0:
             _add(1, 'MA20上方')
-        if close > ma60 and ma60 > 0:
-            _add(1, 'MA60上方')
+        # 均线只用于过滤，不加分（v2.7）
+        # 中长线趋势支撑（三均线=最强二波信号）
+        above_ma120 = close > ma120 and ma120 > 0
+        above_ma250 = close > ma250 and ma250 > 0
 
         # ── 情绪类 ─────────────────────────────────────
         bias1 = v('bias1_hfq', 0)
@@ -590,6 +595,11 @@ class ResonanceScorer:
             _add(5, f'形态加分(放量回调胜率91.2%)')
         elif pattern_type == '强势横盘':
             _add(3, f'形态加分(强势横盘胜率90.9%)')
+
+        # ── 中长线趋势过滤（v2.7核心规则）───────────────────────────────────
+        # 三均线支撑=二波成功率100%，不满足则直接过滤
+        if not (close > ma60 and ma60 > 0 and above_ma120 and above_ma250):
+            return {'total': 0, 'details': ['过滤: 不满足三均线支撑(MA60+MA120+MA250)'], 'filtered': True}
 
         return {'total': total, 'details': details}
 
@@ -731,9 +741,9 @@ class WavePatternDetector:
 
         回测依据（双创板52,949样本，不创新低条件）：
           V型急跌: 胜率97.2% → 双创优选(+8)
-          强势横盘: 胜率93.3% → 双创次选(+3)
           放量回调: 胜率91.2% → 中性(+0)
           深度回调: 胜率88.2% → 双创压制(-2)
+          强势横盘: 胜率93.3% → **双创过滤**
 
         沪深300（主板最优）：
           强势横盘: 胜率98.6% → 主板优选(+5)
@@ -752,8 +762,8 @@ class WavePatternDetector:
             if is_main:
                 return (5, '主板优选强势横盘(+5)')
             elif is_gem_kc:
-                # 双创强势横盘93.3%，次优选择
-                return (3, '双创次选强势横盘(+3)')
+                # 双创强势横盘直接过滤
+                return (-100, '双创强势横盘过滤')
         elif pattern == '放量回调':
             # 放量回调中性，无额外加分
             return (0, '')
@@ -801,9 +811,13 @@ class WavePatternDetector:
 
     # ── 形态1: 强势横盘 ──────────────────────────────────────────
     def detect_sideways_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
-        df = self.load_data(ts_code, lookback=180)
+        df = self.load_data(ts_code, lookback=300)
         if df is None or len(df) < 60:
             return None
+
+        # 计算MA120/MA250（stk_factor_pro无此字段）
+        df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+        df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         closes  = df['close'].values
         volumes = df['vol'].values
@@ -965,9 +979,13 @@ class WavePatternDetector:
     # ── 形态2: 深度回调（纯深度，不含放量/V型）──────────────────
     def detect_deep_pullback_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
         """纯深度回调形态：回调>=20%，调整>=10天，非放量非V型"""
-        df = self.load_data(ts_code, lookback=180)
+        df = self.load_data(ts_code, lookback=300)
         if df is None or len(df) < 60:
             return None
+
+        # 计算MA120/MA250
+        df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+        df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         closes  = df['close'].values
         volumes = df['vol'].values
@@ -1117,9 +1135,13 @@ class WavePatternDetector:
     # ── 形态3: 放量回调（独立形态）────────────────────────────
     def detect_volume_pullback_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
         """放量回调形态：回调10-25%，量比>1.2，胜率91.2%"""
-        df = self.load_data(ts_code, lookback=180)
+        df = self.load_data(ts_code, lookback=300)
         if df is None or len(df) < 60:
             return None
+
+        # 计算MA120/MA250
+        df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+        df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         closes  = df['close'].values
         volumes = df['vol'].values
@@ -1259,9 +1281,13 @@ class WavePatternDetector:
     # ── 形态4: V型急跌（独立形态）────────────────────────────
     def detect_vshape_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
         """V型急跌形态：调整<=10天，回调>=15%，胜率97.2%"""
-        df = self.load_data(ts_code, lookback=180)
+        df = self.load_data(ts_code, lookback=300)
         if df is None or len(df) < 60:
             return None
+
+        # 计算MA120/MA250
+        df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+        df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         closes  = df['close'].values
         volumes = df['vol'].values
@@ -1688,21 +1714,18 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
     _add_market_overview(elements, font_name, today_str, styles)
 
     # ── 今日精选 TOP3 ──────────────────────────────
-    # 主板强势横盘TOP3 + 双创深度/放量/V型TOP3
+    # 主板强势横盘TOP3 + 双创V型急跌TOP3 + 双创放量回调TOP3
     main_sideways = [r for r in all_results
                      if r['pattern'] == '强势横盘' and r['ts_code'].startswith(('600', '601', '603', '605', '000', '002'))]
-    gem_deep = [r for r in all_results
-                if r['pattern'] == '深度回调' and r['ts_code'].startswith(('688', '300', '301'))]
-    gem_volume = [r for r in all_results
-                  if r['pattern'] == '放量回调' and r['ts_code'].startswith(('688', '300', '301'))]
     gem_vshape = [r for r in all_results
                   if r['pattern'] == 'V型急跌' and r['ts_code'].startswith(('688', '300', '301'))]
+    gem_volume = [r for r in all_results
+                  if r['pattern'] == '放量回调' and r['ts_code'].startswith(('688', '300', '301'))]
     main_sideways = sorted(main_sideways, key=lambda x: x.get('score', 0), reverse=True)[:3]
-    gem_deep = sorted(gem_deep, key=lambda x: x.get('score', 0), reverse=True)[:3]
-    gem_volume = sorted(gem_volume, key=lambda x: x.get('score', 0), reverse=True)[:3]
     gem_vshape = sorted(gem_vshape, key=lambda x: x.get('score', 0), reverse=True)[:3]
+    gem_volume = sorted(gem_volume, key=lambda x: x.get('score', 0), reverse=True)[:3]
 
-    if main_sideways or gem_deep or gem_volume or gem_vshape:
+    if main_sideways or gem_vshape or gem_volume:
         pick_title_style = ParagraphStyle('PICK_T', parent=styles['Normal'],
             fontName=font_name, fontSize=13, alignment=0, spaceAfter=2*mm,
             textColor=colors.HexColor('#1a5276'))
@@ -1726,9 +1749,9 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
                     f"止损{r['stop_loss']:.2f}  目标{r['target']:.2f}",
                     pick_style))
 
-        if gem_deep:
-            elements.append(Paragraph('【双创深度回调 TOP3】(成功率87.2%, 盈亏比12.2x)', pick_highlight))
-            for i, r in enumerate(gem_deep, 1):
+        if gem_vshape:
+            elements.append(Paragraph('【双创V型急跌 TOP3】(成功率97.2%, 盈亏比16.1x)', pick_highlight))
+            for i, r in enumerate(gem_vshape, 1):
                 name = r.get('name', '') or r['ts_code']
                 elements.append(Paragraph(
                     f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
@@ -1740,17 +1763,6 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
         if gem_volume:
             elements.append(Paragraph('【双创放量回调 TOP3】(成功率91.2%, 盈亏比14.5x)', pick_highlight))
             for i, r in enumerate(gem_volume, 1):
-                name = r.get('name', '') or r['ts_code']
-                elements.append(Paragraph(
-                    f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
-                    f"一波+{r['wave1_gain']:.0f}%  回调-{r['pullback_pct']:.0f}%  "
-                    f"入场{r.get('entry_date','')}  价格{r['entry_price']:.2f}  "
-                    f"止损{r['stop_loss']:.2f}  目标{r['target']:.2f}",
-                    pick_style))
-
-        if gem_vshape:
-            elements.append(Paragraph('【双创V型急跌 TOP3】(成功率97.2%, 盈亏比16.1x)', pick_highlight))
-            for i, r in enumerate(gem_vshape, 1):
                 name = r.get('name', '') or r['ts_code']
                 elements.append(Paragraph(
                     f"  {i}. {r['ts_code']} {name}  评分{r['score']}  "
@@ -1961,7 +1973,13 @@ def main():
         return
 
     results_df = pd.concat(df_list, ignore_index=True)
-    results_df = results_df.sort_values('score', ascending=False)
+    
+    # ── 去重：每只股票只保留胜率最高的形态 ────────────────────────
+    pattern_priority = {'V型急跌': 1, '强势横盘': 2, '放量回调': 3, '深度回调': 4}
+    results_df['_priority'] = results_df['pattern'].map(pattern_priority)
+    results_df = results_df.sort_values(['ts_code', '_priority']).drop_duplicates(subset=['ts_code'], keep='first')
+    results_df = results_df.drop(columns=['_priority']).sort_values('score', ascending=False)
+    print(f"\n去重后: {len(results_df)} 只")
 
     ts_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_path = os.path.join(OUT_DIR, f'wave2_pattern_{ts_str}.csv')

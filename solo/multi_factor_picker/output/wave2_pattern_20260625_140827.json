@@ -20,18 +20,7 @@
     "dmi_confirmed": false,
     "confidence": "⭐⭐⭐⭐⭐🔥",
     "entry_date": "20260624",
-    "name": "方正科技",
-    "themes": "PCB电子电路",
-    "non_daytrip_themes": "PCB电子电路",
-    "best_theme": "PCB电子电路",
-    "best_theme_composite": 73.6,
-    "best_theme_rank": 43,
-    "best_chain_distance": 0,
-    "is_confirmed_theme": true,
-    "is_currently_active_theme": true,
-    "theme_phase": "启动确认",
-    "theme_leader": "中富电路",
-    "theme_confirmed_days": 1
+    "name": "方正科技"
   },
   {
     "ts_code": "600186.SH",
@@ -54,17 +43,6 @@
     "dmi_confirmed": false,
     "confidence": "⭐⭐⭐⭐⭐🔥",
     "entry_date": "20260624",
-    "name": "莲花控股",
-    "themes": "大众消费修复链; 必选消费红利链; 消费白马",
-    "non_daytrip_themes": "",
-    "best_theme": "",
-    "best_theme_composite": 0,
-    "best_theme_rank": 0,
-    "best_chain_distance": 99,
-    "is_confirmed_theme": false,
-    "is_currently_active_theme": false,
-    "theme_phase": "",
-    "theme_leader": "",
-    "theme_confirmed_days": 0
+    "name": "莲花控股"
   }
 ]

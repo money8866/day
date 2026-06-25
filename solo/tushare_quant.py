@@ -874,18 +874,18 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
     }
     
     try:
-        _cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}_{TRADE_DATE}.csv")
-        
-        if os.path.exists(_cache_file):
-            df = pd.read_csv(_cache_file)
-        else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
-            df.to_csv(_cache_file, index=False)
+        # ── 1. 数据加载：加载近300天历史数据（与wave2_pattern_scanner.py同步）──
+        # 使用 cached_stk_factor_pro 获取长历史数据，用于计算 MA120/MA250 三均线支撑过滤
+        _end_date = TRADE_DATE
+        _start_date = (datetime.now() - timedelta(days=400)).strftime('%Y%m%d')
+        df = cached_stk_factor_pro(ts_code, _start_date, _end_date)
+        if df is None or df.empty:
+            return result
         
         df['trade_date'] = df['trade_date'].astype(str)
         df = df.sort_values('trade_date').reset_index(drop=True)
         
-        if df.empty or len(df) < 30:
+        if df.empty or len(df) < 60:
             return result
         
         # 安全取值函数
@@ -900,37 +900,86 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         # ⚠️ v2.7修复：统一使用前复权价格进行形态计算
         # 优先使用 close_qfq，避免除权导致的价格跳变
         if 'close_qfq' in df.columns:
-            df['close_bfq'] = df['close']  # 保留原始价
+            df['close_bfq'] = df['close']  # 保留原始价（入场价/止损价使用未复权价）
             df['close'] = df['close_qfq']   # 价格计算用前复权
         
-        # ── 1. 形态分类（找wave1 → 判断二波调整形态）──
+        # v2.7同步：计算 MA120/MA250（stk_factor_pro 无此字段，需用 rolling 计算）
+        df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
+        df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
+        
+        # ── 2. wave1检测：搜索多个候选，取最近有效候选（与wave2_pattern_scanner.py同步）──
+        import numpy as np
+        SURGE_DAYS = 20
+        SURGE_MIN = 0.20
+
+        def _find_recent_wave1(closes_arr, n):
+            """搜索近期wave1候选高点，按距今天数升序排序（最近的在前）"""
+            candidates = []
+            for lookback in range(3, min(150, n - SURGE_DAYS - 5)):
+                end_idx = n - lookback
+                if end_idx < SURGE_DAYS:
+                    continue
+                window = closes_arr[end_idx - SURGE_DAYS:end_idx + 1]
+                low_in_win = np.argmin(window)
+                high_in_win = np.argmax(window)
+                if high_in_win <= low_in_win:
+                    continue
+                if (high_in_win - low_in_win) > SURGE_DAYS - 2:
+                    continue
+                sg = (window[high_in_win] - window[low_in_win]) / window[low_in_win]
+                if sg < SURGE_MIN:
+                    continue
+                w1_high_idx = end_idx - SURGE_DAYS + high_in_win
+                w1_low_idx = end_idx - SURGE_DAYS + low_in_win
+                if not any(h == w1_high_idx for h, *_ in candidates):
+                    candidates.append((w1_high_idx, w1_low_idx, sg))
+            candidates.sort(key=lambda x: (n - x[0]))
+            return candidates
+
+        closes = df['close'].values
+        n = len(df)
+        entry_idx = n - 1  # 入场点=最新交易日
+
         pattern = ""
         wave1_high_idx = None
         surge_gain = 0.0
-        
-        import numpy as np
-        ADJUST_MAX_VAL = 60
-        SURGE_DAYS_VAL = 20
-        SURGE_MIN_VAL = 0.20
-        
-        closes = df['close'].values
-        for end_idx in range(len(df) - 1, ADJUST_MAX_VAL, -1):
-            window_start = end_idx - SURGE_DAYS_VAL
-            if window_start < 0:
-                break
-            window_closes = closes[window_start:end_idx+1]
-            low_idx = np.argmin(window_closes)
-            high_idx = np.argmax(window_closes)
-            if high_idx <= low_idx:
-                continue
-            if (high_idx - low_idx) > SURGE_DAYS_VAL - 2:
-                continue
-            wgain = (window_closes[high_idx] - window_closes[low_idx]) / window_closes[low_idx]
-            if wgain >= SURGE_MIN_VAL:
-                wave1_high_idx = window_start + high_idx
-                surge_gain = wgain
-                break
-        
+        wave1_high_price = 0.0
+        is_higher_low = False
+        new_high_confirmed = False
+        new_high_pullback = False
+
+        wave1_candidates = _find_recent_wave1(closes, n)
+        for cand_high_idx, cand_low_idx, cand_gain in wave1_candidates:
+            cand_wave1_high_price = closes[cand_high_idx]
+            # ── 创新低检测（v2.3）──
+            # 创新低 = 调整期最低价 ≤ 一波启动前最低价 → 主力出逃，跳过此候选
+            wave1_start_idx = max(0, cand_high_idx - 20)
+            pre_low_start = max(0, wave1_start_idx - 20)
+            if cand_high_idx >= 40:
+                pre_low = closes[pre_low_start:wave1_start_idx+1].min()
+            else:
+                pre_low = closes[0:cand_high_idx+1].min()
+            adj_low = closes[cand_high_idx:entry_idx+1].min()
+            if adj_low <= pre_low:
+                continue  # 创新低，主力出逃信号，跳过此候选
+            # 通过创新低检测，采用此候选
+            wave1_high_idx = cand_high_idx
+            surge_gain = cand_gain
+            wave1_high_price = cand_wave1_high_price
+            is_higher_low = True
+            # ── 创新高检测（v2.1）──
+            # 调整期间曾突破一波高点=趋势向上确认
+            post_high_all = closes[cand_high_idx:entry_idx + 1]
+            if len(post_high_all) > 1:
+                max_post = post_high_all.max()
+                if max_post > cand_wave1_high_price:
+                    new_high_confirmed = True
+                    new_high_idx_local = np.argmax(post_high_all)
+                    if new_high_idx_local < len(post_high_all) - 1:
+                        new_high_pullback = True
+            break  # 取最近的有效候选
+
+        # ── 3. 形态分类 ──
         if wave1_high_idx is not None:
             # 调用 classify_wave2_pattern 识别形态（先重命名列兼容旧命名）
             rename_cwp = {
@@ -939,8 +988,7 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
                 'rsi_qfq_6': 'rsi_6',
             }
             df_cwp = df.rename(columns={k: v for k, v in rename_cwp.items() if k in df.columns})
-            from tushare_quant import classify_wave2_pattern as cwp
-            pattern_name, pdata = classify_wave2_pattern(df_cwp, wave1_high_idx, len(df)-1)
+            pattern_name, pdata = classify_wave2_pattern(df_cwp, wave1_high_idx, entry_idx)
             if pattern_name and pattern_name != '其他':
                 pattern = pattern_name
         
@@ -1036,6 +1084,8 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         close_price = v('close', 0)
         ma20 = v('ma_qfq_20', 0)
         ma60 = v('ma_qfq_60', 0)
+        ma120 = v('ma120', 0)
+        ma250 = v('ma250', 0)
         if close_price > ma20 and ma20 > 0:
             _add(1, 'MA20上方')
         if close_price > ma60 and ma60 > 0:
@@ -1120,7 +1170,49 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
             _add(5, f'形态加分(放量回调胜率91.2%)')
         elif pattern == '强势横盘':
             _add(3, f'形态加分(强势横盘胜率90.9%)')
-        
+
+        # ── 8. 创新低/创新高加分（v2.3/v2.1同步）──
+        # 不创新低加分（v2.3）：调整低点抬高 = 主力未出逃，二波意愿强
+        if is_higher_low:
+            _add(5, '不创新低(低点抬高/主力未出逃)')
+        # 创新高确认加分（v2.1）：调整期突破一波高点 = 趋势向上确认
+        if new_high_confirmed:
+            _add(5, '创新高确认(趋势向上)')
+        # 新高回踩企稳（v2.1）：创新高后回踩 = 经典买点
+        if new_high_pullback:
+            _add(3, '新高回踩企稳')
+
+        # ── 9. 板块适配加分（v2.4同步）──
+        # 回测依据：双创板优选V型急跌，主板优选强势横盘
+        is_gem_kc = ts_code.startswith(('688', '300', '301'))
+        is_main = ts_code.startswith(('600', '601', '603', '605', '000', '002'))
+        if pattern == 'V型急跌':
+            if is_gem_kc:
+                _add(8, '双创优选V型急跌(+8)')
+        elif pattern == '强势横盘':
+            if is_main:
+                _add(5, '主板优选强势横盘(+5)')
+            elif is_gem_kc:
+                # 双创强势横盘直接过滤
+                result["signal"] = "过滤:双创强势横盘过滤"
+                result["wave2_score"] = 0
+                return result
+        elif pattern == '深度回调':
+            if is_gem_kc:
+                _add(-2, '双创深度回调较弱(-2)')
+            elif is_main:
+                _add(-3, '主板深度回调较弱(-3)')
+
+        # ── 10. 中长线趋势过滤（v2.7核心规则）──
+        # 三均线支撑=二波成功率100%，不满足则直接过滤
+        above_ma60 = close_price > ma60 and ma60 > 0
+        above_ma120 = close_price > ma120 and ma120 > 0
+        above_ma250 = close_price > ma250 and ma250 > 0
+        if not (above_ma60 and above_ma120 and above_ma250):
+            result["signal"] = "过滤:不满足三均线支撑(MA60+MA120+MA250)"
+            result["wave2_score"] = 0
+            return result
+
         total_final = total_score
         
         # ── 8. 价格计算：入场价/止损价/目标价 ──
@@ -1250,9 +1342,9 @@ def classify_wave2_pattern(df, surge_end_idx, recent_end_idx):
     above_ma20 = current_price > ma20 if not np.isnan(ma20) else False
     above_ma60 = current_price > ma60 if not np.isnan(ma60) else False
 
-    # V型：10天内急跌>10%
+    # V型急跌：调整<=10天，回调>=15%（v2.7修正：原>10%改为>=15%）
     v_crash = False
-    if len(post) <= 10 and pullback_max > 0.10:
+    if len(post) <= 10 and pullback_max >= 0.15:
         v_crash = True
 
     # 三角收敛：振幅逐周递减
@@ -1279,14 +1371,14 @@ def classify_wave2_pattern(df, surge_end_idx, recent_end_idx):
     # 量能比（近5日均量/基准量）
     vol_ratio_5d = vols[-5:].mean() / base_vol if base_vol > 0 else 1.0
 
-    # 分类逻辑
-    if v_crash and pullback_days <= 10:
+    # 分类逻辑（v2.7修正：V型>=15%回调，放量回调量比>1.2且调整>=10天）
+    if v_crash and pullback_days <= 10 and pullback_max >= 0.15:
         pattern = 'V型急跌'
     elif pullback_max < 0.10 and pullback_days <= 15:
         pattern = '强势横盘'
-    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio > 0.80:
+    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio > 1.2 and pullback_days >= 10:
         pattern = '放量回调'
-    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio <= 0.80:
+    elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio <= 1.2:
         pattern = '缩量回调'
     elif pullback_max >= 0.20 and triangle:
         pattern = '三角收敛'
@@ -7138,11 +7230,25 @@ def get_chip_distribution(ts_code, trade_date, current_price=None):
                 else:
                     return result
 
-        # 上方套牢盘 vs 下方获利盘
+        # 上方套牢盘 vs 下方获利盘（全部历史）
         above = df[df['price'] > current_price]
         below = df[df['price'] <= current_price]
         result['above_chips_pct'] = round(float(above['percent'].sum()), 2)
         result['below_chips_pct'] = round(float(below['percent'].sum()), 2)
+
+        # 底部稳定筹码：成本在当前价下方15%以外的筹码（深度获利盘）
+        # 这部分筹码的持有者已深度获利，不会因短期波动卖出，是底部支撑
+        bottom_threshold = current_price * 0.85
+        bottom_stable = below[below['price'] <= bottom_threshold]
+        result['bottom_stable_pct'] = round(float(bottom_stable['percent'].sum()), 2)
+        result['bottom_threshold'] = round(bottom_threshold, 2)
+
+        # 短线套牢盘：当前价上方5%以内的筹码（近期追高被套的筹码）
+        # 这部分筹码持有者还在犹豫，一解套就可能卖出，是短期压力源
+        short_term_threshold = current_price * 1.05
+        above_short_term = above[above['price'] <= short_term_threshold]
+        result['short_term_above_pct'] = round(float(above_short_term['percent'].sum()), 2)
+        result['short_term_threshold'] = round(short_term_threshold, 2)
 
         # 上方压力位（取占比最大的前3个）
         if len(above) > 0:
@@ -7219,45 +7325,42 @@ def get_chip_distribution(ts_code, trade_date, current_price=None):
             result['cost_85pct'] = round(float(row['cost_85pct']), 2)
             result['cost_95pct'] = round(float(row['cost_95pct']), 2)
 
-        # ========= 综合压力判断（综合套牢盘比例+最近压力位距离+压力强度） =========
-        above_pct = result.get('above_chips_pct', 0)
+        # ========= 综合压力判断（短线套牢盘+底部稳定筹码） =========
+        # 短线套牢盘（上方5%以内）：近期追高被套的筹码，解套就卖，是短期压力源
+        # 底部稳定筹码（下方15%以外）：深度获利盘，不会轻易卖出，是底部支撑
+        # 逻辑：短线套牢盘少 → 短期压力小；底部筹码多 → 底部扎实
+        above_pct = result.get('above_chips_pct', 0)  # 全部历史套牢盘
+        short_pct = result.get('short_term_above_pct', 0)  # 短线套牢盘（5%以内）
+        bottom_pct = result.get('bottom_stable_pct', 0)  # 底部稳定筹码
         nearest_dist = result.get('nearest_pressure_dist_pct', 999)
-        nearest_pct = result.get('nearest_pressure_pct', 0)
 
-        if above_pct < 3:
+        if short_pct < 3:
             result['pressure_level'] = '轻'
-            result['pressure_desc'] = f'上方筹码仅{above_pct:.1f}%，基本无短期套牢压力'
+            result['pressure_desc'] = (
+                f'短线套牢盘仅{short_pct:.1f}%，底筹{bottom_pct:.1f}%，短期无压力'
+                f'（全部套牢盘{above_pct:.1f}%）'
+            )
+        elif short_pct < 10:
+            result['pressure_level'] = '中'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，底筹{bottom_pct:.1f}%，'
+                f'压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%)，'
+                f'有一定解套压力（全部套牢盘{above_pct:.1f}%）'
+            )
+        elif bottom_pct >= 20:
+            # 短线套牢盘较多，但底部筹码扎实，短期抛压可控
+            result['pressure_level'] = '中'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，但底筹{bottom_pct:.1f}%扎实，'
+                f'短期抛压可控（全部套牢盘{above_pct:.1f}%）'
+            )
         else:
-            is_near = nearest_dist <= 3  # 最近压力位在3%以内算近
-            is_dense = nearest_pct >= 3  # 压力位筹码占比>=3%算密集
-
-            if is_near and is_dense and above_pct >= 20:
-                result['pressure_level'] = '重'
-                result['pressure_desc'] = (
-                    f'上方筹码{above_pct:.1f}%，'
-                    f'最近压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%，占比{nearest_pct:.1f}%)'
-                    f'筹码密集，突破需要放量'
-                )
-            elif is_near and is_dense:
-                result['pressure_level'] = '中偏重'
-                result['pressure_desc'] = (
-                    f'上方筹码{above_pct:.1f}%，'
-                    f'最近压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%，占比{nearest_pct:.1f}%)'
-                    f'有一定解套压力'
-                )
-            elif not is_near and above_pct >= 30:
-                result['pressure_level'] = '中'
-                result['pressure_desc'] = (
-                    f'上方筹码{above_pct:.1f}%，'
-                    f'但最近压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%)较远，'
-                    f'短期压力有限'
-                )
-            elif above_pct < 10:
-                result['pressure_level'] = '轻'
-                result['pressure_desc'] = f'上方筹码{above_pct:.1f}%，短期套牢压力不大'
-            else:
-                result['pressure_level'] = '中'
-                result['pressure_desc'] = f'上方筹码{above_pct:.1f}%，存在一定解套压力'
+            result['pressure_level'] = '重'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，底筹仅{bottom_pct:.1f}%，'
+                f'筹码松散，压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%)，'
+                f'突破需要放量（全部套牢盘{above_pct:.1f}%）'
+            )
 
         # 突破有效性判断
         avg_cost = result.get('avg_cost', current_price)
@@ -7350,6 +7453,8 @@ def calc_tech_indicators(df, ts_code=None, trade_date=None):
         if chip_result:
             # 筹码核心数据
             result['above_chips_pct'] = chip_result.get('above_chips_pct', 0)
+            result['bottom_stable_pct'] = chip_result.get('bottom_stable_pct', 0)
+            result['short_term_above_pct'] = chip_result.get('short_term_above_pct', 0)
             result['below_chips_pct'] = chip_result.get('below_chips_pct', 0)
             result['avg_cost'] = chip_result.get('avg_cost', current_price)
             result['winner_rate'] = chip_result.get('winner_rate', 0)
@@ -7358,6 +7463,8 @@ def calc_tech_indicators(df, ts_code=None, trade_date=None):
             result['cost_95pct'] = chip_result.get('cost_95pct', current_price)
             result['chip_his_high'] = chip_result.get('his_high', 0)
             result['nearest_pressure'] = chip_result.get('nearest_pressure', 0)
+            result['nearest_pressure_pct'] = chip_result.get('nearest_pressure_pct', 0)
+            result['nearest_pressure_dist_pct'] = chip_result.get('nearest_pressure_dist_pct', 0)
 
             # 压力位（格式化：价格+占比）
             pressure_peaks = chip_result.get('pressure_peaks', [])
@@ -8293,6 +8400,7 @@ def filter_by_top_themes(result_df, top_n=10):
         return _filter_by_top_themes_fallback(result_df, keep_themes, theme_cfg)
 
     # 4. 遍历股票，匹配主题并注入主题状态
+    # 收集所有匹配主题，按 score 降序排序，取前两个作为主、次主题
     keep = []
     matched_themes = []
     match_scores = []
@@ -8302,21 +8410,29 @@ def filter_by_top_themes(result_df, top_n=10):
     cycle_phases = []      # 非一日游周期阶段
     confirmed_days_list = []  # 连续确认天数
     leader_sequences_list = []  # 龙头序列
+    secondary_themes_list = []  # 次强主题（跨主题容易被炒，输出前2个最强主题）
 
     for _, row in result_df.iterrows():
         ts_code = row['代码']
         stock_name = row.get('名称', '')
-        found_theme = ''
-        # 只匹配保留的主题（keep_themes），而非全部主题
+        # 收集该股票在所有保留主题中的匹配记录（带 score）
+        theme_hits = []
         for theme_name in keep_themes:
             stocks = theme_stock_map.get(theme_name, {})
             if ts_code in stocks:
-                found_theme = theme_name
-                break
-        if found_theme:
+                s_info = stocks[ts_code]
+                s_score = s_info.get('score', 0) if isinstance(s_info, dict) else 0
+                theme_hits.append((theme_name, s_score))
+        # 按 score 降序排序，取最强主题用于后续分析/输出
+        if theme_hits:
+            theme_hits.sort(key=lambda x: -x[1])
+            found_theme = theme_hits[0][0]
+            # 收集次强主题（score>0 且不同于主主题）
+            secondary_theme = theme_hits[1][0] if len(theme_hits) >= 2 and theme_hits[1][1] > 0 else ''
             keep.append(True)
             matched_themes.append(found_theme)
-            match_scores.append(100)
+            match_scores.append(theme_hits[0][1] if theme_hits[0][1] > 0 else 100)
+            secondary_themes_list.append(secondary_theme)
             st = theme_state_map.get(found_theme, {})
             theme_states_list.append(st.get("theme_state", ""))
             theme_trends.append(st.get("trend_score", 0))
@@ -8328,6 +8444,7 @@ def filter_by_top_themes(result_df, top_n=10):
             keep.append(False)
             matched_themes.append('')
             match_scores.append(0)
+            secondary_themes_list.append('')
             theme_states_list.append('')
             theme_trends.append(0)
             theme_sentiments.append(0)
@@ -8341,6 +8458,7 @@ def filter_by_top_themes(result_df, top_n=10):
     kept_indices = [i for i in range(len(keep)) if keep[i]]
     result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
     result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
+    result_df['次强主题'] = [secondary_themes_list[i] for i in kept_indices]
     result_df['所属状态'] = [theme_states_list[i] for i in kept_indices]
     result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
     result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
@@ -8613,13 +8731,6 @@ def run(target_date=None, simple_mode=False):
                 '非一日游阶段': str(row.get('非一日游阶段', '')),
                 '确认天数': int(row.get('确认天数', 0)),
                 '龙头序列': str(row.get('龙头序列', '')),
-                '筹码上方套牢盘%': tech.get('above_chips_pct', -1),
-                '筹码平均成本': tech.get('avg_cost', today_close),
-                '筹码胜率%': tech.get('winner_rate', 0),
-                '筹码压力等级': tech.get('pressure_level', 'K线估算'),
-                '筹码压力描述': tech.get('pressure_desc', ''),
-                '筹码突破状态': tech.get('breakout_status', ''),
-                '筹码最近压力位': tech.get('nearest_pressure', 0),
                 'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                 'YRI最大连板': details.get('YRI最大连板', 0),
             }
@@ -8638,21 +8749,11 @@ def run(target_date=None, simple_mode=False):
         filtered_stocks.extend(sorted(stocks, key=lambda x: x['失败概率'])[:3])
     ranked_stocks = filtered_stocks
     
-    # 突破 + 二波信号 + 筹码增强
+    # 突破 + 二波信号
     for s in ranked_stocks:
         try:
             current_price = s.get('现价', 0)
-            try:
-                chip_res = get_chip_distribution(s['代码'], TRADE_DATE, current_price)
-                s['筹码上方套牢盘%'] = chip_res.get('above_chips_pct', -1)
-                s['筹码平均成本'] = chip_res.get('avg_cost', current_price)
-                s['筹码胜率%'] = chip_res.get('winner_rate', 0)
-                s['筹码压力描述'] = chip_res.get('pressure_desc', '')
-                s['筹码最近压力位'] = chip_res.get('nearest_pressure', 0)
-                s['筹码压力等级'] = chip_res.get('pressure_level', 'K线估算')
-                s['筹码突破状态'] = chip_res.get('breakout_status', '')
-            except Exception:
-                pass
+            # 筹码数据已移除
             
             # 突破信号
             breakout_result = detect_breakout(s['代码'], pro)
@@ -8707,13 +8808,6 @@ def run(target_date=None, simple_mode=False):
             yri_tags = s.get('YRI标签', '')
             yri_lb = s.get('YRI最大连板', 0)
             lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
-        # 筹码
-        chip_pct = s.get('筹码上方套牢盘%', -1)
-        if chip_pct >= 0:
-            avg_cost = s.get('筹码平均成本', s['现价'])
-            winner = s.get('筹码胜率%', 0)
-            nearest_p = s.get('筹码最近压力位', 0)
-            lines.append(f"  筹码: 成本={avg_cost:.2f}元 套牢={chip_pct:.1f}% 盈利={winner:.1f}% 压力位={nearest_p:.2f}元 {s.get('筹码突破状态','')}")
         lines.append("")
     
     hot_money_open_text = "\n".join(lines)
@@ -8738,6 +8832,7 @@ def run(target_date=None, simple_mode=False):
             ts_code = row['代码']
             name = row['名称']
             theme_name = str(row.get('所属主题', ''))
+            secondary_theme = str(row.get('次强主题', ''))  # 次强主题（跨主题易被炒）
             
             df = get_hist_data(ts_code)
             if df is None or len(df) < 20 or not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
@@ -8764,6 +8859,7 @@ def run(target_date=None, simple_mode=False):
                     '代码': ts_code, '名称': name, '现价': today_close,
                     '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
                     '所属主题': theme_name,
+                    '次强主题': secondary_theme,  # 次强主题（跨主题易被炒）
                     '整合评分': integrated_score, '失败概率': failure_prob,
                     '推荐理由': recommendation,
                     '趋势强度': details.get('趋势强度', 0), '资金健康度': details.get('资金健康度', 0),
@@ -8792,15 +8888,6 @@ def run(target_date=None, simple_mode=False):
                     'MA20方向': tech.get('ma20_trend', ''), 'MA60方向': tech.get('ma60_trend', ''),
                     '近5日最高': tech.get('recent5_high', today_close), '近5日最低': tech.get('recent5_low', today_close),
                     '近10日涨跌%': tech.get('chg_10d_pct', 0),
-                    '筹码上方套牢盘%': tech.get('above_chips_pct', -1),
-                    '筹码平均成本': tech.get('avg_cost', today_close),
-                    '筹码胜率%': tech.get('winner_rate', 0),
-                    '筹码压力等级': tech.get('pressure_level', 'K线估算'),
-                    '筹码压力描述': tech.get('pressure_desc', ''),
-                    '筹码突破状态': tech.get('breakout_status', ''),
-                    '筹码最近压力位': tech.get('nearest_pressure', 0),
-                    '筹码支撑1价': tech.get('support_peak_1_price', 0),
-                    '筹码支撑1占比%': tech.get('support_peak_1_pct', 0),
                     'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                     'YRI等级': details.get('YRI等级', ''), 'YRI股性画像': details.get('YRI股性画像', ''),
                     'YRI日均成交额(万)': details.get('YRI日均成交(万)', 0),
@@ -8851,8 +8938,9 @@ def run(target_date=None, simple_mode=False):
                 s['目标价'] = wave2_result.get('target', 0)
                 
                 # 根据板块类型过滤形态
+                # 缩量回调=回调10-20%+量能比<=0.8（缩量代表抛压减轻，属于健康调整）
                 is_cyb_kcb = ts_code.startswith('3') or ts_code.startswith('688') or ts_code.startswith('689')
-                valid_patterns = ['V型急跌', '深度回调', '放量回调'] if is_cyb_kcb else ['强势横盘', 'V型急跌', '放量回调']
+                valid_patterns = ['V型急跌', '深度回调', '放量回调', '缩量回调'] if is_cyb_kcb else ['强势横盘', 'V型急跌', '放量回调', '缩量回调']
                 
                 pattern = s['二波形态']
                 if not pattern or pattern == '其他' or pattern not in valid_patterns:
@@ -8876,7 +8964,7 @@ def run(target_date=None, simple_mode=False):
     dixi_lines.append("=" * 60)
     
     if dx_ranked_stocks:
-        for i, s in enumerate(dx_ranked_stocks[:5], 1):
+        for i, s in enumerate(dx_ranked_stocks[:10], 1):
             price = s.get('现价', 0)
             pct = s.get('涨跌幅', 0)
             pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
@@ -8897,11 +8985,15 @@ def run(target_date=None, simple_mode=False):
             dims_str = " ".join(dims) if dims else ""
             score_str = f"整合{int(integrated)}({dims_str})" if dims_str else f"整合{int(integrated)}"
             dixi_lines.append(f"【低吸{i}】{s['名称']}({s['代码']}) {price:.2f}元 {pct_str} | 二波{wave2_score}分 | {score_str}")
-            # 第2行：主题 + 非一日游阶段 + 龙头序列
+            # 第2行：主题（含次强主题）+ 非一日游阶段 + 龙头序列
             cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
             confirm_days = s.get('确认天数', 0)
             leader_seq = s.get('龙头序列', '')
+            # 主主题 + 次强主题（跨主题易被炒，输出前2个最强主题）
             theme_parts = [s.get('所属主题', '')]
+            secondary_t = s.get('次强主题', '')
+            if secondary_t:
+                theme_parts[0] = f"{theme_parts[0]}+{secondary_t}"
             if cycle:
                 if confirm_days > 0:
                     theme_parts.append(f"{cycle}({confirm_days}天)")
@@ -8940,7 +9032,6 @@ def run(target_date=None, simple_mode=False):
                 yri_level = s.get('YRI等级', '')
                 yri_max_lb = s.get('YRI最大连板', 0)
                 dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 连板{yri_max_lb}板")
-            dixi_lines.append("")
     else:
         dixi_lines.append("  今日无低吸信号个股")
     dixi_stock_text = "\n".join(dixi_lines)
@@ -9149,7 +9240,7 @@ def run(target_date=None, simple_mode=False):
    - 【最多列出3个明日预测主题】
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
-3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，最多显示5只）：
+3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，最多显示10只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
    - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
@@ -9178,12 +9269,6 @@ def run(target_date=None, simple_mode=False):
        例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
        【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
      
-     - 筹码分布分析：【必须引用上方"【筹码分布】"中的真实数据！重点加粗显示是否真突破】
-       - 筹码平均成本：判断现价是否高于平均成本
-       - 上方套牢盘比例：评估突破难度
-       - 下方获利盘比例：评估支撑强度
-       - 最近压力位：标注关键压力位价格
-       - 筹码状态：是否已突破筹码平均成本
      - Alpha评分（0-100分，越高越好）及中长线解读：
        【评分标准】
        - 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
@@ -9203,14 +9288,7 @@ def run(target_date=None, simple_mode=False):
     - 有其他重大利空消息
     B对于无重大风险的前30名个股，保持原有的综合评分排序，不要重新筛选和排序
     C【最高优先级】所有技术面分析中的价格（MA均线价格、目标价、买点、止损位、支撑位、阻力位、现价、高点等）必须严格使用上方"【技术价位】"和"【参考位】"中提供的EXACT真实数据，禁止凭空编造任何价格数字或百分比！此项约束优先级高于其他所有分析要求。
-    C-1【套牢盘最高约束】严禁编造"突破20日高点"、"突破60日高点"或"上方无套牢盘"等结论。必须严格依据上方"【筹码分布】"和"【筹码结论】"区块中的真实数据判断（cyq_chips/cyq_perf 为权威数据源）：
-         - 如果显示"筹码上方套牢盘<3%"，则可以描述为"上方几乎无短期套牢盘"
-         - 如果显示"筹码上方套牢盘=3-15%"，则必须说明"上方存在一定解套压力"
-         - 如果显示"筹码上方套牢盘>15%"，则必须强调"上方套牢盘密集，突破需要放量"
-         - 必须引用"筹码平均成本=XXX元"作为筹码参考基准，判断现价是否高于平均成本
-         - 【压力判断】区块仅作为辅助参考，优先使用"【筹码分布】"中的数据
-         - 禁止引用14.85元之类的未在"【参考位】"或"【筹码分布】"中标注的任何价格
-    C-2【高点定义】技术分析中的"前高/压力位/套牢盘密集区"必须严格基于"【筹码分布】"中标注的"最近压力位"或"【参考位-长线】"中的120/250/全历史高点价格，不能基于当前价格或短线高点随意外推。
+    C-2【高点定义】技术分析中的"前高/压力位"必须严格基于"【参考位-长线】"中的120/250/全历史高点价格，不能基于当前价格或短线高点随意外推。
     C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画像中的文字描述（如"历史级大妖/龙头/市场关注"等）仅供参考，不具有任何权重，绝不能作为突破以下数字阈线的依据：
          - 龙头：YRI历史总分≥70 且 日均成交额≥5亿 且 最大连板≥3板（三者必须同时满足，缺一不可；核心是有历史连板基因，才是真正的主题龙头）
          - 中军：YRI历史总分≥55 且 日均成交额≥5亿 且 最大连板≤2板（满足此三条的是稳定中军，即使YRI标签写了"龙头/历史大妖"也是中军）

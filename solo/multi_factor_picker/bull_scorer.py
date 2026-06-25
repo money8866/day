@@ -988,35 +988,67 @@ class BullScorer:
     def _score_institution(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        机构认可评分 (0~100) - 修复版：资金流向+换手率，避免与龙头地位信号重叠
+        机构认可评分 v2 (0~100) — 多维度综合评分
 
-        - AnalystCountRank: 机构覆盖数量（行业分位，信号稳定可靠）
-        - AnalystExpectationRank: 卖方一致预期评分（行业分位）
-        - ReliabilityBonus: 机构覆盖数 ≥ 20 家时给予可靠性加成
+        确保是各类机构共同认可，而非单一信号：
+        - FundHoldingRank (25%): 公募基金持仓占比，行业分位
+        - AnalystCountRank (25%): 分析师覆盖数量，行业分位
+        - NorthNetRank (20%): 北向资金净流入，行业分位
+        - BuyRatioRaw (15%): 买入+增持+推荐 评级占比（绝对数值）
+        - FundChangeRank (10%): 公募持仓变化趋势，行业分位
+        - ReliabilityBonus (5分): 分析师覆盖≥20家 且 公募持仓≥10%
         """
         industry = data.industry
         details = {}
 
-        # 机构覆盖数量：行业分位
+        # 1. 公募基金持仓占比（行业分位）
+        fh_pct = _percentile_rank(
+            group_series.get(f'fund_holding_ratio_{industry}', pd.Series()),
+            float(data.fund_holding_ratio)
+        )
+        details['fund_holding_rank'] = round(fh_pct * 100, 1)
+
+        # 2. 分析师覆盖数量（行业分位）
         ac_pct = _percentile_rank(
             group_series.get(f'analyst_count_{industry}', pd.Series()),
             float(data.analyst_count)
         )
-        details['analyst_count_rank'] = ac_pct
+        details['analyst_count_rank'] = round(ac_pct * 100, 1)
 
-        # 卖方一致预期评分：行业分位
-        ae_pct = _percentile_rank(
-            group_series.get(f'analyst_expectation_{industry}', pd.Series()),
-            data.analyst_expectation_score
+        # 3. 北向资金净流入（行业分位）
+        nn_pct = _percentile_rank(
+            group_series.get(f'north_net_{industry}', pd.Series()),
+            float(data.north_bound_daily_net)
         )
-        details['analyst_expectation_rank'] = ae_pct
+        details['north_net_rank'] = round(nn_pct * 100, 1)
 
-        # 可靠性加成：覆盖数 ≥ 20 家时额外 +10 分
-        reliability_bonus = 10.0 if data.analyst_count >= 20 else 0.0
+        # 4. 买入评级占比（绝对数值，非行业内排名）
+        #    按比例映射：buy_ratio = 0~1 → score 0~100
+        buy_score = float(data.buy_ratio) * 100.0
+        details['buy_ratio_raw'] = round(buy_score, 1)
 
-        score = (0.55 * ac_pct + 0.45 * ae_pct) * 100 + reliability_bonus
+        # 5. 公募持仓变化趋势（行业分位）
+        fc_pct = _percentile_rank(
+            group_series.get(f'fund_ratio_change_{industry}', pd.Series()),
+            float(data.fund_ratio_change)
+        )
+        details['fund_change_rank'] = round(fc_pct * 100, 1)
+
+        # 6. 可靠性加成：多项机构交叉确认
+        reliability_bonus = 0.0
+        if data.analyst_count >= 20 and data.fund_holding_ratio >= 10.0:
+            reliability_bonus = 5.0  # 分析师覆盖≥20 + 公募持仓≥10% → 交叉确认
         details['reliability_bonus'] = reliability_bonus
-        details['raw_score'] = score
+
+        # 综合评分
+        score = (
+            0.25 * (fh_pct * 100) +
+            0.25 * (ac_pct * 100) +
+            0.20 * (nn_pct * 100) +
+            0.15 * buy_score +
+            0.10 * (fc_pct * 100)
+        ) + reliability_bonus
+        details['raw_score'] = round(score, 1)
         return min(score, 100), details
 
     def _score_marketcap_elasticity(self, data: BullStockData) -> Tuple[float, Dict]:
@@ -1231,6 +1263,8 @@ class BullScorer:
             group_series[f'holder_change_ratio_{ind}'] = _tos([m.holder_num_change_ratio for m in members])
             # 股东增减持
             group_series[f'holder_trade_ratio_{ind}'] = _tos([m.holder_trade_ratio for m in members])
+            # 公募持仓占比
+            group_series[f'fund_holding_ratio_{ind}'] = _tos([m.fund_holding_ratio for m in members])
             # 公募持仓变化
             group_series[f'fund_ratio_change_{ind}'] = _tos([m.fund_ratio_change for m in members])
 
