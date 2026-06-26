@@ -143,6 +143,13 @@ class BullStockData:
     # 主营业务构成（用于主题匹配）
     main_business_items: list = field(default_factory=list)  # [{bz_item, bz_ratio}, ...]
 
+    # ── 数据质量标记（v2优化：区分"数据缺失"与"真实为零"） ──
+    data_completeness: float = 100.0      # 数据完整度 0~100，<60 时视为低质量信号
+    data_missing_flags: Dict[str, bool] = field(default_factory=dict)  # {类别: True=缺失}
+    # 标记类别：'financial', 'growth', 'profitability', 'rd', 'cashflow',
+    #           'analyst', 'institutional', 'chip', 'safety'
+    # True = 该类别数据缺失（不是零，而是没有数据）
+
 
 @dataclass
 class BullScoreResult:
@@ -970,16 +977,31 @@ class BullScorer:
         details['quality_score'] = quality_score * 100
 
         # ── BullScore v2 新增子因子 ──
-        # 4. 质押风险（已由 data_fetcher 计算为 0~100 分）
-        pledge_score = data.pledge_risk_score  # 0~100
+        # 4. 质押风险：API 无数据时用 50（中性），不默认 100
+        if data.pledge_ratio == 0.0 and data.pledge_risk_score == 100.0 \
+           and data.data_missing_flags.get('chip', False):
+            pledge_score = 50.0
+            details['pledge_data_missing'] = True
+        else:
+            pledge_score = data.pledge_risk_score
         details['pledge_score'] = pledge_score
 
-        # 5. 解禁压力（已由 data_fetcher 计算为 0~100 分）
-        unlock_score = data.unlock_risk_score  # 0~100
+        # 5. 解禁压力：API 无数据时用 50（中性）
+        if data.unlock_ratio == 0.0 and data.unlock_risk_score == 100.0 \
+           and data.data_missing_flags.get('chip', False):
+            unlock_score = 50.0
+            details['unlock_data_missing'] = True
+        else:
+            unlock_score = data.unlock_risk_score
         details['unlock_score'] = unlock_score
 
-        # 6. 审计意见（已由 data_fetcher 计算为 0~100 分）
-        audit_score = data.audit_risk_score  # 0~100
+        # 6. 审计意见：API 无数据时用 50（中性）
+        if data.audit_risk_score == 100.0 \
+           and data.data_missing_flags.get('chip', False):
+            audit_score = 50.0
+            details['audit_data_missing'] = True
+        else:
+            audit_score = data.audit_risk_score
         details['audit_score'] = audit_score
 
         # 7. 营收质量（经营现金流/营收）
@@ -1413,6 +1435,19 @@ class BullScorer:
 
         # FinalScore
         final_score = 0.88 * bull_score + 0.12 * theme_score
+
+        # ── 数据完整度惩罚（v2：缺失重大财务数据时打折） ──
+        dc = data.data_completeness
+        dq_penalty = 1.0
+        if dc < 62.5:
+            # 缺失 >= 3 个维度，中等惩罚
+            dq_penalty = 1.0 - (87.5 - dc) / 100 * 0.08
+            logger.debug(f"{data.ts_code} 数据完整度过低({dc}%), 最终分折扣 {round(dq_penalty, 3)}")
+        elif dc < 87.5:
+            # 缺失 1~2 个维度，轻微惩罚
+            dq_penalty = 1.0 - (87.5 - dc) / 100 * 0.05
+        if dq_penalty < 1.0:
+            final_score = round(final_score * dq_penalty, 2)
 
         # 卖方一致预期综合得分（已由 _score_expectation 写入 data.analyst_expectation_score）
         _ae = round(data.analyst_expectation_score * 100, 2)

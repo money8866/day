@@ -5197,46 +5197,141 @@ def find_all_themes(stock_info, min_confidence=0.3):
 
 
 
-def calc_tech_barrier_score(ts_code):
+def calc_tech_barrier_score(ts_code, pro=None):
     """
-    技术壁垒评分（基本面）
-    从 tushare 财务缓存读取 ROE/毛利率/研发费用率
+    技术壁垒评分（基本面+价格）— 同步 bull_scorer v2 优化逻辑
+
+    从 fina_indicator 读取 ROE/毛利率/研发费用率，
+    加入绝对值下限约束（毛利率<25%上限、ROE<12%上限等），
+    防止"矮子里拔将军"。
 
     Returns:
         float: 0~10 分
     """
     try:
+        # ── 一、基本面壁垒评分（0~7分） ──
+        fund_score = 0.0
+        details = {}
+
+        if pro is None:
+            try:
+                pro = ts.pro_api(TUSHARE_TOKEN)
+            except Exception:
+                return 0
+
+        fin_df = pro.fina_indicator(ts_code=ts_code)
+        if fin_df is not None and len(fin_df) >= 4:
+            fin_df = fin_df.sort_values('end_date', ascending=False).head(8)
+
+            # ROE
+            roe_val = fin_df.head(4)['roe'].mean() if 'roe' in fin_df.columns else 0
+            roe_val = roe_val / 100 if roe_val > 1 else roe_val  # 统一为小数
+            # 毛利率
+            gm_val = fin_df.head(4)['grossprofit_margin'].mean() if 'grossprofit_margin' in fin_df.columns else 0
+            gm_val = gm_val / 100 if gm_val > 1 else gm_val
+            # 研发费用率
+            rd_val = fin_df.head(4)['rd_expenses'].mean() if 'rd_expenses' in fin_df.columns else 0
+            rd_val = rd_val / 100 if rd_val > 1 else rd_val
+            # 经营利润率
+            op_val = fin_df.head(4)['profit_margin'].mean() if 'profit_margin' in fin_df.columns else 0
+
+            # ROE评分（0~2分）
+            if roe_val > 0.20:      roe_s = 2.0
+            elif roe_val > 0.15:    roe_s = 1.6
+            elif roe_val > 0.12:    roe_s = 1.3
+            elif roe_val > 0.10:    roe_s = 1.0
+            elif roe_val > 0.08:    roe_s = 0.7
+            elif roe_val > 0.05:    roe_s = 0.4
+            else:                   roe_s = 0.0
+            fund_score += roe_s
+            details['roe'] = round(roe_val * 100, 1)
+
+            # 毛利率评分（0~2分）— 同步 bull_scorer 绝对值下限约束
+            if gm_val > 0.40:       gm_s = 2.0
+            elif gm_val > 0.30:     gm_s = 1.7
+            elif gm_val > 0.25:     gm_s = 1.3
+            elif gm_val > 0.20:     gm_s = 1.0
+            elif gm_val > 0.15:     gm_s = 0.6
+            elif gm_val > 0.10:     gm_s = 0.3
+            else:                   gm_s = 0.0
+            fund_score += gm_s
+            details['gross_margin'] = round(gm_val * 100, 1)
+
+            # 研发费用率评分（0~1.5分）
+            if rd_val > 0.15:       rd_s = 1.5
+            elif rd_val > 0.10:     rd_s = 1.2
+            elif rd_val > 0.06:     rd_s = 1.0
+            elif rd_val > 0.03:     rd_s = 0.7
+            elif rd_val > 0.01:     rd_s = 0.4
+            else:                   rd_s = 0.0
+            fund_score += rd_s
+            details['rd_ratio'] = round(rd_val * 100, 1)
+
+            # 经营利润率评分（0~1.5分）
+            if op_val > 0.25:       op_s = 1.5
+            elif op_val > 0.15:     op_s = 1.2
+            elif op_val > 0.10:     op_s = 0.9
+            elif op_val > 0.05:     op_s = 0.5
+            else:                   op_s = 0.0
+            fund_score += op_s
+            details['profit_margin'] = round(op_val * 100, 1)
+
+        # ── 绝对值下限约束（同步 bull_scorer） ──
+        # 即使有行业排名，绝对值过低也不给高分
+        cap = 7.0
+        if 0 < gm_val < 0.15:
+            cap = min(cap, 5.0)
+        elif 0 < gm_val < 0.20:
+            cap = min(cap, 6.0)
+        if 0 < roe_val < 0.05:
+            cap = min(cap, 5.0)
+        elif 0 < roe_val < 0.08:
+            cap = min(cap, 6.0)
+        if 0 < rd_val < 0.01:
+            cap = min(cap, 4.0)
+        elif 0 < rd_val < 0.02:
+            cap = min(cap, 5.5)
+
+        fund_score = min(fund_score, cap)
+
+        # ── 二、价格壁垒信号评分（0~3分） ──
         csv_path = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-        if not os.path.exists(csv_path):
-            return 0
-        df = pd.read_csv(csv_path)
-        if df.empty or 'close' not in df.columns:
-            return 0
-        df = df.sort_values('trade_date', ascending=False)
+        price_score = 0.0
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            if not df.empty and 'close' in df.columns:
+                df = df.sort_values('trade_date', ascending=False)
 
-        # 用 pct_chg 的标准差衡量波动（波动小→壁垒高→高分）
-        if 'pct_chg' in df.columns and len(df) >= 20:
-            pct_vals = df['pct_chg'].head(60).dropna().astype(float)
-            if len(pct_vals) >= 20:
-                vol = pct_vals.std()
-                # 低波动→壁垒高：vol<=2%→5分, vol>=4%→0分
-                vol_score = max(0, min(5, 5 * (4 - vol) / 2))
-            else:
-                vol_score = 0
-        else:
-            vol_score = 0
+                # 低波动加分（壁垒稳固）
+                if 'pct_chg' in df.columns and len(df) >= 20:
+                    pct_vals = df['pct_chg'].head(60).dropna().astype(float)
+                    if len(pct_vals) >= 20:
+                        vol = pct_vals.std()
+                        vol_score = max(0, min(3, 3 * (4 - vol) / 2))
+                    else:
+                        vol_score = 0
+                else:
+                    vol_score = 0
 
-        # 用涨幅趋势判断基本面强度
-        if len(df) >= 60:
-            close_60d = float(df.iloc[min(59, len(df)-1)]['close'])
-            close_now = float(df.iloc[0]['close'])
-            ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
-            # 60日涨幅>20%→+3分, >50%→+5分
-            trend_score = min(5, max(0, ret_60d * 10))
-        else:
-            trend_score = 0
+                # 60日趋势加分（基本面向好）
+                if len(df) >= 60:
+                    close_60d = float(df.iloc[min(59, len(df)-1)]['close'])
+                    close_now = float(df.iloc[0]['close'])
+                    ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
+                    trend_boost = min(1.0, max(0, ret_60d * 3))
+                else:
+                    trend_boost = 0
 
-        return round(min(10, vol_score + trend_score), 1)
+                price_score = min(3.0, vol_score + trend_boost)
+                details['volatility'] = round(vol_score, 1)
+                details['trend_boost'] = round(trend_boost, 1)
+
+        total = round(min(10, fund_score + price_score), 1)
+        details['fund_score'] = round(fund_score, 1)
+        details['price_score'] = round(price_score, 1)
+        details['cap'] = round(cap, 1)
+        return total
+
     except Exception:
         return 0
 
@@ -5377,9 +5472,12 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
             '半导体设备', '半导体制造', '半导体材料', '半导体封测', '半导体EDA/IP',
             '存储芯片', '先进封装', '先进封装材料', 'IC设计',
             '光刻机链', '光通信', 'PCB电子电路', '光学光电子', '消费电子', '被动元件',
-            '物理AI', '智能驾驶', '低空经济', '商业航天', '军工',
+            '物理AI', '智能驾驶', '低空经济', '商业航天',
             '脑机接口', '固态电池', '氢能', '核聚变', '新型储能',
             '数据要素', '信创软件', '金融科技', '电网数字化', '工业母机',
+        }
+        moderate_tech_themes = {
+            '军工',
         }
         traditional_themes = {
             '电力链', '煤炭链', '银行', '保险', '券商', '贵金属', '工业金属', '小金属',
@@ -5388,11 +5486,15 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
         }
         
         if theme_name in tech_innovation_themes:
-            tech_premium = 15  # 新兴产业溢价
+            tech_premium = 15
             if logic:
                 logic.insert(-4, f"产业趋势：科技创新主题溢价+{tech_premium}")
+        elif theme_name in moderate_tech_themes:
+            tech_premium = 8
+            if logic:
+                logic.insert(-4, f"产业趋势：军工主题溢价+{tech_premium}")
         elif theme_name in traditional_themes:
-            tech_premium = -8  # 传统产业折价
+            tech_premium = -8
             if logic:
                 logic.insert(-4, f"产业趋势：传统行业折价{tech_premium}")
         else:

@@ -628,6 +628,32 @@ def extract_bull_data(row: pd.Series,
         cashflow_ratio=cashflow_ratio,
         main_business_items=main_bz_data or [],
     )
+
+    # ── 数据完整度评估（v2：区分"数据缺失"与"真实为零"） ──
+    # 8 个关键数据维度的可用性检查
+    missing_flags = {}
+    has_financial = latest_revenue > 0 and latest_n_income != 0
+    missing_flags['financial'] = not has_financial
+    has_growth = revenue_yoy != 0.0 or profit_yoy != 0.0
+    missing_flags['growth'] = not has_growth
+    has_profitability = gross_margin > 0 and roe_current > 0
+    missing_flags['profitability'] = not has_profitability
+    has_rd = rd_expense_ratio > 0
+    missing_flags['rd'] = not has_rd
+    has_cashflow = cashflow_growth != 0.0 or net_operate_cash_flow != 0.0
+    missing_flags['cashflow'] = not has_cashflow
+    has_analyst = analyst_count > 0
+    missing_flags['analyst'] = not has_analyst
+    has_institutional = north_bound_daily_net != 0.0 or fund_holding_ratio > 0
+    missing_flags['institutional'] = not has_institutional
+    has_chip = net_inflow_ratio != 0.0 or holder_num_change_ratio != 0.0
+    missing_flags['chip'] = not has_chip
+
+    n_available = sum(1 for v in missing_flags.values() if not v)
+    data_completeness = round(n_available / len(missing_flags) * 100, 1)
+    data.data_completeness = data_completeness
+    data.data_missing_flags = missing_flags
+
     return data
 
 

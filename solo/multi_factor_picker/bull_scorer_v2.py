@@ -341,7 +341,7 @@ class ChipScorer:
         try:
             ht = pro.stk_holdertrade(ts_code=ts_code, start_date=(datetime.now()-timedelta(90)).strftime('%Y%m%d'))
             if ht is None or len(ht) == 0:
-                return 55.0, {"data_count": 0}  # 无数据 = 中性
+                return 50.0, {"data_count": 0}
 
             net_change = ht['chg_vol'].sum() if 'chg_vol' in ht.columns else ht.iloc[:, -2].sum()
 
@@ -449,7 +449,7 @@ class SafetyScorer:
         try:
             ps = pro.pledge_stat(ts_code=ts_code)
             if ps is None or len(ps) == 0:
-                return 70.0, {"no_data": True}  # 无质押=安全
+                return 50.0, {"no_data": True}
 
             total_ratio = 0
             if 'pledge_ratio' in ps.columns:
@@ -484,7 +484,7 @@ class SafetyScorer:
         try:
             sf = pro.share_float(ts_code=ts_code)
             if sf is None or len(sf) == 0:
-                return 70.0, {"no_data": True}
+                return 50.0, {"no_data": True}
 
             # 未来60天解禁总量
             today = datetime.now()
