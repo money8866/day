@@ -18,7 +18,7 @@ BullScore 中长线牛股评分系统（BullScore v2）
   + 0.07 × ChipScore           (筹码面 — v2新增，主力资金+股东人数+增减持+回购+公募持仓)
   + 0.05 × ValuationScore      (估值安全 — PEG+质押风险+解禁压力+现金流+审计意见)
 
-  FinalScore = 0.80 × BullScore + 0.20 × ThemeScore (主题加成)
+  FinalScore = 0.88 × BullScore + 0.12 × ThemeScore (主题加成权重已降低)
 
 牛股等级（基于排名）：
   TOP10    → A级产业龙头
@@ -464,17 +464,12 @@ class BullScorer:
                              group_series: Dict[str, pd.Series],
                              all_rd_series: pd.Series = None) -> Tuple[float, Dict]:
         """
-        技术壁垒评分 (0~100)
+        技术壁垒评分 (0~100) — v2优化版
 
-        行业内分位数：
-        - ROIC: n_income / total_assets (投入资本回报率)
-        - ROE: 行业内分位
-        - GrossMargin: 行业内分位
-        - RDIntensity: 行业内分位
-
-        跨行业研发标准化：
-        - 高科技行业研发费用率全市场分位（体现科技研发 alpha 差异）
-        - 伊利股份(0.5%) vs 寒武纪(30%) → 科技股明显更高
+        优化点：
+        1. 增加绝对值下限约束：避免行业排名高但绝对指标一般的公司拿满分
+        2. 增加毛利率趋势惩罚：毛利率持续下降说明壁垒松动
+        3. 军工/航空行业加成下调：区分行政垄断 vs 技术垄断
         """
         industry = data.industry
         details = {}
@@ -505,11 +500,10 @@ class BullScorer:
         details['rd_intensity_rank'] = rd_pct
 
         # 跨行业研发标准化（全市场分位）- 体现科技研发 alpha 差异
-        # 伊利股份(0.5%研发) vs 半导体公司(15%+研发) → 差距拉大
         if all_rd_series is not None and len(all_rd_series) > 0:
             rd_cross_pct = _percentile_rank(all_rd_series, data.rd_expense_ratio)
         else:
-            rd_cross_pct = rd_pct  # 兜底
+            rd_cross_pct = rd_pct
         details['rd_cross_industry_rank'] = rd_cross_pct
 
         # 专利代理：研发投入强度 × ROE（技术变现能力）
@@ -519,21 +513,85 @@ class BullScorer:
         )
         details['patent_rank'] = patent_pct
 
-        # 行业研发加成系数
+        # 行业研发加成系数 — v2：区分真科技 vs 行政垄断
         industry_bonus = 1.0
-        if any(ht in industry for ht in self.HIGH_TECH_INDUSTRIES):
-            industry_bonus = 1.15  # 高科技行业 +15% 加成
+        high_tech_core = {'半导体', '软件开发', 'IT设备', '通信设备', '电子元件',
+                          '互联网', '医药', '生物', '新材料', '光伏', '新能源',
+                          '储能', '机器人', '自动化', '软件', '计算机', '化工'}
+        high_tech_moderate = {'军工', '航天', '航空', '医疗'}
+        if any(ht in industry for ht in high_tech_core):
+            industry_bonus = 1.15
+        elif any(ht in industry for ht in high_tech_moderate):
+            industry_bonus = 1.08
         elif any(keyword in industry for keyword in ['消费', '食品', '零售', '物流', '金融']):
-            industry_bonus = 0.85  # 传统行业 -15% 加成
+            industry_bonus = 0.85
         details['industry_bonus'] = industry_bonus
 
         # 综合得分：行业内分位 * 跨行业研发分位（几何平均，体现科技差异）
-        # 研发分位用几何平均：高科技公司得分更高，传统公司得分更低
         rd_combined = (rd_pct * rd_cross_pct) ** 0.5 if rd_pct > 0 and rd_cross_pct > 0 else rd_pct
 
-        score = (0.30 * roic_pct + 0.20 * roe_pct + 0.15 * gm_pct +
+        raw_score = (0.30 * roic_pct + 0.20 * roe_pct + 0.15 * gm_pct +
                  0.25 * rd_combined + 0.10 * patent_pct) * 100 * industry_bonus
-        details['raw_score'] = score
+        details['raw_score'] = round(raw_score, 1)
+
+        # v2：绝对值下限约束 — 防止"矮子里拔将军"
+        # 分级约束：不是简单的一刀切，而是多档递减
+        # 毛利率: <15%→上限60, <20%→上限75, <25%→上限85, <30%→上限92
+        # ROE: <5%→上限60, <8%→上限75, <12%→上限88
+        # 研发率: <1%→上限50, <2%→上限70, <4%→上限85
+        cap_score = 100.0
+
+        # 毛利率约束
+        if data.gross_margin < 0.15:
+            cap_score = min(cap_score, 60.0)
+            details['cap_gm_low'] = '毛利率<15%，上限60分'
+        elif data.gross_margin < 0.20:
+            cap_score = min(cap_score, 75.0)
+            details['cap_gm_low'] = '毛利率<20%，上限75分'
+        elif data.gross_margin < 0.25:
+            cap_score = min(cap_score, 85.0)
+            details['cap_gm_low'] = '毛利率<25%，上限85分'
+        elif data.gross_margin < 0.30:
+            cap_score = min(cap_score, 92.0)
+            details['cap_gm_low'] = '毛利率<30%，上限92分'
+
+        # ROE约束
+        if data.roe_current < 0.05:
+            cap_score = min(cap_score, 60.0)
+            details['cap_roe_low'] = 'ROE<5%，上限60分'
+        elif data.roe_current < 0.08:
+            cap_score = min(cap_score, 75.0)
+            details['cap_roe_low'] = 'ROE<8%，上限75分'
+        elif data.roe_current < 0.12:
+            cap_score = min(cap_score, 88.0)
+            details['cap_roe_low'] = 'ROE<12%，上限88分'
+
+        # 研发费用率约束
+        if data.rd_expense_ratio < 0.01:
+            cap_score = min(cap_score, 50.0)
+            details['cap_rd_low'] = '研发率<1%，上限50分'
+        elif data.rd_expense_ratio < 0.02:
+            cap_score = min(cap_score, 70.0)
+            details['cap_rd_low'] = '研发率<2%，上限70分'
+        elif data.rd_expense_ratio < 0.04:
+            cap_score = min(cap_score, 85.0)
+            details['cap_rd_low'] = '研发率<4%，上限85分'
+
+        details['absolute_cap'] = cap_score
+        score = min(raw_score, cap_score)
+
+        # v2：毛利率趋势惩罚 — 毛利率连续下降说明壁垒松动/竞争加剧
+        # gross_margin_change < -2%：扣 5 分；< -5%：扣 10 分
+        gm_change = data.gross_margin_change or 0.0
+        gm_trend_penalty = 0.0
+        if gm_change < -0.05:
+            gm_trend_penalty = 10.0
+            details['gm_trend_penalty'] = '毛利率下降>5%，扣10分'
+        elif gm_change < -0.02:
+            gm_trend_penalty = 5.0
+            details['gm_trend_penalty'] = '毛利率下降2~5%，扣5分'
+        score = max(score - gm_trend_penalty, 0.0)
+
         return min(score, 100), details
 
     def _score_order_explosion(self, data: BullStockData,
@@ -723,38 +781,65 @@ class BullScorer:
     def _score_expectation(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        预期差评分 (0~100) - 优化版：加入非线性放大
+        预期差评分 (0~100) — v2优化版：低基数校验
 
         优化点：
-        1. 极端利润增速(YoY>300%)非线性放大 → 突破线性评分上限
-        2. "盈利超预期"维度：利润增速 > 营收增速的部分（利润含金量）
-        3. 卖方一致预期信号加强权重
+        1. 低基数检测：利润增速远高于营收增速时，降低非线性放大
+        2. 营收验证：高利润增长必须有营收增长支撑
+        3. 扭亏/低基数高增打折：上一年利润基数异常低时，高增长可信度低
         """
         industry = data.industry
         details = {}
 
-        # 1. 未来利润增速：行业内分位 + 非线性放大
+        # 1. 未来利润增速：行业内分位
         fut_cagr_pct = _percentile_rank(
             group_series.get(f'profit_yoy_{industry}', pd.Series()), data.profit_yoy
         )
-        # 非线性放大：利润YoY > 100%时额外加分，>300%时显著加分
-        growth_surprise = 0.0
-        if data.profit_yoy > 3.0:
-            growth_surprise = 0.30  # >300%增长额外+30分
-        elif data.profit_yoy > 1.5:
-            growth_surprise = 0.15  # >150%增长额外+15分
-        elif data.profit_yoy > 0.5:
-            growth_surprise = 0.05  # >50%增长额外+5分
         details['future_cagr_rank'] = fut_cagr_pct
+
+        # v2：低基数可信度校验
+        # 核心逻辑：利润高增长必须有营收增长支撑，否则大概率是基数效应/非经常性损益
+        profit_yoy = data.profit_yoy or 0.0
+        revenue_yoy = data.revenue_yoy or 0.0
+
+        # 可信度系数：营收增速 vs 利润增速的匹配度
+        # 利润增速 > 100% 但营收增速 < 30%：高增长可信度低
+        # 利润增速 > 200% 但营收增速 < 50%：可信度极低
+        credibility = 1.0
+        if profit_yoy > 2.0 and revenue_yoy < 0.5:
+            credibility = 0.5
+            details['low_base_warning'] = '利润增速>200%但营收<50%，低基数效应，可信度0.5'
+        elif profit_yoy > 1.0 and revenue_yoy < 0.3:
+            credibility = 0.7
+            details['low_base_warning'] = '利润增速>100%但营收<30%，可能低基数，可信度0.7'
+        elif profit_yoy > 0.5 and revenue_yoy < 0.15:
+            credibility = 0.85
+            details['low_base_warning'] = '利润增速>50%但营收<15%，需验证，可信度0.85'
+        details['growth_credibility'] = credibility
+
+        # 非线性放大：应用可信度系数后再判断增速档位
+        adjusted_profit_yoy = profit_yoy * credibility
+        growth_surprise = 0.0
+        if adjusted_profit_yoy > 3.0:
+            growth_surprise = 0.30
+        elif adjusted_profit_yoy > 1.5:
+            growth_surprise = 0.15
+        elif adjusted_profit_yoy > 0.5:
+            growth_surprise = 0.05
         details['growth_surprise'] = round(growth_surprise * 100, 1)
+        details['adjusted_profit_yoy'] = round(adjusted_profit_yoy * 100, 1)
 
         # 2. 盈利超预期：利润增速 > 营收增速 的差额(盈利质量超预期)
-        earnings_surprise = max(data.profit_yoy - data.revenue_yoy, 0.0)
-        # 标准化为分位：利润增速显著超过营收增速 → 盈利超预期信号强
+        # v2：如果利润增速远高于营收增速（差额>100%），反而可能是基数效应，降低权重
+        earnings_surprise = max(profit_yoy - revenue_yoy, 0.0)
         earnings_surprise_pct = _percentile_rank(
             group_series.get(f'profit_yoy_{industry}', pd.Series()),
             earnings_surprise
         ) if earnings_surprise > 0 else 0.0
+        # v2：差额过大时打折（利润增速-营收增速 > 100%，大概率不是经营改善）
+        if (profit_yoy - revenue_yoy) > 1.0:
+            earnings_surprise_pct *= 0.5
+            details['earnings_surprise_discounted'] = '利润营收差>100%，盈利超预期打折50%'
         details['earnings_surprise'] = round(earnings_surprise_pct * 100, 1)
 
         # 3. 业绩上修代理：业绩预告类型
@@ -773,8 +858,10 @@ class BullScorer:
         details['earnings_upgrade'] = upgrade_score
 
         # 4. PEG倒数代理 = 利润增速 / (1/ROE 代理估值)
+        # v2：应用可信度系数，低基数高增长的PEG意义不大
         pe_inv = max(data.roe_current, 0.01)
-        peg = _safe_div(data.profit_yoy + 0.01, pe_inv + 0.01)
+        adjusted_peg_yoy = profit_yoy * credibility
+        peg = _safe_div(adjusted_peg_yoy + 0.01, pe_inv + 0.01)
         peg_pct = _percentile_rank(
             group_series.get(f'peg_inverse_{industry}', pd.Series()), peg
         )
@@ -790,9 +877,10 @@ class BullScorer:
         analyst_expectation_score = 0.0
         if data.analyst_count >= 3:
             # 一致预期净利润增速 (满分线 50%，>100%非线性加成)
+            # v2：同样应用可信度校验，防止一致预期也被低基数忽悠
             np_growth = max(data.np_growth_current, 0.0)
             if np_growth > 1.0:
-                g_score = min(1.0 + (np_growth - 1.0) * 0.2, 1.3)  # 超100%增速额外加成
+                g_score = min(1.0 + (np_growth - 1.0) * 0.2 * credibility, 1.3)
             else:
                 g_score = min(np_growth / 0.5, 1.0)
             b_score = min(data.buy_ratio / 0.8, 1.0)
@@ -1324,7 +1412,7 @@ class BullScorer:
         theme_score = self._compute_theme_score(data.chain_tag, data.main_business_items)
 
         # FinalScore
-        final_score = 0.80 * bull_score + 0.20 * theme_score
+        final_score = 0.88 * bull_score + 0.12 * theme_score
 
         # 卖方一致预期综合得分（已由 _score_expectation 写入 data.analyst_expectation_score）
         _ae = round(data.analyst_expectation_score * 100, 2)

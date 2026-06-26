@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "D:\mystock\solo\multi_factor_picker\new_high_pullback_backtest.py", line 279, in <module>
+    input("\n按回车退出...")
+    ~~~~~^^^^^^^^^^^^^^^^^^^
+EOFError: EOF when reading a line

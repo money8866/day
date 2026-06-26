@@ -27,8 +27,6 @@ import requests
 import pandas as pd
 import numpy as np
 import time
-import warnings
-warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 
 # =========================
 # 代理配置
@@ -60,10 +58,6 @@ import sqlite3
 
 # 新增：引用新版大盘/主题分析
 import daily_analysis_summarizer as das
-
-# SQLite 统一缓存模块
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import stock_cache as sc
 
 # =========================
 # 产业资金定价AI模型（ICPM）延迟导入
@@ -151,7 +145,7 @@ def _save_cache(df, cache_file):
         pass
 
 def batch_cache_stk_factor_pro(target_date):
-    """批量缓存指定日期所有股票的 stk_factor_pro 数据（SQLite 版）"""
+    """批量缓存指定日期所有股票的 stk_factor_pro 数据"""
     global _stk_factor_batch_downloaded_date
     
     if _stk_factor_batch_downloaded_date == target_date:
@@ -162,6 +156,7 @@ def batch_cache_stk_factor_pro(target_date):
     
     try:
         # 不带 ts_code 参数，使用 trade_date 获取当天所有股票数据
+        # ⚠️ 修复：使用 dict.fromkeys 去重，避免字段名重复导致 pandas 报错
         _fields = list(dict.fromkeys([
             "ts_code", "trade_date", "open", "open_hfq", "open_qfq",
             "high", "high_hfq", "high_qfq", "low", "low_hfq", "low_qfq",
@@ -214,47 +209,68 @@ def batch_cache_stk_factor_pro(target_date):
         if df_all is not None and not df_all.empty:
             df_all['trade_date'] = df_all['trade_date'].astype(str)
             
-            # 除权检测：遍历每只股票，检查复权因子是否变化
-            adj_changed_count = 0
+            # 按股票代码分组保存
             grouped = df_all.groupby('ts_code')
+            saved_count = 0
+            adj_changed_count = 0
             for code, group_df in grouped:
-                if 'adj_factor' not in group_df.columns:
-                    continue
-                new_adj = group_df['adj_factor'].iloc[-1]
-                old_adj = sc.get_last_adj_factor(code)
-                if old_adj is not None and new_adj is not None and old_adj != 0 and new_adj != 0 and old_adj != new_adj:
-                    print(f"[除权检测] {code} 复权因子变化: {old_adj} -> {new_adj}，删除旧缓存待全量更新")
-                    sc.delete_stk_factor_stock(code)
-                    adj_changed_count += 1
+                cache_file = os.path.join(CACHE_DIR, f"stk_pro_{code}.csv")
+                df_cache = _read_cache(cache_file)
+                group_df = group_df.reset_index(drop=True)
+                
+                if df_cache is not None and not df_cache.empty:
+                    # 检测复权因子是否变化（除权检测）
+                    # 如果 adj_factor 变化，说明发生了除权/复权，历史qfq价格全部失效
+                    # 需要删除旧缓存，让后续调用重新下载全量数据
+                    if 'adj_factor' in df_cache.columns and 'adj_factor' in group_df.columns:
+                        cache_last_adj = df_cache['adj_factor'].iloc[-1]
+                        new_adj = group_df['adj_factor'].iloc[-1]
+                        if cache_last_adj != new_adj and cache_last_adj != 0 and new_adj != 0:
+                            print(f"[除权检测] {code} 复权因子变化: {cache_last_adj} -> {new_adj}，删除旧缓存待全量更新")
+                            adj_changed_count += 1
+                            # 删除旧缓存文件，后续调用会自动重新下载全量
+                            try:
+                                if os.path.exists(cache_file):
+                                    os.remove(cache_file)
+                            except:
+                                pass
+                            # ⚠️ 不保存任何东西，让 cached_stk_factor_pro 触发全量下载
+                            saved_count += 1
+                            continue
+                    
+                    # ⚠️ 修复：重置索引避免重复索引问题
+                    # keep='last' 确保相同日期使用新数据（复权因子更新时）
+                    df_cache = df_cache.reset_index(drop=True)
+                    combined = pd.concat([df_cache, group_df]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
+                    _save_cache(combined, cache_file)
+                else:
+                    _save_cache(group_df, cache_file)
+                saved_count += 1
             
-            # 批量写入 SQLite（单事务 INSERT OR REPLACE）
-            saved_count = sc.batch_insert_stk_factor_pro(df_all)
-            
-            # 更新状态
+            # ⚠️ 修复：只有成功保存数据后才更新状态
             _stk_factor_batch_downloaded_date = target_date
-            sc.set_meta('stk_factor_batch_date', target_date)
-            _write_batch_status(target_date)
-            
+            _write_batch_status(target_date)  # 持久化到文件
             if adj_changed_count > 0:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite，{adj_changed_count} 只除权待全量更新")
+                print(f"[批量缓存] 完成：{saved_count} 只股票已缓存，{adj_changed_count} 只除权待全量更新")
             else:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite")
+                print(f"[批量缓存] 完成：{saved_count} 只股票已缓存")
         else:
             print(f"[批量缓存] 警告：{target_date} 无数据返回（可能还未到数据更新时间）")
-            _stk_factor_batch_downloaded_date = target_date
+            # 不更新状态，让后续调用可以重新尝试
             
     except Exception as e:
         print(f"[批量缓存] 失败: {e}")
-        import traceback
-        traceback.print_exc()
+        # 不更新状态，让后续调用可以重新尝试
 
 def get_list_date(ts_code):
     """获取股票上市日期"""
     try:
-        # 先尝试从 SQLite 缓存获取
-        cached_min = sc.get_list_date_from_cache(ts_code)
-        if cached_min:
-            return cached_min
+        # 先尝试从缓存文件获取
+        cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
+        df_cache = _read_cache(cache_file)
+        if df_cache is not None and not df_cache.empty:
+            # 返回缓存中最早的日期作为上市日期（近似）
+            return df_cache['trade_date'].min()
         
         # 如果缓存中没有，从API获取
         df = pro.stock_basic(ts_code=ts_code)
@@ -268,12 +284,12 @@ def get_list_date(ts_code):
 
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """带缓存的 stk_factor_pro（SQLite 版）
+    """带缓存的 stk_factor_pro（支持批量缓存模式）
     
     优化策略：
     1. 每天第一次调用时自动批量下载当天所有股票数据
-    2. 检查 SQLite 缓存是否覆盖请求范围
-    3. 按需补充缺失的历史数据
+    2. 检查缓存是否覆盖请求范围
+    3. 一次性下载补充缺失数据（不逐日判断）
     4. 对于次新股，跳过上市日期之前的日期
     5. 使用全局集合避免重复日志打印（每只股票只打印一次）
     """
@@ -282,26 +298,32 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
     # 1. 每天第一次调用时先批量缓存当天数据
     batch_cache_stk_factor_pro(end_date)
     
+    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
+    df_cache = _read_cache(cache_file)
+    
     # 2. 获取上市日期（用于次新股判断）
     list_date = get_list_date(ts_code)
-    required_min = list_date if (list_date and list_date > str(start_date)) else str(start_date)
+    required_min = list_date if (list_date and list_date > start_date) else start_date
     
-    # 3. 检查 SQLite 缓存是否覆盖请求范围
-    cached_min, cached_max = sc.get_stk_factor_range(ts_code)
-    if cached_min and cached_max:
-        if cached_min <= required_min and cached_max >= str(end_date):
-            df = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-            if df is not None and not df.empty:
-                return df.reset_index(drop=True)
+    # 3. 检查缓存是否覆盖请求范围（针对次新股放宽条件）
+    if df_cache is not None and not df_cache.empty:
+        cached_min = df_cache['trade_date'].min()
+        cached_max = df_cache['trade_date'].max()
+        actual_last_date = df_cache['trade_date'].iloc[-1]
+        
+        # 如果是次新股，只需缓存覆盖上市日→end_date
+        if cached_min <= required_min and cached_max >= end_date and actual_last_date >= end_date:
+            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
+            subset = df_cache[mask].copy()
+            if not subset.empty:
+                return subset.sort_values('trade_date').reset_index(drop=True)
     
-    # 4. 缓存不完整，补充当前股票缺失的数据
+    # 4. 缓存不完整，一次性下载整个范围
+    # ⚠️ 使用全局集合避免重复日志（每只股票只打印一次）
     supplement_key = f"{ts_code}_{required_min}_{end_date}"
     if supplement_key not in _cache_supplement_attempted:
         _cache_supplement_attempted.add(supplement_key)
-        if list_date and list_date > str(start_date):
-            print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
-        else:
-            print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
+        print(f"[缓存补充] {ts_code} 正在补充 {required_min}~{end_date} ...")
     
     try:
         df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
@@ -311,19 +333,14 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
             df_new['trade_date'] = df_new['trade_date'].astype(str)
             df_new = df_new.sort_values('trade_date').reset_index(drop=True)
             
-            # 写入 SQLite
-            sc.batch_insert_stk_factor_pro(df_new)
-            
-            # 同时保留 CSV 备份（可选，过渡期使用）
-            cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-            df_old = _read_cache(cache_file)
-            if df_old is not None:
-                combined = pd.concat([df_old, df_new]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
+            if df_cache is not None:
+                # keep='last' 确保相同日期使用新数据（复权因子更新时）
+                combined = pd.concat([df_cache, df_new]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
                 _save_cache(combined, cache_file)
             else:
                 _save_cache(df_new, cache_file)
             
-            mask = (df_new['trade_date'] >= str(start_date)) & (df_new['trade_date'] <= str(end_date))
+            mask = (df_new['trade_date'] >= start_date) & (df_new['trade_date'] <= end_date)
             result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
             if not result.empty:
                 return result
@@ -331,16 +348,10 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
         if supplement_key not in _cache_supplement_attempted:
             print(f"[缓存补充] {ts_code} 失败: {e}")
     
-    # 保底：从 SQLite 读取缓存
-    df_cache = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-    if df_cache is not None and not df_cache.empty:
-        return df_cache.reset_index(drop=True)
-    
-    # 再保底：从 CSV 读取
-    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
+    # 保底：重新读取缓存
     df_cache = _read_cache(cache_file)
     if df_cache is not None and not df_cache.empty:
-        mask = (df_cache['trade_date'] >= str(start_date)) & (df_cache['trade_date'] <= str(end_date))
+        mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
         subset = df_cache[mask].copy()
         if not subset.empty:
             return subset.sort_values('trade_date').reset_index(drop=True)
@@ -922,19 +933,11 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         # ⚠️ 修复DataFrame碎片化警告：在修改前先复制一次
         df = df.copy()
         
-        # ⚠️ v2.8修复：统一使用后复权价格进行形态计算
-        # 后复权价格序列天然连续，除权/分红不会产生跳空缺口
-        if 'close_hfq' in df.columns:
+        # ⚠️ v2.7修复：统一使用前复权价格进行形态计算
+        # 优先使用 close_qfq，避免除权导致的价格跳变
+        if 'close_qfq' in df.columns:
             df['close_bfq'] = df['close']  # 保留原始价（入场价/止损价使用未复权价）
-            df['close'] = df['close_hfq']   # 价格计算用后复权
-        
-        # 统一技术指标口径：所有 _qfq 指标用 _hfq 版本覆盖
-        # 确保价格和指标都基于后复权，避免除权失真
-        hfq_cols = [c for c in df.columns if c.endswith('_hfq')]
-        for hfq_col in hfq_cols:
-            qfq_col = hfq_col.replace('_hfq', '_qfq')
-            if qfq_col in df.columns:
-                df[qfq_col] = df[hfq_col]
+            df['close'] = df['close_qfq']   # 价格计算用前复权
         
         # v2.7同步：计算 MA120/MA250（stk_factor_pro 无此字段，需用 rolling 计算）
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
@@ -965,16 +968,6 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
                 w1_high_idx = end_idx - SURGE_DAYS + high_in_win
                 w1_low_idx = end_idx - SURGE_DAYS + low_in_win
                 if not any(h == w1_high_idx for h, *_ in candidates):
-                    # ── 宏观结构过滤（v2.8）：检查候选波峰前面是否还有更高高点 ──
-                    # 大东南典型：57天跌到底后反弹22%，但前方200bar内有个高点+31%更高
-                    # 这种在长期下跌底部的小反弹不是真一波，跳过
-                    lookback_start = max(0, w1_low_idx - 200)
-                    pre_history = closes_arr[lookback_start:w1_low_idx]
-                    if len(pre_history) >= 20:
-                        pre_high = pre_history.max()
-                        if pre_high > closes_arr[w1_high_idx] * 1.15:
-                            continue  # 前方有显著更高的高点，跳过此候选
-
                     candidates.append((w1_high_idx, w1_low_idx, sg))
             candidates.sort(key=lambda x: (n - x[0]))
             return candidates
@@ -9002,11 +8995,11 @@ def run(target_date=None, simple_mode=False):
     # 构建低吸股票池输出文本（精简版）
     # =========================
     dixi_lines = []
+    dixi_lines.append("=" * 60)
+    dixi_lines.append("🔥 今日低吸股票池 (低吸二波信号)")
+    dixi_lines.append("=" * 60)
     
     if dx_ranked_stocks:
-        dx_count = min(len(dx_ranked_stocks), 10)
-        dixi_lines.append(f"共{dx_count}只低吸二波标的（二波评分均≥10分），按二波评分从高到低排序：")
-        dixi_lines.append("-" * 60)
         for i, s in enumerate(dx_ranked_stocks[:10], 1):
             price = s.get('现价', 0)
             pct = s.get('涨跌幅', 0)
@@ -9026,8 +9019,8 @@ def run(target_date=None, simple_mode=False):
             if hot > 0: dims.append(f"热度{int(hot)}")
             if basic > 0: dims.append(f"基本面{int(basic)}")
             dims_str = " ".join(dims) if dims else ""
-            score_str = f"整合评分{int(integrated)}({dims_str})" if dims_str else f"整合评分{int(integrated)}"
-            dixi_lines.append(f"【第{i}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | {score_str}")
+            score_str = f"整合{int(integrated)}({dims_str})" if dims_str else f"整合{int(integrated)}"
+            dixi_lines.append(f"【低吸{i}】{s['名称']}({s['代码']}) {price:.2f}元 {pct_str} | 二波{wave2_score}分 | {score_str}")
             # 第2行：主题（含次强主题）+ 非一日游阶段 + 龙头序列
             cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
             confirm_days = s.get('确认天数', 0)
@@ -9039,20 +9032,20 @@ def run(target_date=None, simple_mode=False):
                 theme_parts[0] = f"{theme_parts[0]}+{secondary_t}"
             if cycle:
                 if confirm_days > 0:
-                    theme_parts.append(f"非一日游:{cycle}({confirm_days}天)")
+                    theme_parts.append(f"{cycle}({confirm_days}天)")
                 else:
-                    theme_parts.append(f"非一日游:{cycle}")
+                    theme_parts.append(cycle)
             if leader_seq and leader_seq != "无":
                 theme_parts.append(f"龙头:{leader_seq}")
-            dixi_lines.append(f"  主题与地位: {' | '.join(theme_parts)}")
+            dixi_lines.append(f"  主题: {' | '.join(theme_parts)}")
             # 第3行：二波形态 + 信号 + 价格位
             wave2_pattern = s.get('二波形态', '')
             wave2_signal = s.get('二波信号', '')
             ep = s.get('入场价', 0)
             sl = s.get('止损价', 0)
             tp = s.get('目标价', 0)
-            price_str = f"入场价{ep:.2f}/止损价{sl:.2f}/目标价{tp:.2f}" if ep > 0 else ""
-            dixi_lines.append(f"  二波信号: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
+            price_str = f"入场{ep:.2f}/止损{sl:.2f}/目标{tp:.2f}" if ep > 0 else ""
+            dixi_lines.append(f"  二波: {wave2_pattern} | {wave2_signal} | {price_str}")
             # 第4行（可选）：辨识度（非普通才显示）
             recognition = s.get('辨识度加分', 0)
             resonance = s.get('共振系数', 1.0)
@@ -9074,10 +9067,9 @@ def run(target_date=None, simple_mode=False):
             if yri_total > 0:
                 yri_level = s.get('YRI等级', '')
                 yri_max_lb = s.get('YRI最大连板', 0)
-                dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 最大连板{yri_max_lb}板")
-            dixi_lines.append("")
+                dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 连板{yri_max_lb}板")
     else:
-        dixi_lines.append("今日无低吸信号个股")
+        dixi_lines.append("  今日无低吸信号个股")
     dixi_stock_text = "\n".join(dixi_lines)
     print(dixi_stock_text)
 
@@ -9287,7 +9279,6 @@ def run(target_date=None, simple_mode=False):
 3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，最多显示10只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
-   - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
    - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
      - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | 整合评分(非零维度)
      - 第2行：主题与地位（主题名 + 非一日游阶段+天数 + 龙头序列 + 主题地位）
@@ -9355,10 +9346,6 @@ def run(target_date=None, simple_mode=False):
 """
     if not simple_mode:
         print("\n========== Deepseek AI分析 ==========\n")
-        prompt_file = os.path.join(CACHE_DIR, f"prompt_debug_{TRADE_DATE}.txt")
-        with open(prompt_file, "w", encoding="utf-8") as f:
-            f.write(prompt)
-        print(f"[DEBUG] Prompt已保存: {prompt_file}")
         report = deepseek(prompt)
         print(report)
 

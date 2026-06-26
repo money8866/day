@@ -38,6 +38,16 @@ import pandas as pd
 import numpy as np
 from loguru import logger
 
+import tushare as ts
+_original_set_token = ts.set_token
+def _patched_set_token(token):
+    os.environ['TUSHARE_TOKEN'] = token
+    try:
+        _original_set_token(token)
+    except (PermissionError, OSError):
+        pass
+ts.set_token = _patched_set_token
+
 from data_fetcher import DataFetcher
 from bull_scorer import BullStockData, BullScoreResult, BullScorer as _BullScorer  # 数据类型的兼容引用，仅用于基础评分
 from bull_scorer_v2 import BullScorerV2, BullScoreV2Result  # v2 评分引擎
@@ -794,49 +804,18 @@ def secondary_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Result
 
     logger.info(f"Step1-基础过滤: {len(filtered)} 只 (final_score>=85, bull_level>=B级)")
 
-    # ── Step 2: 主题去重 ──
-    # 为每个 theme 计算综合排序分: 0.5×final_score + 0.3×expectation_score + 0.2×order_explosion_score
-    for r in filtered:
-        r.sub_details['theme_sort_score'] = (
-            0.5 * r.final_score + 0.3 * r.expectation_score + 0.2 * r.order_explosion_score
-        )
+    # ── Step 2: 跳过主题去重（用户要求不限制同一主题的入选数量）──
+    theme_deduped = list(filtered)  # 跳过去重，保留全部
+    logger.info(f"Step2-主题去重: 跳过 (保持 {len(theme_deduped)} 只)")
 
-    # 按 theme 分组，每组取 TOP 1（如有并列最多取 TOP 2）
-    theme_groups: Dict[str, List[BullScoreResult]] = {}
-    for r in filtered:
-        t = r.theme if r.theme else "__其他__"
-        theme_groups.setdefault(t, []).append(r)
-
-    theme_deduped = []
-    for t, group in theme_groups.items():
-        group.sort(key=lambda x: x.sub_details.get('theme_sort_score', 0), reverse=True)
-        keep = min(len(group), 1)  # 默认 TOP 1
-        # 如果第二名的 score 与第一名相差不到 3 分，则保留 TOP 2
-        if len(group) >= 2 and (group[0].sub_details.get('theme_sort_score', 0) -
-                                 group[1].sub_details.get('theme_sort_score', 0) < 3):
-            keep = min(len(group), 2)
-        theme_deduped.extend(group[:keep])
-
-    logger.info(f"Step2-主题去重: {len(theme_deduped)} 只 (原 {len(filtered)} 只)")
-
-    # ── Step 3: 产业链去重 ──
-    # 按 chain_tag 分组，每组保留 TOP 1
-    chain_groups: Dict[str, List[BullScoreResult]] = {}
-    for r in theme_deduped:
-        ct = r.chain_tag if r.chain_tag else "__其他__"
-        chain_groups.setdefault(ct, []).append(r)
-
-    chain_deduped = []
-    for ct, group in chain_groups.items():
-        group.sort(key=lambda x: x.final_score, reverse=True)
-        chain_deduped.append(group[0])  # 每个 chain 只保留 1 只
-
-    logger.info(f"Step3-产业链去重: {len(chain_deduped)} 只 (原 {len(theme_deduped)} 只)")
+    # ── Step 3: 跳过产业链去重（用户要求不限制同一产业链的入选数量）──
+    no_dedup = list(theme_deduped)
+    logger.info(f"Step3-产业链去重: 跳过 (保持 {len(no_dedup)} 只)")
 
     # ── Step 4: 交易价值过滤 ──
     # TradeScore = 0.5×expectation_score + 0.3×order_explosion_score + 0.2×marketcap_score
     trade_filtered = []
-    for r in chain_deduped:
+    for r in no_dedup:
         trade_score = 0.5 * r.expectation_score + 0.3 * r.order_explosion_score + 0.2 * r.marketcap_score
         r.sub_details['trade_score'] = trade_score
         if trade_score >= 75:
@@ -913,6 +892,99 @@ def print_bull_results(results: List[BullScoreV2Result]) -> None:
     bull_scorer.print_summary(results)
 
 
+# ==================== 微信推送（PushPlus） ====================
+
+PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", "9dd91e1aad484af2b77e9e4e7b4bae37")
+
+
+def push_wechat_notification(all_results, qualified, elite, report_daily_dir):
+    """
+    通过 PushPlus 推送 BullScore 报告摘要到微信
+
+    Args:
+        all_results: 全量评分结果
+        qualified: 合格股票(>=70分)
+        elite: 精选股票
+        report_daily_dir: 报告输出目录
+    """
+    import requests
+    from datetime import datetime
+
+    logger.info("=" * 60)
+    logger.info("开始微信推送 (PushPlus)...")
+
+    # 构造推送标题
+    trade_date = datetime.now().strftime('%Y-%m-%d')
+    title = f"🐂 BullScore 选股日报 {trade_date}"
+
+    # 构造推送内容（Markdown 格式）
+    lines = [
+        f"## {title}",
+        f"> 扫描: {len(all_results)} 只 | 合格: {len(qualified)} 只 | 精选: {len(elite)} 只",
+        "",
+    ]
+
+    if elite:
+        lines.append("### 🏆 TOP 5 精选标的")
+        lines.append("| 排名 | 代码 | 名称 | 主题 | Bull分 | 主题分 | Final分 |")
+        lines.append("|------|------|------|------|--------|--------|---------|")
+        for i, r in enumerate(elite[:5], 1):
+            code = r.ts_code.replace('.SH', '').replace('.SZ', '').replace('.BJ', '')
+            name = getattr(r, 'name', '')
+            theme = getattr(r, 'theme', '')
+            bull = getattr(r, 'bull_score', 0)
+            t_score = getattr(r, 'theme_score', 0)
+            f_score = getattr(r, 'final_score', 0)
+            lines.append(f"| {i} | **{code}** | {name} | {theme} | {bull:.1f} | {t_score:.1f} | **{f_score:.1f}** |")
+        lines.append("")
+
+    if qualified:
+        lines.append("### 📈 各主题龙头分布 (Top 10)")
+        lines.append("| 主题 | 龙头 | Final分 |")
+        lines.append("|------|------|---------|")
+        # 按主题聚合，挑每个主题得分最高的
+        theme_top = {}
+        for r in qualified:
+            theme = getattr(r, 'theme', '')
+            if not theme:
+                continue
+            f_score = getattr(r, 'final_score', 0)
+            if theme not in theme_top or f_score > theme_top[theme][1]:
+                theme_top[theme] = (getattr(r, 'name', ''), f_score)
+        sorted_themes = sorted(theme_top.items(), key=lambda x: x[1][1], reverse=True)[:10]
+        for theme, (name, score) in sorted_themes:
+            lines.append(f"| {theme} | {name} | {score:.1f} |")
+        lines.append("")
+
+    lines.append("### 📁 生成文件")
+    lines.append(f"- 全量: `report_daily/bull_stocks_all.csv` ({len(all_results)}只)")
+    lines.append(f"- 合格: `report_daily/bull_stocks_qualified.csv` ({len(qualified)}只)")
+    lines.append(f"- 精选: `report_daily/bull_stocks_elite.csv` ({len(elite)}只)")
+    lines.append("")
+    lines.append(f"> 🤖 自动生成于 {datetime.now().strftime('%H:%M:%S')}")
+
+    content = "\n".join(lines)
+
+    # 调用 PushPlus API
+    url = "https://www.pushplus.plus/send"
+    payload = {
+        "token": PUSHPLUS_TOKEN,
+        "title": title,
+        "content": content,
+        "template": "markdown",
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        result = resp.json()
+        if result.get('code') == 200:
+            logger.info(f"✅ 微信推送成功！请查看公众号 PushPlus 推送加 消息")
+            logger.info(f"   推送ID: {result.get('data')}")
+        else:
+            logger.warning(f"⚠️ 微信推送返回异常: {result.get('msg', result)}")
+    except Exception as e:
+        logger.warning(f"❌ 微信推送请求失败: {e}")
+
+
 def main():
     """主函数"""
     logger.info("=" * 60)
@@ -930,8 +1002,8 @@ def main():
         all_results = bull_scan(config, fetcher)
 
         # ── 一级过滤: 观察名单以上 ──
-        qualified = [r for r in all_results if r.final_score >= 55]
-        logger.info(f"一级过滤(>=55分): {len(qualified)} 只")
+        qualified = [r for r in all_results if r.final_score >= 60]
+        logger.info(f"一级过滤(>=60分): {len(qualified)} 只")
 
         # ── 二级精选过滤（核心输出） ──
         elite = secondary_filter(all_results)
@@ -944,7 +1016,7 @@ def main():
         if qualified:
             print_bull_results(qualified)
         else:
-            logger.info("未筛选出符合观察名单(>=70分)的股票")
+            logger.info("未筛选出符合观察名单(>=60分)的股票")
 
         # ── 保存 ──
         scorer_v2 = BullScorerV2(token=token)
@@ -993,7 +1065,7 @@ def main():
             scorer_v2.to_dataframe(all_results).to_csv(full_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"全量数据已保存至(固定路径): {full_fixed_path}")
 
-        # 合格数据(>=70分)：固定文件名
+        # 合格数据(>=60分)：固定文件名
         qualified_fixed_path = report_daily_dir / "bull_stocks_qualified.csv"
         if qualified:
             scorer_v2.to_dataframe(qualified).to_csv(qualified_fixed_path, index=False, encoding='utf-8-sig')
@@ -1004,6 +1076,12 @@ def main():
         if elite:
             scorer_v2.to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"精选数据已保存至(固定路径): {elite_fixed_path}")
+
+        # ── 微信推送（PushPlus） ──
+        try:
+            push_wechat_notification(all_results, qualified, elite, report_daily_dir)
+        except Exception as pe:
+            logger.warning(f"微信推送失败: {pe}")
 
         logger.info("=" * 60)
         logger.info("BullScore 选股完成")

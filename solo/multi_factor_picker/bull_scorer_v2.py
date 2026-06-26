@@ -1,37 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-BullScore v2.2 — 中长线牛股选股系统
+BullScore v3.0 — 中长线牛股选股系统（超预期持续成长版）
 
-v2.2 核心变更（相比v2.1）：
-├── 移除筹码面因子 (ChipScore) — 因子冗余
-├── 预期差权重 8%→12% — 提权
-├── 机构认可权重 4%→7% — 多维度综合(公募+分析师+北向+评级)
+v3.0 核心变更：
+├── 移除 Alpha 因子 (8%) — 与成长/质量/流动性因子高度重叠
+├── 预期差权重 12%→14% — 强化超预期增长
+├── 业绩质量权重 10%→12% — 强化持续增长+加速度
+├── 龙头地位权重 6%→8% — 强化细分产业头部公司
+├── 机构认可权重 7%→8% — 多维度机构交叉验证
+├── 市值弹性权重 4%→5% — 微调
 │
-v2.1 核心增强：
-├── 历史辨识度评分 (YRI) — 从资金活跃度、涨停基因、空间记忆、股性画像、舆情热度五个维度评估
-├── Alpha因子评分 — 质量、成长、估值、动量、流动性、情绪六因子模型
-├── 龙头/中军识别器 — 自动判定股票类型：龙头、中军、龙二、补涨、普通
-└── AI分析集成 — 深度分析单只股票或对比分析多只股票
+★ 评分理念：从"宽泛多因子渔网"→"超预期驱动的持续成长王者评分"
 
-评分结构（v2.2）：
-  BullScore_v2.2 =
-    0.14 × IndustryDemandScore    (产业景气)
-    0.14 × OrderExplosionScore    (订单爆发)
-    0.10 × TechBarrierScore       (技术壁垒)
-    0.10 × EarningsQualityScore   (业绩质量)
-    0.12 × ExpectationScore       (预期差 — 提权，利润YoY非线性放大)
-    0.06 × LeaderScore            (龙头地位)
-    0.07 × InstitutionScore       (机构认可 — 多维度:分析师+公募+北向+评级)
-    0.04 × MarketCapElasticity    (市值弹性)
-    ———————————————————————— 筹码面已移除
-    0.07 × SafetyMarginScore      (估值安全)
-    ★ v2.1 新增：
-    0.08 × RecognitionScore       (历史辨识度 YRI)
-    0.08 × AlphaScore             (Alpha因子)
+评分结构（v3.0）：
+  核心增长因子 (54%)：产业景气14% | 订单爆发14% | 业绩质量12% | 预期差14%
+  护城河因子 (26%)：技术壁垒10% | 龙头地位8% | 机构认可8%
+  估值+弹性因子 (12%)：估值安全7% | 市值弹性5%
+  历史辨识度 (8%)
 
-  FinalScore = 0.82 × BullScore_v2.2 + 0.18 × ThemeScore_v2
+  BullScore_v3.0 = 0.14*ind + 0.14*order + 0.10*tech + 0.12*earn
+                  + 0.14*expect + 0.08*leader + 0.08*inst + 0.05*mc
+                  + 0.07*safety + 0.08*recognition
 
-  主题加成非线性放大：当 ThemeScore_v2 > 60 时，FinalScore × (1 + 0.15 × (ThemeScore_v2 - 60) / 40)
+  FinalScore = 0.88 * BullScore_v3.0 + 0.12 * ThemeScore_v2
 
 历史辨识度评分器 (YRI):
   - 资金活跃度（25%）：日均成交额、换手率、热度排名
@@ -40,7 +31,7 @@ v2.1 核心增强：
   - 股性画像（15%）：股性标签、风格特征
   - 舆情热度（15%）：新闻曝光、研报覆盖、市场讨论度
 
-Alpha因子评分器:
+Alpha因子评分器（已弃用v3.0）:
   - 质量因子（20%）：ROE稳定性、盈利质量、现金流
   - 成长因子（20%）：营收增速、利润增速、研发投入
   - 估值因子（15%）：PE/PB分位、估值性价比
@@ -69,6 +60,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+from pathlib import Path
 from dataclasses import dataclass, field
 from loguru import logger
 
@@ -1585,20 +1577,34 @@ class LeaderRecognizer:
 # 原有非线性放大函数继续
 # ════════════════════════════════════════════════════════
 
-def expectation_nonlinear_boost(profit_yoy: float, base_score: float) -> float:
+def expectation_nonlinear_boost(profit_yoy: float, base_score: float,
+                                 revenue_yoy: float = 0.0) -> float:
     """
-    预期差非线性放大专用
+    预期差非线性放大专用 — v2优化：低基数校验
 
-    profit_yoy > 100% → 额外加成
-    profit_yoy > 300% → 显著加成
+    v2优化：利润高增长必须有营收增长支撑，否则降低放大倍数
+    - 利润增速 > 200% 但营收 < 50%：可信度 0.5，放大系数减半
+    - 利润增速 > 100% 但营收 < 30%：可信度 0.7
+    - 利润增速 > 50% 但营收 < 15%：可信度 0.85
     """
-    if profit_yoy > 5.0:       # >500%
+    # v2：低基数可信度校验
+    credibility = 1.0
+    if profit_yoy > 2.0 and revenue_yoy < 0.5:
+        credibility = 0.5
+    elif profit_yoy > 1.0 and revenue_yoy < 0.3:
+        credibility = 0.7
+    elif profit_yoy > 0.5 and revenue_yoy < 0.15:
+        credibility = 0.85
+
+    adjusted_yoy = profit_yoy * credibility
+
+    if adjusted_yoy > 5.0:       # >500%
         return base_score * 1.30
-    elif profit_yoy > 3.0:     # >300%
+    elif adjusted_yoy > 3.0:     # >300%
         return base_score * 1.20
-    elif profit_yoy > 1.5:     # >150%
+    elif adjusted_yoy > 1.5:     # >150%
         return base_score * 1.12
-    elif profit_yoy > 0.5:     # >50%
+    elif adjusted_yoy > 0.5:     # >50%
         return base_score * 1.04
     return base_score
 
@@ -1632,8 +1638,9 @@ class BullScoreV2Result:
     
     # ★★★ v2.1 新增因子
     recognition_score: float = 0.0   # 历史辨识度评分 (YRI)
-    alpha_score: float = 0.0         # Alpha因子评分
+    # alpha_score字段保留但v3.0已弃用（Alpha因子与已有因子高度重叠）
     leader_type: str = ""            # 龙头类型: 龙头/中军/龙二/补涨/普通
+    alpha_score: float = 0.0         # 保留字段(已弃用, v3.0不再使用)
     leader_features: List[str] = field(default_factory=list)  # 特征标签
 
     # 汇总
@@ -1708,41 +1715,108 @@ class BullScorerV2:
         # 市值过滤范围（60亿-5000亿）
         self.min_market_cap = 60 * 1e8   # 60亿
         self.max_market_cap = 5000 * 1e8 # 5000亿
+        
+        # 持久化文件缓存（同一天不重拉Tushare）
+        self._cache_dir = Path(__file__).parent / 'cache'
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_date = datetime.now().strftime('%Y%m%d')
+        self._file_caches: Dict[str, dict] = {}
+
+    def _load_file_cache(self, name: str) -> dict:
+        """加载持久化文件缓存"""
+        if name in self._file_caches:
+            return self._file_caches[name]
+        path = self._cache_dir / f'{name}.json'
+        if path.exists():
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if data.get('_date') == self._cache_date:
+                    self._file_caches[name] = data
+                    return data
+            except: pass
+        data = {'_date': self._cache_date}
+        self._file_caches[name] = data
+        return data
+
+    def _save_file_cache(self, name: str):
+        """保存持久化文件缓存"""
+        if name in self._file_caches:
+            path = self._cache_dir / f'{name}.json'
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(self._file_caches[name], f, ensure_ascii=False, default=str)
+            except Exception as e:
+                logger.debug(f'保存缓存 {name} 失败: {e}')
+
+    def _get_cached_score(self, cache_name: str, ts_code: str, compute_fn) -> Tuple[float, Dict]:
+        """通用带文件缓存的评分获取"""
+        # 先检查内存缓存
+        cache = self._load_file_cache(cache_name)
+        if ts_code in cache:
+            entry = cache[ts_code]
+            return entry['score'], entry['details']
+        # 计算并缓存
+        score, details = compute_fn(ts_code)
+        cache[ts_code] = {'score': score, 'details': details}
+        self._save_file_cache(cache_name)
+        return score, details
 
     def _get_chip_score(self, ts_code: str) -> Tuple[float, Dict]:
-        """带缓存的筹码面评分"""
-        if ts_code not in self._chip_cache:
-            self._chip_cache[ts_code] = self.chip_scorer.compute(ts_code)
-        return self._chip_cache[ts_code]
+        """带缓存的筹码面评分（支持文件持久化）"""
+        # 文件缓存
+        cache = self._load_file_cache('chip')
+        if ts_code in cache:
+            entry = cache[ts_code]
+            # 也写入内存缓存
+            if ts_code not in self._chip_cache:
+                self._chip_cache[ts_code] = (entry['score'], entry['details'])
+            return entry['score'], entry['details']
+        # 计算
+        score, details = self.chip_scorer.compute(ts_code)
+        cache[ts_code] = {'score': score, 'details': details}
+        self._save_file_cache('chip')
+        return score, details
 
     def _get_safety_score(self, ts_code: str, profit_yoy: float,
                            roe: float, net_cf: float, revenue: float) -> Tuple[float, Dict]:
-        """带缓存的估值安全评分"""
-        cache_key = f"{ts_code}_{profit_yoy:.2f}_{roe:.2f}"
-        if cache_key not in self._safety_cache:
-            self._safety_cache[cache_key] = self.safety_scorer.compute(
-                ts_code, profit_yoy, roe, net_cf, revenue
-            )
-        return self._safety_cache[cache_key]
+        """带缓存的估值安全评分（支持文件持久化）"""
+        # 文件缓存（同一天同一只股safety不变，ts_code即唯一标识）
+        cache = self._load_file_cache('safety')
+        if ts_code in cache:
+            entry = cache[ts_code]
+            return entry['score'], entry['details']
+        score, details = self.safety_scorer.compute(
+            ts_code, profit_yoy, roe, net_cf, revenue
+        )
+        cache[ts_code] = {'score': score, 'details': details}
+        self._save_file_cache('safety')
+        return score, details
 
     def _get_theme_score_v2(self, ts_code: str, chain_tag: str) -> Tuple[float, str, Dict]:
-        """带缓存的主题加成评分"""
-        if ts_code not in self._theme_cache:
-            # 方案A: fina_mainbz 主营业务匹配
-            score, theme, details = self.theme_scorer.score_by_mainbz(ts_code)
-            if score < 1.0:
-                # 方案B: 回退 chain_tag 白名单
-                score, theme = self.theme_scorer.score_fallback(chain_tag)
-                details = {"fallback": True, "chain_tag": chain_tag}
-            self._theme_cache[ts_code] = (score, theme, details)
-        return self._theme_cache[ts_code]
+        """带缓存的主题加成评分（支持文件持久化）"""
+        cache = self._load_file_cache('theme')
+        if ts_code in cache:
+            entry = cache[ts_code]
+            return entry['score'], entry['theme'], entry['details']
+        score, theme, details = self.theme_scorer.score_by_mainbz(ts_code)
+        if score < 1.0:
+            score, theme = self.theme_scorer.score_fallback(chain_tag)
+            details = {"fallback": True, "chain_tag": chain_tag}
+        cache[ts_code] = {'score': score, 'theme': theme, 'details': details}
+        self._save_file_cache('theme')
+        return score, theme, details
 
     def _get_recognition_score(self, ts_code: str, market_cap: float, industry: str) -> Tuple[float, Dict]:
-        """带缓存的历史辨识度评分"""
-        cache_key = f"{ts_code}_{market_cap:.0f}"
-        if cache_key not in self._recognition_cache:
-            self._recognition_cache[cache_key] = self.recognition_scorer.compute(ts_code, market_cap, industry)
-        return self._recognition_cache[cache_key]
+        """带缓存的历史辨识度评分（支持文件持久化）"""
+        cache = self._load_file_cache('recognition')
+        if ts_code in cache:
+            entry = cache[ts_code]
+            return entry['score'], entry['details']
+        score, details = self.recognition_scorer.compute(ts_code, market_cap, industry)
+        cache[ts_code] = {'score': score, 'details': details}
+        self._save_file_cache('recognition')
+        return score, details
 
     def _get_alpha_score(self, ts_code: str, roe: float, profit_yoy: float,
                          revenue_yoy: float, rd_ratio: float, pe: float, pb: float,
@@ -1772,34 +1846,23 @@ class BullScorerV2:
                    base_result: 'BullScoreResult'  # 从 bull_scorer 继承的结果
                    ) -> BullScoreV2Result:
         """
-        BullScore v2.2 完整评分计算
+        BullScore v3.0 完整评分计算（超预期持续成长版）
         
-        评分结构:
-          原8因子 (70%)：
-            - 产业景气 (14%) | 订单爆发 (14%)
-            - 技术壁垒 (10%) | 业绩质量 (10%)
-            - 预期差 (12%)   | 龙头地位 (6%)
-            - 机构认可 (7%)  | 市值弹性 (4%)
-          
-          筹码面已移除 (权重重新分配至预期差+机构认可)
-          估值安全 (7%)
+        评分理念：从"宽泛多因子渔网"→"超预期驱动的持续成长王者评分"
+        
+        评分结构：
+          核心增长因子 (54%)：产业景气14% | 订单爆发14% | 业绩质量12% | 预期差14%
+          护城河因子 (26%)：技术壁垒10% | 龙头地位8% | 机构认可8%
+          估值+弹性因子 (12%)：估值安全7% | 市值弹性5%
           历史辨识度 (8%)
-          Alpha因子 (8%)
+          ★ Alpha因子已移除 — 与成长/质量/流动性因子高度重叠
         
         总分公式：
-          BullScore_v2.2 = 0.14*ind + 0.14*order + 0.10*tech + 0.10*earn_qual
-                         + 0.12*expect + 0.06*leader + 0.07*inst + 0.04*mc
-                         + 0.07*safety + 0.08*recognition + 0.08*alpha
+          BullScore_v3.0 = 0.14*ind + 0.14*order + 0.10*tech + 0.12*earn_qual
+                         + 0.14*expect + 0.08*leader + 0.08*inst + 0.05*mc
+                         + 0.07*safety + 0.08*recognition
         
-          FinalScore = 0.82 * BullScore_v2.2 + 0.18 * ThemeScore_v2
-        
-          ★★ 如果 ThemeScore_v2 > 60，额外非线性放大：
-             FinalScore = FinalScore * (1 + 0.15 * (ThemeScore_v2 - 60) / 40)
-        
-        新增功能：
-          - 历史辨识度评分：资金活跃度、涨停基因、空间记忆、股性画像、舆情热度
-          - Alpha因子评分：质量、成长、估值、动量、流动性、情绪因子
-          - 龙头/中军识别：自动判定股票类型（龙头、中军、龙二、补涨、普通）
+          FinalScore = 0.88 * BullScore_v3.0 + 0.12 * ThemeScore_v2
         """
         # 1. 筹码面评分
         chip_score, chip_detail = self._get_chip_score(base_result.ts_code)
@@ -1820,8 +1883,9 @@ class BullScorerV2:
 
         # 4. 预期差非线性放大
         profit_yoy = base_result.profit_yoy / 100 if base_result.profit_yoy else 0
+        revenue_yoy = base_result.revenue_yoy / 100 if base_result.revenue_yoy else 0
         expect_boosted = expectation_nonlinear_boost(
-            profit_yoy, base_result.expectation_score
+            profit_yoy, base_result.expectation_score, revenue_yoy
         )
 
         # 5. 历史辨识度评分 ← 新增
@@ -1831,46 +1895,34 @@ class BullScorerV2:
             base_result.industry or ""
         )
 
-        # 6. Alpha因子评分 ← 新增
-        alpha_score, alpha_detail = self._get_alpha_score(
-            base_result.ts_code,
-            base_result.roe / 100 if base_result.roe else 0,
-            profit_yoy,
-            base_result.revenue_yoy / 100 if base_result.revenue_yoy else 0,
-            base_result.rd_expense_ratio / 100 if base_result.rd_expense_ratio else 0,
-            base_result.sub_details.get('valuation', {}).get('pe', 0),
-            base_result.sub_details.get('valuation', {}).get('pb', 0),
-            base_result.sub_details.get('earnings_quality', {}).get('cashflow_ratio', 0),
-            base_result.industry or "",
-            base_result.market_cap or 0
-        )
-
-        # 7. 龙头/中军识别 ← 新增
+        # 6. 龙头/中军识别（Alpha因子已移除，传入0.0占位）
         leader_result = self._get_leader_recognition(
             base_result.ts_code,
             base_result.market_cap or 0,
             base_result.industry or "",
             recognition_score,
-            alpha_score,
+            0.0,        # alpha_score已移除(v3.0)
             theme_score_v2,
             chip_score
         )
 
-        # 8. BullScore v2.2 计算 (筹码面已移除，权重重新分配)
+        # 7. BullScore v3.0 计算（Alpha因子已移除）
         ind_w = 0.14
         order_w = 0.14
         tech_w = 0.10
-        earn_w = 0.10
-        expect_w = 0.12    # 0.08→0.12 提权
-        leader_w = 0.06
-        inst_w = 0.07      # 0.04→0.07 提权，多维度机构认可
-        mc_w = 0.04
+        earn_w = 0.12      # 0.10→0.12 提权（持续增长）
+        expect_w = 0.14    # 0.12→0.14 提权（超预期增长核心）
+        leader_w = 0.08    # 0.06→0.08 提权（细分头部公司）
+        inst_w = 0.08      # 0.07→0.08 提权（多维度机构验证）
+        mc_w = 0.05        # 0.04→0.05 微调
         chip_w = 0.00      # 筹码面已移除
         safety_w = 0.07
         recognition_w = 0.08
-        alpha_w = 0.08
+        total_weight_check = sum([ind_w, order_w, tech_w, earn_w, expect_w,
+                                  leader_w, inst_w, mc_w, safety_w, recognition_w])
+        # v3.0: Alpha因子已移除，权重重新分配至核心增长因子
 
-        bull_v2 = (
+        bull_v3 = (
             ind_w * base_result.industry_demand_score +
             order_w * base_result.order_explosion_score +
             tech_w * base_result.tech_barrier_score +
@@ -1879,30 +1931,22 @@ class BullScorerV2:
             leader_w * base_result.leader_score +
             inst_w * base_result.institution_score +
             mc_w * base_result.marketcap_score +
-            # chip_w * chip_score (筹码面已移除)
             safety_w * safety_score +
-            recognition_w * recognition_score +
-            alpha_w * alpha_score
+            recognition_w * recognition_score
         )
 
-        # 9. 最终分 = 0.82 * BullScore_v2.2 + 0.18 * ThemeScore_v2
-        final = 0.82 * bull_v2 + 0.18 * theme_score_v2
-
-        # 10. 主题非线性放大加成
-        if theme_score_v2 > 60:
-            bonus = 1.0 + 0.15 * (theme_score_v2 - 60) / 40
-            final = final * bonus
+        # 8. 最终分 = 0.88 * BullScore_v3.0 + 0.12 * ThemeScore_v2
+        final = 0.88 * bull_v3 + 0.12 * theme_score_v2
 
         # 等级判定
-        level = self._get_level(len([base_result]), 0)  # 找不到排名信息时用分数
+        level = self._get_level(len([base_result]), 0)
 
-        # 构建详情
+        # 构建详情（移除alpha_detail）
         sub_details = dict(base_result.sub_details)
         sub_details['chip'] = chip_detail
         sub_details['safety'] = safety_detail
         sub_details['theme_v2'] = theme_detail
         sub_details['recognition'] = recognition_detail
-        sub_details['alpha'] = alpha_detail
         sub_details['leader'] = leader_result
         sub_details['expect_boosted'] = round(expect_boosted - base_result.expectation_score, 1)
         sub_details['weights'] = {
@@ -1911,7 +1955,7 @@ class BullScorerV2:
             'expectation': expect_w, 'leader': leader_w,
             'institution': inst_w, 'marketcap': mc_w,
             'chip': 0.0, 'safety': safety_w,
-            'recognition': recognition_w, 'alpha': alpha_w,
+            'recognition': recognition_w, 'alpha': 0.0,
         }
 
         return BullScoreV2Result(
@@ -1932,11 +1976,11 @@ class BullScorerV2:
             safety_score=round(safety_score, 2),
             # 新增字段
             recognition_score=round(recognition_score, 2),
-            alpha_score=round(alpha_score, 2),
+            alpha_score=0.0,  # Alpha因子已移除(v3.0)
             leader_type=leader_result.get('leader_type', ''),
             leader_features=leader_result.get('features', []),
             # 原有字段
-            bull_score_v2=round(bull_v2, 2),
+            bull_score_v2=round(bull_v3, 2),  # v3.0改名为bull_v3
             theme=theme_name,
             theme_score_v2=round(theme_score_v2, 2),
             final_score=round(final, 2),
