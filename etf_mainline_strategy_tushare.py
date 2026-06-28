@@ -76,6 +76,28 @@ def send_wechat(msg, key):
     requests.post(url, data=data)
 
 
+def send_pushplus(msg, token):
+    """通过 PushPlus 推送微信消息（支持markdown）"""
+    if not token:
+        return
+    url = "https://www.pushplus.plus/send"
+    payload = {
+        "token": token,
+        "title": f"ETF每日分析 - {TRADE_DATE}",
+        "content": msg,
+        "template": "markdown"
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        result = resp.json()
+        if result.get("code") == 200:
+            print("✅ PushPlus 已发送")
+        else:
+            print(f"⚠️ PushPlus 发送失败: {result.get('msg', '未知错误')}")
+    except Exception as e:
+        print(f"⚠️ PushPlus 异常: {e}")
+
+
 def normalize_score(series):
     """将序列归一化到0-100分"""
     if len(series) < 2:
@@ -255,7 +277,7 @@ def main():
     else:
         days_since = count_trade_days(state["last_rebalance_date"], today)
         print(f"\n  当前持仓: {state['holding_name']} ({state['holding_code']})")
-        result_message += f"**当前持仓:{state['holding_name']} ({state['holding_code']})**\n"
+        result_message += f"\n**当前持仓:{state['holding_name']} ({state['holding_code']})**\n"
 
         print(f"  买入日期: {state['last_rebalance_date']}")
         result_message += f"买入日期 {state['last_rebalance_date']}\n"
@@ -337,6 +359,8 @@ def main():
         result_message.replace("\n", "\n\n"),
         os.getenv("WECHAT_SCKEY")
     )
+
+    send_pushplus(result_message, os.getenv("PUSHPLUS"))
 
 
 if __name__ == "__main__":

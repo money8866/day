@@ -972,7 +972,8 @@ class DataFetcher:
         公募基金持仓变化（近N期季报，24小时缓存）
 
         Returns:
-            { fund_holding_ratio, fund_ratio_change }
+            { fund_holding_ratio, fund_ratio_change, fund_count }
+            fund_count — 最新一期持有该股票的基金数量（覆盖广度）
         """
         cache_key = f"fund_portfolio_{self._safe_name(ts_code)}_{n_periods}"
 
@@ -984,7 +985,7 @@ class DataFetcher:
         try:
             df = self._retry_call(self.pro.fund_portfolio, ts_code=ts_code, limit=n_periods)
             if df is None or len(df) == 0:
-                result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0}
+                result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0, 'fund_count': 0}
             else:
                 df = df.sort_values('end_date')
                 latest_ratio = float(df.iloc[-1]['amount']) if 'amount' in df.columns and pd.notna(df.iloc[-1]['amount']) else 0.0
@@ -992,12 +993,17 @@ class DataFetcher:
                 if len(df) >= 2:
                     prev = float(df.iloc[0]['amount']) if pd.notna(df.iloc[0]['amount']) else 0.0
                     change = latest_ratio - prev
+                # 统计最新一期持有基金数量（覆盖广度）
+                latest_end = df['end_date'].iloc[-1]
+                latest_period = df[df['end_date'] == latest_end]
+                fund_count = latest_period['fund_code'].nunique() if 'fund_code' in latest_period.columns else 0
                 result = {
                     'fund_holding_ratio': latest_ratio,
                     'fund_ratio_change': change,
+                    'fund_count': fund_count,
                 }
         except Exception:
-            result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0}
+            result = {'fund_holding_ratio': 0.0, 'fund_ratio_change': 0.0, 'fund_count': 0}
 
         if self.cache_enabled:
             self._save_dict_cache(cache_key, result)

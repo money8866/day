@@ -30,7 +30,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "trend_feature_output")
 
 # 回测参数
 LOOKBACK_DAYS = 120          # 回测读取历史天数（越多数据越全）
-RECENT_DAYS = None           # 只分析最近N天，None=全量（如设为120则聚焦近期）
+RECENT_DAYS = 44             # 只分析最近N天（近2个月约44个交易日）
 SIGNAL_THRESHOLD = 80        # S级信号阈值
 DEFAULT_STOCKS = [
     # 原有5只核心股
@@ -364,7 +364,8 @@ def calc_strict_signal_score(row: pd.Series, prev_row: pd.Series = None,
     4. 趋势连续性：前5日评分均值≥60
     5. MACD零轴上方张口：DIF>0 且 DEA>0 且 DIF>DEA
     6. RSI健康区间：当日RSI6在60~85区间（排除<60太弱、>85过热）
-    7. MACD柱强度：当日MACD柱≥2.0（排除动能不足，10日大涨预测力最强因子）
+    7. MACD柱强度：不做硬过滤（弱MACD柱的信号可通过后续放量长阳确认入场）
+        MACD柱≥3.0加分，≥5.0加更多分
 
     额外加分项（来自二波形态系统回测成果）：
     - DMI趋势确认：PDI>MDI且ADX>25 → +3分
@@ -453,13 +454,17 @@ def calc_strict_signal_score(row: pd.Series, prev_row: pd.Series = None,
 
     # ── 追加过滤：MACD柱强度（10日大涨的核心预测因子）─────────────────
     # 分析406个信号发现：MACD柱≥3.0的信号，10日≥25%概率显著更高
+    # 注意：MACD柱弱不直接过滤信号（早期信号可通过后面的趋势确认入场）
+    # 但记录分值供MOMENTUM入场判断使用
     macd_bar = row.get('macd_bfq', 0) or 0
-    if macd_bar < 2.0:
-        score['strict_reasons'].append(f"MACD柱={macd_bar:.2f}<2.0动能不足")
-        return score
-    elif macd_bar >= 5.0:
+    if macd_bar >= 5.0:
         score['strict_bonus'] += 3
         score['strict_reasons'].append(f"MACD柱强({macd_bar:.2f}≥5.0)")
+    elif macd_bar >= 3.0:
+        score['strict_bonus'] += 1
+        score['strict_reasons'].append(f"MACD柱尚可({macd_bar:.2f}≥3.0)")
+    elif macd_bar < 1.0:
+        score['strict_reasons'].append(f"MACD柱偏弱({macd_bar:.2f}<1.0)")
 
     # ── 加分/惩罚（来自二波形态系统）─────────────────────────────────
     # DMI趋势确认：PDI>MDI多头 + ADX>25强趋势 = 趋势确认
@@ -869,29 +874,172 @@ def _volume_start_increase(df: pd.DataFrame, idx: int, lookback: int = 3) -> boo
     return False
 
 
+def _check_momentum_buy(df: pd.DataFrame, signal_idx: int) -> bool:
+    """
+    检查信号日是否满足趋势突破条件，适合次日直接入场
+
+    主板实证（300只样本分析）：
+    - 所有MOMENTUM信号均在60日高点附近（距前高=0%）
+    - 均线多头排列率100%
+    - 成功(+10日>5%) vs 失败(<0%)的核心差异：
+      * 量比: 1.29 vs 0.97 ← 最大区分因子
+      * 距MA10: 9.8% vs 13.2% ← 拉太远=过热
+      * 信号日涨幅: 5.5% vs 7.8% ← 大涨易冲高回落
+
+    动量因子（满足≥4条即通过）：
+    1. MACD柱 ≥ 4.0（动能强劲）
+    2. 距60日前高 < 10%（创新高附近，无套牢盘）
+    3. MA5乖离 3%~8%（快速上涨通道中，但不过热）
+    4. 信号日涨幅 4%~10%（太弱=动能不足，太猛=过热）
+    5. MACD开口扩大（今日DIF-DEA > 前日DIF-DEA）
+    6. 量比 0.8~1.5（温和放量，非爆量见顶）
+    """
+    row = df.iloc[signal_idx]
+    prev_row = df.iloc[signal_idx - 1] if signal_idx > 0 else None
+
+    hits = 0
+
+    # 1. MACD柱 ≥ 4.0
+    macd_bar = row.get('macd_bfq', 0) or 0
+    if macd_bar >= 4.0:
+        hits += 1
+
+    # 2. 距60日前高 < 10%（所有成功信号均满足）
+    high_60d = df.iloc[max(0, signal_idx-60):signal_idx+1]['close'].max()
+    close = row['close']
+    gap = (high_60d - close) / close if high_60d > 0 and close > 0 else 0
+    if gap < 0.10:
+        hits += 1
+
+    # 3. MA5乖离 3%~8%
+    ma5 = row.get('ma_bfq_5', 0) or 0
+    dev_ma5 = (close / ma5 - 1) * 100 if ma5 > 0 else 0
+    if 3 <= dev_ma5 <= 8:
+        hits += 1
+
+    # 4. 信号日涨幅 4%~10%（太弱<4%不算突破，太猛>10%易冲高回落）
+    pct_chg = row.get('pct_chg', 0) or 0
+    if 4 <= pct_chg <= 10:
+        hits += 1
+
+    # 5. MACD开口扩大
+    if prev_row is not None:
+        dif = row.get('macd_dif_bfq', 0) or 0
+        dea = row.get('macd_dea_bfq', 0) or 0
+        prev_dif = prev_row.get('macd_dif_bfq', 0) or 0
+        prev_dea = prev_row.get('macd_dea_bfq', 0) or 0
+        gap_now = dif - dea
+        gap_prev = prev_dif - prev_dea
+        if gap_now > gap_prev > 0:
+            hits += 1
+
+    # 6. 量比（主板最强区分因子：成功1.29 vs 失败0.97）
+    vol_ratio = row.get('volume_ratio', 0) or 0
+    if 0.8 <= vol_ratio <= 1.5:
+        hits += 1
+    elif 1.5 < vol_ratio <= 2.0:
+        hits += 0  # 倍量不扣分但不加分
+    elif vol_ratio > 2.0:
+        hits -= 2  # 爆量=>直接降低评分
+
+    # 前置过滤1：前20日涨幅不超过20%（比之前更严，排除末期加速）
+    idx_start = max(0, signal_idx - 20)
+    price_20d_ago = df.iloc[idx_start]['close']
+    gain_20d = (close / price_20d_ago - 1) * 100 if price_20d_ago > 0 else 0
+    if gain_20d > 20:
+        return False
+
+    # 前置过滤2：距MA10不能太远（>15%=过度拉伸，回调风险大）
+    ma10 = row.get('ma_bfq_10', 0) or 0
+    dev_ma10 = (close / ma10 - 1) * 100 if ma10 > 0 else 0
+    if dev_ma10 > 15:
+        return False
+
+    return hits >= 4
+
+
+def calc_prior_rally_gain(df: pd.DataFrame, signal_idx: int, lookback: int = 60) -> float:
+    """
+    计算信号日之前最近一波完整上涨的涨幅
+
+    从信号日往前找60日内最低收盘价（波段起点），
+    直接计算到信号日收盘价的涨幅。
+    参考 _has_limitup_in_wave 做涨停过滤来剔除弱票。
+    """
+    if signal_idx <= 0 or signal_idx >= len(df):
+        return 0.0
+
+    start_idx = max(0, signal_idx - lookback)
+    segment = df.iloc[start_idx:signal_idx + 1]
+
+    if len(segment) < 5:
+        return 0.0
+
+    low_idx = segment['close'].idxmin()
+    low_price = df.loc[low_idx, 'close']
+
+    if low_price <= 0:
+        return 0.0
+
+    signal_price = df.iloc[signal_idx]['close']
+    gain = (signal_price / low_price - 1) * 100
+
+    return round(gain, 2)
+
+
+def _has_limitup_in_wave(df: pd.DataFrame, signal_idx: int, lookback: int = 60) -> bool:
+    """
+    检查信号日之前的上涨波段中是否包含涨停（涨幅≥9.8%）
+
+    与 calc_prior_rally_gain 使用同样的低点→波峰区间逻辑
+    """
+    if signal_idx <= 0 or signal_idx >= len(df):
+        return False
+
+    start_idx = max(0, signal_idx - lookback)
+    segment = df.iloc[start_idx:signal_idx + 1]
+
+    if len(segment) < 5:
+        return False
+
+    low_idx_label = segment['close'].idxmin()
+    low_pos = df.index.get_loc(low_idx_label)
+
+    # 最低点和信号日之间找波峰（不含信号日本身）
+    mid = df.iloc[low_pos:signal_idx]
+    if len(mid) < 2:
+        return False
+
+    peak_idx_label = mid['close'].idxmax()
+    peak_pos = df.index.get_loc(peak_idx_label)
+
+    # 检查低点到波峰之间是否有涨停
+    wave = df.iloc[low_pos:peak_pos + 1]
+    return (wave['pct_chg'].fillna(0) >= 9.8).any()
+
+
 def find_pullback_entry(df: pd.DataFrame, signal_idx: int,
                         max_lookahead: int = 15,
                         market_type: str = 'dual') -> Optional[Tuple[Optional[int], str]]:
     """
-    信号发出后，等价格先调整，再反弹确认后入场
+    信号发出后，等待深度回调洗盘后，趋势确认入场
 
-    核心逻辑（多指标共振找调整低点）：
-    1. 先看价格是否跌破MA20（<MA20*0.98）
-    2. 如果跌破 → 找底部多指标共振后站上MA20才入场
-    3. 如果没跌破 → 找价格回踩MA10附近+指标共振时入场
-       没等到MA10回踩但KDJ+其他指标显示见底 → MULTI入场
+    核心逻辑：
+    1. 信号发出后，价格必须跌破MA20（深度回调洗盘）
+    2. 在MA20下方找到底部多指标共振点
+    3. 底部确认后，等待放量长阳站上MA20 → 趋势确认入场
 
-    双创vs主板策略差异：
-    - 双创（300/688）：波动大，需严格底部确认，等待天数15天，共振阈值≥2
-    - 主板（其他）：波动小，放宽条件，等待天数10天，共振阈值≥1，MA10范围到±5%
+    趋势确认4项条件（缺一不可）：
+    - 大阳线涨幅 ≥4%（强势突破K线）
+    - 量比 ≥1.3（资金进场确认）
+    - KDJ J>K 且 J>50（动能配合）
+    - 回撤深度 ≥10%（洗盘充分，非浅回调）
     """
     # 市场类型参数
     is_dual = (market_type == 'dual')
     resonance_threshold = 2 if is_dual else 1
-    ma10_tolerance = 0.04 if is_dual else 0.05
-    ma10_upper_tolerance = 0.03 if is_dual else 0.05
 
-    # 先检查价格是否跌破MA20
+    # 1. 检查价格是否跌破MA20（必须深度回调）
     went_below_ma20 = False
     below_ma20_idx = None
     for j in range(signal_idx + 1, min(signal_idx + max_lookahead + 1, len(df))):
@@ -902,67 +1050,158 @@ def find_pullback_entry(df: pd.DataFrame, signal_idx: int,
             below_ma20_idx = j
             break
 
-    if went_below_ma20:
-        # ── 深度回调策略：找底部共振，等站上MA20 ──
-        low_idx = None
-        for j in range(below_ma20_idx, min(below_ma20_idx + max_lookahead + 1, len(df))):
-            kdj_turn = _kdj_j_turning(df, j)
-            macd_turning = _macd_bar_turning(df, j)
-            vol_floor = _volume_shrunk_to_floor(df, j)
-            rsi_up = _rsi_turning_up(df, j)
-            boll_support = _boll_lower_support(df, j)
-
-            signals = sum([kdj_turn, macd_turning, vol_floor, rsi_up, boll_support])
-            if signals >= resonance_threshold:
-                low_idx = j
-                break
-
-        if low_idx is None:
-            return None, None
-
-        for j in range(low_idx + 1, min(low_idx + max_lookahead + 1, len(df))):
-            close = df.iloc[j]['close']
-            ma20 = df.iloc[j].get('ma_bfq_20', 0) or 0
-            if ma20 > 0 and close > ma20 * 1.01:
-                return j, 'MA20'
+    if not went_below_ma20:
         return None, None
 
-    else:
-        # ── 浅回调策略 ──
-        for j in range(signal_idx + 1, min(signal_idx + max_lookahead + 1, len(df))):
-            close = df.iloc[j]['close']
-            ma10 = df.iloc[j].get('ma_bfq_10', 0) or 0
-            prev_close = df.iloc[j - 1]['close'] if j > signal_idx + 1 else 0
+    # 2. 在MA20下方找底部多指标共振
+    low_idx = None
+    for j in range(below_ma20_idx, min(below_ma20_idx + max_lookahead + 1, len(df))):
+        kdj_turn = _kdj_j_turning(df, j)
+        macd_turning = _macd_bar_turning(df, j)
+        vol_floor = _volume_shrunk_to_floor(df, j)
+        rsi_up = _rsi_turning_up(df, j)
+        boll_support = _boll_lower_support(df, j)
 
-            if ma10 > 0 and ma10 * (1 - ma10_tolerance) <= close <= ma10 * (1 + ma10_upper_tolerance):
-                if prev_close > 0 and close > prev_close:
-                    return j, 'MA10'
-                elif prev_close <= 0:
-                    return j, 'MA10'
+        signals = sum([kdj_turn, macd_turning, vol_floor, rsi_up, boll_support])
+        if signals >= resonance_threshold:
+            low_idx = j
+            break
 
-        # 没等到MA10回踩，但指标显示调整结束 → MULTI入场
-        for j in range(signal_idx + 1, min(signal_idx + max_lookahead + 1, len(df))):
-            kdj_turn = _kdj_j_turning(df, j)
-            macd_turning = _macd_bar_turning(df, j)
-            vol_floor = _volume_shrunk_to_floor(df, j)
-            rsi_up = _rsi_turning_up(df, j)
-            boll_support = _boll_lower_support(df, j)
-
-            signals = sum([kdj_turn, macd_turning, vol_floor, rsi_up, boll_support])
-            vol_start = _volume_start_increase(df, j)
-            pct_chg = df.iloc[j].get('pct_chg', 0) or 0
-
-            if signals >= resonance_threshold and vol_start and pct_chg > 0:
-                return j, 'MULTI'
+    if low_idx is None:
         return None, None
+
+    # 3. 底部确认后，找趋势确认入场点
+    signal_high = df.iloc[signal_idx].get('high', df.iloc[signal_idx]['close'])
+    pullback_low = df.iloc[low_idx]['low'] if 'low' in df.columns else df.iloc[low_idx]['close']
+    pullback_depth = (signal_high - pullback_low) / signal_high * 100 if signal_high > 0 else 0
+
+    for j in range(low_idx + 1, min(low_idx + max_lookahead + 1, len(df))):
+        close = df.iloc[j]['close']
+        ma20 = df.iloc[j].get('ma_bfq_20', 0) or 0
+        if ma20 <= 0 or close <= ma20 * 1.01:
+            continue
+
+        pct_chg = df.iloc[j].get('pct_chg', 0) or 0
+        vol_ratio = df.iloc[j].get('volume_ratio', 0) or 0
+        kdj_j = df.iloc[j].get('kdj_bfq', 0) or 0
+        kdj_k = df.iloc[j].get('kdj_k_bfq', 0) or 0
+
+        is_big_candle = pct_chg >= 4.0 and vol_ratio >= 1.3
+        kdj_ok = kdj_j > kdj_k and kdj_j > 50
+        deep_pullback = pullback_depth >= 10.0
+
+        if is_big_candle and kdj_ok and deep_pullback:
+            return j, '趋势确认'
+
+    return None, None
+
+
+def find_trend_confirm_signal(df: pd.DataFrame, idx: int) -> Optional[Dict]:
+    """
+    检查第idx天是否为"趋势确认"信号日
+
+    趋势确认 = 深度回调后放量长阳站上MA20，确认新趋势启动
+
+    判定条件（缺一不可）：
+    1. 当日站上MA20（close > MA20 * 1.01）
+    2. 大阳线涨幅 ≥4%
+    3. 量比 ≥1.3（放量）
+    4. KDJ J>K 且 J>50（动能配合）
+    5. 前一波上涨 ≥25%（有趋势基础）
+    6. 之前曾深度回调跌破MA20（洗盘充分，回撤≥10%）
+
+    返回信号详情字典，不满足返回None
+    """
+    if idx < 30 or idx >= len(df):
+        return None
+
+    row = df.iloc[idx]
+    close = row['close']
+    ma20 = row.get('ma_bfq_20', 0) or 0
+    ma10 = row.get('ma_bfq_10', 0) or 0
+    pct_chg = row.get('pct_chg', 0) or 0
+    vol_ratio = row.get('volume_ratio', 0) or 0
+    kdj_j = row.get('kdj_bfq', 0) or 0
+    kdj_k = row.get('kdj_k_bfq', 0) or 0
+    rsi6 = row.get('rsi_bfq_6', 0) or 0
+
+    # 条件1：站上MA20
+    if ma20 <= 0 or close <= ma20 * 1.01:
+        return None
+
+    # 条件2：大阳线
+    if pct_chg < 4.0:
+        return None
+
+    # 条件3：量比适当放大（突破不一定需要巨量，1.15以上即可）
+    if vol_ratio < 1.3:
+        return None
+
+    # 条件4：KDJ多头
+    if not (kdj_j > kdj_k and kdj_j > 50):
+        return None
+
+    # 条件5：前90天内该波段必须有涨停，且涨幅在30~80%
+    prior_gain = calc_prior_rally_gain(df, idx, lookback=90)
+    if prior_gain < 30.0 or prior_gain > 80.0:
+        return None
+    if not _has_limitup_in_wave(df, idx, lookback=90):
+        return None
+
+    # 条件6：之前曾深度回调跌破MA20（往前20天内）
+    went_below_ma20 = False
+    pullback_low = close
+    signal_high = close
+    for j in range(max(0, idx - 20), idx):
+        prev_close = df.iloc[j]['close']
+        prev_ma20 = df.iloc[j].get('ma_bfq_20', 0) or 0
+        if prev_ma20 > 0 and prev_close < prev_ma20 * 0.98:
+            went_below_ma20 = True
+        if prev_close < pullback_low:
+            pullback_low = prev_close
+        if prev_close > signal_high:
+            signal_high = prev_close
+
+    if not went_below_ma20:
+        return None
+
+    # 回撤深度
+    pullback_depth = (signal_high - pullback_low) / signal_high * 100 if signal_high > 0 else 0
+    if pullback_depth < 10.0:
+        return None
+
+    above_ma20_pct = (close / ma20 - 1) * 100
+
+    # 条件7：距MA20不能过远（追高）也不能过近（弱反）
+    if above_ma20_pct < 5.0 or above_ma20_pct > 25.0:
+        return None
+
+    # 条件8：RSI不能极度超买（排除赶顶）
+    if rsi6 >= 85:
+        return None
+
+    return {
+        'signal_date': str(row['trade_date']),
+        'signal_close': round(close, 2),
+        'signal_score': round(pct_chg + vol_ratio, 0),
+        'pullback_depth': round(pullback_depth, 1),
+        'pct_chg': round(pct_chg, 2),
+        'vol_ratio': round(vol_ratio, 2),
+        'rsi6': round(rsi6, 1),
+        'kdj_j': round(kdj_j, 1),
+        'ma20': round(ma20, 2),
+        'ma10': round(ma10, 2),
+        'above_ma20_pct': round(above_ma20_pct, 2),
+    }
 
 
 def backtest_stock_strict_pullback(df: pd.DataFrame, ts_code: str,
                                     recent_days: int = None,
                                     max_lookahead: int = 15) -> Dict:
     """
-    严苛版 + 回踩MA10/MA20入场
-    信号发出后不急于次日入场，而是等待价格回踩到均线附近再入场
+    趋势确认信号回测
+
+    直接扫描每一天是否满足趋势确认条件，满足则次日入场
     """
     if df is None or len(df) < 30:
         return {}
@@ -970,97 +1209,63 @@ def backtest_stock_strict_pullback(df: pd.DataFrame, ts_code: str,
     if recent_days is not None and recent_days > 0:
         df = df.tail(recent_days + 60).reset_index(drop=True)
 
-    # 计算所有日期的原版评分
-    all_scores = []
-    for i in range(len(df)):
-        row = df.iloc[i]
-        prev_row = df.iloc[i - 1] if i > 0 else None
-        sc = calc_signal_score(row, prev_row)
-        sc['trade_date'] = row['trade_date']
-        sc['close'] = row['close']
-        all_scores.append(sc)
-
-    scores_df = pd.DataFrame(all_scores)
-
-    prev_5_scores_list = []
     strict_signals = []
 
-    for i in range(len(df)):
-        row = df.iloc[i]
-        prev_row = df.iloc[i - 1] if i > 0 else None
-        prev_5 = prev_5_scores_list[max(0, len(prev_5_scores_list) - 5):]
-        pullback = check_pullback_confirmed(df, i, lookback=5)
+    for i in range(30, len(df)):
+        sig = find_trend_confirm_signal(df, i)
+        if sig is None:
+            continue
 
-        high_60d = df.iloc[max(0, i-60):i+1]['close'].max()
-        dmi_p = row.get('dmi_pdi_hfq', 0) or 0
-        dmi_m = row.get('dmi_mdi_hfq', 0) or 0
-        dmi_a = row.get('dmi_adx_hfq', 0) or 0
+        # 次日入场
+        entry_idx = i + 1
+        if entry_idx >= len(df):
+            continue
 
-        sc = calc_strict_signal_score(row, prev_row, prev_5, pullback_confirmed=pullback,
-                                       recent_high_60d=high_60d,
-                                       dmi_pdi=dmi_p, dmi_mdi=dmi_m, dmi_adx=dmi_a)
-        sc['trade_date'] = row['trade_date']
-        sc['close'] = row['close']
-        sc['pct_chg'] = row.get('pct_chg', 0)
-        sc['vol_ratio'] = row.get('volume_ratio', 0)
-        sc['turnover'] = row.get('turnover_rate', 0)
-        sc['rsi6'] = row.get('rsi_bfq_6', 0)
-        sc['macd_bar'] = row.get('macd_bfq', 0)
+        entry_date = df.iloc[entry_idx]['trade_date']
+        entry_price = df.iloc[entry_idx]['open']
+        future_windows = [1, 5, 10, 20]
 
-        if sc.get('strict_pass', False):
-            # 根据板块确定入场策略
-            market_type = 'dual' if ts_code[:3] in ('300', '688') else 'main'
-            max_lookahead = 15 if market_type == 'dual' else 10
+        sig_data = {
+            'ts_code': ts_code,
+            'signal_date': sig['signal_date'],
+            'entry_date': str(entry_date),
+            'entry_price': entry_price,
+            'signal_score': sig['signal_score'],
+            'signal_pct_chg': sig['pct_chg'],
+            'signal_rsi6': sig['rsi6'],
+            'signal_vol_ratio': sig['vol_ratio'],
+            'pullback_depth': sig['pullback_depth'],
+            'above_ma20_pct': sig['above_ma20_pct'],
+            'kdj_j': sig['kdj_j'],
+            'entry_method': '趋势确认',
+            'signal_close': sig['signal_close'],
+        }
 
-            # 找回踩入场点
-            entry_result = find_pullback_entry(df, i, max_lookahead, market_type)
-            if entry_result is None or entry_result[0] is None:
-                pass
-            else:
-                entry_idx, entry_method = entry_result
-                entry_date = df.iloc[entry_idx]['trade_date']
-                entry_price = df.iloc[entry_idx]['close']
-                future_windows = [1, 5, 10, 20]
-                sig_data = {
-                    'ts_code': ts_code,
-                    'signal_date': row['trade_date'],
-                    'entry_date': entry_date,
-                    'entry_price': entry_price,
-                    'signal_score': sc['total'],
-                    'signal_pct_chg': round(sc['pct_chg'], 2),
-                    'signal_rsi6': round(sc['rsi6'], 1),
-                    'signal_vol_ratio': round(sc['vol_ratio'], 2),
-                    'strict_filters': sc.get('strict_filters', {}),
-                    'entry_method': entry_method,
-                    'signal_close': round(row['close'], 2),
-                }
+        for w in future_windows:
+            future_idx = entry_idx + w
+            if future_idx >= len(df):
+                future_idx = len(df) - 1
+            future_price = df.iloc[future_idx]['close']
+            ret = (future_price / entry_price - 1) * 100
+            sig_data[f'return_{w}d'] = round(ret, 2)
+            sig_data[f'high_after_{w}d'] = round(
+                (df.iloc[entry_idx:future_idx + 1]['high'].max() / entry_price - 1) * 100, 2
+            )
 
-                for w in future_windows:
-                    future_idx = entry_idx + w
-                    if future_idx >= len(df):
-                        future_idx = len(df) - 1
-                    future_price = df.iloc[future_idx]['close']
-                    ret = (future_price / entry_price - 1) * 100
-                    sig_data[f'return_{w}d'] = round(ret, 2)
-                    sig_data[f'high_after_{w}d'] = round(
-                        (df.iloc[entry_idx:future_idx + 1]['high'].max() / entry_price - 1) * 100, 2
-                    )
+        strict_signals.append(sig_data)
 
-                strict_signals.append(sig_data)
-
-        prev_5_scores_list.append(sc['total'])
-
+    # 汇总统计
     future_windows = [1, 5, 10, 20]
     summary = {
         'ts_code': ts_code,
         'total_days': len(df),
-        'score_range': f"{scores_df['total'].min():.0f}~{scores_df['total'].max():.0f}",
-        'score_mean': round(scores_df['total'].mean(), 1),
-        'score_median': round(scores_df['total'].median(), 1),
+        'score_range': f"{min([s['signal_score'] for s in strict_signals], default=0):.0f}~{max([s['signal_score'] for s in strict_signals], default=0):.0f}",
+        'score_mean': round(np.mean([s['signal_score'] for s in strict_signals]), 1) if strict_signals else 0,
+        'score_median': round(np.median([s['signal_score'] for s in strict_signals]), 1) if strict_signals else 0,
         'signal_count': len(strict_signals),
-        's_count': len(scores_df[scores_df['grade'] == 'S']),
+        's_count': len(strict_signals),
         'strict_pass_count': len(strict_signals),
-        'entry_method': 'pullback',
+        'entry_method': '趋势确认',
     }
 
     if strict_signals:
@@ -1076,7 +1281,7 @@ def backtest_stock_strict_pullback(df: pd.DataFrame, ts_code: str,
 
     summary['signals'] = strict_signals
 
-    return summary, scores_df
+    return summary, pd.DataFrame()
 
 
 def backtest_stock_strict_deduped(df: pd.DataFrame, ts_code: str,
@@ -2435,18 +2640,80 @@ def print_backtest_report(all_results: List[Tuple[Dict, pd.DataFrame]], output_f
 # 主函数
 # =========================
 
+def load_qualified_pool() -> list:
+    """从 bull_stocks 相关 CSV 读取合格股票池"""
+    # 候选路径（按优先级）
+    candidates = [
+        # 1) output 目录下最新的 bull_stocks_*.csv
+        r"D:\mystock\solo\multi_factor_picker\output",
+        # 2) report_daily 目录的固定文件名
+        r"D:\mystock\report_daily",
+    ]
+
+    csv_path = None
+    for base_dir in candidates:
+        if not os.path.isdir(base_dir):
+            continue
+        # 找 bull_stocks_*.csv 中的最新一个
+        files = sorted(
+            [f for f in os.listdir(base_dir) if f.startswith('bull_stocks_') and f.endswith('.csv')],
+            reverse=True
+        )
+        if files:
+            csv_path = os.path.join(base_dir, files[0])
+            break
+        # 也试试固定文件名
+        fixed = os.path.join(base_dir, "bull_stocks_qualified.csv")
+        if os.path.exists(fixed):
+            csv_path = fixed
+            break
+
+    if csv_path is None:
+        print(f"[警告] 未找到 bull_stocks_*.csv，请先运行 main.py 生成")
+        return []
+
+    df = pd.read_csv(csv_path, encoding='utf-8-sig')
+    # 兼容两种列名
+    code_col = 'ts_code' if 'ts_code' in df.columns else 'code'
+    codes = df[code_col].dropna().unique().tolist()
+    # 统一补齐交易所后缀
+    codes = [normalize_ts_code(str(c).strip().zfill(6)) for c in codes]
+    print(f"[股票池] 从 {csv_path} 读取 {len(codes)} 只合格标的")
+    return codes
+
+
 def main():
-    if len(sys.argv) > 1:
-        stock_codes = [normalize_ts_code(c) for c in sys.argv[1:]]
+    import argparse
+    parser = argparse.ArgumentParser(description='确定性走强评分回测器（中线趋势选股）')
+    parser.add_argument('codes', nargs='*', help='股票代码，不指定则使用默认池')
+    parser.add_argument('--pool', choices=['default', 'qualified'], default='default',
+                        help='股票池: default(24只核心股) / qualified(bull_stocks_qualified.csv)')
+    parser.add_argument('--recent', type=int, default=RECENT_DAYS,
+                        help=f'只分析最近N天 (默认{RECENT_DAYS if RECENT_DAYS else "全部"}天)')
+    parser.add_argument('--lookback', type=int, default=LOOKBACK_DAYS,
+                        help='读取历史天数 (默认%d)' % LOOKBACK_DAYS)
+    args = parser.parse_args()
+
+    # 确定股票池
+    if args.codes:
+        stock_codes = [normalize_ts_code(c) for c in args.codes]
+    elif args.pool == 'qualified':
+        stock_codes = load_qualified_pool()
+        if not stock_codes:
+            return
     else:
         stock_codes = [normalize_ts_code(c) for c in DEFAULT_STOCKS]
 
+    recent_days = args.recent if args.recent > 0 else None
+    lookback_days = args.lookback
+
     print("=" * 70)
-    print("确定性走强评分公式 回测器（严苛版 + 回踩入场）")
+    print("中线趋势选股 — 确定性走强评分回测器（严苛版 + 回踩入场）")
     print("=" * 70)
-    print(f"待回测股票: {len(stock_codes)} 只")
+    print(f"股票池: {args.pool} ({len(stock_codes)} 只)")
     print(f"评分: ≥85分 + 6项严苛过滤")
-    print(f"入场: 信号后等待回踩MA10/MA20确认后入场")
+    print(f"入场: MOMENTUM / MA10 / MA20 / MULTI / 趋势确认")
+    print(f"回测范围: 最近{recent_days or '全部'}天 (读取{lookback_days}天数据)")
     print()
 
     # 读取数据并回测
@@ -2454,12 +2721,12 @@ def main():
 
     for code in stock_codes:
         print(f"  处理 {code} ...", end=" ")
-        df = get_stock_data(code, lookback_days=LOOKBACK_DAYS)
+        df = get_stock_data(code, lookback_days=lookback_days)
         if df is None or len(df) < 30:
             print("无数据")
             continue
 
-        strict_result, _ = backtest_stock_strict_pullback(df, code, recent_days=RECENT_DAYS)
+        strict_result, _ = backtest_stock_strict_pullback(df, code, recent_days=recent_days)
         if strict_result and strict_result.get('signal_count', 0) > 0:
             strict_results.append(strict_result)
             print(f"信号={strict_result['signal_count']}个")
@@ -2469,7 +2736,7 @@ def main():
             print("失败")
 
     if not strict_results:
-        print("[错误] 没有可用回测结果")
+        print("[结果] 没有可用回测结果")
         return
 
     # 输出报告
@@ -2477,7 +2744,8 @@ def main():
     output_dir = OUTPUT_DIR
 
     # 严苛版报告
-    strict_file = os.path.join(output_dir, f"backtest_strict_report_{timestamp}.txt")
+    pool_tag = f"_{args.pool}"
+    strict_file = os.path.join(output_dir, f"backtest_strict_report_{timestamp}{pool_tag}.txt")
     print_strict_backtest_report(strict_results, strict_file)
 
     # 保存信号明细 JSON
@@ -2498,10 +2766,37 @@ def main():
     for res in strict_results:
         strict_signals.extend(res.get('signals', []))
 
-    strict_json_file = os.path.join(output_dir, f"backtest_strict_signals_{timestamp}.json")
+    strict_json_file = os.path.join(output_dir, f"backtest_strict_signals_{timestamp}{pool_tag}.json")
     with open(strict_json_file, 'w', encoding='utf-8') as f:
         json.dump(convert(strict_signals), f, ensure_ascii=False, indent=2)
-    print(f"严苛信号明细已保存: {strict_json_file}")
+
+    # 保存信号明细 CSV
+    strict_csv_file = os.path.join(output_dir, f"backtest_strict_signals_{timestamp}{pool_tag}.csv")
+    if strict_signals:
+        signal_df = pd.DataFrame(strict_signals)
+        # 保留关键列
+        cols = ['signal_date', 'entry_date', 'ts_code', 'entry_method', 'signal_score',
+                'pullback_depth', 'above_ma20_pct', 'signal_rsi6',
+                'signal_pct_chg', 'signal_vol_ratio',
+                'return_1d', 'return_5d', 'return_10d', 'return_20d',
+                'entry_price', 'signal_close']
+        cols = [c for c in cols if c in signal_df.columns]
+        signal_df = signal_df[cols].sort_values('signal_date', ascending=False)
+        signal_df.to_csv(strict_csv_file, index=False, encoding='utf-8-sig')
+        print(f"  汇总CSV: {strict_csv_file}")
+
+    # 汇总
+    print(f"\n{'='*70}")
+    print(f"  扫描完成！{len(strict_results)} 只有信号, 共 {len(strict_signals)} 个信号")
+    print(f"  报告: {strict_file}")
+    print(f"  明细: {strict_json_file}")
+    print(f"  CSV:  {strict_csv_file}")
+
+    # 输出信号汇总
+    print(f"\n  {'信号日':<10}  {'股票':<12}  {'方式':<10}  {'评分':>4}  {'+10日':>7}  {'+20日':>7}")
+    print(f"  {'-'*55}")
+    for s in sorted(strict_signals, key=lambda x: x['signal_date'], reverse=True):
+        print(f"  {s['signal_date']:<10}  {s['ts_code']:<12}  {s.get('entry_method','?'):<10}  {s['signal_score']:>4}  {s.get('return_10d',0):>7.2f}%  {s.get('return_20d',0):>7.2f}%")
 
 
 if __name__ == "__main__":

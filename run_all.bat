@@ -37,6 +37,12 @@ python solo\theme_pattern_stock_picker.py
 echo.
 
 
+echo 先生成趋势信号
+python solo\trend_entry_precision.py --pool qualified --recent 80
+
+python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
+
+
 echo [Step 5/7] 自选量化
 echo =============================================
 python solo\tushare_quant.py

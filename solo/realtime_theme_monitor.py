@@ -793,7 +793,7 @@ class RealtimeThemeMonitor:
             return alerts
 
         # 冷却检查（统一用 last_market_alert，避免重复推送）
-        if now_ts - self.last_market_alert < 600:  # 至少10分钟冷却
+        if now_ts - self.last_market_alert < 1800:  # 至少30分钟冷却
             return alerts
 
         overview = report['overview']
@@ -1956,7 +1956,7 @@ class RealtimeThemeMonitor:
             # 回退:按旧简单阈值
             ms = results['market_stats']
             alerts = []
-            if time.time() - self.last_market_alert < 600:
+            if time.time() - self.last_market_alert < 1800:
                 return alerts
             if ms['up_ratio'] > 80:
                 alerts.append({

@@ -1100,15 +1100,35 @@ def generate_html_report(md_content):
     return full_html
 
 def send_report(content):
-    if not SERVERCHAN_KEY:
-        return
-    import re
-    content = re.sub(r'<[^>]+>', '', content)
-    try:
-        requests.post(f"https://sctapi.ftqq.com/{SERVERCHAN_KEY}.send", data={"title": f"ETF日报{TRADE_DATE}", "desp": content}, timeout=30)
-        print("推送成功")
-    except Exception as e:
-        print("推送失败:", e)
+    # Server酱推送
+    if SERVERCHAN_KEY:
+        import re
+        content_clean = re.sub(r'<[^>]+>', '', content)
+        try:
+            requests.post(f"https://sctapi.ftqq.com/{SERVERCHAN_KEY}.send",
+                         data={"title": f"ETF日报{TRADE_DATE}", "desp": content_clean}, timeout=30)
+            print("推送成功(Server酱)")
+        except Exception as e:
+            print("Server酱推送失败:", e)
+
+    # PushPlus推送（支持markdown）
+    pushplus_token = os.getenv("PUSHPLUS")
+    if pushplus_token:
+        try:
+            payload = {
+                "token": pushplus_token,
+                "title": f"ETF日报{TRADE_DATE}",
+                "content": content,
+                "template": "markdown"
+            }
+            resp = requests.post("https://www.pushplus.plus/send", json=payload, timeout=15)
+            result = resp.json()
+            if result.get("code") == 200:
+                print("推送成功(PushPlus)")
+            else:
+                print(f"PushPlus推送失败: {result.get('msg', '未知错误')}")
+        except Exception as e:
+            print("PushPlus推送异常:", e)
 
 # =========================================================
 # 主程序

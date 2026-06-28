@@ -1,0 +1,58 @@
+[
+  {
+    "ts_code": "600498.SH",
+    "signal_date": "20260615",
+    "entry_date": "20260622",
+    "entry_price": 82.56,
+    "signal_score": 99,
+    "signal_pct_chg": 7.44,
+    "signal_rsi6": 78.8,
+    "signal_vol_ratio": 0.92,
+    "strict_filters": {
+      "score_85": true,
+      "pullback_confirmed": false,
+      "volume_healthy": true,
+      "trend_continuous": true,
+      "macd_zero_axis": true,
+      "rsi_healthy": true
+    },
+    "entry_method": "MULTI",
+    "signal_close": 67.83,
+    "return_1d": 0.23,
+    "high_after_1d": 6.08,
+    "return_5d": -7.68,
+    "high_after_5d": 6.08,
+    "return_10d": -7.68,
+    "high_after_10d": 6.08,
+    "return_20d": -7.68,
+    "high_after_20d": 6.08
+  },
+  {
+    "ts_code": "600498.SH",
+    "signal_date": "20260616",
+    "entry_date": "20260622",
+    "entry_price": 82.56,
+    "signal_score": 102,
+    "signal_pct_chg": 9.1,
+    "signal_rsi6": 84.6,
+    "signal_vol_ratio": 0.91,
+    "strict_filters": {
+      "score_85": true,
+      "pullback_confirmed": false,
+      "volume_healthy": true,
+      "trend_continuous": true,
+      "macd_zero_axis": true,
+      "rsi_healthy": true
+    },
+    "entry_method": "MULTI",
+    "signal_close": 74.0,
+    "return_1d": 0.23,
+    "high_after_1d": 6.08,
+    "return_5d": -7.68,
+    "high_after_5d": 6.08,
+    "return_10d": -7.68,
+    "high_after_10d": 6.08,
+    "return_20d": -7.68,
+    "high_after_20d": 6.08
+  }
+]

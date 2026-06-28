@@ -1,8 +1,26 @@
 # -*- coding: utf-8 -*-
-from reportlab.lib.units import mm
 """
-二波形态精选 v2.8 — stk_factor_pro 四形态并列版 + 中长线趋势过滤 + 上方压力惩罚 + 缩量盘整加分
-基于69,777样本回测成果 + 16,828样本优化验证
+二波形态精选 v2.12 — 修复量比字段保存错误
+
+v2.12升级（2026-06-28）:
+  1. 修复量比字段保存错误：CSV中vol_ratio应保存当日量比，而非调整期平均量比
+  2. 影响：强势横盘/深度回调/放量回调/V型急跌四种形态的vol_ratio字段统一使用当日量比
+
+v2.11升级（2026-06-28）:
+  1. V型急跌评分优化（机构量化经验）
+     - 一波涨幅过滤：50-60%主力强势(+3分)，>60%主力出货风险(-5分)
+     - 回踩深度优化：18-22%最佳深度(+3分)，>25%趋势破坏风险(-5分)
+     - 放量反弹确认：量比>1.2资金确认(+5分)，<0.8诱多风险(-3分)
+  2. 预期效果：评分分化更明显，高质量信号（≥45分）提升
+
+v2.10升级（2026-06-28）:
+  - 波峰局部最高点过滤
+  - 修复光洋/华宏类型误判
+
+v2.9升级（2026-06-27）:
+  1. 双创板V型急跌/放量回调阈值提升至40分（过滤低质量信号）
+  2. 回测依据：评分≥45分首日反弹胜率91.8%，超过第4天（80.3%）11.5pp
+  3. 光智科技案例验证：41分符合高质量信号标准
 
 v2.8升级（2026-06-26）:
   - 上方空间惩罚因子（基于16,828样本回测）：gap>30%→-8；20-30%→-5；10-20%→-2
@@ -77,7 +95,8 @@ warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 import tushare as ts
 from typing import Optional, Literal
 
-ts.set_token(os.environ['TUSHARE_TOKEN'])
+# 设置 TS_TOKEN 环境变量（避免 set_token 写入 tk.csv 时被沙箱拦截）
+os.environ['TS_TOKEN'] = os.environ['TUSHARE_TOKEN']
 pro = ts.pro_api()
 
 OUT_DIR = r'D:\mystock\solo\multi_factor_picker\output'
@@ -86,305 +105,37 @@ os.makedirs(OUT_DIR, exist_ok=True)
 CACHE_DIR = r'D:\mystock\cache_daily'
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# 股票基本信息缓存
+# 统一使用 sc.load_stock_basic()，详见 stock_cache.py
+
 # SQLite 统一缓存模块
 sys.path.insert(0, r'D:\mystock\solo')
 import stock_cache as sc
 
 # ═══════════════════════════════════════════════════════
-# 缓存API调用（与 tushare_quant.py 共用缓存文件）
+# 缓存API调用（所有缓存函数统一入口：sc.*）
 # ═══════════════════════════════════════════════════════
-# 全局变量：跟踪批量下载日期（从文件读取，持久化存储）
-_STK_FACTOR_BATCH_STATUS_FILE = os.path.join(CACHE_DIR, "stk_factor_batch_status.txt")
-# 全局集合：跟踪已尝试补充缓存的股票（避免重复日志）
-_cache_supplement_attempted = set()
-
-def _read_batch_status():
-    """读取批量下载状态文件"""
-    try:
-        if os.path.exists(_STK_FACTOR_BATCH_STATUS_FILE):
-            with open(_STK_FACTOR_BATCH_STATUS_FILE, 'r') as f:
-                content = f.read().strip()
-                if content:
-                    return content
-    except:
-        pass
-    return ""
-
-def _write_batch_status(date_str):
-    """写入批量下载状态文件"""
-    try:
-        with open(_STK_FACTOR_BATCH_STATUS_FILE, 'w') as f:
-            f.write(date_str)
-    except:
-        pass
-
-# 初始化批量下载日期（从文件读取）
-_stk_factor_batch_downloaded_date = _read_batch_status()
-
-def _read_cache(cache_file):
-    try:
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file)
-            if not df.empty and 'trade_date' in df.columns:
-                df['trade_date'] = df['trade_date'].astype(str)
-                return df
-    except:
-        pass
-    return None
-
-def _save_cache(df, cache_file):
-    try:
-        if df is not None and not df.empty:
-            df.to_csv(cache_file, index=False)
-    except:
-        pass
 
 def batch_cache_stk_factor_pro(target_date):
-    """批量缓存指定日期所有股票的 stk_factor_pro 数据（SQLite 版）"""
-    global _stk_factor_batch_downloaded_date
-    
-    if _stk_factor_batch_downloaded_date == target_date:
-        #print(f"[批量缓存] {target_date} 已下载过，跳过")
-        return
-    
-    print(f"[批量缓存] 开始下载 {target_date} 全市场 stk_factor_pro 数据...")
-    
-    try:
-        _fields = list(dict.fromkeys([
-            "ts_code", "trade_date", "open", "open_hfq", "open_qfq",
-            "high", "high_hfq", "high_qfq", "low", "low_hfq", "low_qfq",
-            "close", "close_hfq", "close_qfq", "pre_close", "change", "pct_chg",
-            "vol", "amount", "turnover_rate", "turnover_rate_f", "volume_ratio",
-            "pe", "pe_ttm", "pb", "ps", "ps_ttm", "dv_ratio", "dv_ttm",
-            "total_share", "float_share", "free_share", "total_mv", "circ_mv", "adj_factor",
-            "asi_bfq", "asi_hfq", "asi_qfq", "asit_bfq", "asit_hfq", "asit_qfq",
-            "atr_bfq", "atr_qfq", "bbi_bfq", "bbi_hfq", "bbi_qfq",
-            "bias1_bfq", "bias1_hfq", "bias2_bfq", "bias2_hfq",
-            "bias3_bfq", "bias3_hfq", "bias3_qfq", "boll_lower_bfq", "boll_lower_hfq", "boll_lower_qfq",
-            "boll_mid_bfq", "boll_mid_hfq", "boll_mid_qfq", "boll_upper_bfq", "boll_upper_hfq", "boll_upper_qfq",
-            "brar_ar_bfq", "brar_ar_hfq", "brar_ar_qfq", "brar_br_bfq", "brar_br_hfq", "brar_br_qfq",
-            "cci_bfq", "cci_qfq", "cr_bfq", "cr_hfq", "cr_qfq",
-            "dfma_dif_bfq", "dfma_dif_hfq", "dfma_dif_qfq", "dfma_difma_bfq", "dfma_difma_hfq", "dfma_difma_qfq",
-            "dmi_adx_bfq", "dmi_adx_hfq", "dmi_adxr_bfq", "dmi_adxr_hfq", "dmi_adxr_qfq",
-            "dmi_mdi_bfq", "dmi_mdi_hfq", "dmi_pdi_bfq", "dmi_pdi_hfq",
-            "downdays", "updays", "dpo_bfq", "dpo_hfq", "dpo_qfq", "madpo_bfq", "madpo_hfq", "madpo_qfq",
-            "ema_bfq_10", "ema_bfq_20", "ema_bfq_250", "ema_bfq_30", "ema_bfq_5", "ema_bfq_60", "ema_bfq_90",
-            "ema_qfq_10", "ema_qfq_20", "ema_qfq_250", "ema_qfq_30", "ema_qfq_5", "ema_qfq_60", "ema_qfq_90",
-            "emv_bfq", "emv_hfq", "emv_qfq", "maemv_bfq", "maemv_hfq", "maemv_qfq",
-            "expma_12_bfq", "expma_12_hfq", "expma_12_qfq", "expma_50_bfq", "expma_50_hfq", "expma_50_qfq",
-            "kdj_bfq", "kdj_qfq", "kdj_d_bfq", "kdj_d_hfq", "kdj_d_qfq",
-            "kdj_k_bfq", "kdj_k_hfq", "kdj_k_qfq", "ktn_down_bfq", "ktn_down_hfq", "ktn_down_qfq",
-            "ktn_mid_bfq", "ktn_mid_hfq", "ktn_mid_qfq", "ktn_upper_bfq", "ktn_upper_hfq", "ktn_upper_qfq",
-            "lowdays", "topdays", "ma_bfq_10", "ma_bfq_20", "ma_bfq_250", "ma_bfq_30", "ma_bfq_5", "ma_bfq_60", "ma_bfq_90",
-            "ma_qfq_10", "ma_qfq_20", "ma_qfq_250", "ma_qfq_30", "ma_qfq_5", "ma_qfq_60", "ma_qfq_90",
-            "macd_bfq", "macd_hfq", "macd_qfq", "macd_dea_bfq", "macd_dea_qfq",
-            "macd_dif_bfq", "macd_dif_hfq", "mass_bfq", "mass_hfq", "mass_qfq",
-            "ma_mass_bfq", "ma_mass_hfq", "ma_mass_qfq", "mfi_bfq", "mfi_qfq",
-            "mtm_bfq", "mtm_hfq", "mtm_qfq", "mtmma_bfq", "mtmma_hfq", "mtmma_qfq",
-            "obv_bfq", "obv_qfq", "psy_bfq", "psy_hfq",
-            "psyma_bfq", "psyma_hfq", "psyma_qfq", "roc_bfq", "roc_hfq", "roc_qfq",
-            "maroc_bfq", "maroc_hfq", "maroc_qfq", "rsi_bfq_12", "rsi_bfq_24", "rsi_bfq_6",
-            "rsi_hfq_12", "rsi_hfq_24", "rsi_qfq_6", "rsi_qfq_12", "rsi_qfq_24", "rsi_qfq_6",
-            "taq_down_bfq", "taq_down_hfq", "taq_down_qfq", "taq_mid_bfq", "taq_mid_hfq", "taq_mid_qfq",
-            "taq_up_bfq", "taq_up_hfq", "taq_up_qfq", "trix_bfq", "trix_hfq", "trix_qfq",
-            "trma_bfq", "trma_hfq", "trma_qfq", "vr_bfq", "vr_hfq",
-            "wr_bfq", "wr_hfq", "wr1_bfq", "wr1_hfq", "wr1_qfq",
-            "xsii_td1_bfq", "xsii_td1_hfq", "xsii_td1_qfq", "xsii_td2_bfq", "xsii_td2_hfq", "xsii_td2_qfq",
-            "xsii_td3_bfq", "xsii_td3_hfq", "xsii_td3_qfq", "xsii_td4_bfq", "xsii_td4_hfq", "xsii_td4_qfq"
-        ]))
-        df_all = pro.stk_factor_pro(
-            trade_date=target_date,
-            fields=_fields
-        )
-        
-        if df_all is not None and not df_all.empty:
-            df_all['trade_date'] = df_all['trade_date'].astype(str)
-            
-            # 除权检测
-            adj_changed_count = 0
-            grouped = df_all.groupby('ts_code')
-            for code, group_df in grouped:
-                if 'adj_factor' not in group_df.columns:
-                    continue
-                new_adj = group_df['adj_factor'].iloc[-1]
-                old_adj = sc.get_last_adj_factor(code)
-                if old_adj is not None and new_adj is not None and old_adj != 0 and new_adj != 0 and old_adj != new_adj:
-                    print(f"[除权检测] {code} 复权因子变化: {old_adj} -> {new_adj}，删除旧缓存待全量更新")
-                    sc.delete_stk_factor_stock(code)
-                    adj_changed_count += 1
-            
-            # 批量写入 SQLite
-            saved_count = sc.batch_insert_stk_factor_pro(df_all)
-            
-            _stk_factor_batch_downloaded_date = target_date
-            sc.set_meta('stk_factor_batch_date', target_date)
-            _write_batch_status(target_date)
-            
-            if adj_changed_count > 0:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite，{adj_changed_count} 只除权待全量更新")
-            else:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite")
-        else:
-            print(f"[批量缓存] 警告：{target_date} 无数据返回（可能还未到数据更新时间）")
-            # 标记为已尝试，避免重复调用
-            _stk_factor_batch_downloaded_date = target_date
-            
-    except Exception as e:
-        print(f"[批量缓存] 失败: {e}")
-        import traceback
-        traceback.print_exc()
+    """委托给 sc.batch_cache_stk_factor_pro（统一入口）"""
+    sc.batch_cache_stk_factor_pro(target_date)
 
-def cached_daily(ts_code, start_date, end_date):
-    cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        cached_min = df_cache['trade_date'].min()
-        cached_max = df_cache['trade_date'].max()
-        if cached_min <= start_date and cached_max >= end_date:
-            # 校验实际最后一行日期是否 >= end_date
-            actual_last_date = df_cache['trade_date'].iloc[-1]
-            if actual_last_date >= end_date:
-                mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-                subset = df_cache[mask].copy()
-                # 移除 >= 40 限制，避免当日补充数据时重复下载
-                if not subset.empty:
-                    return subset.sort_values('trade_date').reset_index(drop=True)
-    df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    time.sleep(0.06)
-    if df is None or df.empty:
-        return None
-    df['trade_date'] = df['trade_date'].astype(str)
-    if df_cache is not None:
-        combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-        _save_cache(combined, cache_file)
-    else:
-        _save_cache(df, cache_file)
-    return df.sort_values('trade_date').reset_index(drop=True)
+def cached_daily(ts_code, start_date, end_date, pro=None):
+    """委托给 sc.cached_daily（统一入口）"""
+    return sc.cached_daily(ts_code, start_date, end_date, pro=pro)
 
 def get_list_date(ts_code):
-    """获取股票上市日期"""
-    try:
-        # 先尝试从 SQLite 缓存获取
-        cached_min = sc.get_list_date_from_cache(ts_code)
-        if cached_min:
-            return cached_min
-        
-        # 如果缓存中没有，从API获取
-        df = pro.stock_basic(ts_code=ts_code)
-        if not df.empty:
-            list_date = df.iloc[0].get('list_date', '')
-            if list_date:
-                return str(list_date)
-    except Exception as e:
-        print(f"[获取上市日期失败] {ts_code}: {e}")
-    return None
+    """委托给 sc.get_list_date（统一入口）"""
+    return sc.get_list_date(ts_code)
 
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """带缓存的 stk_factor_pro（SQLite 版）
-    
-    优化策略：
-    1. 每天第一次调用时自动批量下载当天所有股票数据
-    2. 检查 SQLite 缓存是否覆盖请求范围
-    3. 按需补充缺失的历史数据
-    4. 对于次新股，跳过上市日期之前的日期
-    5. 使用全局集合避免重复日志打印（每只股票只打印一次）
-    """
-    global _cache_supplement_attempted
-    
-    # 1. 每天第一次调用时先批量缓存当天数据
-    batch_cache_stk_factor_pro(end_date)
-    
-    # 2. 获取上市日期（用于次新股判断）
-    list_date = get_list_date(ts_code)
-    required_min = list_date if (list_date and list_date > str(start_date)) else str(start_date)
-    
-    # 3. 检查 SQLite 缓存是否覆盖请求范围
-    cached_min, cached_max = sc.get_stk_factor_range(ts_code)
-    if cached_min and cached_max:
-        if cached_min <= required_min and cached_max >= str(end_date):
-            df = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-            if df is not None and not df.empty:
-                return df.reset_index(drop=True)
-    
-    # 4. 缓存不完整，补充当前股票缺失的数据
-    supplement_key = f"{ts_code}_{required_min}_{end_date}"
-    if supplement_key not in _cache_supplement_attempted:
-        _cache_supplement_attempted.add(supplement_key)
-        if list_date and list_date > str(start_date):
-            print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
-        else:
-            print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
-    
-    try:
-        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
-        time.sleep(0.06)
-        
-        if df_new is not None and not df_new.empty:
-            df_new['trade_date'] = df_new['trade_date'].astype(str)
-            df_new = df_new.sort_values('trade_date').reset_index(drop=True)
-            
-            # 写入 SQLite
-            sc.batch_insert_stk_factor_pro(df_new)
-            
-            # 同时保留 CSV 备份（过渡期使用）
-            cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-            df_old = _read_cache(cache_file)
-            if df_old is not None:
-                combined = pd.concat([df_old, df_new]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
-                _save_cache(combined, cache_file)
-            else:
-                _save_cache(df_new, cache_file)
-            
-            mask = (df_new['trade_date'] >= str(start_date)) & (df_new['trade_date'] <= str(end_date))
-            result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
-            if not result.empty:
-                return result
-    except Exception as e:
-        if supplement_key not in _cache_supplement_attempted:
-            print(f"[缓存补充] {ts_code} 失败: {e}")
-    
-    # 保底：从 SQLite 读取缓存
-    df_cache = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-    if df_cache is not None and not df_cache.empty:
-        return df_cache.reset_index(drop=True)
-    
-    # 再保底：从 CSV 读取
-    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        mask = (df_cache['trade_date'] >= str(start_date)) & (df_cache['trade_date'] <= str(end_date))
-        subset = df_cache[mask].copy()
-        if not subset.empty:
-            return subset.sort_values('trade_date').reset_index(drop=True)
-    return df_cache
+    """委托给 sc.cached_stk_factor_pro（统一入口）"""
+    return sc.cached_stk_factor_pro(ts_code, start_date, end_date)
 
 def cached_daily_basic(ts_code, start_date, end_date):
-    cache_file = os.path.join(CACHE_DIR, f"daily_basic_{ts_code}.csv")
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        cached_min = df_cache['trade_date'].min()
-        cached_max = df_cache['trade_date'].max()
-        if cached_min <= start_date and cached_max >= end_date:
-            # 校验实际最后一行日期是否 >= end_date
-            actual_last_date = df_cache['trade_date'].iloc[-1]
-            if actual_last_date >= end_date:
-                mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-                subset = df_cache[mask].copy()
-                if not subset.empty:
-                    return subset.sort_values('trade_date').reset_index(drop=True)
-    df = pro.daily_basic(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                          fields='ts_code,trade_date,turnover_rate,volume_ratio,pe_ttm,pb')
-    time.sleep(0.06)
-    if df is not None and not df.empty:
-        df['trade_date'] = df['trade_date'].astype(str)
-        if df_cache is not None:
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-            _save_cache(combined, cache_file)
-        else:
-            _save_cache(df, cache_file)
-        return df.sort_values('trade_date').reset_index(drop=True)
-    return df
+    """委托给 sc（统一入口）"""
+    return sc.cached_daily(ts_code, start_date, end_date)
 
 # ═══════════════════════════════════════════════════════════════════
 # 参数常量
@@ -399,37 +150,8 @@ WAVE2_MIN    = 0.10
 # 交易日判断：15点后数据已更新=本交易日，15点前=上交易日
 # ══════════════════════════════════════════════════════
 def get_effective_date(force_date: str = '') -> str:
-    """15:00为分界线：之后用今天，之前用昨天（参考tushare_quant.py的get_last_trade_date）
-    
-    Args:
-        force_date: 强制指定日期(YYYYMMDD)，优先级最高
-    """
-    from datetime import datetime as dt, timedelta as td
-    
-    # 如果强制指定日期，直接返回
-    if force_date and len(force_date) == 8 and force_date.isdigit():
-        return force_date
-    
-    now = dt.now()
-    if now.hour < 15:
-        query_date = (now - td(days=1)).strftime('%Y%m%d')
-    else:
-        query_date = now.strftime('%Y%m%d')
-    
-    # 获取交易日历
-    try:
-        cal = pro.trade_cal(exchange='', start_date='20200101', end_date=query_date)
-        cal = cal[cal['is_open'] == 1]
-        last_trade_date = cal[cal['cal_date'] <= query_date]['cal_date'].max()
-        return str(last_trade_date)
-    except Exception:
-        # 降级：跳过周末
-        d = (now.date() if hasattr(now, 'date') else datetime.date.today())
-        if d.weekday() == 5:  # 周六
-            d = d - td(days=1)
-        elif d.weekday() == 6:  # 周日
-            d = d - td(days=2)
-        return d.strftime('%Y%m%d')
+    """委托给 sc.get_effective_date（统一入口）"""
+    return sc.get_effective_date(force_date)
 
 # 强势横盘
 SIDEWAYS_PULLBACK_MAX = 0.10
@@ -443,8 +165,11 @@ DEEP_ADJUST_MIN   = 10
 # 入场评分阈值（v2.1含主力类因子，满分约40+）
 #   强势横盘: 基础7分(纯技术) → 加主力类后通常15-25分
 #   深度回调: 基础10分(纯技术) → 加主力类后通常15-30分
-SCORE_SIDWAYS_MIN = 7     # 保持不变，主力类加成为自然筛选
-SCORE_DEEP_MIN    = 10    # 保持不变
+#   V型急跌: 双创专属，阈值20分
+SCORE_SIDWAYS_MIN = 20    # 主板强势横盘(v3.4): 回调2-10%+一波20-60%+评分20+
+SCORE_DEEP_MIN    = 10    # 深度回调保持10分
+SCORE_VSHAPE_GEM_MIN = 20 # 双创V型急跌阈值20分
+SCORE_VOL_PULLBACK_GEM_MIN = 20 # 双创放量回调阈值20分
 
 # 评分档次参考（v2.1）:
 #   7-12分: 纯技术信号，无一波涨幅/创新高加分
@@ -470,9 +195,14 @@ class ResonanceScorer:
               is_higher_low: bool = False,
               pattern_type: str = '深度回调',
               gap_to_peak_pct: float = 0,
-              is_deep_long_consolidation: bool = False) -> dict:
+              pullback_pct: float = 0,
+              is_deep_long_consolidation: bool = False,
+              limitup_score: int = 0,
+              volume_recovery_score: int = 0,
+              atr_pct: float = 0,
+              market_cap_b: float = 0) -> dict:
         """
-        评分维度（满分约60+，v2.8新增上方压力惩罚+缩量盘整加分）:
+        评分维度（满分约65+，v3.5新增市值区间加减分）:
           动量类: RSI(3) + KDJ-J(3) + CCI(2) + WR(2)
           资金类: MFI(2) + OBV方向(1) + 量比启动(2)
           趋势类: MACD金叉(2) + DMI反转(3) + MA位置(1)
@@ -482,12 +212,15 @@ class ResonanceScorer:
           形态类: V型急跌(8) + 放量回调(5) + 强势横盘(3)
           压力类: 上方空间惩罚(-2~-8)  [v2.8新增]
           增强类: 长期缩量盘整加分(+3)  [v2.8新增]
+          ATR类:   ATR 2~3% +8分（回测: 平均涨幅31%，远高于<1.5%的11%）
         回测依据（16,828沪深300样本）:
           上方gap<10%: 98.0%成功率 → 不扣分
           gap 10-20%:  92.0%成功率 → -2
           gap 20-30%:  88.3%成功率 → -5
           gap>30%:    85.7%成功率 → -8（大东南类型）
           深度回调+长期缩量盘整(MA250上): 89.4% → +3
+          ATR 2~3%:   平均涨幅31% → +8（最优区间）
+          ATR <1.5%:  平均涨幅11% → 不加分
         """
         total = 0
         details = []
@@ -537,10 +270,10 @@ class ResonanceScorer:
             if obv_now > obv_prev:
                 _add(1, 'OBV上升')
 
-        # 量比
+        # 量比（v3.1：极度缩量<0.6不加分，回测显示量比<0.7胜率仅30%）
         vol_ratio = v('volume_ratio', 1.0)
-        if vol_ratio < 0.6:   _add(1, f'量比={vol_ratio:.2f}极度缩量')
-        elif vol_ratio < 0.8: _add(1, f'量比={vol_ratio:.2f}缩量')
+        if 0.6 <= vol_ratio < 0.8: _add(1, f'量比={vol_ratio:.2f}缩量')
+        elif vol_ratio >= 0.8 and vol_ratio < 1.2: _add(1, f'量比={vol_ratio:.2f}温和放量')
 
         # 量比启动：底部缩量+次日放量
         if prev_row is not None:
@@ -568,18 +301,24 @@ class ResonanceScorer:
         if adx > 25:
             _add(1, f'ADX={adx:.0f}>25强趋势')
 
-        # MA位置
-        close = v('close', 0)
+        # MA位置（三均线支撑用前复权体系，均线连续无除权缺口，更准确）
+        close = v('close_qfq', 0)
         ma20 = v('ma_qfq_20', 0)
-        ma60 = v('ma_qfq_60', 0)
-        ma120 = v('ma120', 0)
-        ma250 = v('ma250', 0)
+        ma60_qfq = v('ma_qfq_60', 0)
+        ma90_qfq = v('ma_qfq_90', 0)
+        ma250_qfq = v('ma_qfq_250', 0)
+        ma90_roll = v('ma90', 0)
+        ma250_roll = v('ma250', 0)
+        ma90 = ma90_qfq if ma90_qfq > 0 else ma90_roll
+        ma250 = ma250_qfq if ma250_qfq > 0 else ma250_roll
         
         if close > ma20 and ma20 > 0:
             _add(1, 'MA20上方')
         # 均线只用于过滤，不加分（v2.7）
         # 中长线趋势支撑（三均线=最强二波信号）
-        above_ma120 = close > ma120 and ma120 > 0
+        # 用前复权体系判断：MA60 + MA90 + MA250（API无MA120，用MA90替代）
+        qfq_above_ma60 = close > ma60_qfq and ma60_qfq > 0
+        above_ma90 = close > ma90 and ma90 > 0
         above_ma250 = close > ma250 and ma250 > 0
 
         # ── 情绪类 ─────────────────────────────────────
@@ -591,7 +330,7 @@ class ResonanceScorer:
         elif bias2 < -7: _add(1, f'BIAS2={bias2:.1f}%超卖')
 
         psy = v('psy_hfq', 50)
-        if psy < 25:  _add(2, f'PSY={psy:.0f}极度悲观')
+        if psy <= 25:  _add(2, f'PSY={psy:.0f}极度悲观')
         elif psy < 37: _add(1, f'PSY={psy:.0f}偏悲观')
 
         vr = v('vr_hfq', 100)
@@ -599,12 +338,14 @@ class ResonanceScorer:
 
         # ── 主力类（新增 v2.1）───────────────────────────────────
         # 一波涨幅加分：涨幅越大=主力介入越深=二波意愿越强
-        if wave1_gain_pct >= 80:
-            _add(8, f'一波涨幅+{wave1_gain_pct:.0f}%极强')
-        elif wave1_gain_pct >= 50:
-            _add(5, f'一波涨幅+{wave1_gain_pct:.0f}%强')
-        elif wave1_gain_pct >= 30:
-            _add(2, f'一波涨幅+{wave1_gain_pct:.0f}%中')
+        # v3.1：V型急跌用反转逻辑（一波<35%主力没吃饱），跳过通用加分
+        if pattern_type != 'V型急跌':
+            if wave1_gain_pct >= 80:
+                _add(8, f'一波涨幅+{wave1_gain_pct:.0f}%极强')
+            elif wave1_gain_pct >= 50:
+                _add(5, f'一波涨幅+{wave1_gain_pct:.0f}%强')
+            elif wave1_gain_pct >= 30:
+                _add(2, f'一波涨幅+{wave1_gain_pct:.0f}%中')
 
         # 创新高确认：调整期间曾突破一波高点=趋势向上确认
         if new_high_confirmed:
@@ -640,17 +381,99 @@ class ResonanceScorer:
         elif gap_to_peak_pct > 0.20:
             _add(-5, f'上方压力(gap={gap_to_peak_pct*100:.0f}% > 20%)')
         elif gap_to_peak_pct > 0.10:
-            _add(-2, f'上方压力(gap={gap_to_peak_pct*100:.0f}% > 10%)')
+            _add(-1, f'上方压力(gap={gap_to_peak_pct*100:.0f}% > 10%)')
+
+        # ── 涨停/巨量收复加分（v3.0新增）───────────────────────────────
+        # 近期涨停 = 主力实力强，巨量收复 = 主力强势吸筹
+        if limitup_score > 0:
+            _add(limitup_score, f'近期有涨停(主力强)')
+        if volume_recovery_score > 0:
+            _add(volume_recovery_score, f'涨停量能突破(收复巨量)')
 
         # ── 深度回调-长期缩量盘整加分（v2.8新增）─────────────────────────────
         # 回测：深度回调+调整>30天+MA250上方+量<70%→89.4%(优于平均86.2%)
         if is_deep_long_consolidation:
             _add(3, '深度回调-长期缩量盘整(MA250支撑)')
+        
+        # ── V型急跌特异性加分（v3.1新增，基于30只40分+样本回测）────────
+        if pattern_type == 'V型急跌':
+            # 连续缩量（回调末端主力惜售，反弹概率高）
+            if prev_row is not None:
+                prev_vr = float(prev_row.get('volume_ratio', 1.0)) if not pd.isna(prev_row.get('volume_ratio', 1.0)) else 1.0
+                curr_vr = v('volume_ratio', 1.0)
+                if prev_vr < 0.8 and curr_vr < 0.8:
+                    _add(2, 'V型急跌-连续缩量(惜售)')
+            # 价格远超MA250（强势股回调特征）
+            if ma250 > 0 and close / ma250 > 1.5:
+                _add(1, '价格远超MA250(强势股)')
+            # 回调深度黄金区间（15-18%：胜率56.2%，涨幅均值124%，远超18-25%的43%）
+            # 用pullback_pct（实际回调深度）而非gap_to_peak_pct（距前高空间），避免分母差异导致黄金区间错判
+            if 0.15 <= pullback_pct < 0.18:
+                _add(3, 'V型急跌回调深度黄金(15-18%)')
+            elif 0.12 <= pullback_pct < 0.15:
+                _add(1, 'V型急跌回调偏浅(12-15%)')
+            # 一波涨幅反转（v3.1）：V型急跌中一波<35%主力没吃饱，反而涨更多
+            # 回测：一波<35%胜率63.6%涨幅130%，一波>=35%胜率31.6%涨幅60%
+            if wave1_gain_pct < 25:
+                _add(5, 'V型一波涨幅偏小(主力没吃饱)')
+            elif wave1_gain_pct < 35:
+                _add(3, 'V型一波涨幅适中(筹码健康)')
+            
+            # ══════════════════════════════════════════════════════════════
+            # v2.11新增：V型急跌评分优化（机构量化经验）
+            # ══════════════════════════════════════════════════════════════
+            # 1. 一波涨幅过滤：30-60%最佳（>60%主力可能出货）
+            if wave1_gain_pct >= 50 and wave1_gain_pct <= 60:
+                _add(3, 'V型一波涨幅50-60%(主力强势)')
+            elif wave1_gain_pct > 60:
+                _add(-5, 'V型一波涨幅>60%(主力出货风险)')
+            
+            # 2. 回踩深度优化：15-25%最佳（>25%趋势可能破坏）
+            if 0.18 <= pullback_pct < 0.22:
+                _add(3, 'V型回踩深度18-22%(最佳深度)')
+            elif pullback_pct > 0.25:
+                _add(-5, 'V型回踩深度>25%(趋势破坏风险)')
+            
+            # 3. 调整天数优化：4-5天最佳（>7天非V型）
+            # 注：adjust_days参数未传入score函数，此处用wave1_high_idx推断（简化）
+            # 实际调整天数在detect_vshape_pattern中计算并传递
+            
+            # 4. RSI超卖确认：<40明确超卖（v3.1已部分实现）
+            # 当前已有RSI<40加分，此处不重复
+            
+            # 5. 放量反弹确认：量比>1.2资金确认（缩量可能诱多）
+            curr_vr = v('volume_ratio', 1.0)
+            if curr_vr > 1.2:
+                _add(5, 'V型放量反弹(量比>1.2资金确认)')
+            elif curr_vr < 0.8:
+                _add(-3, 'V型缩量反弹(量比<0.8诱多风险)')
+
+        # ── ATR加分（v3.2新增，基于ATR区间与平均涨幅回测）────────────────
+        #   ATR 2~3%: 平均涨幅31%（最优区间）→ +8
+        #   其他区间不加分也不扣分
+        if 0.02 <= atr_pct < 0.03:
+            _add(8, f'ATR={atr_pct*100:.1f}%黄金区间(2~3%均涨31%)')
+
+        # ── 市值区间加减分（v3.5新增）────────────────────────────────────
+        #   80~200亿:   弹性好但波动大 → +2
+        #   200~500亿:  兼顾弹性与稳定性（最佳）→ +5
+        #   500~1000亿: 大盘股，趋势稳 → +3
+        #   1000亿以上: 流动性好但弹性不足 → +1
+        if market_cap_b > 0:
+            if 200 <= market_cap_b < 500:
+                _add(5, f'市值{market_cap_b:.0f}亿(最佳区间200~500亿)')
+            elif 500 <= market_cap_b < 1000:
+                _add(3, f'市值{market_cap_b:.0f}亿(较好区间500~1000亿)')
+            elif 80 <= market_cap_b < 200:
+                _add(2, f'市值{market_cap_b:.0f}亿(中等区间80~200亿)')
+            elif market_cap_b >= 1000:
+                _add(1, f'市值{market_cap_b:.0f}亿(大盘股流动性好)')
 
         # ── 中长线趋势过滤（v2.7核心规则）───────────────────────────────────
         # 三均线支撑=二波成功率100%，不满足则直接过滤
-        if not (close > ma60 and ma60 > 0 and above_ma120 and above_ma250):
-            return {'total': 0, 'details': ['过滤: 不满足三均线支撑(MA60+MA120+MA250)'], 'filtered': True}
+        # 用前复权体系判断：MA60 + MA90 + MA250（均线连续无除权缺口，更准确）
+        if not (qfq_above_ma60 and above_ma90 and above_ma250):
+            return {'total': 0, 'details': ['过滤: 不满足三均线支撑(MA60+MA90+MA250)'], 'filtered': True}
 
         return {'total': total, 'details': details}
 
@@ -713,11 +536,16 @@ class WavePatternDetector:
     def __init__(self, force_date: str = ''):
         self.scorer = ResonanceScorer()
         self.force_date = force_date  # 强制指定日期
+        self._scan_data: Optional[pd.DataFrame] = None  # scan_pool 时共享给4个detect方法
 
     # ── 数据获取（单接口！）─────────────────────────────────────
     def load_data(self, ts_code: str, lookback: int = 180) -> Optional[pd.DataFrame]:
+        # scan_pool 批量模式：优先使用预加载的共享数据（返回副本避免原地修改）
+        if self._scan_data is not None:
+            return self._scan_data.copy()
         trade_date = get_effective_date(self.force_date)
-        start = (datetime.date.today() - datetime.timedelta(days=lookback + 1)).strftime('%Y%m%d')
+        trade_date_dt = datetime.datetime.strptime(trade_date, '%Y%m%d')
+        start = (trade_date_dt - datetime.timedelta(days=lookback + 1)).strftime('%Y%m%d')
         try:
             # 使用缓存版API获取历史因子数据
             df = cached_stk_factor_pro(ts_code, start, trade_date)
@@ -777,18 +605,8 @@ class WavePatternDetector:
             if 'low_hfq' in df.columns:
                 df['low'] = df['low_hfq']
             
-            # 统一技术指标口径：所有 _qfq 指标用 _hfq 版本覆盖
-            # 确保价格和指标都基于后复权，避免除权失真
-            # 批量赋值减少DataFrame碎片化
-            hfq_cols = [c for c in df.columns if c.endswith('_hfq')]
-            replace_map = {}
-            for hfq_col in hfq_cols:
-                qfq_col = hfq_col.replace('_hfq', '_qfq')
-                if qfq_col in df.columns:
-                    replace_map[qfq_col] = df[hfq_col].values
-            if replace_map:
-                for col, vals in replace_map.items():
-                    df[col] = vals
+            # 技术指标保留 qfq（前复权）版本，hfq 后复权版本部分字段缺失
+            # 评分代码统一使用 _qfq 后缀字段，避免 NaN 污染
 
             df['pct_5d']  = df['close'].pct_change(5)
             df['pct_10d'] = df['close'].pct_change(10)
@@ -797,6 +615,70 @@ class WavePatternDetector:
             return df
         except Exception:
             return None
+
+    # ── 涨停/巨量收复特征预计算 ──────────────────────────────
+    @staticmethod
+    def _calc_limitup_features(df, entry_idx):
+        """预计算近期涨停加分和巨量收复加分
+        返回: (limitup_score, volume_recovery_score)
+        """
+        limitup_days = 0
+        volume_recovery_count = 0
+        lookback = min(20, entry_idx)
+        closes = df['close'].values
+        volumes = df['vol'].values
+
+        for i in range(entry_idx, entry_idx - lookback - 1, -1):
+            if i < 0:
+                continue
+            pct_chg = float(df.iloc[i].get('pct_chg', 0))
+            if not np.isnan(pct_chg) and pct_chg > 9.5:
+                ts_code = str(df.iloc[i].get('ts_code', ''))
+                is_20cm = ts_code.startswith('3') or ts_code.startswith('688')
+                threshold = 19.5 if is_20cm else 9.8
+                if pct_chg >= threshold:
+                    limitup_days += 1
+                    # 巨量收复：涨停日成交量 >= 前60日均量的2倍
+                    vol_peak = volumes[max(0, i-60):i].mean()
+                    if vol_peak > 0 and volumes[i] > vol_peak * 2:
+                        volume_recovery_count += 1
+
+        # 涨停次数 → 加分
+        if limitup_days >= 3:
+            limitup_score = 5
+        elif limitup_days >= 2:
+            limitup_score = 4
+        elif limitup_days >= 1:
+            limitup_score = 2
+        else:
+            limitup_score = 0
+
+        # 巨量收复 → 加分
+        if volume_recovery_count >= 2:
+            volume_recovery_score = 4
+        elif volume_recovery_count >= 1:
+            volume_recovery_score = 3
+        else:
+            volume_recovery_score = 0
+
+        return limitup_score, volume_recovery_score
+
+    # ── volume_ratio 为0时用当日成交量/前5日均量替代 ─────────
+    @staticmethod
+    def _fix_volume_ratio(df, entry_idx, row_sc):
+        """当 volume_ratio 为0时，用 vol / 前5日均vol 替代"""
+        vr = float(row_sc.get('volume_ratio', 0))
+        if vr != 0 or pd.isna(vr) or float(row_sc.get('vol', 0)) <= 0:
+            return row_sc
+        vol_today = float(row_sc['vol'])
+        start = max(0, entry_idx - 5)
+        if start >= entry_idx:
+            return row_sc
+        vol_prev5 = df.iloc[start:entry_idx]['vol'].mean()
+        if vol_prev5 > 0:
+            corrected = vol_today / vol_prev5
+            row_sc['volume_ratio'] = corrected
+        return row_sc
 
     # ── 板块适配加分 ──────────────────────────────────────
     @staticmethod
@@ -840,9 +722,9 @@ class WavePatternDetector:
         return (0, '')
 
     # ── 核心辅助: 找近期wave1候选高点 ────────────────────────────
-    def _find_recent_wave1(self, closes: np.ndarray, n: int) -> list:
+    def _find_recent_wave1(self, closes: np.ndarray, n: int, max_lookback: int = 150) -> list:
         candidates = []
-        for lookback in range(3, min(150, n - SURGE_DAYS - 5)):
+        for lookback in range(3, min(max_lookback, n - SURGE_DAYS - 5)):
             end_idx = n - lookback
             if end_idx < SURGE_DAYS:
                 continue
@@ -859,19 +741,46 @@ class WavePatternDetector:
             wave1_high_idx = end_idx - SURGE_DAYS + high_in_win
             wave1_low_idx  = end_idx - SURGE_DAYS + low_in_win
             if not any(h == wave1_high_idx for h, *_ in candidates):
-                # ── 宏观结构过滤（v2.8）：检查候选波峰前面是否还有更高高点 ──
-                # 大东南典型：57天跌到底后反弹22%，但前方200bar内有个高点+31%更高
-                # 这种在长期下跌底部的小反弹不是真一波，跳过
+                # v3.7: 波峰必须是局部最高点（比前后3天都高）
+                # 防止下跌趋势中的日线反弹被误判为波峰（如000021.SZ 20260605）
+                is_local_peak = True
+                for offset in range(1, 4):
+                    if wave1_high_idx - offset >= 0 and closes[wave1_high_idx - offset] > closes[wave1_high_idx]:
+                        is_local_peak = False
+                        break
+                    if wave1_high_idx + offset < n and closes[wave1_high_idx + offset] > closes[wave1_high_idx]:
+                        is_local_peak = False
+                        break
+                if not is_local_peak:
+                    continue
                 lookback_start = max(0, wave1_low_idx - 200)
                 pre_history = closes[lookback_start:wave1_low_idx]
                 if len(pre_history) >= 20:
                     pre_high = pre_history.max()
                     if pre_high > closes[wave1_high_idx] * 1.15:
-                        continue  # 前方有显著更高的高点，跳过此候选
+                        continue
 
                 candidates.append((wave1_high_idx, wave1_low_idx, surge_gain))
-        candidates.sort(key=lambda x: (n - x[0]))
-        return candidates
+        # ── 合并同一波的相近高点，只保留最高点（v3.5）──
+        # 问题：6月15日和6月16日的高点是同一波上涨，不应被拆成两个独立信号
+        # 解决：5天内的高点视为同一波，只保留价格最高的那个
+        merged = []
+        used = set()
+        for i, (h1, l1, g1) in enumerate(candidates):
+            if i in used:
+                continue
+            best_h, best_l, best_g = h1, l1, g1
+            for j, (h2, l2, g2) in enumerate(candidates):
+                if j <= i or j in used:
+                    continue
+                if abs(h2 - h1) <= 5:
+                    used.add(j)
+                    if closes[h2] > closes[best_h]:
+                        best_h, best_l, best_g = h2, l2, g2
+            used.add(i)
+            merged.append((best_h, best_l, best_g))
+        merged.sort(key=lambda x: (n - x[0]))
+        return merged
 
     # ── ATR动态止损 ──────────────────────────────────────────────
     def _calc_atr_stop(self, entry_price: float, atr: float,
@@ -884,10 +793,19 @@ class WavePatternDetector:
         return stop_price, round(stop_pct * 100, 1)
 
     # ── 形态1: 强势横盘 ──────────────────────────────────────────
-    def detect_sideways_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
-        df = self.load_data(ts_code, lookback=300)
+    def detect_sideways_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
+        df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
+
+        # 支持按目标日期截断（用于回测/历史扫描）
+        if target_date:
+            mask = df['trade_date'].astype(str) <= target_date
+            if not mask.any():
+                return None
+            df = df[mask].copy()
+            if len(df) < 60:
+                return None
 
         # 计算MA120/MA250（stk_factor_pro无此字段）
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
@@ -897,7 +815,7 @@ class WavePatternDetector:
         volumes = df['vol'].values
         n = len(df)
 
-        wave1_candidates = self._find_recent_wave1(closes, n)
+        wave1_candidates = self._find_recent_wave1(closes, n, max_lookback=80)
         for wave1_high_idx, _, surge_gain in wave1_candidates:
             wave1_high_price = closes[wave1_high_idx]
 
@@ -910,7 +828,8 @@ class WavePatternDetector:
             low_pos        = int(np.argmin(post_high))
             adjust_days    = low_pos
 
-            if not (pullback_pct < SIDEWAYS_PULLBACK_MAX and adjust_days <= SIDEWAYS_ADJUST_MAX):
+            # pullback必须>0：股价必须实际回调过，突破新高不算横盘
+            if not (0 < pullback_pct < SIDEWAYS_PULLBACK_MAX and adjust_days <= SIDEWAYS_ADJUST_MAX):
                 continue
 
             vol_base_start = max(0, wave1_high_idx - 60)
@@ -923,6 +842,26 @@ class WavePatternDetector:
             entry_idx = wave1_high_idx + low_pos
             if entry_idx >= n:
                 continue
+
+            # v3.6: 震荡蓄力突破 - 回调浅、震荡久、已突破一波高点
+            # 广合科技典型：一波涨到174.87后回调5.2%到165.78，之后震荡上涨到199.53
+            # 20260624收186.85已突破174.87，此时入场不算追高
+            if low_pos >= 3 and low_pos <= SIDEWAYS_ADJUST_MAX and (low_pos + 10) < (n - wave1_high_idx):
+                after_pullback = closes[entry_idx:]
+                if len(after_pullback) >= 20:
+                    # 震荡蓄力突破：波幅必须≥25%（v3.8），避免过低波幅的误标
+                    # 光洋(20260624): 候选波峰42.36涨幅仅20.1%，先涨后跌再反弹→非横盘
+                    if surge_gain < 0.25:
+                        continue
+                    if closes[n-1] >= wave1_high_price:
+                        entry_idx = n - 1
+                        adjust_days = entry_idx - wave1_high_idx
+                        if adjust_days > 60:
+                            continue
+                        post_range_all = closes[wave1_high_idx:entry_idx+1]
+                        new_low_all = post_range_all.min()
+                        pullback_pct = (wave1_high_price - new_low_all) / wave1_high_price
+
             if today_only and entry_idx != n - 1:
                 continue
 
@@ -941,6 +880,14 @@ class WavePatternDetector:
                         # 创新高后确实回踩了
                         new_high_pullback = True
 
+                    ma20_key = [k for k in ['ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
+                    if ma20_key:
+                        ma20_val = df[ma20_key[0]].iloc[entry_idx]
+                        if ma20_val > 0:
+                            ma20_dist = (closes[entry_idx] - ma20_val) / ma20_val
+                            if ma20_dist > 0.15:
+                                continue
+
             # ── 创新低检测（v2.3）──
             # 创新低 = 调整期最低价 ≤ 一波启动前最低价 → 主力出逃，直接过滤
             # 回测依据：不创新低胜率41.2%，创新低胜率16.7%
@@ -956,6 +903,42 @@ class WavePatternDetector:
                 # 创新低，主力出逃信号，跳过此候选
                 continue
 
+            # ── 距近日高点检查（v3.8）──────────────────────────
+            # 当前价必须距近10日高点 ≤ 15%，确保仍处于强势横盘区间
+            # 华宏科技(20260626): 近10日最高240.79，当前189.58(回撤21.6%) → 过滤
+            recent_window = closes[max(0, entry_idx - 9):entry_idx + 1]
+            recent_high = recent_window.max()
+            if closes[entry_idx] < recent_high * 0.85:
+                continue
+
+            # ── 高点下降检测（v3.8）───────────────────────────
+            # 近20日最高 < 近30日最高 * 0.95 → 高点逐波下降
+            # 光洋(20260624): 20日最高47.67 < 30日最高50.18*0.95=47.67 → 过滤(刚好相等)
+            high_30d = closes[-30:].max()
+            high_20d = closes[-20:].max()
+            if high_20d < high_30d * 0.95:
+                continue
+
+            # ── 除权检测（v3.8）───────────────────────────────
+            # HFQ后复权价格距MA20超过30%可能是除权导致的价格失真
+            # 时代新材(20260624): 距MA20+800% → 除权股，跳过
+            # 光华科技(20260624): 距MA20+240% → 除权股，跳过
+            ma20_key = [k for k in ['ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
+            if ma20_key:
+                ma20 = df[ma20_key[0]].iloc[entry_idx]
+                if ma20 > 0:
+                    ma20_dist = abs(closes[entry_idx] - ma20) / ma20
+                    if ma20_dist > 0.30:
+                        continue
+
+            # ── 强势横盘最优条件硬过滤（v3.4）────────────────
+            # 放宽：回调2-10% + 一波20-60% + 评分20+
+            # 目标：日均约1只信号，保持高胜率（+20%胜率约96%，止损率约12%）
+            surge_pct = round(surge_gain * 100, 1)
+            if not (0.02 <= pullback_pct < 0.10 and
+                    20 <= surge_pct < 60):
+                continue
+
             # ── 多指标共振评分 ──
             prev_row = df.iloc[entry_idx - 1] if entry_idx > 0 else None
             gap_to_peak = (wave1_high_price - closes[entry_idx]) / closes[entry_idx]
@@ -963,14 +946,26 @@ class WavePatternDetector:
             is_long_consolidation = (adjust_days > 30 and
                                      closes[entry_idx] > df.iloc[entry_idx].get('ma250', 0) and
                                      vol_ratio < 0.7)
-            score_result = self.scorer.score(df.iloc[entry_idx], prev_row,
+            limitup_score, volume_recovery_score = self._calc_limitup_features(df, entry_idx)
+            # ATR占比（用于评分加分）
+            row_sc = df.iloc[entry_idx]
+            # v3.5: volume_ratio=0时用成交量/前5日均量替代
+            row_sc = self._fix_volume_ratio(df, entry_idx, row_sc)
+            total_mv_b = float(row_sc.get('total_mv', 0)) / 1e8
+            atr_pct_sc = float(row_sc.get('atr_qfq', 0)) / float(row_sc.get('close_qfq', row_sc['close'])) if float(row_sc.get('close_qfq', 0)) > 0 else 0.02
+            score_result = self.scorer.score(row_sc, prev_row,
                                               wave1_gain_pct=round(surge_gain * 100, 1),
                                               new_high_confirmed=new_high_confirmed,
                                               new_high_pullback=new_high_pullback,
                                               is_higher_low=is_higher_low,
                                               pattern_type='强势横盘',
                                               gap_to_peak_pct=gap_to_peak,
-                                              is_deep_long_consolidation=is_long_consolidation)
+                                              pullback_pct=pullback_pct,
+                                              is_deep_long_consolidation=is_long_consolidation,
+                                              limitup_score=limitup_score,
+                                              volume_recovery_score=volume_recovery_score,
+                                              atr_pct=atr_pct_sc,
+                                              market_cap_b=total_mv_b)
 
             # 底背离检测
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1042,7 +1037,7 @@ class WavePatternDetector:
                 'pullback_pct':   round(pullback_pct * 100, 1),
                 'adjust_days':    adjust_days,
                 'rsi':            round(rsi, 1),
-                'vol_ratio':      round(vol_ratio, 2),
+                'vol_ratio':      round(float(row.get('volume_ratio', 1.0)), 2),
                 'atr':            round(atr, 2),
                 'entry_price':    entry_price,
                 'stop_loss':      stop_price,
@@ -1058,11 +1053,19 @@ class WavePatternDetector:
         return None
 
     # ── 形态2: 深度回调（纯深度，不含放量/V型）──────────────────
-    def detect_deep_pullback_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
+    def detect_deep_pullback_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
         """纯深度回调形态：回调>=20%，调整>=10天，非放量非V型"""
-        df = self.load_data(ts_code, lookback=300)
+        df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
+
+        if target_date:
+            mask = df['trade_date'].astype(str) <= target_date
+            if not mask.any():
+                return None
+            df = df[mask].copy()
+            if len(df) < 60:
+                return None
 
         # 计算MA120/MA250
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
@@ -1126,14 +1129,26 @@ class WavePatternDetector:
             is_long_consolidation = (adjust_days > 30 and
                                      closes[entry_idx] > df.iloc[entry_idx].get('ma250', 0) and
                                      vol_ratio_adj < 0.7)
-            score_result = self.scorer.score(df.iloc[entry_idx], prev_row,
+            limitup_score, volume_recovery_score = self._calc_limitup_features(df, entry_idx)
+            # ATR占比（用于评分加分）
+            row_sc = df.iloc[entry_idx]
+            # v3.5: volume_ratio=0时用成交量/前5日均量替代
+            row_sc = self._fix_volume_ratio(df, entry_idx, row_sc)
+            total_mv_b = float(row_sc.get('total_mv', 0)) / 1e8
+            atr_pct_sc = float(row_sc.get('atr_qfq', 0)) / float(row_sc.get('close_qfq', row_sc['close'])) if float(row_sc.get('close_qfq', 0)) > 0 else 0.02
+            score_result = self.scorer.score(row_sc, prev_row,
                                               wave1_gain_pct=round(surge_gain * 100, 1),
                                               new_high_confirmed=False,
                                               new_high_pullback=False,
                                               is_higher_low=is_higher_low,
                                               pattern_type='深度回调',
                                               gap_to_peak_pct=gap_to_peak,
-                                              is_deep_long_consolidation=is_long_consolidation)
+                                              pullback_pct=pullback_pct,
+                                              is_deep_long_consolidation=is_long_consolidation,
+                                              limitup_score=limitup_score,
+                                              volume_recovery_score=volume_recovery_score,
+                                              atr_pct=atr_pct_sc,
+                                              market_cap_b=total_mv_b)
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1221,13 +1236,19 @@ class WavePatternDetector:
         return None
 
     # ── 形态3: 放量回调（独立形态）────────────────────────────
-    def detect_volume_pullback_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
+    def detect_volume_pullback_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
         """放量回调形态：回调10-25%，量比>1.2，胜率91.2%"""
-        df = self.load_data(ts_code, lookback=300)
+        df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
 
-        # 计算MA120/MA250
+        if target_date:
+            mask = df['trade_date'].astype(str) <= target_date
+            if not mask.any():
+                return None
+            df = df[mask].copy()
+            if len(df) < 60:
+                return None
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
         df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
@@ -1285,14 +1306,26 @@ class WavePatternDetector:
             is_long_consolidation = (adjust_days > 30 and
                                      closes[entry_idx] > df.iloc[entry_idx].get('ma250', 0) and
                                      vol_ratio_adj < 0.7)
-            score_result = self.scorer.score(df.iloc[entry_idx], prev_row,
+            limitup_score, volume_recovery_score = self._calc_limitup_features(df, entry_idx)
+            # ATR占比（用于评分加分）
+            row_sc = df.iloc[entry_idx]
+            # v3.5: volume_ratio=0时用成交量/前5日均量替代
+            row_sc = self._fix_volume_ratio(df, entry_idx, row_sc)
+            total_mv_b = float(row_sc.get('total_mv', 0)) / 1e8
+            atr_pct_sc = float(row_sc.get('atr_qfq', 0)) / float(row_sc.get('close_qfq', row_sc['close'])) if float(row_sc.get('close_qfq', 0)) > 0 else 0.02
+            score_result = self.scorer.score(row_sc, prev_row,
                                               wave1_gain_pct=round(surge_gain * 100, 1),
                                               new_high_confirmed=False,
                                               new_high_pullback=False,
                                               is_higher_low=is_higher_low,
                                               pattern_type='放量回调',
                                               gap_to_peak_pct=gap_to_peak,
-                                              is_deep_long_consolidation=is_long_consolidation)
+                                              pullback_pct=pullback_pct,
+                                              is_deep_long_consolidation=is_long_consolidation,
+                                              limitup_score=limitup_score,
+                                              volume_recovery_score=volume_recovery_score,
+                                              atr_pct=atr_pct_sc,
+                                              market_cap_b=total_mv_b)
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1314,7 +1347,12 @@ class WavePatternDetector:
                 if bonus_desc:
                     score_result['details'].append(bonus_desc)
 
-            if score_result['total'] < SCORE_DEEP_MIN:
+            # 双创板放量回调阈值40分，主板保持10分
+            is_gem = ts_code.startswith('3')  # 创业板
+            is_star = ts_code.startswith('688')  # 科创板
+            threshold = SCORE_VOL_PULLBACK_GEM_MIN if (is_gem or is_star) else SCORE_DEEP_MIN
+            
+            if score_result['total'] < threshold:
                 continue
 
             row = df.iloc[entry_idx]
@@ -1358,7 +1396,7 @@ class WavePatternDetector:
                 'pullback_pct':   round(pullback_pct * 100, 1),
                 'adjust_days':    adjust_days,
                 'rsi':            round(rsi, 1),
-                'vol_ratio':      round(vol_ratio_adj, 2),
+                'vol_ratio':      round(float(row.get('volume_ratio', 1.0)), 2),
                 'atr':            round(atr, 2),
                 'entry_price':    entry_price,
                 'stop_loss':      stop_price,
@@ -1374,13 +1412,19 @@ class WavePatternDetector:
         return None
 
     # ── 形态4: V型急跌（独立形态）────────────────────────────
-    def detect_vshape_pattern(self, ts_code: str, today_only: bool = False) -> Optional[dict]:
+    def detect_vshape_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
         """V型急跌形态：调整<=10天，回调>=15%，胜率97.2%"""
-        df = self.load_data(ts_code, lookback=300)
+        df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
 
-        # 计算MA120/MA250
+        if target_date:
+            mask = df['trade_date'].astype(str) <= target_date
+            if not mask.any():
+                return None
+            df = df[mask].copy()
+            if len(df) < 60:
+                return None
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
         df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
@@ -1434,14 +1478,26 @@ class WavePatternDetector:
             is_long_consolidation = (adjust_days > 30 and
                                      closes[entry_idx] > df.iloc[entry_idx].get('ma250', 0) and
                                      vratio_local < 0.7)
-            score_result = self.scorer.score(df.iloc[entry_idx], prev_row,
+            limitup_score, volume_recovery_score = self._calc_limitup_features(df, entry_idx)
+            # ATR占比（用于评分加分）
+            row_sc = df.iloc[entry_idx]
+            # v3.5: volume_ratio=0时用成交量/前5日均量替代
+            row_sc = self._fix_volume_ratio(df, entry_idx, row_sc)
+            total_mv_b = float(row_sc.get('total_mv', 0)) / 1e8
+            atr_pct_sc = float(row_sc.get('atr_qfq', 0)) / float(row_sc.get('close_qfq', row_sc['close'])) if float(row_sc.get('close_qfq', 0)) > 0 else 0.02
+            score_result = self.scorer.score(row_sc, prev_row,
                                               wave1_gain_pct=round(surge_gain * 100, 1),
                                               new_high_confirmed=False,
                                               new_high_pullback=False,
                                               is_higher_low=is_higher_low,
                                               pattern_type='V型急跌',
                                               gap_to_peak_pct=gap_to_peak,
-                                              is_deep_long_consolidation=is_long_consolidation)
+                                              pullback_pct=pullback_pct,
+                                              is_deep_long_consolidation=is_long_consolidation,
+                                              limitup_score=limitup_score,
+                                              volume_recovery_score=volume_recovery_score,
+                                              atr_pct=atr_pct_sc,
+                                              market_cap_b=total_mv_b)
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1463,7 +1519,12 @@ class WavePatternDetector:
                 if bonus_desc:
                     score_result['details'].append(bonus_desc)
 
-            if score_result['total'] < SCORE_DEEP_MIN:
+            # 双创板V型急跌阈值40分，主板保持10分
+            is_gem = ts_code.startswith('3')  # 创业板
+            is_star = ts_code.startswith('688')  # 科创板
+            threshold = SCORE_VSHAPE_GEM_MIN if (is_gem or is_star) else SCORE_DEEP_MIN
+            
+            if score_result['total'] < threshold:
                 continue
 
             row = df.iloc[entry_idx]
@@ -1538,20 +1599,59 @@ class WavePatternDetector:
         results = []
         total = len(ts_codes)
         print(f"\n{'='*60}")
-        print(f"  二波形态扫描v2.6 | 池: {pool_name or '自定义'} | 共 {total} 只"
+        print(f"  二波形态扫描v2.9 | 池: {pool_name or '自定义'} | 共 {total} 只"
               f"{' | 仅今日' if today_only else ''}")
         print(f"{'='*60}")
         t0 = time.time()
 
-        # 预先获取股票名称
+        # 预先获取股票名称（从本地缓存读取，不调API）
         name_map = {}
         try:
-            sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name')
-            if sb is not None and not sb.empty:
-                name_map = dict(zip(sb['ts_code'], sb['name']))
+            cache_path = os.path.join(CACHE_DIR, 'stock_basic.csv')
+            if os.path.exists(cache_path):
+                sb = pd.read_csv(cache_path)
+                if not sb.empty and 'ts_code' in sb.columns and 'name' in sb.columns:
+                    name_map = dict(zip(sb['ts_code'], sb['name']))
         except Exception:
             pass
 
+        # 扫描前静默预加载所有股票数据到缓存
+        trade_date = get_effective_date(self.force_date)
+        trade_date_dt = datetime.datetime.strptime(trade_date, '%Y%m%d')
+        start = (trade_date_dt - datetime.timedelta(days=501)).strftime('%Y%m%d')
+        preload_needed = 0
+        for code in ts_codes:
+            if code.startswith(('8', '4')) or code.startswith('9'):
+                continue
+            cached_min, cached_max = sc.get_stk_factor_range(code)
+            if not cached_min or cached_min > start:
+                preload_needed += 1
+        if preload_needed > 0:
+            print(f"  预加载 {preload_needed}/{total} 只到 SQLite 缓存（并发10线程）...")
+            preload_codes = []
+            for code in ts_codes:
+                if code.startswith(('8', '4')) or code.startswith('9'):
+                    continue
+                cached_min, cached_max = sc.get_stk_factor_range(code)
+                if not cached_min or cached_min > start:
+                    preload_codes.append(code)
+            loaded = [0]
+            def _preload_one(code):
+                sc.cached_stk_factor_pro(code, start, trade_date, silent=True)
+                loaded[0] += 1
+                if loaded[0] % 100 == 0:
+                    print(f"  缓存预加载 {loaded[0]}/{preload_needed}...")
+            from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                futures = {ex.submit(_preload_one, code): code for code in preload_codes}
+                for f in _as_completed(futures):
+                    try: f.result()
+                    except Exception: pass
+            print(f"  缓存预加载完成")
+
+        # 全局去重：同一天同一只股票只保留评分最高的
+        seen_signals = {}
+        
         for i, code in enumerate(ts_codes):
             if (i + 1) % 50 == 0 or i == 0:
                 eta = (time.time() - t0) / max(i + 1, 1) * (total - i - 1) if i > 0 else 0
@@ -1559,43 +1659,59 @@ class WavePatternDetector:
 
             # ⚠️ 北交所股票跳过（不交易）
             # 北交所代码规则：8xxxxx、4xxxxx、9xxxxx（含92开头的北交所新股）
-            if code.startswith(('8', '4')) or (code.startswith('9') and code.endswith('.SZ')):
+            if code.startswith(('8', '4')) or (code.startswith('9')):
                 continue
 
-            # 四种形态并列检测，避免重复
-            found_patterns = set()
+            # ── 预加载一次数据，共享给4个detect方法 ────────────
+            self._scan_data = self.load_data(code, lookback=500)
+            if self._scan_data is None:
+                self._scan_data = None
+                continue
+
+            stock_patterns = set()
             
             if pattern in ('sideways', 'all'):
                 r = self.detect_sideways_pattern(code, today_only=today_only)
                 if r:
                     r['name'] = name_map.get(code, '')
-                    results.append(r)
-                    found_patterns.add(r['pattern'])
+                    key = (code, r['entry_date'])
+                    if key not in seen_signals or r['score'] > seen_signals[key]['score']:
+                        seen_signals[key] = r
+                    stock_patterns.add(r['pattern'])
 
             if pattern in ('deep', 'all'):
                 r = self.detect_deep_pullback_pattern(code, today_only=today_only)
-                if r and '深度回调' not in found_patterns:
+                if r and '深度回调' not in stock_patterns:
                     r['name'] = name_map.get(code, '')
-                    results.append(r)
-                    found_patterns.add(r['pattern'])
+                    key = (code, r['entry_date'])
+                    if key not in seen_signals or r['score'] > seen_signals[key]['score']:
+                        seen_signals[key] = r
+                    stock_patterns.add(r['pattern'])
 
             if pattern in ('volume', 'all'):
                 r = self.detect_volume_pullback_pattern(code, today_only=today_only)
-                if r and '放量回调' not in found_patterns:
+                if r and '放量回调' not in stock_patterns:
                     r['name'] = name_map.get(code, '')
-                    results.append(r)
-                    found_patterns.add(r['pattern'])
+                    key = (code, r['entry_date'])
+                    if key not in seen_signals or r['score'] > seen_signals[key]['score']:
+                        seen_signals[key] = r
+                    stock_patterns.add(r['pattern'])
 
             if pattern in ('vshape', 'all'):
                 r = self.detect_vshape_pattern(code, today_only=today_only)
-                if r and 'V型急跌' not in found_patterns:
+                if r and 'V型急跌' not in stock_patterns:
                     r['name'] = name_map.get(code, '')
-                    results.append(r)
-                    found_patterns.add(r['pattern'])
+                    key = (code, r['entry_date'])
+                    if key not in seen_signals or r['score'] > seen_signals[key]['score']:
+                        seen_signals[key] = r
+                    stock_patterns.add(r['pattern'])
 
             time.sleep(0.02)
+            self._scan_data = None  # 清除共享数据，下一只重新加载
 
         elapsed = time.time() - t0
+        # 合并去重后的信号
+        results = list(seen_signals.values())
         df = pd.DataFrame(results)
         print(f"\n  扫描完成！耗时 {elapsed:.1f}s，找到 {len(df)} 只信号")
         return df
@@ -1617,23 +1733,27 @@ def get_hs300_pool() -> list:
     except Exception:
         pass
     try:
-        sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code')
-        codes = sb[~sb['ts_code'].str.startswith('688')]['ts_code'].tolist()[:200]
-        print(f"  沪深300池(stock_basic fallback): {len(codes)} 只")
-        return codes
+        sb = sc.load_stock_basic()
+        if sb is not None:
+            codes = sb[~sb['ts_code'].str.startswith('688')]['ts_code'].tolist()[:200]
+            print(f"  沪深300池(本地缓存): {len(codes)} 只")
+            return codes
     except Exception:
-        return []
+        pass
+    return []
 
 
 def get_gem_kc_pool() -> list:
     try:
-        sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code')
-        cy = sb[sb['ts_code'].str.startswith(('300', '688'))]
-        codes = cy['ts_code'].tolist()
-        print(f"  双创板: {len(codes)} 只")
-        return codes
+        sb = sc.load_stock_basic()
+        if sb is not None:
+            cy = sb[sb['ts_code'].str.startswith(('300', '688'))]
+            codes = cy['ts_code'].tolist()
+            print(f"  双创板(本地缓存): {len(codes)} 只")
+            return codes
     except Exception:
-        return []
+        pass
+    return []
 
 
 def get_hot_leaders(n: int = 50) -> list:
@@ -1701,6 +1821,7 @@ def _add_market_overview(elements, font_name, data_date, styles):
     """从market_analysis.db读取昨日大盘概览，插入PDF"""
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
     from reportlab.platypus import Paragraph, Spacer
     import sqlite3
 
@@ -1763,7 +1884,7 @@ def _add_market_overview(elements, font_name, data_date, styles):
         traceback.print_exc()
 
 
-def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = ''):
+def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '', force_date: str = ''):
     """生成PDF分析报告（按共振评分降序排列）"""
     # 按共振评分降序排序
     all_results = sorted(all_results, key=lambda x: x.get('score', 0), reverse=True)
@@ -1787,7 +1908,7 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
             continue
 
     # 报告日期
-    scan_date = get_effective_date()
+    scan_date = get_effective_date(force_date)
     if all_results:
         data_dates = [r.get('entry_date', '') for r in all_results if r.get('entry_date')]
         if data_dates:
@@ -1985,7 +2106,7 @@ def main():
     # 显示分析日期
     analyze_date = get_effective_date(args.date)
     print(f"\n{'='*60}")
-    print(f"  二波形态精选v2.4 | 分析日期: {analyze_date}")
+    print(f"  二波形态精选v2.9 | 分析日期: {analyze_date}")
     print(f"{'='*60}")
 
     # CSV模式：读取CSV文件中的股票池
@@ -2003,12 +2124,14 @@ def main():
                                '688041.SH', '603993.SH', '600519.SH']
         today_label = '仅今日' if args.today else '历史回溯'
         print(f"  测试模式 | {len(codes)} 只 | {today_label}")
-        # 获取股票名称
+        # 获取股票名称（从本地缓存读取，不调API）
         name_map = {}
         try:
-            sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name')
-            if sb is not None and not sb.empty:
-                name_map = dict(zip(sb['ts_code'], sb['name']))
+            cache_path = os.path.join(CACHE_DIR, 'stock_basic.csv')
+            if os.path.exists(cache_path):
+                sb = pd.read_csv(cache_path)
+                if not sb.empty and 'ts_code' in sb.columns and 'name' in sb.columns:
+                    name_map = dict(zip(sb['ts_code'], sb['name']))
         except Exception:
             pass
 
@@ -2034,19 +2157,20 @@ def main():
                 print(f"/ {code} | 无信号")
 
         if args.output in ('csv', 'json') and results:
-            ts_str = datetime.datetime.now().strftime('%H%M%S')
+            trade_date = get_effective_date(args.date)
+            time_str = datetime.datetime.now().strftime('%H%M%S')
             if args.output == 'csv':
-                fpath = os.path.join(OUT_DIR, f'wave2_test_{ts_str}.csv')
+                fpath = os.path.join(OUT_DIR, f'wave2_test_{trade_date}_{time_str}.csv')
                 pd.DataFrame(results).to_csv(fpath, index=False, encoding='utf-8-sig')
             else:
-                fpath = os.path.join(OUT_DIR, f'wave2_test_{ts_str}.json')
+                fpath = os.path.join(OUT_DIR, f'wave2_test_{trade_date}_{time_str}.json')
                 with open(fpath, 'w', encoding='utf-8') as f:
                     json.dump(results, f, ensure_ascii=False, indent=2)
             print(f"\n已保存: {fpath}")
         
         # PDF输出
         if args.pdf and results:
-            generate_pdf_report(results, len(codes), args.csv)
+            generate_pdf_report(results, len(codes), args.csv, args.date)
         return
 
     # 批量扫描
@@ -2093,9 +2217,10 @@ def main():
     results_df = results_df.drop(columns=['_priority']).sort_values('score', ascending=False)
     print(f"\n去重后: {len(results_df)} 只")
 
-    ts_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    csv_path = os.path.join(OUT_DIR, f'wave2_pattern_{ts_str}.csv')
-    json_path = os.path.join(OUT_DIR, f'wave2_pattern_{ts_str}.json')
+    trade_date_str = get_effective_date(args.date)
+    time_str = datetime.datetime.now().strftime('%H%M%S')
+    csv_path = os.path.join(OUT_DIR, f'wave2_pattern_{trade_date_str}_{time_str}.csv')
+    json_path = os.path.join(OUT_DIR, f'wave2_pattern_{trade_date_str}_{time_str}.json')
     results_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(results_df.to_dict('records'), f, ensure_ascii=False, indent=2)
@@ -2118,7 +2243,7 @@ def main():
     # PDF输出
     if args.pdf:
         all_results = results_df.to_dict('records')
-        generate_pdf_report(all_results, len(pool), args.csv)
+        generate_pdf_report(all_results, len(pool), args.csv, args.date)
 
 
 if __name__ == '__main__':

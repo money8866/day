@@ -102,249 +102,22 @@ os.makedirs(TUSHARE_API_CACHE_DIR, exist_ok=True)
 os.makedirs(FUND_CACHE_DIR, exist_ok=True)
 
 # ═══════════════════════════════════════════════════════
-# 缓存API调用（与 wave2_pattern_scanner.py / wave2_daily.py 共用）
+# 缓存API调用（统一入口：sc.* 详见 stock_cache.py）
 # ═══════════════════════════════════════════════════════
-# 全局变量：跟踪批量下载日期（从文件读取，持久化存储）
-_STK_FACTOR_BATCH_STATUS_FILE = os.path.join(CACHE_DIR, "stk_factor_batch_status.txt")
-# 全局集合：跟踪已尝试补充缓存的股票（避免重复日志）
-_cache_supplement_attempted = set()
-
-def _read_batch_status():
-    """读取批量下载状态文件"""
-    try:
-        if os.path.exists(_STK_FACTOR_BATCH_STATUS_FILE):
-            with open(_STK_FACTOR_BATCH_STATUS_FILE, 'r') as f:
-                content = f.read().strip()
-                if content:
-                    return content
-    except:
-        pass
-    return ""
-
-def _write_batch_status(date_str):
-    """写入批量下载状态文件"""
-    try:
-        with open(_STK_FACTOR_BATCH_STATUS_FILE, 'w') as f:
-            f.write(date_str)
-    except:
-        pass
-
-# 初始化批量下载日期（从文件读取）
-_stk_factor_batch_downloaded_date = _read_batch_status()
-
-def _read_cache(cache_file):
-    try:
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file)
-            if not df.empty and 'trade_date' in df.columns:
-                df['trade_date'] = df['trade_date'].astype(str)
-                return df
-    except:
-        pass
-    return None
-
-def _save_cache(df, cache_file):
-    try:
-        if df is not None and not df.empty:
-            df.to_csv(cache_file, index=False)
-    except:
-        pass
 
 def batch_cache_stk_factor_pro(target_date):
-    """批量缓存指定日期所有股票的 stk_factor_pro 数据（SQLite 版）"""
-    global _stk_factor_batch_downloaded_date
-    
-    if _stk_factor_batch_downloaded_date == target_date:
-        #print(f"[批量缓存] {target_date} 已下载过，跳过")
-        return
-    
-    print(f"[批量缓存] 开始下载 {target_date} 全市场 stk_factor_pro 数据...")
-    
-    try:
-        # 不带 ts_code 参数，使用 trade_date 获取当天所有股票数据
-        _fields = list(dict.fromkeys([
-            "ts_code", "trade_date", "open", "open_hfq", "open_qfq",
-            "high", "high_hfq", "high_qfq", "low", "low_hfq", "low_qfq",
-            "close", "close_hfq", "close_qfq", "pre_close", "change", "pct_chg",
-            "vol", "amount", "turnover_rate", "turnover_rate_f", "volume_ratio",
-            "pe", "pe_ttm", "pb", "ps", "ps_ttm", "dv_ratio", "dv_ttm",
-            "total_share", "float_share", "free_share", "total_mv", "circ_mv", "adj_factor",
-            "asi_bfq", "asi_hfq", "asi_qfq", "asit_bfq", "asit_hfq", "asit_qfq",
-            "atr_bfq", "atr_hfq", "atr_qfq", "bbi_bfq", "bbi_hfq", "bbi_qfq",
-            "bias1_bfq", "bias1_hfq", "bias1_qfq", "bias2_bfq", "bias2_hfq", "bias2_qfq",
-            "bias3_bfq", "bias3_hfq", "bias3_qfq", "boll_lower_bfq", "boll_lower_hfq", "boll_lower_qfq",
-            "boll_mid_bfq", "boll_mid_hfq", "boll_mid_qfq", "boll_upper_bfq", "boll_upper_hfq", "boll_upper_qfq",
-            "brar_ar_bfq", "brar_ar_hfq", "brar_ar_qfq", "brar_br_bfq", "brar_br_hfq", "brar_br_qfq",
-            "cci_bfq", "cci_hfq", "cci_qfq", "cr_bfq", "cr_hfq", "cr_qfq",
-            "dfma_dif_bfq", "dfma_dif_hfq", "dfma_dif_qfq", "dfma_difma_bfq", "dfma_difma_hfq", "dfma_difma_qfq",
-            "dmi_adx_bfq", "dmi_adx_hfq", "dmi_adx_qfq", "dmi_adxr_bfq", "dmi_adxr_hfq", "dmi_adxr_qfq",
-            "dmi_mdi_bfq", "dmi_mdi_hfq", "dmi_mdi_qfq", "dmi_pdi_bfq", "dmi_pdi_hfq", "dmi_pdi_qfq",
-            "downdays", "updays", "dpo_bfq", "dpo_hfq", "dpo_qfq", "madpo_bfq", "madpo_hfq", "madpo_qfq",
-            "ema_bfq_10", "ema_bfq_20", "ema_bfq_250", "ema_bfq_30", "ema_bfq_5", "ema_bfq_60", "ema_bfq_90",
-            "ema_hfq_10", "ema_hfq_20", "ema_hfq_250", "ema_hfq_30", "ema_hfq_5", "ema_hfq_60", "ema_hfq_90",
-            "ema_qfq_10", "ema_qfq_20", "ema_qfq_250", "ema_qfq_30", "ema_qfq_5", "ema_qfq_60", "ema_qfq_90",
-            "emv_bfq", "emv_hfq", "emv_qfq", "maemv_bfq", "maemv_hfq", "maemv_qfq",
-            "expma_12_bfq", "expma_12_hfq", "expma_12_qfq", "expma_50_bfq", "expma_50_hfq", "expma_50_qfq",
-            "kdj_bfq", "kdj_hfq", "kdj_qfq", "kdj_d_bfq", "kdj_d_hfq", "kdj_d_qfq",
-            "kdj_k_bfq", "kdj_k_hfq", "kdj_k_qfq", "ktn_down_bfq", "ktn_down_hfq", "ktn_down_qfq",
-            "ktn_mid_bfq", "ktn_mid_hfq", "ktn_mid_qfq", "ktn_upper_bfq", "ktn_upper_hfq", "ktn_upper_qfq",
-            "lowdays", "topdays", "ma_bfq_10", "ma_bfq_20", "ma_bfq_250", "ma_bfq_30", "ma_bfq_5", "ma_bfq_60", "ma_bfq_90",
-            "ma_hfq_10", "ma_hfq_20", "ma_hfq_250", "ma_hfq_30", "ma_hfq_5", "ma_hfq_60", "ma_hfq_90",
-            "ma_qfq_10", "ma_qfq_20", "ma_qfq_250", "ma_qfq_30", "ma_qfq_5", "ma_qfq_60", "ma_qfq_90",
-            "macd_bfq", "macd_hfq", "macd_qfq", "macd_dea_bfq", "macd_dea_hfq", "macd_dea_qfq",
-            "macd_dif_bfq", "macd_dif_hfq", "macd_dif_qfq", "mass_bfq", "mass_hfq", "mass_qfq",
-            "ma_mass_bfq", "ma_mass_hfq", "ma_mass_qfq", "mfi_bfq", "mfi_hfq", "mfi_qfq",
-            "mtm_bfq", "mtm_hfq", "mtm_qfq", "mtmma_bfq", "mtmma_hfq", "mtmma_qfq",
-            "obv_bfq", "obv_hfq", "obv_qfq", "psy_bfq", "psy_hfq", "psy_qfq",
-            "psyma_bfq", "psyma_hfq", "psyma_qfq", "roc_bfq", "roc_hfq", "roc_qfq",
-            "maroc_bfq", "maroc_hfq", "maroc_qfq", "rsi_bfq_12", "rsi_bfq_24", "rsi_bfq_6",
-            "rsi_hfq_12", "rsi_hfq_24", "rsi_hfq_6", "rsi_qfq_12", "rsi_qfq_24", "rsi_qfq_6",
-            "taq_down_bfq", "taq_down_hfq", "taq_down_qfq", "taq_mid_bfq", "taq_mid_hfq", "taq_mid_qfq",
-            "taq_up_bfq", "taq_up_hfq", "taq_up_qfq", "trix_bfq", "trix_hfq", "trix_qfq",
-            "trma_bfq", "trma_hfq", "trma_qfq", "vr_bfq", "vr_hfq", "vr_qfq",
-            "wr_bfq", "wr_hfq", "wr_qfq", "wr1_bfq", "wr1_hfq", "wr1_qfq",
-            "xsii_td1_bfq", "xsii_td1_hfq", "xsii_td1_qfq", "xsii_td2_bfq", "xsii_td2_hfq", "xsii_td2_qfq",
-            "xsii_td3_bfq", "xsii_td3_hfq", "xsii_td3_qfq", "xsii_td4_bfq", "xsii_td4_hfq", "xsii_td4_qfq"
-        ]))
-        df_all = pro.stk_factor_pro(
-            trade_date=target_date,
-            fields=_fields
-        )
-        
-        if df_all is not None and not df_all.empty:
-            df_all['trade_date'] = df_all['trade_date'].astype(str)
-            
-            # 除权检测：遍历每只股票，检查复权因子是否变化
-            adj_changed_count = 0
-            grouped = df_all.groupby('ts_code')
-            for code, group_df in grouped:
-                if 'adj_factor' not in group_df.columns:
-                    continue
-                new_adj = group_df['adj_factor'].iloc[-1]
-                old_adj = sc.get_last_adj_factor(code)
-                if old_adj is not None and new_adj is not None and old_adj != 0 and new_adj != 0 and old_adj != new_adj:
-                    print(f"[除权检测] {code} 复权因子变化: {old_adj} -> {new_adj}，删除旧缓存待全量更新")
-                    sc.delete_stk_factor_stock(code)
-                    adj_changed_count += 1
-            
-            # 批量写入 SQLite（单事务 INSERT OR REPLACE）
-            saved_count = sc.batch_insert_stk_factor_pro(df_all)
-            
-            # 更新状态
-            _stk_factor_batch_downloaded_date = target_date
-            sc.set_meta('stk_factor_batch_date', target_date)
-            _write_batch_status(target_date)
-            
-            if adj_changed_count > 0:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite，{adj_changed_count} 只除权待全量更新")
-            else:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite")
-        else:
-            print(f"[批量缓存] 警告：{target_date} 无数据返回（可能还未到数据更新时间）")
-            _stk_factor_batch_downloaded_date = target_date
-            
-    except Exception as e:
-        print(f"[批量缓存] 失败: {e}")
-        import traceback
-        traceback.print_exc()
+    """委托给 sc.batch_cache_stk_factor_pro"""
+    sc.batch_cache_stk_factor_pro(target_date)
 
 def get_list_date(ts_code):
-    """获取股票上市日期"""
-    try:
-        # 先尝试从 SQLite 缓存获取
-        cached_min = sc.get_list_date_from_cache(ts_code)
-        if cached_min:
-            return cached_min
-        
-        # 如果缓存中没有，从API获取
-        df = pro.stock_basic(ts_code=ts_code)
-        if not df.empty:
-            list_date = df.iloc[0].get('list_date', '')
-            if list_date:
-                return str(list_date)
-    except Exception as e:
-        print(f"[获取上市日期失败] {ts_code}: {e}")
-    return None
-
+    """委托给 sc.get_list_date"""
+    return sc.get_list_date(ts_code)
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """带缓存的 stk_factor_pro（SQLite 版）
-    
-    优化策略：
-    1. 每天第一次调用时自动批量下载当天所有股票数据
-    2. 检查 SQLite 缓存是否覆盖请求范围
-    3. 按需补充缺失的历史数据
-    4. 对于次新股，跳过上市日期之前的日期
-    5. 使用全局集合避免重复日志打印（每只股票只打印一次）
-    """
-    global _cache_supplement_attempted
-    
-    # 1. 每天第一次调用时先批量缓存当天数据
-    batch_cache_stk_factor_pro(end_date)
-    
-    # 2. 获取上市日期（用于次新股判断）
-    list_date = get_list_date(ts_code)
-    required_min = list_date if (list_date and list_date > str(start_date)) else str(start_date)
-    
-    # 3. 检查 SQLite 缓存是否覆盖请求范围
-    cached_min, cached_max = sc.get_stk_factor_range(ts_code)
-    if cached_min and cached_max:
-        if cached_min <= required_min and cached_max >= str(end_date):
-            df = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-            if df is not None and not df.empty:
-                return df.reset_index(drop=True)
-    
-    # 4. 缓存不完整，补充当前股票缺失的数据
-    supplement_key = f"{ts_code}_{required_min}_{end_date}"
-    if supplement_key not in _cache_supplement_attempted:
-        _cache_supplement_attempted.add(supplement_key)
-        if list_date and list_date > str(start_date):
-            print(f"[缓存补充] {ts_code} 次新股(上市日期:{list_date})，从上市日开始补充")
-        else:
-            print(f"[缓存补充] {ts_code} 需要补充 {required_min}~{end_date} 数据")
-    
-    try:
-        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
-        time.sleep(0.06)
-        
-        if df_new is not None and not df_new.empty:
-            df_new['trade_date'] = df_new['trade_date'].astype(str)
-            df_new = df_new.sort_values('trade_date').reset_index(drop=True)
-            
-            # 写入 SQLite
-            sc.batch_insert_stk_factor_pro(df_new)
-            
-            # 同时保留 CSV 备份（可选，过渡期使用）
-            cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-            df_old = _read_cache(cache_file)
-            if df_old is not None:
-                combined = pd.concat([df_old, df_new]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date').reset_index(drop=True)
-                _save_cache(combined, cache_file)
-            else:
-                _save_cache(df_new, cache_file)
-            
-            mask = (df_new['trade_date'] >= str(start_date)) & (df_new['trade_date'] <= str(end_date))
-            result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
-            if not result.empty:
-                return result
-    except Exception as e:
-        if supplement_key not in _cache_supplement_attempted:
-            print(f"[缓存补充] {ts_code} 失败: {e}")
-    
-    # 保底：从 SQLite 读取缓存
-    df_cache = sc.get_stk_factor_pro(ts_code, start_date, end_date)
-    if df_cache is not None and not df_cache.empty:
-        return df_cache.reset_index(drop=True)
-    
-    # 再保底：从 CSV 读取
-    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        mask = (df_cache['trade_date'] >= str(start_date)) & (df_cache['trade_date'] <= str(end_date))
-        subset = df_cache[mask].copy()
-        if not subset.empty:
-            return subset.sort_values('trade_date').reset_index(drop=True)
-    return df_cache
+    """委托给 sc.cached_stk_factor_pro"""
+    return sc.cached_stk_factor_pro(ts_code, start_date, end_date)
+
+# ═══════════════════════════════════════════════════════
 
 # =========================
 # 主题个股池路径
@@ -363,21 +136,21 @@ def stock_fundamental_alpha_score(ts_code, pro):
     - 核心维度：估值偏离 + 盈利质量 + 成长动能 + 现金流 + 行业比较
     - 优先从 bull_stocks_all.csv 文件读取 final_score
     """
-    # 优先从CSV文件读取final_score
+    # 优先从CSV文件读取最终分
     csv_path = r"D:\mystock\solo\report_daily\bull_stocks_all.csv"
     if os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
-            # 提取股票代码（去掉后缀并转换为整数，因为CSV中是整数）
+            # 提取股票代码（去掉后缀并转换为整数，因为CSV中code列是int）
             code_without_suffix = ts_code.split('.')[0]
-            code_int = int(code_without_suffix)  # 转换为整数匹配
-            # 查找对应股票
-            row = df[df['ts_code'] == code_int]
+            code_int = int(code_without_suffix)  # 000001→1, 603650→603650
+            # 查找对应股票（CSV列名是code，不是ts_code）
+            row = df[df['code'] == code_int]
             if not row.empty:
-                final_score = float(row['final_score'].iloc[0])
+                final_score = float(row['最终分'].iloc[0])
                 return {
                     "alpha_score": final_score,
-                    "signal": "从bull_stocks_all.csv读取",
+                    "signal": "牛" if final_score >= 80 else ("强" if final_score >= 60 else ("中" if final_score >= 40 else "弱")),
                     "detail": {}
                 }
         except Exception as e:
@@ -856,7 +629,102 @@ def detect_breakout(ts_code, pro, trade_date=None):
     return result
 
 
+# ═══════════════════════════════════════════════════════════════
+# 二波形态检测（基于 wave2_pattern_scanner.py 的 WavePatternDetector）
+# ═══════════════════════════════════════════════════════════════
+_WAVE2_DETECTOR = None
+
+def _get_wave2_detector():
+    """延迟获取 WavePatternDetector 实例（避免启动时导入开销）"""
+    global _WAVE2_DETECTOR
+    if _WAVE2_DETECTOR is None:
+        from wave2_pattern_scanner import WavePatternDetector
+        _WAVE2_DETECTOR = WavePatternDetector(force_date=TRADE_DATE)
+    return _WAVE2_DETECTOR
+
+
 def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
+    """二波反转策略检测（复用 WavePatternDetector v2.9）
+    
+    返回格式与旧版兼容，便于无缝替换：
+    {
+        "ts_code": str,
+        "trade_date": str,
+        "wave2_score": int,       # 共振总评分
+        "pattern_score": int,     # 形态基础分（保持兼容，=0）
+        "resonance_score": int,   # 共振加分（= wave2_score）
+        "is_perfect_signal": bool,
+        "signal": str,
+        "pattern": str,           # 形态类型
+        "score_details": str,     # 评分明细
+        "entry_price": float,
+        "stop_loss": float,
+        "target": float,
+    }
+    """
+    result = {
+        "ts_code": ts_code,
+        "trade_date": trade_date or TRADE_DATE,
+        "wave2_score": 0,
+        "pattern_score": 0,
+        "resonance_score": 0,
+        "is_perfect_signal": False,
+        "signal": "非二波形态",
+        "pattern": "",
+        "score_details": "",
+        "entry_price": 0,
+        "stop_loss": 0,
+        "target": 0,
+    }
+    
+    try:
+        detector = _get_wave2_detector()
+        best = None
+        
+        # 四种形态并列检测，取评分最高的
+        # today_only=False：检测当前是否处于二波形态中（不仅限今日刚出现）
+        for detect_fn in [
+            detector.detect_vshape_pattern,
+            detector.detect_deep_pullback_pattern,
+            detector.detect_volume_pullback_pattern,
+            detector.detect_sideways_pattern,
+        ]:
+            r = detect_fn(ts_code, today_only=False)
+            if r and (best is None or r['score'] > best['score']):
+                best = r
+        
+        if best is None:
+            return result
+        
+        score = int(best['score'])
+        pattern = best['pattern']
+        
+        result["wave2_score"] = score
+        result["resonance_score"] = score
+        result["pattern"] = pattern
+        result["score_details"] = best.get('score_details', '')
+        result["entry_price"] = best.get('entry_price', 0)
+        result["stop_loss"] = best.get('stop_loss', 0)
+        result["target"] = best.get('target', 0)
+        
+        # 信号等级（与旧版阈值对齐：>=18完美, >=12跟踪, >=7疑似）
+        if score >= 18:
+            result["is_perfect_signal"] = True
+            result["signal"] = "完美二波反转！可潜伏买入"
+        elif score >= 12:
+            result["signal"] = "二波形态初现，继续跟踪"
+        elif score >= 7:
+            result["signal"] = "疑似二波结构，等待确认"
+        else:
+            result["signal"] = "非二波形态"
+        
+    except Exception:
+        pass
+    
+    return result
+
+
+def _detect_wave2_reversal_old(ts_code, pro, trade_date=None, lookback_days=20):
     """
     二波反转策略检测函数（共振评分版）
     使用10维度共振评分替代旧版评分逻辑，结合形态分类输出
@@ -6502,12 +6370,7 @@ def strategy(df, code, emotion_stage, total_mv=0):
 
 
 def strategy_dx(df, code, emotion_stage, total_mv=0):
-    """优化版本：向量化计算 + 提前过滤 + 缓存复用
-    同步自 wave2_pattern_scanner.py v2.4:
-    - 新增形态分类
-    - 新增多维度共振评分引擎
-    - 新增不创新低检测
-    """
+    """低吸策略：找上一波涨幅大+回调企稳的股票"""
     
     # ===== 快速前置过滤（低成本判断优先）=====
     if len(df) < 80:
@@ -6682,65 +6545,8 @@ def strategy_dx(df, code, emotion_stage, total_mv=0):
     #if not TJ:
     #    return False
   
-    # ===== 形态分类 =====
-    # 计算调整天数和回调幅度
-    adjust_days = ztts
-    pullback_pct = (C[-ztts-1] - C[-1]) / C[-ztts-1]  # 当前回撤幅度
-    
-    # 量比计算
-    base_vol = VOL[wave1_high_idx - 10:wave1_high_idx].mean() if wave1_high_idx > 10 else VOL.mean()
-    adj_vol = VOL[wave1_high_idx + 1:n].mean()
-    vol_ratio_adj = adj_vol / base_vol if base_vol > 0 else 1.0
-    
-    # 形态分类
-    #   V型急跌: adjust_days<=10 且 pullback>=15% → 胜率97.2%
-    #   放量回调: vol_ratio>1.2 且 pullback在10~25% → 胜率91.2%
-    #   深度回调: 其他 → 胜率87.2%
-    pattern_type = '深度回调'
-    if adjust_days <= 10 and pullback_pct >= 0.15:
-        pattern_type = 'V型急跌'
-    elif vol_ratio_adj > 1.2 and 0.10 <= pullback_pct < 0.25:
-        pattern_type = '放量回调'
-    
-    # ===== XH 判断 =====
-    highest_close = C[-ztts-1:-1].max()
-    
-    # 量能接近前高条件：当前成交量达到ztts区间内最高成交量的80%以上
-    vol_peak = VOL[-ztts-1:-1].max()
-    vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
-    cond_xh1 = C[-1] < ma5[-1] and C[-1]<ref_close and ma5[-1] < ma5[-2]
-    
-    # ===== 二波入场RSI条件：当前RSI < 60 =====
-    if rsi_col in df.columns:
-        cur_rsi = float(df.iloc[-1][rsi_col])
-        if pd.isna(cur_rsi) or cur_rsi >= 60:
-            return False
-    
-    # ===== 多维度共振评分（简化版）=====
-    score = 0
-    
-    # 一波涨幅加分
-    wave1_gain_pct = wave1_gain * 100
-    if wave1_gain_pct >= 80:
-        score += 8
-    elif wave1_gain_pct >= 50:
-        score += 5
-    elif wave1_gain_pct >= 30:
-        score += 2
-    
-    # 形态加分
-    if pattern_type == 'V型急跌':
-        score += 8
-    elif pattern_type == '放量回调':
-        score += 5
-    
-    # 不创新低加分（已通过检测，默认+5）
-    score += 5
-    
-    # 评分阈值：至少需要7分
-    if score < 7:
-        return False
-    
+    # ===== 最终条件：回踩不破5日线 + 均线多头 =====
+    cond_xh1 = C[-1] < ma5[-1] and C[-1] < ref_close and ma5[-1] < ma5[-2]
     return cond_xh1
 
 
@@ -6994,6 +6800,38 @@ def send_wechat(msg, key):
     }
 
     requests.post(url, data=data)
+
+
+def send_pushplus(msg, token):
+    """
+    通过 PushPlus 推送微信消息（支持markdown）
+    API: https://www.pushplus.plus/send
+    """
+    if not token:
+        print("⚠️ PushPlus token 为空，跳过推送")
+        return
+
+    import re
+    # 不清理HTML/标签，PushPlus原生支持markdown
+    msg = msg.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+
+    url = "https://www.pushplus.plus/send"
+    payload = {
+        "token": token,
+        "title": f"每日复盘 - {TRADE_DATE}",
+        "content": msg,
+        "template": "markdown"
+    }
+
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        result = resp.json()
+        if result.get("code") == 200:
+            print("✅ PushPlus 已发送")
+        else:
+            print(f"⚠️ PushPlus 发送失败: {result.get('msg', '未知错误')}")
+    except Exception as e:
+        print(f"⚠️ PushPlus 请求异常: {e}")
 
 
 
@@ -8791,28 +8629,7 @@ def run(target_date=None, simple_mode=False):
                 })
 
                 print("✅ 命中突破:", ts_code, row.get('name', ''))
-
-            ok2 = strategy_dx(
-                hist,
-                ts_code,
-                emotion_stage,
-                total_mv=row.get('total_mv', 0)
-            )
-            if ok2:
-
-                result_dx.append({
-                    '代码': ts_code,
-                    '名称': row.get('name', ''),
-                    '现价': row.get('close', 0),
-                    '涨跌幅': row.get('pct_chg', 0),
-                    '成交额': row.get('amount', 0),
-                    '总市值（亿元）': row.get('total_mv', 0)/10000,
-                    'total_market_cap': row.get('total_mv', 0) * 10000,  # 转换为元
-                    'market_cap': row.get('total_mv', 0) * 10000,       # 兼容字段
-                })
-
-                print("✅ 命中低吸:", ts_code, row.get('name', ''))
-                
+               
         except Exception as e:
 
             print(ts_code, e)
@@ -8833,9 +8650,7 @@ def run(target_date=None, simple_mode=False):
     # =========================
     if not result_df.empty:
         result_df = filter_by_top_themes(result_df)
-    result_dx_df = pd.DataFrame(result_dx)
-    if not result_dx_df.empty:
-        result_dx_df = filter_by_top_themes(result_dx_df)
+
     # =========================
     # 突破股池：统一评分 + 二波形态 + 筹码
     # =========================
@@ -8967,10 +8782,77 @@ def run(target_date=None, simple_mode=False):
             'open_score': s.get('整合评分', 0),
         })
 
+    ### 二波低吸：读取 wave2_pattern_scanner.py 盘后预生成数据 ###
+    wave2_output_dir = r'D:\mystock\solo\multi_factor_picker\output'
+    wave2_csv_path = ''
+    if os.path.exists(wave2_output_dir):
+        import glob
+        wave2_files = glob.glob(os.path.join(wave2_output_dir, 'wave2_pattern_*.csv'))
+        today_files = [f for f in wave2_files if os.path.basename(f).startswith(f'wave2_pattern_{TRADE_DATE}_')]
+        if today_files:
+            wave2_csv_path = max(today_files, key=os.path.getmtime)
+            print(f'\n[二波低吸] 读取当天预生成: {os.path.basename(wave2_csv_path)}')
 
+    # 没有当天数据，主动调用 wave2_pattern_scanner.py 生成
+    if not wave2_csv_path:
+        wave2_script = r'D:\mystock\solo\multi_factor_picker\wave2_pattern_scanner.py'
+        wave2_pool_csv = r'D:\mystock\solo\report_daily\bull_stocks_qualified.csv'
+        if os.path.exists(wave2_script) and os.path.exists(wave2_pool_csv):
+            print(f'\n[二波低吸] 未找到当天预生成数据，主动扫描...')
+            import subprocess
+            try:
+                result = subprocess.run(
+                    [sys.executable, wave2_script, '--csv', wave2_pool_csv, '--output', 'csv', '--date', TRADE_DATE, '--today'],
+                    capture_output=True, text=True, timeout=600,
+                    env={**os.environ, 'TUSHARE_TOKEN': os.environ.get('TUSHARE_TOKEN', '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')}
+                )
+                print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+                if result.returncode != 0:
+                    print(f'[二波低吸] 主动扫描异常: {result.stderr[-300:]}')
+                # 重新查找生成的文件
+                wave2_files = glob.glob(os.path.join(wave2_output_dir, 'wave2_pattern_*.csv'))
+                today_files = [f for f in wave2_files if os.path.basename(f).startswith(f'wave2_pattern_{TRADE_DATE}_')]
+                if today_files:
+                    wave2_csv_path = max(today_files, key=os.path.getmtime)
+                    print(f'[二波低吸] 主动扫描完成: {os.path.basename(wave2_csv_path)}')
+            except Exception as e:
+                print(f'[二波低吸] 主动扫描失败: {e}')
+
+    # 读取结果
+    if wave2_csv_path:
+        try:
+            df_wave2 = pd.read_csv(wave2_csv_path)
+            if not df_wave2.empty:
+                print(f'[二波低吸] 命中: {len(df_wave2)} 只')
+                for _, r in df_wave2.iterrows():
+                    result_dx.append({
+                        '代码': r['ts_code'],
+                        '名称': r.get('name', ''),
+                        '现价': r.get('entry_price', 0),
+                        '涨跌幅': 0,
+                        '成交额': 0,
+                        '总市值（亿元）': 0,
+                        'total_market_cap': 0,
+                        'market_cap': 0,
+                        'pattern': r.get('pattern', ''),
+                        'score': r.get('score', 0),
+                        'wave1_gain': r.get('wave1_gain', 0),
+                        'pullback_pct': r.get('pullback_pct', 0),
+                        'rsi': r.get('rsi', 0),
+                        'stop_pct': r.get('stop_pct', 0),
+                        'rr': r.get('rr', 0),
+                    })
+                    print(f'[二波低吸] 命中: {r["ts_code"]} {r.get("name", "")} {r.get("pattern", "")} 评分{r.get("score", 0)}分')
+            else:
+                print(f'[二波低吸] 预生成CSV为空')
+        except Exception as e:
+            print(f'[二波低吸] 读取CSV异常: {e}')
     # =========================
     # 处理低吸股票池（result_dx）：同突破池一样的评分/技术指标/筹码/短线流程
     # =========================
+    result_dx_df = pd.DataFrame(result_dx)
+    if not result_dx_df.empty:
+        result_dx_df = filter_by_top_themes(result_dx_df)
     dx_ranked_stocks = []
     if not result_dx_df.empty:
         for idx, row in result_dx_df.iterrows():
@@ -9098,7 +8980,16 @@ def run(target_date=None, simple_mode=False):
         # 低吸池：过滤掉非二波 + 二波评分≥10才有观察价值 + 按二波分从高到低排序
         # 信号等级：>=18完美, >=12跟踪, >=7疑似
         dx_ranked_stocks = [s for s in dx_ranked_stocks if s.get('二波信号', '') != '非二波形态' and s.get('二波评分', 0) >= 10]
-        dx_ranked_stocks = sorted(dx_ranked_stocks, key=lambda x: -x['二波评分'])
+        # 每种低吸类型最多取评分最高的3只，合并后取总分最高的10只
+        from itertools import groupby
+        dx_ranked_stocks = sorted(dx_ranked_stocks, key=lambda x: x.get('二波形态', ''))
+        grouped = {}
+        for k, g in groupby(dx_ranked_stocks, key=lambda x: x.get('二波形态', '')):
+            grouped[k] = sorted(g, key=lambda x: -x['二波评分'])[:3]
+        dx_ranked_stocks = sorted(
+            [s for sub in grouped.values() for s in sub],
+            key=lambda x: -x['二波评分']
+        )[:10]
 
     # =========================
     # 构建低吸股票池输出文本（精简版）
@@ -9106,10 +8997,10 @@ def run(target_date=None, simple_mode=False):
     dixi_lines = []
     
     if dx_ranked_stocks:
-        dx_count = min(len(dx_ranked_stocks), 10)
+        dx_count = len(dx_ranked_stocks)
         dixi_lines.append(f"共{dx_count}只低吸二波标的（二波评分均≥10分），按二波评分从高到低排序：")
         dixi_lines.append("-" * 60)
-        for i, s in enumerate(dx_ranked_stocks[:10], 1):
+        for i, s in enumerate(dx_ranked_stocks, 1):
             price = s.get('现价', 0)
             pct = s.get('涨跌幅', 0)
             pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
@@ -9183,6 +9074,210 @@ def run(target_date=None, simple_mode=False):
     dixi_stock_text = "\n".join(dixi_lines)
     print(dixi_stock_text)
 
+
+    # =========================
+    # 趋势股池：精准入场信号（评分≥70 + D1/D2）
+    # 每天只输出评分前3
+    # =========================
+    trend_lines = []
+    trend_lines.append("")
+    trend_lines.append("=" * 60)
+    trend_lines.append("📈 趋势股池 (精准入场评分≥70 + D1/D2)")
+    trend_lines.append("=" * 60)
+
+    try:
+        trend_dir = r'D:\mystock\solo\trend_feature_output'
+        trend_files = sorted([f for f in os.listdir(trend_dir)
+                              if f.startswith('entry_precision') and 'qualified' in f and f.endswith('.csv')],
+                             reverse=True)
+        if trend_files:
+            trend_df = pd.read_csv(os.path.join(trend_dir, trend_files[0]))
+            trend_df['signal_date'] = trend_df['signal_date'].astype(str)
+            # 取今天或最近有数据的一天
+            target_trend_date = target_date if isinstance(target_date, str) and target_date else TRADE_DATE
+            daily = trend_df[trend_df['signal_date'] == str(target_trend_date)]
+            if daily.empty:
+                # 尝试最近一个交易日
+                avail_dates = sorted(trend_df['signal_date'].unique(), reverse=True)
+                for d in avail_dates:
+                    tmp = trend_df[trend_df['signal_date'] == d]
+                    if not tmp.empty:
+                        daily = tmp
+                        target_trend_date = d
+                        break
+            if not daily.empty:
+                daily = daily[daily['entry_score'] >= 70].copy()
+                daily = daily[daily['consecutive_up'].isin([1, 2])]
+                if not daily.empty:
+                    total_count = daily.shape[0]
+                    daily = daily.sort_values('entry_score', ascending=False).head(3)
+                    trend_lines.append(f"信号日: {target_trend_date}  共{total_count}只≥70分，展示前3只D1/D2")
+                    trend_lines.append(f"{'代码':<12} {'名称':<8} {'评分':>4} {'涨幅%':>5} {'量比':>5} {'距MA20%':>6} {'距MA60%':>6} {'波段':>4}")
+                    trend_lines.append("-" * 58)
+                    for _, r in daily.iterrows():
+                        name = get_stock_name(r['ts_code'])
+                        ma60 = r.get('above_ma60_pct', 0)
+                        band = f"D{int(r['consecutive_up'])}" if pd.notna(r['consecutive_up']) else "-"
+                        trend_lines.append(f"  {r['ts_code']:<12} {name:<8} {r['entry_score']:>4.0f} {r['pct_chg']:>4.1f}% {r['vol_ratio']:>4.2f} {r['above_ma20_pct']:>5.1f}% {ma60:>5.1f}% {band:>4}")
+                else:
+                    trend_lines.append(f"  信号日 {target_trend_date}: 无评分≥70分且D1/D2的信号")
+            else:
+                trend_lines.append("  无信号数据")
+        else:
+            trend_lines.append("  未找到精准入场CSV（请先运行 trend_entry_precision.py）")
+    except Exception as e:
+        trend_lines.append(f"  读取失败: {e}")
+
+    trend_stock_text = "\n".join(trend_lines)
+    print(trend_stock_text)
+
+
+    # =========================
+    # 中线股池：B浪低点识别策略（近20天信号）
+    # =========================
+    midline_lines = []
+    midline_lines.append("")
+    midline_lines.append("=" * 60)
+    midline_lines.append("📊 中线股池 (B浪低点识别策略 - 近20天信号)")
+    midline_lines.append("=" * 60)
+
+    try:
+        trend_dir = r'D:\mystock\solo\trend_feature_output'
+        bwave_files = sorted([f for f in os.listdir(trend_dir)
+                              if f.startswith('bwave_') and f.endswith('.csv')],
+                             reverse=True)
+        if bwave_files:
+            bwave_df = pd.read_csv(os.path.join(trend_dir, bwave_files[0]))
+            bwave_df['launch_date'] = bwave_df['launch_date'].astype(str)
+            bwave_df['today'] = bwave_df['today'].astype(str)
+            
+            start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=20)).strftime('%Y%m%d')
+            recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
+            
+            if not recent.empty:
+                recent = recent.sort_values('bwave_score', ascending=False)
+                total_count = recent.shape[0]
+                midline_lines.append(f"近20天共{total_count}个B浪信号（启动+底背离），按BWaveScore降序展示")
+                midline_lines.append(f"{'代码':<12} {'名称':<8} {'类型':<6} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
+                midline_lines.append("-" * 80)
+                
+                for _, r in recent.iterrows():
+                    name = get_stock_name(r['ts_code'])
+                    sig_type = '启动' if r['signal_type'] == 'launch' else '底背离'
+                    midline_lines.append(f"  {r['ts_code']:<12} {name:<8} {sig_type:<6} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
+                
+                midline_lines.append("")
+                midline_lines.append("📋 操作建议:")
+                midline_lines.append("  【启动信号】：已放量突破，可关注回调后的买点，止损设B浪低点下方3%")
+                midline_lines.append("  【底背离信号】：左侧信号，建议等待MACD金叉或放量阳线确认后再入场")
+                midline_lines.append("  【风险提示】：距A浪高点越近风险越低，反弹超过35%需谨慎追高")
+            else:
+                midline_lines.append("  近20天无B浪信号")
+        else:
+            midline_lines.append("  未找到B浪策略CSV（请先运行 bwave_strategy.py --pool qualified）")
+    except Exception as e:
+        midline_lines.append(f"  读取失败: {e}")
+
+    midline_stock_text = "\n".join(midline_lines)
+    print(midline_stock_text)
+
+
+    # =========================
+    # 盘中策略：主题异动 + 个股异动
+    # =========================
+    try:
+        from intraday_strategy import (
+            ThemeMomentumDetector, StockMomentumDetector,
+            load_theme_stock_map, get_prev_trade_date,
+            TRADE_DATE, pro
+        )
+        
+        intraday_lines = []
+        intraday_lines.append("")
+        intraday_lines.append("=" * 60)
+        intraday_lines.append("🔥 盘中策略 (主题异动 + 个股异动)")
+        intraday_lines.append("=" * 60)
+        
+        theme_stock_map = load_theme_stock_map()
+        theme_detector = ThemeMomentumDetector(theme_stock_map)
+        stock_detector = StockMomentumDetector()
+        
+        current_data = pro.daily(trade_date=TRADE_DATE)
+        if current_data.empty:
+            intraday_lines.append("【主题异动】无主题异动")
+            intraday_lines.append("【个股异动】无个股异动")
+            intraday_lines.append("【共振信号】无共振入场信号")
+            intraday_stock_text = "\n".join(intraday_lines)
+            print(intraday_stock_text)
+        else:
+            current_data = current_data[['ts_code', 'open', 'high', 'low', 'close', 'vol', 'amount', 'pct_chg', 'pre_close']]
+            current_data = current_data.rename(columns={'pct_chg': 'change', 'vol': 'volume'})
+            
+            prev_trade_date = get_prev_trade_date(TRADE_DATE)
+            prev_df = pro.daily(trade_date=prev_trade_date)
+            prev_closes = {}
+            if not prev_df.empty:
+                prev_closes = dict(zip(prev_df['ts_code'], prev_df['close']))
+            
+            hist_start = (pd.Timestamp(prev_trade_date) - pd.Timedelta(days=10)).strftime('%Y%m%d')
+            hist_df = pro.daily(start_date=hist_start, end_date=prev_trade_date)
+            if not hist_df.empty:
+                hist_df = hist_df.rename(columns={'vol': 'volume'})
+                avg_vol = hist_df.groupby('ts_code')['volume'].mean()
+                current_data['volume_ratio'] = current_data['ts_code'].map(avg_vol)
+                current_data['volume_ratio'] = current_data['volume'] / current_data['volume_ratio'].fillna(current_data['volume'])
+                current_data['volume_ratio'] = current_data['volume_ratio'].clip(0.3, 5.0)
+            else:
+                current_data['volume_ratio'] = 1.0
+            
+            active_themes = theme_detector.detect_active_themes(current_data)
+            momentum_stocks = stock_detector.detect_batch_momentum(current_data, prev_closes)
+            
+            signals = []
+            for theme in active_themes:
+                theme_stocks = set(theme_stock_map.get(theme['theme_name'], []))
+                for stock in momentum_stocks:
+                    if stock['ts_code'] in theme_stocks:
+                        signals.append({
+                            'ts_code': stock['ts_code'],
+                            'name': stock['name'],
+                            'theme_name': theme['theme_name'],
+                            'total_score': theme['momentum_score'] * 0.4 + stock['momentum_score'] * 0.6,
+                            'change': stock['change'],
+                            'volume_ratio': stock['volume_ratio']
+                        })
+            signals.sort(key=lambda x: x['total_score'], reverse=True)
+            
+            if active_themes:
+                intraday_lines.append(f"【主题异动】共{len(active_themes)}个主题异动:")
+                for theme in active_themes[:5]:
+                    intraday_lines.append(f"  {theme['theme_name']:20s} 评分={theme['momentum_score']:3d} 涨幅={theme['avg_change']:+.2f}%")
+            else:
+                intraday_lines.append("【主题异动】无主题异动")
+            
+            if momentum_stocks:
+                intraday_lines.append(f"【个股异动】共{len(momentum_stocks)}只个股异动:")
+                for stock in momentum_stocks[:10]:
+                    sigs = ','.join(stock['signals'])
+                    intraday_lines.append(f"  {stock['ts_code']} {stock['name']:8s} 评分={stock['momentum_score']:3d} 涨幅={stock['change']:+.2f}% 量比={stock['volume_ratio']:.2f} [{sigs}]")
+            else:
+                intraday_lines.append("【个股异动】无个股异动")
+            
+            if signals:
+                intraday_lines.append(f"【共振信号】共{len(signals)}个共振入场信号:")
+                for i, sig in enumerate(signals[:5], 1):
+                    intraday_lines.append(f"  [{i}] {sig['ts_code']} {sig['name']:8s} | 主题:{sig['theme_name']} | 总分={sig['total_score']:.1f} | 涨幅={sig['change']:+.2f}%")
+            else:
+                intraday_lines.append("【共振信号】无共振入场信号")
+            
+            intraday_stock_text = "\n".join(intraday_lines)
+            print(intraday_stock_text)
+    except Exception as e:
+        print(f"\n{'='*60}")
+        print(f"🔥 盘中策略")
+        print(f"{'='*60}")
+        print(f"  盘中策略加载失败: {e}")
+        intraday_stock_text = "盘中策略加载失败"
 
 
     """
@@ -9361,7 +9456,17 @@ def run(target_date=None, simple_mode=False):
 （这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
 {hot_money_open_text}
 
+今日趋势股池（精准入场评分≥70 + D1/D2波段位置，早盘突破信号，按评分排序取前3）：
+{trend_stock_text}
+
+今日中线股池（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）：
+{midline_stock_text}
+
+今日盘中策略（主题异动 + 个股异动共振入场信号）：
+{intraday_stock_text}
+
 请分析并输出内容：
+开头以“这是大盘和个股推送微信消息”开头
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
 1、大盘情绪：简明扼要，重点是仓位建议及理由，操作要点
@@ -9386,7 +9491,7 @@ def run(target_date=None, simple_mode=False):
    - 【最多列出3个明日预测主题】
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
-3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，最多显示10只）：
+3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，全部展示）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
    - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
@@ -9449,6 +9554,43 @@ def run(target_date=None, simple_mode=False):
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 
+5、今日趋势股池分析（精准入场评分≥70 + D1/D2早盘突破信号，按评分排序取前3）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 【数据位置】趋势股池在"今日趋势股池"标题下方，以"信号日:"开头，每只股票已按评分排序
+   - 如果有信号数据，按评分降序分析每只，每只精简为1小段（2-3行）：
+     - 第1行：股票名(代码) 涨幅X.XX% | 精准评分=XX分 | D波段
+     - 第2行：量比=XX | 距MA20=XX% | 距MA60=XX% | 信号日：XXXX-XX-XX
+     - 第3行：简短判断（趋势延续性 + 介入时机建议）
+   - 【格式示例】
+     平安银行(000001.SZ) 涨幅+2.30% | 精准评分=85分 | D1波段
+       量比=1.23 | 距MA20=+3.5% | 距MA60=+8.2% | 信号日：20260628
+       趋势判断：D1早盘突破信号，量比>1温和放量，MA20上方运行趋势良好。关注次日能否延续D2，若高开高走可跟随，若冲高回落则观望。
+   - 如果无趋势信号数据，直接输出"今日无符合条件的趋势股信号（精准入场评分均<70或无D1/D2波段）"
+
+6、今日中线股池分析（B浪低点识别策略 - 近20天信号）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 【数据位置】中线股池在"今日中线股池"标题下方，以"近20天共X个B浪信号"开头，包含启动信号和底背离信号
+   - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（2-3行）：
+     - 第1行：股票名(代码) | BWaveScore=XX分 | 信号类型（启动/底背离）
+     - 第2行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 启动日：XXXX-XX-XX
+     - 第3行：操作建议（启动信号可关注回调买点；底背离建议等待确认）
+   - 【格式示例】
+     600961.SH | BWaveScore=76分 | 启动信号
+       A浪涨幅=80.4% | B浪回调=25.8% | 距A高=13.7% | 启动日：20260617
+       操作建议：B浪末端启动信号，A浪强势+缩量回调健康，可在回踩MA20附近低吸，止损设B浪低点下方3%
+   - 如果无信号数据，直接输出"今日无B浪低点信号（近20天无符合条件的A浪+B浪结构）"
+
+7、今日盘中策略分析（主题异动 + 个股异动共振入场信号）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 【数据位置】盘中策略在"今日盘中策略"标题下方，包含主题异动、个股异动、共振信号三部分
+   - 如果有主题异动数据，分析前3个异动主题：
+     - 主题名 | 评分 | 平均涨幅 | 操作建议（关注该主题内强势个股）
+   - 如果有个股异动数据，分析前5只异动个股：
+     - 股票名(代码) | 评分 | 涨幅 | 量比 | 信号类型
+   - 如果有共振信号（主题+个股同时异动），重点分析：
+     - 股票名(代码) | 所属主题 | 总分 | 涨幅 | 操作建议（共振信号可优先关注）
+   - 如果无数据，直接输出"今日无盘中异动信号"
+
 格式要求：
 - Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，加黑加粗显示
 - 股票分析另起一行，分点说明
@@ -9481,6 +9623,8 @@ def run(target_date=None, simple_mode=False):
             os.getenv("WECHAT_SCKEY")
         )   
         print("✅ 微信已发送")
+        # PushPlus 推送（支持markdown，增强阅读体验）
+        send_pushplus(final_report, os.getenv("PUSHPLUS"))
 
         # 保存报告（带异常处理）
         try:

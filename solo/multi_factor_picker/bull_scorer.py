@@ -47,6 +47,52 @@ BULL_THEMES = [
     "创新药", "数据要素", "消费电子", "新能源车"
 ]
 
+# 行业景气度静态评分（按申万行业/行业大类匹配，覆盖动态计算可能不准确的场景）
+# 优先级高于动态计算，匹配规则：股票 industry 字段包含下方任意关键词即命中
+INDUSTRY_DEMAND_STATIC = {
+    # ========= AI =========
+    "人工智能": 95,
+
+    # ========= 半导体 =========
+    "半导体": 92,
+
+    # ========= 医药 =========
+    "创新药": 88,
+
+    # ========= 高端制造 =========
+    "机器人": 88,
+    "商业航天": 86,
+    "低空经济": 84,
+    "智能驾驶": 84,
+
+    # ========= 新能源 =========
+    "新能源": 82,
+    "储能": 80,
+
+    # ========= 数字经济 =========
+    "数据要素": 80,
+    "信创": 78,
+    "网络安全": 76,
+
+    # ========= 新材料 =========
+    "新材料": 80,
+
+    # ========= 消费 =========
+    "消费电子": 75,
+
+    # ========= 军工 =========
+    "军工": 78,
+
+    # ========= 周期 =========
+    "化工": 72,
+    "有色": 72,
+    "钢铁": 60,
+    "煤炭": 58,
+
+    # ========= 公用 =========
+    "电力": 68,
+}
+
 
 @dataclass
 class BullStockData:
@@ -67,6 +113,12 @@ class BullStockData:
     gross_margin: float = 0.0     # 毛利率
     gross_margin_change: float = 0.0  # 毛利率变化
     rd_expense_ratio: float = 0.0 # 研发费用率
+    
+    # ── 增长趋势字段（v3.1新增） ──
+    growth_trend: str = 'stable'  # stable/rising/falling
+    data_source: str = 'annual'  # annual/Q1/semi/quarterly
+    q1_revenue_yoy: float = None  # Q1营收同比（可能为None）
+    q1_profit_yoy: float = None  # Q1利润同比（可能为None）
     roe_current: float = 0.0      # 当前ROE
     roe_history: list = field(default_factory=list)  # 历史ROE列表
     total_cogs: float = 0.0       # 营业成本
@@ -131,6 +183,7 @@ class BullStockData:
     has_repurchase: int = 0            # 是否有回购
     fund_holding_ratio: float = 0.0    # 公募持仓占比
     fund_ratio_change: float = 0.0     # 公募持仓变化
+    fund_count: int = 0                # 持有该股票的基金数量（覆盖广度）
 
     # 估值安全数据
     pledge_ratio: float = 0.0           # 质押比例(%)
@@ -149,6 +202,12 @@ class BullStockData:
     # 标记类别：'financial', 'growth', 'profitability', 'rd', 'cashflow',
     #           'analyst', 'institutional', 'chip', 'safety'
     # True = 该类别数据缺失（不是零，而是没有数据）
+    
+    # ── 增长趋势字段（v3.1新增） ──
+    growth_trend: str = 'stable'  # stable/rising/falling
+    data_source: str = 'annual'  # annual/Q1/semi/quarterly
+    q1_revenue_yoy: float = None  # Q1营收同比（可能为None）
+    q1_profit_yoy: float = None  # Q1利润同比（可能为None）
 
 
 @dataclass
@@ -202,6 +261,12 @@ class BullScoreResult:
     rating_sentiment: float = 0.0
     analyst_revision_30d: float = 0.0
     analyst_expectation_score: float = 0.0  # 一致性预期综合得分 (0~100)
+
+    # v3.1 新增：增长趋势字段
+    growth_trend: str = 'stable'  # stable/rising/falling
+    data_source: str = 'annual'  # annual/Q1/semi/quarterly
+    q1_revenue_yoy: float = None  # Q1营收同比（可能为None）
+    q1_profit_yoy: float = None  # Q1利润同比（可能为None）
 
     # 子维度详情
     sub_details: Dict = field(default_factory=dict)
@@ -387,6 +452,14 @@ class BullScorer:
         """
         industry = data.industry
         details = {}
+
+        # 0. 静态评分优先：若行业匹配 INDUSTRY_DEMAND_STATIC 则直接返回
+        if industry:
+            for keyword, score in INDUSTRY_DEMAND_STATIC.items():
+                if keyword in industry:
+                    details['from_static'] = True
+                    details['matched_keyword'] = keyword
+                    return float(score), details
 
         # 1. 终端需求：营收增速(行业内分位) + 毛利率变化
         rev_yoy_pct = _percentile_rank(
@@ -1098,15 +1171,16 @@ class BullScorer:
     def _score_institution(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        机构认可评分 v2 (0~100) — 多维度综合评分
+        机构认可评分 v3 (0~100) — 多维度综合评分
 
-        确保是各类机构共同认可，而非单一信号：
-        - FundHoldingRank (25%): 公募基金持仓占比，行业分位
-        - AnalystCountRank (25%): 分析师覆盖数量，行业分位
-        - NorthNetRank (20%): 北向资金净流入，行业分位
+        覆盖6类机构信号，确保是各类机构共同认可：
+        - FundHoldingRank (20%): 公募基金持仓占比，行业分位
+        - FundCountRank (15%): 基金覆盖广度（持有基金数），行业分位 ← 新增
+        - AnalystCountRank (20%): 分析师覆盖数量，行业分位
+        - NorthNetRank (15%): 北向资金净流入，行业分位
         - BuyRatioRaw (15%): 买入+增持+推荐 评级占比（绝对数值）
         - FundChangeRank (10%): 公募持仓变化趋势，行业分位
-        - ReliabilityBonus (5分): 分析师覆盖≥20家 且 公募持仓≥10%
+        - DiversityBonus (5分): 机构多样性交叉验证（公募+北向+分析师 三类以上同时认可）
         """
         industry = data.industry
         details = {}
@@ -1118,46 +1192,64 @@ class BullScorer:
         )
         details['fund_holding_rank'] = round(fh_pct * 100, 1)
 
-        # 2. 分析师覆盖数量（行业分位）
+        # 2. ★★★ 基金覆盖广度（行业分位）— 持有基金数量越多，认可越广泛
+        fc_pct = _percentile_rank(
+            group_series.get(f'fund_count_{industry}', pd.Series()),
+            float(data.fund_count)
+        )
+        details['fund_count_rank'] = round(fc_pct * 100, 1)
+
+        # 3. 分析师覆盖数量（行业分位）
         ac_pct = _percentile_rank(
             group_series.get(f'analyst_count_{industry}', pd.Series()),
             float(data.analyst_count)
         )
         details['analyst_count_rank'] = round(ac_pct * 100, 1)
 
-        # 3. 北向资金净流入（行业分位）
+        # 4. 北向资金净流入（行业分位）
         nn_pct = _percentile_rank(
             group_series.get(f'north_net_{industry}', pd.Series()),
             float(data.north_bound_daily_net)
         )
         details['north_net_rank'] = round(nn_pct * 100, 1)
 
-        # 4. 买入评级占比（绝对数值，非行业内排名）
+        # 5. 买入评级占比（绝对数值，非行业内排名）
         #    按比例映射：buy_ratio = 0~1 → score 0~100
         buy_score = float(data.buy_ratio) * 100.0
         details['buy_ratio_raw'] = round(buy_score, 1)
 
-        # 5. 公募持仓变化趋势（行业分位）
-        fc_pct = _percentile_rank(
+        # 6. 公募持仓变化趋势（行业分位）
+        fch_pct = _percentile_rank(
             group_series.get(f'fund_ratio_change_{industry}', pd.Series()),
             float(data.fund_ratio_change)
         )
-        details['fund_change_rank'] = round(fc_pct * 100, 1)
+        details['fund_change_rank'] = round(fch_pct * 100, 1)
 
-        # 6. 可靠性加成：多项机构交叉确认
-        reliability_bonus = 0.0
-        if data.analyst_count >= 20 and data.fund_holding_ratio >= 10.0:
-            reliability_bonus = 5.0  # 分析师覆盖≥20 + 公募持仓≥10% → 交叉确认
-        details['reliability_bonus'] = reliability_bonus
+        # 7. ★★★ 机构多样性交叉验证：同时有3类以上机构认可
+        diversity_count = 0
+        if float(data.fund_holding_ratio) > 5:       # 公募持仓 > 5%
+            diversity_count += 1
+        if float(data.analyst_count) >= 10:            # 分析师覆盖 ≥ 10家
+            diversity_count += 1
+        if float(data.north_bound_daily_net) > 0:     # 北向资金净流入
+            diversity_count += 1
+        if float(data.fund_count) >= 20:               # 基金覆盖 ≥ 20只
+            diversity_count += 1
+        if buy_score > 60:                             # 买入评级 > 60%
+            diversity_count += 1
+        diversity_bonus = min(diversity_count * 2, 10)  # 每类+2分，上限10分
+        details['diversity_count'] = diversity_count
+        details['diversity_bonus'] = diversity_bonus
 
         # 综合评分
         score = (
-            0.25 * (fh_pct * 100) +
-            0.25 * (ac_pct * 100) +
-            0.20 * (nn_pct * 100) +
+            0.20 * (fh_pct * 100) +
+            0.15 * (fc_pct * 100) +
+            0.20 * (ac_pct * 100) +
+            0.15 * (nn_pct * 100) +
             0.15 * buy_score +
-            0.10 * (fc_pct * 100)
-        ) + reliability_bonus
+            0.10 * (fch_pct * 100)
+        ) + diversity_bonus
         details['raw_score'] = round(score, 1)
         return min(score, 100), details
 
@@ -1377,6 +1469,8 @@ class BullScorer:
             group_series[f'fund_holding_ratio_{ind}'] = _tos([m.fund_holding_ratio for m in members])
             # 公募持仓变化
             group_series[f'fund_ratio_change_{ind}'] = _tos([m.fund_ratio_change for m in members])
+            # ★★★ 基金覆盖广度（持有基金数量）
+            group_series[f'fund_count_{ind}'] = _tos([float(m.fund_count) for m in members])
 
         # 3. 计算全市场研发费用率分位数（用于跨行业研发标准化）
         all_rd_series = _tos([m.rd_expense_ratio for m in all_data])
@@ -1489,6 +1583,11 @@ class BullScorer:
             rating_sentiment=round(data.rating_sentiment, 2),
             analyst_revision_30d=round(data.analyst_revision_30d * 100, 2),
             analyst_expectation_score=_ae,
+            # v3.1 新增字段
+            growth_trend=data.growth_trend,
+            data_source=data.data_source,
+            q1_revenue_yoy=data.q1_revenue_yoy,
+            q1_profit_yoy=data.q1_profit_yoy,
             sub_details={
                 'ind_demand': ind_detail,
                 'tech_barrier': tech_detail,

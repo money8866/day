@@ -56,12 +56,14 @@ import sys
 import time
 import math
 import json
+import threading
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 
 import tushare as ts
@@ -787,7 +789,7 @@ class RecognitionScorer:
             logger.debug(f"activity score {ts_code}: {e}")
             return 50.0, {"error": str(e)[:40]}
     
-    def _score_limit_up_history(self, ts_code: str) -> Tuple[float, Dict]:
+    def _score_limit_up_history(self, ts_code: str, df: pd.DataFrame = None) -> Tuple[float, Dict]:
         """② 涨停基因评分"""
         details = {}
         pro = self._get_pro()
@@ -795,15 +797,15 @@ class RecognitionScorer:
             return 50.0, {"error": "no token"}
         
         try:
-            # 获取最近一年的日线数据，统计涨停次数
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=365)
-            
-            df = pro.daily(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d')
-            )
+            if df is None:
+                # 获取最近一年的日线数据，统计涨停次数
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=365)
+                df = pro.daily(
+                    ts_code=ts_code,
+                    start_date=start_date.strftime('%Y%m%d'),
+                    end_date=end_date.strftime('%Y%m%d')
+                )
             
             if df is None or len(df) == 0:
                 return 50.0, {"data_count": 0}
@@ -841,7 +843,7 @@ class RecognitionScorer:
             logger.debug(f"limit_up history {ts_code}: {e}")
             return 50.0, {"error": str(e)[:40]}
     
-    def _score_price_momentum(self, ts_code: str) -> Tuple[float, Dict]:
+    def _score_price_momentum(self, ts_code: str, df: pd.DataFrame = None) -> Tuple[float, Dict]:
         """③ 空间记忆评分 — 新高能力和趋势强度"""
         details = {}
         pro = self._get_pro()
@@ -849,15 +851,15 @@ class RecognitionScorer:
             return 50.0, {"error": "no token"}
         
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=180)
-            
-            df = pro.daily(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d'),
-                fields='ts_code,trade_date,high,close'
-            )
+            if df is None:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=180)
+                df = pro.daily(
+                    ts_code=ts_code,
+                    start_date=start_date.strftime('%Y%m%d'),
+                    end_date=end_date.strftime('%Y%m%d'),
+                    fields='ts_code,trade_date,high,close'
+                )
             
             if df is None or len(df) < 60:
                 return 50.0, {"data_count": len(df) if df is not None else 0}
@@ -1002,9 +1004,25 @@ class RecognitionScorer:
         if cache_key in self._cache:
             return self._cache[cache_key]
         
+        # 预拉取日线数据（一次拉取365天，共享给涨停基因+空间记忆两个子评分）
+        _shared_daily = None
+        pro = self._get_pro()
+        if pro is not None:
+            try:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=365)
+                _shared_daily = pro.daily(
+                    ts_code=ts_code,
+                    start_date=start_date.strftime('%Y%m%d'),
+                    end_date=end_date.strftime('%Y%m%d'),
+                    fields='ts_code,trade_date,high,close,pct_chg'
+                )
+            except Exception:
+                pass
+        
         s1, d1 = self._score_activity(ts_code)
-        s2, d2 = self._score_limit_up_history(ts_code)
-        s3, d3 = self._score_price_momentum(ts_code)
+        s2, d2 = self._score_limit_up_history(ts_code, df=_shared_daily)
+        s3, d3 = self._score_price_momentum(ts_code, df=_shared_daily)
         s4, d4 = self._score_stock_personality(market_cap, industry)
         s5, d5 = self._score_sentiment(ts_code)
         
@@ -1445,6 +1463,18 @@ class LeaderRecognizer:
         # 缓存
         self._cache: Dict[str, Dict] = {}
     
+    @staticmethod
+    def _leader_cap_score(market_cap_b: float) -> float:
+        """龙头市值评分：50~300亿最佳区间"""
+        if 50 <= market_cap_b <= 300:
+            return 100
+        elif 300 < market_cap_b <= 500:
+            return 80
+        elif 20 <= market_cap_b < 50:
+            return 70
+        else:
+            return 50
+
     def _get_pro(self):
         if self._pro is None:
             token = _get_token()
@@ -1464,7 +1494,7 @@ class LeaderRecognizer:
             market_cap: 市值（元）
             industry: 行业
             recognition_score: 辨识度评分
-            alpha_score: Alpha评分
+            alpha_score: (v3.0已弃用，传0，权重重分配给recognition/theme/chip)
             theme_score: 主题评分
             chip_score: 筹码面评分
         
@@ -1477,39 +1507,23 @@ class LeaderRecognizer:
         
         market_cap_b = market_cap / 1e8  # 转换为亿元
         
-        # 龙头评分因子
-        # 1. 辨识度（权重30%）
-        # 2. Alpha（权重25%）
-        # 3. 主题匹配（权重20%）
-        # 4. 筹码面（权重15%）
-        # 5. 市值适中（权重10%）- 太小不够分量，太大弹性不足
+        # 龙头评分因子（v3.0：alpha已移除，权重重分配）
+        # 1. 辨识度（权重35%）
+        # 2. 主题匹配（权重20%）
+        # 3. 筹码面（权重15%）
+        # 4. 市值适中（权重30%）- 太小不够分量，太大弹性不足
         
         leader_score = (
-            0.30 * recognition_score +
-            0.25 * alpha_score +
+            0.35 * recognition_score +
             0.20 * min(theme_score, 100) +
-            0.15 * chip_score
+            0.15 * chip_score +
+            0.30 * self._leader_cap_score(market_cap_b)
         )
         
-        # 市值修正：中小盘更易成为龙头
-        if 50 <= market_cap_b <= 300:
-            cap_factor = 1.0
-        elif 300 < market_cap_b <= 500:
-            cap_factor = 0.85
-        elif 20 <= market_cap_b < 50:
-            cap_factor = 0.9
-        else:
-            cap_factor = 0.6
-        
-        leader_score *= cap_factor
-        
-        # 中军评分因子
-        # 1. 市值规模（权重30%）- 越大越好
-        # 2. 流动性（权重25%）- 通过chip_score反映
-        # 3. Alpha质量（权重25%）
-        # 4. 稳定性（权重20%）- 通过recognition_score中的稳健特征
-        
-        central_score = 50  # 基础分
+        # 中军评分因子（v3.0：alpha移除，权重重分配）
+        # 1. 市值规模（权重40%）- 越大越好
+        # 2. 流动性/筹码面（权重35%）- 通过chip_score反映
+        # 3. 辨识度/稳定性（权重25%）
         
         # 市值越大越可能是中军
         if market_cap_b >= 500:
@@ -1522,40 +1536,37 @@ class LeaderRecognizer:
             cap_score = 30
         
         central_score = (
-            0.30 * cap_score +
-            0.25 * chip_score +
-            0.25 * alpha_score +
-            0.20 * recognition_score
+            0.40 * cap_score +
+            0.35 * chip_score +
+            0.25 * recognition_score
         )
         
         # 判定类型
         features = []
         leader_type = "普通"
         
-        if leader_score >= 85:
+        if leader_score >= 75:
             leader_type = "龙头"
             features.append("高辨识度龙头")
-        elif leader_score >= 75:
+        elif leader_score >= 65:
             leader_type = "龙二"
             features.append("强势股")
-        elif leader_score >= 65:
+        elif leader_score >= 55:
             leader_type = "补涨"
             features.append("活跃股")
         
-        if central_score >= 80:
+        if central_score >= 65:
             if leader_type == "普通":
                 leader_type = "中军"
                 features.append("中军股")
             else:
                 features.append("兼具龙头与中军特征")
-        elif central_score >= 65:
+        elif central_score >= 55:
             features.append("准中军")
         
         # 添加特征描述
         if recognition_score >= 80:
             features.append("高辨识度")
-        if alpha_score >= 80:
-            features.append("Alpha强势")
         if theme_score >= 80:
             features.append("主题纯正")
         if chip_score >= 80:
@@ -1578,10 +1589,15 @@ class LeaderRecognizer:
 # ════════════════════════════════════════════════════════
 
 def expectation_nonlinear_boost(profit_yoy: float, base_score: float,
-                                 revenue_yoy: float = 0.0) -> float:
+                                 revenue_yoy: float = 0.0,
+                                 growth_trend: str = 'stable') -> float:
     """
-    预期差非线性放大专用 — v2优化：低基数校验
+    预期差非线性放大专用 — v3优化：增长趋势校验
 
+    v3新增：增长趋势信号
+    - growth_trend='falling': Q1营收增速 < 年报的50%，高增长可持续性存疑，额外降权
+    - growth_trend='rising': Q1营收增速 > 年报，增长在加速，可信度提升
+    
     v2优化：利润高增长必须有营收增长支撑，否则降低放大倍数
     - 利润增速 > 200% 但营收 < 50%：可信度 0.5，放大系数减半
     - 利润增速 > 100% 但营收 < 30%：可信度 0.7
@@ -1596,7 +1612,14 @@ def expectation_nonlinear_boost(profit_yoy: float, base_score: float,
     elif profit_yoy > 0.5 and revenue_yoy < 0.15:
         credibility = 0.85
 
-    adjusted_yoy = profit_yoy * credibility
+    # v3：增长趋势额外校验
+    trend_penalty = 1.0
+    if growth_trend == 'falling':
+        trend_penalty = 0.7  # 增长趋势衰减，额外降权30%
+    elif growth_trend == 'rising':
+        trend_penalty = 1.05  # 增长加速，轻微提升5%
+
+    adjusted_yoy = profit_yoy * credibility * trend_penalty
 
     if adjusted_yoy > 5.0:       # >500%
         return base_score * 1.30
@@ -1721,33 +1744,49 @@ class BullScorerV2:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_date = datetime.now().strftime('%Y%m%d')
         self._file_caches: Dict[str, dict] = {}
+        # 线程锁：保护缓存字典和文件写入
+        self._cache_lock = threading.Lock()
 
     def _load_file_cache(self, name: str) -> dict:
-        """加载持久化文件缓存"""
-        if name in self._file_caches:
-            return self._file_caches[name]
+        """加载持久化文件缓存（线程安全）"""
+        with self._cache_lock:
+            if name in self._file_caches:
+                return self._file_caches[name]
+        # 文件读取在锁外进行（避免持有锁时做IO阻塞其他线程）
         path = self._cache_dir / f'{name}.json'
+        data = None
         if path.exists():
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                if data.get('_date') == self._cache_date:
-                    self._file_caches[name] = data
-                    return data
-            except: pass
-        data = {'_date': self._cache_date}
-        self._file_caches[name] = data
-        return data
+                if data.get('_date') != self._cache_date:
+                    data = None
+            except:
+                pass
+        if data is None:
+            data = {'_date': self._cache_date}
+        with self._cache_lock:
+            if name not in self._file_caches:  # double-check
+                self._file_caches[name] = data
+            return self._file_caches[name]
 
     def _save_file_cache(self, name: str):
-        """保存持久化文件缓存"""
-        if name in self._file_caches:
-            path = self._cache_dir / f'{name}.json'
-            try:
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(self._file_caches[name], f, ensure_ascii=False, default=str)
-            except Exception as e:
-                logger.debug(f'保存缓存 {name} 失败: {e}')
+        """批量模式下跳过增量写入，由外层统一写一次"""
+        # 批量模式下 _cache_save_counter 为 0，跳过所有增量写入
+        pass
+
+    def _flush_file_cache(self, name: str):
+        """将指定缓存写入磁盘文件"""
+        with self._cache_lock:
+            if name not in self._file_caches:
+                return
+            data = self._file_caches[name]
+        path = self._cache_dir / f'{name}.json'
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, default=str)
+        except Exception as e:
+            logger.debug(f'保存缓存 {name} 失败: {e}')
 
     def _get_cached_score(self, cache_name: str, ts_code: str, compute_fn) -> Tuple[float, Dict]:
         """通用带文件缓存的评分获取"""
@@ -1881,11 +1920,12 @@ class BullScorerV2:
             base_result.ts_code, base_result.chain_tag
         )
 
-        # 4. 预期差非线性放大
+        # 4. 预期差非线性放大（v3.1: 增加增长趋势信号）
         profit_yoy = base_result.profit_yoy / 100 if base_result.profit_yoy else 0
         revenue_yoy = base_result.revenue_yoy / 100 if base_result.revenue_yoy else 0
+        growth_trend = getattr(base_result, 'growth_trend', 'stable')  # v3.1新增
         expect_boosted = expectation_nonlinear_boost(
-            profit_yoy, base_result.expectation_score, revenue_yoy
+            profit_yoy, base_result.expectation_score, revenue_yoy, growth_trend
         )
 
         # 5. 历史辨识度评分 ← 新增
@@ -2008,15 +2048,15 @@ class BullScorerV2:
         return "未排名"
 
     def batch_compute(self, base_results: List['BullScoreResult'],
-                       batch_size: int = 5, delay: float = 0.3,
+                       batch_size: int = 12, delay: float = 0.15,
                        filter_market_cap: bool = True) -> List[BullScoreV2Result]:
         """
-        批量计算，控制 Tushare API 调用频率
+        批量计算（ThreadPoolExecutor 并发加速 + 批量缓存写入）
         
         Args:
             base_results: 来自 bull_scorer.py 的基础评分结果
-            batch_size: 每批并发数
-            delay: 每批间隔(秒)，避免限频
+            batch_size: 每批并发数(=线程数)
+            delay: 每批间隔(秒)
             filter_market_cap: 是否过滤市值（60亿-5000亿）
         """
         # 市值过滤（60亿-5000亿）
@@ -2031,31 +2071,74 @@ class BullScorerV2:
             logger.info(f"市值过滤前: {len(base_results)}只, 过滤后: {len(filtered)}只")
             base_results = filtered
         
+        # 批量模式：并发线程数 + 结束时统一写一次缓存
+        self._batch_mode = True
+        logger.remove()
         results = []
         total = len(base_results)
         logger.info(f"BullScore v2.1 开始计算 {total} 只股票...")
+        results_lock = threading.Lock()
 
-        for i in range(0, total, batch_size):
-            batch = base_results[i:i+batch_size]
-            for br in batch:
-                try:
-                    r = self.compute_v2(br)
+        def _process_one(br):
+            """单只股票评分（线程安全）"""
+            try:
+                r = self.compute_v2(br)
+                with results_lock:
                     results.append(r)
-                except Exception as e:
-                    logger.debug(f"v2评分失败 {br.ts_code} {br.name}: {e}")
-                    # 降级：复制基础评分
+            except Exception as e:
+                logger.debug(f"v2评分失败 {br.ts_code} {br.name}: {e}")
+                with results_lock:
                     results.append(BullScoreV2Result(
                         ts_code=br.ts_code, name=br.name, industry=br.industry,
                         chain_tag=br.chain_tag, final_score=br.final_score,
                         bull_score_v2=br.bull_score, bull_level=br.bull_level,
                     ))
+
+        for i in range(0, total, batch_size):
+            batch = base_results[i:i+batch_size]
+            with ThreadPoolExecutor(max_workers=batch_size) as executor:
+                futures = {executor.submit(_process_one, br): br for br in batch}
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass  # _process_one 内部已处理异常
             if i + batch_size < total:
                 time.sleep(delay)
-            if (i // batch_size + 1) % 5 == 0:
-                logger.info(f"  v2进度: {min(i+batch_size, total)}/{total}")
+            done = min(i + batch_size, total)
+            if done % 25 == 0:
+                print(f"  v2进度: {done}/{total}", flush=True)
+            
+        # 恢复日志
+        logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
+
+        # 统一写一次全部缓存文件
+        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+            self._flush_file_cache(cache_name)
 
         # 排序
         results.sort(key=lambda r: r.final_score, reverse=True)
+
+        # 同行业龙头识别：按营收排名，各行业前1~2名为行业龙头
+        industry_groups = {}
+        for r in results:
+            ind = r.industry or "未知"
+            if ind not in industry_groups:
+                industry_groups[ind] = []
+            industry_groups[ind].append(r)
+
+        for ind, group in industry_groups.items():
+            if len(group) < 3:
+                continue  # 行业样本太少，不判定
+            # 按营收降序排列
+            group.sort(key=lambda x: x.revenue or 0, reverse=True)
+            # 营收最高的为行业龙头
+            group[0].leader_type = "行业龙头"
+            group[0].leader_features = group[0].leader_features + ["行业龙头"]
+            # 营收第二高的为行业龙二
+            if len(group) >= 2:
+                group[1].leader_type = "行业龙二"
+                group[1].leader_features = group[1].leader_features + ["行业龙二"]
 
         # 分配等级
         for idx, r in enumerate(results):
@@ -2150,7 +2233,7 @@ class BullScorerV2:
             leader_types[r.leader_type] = leader_types.get(r.leader_type, 0) + 1
         
         print(f"\n龙头类型分布:")
-        for lt in ["龙头", "中军", "龙二", "补涨", "普通"]:
+        for lt in ["行业龙头", "行业龙二", "龙头", "中军", "龙二", "补涨", "普通"]:
             print(f"  {lt}: {leader_types.get(lt, 0)}只")
 
         top = results[:top_n]

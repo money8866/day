@@ -124,6 +124,9 @@ def prepare_stock_data(config: Dict, fetcher: DataFetcher) -> Tuple[pd.DataFrame
     if config.get('universe', {}).get('exclude_st', True):
         stocks = stocks[~stocks['name'].str.contains('ST', na=False)]
 
+    # 排除北交所（.BJ）
+    stocks = stocks[~stocks['ts_code'].str.endswith('.BJ')]
+
     logger.info(f"待筛选股票数量: {len(stocks)}")
 
     # 获取最近交易日
@@ -307,10 +310,20 @@ def extract_bull_data(row: pd.Series,
     # ── 研发费用率 ──
     rd_expense_ratio = latest_rd_exp / latest_revenue if latest_revenue > 0 else 0.0
 
-    # ── 营收/利润同比(YoY) ──
-    annual_income_sorted = annual_income.sort_values('end_date', ascending=False).reset_index(drop=True)
+    # ── 营收/利润同比(YoY) ── 优化版v3.1：优先使用Q1数据 + 趋势衰减检测
+    # 核心逻辑：年报可能滞后，Q1更能反映当前趋势
+    # 如果Q1营收增速低于年报的50%，说明增长趋势在衰减，需要降权
+
     revenue_yoy = 0.0
     profit_yoy = 0.0
+    growth_trend = 'stable'  # stable/rising/falling
+    q1_revenue_yoy = None
+    q1_profit_yoy = None
+
+    # Step 1: 计算年报同比（作为基准）
+    annual_income_sorted = annual_income.sort_values('end_date', ascending=False).reset_index(drop=True)
+    annual_revenue_yoy = 0.0
+    annual_profit_yoy = 0.0
     if len(annual_income_sorted) >= 2:
         curr = annual_income_sorted.iloc[0]
         curr_rev = float(curr.get('revenue')) if pd.notna(curr.get('revenue')) else 0.0
@@ -327,9 +340,61 @@ def extract_bull_data(row: pd.Series,
             prev_rev, prev_profit = 0.0, 0.0
 
         if prev_rev > 0:
-            revenue_yoy = (curr_rev - prev_rev) / prev_rev
+            annual_revenue_yoy = (curr_rev - prev_rev) / prev_rev
         if prev_profit > 0:
-            profit_yoy = (curr_profit - prev_profit) / prev_profit
+            annual_profit_yoy = (curr_profit - prev_profit) / prev_profit
+
+    # Step 2: 尝试获取Q1同比数据（如果最新报告期是Q1）
+    latest_end_date = str(income.iloc[0].get('end_date', ''))
+    is_q1_latest = latest_end_date.endswith('0331')
+
+    if is_q1_latest and len(income) >= 2:
+        # 找到去年同期Q1数据
+        curr_q1 = income.iloc[0]
+        curr_q1_rev = float(curr_q1.get('revenue')) if pd.notna(curr_q1.get('revenue')) else 0.0
+        curr_q1_profit = float(curr_q1.get('n_income')) if pd.notna(curr_q1.get('n_income')) else 0.0
+
+        # 找上年同期Q1
+        curr_year = int(latest_end_date[:4])
+        prev_q1_end = f"{curr_year - 1}0331"
+        prev_q1_rows = income[income['end_date'] == prev_q1_end]
+        if len(prev_q1_rows) > 0:
+            prev_q1 = prev_q1_rows.iloc[0]
+            prev_q1_rev = float(prev_q1.get('revenue')) if pd.notna(prev_q1.get('revenue')) else 0.0
+            prev_q1_profit = float(prev_q1.get('n_income')) if pd.notna(prev_q1.get('n_income')) else 0.0
+
+            if prev_q1_rev > 0:
+                q1_revenue_yoy = (curr_q1_rev - prev_q1_rev) / prev_q1_rev
+            if prev_q1_profit > 0:
+                q1_profit_yoy = (curr_q1_profit - prev_q1_profit) / prev_q1_profit
+
+    # Step 3: 决定使用哪个数据源
+    # 优先使用Q1数据，因为更及时
+    if q1_revenue_yoy is not None and q1_profit_yoy is not None:
+        # 有Q1数据，使用Q1同比
+        revenue_yoy = q1_revenue_yoy
+        profit_yoy = q1_profit_yoy
+        data_source = 'Q1'
+
+        # Q1 vs 年报趋势对比，检测衰减
+        if annual_revenue_yoy > 0.3:  # 年报增长>30%
+            if q1_revenue_yoy < annual_revenue_yoy * 0.5:
+                # Q1增速不到年报的一半，明显衰减
+                growth_trend = 'falling'
+                logger.debug(f"{ts_code} Q1营收增速衰减: Q1={q1_revenue_yoy*100:.1f}% vs 年报={annual_revenue_yoy*100:.1f}%")
+            elif q1_revenue_yoy > annual_revenue_yoy:
+                growth_trend = 'rising'
+    else:
+        # 没有Q1数据，使用年报同比
+        revenue_yoy = annual_revenue_yoy
+        profit_yoy = annual_profit_yoy
+        data_source = 'annual'
+
+    # Step 4: 如果Q1营收同比为负，强制降低利润增速的可信度
+    if q1_revenue_yoy is not None and q1_revenue_yoy < 0:
+        # Q1营收同比下降，但年报利润暴增 → 低基数效应
+        profit_yoy *= 0.5  # 利润增速打折50%
+        logger.debug(f"{ts_code} Q1营收负增长({q1_revenue_yoy*100:.1f}%)，利润增速({annual_profit_yoy*100:.1f}%)降权50%")
 
     # ── 毛利率变化 ──
     gross_margin_change = 0.0
@@ -519,6 +584,7 @@ def extract_bull_data(row: pd.Series,
     has_repurchase = 0
     fund_holding_ratio = 0.0
     fund_ratio_change = 0.0
+    fund_count = 0
     pledge_ratio = 0.0
     pledge_risk_score = 100.0
     unlock_ratio = 0.0
@@ -546,6 +612,7 @@ def extract_bull_data(row: pd.Series,
         if fp:
             fund_holding_ratio = float(fp.get('fund_holding_ratio', 0.0))
             fund_ratio_change = float(fp.get('fund_ratio_change', 0.0))
+            fund_count = int(fp.get('fund_count', 0))
         pl = chip_margin_data.get('pledge', {})
         if pl:
             pledge_ratio = float(pl.get('pledge_ratio', 0.0))
@@ -620,6 +687,7 @@ def extract_bull_data(row: pd.Series,
         has_repurchase=has_repurchase,
         fund_holding_ratio=fund_holding_ratio,
         fund_ratio_change=fund_ratio_change,
+        fund_count=fund_count,
         pledge_ratio=pledge_ratio,
         pledge_risk_score=pledge_risk_score,
         unlock_ratio=unlock_ratio,
@@ -627,6 +695,11 @@ def extract_bull_data(row: pd.Series,
         audit_risk_score=audit_risk_score,
         cashflow_ratio=cashflow_ratio,
         main_business_items=main_bz_data or [],
+        # BullScore v3.1 新增字段
+        growth_trend=growth_trend,
+        data_source=data_source,
+        q1_revenue_yoy=q1_revenue_yoy,
+        q1_profit_yoy=q1_profit_yoy,
     )
 
     # ── 数据完整度评估（v2：区分"数据缺失"与"真实为零"） ──
