@@ -160,6 +160,9 @@ class BullStockData:
     # ── 机构资金 ──
     north_bound_daily_net: float = 0.0   # 单日净买入
     north_bound_ratio_change: float = 0.0  # 持股比例变化
+    north_bound_holding_ratio: float = 0.0  # 北向资金持股比例(%)
+    social_security_holding_ratio: float = 0.0  # 社保持仓比例(%)
+    foreign_holding_ratio: float = 0.0  # 外资持股比例(%)
 
     # ── 市值 ──
     market_cap: float = 0.0  # 总市值(元)
@@ -1177,33 +1180,38 @@ class BullScorer:
     def _score_institution(self, data: BullStockData,
                             group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
-        机构认可评分 v3 (0~100) — 多维度综合评分
+        机构认可评分 v4 (0~100) — 外资持仓权重最大化
 
-        覆盖6类机构信号，确保是各类机构共同认可：
-        - FundHoldingRank (20%): 公募基金持仓占比，行业分位
-        - FundCountRank (15%): 基金覆盖广度（持有基金数），行业分位 ← 新增
-        - AnalystCountRank (20%): 分析师覆盖数量，行业分位
-        - NorthNetRank (15%): 北向资金净流入，行业分位
-        - BuyRatioRaw (15%): 买入+增持+推荐 评级占比（绝对数值）
-        - FundChangeRank (10%): 公募持仓变化趋势，行业分位
-        - DiversityBonus (5分): 机构多样性交叉验证（公募+北向+分析师 三类以上同时认可）
+        权重分配：外资机构持仓(30%) > 公募持仓(18%) > 分析师覆盖(15%) > 基金覆盖广度(12%) > 买入评级(10%) > 公募变化(8%) > 北向净流入(7%)
+        - ForeignHoldingRank (30%): ★★★★★ 外资持股比例（行业分位）— 最大权重
+        - FundHoldingRank (18%): 公募基金持仓占比，行业分位
+        - AnalystCountRank (15%): 分析师覆盖数量，行业分位
+        - FundCountRank (12%): 基金覆盖广度（持有基金数），行业分位
+        - BuyRatioRaw (10%): 买入+增持+推荐 评级占比（绝对数值）
+        - FundChangeRank (8%): 公募持仓变化趋势，行业分位
+        - NorthNetRank (7%): 北向资金净流入，行业分位
+        - DiversityBonus (最多10分): 机构多样性交叉验证（外资+公募+分析师+北向 三类以上同时认可）
         """
         industry = data.industry
         details = {}
 
-        # 1. 公募基金持仓占比（行业分位）
+        # 1. ★★★★★ 外资持股比例（行业分位）— 最大权重
+        #    优先使用foreign_holding_ratio，其次使用north_bound_holding_ratio
+        foreign_ratio = max(float(data.foreign_holding_ratio), float(data.north_bound_holding_ratio))
         fh_pct = _percentile_rank(
+            group_series.get(f'foreign_holding_{industry}', pd.Series()),
+            foreign_ratio
+        )
+        details['foreign_holding_rank'] = round(fh_pct * 100, 1)
+        details['foreign_holding_ratio'] = round(foreign_ratio, 2)
+        details['north_bound_holding_ratio'] = round(float(data.north_bound_holding_ratio), 2)
+
+        # 2. 公募基金持仓占比（行业分位）
+        fh_pct_fund = _percentile_rank(
             group_series.get(f'fund_holding_ratio_{industry}', pd.Series()),
             float(data.fund_holding_ratio)
         )
-        details['fund_holding_rank'] = round(fh_pct * 100, 1)
-
-        # 2. ★★★ 基金覆盖广度（行业分位）— 持有基金数量越多，认可越广泛
-        fc_pct = _percentile_rank(
-            group_series.get(f'fund_count_{industry}', pd.Series()),
-            float(data.fund_count)
-        )
-        details['fund_count_rank'] = round(fc_pct * 100, 1)
+        details['fund_holding_rank'] = round(fh_pct_fund * 100, 1)
 
         # 3. 分析师覆盖数量（行业分位）
         ac_pct = _percentile_rank(
@@ -1212,15 +1220,14 @@ class BullScorer:
         )
         details['analyst_count_rank'] = round(ac_pct * 100, 1)
 
-        # 4. 北向资金净流入（行业分位）
-        nn_pct = _percentile_rank(
-            group_series.get(f'north_net_{industry}', pd.Series()),
-            float(data.north_bound_daily_net)
+        # 4. 基金覆盖广度（行业分位）— 持有基金数量越多，认可越广泛
+        fc_pct = _percentile_rank(
+            group_series.get(f'fund_count_{industry}', pd.Series()),
+            float(data.fund_count)
         )
-        details['north_net_rank'] = round(nn_pct * 100, 1)
+        details['fund_count_rank'] = round(fc_pct * 100, 1)
 
         # 5. 买入评级占比（绝对数值，非行业内排名）
-        #    按比例映射：buy_ratio = 0~1 → score 0~100
         buy_score = float(data.buy_ratio) * 100.0
         details['buy_ratio_raw'] = round(buy_score, 1)
 
@@ -1231,13 +1238,22 @@ class BullScorer:
         )
         details['fund_change_rank'] = round(fch_pct * 100, 1)
 
-        # 7. ★★★ 机构多样性交叉验证：同时有3类以上机构认可
+        # 7. 北向资金净流入（行业分位）
+        nn_pct = _percentile_rank(
+            group_series.get(f'north_net_{industry}', pd.Series()),
+            float(data.north_bound_daily_net)
+        )
+        details['north_net_rank'] = round(nn_pct * 100, 1)
+
+        # 8. ★★★ 机构多样性交叉验证：同时有3类以上机构认可
         diversity_count = 0
-        if float(data.fund_holding_ratio) > 5:       # 公募持仓 > 5%
+        if foreign_ratio > 1.0:                        # 外资持股 > 1%
+            diversity_count += 1
+        if float(data.fund_holding_ratio) > 5:         # 公募持仓 > 5%
             diversity_count += 1
         if float(data.analyst_count) >= 10:            # 分析师覆盖 ≥ 10家
             diversity_count += 1
-        if float(data.north_bound_daily_net) > 0:     # 北向资金净流入
+        if float(data.north_bound_daily_net) > 0:      # 北向资金净流入
             diversity_count += 1
         if float(data.fund_count) >= 20:               # 基金覆盖 ≥ 20只
             diversity_count += 1
@@ -1247,14 +1263,15 @@ class BullScorer:
         details['diversity_count'] = diversity_count
         details['diversity_bonus'] = diversity_bonus
 
-        # 综合评分
+        # 综合评分：外资持仓最大权重(30%)
         score = (
-            0.20 * (fh_pct * 100) +
-            0.15 * (fc_pct * 100) +
-            0.20 * (ac_pct * 100) +
-            0.15 * (nn_pct * 100) +
-            0.15 * buy_score +
-            0.10 * (fch_pct * 100)
+            0.30 * (fh_pct * 100) +
+            0.18 * (fh_pct_fund * 100) +
+            0.15 * (ac_pct * 100) +
+            0.12 * (fc_pct * 100) +
+            0.10 * buy_score +
+            0.08 * (fch_pct * 100) +
+            0.07 * (nn_pct * 100)
         ) + diversity_bonus
         details['raw_score'] = round(score, 1)
         return min(score, 100), details
@@ -1447,6 +1464,10 @@ class BullScorer:
             # 机构相关（改为分析师覆盖数据）
             group_series[f'north_net_{ind}'] = _tos([m.north_bound_daily_net for m in members])
             group_series[f'north_flow_chg_{ind}'] = _tos([m.north_bound_ratio_change for m in members])
+            # ★★★ 外资持股比例（用于机构认可评分v4的最大权重因子）
+            group_series[f'foreign_holding_{ind}'] = _tos([
+                max(float(m.foreign_holding_ratio), float(m.north_bound_holding_ratio))
+                for m in members])
 
             # 订单爆发的绝对增量维度
             group_series[f'abs_rev_growth_{ind}'] = _tos([

@@ -110,12 +110,12 @@ def get_token(config: Dict) -> str:
     raise ValueError(f"未找到 Tushare Token, 请设置环境变量 {token_env} 或在 config/.env 中配置")
 
 
-def prepare_stock_data(config: Dict, fetcher: DataFetcher) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict]:
+def prepare_stock_data(config: Dict, fetcher: DataFetcher) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict]:
     """
     准备全市场股票数据
 
     Returns:
-        (stock_list, daily_data, moneyflow_data, daily_basic_data, concept_map)
+        (stock_list, daily_data, moneyflow_data, daily_basic_data, north_hold_data, concept_map)
     """
     logger.info("获取股票列表...")
     stocks = fetcher.get_stock_list(list_status='L')
@@ -141,6 +141,10 @@ def prepare_stock_data(config: Dict, fetcher: DataFetcher) -> Tuple[pd.DataFrame
     logger.info("获取北向资金数据...")
     moneyflow = fetcher.get_moneyflow(trade_date)
 
+    # 获取北向资金持股比例数据
+    logger.info("获取北向资金持股数据...")
+    north_hold = fetcher.get_north_hold(trade_date)
+
     # 获取市值数据
     logger.info("获取市值数据...")
     daily_basic = fetcher.get_daily_basic(trade_date)
@@ -154,7 +158,7 @@ def prepare_stock_data(config: Dict, fetcher: DataFetcher) -> Tuple[pd.DataFrame
     except Exception as e:
         logger.warning(f"  概念缓存加载失败(将使用名称匹配): {e}")
 
-    return stocks, daily, moneyflow, daily_basic, concept_map
+    return stocks, daily, moneyflow, daily_basic, north_hold, concept_map
 
 
 def calculate_industry_growth_map(fetcher: DataFetcher, stocks: pd.DataFrame) -> Dict[str, float]:
@@ -204,6 +208,7 @@ def extract_bull_data(row: pd.Series,
                        daily: pd.DataFrame,
                        daily_basic: pd.DataFrame,
                        moneyflow: pd.DataFrame,
+                       north_hold: pd.DataFrame,
                        industry_growth_map: Dict,
                        config: Dict = None,
                        report_rc_map: Dict = None,
@@ -218,6 +223,7 @@ def extract_bull_data(row: pd.Series,
         daily: 日线行情
         daily_basic: 每日基本面(含市值)
         moneyflow: 大单资金流
+        north_hold: 北向资金持股比例数据
         industry_growth_map: 行业增速映射
         config: 配置
         report_rc_map: 卖方盈利预测一致预期 (ts_code -> dict)
@@ -489,6 +495,8 @@ def extract_bull_data(row: pd.Series,
     # ── 北向资金 ──
     north_bound_daily_net = 0.0
     north_bound_ratio_change = 0.0
+    north_bound_holding_ratio = 0.0
+    foreign_holding_ratio = 0.0
     if moneyflow is not None and len(moneyflow) > 0:
         smf = moneyflow[moneyflow['ts_code'] == ts_code].sort_values('trade_date', ascending=False).reset_index(drop=True)
         if len(smf) > 0:
@@ -499,6 +507,13 @@ def extract_bull_data(row: pd.Series,
                 for k in range(min(5, len(smf)))
             )
             north_bound_ratio_change = net_5d * 10000
+
+    # ── 北向资金持股比例 ──
+    if north_hold is not None and len(north_hold) > 0:
+        nh = north_hold[north_hold['ts_code'] == ts_code]
+        if len(nh) > 0:
+            north_bound_holding_ratio = float(nh.iloc[0].get('hold_ratio', 0)) if pd.notna(nh.iloc[0].get('hold_ratio')) else 0.0
+            foreign_holding_ratio = north_bound_holding_ratio
 
     # ── 市值 ──
     market_cap = 0.0
@@ -661,6 +676,8 @@ def extract_bull_data(row: pd.Series,
         forecast_profit_change=forecast_profit_change,
         north_bound_daily_net=north_bound_daily_net,
         north_bound_ratio_change=north_bound_ratio_change,
+        north_bound_holding_ratio=north_bound_holding_ratio,
+        foreign_holding_ratio=foreign_holding_ratio,
         market_cap=market_cap,
         price_trend_score=price_trend_score,
         pct_chg=pct_chg,
@@ -742,7 +759,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
         BullScore 评分结果列表(按 final_score 降序)
     """
     # 准备数据
-    stocks, daily, moneyflow, daily_basic, concept_map = prepare_stock_data(config, fetcher)
+    stocks, daily, moneyflow, daily_basic, north_hold, concept_map = prepare_stock_data(config, fetcher)
 
     # 计算行业增速
     industry_growth_map = calculate_industry_growth_map(fetcher, stocks)
@@ -782,7 +799,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
             skip_count += 1
             continue
 
-        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, industry_growth_map, config, report_rc_map)
+        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, north_hold, industry_growth_map, config, report_rc_map)
         if bull_data is not None:
             all_bull_data.append(bull_data)
         else:

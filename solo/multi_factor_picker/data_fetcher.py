@@ -300,6 +300,61 @@ class DataFetcher:
 
         return pd.DataFrame()
 
+    def get_north_hold(self, trade_date: str) -> pd.DataFrame:
+        """
+        获取北向资金持股数据
+        
+        Returns: DataFrame with columns: ts_code, trade_date, north_hold_ratio(%)
+        """
+        from datetime import datetime, timedelta
+        date_obj = datetime.strptime(trade_date, '%Y%m%d')
+
+        for offset in range(5):
+            check_date = (date_obj - timedelta(days=offset)).strftime('%Y%m%d')
+            cache_key = f"north_hold_{check_date}"
+            if self.cache_enabled:
+                cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+                if cached is not None and len(cached) > 0:
+                    return cached
+
+            try:
+                df = self._retry_call(self.pro.north_hold, trade_date=check_date,
+                                      fields='ts_code,trade_date,hold_ratio')
+                if df is not None and len(df) > 0:
+                    if self.cache_enabled:
+                        save_cache(df, self.cache_dir, cache_key)
+                    return df
+            except Exception as e:
+                logger.warning(f"北向资金持股数据获取失败(日期:{check_date}): {e}")
+                break
+            time.sleep(0.15)
+
+        return pd.DataFrame()
+
+    def get_holder_trade(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        获取股东增减持数据（含社保等机构）
+        
+        Returns: DataFrame with holder trade information
+        """
+        cache_key = f"holder_trade_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None and len(cached) > 0:
+                return cached
+
+        try:
+            df = self._retry_call(self.pro.stk_holdertrade, ts_code=ts_code,
+                                  start_date=start_date, end_date=end_date)
+            if df is not None and len(df) > 0:
+                if self.cache_enabled:
+                    save_cache(df, self.cache_dir, cache_key)
+                return df
+        except Exception:
+            pass
+
+        return pd.DataFrame()
+
     def get_daily_basic(self, trade_date: str) -> pd.DataFrame:
         """
         获取每日基本面数据（含总市值/流通市值），如该日期无数据则向前查找
