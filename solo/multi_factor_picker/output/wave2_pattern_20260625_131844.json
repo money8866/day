@@ -1,0 +1,25 @@
+[
+  {
+    "ts_code": "000920.SZ",
+    "pattern": "强势横盘",
+    "score": 32,
+    "score_details": "RSI=40中性偏弱(+1); KDJ-J=5偏低(+2); 量比=0.69缩量(+1); MACD金叉(+2); PDI(25)>MDI(16)多头(+1); ADX=28>25强趋势(+1); MA20上方(+1); BIAS1=-5.7%极端超卖(+2); 一波涨幅+30%中(+2); 不创新低(低点抬高/主力未出逃)(+5); 形态加分(强势横盘胜率90.9%)(+3); 上方压力(gap=15% > 10%)(-1); 近期有涨停(主力强)(+4); MFI底背离: 9天前价格更高但MFI更低(+3); 主板优选强势横盘(+5)",
+    "wave1_gain": 30.1,
+    "pullback_pct": 14.5,
+    "adjust_days": 5,
+    "rsi": 40.0,
+    "vol_ratio": 0.69,
+    "atr": 0.95,
+    "entry_price": 13.4,
+    "stop_loss": 12.33,
+    "stop_pct": 0.08,
+    "target": 17.42,
+    "rr": 3.8,
+    "wave2_gain": 0.0,
+    "wave2_confirmed": false,
+    "dmi_confirmed": false,
+    "confidence": "⭐⭐⭐⭐⭐🔥",
+    "entry_date": "20260625",
+    "name": "沃顿科技"
+  }
+]

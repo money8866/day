@@ -209,6 +209,15 @@ def main():
     if df is None:
         return
     
+    # 过滤空行（只保留有信息的行）
+    df = df[df['title'].notna() & (df['title'] != '')].copy()
+    print(f'有效记录：{len(df)}条（已过滤空行）')
+    
+    if len(df) == 0:
+        print('\n错误：没有发现任何基本面信息！')
+        print('请先在CSV中填入一些股票的基本面信息')
+        return
+    
     # 2. 评分
     print('\n[2/3] 评分...')
     if 'score' not in df.columns:
@@ -217,7 +226,8 @@ def main():
     print(f'评分完成，TOP3：')
     df_sorted = df.sort_values('score', ascending=False)
     for i, (idx, row) in enumerate(df_sorted.head(3).iterrows(), 1):
-        print(f'  {i}. {row["ts_code"]} - {row["title"][:30]}... (评分{row["score"]})')
+        title = str(row['title'])[:30] if pd.notna(row['title']) and row['title'] else 'N/A'
+        print(f'  {i}. {row["ts_code"]} - {title}... (评分{row["score"]})')
     
     # 3. 生成PDF报告
     print('\n[3/3] 生成PDF报告...')

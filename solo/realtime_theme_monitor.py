@@ -2235,16 +2235,18 @@ class RealtimeThemeMonitor:
                             print(f"{i:<4} {r['theme']:<14} {r['composite_score']:>6.1f}   {r['trend_score']:>6.1f}   {r['sentiment_score']:>6.1f}   {r.get('hot_score', 0):>6.2f}   {r.get('hot_percentile', 0):<5.1f}   {r.get('hot_phase', '正常'):<8}")
                         print(f"{'='*70}\n")
 
-                        # ── 推送主题综合分TOP10到微信 ──
-                        lines = []
-                        for i, r in enumerate(theme_scores[:10], 1):
-                            phase_tag = r.get('hot_phase', '')
-                            hot_info = f" 热度{r.get('hot_score', 0):.1f}({r.get('hot_percentile', 0):.0f}%)"
-                            if phase_tag and phase_tag != '正常':
-                                hot_info += f" {phase_tag}"
-                            lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}){hot_info}")
-                        content = f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                        self.send_wechat(f"📊 主题综合评分 TOP10 {now.strftime('%H:%M')}", content)
+                        # ── 推送主题综合分TOP10到微信(至少30分钟冷却) ──
+                        if time.time() - self.last_score_alert >= 1800:
+                            lines = []
+                            for i, r in enumerate(theme_scores[:10], 1):
+                                phase_tag = r.get('hot_phase', '')
+                                hot_info = f" 热度{r.get('hot_score', 0):.1f}({r.get('hot_percentile', 0):.0f}%)"
+                                if phase_tag and phase_tag != '正常':
+                                    hot_info += f" {phase_tag}"
+                                lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}){hot_info}")
+                            content = f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                            self.send_wechat(f"📊 主题综合评分 TOP10 {now.strftime('%H:%M')}", content)
+                            self.last_score_alert = time.time()
 
                 # ── 检测 → 推送 ──
                 all_alerts = []
@@ -2253,6 +2255,10 @@ class RealtimeThemeMonitor:
 
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
+
+                # ── 每10分钟运行一次盘中策略(主题异动+个股异动共振) ──
+                if cycle % 10 == 1:
+                    self.run_intraday_strategy()
 
                 time.sleep(60 - (datetime.now().second % 60))
 
@@ -2292,11 +2298,6 @@ class RealtimeThemeMonitor:
             idx = [f"{r['name']}趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}" for r in report['index_results']]
             print(f"   指数评分: " + " | ".join(idx))
             print(f"   市场状态【{report['market_status']}】趋势总评分{report['trend_score']:.1f} 建议仓位{report['position']}%({report['position_range']})")
-
-        top5 = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)[:5]
-        print(f"\n🔥 主题强度 TOP5:")
-        for theme, score in top5:
-            print(f"   {theme}: {score:+.1f}%")
 
         print(f"{'='*60}")
 
@@ -2342,6 +2343,259 @@ class RealtimeThemeMonitor:
         print(f"\n📱 [{ts}] 推送:")
         for a in alerts:
             print(f"   {a['msg']}")
+
+
+    # ── 盘中策略模块 ──
+    def detect_intraday_theme_momentum(self) -> list:
+        """检测主题异动(基于实时行情)"""
+        active_themes = []
+        for theme_name, stocks in self.theme_stocks.items():
+            if not stocks:
+                continue
+            
+            theme_codes = [s[0] for s in stocks]
+            theme_quotes = {k: v for k, v in self.quotes.items() if k in theme_codes}
+            
+            if not theme_quotes:
+                continue
+            
+            pct_chgs = [q['pct_chg'] for q in theme_quotes.values() if q.get('pct_chg') is not None]
+            if not pct_chgs:
+                continue
+            
+            avg_change = sum(pct_chgs) / len(pct_chgs)
+            up_count = sum(1 for p in pct_chgs if p > 0)
+            up_ratio = up_count / len(pct_chgs)
+            
+            limit_up_count = sum(1 for p in pct_chgs if p >= 9.5)
+            strong_count = sum(1 for p in pct_chgs if p >= 5)
+            
+            vol_ratios = [q.get('vol_ratio', 1.0) for q in theme_quotes.values()]
+            avg_volume_ratio = sum(vol_ratios) / len(vol_ratios) if vol_ratios else 1.0
+            
+            momentum_score = 0
+            if avg_change > 2:
+                momentum_score += 30
+            elif avg_change > 1:
+                momentum_score += 15
+            
+            if up_ratio > 0.7:
+                momentum_score += 25
+            elif up_ratio > 0.5:
+                momentum_score += 10
+            
+            if limit_up_count >= 2:
+                momentum_score += 25
+            elif limit_up_count >= 1:
+                momentum_score += 10
+            
+            if strong_count >= 3:
+                momentum_score += 20
+            elif strong_count >= 2:
+                momentum_score += 10
+            
+            if avg_volume_ratio > 1.5:
+                momentum_score += 15
+            elif avg_volume_ratio > 1.2:
+                momentum_score += 5
+            
+            if momentum_score >= 50:
+                active_themes.append({
+                    'theme_name': theme_name,
+                    'momentum_score': momentum_score,
+                    'avg_change': round(avg_change, 2),
+                    'up_ratio': round(up_ratio, 2),
+                    'limit_up_count': limit_up_count,
+                    'strong_count': strong_count,
+                    'avg_volume_ratio': round(avg_volume_ratio, 2),
+                    'stock_count': len(theme_quotes),
+                    'is_active': True
+                })
+        
+        active_themes.sort(key=lambda x: x['momentum_score'], reverse=True)
+        return active_themes
+
+    def detect_intraday_stock_momentum(self) -> list:
+        """检测个股异动(基于实时行情)"""
+        momentum_stocks = []
+        
+        for ts_code, quote in self.quotes.items():
+            pct_chg = quote.get('pct_chg')
+            if pct_chg is None or pct_chg < 3:
+                continue
+            
+            volume_ratio = quote.get('vol_ratio', 1.0)
+            high = quote.get('high', 0)
+            low = quote.get('low', 0)
+            close = quote.get('price', 0)
+            ref_data = self.ref_prices.get(ts_code)
+            prev_close = ref_data['close'] if isinstance(ref_data, dict) and 'close' in ref_data else close
+            
+            if prev_close <= 0:
+                continue
+            
+            open_ = quote.get('open', close)
+            
+            momentum_score = 0
+            signals = []
+            
+            if volume_ratio > 2.0:
+                momentum_score += 30
+                signals.append('放量')
+            elif volume_ratio > 1.5:
+                momentum_score += 15
+                signals.append('温和放量')
+            
+            if pct_chg > 5:
+                momentum_score += 30
+                signals.append('强势拉升')
+            elif pct_chg > 3:
+                momentum_score += 15
+                signals.append('上涨')
+            
+            if close > prev_close * 1.03 and volume_ratio > 1.5:
+                momentum_score += 20
+                signals.append('放量突破')
+            
+            if high > prev_close * 1.05:
+                momentum_score += 15
+                signals.append('冲击涨停')
+            
+            amplitude = (high - low) / prev_close * 100 if prev_close > 0 else 0
+            if amplitude > 8 and pct_chg > 2:
+                momentum_score += 10
+                signals.append('大振幅')
+            
+            if momentum_score >= 40:
+                name = ''
+                for theme, stocks in self.theme_stocks.items():
+                    for code, nm, _ in stocks:
+                        if code == ts_code:
+                            name = nm
+                            break
+                    if name:
+                        break
+                
+                momentum_stocks.append({
+                    'ts_code': ts_code,
+                    'name': name or ts_code.split('.')[0],
+                    'change': round(pct_chg, 2),
+                    'volume_ratio': round(volume_ratio, 2),
+                    'prev_close': round(prev_close, 2),
+                    'close': round(close, 2),
+                    'high': round(high, 2),
+                    'low': round(low, 2),
+                    'amplitude': round(amplitude, 2),
+                    'momentum_score': momentum_score,
+                    'signals': signals,
+                    'is_momentum': True
+                })
+        
+        momentum_stocks.sort(key=lambda x: x['momentum_score'], reverse=True)
+        return momentum_stocks
+
+    def find_resonance_signals(self, active_themes: list, momentum_stocks: list) -> list:
+        """寻找主题+个股共振信号"""
+        signals = []
+        theme_stock_set = {}
+        
+        for theme in active_themes:
+            stocks = self.theme_stocks.get(theme['theme_name'], [])
+            theme_stock_set[theme['theme_name']] = set([s[0] for s in stocks])
+        
+        for stock in momentum_stocks:
+            ts_code = stock['ts_code']
+            for theme in active_themes:
+                if ts_code in theme_stock_set.get(theme['theme_name'], set()):
+                    signal = {
+                        'ts_code': ts_code,
+                        'name': stock['name'],
+                        'theme_name': theme['theme_name'],
+                        'theme_momentum_score': theme['momentum_score'],
+                        'stock_momentum_score': stock['momentum_score'],
+                        'total_score': theme['momentum_score'] * 0.4 + stock['momentum_score'] * 0.6,
+                        'change': stock['change'],
+                        'volume_ratio': stock['volume_ratio'],
+                        'signals': stock['signals'],
+                        'theme_avg_change': theme['avg_change'],
+                        'theme_limit_up_count': theme['limit_up_count']
+                    }
+                    signals.append(signal)
+        
+        signals.sort(key=lambda x: x['total_score'], reverse=True)
+        return signals
+
+    def generate_intraday_trade_plan(self, signals: list) -> list:
+        """生成盘中交易计划"""
+        plans = []
+        for signal in signals[:10]:
+            entry_price = signal.get('close', 0)
+            if entry_price <= 0:
+                continue
+            
+            stop_loss = entry_price * 0.95
+            take_profit = entry_price * 1.15
+            
+            plan = {
+                'ts_code': signal['ts_code'],
+                'name': signal['name'],
+                'theme_name': signal['theme_name'],
+                'total_score': round(signal['total_score'], 1),
+                'entry_price': round(entry_price, 2),
+                'stop_loss': round(stop_loss, 2),
+                'take_profit': round(take_profit, 2),
+                'risk_reward': round((take_profit - entry_price) / (entry_price - stop_loss), 2),
+                'position': '轻仓' if signal['total_score'] < 60 else '半仓',
+                'notes': '; '.join(signal['signals'])
+            }
+            plans.append(plan)
+        
+        return plans
+
+    def run_intraday_strategy(self) -> dict:
+        """运行盘中策略(主题异动 + 个股异动共振)"""
+        print(f"\n{'='*60}")
+        print(f"📊 盘中策略：共振信号 [{datetime.now().strftime('%H:%M:%S')}]")
+        print(f"{'='*60}")
+        
+        active_themes = self.detect_intraday_theme_momentum()
+        
+        momentum_stocks = self.detect_intraday_stock_momentum()
+        
+        signals = self.find_resonance_signals(active_themes, momentum_stocks)
+        
+        if signals:
+            print(f"🔥 共{len(signals)}个共振信号（主题异动{len(active_themes)}个 + 个股异动{len(momentum_stocks)}只）：")
+            print(f"\n{'排名':<4} {'代码':<12} {'名称':<8} {'主题':<12} {'总分':>5} {'涨幅':>8} {'量比':>6} {'信号'}")
+            print("-" * 80)
+            for i, signal in enumerate(signals[:10], 1):
+                print(f"  {i:<4} {signal['ts_code']:<12} {signal['name']:<8} {signal['theme_name']:<12} "
+                      f"{signal['total_score']:>5.1f} {signal['change']:>8.2f}% {signal['volume_ratio']:>6.2f} "
+                      f"[{','.join(signal['signals'])}]")
+            
+            plans = self.generate_intraday_trade_plan(signals)
+            
+            print("\n📋 交易计划：")
+            print(f"{'代码':<12} {'名称':<8} {'入场':>8} {'止损':>8} {'止盈':>8} {'风险收益':>6} {'仓位'}")
+            print("-" * 65)
+            for plan in plans:
+                print(f"  {plan['ts_code']:<12} {plan['name']:<8} {plan['entry_price']:>8.2f} "
+                      f"{plan['stop_loss']:>8.2f} {plan['take_profit']:>8.2f} {plan['risk_reward']:>6.2f} {plan['position']}")
+            
+            return {
+                'active_themes': active_themes,
+                'momentum_stocks': momentum_stocks,
+                'signals': signals,
+                'plans': plans
+            }
+        else:
+            print(f"  当前无共振信号（主题异动{len(active_themes)}个 + 个股异动{len(momentum_stocks)}只）")
+            return {
+                'active_themes': active_themes,
+                'momentum_stocks': momentum_stocks,
+                'signals': [],
+                'plans': []
+            }
 
 
 if __name__ == "__main__":

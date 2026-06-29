@@ -8637,6 +8637,36 @@ def run(target_date=None, simple_mode=False):
             continue
 
     # =========================
+    # 预热发现池：被主题过滤但技术面优秀的股票（可能预示主题轮动）
+    # =========================
+    _preheat_pool = {}  # code -> basic_info
+
+    def _score_preheat_stock(ts_code, name):
+        """对非热点股票做轻量技术评分"""
+        try:
+            df = get_hist_data(ts_code)
+            if df is None or len(df) < 20:
+                return None
+            tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
+            close_arr = df['close'].values
+            ma20 = pd.Series(close_arr).rolling(20).mean().values
+            ma20_slope = (ma20[-1] / max(ma20[-5], 0.01) - 1) * 100 if len(ma20) >= 5 else 0
+            vol_burst = tech.get('量能爆发', 0)
+            high_60 = df['high'].rolling(60).max().values[-1]
+            pos_gap = (1 - close_arr[-1] / high_60) * 100 if high_60 > 0 else 100
+            score = vol_burst * 30 + max(0, ma20_slope) * 5
+            return {
+                '代码': ts_code, '名称': name,
+                '量能爆发': vol_burst, '趋势强度': round(ma20_slope, 1),
+                '距前高%': round(pos_gap, 1), '预热评分': round(score, 1),
+            }
+        except Exception:
+            return None
+
+    for r in result:
+        _preheat_pool[r['代码']] = r.get('名称', '')
+
+    # =========================
     # 输出
     # =========================
     result_df = pd.DataFrame(result)
@@ -8648,8 +8678,25 @@ def run(target_date=None, simple_mode=False):
     # =========================
     # 主题过滤：注入所属主题等字段
     # =========================
+    def _capture_dropped(df_before, df_after):
+        """捕获被主题过滤淘汰的股票，存入_preheat_pool"""
+        if df_before is None or df_before.empty or df_after is None:
+            return set()
+        before = set(df_before['代码'].tolist())
+        after = set(df_after['代码'].tolist())
+        return before - after
+
     if not result_df.empty:
+        _raw_breakout = result_df.copy()
         result_df = filter_by_top_themes(result_df)
+        _dropped = _capture_dropped(_raw_breakout, result_df)
+        for code in _dropped:
+            if code not in _preheat_pool:
+                for r in result:
+                    if r['代码'] == code:
+                        _preheat_pool[code] = r.get('名称', '')
+                        break
+
 
     # =========================
     # 突破股池：统一评分 + 二波形态 + 筹码
@@ -8852,7 +8899,18 @@ def run(target_date=None, simple_mode=False):
     # =========================
     result_dx_df = pd.DataFrame(result_dx)
     if not result_dx_df.empty:
+        # 先把低吸池的所有股票也加入预热池
+        for _, rx in result_dx_df.iterrows():
+            if rx['代码'] not in _preheat_pool:
+                _preheat_pool[rx['代码']] = rx.get('名称', '')
+        _raw_dx = result_dx_df.copy()
         result_dx_df = filter_by_top_themes(result_dx_df)
+        _dropped_dx = _capture_dropped(_raw_dx, result_dx_df)
+        for code in _dropped_dx:
+            if code not in _preheat_pool:
+                _preheat_pool[code] = ''
+    else:
+        result_dx_df = pd.DataFrame()
     dx_ranked_stocks = []
     if not result_dx_df.empty:
         for idx, row in result_dx_df.iterrows():
@@ -9181,103 +9239,25 @@ def run(target_date=None, simple_mode=False):
     midline_stock_text = "\n".join(midline_lines)
     print(midline_stock_text)
 
-
     # =========================
-    # 盘中策略：主题异动 + 个股异动
+    # 构建预热发现池文本（被主题过滤但技术面走强的股票）
     # =========================
-    try:
-        from intraday_strategy import (
-            ThemeMomentumDetector, StockMomentumDetector,
-            load_theme_stock_map, get_prev_trade_date,
-            TRADE_DATE, pro
-        )
-        
-        intraday_lines = []
-        intraday_lines.append("")
-        intraday_lines.append("=" * 60)
-        intraday_lines.append("🔥 盘中策略 (主题异动 + 个股异动)")
-        intraday_lines.append("=" * 60)
-        
-        theme_stock_map = load_theme_stock_map()
-        theme_detector = ThemeMomentumDetector(theme_stock_map)
-        stock_detector = StockMomentumDetector()
-        
-        current_data = pro.daily(trade_date=TRADE_DATE)
-        if current_data.empty:
-            intraday_lines.append("【主题异动】无主题异动")
-            intraday_lines.append("【个股异动】无个股异动")
-            intraday_lines.append("【共振信号】无共振入场信号")
-            intraday_stock_text = "\n".join(intraday_lines)
-            print(intraday_stock_text)
-        else:
-            current_data = current_data[['ts_code', 'open', 'high', 'low', 'close', 'vol', 'amount', 'pct_chg', 'pre_close']]
-            current_data = current_data.rename(columns={'pct_chg': 'change', 'vol': 'volume'})
-            
-            prev_trade_date = get_prev_trade_date(TRADE_DATE)
-            prev_df = pro.daily(trade_date=prev_trade_date)
-            prev_closes = {}
-            if not prev_df.empty:
-                prev_closes = dict(zip(prev_df['ts_code'], prev_df['close']))
-            
-            hist_start = (pd.Timestamp(prev_trade_date) - pd.Timedelta(days=10)).strftime('%Y%m%d')
-            hist_df = pro.daily(start_date=hist_start, end_date=prev_trade_date)
-            if not hist_df.empty:
-                hist_df = hist_df.rename(columns={'vol': 'volume'})
-                avg_vol = hist_df.groupby('ts_code')['volume'].mean()
-                current_data['volume_ratio'] = current_data['ts_code'].map(avg_vol)
-                current_data['volume_ratio'] = current_data['volume'] / current_data['volume_ratio'].fillna(current_data['volume'])
-                current_data['volume_ratio'] = current_data['volume_ratio'].clip(0.3, 5.0)
-            else:
-                current_data['volume_ratio'] = 1.0
-            
-            active_themes = theme_detector.detect_active_themes(current_data)
-            momentum_stocks = stock_detector.detect_batch_momentum(current_data, prev_closes)
-            
-            signals = []
-            for theme in active_themes:
-                theme_stocks = set(theme_stock_map.get(theme['theme_name'], []))
-                for stock in momentum_stocks:
-                    if stock['ts_code'] in theme_stocks:
-                        signals.append({
-                            'ts_code': stock['ts_code'],
-                            'name': stock['name'],
-                            'theme_name': theme['theme_name'],
-                            'total_score': theme['momentum_score'] * 0.4 + stock['momentum_score'] * 0.6,
-                            'change': stock['change'],
-                            'volume_ratio': stock['volume_ratio']
-                        })
-            signals.sort(key=lambda x: x['total_score'], reverse=True)
-            
-            if active_themes:
-                intraday_lines.append(f"【主题异动】共{len(active_themes)}个主题异动:")
-                for theme in active_themes[:5]:
-                    intraday_lines.append(f"  {theme['theme_name']:20s} 评分={theme['momentum_score']:3d} 涨幅={theme['avg_change']:+.2f}%")
-            else:
-                intraday_lines.append("【主题异动】无主题异动")
-            
-            if momentum_stocks:
-                intraday_lines.append(f"【个股异动】共{len(momentum_stocks)}只个股异动:")
-                for stock in momentum_stocks[:10]:
-                    sigs = ','.join(stock['signals'])
-                    intraday_lines.append(f"  {stock['ts_code']} {stock['name']:8s} 评分={stock['momentum_score']:3d} 涨幅={stock['change']:+.2f}% 量比={stock['volume_ratio']:.2f} [{sigs}]")
-            else:
-                intraday_lines.append("【个股异动】无个股异动")
-            
-            if signals:
-                intraday_lines.append(f"【共振信号】共{len(signals)}个共振入场信号:")
-                for i, sig in enumerate(signals[:5], 1):
-                    intraday_lines.append(f"  [{i}] {sig['ts_code']} {sig['name']:8s} | 主题:{sig['theme_name']} | 总分={sig['total_score']:.1f} | 涨幅={sig['change']:+.2f}%")
-            else:
-                intraday_lines.append("【共振信号】无共振入场信号")
-            
-            intraday_stock_text = "\n".join(intraday_lines)
-            print(intraday_stock_text)
-    except Exception as e:
-        print(f"\n{'='*60}")
-        print(f"🔥 盘中策略")
-        print(f"{'='*60}")
-        print(f"  盘中策略加载失败: {e}")
-        intraday_stock_text = "盘中策略加载失败"
+    _preheat_scored = []
+    for code, name in _preheat_pool.items():
+        s = _score_preheat_stock(code, name)
+        if s and s['预热评分'] >= 50:
+            _preheat_scored.append(s)
+    _preheat_scored = sorted(_preheat_scored, key=lambda x: -x['预热评分'])[:8]
+    preheat_text = ""
+    if _preheat_scored:
+        lines = ["★ 技术面领先的热门预警品种（技术面已走强，但所属主题暂未进入热点前15，可能预示主题轮动）★"]
+        lines.append("-" * 100)
+        for s in _preheat_scored:
+            lines.append(f"  {s['名称']}({s['代码']}) 预热评分{s['预热评分']} | 量能爆发{s['量能爆发']} | 趋势强度{s['趋势强度']} | 距前高{s['距前高%']}%")
+        lines.append("-" * 100)
+        lines.append("【AI任务】请判断这些品种是否预示医药、消费、新能源等非热点主题即将轮动。若某品种所属主题近期有个股开始走强，请纳入主题分析和明日预测考虑。")
+        preheat_text = "\n".join(lines)
+        print(preheat_text)
 
 
     """
@@ -9462,8 +9442,7 @@ def run(target_date=None, simple_mode=False):
 今日中线股池（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）：
 {midline_stock_text}
 
-今日盘中策略（主题异动 + 个股异动共振入场信号）：
-{intraday_stock_text}
+{preheat_text}
 
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
@@ -9491,6 +9470,7 @@ def run(target_date=None, simple_mode=False):
    - 【最多列出3个明日预测主题】
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
+   【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
 3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，全部展示）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
@@ -9579,17 +9559,6 @@ def run(target_date=None, simple_mode=False):
        A浪涨幅=80.4% | B浪回调=25.8% | 距A高=13.7% | 启动日：20260617
        操作建议：B浪末端启动信号，A浪强势+缩量回调健康，可在回踩MA20附近低吸，止损设B浪低点下方3%
    - 如果无信号数据，直接输出"今日无B浪低点信号（近20天无符合条件的A浪+B浪结构）"
-
-7、今日盘中策略分析（主题异动 + 个股异动共振入场信号）：
-   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-   - 【数据位置】盘中策略在"今日盘中策略"标题下方，包含主题异动、个股异动、共振信号三部分
-   - 如果有主题异动数据，分析前3个异动主题：
-     - 主题名 | 评分 | 平均涨幅 | 操作建议（关注该主题内强势个股）
-   - 如果有个股异动数据，分析前5只异动个股：
-     - 股票名(代码) | 评分 | 涨幅 | 量比 | 信号类型
-   - 如果有共振信号（主题+个股同时异动），重点分析：
-     - 股票名(代码) | 所属主题 | 总分 | 涨幅 | 操作建议（共振信号可优先关注）
-   - 如果无数据，直接输出"今日无盘中异动信号"
 
 格式要求：
 - Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，加黑加粗显示

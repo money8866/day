@@ -692,16 +692,28 @@ class BullScorer:
         industry = data.industry
         details = {}
 
-        # 合同负债增速
-        cl_pct = _percentile_rank(
-            group_series.get(f'contract_liability_yoy_{industry}', pd.Series()),
-            data.contract_liability_yoy
-        )
+        # 合同负债增速 — 数据缺失时使用营收增速和预付款增速的平均值替代
+        if data.contract_liability_yoy != 0:
+            cl_pct = _percentile_rank(
+                group_series.get(f'contract_liability_yoy_{industry}', pd.Series()),
+                data.contract_liability_yoy
+            )
+        else:
+            rev_temp_pct = _percentile_rank(
+                group_series.get(f'revenue_yoy_{industry}', pd.Series()), data.revenue_yoy
+            )
+            ap_temp_pct = _percentile_rank(
+                group_series.get(f'advance_payment_yoy_{industry}', pd.Series()),
+                data.advance_payment_yoy
+            )
+            cl_pct = (rev_temp_pct + ap_temp_pct) / 2.0
+            details['contract_liability_missing'] = True
         details['contract_liability_rank'] = cl_pct
 
-        # 营收增速
+        # 营收增速 — 允许小幅下滑（-10%以内不扣分）
+        adjusted_revenue_yoy = max(data.revenue_yoy, -0.10)
         rev_pct = _percentile_rank(
-            group_series.get(f'revenue_yoy_{industry}', pd.Series()), data.revenue_yoy
+            group_series.get(f'revenue_yoy_{industry}', pd.Series()), adjusted_revenue_yoy
         )
         details['rev_acceleration_pct'] = rev_pct
 
@@ -750,9 +762,10 @@ class BullScorer:
         industry = data.industry
         details = {}
 
-        # 净利润增速分位
+        # 净利润增速分位 — 允许小幅下滑（-10%以内不扣分）
+        adjusted_profit_yoy = max(data.profit_yoy, -0.10)
         profit_pct = _percentile_rank(
-            group_series.get(f'profit_yoy_{industry}', pd.Series()), data.profit_yoy
+            group_series.get(f'profit_yoy_{industry}', pd.Series()), adjusted_profit_yoy
         )
         details['profit_growth_rank'] = profit_pct
 
@@ -768,15 +781,17 @@ class BullScorer:
         )
         details['profit_acceleration_rank'] = profit_acc_pct
 
-        # 营收增速分位
+        # 营收增速分位 — 允许小幅下滑（-10%以内不扣分）
+        adjusted_revenue_yoy = max(data.revenue_yoy, -0.10)
         rev_pct = _percentile_rank(
-            group_series.get(f'revenue_yoy_{industry}', pd.Series()), data.revenue_yoy
+            group_series.get(f'revenue_yoy_{industry}', pd.Series()), adjusted_revenue_yoy
         )
         details['revenue_growth_rank'] = rev_pct
 
-        # 现金流增速分位
+        # 现金流增速分位 — 允许小幅下滑
+        adjusted_cashflow_growth = max(data.cashflow_growth, -0.10)
         cf_pct = _percentile_rank(
-            group_series.get(f'cashflow_growth_{industry}', pd.Series()), data.cashflow_growth
+            group_series.get(f'cashflow_growth_{industry}', pd.Series()), adjusted_cashflow_growth
         )
         details['cashflow_growth_rank'] = cf_pct
 
@@ -1107,30 +1122,22 @@ class BullScorer:
         筹码面评分 (0~100) — BullScore v2 新增因子(7%)
 
         子因子权重：
-          主力资金流向 (30%): 近20日净流入/流通市值
-          股东人数变化 (25%): 近3期股东人数缩减=筹码集中
-          股东增减持 (20%): 近90日净增持/流通股本
-          回购信号 (15%): 近1年有回购
-          公募持仓变化 (10%): 基金持仓占流通股比例变化
+          股东人数变化 (36%): 近3期股东人数缩减=筹码集中
+          股东增减持 (29%): 近90日净增持/流通股本
+          回购信号 (21%): 近1年有回购
+          公募持仓变化 (14%): 基金持仓占流通股比例变化
         """
         industry = data.industry
         details = {}
 
-        # 1. 主力资金流向（行业内分位）
-        mf_pct = _percentile_rank(
-            group_series.get(f'net_inflow_ratio_{industry}', pd.Series()),
-            data.net_inflow_ratio
-        )
-        details['moneyflow_rank'] = mf_pct
-
-        # 2. 股东人数变化（缩减=筹码集中=加分）
+        # 1. 股东人数变化（缩减=筹码集中=加分）
         hn_pct = _percentile_rank(
             group_series.get(f'holder_change_ratio_{industry}', pd.Series()),
             data.holder_num_change_ratio
         )
         details['holder_num_rank'] = hn_pct
 
-        # 3. 股东增减持（净增持=加分）
+        # 2. 股东增减持（净增持=加分）
         trade_score = 0.5  # 默认中性
         if data.holder_trade_netbuy > 0:
             trade_pct = _percentile_rank(
@@ -1146,24 +1153,23 @@ class BullScorer:
             trade_score = 0.5 - 0.5 * trade_pct
         details['holder_trade_rank'] = trade_score
 
-        # 4. 回购信号
+        # 3. 回购信号
         repurchase_score = 1.0 if data.has_repurchase else 0.3
         details['repurchase_score'] = repurchase_score * 100
 
-        # 5. 公募持仓变化（行业内分位）
+        # 4. 公募持仓变化（行业内分位）
         fund_pct = _percentile_rank(
             group_series.get(f'fund_ratio_change_{industry}', pd.Series()),
             data.fund_ratio_change
         )
         details['fund_holding_rank'] = fund_pct
 
-        # 综合评分
+        # 综合评分（删除资金流向，权重重新分配）
         score = (
-            0.30 * mf_pct +
-            0.25 * hn_pct +
-            0.20 * trade_score +
-            0.15 * repurchase_score +
-            0.10 * fund_pct
+            0.36 * hn_pct +
+            0.29 * trade_score +
+            0.21 * repurchase_score +
+            0.14 * fund_pct
         ) * 100
         details['raw_score'] = round(score, 1)
         return min(score, 100), details

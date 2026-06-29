@@ -1,0 +1,25 @@
+[
+  {
+    "ts_code": "300488.SZ",
+    "pattern": "V型急跌",
+    "score": 35,
+    "score_details": "RSI=47中性偏弱(+1); KDJ-J=4偏低(+2); 量比=0.62缩量(+1); MACD金叉(+2); PDI(33)>MDI(13)多头(+1); ADX=49>25强趋势(+1); MA20上方(+1); BIAS1=-5.3%极端超卖(+2); 不创新低(低点抬高/主力未出逃)(+5); 形态加分(V型急跌胜率97.2%)(+8); 上方压力(gap=22% > 20%)(-5); V型急跌-连续缩量(惜售)(+2); V型急跌回调深度黄金(15-18%)(+3); V型一波涨幅50-60%(主力强势)(+3); V型缩量反弹(量比<0.8诱多风险)(-3); MFI底背离: 1天前价格更高但MFI更低(+3); 双创优选V型急跌(+8)",
+    "wave1_gain": 50.8,
+    "pullback_pct": 17.9,
+    "adjust_days": 5,
+    "rsi": 46.8,
+    "vol_ratio": 0.62,
+    "atr": 3.12,
+    "entry_price": 39.41,
+    "stop_loss": 34.68,
+    "stop_pct": 0.12,
+    "target": 49.26,
+    "rr": 2.1,
+    "wave2_gain": 0.0,
+    "wave2_confirmed": false,
+    "dmi_confirmed": false,
+    "confidence": "⭐⭐⭐⭐⭐🔥",
+    "entry_date": "20260625",
+    "name": "恒锋工具"
+  }
+]

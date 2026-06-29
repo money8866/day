@@ -812,36 +812,69 @@ class WavePatternDetector:
         df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
         closes  = df['close'].values
+        highs   = df['high'].values
+        lows    = df['low'].values
         volumes = df['vol'].values
         n = len(df)
 
         wave1_candidates = self._find_recent_wave1(closes, n, max_lookback=80)
         for wave1_high_idx, _, surge_gain in wave1_candidates:
-            wave1_high_price = closes[wave1_high_idx]
+            wave1_high_price = highs[wave1_high_idx]
 
-            post_high = closes[wave1_high_idx:]
-            if len(post_high) < 5:
+            post_high_closes = closes[wave1_high_idx:]
+            post_high_lows   = lows[wave1_high_idx:]
+            if len(post_high_closes) < 5:
                 continue
 
-            low_after_high = post_high.min()
+            low_after_high = post_high_lows.min()
             pullback_pct   = (wave1_high_price - low_after_high) / wave1_high_price
-            low_pos        = int(np.argmin(post_high))
+            low_pos        = int(np.argmin(post_high_lows))
             adjust_days    = low_pos
+            entry_idx      = wave1_high_idx + low_pos
 
-            # pullback必须>0：股价必须实际回调过，突破新高不算横盘
-            if not (0 < pullback_pct < SIDEWAYS_PULLBACK_MAX and adjust_days <= SIDEWAYS_ADJUST_MAX):
+            if entry_idx >= n:
                 continue
+
+            # 标准强势横盘：回调<10%
+            is_standard_sideways = (0 < pullback_pct < SIDEWAYS_PULLBACK_MAX)
+            
+            # N字回调到MA20支撑模式：回调幅度可放宽到25%，但必须回踩MA20上方5%以内
+            is_ma20_support = False
+            ma20_bfq_key = [k for k in ['ma_bfq_20'] if k in df.columns]
+            
+            if ma20_bfq_key:
+                ma20_val = df[ma20_bfq_key[0]].iloc[entry_idx]
+                if ma20_val > 0:
+                    adj_factor = df['adj_factor'].iloc[entry_idx] if 'adj_factor' in df.columns else 1.0
+                    ma20_bfq_actual = ma20_val * adj_factor
+                    if low_after_high > ma20_bfq_actual * 0.95:
+                        is_ma20_support = (0 < pullback_pct < 0.25)
+            
+            # pullback必须>0：股价必须实际回调过，突破新高不算横盘
+            if not ((is_standard_sideways or is_ma20_support) and adjust_days <= SIDEWAYS_ADJUST_MAX):
+                continue
+            
+            vol_base_start = max(0, wave1_high_idx - 60)
+            base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
+            vol_ratio = volumes[wave1_high_idx:wave1_high_idx+adjust_days+1].mean() / base_vol if base_vol > 0 else 1.0
+            
+            if is_standard_sideways:
+                if vol_ratio >= SIDEWAYS_VOL_MAX:
+                    continue
+            else:
+                if vol_ratio >= 3.0:
+                    continue
 
             vol_base_start = max(0, wave1_high_idx - 60)
             base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
-            vol_ratio = post_high[:adjust_days + 1].mean() / base_vol if base_vol > 0 else 1.0
+            vol_ratio = volumes[wave1_high_idx:wave1_high_idx+adjust_days+1].mean() / base_vol if base_vol > 0 else 1.0
 
-            if vol_ratio >= SIDEWAYS_VOL_MAX:
-                continue
-
-            entry_idx = wave1_high_idx + low_pos
-            if entry_idx >= n:
-                continue
+            if is_standard_sideways:
+                if vol_ratio >= SIDEWAYS_VOL_MAX:
+                    continue
+            else:
+                if vol_ratio >= 3.0:
+                    continue
 
             # v3.6: 震荡蓄力突破 - 回调浅、震荡久、已突破一波高点
             # 广合科技典型：一波涨到174.87后回调5.2%到165.78，之后震荡上涨到199.53
@@ -858,7 +891,7 @@ class WavePatternDetector:
                         adjust_days = entry_idx - wave1_high_idx
                         if adjust_days > 60:
                             continue
-                        post_range_all = closes[wave1_high_idx:entry_idx+1]
+                        post_range_all = lows[wave1_high_idx:entry_idx+1]
                         new_low_all = post_range_all.min()
                         pullback_pct = (wave1_high_price - new_low_all) / wave1_high_price
 
@@ -925,19 +958,24 @@ class WavePatternDetector:
             # 光华科技(20260624): 距MA20+240% → 除权股，跳过
             ma20_key = [k for k in ['ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
             if ma20_key:
-                ma20 = df[ma20_key[0]].iloc[entry_idx]
-                if ma20 > 0:
-                    ma20_dist = abs(closes[entry_idx] - ma20) / ma20
+                ma20_val = df[ma20_key[0]].iloc[entry_idx]
+                if ma20_val > 0:
+                    adj_factor = df['adj_factor'].iloc[entry_idx] if 'adj_factor' in df.columns else 1.0
+                    ma20_bfq_actual = ma20_val * adj_factor
+                    ma20_dist = abs(closes[entry_idx] - ma20_bfq_actual) / ma20_bfq_actual
                     if ma20_dist > 0.30:
                         continue
 
             # ── 强势横盘最优条件硬过滤（v3.4）────────────────
-            # 放宽：回调2-10% + 一波20-60% + 评分20+
-            # 目标：日均约1只信号，保持高胜率（+20%胜率约96%，止损率约12%）
+            # 标准强势横盘：回调2-10% + 一波20-60%
+            # MA20支撑模式：回调2-25% + 一波20-80%
             surge_pct = round(surge_gain * 100, 1)
-            if not (0.02 <= pullback_pct < 0.10 and
-                    20 <= surge_pct < 60):
-                continue
+            if is_standard_sideways:
+                if not (0.02 <= pullback_pct < 0.10 and 20 <= surge_pct < 60):
+                    continue
+            else:
+                if not (0.02 <= pullback_pct < 0.25 and 20 <= surge_pct < 80):
+                    continue
 
             # ── 多指标共振评分 ──
             prev_row = df.iloc[entry_idx - 1] if entry_idx > 0 else None
@@ -1028,9 +1066,11 @@ class WavePatternDetector:
             if score_result['total'] >= 15:
                 confidence = '⭐⭐⭐⭐⭐' + '🔥' if score_result['total'] >= 20 else '⭐⭐⭐⭐⭐'
 
+            pattern_detail = '强势横盘'
+
             return {
                 'ts_code':         ts_code,
-                'pattern':         '强势横盘',
+                'pattern':         pattern_detail,
                 'score':           score_result['total'],
                 'score_details':   '; '.join(score_result['details']),
                 'wave1_gain':     round(surge_gain * 100, 1),
@@ -1445,8 +1485,9 @@ class WavePatternDetector:
             low_pos       = int(np.argmin(post_high))
             adjust_days   = low_pos
 
-            # V型急跌条件：调整<=10天，回调>=15%
-            if not (adjust_days <= 10 and pullback_pct >= 0.15):
+            # V型急跌条件：调整5-10天，回调>=15%
+            # 优化：最小调整天数从0增加到5天，防止下跌动能过大（强瑞技术4天急跌19.7%失败案例）
+            if not (5 <= adjust_days <= 10 and pullback_pct >= 0.15):
                 continue
 
             entry_idx = wave1_high_idx + low_pos
