@@ -302,14 +302,14 @@ class DataFetcher:
 
     def get_north_hold(self, trade_date: str) -> pd.DataFrame:
         """
-        获取北向资金持股数据
+        获取北向资金持股数据（使用 pro.hk_hold 接口）
         
-        Returns: DataFrame with columns: ts_code, trade_date, north_hold_ratio(%)
+        Returns: DataFrame with columns: ts_code, trade_date, hold_ratio(%)
         """
         from datetime import datetime, timedelta
         date_obj = datetime.strptime(trade_date, '%Y%m%d')
 
-        for offset in range(5):
+        for offset in range(120):
             check_date = (date_obj - timedelta(days=offset)).strftime('%Y%m%d')
             cache_key = f"north_hold_{check_date}"
             if self.cache_enabled:
@@ -318,15 +318,17 @@ class DataFetcher:
                     return cached
 
             try:
-                df = self._retry_call(self.pro.north_hold, trade_date=check_date,
-                                      fields='ts_code,trade_date,hold_ratio')
+                df = self._retry_call(self.pro.hk_hold, trade_date=check_date,
+                                      fields='ts_code,trade_date,ratio')
                 if df is not None and len(df) > 0:
-                    if self.cache_enabled:
-                        save_cache(df, self.cache_dir, cache_key)
-                    return df
+                    df = df.rename(columns={'ratio': 'hold_ratio'})
+                    df = df[df['ts_code'].str.endswith(('.SH', '.SZ'))]
+                    if len(df) > 0:
+                        if self.cache_enabled:
+                            save_cache(df, self.cache_dir, cache_key)
+                        return df
             except Exception as e:
-                logger.warning(f"北向资金持股数据获取失败(日期:{check_date}): {e}")
-                break
+                pass
             time.sleep(0.15)
 
         return pd.DataFrame()

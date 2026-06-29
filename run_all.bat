@@ -10,7 +10,7 @@ echo.
 set BASE=d:\mystock
 cd /d %BASE%
 
-python solo\build_theme_stock_map.py 
+##python solo\build_theme_stock_map.py 
 
 echo [Step 1/7] 主题趋势分 + 情绪分...
 echo =============================================
@@ -42,6 +42,7 @@ python solo\trend_entry_precision.py --pool qualified --recent 80
 
 python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
 
+python solo\bwave_strategy.py
 
 echo [Step 5/7] 自选量化
 echo =============================================

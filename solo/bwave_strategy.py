@@ -385,7 +385,9 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
     a_high = awave['end_price']
     recovery_mid = b_low + (b_high - b_low) * 0.382
 
-    for launch in range(low_idx, min(low_idx + 41, len(df))):
+    # 从最新交易日倒序扫描，取最近的有效启动信号
+    scan_end = min(low_idx + 41, len(df))
+    for launch in range(scan_end - 1, low_idx - 1, -1):
         row = df.iloc[launch]
         close = row['close']
         vol = row['vol']
@@ -493,6 +495,7 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
     a_high = awave['end_price']
     a_end = bwave['start_idx']
     b_low_idx = bwave['low_idx']
+    b_low_price = bwave['low_price']
 
     # 当前价格不能突破A浪高点（还在B浪中）
     current_close = df.iloc[-1]['close']
@@ -510,79 +513,157 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
                 seg.iloc[i]['close'] <= seg.iloc[i + 1]['close']):
             low_indices.append(a_end + i)
 
-    if len(low_indices) < 2:
+    # === 策略A: 标准底背离（两个局部低点）===
+    if len(low_indices) >= 2:
+        # 最近的两个局部低点
+        p2 = low_indices[-1]
+        p1 = low_indices[-2]
+
+        p1_close = df.iloc[p1]['close']
+        p2_close = df.iloc[p2]['close']
+        p1_dif = df.iloc[p1]['macd_dif_bfq']
+        p2_dif = df.iloc[p2]['macd_dif_bfq']
+
+        # 底背离核心：价格持平或更低，DIF抬高
+        price_down = p2_close <= p1_close * 1.005
+        dif_up = p2_dif > p1_dif * 1.01
+
+        if price_down and dif_up:
+            # 信号时效：最近的低点不能太久远（15个交易日以内）
+            if len(df) - p2 <= 15:
+                # 背离低点不能远低于B浪低点（>5%说明B浪结构已被破坏）
+                if p2_close >= b_low_price * 0.95:
+                    # RSI确认
+                    p1_rsi = df.iloc[p1]['rsi_bfq_6']
+                    p2_rsi = df.iloc[p2]['rsi_bfq_6']
+
+                    # 计算MACD绿柱状态
+                    last_macd = df.iloc[-1]['macd_bfq']
+                    last_dif = df.iloc[-1]['macd_dif_bfq']
+                    last_dea = df.iloc[-1]['macd_dea_bfq']
+
+                    # 状态标记 — 使用背离低点(p2)的价格而非最新价
+                    b_recovery_p2 = (p2_close / b_low_price - 1) * 100 if b_low_price > 0 else 0
+                    dist_to_a_high = (a_high / p2_close - 1) * 100 if p2_close > 0 else 0
+
+                    dif_recovery = (p2_dif / p1_dif - 1) * 100 if p1_dif > 0 else 0
+                    rsi_higher = 1 if p2_rsi > p1_rsi else 0
+                    macd_shrinking = 1 if last_macd < 0 and last_macd > df.iloc[-2]['macd_bfq'] else 0
+
+                    vol = df.iloc[-1]['vol']
+                    avg_vol_20 = df.iloc[max(0, len(df) - 21):len(df) - 1]['vol'].mean()
+                    vol_shrink_now = vol / avg_vol_20 if avg_vol_20 > 0 else 1
+
+                    return {
+                        'launch_idx': p2,
+                        'launch_date': str(df.iloc[p2]['trade_date']),
+                        'launch_price': round(p2_close, 2),
+                        'macd_improved': 1,
+                        'macd_golden': 1 if last_dif > last_dea else 0,
+                        'ma5_above_ma20': 1 if df.iloc[-1]['ma_bfq_5'] > df.iloc[-1]['ma_bfq_20'] > 0 else 0,
+                        'ma5_crossing': 0,
+                        'break_platform': 0,
+                        'vol_surge': 1 if vol_shrink_now < 0.8 else 0,
+                        'vol_ratio': round(1 / vol_shrink_now, 2) if vol_shrink_now > 0 else 0,
+                        'rsi6': round(p2_rsi, 1),
+                        'pct_chg': round(df.iloc[-1]['pct_chg'], 2),
+                        'b_recovery': round(b_recovery_p2, 1),
+                        'dist_to_a_high': round(dist_to_a_high, 1),
+                        'signal_type': 'divergence',
+                        'score': int(
+                            30 +                      # 底背离基础分
+                            min(20, int(dif_recovery)) +  # DIF抬高幅度
+                            (10 if rsi_higher else 0) +  # RSI确认
+                            (10 if macd_shrinking else 0) +  # 绿柱缩短
+                            (10 if last_dif > last_dea else 0) +  # DIF上穿DEA
+                            (5 if vol_shrink_now < 0.8 else 0) +  # 缩量
+                            (5 if dist_to_a_high < 10 else 0),  # 距A浪高点较近
+                        ),
+                    }
+
+    # === 策略B: 当日MACD底背离（当天数据即可判断，无需次日确认）===
+    # 适用于今日价格在B浪低点附近，MACD已率先反转的情形
+    today = df.iloc[-1]
+    today_close = today['close']
+    today_dif = today['macd_dif_bfq']
+
+    # 条件1：今日价格在B浪低点附近（5%以内）
+    near_b_low = (today_close / b_low_price - 1) * 100 <= 5 if b_low_price > 0 else False
+    if not near_b_low:
         return None
 
-    # 最近的两个局部低点
-    p2 = low_indices[-1]
-    p1 = low_indices[-2]
+    # 条件2：最近的低点中（倒推找严格局部低点），有一个与今日形成底背离
+    # 找B浪内最近的一个严格局部低点（p1）做对比
+    p1 = None
+    for idx in reversed(low_indices):
+        if idx >= a_end:
+            p1 = idx
+            break
 
+    # 如果找不到严格局部低点，使用B浪最低点作为参考
+    if p1 is None:
+        p1 = b_low_idx
+
+    # 用p1的价格/DIF 和今日对比
     p1_close = df.iloc[p1]['close']
-    p2_close = df.iloc[p2]['close']
     p1_dif = df.iloc[p1]['macd_dif_bfq']
-    p2_dif = df.iloc[p2]['macd_dif_bfq']
 
-    # 底背离核心：价格持平或更低，DIF抬高
-    price_down = p2_close <= p1_close * 1.005
-    dif_up = p2_dif > p1_dif * 1.01
+    # 底背离：价格持平或更低，DIF抬高
+    # 今日价格不高于p1价格的2%（基本相同或更低）
+    price_not_higher = today_close <= p1_close * 1.02
+    # DIF明显高于p1时的DIF
+    dif_recovery = (today_dif / p1_dif - 1) * 100 if p1_dif != 0 else 0
+    dif_higher = today_dif > p1_dif * 1.01
 
-    if not (price_down and dif_up):
+    if not (price_not_higher and dif_higher):
         return None
 
-    # 信号时效：最近的低点不能太久远（15个交易日以内）
-    if len(df) - p2 > 15:
+    # 信号时效：p1距今不超过15个交易日
+    if len(df) - p1 > 15:
         return None
 
-    # 背离低点不能远低于B浪低点（>5%说明B浪结构已被破坏）
-    b_low_price = bwave['low_price']
-    if p2_close < b_low_price * 0.95:
-        return None
-
-    # RSI确认
+    # 当日RSI
+    today_rsi = today['rsi_bfq_6']
     p1_rsi = df.iloc[p1]['rsi_bfq_6']
-    p2_rsi = df.iloc[p2]['rsi_bfq_6']
+    rsi_higher = 1 if today_rsi > p1_rsi else 0
 
-    # 计算MACD绿柱状态
-    last_macd = df.iloc[-1]['macd_bfq']
-    last_dif = df.iloc[-1]['macd_dif_bfq']
-    last_dea = df.iloc[-1]['macd_dea_bfq']
+    # MACD状态
+    today_macd = today['macd_bfq']
+    prev_macd = df.iloc[-2]['macd_bfq'] if len(df) >= 2 else today_macd
+    today_dea = today['macd_dea_bfq']
+    macd_shrinking = 1 if today_macd < 0 and today_macd > prev_macd else 0
 
-    # 状态标记 — 使用背离低点(p2)的价格而非最新价
-    b_recovery_p2 = (p2_close / bwave['low_price'] - 1) * 100 if bwave['low_price'] > 0 else 0
-    dist_to_a_high = (a_high / p2_close - 1) * 100 if p2_close > 0 else 0
-
-    dif_recovery = (p2_dif / p1_dif - 1) * 100 if p1_dif > 0 else 0
-    rsi_higher = 1 if p2_rsi > p1_rsi else 0
-    macd_shrinking = 1 if last_macd < 0 and last_macd > df.iloc[-2]['macd_bfq'] else 0
-
-    # B浪相对强度
-    vol = df.iloc[-1]['vol']
+    # 量能
+    today_vol = today['vol']
     avg_vol_20 = df.iloc[max(0, len(df) - 21):len(df) - 1]['vol'].mean()
-    vol_shrink_now = vol / avg_vol_20 if avg_vol_20 > 0 else 1
+    vol_shrink = today_vol / avg_vol_20 if avg_vol_20 > 0 else 1
+
+    b_recovery = (today_close / b_low_price - 1) * 100 if b_low_price > 0 else 0
+    dist_to_a_high = (a_high / today_close - 1) * 100 if today_close > 0 else 0
 
     return {
-        'launch_idx': p2,
-        'launch_date': str(df.iloc[p2]['trade_date']),
-        'launch_price': round(p2_close, 2),
-        'macd_improved': 1,  # 底背离本身就是改善信号
-        'macd_golden': 1 if last_dif > last_dea else 0,
-        'ma5_above_ma20': 1 if df.iloc[-1]['ma_bfq_5'] > df.iloc[-1]['ma_bfq_20'] > 0 else 0,
-        'ma5_crossing': 0,  # 不一定金叉
-        'break_platform': 0,  # 底背离时不突破平台
-        'vol_surge': 1 if vol_shrink_now < 0.8 else 0,
-        'vol_ratio': round(1 / vol_shrink_now, 2) if vol_shrink_now > 0 else 0,
-        'rsi6': round(p2_rsi, 1),
-        'pct_chg': round(df.iloc[-1]['pct_chg'], 2),
-        'b_recovery': round(b_recovery_p2, 1),
+        'launch_idx': len(df) - 1,
+        'launch_date': str(today['trade_date']),
+        'launch_price': round(today_close, 2),
+        'macd_improved': 1,
+        'macd_golden': 1 if today_dif > today_dea else 0,
+        'ma5_above_ma20': 1 if today['ma_bfq_5'] > today['ma_bfq_20'] > 0 else 0,
+        'ma5_crossing': 0,
+        'break_platform': 0,
+        'vol_surge': 1 if vol_shrink < 0.8 else 0,
+        'vol_ratio': round(1 / vol_shrink, 2) if vol_shrink > 0 else 0,
+        'rsi6': round(today_rsi, 1),
+        'pct_chg': round(today['pct_chg'], 2),
+        'b_recovery': round(b_recovery, 1),
         'dist_to_a_high': round(dist_to_a_high, 1),
         'signal_type': 'divergence',
         'score': int(
-            30 +                      # 底背离基础分
-            min(20, int(dif_recovery)) +  # DIF抬高幅度
+            25 +                      # 当日底背离基础分（略低于标准底背离）
+            min(25, int(dif_recovery)) +  # DIF抬高幅度
             (10 if rsi_higher else 0) +  # RSI确认
             (10 if macd_shrinking else 0) +  # 绿柱缩短
-            (10 if last_dif > last_dea else 0) +  # DIF上穿DEA
-            (5 if vol_shrink_now < 0.8 else 0) +  # 缩量
+            (10 if today_dif > today_dea else 0) +  # DIF上穿DEA
+            (5 if vol_shrink < 0.8 else 0) +  # 缩量
             (5 if dist_to_a_high < 10 else 0),  # 距A浪高点较近
         ),
     }

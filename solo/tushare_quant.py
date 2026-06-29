@@ -8152,6 +8152,9 @@ def filter_by_top_themes(result_df, top_n=10):
         recent_dates = set(all_trade_dates[-recent_window:])  # 最近N天
         early_dates = set(all_trade_dates[:-recent_window])    # 之前的天
         
+        # 前10日TOP5主题集合（用于入选条件：曾进入综合评分前5）
+        top5_recent_themes = set()
+        
         # 数据结构
         # theme_stats[theme] = {
         #     'total_top5_count': 总上榜次数,
@@ -8178,7 +8181,14 @@ def filter_by_top_themes(result_df, top_n=10):
                 continue
             
             # 按综合分排序取TOP10（扩大窗口，避免半导体类独占导致其他主题被过滤）
-            day_df = day_df.sort_values('composite_score', ascending=False).head(10)
+            day_df_sorted = day_df.sort_values('composite_score', ascending=False)
+            day_df = day_df_sorted.head(10)
+            
+            # 前10日TOP5主题：如果是最近10天，记录TOP5主题
+            if trade_date in recent_dates:
+                top5_df = day_df_sorted.head(5)
+                for _, top5_row in top5_df.iterrows():
+                    top5_recent_themes.add(top5_row['theme'])
             
             for _, row in day_df.iterrows():
                 theme = row['theme']
@@ -8299,6 +8309,11 @@ def filter_by_top_themes(result_df, top_n=10):
         
         # 合并：白名单主题 + 60天平均综合分前15 + 本交易日综合分前15
         keep_themes = tech_mainline_whitelist | avg_top15 | today_top15
+        
+        # 前10日曾进入综合评分前5的主题（增加入选条件）
+        if top5_recent_themes:
+            print(f"[主题过滤] 前10日TOP5主题: {sorted(top5_recent_themes)}")
+            keep_themes |= top5_recent_themes
 
         # ========== 非一日游确认主题扩展 ==========
         # 调用 analyze_non_daytrip_themes 获取近20天确认的主题
@@ -9050,82 +9065,100 @@ def run(target_date=None, simple_mode=False):
         )[:10]
 
     # =========================
-    # 构建低吸股票池输出文本（精简版）
+    # 构建低吸股票池输出文本（精简版）- 按形态分组输出
     # =========================
     dixi_lines = []
     
     if dx_ranked_stocks:
-        dx_count = len(dx_ranked_stocks)
-        dixi_lines.append(f"共{dx_count}只低吸二波标的（二波评分均≥10分），按二波评分从高到低排序：")
+        # 按形态分组，固定顺序：强势横盘→V型急跌→放量回调→深度回调→缩量回调
+        pattern_order = ['强势横盘', 'V型急跌', '放量回调', '深度回调', '缩量回调']
+        dx_sorted = sorted(dx_ranked_stocks, key=lambda x: pattern_order.index(x.get('二波形态', '')) if x.get('二波形态', '') in pattern_order else 99)
+        from itertools import groupby
+        grouped = {}
+        for k, g in groupby(dx_sorted, key=lambda x: x.get('二波形态', '')):
+            grouped[k] = list(g)
+        
+        total_count = len(dx_ranked_stocks)
+        dixi_lines.append(f"共{total_count}只低吸二波标的（二波评分均≥10分），按形态分组展示：")
         dixi_lines.append("-" * 60)
-        for i, s in enumerate(dx_ranked_stocks, 1):
-            price = s.get('现价', 0)
-            pct = s.get('涨跌幅', 0)
-            pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
-            # 第1行：基本信息 + 二波评分 + 整合评分（非零维度）
-            wave2_score = s.get('二波评分', 0)
-            integrated = s.get('整合评分', 0)
-            trend = s.get('趋势强度', 0)
-            capital = s.get('资金健康度', 0)
-            position = s.get('位置安全性', 0)
-            hot = s.get('热度持续性', 0)
-            basic = s.get('基本面', 0)
-            dims = []
-            if trend > 0: dims.append(f"趋势{int(trend)}")
-            if capital > 0: dims.append(f"资金{int(capital)}")
-            if position > 0: dims.append(f"位置{int(position)}")
-            if hot > 0: dims.append(f"热度{int(hot)}")
-            if basic > 0: dims.append(f"基本面{int(basic)}")
-            dims_str = " ".join(dims) if dims else ""
-            score_str = f"整合评分{int(integrated)}({dims_str})" if dims_str else f"整合评分{int(integrated)}"
-            dixi_lines.append(f"【第{i}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | {score_str}")
-            # 第2行：主题（含次强主题）+ 非一日游阶段 + 龙头序列
-            cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
-            confirm_days = s.get('确认天数', 0)
-            leader_seq = s.get('龙头序列', '')
-            # 主主题 + 次强主题（跨主题易被炒，输出前2个最强主题）
-            theme_parts = [s.get('所属主题', '')]
-            secondary_t = s.get('次强主题', '')
-            if secondary_t:
-                theme_parts[0] = f"{theme_parts[0]}+{secondary_t}"
-            if cycle:
-                if confirm_days > 0:
-                    theme_parts.append(f"非一日游:{cycle}({confirm_days}天)")
-                else:
-                    theme_parts.append(f"非一日游:{cycle}")
-            if leader_seq and leader_seq != "无":
-                theme_parts.append(f"龙头:{leader_seq}")
-            dixi_lines.append(f"  主题与地位: {' | '.join(theme_parts)}")
-            # 第3行：二波形态 + 信号 + 价格位
-            wave2_pattern = s.get('二波形态', '')
-            wave2_signal = s.get('二波信号', '')
-            ep = s.get('入场价', 0)
-            sl = s.get('止损价', 0)
-            tp = s.get('目标价', 0)
-            price_str = f"入场价{ep:.2f}/止损价{sl:.2f}/目标价{tp:.2f}" if ep > 0 else ""
-            dixi_lines.append(f"  二波信号: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
-            # 第4行（可选）：辨识度（非普通才显示）
-            recognition = s.get('辨识度加分', 0)
-            resonance = s.get('共振系数', 1.0)
-            penalty = s.get('追高惩罚', 0)
-            leader_bonus = s.get('龙头加分', 0)
-            wave2_bonus = s.get('二波加分', 0)
-            recognition_tags = []
-            if recognition >= 15: recognition_tags.append("高辨识度")
-            elif recognition >= 8: recognition_tags.append("中辨识度")
-            if leader_bonus >= 10: recognition_tags.append("龙头溢价")
-            if wave2_bonus >= 8: recognition_tags.append("二波强化")
-            if resonance >= 1.3: recognition_tags.append("强共振")
-            elif resonance >= 1.1: recognition_tags.append("弱共振")
-            if penalty > 0: recognition_tags.append(f"追高罚{penalty:.0f}")
-            if recognition_tags:
-                dixi_lines.append(f"  辨识度: {' | '.join(recognition_tags)}")
-            # 第5行（可选）：YRI（有数据才显示）
-            yri_total = s.get('YRI历史总分', 0)
-            if yri_total > 0:
-                yri_level = s.get('YRI等级', '')
-                yri_max_lb = s.get('YRI最大连板', 0)
-                dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 最大连板{yri_max_lb}板")
+        
+        rank = 0
+        for pattern in pattern_order:
+            if pattern not in grouped:
+                continue
+            stocks = grouped[pattern]
+            dixi_lines.append(f"【{pattern}】共{len(stocks)}只")
+            dixi_lines.append("-" * 40)
+            for s in stocks:
+                rank += 1
+                price = s.get('现价', 0)
+                pct = s.get('涨跌幅', 0)
+                pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
+                # 第1行：基本信息 + 二波评分 + 整合评分（非零维度）
+                wave2_score = s.get('二波评分', 0)
+                integrated = s.get('整合评分', 0)
+                trend = s.get('趋势强度', 0)
+                capital = s.get('资金健康度', 0)
+                position = s.get('位置安全性', 0)
+                hot = s.get('热度持续性', 0)
+                basic = s.get('基本面', 0)
+                dims = []
+                if trend > 0: dims.append(f"趋势{int(trend)}")
+                if capital > 0: dims.append(f"资金{int(capital)}")
+                if position > 0: dims.append(f"位置{int(position)}")
+                if hot > 0: dims.append(f"热度{int(hot)}")
+                if basic > 0: dims.append(f"基本面{int(basic)}")
+                dims_str = " ".join(dims) if dims else ""
+                score_str = f"整合评分{int(integrated)}({dims_str})" if dims_str else f"整合评分{int(integrated)}"
+                dixi_lines.append(f"【第{rank}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | {score_str}")
+                # 第2行：主题（含次强主题）+ 非一日游阶段 + 龙头序列
+                cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
+                confirm_days = s.get('确认天数', 0)
+                leader_seq = s.get('龙头序列', '')
+                # 主主题 + 次强主题（跨主题易被炒，输出前2个最强主题）
+                theme_parts = [s.get('所属主题', '')]
+                secondary_t = s.get('次强主题', '')
+                if secondary_t:
+                    theme_parts[0] = f"{theme_parts[0]}+{secondary_t}"
+                if cycle:
+                    if confirm_days > 0:
+                        theme_parts.append(f"非一日游:{cycle}({confirm_days}天)")
+                    else:
+                        theme_parts.append(f"非一日游:{cycle}")
+                if leader_seq and leader_seq != "无":
+                    theme_parts.append(f"龙头:{leader_seq}")
+                dixi_lines.append(f"  主题与地位: {' | '.join(theme_parts)}")
+                # 第3行：二波形态 + 信号 + 价格位
+                wave2_pattern = s.get('二波形态', '')
+                wave2_signal = s.get('二波信号', '')
+                ep = s.get('入场价', 0)
+                sl = s.get('止损价', 0)
+                tp = s.get('目标价', 0)
+                price_str = f"入场价{ep:.2f}/止损价{sl:.2f}/目标价{tp:.2f}" if ep > 0 else ""
+                dixi_lines.append(f"  二波信号: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
+                # 第4行（可选）：辨识度（非普通才显示）
+                recognition = s.get('辨识度加分', 0)
+                resonance = s.get('共振系数', 1.0)
+                penalty = s.get('追高惩罚', 0)
+                leader_bonus = s.get('龙头加分', 0)
+                wave2_bonus = s.get('二波加分', 0)
+                recognition_tags = []
+                if recognition >= 15: recognition_tags.append("高辨识度")
+                elif recognition >= 8: recognition_tags.append("中辨识度")
+                if leader_bonus >= 10: recognition_tags.append("龙头溢价")
+                if wave2_bonus >= 8: recognition_tags.append("二波强化")
+                if resonance >= 1.3: recognition_tags.append("强共振")
+                elif resonance >= 1.1: recognition_tags.append("弱共振")
+                if penalty > 0: recognition_tags.append(f"追高罚{penalty:.0f}")
+                if recognition_tags:
+                    dixi_lines.append(f"  辨识度: {' | '.join(recognition_tags)}")
+                # 第5行（可选）：YRI（有数据才显示）
+                yri_total = s.get('YRI历史总分', 0)
+                if yri_total > 0:
+                    yri_level = s.get('YRI等级', '')
+                    yri_max_lb = s.get('YRI最大连板', 0)
+                    dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 最大连板{yri_max_lb}板")
+                dixi_lines.append("")
             dixi_lines.append("")
     else:
         dixi_lines.append("今日无低吸信号个股")
@@ -9147,6 +9180,7 @@ def run(target_date=None, simple_mode=False):
         trend_dir = r'D:\mystock\solo\trend_feature_output'
         trend_files = sorted([f for f in os.listdir(trend_dir)
                               if f.startswith('entry_precision') and 'qualified' in f and f.endswith('.csv')],
+                             key=lambda f: os.path.getmtime(os.path.join(trend_dir, f)),
                              reverse=True)
         if trend_files:
             trend_df = pd.read_csv(os.path.join(trend_dir, trend_files[0]))
@@ -9471,7 +9505,7 @@ def run(target_date=None, simple_mode=False):
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
    【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
-3、今日低吸股票池分析（二波评分≥10分的标的，按二波评分从高到低排序，全部展示）：
+3、今日低吸股票池分析（二波评分≥10分的标的，按形态分组展示，每组按二波评分排序）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
    - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段

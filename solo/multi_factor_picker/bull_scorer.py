@@ -1413,12 +1413,13 @@ class BullScorer:
 
         # 构建分位数序列
         group_series: Dict[str, pd.Series] = {}
+        
+        def _tos(s: List[float]) -> pd.Series:
+            return pd.Series([v for v in s if not np.isnan(v)])
+
         for ind, members in industry_groups.items():
             if len(members) < 3:
                 continue
-
-            def _tos(s: List[float]) -> pd.Series:
-                return pd.Series([v for v in s if not np.isnan(v)])
 
             # 技术壁垒相关
             group_series[f'roic_{ind}'] = _tos(
