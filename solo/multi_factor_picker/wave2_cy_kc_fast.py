@@ -8,7 +8,10 @@ import os, sys, time, json
 import tushare as ts
 import numpy as np
 
-TOKEN = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+for _l in open(r'D:\mystock\config\.env'):
+    if _l.strip().startswith('TUSHARE_TOKEN='):
+        TOKEN = _l.strip().split('=', 1)[1].strip().strip('"')
+        break
 pro = ts.pro_api(TOKEN)
 
 OUT_DIR = r'D:\mystock\solo\multi_factor_picker\output'

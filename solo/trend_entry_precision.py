@@ -119,6 +119,26 @@ def _check_entry_precision(df: pd.DataFrame, idx: int) -> dict | None:
     if above_ma60 > 30.0:
         return None
 
+    # B5: 信号日前回溯的第一个最高点必须是前120天的最高点
+    #     确保这轮上升是真正的主升浪，而非普通反弹
+    #     使用更稳健的波段高点检测：峰值在±30天范围内必须是最高
+    PEAK_WINDOW = 30  # 左右各30天，即至少61天内的最高点
+    peak_idx = None
+    for k in range(idx - 1, max(PEAK_WINDOW, idx - 120), -1):
+        # 检查k是否为局部最高点（前后各PEAK_WINDOW天内的最高）
+        window_start = max(0, k - PEAK_WINDOW)
+        window_end = min(len(df), k + PEAK_WINDOW + 1)
+        window_highs = df.iloc[window_start:window_end]['high']
+        if df.iloc[k]['high'] >= window_highs.max():
+            peak_idx = k
+            break
+    if peak_idx is None:
+        return None
+    lookback_start = max(0, peak_idx - 120)
+    lookback_high = df.iloc[lookback_start:peak_idx]['high'].max()
+    if df.iloc[peak_idx]['high'] < lookback_high:
+        return None
+
     # 计算各项指标
     avg_vol_20 = vol_20d.mean()
 
@@ -317,13 +337,16 @@ def main():
             continue
 
         # --today 模式：读全部数据，只检测最后一行
-        # 普通模式：用 --recent 截断加速
+        # 普通模式：保留60天历史数据供指标计算，只在最近N天范围内检测信号
         if args.today:
             idx_range = [len(df) - 1]
         else:
-            if args.recent and args.recent < len(df):
-                df = df.iloc[-args.recent:].reset_index(drop=True)
-            idx_range = range(20, len(df))
+            min_history = 60
+            if args.recent:
+                start_idx = max(min_history, len(df) - args.recent)
+                idx_range = range(start_idx, len(df))
+            else:
+                idx_range = range(min_history, len(df))
 
         for idx in idx_range:
             sig = _check_entry_precision(df, idx)

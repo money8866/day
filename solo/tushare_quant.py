@@ -7005,9 +7005,12 @@ def get_market():
     if os.path.exists(cache_file):
         try:
             df = pd.read_csv(cache_file)
-            print(f"[DBG] get_market 缓存命中"); sys.stdout.flush()
-            print(f"[缓存] 市场数据已加载: {cache_file}")
-            return df
+            if not df.empty:  # 缓存文件有数据才使用
+                print(f"[DBG] get_market 缓存命中"); sys.stdout.flush()
+                print(f"[缓存] 市场数据已加载: {cache_file}")
+                return df
+            else:
+                print(f"[缓存] 缓存文件为空，重新拉取API")
         except Exception as e:
             print(f"[缓存] 市场数据读取失败: {e}")
 
@@ -8880,7 +8883,7 @@ def run(target_date=None, simple_mode=False):
                 result = subprocess.run(
                     [sys.executable, wave2_script, '--csv', wave2_pool_csv, '--output', 'csv', '--date', TRADE_DATE, '--today'],
                     capture_output=True, text=True, timeout=600,
-                    env={**os.environ, 'TUSHARE_TOKEN': os.environ.get('TUSHARE_TOKEN', '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')}
+                    env={**os.environ, 'TUSHARE_TOKEN': os.environ.get('TUSHARE_TOKEN', '')}
                 )
                 print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
                 if result.returncode != 0:
@@ -9188,72 +9191,9 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # 趋势股池：精准入场信号（评分≥50 + D1/D2）
-    # 每天只输出评分前5
+    # 趋势股池已关闭
     # =========================
-    trend_lines = []
-    trend_lines.append("")
-    trend_lines.append("=" * 60)
-    trend_lines.append("📈 趋势股池 (精准入场评分≥50 + D1/D2)")
-    trend_lines.append("=" * 60)
-
-    try:
-        trend_dir = r'D:\mystock\solo\trend_feature_output'
-        trend_files = sorted([f for f in os.listdir(trend_dir)
-                              if f.startswith('entry_precision') and 'qualified' in f and f.endswith('.csv')],
-                             key=lambda f: os.path.getmtime(os.path.join(trend_dir, f)),
-                             reverse=True)
-        if trend_files:
-            trend_df = pd.read_csv(os.path.join(trend_dir, trend_files[0]))
-            trend_df['signal_date'] = trend_df['signal_date'].astype(str)
-            # 取今天或最近有数据的一天
-            target_trend_date = target_date if isinstance(target_date, str) and target_date else TRADE_DATE
-            daily = trend_df[trend_df['signal_date'] == str(target_trend_date)]
-            if daily.empty:
-                # 尝试最近一个交易日
-                avail_dates = sorted(trend_df['signal_date'].unique(), reverse=True)
-                for d in avail_dates:
-                    tmp = trend_df[trend_df['signal_date'] == d]
-                    if not tmp.empty:
-                        daily = tmp
-                        target_trend_date = d
-                        break
-            if not daily.empty:
-                daily = daily[daily['entry_score'] >= 50].copy()
-                daily = daily[daily['consecutive_up'].isin([1, 2])]
-                # 添加主题过滤
-                if not daily.empty:
-                    _raw_trend = daily.copy()
-                    daily = filter_by_top_themes(daily.rename(columns={'ts_code': '代码'}))
-                    daily = daily.rename(columns={'代码': 'ts_code'})  # 恢复列名
-                    _dropped_trend = set(_raw_trend['ts_code'].tolist()) - set(daily['ts_code'].tolist())
-                    for code in _dropped_trend:
-                        if code not in _preheat_pool:
-                            _preheat_pool[code] = ''
-                    if daily.empty:
-                        trend_lines.append(f"  信号日 {target_trend_date}: 主题过滤后无≥70分D1/D2信号")
-                if not daily.empty:
-                    total_count = daily.shape[0]
-                    daily = daily.sort_values('entry_score', ascending=False)
-                    trend_lines.append(f"信号日: {target_trend_date}  共{total_count}只≥70分D1/D2信号")
-                    trend_lines.append(f"{'代码':<12} {'名称':<8} {'评分':>4} {'涨幅%':>5} {'量比':>5} {'距MA20%':>6} {'距MA60%':>6} {'波段':>4}")
-                    trend_lines.append("-" * 58)
-                    for _, r in daily.iterrows():
-                        name = get_stock_name(r['ts_code'])
-                        ma60 = r.get('above_ma60_pct', 0)
-                        band = f"D{int(r['consecutive_up'])}" if pd.notna(r['consecutive_up']) else "-"
-                        trend_lines.append(f"  {r['ts_code']:<12} {name:<8} {r['entry_score']:>4.0f} {r['pct_chg']:>4.1f}% {r['vol_ratio']:>4.2f} {r['above_ma20_pct']:>5.1f}% {ma60:>5.1f}% {band:>4}")
-                else:
-                    trend_lines.append(f"  信号日 {target_trend_date}: 无评分≥50分且D1/D2的信号")
-            else:
-                trend_lines.append("  无信号数据")
-        else:
-            trend_lines.append("  未找到精准入场CSV（请先运行 trend_entry_precision.py）")
-    except Exception as e:
-        trend_lines.append(f"  读取失败: {e}")
-
-    trend_stock_text = "\n".join(trend_lines)
-    print(trend_stock_text)
+    trend_stock_text = ""
 
 
     # =========================
@@ -9487,6 +9427,73 @@ def run(target_date=None, simple_mode=False):
         non_daytrip_for_ai = ""
 
 
+    # =========================
+    # ETF操作提示（从ETF轮动策略读取）
+    # =========================
+    etf_tips_text = ""
+    try:
+        rot_path = r'D:\mystock\cache_daily\etf_rotation_tips.json'
+        state_path = r'D:\mystock\etf_mainline_state_tushare.json'
+        if os.path.exists(rot_path):
+            import json as _json
+            with open(rot_path, 'r', encoding='utf-8') as f:
+                rot_data = _json.load(f)
+            etf_lines = []
+            etf_lines.append("")
+            etf_lines.append("=" * 60)
+            etf_lines.append("📊 ETF操作提示 (ETF主线轮动策略)")
+            etf_lines.append("=" * 60)
+            
+            # 当日最强ETF
+            etf_name = rot_data.get('etf_name', '')
+            if etf_name:
+                etf_lines.append(f"  最强ETF: {etf_name}")
+            
+            # 持仓信息
+            if os.path.exists(state_path):
+                with open(state_path, 'r', encoding='utf-8') as f:
+                    state = _json.load(f)
+                holding_name = state.get('holding_name', '')
+                holding_code = state.get('holding_code', '')
+                buy_price = state.get('buy_price', 0)
+                buy_date = state.get('last_rebalance_date', '')
+                if holding_name:
+                    etf_lines.append(f"  当前持仓: {holding_name}({holding_code})  买入日:{buy_date}  买入价:{buy_price:.3f}")
+            
+            # 阶段分布
+            stage_summary = rot_data.get('etf_stage_summary', {})
+            stage_parts = []
+            for s in ['💪弱转强', '🚀启动', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
+                cnt = stage_summary.get(s, 0)
+                if cnt > 0:
+                    stage_parts.append(f"{s}{cnt}只")
+            if stage_parts:
+                etf_lines.append(f"  成份股阶段分布: {' | '.join(stage_parts)}")
+            
+            # 弱转强
+            weak2strong = rot_data.get('weak2strong', [])
+            if weak2strong:
+                etf_lines.append(f"  💪弱转强:")
+                for s in weak2strong:
+                    etf_lines.append(f"    {s['name']}({s['code']}) 评分:{s['score']:.0f} 涨幅:+{s['pct_chg']:.1f}%")
+            
+            # 可操作列表
+            actionable = rot_data.get('actionable', [])
+            buy_list = [a for a in actionable if a.get('action') == '🟢买入']
+            watch_list = [a for a in actionable if a.get('action') == '🟡关注']
+            if buy_list:
+                buy_names = '、'.join([f"{a['name']}({a['code']})" for a in buy_list[:3]])
+                etf_lines.append(f"  🟢逢低买入: {buy_names}")
+            if watch_list and not buy_list:
+                watch_names = '、'.join([f"{a['name']}({a['code']})" for a in watch_list[:3]])
+                etf_lines.append(f"  🟡关注: {watch_names}")
+            
+            etf_tips_text = "\n".join(etf_lines)
+            print(etf_tips_text)
+    except Exception as e:
+        print(f"[ETF提示] 获取失败: {e}")
+
+
     #return
     prompt = f"""
 以下是我自己计算的量化分析结果：
@@ -9520,11 +9527,12 @@ def run(target_date=None, simple_mode=False):
 
 {preheat_text}
 
+
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
-1、大盘情绪：开头第一句话必须引用【操作策略】中的原文，用红色加粗字体突出显示（<span style="color:red;font-weight:bold;">...</span>），然后再补充仓位建议及理由，操作要点
+1、大盘情绪：仓位建议及理由，操作要点
 2、今日主题分析情况:
    【严格按以下固定模板输出，禁止自由发挥格式】
 
@@ -9547,6 +9555,8 @@ def run(target_date=None, simple_mode=False):
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
    【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
+
+这里引用【操作策略】中的原文，用红色加粗字体突出显示（<span style="color:red;font-weight:bold;">...</span>）
 3、今日强势股票池分析（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
    **【重要】按整合评分从高到低排序分析前5名个股，每个股票内容力求精简：**    
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
@@ -9563,7 +9573,7 @@ def run(target_date=None, simple_mode=False):
        例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
        【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
      
-     - Alpha评分（0-100分，越高越好）及中长线解读：
+     - 基本面Alpha评分（0-100分，越高越好）及中长线解读：
        【评分标准】
        - 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
        - 70-79分：买入（中线目标收益15%+），优质标的中长线持有
@@ -9595,35 +9605,22 @@ def run(target_date=None, simple_mode=False):
            * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-4、今日低吸股票池分析（二波评分≥10分的标的，按形态分组展示，每组按二波评分排序）：
+4、今日低吸股票池分析（二波评分≥10分的标的，必须按形态分组先后顺序：强势横盘、V型急跌、放量下跌等展示，每组内按二波评分排序）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
    - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
    - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
-     - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | 整合评分(非零维度)
-     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 + 龙头序列 + 主题地位）
+     - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | （换行）
+     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 +  主题地位）（换行）
      - 第3行：二波信号分析（形态 + 信号 + 入场/止损/目标价，简短判断）
    - 【格式示例】
-     波长光电(301421.SZ) 91.92元 +4.28% | 二波15分 | 整合22(趋势15 位置7)
-       主题: 消费电子 | 启动确认(2天) | 龙头:长信科技→蓝思科技→协创数据 | 地位:中军
+     波长光电(301421.SZ) 91.92元 +4.28% | 二波15分 
+       主题: 消费电子 | 启动确认(2天) |  地位:中军
        二波: 深度回调 | 疑似二波结构 | 入场91.92/止损80.89/目标114.90
    - 【精简原则】上方数据中没有的内容不要输出（如辨识度为"普通"或无YRI数据则不显示相关行）
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、今日趋势股池分析（精准入场评分≥50 + D1/D2早盘突破信号，按评分排序取前5）：
-   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-   - 【数据位置】趋势股池在"今日趋势股池"标题下方，以"信号日:"开头，每只股票已按评分排序
-   - 如果有信号数据，按评分降序分析每只，每只精简为1小段（2-3行）：
-     - 第1行：股票名(代码) 涨幅X.XX% | 精准评分=XX分 | D波段
-     - 第2行：量比=XX | 距MA20=XX% | 距MA60=XX% | 信号日：XXXX-XX-XX
-     - 第3行：简短判断（趋势延续性 + 介入时机建议）
-   - 【格式示例】
-     平安银行(000001.SZ) 涨幅+2.30% | 精准评分=85分 | D1波段
-       量比=1.23 | 距MA20=+3.5% | 距MA60=+8.2% | 信号日：20260628
-       趋势判断：D1早盘突破信号，量比>1温和放量，MA20上方运行趋势良好。关注次日能否延续D2，若高开高走可跟随，若冲高回落则观望。
-   - 如果无趋势信号数据，直接输出"今日无符合条件的趋势股信号（精准入场评分均<50或无D1/D2波段）"
-
-6、今日中线股池分析（B浪低点识别策略 - 近20天信号，按启动日从新到旧取前5）：
+5、今日中线股池分析（B浪低点识别策略 - 近20天信号，按启动日从近到远取前3只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近20天共X个B浪信号"开头，包含启动信号和底背离信号
    - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（2-3行）：
@@ -9635,11 +9632,14 @@ def run(target_date=None, simple_mode=False):
        A浪涨幅=80.4% | B浪回调=25.8% | 距A高=13.7% | 启动日：20260617
        操作建议：B浪末端启动信号，A浪强势+缩量回调健康，可在回踩MA20附近低吸，止损设B浪低点下方3%
    - 如果无信号数据，直接输出"今日无B浪低点信号（近20天无符合条件的A浪+B浪结构）"
+5、ETF操作建议
+{etf_tips_text}
 
 格式要求：
 - Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，加黑加粗显示
 - 股票分析另起一行，分点说明
 - 风格简洁明了，适合阅读
+- 返回MD格式，注意换行符
 
 """
     if not simple_mode:

@@ -1,7 +1,10 @@
 """简化版诊断"""
 import tushare as ts
 
-token = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+for _l in open(r'D:\mystock\config\.env'):
+    if _l.strip().startswith('TUSHARE_TOKEN='):
+        token = _l.strip().split('=', 1)[1].strip().strip('"')
+        break
 pro = ts.pro_api(token)
 
 ts_code = '600498.SH'

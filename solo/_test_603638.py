@@ -2,7 +2,11 @@ import sys, os
 sys.path.insert(0, r'D:\mystock\solo')
 sys.path.insert(0, r'D:\mystock\solo\multi_factor_picker')
 os.chdir(r'D:\mystock\solo')
-os.environ.setdefault('TUSHARE_TOKEN', '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')
+if 'TUSHARE_TOKEN' not in os.environ:
+    for _l in open(r'D:\mystock\config\.env'):
+        if _l.strip().startswith('TUSHARE_TOKEN='):
+            os.environ['TUSHARE_TOKEN'] = _l.strip().split('=', 1)[1].strip().strip('"')
+            break
 os.environ['TS_TOKEN'] = os.environ['TUSHARE_TOKEN']
 
 import warnings

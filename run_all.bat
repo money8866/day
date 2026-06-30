@@ -38,7 +38,7 @@ echo.
 
 
 echo 先生成趋势信号
-python solo\trend_entry_precision.py --pool qualified --recent 80
+python solo\trend_entry_precision.py --pool qualified --recent 20
 
 python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
 

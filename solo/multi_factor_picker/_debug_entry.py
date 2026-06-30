@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import os, sys, datetime
 sys.path.insert(0, r'D:\mystock')
-os.environ['TUSHARE_TOKEN'] = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+if 'TUSHARE_TOKEN' not in os.environ:
+    for _l in open(r'D:\mystock\config\.env'):
+        if _l.strip().startswith('TUSHARE_TOKEN='):
+            os.environ['TUSHARE_TOKEN'] = _l.strip().split('=', 1)[1].strip().strip('"')
+            break
 import numpy as np
 from wave2_pattern_scanner import WavePatternDetector, DEEP_PULLBACK_MIN, DEEP_ADJUST_MIN
 

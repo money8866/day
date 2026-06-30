@@ -7,7 +7,10 @@ from data_fetcher import DataFetcher
 from trend_picker import get_daily_data, get_moneyflow_data, get_daily_basic, get_holder_data
 from trend_picker_v2_draft import detect_wave2_pattern, TREND_THEMES, STRATEGIC_INDUSTRIES
 
-token = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+for _l in open(r'D:\mystock\config\.env'):
+    if _l.strip().startswith('TUSHARE_TOKEN='):
+        token = _l.strip().split('=', 1)[1].strip().strip('"')
+        break
 config = {'cache': {'dir': 'cache'}, 'tushare': {'token': token}}
 fetcher = DataFetcher(token, config)
 

@@ -596,9 +596,14 @@ def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
                 return df.reset_index(drop=True)
     
     # ── 4. 确实缺失，补充 ──
-    supplement_key = f"{ts_code}_{required_min}_{end_date}"
+    # 计算实际需要补充的日期范围：只补充缺失的部分，不重复拉取已有数据
+    actual_start = str(start_date)
+    if cached_min and cached_max:
+        if cached_min <= str(start_date):
+            actual_start = str(cached_max)
+    
+    supplement_key = f"{ts_code}_{actual_start}_{end_date}"
     if supplement_key in _cache_supplement_completed:
-        # 同进程内已尝试过，不再重复 → 保底返回已有数据
         df = get_stk_factor_pro(ts_code, start_date, end_date)
         if df is not None and not df.empty:
             return df.reset_index(drop=True)
@@ -607,7 +612,7 @@ def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
     _cache_supplement_completed.add(supplement_key)
     
     try:
-        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=required_min, end_date=end_date)
+        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=actual_start, end_date=end_date)
         time.sleep(0.06)
         if df_new is not None and not df_new.empty:
             df_new['trade_date'] = df_new['trade_date'].astype(str)
@@ -615,14 +620,14 @@ def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
             saved = batch_insert_stk_factor_pro(df_new)
             if saved and saved > 0:
                 if not silent:
-                    print(f"[缓存补充] {ts_code} 成功: {saved} 行 {required_min}~{end_date}")
+                    print(f"[缓存补充] {ts_code} 成功: {saved} 行 {actual_start}~{end_date}")
             mask = (df_new['trade_date'] >= str(start_date)) & (df_new['trade_date'] <= str(end_date))
             result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
             if not result.empty:
                 return result
         else:
             if not silent:
-                print(f"[缓存补充] {ts_code} {required_min}~{end_date} API 返回空数据")
+                print(f"[缓存补充] {ts_code} {actual_start}~{end_date} API 返回空数据")
     except Exception as e:
         if not silent:
             print(f"[缓存补充] {ts_code} 失败: {e}")

@@ -1,7 +1,8 @@
 @echo off
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
-set TUSHARE_TOKEN=1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34
+set TUSHARE_TOKEN=
+for /f "tokens=2 delims==" %%i in ('findstr /b "TUSHARE_TOKEN=" D:\mystock\config\.env') do set TUSHARE_TOKEN=%%i
 
 echo ================================================================================
 echo V型急跌评分优化v2.11扫描

@@ -12,7 +12,10 @@ sys.path.insert(0, r'D:\mystock\solo\multi_factor_picker')
 from data_fetcher import DataFetcher
 from trend_picker_v2_draft import detect_wave2_pattern, score_technical_v2
 
-token = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+for _l in open(r'D:\mystock\config\.env'):
+    if _l.strip().startswith('TUSHARE_TOKEN='):
+        token = _l.strip().split('=', 1)[1].strip().strip('"')
+        break
 fetcher = DataFetcher(token, {'cache': {'dir': 'cache'}})
 
 daily = fetcher.pro.daily(ts_code='600498.SH', start_date='20260301', end_date='20260611')

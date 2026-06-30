@@ -8,7 +8,10 @@ from data_fetcher import DataFetcher
 from trend_picker import trend_scan, to_dataframe, get_daily_data, get_moneyflow_data, get_daily_basic, score_fundamental, score_capital, score_technical
 
 def test_sddq():
-    token = '1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34'
+    for _l in open(r'D:\mystock\config\.env'):
+        if _l.strip().startswith('TUSHARE_TOKEN='):
+            token = _l.strip().split('=', 1)[1].strip().strip('"')
+            break
     config = {
         'tushare': {'token': token, 'max_retry': 3, 'retry_delay': 5},
         'cache': {'enabled': True, 'dir': 'cache', 'expire_hours': 24}
