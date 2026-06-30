@@ -396,8 +396,9 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
         if close < recovery_mid:
             continue
 
-        # 上限：未显著突破A浪高点（≤ A浪高点×1.05）— B浪末端核心
-        if close > a_high * 1.05:
+        # 上限：未突破A浪高点（距A高>0%）— B浪末端核心
+        # 优化：更严格检查，要求价格未突破A浪高点（原允许突破5%）
+        if close > a_high * 1.00:
             continue
 
         # 上限：从B浪低点反弹幅度≤35%（仍在初期阶段）
@@ -524,9 +525,14 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
         p1_dif = df.iloc[p1]['macd_dif_bfq']
         p2_dif = df.iloc[p2]['macd_dif_bfq']
 
-        # 底背离核心：价格持平或更低，DIF抬高
+        # 底背离核心：价格持平或更低，DIF抬高（优化：要求抬高>10%）
         price_down = p2_close <= p1_close * 1.005
-        dif_up = p2_dif > p1_dif * 1.01
+        dif_up = p2_dif > p1_dif * 1.10  # 优化：DIF抬高>10%
+        
+        # 优化：计算DIF抬高幅度
+        dif_up_pct = (p2_dif - p1_dif) / abs(p1_dif) * 100 if p1_dif != 0 else 0
+        if dif_up_pct <= 10:
+            return None  # DIF抬高不足10%，过滤
 
         if price_down and dif_up:
             # 信号时效：最近的低点不能太久远（15个交易日以内）
@@ -729,6 +735,11 @@ def calc_bwave_score(awave: dict, bwave: dict, launch: dict) -> dict:
     l_score = min(100, l_score)
 
     total = round(a_score * 0.30 + b_score * 0.35 + t_score * 0.20 + l_score * 0.15, 1)
+
+    # 优化1：A浪涨幅 > 100% → 评分降权-10分（可能主力已出货）
+    if awave.get('gain', 0) > 100:
+        total -= 10
+        a_score -= 5  # A浪质量也降权
 
     return {
         'total': total,

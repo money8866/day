@@ -59,14 +59,14 @@ def _check_entry_precision(df: pd.DataFrame, idx: int) -> dict | None:
     if ma20 <= 0 or ma60 <= 0:
         return None
 
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
     # 条件A: 基础趋势条件（来自规则1）
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
     # A1: MA20走平或上拐
-    ma20_5ago = df.iloc[idx - 5]['ma_bfq_20']
-    if ma20_5ago <= 0:
+    ma20_5_ago = df.iloc[idx - 5]['ma_bfq_20']
+    if ma20_5_ago <= 0:
         return None
-    ma20_trend = (ma20 / ma20_5ago - 1) * 100
+    ma20_trend = (ma20 / ma20_5_ago - 1) * 100
     if ma20_trend < -2.0:
         return None
 
@@ -91,9 +91,9 @@ def _check_entry_precision(df: pd.DataFrame, idx: int) -> dict | None:
     if not (pct_chg >= 2.0 or (pct_chg >= 0.5 and close_above_open and break_60d_high)):
         return None
 
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
     # 条件B: 进场精确定位 — 核心改进
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
 
     # B1: 距MA20在合理范围（5%~20%）
     above_ma20 = (close / ma20 - 1) * 100
@@ -184,9 +184,9 @@ def _check_entry_precision(df: pd.DataFrame, idx: int) -> dict | None:
     else:
         entry_score += 0
 
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
     # 条件C: 波段位置惩罚 — 连涨天数越多扣分越重
-    # ──────────────────────────────────────────────
+    # ──────────────────────────────────────
     consecutive_up = 1  # 包含信号日本身
     for i in range(idx - 1, max(0, idx - 10), -1):
         if df.iloc[i].get('pct_chg', 0) > 0:
@@ -273,6 +273,11 @@ def main():
                         help='盘后模式：只检测最新交易日信号')
     parser.add_argument('--min-score', type=int, default=50,
                         help='最低入场评分 (默认50)')
+    # 新增过滤参数
+    parser.add_argument('--filter-return1d', action='store_true',
+                        help='过滤：信号日收涨（return_1d > 0）')
+    parser.add_argument('--filter-rsi', type=str, default=None,
+                        help='过滤：RSI6范围，如 "50,70"')
     args = parser.parse_args()
 
     if args.codes:
@@ -290,9 +295,13 @@ def main():
         ]
 
     mode = "盘后(Today)" if args.today else f"最近{args.recent}天"
-    log(f"精准入场检测 v4 — {mode}")
+    log(f"精准入场检测 v5 — {mode}")
     log(f"股票池: {args.pool} ({len(stock_codes)}只)")
     log(f"最低评分: {args.min_score}")
+    if args.filter_return1d:
+        log(f"过滤: return_1d > 0（信号日收涨）")
+    if args.filter_rsi:
+        log(f"过滤: RSI6 ∈ [{args.filter_rsi}]")
     log(f"评分权重: 距MA20位置(30) + 量比(25) + 距MA60(20) + MACD_DIF(15) + 涨幅(10) + 波段位置(±20)")
     log("")
 
@@ -357,7 +366,30 @@ def main():
         log("  无任何信号")
         return
 
+    # === 新增：过滤条件（基于回测最优策略）===
     df_out = pd.DataFrame(all_signals)
+    
+    # 过滤1: return_1d > 0（信号日收涨）
+    if args.filter_return1d:
+        orig_cnt = len(df_out)
+        df_out = df_out[df_out['return_1d'] > 0].copy()
+        log(f"  过滤 return_1d>0: {orig_cnt} → {len(df_out)} 条")
+    
+    # 过滤2: RSI6 ∈ [50, 70]（未超买）
+    if args.filter_rsi:
+        lo, hi = map(float, args.filter_rsi.split(','))
+        orig_cnt = len(df_out)
+        df_out = df_out[(df_out['rsi6'] >= lo) & (df_out['rsi6'] <= hi)].copy()
+        log(f"  过滤 RSI6∈[{lo},{hi}]: {orig_cnt} → {len(df_out)} 条")
+    
+    log(f"  最终信号数: {len(df_out)}")
+    print()
+
+    if len(df_out) == 0:
+        log("  过滤后无信号")
+        return
+
+    # 保存CSV
     cols = ['signal_date', 'ts_code', 'signal_type', 'entry_score', 'consecutive_up',
             'pct_chg', 'vol_ratio', 'vol_surge', 'above_ma20_pct', 'above_ma60_pct',
             'macd_dif', 'macd_golden', 'rsi6',

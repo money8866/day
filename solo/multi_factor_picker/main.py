@@ -375,17 +375,16 @@ def extract_bull_data(row: pd.Series,
                 q1_profit_yoy = (curr_q1_profit - prev_q1_profit) / prev_q1_profit
 
     # Step 3: 决定使用哪个数据源
-    # 优先使用Q1数据，因为更及时
+    # 加权平均：年报70% + 最新季报30%
     if q1_revenue_yoy is not None and q1_profit_yoy is not None:
-        # 有Q1数据，使用Q1同比
-        revenue_yoy = q1_revenue_yoy
-        profit_yoy = q1_profit_yoy
-        data_source = 'Q1'
+        # 有Q1数据，使用加权平均
+        revenue_yoy = 0.7 * annual_revenue_yoy + 0.3 * q1_revenue_yoy
+        profit_yoy = 0.7 * annual_profit_yoy + 0.3 * q1_profit_yoy
+        data_source = 'weighted'
 
         # Q1 vs 年报趋势对比，检测衰减
-        if annual_revenue_yoy > 0.3:  # 年报增长>30%
+        if annual_revenue_yoy > 0.3:
             if q1_revenue_yoy < annual_revenue_yoy * 0.5:
-                # Q1增速不到年报的一半，明显衰减
                 growth_trend = 'falling'
                 logger.debug(f"{ts_code} Q1营收增速衰减: Q1={q1_revenue_yoy*100:.1f}% vs 年报={annual_revenue_yoy*100:.1f}%")
             elif q1_revenue_yoy > annual_revenue_yoy:
@@ -395,12 +394,6 @@ def extract_bull_data(row: pd.Series,
         revenue_yoy = annual_revenue_yoy
         profit_yoy = annual_profit_yoy
         data_source = 'annual'
-
-    # Step 4: 如果Q1营收同比为负，强制降低利润增速的可信度
-    if q1_revenue_yoy is not None and q1_revenue_yoy < 0:
-        # Q1营收同比下降，但年报利润暴增 → 低基数效应
-        profit_yoy *= 0.5  # 利润增速打折50%
-        logger.debug(f"{ts_code} Q1营收负增长({q1_revenue_yoy*100:.1f}%)，利润增速({annual_profit_yoy*100:.1f}%)降权50%")
 
     # ── 毛利率变化 ──
     gross_margin_change = 0.0

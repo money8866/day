@@ -465,9 +465,11 @@ class BullScorer:
                     return float(score), details
 
         # 1. 终端需求：营收增速(行业内分位) + 毛利率变化
+        #    允许小幅下滑（-10%以内不扣分）
+        adjusted_revenue_yoy = max(data.revenue_yoy, -0.10)
         rev_yoy_pct = _percentile_rank(
             group_series.get(f'revenue_yoy_{industry}', pd.Series()),
-            data.revenue_yoy
+            adjusted_revenue_yoy
         )
         gm_chg_pct = _percentile_rank(
             group_series.get(f'gross_margin_change_{industry}', pd.Series()),
@@ -702,8 +704,10 @@ class BullScorer:
                 data.contract_liability_yoy
             )
         else:
+            # 允许小幅下滑（-10%以内不扣分）
+            adjusted_rev_yoy = max(data.revenue_yoy, -0.10)
             rev_temp_pct = _percentile_rank(
-                group_series.get(f'revenue_yoy_{industry}', pd.Series()), data.revenue_yoy
+                group_series.get(f'revenue_yoy_{industry}', pd.Series()), adjusted_rev_yoy
             )
             ap_temp_pct = _percentile_rank(
                 group_series.get(f'advance_payment_yoy_{industry}', pd.Series()),

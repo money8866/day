@@ -6364,9 +6364,10 @@ def strategy(df, code, emotion_stage, total_mv=0):
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
     #做突破
     cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
+    cond_xh3 = C[-1] >= highest_close and  C[-1]/C[-2]<1.09
     cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
     
-    return cond_xh1 and cond_xh2
+    return (cond_xh1 or cond_xh3) and cond_xh2 
 
 
 def strategy_dx(df, code, emotion_stage, total_mv=0):
@@ -8572,12 +8573,25 @@ def run(target_date=None, simple_mode=False):
     ts, it, tt = ma.calculate_market_trend_score(ma_results, theme_top3_scores)
     ms, pr, tp = ma.get_market_status_and_position(ts)
 
+    # 根据大盘状态确定操作策略
+    if "主升浪" in ms or ts >= 75:
+        market_action = "大盘强势，聚焦强势股池追涨"
+    elif "上升" in ms or ts >= 50:
+        market_action = "大盘偏强，强势股池为主，低吸辅助"
+    elif "退潮" in ms or "主跌" in ms or ts < 40:
+        market_action = "大盘弱势，重点关注低吸股池潜伏"
+    else:
+        # 中期调整或震荡市中，关注B浪中线机会
+        market_action = "大盘经历中期调整，关注中线股池B浪机会"
+
     # 构建 emotion_text 用于 DeepSeek 日报
     emotion_lines = ["【大盘分析】"]
     status_icon = "🚀" if "主升浪" in ms else ("📈" if "上升" in ms or "良好" in ms else ("⚠️" if "退潮" in ms or "主跌" in ms else "📊"))
     emotion_lines.append(f"  {status_icon} 市场状态: 【{ms}】")
     emotion_lines.append(f"  总趋势分: {ts:.1f} | 指数趋势: {it:.1f} | 主题趋势: {tt:.1f}")
     emotion_lines.append(f"  建议仓位: {ma_position}%")
+    emotion_lines.append("")
+    emotion_lines.append(f"  【操作策略】<span style=\"color:red;font-weight:bold;\">{market_action}</span>")
     emotion_lines.append("")
     
     if ma_overview:
@@ -9070,23 +9084,30 @@ def run(target_date=None, simple_mode=False):
     dixi_lines = []
     
     if dx_ranked_stocks:
-        # 按形态分组，固定顺序：强势横盘→V型急跌→放量回调→深度回调→缩量回调
-        pattern_order = ['强势横盘', 'V型急跌', '放量回调', '深度回调', '缩量回调']
-        dx_sorted = sorted(dx_ranked_stocks, key=lambda x: pattern_order.index(x.get('二波形态', '')) if x.get('二波形态', '') in pattern_order else 99)
+        # 强势横盘和V型急跌分别输出，每个形态最多3只
+        pattern_order = ['强势横盘', 'V型急跌']
+        pattern_limit = 3  # 每个形态最多3只
+        dx_sorted = sorted(dx_ranked_stocks, key=lambda x: -x.get('二波评分', 0))
         from itertools import groupby
         grouped = {}
-        for k, g in groupby(dx_sorted, key=lambda x: x.get('二波形态', '')):
-            grouped[k] = list(g)
+        for k, g in groupby(sorted(dx_ranked_stocks, key=lambda x: x.get('二波形态', '')), key=lambda x: x.get('二波形态', '')):
+            grouped[k] = sorted(list(g), key=lambda x: -x['二波评分'])[:pattern_limit]
         
-        total_count = len(dx_ranked_stocks)
-        dixi_lines.append(f"共{total_count}只低吸二波标的（二波评分均≥10分），按形态分组展示：")
+        # 计算实际输出的股票数
+        output_stocks = []
+        for pattern in pattern_order:
+            if pattern in grouped:
+                output_stocks.extend(grouped[pattern])
+        
+        total_count = len(output_stocks)
+        dixi_lines.append(f"共{total_count}只低吸二波标的（二波评分均≥10分）：")
         dixi_lines.append("-" * 60)
         
         rank = 0
         for pattern in pattern_order:
             if pattern not in grouped:
                 continue
-            stocks = grouped[pattern]
+            stocks = grouped[pattern]  # 每个形态至少3只
             dixi_lines.append(f"【{pattern}】共{len(stocks)}只")
             dixi_lines.append("-" * 40)
             for s in stocks:
@@ -9167,13 +9188,13 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # 趋势股池：精准入场信号（评分≥70 + D1/D2）
-    # 每天只输出评分前3
+    # 趋势股池：精准入场信号（评分≥50 + D1/D2）
+    # 每天只输出评分前5
     # =========================
     trend_lines = []
     trend_lines.append("")
     trend_lines.append("=" * 60)
-    trend_lines.append("📈 趋势股池 (精准入场评分≥70 + D1/D2)")
+    trend_lines.append("📈 趋势股池 (精准入场评分≥50 + D1/D2)")
     trend_lines.append("=" * 60)
 
     try:
@@ -9198,12 +9219,23 @@ def run(target_date=None, simple_mode=False):
                         target_trend_date = d
                         break
             if not daily.empty:
-                daily = daily[daily['entry_score'] >= 70].copy()
+                daily = daily[daily['entry_score'] >= 50].copy()
                 daily = daily[daily['consecutive_up'].isin([1, 2])]
+                # 添加主题过滤
+                if not daily.empty:
+                    _raw_trend = daily.copy()
+                    daily = filter_by_top_themes(daily.rename(columns={'ts_code': '代码'}))
+                    daily = daily.rename(columns={'代码': 'ts_code'})  # 恢复列名
+                    _dropped_trend = set(_raw_trend['ts_code'].tolist()) - set(daily['ts_code'].tolist())
+                    for code in _dropped_trend:
+                        if code not in _preheat_pool:
+                            _preheat_pool[code] = ''
+                    if daily.empty:
+                        trend_lines.append(f"  信号日 {target_trend_date}: 主题过滤后无≥70分D1/D2信号")
                 if not daily.empty:
                     total_count = daily.shape[0]
-                    daily = daily.sort_values('entry_score', ascending=False).head(3)
-                    trend_lines.append(f"信号日: {target_trend_date}  共{total_count}只≥70分，展示前3只D1/D2")
+                    daily = daily.sort_values('entry_score', ascending=False)
+                    trend_lines.append(f"信号日: {target_trend_date}  共{total_count}只≥70分D1/D2信号")
                     trend_lines.append(f"{'代码':<12} {'名称':<8} {'评分':>4} {'涨幅%':>5} {'量比':>5} {'距MA20%':>6} {'距MA60%':>6} {'波段':>4}")
                     trend_lines.append("-" * 58)
                     for _, r in daily.iterrows():
@@ -9212,7 +9244,7 @@ def run(target_date=None, simple_mode=False):
                         band = f"D{int(r['consecutive_up'])}" if pd.notna(r['consecutive_up']) else "-"
                         trend_lines.append(f"  {r['ts_code']:<12} {name:<8} {r['entry_score']:>4.0f} {r['pct_chg']:>4.1f}% {r['vol_ratio']:>4.2f} {r['above_ma20_pct']:>5.1f}% {ma60:>5.1f}% {band:>4}")
                 else:
-                    trend_lines.append(f"  信号日 {target_trend_date}: 无评分≥70分且D1/D2的信号")
+                    trend_lines.append(f"  信号日 {target_trend_date}: 无评分≥50分且D1/D2的信号")
             else:
                 trend_lines.append("  无信号数据")
         else:
@@ -9246,10 +9278,20 @@ def run(target_date=None, simple_mode=False):
             start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=20)).strftime('%Y%m%d')
             recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
             
+            # 添加主题过滤
             if not recent.empty:
-                recent = recent.sort_values('bwave_score', ascending=False)
+                _raw_midline = recent.copy()
+                recent = filter_by_top_themes(recent.rename(columns={'ts_code': '代码'}))
+                recent = recent.rename(columns={'代码': 'ts_code'})  # 恢复列名
+                _dropped_midline = set(_raw_midline['ts_code'].tolist()) - set(recent['ts_code'].tolist())
+                for code in _dropped_midline:
+                    if code not in _preheat_pool:
+                        _preheat_pool[code] = ''
+            
+            if not recent.empty:
                 total_count = recent.shape[0]
-                midline_lines.append(f"近20天共{total_count}个B浪信号（启动+底背离），按BWaveScore降序展示")
+                recent = recent.sort_values('launch_date', ascending=False)
+                midline_lines.append(f"近20天共{total_count}个B浪信号，按启动日从新到旧排列")
                 midline_lines.append(f"{'代码':<12} {'名称':<8} {'类型':<6} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
                 midline_lines.append("-" * 80)
                 
@@ -9463,14 +9505,14 @@ def run(target_date=None, simple_mode=False):
 {theme_stocks_text}
 ---------------------------------------
 
-今日低吸股票池（低吸二波信号，按二波评分从高到低排序）：
-{dixi_stock_text}
-
 今日强势股票池（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
 （这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
 {hot_money_open_text}
 
-今日趋势股池（精准入场评分≥70 + D1/D2波段位置，早盘突破信号，按评分排序取前3）：
+今日低吸股票池（低吸二波信号，按二波评分从高到低排序）：
+{dixi_stock_text}
+
+今日趋势股池（精准入场评分≥50 + D1/D2波段位置，早盘突破信号，按评分排序取前5）：
 {trend_stock_text}
 
 今日中线股池（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）：
@@ -9482,7 +9524,7 @@ def run(target_date=None, simple_mode=False):
 开头以“这是大盘和个股推送微信消息”开头
 标题：每日复盘({TRADE_DATE})
 内容(分成以下部分)：
-1、大盘情绪：简明扼要，重点是仓位建议及理由，操作要点
+1、大盘情绪：开头第一句话必须引用【操作策略】中的原文，用红色加粗字体突出显示（<span style="color:red;font-weight:bold;">...</span>），然后再补充仓位建议及理由，操作要点
 2、今日主题分析情况:
    【严格按以下固定模板输出，禁止自由发挥格式】
 
@@ -9505,21 +9547,7 @@ def run(target_date=None, simple_mode=False):
 
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
    【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
-3、今日低吸股票池分析（二波评分≥10分的标的，按形态分组展示，每组按二波评分排序）：
-   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-   - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
-   - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
-   - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
-     - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | 整合评分(非零维度)
-     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 + 龙头序列 + 主题地位）
-     - 第3行：二波信号分析（形态 + 信号 + 入场/止损/目标价，简短判断）
-   - 【格式示例】
-     波长光电(301421.SZ) 91.92元 +4.28% | 二波15分 | 整合22(趋势15 位置7)
-       主题: 消费电子 | 启动确认(2天) | 龙头:长信科技→蓝思科技→协创数据 | 地位:中军
-       二波: 深度回调 | 疑似二波结构 | 入场91.92/止损80.89/目标114.90
-   - 【精简原则】上方数据中没有的内容不要输出（如辨识度为"普通"或无YRI数据则不显示相关行）
-   - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
-4、今日强势股票池分析（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
+3、今日强势股票池分析（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
    **【重要】按整合评分从高到低排序分析前5名个股，每个股票内容力求精简：**    
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
      【第1名 - 明日首选】股票名 (代码)
@@ -9567,8 +9595,22 @@ def run(target_date=None, simple_mode=False):
            * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
+4、今日低吸股票池分析（二波评分≥10分的标的，按形态分组展示，每组按二波评分排序）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
+   - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
+   - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
+     - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | 整合评分(非零维度)
+     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 + 龙头序列 + 主题地位）
+     - 第3行：二波信号分析（形态 + 信号 + 入场/止损/目标价，简短判断）
+   - 【格式示例】
+     波长光电(301421.SZ) 91.92元 +4.28% | 二波15分 | 整合22(趋势15 位置7)
+       主题: 消费电子 | 启动确认(2天) | 龙头:长信科技→蓝思科技→协创数据 | 地位:中军
+       二波: 深度回调 | 疑似二波结构 | 入场91.92/止损80.89/目标114.90
+   - 【精简原则】上方数据中没有的内容不要输出（如辨识度为"普通"或无YRI数据则不显示相关行）
+   - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、今日趋势股池分析（精准入场评分≥70 + D1/D2早盘突破信号，按评分排序取前3）：
+5、今日趋势股池分析（精准入场评分≥50 + D1/D2早盘突破信号，按评分排序取前5）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】趋势股池在"今日趋势股池"标题下方，以"信号日:"开头，每只股票已按评分排序
    - 如果有信号数据，按评分降序分析每只，每只精简为1小段（2-3行）：
@@ -9579,9 +9621,9 @@ def run(target_date=None, simple_mode=False):
      平安银行(000001.SZ) 涨幅+2.30% | 精准评分=85分 | D1波段
        量比=1.23 | 距MA20=+3.5% | 距MA60=+8.2% | 信号日：20260628
        趋势判断：D1早盘突破信号，量比>1温和放量，MA20上方运行趋势良好。关注次日能否延续D2，若高开高走可跟随，若冲高回落则观望。
-   - 如果无趋势信号数据，直接输出"今日无符合条件的趋势股信号（精准入场评分均<70或无D1/D2波段）"
+   - 如果无趋势信号数据，直接输出"今日无符合条件的趋势股信号（精准入场评分均<50或无D1/D2波段）"
 
-6、今日中线股池分析（B浪低点识别策略 - 近20天信号）：
+6、今日中线股池分析（B浪低点识别策略 - 近20天信号，按启动日从新到旧取前5）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近20天共X个B浪信号"开头，包含启动信号和底背离信号
    - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（2-3行）：
