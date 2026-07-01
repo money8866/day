@@ -4386,6 +4386,7 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 量能分析（使用当日量比：当日成交量/5日均量，均线排除当天）
         vol_ratio = 1.0
         vol_vs_high_ratio = 1.0  # 当日量能 vs 60日最高量能
+        vol_recent_long_ratio = 1.0  # 近期均量 vs 长期均量
         if 'vol' in df.columns and len(df) >= 10:
             vol_today = float(df['vol'].iloc[-1])
             vol_hist = df['vol'].iloc[:-1]  # 排除当天的历史成交量
@@ -4399,6 +4400,11 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             # 关键改进：当日量 vs 60日最高量（识别量能萎缩，max不含当天）
             vol_max_60d = float(vol_hist.tail(60).max()) if len(vol_hist) >= 5 else vol_today
             vol_vs_high_ratio = vol_today / vol_max_60d if vol_max_60d > 0 else 1.0
+            
+            # 新增：近期均量 vs 长期均量（判断量能持续性）
+            # 近期=20日，长期=60日
+            vol_ma60 = float(vol_hist.tail(60).mean()) if len(vol_hist) >= 60 else vol_today
+            vol_recent_long_ratio = vol_ma20 / vol_ma60 if vol_ma60 > 0 else 1.0
             
             # 当日放量越大，加分越多
             if vol_ratio > 3.0:
@@ -4414,16 +4420,36 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             if vol_ma_ratio > 2.0:
                 capital_score += 10  # 持续放量
             
-            # 新增：量能萎缩惩罚
-            # 当日量能 vs 60日最高量能（解决立新能源问题：量比~1但远低于历史高点）
+            # 新增：近期均量 vs 长期均量（核心因子）
+            # 比例越大，说明量能持续放大，资金关注度高
+            if vol_recent_long_ratio > 3.0:
+                capital_score += 30  # 量能爆发性持续
+            elif vol_recent_long_ratio > 2.0:
+                capital_score += 20  # 量能明显放大
+            elif vol_recent_long_ratio > 1.5:
+                capital_score += 10  # 量能温和放大
+            elif vol_recent_long_ratio > 1.2:
+                capital_score += 5   # 量能略有放大
+            elif vol_recent_long_ratio > 1.0:
+                capital_score += 2   # 量能持平
+            elif vol_recent_long_ratio > 0.8:
+                capital_score -= 2   # 量能略有萎缩
+            elif vol_recent_long_ratio > 0.6:
+                capital_score -= 8   # 量能明显萎缩
+            elif vol_recent_long_ratio > 0.4:
+                capital_score -= 15  # 量能严重萎缩
+            else:
+                capital_score -= 25  # 量能极度萎缩（不足长期均量40%）
+            
+            # 当日量能 vs 60日最高量能（量能萎缩惩罚）
             if vol_vs_high_ratio < 0.2:
-                capital_score -= 20  # 量能极度萎缩（不足高峰期的20%）
+                capital_score -= 15  # 量能极度萎缩（不足高峰期的20%）
             elif vol_vs_high_ratio < 0.3:
-                capital_score -= 15  # 量能严重萎缩（<30%）
+                capital_score -= 10  # 量能严重萎缩（<30%）
             elif vol_vs_high_ratio < 0.4:
-                capital_score -= 10  # 量能明显萎缩（<40%）
+                capital_score -= 8   # 量能明显萎缩（<40%）
             elif vol_vs_high_ratio < 0.5:
-                capital_score -= 5   # 量能有所萎缩（<50%）
+                capital_score -= 4   # 量能有所萎缩（<50%）
         
         # 机构资金流
         inst_flow_score = calc_institutional_flow_score(ts_code)
@@ -4438,10 +4464,28 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         
         # 距离前高位置
         dist_to_high = (HHV20 - current_price) / HHV20 if HHV20 > 0 else 0
-        if dist_to_high <= 0.05:
-            position_score += 25  # 接近前高
+        
+        # 判断是否创新高
+        is_new_high = current_price >= HHV20
+        
+        # 临近高点比创新高的成功率更高
+        # 逻辑：创新高后追高风险大，临近高点蓄势突破更安全
+        if dist_to_high <= 0:
+            # 创新高：适当扣分（追高风险）
+            position_score += 10  # 创新高给予基础加分
+            position_score -= 8   # 创新高惩罚（追高风险大）
+        elif dist_to_high <= 0.03:
+            # 极接近前高（3%内）：蓄势待突破，最优位置
+            position_score += 30  # 最高加分
+        elif dist_to_high <= 0.08:
+            # 临近前高（3%-8%）：强势蓄能，非常好的位置
+            position_score += 22
         elif dist_to_high <= 0.15:
-            position_score += 15
+            # 距离前高8%-15%：温和蓄能，较好位置
+            position_score += 12
+        elif dist_to_high <= 0.25:
+            # 距离前高15%-25%：适中位置
+            position_score += 5
         
         # 从低点涨幅
         run_up = (current_price - LLV20) / LLV20 if LLV20 > 0 else 0
@@ -4456,12 +4500,13 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             if range90 < 0.25:
                 position_score += 10
         
-        # 接近历史高点但未突破：不扣分（强势蓄能形态）
-        # 理由：接近高点说明价格强势，不应该惩罚；
-        #      是否为假突破由"失败突破检测"和"长上影K线"判断，
-        #      不通过距离高点的远近直接扣分
-        # 该部分贡献分数：0
-        pass
+        # 创新高额外惩罚：历史新高位置风险更高
+        if is_new_high:
+            # 检查120日新高
+            HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
+            if current_price >= HHV120:
+                # 120日新高：额外惩罚
+                position_score -= 5
         
         position_score = min(100, max(0, position_score))
         
@@ -4776,10 +4821,43 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         failure_prob = 50
         
         failure_prob -= (trend_score - 50) * 0.25
-        failure_prob -= (capital_score - 50) * 0.25
+        failure_prob -= (capital_score - 50) * 0.35  # 提高资金健康度权重
         failure_prob -= (position_score - 50) * 0.20
         failure_prob -= (hot_score - 50) * 0.15
         failure_prob -= (fundamental_score - 50) * 0.15
+        
+        # 新增：量能直接影响失败概率
+        # 量能越大，失败概率越低
+        if vol_recent_long_ratio > 2.0:
+            failure_prob -= 15  # 量能爆发性持续，失败概率大幅降低
+        elif vol_recent_long_ratio > 1.5:
+            failure_prob -= 10  # 量能明显放大，失败概率降低
+        elif vol_recent_long_ratio > 1.2:
+            failure_prob -= 5   # 量能温和放大，失败概率略降
+        elif vol_recent_long_ratio > 1.0:
+            failure_prob -= 2   # 量能持平，失败概率小幅降低
+        elif vol_recent_long_ratio < 0.6:
+            failure_prob += 10  # 量能明显萎缩，失败概率上升
+        elif vol_recent_long_ratio < 0.4:
+            failure_prob += 18  # 量能严重萎缩，失败概率大幅上升
+        
+        # 当日量比强化
+        if vol_ratio > 3.0:
+            failure_prob -= 8   # 巨量爆发，失败概率大幅降低
+        elif vol_ratio > 2.0:
+            failure_prob -= 5   # 明显放量，失败概率降低
+        
+        # 创新高惩罚：创新高后失败概率更高，临近高点成功率更高
+        if is_new_high:
+            # 创新高：失败概率上升
+            failure_prob += 8   # 创新高追高风险大
+            # 120日新高额外惩罚
+            HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
+            if current_price >= HHV120:
+                failure_prob += 5   # 历史新高，风险更大
+        elif dist_to_high <= 0.08:
+            # 临近高点（8%以内）：蓄势待突破，失败概率降低
+            failure_prob -= 6   # 临近高点成功率更高
         
         failure_prob += penalty * 1.5
         
@@ -8754,6 +8832,22 @@ def run(target_date=None, simple_mode=False):
             if _vol_vs_base < 1.3:
                 return None
             
+            # =========================
+            # 关键检查：近期均量 vs 高点5日均量
+            # 量能爆发后如果短线均量严重低于高点量能，说明资金撤退，应排除
+            # 如：新集能源，虽然比起涨前基量高，但已严重低于高点时的量能水平
+            # =========================
+            _peak_vol_start = max(0, _peak_vol_idx - 5)
+            _peak_vol_end = min(len(_vol200), _peak_vol_idx + 6)
+            _peak_5d_vol = float(np.mean(_vol200[_peak_vol_start:_peak_vol_end])) if _peak_vol_end > _peak_vol_start else _recent_vol
+            _peak_5d_vol = max(_peak_5d_vol, 1)
+            _vol_vs_peak = _recent_vol / _peak_5d_vol
+            
+            # 近期均量至少是高点5日均量的50%（防止量能严重萎缩）
+            # 如果低于50%，说明量能已大幅撤退，不是健康的量能震荡
+            if _vol_vs_peak < 0.5:
+                return None
+            
             # ABC结构检查：A浪涨幅>15%（有明确上攻）
             _a_low = float(np.min(_low200[:_peak_vol_idx+1]))
             _a_gain = (_peak_vol_price / _a_low - 1) * 100 if _a_low > 0 else 0
@@ -9829,8 +9923,8 @@ def run(target_date=None, simple_mode=False):
 
 <span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
-3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
-   **【重要】按整合评分从高到低排序分析前5名个股，每个股票内容力求精简：**    
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面10名，不能自行截取，也不要加入其它的）：
+   **【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
      【第1名 - 明日首选】**股票名** (代码)
      【第2名】**股票名** (代码)
