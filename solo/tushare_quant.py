@@ -8669,6 +8669,259 @@ def run(target_date=None, simple_mode=False):
             continue
 
     # =========================
+    # 量能爆发+宽幅震荡选股：像火星人/时代电气/奥比中光/沃顿科技那样的"近期量能大幅放大创历史新高量能，且区间股价宽幅震荡"
+    # =========================
+    def detect_volume_surge_swing(ts_code, name):
+        """检测量能爆发+宽幅震荡模式"""
+        try:
+            df = get_hist_data(ts_code)
+            if df is None or len(df) < 80:
+                return None
+            recent = df.tail(60)
+            if len(recent) < 20:
+                return None
+            vol_arr = recent['vol'].values.astype(float)
+            high_arr = recent['high'].values.astype(float)
+            low_arr = recent['low'].values.astype(float)
+            close_arr = recent['close'].values.astype(float)
+            pre_close_arr = recent['pre_close'].values.astype(float)
+            
+            vol_ma20 = pd.Series(vol_arr).rolling(20, min_periods=1).mean().values
+            vol_ratio = vol_arr / np.maximum(vol_ma20, 1)
+            max_vol_ratio = float(np.max(vol_ratio))
+            vol_ratio_gt2 = int(np.sum(vol_ratio > 2.0))
+            vol_ratio_gt3 = int(np.sum(vol_ratio > 3.0))
+            
+            hist_vol_max = float(np.max(df['vol'].values.astype(float)))
+            recent_vol_max = float(np.max(vol_arr))
+            vol_vs_hist_pct = (recent_vol_max / hist_vol_max * 100) if hist_vol_max > 0 else 0
+            
+            amplitude = (high_arr - low_arr) / np.maximum(pre_close_arr, 0.01) * 100
+            avg_amplitude = float(np.mean(amplitude))
+            amp_gt8_count = int(np.sum(amplitude > 8))
+            
+            range_high = float(np.max(high_arr))
+            range_low = float(np.min(low_arr))
+            range_swing = (range_high / range_low - 1) * 100 if range_low > 0 else 0
+            
+            price_change = (close_arr[-1] / close_arr[0] - 1) * 100 if close_arr[0] > 0 else 0
+            
+            # 硬条件（参考4只标的特征收紧阈值）
+            if max_vol_ratio < 2.6:
+                return None
+            if vol_ratio_gt2 < 3:
+                return None
+            if avg_amplitude < 4.5:
+                return None
+            if range_swing < 35:
+                return None
+            if price_change < -10:
+                return None
+            # 排除已大幅拉升的（区间涨幅>100%的可能已是强弩之末）
+            if price_change > 100:
+                return None
+            # 排除新股上市不足180天（次新股的巨量由IPO效应导致，不具可比性）
+            if len(df) < 180:
+                return None
+            # 量能必须达到过历史最高量的50%以上（确保"创历史新高量能"特征）
+            if vol_vs_hist_pct < 50:
+                return None
+            
+            # =========================
+            # 近期量能活跃度检查：对比起涨前基量（200天窗口内量能最高点前20日均量）
+            # 如雷赛智能虽缩量仍比起涨前高2.18倍，科林电气缩量到基量以下则应排除
+            # =========================
+            _df200 = df.tail(200) if len(df) >= 200 else df
+            _vol200 = _df200['vol'].values.astype(float)
+            _high200 = _df200['high'].values.astype(float)
+            _low200 = _df200['low'].values.astype(float)
+            _close200 = _df200['close'].values.astype(float)
+            
+            _peak_vol_idx = int(np.argmax(_vol200))
+            _peak_vol_price = float(_high200[_peak_vol_idx])
+            
+            # 量能最高点前20天~前3天作为起涨前基量区
+            _pre_peak_start = max(0, _peak_vol_idx - 20)
+            _pre_peak_end = max(0, _peak_vol_idx - 3)
+            _base_vol = float(np.mean(_vol200[_pre_peak_start:_pre_peak_end])) if _pre_peak_end > _pre_peak_start else float(np.mean(_vol200[:_peak_vol_idx]))
+            _base_vol = max(_base_vol, 1)
+            
+            # 近20天均量 vs 起涨前基量
+            _recent_vol = float(np.mean(_vol200[-20:])) if len(_vol200) >= 20 else float(np.mean(_vol200))
+            _vol_vs_base = _recent_vol / _base_vol
+            
+            # 近20天均量至少是起涨前基量的1.3倍（保持比起涨前活跃）
+            if _vol_vs_base < 1.3:
+                return None
+            
+            # ABC结构检查：A浪涨幅>15%（有明确上攻）
+            _a_low = float(np.min(_low200[:_peak_vol_idx+1]))
+            _a_gain = (_peak_vol_price / _a_low - 1) * 100 if _a_low > 0 else 0
+            if _a_gain < 15:
+                return None
+            
+            # B浪回撤检查：回撤应在61.8%以内（偏浅是强势横盘，偏深是充分回调，过深则是一波游）
+            if _peak_vol_idx < len(_low200) - 3:
+                _b_low = float(np.min(_low200[_peak_vol_idx:]))
+                _b_drop = (1 - _b_low / _peak_vol_price) * 100
+                _retrace_ratio = _b_drop / _a_gain * 100 if _a_gain > 0 else 0
+            else:
+                _b_low = _cur_price
+                _b_drop = 0
+                _retrace_ratio = 0
+            
+            # 计算斐波那契回撤位
+            _fib_618 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.618
+            _fib_786 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.786
+            
+            # B浪低点不能跌穿78.6%（不许一波游），不设下限（浅回调=强势横盘）
+            if _b_low < _fib_786 * 0.92:
+                return None
+            # 回撤占A浪比例不能过大（防止一波游），不过小则保留（强势横盘）
+            if _retrace_ratio > 80:
+                return None
+            
+            # =========================
+            # 排除"一波游"：高峰前涨幅过大(>70%)且当前远离高点(>15%)
+            # 真正的宽幅震荡应该：涨幅适中 OR 当前在高点附近
+            # =========================
+            _peak_idx = int(np.argmax(high_arr))
+            _peak_price = float(high_arr[_peak_idx])
+            _pre_peak_low = float(np.min(low_arr[:_peak_idx+1])) if _peak_idx > 0 else float(low_arr[0])
+            _pre_peak_gain = (_peak_price / _pre_peak_low - 1) * 100 if _pre_peak_low > 0 else 0
+            _dist_from_peak = (1 - close_arr[-1] / _peak_price) * 100
+            
+            # 高峰后有反弹（从最低点反弹超过10%）
+            if _peak_idx < len(high_arr) - 10:
+                _post_peak_low = float(np.min(low_arr[_peak_idx:]))
+                if _post_peak_low > 0:
+                    _bounce = (close_arr[-1] / _post_peak_low - 1) * 100
+                else:
+                    _bounce = 0
+            else:
+                _bounce = 0
+            
+            # 一波游：涨幅过大 + 远离高点 + 没有有效反弹
+            if _pre_peak_gain > 70 and _dist_from_peak > 15 and _bounce < 10:
+                return None
+            
+            # 评分
+            vol_score = min(max_vol_ratio / 5.0, 1) * 30
+            freq_score = min(vol_ratio_gt2 / 7, 1) * 20
+            amp_score = min(avg_amplitude / 7, 1) * 20
+            big_amp_score = min(amp_gt8_count / 15, 1) * 15
+            swing_score = min(range_swing / 60, 1) * 15
+            total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
+            
+            if total_score < 55:
+                return None
+            
+            # =========================
+            # MACD信号判断：即将红柱或刚刚红柱
+            # =========================
+            close_full = df['close'].values.astype(float)
+            ema12 = pd.Series(close_full).ewm(span=12, adjust=False).mean().values
+            ema26 = pd.Series(close_full).ewm(span=26, adjust=False).mean().values
+            macd_dif = ema12 - ema26
+            macd_dea = pd.Series(macd_dif).ewm(span=9, adjust=False).mean().values
+            macd_bar = 2 * (macd_dif - macd_dea)
+            
+            cur_bar = float(macd_bar[-1])
+            prev_bar = float(macd_bar[-2]) if len(macd_bar) >= 2 else cur_bar
+            prev2_bar = float(macd_bar[-3]) if len(macd_bar) >= 3 else prev_bar
+            
+            macd_status = ''
+            macd_pass = False
+            # 刚刚红柱：前一个或前两个为负，当前为正
+            if prev_bar < 0 < cur_bar:
+                macd_status = '刚刚红柱 ✅'
+                macd_pass = True
+            # 即将红柱：当前仍为负但连续2天缩短（向零轴靠近）
+            elif cur_bar < 0 and cur_bar > prev_bar > prev2_bar:
+                macd_status = '即将红柱（绿柱连续缩短）'
+                macd_pass = True
+            
+            if not macd_pass:
+                return None
+            
+            # 当日量能是否异动
+            today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
+            
+            return {
+                '代码': ts_code,
+                '名称': name,
+                '量能爆发评分': round(total_score, 1),
+                '最大量比': round(max_vol_ratio, 2),
+                '量比>2天数': vol_ratio_gt2,
+                '量比>3天数': vol_ratio_gt3,
+                '日均振幅': round(avg_amplitude, 2),
+                '巨震天数(>8%)': amp_gt8_count,
+                '区间振幅': round(range_swing, 1),
+                '区间涨幅': round(price_change, 1),
+                '近历史最高量%': round(vol_vs_hist_pct, 0),
+                '今日量比': round(today_vol_ratio, 2),
+                'MACD状态': macd_status,
+            }
+        except Exception:
+            return None
+
+    _volume_surge_swing_results = []
+    # 改为从"合格股池"扫描，而非全市场
+    _qs_pool_path = r'D:\mystock\solo\report_daily\bull_stocks_qualified.csv'
+    _qs_pool = None
+    if os.path.exists(_qs_pool_path):
+        try:
+            _qs_pool = pd.read_csv(_qs_pool_path)
+            print(f'\n[量能宽幅震荡-合格股池] 加载 {len(_qs_pool)} 只合格股')
+        except Exception as e:
+            print(f'\n[量能宽幅震荡-合格股池] 加载失败: {e}')
+
+    if _qs_pool is not None and not _qs_pool.empty and market is not None:
+        # 将合格股池的code转为ts_code，建立映射
+        _code_to_ts = {}
+        for _, _mr in market.iterrows():
+            _ts_code = _mr['ts_code']
+            _code_num = int(_ts_code[:6])  # "002709.SZ" -> 2709
+            _code_to_ts[_code_num] = _ts_code
+
+        # 构建合格股池的代码列表（兼容可能已带后缀的code）
+        _pool_codes = []
+        for _, _qr in _qs_pool.iterrows():
+            _c = int(_qr['code'])
+            if _c in _code_to_ts:
+                _pool_codes.append(_code_to_ts[_c])
+            else:
+                _sc = str(_c).zfill(6)
+                # 根据前缀判断交易所
+                if _sc.startswith('6') or _sc.startswith('8') or _sc.startswith('9'):
+                    _pool_codes.append(_sc + '.SH')
+                else:
+                    _pool_codes.append(_sc + '.SZ')
+
+        # 对合格股池做主题过滤
+        _qs_df = pd.DataFrame({'代码': _pool_codes})
+        _qs_df['名称'] = ''
+        try:
+            _qs_filtered = filter_by_top_themes(_qs_df)
+            _filtered_codes = set(_qs_filtered['代码'].tolist())
+            print(f'[量能宽幅震荡-主题过滤] 合格股池 {len(_pool_codes)} -> {len(_filtered_codes)} 只')
+        except Exception:
+            _filtered_codes = set(_pool_codes)
+            print(f'[量能宽幅震荡-主题过滤] 失败，使用全部合格股池 {len(_pool_codes)} 只')
+
+        print(f'\n[量能宽幅震荡] 扫描 {len(_filtered_codes)} 只合格股...')
+        for _vsi, _vcode in enumerate(_filtered_codes):
+            _vname = get_stock_name(_vcode)
+            _vres = detect_volume_surge_swing(_vcode, _vname)
+            if _vres:
+                _volume_surge_swing_results.append(_vres)
+
+        _volume_surge_swing_results = sorted(_volume_surge_swing_results, key=lambda x: -x['量能爆发评分'])
+        print(f'[量能宽幅震荡] 命中 {len(_volume_surge_swing_results)} 只')
+        for _v in _volume_surge_swing_results[:10]:
+            print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 量比{_v['最大量比']} 振幅{_v['日均振幅']}% 区间{_v['区间振幅']}% MACD={_v['MACD状态']}")
+
+    # =========================
     # 预热发现池：被主题过滤但技术面优秀的股票（可能预示主题轮动）
     # =========================
     _preheat_pool = {}  # code -> basic_info
@@ -9082,108 +9335,92 @@ def run(target_date=None, simple_mode=False):
         )[:10]
 
     # =========================
-    # 构建低吸股票池输出文本（精简版）- 按形态分组输出
+    # 构建低吸股票池输出文本 - 强势横盘 + 其他形态（按评分排序）
     # =========================
     dixi_lines = []
     
     if dx_ranked_stocks:
-        # 强势横盘和V型急跌分别输出，每个形态最多3只
-        pattern_order = ['强势横盘', 'V型急跌']
-        pattern_limit = 3  # 每个形态最多3只
-        dx_sorted = sorted(dx_ranked_stocks, key=lambda x: -x.get('二波评分', 0))
         from itertools import groupby
+        pattern_limit = 3  # 每个形态最多3只
+        
+        # 分组
         grouped = {}
         for k, g in groupby(sorted(dx_ranked_stocks, key=lambda x: x.get('二波形态', '')), key=lambda x: x.get('二波形态', '')):
             grouped[k] = sorted(list(g), key=lambda x: -x['二波评分'])[:pattern_limit]
         
-        # 计算实际输出的股票数
-        output_stocks = []
-        for pattern in pattern_order:
-            if pattern in grouped:
-                output_stocks.extend(grouped[pattern])
+        # 强势横盘单独
+        qshp_stocks = grouped.get('强势横盘', [])
+        # 其他形态合并（V型急跌、深度回调、放量回调、缩量回调等）
+        other_stocks = []
+        for p, s_list in grouped.items():
+            if p != '强势横盘':
+                other_stocks.extend(s_list)
+        other_stocks = sorted(other_stocks, key=lambda x: -x['二波评分'])[:10]
         
-        total_count = len(output_stocks)
+        total_count = len(qshp_stocks) + len(other_stocks)
         dixi_lines.append(f"共{total_count}只低吸二波标的（二波评分均≥10分）：")
         dixi_lines.append("-" * 60)
         
         rank = 0
-        for pattern in pattern_order:
-            if pattern not in grouped:
-                continue
-            stocks = grouped[pattern]  # 每个形态至少3只
-            dixi_lines.append(f"【{pattern}】共{len(stocks)}只")
+        
+        # --- 强势横盘 ---
+        if qshp_stocks:
+            dixi_lines.append("【强势横盘】")
             dixi_lines.append("-" * 40)
-            for s in stocks:
+            for s in qshp_stocks:
                 rank += 1
                 price = s.get('现价', 0)
                 pct = s.get('涨跌幅', 0)
                 pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
-                # 第1行：基本信息 + 二波评分 + 整合评分（非零维度）
                 wave2_score = s.get('二波评分', 0)
                 integrated = s.get('整合评分', 0)
-                trend = s.get('趋势强度', 0)
-                capital = s.get('资金健康度', 0)
-                position = s.get('位置安全性', 0)
-                hot = s.get('热度持续性', 0)
-                basic = s.get('基本面', 0)
-                dims = []
-                if trend > 0: dims.append(f"趋势{int(trend)}")
-                if capital > 0: dims.append(f"资金{int(capital)}")
-                if position > 0: dims.append(f"位置{int(position)}")
-                if hot > 0: dims.append(f"热度{int(hot)}")
-                if basic > 0: dims.append(f"基本面{int(basic)}")
-                dims_str = " ".join(dims) if dims else ""
-                score_str = f"整合评分{int(integrated)}({dims_str})" if dims_str else f"整合评分{int(integrated)}"
-                dixi_lines.append(f"【第{rank}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | {score_str}")
-                # 第2行：主题（含次强主题）+ 非一日游阶段 + 龙头序列
+                dixi_lines.append(f"【第{rank}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | 整合评分{int(integrated)}")
                 cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
                 confirm_days = s.get('确认天数', 0)
                 leader_seq = s.get('龙头序列', '')
-                # 主主题 + 次强主题（跨主题易被炒，输出前2个最强主题）
                 theme_parts = [s.get('所属主题', '')]
-                secondary_t = s.get('次强主题', '')
-                if secondary_t:
-                    theme_parts[0] = f"{theme_parts[0]}+{secondary_t}"
                 if cycle:
-                    if confirm_days > 0:
-                        theme_parts.append(f"非一日游:{cycle}({confirm_days}天)")
-                    else:
-                        theme_parts.append(f"非一日游:{cycle}")
+                    theme_parts.append(f"非一日游:{cycle}({confirm_days}天)" if confirm_days > 0 else f"非一日游:{cycle}")
                 if leader_seq and leader_seq != "无":
                     theme_parts.append(f"龙头:{leader_seq}")
                 dixi_lines.append(f"  主题与地位: {' | '.join(theme_parts)}")
-                # 第3行：二波形态 + 信号 + 价格位
                 wave2_pattern = s.get('二波形态', '')
                 wave2_signal = s.get('二波信号', '')
                 ep = s.get('入场价', 0)
                 sl = s.get('止损价', 0)
                 tp = s.get('目标价', 0)
                 price_str = f"入场价{ep:.2f}/止损价{sl:.2f}/目标价{tp:.2f}" if ep > 0 else ""
-                dixi_lines.append(f"  二波信号: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
-                # 第4行（可选）：辨识度（非普通才显示）
-                recognition = s.get('辨识度加分', 0)
-                resonance = s.get('共振系数', 1.0)
-                penalty = s.get('追高惩罚', 0)
-                leader_bonus = s.get('龙头加分', 0)
-                wave2_bonus = s.get('二波加分', 0)
-                recognition_tags = []
-                if recognition >= 15: recognition_tags.append("高辨识度")
-                elif recognition >= 8: recognition_tags.append("中辨识度")
-                if leader_bonus >= 10: recognition_tags.append("龙头溢价")
-                if wave2_bonus >= 8: recognition_tags.append("二波强化")
-                if resonance >= 1.3: recognition_tags.append("强共振")
-                elif resonance >= 1.1: recognition_tags.append("弱共振")
-                if penalty > 0: recognition_tags.append(f"追高罚{penalty:.0f}")
-                if recognition_tags:
-                    dixi_lines.append(f"  辨识度: {' | '.join(recognition_tags)}")
-                # 第5行（可选）：YRI（有数据才显示）
-                yri_total = s.get('YRI历史总分', 0)
-                if yri_total > 0:
-                    yri_level = s.get('YRI等级', '')
-                    yri_max_lb = s.get('YRI最大连板', 0)
-                    dixi_lines.append(f"  YRI: 总分{yri_total:.0f} | {yri_level} | 最大连板{yri_max_lb}板")
-                dixi_lines.append("")
+                dixi_lines.append(f"  二波: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
             dixi_lines.append("")
+        
+        # --- 其他形态（按评分排序）---
+        if other_stocks:
+            dixi_lines.append("【其他形态（V型急跌/深度回调/放量回调）】")
+            dixi_lines.append("-" * 60)
+            for s in other_stocks:
+                rank += 1
+                price = s.get('现价', 0)
+                pct = s.get('涨跌幅', 0)
+                pct_str = f"{pct:+.2f}%" if pct != 0 else "0.00%"
+                wave2_score = s.get('二波评分', 0)
+                integrated = s.get('整合评分', 0)
+                dixi_lines.append(f"【第{rank}名】{s['名称']}({s['代码']}) 收盘价{price:.2f}元 涨跌幅{pct_str} | 二波评分={wave2_score}分 | 整合评分{int(integrated)}")
+                cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
+                confirm_days = s.get('确认天数', 0)
+                leader_seq = s.get('龙头序列', '')
+                theme_parts = [s.get('所属主题', '')]
+                if cycle:
+                    theme_parts.append(f"非一日游:{cycle}({confirm_days}天)" if confirm_days > 0 else f"非一日游:{cycle}")
+                if leader_seq and leader_seq != "无":
+                    theme_parts.append(f"龙头:{leader_seq}")
+                dixi_lines.append(f"  主题与地位: {' | '.join(theme_parts)}")
+                wave2_pattern = s.get('二波形态', '')
+                wave2_signal = s.get('二波信号', '')
+                ep = s.get('入场价', 0)
+                sl = s.get('止损价', 0)
+                tp = s.get('目标价', 0)
+                price_str = f"入场价{ep:.2f}/止损价{sl:.2f}/目标价{tp:.2f}" if ep > 0 else ""
+                dixi_lines.append(f"  二波: 形态={wave2_pattern} | 信号={wave2_signal} | {price_str}")
     else:
         dixi_lines.append("今日无低吸信号个股")
     dixi_stock_text = "\n".join(dixi_lines)
@@ -9254,6 +9491,25 @@ def run(target_date=None, simple_mode=False):
 
     midline_stock_text = "\n".join(midline_lines)
     print(midline_stock_text)
+
+    # =========================
+    # 构建量能爆发+宽幅震荡池文本
+    # =========================
+    volume_surge_swing_text = ""
+    if _volume_surge_swing_results:
+        vs_lines = ["=" * 60]
+        vs_lines.append("📊 量能爆发+宽幅震荡池 (近60天量能放大+宽幅震荡，如火星人/时代电气/奥比中光/沃顿科技)")
+        vs_lines.append("=" * 60)
+        vs_lines.append(f"共{len(_volume_surge_swing_results)}只标的，按量能爆发评分排序前10：")
+        vs_lines.append(f"{'代码':<12} {'名称':<8} {'评分':>4} {'最大量比':>8} {'量比>2':>6} {'日均振幅':>8} {'巨震>8%':>8} {'区间振幅':>8} {'区间涨幅':>8} {'近最高量%':>8} {'MACD':>8}")
+        vs_lines.append("-" * 100)
+        for _vr in _volume_surge_swing_results[:10]:
+            vs_lines.append(f"  {_vr['代码']:<12} {_vr['名称']:<8} {_vr['量能爆发评分']:>4.0f} {_vr['最大量比']:>8.2f} {_vr['量比>2天数']:>6} {_vr['日均振幅']:>7.1f}% {_vr['巨震天数(>8%)']:>6} {_vr['区间振幅']:>7.1f}% {_vr['区间涨幅']:>7.1f}% {_vr['近历史最高量%']:>6.0f}% {_vr['MACD状态']:>8}")
+        vs_lines.append("-" * 100)
+        vs_lines.append("【特征】量能大幅放大(量比>2的天数多)+宽幅震荡(日均振幅大)+区间振幅大，常见于主力建仓/洗盘/出货阶段")
+        vs_lines.append("【AI任务】分析上述股票是否具备中线上涨潜力，关注那些MACD即将/刚刚红柱、量能放大但股价尚未大幅拉升的标的，给出3-5只重点关注")
+        volume_surge_swing_text = "\n".join(vs_lines)
+        print(volume_surge_swing_text)
 
     # =========================
     # 构建预热发现池文本（被主题过滤但技术面走强的股票）
@@ -9497,43 +9753,58 @@ def run(target_date=None, simple_mode=False):
     #return
     prompt = f"""
 以下是我自己计算的量化分析结果：
-当前市场情绪：
+
+**【当前市场情绪】**
 
 {emotion_text}
 
-今日主题分析情况：
+**【今日主题分析情况】**
 
 {sector_text_his}
 ---------------------------------------
 {non_daytrip_for_ai}
 
-主题个股池选股结果（来自 theme_pattern_stock_picker.py）：
-（这是根据主题趋势和情绪筛选出的优质个股，包含中期趋势主题和短线主线的龙头和中军）
+**【主题个股池选股结果】**
+
+（来自 theme_pattern_stock_picker.py：根据主题趋势和情绪筛选出的优质个股，包含中期趋势主题和短线主线的龙头和中军）
 {theme_stocks_text}
 ---------------------------------------
 
-今日强势股票池（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）：
-（这是程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
+**【今日强势股票池】**
+
+（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
+（程序根据整合评分算法筛选的明日重点标的，目标是找到次日介入上涨概率高、失败概率低的股票）
 {hot_money_open_text}
 
-今日低吸股票池（低吸二波信号，按二波评分从高到低排序）：
+**【今日低吸股票池】**
+
+（低吸二波信号，按二波评分从高到低排序）
 {dixi_stock_text}
 
-今日趋势股池（精准入场评分≥50 + D1/D2波段位置，早盘突破信号，按评分排序取前5）：
+**【今日趋势股池】**
+
+（精准入场评分≥50 + D1/D2波段位置，早盘突破信号，按评分排序取前5）
 {trend_stock_text}
 
-今日中线股池（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）：
+**【今日中线股池】**
+
+（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）
 {midline_stock_text}
 
 {preheat_text}
 
+**【今日量能爆发+宽幅震荡池】**
+
+（近60天量能大幅放大+宽幅震荡，常见于主力资金活跃的标的）
+{volume_surge_swing_text}
+
 
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
-标题：每日复盘({TRADE_DATE})
+标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分)：
-1、大盘情绪：仓位建议及理由，操作要点
-2、今日主题分析情况:
+1、**大盘情绪**：仓位建议及理由，操作要点
+2、**今日主题分析情况**:
    【严格按以下固定模板输出，禁止自由发挥格式】
 
    第一段：用1-2句话概述今日市场风格（基于主题趋势分和情绪分判断核心主线）。
@@ -9543,9 +9814,9 @@ def run(target_date=None, simple_mode=False):
    - 要点2（操作风格/市值偏好提示）
 
    主要关注主题及补涨中军：
-   - 主题名1: 股票名1、股票名2（从主题个股池中取，加黑加粗）
-   - 主题名2: 股票名3、股票名4、股票名5
-   - 主题名3: 股票名6、股票名7
+   - 主题名1: **股票名1**、**股票名2**（从主题个股池中取，加黑加粗）
+   - 主题名2: **股票名3**、**股票名4**、**股票名5**
+   - 主题名3: **股票名6**、**股票名7**
    - 【最多列出8个最强主题，每个主题列出2-3只补涨中军】
 
    明日主题预测(结合非一日游主题可持续分析)
@@ -9556,13 +9827,14 @@ def run(target_date=None, simple_mode=False):
    【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
    【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
 
-这里引用【操作策略】中的原文，用红色加粗字体突出显示（<span style="color:red;font-weight:bold;">...</span>）
-3、今日强势股票池分析（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
+<span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
+
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面5名，不能自行截取，也不要加入其它的）：
    **【重要】按整合评分从高到低排序分析前5名个股，每个股票内容力求精简：**    
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
-     【第1名 - 明日首选】股票名 (代码)
-     【第2名】股票名 (代码)
-     【第3名】股票名 (代码)
+     【第1名 - 明日首选】**股票名** (代码)
+     【第2名】**股票名** (代码)
+     【第3名】**股票名** (代码)
      依此往后
    - 对每只股票进行详细分析，包括：
      - 整合评分和失败概率
@@ -9580,7 +9852,7 @@ def run(target_date=None, simple_mode=False):
        - 50-59分：中性（中线收益5-10%），收息/观望为主
        - <40分：减仓/卖出，长线回避
        【输出格式】Alpha评分=X分，信号=XXX | 中线建议：XXX | 长线建议：XXX
-     - 风险提示：如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，突出建议勿追高！
+     - <span style="color:red;">【重要提醒】如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，<span style="color:red;">**突出建议勿追高！**</span></span>
      - 如遇个股重大基本面风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由。技术性风险无须提示和输出。
     其它要求：
     A直接过滤掉有基本面重大风险的个股：
@@ -9605,38 +9877,54 @@ def run(target_date=None, simple_mode=False):
            * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-4、今日低吸股票池分析（二波评分≥10分的标的，必须按形态分组先后顺序：强势横盘、V型急跌、放量下跌等展示，每组内按二波评分排序）：
+4、**【今日低吸股票池分析】**（二波评分≥10分的标的，分为【强势横盘】和【其他形态】两大部分输出）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
-   - 【数据位置】低吸股票池在"今日低吸股票池"标题下方，以"共X只低吸二波标的（二波评分均≥10分）"开头，每只股票以【第X名】开头，包含"二波评分=XX分"字段
-   - 如果有符合条件个股，按二波评分降序分析每只，每只内容精简为1小段（2-3行）：
-     - 第1行：股票名(代码) 收盘价 涨跌幅 | 二波评分 | （换行）
-     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 +  主题地位）（换行）
+   - 【数据位置】低吸股票池分为两大部分：强势横盘标题下是强势横盘形态的标的；其他形态标题下是V型急跌/深度回调/放量回调等所有其他形态的标的（按评分降序排列）
+   - 【展示结构】
+     -- **【强势横盘】**：在"【强势横盘】"下，每只按格式输出，二波评分从高到低
+     -- **【其他形态（V型急跌/深度回调/放量回调）】**：在"【其他形态（V型急跌/深度回调/放量回调）】"下，所有形态混合按二波评分从高到低排序
+   - 每只内容精简为1小段（2-3行）：
+     - 第1行：**股票名**(代码) 收盘价 涨跌幅 | 二波评分 | (换行)
+     - 第2行：主题与地位（主题名 + 非一日游阶段+天数 + 主题地位）(换行)
      - 第3行：二波信号分析（形态 + 信号 + 入场/止损/目标价，简短判断）
    - 【格式示例】
-     波长光电(301421.SZ) 91.92元 +4.28% | 二波15分 
-       主题: 消费电子 | 启动确认(2天) |  地位:中军
+     **波长光电**(301421.SZ) 91.92元 +4.28% | 二波15分
+       主题: 消费电子 | 启动确认(2天) | 地位:中军
        二波: 深度回调 | 疑似二波结构 | 入场91.92/止损80.89/目标114.90
-   - 【精简原则】上方数据中没有的内容不要输出（如辨识度为"普通"或无YRI数据则不显示相关行）
+   - 【精简原则】上方数据中没有的内容不要输出
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、今日中线股池分析（B浪低点识别策略 - 近20天信号，按启动日从近到远取前3只）：
+5、**【今日中线股池分析】**（B浪低点识别策略 - 近20天信号，按启动日从近到远取前3只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近20天共X个B浪信号"开头，包含启动信号和底背离信号
    - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（2-3行）：
-     - 第1行：股票名(代码) | BWaveScore=XX分 | 信号类型（启动/底背离）
+     - 第1行：**股票名**(代码) | BWaveScore=XX分 | 信号类型（启动/底背离）
      - 第2行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 启动日：XXXX-XX-XX
      - 第3行：操作建议（启动信号可关注回调买点；底背离建议等待确认）
    - 【格式示例】
-     600961.SH | BWaveScore=76分 | 启动信号
+     **600961.SH** | BWaveScore=76分 | 启动信号
        A浪涨幅=80.4% | B浪回调=25.8% | 距A高=13.7% | 启动日：20260617
        操作建议：B浪末端启动信号，A浪强势+缩量回调健康，可在回踩MA20附近低吸，止损设B浪低点下方3%
    - 如果无信号数据，直接输出"今日无B浪低点信号（近20天无符合条件的A浪+B浪结构）"
-5、ETF操作建议
+5、**【ETF操作建议】**
 {etf_tips_text}
 
+7、**【今日量能爆发+宽幅震荡池分析】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+   - 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，共X只标的
+   - 从评分最高的开始分析，输出3-5只重点关注，每只精简为1小段（3行），用【股票名+代码】作为子标题，每个标题后换行，格式如下：
+     - 【子标题】**股票名**(代码) | 评分=XX分 | MACD状态
+     - 第2行：量比=X | 日均振幅=X% | 区间振幅=X% | 区间涨幅=X%
+     - 第3行：分析判断（是否具备中线上涨潜力，结合主题热度判断，如不符合当前热点则提示等待）
+   - 【格式示例】
+     **新天科技**(300259.SZ) | 评分=100分 | MACD刚刚红柱
+       量比=6.39 | 日均振幅=7.3% | 区间振幅=74.4% | 区间涨幅=44.1%
+       分析：量能爆发特征极显著，MACD刚刚翻红，短线爆发力强。但所属主题非当前热点，短线为主，注意节奏。
+   - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
+
 格式要求：
-- Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，加黑加粗显示
+- **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
 - 股票分析另起一行，分点说明
 - 风格简洁明了，适合阅读
 - 返回MD格式，注意换行符

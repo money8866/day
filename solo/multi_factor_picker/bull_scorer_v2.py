@@ -1975,8 +1975,8 @@ class BullScorerV2:
             recognition_w * recognition_score
         )
 
-        # 8. 最终分 = 0.88 * BullScore_v3.0 + 0.12 * ThemeScore_v2
-        final = 0.88 * bull_v3 + 0.12 * theme_score_v2
+        # 8. 最终分 = BullScore_v3.0（去掉了主题分混合）
+        final = bull_v3
 
         # 等级判定
         level = self._get_level(len([base_result]), 0)

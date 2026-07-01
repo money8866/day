@@ -1559,8 +1559,8 @@ class BullScorer:
         # ThemeScore — v2: 同时传入 fina_mainbz 主营业务数据
         theme_score = self._compute_theme_score(data.chain_tag, data.main_business_items)
 
-        # FinalScore
-        final_score = 0.88 * bull_score + 0.12 * theme_score
+        # FinalScore = BullScore（去掉了主题分混合）
+        final_score = bull_score
 
         # ── 数据完整度惩罚（v2：缺失重大财务数据时打折） ──
         dc = data.data_completeness
