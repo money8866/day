@@ -1084,6 +1084,7 @@ class WavePatternDetector:
             # v3.6: 震荡蓄力突破 - 回调浅、震荡久、已突破一波高点
             # 广合科技典型：一波涨到174.87后回调5.2%到165.78，之后震荡上涨到199.53
             # 20260624收186.85已突破174.87，此时入场不算追高
+            temp_is_standard = is_standard_sideways
             if low_pos >= 3 and low_pos <= SIDEWAYS_ADJUST_MAX and (low_pos + 10) < (n - wave1_high_idx):
                 after_pullback = closes[entry_idx:]
                 if len(after_pullback) >= 20:
@@ -1099,6 +1100,16 @@ class WavePatternDetector:
                         post_range_all = lows[wave1_high_idx:entry_idx+1]
                         new_low_all = post_range_all.min()
                         pullback_pct = (wave1_high_price - new_low_all) / wave1_high_price
+                        
+                        # 【修复】重新计算pullback_pct后，再次检查回调幅度边界
+                        # 避免像中天科技这样回调25%+还被误判为强势横盘
+                        surge_pct = round(surge_gain * 100, 1)
+                        if temp_is_standard:
+                            if not (0.02 <= pullback_pct < 0.10 and 20 <= surge_pct < 60):
+                                continue
+                        else:
+                            if not (0.02 <= pullback_pct < 0.25 and 20 <= surge_pct < 80):
+                                continue
 
             if today_only and entry_idx != n - 1:
                 continue

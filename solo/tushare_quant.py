@@ -8446,17 +8446,32 @@ def filter_by_top_themes(result_df, top_n=10):
             
             print(f"[主题过滤] MA30趋势分析: {sum(1 for v in theme_ma30_map.values() if v['trend_above_ma30'] and v['ma30_rising'])}个主题符合条件")
         
-        # 4. 筛选主题：仅使用MA30趋势条件作为唯一过滤标准
-        #    条件：指数(composite_score)在30天均线之上 且 30日均线是上行的
-        keep_themes = {t for t in theme_ma30_map 
+        # 4. 筛选主题：
+        #    A. MA30趋势符合（指数>MA30且MA30上行）
+        #    B. 主题状态为强趋势或震荡
+        #    C. 白名单主题
+        ma30_themes = {t for t in theme_ma30_map 
                       if theme_ma30_map[t]['trend_above_ma30'] 
                       and theme_ma30_map[t]['ma30_rising']}
+        
+        state_themes = {theme for theme, stats in theme_stats.items() 
+                       if stats.get('latest_state') in ['强趋势', '震荡']}
+        
+        tech_mainline_whitelist = {
+            '人形机器人', 'AI算力链', 'AI服务器与算力基建', '半导体产业链',
+            '半导体材料', '半导体设备', 'AI芯片',
+            'AI终端', '光通信', '先进封装', '存储芯片', 'IC设计'
+        }
+        
+        keep_themes = ma30_themes | state_themes | tech_mainline_whitelist
         
         non_daytrip_details = {}
         non_daytrip_confirmed = []
 
         print(f"\n[主题过滤] 保留{len(keep_themes)}个主题:")
-        print(f"  MA30趋势符合(指数>MA30且MA30上行): {sorted(keep_themes)}")
+        print(f"  MA30趋势符合: {sorted(ma30_themes)}")
+        print(f"  状态符合(强趋势/震荡): {sorted(state_themes)}")
+        print(f"  白名单主题: {sorted(tech_mainline_whitelist)}")
         print()
         
         # 构建主题状态映射（包含非一日游周期阶段）
@@ -9072,24 +9087,8 @@ def run(target_date=None, simple_mode=False):
     # =========================
     # 主题过滤：注入所属主题等字段
     # =========================
-    def _capture_dropped(df_before, df_after):
-        """捕获被主题过滤淘汰的股票，存入_preheat_pool"""
-        if df_before is None or df_before.empty or df_after is None:
-            return set()
-        before = set(df_before['代码'].tolist())
-        after = set(df_after['代码'].tolist())
-        return before - after
-
     if not result_df.empty:
-        _raw_breakout = result_df.copy()
         result_df = filter_by_top_themes(result_df)
-        _dropped = _capture_dropped(_raw_breakout, result_df)
-        for code in _dropped:
-            if code not in _preheat_pool:
-                for r in result:
-                    if r['代码'] == code:
-                        _preheat_pool[code] = r.get('名称', '')
-                        break
 
 
     # =========================
@@ -9622,27 +9621,6 @@ def run(target_date=None, simple_mode=False):
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
 
-    # =========================
-    # 构建预热发现池文本（被主题过滤但技术面走强的股票）
-    # =========================
-    _preheat_scored = []
-    for code, name in _preheat_pool.items():
-        s = _score_preheat_stock(code, name)
-        if s and s['预热评分'] >= 50:
-            _preheat_scored.append(s)
-    _preheat_scored = sorted(_preheat_scored, key=lambda x: -x['预热评分'])[:8]
-    preheat_text = ""
-    if _preheat_scored:
-        lines = ["★ 技术面领先的热门预警品种（技术面已走强，但所属主题暂未进入热点前15，可能预示主题轮动）★"]
-        lines.append("-" * 100)
-        for s in _preheat_scored:
-            lines.append(f"  {s['名称']}({s['代码']}) 预热评分{s['预热评分']} | 量能爆发{s['量能爆发']} | 趋势强度{s['趋势强度']} | 距前高{s['距前高%']}%")
-        lines.append("-" * 100)
-        lines.append("【AI任务】请判断这些品种是否预示医药、消费、新能源等非热点主题即将轮动。若某品种所属主题近期有个股开始走强，请纳入主题分析和明日预测考虑。")
-        preheat_text = "\n".join(lines)
-        print(preheat_text)
-
-
     """
     # ===== 对前10名个股调用AI基本面+事件驱动分析 =====
     print(f"\n{'='*60}")
@@ -9901,8 +9879,6 @@ def run(target_date=None, simple_mode=False):
 
 （B浪低点识别策略 - 近5天信号，包含启动信号和底背离信号）
 {midline_stock_text}
-
-{preheat_text}
 
 **【今日量能爆发+宽幅震荡池】**
 
