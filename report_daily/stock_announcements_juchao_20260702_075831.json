@@ -1,0 +1,212 @@
+[
+  {
+    "ts_code": "000776.SZ",
+    "name": "广发证券",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600877.SH",
+    "name": "电科芯片",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "300497.SZ",
+    "name": "富祥股份",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688249.SH",
+    "name": "晶合集成",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "603127.SH",
+    "name": "昭衍新药",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600160.SH",
+    "name": "巨化股份",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600961.SH",
+    "name": "株冶集团",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "300059.SZ",
+    "name": "东方财富",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "002925.SZ",
+    "name": "盈趣科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688710.SH",
+    "name": "益诺思",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "605589.SH",
+    "name": "圣泉集团",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "603256.SH",
+    "name": "宏和科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "002008.SZ",
+    "name": "大族激光",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688167.SH",
+    "name": "炬光科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688312.SH",
+    "name": "燕麦科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688700.SH",
+    "name": "东威科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "603906.SH",
+    "name": "龙蟠科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "605060.SH",
+    "name": "联德股份",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "300715.SZ",
+    "name": "凯伦股份",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688508.SH",
+    "name": "芯朋微",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "002979.SZ",
+    "name": "雷赛智能",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "301603.SZ",
+    "name": "乔锋智能",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "300657.SZ",
+    "name": "弘信电子",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "002409.SZ",
+    "name": "雅克科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688126.SH",
+    "name": "沪硅产业",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688981.SH",
+    "name": "中芯国际",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "688008.SH",
+    "name": "澜起科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "300223.SZ",
+    "name": "北京君正",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600378.SH",
+    "name": "昊华科技",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "603259.SH",
+    "name": "药明康德",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600276.SH",
+    "name": "恒瑞医药",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "600030.SH",
+    "name": "中信证券",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "601688.SH",
+    "name": "华泰证券",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "601336.SH",
+    "name": "新华保险",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  },
+  {
+    "ts_code": "601628.SH",
+    "name": "中国人寿",
+    "announcements": [],
+    "error": "'JuchaoWebCrawler' object has no attribute 'fetch_announcements'"
+  }
+]

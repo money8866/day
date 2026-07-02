@@ -4468,24 +4468,48 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 判断是否创新高
         is_new_high = current_price >= HHV20
         
+        # 判断是否连续新高：检查前N天是否也创新高
+        # 第一天新高（昨天比前天低，今天创新高）：突破形态，不用减分
+        # 连续新高：追高风险大，要减分
+        is_consecutive_high = False
+        if is_new_high and len(C) >= 5:
+            # 检查最近5天是否连续创新高（至少2天连续新高）
+            _high_hist = high_series.iloc[:-1]  # 不含今天
+            _high_20_ma = _high_hist.rolling(20, min_periods=1).max()
+            _is_high_list = _high_hist >= _high_20_ma
+            # 统计连续新高天数（从昨天开始向前数）
+            _consec_days = 0
+            for i in range(min(5, len(_is_high_list))):
+                if _is_high_list.iloc[-(i+1)]:
+                    _consec_days += 1
+                else:
+                    break
+            # 如果昨天也创新高，且前天也创新高，算连续新高
+            if _consec_days >= 2:
+                is_consecutive_high = True
+        
         # 临近高点比创新高的成功率更高
-        # 逻辑：创新高后追高风险大，临近高点蓄势突破更安全
         if dist_to_high <= 0:
-            # 创新高：适当扣分（追高风险）
-            position_score += 10  # 创新高给予基础加分
-            position_score -= 8   # 创新高惩罚（追高风险大）
+            # 创新高
+            if is_consecutive_high:
+                # 连续新高：追高风险大，扣分
+                position_score += 10  # 创新高给予基础加分
+                position_score -= 15  # 连续新高惩罚（风险大）
+            else:
+                # 第一天新高（昨天比前天低）：突破形态，不扣分
+                position_score += 15  # 第一天新高加分（突破信号）
         elif dist_to_high <= 0.03:
-            # 极接近前高（3%内）：蓄势待突破，最优位置
-            position_score += 30  # 最高加分
+            # 极接近前高（3%内）：蓄势待突破，较好位置
+            position_score += 12  # 适度加分
         elif dist_to_high <= 0.08:
-            # 临近前高（3%-8%）：强势蓄能，非常好的位置
-            position_score += 22
+            # 临近前高（3%-8%）：强势蓄能，不错的位置
+            position_score += 8
         elif dist_to_high <= 0.15:
-            # 距离前高8%-15%：温和蓄能，较好位置
-            position_score += 12
+            # 距离前高8%-15%：温和蓄能，一般位置
+            position_score += 4
         elif dist_to_high <= 0.25:
             # 距离前高15%-25%：适中位置
-            position_score += 5
+            position_score += 2
         
         # 从低点涨幅
         run_up = (current_price - LLV20) / LLV20 if LLV20 > 0 else 0
@@ -4500,13 +4524,14 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             if range90 < 0.25:
                 position_score += 10
         
-        # 创新高额外惩罚：历史新高位置风险更高
+        # 创新高额外惩罚：只有连续历史新高才惩罚
         if is_new_high:
-            # 检查120日新高
-            HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
-            if current_price >= HHV120:
-                # 120日新高：额外惩罚
-                position_score -= 5
+            if is_consecutive_high:
+                # 连续新高才检查120日新高惩罚
+                HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
+                if current_price >= HHV120:
+                    # 连续120日新高：额外惩罚
+                    position_score -= 5
         
         position_score = min(100, max(0, position_score))
         
@@ -4847,17 +4872,19 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         elif vol_ratio > 2.0:
             failure_prob -= 5   # 明显放量，失败概率降低
         
-        # 创新高惩罚：创新高后失败概率更高，临近高点成功率更高
+        # 创新高惩罚：只有连续新高才惩罚，第一天新高不惩罚
         if is_new_high:
-            # 创新高：失败概率上升
-            failure_prob += 8   # 创新高追高风险大
-            # 120日新高额外惩罚
-            HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
-            if current_price >= HHV120:
-                failure_prob += 5   # 历史新高，风险更大
+            if is_consecutive_high:
+                # 连续新高：失败概率上升
+                failure_prob += 10  # 连续新高追高风险大
+                # 120日新高额外惩罚
+                HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
+                if current_price >= HHV120:
+                    failure_prob += 5   # 连续历史新高，风险更大
+            # 第一天新高（昨天比前天低，今天创新高）：突破形态，不惩罚
         elif dist_to_high <= 0.08:
-            # 临近高点（8%以内）：蓄势待突破，失败概率降低
-            failure_prob -= 6   # 临近高点成功率更高
+            # 临近高点（8%以内）：蓄势待突破，失败概率小幅降低
+            failure_prob -= 3   # 临近高点成功率略高
         
         failure_prob += penalty * 1.5
         
@@ -8595,6 +8622,220 @@ def _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg):
 # =========================
 # 主程序
 # =========================
+# 量能爆发+宽幅震荡选股：像火星人/时代电气/奥比中光/沃顿科技那样的"近期量能大幅放大创历史新高量能，且区间股价宽幅震荡"
+# =========================
+def detect_volume_surge_swing(ts_code, name):
+    """检测量能爆发+宽幅震荡模式"""
+    try:
+        df = get_hist_data(ts_code)
+        if df is None or len(df) < 80:
+            return None
+        recent = df.tail(60)
+        if len(recent) < 20:
+            return None
+        vol_arr = recent['vol'].values.astype(float)
+        high_arr = recent['high'].values.astype(float)
+        low_arr = recent['low'].values.astype(float)
+        close_arr = recent['close'].values.astype(float)
+        pre_close_arr = recent['pre_close'].values.astype(float)
+        
+        vol_ma20 = pd.Series(vol_arr).rolling(20, min_periods=1).mean().values
+        vol_ratio = vol_arr / np.maximum(vol_ma20, 1)
+        max_vol_ratio = float(np.max(vol_ratio))
+        vol_ratio_gt2 = int(np.sum(vol_ratio > 2.0))
+        vol_ratio_gt3 = int(np.sum(vol_ratio > 3.0))
+        
+        hist_vol_max = float(np.max(df['vol'].values.astype(float)))
+        recent_vol_max = float(np.max(vol_arr))
+        vol_vs_hist_pct = (recent_vol_max / hist_vol_max * 100) if hist_vol_max > 0 else 0
+        
+        amplitude = (high_arr - low_arr) / np.maximum(pre_close_arr, 0.01) * 100
+        avg_amplitude = float(np.mean(amplitude))
+        amp_gt8_count = int(np.sum(amplitude > 8))
+        
+        range_high = float(np.max(high_arr))
+        range_low = float(np.min(low_arr))
+        range_swing = (range_high / range_low - 1) * 100 if range_low > 0 else 0
+        
+        price_change = (close_arr[-1] / close_arr[0] - 1) * 100 if close_arr[0] > 0 else 0
+        
+        # 硬条件（参考4只标的特征收紧阈值）
+        if max_vol_ratio < 2.6:
+            return None
+        if vol_ratio_gt2 < 3:
+            return None
+        if avg_amplitude < 4.5:
+            return None
+        if range_swing < 35:
+            return None
+        if price_change < -10:
+            return None
+        # 排除已大幅拉升的（区间涨幅>100%的可能已是强弩之末）
+        if price_change > 100:
+            return None
+        # 排除新股上市不足180天（次新股的巨量由IPO效应导致，不具可比性）
+        if len(df) < 180:
+            return None
+        # 量能必须达到过历史最高量的50%以上（确保"创历史新高量能"特征）
+        if vol_vs_hist_pct < 50:
+            return None
+        
+        # =========================
+        # 近期量能活跃度检查：对比起涨前基量（200天窗口内量能最高点前20日均量）
+        # 如雷赛智能虽缩量仍比起涨前高2.18倍，科林电气缩量到基量以下则应排除
+        # =========================
+        _df200 = df.tail(200) if len(df) >= 200 else df
+        _vol200 = _df200['vol'].values.astype(float)
+        _high200 = _df200['high'].values.astype(float)
+        _low200 = _df200['low'].values.astype(float)
+        _close200 = _df200['close'].values.astype(float)
+        
+        _peak_vol_idx = int(np.argmax(_vol200))
+        _peak_vol_price = float(_high200[_peak_vol_idx])
+        
+        # 量能最高点前20天~前3天作为起涨前基量区
+        _pre_peak_start = max(0, _peak_vol_idx - 20)
+        _pre_peak_end = max(0, _peak_vol_idx - 3)
+        _base_vol = float(np.mean(_vol200[_pre_peak_start:_pre_peak_end])) if _pre_peak_end > _pre_peak_start else float(np.mean(_vol200[:_peak_vol_idx]))
+        _base_vol = max(_base_vol, 1)
+        
+        # 近20天均量 vs 起涨前基量
+        _recent_vol = float(np.mean(_vol200[-20:])) if len(_vol200) >= 20 else float(np.mean(_vol200))
+        _vol_vs_base = _recent_vol / _base_vol
+        
+        # 近20天均量至少是起涨前基量的1.3倍（保持比起涨前活跃）
+        if _vol_vs_base < 1.3:
+            return None
+        
+        # =========================
+        # 关键检查：近期均量 vs 高点5日均量
+        # 量能爆发后如果短线均量严重低于高点量能，说明资金撤退，应排除
+        # 如：新集能源，虽然比起涨前基量高，但已严重低于高点时的量能水平
+        # =========================
+        _peak_vol_start = max(0, _peak_vol_idx - 5)
+        _peak_vol_end = min(len(_vol200), _peak_vol_idx + 6)
+        _peak_5d_vol = float(np.mean(_vol200[_peak_vol_start:_peak_vol_end])) if _peak_vol_end > _peak_vol_start else _recent_vol
+        _peak_5d_vol = max(_peak_5d_vol, 1)
+        _vol_vs_peak = _recent_vol / _peak_5d_vol
+        
+        # 近期均量至少是高点5日均量的50%（防止量能严重萎缩）
+        # 如果低于50%，说明量能已大幅撤退，不是健康的量能震荡
+        if _vol_vs_peak < 0.5:
+            return None
+        
+        # ABC结构检查：A浪涨幅>15%（有明确上攻）
+        _a_low = float(np.min(_low200[:_peak_vol_idx+1]))
+        _a_gain = (_peak_vol_price / _a_low - 1) * 100 if _a_low > 0 else 0
+        if _a_gain < 15:
+            return None
+        
+        # B浪回撤检查：回撤应在61.8%以内（偏浅是强势横盘，偏深是充分回调，过深则是一波游）
+        if _peak_vol_idx < len(_low200) - 3:
+            _b_low = float(np.min(_low200[_peak_vol_idx:]))
+            _b_drop = (1 - _b_low / _peak_vol_price) * 100
+            _retrace_ratio = _b_drop / _a_gain * 100 if _a_gain > 0 else 0
+        else:
+            _b_low = close_arr[-1]
+            _b_drop = 0
+            _retrace_ratio = 0
+        
+        # 计算斐波那契回撤位
+        _fib_618 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.618
+        _fib_786 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.786
+        
+        # B浪低点不能跌穿78.6%（不许一波游），不设下限（浅回调=强势横盘）
+        if _b_low < _fib_786 * 0.92:
+            return None
+        # 回撤占A浪比例不能过大（防止一波游），不过小则保留（强势横盘）
+        if _retrace_ratio > 80:
+            return None
+        
+        # =========================
+        # 排除"一波游"：高峰前涨幅过大(>70%)且当前远离高点(>15%)
+        # 真正的宽幅震荡应该：涨幅适中 OR 当前在高点附近
+        # =========================
+        _peak_idx = int(np.argmax(high_arr))
+        _peak_price = float(high_arr[_peak_idx])
+        _pre_peak_low = float(np.min(low_arr[:_peak_idx+1])) if _peak_idx > 0 else float(low_arr[0])
+        _pre_peak_gain = (_peak_price / _pre_peak_low - 1) * 100 if _pre_peak_low > 0 else 0
+        _dist_from_peak = (1 - close_arr[-1] / _peak_price) * 100
+        
+        # 高峰后有反弹（从最低点反弹超过10%）
+        if _peak_idx < len(high_arr) - 10:
+            _post_peak_low = float(np.min(low_arr[_peak_idx:]))
+            if _post_peak_low > 0:
+                _bounce = (close_arr[-1] / _post_peak_low - 1) * 100
+            else:
+                _bounce = 0
+        else:
+            _bounce = 0
+        
+        # 一波游：涨幅过大 + 远离高点 + 没有有效反弹
+        if _pre_peak_gain > 70 and _dist_from_peak > 15 and _bounce < 10:
+            return None
+        
+        # 评分
+        vol_score = min(max_vol_ratio / 5.0, 1) * 30
+        freq_score = min(vol_ratio_gt2 / 7, 1) * 20
+        amp_score = min(avg_amplitude / 7, 1) * 20
+        big_amp_score = min(amp_gt8_count / 15, 1) * 15
+        swing_score = min(range_swing / 60, 1) * 15
+        total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
+        
+        if total_score < 55:
+            return None
+        
+        # =========================
+        # MACD信号判断：即将红柱或刚刚红柱
+        # =========================
+        close_full = df['close'].values.astype(float)
+        ema12 = pd.Series(close_full).ewm(span=12, adjust=False).mean().values
+        ema26 = pd.Series(close_full).ewm(span=26, adjust=False).mean().values
+        macd_dif = ema12 - ema26
+        macd_dea = pd.Series(macd_dif).ewm(span=9, adjust=False).mean().values
+        macd_bar = 2 * (macd_dif - macd_dea)
+        
+        cur_bar = float(macd_bar[-1])
+        prev_bar = float(macd_bar[-2]) if len(macd_bar) >= 2 else cur_bar
+        prev2_bar = float(macd_bar[-3]) if len(macd_bar) >= 3 else prev_bar
+        
+        macd_status = ''
+        macd_pass = False
+        # 刚刚红柱：前一个或前两个为负，当前为正
+        if prev_bar < 0 < cur_bar:
+            macd_status = '刚刚红柱 ✅'
+            macd_pass = True
+        # 即将红柱：当前仍为负但连续2天缩短（向零轴靠近）
+        elif cur_bar < 0 and cur_bar > prev_bar > prev2_bar:
+            macd_status = '即将红柱（绿柱连续缩短）'
+            macd_pass = True
+        
+        if not macd_pass:
+            return None
+        
+        # 当日量能是否异动
+        today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
+        
+        return {
+            '代码': ts_code,
+            '名称': name,
+            '量能爆发评分': round(total_score, 1),
+            '最大量比': round(max_vol_ratio, 2),
+            '量比>2天数': vol_ratio_gt2,
+            '量比>3天数': vol_ratio_gt3,
+            '日均振幅': round(avg_amplitude, 2),
+            '巨震天数(>8%)': amp_gt8_count,
+            '区间振幅': round(range_swing, 1),
+            '区间涨幅': round(price_change, 1),
+            '近历史最高量%': round(vol_vs_hist_pct, 0),
+            '今日量比': round(today_vol_ratio, 2),
+            'MACD状态': macd_status,
+        }
+    except Exception:
+        return None
+
+
+# =========================
 def run(target_date=None, simple_mode=False):
     """运行量化选股分析
     
@@ -8745,219 +8986,6 @@ def run(target_date=None, simple_mode=False):
             print(ts_code, e)
 
             continue
-
-    # =========================
-    # 量能爆发+宽幅震荡选股：像火星人/时代电气/奥比中光/沃顿科技那样的"近期量能大幅放大创历史新高量能，且区间股价宽幅震荡"
-    # =========================
-    def detect_volume_surge_swing(ts_code, name):
-        """检测量能爆发+宽幅震荡模式"""
-        try:
-            df = get_hist_data(ts_code)
-            if df is None or len(df) < 80:
-                return None
-            recent = df.tail(60)
-            if len(recent) < 20:
-                return None
-            vol_arr = recent['vol'].values.astype(float)
-            high_arr = recent['high'].values.astype(float)
-            low_arr = recent['low'].values.astype(float)
-            close_arr = recent['close'].values.astype(float)
-            pre_close_arr = recent['pre_close'].values.astype(float)
-            
-            vol_ma20 = pd.Series(vol_arr).rolling(20, min_periods=1).mean().values
-            vol_ratio = vol_arr / np.maximum(vol_ma20, 1)
-            max_vol_ratio = float(np.max(vol_ratio))
-            vol_ratio_gt2 = int(np.sum(vol_ratio > 2.0))
-            vol_ratio_gt3 = int(np.sum(vol_ratio > 3.0))
-            
-            hist_vol_max = float(np.max(df['vol'].values.astype(float)))
-            recent_vol_max = float(np.max(vol_arr))
-            vol_vs_hist_pct = (recent_vol_max / hist_vol_max * 100) if hist_vol_max > 0 else 0
-            
-            amplitude = (high_arr - low_arr) / np.maximum(pre_close_arr, 0.01) * 100
-            avg_amplitude = float(np.mean(amplitude))
-            amp_gt8_count = int(np.sum(amplitude > 8))
-            
-            range_high = float(np.max(high_arr))
-            range_low = float(np.min(low_arr))
-            range_swing = (range_high / range_low - 1) * 100 if range_low > 0 else 0
-            
-            price_change = (close_arr[-1] / close_arr[0] - 1) * 100 if close_arr[0] > 0 else 0
-            
-            # 硬条件（参考4只标的特征收紧阈值）
-            if max_vol_ratio < 2.6:
-                return None
-            if vol_ratio_gt2 < 3:
-                return None
-            if avg_amplitude < 4.5:
-                return None
-            if range_swing < 35:
-                return None
-            if price_change < -10:
-                return None
-            # 排除已大幅拉升的（区间涨幅>100%的可能已是强弩之末）
-            if price_change > 100:
-                return None
-            # 排除新股上市不足180天（次新股的巨量由IPO效应导致，不具可比性）
-            if len(df) < 180:
-                return None
-            # 量能必须达到过历史最高量的50%以上（确保"创历史新高量能"特征）
-            if vol_vs_hist_pct < 50:
-                return None
-            
-            # =========================
-            # 近期量能活跃度检查：对比起涨前基量（200天窗口内量能最高点前20日均量）
-            # 如雷赛智能虽缩量仍比起涨前高2.18倍，科林电气缩量到基量以下则应排除
-            # =========================
-            _df200 = df.tail(200) if len(df) >= 200 else df
-            _vol200 = _df200['vol'].values.astype(float)
-            _high200 = _df200['high'].values.astype(float)
-            _low200 = _df200['low'].values.astype(float)
-            _close200 = _df200['close'].values.astype(float)
-            
-            _peak_vol_idx = int(np.argmax(_vol200))
-            _peak_vol_price = float(_high200[_peak_vol_idx])
-            
-            # 量能最高点前20天~前3天作为起涨前基量区
-            _pre_peak_start = max(0, _peak_vol_idx - 20)
-            _pre_peak_end = max(0, _peak_vol_idx - 3)
-            _base_vol = float(np.mean(_vol200[_pre_peak_start:_pre_peak_end])) if _pre_peak_end > _pre_peak_start else float(np.mean(_vol200[:_peak_vol_idx]))
-            _base_vol = max(_base_vol, 1)
-            
-            # 近20天均量 vs 起涨前基量
-            _recent_vol = float(np.mean(_vol200[-20:])) if len(_vol200) >= 20 else float(np.mean(_vol200))
-            _vol_vs_base = _recent_vol / _base_vol
-            
-            # 近20天均量至少是起涨前基量的1.3倍（保持比起涨前活跃）
-            if _vol_vs_base < 1.3:
-                return None
-            
-            # =========================
-            # 关键检查：近期均量 vs 高点5日均量
-            # 量能爆发后如果短线均量严重低于高点量能，说明资金撤退，应排除
-            # 如：新集能源，虽然比起涨前基量高，但已严重低于高点时的量能水平
-            # =========================
-            _peak_vol_start = max(0, _peak_vol_idx - 5)
-            _peak_vol_end = min(len(_vol200), _peak_vol_idx + 6)
-            _peak_5d_vol = float(np.mean(_vol200[_peak_vol_start:_peak_vol_end])) if _peak_vol_end > _peak_vol_start else _recent_vol
-            _peak_5d_vol = max(_peak_5d_vol, 1)
-            _vol_vs_peak = _recent_vol / _peak_5d_vol
-            
-            # 近期均量至少是高点5日均量的50%（防止量能严重萎缩）
-            # 如果低于50%，说明量能已大幅撤退，不是健康的量能震荡
-            if _vol_vs_peak < 0.5:
-                return None
-            
-            # ABC结构检查：A浪涨幅>15%（有明确上攻）
-            _a_low = float(np.min(_low200[:_peak_vol_idx+1]))
-            _a_gain = (_peak_vol_price / _a_low - 1) * 100 if _a_low > 0 else 0
-            if _a_gain < 15:
-                return None
-            
-            # B浪回撤检查：回撤应在61.8%以内（偏浅是强势横盘，偏深是充分回调，过深则是一波游）
-            if _peak_vol_idx < len(_low200) - 3:
-                _b_low = float(np.min(_low200[_peak_vol_idx:]))
-                _b_drop = (1 - _b_low / _peak_vol_price) * 100
-                _retrace_ratio = _b_drop / _a_gain * 100 if _a_gain > 0 else 0
-            else:
-                _b_low = _cur_price
-                _b_drop = 0
-                _retrace_ratio = 0
-            
-            # 计算斐波那契回撤位
-            _fib_618 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.618
-            _fib_786 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.786
-            
-            # B浪低点不能跌穿78.6%（不许一波游），不设下限（浅回调=强势横盘）
-            if _b_low < _fib_786 * 0.92:
-                return None
-            # 回撤占A浪比例不能过大（防止一波游），不过小则保留（强势横盘）
-            if _retrace_ratio > 80:
-                return None
-            
-            # =========================
-            # 排除"一波游"：高峰前涨幅过大(>70%)且当前远离高点(>15%)
-            # 真正的宽幅震荡应该：涨幅适中 OR 当前在高点附近
-            # =========================
-            _peak_idx = int(np.argmax(high_arr))
-            _peak_price = float(high_arr[_peak_idx])
-            _pre_peak_low = float(np.min(low_arr[:_peak_idx+1])) if _peak_idx > 0 else float(low_arr[0])
-            _pre_peak_gain = (_peak_price / _pre_peak_low - 1) * 100 if _pre_peak_low > 0 else 0
-            _dist_from_peak = (1 - close_arr[-1] / _peak_price) * 100
-            
-            # 高峰后有反弹（从最低点反弹超过10%）
-            if _peak_idx < len(high_arr) - 10:
-                _post_peak_low = float(np.min(low_arr[_peak_idx:]))
-                if _post_peak_low > 0:
-                    _bounce = (close_arr[-1] / _post_peak_low - 1) * 100
-                else:
-                    _bounce = 0
-            else:
-                _bounce = 0
-            
-            # 一波游：涨幅过大 + 远离高点 + 没有有效反弹
-            if _pre_peak_gain > 70 and _dist_from_peak > 15 and _bounce < 10:
-                return None
-            
-            # 评分
-            vol_score = min(max_vol_ratio / 5.0, 1) * 30
-            freq_score = min(vol_ratio_gt2 / 7, 1) * 20
-            amp_score = min(avg_amplitude / 7, 1) * 20
-            big_amp_score = min(amp_gt8_count / 15, 1) * 15
-            swing_score = min(range_swing / 60, 1) * 15
-            total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
-            
-            if total_score < 55:
-                return None
-            
-            # =========================
-            # MACD信号判断：即将红柱或刚刚红柱
-            # =========================
-            close_full = df['close'].values.astype(float)
-            ema12 = pd.Series(close_full).ewm(span=12, adjust=False).mean().values
-            ema26 = pd.Series(close_full).ewm(span=26, adjust=False).mean().values
-            macd_dif = ema12 - ema26
-            macd_dea = pd.Series(macd_dif).ewm(span=9, adjust=False).mean().values
-            macd_bar = 2 * (macd_dif - macd_dea)
-            
-            cur_bar = float(macd_bar[-1])
-            prev_bar = float(macd_bar[-2]) if len(macd_bar) >= 2 else cur_bar
-            prev2_bar = float(macd_bar[-3]) if len(macd_bar) >= 3 else prev_bar
-            
-            macd_status = ''
-            macd_pass = False
-            # 刚刚红柱：前一个或前两个为负，当前为正
-            if prev_bar < 0 < cur_bar:
-                macd_status = '刚刚红柱 ✅'
-                macd_pass = True
-            # 即将红柱：当前仍为负但连续2天缩短（向零轴靠近）
-            elif cur_bar < 0 and cur_bar > prev_bar > prev2_bar:
-                macd_status = '即将红柱（绿柱连续缩短）'
-                macd_pass = True
-            
-            if not macd_pass:
-                return None
-            
-            # 当日量能是否异动
-            today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
-            
-            return {
-                '代码': ts_code,
-                '名称': name,
-                '量能爆发评分': round(total_score, 1),
-                '最大量比': round(max_vol_ratio, 2),
-                '量比>2天数': vol_ratio_gt2,
-                '量比>3天数': vol_ratio_gt3,
-                '日均振幅': round(avg_amplitude, 2),
-                '巨震天数(>8%)': amp_gt8_count,
-                '区间振幅': round(range_swing, 1),
-                '区间涨幅': round(price_change, 1),
-                '近历史最高量%': round(vol_vs_hist_pct, 0),
-                '今日量比': round(today_vol_ratio, 2),
-                'MACD状态': macd_status,
-            }
-        except Exception:
-            return None
 
     _volume_surge_swing_results = []
     # 改为从"合格股池"扫描，而非全市场
@@ -9533,7 +9561,7 @@ def run(target_date=None, simple_mode=False):
     midline_lines = []
     midline_lines.append("")
     midline_lines.append("=" * 60)
-    midline_lines.append("📊 中线股池 (B浪低点识别策略 - 近20天信号)")
+    midline_lines.append("📊 中线股池 (B浪低点识别策略 - 近5个交易日信号)")
     midline_lines.append("=" * 60)
 
     try:
@@ -9546,7 +9574,7 @@ def run(target_date=None, simple_mode=False):
             bwave_df['launch_date'] = bwave_df['launch_date'].astype(str)
             bwave_df['today'] = bwave_df['today'].astype(str)
             
-            start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=20)).strftime('%Y%m%d')
+            start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=9)).strftime('%Y%m%d')
             recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
             
             # 添加主题过滤
@@ -9560,24 +9588,42 @@ def run(target_date=None, simple_mode=False):
                         _preheat_pool[code] = ''
             
             if not recent.empty:
-                total_count = recent.shape[0]
-                recent = recent.sort_values('launch_date', ascending=False)
-                midline_lines.append(f"近20天共{total_count}个B浪信号，按启动日从新到旧排列")
-                midline_lines.append(f"{'代码':<12} {'名称':<8} {'类型':<6} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
-                midline_lines.append("-" * 80)
+                # 按股票合并信号，同一股票的多个信号合并为一行显示
+                recent_grouped = recent.groupby('ts_code').agg({
+                    'signal_type': lambda x: ','.join(sorted(set(x))),
+                    'signal_tags': lambda x: ','.join([t for t in x if pd.notna(t) and t]),
+                    'bwave_score': 'first',
+                    'a_gain': 'first',
+                    'b_drop': 'first',
+                    'launch_date': 'max',
+                    'launch_dist_to_a_high': 'first',
+                    'return_5d': 'first',
+                    'bottom_signal_date': 'first',
+                    'rsi_golden_date': 'first',
+                    'macd_golden_date': 'first',
+                }).reset_index()
+                recent_grouped = recent_grouped.sort_values('bwave_score', ascending=False)
                 
-                for _, r in recent.iterrows():
+                total_count = recent_grouped.shape[0]
+                total_signals = recent.shape[0]
+                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票），按评分降序排列")
+                midline_lines.append(f"{'代码':<12} {'名称':<8} {'信号':<30} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
+                midline_lines.append("-" * 100)
+                
+                for _, r in recent_grouped.iterrows():
                     name = get_stock_name(r['ts_code'])
-                    sig_type = '启动' if r['signal_type'] == 'launch' else '底背离'
-                    midline_lines.append(f"  {r['ts_code']:<12} {name:<8} {sig_type:<6} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
+                    sig_tags = str(r['signal_tags']) if pd.notna(r['signal_tags']) else ''
+                    midline_lines.append(f"  {r['ts_code']:<12} {name:<8} {sig_tags:<30} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
                 
                 midline_lines.append("")
-                midline_lines.append("📋 操作建议:")
-                midline_lines.append("  【启动信号】：已放量突破，可关注回调后的买点，止损设B浪低点下方3%")
-                midline_lines.append("  【底背离信号】：左侧信号，建议等待MACD金叉或放量阳线确认后再入场")
-                midline_lines.append("  【风险提示】：距A浪高点越近风险越低，反弹超过35%需谨慎追高")
+                midline_lines.append("📋 信号说明:")
+                midline_lines.append("  【见底】：长下影小阳十字星，低吸信号")
+                midline_lines.append("  【RSI金叉】：RSI从50下方上穿50，短线见底信号")
+                midline_lines.append("  【MACD金叉】：DIF上穿DEA，中线启动信号")
+                midline_lines.append("  【底背离】：B浪末端价格新低但MACD未新低，左侧信号")
+                midline_lines.append("  【操作建议】：见底+RSI金叉可低吸，MACD金叉确认加仓，止损设B浪低点下方3%")
             else:
-                midline_lines.append("  近20天无B浪信号")
+                midline_lines.append("  近5个交易日无B浪信号")
         else:
             midline_lines.append("  未找到B浪策略CSV（请先运行 bwave_strategy.py --pool qualified）")
     except Exception as e:
@@ -9989,18 +10035,21 @@ def run(target_date=None, simple_mode=False):
    - 【精简原则】上方数据中没有的内容不要输出
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、**【今日中线股池分析】**（B浪低点识别策略 - 近20天信号，按启动日从近到远取前3只）：
+5、**【今日中线股池分析】**（B浪低点识别策略 - 近5个交易日信号，按BWaveScore降序）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-   - 【数据位置】中线股池在"今日中线股池"标题下方，以"近20天共X个B浪信号"开头，包含启动信号和底背离信号
-   - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（2-3行）：
-     - 第1行：**股票名**(代码) | BWaveScore=XX分 | 信号类型（启动/底背离）
-     - 第2行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 启动日：XXXX-XX-XX
-     - 第3行：操作建议（启动信号可关注回调买点；底背离建议等待确认）
+   - 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
+   - 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
+   - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（3-4行）：
+     - 第1行：**股票名**(代码) | BWaveScore=XX分 | 信号类型（见底/RSI金叉/MACD金叉/底背离）
+     - 第2行：信号详情（每个信号及日期，如：见底20260629 | RSI金叉20260630 | MACD金叉20260701）
+     - 第3行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 最新信号日：XXXX-XX-XX
+     - 第4行：操作建议（根据信号组合给出：见底+RSI金叉可低吸，MACD金叉确认加仓等）
    - 【格式示例】
-     **600961.SH** | BWaveScore=76分 | 启动信号
-       A浪涨幅=80.4% | B浪回调=25.8% | 距A高=13.7% | 启动日：20260617
-       操作建议：B浪末端启动信号，A浪强势+缩量回调健康，可在回踩MA20附近低吸，止损设B浪低点下方3%
-   - 如果无信号数据，直接输出"今日无B浪低点信号（近20天无符合条件的A浪+B浪结构）"
+     **雷赛智能**(002979.SZ) | BWaveScore=62分 | 见底+RSI金叉+MACD金叉
+       信号详情：见底20260629 | RSI金叉20260630 | MACD金叉20260701
+       A浪涨幅=81.5% | B浪回调=23.0% | 距A高=15.5% | 最新信号日：20260701
+       操作建议：三信号共振，见底后RSI先金叉（6/30）、MACD后金叉（7/1），信号递进确认，可在回踩MA20附近低吸，止损设B浪低点下方3%
+   - 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"
 5、**【ETF操作建议】**
 {etf_tips_text}
 

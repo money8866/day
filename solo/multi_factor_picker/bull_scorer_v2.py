@@ -1735,8 +1735,8 @@ class BullScorerV2:
         self._alpha_cache: Dict[str, Tuple[float, Dict]] = {}
         self._leader_cache: Dict[str, Dict] = {}
         
-        # 市值过滤范围（60亿-5000亿）
-        self.min_market_cap = 60 * 1e8   # 60亿
+        # 市值过滤范围（100亿-5000亿）
+        self.min_market_cap = 100 * 1e8   # 100亿
         self.max_market_cap = 5000 * 1e8 # 5000亿
         
         # 持久化文件缓存（同一天不重拉Tushare）

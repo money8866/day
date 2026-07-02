@@ -187,6 +187,168 @@ TARGET_RR_DEEP    = 5.0
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 市场情绪读取（从 market_analysis.db）
+# ═══════════════════════════════════════════════════════════════════
+def get_market_sentiment() -> dict:
+    """
+    从 market_analysis.db 读取市场情绪数据，用于低吸风险过滤。
+    返回:
+        trend_score: 市场趋势评分 (0-100)
+        position: 建议仓位 (%)
+        market_status: 市场状态描述
+        risk_level: 0=安全  1=谨慎  2=危险
+        up_ratio: 上涨占比 (上涨家数/总家数)
+    """
+    default = {'trend_score': 50, 'position': 50, 'market_status': '', 'risk_level': 0, 'up_ratio': 0.5}
+    try:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               '..', 'cache_backbone_tushare', 'market_analysis.db')
+        if not os.path.exists(db_path):
+            return default
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        
+        cur.execute('SELECT * FROM overall_analysis ORDER BY trade_date DESC LIMIT 1')
+        oa = cur.fetchone()
+        cur.execute('SELECT up_count, down_count FROM limit_stats ORDER BY trade_date DESC LIMIT 1')
+        ls = cur.fetchone()
+        conn.close()
+        
+        if not oa:
+            return default
+        
+        trend_score = float(oa['trend_score']) if oa['trend_score'] else 50
+        position = float(oa['total_position']) if oa['total_position'] else 50
+        market_status = oa['market_status'] or ''
+        
+        # 计算上涨占比
+        up_ratio = 0.5
+        if ls:
+            up = float(ls['up_count']) if ls['up_count'] else 0
+            down = float(ls['down_count']) if ls['down_count'] else 0
+            total = up + down
+            if total > 0:
+                up_ratio = up / total
+        
+        # 风险等级判定（两端：趋势过低=危险，情绪过亢=也危险）
+        if trend_score < 30 or position < 20 or up_ratio < 0.25 or up_ratio > 0.85:
+            risk_level = 2  # 危险
+        elif trend_score < 50 or position < 40 or up_ratio < 0.40 or up_ratio > 0.75:
+            risk_level = 1  # 谨慎
+        else:
+            risk_level = 0  # 安全
+        
+        return {
+            'trend_score': trend_score,
+            'position': position,
+            'market_status': market_status,
+            'risk_level': risk_level,
+            'up_ratio': round(up_ratio, 2),
+        }
+    except Exception:
+        return default
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 企稳状态检测（弱转强核心逻辑）
+# ═══════════════════════════════════════════════════════════════════
+def get_stabilization(df: pd.DataFrame, idx: int) -> dict:
+    """
+    检测个股在调整末期的企稳特征，判断是否具备弱转强条件。
+    返回:
+        consecutive_low_rising: 连续低点抬升天数 (0=无)
+        volume_shrink: 连续缩量到极致天数 (0=无)
+        ma_support: 均线支撑数量 (0~3: MA20/MA60/MA250)
+        macd_bottom: MACD底部金叉 (DIF从负转正3日内)
+        high_low_narrow: 振幅连续收窄天数 (0=无)
+        overall: 综合企稳得分 (越高越确定)
+    """
+    result = {
+        'consecutive_low_rising': 0,
+        'volume_shrink': 0,
+        'ma_support': 0,
+        'macd_bottom': False,
+        'high_low_narrow': 0,
+        'overall': 0,
+    }
+    if df is None or idx < 10 or idx >= len(df):
+        return result
+
+    try:
+        closes = df['close'].values
+        highs = df['high'].values if 'high' in df.columns else closes
+        lows = df['low'].values if 'low' in df.columns else closes
+        vols = df['vol'].values if 'vol' in df.columns else None
+
+        # 1. 连续低点抬升（近5日低点逐步抬高）
+        rising_days = 0
+        for j in range(idx, max(idx - 5, 0), -1):
+            if lows[j] > lows[j - 1]:
+                rising_days += 1
+            else:
+                break
+        result['consecutive_low_rising'] = rising_days
+
+        # 2. 连续缩量（量比<0.7）
+        shrink_days = 0
+        if vols is not None:
+            avg_vol_20 = np.mean(vols[max(0, idx - 20):idx])
+            if avg_vol_20 > 0:
+                for j in range(idx, max(idx - 5, 0), -1):
+                    vol_ratio = vols[j] / avg_vol_20
+                    if vol_ratio < 0.7:
+                        shrink_days += 1
+                    else:
+                        break
+        result['volume_shrink'] = shrink_days
+
+        # 3. 均线支撑
+        ma_support = 0
+        for ma_col, ma_label in [('ma_bfq_20', 'MA20'), ('ma_bfq_60', 'MA60'), ('ma_bfq_250', 'MA250')]:
+            if ma_col in df.columns:
+                ma_val = float(df.iloc[idx].get(ma_col, 0))
+                if ma_val > 0 and float(df.iloc[idx]['close']) > ma_val * 0.98:
+                    ma_support += 1
+        result['ma_support'] = ma_support
+
+        # 4. MACD底部金叉（DIF从负转正3日内）
+        if 'macd_dif_bfq' in df.columns:
+            dif_now = float(df.iloc[idx].get('macd_dif_bfq', 0))
+            dif_3ago = float(df.iloc[max(0, idx - 3)].get('macd_dif_bfq', -1))
+            if dif_now > 0 and dif_3ago < 0:
+                result['macd_bottom'] = True
+
+        # 5. 振幅连续收窄
+        narrow_days = 0
+        for j in range(idx, max(idx - 5, 0), -1):
+            day_range = (highs[j] - lows[j]) / closes[j]
+            if day_range < 0.03:  # 振幅<3%
+                narrow_days += 1
+            else:
+                break
+        result['high_low_narrow'] = narrow_days
+
+        # 综合得分
+        score = 0
+        if rising_days >= 3: score += 20
+        elif rising_days >= 2: score += 10
+        if shrink_days >= 3: score += 15
+        elif shrink_days >= 2: score += 8
+        if ma_support >= 2: score += 15
+        elif ma_support >= 1: score += 5
+        if result['macd_bottom']: score += 15
+        if narrow_days >= 3: score += 10
+        elif narrow_days >= 2: score += 5
+        result['overall'] = score
+
+    except Exception:
+        pass
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════
 # 多指标共振评分引擎
 # ═══════════════════════════════════════════════════════════════════
 class ResonanceScorer:
@@ -204,7 +366,9 @@ class ResonanceScorer:
               limitup_score: int = 0,
               volume_recovery_score: int = 0,
               atr_pct: float = 0,
-              market_cap_b: float = 0) -> dict:
+              market_cap_b: float = 0,
+              market_risk_level: int = 0,
+              stabilization: dict = None) -> dict:
         """
         评分维度（满分约65+，v3.5新增市值区间加减分）:
           动量类: RSI(3) + KDJ-J(3) + CCI(2) + WR(2)
@@ -473,6 +637,42 @@ class ResonanceScorer:
             elif market_cap_b >= 1000:
                 _add(1, f'市值{market_cap_b:.0f}亿(大盘股流动性好)')
 
+        # ── 市场环境风险调整 ─────────────────────────────────────────
+        # 情绪退潮时降低评分，避免追在下跌中继
+        if market_risk_level == 2:
+            _add(-15, '市场环境危险(趋势分低/仓位轻/上涨占比<25%)')
+        elif market_risk_level == 1:
+            _add(-5, '市场环境谨慎(趋势分<50或仓位<40%或上涨占比<40%)')
+
+        # ── 企稳确认加分（弱转强核心）───────────────────────────────
+        # stabilization 包含: consecutive_low_rising(低点抬升), volume_shrink(缩量到底),
+        #                     ma_support(均线支撑), macd_bottom(底部金叉), high_low_narrow(振幅收窄)
+        if stabilization:
+            # 低点连续抬升（3日+）→ 下跌趋势衰竭
+            if stabilization.get('consecutive_low_rising', 0) >= 3:
+                _add(8, f"连续低点抬升{stabilization['consecutive_low_rising']}天(下跌衰竭)")
+            elif stabilization.get('consecutive_low_rising', 0) >= 2:
+                _add(4, f"低点抬升{stabilization['consecutive_low_rising']}天(企稳初现)")
+            
+            # 缩量到极致（量比<0.6且持续）→ 卖盘枯竭
+            if stabilization.get('volume_shrink', 0) >= 3:
+                _add(5, "连续缩量到极致(卖盘枯竭)")
+            
+            # 重要均线支撑
+            ma_support_cnt = stabilization.get('ma_support', 0)
+            if ma_support_cnt >= 2:
+                _add(6, "多均线支撑(MA20+MA60)")
+            elif ma_support_cnt >= 1:
+                _add(3, "单均线支撑")
+            
+            # MACD底部金叉（dif从负转正3日内）→ 趋势反转确认
+            if stabilization.get('macd_bottom', False):
+                _add(5, "MACD底部金叉(弱转强确认)")
+            
+            # 振幅连续收窄（3日+）→ 蓄力待发
+            if stabilization.get('high_low_narrow', 0) >= 3:
+                _add(3, "振幅连续收窄(蓄力待发)")
+
         # ── 中长线趋势过滤（v2.7核心规则）───────────────────────────────────
         # 三均线支撑=二波成功率100%，不满足则直接过滤
         # 用前复权体系判断：MA60 + MA90 + MA250（均线连续无除权缺口，更准确）
@@ -541,6 +741,7 @@ class WavePatternDetector:
         self.scorer = ResonanceScorer()
         self.force_date = force_date  # 强制指定日期
         self._scan_data: Optional[pd.DataFrame] = None  # scan_pool 时共享给4个detect方法
+        self.market_risk_level = 0  # 市场风险等级，scan_pool 时更新
 
     # ── 数据获取（单接口！）─────────────────────────────────────
     def load_data(self, ts_code: str, lookback: int = 180) -> Optional[pd.DataFrame]:
@@ -1007,7 +1208,9 @@ class WavePatternDetector:
                                               limitup_score=limitup_score,
                                               volume_recovery_score=volume_recovery_score,
                                               atr_pct=atr_pct_sc,
-                                              market_cap_b=total_mv_b)
+                                              market_cap_b=total_mv_b,
+                                              market_risk_level=self.market_risk_level,
+                                              stabilization=get_stabilization(df, entry_idx))
 
             # 底背离检测
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1192,7 +1395,9 @@ class WavePatternDetector:
                                               limitup_score=limitup_score,
                                               volume_recovery_score=volume_recovery_score,
                                               atr_pct=atr_pct_sc,
-                                              market_cap_b=total_mv_b)
+                                              market_cap_b=total_mv_b,
+                                              market_risk_level=self.market_risk_level,
+                                              stabilization=get_stabilization(df, entry_idx))
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1369,7 +1574,9 @@ class WavePatternDetector:
                                               limitup_score=limitup_score,
                                               volume_recovery_score=volume_recovery_score,
                                               atr_pct=atr_pct_sc,
-                                              market_cap_b=total_mv_b)
+                                              market_cap_b=total_mv_b,
+                                              market_risk_level=self.market_risk_level,
+                                              stabilization=get_stabilization(df, entry_idx))
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1542,7 +1749,9 @@ class WavePatternDetector:
                                               limitup_score=limitup_score,
                                               volume_recovery_score=volume_recovery_score,
                                               atr_pct=atr_pct_sc,
-                                              market_cap_b=total_mv_b)
+                                              market_cap_b=total_mv_b,
+                                              market_risk_level=self.market_risk_level,
+                                              stabilization=get_stabilization(df, entry_idx))
 
             # 底背离
             divs = self.scorer.check_divergence(df, entry_idx)
@@ -1648,6 +1857,28 @@ class WavePatternDetector:
               f"{' | 仅今日' if today_only else ''}")
         print(f"{'='*60}")
         t0 = time.time()
+
+        # ── 市场情绪读取（影响低吸风险）────────────────────────
+        market_sent = get_market_sentiment()
+        self.market_risk_level = market_sent['risk_level']
+        if market_sent['risk_level'] == 2:
+            danger_reason = ""
+            if market_sent['up_ratio'] > 0.85:
+                danger_reason = f"上涨占比{market_sent['up_ratio']:.0%}情绪过热(易反转)"
+            else:
+                danger_reason = f"趋势分{market_sent['trend_score']:.0f} 仓位{market_sent['position']:.0f}% 上涨占比{market_sent['up_ratio']:.0%}"
+            print(f"  ⚠️ 市场危险！{danger_reason}")
+            print(f"  ⛔ 低吸信号评分将大幅扣减(-15分)，高风险信号自动过滤")
+        elif market_sent['risk_level'] == 1:
+            caution_reason = ""
+            if market_sent['up_ratio'] > 0.75:
+                caution_reason = f"上涨占比{market_sent['up_ratio']:.0%}偏高(警惕过热)"
+            else:
+                caution_reason = f"趋势分{market_sent['trend_score']:.0f} 仓位{market_sent['position']:.0f}%"
+            print(f"  ⚠️ 市场谨慎({caution_reason})")
+            print(f"  ➖ 低吸信号评分适度扣减(-5分)")
+        else:
+            print(f"  ✅ 市场环境安全(趋势分{market_sent['trend_score']:.0f} 仓位{market_sent['position']:.0f}%)")
 
         # 预先获取股票名称（从本地缓存读取，不调API）
         name_map = {}
