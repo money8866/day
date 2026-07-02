@@ -8396,64 +8396,73 @@ def filter_by_top_themes(result_df, top_n=10):
             }
         conn.close()
         
-        # 3. 筛选主题：白名单 + 60天平均综合分前15 + 本交易日综合分前10
-        tech_mainline_whitelist = {
-            '人形机器人', 'AI算力链', 'AI服务器与算力基建', 'AI芯片',
-            'AI终端', '半导体设备', '半导体制造', '数据中心瓶颈硬件链',
-            '半导体材料', '半导体封测', '存储芯片', '先进封装', '先进封装材料' 
-        }
+        # 3. 主题指数趋势分析：用composite_score作为主题指数代理，计算MA30趋势
+        #    条件：指数在30天均线之上 且 30日均线是上行的
+        conn = sqlite3.connect(db_path)
+        recent_dates_query = f"""
+            SELECT DISTINCT trade_date FROM theme_scores 
+            WHERE trade_date <= '{TRADE_DATE}' 
+            ORDER BY trade_date DESC LIMIT 60
+        """
+        recent_dates_df = pd.read_sql(recent_dates_query, conn)
+        recent_dates = recent_dates_df['trade_date'].tolist()
+        if len(recent_dates) < 30:
+            conn.close()
+            print("[主题过滤] 无足够历史数据计算MA30趋势")
+        else:
+            start_date_30d = recent_dates[-1]
+            theme_trend_query = f"""
+                SELECT theme, trade_date, composite_score 
+                FROM theme_scores 
+                WHERE trade_date <= '{TRADE_DATE}' AND trade_date >= '{start_date_30d}'
+                ORDER BY trade_date ASC
+            """
+            theme_trend_df = pd.read_sql(theme_trend_query, conn)
+            conn.close()
+            
+            theme_ma30_map = {}
+            for theme in theme_stats:
+                theme_rows = theme_trend_df[theme_trend_df['theme'] == theme]
+                if len(theme_rows) < 30:
+                    theme_ma30_map[theme] = {
+                        'trend_above_ma30': False,
+                        'ma30_rising': False,
+                        'ma30_slope': 0,
+                    }
+                    continue
+                
+                scores = theme_rows['composite_score'].astype(float).values
+                ma30 = pd.Series(scores).rolling(30, min_periods=20).mean().values
+                if len(ma30) >= 10:
+                    ma30_slope = (ma30[-1] - ma30[-10]) / ma30[-10] * 100 if ma30[-10] != 0 else 0
+                else:
+                    ma30_slope = 0
+                
+                theme_ma30_map[theme] = {
+                    'trend_above_ma30': scores[-1] > ma30[-1],
+                    'ma30_rising': ma30_slope > 0,
+                    'ma30_slope': round(ma30_slope, 2),
+                }
+            
+            print(f"[主题过滤] MA30趋势分析: {sum(1 for v in theme_ma30_map.values() if v['trend_above_ma30'] and v['ma30_rising'])}个主题符合条件")
         
-        # 60天平均综合分排名前15（用 avg_composite 而非趋势分）
-        sorted_by_avg = sorted(
-            avg_trend_map.items(), key=lambda x: -x[1]['avg_composite']
-        )[:15]
-        avg_top15 = {t[0] for t in sorted_by_avg}
+        # 4. 筛选主题：仅使用MA30趋势条件作为唯一过滤标准
+        #    条件：指数(composite_score)在30天均线之上 且 30日均线是上行的
+        keep_themes = {t for t in theme_ma30_map 
+                      if theme_ma30_map[t]['trend_above_ma30'] 
+                      and theme_ma30_map[t]['ma30_rising']}
         
-        # 本交易日综合分排名前15
-        today_composites = {}
-        for theme, stats in theme_stats.items():
-            today_composites[theme] = stats['latest_composite']
-        sorted_today = sorted(today_composites.items(), key=lambda x: -x[1])[:15]
-        today_top15 = {t[0] for t in sorted_today}
-        
-        # 合并：白名单主题 + 60天平均综合分前15 + 本交易日综合分前15
-        keep_themes = tech_mainline_whitelist | avg_top15 | today_top15
-        
-        # 前10日曾进入综合评分前5的主题（增加入选条件）
-        if top5_recent_themes:
-            print(f"[主题过滤] 前10日TOP5主题: {sorted(top5_recent_themes)}")
-            keep_themes |= top5_recent_themes
-
-        # ========== 非一日游确认主题扩展 ==========
-        # 调用 analyze_non_daytrip_themes 获取近20天确认的主题
-        try:
-            import theme_trend_sentiment_score as theme_ts
-            non_daytrip_result = theme_ts.analyze_non_daytrip_themes(TRADE_DATE, ndays=20)
-            non_daytrip_confirmed = non_daytrip_result.get("confirmed", [])
-            non_daytrip_details = non_daytrip_result.get("details_by_theme", {})
-
-            # 将非一日游确认主题加入保留列表
-            confirmed_themes = {d["theme"] for d in non_daytrip_confirmed}
-            newly_added = confirmed_themes - keep_themes
-            if newly_added:
-                print(f"[非一日游] 新增 {len(newly_added)} 个确认主题: {sorted(newly_added)}")
-            keep_themes |= confirmed_themes
-        except Exception as e:
-            print(f"[非一日游] 获取失败: {e}")
-            non_daytrip_details = {}
-            non_daytrip_confirmed = []
+        non_daytrip_details = {}
+        non_daytrip_confirmed = []
 
         print(f"\n[主题过滤] 保留{len(keep_themes)}个主题:")
-        print(f"  白名单: {len(tech_mainline_whitelist)}个")
-        print(f"  60天平均综合分前15: {[t[0] for t in sorted_by_avg]}")
-        print(f"  本交易日综合分前15: {[t[0] for t in sorted_today]}")
-        if non_daytrip_confirmed:
-            print(f"  非一日游确认: {[d['theme'] for d in non_daytrip_confirmed]}")
+        print(f"  MA30趋势符合(指数>MA30且MA30上行): {sorted(keep_themes)}")
         print()
         
         # 构建主题状态映射（包含非一日游周期阶段）
         theme_state_map = {}
         for theme in keep_themes:
+            ma30_info = theme_ma30_map.get(theme, {}) if 'theme_ma30_map' in dir() else {}
             if theme in theme_stats:
                 d = theme_stats[theme]
                 # 从非一日游详情中获取周期阶段
@@ -8467,6 +8476,10 @@ def filter_by_top_themes(result_df, top_n=10):
                     'cycle_phase': nd.get('cycle_phase', ''),
                     'confirmed_days': nd.get('confirmed_active_days', 0),
                     'leader_sequence': nd.get('leader_sequence', ''),
+                    # MA30趋势
+                    'trend_above_ma30': ma30_info.get('trend_above_ma30', False),
+                    'ma30_rising': ma30_info.get('ma30_rising', False),
+                    'ma30_slope': ma30_info.get('ma30_slope', 0),
                 }
             else:
                 nd = non_daytrip_details.get(theme, {})
@@ -8478,6 +8491,10 @@ def filter_by_top_themes(result_df, top_n=10):
                     'cycle_phase': nd.get('cycle_phase', ''),
                     'confirmed_days': nd.get('confirmed_active_days', 0),
                     'leader_sequence': nd.get('leader_sequence', ''),
+                    # MA30趋势
+                    'trend_above_ma30': ma30_info.get('trend_above_ma30', False),
+                    'ma30_rising': ma30_info.get('ma30_rising', False),
+                    'ma30_slope': ma30_info.get('ma30_slope', 0),
                 }
 
     except Exception as e:
@@ -9044,36 +9061,6 @@ def run(target_date=None, simple_mode=False):
             print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 量比{_v['最大量比']} 振幅{_v['日均振幅']}% 区间{_v['区间振幅']}% MACD={_v['MACD状态']}")
 
     # =========================
-    # 预热发现池：被主题过滤但技术面优秀的股票（可能预示主题轮动）
-    # =========================
-    _preheat_pool = {}  # code -> basic_info
-
-    def _score_preheat_stock(ts_code, name):
-        """对非热点股票做轻量技术评分"""
-        try:
-            df = get_hist_data(ts_code)
-            if df is None or len(df) < 20:
-                return None
-            tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
-            close_arr = df['close'].values
-            ma20 = pd.Series(close_arr).rolling(20).mean().values
-            ma20_slope = (ma20[-1] / max(ma20[-5], 0.01) - 1) * 100 if len(ma20) >= 5 else 0
-            vol_burst = tech.get('量能爆发', 0)
-            high_60 = df['high'].rolling(60).max().values[-1]
-            pos_gap = (1 - close_arr[-1] / high_60) * 100 if high_60 > 0 else 100
-            score = vol_burst * 30 + max(0, ma20_slope) * 5
-            return {
-                '代码': ts_code, '名称': name,
-                '量能爆发': vol_burst, '趋势强度': round(ma20_slope, 1),
-                '距前高%': round(pos_gap, 1), '预热评分': round(score, 1),
-            }
-        except Exception:
-            return None
-
-    for r in result:
-        _preheat_pool[r['代码']] = r.get('名称', '')
-
-    # =========================
     # 输出
     # =========================
     result_df = pd.DataFrame(result)
@@ -9306,16 +9293,8 @@ def run(target_date=None, simple_mode=False):
     # =========================
     result_dx_df = pd.DataFrame(result_dx)
     if not result_dx_df.empty:
-        # 先把低吸池的所有股票也加入预热池
-        for _, rx in result_dx_df.iterrows():
-            if rx['代码'] not in _preheat_pool:
-                _preheat_pool[rx['代码']] = rx.get('名称', '')
         _raw_dx = result_dx_df.copy()
         result_dx_df = filter_by_top_themes(result_dx_df)
-        _dropped_dx = _capture_dropped(_raw_dx, result_dx_df)
-        for code in _dropped_dx:
-            if code not in _preheat_pool:
-                _preheat_pool[code] = ''
     else:
         result_dx_df = pd.DataFrame()
     dx_ranked_stocks = []
@@ -9567,7 +9546,8 @@ def run(target_date=None, simple_mode=False):
     try:
         trend_dir = r'D:\mystock\solo\trend_feature_output'
         bwave_files = sorted([f for f in os.listdir(trend_dir)
-                              if f.startswith('bwave_') and f.endswith('.csv')],
+                              if f.startswith('bwave_') and f.endswith('.csv')
+                              and 'backtest' not in f],
                              reverse=True)
         if bwave_files:
             bwave_df = pd.read_csv(os.path.join(trend_dir, bwave_files[0]))
@@ -9577,16 +9557,7 @@ def run(target_date=None, simple_mode=False):
             start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=9)).strftime('%Y%m%d')
             recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
             
-            # 添加主题过滤
-            if not recent.empty:
-                _raw_midline = recent.copy()
-                recent = filter_by_top_themes(recent.rename(columns={'ts_code': '代码'}))
-                recent = recent.rename(columns={'代码': 'ts_code'})  # 恢复列名
-                _dropped_midline = set(_raw_midline['ts_code'].tolist()) - set(recent['ts_code'].tolist())
-                for code in _dropped_midline:
-                    if code not in _preheat_pool:
-                        _preheat_pool[code] = ''
-            
+            # B浪信号不经过主题过滤（技术形态选股，与主题无关）
             if not recent.empty:
                 # 按股票合并信号，同一股票的多个信号合并为一行显示
                 recent_grouped = recent.groupby('ts_code').agg({
@@ -9602,7 +9573,7 @@ def run(target_date=None, simple_mode=False):
                     'rsi_golden_date': 'first',
                     'macd_golden_date': 'first',
                 }).reset_index()
-                recent_grouped = recent_grouped.sort_values('bwave_score', ascending=False)
+                recent_grouped = recent_grouped.sort_values(['launch_date', 'bwave_score'], ascending=[False, False])
                 
                 total_count = recent_grouped.shape[0]
                 total_signals = recent.shape[0]
@@ -9928,7 +9899,7 @@ def run(target_date=None, simple_mode=False):
 
 **【今日中线股池】**
 
-（B浪低点识别策略 - 近20天信号，包含启动信号和底背离信号）
+（B浪低点识别策略 - 近5天信号，包含启动信号和底背离信号）
 {midline_stock_text}
 
 {preheat_text}
@@ -10035,7 +10006,7 @@ def run(target_date=None, simple_mode=False):
    - 【精简原则】上方数据中没有的内容不要输出
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、**【今日中线股池分析】**（B浪低点识别策略 - 近5个交易日信号，按BWaveScore降序）：
+5、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按BWaveScore降序）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
    - 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
@@ -10053,11 +10024,11 @@ def run(target_date=None, simple_mode=False):
 5、**【ETF操作建议】**
 {etf_tips_text}
 
-7、**【今日量能爆发+宽幅震荡池分析】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+7、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，共X只标的
    - 从评分最高的开始分析，输出3-5只重点关注，每只精简为1小段（3行），用【股票名+代码】作为子标题，每个标题后换行，格式如下：
-     - 【子标题】**股票名**(代码) | 评分=XX分 | MACD状态
+     - 【子标题】**股票名**(代码) | 评分=XX分 | MACD即将红柱还是刚刚红柱
      - 第2行：量比=X | 日均振幅=X% | 区间振幅=X% | 区间涨幅=X%
      - 第3行：分析判断（是否具备中线上涨潜力，结合主题热度判断，如不符合当前热点则提示等待）
    - 【格式示例】

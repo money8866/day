@@ -384,8 +384,8 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             theme_score_val = theme_row['composite_score']
             theme_state = theme_row.get('theme_state', '弱势')
         
-        # 可交易状态：抱团主升、强趋势、启动、分歧转一致、主升
-        tradeable_states = {"抱团主升", "强趋势", "启动", "分歧转一致", "主升"}
+        # 可交易状态：强趋势、震荡
+        tradeable_states = {"强趋势", "震荡"}
         
         if theme_state not in tradeable_states:
             continue
@@ -476,14 +476,10 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
             total_score = 0
             
             # 1. 主题状态（20分）- 根据状态给予不同分数
-            if theme_state == "抱团主升":
-                total_score += 20
-            elif theme_state in ["强趋势", "主升"]:
+            if theme_state == "强趋势":
                 total_score += 18
-            elif theme_state == "分歧转一致":
-                total_score += 15
-            elif theme_state == "启动":
-                total_score += 12
+            elif theme_state == "震荡":
+                total_score += 14
             else:
                 total_score += 10  # 其他可交易状态
             
@@ -589,6 +585,9 @@ def calculate_and_filter(theme_stock_map, kline_data, hot_themes, theme_scores, 
                 'avg_amount_20': avg_amount_20,
                 'RS20': RS20,
                 'ma20_slope': ma20_slope,
+                'ma5': ma5,
+                'ma10': ma10,
+                'ma20': ma20,
                 'theme_name': theme_name,
                 'theme_type': '中期趋势' if is_mid_trend else '短线主线',
                 'theme_state': theme_state,
@@ -951,7 +950,7 @@ def print_results(candidates):
     print(f"共筛选出 {len(candidates)} 只符合条件的股票\n")
     
     # 按主题状态分组
-    state_order = ['抱团主升', '强趋势', '主升', '分歧转一致', '启动']
+    state_order = ['强趋势', '震荡']
     state_groups = {}
     for state in state_order:
         state_groups[state] = [c for c in candidates if c.get('theme_state') == state]
@@ -963,11 +962,8 @@ def print_results(candidates):
             continue
         
         state_icon = {
-            '抱团主升': '🔥',
             '强趋势': '↑',
-            '主升': '↑',
-            '分歧转一致': '⭐',
-            '启动': '↑'
+            '震荡': '↔'
         }.get(state, '')
         
         print(f"{state}{state_icon} 主题")
@@ -1008,10 +1004,10 @@ def print_results(candidates):
     print("=" * 120)
     print("趋势中军池标准说明")
     print("=" * 120)
-    print("主题状态筛选：只选择可交易状态的主题（抱团主升、强趋势、主升、分歧转一致、启动）")
+    print("主题状态筛选：只选择可交易状态的主题（强趋势、震荡）")
     print("趋势中军：满足以下分数制条件的个股，按综合评分排序取TOP10")
     print("  评分规则（总分100分，60分以上为中军）：")
-    print("  ├─ 主题状态（20分）：抱团主升=20分，强趋势/主升=18分，分歧转一致=15分，启动=12分")
+    print("  ├─ 主题状态（20分）：强趋势=18分，震荡=14分")
     print("  ├─ 日均成交额（20分）：≥15亿=20分，≥8亿=15分，≥5亿=10分")
     print("  ├─ 均线多头（15分）：完美多头=15分，在MA20上=10分")
     print("  ├─ MA20向上（15分）：>1%=15分，>0=10分，>-1%=5分")
@@ -1033,6 +1029,178 @@ def print_results(candidates):
     print("=" * 120)
 
 # =================
+# 数据库操作
+# =================
+def init_zhongjun_db():
+    """初始化中军数据库"""
+    db_path = os.path.join(CACHE_DIR, 'zhongjun_history.db')
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS zhongjun_daily (
+            trade_date TEXT,
+            ts_code TEXT,
+            name TEXT,
+            theme_name TEXT,
+            buy_type TEXT,
+            buy_type_detail TEXT,
+            close REAL,
+            pct_chg REAL,
+            turnover_rate REAL,
+            mcap REAL,
+            reason TEXT,
+            final_score REAL,
+            buzhang_score REAL,
+            ma5 REAL,
+            ma10 REAL,
+            ma20 REAL,
+            PRIMARY KEY (trade_date, ts_code)
+        )
+    """)
+    
+    conn.commit()
+    conn.close()
+    return db_path
+
+def save_to_db(candidates, db_path):
+    """保存中军数据到数据库"""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    
+    for c in candidates:
+        cur.execute("""
+            INSERT OR REPLACE INTO zhongjun_daily 
+            (trade_date, ts_code, name, theme_name, buy_type, buy_type_detail,
+             close, pct_chg, turnover_rate, mcap, reason, final_score, buzhang_score,
+             ma5, ma10, ma20)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            TRADE_DATE,
+            c.get('code', ''),
+            c.get('name', ''),
+            c.get('theme_name', ''),
+            c.get('buy_type', ''),
+            c.get('buy_type_detail', ''),
+            c.get('close', 0),
+            c.get('pct_chg', 0),
+            c.get('turnover_rate', 0),
+            c.get('mcap', 0),
+            c.get('reason', ''),
+            c.get('final_score', 0),
+            c.get('buzhang_score', 0),
+            c.get('ma5', 0),
+            c.get('ma10', 0),
+            c.get('ma20', 0),
+        ))
+    
+    conn.commit()
+    conn.close()
+    print(f"中军数据已保存到数据库: {db_path}")
+
+def detect_stabilize_signal(kline_data):
+    """检测过去5天中军股票回落到MA5和MA20之间企稳的信号"""
+    db_path = os.path.join(CACHE_DIR, 'zhongjun_history.db')
+    if not os.path.exists(db_path):
+        print("   中军历史数据库不存在，跳过企稳检测")
+        return []
+    
+    conn = sqlite3.connect(db_path)
+    
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT trade_date FROM zhongjun_daily ORDER BY trade_date DESC LIMIT 5")
+    recent_dates = [row[0] for row in cur.fetchall()]
+    
+    if not recent_dates:
+        conn.close()
+        print("   无历史中军数据，跳过企稳检测")
+        return []
+    
+    cur.execute(f"""
+        SELECT DISTINCT ts_code, name 
+        FROM zhongjun_daily 
+        WHERE trade_date IN ({','.join(['?']*len(recent_dates))})
+    """, recent_dates)
+    recent_stocks = {row[0]: row[1] for row in cur.fetchall()}
+    
+    conn.close()
+    
+    signals = []
+    for ts_code, name in recent_stocks.items():
+        if ts_code not in kline_data:
+            continue
+        
+        df = kline_data[ts_code]
+        if len(df) < 25:
+            continue
+        
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        
+        closes = df['close'].values
+        ma5_vals = pd.Series(closes).rolling(5).mean().values
+        ma10_vals = pd.Series(closes).rolling(10).mean().values
+        ma20_vals = pd.Series(closes).rolling(20).mean().values
+        
+        close = float(closes[-1])
+        ma5 = float(ma5_vals[-1])
+        ma10 = float(ma10_vals[-1])
+        ma20 = float(ma20_vals[-1])
+        
+        prev_close = float(closes[-2]) if len(closes) >= 2 else close
+        prev_ma5 = float(ma5_vals[-2]) if len(ma5_vals) >= 2 else ma5
+        prev_ma20 = float(ma20_vals[-2]) if len(ma20_vals) >= 2 else ma20
+        
+        if ma20 == 0 or ma5 == 0:
+            continue
+        
+        in_range = ma20 <= close <= ma5
+        prev_in_range = prev_ma20 <= prev_close <= prev_ma5
+        
+        stabilized = False
+        reason = ""
+        
+        if in_range and not prev_in_range:
+            if close >= prev_close:
+                stabilized = True
+                reason = "回落至MA5-MA20区间后企稳反弹"
+        elif in_range and prev_in_range:
+            if close >= prev_close * 0.98:
+                stabilized = True
+                reason = "在MA5-MA20区间内连续企稳"
+        
+        if stabilized:
+            signals.append({
+                'ts_code': ts_code,
+                'name': name,
+                'close': close,
+                'ma5': ma5,
+                'ma10': ma10,
+                'ma20': ma20,
+                'distance_to_ma5': (close - ma5) / ma5 * 100,
+                'distance_to_ma20': (close - ma20) / ma20 * 100,
+                'reason': reason,
+            })
+    
+    return signals
+
+def print_stabilize_signals(signals):
+    """输出企稳信号"""
+    if not signals:
+        return
+    
+    print("\n" + "=" * 120)
+    print("📊 中军股票企稳信号（回落到MA5-MA20区间后企稳）")
+    print("=" * 120)
+    print(f"{'代码':<14}{'名称':<10}{'价格':>8}{'MA5':>8}{'MA10':>8}{'MA20':>8}{'距MA5%':>10}{'距MA20%':>10}  {'信号原因'}")
+    print("-" * 120)
+    
+    for s in signals:
+        print(f"{s['ts_code']:<14}{s['name']:<10}{s['close']:>8.2f}{s['ma5']:>8.2f}{s['ma10']:>8.2f}{s['ma20']:>8.2f}"
+              f"{s['distance_to_ma5']:>10.2f}{s['distance_to_ma20']:>10.2f}  {s['reason']}")
+    
+    print("=" * 120)
+
+# =================
 # 保存结果
 # =================
 def save_results(candidates):
@@ -1046,6 +1214,11 @@ def save_results(candidates):
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     df.to_csv(cache_file, index=False, encoding='utf-8-sig')
     print(f"结果已同步到缓存: {cache_file}")
+    
+    # 保存到数据库
+    db_path = init_zhongjun_db()
+    save_to_db(candidates, db_path)
+    
     return output_file
 
 # =================
@@ -1083,6 +1256,10 @@ def main():
         print(f"\n完成！已选出 {len(candidates)} 只股票")
     else:
         print("\n没有找到符合条件的股票")
+    
+    print("\n[Step 5] 检测中军股票企稳信号...")
+    signals = detect_stabilize_signal(kline_data)
+    print_stabilize_signals(signals)
 
 if __name__ == "__main__":
     main()

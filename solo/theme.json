@@ -2972,56 +2972,6 @@
       "fund_type": "机构+游资",
       "priority": "SS"
     },
-    "半导体EDA/IP": {
-      "industry": [
-        "软件开发",
-        "IT服务Ⅱ"
-      ],
-      "concept": [
-        "EDA概念",
-        "国产软件",
-        "信创"
-      ],
-      "keywords": [
-        "EDA",
-        "电子设计自动化",
-        "芯片设计软件",
-        "半导体IP",
-        "IP核",
-        "Chiplet",
-        "芯粒",
-        "RISC-V",
-        "开源指令集",
-        "ARM",
-        "芯片架构",
-        "设计服务"
-      ],
-      "exclude_keywords": [
-        "晶圆制造",
-        "封装测试",
-        "生产制造"
-      ],
-      "core_companies": [
-        "华大九天",
-        "概伦电子",
-        "广立微",
-        "芯愿景",
-        "芯华章",
-        "国微控股",
-        "安路科技"
-      ],
-      "leader_companies": [
-        "华大九天",
-        "概伦电子",
-        "广立微"
-      ],
-      "etf": "",
-      "style": "半导体产业链",
-      "capacity": "小",
-      "leader_type": "短线龙头",
-      "fund_type": "游资",
-      "priority": "S"
-    },
     "小金属": {
       "industry": [
         "小金属",

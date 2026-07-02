@@ -183,14 +183,17 @@ def detect_all_awaves(df: pd.DataFrame, lookback: int = 0) -> list:
             highs.append(i)
 
     awaves = []
+    # 限制低点数量：只取最近60个低点
+    if len(lows) > 60:
+        lows = lows[-60:]
     for a_start in lows:
         if a_start < start_idx:
             continue
-        for a_end in highs:
-            if a_end <= a_start + 20 or a_end > a_start + 60:
-                continue
-            if a_end >= len(df) - 5:
-                continue
+        # 只找a_start之后最近的2-3个高点（限定搜索范围）
+        nearby_highs = [h for h in highs if a_start + 20 < h <= a_start + 60 and h < len(df) - 5]
+        if len(nearby_highs) > 3:
+            nearby_highs = sorted(nearby_highs, key=lambda h: df.iloc[h]['close'], reverse=True)[:3]
+        for a_end in nearby_highs:
 
             start_price = df.iloc[a_start]['close']
             end_price = df.iloc[a_end]['close']
@@ -509,7 +512,7 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
     - 放量 + (见底信号或RSI金叉或MACD改善) + (突破B浪平台或MA5金叉或MA10金叉)
     
     独立信号类型（分别提示，显示各自日期）:
-    - 见底信号: 长下影小阳十字星（实体小，下影长）
+    - 见底信号: 长下影小实体K线（收盘在当日上半区）
     - RSI金叉: RSI从低于50穿越至50以上
     - MACD金叉: DIF上穿DEA
     """
@@ -549,7 +552,9 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
         body = abs(close - open_p)
         lower_shadow = min(close, open_p) - low_p
         
-        if lower_shadow > range_p * 0.5 and body < range_p * 0.3 and close >= open_p:
+        close_position = (close - low_p) / range_p if range_p > 0 else 0
+        
+        if bottom_signal_date is None and lower_shadow > range_p * 0.5 and body < range_p * 0.3 and close_position > 0.5:
             bottom_signal_date = str(row['trade_date'])
 
     for launch in range(scan_end - 1, low_idx - 1, -1):
@@ -1358,6 +1363,8 @@ def main():
                         rets[w] = round((df_full.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
 
                     tags = []
+                    if signal_type == '底背离':
+                        tags.append(f"底背离{sig.get('launch_date','')}")
                     if sig.get('bottom_signal_date'):
                         tags.append(f"见底{sig['bottom_signal_date']}")
                     if sig.get('rsi_golden_date'):
@@ -1509,6 +1516,8 @@ def main():
                     rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
 
                 tags = []
+                if signal_type == '底背离':
+                    tags.append(f"底背离{sig.get('launch_date','')}")
                 if sig.get('bottom_signal_date'):
                     tags.append(f"见底{sig['bottom_signal_date']}")
                 if sig.get('rsi_golden_date'):
@@ -1529,14 +1538,14 @@ def main():
                         row = make_result_base(ts_code, df.iloc[-1]['trade_date'],
                                               awave, bwave_used, sig, score, rets)
                         row['signal_type'] = sub_type
-                        row['signal_tags'] = f"{sub_type}{sub_date}"
+                        row['signal_tags'] = ','.join(tags)
                         row['launch_date'] = sub_date
                         all_results.append(row)
                 else:
                     row = make_result_base(ts_code, df.iloc[-1]['trade_date'],
                                           awave, bwave_used, sig, score, rets)
                     row['signal_type'] = signal_type
-                    row['signal_tags'] = ''
+                    row['signal_tags'] = ','.join(tags) if tags else ''
                     all_results.append(row)
             except Exception:
                 continue
