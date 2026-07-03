@@ -25,13 +25,14 @@ MIN_DAILY_AMOUNT = 50000000  # 5000万
 MIN_THEME_STOCKS = 5
 
 # ==================== 评分权重 ====================
-W_TREND = 0.25
-W_CAPITAL = 0.20
-W_SENTIMENT = 0.15
-W_PERSISTENCE = 0.15
+W_TREND = 0.22
+W_CAPITAL = 0.18
+W_SENTIMENT = 0.13
+W_PERSISTENCE = 0.08
+W_CONTINUATION = 0.15
 W_LIFECYCLE = 0.10
-W_LEADER = 0.10
-W_RISK_INV = 0.05
+W_LEADER = 0.08
+W_RISK_INV = 0.06
 
 # ==================== 生命周期加分 ====================
 LIFECYCLE_BONUS = {
@@ -40,12 +41,15 @@ LIFECYCLE_BONUS = {
 }
 
 # ==================== 交易信号阈值 ====================
-SB_COMPOSITE = 72
-SB_CAPITAL = 70
-SB_TREND = 65
+SB_COMPOSITE = 70
+SB_CAPITAL = 65
+SB_TREND = 62
+SB_CONTINUATION = 70
 SB_STAGES = ["启动", "扩张"]
-WATCH_COMPOSITE = 66
-HOLD_COMPOSITE = 58
+WATCH_COMPOSITE = 64
+WATCH_CONTINUATION = 72  # 分歧买点：延续分高即可进关注
+HOLD_COMPOSITE = 56
+HOLD_CONTINUATION = 58
 
 # ==================== 回测配置 ====================
 LOOKBACK_DAYS = 120

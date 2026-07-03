@@ -31,6 +31,7 @@ from persistence import compute_persistence_score
 from lifecycle import identify_stage, stage_bonus
 from leader import identify_leader
 from risk import compute_risk_score
+from continuation import compute_continuation_score, continuation_signal
 from composite import compute_composite, trade_signal, confidence
 
 
@@ -116,19 +117,32 @@ def main(trade_date=None):
         stage = identify_stage(ts, ss, cs)
         lb = stage_bonus(stage)
 
+        # 先识别龙头（延续评分需要龙头代码）
         ldr, ldr_score = identify_leader(daily, codes, top_df, top_inst)
 
-        cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs)
-        sig = trade_signal(cscore, cs, ts, stage)
-        conf = confidence(cscore, ts, cs)
+        # 趋势延续评分：识别"强势延续"和"分歧买点"
+        cont = compute_continuation_score(daily, codes, ldr)
+        cont_sig = continuation_signal(cont, 0, stage)  # 0 为占位，实际用 composite 判断
+
+        cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs, cont)
+        sig = trade_signal(cscore, cs, ts, stage, cont)
+        conf = confidence(cscore, ts, cs, cont)
+
+        # 分歧买点标记
+        is_divergence_buy = (cont >= config.WATCH_CONTINUATION
+                             and cscore < config.WATCH_COMPOSITE
+                             and stage in config.SB_STAGES)
 
         results.append({
             "theme": tname, "stage": stage, "leader": ldr or "",
             "trend_score": round(ts, 1), "capital_score": round(cs, 1),
             "sentiment_score": round(ss, 1), "persistence_score": round(ps, 1),
+            "continuation_score": round(cont, 1),
             "risk_score": round(rs, 1), "lifecycle_score": lb,
             "leader_score": round(ldr_score, 1), "composite_score": round(cscore, 1),
             "confidence": round(conf, 1), "trade_signal": sig,
+            "continuation_tag": cont_sig,
+            "divergence_buy": "★" if is_divergence_buy else "",
         })
 
         if (i + 1) % 10 == 0:
@@ -144,20 +158,43 @@ def main(trade_date=None):
 
     # ===== 第七步：打印报告 =====
     print(f"[7/7] 打印报告...")
-    print(f"\n{'='*90}")
+    print(f"\n{'='*100}")
     print(f"  Theme Alpha V6.0 报告 — {trade_date}")
-    print(f"{'='*90}")
+    print(f"{'='*100}")
 
-    top10 = df.head(10)
-    print(f"\n  TOP 10 主题")
-    print(f"  {'排名':<4} {'主题':<18} {'综合':<6} {'趋势':<6} {'资金':<6} {'情绪':<6} {'持续':<6} {'风险':<6} {'阶段':<12} {'信号':<10} {'龙头'}")
-    print(f"  {'-'*86}")
-    for i, row in top10.iterrows():
-        print(f"  {i+1:<4} {row['theme']:<18} {row['composite_score']:<6.1f} "
+    # TOP 15 主题（含延续分）
+    top15 = df.head(15)
+    print(f"\n  TOP 15 主题（按综合分排序）")
+    print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'趋势':<6} {'资金':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'标记':<6} {'龙头'}")
+    print(f"  {'-'*96}")
+    for i, row in top15.iterrows():
+        div_mark = row.get('divergence_buy', '')
+        print(f"  {i+1:<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
               f"{row['trend_score']:<6.1f} {row['capital_score']:<6.1f} "
-              f"{row['sentiment_score']:<6.1f} {row['persistence_score']:<6.1f} "
-              f"{row['risk_score']:<6.1f} {row['stage']:<12} {row['trade_signal']:<10} "
+              f"{row['sentiment_score']:<6.1f} {row['continuation_score']:<6.1f} "
+              f"{row['stage']:<8} {row['trade_signal']:<6} {div_mark:<6} "
               f"{row['leader']}")
+
+    # 分歧买点专区（综合分不高但延续分高）
+    div_df = df[df.get('divergence_buy', '') == '★'].head(10)
+    if not div_df.empty:
+        print(f"\n  ★ 分歧买点专区（综合分一般，但延续概率高 — 分歧后大概率回归强势）")
+        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'延续':<6} {'阶段':<8} {'龙头':<12} {'标记'}")
+        print(f"  {'-'*70}")
+        for _, row in div_df.iterrows():
+            print(f"  {'':<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
+                  f"{row['continuation_score']:<6.1f} {row['stage']:<8} "
+                  f"{row['leader']:<12} {row['trade_signal']}")
+
+    # 延续排名 TOP 10（按延续分排序，找持续走强概率最高的）
+    cont_top = df.sort_values('continuation_score', ascending=False).head(10)
+    print(f"\n  延续概率 TOP 10（持续走强概率最高，不一定综合分最高）")
+    print(f"  {'#':<3} {'主题':<16} {'延续':<6} {'综合':<6} {'阶段':<8} {'信号':<6} {'龙头'}")
+    print(f"  {'-'*70}")
+    for j, (_, row) in enumerate(cont_top.iterrows()):
+        print(f"  {j+1:<3} {row['theme']:<16} {row['continuation_score']:<6.1f} "
+              f"{row['composite_score']:<6.1f} {row['stage']:<8} "
+              f"{row['trade_signal']:<6} {row['leader']}")
 
     # 信号统计
     sig_counts = df["trade_signal"].value_counts()
@@ -175,10 +212,19 @@ def main(trade_date=None):
         print(f"{stg}={cnt} ", end="")
     print()
 
+    # 延续标签统计
+    if "continuation_tag" in df.columns:
+        tag_counts = df["continuation_tag"].value_counts()
+        print(f"  延续标签: ", end="")
+        for tag in ["强势延续", "分歧买点", "观察等待", "趋势走弱"]:
+            cnt = tag_counts.get(tag, 0)
+            print(f"{tag}={cnt} ", end="")
+        print()
+
     print(f"\n  结果已保存:")
     print(f"    {config.OUTPUT_JSON}")
     print(f"    {config.OUTPUT_CSV}")
-    print(f"{'='*90}")
+    print(f"{'='*100}")
 
     return results
 
