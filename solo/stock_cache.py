@@ -65,16 +65,26 @@ def save_cache_csv(df, cache_file):
 # =========================================================
 
 @contextmanager
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def get_conn(max_retries=5, retry_delay=1.0):
+    for attempt in range(max_retries):
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
+        try:
+            yield conn
+            conn.commit()
+            return
+        except sqlite3.OperationalError as e:
+            if 'database is locked' in str(e) and attempt < max_retries - 1:
+                conn.close()
+                import time
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            conn.rollback()
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
 def _infer_sqlite_type(dtype, col_name):
