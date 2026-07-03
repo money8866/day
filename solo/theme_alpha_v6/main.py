@@ -122,15 +122,16 @@ def main(trade_date=None):
 
         # 趋势延续评分：识别"强势延续"和"分歧买点"
         cont = compute_continuation_score(daily, codes, ldr)
-        cont_sig = continuation_signal(cont, 0, stage)  # 0 为占位，实际用 composite 判断
 
         cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs, cont)
         sig = trade_signal(cscore, cs, ts, stage, cont)
         conf = confidence(cscore, ts, cs, cont)
+        # 延续标签（需要真实 composite）
+        cont_sig = continuation_signal(cont, cscore, stage)
 
-        # 分歧买点标记
+        # 分歧买点标记：综合分确实低 + 延续分很高 + 阶段匹配
         is_divergence_buy = (cont >= config.WATCH_CONTINUATION
-                             and cscore < config.WATCH_COMPOSITE
+                             and cscore < config.WATCH_DIV_COMPOSITE
                              and stage in config.SB_STAGES)
 
         results.append({

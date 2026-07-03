@@ -161,16 +161,24 @@ def compute_continuation_score(daily: pd.DataFrame, codes: list,
 
 def continuation_signal(cont_score: float, composite: float, stage: str) -> str:
     """
-    生成延续信号：
-      - 强势延续：已经强势 + 延续概率高
-      - 分歧买点：当前综合分一般 + 但延续概率高（分歧后回归）
-      - 观察等待：延续概率中等
-      - 趋势走弱：延续概率低
+    生成延续标签（用于报告展示，与 trade_signal 阈值一致）：
+      - 强势延续：综合强 + 延续强 + 启动/扩张
+      - 分歧买点：综合低 + 延续很高 + 启动/扩张
+      - 观察等待：延续中等
+      - 趋势走弱：延续低
     """
-    if cont_score >= 75 and composite >= 62 and stage in ("启动", "扩张"):
+    import config
+    # 强势延续
+    if (cont_score >= config.SB_CONTINUATION
+        and composite >= config.WATCH_COMPOSITE
+        and stage in config.SB_STAGES):
         return "强势延续"
-    if cont_score >= 75 and composite < 62:
+    # 分歧买点：综合低 + 延续很高
+    if (cont_score >= config.WATCH_CONTINUATION
+        and composite < config.WATCH_DIV_COMPOSITE
+        and stage in config.SB_STAGES):
         return "分歧买点"
-    if cont_score >= 60:
+    # 观察等待
+    if cont_score >= config.HOLD_CONTINUATION:
         return "观察等待"
     return "趋势走弱"

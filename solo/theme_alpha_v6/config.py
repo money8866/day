@@ -47,9 +47,10 @@ SB_TREND = 62
 SB_CONTINUATION = 70
 SB_STAGES = ["启动", "扩张"]
 WATCH_COMPOSITE = 64
-WATCH_CONTINUATION = 72  # 分歧买点：延续分高即可进关注
-HOLD_COMPOSITE = 56
-HOLD_CONTINUATION = 58
+WATCH_CONTINUATION = 82  # 分歧买点：只有延续分 82+ 才算（真正趋势未破）
+WATCH_DIV_COMPOSITE = 60  # 分歧买点要求综合分低于此值（真分歧而非一致看好）
+HOLD_COMPOSITE = 60
+HOLD_CONTINUATION = 72
 
 # ==================== 回测配置 ====================
 LOOKBACK_DAYS = 120
