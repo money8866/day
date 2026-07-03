@@ -1176,9 +1176,7 @@ class WavePatternDetector:
             if ma20_key:
                 ma20_val = df[ma20_key[0]].iloc[entry_idx]
                 if ma20_val > 0:
-                    adj_factor = df['adj_factor'].iloc[entry_idx] if 'adj_factor' in df.columns else 1.0
-                    ma20_bfq_actual = ma20_val * adj_factor
-                    ma20_dist = abs(closes[entry_idx] - ma20_bfq_actual) / ma20_bfq_actual
+                    ma20_dist = abs(closes[entry_idx] - ma20_val) / ma20_val
                     if ma20_dist > 0.30:
                         continue
 

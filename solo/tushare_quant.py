@@ -8651,6 +8651,142 @@ def _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg):
     return result_df
 
 
+def add_themes_to_stocks_no_filter(result_df):
+    """
+    给股票添加主题信息，但不做过滤（保留所有股票）
+    
+    参数：
+        result_df: 待添加主题的股票DataFrame
+        
+    返回：
+        添加了主题字段的DataFrame（保留所有股票）
+    """
+    if result_df.empty:
+        return result_df
+    
+    # 1. 加载所有可能的主题，不做筛选
+    keep_themes = []
+    theme_state_map = {}
+    
+    try:
+        import theme_trend_sentiment_score as theme_ts
+        db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            all_themes_query = f"SELECT DISTINCT theme FROM theme_scores WHERE trade_date <= '{TRADE_DATE}' ORDER BY trade_date DESC LIMIT 100"
+            all_themes_df = pd.read_sql(all_themes_query, conn)
+            keep_themes = all_themes_df['theme'].tolist()
+            conn.close()
+            
+            # 获取最新一天的主题状态信息
+            if keep_themes:
+                conn = sqlite3.connect(db_path)
+                latest_day_query = f"SELECT MAX(trade_date) as latest FROM theme_scores WHERE trade_date <= '{TRADE_DATE}'"
+                latest_day_df = pd.read_sql(latest_day_query, conn)
+                if not latest_day_df.empty and latest_day_df['latest'].iloc[0]:
+                    latest_date = latest_day_df['latest'].iloc[0]
+                    latest_day_data_query = f"SELECT theme, theme_state, trend_score, sentiment_score, composite_score FROM theme_scores WHERE trade_date = '{latest_date}'"
+                    latest_day_df = pd.read_sql(latest_day_data_query, conn)
+                    for _, row in latest_day_df.iterrows():
+                        theme = row['theme']
+                        theme_state_map[theme] = {
+                            'theme_state': row.get('theme_state', ''),
+                            'trend_score': float(row.get('trend_score', 0) or 0),
+                            'sentiment_score': float(row.get('sentiment_score', 0) or 0),
+                            'composite_score': float(row.get('composite_score', 0) or 0),
+                            'cycle_phase': '',
+                            'confirmed_days': 0,
+                            'leader_sequence': '',
+                        }
+                conn.close()
+    except Exception as e:
+        print(f"[添加主题] 读取主题数据失败: {e}")
+    
+    if not keep_themes:
+        print("[添加主题] 无主题数据，仅返回原始DataFrame")
+        return result_df
+    
+    # 2. 加载主题配置
+    theme_cfg = {}
+    cfg_path = os.path.join(BASE_DIR, 'theme.json')
+    if os.path.exists(cfg_path):
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            all_themes_cfg = json.load(f).get('HOT_THEMES', {})
+            for theme_name in keep_themes:
+                if theme_name in all_themes_cfg:
+                    theme_cfg[theme_name] = all_themes_cfg[theme_name]
+    
+    # 3. 从 JSON 缓存加载主题-个股映射
+    try:
+        import theme_trend_sentiment_score as theme_ts
+        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.load_theme_stock_map_from_json()
+    except Exception as e:
+        print(f"[添加主题] load_theme_stock_map_from_json 失败: {e}")
+        return result_df
+    
+    # 4. 遍历股票，匹配主题并注入主题状态
+    matched_themes = []
+    match_scores = []
+    theme_states_list = []
+    theme_trends = []
+    theme_sentiments = []
+    cycle_phases = []
+    confirmed_days_list = []
+    leader_sequences_list = []
+    secondary_themes_list = []
+    
+    for _, row in result_df.iterrows():
+        ts_code = row['代码']
+        stock_name = row.get('名称', '')
+        theme_hits = []
+        for theme_name in keep_themes:
+            stocks = theme_stock_map.get(theme_name, {})
+            if ts_code in stocks:
+                s_info = stocks[ts_code]
+                s_score = s_info.get('score', 0) if isinstance(s_info, dict) else 0
+                theme_hits.append((theme_name, s_score))
+        
+        if theme_hits:
+            theme_hits.sort(key=lambda x: -x[1])
+            found_theme = theme_hits[0][0]
+            secondary_theme = theme_hits[1][0] if len(theme_hits) >= 2 and theme_hits[1][1] > 0 else ''
+            matched_themes.append(found_theme)
+            match_scores.append(theme_hits[0][1] if theme_hits[0][1] > 0 else 100)
+            secondary_themes_list.append(secondary_theme)
+            st = theme_state_map.get(found_theme, {})
+            theme_states_list.append(st.get("theme_state", ""))
+            theme_trends.append(st.get("trend_score", 0))
+            theme_sentiments.append(st.get("sentiment_score", 0))
+            cycle_phases.append(st.get("cycle_phase", ""))
+            confirmed_days_list.append(st.get("confirmed_days", 0))
+            leader_sequences_list.append(st.get("leader_sequence", ""))
+        else:
+            matched_themes.append('')
+            match_scores.append(0)
+            secondary_themes_list.append('')
+            theme_states_list.append('')
+            theme_trends.append(0)
+            theme_sentiments.append(0)
+            cycle_phases.append('')
+            confirmed_days_list.append(0)
+            leader_sequences_list.append('')
+    
+    # 5. 注入字段（不过滤，保留所有股票）
+    result_df = result_df.copy()
+    result_df['所属主题'] = matched_themes
+    result_df['主题匹配度'] = match_scores
+    result_df['次强主题'] = secondary_themes_list
+    result_df['所属状态'] = theme_states_list
+    result_df['主题趋势分'] = theme_trends
+    result_df['主题情绪分'] = theme_sentiments
+    result_df['非一日游阶段'] = cycle_phases
+    result_df['确认天数'] = confirmed_days_list
+    result_df['龙头序列'] = leader_sequences_list
+    
+    print(f"[添加主题] 已给 {len(result_df)} 只股票添加主题信息，其中 {sum(1 for t in matched_themes if t)} 只有匹配主题")
+    return result_df
+
+
 # =========================
 # 主程序
 # =========================
@@ -9288,14 +9424,11 @@ def run(target_date=None, simple_mode=False):
         except Exception as e:
             print(f'[二波低吸] 读取CSV异常: {e}')
     # =========================
-    # 处理低吸股票池（result_dx）：同突破池一样的评分/技术指标/筹码/短线流程
+    # 处理低吸股票池（result_dx）：不做主题过滤，但添加主题信息
     # =========================
     result_dx_df = pd.DataFrame(result_dx)
-    if not result_dx_df.empty:
-        _raw_dx = result_dx_df.copy()
-        result_dx_df = filter_by_top_themes(result_dx_df)
-    else:
-        result_dx_df = pd.DataFrame()
+    if not result_dx_df.empty and '代码' in result_dx_df.columns:
+        result_dx_df = add_themes_to_stocks_no_filter(result_dx_df)
     dx_ranked_stocks = []
     if not result_dx_df.empty:
         for idx, row in result_dx_df.iterrows():
@@ -9576,11 +9709,11 @@ def run(target_date=None, simple_mode=False):
                 
                 total_count = recent_grouped.shape[0]
                 total_signals = recent.shape[0]
-                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票），按评分降序排列")
+                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票），按启动日期降序，取最近5只")
                 midline_lines.append(f"{'代码':<12} {'名称':<8} {'信号':<30} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
                 midline_lines.append("-" * 100)
                 
-                for _, r in recent_grouped.iterrows():
+                for _, r in recent_grouped.head(5).iterrows():
                     name = get_stock_name(r['ts_code'])
                     sig_tags = str(r['signal_tags']) if pd.notna(r['signal_tags']) else ''
                     midline_lines.append(f"  {r['ts_code']:<12} {name:<8} {sig_tags:<30} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
@@ -9982,11 +10115,11 @@ def run(target_date=None, simple_mode=False):
    - 【精简原则】上方数据中没有的内容不要输出
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按BWaveScore降序）：
+5、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
    - 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
-   - 如果有信号数据，按BWaveScore降序分析每只，每只精简为1小段（3-4行）：
+   - 如果有信号数据，只分析最近的5只，每只精简为1小段（3-4行）：
      - 第1行：**股票名**(代码) | BWaveScore=XX分 | 信号类型（见底/RSI金叉/MACD金叉/底背离）
      - 第2行：信号详情（每个信号及日期，如：见底20260629 | RSI金叉20260630 | MACD金叉20260701）
      - 第3行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 最新信号日：XXXX-XX-XX
