@@ -49,10 +49,13 @@ def trade_signal(composite, capital, trend, stage, continuation):
         and stage in config.SB_STAGES):
         return "关注"
 
-    # 持有：综合中等 OR 延续中等
+    # 持有：综合中等 OR 延续中等 OR 强势阶段保底
     if composite >= config.HOLD_COMPOSITE:
         return "持有"
     if continuation >= config.HOLD_CONTINUATION:
+        return "持有"
+    # 强势阶段（扩张/主升）+ 延续尚可 → 至少持有，不回避
+    if stage in ("扩张", "主升") and continuation >= 55:
         return "持有"
 
     return "回避"

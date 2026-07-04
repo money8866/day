@@ -25,7 +25,7 @@ import config
 import theme_builder as tb
 import data_loader as dl
 from trend import compute_trend_score, compute_momentum
-from capital import compute_capital_score
+from capital import compute_all_capital_scores
 from sentiment import compute_sentiment_score
 from persistence import compute_persistence_score
 from lifecycle import identify_stage, stage_bonus
@@ -88,8 +88,8 @@ def main(trade_date=None):
     daily_basic = dl.load_daily_basic(trade_date)
     print(f"      daily_basic: {'有' if not daily_basic.empty else '无'}")
 
-    # moneyflow 暂不加载（需要单独缓存）
-    moneyflow = pd.DataFrame()
+    moneyflow = dl.load_moneyflow_by_date(trade_date)
+    print(f"      moneyflow: {'有' if not moneyflow.empty else '无'} ({len(moneyflow)} 条)")
 
     # ===== 第四步：计算全主题动量（用于百分位排名）=====
     print(f"[4/7] 计算全主题动量排名...")
@@ -98,6 +98,11 @@ def main(trade_date=None):
         r5, r10, r20, r40 = compute_momentum(daily, codes)
         all_momentums.append(r5 * 0.25 + r10 * 0.30 + r20 * 0.25 + r40 * 0.20)
     print(f"      {len(all_momentums)} 个主题动量计算完成")
+
+    # ===== 第四步半：批量计算资金评分（跨主题百分位 + 非线性放大）=====
+    print(f"[4.5/7] 批量计算资金评分...")
+    capital_result = compute_all_capital_scores(daily, moneyflow, universe, market_turnover)
+    print(f"        {len(capital_result)} 个主题资金评分完成")
 
     # ===== 第五步：逐个主题评分 =====
     print(f"[5/7] 主题评分计算中...")
@@ -109,19 +114,24 @@ def main(trade_date=None):
             continue
 
         ts = compute_trend_score(daily, codes, all_momentums)
-        cs = compute_capital_score(daily, moneyflow, codes, market_turnover)
+        # 从批量结果取 capital score 和子指标
+        if tname in capital_result:
+            cs, cap_metrics = capital_result[tname]
+        else:
+            cs, cap_metrics = 50.0, {}
         ss = compute_sentiment_score(daily, limit_df, dc_hot, codes, index_ret)
         ps = compute_persistence_score(daily, codes)
         rs = compute_risk_score(daily, codes, daily_basic, top_df)
-
-        stage = identify_stage(ts, ss, cs)
-        lb = stage_bonus(stage)
 
         # 先识别龙头（延续评分需要龙头代码）
         ldr, ldr_score = identify_leader(daily, codes, top_df, top_inst)
 
         # 趋势延续评分：识别"强势延续"和"分歧买点"
         cont = compute_continuation_score(daily, codes, ldr)
+
+        # 阶段判断（需 continuation 约束，避免"扩张+趋势走弱"矛盾）
+        stage = identify_stage(ts, ss, cs, continuation=cont)
+        lb = stage_bonus(stage)
 
         cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs, cont)
         sig = trade_signal(cscore, cs, ts, stage, cont)
@@ -137,6 +147,12 @@ def main(trade_date=None):
         results.append({
             "theme": tname, "stage": stage, "leader": ldr or "",
             "trend_score": round(ts, 1), "capital_score": round(cs, 1),
+            "cap_share": round(cap_metrics.get("market_share", 0) * 100, 2),
+            "cap_accel": round(cap_metrics.get("acceleration", 0) * 100, 2),
+            "cap_mflow": round(cap_metrics.get("mf_quality", 0) * 100, 1),
+            "cap_conc": round(cap_metrics.get("concentration", 0) * 100, 1),
+            "cap_persist": round(cap_metrics.get("persistence", 0) * 100, 1),
+            "cap_rotation": round(cap_metrics.get("rotation", 0) * 100, 2),
             "sentiment_score": round(ss, 1), "persistence_score": round(ps, 1),
             "continuation_score": round(cont, 1),
             "risk_score": round(rs, 1), "lifecycle_score": lb,
@@ -196,6 +212,23 @@ def main(trade_date=None):
         print(f"  {j+1:<3} {row['theme']:<16} {row['continuation_score']:<6.1f} "
               f"{row['composite_score']:<6.1f} {row['stage']:<8} "
               f"{row['trade_signal']:<6} {row['leader']}")
+
+    # 资金分 TOP 10（含六维子指标）
+    cap_top = df.sort_values('capital_score', ascending=False).head(10)
+    print(f"\n  资金分 TOP 10（六维子指标明细）")
+    print(f"  {'#':<3} {'主题':<14} {'资金':<5} {'占比':<6} {'加速':<6} {'质量':<5} {'集中':<5} {'持续':<5} {'轮动':<6}")
+    print(f"  {'-'*68}")
+    for j, (_, row) in enumerate(cap_top.iterrows()):
+        print(f"  {j+1:<3} {row['theme']:<14} {row['capital_score']:<5.1f} "
+              f"{row.get('cap_share',0):<6.2f} {row.get('cap_accel',0):<6.2f} "
+              f"{row.get('cap_mflow',0):<5.1f} {row.get('cap_conc',0):<5.1f} "
+              f"{row.get('cap_persist',0):<5.1f} {row.get('cap_rotation',0):<6.2f}")
+
+    # 资金分分布（验证非线性放大效果）
+    cap_scores = df['capital_score'].values
+    print(f"\n  资金分分布: min={cap_scores.min():.1f} p25={np.percentile(cap_scores,25):.1f} "
+          f"p50={np.percentile(cap_scores,50):.1f} p75={np.percentile(cap_scores,75):.1f} "
+          f"max={cap_scores.max():.1f} std={cap_scores.std():.1f}")
 
     # 信号统计
     sig_counts = df["trade_signal"].value_counts()

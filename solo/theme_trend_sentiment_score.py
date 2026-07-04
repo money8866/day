@@ -1301,20 +1301,34 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
         # 方式E（概念兜底）：有 industry 配置时，股票概念与 theme concept/keyword 重叠也可进入
         # 解决行业归属断层但概念匹配的股票（如宏和科技→PCB、杰普特→光通信CPO）
         # 关键词匹配要求 ≥3字符，避免"电力"、"金属"等2字泛词造成大量误入
+        # v2优化：高频泛词需匹配更具体的上级词，且concept_fallback必须命中≥2个独立概念
+        HIGH_FREQ_GENERIC_TERMS = {'AI', '算力', '数据', '芯片', '半导体', '电力', '科技', '军工',
+                                     '机器人', '新能源', '储能', '化工', '医药', '消费', '汽车',
+                                     '金属', '光学', '通信', '软件', '电池', '电子'}
         if industry_list and (concept_list or keyword_list):
             all_terms = [t for t in list(concept_list) + [k for k in keyword_list if len(k) >= 3] if t]
             if all_terms:
+                # 区分高频泛词和精准词
+                precise_terms = [t for t in all_terms if t not in HIGH_FREQ_GENERIC_TERMS]
+                generic_terms = [t for t in all_terms if t in HIGH_FREQ_GENERIC_TERMS]
                 for code, concepts in stock_concepts.items():
                     if code not in candidates and concepts:
+                        match_count = 0
                         for c in concepts:
                             for tt in all_terms:
-                                # 只允许 tt 在 c 中（theme term 出现在概念名中）
-                                # 不允许 c 在 tt 中（避免"大数据"概念匹配"大数据金融"关键词）
-                                if tt in c:
-                                    candidates[code] = {"industry_match": False, "source": "concept_fallback"}
-                                    break
-                            if code in candidates:
-                                break
+                                # 高频泛词要求更严格：tt必须与c完全相等，或c包含tt且c长度≥4
+                                if tt in HIGH_FREQ_GENERIC_TERMS:
+                                    if tt == c or (tt in c and len(c) >= 4):
+                                        match_count += 1
+                                        break
+                                else:
+                                    # 只允许 tt 在 c 中（theme term 出现在概念名中）
+                                    if tt in c:
+                                        match_count += 1
+                                        break
+                        # concept_fallback必须命中≥2个独立概念，降低噪音
+                        if match_count >= 2:
+                            candidates[code] = {"industry_match": False, "source": "concept_fallback"}
 
         # ====================================================================
         # Phase 1.5: DNA Gate — business_dna_tags 强约束

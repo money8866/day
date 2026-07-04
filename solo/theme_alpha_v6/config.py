@@ -52,6 +52,22 @@ WATCH_DIV_COMPOSITE = 60  # 分歧买点要求综合分低于此值（真分歧�
 HOLD_COMPOSITE = 60
 HOLD_CONTINUATION = 72
 
+# ==================== Capital 子维度权重 ====================
+CAP_W_SHARE = 0.20        # MarketShare 市场成交额占比
+CAP_W_ACCEL = 0.20        # CapitalAcceleration 资金加速度
+CAP_W_MFLOW = 0.20        # MoneyflowQuality 资金质量
+CAP_W_CONC = 0.15         # CapitalConcentration 资金集中度
+CAP_W_PERSIST = 0.15      # CapitalPersistence 资金持续性
+CAP_W_ROTATION = 0.10     # CapitalRotation 资金轮动
+
+# Capital 非线性放大参数
+CAP_AMPLIFY_POWER = 0.80  # power(s, 0.80): Top10%→92, Top30%→76, Top50%→57, 尾部→28
+CAP_AMPLIFY_FLOOR = 5     # 最低分
+CAP_AMPLIFY_CEIL = 98     # 最高分
+
+# Moneyflow 获取参数
+MONEYFLOW_LOOKBACK_DAYS = 12  # 获取最近N个自然日的 moneyflow
+
 # ==================== 回测配置 ====================
 LOOKBACK_DAYS = 120
 BACKTEST_START = "20250101"

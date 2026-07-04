@@ -182,8 +182,43 @@ def load_index(ts_code="000300.SH", start_date=None, end_date=None):
 
 
 # ==================== moneyflow ====================
+def load_moneyflow_by_date(trade_date, n_days=None):
+    """按日期批量获取 moneyflow（全市场，按天缓存到 Parquet）
+    每天一次 API 调用，高效获取。无数据时返回空 DataFrame。
+    """
+    if n_days is None:
+        n_days = config.MONEYFLOW_LOOKBACK_DAYS
+    dt = datetime.strptime(trade_date, "%Y%m%d")
+    frames = []
+    for i in range(n_days + 4):  # 多取几天应对周末/节假日
+        d = (dt - timedelta(days=i)).strftime("%Y%m%d")
+        fp = os.path.join(config.PARQUET_DIR, f"moneyflow_{d}.parquet")
+        df = None
+        if os.path.exists(fp):
+            try:
+                df = pd.read_parquet(fp)
+            except Exception:
+                pass
+        if df is None:
+            try:
+                df = pro.moneyflow(trade_date=d)
+                if df is not None and not df.empty:
+                    df.to_parquet(fp)
+            except Exception:
+                df = None
+        if df is not None and not df.empty:
+            df["trade_date"] = df["trade_date"].astype(str)
+            frames.append(df)
+        # 够了就停
+        if len(frames) >= n_days:
+            break
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
 def load_moneyflow(codes, start_date, end_date):
-    """加载资金流数据（按需获取，缓存到 Parquet）"""
+    """加载资金流数据（按股票代码从 Parquet 缓存读取）"""
     frames = []
     for code in codes:
         fp = os.path.join(config.MONEYFLOW_DIR, f"{code}.parquet")
