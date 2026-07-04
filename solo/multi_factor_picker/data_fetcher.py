@@ -375,7 +375,7 @@ class DataFetcher:
                     return cached
 
             df = self._retry_call(self.pro.daily_basic, trade_date=check_date,
-                                  fields='ts_code,trade_date,close,total_mv,circ_mv,pe,pe_ttm,pb,volume_ratio')
+                                  fields='ts_code,trade_date,close,total_mv,circ_mv,turnover_rate,volume_ratio,pe,pe_ttm,pb')
             if df is not None and len(df) > 0:
                 if self.cache_enabled:
                     save_cache(df, self.cache_dir, cache_key)
@@ -1248,3 +1248,444 @@ class DataFetcher:
                 results[key] = val
 
         return results
+
+    # ============================================================
+    # 按 ts_code 查询的接口（评分器复用，与按 trade_date 的切片缓存正交）
+    # ============================================================
+    def get_hk_hold_by_code(self, ts_code: str) -> Dict[str, float]:
+        """
+        按股票代码查询北向持股时间序列最新值
+
+        注：tushare 的 pro.hk_hold(trade_date=...) 返回港股通南向数据，
+        北向资金持股（沪深股通）需用 pro.hk_hold(ts_code=...) 按股票查询。
+
+        Returns:
+            { ratio: 最新持股比例(%), trade_date: 最新日期, vol: 持股量 }
+        """
+        cache_key = f"hk_hold_code_{self._safe_name(ts_code)}"
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        result = {'ratio': 0.0, 'trade_date': '', 'vol': 0.0}
+        try:
+            df = self._retry_call(
+                self.pro.hk_hold,
+                ts_code=ts_code,
+                fields='ts_code,trade_date,vol,ratio',
+            )
+            if df is not None and len(df) > 0:
+                df = df.sort_values('trade_date', ascending=False)
+                latest = df.iloc[0]
+                ratio = float(latest['ratio']) if pd.notna(latest.get('ratio')) else 0.0
+                vol = float(latest['vol']) if pd.notna(latest.get('vol')) else 0.0
+                td = str(latest.get('trade_date', ''))
+                # 沪深股通代码仅 .SH/.SZ（排除港股代码 .HK）
+                if ts_code.endswith(('.SH', '.SZ')):
+                    result = {'ratio': ratio, 'trade_date': td, 'vol': vol}
+        except Exception:
+            pass
+
+        if self.cache_enabled:
+            self._save_dict_cache(cache_key, result)
+        return result
+
+    def get_billboard_list(self, ts_code: str,
+                           start_date: str = None,
+                           end_date: str = None) -> pd.DataFrame:
+        """
+        按股票代码查询龙虎榜上榜记录
+
+        注：Tushare 的 top_list 接口必须传 trade_date（单日查询），
+        本方法仅查询 end_date 当天的上榜记录。如需近60天上榜次数，
+        请用 get_billboard_counts_batch。
+
+        Args:
+            ts_code: 股票代码
+            start_date: 起始日期 YYYYMMDD（保留兼容，内部忽略）
+            end_date: 结束日期 YYYYMMDD（默认今天，仅查当日）
+
+        Returns:
+            龙虎榜 DataFrame（当日上榜记录）
+        """
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        cache_key = f"billboard_{self._safe_name(ts_code)}_{end_date}"
+
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(
+                self.pro.top_list,
+                trade_date=end_date,
+                ts_code=ts_code,
+            )
+        except Exception:
+            df = None
+
+        if df is None:
+            df = pd.DataFrame()
+
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
+    def get_billboard_counts_batch(self, start_date: str = None,
+                                   end_date: str = None) -> Dict[str, int]:
+        """
+        批量获取近一段时间的龙虎榜上榜次数统计
+
+        通过循环调用 top_list(trade_date=...) 获取每个交易日的龙虎榜，
+        统计每只股票的上榜次数。结果缓存24小时。
+
+        Args:
+            start_date: 起始日期 YYYYMMDD（默认近60天）
+            end_date: 结束日期 YYYYMMDD（默认今天）
+
+        Returns:
+            {ts_code: 上榜次数} 字典
+        """
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y%m%d')
+
+        cache_key = f"billboard_counts_{start_date}_{end_date}"
+        if self.cache_enabled:
+            cached = self._load_dict_cache(cache_key, self.expire_hours)
+            if cached is not None and isinstance(cached, dict):
+                return cached
+
+        # 获取交易日列表
+        try:
+            cal_df = self._retry_call(
+                self.pro.trade_cal,
+                exchange='SSE',
+                start_date=start_date,
+                end_date=end_date,
+            )
+            if cal_df is None or len(cal_df) == 0:
+                return {}
+            trade_dates = cal_df[cal_df['is_open'] == 1]['cal_date'].tolist()
+        except Exception:
+            return {}
+
+        counts: Dict[str, int] = {}
+        for td in trade_dates:
+            day_cache_key = f"top_list_day_{td}"
+            day_df = None
+            if self.cache_enabled:
+                day_df = load_cache(self.cache_dir, day_cache_key, self.expire_hours)
+            if day_df is None:
+                try:
+                    day_df = self._retry_call(self.pro.top_list, trade_date=td)
+                except Exception:
+                    day_df = None
+                if self.cache_enabled and day_df is not None and len(day_df) > 0:
+                    save_cache(day_df, self.cache_dir, day_cache_key)
+            if day_df is not None and len(day_df) > 0 and 'ts_code' in day_df.columns:
+                for code in day_df['ts_code'].unique():
+                    counts[code] = counts.get(code, 0) + 1
+
+        if self.cache_enabled and counts:
+            self._save_dict_cache(cache_key, counts)
+        return counts
+
+    def get_daily_by_code(self, ts_code: str,
+                          start_date: str = None,
+                          end_date: str = None,
+                          fields: str = None) -> pd.DataFrame:
+        """
+        按股票代码查询日线行情（时间序列）
+
+        Args:
+            ts_code: 股票代码
+            start_date: 起始日期 YYYYMMDD（默认近365天）
+            end_date: 结束日期 YYYYMMDD（默认今天）
+            fields: 字段，默认全部
+
+        Returns:
+            日线 DataFrame
+        """
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+        if fields is None:
+            fields = 'ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount'
+        cache_key = f"daily_code_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(
+                self.pro.daily,
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                fields=fields,
+            )
+        except Exception:
+            df = None
+
+        if df is None:
+            df = pd.DataFrame()
+
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
+    # ─── 以下为 bull_scorer_v2 等评分器复用的原始 DataFrame 接口 ───
+
+    def _get_df_cached(self, cache_key: str, api_func, **kwargs) -> pd.DataFrame:
+        """通用：调用 API 获取原始 DataFrame 并缓存（parquet）"""
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+        try:
+            df = self._retry_call(api_func, **kwargs)
+        except Exception:
+            df = None
+        if df is None:
+            df = pd.DataFrame()
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
+    def get_daily_basic_by_code(self, ts_code: str,
+                                start_date: str = None,
+                                end_date: str = None) -> pd.DataFrame:
+        """按股票代码查询 daily_basic（pe/pb/总市值/流通市值/换手率等）"""
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+        cache_key = f"daily_basic_code_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.daily_basic,
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+        )
+
+    def get_moneyflow_by_code(self, ts_code: str,
+                              start_date: str = None,
+                              end_date: str = None) -> pd.DataFrame:
+        """按股票代码查询 moneyflow 资金流向（原始 DataFrame）"""
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+        cache_key = f"moneyflow_code_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.moneyflow,
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+        )
+
+    def get_stk_holdernumber_raw(self, ts_code: str, limit: int = 3) -> pd.DataFrame:
+        """按股票代码查询股东人数（原始 DataFrame）"""
+        cache_key = f"holdernumber_raw_{self._safe_name(ts_code)}_{limit}"
+        return self._get_df_cached(
+            cache_key, self.pro.stk_holdernumber,
+            ts_code=ts_code, limit=limit,
+        )
+
+    def get_fund_portfolio_raw(self, ts_code: str, limit: int = 2) -> pd.DataFrame:
+        """按股票代码查询公募基金持仓（原始 DataFrame）"""
+        cache_key = f"fund_portfolio_raw_{self._safe_name(ts_code)}_{limit}"
+        return self._get_df_cached(
+            cache_key, self.pro.fund_portfolio,
+            ts_code=ts_code, limit=limit,
+        )
+
+    def get_stk_holdertrade_raw(self, ts_code: str,
+                                start_date: str = None,
+                                end_date: str = None) -> pd.DataFrame:
+        """按股票代码查询股东增减持（原始 DataFrame）"""
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=90)).strftime('%Y%m%d')
+        cache_key = f"holdertrade_raw_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.stk_holdertrade,
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+        )
+
+    def get_pledge_stat_raw(self, ts_code: str) -> pd.DataFrame:
+        """按股票代码查询质押状态（原始 DataFrame）"""
+        cache_key = f"pledge_raw_{self._safe_name(ts_code)}"
+        return self._get_df_cached(
+            cache_key, self.pro.pledge_stat, ts_code=ts_code,
+        )
+
+    def get_share_float_raw(self, ts_code: str) -> pd.DataFrame:
+        """按股票代码查询限售股解禁（原始 DataFrame）"""
+        cache_key = f"share_float_raw_{self._safe_name(ts_code)}"
+        return self._get_df_cached(
+            cache_key, self.pro.share_float, ts_code=ts_code,
+        )
+
+    def get_fina_mainbz_raw(self, ts_code: str, period: str = None) -> pd.DataFrame:
+        """按股票代码查询主营业务构成（原始 DataFrame）"""
+        cache_key = f"mainbz_raw_{self._safe_name(ts_code)}_{period or 'latest'}"
+        kwargs = {'ts_code': ts_code}
+        if period:
+            kwargs['period'] = period
+        return self._get_df_cached(
+            cache_key, self.pro.fina_mainbz, **kwargs,
+        )
+
+    def get_stk_news(self, ts_code: str, limit: int = 20) -> pd.DataFrame:
+        """按股票代码查询新闻快讯（原始 DataFrame）"""
+        cache_key = f"stk_news_{self._safe_name(ts_code)}_{limit}"
+        return self._get_df_cached(
+            cache_key, self.pro.stk_news,
+            ts_code=ts_code, src='sina', limit=limit,
+        )
+
+    def get_stk_research(self, ts_code: str, limit: int = 20) -> pd.DataFrame:
+        """按股票代码查询研究报告（原始 DataFrame）"""
+        cache_key = f"stk_research_{self._safe_name(ts_code)}_{limit}"
+        return self._get_df_cached(
+            cache_key, self.pro.stk_research,
+            ts_code=ts_code, limit=limit,
+        )
+
+    # ─── 以下为统一缓存补充接口（按 trade_date 维度） ───
+
+    def get_trade_cal(self, start_date: str = None, end_date: str = None,
+                      is_open: str = '1') -> pd.DataFrame:
+        """交易日历（按日期范围缓存）"""
+        if end_date is None:
+            end_date = (datetime.now() + timedelta(days=365)).strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365 * 3)).strftime('%Y%m%d')
+        cache_key = f"trade_cal_{start_date}_{end_date}_{is_open}"
+        return self._get_df_cached(
+            cache_key, self.pro.trade_cal,
+            start_date=start_date, end_date=end_date, is_open=is_open,
+        )
+
+    def get_limit_list_ths(self, trade_date: str) -> pd.DataFrame:
+        """同花顺涨停板（按日期缓存）"""
+        cache_key = f"limit_list_ths_{trade_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.limit_list_ths, trade_date=trade_date,
+        )
+
+    def get_limit_list_d(self, trade_date: str) -> pd.DataFrame:
+        """涨停板（按日期缓存）"""
+        cache_key = f"limit_list_d_{trade_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.limit_list_d, trade_date=trade_date,
+        )
+
+    def get_limit_step(self, trade_date: str) -> pd.DataFrame:
+        """炸板信息（按日期缓存）"""
+        cache_key = f"limit_step_{trade_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.limit_step, trade_date=trade_date,
+        )
+
+    def get_top_list(self, trade_date: str) -> pd.DataFrame:
+        """龙虎榜（按日期缓存）"""
+        cache_key = f"top_list_{trade_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.top_list, trade_date=trade_date,
+        )
+
+    def get_top_inst(self, trade_date: str) -> pd.DataFrame:
+        """龙虎榜机构明细（按日期缓存）"""
+        cache_key = f"top_inst_{trade_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.top_inst, trade_date=trade_date,
+        )
+
+    def get_stk_factor_pro(self, trade_date: str, ts_code: str = None) -> pd.DataFrame:
+        """专业版技术指标（按日期缓存，可选按股票过滤）"""
+        cache_key = f"stk_factor_pro_{trade_date}"
+        kwargs = {'trade_date': trade_date}
+        if ts_code:
+            kwargs['ts_code'] = ts_code
+            cache_key = f"stk_factor_pro_{trade_date}_{self._safe_name(ts_code)}"
+        return self._get_df_cached(
+            cache_key, self.pro.stk_factor_pro, **kwargs,
+        )
+
+    # ─── 按 ts_code 维度 ───
+
+    def get_index_daily(self, ts_code: str, start_date: str = None,
+                        end_date: str = None) -> pd.DataFrame:
+        """指数日线（按指数代码缓存）"""
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+        cache_key = f"index_daily_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.index_daily,
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+        )
+
+    def get_fund_daily(self, ts_code: str, start_date: str = None,
+                       end_date: str = None) -> pd.DataFrame:
+        """基金日线（按基金代码缓存）"""
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+        cache_key = f"fund_daily_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        return self._get_df_cached(
+            cache_key, self.pro.fund_daily,
+            ts_code=ts_code, start_date=start_date, end_date=end_date,
+        )
+
+    def get_etf_cons(self, ts_code: str) -> pd.DataFrame:
+        """ETF成份股（深市 etf_sz_cons / 沪市 etf_sh_cons）"""
+        cache_key = f"etf_cons_{self._safe_name(ts_code)}"
+        if ts_code.endswith('.SH'):
+            api_func = self.pro.etf_sh_cons
+        else:
+            api_func = self.pro.etf_sz_cons
+        return self._get_df_cached(cache_key, api_func, ts_code=ts_code)
+
+    def get_namechange(self, ts_code: str) -> pd.DataFrame:
+        """股票改名记录（按股票代码缓存）"""
+        cache_key = f"namechange_{self._safe_name(ts_code)}"
+        return self._get_df_cached(
+            cache_key, self.pro.namechange, ts_code=ts_code,
+        )
+
+    # ─── 东财板块接口 ───
+
+    def get_dc_index(self) -> pd.DataFrame:
+        """东财板块指数列表（长期缓存）"""
+        cache_key = "dc_index_all"
+        # 板块列表较稳定，使用 168h TTL
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+        try:
+            df = self._retry_call(self.pro.dc_index)
+        except Exception:
+            df = None
+        if df is None:
+            df = pd.DataFrame()
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
+    def get_dc_member(self, dc_id: str) -> pd.DataFrame:
+        """东财板块成员（按板块ID缓存）"""
+        cache_key = f"dc_member_{dc_id}"
+        return self._get_df_cached(
+            cache_key, self.pro.dc_member, dc_id=dc_id,
+        )

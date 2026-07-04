@@ -118,6 +118,56 @@ load_dotenv(DOTENV_PATH)
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
 pro = ts.pro_api(TUSHARE_TOKEN) if TUSHARE_TOKEN else None
 
+# ==================== DataFetcher 统一缓存接入 ====================
+sys.path.insert(0, os.path.join(BASE_DIR, 'multi_factor_picker'))
+try:
+    from data_fetcher import DataFetcher
+    _DF_AVAILABLE = True
+except Exception as _e:
+    _DF_AVAILABLE = False
+    print(f"[Warning] DataFetcher 加载失败: {_e}")
+
+_df_singleton = None
+
+def _get_df():
+    """获取 DataFetcher 单例（失败返回 None，调用方需降级到 pro）"""
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    if not _DF_AVAILABLE:
+        return None
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            # 尝试从 .env 文件读取
+            for _env_path in [os.path.join(BASE_DIR, '.env'), "d:/mystock/config/.env"]:
+                if os.path.exists(_env_path):
+                    with open(_env_path, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith('TUSHARE_TOKEN') and '=' in line:
+                                token = line.split('=', 1)[1].strip().strip('"').strip("'")
+                                break
+                    if token:
+                        break
+        if not token:
+            return None
+        config = {
+            'cache': {
+                'enabled': True,
+                'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'),
+                'expire_hours': 168,
+            },
+            'tushare': {
+                'max_retry': 3,
+                'retry_delay': 5,
+            },
+        }
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
 OUTPUT_DB = os.path.join(CACHE_DIR, "theme_trend_sentiment_v7.db")
 
 # Deepseek API配置
@@ -209,7 +259,11 @@ def get_last_trade_date():
             d = d - timedelta(days=2)
         return d.strftime('%Y%m%d')
     
-    cal = pro.trade_cal(exchange='', start_date='20200101', end_date=query_date)
+    _df_inst = _get_df()
+    if _df_inst is not None:
+        cal = _df_inst.get_trade_cal(start_date='20200101', end_date=query_date)
+    else:
+        cal = pro.trade_cal(exchange='', start_date='20200101', end_date=query_date)
     cal = cal[cal['is_open'] == 1]
     last_trade_date = cal[cal['cal_date'] <= query_date]['cal_date'].max()
     return str(last_trade_date)
@@ -442,7 +496,11 @@ def get_stock_basic():
     
     if pro is None:
         return pd.DataFrame()
-    df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,symbol,name,industry,list_date")
+    _df_inst = _get_df()
+    if _df_inst is not None:
+        df = _df_inst.get_stock_list(list_status="L")
+    else:
+        df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,symbol,name,industry,list_date")
     time.sleep(0.15)
     
     # 保存为长效缓存
@@ -481,7 +539,11 @@ def get_daily_basic(trade_date=None):
         return cached
     if pro is None:
         return pd.DataFrame()
-    df = pro.daily_basic(trade_date=trade_date, fields="ts_code,total_mv,circ_mv,turnover_rate,pe,pb")
+    _df_inst = _get_df()
+    if _df_inst is not None:
+        df = _df_inst.get_daily_basic(trade_date=trade_date)
+    else:
+        df = pro.daily_basic(trade_date=trade_date, fields="ts_code,total_mv,circ_mv,turnover_rate,pe,pb")
     time.sleep(0.15)
     cache_set("daily_basic", df, trade_date=trade_date)
     return df
@@ -554,10 +616,20 @@ def get_daily_kline(ts_codes, start, end):
             print(f"[KLine] tushare_quant 调用失败: {e}")
     
     if need_fetch_codes:
+        _df_inst = _get_df()
         chunks = [need_fetch_codes[i:i+80] for i in range(0, len(need_fetch_codes), 80)]
         for ci, chunk in enumerate(chunks):
             try:
-                df = pro.daily(ts_code=",".join(chunk), start_date=start, end_date=end)
+                if _df_inst is not None:
+                    # DataFetcher: 按单只股票拉取（自带缓存），合并为批次结果
+                    _parts = []
+                    for _code in chunk:
+                        _code_df = _df_inst.get_daily_by_code(ts_code=_code, start_date=start, end_date=end)
+                        if _code_df is not None and not _code_df.empty:
+                            _parts.append(_code_df)
+                    df = pd.concat(_parts, ignore_index=True) if _parts else pd.DataFrame()
+                else:
+                    df = pro.daily(ts_code=",".join(chunk), start_date=start, end_date=end)
                 if df is not None and not df.empty:
                     for code in chunk:
                         code_df = df[df['ts_code'] == code].copy()
@@ -589,7 +661,11 @@ def get_index_kline(ts_code="000300.SH", start=None, end=None):
     try:
         df = pro.index_daily(ts_code=ts_code, start_date=start, end_date=end)
     except Exception:
-        df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        _df_inst = _get_df()
+        if _df_inst is not None:
+            df = _df_inst.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
+        else:
+            df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
     time.sleep(0.15)
     if df is not None and not df.empty:
         cache_set("idx_kline", df, ts_code=ts_code, start=start, end=end)
@@ -3439,10 +3515,14 @@ def list_available_dates(n=10):
     try:
         end_date = datetime.now().strftime('%Y%m%d')
         start_date = (datetime.now() - timedelta(days=90)).strftime('%Y%m%d')
-        
-        cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
+
+        _df_inst = _get_df()
+        if _df_inst is not None:
+            cal = _df_inst.get_trade_cal(start_date=start_date, end_date=end_date)
+        else:
+            cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
         cal = cal[cal['is_open'] == 1].sort_values('cal_date', ascending=False)
-        
+
         dates = cal['cal_date'].tolist()[:n]
         
         for i, d in enumerate(dates, 1):
@@ -3476,13 +3556,20 @@ def validate_date(date_str):
         
         # 验证是否是交易日
         if pro is not None:
-            cal = pro.trade_cal(exchange='', start_date=date_str, end_date=date_str)
+            _df_inst = _get_df()
+            if _df_inst is not None:
+                cal = _df_inst.get_trade_cal(start_date=date_str, end_date=date_str)
+            else:
+                cal = pro.trade_cal(exchange='', start_date=date_str, end_date=date_str)
             if cal.empty or cal[cal['is_open'] == 1].empty:
                 print(f"[Warning] 日期 {date_str} 不是交易日，将使用最近的前一个交易日")
                 # 找到最近的前一个交易日
                 end_date = (date_obj - timedelta(days=1)).strftime('%Y%m%d')
                 start_date = (date_obj - timedelta(days=30)).strftime('%Y%m%d')
-                cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
+                if _df_inst is not None:
+                    cal = _df_inst.get_trade_cal(start_date=start_date, end_date=end_date)
+                else:
+                    cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_date)
                 cal = cal[cal['is_open'] == 1].sort_values('cal_date', ascending=False)
                 if not cal.empty:
                     return cal.iloc[0]['cal_date']

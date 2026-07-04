@@ -41,6 +41,54 @@ SERVERCHAN_KEY = os.getenv('WECHAT_SCKEY')
 # 初始化 Tushare
 pro = ts.pro_api(TUSHARE_TOKEN)
 
+# 接入 DataFetcher 统一缓存
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'multi_factor_picker'))
+from data_fetcher import DataFetcher
+
+_df_singleton = None
+def _get_df():
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            # 从 d:\mystock\solo\.env 读取
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {'cache': {'enabled': True, 'dir': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'multi_factor_picker', 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+def _get_stock_basic_df(ts_code):
+    """通过DataFetcher获取单只股票基本信息DataFrame（get_stock_list全量+本地过滤），失败降级到pro"""
+    fetcher = _get_df()
+    if fetcher is not None:
+        try:
+            sl = fetcher.get_stock_list()
+            if sl is not None and not sl.empty:
+                sub = sl[sl['ts_code'] == ts_code]
+                if not sub.empty:
+                    return sub
+                return pd.DataFrame()
+        except Exception:
+            pass
+    # 降级fallback
+    try:
+        return pro.stock_basic(ts_code=ts_code)
+    except Exception:
+        return None
+
 # 路径配置（使用相对路径，便于移动）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
@@ -294,7 +342,7 @@ def get_stock_basic_info(ts_code, force_refresh=False, daily_df=None):
     
     def _fetch():
         try:
-            df = pro.stock_basic(ts_code=ts_code)
+            df = _get_stock_basic_df(ts_code)
             if df is not None and not df.empty:
                 info = df.iloc[0].to_dict()
                 
@@ -312,7 +360,11 @@ def get_stock_basic_info(ts_code, force_refresh=False, daily_df=None):
                         today = datetime.now().strftime('%Y%m%d')
                         for i in range(10):
                             check_date = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
-                            daily_basic = pro.daily_basic(ts_code=ts_code, trade_date=check_date, fields='ts_code,total_mv,circ_mv')
+                            _fetcher = _get_df()
+                            if _fetcher is not None:
+                                daily_basic = _fetcher.get_daily_basic_by_code(ts_code=ts_code, start_date=check_date, end_date=check_date)
+                            else:
+                                daily_basic = pro.daily_basic(ts_code=ts_code, trade_date=check_date, fields='ts_code,total_mv,circ_mv')
                             if daily_basic is not None and not daily_basic.empty:
                                 market_cap = daily_basic.iloc[0].get('total_mv', 0) / 10000
                                 if market_cap == 0:
@@ -651,10 +703,17 @@ def is_trading_day(date_str):
         return False
     
     try:
-        df = pro.trade_cal(exchange='SSE', start_date=date_str, end_date=date_str)
-        if not df.empty and df.iloc[0]['is_open'] == 1:
-            return True
-        return False
+        _fetcher = _get_df()
+        if _fetcher is not None:
+            df = _fetcher.get_trade_cal(start_date=date_str, end_date=date_str, is_open='1')
+            if not df.empty:
+                return True
+            return False
+        else:
+            df = pro.trade_cal(exchange='SSE', start_date=date_str, end_date=date_str)
+            if not df.empty and df.iloc[0]['is_open'] == 1:
+                return True
+            return False
     except Exception as e:
         print(f"查询交易日失败: {e}")
         return True
@@ -730,7 +789,14 @@ def get_limit_list_data(trade_date, force_refresh=False):
     
     def fetch_data():
         try:
-            df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+            _fetcher = _get_df()
+            if _fetcher is not None:
+                df = _fetcher.get_limit_list_ths(trade_date=trade_date)
+                # DataFetcher未传limit_type，需本地过滤涨停池
+                if df is not None and not df.empty and 'limit_type' in df.columns:
+                    df = df[df['limit_type'] == '涨停池']
+            else:
+                df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
             # 统一列名：price->close, pct_chg->pct_change
             if df is not None and not df.empty:
                 rename_map = {}
@@ -766,7 +832,11 @@ def get_stock_daily_data(ts_code, start_date, end_date, force_refresh=False):
     
     def fetch_data():
         try:
-            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            _fetcher = _get_df()
+            if _fetcher is not None:
+                df = _fetcher.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            else:
+                df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
             if df is not None and not df.empty:
                 df = df.sort_values('trade_date')
             return df
@@ -781,7 +851,7 @@ def get_stock_daily_data(ts_code, start_date, end_date, force_refresh=False):
 def get_stock_info(ts_code):
     """获取股票基本信息"""
     try:
-        df = pro.stock_basic(ts_code=ts_code)
+        df = _get_stock_basic_df(ts_code)
         if df is not None and not df.empty:
             return df.iloc[0].to_dict()
         return None
@@ -1862,7 +1932,7 @@ def daily_limit_track(trade_date, force_refresh=False):
         name = ts_code
         industry = ""
         try:
-            basic = pro.stock_basic(ts_code=ts_code)
+            basic = _get_stock_basic_df(ts_code)
             if basic is not None and not basic.empty:
                 name = basic.iloc[0].get('name', ts_code)
                 industry = basic.iloc[0].get('industry', '')
@@ -2429,7 +2499,7 @@ def scan_stock_signals(end_date=None, max_stocks=200):
         # 获取名称
         name = ts_code
         try:
-            basic = pro.stock_basic(ts_code=ts_code)
+            basic = _get_stock_basic_df(ts_code)
             if basic is not None and not basic.empty:
                 name = basic.iloc[0].get('name', ts_code)
                 name_upper = name.upper()

@@ -170,7 +170,8 @@ DEEP_ADJUST_MIN   = 10
 #   强势横盘: 基础7分(纯技术) → 加主力类后通常15-25分
 #   深度回调: 基础10分(纯技术) → 加主力类后通常15-30分
 #   V型急跌: 双创专属，阈值20分
-SCORE_SIDWAYS_MIN = 20    # 主板强势横盘(v3.4): 回调2-10%+一波20-60%+评分20+
+SCORE_SIDWAYS_MIN = 30    # 主板强势横盘(v3.4→v3.9): 回调2-10%+一波30-60%+评分30+
+                            # v3.9回测依据(200只×60天): 25-29分止损率75%, 30+分止损率降至33%
 SCORE_DEEP_MIN    = 10    # 深度回调保持10分
 SCORE_VSHAPE_GEM_MIN = 20 # 双创V型急跌阈值20分
 SCORE_VOL_PULLBACK_GEM_MIN = 20 # 双创放量回调阈值20分
@@ -1180,15 +1181,16 @@ class WavePatternDetector:
                     if ma20_dist > 0.30:
                         continue
 
-            # ── 强势横盘最优条件硬过滤（v3.4）────────────────
-            # 标准强势横盘：回调2-10% + 一波20-60%
-            # MA20支撑模式：回调2-25% + 一波20-80%
+            # ── 强势横盘最优条件硬过滤（v3.9）────────────────
+            # v3.9优化：一波涨幅下限从20%提升到30%（回测20-30%区间20日胜率0%）
+            # 标准强势横盘：回调2-10% + 一波30-60%
+            # MA20支撑模式：回调2-25% + 一波30-80%
             surge_pct = round(surge_gain * 100, 1)
             if is_standard_sideways:
-                if not (0.02 <= pullback_pct < 0.10 and 20 <= surge_pct < 60):
+                if not (0.02 <= pullback_pct < 0.10 and 30 <= surge_pct < 60):
                     continue
             else:
-                if not (0.02 <= pullback_pct < 0.25 and 20 <= surge_pct < 80):
+                if not (0.02 <= pullback_pct < 0.25 and 30 <= surge_pct < 80):
                     continue
 
             # ── 多指标共振评分 ──
@@ -1247,6 +1249,12 @@ class WavePatternDetector:
 
             row = df.iloc[entry_idx]
             rsi = float(row.get('rsi_qfq_6', 50))
+
+            # v3.9: RSI高位过滤（回测发现RSI>75的信号20日胜率显著降低）
+            # 603061.SH RSI=77.1 → 20日跌6.46%；603929.SH RSI=80附近多次失败
+            if rsi > 75:
+                continue
+
             atr = float(row.get('atr_qfq', 0))
             # 入场价用未复权实际交易价
             entry_price = float(row.get('close_bfq', row['close']))

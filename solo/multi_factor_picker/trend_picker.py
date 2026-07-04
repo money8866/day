@@ -115,117 +115,73 @@ STRATEGIC_INDUSTRIES = [
 # ════════════════════════════════════════════════════════
 
 def get_daily_data(fetcher: DataFetcher, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """获取日线数据（复用缓存）
-    
-    合并daily(价格) + daily_basic(换手率)
+    """获取日线数据（合并 daily + daily_basic，合并结果有业务语义，单独缓存）
+
+    注：daily 与 daily_basic 的原始 API 调用已委托给 DataFetcher 的
+    get_daily_by_code / get_daily_basic_by_code，享受 _rate_limit（220ms 间隔）
+    与 _retry_call 重试逻辑；此处仅保留"合并结果"的业务缓存。
     """
+    # 合并多个数据源的业务缓存 key（区别于 DataFetcher 内的单 API 缓存）
     cache_key = f"daily_merged_{ts_code}_{start_date}_{end_date}"
     cache_dir = get_cache_dir(fetcher.config)
-    
+
     # 尝试加载缓存
     cached = load_cache(cache_dir, cache_key, expire_hours=24)
     if cached is not None and len(cached) > 0:
         return cached
-    
-    # 调用API获取日线
+
     try:
-        df = fetcher.pro.daily(
-            ts_code=ts_code,
-            start_date=start_date,
-            end_date=end_date
-        )
+        # 通过 DataFetcher 方法层调用（含速率限制与重试）
+        df = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
         if df is None or len(df) == 0:
             return pd.DataFrame()
-        
-        # 获取换手率（从daily_basic）
+
+        # 获取换手率等基本面字段（从 daily_basic，同样走 DataFetcher 方法层）
         try:
-            df_basic = fetcher.pro.daily_basic(
-                ts_code=ts_code,
-                start_date=start_date,
-                end_date=end_date,
-                fields='ts_code,trade_date,turnover_rate,pe,pb,circ_mv,total_mv'
-            )
+            df_basic = fetcher.get_daily_basic_by_code(ts_code, start_date=start_date, end_date=end_date)
             if df_basic is not None and len(df_basic) > 0:
                 # 合并换手率
                 df = df.merge(df_basic, on=['ts_code', 'trade_date'], how='left')
         except Exception as e:
             logger.debug(f"换手率数据缺失 {ts_code}: {e}")
-        
+
         # 确保有turnover_rate列
         if 'turnover_rate' not in df.columns:
             df['turnover_rate'] = 0.0
-        
+
         df = df.sort_values('trade_date').reset_index(drop=True)
         save_cache(df, cache_dir, cache_key)
         return df
-        
+
     except Exception as e:
         logger.warning(f"获取日线数据失败 {ts_code}: {e}")
-    
-    return pd.DataFrame()
 
-
-def get_moneyflow_data(fetcher: DataFetcher, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """获取资金流数据"""
-    cache_key = f"moneyflow_{ts_code}_{start_date}_{end_date}"
-    cache_dir = get_cache_dir(fetcher.config)
-    
-    cached = load_cache(cache_dir, cache_key, expire_hours=24)
-    if cached is not None and len(cached) > 0:
-        return cached
-    
-    try:
-        df = fetcher.pro.moneyflow(
-            ts_code=ts_code,
-            start_date=start_date,
-            end_date=end_date
-        )
-        if df is not None and len(df) > 0:
-            save_cache(df, cache_dir, cache_key)
-            return df.sort_values('trade_date').reset_index(drop=True)
-    except Exception as e:
-        logger.debug(f"资金流数据缺失 {ts_code}: {e}")
-    
-    return pd.DataFrame()
-
-
-def get_daily_basic(fetcher: DataFetcher, ts_code: str, trade_date: str) -> pd.DataFrame:
-    """获取每日基本面（市值等）"""
-    cache_key = f"daily_basic_{trade_date}"
-    cache_dir = get_cache_dir(fetcher.config)
-    
-    cached = load_cache(cache_dir, cache_key, expire_hours=24)
-    if cached is not None and len(cached) > 0:
-        return cached[cached['ts_code'] == ts_code]
-    
-    try:
-        df = fetcher.pro.daily_basic(trade_date=trade_date)
-        if df is not None and len(df) > 0:
-            save_cache(df, cache_dir, cache_key)
-            return df[df['ts_code'] == ts_code]
-    except Exception as e:
-        logger.debug(f"每日基本面缺失 {ts_code}: {e}")
-    
     return pd.DataFrame()
 
 
 def get_holder_data(fetcher: DataFetcher, ts_code: str) -> pd.DataFrame:
-    """获取十大股东"""
+    """获取十大股东
+
+    注：DataFetcher 暂未封装 top10_holders 接口，这里通过 fetcher._retry_call
+    包裹 pro.top10_holders，以复用 DataFetcher 的 _rate_limit（220ms 间隔）
+    与重试逻辑；缓存仍由本函数管理（一周有效）。
+    """
     cache_key = f"top10_holders_{ts_code}"
     cache_dir = get_cache_dir(fetcher.config)
-    
+
     cached = load_cache(cache_dir, cache_key, expire_hours=168)  # 缓存一周
     if cached is not None and len(cached) > 0:
         return cached
-    
+
     try:
-        df = fetcher.pro.top10_holders(ts_code=ts_code)
+        # 直调 pro.top10_holders，但通过 _retry_call 享受速率限制与重试
+        df = fetcher._retry_call(fetcher.pro.top10_holders, ts_code=ts_code)
         if df is not None and len(df) > 0:
             save_cache(df, cache_dir, cache_key)
             return df
     except Exception as e:
         logger.debug(f"股东数据缺失 {ts_code}: {e}")
-    
+
     return pd.DataFrame()
 
 
@@ -693,8 +649,12 @@ def trend_scan(fetcher: DataFetcher, stocks: pd.DataFrame,
             if len(daily) < 30:
                 continue
             
-            moneyflow = get_moneyflow_data(fetcher, ts_code, start_date, end_date)
-            daily_basic = get_daily_basic(fetcher, ts_code, end_date)
+            moneyflow = fetcher.get_moneyflow_by_code(ts_code, start_date=start_date, end_date=end_date)
+            if len(moneyflow) > 0:
+                moneyflow = moneyflow.sort_values('trade_date').reset_index(drop=True)
+            # daily_basic 按 trade_date 缓存全市场，再过滤到当前股票
+            daily_basic_all = fetcher.get_daily_basic(end_date)
+            daily_basic = daily_basic_all[daily_basic_all['ts_code'] == ts_code] if len(daily_basic_all) > 0 else pd.DataFrame()
             
             # 获取财务数据（复用DataFetcher）
             income = fetcher.get_income(ts_code)

@@ -118,6 +118,7 @@ def _get_token():
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "config", ".env"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", ".env"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", ".env"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"),  # d:\mystock\solo\.env
     ]
     for ep in env_paths:
         ep_abs = os.path.abspath(ep)
@@ -134,6 +135,34 @@ def _get_token():
     return None
 
 
+# 模块级 DataFetcher 单例（统一缓存入口）
+_DF_SINGLETON = None
+
+
+def _get_df():
+    """获取 DataFetcher 单例（懒加载，所有评分器共用同一份缓存）"""
+    global _DF_SINGLETON
+    if _DF_SINGLETON is not None:
+        return _DF_SINGLETON
+    try:
+        from data_fetcher import DataFetcher  # type: ignore
+        token = _get_token()
+        if not token:
+            return None
+        config = {
+            'cache': {
+                'enabled': True,
+                'dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'),
+                'expire_hours': 168,  # 7 天
+            },
+            'tushare': {'max_retry': 3, 'retry_delay': 5},
+        }
+        _DF_SINGLETON = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _DF_SINGLETON
+
+
 # ════════════════════════════════════════════════════════
 # 新因子评分
 # ════════════════════════════════════════════════════════
@@ -148,9 +177,10 @@ class ChipScorer:
     ③ 公募持仓变化（25%）— fund_portfolio 近2期基金持仓变化
     ④ 股东增减持（20%）— stk_holdertrade 近90日净增持/股本
     """
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = None
         self._pro_owned = False
+        self._df = df
         if pro is not None:
             self._pro = pro
         else:
@@ -168,21 +198,35 @@ class ChipScorer:
                 self._pro = ts.pro_api()
         return self._pro
 
+    def _get_df(self):
+        if self._df is None:
+            self._df = _get_df()
+        return self._df
+
     def score_moneyflow(self, ts_code: str, window_days: int = 20) -> Tuple[float, Dict]:
         """① 主力资金流向评分 (0~100)"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=window_days * 1.5)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+
+        if df is not None:
+            try:
+                mf = df.get_moneyflow_by_code(ts_code, start_date=start_str, end_date=end_str)
+            except Exception:
+                mf = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                mf = pro.moneyflow(ts_code=ts_code, start_date=start_str, end_date=end_str)
+            except Exception:
+                mf = None
 
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=window_days * 1.5)
-            mf = pro.moneyflow(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d')
-            )
             if mf is None or len(mf) == 0:
                 return 50.0, {"data_count": 0}
 
@@ -239,11 +283,21 @@ class ChipScorer:
     def score_holder_change(self, ts_code: str) -> Tuple[float, Dict]:
         """② 股东人数变化评分 (0~100)"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        if df is not None:
+            try:
+                hn = df.get_stk_holdernumber_raw(ts_code, limit=3)
+            except Exception:
+                hn = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                hn = pro.stk_holdernumber(ts_code=ts_code, limit=3)
+            except Exception:
+                hn = None
         try:
-            hn = pro.stk_holdernumber(ts_code=ts_code, limit=3)
             if hn is None or len(hn) < 2:
                 return 50.0, {"data_count": len(hn) if hn is not None else 0}
 
@@ -286,12 +340,22 @@ class ChipScorer:
     def score_fund_holding(self, ts_code: str) -> Tuple[float, Dict]:
         """③ 公募持仓变化评分 (0~100)"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        if df is not None:
+            try:
+                fp = df.get_fund_portfolio_raw(ts_code, limit=2)
+            except Exception:
+                fp = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                # 注意：fund_portfolio 用 fund ts_code，这里用 stock ts_code 查基金持仓
+                fp = pro.fund_portfolio(ts_code=ts_code, limit=2)
+            except Exception:
+                fp = None
         try:
-            # 注意：fund_portfolio 用 fund ts_code，这里用 stock ts_code 查基金持仓
-            fp = pro.fund_portfolio(ts_code=ts_code, limit=2)
             if fp is None or len(fp) < 2:
                 return 50.0, {"data_count": len(fp) if fp is not None else 0}
 
@@ -337,11 +401,22 @@ class ChipScorer:
     def score_holdertrade(self, ts_code: str) -> Tuple[float, Dict]:
         """④ 股东增减持评分 (0~100)"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        start_str = (datetime.now()-timedelta(90)).strftime('%Y%m%d')
+        if df is not None:
+            try:
+                ht = df.get_stk_holdertrade_raw(ts_code, start_date=start_str)
+            except Exception:
+                ht = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                ht = pro.stk_holdertrade(ts_code=ts_code, start_date=start_str)
+            except Exception:
+                ht = None
         try:
-            ht = pro.stk_holdertrade(ts_code=ts_code, start_date=(datetime.now()-timedelta(90)).strftime('%Y%m%d'))
             if ht is None or len(ht) == 0:
                 return 50.0, {"data_count": 0}
 
@@ -393,9 +468,10 @@ class SafetyScorer:
     ③ 解禁压力（20%）— share_float 未来60天解禁占比
     ④ 现金流安全（25%）— 经营现金流/营收
     """
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = None
         self._pro_owned = False
+        self._df = df
         if pro is not None:
             self._pro = pro
         else:
@@ -412,6 +488,11 @@ class SafetyScorer:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
         return self._pro
+
+    def _get_df(self):
+        if self._df is None:
+            self._df = _get_df()
+        return self._df
 
     def score_peg(self, profit_yoy: float, roe: float) -> Tuple[float, Dict]:
         """① PEG质量评分"""
@@ -445,11 +526,21 @@ class SafetyScorer:
     def score_pledge(self, ts_code: str) -> Tuple[float, Dict]:
         """② 质押风险评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        if df is not None:
+            try:
+                ps = df.get_pledge_stat_raw(ts_code)
+            except Exception:
+                ps = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                ps = pro.pledge_stat(ts_code=ts_code)
+            except Exception:
+                ps = None
         try:
-            ps = pro.pledge_stat(ts_code=ts_code)
             if ps is None or len(ps) == 0:
                 return 50.0, {"no_data": True}
 
@@ -480,11 +571,21 @@ class SafetyScorer:
     def score_share_float(self, ts_code: str) -> Tuple[float, Dict]:
         """③ 解禁压力评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
+        df = self._get_df()
+        if df is not None:
+            try:
+                sf = df.get_share_float_raw(ts_code)
+            except Exception:
+                sf = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                sf = pro.share_float(ts_code=ts_code)
+            except Exception:
+                sf = None
         try:
-            sf = pro.share_float(ts_code=ts_code)
             if sf is None or len(sf) == 0:
                 return 50.0, {"no_data": True}
 
@@ -573,8 +674,9 @@ class ThemeScorerV2:
 
     替代方案：若 fina_mainbz 无数据，回退到 chain_tag 白名单匹配
     """
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = None
+        self._df = df
         if pro is not None:
             self._pro = pro
         else:
@@ -583,22 +685,33 @@ class ThemeScorerV2:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
 
+    def _get_df(self):
+        if self._df is None:
+            self._df = _get_df()
+        return self._df
+
     def score_by_mainbz(self, ts_code: str, period: str = None) -> Tuple[float, str, Dict]:
         """
         通过主营业务构成匹配主题
         Returns: (主题分 0~100, 主题名称, 详情)
         """
-        pro = self._pro
-        if pro is None:
+        df = self._get_df()
+        if df is None and self._pro is None:
             return 0.0, "", {"error": "no token"}
         try:
             if period is None:
                 period = f"{datetime.now().year}1231"
-            mz = pro.fina_mainbz(ts_code=ts_code, period=period)
+            if df is not None:
+                mz = df.get_fina_mainbz_raw(ts_code, period=period)
+            else:
+                mz = self._pro.fina_mainbz(ts_code=ts_code, period=period)
             if mz is None or len(mz) == 0:
                 # 尝试更早的报告期
                 period = f"{datetime.now().year - 1}1231"
-                mz = pro.fina_mainbz(ts_code=ts_code, period=period)
+                if df is not None:
+                    mz = df.get_fina_mainbz_raw(ts_code, period=period)
+                else:
+                    mz = self._pro.fina_mainbz(ts_code=ts_code, period=period)
                 if mz is None or len(mz) == 0:
                     return 0.0, "", {"no_data": True}
 
@@ -715,19 +828,20 @@ class RecognitionScorer:
     ⑤ 舆情热度（15%）— 新闻曝光、研报覆盖、市场讨论度
     """
     
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = pro
         self._pro_owned = False
+        self._df = df
         if pro is None:
             token = _get_token()
             if token:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
                 self._pro_owned = True
-        
+
         # 缓存
         self._cache: Dict[str, Tuple[float, Dict]] = {}
-    
+
     def _get_pro(self):
         if self._pro is None:
             token = _get_token()
@@ -735,27 +849,39 @@ class RecognitionScorer:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
         return self._pro
-    
+
+    def _get_df(self):
+        if self._df is None:
+            self._df = _get_df()
+        return self._df
+
     def _score_activity(self, ts_code: str) -> Tuple[float, Dict]:
         """① 资金活跃度评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
-        
+        df = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+
+        if df is not None:
+            try:
+                db = df.get_daily_basic_by_code(ts_code, start_date=start_str, end_date=end_str)
+            except Exception:
+                db = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                db = pro.daily_basic(
+                    ts_code=ts_code, start_date=start_str, end_date=end_str,
+                    fields='ts_code,trade_date,turnover_rate,volume_ratio,circ_mv',
+                )
+            except Exception:
+                db = None
+
         try:
-            # 获取最近20日数据
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=30)
-            
-            # 尝试获取 daily_basic 数据
-            db = pro.daily_basic(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d'),
-                fields='ts_code,trade_date,turnover_rate,volume_ratio,circ_mv'
-            )
-            
             if db is None or len(db) < 10:
                 return 50.0, {"data_count": len(db) if db is not None else 0}
             
@@ -789,42 +915,46 @@ class RecognitionScorer:
             logger.debug(f"activity score {ts_code}: {e}")
             return 50.0, {"error": str(e)[:40]}
     
-    def _score_limit_up_history(self, ts_code: str, df: pd.DataFrame = None) -> Tuple[float, Dict]:
+    def _score_limit_up_history(self, ts_code: str, daily_df: pd.DataFrame = None) -> Tuple[float, Dict]:
         """② 涨停基因评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
+        fetcher = self._get_df()
+        if fetcher is None and self._get_pro() is None:
             return 50.0, {"error": "no token"}
-        
+
         try:
-            if df is None:
-                # 获取最近一年的日线数据，统计涨停次数
+            if daily_df is None:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=365)
-                df = pro.daily(
-                    ts_code=ts_code,
-                    start_date=start_date.strftime('%Y%m%d'),
-                    end_date=end_date.strftime('%Y%m%d')
-                )
-            
-            if df is None or len(df) == 0:
+                start_str = start_date.strftime('%Y%m%d')
+                end_str = end_date.strftime('%Y%m%d')
+                if fetcher is not None:
+                    daily_df = fetcher.get_daily_by_code(
+                        ts_code, start_date=start_str, end_date=end_str,
+                    )
+                else:
+                    daily_df = self._get_pro().daily(
+                        ts_code=ts_code, start_date=start_str, end_date=end_str,
+                    )
+
+            if daily_df is None or len(daily_df) == 0:
                 return 50.0, {"data_count": 0}
-            
+
             # 计算涨停次数（涨幅>=9.9%视为涨停）
-            df['pct_chg'] = df['pct_chg'].fillna(0)
-            limit_up_count = len(df[df['pct_chg'] >= 9.9])
-            
+            daily_df['pct_chg'] = daily_df['pct_chg'].fillna(0)
+            limit_up_count = len(daily_df[daily_df['pct_chg'] >= 9.9])
+
             # 计算连板能力（连续涨停的最大天数）
             max_consecutive = 0
             current_streak = 0
-            for pct in df['pct_chg'].values:
+            for pct in daily_df['pct_chg'].values:
                 if pct >= 9.9:
                     current_streak += 1
                     max_consecutive = max(max_consecutive, current_streak)
                 else:
                     current_streak = 0
-            
-            trading_days = len(df)
+
+            trading_days = len(daily_df)
             
             # 评分
             # 涨停频率
@@ -843,45 +973,50 @@ class RecognitionScorer:
             logger.debug(f"limit_up history {ts_code}: {e}")
             return 50.0, {"error": str(e)[:40]}
     
-    def _score_price_momentum(self, ts_code: str, df: pd.DataFrame = None) -> Tuple[float, Dict]:
+    def _score_price_momentum(self, ts_code: str, daily_df: pd.DataFrame = None) -> Tuple[float, Dict]:
         """③ 空间记忆评分 — 新高能力和趋势强度"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
+        fetcher = self._get_df()
+        if fetcher is None and self._get_pro() is None:
             return 50.0, {"error": "no token"}
-        
+
         try:
-            if df is None:
+            if daily_df is None:
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=180)
-                df = pro.daily(
-                    ts_code=ts_code,
-                    start_date=start_date.strftime('%Y%m%d'),
-                    end_date=end_date.strftime('%Y%m%d'),
-                    fields='ts_code,trade_date,high,close'
-                )
-            
-            if df is None or len(df) < 60:
-                return 50.0, {"data_count": len(df) if df is not None else 0}
-            
-            df = df.sort_values('trade_date')
-            
+                start_str = start_date.strftime('%Y%m%d')
+                end_str = end_date.strftime('%Y%m%d')
+                if fetcher is not None:
+                    daily_df = fetcher.get_daily_by_code(
+                        ts_code, start_date=start_str, end_date=end_str,
+                    )
+                else:
+                    daily_df = self._get_pro().daily(
+                        ts_code=ts_code, start_date=start_str, end_date=end_str,
+                        fields='ts_code,trade_date,high,close',
+                    )
+
+            if daily_df is None or len(daily_df) < 60:
+                return 50.0, {"data_count": len(daily_df) if daily_df is not None else 0}
+
+            daily_df = daily_df.sort_values('trade_date')
+
             # 统计创新高次数
-            highs = df['high'].values
+            highs = daily_df['high'].values
             new_high_count = 0
             running_high = highs[0]
             for h in highs[1:]:
                 if h > running_high:
                     new_high_count += 1
                     running_high = h
-            
+
             # 计算波动率（弹性）
-            returns = df['close'].pct_change().dropna()
+            returns = daily_df['close'].pct_change().dropna()
             volatility = returns.std() * math.sqrt(252)  # 年化波动率
-            
+
             # 计算趋势强度（近60日收益）
-            if len(df) >= 60:
-                trend_return = (df['close'].iloc[-1] / df['close'].iloc[-60] - 1) * 100
+            if len(daily_df) >= 60:
+                trend_return = (daily_df['close'].iloc[-1] / daily_df['close'].iloc[-60] - 1) * 100
             else:
                 trend_return = 0
             
@@ -955,30 +1090,43 @@ class RecognitionScorer:
     def _score_sentiment(self, ts_code: str) -> Tuple[float, Dict]:
         """⑤ 舆情热度评分 — 新闻和研报覆盖"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
+        fetcher = self._get_df()
+        if fetcher is None and self._get_pro() is None:
             return 50.0, {"error": "no token"}
-        
+
         try:
             # 获取最近30天的新闻
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=30)
-            
-            news = pro.stk_news(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d')
-            )
-            
+            if fetcher is not None:
+                try:
+                    news = fetcher.get_stk_news(ts_code, limit=30)
+                except Exception:
+                    news = None
+            else:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=30)
+                news = self._get_pro().stk_news(
+                    ts_code=ts_code,
+                    start_date=start_date.strftime('%Y%m%d'),
+                    end_date=end_date.strftime('%Y%m%d'),
+                )
+
             news_count = len(news) if news is not None else 0
-            
+
             # 获取最近的研报
-            reports = pro.stk_research(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d')
-            )
-            
+            if fetcher is not None:
+                try:
+                    reports = fetcher.get_stk_research(ts_code, limit=30)
+                except Exception:
+                    reports = None
+            else:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=30)
+                reports = self._get_pro().stk_research(
+                    ts_code=ts_code,
+                    start_date=start_date.strftime('%Y%m%d'),
+                    end_date=end_date.strftime('%Y%m%d'),
+                )
+
             report_count = len(reports) if reports is not None else 0
             
             # 评分
@@ -1006,23 +1154,34 @@ class RecognitionScorer:
         
         # 预拉取日线数据（一次拉取365天，共享给涨停基因+空间记忆两个子评分）
         _shared_daily = None
-        pro = self._get_pro()
-        if pro is not None:
+        fetcher = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+        if fetcher is not None:
             try:
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=365)
-                _shared_daily = pro.daily(
-                    ts_code=ts_code,
-                    start_date=start_date.strftime('%Y%m%d'),
-                    end_date=end_date.strftime('%Y%m%d'),
-                    fields='ts_code,trade_date,high,close,pct_chg'
+                _shared_daily = fetcher.get_daily_by_code(
+                    ts_code, start_date=start_str, end_date=end_str,
                 )
             except Exception:
                 pass
-        
+        else:
+            pro = self._get_pro()
+            if pro is not None:
+                try:
+                    _shared_daily = pro.daily(
+                        ts_code=ts_code,
+                        start_date=start_str,
+                        end_date=end_str,
+                        fields='ts_code,trade_date,high,close,pct_chg',
+                    )
+                except Exception:
+                    pass
+
         s1, d1 = self._score_activity(ts_code)
-        s2, d2 = self._score_limit_up_history(ts_code, df=_shared_daily)
-        s3, d3 = self._score_price_momentum(ts_code, df=_shared_daily)
+        s2, d2 = self._score_limit_up_history(ts_code, daily_df=_shared_daily)
+        s3, d3 = self._score_price_momentum(ts_code, daily_df=_shared_daily)
         s4, d4 = self._score_stock_personality(market_cap, industry)
         s5, d5 = self._score_sentiment(ts_code)
         
@@ -1059,19 +1218,20 @@ class AlphaScorer:
     ⑥ 情绪因子（15%）— 资金流向、市场情绪beta
     """
     
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = pro
         self._pro_owned = False
+        self._df = df
         if pro is None:
             token = _get_token()
             if token:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
                 self._pro_owned = True
-        
+
         # 缓存
         self._cache: Dict[str, Tuple[float, Dict]] = {}
-    
+
     def _get_pro(self):
         if self._pro is None:
             token = _get_token()
@@ -1079,7 +1239,12 @@ class AlphaScorer:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
         return self._pro
-    
+
+    def _get_df(self):
+        if self._df is None:
+            self._df = _get_df()
+        return self._df
+
     def _score_quality(self, roe: float, profit_yoy: float, cash_flow_ratio: float) -> Tuple[float, Dict]:
         """① 质量因子评分"""
         details = {}
@@ -1216,29 +1381,40 @@ class AlphaScorer:
     def _score_momentum(self, ts_code: str) -> Tuple[float, Dict]:
         """④ 动量因子评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
-        
+        fetcher = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=60)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+
+        if fetcher is not None:
+            try:
+                df = fetcher.get_daily_by_code(
+                    ts_code, start_date=start_str, end_date=end_str,
+                )
+            except Exception:
+                df = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                df = pro.daily(
+                    ts_code=ts_code, start_date=start_str, end_date=end_str,
+                    fields='ts_code,trade_date,close',
+                )
+            except Exception:
+                df = None
+
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=60)
-            
-            df = pro.daily(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d'),
-                fields='ts_code,trade_date,close'
-            )
-            
             if df is None or len(df) < 20:
                 return 50.0, {"data_count": len(df) if df is not None else 0}
-            
+
             df = df.sort_values('trade_date')
-            
+
             # 计算60日收益
             ret_60d = (df['close'].iloc[-1] / df['close'].iloc[0] - 1) * 100
-            
+
             # 计算相对强弱（RS）
             if len(df) >= 20:
                 ret_20d = (df['close'].iloc[-1] / df['close'].iloc[-20] - 1) * 100
@@ -1282,35 +1458,52 @@ class AlphaScorer:
     def _score_liquidity(self, ts_code: str) -> Tuple[float, Dict]:
         """⑤ 流动性因子评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
-        
+        fetcher = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=20)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+
+        if fetcher is not None:
+            try:
+                df = fetcher.get_daily_by_code(
+                    ts_code, start_date=start_str, end_date=end_str,
+                )
+            except Exception:
+                df = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                df = pro.daily(
+                    ts_code=ts_code, start_date=start_str, end_date=end_str,
+                    fields='ts_code,trade_date,amount,vol,close',
+                )
+            except Exception:
+                df = None
+
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=20)
-            
-            df = pro.daily(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d'),
-                fields='ts_code,trade_date,amount,vol,close'
-            )
-            
             if df is None or len(df) < 10:
                 return 50.0, {"data_count": len(df) if df is not None else 0}
-            
+
             # 日均成交额（亿元）
             avg_amount = df['amount'].mean() / 1e8
-            
+
             # 日均换手率
-            turnover_rate = pro.daily_basic(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d'),
-                fields='turnover_rate'
-            )
-            
+            if fetcher is not None:
+                try:
+                    turnover_rate = fetcher.get_daily_basic_by_code(
+                        ts_code, start_date=start_str, end_date=end_str,
+                    )
+                except Exception:
+                    turnover_rate = None
+            else:
+                turnover_rate = self._get_pro().daily_basic(
+                    ts_code=ts_code, start_date=start_str, end_date=end_str,
+                    fields='turnover_rate',
+                )
+
             if turnover_rate is not None and len(turnover_rate) > 0:
                 avg_turnover = turnover_rate['turnover_rate'].mean()
             else:
@@ -1352,21 +1545,27 @@ class AlphaScorer:
     def _score_sentiment(self, ts_code: str) -> Tuple[float, Dict]:
         """⑥ 情绪因子评分"""
         details = {}
-        pro = self._get_pro()
-        if pro is None:
-            return 50.0, {"error": "no token"}
-        
+        fetcher = self._get_df()
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=20)
+        start_str = start_date.strftime('%Y%m%d')
+        end_str = end_date.strftime('%Y%m%d')
+
+        if fetcher is not None:
+            try:
+                mf = fetcher.get_moneyflow_by_code(ts_code, start_date=start_str, end_date=end_str)
+            except Exception:
+                mf = None
+        else:
+            pro = self._get_pro()
+            if pro is None:
+                return 50.0, {"error": "no token"}
+            try:
+                mf = pro.moneyflow(ts_code=ts_code, start_date=start_str, end_date=end_str)
+            except Exception:
+                mf = None
+
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=20)
-            
-            # 获取资金流向数据
-            mf = pro.moneyflow(
-                ts_code=ts_code,
-                start_date=start_date.strftime('%Y%m%d'),
-                end_date=end_date.strftime('%Y%m%d')
-            )
-            
             if mf is None or len(mf) == 0:
                 return 50.0, {"data_count": 0}
             
@@ -1452,14 +1651,15 @@ class LeaderRecognizer:
     - central_score: 中军评分 (0~100)
     """
     
-    def __init__(self, pro=None):
+    def __init__(self, pro=None, df=None):
         self._pro = pro
+        self._df = df
         if pro is None:
             token = _get_token()
             if token:
                 ts.set_token(token)
                 self._pro = ts.pro_api()
-        
+
         # 缓存
         self._cache: Dict[str, Dict] = {}
     
@@ -1485,7 +1685,8 @@ class LeaderRecognizer:
     
     def recognize(self, ts_code: str, market_cap: float, industry: str,
                   recognition_score: float, alpha_score: float,
-                  theme_score: float, chip_score: float) -> Dict:
+                  theme_score: float, chip_score: float,
+                  max_consecutive_zt: int = 0) -> Dict:
         """
         识别股票类型并评分
         
@@ -1497,6 +1698,7 @@ class LeaderRecognizer:
             alpha_score: (v3.0已弃用，传0，权重重分配给recognition/theme/chip)
             theme_score: 主题评分
             chip_score: 筹码面评分
+            max_consecutive_zt: 近365日最大连板数（硬门槛：≥3板才能认定为龙头）
         
         Returns:
             Dict with: leader_type, leader_score, central_score, features
@@ -1542,23 +1744,37 @@ class LeaderRecognizer:
         )
         
         # 判定类型
+        # 硬约束：龙头判定必须满足最大连板≥3板（无论评分多高）
+        # 连板<3板的高分高市值股认定为中军，不认定为龙头
         features = []
         leader_type = "普通"
+        leader_locked = False  # 是否已锁定为龙头类
         
-        if leader_score >= 75:
+        if leader_score >= 75 and max_consecutive_zt >= 3:
             leader_type = "龙头"
+            leader_locked = True
             features.append("高辨识度龙头")
-        elif leader_score >= 65:
+            features.append(f"最大连板{max_consecutive_zt}板")
+        elif leader_score >= 75 and max_consecutive_zt < 3:
+            # 评分够但连板不足：降级为中军候选
+            features.append(f"连板{max_consecutive_zt}板不足3板，未达龙头门槛")
+        elif leader_score >= 65 and max_consecutive_zt >= 3:
             leader_type = "龙二"
+            leader_locked = True
             features.append("强势股")
-        elif leader_score >= 55:
+            features.append(f"最大连板{max_consecutive_zt}板")
+        elif leader_score >= 55 and max_consecutive_zt >= 2:
             leader_type = "补涨"
+            leader_locked = True
             features.append("活跃股")
         
         if central_score >= 65:
-            if leader_type == "普通":
-                leader_type = "中军"
-                features.append("中军股")
+            if not leader_locked:
+                if leader_type == "普通":
+                    leader_type = "中军"
+                    features.append("中军股")
+                else:
+                    features.append("兼具中军特征")
             else:
                 features.append("兼具龙头与中军特征")
         elif central_score >= 55:
@@ -1578,6 +1794,7 @@ class LeaderRecognizer:
             "central_score": round(central_score, 1),
             "features": features,
             "market_cap_b": round(market_cap_b, 1),
+            "max_consecutive_zt": max_consecutive_zt,
         }
         
         self._cache[cache_key] = result
@@ -1717,15 +1934,18 @@ class BullScorerV2:
         ts.set_token(self.token)
         self.pro = ts.pro_api()
 
+        # 统一缓存入口：所有评分器共用同一份 DataFetcher 单例
+        self.df = _get_df()
+
         # 原有评分器
-        self.chip_scorer = ChipScorer(self.pro)
-        self.safety_scorer = SafetyScorer(self.pro)
-        self.theme_scorer = ThemeScorerV2(self.pro)
-        
+        self.chip_scorer = ChipScorer(self.pro, df=self.df)
+        self.safety_scorer = SafetyScorer(self.pro, df=self.df)
+        self.theme_scorer = ThemeScorerV2(self.pro, df=self.df)
+
         # 新增评分器
-        self.recognition_scorer = RecognitionScorer(self.pro)
-        self.alpha_scorer = AlphaScorer(self.pro)
-        self.leader_recognizer = LeaderRecognizer(self.pro)
+        self.recognition_scorer = RecognitionScorer(self.pro, df=self.df)
+        self.alpha_scorer = AlphaScorer(self.pro, df=self.df)
+        self.leader_recognizer = LeaderRecognizer(self.pro, df=self.df)
 
         # 缓存
         self._chip_cache: Dict[str, Tuple[float, Dict]] = {}
@@ -1871,13 +2091,14 @@ class BullScorerV2:
 
     def _get_leader_recognition(self, ts_code: str, market_cap: float, industry: str,
                                 recognition_score: float, alpha_score: float,
-                                theme_score: float, chip_score: float) -> Dict:
-        """带缓存的龙头/中军识别"""
+                                theme_score: float, chip_score: float,
+                                max_consecutive_zt: int = 0) -> Dict:
+        """带缓存的龙头/中军识别（含连板硬门槛）"""
         cache_key = ts_code
         if cache_key not in self._leader_cache:
             self._leader_cache[cache_key] = self.leader_recognizer.recognize(
                 ts_code, market_cap, industry, recognition_score, alpha_score,
-                theme_score, chip_score
+                theme_score, chip_score, max_consecutive_zt
             )
         return self._leader_cache[cache_key]
 
@@ -1936,6 +2157,12 @@ class BullScorerV2:
         )
 
         # 6. 龙头/中军识别（Alpha因子已移除，传入0.0占位）
+        # 从历史辨识度详情中提取最大连板数，用于龙头硬门槛校验
+        max_consecutive_zt = 0
+        if isinstance(recognition_detail, dict):
+            limit_up_info = recognition_detail.get('limit_up', {})
+            if isinstance(limit_up_info, dict):
+                max_consecutive_zt = int(limit_up_info.get('max_consecutive_zt', 0))
         leader_result = self._get_leader_recognition(
             base_result.ts_code,
             base_result.market_cap or 0,
@@ -1943,7 +2170,8 @@ class BullScorerV2:
             recognition_score,
             0.0,        # alpha_score已移除(v3.0)
             theme_score_v2,
-            chip_score
+            chip_score,
+            max_consecutive_zt
         )
 
         # 7. BullScore v3.0 计算（Alpha因子已移除）

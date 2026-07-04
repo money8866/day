@@ -38,6 +38,42 @@ from collections import defaultdict
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+# ═══════════════════════════════════════════════════════
+# DataFetcher 统一缓存接入
+# ═══════════════════════════════════════════════════════
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(BASE_DIR, 'multi_factor_picker'))
+try:
+    from data_fetcher import DataFetcher
+except Exception:
+    DataFetcher = None
+
+_df_singleton = None
+def _get_df():
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    if DataFetcher is None:
+        return None
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            env_path = os.path.join(BASE_DIR, '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
 OUT_DIR = r'D:\mystock\solo\multi_factor_picker\output'
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -69,44 +105,32 @@ def _save_cache(df, cache_file):
         pass
 
 def cached_daily(ts_code, start_date, end_date):
-    """缓存版 pro.daily()，与 tushare_quant.py 共用 {ts_code}.csv"""
-    cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-    
-    # 读缓存
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None:
-        # 检查缓存是否覆盖所需日期范围
-        cached_dates = set(df_cache['trade_date'].values)
-        has_start = start_date in cached_dates
-        has_end = end_date in cached_dates
-        if has_start and has_end:
-            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-            subset = df_cache[mask].copy()
-            if len(subset) >= 40:
-                return subset.sort_values('trade_date').reset_index(drop=True)
-    
-    # 缓存缺失，调API
-    df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    time.sleep(0.06)
-    
+    """缓存版 pro.daily()，已接入 DataFetcher 统一缓存（保留包装供外部调用）"""
+    df_inst = _get_df()
+    try:
+        if df_inst is not None:
+            df = df_inst.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
+        else:
+            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)  # 降级fallback
+            time.sleep(0.06)
+    except Exception:
+        df = None
+
     if df is None or df.empty:
         return None
-    
+
     df['trade_date'] = df['trade_date'].astype(str)
-    
-    # 合并到缓存文件（保留历史数据）
-    if df_cache is not None:
-        combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-        _save_cache(combined, cache_file)
-    else:
-        _save_cache(df, cache_file)
-    
     return df.sort_values('trade_date').reset_index(drop=True)
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """缓存版 pro.stk_factor_pro()，直接含MA/RSI/MACD等计算值"""
+    """缓存版 pro.stk_factor_pro()，直接含MA/RSI/MACD等计算值
+
+    注：DataFetcher.get_stk_factor_pro 仅支持单日横截面查询(trade_date+可选ts_code)，
+    不支持按股票+日期范围的时间序列查询，故此处保留独立CSV缓存作为降级方案，
+    并优先使用 DataFetcher 的 pro 实例（统一 token/速率）。
+    """
     cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-    
+
     df_cache = _read_cache(cache_file)
     if df_cache is not None:
         cached_dates = set(df_cache['trade_date'].values)
@@ -117,10 +141,16 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
             subset = df_cache[mask].copy()
             if not subset.empty:
                 return subset.sort_values('trade_date').reset_index(drop=True)
-    
-    df = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+    # 优先 DataFetcher 的 pro 实例，降级用全局 pro
+    df_inst = _get_df()
+    api_pro = df_inst.pro if df_inst is not None else pro
+    try:
+        df = api_pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+    except Exception:
+        df = None
     time.sleep(0.06)
-    
+
     if df is not None and not df.empty:
         df['trade_date'] = df['trade_date'].astype(str)
         if df_cache is not None:
@@ -133,31 +163,20 @@ def cached_stk_factor_pro(ts_code, start_date, end_date):
     return df
 
 def cached_daily_basic(ts_code, start_date, end_date):
-    """缓存版 pro.daily_basic()"""
-    cache_file = os.path.join(CACHE_DIR, f"daily_basic_{ts_code}.csv")
-    
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None:
-        cached_dates = set(df_cache['trade_date'].values)
-        has_start = start_date in cached_dates
-        has_end = end_date in cached_dates
-        if has_start and has_end:
-            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-            subset = df_cache[mask].copy()
-            if not subset.empty:
-                return subset.sort_values('trade_date').reset_index(drop=True)
-    
-    df = pro.daily_basic(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                          fields='ts_code,trade_date,turnover_rate,volume_ratio,pe_ttm,pb')
-    time.sleep(0.06)
-    
+    """缓存版 pro.daily_basic()，已接入 DataFetcher 统一缓存（保留包装供外部调用）"""
+    df_inst = _get_df()
+    try:
+        if df_inst is not None:
+            df = df_inst.get_daily_basic_by_code(ts_code, start_date=start_date, end_date=end_date)
+        else:
+            df = pro.daily_basic(ts_code=ts_code, start_date=start_date, end_date=end_date,
+                                 fields='ts_code,trade_date,turnover_rate,volume_ratio,pe_ttm,pb')  # 降级fallback
+            time.sleep(0.06)
+    except Exception:
+        df = None
+
     if df is not None and not df.empty:
         df['trade_date'] = df['trade_date'].astype(str)
-        if df_cache is not None:
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-            _save_cache(combined, cache_file)
-        else:
-            _save_cache(df, cache_file)
         return df.sort_values('trade_date').reset_index(drop=True)
     return df
 
@@ -222,11 +241,15 @@ def get_today_str():
 
 def get_latest_trade_date():
     """获取最近交易日（向前推，最多5天）"""
+    df_inst = _get_df()
     for days_back in range(5):
         d = datetime.date.today() - datetime.timedelta(days=days_back)
         ds = d.strftime('%Y%m%d')
         try:
-            df = pro.trade_cal(exchange='SSE', start_date=ds, end_date=ds)
+            if df_inst is not None:
+                df = df_inst.get_trade_cal(start_date=ds, end_date=ds, is_open='1')
+            else:
+                df = pro.trade_cal(exchange='SSE', start_date=ds, end_date=ds)  # 降级fallback
             if df is not None and len(df) > 0 and df.iloc[0]['is_open'] == 1:
                 return str(df.iloc[0]['cal_date'])
         except:
@@ -584,7 +607,11 @@ def get_stock_pool():
 
     # 备用：用 stock_basic 获取全市场主板（限制前200只用于快速测试）
     try:
-        sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code')
+        df_inst = _get_df()
+        if df_inst is not None:
+            sb = df_inst.get_stock_list(list_status='L')
+        else:
+            sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code')  # 降级fallback
         # 优先上海主板+深圳主板+创业板
         mask = sb['ts_code'].str.startswith(('600', '601', '603', '000', '002', '300'))
         stocks = sb[mask]['ts_code'].tolist()[:200]

@@ -70,6 +70,36 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 # 初始化Tushare
 pro = ts.pro_api(TS_TOKEN)
 
+# =================
+# DataFetcher 统一缓存接入
+# =================
+sys.path.insert(0, os.path.join(BASE_DIR, 'multi_factor_picker'))
+from data_fetcher import DataFetcher
+
+_df_singleton = None
+def _get_df():
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            env_path = os.path.join(BASE_DIR, '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
 # =========================
 # 获取最近交易日
 # =========================
@@ -91,9 +121,10 @@ def get_last_trade_date():
         query_date = now.strftime('%Y%m%d')
 
     # =========================
-    # 如果没有 tushare，根据当前时间计算交易日
+    # 如果没有 DataFetcher，根据当前时间计算交易日
     # =========================
-    if pro is None:
+    _df = _get_df()
+    if _df is None:
         # 简单处理：跳过周末
         from datetime import date
         d = date.today()
@@ -106,11 +137,7 @@ def get_last_trade_date():
     # =========================
     # 获取交易日历
     # =========================
-    cal = pro.trade_cal(
-        exchange='',
-        start_date='20200101',
-        end_date=query_date
-    )
+    cal = _df.get_trade_cal(start_date='20200101', end_date=query_date)
 
     # 只保留开市日
     cal = cal[cal['is_open'] == 1]
@@ -226,36 +253,45 @@ def get_theme_data():
 def get_stock_data(hot_themes):
     """获取成分股列表和基本面数据"""
     import theme_trend_sentiment_score as theme_score
-    
+
+    _df = _get_df()
+
     # 获取股票列表
-    stock_basic = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name,industry,market,list_date')
+    if _df is not None:
+        stock_basic = _df.get_stock_list(list_status='L')
+    else:
+        stock_basic = pd.DataFrame(columns=['ts_code', 'name', 'industry', 'market', 'list_date'])
     stock_basic = stock_basic[~stock_basic['name'].str.contains('ST|退', na=False)].copy()
-    
+
     # 获取市值数据
     mcap_date = TRADE_DATE
     daily_basic = pd.DataFrame()
-    try:
-        daily_basic = pro.daily_basic(trade_date=mcap_date, fields='ts_code,close,pe,total_mv,circ_mv,turnover_rate,volume_ratio')
+    if _df is not None:
+        try:
+            daily_basic = _df.get_daily_basic(trade_date=mcap_date)
+            if daily_basic.empty:
+                print(f"   {mcap_date}市值数据为空，尝试获取前几个交易日...")
+        except Exception as e:
+            print(f"   {mcap_date}市值数据获取失败: {e}，尝试获取前几个交易日...")
+
         if daily_basic.empty:
-            print(f"   {mcap_date}市值数据为空，尝试获取前几个交易日...")
-    except Exception as e:
-        print(f"   {mcap_date}市值数据获取失败: {e}，尝试获取前几个交易日...")
-    
-    if daily_basic.empty:
-        dt_mcap = datetime.strptime(TRADE_DATE, '%Y%m%d')
-        for offset in range(1, 10):
-            prev_date = (dt_mcap - timedelta(days=offset)).strftime('%Y%m%d')
-            try:
-                daily_basic = pro.daily_basic(trade_date=prev_date, fields='ts_code,close,pe,total_mv,circ_mv,turnover_rate,volume_ratio')
-                if not daily_basic.empty:
-                    mcap_date = prev_date
-                    print(f"   成功获取{mcap_date}的市值数据，共{len(daily_basic)}条")
-                    break
-            except:
-                continue
-        if daily_basic.empty:
-            print(f"   警告: 无法获取市值数据，将使用0值")
-            daily_basic = pd.DataFrame(columns=['ts_code', 'close', 'pe', 'total_mv', 'circ_mv', 'turnover_rate', 'volume_ratio'])
+            dt_mcap = datetime.strptime(TRADE_DATE, '%Y%m%d')
+            for offset in range(1, 10):
+                prev_date = (dt_mcap - timedelta(days=offset)).strftime('%Y%m%d')
+                try:
+                    daily_basic = _df.get_daily_basic(trade_date=prev_date)
+                    if not daily_basic.empty:
+                        mcap_date = prev_date
+                        print(f"   成功获取{mcap_date}的市值数据，共{len(daily_basic)}条")
+                        break
+                except:
+                    continue
+            if daily_basic.empty:
+                print(f"   警告: 无法获取市值数据，将使用0值")
+                daily_basic = pd.DataFrame(columns=['ts_code', 'close', 'pe', 'total_mv', 'circ_mv', 'turnover_rate', 'volume_ratio'])
+    else:
+        print(f"   警告: DataFetcher 不可用，无法获取市值数据")
+        daily_basic = pd.DataFrame(columns=['ts_code', 'close', 'pe', 'total_mv', 'circ_mv', 'turnover_rate', 'volume_ratio'])
     
     print(f"   市值数据: {len(daily_basic)}条，有效市值: {(daily_basic['total_mv'] > 0).sum() if not daily_basic.empty else 0}条")
     
@@ -312,12 +348,21 @@ def get_kline_data(stock_codes):
         for i in range(0, len(missing_codes), batch_size):
             batch = missing_codes[i:i + batch_size]
             try:
-                ts_list = ",".join(batch)
-                df = pro.daily(
-                    ts_code=ts_list,
-                    start_date=START_DATE,
-                    end_date=TRADE_DATE
-                )
+                _df_local = _get_df()
+                if _df_local is not None:
+                    # 使用 DataFetcher 逐只查询（带统一缓存）
+                    _frames = []
+                    for _code in batch:
+                        _stock_df = _df_local.get_daily_by_code(
+                            ts_code=_code,
+                            start_date=START_DATE,
+                            end_date=TRADE_DATE
+                        )
+                        if _stock_df is not None and not _stock_df.empty:
+                            _frames.append(_stock_df)
+                    df = pd.concat(_frames, ignore_index=True) if _frames else pd.DataFrame()
+                else:
+                    df = pd.DataFrame()
                 if df is not None and not df.empty:
                     for ts_code in batch:
                         stock_df = df[df['ts_code'] == ts_code]
@@ -1098,77 +1143,384 @@ def save_to_db(candidates, db_path):
     conn.close()
     print(f"中军数据已保存到数据库: {db_path}")
 
+def _compute_indicators(df):
+    """从 OHLCV 自包含计算技术指标（不依赖外部库）"""
+    close = df['close'].astype(float)
+    high = df['high'].astype(float)
+    low = df['low'].astype(float)
+
+    # 均线
+    ma5 = close.rolling(5).mean()
+    ma10 = close.rolling(10).mean()
+    ma20 = close.rolling(20).mean()
+    ma60 = close.rolling(60).mean()
+    ma120 = close.rolling(120).mean()
+
+    # MACD (12, 26, 9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    macd = (dif - dea) * 2
+
+    # RSI (6)
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1/6, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/6, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi6 = (100 - (100 / (1 + rs))).fillna(50)
+
+    # KDJ (9, 3, 3)
+    low_9 = low.rolling(9).min()
+    high_9 = high.rolling(9).max()
+    rsv = ((close - low_9) / (high_9 - low_9).replace(0, np.nan) * 100).fillna(50)
+    k = rsv.ewm(alpha=1/3, adjust=False).mean()
+    d = k.ewm(alpha=1/3, adjust=False).mean()
+    j = 3 * k - 2 * d
+
+    return {
+        'ma5': ma5.values, 'ma10': ma10.values, 'ma20': ma20.values,
+        'ma60': ma60.values, 'ma120': ma120.values,
+        'macd': macd.values, 'dif': dif.values, 'dea': dea.values,
+        'rsi6': rsi6.values,
+        'k': k.values, 'd': d.values, 'j': j.values,
+    }
+
+
 def detect_stabilize_signal(kline_data):
-    """检测过去5天中军股票回落到MA5和MA20之间企稳的信号"""
+    """检测中军股票企稳信号 — 机构级算法 V2.0
+
+    借鉴顶尖机构模型：
+      - William O'Neil：回调健康度 + 二次测试买点
+      - Mark Minervini VCP：量能收缩 + 波动收敛
+      - Linda Raschke：K线反转形态（锤子线/吞没/十字星）
+      - Stan Weinstein：趋势结构 + Stage 1→2 过渡
+      - Stanley Druckenmiller：资金面确认
+
+    总分 100，7 维评分：
+      1. 回调健康度 (20分): 回撤幅度 + 回调天数 + 无放量破位
+      2. 量能收缩   (20分): 5/20日均量比 + 反转日量比 + 量价背离
+      3. K线反转    (15分): 锤子线/吞没/十字星 + 收盘分位
+      4. 动能背离   (15分): MACD/RSI/KDJ 底背离
+      5. 支撑位     (15分): MA20/MA60 + 距离 + 试探次数
+      6. 趋势结构   (10分): MA60向上 + MA20走平 + 上一波强度
+      7. 资金面     (5分):  量价共振 + 当日确认
+
+    阈值：≥75 完美企稳 | 60-74 合格企稳 | <60 未企稳
+    位置门槛：close 必须在 MA5*1.05 与 MA20*0.95 之间（真正企稳区）
+    """
     db_path = os.path.join(CACHE_DIR, 'zhongjun_history.db')
     if not os.path.exists(db_path):
         print("   中军历史数据库不存在，跳过企稳检测")
         return []
-    
+
     conn = sqlite3.connect(db_path)
-    
     cur = conn.cursor()
-    cur.execute("SELECT DISTINCT trade_date FROM zhongjun_daily ORDER BY trade_date DESC LIMIT 5")
+    # 取过去10个交易日的历史中军（扩大样本，覆盖回调周期）
+    cur.execute("SELECT DISTINCT trade_date FROM zhongjun_daily ORDER BY trade_date DESC LIMIT 10")
     recent_dates = [row[0] for row in cur.fetchall()]
-    
+
     if not recent_dates:
         conn.close()
         print("   无历史中军数据，跳过企稳检测")
         return []
-    
+
     cur.execute(f"""
-        SELECT DISTINCT ts_code, name 
-        FROM zhongjun_daily 
+        SELECT DISTINCT ts_code, name
+        FROM zhongjun_daily
         WHERE trade_date IN ({','.join(['?']*len(recent_dates))})
     """, recent_dates)
     recent_stocks = {row[0]: row[1] for row in cur.fetchall()}
-    
     conn.close()
-    
+
     signals = []
     for ts_code, name in recent_stocks.items():
         if ts_code not in kline_data:
             continue
-        
-        df = kline_data[ts_code]
-        if len(df) < 25:
+
+        df = kline_data[ts_code].copy()
+        if len(df) < 60:  # 需要足够数据计算 MA60/指标
             continue
-        
+
         df = df.sort_values('trade_date').reset_index(drop=True)
-        
-        closes = df['close'].values
-        ma5_vals = pd.Series(closes).rolling(5).mean().values
-        ma10_vals = pd.Series(closes).rolling(10).mean().values
-        ma20_vals = pd.Series(closes).rolling(20).mean().values
-        
-        close = float(closes[-1])
-        ma5 = float(ma5_vals[-1])
-        ma10 = float(ma10_vals[-1])
-        ma20 = float(ma20_vals[-1])
-        
-        prev_close = float(closes[-2]) if len(closes) >= 2 else close
-        prev_ma5 = float(ma5_vals[-2]) if len(ma5_vals) >= 2 else ma5
-        prev_ma20 = float(ma20_vals[-2]) if len(ma20_vals) >= 2 else ma20
-        
-        if ma20 == 0 or ma5 == 0:
+        try:
+            ind = _compute_indicators(df)
+        except Exception:
             continue
-        
-        in_range = ma20 <= close <= ma5
-        prev_in_range = prev_ma20 <= prev_close <= prev_ma5
-        
-        stabilized = False
-        reason = ""
-        
-        if in_range and not prev_in_range:
-            if close >= prev_close:
-                stabilized = True
-                reason = "回落至MA5-MA20区间后企稳反弹"
-        elif in_range and prev_in_range:
-            if close >= prev_close * 0.98:
-                stabilized = True
-                reason = "在MA5-MA20区间内连续企稳"
-        
-        if stabilized:
+
+        i = len(df) - 1
+        close = float(df.iloc[i]['close'])
+        open_ = float(df.iloc[i]['open'])
+        high = float(df.iloc[i]['high'])
+        low = float(df.iloc[i]['low'])
+        vol = float(df.iloc[i]['vol'])
+        pct_chg = float(df.iloc[i].get('pct_chg', 0) or 0)
+
+        ma5 = float(ind['ma5'][i] or 0)
+        ma10 = float(ind['ma10'][i] or 0)
+        ma20 = float(ind['ma20'][i] or 0)
+        ma60 = float(ind['ma60'][i] or 0)
+        rsi6 = float(ind['rsi6'][i] or 50)
+        kdj_j = float(ind['j'][i] or 50)
+
+        if close <= 0 or ma20 <= 0 or ma5 <= 0:
+            continue
+
+        # ===== 位置门槛：close 必须在企稳区 =====
+        # 太高（>MA5*1.05）= 已经反弹，不是企稳买点
+        # 太低（<MA20*0.95）= 破位，不是企稳
+        if close > ma5 * 1.05 or close < ma20 * 0.95:
+            continue
+
+        # ===== 1. 回调健康度 (20分) — O'Neil =====
+        lookback = min(30, i + 1)
+        df_lb = df.iloc[i - lookback + 1: i + 1]
+        high_idx_in_lb = int(df_lb['high'].idxmax())
+        high_30 = float(df_lb['high'].max())
+        pullback_days = i - high_idx_in_lb
+        pullback_pct = (high_30 - close) / high_30 * 100 if high_30 > 0 else 0.0
+
+        # 上一波涨幅（从高点往前找最低点）
+        if high_idx_in_lb > 5:
+            df_prev = df.iloc[max(0, high_idx_in_lb - 30):high_idx_in_lb]
+            low_prev = float(df_prev['low'].min())
+            prev_wave_gain = (high_30 - low_prev) / low_prev * 100 if low_prev > 0 else 0.0
+        else:
+            prev_wave_gain = 0.0
+
+        score_ph = 0
+        # 1a 回撤幅度
+        if 15 <= pullback_pct <= 25:
+            score_ph += 12
+        elif 10 <= pullback_pct < 15 or 25 < pullback_pct <= 35:
+            score_ph += 8
+        elif 5 <= pullback_pct < 10 or 35 < pullback_pct <= 45:
+            score_ph += 4
+        # 1b 回调天数
+        if 5 <= pullback_days <= 20:
+            score_ph += 5
+        elif 3 <= pullback_days < 5 or 20 < pullback_days <= 30:
+            score_ph += 3
+        else:
+            score_ph += 1
+        # 1c 回调过程无放量破位
+        if pullback_days > 0:
+            df_pb = df.iloc[high_idx_in_lb: i + 1]
+            max_drop = df_pb['pct_chg'].min()
+            avg_vol_pb = df_pb['vol'].mean()
+            avg_vol_pre = df.iloc[max(0, high_idx_in_lb - 20):high_idx_in_lb]['vol'].mean()
+            vol_ratio_pb = avg_vol_pb / avg_vol_pre if avg_vol_pre > 0 else 1.0
+            if max_drop > -5 and vol_ratio_pb < 1.2:
+                score_ph += 3
+            elif max_drop > -8:
+                score_ph += 1
+        score_ph = max(0, min(20, score_ph))
+
+        # ===== 2. 量能收缩 (20分) — Minervini VCP =====
+        vol_5_avg = df['vol'].iloc[i - 4: i + 1].mean()
+        vol_20_avg = df['vol'].iloc[i - 19: i + 1].mean()
+        vol_5_to_20 = vol_5_avg / vol_20_avg if vol_20_avg > 0 else 1.0
+        vol_ratio_today = vol / vol_5_avg if vol_5_avg > 0 else 1.0
+
+        # 量价背离：近5日下跌天数多但5日均量 < 20日均量
+        df_5d = df.iloc[i - 4: i + 1]
+        down_days = (df_5d['pct_chg'] < 0).sum()
+        vol_price_divergence = down_days >= 3 and vol_5_to_20 < 1.0
+
+        score_vc = 0
+        if vol_5_to_20 < 0.6:
+            score_vc += 8
+        elif vol_5_to_20 < 0.8:
+            score_vc += 6
+        elif vol_5_to_20 < 1.0:
+            score_vc += 4
+        elif vol_5_to_20 < 1.1:
+            score_vc += 2
+        elif vol_5_to_20 >= 1.3:
+            score_vc -= 2
+
+        if vol_ratio_today > 1.5:
+            score_vc += 6
+        elif vol_ratio_today > 1.2:
+            score_vc += 4
+        elif vol_ratio_today > 1.0:
+            score_vc += 2
+
+        if vol_price_divergence:
+            score_vc += 6
+        score_vc = max(0, min(20, score_vc))
+
+        # ===== 3. K线反转形态 (15分) — Raschke =====
+        body = close - open_
+        body_abs = abs(body)
+        range_ = high - low
+        upper_shadow = high - max(close, open_)
+        lower_shadow = min(close, open_) - low
+
+        reversal_pattern = "无"
+        score_kr = 0
+
+        if range_ > 0:
+            # 锤子线：下影线 > 实体2倍，上影线短
+            if lower_shadow > body_abs * 2 and upper_shadow < body_abs * 0.5 and body_abs > 0:
+                reversal_pattern = "锤子线"
+                score_kr += 10
+            # 看涨吞没：前日阴线，当日阳线包住前日实体
+            elif i >= 1:
+                prev_open = float(df.iloc[i - 1]['open'])
+                prev_close = float(df.iloc[i - 1]['close'])
+                if (prev_close < prev_open and close > open_
+                        and close > prev_open and open_ < prev_close):
+                    reversal_pattern = "看涨吞没"
+                    score_kr += 10
+            # 十字星：实体很小
+            if body_abs / range_ < 0.1:
+                if reversal_pattern == "无":
+                    reversal_pattern = "十字星"
+                    score_kr += 6
+                else:
+                    score_kr += 2  # 形态叠加
+
+            # 收盘价日内分位
+            close_pct = (close - low) / range_ * 100
+            if close_pct > 70:
+                score_kr += 5
+            elif close_pct > 50:
+                score_kr += 3
+
+            if pct_chg > 0:
+                score_kr += 3
+        score_kr = max(0, min(15, score_kr))
+
+        # ===== 4. 动能底背离 (15分) — 机构标准 =====
+        score_md = 0
+        divergence_type = "无"
+
+        if i >= 19:
+            price_low_now = float(df['low'].iloc[i - 9: i + 1].min())
+            price_low_prev = float(df['low'].iloc[i - 19: i - 9].min())
+            # MACD 底背离：价格新低但 MACD 未新低
+            macd_low_now = float(np.nanmin(ind['macd'][i - 9: i + 1]))
+            macd_low_prev = float(np.nanmin(ind['macd'][i - 19: i - 9]))
+            if price_low_now < price_low_prev and macd_low_now > macd_low_prev:
+                score_md += 6
+                divergence_type = "MACD"
+            # RSI 底背离
+            rsi_low_now = float(np.nanmin(ind['rsi6'][i - 9: i + 1]))
+            rsi_low_prev = float(np.nanmin(ind['rsi6'][i - 19: i - 9]))
+            if price_low_now < price_low_prev and rsi_low_now > rsi_low_prev:
+                score_md += 5
+                divergence_type = (divergence_type + "+RSI") if divergence_type != "无" else "RSI"
+
+        # KDJ J 值从超卖区拐头
+        if i >= 2:
+            j_now = float(ind['j'][i] or 50)
+            j_prev = float(ind['j'][i - 1] or 50)
+            j_prev2 = float(ind['j'][i - 2] or 50)
+            if j_prev < 20 and j_now > j_prev and j_prev <= j_prev2:
+                score_md += 4
+                divergence_type = (divergence_type + "+KDJ") if divergence_type != "无" else "KDJ"
+        score_md = max(0, min(15, score_md))
+
+        # ===== 5. 关键支撑位 (15分) — Livermore Pivot =====
+        score_sp = 0
+        if close > ma20:
+            score_sp += 5
+        if ma60 > 0 and close > ma60:
+            score_sp += 4
+        # 距 MA20 距离
+        dist_ma20 = (close - ma20) / ma20 * 100
+        if 0 <= dist_ma20 <= 3:
+            score_sp += 4
+        elif -2 <= dist_ma20 < 0:
+            score_sp += 3  # 微破但接近
+        elif 3 < dist_ma20 <= 5:
+            score_sp += 2
+        # 近5日试探 MA20 不破
+        if i >= 5 and ma20 > 0:
+            test_count = 0
+            for k in range(5):
+                day_low = float(df.iloc[i - k]['low'])
+                day_ma20 = float(ind['ma20'][i - k] or 0)
+                if day_ma20 > 0 and day_low <= day_ma20 * 1.005 and day_low >= day_ma20 * 0.99:
+                    test_count += 1
+            if test_count >= 2:
+                score_sp += 2
+        score_sp = max(0, min(15, score_sp))
+
+        # ===== 6. 趋势结构 (10分) — Weinstein =====
+        score_ts = 0
+        # MA60 不下行（>0 或基本走平 ≥-0.5%）
+        if i >= 10 and ma60 > 0:
+            prev_ma60 = float(ind['ma60'][i - 10] or 0)
+            if prev_ma60 > 0:
+                ma60_chg = (ma60 - prev_ma60) / prev_ma60 * 100
+                if ma60_chg > 0.5:
+                    score_ts += 4
+                elif ma60_chg >= -0.5:
+                    score_ts += 3  # 走平容忍
+        # MA20 斜率走平或拐头
+        if i >= 10 and ma20 > 0:
+            ma20_now = ma20
+            ma20_5d_ago = float(ind['ma20'][i - 5] or 0)
+            ma20_10d_ago = float(ind['ma20'][i - 10] or 0)
+            slope_recent = ma20_now - ma20_5d_ago
+            slope_prev = ma20_5d_ago - ma20_10d_ago
+            if slope_recent > 0 and slope_recent > slope_prev:
+                score_ts += 3  # 拐头向上
+            elif slope_recent >= 0 and slope_prev < 0:
+                score_ts += 3  # 走平
+            elif slope_recent > slope_prev:
+                score_ts += 1  # 边际改善
+        # 上一波涨幅 ≥ 25%（用户要求）
+        if prev_wave_gain >= 25:
+            score_ts += 3
+        elif prev_wave_gain >= 15:
+            score_ts += 1
+        score_ts = max(0, min(10, score_ts))
+
+        # ===== 7. 资金面确认 (5分) — Druckenmiller =====
+        score_cf = 0
+        if i >= 5:
+            df_5d_ = df.iloc[i - 4: i + 1]
+            up_vol = df_5d_[df_5d_['pct_chg'] > 0]['vol'].mean()
+            dn_vol = df_5d_[df_5d_['pct_chg'] < 0]['vol'].mean()
+            if up_vol > 0 and dn_vol > 0 and up_vol / dn_vol >= 1.2:
+                score_cf += 2
+            elif up_vol > 0 and dn_vol == 0:
+                score_cf += 2
+        # 当日上涨即给分（原要求 pct_chg>0 AND vol_ratio>1.0 过严）
+        if pct_chg > 0:
+            score_cf += 2
+        elif pct_chg > -2:  # 微跌也算稳
+            score_cf += 1
+        # 大单活跃（amount/vol 比率 = 平均成交单价，今日高于5日均值为大单活跃）
+        if i >= 0 and vol > 0:
+            avg_price_today = float(df.iloc[i].get('amount', 0) or 0) / vol
+            vol_5_sum = float(df['vol'].iloc[i - 4: i + 1].sum())
+            amt_5_sum = float(df['amount'].iloc[i - 4: i + 1].sum())
+            avg_price_5d = amt_5_sum / vol_5_sum if vol_5_sum > 0 else 0
+            if avg_price_5d > 0 and avg_price_today > avg_price_5d * 1.05:
+                score_cf += 1
+        score_cf = max(0, min(5, score_cf))
+
+        # ===== 总分 =====
+        total_score = int(score_ph + score_vc + score_kr + score_md + score_sp + score_ts + score_cf)
+
+        # ===== 状态判断 =====
+        if total_score >= 75:
+            stabilize_type = "完美企稳"
+            is_stabilized = True
+        elif total_score >= 60:
+            stabilize_type = "合格企稳"
+            is_stabilized = True
+        else:
+            stabilize_type = "未企稳"
+            is_stabilized = False
+
+        if is_stabilized:
             signals.append({
                 'ts_code': ts_code,
                 'name': name,
@@ -1176,29 +1528,76 @@ def detect_stabilize_signal(kline_data):
                 'ma5': ma5,
                 'ma10': ma10,
                 'ma20': ma20,
+                'ma60': ma60,
                 'distance_to_ma5': (close - ma5) / ma5 * 100,
                 'distance_to_ma20': (close - ma20) / ma20 * 100,
-                'reason': reason,
+                'stabilize_score': total_score,
+                'is_stabilized': is_stabilized,
+                'stabilize_type': stabilize_type,
+                'sub_scores': {
+                    '回调健康': score_ph,
+                    '量能收缩': score_vc,
+                    'K线反转': score_kr,
+                    '动能背离': score_md,
+                    '支撑位': score_sp,
+                    '趋势结构': score_ts,
+                    '资金面': score_cf,
+                },
+                'pullback_pct': round(pullback_pct, 2),
+                'pullback_days': pullback_days,
+                'prev_wave_gain': round(prev_wave_gain, 2),
+                'reversal_pattern': reversal_pattern,
+                'divergence_type': divergence_type,
+                'vol_5_to_20': round(vol_5_to_20, 2),
+                'vol_ratio_today': round(vol_ratio_today, 2),
+                'rsi6': round(rsi6, 1),
+                'kdj_j': round(kdj_j, 1),
             })
-    
+
+    # 按企稳分排序
+    signals.sort(key=lambda x: x['stabilize_score'], reverse=True)
     return signals
 
 def print_stabilize_signals(signals):
-    """输出企稳信号"""
+    """输出企稳信号 — 机构级算法 V2.0"""
     if not signals:
         return
-    
-    print("\n" + "=" * 120)
-    print("📊 中军股票企稳信号（回落到MA5-MA20区间后企稳）")
-    print("=" * 120)
-    print(f"{'代码':<14}{'名称':<10}{'价格':>8}{'MA5':>8}{'MA10':>8}{'MA20':>8}{'距MA5%':>10}{'距MA20%':>10}  {'信号原因'}")
-    print("-" * 120)
-    
+
+    print("\n" + "=" * 140)
+    print("📊 中军股票企稳信号 — 机构级算法 V2.0（7维评分）")
+    print("=" * 140)
+    print(f"{'代码':<14}{'名称':<10}{'价格':>8}{'企稳分':>8}{'类型':<10}{'回撤%':>8}{'天':>5}{'量缩比':>8}{'形态':<10}{'背离':<14}{'距MA20%':>10}")
+    print("-" * 140)
+
     for s in signals:
-        print(f"{s['ts_code']:<14}{s['name']:<10}{s['close']:>8.2f}{s['ma5']:>8.2f}{s['ma10']:>8.2f}{s['ma20']:>8.2f}"
-              f"{s['distance_to_ma5']:>10.2f}{s['distance_to_ma20']:>10.2f}  {s['reason']}")
-    
-    print("=" * 120)
+        print(f"{s['ts_code']:<14}{s['name']:<10}{s['close']:>8.2f}{s['stabilize_score']:>8}"
+              f"{s['stabilize_type']:<10}{s['pullback_pct']:>8.2f}{s['pullback_days']:>5}"
+              f"{s['vol_5_to_20']:>8.2f}{s['reversal_pattern']:<10}{s['divergence_type']:<14}"
+              f"{s['distance_to_ma20']:>10.2f}")
+
+    # 完美企稳的子分明细
+    perfect = [s for s in signals if s['stabilize_type'] == "完美企稳"]
+    if perfect:
+        print(f"\n  📋 完美企稳 — 7 维子分明细（共 {len(perfect)} 只）")
+        print(f"  {'代码':<14}{'名称':<10}{'回调':>6}{'量缩':>6}{'K线':>6}{'背离':>6}{'支撑':>6}{'趋势':>6}{'资金':>6}{'上一波%':>10}")
+        print("  " + "-" * 90)
+        for s in perfect:
+            ss = s['sub_scores']
+            print(f"  {s['ts_code']:<14}{s['name']:<10}{ss['回调健康']:>6}{ss['量能收缩']:>6}{ss['K线反转']:>6}"
+                  f"{ss['动能背离']:>6}{ss['支撑位']:>6}{ss['趋势结构']:>6}{ss['资金面']:>6}{s['prev_wave_gain']:>10.2f}")
+
+    # 评分标准说明
+    print("\n  📖 评分标准（总分100）")
+    print("    1. 回调健康度(20): 回撤15-25%最佳 + 回调5-20天 + 无放量破位  [O'Neil]")
+    print("    2. 量能收缩  (20): 5/20均量比<0.7 + 反转日量比>1.5 + 量价背离 [Minervini VCP]")
+    print("    3. K线反转   (15): 锤子线/看涨吞没/十字星 + 收盘日内分位      [Raschke]")
+    print("    4. 动能背离   (15): MACD/RSI/KDJ 底背离                        [机构标准]")
+    print("    5. 支撑位     (15): close>MA20/MA60 + 距MA20≤3% + 试探不破     [Livermore]")
+    print("    6. 趋势结构   (10): MA60向上 + MA20走平/拐头 + 上一波≥25%      [Weinstein]")
+    print("    7. 资金面     (5):  量价共振 + 当日确认 + 大单活跃              [Druckenmiller]")
+    print("    阈值: ≥75 完美企稳 | 60-74 合格企稳 | <60 不输出")
+    print("    位置门槛: close 必须在 MA5*1.05 与 MA20*0.95 之间（真正企稳区）")
+    print("=" * 140)
 
 # =================
 # 保存结果

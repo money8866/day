@@ -27,6 +27,71 @@ import tushare as ts
 TUSHARE_TOKEN = os.getenv('TUSHARE_TOKEN')
 pro = ts.pro_api(TUSHARE_TOKEN)
 
+# === DataFetcher 统一缓存接入 ===
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'multi_factor_picker'))
+from data_fetcher import DataFetcher
+
+_df_singleton = None
+def _get_df():
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {'cache': {'enabled': True, 'dir': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'multi_factor_picker', 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+
+def _query_daily_by_code(ts_code, start_date=None, end_date=None, trade_date=None):
+    """通过DataFetcher查询日线（失败降级到pro直调）"""
+    if trade_date:
+        start_date = trade_date
+        end_date = trade_date
+    df = _get_df()
+    if df is not None:
+        try:
+            return df.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        except Exception:
+            pass
+    return pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+
+def _query_trade_cal(start_date=None, end_date=None):
+    """通过DataFetcher查询交易日历（失败降级到pro直调）"""
+    df = _get_df()
+    if df is not None:
+        try:
+            return df.get_trade_cal(start_date=start_date, end_date=end_date)
+        except Exception:
+            pass
+    return pro.trade_cal(start_date=start_date, end_date=end_date)
+
+
+def _query_limit_list_ths(trade_date):
+    """通过DataFetcher查询同花顺涨停板（失败降级到pro直调）"""
+    df = _get_df()
+    if df is not None:
+        try:
+            return df.get_limit_list_ths(trade_date=trade_date)
+        except Exception:
+            pass
+    return pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+# === End DataFetcher 接入 ===
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
 TRADE_DB = os.path.join(CACHE_DIR, "wave2_trades_v5.db")
@@ -298,7 +363,7 @@ def filter_stocks_by_trade_signal_v5(trade_date, lookback_days=20):
                     continue
                 
                 start = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d')
-                daily_df = pro.daily(ts_code=ts_code, start_date=start, end_date=trade_date)
+                daily_df = _query_daily_by_code(ts_code=ts_code, start_date=start, end_date=trade_date)
                 
                 if daily_df is None or daily_df.empty:
                     continue
@@ -470,7 +535,7 @@ def check_and_execute_trades_v5(trade_date):
         for pos in positions:
             ts_code = pos['ts_code']
             try:
-                df = pro.daily(ts_code=ts_code, trade_date=trade_date)
+                df = _query_daily_by_code(ts_code=ts_code, trade_date=trade_date)
                 if df is not None and not df.empty:
                     current_prices[ts_code] = df['close'].iloc[-1]
             except:
@@ -609,7 +674,7 @@ def backtest_strategy_v5(start_date, end_date, lookback_days=20):
         
         init_trade_db()
         
-        cal = pro.trade_cal(start_date=start_date, end_date=end_date)
+        cal = _query_trade_cal(start_date=start_date, end_date=end_date)
         trading_days = cal[cal['is_open'] == 1]['cal_date'].tolist()
         
         print(f"V5回测交易日: {len(trading_days)}天")
@@ -620,7 +685,7 @@ def backtest_strategy_v5(start_date, end_date, lookback_days=20):
         
         for trade_date in trading_days:
             try:
-                zt_df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+                zt_df = _query_limit_list_ths(trade_date=trade_date)
                 
                 if zt_df is None or zt_df.empty:
                     continue
@@ -637,7 +702,7 @@ def backtest_strategy_v5(start_date, end_date, lookback_days=20):
                     future_end = (datetime.strptime(trade_date, '%Y%m%d') + timedelta(days=18)).strftime('%Y%m%d')
                     
                     try:
-                        daily_df = pro.daily(ts_code=ts_code, start_date=future_start, end_date=future_end)
+                        daily_df = _query_daily_by_code(ts_code=ts_code, start_date=future_start, end_date=future_end)
                         
                         if daily_df is None or daily_df.empty or len(daily_df) < 5:
                             continue
@@ -713,7 +778,7 @@ if __name__ == "__main__":
             else:
                 query_date = now.strftime('%Y%m%d')
             
-            cal = pro.trade_cal(end_date=query_date)
+            cal = _query_trade_cal(end_date=query_date)
             trade_date = cal[cal['is_open'] == 1]['cal_date'].iloc[-1]
         
         daily_trade_v5(trade_date)

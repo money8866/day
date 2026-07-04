@@ -46,6 +46,51 @@ from collections import defaultdict
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+# ── DataFetcher 单例（统一缓存+限频，降级回退到 pro 直调）──
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from data_fetcher import DataFetcher
+
+_df_singleton = None
+def _get_df():
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {'cache': {'enabled': True, 'dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+_dfetch = _get_df()
+
+def _get_stk_factor_pro_range(ts_code, start, end):
+    """按股票+日期范围获取stk_factor_pro（DataFetcher仅有按trade_date的接口，这里用通用缓存+限频包裹范围查询）"""
+    if _dfetch is not None:
+        cache_key = f"stk_factor_pro_range_{_dfetch._safe_name(ts_code)}_{start}_{end}"
+        return _dfetch._get_df_cached(cache_key, _dfetch.pro.stk_factor_pro,
+                                       ts_code=ts_code, start_date=start, end_date=end)
+    return pro.stk_factor_pro(ts_code=ts_code, start_date=start, end_date=end)
+
+def _get_index_weight(index_code, start_date, end_date):
+    """指数权重（DataFetcher未覆盖，用_retry_call包裹获得限频+重试）"""
+    if _dfetch is not None:
+        return _dfetch._retry_call(_dfetch.pro.index_weight, index_code=index_code,
+                                    start_date=start_date, end_date=end_date)
+    return pro.index_weight(index_code=index_code, start_date=start_date, end_date=end_date)
+
 # ── 参数 ────────────────────────────────────────────
 START_DATE = '20240101'
 END_DATE   = '20260620'
@@ -65,7 +110,7 @@ print(f"{'='*80}\n")
 print("[Step 1] 获取沪深300成分股...")
 # 用最新成分股权重获取
 try:
-    iw = pro.index_weight(index_code='399300.SZ', start_date='20250101', end_date=END_DATE)
+    iw = _get_index_weight(index_code='399300.SZ', start_date='20250101', end_date=END_DATE)
     stocks = iw['con_code'].unique().tolist()
     print(f"  沪深300成分股: {len(stocks)} 只")
 except Exception as e:
@@ -74,7 +119,10 @@ except Exception as e:
 
 if not stocks:
     # fallback: 直接用stock_basic获取全部
-    sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name')
+    if _dfetch is not None:
+        sb = _dfetch.get_stock_list('L')
+    else:
+        sb = pro.stock_basic(exchange='', list_status='L', fields='ts_code,name')
     stocks = sb['ts_code'].tolist()
     print(f"  fallback: 全市场 {len(stocks)} 只")
 
@@ -82,7 +130,10 @@ time.sleep(0.1)
 
 # ── Step 2: 获取大盘指数（上证）用于过滤 ──────────────
 print("[Step 2] 获取上证指数...")
-idx_df = pro.index_daily(ts_code='000001.SH', start_date=START_DATE, end_date=END_DATE)
+if _dfetch is not None:
+    idx_df = _dfetch.get_index_daily(ts_code='000001.SH', start_date=START_DATE, end_date=END_DATE)
+else:
+    idx_df = pro.index_daily(ts_code='000001.SH', start_date=START_DATE, end_date=END_DATE)
 idx_df = idx_df.sort_values('trade_date').reset_index(drop=True)
 idx_df['idx_pct'] = idx_df['pct_chg']  # 当日涨跌
 idx_dates = set(idx_df['trade_date'].tolist())
@@ -96,22 +147,31 @@ def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
     """获取单只股票的日线+stk_factor+daily_basic"""
     try:
         # 日线
-        daily = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        if _dfetch is not None:
+            daily = _dfetch.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
+        else:
+            daily = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
         if daily is None or len(daily) < 60:
             return None
         daily = daily.sort_values('trade_date').reset_index(drop=True)
 
         # 技术因子（MACD/KDJ/RSI/布林/CCI）- 使用 stk_factor_pro
-        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start, end_date=end)
+        factor = _get_stk_factor_pro_range(ts_code, start, end)
         time.sleep(0.06)
 
         # 日线基本（换手率/量比）
-        basic = pro.daily_basic(ts_code=ts_code, start_date=start, end_date=end,
-                                  fields='ts_code,trade_date,turnover_rate,volume_ratio,pe_ttm,pb')
+        if _dfetch is not None:
+            basic = _dfetch.get_daily_basic_by_code(ts_code=ts_code, start_date=start, end_date=end)
+        else:
+            basic = pro.daily_basic(ts_code=ts_code, start_date=start, end_date=end,
+                                     fields='ts_code,trade_date,turnover_rate,volume_ratio,pe_ttm,pb')
         time.sleep(0.06)
 
         # 资金流向（大单净买入）
-        mf = pro.moneyflow(ts_code=ts_code, start_date=start, end_date=end)
+        if _dfetch is not None:
+            mf = _dfetch.get_moneyflow_by_code(ts_code=ts_code, start_date=start, end_date=end)
+        else:
+            mf = pro.moneyflow(ts_code=ts_code, start_date=start, end_date=end)
         time.sleep(0.06)
 
         # 合并（stk_factor_pro 字段：使用 _qfq 前复权版本，避免除权日指标失真）

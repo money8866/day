@@ -182,7 +182,7 @@ def stock_fundamental_alpha_score(ts_code, pro):
             industry = stock_info.iloc[0].get('industry', None)
         
         # 获取PE/PB
-        db_df = pro.daily_basic(ts_code=ts_code)
+        db_df = _df_daily_basic_by_code(ts_code)
         s1 = 12.5  # 默认中性12.5分
         
         if db_df is not None and len(db_df) >= 60:
@@ -288,7 +288,7 @@ def stock_fundamental_alpha_score(ts_code, pro):
     # ③ 成长动能（0-25分）：营收/利润增速
     # =========================
     try:
-        income = pro.income(ts_code=ts_code)
+        income = _df_income(ts_code)
         s3 = 12.5  # 默认中性
         
         if income is not None and len(income) >= 4:
@@ -342,7 +342,7 @@ def stock_fundamental_alpha_score(ts_code, pro):
     # ④ 现金流质量（0-15分）：经营现金流/净利润
     # =========================
     try:
-        cashflow = pro.cashflow(ts_code=ts_code)
+        cashflow = _df_cashflow(ts_code)
         s4 = 7.5  # 默认中性
         
         if cashflow is not None and len(cashflow) >= 2:
@@ -382,7 +382,7 @@ def stock_fundamental_alpha_score(ts_code, pro):
     # =========================
     try:
         s5 = 5  # 默认中性
-        db_df = pro.daily_basic(ts_code=ts_code)
+        db_df = _df_daily_basic_by_code(ts_code)
         
         if db_df is not None and len(db_df) > 0:
             # 获取最新股息率
@@ -510,29 +510,50 @@ def classify_signal(score, detail=None):
 
 def detect_breakout(ts_code, pro, trade_date=None):
     """
-    突破型策略检测函数
-    总分110分，75分以上视为有效突破，可列入观察/买入名单
-    
-    评分标准：
-    1. 上一波强度加分 (0-10分): 20天振幅越大，突破可靠性越高
-    2. 价格突破 (30分): close > boll_upper
-    3. 趋势均线 (25分): ma5 > ma10 且 ma10 > ma20 且 close > ma5
-    4. 动能共振 (20分): macd > 0 且 dif > dea 且 kdj_j > 80
-    5. 空间与安全 (15分): rsi_6 > 65 且 rsi_6 < 85
-    6. 波动率辅助 (10分): atr > 0 且 close > ma60
-    
-    优化重点：
-    - 上一波强度越大，突破可靠性越高，增加额外加分
-    
+    突破型策略检测函数 — 机构级算法 V2.0
+
+    借鉴顶尖机构模型：
+      - William O'Neil CANSLIM：量价配合 + 阻力位突破 + 收盘确认
+      - Mark Minervini VCP (Volatility Contraction Pattern)：波动率收缩后爆发
+      - Stan Weinstein Stage Analysis：均线阶段确认
+      - Stanley Druckenmiller：多周期共振 + 相对强度
+
+    总分 100 分，三态输出：
+      - 有效突破 (>=70分)：已突破且高概率延续
+      - 即将突破 (VCP收缩 + 接近阻力位 + 多头排列)：未突破但具备爆发条件
+      - 假突破过滤：识别冲高回落 / 缩量假突破
+
+    评分维度（100分）：
+      1. 量价确认     (25分): 量比 + 5/20日均量比 + 量价同向
+      2. 阻力位突破   (20分): 突破20日高点 + 突破布林上轨 + 收盘确认
+      3. 趋势均线     (15分): 多头排列 + MA60方向 + close离MA5距离
+      4. 动能共振     (15分): MACD + KDJ + RSI 分级加成
+      5. 波动率收缩VCP(10分): 布林宽度收缩 + 5/20日波动 + ATR分位
+      6. 趋势延续     (10分): 距60日高点 + 上一波强度 + MA20斜率
+      7. 多周期共振   (5分):  close>MA90/MA250 + 周/月线方向
+
     参数:
         ts_code: 股票代码
-        pro: Tushare pro 实例
+        pro: Tushare pro 实例（保留兼容，内部不用）
         trade_date: 指定日期（None表示最新）
     返回:
         {
-            "breakout_score": int,      # 突破评分
-            "is_valid_breakout": bool,  # 是否有效突破(>=75分)
-            "signal": str               # 信号建议
+            "breakout_score": int,           # 总分（兼容旧字段）
+            "is_valid_breakout": bool,       # 是否有效突破 (>=70 且非假突破)
+            "is_imminent_breakout": bool,    # 是否即将突破
+            "is_false_breakout": bool,       # 是否假突破
+            "breakout_type": str,            # 状态分类
+            "signal": str,                   # 信号建议（兼容旧字段）
+            "sub_scores": dict,              # 7维子分（诊断用）
+            "resistance_price": float,       # 阻力位价格
+            "distance_to_resistance": float, # 距阻力位百分比
+            "volume_ratio": float,
+            "vol_5_to_20": float,            # 5日均量/20日均量
+            "boll_width_shrink": float,      # 布林宽度收缩比
+            "vol_contraction": float,        # 5日/20日波动收缩比
+            "atr_percentile": float,         # ATR在60日中分位
+            "wave_strength": float,          # 上一波振幅
+            "ma20_slope": float,             # MA20 10日斜率
         }
     """
     result = {
@@ -540,92 +561,358 @@ def detect_breakout(ts_code, pro, trade_date=None):
         "trade_date": trade_date or TRADE_DATE,
         "breakout_score": 0,
         "is_valid_breakout": False,
-        "signal": "非突破形态"
+        "is_imminent_breakout": False,
+        "is_false_breakout": False,
+        "signal": "非突破形态",
+        "breakout_type": "形态不具备",
+        "sub_scores": {},
+        "resistance_price": 0.0,
+        "distance_to_resistance": 0.0,
+        "volume_ratio": 0.0,
+        "vol_5_to_20": 0.0,
+        "boll_width_shrink": 0.0,
+        "vol_contraction": 0.0,
+        "atr_percentile": 0.0,
+        "wave_strength": 0.0,
+        "ma20_slope": 0.0,
     }
-    
+
     try:
-        # 使用统一的缓存机制（需要足够历史数据计算均线等指标）
         end_date = str(trade_date or TRADE_DATE)
-        start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=90)).strftime('%Y%m%d')
+        # 取约1年数据用于：60日高点、MA250、ATR分位、布林宽度收缩
+        start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=400)).strftime('%Y%m%d')
         df = cached_stk_factor_pro(ts_code, start_date, end_date)
-        
+
         if df is None or df.empty:
             return result
-        
+
         df['trade_date'] = df['trade_date'].astype(str)
-        # 按日期升序排列（确保df.iloc[-1]是最新数据）
         df = df.sort_values('trade_date').reset_index(drop=True)
-        
-        if trade_date:
-            mask = df['trade_date'] == trade_date
-            if mask.any():
-                latest = df[mask].iloc[0]
-            else:
-                return result
-        else:
-            # 使用TRADE_DATE查找对应行，而非df.iloc[-1]（支持回溯模式）
-            mask = df['trade_date'] == str(trade_date or TRADE_DATE)
-            if mask.any():
-                latest = df[mask].iloc[0]
-            else:
-                return result
-        
+
+        # 定位当前交易日行索引
+        target_date = str(trade_date or TRADE_DATE)
+        mask = df['trade_date'] == target_date
+        if not mask.any():
+            return result
+        idx = mask.idxmax()
+        latest = df.iloc[idx]
+        df_hist = df.iloc[:idx + 1].copy()  # 当前日及之前
+
+        # ===== 提取当日数据 =====
         close = float(latest.get('close', 0) or 0)
+        open_ = float(latest.get('open', 0) or 0)
+        high = float(latest.get('high', 0) or 0)
+        low = float(latest.get('low', 0) or 0)
+        vol = float(latest.get('vol', 0) or 0)
+        volume_ratio = float(latest.get('volume_ratio', 1.0) or 1.0)
+
         boll_upper = float(latest.get('boll_upper_bfq', 0) or 0)
+        boll_mid = float(latest.get('boll_mid_bfq', 0) or 0)
+        boll_lower = float(latest.get('boll_lower_bfq', 0) or 0)
+
         ma5 = float(latest.get('ma_bfq_5', 0) or 0)
         ma10 = float(latest.get('ma_bfq_10', 0) or 0)
         ma20 = float(latest.get('ma_bfq_20', 0) or 0)
         ma60 = float(latest.get('ma_bfq_60', 0) or 0)
+        ma90 = float(latest.get('ma_bfq_90', 0) or 0)
+        ma250 = float(latest.get('ma_bfq_250', 0) or 0)
+
         macd = float(latest.get('macd_bfq', 0) or 0)
         dif = float(latest.get('macd_dif_bfq', 0) or 0)
         dea = float(latest.get('macd_dea_bfq', 0) or 0)
         kdj_j = float(latest.get('kdj_bfq', 50) or 50)
         rsi_6 = float(latest.get('rsi_bfq_6', 50) or 50)
         atr = float(latest.get('atr_bfq', 0) or 0)
-        
-        total_score = 0
-        
-        # ===== 上一波强度加分（20天振幅）=====
-        lookback_days = 20
-        mask_lookback = df['trade_date'] <= (trade_date or TRADE_DATE)
-        df_lookback = df[mask_lookback].tail(lookback_days)
-        if not df_lookback.empty:
-            lookback_high = df_lookback['high'].max()
-            lookback_low = df_lookback['low'].min()
-            if lookback_low > 0:
-                wave_strength = (lookback_high - lookback_low) / lookback_low * 100
-                # 上一波强度越大，突破可靠性越高
-                if wave_strength >= 50:
-                    total_score += 10  # 强趋势股突破更可靠
-                elif wave_strength >= 30:
-                    total_score += 5   # 中等趋势
-        
-        if close > boll_upper and boll_upper > 0:
-            total_score += 30
-        if ma5 > ma10 and ma10 > ma20 and close > ma5 and ma5 > 0:
-            total_score += 25
-        if macd > 0 and dif > dea and kdj_j > 80:
-            total_score += 20
-        if 65 < rsi_6 < 85:
-            total_score += 15
-        if atr > 0 and close > ma60 and ma60 > 0:
-            total_score += 10
-        
-        result["breakout_score"] = total_score
-        result["is_valid_breakout"] = total_score >= 75
-        
-        if result["is_valid_breakout"]:
-            result["signal"] = "有效突破！列入观察/买入名单"
-        elif total_score >= 60:
-            result["signal"] = "突破待确认，建议观察"
-        elif total_score >= 40:
-            result["signal"] = "突破迹象初现，继续跟踪"
+
+        if close <= 0:
+            return result
+
+        # ===== 历史统计量 =====
+        n = len(df_hist)
+        # 20日高点（不含当日，作为阻力位）
+        high_20_prev = df_hist['high'].iloc[:-1].tail(20).max() if n >= 21 else (df_hist['high'].iloc[:-1].max() if n > 1 else close)
+        # 60日高点（含当日）
+        high_60 = df_hist['high'].tail(60).max() if n >= 60 else df_hist['high'].max()
+
+        # 阻力位 = max(前20日高点, 布林上轨)
+        resistance_price = max(high_20_prev, boll_upper) if boll_upper > 0 else high_20_prev
+        distance_to_resistance = (close - resistance_price) / resistance_price * 100 if resistance_price > 0 else 0.0
+
+        # 均量比
+        vol_5_avg = df_hist['vol'].tail(5).mean() if n >= 5 else vol
+        vol_20_avg = df_hist['vol'].tail(20).mean() if n >= 20 else vol
+        vol_50_avg = df_hist['vol'].tail(50).mean() if n >= 50 else vol_20_avg
+        vol_5_to_20 = vol_5_avg / vol_20_avg if vol_20_avg > 0 else 1.0
+
+        # 5日/20日波动率（VCP核心：5日波动应小于20日波动）
+        if n >= 20:
+            df_20d = df_hist.tail(20)
+            daily_range_5 = df_20d.tail(5).apply(lambda r: (r['high'] - r['low']) / max(r['close'], 0.01), axis=1).mean()
+            daily_range_20 = df_20d.apply(lambda r: (r['high'] - r['low']) / max(r['close'], 0.01), axis=1).mean()
+            vol_contraction = daily_range_20 / daily_range_5 if daily_range_5 > 0 else 1.0
         else:
-            result["signal"] = "非突破形态"
-        
+            vol_contraction = 1.0
+
+        # 布林带宽度收缩（当前 / 20天前）
+        if boll_upper > 0 and boll_lower > 0 and boll_mid > 0:
+            boll_width_now = (boll_upper - boll_lower) / boll_mid
+            if idx >= 20:
+                prev_row = df_hist.iloc[idx - 20]
+                prev_bu = float(prev_row.get('boll_upper_bfq', 0) or 0)
+                prev_bl = float(prev_row.get('boll_lower_bfq', 0) or 0)
+                prev_bm = float(prev_row.get('boll_mid_bfq', 0) or 0)
+                if prev_bu > 0 and prev_bl > 0 and prev_bm > 0:
+                    boll_width_prev = (prev_bu - prev_bl) / prev_bm
+                    boll_width_shrink = boll_width_now / boll_width_prev if boll_width_prev > 0 else 1.0
+                else:
+                    boll_width_shrink = 1.0
+            else:
+                boll_width_shrink = 1.0
+        else:
+            boll_width_shrink = 1.0
+
+        # ATR在60日的分位（低位=蓄势）
+        if n >= 60 and atr > 0:
+            atr_series = df_hist['atr_bfq'].tail(60).dropna()
+            atr_percentile = (atr_series < atr).sum() / len(atr_series) if len(atr_series) > 0 else 0.5
+        else:
+            atr_percentile = 0.5
+
+        # MA20 斜率（10日变化百分比）
+        if idx >= 10 and ma20 > 0:
+            prev_ma20 = float(df_hist.iloc[idx - 10].get('ma_bfq_20', 0) or 0)
+            ma20_slope = (ma20 - prev_ma20) / prev_ma20 * 100 if prev_ma20 > 0 else 0.0
+        else:
+            ma20_slope = 0.0
+
+        # 上一波强度（20日振幅）
+        if n >= 20:
+            wave_high = df_hist['high'].tail(20).max()
+            wave_low = df_hist['low'].tail(20).min()
+            wave_strength = (wave_high - wave_low) / wave_low * 100 if wave_low > 0 else 0.0
+        else:
+            wave_strength = 0.0
+
+        # 多头排列计数
+        alignment_count = 0
+        if ma5 > 0 and ma10 > 0 and ma5 > ma10: alignment_count += 1
+        if ma10 > 0 and ma20 > 0 and ma10 > ma20: alignment_count += 1
+        if ma20 > 0 and ma60 > 0 and ma20 > ma60: alignment_count += 1
+        if ma5 > 0 and close > ma5: alignment_count += 1
+
+        # ===== 1. 量价确认 (25分) =====
+        score_vp = 0
+        # 1a 量比 (10分) - 渐进式
+        if volume_ratio >= 2.0: score_vp += 10
+        elif volume_ratio >= 1.5: score_vp += 8
+        elif volume_ratio >= 1.2: score_vp += 5
+        elif volume_ratio >= 1.0: score_vp += 3
+        # 1b 5/20日均量比 (8分) - 趋势性放量
+        if vol_5_to_20 >= 1.5: score_vp += 8
+        elif vol_5_to_20 >= 1.2: score_vp += 5
+        elif vol_5_to_20 >= 1.0: score_vp += 3
+        elif vol_5_to_20 < 0.7: score_vp -= 2
+        # 1c 量价同向 (7分) - 涨时放量
+        if n >= 5:
+            df_5d = df_hist.tail(5)
+            up_vol = df_5d[df_5d['pct_chg'] > 0]['vol'].mean()
+            dn_vol = df_5d[df_5d['pct_chg'] < 0]['vol'].mean()
+            if up_vol > 0 and dn_vol > 0 and dn_vol > 0:
+                ratio = up_vol / dn_vol
+                if ratio >= 1.5: score_vp += 7
+                elif ratio >= 1.2: score_vp += 4
+                elif ratio >= 1.0: score_vp += 2
+                else: score_vp -= 2
+            elif up_vol > 0:
+                score_vp += 5
+        score_vp = max(0, min(25, score_vp))
+
+        # ===== 2. 阻力位突破强度 (20分) =====
+        score_rb = 0
+        # 2a 突破20日高点 (10分) - 渐进式
+        if high_20_prev > 0:
+            bk_pct = (close - high_20_prev) / high_20_prev * 100
+            if bk_pct >= 3: score_rb += 10
+            elif bk_pct >= 1: score_rb += 7
+            elif bk_pct >= 0: score_rb += 5
+            elif bk_pct >= -1: score_rb += 3
+        # 2b 突破布林上轨 (5分)
+        if boll_upper > 0:
+            bb_pct = (close - boll_upper) / boll_upper * 100
+            if bb_pct >= 1: score_rb += 5
+            elif bb_pct >= 0: score_rb += 4
+            elif bb_pct >= -1: score_rb += 2
+        # 2c 收盘价确认 (5分) - 真突破要求收盘站在阻力位上方
+        if resistance_price > 0:
+            if close > resistance_price: score_rb += 5
+            elif (close + open_) / 2 > resistance_price: score_rb += 2
+        score_rb = max(0, min(20, score_rb))
+
+        # ===== 3. 趋势均线排列 (15分) =====
+        score_ta = 0
+        # 3a 多头排列 (8分)
+        score_ta += int(alignment_count / 4 * 8)
+        # 3b MA60方向 (4分)
+        if ma60 > 0 and idx >= 10:
+            prev_ma60 = float(df_hist.iloc[idx - 10].get('ma_bfq_60', 0) or 0)
+            if prev_ma60 > 0:
+                if ma60 > prev_ma60: score_ta += 4
+                elif ma60 >= prev_ma60 * 0.99: score_ta += 2
+        # 3c close离MA5距离 (3分) - 不能太远（追涨风险）
+        if ma5 > 0:
+            d = (close - ma5) / ma5 * 100
+            if 0 <= d <= 5: score_ta += 3
+            elif 5 < d <= 10: score_ta += 1
+            elif -2 <= d < 0: score_ta += 2
+        score_ta = max(0, min(15, score_ta))
+
+        # ===== 4. 动能共振 (15分) =====
+        score_mr = 0
+        # 4a MACD (6分)
+        if macd > 0 and dif > dea: score_mr += 6
+        elif macd > 0: score_mr += 4
+        elif dif > dea: score_mr += 2
+        # 4b KDJ J值 (5分)
+        if kdj_j > 60: score_mr += 5
+        elif kdj_j > 40: score_mr += 3
+        elif kdj_j > 20: score_mr += 1
+        # 4c RSI (4分)
+        if 60 <= rsi_6 <= 80: score_mr += 4
+        elif 50 <= rsi_6 < 60: score_mr += 2
+        elif rsi_6 > 80: score_mr += 1
+        score_mr = max(0, min(15, score_mr))
+
+        # ===== 5. 波动率收缩 VCP (10分) =====
+        score_vc = 0
+        # 5a 布林宽度收缩 (4分)
+        if boll_width_shrink < 0.6: score_vc += 4
+        elif boll_width_shrink < 0.8: score_vc += 3
+        elif boll_width_shrink < 1.0: score_vc += 2
+        elif boll_width_shrink < 1.2: score_vc += 1
+        # 5b 5/20日波动收缩 (3分)
+        if vol_contraction >= 1.5: score_vc += 3
+        elif vol_contraction >= 1.2: score_vc += 2
+        elif vol_contraction >= 1.0: score_vc += 1
+        # 5c ATR分位 (3分) - ATR低位=蓄势
+        if atr_percentile < 0.3: score_vc += 3
+        elif atr_percentile < 0.5: score_vc += 2
+        elif atr_percentile < 0.7: score_vc += 1
+        score_vc = max(0, min(10, score_vc))
+
+        # ===== 6. 趋势延续 (10分) =====
+        score_tc = 0
+        # 6a 距60日高点距离 (4分) - Minervini: 25%以内
+        if high_60 > 0:
+            dist60 = (high_60 - close) / high_60 * 100
+            if dist60 <= 5: score_tc += 4
+            elif dist60 <= 15: score_tc += 3
+            elif dist60 <= 25: score_tc += 2
+            elif dist60 <= 40: score_tc += 1
+        # 6b 上一波强度 (3分)
+        if wave_strength >= 50: score_tc += 3
+        elif wave_strength >= 30: score_tc += 2
+        elif wave_strength >= 15: score_tc += 1
+        # 6c MA20斜率 (3分)
+        if ma20_slope > 2: score_tc += 3
+        elif ma20_slope > 0.5: score_tc += 2
+        elif ma20_slope > 0: score_tc += 1
+        elif ma20_slope < -1: score_tc -= 1
+        score_tc = max(0, min(10, score_tc))
+
+        # ===== 7. 多周期共振 (5分) =====
+        score_mt = 0
+        if ma60 > 0 and close > ma60: score_mt += 2
+        if ma90 > 0 and close > ma90: score_mt += 1
+        if n >= 5:
+            close_5d_ago = float(df_hist.iloc[idx - 4].get('close', 0) or 0)
+            if close_5d_ago > 0 and close > close_5d_ago: score_mt += 1
+        if n >= 20:
+            close_20d_ago = float(df_hist.iloc[idx - 19].get('close', 0) or 0)
+            if close_20d_ago > 0 and close > close_20d_ago: score_mt += 1
+        score_mt = max(0, min(5, score_mt))
+
+        # ===== 总分 =====
+        total_score = int(min(100, score_vp + score_rb + score_ta + score_mr + score_vc + score_tc + score_mt))
+
+        # ===== 假突破检测（仅在真正尝试突破时触发）=====
+        is_false_breakout = False
+        false_breakout_penalty = 0
+        # 1. 冲高回落：当日高点突破布林上轨，但收盘回落到布林上轨下方2%以内
+        #    （收盘距布林上轨超过2%说明根本没形成突破尝试，不视为假突破）
+        if high > boll_upper > 0 and 0 <= (boll_upper - close) / boll_upper * 100 <= 2:
+            is_false_breakout = True
+            false_breakout_penalty += 20
+        # 2. 缩量假突破：close 突破20日高点但量比 < 1.0
+        if close > high_20_prev > 0 and volume_ratio < 1.0:
+            is_false_breakout = True
+            false_breakout_penalty += 15
+        # 3. 长上影收阴：冲高回落幅度 > 70% 且 close 接近突破位（≥ 阻力位 97%）
+        if (high > low and (high - close) / (high - low) > 0.7
+                and close < open_ and resistance_price > 0
+                and close >= resistance_price * 0.97):
+            is_false_breakout = True
+            false_breakout_penalty += 15
+
+        # 假突破扣分：确保假突破评分远离75分阈值
+        if is_false_breakout:
+            total_score = max(0, total_score - false_breakout_penalty)
+
+        # ===== 即将突破检测 =====
+        # 条件：未真正突破 + VCP收缩明显 + 接近阻力位 + 多头排列基本成型
+        is_imminent_breakout = False
+        if not is_false_breakout:
+            if close <= resistance_price * 1.01:
+                if score_vc >= 6:
+                    if distance_to_resistance >= -3:
+                        if alignment_count >= 3:
+                            is_imminent_breakout = True
+
+        # ===== 状态判断 =====
+        is_valid_breakout = (total_score >= 70 and not is_false_breakout)
+
+        if is_false_breakout:
+            breakout_type = "假突破"
+            signal = "假突破预警，警惕回落"
+        elif is_valid_breakout:
+            breakout_type = "有效突破"
+            signal = "有效突破！列入观察/买入名单"
+        elif is_imminent_breakout:
+            breakout_type = "即将突破"
+            signal = "即将突破，关注次日量能"
+        else:
+            breakout_type = "形态不具备"
+            signal = "非突破形态"
+
+        result.update({
+            "breakout_score": total_score,
+            "is_valid_breakout": is_valid_breakout,
+            "is_imminent_breakout": is_imminent_breakout,
+            "is_false_breakout": is_false_breakout,
+            "breakout_type": breakout_type,
+            "signal": signal,
+            "sub_scores": {
+                "量价确认": score_vp,
+                "阻力突破": score_rb,
+                "趋势均线": score_ta,
+                "动能共振": score_mr,
+                "波动收缩": score_vc,
+                "趋势延续": score_tc,
+                "多周期": score_mt,
+            },
+            "resistance_price": round(resistance_price, 2),
+            "distance_to_resistance": round(distance_to_resistance, 2),
+            "volume_ratio": round(volume_ratio, 2),
+            "vol_5_to_20": round(vol_5_to_20, 2),
+            "boll_width_shrink": round(boll_width_shrink, 2),
+            "vol_contraction": round(vol_contraction, 2),
+            "atr_percentile": round(atr_percentile, 2),
+            "wave_strength": round(wave_strength, 2),
+            "ma20_slope": round(ma20_slope, 2),
+        })
+
     except Exception:
         pass
-    
+
     return result
 
 
@@ -1367,7 +1654,7 @@ def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min
         start_date = (datetime.datetime.strptime(end_date, '%Y%m%d') - datetime.timedelta(days=lookback+30)).strftime('%Y%m%d')
 
         # 日线（优先用缓存）
-        daily = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        daily = _df_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
         if daily is None or len(daily) < 40:
             return result
         daily = daily.sort_values('trade_date').reset_index(drop=True)
@@ -1478,7 +1765,7 @@ def north_moneyflow_score(ts_code, pro):
         # =========================
         # 1. 大单资金净流入（短期，个股资金流向 proxy）
         # =========================
-        flow = pro.moneyflow(ts_code=ts_code)
+        flow = _df_moneyflow_by_code(ts_code)
 
         if flow is not None and len(flow) > 0:
             recent = flow.head(5)
@@ -1514,21 +1801,11 @@ def north_moneyflow_score(ts_code, pro):
         # =========================
         # 3. 北向持仓变化（结构性增持）
         # =========================
-        hold = pro.hk_hold(ts_code=ts_code)
+        # DataFetcher.get_hk_hold_by_code 返回 dict（仅最新值），无法计算 delta，按持股状态给分
+        hold_info = _df_hk_hold_by_code(ts_code)
 
-        if hold is not None and len(hold) > 1:
-            latest = hold.iloc[0]
-            prev = hold.iloc[1]
-
-            delta = latest["vol"] - prev["vol"]
-
-            if delta > 0:
-                s3 = 5
-            elif delta == 0:
-                s3 = 2
-            else:
-                s3 = 0
-
+        if hold_info and hold_info.get('vol', 0) > 0:
+            s3 = 3  # 有北向持仓（无法判断增减趋势，给中性偏正分）
             score += s3
             detail["north_position_change"] = s3
 
@@ -1810,6 +2087,169 @@ if pro is None:
     sys.exit(1)
 
 
+# =========================
+# DataFetcher 统一缓存（高频接口走 DataFetcher，低频保留 pro 直调）
+# =========================
+try:
+    from data_fetcher import DataFetcher
+except Exception:
+    DataFetcher = None
+
+_df_singleton = None
+def _get_df():
+    """获取 DataFetcher 单例（不可用则返回 None，调用方降级到 pro）"""
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        if DataFetcher is None:
+            return None
+        token = os.getenv("TUSHARE_TOKEN") or TUSHARE_TOKEN
+        if not token:
+            return None
+        config = {
+            'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168},
+            'tushare': {'max_retry': 3, 'retry_delay': 5}
+        }
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+def _df_daily_by_code(ts_code, start_date=None, end_date=None, fields=None):
+    """pro.daily(ts_code=...) 的 DataFetcher 优先版（按股票查日线）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date, fields=fields)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    kw = {'ts_code': ts_code}
+    if start_date is not None: kw['start_date'] = start_date
+    if end_date is not None: kw['end_date'] = end_date
+    if fields is not None: kw['fields'] = fields
+    return pro.daily(**kw)
+
+def _df_daily_by_date(trade_date):
+    """pro.daily(trade_date=...) 的 DataFetcher 优先版（按日期查全市场）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily(trade_date)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.daily(trade_date=trade_date)
+
+def _df_daily_basic_by_code(ts_code, start_date=None, end_date=None):
+    """pro.daily_basic(ts_code=...) 的 DataFetcher 优先版（按股票查）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            if start_date is None:
+                start_date = (datetime.now() - timedelta(days=365*3)).strftime('%Y%m%d')
+            r = _df.get_daily_basic_by_code(ts_code, start_date=start_date, end_date=end_date)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.daily_basic(ts_code=ts_code)
+
+def _df_daily_basic_by_date(trade_date, fields=None):
+    """pro.daily_basic(trade_date=...) 的 DataFetcher 优先版（按日期查全市场）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily_basic(trade_date)
+            if r is not None and len(r) > 0:
+                if fields:
+                    cols = [c.strip() for c in fields.split(',') if c.strip() in r.columns]
+                    if cols:
+                        r = r[cols]
+                return r
+        except Exception:
+            pass
+    kw = {'trade_date': trade_date}
+    if fields: kw['fields'] = fields
+    return pro.daily_basic(**kw)
+
+def _df_stock_list(list_status='L'):
+    """pro.stock_basic(list_status=...) 的 DataFetcher 优先版（全市场股票列表）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_stock_list(list_status=list_status)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.stock_basic(exchange='', list_status=list_status)
+
+def _df_trade_cal(start_date=None, end_date=None):
+    """pro.trade_cal(...) 的 DataFetcher 优先版（交易日历）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_trade_cal(start_date=start_date, end_date=end_date)
+            if r is not None:
+                return r
+        except Exception:
+            pass
+    kw = {'exchange': ''}
+    if start_date is not None: kw['start_date'] = start_date
+    if end_date is not None: kw['end_date'] = end_date
+    return pro.trade_cal(**kw)
+
+def _df_hk_hold_by_code(ts_code):
+    """pro.hk_hold(ts_code=...) 的 DataFetcher 优先版（返回 dict：最新持股）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            return _df.get_hk_hold_by_code(ts_code)
+        except Exception:
+            pass
+    return None
+
+def _df_moneyflow_by_code(ts_code, start_date=None, end_date=None):
+    """pro.moneyflow(ts_code=...) 的 DataFetcher 优先版"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_moneyflow_by_code(ts_code, start_date=start_date, end_date=end_date)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.moneyflow(ts_code=ts_code)
+
+def _df_income(ts_code, start_year=None, end_year=None):
+    """pro.income(ts_code=...) 的 DataFetcher 优先版"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_income(ts_code, start_year=start_year, end_year=end_year)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.income(ts_code=ts_code)
+
+def _df_cashflow(ts_code, start_year=None, end_year=None):
+    """pro.cashflow(ts_code=...) 的 DataFetcher 优先版"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_cashflow(ts_code, start_year=start_year, end_year=end_year)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.cashflow(ts_code=ts_code)
+
+
 if not os.path.exists(REPORT_DIR):
     os.makedirs(REPORT_DIR)
 
@@ -1834,8 +2274,8 @@ def load_turnover_cache():
             pass
     # 没有缓存则从API批量拉取
     try:
-        df = pro.daily_basic(
-            trade_date=TRADE_DATE,
+        df = _df_daily_basic_by_date(
+            TRADE_DATE,
             fields='ts_code,turnover_rate'
         )
         if df is not None and not df.empty:
@@ -1899,8 +2339,7 @@ def get_last_trade_date():
     # =========================
     # 获取交易日历
     # =========================
-    cal = pro.trade_cal(
-        exchange='',
+    cal = _df_trade_cal(
         start_date='20200101',
         end_date=query_date
     )
@@ -1923,8 +2362,7 @@ def validate_trade_date(date_str):
     
     try:
         # 获取交易日历
-        cal = pro.trade_cal(
-            exchange='',
+        cal = _df_trade_cal(
             start_date=date_str,
             end_date=date_str
         )
@@ -1934,8 +2372,7 @@ def validate_trade_date(date_str):
             return date_str
         
         # 如果不是交易日，找之前最近的交易日
-        cal = pro.trade_cal(
-            exchange='',
+        cal = _df_trade_cal(
             start_date=(datetime.strptime(date_str, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d'),
             end_date=date_str
         )
@@ -2010,7 +2447,7 @@ def load_stock_dict():
     global STOCK_DICT
     try:
         if pro is not None:
-            df = pro.stock_basic(exchange='', list_status='L', fields='ts_code,symbol,name')
+            df = _df_stock_list(list_status='L')
             stock_dict = {}
             for _, row in df.iterrows():
                 # 同时存储带后缀和不带后缀的代码
@@ -2083,7 +2520,7 @@ def get_hist_data(ts_code):
     # =========================
     if df is None or df.empty:
         try:
-            df = pro.daily(ts_code=ts_code, start_date='20250101', end_date=TRADE_DATE)
+            df = _df_daily_by_code(ts_code, start_date='20250101', end_date=TRADE_DATE)
             if df is None or df.empty:
                 return None
             df['trade_date'] = df['trade_date'].astype(str)
@@ -2187,8 +2624,8 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
             # 单批失败则逐只重试
             for ts_code in batch:
                 try:
-                    single_df = pro.daily(
-                        ts_code=ts_code,
+                    single_df = _df_daily_by_code(
+                        ts_code,
                         start_date=start_date,
                         end_date=TRADE_DATE
                     )
@@ -2220,11 +2657,11 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
             start_date_to_check = start_date
             if pro is not None:
                 try:
-                    cal = pro.trade_cal(exchange='', start_date=start_date, end_date=start_date)
+                    cal = _df_trade_cal(start_date=start_date, end_date=start_date)
                     if cal.empty or cal.iloc[0]['is_open'] != 1:
                         # start_date 不是交易日，找其后第一个交易日
                         end_cal = (datetime.strptime(start_date, '%Y%m%d') + timedelta(days=30)).strftime('%Y%m%d')
-                        cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_cal)
+                        cal = _df_trade_cal(start_date=start_date, end_date=end_cal)
                         cal = cal[cal['is_open'] == 1]
                         first_trade_after_start = cal[cal['cal_date'] >= start_date]['cal_date'].min()
                         if first_trade_after_start:
@@ -2237,8 +2674,8 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
                 continue  # 已有全量数据，跳过
             
             # 缺失历史数据，单独下载补全
-            single_df = pro.daily(
-                ts_code=ts_code,
+            single_df = _df_daily_by_code(
+                ts_code,
                 start_date=start_date,
                 end_date=TRADE_DATE
             )
@@ -7121,18 +7558,14 @@ def get_market():
 
     print("[DBG] get_market 准备调用API"); sys.stdout.flush()
 
-    daily = pro.daily(
-        trade_date=TRADE_DATE
-    )
+    daily = _df_daily_by_date(TRADE_DATE)
 
-    basic = pro.stock_basic(
-        exchange='',
-        list_status='L',
-        fields='ts_code,name'
-    )
+    basic = _df_stock_list(list_status='L')
+    if basic is not None and len(basic) > 0:
+        basic = basic[['ts_code', 'name']]
 
-    mv = pro.daily_basic(
-        trade_date=TRADE_DATE,
+    mv = _df_daily_basic_by_date(
+        TRADE_DATE,
         fields='ts_code,total_mv'
     )
 
@@ -7316,7 +7749,7 @@ def get_chip_distribution(ts_code, trade_date, current_price=None):
                 except Exception:
                     pass
             if current_price is None:
-                d = pro.daily(ts_code=ts_code, trade_date=td)
+                d = _df_daily_by_code(ts_code, start_date=td, end_date=td)
                 if d is not None and len(d) > 0:
                     current_price = float(d['close'].iloc[0])
                 else:
@@ -8092,7 +8525,7 @@ def get_limit_stats():
         # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）
         try:
             # 获取当日所有股票的收盘价和涨跌幅
-            daily = pro.daily(trade_date=TRADE_DATE)
+            daily = _df_daily_by_date(TRADE_DATE)
             if daily is not None and not daily.empty:
                 # 计算涨跌停阈值（简化版：主板10%，科创板/创业板20%）
                 daily['is_kcb'] = daily['ts_code'].str.startswith(('688', '301'))
@@ -8983,7 +9416,49 @@ def detect_volume_surge_swing(ts_code, name):
         
         # 当日量能是否异动
         today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
-        
+
+        # === 回测验证的附加特征（用于强买信号筛选）===
+        # 回撤类型
+        if _retrace_ratio < 30:
+            retrace_type = '浅回调'
+        elif _retrace_ratio < 50:
+            retrace_type = '中回调'
+        else:
+            retrace_type = '深回调'
+
+        # 距MA20位置
+        close_latest = float(close_arr[-1])
+        ma20_latest = pd.Series(close_arr).rolling(20).mean().values[-1]
+        pos_ma20 = (close_latest / ma20_latest - 1) * 100 if not np.isnan(ma20_latest) and ma20_latest > 0 else 0
+
+        # 是否刚刚红柱（布尔值）
+        is_fresh_red = (macd_status == '刚刚红柱 ✅')
+
+        # === 强买信号判定（基于回测胜率最高的组合）===
+        # 回测验证：以下组合T+5胜率>=74%
+        strong_buy = False
+        strong_buy_reason = ''
+        # 组合1: 距MA20<0% + 刚红柱 (100%胜率)
+        if pos_ma20 < 0 and is_fresh_red:
+            strong_buy = True
+            strong_buy_reason = '回踩MA20下方+MACD刚红柱(回测100%胜率)'
+        # 组合2: 中回调 + 刚红柱 (79%+74%胜率)
+        elif retrace_type == '中回调' and is_fresh_red:
+            strong_buy = True
+            strong_buy_reason = '中回调+MACD刚红柱(回测79%胜率)'
+        # 组合3: 浅回调 + 刚红柱 + 评分>=70 (74%胜率)
+        elif retrace_type == '浅回调' and is_fresh_red and total_score >= 70:
+            strong_buy = True
+            strong_buy_reason = '浅回调+刚红柱+高评分(回测74%胜率)'
+        # 组合4: 评分65-80 + 量比1.0-1.5 + 距MA20 -3~0% (76%胜率)
+        elif 65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0:
+            strong_buy = True
+            strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(回测76%胜率)'
+
+        # 仅保留强买信号，确保胜率
+        if not strong_buy:
+            return None
+
         return {
             '代码': ts_code,
             '名称': name,
@@ -8998,6 +9473,10 @@ def detect_volume_surge_swing(ts_code, name):
             '近历史最高量%': round(vol_vs_hist_pct, 0),
             '今日量比': round(today_vol_ratio, 2),
             'MACD状态': macd_status,
+            '回撤类型': retrace_type,
+            '距MA20': round(pos_ma20, 1),
+            '强买信号': strong_buy,
+            '强买原因': strong_buy_reason,
         }
     except Exception:
         return None
@@ -9307,15 +9786,22 @@ def run(target_date=None, simple_mode=False):
         except Exception:
             s['突破信号'] = ''; s['突破评分'] = 0
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
-    
-    # 按整合评分排序
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x['整合评分'])
+
+    # 过滤掉假突破的股票
+    before_filter = len(ranked_stocks)
+    ranked_stocks = [s for s in ranked_stocks if '假突破' not in s.get('突破信号', '')]
+    after_filter = len(ranked_stocks)
+    if before_filter != after_filter:
+        print(f"[突破股池] 过滤假突破: {before_filter} -> {after_filter} 只")
+
+    # 按突破评分排序
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('突破评分', 0))
     lines = []
     lines.append("=" * 60)
-    lines.append("🔥 突破股池 (按整合评分排序)")
+    lines.append("🔥 突破股池 (按突破评分排序)")
     lines.append("=" * 60)
     
-    top_stocks = ranked_stocks[:10]
+    top_stocks = ranked_stocks[:20]
     for i, s in enumerate(top_stocks, 1):
         alpha_val = s.get('Alpha评分', 0)
         alpha_sig = s.get('Alpha信号', '')
@@ -9350,13 +9836,146 @@ def run(target_date=None, simple_mode=False):
     print(hot_money_open_text)
     
     icpm_top10_list = []
-    for s in ranked_stocks[:10]:
+    for s in ranked_stocks[:20]:
         icpm_top10_list.append({
             'code': s.get('代码', ''),
             'name': s.get('名称', ''),
             'theme': s.get('所属主题', ''),
             'open_score': s.get('整合评分', 0),
         })
+
+    # ========================= 中军企稳股池 =========================
+    # 从 zhongjun_history.db 读取过去5天中军股票，检测企稳信号并打分
+    zhongjun_db = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'zhongjun_history.db')
+    zhongjun_stabilize_text = ""
+    zhongjun_stocks_list = []
+    if os.path.exists(zhongjun_db):
+        import sqlite3 as _sqlite3
+        conn_zj = _sqlite3.connect(zhongjun_db)
+        cur_zj = conn_zj.cursor()
+        cur_zj.execute("SELECT DISTINCT trade_date FROM zhongjun_daily ORDER BY trade_date DESC LIMIT 5")
+        recent_dates = [row[0] for row in cur_zj.fetchall()]
+        zj_stocks = {}
+        if recent_dates:
+            cur_zj.execute(f"""
+                SELECT DISTINCT ts_code, name, theme_name
+                FROM zhongjun_daily
+                WHERE trade_date IN ({','.join(['?']*len(recent_dates))})
+            """, recent_dates)
+            zj_stocks = {row[0]: {'name': row[1], 'theme': row[2]} for row in cur_zj.fetchall()}
+        conn_zj.close()
+
+        print(f"[中军企稳] 过去5天中军股票: {len(zj_stocks)} 只")
+        # 导入回调买点信号计算函数
+        from watchlist_buy_signal import calc_buy_signal, is_shuangchuang
+        zj_signals = []
+        zj_strong_buy = []  # 回调买分>=80的强信号
+        for ts_code, info in zj_stocks.items():
+            df = get_hist_data(ts_code)
+            if df is None or len(df) < 25 or not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
+                continue
+            df = df.sort_values('trade_date').reset_index(drop=True)
+            closes = df['close'].values
+            ma5_arr = pd.Series(closes).rolling(5).mean().values
+            ma10_arr = pd.Series(closes).rolling(10).mean().values
+            ma20_arr = pd.Series(closes).rolling(20).mean().values
+            close = float(closes[-1])
+            ma5_v = float(ma5_arr[-1])
+            ma10_v = float(ma10_arr[-1])
+            ma20_v = float(ma20_arr[-1])
+            if ma20_v == 0 or ma5_v == 0:
+                continue
+            # 企稳检测：收盘价在 MA5-MA20 区间
+            in_range = ma20_v <= close <= ma5_v
+            prev_close = float(closes[-2]) if len(closes) >= 2 else close
+            prev_ma5 = float(ma5_arr[-2]) if len(ma5_arr) >= 2 else ma5_v
+            prev_ma20 = float(ma20_arr[-2]) if len(ma20_arr) >= 2 else ma20_v
+            prev_in_range = prev_ma20 <= prev_close <= prev_ma5
+            stabilized = False
+            reason = ""
+            if in_range and not prev_in_range and close >= prev_close:
+                stabilized = True
+                reason = "回落至MA5-MA20区间后企稳反弹"
+            elif in_range and prev_in_range and close >= prev_close * 0.98:
+                stabilized = True
+                reason = "在MA5-MA20区间内连续企稳"
+            if not stabilized:
+                continue
+            # 整合评分
+            try:
+                theme_name = info.get('theme', '')
+                integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
+                    df, ts_code, theme_name
+                )
+                today_pct = ((closes[-1] / closes[-2]) - 1) * 100 if len(closes) >= 2 else 0
+                today_amount = float(df['amount'].iloc[-1]) / 100000 if 'amount' in df.columns else 0
+
+                # 回调买点信号计算（基于回测验证：买分>=80且回调1-2天胜率80%）
+                buy_signal, buy_score, buy_details, buy_reasons = calc_buy_signal(df, ts_code)
+                board = '双创' if is_shuangchuang(ts_code) else '主板'
+
+                signal_entry = {
+                    '代码': ts_code, '名称': info.get('name', ''), '现价': close,
+                    '涨跌幅': today_pct, '成交额': today_amount,
+                    '所属主题': theme_name, '整合评分': integrated_score, '失败概率': failure_prob,
+                    '推荐理由': recommendation, '企稳原因': reason,
+                    'Alpha评分': details.get('Alpha评分', 0), 'Alpha信号': details.get('Alpha信号', ''),
+                    '量能爆发': details.get('量能爆发', 0),
+                    'MA5': ma5_v, 'MA10': ma10_v, 'MA20': ma20_v,
+                    '买点信号': buy_signal, '买分': buy_score,
+                    '回调幅度': buy_details.get('pullback_pct', 0),
+                    '回调天数': buy_details.get('days_from_high', 0),
+                    '共振数': buy_details.get('resonance', 0),
+                    '买点原因': '; '.join(buy_reasons[:3]),
+                    '板块': board,
+                }
+                zj_signals.append(signal_entry)
+
+                # 筛选强买信号：回调1-2天 + 买分>=80（回测胜率80%）
+                if (buy_signal == 'BUY'
+                        and buy_score >= 80
+                        and 1 <= buy_details.get('days_from_high', 99) <= 2):
+                    zj_strong_buy.append(signal_entry)
+            except Exception:
+                continue
+
+        # 按整合评分排序
+        zj_signals = sorted(zj_signals, key=lambda x: -x['整合评分'])
+        zhongjun_stocks_list = zj_signals[:10]
+
+        # 强买信号按买分排序
+        zj_strong_buy = sorted(zj_strong_buy, key=lambda x: -x['买分'])
+
+        zj_lines = []
+        # === 强买信号股池（回调1-2天+买分>=80，回测胜率80%）===
+        if zj_strong_buy:
+            zj_lines.append("=" * 60)
+            zj_lines.append("🔥 中军企稳·强买信号 (回调1-2天+买分>=80，回测胜率80%)")
+            zj_lines.append("=" * 60)
+            for i, s in enumerate(zj_strong_buy[:10], 1):
+                zj_lines.append(f"【强买{i}】{s['名称']} ({s['代码']}) {s['板块']} 现价={s['现价']:.2f}")
+                zj_lines.append(f"  买分={s['买分']:.0f} | 回调{abs(s['回调幅度']):.1f}% {s['回调天数']}天 | 共振{s['共振数']}个")
+                zj_lines.append(f"  买点: {s['买点原因']}")
+                zj_lines.append(f"  整合评分: {s['整合评分']:.1f} | 主题: {s['所属主题']}")
+                zj_lines.append("")
+
+        zj_lines.append("=" * 60)
+        zj_lines.append("📊 中军企稳股池 (历史中军回落MA5-MA20区间企稳，按整合评分排序)")
+        zj_lines.append("=" * 60)
+        for i, s in enumerate(zhongjun_stocks_list[:10], 1):
+            alpha_val = s.get('Alpha评分', 0)
+            alpha_sig = s.get('Alpha信号', '')
+            alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
+            buy_score_str = f" 买分={s.get('买分', 0):.0f}" if s.get('买分', 0) > 0 else ""
+            zj_lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{buy_score_str}")
+            zj_lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
+            zj_lines.append(f"  主题: {s['所属主题']} | 企稳: {s['企稳原因']}")
+            zj_lines.append(f"  MA5={s['MA5']:.2f} MA10={s['MA10']:.2f} MA20={s['MA20']:.2f}")
+            zj_lines.append("")
+        zhongjun_stabilize_text = "\n".join(zj_lines)
+        print(zhongjun_stabilize_text)
+    else:
+        print("[中军企稳] 数据库不存在，跳过")
 
     ### 二波低吸：读取 wave2_pattern_scanner.py 盘后预生成数据 ###
     wave2_output_dir = r'D:\mystock\solo\multi_factor_picker\output'
@@ -9740,17 +10359,20 @@ def run(target_date=None, simple_mode=False):
     # =========================
     volume_surge_swing_text = ""
     if _volume_surge_swing_results:
+        vs_strong_buy = sorted(_volume_surge_swing_results, key=lambda x: -x['量能爆发评分'])
+
         vs_lines = ["=" * 60]
-        vs_lines.append("📊 量能爆发+宽幅震荡池 (近60天量能放大+宽幅震荡，如火星人/时代电气/奥比中光/沃顿科技)")
+        vs_lines.append("🔥 量能爆发·强买信号 (仅保留回测T+5胜率>=74%的形态，确保高胜率)")
         vs_lines.append("=" * 60)
-        vs_lines.append(f"共{len(_volume_surge_swing_results)}只标的，按量能爆发评分排序前10：")
-        vs_lines.append(f"{'代码':<12} {'名称':<8} {'评分':>4} {'最大量比':>8} {'量比>2':>6} {'日均振幅':>8} {'巨震>8%':>8} {'区间振幅':>8} {'区间涨幅':>8} {'近最高量%':>8} {'MACD':>8}")
-        vs_lines.append("-" * 100)
-        for _vr in _volume_surge_swing_results[:10]:
-            vs_lines.append(f"  {_vr['代码']:<12} {_vr['名称']:<8} {_vr['量能爆发评分']:>4.0f} {_vr['最大量比']:>8.2f} {_vr['量比>2天数']:>6} {_vr['日均振幅']:>7.1f}% {_vr['巨震天数(>8%)']:>6} {_vr['区间振幅']:>7.1f}% {_vr['区间涨幅']:>7.1f}% {_vr['近历史最高量%']:>6.0f}% {_vr['MACD状态']:>8}")
-        vs_lines.append("-" * 100)
-        vs_lines.append("【特征】量能大幅放大(量比>2的天数多)+宽幅震荡(日均振幅大)+区间振幅大，常见于主力建仓/洗盘/出货阶段")
-        vs_lines.append("【AI任务】分析上述股票是否具备中线上涨潜力，关注那些MACD即将/刚刚红柱、量能放大但股价尚未大幅拉升的标的，给出3-5只重点关注")
+        if vs_strong_buy:
+            for i, _vr in enumerate(vs_strong_buy[:10], 1):
+                vs_lines.append(f"【强买{i}】{_vr['名称']} ({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
+                vs_lines.append(f"  {_vr['强买原因']}")
+                vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+                vs_lines.append("")
+        else:
+            vs_lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
+        vs_lines.append("【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%，中回调+刚红柱79%，距MA20下方+刚红柱100%")
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
 
@@ -10003,6 +10625,11 @@ def run(target_date=None, simple_mode=False):
 （低吸二波信号，按二波评分从高到低排序）
 {dixi_stock_text}
 
+**【中军企稳股池】**
+
+（历史中军股票回落到MA5-MA20区间企稳，按整合评分排序）
+{zhongjun_stabilize_text}
+
 **【今日趋势股池】**
 
 （精准入场评分≥50 + D1/D2波段位置，早盘突破信号，按评分排序取前5）
@@ -10049,8 +10676,8 @@ def run(target_date=None, simple_mode=False):
 
 <span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
-3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面10名，不能自行截取，也不要加入其它的）：
-   **【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面20名，不能自行截取，也不要加入其它的）：
+   **【重要】按突破评分从高到低排序分析前20名个股，每个股票内容力求精简：**    
    - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
      【第1名 - 明日首选】**股票名** (代码)
      【第2名】**股票名** (代码)
@@ -10058,7 +10685,7 @@ def run(target_date=None, simple_mode=False):
      依此往后
    - 对每只股票进行详细分析，包括：
      - 整合评分和失败概率
-     - [突破信号]（加粗强调）
+     - **[突破评分]**（必须包含）和 [突破信号]（加粗强调），格式例如：**[突破评分=XX]** | 突破信号：XXX
      - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
        主题地位：【必须】直接输出规则判定结果，格式如下：
        "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
@@ -10097,7 +10724,20 @@ def run(target_date=None, simple_mode=False):
            * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
     D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
     E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-4、**【今日低吸股票池分析】**（二波评分≥10分的标的，分为【强势横盘】和【其他形态】两大部分输出）：
+4、**【中军企稳股池分析】**（历史中军股票回落到MA5-MA20区间企稳的标的，按整合评分排序，只能显示前5名）：
+   - 【强买信号优先】如果股池中存在"🔥 中军企稳·强买信号"段落（回调1-2天+买分>=80，回测胜率80%），必须优先展示这些强买信号个股，并标注"强买信号"
+   - 【必须输出】无论是否有符合条件的个股，都必须输出此段落。如无中军企稳信号，输出"今日无中军企稳信号"
+   - 【格式要求】严格用以下格式显示：
+     【强买1 - 中军企稳】**股票名** (代码) [强买信号：买分XX 回调X天]
+     【第2名】**股票名** (代码)
+     依此往后
+   - 对每只股票进行分析，力求精简：
+     - 整合评分和失败概率
+     - 所属主题和企稳原因（回落至MA5-MA20区间后企稳反弹 / 在MA5-MA20区间内连续企稳）
+     - Alpha评分及中线解读
+     - 强买信号个股需额外说明：买分、回调幅度、共振信号数
+   - 【约束】股票名必须从上方"中军企稳股池"中选取，禁止凭空编造
+5、**【今日低吸股票池分析】**（二波评分≥10分的标的，分为【强势横盘】和【其他形态】两大部分输出）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
    - 【数据位置】低吸股票池分为两大部分：强势横盘标题下是强势横盘形态的标的；其他形态标题下是V型急跌/深度回调/放量回调等所有其他形态的标的（按评分降序排列）
@@ -10115,7 +10755,7 @@ def run(target_date=None, simple_mode=False):
    - 【精简原则】上方数据中没有的内容不要输出
    - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-5、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只）：
+6、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只）：
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
    - 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
@@ -10130,20 +10770,22 @@ def run(target_date=None, simple_mode=False):
        A浪涨幅=81.5% | B浪回调=23.0% | 距A高=15.5% | 最新信号日：20260701
        操作建议：三信号共振，见底后RSI先金叉（6/30）、MACD后金叉（7/1），信号递进确认，可在回踩MA20附近低吸，止损设B浪低点下方3%
    - 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"
-5、**【ETF操作建议】**
+7、**【ETF操作建议】**
 {etf_tips_text}
 
-7、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+8、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+   - 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
    - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
    - 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，共X只标的
    - 从评分最高的开始分析，输出3-5只重点关注，每只精简为1小段（3行），用【股票名+代码】作为子标题，每个标题后换行，格式如下：
-     - 【子标题】**股票名**(代码) | 评分=XX分 | MACD即将红柱还是刚刚红柱
+     - 【子标题】**股票名**(代码) | 评分=XX分 | MACD即将红柱还是刚刚红柱 | 回撤类型 | 距MA20=±X%
      - 第2行：量比=X | 日均振幅=X% | 区间振幅=X% | 区间涨幅=X%
      - 第3行：分析判断（是否具备中线上涨潜力，结合主题热度判断，如不符合当前热点则提示等待）
+   - 【强买信号个股额外说明】需注明强买原因（如"中回调+MACD刚红柱(回测79%胜率)"），并优先推荐
    - 【格式示例】
-     **新天科技**(300259.SZ) | 评分=100分 | MACD刚刚红柱
+     **新天科技**(300259.SZ) | 评分=100分 | MACD刚刚红柱 | 中回调 | 距MA20=-1.5% [强买信号]
        量比=6.39 | 日均振幅=7.3% | 区间振幅=74.4% | 区间涨幅=44.1%
-       分析：量能爆发特征极显著，MACD刚刚翻红，短线爆发力强。但所属主题非当前热点，短线为主，注意节奏。
+       分析：强买信号触发（中回调+MACD刚红柱，回测79%胜率），量能爆发特征极显著，MACD刚刚翻红，短线爆发力强。
    - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
 
 格式要求：

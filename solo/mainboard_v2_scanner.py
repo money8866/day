@@ -19,6 +19,7 @@
 """
 
 import os
+import sys
 import json
 import sqlite3
 from datetime import datetime, timedelta
@@ -27,6 +28,9 @@ import numpy as np
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(BASE_DIR, 'multi_factor_picker'))
+from data_fetcher import DataFetcher
+
 CACHE_TUSHARE = os.path.join(BASE_DIR, "cache_backbone_tushare")
 KLINE_CACHE = os.path.join(BASE_DIR, "cache_daily")
 DC_HOT_DIR = os.path.join(CACHE_TUSHARE, "dc_hot")
@@ -66,6 +70,68 @@ def load_kline(code, lookback=240):
         return df
     except Exception:
         return None
+
+
+# 北向资金持股比例缓存（trade_date -> {ts_code: hold_ratio}）
+_NORTH_HOLD_CACHE = {}
+
+
+def load_north_hold_batch(trade_date):
+    """
+    批量加载北向资金持股比例（沪深股通）
+
+    注：tushare的 hk_hold(trade_date=...) 返回港股通南向数据，
+    北向资金持股（沪深股通）需用 hk_hold(ts_code=...) 按股票查询。
+    本函数返回空字典作为占位，实际北向持股查询在 compute_stock_features 中按需进行。
+
+    Returns: {} 空字典（实际查询改用按股票模式）
+    """
+    return {}
+
+
+# DataFetcher 单例（复用统一速率锁与 parquet/JSON 缓存）
+_df_singleton = None
+
+
+def _get_df():
+    """获取 DataFetcher 单例（懒加载，复用 TUSHARE_TOKEN）"""
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        from data_fetcher import DataFetcher
+        token = os.getenv("TUSHARE_TOKEN")
+        if not token:
+            env_path = os.path.join(BASE_DIR, '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('TUSHARE_TOKEN=') and not line.startswith('#'):
+                            token = line.split('=', 1)[1].strip()
+                            break
+        if not token:
+            return None
+        config = {
+            'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168},
+            'tushare': {'max_retry': 3, 'retry_delay': 5},
+        }
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+
+def _query_north_hold_single(ts_code):
+    """按股票代码查询北向持股比例（复用DataFetcher统一缓存）"""
+    df = _get_df()
+    if df is None:
+        return 0.0
+    try:
+        info = df.get_hk_hold_by_code(ts_code)
+        return float(info.get('ratio', 0.0)) if info else 0.0
+    except Exception:
+        return 0.0
 
 
 def norm(value, vmin, vmax, reverse=False):
@@ -222,8 +288,12 @@ def load_financial_data():
 # ============================================================
 # 计算个股 120 日行为特征
 # ============================================================
-def compute_stock_features(code, df_kline, theme_name, theme_data, stock_hot, fin_data):
-    """计算 120 日市场行为特征"""
+def compute_stock_features(code, df_kline, theme_name, theme_data, stock_hot, fin_data, north_hold_ratio=None):
+    """计算 120 日市场行为特征
+
+    Args:
+        north_hold_ratio: 北向资金持股比例(%)，None表示无数据，使用估算
+    """
     feat = {"ts_code": code, "theme_name": theme_name}
 
     if df_kline is None or len(df_kline) < 120:
@@ -454,7 +524,45 @@ def compute_stock_features(code, df_kline, theme_name, theme_data, stock_hot, fi
     trend_quality = norm(feat["slope_60"], -0.1, 1.0)
     structure_score = feat["bull_score"] / 100 * 50
     feat["institution_score"] = round(0.4 * amount_stability + 0.3 * trend_quality + 0.3 * structure_score, 1)
-    feat["northbound_score"] = round(feat["institution_score"] * 0.8, 1)  # 北向简化估算
+
+    # 北向资金评分：优先使用真实北向持股数据，否则用估算
+    if north_hold_ratio is not None and north_hold_ratio > 0:
+        # 真实北向持股比例评分（调整后门槛更合理）
+        # ≥3%=100分；1-3%=85分；0.5-1%=70分；0.1-0.5%=55分；>0=40分
+        if north_hold_ratio >= 3:
+            nb_score = 100
+        elif north_hold_ratio >= 1:
+            nb_score = 85
+        elif north_hold_ratio >= 0.5:
+            nb_score = 70
+        elif north_hold_ratio >= 0.1:
+            nb_score = 55
+        else:
+            nb_score = 40
+        feat["northbound_score"] = round(nb_score, 1)
+        feat["northbound_hold_ratio"] = round(north_hold_ratio, 3)
+        feat["northbound_source"] = "real"  # 标识数据来源
+    else:
+        # 批量数据为空时，尝试按股票代码单股查询北向持股
+        nb_ratio_real = _query_north_hold_single(code)
+        if nb_ratio_real > 0:
+            if nb_ratio_real >= 3:
+                nb_score = 100
+            elif nb_ratio_real >= 1:
+                nb_score = 85
+            elif nb_ratio_real >= 0.5:
+                nb_score = 70
+            elif nb_ratio_real >= 0.1:
+                nb_score = 55
+            else:
+                nb_score = 40
+            feat["northbound_score"] = round(nb_score, 1)
+            feat["northbound_hold_ratio"] = round(nb_ratio_real, 3)
+            feat["northbound_source"] = "real"
+        else:
+            # 无真实北向数据时，使用机构强度估算（保留向后兼容）
+            feat["northbound_score"] = round(feat["institution_score"] * 0.8, 1)
+            feat["northbound_source"] = "estimated"
 
     # ---- 产业需求和订单爆发估算 ----
     feat["industry_demand_score"] = round(theme_score_latest * 0.7 + theme_trend * 0.3, 1)
@@ -878,6 +986,15 @@ def main():
         print("[Error] 无主题成分股数据")
         return
 
+    # 预加载北向资金持股数据（一次性批量加载，避免每只股票调用API）
+    today_str = datetime.now().strftime('%Y%m%d')
+    print(f"\n[Load] 预加载北向资金持股数据 ({today_str})...")
+    north_hold_data = load_north_hold_batch(today_str)
+    if north_hold_data:
+        print(f"  [OK] 北向数据加载成功: {len(north_hold_data)} 只股票有持股")
+    else:
+        print(f"  [Warn] 北向数据加载失败，将使用估算模式")
+
     # 2. 计算每只股票特征
     print("\n[Calc] 计算股票特征...")
     all_stocks = []
@@ -914,7 +1031,7 @@ def main():
         if kline is None or len(kline) < 120:
             continue
 
-        feat = compute_stock_features(code, kline, info["theme_name"], theme_scores, stock_hot, fin_data)
+        feat = compute_stock_features(code, kline, info["theme_name"], theme_scores, stock_hot, fin_data, north_hold_data.get(code))
         if feat is None:
             continue
 
