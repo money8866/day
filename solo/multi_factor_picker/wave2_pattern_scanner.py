@@ -162,9 +162,41 @@ SIDEWAYS_PULLBACK_MAX = 0.10
 SIDEWAYS_ADJUST_MAX   = 15
 SIDEWAYS_VOL_MAX      = 0.80
 
-# 深度回调
+# 深度回调 v1优化 (tdx_backtest_wave2_deep_pullback_v1验证, 922笔)
+#   回测区间: 20250101~20260703, 仅双创, 20日持有
+#   优化结果: 胜率70.9%/均收益10.89%/盈亏比2.0
+#   优化1: 仅双创 — 创业板胜率70.3%/均收益9.78%, 科创板胜率65.1%/均收益9.59%
+#   优化2: 调整≥15天(原10) — 调整30天+胜率70.8%/均收益9.14%
+#   优化3: 缩量要求(量比<1.0) — 量比<0.5胜率79.1%/均收益11.98%
+#   优化4: 入场硬过滤: 一波涨幅≥30% (保留)
 DEEP_PULLBACK_MIN = 0.20
-DEEP_ADJUST_MIN   = 10
+DEEP_ADJUST_MIN   = 15  # v1优化: 10→15 (仅双创)
+
+# 放量回调 v1b优化 (tdx_backtest_wave2_volume_pullback_v1b验证, 155笔)
+#   回测区间: 20250101~20260703, 仅双创, 5日持有
+#   优化结果: 胜率64.5%/均收益5.34%/盈亏比2.21/最大亏损-18.22%
+#   优化1: 仅双创 — 创业板胜率65.9%/均收益4.61%, 科创板胜率63.0%/均收益6.17%
+#   优化2: 调整10-20天(原≥10) — 10-15天均收益5.87%/15-20天均收益2.86%
+#   优化3: 调整期量比>1.5(原>1.2) — 量比1.5-2.0均收益6.22%
+#   优化4: 一波<50%(原<80%) — 一波30-50%胜率69.6%/均收益6.71%最优
+VOL_PULLBACK_ADJUST_MAX = 20   # 调整天数上限 (新增, 10-20天)
+VOL_PULLBACK_ADJUST_MIN = 10   # 调整天数下限 (放量回调独有, 不共享DEEP_ADJUST_MIN)
+VOL_PULLBACK_VOL_RATIO = 1.5   # 调整期量比下限 (原1.2→1.5)
+VOL_PULLBACK_WAVE1_GAIN_MAX = 0.50  # 一波涨幅上限 (原0.80→0.50)
+
+# V型急跌 v1优化参数 (5日持有专用, tdx_backtest_wave2_vshape_v1_h5验证, 339笔)
+#   回测区间: 20250101~20260703, 双创板416只
+#   优化结果: 胜率59.6% / 均收益2.91% / 盈亏比1.46 / 最大亏损-23.40%
+#   优化1: RSI下限提到35 — RSI[35,41]胜率60.2% (RSI<25反而最差53.5%)
+#   优化2: 仅选双创板 — 科创板胜率64.4%/均收益4.63% (主板弱势50.0%)
+#   优化3: 一波涨幅上限80% — 20日持有时一波>80%胜率仅43.2%
+#   优化4: 量比放宽到[0.5, 0.8) — 信号量从146→339笔, 胜率仍达59.6%
+VSHAPE_RSI_MIN        = 35    # RSI6 下限 (原40→35, 过滤RSI过低的反信号)
+VSHAPE_RSI_MAX        = 40    # RSI6 上限
+VSHAPE_VOL_RATIO_MIN  = 0.5   # 量比下限 (避免过度缩量无人气)
+VSHAPE_VOL_RATIO_MAX  = 0.8   # 量比上限 (v1放宽版, 平衡信号量与胜率)
+VSHAPE_PULLBACK_MAX   = 0.30  # 回调幅度上限 (放宽到30%, 保留大部分V型信号)
+VSHAPE_WAVE1_GAIN_MAX = 0.80  # 一波涨幅上限 (过滤高位股)
 
 # 入场评分阈值（v2.1含主力类因子，满分约40+）
 #   强势横盘: 基础7分(纯技术) → 加主力类后通常15-25分
@@ -172,7 +204,8 @@ DEEP_ADJUST_MIN   = 10
 #   V型急跌: 双创专属，阈值20分
 SCORE_SIDWAYS_MIN = 30    # 主板强势横盘(v3.4→v3.9): 回调2-10%+一波30-60%+评分30+
                             # v3.9回测依据(200只×60天): 25-29分止损率75%, 30+分止损率降至33%
-SCORE_DEEP_MIN    = 10    # 深度回调保持10分
+SCORE_DEEP_MIN    = 20    # 深度回调(v3.9): 10→20分
+                            # v3.9回测依据(200只×60天): <20分胜率61.5%/止损率21.1%, 20-29分胜率83.8%/止损率36.4%
 SCORE_VSHAPE_GEM_MIN = 20 # 双创V型急跌阈值20分
 SCORE_VOL_PULLBACK_GEM_MIN = 20 # 双创放量回调阈值20分
 
@@ -1318,7 +1351,11 @@ class WavePatternDetector:
 
     # ── 形态2: 深度回调（纯深度，不含放量/V型）──────────────────
     def detect_deep_pullback_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
-        """纯深度回调形态：回调>=20%，调整>=10天，非放量非V型"""
+        """纯深度回调形态：回调>=20%，调整>=15天，非放量非V型, v1优化后20日胜率70.9%"""
+        # v1优化1: 仅双创板 (创业板300/301 + 科创板688/689)
+        if not ts_code.startswith(('3', '688', '689')):
+            return None
+
         df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
@@ -1442,6 +1479,13 @@ class WavePatternDetector:
 
             row = df.iloc[entry_idx]
             rsi = float(row.get('rsi_qfq_6', 50))
+
+            # v3.10: 100%胜率硬过滤（200只×60天回测验证）
+            # 一波涨幅>=30% → 100%胜率（43/62信号），<30%胜率64.7%
+            # v1优化3: 缩量要求(量比<1.0) — 量比<0.5胜率79.1%/均收益11.98%
+            if surge_gain < 0.30 or vol_ratio_adj >= 1.0:
+                continue
+
             atr = float(row.get('atr_qfq', 0))
             # 入场价用未复权实际交易价
             entry_price = float(row.get('close_bfq', row['close']))
@@ -1503,7 +1547,11 @@ class WavePatternDetector:
 
     # ── 形态3: 放量回调（独立形态）────────────────────────────
     def detect_volume_pullback_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
-        """放量回调形态：回调10-25%，量比>1.2，胜率91.2%"""
+        """放量回调形态：回调10-20%, 调整10-20天, 量比>1.5, v1b优化后5日胜率64.5%"""
+        # v1b优化1: 仅双创板 (创业板300/301 + 科创板688/689)
+        if not ts_code.startswith(('3', '688', '689')):
+            return None
+
         df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
@@ -1524,6 +1572,10 @@ class WavePatternDetector:
 
         wave1_candidates = self._find_recent_wave1(closes, n)
         for wave1_high_idx, _, surge_gain in wave1_candidates:
+            # v1b优化4: 过滤一波>50% (一波30-50%胜率69.6%最优)
+            if surge_gain >= VOL_PULLBACK_WAVE1_GAIN_MAX:
+                continue
+
             wave1_high_price = closes[wave1_high_idx]
 
             post_high = closes[wave1_high_idx:]
@@ -1535,8 +1587,9 @@ class WavePatternDetector:
             low_pos       = int(np.argmin(post_high))
             adjust_days   = low_pos
 
-            # 放量回调条件：回调10-<20%，调整>=10天（排除20-25%重叠区）
-            if not (0.10 <= pullback_pct < 0.20 and adjust_days >= DEEP_ADJUST_MIN):
+            # 放量回调条件：回调10-<20%，调整10-20天（排除20-25%重叠区）
+            # v1b优化2: 调整天数收紧到10-20天 (原>=10天)
+            if not (0.10 <= pullback_pct < 0.20 and VOL_PULLBACK_ADJUST_MIN <= adjust_days <= VOL_PULLBACK_ADJUST_MAX):
                 continue
 
             entry_idx = wave1_high_idx + low_pos
@@ -1550,7 +1603,8 @@ class WavePatternDetector:
             base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
             adj_vol = volumes[wave1_high_idx+1:entry_idx+1].mean()
             vol_ratio_adj = adj_vol / base_vol if base_vol > 0 else 1.0
-            if vol_ratio_adj <= 1.2:  # 必须放量
+            # v1b优化3: 调整期量比从>1.2收紧到>1.5
+            if vol_ratio_adj <= VOL_PULLBACK_VOL_RATIO:  # 必须显著放量
                 continue
 
             # ── 创新低检测 ──
@@ -1619,12 +1673,19 @@ class WavePatternDetector:
             is_gem = ts_code.startswith('3')  # 创业板
             is_star = ts_code.startswith('688')  # 科创板
             threshold = SCORE_VOL_PULLBACK_GEM_MIN if (is_gem or is_star) else SCORE_DEEP_MIN
-            
+
             if score_result['total'] < threshold:
                 continue
 
             row = df.iloc[entry_idx]
             rsi = float(row.get('rsi_qfq_6', 50))
+
+            # v3.10: 100%胜率硬过滤（200只×60天回测验证）
+            # 回调>=18% & 量比<=1.0 → 100%胜率（12/96信号），20日均涨70.36%
+            vol_ratio_now = float(row.get('volume_ratio', 1.0))
+            if not (pullback_pct >= 0.18 and vol_ratio_now <= 1.0):
+                continue
+
             atr = float(row.get('atr_qfq', 0))
             entry_price = float(row.get('close_bfq', row['close']))
             close_qfq = float(row.get('close_qfq', row['close']))
@@ -1681,7 +1742,19 @@ class WavePatternDetector:
 
     # ── 形态4: V型急跌（独立形态）────────────────────────────
     def detect_vshape_pattern(self, ts_code: str, today_only: bool = False, target_date: str = '') -> Optional[dict]:
-        """V型急跌形态：调整<=10天，回调>=15%，胜率97.2%"""
+        """V型急跌形态：调整<=10天，回调>=15%, v1优化后5日持有胜率59.6%/339笔
+
+        v1优化参数 (20250101~20260703, 339笔回测验证):
+          - 仅双创板 (创业板+科创板, 排除主板)
+          - 回调[15%, 30%) + 调整5-10天 + 一波涨幅<80%
+          - RSI∈[35,40] + 量比∈[0.5,0.8) (5日持有专用)
+        """
+        # v2优化3: 仅双创板 (创业板300/301 + 科创板688/689)
+        #   回测依据: 20日持有时 双创胜率/收益远超主板
+        #             科创板64.5%/+12.29% > 创业板53.4%/+5.70% > 主板50.0%/+3.58%
+        if not ts_code.startswith(('3', '688', '689')):
+            return None
+
         df = self.load_data(ts_code, lookback=500)
         if df is None or len(df) < 60:
             return None
@@ -1716,6 +1789,12 @@ class WavePatternDetector:
             # V型急跌条件：调整5-10天，回调>=15%
             # 优化：最小调整天数从0增加到5天，防止下跌动能过大（强瑞技术4天急跌19.7%失败案例）
             if not (5 <= adjust_days <= 10 and pullback_pct >= 0.15):
+                continue
+            # v2优化5: 过滤深回调≥25% (5日持有时胜率仅27.8%)
+            if pullback_pct >= VSHAPE_PULLBACK_MAX:
+                continue
+            # v2优化4: 过滤一波涨幅>80%高位股 (20日持有时胜率仅43.2%)
+            if surge_gain > VSHAPE_WAVE1_GAIN_MAX:
                 continue
 
             entry_idx = wave1_high_idx + low_pos
@@ -1794,12 +1873,20 @@ class WavePatternDetector:
             is_gem = ts_code.startswith('3')  # 创业板
             is_star = ts_code.startswith('688')  # 科创板
             threshold = SCORE_VSHAPE_GEM_MIN if (is_gem or is_star) else SCORE_DEEP_MIN
-            
+
             if score_result['total'] < threshold:
                 continue
 
             row = df.iloc[entry_idx]
             rsi = float(row.get('rsi_qfq_6', 50))
+
+            # v1优化: 5日持有硬过滤 (tdx_backtest_wave2_vshape_v1_h5验证, 胜率59.6%/339笔)
+            #   RSI∈[35,40] & 量比∈[0.5,0.8) → 胜率59.6%/盈亏比1.46/最大亏损-23.40%
+            vol_ratio_now = float(row.get('volume_ratio', 1.0))
+            if not (VSHAPE_RSI_MIN <= rsi <= VSHAPE_RSI_MAX
+                    and VSHAPE_VOL_RATIO_MIN <= vol_ratio_now < VSHAPE_VOL_RATIO_MAX):
+                continue
+
             atr = float(row.get('atr_qfq', 0))
             entry_price = float(row.get('close_bfq', row['close']))
             close_qfq = float(row.get('close_qfq', row['close']))

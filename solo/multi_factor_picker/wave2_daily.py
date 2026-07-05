@@ -185,7 +185,10 @@ def cached_daily_basic(ts_code, start_date, end_date):
 # ═══════════════════════════════════════════════════════
 SURGE_DAYS = 20        # 一波拉升窗口
 SURGE_MIN = 0.20       # 一波最低涨幅 20%
-PULLBACK_MIN = 0.05   # 最小回调（排除无回调）
+# v9优化: 回调区间收紧到黄金区间 [7%, 9%) (v8b回测胜率52.4%)
+PULLBACK_MIN = 0.07    # 最小回调 7% (黄金区间, 不放宽)
+PULLBACK_MAX = 0.09    # 强势横盘回调上限 9% (黄金区间)
+PULLBACK_DAYS_MAX = 20 # 调整天数上限 20 (v9放宽 15→20)
 ADJUST_MAX = 60       # 调整期最长60天
 
 # 最优入场条件（100%成功率组合，来自wave2回测）
@@ -212,11 +215,24 @@ WINNING_COMBOS = [
     {'pattern': '深度回调', 'name': 'MACD金叉+MA20上方', 'priority': 2,
      'condition': lambda s: s.get('macd_crossed', False) and s.get('above_ma20', False),
      'stop_pct': 0.05, 'target_pct': 0.20, 'min_score': 80},
-    # ── 强势横盘 ──
-    {'pattern': '强势横盘', 'name': 'RSI<50+缩量(<0.8x)', 'priority': 1,
+    # ── 强势横盘 (v9优化: STRICT严格交集, 胜率52.4%/盈亏比2.68) ──
+    # 条件: 站上MA20 + 距MA20[2%, 8%] + RSI<50 + 量比[0.65, 0.85) + MA10>MA20 + MA5<MA10
+    # 短期回调形态 (MA5<MA10 且 MA10>MA20) 是低吸精髓
+    {'pattern': '强势横盘', 'name': 'STRICT严格交集', 'priority': 1,
+     'condition': lambda s: (
+         s.get('above_ma20', False)
+         and 0.02 <= s.get('ma20_dist', 0) <= 0.08
+         and s.get('rsi_now', 100) < 50
+         and 0.65 <= s.get('vol_ratio', 99) < 0.85
+         and s.get('ma10_above_ma20', False)
+         and not s.get('ma5_above_ma10', True)  # MA5 < MA10
+     ),
+     'stop_pct': 0.05, 'target_pct': 0.30, 'min_score': 85},
+    # 保留原条件作为 fallback (priority 2/3, 仅在STRICT不满足时使用)
+    {'pattern': '强势横盘', 'name': 'RSI<50+缩量(<0.8x)', 'priority': 2,
      'condition': lambda s: s.get('rsi_now', 100) < 50 and s.get('vol_ratio', 99) < 0.8,
      'stop_pct': 0.03, 'target_pct': 0.30, 'min_score': 85},
-    {'pattern': '强势横盘', 'name': 'MACD金叉+MA20上方', 'priority': 2,
+    {'pattern': '强势横盘', 'name': 'MACD金叉+MA20上方', 'priority': 3,
      'condition': lambda s: s.get('macd_crossed', False) and s.get('above_ma20', False),
      'stop_pct': 0.04, 'target_pct': 0.28, 'min_score': 85},
     # ── 缩量回调 ──
@@ -302,6 +318,12 @@ def classify_pattern(df, surge_end_idx, recent_end_idx):
     above_ma20 = current_price > ma20 if not np.isnan(ma20) else False
     above_ma60 = current_price > ma60 if not np.isnan(ma60) else False
 
+    # v9新增: 均线相对位置 (用于STRICT严格交集判定)
+    ma5_above_ma10 = (ma5 > ma10) if (not np.isnan(ma5) and not np.isnan(ma10)) else False
+    ma10_above_ma20 = (ma10 > ma20) if (not np.isnan(ma10) and not np.isnan(ma20)) else False
+    # 距MA20距离 (current vs MA20)
+    ma20_dist = (current_price - ma20) / ma20 if (not np.isnan(ma20) and ma20 > 0) else 0.0
+
     # V型：10天内急跌>10%
     v_crash = False
     if len(post) <= 10 and pullback_max > 0.10:
@@ -331,10 +353,10 @@ def classify_pattern(df, surge_end_idx, recent_end_idx):
     # 量能比（近5日均量/基准量）
     vol_ratio_5d = vols[-5:].mean() / base_vol if base_vol > 0 else 1.0
 
-    # 分类逻辑
+    # 分类逻辑 (v9: 强势横盘判定改为 [7%, 9%) + 调整天数<=20)
     if v_crash and pullback_days <= 10:
         pattern = 'V型急跌'
-    elif pullback_max < 0.10 and pullback_days <= 15:
+    elif PULLBACK_MIN <= pullback_max < PULLBACK_MAX and pullback_days <= PULLBACK_DAYS_MAX:
         pattern = '强势横盘'
     elif pullback_max >= 0.10 and pullback_max < 0.20 and vol_ratio > 0.80:
         pattern = '放量回调'
@@ -357,6 +379,10 @@ def classify_pattern(df, surge_end_idx, recent_end_idx):
         'above_ma10': above_ma10,
         'above_ma20': above_ma20,
         'above_ma60': above_ma60,
+        # v9新增: 均线相对位置 (STRICT严格交集用)
+        'ma5_above_ma10': ma5_above_ma10,
+        'ma10_above_ma20': ma10_above_ma20,
+        'ma20_dist': ma20_dist,
         'macd_crossed': macd_crossed,
         'macd_dif': macd_dif,
         'macd_dea': macd_dea,
@@ -511,6 +537,11 @@ def scan_stock(ts_code, lookback=90):
                         'above_ma20': pdata['above_ma20'],
                         'above_ma60': pdata['above_ma60'],
                         'macd_crossed': pdata['macd_crossed'],
+                        # v9新增: STRICT严格交集相关字段 (用于输出报告/审计)
+                        'is_strict': combo['name'] == 'STRICT严格交集',
+                        'ma5_above_ma10': pdata.get('ma5_above_ma10', False),
+                        'ma10_above_ma20': pdata.get('ma10_above_ma20', False),
+                        'ma20_dist': round(pdata.get('ma20_dist', 0.0) * 100, 2),  # 百分比展示
                         'current_price': round(current_price, 2),
                         'wave1_high': round(wave1_high_price, 2),
                         'entry_price': entry_price,

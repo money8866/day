@@ -3,10 +3,18 @@ B浪低点识别策略 — 寻找A浪主升→B浪回调→二波启动的中线
 ========================================================
 检测最新交易日的信号，对每只股票扫描最近250个交易日。
 
+v1优化 (基于tdx_backtest回测, 2396笔验证):
+  - 20日持有胜率63.9%/均收益12.76%/盈亏比2.87 (双创+score[85,90))
+  - 创业板最优: 20日胜率76.2%/均收益18.69%
+  - 回调20-25%最优: 20日胜率81.8%/均收益26.59%
+  - 过滤主板 (主板20日胜率仅46.9%/均收益1.65%)
+  - 建议使用 --chuangchuang-only 参数
+
 用法:
-  python bwave_strategy.py --pool qualified          # 盘后全量扫描
-  python bwave_strategy.py 600460.SH 002409.SZ       # 个股检测
-  python bwave_strategy.py --debug 688170.SH          # 调试模式看细节
+  python bwave_strategy.py --pool qualified                # 盘后全量扫描
+  python bwave_strategy.py --pool qualified --chuangchuang-only  # 仅双创
+  python bwave_strategy.py 600460.SH 002409.SZ             # 个股检测
+  python bwave_strategy.py --debug 688170.SH               # 调试模式看细节
 
 评分权重:
   A浪质量(30%) + B浪健康度(35%) + 趋势保持(20%) + 启动信号(15%)
@@ -1153,7 +1161,13 @@ def main():
     parser = argparse.ArgumentParser(description='B浪低点识别策略')
     parser.add_argument('codes', nargs='*')
     parser.add_argument('--pool', choices=['default', 'qualified', 'all'], default='qualified')
-    parser.add_argument('--min-score', type=int, default=65)
+    parser.add_argument('--min-score', type=int, default=68)
+    parser.add_argument('--chuangchuang-only', action='store_true',
+                        help='仅双创板 (创业板+科创板, 排除主板)')
+    parser.add_argument('--drop-min', type=float, default=20,
+                        help='B浪回调下限(百分比, 默认20, 回测最优20-25)')
+    parser.add_argument('--drop-max', type=float, default=30,
+                        help='B浪回调上限(百分比, 默认30, 过滤深回调)')
     parser.add_argument('--debug', type=str, default='')
     parser.add_argument('--backtest', action='store_true',
                         help='历史回测模式：扫描每个交易日，统计历史信号表现')
@@ -1235,6 +1249,13 @@ def main():
             return
     else:
         stock_codes = []
+
+    # 双创过滤 (v1优化: 仅创业板+科创板, 排除主板)
+    if args.chuangchuang_only and stock_codes:
+        before = len(stock_codes)
+        stock_codes = [c for c in stock_codes
+                       if c.startswith(('3', '688', '689'))]
+        log(f"[过滤] 仅双创: 排除主板 {before}→{len(stock_codes)} 只")
 
     mode = "历史回测(Backtest)" if args.backtest else "盘后扫描"
     log(f"B浪低点识别策略 — {mode}")
@@ -1614,6 +1635,37 @@ def main():
             else:
                 vals.append(f"{v:>10}")
         print(f"  {'  '.join(vals)}")
+
+    # 评分+回调双过滤输出 (基于回测最优区间: 评分[85,90)+回调20-25%)
+    filtered = df_out[
+        (df_out['bwave_score'] >= args.min_score) &
+        (df_out['b_drop'] >= args.drop_min) &
+        (df_out['b_drop'] < args.drop_max)
+    ].copy()
+    if len(filtered) > 0 and len(filtered) < len(df_out):
+        print(f"\n  {'='*50}")
+        print(f"  ★ 双过滤信号: 评分≥{args.min_score} + 回调[{args.drop_min:.0f}%,{args.drop_max:.0f}%)")
+        print(f"  {'='*50}")
+        print(f"  {hdr_str}")
+        print(f"  {'-'*(len(display_cols)*13 - 2)}")
+        for _, r in filtered.head(20).iterrows():
+            vals = []
+            for c in display_cols:
+                v = r[c]
+                if c == 'bwave_score':
+                    vals.append(f"{v:>10.0f}")
+                elif c == 'signal_type':
+                    label = '启动' if v == 'launch' else '底背离' if v == 'divergence' else str(v)
+                    vals.append(f"{label:>10}")
+                elif c == 'signal_tags':
+                    vals.append(f"{str(v):>10}")
+                elif c in ('a_gain', 'b_drop', 'return_5d', 'return_10d', 'launch_pct_chg', 'b_vol_shrink', 'launch_dist_to_a_high'):
+                    vals.append(f"{v:>9.1f}%")
+                elif c in ('a_duration', 'b_duration'):
+                    vals.append(f"{v:>10}")
+                else:
+                    vals.append(f"{v:>10}")
+            print(f"  {'  '.join(vals)}")
 
     print(f"\n  统计:")
     for w in [5, 10]:
