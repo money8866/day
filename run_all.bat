@@ -16,6 +16,7 @@ echo [Step 1/7] 主题趋势分 + 情绪分...
 echo =============================================
 python solo\theme_trend_sentiment_score.py
 echo.
+python D:\mystock\solo\theme_alpha_v6\main.py
 
 echo [Step 2/7] 指数分析...
 echo =============================================

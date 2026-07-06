@@ -27,22 +27,12 @@ def compute_composite(trend, capital, sentiment, persistence,
 
 def trade_signal(composite, capital, trend, stage, continuation):
     """交易信号：Composite 与 ContinuationScore 双触发机制
-    - 强买：综合强 + 延续强 + 启动/扩张阶段
-    - 关注：综合强 OR 真分歧买点（综合低 + 延续很高）OR 启动阶段
-    - 持有：综合中等 OR 延续中等
-    - 回避：两者都弱
+    - 强买：综合强 +延续强 +启动/扩张阶段（实战核心！）
+    - 关注：综合强 OR真分歧买点（综合低 +延续很高）
+    - 持有：极少！仅最好的扩张阶段！
+    - 回避：其余情况
     """
-    # 启动阶段强势保底！
-    if stage == "启动":
-        if composite >= config.SB_COMPOSITE and continuation >= config.SB_CONTINUATION:
-            return "强买"
-        if composite >= config.WATCH_COMPOSITE:
-            return "关注"
-        if composite >= 50:
-            return "持有"
-        return "关注"  # 启动阶段，即使综合分低也不回避！
-
-    # 强买：已经是强势 + 延续概率高 + 阶段匹配
+    # 强买：已经是强势 +延续概率高 +阶段匹配（核心！）
     if (composite >= config.SB_COMPOSITE and
         continuation >= config.SB_CONTINUATION and
         capital >= config.SB_CAPITAL and
@@ -50,22 +40,22 @@ def trade_signal(composite, capital, trend, stage, continuation):
         stage in config.SB_STAGES):
         return "强买"
 
-    # 关注：综合强
+    # 启动阶段：只关注综合分非常高的
+    if stage == "启动":
+        if composite >= config.WATCH_COMPOSITE and continuation >=78:
+            return "关注"
+        return "回避"  # 启动阶段，大部分直接回避！
+
+    # 关注：综合强或真分歧买点
     if composite >= config.WATCH_COMPOSITE:
         return "关注"
-    # 分歧买点：综合分确实低（真分歧）+ 延续分很高（趋势未破）+ 阶段匹配
     if (continuation >= config.WATCH_CONTINUATION
         and composite < config.WATCH_DIV_COMPOSITE
         and stage in config.SB_STAGES):
         return "关注"
 
-    # 持有：综合中等 OR 延续中等 OR 强势阶段保底
-    if composite >= config.HOLD_COMPOSITE:
-        return "持有"
-    if continuation >= config.HOLD_CONTINUATION:
-        return "持有"
-    # 强势阶段（扩张/主升）+ 延续尚可 → 至少持有，不回避
-    if stage in ("扩张", "主升") and continuation >= 55:
+    # 持有：极少！仅最好的扩张阶段
+    if stage in ("扩张", "主升") and continuation >=70 and composite >= config.HOLD_COMPOSITE:
         return "持有"
 
     return "回避"

@@ -8660,17 +8660,16 @@ def calc_max_limit_height():
 # =========================
 # 主题过滤：以60天平均综合分前15 + 当日前10为主题范围筛选
 # =========================
-def filter_by_top_themes(result_df, top_n=10):
+def filter_by_top_themes(result_df, top_n=15):
     """
-    主题筛选
+    主题筛选 — 使用 Theme Alpha V6 引擎输出
     
-    核心逻辑：
-    1. 统计60天内各主题的平均综合分，取前15名
-    2. 叠加当日前10热门的主题
+    加载 theme_alpha_v6_result.json，筛选 trade_signal 为"强买"/"关注"/"持有"的主题，
+    然后保留 result_df 中匹配这些主题的股票，并注入 V6 多维评分字段。
     
     参数：
         result_df: 待过滤的股票DataFrame
-        top_n: 主题综合排名取前N名
+        top_n: 按V6综合分取前N个主题（默认15）
     
     返回：
         过滤后的DataFrame，注入主题相关字段
@@ -8678,295 +8677,47 @@ def filter_by_top_themes(result_df, top_n=10):
     if result_df.empty:
         return result_df
 
-    # 1. 从 theme_trend_sentiment.db 读取过去60天数据
-    db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-    if not os.path.exists(db_path):
-        print("[主题过滤] 数据库不存在，跳过过滤")
+    # ===== 1. 加载 Theme Alpha V6 结果 =====
+    V6_RESULT_PATH = os.path.join(
+        BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json'
+    )
+    if not os.path.exists(V6_RESULT_PATH):
+        print(f"[主题过滤] V6引擎结果不存在: {V6_RESULT_PATH}，跳过过滤")
         return result_df
 
     try:
-        conn = sqlite3.connect(db_path)
-        
-        # 获取过去60天的所有交易日（从旧到新排序，基于TRADE_DATE回溯）
-        trade_dates_df = pd.read_sql(
-            f"SELECT DISTINCT trade_date FROM theme_scores "
-            f"WHERE trade_date <= '{TRADE_DATE}' "
-            f"ORDER BY trade_date ASC LIMIT 60",
-            conn
-        )
-        all_trade_dates = trade_dates_df['trade_date'].tolist()
-        
-        if not all_trade_dates:
-            print("[主题过滤] 无历史数据，跳过过滤")
-            conn.close()
-            return result_df
-        
-        total_days = len(all_trade_dates)
-        print(f"[主题过滤] 分析最近 {total_days} 个交易日（截至{TRADE_DATE}）")
-        
-        # 以最近10天为"近期"窗口
-        recent_window = min(10, total_days // 3)  # 至少取1/3时间
-        recent_dates = set(all_trade_dates[-recent_window:])  # 最近N天
-        early_dates = set(all_trade_dates[:-recent_window])    # 之前的天
-        
-        # 前10日TOP5主题集合（用于入选条件：曾进入综合评分前5）
-        top5_recent_themes = set()
-        
-        # 数据结构
-        # theme_stats[theme] = {
-        #     'total_top5_count': 总上榜次数,
-        #     'recent_top5_count': 近N天上榜次数,
-        #     'early_top5_count': 之前上榜次数,
-        #     'first_seen_idx':  首次出现索引,
-        #     'consecutive_high_sentiment': 连续高潮天数,
-        #     'sentiment_scores': [近N天情绪分],
-        #     'latest_state': 最新状态,
-        #     'latest_trend': 最新趋势分,
-        #     'latest_sentiment': 最新情绪分,
-        #     'latest_composite': 最新综合分,
-        #     'last_3_sentiment': 最近3天情绪分,
-        # }
-        theme_stats = {}
-        
-        for day_idx, trade_date in enumerate(all_trade_dates):
-            day_df = pd.read_sql(
-                f"SELECT theme, trend_score, sentiment_score, composite_score, theme_state "
-                f"FROM theme_scores WHERE trade_date = '{trade_date}'",
-                conn
-            )
-            if day_df.empty:
-                continue
-            
-            # 按综合分排序取TOP10（扩大窗口，避免半导体类独占导致其他主题被过滤）
-            day_df_sorted = day_df.sort_values('composite_score', ascending=False)
-            day_df = day_df_sorted.head(10)
-            
-            # 前10日TOP5主题：如果是最近10天，记录TOP5主题
-            if trade_date in recent_dates:
-                top5_df = day_df_sorted.head(5)
-                for _, top5_row in top5_df.iterrows():
-                    top5_recent_themes.add(top5_row['theme'])
-            
-            for _, row in day_df.iterrows():
-                theme = row['theme']
-                
-                if theme not in theme_stats:
-                    theme_stats[theme] = {
-                        'total_top5_count': 0,
-                        'recent_top5_count': 0,
-                        'early_top5_count': 0,
-                        'first_seen_idx': day_idx,
-                        'consecutive_high_sentiment': 0,
-                        'sentiment_scores': [],
-                        'latest_state': '',
-                        'latest_trend': 0,
-                        'latest_sentiment': 0,
-                        'latest_composite': 0,
-                        'last_3_sentiment': [],
-                    }
-                
-                theme_stats[theme]['total_top5_count'] += 1
-                
-                # 区分近期和早期
-                if trade_date in recent_dates:
-                    theme_stats[theme]['recent_top5_count'] += 1
-                else:
-                    theme_stats[theme]['early_top5_count'] += 1
-                
-                # 记录情绪分数用于检测高潮（带上日期）
-                sentiment = float(row.get('sentiment_score', 0) or 0)
-                theme_stats[theme]['sentiment_scores'].append((trade_date, sentiment))
-                
-                # 保存最新数据（仅来自TOP5记录，可能不是最新日期的）
-                theme_stats[theme]['latest_state'] = row.get('theme_state', '')
-                theme_stats[theme]['latest_trend'] = float(row.get('trend_score', 0) or 0)
-                theme_stats[theme]['latest_sentiment'] = sentiment
-                theme_stats[theme]['latest_composite'] = float(row.get('composite_score', 0) or 0)
-        
-        # 补充：用最新交易日（TRADE_DATE）的数据覆盖所有主题的latest_*字段
-        # 因为TOP5记录可能不是最新日期（已退潮主题最后进TOP5可能很久以前）
-        latest_date = TRADE_DATE  # 直接用TRADE_DATE，all_trade_dates[-1]因LIMIT截断可能不是最新
-        if latest_date:
-            try:
-                extra_conn = sqlite3.connect(db_path)
-                latest_day_df = pd.read_sql(
-                    f"SELECT theme, trend_score, sentiment_score, composite_score, theme_state "
-                    f"FROM theme_scores WHERE trade_date = '{latest_date}'",
-                    extra_conn
-                )
-                extra_conn.close()
-                for _, row in latest_day_df.iterrows():
-                    theme = row['theme']
-                    if theme in theme_stats:
-                        # 用最新交易日的数据覆盖，无论是否在TOP5中
-                        theme_stats[theme]['latest_trend'] = float(row.get('trend_score', 0) or 0)
-                        theme_stats[theme]['latest_sentiment'] = float(row.get('sentiment_score', 0) or 0)
-                        theme_stats[theme]['latest_composite'] = float(row.get('composite_score', 0) or 0)
-                        theme_stats[theme]['latest_state'] = row.get('theme_state', '')
-                    else:
-                        # 即使从未进入TOP5，也保留其最新数据供参考
-                        theme_stats[theme] = {
-                            'total_top5_count': 0,
-                            'recent_top5_count': 0,
-                            'early_top5_count': 0,
-                            'first_seen_idx': 9999,
-                            'consecutive_high_sentiment': 0,
-                            'sentiment_scores': [],
-                            'latest_state': row.get('theme_state', ''),
-                            'latest_trend': float(row.get('trend_score', 0) or 0),
-                            'latest_sentiment': float(row.get('sentiment_score', 0) or 0),
-                            'latest_composite': float(row.get('composite_score', 0) or 0),
-                        }
-            except Exception as e:
-                print(f"[主题过滤] 补充最新交易日数据失败: {e}")
-        
-        conn.close()
-        
-        if not theme_stats:
-            print("[主题过滤] 无主题数据，跳过过滤")
-            return result_df
-        
-        # 2. 计算60天平均趋势分，用于排名筛选
-        # 从数据库获取每个主题所有日期的趋势分
-        conn = sqlite3.connect(db_path)
-        avg_trend_query = f"""
-            SELECT theme, AVG(trend_score) as avg_trend, AVG(composite_score) as avg_composite
-            FROM theme_scores 
-            WHERE trade_date <= '{TRADE_DATE}' AND trade_date >= '{all_trade_dates[0]}'
-            GROUP BY theme
-        """
-        avg_trend_df = pd.read_sql(avg_trend_query, conn)
-        avg_trend_map = {}
-        for _, row in avg_trend_df.iterrows():
-            avg_trend_map[row['theme']] = {
-                'avg_trend': float(row['avg_trend'] or 0),
-                'avg_composite': float(row['avg_composite'] or 0),
-            }
-        conn.close()
-        
-        # 3. 主题指数趋势分析：用composite_score作为主题指数代理，计算MA30趋势
-        #    条件：指数在30天均线之上 且 30日均线是上行的
-        conn = sqlite3.connect(db_path)
-        recent_dates_query = f"""
-            SELECT DISTINCT trade_date FROM theme_scores 
-            WHERE trade_date <= '{TRADE_DATE}' 
-            ORDER BY trade_date DESC LIMIT 60
-        """
-        recent_dates_df = pd.read_sql(recent_dates_query, conn)
-        recent_dates = recent_dates_df['trade_date'].tolist()
-        if len(recent_dates) < 30:
-            conn.close()
-            print("[主题过滤] 无足够历史数据计算MA30趋势")
-        else:
-            start_date_30d = recent_dates[-1]
-            theme_trend_query = f"""
-                SELECT theme, trade_date, composite_score 
-                FROM theme_scores 
-                WHERE trade_date <= '{TRADE_DATE}' AND trade_date >= '{start_date_30d}'
-                ORDER BY trade_date ASC
-            """
-            theme_trend_df = pd.read_sql(theme_trend_query, conn)
-            conn.close()
-            
-            theme_ma30_map = {}
-            for theme in theme_stats:
-                theme_rows = theme_trend_df[theme_trend_df['theme'] == theme]
-                if len(theme_rows) < 30:
-                    theme_ma30_map[theme] = {
-                        'trend_above_ma30': False,
-                        'ma30_rising': False,
-                        'ma30_slope': 0,
-                    }
-                    continue
-                
-                scores = theme_rows['composite_score'].astype(float).values
-                ma30 = pd.Series(scores).rolling(30, min_periods=20).mean().values
-                if len(ma30) >= 10:
-                    ma30_slope = (ma30[-1] - ma30[-10]) / ma30[-10] * 100 if ma30[-10] != 0 else 0
-                else:
-                    ma30_slope = 0
-                
-                theme_ma30_map[theme] = {
-                    'trend_above_ma30': scores[-1] > ma30[-1],
-                    'ma30_rising': ma30_slope > 0,
-                    'ma30_slope': round(ma30_slope, 2),
-                }
-            
-            print(f"[主题过滤] MA30趋势分析: {sum(1 for v in theme_ma30_map.values() if v['trend_above_ma30'] and v['ma30_rising'])}个主题符合条件")
-        
-        # 4. 筛选主题：
-        #    A. MA30趋势符合（指数>MA30且MA30上行）
-        #    B. 主题状态为强趋势或震荡
-        #    C. 白名单主题
-        ma30_themes = {t for t in theme_ma30_map 
-                      if theme_ma30_map[t]['trend_above_ma30'] 
-                      and theme_ma30_map[t]['ma30_rising']}
-        
-        state_themes = {theme for theme, stats in theme_stats.items() 
-                       if stats.get('latest_state') in ['强趋势', '震荡']}
-        
-        tech_mainline_whitelist = {
-            '人形机器人', 'AI算力链', 'AI服务器与算力基建', '半导体产业链',
-            '半导体材料', '半导体设备', 'AI芯片',
-            'AI终端', '光通信', '先进封装', '存储芯片', 'IC设计'
-        }
-        
-        keep_themes = ma30_themes | state_themes | tech_mainline_whitelist
-        
-        non_daytrip_details = {}
-        non_daytrip_confirmed = []
-
-        print(f"\n[主题过滤] 保留{len(keep_themes)}个主题:")
-        print(f"  MA30趋势符合: {sorted(ma30_themes)}")
-        print(f"  状态符合(强趋势/震荡): {sorted(state_themes)}")
-        print(f"  白名单主题: {sorted(tech_mainline_whitelist)}")
-        print()
-        
-        # 构建主题状态映射（包含非一日游周期阶段）
-        theme_state_map = {}
-        for theme in keep_themes:
-            ma30_info = theme_ma30_map.get(theme, {}) if 'theme_ma30_map' in dir() else {}
-            if theme in theme_stats:
-                d = theme_stats[theme]
-                # 从非一日游详情中获取周期阶段
-                nd = non_daytrip_details.get(theme, {})
-                theme_state_map[theme] = {
-                    'theme_state': d.get('latest_state', ''),
-                    'trend_score': d.get('latest_trend', 0),
-                    'sentiment_score': d.get('latest_sentiment', 0),
-                    'composite_score': d.get('latest_composite', 0),
-                    # 非一日游周期阶段（启动确认/中期延续/高潮尾声/休眠等待）
-                    'cycle_phase': nd.get('cycle_phase', ''),
-                    'confirmed_days': nd.get('confirmed_active_days', 0),
-                    'leader_sequence': nd.get('leader_sequence', ''),
-                    # MA30趋势
-                    'trend_above_ma30': ma30_info.get('trend_above_ma30', False),
-                    'ma30_rising': ma30_info.get('ma30_rising', False),
-                    'ma30_slope': ma30_info.get('ma30_slope', 0),
-                }
-            else:
-                nd = non_daytrip_details.get(theme, {})
-                theme_state_map[theme] = {
-                    'theme_state': '',
-                    'trend_score': 0,
-                    'sentiment_score': 0,
-                    'composite_score': 0,
-                    'cycle_phase': nd.get('cycle_phase', ''),
-                    'confirmed_days': nd.get('confirmed_active_days', 0),
-                    'leader_sequence': nd.get('leader_sequence', ''),
-                    # MA30趋势
-                    'trend_above_ma30': ma30_info.get('trend_above_ma30', False),
-                    'ma30_rising': ma30_info.get('ma30_rising', False),
-                    'ma30_slope': ma30_info.get('ma30_slope', 0),
-                }
-
+        with open(V6_RESULT_PATH, 'r', encoding='utf-8') as f:
+            v6_data = json.load(f)
     except Exception as e:
-        print(f"[主题过滤] 读取历史数据失败: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[主题过滤] 读取V6结果失败: {e}")
         return result_df
 
-    # 2. 加载主题配置（只保留有效主题）
+    # 筛选信号为强买/关注/持有的主题
+    VALID_SIGNALS = {"强买", "关注", "持有"}
+    keep_themes_info = {}
+    for r in v6_data:
+        signal = r.get('trade_signal', '')
+        if signal in VALID_SIGNALS:
+            keep_themes_info[r['theme']] = r
+
+    if not keep_themes_info:
+        print("[主题过滤] V6结果中无强买/关注/持有主题，跳过过滤")
+        return result_df
+
+    # 按综合分排序，取前 top_n 个
+    sorted_items = sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])
+    keep_themes_info = dict(sorted_items[:top_n])
+    keep_themes = set(keep_themes_info.keys())
+
+    print(f"\n[主题过滤] V6引擎筛选 → 保留 {len(keep_themes)} 个主题（信号=强买/关注/持有）:")
+    for t, info in sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score']):
+        div_mark = ' ★分歧' if info.get('divergence_buy') else ''
+        print(f"  {t:<16} composite={info['composite_score']:<5.1f} "
+              f"signal={info['trade_signal']:<4} stage={info['stage']:<4} "
+              f"cont={info['continuation_score']:<5.1f}{div_mark}")
+    print()
+
+    # ===== 2. 加载主题配置（只保留有效主题）=====
     theme_cfg = {}
     cfg_path = os.path.join(BASE_DIR, 'theme.json')
     if os.path.exists(cfg_path):
@@ -8976,7 +8727,7 @@ def filter_by_top_themes(result_df, top_n=10):
                 if theme_name in all_themes:
                     theme_cfg[theme_name] = all_themes[theme_name]
 
-    # 3. 从 JSON 缓存加载主题-个股映射（由 build_theme_stock_map.py 生成）
+    # ===== 3. 从 JSON 缓存加载主题-个股映射 =====
     try:
         import theme_trend_sentiment_score as theme_ts
         theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.load_theme_stock_map_from_json()
@@ -8986,23 +8737,28 @@ def filter_by_top_themes(result_df, top_n=10):
         traceback.print_exc()
         return _filter_by_top_themes_fallback(result_df, keep_themes, theme_cfg)
 
-    # 4. 遍历股票，匹配主题并注入主题状态
-    # 收集所有匹配主题，按 score 降序排序，取前两个作为主、次主题
+    # ===== 4. 遍历股票，匹配主题并注入V6多维评分 =====
     keep = []
     matched_themes = []
     match_scores = []
-    theme_states_list = []
+    secondary_themes_list = []
+    # V6 多维评分
+    theme_stages = []
     theme_trends = []
+    theme_capitals = []
     theme_sentiments = []
-    cycle_phases = []      # 非一日游周期阶段
-    confirmed_days_list = []  # 连续确认天数
-    leader_sequences_list = []  # 龙头序列
-    secondary_themes_list = []  # 次强主题（跨主题容易被炒，输出前2个最强主题）
+    theme_continuations = []
+    theme_risks = []
+    theme_confidences = []
+    theme_signals = []
+    theme_cont_tags = []
+    theme_leaders = []
+    theme_div_buy = []
 
     for _, row in result_df.iterrows():
         ts_code = row['代码']
         stock_name = row.get('名称', '')
-        # 收集该股票在所有保留主题中的匹配记录（带 score）
+        # 收集该股票在所有保留主题中的匹配记录
         theme_hits = []
         for theme_name in keep_themes:
             stocks = theme_stock_map.get(theme_name, {})
@@ -9010,48 +8766,69 @@ def filter_by_top_themes(result_df, top_n=10):
                 s_info = stocks[ts_code]
                 s_score = s_info.get('score', 0) if isinstance(s_info, dict) else 0
                 theme_hits.append((theme_name, s_score))
-        # 按 score 降序排序，取最强主题用于后续分析/输出
+
         if theme_hits:
             theme_hits.sort(key=lambda x: -x[1])
             found_theme = theme_hits[0][0]
-            # 收集次强主题（score>0 且不同于主主题）
             secondary_theme = theme_hits[1][0] if len(theme_hits) >= 2 and theme_hits[1][1] > 0 else ''
             keep.append(True)
             matched_themes.append(found_theme)
             match_scores.append(theme_hits[0][1] if theme_hits[0][1] > 0 else 100)
             secondary_themes_list.append(secondary_theme)
-            st = theme_state_map.get(found_theme, {})
-            theme_states_list.append(st.get("theme_state", ""))
-            theme_trends.append(st.get("trend_score", 0))
-            theme_sentiments.append(st.get("sentiment_score", 0))
-            cycle_phases.append(st.get("cycle_phase", ""))
-            confirmed_days_list.append(st.get("confirmed_days", 0))
-            leader_sequences_list.append(st.get("leader_sequence", ""))
+            # 从V6结果注入字段
+            vi = keep_themes_info.get(found_theme, {})
+            theme_stages.append(vi.get("stage", ""))
+            theme_trends.append(vi.get("trend_score", 0))
+            theme_capitals.append(vi.get("capital_score", 0))
+            theme_sentiments.append(vi.get("sentiment_score", 0))
+            theme_continuations.append(vi.get("continuation_score", 0))
+            theme_risks.append(vi.get("risk_score", 0))
+            theme_confidences.append(vi.get("confidence", 0))
+            theme_signals.append(vi.get("trade_signal", ""))
+            theme_cont_tags.append(vi.get("continuation_tag", ""))
+            theme_leaders.append(vi.get("leader", ""))
+            theme_div_buy.append(vi.get("divergence_buy", ""))
         else:
             keep.append(False)
             matched_themes.append('')
             match_scores.append(0)
             secondary_themes_list.append('')
-            theme_states_list.append('')
+            theme_stages.append('')
             theme_trends.append(0)
+            theme_capitals.append(0)
             theme_sentiments.append(0)
-            cycle_phases.append('')
-            confirmed_days_list.append(0)
-            leader_sequences_list.append('')
+            theme_continuations.append(0)
+            theme_risks.append(0)
+            theme_confidences.append(0)
+            theme_signals.append('')
+            theme_cont_tags.append('')
+            theme_leaders.append('')
+            theme_div_buy.append('')
 
-    # 5. 应用过滤 + 注入字段
+    # ===== 5. 过滤 + 注入字段 =====
     before = len(result_df)
     result_df = result_df[keep].reset_index(drop=True)
     kept_indices = [i for i in range(len(keep)) if keep[i]]
+
     result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
     result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
     result_df['次强主题'] = [secondary_themes_list[i] for i in kept_indices]
-    result_df['所属状态'] = [theme_states_list[i] for i in kept_indices]
+    # V6 多维评分（保持与下游代码兼容的字段名）
+    result_df['所属状态'] = [theme_cont_tags[i] for i in kept_indices]       # 延续标签（强势延续/分歧买点等）
     result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
     result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
-    result_df['非一日游阶段'] = [cycle_phases[i] for i in kept_indices]
-    result_df['确认天数'] = [confirmed_days_list[i] for i in kept_indices]
-    result_df['龙头序列'] = [leader_sequences_list[i] for i in kept_indices]
+    # 新增V6特有字段
+    result_df['主题阶段'] = [theme_stages[i] for i in kept_indices]         # 生命周期阶段
+    result_df['主题资金分'] = [theme_capitals[i] for i in kept_indices]
+    result_df['主题延续分'] = [theme_continuations[i] for i in kept_indices]
+    result_df['主题风险分'] = [theme_risks[i] for i in kept_indices]
+    result_df['主题置信度'] = [theme_confidences[i] for i in kept_indices]
+    result_df['主题信号'] = [theme_signals[i] for i in kept_indices]
+    result_df['主题龙头'] = [theme_leaders[i] for i in kept_indices]
+    result_df['非一日游阶段'] = [theme_stages[i] for i in kept_indices]     # 兼容旧字段，映射到stage
+    result_df['确认天数'] = [0 for _ in kept_indices]                       # V6无此数据，默认0
+    result_df['龙头序列'] = [theme_leaders[i] for i in kept_indices]        # 兼容旧字段
+    result_df['分歧买点'] = [theme_div_buy[i] for i in kept_indices]
 
     print(f"[主题过滤] 过滤后 {before} -> {len(result_df)} 只")
     return result_df
