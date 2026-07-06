@@ -1,0 +1,25 @@
+[
+  {
+    "ts_code": "300031.SZ",
+    "pattern": "放量回调",
+    "score": 28,
+    "score_details": "RSI=24超卖(+3); KDJ-J=-17超卖(+3); CCI=-144超卖(+2); WR=96极度超卖(+3); 量比=0.89温和放量(+1); MACD金叉(+2); BIAS1=-6.8%极端超卖(+2); BIAS2=-12.3%极端超卖(+3); PSY=33偏悲观(+1); 一波涨幅+34%中(+2); 不创新低(低点抬高/主力未出逃)(+5); 形态加分(放量回调胜率91.2%)(+5); 上方压力(gap=24% > 20%)(-5); 市场环境谨慎(趋势分<50或仓位<40%或上涨占比<40%)(-5); 多均线支撑(MA20+MA60)(+6)",
+    "wave1_gain": 34.1,
+    "pullback_pct": 19.3,
+    "adjust_days": 10,
+    "rsi": 23.6,
+    "vol_ratio": 0.89,
+    "atr": 1.78,
+    "entry_price": 25.33,
+    "stop_loss": 22.29,
+    "stop_pct": 0.12,
+    "target": 31.66,
+    "rr": 2.1,
+    "wave2_gain": 0.0,
+    "wave2_confirmed": false,
+    "dmi_confirmed": false,
+    "confidence": "⭐⭐⭐⭐⭐🔥",
+    "entry_date": "20260706",
+    "name": "宝通科技"
+  }
+]

@@ -1,0 +1,125 @@
+# ============================================================
+# ETF Resonance Stock Selection System - Configuration
+# ============================================================
+
+# --- General Settings ---
+general:
+  lookback_days: 120
+  min_trade_days: 60
+  top_n: 20
+  output_dir: "./output"
+
+# --- ETF Trend Score Weights ---
+trend:
+  trend_weight: 0.60
+  volume_weight: 0.20
+  breakout_weight: 0.20
+  ema_fast: 20
+  ema_mid: 60
+  ema_slow: 120
+  adx_period: 14
+  rs_period: 60
+  new_high_period: 60
+
+# --- Persistence Score Weights ---
+persistence:
+  up_days_weight: 0.20
+  ema_up_days_weight: 0.25
+  new_high_weight: 0.20
+  volume_up_days_weight: 0.15
+  trend_duration_weight: 0.10
+  atr_stability_weight: 0.10
+  persistence_period: 20
+
+# --- ETF Filter Thresholds ---
+etf_filter:
+  trend_score_min: 70
+  persistence_min: 70
+  adx_min: 20
+
+# --- Leader Score Weights ---
+leader:
+  relative_strength_weight: 0.25
+  relative_momentum_weight: 0.15
+  breakout_weight: 0.15
+  trend_stability_weight: 0.10
+  correlation_weight: 0.10
+  beta_weight: 0.10
+  liquidity_weight: 0.05
+  institution_weight: 0.10
+  relative_period: 60
+
+# --- Resonance Score Weights ---
+resonance:
+  etf_trend_weight: 0.30
+  relative_strength_weight: 0.25
+  correlation_weight: 0.20
+  relative_volume_weight: 0.15
+  breakout_weight: 0.10
+
+# --- Composite Score Weights ---
+composite:
+  etf_trend_weight: 0.30
+  persistence_weight: 0.10
+  leader_score_weight: 0.25
+  resonance_weight: 0.20
+  leader_persistence_weight: 0.10
+  risk_penalty_weight: -0.05
+
+# --- Risk Score Weights ---
+risk:
+  atr_weight: 0.20
+  max_drawdown_weight: 0.25
+  beta_weight: 0.15
+  volatility_weight: 0.15
+  consecutive_up_weight: 0.10
+  ma_distance_weight: 0.15
+
+# --- Buy Signal Parameters ---
+buy_signal:
+  retrace_ma20_max_pct: -1.0
+  retrace_volume_ratio_max: 0.8
+  breakout_volume_min: 1.5
+  vcp_contraction_count: 3
+  htf_base_days: 15
+  htf_max_retrace: -25.0
+
+# --- Sell Signal Parameters ---
+sell_signal:
+  stop_atr_multiple: 2.0
+  adx_turn_threshold: 20
+  etf_trend_threshold: 60
+  volume_stagnation_days: 5
+
+# --- Backtest Settings ---
+backtest:
+  walk_forward_window: 60
+  retrain_frequency: 20
+  initial_capital: 1_000_000
+  commission_pct: 0.0003
+  max_positions: 20
+  stop_loss_atr: 2.0
+  take_profit_atr: 6.0
+
+# --- ML Model Settings ---
+ml:
+  enabled: false
+  model_type: "xgboost"  # xgboost, lightgbm, catboost, transformer
+  feature_cols:
+    - "trend_score"
+    - "persistence_score"
+    - "leader_score"
+    - "resonance_score"
+    - "leader_persistence"
+    - "risk_score"
+    - "buy_score"
+  target_col: "future_return_60d"
+  validation_split: 0.2
+  early_stopping_rounds: 50
+
+# --- Data Paths ---
+data:
+  cache_dir: "./cache"
+  etf_list_path: null
+  stock_list_path: null
+  constituent_path: null

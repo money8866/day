@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import glob
+import re
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
@@ -92,6 +93,26 @@ def detect_vol_surge_swing(df_full, test_date):
     if len(df) < 180: return None
     if vol_vs_hist_pct < 50: return None
 
+    # =========================
+    # MA20趋势检查：20日均线必须走平或上行
+    # 排除中线均线压制逐波走低的股票（如金田股份）
+    # 判定：近10天MA20变化率>=-0.3%（走平）且近20天MA20变化率>=-1%（中线未走低）
+    # =========================
+    ma20_full = pd.Series(df['close'].values.astype(float)).rolling(20, min_periods=20).mean().values
+    if len(ma20_full) >= 41:
+        ma20_now = float(ma20_full[-1])
+        ma20_10ago = float(ma20_full[-11]) if not np.isnan(ma20_full[-11]) else ma20_now
+        ma20_20ago = float(ma20_full[-21]) if not np.isnan(ma20_full[-21]) else ma20_now
+
+        if (not np.isnan(ma20_now) and not np.isnan(ma20_10ago) and ma20_10ago > 0
+                and not np.isnan(ma20_20ago) and ma20_20ago > 0):
+            ma20_chg_10d = (ma20_now / ma20_10ago - 1) * 100
+            ma20_chg_20d = (ma20_now / ma20_20ago - 1) * 100
+            # 走平或上行：近10天变化率>=-0.3% AND 近20天变化率>=-1%
+            # 明显下行（逐波走低）则排除
+            if ma20_chg_10d < -0.3 or ma20_chg_20d < -1.0:
+                return None
+
     # 200天窗口检查
     _df200 = df.tail(200) if len(df) >= 200 else df
     _vol200 = _df200['vol'].values.astype(float)
@@ -132,7 +153,8 @@ def detect_vol_surge_swing(df_full, test_date):
 
     _fib_786 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.786
     if _b_low < _fib_786 * 0.92: return None
-    if _retrace_ratio > 80: return None
+    # 回测验证：深回调(_retrace_ratio>=50) T+5胜率仅50% 平均-3.88%，应排除
+    if _retrace_ratio > 50: return None
 
     _peak_idx = int(np.argmax(high_arr))
     _peak_price = float(high_arr[_peak_idx])
@@ -157,7 +179,8 @@ def detect_vol_surge_swing(df_full, test_date):
     swing_score = min(range_swing / 60, 1) * 15
     total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
 
-    if total_score < 55:
+    # 回测验证：评分55-65 T+5胜率仅17% 平均-8.32%，需提升阈值至65
+    if total_score < 65:
         return None
 
     # MACD
@@ -237,51 +260,51 @@ def main():
     print("量能爆发+宽幅震荡池 - 历史回测（独立版）")
     print("=" * 70)
 
-    start_date = '20260601'
-    end_date = '20260625'
+    start_date = '20260101'
+    end_date = '20260703'
     trade_dates_all = get_trade_dates(start_date, '20260715')
     test_dates = [d for d in trade_dates_all if start_date <= d <= end_date]
 
     print(f"回测日期: {test_dates[0]} ~ {test_dates[-1]} ({len(test_dates)}个)")
 
-    # 加载合格股池（单文件，无日期后缀）
+    # 加载股票池：扫描全市场A股缓存CSV（排除北交所、指数、ETF、可转债等）
+    # 通过文件名正则严格匹配A股代码：6xxxxx.SH / 0xxxxx.SZ / 3xxxxx.SZ / 688xxx.SH
     pool_codes = set()
-    pool_file = os.path.join(REPORT_DIR, "bull_stocks_qualified.csv")
-    if os.path.exists(pool_file):
-        try:
-            df_pool = pd.read_csv(pool_file)
-            raw_codes = df_pool['code'].tolist() if 'code' in df_pool.columns else df_pool.iloc[:, 0].tolist()
-            # 转换为tushare格式（6位数字+后缀）
-            for c in raw_codes:
-                c_str = str(int(c)).zfill(6) if isinstance(c, (int, float)) else str(c).zfill(6)
-                if c_str.startswith(('60', '68', '9')):
-                    ts_code = c_str + '.SH'
-                else:
-                    ts_code = c_str + '.SZ'
-                pool_codes.add(ts_code)
-        except:
-            pass
+    csv_files = glob.glob(os.path.join(CACHE_DIR, "*.csv"))
+    a_share_pattern = re.compile(r'^(6\d{5}\.SH|(0|3)\d{5}\.SZ|688\d{3}\.SH)$')
+    for csv_file in csv_files:
+        fname = os.path.basename(csv_file).replace('.csv', '')
+        if a_share_pattern.match(fname):
+            pool_codes.add(fname)
 
-    print(f"合格股池总股票数: {len(pool_codes)}")
+    print(f"股票池总股票数（沪深A股）: {len(pool_codes)}", flush=True)
+
+    # 预加载所有股票数据（一次性加载，避免重复IO）
+    print("预加载股票数据...", flush=True)
+    stock_data = {}  # code -> df_full
+    load_start = time.time()
+    for j, code in enumerate(pool_codes):
+        df_full = load_stock_df(code)
+        if df_full is not None and len(df_full) >= 180:
+            stock_data[code] = df_full
+        if (j + 1) % 1000 == 0:
+            print(f"  已加载 {j+1}/{len(pool_codes)} 只...", flush=True)
+    print(f"预加载完成: {len(stock_data)}只有效数据, 耗时{time.time()-load_start:.1f}秒", flush=True)
 
     all_results = []
 
     for i, test_date in enumerate(test_dates):
-        print(f"\n[{i+1}/{len(test_dates)}] 回测 {test_date}...", end=' ')
+        print(f"\n[{i+1}/{len(test_dates)}] 回测 {test_date}...", end=' ', flush=True)
         hit_count = 0
 
         if test_date not in trade_dates_all:
-            print("非交易日")
+            print("非交易日", flush=True)
             continue
 
         test_idx = trade_dates_all.index(test_date)
         future_dates = trade_dates_all[test_idx + 1: test_idx + 1 + 12]
 
-        for code in pool_codes:
-            df_full = load_stock_df(code)
-            if df_full is None or len(df_full) < 180:
-                continue
-
+        for code, df_full in stock_data.items():
             # 确保有测试日数据
             if not (df_full['trade_date'] <= test_date).any():
                 continue
@@ -319,7 +342,7 @@ def main():
 
             all_results.append(entry)
 
-        print(f"命中: {hit_count}只")
+        print(f"命中: {hit_count}只", flush=True)
 
     if not all_results:
         print("无回测数据！")

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机构主线识别报告</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f5f7fa; color: #333; padding: 24px; }
+.container { max-width: 1400px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 28px 32px; border-radius: 12px; margin-bottom: 24px; }
+.header h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+.header .meta { font-size: 13px; color: #a0aec0; }
+.summary-cards { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.card { flex: 1; min-width: 140px; background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: center; }
+.card .value { font-size: 28px; font-weight: 700; }
+.card .label { font-size: 12px; color: #718096; margin-top: 4px; }
+.card.high .value { color: #38a169; }
+.card.medium .value { color: #d69e2e; }
+.card.low .value { color: #e53e3e; }
+.card.total .value { color: #2b6cb0; }
+.section { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.section h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #2d3748; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #edf2f7; color: #4a5568; font-weight: 600; padding: 10px 8px; text-align: left; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid #edf2f7; }
+tr:hover { background: #f7fafc; }
+.conf-high { color: #38a169; font-weight: 600; }
+.conf-medium { color: #d69e2e; font-weight: 600; }
+.conf-low { color: #e53e3e; font-weight: 600; }
+.signal-buy { display: inline-block; background: #c6f6d5; color: #22543d; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.signal-sell { display: inline-block; background: #fed7d7; color: #742a2a; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.signal-none { display: inline-block; background: #f7fafc; color: #a0aec0; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.theme-badge { display: inline-block; background: #ebf4ff; color: #2b6cb0; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.stats-table { font-size: 12px; }
+.stats-table th { font-size: 11px; }
+.footer { text-align: center; color: #a0aec0; font-size: 12px; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+<h1>机构主线识别报告</h1>
+<div class="meta">生成时间: 2026-07-06 08:22:08 | 共 20 条结果</div>
+</div>
+
+<div class="summary-cards">
+<div class="card total"><div class="value">20</div><div class="label">线索总数</div></div>
+<div class="card high"><div class="value">0</div><div class="label">高信心度</div></div>
+<div class="card medium"><div class="value">0</div><div class="label">中信心度</div></div>
+<div class="card low"><div class="value">20</div><div class="label">低信心度</div></div>
+</div>
+
+<div class="section">
+<h2>线索详情表 (Top 20)</h2>
+<table>
+<thead>
+<tr>
+<th>排名</th>
+<th>代码</th>
+<th>名称</th>
+<th>ETF</th>
+<th>主题</th>
+<th>生命周期</th>
+<th>综合得分</th>
+<th>信心度</th>
+<th>买入</th>
+<th>卖出</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>600176.SH</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">52.26</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>2</td><td>603986.SH</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">51.56</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>3</td><td>688766.SH</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">51.40</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>4</td><td>300223.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">51.35</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>5</td><td>301526.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">51.27</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ wave2</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>6</td><td>300408.SZ</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">51.24</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>7</td><td>002409.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">51.19</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>8</td><td>000811.SZ</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.98</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ wave2</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>9</td><td>600183.SH</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">50.87</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ ema20_retrace</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>10</td><td>002916.SZ</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">50.87</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>11</td><td>688432.SH</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.87</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>12</td><td>300604.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">50.60</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ wave2</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>13</td><td>688141.SH</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.49</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>14</td><td>300285.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">50.49</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ wave2</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>15</td><td>600584.SH</td><td>-</td><td>510310.SH</td><td><span class="theme-badge">大盘蓝筹</span></td><td>Expansion</td><td class="text-right">50.28</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ ema20_retrace</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>16</td><td>300475.SZ</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">50.24</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ vcp</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>17</td><td>600641.SH</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.21</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>18</td><td>600667.SH</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.07</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>19</td><td>301217.SZ</td><td>-</td><td>512100.SH</td><td><span class="theme-badge">小盘成长</span></td><td>Acceleration</td><td class="text-right">50.06</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ vcp</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+<tr><td>20</td><td>688361.SH</td><td>-</td><td>159922.SZ</td><td><span class="theme-badge">中盘成长</span></td><td>Expansion</td><td class="text-right">49.90</td><td class="text-center"><span class="conf-low">低</span></td><td class="text-center"><span class="signal-buy">⬆ platform_breakout</span></td><td class="text-center"><span class="signal-none">-</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>主题统计 (Top 10)</h2>
+<table class="stats-table">
+<thead>
+<tr>
+<th>主题</th>
+<th class="text-right">平均综合得分</th>
+<th class="text-right">线索数量</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><span class="theme-badge">大盘蓝筹</span></td><td class="text-right">51.18</td><td class="text-right">6</td></tr>
+<tr><td><span class="theme-badge">中盘成长</span></td><td class="text-right">50.72</td><td class="text-right">7</td></tr>
+<tr><td><span class="theme-badge">小盘成长</span></td><td class="text-right">50.58</td><td class="text-right">7</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="footer">
+机构主线识别引擎 · 2026-07-06 08:22:08
+</div>
+
+</div>
+</body>
+</html>

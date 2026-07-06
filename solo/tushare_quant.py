@@ -9297,6 +9297,26 @@ def detect_volume_surge_swing(ts_code, name):
             return None
         
         # =========================
+        # MA20趋势检查：20日均线必须走平或上行
+        # 排除中线均线压制逐波走低的股票（如金田股份）
+        # 判定：近10天MA20变化率>=-0.3%（走平）且近20天MA20变化率>=-1%（中线未走低）
+        # =========================
+        ma20_full = pd.Series(df['close'].values.astype(float)).rolling(20, min_periods=20).mean().values
+        if len(ma20_full) >= 41:
+            ma20_now = float(ma20_full[-1])
+            ma20_10ago = float(ma20_full[-11]) if not np.isnan(ma20_full[-11]) else ma20_now
+            ma20_20ago = float(ma20_full[-21]) if not np.isnan(ma20_full[-21]) else ma20_now
+            
+            if (not np.isnan(ma20_now) and not np.isnan(ma20_10ago) and ma20_10ago > 0
+                    and not np.isnan(ma20_20ago) and ma20_20ago > 0):
+                ma20_chg_10d = (ma20_now / ma20_10ago - 1) * 100
+                ma20_chg_20d = (ma20_now / ma20_20ago - 1) * 100
+                # 走平或上行：近10天变化率>=-0.3% AND 近20天变化率>=-1%
+                # 明显下行（逐波走低）则排除
+                if ma20_chg_10d < -0.3 or ma20_chg_20d < -1.0:
+                    return None
+        
+        # =========================
         # 近期量能活跃度检查：对比起涨前基量（200天窗口内量能最高点前20日均量）
         # 如雷赛智能虽缩量仍比起涨前高2.18倍，科林电气缩量到基量以下则应排除
         # =========================
@@ -9363,7 +9383,8 @@ def detect_volume_surge_swing(ts_code, name):
         if _b_low < _fib_786 * 0.92:
             return None
         # 回撤占A浪比例不能过大（防止一波游），不过小则保留（强势横盘）
-        if _retrace_ratio > 80:
+        # 回测验证：深回调(_retrace_ratio>=50) T+5胜率仅50% 平均-3.88%，应排除
+        if _retrace_ratio > 50:
             return None
         
         # =========================
@@ -9398,7 +9419,8 @@ def detect_volume_surge_swing(ts_code, name):
         swing_score = min(range_swing / 60, 1) * 15
         total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
         
-        if total_score < 55:
+        # 回测验证：评分55-65 T+5胜率仅17% 平均-8.32%，需提升阈值至65
+        if total_score < 65:
             return None
         
         # =========================
@@ -10328,7 +10350,13 @@ def run(target_date=None, simple_mode=False):
             bwave_df = pd.read_csv(os.path.join(trend_dir, bwave_files[0]))
             bwave_df['launch_date'] = bwave_df['launch_date'].astype(str)
             bwave_df['today'] = bwave_df['today'].astype(str)
-            
+
+            # 双通道模式: 主板+双创差异化过滤 (v2优化)
+            # 双创: 评分[85,90)+缩量≤0.4+回调[20,25%) — 回测20日胜率76.2%/均收益18.69%
+            # 主板: 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 回测20日胜率85.4%/均收益20.46%
+            # 注意: bwave_strategy.py已实现双通道严格过滤, 此处保留全部信号供AI分析
+            # 如需严格过滤结果, 请参考bwave_strategy.py的输出
+
             start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=9)).strftime('%Y%m%d')
             recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
             
@@ -10341,6 +10369,9 @@ def run(target_date=None, simple_mode=False):
                     'bwave_score': 'first',
                     'a_gain': 'first',
                     'b_drop': 'first',
+                    'b_vol_shrink': 'first',
+                    'b_duration': 'first',
+                    'b_ma60_dist': 'first',
                     'launch_date': 'max',
                     'launch_dist_to_a_high': 'first',
                     'return_5d': 'first',
@@ -10349,25 +10380,57 @@ def run(target_date=None, simple_mode=False):
                     'macd_golden_date': 'first',
                 }).reset_index()
                 recent_grouped = recent_grouped.sort_values(['launch_date', 'bwave_score'], ascending=[False, False])
-                
+
+                # 板块判定 + 严格过滤标记
+                def _get_board(code):
+                    if code.startswith(('3', '688', '689')):
+                        return '双创'
+                    elif code.startswith(('60', '00')):
+                        return '主板'
+                    return '其他'
+
+                def _is_strict_pass(r):
+                    board = _get_board(r['ts_code'])
+                    score = r['bwave_score']
+                    shrink = r.get('b_vol_shrink', 0) or 0
+                    drop = r.get('b_drop', 0) or 0
+                    a_gain = r.get('a_gain', 0) or 0
+                    b_dur = r.get('b_duration', 0) or 0
+                    ma60_dist = r.get('b_ma60_dist', 0) or 0
+                    if board == '双创':
+                        return 85 <= score < 90 and shrink <= 0.4 and 20 <= drop < 25
+                    elif board == '主板':
+                        return score >= 68 and shrink > 0.7 and 60 <= a_gain <= 80 and 20 <= b_dur <= 30 and ma60_dist > 0
+                    return False
+
+                recent_grouped['板块'] = recent_grouped['ts_code'].apply(_get_board)
+                recent_grouped['严格'] = recent_grouped.apply(lambda r: '★' if _is_strict_pass(r) else '', axis=1)
+
                 total_count = recent_grouped.shape[0]
                 total_signals = recent.shape[0]
-                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票），按启动日期降序，取最近5只")
-                midline_lines.append(f"{'代码':<12} {'名称':<8} {'信号':<30} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
-                midline_lines.append("-" * 100)
-                
+                strict_count = (recent_grouped['严格'] == '★').sum()
+                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票, 严格过滤{strict_count}只），按启动日期降序，取最近5只")
+                midline_lines.append(f"{'严格':<4} {'板块':<4} {'代码':<12} {'名称':<8} {'信号':<28} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'缩量':>5} {'B天':>4} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
+                midline_lines.append("-" * 115)
+
                 for _, r in recent_grouped.head(5).iterrows():
                     name = get_stock_name(r['ts_code'])
                     sig_tags = str(r['signal_tags']) if pd.notna(r['signal_tags']) else ''
-                    midline_lines.append(f"  {r['ts_code']:<12} {name:<8} {sig_tags:<30} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
-                
+                    shrink_val = r.get('b_vol_shrink', 0)
+                    bdur_val = r.get('b_duration', 0)
+                    midline_lines.append(f"  {r['严格']:<4} {r['板块']:<4} {r['ts_code']:<12} {name:<8} {sig_tags:<28} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {shrink_val:>4.2f} {bdur_val:>4.0f} {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
+
                 midline_lines.append("")
                 midline_lines.append("📋 信号说明:")
+                midline_lines.append("  【★严格过滤】: 满足回测最优参数的信号")
+                midline_lines.append("    双创: 评分[85,90)+缩量≤0.4+回调[20,25%) — 回测20日胜率76.2%")
+                midline_lines.append("    主板: 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 回测20日胜率85.4%")
                 midline_lines.append("  【见底】：长下影小阳十字星，低吸信号")
                 midline_lines.append("  【RSI金叉】：RSI从50下方上穿50，短线见底信号")
                 midline_lines.append("  【MACD金叉】：DIF上穿DEA，中线启动信号")
                 midline_lines.append("  【底背离】：B浪末端价格新低但MACD未新低，左侧信号")
                 midline_lines.append("  【操作建议】：见底+RSI金叉可低吸，MACD金叉确认加仓，止损设B浪低点下方3%")
+                midline_lines.append("  【板块差异】：双创散户多缩量=抛压轻; 主板机构重仓不缩量=机构补仓")
             else:
                 midline_lines.append("  近5个交易日无B浪信号")
         else:
@@ -10640,6 +10703,57 @@ def run(target_date=None, simple_mode=False):
         print(f"[ETF提示] 获取失败: {e}")
 
 
+    # =========================
+    # ETF补涨扩散策略（Top 5 候选 + 回测胜率）
+    # =========================
+    try:
+        catchup_csv = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
+        if os.path.exists(catchup_csv):
+            import pandas as _pd
+            df_cu = _pd.read_csv(catchup_csv, dtype={'code': str, 'etf_code': str})
+            # 取补涨分Top 5
+            if len(df_cu) > 0:
+                df_cu = df_cu.sort_values('catchup_score', ascending=False).head(5)
+                cu_lines = []
+                cu_lines.append("")
+                cu_lines.append("=" * 60)
+                cu_lines.append("📊 ETF补涨扩散策略 (Catchup-Diffusion Top 5)")
+                cu_lines.append("=" * 60)
+                cu_lines.append(f"数据日期: {ANALYSIS_DATE if 'ANALYSIS_DATE' in dir() else '最新'}")
+                cu_lines.append("")
+                cu_lines.append(f"{'代码':<12}{'名称':<10}{'归属ETF':<22}{'补涨分':<8}{'最终分':<8}")
+                cu_lines.append("-" * 60)
+                for _, r in df_cu.iterrows():
+                    etf_label = f"{str(r.get('etf_code',''))} {str(r.get('etf_name',''))}"
+                    cu_lines.append(
+                        f"{str(r['code']):<12}{str(r.get('stock_name','')):<10}"
+                        f"{etf_label:<22}{float(r['catchup_score']):<8.1f}{float(r.get('final_score',0)):<8.1f}"
+                    )
+                cu_lines.append("")
+                cu_lines.append("📌 买卖建议:")
+                cu_lines.append(f"  • 止损: -8%  | 止盈: +20%  | 调仓: 5个交易日")
+                cu_lines.append(f"  • 持仓数量: 5只  | 平均持仓: 6天")
+                cu_lines.append(f"  • 大盘择时: 沪深300<MA20 空仓观望")
+                cu_lines.append("")
+                cu_lines.append("📊 回测胜率 (过去6个月):")
+                cu_lines.append(f"  • 整体胜率: 50.8%  |  累计收益: +41.23%  |  夏普: 4.71")
+                cu_lines.append(f"  • 补涨分≥70胜率: 56.10% (推荐区间)")
+                cu_lines.append(f"  • 补涨分60-70胜率: 44.44%")
+                cu_lines.append(f"  • 止盈触发9次 平均+23.99%  |  止损3次 平均-10.20%")
+                cu_lines.append("")
+                cu_lines.append("💡 操作提示: 优先选择补涨分≥70的标的，分散到不同ETF，")
+                cu_lines.append("   持有至止盈/止损/调仓日。连续多日出现的信号更可靠。")
+                catchup_tips_text = "\n".join(cu_lines)
+                print(catchup_tips_text)
+                etf_tips_text = (etf_tips_text + "\n" + catchup_tips_text) if etf_tips_text else catchup_tips_text
+            else:
+                print("[ETF补涨] 无候选股票 (catchup_signals.csv 为空)")
+        else:
+            print(f"[ETF补涨] 未找到 {catchup_csv}，请先运行: python d:\\mystock\\solo\\etf_resonance\\run_real.py")
+    except Exception as e:
+        print(f"[ETF补涨] 获取失败: {e}")
+
+
     #return
     prompt = f"""
 以下是我自己计算的量化分析结果：
@@ -10803,20 +10917,23 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 - 【精简原则】上方数据中没有的内容不要输出
 - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
 
-6、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只）：
+6、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只，双通道模式）：
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
 - 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
 - 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
+- 【双通道模式】主板和双创使用差异化参数，★标记表示满足严格过滤条件
+  双创(回测20日胜率76.2%/均收益18.69%): 评分[85,90)+缩量≤0.4+回调[20,25%) — 散户多,缩量=抛压轻
+  主板(回测20日胜率85.4%/均收益20.46%): 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 机构重仓,不缩量=机构补仓
 - 如果有信号数据，只分析最近的5只，每只精简为1小段（4-5行）：
-- 第1行：**股票名**(代码) | BWaveScore=XX分 | 信号类型（见底/RSI金叉/MACD金叉/底背离）
+- 第1行：**股票名**(代码) | 板块(双创/主板) | 严格过滤(★/无) | BWaveScore=XX分 | 信号类型（见底/RSI金叉/MACD金叉/底背离）
 - 第2行：信号详情（每个信号及日期，如：见底20260629 | RSI金叉20260630 | MACD金叉20260701）
-- 第3行：A浪涨幅=XX% | B浪回调=XX% | 距A高=XX% | 最新信号日：XXXX-XX-XX
+- 第3行：A浪涨幅=XX% | B浪回调=XX% | 缩量=XX | B天=XX | 距A高=XX% | 最新信号日：XXXX-XX-XX
 - 第4行：操作建议（根据信号组合给出：见底+RSI金叉可低吸，MACD金叉确认加仓等）
 - 第5行：持有策略（如果有数据的话：最优20天持有，收益目标10-15%分批止盈）
 - 【格式示例】
-**雷赛智能**(002979.SZ) | BWaveScore=62分 | 见底+RSI金叉+MACD金叉
+**雷赛智能**(002979.SZ) | 双创 | ★ | BWaveScore=62分 | 见底+RSI金叉+MACD金叉
 信号详情：见底20260629 | RSI金叉20260630 | MACD金叉20260701
-A浪涨幅=81.5% | B浪回调=23.0% | 距A高=15.5% | 最新信号日：20260701
+A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | 最新信号日：20260701
 操作建议：三信号共振，见底后RSI先金叉（6/30）、MACD后金叉（7/1），信号递进确认，可在回踩MA20附近低吸，止损设B浪低点下方3%
 持有策略：中线策略，最优20天持有，收益>10%分批止盈，跌破B浪低点-3%止损
 - 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"

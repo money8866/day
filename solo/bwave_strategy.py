@@ -3,22 +3,24 @@ B浪低点识别策略 — 寻找A浪主升→B浪回调→二波启动的中线
 ========================================================
 检测最新交易日的信号，对每只股票扫描最近250个交易日。
 
-v1优化 (基于tdx_backtest回测, 2396笔验证):
-  - 20日持有胜率63.9%/均收益12.76%/盈亏比2.87 (双创+score[85,90))
-  - 创业板最优: 20日胜率76.2%/均收益18.69%
-  - 回调20-25%最优: 20日胜率81.8%/均收益26.59%
-  - 过滤主板 (主板20日胜率仅46.9%/均收益1.65%)
-  - 建议使用 --chuangchuang-only 参数
+v2优化 (双通道模式, 主板/双创差异化参数):
+  双创 (回测20日胜率76.2%/均收益18.69%):
+    - 评分[85,90) + 缩量≤0.4 + 回调[20,25%)
+    - 逻辑: 散户多, 缩量=抛压轻
+  主板 (回测20日胜率85.4%/均收益20.46%):
+    - 评分[85,95) + 缩量>0.7 + A涨[60,80] + B天[20,30] + 站MA60
+    - 逻辑: 机构重仓, 不缩量=机构补仓
 
 用法:
-  python bwave_strategy.py --pool qualified                # 盘后全量扫描
+  python bwave_strategy.py --pool qualified                # 双通道: 主板+双创分别输出
   python bwave_strategy.py --pool qualified --chuangchuang-only  # 仅双创
+  python bwave_strategy.py --pool qualified --mainboard-only     # 仅主板
   python bwave_strategy.py 600460.SH 002409.SZ             # 个股检测
   python bwave_strategy.py --debug 688170.SH               # 调试模式看细节
 
 评分权重:
   A浪质量(30%) + B浪健康度(35%) + 趋势保持(20%) + 启动信号(15%)
-  仅输出 BWaveScore ≥ 85 的股票
+  检测阶段 BWaveScore ≥ min_score (默认68), 输出阶段分板块应用严格过滤
 """
 
 import os, sys, argparse, sqlite3
@@ -1161,9 +1163,12 @@ def main():
     parser = argparse.ArgumentParser(description='B浪低点识别策略')
     parser.add_argument('codes', nargs='*')
     parser.add_argument('--pool', choices=['default', 'qualified', 'all'], default='qualified')
-    parser.add_argument('--min-score', type=int, default=68)
+    parser.add_argument('--min-score', type=int, default=68,
+                        help='最低评分门槛(检测阶段, 默认68. 输出阶段双创/主板分别应用更严格过滤)')
     parser.add_argument('--chuangchuang-only', action='store_true',
                         help='仅双创板 (创业板+科创板, 排除主板)')
+    parser.add_argument('--mainboard-only', action='store_true',
+                        help='仅主板 (60/00开头, 排除双创)')
     parser.add_argument('--drop-min', type=float, default=20,
                         help='B浪回调下限(百分比, 默认20, 回测最优20-25)')
     parser.add_argument('--drop-max', type=float, default=30,
@@ -1250,12 +1255,24 @@ def main():
     else:
         stock_codes = []
 
-    # 双创过滤 (v1优化: 仅创业板+科创板, 排除主板)
-    if args.chuangchuang_only and stock_codes:
+    # 板块过滤
+    # 默认(不加参数): 双通道, 保留全部股票(主板+双创), 输出时分别过滤
+    # --chuangchuang-only: 仅双创
+    # --mainboard-only: 仅主板
+    if args.chuangchuang_only and args.mainboard_only:
+        log("[警告] --chuangchuang-only 和 --mainboard-only 同时指定, 取消所有过滤")
+    elif args.chuangchuang_only and stock_codes:
         before = len(stock_codes)
         stock_codes = [c for c in stock_codes
                        if c.startswith(('3', '688', '689'))]
         log(f"[过滤] 仅双创: 排除主板 {before}→{len(stock_codes)} 只")
+    elif args.mainboard_only and stock_codes:
+        before = len(stock_codes)
+        stock_codes = [c for c in stock_codes
+                       if c.startswith(('60', '00'))]
+        log(f"[过滤] 仅主板: 排除双创 {before}→{len(stock_codes)} 只")
+    else:
+        log("[模式] 双通道模式: 主板+双创分别输出, 自行选择")
 
     mode = "历史回测(Backtest)" if args.backtest else "盘后扫描"
     log(f"B浪低点识别策略 — {mode}")
@@ -1636,19 +1653,43 @@ def main():
                 vals.append(f"{v:>10}")
         print(f"  {'  '.join(vals)}")
 
-    # 评分+回调双过滤输出 (基于回测最优区间: 评分[85,90)+回调20-25%)
-    filtered = df_out[
-        (df_out['bwave_score'] >= args.min_score) &
-        (df_out['b_drop'] >= args.drop_min) &
-        (df_out['b_drop'] < args.drop_max)
-    ].copy()
-    if len(filtered) > 0 and len(filtered) < len(df_out):
-        print(f"\n  {'='*50}")
-        print(f"  ★ 双过滤信号: 评分≥{args.min_score} + 回调[{args.drop_min:.0f}%,{args.drop_max:.0f}%)")
-        print(f"  {'='*50}")
+    # === 分板块过滤输出 (基于回测最优参数, 双创/主板差异化) ===
+    # 双创: 评分[85,90) + 缩量≤0.4 + 回调[20,25%) — 回测20日胜率76.2%/均收益18.69%
+    # 主板: 评分[85,95) + 缩量>0.7 + A涨[60,80] + B天[20,30] + 站MA60 — 回测20日胜率85.4%/均收益20.46%
+    # 逻辑差异: 双创散户多, 缩量=抛压轻; 主板机构重仓, 不缩量=机构补仓
+    df_cc = df_out[df_out['ts_code'].str.startswith(('3', '688', '689'), na=False)].copy()
+    df_mb = df_out[df_out['ts_code'].str.startswith(('60', '00'), na=False)].copy()
+
+    board_filters = []
+    if not args.mainboard_only and not df_cc.empty:
+        cc_f = df_cc[
+            (df_cc['bwave_score'] >= 85) & (df_cc['bwave_score'] < 90) &
+            (df_cc['b_vol_shrink'] <= 0.4) &
+            (df_cc['b_drop'] >= 20) & (df_cc['b_drop'] < 25)
+        ]
+        board_filters.append(('双创', cc_f, '评分[85,90)+缩量≤0.4+回调[20,25%)'))
+
+    if not args.chuangchuang_only and not df_mb.empty:
+        # 主板: 不要求评分区间, 用min_score作为下限; 重点过滤缩量/A涨/B天/站MA60
+        mb_f = df_mb[
+            (df_mb['bwave_score'] >= args.min_score) &
+            (df_mb['b_vol_shrink'] > 0.7) &
+            (df_mb['a_gain'] >= 60) & (df_mb['a_gain'] <= 80) &
+            (df_mb['b_duration'] >= 20) & (df_mb['b_duration'] <= 30) &
+            (df_mb['b_ma60_dist'] > 0)
+        ]
+        board_filters.append(('主板', mb_f, f'评分≥{args.min_score}+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60'))
+
+    for board_name, df_filtered, filter_desc in board_filters:
+        print(f"\n  {'='*70}")
+        print(f"  ★ {board_name}B浪信号 ({len(df_filtered)}只) — {filter_desc}")
+        print(f"  {'='*70}")
+        if df_filtered.empty:
+            print(f"  无信号")
+            continue
         print(f"  {hdr_str}")
         print(f"  {'-'*(len(display_cols)*13 - 2)}")
-        for _, r in filtered.head(20).iterrows():
+        for _, r in df_filtered.head(20).iterrows():
             vals = []
             for c in display_cols:
                 v = r[c]

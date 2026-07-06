@@ -152,18 +152,18 @@ class BoardConfig:
     etf_weak_days: int         # ETF 弱势容忍天数
 
 
-# 主板: 涨停10%、波动小 → 紧止损(减少大亏) + 宽 trailing(让盈利奔跑) + 量能站稳即可
-# 双创板: 涨停20%、波动大 → 宽止损 + 让盈利奔跑
+# 主板: 涨停10%、波动小 → 紧止损(减少大亏) + 宽 trailing(让盈利奔跑) + 量能站稳即可 + 短突破周期
+# 双创板: 涨停20%、波动大 → 宽止损 + 让盈利奔跑 + 中突破周期
 BOARD_CONFIGS = {
-    "MB":  BoardConfig(donchian_period=15, vol_ratio_min=0.90,
+    "MB":  BoardConfig(donchian_period=10, vol_ratio_min=0.90,
                        atr_stop_mult=1.5, atr_trail_mult=3.5,
-                       rsi_max=75, ema_period=50, max_hold=30,
+                       rsi_max=80, ema_period=50, max_hold=30,
                        etf_weak_days=4),
-    "CYB": BoardConfig(donchian_period=20, vol_ratio_min=1.0,
+    "CYB": BoardConfig(donchian_period=12, vol_ratio_min=1.0,
                        atr_stop_mult=2.0, atr_trail_mult=3.0,
                        rsi_max=75, ema_period=50, max_hold=30,
                        etf_weak_days=3),
-    "KCB": BoardConfig(donchian_period=20, vol_ratio_min=1.0,
+    "KCB": BoardConfig(donchian_period=12, vol_ratio_min=1.0,
                        atr_stop_mult=2.5, atr_trail_mult=4.0,
                        rsi_max=80, ema_period=50, max_hold=35,
                        etf_weak_days=3),
@@ -240,6 +240,7 @@ class ETFState:
     trade_date: str
     trend_score: float    # (EMA20-EMA60)/EMA60
     momentum: float       # 20日收益率
+    momentum_40d: float   # 40日收益率（中期动量）
     breakout: bool        # close > 20日最高价
     is_strong: bool       # 强势状态
     etf_score: float      # 综合得分
@@ -249,7 +250,7 @@ def compute_etf_state(etf_df: pd.DataFrame, etf_code: str,
                       trade_date: str) -> Optional[ETFState]:
     """计算 ETF 在某交易日的状态"""
     df = etf_df[etf_df["trade_date"] <= trade_date]
-    if len(df) < 60:
+    if len(df) < 40:
         return None
     last = df.iloc[-1]
     C = df["close"].values
@@ -261,6 +262,7 @@ def compute_etf_state(etf_df: pd.DataFrame, etf_code: str,
 
     trend_score = (ema20[-1] - ema60[-1]) / ema60[-1]
     momentum = C[-1] / C[-21] - 1 if len(C) >= 21 else 0
+    momentum_40d = C[-1] / C[-41] - 1 if len(C) >= 41 else 0
 
     # 20日最高价 (不含当日)
     high_20_prev = rolling_max(df["high"].values, 20)
@@ -269,32 +271,30 @@ def compute_etf_state(etf_df: pd.DataFrame, etf_code: str,
     breakout = C[-1] > high_20_prev[-1]
     breakout_strength = (C[-1] - high_20_prev[-1]) / high_20_prev[-1] if breakout else 0
 
-    is_strong = (trend_score > 0) and (momentum > 0) and breakout
-    etf_score = 0.4 * trend_score + 0.3 * momentum + 0.3 * breakout_strength
+    # 更宽松：趋势>0，突破
+    is_strong = (trend_score > 0) and breakout
+    etf_score = 0.3 * trend_score + 0.4 * momentum_40d + 0.2 * momentum + 0.1 * breakout_strength
 
     return ETFState(
         etf_code=etf_code, trade_date=trade_date,
         trend_score=trend_score, momentum=momentum,
+        momentum_40d=momentum_40d,
         breakout=breakout, is_strong=is_strong, etf_score=etf_score,
     )
 
 
-def get_strong_etfs(etf_data: Dict[str, pd.DataFrame], trade_date: str,
-                    top_pct: float = 0.3, max_etfs: int = 3
+def get_strong_etfs(etf_data: Dict[str, pd.DataFrame], trade_date: str
                     ) -> List[ETFState]:
-    """获取某日强势 ETF 列表 (Top pct + 最多 max_etfs 个)"""
+    """获取某日强势 ETF 列表 (只取得分前3名)"""
     states = []
     for etf_code, df in etf_data.items():
         st = compute_etf_state(df, etf_code, trade_date)
         if st and st.is_strong:
             states.append(st)
-    # 按 etf_score 排序
+    # 按 etf_score 降序排序
     states.sort(key=lambda x: -x.etf_score)
-    # Top pct
-    n_top = max(1, int(len(ETF_POOL) * top_pct))
-    top_states = states[:n_top]
-    # 最多 max_etfs 个
-    return top_states[:max_etfs]
+    # 只取前3名
+    return states[:3]
 
 
 # =========================================================
@@ -353,6 +353,15 @@ def check_stock_breakout(stock_df: pd.DataFrame, ts_code: str,
 
     # 去噪: 连续阴跌 (20日收益 < -10%)
     if len(C) >= 21 and C[-1] / C[-21] - 1 < -0.10:
+        return None
+    
+    # 短期动量过滤：近3日或近5日收益为正
+    if len(C) >= 4 and (C[-1] / C[-4] - 1 < 0 and C[-1] / C[-6] - 1 < 0):
+        return None
+    
+    # 短期趋势增强：收盘价在EMA10上方
+    ema10 = ema(C, 10)
+    if C[-1] <= ema10[-1]:
         return None
 
     # 去噪: 低流动性 (成交额 < 1亿)
@@ -586,8 +595,7 @@ class ETFBreakoutBacktester:
                 holdings.pop(tc, None)
 
             # ===== 2. 获取强势 ETF =====
-            strong_etfs = get_strong_etfs(self.etf_data, td, top_pct=0.3,
-                                          max_etfs=3)
+            strong_etfs = get_strong_etfs(self.etf_data, td)
             daily_etf_strong_count.append(len(strong_etfs))
 
             # 强势 ETF 的成份股集合
