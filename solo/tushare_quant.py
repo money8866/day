@@ -6890,7 +6890,7 @@ def strategy(df, code, emotion_stage, total_mv=0):
     cond2 = (ztts_close < ref_close).sum() == 0
     cond3 = (ztts_close.max() / ztts_close.min()) < 1.3
     cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
-    cond5 = H[-ztts:].max() >= H[-60:].max() * 0.8
+    cond5 = H[-ztts:].max() >= H[-120:].max() * 0.8
     cond6 = ma22[-1] >= ma22[-2]
     
     # 量能条件（复用vol_ma5）
@@ -6921,7 +6921,7 @@ def strategy(df, code, emotion_stage, total_mv=0):
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
     #做突破
     cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
-    cond_xh3 = C[-1] >= highest_close and  C[-1]/C[-2]<1.09
+    cond_xh3 = C[-2] < highest_close and C[-1] >= highest_close and  C[-1]/C[-2]<1.09
     cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
     
     return (cond_xh1 or cond_xh3) and cond_xh2 
@@ -9842,11 +9842,11 @@ def run(target_date=None, simple_mode=False):
     if before_filter != after_filter:
         print(f"[突破股池] 过滤假突破: {before_filter} -> {after_filter} 只")
 
-    # 按突破评分排序
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('突破评分', 0))
+    # 按整合评分排序
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
     lines = []
     lines.append("=" * 60)
-    lines.append("🔥 突破股池 (按突破评分排序)")
+    lines.append("🔥 突破股池 (按整合评分排序)")
     lines.append("=" * 60)
     
     top_stocks = ranked_stocks[:20]
@@ -10836,8 +10836,8 @@ def run(target_date=None, simple_mode=False):
 
 <span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
-3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面20名，不能自行截取，也不要加入其它的）：
-**【重要】按突破评分从高到低排序分析前20名个股，每个股票内容力求精简：**    
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面1  0名，不能自行截取，也不要加入其它的）：
+**【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
 【第1名 - 明日首选】**股票名** (代码)
 【第2名】**股票名** (代码)

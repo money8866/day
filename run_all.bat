@@ -44,6 +44,10 @@ python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\r
 python solo\bwave_strategy.py
 
 echo [Step 5/7] 自选量化
+
+echo =============================================
+echo [Step 5.0] ETF补涨扩散策略 (生成catchup_signals.csv)...
+python solo\etf_resonance\run_real.py
 echo =============================================
 python solo\tushare_quant.py
 echo.

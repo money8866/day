@@ -46,11 +46,11 @@ SB_CAPITAL = 65
 SB_TREND = 62
 SB_CONTINUATION = 70
 SB_STAGES = ["启动", "扩张"]
-WATCH_COMPOSITE = 64
-WATCH_CONTINUATION = 82  # 分歧买点：只有延续分 82+ 才算（真正趋势未破）
-WATCH_DIV_COMPOSITE = 60  # 分歧买点要求综合分低于此值（真分歧而非一致看好）
-HOLD_COMPOSITE = 60
-HOLD_CONTINUATION = 72
+WATCH_COMPOSITE = 60
+WATCH_CONTINUATION = 78  # 分歧买点：只有延续分 78+ 才算（真正趋势未破）
+WATCH_DIV_COMPOSITE = 58  # 分歧买点要求综合分低于此值（真分歧而非一致看好）
+HOLD_COMPOSITE = 55
+HOLD_CONTINUATION = 68
 
 # ==================== Capital 子维度权重 ====================
 CAP_W_SHARE = 0.20        # MarketShare 市场成交额占比

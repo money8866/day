@@ -142,9 +142,9 @@ except Exception as e:
     industry_map = {}
 
 # ============== 2. 下载日线数据 ==============
-print(f"\n[2] 下载日线数据 {START_DATE} ~ {END_DATE}...")
+print(f"\n[2] 加载日线数据（优先缓存）{START_DATE} ~ {END_DATE}...")
 
-print("  下载ETF日线...")
+print("  加载ETF日线...")
 etf_data = {}
 for etf_code in ETF_THEME_MAP:
     try:
@@ -157,7 +157,7 @@ for etf_code in ETF_THEME_MAP:
         pass
 print(f"  ETF: {len(etf_data)} 个")
 
-print("  下载股票日线...")
+print("  加载股票日线...")
 stock_data = {}
 for i, code in enumerate(sorted(all_stocks)):
     try:
@@ -212,7 +212,7 @@ print(f"\n  趋势ETF: {len(qualifying_etfs)} 个")
 print("\n[4] 计算主题扩散度...")
 qualifying_constituents = {c: constituents[c] for c in qualifying_etfs if c in constituents}
 diffusion_results = diffusion_scorer.score(
-    etf_data, etf_data, qualifying_constituents, ETF_THEME_MAP
+    stock_data, etf_data, qualifying_constituents, ETF_THEME_MAP
 )
 
 # 扩散度 > 50 的ETF
@@ -223,8 +223,8 @@ if not diffused_etfs:
 
 print("\n  扩散ETF：")
 for c, r in sorted(diffused_etfs.items(), key=lambda x: -x[1].diffusion_score):
-    print(f"    {c} ({ETF_THEME_MAP.get(c,'')}): Diffusion={r.diffusion_score} "
-          f"breadth={r.breadth_expansion} rotation={r.rotation_signal}")
+    print(f"    {c} ({ETF_THEME_MAP.get(c,'')}): Diffusion={r.diffusion_score:.1f} "
+          f"breadth={r.breadth_expansion:.1f} rotation={r.rotation_signal:.1f}")
 
 # ============== 5. 计算补涨评分 ==============
 print("\n[5] 计算补涨评分...")

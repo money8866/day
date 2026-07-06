@@ -28,10 +28,20 @@ def compute_composite(trend, capital, sentiment, persistence,
 def trade_signal(composite, capital, trend, stage, continuation):
     """交易信号：Composite 与 ContinuationScore 双触发机制
     - 强买：综合强 + 延续强 + 启动/扩张阶段
-    - 关注：综合强 OR 真分歧买点（综合低 + 延续很高）
+    - 关注：综合强 OR 真分歧买点（综合低 + 延续很高）OR 启动阶段
     - 持有：综合中等 OR 延续中等
     - 回避：两者都弱
     """
+    # 启动阶段强势保底！
+    if stage == "启动":
+        if composite >= config.SB_COMPOSITE and continuation >= config.SB_CONTINUATION:
+            return "强买"
+        if composite >= config.WATCH_COMPOSITE:
+            return "关注"
+        if composite >= 50:
+            return "持有"
+        return "关注"  # 启动阶段，即使综合分低也不回避！
+
     # 强买：已经是强势 + 延续概率高 + 阶段匹配
     if (composite >= config.SB_COMPOSITE and
         continuation >= config.SB_CONTINUATION and
