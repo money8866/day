@@ -55,23 +55,16 @@ ETF_THEME_MAP = {
 }
 
 # ============== 1. 加载成份股 ==============
-print("=" * 70)
-print(f"ETF 补涨扩散策略 - 盘后复盘 | 输出补涨分 ≥ {CATCHUP_MIN} 的股票")
-print("=" * 70)
-
 # 16点前使用上个交易日数据（当日日线16点后才更新）
 now = datetime.now()
 if now.hour < 16:
-    # 取上个交易日
     cal_end = now.strftime('%Y%m%d')
     cal_start = (now - timedelta(days=10)).strftime('%Y%m%d')
     try:
         cal_df = dfetcher.get_trade_cal(start_date=cal_start, end_date=cal_end, is_open='1')
         if cal_df is not None and not cal_df.empty:
             open_dates = sorted(cal_df[cal_df['is_open'] == 1]['cal_date'].tolist())
-            # 今天的日历日期
             today_str = now.strftime('%Y%m%d')
-            # 取小于今天的前一个交易日
             prev_dates = [d for d in open_dates if d < today_str]
             if prev_dates:
                 ANALYSIS_END = prev_dates[-1]
@@ -79,33 +72,27 @@ if now.hour < 16:
                 ANALYSIS_END = open_dates[-1]
         else:
             ANALYSIS_END = (now - timedelta(days=1)).strftime('%Y%m%d')
-    except Exception as e:
-        print(f"  ⚠️ 获取交易日历失败: {e}，使用昨日")
+    except Exception:
         ANALYSIS_END = (now - timedelta(days=1)).strftime('%Y%m%d')
-    print(f"\n  ⏰ 当前 {now.strftime('%H:%M')} < 16:00，使用上个交易日数据: {ANALYSIS_END}")
 else:
     ANALYSIS_END = now.strftime('%Y%m%d')
-    print(f"\n  🕓 当前 {now.strftime('%H:%M')} >= 16:00，使用当日数据: {ANALYSIS_END}")
 
-# 下载范围：固定按年对齐，让 cache_key 稳定（7天内命中缓存，避免每天重复下载）
-year = now.year
-START_DATE = f'{year-2}0101'   # 2年前1月1日（足够计算所有指标）
-END_DATE = f'{year}1231'       # 今年12月31日（API只返回已有数据）
-print(f"  下载范围: {START_DATE} ~ {END_DATE}（固定，复用缓存）")
+START_DATE = f'{int(ANALYSIS_END[:4])-2}0101'
+END_DATE = ANALYSIS_END
 
-print(f"\n[1] 加载成份股（前50只/ETF）...")
+print("=" * 70)
+print(f"  ETF 补涨扩散策略 | {ANALYSIS_END} | 补涨分 ≥ {CATCHUP_MIN}")
+print("=" * 70)
 
-# 优先读取本地汇总JSON，缺失的ETF回退到 DataFetcher.get_etf_cons()
+print("\n[1] 加载成份股...")
 all_etf_constituents = {}
 json_path = r'd:\mystock\cache_daily\etf_constituents_all.json'
 if os.path.exists(json_path):
     with open(json_path, 'r', encoding='utf-8') as f:
         all_etf_constituents = json.load(f)
-print(f"  本地JSON覆盖: {len(all_etf_constituents)} 只ETF")
 
 missing_etfs = [c for c in ETF_THEME_MAP if c not in all_etf_constituents]
 if missing_etfs:
-    print(f"  JSON缺失 {len(missing_etfs)} 只，回退到 DataFetcher 补充...")
     for etf_code in missing_etfs:
         try:
             cons_df = dfetcher.get_etf_cons(ts_code=etf_code)
@@ -115,11 +102,9 @@ if missing_etfs:
                 stocks = [c for c in cons_df['con_code'].tolist()
                           if not str(c).endswith('.BJ') and c != 'Au9999']
                 all_etf_constituents[etf_code] = stocks
-                print(f"    {etf_code} ({ETF_THEME_MAP[etf_code]}): {len(stocks)} 只")
-        except Exception as e:
-            print(f"    {etf_code} 获取失败: {e}")
+        except Exception:
+            pass
 
-# 取前50只
 constituents = {}
 all_stocks = set()
 for etf_code in ETF_THEME_MAP:
@@ -128,54 +113,41 @@ for etf_code in ETF_THEME_MAP:
                   if not s.endswith('.BJ') and s != 'Au9999'][:50]
         constituents[etf_code] = stocks
         all_stocks.update(stocks)
-print(f"  成份股总数: {len(all_stocks)} 只 (跨 {len(constituents)} 个ETF)")
 
-# 获取股票名称
-print("\n  获取股票名称...")
 try:
     stock_basic = dfetcher.get_stock_list(list_status='L')
     name_map = dict(zip(stock_basic['ts_code'], stock_basic['name']))
     industry_map = dict(zip(stock_basic['ts_code'], stock_basic['industry']))
-except Exception as e:
-    print(f"    获取失败: {e}")
+except Exception:
     name_map = {}
     industry_map = {}
 
 # ============== 2. 下载日线数据 ==============
-print(f"\n[2] 加载日线数据（优先缓存）{START_DATE} ~ {END_DATE}...")
-
-print("  加载ETF日线...")
+print("[2] 加载日线...")
 etf_data = {}
 for etf_code in ETF_THEME_MAP:
     try:
         df = dfetcher.get_fund_daily(ts_code=etf_code, start_date=START_DATE, end_date=END_DATE)
         if df is not None and not df.empty:
-            # 切片到 ANALYSIS_END（避免16点前用到当日未完成数据）
             df = df[df['trade_date'] <= ANALYSIS_END]
             etf_data[etf_code] = df.sort_values('trade_date').reset_index(drop=True)
     except Exception:
         pass
-print(f"  ETF: {len(etf_data)} 个")
 
-print("  加载股票日线...")
 stock_data = {}
-for i, code in enumerate(sorted(all_stocks)):
+for code in sorted(all_stocks):
     try:
         df = dfetcher.get_daily_by_code(ts_code=code, start_date=START_DATE, end_date=END_DATE)
         if df is not None and not df.empty:
-            # 切片到 ANALYSIS_END
             df = df[df['trade_date'] <= ANALYSIS_END]
             if 'vol' not in df.columns and 'volume' in df.columns:
                 df['vol'] = df['volume']
             stock_data[code] = df.sort_values('trade_date').reset_index(drop=True)
     except Exception:
         pass
-    if (i + 1) % 200 == 0:
-        print(f"    进度: {i+1}/{len(all_stocks)}")
-print(f"  股票: {len(stock_data)}/{len(all_stocks)}")
+print(f"  ETF: {len(etf_data)} 个 | 股票: {len(stock_data)} 只")
 
 # ============== 3. 计算ETF趋势分 ==============
-print("\n[3] 计算ETF趋势分...")
 config = Config(r'd:\mystock\solo\etf_resonance\config.yaml')
 trend_scorer = TrendScorer(config)
 persist_scorer = PersistenceScorer(config)
@@ -185,15 +157,6 @@ diffusion_scorer = DiffusionScorer(config)
 trend_results = trend_scorer.score(etf_data)
 persist_results = persist_scorer.score(etf_data)
 
-print("\n  ETF趋势评分：")
-for code, tr in sorted(trend_results.items(), key=lambda x: -x[1].trend_score):
-    pr = persist_results.get(code)
-    ps = pr.persistence_score if pr else 0
-    flag = '✓' if (tr.trend_score >= 55 and ps >= 40 and tr.ema20_above_ema60) else ' '
-    print(f"  {flag} {code} ({ETF_THEME_MAP.get(code,'')}): Trend={tr.trend_score} "
-          f"Persist={ps} ADX={tr.adx_val} ret60={tr.return_60d}% ema20>ema60={tr.ema20_above_ema60}")
-
-# 过滤趋势ETF
 qualifying_etfs = {}
 for code, tr in trend_results.items():
     pr = persist_results.get(code)
@@ -202,32 +165,23 @@ for code, tr in trend_results.items():
         qualifying_etfs[code] = tr
 
 if not qualifying_etfs:
-    # 退而求其次：取趋势分Top 5
-    print(f"\n  ⚠️ 无ETF满足严格条件（Trend≥55 & Persist≥40 & ema20>ema60），取Top 5")
     qualifying_etfs = dict(sorted(trend_results.items(), key=lambda x: -x[1].trend_score)[:5])
 
-print(f"\n  趋势ETF: {len(qualifying_etfs)} 个")
+print(f"[3] 趋势ETF: {len(qualifying_etfs)} 个")
 
 # ============== 4. 计算扩散度 ==============
-print("\n[4] 计算主题扩散度...")
 qualifying_constituents = {c: constituents[c] for c in qualifying_etfs if c in constituents}
 diffusion_results = diffusion_scorer.score(
     stock_data, etf_data, qualifying_constituents, ETF_THEME_MAP
 )
 
-# 扩散度 > 50 的ETF
 diffused_etfs = {c: r for c, r in diffusion_results.items() if r.diffusion_score > 50}
 if not diffused_etfs:
-    print("  ⚠️ 无ETF扩散度>50，取Top 3")
     diffused_etfs = dict(sorted(diffusion_results.items(), key=lambda x: -x[1].diffusion_score)[:3])
 
-print("\n  扩散ETF：")
-for c, r in sorted(diffused_etfs.items(), key=lambda x: -x[1].diffusion_score):
-    print(f"    {c} ({ETF_THEME_MAP.get(c,'')}): Diffusion={r.diffusion_score:.1f} "
-          f"breadth={r.breadth_expansion:.1f} rotation={r.rotation_signal:.1f}")
+print(f"[4] 扩散ETF: {len(diffused_etfs)} 个")
 
 # ============== 5. 计算补涨评分 ==============
-print("\n[5] 计算补涨评分...")
 filtered_constituents = {c: qualifying_constituents[c] for c in diffused_etfs
                          if c in qualifying_constituents}
 if not filtered_constituents:
@@ -239,11 +193,8 @@ catchup_results = catchup_scorer.score(
     {c: tr.trend_score for c, tr in qualifying_etfs.items()}
 )
 total_catchup = sum(len(v) for v in catchup_results.values())
-print(f"  补涨候选总数: {total_catchup} 只 (跨 {len(catchup_results)} 个ETF)")
 
 # ============== 6. 汇总并过滤 catchup_score >= CATCHUP_MIN ==============
-print(f"\n[6] 筛选补涨分 ≥ {CATCHUP_MIN} 的股票...")
-
 all_candidates = []
 for etf_code, results in catchup_results.items():
     diff_score = diffused_etfs.get(etf_code)
@@ -276,51 +227,37 @@ for etf_code, results in catchup_results.items():
             'final_score': round(final_score, 2),
         })
 
-# 排序
 all_candidates.sort(key=lambda x: -x['catchup_score'])
-
-# 过滤补涨分 >= CATCHUP_MIN
 strong_candidates = [c for c in all_candidates if c['catchup_score'] >= CATCHUP_MIN]
 
 # ============== 7. 输出结果 ==============
-print("\n" + "=" * 70)
-print(f"  📊 补涨分 ≥ {CATCHUP_MIN} 的股票: {len(strong_candidates)} 只")
-print("=" * 70)
+df_out = pd.DataFrame(strong_candidates) if strong_candidates else pd.DataFrame()
 
 if not strong_candidates:
-    print("\n  今日无补涨分≥70的股票。")
-    print(f"\n  参考：补涨分Top 10（未达阈值）:")
+    print(f"\n[结果] 无补涨分≥{CATCHUP_MIN}的股票。")
+    print(f"  参考 Top 10:")
     for c in all_candidates[:10]:
         print(f"    {c['code']} {c['stock_name']} | {c['etf_code']} {c['etf_name']} | "
               f"补涨={c['catchup_score']:.1f} | 滞涨={c['lag_degree']:.1f} | "
-              f"启动={c['startup_signal']:.1f} | 落后ETF {c['ret_gap']:.1f}% | "
-              f"量比5d={c['vol_ratio_5d']:.2f}")
+              f"落后ETF {c['ret_gap']:+.1f}%")
 else:
-    print(f"\n{'代码':<12}{'名称':<10}{'ETF':<18}{'补涨分':<8}{'滞涨':<6}{'启动':<6}"
-          f"{'落后ETF':<10}{'量比5d':<8}{'距低点':<8}{'最终分':<8}")
-    print("-" * 110)
+    print(f"\n[结果] 补涨分 ≥ {CATCHUP_MIN}: {len(strong_candidates)} 只")
+    print(f"  {'代码':<12}{'名称':<10}{'ETF':<18}{'补涨分':<8}{'滞涨':<6}{'启动':<6}"
+          f"{'落后ETF':<10}{'量比5d':<8}{'最终分':<8}")
+    print(f"  {'-'*88}")
     for c in strong_candidates:
-        print(f"{c['code']:<12}{c['stock_name']:<10}{c['etf_code']+' '+c['etf_name']:<18}"
+        print(f"  {c['code']:<12}{c['stock_name']:<10}{c['etf_code']+' '+c['etf_name']:<18}"
               f"{c['catchup_score']:<8.1f}{c['lag_degree']:<6.1f}{c['startup_signal']:<6.1f}"
               f"{c['ret_gap']:+.1f}%{'':>3}{c['vol_ratio_5d']:<8.2f}"
-              f"{c['dist_to_low']:+.1f}%{'':>3}{c['final_score']:<8.1f}")
+              f"{c['final_score']:<8.1f}")
 
-    # 保存CSV
-    df_out = pd.DataFrame(strong_candidates)
-    output_path = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df_out.to_csv(output_path, index=False, encoding='utf-8-sig')
-    print(f"\n[已保存] {output_path}")
+    if not df_out.empty:
+        print(f"\n  ETF分布:")
+        for (ec, en), grp in df_out.groupby(['etf_code', 'etf_name']):
+            print(f"    {ec} {en}: {len(grp)} 只, 均分{grp['catchup_score'].mean():.1f}")
 
-    # 按ETF分组统计
-    print(f"\n📊 按ETF分组:")
-    etf_grp = df_out.groupby(['etf_code', 'etf_name']).agg(
-        count=('code', 'count'),
-        avg_catchup=('catchup_score', 'mean'),
-        max_catchup=('catchup_score', 'max'),
-    ).round(1)
-    print(etf_grp.to_string())
-
-print("\n" + "=" * 70)
-print(f"  全候选: {len(all_candidates)} 只 | 强信号(≥{CATCHUP_MIN}): {len(strong_candidates)} 只")
-print("=" * 70)
+# 始终保存CSV（即使为空），供下游程序消费
+output_path = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+df_out.to_csv(output_path, index=False, encoding='utf-8-sig')
+print(f"\n  已保存: {output_path} ({len(strong_candidates)} 条)")

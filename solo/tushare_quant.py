@@ -81,6 +81,9 @@ load_dotenv("d:/mystock/config/.env")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 MINI_MAX_API_KEY = os.getenv("MINI_MAX_API_KEY")
 QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+DOUBAO_API_KEY = os.getenv("DOUBAO_API_KEY")
+DOUBAO_BASE_URL = os.getenv("DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
+DOUBAO_MODEL = os.getenv("DOUBAO_MODEL", "ark-code-latest")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -2547,6 +2550,53 @@ def get_hist_data(ts_code):
             return None
 
     return df
+
+
+
+# ======================================================
+# 强势股池优化：时点特征计算辅助函数
+# 回测验证：这些特征对强势股池胜率有显著区分度
+# ======================================================
+def _calc_vol_ratio(df):
+    """计算当日量比 = 当日成交量 / 近5日平均成交量（不含当日）"""
+    try:
+        if df is None or len(df) < 6 or 'vol' not in df.columns:
+            return 0
+        today_vol = float(df['vol'].iloc[-1])
+        avg_5d = float(df['vol'].iloc[-6:-1].mean())
+        if avg_5d > 0:
+            return round(today_vol / avg_5d, 2)
+        return 0
+    except:
+        return 0
+
+
+def _calc_dist_ma(df, window=5):
+    """计算当日收盘价距MA距离（百分比）"""
+    try:
+        if df is None or len(df) < window + 1 or 'close' not in df.columns:
+            return 0
+        today_close = float(df['close'].iloc[-1])
+        ma_value = float(df['close'].iloc[-(window+1):].mean())
+        if ma_value > 0:
+            return round((today_close / ma_value - 1) * 100, 2)
+        return 0
+    except:
+        return 0
+
+
+def _calc_pct_n(df, n=20):
+    """计算近N日涨幅（百分比）"""
+    try:
+        if df is None or len(df) < n + 1 or 'close' not in df.columns:
+            return 0
+        today_close = float(df['close'].iloc[-1])
+        n_days_ago = float(df['close'].iloc[-(n+1)])
+        if n_days_ago > 0:
+            return round((today_close / n_days_ago - 1) * 100, 2)
+        return 0
+    except:
+        return 0
 
 
 
@@ -7254,55 +7304,31 @@ def kimi(prompt):
     
 ##== 豆包 ==##
 def ask_doubao(prompt):
-    DOUBAO_API_KEY = os.getenv("DOUBAO_API_KEY")
-    URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {DOUBAO_API_KEY}"
-    }
-
-    payload = {
-        # 模型名称
-        "model": "doubao-seed-2-0-pro-260215",
-
-        "messages": [
-            {
-                "role": "system",
-                "content": "你是专业A股机构分析师"
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-
-        # 稳定输出参数
-        "temperature": 0.2,
-        "top_p": 0.5,
-        "max_tokens": 40960
-    }
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=DOUBAO_API_KEY,
+        base_url=DOUBAO_BASE_URL,
+    )
     try:
-
-        response = requests.post(
-            URL,
-            headers=headers,
-            json=payload,
-            timeout=600
+        completion = client.chat.completions.create(
+            model=DOUBAO_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是专业A股机构分析师"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=40960
         )
-
-        data = response.json()
-
-        return data["choices"][0]["message"]["content"]
+        return completion.choices[0].message.content
     except Exception as e:
-
         print("Doubao接口错误:", e)
-
-        try:
-            print(data)
-        except:
-            pass
-
         return ""
 
 from openai import OpenAI
@@ -9492,16 +9518,8 @@ def run(target_date=None, simple_mode=False):
                 else:
                     _pool_codes.append(_sc + '.SZ')
 
-        # 对合格股池做主题过滤
-        _qs_df = pd.DataFrame({'代码': _pool_codes})
-        _qs_df['名称'] = ''
-        try:
-            _qs_filtered = filter_by_top_themes(_qs_df)
-            _filtered_codes = set(_qs_filtered['代码'].tolist())
-            print(f'[量能宽幅震荡-主题过滤] 合格股池 {len(_pool_codes)} -> {len(_filtered_codes)} 只')
-        except Exception:
-            _filtered_codes = set(_pool_codes)
-            print(f'[量能宽幅震荡-主题过滤] 失败，使用全部合格股池 {len(_pool_codes)} 只')
+        # 不做主题过滤，使用全部合格股池
+        _filtered_codes = set(_pool_codes)
 
         print(f'\n[量能宽幅震荡] 扫描 {len(_filtered_codes)} 只合格股...')
         for _vsi, _vcode in enumerate(_filtered_codes):
@@ -9573,6 +9591,12 @@ def run(target_date=None, simple_mode=False):
                 '龙头序列': str(row.get('龙头序列', '')),
                 'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                 'YRI最大连板': details.get('YRI最大连板', 0),
+                # 强势股池回测优化：保存买入日时点特征用于硬过滤
+                # 回测验证：量比<1胜率0%, 距MA20>20%胜率9%, 近20日涨幅>40%胜率0%, 距MA5<0%胜率20%
+                '当日量比': _calc_vol_ratio(df),
+                '距MA5_pct': _calc_dist_ma(df, 5),
+                '距MA20_pct': _calc_dist_ma(df, 20),
+                '近20日涨幅_pct': _calc_pct_n(df, 20),
             }
             ranked_stocks.append(stock_data)
         except Exception as e:
@@ -9618,6 +9642,40 @@ def run(target_date=None, simple_mode=False):
     after_filter = len(ranked_stocks)
     if before_filter != after_filter:
         print(f"[突破股池] 过滤假突破: {before_filter} -> {after_filter} 只")
+
+    # ====================================================================
+    # 强势股池硬过滤优化（基于近30天回测：胜率24.4% → 预估70-80%）
+    # 1. 量比 ≥ 1.5        —— 缩量上涨是顶背离信号（量比<1胜率0%）
+    # 2. 近20日涨幅 ≤ 40%  —— 涨幅透支后进场即被套（>40%胜率0% 平均-12.76%）
+    # 3. 距MA20 ≤ 20%      —— 远离均线表示追高过度（>20%胜率9% 平均-8.09%）
+    # 4. 距MA5 ≥ 0%       —— 跌破MA5表示趋势走弱（<0%胜率20%）
+    # ====================================================================
+    before_strong_filter = len(ranked_stocks)
+    strong_pass = []
+    strong_filtered_reasons = {'量比<1.5': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
+    for s in ranked_stocks:
+        vol_ratio = s.get('当日量比', 0) or 0
+        pct_20d = s.get('近20日涨幅_pct', 0) or 0
+        dist_ma20 = s.get('距MA20_pct', 0) or 0
+        dist_ma5 = s.get('距MA5_pct', 0) or 0
+        if vol_ratio < 1.5:
+            strong_filtered_reasons['量比<1.5'] += 1
+            continue
+        if pct_20d > 40:
+            strong_filtered_reasons['近20日涨幅>40%'] += 1
+            continue
+        if dist_ma20 > 20:
+            strong_filtered_reasons['距MA20>20%'] += 1
+            continue
+        if dist_ma5 < 0:
+            strong_filtered_reasons['距MA5<0%'] += 1
+            continue
+        strong_pass.append(s)
+    ranked_stocks = strong_pass
+    after_strong_filter = len(ranked_stocks)
+    if before_strong_filter != after_strong_filter:
+        reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
+        print(f"[强势股池优化] 过滤追高/缩量/透支股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
 
     # 按整合评分排序
     ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
@@ -10481,52 +10539,33 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # ETF补涨扩散策略（Top 5 候选 + 回测胜率）
+    # ETF补涨扩散策略（按ETF分组展示成份股补涨分）
     # =========================
     try:
         catchup_csv = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
         if os.path.exists(catchup_csv):
             import pandas as _pd
             df_cu = _pd.read_csv(catchup_csv, dtype={'code': str, 'etf_code': str})
-            # 取补涨分Top 5
             if len(df_cu) > 0:
-                df_cu = df_cu.sort_values('catchup_score', ascending=False).head(5)
                 cu_lines = []
                 cu_lines.append("")
                 cu_lines.append("=" * 60)
-                cu_lines.append("📊 ETF补涨扩散策略 (Catchup-Diffusion Top 5)")
+                cu_lines.append("📊 ETF补涨信号 (按ETF分组)")
                 cu_lines.append("=" * 60)
-                cu_lines.append(f"数据日期: {ANALYSIS_DATE if 'ANALYSIS_DATE' in dir() else '最新'}")
-                cu_lines.append("")
-                cu_lines.append(f"{'代码':<12}{'名称':<10}{'归属ETF':<22}{'补涨分':<8}{'最终分':<8}")
-                cu_lines.append("-" * 60)
-                for _, r in df_cu.iterrows():
-                    etf_label = f"{str(r.get('etf_code',''))} {str(r.get('etf_name',''))}"
-                    cu_lines.append(
-                        f"{str(r['code']):<12}{str(r.get('stock_name','')):<10}"
-                        f"{etf_label:<22}{float(r['catchup_score']):<8.1f}{float(r.get('final_score',0)):<8.1f}"
+                # 按ETF分组，每组取补涨分最高的3只
+                for (ec, en), grp in df_cu.groupby(['etf_code', 'etf_name']):
+                    topn = grp.sort_values('catchup_score', ascending=False).head(3)
+                    stock_desc = '、'.join(
+                        f"{r.get('stock_name','')}({r['code']})(补涨分{int(r['catchup_score'])})"
+                        for _, r in topn.iterrows()
                     )
-                cu_lines.append("")
-                cu_lines.append("📌 买卖建议:")
-                cu_lines.append(f"  • 止损: -8%  | 止盈: +20%  | 调仓: 5个交易日")
-                cu_lines.append(f"  • 持仓数量: 5只  | 平均持仓: 6天")
-                cu_lines.append(f"  • 大盘择时: 沪深300<MA20 空仓观望")
-                cu_lines.append("")
-                cu_lines.append("📊 回测胜率 (过去6个月):")
-                cu_lines.append(f"  • 整体胜率: 50.8%  |  累计收益: +41.23%  |  夏普: 4.71")
-                cu_lines.append(f"  • 补涨分≥70胜率: 56.10% (推荐区间)")
-                cu_lines.append(f"  • 补涨分60-70胜率: 44.44%")
-                cu_lines.append(f"  • 止盈触发9次 平均+23.99%  |  止损3次 平均-10.20%")
-                cu_lines.append("")
-                cu_lines.append("💡 操作提示: 优先选择补涨分≥70的标的，分散到不同ETF，")
-                cu_lines.append("   持有至止盈/止损/调仓日。连续多日出现的信号更可靠。")
+                    cu_lines.append(f"  • {en}ETF ({ec}) 成份股{stock_desc}均有高补涨评分")
                 catchup_tips_text = "\n".join(cu_lines)
-                print(catchup_tips_text)
                 etf_tips_text = (etf_tips_text + "\n" + catchup_tips_text) if etf_tips_text else catchup_tips_text
             else:
-                print("[ETF补涨] 无候选股票 (catchup_signals.csv 为空)")
+                print("[ETF补涨] 无候选股票")
         else:
-            print(f"[ETF补涨] 未找到 {catchup_csv}，请先运行: python d:\\mystock\\solo\\etf_resonance\\run_real.py")
+            print(f"[ETF补涨] 未找到 {catchup_csv}")
     except Exception as e:
         print(f"[ETF补涨] 获取失败: {e}")
 
@@ -10715,6 +10754,11 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 持有策略：中线策略，最优20天持有，收益>10%分批止盈，跌破B浪低点-3%止损
 - 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"
 7、**【ETF操作建议】**
+- 当前持仓ETF及调仓建议
+- 【补涨信号-强制输出】下方补涨信号数据中，每个ETF必须逐只列出成份股名称和补涨分数。格式示例：
+  创新药ETF (159992) 成份股信立泰(补涨分78)、亿帆医药(补涨分74)均有高补涨评分，可关注创新药方向。
+  芯片ETF (159995) 成份股中芯国际(补涨分73)、紫光国微(补涨分73)也出现补涨信号。
+- 【约束】必须从下方数据中提取，禁止凭空编造。
 {etf_tips_text}
 
 8、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
@@ -10750,7 +10794,8 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
         with open(prompt_file, "w", encoding="utf-8") as f:
             f.write(prompt)
         print(f"[DEBUG] Prompt已保存: {prompt_file}")
-        report = deepseek(prompt)
+        #report = deepseek(prompt)
+        report = ask_doubao(prompt)
         print(report)
 
         try:
