@@ -10569,6 +10569,88 @@ def run(target_date=None, simple_mode=False):
     except Exception as e:
         print(f"[ETF补涨] 获取失败: {e}")
 
+    # =========================
+    # 波浪理论第3浪选股策略（信号分≥90 + 深度分析优先级）
+    # =========================
+    wave3_text = ""
+    try:
+        import pandas as _pd3
+        import json as _json3
+        wave3_csv = r'd:\mystock\solo\etf_resonance\output\wave3_signals.csv'
+        wave3_json = r'd:\mystock\solo\etf_resonance\output\wave3_deep_analysis.json'
+        # 优先级与建议来自深度分析JSON(若存在)
+        advice_map = {}
+        if os.path.exists(wave3_json):
+            with open(wave3_json, 'r', encoding='utf-8') as _fj:
+                _deep = _json3.load(_fj)
+            for _r in _deep:
+                _tc = _r.get('ts_code') or _r.get('code')
+                if _tc:
+                    advice_map[_tc] = _r
+        if os.path.exists(wave3_csv):
+            df_w3 = _pd3.read_csv(wave3_csv, dtype={'code': str})
+            if len(df_w3) > 0:
+                df_w3 = df_w3.sort_values('signal_score', ascending=False)
+                w3_lines = []
+                w3_lines.append("")
+                w3_lines.append("=" * 60)
+                w3_lines.append("🌊 波浪理论第3浪选股 (ETF成份股池, 信号分≥90, 回测+12.8%/胜率51.9%/夏普3.08)")
+                w3_lines.append("=" * 60)
+                w3_lines.append(f"今日共{len(df_w3)}只W3信号(信号分≥90)")
+                w3_lines.append(f"{'代码':<12} {'名称':<8} {'现价':>8} {'W1涨幅':>7} {'W2回调':>6} {'W3目标':>9} {'剩余空间':>8} {'信号分':>6} {'优先级':>8}")
+                w3_lines.append("-" * 90)
+                for _, r in df_w3.iterrows():
+                    w3_lines.append(f"  {str(r['code']):<12} {str(r.get('name','')):<8} {float(r['current_price']):>8.2f} {float(r['w1_gain_pct']):>6.1f}% {float(r['w2_retrace_pct']):>5.1f}% {float(r['w3_target_price']):>9.2f} {float(r['dist_to_w3_target_pct']):>+7.1f}% {float(r['signal_score']):>6.1f} {r.get('industry','')}")
+                # 附加深度分析的操作优先级与建议
+                ranked = []
+                for _, r in df_w3.iterrows():
+                    tc = str(r['code'])
+                    adv = advice_map.get(tc, {})
+                    ps = adv.get('priority_score')
+                    if ps is None:
+                        ps = float(r['signal_score'])
+                    adv_obj = adv.get('advice', {}) or {}
+                    ranked.append((ps, r, adv, adv_obj))
+                ranked.sort(key=lambda x: -x[0])
+                w3_lines.append("")
+                w3_lines.append("📊 操作优先级排名(融合长周期技术分析):")
+                for i, (ps, r, adv, adv_obj) in enumerate(ranked, 1):
+                    nm = adv.get('name') or r.get('name') or '?'
+                    lvl = adv_obj.get('level', '')
+                    act = adv_obj.get('action', '')
+                    w3_lines.append(f"  [{i}] {nm}({r['code']}) 优先级{ps:.0f}/100 {lvl} - {act}")
+                    if adv_obj.get('entry_levels'):
+                        _ents = adv_obj['entry_levels'][:2]
+                        _ent_s = ' / '.join(f"{e.get('name','')}@{e.get('price',0):.2f}" for e in _ents)
+                        w3_lines.append(f"      介入: {_ent_s}")
+                    if adv_obj.get('stop_loss'):
+                        sl_pct = (adv_obj['stop_loss'] - float(r['current_price'])) / float(r['current_price']) * 100
+                        w3_lines.append(f"      止损: {adv_obj['stop_loss']:.2f}({sl_pct:+.1f}%)")
+                    if adv_obj.get('take_profit'):
+                        tp_pct = (adv_obj['take_profit'] - float(r['current_price'])) / float(r['current_price']) * 100
+                        w3_lines.append(f"      止盈: {adv_obj['take_profit']:.2f}({tp_pct:+.1f}%)")
+                    if adv_obj.get('reasons'):
+                        w3_lines.append(f"      理由: {'; '.join(adv_obj['reasons'][:3])}")
+                    if adv_obj.get('risks'):
+                        w3_lines.append(f"      风险: {'; '.join(adv_obj['risks'][:2])}")
+                w3_lines.append("")
+                w3_lines.append("📋 策略说明: 第3浪起点=现价突破第1浪顶H1(W3右侧追涨),回测6个月+12.8%/夏普3.08/最大回撤-4.88%")
+                w3_lines.append("  【W1涨幅】60-80%最优(胜率57%盈亏比3.57); 100-200%主升浪(胜率85%+)")
+                w3_lines.append("  【W2回调】30-40%最佳介入时点(胜率67%); 50-60%深度洗盘(胜率61%)")
+                w3_lines.append("  【W3目标】L2+(H1-L0)*1.618 黄金位")
+                w3_lines.append("  【操作】5日调仓/Top5持仓/-8%止损/+20%止盈/沪深300<MA20空仓")
+                wave3_text = "\n".join(w3_lines)
+                print(wave3_text)
+            else:
+                print("[波浪理论] 无信号")
+                wave3_text = "今日无波浪理论第3浪信号(信号分≥90)"
+        else:
+            print(f"[波浪理论] 未找到 {wave3_csv}")
+            wave3_text = "今日无波浪理论第3浪信号(未生成扫描结果)"
+    except Exception as e:
+        print(f"[波浪理论] 获取失败: {e}")
+        wave3_text = f"波浪理论数据读取失败: {e}"
+
 
     #return
     prompt = f"""
@@ -10620,6 +10702,11 @@ def run(target_date=None, simple_mode=False):
 
 （近60天量能大幅放大+宽幅震荡，常见于主力资金活跃的标的）
 {volume_surge_swing_text}
+
+**【波浪理论第3浪选股策略】**
+
+（艾略特波浪理论第3浪起点选股：现价突破第1浪顶H1确认主升浪，ETF成份股池，信号分≥90，含操作优先级排名与建议）
+{wave3_text}
 
 
 请分析并输出内容：
@@ -10780,6 +10867,26 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 量比=5.89 | 日均振幅=5.3% | 区间振幅=50.2% | 区间涨幅=17.4%
 分析：MACD绿柱连续缩短即将金叉，量能爆发特征明显，等待翻红确认后介入更稳妥。
 - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
+
+9、**【波浪理论第3浪选股策略】**（艾略特波浪理论第3浪起点选股，ETF成份股池，信号分≥90，回测+12.8%/胜率51.9%/夏普3.08/最大回撤-4.88%）：
+- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+- 【数据位置】在"波浪理论第3浪选股"标题下方，包含信号列表 + 操作优先级排名
+- 【按优先级排名分析】严格按照上方"操作优先级排名"从高到低分析，不要重新排序
+- 【三档优先级】⭐⭐⭐高优先(≥75分,回踩加仓) / ⭐⭐中优先(60-74分,突破介入) / ⭐低优先(<60分,等深调)
+- 每只精简为1小段（4-5行），格式如下：
+- 第1行：**股票名**(代码) | 信号分=XX | 优先级=XX/100 | 等级(⭐⭐⭐/⭐⭐/⭐) | 操作策略
+- 第2行：波浪结构(W1涨幅XX% / W2回调XX% / W3目标价XX 距今+XX%)
+- 第3行：介入价位(支撑位) | 止损位(XX,XX%) | 止盈位(XX,XX%)
+- 第4行：介入理由(均线/量能/相似度等)
+- 第5行：风险提示(若有,如MACD死叉/超买/破位等)
+- 【格式示例】
+**江化微**(603078.SH) | 信号分=90 | 优先级=88/100 | ⭐⭐⭐ 高优先 | 回踩支撑位加仓
+波浪结构：W1涨55% / W2回调46% / W3目标69.72 距今+31.6%
+介入：MA10@51.08 / MA20@48.18 | 止损：39.33(-25.8%) | 止盈：69.72(+31.6%)
+理由：W3刚启动突破H1(49.40)确认主升浪；完美多头排列；量比1.27量能配合
+风险：(若无则不输出此行)
+- 【约束】股票名、价格、优先级必须严格引用上方数据，禁止凭空编造。优先级排名必须与上方一致，不可自行调整顺序。
+- 如果无信号数据，直接输出"今日无波浪理论第3浪信号（信号分≥90）"
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**

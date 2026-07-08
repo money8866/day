@@ -1006,6 +1006,27 @@ def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
     if awave is None:
         return None
 
+    # 改进1+2: 信号止损验证 -- 信号触发后若跌破B低3%,则视为失效不再输出
+    def is_signal_stopped(sig: dict, bw: dict) -> bool:
+        stop_line = bw['low_price'] * 0.97
+        sig_idx = sig['launch_idx']
+        for j in range(sig_idx, len(df)):
+            if df.iloc[j]['close'] < stop_line:
+                return True
+        return False
+
+    # 改进4: 启动信号位置过滤 -- 距A高<5%视为追涨,不触发
+    MIN_DIST_TO_A_HIGH = 5.0
+    # 改进4: 假MACD金叉过滤 -- DIF<0时的金叉视为反弹假信号
+    def is_real_macd_golden(sig: dict) -> bool:
+        if not sig.get('macd_golden', 0):
+            return False
+        idx = sig['launch_idx']
+        if idx < len(df):
+            dif_val = df.iloc[idx].get('macd_dif_bfq', 0)
+            return dif_val >= 0
+        return False
+
     # 1) 严格B浪 → 启动信号
     bwave = detect_bwave(df, awave)
     if bwave:
@@ -1013,30 +1034,41 @@ def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
         if launch:
             launch_idx = launch['launch_idx']
             if len(df) - launch_idx <= 10:
-                score = calc_bwave_score(awave, bwave, launch)
-                if score['total'] >= 65:
-                    entry_price = df.iloc[launch_idx]['close']
-                    rets = {}
-                    for w in [1, 5, 10, 20]:
-                        fi = min(launch_idx + w, len(df) - 1)
-                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                    return {**make_result_base(ts_code, latest_date, awave, bwave, launch, score, rets),
-                            'signal_type': 'launch'}
+                # 改进4: 启动信号位置过滤(距A高<5%不触发)
+                if launch.get('dist_to_a_high', 99) >= MIN_DIST_TO_A_HIGH:
+                    # 改进4: 假金叉过滤 -- DIF<0且距A高<15%的启动信号需额外确认
+                    is_low_dist = launch.get('dist_to_a_high', 99) < 15
+                    is_fake_golden = launch.get('macd_golden', 0) and not is_real_macd_golden(launch)
+                    if not (is_low_dist and is_fake_golden):
+                        score = calc_bwave_score(awave, bwave, launch)
+                        if score['total'] >= 65:
+                            # 改进1+2: 止损验证 -- 信号触发后跌破B低3%则失效
+                            if not is_signal_stopped(launch, bwave):
+                                entry_price = df.iloc[launch_idx]['close']
+                                rets = {}
+                                for w in [1, 5, 10, 20]:
+                                    fi = min(launch_idx + w, len(df) - 1)
+                                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                                return {**make_result_base(ts_code, latest_date, awave, bwave, launch, score, rets),
+                                        'signal_type': 'launch'}
 
     # 2) 严格B浪 → 底背离
     if bwave:
         div = detect_bwave_divergence(df, awave, bwave)
         if div:
             score = calc_divergence_score(awave, bwave, div)
-            if score['total'] >= 60:
-                rets = {}
-                div_idx = div['launch_idx']
-                entry_price = df.iloc[div_idx]['close']
-                for w in [1, 5, 10, 20]:
-                    fi = min(div_idx + w, len(df) - 1)
-                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                return {**make_result_base(ts_code, latest_date, awave, bwave, div, score, rets),
-                        'signal_type': 'divergence'}
+            # 改进3: 底背离验证 -- d_score≥40才输出(防止趋势保持拉分假信号)
+            if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+                # 改进1+2: 止损验证 -- 信号触发后跌破B低3%则失效
+                if not is_signal_stopped(div, bwave):
+                    rets = {}
+                    div_idx = div['launch_idx']
+                    entry_price = df.iloc[div_idx]['close']
+                    for w in [1, 5, 10, 20]:
+                        fi = min(div_idx + w, len(df) - 1)
+                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                    return {**make_result_base(ts_code, latest_date, awave, bwave, div, score, rets),
+                            'signal_type': 'divergence'}
 
     # 3) 放宽B浪 → 启动信号
     bwave_r = detect_bwave_relaxed(df, awave)
@@ -1045,30 +1077,38 @@ def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
         if launch:
             launch_idx = launch['launch_idx']
             if len(df) - launch_idx <= 10:
-                score = calc_bwave_score(awave, bwave_r, launch)
-                if score['total'] >= 60:
-                    entry_price = df.iloc[launch_idx]['close']
-                    rets = {}
-                    for w in [1, 5, 10, 20]:
-                        fi = min(launch_idx + w, len(df) - 1)
-                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                    return {**make_result_base(ts_code, latest_date, awave, bwave_r, launch, score, rets),
-                            'signal_type': 'launch'}
+                # 改进4: 启动信号位置过滤(距A高<5%不触发)
+                if launch.get('dist_to_a_high', 99) >= MIN_DIST_TO_A_HIGH:
+                    is_low_dist = launch.get('dist_to_a_high', 99) < 15
+                    is_fake_golden = launch.get('macd_golden', 0) and not is_real_macd_golden(launch)
+                    if not (is_low_dist and is_fake_golden):
+                        score = calc_bwave_score(awave, bwave_r, launch)
+                        if score['total'] >= 60:
+                            if not is_signal_stopped(launch, bwave_r):
+                                entry_price = df.iloc[launch_idx]['close']
+                                rets = {}
+                                for w in [1, 5, 10, 20]:
+                                    fi = min(launch_idx + w, len(df) - 1)
+                                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                                return {**make_result_base(ts_code, latest_date, awave, bwave_r, launch, score, rets),
+                                        'signal_type': 'launch'}
 
     # 4) 放宽B浪 → 底背离
     if bwave_r:
         div = detect_bwave_divergence(df, awave, bwave_r)
         if div:
             score = calc_divergence_score(awave, bwave_r, div)
-            if score['total'] >= 60:
-                rets = {}
-                div_idx = div['launch_idx']
-                entry_price = df.iloc[div_idx]['close']
-                for w in [1, 5, 10, 20]:
-                    fi = min(div_idx + w, len(df) - 1)
-                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                return {**make_result_base(ts_code, latest_date, awave, bwave_r, div, score, rets),
-                        'signal_type': 'divergence'}
+            # 改进3: 底背离验证 -- d_score≥40才输出
+            if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+                if not is_signal_stopped(div, bwave_r):
+                    rets = {}
+                    div_idx = div['launch_idx']
+                    entry_price = df.iloc[div_idx]['close']
+                    for w in [1, 5, 10, 20]:
+                        fi = min(div_idx + w, len(df) - 1)
+                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                    return {**make_result_base(ts_code, latest_date, awave, bwave_r, div, score, rets),
+                            'signal_type': 'divergence'}
 
     return None
 
