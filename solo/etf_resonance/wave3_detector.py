@@ -34,6 +34,7 @@ os.chdir(r'd:\mystock\solo')
 from dotenv import load_dotenv
 from multi_factor_picker.data_fetcher import DataFetcher
 from etf_resonance.utils.indicators import ema, sma, atr, slope
+import tushare_quant as tq
 
 load_dotenv(r'd:\mystock\config\.env' if os.path.exists(r'd:\mystock\config\.env') else r'd:\mystock\solo\.env')
 TS_TOKEN = os.getenv('TUSHARE_TOKEN', '')
@@ -41,6 +42,8 @@ dfetcher = DataFetcher(TS_TOKEN, {
     'cache': {'enabled': True, 'dir': r'd:\mystock\solo\multi_factor_picker\cache', 'expire_hours': 168},
     'tushare': {'max_retry': 3, 'retry_delay': 5}
 })
+
+TRADE_DATE = tq.TRADE_DATE
 
 
 # ============== 波浪理论参数 ==============
@@ -333,12 +336,22 @@ def analyze_stock(ts_code: str, name: str = '', industry: str = '',
         start_date = (datetime.now() - timedelta(days=730)).strftime('%Y%m%d')
 
     try:
-        df = dfetcher.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        df = tq.get_hist_data(ts_code)
     except Exception:
         return None
     if df is None or df.empty or len(df) < 60:
         return None
 
+    if 'trade_date' not in df.columns:
+        return None
+    df = df.copy()
+    df['trade_date'] = df['trade_date'].astype(str)
+    if end_date:
+        df = df[df['trade_date'] <= end_date]
+    if start_date:
+        df = df[df['trade_date'] >= start_date]
+    if df.empty or len(df) < 60:
+        return None
     df = df.sort_values('trade_date').reset_index(drop=True)
 
     pivots = find_pivots(df)

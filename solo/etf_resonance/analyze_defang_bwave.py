@@ -45,11 +45,28 @@ def scan_bwave_signals(df: pd.DataFrame) -> list:
     """
     hits = []
     start_idx = 250
+    MIN_DIST_TO_A_HIGH = 5.0
     for i in range(start_idx, len(df)):
         sub = df.iloc[:i+1].reset_index(drop=True)
         awave = detect_awave(sub)
         if awave is None:
             continue
+
+        def _is_stopped(sig_obj, bw_obj):
+            stop_line = bw_obj['low_price'] * 0.97
+            si = sig_obj['launch_idx']
+            for j in range(si, len(sub)):
+                if sub.iloc[j]['close'] < stop_line:
+                    return True
+            return False
+
+        def _is_real_golden(sig_obj):
+            if not sig_obj.get('macd_golden', 0):
+                return False
+            si = sig_obj['launch_idx']
+            if si < len(sub):
+                return sub.iloc[si].get('macd_dif_bfq', 0) >= 0
+            return False
 
         results = []
 
@@ -59,15 +76,21 @@ def scan_bwave_signals(df: pd.DataFrame) -> list:
             if launch:
                 launch_idx = launch['launch_idx']
                 if len(sub) - launch_idx <= 10:
-                    score = calc_bwave_score(awave, bwave, launch)
-                    if score['total'] >= 65:
-                        results.append(('launch', score, awave, bwave, launch))
+                    ok_dist = launch.get('dist_to_a_high', 99) >= MIN_DIST_TO_A_HIGH
+                    is_low = launch.get('dist_to_a_high', 99) < 15
+                    is_fake = launch.get('macd_golden', 0) and not _is_real_golden(launch)
+                    if ok_dist and not (is_low and is_fake):
+                        score = calc_bwave_score(awave, bwave, launch)
+                        if score['total'] >= 65:
+                            if not _is_stopped(launch, bwave):
+                                results.append(('launch', score, awave, bwave, launch))
 
             div = detect_bwave_divergence(sub, awave, bwave)
             if div:
                 score = calc_divergence_score(awave, bwave, div)
-                if score['total'] >= 60:
-                    results.append(('divergence', score, awave, bwave, div))
+                if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+                    if not _is_stopped(div, bwave):
+                        results.append(('divergence', score, awave, bwave, div))
 
         bwave_r = detect_bwave_relaxed(sub, awave)
         if bwave_r:
@@ -75,15 +98,21 @@ def scan_bwave_signals(df: pd.DataFrame) -> list:
             if launch:
                 launch_idx = launch['launch_idx']
                 if len(sub) - launch_idx <= 10:
-                    score = calc_bwave_score(awave, bwave_r, launch)
-                    if score['total'] >= 60:
-                        results.append(('launch_relaxed', score, awave, bwave_r, launch))
+                    ok_dist = launch.get('dist_to_a_high', 99) >= MIN_DIST_TO_A_HIGH
+                    is_low = launch.get('dist_to_a_high', 99) < 15
+                    is_fake = launch.get('macd_golden', 0) and not _is_real_golden(launch)
+                    if ok_dist and not (is_low and is_fake):
+                        score = calc_bwave_score(awave, bwave_r, launch)
+                        if score['total'] >= 60:
+                            if not _is_stopped(launch, bwave_r):
+                                results.append(('launch_relaxed', score, awave, bwave_r, launch))
 
             div = detect_bwave_divergence(sub, awave, bwave_r)
             if div:
                 score = calc_divergence_score(awave, bwave_r, div)
-                if score['total'] >= 60:
-                    results.append(('divergence_relaxed', score, awave, bwave_r, div))
+                if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+                    if not _is_stopped(div, bwave_r):
+                        results.append(('divergence_relaxed', score, awave, bwave_r, div))
 
         for sig_type, score, aw, bw, sig in results:
             hits.append((i, sub.iloc[i]['trade_date'], float(sub.iloc[i]['close']),
@@ -143,15 +172,33 @@ def main():
     print(f"历史数据: {fmt_date(df.iloc[0]['trade_date'])} ~ {fmt_date(df.iloc[-1]['trade_date'])} 共{len(df)}根")
     print(f"历史最高: {df['high'].max():.2f}  历史最低: {df['low'].min():.2f}  现价: {df['close'].values[-1]:.2f}")
 
-    # ===== 1. 当前最新信号 =====
-    print(f"\n[1] 当前最新交易日BWave信号")
+    # ===== 1. 当前最新信号(应用4个改进) =====
+    print(f"\n[1] 当前最新交易日BWave信号(改进版)")
     latest = None
     awave = detect_awave(df)
+    MIN_DIST_TO_A_HIGH = 5.0
     if awave:
         print(f"  最新A浪: 起{fmt_date(awave['start_date'])}({awave['start_price']:.2f}) -> "
               f"止{fmt_date(awave['end_date'])}({awave['end_price']:.2f}) 涨幅+{awave['gain']:.1f}%")
         bwave = detect_bwave(df, awave)
         bwave_r = detect_bwave_relaxed(df, awave)
+
+        def _is_stopped_cur(sig_obj, bw_obj):
+            stop_line = bw_obj['low_price'] * 0.97
+            si = sig_obj['launch_idx']
+            for j in range(si, len(df)):
+                if df.iloc[j]['close'] < stop_line:
+                    return True
+            return False
+
+        def _is_real_golden_cur(sig_obj):
+            if not sig_obj.get('macd_golden', 0):
+                return False
+            si = sig_obj['launch_idx']
+            if si < len(df):
+                return df.iloc[si].get('macd_dif_bfq', 0) >= 0
+            return False
+
         for bw_label, bw in [('严格B浪', bwave), ('放宽B浪', bwave_r)]:
             if bw is None:
                 continue
@@ -160,21 +207,42 @@ def main():
             launch = check_launch_signal(df, awave, bw)
             if launch:
                 score = calc_bwave_score(awave, bw, launch)
-                print(f"    启动信号: BWaveScore={score['total']} (需≥65)")
-                if score['total'] >= 65:
-                    latest = ('launch', score, awave, bw, launch)
-                    print(f"    ✅ 触发启动信号!")
+                dist_ah = launch.get('dist_to_a_high', 99)
+                is_low = dist_ah < 15
+                is_fake = launch.get('macd_golden', 0) and not _is_real_golden_cur(launch)
+                print(f"    启动信号: BWaveScore={score['total']} (需≥65)  距A高{dist_ah:.1f}%")
+                print(f"      改进4: 距A高≥5%? {'✅' if dist_ah >= MIN_DIST_TO_A_HIGH else '❌追涨'}  "
+                      f"假金叉? {'❌是' if is_fake else '✅否'}")
+                if score['total'] >= 65 and dist_ah >= MIN_DIST_TO_A_HIGH and not (is_low and is_fake):
+                    if _is_stopped_cur(launch, bw):
+                        print(f"    ❌ 改进1+2: 信号触发后跌破B低3%({bw['low_price']*0.97:.2f}),信号失效!")
+                    else:
+                        latest = ('launch', score, awave, bw, launch)
+                        print(f"    ✅ 触发启动信号! (通过全部4个过滤器)")
                 else:
-                    print(f"    评分不足65,未触发")
+                    reasons = []
+                    if score['total'] < 65: reasons.append(f"评分{score['total']}不足65")
+                    if dist_ah < MIN_DIST_TO_A_HIGH: reasons.append(f"距A高{dist_ah:.1f}%<5%追涨")
+                    if is_low and is_fake: reasons.append("DIF<0假金叉")
+                    print(f"    未触发: {'; '.join(reasons)}")
             else:
                 print(f"    无启动信号(需MACD金叉/RSI金叉/MA5上穿)")
             div = detect_bwave_divergence(df, awave, bw)
             if div:
                 score = calc_divergence_score(awave, bw, div)
-                print(f"    底背离: BWaveScore={score['total']} (需≥60)")
-                if score['total'] >= 60 and latest is None:
-                    latest = ('divergence', score, awave, bw, div)
-                    print(f"    ✅ 触发底背离信号!")
+                d_score = score.get('l_score', 0)
+                print(f"    底背离: BWaveScore={score['total']} (需≥60)  d_score={d_score}(需≥40)")
+                if score['total'] >= 60 and d_score >= 40:
+                    if _is_stopped_cur(div, bw):
+                        print(f"    ❌ 改进1+2: 信号触发后跌破B低3%,信号失效!")
+                    elif latest is None:
+                        latest = ('divergence', score, awave, bw, div)
+                        print(f"    ✅ 触发底背离信号! (通过全部4个过滤器)")
+                else:
+                    reasons = []
+                    if score['total'] < 60: reasons.append(f"评分{score['total']}不足60")
+                    if d_score < 40: reasons.append(f"d_score={d_score}不足40(底背离不成立)")
+                    print(f"    未触发: {'; '.join(reasons)}")
             else:
                 print(f"    无底背离")
     else:
@@ -228,22 +296,26 @@ def main():
             print(f"      选中后60日内: 最高{max_high:.2f}({max_up:+.1f}%) 最低{max_low:.2f}({max_dn:+.1f}%)")
 
     # ===== 4. 与W2策略命中点对比 =====
-    print(f"\n[4] BWave vs W2 对比分析")
+    print(f"\n[4] BWave(改进版) vs W2 对比分析")
     print(f"    W2策略首次命中: 2024-10-25  价格43.75  信号分88")
     print(f"    W2命中后5日: -12.2%  60日: -21.9%  最低: -32.8%(29.38)")
     print(f"    W2首次跌破L2: 2025-01-02  价格35.56")
     if unique_hits:
         first = unique_hits[0]
-        print(f"\n    BWave首次命中: {fmt_date(first[1])}  价格{first[2]:.2f}  BWaveScore {first[4]['total']}")
+        last = unique_hits[-1]
+        print(f"\n    BWave(改进版)首次命中: {fmt_date(first[1])}  价格{first[2]:.2f}  BWaveScore {first[4]['total']}")
+        print(f"    BWave(改进版)末次命中: {fmt_date(last[1])}  价格{last[2]:.2f}  BWaveScore {last[4]['total']}")
+        print(f"    改进后命中次数: {len(unique_hits)} (原版18次)")
         idx0 = first[0]
         price0 = first[2]
         if idx0 + 60 < len(df):
             future_seg = df.iloc[idx0:idx0+61]
             max_low = future_seg['low'].min()
             max_dn = (max_low / price0 - 1) * 100
-            print(f"    BWave命中后60日最低: {max_low:.2f} ({max_dn:+.1f}%)")
+            print(f"    BWave首次命中后60日最低: {max_low:.2f} ({max_dn:+.1f}%)")
     else:
-        print(f"\n    BWave从未命中 -> BWave成功避开了W2的陷阱")
+        print(f"\n    BWave(改进版)从未命中 -> 4个过滤器成功避开了所有假信号!")
+        print(f"    对比原版: 18次命中(第一波4次成功+第二波14次失败)")
 
 
 if __name__ == '__main__':

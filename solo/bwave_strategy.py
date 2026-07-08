@@ -1534,6 +1534,26 @@ def main():
                     continue
                 diag['b_wave'] += 1
 
+                # 改进1+2: 信号止损验证 -- 信号触发后若跌破B低3%,则视为失效不再输出
+                def _is_stopped(sig_obj, bw_obj):
+                    stop_line = bw_obj['low_price'] * 0.97
+                    si = sig_obj['launch_idx']
+                    for j in range(si, len(df)):
+                        if df.iloc[j]['close'] < stop_line:
+                            return True
+                    return False
+
+                # 改进4: 假MACD金叉过滤 -- DIF<0时的金叉视为反弹假信号
+                def _is_real_golden(sig_obj):
+                    if not sig_obj.get('macd_golden', 0):
+                        return False
+                    si = sig_obj['launch_idx']
+                    if si < len(df):
+                        return df.iloc[si].get('macd_dif_bfq', 0) >= 0
+                    return False
+
+                MIN_DIST_AH = 5.0  # 改进4: 距A高<5%视为追涨
+
                 signal_type = None
                 sig = None
                 score = None
@@ -1541,46 +1561,62 @@ def main():
                 if bwave:
                     launch = check_launch_signal(df, awave, bwave)
                     if launch and len(df) - launch['launch_idx'] <= 10:
-                        s = calc_bwave_score(awave, bwave, launch)
-                        if s['total'] >= args.min_score:
-                            signal_type = '启动'
-                            sig = launch
-                            score = s
-                            bwave_used = bwave
-                            diag['launch'] += 1
+                        # 改进4: 位置过滤 + 假金叉过滤
+                        ok_dist = launch.get('dist_to_a_high', 99) >= MIN_DIST_AH
+                        is_low = launch.get('dist_to_a_high', 99) < 15
+                        is_fake = launch.get('macd_golden', 0) and not _is_real_golden(launch)
+                        if ok_dist and not (is_low and is_fake):
+                            s = calc_bwave_score(awave, bwave, launch)
+                            if s['total'] >= args.min_score:
+                                # 改进1+2: 止损验证
+                                if not _is_stopped(launch, bwave):
+                                    signal_type = '启动'
+                                    sig = launch
+                                    score = s
+                                    bwave_used = bwave
+                                    diag['launch'] += 1
 
                 if not sig and bwave_r:
                     launch = check_launch_signal(df, awave, bwave_r)
                     if launch and len(df) - launch['launch_idx'] <= 10:
-                        s = calc_bwave_score(awave, bwave_r, launch)
-                        if s['total'] >= max(args.min_score - 5, 55):
-                            signal_type = '启动'
-                            sig = launch
-                            score = s
-                            bwave_used = bwave_r
-                            diag['launch'] += 1
+                        ok_dist = launch.get('dist_to_a_high', 99) >= MIN_DIST_AH
+                        is_low = launch.get('dist_to_a_high', 99) < 15
+                        is_fake = launch.get('macd_golden', 0) and not _is_real_golden(launch)
+                        if ok_dist and not (is_low and is_fake):
+                            s = calc_bwave_score(awave, bwave_r, launch)
+                            if s['total'] >= max(args.min_score - 5, 55):
+                                if not _is_stopped(launch, bwave_r):
+                                    signal_type = '启动'
+                                    sig = launch
+                                    score = s
+                                    bwave_used = bwave_r
+                                    diag['launch'] += 1
 
                 if not sig and bwave:
                     div = detect_bwave_divergence(df, awave, bwave)
                     if div:
                         s = calc_divergence_score(awave, bwave, div)
-                        if s['total'] >= max(args.min_score - 5, 55):
-                            signal_type = '底背离'
-                            sig = div
-                            score = s
-                            bwave_used = bwave
-                            diag['b_divergence'] += 1
+                        # 改进3: 底背离验证 -- d_score≥40才输出
+                        if s['total'] >= max(args.min_score - 5, 55) and s.get('l_score', 0) >= 40:
+                            # 改进1+2: 止损验证
+                            if not _is_stopped(div, bwave):
+                                signal_type = '底背离'
+                                sig = div
+                                score = s
+                                bwave_used = bwave
+                                diag['b_divergence'] += 1
 
                 if not sig and bwave_r:
                     div = detect_bwave_divergence(df, awave, bwave_r)
                     if div:
                         s = calc_divergence_score(awave, bwave_r, div)
-                        if s['total'] >= max(args.min_score - 5, 55):
-                            signal_type = '底背离'
-                            sig = div
-                            score = s
-                            bwave_used = bwave_r
-                            diag['b_divergence'] += 1
+                        if s['total'] >= max(args.min_score - 5, 55) and s.get('l_score', 0) >= 40:
+                            if not _is_stopped(div, bwave_r):
+                                signal_type = '底背离'
+                                sig = div
+                                score = s
+                                bwave_used = bwave_r
+                                diag['b_divergence'] += 1
 
                 if not sig:
                     continue
