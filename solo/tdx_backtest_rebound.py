@@ -169,14 +169,28 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame) -> Tuple[Optional[
         return None, {}
     closes = df['close'].values
     vol = df['vol'].values if 'vol' in df.columns else np.zeros(len(df))
-    ma5 = np.mean(closes[-5:]) if len(closes) >= 5 else closes[-1]
-    ma10 = np.mean(closes[-10:]) if len(closes) >= 10 else closes[-1]
-    ma20 = np.mean(closes[-20:]) if len(closes) >= 20 else closes[-1]
+    
+    if len(closes) < 40:
+        return None, {}
+    
+    ma5 = np.mean(closes[-5:])
+    ma10 = np.mean(closes[-10:])
+    ma20 = np.mean(closes[-20:])
+    ma20_prev = np.mean(closes[-40:-20])
+    
     vol_5 = np.mean(vol[-5:])
-    vol_20 = np.mean(vol[-20:]) if len(vol) >= 20 else vol[-1]
+    vol_20 = np.mean(vol[-20:])
     vol_ratio = vol_5 / vol_20 if vol_20 > 0 else 0
+    
     rebound_pct = (current_price / wave.L2.price - 1) * 100
     dist_to_H1_pct = (wave.H1.price / current_price - 1) * 100
+    
+    if ma20 < ma20_prev:
+        return None, {}
+    
+    if vol_ratio < 1.2:
+        return None, {}
+    
     score = 0
     reasons = []
     if current_price > ma5:
@@ -185,8 +199,10 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame) -> Tuple[Optional[
         score += 15; reasons.append('MA10已突破')
     if current_price > ma20:
         score += 20; reasons.append('MA20已突破')
-    if vol_ratio > 1.0:
+    if vol_ratio > 1.5:
         score += 15; reasons.append(f'量比{vol_ratio:.2f}放大')
+    elif vol_ratio > 1.2:
+        score += 10; reasons.append(f'量比{vol_ratio:.2f}适中')
     if rebound_pct > 5:
         score += 15; reasons.append(f'回升{rebound_pct:.1f}%')
     elif rebound_pct > 0:
@@ -269,7 +285,7 @@ def main():
     START_DATE = "20250101"
     END_DATE = "20260708"
     HOLD_DAYS = 5
-    MIN_SCORE = 60
+    MIN_SCORE = 65
     SKIP_BJ = True
     
     print(f"回测区间: {START_DATE} ~ {END_DATE}", flush=True)

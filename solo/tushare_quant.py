@@ -5085,8 +5085,9 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
                 pass  # 查询失败不阻塞
         
         # 过滤条件：非双创板股票且未上过热榜的，直接返回0分
-        # 双创板：创业板(300开头)、科创板(688开头)
-        is_innovation_board = ts_code.startswith('300') or ts_code.startswith('688')
+        # 双创板：创业板(300/301/302等)、科创板(688开头)
+        from watchlist_buy_signal import is_shuangchuang
+        is_innovation_board = is_shuangchuang(ts_code)
         if not is_innovation_board and hot_appear_count<=0:
             return 0, "非双创板且未上热榜", {}, 90
         
@@ -7180,7 +7181,7 @@ def deepseek(prompt, use_flash=False):
         "messages": [
             {
                 "role": "system",
-                "content": "你是A股顶级机构和游资短线投资分析师"
+                "content": "你是A股顶级投资分析师"
             },
             {
                 "role": "user",
@@ -10748,8 +10749,7 @@ def run(target_date=None, simple_mode=False):
 
 <span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
-3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面1  0名，不能自行截取，也不要加入其它的）：
-**【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，严格显示先按突破成功，再按整合评分高低排序取前面10名，不能自行截取，也不要加入其它的）：
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
 【第1名 - 明日首选】**股票名** (代码)
 【第2名】**股票名** (代码)
@@ -10763,7 +10763,6 @@ def run(target_date=None, simple_mode=False):
 "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
 例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
 【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
-
 - 基本面Alpha评分（0-100分，越高越好）及中长线解读：
 【评分标准】
 - 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
