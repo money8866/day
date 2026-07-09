@@ -1,0 +1,246 @@
+{
+  "total_configured": 181,
+  "matched": 153,
+  "unmatched": 28,
+  "match_rate": 84.5,
+  "unmatched_list": [
+    {
+      "theme": "AI新消费",
+      "concept": "直播电商",
+      "candidates": [
+        "跨境电商",
+        "综合电商",
+        "电商概念"
+      ]
+    },
+    {
+      "theme": "AI算力基建",
+      "concept": "AI服务器",
+      "candidates": [
+        "IT服务Ⅲ",
+        "IT服务Ⅱ",
+        "通信服务"
+      ]
+    },
+    {
+      "theme": "AI算力基建",
+      "concept": "服务器",
+      "candidates": [
+        "通信服务",
+        "诊断服务",
+        "社会服务"
+      ]
+    },
+    {
+      "theme": "AI芯片",
+      "concept": "半导体设计",
+      "candidates": [
+        "半导体设备",
+        "半导体",
+        "半导体概念"
+      ]
+    },
+    {
+      "theme": "AI芯片",
+      "concept": "集成电路设计",
+      "candidates": [
+        "集成电路封测",
+        "集成电路制造",
+        "风电设备"
+      ]
+    },
+    {
+      "theme": "AI芯片",
+      "concept": "IC设计",
+      "candidates": [
+        "AIPC",
+        "模拟芯片设计",
+        "数字芯片设计"
+      ]
+    },
+    {
+      "theme": "AI芯片",
+      "concept": "功率半导体",
+      "candidates": [
+        "半导体",
+        "半导体设备",
+        "半导体概念"
+      ]
+    },
+    {
+      "theme": "PCB",
+      "concept": "PCB概念",
+      "candidates": [
+        "PLC概念",
+        "PCB",
+        "UWB概念"
+      ]
+    },
+    {
+      "theme": "PCB",
+      "concept": "覆铜板概念",
+      "candidates": [
+        "黄金概念",
+        "鸿蒙概念",
+        "鸡肉概念"
+      ]
+    },
+    {
+      "theme": "PCB",
+      "concept": "覆铜板",
+      "candidates": [
+        "铜",
+        "面板",
+        "板材"
+      ]
+    },
+    {
+      "theme": "人形机器人",
+      "concept": "具身智能",
+      "candidates": [
+        "智能穿戴",
+        "智能电视",
+        "智能电网"
+      ]
+    },
+    {
+      "theme": "先进封装",
+      "concept": "Chiplet",
+      "candidates": []
+    },
+    {
+      "theme": "先进封装",
+      "concept": "半导体封装",
+      "candidates": [
+        "半导体",
+        "半导体设备",
+        "半导体概念"
+      ]
+    },
+    {
+      "theme": "先进封装",
+      "concept": "半导体封测",
+      "candidates": [
+        "半导体",
+        "半导体设备",
+        "半导体概念"
+      ]
+    },
+    {
+      "theme": "光学光电子",
+      "concept": "VR概念",
+      "candidates": [
+        "ERP概念",
+        "EDR概念",
+        "PVDF概念"
+      ]
+    },
+    {
+      "theme": "半导体制造",
+      "concept": "晶圆制造",
+      "candidates": [
+        "轻工制造",
+        "船舶制造",
+        "纺织制造"
+      ]
+    },
+    {
+      "theme": "合成生物",
+      "concept": "生物制造",
+      "candidates": [
+        "生物制品",
+        "其他生物制品",
+        "轻工制造"
+      ]
+    },
+    {
+      "theme": "培育钻石",
+      "concept": "人造金刚石",
+      "candidates": [
+        "人造肉"
+      ]
+    },
+    {
+      "theme": "大农业",
+      "concept": "林业",
+      "candidates": [
+        "林业Ⅲ",
+        "林业Ⅱ",
+        "渔业"
+      ]
+    },
+    {
+      "theme": "大农业",
+      "concept": "畜牧业",
+      "candidates": [
+        "渔业",
+        "乳业"
+      ]
+    },
+    {
+      "theme": "存储芯片",
+      "concept": "HBM",
+      "candidates": [
+        "B股"
+      ]
+    },
+    {
+      "theme": "工业智能",
+      "concept": "智能制造",
+      "candidates": [
+        "轻工制造",
+        "船舶制造",
+        "纺织制造"
+      ]
+    },
+    {
+      "theme": "工业母机与自动化",
+      "concept": "智能制造",
+      "candidates": [
+        "轻工制造",
+        "船舶制造",
+        "纺织制造"
+      ]
+    },
+    {
+      "theme": "工程机械与重型装备",
+      "concept": "高端装备",
+      "candidates": [
+        "海工装备",
+        "航空装备Ⅲ",
+        "航空装备Ⅱ"
+      ]
+    },
+    {
+      "theme": "氢能",
+      "concept": "电解水制氢",
+      "candidates": [
+        "水泥制造",
+        "水泥制品"
+      ]
+    },
+    {
+      "theme": "石油石化",
+      "concept": "油气开采",
+      "candidates": [
+        "油气开采Ⅲ",
+        "油气开采Ⅱ",
+        "煤炭开采"
+      ]
+    },
+    {
+      "theme": "脑机接口",
+      "concept": "脑机接口",
+      "candidates": []
+    },
+    {
+      "theme": "钢铁",
+      "concept": "特钢概念",
+      "candidates": [
+        "特斯拉概念",
+        "特钢Ⅲ",
+        "特钢Ⅱ"
+      ]
+    }
+  ]
+}

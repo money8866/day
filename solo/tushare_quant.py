@@ -9814,10 +9814,10 @@ def run(target_date=None, simple_mode=False):
                 }
                 zj_signals.append(signal_entry)
 
-                # 筛选强买信号：回调1-2天 + 买分>=80（回测胜率80%）
+                # 筛选强买信号：回调1-4天 + 买分>=80（回测胜率80%）
                 if (buy_signal == 'BUY'
                         and buy_score >= 80
-                        and 1 <= buy_details.get('days_from_high', 99) <= 2):
+                        and 1 <= buy_details.get('days_from_high', 99) <= 4):
                     zj_strong_buy.append(signal_entry)
             except Exception:
                 continue
@@ -9830,10 +9830,10 @@ def run(target_date=None, simple_mode=False):
         zj_strong_buy = sorted(zj_strong_buy, key=lambda x: -x['买分'])
 
         zj_lines = ["=" * 60]
-        zj_lines.append("🔥 中军企稳·强买信号 (回调1-2天+买分>=80，回测胜率80%)")
+        zj_lines.append("🔥 中军企稳·强买信号 (回调1-4天+买分>=80，回测胜率80%)")
         zj_lines.append("=" * 60)
         if zj_strong_buy:
-            zj_lines.append(f"【筛选条件】BUY信号 + 买分>=80 + 回调1-2天 | 回测T+3胜率80%")
+            zj_lines.append(f"【筛选条件】BUY信号 + 买分>=80 + 回调1-4天 | 回测T+3胜率80%")
             zj_lines.append("")
             for i, s in enumerate(zj_strong_buy[:10], 1):
                 zj_lines.append(f"【强买{i}】{s['名称']} ({s['代码']}) {s['板块']} 现价={s['现价']:.2f}")
@@ -9871,12 +9871,14 @@ def run(target_date=None, simple_mode=False):
             try:
                 result = subprocess.run(
                     [sys.executable, wave2_script, '--csv', wave2_pool_csv, '--output', 'csv', '--date', TRADE_DATE, '--today'],
-                    capture_output=True, text=True, timeout=600,
+                    capture_output=True, text=True, timeout=600, encoding='utf-8', errors='replace',
                     env={**os.environ, 'TUSHARE_TOKEN': os.environ.get('TUSHARE_TOKEN', '')}
                 )
-                print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+                if result.stdout:
+                    print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
                 if result.returncode != 0:
-                    print(f'[二波低吸] 主动扫描异常: {result.stderr[-300:]}')
+                    if result.stderr:
+                        print(f'[二波低吸] 主动扫描异常: {result.stderr[-300:]}')
                 # 重新查找生成的文件
                 wave2_files = glob.glob(os.path.join(wave2_output_dir, 'wave2_pattern_*.csv'))
                 today_files = [f for f in wave2_files if os.path.basename(f).startswith(f'wave2_pattern_{TRADE_DATE}_')]
@@ -10848,13 +10850,13 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 持有策略：中线策略，最优20天持有，收益>10%分批止盈，跌破B浪低点-3%止损
 - 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"
 7、**【ETF操作建议】**
-- 当前持仓ETF及调仓建议
+- 当前持仓ETF及调仓建议,显示弱转强及逢低买入个股；
 - 【补涨信号-强制输出】下方补涨信号数据中，每个ETF必须逐只列出成份股名称和补涨分数。格式示例：
-  创新药ETF (159992) 成份股信立泰(补涨分78)、亿帆医药(补涨分74)均有高补涨评分，可关注创新药方向。
-  芯片ETF (159995) 成份股中芯国际(补涨分73)、紫光国微(补涨分73)也出现补涨信号。
 - 【约束】必须从下方数据中提取，禁止凭空编造。
+内容来源以下双引号内数据：
+“
 {etf_tips_text}
-
+”
 8、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 - 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
@@ -10909,7 +10911,7 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
             f.write(prompt)
         print(f"[DEBUG] Prompt已保存: {prompt_file}")
         #report = deepseek(prompt)
-        report = ask_doubao(prompt)
+        report = deepseek(prompt)
         print(report)
 
         try:
