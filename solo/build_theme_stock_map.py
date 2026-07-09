@@ -73,27 +73,28 @@ def build_theme_stock_map():
         print(f"[错误] 获取 stock_basic 失败: {e}")
         return None
     
-    # 3. 调用 match_theme_stocks 进行匹配
-    # 返回: theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
-    theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.match_theme_stocks(
-        hot_themes, dc_df, stock_basic_df
-    )
-    
-    print(f"[匹配] 共 {len(theme_stock_map)} 个主题匹配到成份股")
-    
-    # 4. 构建正向映射: theme -> [stock, ...]
-    MAX_STOCKS_PER_THEME = 300
-    MAX_THEMES_PER_STOCK = 5
-    # 超低分过滤阈值（分数低于此值的concept_fallback/industry_alias股票被清理）
-    LOW_SCORE_THRESHOLD = 5
-
-    # 加载主营业务数据用于基本面验证
+    # 加载主营业务数据用于 IRS 关键词维度评分
     mainbiz_path = os.path.join(CACHE_DIR, 'stock_company_mainbiz.json')
     stock_mainbiz = {}
     if os.path.exists(mainbiz_path):
         with open(mainbiz_path, 'r', encoding='utf-8') as f:
             stock_mainbiz = json.load(f)
         print(f"[加载] 主营业务数据: {len(stock_mainbiz)} 只")
+
+    # 3. 调用 match_theme_stocks 进行匹配
+    # 返回: theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+    sw_data = theme_ts.get_sw_members()
+    theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.match_theme_stocks(
+        hot_themes, dc_df, stock_basic_df, stock_mainbiz=stock_mainbiz, sw_data=sw_data
+    )
+
+    print(f"[匹配] 共 {len(theme_stock_map)} 个主题匹配到成份股")
+
+    # 4. 构建正向映射: theme -> [stock, ...]
+    MAX_STOCKS_PER_THEME = 300
+    MAX_THEMES_PER_STOCK = 5
+    # 超低分过滤阈值（分数低于此值的concept_fallback/industry_alias股票被清理）
+    LOW_SCORE_THRESHOLD = 5
 
     # 主题→主营业务验证关键词（用于过滤行业泛化误判）
     # 对于 concept_fallback / industry_alias 匹配的股票，main_business 必须包含至少1个关键词
@@ -109,13 +110,10 @@ def build_theme_stock_map():
         '电网智能化': ['智能电网', '电网', '虚拟电厂', '配电', '电力软件', '电表', '用电信息', '调度自动化', '电力信息化', '能源管理', '电力物联网', '微电网', '源网荷储', '需求侧响应'],
         '充电桩': ['充电桩', '充电模块', '充电枪', '充电堆', '充电运营', '充电站', '换电站', '换电', 'V2G', '车网互动', '高压快充', '超充', '液冷超充', '充电设备', '充电服务', '有序充电'],
         '半导体制造': ['晶圆代工', '晶圆制造', '芯片制造', '集成电路制造', 'Foundry', '中芯', '华虹', '晶合', '粤芯', '积塔', '燕东微', '士兰微', '华润微', '晶圆生产', '半导体制造', 'IDM'],
-        '半导体封测与先进封装': ['封装', '封测', '测试', '先进封装', 'TSV', 'Bumping', 'Chiplet', 'CoWoS', '封装测试', '晶圆级封装', '倒装'],
+        '先进封装': ['封装', '封测', '测试', '先进封装', 'TSV', 'Bumping', 'Chiplet', 'CoWoS', '封装测试', '晶圆级封装', '倒装'],
         '半导体材料': ['硅片', '靶材', '电子特气', '特气', '光刻胶', '抛光液', '抛光垫', '前驱体', '湿电子化学品', 'CMP材料', '电子化学', '光刻气体', '掺杂气体', '硅烷'],
         '半导体设备': ['刻蚀设备', '薄膜沉积', 'PVD', 'CVD', 'ALD', '光刻机', '清洗设备', 'CMP设备', '离子注入', '涂胶显影', '测试机', '探针台', '分选机', '量测设备', '缺陷检测', '半导体设备', '晶圆传输'],
-        '功率半导体': ['IGBT', 'MOSFET', '功率半导体', '功率模块', 'SiC', 'GaN', '晶闸管', '二极管', '功率器件', '功率芯片'],
         '存储芯片': ['存储芯片', '存储器', 'DRAM', 'NAND', '闪存', '内存', 'Flash', 'HBM', '高带宽存储', '存算一体', 'SSD', '固态硬盘', 'NOR', 'SRAM', '存储模组'],
-        'IC设计': ['芯片设计', '集成电路设计', '模拟芯片', '射频芯片', 'MCU', 'SoC', 'ASIC', 'FPGA', 'DSP', 'Fabless', '无晶圆', '设计服务'],
-        '光刻机链': ['光刻机', '光刻镜头', '光学系统', '双工件台', '浸没式', 'DUV', 'EUV', 'ASML', '蔡司', '光刻胶涂布', '对准系统', '光刻机零部件', '光刻机维修', '极紫外光刻'],
         '化工链': ['化工', '化学', '原料', '材料', '肥料', '农药', '塑料', '橡胶', '涂料', '染料'],
         '氢能': ['氢', '燃料电池', '电解水', '储氢', '加氢'],
         '煤炭链': ['煤', '煤炭', '焦煤', '焦炭', '动力煤'],
@@ -155,7 +153,7 @@ def build_theme_stock_map():
         '培育钻石': ['金刚石', '钻石', '超硬材料', '超硬刀具', '超硬制品', '人造金刚石', '金刚石线', '金刚石工具', '粉末冶金', '电镀金刚石'],
         '被动元件': ['电容器', '电容', '电感', '电阻', '电子元器件', '电子陶瓷', '压敏', '石英晶体', '载带', '片式', '薄膜电容', '铝电解', '超级电容', '谐振器', '传感器', '电子元件', '功能陶瓷', '陶瓷材料'],
         '基建地产链': ['建筑', '工程', '基建', '地产', '房地产', '水泥', '建材', '施工', '勘察', '开发', '基础设施建设', '房屋建筑', '工程承包', '建筑装饰', '装修', '钢结构', '管材', '玻璃', '防水', '涂料', '瓷砖', '门窗', '五金', '工程装备', '模块', '公路', '桥梁', '隧道', '高等级公路', '养护', '园区运营'],
-        'PCB电子电路': ['PCB', '印刷电路', '电路板', '印制电路', '覆铜板', '电子装联', '印制线路板', '高密度印制', '电子树脂', '铜箔', '玻纤布', '线路板', '电感器', '压敏电阻', '钽电容', '电子元器件', '化学试剂', '环氧树脂', '油墨', '电子材料', '专用装备', '电子级'],
+        'PCB': ['PCB', '印刷电路', '电路板', '印制电路', '覆铜板', '电子装联', '印制线路板', '高密度印制', '电子树脂', '铜箔', '玻纤布', '线路板', '电感器', '压敏电阻', '钽电容', '电子元器件', '化学试剂', '环氧树脂', '油墨', '电子材料', '专用装备', '电子级'],
     }
 
     # ST股票灰名单过滤
@@ -170,7 +168,6 @@ def build_theme_stock_map():
         '银行': [],
         '保险': [],
         '合成生物': ['养殖业', '生猪', '畜禽饲料', 'CDMO', '医疗服务'],
-        '功率半导体': ['汽车零部件', '汽车配件', '燃油', '内燃机', '矿物制品'],
         'AI应用与模型': ['教育', '职业教育', '培训'],
         '金融科技': ['游戏', '移动游戏', '网红经济', '营销服务'],
         'AI文娱内容': ['基建', '勘察', '交通工程', '建筑设计'],
@@ -179,15 +176,15 @@ def build_theme_stock_map():
         # 特高压/充电桩排除软件IT类（归入电网智能化），保留电气设备/汽车配件类
         '特高压': ['软件服务', 'IT设备', '互联网', '出版业', '影视音像', '广告包装'],
         '充电桩': ['软件服务', 'IT设备', '互联网', '出版业', '影视音像', '广告包装'],
-        # 半导体8主题统一排除非半导体相关行业（北交所低质量股票常属这些行业）
+        # 半导体7主题统一排除非半导体相关行业（北交所低质量股票常属这些行业）
         # 注：半导体材料不排除化工原料（华特气体/金宏气体等属化工原料行业）
         '半导体制造': ['矿物制品', '汽车配件', '汽车零部件'],
-        '半导体封测与先进封装': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
+        '先进封装': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
         '半导体材料': ['矿物制品', '汽车配件', '汽车零部件'],
         '半导体设备': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
         '存储芯片': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
-        'IC设计': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
-        '光刻机链': ['矿物制品', '汽车配件', '汽车零部件'],
+        'AI芯片': ['化工原料', '矿物制品', '汽车配件', '汽车零部件'],
+        'PCB': ['矿物制品', '汽车配件', '汽车零部件'],
     }
     # 主题-行业白名单：主题只允许特定行业的股票
     THEME_INDUSTRY_WHITELIST = {
@@ -216,7 +213,6 @@ def build_theme_stock_map():
         '金融科技': ['汤姆猫', '天下秀'],
         'AI文娱内容': ['华设集团'],
         '合成生物': ['牧原股份', '凯莱英', '双成药业'],
-        '功率半导体': ['威孚高科'],
         # 新增6只行业明显不匹配的误判（mainbiz与主题完全无关）
         '医药产业链': ['利民股份', '富邦科技'],
         '商超零售链': ['珠免集团'],
@@ -278,43 +274,15 @@ def build_theme_stock_map():
 
             # 超低分过滤：concept_fallback和industry_alias来源的低分股票清理
             stock_score = meta.get("score", 0)
-            if stock_via in ('concept_fallback', 'stock_basic_industry_alias') and stock_score < LOW_SCORE_THRESHOLD:
+            irs_layer = meta.get("irs_layer", "")
+
+            # IRS 分层过滤：excluded 层不纳入
+            if irs_layer == 'excluded':
                 continue
 
-            # 主营业务验证：对非核心来源的股票，用主营业务文本验证主题相关性
-            # 电力三主题和半导体主题对dc_industry_board来源也强制验证
-            # 半导体主题对stock_basic_industry来源也强制验证（避免LED/被动元件等混入）
-            mainbiz_check_vias = ('concept_fallback', 'stock_basic_industry_alias', 'concept_as_industry')
-            if theme_name in ('特高压', '电网智能化', '充电桩',
-                              '半导体制造', '半导体封测与先进封装', '半导体材料', '半导体设备',
-                              '功率半导体', '存储芯片', 'IC设计', '光刻机链'):
-                mainbiz_check_vias = mainbiz_check_vias + ('dc_industry_board', 'stock_basic_industry')
-            # 半导体主题对北交所股票无mainbiz数据时强制清理（core/leader豁免）
-            # 北交所小盘股quality参差，无mainbiz数据无法验证主题相关性
-            semi_themes = ('半导体制造', '半导体封测与先进封装', '半导体材料', '半导体设备',
-                           '功率半导体', '存储芯片', 'IC设计', '光刻机链')
-            if theme_name in semi_themes and code.endswith('.BJ') and stock_via not in ('core_company', 'leader_company'):
-                if not stock_mainbiz.get(code, ''):
-                    continue
-            if stock_via in mainbiz_check_vias:
-                if theme_name in THEME_MAINBIZ_KEYWORDS:
-                    mainbiz_text = stock_mainbiz.get(code, '')
-                    keywords = THEME_MAINBIZ_KEYWORDS[theme_name]
-                    if mainbiz_text:
-                        # 有主营业务数据：必须匹配关键词
-                        if not any(kw in mainbiz_text for kw in keywords):
-                            continue
-                        # 存储芯片特殊处理：mainbiz含"晶圆代工"的股票要求同时含明确存储关键词
-                        # 避免华虹宏力等代工企业（仅工艺平台含存储器）被误归入存储芯片
-                        if theme_name == '存储芯片' and ('晶圆代工' in mainbiz_text or '晶圆制造' in mainbiz_text):
-                            strict_kws = ['存储芯片', 'DRAM', 'NAND', '闪存', 'Flash', 'HBM', '存算一体', 'SSD', '固态硬盘', 'NOR', 'SRAM', '存储模组']
-                            if not any(kw in mainbiz_text for kw in strict_kws):
-                                continue
-                    elif theme_name in ('特高压', '电网智能化', '充电桩',
-                                        '半导体制造', '存储芯片', '光刻机链') and stock_via == 'dc_industry_board':
-                        # 重点主题无mainbiz数据的dc_industry_board来源：要求较高分数（≥20）
-                        if stock_score < 20:
-                            continue
+            # 低分过滤：弱来源股票分数过低时排除
+            if stock_via in ('concept_fallback', 'stock_basic_industry_alias') and stock_score < LOW_SCORE_THRESHOLD:
+                continue
 
             stock_list.append({
                 "code": code,
@@ -323,11 +291,13 @@ def build_theme_stock_map():
                 "chain_distance": meta.get("chain_distance", 2),
                 "industry_match": meta.get("industry_match", False),
                 "score": stock_score,
+                "irs_score": meta.get("irs_score", 0),
+                "irs_layer": meta.get("irs_layer", ""),
                 "industry": stock_industry,
                 "concepts": stock_concepts.get(code, []),
             })
             total_stock_refs_raw += 1
-        stock_list.sort(key=lambda x: -x['score'])
+        stock_list.sort(key=lambda x: -x.get('irs_score', x.get('score', 0)))
         themes_output_raw[theme_name] = stock_list
 
     stocks_output_raw = {}
@@ -371,30 +341,29 @@ def build_theme_stock_map():
         ('特高压', '电网智能化'),
         ('特高压', '充电桩'),
         ('电网智能化', '充电桩'),
-        # 半导体主题互斥：制造/封测/材料/设备/功率/存储/IC设计/光刻机链 两两互斥
+        # 半导体主题互斥：AI芯片/存储芯片/半导体设备/半导体制造/半导体材料/先进封装/PCB 两两互斥
         # 确保一只半导体股票只归入最匹配的子主题
-        ('半导体制造', '半导体封测与先进封装'),
-        ('半导体制造', '半导体材料'),
-        ('半导体制造', '半导体设备'),
-        ('半导体制造', '功率半导体'),
-        ('半导体制造', '存储芯片'),
-        ('半导体制造', 'IC设计'),
-        ('半导体制造', '光刻机链'),
-        ('半导体封测与先进封装', '半导体材料'),
-        ('半导体封测与先进封装', '半导体设备'),
-        ('半导体封测与先进封装', '光刻机链'),
-        ('半导体材料', '半导体设备'),
-        ('半导体材料', '光刻机链'),
-        ('半导体设备', '光刻机链'),
+        ('AI芯片', '存储芯片'),
+        ('AI芯片', '半导体设备'),
+        ('AI芯片', '半导体制造'),
+        ('AI芯片', '半导体材料'),
+        ('AI芯片', '先进封装'),
+        ('AI芯片', 'PCB'),
         ('存储芯片', '半导体设备'),
+        ('存储芯片', '半导体制造'),
         ('存储芯片', '半导体材料'),
-        ('存储芯片', '半导体封测与先进封装'),
-        ('存储芯片', '光刻机链'),
-        ('功率半导体', '半导体封测与先进封装'),
-        ('IC设计', '半导体封测与先进封装'),
-        ('IC设计', '半导体制造'),
-        ('IC设计', '存储芯片'),
-        ('IC设计', '光刻机链'),
+        ('存储芯片', '先进封装'),
+        ('存储芯片', 'PCB'),
+        ('半导体设备', '半导体制造'),
+        ('半导体设备', '半导体材料'),
+        ('半导体设备', '先进封装'),
+        ('半导体设备', 'PCB'),
+        ('半导体制造', '半导体材料'),
+        ('半导体制造', '先进封装'),
+        ('半导体制造', 'PCB'),
+        ('半导体材料', '先进封装'),
+        ('半导体材料', 'PCB'),
+        ('先进封装', 'PCB'),
     ]
     
     stocks_output = {}
@@ -454,12 +423,14 @@ def build_theme_stock_map():
                 "chain_distance": meta.get("chain_distance", 2),
                 "industry_match": meta.get("industry_match", False),
                 "score": meta.get("score", 0),
+                "irs_score": meta.get("irs_score", 0),
+                "irs_layer": meta.get("irs_layer", ""),
                 "industry": stock_basic_industry.get(code, ""),
                 "concepts": stock_concepts.get(code, []),
             })
 
     for theme_name in themes_output:
-        themes_output[theme_name].sort(key=lambda x: -x['score'])
+        themes_output[theme_name].sort(key=lambda x: -x.get('irs_score', x.get('score', 0)))
         themes_output[theme_name] = themes_output[theme_name][:MAX_STOCKS_PER_THEME]
 
     # 重新构建股票→主题映射（确保一致性）

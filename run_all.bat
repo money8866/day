@@ -44,6 +44,8 @@ python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\r
 
 python solo\bwave_strategy.py
 
+python solo\etf_resonance\wave3_detector.py --scan --scope etf --top 20
+
 echo [Step 5/7] 自选量化
 
 echo =============================================

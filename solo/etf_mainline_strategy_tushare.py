@@ -382,7 +382,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             if con_df is None:
                 con_df = pro.daily(ts_code=con_ts_code,
                                    start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
-                                   fields="ts_code,trade_date,open,close,low,vol")
+                                   fields="ts_code,trade_date,open,high,close,low,vol")
                 _save_cache(con_df, cache_file)
                 time.sleep(0.1)
             
@@ -411,6 +411,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             # 技术形态指标（简化版）
             open_arr = con_df['open'].values if 'open' in con_df.columns else None
             low_arr = con_df['low'].values if 'low' in con_df.columns else None
+            high_arr = con_df['high'].values if 'high' in con_df.columns else None
             pct_chg = (close_arr[-1] / close_arr[-2] - 1) * 100 if len(close_arr) >= 2 else 0
             ma5_val = np.mean(close_arr[-5:]) if len(close_arr) >= 5 else close_arr[-1]
             ma10_val = np.mean(close_arr[-10:]) if len(close_arr) >= 10 else close_arr[-1]
@@ -439,6 +440,21 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             dif_3ago = dif_arr[-4] if len(dif_arr) >= 4 and not np.isnan(dif_arr[-4]) else 0
             macd_cross_3d = dif_3ago < 0 and dif_now > 0
             
+            # === 突破后回踩识别（新增）===
+            # 近10日单日最大涨幅（识别放量长阳突破，10日窗口覆盖突破后回踩整段）
+            pct_arr = np.diff(close_arr) / np.maximum(close_arr[:-1], 0.01) * 100
+            breakout_gain_10d = float(np.max(pct_arr[-10:])) if len(pct_arr) >= 10 else 0.0
+            # 近10日高低点（回踩基准用近10日最高价，缺high列时用收盘价）
+            _high_for_ref = high_arr if high_arr is not None else close_arr
+            recent_high_10d = float(np.max(_high_for_ref[-10:])) if len(_high_for_ref) >= 10 else float(close_arr[-1])
+            # 从近10日高点回撤幅度（负值=在下方回踩）
+            pullback_pct = (close_arr[-1] / recent_high_10d - 1) * 100 if recent_high_10d > 0 else 0.0
+            # 当日量 / 近5日均量（<1=缩量回踩）
+            vol_5d_avg = float(np.mean(vol_arr[-6:-1])) if len(vol_arr) >= 6 else float(vol_arr[-1])
+            today_vol_shrink = float(vol_arr[-1] / vol_5d_avg) if vol_5d_avg > 0 else 1.0
+            # 主升浪是否已大涨2天（mom5>30%且距前高<3%=追高风险）
+            surge_overbought = (mom5 > 30 and dist_to_high > -3)
+            
             stock_results.append({
                 'code': con_code,
                 'name': con_name,
@@ -453,6 +469,10 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
                 'low_below_ma5': low_below_ma5,
                 'ma5_rising': ma5_rising,
                 'macd_cross_3d': macd_cross_3d,
+                'breakout_gain_10d': round(breakout_gain_10d, 2),
+                'pullback_pct': round(pullback_pct, 2),
+                'today_vol_shrink': round(today_vol_shrink, 2),
+                'surge_overbought': surge_overbought,
                 'factors': factors,
             })
         except Exception:
@@ -507,15 +527,30 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
         if is_launch:
             return '🚀启动'
         
+        # ↩️回踩低吸：近10日有长阳突破(≥8%) + 当前回踩-3%~-15% + 缩量 + 未过热
+        # 这是突破后回洗的低吸买点（回测验证胜率更高的左侧入场）
+        # 过热(mom5>30%+距前高<3%)说明主升浪已大涨，不属于低吸而是追高
+        if (row.get('breakout_gain_10d', 0) >= 8 and 
+            -15 <= row.get('pullback_pct', 0) <= -3 and
+            row.get('today_vol_shrink', 1) < 1.1 and
+            not row.get('surge_overbought', False)):
+            return '↩️回踩低吸'
+        
         # 🔥主升浪：乖离率已拉开，趋势明确
         if (row['mom5_rank'] <= 0.25 and row['dist_to_high'] > -8 and 
             row['vol_ratio'] > 1.0):
+            # 主升浪已大涨2天(mom5>30%+距前高<3%)=追高风险，标记过热
+            if row.get('surge_overbought', False):
+                return '⚠️过热'
             return '🔥主升浪'
         elif row['rank_change'] > 0.1 and row['dist_to_high'] < -5:
             return '📈补涨'
         elif row['mom5_rank'] <= 0.10 and row['dist_to_high'] > -3 and row['vol_ratio'] > 1.8:
             return '⚠️过热'
         elif row['mom5_rank'] <= 0.25:
+            # 兜底主升浪：同样检查追高风险
+            if row.get('surge_overbought', False):
+                return '⚠️过热'
             return '🔥主升浪'
         elif row['rank_change'] > 0.05:
             return '📈补涨'
@@ -538,8 +573,12 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
         # 启动信号：刚突破，低门槛买入
         if stage == '🚀启动' and score >= 50 and dist > -15:
             return '🟢买入'
-        if stage == '🔥主升浪' and score >= 60 and dist > -10 and vol_r > 1.0:
+        # ↩️回踩低吸：突破后缩量回踩，低吸买点
+        if stage == '↩️回踩低吸':
             return '🟢买入'
+        # 🔥主升浪：未过热时关注（大涨2天后不再追高买入）
+        if stage == '🔥主升浪' and score >= 60 and dist > -10 and vol_r > 1.0:
+            return '🟡关注'
         if stage == '📈补涨' and rc > 0.05 and dist > -20:
             return '🟡关注'
         if stage == '⚠️过热':
@@ -556,7 +595,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
     
     action_order = {'🟢买入': 0, '🟡关注': 1, '⚪观望': 2, '🔴回避': 3}
     df['action_order'] = df['action'].map(action_order)
-    stage_order = {'💪弱转强': 0, '🚀启动': 1, '🔥主升浪': 2, '📈补涨': 3, '⚠️过热': 4, '➡️整理': 5}
+    stage_order = {'💪弱转强': 0, '🚀启动': 1, '↩️回踩低吸': 2, '🔥主升浪': 3, '📈补涨': 4, '⚠️过热': 5, '➡️整理': 6}
     df['stage_order'] = df['stage'].map(stage_order)
     df = df.sort_values(['action_order', 'total_score'], ascending=[True, False]).reset_index(drop=True)
     
@@ -597,12 +636,12 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
     
     stage_counts = df['stage'].value_counts()
     stage_parts = []
-    for s in ['💪弱转强', '🚀启动', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
+    for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
         cnt = stage_counts.get(s, 0)
         if cnt > 0: stage_parts.append(f"{s}{cnt}只")
     lines.append(f"  全貌: {' | '.join(stage_parts)}")
     
-    top_stages = actionable[actionable['stage'].isin(['🔥主升浪', '🚀启动', '📈补涨'])].head(3)
+    top_stages = actionable[actionable['stage'].isin(['↩️回踩低吸', '🔥主升浪', '🚀启动', '📈补涨'])].head(3)
     if len(top_stages) >= 2:
         stage_seq = '→'.join(top_stages['stage'].tolist())
         lines.append(f"  轮动路径: {stage_seq}")
@@ -628,7 +667,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
         rot_data = {
             'trade_date': str(TRADE_DATE),
             'etf_name': top_etf_name,
-            'etf_stage_summary': {s: int(stage_counts.get(s, 0)) for s in ['💪弱转强', '🚀启动', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']},
+            'etf_stage_summary': {s: int(stage_counts.get(s, 0)) for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']},
             'actionable': [{'code': r['code'].replace('.SZ','').replace('.SH',''), 'name': r['name'],
                             'action': r['action'], 'stage': r['stage'], 'score': r['total_score'],
                             'pct_chg': r['pct_chg']} for _, r in actionable.iterrows()],

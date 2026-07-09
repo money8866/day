@@ -864,6 +864,71 @@ def get_stock_basic():
     return df
 
 
+def get_sw_members():
+    """获取申万二级行业分类映射（全市场）。
+
+    返回结构:
+      sw_stock_industries: {ts_code -> [sw_l2_name, ...]}   股票所属的申万二级行业
+      sw_industry_members: {sw_l2_name -> {ts_code, ...}}   申万二级行业下的成份股
+    使用 cache_get/cache_set 缓存（存为DataFrame），有效期7天。
+    """
+    cached = cache_get("sw_members")
+    if cached is not None and not cached.empty:
+        sw_stock_industries = defaultdict(list)
+        sw_industry_members = defaultdict(set)
+        for _, r in cached.iterrows():
+            code = r.get("ts_code", "")
+            if not code:
+                continue
+            l2 = r.get("l2_name", "")
+            if l2:
+                l2_clean = _strip_ii(l2)
+                sw_stock_industries[code].append(l2_clean)
+                sw_industry_members[l2_clean].add(code)
+            l1 = r.get("l1_name", "")
+            if l1:
+                l1_clean = _strip_ii(l1)
+                if l1_clean not in sw_stock_industries[code]:
+                    sw_stock_industries[code].append(l1_clean)
+        return sw_stock_industries, sw_industry_members
+
+    if pro is None:
+        return {}, {}
+
+    print("[SW] 调用 Tushare index_member_all 拉取申万行业成份股...")
+    try:
+        df = pro.index_member_all(is_new='Y')
+    except Exception as e:
+        print(f"[SW] 拉取失败: {e}")
+        return {}, {}
+
+    if df is None or df.empty:
+        return {}, {}
+
+    cache_set("sw_members", df, expire_hours=168)
+
+    sw_stock_industries = defaultdict(list)
+    sw_industry_members = defaultdict(set)
+
+    for _, r in df.iterrows():
+        code = r.get("ts_code", "")
+        if not code:
+            continue
+        l2 = r.get("l2_name", "")
+        if l2:
+            l2_clean = _strip_ii(l2)
+            sw_stock_industries[code].append(l2_clean)
+            sw_industry_members[l2_clean].add(code)
+        l1 = r.get("l1_name", "")
+        if l1:
+            l1_clean = _strip_ii(l1)
+            if l1_clean not in sw_stock_industries[code]:
+                sw_stock_industries[code].append(l1_clean)
+
+    print(f"[SW] 申万行业映射: {len(sw_stock_industries)} 只股票, {len(sw_industry_members)} 个二级行业")
+    return sw_stock_industries, sw_industry_members
+
+
 def get_daily_basic(trade_date=None):
     if trade_date is None:
         trade_date = TRADE_DATE
@@ -1210,6 +1275,176 @@ def _compute_chain_score(code, stock_name, concepts, info, concept_list, keyword
     return max(score, 0)
 
 
+def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_list,
+                      core_companies, leader_companies, stock_mainbiz=None,
+                      stock_dc_industries=None, exclude_keywords=None, industry_list=None):
+    """
+    IRS (Industrial Relevance Score) - 四维产业链关联度评分
+
+    维度权重：
+      - 行业匹配（25%）：东财行业板块匹配 + stock_basic 行业匹配
+      - 概念匹配（30%）：东财概念板块与主题概念重叠
+      - 关键词语义匹配（25%）：关键词在股票名/概念/主营中出现
+      - 上下游产业链关联（20%）：龙头邻近度 + 产业链距离
+
+    分层：
+      IRS >= 85：核心成份股 (core)
+      70 <= IRS < 85：扩展成份股 (extended)
+      50 <= IRS < 70：关联股 (associated)
+      IRS < 50：不纳入主题
+
+    返回: (irs_score, irs_layer, irs_detail)
+    """
+    detail = {'industry': 0, 'concept': 0, 'keyword': 0, 'chain': 0}
+
+    # === 维度1: 行业匹配 (满分25) ===
+    source = info.get("source", "")
+    industry_match = info.get("industry_match", False)
+    if source in ("dc_industry_board", "dc_industry"):
+        # 行业板块匹配分级：
+        # 1. 板块名 == 主题名（最精确，如"半导体设备"板块 -> 半导体设备主题）= 25分
+        # 2. 板块名在主题 industry_list 中（精确匹配）= 23分
+        # 3. 板块名是宽泛行业（如"半导体"板块 -> 半导体设备主题）= 20分
+        inds = stock_dc_industries.get(code, []) if stock_dc_industries else []
+        # 获取主题名（从 info 中无法获取，用 industry_list 推断）
+        # 如果股票有行业板块名与 industry_list 中最具体的项匹配，给高分
+        best_ind_score = 20  # 默认：间接匹配
+        for ind in inds:
+            if ind in (industry_list if industry_list else []):
+                # 检查是否是"最具体"的行业板块（非宽泛词）
+                if ind not in ('半导体', '电子', '自动化设备', '专用设备', '通用设备',
+                               '计算机设备', '通信设备', '消费电子', '电子元器件'):
+                    best_ind_score = 25
+                    break
+                elif best_ind_score < 23:
+                    best_ind_score = 23
+        detail['industry'] = best_ind_score
+    elif source == "stock_basic_industry":
+        detail['industry'] = 20
+    elif source == "sw_industry":
+        # 申万二级行业名匹配：权威性高于stock_basic，给22分
+        detail['industry'] = 22
+    elif source == "sw_industry_board":
+        # 申万二级行业板块成员匹配：板块级，给23分
+        detail['industry'] = 23
+    elif source == "stock_basic_industry_alias":
+        detail['industry'] = 15
+    elif source == "concept_as_industry":
+        detail['industry'] = 18
+    elif source == "concept_fallback":
+        detail['industry'] = 5
+    elif industry_match:
+        detail['industry'] = 15
+
+    # === 维度2: 概念匹配 (满分30) ===
+    concept_matched = 0
+    for cc in concepts:
+        for tc in concept_list:
+            if tc == cc or tc in cc:
+                concept_matched += 1
+                break
+    # DC行业板块名与theme concept精确匹配 = 满分概念分
+    # 行业板块是东财官方分类，比概念标签更权威
+    industry_board_concept_match = False
+    if stock_dc_industries:
+        inds = stock_dc_industries.get(code, [])
+        for ind in inds:
+            for tc in concept_list:
+                if ind == tc:
+                    industry_board_concept_match = True
+                    break
+            if industry_board_concept_match:
+                break
+    if industry_board_concept_match:
+        detail['concept'] = 30  # 行业板块名 == 主题概念 -> 概念满分
+    else:
+        # 普通概念匹配
+        if stock_dc_industries:
+            inds = stock_dc_industries.get(code, [])
+            for ind in inds:
+                for tc in concept_list:
+                    if tc in ind:
+                        concept_matched += 1
+                        break
+        detail['concept'] = min(concept_matched * 10, 30)
+
+    # === 维度3: 关键词语义匹配 (满分25) ===
+    kw_score = 0
+    # 关键词在股票名中
+    for kw in keyword_list:
+        if kw in stock_name:
+            kw_score += 8
+    # 关键词在概念标签中
+    for kw in keyword_list:
+        if kw not in stock_name:
+            for c in concepts:
+                if kw in c:
+                    kw_score += 4
+                    break
+    # 关键词在主营业务中
+    if stock_mainbiz:
+        mb = stock_mainbiz.get(code, '')
+        if mb:
+            for kw in keyword_list:
+                if kw in mb:
+                    kw_score += 5
+                    break
+            # 主营业务包含主题概念词（如"半导体"、"集成电路"等）
+            # 解决关键词太具体导致行业板块匹配的产业链公司得0分
+            if kw_score == 0:
+                for tc in concept_list:
+                    if tc in mb:
+                        kw_score += 8
+                        break
+                # 行业板块名中的核心词也作为语义匹配
+                if kw_score == 0 and stock_dc_industries:
+                    inds = stock_dc_industries.get(code, [])
+                    for ind in inds:
+                        if ind in mb or any(w in mb for w in ind.split('/') if len(w) >= 2):
+                            kw_score += 5
+                            break
+    detail['keyword'] = min(kw_score, 25)
+
+    # === 维度4: 上下游产业链关联 (满分20) ===
+    is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
+    chain_score = 0
+    if is_force:
+        if force_type == "leader_company":
+            chain_score = 20
+        else:
+            chain_score = 15
+    elif concept_matched > 0:
+        chain_score = 10  # 概念重叠的产业链邻近
+    elif source in ("dc_industry_board", "stock_basic_industry"):
+        chain_score = 5  # 行业匹配但无概念重叠
+    detail['chain'] = chain_score
+
+    # exclude_keywords 惩罚（不直接排除，而是扣分）
+    if exclude_keywords and not is_force:
+        for ek in exclude_keywords:
+            if ek in stock_name:
+                detail['chain'] = max(0, detail['chain'] - 10)
+                break
+            for c in concepts:
+                if ek in c:
+                    detail['chain'] = max(0, detail['chain'] - 10)
+                    break
+
+    irs = detail['industry'] + detail['concept'] + detail['keyword'] + detail['chain']
+
+    # 分层
+    if irs >= 85:
+        layer = 'core'
+    elif irs >= 70:
+        layer = 'extended'
+    elif irs >= 50:
+        layer = 'associated'
+    else:
+        layer = 'excluded'
+
+    return irs, layer, detail
+
+
 THEME_STOCK_MAP_CACHE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "cache_daily", "theme_stock_map_latest.json"
@@ -1266,12 +1501,12 @@ def load_theme_stock_map_from_json():
     return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
 
 
-def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
+def match_theme_stocks(hot_themes, dc_df, stock_basic_df, stock_mainbiz=None, sw_data=None):
     """
     ===== 产业链约束匹配模型 =====
 
     匹配原则：
-    1. Industry Gate：股票必须通过行业板块匹配（东财行业板块 or stock_basic），否则直接排除
+    1. Industry Gate：股票必须通过行业板块匹配（东财行业板块 or stock_basic or 申万行业），否则直接排除
     2. Chain Distance 分层（0=核心, 1=上下游, 2+/3=排除）：
        - 0 (核心产业链)：industry match + 概念/关键词重叠 或 龙头/核心公司
        - 1 (上下游)：industry match only，无概念重叠但有部分关键词关联
@@ -1286,7 +1521,13 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
     - chain_distance: 产业链层级 (0/1)
     - score: 综合评分
     """
-    # 加载 stock_basic_industry → theme.json industry 别名映射
+    # 解包申万行业数据
+    sw_stock_industries = {}
+    sw_industry_members = {}
+    if sw_data is not None:
+        sw_stock_industries, sw_industry_members = sw_data
+
+    # 加载 stock_basic_industry -> theme.json industry 别名映射
     _ALIAS_MAP = None
     _alias_path = os.path.join(os.path.dirname(__file__), 'stock_basic_industry_alias.json')
     if os.path.exists(_alias_path):
@@ -1358,14 +1599,33 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
                 if _in_industry_list(ind, industry_list):
                     candidates[code] = {"industry_match": True, "source": "stock_basic_industry"}
                 elif _ALIAS_MAP:
-                    # 未直匹配 → 尝试别名映射
+                    # 未直匹配 -> 尝试别名映射
                     alias_targets = _ALIAS_MAP.get(ind, [])
                     for alias_ind in alias_targets:
                         if _in_industry_list(alias_ind, industry_list):
                             candidates[code] = {"industry_match": True, "source": "stock_basic_industry_alias"}
                             break
 
-        # 方式D（兜底）：theme 无 industry 配置 → 用 concept 板块成员作为候选（标记为 industry_match=False）
+        # 方式F（中强）：申万二级行业匹配
+        # 优先级介于东财行业板块和stock_basic之间，分类更权威
+        # 解决东财行业分类粗糙导致部分股票无法匹配的问题
+        if sw_stock_industries:
+            # 方式F1：申万二级行业名直接匹配 theme industry_list
+            for code, sw_inds in sw_stock_industries.items():
+                if code not in candidates:
+                    for sw_ind in sw_inds:
+                        if _in_industry_list(sw_ind, industry_list):
+                            candidates[code] = {"industry_match": True, "source": "sw_industry"}
+                            break
+            # 方式F2：申万二级行业板块成员直接匹配
+            for ind_name in industry_list:
+                ind_clean = _strip_ii(ind_name)
+                if ind_clean in sw_industry_members:
+                    for code in sw_industry_members[ind_clean]:
+                        if code not in candidates:
+                            candidates[code] = {"industry_match": True, "source": "sw_industry_board"}
+
+        # 方式D（兜底）：theme 无 industry 配置 -> 用 concept 板块成员作为候选（标记为 industry_match=False）
         if not industry_list:
             for conc_name in concept_list:
                 if conc_name in dc_concept_board_members:
@@ -1443,66 +1703,40 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
             candidates = filtered_candidates
 
         # ====================================================================
-        # Phase 2: Chain Distance 计算 + 评分
+        # Phase 2: IRS 评分 + 分层（替代原 chain_distance 硬过滤）
         # ====================================================================
         matched = {}
         for code, info in candidates.items():
             stock_name = name_map_basic.get(code, "")
             concepts = stock_concepts.get(code, [])
 
-            # --- 2a) exclude_keywords 硬过滤（跳过强制纳入公司）---
-            # 仅对弱匹配来源（concept_fallback/concept_only）应用排除词，
-            # 已验证行业匹配的股票跳过（避免"参股银行"误杀方正证券）
-            source = info.get("source", "")
-            if source in ("concept_fallback", "concept_only"):
-                if _should_exclude(code, stock_name, concepts, exclude_keywords, core_companies, leader_companies):
-                    continue
-
-            # --- 2b) 概念重叠检查 ---
-            has_concept_overlap = _has_concept_overlap(
-                code, stock_concepts, concept_list, keyword_list, stock_dc_industries
-            )
-
-            # --- 2c) 关键词检查（在股票名或概念标签中）---
-            kw_matches = []
-            for kw in keyword_list:
-                if kw in stock_name:
-                    kw_matches.append(kw)
-                else:
-                    for c in concepts:
-                        if kw in c:
-                            kw_matches.append(kw)
-                            break
-
-            # --- 2d) 强制纳入检查 ---
-            is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
-
-            # --- 2e) 判定 chain_distance ---
-            if is_force:
-                chain_distance = 0
-            elif info.get("source") == "concept_fallback":
-                chain_distance = 1      # 概念兜底：无行业确认，但有概念验证
-            elif has_concept_overlap:
-                chain_distance = 0      # 核心产业链：行业+概念双重确认
-            elif kw_matches:
-                chain_distance = 1      # 上下游：行业确认 + 关键词提示
-            elif info.get("source") == "concept_only":
-                chain_distance = 1      # 无行业配置的主题概念匹配 → 弱关联
-            else:
-                chain_distance = 2      # 纯行业匹配无验证 → 外延收益 → 排除
-
-            if chain_distance >= 2:
-                continue
-
-            # --- 2f) 计算综合评分 ---
-            score = _compute_chain_score(
+            # --- 2a) IRS 四维评分 ---
+            irs, layer, irs_detail = compute_irs_score(
                 code, stock_name, concepts, info,
                 concept_list, keyword_list,
                 core_companies, leader_companies,
-                chain_distance
+                stock_mainbiz=stock_mainbiz,
+                stock_dc_industries=stock_dc_industries,
+                exclude_keywords=exclude_keywords,
+                industry_list=industry_list
             )
 
-            # --- 2g) 构建 meta 信息 ---
+            # --- 2b) 分层过滤：IRS < 50 不纳入 ---
+            if layer == 'excluded':
+                continue
+
+            # --- 2c) chain_distance 兼容（从 IRS 推导）---
+            is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
+            if is_force:
+                chain_distance = 0
+            elif irs_detail['concept'] >= 20 and irs_detail['industry'] >= 20:
+                chain_distance = 0
+            elif irs_detail['concept'] > 0 or irs_detail['keyword'] >= 8:
+                chain_distance = 1
+            else:
+                chain_distance = 1
+
+            # --- 2d) 构建 meta 信息 ---
             via = info.get("source", "unknown")
             if is_force:
                 via = force_type
@@ -1511,7 +1745,9 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
                 "via": via,
                 "industry_match": info.get("industry_match", False),
                 "chain_distance": chain_distance,
-                "score": score
+                "score": irs,
+                "irs_score": irs,
+                "irs_layer": layer,
             }
 
         # ====================================================================
@@ -1526,7 +1762,9 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df):
                     "via": "leader_company" if is_leader else "core_company",
                     "industry_match": True,
                     "chain_distance": 0,
-                    "score": score
+                    "score": 95 if is_leader else 90,
+                    "irs_score": 95 if is_leader else 90,
+                    "irs_layer": "core",
                 }
 
         theme_stock_map[theme_name] = matched

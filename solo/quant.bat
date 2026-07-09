@@ -1,1 +1,1 @@
-python tushare_quant.py -d 20260630 --simple
+python tushare_quant.py -d 20260610 --simple

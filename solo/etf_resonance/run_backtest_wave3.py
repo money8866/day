@@ -25,7 +25,81 @@ from etf_resonance.wave3_detector import (
     find_pivots, detect_waves, score_wave3_signal, Wave3Signal,
     W1_MIN_GAIN, W2_RETRACE_MIN, W2_RETRACE_MAX, W3_RATIO_TARGET, PIVOT_WINDOW,
 )
+from etf_resonance.wave3_deep_analysis import (
+    enrich_indicators, pivot_summary, find_all_wave_structures,
+    find_nearest_support_resistance, compare_with_last_wave, compute_priority,
+)
 from dotenv import load_dotenv
+
+
+def calc_priority_from_slice(df: pd.DataFrame) -> float:
+    """在回测切片df上复现实盘compute_priority的输入字段并计算优先级评分。
+
+    与wave3_deep_analysis.analyze_one的[1]-[7]步逻辑一致，
+    但把load_history替换为外部传入的切片df，其余纯函数复用。
+    """
+    if df is None or len(df) < 120:
+        return 0.0
+    try:
+        df = enrich_indicators(df)
+        current_price = float(df['close'].values[-1])
+        last = df.iloc[-1]
+
+        ps = pivot_summary(df, 5, '小浪(W5)')
+        small_pivots = [p for p, _ in ps]
+        current_waves = find_all_wave_structures(small_pivots, df, w1_min=0.40)
+        cur = current_waves[-1] if current_waves else None
+        if cur is None:
+            return 0.0
+
+        sr = find_nearest_support_resistance(df, small_pivots, current_price)
+
+        history_high = float(df['high'].max())
+        max_drawdown_1y = 0.0
+        if len(df) > 60:
+            roll_max = df['close'].rolling(252, min_periods=60).max()
+            drawdown = (df['close'] / roll_max - 1) * 100
+            max_drawdown_1y = float(drawdown.tail(252).min())
+
+        vol_ratio_5_20 = float(last['vol_ma5'] / last['vol_ma20']) if last['vol_ma20'] > 0 else 0.0
+        recent_60 = df.tail(60)
+        up_days_df = recent_60[recent_60['close'] > recent_60['open']]
+        down_days_df = recent_60[recent_60['close'] < recent_60['open']]
+        up_vol = float(up_days_df['vol'].mean()) if len(up_days_df) > 0 else 0.0
+        down_vol = float(down_days_df['vol'].mean()) if len(down_days_df) > 0 else 0.0
+        up_vol_vs_down_vol = up_vol / down_vol if down_vol > 0 else 1.0
+        dist_to_w3_target = float((cur.w3_target_price - current_price) / current_price * 100)
+        dist_to_history_high = float((history_high - current_price) / current_price * 100)
+        cmp_data = compare_with_last_wave(current_waves, cur)
+
+        for name in ['ma5', 'ma10', 'ma20', 'ma60', 'ma120', 'ma250', 'macd', 'rsi14', 'j']:
+            v = last.get(name, np.nan)
+            if isinstance(v, float) and np.isnan(v):
+                last[name] = 0.0
+
+        result = {
+            'ts_code': '', 'name': '', 'industry': '',
+            'current_price': current_price,
+            'current_wave': cur,
+            'support_resistance': sr,
+            'indicators': {
+                'ma5': float(last['ma5']), 'ma10': float(last['ma10']),
+                'ma20': float(last['ma20']), 'ma60': float(last['ma60']),
+                'ma120': float(last['ma120']), 'ma250': float(last['ma250']),
+                'macd': float(last['macd']), 'rsi14': float(last['rsi14']),
+                'j': float(last['j']),
+            },
+            'vol_ratio_5_20': vol_ratio_5_20,
+            'up_vol_vs_down_vol': up_vol_vs_down_vol,
+            'dist_to_w3_target': dist_to_w3_target,
+            'dist_to_history_high': dist_to_history_high,
+            'max_drawdown_1y': max_drawdown_1y,
+            'compare_with_last': cmp_data,
+        }
+        score, _ = compute_priority(result)
+        return float(score)
+    except Exception:
+        return 0.0
 
 load_dotenv(r'd:\mystock\config\.env' if os.path.exists(r'd:\mystock\config\.env') else r'd:\mystock\solo\.env')
 TS_TOKEN = os.getenv('TUSHARE_TOKEN', '')
@@ -86,6 +160,25 @@ def score_stock_wave3(code: str, stock_df: pd.DataFrame, name: str = '', industr
 
     dist_to_target = (wave.w3_target_price - current_price) / max(current_price, 1e-6) * 100
     score, reasons = score_wave3_signal(wave, stock_df, name)
+
+    # 过滤：W3 已走完且现价远超 H3（进入延伸/第5浪，不再是"第3浪起点"）
+    if wave.H3 is not None and current_price > wave.H3.price * 1.05:
+        return None
+    # 过滤：现价已超过 1.618 目标价（第3浪空间已耗尽）
+    if current_price > wave.w3_target_price:
+        return None
+    # 过滤：W3 进度过高（已远超 H3 确认点）
+    if w3_progress > 120:
+        return None
+    # 过滤：W3 已见顶后现价回落跌破 H1（进入第4浪调整，不再是"第3浪起点"）
+    if wave.H3 is not None and current_price < wave.H1.price:
+        return None
+    # 过滤：W1 涨幅过高(>150%)，主升浪末期追高风险大（回测胜率0%）
+    if wave.w1_gain > 1.50:
+        return None
+    # 过滤：W1 涨幅偏高(100-150%)但距W3目标空间不足(<20%)，盈亏比差
+    if 1.00 < wave.w1_gain <= 1.50 and dist_to_target < 20:
+        return None
 
     return Wave3Signal(
         ts_code=code, name=name, industry=industry,
@@ -243,6 +336,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
                 'entry_price': pos['entry_price'], 'exit_price': exit_price,
                 'return_pct': round(ret_pct, 2), 'hold_days': hold_days,
                 'signal_score': pos.get('signal_score', 0),
+                'priority_score': pos.get('priority_score', 0),
                 'w1_gain': pos.get('w1_gain', 0),
                 'w2_retrace': pos.get('w2_retrace', 0),
                 'exit_reason': '大盘空仓',
@@ -286,6 +380,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
                 'w3_progress': sig.w3_progress,
                 'wave': sig.wave,
                 'reasons': sig.signal_reasons,
+                'priority_score': calc_priority_from_slice(df),
             })
         except Exception:
             continue
@@ -326,6 +421,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
                     'entry_price': pos['entry_price'], 'exit_price': exit_price,
                     'return_pct': round(ret_pct, 2), 'hold_days': hold_days,
                     'signal_score': pos.get('signal_score', 0),
+                    'priority_score': pos.get('priority_score', 0),
                     'w1_gain': pos.get('w1_gain', 0),
                     'w2_retrace': pos.get('w2_retrace', 0),
                     'exit_reason': f'止损{STOP_LOSS_PCT}%',
@@ -349,6 +445,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
                     'entry_price': pos['entry_price'], 'exit_price': exit_price,
                     'return_pct': round(ret_pct, 2), 'hold_days': hold_days,
                     'signal_score': pos.get('signal_score', 0),
+                    'priority_score': pos.get('priority_score', 0),
                     'w1_gain': pos.get('w1_gain', 0),
                     'w2_retrace': pos.get('w2_retrace', 0),
                     'exit_reason': f'止盈{TAKE_PROFIT_PCT}%',
@@ -370,6 +467,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
                 'entry_price': pos['entry_price'], 'exit_price': exit_price,
                 'return_pct': round(ret_pct, 2), 'hold_days': hold_days,
                 'signal_score': pos.get('signal_score', 0),
+                'priority_score': pos.get('priority_score', 0),
                 'w1_gain': pos.get('w1_gain', 0),
                 'w2_retrace': pos.get('w2_retrace', 0),
                 'exit_reason': '调仓换股',
@@ -403,6 +501,7 @@ for rb_idx, rb_date in enumerate(rebalance_dates):
             'entry_price': entry_price,
             'shares': shares,
             'signal_score': pick['signal_score'],
+            'priority_score': pick.get('priority_score', 0.0),
             'w1_gain': pick['w1_gain'],
             'w2_retrace': pick['w2_retrace'],
             'w3_target': pick['w3_target'],
@@ -433,6 +532,7 @@ for code in list(current_holdings.keys()):
         'entry_price': pos['entry_price'], 'exit_price': exit_price,
         'return_pct': round(ret_pct, 2), 'hold_days': hold_days,
         'signal_score': pos.get('signal_score', 0),
+        'priority_score': pos.get('priority_score', 0),
         'w1_gain': pos.get('w1_gain', 0),
         'w2_retrace': pos.get('w2_retrace', 0),
         'exit_reason': '回测结束',
@@ -504,7 +604,8 @@ print(f"  🆚 超额收益:   {cum_ret - bench_ret:+.2f}%")
 print("=" * 70)
 
 _cols = ['code', 'stock_name', 'industry', 'entry_date', 'exit_date',
-         'return_pct', 'hold_days', 'signal_score', 'w1_gain', 'w2_retrace', 'exit_reason']
+         'return_pct', 'hold_days', 'signal_score', 'priority_score',
+         'w1_gain', 'w2_retrace', 'exit_reason']
 _cols = [c for c in _cols if c in trades_df.columns]
 
 print("\n📈 Top 5 盈利交易:")
@@ -548,6 +649,26 @@ grp3 = trades_df.groupby('w1_bin', observed=True).agg(
     avg_ret=('return_pct', 'mean')
 ).round(2)
 print(grp3.to_string())
+
+print("\n📊 按操作优先级分组(高≥75/中60-75/低<60):")
+def _priority_tier(s):
+    v = float(s) if pd.notna(s) else 0.0
+    if v >= 75:
+        return '⭐⭐⭐ 高优先(≥75)'
+    elif v >= 60:
+        return '⭐⭐ 中优先(60-75)'
+    else:
+        return '⭐ 低优先(<60)'
+trades_df['priority_tier'] = trades_df['priority_score'].apply(_priority_tier)
+tier_order = ['⭐⭐⭐ 高优先(≥75)', '⭐⭐ 中优先(60-75)', '⭐ 低优先(<60)']
+grp4 = trades_df.groupby('priority_tier', observed=True).agg(
+    trades=('return_pct', 'count'),
+    win_rate=('return_pct', lambda x: (x > 0).sum() / len(x) * 100),
+    avg_ret=('return_pct', 'mean'),
+    avg_hold=('hold_days', 'mean'),
+).round(2)
+grp4 = grp4.reindex([t for t in tier_order if t in grp4.index])
+print(grp4.to_string())
 
 if portfolio_values:
     pv_df.to_csv(r'd:\mystock\solo\etf_resonance\output\backtest_wave3_equity.csv',

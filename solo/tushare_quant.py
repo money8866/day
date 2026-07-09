@@ -6900,7 +6900,7 @@ def strategy(df, code, emotion_stage, total_mv=0):
         return False
     
     # 股价必须站上5日、10日、20日均线
-    if  C[-1] < ma20[-1] or ma10[-1] < ma20[-1]*0.97 or ma5[-1] < ma10[-1]*0.97:
+    if  C[-1] < ma20[-1] or ma10[-1] < ma60[-1]*0.97 or ma5[-1] < ma60[-1]*0.97:
         return False
     
     # ===== 涨停判断（向量化）=====
@@ -10612,9 +10612,13 @@ def run(target_date=None, simple_mode=False):
                     adv_obj = adv.get('advice', {}) or {}
                     ranked.append((ps, r, adv, adv_obj))
                 ranked.sort(key=lambda x: -x[0])
+                # 回测验证: 高优先级(≥75)胜率72%, 中优先级(60-75)胜率仅22%, 故推送只保留高优先级
+                high_priority_ranked = [item for item in ranked if item[0] >= 75]
                 w3_lines.append("")
-                w3_lines.append("📊 操作优先级排名(融合长周期技术分析):")
-                for i, (ps, r, adv, adv_obj) in enumerate(ranked, 1):
+                w3_lines.append(f"📊 操作优先级排名(仅推送高优先级≥75, 回测胜率72%):")
+                if not high_priority_ranked:
+                    w3_lines.append("  今日无高优先级(≥75)信号,暂不推荐介入")
+                for i, (ps, r, adv, adv_obj) in enumerate(high_priority_ranked, 1):
                     nm = adv.get('name') or r.get('name') or '?'
                     lvl = adv_obj.get('level', '')
                     act = adv_obj.get('action', '')
@@ -10633,6 +10637,9 @@ def run(target_date=None, simple_mode=False):
                         w3_lines.append(f"      理由: {'; '.join(adv_obj['reasons'][:3])}")
                     if adv_obj.get('risks'):
                         w3_lines.append(f"      风险: {'; '.join(adv_obj['risks'][:2])}")
+                _skip_cnt = len(ranked) - len(high_priority_ranked)
+                if _skip_cnt > 0:
+                    w3_lines.append(f"  (已过滤{_skip_cnt}只中/低优先级信号: 回测中优先级胜率仅22%)")
                 w3_lines.append("")
                 w3_lines.append("📋 策略说明: 第3浪起点=现价突破第1浪顶H1(W3右侧追涨),回测6个月+12.8%/夏普3.08/最大回撤-4.88%")
                 w3_lines.append("  【W1涨幅】60-80%最优(胜率57%盈亏比3.57); 100-200%主升浪(胜率85%+)")
@@ -10871,10 +10878,10 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 9、**【波浪理论第3浪选股策略】**（艾略特波浪理论第3浪起点选股，ETF成份股池，信号分≥90，回测+12.8%/胜率51.9%/夏普3.08/最大回撤-4.88%）：
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
 - 【数据位置】在"波浪理论第3浪选股"标题下方，包含信号列表 + 操作优先级排名
+- 【仅推送高优先级】回测验证高优先级(≥75分)胜率72%、中优先级(60-74分)胜率仅22%，故推送只输出高优先级≥75的标的
 - 【按优先级排名分析】严格按照上方"操作优先级排名"从高到低分析，不要重新排序
-- 【三档优先级】⭐⭐⭐高优先(≥75分,回踩加仓) / ⭐⭐中优先(60-74分,突破介入) / ⭐低优先(<60分,等深调)
 - 每只精简为1小段（4-5行），格式如下：
-- 第1行：**股票名**(代码) | 信号分=XX | 优先级=XX/100 | 等级(⭐⭐⭐/⭐⭐/⭐) | 操作策略
+- 第1行：**股票名**(代码) | 信号分=XX | 优先级=XX/100 | ⭐⭐⭐ 高优先 | 操作策略
 - 第2行：波浪结构(W1涨幅XX% / W2回调XX% / W3目标价XX 距今+XX%)
 - 第3行：介入价位(支撑位) | 止损位(XX,XX%) | 止盈位(XX,XX%)
 - 第4行：介入理由(均线/量能/相似度等)
@@ -10886,7 +10893,7 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 理由：W3刚启动突破H1(49.40)确认主升浪；完美多头排列；量比1.27量能配合
 风险：(若无则不输出此行)
 - 【约束】股票名、价格、优先级必须严格引用上方数据，禁止凭空编造。优先级排名必须与上方一致，不可自行调整顺序。
-- 如果无信号数据，直接输出"今日无波浪理论第3浪信号（信号分≥90）"
+- 如果无高优先级信号数据，直接输出"今日无高优先级(≥75)波浪理论信号，暂不推荐介入"
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**

@@ -273,7 +273,8 @@ def main():
     # 保存
     report_text = '\n'.join(report)
     
-    output_file = r'D:\mystock\report_daily\announcement_analysis_20260706.md'
+    today_str = datetime.now().strftime('%Y%m%d')
+    output_file = r'D:\mystock\report_daily\announcement_analysis_%s.md' % today_str
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(report_text)
     

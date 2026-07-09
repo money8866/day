@@ -1689,3 +1689,23 @@ class DataFetcher:
         return self._get_df_cached(
             cache_key, self.pro.dc_member, dc_id=dc_id,
         )
+
+    def get_sw_industry_map(self) -> pd.DataFrame:
+        """申万行业分类映射（全市场成份股 -> L1/L2/L3 行业名）。
+
+        调用 pro.index_member_all(is_new='Y')，一次性获取全部申万行业成份股。
+        返回字段: ts_code, l1_name, l2_name, l3_name, in_date, out_date, is_new
+        缓存有效期 168h（7天），成份股变动不频繁。
+        """
+        cache_key = "sw_industry_map"
+        cached = load_cache(self.cache_dir, cache_key, 168)
+        if cached is not None:
+            return cached
+        try:
+            df = self._retry_call(self.pro.index_member_all, is_new='Y')
+        except Exception:
+            df = None
+        if df is None or len(df) == 0:
+            return pd.DataFrame()
+        save_cache(df, self.cache_dir, cache_key)
+        return df

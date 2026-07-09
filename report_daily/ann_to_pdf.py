@@ -139,6 +139,8 @@ def convert_to_pdf(md_file, pdf_file):
     print('PDF已生成:', pdf_file)
 
 if __name__ == '__main__':
-    md_file = r'D:\mystock\report_daily\announcement_analysis_20260706.md'
-    pdf_file = r'D:\mystock\report_daily\announcement_analysis_20260706.pdf'
+    import datetime
+    today_str = datetime.datetime.now().strftime('%Y%m%d')
+    md_file = r'D:\mystock\report_daily\announcement_analysis_%s.md' % today_str
+    pdf_file = r'D:\mystock\report_daily\announcement_analysis_%s.pdf' % today_str
     convert_to_pdf(md_file, pdf_file)

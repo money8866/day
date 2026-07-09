@@ -78,6 +78,8 @@ class WaveCount:
     H5: Optional[Pivot] = None   # 第5浪高点(若已走完)
     w1_gain: float = 0.0        # 第1浪涨幅
     w2_retrace: float = 0.0      # 第2浪回调比例
+    w1_days: int = 0             # 第1浪交易日数
+    w2_days: int = 0             # 第2浪交易日数
     w3_ratio: float = 0.0        # 第3浪长度/第1浪长度
     w3_target_price: float = 0.0  # 第3浪目标价 = L2 + (H1-L0)*1.618
     is_valid: bool = False       # 波浪计数是否有效
@@ -150,12 +152,16 @@ def detect_waves(pivots: List[Pivot], df: pd.DataFrame) -> Optional[WaveCount]:
       - L0→H1 涨幅≥W1_MIN_GAIN (第1浪)
       - H1→L2 回调在[W2_RETRACE_MIN, W2_RETRACE_MAX]之间 (第2浪)
       - L2 > L0 (铁律1:第2浪低点不破第1浪起点)
+      - W2天数≥5个交易日 (或至少是W1天数的20%，避免过短回调)
     """
     if len(pivots) < 3:
         return None
 
     best_wave: Optional[WaveCount] = None
     best_score = -1.0
+
+    # 创建trade_date到idx的映射，方便计算W1和W2的天数
+    date_to_idx = {str(d): i for i, d in enumerate(df['trade_date'].values)}
 
     for i in range(len(pivots) - 2):
         if pivots[i].kind != 'low':
@@ -179,6 +185,20 @@ def detect_waves(pivots: List[Pivot], df: pd.DataFrame) -> Optional[WaveCount]:
         if L2.price <= L0.price:
             continue
 
+        # 验证W2的时间长度是否合理
+        l0_idx = date_to_idx.get(L0.date, 0)
+        h1_idx = date_to_idx.get(H1.date, 0)
+        l2_idx = date_to_idx.get(L2.date, 0)
+        
+        # W1天数和W2天数（交易日）
+        w1_days = h1_idx - l0_idx
+        w2_days = l2_idx - h1_idx
+        
+        # 验证：W2天数至少是5个交易日，或至少是W1天数的20%
+        w2_days_valid = (w2_days >= 5) or (w2_days >= w1_days * 0.2 and w2_days >= 3)
+        if not w2_days_valid:
+            continue
+
         w3_target = L2.price + (H1.price - L0.price) * W3_RATIO_TARGET
 
         wave = WaveCount(
@@ -186,6 +206,8 @@ def detect_waves(pivots: List[Pivot], df: pd.DataFrame) -> Optional[WaveCount]:
             w1_gain=w1_gain,
             w2_retrace=w2_retrace,
             w3_target_price=w3_target,
+            w1_days=w1_days,
+            w2_days=w2_days,
             is_valid=True,
         )
 
@@ -373,6 +395,25 @@ def analyze_stock(ts_code: str, name: str = '', industry: str = '',
     dist_to_target = (wave.w3_target_price - current_price) / max(current_price, 1e-6) * 100
     score, reasons = score_wave3_signal(wave, df, name)
 
+    # 过滤：W3 已走完且现价远超 H3（进入延伸/第5浪，不再是"第3浪起点"）
+    if wave.H3 is not None and current_price > wave.H3.price * 1.05:
+        return None
+    # 过滤：现价已超过 1.618 目标价（第3浪空间已耗尽）
+    if current_price > wave.w3_target_price:
+        return None
+    # 过滤：W3 进度过高（已远超 H3 确认点）
+    if w3_progress > 120:
+        return None
+    # 过滤：W3 已见顶后现价回落跌破 H1（进入第4浪调整，不再是"第3浪起点"）
+    if wave.H3 is not None and current_price < wave.H1.price:
+        return None
+    # 过滤：W1 涨幅过高(>150%)，主升浪末期追高风险大（回测胜率0%）
+    if wave.w1_gain > 1.50:
+        return None
+    # 过滤：W1 涨幅偏高(100-150%)但距W3目标空间不足(<20%)，盈亏比差
+    if 1.00 < wave.w1_gain <= 1.50 and dist_to_target < 20:
+        return None
+
     return Wave3Signal(
         ts_code=ts_code, name=name, industry=industry,
         wave=wave, current_price=current_price,
@@ -392,9 +433,9 @@ def print_wave_detail(sig: Wave3Signal) -> None:
 
     print(f"\n  📈 波浪结构:")
     print(f"    第1浪: {w.L0.date}({w.L0.price:.2f}) → {w.H1.date}({w.H1.price:.2f})"
-          f"  涨幅 {w.w1_gain*100:.1f}%")
+          f"  涨幅 {w.w1_gain*100:.1f}%  用时 {w.w1_days}天")
     print(f"    第2浪: {w.H1.date}({w.H1.price:.2f}) → {w.L2.date}({w.L2.price:.2f})"
-          f"  回调 {w.w2_retrace*100:.1f}%")
+          f"  回调 {w.w2_retrace*100:.1f}%  用时 {w.w2_days}天")
     print(f"    铁律1: 第2浪低点 {w.L2.price:.2f} > 第1浪起点 {w.L0.price:.2f} "
           f"{'✓' if w.L2.price > w.L0.price else '✗'}")
 
@@ -608,9 +649,9 @@ def main():
                 'current_price': s.current_price,
                 'w1_start_date': w.L0.date, 'w1_start_price': w.L0.price,
                 'w1_end_date': w.H1.date, 'w1_end_price': w.H1.price,
-                'w1_gain_pct': round(w.w1_gain * 100, 1),
+                'w1_gain_pct': round(w.w1_gain * 100, 1), 'w1_days': w.w1_days,
                 'w2_end_date': w.L2.date, 'w2_end_price': w.L2.price,
-                'w2_retrace_pct': round(w.w2_retrace * 100, 1),
+                'w2_retrace_pct': round(w.w2_retrace * 100, 1), 'w2_days': w.w2_days,
                 'w3_target_price': round(w.w3_target_price, 2),
                 'dist_to_w3_target_pct': round(s.dist_to_w3_target, 1),
                 'w3_progress_pct': round(s.w3_progress, 1),

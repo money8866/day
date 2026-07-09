@@ -753,13 +753,21 @@ def analyze_one(ts_code: str, name: str, industry: str) -> Dict:
 
 
 def main():
+    import pandas as _pd
+    wave3_csv = r'd:\mystock\solo\etf_resonance\output\wave3_signals.csv'
+    targets = list(TARGETS)
+    if os.path.exists(wave3_csv):
+        df_sig = _pd.read_csv(wave3_csv, dtype={'code': str})
+        if len(df_sig) > 0:
+            targets = [(str(r['code']), str(r.get('name', '')), str(r.get('industry', '')))
+                       for _, r in df_sig.iterrows()]
     print("=" * 78)
-    print("  Wave 3 深度技术分析 — 长周期形态浪解析")
-    print("  目标: 兆易创新 / 北方华创 / 江化微")
+    print(f"  Wave 3 深度技术分析 - 长周期形态浪解析")
+    print(f"  目标: {len(targets)} 只W3信号股")
     print("=" * 78)
 
     results = []
-    for code, name, ind in TARGETS:
+    for code, name, ind in targets:
         r = analyze_one(code, name, ind)
         if r:
             results.append(r)

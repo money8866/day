@@ -191,12 +191,15 @@ VOL_PULLBACK_WAVE1_GAIN_MAX = 0.50  # 一波涨幅上限 (原0.80→0.50)
 #   优化2: 仅选双创板 — 科创板胜率64.4%/均收益4.63% (主板弱势50.0%)
 #   优化3: 一波涨幅上限80% — 20日持有时一波>80%胜率仅43.2%
 #   优化4: 量比放宽到[0.5, 0.8) — 信号量从146→339笔, 胜率仍达59.6%
-VSHAPE_RSI_MIN        = 35    # RSI6 下限 (原40→35, 过滤RSI过低的反信号)
+VSHAPE_RSI_MIN        = 35    # RSI6 下限 (原40->35, 过滤RSI过低的反信号)
 VSHAPE_RSI_MAX        = 40    # RSI6 上限
 VSHAPE_VOL_RATIO_MIN  = 0.5   # 量比下限 (避免过度缩量无人气)
 VSHAPE_VOL_RATIO_MAX  = 0.8   # 量比上限 (v1放宽版, 平衡信号量与胜率)
 VSHAPE_PULLBACK_MAX   = 0.30  # 回调幅度上限 (放宽到30%, 保留大部分V型信号)
 VSHAPE_WAVE1_GAIN_MAX = 0.80  # 一波涨幅上限 (过滤高位股)
+# 688432.SH回测验证: V型急跌成功案例(6/1)一波涨幅+39.2% | 失败案例(放量回调3/19)+31.2%
+# 提升一波涨幅下限至35%, 过滤一波涨幅偏弱的信号
+VSHAPE_WAVE1_GAIN_MIN = 0.35  # 一波涨幅下限 (新增, 688432回测验证)
 
 # 入场评分阈值（v2.1含主力类因子，满分约40+）
 #   强势横盘: 基础7分(纯技术) → 加主力类后通常15-25分
@@ -206,7 +209,7 @@ SCORE_SIDWAYS_MIN = 30    # 主板强势横盘(v3.4→v3.9): 回调2-10%+一波3
                             # v3.9回测依据(200只×60天): 25-29分止损率75%, 30+分止损率降至33%
 SCORE_DEEP_MIN    = 20    # 深度回调(v3.9): 10→20分
                             # v3.9回测依据(200只×60天): <20分胜率61.5%/止损率21.1%, 20-29分胜率83.8%/止损率36.4%
-SCORE_VSHAPE_GEM_MIN = 20 # 双创V型急跌阈值20分
+SCORE_VSHAPE_GEM_MIN = 40 # 双创V型急跌阈值40分 (688432回测: 成功案例45分, 原20分阈值过松)
 SCORE_VOL_PULLBACK_GEM_MIN = 20 # 双创放量回调阈值20分
 
 # 评分档次参考（v2.1）:
@@ -1795,6 +1798,9 @@ class WavePatternDetector:
                 continue
             # v2优化4: 过滤一波涨幅>80%高位股 (20日持有时胜率仅43.2%)
             if surge_gain > VSHAPE_WAVE1_GAIN_MAX:
+                continue
+            # 688432.SH回测验证: 一波涨幅下限35% (失败案例放量回调3/19一波仅+31.2%)
+            if surge_gain < VSHAPE_WAVE1_GAIN_MIN:
                 continue
 
             entry_idx = wave1_high_idx + low_pos
