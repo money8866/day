@@ -5085,9 +5085,8 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
                 pass  # 查询失败不阻塞
         
         # 过滤条件：非双创板股票且未上过热榜的，直接返回0分
-        # 双创板：创业板(300/301/302等)、科创板(688开头)
-        from watchlist_buy_signal import is_shuangchuang
-        is_innovation_board = is_shuangchuang(ts_code)
+        # 双创板：创业板(300开头)、科创板(688开头)
+        is_innovation_board = ts_code.startswith('300') or ts_code.startswith('688')
         if not is_innovation_board and hot_appear_count<=0:
             return 0, "非双创板且未上热榜", {}, 90
         
@@ -9044,10 +9043,120 @@ def add_themes_to_stocks_no_filter(result_df):
 # =========================
 # 量能爆发+宽幅震荡选股：像火星人/时代电气/奥比中光/沃顿科技那样的"近期量能大幅放大创历史新高量能，且区间股价宽幅震荡"
 # =========================
-def detect_volume_surge_swing(ts_code, name):
+_WAVE_PIVOT_WINDOW = 5
+_WAVE_W1_MIN_GAIN = 0.40
+_WAVE_W1_MAX_GAIN = 2.00
+_WAVE_W2_MIN = 0.20
+_WAVE_W2_MAX = 0.85
+
+
+def _find_wave_pivots(df, window=_WAVE_PIVOT_WINDOW):
+    """识别价格枢轴点(局部极值)，用于tushare数据"""
+    highs = df['high'].values
+    lows = df['low'].values
+    dates = df['trade_date'].values
+    n = len(df)
+    pivots = []
+    for i in range(window, n - window):
+        left_h = highs[i - window:i]
+        right_h = highs[i + 1:i + 1 + window]
+        left_l = lows[i - window:i]
+        right_l = lows[i + 1:i + 1 + window]
+        if highs[i] >= np.max(left_h) and highs[i] >= np.max(right_h):
+            pivots.append({'idx': i, 'date': str(dates[i]), 'price': float(highs[i]), 'kind': 'high'})
+        if lows[i] <= np.min(left_l) and lows[i] <= np.min(right_l):
+            pivots.append({'idx': i, 'date': str(dates[i]), 'price': float(lows[i]), 'kind': 'low'})
+    pivots.sort(key=lambda p: p['idx'])
+    out = [pivots[0]] if pivots else []
+    for p in pivots[1:]:
+        last = out[-1]
+        if p['kind'] == last['kind']:
+            if (p['kind'] == 'high' and p['price'] > last['price']) or \
+               (p['kind'] == 'low' and p['price'] < last['price']):
+                out[-1] = p
+        else:
+            out.append(p)
+    return out
+
+
+def _find_simple_wave(pivots):
+    """从枢轴点序列中识别L0->H1->L2波浪结构，返回(best_wave或None)"""
+    if len(pivots) < 3:
+        return None
+    best_wave = None
+    best_score = -1.0
+    for i in range(len(pivots) - 2):
+        if pivots[i]['kind'] != 'low':
+            continue
+        L0 = pivots[i]
+        H1 = None
+        for j in range(i + 1, len(pivots)):
+            if pivots[j]['kind'] == 'high':
+                H1 = pivots[j]
+                break
+        if H1 is None:
+            continue
+        L2 = None
+        for j in range(i + 2, len(pivots)):
+            if pivots[j]['kind'] == 'low':
+                L2 = pivots[j]
+                break
+        if L2 is None:
+            continue
+        w1_gain = (H1['price'] - L0['price']) / max(L0['price'], 0.01)
+        w2_retrace = (H1['price'] - L2['price']) / max(H1['price'] - L0['price'], 0.01)
+        if w1_gain < _WAVE_W1_MIN_GAIN:
+            continue
+        if w1_gain > _WAVE_W1_MAX_GAIN:
+            continue
+        if not (_WAVE_W2_MIN <= w2_retrace <= _WAVE_W2_MAX):
+            continue
+        if L2['price'] <= L0['price']:
+            continue
+        if L2['idx'] < H1['idx']:
+            continue
+        score = w1_gain * 10
+        if score > best_score:
+            best_score = score
+            best_wave = {'L0': L0, 'H1': H1, 'L2': L2, 'w1_gain': w1_gain, 'w2_retrace': w2_retrace}
+    return best_wave
+
+
+def _detect_wave_surge_ready(df):
+    """
+    波浪结构+蓄势大涨检测（基于tushare数据，自实现波浪识别）
+    返回 (wave_ok, w1_gain, w2_retrace, dist_to_h1) 或 (False, 0, 0, 0)
+    条件：
+      1. 存在L0->H1->L2波浪结构
+      2. W2浅回调(<70%，强势特征)
+      3. 股价距H1<3%（蓄势待突破）
+    """
+    try:
+        if df is None or len(df) < 60:
+            return False, 0.0, 0.0, 0.0
+
+        pivots = _find_wave_pivots(df)
+        wave = _find_simple_wave(pivots)
+        if wave is None:
+            return False, 0.0, 0.0, 0.0
+
+        w1_gain = wave['w1_gain']
+        w2_retrace = wave['w2_retrace']
+        if w2_retrace >= 0.70:
+            return False, w1_gain, w2_retrace, 0.0
+
+        today_close = float(df['close'].values[-1])
+        dist_to_h1 = (today_close / wave['H1']['price'] - 1)
+
+        return True, w1_gain, w2_retrace, dist_to_h1
+    except Exception:
+        return False, 0.0, 0.0, 0.0
+
+
+def detect_volume_surge_swing(ts_code, name, _df_override=None):
     """检测量能爆发+宽幅震荡模式"""
     try:
-        df = get_hist_data(ts_code)
+        df = _df_override if _df_override is not None else get_hist_data(ts_code)
         if df is None or len(df) < 80:
             return None
         recent = df.tail(60)
@@ -9253,6 +9362,46 @@ def detect_volume_surge_swing(ts_code, name):
             macd_pass = True
         
         if not macd_pass:
+            # MACD未确认时，不直接返回None，先检测蓄势大涨信号
+            # 蓄势大涨：波浪结构+量能爆发结合，可在MACD确认前提前发现
+            _w_ok, _w1, _w2, _dist = _detect_wave_surge_ready(df)
+            if _w_ok and total_score >= 65 and _w2 < 0.70 and abs(_dist) < 0.03:
+                today_pct = (close_arr[-1] / close_arr[-2] - 1) * 100 if len(close_arr) >= 2 and close_arr[-2] > 0 else 0
+                macd_turning = (cur_bar < 0 and cur_bar > prev_bar) or (prev_bar < 0 < cur_bar)
+                if today_pct >= 5 and macd_turning:
+                    wave_w1_gain = _w1
+                    wave_w2_retrace = _w2
+                    wave_dist_h1 = _dist
+                    wave_surge = True
+                    wave_surge_reason = (f'波浪蓄势大涨(W1={_w1*100:.0f}% W2={_w2*100:.0f}% 距H1={_dist*100:+.1f}% '
+                                         f'今日涨{today_pct:.1f}% MACD{"绿柱缩短" if cur_bar<0 else "刚红柱"})')
+                    result = {
+                        '代码': ts_code,
+                        '名称': name,
+                        '量能爆发评分': round(total_score, 1),
+                        '最大量比': round(max_vol_ratio, 2),
+                        '量比>2天数': vol_ratio_gt2,
+                        '量比>3天数': vol_ratio_gt3,
+                        '日均振幅': round(avg_amplitude, 2),
+                        '巨震天数(>8%)': amp_gt8_count,
+                        '区间振幅': round(range_swing, 1),
+                        '区间涨幅': round(price_change, 1),
+                        '近历史最高量%': round(vol_vs_hist_pct, 0),
+                        '今日量比': round(float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0, 2),
+                        'MACD状态': macd_status if macd_status else ('绿柱缩短' if cur_bar < 0 and cur_bar > prev_bar else '其他'),
+                        '回撤类型': '浅回调' if _retrace_ratio < 30 else ('中回调' if _retrace_ratio < 50 else '深回调'),
+                        '距MA20': round((float(close_arr[-1]) / float(pd.Series(close_arr).rolling(20).mean().values[-1]) - 1) * 100, 1) if not np.isnan(pd.Series(close_arr).rolling(20).mean().values[-1]) else 0,
+                        '强买信号': False,
+                        '强买原因': '',
+                        '观察信号': False,
+                        '观察原因': '',
+                        '蓄势大涨信号': True,
+                        '蓄势大涨原因': wave_surge_reason,
+                        '波浪W1涨幅': round(wave_w1_gain * 100, 1),
+                        '波浪W2回调': round(wave_w2_retrace * 100, 1),
+                        '波浪距H1': round(wave_dist_h1 * 100, 1),
+                    }
+                    return result
             return None
         
         # 当日量能是否异动
@@ -9305,11 +9454,18 @@ def detect_volume_surge_swing(ts_code, name):
             watch = True
             watch_reason = '观察·等待红柱（MACD绿柱连续缩短，即将金叉，可关注翻红确认）'
 
-        # 仅保留强买信号或观察信号（过滤无意义标的）
-        if not strong_buy and not watch:
+        # 注：蓄势大涨信号在MACD未确认时已提前检测（见上方if not macd_pass分支）
+        wave_surge = False
+        wave_surge_reason = ''
+        wave_w1_gain = 0.0
+        wave_w2_retrace = 0.0
+        wave_dist_h1 = 0.0
+
+        # 仅保留强买信号、观察信号或蓄势大涨信号（过滤无意义标的）
+        if not strong_buy and not watch and not wave_surge:
             return None
 
-        return {
+        result = {
             '代码': ts_code,
             '名称': name,
             '量能爆发评分': round(total_score, 1),
@@ -9329,7 +9485,13 @@ def detect_volume_surge_swing(ts_code, name):
             '强买原因': strong_buy_reason,
             '观察信号': watch,
             '观察原因': watch_reason,
+            '蓄势大涨信号': wave_surge,
+            '蓄势大涨原因': wave_surge_reason,
+            '波浪W1涨幅': round(wave_w1_gain * 100, 1) if wave_surge else 0,
+            '波浪W2回调': round(wave_w2_retrace * 100, 1) if wave_surge else 0,
+            '波浪距H1': round(wave_dist_h1 * 100, 1) if wave_surge else 0,
         }
+        return result
     except Exception:
         return None
 
@@ -10284,9 +10446,10 @@ def run(target_date=None, simple_mode=False):
     # =========================
     volume_surge_swing_text = ""
     if _volume_surge_swing_results:
-        # 区分强买信号和观察信号
+        # 区分强买信号、观察信号和蓄势大涨信号
         vs_strong_buy = sorted([x for x in _volume_surge_swing_results if x.get('强买信号')], key=lambda x: -x['量能爆发评分'])
-        vs_watch = sorted([x for x in _volume_surge_swing_results if x.get('观察信号')], key=lambda x: -x['量能爆发评分'])
+        vs_watch = sorted([x for x in _volume_surge_swing_results if x.get('观察信号') and not x.get('强买信号')], key=lambda x: -x['量能爆发评分'])
+        vs_wave_surge = sorted([x for x in _volume_surge_swing_results if x.get('蓄势大涨信号')], key=lambda x: -x['量能爆发评分'])
 
         vs_lines = ["=" * 60]
         vs_lines.append("🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)")
@@ -10316,6 +10479,21 @@ def run(target_date=None, simple_mode=False):
                 vs_lines.append(f"【观察{i}】{_vr['名称']} ({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
                 vs_lines.append(f"  {_vr['观察原因']}")
                 vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+                vs_lines.append("")
+
+        # 蓄势大涨信号段落（波浪结构+量能爆发结合，MACD尚未确认但启动信号明确）
+        if vs_wave_surge:
+            vs_lines.append("")
+            vs_lines.append("🌊 量能爆发·蓄势大涨信号 (波浪结构+量能爆发结合)")
+            vs_lines.append("-" * 60)
+            vs_lines.append("【触发条件】量能爆发硬条件通过 + 波浪W2浅回调(<70%) + 距H1<3% + 今日涨>=5% + MACD绿柱缩短/刚红柱")
+            vs_lines.append("【信号逻辑】当MACD尚未确认但波浪结构蓄势完成+涨幅确认启动时，可在突破前夜提前发现")
+            vs_lines.append("")
+            for i, _vr in enumerate(vs_wave_surge[:10], 1):
+                vs_lines.append(f"【蓄势{i}】{_vr['名称']} ({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f}")
+                vs_lines.append(f"  {_vr['蓄势大涨原因']}")
+                vs_lines.append(f"  W1涨幅={_vr['波浪W1涨幅']:.0f}% | W2回调={_vr['波浪W2回调']:.0f}% | 距H1={_vr['波浪距H1']:+.1f}%")
+                vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 今日量比={_vr['今日量比']}")
                 vs_lines.append("")
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
@@ -10662,6 +10840,49 @@ def run(target_date=None, simple_mode=False):
         wave3_text = f"波浪理论数据读取失败: {e}"
 
 
+    # =========================
+    # 回升买点策略（混合策略：W2深回调低吸 + W2浅回调突破H1）
+    # =========================
+    rebound_text = ""
+    try:
+        import pandas as _pd4
+        rebound_csv = r'd:\mystock\solo\etf_resonance\output\rebound_signals.csv'
+        if os.path.exists(rebound_csv):
+            df_rb = _pd4.read_csv(rebound_csv, dtype={'code': str})
+            if len(df_rb) > 0:
+                df_rb = df_rb.sort_values('rebound_score', ascending=False)
+                rb_lines = []
+                rb_lines.append("")
+                rb_lines.append("=" * 60)
+                rb_lines.append("📈 回升买点策略 (混合策略: W2深回调低吸 + W2浅回调突破H1)")
+                rb_lines.append("  回测验证: 混合策略胜率48.0%/平均+1.02% (优于纯回升买点45.5%/+0.61%)")
+                rb_lines.append("=" * 60)
+                n_dx = len(df_rb[df_rb['signal_type'] == '低吸'])
+                n_tp = len(df_rb[df_rb['signal_type'] == '突破'])
+                rb_lines.append(f"今日共{len(df_rb)}只信号 (低吸{n_dx}只/突破{n_tp}只, W1涨幅上限200%)")
+                rb_lines.append(f"{'代码':<12} {'名称':<8} {'类型':>4} {'现价':>8} {'信号分':>6} {'W1涨幅':>7} {'W2回调':>6} {'距H1':>7} {'回升':>6}")
+                rb_lines.append("-" * 80)
+                for _, r in df_rb.iterrows():
+                    rb_lines.append(f"  {str(r['code']):<12} {str(r.get('name','')):<8} {str(r.get('signal_type','')):>4} {float(r['current_price']):>8.2f} {float(r['rebound_score']):>6.1f} {float(r['w1_gain_pct']):>6.1f}% {float(r['w2_retrace_pct']):>5.1f}% {float(r['dist_to_H1_pct']):>+6.1f}% {float(r['rebound_pct']):>5.1f}%")
+                rb_lines.append("")
+                rb_lines.append("📋 策略说明:")
+                rb_lines.append("  【低吸信号】W2回调≥70%深度回调后回升,左侧低吸(胜率46.6%/平均+0.82%)")
+                rb_lines.append("  【突破信号】W2回调<70%浅回调,等突破H1买入(胜率48.5%/平均+1.10%)")
+                rb_lines.append("  【W1过滤】涨幅超200%已过滤(回测胜率仅36%/平均-3.28%)")
+                rb_lines.append("  【最佳区间】W1涨幅50-80%且W2回调40-55%突破H1(胜率50%/平均+1.43%)")
+                rebound_text = "\n".join(rb_lines)
+                print(rebound_text)
+            else:
+                print("[回升买点] 无信号")
+                rebound_text = "今日无回升买点信号"
+        else:
+            print(f"[回升买点] 未找到 {rebound_csv}")
+            rebound_text = "今日无回升买点信号(未生成扫描结果)"
+    except Exception as e:
+        print(f"[回升买点] 获取失败: {e}")
+        rebound_text = f"回升买点数据读取失败: {e}"
+
+
     #return
     prompt = f"""
 以下是我自己计算的量化分析结果：
@@ -10749,7 +10970,8 @@ def run(target_date=None, simple_mode=False):
 
 <span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
-3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，严格显示先按突破成功，再按整合评分高低排序取前面10名，不能自行截取，也不要加入其它的）：
+3、**【今日强势股票池分析】**（【重要约束】仅对强势股票池中股票，只能显示前面10名，不能自行截取，也不要加入其它的）：
+**【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
 【第1名 - 明日首选】**股票名** (代码)
 【第2名】**股票名** (代码)
@@ -10859,13 +11081,14 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 8、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 - 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-- 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，分两段：强买信号段 + 观察信号段
+- 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，分三段：强买信号段 + 观察信号段 + 蓄势大涨信号段
 - 【强买信号】优先分析（MACD刚红柱+回测胜率>=74%的组合），标注强买原因和回测胜率
 - 【观察信号】MACD即将红柱的标的，标注"观察·等待红柱"，提示等待MACD翻红确认后再介入
+- 【蓄势大涨信号】波浪结构+量能爆发结合的标的，标注"蓄势大涨"，提示波浪W2浅回调+距H1近+今日大涨+MACD绿柱缩短/刚红柱，可在突破H1前夜提前发现
 - 每只精简为1小段（3行），用【股票名+代码】作为子标题，每个标题后换行，格式如下：
 - 【子标题】**股票名**(代码) | 评分=XX分 | MACD即将红柱还是刚刚红柱 | 回撤类型 | 距MA20=±X%
 - 第2行：量比=X | 日均振幅=X% | 区间振幅=X% | 区间涨幅=X%
-- 第3行：分析判断（强买信号注明胜率依据；观察信号提示等待红柱确认）
+- 第3行：分析判断（强买信号注明胜率依据；观察信号提示等待红柱确认；蓄势大涨信号注明波浪结构和距H1）
 - 【格式示例-强买】
 **新天科技**(300259.SZ) | 评分=100分 | MACD刚刚红柱 | 中回调 | 距MA20=-1.5% [强买信号]
 量比=6.39 | 日均振幅=7.3% | 区间振幅=74.4% | 区间涨幅=44.1%
@@ -10874,6 +11097,10 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 **金田股份**(601609.SH) | 评分=87分 | MACD即将红柱 | 中回调 | 距MA20=-3.1% [观察·等待红柱]
 量比=5.89 | 日均振幅=5.3% | 区间振幅=50.2% | 区间涨幅=17.4%
 分析：MACD绿柱连续缩短即将金叉，量能爆发特征明显，等待翻红确认后介入更稳妥。
+- 【格式示例-蓄势大涨】
+**华天科技**(002185.SZ) | 评分=89分 | MACD绿柱缩短 | 距MA20=+5.2% [蓄势大涨]
+W1涨幅=94% | W2回调=56% | 距H1=-0.1% | 今日涨+9.98%
+分析：波浪蓄势大涨信号触发（W2浅回调56%+距H1仅-0.1%+今日大涨9.98%+MACD绿柱缩短），量能爆发硬条件全通过但MACD尚未红柱，波浪结构蓄势完成启动在即，可在突破H1前夜提前关注。
 - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
 
 9、**【波浪理论第3浪选股策略】**（艾略特波浪理论第3浪起点选股，ETF成份股池，信号分≥90，回测+12.8%/胜率51.9%/夏普3.08/最大回撤-4.88%）：
@@ -10895,6 +11122,33 @@ A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | �
 风险：(若无则不输出此行)
 - 【约束】股票名、价格、优先级必须严格引用上方数据，禁止凭空编造。优先级排名必须与上方一致，不可自行调整顺序。
 - 如果无高优先级信号数据，直接输出"今日无高优先级(≥75)波浪理论信号，暂不推荐介入"
+
+10、**【回升买点策略（混合策略）】**（L0->H1->L2波浪结构，W2深回调低吸+W2浅回调突破H1，ETF成份股池，回测胜率48.0%/平均+1.02%/持仓5天）
+- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
+- 【数据位置】在"回升买点策略"标题下方，signal_type列标注了每只信号的类型
+- 【混合策略逻辑】
+  - 【低吸信号】W2回调≥70%深度回调后回升，左侧低吸买点（回测胜率46.6%/平均+0.82%）
+  - 【突破信号】W2回调<70%浅回调，等突破H1买入（回测胜率48.5%/平均+1.10%）
+  - 【W1过滤】W1涨幅超200%已过滤（回测胜率仅36%/平均-3.28%，追高风险大）
+- 【按信号分从高到低分析】每只精简为1小段（3-4行），格式如下：
+- 第1行：**股票名**(代码) | 信号类型=[低吸/突破] | 信号分=XX | 现价=XX
+- 第2行：波浪结构(W1涨幅XX% / W2回调XX% / 距H1=±XX% / 回升XX% / L2后XX天)
+- 第3行：操作建议（低吸信号：回调深左侧低吸，止损L2下方；突破信号：等突破H1追入，止损H1下方）
+- 【格式示例-低吸】
+**江化微**(603078.SH) | 信号类型=[低吸] | 信号分=85 | 现价=45.20
+波浪结构：W1涨73% / W2回调74% / 距H1=+5.2% / 回升3.1% / L2后8天
+操作建议：W2深度回调后回升企稳，左侧低吸，止损L2下方3%
+- 【格式示例-突破】
+**有研硅**(688432.SH) | 信号类型=[突破] | 信号分=75 | 现价=52.80
+波浪结构：W1涨88% / W2回调60% / 距H1=+1.5% / 回升5.8% / L2后6天
+操作建议：W2浅回调，等突破H1(53.60)确认追入，止损H1下方3%
+- 【约束】股票名、价格、信号分、signal_type必须严格引用上方数据，禁止凭空编造
+- 如果无信号数据，直接输出"今日无回升买点信号（L0->H1->L2波浪结构未匹配或W1涨幅超200%已过滤）"
+
+内容来源以下双引号内数据：
+"
+{rebound_text}
+"
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**

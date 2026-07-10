@@ -10,6 +10,9 @@ from etf_resonance.wave3_detector import (
     find_pivots, Pivot, PIVOT_WINDOW, W1_MIN_GAIN, W2_RETRACE_MIN, W2_RETRACE_MAX
 )
 
+W1_GAIN_MAX = 2.0
+W2_BREAKOUT_THRESHOLD = 0.70
+
 @dataclass
 class SimpleWave:
     L0: Pivot
@@ -79,6 +82,9 @@ def find_simple_wave(pivots: List[Pivot], df: pd.DataFrame) -> Optional[SimpleWa
         
         # 条件检查（比wave3_detector稍微宽松）
         if w1_gain < W1_MIN_GAIN:  # 0.40
+            continue
+        
+        if w1_gain > W1_GAIN_MAX:
             continue
         
         if not (W2_RETRACE_MIN <= w2_retrace <= W2_RETRACE_MAX):
@@ -185,6 +191,14 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame, name: str = '', in
     if rebound_pct<=0:
         return None
     
+    # 根据W2回调深度判断信号类型
+    # W2深回调(>=70%) -> 回升低吸
+    # W2浅回调(<70%) -> 突破H1买入（此处仅标记，实际突破需在tushare_quant中检测）
+    if wave.w2_retrace >= W2_BREAKOUT_THRESHOLD:
+        signal_type = '低吸'
+    else:
+        signal_type = '突破'
+    
     return ReboundSignal(
         ts_code=df['ts_code'].iloc[-1] if 'ts_code' in df.columns else '',
         name=name, industry=industry,
@@ -192,6 +206,7 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame, name: str = '', in
         current_price=current_price,
         rebound_score=score,
         reasons=reasons,
+        signal_type=signal_type,
         ma5=ma5, ma10=ma10, ma20=ma20,
         vol_ratio=vol_ratio,
         days_since_L2=days_since_L2,
@@ -202,7 +217,7 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame, name: str = '', in
 def print_rebound_signal(sig: ReboundSignal) -> None:
     w = sig.wave
     print(f"\n{'='*70}")
-    print(f"  [回升买点信号] {sig.name} ({sig.ts_code})")
+    print(f"  [{sig.signal_type}信号] {sig.name} ({sig.ts_code})")
     print(f"{'='*70}")
     
     print(f"\n波浪基础:")
@@ -314,11 +329,11 @@ def scan_rebound_signals(scope='etf', min_score=60, top_n=20):
     found_signals.sort(key=lambda s: -s.rebound_score)
 
     print(f'\n[结果] 发现 {len(found_signals)} 个回升买点信号 (评分≥{min_score}):')
-    print(f'{"代码":12s} {"名称":10s} {"现价":>8s} {"信号分":>6s} {"距H1":>8s} {"回升":>8s} {"L2后天数":>8s}')
-    print('-' * 70)
+    print(f'{"代码":12s} {"名称":10s} {"类型":>4s} {"现价":>8s} {"信号分":>6s} {"距H1":>8s} {"回升":>8s} {"L2后天数":>8s}')
+    print('-' * 75)
 
     for sig in found_signals[:top_n]:
-        print(f'{sig.ts_code:12s} {sig.name:10s} {sig.current_price:8.2f} {sig.rebound_score:6.1f} {sig.dist_to_H1_pct:7.1f}% {sig.rebound_pct:7.1f}% {sig.days_since_L2:8d}天')
+        print(f'{sig.ts_code:12s} {sig.name:10s} {sig.signal_type:>4s} {sig.current_price:8.2f} {sig.rebound_score:6.1f} {sig.dist_to_H1_pct:7.1f}% {sig.rebound_pct:7.1f}% {sig.days_since_L2:8d}天')
 
     # 打印前3个详细结果
     if found_signals:
@@ -337,6 +352,7 @@ def scan_rebound_signals(scope='etf', min_score=60, top_n=20):
             w = sig.wave
             rows.append({
                 'code': sig.ts_code, 'name': sig.name, 'industry': sig.industry,
+                'signal_type': sig.signal_type,
                 'current_price': sig.current_price,
                 'rebound_score': sig.rebound_score,
                 'w1_start_date': w.L0.date, 'w1_end_date': w.H1.date, 'w2_end_date': w.L2.date,

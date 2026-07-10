@@ -1,22 +1,28 @@
 """
-回升买点策略通达信回测
+混合策略通达信回测
 数据来源：通达信本地日线 (.day文件)
-策略逻辑：基于波浪理论识别L0→H1→L2结构后的回升买点
+
+策略逻辑：
+  W2浅回调(< 70%) -> 等突破H1买入（趋势确认跟进）
+  W2深回调(>= 70%) -> 回升买点低吸（左侧抄底）
+输出带买点信号类型（突破/低吸）的交易记录
 """
 import os
 import sys
 import struct
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 sys.path.insert(0, r'd:\mystock\solo')
-from etf_resonance.wave3_detector import find_pivots, Pivot, PIVOT_WINDOW, W1_MIN_GAIN, W2_RETRACE_MIN, W2_RETRACE_MAX
+from etf_resonance.wave3_detector import find_pivots, Pivot, W1_MIN_GAIN, W2_RETRACE_MIN, W2_RETRACE_MAX
 
 TDX_PATH = r"C:\new_tdx"
-CACHE_DIR = r"d:\mystock\cache_daily"
+
+W2_BREAKOUT_THRESHOLD = 70.0
+W1_GAIN_MAX = 2.0
 
 @dataclass
 class SimpleWave:
@@ -29,6 +35,7 @@ class SimpleWave:
 @dataclass
 class TradeRecord:
     ts_code: str
+    signal_type: str
     signal_date: str
     buy_date: str
     buy_price: float
@@ -89,7 +96,7 @@ def ts_code_to_tdx_file(ts_code):
         return None
     return os.path.join(TDX_PATH, "vipdoc", subdir, "lday", f"{prefix}{sym}.day")
 
-def get_tdx_kline(ts_code, end_date_str, n_days=120):
+def get_tdx_kline(ts_code, end_date_str, n_days=250):
     tdx_file = ts_code_to_tdx_file(ts_code)
     if not tdx_file or not os.path.exists(tdx_file):
         return None
@@ -132,6 +139,8 @@ def find_simple_wave(pivots: List[Pivot], df: pd.DataFrame) -> Optional[SimpleWa
         w1_gain = (H1.price - L0.price) / max(L0.price, 0.01)
         w2_retrace = (H1.price - L2.price) / max(H1.price - L0.price, 0.01)
         if w1_gain < W1_MIN_GAIN:
+            continue
+        if w1_gain > W1_GAIN_MAX:
             continue
         if not (W2_RETRACE_MIN <= w2_retrace <= W2_RETRACE_MAX):
             continue
@@ -226,7 +235,7 @@ def get_stock_list():
                 tc = s.get('ts_code', '') if isinstance(s, dict) else str(s)
                 if tc and '.' in tc and tc not in stock_list:
                     stock_list.append(tc)
-        print(f"从ETF成份股缓存加载: {len(stock_list)} 只")
+        print(f"从ETF成份股缓存加载: {len(stock_list)} 只", flush=True)
     else:
         for market in ['sh', 'sz']:
             dir_path = os.path.join(TDX_PATH, "vipdoc", market, "lday")
@@ -243,7 +252,7 @@ def get_stock_list():
                 else:
                     continue
                 stock_list.append(ts_code)
-        print(f"从通达信目录加载: {len(stock_list)} 只")
+        print(f"从通达信目录加载: {len(stock_list)} 只", flush=True)
     return stock_list
 
 def get_trade_dates(start_date, end_date):
@@ -263,127 +272,182 @@ def get_trade_dates(start_date, end_date):
 
 def main():
     print("=" * 70, flush=True)
-    print("    回升买点策略通达信回测", flush=True)
+    print("    混合策略通达信回测 (突破H1 + 回升低吸)", flush=True)
     print("=" * 70, flush=True)
-    
+
     START_DATE = "20250101"
     END_DATE = "20260708"
     HOLD_DAYS = 5
     MIN_SCORE = 60
     SKIP_BJ = True
-    
+
     print(f"回测区间: {START_DATE} ~ {END_DATE}", flush=True)
     print(f"持仓天数: {HOLD_DAYS}", flush=True)
-    print(f"最低评分: {MIN_SCORE}", flush=True)
+    print(f"回升低吸最低评分: {MIN_SCORE}", flush=True)
+    print(f"W2回调分界: < {W2_BREAKOUT_THRESHOLD:.0f}% 突破H1买入 | >= {W2_BREAKOUT_THRESHOLD:.0f}% 回升低吸", flush=True)
+    print(f"W1涨幅上限: {W1_GAIN_MAX*100:.0f}% (超过则过滤)", flush=True)
     print(f"跳过北交所: {SKIP_BJ}", flush=True)
     print("-" * 70, flush=True)
-    
+
     trade_dates = get_trade_dates(START_DATE, END_DATE)
     date_to_idx = {d: i for i, d in enumerate(trade_dates)}
     print(f"交易天数: {len(trade_dates)}", flush=True)
     print(f"首交易日: {trade_dates[0]}", flush=True)
     print(f"末交易日: {trade_dates[-1]}", flush=True)
-    
+
     stock_list = get_stock_list()
     if SKIP_BJ:
         stock_list = [s for s in stock_list if not (s.startswith('8') or s.startswith('4') or s.startswith('9'))]
     print(f"\n股票池: {len(stock_list)} 只", flush=True)
-    
+
     print("\n[1] 预加载股票K线数据...", flush=True)
     stock_data = {}
     for i, ts_code in enumerate(stock_list):
-        if (i + 1) % 100 == 0:
+        if (i + 1) % 200 == 0:
             print(f"  进度: {i+1}/{len(stock_list)} | 已加载: {len(stock_data)}", flush=True)
         df = get_tdx_kline(ts_code, END_DATE, n_days=250)
         if df is not None and len(df) >= 60:
             stock_data[ts_code] = df
     print(f"  预加载完成: {len(stock_data)}/{len(stock_list)}", flush=True)
-    
+
     all_trades = []
     signal_cache = {}
-    
+
     total_dates = len(trade_dates)
-    
-    print("\n[2] 开始回测...", flush=True)
+
+    print("\n[2] 开始混合策略回测...", flush=True)
     for date_idx, date_str in enumerate(trade_dates):
         if date_idx % 20 == 0:
-            print(f"\n进度: {date_idx+1}/{total_dates} ({date_str}) | 已交易: {len(all_trades)}", flush=True)
-        
+            n_breakout = len([t for t in all_trades if t.signal_type == 'breakout'])
+            n_rebound = len([t for t in all_trades if t.signal_type == 'rebound'])
+            print(f"  进度: {date_idx+1}/{total_dates} ({date_str}) | 突破:{n_breakout} 低吸:{n_rebound} 总计:{len(all_trades)}", flush=True)
+
         for ts_code, full_df in stock_data.items():
             sliced_df = full_df[full_df['trade_date'] <= date_str].copy()
             if len(sliced_df) < 60:
                 continue
-            
+
             pivots = find_pivots(sliced_df)
             wave = find_simple_wave(pivots, sliced_df)
             if not wave:
                 continue
-            
-            score, details = detect_rebound_signal(wave, sliced_df)
-            if score is None or score < MIN_SCORE:
-                continue
-            
-            if ts_code in signal_cache:
-                prev_date = signal_cache[ts_code]
-                days_diff = date_idx - date_to_idx.get(prev_date, -999)
-                if days_diff < HOLD_DAYS:
+
+            current_price = sliced_df['close'].values[-1]
+            h1_price = wave.H1.price
+            w1_gain = wave.w1_gain
+            w2_retrace = wave.w2_retrace
+
+            w2_pct = w2_retrace * 100
+
+            if w2_pct < W2_BREAKOUT_THRESHOLD:
+                # ---- 浅回调：等突破H1买入 ----
+                prev_close = sliced_df['close'].values[-2] if len(sliced_df) >= 2 else 0
+                if current_price > h1_price and prev_close <= h1_price:
+                    cache_key = f"{ts_code}_breakout"
+                    if ts_code in signal_cache:
+                        prev_date = signal_cache[ts_code]
+                        days_diff = date_idx - date_to_idx.get(prev_date, -999)
+                        if days_diff < HOLD_DAYS:
+                            continue
+                    signal_cache[ts_code] = date_str
+
+                    buy_idx = date_idx + 1
+                    if buy_idx >= len(trade_dates):
+                        continue
+                    buy_date = trade_dates[buy_idx]
+                    buy_rows = full_df[full_df['trade_date'] == buy_date]
+                    if buy_rows.empty:
+                        continue
+                    buy_price = buy_rows['open'].iloc[0]
+
+                    sell_idx = min(buy_idx + HOLD_DAYS, len(trade_dates) - 1)
+                    sell_date = trade_dates[sell_idx]
+                    sell_rows = full_df[full_df['trade_date'] == sell_date]
+                    if sell_rows.empty:
+                        continue
+                    sell_price = sell_rows['close'].iloc[0]
+
+                    return_pct = (sell_price / buy_price - 1) * 100
+
+                    all_trades.append(TradeRecord(
+                        ts_code=ts_code,
+                        signal_type='breakout',
+                        signal_date=date_str,
+                        buy_date=buy_date,
+                        buy_price=buy_price,
+                        sell_date=sell_date,
+                        sell_price=sell_price,
+                        hold_days=sell_idx - buy_idx,
+                        return_pct=round(return_pct, 2),
+                        rebound_score=0,
+                        w1_gain=round(w1_gain * 100, 1),
+                        w2_retrace=round(w2_retrace * 100, 1),
+                        days_since_L2=0,
+                        rebound_pct=0,
+                        dist_to_H1_pct=0,
+                    ))
+            else:
+                # ---- 深回调：回升买点低吸 ----
+                score, details = detect_rebound_signal(wave, sliced_df)
+                if score is None or score < MIN_SCORE:
                     continue
-            
-            signal_cache[ts_code] = date_str
-            
-            buy_idx = date_idx + 1
-            if buy_idx >= len(trade_dates):
-                continue
-            buy_date = trade_dates[buy_idx]
-            
-            buy_rows = full_df[full_df['trade_date'] == buy_date]
-            if buy_rows.empty:
-                continue
-            buy_price = buy_rows['open'].iloc[0]
-            
-            sell_idx = buy_idx + HOLD_DAYS
-            if sell_idx >= len(trade_dates):
-                sell_idx = len(trade_dates) - 1
-            sell_date = trade_dates[sell_idx]
-            
-            sell_rows = full_df[full_df['trade_date'] == sell_date]
-            if sell_rows.empty:
-                continue
-            sell_price = sell_rows['close'].iloc[0]
-            
-            hold_days = sell_idx - buy_idx
-            return_pct = (sell_price / buy_price - 1) * 100
-            
-            all_trades.append(TradeRecord(
-                ts_code=ts_code,
-                signal_date=date_str,
-                buy_date=buy_date,
-                buy_price=buy_price,
-                sell_date=sell_date,
-                sell_price=sell_price,
-                hold_days=hold_days,
-                return_pct=round(return_pct, 2),
-                rebound_score=score,
-                w1_gain=round(details['w1_gain'] * 100, 1),
-                w2_retrace=round(details['w2_retrace'] * 100, 1),
-                days_since_L2=details['days_since_L2'],
-                rebound_pct=round(details['rebound_pct'], 1),
-                dist_to_H1_pct=round(details['dist_to_H1_pct'], 1),
-            ))
-    
-    print("\n" + "=" * 70)
-    print("回测完成，开始统计...")
-    print("=" * 70)
-    
+
+                if ts_code in signal_cache:
+                    prev_date = signal_cache[ts_code]
+                    days_diff = date_idx - date_to_idx.get(prev_date, -999)
+                    if days_diff < HOLD_DAYS:
+                        continue
+                signal_cache[ts_code] = date_str
+
+                buy_idx = date_idx + 1
+                if buy_idx >= len(trade_dates):
+                    continue
+                buy_date = trade_dates[buy_idx]
+                buy_rows = full_df[full_df['trade_date'] == buy_date]
+                if buy_rows.empty:
+                    continue
+                buy_price = buy_rows['open'].iloc[0]
+
+                sell_idx = min(buy_idx + HOLD_DAYS, len(trade_dates) - 1)
+                sell_date = trade_dates[sell_idx]
+                sell_rows = full_df[full_df['trade_date'] == sell_date]
+                if sell_rows.empty:
+                    continue
+                sell_price = sell_rows['close'].iloc[0]
+
+                return_pct = (sell_price / buy_price - 1) * 100
+
+                all_trades.append(TradeRecord(
+                    ts_code=ts_code,
+                    signal_type='rebound',
+                    signal_date=date_str,
+                    buy_date=buy_date,
+                    buy_price=buy_price,
+                    sell_date=sell_date,
+                    sell_price=sell_price,
+                    hold_days=sell_idx - buy_idx,
+                    return_pct=round(return_pct, 2),
+                    rebound_score=score,
+                    w1_gain=round(w1_gain * 100, 1),
+                    w2_retrace=round(w2_retrace * 100, 1),
+                    days_since_L2=details['days_since_L2'],
+                    rebound_pct=round(details['rebound_pct'], 1),
+                    dist_to_H1_pct=round(details['dist_to_H1_pct'], 1),
+                ))
+
+    print("\n" + "=" * 70, flush=True)
+    print("回测完成，开始统计...", flush=True)
+    print("=" * 70, flush=True)
+
     if not all_trades:
-        print("无交易记录！")
+        print("无交易记录！", flush=True)
         return
-    
+
     trades_df = pd.DataFrame([t.__dict__ for t in all_trades])
-    output_file = f"tdx_backtest_rebound_h{HOLD_DAYS}.csv"
+    output_file = f"tdx_backtest_mixed_h{HOLD_DAYS}_w1max{int(W1_GAIN_MAX*100)}.csv"
     trades_df.to_csv(output_file, index=False, encoding='utf-8-sig')
-    print(f"\n交易明细已保存: {output_file}")
-    
+    print(f"\n交易明细已保存: {output_file}", flush=True)
+
     total_trades = len(trades_df)
     winning_trades = len(trades_df[trades_df['return_pct'] > 0])
     win_rate = winning_trades / total_trades * 100
@@ -392,66 +456,104 @@ def main():
     max_return = trades_df['return_pct'].max()
     min_return = trades_df['return_pct'].min()
     avg_hold_days = trades_df['hold_days'].mean()
-    
     unique_stocks = trades_df['ts_code'].nunique()
-    
-    print("\n" + "=" * 70)
-    print("          📊 回升买点策略回测报告")
-    print("=" * 70)
-    print(f"回测区间:     {START_DATE} ~ {END_DATE}")
-    print(f"持仓天数:     {HOLD_DAYS}")
-    print(f"最低评分:     {MIN_SCORE}")
-    print("-" * 70)
-    print(f"📈 总交易次数: {total_trades}")
-    print(f"📈 涉及股票:   {unique_stocks} 只")
-    print(f"🎯 胜率:       {win_rate:.1f}% ({winning_trades}/{total_trades})")
-    print(f"💰 平均收益:   {avg_return:+.2f}%")
-    print(f"💰 中位收益:   {median_return:+.2f}%")
-    print(f"📈 最大收益:   {max_return:+.2f}%")
-    print(f"📉 最大亏损:   {min_return:+.2f}%")
-    print(f"⏱️  平均持仓:   {avg_hold_days:.1f} 天")
-    print("-" * 70)
-    
-    grouped = trades_df.groupby(pd.cut(trades_df['rebound_score'], bins=[0, 55, 60, 65, 70, 100],
-                                       labels=['<55', '55-60', '60-65', '65-70', '70+']))
-    print("\n📊 按评分分组统计:")
-    for name, group in grouped:
-        if len(group) > 0:
-            wr = (group['return_pct'] > 0).mean() * 100
-            ar = group['return_pct'].mean()
-            print(f"  {str(name):8s}: {len(group)}笔 | 胜率{wr:.1f}% | 平均{ar:+.2f}%")
-    
-    print("\n📊 按W1涨幅分组统计:")
+
+    print("\n" + "=" * 70, flush=True)
+    print("          📊 混合策略回测报告", flush=True)
+    print("=" * 70, flush=True)
+    print(f"回测区间:     {START_DATE} ~ {END_DATE}", flush=True)
+    print(f"持仓天数:     {HOLD_DAYS}", flush=True)
+    print(f"W2回调分界:   {W2_BREAKOUT_THRESHOLD:.0f}%", flush=True)
+    print("-" * 70, flush=True)
+    print(f"📈 总交易次数: {total_trades}", flush=True)
+    print(f"📈 涉及股票:   {unique_stocks} 只", flush=True)
+    print(f"🎯 胜率:       {win_rate:.1f}% ({winning_trades}/{total_trades})", flush=True)
+    print(f"💰 平均收益:   {avg_return:+.2f}%", flush=True)
+    print(f"💰 中位收益:   {median_return:+.2f}%", flush=True)
+    print(f"📈 最大收益:   {max_return:+.2f}%", flush=True)
+    print(f"📉 最大亏损:   {min_return:+.2f}%", flush=True)
+    print(f"⏱️  平均持仓:   {avg_hold_days:.1f} 天", flush=True)
+    print("-" * 70, flush=True)
+
+    print("\n📊 按信号类型分组统计:", flush=True)
+    for stype in ['breakout', 'rebound']:
+        sub = trades_df[trades_df['signal_type'] == stype]
+        if sub.empty:
+            continue
+        stotal = len(sub)
+        swinning = len(sub[sub['return_pct'] > 0])
+        swin_rate = swinning / stotal * 100
+        savg = sub['return_pct'].mean()
+        smed = sub['return_pct'].median()
+        smax = sub['return_pct'].max()
+        smin = sub['return_pct'].min()
+        label = '突破H1买入' if stype == 'breakout' else '回升低吸'
+        print(f"\n  [{label}]", flush=True)
+        print(f"    交易次数: {stotal}", flush=True)
+        print(f"    胜率:     {swin_rate:.1f}% ({swinning}/{stotal})", flush=True)
+        print(f"    平均收益: {savg:+.2f}%", flush=True)
+        print(f"    中位收益: {smed:+.2f}%", flush=True)
+        print(f"    最大收益: {smax:+.2f}%", flush=True)
+        print(f"    最大亏损: {smin:+.2f}%", flush=True)
+
+    print("\n📊 按W1涨幅分组统计:", flush=True)
     grouped_w1 = trades_df.groupby(pd.cut(trades_df['w1_gain'], bins=[0, 50, 80, 100, 150, 200, 1000],
-                                          labels=['40-50%', '50-80%', '80-100%', '100-150%', '150-200%', '200%+']))
+                                          labels=['<50%', '50-80%', '80-100%', '100-150%', '150-200%', '200%+']))
     for name, group in grouped_w1:
         if len(group) > 0:
             wr = (group['return_pct'] > 0).mean() * 100
             ar = group['return_pct'].mean()
-            print(f"  {str(name):10s}: {len(group)}笔 | 胜率{wr:.1f}% | 平均{ar:+.2f}%")
-    
-    print("\n📊 按W2回调分组统计:")
+            n_bo = len(group[group['signal_type'] == 'breakout'])
+            n_rb = len(group[group['signal_type'] == 'rebound'])
+            print(f"  {str(name):10s}: {len(group)}笔 (突破{n_bo}/低吸{n_rb}) | 胜率{wr:.1f}% | 平均{ar:+.2f}%", flush=True)
+
+    print("\n📊 按W2回调分组统计:", flush=True)
     grouped_w2 = trades_df.groupby(pd.cut(trades_df['w2_retrace'], bins=[20, 40, 55, 70, 85],
                                           labels=['20-40%', '40-55%', '55-70%', '70-85%']))
     for name, group in grouped_w2:
         if len(group) > 0:
             wr = (group['return_pct'] > 0).mean() * 100
             ar = group['return_pct'].mean()
-            print(f"  {str(name):10s}: {len(group)}笔 | 胜率{wr:.1f}% | 平均{ar:+.2f}%")
-    
-    print("\n📈 Top 10 盈利交易:")
+            n_bo = len(group[group['signal_type'] == 'breakout'])
+            n_rb = len(group[group['signal_type'] == 'rebound'])
+            print(f"  {str(name):10s}: {len(group)}笔 (突破{n_bo}/低吸{n_rb}) | 胜率{wr:.1f}% | 平均{ar:+.2f}%", flush=True)
+
+    print("\n📈 Top 10 盈利交易:", flush=True)
     top_win = trades_df.nlargest(10, 'return_pct')
     for _, r in top_win.iterrows():
-        print(f"  {r['ts_code']:12s} | {r['signal_date']} | 分{r['rebound_score']:.1f} | W1{r['w1_gain']:.0f}% | W2{r['w2_retrace']:.0f}% | {r['return_pct']:+.2f}%")
-    
-    print("\n📉 Top 10 亏损交易:")
+        stype_label = '突破' if r['signal_type'] == 'breakout' else '低吸'
+        print(f"  {r['ts_code']:12s} | {r['signal_date']} | {stype_label} | W1{r['w1_gain']:.0f}% | W2{r['w2_retrace']:.0f}% | {r['return_pct']:+.2f}%", flush=True)
+
+    print("\n📉 Top 10 亏损交易:", flush=True)
     top_lose = trades_df.nsmallest(10, 'return_pct')
     for _, r in top_lose.iterrows():
-        print(f"  {r['ts_code']:12s} | {r['signal_date']} | 分{r['rebound_score']:.1f} | W1{r['w1_gain']:.0f}% | W2{r['w2_retrace']:.0f}% | {r['return_pct']:+.2f}%")
-    
-    print("\n" + "=" * 70)
-    print("回测报告生成完毕")
-    print("=" * 70)
+        stype_label = '突破' if r['signal_type'] == 'breakout' else '低吸'
+        print(f"  {r['ts_code']:12s} | {r['signal_date']} | {stype_label} | W1{r['w1_gain']:.0f}% | W2{r['w2_retrace']:.0f}% | {r['return_pct']:+.2f}%", flush=True)
+
+    print("\n" + "=" * 70, flush=True)
+    print("          📊 与单一策略对比", flush=True)
+    print("=" * 70, flush=True)
+
+    reb = trades_df[trades_df['signal_type'] == 'rebound']
+    brk = trades_df[trades_df['signal_type'] == 'breakout']
+
+    print(f"{'指标':<14s} | {'混合策略':>12s} | {'纯回升买点':>12s} | {'纯突破H1':>12s}", flush=True)
+    print("-" * 60, flush=True)
+
+    mix_wr = win_rate
+    mix_avg = avg_return
+    reb_wr = (reb['return_pct'] > 0).mean() * 100 if len(reb) > 0 else 0
+    reb_avg = reb['return_pct'].mean() if len(reb) > 0 else 0
+    brk_wr = (brk['return_pct'] > 0).mean() * 100 if len(brk) > 0 else 0
+    brk_avg = brk['return_pct'].mean() if len(brk) > 0 else 0
+
+    print(f"{'交易次数':<14s} | {total_trades:>12.0f} | {len(reb):>12.0f} | {len(brk):>12.0f}", flush=True)
+    print(f"{'胜率(%)':<14s} | {mix_wr:>12.1f} | {reb_wr:>12.1f} | {brk_wr:>12.1f}", flush=True)
+    print(f"{'平均收益(%)':<14s} | {mix_avg:>+12.2f} | {reb_avg:>+12.2f} | {brk_avg:>+12.2f}", flush=True)
+
+    print("\n" + "=" * 70, flush=True)
+    print("回测报告生成完毕", flush=True)
+    print("=" * 70, flush=True)
 
 if __name__ == "__main__":
     main()
