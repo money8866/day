@@ -21,7 +21,7 @@ os.chdir(r'd:\mystock\solo')
 
 from etf_resonance.core.trend import TrendScorer
 from etf_resonance.core.persistence import PersistenceScorer
-from etf_resonance.core.catchup import CatchupScorer
+from etf_resonance.core.catchup import CatchupScorer, MomentumScorer
 from etf_resonance.core.diffusion import DiffusionScorer
 from etf_resonance.utils.helpers import Config
 from multi_factor_picker.data_fetcher import DataFetcher
@@ -37,6 +37,9 @@ dfetcher = DataFetcher(TS_TOKEN, {
 
 # 补涨分阈值（回测验证70+胜率最高）
 CATCHUP_MIN = 70
+
+# 强势前排分阈值
+MOMENTUM_MIN = 60
 
 # ETF 池（35个行业ETF，已去除指数型）
 ETF_THEME_MAP = {
@@ -81,7 +84,7 @@ START_DATE = f'{int(ANALYSIS_END[:4])-2}0101'
 END_DATE = ANALYSIS_END
 
 print("=" * 70)
-print(f"  ETF 补涨扩散策略 | {ANALYSIS_END} | 补涨分 ≥ {CATCHUP_MIN}")
+print(f"  ETF 补涨扩散+强势前排策略 | {ANALYSIS_END} | 补涨≥{CATCHUP_MIN} 强势≥{MOMENTUM_MIN}")
 print("=" * 70)
 
 print("\n[1] 加载成份股...")
@@ -152,6 +155,7 @@ config = Config(r'd:\mystock\solo\etf_resonance\config.yaml')
 trend_scorer = TrendScorer(config)
 persist_scorer = PersistenceScorer(config)
 catchup_scorer = CatchupScorer(config)
+momentum_scorer = MomentumScorer(config)
 diffusion_scorer = DiffusionScorer(config)
 
 trend_results = trend_scorer.score(etf_data)
@@ -179,6 +183,12 @@ diffused_etfs = {c: r for c, r in diffusion_results.items() if r.diffusion_score
 if not diffused_etfs:
     diffused_etfs = dict(sorted(diffusion_results.items(), key=lambda x: -x[1].diffusion_score)[:3])
 
+# 趋势通过的ETF全部参与评分（扩散度仅作参考分，不作为硬过滤）
+for c in qualifying_etfs:
+    if c not in diffused_etfs:
+        diffused_etfs[c] = diffusion_results.get(c,
+            type('R', (), {'diffusion_score': 50})())
+
 print(f"[4] 扩散ETF: {len(diffused_etfs)} 个")
 
 # ============== 5. 计算补涨评分 ==============
@@ -193,6 +203,10 @@ catchup_results = catchup_scorer.score(
     {c: tr.trend_score for c, tr in qualifying_etfs.items()}
 )
 total_catchup = sum(len(v) for v in catchup_results.values())
+
+# ============== 5b. 计算强势前排评分 ==============
+momentum_results = momentum_scorer.score(stock_data, filtered_constituents)
+total_momentum = sum(len(v) for v in momentum_results.values())
 
 # ============== 6. 汇总并过滤 catchup_score >= CATCHUP_MIN ==============
 all_candidates = []
@@ -212,16 +226,19 @@ for etf_code, results in catchup_results.items():
             'etf_code': etf_code,
             'etf_name': ETF_THEME_MAP.get(etf_code, ''),
             'catchup_score': r.catchup_score,
-            'lag_degree': r.lag_degree,
-            'startup_signal': r.startup_signal,
-            'elasticity': r.elasticity,
+            'trend_setup': r.trend_setup,
+            'vol_gentle': r.vol_gentle,
+            'gain_moderate': r.gain_moderate,
+            'no_limit_up': r.no_limit_up,
+            'catchup_space': r.catchup_space,
             'ret_60d': r.ret_60d,
             'etf_ret_60d': r.etf_ret_60d,
             'ret_gap': r.ret_gap,
             'dist_to_low': r.dist_to_low,
             'dist_to_high': r.dist_to_high,
             'vol_ratio_5d': r.vol_ratio_5d,
-            'beta': r.beta,
+            'limit_up_5d': r.limit_up_5d,
+            'ma_cross_days': r.ma_cross_days,
             'diffusion_score': diff_val,
             'etf_trend': qualifying_etfs[etf_code].trend_score,
             'final_score': round(final_score, 2),
@@ -229,6 +246,40 @@ for etf_code, results in catchup_results.items():
 
 all_candidates.sort(key=lambda x: -x['catchup_score'])
 strong_candidates = [c for c in all_candidates if c['catchup_score'] >= CATCHUP_MIN]
+
+# ============== 6b. 汇总强势前排 ==============
+momentum_candidates = []
+for etf_code, results in momentum_results.items():
+    for r in results:
+        final_mom = (
+            r.momentum_score * 0.7 +
+            diffused_etfs.get(etf_code, type('', (), {'diffusion_score': 50})()).diffusion_score * 0.2 +
+            qualifying_etfs[etf_code].trend_score * 0.1
+        )
+        momentum_candidates.append({
+            'code': r.ts_code,
+            'stock_name': name_map.get(r.ts_code, ''),
+            'industry': industry_map.get(r.ts_code, ''),
+            'etf_code': etf_code,
+            'etf_name': ETF_THEME_MAP.get(etf_code, ''),
+            'momentum_score': r.momentum_score,
+            'new_high_score': r.new_high_score,
+            'trend_60d_score': r.trend_60d_score,
+            'mom_20d_score': r.mom_20d_score,
+            'today_surge_score': r.today_surge_score,
+            'vol_surge_score': r.vol_surge_score,
+            'ret_60d': r.ret_60d,
+            'ret_20d': r.ret_20d,
+            'today_pct': r.today_pct,
+            'dist_to_high': r.dist_to_high,
+            'vol_ratio_5d': r.vol_ratio_5d,
+            'diffusion_score': diffused_etfs.get(etf_code, type('', (), {'diffusion_score': 50})()).diffusion_score,
+            'etf_trend': qualifying_etfs[etf_code].trend_score,
+            'final_score': round(final_mom, 2),
+        })
+
+momentum_candidates.sort(key=lambda x: -x['momentum_score'])
+strong_momentum = [c for c in momentum_candidates if c['momentum_score'] >= MOMENTUM_MIN]
 
 # ============== 7. 输出结果 ==============
 df_out = pd.DataFrame(strong_candidates) if strong_candidates else pd.DataFrame()
@@ -238,18 +289,20 @@ if not strong_candidates:
     print(f"  参考 Top 10:")
     for c in all_candidates[:10]:
         print(f"    {c['code']} {c['stock_name']} | {c['etf_code']} {c['etf_name']} | "
-              f"补涨={c['catchup_score']:.1f} | 滞涨={c['lag_degree']:.1f} | "
-              f"落后ETF {c['ret_gap']:+.1f}%")
+              f"补涨={c['catchup_score']:.1f} | 趋势={c['trend_setup']:.0f} | "
+              f"量温={c['vol_gentle']:.0f} | 60d={c['ret_60d']:+.1f}% | "
+              f"涨停{c['limit_up_5d']}天 | 交叉{c['ma_cross_days']}天")
 else:
     print(f"\n[结果] 补涨分 ≥ {CATCHUP_MIN}: {len(strong_candidates)} 只")
-    print(f"  {'代码':<12}{'名称':<10}{'ETF':<18}{'补涨分':<8}{'滞涨':<6}{'启动':<6}"
-          f"{'落后ETF':<10}{'量比5d':<8}{'最终分':<8}")
-    print(f"  {'-'*88}")
+    print(f"  {'代码':<12}{'名称':<10}{'ETF':<18}{'补涨分':<8}{'趋势':<6}{'量温':<6}"
+          f"{'涨幅':<6}{'涨停':<6}{'60d':<8}{'量比':<6}{'交叉':<6}{'最终分':<8}")
+    print(f"  {'-'*92}")
     for c in strong_candidates:
         print(f"  {c['code']:<12}{c['stock_name']:<10}{c['etf_code']+' '+c['etf_name']:<18}"
-              f"{c['catchup_score']:<8.1f}{c['lag_degree']:<6.1f}{c['startup_signal']:<6.1f}"
-              f"{c['ret_gap']:+.1f}%{'':>3}{c['vol_ratio_5d']:<8.2f}"
-              f"{c['final_score']:<8.1f}")
+              f"{c['catchup_score']:<8.1f}{c['trend_setup']:<6.0f}{c['vol_gentle']:<6.0f}"
+              f"{c['gain_moderate']:<6.0f}{c['limit_up_5d']:<6d}"
+              f"{c['ret_60d']:+.1f}%{'':>2}{c['vol_ratio_5d']:<6.2f}"
+              f"{c['ma_cross_days']:<6d}{c['final_score']:<8.1f}")
 
     if not df_out.empty:
         print(f"\n  ETF分布:")
@@ -261,3 +314,34 @@ output_path = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 df_out.to_csv(output_path, index=False, encoding='utf-8-sig')
 print(f"\n  已保存: {output_path} ({len(strong_candidates)} 条)")
+
+# ============== 8. 输出强势前排结果 ==============
+df_mom = pd.DataFrame(strong_momentum) if strong_momentum else pd.DataFrame()
+
+if not strong_momentum:
+    print(f"\n[强势前排] 无分≥{MOMENTUM_MIN}的股票。")
+    print(f"  参考 Top 10:")
+    for c in momentum_candidates[:10]:
+        print(f"    {c['code']} {c['stock_name']} | {c['etf_code']} {c['etf_name']} | "
+              f"强势={c['momentum_score']:.1f} | 创新高={c['new_high_score']:.0f} | "
+              f"60d={c['ret_60d']:+.1f}% | 今日={c['today_pct']:+.1f}%")
+else:
+    print(f"\n[强势前排] 分 ≥ {MOMENTUM_MIN}: {len(strong_momentum)} 只")
+    print(f"  {'代码':<12}{'名称':<10}{'ETF':<18}{'强势分':<8}{'新高':<6}{'60d':<6}"
+          f"{'20d':<6}{'今日':<8}{'距高':<8}{'最终分':<8}")
+    print(f"  {'-'*92}")
+    for c in strong_momentum:
+        print(f"  {c['code']:<12}{c['stock_name']:<10}{c['etf_code']+' '+c['etf_name']:<18}"
+              f"{c['momentum_score']:<8.1f}{c['new_high_score']:<6.0f}"
+              f"{c['ret_60d']:+6.1f}{'':>1}{c['ret_20d']:+6.1f}{'':>1}"
+              f"{c['today_pct']:+.1f}%{'':>3}{c['dist_to_high']:+.1f}%{'':>2}"
+              f"{c['final_score']:<8.1f}")
+
+    if not df_mom.empty:
+        print(f"\n  ETF分布:")
+        for (ec, en), grp in df_mom.groupby(['etf_code', 'etf_name']):
+            print(f"    {ec} {en}: {len(grp)} 只, 均分{grp['momentum_score'].mean():.1f}")
+
+mom_path = r'd:\mystock\solo\etf_resonance\output\trend_leaders.csv'
+df_mom.to_csv(mom_path, index=False, encoding='utf-8-sig')
+print(f"\n  已保存: {mom_path} ({len(strong_momentum)} 条)")

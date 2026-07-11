@@ -43,6 +43,7 @@ from indicators import MA, MACD, RSI
 # =========================================================
 AWAVE_LOOKBACK = 120
 AWAVE_GAIN_MIN = 0.60
+AWAVE_GAIN_MAX = 1.0  # 优化v3: A浪涨幅>100%过滤(胜率0%-50%)
 AWAVE_DURATION_MIN = 20
 AWAVE_DURATION_MAX = 60
 AWAVE_MA20_UP_RATIO = 0.6
@@ -50,11 +51,18 @@ AWAVE_ABOVE_MA20_RATIO = 0.6
 AWAVE_VOL_RATIO = 1.3
 
 BWAVE_DROP_MIN = 0.20
-BWAVE_DROP_MAX = 0.45
+BWAVE_DROP_MAX = 0.30  # 优化v3: 30%以上回调=趋势破坏(胜率33%)
 BWAVE_DURATION_RATIO = 0.8
 BWAVE_MA120_FLOOR = 0.97
 BWAVE_SCORE_MIN = 85
 BWAVE_SCORE_MAX = 90
+
+# 优化v2: 底背离检测常量
+DIVERGENCE_DIF_UP_MIN_PCT = 15.0
+DIVERGENCE_SIGNAL_MAX_DAYS = 30
+DIVERGENCE_B_LOW_FLOOR = 0.93
+DIVERGENCE_LOW_PRICE_MIN = 8.0
+DIVERGENCE_VOL_SHRINK_MAX = 0.7
 
 SEARCH_LOOKBACK_A = 120
 
@@ -201,6 +209,8 @@ def detect_signals_vectorized(df: pd.DataFrame) -> Tuple[np.ndarray, List[Dict]]
                     continue
                 gain = (end_price / start_price - 1)
                 if gain < AWAVE_GAIN_MIN:
+                    continue
+                if gain > AWAVE_GAIN_MAX:  # 优化v3: A浪涨幅>100%过滤
                     continue
 
                 ma20_seg = ma20_series[a_start:a_end + 1]
@@ -379,6 +389,10 @@ def detect_signals_vectorized(df: pd.DataFrame) -> Tuple[np.ndarray, List[Dict]]
         if launch_idx > i:
             continue
 
+        # 优化v3: 启动信号缩量硬过滤 (vol_shrink>=0.7则跳过)
+        if b_best["vol_shrink_ratio"] >= 0.7:
+            continue
+
         signals[i] = True
         infos[i] = {
             "bwave_score": b_best["b_score"],
@@ -400,6 +414,362 @@ def detect_signals_vectorized(df: pd.DataFrame) -> Tuple[np.ndarray, List[Dict]]
 
 
 # =========================================================
+# 底背离信号检测 (优化v2)
+# =========================================================
+def detect_divergence_signals_vectorized(df: pd.DataFrame) -> Tuple[np.ndarray, List[Dict]]:
+    """MACD底背离信号检测
+
+    优化v2条件:
+      - DIF抬高 >= 15%
+      - RSI确认 (p2_rsi > p1_rsi) -- 必要条件
+      - MACD绿柱缩短 -- 必要条件
+      - 低价股过滤 (< 8元剔除)
+      - 缩量要求 vol_shrink < 0.7
+    """
+    n = len(df)
+    signals = np.zeros(n, dtype=bool)
+    infos: List[Dict] = [{} for _ in range(n)]
+    if n < 130:
+        return signals, infos
+
+    C = df["close"].values.astype(float)
+    H = df["high"].values.astype(float)
+    L = df["low"].values.astype(float)
+    V = df["vol"].values.astype(float)
+
+    close_series = df["close"]
+    ma5_series = MA(close_series, 5).values
+    ma10_series = MA(close_series, 10).values
+    ma20_series = MA(close_series, 20).values
+    ma60_series = MA(close_series, 60).values
+    ma120_series = MA(close_series, 120).values
+    rsi6_series = RSI(close_series, 6).values
+    dif_series, dea_series, macd_series = MACD(close_series)
+    dif_arr = dif_series.values
+    dea_arr = dea_series.values
+    macd_arr = macd_series.values
+
+    prev_close = np.roll(C, 1)
+    prev_close[0] = C[0]
+    tr = np.maximum(H - L,
+                    np.maximum(np.abs(H - prev_close),
+                               np.abs(L - prev_close)))
+    atr_arr = _rolling_mean_np(tr, 14)
+
+    for i in range(130, n):
+        lookback_start = max(0, i - SEARCH_LOOKBACK_A)
+        lookback_end = i - 5
+        if lookback_end <= lookback_start:
+            continue
+
+        seg_len = lookback_end - lookback_start + 1
+        seg_close = C[lookback_start:lookback_end + 1]
+        seg_ma20 = ma20_series[lookback_start:lookback_end + 1]
+        seg_vol = V[lookback_start:lookback_end + 1]
+
+        low_mask = np.zeros(seg_len, dtype=bool)
+        high_mask = np.zeros(seg_len, dtype=bool)
+        for j in range(1, seg_len - 1):
+            abs_idx = lookback_start + j
+            if C[abs_idx] <= C[abs_idx - 1] and C[abs_idx] <= C[abs_idx + 1]:
+                low_mask[j] = True
+            if C[abs_idx] >= C[abs_idx - 1] and C[abs_idx] >= C[abs_idx + 1]:
+                high_mask[j] = True
+
+        low_indices = np.where(low_mask)[0]
+        high_indices = np.where(high_mask)[0]
+        if len(low_indices) == 0 or len(high_indices) == 0:
+            continue
+
+        low_abs = lookback_start + low_indices
+        high_abs = lookback_start + high_indices
+
+        best_awave = None
+        for li in range(len(low_abs)):
+            a_start = low_abs[li]
+            if a_start < lookback_start:
+                continue
+            for hi in range(len(high_abs)):
+                a_end = high_abs[hi]
+                duration = a_end - a_start
+                if duration < AWAVE_DURATION_MIN or duration > AWAVE_DURATION_MAX:
+                    continue
+                if a_end > i - 5:
+                    continue
+
+                start_price = C[a_start]
+                end_price = C[a_end]
+                if start_price <= 0:
+                    continue
+                gain = (end_price / start_price - 1)
+                if gain < AWAVE_GAIN_MIN:
+                    continue
+                if gain > AWAVE_GAIN_MAX:  # 优化v3: A浪涨幅>100%过滤
+                    continue
+
+                ma20_seg = ma20_series[a_start:a_end + 1]
+                ma20_up_count = np.sum(np.diff(ma20_seg) > 0)
+                ma20_up_ratio = ma20_up_count / max(len(ma20_seg) - 1, 1)
+                if ma20_up_ratio < AWAVE_MA20_UP_RATIO:
+                    continue
+
+                above_ma20 = np.sum(C[a_start:a_end + 1] > ma20_series[a_start:a_end + 1])
+                above_ratio = above_ma20 / max(duration, 1)
+                if above_ratio < AWAVE_ABOVE_MA20_RATIO:
+                    continue
+
+                a_vol = np.mean(V[a_start:a_end + 1])
+                vol_40_start = max(0, a_start - 40)
+                vol_40 = np.mean(V[vol_40_start:a_start]) if a_start > vol_40_start else a_vol
+                vol_ratio_a = a_vol / vol_40 if vol_40 > 0 else 0
+                if vol_ratio_a < AWAVE_VOL_RATIO:
+                    continue
+
+                a_score = 0
+                if gain >= 0.80:
+                    a_score += 40
+                elif gain >= 0.60:
+                    a_score += 25
+                a_score += min(20, int(ma20_up_ratio * 20))
+                a_score += min(20, int(above_ratio * 20))
+                a_score += min(20, int(min(vol_ratio_a / 2, 1) * 20))
+
+                if best_awave is None or a_score > best_awave["a_score"]:
+                    best_awave = {
+                        "start_idx": a_start,
+                        "end_idx": a_end,
+                        "start_price": start_price,
+                        "end_price": end_price,
+                        "gain": gain,
+                        "duration": duration,
+                        "ma20_up_ratio": ma20_up_ratio,
+                        "above_ma20_ratio": above_ratio,
+                        "vol_ratio": vol_ratio_a,
+                        "avg_vol": a_vol,
+                        "a_score": a_score,
+                    }
+
+        if best_awave is None:
+            continue
+
+        a_end = best_awave["end_idx"]
+        a_high = best_awave["end_price"]
+        a_duration = best_awave["duration"]
+        a_avg_vol = best_awave["avg_vol"]
+
+        search_end = min(a_end + a_duration * 2 + 10, n - 5)
+        if i < a_end + int(a_duration * 0.5):  # 背离模式放宽: 0.8->0.5
+            continue
+
+        vol_shrink_limit = 1.5 if best_awave["vol_ratio"] > 2.0 else (1.2 if best_awave["vol_ratio"] > 1.5 else 0.7)
+
+        b_best = None
+        for b_low in range(a_end + int(a_duration * 0.5), min(i, search_end) + 1):
+            if b_low >= n:
+                break
+
+            seg_prices = C[a_end:b_low + 1]
+            real_low_pos = int(np.argmin(seg_prices))
+            real_low_idx = a_end + real_low_pos
+            low_price = C[real_low_idx]
+
+            drop = (a_high - low_price) / a_high
+            if drop < BWAVE_DROP_MIN or drop > BWAVE_DROP_MAX:
+                continue
+
+            b_duration = real_low_idx - a_end
+            if b_duration < a_duration * 0.5:  # 背离模式放宽: 0.8->0.5
+                continue
+
+            recent_10_vol = np.mean(V[max(real_low_idx - 9, a_end):real_low_idx + 1])
+            vol_shrink = recent_10_vol / a_avg_vol if a_avg_vol > 0 else 0
+            if vol_shrink > vol_shrink_limit:
+                continue
+
+            atr_start = atr_arr[a_end] if atr_arr[a_end] > 0 else 0
+            atr_end_val = atr_arr[real_low_idx] if atr_arr[real_low_idx] > 0 else 0
+            atr_drop_val = (atr_start - atr_end_val) / atr_start if atr_start > 0 else 0
+            if atr_drop_val < 0:
+                continue
+
+            ma60_val = ma60_series[real_low_idx]
+            ma120_val = ma120_series[real_low_idx]
+            if ma120_val > 0 and low_price < ma120_val * BWAVE_MA120_FLOOR:
+                continue
+
+            ma60_30ago = ma60_series[max(0, real_low_idx - 30)]
+            ma60_up = ma60_val > ma60_30ago if ma60_30ago > 0 else False
+            if not ma60_up:
+                continue
+
+            time_ratio = b_duration / a_duration if a_duration > 0 else 0
+
+            b_score = 0
+            if 0.25 <= drop <= 0.35:
+                b_score += 30
+            elif 0.20 <= drop < 0.25 or 0.35 < drop <= 0.40:
+                b_score += 20
+            else:
+                b_score += 10
+
+            if 1.0 <= time_ratio <= 1.5:
+                b_score += 25
+            elif 0.8 <= time_ratio < 1.0 or 1.5 < time_ratio <= 2.0:
+                b_score += 15
+            else:
+                b_score += 5
+
+            if vol_shrink <= 0.5:
+                b_score += 20
+            elif vol_shrink <= 0.6:
+                b_score += 15
+            else:
+                b_score += 10
+
+            atr_drop_pct = atr_drop_val * 100
+            if atr_drop_pct >= 30:
+                b_score += 15
+            elif atr_drop_pct >= 20:
+                b_score += 10
+            else:
+                b_score += 5
+
+            ma60_dist = (low_price / ma60_val - 1) * 100 if ma60_val > 0 else 0
+            if ma60_dist > 0:
+                b_score += 10
+
+            if b_best is None or b_score > b_best["b_score"]:
+                b_best = {
+                    "start_idx": a_end,
+                    "low_idx": real_low_idx,
+                    "high_price": a_high,
+                    "low_price": low_price,
+                    "drop": drop,
+                    "duration": b_duration,
+                    "time_ratio": time_ratio,
+                    "vol_shrink_ratio": vol_shrink,
+                    "atr_drop_pct": atr_drop_pct,
+                    "ma60_dist": ma60_dist,
+                    "b_score": b_score,
+                }
+
+        if b_best is None:
+            continue
+
+        b_low_price = b_best["low_price"]
+        b_low_idx = b_best["low_idx"]
+
+        # === 底背离检测 (优化v2) ===
+        # 在B浪内找局部低点 (搜索范围: A浪结束到当前交易日)
+        b_seg_start = a_end
+        b_seg_end = i
+        if b_seg_end <= b_seg_start:
+            continue
+
+        b_seg_len = b_seg_end - b_seg_start + 1
+        b_low_mask = np.zeros(b_seg_len, dtype=bool)
+        for j in range(1, b_seg_len - 1):
+            abs_idx = b_seg_start + j
+            if C[abs_idx] <= C[abs_idx - 1] and C[abs_idx] <= C[abs_idx + 1]:
+                b_low_mask[j] = True
+
+        b_low_indices = np.where(b_low_mask)[0]
+        if len(b_low_indices) < 2:
+            continue
+
+        b_low_abs = b_seg_start + b_low_indices
+        p2_abs = b_low_abs[-1]
+        p1_abs = b_low_abs[-2]
+
+        p1_close = C[p1_abs]
+        p2_close = C[p2_abs]
+        p1_dif = dif_arr[p1_abs]
+        p2_dif = dif_arr[p2_abs]
+
+        # 信号时效检查: p2在当前交易日30天内 OR 当前价格接近p2低点(5%以内)
+        today_close = C[i]
+        near_p2 = abs(today_close / p2_close - 1) <= 0.05
+        if (i - p2_abs > DIVERGENCE_SIGNAL_MAX_DAYS) and (not near_p2):
+            continue
+
+        # 优化v2: 低价股过滤
+        if p2_close < DIVERGENCE_LOW_PRICE_MIN:
+            continue
+
+        # 价格持平或更低
+        if p2_close > p1_close * 1.005:
+            continue
+
+        # 优化v2: DIF抬高 >= 15%
+        if p1_dif == 0:
+            continue
+        dif_up_pct = (p2_dif - p1_dif) / abs(p1_dif) * 100
+        if dif_up_pct < DIVERGENCE_DIF_UP_MIN_PCT:
+            continue
+
+        # 背离低点不能远低于B浪低点
+        if p2_close < b_low_price * DIVERGENCE_B_LOW_FLOOR:
+            continue
+
+        # 优化v2: RSI确认 -- 必要条件
+        p1_rsi = rsi6_series[p1_abs]
+        p2_rsi = rsi6_series[p2_abs]
+        if p2_rsi <= p1_rsi:
+            continue
+
+        # 优化v2: MACD绿柱缩短或红柱增长 (择一)
+        today_macd = macd_arr[i]
+        prev_macd = macd_arr[i - 1] if i >= 1 else today_macd
+        macd_shrinking = (today_macd < 0 and today_macd > prev_macd)
+        macd_turning = (today_macd > 0 and today_macd > prev_macd)
+        if not (macd_shrinking or macd_turning):
+            continue
+
+        # 优化v2: 缩量检查
+        today_vol = V[i]
+        avg_vol_20 = np.mean(V[max(0, i - 20):i]) if i >= 20 else today_vol
+        vol_shrink_now = today_vol / avg_vol_20 if avg_vol_20 > 0 else 1
+
+        today_dif = dif_arr[i]
+        today_dea = dea_arr[i]
+        dif_recovery = (p2_dif / p1_dif - 1) * 100 if p1_dif > 0 else 0
+        dist_to_a_high = (a_high / p2_close - 1) * 100 if p2_close > 0 else 0
+
+        div_score = int(
+            30 +
+            min(20, int(dif_recovery)) +
+            10 +  # RSI确认 (已为必要条件)
+            10 +  # MACD绿柱缩短 (已为必要条件)
+            (10 if today_dif > today_dea else 0) +
+            (5 if vol_shrink_now < DIVERGENCE_VOL_SHRINK_MAX else 0) +
+            (5 if dist_to_a_high < 10 else 0)
+        )
+
+        signals[i] = True
+        infos[i] = {
+            "divergence_score": div_score,
+            "bwave_score": b_best["b_score"],
+            "a_score": best_awave["a_score"],
+            "a_gain_pct": round(best_awave["gain"] * 100, 1),
+            "a_duration": best_awave["duration"],
+            "b_drop_pct": round(b_best["drop"] * 100, 1),
+            "b_duration": b_best["duration"],
+            "b_vol_shrink": round(b_best["vol_shrink_ratio"], 2),
+            "dif_up_pct": round(dif_up_pct, 1),
+            "p2_close": round(p2_close, 2),
+            "p1_close": round(p1_close, 2),
+            "rsi_p2": round(p2_rsi, 1),
+            "rsi_p1": round(p1_rsi, 1),
+            "vol_shrink_now": round(vol_shrink_now, 2),
+            "dist_to_a_high": round(dist_to_a_high, 1),
+            "launch_idx": p2_abs,
+            "trigger": "DIVERGENCE_V2",
+        }
+
+    return signals, infos
+
+
+# =========================================================
 # 回测引擎
 # =========================================================
 class Wave2BWaveBacktester:
@@ -410,12 +780,14 @@ class Wave2BWaveBacktester:
                  end_date: str = None,
                  max_stocks: Optional[int] = None,
                  lookback_days: int = 300,
-                 pool_codes: Optional[List[str]] = None):
+                 pool_codes: Optional[List[str]] = None,
+                 signal_mode: str = "launch"):
         from datetime import datetime
         self.start_date = start_date
         self.end_date = end_date or datetime.now().strftime("%Y%m%d")
         self.lookback_days = lookback_days
         self.pool_codes = set(pool_codes) if pool_codes else None
+        self.signal_mode = signal_mode  # "launch" 或 "divergence"
 
         self.kline_dict: Dict[str, pd.DataFrame] = {}
         self._date_idx_map: Dict[str, Dict[str, int]] = {}
@@ -460,7 +832,10 @@ class Wave2BWaveBacktester:
                 df["_zt_up"] = 1.098
 
             try:
-                signals, infos = detect_signals_vectorized(df)
+                if self.signal_mode == "divergence":
+                    signals, infos = detect_divergence_signals_vectorized(df)
+                else:
+                    signals, infos = detect_signals_vectorized(df)
             except Exception:
                 n_skip += 1
                 continue
@@ -545,6 +920,13 @@ class Wave2BWaveBacktester:
                 "b_vol_shrink": info.get("b_vol_shrink", 0),
                 "b_atr_drop_pct": info.get("b_atr_drop_pct", 0),
                 "b_ma60_dist": info.get("b_ma60_dist", 0),
+                "divergence_score": info.get("divergence_score", 0),
+                "dif_up_pct": info.get("dif_up_pct", 0),
+                "p2_close": info.get("p2_close", 0),
+                "rsi_p2": info.get("rsi_p2", 0),
+                "rsi_p1": info.get("rsi_p1", 0),
+                "vol_shrink_now": info.get("vol_shrink_now", 0),
+                "dist_to_a_high": info.get("dist_to_a_high", 0),
             })
         return records
 
@@ -641,6 +1023,9 @@ def main():
     parser.add_argument("--pool", type=str,
                         default=r"d:\mystock\solo\report_daily\bull_stocks_qualified.csv",
                         help="股票池 CSV (含 ts_code/code 列)")
+    parser.add_argument("--signal-mode", type=str, default="launch",
+                        choices=["launch", "divergence"],
+                        help="信号模式: launch=启动信号, divergence=底背离信号")
     args = parser.parse_args()
 
     pool_codes = _load_pool_codes(args.pool)
@@ -657,7 +1042,7 @@ def main():
     print(f"    B浪回调: {BWAVE_DROP_MIN*100:.0f}%-{BWAVE_DROP_MAX*100:.0f}%")
     print(f"    B浪时长: >=A浪*{BWAVE_DURATION_RATIO}")
     print(f"    B浪低点 >= MA120*{BWAVE_MA120_FLOOR}")
-    print(f"    入场硬过滤: BWaveScore >= {BWAVE_SCORE_MIN}")
+    print(f"    入场硬过滤: BWaveScore >= {BWAVE_SCORE_MIN}, A浪涨幅<={AWAVE_GAIN_MAX*100:.0f}%, 缩量<0.7")
     print(f"    涨停板开盘跳过 (避免追高)")
     print(f"  股池文件: {args.pool}")
     print(f"  板块范围: 主板+双创 (INCLUDE_CHUANGCHUANG=True, CHUANGCHUANG_ONLY=False)")
@@ -668,6 +1053,7 @@ def main():
         end_date=args.end,
         max_stocks=args.max_stocks,
         pool_codes=pool_codes,
+        signal_mode=args.signal_mode,
     )
 
     res = bt.run_backtest(hold_days=args.hold, top_n=args.top_n, verbose=True)
@@ -738,10 +1124,32 @@ def main():
                 avg = np.mean(sub)
                 print(f"    {name}: {len(sub)}笔, 胜率{wr:.1f}%, 均收益{avg:.2f}%")
 
+        if args.signal_mode == "divergence":
+            print("\n  底背离评分分档胜率:")
+            for lo, hi in [(50, 60), (60, 70), (70, 80), (80, 999)]:
+                sub = [r["return"] for r in recs if lo <= r.get("divergence_score", 0) < hi]
+                if sub:
+                    wr = sum(1 for x in sub if x > 0) / len(sub) * 100
+                    avg = np.mean(sub)
+                    label = f"DivScore{lo}-{hi}" if hi < 999 else f"DivScore{lo}+"
+                    print(f"    {label}: {len(sub)}笔, 胜率{wr:.1f}%, 均收益{avg:.2f}%")
+
+            print("\n  DIF抬高幅度分档胜率:")
+            for lo, hi in [(15, 25), (25, 40), (40, 60), (60, 999)]:
+                sub = [r["return"] for r in recs if lo <= r.get("dif_up_pct", 0) < hi]
+                if sub:
+                    wr = sum(1 for x in sub if x > 0) / len(sub) * 100
+                    avg = np.mean(sub)
+                    label = f"DIF抬高{lo}%-{hi}%" if hi < 999 else f"DIF抬高{lo}%+"
+                    print(f"    {label}: {len(sub)}笔, 胜率{wr:.1f}%, 均收益{avg:.2f}%")
+
     if args.out:
         out_path = args.out
     else:
-        out_path = r"d:\mystock\solo\tdx_backtest_bwave_trades.csv"
+        if args.signal_mode == "divergence":
+            out_path = r"d:\mystock\solo\tdx_backtest_bwave_divergence_trades.csv"
+        else:
+            out_path = r"d:\mystock\solo\tdx_backtest_bwave_trades.csv"
 
     if res.get("trade_records"):
         df_out = pd.DataFrame(res["trade_records"])

@@ -117,6 +117,8 @@ def detect_awave(df: pd.DataFrame, lookback: int = 120) -> dict | None:
             gain = (end_price / start_price - 1) * 100
             if gain < 60:
                 continue
+            if gain > 100:  # 优化v3: A浪涨幅>100%过滤(胜率0%-50%)
+                continue
 
             duration = a_end - a_start
 
@@ -212,6 +214,8 @@ def detect_all_awaves(df: pd.DataFrame, lookback: int = 0) -> list:
 
             gain = (end_price / start_price - 1) * 100
             if gain < 60:
+                continue
+            if gain > 100:  # 优化v3: A浪涨幅>100%过滤(胜率0%-50%)
                 continue
 
             duration = a_end - a_start
@@ -319,7 +323,7 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 15 or drop > 40:
+        if drop < 15 or drop > 30:  # 优化v3: 40->30, 回调>30%=趋势破坏
             continue
 
         b_duration = real_low_idx - a_end
@@ -429,7 +433,7 @@ def detect_bwave(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 20 or drop > 45:
+        if drop < 20 or drop > 30:  # 优化v3: 45->30, 回调>30%=趋势破坏(胜率33%)
             continue
 
         b_duration = real_low_idx - a_end
@@ -719,10 +723,10 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
         price_down = p2_close <= p1_close * 1.005
         dif_up = p2_dif > p1_dif * 1.10  # 优化：DIF抬高>10%
         
-        # 优化：计算DIF抬高幅度
+        # 优化v2: DIF抬高要求从10%提高到15%
         dif_up_pct = (p2_dif - p1_dif) / abs(p1_dif) * 100 if p1_dif != 0 else 0
-        if dif_up_pct <= 10:
-            return None  # DIF抬高不足10%，过滤
+        if dif_up_pct <= 15:
+            return None  # 优化v2: DIF抬高不足15%，过滤
 
         if price_down and dif_up:
             # 信号时效：最近的低点不能太久远（15个交易日以内）
@@ -733,10 +737,19 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
                     p1_rsi = df.iloc[p1]['rsi_bfq_6']
                     p2_rsi = df.iloc[p2]['rsi_bfq_6']
 
+                    # 优化v2: RSI确认改为必要条件
+                    if p2_rsi <= p1_rsi:
+                        return None
+
                     # 计算MACD绿柱状态
                     last_macd = df.iloc[-1]['macd_bfq']
                     last_dif = df.iloc[-1]['macd_dif_bfq']
                     last_dea = df.iloc[-1]['macd_dea_bfq']
+
+                    # 优化v2: MACD绿柱缩短改为必要条件
+                    macd_shrinking = (last_macd < 0 and last_macd > df.iloc[-2]['macd_bfq'])
+                    if not macd_shrinking:
+                        return None
 
                     # 状态标记 — 使用背离低点(p2)的价格而非最新价
                     b_recovery_p2 = (p2_close / b_low_price - 1) * 100 if b_low_price > 0 else 0
@@ -744,11 +757,14 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
 
                     dif_recovery = (p2_dif / p1_dif - 1) * 100 if p1_dif > 0 else 0
                     rsi_higher = 1 if p2_rsi > p1_rsi else 0
-                    macd_shrinking = 1 if last_macd < 0 and last_macd > df.iloc[-2]['macd_bfq'] else 0
 
                     vol = df.iloc[-1]['vol']
                     avg_vol_20 = df.iloc[max(0, len(df) - 21):len(df) - 1]['vol'].mean()
                     vol_shrink_now = vol / avg_vol_20 if avg_vol_20 > 0 else 1
+
+                    # 优化v2: 低价股过滤（<8元易阴跌）
+                    if p2_close < 8:
+                        return None
 
                     return {
                         'launch_idx': p2,
@@ -759,7 +775,7 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
                         'ma5_above_ma20': 1 if df.iloc[-1]['ma_bfq_5'] > df.iloc[-1]['ma_bfq_20'] > 0 else 0,
                         'ma5_crossing': 0,
                         'break_platform': 0,
-                        'vol_surge': 1 if vol_shrink_now < 0.8 else 0,
+                        'vol_surge': 1 if vol_shrink_now < 0.7 else 0,  # 优化v2: 0.8->0.7
                         'vol_ratio': round(1 / vol_shrink_now, 2) if vol_shrink_now > 0 else 0,
                         'rsi6': round(p2_rsi, 1),
                         'pct_chg': round(df.iloc[-1]['pct_chg'], 2),
@@ -772,7 +788,7 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
                             (10 if rsi_higher else 0) +  # RSI确认
                             (10 if macd_shrinking else 0) +  # 绿柱缩短
                             (10 if last_dif > last_dea else 0) +  # DIF上穿DEA
-                            (5 if vol_shrink_now < 0.8 else 0) +  # 缩量
+                            (5 if vol_shrink_now < 0.7 else 0) +  # 优化v2: 0.8->0.7 缩量
                             (5 if dist_to_a_high < 10 else 0),  # 距A浪高点较近
                         ),
                     }
@@ -807,11 +823,12 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
     # 底背离：价格持平或更低，DIF抬高
     # 今日价格不高于p1价格的2%（基本相同或更低）
     price_not_higher = today_close <= p1_close * 1.02
-    # DIF明显高于p1时的DIF
+    # 优化v2: DIF抬高要求从1%提高到10%
     dif_recovery = (today_dif / p1_dif - 1) * 100 if p1_dif != 0 else 0
-    dif_higher = today_dif > p1_dif * 1.01
+    if dif_recovery <= 10:
+        return None
 
-    if not (price_not_higher and dif_higher):
+    if not price_not_higher:
         return None
 
     # 信号时效：p1距今不超过15个交易日
@@ -821,13 +838,20 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
     # 当日RSI
     today_rsi = today['rsi_bfq_6']
     p1_rsi = df.iloc[p1]['rsi_bfq_6']
-    rsi_higher = 1 if today_rsi > p1_rsi else 0
+
+    # 优化v2: RSI确认改为必要条件
+    if today_rsi <= p1_rsi:
+        return None
 
     # MACD状态
     today_macd = today['macd_bfq']
     prev_macd = df.iloc[-2]['macd_bfq'] if len(df) >= 2 else today_macd
     today_dea = today['macd_dea_bfq']
-    macd_shrinking = 1 if today_macd < 0 and today_macd > prev_macd else 0
+
+    # 优化v2: MACD绿柱缩短改为必要条件
+    macd_shrinking = (today_macd < 0 and today_macd > prev_macd)
+    if not macd_shrinking:
+        return None
 
     # 量能
     today_vol = today['vol']
@@ -836,6 +860,10 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
 
     b_recovery = (today_close / b_low_price - 1) * 100 if b_low_price > 0 else 0
     dist_to_a_high = (a_high / today_close - 1) * 100 if today_close > 0 else 0
+
+    # 优化v2: 低价股过滤（<8元易阴跌）
+    if today_close < 8:
+        return None
 
     return {
         'launch_idx': len(df) - 1,
@@ -846,7 +874,7 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
         'ma5_above_ma20': 1 if today['ma_bfq_5'] > today['ma_bfq_20'] > 0 else 0,
         'ma5_crossing': 0,
         'break_platform': 0,
-        'vol_surge': 1 if vol_shrink < 0.8 else 0,
+        'vol_surge': 1 if vol_shrink < 0.7 else 0,  # 优化v2: 0.8->0.7
         'vol_ratio': round(1 / vol_shrink, 2) if vol_shrink > 0 else 0,
         'rsi6': round(today_rsi, 1),
         'pct_chg': round(today['pct_chg'], 2),
@@ -856,10 +884,10 @@ def detect_bwave_divergence(df: pd.DataFrame, awave: dict, bwave: dict) -> dict 
         'score': int(
             25 +                      # 当日底背离基础分（略低于标准底背离）
             min(25, int(dif_recovery)) +  # DIF抬高幅度
-            (10 if rsi_higher else 0) +  # RSI确认
+            (10 if today_rsi > p1_rsi else 0) +  # 优化v2: RSI确认
             (10 if macd_shrinking else 0) +  # 绿柱缩短
             (10 if today_dif > today_dea else 0) +  # DIF上穿DEA
-            (5 if vol_shrink < 0.8 else 0) +  # 缩量
+            (5 if vol_shrink < 0.7 else 0) +  # 优化v2: 0.8->0.7 缩量
             (5 if dist_to_a_high < 10 else 0),  # 距A浪高点较近
         ),
     }
@@ -1042,23 +1070,25 @@ def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
                     if not (is_low_dist and is_fake_golden):
                         score = calc_bwave_score(awave, bwave, launch)
                         if score['total'] >= 65:
-                            # 改进1+2: 止损验证 -- 信号触发后跌破B低3%则失效
-                            if not is_signal_stopped(launch, bwave):
-                                entry_price = df.iloc[launch_idx]['close']
-                                rets = {}
-                                for w in [1, 5, 10, 20]:
-                                    fi = min(launch_idx + w, len(df) - 1)
-                                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                                return {**make_result_base(ts_code, latest_date, awave, bwave, launch, score, rets),
-                                        'signal_type': 'launch'}
+                            # 优化v3: 缩量硬过滤 (vol_shrink>=0.7则跳过, 胜率58%->76%)
+                            if bwave.get('vol_shrink_ratio', 1) < 0.7:
+                                # 改进1+2: 止损验证 -- 信号触发后跌破B低3%则失效
+                                if not is_signal_stopped(launch, bwave):
+                                    entry_price = df.iloc[launch_idx]['close']
+                                    rets = {}
+                                    for w in [1, 5, 10, 20]:
+                                        fi = min(launch_idx + w, len(df) - 1)
+                                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                                    return {**make_result_base(ts_code, latest_date, awave, bwave, launch, score, rets),
+                                            'signal_type': 'launch'}
 
-    # 2) 严格B浪 → 底背离
+    # 2) 严格B浪 -> 底背离
     if bwave:
         div = detect_bwave_divergence(df, awave, bwave)
         if div:
             score = calc_divergence_score(awave, bwave, div)
-            # 改进3: 底背离验证 -- d_score≥40才输出(防止趋势保持拉分假信号)
-            if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+            # 优化v2: 底背离阈值提高 total>=65, l_score>=45
+            if score['total'] >= 65 and score.get('l_score', 0) >= 45:
                 # 改进1+2: 止损验证 -- 信号触发后跌破B低3%则失效
                 if not is_signal_stopped(div, bwave):
                     rets = {}
@@ -1084,22 +1114,24 @@ def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
                     if not (is_low_dist and is_fake_golden):
                         score = calc_bwave_score(awave, bwave_r, launch)
                         if score['total'] >= 60:
-                            if not is_signal_stopped(launch, bwave_r):
-                                entry_price = df.iloc[launch_idx]['close']
-                                rets = {}
-                                for w in [1, 5, 10, 20]:
-                                    fi = min(launch_idx + w, len(df) - 1)
-                                    rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
-                                return {**make_result_base(ts_code, latest_date, awave, bwave_r, launch, score, rets),
-                                        'signal_type': 'launch'}
+                            # 优化v3: 缩量硬过滤 (vol_shrink>=0.7则跳过)
+                            if bwave_r.get('vol_shrink_ratio', 1) < 0.7:
+                                if not is_signal_stopped(launch, bwave_r):
+                                    entry_price = df.iloc[launch_idx]['close']
+                                    rets = {}
+                                    for w in [1, 5, 10, 20]:
+                                        fi = min(launch_idx + w, len(df) - 1)
+                                        rets[w] = round((df.iloc[fi]['close'] / entry_price - 1) * 100, 2) if entry_price > 0 else 0
+                                    return {**make_result_base(ts_code, latest_date, awave, bwave_r, launch, score, rets),
+                                            'signal_type': 'launch'}
 
-    # 4) 放宽B浪 → 底背离
+    # 4) 放宽B浪 -> 底背离
     if bwave_r:
         div = detect_bwave_divergence(df, awave, bwave_r)
         if div:
             score = calc_divergence_score(awave, bwave_r, div)
-            # 改进3: 底背离验证 -- d_score≥40才输出
-            if score['total'] >= 60 and score.get('l_score', 0) >= 40:
+            # 优化v2: 底背离阈值提高 total>=65, l_score>=45
+            if score['total'] >= 65 and score.get('l_score', 0) >= 45:
                 if not is_signal_stopped(div, bwave_r):
                     rets = {}
                     div_idx = div['launch_idx']
@@ -1399,7 +1431,8 @@ def main():
                         div = detect_bwave_divergence(df_slice, awave, bwave)
                         if div:
                             s = calc_divergence_score(awave, bwave, div)
-                            if s['total'] >= max(args.min_score - 5, 55):
+                            # 优化v2: 底背离阈值提高
+                            if s['total'] >= max(args.min_score, 60) and s.get('l_score', 0) >= 45:
                                 sig = div
                                 score = s
                                 bwave_used = bwave
@@ -1416,7 +1449,8 @@ def main():
                             div = detect_bwave_divergence(df_slice, awave, bwave_r)
                             if div:
                                 s = calc_divergence_score(awave, bwave_r, div)
-                                if s['total'] >= max(args.min_score - 5, 55):
+                                # 优化v2: 底背离阈值提高
+                                if s['total'] >= max(args.min_score, 60) and s.get('l_score', 0) >= 45:
                                     sig = div
                                     score = s
                                     bwave_used = bwave_r
@@ -1596,8 +1630,8 @@ def main():
                     div = detect_bwave_divergence(df, awave, bwave)
                     if div:
                         s = calc_divergence_score(awave, bwave, div)
-                        # 改进3: 底背离验证 -- d_score≥40才输出
-                        if s['total'] >= max(args.min_score - 5, 55) and s.get('l_score', 0) >= 40:
+                        # 优化v2: 底背离阈值提高
+                        if s['total'] >= max(args.min_score, 60) and s.get('l_score', 0) >= 45:
                             # 改进1+2: 止损验证
                             if not _is_stopped(div, bwave):
                                 signal_type = '底背离'
@@ -1610,7 +1644,8 @@ def main():
                     div = detect_bwave_divergence(df, awave, bwave_r)
                     if div:
                         s = calc_divergence_score(awave, bwave_r, div)
-                        if s['total'] >= max(args.min_score - 5, 55) and s.get('l_score', 0) >= 40:
+                        # 优化v2: 底背离阈值提高
+                        if s['total'] >= max(args.min_score, 60) and s.get('l_score', 0) >= 45:
                             if not _is_stopped(div, bwave_r):
                                 signal_type = '底背离'
                                 sig = div
