@@ -323,7 +323,7 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 15 or drop > 30:  # 优化v3: 40->30, 回调>30%=趋势破坏
+        if drop < 15 or drop > 25:  # 优化v4: 30->25, 20-25%胜率66%均收+20%
             continue
 
         b_duration = real_low_idx - a_end
@@ -433,7 +433,7 @@ def detect_bwave(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 20 or drop > 30:  # 优化v3: 45->30, 回调>30%=趋势破坏(胜率33%)
+        if drop < 20 or drop > 25:  # 优化v4: 30->25, 20-25%胜率66%均收+20%
             continue
 
         b_duration = real_low_idx - a_end
@@ -1335,9 +1335,10 @@ def main():
         log("[警告] --chuangchuang-only 和 --mainboard-only 同时指定, 取消所有过滤")
     elif args.chuangchuang_only and stock_codes:
         before = len(stock_codes)
+        # 优化v4: 排除科创板(688/689),仅保留创业板(3xx),科创板胜率仅44%
         stock_codes = [c for c in stock_codes
-                       if c.startswith(('3', '688', '689'))]
-        log(f"[过滤] 仅双创: 排除主板 {before}→{len(stock_codes)} 只")
+                       if c.startswith('3') and not c.startswith(('688', '689'))]
+        log(f"[过滤] 仅创业板(排除科创板): {before}→{len(stock_codes)} 只")
     elif args.mainboard_only and stock_codes:
         before = len(stock_codes)
         stock_codes = [c for c in stock_codes
@@ -1768,7 +1769,8 @@ def main():
     # 双创: 评分[85,90) + 缩量≤0.4 + 回调[20,25%) — 回测20日胜率76.2%/均收益18.69%
     # 主板: 评分[85,95) + 缩量>0.7 + A涨[60,80] + B天[20,30] + 站MA60 — 回测20日胜率85.4%/均收益20.46%
     # 逻辑差异: 双创散户多, 缩量=抛压轻; 主板机构重仓, 不缩量=机构补仓
-    df_cc = df_out[df_out['ts_code'].str.startswith(('3', '688', '689'), na=False)].copy()
+    # 优化v4: 双创输出仅保留创业板(3xx),排除科创板(688/689)
+    df_cc = df_out[df_out['ts_code'].str.startswith('3', na=False)].copy()
     df_mb = df_out[df_out['ts_code'].str.startswith(('60', '00'), na=False)].copy()
 
     board_filters = []

@@ -962,6 +962,79 @@ def get_market_status_and_position(trend_score):
     return status, position_range, position
 
 
+def detect_c_wave_acceleration(trade_date=None):
+    """
+    检测大盘是否处于C浪加速阶段（空头加速下跌）。
+    
+    判定条件（同时满足3项才认定为C浪加速）：
+    1. 沪深300收盘 < MA20（空头趋势确立）
+    2. 近3日累计跌幅 <= -3%（下跌加速）
+    3. 近5日中至少3日下跌（下跌连续性）
+    
+    返回:
+        dict: {
+            'is_c_wave': bool,           # 是否C浪加速
+            'below_ma20': bool,          # 沪深300是否在MA20下方
+            'ret_3d': float,             # 近3日累计涨幅(%)
+            'down_days_5d': int,         # 近5日下跌天数
+            'reason': str                # 判定理由
+        }
+    """
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    
+    result = {
+        'is_c_wave': False,
+        'below_ma20': False,
+        'ret_3d': 0.0,
+        'down_days_5d': 0,
+        'reason': ''
+    }
+    
+    try:
+        df = get_index_kline("000300.SH", trade_date)
+        if df is None or df.empty or len(df) < 20:
+            result['reason'] = '数据不足，无法判定C浪'
+            return result
+        
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        latest = df.iloc[-1]
+        close = latest['close']
+        
+        ma20 = df['close'].rolling(20).mean().iloc[-1]
+        result['below_ma20'] = close < ma20
+        
+        recent_3 = df.tail(3)
+        ret_3d = ((recent_3.iloc[-1]['close'] / recent_3.iloc[0]['close']) - 1) * 100
+        result['ret_3d'] = round(ret_3d, 2)
+        
+        recent_5 = df.tail(5)
+        down_days = (recent_5['pct_chg'] < 0).sum()
+        result['down_days_5d'] = int(down_days)
+        
+        conditions = []
+        if result['below_ma20']:
+            conditions.append(f"沪深300收{close:.1f}<MA20({ma20:.1f})")
+        if ret_3d <= -3.0:
+            conditions.append(f"3日累跌{ret_3d:.1f}%")
+        if down_days >= 3:
+            conditions.append(f"5日下跌{down_days}天")
+        
+        if len(conditions) >= 3:
+            result['is_c_wave'] = True
+            result['reason'] = 'C浪加速：' + '，'.join(conditions)
+        else:
+            hit = len(conditions)
+            result['reason'] = f'非C浪加速（命中{hit}/3条件：{", ".join(conditions) if conditions else "无"}）'
+        
+        print(f"\n[C浪检测] {result['reason']}")
+    except Exception as e:
+        result['reason'] = f'C浪检测异常: {e}'
+        print(f"[C浪检测] 异常: {e}")
+    
+    return result
+
+
 # ================
 # SQLite数据库操作
 # ================

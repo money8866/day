@@ -41,6 +41,10 @@ CATCHUP_MIN = 70
 # 强势前排分阈值
 MOMENTUM_MIN = 60
 
+# 强势前排追高过滤阈值（防止追涨过热股票）
+MOMENTUM_MAX_60D = 150
+MOMENTUM_MAX_20D = 100
+
 # ETF 池（35个行业ETF，已去除指数型）
 ETF_THEME_MAP = {
     '512480.SH': '半导体', '159995.SZ': '芯片', '159516.SZ': '半导体设备',
@@ -58,27 +62,44 @@ ETF_THEME_MAP = {
 }
 
 # ============== 1. 加载成份股 ==============
-# 16点前使用上个交易日数据（当日日线16点后才更新）
+# 确定分析日期：考虑非交易日（周末/节假日）和16点数据更新时间
 now = datetime.now()
-if now.hour < 16:
-    cal_end = now.strftime('%Y%m%d')
-    cal_start = (now - timedelta(days=10)).strftime('%Y%m%d')
-    try:
-        cal_df = dfetcher.get_trade_cal(start_date=cal_start, end_date=cal_end, is_open='1')
-        if cal_df is not None and not cal_df.empty:
-            open_dates = sorted(cal_df[cal_df['is_open'] == 1]['cal_date'].tolist())
-            today_str = now.strftime('%Y%m%d')
-            prev_dates = [d for d in open_dates if d < today_str]
-            if prev_dates:
-                ANALYSIS_END = prev_dates[-1]
+today_str = now.strftime('%Y%m%d')
+
+# 获取最近10天的交易日历（包含今天）
+cal_end = today_str
+cal_start = (now - timedelta(days=10)).strftime('%Y%m%d')
+try:
+    cal_df = dfetcher.get_trade_cal(start_date=cal_start, end_date=cal_end, is_open='1')
+    if cal_df is not None and not cal_df.empty:
+        open_dates = sorted(cal_df[cal_df['is_open'] == 1]['cal_date'].tolist())
+        
+        # 判断今天是否是交易日
+        is_today_trading = today_str in open_dates
+        
+        if is_today_trading:
+            # 今天是交易日：16点前用上个交易日，16点后用今天
+            if now.hour < 16:
+                prev_dates = [d for d in open_dates if d < today_str]
+                ANALYSIS_END = prev_dates[-1] if prev_dates else open_dates[-1]
             else:
-                ANALYSIS_END = open_dates[-1]
+                ANALYSIS_END = today_str
         else:
+            # 今天是非交易日（周末/节假日）：使用最近的交易日
+            prev_dates = [d for d in open_dates if d < today_str]
+            ANALYSIS_END = prev_dates[-1] if prev_dates else open_dates[-1] if open_dates else today_str
+    else:
+        # 获取日历失败，回退到简单逻辑
+        if now.hour < 16:
             ANALYSIS_END = (now - timedelta(days=1)).strftime('%Y%m%d')
-    except Exception:
+        else:
+            ANALYSIS_END = today_str
+except Exception:
+    # 获取日历失败，回退到简单逻辑
+    if now.hour < 16:
         ANALYSIS_END = (now - timedelta(days=1)).strftime('%Y%m%d')
-else:
-    ANALYSIS_END = now.strftime('%Y%m%d')
+    else:
+        ANALYSIS_END = today_str
 
 START_DATE = f'{int(ANALYSIS_END[:4])-2}0101'
 END_DATE = ANALYSIS_END
@@ -279,7 +300,12 @@ for etf_code, results in momentum_results.items():
         })
 
 momentum_candidates.sort(key=lambda x: -x['momentum_score'])
-strong_momentum = [c for c in momentum_candidates if c['momentum_score'] >= MOMENTUM_MIN]
+
+# 追高过滤：排除60D/20D涨幅过高的股票，防止追涨过热标的
+filtered_momentum = [c for c in momentum_candidates
+                     if c['ret_60d'] <= MOMENTUM_MAX_60D and c['ret_20d'] <= MOMENTUM_MAX_20D]
+
+strong_momentum = [c for c in filtered_momentum if c['momentum_score'] >= MOMENTUM_MIN]
 
 # ============== 7. 输出结果 ==============
 df_out = pd.DataFrame(strong_candidates) if strong_candidates else pd.DataFrame()

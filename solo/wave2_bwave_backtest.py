@@ -51,7 +51,7 @@ AWAVE_ABOVE_MA20_RATIO = 0.6
 AWAVE_VOL_RATIO = 1.3
 
 BWAVE_DROP_MIN = 0.20
-BWAVE_DROP_MAX = 0.30  # 优化v3: 30%以上回调=趋势破坏(胜率33%)
+BWAVE_DROP_MAX = 0.25  # 优化v4: 20-25%胜率66%均收+20%, 25-30%仅60%均收+9%
 BWAVE_DURATION_RATIO = 0.8
 BWAVE_MA120_FLOOR = 0.97
 BWAVE_SCORE_MIN = 85
@@ -68,6 +68,7 @@ SEARCH_LOOKBACK_A = 120
 
 INCLUDE_CHUANGCHUANG = True
 CHUANGCHUANG_ONLY = True
+EXCLUDE_KECHUANG = True  # 优化v4: 科创板胜率仅44%~51%,全线拖累,仅保留创业板
 
 
 # =========================================================
@@ -816,6 +817,9 @@ class Wave2BWaveBacktester:
                 continue
             if not is_tradeable(ts_code, INCLUDE_CHUANGCHUANG, CHUANGCHUANG_ONLY):
                 continue
+            # 优化v4: 过滤科创板(688/689),仅保留创业板
+            if EXCLUDE_KECHUANG and ts_code.split(".")[0].startswith(("688", "689")):
+                continue
             if self.pool_codes is not None and ts_code not in self.pool_codes:
                 continue
             if max_stocks and n_ok >= max_stocks:
@@ -1017,7 +1021,7 @@ def main():
     parser.add_argument("--start", type=str, default="20250101")
     parser.add_argument("--end", type=str, default=None)
     parser.add_argument("--max-stocks", type=int, default=None)
-    parser.add_argument("--hold", type=int, default=5, help="持有天数")
+    parser.add_argument("--hold", type=int, default=20, help="持有天数(优化v4: 5->20, 中线最优)")
     parser.add_argument("--top-n", type=int, default=None)
     parser.add_argument("--out", type=str, default=None)
     parser.add_argument("--pool", type=str,
@@ -1045,7 +1049,7 @@ def main():
     print(f"    入场硬过滤: BWaveScore >= {BWAVE_SCORE_MIN}, A浪涨幅<={AWAVE_GAIN_MAX*100:.0f}%, 缩量<0.7")
     print(f"    涨停板开盘跳过 (避免追高)")
     print(f"  股池文件: {args.pool}")
-    print(f"  板块范围: 主板+双创 (INCLUDE_CHUANGCHUANG=True, CHUANGCHUANG_ONLY=False)")
+    print(f"  板块范围: 仅创业板 (EXCLUDE_KECHUANG={EXCLUDE_KECHUANG})")
     print("=" * 80, flush=True)
 
     bt = Wave2BWaveBacktester(

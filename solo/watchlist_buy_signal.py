@@ -226,25 +226,28 @@ def calc_buy_signal(df, code, pick_date=None):
     if not trend_ok:
         return 'AVOID', 0, {'pullback_pct': pullback_pct}, ['趋势已破坏(MA20<MA60)']
 
+    # 优化v2: 回调必须≥10% (深回调50.5% vs 浅回调46.0%)
+    if pullback_pct > -10:
+        return 'WAIT', 0, {'pullback_pct': pullback_pct}, [f'回调{abs(pullback_pct):.1f}%不足10%']
+
+    # 优化v2: 量比必须≥1.0 (量比高胜率反而高)
+    if vol_ratio < 1.0:
+        return 'WAIT', 0, {'pullback_pct': pullback_pct}, [f'量比{vol_ratio:.2f}不足1.0']
+
     ma60_slope = (ma60[latest] / ma60[latest-10] - 1) * 100 if not np.isnan(ma60[latest-10]) else 0
     if ma60_slope > 0.5:
         score += 10
         reasons.append(f"MA60向上({ma60_slope:+.1f}%)")
 
-    # 条件1: 回调幅度5%-15%（最佳区间）
-    if -15 <= pullback_pct <= -5:
+    # 条件1: 回调幅度 (优化v2: 深回调加分, ≥15%最优)
+    if pullback_pct <= -15:
+        score += 25
+        resonance += 1
+        reasons.append(f"回调{abs(pullback_pct):.1f}%(深回调黄金区间)")
+    elif pullback_pct <= -10:
         score += 20
         resonance += 1
         reasons.append(f"回调{abs(pullback_pct):.1f}%(黄金区间)")
-    elif -20 <= pullback_pct < -15:
-        score += 10
-        reasons.append(f"回调{abs(pullback_pct):.1f}%(偏深)")
-    elif -5 < pullback_pct < 0:
-        score += 8
-        reasons.append(f"回调{abs(pullback_pct):.1f}%(刚启动)")
-    elif pullback_pct >= 0:
-        score += 3
-        reasons.append("新高(未回调)")
 
     # 条件2: 回调至MA10（差异化容忍度）
     if -params['ma10_tolerance_down'] <= pos_ma10 <= params['ma10_tolerance']:
@@ -264,7 +267,7 @@ def calc_buy_signal(df, code, pick_date=None):
         score += 8
         reasons.append(f"跌破MA20({pos_ma20:+.1f}%)")
 
-    # 条件4: 缩量回调
+    # 条件4: 缩量回调 (保留原逻辑, 用户要求不修改)
     if vol_ratio < 0.7:
         score += 15
         resonance += 1
@@ -282,15 +285,7 @@ def calc_buy_signal(df, code, pick_date=None):
         reasons.append(f"较高点缩量{shrink_from_high:.0%}")
 
     # 条件5: 企稳迹象（共振项）
-    # 5a. KDJ低位
-    if current_j < 20:
-        score += 10
-        resonance += 1
-        reasons.append(f"KDJ超卖(J={current_j:.0f})")
-    elif current_j < 35:
-        score += 5
-        reasons.append(f"KDJ偏低(J={current_j:.0f})")
-
+    # 优化v2: 删除KDJ加分 (4.5年回测证明无效)
     # 5b. 长下影线
     if lower_shadow > body * 1.5 and lower_shadow > atr * 0.5:
         score += 8
@@ -308,10 +303,7 @@ def calc_buy_signal(df, code, pick_date=None):
         score += 5
         reasons.append(f"窄幅震荡({pct_chg[latest]:+.1f}%)")
 
-    # 5e. RSI低位
-    if 30 <= current_rsi <= 50:
-        score += 5
-        reasons.append(f"RSI偏低({current_rsi:.0f})")
+    # 优化v2: 删除RSI低位加分 (回测证明RSI高反而好)
 
     # 条件6: 回调天数在合理区间
     if 3 <= days_from_high <= params['max_wait_days']:
@@ -336,8 +328,8 @@ def calc_buy_signal(df, code, pick_date=None):
         'trend_ok': trend_ok,
     }
 
-    # 买点判定：共振信号数 >= 阈值
-    if resonance >= params['min_resonance'] and score >= 60:
+    # 买点判定：优化v2 共振≥1即可 (共振越多反而越差), 阈值65 (原60)
+    if resonance >= 1 and score >= 65:
         signal = 'BUY'
     elif score >= 40:
         signal = 'WAIT'

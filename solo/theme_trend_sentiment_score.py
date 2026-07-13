@@ -2932,23 +2932,20 @@ def main():
 
     # ========== 非一日游确认主题（控制台输出） ==========
     if non_daytrip and non_daytrip.get("confirmed"):
-        print("\n" + "=" * 110)
-        print("★ 非一日游确认主题（连续活跃 + 情绪共振）")
-        print("=" * 110)
-        print(f"{'排名':<4}{'主题':<14}{'连续':<6}{'周期阶段':<12}{'综合':<8}{'情绪':<8}{'涨停':<6}{'龙头':<18}{'轮动模式':<10}")
-        print("-" * 110)
+        print("\n" + "=" * 130)
+        print("★ 非一日游确认主题（中期趋势验证 + 连续活跃）")
+        print("=" * 130)
+        print(f"{'排名':<4}{'主题':<14}{'连续':<6}{'周期阶段':<12}{'确立度':<8}{'5日均综':<8}{'波动':<6}{'方向':<6}{'综合':<8}{'情绪':<8}{'涨停':<6}{'龙头':<18}")
+        print("-" * 130)
         for idx, d in enumerate(non_daytrip["confirmed"][:15], 1):
             ld = d.get("current_leader", "")
-            leader_pat = d.get("leader_pattern", "")
-            if ld and leader_pat == "核心锚定":
-                ld_display = f"{ld}(核心)"
-            elif ld and leader_pat == "轮动接力":
-                ld_display = f"{ld}(轮动)"
-            else:
-                ld_display = ld if ld else "-"
+            ts_tag = "✓" if d.get("trend_established") else ("⚠" if d["cycle_phase"] == "脉冲待确认" else "")
             print(f"{idx:<4}{d['theme']:<14}{d['confirmed_active_days']:<6}{d['cycle_phase']:<12}"
+                  f"{d.get('trend_strength', 0):<6}{ts_tag:<2}"
+                  f"{d.get('avg_composite_5d', 0):<8.0f}{d.get('std_composite', 0):<6.1f}"
+                  f"{d.get('trend_direction', ''):<6}"
                   f"{d['current_composite']:<8.1f}{d['current_sentiment']:<8.1f}"
-                  f"{d['current_zt']:<6}{ld_display:<18}{leader_pat:<10}")
+                  f"{d['current_zt']:<6}{ld:<18}")
         # 休眠等待主题
         dormant_themes = [
             dt for dt in non_daytrip.get("details_by_theme", {}).values()
@@ -3574,6 +3571,38 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
             else:
                 tmp_streak = 0
 
+        # ===== 中期趋势验证（新增） =====
+        # 1) 5日综合分均值 — 排除脉冲式一日游
+        recent_5 = hist[-5:] if len(hist) >= 5 else hist
+        avg_composite_5d = sum(d["composite"] for d in recent_5) / len(recent_5)
+        avg_trend_5d = sum(d["trend"] for d in recent_5) / len(recent_5)
+
+        # 2) 综合分波动性 — 标准差大说明不稳定
+        if len(recent_5) >= 3:
+            mean_c = avg_composite_5d
+            var_c = sum((d["composite"] - mean_c) ** 2 for d in recent_5) / len(recent_5)
+            std_composite = var_c ** 0.5
+        else:
+            std_composite = 0
+
+        # 3) 趋势方向 — 近3天综合分是否持续向上
+        if len(hist) >= 3:
+            last3 = [d["composite"] for d in hist[-3:]]
+            trend_direction = "上行" if last3[-1] > last3[0] else ("下行" if last3[-1] < last3[0] else "横盘")
+        else:
+            trend_direction = "未知"
+
+        # 4) 趋势确立度评分 (0-100): 综合连续天数 + 5日均值 + 波动性
+        trend_strength = 0
+        trend_strength += min(40, current_streak * 13)  # 连续天数贡献(最多40)
+        trend_strength += min(30, max(0, avg_composite_5d - 50) * 0.6)  # 5日均分贡献(最多30)
+        trend_strength += min(15, max(0, 15 - std_composite))  # 稳定性贡献(最多15)
+        trend_strength += min(15, avg_trend_5d * 0.2)  # 趋势分贡献(最多15)
+        trend_strength = round(trend_strength)
+
+        # 趋势是否确立：连续>=3天 且 5日均分>=55 且 波动<15
+        trend_established = (current_streak >= 3 and avg_composite_5d >= 55 and std_composite < 15)
+
         # 板块内龙头序列（最近5天）
         recent_leaders = [d["leader"] for d in hist[-5:] if d["leader"]]
         unique_leaders = list(dict.fromkeys(recent_leaders))  # 去重保序
@@ -3587,19 +3616,34 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
 
         leader_sequence = "→".join(unique_leaders[:3]) if unique_leaders else "无"
 
-        # 周期阶段判断
+        # 周期阶段判断（优化：区分脉冲/启动/中期）
         if current_streak == 0:
             if max_streak >= 2:
                 cycle_phase = "休眠等待"
             else:
                 cycle_phase = "未激活"
-        elif current_streak <= 2:
-            cycle_phase = "启动确认"
+        elif current_streak == 1:
+            # 仅1天确认 → 脉冲待确认，不一定是中期趋势
+            cycle_phase = "脉冲待确认"
+        elif current_streak == 2:
+            # 2天确认 → 启动确认，但仍需观察趋势是否确立
+            if trend_established:
+                cycle_phase = "启动确认"
+            else:
+                cycle_phase = "脉冲待确认"
         elif current_streak <= 5:
-            cycle_phase = "中期延续"
+            # 3-5天 → 检查趋势是否确立
+            if not trend_established:
+                # 虽然连续3天但波动大或5日均分低 → 仍为脉冲待确认
+                cycle_phase = "脉冲待确认"
+            else:
+                cycle_phase = "中期延续"
         else:
-            # 检查综合分是否下降（高潮尾声信号）
-            if len(hist) >= 3:
+            # 连续>5天：检查综合分是否下降（高潮尾声信号）
+            if not trend_established:
+                # 趋势未确立（波动大），即使连续天数多也降级
+                cycle_phase = "脉冲待确认"
+            elif len(hist) >= 3:
                 recent_3 = hist[-3:]
                 avg_last = sum(d["composite"] for d in recent_3) / len(recent_3)
                 prev_3 = hist[-6:-3] if len(hist) >= 6 else hist[:3]
@@ -3631,9 +3675,17 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
             "current_trend": latest["trend"],
             "current_zt": latest["zt_count"],
             "current_leader": latest["leader"],
+            # 新增中期趋势验证字段
+            "avg_composite_5d": round(avg_composite_5d, 1),
+            "avg_trend_5d": round(avg_trend_5d, 1),
+            "std_composite": round(std_composite, 1),
+            "trend_direction": trend_direction,
+            "trend_strength": trend_strength,
+            "trend_established": trend_established,
         }
         details[theme] = detail
 
+        # 确认列表：current_streak >= 1 仍纳入，但通过 cycle_phase 区分可靠性
         if current_streak >= 1:
             confirmed_list.append(detail)
 
@@ -3642,15 +3694,25 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
 
     # ============= 3. 构建输出字符串 =============
     buf = []
-    buf.append("★ 非一日游确认主题（可持续强势，非一日游脉冲）★")
+    buf.append("★ 非一日游确认主题（中期趋势验证，排除脉冲式一日游）★")
     buf.append("-" * 80)
     if confirmed_list:
         buf.append(f"  当前确认主题数: {len(confirmed_list)} / {len(theme_hist)}")
         buf.append("-" * 60)
         for d in confirmed_list[:12]:
+            # 标注趋势确立度
+            ts_tag = ""
+            if d.get("trend_established"):
+                ts_tag = "✓趋势确立"
+            elif d["cycle_phase"] == "脉冲待确认":
+                ts_tag = "⚠趋势未确立"
+
             buf.append(f"  ● {d['theme']:<12} 连续{d['confirmed_active_days']}天[{d['cycle_phase']}]  "
                        f"综:{d['current_composite']:.0f} 情:{d['current_sentiment']:.0f} "
-                       f"涨停:{d['current_zt']}家  龙头:{d['current_leader']}")
+                       f"涨停:{d['current_zt']}家  龙头:{d['current_leader']}  {ts_tag}")
+            # 中期趋势验证信息
+            buf.append(f"      5日均综:{d['avg_composite_5d']:.0f} 5日均趋势:{d['avg_trend_5d']:.0f} "
+                       f"波动:{d['std_composite']:.1f} 方向:{d['trend_direction']} 确立度:{d['trend_strength']}")
             if d['leader_sequence'] and d['leader_sequence'] != "无":
                 buf.append(f"      近5日龙头: {d['leader_sequence']}  [{d['leader_pattern']}]")
             if d['max_active_days'] > d['confirmed_active_days']:
@@ -3664,6 +3726,10 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
             phase_count[d["cycle_phase"]] += 1
         phase_str = "、".join([f"{k}{v}个" for k, v in sorted(phase_count.items(), key=lambda x: -x[1])])
         buf.append(f"  周期分布: {phase_str}")
+
+        # 趋势确立统计
+        established_count = sum(1 for d in confirmed_list if d.get("trend_established"))
+        buf.append(f"  趋势确立: {established_count}个 / 脉冲待确认: {phase_count.get('脉冲待确认', 0)}个")
         buf.append("")
 
         # 警示：高潮尾声主题
@@ -3675,14 +3741,25 @@ def analyze_non_daytrip_themes(trade_date=None, ndays=20):
                            f"综:{d['current_composite']:.0f}，情:{d['current_sentiment']:.0f}）")
             buf.append("")
 
-        # 机会：启动确认主题
+        # 警示：脉冲待确认主题（趋势未确立，谨慎追高）
+        pulse_warn = [d for d in confirmed_list if d["cycle_phase"] == "脉冲待确认"]
+        if pulse_warn:
+            buf.append("  ⚡ 脉冲待确认（1-2天强势但中期趋势未确立，谨慎追高）:")
+            for d in pulse_warn:
+                buf.append(f"     - {d['theme']}（连续{d['confirmed_active_days']}天，"
+                           f"5日均综:{d['avg_composite_5d']:.0f}，波动:{d['std_composite']:.1f}，"
+                           f"确立度:{d['trend_strength']}）")
+            buf.append("")
+
+        # 机会：启动确认主题（趋势已确立）
         start_confirmed = [d for d in confirmed_list if d["cycle_phase"] == "启动确认"]
         if start_confirmed:
-            buf.append("  ✨ 启动确认（新进入确认线，关注机会）:")
+            buf.append("  ✨ 启动确认（趋势确立，连续2天+，关注机会）:")
             for d in start_confirmed:
                 buf.append(f"     - {d['theme']}（连续{d['confirmed_active_days']}天，"
                            f"综:{d['current_composite']:.0f}，情:{d['current_sentiment']:.0f}，"
-                           f"涨停:{d['current_zt']}家，龙头:{d['current_leader']}）")
+                           f"涨停:{d['current_zt']}家，龙头:{d['current_leader']}，"
+                           f"确立度:{d['trend_strength']}）")
             buf.append("")
     else:
         buf.append("  当前无确认主题（市场情绪偏弱，观望为主）")

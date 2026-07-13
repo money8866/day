@@ -544,6 +544,7 @@ def scan_market(top_n: int = 20, min_score: float = 50.0,
         try:
             stock_basic = dfetcher.get_stock_list(list_status='L')
             if stock_basic is not None and not stock_basic.empty:
+                stock_basic = stock_basic.dropna(subset=['name'])
                 name_map = dict(zip(stock_basic['ts_code'], stock_basic['name']))
                 industry_map = dict(zip(stock_basic['ts_code'], stock_basic['industry']))
         except Exception:

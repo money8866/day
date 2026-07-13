@@ -10,8 +10,10 @@ from etf_resonance.wave3_detector import (
     find_pivots, Pivot, PIVOT_WINDOW, W1_MIN_GAIN, W2_RETRACE_MIN, W2_RETRACE_MAX
 )
 
-W1_GAIN_MAX = 2.0
+W1_MIN_GAIN = 0.60  # 优化v2: W1最小涨幅40%→60% (40-60%胜率低)
+W1_GAIN_MAX = 1.0  # 优化v2: W1涨幅上限200%→100% (>100%胜率39%负收益)
 W2_BREAKOUT_THRESHOLD = 0.70
+VOL_RATIO_MIN = 1.0  # 优化v2: 量比≥1.0硬过滤
 
 @dataclass
 class SimpleWave:
@@ -137,7 +139,7 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame, name: str = '', in
     
     if days_since_L2 <3:
         return None
-    if days_since_L2 >30:
+    if days_since_L2 >15:  # 优化v2: 30→15天 (15天后衰退)
         return None
     
     # 不能已经突破 H1，突破了就应该用wave3_detector
@@ -191,13 +193,14 @@ def detect_rebound_signal(wave: SimpleWave, df: pd.DataFrame, name: str = '', in
     if rebound_pct<=0:
         return None
     
-    # 根据W2回调深度判断信号类型
-    # W2深回调(>=70%) -> 回升低吸
-    # W2浅回调(<70%) -> 突破H1买入（此处仅标记，实际突破需在tushare_quant中检测）
-    if wave.w2_retrace >= W2_BREAKOUT_THRESHOLD:
-        signal_type = '低吸'
-    else:
-        signal_type = '突破'
+    # 优化v2: 量比≥1.0硬过滤 (量比<1.0无Alpha)
+    if vol_ratio < VOL_RATIO_MIN:
+        return None
+
+    # 优化v2: 仅保留低吸(W2≥70%), 突破信号胜率低
+    if wave.w2_retrace < W2_BREAKOUT_THRESHOLD:
+        return None
+    signal_type = '低吸'
     
     return ReboundSignal(
         ts_code=df['ts_code'].iloc[-1] if 'ts_code' in df.columns else '',
@@ -299,6 +302,20 @@ def scan_rebound_signals(scope='etf', min_score=60, top_n=20):
             df_m = pd.read_csv(market_path)
             codes = df_m['ts_code'].tolist()
         print(f'加载全市场: {len(codes)} 只')
+
+    # 补全name_map：从market缓存获取股票名称
+    try:
+        import glob as _glob
+        _mk_files = sorted(_glob.glob(r'D:\mystock\cache_daily\market_*.csv'), reverse=True)
+        if _mk_files:
+            _df_mk = pd.read_csv(_mk_files[0], dtype={'ts_code': str})
+            for _, row in _df_mk.iterrows():
+                tc = row['ts_code']
+                if not name_map.get(tc):
+                    name_map[tc] = row.get('name', '')
+                    industry_map[tc] = row.get('industry', '')
+    except Exception:
+        pass
 
     found_signals = []
     total = len(codes)
