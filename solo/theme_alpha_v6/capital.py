@@ -61,58 +61,70 @@ def _metric_acceleration(amt_series: pd.Series) -> float:
 
 def _metric_moneyflow_quality(moneyflow: pd.DataFrame, codes: list,
                                daily: pd.DataFrame) -> float:
-    """③ MoneyflowQuality: 机构资金质量
-    有 moneyflow 时: (超大单+大单)净流入占比 × 连续流入天数系数
-    无 moneyflow 时: 降级为 daily amount 日环比连续放量"""
+    """③ MoneyflowQuality: 机构资金质量（修复版）
+    有 moneyflow 时: 机构净流入占比 × 连续流入天数系数
+    核心改进：正确使用净流入金额，反映资金真实流向
+    """
     if moneyflow is not None and not moneyflow.empty:
         mf = moneyflow[moneyflow["ts_code"].isin(codes)].copy()
         if not mf.empty:
-            mf_dates = sorted(mf["trade_date"].unique())
-            # 机构资金占比 = (超大单+大单净额) / 总成交额
+            # 机构资金 = 超大单+大单
             buy_cols = [c for c in ["buy_elg_amount", "buy_elg_amounts",
                                      "elarg_buy_amount"] if c in mf.columns]
             sell_cols = [c for c in ["sell_elg_amount", "sell_elg_amounts",
                                       "elarg_sell_amount"] if c in mf.columns]
-            if not buy_cols:
+
+            if not buy_cols or not sell_cols:
                 # 退化用 net_mf_amount
                 if "net_mf_amount" in mf.columns:
-                    daily_net = mf.groupby("trade_date")["net_mf_amount"].sum() / 1e8
+                    daily_net = mf.groupby("trade_date")["net_mf_amount"].sum() / 1e4  # 万元
                     inflow_days = (daily_net > 0).sum()
                     total_days = len(daily_net)
                     ratio = inflow_days / total_days if total_days > 0 else 0
-                    # 连续性加权：连续流入天数越多分越高
-                    return float(ratio * (1 + inflow_days / max(total_days, 1)))
-                return 0.5
+                    consec = 0
+                    for v in reversed(daily_net.values):
+                        if v > 0:
+                            consec += 1
+                        else:
+                            break
+                    consec_factor = 1.0 + consec * 0.1
+                    return float(np.clip(ratio * consec_factor, -1, 1))
+                return 0.0  # 无数据=中性偏低
 
-            big_buy = mf[buy_cols].sum().sum()
-            big_sell = mf[sell_cols].sum().sum()
-            total_amt = mf["amount"].sum() if "amount" in mf.columns else (big_buy + big_sell)
+            # 按日汇总机构买卖
+            daily_buy = mf.groupby("trade_date")[buy_cols].sum().sum(axis=1)
+            daily_sell = mf.groupby("trade_date")[sell_cols].sum().sum(axis=1)
+            daily_net_inst = (daily_buy - daily_sell).sort_index()
+
+            # 总成交额（用 buy+sell 之和作为分母，避免amount单位问题）
+            total_buy = daily_buy.sum()
+            total_sell = daily_sell.sum()
+            total_amt = total_buy + total_sell
             if total_amt <= 0:
-                return 0.5
-            inst_ratio = (big_buy - big_sell) / total_amt
+                return 0.0
 
-            # 连续流入天数
-            daily_inst_net = mf.groupby("trade_date").apply(
-                lambda g: g[buy_cols].sum().sum() - g[sell_cols].sum().sum()
-            ).sort_index()
-            # 计算末尾连续正天数
+            # 机构净流入占比
+            inst_ratio = (total_buy - total_sell) / total_amt  # -1 到 +1
+
+            # 连续流入天数（从最近往前数）
             consec = 0
-            for v in reversed(daily_inst_net.values):
+            for v in reversed(daily_net_inst.values):
                 if v > 0:
                     consec += 1
                 else:
                     break
             consec_factor = 1.0 + consec * 0.1  # 每连续1天+10%
+
             return float(np.clip(inst_ratio * consec_factor, -1, 1))
 
     # 降级：用 daily amount 日环比作为代理
     amt = _theme_amount_series(daily, codes)
     if len(amt) < 10:
-        return 0.5
+        return 0.0
     pct = amt.pct_change().dropna()
     recent = pct.tail(10)
     up_ratio = (recent > 0).mean()
-    return float(up_ratio)
+    return float(up_ratio - 0.5)  # 0.5为中性行
 
 
 def _metric_concentration(daily: pd.DataFrame, codes: list) -> float:
@@ -156,6 +168,46 @@ def _metric_rotation(daily: pd.DataFrame, codes: list) -> float:
     return float(avg_5 / avg_20 - 1.0)
 
 
+def _metric_net_inflow_direction(moneyflow: pd.DataFrame, codes: list) -> float:
+    """⑦ NetInflowDirection: 当日机构资金净流入方向
+    正值=机构净买入，负值=机构净卖出
+    返回 -1 到 +1 的归一化值
+    """
+    if moneyflow is None or moneyflow.empty:
+        return 0.0
+
+    mf = moneyflow[moneyflow["ts_code"].isin(codes)].copy()
+    if mf.empty:
+        return 0.0
+
+    # 取最新交易日
+    latest_date = mf["trade_date"].max()
+    mf_latest = mf[mf["trade_date"] == latest_date]
+
+    buy_cols = [c for c in ["buy_elg_amount", "buy_elg_amounts",
+                             "elarg_buy_amount"] if c in mf_latest.columns]
+    sell_cols = [c for c in ["sell_elg_amount", "sell_elg_amounts",
+                              "elarg_sell_amount"] if c in mf_latest.columns]
+
+    if not buy_cols or not sell_cols:
+        # 退化用 net_mf_amount
+        if "net_mf_amount" in mf_latest.columns:
+            net = mf_latest["net_mf_amount"].sum()
+            # 用绝对值归一化
+            total_abs = mf_latest["buy_elg_amount"].abs().sum() + mf_latest["sell_elg_amount"].abs().sum() if "buy_elg_amount" in mf_latest.columns else 1
+            return float(np.clip(net / (total_abs + 1e-9), -1, 1))
+        return 0.0
+
+    total_buy = mf_latest[buy_cols].sum().sum()
+    total_sell = mf_latest[sell_cols].sum().sum()
+    total = total_buy + total_sell
+
+    if total <= 0:
+        return 0.0
+
+    return float(np.clip((total_buy - total_sell) / total, -1, 1))
+
+
 # ============================================================
 #  非线性放大
 # ============================================================
@@ -196,6 +248,7 @@ def compute_all_capital_scores(daily: pd.DataFrame, moneyflow: pd.DataFrame,
             "concentration": _metric_concentration(daily, codes),
             "persistence": _metric_persistence(daily, codes),
             "rotation": _metric_rotation(daily, codes),
+            "net_inflow": _metric_net_inflow_direction(moneyflow, codes),
         })
 
     if not records:
@@ -206,7 +259,7 @@ def compute_all_capital_scores(daily: pd.DataFrame, moneyflow: pd.DataFrame,
     # ===== 跨主题百分位排名 =====
     # 注意：mf_quality 可能全为相同值（降级模式），rank 后差异小
     metric_cols = ["market_share", "acceleration", "mf_quality",
-                   "concentration", "persistence", "rotation"]
+                   "concentration", "persistence", "rotation", "net_inflow"]
     for col in metric_cols:
         df[col + "_pct"] = df[col].rank(pct=True)
 
@@ -217,7 +270,8 @@ def compute_all_capital_scores(daily: pd.DataFrame, moneyflow: pd.DataFrame,
         df["mf_quality_pct"] * config.CAP_W_MFLOW +
         df["concentration_pct"] * config.CAP_W_CONC +
         df["persistence_pct"] * config.CAP_W_PERSIST +
-        df["rotation_pct"] * config.CAP_W_ROTATION
+        df["rotation_pct"] * config.CAP_W_ROTATION +
+        df["net_inflow_pct"] * config.CAP_W_NETFLOW
     )
 
     # ===== 非线性放大 =====
@@ -235,6 +289,9 @@ def compute_all_capital_scores(daily: pd.DataFrame, moneyflow: pd.DataFrame,
                 "concentration": round(float(row["concentration"]), 4),
                 "persistence": round(float(row["persistence"]), 4),
                 "rotation": round(float(row["rotation"]), 4),
+                "net_inflow": round(float(row["net_inflow"]), 4),
+                "persistence_pct": float(row["persistence_pct"]),
+                "rotation_pct": float(row["rotation_pct"]),
             }
         )
     return result

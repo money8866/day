@@ -78,9 +78,17 @@ def compute_continuation_score(daily: pd.DataFrame, codes: list,
     high_20 = np.max(prices[-20:])
     drawdown = (high_20 - latest) / high_20
 
+    # 当日涨跌幅（区分"正常回调"和"暴跌破位"）
+    today_ret = (prices[-1] / prices[-2] - 1) if n >= 2 else 0
+
     # 健康回调区间：3%-8%（主升浪正常回调，最佳买点）
-    if 0.03 <= drawdown <= 0.08:
-        dd_s = 95
+    # 但当日暴跌(<=-5%)不应给高分，可能是趋势破位
+    if today_ret <= -7:
+        dd_s = 10  # 暴跌：趋势可能已破坏
+    elif today_ret <= -5:
+        dd_s = 25  # 大跌：危险信号
+    elif 0.03 <= drawdown <= 0.08:
+        dd_s = 95  # 健康回调：主升浪正常回调，最佳买点
     elif 0.08 < drawdown <= 0.12:
         dd_s = 65  # 深度回调但未破位
     elif drawdown < 0.03:

@@ -24,15 +24,18 @@ MIN_LISTED_DAYS = 120
 MIN_DAILY_AMOUNT = 50000000  # 5000万
 MIN_THEME_STOCKS = 5
 
-# ==================== 评分权重 ====================
-W_TREND = 0.22
-W_CAPITAL = 0.18
-W_SENTIMENT = 0.13
-W_PERSISTENCE = 0.08
-W_CONTINUATION = 0.15
-W_LIFECYCLE = 0.10
-W_LEADER = 0.08
-W_RISK_INV = 0.06
+# ==================== 评分权重 (V6.2 Future Alpha) ====================
+# 核心转变：从 Current Heat -> Future Alpha
+# 降低"当前热度"维度权重，提升"未来预测"维度权重
+W_TREND = 0.15          # 降权：趋势是滞后指标，反映过去而非未来
+W_CAPITAL = 0.12        # 降权：资金流入是同步指标
+W_SENTIMENT = 0.08      # 大幅降权：情绪是最快变化的，预测力最弱
+W_PERSISTENCE = 0.05     # 降权：持续性是中期确认指标
+W_CONTINUATION = 0.12   # 降权：延续概率有一定预测力但非主力
+W_LIFECYCLE = 0.05       # 降权：阶段判断有偏差风险
+W_LEADER = 0.05          # 降权：龙头是结果不是原因
+W_RISK_INV = 0.03        # 降权：风险作为反向因子
+W_FORWARD_ALPHA = 0.35   # 新增：Future Alpha预测分（最大权重！）
 
 # ==================== 生命周期加分 ====================
 LIFECYCLE_BONUS = {
@@ -53,12 +56,21 @@ HOLD_COMPOSITE = 60  # 大幅提高持有门槛！
 HOLD_CONTINUATION = 75
 
 # ==================== Capital 子维度权重 ====================
-CAP_W_SHARE = 0.20        # MarketShare 市场成交额占比
-CAP_W_ACCEL = 0.20        # CapitalAcceleration 资金加速度
-CAP_W_MFLOW = 0.20        # MoneyflowQuality 资金质量
-CAP_W_CONC = 0.15         # CapitalConcentration 资金集中度
-CAP_W_PERSIST = 0.15      # CapitalPersistence 资金持续性
-CAP_W_ROTATION = 0.10     # CapitalRotation 资金轮动
+# V6.1: 提高资金流向权重，降低纯成交额权重
+CAP_W_SHARE = 0.10        # MarketShare 市场成交额占比（降权：大跌放量反高分问题）
+CAP_W_ACCEL = 0.10        # CapitalAcceleration 资金加速度（降权）
+CAP_W_MFLOW = 0.35        # MoneyflowQuality 资金质量（大幅提权：这才是真正的资金流向）
+CAP_W_CONC = 0.10         # CapitalConcentration 资金集中度（降权）
+CAP_W_PERSIST = 0.10      # CapitalPersistence 资金持续性（降权）
+CAP_W_ROTATION = 0.05     # CapitalRotation 资金轮动（降权）
+CAP_W_NETFLOW = 0.20      # NetInflowDirection 当日净流入方向（新增）
+
+# ==================== Alpha Gate（资格赛阈值）====================
+# V6.3: 两步筛选 - 先过资格赛再排Alpha
+# 未通过的主题不进入TOP15，但仍保留在结果中
+ALPHA_GATE_TREND = 55       # Trend Quality 门槛
+ALPHA_GATE_CAP_PERSIST = 50  # Capital Persistence 百分位门槛
+ALPHA_GATE_ROTATION = 50    # Rotation Timing 百分位门槛
 
 # Capital 非线性放大参数
 CAP_AMPLIFY_POWER = 0.80  # power(s, 0.80): Top10%→92, Top30%→76, Top50%→57, 尾部→28

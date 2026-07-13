@@ -2931,22 +2931,26 @@ def main():
     print("-" * 60)
 
     # ========== 非一日游确认主题（控制台输出） ==========
-    if non_daytrip and non_daytrip.get("confirmed"):
+    if non_daytrip:
+        confirmed_list_console = non_daytrip.get("confirmed", [])
         print("\n" + "=" * 130)
         print("★ 非一日游确认主题（中期趋势验证 + 连续活跃）")
         print("=" * 130)
-        print(f"{'排名':<4}{'主题':<14}{'连续':<6}{'周期阶段':<12}{'确立度':<8}{'5日均综':<8}{'波动':<6}{'方向':<6}{'综合':<8}{'情绪':<8}{'涨停':<6}{'龙头':<18}")
-        print("-" * 130)
-        for idx, d in enumerate(non_daytrip["confirmed"][:15], 1):
-            ld = d.get("current_leader", "")
-            ts_tag = "✓" if d.get("trend_established") else ("⚠" if d["cycle_phase"] == "脉冲待确认" else "")
-            print(f"{idx:<4}{d['theme']:<14}{d['confirmed_active_days']:<6}{d['cycle_phase']:<12}"
-                  f"{d.get('trend_strength', 0):<6}{ts_tag:<2}"
-                  f"{d.get('avg_composite_5d', 0):<8.0f}{d.get('std_composite', 0):<6.1f}"
-                  f"{d.get('trend_direction', ''):<6}"
-                  f"{d['current_composite']:<8.1f}{d['current_sentiment']:<8.1f}"
-                  f"{d['current_zt']:<6}{ld:<18}")
-        # 休眠等待主题
+        if confirmed_list_console:
+            print(f"{'排名':<4}{'主题':<14}{'连续':<6}{'周期阶段':<12}{'确立度':<8}{'5日均综':<8}{'波动':<6}{'方向':<6}{'综合':<8}{'情绪':<8}{'涨停':<6}{'龙头':<18}")
+            print("-" * 130)
+            for idx, d in enumerate(confirmed_list_console[:15], 1):
+                ld = d.get("current_leader", "")
+                ts_tag = "✓" if d.get("trend_established") else ("⚠" if d["cycle_phase"] == "脉冲待确认" else "")
+                print(f"{idx:<4}{d['theme']:<14}{d['confirmed_active_days']:<6}{d['cycle_phase']:<12}"
+                      f"{d.get('trend_strength', 0):<6}{ts_tag:<2}"
+                      f"{d.get('avg_composite_5d', 0):<8.0f}{d.get('std_composite', 0):<6.1f}"
+                      f"{d.get('trend_direction', ''):<6}"
+                      f"{d['current_composite']:<8.1f}{d['current_sentiment']:<8.1f}"
+                      f"{d['current_zt']:<6}{ld:<18}")
+        else:
+            print("  当前无确认主题（市场情绪偏弱，观望为主）")
+        # 休眠等待主题（无论是否有确认主题都显示）
         dormant_themes = [
             dt for dt in non_daytrip.get("details_by_theme", {}).values()
             if dt.get("cycle_phase") == "休眠等待"

@@ -1,0 +1,52 @@
+{
+  "trade_date": "20260713",
+  "market_filter": {
+    "risk": "RiskOff",
+    "score": 45.86355562631822,
+    "adjust": 0.9
+  },
+  "top_themes": [
+    {
+      "theme": "红利公用事业",
+      "theme_alpha_score": 85.4,
+      "theme_strength_score": 61.8,
+      "future_return_score": 76.3,
+      "future_p5": 78.6,
+      "future_p10": 76.4,
+      "future_p20": 72.4,
+      "lifecycle": "Expansion",
+      "lifecycle_reason": "震荡上行",
+      "lifecycle_risk": "中性",
+      "leader": "600726.SH",
+      "leader_score": 30.9,
+      "leader_ret_avg": 22.9,
+      "follower_ret": -11.64,
+      "n_stocks": 14,
+      "confidence": 84.9,
+      "rotation_timing": 60.75,
+      "trend_quality": 57.489682799446996,
+      "capital_persistence": 62.714285714285715,
+      "leader_ecology": 36.95818305921224,
+      "expectation_gap": 66.25,
+      "catalyst": 54.0,
+      "beta_adjust": 1.004,
+      "style_type": "defensive",
+      "signal": "Buy",
+      "raw_alpha": 56.05,
+      "factors": {
+        "trend": 57.5,
+        "capital": 62.7,
+        "rotation": 60.8,
+        "leader": 37.0,
+        "expectation": 66.2,
+        "catalyst": 54.0
+      },
+      "etf_code": "512890",
+      "style": "红利",
+      "etf_source": "ETF",
+      "watchlist_category": "Buy List",
+      "watchlist_reason": "Alpha=85.4≥65 + Conf=84.9≥70"
+    }
+  ],
+  "generated_at": "2026-07-13 22:57:55"
+}

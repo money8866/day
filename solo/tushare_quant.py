@@ -87,6 +87,107 @@ DOUBAO_MODEL = os.getenv("DOUBAO_MODEL", "ark-code-latest")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+def _load_theme_stock_map_from_json():
+    """直接从 JSON 文件加载主题-个股映射。
+
+    返回: (theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts)
+    """
+    theme_stock_map = {}
+    name_map_basic = {}
+    stock_basic_industry = {}
+    stock_concepts = {}
+
+    json_path = os.path.join(
+        os.path.dirname(BASE_DIR), "cache_daily", "theme_stock_map_latest.json"
+    )
+
+    if not os.path.exists(json_path):
+        return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+    themes = data.get("themes", {}) or {}
+    stocks = data.get("stocks", {}) or {}
+
+    # 构建 theme_stock_map
+    for theme_name, stock_list in themes.items():
+        if not isinstance(stock_list, list):
+            continue
+        code_map = {}
+        for item in stock_list:
+            if not isinstance(item, dict):
+                continue
+            code = item.get("code")
+            if not code:
+                continue
+            code_map[code] = {
+                "via": item.get("via", ""),
+                "chain_distance": item.get("chain_distance", 0),
+                "industry_match": bool(item.get("industry_match", False)),
+                "score": item.get("score", 0),
+            }
+        theme_stock_map[theme_name] = code_map
+
+    # 构建 name_map_basic / stock_basic_industry / stock_concepts
+    for code, info in stocks.items():
+        if not isinstance(info, dict):
+            continue
+        name = info.get("name")
+        if name:
+            name_map_basic[code] = name
+        industry = info.get("industry")
+        if industry:
+            stock_basic_industry[code] = industry
+        concepts = info.get("concepts")
+        if isinstance(concepts, list):
+            stock_concepts[code] = concepts
+
+    return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+
+def _load_v6_result(expected_date=None):
+    """加载 Theme Alpha V6.2 引擎结果，并验证 trade_date 是否匹配。
+
+    Args:
+        expected_date: 期望的交易日(YYYYMMDD)，None时不验证
+
+    Returns:
+        list: V6结果列表，若文件不存在或日期不匹配则返回None
+    """
+    V6_RESULT_PATH = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json')
+    if not os.path.exists(V6_RESULT_PATH):
+        print(f"[V6] 引擎结果不存在: {V6_RESULT_PATH}")
+        return None
+
+    try:
+        with open(V6_RESULT_PATH, 'r', encoding='utf-8') as f:
+            v6_data = json.load(f)
+    except Exception as e:
+        print(f"[V6] 读取结果失败: {e}")
+        return None
+
+    if not v6_data:
+        print("[V6] 引擎结果为空")
+        return None
+
+    # 验证 trade_date
+    if expected_date:
+        v6_date = v6_data[0].get('trade_date', '')
+        if v6_date and v6_date != expected_date:
+            print(f"⚠️ [V6] 日期不匹配: V6结果日期={v6_date}, 期望日期={expected_date}")
+            print(f"  请先运行 theme_alpha_v6/main.py --date {expected_date} 生成当天结果")
+            return None
+        elif not v6_date:
+            print(f"⚠️ [V6] 结果中无trade_date字段，无法验证日期（旧版V6结果）")
+
+    return v6_data
+
+
 # 缓存/报告目录统一到 d:\stock\ 下
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
@@ -4360,10 +4461,7 @@ def calc_tli_score(theme, top_n=10, days=60):
     核心逻辑：衡量主题在最近N天内的持续活跃程度
     高生命力 = 主题持续出现在市场前排，资金关注度高
     
-    计算方法：
-    1. 查询最近60天主题排名数据
-    2. 统计主题出现在前10名的次数
-    3. 根据出现频率和平均排名打分
+    使用 Theme Alpha V6.2 引擎结果计算。
     
     参数：
         theme: 主题名称
@@ -4375,66 +4473,64 @@ def calc_tli_score(theme, top_n=10, days=60):
     try:
         if not theme:
             return 50, {"错误": "主题为空"}
+
+        # 使用 V6 引擎结果
+        v6_data = _load_v6_result(TRADE_DATE)
+        if not v6_data:
+            return 50, {"错误": "V6结果不存在或日期不匹配"}
         
-        db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-        if not os.path.exists(db_path):
-            return 50, {"错误": "数据库不存在"}
+        # 找到该主题
+        theme_data = None
+        rank = 0
+        for i, r in enumerate(v6_data):
+            if r.get('theme') == theme:
+                theme_data = r
+                rank = i + 1  # 按排序顺序作为排名
+                break
         
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        if not theme_data:
+            return 50, {"说明": "V6中无该主题"}
         
-        # 查询最近60天内该主题的排名情况
-        cursor.execute("""
-            SELECT trade_date, rank, composite_score 
-            FROM theme_scores 
-            WHERE theme = ? 
-            AND trade_date >= date('now', '-{} days')
-            ORDER BY trade_date DESC
-        """.format(days), (theme,))
+        composite = theme_data.get('composite_score', 0)
+        signal = theme_data.get('trade_signal', '')
+        continuation = theme_data.get('continuation_score', 0)
+        fa_score = theme_data.get('forward_alpha', 0)
         
-        rows = cursor.fetchall()
-        conn.close()
+        # 基于 V6.2 信号和综合分计算生命力
+        # 强买=FA+热度共振，看多=FA预测强，关注=偏强，持有=稳定，看空/强烈看空=弱
+        if signal == '强买':
+            base_score = 70 + min(20, (composite - 60) * 0.5)
+        elif signal == '看多':
+            base_score = 60 + min(15, (fa_score - 50) * 0.4)
+        elif signal == '关注':
+            base_score = 55 + min(15, (composite - 50) * 0.5)
+        elif signal == '持有':
+            base_score = 50 + min(15, (composite - 45) * 0.5)
+        elif signal in ('看空', '强烈看空', '回避'):
+            base_score = max(15, composite * 0.3)
+        else:
+            base_score = max(20, composite * 0.4)
         
-        if not rows:
-            return 50, {"说明": "无历史数据"}
+        # 延续分加分
+        base_score += min(10, continuation * 0.1)
         
-        # 统计指标
-        total_days = len(rows)
-        top10_count = sum(1 for row in rows if row[1] <= top_n)
-        top5_count = sum(1 for row in rows if row[1] <= 5)
-        top3_count = sum(1 for row in rows if row[1] <= 3)
-        
-        avg_rank = sum(row[1] for row in rows) / total_days if total_days > 0 else 50
-        avg_score = sum(row[2] for row in rows) / total_days if total_days > 0 else 0
-        
-        # 计算生命力评分 (0-100)
-        # 基础分：前10出现频率
-        base_score = (top10_count / total_days) * 60 if total_days > 0 else 0
-        
-        # 加分项：前5和前3次数
-        bonus_top5 = (top5_count / total_days) * 20 if total_days > 0 else 0
-        bonus_top3 = (top3_count / total_days) * 15 if total_days > 0 else 0
-        
-        # 平均排名修正：平均排名越靠前，加分越多
+        # 排名加分
         rank_bonus = 0
-        if avg_rank <= 3:
-            rank_bonus = 5
-        elif avg_rank <= 5:
-            rank_bonus = 3
-        elif avg_rank <= 10:
-            rank_bonus = 1
+        if rank <= 3:
+            rank_bonus = 10
+        elif rank <= 5:
+            rank_bonus = 7
+        elif rank <= 10:
+            rank_bonus = 4
         
-        tli_score = base_score + bonus_top5 + bonus_top3 + rank_bonus
+        tli_score = base_score + rank_bonus
         tli_score = min(100, max(0, tli_score))
         
         details = {
-            "统计天数": total_days,
-            "前10次数": top10_count,
-            "前5次数": top5_count,
-            "前3次数": top3_count,
-            "平均排名": round(avg_rank, 1),
-            "平均综合分": round(avg_score, 1),
-            "前10频率": f"{top10_count/total_days*100:.1f}%" if total_days > 0 else "0%"
+            "V6排名": rank,
+            "综合分": round(composite, 1),
+            "信号": signal,
+            "延续分": round(continuation, 1),
         }
         
         return round(tli_score, 1), details
@@ -5050,37 +5146,21 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=60)
         hot_score += hot_rank_bonus * 0.5  # 降低热榜加分权重
         
-        # 检查主题是否连续3天情绪排名前5（避免追涨高潮主题）
+        # 检查主题是否处于高潮阶段（避免追涨高潮主题）
         if theme:
             try:
-                db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-                if os.path.exists(db_path):
-                    conn = sqlite3.connect(db_path)
-                    # 获取最近5个交易日的排名数据
-                    dates_df = pd.read_sql(
-                        f"SELECT DISTINCT trade_date FROM theme_scores WHERE trade_date <= '{TRADE_DATE}' ORDER BY trade_date DESC LIMIT 5",
-                        conn
-                    )
-                    if not dates_df.empty:
-                        recent_dates = dates_df['trade_date'].tolist()
-                        consecutive_top5 = 0
-                        # 检查是否连续在TOP5情绪
-                        for td in recent_dates:
-                            rank_df = pd.read_sql(
-                                f"SELECT theme, sentiment_score FROM theme_scores WHERE trade_date = '{td}' ORDER BY sentiment_score DESC",
-                                conn
-                            )
-                            if not rank_df.empty:
-                                top5_themes = rank_df.head(5)['theme'].tolist()
-                                if theme in top5_themes:
-                                    consecutive_top5 += 1
-                                else:
-                                    break  # 不连续则停止
-                        # 连续3天TOP5情绪 = 追涨惩罚
-                        if consecutive_top5 >= 3:
-                            hot_score -= 15  # 连续高潮，追涨风险高
-                            recommendation = recommendation.replace("热榜Top1", "⚠️连续高潮")
-                    conn.close()
+                v6_data = _load_v6_result(TRADE_DATE)
+                if v6_data:
+                    # 查找该主题的V6数据
+                    for r in v6_data:
+                        if r.get('theme') == theme:
+                            # 信号为看空/强烈看空/回避 或 阶段为高潮/衰退 = 追涨惩罚
+                            signal = r.get('trade_signal', '')
+                            stage = r.get('stage', '')
+                            if signal in ('回避', '看空', '强烈看空') or stage in ('高潮', '衰退'):
+                                hot_score -= 15  # 高潮退潮，追涨风险高
+                                recommendation = recommendation.replace("热榜Top1", "⚠️高潮退潮")
+                            break
             except Exception as e:
                 pass  # 查询失败不阻塞
         
@@ -6472,36 +6552,41 @@ def calc_hot_money_open_score_v10(v7_result, df, stock_info, theme=''):
             pass
 
         # =========================
-        # 主题热度分（V10新增）
-        # 计算60天内该主题出现在TOP3的次数，每次+1分，最多20分
+        # 主题热度分（基于V6.2引擎结果）
+        # V6.2信号为强买/看多=高热度，关注=中热度，持有=稳定
         # =========================
         theme_hot_score = 0
-        theme_top3_count = 0
         try:
             if theme:
-                db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-                if os.path.exists(db_path):
-                    conn = sqlite3.connect(db_path)
-                    # 获取过去60天的交易日
-                    trade_dates_df = pd.read_sql(
-                        "SELECT DISTINCT trade_date FROM theme_scores ORDER BY trade_date DESC LIMIT 60",
-                        conn
-                    )
-                    trade_dates = trade_dates_df['trade_date'].tolist()
-                    
-                    # 统计该主题进入TOP3的次数
-                    for td in trade_dates:
-                        day_df = pd.read_sql(
-                            f"SELECT theme FROM theme_scores WHERE trade_date = '{td}' ORDER BY composite_score DESC LIMIT 3",
-                            conn
-                        )
-                        if not day_df.empty and theme in day_df['theme'].values:
-                            theme_top3_count += 1
-                    
-                    conn.close()
-                    
-                    # 热度分 = min(次数, 10)
-                    theme_hot_score = min(theme_top3_count, 10)
+                v6_data = _load_v6_result(TRADE_DATE)
+                if v6_data:
+                    # 查找该主题
+                    rank = 0
+                    for i, r in enumerate(v6_data):
+                        if r.get('theme') == theme:
+                            rank = i + 1
+                            signal = r.get('trade_signal', '')
+                            composite = r.get('composite_score', 0)
+                            fa_score = r.get('forward_alpha', 0)
+                            # 基于信号和排名计算热度分
+                            if signal == '强买':
+                                theme_hot_score = min(15, 10 + max(0, (composite - 60) * 0.1))
+                            elif signal == '看多':
+                                theme_hot_score = min(12, 8 + max(0, (fa_score - 50) * 0.1))
+                            elif signal == '关注':
+                                theme_hot_score = min(10, 7 + max(0, (composite - 50) * 0.1))
+                            elif signal == '持有':
+                                theme_hot_score = min(8, 5 + max(0, (composite - 45) * 0.1))
+                            else:
+                                theme_hot_score = 0
+                            # 排名加分
+                            if rank <= 3:
+                                theme_hot_score += 5
+                            elif rank <= 5:
+                                theme_hot_score += 3
+                            elif rank <= 10:
+                                theme_hot_score += 1
+                            break
         except Exception as e:
             pass
 
@@ -8688,9 +8773,9 @@ def calc_max_limit_height():
 # =========================
 def filter_by_top_themes(result_df, top_n=15):
     """
-    主题筛选 — 使用 Theme Alpha V6 引擎输出
+    主题筛选 - 使用 Theme Alpha V6.2 引擎输出
     
-    加载 theme_alpha_v6_result.json，筛选 trade_signal 为"强买"/"关注"/"持有"的主题，
+    加载 theme_alpha_v6_result.json，筛选 trade_signal 为"强买"/"看多"/"关注"/"持有"的主题，
     然后保留 result_df 中匹配这些主题的股票，并注入 V6 多维评分字段。
     
     参数：
@@ -8703,23 +8788,14 @@ def filter_by_top_themes(result_df, top_n=15):
     if result_df.empty:
         return result_df
 
-    # ===== 1. 加载 Theme Alpha V6 结果 =====
-    V6_RESULT_PATH = os.path.join(
-        BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json'
-    )
-    if not os.path.exists(V6_RESULT_PATH):
-        print(f"[主题过滤] V6引擎结果不存在: {V6_RESULT_PATH}，跳过过滤")
+    # ===== 1. 加载 Theme Alpha V6.2 结果 =====
+    v6_data = _load_v6_result(TRADE_DATE)
+    if not v6_data:
+        print(f"[主题过滤] V6.2引擎结果不可用，跳过过滤")
         return result_df
 
-    try:
-        with open(V6_RESULT_PATH, 'r', encoding='utf-8') as f:
-            v6_data = json.load(f)
-    except Exception as e:
-        print(f"[主题过滤] 读取V6结果失败: {e}")
-        return result_df
-
-    # 筛选信号为强买/关注/持有的主题
-    VALID_SIGNALS = {"强买", "关注", "持有"}
+    # 筛选信号为强买/看多/关注/持有的主题（V6.2新信号体系）
+    VALID_SIGNALS = {"强买", "看多", "关注", "持有"}
     keep_themes_info = {}
     for r in v6_data:
         signal = r.get('trade_signal', '')
@@ -8727,15 +8803,29 @@ def filter_by_top_themes(result_df, top_n=15):
             keep_themes_info[r['theme']] = r
 
     if not keep_themes_info:
-        print("[主题过滤] V6结果中无强买/关注/持有主题，跳过过滤")
+        print("[主题过滤] V6.2结果中无强买/看多/关注/持有主题，跳过过滤")
         return result_df
 
     # 按综合分排序，取前 top_n 个
     sorted_items = sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])
     keep_themes_info = dict(sorted_items[:top_n])
     keep_themes = set(keep_themes_info.keys())
+    
+    # 如果有效主题数量少于8个，添加"中性"信号的主题作为后备
+    if len(keep_themes) < 8:
+        backup_themes = {}
+        for r in v6_data:
+            signal = r.get('trade_signal', '')
+            if signal == "中性" and r['theme'] not in keep_themes:
+                backup_themes[r['theme']] = r
+        sorted_backup = sorted(backup_themes.items(), key=lambda x: -x[1]['composite_score'])
+        need_count = 8 - len(keep_themes)
+        for t, info in sorted_backup[:need_count]:
+            keep_themes_info[t] = info
+            keep_themes.add(t)
+        print(f"[主题过滤] 添加 {need_count} 个中性主题作为后备")
 
-    print(f"\n[主题过滤] V6引擎筛选 → 保留 {len(keep_themes)} 个主题（信号=强买/关注/持有）:")
+    print(f"\n[主题过滤] V6.2引擎筛选 -> 保留 {len(keep_themes)} 个主题（信号=强买/看多/关注/持有）:")
     for t, info in sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score']):
         div_mark = ' ★分歧' if info.get('divergence_buy') else ''
         print(f"  {t:<16} composite={info['composite_score']:<5.1f} "
@@ -8755,8 +8845,7 @@ def filter_by_top_themes(result_df, top_n=15):
 
     # ===== 3. 从 JSON 缓存加载主题-个股映射 =====
     try:
-        import theme_trend_sentiment_score as theme_ts
-        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.load_theme_stock_map_from_json()
+        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = _load_theme_stock_map_from_json()
     except Exception as e:
         print(f"[主题过滤] load_theme_stock_map_from_json 失败: {e}")
         import traceback
@@ -8915,43 +9004,31 @@ def add_themes_to_stocks_no_filter(result_df):
     if result_df.empty:
         return result_df
     
-    # 1. 加载所有可能的主题，不做筛选
+    # 1. 加载 V6 引擎结果，获取所有主题及状态
     keep_themes = []
     theme_state_map = {}
     
     try:
-        import theme_trend_sentiment_score as theme_ts
-        db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_trend_sentiment.db')
-        if os.path.exists(db_path):
-            conn = sqlite3.connect(db_path)
-            all_themes_query = f"SELECT DISTINCT theme FROM theme_scores WHERE trade_date <= '{TRADE_DATE}' ORDER BY trade_date DESC LIMIT 100"
-            all_themes_df = pd.read_sql(all_themes_query, conn)
-            keep_themes = all_themes_df['theme'].tolist()
-            conn.close()
-            
-            # 获取最新一天的主题状态信息
-            if keep_themes:
-                conn = sqlite3.connect(db_path)
-                latest_day_query = f"SELECT MAX(trade_date) as latest FROM theme_scores WHERE trade_date <= '{TRADE_DATE}'"
-                latest_day_df = pd.read_sql(latest_day_query, conn)
-                if not latest_day_df.empty and latest_day_df['latest'].iloc[0]:
-                    latest_date = latest_day_df['latest'].iloc[0]
-                    latest_day_data_query = f"SELECT theme, theme_state, trend_score, sentiment_score, composite_score FROM theme_scores WHERE trade_date = '{latest_date}'"
-                    latest_day_df = pd.read_sql(latest_day_data_query, conn)
-                    for _, row in latest_day_df.iterrows():
-                        theme = row['theme']
-                        theme_state_map[theme] = {
-                            'theme_state': row.get('theme_state', ''),
-                            'trend_score': float(row.get('trend_score', 0) or 0),
-                            'sentiment_score': float(row.get('sentiment_score', 0) or 0),
-                            'composite_score': float(row.get('composite_score', 0) or 0),
-                            'cycle_phase': '',
-                            'confirmed_days': 0,
-                            'leader_sequence': '',
-                        }
-                conn.close()
+        v6_data = _load_v6_result(TRADE_DATE)
+        if v6_data:
+            for r in v6_data:
+                tname = r.get('theme', '')
+                if tname:
+                    keep_themes.append(tname)
+                    theme_state_map[tname] = {
+                        'theme_state': r.get('trade_signal', ''),
+                        'trend_score': float(r.get('trend_score', 0) or 0),
+                        'sentiment_score': float(r.get('sentiment_score', 0) or 0),
+                        'composite_score': float(r.get('composite_score', 0) or 0),
+                        'forward_alpha': float(r.get('forward_alpha', 0) or 0),
+                        'forward_signal': r.get('forward_signal', ''),
+                        'alpha_gate': r.get('alpha_gate', ''),
+                        'cycle_phase': r.get('stage', ''),
+                        'confirmed_days': 0,
+                        'leader_sequence': r.get('leader', ''),
+                    }
     except Exception as e:
-        print(f"[添加主题] 读取主题数据失败: {e}")
+        print(f"[添加主题] 读取V6结果失败: {e}")
     
     if not keep_themes:
         print("[添加主题] 无主题数据，仅返回原始DataFrame")
@@ -8969,8 +9046,7 @@ def add_themes_to_stocks_no_filter(result_df):
     
     # 3. 从 JSON 缓存加载主题-个股映射
     try:
-        import theme_trend_sentiment_score as theme_ts
-        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = theme_ts.load_theme_stock_map_from_json()
+        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = _load_theme_stock_map_from_json()
     except Exception as e:
         print(f"[添加主题] load_theme_stock_map_from_json 失败: {e}")
         return result_df
@@ -9515,20 +9591,33 @@ def run(target_date=None, simple_mode=False):
         print(f"{'='*60}\n")
     
     # =========================
-    # 主题状态全景（来自主题分析简报）
+    # 主题状态全景（来自 Theme Alpha V6.2 引擎）
     # =========================
-    print("\n========== 主题状态全景（来自主题分析简报）==========\n")
-    REPORT_DIR_TS = os.path.join(BASE_DIR, "..", "report_daily")
-    report_path = os.path.join(REPORT_DIR_TS, f"theme_analysis_{TRADE_DATE}.txt")
+    print("\n========== 主题状态全景（来自 Theme Alpha V6.2 引擎）==========\n")
     sector_text_his = ""
     try:
-        if os.path.exists(report_path):
-            with open(report_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            sector_text_his = content
+        v6_data = _load_v6_result(TRADE_DATE)
+        if v6_data:
+            # 构建主题状态文本
+            lines = []
+            v6_date = v6_data[0].get('trade_date', '')
+            date_str = f" ({v6_date})" if v6_date else ""
+            lines.append(f"Theme Alpha V6.2 引擎报告{date_str} (共{len(v6_data)}个主题)")
+            lines.append(f"{'#':<3} {'主题':<16} {'综合':<6} {'FA分':<6} {'趋势':<6} {'资金':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'Gate':<12} {'龙头'}")
+            lines.append("-" * 120)
+            for i, r in enumerate(v6_data[:30]):
+                div_mark = r.get('divergence_buy', '')
+                gate = r.get('alpha_gate', '')
+                lines.append(f"{i+1:<3} {r.get('theme',''):<16} {r.get('composite_score',0):<6.1f} "
+                             f"{r.get('forward_alpha',0):<6.1f} "
+                             f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
+                             f"{r.get('sentiment_score',0):<6.1f} {r.get('continuation_score',0):<6.1f} "
+                             f"{r.get('stage',''):<8} {r.get('trade_signal',''):<6} {gate:<12} {r.get('leader','')}")
+            lines.append("")
+            sector_text_his = "\n".join(lines)
         else:
-            print(f"  未找到简报文件: {report_path}")
-            print("  请先运行 theme_trend_sentiment_score.py 生成分析报告")
+            print("  V6.2 引擎结果不可用或日期不匹配")
+            print(f"  请先运行: python theme_alpha_v6/main.py --date {TRADE_DATE}")
             sector_text_his = ""
     except Exception as e:
         print(f"⚠️ 读取主题状态简报失败: {e}")
@@ -9541,29 +9630,27 @@ def run(target_date=None, simple_mode=False):
     ma = importlib.import_module("market_analysis")
     ma_results, ma_position, ma_reason, ma_style_allocations, ma_overview = ma.analyze_market(TRADE_DATE)
 
-    # 从数据库获取趋势评分（用于趋势分计算）
-    theme_csv = os.path.join(BASE_DIR, "cache_backbone_tushare", "theme_trend_sentiment.csv")
+    # 从 V6.2 引擎结果获取主题趋势评分（用于市场趋势分计算）
+    # 使用 Alpha Gate 通过的主题（更准确反映市场真实主线）
     theme_top3_scores = None
-    if os.path.exists(theme_csv):
+    v6_data = _load_v6_result(TRADE_DATE)
+    if v6_data:
         try:
-            df_theme = pd.read_csv(theme_csv, encoding='utf-8-sig')
-            if not df_theme.empty and 'trend_score' in df_theme.columns:
-                df_theme = df_theme.sort_values('rank').head(3)
-                theme_top3_scores = df_theme['trend_score'].tolist()
+            # 优先取 Alpha Gate PASS 的主题，取综合分前3
+            gate_passed = [r for r in v6_data if r.get('alpha_gate') == 'PASS']
+            if gate_passed:
+                top3 = sorted(gate_passed, key=lambda x: -x.get('composite_score', 0))[:3]
+            else:
+                top3 = sorted(v6_data, key=lambda x: -x.get('composite_score', 0))[:3]
+            theme_top3_scores = [r.get('trend_score', 0) for r in top3]
         except:
             pass
     
     ts, it, tt = ma.calculate_market_trend_score(ma_results, theme_top3_scores)
     ms, pr, tp = ma.get_market_status_and_position(ts)
 
-    # C浪加速检测：大盘空头加速时，结构性策略降级
-    c_wave_info = ma.detect_c_wave_acceleration(TRADE_DATE)
-    is_c_wave = c_wave_info.get('is_c_wave', False)
-
     # 根据大盘状态确定操作策略
-    if is_c_wave:
-        market_action = "大盘C浪加速，结构性策略失效，空仓/极低仓位观望为主，等待缩量止跌信号"
-    elif "主升浪" in ms or ts >= 75:
+    if "主升浪" in ms or ts >= 75:
         market_action = "大盘强势，聚焦强势股池追涨"
     elif "上升" in ms or ts >= 50:
         market_action = "大盘偏强，强势股池为主，低吸辅助"
@@ -9595,10 +9682,6 @@ def run(target_date=None, simple_mode=False):
         emotion_lines.append(f"{r['name']}: 趋势{r['trend_score']:.1f}({r['trend_status']}) 情绪{r['sentiment_score']:.1f}({r['sentiment_status']}) 涨跌{r['pct_chg']:+.2f}%")
     emotion_lines.append(f"\n综合建议仓位: {ma_position}%")
     emotion_lines.append(f"理由: {ma_reason}")
-    if is_c_wave:
-        emotion_lines.append(f"\n⚠️【C浪加速警示】{c_wave_info['reason']}")
-        emotion_lines.append(f"   3日涨幅: {c_wave_info['ret_3d']:.1f}% | 5日下跌天数: {c_wave_info['down_days_5d']}天 | 沪深300{'<MA20(空头)' if c_wave_info['below_ma20'] else '>=MA20'}")
-        emotion_lines.append(f"   🚫结构性策略降级：波浪W3/B浪/量能爆发/中军强买/ETF逢低买入等信号在C浪中胜率极低，已标注风险")
     emotion_text = "\n".join(emotion_lines)
     print(emotion_text)
 
@@ -9818,21 +9901,31 @@ def run(target_date=None, simple_mode=False):
 
     # ====================================================================
     # 强势股池硬过滤优化（基于近30天回测：胜率24.4% → 预估70-80%）
-    # 1. 量比 ≥ 1.5        —— 缩量上涨是顶背离信号（量比<1胜率0%）
+    # 1. 量比 ≥ 1.2        —— 缩量上涨是顶背离信号（量比<1胜率0%，量比1.0-1.5胜率76%）
     # 2. 近20日涨幅 ≤ 40%  —— 涨幅透支后进场即被套（>40%胜率0% 平均-12.76%）
     # 3. 距MA20 ≤ 20%      —— 远离均线表示追高过度（>20%胜率9% 平均-8.09%）
     # 4. 距MA5 ≥ 0%       —— 跌破MA5表示趋势走弱（<0%胜率20%）
+    # 
+    # 例外规则：突破评分>=70的股票，量比阈值放宽至1.0
     # ====================================================================
     before_strong_filter = len(ranked_stocks)
     strong_pass = []
-    strong_filtered_reasons = {'量比<1.5': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
+    strong_filtered_reasons = {'量比<1.2': 0, '量比<1.0(突破股)': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
     for s in ranked_stocks:
         vol_ratio = s.get('当日量比', 0) or 0
         pct_20d = s.get('近20日涨幅_pct', 0) or 0
         dist_ma20 = s.get('距MA20_pct', 0) or 0
         dist_ma5 = s.get('距MA5_pct', 0) or 0
-        if vol_ratio < 1.5:
-            strong_filtered_reasons['量比<1.5'] += 1
+        breakout_score = s.get('突破评分', 0) or 0
+        
+        # 突破评分>=70的股票，量比阈值放宽至1.0
+        vol_threshold = 1.0 if breakout_score >= 70 else 1.2
+        
+        if vol_ratio < vol_threshold:
+            if breakout_score >= 70:
+                strong_filtered_reasons['量比<1.0(突破股)'] += 1
+            else:
+                strong_filtered_reasons['量比<1.2'] += 1
             continue
         if pct_20d > 40:
             strong_filtered_reasons['近20日涨幅>40%'] += 1
@@ -9900,122 +9993,6 @@ def run(target_date=None, simple_mode=False):
             'open_score': s.get('整合评分', 0),
         })
 
-    # ========================= 中军企稳股池 =========================
-    # 从 zhongjun_history.db 读取过去5天中军股票，检测企稳信号并打分
-    zhongjun_db = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'zhongjun_history.db')
-    zhongjun_stabilize_text = ""
-    zhongjun_stocks_list = []
-    if os.path.exists(zhongjun_db):
-        import sqlite3 as _sqlite3
-        conn_zj = _sqlite3.connect(zhongjun_db)
-        cur_zj = conn_zj.cursor()
-        cur_zj.execute("SELECT DISTINCT trade_date FROM zhongjun_daily ORDER BY trade_date DESC LIMIT 5")
-        recent_dates = [row[0] for row in cur_zj.fetchall()]
-        zj_stocks = {}
-        if recent_dates:
-            cur_zj.execute(f"""
-                SELECT DISTINCT ts_code, name, theme_name
-                FROM zhongjun_daily
-                WHERE trade_date IN ({','.join(['?']*len(recent_dates))})
-            """, recent_dates)
-            zj_stocks = {row[0]: {'name': row[1], 'theme': row[2]} for row in cur_zj.fetchall()}
-        conn_zj.close()
-
-        print(f"[中军企稳] 过去5天中军股票: {len(zj_stocks)} 只")
-        # 导入回调买点信号计算函数
-        from watchlist_buy_signal import calc_buy_signal, is_shuangchuang
-        zj_signals = []
-        zj_strong_buy = []  # 回调买分>=80的强信号
-        for ts_code, info in zj_stocks.items():
-            df = get_hist_data(ts_code)
-            if df is None or len(df) < 25 or not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
-                continue
-            df = df.sort_values('trade_date').reset_index(drop=True)
-            closes = df['close'].values
-            ma5_arr = pd.Series(closes).rolling(5).mean().values
-            ma10_arr = pd.Series(closes).rolling(10).mean().values
-            ma20_arr = pd.Series(closes).rolling(20).mean().values
-            close = float(closes[-1])
-            ma5_v = float(ma5_arr[-1])
-            ma10_v = float(ma10_arr[-1])
-            ma20_v = float(ma20_arr[-1])
-            if ma20_v == 0 or ma5_v == 0:
-                continue
-            # 企稳检测：收盘价在 MA5-MA20 区间
-            in_range = ma20_v <= close <= ma5_v
-            prev_close = float(closes[-2]) if len(closes) >= 2 else close
-            prev_ma5 = float(ma5_arr[-2]) if len(ma5_arr) >= 2 else ma5_v
-            prev_ma20 = float(ma20_arr[-2]) if len(ma20_arr) >= 2 else ma20_v
-            prev_in_range = prev_ma20 <= prev_close <= prev_ma5
-            stabilized = False
-            reason = ""
-            if in_range and not prev_in_range and close >= prev_close:
-                stabilized = True
-                reason = "回落至MA5-MA20区间后企稳反弹"
-            elif in_range and prev_in_range and close >= prev_close * 0.98:
-                stabilized = True
-                reason = "在MA5-MA20区间内连续企稳"
-            if not stabilized:
-                continue
-            # 回调买点信号计算（基于回测验证：买分>=80且回调1-2天胜率80%）
-            try:
-                theme_name = info.get('theme', '')
-                today_pct = ((closes[-1] / closes[-2]) - 1) * 100 if len(closes) >= 2 else 0
-                today_amount = float(df['amount'].iloc[-1]) / 100000 if 'amount' in df.columns else 0
-
-                buy_signal, buy_score, buy_details, buy_reasons = calc_buy_signal(df, ts_code)
-                board = '双创' if is_shuangchuang(ts_code) else '主板'
-
-                signal_entry = {
-                    '代码': ts_code, '名称': info.get('name', ''), '现价': close,
-                    '涨跌幅': today_pct, '成交额': today_amount,
-                    '所属主题': theme_name,
-                    '企稳原因': reason,
-                    'MA5': ma5_v, 'MA10': ma10_v, 'MA20': ma20_v,
-                    '买点信号': buy_signal, '买分': buy_score,
-                    '回调幅度': buy_details.get('pullback_pct', 0),
-                    '回调天数': buy_details.get('days_from_high', 0),
-                    '共振数': buy_details.get('resonance', 0),
-                    '买点原因': '; '.join(buy_reasons[:3]),
-                    '板块': board,
-                }
-                zj_signals.append(signal_entry)
-
-                # 筛选强买信号：回调3-8天 + 买分>=80 (优化v2: 5-8天黄金窗口57%胜率)
-                if (buy_signal == 'BUY'
-                        and buy_score >= 80
-                        and 3 <= buy_details.get('days_from_high', 99) <= 8):
-                    zj_strong_buy.append(signal_entry)
-            except Exception:
-                continue
-
-        # 按买分排序（中军企稳不依赖整合评分）
-        zj_signals = sorted(zj_signals, key=lambda x: -x['买分'])
-        zhongjun_stocks_list = zj_signals[:10]
-
-        # 强买信号按买分排序
-        zj_strong_buy = sorted(zj_strong_buy, key=lambda x: -x['买分'])
-
-        zj_lines = ["=" * 60]
-        zj_lines.append("🔥 中军企稳·强买信号 (回调3-8天+买分>=80，回测胜率57%)")
-        zj_lines.append("=" * 60)
-        if zj_strong_buy:
-            zj_lines.append(f"【筛选条件】BUY信号 + 买分>=80 + 回调3-8天 | 回测T+5胜率57%")
-            zj_lines.append("")
-            for i, s in enumerate(zj_strong_buy[:10], 1):
-                zj_lines.append(f"【强买{i}】{s['名称']} ({s['代码']}) {s['板块']} 现价={s['现价']:.2f}")
-                zj_lines.append(f"  买分={s['买分']:.0f} | 回调{abs(s['回调幅度']):.1f}% {s['回调天数']}天 | 共振{s['共振数']}个")
-                zj_lines.append(f"  买点: {s['买点原因']}")
-                zj_lines.append(f"  主题: {s['所属主题']} | 企稳: {s['企稳原因']}")
-                zj_lines.append("")
-        else:
-            zj_lines.append("今日无信号（需等待回调1-2天+买分>=80的条件共振）")
-            zj_lines.append("")
-        zj_lines.append("【回测验证】基于6月历史回测287只样本：买分>=80+回调1-2天 T+3胜率80% 平均+6.12%")
-        zhongjun_stabilize_text = "\n".join(zj_lines)
-        print(zhongjun_stabilize_text)
-    else:
-        print("[中军企稳] 数据库不存在，跳过")
 
     ### 二波低吸：读取 wave2_pattern_scanner.py 盘后预生成数据 ###
     wave2_output_dir = r'D:\mystock\solo\multi_factor_picker\output'
@@ -10609,50 +10586,50 @@ def run(target_date=None, simple_mode=False):
         print(f"\n========== 暂无跟踪分析个股 ==========\n")
 
     """
-    # =========================
-    # 读取主题选股结果
-    # =========================
-    theme_stocks_records, theme_stocks_text = load_theme_pattern_stocks()
-    if theme_stocks_text:
-        print("\n========== 主题选股结果 ==========\n")
-        #print(theme_stocks_text)
-    else:
-        print("\n========== 未找到主题选股结果 ==========")
-
 
     # =========================
-    # 获取非一日游确认主题数据（供AI分析主题可持续性）
+    # 获取主题可持续性数据（供AI分析，来自Theme Alpha V6.2引擎）
     # =========================
     non_daytrip_for_ai = ""
     try:
-        import theme_trend_sentiment_score as theme_ts
-        nd_result = theme_ts.analyze_non_daytrip_themes(TRADE_DATE, ndays=20)
-        nd_confirmed = nd_result.get("confirmed", [])
-        if nd_confirmed:
-            lines = []
-            lines.append("★ 非一日游确认主题（可持续强势主题，连续确认天数、周期阶段、龙头序列）★")
-            lines.append("-" * 80)
-            lines.append(f"  确认主题数: {len(nd_confirmed)} 个（连续2天以上确认，非一日游脉冲）")
-            lines.append("-" * 60)
-            for d in nd_confirmed[:16]:
-                leader_seq = d.get('leader_sequence', '')
-                leader_str = f" | 近5日龙头: {leader_seq}" if leader_seq and leader_seq != "无" else ""
-                lines.append(
-                    f"  ● {d['theme']:<12} 连续{d['confirmed_active_days']}天[{d['cycle_phase']}]  "
-                    f"综:{d['current_composite']:.0f} 情:{d['current_sentiment']:.0f} 涨停:{d['current_zt']}家 龙头:{d['current_leader']}{leader_str}"
-                )
-            lines.append("-" * 80)
-            # 周期分布
-            from collections import Counter
-            phase_count = Counter(d['cycle_phase'] for d in nd_confirmed)
-            phase_str = "、".join([f"{k}{v}个" for k, v in phase_count.most_common()])
-            lines.append(f"  周期分布: {phase_str}")
-            lines.append("")
-            lines.append("  【周期阶段说明】启动确认=首次突破确认线，中期延续=连续3天+确认，高潮尾声=情绪高潮后分歧，休眠等待=暂未激活")
-            lines.append("")
-            non_daytrip_for_ai = "\n".join(lines)
+        v6_data = _load_v6_result(TRADE_DATE)
+        if v6_data:
+            # 筛选信号为强买/看多/关注/持有的主题（V6.2新信号体系）
+            active_themes = [r for r in v6_data if r.get('trade_signal') in ('强买', '看多', '关注', '持有')]
+            if active_themes:
+                lines = []
+                lines.append("★ 主题可持续性分析（Theme Alpha V6.2引擎，信号=强买/看多/关注/持有）★")
+                lines.append("-" * 80)
+                lines.append(f"  活跃主题数: {len(active_themes)} 个（V6信号确认，非一日游脉冲）")
+                lines.append("-" * 60)
+                for r in active_themes[:16]:
+                    div_mark = ' ★分歧买点' if r.get('divergence_buy') else ''
+                    fa_score = r.get('forward_alpha', 0)
+                    fa_sig = r.get('forward_signal', '')
+                    gate = r.get('alpha_gate', '')
+                    gate_mark = f' [Gate:{gate}]' if gate and gate != 'PASS' else ''
+                    lines.append(
+                        f"  ● {r['theme']:<12} [{r.get('stage', '')}] "
+                        f"综:{r.get('composite_score', 0):.0f} 趋势:{r.get('trend_score', 0):.0f} "
+                        f"资金:{r.get('capital_score', 0):.0f} 情绪:{r.get('sentiment_score', 0):.0f} "
+                        f"延续:{r.get('continuation_score', 0):.0f} "
+                        f"FA:{fa_score:.0f}({fa_sig}) "
+                        f"信号:{r.get('trade_signal', '')} "
+                        f"龙头:{r.get('leader', '')}{div_mark}{gate_mark}"
+                    )
+                lines.append("-" * 80)
+                # 信号分布
+                from collections import Counter
+                sig_count = Counter(r.get('trade_signal', '') for r in active_themes)
+                sig_str = "、".join([f"{k}{v}个" for k, v in sig_count.most_common()])
+                lines.append(f"  信号分布: {sig_str}")
+                lines.append("")
+                lines.append("  【信号说明】强买=Future Alpha+当前热度共振，看多=FA预测强，关注=偏强需确认，持有=已确认趋势中")
+                lines.append("  【Alpha Gate】PASS=通过资格赛(趋势+持续+轮动)，FAIL=未通过(伪主线淘汰)")
+                lines.append("")
+                non_daytrip_for_ai = "\n".join(lines)
     except Exception as e:
-        print(f"[非一日游] AI数据获取失败: {e}")
+        print(f"[主题可持续性] AI数据获取失败: {e}")
         non_daytrip_for_ai = ""
 
 
@@ -10787,162 +10764,9 @@ def run(target_date=None, simple_mode=False):
     except Exception as e:
         print(f"[强势前排] 获取失败: {e}")
 
-    # =========================
-    # 波浪理论第3浪选股策略（信号分≥90 + 深度分析优先级）
-    # =========================
-    wave3_text = ""
-    try:
-        import pandas as _pd3
-        import json as _json3
-        wave3_csv = r'd:\mystock\solo\etf_resonance\output\wave3_signals.csv'
-        wave3_json = r'd:\mystock\solo\etf_resonance\output\wave3_deep_analysis.json'
-        # 优先级与建议来自深度分析JSON(若存在)
-        advice_map = {}
-        if os.path.exists(wave3_json):
-            with open(wave3_json, 'r', encoding='utf-8') as _fj:
-                _deep = _json3.load(_fj)
-            for _r in _deep:
-                _tc = _r.get('ts_code') or _r.get('code')
-                if _tc:
-                    advice_map[_tc] = _r
-        if os.path.exists(wave3_csv):
-            df_w3 = _pd3.read_csv(wave3_csv, dtype={'code': str})
-            if len(df_w3) > 0:
-                df_w3 = df_w3.sort_values('signal_score', ascending=False)
-                w3_lines = []
-                w3_lines.append("")
-                w3_lines.append("=" * 60)
-                w3_lines.append("🌊 波浪理论第3浪选股 (ETF成份股池, 信号分≥90, 回测+12.8%/胜率51.9%/夏普3.08)")
-                w3_lines.append("=" * 60)
-                w3_lines.append(f"今日共{len(df_w3)}只W3信号(信号分≥90)")
-                w3_lines.append(f"{'代码':<12} {'名称':<8} {'现价':>8} {'W1涨幅':>7} {'W2回调':>6} {'W3目标':>9} {'剩余空间':>8} {'信号分':>6} {'优先级':>8}")
-                w3_lines.append("-" * 90)
-                for _, r in df_w3.iterrows():
-                    w3_lines.append(f"  {str(r['code']):<12} {str(r.get('name','')):<8} {float(r['current_price']):>8.2f} {float(r['w1_gain_pct']):>6.1f}% {float(r['w2_retrace_pct']):>5.1f}% {float(r['w3_target_price']):>9.2f} {float(r['dist_to_w3_target_pct']):>+7.1f}% {float(r['signal_score']):>6.1f} {r.get('industry','')}")
-                # 附加深度分析的操作优先级与建议
-                ranked = []
-                for _, r in df_w3.iterrows():
-                    tc = str(r['code'])
-                    adv = advice_map.get(tc, {})
-                    ps = adv.get('priority_score')
-                    if ps is None:
-                        ps = float(r['signal_score'])
-                    adv_obj = adv.get('advice', {}) or {}
-                    ranked.append((ps, r, adv, adv_obj))
-                ranked.sort(key=lambda x: -x[0])
-                # 回测验证: 高优先级(≥75)胜率72%, 中优先级(60-75)胜率仅22%, 故推送只保留高优先级
-                high_priority_ranked = [item for item in ranked if item[0] >= 75]
-                w3_lines.append("")
-                w3_lines.append(f"📊 操作优先级排名(仅推送高优先级≥75, 回测胜率72%):")
-                if not high_priority_ranked:
-                    w3_lines.append("  今日无高优先级(≥75)信号,暂不推荐介入")
-                for i, (ps, r, adv, adv_obj) in enumerate(high_priority_ranked, 1):
-                    nm = adv.get('name') or r.get('name') or '?'
-                    lvl = adv_obj.get('level', '')
-                    act = adv_obj.get('action', '')
-                    w3_lines.append(f"  [{i}] {nm}({r['code']}) 优先级{ps:.0f}/100 {lvl} - {act}")
-                    if adv_obj.get('entry_levels'):
-                        _ents = adv_obj['entry_levels'][:2]
-                        _ent_s = ' / '.join(f"{e.get('name','')}@{e.get('price',0):.2f}" for e in _ents)
-                        w3_lines.append(f"      介入: {_ent_s}")
-                    if adv_obj.get('stop_loss'):
-                        sl_pct = (adv_obj['stop_loss'] - float(r['current_price'])) / float(r['current_price']) * 100
-                        w3_lines.append(f"      止损: {adv_obj['stop_loss']:.2f}({sl_pct:+.1f}%)")
-                    if adv_obj.get('take_profit'):
-                        tp_pct = (adv_obj['take_profit'] - float(r['current_price'])) / float(r['current_price']) * 100
-                        w3_lines.append(f"      止盈: {adv_obj['take_profit']:.2f}({tp_pct:+.1f}%)")
-                    if adv_obj.get('reasons'):
-                        w3_lines.append(f"      理由: {'; '.join(adv_obj['reasons'][:3])}")
-                    if adv_obj.get('risks'):
-                        w3_lines.append(f"      风险: {'; '.join(adv_obj['risks'][:2])}")
-                _skip_cnt = len(ranked) - len(high_priority_ranked)
-                if _skip_cnt > 0:
-                    w3_lines.append(f"  (已过滤{_skip_cnt}只中/低优先级信号: 回测中优先级胜率仅22%)")
-                w3_lines.append("")
-                w3_lines.append("📋 策略说明: 第3浪起点=现价突破第1浪顶H1(W3右侧追涨),回测6个月+12.8%/夏普3.08/最大回撤-4.88%")
-                w3_lines.append("  【W1涨幅】60-80%最优(胜率57%盈亏比3.57); 100-200%主升浪(胜率85%+)")
-                w3_lines.append("  【W2回调】30-40%最佳介入时点(胜率67%); 50-60%深度洗盘(胜率61%)")
-                w3_lines.append("  【W3目标】L2+(H1-L0)*1.618 黄金位")
-                w3_lines.append("  【操作】5日调仓/Top5持仓/-8%止损/+20%止盈/沪深300<MA20空仓")
-                wave3_text = "\n".join(w3_lines)
-                print(wave3_text)
-            else:
-                print("[波浪理论] 无信号")
-                wave3_text = "今日无波浪理论第3浪信号(信号分≥90)"
-        else:
-            print(f"[波浪理论] 未找到 {wave3_csv}")
-            wave3_text = "今日无波浪理论第3浪信号(未生成扫描结果)"
-    except Exception as e:
-        print(f"[波浪理论] 获取失败: {e}")
-        wave3_text = f"波浪理论数据读取失败: {e}"
-
-
-    # =========================
-    # 回升买点策略（混合策略：W2深回调低吸 + W2浅回调突破H1）
-    # =========================
-    rebound_text = ""
-    try:
-        import pandas as _pd4
-        rebound_csv = r'd:\mystock\solo\etf_resonance\output\rebound_signals.csv'
-        if os.path.exists(rebound_csv):
-            df_rb = _pd4.read_csv(rebound_csv, dtype={'code': str}, keep_default_na=False)
-            if len(df_rb) > 0:
-                # 从market缓存补全股票名称
-                try:
-                    import glob as _glob
-                    _mk_files = sorted(_glob.glob(r'D:\mystock\cache_daily\market_*.csv'), reverse=True)
-                    if _mk_files:
-                        _df_mk = _pd4.read_csv(_mk_files[0], dtype={'ts_code': str})
-                        _name_dict = dict(zip(_df_mk['ts_code'], _df_mk['name']))
-                        df_rb['name'] = df_rb['name'].where(df_rb['name'] != '', df_rb['code'].map(_name_dict))
-                        df_rb['name'] = df_rb['name'].fillna(df_rb['code'].map(_name_dict))
-                except Exception:
-                    pass
-                df_rb = df_rb.sort_values('rebound_score', ascending=False)
-                rb_lines = []
-                rb_lines.append("")
-                rb_lines.append("=" * 60)
-                rb_lines.append("📈 回升买点策略 (混合策略: W2深回调低吸 + W2浅回调突破H1)")
-                rb_lines.append("  回测验证: 混合策略胜率48.0%/平均+1.02% (优于纯回升买点45.5%/+0.61%)")
-                rb_lines.append("=" * 60)
-                n_dx = len(df_rb[df_rb['signal_type'] == '低吸'])
-                n_tp = len(df_rb[df_rb['signal_type'] == '突破'])
-                rb_lines.append(f"今日共{len(df_rb)}只信号 (低吸{n_dx}只/突破{n_tp}只, W1涨幅上限200%)")
-                rb_lines.append(f"{'代码':<12} {'名称':<8} {'类型':>4} {'现价':>8} {'信号分':>6} {'W1涨幅':>7} {'W2回调':>6} {'距H1':>7} {'回升':>6}")
-                rb_lines.append("-" * 80)
-                for _, r in df_rb.iterrows():
-                    _name = r.get('name', '') or ''
-                    rb_lines.append(f"  {str(r['code']):<12} {_name:<8} {str(r.get('signal_type','')):>4} {float(r['current_price']):>8.2f} {float(r['rebound_score']):>6.1f} {float(r['w1_gain_pct']):>6.1f}% {float(r['w2_retrace_pct']):>5.1f}% {float(r['dist_to_H1_pct']):>+6.1f}% {float(r['rebound_pct']):>5.1f}%")
-                rb_lines.append("")
-                rb_lines.append("📋 策略说明:")
-                rb_lines.append("  【低吸信号】W2回调≥70%深度回调后回升,左侧低吸(胜率46.6%/平均+0.82%)")
-                rb_lines.append("  【突破信号】W2回调<70%浅回调,等突破H1买入(胜率48.5%/平均+1.10%)")
-                rb_lines.append("  【W1过滤】涨幅超200%已过滤(回测胜率仅36%/平均-3.28%)")
-                rb_lines.append("  【最佳区间】W1涨幅50-80%且W2回调40-55%突破H1(胜率50%/平均+1.43%)")
-                rebound_text = "\n".join(rb_lines)
-                print(rebound_text)
-            else:
-                print("[回升买点] 无信号")
-                rebound_text = "今日无回升买点信号"
-        else:
-            print(f"[回升买点] 未找到 {rebound_csv}")
-            rebound_text = "今日无回升买点信号(未生成扫描结果)"
-    except Exception as e:
-        print(f"[回升买点] 获取失败: {e}")
-        rebound_text = f"回升买点数据读取失败: {e}"
 
 
     #return
-    # C浪加速环境：对结构性策略文本添加风险警示前缀
-    if is_c_wave:
-        c_wave_warning = "⚠️【C浪加速-策略降级】大盘C浪加速中，以下结构性策略在空头环境胜率极低，仅供观察，不建议实盘介入：\n"
-        zhongjun_stabilize_text = c_wave_warning + zhongjun_stabilize_text if zhongjun_stabilize_text else zhongjun_stabilize_text
-        midline_stock_text = c_wave_warning + midline_stock_text if midline_stock_text else midline_stock_text
-        volume_surge_swing_text = c_wave_warning + volume_surge_swing_text if volume_surge_swing_text else volume_surge_swing_text
-        wave3_text = c_wave_warning + wave3_text if wave3_text else wave3_text
-        rebound_text = c_wave_warning + rebound_text if rebound_text else rebound_text
-        if etf_tips_text:
-            etf_tips_text = "⚠️【C浪加速-逢低买入慎用】大盘C浪中'逢低买入'是高危策略（有研硅-13.6%教训），以下ETF信号仅供观察：\n" + etf_tips_text
 
     prompt = f"""
 以下是我自己计算的量化分析结果：
@@ -10952,32 +10776,14 @@ def run(target_date=None, simple_mode=False):
 {emotion_text}
 
 **【今日主题分析情况】**
-
 {sector_text_his}
----------------------------------------
+
 {non_daytrip_for_ai}
-
-**【主题个股池选股结果】**
-
-（来自 theme_pattern_stock_picker.py：根据主题趋势和情绪筛选出的优质个股，包含中期趋势主题和短线主线的龙头和中军）
-{theme_stocks_text}
----------------------------------------
-
 
 **【今日低吸股票池】**
 
 （低吸二波信号，按二波评分从高到低排序）
 {dixi_stock_text}
-
-**【中军企稳股池】**
-
-（历史中军股票回落到MA5-MA20区间企稳，按买分排序）
-{zhongjun_stabilize_text}
-
-**【今日中线股池】**
-
-（B浪低点识别策略 - 近5天信号，包含启动信号和底背离信号）
-{midline_stock_text}
 
 **【今日量能爆发+宽幅震荡池】**
 
@@ -10986,41 +10792,29 @@ def run(target_date=None, simple_mode=False):
 
 **【波浪理论第3浪选股策略】**
 
-（艾略特波浪理论第3浪起点选股：现价突破第1浪顶H1确认主升浪，ETF成份股池，信号分≥90，含操作优先级排名与建议）
-{wave3_text}
-
-
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分)：
-1、**大盘情绪**：仓位建议及理由，操作要点
-- 【C浪加速优先】如果市场情绪数据中包含"⚠️【C浪加速警示】"，必须首先强调C浪加速环境，建议仓位降至15%以下甚至空仓，明确提示"结构性策略失效，等待缩量止跌信号"
-- 【正常环境】无C浪警示时，按正常仓位建议和操作策略输出
+1、**大盘情绪**：仓位建议（显示为红色加粗字体）及理由，操作要点
 2、**今日主题分析情况**:
 【严格按以下固定模板输出，禁止自由发挥格式】
 
-第一段：用1-2句话概述今日市场风格（基于主题趋势分和情绪分判断核心主线）。
+第一段：用1-2句话概述今日市场风格（基于数据判断核心主线）。
 
 操作要点：
 - 要点1（锁定核心方向）
 - 要点2（操作风格/市值偏好提示）
 
-主要关注主题及补涨中军：
-- 主题名1: **股票名1**、**股票名2**（从主题个股池中取，加黑加粗）
-- 主题名2: **股票名3**、**股票名4**、**股票名5**
-- 主题名3: **股票名6**、**股票名7**
-- 【最多列出8个最强主题，每个主题列出2-3只补涨中军】
+对强买和看多信号的主题分析：
+- 主题名1:操作建议、龙头
+- 主题名2:操作建议、龙头
+- 【最多列出5个最强主题】
 
-明日主题预测(结合非一日游主题可持续分析)
-- 明日最看好主题1：简要说明理由（趋势/情绪/稳定性/资金流入状态）
-- 明日次看好主题2：简要说明理由
+主题可持续性分析精选：
+- 明日最看好主题1和龙头：简要说明理由（趋势/情绪/稳定性/资金流入状态）
+- 明日次看好主题2和龙头：简要说明理由
 - 【最多列出3个明日预测主题】
-
-【重要约束】：股票名必须从下方"主题个股池选股结果"和"今日突破股票池"中选取，禁止凭空编造。主题名必须是下方已有的主题，不要自创。
-【预热预警】上方"技术面领先的热门预警品种"中的股票所属主题可能即将轮动，请关注其在明日主题预测中是否有启动可能。
-
-<span style="color:red;font-weight:bold;">这里引用【操作策略】中的原文，用红色加粗字体突出显示</span>
 
 3、**【今日强势股票池分析】**
 （综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
@@ -11073,7 +10867,7 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 4、**【ETF操作建议】**
-- 当前持仓ETF及调仓建议,显示弱转强及逢低买入个股；
+- 当前持仓ETF及调仓建议,显示弱转强及逢低买入个股（个股选最优的3个）；
 - 【补涨信号-强制输出】下方补涨信号数据中，每个ETF必须逐只列出成份股名称、补涨分数、趋势分、量温分、60日涨幅和涨停天数。补涨信号含义：多头趋势刚成立+量能温和放大+涨幅适中+未连续涨停。格式示例：
 - 【强势前排信号-强制输出】下方"ETF强势前排信号"数据中，每个ETF必须逐只列出领涨股名称、强势分、今日涨幅和距高点。强势前排含义：创新高/趋势延续的领涨股。格式示例：
 - 【约束】必须从下方数据中提取，禁止凭空编造。
@@ -11081,20 +10875,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 “
 {etf_tips_text}
 ”
-5、**【中军企稳股池分析】**（历史中军股票回落到MA5-MA20区间企稳的标的，按买分排序，只能显示前5名）：
-- 【强买信号优先】如果股池中存在"🔥 中军企稳·强买信号"段落（回调1-2天+买分>=80，回测胜率80%），必须优先展示这些强买信号个股，并标注"强买信号"
-- 【必须输出】无论是否有符合条件的个股，都必须输出此段落。如无中军企稳信号，输出"今日无中军企稳信号"
-- 【格式要求】严格用以下格式显示：
-【强买1 - 中军企稳】**股票名** (代码) [强买信号：买分XX 回调X天]
-【第2名】**股票名** (代码)
-依此往后
-- 对每只股票进行分析，力求精简：
-- 买分和企稳原因
-- 所属主题（回落至MA5-MA20区间后企稳反弹 / 在MA5-MA20区间内连续企稳）
-- 买点提示（MA60方向、回调幅度、回踩均线等）
-- 强买信号个股需额外说明：买分、回调幅度、共振信号数
-- 【约束】股票名必须从上方"中军企稳股池"中选取，禁止凭空编造
-6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+5、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 - 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
 - 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，分三段：强买信号段 + 观察信号段 + 蓄势大涨信号段
@@ -11118,7 +10899,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 W1涨幅=94% | W2回调=56% | 距H1=-0.1% | 今日涨+9.98%
 分析：波浪蓄势大涨信号触发（W2浅回调56%+距H1仅-0.1%+今日大涨9.98%+MACD绿柱缩短），量能爆发硬条件全通过但MACD尚未红柱，波浪结构蓄势完成启动在即，可在突破H1前夜提前关注。
 - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
-7、**【今日低吸股票池分析】**（二波评分≥10分的标的，分为【强势横盘】和【其他形态】两大部分输出）：
+6、**【今日低吸股票池分析】**（二波评分≥10分的标的，分为【强势横盘】和【其他形态】两大部分输出）：
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
 - 【过滤条件】只分析二波评分≥10的标的；低于10分的不输出，不分析
 - 【数据位置】低吸股票池分为两大部分：强势横盘标题下是强势横盘形态的标的；其他形态标题下是V型急跌/深度回调/放量回调等所有其他形态的标的（按评分降序排列）
@@ -11137,101 +10918,6 @@ W1涨幅=94% | W2回调=56% | 距H1=-0.1% | 今日涨+9.98%
 持有: 最优20天 | 卖出: 20日内收益>10%分批止盈，缩量滞涨卖出
 - 【精简原则】上方数据中没有的内容不要输出
 - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
-
-8、**【今日中线股池分析（测试中）】**（B浪低点识别策略 - 近5个交易日信号，按启动日期降序，取最近5只，双通道模式）：
-- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-- 【数据位置】中线股池在"今日中线股池"标题下方，以"近5个交易日共X个B浪信号"开头
-- 【合并显示】同一股票的多个信号合并为一行分析，信号类型和日期详细列出
-- 【双通道模式】主板和双创使用差异化参数，★标记表示满足严格过滤条件
-  双创(回测20日胜率76.2%/均收益18.69%): 评分[85,90)+缩量≤0.4+回调[20,25%) — 散户多,缩量=抛压轻
-  主板(回测20日胜率85.4%/均收益20.46%): 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 机构重仓,不缩量=机构补仓
-- 如果有信号数据，只分析最近的5只，每只精简为1小段（4-5行）：
-- 第1行：**股票名**(代码) | 板块(双创/主板) | 严格过滤(★/无) | BWaveScore=XX分 | 信号类型（见底/RSI金叉/MACD金叉/底背离）
-- 第2行：信号详情（每个信号及日期，如：见底20260629 | RSI金叉20260630 | MACD金叉20260701）
-- 第3行：A浪涨幅=XX% | B浪回调=XX% | 缩量=XX | B天=XX | 距A高=XX% | 最新信号日：XXXX-XX-XX
-- 第4行：操作建议（根据信号组合给出：见底+RSI金叉可低吸，MACD金叉确认加仓等）
-- 第5行：持有策略（如果有数据的话：最优20天持有，收益目标10-15%分批止盈）
-- 【格式示例】
-**雷赛智能**(002979.SZ) | 双创 | ★ | BWaveScore=62分 | 见底+RSI金叉+MACD金叉
-信号详情：见底20260629 | RSI金叉20260630 | MACD金叉20260701
-A浪涨幅=81.5% | B浪回调=23.0% | 缩量=0.38 | B天=18 | 距A高=15.5% | 最新信号日：20260701
-操作建议：三信号共振，见底后RSI先金叉（6/30）、MACD后金叉（7/1），信号递进确认，可在回踩MA20附近低吸，止损设B浪低点下方3%
-持有策略：中线策略，最优20天持有，收益>10%分批止盈，跌破B浪低点-3%止损
-- 如果无信号数据，直接输出"今日无B浪低点信号（近5个交易日无符合条件的A浪+B浪结构）"
-9、**【波浪理论第3浪选股策略】**（艾略特波浪理论第3浪起点选股，ETF成份股池，信号分≥90，回测+12.8%/胜率51.9%/夏普3.08/最大回撤-4.88%）：
-- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-- 【数据位置】在"波浪理论第3浪选股"标题下方，包含信号列表 + 操作优先级排名
-- 【仅推送高优先级】回测验证高优先级(≥75分)胜率72%、中优先级(60-74分)胜率仅22%，故推送只输出高优先级≥75的标的
-- 【按优先级排名分析】严格按照上方"操作优先级排名"从高到低分析，不要重新排序
-- 每只精简为1小段（4-5行），格式如下：
-- 第1行：**股票名**(代码) | 信号分=XX | 优先级=XX/100 | ⭐⭐⭐ 高优先 | 操作策略
-- 第2行：波浪结构(W1涨幅XX% / W2回调XX% / W3目标价XX 距今+XX%)
-- 第3行：介入价位(支撑位) | 止损位(XX,XX%) | 止盈位(XX,XX%)
-- 第4行：介入理由(均线/量能/相似度等)
-- 第5行：风险提示(若有,如MACD死叉/超买/破位等)
-- 【格式示例】
-**江化微**(603078.SH) | 信号分=90 | 优先级=88/100 | ⭐⭐⭐ 高优先 | 回踩支撑位加仓
-波浪结构：W1涨55% / W2回调46% / W3目标69.72 距今+31.6%
-介入：MA10@51.08 / MA20@48.18 | 止损：39.33(-25.8%) | 止盈：69.72(+31.6%)
-理由：W3刚启动突破H1(49.40)确认主升浪；完美多头排列；量比1.27量能配合
-风险：(若无则不输出此行)
-- 【约束】股票名、价格、优先级必须严格引用上方数据，禁止凭空编造。优先级排名必须与上方一致，不可自行调整顺序。
-- 如果无高优先级信号数据，直接输出"今日无高优先级(≥75)波浪理论信号，暂不推荐介入"
-
-10、**【回升买点策略（混合策略）】**（L0->H1->L2波浪结构，W2深回调低吸+W2浅回调突破H1，ETF成份股池，回测胜率48.0%/平均+1.02%/持仓5天）
-- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-- 【数据位置】在"回升买点策略"标题下方，signal_type列标注了每只信号的类型
-- 【混合策略逻辑】
-  - 【低吸信号】W2回调≥70%深度回调后回升，左侧低吸买点（回测胜率46.6%/平均+0.82%）
-  - 【突破信号】W2回调<70%浅回调，等突破H1买入（回测胜率48.5%/平均+1.10%）
-  - 【W1过滤】W1涨幅超200%已过滤（回测胜率仅36%/平均-3.28%，追高风险大）
-- 【按信号分从高到低分析】每只精简为1小段（3-4行），格式如下：
-- 第1行：**股票名**(代码) | 信号类型=[低吸/突破] | 信号分=XX | 现价=XX
-- 第2行：波浪结构(W1涨幅XX% / W2回调XX% / 距H1=±XX% / 回升XX% / L2后XX天)
-- 第3行：操作建议（低吸信号：回调深左侧低吸，止损L2下方；突破信号：等突破H1追入，止损H1下方）
-- 【格式示例-低吸】
-**江化微**(603078.SH) | 信号类型=[低吸] | 信号分=85 | 现价=45.20
-波浪结构：W1涨73% / W2回调74% / 距H1=+5.2% / 回升3.1% / L2后8天
-操作建议：W2深度回调后回升企稳，左侧低吸，止损L2下方3%
-- 【格式示例-突破】
-**有研硅**(688432.SH) | 信号类型=[突破] | 信号分=75 | 现价=52.80
-波浪结构：W1涨88% / W2回调60% / 距H1=+1.5% / 回升5.8% / L2后6天
-操作建议：W2浅回调，等突破H1(53.60)确认追入，止损H1下方3%
-- 【约束】股票名、价格、信号分、signal_type必须严格引用上方数据，禁止凭空编造
-- 如果无信号数据，直接输出"今日无回升买点信号（L0->H1->L2波浪结构未匹配或W1涨幅超200%已过滤）"
-
-内容来源以下双引号内数据：
-"
-{rebound_text}
-"
-
-11、**【综合分析与组合建议】**（对以上1-10部分所有股票汇总，给出明日操作组合建议）：
-- 【必须输出】无论各股池是否有信号，都必须输出此段落作为全文总结
-- 【C浪加速环境处理】如果市场情绪数据包含"⚠️【C浪加速警示】"，必须调整组合建议：
-  - 仓位控制在15%以下，建议空仓或仅持有防御性标的（如银行/医药）
-  - 明确提示结构性策略（波浪W3/B浪/量能爆发/中军强买/ETF逢低买入）在C浪中失效，相关信号仅供观察
-  - 等待信号：缩量十字星/长下影线/创业板RSI<20再考虑布局
-- 【跨池共振优先】如果同一只股票在多个股池中出现（如强势股池+中军企稳+量能爆发），必须优先标注为"多策略共振"，这类标的确定性最高
-- 【组合构建原则】
-  - 按"信号强度+胜率+主题地位"三维筛选，构建3-5只股票的明日操作组合
-  - 优先纳入回测胜率≥70%的策略信号（中军强买80%、量能爆发74-100%、补涨且60d<10%的100%）
-  - 次优先纳入主题中军或补涨弹性标的（来自强势股池、ETF补涨）
-  - 最后用波浪/回升/二波低吸等左侧信号补充潜伏仓位
-- 【仓位分配建议】结合第1部分大盘仓位（如25%），给出组合内的仓位分配建议
-- 【格式要求】严格用以下格式输出：
-**【明日操作组合】**
-| 优先级 | 股票名(代码) | 来源股池 | 策略依据 | 建议仓位 | 止损位/止盈位 |
-|--------|-------------|---------|---------|---------|--------------|
-| ★★★ | 股票名(代码) | 来源 | 依据 | X% | 止损/止盈 |
-| ★★ | 股票名(代码) | 来源 | 依据 | X% | 止损/止盈 |
-| ★ | 股票名(代码) | 来源 | 依据 | X% | 止损/止盈 |
-
-**【多策略共振标的】**（如有）
-- 股票名(代码)：出现在[股池A]+[股池B]+[股池C]，共振信号数X个，说明
-
-**【风险提示】**
-- 列出需要规避的信号（如退潮主题个股、整合评分低且无其他池支撑的标的、W1涨幅过大等）
-- 提示当前市场环境下的整体风险控制要点
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**

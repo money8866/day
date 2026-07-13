@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Theme Alpha Engine V6.0 - 主程序
+Theme Alpha Engine V6.2 - 主程序
 
-每天盘后运行，输出主题主线分析报告
+V6.2 核心升级：从 Current Heat -> Future Alpha
+  - 新增 Forward Alpha 预测模块（动量加速 + 反转张力 + 聪明钱背离）
+  - 综合分权重重构：Forward Alpha 35%（最大权重）
+  - 交易信号双层触发：Future Alpha 预测层 + Current Heat 确认层
+  - 目标：预测未来5个交易日最可能成为市场主线的主题
+
 V6.0 改进：
   - 全主题百分位排名 (Relative Momentum)
   - DC热度数据集成 (Sentiment)
@@ -33,12 +38,13 @@ from leader import identify_leader
 from risk import compute_risk_score
 from continuation import compute_continuation_score, continuation_signal
 from composite import compute_composite, trade_signal, confidence
+from forward_alpha import compute_forward_alpha
 
 
 def main(trade_date=None):
     print("=" * 70)
-    print("  Theme Alpha Engine V6.0")
-    print("  目标：寻找未来5~20日最可能成为市场主线的主题")
+    print("  Theme Alpha Engine V6.2 (Future Alpha)")
+    print("  目标：预测未来5~20日最可能产生超额收益的主题主线")
     print("=" * 70)
 
     if trade_date is None:
@@ -133,9 +139,29 @@ def main(trade_date=None):
         stage = identify_stage(ts, ss, cs, continuation=cont)
         lb = stage_bonus(stage)
 
-        cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs, cont)
-        sig = trade_signal(cscore, cs, ts, stage, cont)
-        conf = confidence(cscore, ts, cs, cont)
+        # 计算当日涨跌幅（用于综合分跌幅惩罚）
+        theme_sub = daily[daily["ts_code"].isin(codes)]
+        if not theme_sub.empty:
+            latest_td = theme_sub["trade_date"].max()
+            latest_theme = theme_sub[theme_sub["trade_date"] == latest_td]
+            theme_today_ret = latest_theme["pct_chg"].mean() if not latest_theme.empty else 0
+        else:
+            theme_today_ret = 0
+
+        # ===== V6.2: 计算 Forward Alpha 预测分（六因子）=====
+        fa_score, fa_signal, fa_reason, fa_subs = compute_forward_alpha(
+            daily, codes, moneyflow,
+            limit_df=limit_df, top_df=top_df, dc_hot=dc_hot,
+            all_momentums=all_momentums,
+            leader_code=ldr, leader_score=ldr_score,
+            trend_score=ts
+        )
+
+        cscore = compute_composite(ts, cs, ss, ps, lb, ldr_score, rs, cont,
+                                   today_return=theme_today_ret, forward_alpha=fa_score)
+        sig = trade_signal(cscore, cs, ts, stage, cont,
+                           forward_alpha=fa_score, forward_signal=fa_signal)
+        conf = confidence(cscore, ts, cs, cont, forward_alpha=fa_score)
         # 延续标签（需要真实 composite）
         cont_sig = continuation_signal(cont, cscore, stage)
 
@@ -145,7 +171,17 @@ def main(trade_date=None):
                              and stage in config.SB_STAGES)
 
         results.append({
-            "theme": tname, "stage": stage, "leader": ldr or "",
+            "theme": tname, "trade_date": trade_date, "stage": stage, "leader": ldr or "",
+            "today_return": round(theme_today_ret, 2),
+            "forward_alpha": fa_score,
+            "forward_signal": fa_signal,
+            "forward_reason": fa_reason,
+            "fa_rotation_timing": fa_subs["rotation_timing"],
+            "fa_capital_persist": fa_subs["capital_persist"],
+            "fa_trend_quality": fa_subs["trend_quality"],
+            "fa_catalyst": fa_subs["catalyst"],
+            "fa_relative_rotation": fa_subs["relative_rotation"],
+            "fa_leader_ecology": fa_subs["leader_ecology"],
             "trend_score": round(ts, 1), "capital_score": round(cs, 1),
             "cap_share": round(cap_metrics.get("market_share", 0) * 100, 2),
             "cap_accel": round(cap_metrics.get("acceleration", 0) * 100, 2),
@@ -153,6 +189,9 @@ def main(trade_date=None):
             "cap_conc": round(cap_metrics.get("concentration", 0) * 100, 1),
             "cap_persist": round(cap_metrics.get("persistence", 0) * 100, 1),
             "cap_rotation": round(cap_metrics.get("rotation", 0) * 100, 2),
+            "cap_net_inflow": round(cap_metrics.get("net_inflow", 0) * 100, 2),
+            "cap_persist_pct": round(cap_metrics.get("persistence_pct", 0) * 100, 1),
+            "cap_rotation_pct": round(cap_metrics.get("rotation_pct", 0) * 100, 1),
             "sentiment_score": round(ss, 1), "persistence_score": round(ps, 1),
             "continuation_score": round(cont, 1),
             "risk_score": round(rs, 1), "lifecycle_score": lb,
@@ -165,43 +204,86 @@ def main(trade_date=None):
         if (i + 1) % 10 == 0:
             print(f"      进度: {i+1}/{len(theme_names)}")
 
-    # ===== 第六步：排序输出 =====
-    print(f"[6/7] 排序输出...")
+    # ===== 第六步：Alpha Gate 两步筛选 =====
+    print(f"[6/7] Alpha Gate 筛选...")
     df = pd.DataFrame(results)
+
+    # --- 第一步：Alpha Gate（资格赛）---
+    # 淘汰趋势差/资金不持续/无轮动信号的"伪主线"
+    gate_trend = df["trend_score"] >= config.ALPHA_GATE_TREND
+    gate_persist = df["cap_persist_pct"] >= config.ALPHA_GATE_CAP_PERSIST
+    gate_rotation = df["cap_rotation_pct"] >= config.ALPHA_GATE_ROTATION
+
+    df["alpha_gate"] = "PASS"
+    df.loc[~gate_trend, "alpha_gate"] = "FAIL:趋势"
+    df.loc[gate_trend & ~gate_persist, "alpha_gate"] = "FAIL:持续"
+    df.loc[gate_trend & gate_persist & ~gate_rotation, "alpha_gate"] = "FAIL:轮动"
+
+    gate_passed = df[gate_trend & gate_persist & gate_rotation].copy()
+    gate_failed = df[~(gate_trend & gate_persist & gate_rotation)].copy()
+
+    print(f"      Alpha Gate 通过: {len(gate_passed)} / {len(df)}")
+    print(f"      淘汰原因: 趋势<{config.ALPHA_GATE_TREND}={(~gate_trend).sum()}, "
+          f"持续<{config.ALPHA_GATE_CAP_PERSIST}={(gate_trend & ~gate_persist).sum()}, "
+          f"轮动<{config.ALPHA_GATE_ROTATION}={(gate_trend & gate_persist & ~gate_rotation).sum()}")
+
+    # --- 第二步：通过Alpha Gate的主题按综合分排序 ---
     df = df.sort_values("composite_score", ascending=False).reset_index(drop=True)
+    gate_passed = gate_passed.sort_values("composite_score", ascending=False).reset_index(drop=True)
 
     df.to_json(config.OUTPUT_JSON, orient="records", force_ascii=False, indent=2)
     df.to_csv(config.OUTPUT_CSV, index=False, encoding="utf-8-sig")
 
+    # 带日期的备份副本（保留历史版本，不覆盖）
+    dated_json = config.OUTPUT_JSON.replace(".json", f"_{trade_date}.json")
+    dated_csv = config.OUTPUT_CSV.replace(".csv", f"_{trade_date}.csv")
+    df.to_json(dated_json, orient="records", force_ascii=False, indent=2)
+    df.to_csv(dated_csv, index=False, encoding="utf-8-sig")
+
     # ===== 第七步：打印报告 =====
     print(f"[7/7] 打印报告...")
     print(f"\n{'='*100}")
-    print(f"  Theme Alpha V6.0 报告 — {trade_date}")
+    print(f"  Theme Alpha V6.2 报告 - {trade_date} (Future Alpha)")
     print(f"{'='*100}")
 
-    # TOP 15 主题（含延续分）
-    top15 = df.head(15)
-    print(f"\n  TOP 15 主题（按综合分排序）")
-    print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'趋势':<6} {'资金':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'标记':<6} {'龙头'}")
-    print(f"  {'-'*96}")
-    for i, row in top15.iterrows():
-        div_mark = row.get('divergence_buy', '')
-        print(f"  {i+1:<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
-              f"{row['trend_score']:<6.1f} {row['capital_score']:<6.1f} "
-              f"{row['sentiment_score']:<6.1f} {row['continuation_score']:<6.1f} "
-              f"{row['stage']:<8} {row['trade_signal']:<6} {div_mark:<6} "
-              f"{row['leader']}")
+    # ===== TOP 15 主题（仅Alpha Gate通过者！）=====
+    top15 = gate_passed.head(15)
+    if len(top15) > 0:
+        print(f"\n  ★ TOP 15 主题（Alpha Gate 通过 + 综合分排序）")
+        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'FA分':<6} {'趋势':<6} {'资金':<6} {'持续%':<6} {'轮动%':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'龙头'}")
+        print(f"  {'-'*120}")
+        for i, row in top15.iterrows():
+            print(f"  {i+1:<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
+                  f"{row.get('forward_alpha',0):<6.1f} "
+                  f"{row['trend_score']:<6.1f} {row['capital_score']:<6.1f} "
+                  f"{row.get('cap_persist_pct',0):<6.1f} {row.get('cap_rotation_pct',0):<6.1f} "
+                  f"{row['sentiment_score']:<6.1f} {row['continuation_score']:<6.1f} "
+                  f"{row['stage']:<8} {row['trade_signal']:<6} {row['leader']}")
+    else:
+        print(f"\n  ⚠ Alpha Gate 无通过主题（市场弱势，降低门槛或等待）")
 
     # 分歧买点专区（综合分不高但延续分高）
     div_df = df[df.get('divergence_buy', '') == '★'].head(10)
     if not div_df.empty:
-        print(f"\n  ★ 分歧买点专区（综合分一般，但延续概率高 — 分歧后大概率回归强势）")
+        print(f"\n  ★ 分歧买点专区（综合分一般，但延续概率高 - 分歧后大概率回归强势）")
         print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'延续':<6} {'阶段':<8} {'龙头':<12} {'标记'}")
         print(f"  {'-'*70}")
         for _, row in div_df.iterrows():
             print(f"  {'':<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
                   f"{row['continuation_score']:<6.1f} {row['stage']:<8} "
                   f"{row['leader']:<12} {row['trade_signal']}")
+
+    # Alpha Gate 被淘汰主题（高综合分但未通过资格赛）
+    gate_fail_top = gate_failed.sort_values("composite_score", ascending=False).head(10)
+    if not gate_fail_top.empty:
+        print(f"\n  ⚠ Alpha Gate 淘汰区（综合分可能高，但未通过资格赛 - 趋势/持续/轮动不达标）")
+        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'趋势':<6} {'持续%':<6} {'轮动%':<6} {'淘汰原因':<12} {'信号'}")
+        print(f"  {'-'*80}")
+        for _, row in gate_fail_top.iterrows():
+            print(f"  {'':<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
+                  f"{row['trend_score']:<6.1f} {row.get('cap_persist_pct',0):<6.1f} "
+                  f"{row.get('cap_rotation_pct',0):<6.1f} {row['alpha_gate']:<12} "
+                  f"{row['trade_signal']}")
 
     # 延续排名 TOP 10（按延续分排序，找持续走强概率最高的）
     cont_top = df.sort_values('continuation_score', ascending=False).head(10)
@@ -212,6 +294,37 @@ def main(trade_date=None):
         print(f"  {j+1:<3} {row['theme']:<16} {row['continuation_score']:<6.1f} "
               f"{row['composite_score']:<6.1f} {row['stage']:<8} "
               f"{row['trade_signal']:<6} {row['leader']}")
+
+    # ===== V6.2: Future Alpha TOP 15（六因子核心输出）=====
+    if "forward_alpha" in df.columns:
+        fa_top = df.sort_values('forward_alpha', ascending=False).head(15)
+        print(f"\n  {'='*120}")
+        print(f"  ★ Future Alpha TOP 15（六因子预测 - V6.2核心）")
+        print(f"  {'='*120}")
+        print(f"  {'#':<3} {'主题':<14} {'FA分':<6} {'FA信号':<8} {'轮动':<6} {'资金':<6} {'趋势Q':<6} {'催化':<6} {'相对':<6} {'龙头':<6} {'综合':<6} {'信号':<6} {'今日':<6} {'预测理由'}")
+        print(f"  {'-'*130}")
+        for j, (_, row) in enumerate(fa_top.iterrows()):
+            today_str = f"{row.get('today_return', 0):+.1f}%" if 'today_return' in row else "N/A"
+            print(f"  {j+1:<3} {row['theme']:<14} {row['forward_alpha']:<6.1f} "
+                  f"{row.get('forward_signal',''):<8} "
+                  f"{row.get('fa_rotation_timing',0):<6.1f} "
+                  f"{row.get('fa_capital_persist',0):<6.1f} "
+                  f"{row.get('fa_trend_quality',0):<6.1f} "
+                  f"{row.get('fa_catalyst',0):<6.1f} "
+                  f"{row.get('fa_relative_rotation',0):<6.1f} "
+                  f"{row.get('fa_leader_ecology',0):<6.1f} "
+                  f"{row['composite_score']:<6.1f} {row['trade_signal']:<6} "
+                  f"{today_str:<6} {row.get('forward_reason','')}")
+
+        # Future Alpha 信号分布
+        fa_sig_counts = df["forward_signal"].value_counts()
+        print(f"\n  Future Alpha 信号分布: ", end="")
+        for sig in ["强烈看多", "看多", "中性", "看空", "强烈看空"]:
+            cnt = fa_sig_counts.get(sig, 0)
+            print(f"{sig}={cnt} ", end="")
+        print()
+    else:
+        fa_top = pd.DataFrame()
 
     # 资金分 TOP 10（含六维子指标）
     cap_top = df.sort_values('capital_score', ascending=False).head(10)
@@ -233,9 +346,10 @@ def main(trade_date=None):
     # 信号统计
     sig_counts = df["trade_signal"].value_counts()
     print(f"\n  信号分布: ", end="")
-    for sig in ["强买", "关注", "持有", "回避"]:
+    for sig in ["强买", "看多", "关注", "中性", "持有", "看空", "强烈看空", "回避"]:
         cnt = sig_counts.get(sig, 0)
-        print(f"{sig}={cnt} ", end="")
+        if cnt > 0:
+            print(f"{sig}={cnt} ", end="")
     print(f"(总计 {len(df)})")
 
     # 阶段统计
@@ -258,10 +372,15 @@ def main(trade_date=None):
     print(f"\n  结果已保存:")
     print(f"    {config.OUTPUT_JSON}")
     print(f"    {config.OUTPUT_CSV}")
+    print(f"    {dated_json}")
     print(f"{'='*100}")
 
     return results
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Theme Alpha V6.2 Engine")
+    parser.add_argument("--date", type=str, default=None, help="交易日(YYYYMMDD)")
+    args = parser.parse_args()
+    main(trade_date=args.date)
