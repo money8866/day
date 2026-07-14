@@ -67,7 +67,7 @@ def trade_signal(composite, capital, trend, stage, continuation,
     层1：Forward Alpha 预测层（未来5日超额收益概率）
     层2：Current Heat 确认层（当前是否已启动）
 
-    - 强买：Future Alpha强 + 当前确认强（启动/扩张阶段）
+    - 强买：Future Alpha强 + 当前确认强（启动/主升阶段）
     - 看多：Future Alpha强 或 分歧买点（当前弱但未来强）
     - 中性：Future Alpha中等
     - 看空：Future Alpha弱
@@ -90,7 +90,7 @@ def trade_signal(composite, capital, trend, stage, continuation,
     if fa_strong and heat_strong:
         return "强买"
 
-    # 看多：Future Alpha强 + 启动/扩张阶段（即使当前热度不够）
+    # 看多：Future Alpha强 + 启动/主升阶段（即使当前热度不够）
     if fa_strong and stage in config.SB_STAGES:
         return "看多"
 
@@ -120,7 +120,7 @@ def trade_signal(composite, capital, trend, stage, continuation,
             and composite < config.WATCH_DIV_COMPOSITE
             and stage in config.SB_STAGES):
             return "关注"
-        if stage in ("扩张", "主升") and continuation >= 70 and composite >= config.HOLD_COMPOSITE:
+        if stage in ("主升", "主升加速", "主升回调") and continuation >= 70 and composite >= config.HOLD_COMPOSITE:
             return "持有"
         return "回避"
 

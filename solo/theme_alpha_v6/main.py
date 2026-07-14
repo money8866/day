@@ -135,8 +135,13 @@ def main(trade_date=None):
         # 趋势延续评分：识别"强势延续"和"分歧买点"
         cont = compute_continuation_score(daily, codes, ldr)
 
-        # 阶段判断（需 continuation 约束，避免"扩张+趋势走弱"矛盾）
-        stage = identify_stage(ts, ss, cs, continuation=cont)
+        # 短期动量（用于子阶段精细化：初期/末期）
+        r5, r10, _, _ = compute_momentum(daily, codes)
+
+        # 阶段判断（需 continuation 约束，避免"主升+趋势走弱"矛盾）
+        stage = identify_stage(ts, ss, cs, continuation=cont,
+                               momentum=(r5 * 0.25 + r10 * 0.30) * 100,
+                               r5=r5 * 100, r10=r10 * 100)
         lb = stage_bonus(stage)
 
         # 计算当日涨跌幅（用于综合分跌幅惩罚）
@@ -355,7 +360,7 @@ def main(trade_date=None):
     # 阶段统计
     stage_counts = df["stage"].value_counts()
     print(f"  阶段分布: ", end="")
-    for stg in ["启动", "扩张", "主升", "高潮", "衰退"]:
+    for stg in ["筑底", "启动", "主升", "高潮", "调整", "衰退"]:
         cnt = stage_counts.get(stg, 0)
         print(f"{stg}={cnt} ", end="")
     print()

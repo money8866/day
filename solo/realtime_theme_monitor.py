@@ -4,7 +4,7 @@
 游资级别实时主题盯盘系统
 
 功能:
-1. 从 theme_portfolio.db 加载36个主题+949只成分股
+1. 从 theme_stock_map_latest.json 加载主题+成分股映射
 2. 通过通达信实时行情获取1分钟级数据
 3. 计算各主题实时强度(涨幅+成交额加权),捕捉最先启动的主题
 4. 检测各主题内最先启动的个股(游资先锋)
@@ -133,6 +133,18 @@ class RealtimeThemeMonitor:
 
         # ── 开盘分析标记 ──
         self.opening_analysis_done = False
+
+        # ── 主题生命周期 & T+1预测 ──
+        self.stock_zt_first_time = {}      # ts_code -> 首次涨停时间(datetime)
+        self.theme_amount_at_1430 = {}     # theme_name -> 14:30成交额基准
+        self.theme_lifecycle_cache = {}    # theme_name -> (stage, score, detail)
+
+        # ── 中军弱转强:分时快照 ──
+        # ts_code -> {'morning_min_pct':, 'morning_avg_pct':, 'morning_min_price':, 'morning_amount':, 'afternoon_amount':, 'tail_amount':, 'morning_vol':, 'tail_vol':}
+        self.intraday_snapshots = {}
+        self.snapshot_morning_done = False    # 10:30后采集早盘数据
+        self.snapshot_noon_done = False       # 14:00后采集午盘数据
+        self.last_w2s_scan_time = 0           # 弱转强扫描冷却
 
         # ── 服务器列表(使用 mootdx 服务器配置 + 已知可用服务器) ──
         seen = set()
@@ -348,27 +360,62 @@ class RealtimeThemeMonitor:
         return theme_stocks, stock_themes
 
     def load_theme_db(self):
-        # 加载 theme.json 配置
-        self._load_theme_json()
+        # 从 theme_stock_map_latest.json 加载主题和成分股数据(直接读取匹配表,不自行运算)
+        # 兼容路径:优先用 BASE_DIR 上级 cache_daily,回退绝对路径
+        json_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'theme_stock_map_latest.json')
+        if not os.path.exists(json_path):
+            json_path = r'D:\mystock\cache_daily\theme_stock_map_latest.json'
 
-        if not self.theme_config:
-            print("❌ theme.json配置为空,无法加载主题数据")
+        if not os.path.exists(json_path):
+            print(f"❌ 未找到主题成份股文件: {json_path},无法加载主题数据")
             sys.exit(1)
 
-        # 从Tushare获取全市场股票列表
-        print("⏳ 正在获取全市场股票列表...")
-        name_to_code = self._load_all_stocks_from_tushare()
-
-        if not name_to_code:
-            print("❌ 无法获取股票列表,退出")
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"❌ 加载主题成份股文件失败: {e}")
             sys.exit(1)
 
-        # 根据theme.json配置匹配股票
-        print("⏳ 正在匹配主题股票...")
-        self.theme_stocks, self.stock_themes = self._match_theme_stocks(name_to_code)
+        themes_data = data.get('themes', {})
+        if not themes_data:
+            print("❌ 主题成份股文件中无主题数据")
+            sys.exit(1)
 
-        # 构建主题名称列表
-        self.theme_names = list(self.theme_config.keys())
+        trade_date = data.get('trade_date', '?')
+        n_stocks_meta = data.get('n_stocks', '?')
+        print(f"✅ 从 theme_stock_map_latest.json 加载 (trade_date={trade_date}):")
+        print(f"   主题数: {len(themes_data)} 个  股票数: {n_stocks_meta} 只")
+
+        # 构建 主题->股票列表 和 股票->主题列表
+        # layer 映射: via='leader_company' -> leader, via='core_company' -> middle, 其余 -> member
+        self.theme_stocks = {}
+        self.stock_themes = {}
+
+        for theme_name, stocks in themes_data.items():
+            self.theme_stocks[theme_name] = []
+            for stock_info in stocks:
+                ts_code = stock_info.get('code')
+                if not ts_code:
+                    continue
+                name = stock_info.get('name', '')
+                via = stock_info.get('via', '')
+                if via == 'leader_company':
+                    layer = 'leader'
+                elif via == 'core_company':
+                    layer = 'middle'
+                else:
+                    layer = 'member'
+
+                self.theme_stocks[theme_name].append((ts_code, name, layer))
+
+                if ts_code not in self.stock_themes:
+                    self.stock_themes[ts_code] = []
+                if theme_name not in self.stock_themes[ts_code]:
+                    self.stock_themes[ts_code].append(theme_name)
+
+        # 构建主题名称列表(按JSON中主题顺序)
+        self.theme_names = list(themes_data.keys())
 
         total_stocks = sum(len(v) for v in self.theme_stocks.values())
         unique_stocks = len(self.stock_themes)
@@ -376,10 +423,7 @@ class RealtimeThemeMonitor:
         # 统计跨主题股票
         multi_theme_stocks = {code: len(themes) for code, themes in self.stock_themes.items() if len(themes) > 1}
 
-        print(f"✅ 从theme.json加载:")
-        print(f"   主题数: {len(self.theme_stocks)} 个")
-        print(f"   股票数: {unique_stocks} 只 (共 {total_stocks} 只次)")
-        print(f"   跨主题: {len(multi_theme_stocks)} 只")
+        print(f"   加载完成: 主题{len(self.theme_stocks)}个 股票{unique_stocks}只 (共{total_stocks}只次) 跨主题{len(multi_theme_stocks)}只")
         print(f"   主题列表: {', '.join(self.theme_names)}")
 
         # 打印跨主题股票示例
@@ -641,6 +685,321 @@ class RealtimeThemeMonitor:
         print(f"✅ 成分股K线加载完成: {total_loaded}/{len(all_codes)} 只")
 
     # ── 计算主题趋势/情绪/综合分(每15分钟) ──
+    # ── 主题生命周期判定(启动/主升/分歧/退潮) ──
+    def classify_theme_lifecycle(self, theme_name):
+        """
+        判定主题生命周期阶段,基于实时行情+历史强度趋势
+        
+        返回: (stage, score, detail)
+        stage: '启动期'/'主升期'/'分歧期'/'退潮期'
+        score: 0-100, 越高越适合次日买入
+        """
+        stocks = self.theme_stocks.get(theme_name, [])
+        if not stocks:
+            return '未知', 0, {}
+
+        zt_count = 0
+        strong_count = 0       # 涨幅>=5%
+        up_count = 0
+        down_count = 0
+        total_amount = 0
+        leader_amount = 0
+        leader_pct = None
+        leader_name = ''
+        pcts = []
+        valid = 0
+        zt_layers = []         # 涨停股的层级列表
+
+        for ts_code, name, layer in stocks:
+            q = self.quotes.get(ts_code)
+            if not q:
+                continue
+            pct = q.get('pct_chg', 0)
+            amount = q.get('amount', 0)
+            pcts.append(pct)
+            total_amount += amount
+            valid += 1
+
+            if pct > 0: up_count += 1
+            elif pct < 0: down_count += 1
+
+            # 涨停判定(差异化: 主板10%, 双创20%)
+            zt_threshold = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+            if pct >= zt_threshold:
+                zt_count += 1
+                zt_layers.append(layer)
+                # 记录首次涨停时间
+                if ts_code not in self.stock_zt_first_time:
+                    self.stock_zt_first_time[ts_code] = datetime.now()
+
+            if pct >= 5:
+                strong_count += 1
+
+            if layer == 'leader':
+                leader_amount += amount
+                if leader_pct is None or pct > leader_pct:
+                    leader_pct = pct
+                    leader_name = name
+
+        if valid == 0:
+            return '未知', 0, {}
+
+        avg_pct = sum(pcts) / valid
+        up_ratio = up_count / valid
+        leader_concentration = leader_amount / total_amount if total_amount > 0 else 0
+        # 扩散度: 涨停股中非龙头的比例
+        non_leader_zt = sum(1 for l in zt_layers if l != 'leader')
+        diffusion = non_leader_zt / zt_count if zt_count > 0 else 0
+
+        # 历史趋势变化(用 theme_score_history)
+        history = list(self.theme_score_history.get(theme_name, []))
+        score_accel = 0.0
+        if len(history) >= 6:
+            score_accel = sum(history[-3:]) / 3 - sum(history[-6:-3]) / 3
+        elif len(history) >= 3:
+            score_accel = history[-1] - history[0]
+
+        # 量能变化
+        vol_history = list(self.theme_volume_history.get(theme_name, []))
+        vol_change = 0.0
+        if len(vol_history) >= 4:
+            recent_vol = sum(vol_history[-2:]) / 2
+            prev_vol = sum(vol_history[-4:-2]) / 2
+            vol_change = (recent_vol - prev_vol) / prev_vol if prev_vol > 0 else 0
+
+        detail = {
+            'avg_pct': round(avg_pct, 2), 'zt_count': zt_count,
+            'strong_count': strong_count, 'up_ratio': round(up_ratio, 2),
+            'leader_conc': round(leader_concentration, 2),
+            'diffusion': round(diffusion, 2),
+            'score_accel': round(score_accel, 2),
+            'vol_change': round(vol_change, 2),
+            'leader_pct': round(leader_pct, 2) if leader_pct is not None else None,
+            'leader_name': leader_name,
+        }
+
+        # ========== 生命周期判定 ==========
+
+        # 退潮期: 整体下跌
+        if avg_pct < -1.5 or (zt_count == 0 and down_count > up_count and avg_pct < -0.5):
+            return '退潮期', 15, detail
+
+        # 分歧期: 涨幅放缓+加速度转负, 或量价背离
+        if score_accel < -0.3 and avg_pct < 1.5:
+            return '分歧期', 35, detail
+        # 量价背离: 涨幅为正但量能萎缩
+        if avg_pct > 1.0 and vol_change < -0.15:
+            return '分歧期', 30, detail
+
+        # 主升期: 涨停>=3 + 涨幅>2 + 加速度>=0
+        if zt_count >= 3 and avg_pct >= 2.0 and score_accel >= 0:
+            # 扩散度高 = 主升中后段(减分)
+            if diffusion >= 0.4:
+                return '主升期', 68, detail
+            return '主升期', 80, detail
+
+        # 启动期: 涨停1-2只 + 量能放大/加速度为正
+        if zt_count >= 1 and avg_pct >= 0.5:
+            if vol_change > 0.1 or score_accel > 0.2:
+                return '启动期', 88, detail
+            return '启动期', 72, detail
+
+        # 温和上涨但无涨停: 潜在启动
+        if avg_pct > 0.5 and up_ratio > 0.5:
+            return '启动期', 62, detail
+
+        # 震荡
+        if abs(avg_pct) <= 0.5:
+            return '分歧期', 45, detail
+
+        # 默认: 上涨但特征不明显
+        return '启动期', 55, detail
+
+    # ── T+1预测因子: 尾盘资金流向 + 龙头涨停时间 ──
+    def calc_t1_prediction_factors(self, theme_name):
+        """
+        计算T+1预测因子:
+        1. 尾盘资金流向(14:30基准 vs 当前成交额增量)
+        2. 龙头涨停时间(早盘涨停=次日高溢价)
+        
+        返回: (score, detail)  score: 0-100
+        """
+        now = datetime.now()
+        stocks = self.theme_stocks.get(theme_name, [])
+
+        # 1. 尾盘资金流向
+        current_amount = 0
+        for ts_code, name, layer in stocks:
+            q = self.quotes.get(ts_code)
+            if q:
+                current_amount += q.get('amount', 0)
+
+        # 14:30记录基准成交额(仅记录一次)
+        if now.hour == 14 and now.minute >= 30 and theme_name not in self.theme_amount_at_1430:
+            self.theme_amount_at_1430[theme_name] = current_amount
+
+        late_flow_score = 50  # 默认中性
+        flow_ratio = None
+        if theme_name in self.theme_amount_at_1430 and self.theme_amount_at_1430[theme_name] > 0:
+            base = self.theme_amount_at_1430[theme_name]
+            increment = current_amount - base
+            flow_ratio = increment / base if base > 0 else 0
+            # 尾盘增量越大 = 资金流入越强
+            if flow_ratio > 0.30:
+                late_flow_score = 85
+            elif flow_ratio > 0.15:
+                late_flow_score = 70
+            elif flow_ratio > 0.05:
+                late_flow_score = 55
+            else:
+                late_flow_score = 35
+
+        # 2. 龙头涨停时间
+        zt_time_score = 50  # 默认中性(龙头未涨停)
+        leader_zt_time = None
+        for ts_code, name, layer in stocks:
+            if layer != 'leader':
+                continue
+            q = self.quotes.get(ts_code)
+            if not q:
+                continue
+            pct = q.get('pct_chg', 0)
+            zt_threshold = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+            if pct >= zt_threshold and ts_code in self.stock_zt_first_time:
+                leader_zt_time = self.stock_zt_first_time[ts_code]
+                break
+
+        if leader_zt_time:
+            # 早盘涨停 = 次日高溢价
+            if leader_zt_time.hour < 10:
+                zt_time_score = 90
+            elif leader_zt_time.hour == 10:
+                zt_time_score = 75
+            elif leader_zt_time.hour == 13 and leader_zt_time.minute < 30:
+                zt_time_score = 60
+            else:
+                zt_time_score = 40  # 尾盘涨停 = 低溢价
+
+        score = late_flow_score * 0.5 + zt_time_score * 0.5
+        detail = {
+            'late_flow_score': late_flow_score,
+            'zt_time_score': zt_time_score,
+            'flow_ratio': round(flow_ratio, 3) if flow_ratio is not None else None,
+            'leader_zt_time': leader_zt_time.strftime('%H:%M') if leader_zt_time else None,
+        }
+        return round(score, 1), detail
+
+    # ── 次日套利Alpha得分 ──
+    def calc_next_day_alpha(self, theme_name, trend_score, sentiment_score):
+        """
+        计算次日套利Alpha得分
+        
+        = 生命周期分(30%) + T+1预测分(25%) + 未充分定价分(20%)
+          + 联动强度分(15%) + 大盘环境分(10%) - 见顶风险扣分
+        
+        返回: dict(alpha, stage, signal, ...)
+        """
+        # 1. 生命周期
+        stage, lifecycle_score, lc_detail = self.classify_theme_lifecycle(theme_name)
+        self.theme_lifecycle_cache[theme_name] = (stage, lifecycle_score, lc_detail)
+
+        # 2. T+1预测因子
+        t1_score, t1_detail = self.calc_t1_prediction_factors(theme_name)
+
+        # 3. 未充分定价(逆向因子)
+        # 热度低 + 龙头未超买 = 未充分定价
+        pricing_score = 50
+        leader_pct = lc_detail.get('leader_pct')
+        zt_count = lc_detail.get('zt_count', 0)
+        avg_pct = lc_detail.get('avg_pct', 0)
+
+        # 龙头未超买(涨幅<3%)加分,超买(>8%)减分
+        if leader_pct is not None:
+            if leader_pct < 3:
+                pricing_score += 15
+            elif leader_pct > 8:
+                pricing_score -= 20
+
+        # 无涨停=未被市场关注(未充分定价)加分
+        if zt_count == 0 and avg_pct > 0:
+            pricing_score += 10
+        elif zt_count >= 5:
+            pricing_score -= 15  # 过多涨停=已充分定价
+
+        pricing_score = max(0, min(100, pricing_score))
+
+        # 4. 联动强度
+        up_ratio = lc_detail.get('up_ratio', 0.5)
+        strong_count = lc_detail.get('strong_count', 0)
+        linkage_score = 0
+        if avg_pct > 2: linkage_score += 40
+        elif avg_pct > 1: linkage_score += 25
+        elif avg_pct > 0: linkage_score += 15
+        if up_ratio > 0.7: linkage_score += 30
+        elif up_ratio > 0.5: linkage_score += 20
+        elif up_ratio > 0.4: linkage_score += 10
+        if zt_count >= 3: linkage_score += 30
+        elif zt_count >= 1: linkage_score += 15
+        linkage_score = min(100, linkage_score)
+
+        # 5. 大盘环境
+        report = getattr(self, '_last_report', None)
+        market_score = 50
+        if report:
+            ts = report.get('trend_score', 50)
+            if ts >= 75: market_score = 85
+            elif ts >= 60: market_score = 65
+            elif ts >= 45: market_score = 40
+            else: market_score = 20
+
+        # 见顶风险扣分
+        risk_penalty = 0
+        if stage == '退潮期':
+            risk_penalty += 30
+        elif stage == '分歧期':
+            risk_penalty += 15
+
+        # 量价背离扣分
+        vol_change = lc_detail.get('vol_change', 0)
+        if avg_pct > 1.0 and vol_change < -0.15:
+            risk_penalty += 10
+
+        # 计算Alpha
+        alpha = (
+            lifecycle_score * 0.30 +
+            t1_score * 0.25 +
+            pricing_score * 0.20 +
+            linkage_score * 0.15 +
+            market_score * 0.10
+        ) - risk_penalty
+        alpha = max(0, min(100, alpha))
+
+        # 买入信号
+        if alpha >= 75 and stage == '启动期':
+            signal = '买入'
+        elif alpha >= 65 and stage in ('启动期', '主升期'):
+            signal = '关注'
+        elif stage == '退潮期' or alpha < 40:
+            signal = '回避'
+        else:
+            signal = '观望'
+
+        return {
+            'alpha': round(alpha, 1),
+            'stage': stage,
+            'lifecycle_score': lifecycle_score,
+            't1_score': t1_score,
+            'pricing_score': pricing_score,
+            'linkage_score': linkage_score,
+            'market_score': market_score,
+            'risk_penalty': risk_penalty,
+            'signal': signal,
+            'leader_pct': leader_pct,
+            'leader_name': lc_detail.get('leader_name', ''),
+            'zt_count': zt_count,
+            'detail': {**lc_detail, **t1_detail}
+        }
+
     def compute_theme_scores_realtime(self):
         """使用实时行情计算各主题的综合评分并输出TOP10"""
         if not THEME_SCORE_AVAILABLE:
@@ -716,6 +1075,9 @@ class RealtimeThemeMonitor:
                 total_stocks=len(stock_feats)
             )
 
+            # 计算次日套利Alpha(生命周期+T+1预测+未充分定价+联动+大盘)
+            alpha_info = self.calc_next_day_alpha(theme_name, t_score, s_score)
+
             results.append({
                 'theme': theme_name,
                 'n_stocks': len(stock_feats),
@@ -725,11 +1087,24 @@ class RealtimeThemeMonitor:
                 'hot_score': round(hot_score, 2),
                 'hot_percentile': hot_percentile,
                 'hot_phase': hot_phase,
-                'hot_warning': hot_warning
+                'hot_warning': hot_warning,
+                # 次日套利Alpha相关
+                'alpha': alpha_info['alpha'],
+                'stage': alpha_info['stage'],
+                'signal': alpha_info['signal'],
+                'lifecycle_score': alpha_info['lifecycle_score'],
+                't1_score': alpha_info['t1_score'],
+                'pricing_score': alpha_info['pricing_score'],
+                'linkage_score': alpha_info['linkage_score'],
+                'risk_penalty': alpha_info['risk_penalty'],
+                'leader_name': alpha_info['leader_name'],
+                'leader_pct': alpha_info['leader_pct'],
+                'zt_count': alpha_info['zt_count'],
+                'alpha_detail': alpha_info['detail'],
             })
 
-        # 按综合分排序
-        results.sort(key=lambda x: x['composite_score'], reverse=True)
+        # 按次日套利Alpha排序(优先) + 综合分(次优)
+        results.sort(key=lambda x: (x.get('alpha', 0), x.get('composite_score', 0)), reverse=True)
 
         return results
 
@@ -1889,66 +2264,6 @@ class RealtimeThemeMonitor:
 
         return results
 
-    def detect_theme_anomaly(self, results):
-        """检测异常主题:强度突增、领涨板块"""
-        now = datetime.now()
-        alerts = []
-
-        # ── 主题强度排序 ──
-        sorted_themes = sorted(results['theme_scores'].items(), key=lambda x: x[1], reverse=True)
-
-        # 取前5名
-        top5 = sorted_themes[:5]
-        if not top5:
-            return alerts
-
-        leader_theme = top5[0]
-        leader_score = leader_theme[1]
-
-        # ── 检测连续走强(过去3轮趋势判定) ──
-        for theme_name, score in top5:
-            history = list(self.theme_score_history[theme_name])
-            if len(history) < 5:
-                continue
-
-            recent_avg = sum(history[-3:]) / 3
-            prev_avg = sum(history[-6:-3]) / 3 if len(history) >= 6 else 0
-
-            score_accel = recent_avg - prev_avg
-
-            cooldown_key = f"theme_{theme_name}"
-            last_alert = self.last_theme_alert.get(cooldown_key, 0)
-            if time.time() - last_alert < 900:
-                continue
-
-            # 条件A:领涨主题且强度 > 3%
-            if theme_name == leader_theme[0] and score >= 3 and score_accel > 0.5:
-                top_stocks = self.get_theme_top_movers(theme_name, n=3)
-                alerts.append({
-                    'type': 'theme_leader',
-                    'theme': theme_name,
-                    'score': score,
-                    'accel': round(score_accel, 2),
-                    'top_stocks': top_stocks,
-                    'msg': f"📈 领涨主题【{theme_name}】强度{score:+.1f}% 加速{score_accel:+.1f}% 先锋:{top_stocks}"
-                })
-                self.last_theme_alert[cooldown_key] = time.time()
-
-            # 条件B:强度骤升 > 2%(主力突然拉板块)
-            elif score_accel > 2 and score >= 2:
-                top_stocks = self.get_theme_top_movers(theme_name, n=3)
-                alerts.append({
-                    'type': 'theme_surge',
-                    'theme': theme_name,
-                    'score': score,
-                    'accel': round(score_accel, 2),
-                    'top_stocks': top_stocks,
-                    'msg': f"⚡ 异动主题【{theme_name}】强度{score:+.1f}% 飙升{score_accel:+.1f}% 先锋:{top_stocks}"
-                })
-                self.last_theme_alert[cooldown_key] = time.time()
-
-        return alerts
-
     def detect_market_sentiment(self, results):
         """检测整体市场情绪预警(使用 market_analysis 算法)"""
         report = getattr(self, '_last_report', None)
@@ -1973,25 +2288,6 @@ class RealtimeThemeMonitor:
             return alerts
         # 新算法
         return self.detect_market_sentiment_v2(report)
-
-    def get_theme_top_movers(self, theme_name, n=3):
-        """获取主题内涨幅前n的个股,带层级标记"""
-        stocks = self.theme_stocks.get(theme_name, [])
-        movers = []
-        for ts_code, name, layer in stocks:
-            q = self.quotes.get(ts_code)
-            if q:
-                movers.append((name, q['pct_chg'], layer))
-        movers.sort(key=lambda x: x[1], reverse=True)
-
-        # 层级标记映射
-        layer_mark = {
-            'leader': '⭐龙头',
-            'middle': '▲中军',
-            'member': '○成分'
-        }
-
-        return [f"{m[0]}{layer_mark.get(m[2], '')}({m[1]:+.1f}%)" for m in movers[:n]]
 
     # ════════════════════════════════════════════
     # 5. 开盘分析(9:32)
@@ -2215,6 +2511,20 @@ class RealtimeThemeMonitor:
                 # 补充新算法报告到 results(供 print_summary / push_alerts 使用)
                 results['sentiment_report'] = getattr(self, '_last_report', None)
 
+                # ── 中军弱转强:分时快照采集 ──
+                # 10:30采集早盘数据
+                if not self.snapshot_morning_done and now.hour == 10 and now.minute >= 30:
+                    self.collect_intraday_snapshot('morning')
+                    self.snapshot_morning_done = True
+                # 14:00采集午盘数据
+                if not self.snapshot_noon_done and now.hour == 14 and now.minute >= 0:
+                    self.collect_intraday_snapshot('noon')
+                    self.snapshot_noon_done = True
+                # 14:30采集尾盘基准
+                if now.hour == 14 and now.minute >= 30:
+                    if not self.intraday_snapshots or 'tail_base_pct' not in self.intraday_snapshots.get(list(self.intraday_snapshots.keys())[0] if self.intraday_snapshots else '', {}):
+                        self.collect_intraday_snapshot('tail')
+
                 # ── 每3分钟输出一次摘要 ──
                 if cycle % 3 == 1:
                     self.print_summary(results)
@@ -2227,38 +2537,95 @@ class RealtimeThemeMonitor:
                     # ── 每15分钟计算并输出主题综合分TOP10 ──
                     theme_scores = self.compute_theme_scores_realtime()
                     if theme_scores:
-                        print(f"\n{'='*70}")
-                        print(f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M:%S')}]")
-                        print(f"{'排名':<4} {'主题':<14} {'综合分':<8} {'趋势分':<8} {'情绪分':<8} {'热度分':<8} {'分位%':<6} {'阶段':<8}")
-                        print(f"{'-'*70}")
+                        print(f"\n{'='*90}")
+                        print(f"📊 次日套利Alpha TOP10 [{now.strftime('%H:%M:%S')}]")
+                        print(f"{'排名':<4} {'主题':<14} {'Alpha':>6} {'信号':<4} {'阶段':<6} {'生命':>4} {'T+1':>4} {'定价':>4} {'联动':>4} {'风险':>4} {'龙头':<14} {'涨停'}")
+                        print(f"{'-'*90}")
                         for i, r in enumerate(theme_scores[:10], 1):
-                            print(f"{i:<4} {r['theme']:<14} {r['composite_score']:>6.1f}   {r['trend_score']:>6.1f}   {r['sentiment_score']:>6.1f}   {r.get('hot_score', 0):>6.2f}   {r.get('hot_percentile', 0):<5.1f}   {r.get('hot_phase', '正常'):<8}")
-                        print(f"{'='*70}\n")
+                            signal_emoji = {'买入': '✅', '关注': '👀', '观望': '⏸', '回避': '❌'}.get(r.get('signal', ''), '')
+                            leader_str = f"{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else '-'
+                            print(f"{i:<4} {r['theme']:<14} {r.get('alpha', 0):>5.1f} {signal_emoji:<4} {r.get('stage', ''):<6} {r.get('lifecycle_score', 0):>4.0f} {r.get('t1_score', 0):>4.0f} {r.get('pricing_score', 0):>4.0f} {r.get('linkage_score', 0):>4.0f} {r.get('risk_penalty', 0):>4.0f} {leader_str:<14} {r.get('zt_count', 0)}")
+                        print(f"{'='*90}")
 
-                        # ── 推送主题综合分TOP10到微信(至少30分钟冷却) ──
+                        # 买入/关注信号汇总
+                        buy_signals = [r for r in theme_scores if r.get('signal') in ('买入', '关注')]
+                        if buy_signals:
+                            print(f"📌 次日套利候选({len(buy_signals)}个):")
+                            for r in buy_signals[:5]:
+                                leader_str = f"龙头:{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else ''
+                                print(f"   {r.get('signal')} {r['theme']} Alpha{r.get('alpha', 0):.0f} {r.get('stage')} {leader_str} 涨停{r.get('zt_count', 0)}只")
+
+                        print(f"{'='*90}\n")
+
+                        # ── 推送次日套利Alpha TOP10到微信(至少30分钟冷却) ──
                         if time.time() - self.last_score_alert >= 1800:
                             lines = []
                             for i, r in enumerate(theme_scores[:10], 1):
-                                phase_tag = r.get('hot_phase', '')
-                                hot_info = f" 热度{r.get('hot_score', 0):.1f}({r.get('hot_percentile', 0):.0f}%)"
-                                if phase_tag and phase_tag != '正常':
-                                    hot_info += f" {phase_tag}"
-                                lines.append(f"{i}. {r['theme']} 综合分{r['composite_score']:.0f}(趋势{r['trend_score']:.0f}/情绪{r['sentiment_score']:.0f}){hot_info}")
-                            content = f"📊 主题综合评分 TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                            self.send_wechat(f"📊 主题综合评分 TOP10 {now.strftime('%H:%M')}", content)
+                                signal_tag = r.get('signal', '')
+                                stage_tag = r.get('stage', '')
+                                leader_str = f" 龙头:{r.get('leader_name', '')}" if r.get('leader_name') else ''
+                                zt_str = f" 涨停{r.get('zt_count', 0)}只" if r.get('zt_count', 0) > 0 else ''
+                                lines.append(f"{i}. [{signal_tag}]{r['theme']} Alpha{r.get('alpha', 0):.0f} {stage_tag}{leader_str}{zt_str}")
+                            # 买入信号单独高亮
+                            buy_lines = [r for r in theme_scores[:20] if r.get('signal') == '买入']
+                            if buy_lines:
+                                lines.append("---")
+                                lines.append("✅ 次日买入候选:")
+                                for r in buy_lines[:3]:
+                                    leader_str = f" 龙头:{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else ''
+                                    lines.append(f"  {r['theme']} Alpha{r.get('alpha', 0):.0f} {r.get('stage')}{leader_str}")
+                            content = f"📊 次日套利Alpha TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                            self.send_wechat(f"📊 次日套利Alpha {now.strftime('%H:%M')}", content)
                             self.last_score_alert = time.time()
 
-                # ── 检测 → 推送 ──
+                # ── 大盘情绪检测 → 推送 ──
                 all_alerts = []
-                all_alerts.extend(self.detect_theme_anomaly(results))
                 all_alerts.extend(self.detect_market_sentiment(results))
 
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
 
-                # ── 每10分钟运行一次盘中策略(主题异动+个股异动共振) ──
-                if cycle % 10 == 1:
-                    self.run_intraday_strategy()
+                # ── 14:30后每2分钟扫描中军弱转强 ──
+                if now.hour == 14 and now.minute >= 30:
+                    if time.time() - self.last_w2s_scan_time >= 120:  # 2分钟冷却
+                        w2s_signals = self.scan_middle_w2s()
+                        if w2s_signals:
+                            print(f"\n{'='*90}")
+                            print(f"🎯 中军弱转强扫描 [{now.strftime('%H:%M:%S')}] 共{len(w2s_signals)}只候选")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'形态':>4} {'量价':>4} {'共振':>4} {'信号':<6} {'涨幅':>6} {'关键特征'}")
+                            print(f"{'-'*90}")
+                            for i, s in enumerate(w2s_signals[:10], 1):
+                                emoji = {'强买入': '✅', '关注': '👀', '观望': '⏸'}.get(s['signal'], '')
+                                # 提取关键特征
+                                d = s.get('detail', {})
+                                feats = []
+                                if d.get('early_weak'): feats.append('早弱')
+                                if d.get('noon_stable'): feats.append('午稳')
+                                if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.1f}%")
+                                if d.get('above_vwap'): feats.append('破均')
+                                if d.get('tail_vol_surge'): feats.append('尾量增')
+                                if d.get('shrink_vol'): feats.append(f"缩量{d['shrink_vol']:.1f}")
+                                if d.get('leader_not_zt'): feats.append('龙头未停')
+                                feat_str = ' '.join(feats[:5]) if feats else '-'
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['pattern_score']:>4} {s['vol_score']:>4} {s['theme_score']:>4} {emoji:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
+                            print(f"{'='*90}\n")
+
+                            # 推送强买入信号到微信
+                            strong_buys = [s for s in w2s_signals if s['signal'] == '强买入']
+                            if strong_buys and time.time() - self.last_w2s_scan_time >= 600:  # 10分钟推送冷却
+                                lines = []
+                                for s in strong_buys[:5]:
+                                    d = s.get('detail', {})
+                                    feats = []
+                                    if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.1f}%")
+                                    if d.get('tail_vol_surge'): feats.append('尾盘放量')
+                                    if d.get('leader_not_zt'): feats.append('龙头未涨停')
+                                    feat_str = ' '.join(feats) if feats else ''
+                                    lines.append(f"✅ {s['name']}({s['ts_code']}) 总分{s['total_score']} {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
+                                content = f"🎯 中军弱转强信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                                self.send_wechat(f"🎯 弱转强 {now.strftime('%H:%M')}", content)
+
+                        self.last_w2s_scan_time = time.time()
 
                 time.sleep(60 - (datetime.now().second % 60))
 
@@ -2284,6 +2651,306 @@ class RealtimeThemeMonitor:
             return False
         return False
 
+    # ════════════════════════════════════════════
+    # 中军弱转强尾盘买入算法
+    # ════════════════════════════════════════════
+
+    # ── 分时快照采集 ──
+    def collect_intraday_snapshot(self, phase):
+        """采集分时快照:phase='morning'(10:30) / 'noon'(14:00) / 'tail'(14:30后)"""
+        for ts_code, q in self.quotes.items():
+            if not q:
+                continue
+            snap = self.intraday_snapshots.setdefault(ts_code, {})
+            pct = q.get('pct_chg', 0)
+            price = q.get('price', 0)
+            amount = q.get('amount', 0)
+            vol = q.get('vol', 0)
+            low = q.get('low', 0)
+
+            if phase == 'morning':
+                # 累积早盘数据
+                snap['morning_pct'] = pct
+                snap['morning_low'] = low
+                snap['morning_amount'] = amount
+                snap['morning_vol'] = vol
+            elif phase == 'noon':
+                # 14:00采集,记录午后增量
+                snap['noon_pct'] = pct
+                snap['noon_amount'] = amount
+                snap['noon_vol'] = vol
+            elif phase == 'tail':
+                # 14:30后,记录尾盘基准
+                snap['tail_base_pct'] = pct
+                snap['tail_base_amount'] = amount
+                snap['tail_base_vol'] = vol
+                snap['tail_base_price'] = price
+
+    # ── 硬过滤排除条件 ──
+    def _w2s_hard_filter(self, ts_code, theme_name, q):
+        """弱转强硬过滤:返回True=通过,False=排除"""
+        # 1. 仅中军
+        stocks = self.theme_stocks.get(theme_name, [])
+        layer = None
+        for code, name, ly in stocks:
+            if code == ts_code:
+                layer = ly
+                break
+        if layer != 'middle':
+            return False, '非中军'
+
+        # 2. 排除北交所
+        if ts_code.startswith(('8', '4', '92')):
+            return False, '北交所'
+
+        # 3. 放量破位:跌幅>3%且量比>1.5
+        pct = q.get('pct_chg', 0)
+        if pct < -3:
+            return False, '放量下跌'
+
+        # 4. 距MA20检查
+        kl = self.stock_klines.get(ts_code)
+        if kl is not None and len(kl) >= 20:
+            ma20 = kl['close'].iloc[-20:].mean()
+            price = q.get('price', 0)
+            if price > 0 and price < ma20 * 0.95:
+                return False, '跌破MA20'
+
+        # 5. 主题退潮检查
+        lc = self.theme_lifecycle_cache.get(theme_name)
+        if lc and lc[0] == '退潮期':
+            return False, '主题退潮'
+
+        return True, 'OK'
+
+    # ── 分时形态评分(40分) ──
+    def _w2s_pattern_score(self, ts_code, q):
+        """分时形态:早弱+午稳+尾拉+均线突破+不破低点"""
+        snap = self.intraday_snapshots.get(ts_code, {})
+        score = 0
+        detail = {}
+
+        morning_pct = snap.get('morning_pct', 0)
+        noon_pct = snap.get('noon_pct', 0)
+        current_pct = q.get('pct_chg', 0)
+        morning_low = snap.get('morning_low', 0)
+        current_low = q.get('low', 0)
+        tail_base_pct = snap.get('tail_base_pct', current_pct)
+        current_price = q.get('price', 0)
+
+        # 1. 早盘弱势(10分):早盘最低涨幅<-2%
+        if morning_pct < -2:
+            score += 10
+            detail['early_weak'] = True
+        elif morning_pct < 0:
+            score += 5
+            detail['early_weak'] = 'partial'
+
+        # 2. 午后企稳(8分):午后均价>早盘均价
+        if noon_pct > morning_pct and noon_pct > -1:
+            score += 8
+            detail['noon_stable'] = True
+
+        # 3. 尾盘拉升(12分):14:30后涨幅扩大>=1.5%
+        tail_rally = current_pct - tail_base_pct
+        if tail_rally >= 1.5:
+            score += 12
+            detail['tail_rally'] = round(tail_rally, 2)
+        elif tail_rally >= 0.8:
+            score += 7
+            detail['tail_rally'] = round(tail_rally, 2)
+
+        # 4. 分时均价突破(6分):用成交额/量估算均价
+        amount = q.get('amount', 0)
+        vol = q.get('vol', 0)
+        if vol > 0:
+            avg_price = amount / vol
+            if current_price > avg_price:
+                score += 6
+                detail['above_vwap'] = True
+
+        # 5. 不破早盘低点(4分)
+        if morning_low > 0 and current_low >= morning_low:
+            score += 4
+            detail['low_held'] = True
+
+        # 排除:全天阴跌尾盘拉(诱多陷阱)
+        if current_pct > 0 and morning_pct < -3 and noon_pct < morning_pct:
+            score = min(score, 15)
+            detail['trap_warning'] = '全天阴跌尾盘拉'
+
+        return min(score, 40), detail
+
+    # ── 量价配合评分(35分) ──
+    def _w2s_volume_score(self, ts_code, q):
+        """量价配合:尾盘量比放大+缩量回调+放量拉升+换手率"""
+        snap = self.intraday_snapshots.get(ts_code, {})
+        score = 0
+        detail = {}
+
+        # 1. 尾盘量比放大(12分)
+        tail_base_vol = snap.get('tail_base_vol', 0)
+        current_vol = q.get('vol', 0)
+        morning_vol = snap.get('morning_vol', 0)
+
+        if tail_base_vol > 0 and morning_vol > 0:
+            # 尾盘增量 = 当前量 - 14:30基准量
+            tail_increment = current_vol - tail_base_vol
+            # 早盘每小时均量 ≈ morning_vol / 2
+            morning_hourly = morning_vol / 2
+            if morning_hourly > 0:
+                tail_vol_ratio = tail_increment / morning_hourly
+                if tail_vol_ratio > 1.5:
+                    score += 12
+                    detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+                elif tail_vol_ratio > 1.0:
+                    score += 8
+                    detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+
+        # 2. 缩量回调特征(10分):当日量<5日均量*0.9
+        kl = self.stock_klines.get(ts_code)
+        if kl is not None and len(kl) >= 5:
+            recent_5vol = kl['vol'].iloc[-5:].mean()
+            if recent_5vol > 0:
+                vol_ratio_5d = current_vol / recent_5vol
+                if vol_ratio_5d < 0.9:
+                    score += 10
+                    detail['shrink_vol'] = round(vol_ratio_5d, 2)
+                elif vol_ratio_5d < 1.0:
+                    score += 5
+                    detail['shrink_vol'] = round(vol_ratio_5d, 2)
+
+        # 3. 尾盘放量拉升(8分):14:30后量>早盘量*1.3
+        if tail_base_vol > 0 and morning_vol > 0:
+            tail_total = current_vol - tail_base_vol
+            if tail_total > morning_vol * 0.3:
+                score += 8
+                detail['tail_vol_surge'] = True
+
+        # 4. 换手率合理(5分):3%-8%
+        turn_rate = self.turnover_cache.get(ts_code, 0)
+        if 3 <= turn_rate <= 8:
+            score += 5
+            detail['turn_rate'] = turn_rate
+        elif 2 <= turn_rate <= 12:
+            score += 2
+            detail['turn_rate'] = turn_rate
+
+        return min(score, 35), detail
+
+    # ── 主题共振评分(25分) ──
+    def _w2s_theme_score(self, ts_code, theme_name):
+        """主题共振:主题Alpha+龙头未涨停+板块联动"""
+        score = 0
+        detail = {}
+
+        # 1. 主题Alpha>=65(10分)
+        lc = self.theme_lifecycle_cache.get(theme_name)
+        if lc:
+            stage, lifecycle_score, lc_detail = lc
+            if lifecycle_score >= 75:
+                score += 10
+            elif lifecycle_score >= 65:
+                score += 7
+            elif lifecycle_score >= 50:
+                score += 4
+            detail['theme_lifecycle'] = f"{stage}({lifecycle_score})"
+
+        # 2. 龙头未涨停(8分):龙头有空间→中军有跟风空间
+        stocks = self.theme_stocks.get(theme_name, [])
+        leader_zt = False
+        for code, name, layer in stocks:
+            if layer != 'leader':
+                continue
+            q = self.quotes.get(code)
+            if q:
+                lp = q.get('pct_chg', 0)
+                zt_threshold = 19.5 if code.startswith(('300', '688')) else 9.5
+                if lp >= zt_threshold:
+                    leader_zt = True
+                    break
+        if not leader_zt:
+            score += 8
+            detail['leader_not_zt'] = True
+
+        # 3. 板块联动(7分):主题内上涨占比>60%
+        up_count = 0
+        total = 0
+        for code, name, layer in stocks:
+            q = self.quotes.get(code)
+            if q:
+                total += 1
+                if q.get('pct_chg', 0) > 0:
+                    up_count += 1
+        if total > 0:
+            up_ratio = up_count / total
+            if up_ratio > 0.6:
+                score += 7
+            elif up_ratio > 0.5:
+                score += 4
+            detail['theme_up_ratio'] = round(up_ratio, 2)
+
+        return min(score, 25), detail
+
+    # ── 中军弱转强主入口 ──
+    def scan_middle_w2s(self):
+        """
+        中军弱转强扫描(14:30后每分钟运行)
+        返回: 弱转强信号列表,按总分排序
+        """
+        now = datetime.now()
+        signals = []
+
+        # 遍历所有主题的中军股票
+        for theme_name, stocks in self.theme_stocks.items():
+            for ts_code, name, layer in stocks:
+                if layer != 'middle':
+                    continue
+
+                q = self.quotes.get(ts_code)
+                if not q:
+                    continue
+
+                # 硬过滤
+                passed, reason = self._w2s_hard_filter(ts_code, theme_name, q)
+                if not passed:
+                    continue
+
+                # 三维度评分
+                pattern_score, pattern_detail = self._w2s_pattern_score(ts_code, q)
+                vol_score, vol_detail = self._w2s_volume_score(ts_code, q)
+                theme_score, theme_detail = self._w2s_theme_score(ts_code, theme_name)
+
+                total_score = pattern_score + vol_score + theme_score
+
+                if total_score < 55:
+                    continue
+
+                # 信号分级
+                if total_score >= 75:
+                    signal = '强买入'
+                elif total_score >= 65:
+                    signal = '关注'
+                else:
+                    signal = '观望'
+
+                signals.append({
+                    'ts_code': ts_code,
+                    'name': name,
+                    'theme': theme_name,
+                    'total_score': total_score,
+                    'pattern_score': pattern_score,
+                    'vol_score': vol_score,
+                    'theme_score': theme_score,
+                    'signal': signal,
+                    'pct_chg': q.get('pct_chg', 0),
+                    'price': q.get('price', 0),
+                    'detail': {**pattern_detail, **vol_detail, **theme_detail}
+                })
+
+        signals.sort(key=lambda x: x['total_score'], reverse=True)
+        return signals
+
     def print_summary(self, results):
         """控制台输出摘要(含趋势评分+仓位建议)"""
         now = datetime.now().strftime('%H:%M:%S')
@@ -2305,24 +2972,8 @@ class RealtimeThemeMonitor:
         """批量推送微信通知(纯文本格式,避免Markdown渲染异常)"""
         ts = now.strftime('%H:%M:%S')
 
-        # 分类
-        theme_msgs = [a['msg'] for a in alerts if a['type'] in ('theme_leader', 'theme_surge')]
+        # 分类(仅保留市场情绪预警,主题异动已由次日套利Alpha接管)
         market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_')]
-
-        # ── 主题异动推送 ──
-        if theme_msgs:
-            title = f"🔥 主题异动 {ts} ({len(theme_msgs)}条)"
-            content_lines = [
-                f"🔥 实时主题异动",
-                f"时间: {ts}",
-                f"---",
-            ]
-            content_lines.extend(theme_msgs)
-            content_lines.extend([
-                f"---",
-                f"💡 策略:优先关注领涨主题的龙头股,等待回调低吸机会",
-            ])
-            self.send_wechat(title, '\n'.join(content_lines))
 
         # ── 市场情绪预警 ──
         if market_msgs:
@@ -2343,259 +2994,6 @@ class RealtimeThemeMonitor:
         print(f"\n📱 [{ts}] 推送:")
         for a in alerts:
             print(f"   {a['msg']}")
-
-
-    # ── 盘中策略模块 ──
-    def detect_intraday_theme_momentum(self) -> list:
-        """检测主题异动(基于实时行情)"""
-        active_themes = []
-        for theme_name, stocks in self.theme_stocks.items():
-            if not stocks:
-                continue
-            
-            theme_codes = [s[0] for s in stocks]
-            theme_quotes = {k: v for k, v in self.quotes.items() if k in theme_codes}
-            
-            if not theme_quotes:
-                continue
-            
-            pct_chgs = [q['pct_chg'] for q in theme_quotes.values() if q.get('pct_chg') is not None]
-            if not pct_chgs:
-                continue
-            
-            avg_change = sum(pct_chgs) / len(pct_chgs)
-            up_count = sum(1 for p in pct_chgs if p > 0)
-            up_ratio = up_count / len(pct_chgs)
-            
-            limit_up_count = sum(1 for p in pct_chgs if p >= 9.5)
-            strong_count = sum(1 for p in pct_chgs if p >= 5)
-            
-            vol_ratios = [q.get('vol_ratio', 1.0) for q in theme_quotes.values()]
-            avg_volume_ratio = sum(vol_ratios) / len(vol_ratios) if vol_ratios else 1.0
-            
-            momentum_score = 0
-            if avg_change > 2:
-                momentum_score += 30
-            elif avg_change > 1:
-                momentum_score += 15
-            
-            if up_ratio > 0.7:
-                momentum_score += 25
-            elif up_ratio > 0.5:
-                momentum_score += 10
-            
-            if limit_up_count >= 2:
-                momentum_score += 25
-            elif limit_up_count >= 1:
-                momentum_score += 10
-            
-            if strong_count >= 3:
-                momentum_score += 20
-            elif strong_count >= 2:
-                momentum_score += 10
-            
-            if avg_volume_ratio > 1.5:
-                momentum_score += 15
-            elif avg_volume_ratio > 1.2:
-                momentum_score += 5
-            
-            if momentum_score >= 50:
-                active_themes.append({
-                    'theme_name': theme_name,
-                    'momentum_score': momentum_score,
-                    'avg_change': round(avg_change, 2),
-                    'up_ratio': round(up_ratio, 2),
-                    'limit_up_count': limit_up_count,
-                    'strong_count': strong_count,
-                    'avg_volume_ratio': round(avg_volume_ratio, 2),
-                    'stock_count': len(theme_quotes),
-                    'is_active': True
-                })
-        
-        active_themes.sort(key=lambda x: x['momentum_score'], reverse=True)
-        return active_themes
-
-    def detect_intraday_stock_momentum(self) -> list:
-        """检测个股异动(基于实时行情)"""
-        momentum_stocks = []
-        
-        for ts_code, quote in self.quotes.items():
-            pct_chg = quote.get('pct_chg')
-            if pct_chg is None or pct_chg < 3:
-                continue
-            
-            volume_ratio = quote.get('vol_ratio', 1.0)
-            high = quote.get('high', 0)
-            low = quote.get('low', 0)
-            close = quote.get('price', 0)
-            ref_data = self.ref_prices.get(ts_code)
-            prev_close = ref_data['close'] if isinstance(ref_data, dict) and 'close' in ref_data else close
-            
-            if prev_close <= 0:
-                continue
-            
-            open_ = quote.get('open', close)
-            
-            momentum_score = 0
-            signals = []
-            
-            if volume_ratio > 2.0:
-                momentum_score += 30
-                signals.append('放量')
-            elif volume_ratio > 1.5:
-                momentum_score += 15
-                signals.append('温和放量')
-            
-            if pct_chg > 5:
-                momentum_score += 30
-                signals.append('强势拉升')
-            elif pct_chg > 3:
-                momentum_score += 15
-                signals.append('上涨')
-            
-            if close > prev_close * 1.03 and volume_ratio > 1.5:
-                momentum_score += 20
-                signals.append('放量突破')
-            
-            if high > prev_close * 1.05:
-                momentum_score += 15
-                signals.append('冲击涨停')
-            
-            amplitude = (high - low) / prev_close * 100 if prev_close > 0 else 0
-            if amplitude > 8 and pct_chg > 2:
-                momentum_score += 10
-                signals.append('大振幅')
-            
-            if momentum_score >= 40:
-                name = ''
-                for theme, stocks in self.theme_stocks.items():
-                    for code, nm, _ in stocks:
-                        if code == ts_code:
-                            name = nm
-                            break
-                    if name:
-                        break
-                
-                momentum_stocks.append({
-                    'ts_code': ts_code,
-                    'name': name or ts_code.split('.')[0],
-                    'change': round(pct_chg, 2),
-                    'volume_ratio': round(volume_ratio, 2),
-                    'prev_close': round(prev_close, 2),
-                    'close': round(close, 2),
-                    'high': round(high, 2),
-                    'low': round(low, 2),
-                    'amplitude': round(amplitude, 2),
-                    'momentum_score': momentum_score,
-                    'signals': signals,
-                    'is_momentum': True
-                })
-        
-        momentum_stocks.sort(key=lambda x: x['momentum_score'], reverse=True)
-        return momentum_stocks
-
-    def find_resonance_signals(self, active_themes: list, momentum_stocks: list) -> list:
-        """寻找主题+个股共振信号"""
-        signals = []
-        theme_stock_set = {}
-        
-        for theme in active_themes:
-            stocks = self.theme_stocks.get(theme['theme_name'], [])
-            theme_stock_set[theme['theme_name']] = set([s[0] for s in stocks])
-        
-        for stock in momentum_stocks:
-            ts_code = stock['ts_code']
-            for theme in active_themes:
-                if ts_code in theme_stock_set.get(theme['theme_name'], set()):
-                    signal = {
-                        'ts_code': ts_code,
-                        'name': stock['name'],
-                        'theme_name': theme['theme_name'],
-                        'theme_momentum_score': theme['momentum_score'],
-                        'stock_momentum_score': stock['momentum_score'],
-                        'total_score': theme['momentum_score'] * 0.4 + stock['momentum_score'] * 0.6,
-                        'change': stock['change'],
-                        'volume_ratio': stock['volume_ratio'],
-                        'signals': stock['signals'],
-                        'theme_avg_change': theme['avg_change'],
-                        'theme_limit_up_count': theme['limit_up_count']
-                    }
-                    signals.append(signal)
-        
-        signals.sort(key=lambda x: x['total_score'], reverse=True)
-        return signals
-
-    def generate_intraday_trade_plan(self, signals: list) -> list:
-        """生成盘中交易计划"""
-        plans = []
-        for signal in signals[:10]:
-            entry_price = signal.get('close', 0)
-            if entry_price <= 0:
-                continue
-            
-            stop_loss = entry_price * 0.95
-            take_profit = entry_price * 1.15
-            
-            plan = {
-                'ts_code': signal['ts_code'],
-                'name': signal['name'],
-                'theme_name': signal['theme_name'],
-                'total_score': round(signal['total_score'], 1),
-                'entry_price': round(entry_price, 2),
-                'stop_loss': round(stop_loss, 2),
-                'take_profit': round(take_profit, 2),
-                'risk_reward': round((take_profit - entry_price) / (entry_price - stop_loss), 2),
-                'position': '轻仓' if signal['total_score'] < 60 else '半仓',
-                'notes': '; '.join(signal['signals'])
-            }
-            plans.append(plan)
-        
-        return plans
-
-    def run_intraday_strategy(self) -> dict:
-        """运行盘中策略(主题异动 + 个股异动共振)"""
-        print(f"\n{'='*60}")
-        print(f"📊 盘中策略：共振信号 [{datetime.now().strftime('%H:%M:%S')}]")
-        print(f"{'='*60}")
-        
-        active_themes = self.detect_intraday_theme_momentum()
-        
-        momentum_stocks = self.detect_intraday_stock_momentum()
-        
-        signals = self.find_resonance_signals(active_themes, momentum_stocks)
-        
-        if signals:
-            print(f"🔥 共{len(signals)}个共振信号（主题异动{len(active_themes)}个 + 个股异动{len(momentum_stocks)}只）：")
-            print(f"\n{'排名':<4} {'代码':<12} {'名称':<8} {'主题':<12} {'总分':>5} {'涨幅':>8} {'量比':>6} {'信号'}")
-            print("-" * 80)
-            for i, signal in enumerate(signals[:10], 1):
-                print(f"  {i:<4} {signal['ts_code']:<12} {signal['name']:<8} {signal['theme_name']:<12} "
-                      f"{signal['total_score']:>5.1f} {signal['change']:>8.2f}% {signal['volume_ratio']:>6.2f} "
-                      f"[{','.join(signal['signals'])}]")
-            
-            plans = self.generate_intraday_trade_plan(signals)
-            
-            print("\n📋 交易计划：")
-            print(f"{'代码':<12} {'名称':<8} {'入场':>8} {'止损':>8} {'止盈':>8} {'风险收益':>6} {'仓位'}")
-            print("-" * 65)
-            for plan in plans:
-                print(f"  {plan['ts_code']:<12} {plan['name']:<8} {plan['entry_price']:>8.2f} "
-                      f"{plan['stop_loss']:>8.2f} {plan['take_profit']:>8.2f} {plan['risk_reward']:>6.2f} {plan['position']}")
-            
-            return {
-                'active_themes': active_themes,
-                'momentum_stocks': momentum_stocks,
-                'signals': signals,
-                'plans': plans
-            }
-        else:
-            print(f"  当前无共振信号（主题异动{len(active_themes)}个 + 个股异动{len(momentum_stocks)}只）")
-            return {
-                'active_themes': active_themes,
-                'momentum_stocks': momentum_stocks,
-                'signals': [],
-                'plans': []
-            }
 
 
 if __name__ == "__main__":

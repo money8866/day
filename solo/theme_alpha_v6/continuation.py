@@ -170,9 +170,9 @@ def compute_continuation_score(daily: pd.DataFrame, codes: list,
 def continuation_signal(cont_score: float, composite: float, stage: str) -> str:
     """
     生成延续标签（与 lifecycle 阈值对齐）：
-      - 强势延续：综合强 + 延续强 + 启动/扩张
-      - 分歧买点：综合低 + 延续很高 + 启动/扩张
-      - 观察等待：延续 >= 55（与 lifecycle 扩张门槛一致）
+      - 强势延续：综合强 + 延续强 + 启动/主升
+      - 分歧买点：综合低 + 延续很高 + 启动/主升
+      - 观察等待：延续 >= 55（与 lifecycle 主升门槛一致）
       - 趋势走弱：延续 < 55
     """
     import config
@@ -186,7 +186,7 @@ def continuation_signal(cont_score: float, composite: float, stage: str) -> str:
         and composite < config.WATCH_DIV_COMPOSITE
         and stage in config.SB_STAGES):
         return "分歧买点"
-    # 观察等待：延续中等（与 lifecycle 扩张门槛 55 对齐）
+    # 观察等待：延续中等（与 lifecycle 主升门槛 55 对齐）
     if cont_score >= 55:
         return "观察等待"
     return "趋势走弱"

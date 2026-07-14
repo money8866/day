@@ -1,0 +1,67 @@
+{
+  "n_samples": 2494,
+  "horizon": 5,
+  "date_range": "20250603~20250731",
+  "n_themes": 58,
+  "actual_up_rate": 63.1,
+  "accuracy": 47.2,
+  "ic": -0.0219,
+  "high_prob_n": 280,
+  "high_prob_up_rate": 52.1,
+  "high_prob_avg_ret": 0.36,
+  "low_prob_n": 351,
+  "low_prob_up_rate": 62.4,
+  "low_prob_avg_ret": 1.06,
+  "long_short_ret": -0.7,
+  "group_stats": [
+    {
+      "prob_group": "Q1低",
+      "n": 506,
+      "avg_pred_prob": 43.93221343873518,
+      "avg_actual_ret": 1.1360762792108952,
+      "actual_up_rate": 0.642292490118577
+    },
+    {
+      "prob_group": "Q2",
+      "n": 512,
+      "avg_pred_prob": 47.2921875,
+      "avg_actual_ret": 1.116348527893237,
+      "actual_up_rate": 0.60546875
+    },
+    {
+      "prob_group": "Q3",
+      "n": 486,
+      "avg_pred_prob": 49.313374485596704,
+      "avg_actual_ret": 1.242956467332532,
+      "actual_up_rate": 0.6728395061728395
+    },
+    {
+      "prob_group": "Q4",
+      "n": 518,
+      "avg_pred_prob": 51.56679536679536,
+      "avg_actual_ret": 1.4446197260652065,
+      "actual_up_rate": 0.667953667953668
+    },
+    {
+      "prob_group": "Q5高",
+      "n": 472,
+      "avg_pred_prob": 55.85021186440678,
+      "avg_actual_ret": 0.683101454521348,
+      "actual_up_rate": 0.5635593220338984
+    }
+  ],
+  "conf_stats": {
+    "high": {
+      "n": 2487,
+      "accuracy": 47.24567752312023,
+      "up_rate": 63.168476075593084,
+      "avg_ret": 1.1385323314541966
+    },
+    "medium": {
+      "n": 7,
+      "accuracy": 42.857142857142854,
+      "up_rate": 42.857142857142854,
+      "avg_ret": -1.470159572153357
+    }
+  }
+}

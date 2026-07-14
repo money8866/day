@@ -222,11 +222,13 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     """
     趋势分 = MA_SCORE(40) + INDEX_SCORE(30) + BREADTH_SCORE(30)
     
-    MA_SCORE（40分）- 均线趋势：
-    - MA5 > MA10 > MA20     40
+    MA_SCORE（40分）- 均线趋势 + 动量加速：
+    - 多头排列 + 加速上涨    40
+    - 多头排列但减速        32
     - MA5 > MA10            30
     - MA5 > MA20            20
-    - 全空头排列           10
+    - 全空头排列             10
+    - 空头但企稳             18
     
     INDEX_SCORE（30分）- 指数站位：
     - 站上20日线 30
@@ -243,7 +245,7 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     - <30%     0
     """
     if df is None or len(df) < 20:
-        return 50.0, "无数据"
+        return 50.0, "无数据", {}
     
     latest = df.iloc[-1]
     
@@ -252,20 +254,49 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     ma10 = df['close'].rolling(10).mean().iloc[-1]
     ma20 = df['close'].rolling(20).mean().iloc[-1]
     
+    # 计算MA斜率（动量加速因子）
+    ma5_series = df['close'].rolling(5).mean()
+    ma20_series = df['close'].rolling(20).mean()
+    ma5_slope = 0.0
+    ma20_slope = 0.0
+    if len(ma5_series) >= 6 and not pd.isna(ma5_series.iloc[-6]) and ma5_series.iloc[-6] > 0:
+        ma5_slope = (ma5 - ma5_series.iloc[-6]) / ma5_series.iloc[-6] * 100
+    if len(ma20_series) >= 21 and not pd.isna(ma20_series.iloc[-21]) and ma20_series.iloc[-21] > 0:
+        ma20_slope = (ma20 - ma20_series.iloc[-21]) / ma20_series.iloc[-21] * 100
+    
     # -------------------
-    # MA_SCORE（40分）- 均线趋势
+    # MA_SCORE（40分）- 均线趋势 + 动量加速修正
     # -------------------
     ma_score = 0
+    momentum_note = ""
     if ma5 > ma10 > ma20:
-        ma_score = 40
+        # 多头排列：判断加速还是减速
+        if ma5_slope > 2 and ma20_slope > 0.5:
+            ma_score = 40  # 加速上涨
+            momentum_note = "加速上涨"
+        elif ma5_slope < 0.5:
+            ma_score = 32  # 多头但减速
+            momentum_note = "多头减速"
+        else:
+            ma_score = 36  # 多头平稳
+            momentum_note = "多头平稳"
     elif ma5 > ma10:
         ma_score = 30
+        momentum_note = "短多头"
     elif ma5 > ma20:
         ma_score = 20
+        momentum_note = "弱反弹"
     elif ma5 < ma10 < ma20:
-        ma_score = 10
+        # 空头排列：判断是否企稳
+        if ma5_slope > 0 and len(ma5_series) >= 4 and ma5 > ma5_series.iloc[-4]:
+            ma_score = 18  # 空头但企稳
+            momentum_note = "空头企稳"
+        else:
+            ma_score = 10
+            momentum_note = "空头加速"
     else:
         ma_score = 15  # 其他情况
+        momentum_note = "趋势不明"
     
     # -------------------
     # INDEX_SCORE（30分）- 指数站位
@@ -317,7 +348,6 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     trend_score = max(0, min(100, trend_score))
     
     # 判断趋势状态（综合趋势分和均线排列）
-    # 趋势分是主要依据，均线排列作为辅助判断
     if trend_score >= 75 and ma5 > ma10 > ma20 and latest['close'] > ma5:
         trend_status = "上升趋势"
     elif trend_score >= 65 and ma5 > ma10:
@@ -331,12 +361,24 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     else:
         trend_status = "下降趋势"
     
-    return trend_score, trend_status
+    detail = {
+        'ma_score': ma_score, 'index_score': index_score, 'breadth_score': breadth_score,
+        'ma5_slope': round(ma5_slope, 2), 'ma20_slope': round(ma20_slope, 2),
+        'momentum_note': momentum_note,
+    }
+    return trend_score, trend_status, detail
 
 # ================
 # 计算情绪指标
 # ================
-def calc_sentiment_score(df):
+def calc_sentiment_score(df, zt_count=0, zhaban_rate=0.0, total_amount=0):
+    """
+    情绪评分 = 方向(25) + 量能(20) + 振幅(15) + 连涨跌(20) + 涨停质量(10) + 成交额趋势(10)
+    
+    新增维度：
+    - 涨停封板质量（10分）：炸板率越低，情绪越强
+    - 成交额趋势（10分）：5日/20日成交额比值
+    """
     if df is None or len(df) < 20:
         return 50.0, "无数据"
     
@@ -344,60 +386,54 @@ def calc_sentiment_score(df):
     pct_chg = latest['pct_chg'] if 'pct_chg' in df.columns else 0
     
     # ==============================
-    # 1. 涨跌方向与强度 (30分) - 核心指标
+    # 1. 涨跌方向与强度 (25分)
     # ==============================
-    # 上涨得正分，下跌得负分
     direction_score = 0
     if pct_chg >= 2:
-        direction_score = 30  # 大涨
+        direction_score = 25
     elif pct_chg >= 1:
-        direction_score = 20  # 上涨
+        direction_score = 18
     elif pct_chg >= 0:
-        direction_score = 10  # 平盘微涨
+        direction_score = 10
     elif pct_chg >= -1:
-        direction_score = 5   # 小幅下跌
+        direction_score = 5
     elif pct_chg >= -2:
-        direction_score = 0   # 下跌
+        direction_score = 0
     else:
-        direction_score = -20 # 大跌（额外扣分）
+        direction_score = -15
     
     # ==============================
-    # 2. 成交量变化 (25分) - 区分涨跌
+    # 2. 成交量变化 (20分) - 区分涨跌
     # ==============================
     vol5 = df['vol'].tail(5).mean()
     vol20 = df['vol'].tail(20).mean()
     vol_ratio = vol5 / vol20 if vol20 > 0 else 1
     
-    vol_score = 12.5 + (vol_ratio - 1) * 20
+    vol_score = 10 + (vol_ratio - 1) * 15
     
-    # 关键修正：放量下跌是恐慌信号，应扣分
     if pct_chg < -1 and vol_ratio > 1.2:
-        vol_score -= 10  # 放量大跌额外扣10分
+        vol_score -= 8   # 放量大跌额外扣
     elif pct_chg > 1 and vol_ratio > 1.2:
-        vol_score += 5   # 放量大涨额外加5分
+        vol_score += 4   # 放量大涨额外加
     
-    vol_score = min(25, max(0, vol_score))
+    vol_score = min(20, max(0, vol_score))
     
     # ==============================
-    # 3. 振幅与涨跌结合 (20分)
+    # 3. 振幅与涨跌结合 (15分)
     # ==============================
     amplitude = (latest['high'] - latest['low']) / latest['low'] * 100
     
-    # 振幅大但下跌是负面信号
     if pct_chg < 0:
-        # 下跌时振幅大 = 恐慌，扣分
-        amp_score = max(0, 10 - amplitude)
+        amp_score = max(0, 7.5 - amplitude * 0.5)
     else:
-        # 上涨时振幅大 = 强势，加分
-        amp_score = min(20, 10 + amplitude * 0.5)
+        amp_score = min(15, 7.5 + amplitude * 0.4)
     
     # ==============================
-    # 4. 连涨连跌趋势 (25分)
+    # 4. 连涨连跌趋势 (20分)
     # ==============================
     up_streak = 0
     down_streak = 0
     
-    # 计算连涨天数
     for i in range(1, 6):
         if len(df) > i:
             if df['pct_chg'].iloc[-i] > 0:
@@ -405,7 +441,6 @@ def calc_sentiment_score(df):
             else:
                 break
     
-    # 计算连跌天数
     for i in range(1, 6):
         if len(df) > i:
             if df['pct_chg'].iloc[-i] < 0:
@@ -413,25 +448,61 @@ def calc_sentiment_score(df):
             else:
                 break
     
-    # 连涨加分，连跌扣分
-    streak_score = 12.5 + up_streak * 3 - down_streak * 4
-    streak_score = min(25, max(0, streak_score))
+    streak_score = 10 + up_streak * 2.5 - down_streak * 3
+    streak_score = min(20, max(0, streak_score))
     
     # ==============================
-    # 5. 近期波动率惩罚 (额外)
+    # 5. 涨停封板质量 (10分) - 新增
     # ==============================
-    vol20 = df['pct_chg'].tail(20).std()
-    volatility = vol20 if not pd.isna(vol20) else 1.5
+    zt_quality_score = 5  # 默认中性
+    if zt_count > 0:
+        # 炸板率越低，封板质量越高
+        if zhaban_rate < 10:
+            zt_quality_score = 10  # 情绪极强
+        elif zhaban_rate < 20:
+            zt_quality_score = 8
+        elif zhaban_rate < 35:
+            zt_quality_score = 5
+        else:
+            zt_quality_score = 2  # 炸板率高=情绪分歧
+    elif zhaban_rate > 50:
+        zt_quality_score = 0  # 极端炸板，情绪崩溃
     
-    # 高波动惩罚（市场不稳定）
+    # ==============================
+    # 6. 成交额趋势 (10分) - 新增
+    # ==============================
+    amount_trend_score = 5  # 默认中性
+    if 'amount' in df.columns and len(df) >= 20:
+        amt_5d = df['amount'].tail(5).mean()
+        amt_20d = df['amount'].tail(20).mean()
+        if amt_20d > 0:
+            amt_ratio = amt_5d / amt_20d
+            if amt_ratio > 1.5 and pct_chg > 0:
+                amount_trend_score = 10  # 放量上涨
+            elif amt_ratio > 1.2 and pct_chg > 0:
+                amount_trend_score = 7
+            elif amt_ratio > 1.2 and pct_chg < 0:
+                amount_trend_score = 3  # 放量下跌=恐慌
+            elif amt_ratio < 0.7:
+                amount_trend_score = 2  # 缩量严重
+            elif amt_ratio < 0.9:
+                amount_trend_score = 4  # 缩量
+    
+    # ==============================
+    # 7. 近期波动率惩罚 (额外)
+    # ==============================
+    vol20_std = df['pct_chg'].tail(20).std()
+    volatility = vol20_std if not pd.isna(vol20_std) else 1.5
+    
     vol_penalty = 0
     if volatility > 2.5:
-        vol_penalty = (volatility - 2.5) * 3  # 高波动扣分
+        vol_penalty = (volatility - 2.5) * 3
     
     # ==============================
     # 综合评分
     # ==============================
-    sentiment_score = direction_score + vol_score + amp_score + streak_score - vol_penalty
+    sentiment_score = (direction_score + vol_score + amp_score + streak_score 
+                       + zt_quality_score + amount_trend_score - vol_penalty)
     sentiment_score = max(0, min(100, sentiment_score))
     
     if sentiment_score >= 70:
@@ -572,6 +643,30 @@ def print_market_overview(overview, trade_date=None):
 # ================
 # 主分析流程
 # ================
+def _get_prev_position(trade_date=None):
+    """从数据库读取前一交易日的仓位（用于滞回机制）"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    try:
+        db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+        if not os.path.exists(db_path):
+            return None
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT total_position FROM overall_analysis
+            WHERE trade_date < ?
+            ORDER BY trade_date DESC LIMIT 1
+        ''', (trade_date,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            return int(row[0])
+    except Exception:
+        pass
+    return None
+
+
 def analyze_market(trade_date=None):
     if trade_date is None:
         trade_date = TRADE_DATE
@@ -604,10 +699,12 @@ def analyze_market(trade_date=None):
         latest = df.iloc[-1]
         up_count = overview.get('up_count', 0)
         total_count = overview.get('up_count', 0) + overview.get('down_count', 0)
-        trend_score, trend_status = calc_trend_score(df, up_count, total_count)
-        sentiment_score, sentiment_status = calc_sentiment_score(df)
+        trend_score, trend_status, trend_detail = calc_trend_score(df, up_count, total_count)
+        zt_count = overview.get('zt_count', 0)
+        zhaban_rate = overview.get('zb_rate', 0)
+        sentiment_score, sentiment_status = calc_sentiment_score(df, zt_count, zhaban_rate, overview.get('total_amount', 0))
         
-        print(f"   趋势分: {trend_score:.1f} → {trend_status}")
+        print(f"   趋势分: {trend_score:.1f} -> {trend_status} [{trend_detail.get('momentum_note', '')}]")
         print(f"   情绪分: {sentiment_score:.1f} → {sentiment_status}")
         print(f"   最新收: {latest['close']:.2f}  涨跌: {latest['pct_chg']:.2f}%")
         
@@ -619,18 +716,43 @@ def analyze_market(trade_date=None):
             "sentiment_score": sentiment_score,
             "sentiment_status": sentiment_status,
             "close": latest['close'],
-            "pct_chg": latest['pct_chg']
+            "pct_chg": latest['pct_chg'],
+            "trend_detail": trend_detail,
         })
     
-    # 综合建议（游资策略：综合考虑所有指数，寻找结构性机会）
+    # 综合建议
     if results:
         # 获取 TOP3 主题趋势分
         theme_top3_scores = get_top3_theme_scores(trade_date)
         
         # 计算市场趋势总评分
         trend_score, index_trend, theme_trend = calculate_market_trend_score(results, theme_top3_scores, trade_date)
-        market_status, position_range, position = get_market_status_and_position(trend_score)
-        reason = f"当前市场处于【{market_status}】阶段"
+        
+        # 获取前一日仓位（从数据库读取）
+        prev_position = _get_prev_position(trade_date)
+        
+        # 计算综合情绪分（各指数均值）
+        avg_sentiment = sum(r['sentiment_score'] for r in results) / len(results)
+        
+        # 使用带滞回的仓位调整
+        zhaban_rate = overview.get('zb_rate', 0)
+        market_status, position_range, position = get_market_status_and_position(
+            trend_score, prev_position=prev_position, sentiment_score=avg_sentiment
+        )
+        
+        # 市场状态分类
+        market_regime, regime_reason = classify_market_regime(
+            trend_score, avg_sentiment, zhaban_rate=zhaban_rate
+        )
+        
+        # 持仓结构建议
+        portfolio_structure = suggest_portfolio_structure(market_regime)
+        
+        reason = f"当前市场处于【{market_regime}】阶段 - {regime_reason}"
+        if prev_position is not None and prev_position != position:
+            reason += f"（前日仓位{prev_position}% -> 今日{position}%，滞回机制生效）"
+        elif prev_position is not None and prev_position == position:
+            reason += f"（维持前日仓位{prev_position}%，滞回机制维持不变）"
         
         print("\n" + "=" * 80)
         print("🎯 综合分析结论")
@@ -638,7 +760,8 @@ def analyze_market(trade_date=None):
         
         print(f"\n【指数趋势分】")
         for r in results:
-            print(f"  {r['name']}: {r['trend_status']} ({r['trend_score']:.1f})")
+            momentum = r.get('trend_detail', {}).get('momentum_note', '')
+            print(f"  {r['name']}: {r['trend_status']} ({r['trend_score']:.1f}) [{momentum}]")
         
         print(f"\n【市场趋势总评分】")
         print(f"  指数趋势 (IndexTrend): {index_trend:.1f}")
@@ -649,16 +772,42 @@ def analyze_market(trade_date=None):
         print(f"\n【市场情绪】")
         for r in results:
             print(f"  {r['name']}: {r['sentiment_status']} ({r['sentiment_score']:.1f})")
+        print(f"  综合情绪分: {avg_sentiment:.1f}")
+        
+        print(f"\n【市场状态分类】")
+        print(f"  状态: {market_regime}")
+        print(f"  理由: {regime_reason}")
+        
+        print(f"\n【持仓结构建议】")
+        for k, v in portfolio_structure.items():
+            print(f"  {k}: {v}")
         
         print(f"\n💡 总体仓位建议: {position}% ({position_range})")
-        print(f"   理由: 当前市场处于【{market_status}】阶段")
+        print(f"   理由: {reason}")
         
-        # 根据不同指数趋势给出风格个股仓位分配
-        print(f"\n🎨 风格个股仓位分配建议")
+        # 根据不同指数趋势给出风格个股仓位分配（含大小盘轮动）
+        print(f"\n🎨 风格个股仓位分配建议（含大小盘轮动判断）")
         print(f"  {'指数':<12} {'风格':<12} {'状态':<12} {'建议仓位':<10} {'理由':<30}")
         print(f"  {'-'*12} {'-'*12} {'-'*12} {'-'*10} {'-'*30}")
         
         # 计算权重
+        # ===== 大小盘轮动判断 =====
+        zz2000_ret_5d = 0
+        hs300_ret_5d = 0
+        for r in results:
+            if r['name'] == '中证2000':
+                df_tmp = get_index_kline(r['code'], trade_date)
+                if df_tmp is not None and len(df_tmp) >= 6:
+                    zz2000_ret_5d = (df_tmp['close'].iloc[-1] / df_tmp['close'].iloc[-6] - 1) * 100
+            elif r['name'] == '沪深300':
+                df_tmp = get_index_kline(r['code'], trade_date)
+                if df_tmp is not None and len(df_tmp) >= 6:
+                    hs300_ret_5d = (df_tmp['close'].iloc[-1] / df_tmp['close'].iloc[-6] - 1) * 100
+        style_rotation = zz2000_ret_5d - hs300_ret_5d
+        if abs(style_rotation) > 3:
+            rot_dir = "小盘占优" if style_rotation > 0 else "大盘占优"
+            print(f"  [轮动信号] 近5日小盘-大盘收益差: {style_rotation:+.1f}% -> {rot_dir}")
+        
         weights = []
         for r in results:
             if r['trend_status'] == '上升趋势':
@@ -670,6 +819,13 @@ def analyze_market(trade_date=None):
             else:  # 下降趋势
                 weight = 0.5
             weights.append(weight)
+        
+        # 大小盘轮动权重调整
+        for i, r in enumerate(results):
+            if r['name'] == '中证2000' and style_rotation > 3:
+                weights[i] *= 1.5  # 小盘占优额外加50%
+            elif r['name'] == '沪深300' and style_rotation < -3:
+                weights[i] *= 1.5  # 大盘占优额外加50%
         
         total_weight = sum(weights)
         style_allocations = []
@@ -732,9 +888,9 @@ def analyze_market(trade_date=None):
                     trend_score, index_trend, theme_trend, market_status, trade_date,
                     limit_stats, max_lb)
         
-        # 保存到数据库
+        # 保存到数据库（market_status 存 market_regime，更准确反映市场状态）
         save_to_database(trade_date, results, position, reason, 
-                        trend_score, index_trend, theme_trend, market_status)
+                        trend_score, index_trend, theme_trend, market_regime)
         
         return results, position, reason, style_allocations, overview
     
@@ -919,120 +1075,125 @@ def calculate_market_trend_score(index_results, theme_top3_scores=None, trade_da
     return trend_score, index_trend, theme_trend
 
 
-def get_market_status_and_position(trend_score):
+def get_market_status_and_position(trend_score, prev_position=None, sentiment_score=None, breadth_up_ratio=None):
     """
-    根据趋势分返回市场状态和仓位建议：
-    >=80  → 强趋势  → 70~80%
-    70~80 → 趋势良好 → 55~70%
-    60~70 → 震荡偏强 → 40~60%
-    50~60 → 震荡    → 30~50%
-    40~50 → 弱势    → 20~30%
-    30~40 → 退潮    → 10~20%
-    <30   → 主跌段  → 0~10%
+    带滞回的仓位调整：
+    - 升仓需超过区间中值+3分才升仓
+    - 降仓需低于区间中值-3分才降仓
+    - 避免在边界附近频繁切换
     """
-    if trend_score >= 80:
-        status = "强趋势"
-        position_range = "70~80%"
-        position = 75
-    elif trend_score >= 70:
-        status = "趋势良好"
-        position_range = "55~70%"
-        position = 60
-    elif trend_score >= 60:
-        status = "震荡偏强"
-        position_range = "40~60%"
-        position = 50
-    elif trend_score >= 50:
-        status = "震荡"
-        position_range = "30~50%"
-        position = 40
-    elif trend_score >= 40:
-        status = "弱势"
-        position_range = "20~30%"
-        position = 25
-    elif trend_score >= 30:
-        status = "退潮"
-        position_range = "10~20%"
-        position = 15
-    else:
-        status = "主跌段"
-        position_range = "0~10%"
-        position = 5
+    tiers = [
+        (80, "强趋势",   "70~80%", 75),
+        (70, "趋势良好", "55~70%", 60),
+        (60, "震荡偏强", "40~60%", 50),
+        (50, "震荡",     "30~50%", 40),
+        (40, "弱势",     "20~30%", 25),
+        (30, "退潮",     "10~20%", 15),
+        (0,  "主跌段",   "0~10%",  5),
+    ]
     
+    new_tier_idx = 0
+    for i, (threshold, status, pos_range, pos) in enumerate(tiers):
+        if trend_score >= threshold:
+            new_tier_idx = i
+            break
+    
+    # 滞回机制：如果有前一日仓位，在非极端区域避免频繁切换
+    if prev_position is not None and 30 < trend_score < 80:
+        prev_tier_idx = _position_to_tier_idx(prev_position, tiers)
+        if abs(new_tier_idx - prev_tier_idx) == 0:
+            new_tier_idx = prev_tier_idx
+        elif abs(new_tier_idx - prev_tier_idx) == 1:
+            threshold = tiers[min(new_tier_idx, prev_tier_idx)][0]
+            if abs(trend_score - threshold) <= 3:
+                new_tier_idx = prev_tier_idx
+    
+    status = tiers[new_tier_idx][1]
+    position_range = tiers[new_tier_idx][2]
+    position = tiers[new_tier_idx][3]
     return status, position_range, position
 
 
-def detect_c_wave_acceleration(trade_date=None):
+def _position_to_tier_idx(position, tiers):
+    """将仓位百分比映射到档位索引"""
+    for i, (threshold, status, pos_range, pos) in enumerate(tiers):
+        if position >= pos - 5:
+            return i
+    return len(tiers) - 1
+
+
+def classify_market_regime(trend_score, sentiment_score, breadth_up_ratio=None, zhaban_rate=None):
     """
-    检测大盘是否处于C浪加速阶段（空头加速下跌）。
-    
-    判定条件（同时满足3项才认定为C浪加速）：
-    1. 沪深300收盘 < MA20（空头趋势确立）
-    2. 近3日累计跌幅 <= -3%（下跌加速）
-    3. 近5日中至少3日下跌（下跌连续性）
-    
-    返回:
-        dict: {
-            'is_c_wave': bool,           # 是否C浪加速
-            'below_ma20': bool,          # 沪深300是否在MA20下方
-            'ret_3d': float,             # 近3日累计涨幅(%)
-            'down_days_5d': int,         # 近5日下跌天数
-            'reason': str                # 判定理由
-        }
+    市场状态分类（指导持仓结构而非仅仓位）：
+    1. 主升加速期：趋势>=75 + 情绪>=70
+    2. 震荡轮动期：趋势50-75 + 情绪40-60
+    3. 顶部分歧期：趋势>=60 但 情绪<40 或 炸板率>35%
+    4. 主跌退潮期：趋势<40 + 情绪<30
+    5. 冰点反弹期：趋势30-45 + 情绪<20
     """
-    if trade_date is None:
-        trade_date = TRADE_DATE
-    
-    result = {
-        'is_c_wave': False,
-        'below_ma20': False,
-        'ret_3d': 0.0,
-        'down_days_5d': 0,
-        'reason': ''
+    if trend_score >= 60 and sentiment_score is not None and sentiment_score < 40:
+        return "顶部分歧期", "趋势在但情绪骤降，减仓兑现，切换防御品种"
+    if trend_score >= 60 and zhaban_rate is not None and zhaban_rate > 35:
+        return "顶部分歧期", "炸板率过高，情绪分歧严重，减仓兑现"
+    if trend_score >= 75 and sentiment_score is not None and sentiment_score >= 70:
+        return "主升加速期", "趋势与情绪共振，重仓主线龙头，可追高连板"
+    if 50 <= trend_score < 75:
+        return "震荡轮动期", "结构性行情为主，高抛低吸，快进快出"
+    if 30 <= trend_score < 45 and sentiment_score is not None and sentiment_score < 25:
+        return "冰点反弹期", "情绪冰点，试探性建仓超跌反弹，严格止损"
+    if trend_score < 40 and sentiment_score is not None and sentiment_score < 30:
+        return "主跌退潮期", "趋势与情绪双弱，空仓或极轻仓等待"
+    if trend_score >= 45:
+        return "震荡轮动期", "结构性行情为主，高抛低吸"
+    return "主跌退潮期", "市场偏弱，严控仓位"
+
+
+def suggest_portfolio_structure(market_regime):
+    """根据市场状态给出持仓结构建议"""
+    structure_map = {
+        "主升加速期": {
+            "集中度": "集中持仓3-5只",
+            "持有周期": "短线为主，3-5日",
+            "止损幅度": "5-8%（趋势加速期容错高）",
+            "选股偏好": "追强主线龙头，打板/半路",
+            "操作要点": "敢于追高，顺势加仓，不轻易止盈",
+        },
+        "震荡轮动期": {
+            "集中度": "分散持仓5-8只",
+            "持有周期": "T+1或T+2为主",
+            "止损幅度": "3%（严格执行）",
+            "选股偏好": "低吸回流，避免追高",
+            "操作要点": "高抛低吸，控制换手率，不恋战",
+        },
+        "顶部分歧期": {
+            "集中度": "减至2-3只",
+            "持有周期": "T+1，快进快出",
+            "止损幅度": "2-3%（收紧止损）",
+            "选股偏好": "切换到防御性品种/低位补涨",
+            "操作要点": "兑现利润，不追高，防范突然杀跌",
+        },
+        "主跌退潮期": {
+            "集中度": "空仓或仅1-2只",
+            "持有周期": "不参与或日内了结",
+            "止损幅度": "不适用（不参与）",
+            "选股偏好": "仅做超跌反弹，严格止损",
+            "操作要点": "管住手，等待情绪冰点和趋势企稳",
+        },
+        "冰点反弹期": {
+            "集中度": "试探2-3只",
+            "持有周期": "1-3日反弹",
+            "止损幅度": "3-5%",
+            "选股偏好": "超跌+缩量到位+首板",
+            "操作要点": "小仓位试探，确认反弹再加仓",
+        },
     }
-    
-    try:
-        df = get_index_kline("000300.SH", trade_date)
-        if df is None or df.empty or len(df) < 20:
-            result['reason'] = '数据不足，无法判定C浪'
-            return result
-        
-        df = df.sort_values('trade_date').reset_index(drop=True)
-        latest = df.iloc[-1]
-        close = latest['close']
-        
-        ma20 = df['close'].rolling(20).mean().iloc[-1]
-        result['below_ma20'] = close < ma20
-        
-        recent_3 = df.tail(3)
-        ret_3d = ((recent_3.iloc[-1]['close'] / recent_3.iloc[0]['close']) - 1) * 100
-        result['ret_3d'] = round(ret_3d, 2)
-        
-        recent_5 = df.tail(5)
-        down_days = (recent_5['pct_chg'] < 0).sum()
-        result['down_days_5d'] = int(down_days)
-        
-        conditions = []
-        if result['below_ma20']:
-            conditions.append(f"沪深300收{close:.1f}<MA20({ma20:.1f})")
-        if ret_3d <= -3.0:
-            conditions.append(f"3日累跌{ret_3d:.1f}%")
-        if down_days >= 3:
-            conditions.append(f"5日下跌{down_days}天")
-        
-        if len(conditions) >= 3:
-            result['is_c_wave'] = True
-            result['reason'] = 'C浪加速：' + '，'.join(conditions)
-        else:
-            hit = len(conditions)
-            result['reason'] = f'非C浪加速（命中{hit}/3条件：{", ".join(conditions) if conditions else "无"}）'
-        
-        print(f"\n[C浪检测] {result['reason']}")
-    except Exception as e:
-        result['reason'] = f'C浪检测异常: {e}'
-        print(f"[C浪检测] 异常: {e}")
-    
-    return result
+    return structure_map.get(market_regime, {
+        "集中度": "3-5只",
+        "持有周期": "短线",
+        "止损幅度": "3%",
+        "选股偏好": "中性",
+        "操作要点": "观望为主",
+    })
 
 
 # ================
@@ -1539,38 +1700,11 @@ if __name__ == '__main__':
     # 初始化数据库
     init_database()
     
-    # 运行分析
+    # 运行分析（analyze_market 内部已完成所有计算和保存）
     result = analyze_market()
     
     if result and len(result) >= 4:
         results, total_position, position_reason, style_allocations, overview = result
-        
-        # 获取趋势评分数据（从 analyze_market 中获取）
-        # 需要重新计算或从全局变量获取
-        theme_csv = os.path.join(safe_cache_dir, "theme_trend_sentiment.csv")
-        theme_top3_scores = None
-        if os.path.exists(theme_csv):
-            try:
-                df = pd.read_csv(theme_csv, encoding='utf-8-sig')
-                if not df.empty and 'trend_score' in df.columns:
-                    df = df.sort_values('rank').head(3)
-                    theme_top3_scores = df['trend_score'].tolist()
-            except:
-                pass
-        
-        ts, it, tt = calculate_market_trend_score(results, theme_top3_scores)
-        ms, pr, tp = get_market_status_and_position(ts)
-        
-        # 保存到数据库
-        save_to_database(TRADE_DATE, results, total_position, position_reason, 
-                        ts, it, tt, ms)
-        
-        # 获取并保存涨跌停 & 连板数据
-        limit_stats = get_limit_up_down_stats(TRADE_DATE)
-        max_lb = calc_max_limit_height(TRADE_DATE)
-        limit_stats['max_limit_height'] = max_lb
-        save_limit_stats_to_cache(limit_stats)
-        save_limit_stats_to_database(limit_stats)
         
         # 检查提醒
         print("\n" + "=" * 80)

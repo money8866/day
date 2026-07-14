@@ -188,7 +188,43 @@ def _load_v6_result(expected_date=None):
     return v6_data
 
 
-# 缓存/报告目录统一到 d:\stock\ 下
+def _load_market_analysis_result(trade_date):
+    """读取 market_analysis.py 已生成的 txt 报告（避免重复运行 analyze_market）
+    
+    Returns:
+        (ma_txt, ma_position, ma_reason)
+    """
+    ma_cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+    txt_path = os.path.join(ma_cache_dir, f"market_analysis_{trade_date}.txt")
+    
+    ma_txt = ""
+    ma_position = 0
+    ma_reason = ""
+    
+    if os.path.exists(txt_path):
+        try:
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                ma_txt = f.read()
+            
+            # 从txt中提取仓位和理由
+            import re
+            m_pos = re.search(r'总体仓位建议:\s*(\d+)%', ma_txt)
+            if m_pos:
+                ma_position = int(m_pos.group(1))
+            m_reason = re.search(r'理由:\s*(.+)', ma_txt)
+            if m_reason:
+                ma_reason = m_reason.group(1).strip()
+            
+            print(f"[MarketAnalysis] 已加载 {trade_date} 大盘分析报告（仓位{ma_position}%）")
+        except Exception as e:
+            print(f"[MarketAnalysis] 读取txt失败: {e}")
+    else:
+        print(f"[MarketAnalysis] 未找到 {trade_date} 的分析报告，请先运行 market_analysis.py")
+    
+    return ma_txt, ma_position, ma_reason
+
+
+# 缓存/报告目录统一到 d:\mystock\ 下
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
 REPORT_DIR = os.path.join(STOCK_DATA_DIR, "report_daily")   
@@ -7662,27 +7698,20 @@ strong {{
 # 市场数据（带缓存）
 # =========================
 def get_market():
-    import sys
-    print("[DBG] get_market 开始"); sys.stdout.flush()
     cache_file = os.path.join(
         CACHE_DIR,
         f"market_{TRADE_DATE}.csv"
     )
-    print(f"[DBG] get_market cache_file={cache_file}"); sys.stdout.flush()
 
     if os.path.exists(cache_file):
         try:
             df = pd.read_csv(cache_file)
             if not df.empty:  # 缓存文件有数据才使用
-                print(f"[DBG] get_market 缓存命中"); sys.stdout.flush()
-                print(f"[缓存] 市场数据已加载: {cache_file}")
                 return df
             else:
                 print(f"[缓存] 缓存文件为空，重新拉取API")
         except Exception as e:
             print(f"[缓存] 市场数据读取失败: {e}")
-
-    print("[DBG] get_market 准备调用API"); sys.stdout.flush()
 
     daily = _df_daily_by_date(TRADE_DATE)
 
@@ -9625,29 +9654,21 @@ def run(target_date=None, simple_mode=False):
     
     emotion_stage = "强"
     
-    # 市场情绪 → 使用 market_analysis.py 的大盘分析
-    import importlib
-    ma = importlib.import_module("market_analysis")
-    ma_results, ma_position, ma_reason, ma_style_allocations, ma_overview = ma.analyze_market(TRADE_DATE)
+    # 市场情绪 -> 直接读取 market_analysis.py 已生成的 txt 报告
+    ma_txt, ma_position, ma_reason = _load_market_analysis_result(TRADE_DATE)
 
-    # 从 V6.2 引擎结果获取主题趋势评分（用于市场趋势分计算）
-    # 使用 Alpha Gate 通过的主题（更准确反映市场真实主线）
-    theme_top3_scores = None
-    v6_data = _load_v6_result(TRADE_DATE)
-    if v6_data:
-        try:
-            # 优先取 Alpha Gate PASS 的主题，取综合分前3
-            gate_passed = [r for r in v6_data if r.get('alpha_gate') == 'PASS']
-            if gate_passed:
-                top3 = sorted(gate_passed, key=lambda x: -x.get('composite_score', 0))[:3]
-            else:
-                top3 = sorted(v6_data, key=lambda x: -x.get('composite_score', 0))[:3]
-            theme_top3_scores = [r.get('trend_score', 0) for r in top3]
-        except:
-            pass
-    
-    ts, it, tt = ma.calculate_market_trend_score(ma_results, theme_top3_scores)
-    ms, pr, tp = ma.get_market_status_and_position(ts)
+    # 从txt中提取趋势分和市场状态（用于策略判断）
+    import re as _re
+    _m_ts = _re.search(r'总趋势分.*?:\s*(\d+\.?\d*)', ma_txt)
+    ts = float(_m_ts.group(1)) if _m_ts else 50.0
+    _m_ms = _re.search(r'市场状态:\s*(.+)', ma_txt)
+    ms = _m_ms.group(1).strip() if _m_ms else "震荡"
+    _m_it = _re.search(r'指数趋势.*?:\s*(\d+\.?\d*)', ma_txt)
+    it = float(_m_it.group(1)) if _m_it else 50.0
+    _m_tt = _re.search(r'主题趋势.*?:\s*(\d+\.?\d*)', ma_txt)
+    tt = float(_m_tt.group(1)) if _m_tt else 50.0
+    tp = ma_position
+    pr = ""
 
     # 根据大盘状态确定操作策略
     if "主升浪" in ms or ts >= 75:
@@ -9657,32 +9678,10 @@ def run(target_date=None, simple_mode=False):
     elif "退潮" in ms or "主跌" in ms or ts < 40:
         market_action = "大盘弱势，重点关注低吸股池潜伏"
     else:
-        # 中期调整或震荡市中，关注B浪中线机会
         market_action = "大盘经历中期调整，关注中线股池B浪机会"
 
-    # 构建 emotion_text 用于 DeepSeek 日报
-    emotion_lines = ["【大盘分析】"]
-    status_icon = "🚀" if "主升浪" in ms else ("📈" if "上升" in ms or "良好" in ms else ("⚠️" if "退潮" in ms or "主跌" in ms else "📊"))
-    emotion_lines.append(f"{status_icon} 市场状态: 【{ms}】")
-    emotion_lines.append(f"总趋势分: {ts:.1f} | 指数趋势: {it:.1f} | 主题趋势: {tt:.1f}")
-    emotion_lines.append(f"建议仓位: {ma_position}%")
-    emotion_lines.append("")
-    emotion_lines.append(f"【操作策略】<span style=\"color:red;font-weight:bold;\">{market_action}</span>")
-    emotion_lines.append("")
-    
-    if ma_overview:
-        ov = ma_overview
-        emotion_lines.append(f"【市场概况】")
-        emotion_lines.append(f"上证{ov['sh_index']:.2f}({ov['sh_pct']:+.2f}%) "
-                             f"成交{ov['total_amount']:.0f}亿 涨{ov['up_count']}跌{ov['down_count']} "
-                             f"涨停{ov['zt_count']}跌停{ov['dt_count']}炸板率{ov['zb_rate']}%")
-    emotion_lines.append("")
-    emotion_lines.append(f"【各指数分析】")
-    for r in ma_results:
-        emotion_lines.append(f"{r['name']}: 趋势{r['trend_score']:.1f}({r['trend_status']}) 情绪{r['sentiment_score']:.1f}({r['sentiment_status']}) 涨跌{r['pct_chg']:+.2f}%")
-    emotion_lines.append(f"\n综合建议仓位: {ma_position}%")
-    emotion_lines.append(f"理由: {ma_reason}")
-    emotion_text = "\n".join(emotion_lines)
+    # 直接用 txt 报告原文作为 emotion_text
+    emotion_text = ma_txt if ma_txt else "（无大盘分析报告）"
     print(emotion_text)
 
     result = []
@@ -9901,31 +9900,21 @@ def run(target_date=None, simple_mode=False):
 
     # ====================================================================
     # 强势股池硬过滤优化（基于近30天回测：胜率24.4% → 预估70-80%）
-    # 1. 量比 ≥ 1.2        —— 缩量上涨是顶背离信号（量比<1胜率0%，量比1.0-1.5胜率76%）
+    # 1. 量比 ≥ 1.0        —— 缩量上涨是顶背离信号（量比<1胜率0%）
     # 2. 近20日涨幅 ≤ 40%  —— 涨幅透支后进场即被套（>40%胜率0% 平均-12.76%）
     # 3. 距MA20 ≤ 20%      —— 远离均线表示追高过度（>20%胜率9% 平均-8.09%）
     # 4. 距MA5 ≥ 0%       —— 跌破MA5表示趋势走弱（<0%胜率20%）
-    # 
-    # 例外规则：突破评分>=70的股票，量比阈值放宽至1.0
     # ====================================================================
     before_strong_filter = len(ranked_stocks)
     strong_pass = []
-    strong_filtered_reasons = {'量比<1.2': 0, '量比<1.0(突破股)': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
+    strong_filtered_reasons = {'量比<1.0': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
     for s in ranked_stocks:
         vol_ratio = s.get('当日量比', 0) or 0
         pct_20d = s.get('近20日涨幅_pct', 0) or 0
         dist_ma20 = s.get('距MA20_pct', 0) or 0
         dist_ma5 = s.get('距MA5_pct', 0) or 0
-        breakout_score = s.get('突破评分', 0) or 0
-        
-        # 突破评分>=70的股票，量比阈值放宽至1.0
-        vol_threshold = 1.0 if breakout_score >= 70 else 1.2
-        
-        if vol_ratio < vol_threshold:
-            if breakout_score >= 70:
-                strong_filtered_reasons['量比<1.0(突破股)'] += 1
-            else:
-                strong_filtered_reasons['量比<1.2'] += 1
+        if vol_ratio < 1.0:
+            strong_filtered_reasons['量比<1.0'] += 1
             continue
         if pct_20d > 40:
             strong_filtered_reasons['近20日涨幅>40%'] += 1
@@ -10634,6 +10623,92 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
+    # 信号×阶段实盘建议矩阵（基于V6数据自动生成）
+    # =========================
+    trade_advice_text = ""
+    try:
+        v6_data2 = _load_v6_result(TRADE_DATE)
+        if v6_data2:
+            # 阶段分类
+            CORE_BUY    = ["启动加速", "主升"]            # 核心仓位
+            STANDARD    = ["主升回调", "启动"]            # 标准仓位
+            OBSERVE     = ["启动初期", "筑底回升"]         # 观察仓位
+            FORBIDDEN   = ["高位调整", "调整", "高潮", "高潮见顶", "衰退", "衰退初期"]  # 禁止区
+
+            def _pos_advice(stage, signal):
+                if stage in CORE_BUY and signal in ("强买", "看多"):
+                    return "★核心", "15-20%", "出击"
+                if stage in STANDARD and signal == "强买":
+                    return "★标准", "10-15%", "分批买入"
+                if stage in STANDARD and signal == "看多":
+                    return "标准", "5-10%", "试探建仓"
+                if stage in OBSERVE and signal in ("强买", "看多"):
+                    return "观察", "3-5%", "小仓试错"
+                if stage in FORBIDDEN:
+                    return "禁止", "0%", "不买"
+                return "观察", "0-3%", "观望"
+
+            # 信号×阶段矩阵说明
+            lines = []
+            lines.append("=" * 80)
+            lines.append("★ 信号×阶段实盘建议矩阵（V6自动生成）★")
+            lines.append("=" * 80)
+            lines.append("【策略原则】信号决定买什么方向，阶段决定什么时候买，大盘环境决定买多少")
+            lines.append("")
+            lines.append("【仓位分档】")
+            lines.append("  ★核心(15-20%): 启动加速/主升 + 强买/看多 = 趋势刚成立+预测强")
+            lines.append("  ★标准(10-15%): 主升回调 + 强买 = 健康回调+延续概率高，最佳买点")
+            lines.append("  标准(5-10%):  启动 + 看多 = 趋势形成中，可布局")
+            lines.append("  观察(3-5%):   启动初期/筑底回升 + 看多 = 轻仓等转正")
+            lines.append("  禁止(0%):     高位调整/调整/高潮/衰退 = 趋势已破或过热")
+            lines.append("")
+
+            # 筛选V6有效信号
+            valid_signals = ("强买", "看多", "关注", "持有")
+            candidates = [r for r in v6_data2 if r.get('trade_signal') in valid_signals]
+
+            # 按优先级排序
+            def _priority(r):
+                stage = r.get('stage', '')
+                sig = r.get('trade_signal', '')
+                if stage in CORE_BUY and sig == "强买": return 0
+                if stage in CORE_BUY and sig == "看多": return 1
+                if stage in STANDARD and sig == "强买": return 2
+                if stage in STANDARD and sig == "看多": return 3
+                if stage in OBSERVE and sig in ("强买", "看多"): return 4
+                if stage in FORBIDDEN: return 9
+                return 5
+
+            candidates.sort(key=_priority)
+
+            if candidates:
+                lines.append("【今日实盘建议】")
+                lines.append(f"{'主题':<12} {'信号':<6} {'阶段':<10} {'FA分':<6} {'建议':<8} {'仓位':<10} {'操作'}")
+                lines.append("-" * 80)
+                for r in candidates[:15]:
+                    stage = r.get('stage', '')
+                    sig = r.get('trade_signal', '')
+                    fa = r.get('forward_alpha', 0)
+                    pos, weight, action = _pos_advice(stage, sig)
+                    lines.append(
+                        f"  {r['theme']:<10} {sig:<6} {stage:<10} {fa:<6.0f} {pos:<8} {weight:<10} {action}"
+                    )
+                lines.append("-" * 80)
+                lines.append("")
+
+                # 统计
+                core_cnt = sum(1 for r in candidates if _pos_advice(r.get('stage',''), r.get('trade_signal',''))[0] == "★核心")
+                std_cnt = sum(1 for r in candidates if "标准" in _pos_advice(r.get('stage',''), r.get('trade_signal',''))[0])
+                forb_cnt = sum(1 for r in candidates if _pos_advice(r.get('stage',''), r.get('trade_signal',''))[0] == "禁止")
+                lines.append(f"【统计】核心出击={core_cnt}个 | 标准仓位={std_cnt}个 | 禁止区={forb_cnt}个")
+
+            trade_advice_text = "\n".join(lines)
+    except Exception as e:
+        print(f"[实盘建议矩阵] 生成失败: {e}")
+        trade_advice_text = ""
+
+
+    # =========================
     # ETF操作提示（从ETF轮动策略读取）
     # =========================
     etf_tips_text = ""
@@ -10780,6 +10855,10 @@ def run(target_date=None, simple_mode=False):
 
 {non_daytrip_for_ai}
 
+**【信号×阶段实盘建议矩阵】**
+
+{trade_advice_text}
+
 **【今日低吸股票池】**
 
 （低吸二波信号，按二波评分从高到低排序）
@@ -10918,6 +10997,18 @@ W1涨幅=94% | W2回调=56% | 距H1=-0.1% | 今日涨+9.98%
 持有: 最优20天 | 卖出: 20日内收益>10%分批止盈，缩量滞涨卖出
 - 【精简原则】上方数据中没有的内容不要输出
 - 如果无二波评分≥10的个股，直接输出"今日无符合条件的低吸二波标的（二波评分均<10分）"
+
+7、**【信号×阶段实盘建议矩阵】**（基于V6数据自动生成的仓位建议表）：
+- 【必须输出】严格引用上方"信号×阶段实盘建议矩阵"数据中的表格，逐行输出
+- 【表格格式】用Markdown表格，列：主题 | 信号 | 阶段 | FA分 | 建议档位 | 仓位 | 操作
+- 【操作规则】
+  - ★核心档位（15-20%）：启动加速/主升 + 强买/看多 = 明日首选方向，可重仓出击
+  - ★标准档位（10-15%）：主升回调 + 强买 = 健康回调最佳买点，分批买入
+  - 标准档位（5-10%）：启动 + 看多 = 趋势形成中，试探建仓
+  - 观察档位（3-5%）：启动初期/筑底回升 + 看多 = 轻仓试错
+  - 禁止档位（0%）：高位调整/调整/高潮/衰退 = 严格禁止买入，趋势已破或过热
+- 【重要】禁止档位的主题即使FA分很高（如半导体材料FA=74强烈看多），也必须在表格中标注"禁止"并说明原因
+- 【结合大盘环境】如果检测到C浪加速警示，总仓位需降至15%以内，核心档位也只持不加
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**

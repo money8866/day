@@ -1,0 +1,5640 @@
+{
+  "trade_date": "20260714",
+  "update_time": "2026-07-14 18:20:12",
+  "total_themes": 15,
+  "results": [
+    {
+      "probability": 52.4,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 56.9,
+          "avg_ret": 0.93,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 8.5,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 63.42710997442455,
+              "avg_ret": 1.6933807339512523,
+              "n_samples": 391,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 47.54601226993865,
+              "avg_ret": 0.36619310203078864,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 51.981707317073166,
+              "avg_ret": 0.33285325075749655,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 0.5525086811313706,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.6,
+          "avg_ret": 0.78,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 2.2,
+          "details": [
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 59.680052236369576,
+              "avg_ret": 1.3160896510889817,
+              "n_samples": 3063,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 59.52569169960474,
+              "avg_ret": 1.1338137645567568,
+              "n_samples": 2530,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.31709203402939,
+              "avg_ret": 0.5705573558630799,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 54.18763479511143,
+              "avg_ret": 0.4317071238408657,
+              "n_samples": 5564,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 53.7,
+          "avg_ret": 2.44,
+          "confidence": "medium",
+          "valid_factors": 6,
+          "prob_std": 10.5,
+          "details": [
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 69.82097186700767,
+              "avg_ret": 6.00191748302863,
+              "n_samples": 391,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 46.62576687116564,
+              "avg_ret": 2.0925915754343416,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 46.646341463414636,
+              "avg_ret": 0.8109766462129046,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 1.67391782197554,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 78,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 65,
+          "signal": "趋势衰竭",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 60,
+          "signal": "龙头领涨",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 55,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 40,
+          "signal": "顶背离警示",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 30,
+          "signal": "龙头抗跌·成份补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 55,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 中性(78↺)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)",
+        "领先滞后: 龙头抗跌·成份补跌(30)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "半导体材料",
+      "stock_count": 13,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 50.6,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 55.5,
+          "avg_ret": 0.84,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 9.3,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 63.42710997442455,
+              "avg_ret": 1.6933807339512523,
+              "n_samples": 391,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 44.01709401709402,
+              "avg_ret": 0.041450902587046326,
+              "n_samples": 702,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 47.54601226993865,
+              "avg_ret": 0.36619310203078864,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 51.981707317073166,
+              "avg_ret": 0.33285325075749655,
+              "n_samples": 656,
+              "weight": 10
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.5,
+          "avg_ret": 0.78,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 2.3,
+          "details": [
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 59.680052236369576,
+              "avg_ret": 1.3160896510889817,
+              "n_samples": 3063,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 59.52569169960474,
+              "avg_ret": 1.1338137645567568,
+              "n_samples": 2530,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 55.02117362371446,
+              "avg_ret": 0.5776263745667155,
+              "n_samples": 6612,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 54.18763479511143,
+              "avg_ret": 0.4317071238408657,
+              "n_samples": 5564,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 51.4,
+          "avg_ret": 2.01,
+          "confidence": "medium",
+          "valid_factors": 6,
+          "prob_std": 11.6,
+          "details": [
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 60,
+              "up_prob": 69.82097186700767,
+              "avg_ret": 6.00191748302863,
+              "n_samples": 391,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 39.173789173789174,
+              "avg_ret": -0.6952390118828808,
+              "n_samples": 702,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 46.62576687116564,
+              "avg_ret": 2.0925915754343416,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 46.646341463414636,
+              "avg_ret": 0.8109766462129046,
+              "n_samples": 656,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 78,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 65,
+          "signal": "趋势衰竭",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 60,
+          "signal": "龙头领涨",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 40,
+          "signal": "顶背离警示",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 40,
+          "signal": "偏弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 30,
+          "signal": "齐跌·看跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 55,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 58,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 中性(78↺)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "协同度: 齐跌·看跌(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "半导体设备",
+      "stock_count": 19,
+      "trade_date": "20260714",
+      "etf_code": "159516.SZ"
+    },
+    {
+      "probability": 53.6,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 55.7,
+          "avg_ret": 0.81,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.4,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 47.54601226993865,
+              "avg_ret": 0.36619310203078864,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 50,
+              "up_prob": 51.981707317073166,
+              "avg_ret": 0.33285325075749655,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 0.5525086811313706,
+              "n_samples": 890,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.2,
+          "avg_ret": 0.71,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.8,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 59.52569169960474,
+              "avg_ret": 1.1338137645567568,
+              "n_samples": 2530,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.31709203402939,
+              "avg_ret": 0.5705573558630799,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 50,
+              "up_prob": 54.18763479511143,
+              "avg_ret": 0.4317071238408657,
+              "n_samples": 5564,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 51.6,
+          "avg_ret": 1.93,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 6.9,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 78,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 46.62576687116564,
+              "avg_ret": 2.0925915754343416,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 50,
+              "up_prob": 46.646341463414636,
+              "avg_ret": 0.8109766462129046,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 1.67391782197554,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 78,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 65,
+          "signal": "趋势衰竭",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 55,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 50,
+          "signal": "短期急跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 30,
+          "signal": "龙头抗跌·成份补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 45,
+          "signal": "少数活跃·顶部警示",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 58,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 中性(78↺)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)",
+        "领先滞后: 龙头抗跌·成份补跌(30)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "AI芯片",
+      "stock_count": 31,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 54.0,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 54.2,
+          "avg_ret": 0.72,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 8.0,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 85,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 45,
+              "up_prob": 43.63376251788269,
+              "avg_ret": 0.04563334919155365,
+              "n_samples": 699,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 47.54601226993865,
+              "avg_ret": 0.36619310203078864,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 51.981707317073166,
+              "avg_ret": 0.33285325075749655,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.2,
+          "avg_ret": 0.71,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.8,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 59.52569169960474,
+              "avg_ret": 1.1338137645567568,
+              "n_samples": 2530,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 85,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 45,
+              "up_prob": 55.31709203402939,
+              "avg_ret": 0.5705573558630799,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 54.18763479511143,
+              "avg_ret": 0.4317071238408657,
+              "n_samples": 5564,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 49.2,
+          "avg_ret": 1.55,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.5,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 45,
+              "up_prob": 38.62660944206009,
+              "avg_ret": -0.4142539340167961,
+              "n_samples": 699,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 85,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 65,
+              "up_prob": 46.62576687116564,
+              "avg_ret": 2.0925915754343416,
+              "n_samples": 326,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 46.646341463414636,
+              "avg_ret": 0.8109766462129046,
+              "n_samples": 656,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 85,
+          "signal": "短期下跌",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 75,
+          "signal": "RS转负·抱团松动",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 65,
+          "signal": "趋势衰竭",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 45,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 40,
+          "signal": "顶背离警示",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 15,
+          "signal": "全面抛售·看跌",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 58,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 短期下跌(85↺)",
+        "RS斜率: RS转负·抱团松动(75↺)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "半导体制造",
+      "stock_count": 24,
+      "trade_date": "20260714",
+      "etf_code": "512480.SH"
+    },
+    {
+      "probability": 54.5,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 57.7,
+          "avg_ret": 0.96,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 8.3,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 85,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 52.54237288135594,
+              "avg_ret": 1.034632773859979,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 35,
+              "up_prob": 51.981707317073166,
+              "avg_ret": 0.33285325075749655,
+              "n_samples": 656,
+              "weight": 10
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.2,
+          "avg_ret": 0.74,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 85,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 56.168999481596686,
+              "avg_ret": 0.7905145953613987,
+              "n_samples": 7716,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 35,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 52.0,
+          "avg_ret": 2.04,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 9.0,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 40.30131826741996,
+              "avg_ret": 0.5687202213224481,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 85,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 35,
+              "up_prob": 46.646341463414636,
+              "avg_ret": 0.8109766462129046,
+              "n_samples": 656,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 85,
+          "signal": "板块效应启动",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 80,
+          "signal": "短期下跌",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 70,
+          "signal": "趋势启动",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 35,
+          "signal": "中期偏弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 35,
+          "signal": "龙头补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 55,
+          "signal": "有情绪",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 55,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 短期下跌(80↺)",
+        "ADX趋势: 趋势启动(70)",
+        "协同度: 板块效应启动(85)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "人形机器人",
+      "stock_count": 33,
+      "trade_date": "20260714",
+      "etf_code": "516510.SH"
+    },
+    {
+      "probability": 52.4,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 50.2,
+          "avg_ret": 0.35,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 3.8,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 53.2156368221942,
+              "avg_ret": 0.5280756284657679,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 65,
+              "up_prob": 53.20388349514563,
+              "avg_ret": 0.6302892731834348,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 0.5525086811313706,
+              "n_samples": 890,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 72,
+              "up_prob": 49.13494809688581,
+              "avg_ret": 0.18179567659291743,
+              "n_samples": 578,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.1,
+          "avg_ret": 0.61,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 65,
+              "up_prob": 57.97883826387389,
+              "avg_ret": 0.9153117850444185,
+              "n_samples": 4631,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 72,
+              "up_prob": 56.719273075083684,
+              "avg_ret": 0.5986941101533595,
+              "n_samples": 4182,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.31709203402939,
+              "avg_ret": 0.5705573558630799,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 53.75410913872452,
+              "avg_ret": 0.407143201149576,
+              "n_samples": 7605,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 49.8,
+          "avg_ret": 1.08,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.6,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 65,
+              "up_prob": 60.77669902912621,
+              "avg_ret": 2.700473350283282,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 55.67465321563682,
+              "avg_ret": 1.7800744973801603,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 72,
+              "up_prob": 45.8477508650519,
+              "avg_ret": 0.4823558828810844,
+              "n_samples": 578,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 1.67391782197554,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 72,
+          "signal": "短期下跌",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 65,
+          "signal": "中期偏强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 55,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 35,
+          "signal": "趋势衰竭",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 30,
+          "signal": "龙头抗跌·成份补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 55,
+          "signal": "有情绪",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 80,
+          "signal": "全面活跃·看涨",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 短期下跌(72↺)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)",
+        "领先滞后: 龙头抗跌·成份补跌(30)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "先进封装",
+      "stock_count": 21,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 44.5,
+      "direction": "偏空",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 52.3,
+          "avg_ret": 0.52,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 5.1,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 0.9698687046105934,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 45.94222833562586,
+              "avg_ret": 0.06174203551511563,
+              "n_samples": 727,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.2156368221942,
+              "avg_ret": 0.5280756284657679,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 53.20388349514563,
+              "avg_ret": 0.6302892731834348,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.1,
+          "avg_ret": 0.64,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.3,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 57.05024311183144,
+              "avg_ret": 0.5546390642948993,
+              "n_samples": 3085,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 56.94252419514122,
+              "avg_ret": 0.8789868659242953,
+              "n_samples": 5063,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 55.25543159130946,
+              "avg_ret": 0.5396404137920281,
+              "n_samples": 5109,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.75410913872452,
+              "avg_ret": 0.407143201149576,
+              "n_samples": 7605,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 53.3,
+          "avg_ret": 1.61,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 5.7,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 60.77669902912621,
+              "avg_ret": 2.700473350283282,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 2.6183628398109726,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 55.67465321563682,
+              "avg_ret": 1.7800744973801603,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 46.49243466299862,
+              "avg_ret": 0.25437669741972296,
+              "n_samples": 727,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 75,
+          "signal": "协同走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 70,
+          "signal": "补涨启动·抱团末段",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 65,
+          "signal": "多数走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 58,
+          "signal": "中性",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 50,
+          "signal": "震荡",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 37,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 25,
+          "signal": "RS双正·强势延续",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "协同度: 协同走强(75)",
+        "领先滞后: 补涨启动·抱团末段(70)"
+      ],
+      "risk_signals": [
+        "RS斜率: RS双正·强势延续(25↺)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "合成生物",
+      "stock_count": 15,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 43.2,
+      "direction": "偏空",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 52.3,
+          "avg_ret": 0.52,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 5.1,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 65,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 0.9698687046105934,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 45.94222833562586,
+              "avg_ret": 0.06174203551511563,
+              "n_samples": 727,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.2156368221942,
+              "avg_ret": 0.5280756284657679,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 53.20388349514563,
+              "avg_ret": 0.6302892731834348,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.1,
+          "avg_ret": 0.64,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.3,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 65,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 57.05024311183144,
+              "avg_ret": 0.5546390642948993,
+              "n_samples": 3085,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 56.94252419514122,
+              "avg_ret": 0.8789868659242953,
+              "n_samples": 5063,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 55.25543159130946,
+              "avg_ret": 0.5396404137920281,
+              "n_samples": 5109,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.75410913872452,
+              "avg_ret": 0.407143201149576,
+              "n_samples": 7605,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 53.3,
+          "avg_ret": 1.61,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 5.7,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 60.77669902912621,
+              "avg_ret": 2.700473350283282,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 65,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 2.6183628398109726,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 55.67465321563682,
+              "avg_ret": 1.7800744973801603,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 37,
+              "up_prob": 46.49243466299862,
+              "avg_ret": 0.25437669741972296,
+              "n_samples": 727,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 65,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 65,
+          "signal": "多数走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 65,
+          "signal": "龙头领涨·抱团中段",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 58,
+          "signal": "中性",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 50,
+          "signal": "空头趋势",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 37,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 25,
+          "signal": "RS双正·强势延续",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 55,
+          "signal": "有情绪",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "RS斜率: RS双正·强势延续(25↺)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "医药产业链",
+      "stock_count": 101,
+      "trade_date": "20260714",
+      "etf_code": "512010.SH"
+    },
+    {
+      "probability": 46.3,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 49.3,
+          "avg_ret": 0.3,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.6,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 39.029126213592235,
+              "avg_ret": -0.4308724381838895,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 45,
+              "up_prob": 45.94222833562586,
+              "avg_ret": 0.06174203551511563,
+              "n_samples": 727,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 53,
+              "up_prob": 53.20388349514563,
+              "avg_ret": 0.6302892731834348,
+              "n_samples": 515,
+              "weight": 10
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.0,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.2,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 53,
+              "up_prob": 57.05024311183144,
+              "avg_ret": 0.5546390642948993,
+              "n_samples": 3085,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.123322866114755,
+              "avg_ret": 0.4994548571970833,
+              "n_samples": 3503,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 45,
+              "up_prob": 55.25543159130946,
+              "avg_ret": 0.5396404137920281,
+              "n_samples": 5109,
+              "weight": 20
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 48.8,
+          "avg_ret": 0.89,
+          "confidence": "medium",
+          "valid_factors": 6,
+          "prob_std": 11.1,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 30.485436893203882,
+              "avg_ret": -2.097132633099875,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 53,
+              "up_prob": 60.77669902912621,
+              "avg_ret": 2.700473350283282,
+              "n_samples": 515,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 45,
+              "up_prob": 46.49243466299862,
+              "avg_ret": 0.25437669741972296,
+              "n_samples": 727,
+              "weight": 20
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 75,
+          "signal": "协同走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 65,
+          "signal": "龙头领涨·抱团中段",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 60,
+          "signal": "空头趋势",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 53,
+          "signal": "中期偏弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 50,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 45,
+          "signal": "顶部减速",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 35,
+          "signal": "龙头补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 75,
+          "signal": "全面活跃·看涨",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "协同度: 协同走强(75)"
+      ],
+      "risk_signals": [
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "光通信",
+      "stock_count": 23,
+      "trade_date": "20260714",
+      "etf_code": "515880.SH"
+    },
+    {
+      "probability": 49.4,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 48.6,
+          "avg_ret": 0.18,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.5,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 39.029126213592235,
+              "avg_ret": -0.4308724381838895,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 42.879746835443036,
+              "avg_ret": -0.2805360682168075,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 63,
+              "up_prob": 49.13494809688581,
+              "avg_ret": 0.18179567659291743,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.0,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.3,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 63,
+              "up_prob": 56.719273075083684,
+              "avg_ret": 0.5986941101533595,
+              "n_samples": 4182,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.123322866114755,
+              "avg_ret": 0.4994548571970833,
+              "n_samples": 3503,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 44.4,
+          "avg_ret": 0.23,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 9.1,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 30.485436893203882,
+              "avg_ret": -2.097132633099875,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 37.9746835443038,
+              "avg_ret": -1.3758666460214224,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 63,
+              "up_prob": 45.8477508650519,
+              "avg_ret": 0.4823558828810844,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 75,
+          "signal": "协同走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 63,
+          "signal": "当日大涨",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 60,
+          "signal": "空头趋势",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 50,
+          "signal": "中性",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 25,
+          "signal": "短期急跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 57,
+          "signal": "梯队断档·退潮预警",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 75,
+          "signal": "全面活跃·看涨",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 58,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "协同度: 协同走强(75)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "相对强度: 短期急跌(25)",
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "被动元件",
+      "stock_count": 22,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 53.1,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 54.9,
+          "avg_ret": 0.87,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 6.6,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 90,
+              "up_prob": 65.76576576576578,
+              "avg_ret": 2.110860981092135,
+              "n_samples": 555,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 60,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 0.9698687046105934,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 47,
+              "up_prob": 46.92982456140351,
+              "avg_ret": 0.17804162454023748,
+              "n_samples": 456,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 90,
+              "up_prob": 52.54237288135594,
+              "avg_ret": 1.034632773859979,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 50.1039501039501,
+              "avg_ret": 0.38939047184076253,
+              "n_samples": 962,
+              "weight": 5
+            }
+          ]
+        },
+        "5d": {
+          "prob": 56.0,
+          "avg_ret": 0.71,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 0.9,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 60,
+              "up_prob": 56.94252419514122,
+              "avg_ret": 0.8789868659242953,
+              "n_samples": 5063,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 90,
+              "up_prob": 56.168999481596686,
+              "avg_ret": 0.7905145953613987,
+              "n_samples": 7716,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 90,
+              "up_prob": 55.93400745077168,
+              "avg_ret": 1.0182957966545396,
+              "n_samples": 3758,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43293718166383,
+              "avg_ret": 0.5396948831964818,
+              "n_samples": 8246,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 47,
+              "up_prob": 54.904236796285545,
+              "avg_ret": 0.4243787583618714,
+              "n_samples": 3446,
+              "weight": 20
+            }
+          ]
+        },
+        "10d": {
+          "prob": 52.9,
+          "avg_ret": 1.98,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 8.5,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 90,
+              "up_prob": 65.04504504504504,
+              "avg_ret": 5.573301061437767,
+              "n_samples": 555,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 90,
+              "up_prob": 40.30131826741996,
+              "avg_ret": 0.5687202213224481,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 60,
+              "up_prob": 57.45393634840871,
+              "avg_ret": 2.6183628398109726,
+              "n_samples": 597,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 47.08939708939709,
+              "avg_ret": 0.40901874511736463,
+              "n_samples": 962,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 47,
+              "up_prob": 47.14912280701755,
+              "avg_ret": 0.1512978077419397,
+              "n_samples": 456,
+              "weight": 20
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 95,
+          "signal": "板块效应启动",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 90,
+          "signal": "看涨",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 90,
+          "signal": "多头趋势",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 65,
+          "signal": "资金聚焦龙头",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 65,
+          "signal": "龙头领涨·抱团中段",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 60,
+          "signal": "高位回落·顶部信号",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 47,
+          "signal": "顶部减速",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 25,
+          "signal": "RS双正·强势延续",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 55,
+          "signal": "有情绪",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 40,
+          "signal": "分歧加大·顶部预警",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "相对强度: 看涨(90)",
+        "ADX趋势: 多头趋势(90)",
+        "协同度: 板块效应启动(95)"
+      ],
+      "risk_signals": [
+        "RS斜率: RS双正·强势延续(25↺)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "创新药",
+      "stock_count": 73,
+      "trade_date": "20260714",
+      "etf_code": "159992.SZ"
+    },
+    {
+      "probability": 52.4,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 50.7,
+          "avg_ret": 0.34,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 6.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 42.879746835443036,
+              "avg_ret": -0.2805360682168075,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.2156368221942,
+              "avg_ret": 0.5280756284657679,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 51.421800947867304,
+              "avg_ret": 0.6546122189042991,
+              "n_samples": 422,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 67,
+              "up_prob": 49.13494809688581,
+              "avg_ret": 0.18179567659291743,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        },
+        "5d": {
+          "prob": 55.9,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 67,
+              "up_prob": 56.719273075083684,
+              "avg_ret": 0.5986941101533595,
+              "n_samples": 4182,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.434782608695656,
+              "avg_ret": 0.6007883379785459,
+              "n_samples": 3312,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.75410913872452,
+              "avg_ret": 0.407143201149576,
+              "n_samples": 7605,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 47.8,
+          "avg_ret": 0.84,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.4,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 37.9746835443038,
+              "avg_ret": -1.3758666460214224,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 95,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 55.67465321563682,
+              "avg_ret": 1.7800744973801603,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 67,
+              "up_prob": 45.8477508650519,
+              "avg_ret": 0.4823558828810844,
+              "n_samples": 578,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 50.0,
+              "avg_ret": 1.7834024444971304,
+              "n_samples": 422,
+              "weight": 5
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 95,
+          "signal": "板块效应启动",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 70,
+          "signal": "RS走弱",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 67,
+          "signal": "短期下跌",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 50,
+          "signal": "震荡",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 50,
+          "signal": "数据不足",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 50,
+          "signal": "数据不足",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 30,
+          "signal": "龙头抗跌·成份补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 25,
+          "signal": "短期急跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 60,
+          "signal": "活跃",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "协同度: 板块效应启动(95)",
+        "RS斜率: RS走弱(70↺)"
+      ],
+      "risk_signals": [
+        "相对强度: 短期急跌(25)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)",
+        "领先滞后: 龙头抗跌·成份补跌(30)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "氟化工制冷剂",
+      "stock_count": 6,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 48.9,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 46.5,
+          "avg_ret": 0.12,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 6.1,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 38.0,
+              "avg_ret": -0.4213036038596812,
+              "n_samples": 600,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 39.029126213592235,
+              "avg_ret": -0.4308724381838895,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 60,
+              "up_prob": 55.633802816901415,
+              "avg_ret": 0.9367131588374997,
+              "n_samples": 142,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 49.13494809688581,
+              "avg_ret": 0.18179567659291743,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        },
+        "5d": {
+          "prob": 55.9,
+          "avg_ret": 0.59,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.2,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 60,
+              "up_prob": 57.27272727272727,
+              "avg_ret": 0.9007101048018508,
+              "n_samples": 880,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 56.719273075083684,
+              "avg_ret": 0.5986941101533595,
+              "n_samples": 4182,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.123322866114755,
+              "avg_ret": 0.4994548571970833,
+              "n_samples": 3503,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 43.7,
+          "avg_ret": -0.13,
+          "confidence": "medium",
+          "valid_factors": 6,
+          "prob_std": 11.0,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 30.485436893203882,
+              "avg_ret": -2.097132633099875,
+              "n_samples": 515,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 31.0,
+              "avg_ret": -2.3650478103527712,
+              "n_samples": 600,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 60,
+              "up_prob": 62.676056338028175,
+              "avg_ret": 2.226056994302698,
+              "n_samples": 142,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 45.8477508650519,
+              "avg_ret": 0.4823558828810844,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 75,
+          "signal": "RS转负·抱团松动",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 73,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 60,
+          "signal": "空头趋势",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 60,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 35,
+          "signal": "龙头补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 15,
+          "signal": "中期偏弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 中性(73↺)",
+        "RS斜率: RS转负·抱团松动(75↺)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(15)",
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "金融科技",
+      "stock_count": 33,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 48.4,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 50.7,
+          "avg_ret": 0.34,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 6.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 62.095238095238095,
+              "avg_ret": 1.1402959158111299,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 20,
+              "up_prob": 42.879746835443036,
+              "avg_ret": -0.2805360682168075,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.2156368221942,
+              "avg_ret": 0.5280756284657679,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 51.421800947867304,
+              "avg_ret": 0.6546122189042991,
+              "n_samples": 422,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 49.13494809688581,
+              "avg_ret": 0.18179567659291743,
+              "n_samples": 578,
+              "weight": 20
+            }
+          ]
+        },
+        "5d": {
+          "prob": 55.9,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 57.72130689751466,
+              "avg_ret": 0.9534926235564785,
+              "n_samples": 3581,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 56.719273075083684,
+              "avg_ret": 0.5986941101533595,
+              "n_samples": 4182,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.434782608695656,
+              "avg_ret": 0.6007883379785459,
+              "n_samples": 3312,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 20,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.75410913872452,
+              "avg_ret": 0.407143201149576,
+              "n_samples": 7605,
+              "weight": 5
+            }
+          ]
+        },
+        "10d": {
+          "prob": 47.8,
+          "avg_ret": 0.84,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 7.4,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 20,
+              "up_prob": 37.9746835443038,
+              "avg_ret": -1.3758666460214224,
+              "n_samples": 632,
+              "weight": 10
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 59.42857142857143,
+              "avg_ret": 3.236351370252616,
+              "n_samples": 525,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 55.67465321563682,
+              "avg_ret": 1.7800744973801603,
+              "n_samples": 1586,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 73,
+              "up_prob": 45.8477508650519,
+              "avg_ret": 0.4823558828810844,
+              "n_samples": 578,
+              "weight": 20
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 50.0,
+              "avg_ret": 1.7834024444971304,
+              "n_samples": 422,
+              "weight": 5
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 75,
+          "signal": "协同走强",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 73,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 50,
+          "signal": "震荡",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 50,
+          "signal": "数据不足",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 50,
+          "signal": "数据不足",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 50,
+          "signal": "中性",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 35,
+          "signal": "齐跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 20,
+          "signal": "中性",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 55,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 45,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 中性(73↺)",
+        "协同度: 协同走强(75)"
+      ],
+      "risk_signals": [
+        "相对强度: 中性(20)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "脑机接口",
+      "stock_count": 6,
+      "trade_date": "20260714",
+      "etf_code": null
+    },
+    {
+      "probability": 52.0,
+      "direction": "中性",
+      "regime": "抱团下跌",
+      "regime_info": {
+        "regime": "抱团下跌",
+        "concentration": 0.5297,
+        "dispersion": 1.0512,
+        "concentration_trend": -0.0956,
+        "top_themes": [
+          "氟化工制冷剂",
+          "半导体材料",
+          "半导体设备",
+          "半导体制造",
+          "先进封装"
+        ],
+        "bottom_themes": [
+          "固态电池",
+          "金融科技",
+          "新型储能",
+          "脑机接口",
+          "AI新消费"
+        ],
+        "duration": 29,
+        "confidence": "high",
+        "top5_rs_mean": 1.795,
+        "all_rs_mean": 0.998,
+        "all_rs_std": 0.295,
+        "below_09_ratio": 0.54,
+        "above_10_ratio": 0.29
+      },
+      "future_probs": {
+        "3d": {
+          "prob": 53.3,
+          "avg_ret": 0.72,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 9.1,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 66.383701188455,
+              "avg_ret": 1.6533135937154901,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 38.0,
+              "avg_ret": -0.4213036038596812,
+              "n_samples": 600,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 42.16144096064043,
+              "avg_ret": -0.1757810887693555,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 46.666666666666664,
+              "avg_ret": 0.15432529244731305,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 52.54237288135594,
+              "avg_ret": 1.034632773859979,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 0.5525086811313706,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        },
+        "5d": {
+          "prob": 55.8,
+          "avg_ret": 0.67,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 1.1,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 57.38386308068459,
+              "avg_ret": 0.93625441368461,
+              "n_samples": 4090,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 56.168999481596686,
+              "avg_ret": 0.7905145953613987,
+              "n_samples": 7716,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.31709203402939,
+              "avg_ret": 0.5705573558630799,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.72892758211317,
+              "avg_ret": 0.5388490548813275,
+              "n_samples": 10108,
+              "weight": 5
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.6122860020141,
+              "avg_ret": 0.40866736677943993,
+              "n_samples": 9930,
+              "weight": 5
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 54.0991093857045,
+              "avg_ret": 0.3995314967105267,
+              "n_samples": 4379,
+              "weight": 10
+            }
+          ]
+        },
+        "10d": {
+          "prob": 47.8,
+          "avg_ret": 1.18,
+          "confidence": "high",
+          "valid_factors": 6,
+          "prob_std": 9.6,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 31.0,
+              "avg_ret": -2.3650478103527712,
+              "n_samples": 600,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 37.024683122081385,
+              "avg_ret": -1.0210603225517494,
+              "n_samples": 1499,
+              "weight": 5
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 80,
+              "up_prob": 60.101867572156195,
+              "avg_ret": 3.694654899121521,
+              "n_samples": 589,
+              "weight": 20
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 70,
+              "up_prob": 40.30131826741996,
+              "avg_ret": 0.5687202213224481,
+              "n_samples": 531,
+              "weight": 5
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 42.36760124610592,
+              "avg_ret": -0.008022199847218277,
+              "n_samples": 1605,
+              "weight": 5
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 51.68539325842697,
+              "avg_ret": 1.67391782197554,
+              "n_samples": 890,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "weight": 20,
+          "score": 80,
+          "signal": "短期下跌",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "rs_slope",
+          "name": "RS斜率",
+          "weight": 15,
+          "score": 75,
+          "signal": "RS转负·抱团松动",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "weight": 5,
+          "score": 70,
+          "signal": "趋势启动",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leader_lag",
+          "name": "领先滞后",
+          "weight": 5,
+          "score": 70,
+          "signal": "补涨启动·抱团末段",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "weight": 10,
+          "score": 55,
+          "signal": "弱协同",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "weight": 5,
+          "score": 35,
+          "signal": "龙头补跌",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "weight": 5,
+          "score": 30,
+          "signal": "多数走弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "concentration_change",
+          "name": "资金集中度",
+          "weight": 25,
+          "score": 30,
+          "signal": "资金聚焦·抱团加剧",
+          "active": true,
+          "reversed": true
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "weight": 10,
+          "score": 15,
+          "signal": "中期偏弱",
+          "active": true,
+          "reversed": false
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "weight": 0,
+          "score": 45,
+          "signal": "情绪冷淡",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "weight": 0,
+          "score": 45,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "weight": 0,
+          "score": 50,
+          "signal": "中性",
+          "active": false,
+          "reversed": false
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 短期下跌(80↺)",
+        "ADX趋势: 趋势启动(70)",
+        "RS斜率: RS转负·抱团松动(75↺)",
+        "领先滞后: 补涨启动·抱团末段(70)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(15)",
+        "突破比例: 多数走弱(30)",
+        "资金集中度: 资金聚焦·抱团加剧(30↺)"
+      ],
+      "adaptive_weights": {
+        "relative_strength": 10,
+        "momentum_acceleration": 20,
+        "adx_trend": 5,
+        "synergy_coefficient": 10,
+        "leadership_divergence": 5,
+        "breakout_ratio": 5,
+        "rs_slope": 15,
+        "concentration_change": 25,
+        "leader_lag": 5,
+        "limit_up_ladder": 0,
+        "turnover_distribution": 0,
+        "etf_net_inflow": 0,
+        "north_flow": 0
+      },
+      "reverse_keys": [
+        "momentum_acceleration",
+        "concentration_change",
+        "rs_slope"
+      ],
+      "theme_class": null,
+      "theme_name": "AI应用与模型",
+      "stock_count": 27,
+      "trade_date": "20260714",
+      "etf_code": null
+    }
+  ]
+}
