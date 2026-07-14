@@ -220,15 +220,17 @@ def get_index_kline(ts_code="000300.SH", trade_date=None):
 # ================
 def calc_trend_score(df, up_count=0, total_count=3000):
     """
-    趋势分 = MA_SCORE(40) + INDEX_SCORE(30) + BREADTH_SCORE(30)
+    趋势分 = MA_SCORE(50) + INDEX_SCORE(30) + BREADTH_SCORE(20)
     
-    MA_SCORE（40分）- 均线趋势 + 动量加速：
-    - 多头排列 + 加速上涨    40
-    - 多头排列但减速        32
-    - MA5 > MA10            30
-    - MA5 > MA20            20
-    - 全空头排列             10
-    - 空头但企稳             18
+    MA_SCORE（50分）- 均线趋势 + 动量加速（权重提升，降低单日广度波动影响）：
+    - 多头排列 + 加速上涨    50
+    - 多头排列但减速        40
+    - 多头平稳              45
+    - MA5 > MA10            38
+    - MA5 > MA20            25
+    - 空头但企稳             22
+    - 全空头排列             12
+    - 其他                  18
     
     INDEX_SCORE（30分）- 指数站位：
     - 站上20日线 30
@@ -236,12 +238,12 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     - 站上5日线 10
     - 全部跌破 0
     
-    BREADTH_SCORE（30分）- 市场广度：
-    - >70%    30
-    - 60%     25
-    - 50%     20
-    - 40%     10
-    - 30%      5
+    BREADTH_SCORE（20分）- 市场广度（降低权重，防止单日广度波动驱动仓位跳变）：
+    - >70%    20
+    - 60%     17
+    - 50%     14
+    - 40%      8
+    - 30%      4
     - <30%     0
     """
     if df is None or len(df) < 20:
@@ -272,30 +274,30 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     if ma5 > ma10 > ma20:
         # 多头排列：判断加速还是减速
         if ma5_slope > 2 and ma20_slope > 0.5:
-            ma_score = 40  # 加速上涨
+            ma_score = 50  # 加速上涨
             momentum_note = "加速上涨"
         elif ma5_slope < 0.5:
-            ma_score = 32  # 多头但减速
+            ma_score = 40  # 多头但减速
             momentum_note = "多头减速"
         else:
-            ma_score = 36  # 多头平稳
+            ma_score = 45  # 多头平稳
             momentum_note = "多头平稳"
     elif ma5 > ma10:
-        ma_score = 30
+        ma_score = 38
         momentum_note = "短多头"
     elif ma5 > ma20:
-        ma_score = 20
+        ma_score = 25
         momentum_note = "弱反弹"
     elif ma5 < ma10 < ma20:
         # 空头排列：判断是否企稳
         if ma5_slope > 0 and len(ma5_series) >= 4 and ma5 > ma5_series.iloc[-4]:
-            ma_score = 18  # 空头但企稳
+            ma_score = 22  # 空头但企稳
             momentum_note = "空头企稳"
         else:
-            ma_score = 10
+            ma_score = 12
             momentum_note = "空头加速"
     else:
-        ma_score = 15  # 其他情况
+        ma_score = 18  # 其他情况
         momentum_note = "趋势不明"
     
     # -------------------
@@ -318,30 +320,30 @@ def calc_trend_score(df, up_count=0, total_count=3000):
     if total_count > 0:
         up_ratio = up_count / total_count * 100
         if up_ratio > 70:
-            breadth_score = 30
-        elif up_ratio >= 60:
-            breadth_score = 25
-        elif up_ratio >= 50:
             breadth_score = 20
+        elif up_ratio >= 60:
+            breadth_score = 17
+        elif up_ratio >= 50:
+            breadth_score = 14
         elif up_ratio >= 40:
-            breadth_score = 10
+            breadth_score = 8
         elif up_ratio >= 30:
-            breadth_score = 5
+            breadth_score = 4
         else:
             breadth_score = 0
     else:
         # 如果没有上涨家数数据，用指数涨幅代替
         pct_chg = float(latest.get('pct_chg', 0))
         if pct_chg > 2:
-            breadth_score = 25
+            breadth_score = 17
         elif pct_chg > 1:
-            breadth_score = 20
+            breadth_score = 14
         elif pct_chg > 0:
-            breadth_score = 15
-        elif pct_chg > -1:
             breadth_score = 10
+        elif pct_chg > -1:
+            breadth_score = 6
         else:
-            breadth_score = 5
+            breadth_score = 3
     
     # 计算总分
     trend_score = ma_score + index_score + breadth_score
@@ -643,6 +645,30 @@ def print_market_overview(overview, trade_date=None):
 # ================
 # 主分析流程
 # ================
+def _get_prev_trend_score(trade_date=None):
+    """从数据库读取前一交易日的趋势分（用于趋势确认机制）"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    try:
+        db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+        if not os.path.exists(db_path):
+            return None
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT trend_score FROM overall_analysis
+            WHERE trade_date < ?
+            ORDER BY trade_date DESC LIMIT 1
+        ''', (trade_date,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            return float(row[0])
+    except Exception:
+        pass
+    return None
+
+
 def _get_prev_position(trade_date=None):
     """从数据库读取前一交易日的仓位（用于滞回机制）"""
     if trade_date is None:
@@ -731,6 +757,9 @@ def analyze_market(trade_date=None):
         # 获取前一日仓位（从数据库读取）
         prev_position = _get_prev_position(trade_date)
         
+        # 获取前一日趋势分（用于趋势确认机制）
+        prev_trend_score = _get_prev_trend_score(trade_date)
+        
         # 计算综合情绪分（各指数均值）
         avg_sentiment = sum(r['sentiment_score'] for r in results) / len(results)
         
@@ -740,15 +769,32 @@ def analyze_market(trade_date=None):
             trend_score, prev_position=prev_position, sentiment_score=avg_sentiment
         )
         
-        # 市场状态分类
+        # 市场状态分类（传入前日趋势分用于趋势确认）
         market_regime, regime_reason = classify_market_regime(
-            trend_score, avg_sentiment, zhaban_rate=zhaban_rate
+            trend_score, avg_sentiment, zhaban_rate=zhaban_rate,
+            prev_trend_score=prev_trend_score
         )
         
         # 持仓结构建议
         portfolio_structure = suggest_portfolio_structure(market_regime)
         
+        # 下跌中继风险控制：如果前日趋势分极低（<25），今日加仓上限不超过10%
+        # 机构原则：主跌段后的反弹，首日最多试探性建仓，确认趋势后再加
+        if prev_trend_score is not None and prev_trend_score < 25:
+            crash_limit = 10
+            if position > crash_limit:
+                reason_addon = f"前日趋势分{prev_trend_score:.0f}极低（主跌段），加仓上限{crash_limit}%，需连续2日趋势确认后方可加仓"
+                position = min(position, crash_limit)
+                market_regime = "冰点反弹期"
+                portfolio_structure = suggest_portfolio_structure(market_regime)
+            else:
+                reason_addon = ""
+        else:
+            reason_addon = ""
+        
         reason = f"当前市场处于【{market_regime}】阶段 - {regime_reason}"
+        if reason_addon:
+            reason += f" | {reason_addon}"
         if prev_position is not None and prev_position != position:
             reason += f"（前日仓位{prev_position}% -> 今日{position}%，滞回机制生效）"
         elif prev_position is not None and prev_position == position:
@@ -1108,6 +1154,19 @@ def get_market_status_and_position(trend_score, prev_position=None, sentiment_sc
             if abs(trend_score - threshold) <= 3:
                 new_tier_idx = prev_tier_idx
     
+    # 单日仓位变化上限：±15%（防止暴跌后单日反弹导致仓位跳变）
+    if prev_position is not None:
+        raw_position = tiers[new_tier_idx][3]
+        max_change = 15
+        if raw_position > prev_position + max_change:
+            # 加仓受限：找不超过 prev+15 的最高档位
+            target = prev_position + max_change
+            for i, (th, st, pr, pos) in enumerate(tiers):
+                if pos <= target:
+                    new_tier_idx = i
+                    break
+        # 降仓不受限（该跑就跑）
+    
     status = tiers[new_tier_idx][1]
     position_range = tiers[new_tier_idx][2]
     position = tiers[new_tier_idx][3]
@@ -1122,7 +1181,8 @@ def _position_to_tier_idx(position, tiers):
     return len(tiers) - 1
 
 
-def classify_market_regime(trend_score, sentiment_score, breadth_up_ratio=None, zhaban_rate=None):
+def classify_market_regime(trend_score, sentiment_score, breadth_up_ratio=None, zhaban_rate=None,
+                           prev_trend_score=None):
     """
     市场状态分类（指导持仓结构而非仅仓位）：
     1. 主升加速期：趋势>=75 + 情绪>=70
@@ -1130,7 +1190,18 @@ def classify_market_regime(trend_score, sentiment_score, breadth_up_ratio=None, 
     3. 顶部分歧期：趋势>=60 但 情绪<40 或 炸板率>35%
     4. 主跌退潮期：趋势<40 + 情绪<30
     5. 冰点反弹期：趋势30-45 + 情绪<20
+    
+    趋势确认机制：从前一日主跌/冰点状态反弹时，需连续2日趋势分回升才确认状态升级，
+    防止单日反弹被误判为趋势反转。
     """
+    # 趋势确认：如果前日趋势分极低（<30），今日即使反弹也不能直接跳到"震荡轮动"
+    if prev_trend_score is not None and prev_trend_score < 30:
+        if trend_score >= 50:
+            # 前日主跌，今日反弹到50+，但仍需确认，暂定为"冰点反弹期"
+            return "冰点反弹期", f"前日趋势分{prev_trend_score:.0f}极低，今日反弹至{trend_score:.0f}但仍需确认，试探性建仓严格止损"
+        elif trend_score >= 40:
+            return "冰点反弹期", f"前日趋势分{prev_trend_score:.0f}，今日反弹至{trend_score:.0f}，情绪修复中但仍需确认"
+    
     if trend_score >= 60 and sentiment_score is not None and sentiment_score < 40:
         return "顶部分歧期", "趋势在但情绪骤降，减仓兑现，切换防御品种"
     if trend_score >= 60 and zhaban_rate is not None and zhaban_rate > 35:
