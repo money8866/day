@@ -224,6 +224,57 @@ def _load_market_analysis_result(trade_date):
     return ma_txt, ma_position, ma_reason
 
 
+def _load_theme_forecast(trade_date, top_n=5):
+    """读取 theme_forecast 已生成的5日上涨概率预测，返回TOP5主题
+    
+    Returns:
+        list of dict: [{"theme": str, "prob_5d": float, "avg_ret": float, "confidence": str}, ...]
+    """
+    import json as _json
+    
+    forecast_path = os.path.join(BASE_DIR, 'theme_forecast', 'output', f'theme_forecast_{trade_date}.json')
+    
+    if not os.path.exists(forecast_path):
+        print(f"[ThemeForecast] 未找到 {trade_date} 预测文件")
+        return []
+    
+    try:
+        with open(forecast_path, 'r', encoding='utf-8') as f:
+            data = _json.load(f)
+        
+        results = data.get('results', data) if isinstance(data, dict) else data
+        if not isinstance(results, list):
+            print(f"[ThemeForecast] 数据格式异常")
+            return []
+        
+        # 提取5日上涨概率
+        theme_probs = []
+        for r in results:
+            fp5 = r.get('future_probs', {}).get('5d', {})
+            theme_probs.append({
+                'theme': r.get('theme_name', ''),
+                'prob_5d': fp5.get('prob', 0),
+                'avg_ret': fp5.get('avg_ret', 0),
+                'confidence': fp5.get('confidence', ''),
+                'current_prob': r.get('probability', 0),
+                'direction': r.get('direction', ''),
+            })
+        
+        # 按5日上涨概率降序，取TOP5
+        theme_probs.sort(key=lambda x: -x['prob_5d'])
+        top_themes = theme_probs[:top_n]
+        
+        print(f"[ThemeForecast] 已加载 {trade_date} 预测，5日上涨概率TOP{top_n}:")
+        for i, t in enumerate(top_themes, 1):
+            conf_label = {"high": "高", "medium": "中", "low": "低"}.get(t['confidence'], "")
+            print(f"  {i}. {t['theme']:<20} 5日概率{t['prob_5d']:.1f}% 预期{t['avg_ret']:+.2f}% [{conf_label}]")
+        
+        return top_themes
+    except Exception as e:
+        print(f"[ThemeForecast] 读取失败: {e}")
+        return []
+
+
 # 缓存/报告目录统一到 d:\mystock\ 下
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
@@ -9682,6 +9733,16 @@ def run(target_date=None, simple_mode=False):
 
     # 直接用 txt 报告原文作为 emotion_text
     emotion_text = ma_txt if ma_txt else "（无大盘分析报告）"
+    
+    # 加载 theme_forecast 5日上涨概率TOP5主题
+    forecast_top5 = _load_theme_forecast(TRADE_DATE, top_n=5)
+    if forecast_top5:
+        emotion_text += "\n\n【主题5日上涨概率预测 TOP5】"
+        for i, t in enumerate(forecast_top5, 1):
+            conf_label = {"high": "高", "medium": "中", "low": "低"}.get(t['confidence'], "")
+            emotion_text += (f"\n{i}. {t['theme']} - 5日上涨概率{t['prob_5d']:.1f}% "
+                             f"预期收益{t['avg_ret']:+.2f}% 置信度:{conf_label}")
+    
     print(emotion_text)
 
     result = []

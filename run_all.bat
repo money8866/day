@@ -28,8 +28,6 @@ echo [Step 3/7] ETF分析（引用主题）...
 echo =============================================
 python solo\etf_quant_theme.py
 echo.
-
-
 python solo\etf_mainline_strategy_tushare.py
 
 echo [Step 4/7] 个股形态选股...
@@ -42,10 +40,10 @@ echo 先生成趋势信号
 
 python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
 
-python solo\bwave_strategy.py
+rem python solo\bwave_strategy.py
 
-python solo\etf_resonance\wave3_detector.py --scan --scope etf --top 20
-python solo\etf_resonance/rebound_detector.py --scope etf --min-score 60 --top 20
+rem python solo\etf_resonance\wave3_detector.py --scan --scope etf --top 20
+rem python solo\etf_resonance/rebound_detector.py --scope etf --min-score 60 --top 20
 
 echo [Step 5/7] 自选量化
 
@@ -63,7 +61,7 @@ echo.
 
 echo [Step 7/7] 主题成份生成...
 echo =============================================
-python solo\theme_portfolio_strategy_cached_dc.py
+rem python solo\theme_portfolio_strategy_cached_dc.py
 
 echo [Step 8/7] 生成index.html  
 echo =============================================
