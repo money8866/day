@@ -18,8 +18,15 @@ pro = ts.pro_api()
 
 STATE_FILE = os.path.join(_BASE_DIR, "etf_mainline_state_tushare.json")
 MOM_PERIOD = 20
-REBAL_DAYS = 60
+REBAL_DAYS = 60  # 保留作为参考，但不再作为唯一调仓依据
 TOP_N = 1
+
+# ===== 机构级策略参数（回测最优）=====
+STOP_LOSS_PCT = 10.0       # 止损线10%
+TRAILING_STOP_PCT = 12.0   # 移动止盈12%（从最高点回撤）
+SCORE_GAP_SWITCH = 8.0     # 换仓评分差≥8分才切换
+MARKET_FILTER = True       # 大盘MA20择时过滤
+MAX_POSITION_PCT = 100     # 单只ETF最大仓位（全仓）
 
 # ──────────────────────────────────────────
 # 缓存配置（复用 cache_daily 目录）
@@ -265,6 +272,76 @@ def normalize_score(series):
     if max_val == min_val:
         return pd.Series([50] * len(series), index=series.index)
     return (series - min_val) / (max_val - min_val) * 100
+
+
+def check_market_trend(benchmark_df, ma_period=20):
+    """大盘择时：沪深300ETF是否在MA20上方
+    
+    Returns:
+        (market_ok, ma_val, close_val, reason)
+    """
+    if benchmark_df is None or len(benchmark_df) < ma_period + 1:
+        return True, 0, 0, "数据不足，不做择时"
+    
+    close = benchmark_df['close']
+    ma = close.rolling(ma_period).mean().iloc[-1]
+    cur = close.iloc[-1]
+    
+    if pd.isna(ma):
+        return True, 0, float(cur), "MA计算异常，不做择时"
+    
+    if cur > ma:
+        return True, float(ma), float(cur), f"大盘在MA{ma_period}上方（{cur:.3f} > {ma:.3f}），趋势向上"
+    else:
+        return False, float(ma), float(cur), f"大盘在MA{ma_period}下方（{cur:.3f} < {ma:.3f}），趋势向下，空仓等待"
+
+
+def check_stop_loss_take_profit(state, current_price):
+    """止损止盈检查
+    
+    Returns:
+        (should_sell, reason)
+    """
+    if not state or 'buy_price' not in state:
+        return False, ""
+    
+    buy_price = state['buy_price']
+    max_price = state.get('max_price', buy_price)  # 持仓期间最高价
+    
+    # 更新最高价
+    if current_price > max_price:
+        max_price = current_price
+    
+    # 1. 止损
+    loss_pct = (current_price - buy_price) / buy_price * 100
+    if loss_pct < -STOP_LOSS_PCT:
+        return True, f"止损{STOP_LOSS_PCT}%（当前亏损{loss_pct:+.1f}%）"
+    
+    # 2. 移动止盈（从最高点回撤）
+    drawdown_from_high = (current_price - max_price) / max_price * 100
+    if max_price > buy_price and drawdown_from_high < -TRAILING_STOP_PCT:
+        return True, f"回撤止盈{TRAILING_STOP_PCT}%（最高{max_price:.3f} -> 现{current_price:.3f}，回撤{drawdown_from_high:+.1f}%）"
+    
+    return False, ""
+
+
+def check_etf_trend(etf_df, ma_period=20):
+    """ETF趋势确认：收盘价是否在MA20上方
+    
+    Returns:
+        (trend_ok, ma_val, close_val)
+    """
+    if etf_df is None or len(etf_df) < ma_period + 1:
+        return True, 0, 0
+    
+    close = etf_df['close']
+    ma = close.rolling(ma_period).mean().iloc[-1]
+    cur = close.iloc[-1]
+    
+    if pd.isna(ma):
+        return True, 0, float(cur)
+    
+    return cur > ma, float(ma), float(cur)
 
 
 def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
@@ -794,87 +871,184 @@ def main():
         mask = (ref["trade_date"] > start_dt) & (ref["trade_date"] <= end_date)
         return len(ref[mask])
 
+    # ===== 大盘择时判断 =====
+    market_ok, bm_ma, bm_close, market_reason = check_market_trend(benchmark_df, 20)
+    print(f"\n  [大盘择时] {market_reason}")
+    result_message += f"\n[大盘择时] {market_reason}\n"
+
     state = load_state()
-    need_rebalance = False
-    days_since = 0
-
-    if state is None:
-        need_rebalance = True
-        print(f"\n  [首次运行] 初始化策略...")
-    else:
-        days_since = count_trade_days(state["last_rebalance_date"], today)
-        print(f"\n  当前持仓: {state['holding_name']} ({state['holding_code']})")
-        result_message += f"\n**当前持仓:{state['holding_name']} ({state['holding_code']})**\n"
-
-        print(f"  买入日期: {state['last_rebalance_date']}")
-        result_message += f"买入日期 {state['last_rebalance_date']}\n"
-
-        print(f"  买入价格: {state['buy_price']:.3f}")
-        result_message += f"买入价格 {state['buy_price']:.3f}\n"
-
-        print(f"  已过交易日: {days_since}/{REBAL_DAYS}")
-        result_message += f"已过交易日 {days_since}/{REBAL_DAYS}\n"
-
-        hc = state.get("holding_code")
-        if hc and hc in all_data:
+    
+    # ===== Step 1: 检查是否需要卖出当前持仓 =====
+    need_sell = False
+    sell_reason = ""
+    
+    if state and state.get("holding_code"):
+        hc = state["holding_code"]
+        holding_name = state.get("holding_name", hc)
+        buy_price = state["buy_price"]
+        
+        if hc in all_data:
             latest = all_data[hc]["close"].iloc[-1]
-            pnl = (latest - state["buy_price"]) / state["buy_price"] * 100
-            print(f"  当前价格: {latest:.3f}  持仓收益: {pnl:+.2f}%")
-            result_message += f"  持仓收益 {pnl:+.2f}%"
-        if days_since >= REBAL_DAYS:
-            need_rebalance = True
-
-    if need_rebalance:
+            pnl = (latest - buy_price) / buy_price * 100
+            max_price = state.get("max_price", buy_price)
+            if latest > max_price:
+                max_price = latest
+                state["max_price"] = max_price  # 更新最高价
+            
+            print(f"\n  当前持仓: {holding_name} ({hc})")
+            print(f"  买入价格: {buy_price:.3f}  当前价格: {latest:.3f}  收益: {pnl:+.2f}%")
+            print(f"  持仓最高: {max_price:.3f}")
+            result_message += f"\n**当前持仓:{holding_name} ({hc})**\n"
+            result_message += f"买入价格 {buy_price:.3f} 当前价格 {latest:.3f} 收益 {pnl:+.2f}%\n"
+            
+            # 检查止损止盈
+            should_stop, stop_reason = check_stop_loss_take_profit(state, latest)
+            
+            # 检查ETF趋势
+            etf_ok, etf_ma, etf_close = check_etf_trend(all_data[hc], 20)
+            
+            # 卖出条件判断（优先级：止损止盈 > 大盘趋势 > ETF趋势 > 更强ETF）
+            if should_stop:
+                need_sell = True
+                sell_reason = f"⚠️ {stop_reason}"
+            elif MARKET_FILTER and not market_ok:
+                need_sell = True
+                sell_reason = "大盘趋势反转，空仓避险"
+            elif not etf_ok:
+                need_sell = True
+                sell_reason = f"ETF跌破MA20（{etf_close:.3f} < MA20 {etf_ma:.3f}）"
+            else:
+                # 检查是否有更强的ETF（评分差≥8分）
+                best_rank = rankings[0]
+                hold_score = 0
+                for r in rankings:
+                    if r["code"] == hc:
+                        hold_score = r["total_score"]
+                        break
+                if best_rank["code"] != hc and (best_rank["total_score"] - hold_score) > SCORE_GAP_SWITCH:
+                    need_sell = True
+                    sell_reason = f"更强ETF: {best_rank['name']}({best_rank['total_score']:.1f}) vs {holding_name}({hold_score:.1f})，差{best_rank['total_score']-hold_score:.1f}分"
+            
+            if need_sell:
+                print(f"\n  {'='*40}")
+                print(f"  [卖出信号] {sell_reason}")
+                result_message += f"[卖出信号] {sell_reason}\n"
+                
+                # 保存卖出记录到state
+                state["sell_reason"] = sell_reason
+                state["sell_date"] = max_date.strftime("%Y-%m-%d")
+                state["sell_price"] = latest
+                state["holding_code"] = None
+                state["holding_name"] = None
+                save_state(state)
+        else:
+            print(f"\n  [异常] 持仓 {hc} 无数据")
+    
+    # ===== Step 2: 检查是否需要买入 =====
+    need_buy = False
+    buy_reason = ""
+    
+    if not state or not state.get("holding_code"):
+        # 空仓状态
+        if MARKET_FILTER and not market_ok:
+            print(f"\n  [空仓等待] 大盘趋势向下，不建仓")
+            result_message += f"\n[空仓等待] 大盘趋势向下，不建仓\n"
+        elif rankings:
+            target = rankings[0]
+            
+            # 检查目标ETF趋势
+            if target["code"] in all_data:
+                etf_ok, etf_ma, etf_close = check_etf_trend(all_data[target["code"]], 20)
+                
+                if not etf_ok:
+                    print(f"\n  [跳过] {target['name']} 趋势向下（{etf_close:.3f} < MA20 {etf_ma:.3f}），不建仓")
+                    result_message += f"\n[跳过] {target['name']} 趋势向下，不建仓\n"
+                else:
+                    # 检查回调买入（当日涨幅<1.5%，不追涨）
+                    target_df = all_data[target["code"]]
+                    if len(target_df) >= 2:
+                        pct_chg = (target_df["close"].iloc[-1] - target_df["close"].iloc[-2]) / target_df["close"].iloc[-2] * 100
+                    else:
+                        pct_chg = 0
+                    
+                    if pct_chg > 1.5:
+                        print(f"\n  [等待回调] {target['name']} 今日涨{pct_chg:.2f}%，不追涨")
+                        result_message += f"\n[等待回调] {target['name']} 今日涨{pct_chg:.2f}%，不追涨\n"
+                    else:
+                        need_buy = True
+                        buy_reason = f"大盘趋势向上 + {target['name']}趋势向上 + 回调买入（涨{pct_chg:.2f}%）"
+            else:
+                need_buy = True
+                buy_reason = f"无择时，直接选最强: {target['name']}"
+        else:
+            print(f"\n  [无候选] 无可用ETF")
+            result_message += f"\n[无候选] 无可用ETF\n"
+    else:
+        # 已有持仓，检查是否需要换仓（更强ETF出现）
+        if not need_sell and rankings:
+            best_rank = rankings[0]
+            hc = state.get("holding_code")
+            if best_rank["code"] != hc:
+                hold_score = 0
+                for r in rankings:
+                    if r["code"] == hc:
+                        hold_score = r["total_score"]
+                        break
+                if (best_rank["total_score"] - hold_score) > SCORE_GAP_SWITCH:
+                    # 先卖再买
+                    need_sell = True
+                    sell_reason = f"换仓: {best_rank['name']}({best_rank['total_score']:.1f}) vs 持仓({hold_score:.1f})"
+                    need_buy = True
+                    buy_reason = f"换仓到更强ETF: {best_rank['name']}"
+    
+    # ===== Step 3: 执行买入 =====
+    if need_buy and rankings:
         target = rankings[0]
         print(f"\n  {'='*40}")
-        result_message += f"{'='*40}\n"
-
-        print(f"  [调仓信号] 需要调仓!")
-        result_message += f"[调仓信号] 需要调仓!\n"
-
+        print(f"  [买入信号] {buy_reason}")
         print(f"  目标: {target['name']} ({target['code']})")
-        result_message += f"目标 {target['name']} ({target['code']})\n"
-
         print(f"  综合评分: {target['total_score']:.1f}")
-        result_message += f"综合评分 {target['total_score']:.1f}\n"
-
         print(f"  动量: {target['momentum']:+.2f}% | 量能: {target['vol_score']:.1f} | 风险调整: {target['risk_adj']:.1f}")
-        result_message += f"动量:{target['momentum']:+.2f}% 量能:{target['vol_score']:.1f} 风险调整:{target['risk_adj']:.1f}\n"
-
-        print(f"  现价: {target['close']:.3f}")
-        result_message += f"现价 {target['close']:.3f}\n"
-
-        if state and state.get("holding_code"):
-            old = state["holding_code"]
-            if old in all_data:
-                old_close = all_data[old]["close"].iloc[-1]
-                old_pnl = (old_close - state["buy_price"]) / state["buy_price"] * 100
-                print(f"  卖出: {state['holding_name']}  收益: {old_pnl:+.2f}%")
-                result_message += f"卖出 {state['holding_name']}  收益 {old_pnl:+.2f}%\n"
-
+        print(f"  买入价: {target['close']:.3f}")
+        result_message += f"[买入信号] {buy_reason}\n"
+        result_message += f"目标 {target['name']} ({target['code']}) 评分{target['total_score']:.1f}\n"
+        
         new_state = {
             "last_rebalance_date": max_date.strftime("%Y-%m-%d"),
             "holding_code": target["code"],
             "holding_name": target["name"],
             "buy_price": target["close"],
+            "max_price": target["close"],  # 初始化最高价
             "score_at_buy": target['total_score'],
             "momentum_at_buy": target['momentum'],
             "rebalance_count": (state.get("rebalance_count", 0) + 1) if state else 1,
         }
         save_state(new_state)
         result_message += f"状态已更新! 累计第{new_state['rebalance_count']}次调仓\n"
-        print(f"状态已更新! 累计第{new_state['rebalance_count']}次调仓")
-    else:
-        remain = REBAL_DAYS - days_since
-        print(f"\n  距下次调仓还有 {remain} 个交易日")
-        result_message += f"\n  距下次调仓还有 {remain} 个交易日\n"
-
-        next_top = rankings[0]
-        if next_top["code"] != state.get("holding_code"):
-            result_message += f"[提示] 当前评分第一: {next_top['name']} ({next_top['total_score']:.1f})\n"
-            print(f"  [提示] 当前评分第一: {next_top['name']} ({next_top['total_score']:.1f})")
-            print(f"  与持仓不同，下次调仓将切换")
-            result_message += f"与持仓不同，下次调仓将切换\n"
+        print(f"  状态已更新! 累计第{new_state['rebalance_count']}次调仓")
+    
+    # ===== Step 4: 持仓状态提示 =====
+    if not need_sell and not need_buy and state and state.get("holding_code"):
+        hc = state["holding_code"]
+        holding_name = state.get("holding_name", hc)
+        latest = all_data[hc]["close"].iloc[-1] if hc in all_data else 0
+        pnl = (latest - state["buy_price"]) / state["buy_price"] * 100 if latest > 0 else 0
+        print(f"\n  [继续持有] {holding_name} ({hc})  收益: {pnl:+.2f}%")
+        result_message += f"\n[继续持有] {holding_name} ({hc})  收益: {pnl:+.2f}%\n"
+        
+        # 提示更强ETF
+        if rankings:
+            best_rank = rankings[0]
+            if best_rank["code"] != hc:
+                hold_score = 0
+                for r in rankings:
+                    if r["code"] == hc:
+                        hold_score = r["total_score"]
+                        break
+                gap = best_rank["total_score"] - hold_score
+                if gap > 0:
+                    print(f"  [提示] 评分第一: {best_rank['name']}({best_rank['total_score']:.1f}) 差距{gap:.1f}分（需≥{SCORE_GAP_SWITCH}分才换仓）")
+                    result_message += f"[提示] 评分第一: {best_rank['name']}({best_rank['total_score']:.1f}) 差距{gap:.1f}分\n"
 
     print(f"\n  --- 评分垫底 5 ---")
     for i, r in enumerate(rankings[-5:]):

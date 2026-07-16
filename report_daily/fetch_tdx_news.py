@@ -21,8 +21,18 @@ def ps_run(cmd, timeout=60):
 
 
 def get_token():
+    # Try original method first
     rc, out = ps_run(f'& "{SKILL_DIR}\\\\get-token.ps1"', timeout=15)
-    return out.strip() if rc == 0 else None
+    if rc == 0 and out.strip():
+        return out.strip()
+    # Fallback: read cached token from mcporter config
+    rc2, out2 = ps_run('mcporter config get tdx-finance_qclaw')
+    if rc2 == 0:
+        import re as _re
+        m = _re.search(r'Authorization:\s*Bearer\s+(\S+)', out2)
+        if m:
+            return m.group(1)
+    return None
 
 
 def ensure_mcp_config(token):

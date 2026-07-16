@@ -1,7 +1,10 @@
 {
-  "holding_code": "159516",
-  "holding_name": "半导体设备",
+  "holding_code": null,
+  "holding_name": null,
   "last_rebalance_date": "2026-05-14",
-  "buy_price": 1.142,
-  "rebalance_count": 1
+  "buy_price": 0.588,
+  "rebalance_count": 1,
+  "sell_reason": "⚠️ 止损10.0%（当前亏损-24.5%）",
+  "sell_date": "2026-07-14",
+  "sell_price": 0.862
 }

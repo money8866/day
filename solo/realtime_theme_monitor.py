@@ -144,7 +144,12 @@ class RealtimeThemeMonitor:
         self.intraday_snapshots = {}
         self.snapshot_morning_done = False    # 10:30后采集早盘数据
         self.snapshot_noon_done = False       # 14:00后采集午盘数据
+        self.snapshot_tail_done = False       # 14:30基准已采集
         self.last_w2s_scan_time = 0           # 弱转强扫描冷却
+        self.w2s_debug_printed = False       # 弱转强首次扫描输出统计
+
+        # ── 换手率缓存(从cache_daily加载) ──
+        self.turnover_cache = {}              # ts_code -> turnover_rate(%)
 
         # ── 服务器列表(使用 mootdx 服务器配置 + 已知可用服务器) ──
         seen = set()
@@ -683,6 +688,32 @@ class RealtimeThemeMonitor:
                 continue
 
         print(f"✅ 成分股K线加载完成: {total_loaded}/{len(all_codes)} 只")
+
+    # ── 加载换手率缓存(用于弱转强量价评分) ──
+    def load_turnover_cache(self):
+        """从cache_daily加载当日换手率"""
+        import os
+        import pandas as pd
+        trade_date = self._get_last_trade_date()
+        # 兼容路径
+        cache_file = os.path.join(BASE_DIR, '..', 'cache_daily', f'turnover_rate_{trade_date}.csv')
+        if not os.path.exists(cache_file):
+            cache_file = rf'D:\mystock\cache_daily\turnover_rate_{trade_date}.csv'
+        if not os.path.exists(cache_file):
+            # 回退到最近一个交易日
+            import glob
+            files = glob.glob(r'D:\mystock\cache_daily\turnover_rate_*.csv')
+            if files:
+                cache_file = max(files, key=os.path.getmtime)
+            else:
+                print("⚠ 换手率缓存文件不存在,弱转强换手率评分将跳过")
+                return
+        try:
+            df = pd.read_csv(cache_file)
+            self.turnover_cache = dict(zip(df['ts_code'], df['turnover_rate']))
+            print(f"[缓存] 换手率已加载: {len(self.turnover_cache)} 只 ({os.path.basename(cache_file)})")
+        except Exception as e:
+            print(f"⚠ 换手率缓存加载失败: {e}")
 
     # ── 计算主题趋势/情绪/综合分(每15分钟) ──
     # ── 主题生命周期判定(启动/主升/分歧/退潮) ──
@@ -2436,6 +2467,9 @@ class RealtimeThemeMonitor:
         # 加载成分股K线数据(用于主题趋势/情绪分计算)
         self.load_component_klines()
 
+        # 加载换手率缓存(用于弱转强量价评分)
+        self.load_turnover_cache()
+
         # ── 连接 ──
         if not self.connect():
             print("⏳ 首次连接失败,启动服务器轮巡...")
@@ -2516,14 +2550,17 @@ class RealtimeThemeMonitor:
                 if not self.snapshot_morning_done and now.hour == 10 and now.minute >= 30:
                     self.collect_intraday_snapshot('morning')
                     self.snapshot_morning_done = True
+                    print(f"📸 [{now.strftime('%H:%M')}] 早盘分时快照已采集: {len(self.intraday_snapshots)} 只")
                 # 14:00采集午盘数据
                 if not self.snapshot_noon_done and now.hour == 14 and now.minute >= 0:
                     self.collect_intraday_snapshot('noon')
                     self.snapshot_noon_done = True
-                # 14:30采集尾盘基准
-                if now.hour == 14 and now.minute >= 30:
-                    if not self.intraday_snapshots or 'tail_base_pct' not in self.intraday_snapshots.get(list(self.intraday_snapshots.keys())[0] if self.intraday_snapshots else '', {}):
-                        self.collect_intraday_snapshot('tail')
+                    print(f"📸 [{now.strftime('%H:%M')}] 午盘分时快照已采集")
+                # 14:30采集尾盘基准(只采集一次)
+                if not self.snapshot_tail_done and now.hour == 14 and now.minute >= 30:
+                    self.collect_intraday_snapshot('tail')
+                    self.snapshot_tail_done = True
+                    print(f"📸 [{now.strftime('%H:%M')}] 14:30尾盘基准已采集")
 
                 # ── 每3分钟输出一次摘要 ──
                 if cycle % 3 == 1:
@@ -2788,24 +2825,25 @@ class RealtimeThemeMonitor:
         score = 0
         detail = {}
 
-        # 1. 尾盘量比放大(12分)
         tail_base_vol = snap.get('tail_base_vol', 0)
         current_vol = q.get('vol', 0)
         morning_vol = snap.get('morning_vol', 0)
 
-        if tail_base_vol > 0 and morning_vol > 0:
-            # 尾盘增量 = 当前量 - 14:30基准量
+        # 1. 尾盘量能放大(12分):14:30后量能增量占早盘量的比例
+        if tail_base_vol > 0 and morning_vol > 0 and current_vol > tail_base_vol:
             tail_increment = current_vol - tail_base_vol
-            # 早盘每小时均量 ≈ morning_vol / 2
-            morning_hourly = morning_vol / 2
-            if morning_hourly > 0:
-                tail_vol_ratio = tail_increment / morning_hourly
-                if tail_vol_ratio > 1.5:
-                    score += 12
-                    detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
-                elif tail_vol_ratio > 1.0:
-                    score += 8
-                    detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+            # 尾盘增量 / 早盘总量(早盘约2小时,尾盘半小时)
+            # 合理预期:尾盘半小时增量是早盘2小时的15%-25%
+            tail_vol_ratio = tail_increment / morning_vol
+            if tail_vol_ratio > 0.25:
+                score += 12
+                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+            elif tail_vol_ratio > 0.15:
+                score += 9
+                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+            elif tail_vol_ratio > 0.08:
+                score += 5
+                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
 
         # 2. 缩量回调特征(10分):当日量<5日均量*0.9
         kl = self.stock_klines.get(ts_code)
@@ -2819,21 +2857,35 @@ class RealtimeThemeMonitor:
                 elif vol_ratio_5d < 1.0:
                     score += 5
                     detail['shrink_vol'] = round(vol_ratio_5d, 2)
+                elif vol_ratio_5d > 1.2:
+                    # 放量但未大涨(主力收集筹码),给部分分
+                    if q.get('pct_chg', 0) < 3:
+                        score += 4
+                        detail['vol_surge_low_pct'] = round(vol_ratio_5d, 2)
 
-        # 3. 尾盘放量拉升(8分):14:30后量>早盘量*1.3
+        # 3. 尾盘放量拉升(8分):14:30后量>早盘量*10%(简化阈值)
         if tail_base_vol > 0 and morning_vol > 0:
             tail_total = current_vol - tail_base_vol
-            if tail_total > morning_vol * 0.3:
+            if tail_total > morning_vol * 0.15:
                 score += 8
                 detail['tail_vol_surge'] = True
+            elif tail_total > morning_vol * 0.08:
+                score += 4
 
         # 4. 换手率合理(5分):3%-8%
         turn_rate = self.turnover_cache.get(ts_code, 0)
-        if 3 <= turn_rate <= 8:
+        if turn_rate == 0:
+            # 无换手率数据时,用成交额/流通市值估算(简化:给3分默认值)
+            score += 3
+            detail['turn_rate'] = 'unknown'
+        elif 3 <= turn_rate <= 8:
             score += 5
             detail['turn_rate'] = turn_rate
         elif 2 <= turn_rate <= 12:
-            score += 2
+            score += 3
+            detail['turn_rate'] = turn_rate
+        elif 1 <= turn_rate <= 15:
+            score += 1
             detail['turn_rate'] = turn_rate
 
         return min(score, 35), detail
@@ -2900,6 +2952,10 @@ class RealtimeThemeMonitor:
         """
         now = datetime.now()
         signals = []
+        # 首次扫描输出诊断统计
+        if not self.w2s_debug_printed:
+            debug_stats = {'total_middle': 0, 'no_quote': 0, 'hardfilter_fail': {}, 'score_dist': {'<55': 0, '55-64': 0, '65-74': 0, '>=75': 0}}
+            max_scores = []
 
         # 遍历所有主题的中军股票
         for theme_name, stocks in self.theme_stocks.items():
@@ -2907,13 +2963,20 @@ class RealtimeThemeMonitor:
                 if layer != 'middle':
                     continue
 
+                if not self.w2s_debug_printed:
+                    debug_stats['total_middle'] += 1
+
                 q = self.quotes.get(ts_code)
                 if not q:
+                    if not self.w2s_debug_printed:
+                        debug_stats['no_quote'] += 1
                     continue
 
                 # 硬过滤
                 passed, reason = self._w2s_hard_filter(ts_code, theme_name, q)
                 if not passed:
+                    if not self.w2s_debug_printed:
+                        debug_stats['hardfilter_fail'][reason] = debug_stats['hardfilter_fail'].get(reason, 0) + 1
                     continue
 
                 # 三维度评分
@@ -2922,6 +2985,17 @@ class RealtimeThemeMonitor:
                 theme_score, theme_detail = self._w2s_theme_score(ts_code, theme_name)
 
                 total_score = pattern_score + vol_score + theme_score
+
+                if not self.w2s_debug_printed:
+                    max_scores.append(total_score)
+                    if total_score < 55:
+                        debug_stats['score_dist']['<55'] += 1
+                    elif total_score < 65:
+                        debug_stats['score_dist']['55-64'] += 1
+                    elif total_score < 75:
+                        debug_stats['score_dist']['65-74'] += 1
+                    else:
+                        debug_stats['score_dist']['>=75'] += 1
 
                 if total_score < 55:
                     continue
@@ -2947,6 +3021,25 @@ class RealtimeThemeMonitor:
                     'price': q.get('price', 0),
                     'detail': {**pattern_detail, **vol_detail, **theme_detail}
                 })
+
+        # 首次扫描输出诊断
+        if not self.w2s_debug_printed:
+            self.w2s_debug_printed = True
+            print(f"\n{'='*70}")
+            print(f"🔍 弱转强首次扫描诊断 [{now.strftime('%H:%M:%S')}]")
+            print(f"  中军总数: {debug_stats['total_middle']}")
+            print(f"  无行情: {debug_stats['no_quote']}")
+            print(f"  硬过滤拦截:")
+            for r, cnt in sorted(debug_stats['hardfilter_fail'].items(), key=lambda x: -x[1]):
+                print(f"    {r}: {cnt}只")
+            passed = debug_stats['total_middle'] - debug_stats['no_quote'] - sum(debug_stats['hardfilter_fail'].values())
+            print(f"  通过硬过滤: {passed}只")
+            print(f"  分数分布: {debug_stats['score_dist']}")
+            if max_scores:
+                print(f"  最高分: {max(max_scores)}  平均分: {sum(max_scores)/len(max_scores):.1f}")
+            print(f"  换手率缓存: {len(self.turnover_cache)}只")
+            print(f"  分时快照: {len(self.intraday_snapshots)}只")
+            print(f"{'='*70}\n")
 
         signals.sort(key=lambda x: x['total_score'], reverse=True)
         return signals

@@ -1,0 +1,239 @@
+# ============================================================
+# ETF Alpha Engine - 主配置文件
+# 所有参数集中管理，支持参数优化 (parameter optimization)
+# 每个模块的权重和阈值均可独立调优
+# ============================================================
+
+general:
+  lookback_days: 250          # 数据回看天数（约1年）
+  min_trade_days: 120         # 最小有效交易日
+  top_n: 10                   # 输出Top N
+  output_dir: "./output"
+  cache_dir: "./cache"
+  benchmark: "000300.SH"      # 沪深300
+
+# ============================================================
+# 数据源配置（复用现有缓存）
+# ============================================================
+data:
+  daily_cache_path: "d:/mystock/cache_daily"
+  theme_map_json: "d:/mystock/cache_daily/theme_stock_map_latest.json"
+  dc_hot_cache_dir: "d:/mystock/solo/cache_backbone_tushare/dc_hot"
+  parquet_dir: "d:/mystock/solo/theme_alpha_v6/cache/parquet"
+  moneyflow_dir: "d:/mystock/solo/theme_alpha_v6/cache/moneyflow"
+  moneyflow_lookback_days: 15
+
+# ============================================================
+# Module 1: Market Regime Engine 市场状态引擎
+# ============================================================
+market_regime:
+  # 子维度权重
+  trend_weight: 0.25           # 市场趋势
+  breadth_weight: 0.20         # 市场宽度
+  sentiment_weight: 0.20        # 市场情绪
+  liquidity_weight: 0.15       # 流动性
+  risk_appetite_weight: 0.20   # 风险偏好
+  # 因子参数
+  ma_short: 20
+  ma_long: 60
+  amount_ma_period: 20
+  # 状态阈值
+  bull_threshold: 75
+  recovery_threshold: 60
+  neutral_threshold: 45
+  weak_threshold: 30
+  # 建议仓位映射
+  exposure:
+    Bull: 1.0
+    Recovery: 0.6
+    Neutral: 0.3
+    Weak: 0.0
+    Bear: 0.0
+
+# ============================================================
+# Module 2: Theme Alpha Engine 主题Alpha引擎
+# ============================================================
+theme_alpha:
+  # 主题Alpha权重
+  theme_alpha_weight: 0.40     # Theme Alpha (动量+相对强度)
+  trend_persistence_weight: 0.20  # 趋势持续性
+  industry_growth_weight: 0.15    # 产业成长性
+  leader_strength_weight: 0.10    # 龙头强度
+  institution_weight: 0.10        # 机构参与度
+  sentiment_weight: 0.05          # 情绪
+  # 参数
+  top_themes: 5                # 仅保留Top 5主题
+  min_theme_stocks: 5
+  momentum_periods: [5, 10, 20, 40]
+  momentum_weights: [0.25, 0.30, 0.25, 0.20]
+
+# ============================================================
+# Module 3: Theme Lifecycle Engine 主题生命周期引擎
+# ============================================================
+theme_lifecycle:
+  # EMA参数
+  ema_fast: 5
+  ema_mid: 20
+  ema_slow: 60
+  # 阶段加分（buy=可买, avoid=回避）
+  stage_bonus:
+    Seed: -10
+    Birth: 20
+    Acceleration: 25
+    Expansion: 15
+    Peak: -15
+    Distribution: -25
+    Decline: -40
+    Dead: -50
+  # 可买阶段
+  buy_stages: ["Birth", "Acceleration", "Expansion"]
+  # 回避阶段
+  avoid_stages: ["Peak", "Distribution", "Decline"]
+  # 趋势时长估计参数
+  min_trend_duration: 20
+  max_trend_duration: 60
+
+# ============================================================
+# Module 4: ETF Ranking Engine ETF排名引擎
+# ============================================================
+etf_ranking:
+  # 子维度权重
+  relative_strength_weight: 0.20
+  trend_quality_weight: 0.20
+  momentum_quality_weight: 0.15
+  liquidity_weight: 0.10
+  tracking_stability_weight: 0.10
+  volatility_weight: 0.10      # 反向
+  drawdown_weight: 0.05        # 反向
+  acceleration_weight: 0.10
+  # 参数
+  rs_period: 60
+  ema_fast: 20
+  ema_mid: 60
+  ema_slow: 120
+  sharpe_period: 60
+  ulcer_period: 60
+  beta_period: 60
+  min_amount: 50000000         # 5000万最低成交额
+
+# ============================================================
+# Module 5: Leader Confirmation Engine 龙头确认引擎
+# ============================================================
+leader_confirm:
+  # 龙头类型识别
+  leader_count: 3              # 识别前3名龙头
+  # 子维度权重
+  leader_trend_weight: 0.20
+  leader_breakout_weight: 0.15
+  leader_breadth_weight: 0.15
+  institution_buying_weight: 0.15
+  northbound_buying_weight: 0.10
+  relative_strength_weight: 0.15
+  industry_dominance_weight: 0.05
+  leader_persistence_weight: 0.05
+  # 参数
+  ma_period: 20
+  breakout_period: 60
+  relative_period: 60
+  # 惩罚：无强龙头的ETF
+  no_leader_penalty: 15
+
+# ============================================================
+# Module 6: Risk Engine 风险引擎
+# ============================================================
+risk_engine:
+  # 子维度权重（风险越高分越高）
+  expected_drawdown_weight: 0.25
+  volatility_weight: 0.20
+  failure_probability_weight: 0.15
+  rotation_risk_weight: 0.15
+  concentration_risk_weight: 0.10
+  market_correlation_weight: 0.15
+  # 参数
+  atr_period: 14
+  drawdown_lookback: 60
+  vol_period: 20
+  var_confidence: 0.95
+  # 仓位建议
+  position_by_risk:
+    low: 1.0       # risk < 30
+    medium: 0.6    # 30 <= risk < 55
+    high: 0.3      # 55 <= risk < 70
+    extreme: 0.0   # risk >= 70
+  # 止损止盈（ATR倍数）
+  stop_loss_atr_multiple: 2.0
+  take_profit_atr_multiple: 6.0
+
+# ============================================================
+# Final Scoring 最终评分
+# ============================================================
+composite:
+  theme_alpha_weight: 0.25
+  lifecycle_weight: 0.20
+  etf_trend_weight: 0.20
+  leader_weight: 0.20
+  market_weight: 0.15
+  risk_penalty: -0.10           # 风险惩罚系数
+
+# ============================================================
+# Buy/Sell Rules 买卖规则
+# ============================================================
+rules:
+  buy:
+    market_score_min: 70
+    theme_rank_max: 3
+    etf_alpha_min: 85
+    leader_score_min: 80
+    expected_return_min: 0.10
+    trend_duration_min: 20
+    allowed_lifecycle: ["Birth", "Acceleration", "Expansion"]
+  sell:
+    # 任意2个触发即卖出
+    triggers:
+      lifecycle_distribution: true
+      leader_break_ma20: true
+      etf_below_ma20_3d: true
+      theme_rank_below: 5
+      expected_return_below: 0.05
+      risk_score_above: 70
+    min_triggers_to_sell: 2
+
+# ============================================================
+# ETF列表与主题映射 (行业ETF)
+# ============================================================
+etf_universe:
+  512480.SH: "半导体"
+  159995.SZ: "芯片"
+  159516.SZ: "半导体设备"
+  159819.SZ: "人工智能"
+  515230.SH: "软件"
+  515880.SH: "通信"
+  159732.SZ: "消费电子"
+  159851.SZ: "金融科技"
+  159869.SZ: "游戏"
+  516160.SH: "新能源"
+  515790.SH: "光伏"
+  159566.SZ: "储能"
+  159755.SZ: "电池"
+  515030.SH: "新能源车"
+  159992.SZ: "创新药"
+  159883.SZ: "医疗器械"
+  512010.SH: "医药"
+  512660.SH: "军工"
+  159227.SZ: "航空航天"
+  562500.SH: "机器人"
+  516650.SH: "有色金属"
+  159870.SZ: "化工"
+  515220.SH: "煤炭"
+  515210.SH: "钢铁"
+  159611.SZ: "电力"
+  561380.SH: "电网设备"
+  159928.SZ: "消费"
+  159736.SZ: "食品饮料"
+  512690.SH: "酒"
+  159996.SZ: "家电"
+  512880.SH: "证券"
+  512800.SH: "银行"
+  515180.SH: "红利"
+  518880.SH: "黄金"
+  159667.SZ: "工业母机"

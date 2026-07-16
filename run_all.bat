@@ -26,19 +26,19 @@ echo.
 
 echo [Step 3/7] ETF分析（引用主题）...
 echo =============================================
-python solo\etf_quant_theme.py
+rem python solo\etf_quant_theme.py
 echo.
 python solo\etf_mainline_strategy_tushare.py
 
 echo [Step 4/7] 个股形态选股...
 echo =============================================
-python solo\theme_pattern_stock_picker.py
+rem python solo\theme_pattern_stock_picker.py
 echo.
 
 
 echo 先生成趋势信号
 
-python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
+rem python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
 
 rem python solo\bwave_strategy.py
 
@@ -50,6 +50,17 @@ echo [Step 5/7] 自选量化
 echo =============================================
 echo [Step 5.0] ETF补涨扩散策略 (生成catchup_signals.csv)...
 python solo\etf_resonance\run_real.py
+
+
+echo =============================================
+echo [Step 5.0] ETF Alpha策略 ...
+python solo\etf_resonance\run_real.py
+echo =============================================
+
+python solo\etf_alpha_engine\main.py
+python solo\etf_alpha_engine\report_sender.py
+
+
 echo =============================================
 python solo\tushare_quant.py
 echo.

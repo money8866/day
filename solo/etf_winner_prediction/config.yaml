@@ -1,0 +1,287 @@
+# ============================================================
+# ETF Winner Prediction Engine - 主配置文件
+# ============================================================
+# 预测未来20~60天哪只行业ETF收益最高
+# 所有参数集中管理，支持参数优化 (Bayesian / XGBoost feature importance)
+# 每个模块的权重和阈值均可独立调优
+# ============================================================
+
+general:
+  lookback_days: 400
+  min_trade_days: 120
+  output_dir: "./output"
+  report_dir: "./report"
+  benchmark: "000300.SH"
+  risk_free_rate: 0.03
+
+# ============================================================
+# 数据源配置（复用现有缓存）
+# ============================================================
+data:
+  daily_cache_path: "d:/mystock/cache_daily"
+  theme_map_json: "d:/mystock/cache_daily/theme_stock_map_latest.json"
+  dc_hot_cache_dir: "d:/mystock/solo/cache_backbone_tushare/dc_hot"
+  parquet_dir: "d:/mystock/solo/theme_alpha_v6/cache/parquet"
+  moneyflow_dir: "d:/mystock/solo/theme_alpha_v6/cache/moneyflow"
+  moneyflow_lookback_days: 15
+
+# ============================================================
+# Step 1: Market Regime Filter 市场状态过滤器
+# ============================================================
+market_regime:
+  # 子维度权重
+  trend_weight: 0.20
+  breadth_weight: 0.15
+  liquidity_weight: 0.15
+  volatility_weight: 0.15        # 反向
+  sentiment_weight: 0.15
+  institutional_weight: 0.10     # 机构参与度
+  northbound_weight: 0.05        # 北向资金
+  etf_turnover_weight: 0.05      # ETF成交额
+  # 因子参数
+  ma_short: 20
+  ma_long: 60
+  amount_ma_period: 20
+  # 状态阈值
+  bull_threshold: 75
+  recovery_threshold: 60
+  neutral_threshold: 45
+  weak_threshold: 30
+  # 仓位映射
+  exposure:
+    Bull: 1.0
+    Recovery: 0.8
+    Neutral: 0.5
+    Weak: 0.3
+    Bear: 0.0
+  # 硬过滤器
+  no_buy_below: 50               # MarketScore < 50 不买
+  reduced_exposure_below: 60     # MarketScore < 60 仓位 <= 30%
+
+# ============================================================
+# Step 2: Theme Forecast Engine 主题预测引擎
+# ============================================================
+theme_forecast:
+  # 预测维度权重
+  theme_momentum_weight: 0.20
+  capital_flow_weight: 0.15
+  industry_growth_weight: 0.15
+  policy_strength_weight: 0.10
+  heat_persistence_weight: 0.10
+  institutional_buying_weight: 0.10
+  northbound_buying_weight: 0.05
+  etf_flow_weight: 0.05
+  leader_breadth_weight: 0.05
+  news_sentiment_weight: 0.03
+  earnings_revision_weight: 0.02
+  # 预测周期
+  forecast_horizons: [20, 40, 60]
+  # 动量周期
+  momentum_periods: [5, 10, 20, 40]
+  momentum_weights: [0.15, 0.25, 0.30, 0.30]
+  # 参数
+  top_themes: 5
+  min_theme_stocks: 5
+  # 硬过滤器
+  min_forecast_rank: 3            # 预测排名必须 <= 3
+  min_remaining_days: 20          # 剩余趋势天数 >= 20
+
+# ============================================================
+# Step 3: Lifecycle Prediction 生命周期预测
+# ============================================================
+lifecycle:
+  # EMA参数
+  ema_fast: 5
+  ema_mid: 20
+  ema_slow: 60
+  # 阶段基础趋势天数
+  stage_duration:
+    Seed: 10
+    Birth: 30
+    Acceleration: 50
+    Expansion: 40
+    Peak: 15
+    Distribution: 10
+    Decline: 5
+    Dead: 0
+  # 阶段基础趋势概率
+  stage_probability:
+    Seed: 0.25
+    Birth: 0.65
+    Acceleration: 0.85
+    Expansion: 0.75
+    Peak: 0.35
+    Distribution: 0.20
+    Decline: 0.10
+    Dead: 0.05
+  # 可买阶段
+  buy_stages: ["Birth", "Acceleration", "Expansion"]
+  # 拒绝阶段
+  reject_stages: ["Peak", "Distribution", "Decline", "Dead"]
+
+# ============================================================
+# Step 4: Leader Engine 龙头引擎
+# ============================================================
+leader_engine:
+  # 龙头类型识别
+  leader_count: 5
+  # 子维度权重
+  relative_strength_weight: 0.20
+  trend_weight: 0.15
+  breakout_weight: 0.10
+  market_share_weight: 0.10
+  institutional_holding_weight: 0.15
+  northbound_holding_weight: 0.10
+  persistence_weight: 0.10
+  leader_breadth_weight: 0.10
+  # 参数
+  ma_period: 20
+  breakout_period: 60
+  relative_period: 60
+  # 硬过滤器
+  min_leader_score: 75            # 龙头分 >= 75
+  no_leader_penalty: 30           # 无龙头惩罚
+
+# ============================================================
+# Step 5: ETF Trend Engine ETF趋势引擎
+# ============================================================
+etf_trend:
+  # 子维度权重
+  relative_strength_weight: 0.15
+  momentum_weight: 0.15
+  acceleration_weight: 0.10
+  trend_quality_weight: 0.15
+  liquidity_weight: 0.10
+  drawdown_weight: 0.10           # 反向
+  volatility_weight: 0.10         # 反向
+  sharpe_weight: 0.05
+  sortino_weight: 0.05
+  ulcer_weight: 0.05              # 反向
+  # 参数
+  rs_period: 60
+  ema_fast: 20
+  ema_mid: 60
+  ema_slow: 120
+  sharpe_period: 60
+  ulcer_period: 60
+  beta_period: 60
+  min_amount: 50000000
+
+# ============================================================
+# Step 6: Expected Return Model 预期收益模型
+# ============================================================
+expected_return:
+  # 预测周期
+  horizons: [20, 40, 60]
+  # 预测方法权重
+  momentum_weight: 0.25
+  regime_match_weight: 0.20
+  theme_persistence_weight: 0.20
+  leader_strength_weight: 0.15
+  etf_trend_weight: 0.10
+  capital_flow_weight: 0.10
+  # 历史相似模式参数
+  lookback_windows: [20, 40, 60, 120]
+  min_similarity: 0.6
+  # 硬过滤器
+  min_expected_return: 0.10       # 预期收益 >= 10%
+
+# ============================================================
+# Step 7: Expected Rank Model 预期排名模型
+# ============================================================
+expected_rank:
+  # 预测目标
+  target_ranks: [1, 3, 5]
+  # 硬过滤器
+  min_probability_top3: 0.60      # Top3概率 >= 60%
+
+# ============================================================
+# Step 8: Risk Engine 风险引擎
+# ============================================================
+risk_engine:
+  # 子维度权重（风险越高分越高）
+  rotation_risk_weight: 0.20
+  market_risk_weight: 0.20
+  theme_failure_weight: 0.15
+  leader_failure_weight: 0.15
+  liquidity_risk_weight: 0.15
+  drawdown_risk_weight: 0.15
+  # 参数
+  atr_period: 14
+  drawdown_lookback: 60
+  vol_period: 20
+  var_confidence: 0.95
+  # 仓位建议
+  position_by_risk:
+    low: 1.0
+    medium: 0.6
+    high: 0.3
+    extreme: 0.0
+  # 止损
+  stop_loss_atr_multiple: 2.0
+  reduce_position_atr_multiple: 4.0
+  # 硬过滤器
+  max_risk_score: 40              # 风险分 <= 40
+
+# ============================================================
+# Decision Engine 决策引擎（硬过滤器）
+# ============================================================
+decision:
+  # 硬过滤器（全部必须满足，不满足则拒绝）
+  filters:
+    market_score_min: 60
+    theme_forecast_rank_max: 3
+    remaining_trend_days_min: 20
+    leader_score_min: 75
+    risk_score_max: 40
+    expected_return_min: 0.10
+    probability_top3_min: 0.60
+  # 拒绝原因模板
+  reject_messages:
+    market: "市场环境不支撑(MarketScore<{threshold})"
+    theme: "主题预测排名不足(>{threshold})"
+    trend_days: "剩余趋势天数不足(<{threshold})"
+    leader: "龙头强度不足(<{threshold})"
+    risk: "风险过高(>{threshold})"
+    expected_return: "预期收益不足(<{threshold}%)"
+    top3_prob: "Top3概率不足(<{threshold}%)"
+
+# ============================================================
+# ETF列表与主题映射
+# ============================================================
+etf_universe:
+  512480.SH: "半导体"
+  159995.SZ: "芯片"
+  159516.SZ: "半导体设备"
+  159819.SZ: "人工智能"
+  515230.SH: "软件"
+  515880.SH: "通信"
+  159732.SZ: "消费电子"
+  159851.SZ: "金融科技"
+  159869.SZ: "游戏"
+  516160.SH: "新能源"
+  515790.SH: "光伏"
+  159566.SZ: "储能"
+  159755.SZ: "电池"
+  515030.SH: "新能源车"
+  159992.SZ: "创新药"
+  159883.SZ: "医疗器械"
+  512010.SH: "医药"
+  512660.SH: "军工"
+  159227.SZ: "航空航天"
+  562500.SH: "机器人"
+  516650.SH: "有色金属"
+  159870.SZ: "化工"
+  515220.SH: "煤炭"
+  515210.SH: "钢铁"
+  159611.SZ: "电力"
+  561380.SH: "电网设备"
+  159928.SZ: "消费"
+  159736.SZ: "食品饮料"
+  512690.SH: "酒"
+  159996.SZ: "家电"
+  512880.SH: "证券"
+  512800.SH: "银行"
+  515180.SH: "红利"
+  518880.SH: "黄金"
+  159667.SZ: "工业母机"
