@@ -10053,11 +10053,11 @@ def run(target_date=None, simple_mode=False):
         if vol_ratio < 1.0:
             strong_filtered_reasons['量比<1.0'] += 1
             continue
-        if pct_20d > 40:
-            strong_filtered_reasons['近20日涨幅>40%'] += 1
+        if pct_20d > 80:
+            strong_filtered_reasons['近20日涨幅>80%'] += 1
             continue
-        if dist_ma20 > 20:
-            strong_filtered_reasons['距MA20>20%'] += 1
+        if dist_ma20 > 30:
+            strong_filtered_reasons['距MA20>30%'] += 1  
             continue
         if dist_ma5 < 0:
             strong_filtered_reasons['距MA5<0%'] += 1
@@ -10120,121 +10120,6 @@ def run(target_date=None, simple_mode=False):
         })
 
 
-    # =========================
-    # 趋势股池已关闭
-    # =========================
-    trend_stock_text = ""
-
-
-    # =========================
-    # 中线股池：B浪低点识别策略（近20天信号）
-    # =========================
-    midline_lines = []
-    midline_lines.append("")
-    midline_lines.append("═" * 60)
-    midline_lines.append("📊 中线股池 (B浪低点识别策略 - 近5个交易日信号)")
-    midline_lines.append("═" * 60)
-
-    try:
-        trend_dir = r'D:\mystock\solo\trend_feature_output'
-        bwave_files = sorted([f for f in os.listdir(trend_dir)
-                              if f.startswith('bwave_') and f.endswith('.csv')
-                              and 'backtest' not in f],
-                             reverse=True)
-        if bwave_files:
-            bwave_df = pd.read_csv(os.path.join(trend_dir, bwave_files[0]))
-            bwave_df['launch_date'] = bwave_df['launch_date'].astype(str)
-            bwave_df['today'] = bwave_df['today'].astype(str)
-
-            # 双通道模式: 主板+双创差异化过滤 (v2优化)
-            # 双创: 评分[85,90)+缩量≤0.4+回调[20,25%) — 回测20日胜率76.2%/均收益18.69%
-            # 主板: 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 回测20日胜率85.4%/均收益20.46%
-            # 注意: bwave_strategy.py已实现双通道严格过滤, 此处保留全部信号供AI分析
-            # 如需严格过滤结果, 请参考bwave_strategy.py的输出
-
-            start_date = (pd.Timestamp(TRADE_DATE) - pd.Timedelta(days=9)).strftime('%Y%m%d')
-            recent = bwave_df[bwave_df['launch_date'] >= start_date].copy()
-            
-            # B浪信号不经过主题过滤（技术形态选股，与主题无关）
-            if not recent.empty:
-                # 按股票合并信号，同一股票的多个信号合并为一行显示
-                recent_grouped = recent.groupby('ts_code').agg({
-                    'signal_type': lambda x: ','.join(sorted(set(x))),
-                    'signal_tags': lambda x: ','.join([t for t in x if pd.notna(t) and t]),
-                    'bwave_score': 'first',
-                    'a_gain': 'first',
-                    'b_drop': 'first',
-                    'b_vol_shrink': 'first',
-                    'b_duration': 'first',
-                    'b_ma60_dist': 'first',
-                    'launch_date': 'max',
-                    'launch_dist_to_a_high': 'first',
-                    'return_5d': 'first',
-                    'bottom_signal_date': 'first',
-                    'rsi_golden_date': 'first',
-                    'macd_golden_date': 'first',
-                }).reset_index()
-                recent_grouped = recent_grouped.sort_values(['launch_date', 'bwave_score'], ascending=[False, False])
-
-                # 板块判定 + 严格过滤标记
-                def _get_board(code):
-                    if code.startswith(('3', '688', '689')):
-                        return '双创'
-                    elif code.startswith(('60', '00')):
-                        return '主板'
-                    return '其他'
-
-                def _is_strict_pass(r):
-                    board = _get_board(r['ts_code'])
-                    score = r['bwave_score']
-                    shrink = r.get('b_vol_shrink', 0) or 0
-                    drop = r.get('b_drop', 0) or 0
-                    a_gain = r.get('a_gain', 0) or 0
-                    b_dur = r.get('b_duration', 0) or 0
-                    ma60_dist = r.get('b_ma60_dist', 0) or 0
-                    if board == '双创':
-                        return 85 <= score < 90 and shrink <= 0.4 and 20 <= drop < 25
-                    elif board == '主板':
-                        return score >= 68 and shrink > 0.7 and 60 <= a_gain <= 80 and 20 <= b_dur <= 30 and ma60_dist > 0
-                    return False
-
-                recent_grouped['板块'] = recent_grouped['ts_code'].apply(_get_board)
-                recent_grouped['严格'] = recent_grouped.apply(lambda r: '★' if _is_strict_pass(r) else '', axis=1)
-
-                total_count = recent_grouped.shape[0]
-                total_signals = recent.shape[0]
-                strict_count = (recent_grouped['严格'] == '★').sum()
-                midline_lines.append(f"近5个交易日共{total_signals}个B浪信号（{total_count}只股票, 严格过滤{strict_count}只），按启动日期降序，取最近5只")
-                midline_lines.append(f"{'严格':<4} {'板块':<4} {'代码':<12} {'名称':<8} {'信号':<28} {'评分':>4} {'A涨%':>6} {'B跌%':>6} {'缩量':>5} {'B天':>4} {'启动日':>10} {'距A高%':>7} {'+5日':>6}")
-                midline_lines.append("─" * 115)
-
-                for _, r in recent_grouped.head(5).iterrows():
-                    name = get_stock_name(r['ts_code'])
-                    sig_tags = str(r['signal_tags']) if pd.notna(r['signal_tags']) else ''
-                    shrink_val = r.get('b_vol_shrink', 0)
-                    bdur_val = r.get('b_duration', 0)
-                    midline_lines.append(f"  {r['严格']:<4} {r['板块']:<4} {r['ts_code']:<12} {name:<8} {sig_tags:<28} {r['bwave_score']:>4.0f} {r['a_gain']:>5.1f}% {r['b_drop']:>5.1f}% {shrink_val:>4.2f} {bdur_val:>4.0f} {r['launch_date']:>10} {r['launch_dist_to_a_high']:>6.1f}% {r['return_5d']:>5.1f}%")
-
-                midline_lines.append("")
-                midline_lines.append("📋 信号说明:")
-                midline_lines.append("  【★严格过滤】: 满足回测最优参数的信号")
-                midline_lines.append("    双创: 评分[85,90)+缩量≤0.4+回调[20,25%) — 回测20日胜率76.2%")
-                midline_lines.append("    主板: 评分≥68+缩量>0.7+A涨[60,80]+B天[20,30]+站MA60 — 回测20日胜率85.4%")
-                midline_lines.append("  【见底】：长下影小阳十字星，低吸信号")
-                midline_lines.append("  【RSI金叉】：RSI从50下方上穿50，短线见底信号")
-                midline_lines.append("  【MACD金叉】：DIF上穿DEA，中线启动信号")
-                midline_lines.append("  【底背离】：B浪末端价格新低但MACD未新低，左侧信号")
-                midline_lines.append("  【操作建议】：见底+RSI金叉可低吸，MACD金叉确认加仓，止损设B浪低点下方3%")
-                midline_lines.append("  【板块差异】：双创散户多缩量=抛压轻; 主板机构重仓不缩量=机构补仓")
-            else:
-                midline_lines.append("  近5个交易日无B浪信号")
-        else:
-            midline_lines.append("  未找到B浪策略CSV（请先运行 bwave_strategy.py --pool qualified）")
-    except Exception as e:
-        midline_lines.append(f"  读取失败: {e}")
-
-    midline_stock_text = "\n".join(midline_lines)
-    print(midline_stock_text)
 
     # =========================
     # 构建量能爆发+宽幅震荡池文本
@@ -10310,111 +10195,6 @@ def run(target_date=None, simple_mode=False):
     else:
         volume_surge_swing_text = "═" * 60 + "\n🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)\n" + "═" * 60 + "\n今日无信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）\n\n【筛选条件】①距MA20<0%+刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)\n【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%"
         print(volume_surge_swing_text)
-
-    """
-    # ===== 对前10名个股调用AI基本面+事件驱动分析 =====
-    print(f"\n{'='*60}")
-    print(f"🔥 对前10名个股进行AI基本面+事件驱动分析...")
-    print(f"{'='*60}")
-    news_analysis_list = []
-    for i, s in enumerate(ranked_stocks[:10], 1):
-        ts_code = s.get('代码', '')
-        name = s.get('名称', '')
-        print(f"  [{i}/10] {name} ({ts_code})...", end=' ')
-        try:
-            # 判断是否为回溯模式（指定了目标日期）
-            is_backtest = target_date is not None and str(target_date) != ""
-            
-            if is_backtest:
-                # 回溯模式：查找最新的缓存文件
-                print("[回溯模式] 使用最新缓存数据...", end=' ')
-                cache_files = []
-                for f in os.listdir(NEWS_CACHE_DIR):
-                    if f.startswith(f"ai_analysis_{ts_code}_") and f.endswith(".json"):
-                        cache_files.append(f)
-                if cache_files:
-                    # 按日期排序，取最新的
-                    cache_files.sort(reverse=True)
-                    latest_cache = cache_files[0]
-                    cache_file = os.path.join(NEWS_CACHE_DIR, latest_cache)
-                    with open(cache_file, "r", encoding="utf-8") as f:
-                        cache_data = json.load(f)
-                    score = cache_data.get("score", 50)
-                    full_analysis = cache_data.get("response", "")
-                else:
-                    # 没有缓存，使用默认值
-                    score = 50
-                    full_analysis = ""
-            else:
-                # 正常模式：调用AI分析
-                score = get_news_sentiment(ts_code, name, s.get('所属主题', ''), s.get('所属状态', ''))
-                # 读取缓存中的完整分析（文件名必须与 get_news_sentiment 保存一致）
-                cache_file = os.path.join(NEWS_CACHE_DIR, f"ai_analysis_{ts_code}_{TRADE_DATE}.json")
-                full_analysis = ""
-                if os.path.exists(cache_file):
-                    with open(cache_file, "r", encoding="utf-8") as f:
-                        cache_data = json.load(f)
-                        full_analysis = cache_data.get("response", "")
-            print(f"情绪分={score}")
-            news_analysis_list.append({
-                'rank': i,
-                'code': ts_code,
-                'name': name,
-                'score': score,
-                'response': full_analysis,
-            })
-        except Exception as e:
-            print(f"失败: {e}")
-            news_analysis_list.append({
-                'rank': i,
-                'code': ts_code,
-                'name': name,
-                'score': 50,
-                'response': "",
-            })
-    
-    # 生成新闻分析文本
-    news_analysis_text = ""
-    if news_analysis_list:
-        parts = []
-        for item in news_analysis_list:
-            parts.append(f"【第{item['rank']}名】{item['name']} ({item['code']}) — 综合情绪强度评分: {item['score']}")
-            if item['response']:
-                # 提取分析中的关键部分（去除最后的数字行）
-                analysis_lines = item['response'].strip().split('\n')
-                # 取前15行作为摘要
-                summary_lines = [l for l in analysis_lines if l.strip() and not l.strip().isdigit()][:15]
-                for line in summary_lines:
-                    parts.append(f"  {line}")
-            parts.append("")
-        news_analysis_text = "\n".join(parts)
-    """
-    """
-    # =========================
-    # 获取跟踪分析个股（函数内部已完成主题过滤、技术过滤、整合评分）
-    # =========================
-    try:
-        result = get_tracking_stocks()
-        if isinstance(result, tuple) and len(result) == 3:
-            tracking_stocks, tracking_stocks_text, ai_report = result
-        elif isinstance(result, tuple) and len(result) == 2:
-            tracking_stocks, tracking_stocks_text = result
-            ai_report = ""
-        else:
-            tracking_stocks, tracking_stocks_text, ai_report = [], "", ""
-        
-        
-    except Exception as e:
-        print(f"获取跟踪分析个股失败: {e}")
-        tracking_stocks, tracking_stocks_text, ai_report = [], "", ""
-    
-    if tracking_stocks_text:
-        print("\n========== 跟踪分析个股 ==========\n")
-        print(tracking_stocks_text)
-    else:
-        print(f"\n========== 暂无跟踪分析个股 ==========\n")
-
-    """
 
     # =========================
     # 获取主题可持续性数据（供AI分析，来自Theme Alpha V6.2引擎）
@@ -10695,16 +10475,24 @@ def run(target_date=None, simple_mode=False):
 
 {non_daytrip_for_ai}
 
-**【今日量能爆发+宽幅震荡池】**
+**【今日突破股池】**
 
+{hot_money_open_text}
+**【今日突破股池到此为止，以下为今日量能爆发+宽幅震荡池分析】**
+
+**【今日量能爆发+宽幅震荡池】**
 （近60天量能大幅放大+宽幅震荡，常见于主力资金活跃的标的）
 {volume_surge_swing_text}
+
+
+**【今日ETF操作提示】**
+{etf_tips_text}
 
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分)：
-1、**大盘情绪**：仓位建议（显示为红色加粗字体）及理由，操作要点
+1、**大盘分析**：重点显示仓位建议（显示为红色加粗字体），显示理由。严格按照给定的内容进行分析。
 2、**今日主题分析情况**:
 【严格按以下固定模板输出，禁止自由发挥格式】
 
@@ -10719,10 +10507,9 @@ def run(target_date=None, simple_mode=False):
 - 主题名2:操作建议、龙头
 - 【最多列出5个最强主题】
 
-3、**【今日强势股票池分析】**
+3、**【今日突破股池分析】**
 （综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
-{hot_money_open_text}
-（【重要约束】仅对前面今日强势股票池数据中股票，最多显示前面10名，不能自行截取，不要自行加入其它股池的股票）：
+（【重要约束】本段落只取今日突破股池数据中股票，最多显示前面10名，不能自行截取，不要自行加入其它股池的股票，如果为空就提示今日无突破股池）：  
 **【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
 【第1名 - 明日首选】**股票名** (代码)
@@ -10777,21 +10564,16 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 4、**【ETF操作建议】**
-- 当前持仓ETF及调仓建议,显示弱转强及逢低买入个股（个股选最优的3个）；
-- 【补涨信号-强制输出】下方补涨信号数据中，每个ETF必须逐只列出成份股名称、补涨分数、趋势分、量温分、60日涨幅和涨停天数。补涨信号含义：多头趋势刚成立+量能温和放大+涨幅适中+未连续涨停。格式示例：
-- 【强势前排信号-强制输出】下方"ETF强势前排信号"数据中，每个ETF必须逐只列出领涨股名称、强势分、今日涨幅和距高点。强势前排含义：创新高/趋势延续的领涨股。格式示例：
-- 【约束】必须从下方数据中提取，禁止凭空编造。
-- 【ETF成份股联网风险核查-强制】对补涨信号和强势前排信号中列出的每只成份股，必须联网搜索其最新风险与舆情：
+输出要求：
+- ETF操作提示 - 强制输出；
+- ETF补涨信号-强制输出：只显示股票代码和股票名称和补涨评分，不显示其他信息
+- ETF强势前排信号-强制输出：只显示股票代码和股票名称和分数，不显示其他信息
+- 【ETF成份股联网风险核查-强制】对ETF操作提示中、ETF补涨信号、ETF强势前排信号中列出的每只成份股，必须联网搜索其最新风险与舆情：
   * 风险扫描：定增/减持/解禁/诉讼/财务异常/被监管立案/ST预警
   * 舆情热度：近期新闻、机构调研、业绩预告、重大合同、技术突破
   * 龙虎榜：机构净买卖、游资席位动向
-  * 【输出格式】在每只成份股信息后追加一行：风险舆情：风险=[风险类型或"暂无"] | 舆情=[热点或"无"] | 龙虎榜=[动向或"无数据"]
+  * 无风险的不用一个个显示，直接跳过
   * 【警告触发】发现重大利空时标注"【警告】建议剔除：XXX"
-- 【ETF本身风险核查】对每个ETF联网搜索其最新动态：规模变化、申赎情况、成份股调整、跟踪误差等
-内容来源以下双引号内数据：
-“
-{etf_tips_text}
-”
 5、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 - 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
 - 【必须输出】无论是否有符合条件的个股，都必须输出此段落
@@ -10822,31 +10604,9 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 分析：强买信号触发（中回调+MACD刚红柱，回测79%胜率），量能爆发特征极显著，MACD刚刚翻红，短线爆发力强。
 主题关联：所属主题"半导体设备"处于主升阶段，与量能爆发信号形成共振，主题趋势确认+资金活跃，可重点关注。
 风险舆情：风险=暂无 | 龙虎榜=机构净买入1.2亿 | 舆情=近期获专利授权 | 热榜=东财热度榜第3名
-- 【格式示例-观察】
-**金田股份**(601609.SH) | 评分=87分 | MACD即将红柱 | 中回调 | 距MA20=-3.1% [观察·等待红柱]
-主题=有色金属 | 阶段=启动 | 量比=5.89 | 区间振幅=50.2% | 区间涨幅=17.4%
-分析：MACD绿柱连续缩短即将金叉，量能爆发特征明显，等待翻红确认后介入更稳妥。
-主题关联：所属主题"有色金属"处于启动阶段，主题向上+量能蓄势，待MACD确认后有望形成主题共振买点。
-风险舆情：风险=暂无 | 龙虎榜=无数据 | 舆情=有色板块受关注 | 热榜=未上榜
-- 【格式示例-蓄势大涨】
-**华天科技**(002185.SZ) | 评分=89分 | MACD绿柱缩短 | 距MA20=+5.2% [蓄势大涨]
-主题=先进封装 | 阶段=主升回调 | W1涨幅=94% | W2回调=56% | 距H1=-0.1% | 今日涨+9.98%
-分析：波浪蓄势大涨信号触发（W2浅回调56%+距H1仅-0.1%+今日大涨9.98%+MACD绿柱缩短），量能爆发硬条件全通过但MACD尚未红柱，波浪结构蓄势完成启动在即，可在突破H1前夜提前关注。
-主题关联：所属主题"先进封装"处于主升回调阶段，健康回调+波浪蓄势=趋势延续买点，主题未走完+个股即将突破前高，共振信号强。
-风险舆情：风险=暂无 | 龙虎榜=游资席位买入 | 舆情=先进封装板块热度高 | 热榜=东财热度榜第5名
-- 【格式示例-无主题】
-**闰土股份**(002440.SZ) | 评分=76分 | MACD即将红柱 | 中回调 | 距MA20=+1.7% [观察·等待红柱]
-主题=无主题 | 量比=1.22 | 区间振幅=49.2% | 区间涨幅=-9.9%
-分析：MACD绿柱连续缩短即将金叉，量能放大，振幅显示主力活跃。等待MACD翻红确认后介入更稳妥。
-主题关联：暂无主题关联，独立走势，需重点关注个股自身基本面和量能变化，不享受主题共振溢价。
-风险舆情：风险=暂无 | 龙虎榜=无数据 | 舆情=染料涨价预期 | 热榜=未上榜
 - 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
 
-6、**【今日ETF操作提示】**（ETF主线轮动策略，基于V6主题阶段+ETF补涨/强势前排信号）
-- 输出ETF操作建议、补涨信号、强势前排信号
-- 格式参考上方ETF数据区
-
-7、**【实时风险与热点扫描】**（必须调用联网搜索，最高优先级！）
+6、**【实时风险与热点扫描】**（必须调用联网搜索，最高优先级！）
 【说明】本部分为汇总性扫描，个股级别的风险舆情已在第3/4/5部分各股分析中输出，此处聚焦主题、大盘和热点的整体性判断，避免重复。
 **【风险扫描-汇总】**（联网核查，必须输出）
 - 【主题风险】核查报告中的强势主题是否出现：
@@ -10886,7 +10646,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
 - 股票分析另起一行，分点说明
 - 风格简洁明了，适合阅读
-- 返回MD格式，注意换行符
+- 返回MD格式，字体大小适合手机阅读，注意换行符为\n，避免使用\r\n
 
 """
     if not simple_mode:

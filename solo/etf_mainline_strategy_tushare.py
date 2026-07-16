@@ -3,9 +3,13 @@ ETF主线轮动策略 - Tushare版 (收盘后运行)
 策略: 多因子动量评分 (动量+量能+波动率+相对强弱)
 ETF池: 37只行业ETF (全验证)
 数据源: Tushare API
+
+用法:
+    python etf_mainline_strategy_tushare.py              # 最新交易日
+    python etf_mainline_strategy_tushare.py --date 20260713  # 指定历史日期
 """
 from dotenv import load_dotenv
-import os, datetime, pandas as pd, numpy as np, json, time
+import os, datetime, pandas as pd, numpy as np, json, time, argparse
 # 定位到项目根目录 d:\mystock，确保 .env 和 cache_daily 路径不变
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(_BASE_DIR, "config", ".env"))
@@ -98,12 +102,16 @@ def save_state(state):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def get_last_trade_date():
-    now = datetime.datetime.now()
-    if now.hour < 15:
-        query_date = (now - datetime.timedelta(days=1)).strftime('%Y%m%d')
+def get_last_trade_date(date_str=None):
+    """获取最近交易日。传入date_str(YYYYMMDD)则回溯到该日或之前的最近交易日"""
+    if date_str:
+        query_date = date_str
     else:
-        query_date = now.strftime('%Y%m%d')
+        now = datetime.datetime.now()
+        if now.hour < 15:
+            query_date = (now - datetime.timedelta(days=1)).strftime('%Y%m%d')
+        else:
+            query_date = now.strftime('%Y%m%d')
 
     cal = pro.trade_cal(exchange='', start_date='20200101', end_date=query_date)
     cal = cal[cal['is_open'] == 1]
@@ -111,7 +119,12 @@ def get_last_trade_date():
     return str(last_trade_date)
 
 
-TRADE_DATE = get_last_trade_date()
+# 解析命令行参数
+_parser = argparse.ArgumentParser(description='ETF主线轮动策略')
+_parser.add_argument('--date', type=str, default='', help='指定交易日(YYYYMMDD)，默认最新交易日')
+_args, _ = _parser.parse_known_args()
+
+TRADE_DATE = get_last_trade_date(_args.date if _args.date else None)
 print("当前交易日:", TRADE_DATE)
 
 
@@ -344,21 +357,358 @@ def check_etf_trend(etf_df, ma_period=20):
     return cur > ma, float(ma), float(cur)
 
 
+def calculate_catchup_score(stock_df, etf_close_series, period=60, max_ret_60d=30.0):
+    """
+    补涨弹性评分器 - 复制自 etf_resonance.core.catchup.CatchupScorer
+    寻找ETF趋势形成后成份股中的补涨机会（多头刚成立+量能温和+涨幅不大+未涨停+有补涨空间）
+    
+    5因子: 趋势刚成立(30%) + 量能温和(25%) + 涨幅适中(20%) + 未连续涨停(15%) + 补涨空间(10%)
+    返回 dict 或 None(60日涨幅>30%或数据不足时)
+    """
+    close = stock_df['close'].values.astype(np.float64)
+    high = stock_df['high'].values.astype(np.float64) if 'high' in stock_df.columns else close.copy()
+    low = stock_df['low'].values.astype(np.float64) if 'low' in stock_df.columns else close.copy()
+    vol = stock_df['vol'].values.astype(np.float64) if 'vol' in stock_df.columns else np.ones(len(close))
+    open_p = stock_df['open'].values.astype(np.float64) if 'open' in stock_df.columns else close.copy()
+
+    etf_close = etf_close_series.values.astype(np.float64) if hasattr(etf_close_series, 'values') else np.array(etf_close_series, dtype=np.float64)
+
+    # 对齐长度
+    min_len = min(len(close), len(etf_close))
+    close = close[-min_len:]
+    etf_c = etf_close[-min_len:]
+    high = high[-min_len:]
+    low = low[-min_len:]
+    vol = vol[-min_len:]
+    open_p = open_p[-min_len:]
+
+    lookback = min(period, len(close))
+    if lookback < 30:
+        return None
+
+    c = close[-lookback:]
+    ec = etf_c[-lookback:]
+
+    # === 诊断字段 ===
+    stock_ret_60d = (c[-1] / c[0] - 1) * 100 if c[0] > 0 else 0
+    etf_ret_60d = (ec[-1] / ec[0] - 1) * 100 if ec[0] > 0 else 0
+    ret_gap = etf_ret_60d - stock_ret_60d
+
+    low_60 = np.min(low[-60:]) if len(low) >= 60 else np.min(low)
+    high_60 = np.max(high[-60:]) if len(high) >= 60 else np.max(high)
+    dist_to_low = (close[-1] / low_60 - 1) * 100 if low_60 > 0 else 0
+    dist_to_high = (close[-1] / high_60 - 1) * 100 if high_60 > 0 else 0
+
+    # 回测验证：60日涨幅>30%补涨动能衰竭，直接过滤
+    if stock_ret_60d > max_ret_60d:
+        return None
+
+    # === 1. 多头趋势刚成立 (trend_setup) - 30% ===
+    score_trend = 0
+    ma_cross_days = 0
+
+    ema20 = pd.Series(close).ewm(span=20, adjust=False).mean().values
+    ema60 = pd.Series(close).ewm(span=60, adjust=False).mean().values
+
+    # 检查EMA20是否在近10天内上穿EMA60
+    if len(ema20) >= 12 and len(ema60) >= 12:
+        cross_found = False
+        for d in range(1, 11):
+            idx = -d
+            if (not np.isnan(ema20[idx]) and not np.isnan(ema60[idx]) and
+                not np.isnan(ema20[idx - 1]) and not np.isnan(ema60[idx - 1])):
+                if ema20[idx] > ema60[idx] and ema20[idx - 1] <= ema60[idx - 1]:
+                    ma_cross_days = d
+                    cross_found = True
+                    break
+        if cross_found:
+            if ma_cross_days <= 3:
+                score_trend += 45
+            elif ma_cross_days <= 5:
+                score_trend += 35
+            elif ma_cross_days <= 10:
+                score_trend += 25
+
+    # EMA20 > EMA60（多头排列）
+    if (len(ema20) >= 1 and len(ema60) >= 1 and
+        not np.isnan(ema20[-1]) and not np.isnan(ema60[-1]) and
+        ema20[-1] > ema60[-1]):
+        score_trend += 15
+
+    # 收盘站上MA20
+    if len(close) >= 20:
+        ma20 = pd.Series(close).rolling(20).mean().values
+        if not np.isnan(ma20[-1]) and close[-1] > ma20[-1]:
+            score_trend += 20
+            # MA20拐头向上
+            if len(ma20) >= 5 and not np.isnan(ma20[-5]) and ma20[-1] > ma20[-5]:
+                score_trend += 20
+
+    trend_setup = min(100, score_trend)
+
+    # === 2. 量能温和放大 (vol_gentle) - 25% ===
+    score_vol = 0
+    vol_ratio_5d = 1.0
+
+    if len(vol) >= 20:
+        vol_ma5 = np.mean(vol[-5:])
+        vol_ma20 = np.mean(vol[-20:])
+        vol_ratio_5d = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
+        if 1.2 <= vol_ratio_5d <= 2.0:
+            score_vol = 100
+        elif 1.0 <= vol_ratio_5d < 1.2:
+            score_vol = 60
+        elif 2.0 < vol_ratio_5d <= 2.5:
+            score_vol = 60
+        elif 2.5 < vol_ratio_5d <= 3.0:
+            score_vol = 35
+        elif vol_ratio_5d > 3.0:
+            score_vol = 15
+        else:
+            score_vol = 20
+
+    vol_gentle = min(100, score_vol)
+
+    # === 3. 涨幅适中 (gain_moderate) - 20% ===
+    if 0 <= stock_ret_60d <= 10:
+        score_gain = 100
+    elif 10 < stock_ret_60d <= 20:
+        score_gain = 85
+    elif -5 <= stock_ret_60d < 0:
+        score_gain = 75
+    elif 20 < stock_ret_60d <= 30:
+        score_gain = 60
+    elif -10 <= stock_ret_60d < -5:
+        score_gain = 55
+    elif 30 < stock_ret_60d <= 40:
+        score_gain = 40
+    elif stock_ret_60d > 40:
+        score_gain = 15
+    else:
+        score_gain = 25
+
+    gain_moderate = min(100, score_gain)
+
+    # === 4. 未连续涨停 (no_limit_up) - 15% ===
+    limit_up_5d = 0
+    if len(close) >= 6 and len(open_p) >= 6:
+        for i in range(-5, 0):
+            daily_pct = (close[i] / close[i - 1] - 1) * 100 if close[i - 1] > 0 else 0
+            if daily_pct >= 9.5:
+                limit_up_5d += 1
+
+    if limit_up_5d == 0:
+        score_limit = 100
+    elif limit_up_5d == 1:
+        score_limit = 70
+    elif limit_up_5d == 2:
+        score_limit = 35
+    else:
+        score_limit = 5
+
+    no_limit_up = min(100, score_limit)
+
+    # === 5. 补涨空间 (catchup_space) - 10% ===
+    if ret_gap >= 15:
+        score_space = 100
+    elif ret_gap >= 8:
+        score_space = 80
+    elif ret_gap >= 3:
+        score_space = 60
+    elif ret_gap >= 0:
+        score_space = 40
+    else:
+        score_space = 10
+
+    catchup_space = min(100, score_space)
+
+    # === 综合评分 ===
+    catchup_score = (
+        trend_setup * 0.30 +
+        vol_gentle * 0.25 +
+        gain_moderate * 0.20 +
+        no_limit_up * 0.15 +
+        catchup_space * 0.10
+    )
+
+    return {
+        'catchup_score': round(float(catchup_score), 2),
+        'trend_setup': round(float(trend_setup), 2),
+        'vol_gentle': round(float(vol_gentle), 2),
+        'gain_moderate': round(float(gain_moderate), 2),
+        'no_limit_up': round(float(no_limit_up), 2),
+        'catchup_space': round(float(catchup_space), 2),
+        'ret_60d': round(float(stock_ret_60d), 2),
+        'etf_ret_60d': round(float(etf_ret_60d), 2),
+        'ret_gap': round(float(ret_gap), 2),
+        'dist_to_low': round(float(dist_to_low), 2),
+        'dist_to_high': round(float(dist_to_high), 2),
+        'vol_ratio_5d': round(float(vol_ratio_5d), 2),
+        'limit_up_5d': int(limit_up_5d),
+        'ma_cross_days': int(ma_cross_days),
+    }
+
+
+def calculate_momentum_score(stock_df, period=60):
+    """
+    强势前排评分器 - 复制自 etf_resonance.core.catchup.MomentumScorer
+    捕捉板块大涨日中创新高/趋势延续的领涨股
+    
+    5因子: 创新高(30%) + 60日趋势(25%) + 20日动量(20%) + 今日涨幅(15%) + 量能放大(10%)
+    返回 dict
+    """
+    close = stock_df['close'].values.astype(np.float64)
+    high = stock_df['high'].values.astype(np.float64) if 'high' in stock_df.columns else close.copy()
+    vol = stock_df['vol'].values.astype(np.float64) if 'vol' in stock_df.columns else np.ones(len(close))
+
+    lookback = min(period, len(close))
+    if lookback < 30:
+        return None
+
+    c = close[-lookback:]
+    high_60 = high[-lookback:]
+
+    # === 诊断字段 ===
+    today_close = float(close[-1])
+    high_max = float(np.max(high_60))
+    low_min = float(np.min(high_60))
+
+    dist_to_high = (today_close / high_max - 1) * 100 if high_max > 0 else 0
+
+    ret_60d = (close[-1] / c[0] - 1) * 100 if c[0] > 0 else 0
+    ret_20d = (close[-1] / close[-min(20, len(close))] - 1) * 100 \
+        if len(close) >= 20 and close[-20] > 0 else 0
+    today_pct = (close[-1] / close[-2] - 1) * 100 \
+        if len(close) >= 2 and close[-2] > 0 else 0
+
+    # === 1. 创新高/接近新高 (new_high_score) - 30% ===
+    if dist_to_high >= 0:
+        score_new_high = 100
+    elif dist_to_high >= -2:
+        score_new_high = 90
+    elif dist_to_high >= -5:
+        score_new_high = 75
+    elif dist_to_high >= -10:
+        score_new_high = 55
+    elif dist_to_high >= -20:
+        score_new_high = 30
+    else:
+        score_new_high = 5
+
+    # === 2. 60日趋势向上 (trend_60d_score) - 25% ===
+    if ret_60d >= 50:
+        score_trend_60d = 100
+    elif ret_60d >= 30:
+        score_trend_60d = 85
+    elif ret_60d >= 15:
+        score_trend_60d = 70
+    elif ret_60d >= 5:
+        score_trend_60d = 50
+    elif ret_60d >= 0:
+        score_trend_60d = 30
+    else:
+        score_trend_60d = 5
+
+    # === 3. 20日动量 (mom_20d_score) - 20% ===
+    if ret_20d >= 15:
+        score_mom_20d = 100
+    elif ret_20d >= 10:
+        score_mom_20d = 85
+    elif ret_20d >= 5:
+        score_mom_20d = 65
+    elif ret_20d >= 0:
+        score_mom_20d = 40
+    elif ret_20d >= -5:
+        score_mom_20d = 20
+    else:
+        score_mom_20d = 5
+
+    # === 4. 今日涨幅 (today_surge_score) - 15% ===
+    if today_pct >= 9:
+        score_today = 100
+    elif today_pct >= 7:
+        score_today = 85
+    elif today_pct >= 5:
+        score_today = 70
+    elif today_pct >= 3:
+        score_today = 50
+    elif today_pct >= 0:
+        score_today = 25
+    else:
+        score_today = 5
+
+    # === 5. 量能放大 (vol_surge_score) - 10% ===
+    score_vol = 0
+    vol_ratio_5d = 1.0
+    if len(vol) >= 20:
+        vol_ma5 = np.mean(vol[-5:])
+        vol_ma20 = np.mean(vol[-20:])
+        vol_ratio_5d = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
+        if vol_ratio_5d > 2.0:
+            score_vol = 100
+        elif vol_ratio_5d > 1.5:
+            score_vol = 80
+        elif vol_ratio_5d > 1.2:
+            score_vol = 60
+        elif vol_ratio_5d > 1.0:
+            score_vol = 35
+        else:
+            score_vol = 10
+
+    # === 综合评分 ===
+    momentum_score = (
+        score_new_high * 0.30 +
+        score_trend_60d * 0.25 +
+        score_mom_20d * 0.20 +
+        score_today * 0.15 +
+        score_vol * 0.10
+    )
+
+    return {
+        'momentum_score': round(float(momentum_score), 2),
+        'new_high_score': round(float(score_new_high), 2),
+        'trend_60d_score': round(float(score_trend_60d), 2),
+        'mom_20d_score': round(float(score_mom_20d), 2),
+        'today_surge_score': round(float(score_today), 2),
+        'vol_surge_score': round(float(score_vol), 2),
+        'ret_60d': round(float(ret_60d), 2),
+        'ret_20d': round(float(ret_20d), 2),
+        'today_pct': round(float(today_pct), 2),
+        'dist_to_high': round(float(dist_to_high), 2),
+        'vol_ratio_5d': round(float(vol_ratio_5d), 2),
+    }
+
+
 def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     """
-    计算多因子综合评分
-    因子1: 20日动量 (40%)
-    因子2: 量能配合 (25%) - 近期量能是否放大
-    因子3: 风险调整收益 (20%) - 动量/波动率
-    因子4: 相对强弱 (15%) - 相对于沪深300的表现
+    计算多因子综合评分（机构级优化版）
+    因子1: 动量+加速度 (45%) - 中期动量为主，叠加动量加速度(短期vs中期)
+    因子2: 量能配合 (15%) - 量价配合确认
+    因子3: 风险调整收益 (20%) - 收益/下行风险(Sortino式)，时间窗口统一
+    因子4: 相对强弱 (15%) - 相对沪深300，波动归一化
+    因子5: 趋势确认 (5%) - 价格在均线之上的程度
     """
     if len(df) < mom_period + 5:
         return None
 
     close = df['close']
 
+    # === 中期动量 ===
     mom_20d = close.pct_change(mom_period).iloc[-1] * 100
 
+    # === 动量加速度：短期(5日)动量 vs 中期(20日)动量 ===
+    # 加速：短期动量>中期动量*0.3（短期跑赢中期趋势），减速：反之
+    mom_5d = close.pct_change(5).iloc[-1] * 100 if len(close) >= 6 else 0
+    # 加速度 = 短期动量贡献占比，>0说明近期在加速
+    acceleration = mom_5d - (mom_20d * 5 / mom_period)  # 归一化到相同窗口
+
+    # 因子1: 动量评分 (0-100)，50为中性，每+1%加2分
+    mom_score = max(0, min(100, 50 + mom_20d * 2))
+    # 叠加加速度调整：加速+最多5分，减速-最多5分
+    accel_adj = max(-5, min(5, acceleration * 1.5))
+    mom_score = max(0, min(100, mom_score + accel_adj))
+
+    # 因子2: 量能配合
     vol = df.get('vol', None)
     if vol is None or len(vol) < mom_period:
         vol_score = 50
@@ -366,31 +716,82 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
         recent_vol_avg = vol.tail(5).mean()
         hist_vol_avg = vol.tail(mom_period).mean()
         vol_ratio = recent_vol_avg / (hist_vol_avg + 1e-6)
-        vol_score = min(vol_ratio * 50, 100)
+        # 量价配合评分：结合近5日涨跌方向
+        # 放量上涨=健康(量价齐升), 放量下跌=出货(量价背离)
+        # 缩量上涨=蓄力(抛压轻), 缩量下跌=健康回调(洗盘)
+        recent_chg = (close.iloc[-1] / close.iloc[-6] - 1) * 100 if len(close) >= 6 else 0
+        if recent_chg >= 0:
+            # 上涨：放量加分(量价齐升)，缩量中性偏多(蓄力，抛压轻)
+            # 缩量上涨给55分基准，放量上涨额外加分
+            vol_score = 55 + (vol_ratio - 1.0) * 40
+        else:
+            # 下跌：放量减分(出货)，缩量加分(健康回调/洗盘)
+            vol_score = 50 - (vol_ratio - 1.0) * 50
+        vol_score = max(0, min(100, vol_score))
 
+    # 因子3: 风险调整收益（Sortino式下行风险，时间窗口统一）
     daily_returns = close.pct_change().dropna()
     if len(daily_returns) >= mom_period:
-        volatility = daily_returns.tail(mom_period).std() * np.sqrt(252) * 100
-        if volatility > 0:
-            risk_adj_score = min(mom_20d / volatility * 10, 100)
+        ret_window = daily_returns.tail(mom_period)
+        # 20日累计收益（与波动率同窗口）
+        ret_20d_pct = (close.iloc[-1] / close.iloc[-(mom_period+1)] - 1)
+        # 下行波动：只取负收益的std（Sortino分母）
+        neg_returns = ret_window[ret_window < 0]
+        if len(neg_returns) >= 3:
+            downside_vol = neg_returns.std() * np.sqrt(252) * 100
         else:
-            risk_adj_score = 50
+            # 没有足够负收益日，说明几乎单边上涨，给极低下行风险
+            downside_vol = max(5.0, ret_window.std() * np.sqrt(252) * 100 * 0.5)
+        # 收益/下行风险比，时间窗口统一为20日
+        # 典型值: 10%收益/20%下行波动=0.5，乘100=50，加50基准=100(封顶)
+        #         -5%收益/20%下行波动=-0.25，乘100=-25，加50基准=25
+        if downside_vol > 0:
+            sortino_ratio = ret_20d_pct / downside_vol * 100
+            risk_adj_score = max(0, min(100, 50 + sortino_ratio))
+        else:
+            risk_adj_score = 80  # 无下行风险，给高分
     else:
         risk_adj_score = 50
 
+    # 因子4: 相对强弱（波动归一化）
     if len(benchmark_df) >= mom_period + 1:
         bm_return = benchmark_df['close'].pct_change(mom_period).iloc[-1] * 100
         relative_strength = mom_20d - bm_return
-        rel_score = 50 + relative_strength
-        rel_score = max(0, min(100, rel_score))
+        # 用个股自身的波动率归一化相对强弱
+        if len(daily_returns) >= mom_period:
+            stock_vol = daily_returns.tail(mom_period).std() * np.sqrt(252) * 100
+            if stock_vol > 0:
+                # 归一化: 超额收益/个股波动率，类似信息比率
+                excess = relative_strength / stock_vol * 50
+                rel_score = max(0, min(100, 50 + excess))
+            else:
+                rel_score = max(0, min(100, 50 + relative_strength))
+        else:
+            rel_score = max(0, min(100, 50 + relative_strength))
     else:
         rel_score = 50
 
+    # 因子5: 趋势确认（价格在关键均线之上的程度）
+    trend_score = 50
+    if len(close) >= 60:
+        ma20 = close.tail(20).mean()
+        ma60 = close.tail(60).mean()
+        last_close = close.iloc[-1]
+        # 价格>MA20>MA20: 满分趋势; 价格<MA20<MA60: 最低分
+        above_ma20 = 1 if last_close > ma20 else 0
+        above_ma60 = 1 if last_close > ma60 else 0
+        ma20_above_ma60 = 1 if ma20 > ma60 else 0
+        # 3个条件满足0/1/2/3个分别给30/40/55/70分
+        trend_count = above_ma20 + above_ma60 + ma20_above_ma60
+        trend_score = 30 + trend_count * 13.3
+        trend_score = max(0, min(100, trend_score))
+
     total_score = (
-        mom_20d * 0.40 +
-        vol_score * 0.25 +
+        mom_score * 0.45 +
+        vol_score * 0.15 +
         risk_adj_score * 0.20 +
-        rel_score * 0.15
+        rel_score * 0.15 +
+        trend_score * 0.05
     )
 
     return {
@@ -402,10 +803,13 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     }
 
 
-def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchmark_df, mom_period=20):
+def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchmark_df, mom_period=20, etf_close=None):
     """
     最强ETF成份股轮动分析 + 操作建议
-    对每只成份股计算多因子评分 + 阶段分类 + 操作建议
+    对每只成份股计算补涨分 + 强势分（双评分体系），取较高者为综合分
+
+    补涨分 CatchupScorer: 趋势刚成立(30%) + 量能温和(25%) + 涨幅适中(20%) + 未涨停(15%) + 补涨空间(10%)
+    强势分 MomentumScorer: 创新高(30%) + 60日趋势(25%) + 20日动量(20%) + 今日涨幅(15%) + 量能放大(10%)
     
     阶段分类:
     - 🔥 主升浪: 排名前25% + 距前高<5% + 量比>1.2
@@ -459,6 +863,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             if con_df is None:
                 con_df = pro.daily(ts_code=con_ts_code,
                                    start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
+                                   end_date=TRADE_DATE,
                                    fields="ts_code,trade_date,open,high,close,low,vol")
                 _save_cache(con_df, cache_file)
                 time.sleep(0.1)
@@ -469,10 +874,22 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             con_df = con_df.copy()
             con_df["trade_date"] = pd.to_datetime(con_df["trade_date"], format="%Y%m%d")
             con_df = con_df.sort_values("trade_date").reset_index(drop=True)
+            con_df = con_df[con_df["trade_date"] <= pd.to_datetime(TRADE_DATE)]
             
-            factors = calculate_multi_factor_score(con_df, benchmark_df, mom_period)
-            if factors is None:
+            # === 双评分：补涨分 + 强势分 ===
+            etf_close_data = etf_close['close'] if etf_close is not None and 'close' in etf_close.columns else None
+            catchup = calculate_catchup_score(con_df, etf_close_data, period=60)
+            momentum = calculate_momentum_score(con_df, period=60)
+            
+            if catchup is None and momentum is None:
                 continue
+            
+            catchup_score = catchup['catchup_score'] if catchup else 0
+            momentum_score = momentum['momentum_score'] if momentum else 0
+            # 综合分取较高者
+            total_score = max(catchup_score, momentum_score)
+            # 标记主评分类型
+            score_type = '补涨' if catchup_score >= momentum_score else '强势'
             
             close_arr = con_df['close'].values
             vol_arr = con_df['vol'].values
@@ -535,7 +952,25 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             stock_results.append({
                 'code': con_code,
                 'name': con_name,
-                'total_score': factors['total_score'],
+                'total_score': round(total_score, 2),
+                'catchup_score': round(catchup_score, 2),
+                'momentum_score': round(momentum_score, 2),
+                'score_type': score_type,
+                # 补涨分子因子
+                'trend_setup': catchup['trend_setup'] if catchup else 0,
+                'vol_gentle': catchup['vol_gentle'] if catchup else 0,
+                'gain_moderate': catchup['gain_moderate'] if catchup else 0,
+                'no_limit_up': catchup['no_limit_up'] if catchup else 0,
+                'catchup_space': catchup['catchup_space'] if catchup else 0,
+                'limit_up_5d': catchup['limit_up_5d'] if catchup else 0,
+                'ma_cross_days': catchup['ma_cross_days'] if catchup else 0,
+                # 强势分子因子
+                'new_high_score': momentum['new_high_score'] if momentum else 0,
+                'trend_60d_score': momentum['trend_60d_score'] if momentum else 0,
+                'mom_20d_score': momentum['mom_20d_score'] if momentum else 0,
+                'today_surge_score': momentum['today_surge_score'] if momentum else 0,
+                'vol_surge_score': momentum['vol_surge_score'] if momentum else 0,
+                # 其他指标
                 'mom5': round(mom5, 2),
                 'mom20': round(mom20, 2),
                 'dist_to_high': round(dist_to_high, 2),
@@ -550,9 +985,9 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
                 'pullback_pct': round(pullback_pct, 2),
                 'today_vol_shrink': round(today_vol_shrink, 2),
                 'surge_overbought': surge_overbought,
-                'factors': factors,
             })
-        except Exception:
+        except Exception as e:
+            print(f"  [WARN] {con_code} 数据获取失败: {e}")
             pass
     
     if len(stock_results) < 5:
@@ -647,8 +1082,8 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
         # 弱转强：直接买入
         if stage == '💪弱转强':
             return '🟢买入'
-        # 启动信号：刚突破，低门槛买入
-        if stage == '🚀启动' and score >= 50 and dist > -15:
+        # 启动信号：刚突破，低门槛买入（启动已通过技术形态确认，降低评分要求）
+        if stage == '🚀启动' and score >= 40 and dist > -15:
             return '🟢买入'
         # ↩️回踩低吸：突破后缩量回踩，低吸买点
         if stage == '↩️回踩低吸':
@@ -676,80 +1111,67 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
     df['stage_order'] = df['stage'].map(stage_order)
     df = df.sort_values(['action_order', 'total_score'], ascending=[True, False]).reset_index(drop=True)
     
-    # === 可操作列表 ===
-    actionable = df[df['action'].isin(['🟢买入', '🟡关注'])].copy()
-    
-    if actionable.empty:
-        msg = "  当前无符合条件的可操作标的"
-        lines.append(msg)
-        md_lines.append(msg)
-        return "\n".join(lines), "\n".join(md_lines), []
-    
-    # --- 控制台输出（表格）---
-    lines.append(f"  {'代码':<10} {'名称':<8} {'综合分':>5} {'建议':>6} {'阶段':>6} {'排名变化':>6} {'距前高%':>6} {'量比':>5} {'5日%':>5}")
-    lines.append(f"  {'-'*66}")
+    # === 补涨分TOP5 (≥70) ===
+    catchup_top = df[df['catchup_score'] >= 70].nlargest(5, 'catchup_score')
+    lines.append(f"\n  --- 补涨分 TOP5 (≥70) ---")
+    lines.append(f"  {'代码':<10} {'名称':<8} {'补涨':>5} {'强势':>5} {'趋势':>4} {'量温':>4} {'涨幅':>4} {'未涨':>4} {'空间':>4} {'建议':>6} {'阶段':>6} {'距前高%':>6} {'量比':>5}")
+    lines.append(f"  {'-'*86}")
     top3_list = []
-    for i, (_, r) in enumerate(actionable.iterrows()):
-        rank_change_str = f"+{r['rank_change']:.0%}" if r['rank_change'] > 0 else f"{r['rank_change']:.0%}"
-        line = (f"  {r['code']:<10} {r['name']:<8} {r['total_score']:>5.1f} "
-                f"{r['action']:>6} {r['stage']:>6} {rank_change_str:>6} {r['dist_to_high']:>+5.1f}% "
-                f"{r['vol_ratio']:>4.1f} {r['mom5']:>+4.1f}%")
+    for i, (_, r) in enumerate(catchup_top.iterrows()):
+        line = (f"  {r['code']:<10} {r['name']:<8} {r['catchup_score']:>5.1f} {r['momentum_score']:>5.1f} "
+                f"{r.get('trend_setup', 0):>4.0f} {r.get('vol_gentle', 0):>4.0f} {r.get('gain_moderate', 0):>4.0f} "
+                f"{r.get('no_limit_up', 0):>4.0f} {r.get('catchup_space', 0):>4.0f} "
+                f"{r['action']:>6} {r['stage']:>6} {r['dist_to_high']:>+5.1f}% {r['vol_ratio']:>4.1f}")
         lines.append(line)
         if i < 3:
             top3_list.append({
                 'code': r['code'], 'name': r['name'],
-                'total_score': r['total_score'], 'action': r['action'],
+                'total_score': r['catchup_score'], 'action': r['action'],
                 'stage': r['stage'], 'mom5': r['mom5'],
             })
-    
+    if catchup_top.empty:
+        lines.append("  无补涨分≥70的标的")
+
+    # === 强势分TOP5 (≥60) ===
+    momentum_top = df[df['momentum_score'] >= 60].nlargest(5, 'momentum_score')
+    lines.append(f"\n  --- 强势分 TOP5 (≥60) ---")
+    lines.append(f"  {'代码':<10} {'名称':<8} {'强势':>5} {'补涨':>5} {'新高':>4} {'60d':>4} {'20d':>4} {'今日':>4} {'量能':>4} {'建议':>6} {'阶段':>6} {'距前高%':>6} {'量比':>5}")
+    lines.append(f"  {'-'*86}")
+    for _, r in momentum_top.iterrows():
+        line = (f"  {r['code']:<10} {r['name']:<8} {r['momentum_score']:>5.1f} {r['catchup_score']:>5.1f} "
+                f"{r.get('new_high_score', 0):>4.0f} {r.get('trend_60d_score', 0):>4.0f} {r.get('mom_20d_score', 0):>4.0f} "
+                f"{r.get('today_surge_score', 0):>4.0f} {r.get('vol_surge_score', 0):>4.0f} "
+                f"{r['action']:>6} {r['stage']:>6} {r['dist_to_high']:>+5.1f}% {r['vol_ratio']:>4.1f}")
+        lines.append(line)
+    if momentum_top.empty:
+        lines.append("  无强势分≥60的标的")
+
     # 控制台汇总
-    lines.append(f"  {'-'*66}")
-    buy = actionable[actionable['action'] == '🟢买入']
-    watch = actionable[actionable['action'] == '🟡关注']
-    summary_parts = []
-    if len(buy) > 0: summary_parts.append(f"🟢买入{len(buy)}只")
-    if len(watch) > 0: summary_parts.append(f"🟡关注{len(watch)}只")
-    lines.append(f"  可操作: {' | '.join(summary_parts)}")
-    
+    lines.append(f"\n  {'-'*66}")
     stage_counts = df['stage'].value_counts()
     stage_parts = []
     for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
         cnt = stage_counts.get(s, 0)
         if cnt > 0: stage_parts.append(f"{s}{cnt}只")
     lines.append(f"  全貌: {' | '.join(stage_parts)}")
-    
-    top_stages = actionable[actionable['stage'].isin(['↩️回踩低吸', '🔥主升浪', '🚀启动', '📈补涨'])].head(3)
-    if len(top_stages) >= 2:
-        stage_seq = '→'.join(top_stages['stage'].tolist())
-        lines.append(f"  轮动路径: {stage_seq}")
-    
+
     # --- Markdown输出（微信推送用）---
     md_lines.append("")
-    for i, (_, r) in enumerate(actionable.iterrows()):
-        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-        rc_str = f"+{r['rank_change']:.0%}" if r['rank_change'] > 0 else f"{r['rank_change']:.0%}"
-        md_lines.append(f"- **{r['name']}({short_code})** {r['action']} {r['stage']} | 评分:{r['total_score']:.0f} 排名:{rc_str} 距前高:{r['dist_to_high']:+.1f}% 量比:{r['vol_ratio']:.1f}")
-    
-    md_lines.append("")
-    if len(buy) > 0:
-        buy_names = '、'.join([f"**{r['name']}**" for _, r in buy.head(3).iterrows()])
-        md_lines.append(f"**优先关注**: {buy_names}")
-    elif len(watch) > 0:
-        watch_names = '、'.join([f"**{r['name']}**" for _, r in watch.head(3).iterrows()])
-        md_lines.append(f"**可关注**: {watch_names}")
-    
+    md_lines.append(f"**补涨分≥70**: " + "、".join([f"{r['name']}({r['catchup_score']:.0f})" for _, r in catchup_top.iterrows()]) if not catchup_top.empty else "**补涨分≥70**: 无")
+    md_lines.append(f"**强势分≥60**: " + "、".join([f"{r['name']}({r['momentum_score']:.0f})" for _, r in momentum_top.iterrows()]) if not momentum_top.empty else "**强势分≥60**: 无")
+
     # 保存轮动结果供外部读取（写入项目根的 cache_daily 目录，路径不变）
     try:
-        weak2strong = actionable[actionable['stage'] == '💪弱转强']
         rot_data = {
             'trade_date': str(TRADE_DATE),
             'etf_name': top_etf_name,
             'etf_stage_summary': {s: int(stage_counts.get(s, 0)) for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']},
-            'actionable': [{'code': r['code'].replace('.SZ','').replace('.SH',''), 'name': r['name'],
-                            'action': r['action'], 'stage': r['stage'], 'score': r['total_score'],
-                            'pct_chg': r['pct_chg']} for _, r in actionable.iterrows()],
-            'weak2strong': [{'code': r['code'].replace('.SZ','').replace('.SH',''), 'name': r['name'],
-                             'score': r['total_score'], 'pct_chg': r['pct_chg']} for _, r in weak2strong.iterrows()],
+            'catchup_top': [{'code': r['code'].replace('.SZ','').replace('.SH',''), 'name': r['name'],
+                             'catchup_score': r['catchup_score'], 'momentum_score': r['momentum_score'],
+                             'action': r['action'], 'stage': r['stage']} for _, r in catchup_top.iterrows()],
+            'momentum_top': [{'code': r['code'].replace('.SZ','').replace('.SH',''), 'name': r['name'],
+                              'momentum_score': r['momentum_score'], 'catchup_score': r['catchup_score'],
+                              'action': r['action'], 'stage': r['stage']} for _, r in momentum_top.iterrows()],
             'top3': top3_list,
         }
         import json as _json
@@ -759,7 +1181,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
             _json.dump(rot_data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-    
+
     return "\n".join(lines), "\n".join(md_lines), top3_list
 
 
@@ -791,7 +1213,8 @@ def main():
             try:
                 df = pro.fund_daily(ts_code=ts_code,
                                     start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
-                                    fields="ts_code,trade_date,close")
+                                    end_date=TRADE_DATE,
+                                    fields="ts_code,trade_date,close,vol,amount")
                 _save_cache(df, cache_file)
                 time.sleep(0.25)
             except Exception as e:
@@ -801,6 +1224,7 @@ def main():
         if df is not None and len(df) > 0:
             df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
             df = df.sort_values("trade_date").reset_index(drop=True)
+            df = df[df["trade_date"] <= pd.to_datetime(TRADE_DATE)]
             all_data[code] = df
 
     bm_ts = "510300.SH"
@@ -810,6 +1234,7 @@ def main():
         try:
             benchmark_df = pro.fund_daily(ts_code=bm_ts,
                                            start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
+                                           end_date=TRADE_DATE,
                                            fields="ts_code,trade_date,close")
             _save_cache(benchmark_df, cache_file)
         except Exception as e:
@@ -817,6 +1242,7 @@ def main():
     if benchmark_df is not None and len(benchmark_df) > 0:
         benchmark_df["trade_date"] = pd.to_datetime(benchmark_df["trade_date"], format="%Y%m%d")
         benchmark_df = benchmark_df.sort_values("trade_date").reset_index(drop=True)
+        benchmark_df = benchmark_df[benchmark_df["trade_date"] <= pd.to_datetime(TRADE_DATE)]
     else:
         benchmark_df = None
 
@@ -852,7 +1278,7 @@ def main():
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
     print(f"\n  --- 多因子综合评分 TOP 10 ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量':>7} {'量能':>6} {'风险':>6} {'相对':>6}")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量%':>7} {'量能':>6} {'风险':>6} {'相对':>6}")
     print(f"  {'-'*60}")
 
     for i, r in enumerate(rankings[:10]):
@@ -1066,7 +1492,8 @@ def main():
         constituents = get_etf_constituents(top_etf_ts_code)
         if constituents:
             rotation_text, rotation_md, top3 = analyze_constituent_rotation(
-                constituents, top_etf_name, today, pro, benchmark_df, MOM_PERIOD
+                constituents, top_etf_name, today, pro, benchmark_df, MOM_PERIOD,
+                etf_close=all_data.get(top_etf_code, None)
             )
             print(rotation_text)
             result_message += rotation_md + "\n"
@@ -1076,12 +1503,13 @@ def main():
 
     print(f"\n  {'='*60}")
 
+    """
     send_wechat(
         result_message.replace("\n", "\n\n"),
         os.getenv("WECHAT_SCKEY")
     )
-
-    send_pushplus(result_message, os.getenv("PUSHPLUS"))
+    """
+    ##send_pushplus(result_message, os.getenv("PUSHPLUS"))
 
 
 if __name__ == "__main__":
