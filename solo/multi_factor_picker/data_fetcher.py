@@ -269,7 +269,9 @@ class DataFetcher:
                 return cached
 
         df = self._retry_call(self.pro.forecast, ts_code=ts_code,
-                              fields='ts_code,ann_date,end_date,type,period,profit_change,profit_ratio')
+                              fields='ts_code,ann_date,end_date,type,period,profit_change,profit_ratio,'
+                                     'p_change_min,p_change_max,net_profit_min,net_profit_max,'
+                                     'last_parent_net,summary,update_flag')
 
         if self.cache_enabled and df is not None and len(df) > 0:
             save_cache(df, self.cache_dir, cache_key)
@@ -542,11 +544,13 @@ class DataFetcher:
             balance_df = self.get_balance_sheet(code, start_year=start_year)
             forecast_df = self.get_forecast(code)
             cashflow_df = self.get_cashflow(code, start_year=start_year)
+            mainbz_list = self.get_fina_mainbz(code)
             return (code, {
                 'income': income_df if income_df is not None else pd.DataFrame(),
                 'balance': balance_df if balance_df is not None else pd.DataFrame(),
                 'forecast': forecast_df if forecast_df is not None else pd.DataFrame(),
                 'cashflow': cashflow_df if cashflow_df is not None else pd.DataFrame(),
+                'mainbz': mainbz_list if mainbz_list else [],
                 'years_available': 3
             })
 

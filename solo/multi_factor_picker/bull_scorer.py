@@ -139,9 +139,19 @@ class BullStockData:
     quarterly_net_profit: float = 0.0       # 季度净利润
     quarterly_net_profit_prev: float = 0.0  # 上年同期季度净利润
 
-    # ── 业绩预告 ──
+    # ── 业绩预告（v3.2 增强：完整中报预告数据） ──
     forecast_type: str = ""
-    forecast_profit_change: float = 0.0
+    forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
+    forecast_p_change_min: float = 0.0    # 预告净利润变动幅度下限(%)
+    forecast_p_change_max: float = 0.0    # 预告净利润变动幅度上限(%)
+    forecast_p_change_mid: float = 0.0        # 预告利润变动区间中值(%)
+    forecast_net_profit_min: float = 0.0  # 预告净利润下限(万元)
+    forecast_net_profit_max: float = 0.0  # 预告净利润上限(万元)
+    forecast_last_parent_net: float = 0.0  # 上年同期母公司净利润(万元)
+    forecast_ann_date: str = ""          # 预告公告日期
+    forecast_end_date: str = ""          # 预告报告期（如20260630）
+    forecast_is_latest_period: bool = False  # 预告是否对应最新报告期
+    forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
 
     # ── 卖方盈利预测一致性指标 (来自 report_rc) ──
     analyst_count: int = 0
@@ -170,6 +180,8 @@ class BullStockData:
     # ── 价格趋势 ──
     price_trend_score: float = 0.0  # MA20以上得分
     pct_chg: float = 0.0           # 当日涨跌幅
+    price_series: list = None      # 近N日收盘价序列(用于波段属性评分, None=未提供)
+    avg_amount: float = 0.0         # 近10日平均成交额(亿元, 用于波段属性评分流动性)
 
     # ── 行业/产业链 ──
     industry_growth: float = 0.0  # 行业增速(日线代理)
@@ -232,6 +244,12 @@ class BullScoreResult:
     marketcap_score: float = 0.0
     chip_score: float = 0.0           # BullScore v2 新增：筹码面(7%)
     valuation_score: float = 0.0
+    # v3.2 新增：基于中报业绩预告的超预期因子 + 波段属性因子
+    earnings_surprise_score: float = 0.0   # 业绩超预期(预告vs卖方预期偏离, PEAD信号)
+    swing_quality_score: float = 0.0       # 波段属性(适合反复波段操作)
+    forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
+    forecast_p_change_mid: float = 0.0        # 预告利润变动区间中值(%)
+    forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
 
     # 汇总
     bull_score: float = 0.0
@@ -356,7 +374,7 @@ _CHAIN_TO_THEME = {
     "低空经济链": "低空经济", "半导体设备链": "半导体设备",
     "半导体材料链": "半导体材料", "医药链": "创新药",
     "消费电子链": "消费电子", "新能源链": "新能源车",
-    "军工链": "商业航天", "化工链": "新能源车",
+    "军工链": "军工", "化工链": "化工材料",
 }
 
 
@@ -1024,6 +1042,224 @@ class BullScorer:
         details['has_analyst_coverage'] = has_analyst
         return min(score, 100), details
 
+    def _score_earnings_surprise(self, data: BullStockData,
+                                 group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+        """
+        业绩超预期评分 (0~100) - BullScore v3.2 新增
+
+        基于中报业绩预告的前瞻性超预期信号,融合三个子因子:
+          1. 预告类型分级 (含负向扣分)
+          2. 预告利润变动幅度分档放大
+          3. 预告 vs 卖方一致预期偏离 (PEAD 信号)
+
+        与原 ExpectationScore 的区别:
+          - ExpectationScore 以一致预期为主,预告仅作 5-30% 子因子
+          - 本因子以预告本身为核心,放大预告信号的信息含量
+        """
+        details: Dict[str, Any] = {}
+
+        # ── 1. 预告类型分级(含负向扣分) ──
+        ft = (data.forecast_type or '').strip()
+        type_score = 50.0  # 无预告基准分 50
+        if '预增' in ft:
+            type_score = 95.0
+        elif '扭亏' in ft:
+            type_score = 88.0
+        elif '略增' in ft or '预盈' in ft:
+            type_score = 75.0
+        elif '续盈' in ft:
+            type_score = 62.0
+        elif '预减' in ft:
+            type_score = 20.0
+        elif '略减' in ft:
+            type_score = 32.0
+        elif '首亏' in ft:
+            type_score = 8.0
+        elif '续亏' in ft:
+            type_score = 15.0
+        elif '不确定' in ft:
+            type_score = 45.0
+        details['forecast_type'] = ft or '无预告'
+        details['type_score'] = type_score
+
+        # ── 2. 预告利润变动幅度分档(使用区间中值) ──
+        p_min = data.forecast_p_change_min or 0.0
+        p_max = data.forecast_p_change_max or 0.0
+        p_change = data.forecast_profit_change or 0.0
+        # 优先使用区间中值,回退到 profit_change
+        if p_min != 0 or p_max != 0:
+            p_mid = (p_min + p_max) / 2.0
+        else:
+            p_mid = p_change
+
+        magnitude_score = 50.0  # 基准
+        if p_mid > 500:
+            magnitude_score = 98.0
+        elif p_mid > 300:
+            magnitude_score = 92.0
+        elif p_mid > 150:
+            magnitude_score = 85.0
+        elif p_mid > 80:
+            magnitude_score = 76.0
+        elif p_mid > 50:
+            magnitude_score = 68.0
+        elif p_mid > 20:
+            magnitude_score = 60.0
+        elif p_mid > 0:
+            magnitude_score = 55.0
+        elif p_mid > -20:
+            magnitude_score = 40.0
+        elif p_mid > -50:
+            magnitude_score = 25.0
+        else:
+            magnitude_score = 10.0
+        details['p_change_mid'] = round(p_mid, 1)
+        details['magnitude_score'] = magnitude_score
+
+        # ── 3. 预告 vs 卖方一致预期偏离 (PEAD 核心) ──
+        # forecast_vs_analyst_gap 为百分点 (如 预告+150% vs 预期+80% -> gap=+70)
+        gap = data.forecast_vs_analyst_gap
+        if abs(gap) < 0.01:
+            # 无卖方预期或无预告,中性
+            pad_score = 50.0
+        elif gap > 100:
+            pad_score = 98.0
+        elif gap > 50:
+            pad_score = 90.0
+        elif gap > 20:
+            pad_score = 80.0
+        elif gap > 5:
+            pad_score = 68.0
+        elif gap > -5:
+            pad_score = 50.0
+        elif gap > -20:
+            pad_score = 35.0
+        elif gap > -50:
+            pad_score = 20.0
+        else:
+            pad_score = 8.0
+        details['forecast_vs_analyst_gap'] = round(gap, 1)
+        details['pad_score'] = pad_score
+
+        # ── 4. 预告时效性奖励(预告对应最新报告期) ──
+        timeliness_bonus = 5.0 if data.forecast_is_latest_period else 0.0
+        details['is_latest_period'] = data.forecast_is_latest_period
+
+        # ── 加权合成 ──
+        # 预告类型 35% + 幅度分档 30% + PEAD偏离 35% + 时效性奖励
+        raw = (0.35 * type_score + 0.30 * magnitude_score + 0.35 * pad_score)
+        score = min(100.0, raw + timeliness_bonus)
+        details['raw_score'] = round(score, 1)
+        return score, details
+
+    def _score_swing_quality(self, data: BullStockData,
+                              group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
+        """
+        波段属性评分 (0~100) - BullScore v3.2 新增
+
+        评估该股票是否适合"长线持有 + 反复波段操作":
+          1. 趋势稳定性 (60日均线方向一致性)
+          2. 波段振幅 (20日ATR/价格, 有波动空间才有波段收益)
+          3. 回撤可控性 (近120日最大回撤 vs 行业中位数)
+          4. 流动性 (成交额分位, 波段需要充足流动性)
+          5. 业绩预告催化 (有中报预告催化, 波段更容易展开)
+
+        高分 = 适合反复波段; 低分 = 趋势破坏或波动过小/过大
+        """
+        details: Dict[str, Any] = {}
+
+        # ── 1. 趋势稳定性: 近60日均线方向一致性 ──
+        prices = data.price_series
+        trend_stability = 50.0
+        if prices is not None and len(prices) >= 60:
+            ma20 = pd.Series(prices[-60:]).rolling(20, min_periods=1).mean().values
+            # 均线斜率方向一致性
+            if len(ma20) >= 2:
+                slopes = np.diff(ma20)
+                up_ratio = np.sum(slopes > 0) / len(slopes)
+                if up_ratio > 0.8:
+                    trend_stability = 92.0
+                elif up_ratio > 0.65:
+                    trend_stability = 80.0
+                elif up_ratio > 0.5:
+                    trend_stability = 65.0
+                elif up_ratio > 0.35:
+                    trend_stability = 45.0
+                else:
+                    trend_stability = 25.0
+        details['trend_stability'] = trend_stability
+
+        # ── 2. 波段振幅: 20日ATR/价格 ──
+        amplitude = 50.0
+        if prices is not None and len(prices) >= 25:
+            recent = np.array(prices[-21:], dtype=float)
+            tr = np.abs(np.diff(recent))
+            atr_pct = float(np.mean(tr) / np.mean(recent[:-1]) * 100) if np.mean(recent[:-1]) > 0 else 0
+            # 理想区间 1.5%~5%, 过小无波段空间, 过大风险高
+            if 1.5 <= atr_pct <= 5.0:
+                amplitude = 90.0
+            elif 1.0 <= atr_pct < 1.5 or 5.0 < atr_pct <= 7.0:
+                amplitude = 70.0
+            elif atr_pct > 7.0:
+                amplitude = 40.0
+            else:
+                amplitude = 35.0
+            details['atr_pct_20d'] = round(atr_pct, 2)
+        details['amplitude_score'] = amplitude
+
+        # ── 3. 回撤可控性: 近120日最大回撤 ──
+        drawdown_control = 50.0
+        if prices is not None and len(prices) >= 60:
+            recent = np.array(prices[-min(len(prices), 120):], dtype=float)
+            cummax = np.maximum.accumulate(recent)
+            dd = (recent - cummax) / np.where(cummax > 0, cummax, 1)
+            max_dd = float(np.min(dd) * 100)
+            if max_dd > -10:
+                drawdown_control = 92.0
+            elif max_dd > -20:
+                drawdown_control = 80.0
+            elif max_dd > -30:
+                drawdown_control = 65.0
+            elif max_dd > -40:
+                drawdown_control = 45.0
+            else:
+                drawdown_control = 25.0
+            details['max_dd_120d'] = round(max_dd, 1)
+        details['drawdown_score'] = drawdown_control
+
+        # ── 4. 流动性: 成交额分位 ──
+        liquidity = 50.0
+        avg_amt = getattr(data, 'avg_amount', 0) or 0
+        # 成交额 2亿以上为良好波段标的
+        if avg_amt >= 10:
+            liquidity = 95.0
+        elif avg_amt >= 5:
+            liquidity = 82.0
+        elif avg_amt >= 2:
+            liquidity = 68.0
+        elif avg_amt >= 1:
+            liquidity = 50.0
+        else:
+            liquidity = 30.0
+        details['avg_amount_yi'] = round(avg_amt, 2)
+        details['liquidity_score'] = liquidity
+
+        # ── 5. 业绩预告催化奖励 ──
+        catalyst_bonus = 0.0
+        ft = (data.forecast_type or '').strip()
+        if '预增' in ft or '扭亏' in ft:
+            catalyst_bonus = 5.0
+        elif '略增' in ft or '预盈' in ft:
+            catalyst_bonus = 3.0
+        details['catalyst_bonus'] = catalyst_bonus
+
+        # ── 加权合成 ──
+        raw = (0.30 * trend_stability + 0.25 * amplitude +
+               0.20 * drawdown_control + 0.25 * liquidity)
+        score = min(100.0, raw + catalyst_bonus)
+        details['raw_score'] = round(score, 1)
+        return score, details
+
     def _score_valuation(self, data: BullStockData,
                          group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
@@ -1354,15 +1590,47 @@ class BullScorer:
                 base_score = max(base_score, db_score)
 
             hot_theme_bonus = {
-                "AI算力": 85.0, "半导体设备": 80.0, "半导体材料": 78.0,
-                "机器人": 75.0, "低空经济": 72.0, "商业航天": 72.0,
-                "PCB": 70.0, "新能源车": 70.0, "创新药": 65.0,
-                "数据要素": 70.0, "军工": 65.0, "消费电子": 60.0,
-                "光模块": 78.0, "液冷服务器": 75.0, "存储芯片": 73.0,
+                # AI算力相关 (核心高景气)
+                "AI算力": 85.0, "AI算力基建": 83.0, "AI芯片": 85.0,
+                "AI应用与模型": 80.0, "AI文娱内容": 72.0, "AI新消费": 72.0,
+                "光通信": 80.0, "光模块": 78.0, "液冷服务器": 75.0,
+                "金融科技": 68.0, "数据要素": 70.0, "智能驾驶": 75.0,
+                "脑机接口": 70.0, "工业智能": 70.0,
+                # 半导体相关
+                "半导体设备": 82.0, "半导体材料": 78.0, "半导体制造": 80.0,
+                "先进封装": 78.0, "功率半导体": 73.0, "存储芯片": 73.0,
                 "IC设计": 72.0,
+                # 消费电子
+                "消费电子": 60.0, "消费电子与AI终端": 65.0, "光学光电子": 62.0,
+                "PCB": 70.0, "PCB产业链": 70.0, "被动元件": 58.0,
+                # 新能源
+                "新能源车": 70.0, "新能源汽车链": 70.0, "固态电池": 72.0,
+                "新型储能": 68.0, "充电桩": 65.0, "电网智能化": 65.0,
+                "特高压": 65.0, "核聚变": 68.0, "氢能": 65.0,
+                "发电与电源设备": 65.0,
+                # 机器人
+                "机器人": 75.0, "人形机器人": 78.0, "工业母机与自动化": 72.0,
+                "工业母机": 72.0,
+                # 军工
+                "军工": 65.0, "商业航天": 72.0, "低空经济": 72.0,
+                # 医药
+                "创新药": 65.0, "医药产业链": 60.0, "合成生物": 62.0,
+                # 周期/材料
+                "化工链": 55.0, "氟化工制冷剂": 58.0, "培育钻石": 50.0,
+                "煤炭链": 50.0, "钢铁": 50.0, "工业金属": 52.0,
+                "能源金属": 55.0, "小金属": 55.0, "贵金属": 55.0,
+                "石油石化": 50.0,
+                # 金融
+                "券商": 50.0, "保险": 50.0, "银行": 48.0,
+                # 消费
+                "家电家居链": 55.0, "餐饮食品链": 52.0, "消费白马": 55.0,
+                "必选消费红利链": 52.0, "商超零售链": 48.0, "大农业": 50.0,
+                # 基建/公用
+                "基建地产链": 48.0, "红利公用事业": 50.0,
+                "交通运输物流": 48.0, "工程机械与重型装备": 52.0,
             }
             for keyword, score in hot_theme_bonus.items():
-                if keyword in theme_name or theme_name in keyword:
+                if keyword == theme_name or keyword in theme_name or theme_name in keyword:
                     base_score = max(base_score, score)
 
         # 2. 主营业务关键词匹配（fina_mainbz）
@@ -1539,28 +1807,36 @@ class BullScorer:
         mc_ela, mc_detail = self._score_marketcap_elasticity(data)
         chip, chip_detail = self._score_chip(data, group_series)
         val, val_detail = self._score_valuation(data, group_series)
+        # v3.2 新增: 基于中报业绩预告的超预期因子 + 波段属性因子
+        earn_surp, earn_surp_detail = self._score_earnings_surprise(data, group_series)
+        swing, swing_detail = self._score_swing_quality(data, group_series)
 
-        # BullScore v2 — 权重调整：
-        # 产业景气 20%, 技术壁垒 12%, 订单爆发 15%, 业绩质量 15%
-        # 龙头地位 8%, 预期差 13%, 机构认可 5%, 市值弹性 5%, 筹码面 7%, 估值安全 5%
+        # BullScore v3.2 - 权重调整（引入中报预告因子+波段因子）：
+        # 产业景气 17%, 技术壁垒 10%, 订单爆发 13%, 业绩质量 12%
+        # 龙头地位 7%, 预期差 10%, 机构认可 4%, 市值弹性 4%, 筹码面 6%, 估值安全 4%
+        # 业绩超预期 8%（新增）, 波段属性 5%（新增）
         bull_score = (
-            0.20 * ind_demand +
-            0.12 * tech_bar +
-            0.15 * order_exp +
-            0.15 * earn_qual +
-            0.08 * leader +
-            0.13 * expect +
-            0.05 * inst +
-            0.05 * mc_ela +
-            0.07 * chip +
-            0.05 * val
+            0.17 * ind_demand +
+            0.10 * tech_bar +
+            0.13 * order_exp +
+            0.12 * earn_qual +
+            0.07 * leader +
+            0.10 * expect +
+            0.04 * inst +
+            0.04 * mc_ela +
+            0.06 * chip +
+            0.04 * val +
+            0.08 * earn_surp +
+            0.05 * swing
         )
 
-        # ThemeScore — v2: 同时传入 fina_mainbz 主营业务数据
+        # ThemeScore - v2: 同时传入 fina_mainbz 主营业务数据
         theme_score = self._compute_theme_score(data.chain_tag, data.main_business_items)
 
-        # FinalScore = BullScore（去掉了主题分混合）
-        final_score = bull_score
+        # FinalScore = BullScore + 主题加成（v3.2修复: 恢复主题分作用,最高+5分）
+        # 主题加成不稀释原有12因子权重,而是作为独立bonus,避免高评分因子被稀释
+        theme_bonus = theme_score / 100.0 * 5.0
+        final_score = bull_score + theme_bonus
 
         # ── 数据完整度惩罚（v2：缺失重大财务数据时打折） ──
         dc = data.data_completeness
@@ -1594,6 +1870,12 @@ class BullScorer:
             marketcap_score=round(mc_ela, 2),
             chip_score=round(chip, 2),
             valuation_score=round(val, 2),  # 新增：估值安全边际
+            # v3.2 新增: 中报业绩预告超预期 + 波段属性
+            earnings_surprise_score=round(earn_surp, 2),
+            swing_quality_score=round(swing, 2),
+            forecast_profit_change=round(data.forecast_profit_change, 2),
+            forecast_p_change_mid=round(((data.forecast_p_change_min or 0) + (data.forecast_p_change_max or 0)) / 2.0, 2),
+            forecast_vs_analyst_gap=round(data.forecast_vs_analyst_gap, 2),
             bull_score=round(bull_score, 2),
             theme_score=round(theme_score, 2),
             final_score=round(final_score, 2),
@@ -1631,6 +1913,9 @@ class BullScorer:
                 'marketcap': mc_detail,
                 'chip': chip_detail,
                 'valuation': val_detail,
+                # v3.2 新增
+                'earnings_surprise': earn_surp_detail,
+                'swing_quality': swing_detail,
             }
         )
 

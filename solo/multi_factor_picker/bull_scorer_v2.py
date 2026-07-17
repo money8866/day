@@ -1882,6 +1882,11 @@ class BullScoreV2Result:
     leader_type: str = ""            # 龙头类型: 龙头/中军/龙二/补涨/普通
     alpha_score: float = 0.0         # 保留字段(已弃用, v3.0不再使用)
     leader_features: List[str] = field(default_factory=list)  # 特征标签
+    # v3.2 新增: 从 v1 层透传的业绩超预期 + 波段属性评分
+    earnings_surprise_score: float = 0.0   # 业绩超预期(预告vs卖方预期偏离)
+    swing_quality_score: float = 0.0       # 波段属性(适合反复波段操作)
+    forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
+    forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
 
     # 汇总
     bull_score_v2: float = 0.0
@@ -2175,19 +2180,23 @@ class BullScorerV2:
         )
 
         # 7. BullScore v3.0 计算（Alpha因子已移除）
-        ind_w = 0.14
-        order_w = 0.14
-        tech_w = 0.10
-        earn_w = 0.12      # 0.10→0.12 提权（持续增长）
-        expect_w = 0.14    # 0.12→0.14 提权（超预期增长核心）
-        leader_w = 0.08    # 0.06→0.08 提权（细分头部公司）
-        inst_w = 0.08      # 0.07→0.08 提权（多维度机构验证）
-        mc_w = 0.05        # 0.04→0.05 微调
-        chip_w = 0.00      # 筹码面已移除
-        safety_w = 0.07
-        recognition_w = 0.08
+        ind_w = 0.12        # 0.14->0.12
+        order_w = 0.12      # 0.14->0.12
+        tech_w = 0.09       # 0.10->0.09
+        earn_w = 0.11       # 0.12->0.11
+        expect_w = 0.12     # 0.14->0.12（部分权重让给超预期因子,避免重复计权）
+        leader_w = 0.07     # 0.08->0.07
+        inst_w = 0.07       # 0.08->0.07
+        mc_w = 0.04         # 0.05->0.04
+        chip_w = 0.00       # 筹码面已移除
+        safety_w = 0.06     # 0.07->0.06
+        recognition_w = 0.07  # 0.08->0.07
+        # v3.2 新增: 业绩超预期(基于中报预告PEAD信号) + 波段属性(适合反复波段)
+        earn_surp_w = 0.08  # 业绩超预期 8%
+        swing_w = 0.05      # 波段属性 5%
         total_weight_check = sum([ind_w, order_w, tech_w, earn_w, expect_w,
-                                  leader_w, inst_w, mc_w, safety_w, recognition_w])
+                                  leader_w, inst_w, mc_w, safety_w, recognition_w,
+                                  earn_surp_w, swing_w])
         # v3.0: Alpha因子已移除，权重重新分配至核心增长因子
 
         bull_v3 = (
@@ -2200,11 +2209,14 @@ class BullScorerV2:
             inst_w * base_result.institution_score +
             mc_w * base_result.marketcap_score +
             safety_w * safety_score +
-            recognition_w * recognition_score
+            recognition_w * recognition_score +
+            earn_surp_w * base_result.earnings_surprise_score +   # v3.2 新增: 业绩超预期
+            swing_w * base_result.swing_quality_score             # v3.2 新增: 波段属性
         )
 
-        # 8. 最终分 = BullScore_v3.0（去掉了主题分混合）
-        final = bull_v3
+        # 8. 最终分 = BullScore_v3.2 + 主题加成（v3.2修复: 恢复主题分作用,最高+5分）
+        theme_bonus_v2 = theme_score_v2 / 100.0 * 5.0
+        final = bull_v3 + theme_bonus_v2
 
         # 等级判定
         level = self._get_level(len([base_result]), 0)
@@ -2247,6 +2259,11 @@ class BullScorerV2:
             alpha_score=0.0,  # Alpha因子已移除(v3.0)
             leader_type=leader_result.get('leader_type', ''),
             leader_features=leader_result.get('features', []),
+            # v3.2 新增: 透传 v1 层的业绩超预期 + 波段属性评分
+            earnings_surprise_score=round(base_result.earnings_surprise_score, 2),
+            swing_quality_score=round(base_result.swing_quality_score, 2),
+            forecast_profit_change=round(base_result.forecast_profit_change, 2),
+            forecast_vs_analyst_gap=round(base_result.forecast_vs_analyst_gap, 2),
             # 原有字段
             bull_score_v2=round(bull_v3, 2),  # v3.0改名为bull_v3
             theme=theme_name,
@@ -2403,7 +2420,10 @@ class BullScorerV2:
                 '筹码面': r.chip_score,
                 # v2.1 新增
                 '历史辨识度': r.recognition_score,
-                'Alpha因子': r.alpha_score,
+                '业绩超预期': r.earnings_surprise_score,
+                '波段属性': r.swing_quality_score,
+                '预告变动%': r.forecast_profit_change,
+                '预告偏离': r.forecast_vs_analyst_gap,
                 '龙头类型': r.leader_type,
                 '特征标签': ','.join(r.leader_features),
                 # 总分
@@ -2466,12 +2486,12 @@ class BullScorerV2:
 
         top = results[:top_n]
         print(f"\nTop {top_n} 牛股:")
-        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'龙头类型':<6} {'Bull':>6} {'辨识度':>6} {'Alpha':>6} {'筹码':>6} {'最终':>6} {'等级':<12}"
+        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'龙头类型':<6} {'Bull':>6} {'辨识度':>6} {'超预期':>6} {'波段':>6} {'筹码':>6} {'最终':>6} {'等级':<12}"
         print(header)
-        print("-" * 100)
+        print("-" * 110)
         for i, r in enumerate(top, 1):
             code = r.ts_code.split('.')[0]
-            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.leader_type:<6} {r.bull_score_v2:>6.1f} {r.recognition_score:>6.1f} {r.alpha_score:>6.1f} {r.chip_score:>6.1f} {r.final_score:>6.1f} {r.bull_level:<12}")
+            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.leader_type:<6} {r.bull_score_v2:>6.1f} {r.recognition_score:>6.1f} {r.earnings_surprise_score:>6.1f} {r.swing_quality_score:>6.1f} {r.chip_score:>6.1f} {r.final_score:>6.1f} {r.bull_level:<12}")
 
         # 新增因子专项排名
         print(f"\n★ Top 10 筹码面最强:")
@@ -2486,9 +2506,14 @@ class BullScorerV2:
         for r in sorted(results, key=lambda x: x.recognition_score, reverse=True)[:10]:
             print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) recognition={r.recognition_score:.1f}")
 
-        print(f"\n★ Top 10 Alpha因子最强:")
-        for r in sorted(results, key=lambda x: x.alpha_score, reverse=True)[:10]:
-            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) alpha={r.alpha_score:.1f}")
+        print(f"\n★ Top 10 业绩超预期最强(中报预告PEAD信号):")
+        for r in sorted(results, key=lambda x: x.earnings_surprise_score, reverse=True)[:10]:
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) 超预期={r.earnings_surprise_score:.1f} "
+                  f"预告变动={r.forecast_profit_change:.0f}% 偏离={r.forecast_vs_analyst_gap:.0f}")
+
+        print(f"\n★ Top 10 波段属性最强(适合反复波段):")
+        for r in sorted(results, key=lambda x: x.swing_quality_score, reverse=True)[:10]:
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) 波段分={r.swing_quality_score:.1f}")
 
         print(f"\n★ 龙头股列表:")
         leaders = [r for r in results if r.leader_type == "龙头"]

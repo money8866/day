@@ -213,7 +213,8 @@ def extract_bull_data(row: pd.Series,
                        config: Dict = None,
                        report_rc_map: Dict = None,
                        chip_margin_data: Dict = None,
-                       main_bz_data: List = None) -> Optional[BullStockData]:
+                       main_bz_data: List = None,
+                       trade_date: str = None) -> Optional[BullStockData]:
     """
     从原始数据提取 BullScore 所需数据
 
@@ -477,13 +478,40 @@ def extract_bull_data(row: pd.Series,
                 quarterly_net_profit_prev = pn
                 break
 
-    # ── 业绩预告 ──
+    # ── 业绩预告（v3.2 增强：完整中报预告数据） ──
     forecast_type = ''
     forecast_profit_change = 0.0
+    forecast_ann_date = ''
+    forecast_end_date = ''
+    forecast_p_change_min = 0.0
+    forecast_p_change_max = 0.0
+    forecast_net_profit_min = 0.0
+    forecast_net_profit_max = 0.0
+    forecast_last_parent_net = 0.0
+    forecast_is_latest_period = False
+    forecast_vs_analyst_gap = 0.0
     if len(forecast) > 0:
         lf = forecast.sort_values('ann_date', ascending=False).iloc[0]
         forecast_type = str(lf.get('type', '')) if pd.notna(lf.get('type')) else ''
         forecast_profit_change = float(lf.get('profit_change')) if pd.notna(lf.get('profit_change')) else 0.0
+        forecast_ann_date = str(lf.get('ann_date', '')) if pd.notna(lf.get('ann_date')) else ''
+        forecast_end_date = str(lf.get('end_date', '')) if pd.notna(lf.get('end_date')) else ''
+        forecast_p_change_min = float(lf.get('p_change_min')) if pd.notna(lf.get('p_change_min')) else 0.0
+        forecast_p_change_max = float(lf.get('p_change_max')) if pd.notna(lf.get('p_change_max')) else 0.0
+        forecast_net_profit_min = float(lf.get('net_profit_min')) if pd.notna(lf.get('net_profit_min')) else 0.0
+        forecast_net_profit_max = float(lf.get('net_profit_max')) if pd.notna(lf.get('net_profit_max')) else 0.0
+        forecast_last_parent_net = float(lf.get('last_parent_net')) if pd.notna(lf.get('last_parent_net')) else 0.0
+        # 判断预告是否对应最新报告期(半年报 end_date 以0630结尾, 年报以1231结尾)
+        today_str = trade_date
+        expected_periods = []
+        m = int(today_str[4:6])
+        if m >= 7:
+            expected_periods.append(f"{today_str[:4]}0630")
+        if m >= 11:
+            expected_periods.append(f"{today_str[:4]}0930")
+        if forecast_end_date in expected_periods:
+            forecast_is_latest_period = True
+        # forecast_vs_analyst_gap 延迟到 np_growth_current 定义后计算
 
     # ── 北向资金 ──
     north_bound_daily_net = 0.0
@@ -519,14 +547,21 @@ def extract_bull_data(row: pd.Series,
     # ── 价格趋势 ──
     price_trend_score = 0.0
     pct_chg = 0.0
+    price_series = None
+    avg_amount = 0.0
     if daily is not None and len(daily) > 0:
         sd = daily[daily['ts_code'] == ts_code].sort_values('trade_date')
         if len(sd) >= 20:
             prices = sd['close'].values
+            price_series = list(prices)  # 用于波段属性评分
             ma20 = float(pd.Series(prices).tail(20).mean())
             curr_price = float(sd.iloc[-1]['close'])
             price_trend_score = 1.0 if (ma20 > 0 and curr_price > ma20) else max(0, curr_price / ma20) if ma20 > 0 else 0.0
             pct_chg = float(sd.iloc[-1].get('pct_chg', 0)) if pd.notna(sd.iloc[-1].get('pct_chg')) else 0.0
+            # 计算近10日平均成交额(亿元) - amount单位为千元, /1e5转亿元
+            amt_series = sd['amount'].tail(10).values if 'amount' in sd.columns else None
+            if amt_series is not None and len(amt_series) > 0:
+                avg_amount = float(np.mean(amt_series) / 1e5)
 
     # ── 行业增速 ──
     industry_growth = float(industry_growth_map.get(industry, 0.0))
@@ -581,6 +616,10 @@ def extract_bull_data(row: pd.Series,
         rating_sentiment = float(rc.get('rating_sentiment', 0.0))
         analyst_revision_30d = float(rc.get('analyst_revision_30d', 0.0))
         latest_report_date = str(rc.get('latest_report_date', ''))
+
+    # ── 计算 预告vs卖方一致预期偏离 (PEAD代理, 延迟到np_growth_current定义后) ──
+    if forecast_profit_change != 0 and np_growth_current != 0:
+        forecast_vs_analyst_gap = forecast_profit_change - (np_growth_current * 100)
 
     # ── BullScore v2: 筹码面数据 ──
     net_inflow_ratio = 0.0
@@ -667,6 +706,15 @@ def extract_bull_data(row: pd.Series,
         quarterly_net_profit_prev=quarterly_net_profit_prev,
         forecast_type=forecast_type,
         forecast_profit_change=forecast_profit_change,
+        forecast_p_change_min=forecast_p_change_min,
+        forecast_p_change_max=forecast_p_change_max,
+        forecast_net_profit_min=forecast_net_profit_min,
+        forecast_net_profit_max=forecast_net_profit_max,
+        forecast_last_parent_net=forecast_last_parent_net,
+        forecast_ann_date=forecast_ann_date,
+        forecast_end_date=forecast_end_date,
+        forecast_is_latest_period=forecast_is_latest_period,
+        forecast_vs_analyst_gap=forecast_vs_analyst_gap,
         north_bound_daily_net=north_bound_daily_net,
         north_bound_ratio_change=north_bound_ratio_change,
         north_bound_holding_ratio=north_bound_holding_ratio,
@@ -674,6 +722,8 @@ def extract_bull_data(row: pd.Series,
         market_cap=market_cap,
         price_trend_score=price_trend_score,
         pct_chg=pct_chg,
+        price_series=price_series,
+        avg_amount=avg_amount,
         industry_growth=industry_growth,
         capacity_utilization=capacity_utilization,
         analyst_count=analyst_count,
@@ -780,6 +830,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     # ============ 阶段2: 提取因子数据（第一轮，无筹码面数据）============
     logger.info("阶段2: 提取因子数据...")
     check_start = time.time()
+    trade_date = fetcher.get_last_trade_date()
 
     all_bull_data: List[BullStockData] = []
     skip_count = 0
@@ -792,7 +843,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
             skip_count += 1
             continue
 
-        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, north_hold, industry_growth_map, config, report_rc_map)
+        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, north_hold, industry_growth_map, config, report_rc_map, main_bz_data=financial_data.get('mainbz', []), trade_date=trade_date)
         if bull_data is not None:
             all_bull_data.append(bull_data)
         else:
@@ -802,15 +853,14 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
 
     # ============ 阶段3: BullScore 评分（第一轮）============
     logger.info("阶段3: BullScore 评分...")
-    trade_date = fetcher.get_last_trade_date()
 
     # 基础评分（BullScore v1）
     bull_scorer = _BullScorer(config, fetcher)
     base_results = bull_scorer.compute_all_scores(all_bull_data, trade_date=trade_date)
     logger.info(f"BullScore 基础评分完成: {len(base_results)} 只")
 
-    # BullScore v2.1 增强评分（历史辨识度 + Alpha因子 + 龙头/中军识别）
-    logger.info("阶段3b: BullScore v2.1 增强评分（历史辨识度+Alpha因子+龙头识别）...")
+    # BullScore v3.2 增强评分（历史辨识度 + 业绩超预期 + 波段属性 + 龙头/中军识别）
+    logger.info("阶段3b: BullScore v3.2 增强评分（辨识度+业绩超预期+波段属性+龙头识别）...")
     scorer_v2 = BullScorerV2(token=get_token(config))
     results_v2 = scorer_v2.batch_compute(base_results)
     logger.info(f"BullScore v2.1 增强评分完成: {len(results_v2)} 只")

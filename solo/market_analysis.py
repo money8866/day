@@ -1053,8 +1053,8 @@ def get_market_status_and_position(trend_score, prev_position=None, sentiment_sc
         (60, "震荡偏强", "40~60%", 50),
         (50, "震荡",     "30~50%", 40),
         (40, "弱势",     "20~30%", 25),
-        (30, "退潮",     "10~20%", 15),
-        (0,  "主跌段",   "0~10%",  5),
+        (35, "退潮",     "5~15%",  10),
+        (0,  "主跌段",   "0~5%",   0),
     ]
     
     new_tier_idx = 0
@@ -1131,11 +1131,11 @@ def classify_market_regime(trend_score, sentiment_score, breadth_up_ratio=None, 
         return "震荡轮动期", "结构性行情为主，高抛低吸，快进快出"
     if 30 <= trend_score < 45 and sentiment_score is not None and sentiment_score < 25:
         return "冰点反弹期", "情绪冰点，试探性建仓超跌反弹，严格止损"
-    if trend_score < 40 and sentiment_score is not None and sentiment_score < 30:
-        return "主跌退潮期", "趋势与情绪双弱，空仓或极轻仓等待"
+    if trend_score < 35 and sentiment_score is not None and sentiment_score < 30:
+        return "主跌退潮期", "趋势与情绪双弱，空仓等待"
     if trend_score >= 45:
         return "震荡轮动期", "结构性行情为主，高抛低吸"
-    return "主跌退潮期", "市场偏弱，严控仓位"
+    return "主跌退潮期", "市场偏弱，空仓或极轻仓等待"
 
 
 def suggest_portfolio_structure(market_regime):

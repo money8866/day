@@ -1041,10 +1041,11 @@ def get_stock_ths_concepts(ts_code: str, config: dict = None) -> List[str]:
     return stock_concepts.get(ts_code, [])
 
 
-def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
+def identify_chain_with_cache_v2_fallback(ts_code: str, stock_name: str, industry: str,
                               config: dict = None) -> str:
     """
-    带缓存的产业链识别（推荐使用）
+    [已弃用,被下方查表版本覆盖,保留仅作回退参考]
+    带缓存的产业链识别 - 基于同花顺概念+关键词匹配
 
     Args:
         ts_code: 股票代码
@@ -1061,7 +1062,7 @@ def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
         industry = ''
     if pd.isna(stock_name) or stock_name == 'nan':
         stock_name = ''
-    
+
     ths_concepts = get_stock_ths_concepts(ts_code, config)
     return identify_stock_chain_v2(stock_name, industry, ths_concepts)
 
@@ -1360,23 +1361,23 @@ THEME_TO_CHAIN = {
     "CXO": "医药链",
     "合成生物": "医药链",
     
-    # 周期相关
-    "煤炭链": "新能源链",
-    "工业金属": "新能源链",
-    "贵金属": "新能源链",
-    "能源金属": "新能源链",
-    "小金属": "半导体材料链",
-    "硫磺磷化工链": "半导体材料链",
-    "氟化工制冷剂": "半导体材料链",
-    "培育钻石": "半导体材料链",
+    # 周期相关（修正: 不再错误映射到新能源链/半导体材料链）
+    "煤炭链": "周期链",
+    "工业金属": "周期链",
+    "贵金属": "周期链",
+    "能源金属": "周期链",
+    "小金属": "周期链",
+    "硫磺磷化工链": "化工材料链",
+    "氟化工制冷剂": "化工材料链",
+    "培育钻石": "化工材料链",
     
     # 必选消费
-    "必选消费红利链": "消费电子链",
+    "必选消费红利链": "消费链",
     
-    # 金融
-    "券商": "AI算力链",
-    "保险": "AI算力链",
-    "银行": "AI算力链",
+    # 金融（修正: 不再错误映射到AI算力链）
+    "券商": "金融链",
+    "保险": "金融链",
+    "银行": "金融链",
     
     # 信创
     "信创软件": "AI算力链",
@@ -1435,26 +1436,38 @@ def load_theme_stock_map() -> Dict[str, str]:
 def identify_chain_with_cache(ts_code: str, stock_name: str, industry: str,
                               config: dict = None) -> str:
     """
-    带缓存的产业链识别 —— 直接查表 theme_stock_map_latest.json
-    
-    不在表中的个股返回空字符串，不做兜底计算
-    
+    带缓存的产业链识别 -- 优先查表 theme_stock_map_latest.json,
+    未命中时回退到同花顺概念+关键词匹配算法
+
     Args:
         ts_code: 股票代码
-        stock_name: 股票名称（未使用）
-        industry: 东财行业（未使用）
-        config: 配置字典（未使用）
-    
+        stock_name: 股票名称
+        industry: 东财行业
+        config: 配置字典
+
     Returns:
         产业链标签（主题名），未匹配则返回空字符串
     """
     import pandas as pd
     if pd.isna(ts_code) or ts_code == 'nan':
         return ""
-    
-    # 直接查表
+
+    # 1. 优先直接查表（theme_stock_map_latest.json, 2029只股票精确映射）
     stock_theme_map = load_theme_stock_map()
-    return stock_theme_map.get(ts_code, "")
+    result = stock_theme_map.get(ts_code, "")
+    if result:
+        return result
+
+    # 2. 查表未命中,回退到同花顺概念+关键词匹配算法
+    if pd.isna(industry) or industry == 'nan':
+        industry = ''
+    if pd.isna(stock_name) or stock_name == 'nan':
+        stock_name = ''
+    try:
+        ths_concepts = get_stock_ths_concepts(ts_code, config)
+        return identify_stock_chain_v2(stock_name, industry, ths_concepts)
+    except Exception:
+        return ""
 
 
 # ============================================================
