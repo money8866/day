@@ -831,87 +831,6 @@ def analyze_market(trade_date=None):
         print(f"\n💡 总体仓位建议: {position}% ({position_range})")
         print(f"   理由: {reason}")
         
-        # 根据不同指数趋势给出风格个股仓位分配（含大小盘轮动）
-        print(f"\n🎨 风格个股仓位分配建议（含大小盘轮动判断）")
-        print(f"  {'指数':<12} {'风格':<12} {'状态':<12} {'建议仓位':<10} {'理由':<30}")
-        print(f"  {'-'*12} {'-'*12} {'-'*12} {'-'*10} {'-'*30}")
-        
-        # 计算权重
-        # ===== 大小盘轮动判断 =====
-        zz2000_ret_5d = 0
-        hs300_ret_5d = 0
-        for r in results:
-            if r['name'] == '中证2000':
-                df_tmp = get_index_kline(r['code'], trade_date)
-                if df_tmp is not None and len(df_tmp) >= 6:
-                    zz2000_ret_5d = (df_tmp['close'].iloc[-1] / df_tmp['close'].iloc[-6] - 1) * 100
-            elif r['name'] == '沪深300':
-                df_tmp = get_index_kline(r['code'], trade_date)
-                if df_tmp is not None and len(df_tmp) >= 6:
-                    hs300_ret_5d = (df_tmp['close'].iloc[-1] / df_tmp['close'].iloc[-6] - 1) * 100
-        style_rotation = zz2000_ret_5d - hs300_ret_5d
-        if abs(style_rotation) > 3:
-            rot_dir = "小盘占优" if style_rotation > 0 else "大盘占优"
-            print(f"  [轮动信号] 近5日小盘-大盘收益差: {style_rotation:+.1f}% -> {rot_dir}")
-        
-        weights = []
-        for r in results:
-            if r['trend_status'] == '上升趋势':
-                weight = 5
-            elif r['trend_status'] == '震荡偏强':
-                weight = 3
-            elif r['trend_status'] == '震荡偏弱':
-                weight = 1.5
-            else:  # 下降趋势
-                weight = 0.5
-            weights.append(weight)
-        
-        # 大小盘轮动权重调整
-        for i, r in enumerate(results):
-            if r['name'] == '中证2000' and style_rotation > 3:
-                weights[i] *= 1.5  # 小盘占优额外加50%
-            elif r['name'] == '沪深300' and style_rotation < -3:
-                weights[i] *= 1.5  # 大盘占优额外加50%
-        
-        total_weight = sum(weights)
-        style_allocations = []
-        
-        for i, r in enumerate(results):
-            # 根据指数对应风格
-            if r['name'] == '上证指数':
-                style = '综合指数'
-            elif r['name'] == '沪深300':
-                style = '大盘股'
-            elif r['name'] == '中证2000':
-                style = '小盘股'
-            else:
-                style = '其他'
-            
-            # 根据权重分配仓位（5%为最小单位）
-            style_pos = round(position * weights[i] / total_weight / 5) * 5
-            
-            if r['trend_status'] == '上升趋势':
-                style_reason = '趋势向好，重点配置'
-            elif r['trend_status'] == '震荡偏强':
-                style_reason = '趋势偏强，适度配置'
-            elif r['trend_status'] == '震荡偏弱':
-                style_reason = '趋势偏弱，谨慎配置'
-            else:  # 下降趋势
-                style_reason = '趋势下降，少量参与'
-            
-            style_allocations.append((r, style, style_pos, style_reason))
-        
-        # 调整最后一个仓位使总和等于总仓位
-        sum_so_far = sum(a[2] for a in style_allocations[:-1])
-        if style_allocations:
-            last_r, last_style, last_pos, last_reason = style_allocations[-1]
-            last_pos = position - sum_so_far
-            style_allocations[-1] = (last_r, last_style, last_pos, last_reason)
-        
-        # 输出分配结果
-        for r, style, style_pos, style_reason in style_allocations:
-            print(f"  {r['name']:<12} {style:<12} {r['trend_status']:<12} {style_pos}%{' ':>6} {style_reason:<30}")
-        
         # ===== 涨跌停 & 连板统计 =====
         print(f"\n{'='*80}")
         print("📊 涨跌停 & 连板统计")
@@ -930,7 +849,7 @@ def analyze_market(trade_date=None):
         save_limit_stats_to_database(limit_stats)
         
         # 保存结果
-        save_result(results, position, reason, style_allocations, overview,
+        save_result(results, position, reason, None, overview,
                     trend_score, index_trend, theme_trend, market_status, trade_date,
                     limit_stats, max_lb)
         
@@ -938,7 +857,7 @@ def analyze_market(trade_date=None):
         save_to_database(trade_date, results, position, reason, 
                         trend_score, index_trend, theme_trend, market_regime)
         
-        return results, position, reason, style_allocations, overview
+        return results, position, reason, [], overview
     
     return None, 0, "", [], None
 

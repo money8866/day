@@ -53,15 +53,6 @@ python solo\etf_resonance\run_real.py
 
 
 echo =============================================
-echo [Step 5.0] ETF Alpha策略 ...
-python solo\etf_resonance\run_real.py
-echo =============================================
-
-python solo\etf_alpha_engine\main.py
-python solo\etf_alpha_engine\report_sender.py
-
-
-echo =============================================
 python solo\tushare_quant.py
 echo.
 

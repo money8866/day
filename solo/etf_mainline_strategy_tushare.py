@@ -803,7 +803,7 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     }
 
 
-def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchmark_df, mom_period=20, etf_close=None):
+def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchmark_df, mom_period=20, etf_close=None, etf_rankings=None):
     """
     最强ETF成份股轮动分析 + 操作建议
     对每只成份股计算补涨分 + 强势分（双评分体系），取较高者为综合分
@@ -1173,6 +1173,7 @@ def analyze_constituent_rotation(constituents, top_etf_name, today, pro, benchma
                               'momentum_score': r['momentum_score'], 'catchup_score': r['catchup_score'],
                               'action': r['action'], 'stage': r['stage']} for _, r in momentum_top.iterrows()],
             'top3': top3_list,
+            'etf_rankings': etf_rankings[:3] if etf_rankings else [],
         }
         import json as _json
         rot_path = os.path.join(CACHE_DIR, 'etf_rotation_tips.json')
@@ -1493,7 +1494,8 @@ def main():
         if constituents:
             rotation_text, rotation_md, top3 = analyze_constituent_rotation(
                 constituents, top_etf_name, today, pro, benchmark_df, MOM_PERIOD,
-                etf_close=all_data.get(top_etf_code, None)
+                etf_close=all_data.get(top_etf_code, None),
+                etf_rankings=rankings
             )
             print(rotation_text)
             result_message += rotation_md + "\n"

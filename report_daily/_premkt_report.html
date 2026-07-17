@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0e27;
+  color: #e8eaf6;
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  padding: 32px 24px;
+  max-width: 680px;
+  margin: 0 auto;
+}
+.header {
+  text-align: center;
+  margin-bottom: 28px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #1e2a5e;
+}
+.header .date {
+  font-size: 13px;
+  color: #7986cb;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+.header .title {
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  letter-spacing: 3px;
+}
+.header .subtitle {
+  font-size: 12px;
+  color: #5c6bc0;
+  margin-top: 4px;
+}
+.section {
+  margin-bottom: 20px;
+}
+.section-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  padding: 6px 14px;
+  background: linear-gradient(90deg, #1a237e, #283593);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title .icon {
+  font-size: 14px;
+}
+.item {
+  background: #0d1235;
+  border-left: 3px solid #3949ab;
+  padding: 9px 14px;
+  margin-bottom: 8px;
+  border-radius: 0 4px 4px 0;
+}
+.item-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #90caf9;
+  margin-bottom: 4px;
+}
+.item-body {
+  font-size: 11px;
+  color: #b0bec5;
+  line-height: 1.7;
+}
+.item-body .highlight {
+  color: #ffca28;
+  font-weight: bold;
+}
+.item-body .red {
+  color: #ef5350;
+}
+.item-body .green {
+  color: #66bb6a;
+}
+.item-body .blue {
+  color: #42a5f5;
+}
+.divider {
+  border: none;
+  border-top: 1px solid #1e2a5e;
+  margin: 16px 0;
+}
+.warning {
+  background: #1a1a2e;
+  border: 1px solid #ef5350;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 16px;
+}
+.warning .title {
+  font-size: 12px;
+  color: #ef5350;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.warning .body {
+  font-size: 11px;
+  color: #b0bec5;
+  line-height: 1.7;
+}
+.footer {
+  text-align: center;
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid #1e2a5e;
+  font-size: 10px;
+  color: #5c6bc0;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="date">2026年7月17日 周五 08:00</div>
+  <div class="title">📊 A股盘前资讯速递</div>
+  <div class="subtitle">数据来源：腾讯财经 / 证券时报 / 东方财富</div>
+</div>
+
+<!-- 宏观政策 -->
+<div class="section">
+  <div class="section-title"><span class="icon">🌐</span> 宏观 / 政策</div>
+  <div class="item">
+    <div class="item-title">氦气临时禁止出口</div>
+    <div class="item-body">商务部、海关总署联合公告，对氦气实施<span class="highlight">临时禁止出口</span>管理（中国为氦气主要进口国，意在保障国内供应），后续将适时调整。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">世界人工智能合作组织协定签署</div>
+    <div class="item-body">7月16日在上海签署，总部设于中国上海，王毅代表签署，旨在推动AI国际合作与全球治理。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">海水淡化行动方案落地</div>
+    <div class="item-body">发改委等三部门印发《海水淡化产业发展行动方案》：到2030年全国工程总规模达<span class="highlight">450万吨/日</span>（新增150万吨/日），利好海水淡化装备/材料产业链。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">中荷经贸 / 安世半导体</div>
+    <div class="item-body">中荷双方同意推动企业协商解决安世半导体（Nexperia）纠纷，保障全球半导体产供链稳定。</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- 行业 -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔥</span> 行业 / 板块</div>
+  <div class="item">
+    <div class="item-title">2026世界人工智能大会（WAIC）今日开幕</div>
+    <div class="item-body">7月17—20日上海举办，1100+企业参展、300+款全球首发产品。<br>
+    <span class="blue">华为昇腾Atlas 950 SuperPoD超节点真机首秀</span>（可扩展至8192张昇腾950芯片、8EFLOPS）<br>
+    <span class="blue">曦智科技</span>发布光电混合计算芯片边缘计算盒；<span class="blue">努比亚AI智能体手机</span>亮相。<br>
+    <span class="highlight">AI/国产算力板块事件催化密集</span></div>
+  </div>
+  <div class="item">
+    <div class="item-title">全球科技股剧烈震荡（风险）</div>
+    <div class="item-body">7月16日<span class="red">科创50跌4.02%</span>，电子+通信主力净流出逾<span class="red">300亿元</span>；<br>
+    全球半导体遭抛售：韩国综指跌逾6%触发熔断、SK海力士跌逾11%、日经225跌2.79%；<br>
+    上证<span class="red">失守3900点</span>，创业板指跌2.95%。前期涨幅较大的光模块、半导体需警惕兑现压力。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">长鑫科技IPO中签率出炉</div>
+    <div class="item-body">国产存储龙头发行价8.66元/股，网上中签率<span class="highlight">0.4714%</span>（创科创板纪录），募资约295亿（科创板开板以来第二高）。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">台积电Q2超预期</div>
+    <div class="item-body">净利润同比+77.4%，毛利率67.7%，上调全年营收增速至<span class="highlight">40%</span>、资本支出加码至640亿美元，提振AI供应链信心。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">AI手机逆势走强</div>
+    <div class="item-body">苹果牵手阿里、百度，板块中格林精密、道明光学、福蓉科技、福日电子等<span class="green">涨停</span>。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">首批主动管理ETF试点</div>
+    <div class="item-body">18家基金管理人入围（摩根、华泰柏瑞、易方达、南方、华夏、富国等）。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">DeepSeek启动科创板IPO筹备</div>
+    <div class="item-body">最快年底申报。</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- 新股 / 解禁 -->
+<div class="section">
+  <div class="section-title"><span class="icon">🆕</span> 新股 / 解禁</div>
+  <div class="item">
+    <div class="item-title">今日暂无新股申购</div>
+    <div class="item-body">—</div>
+  </div>
+  <div class="item">
+    <div class="item-title">限售股解禁（7月17日）</div>
+    <div class="item-body">共8家公司解禁，合计2700.1万股，市值约<span class="highlight">6.31亿元</span>。<br>
+    居前：智迪科技（1188万股/3.25亿）、特锐德（435.6万股/1.36亿）、信音电子（609.6万股/1.16亿）。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">临近解禁提醒</div>
+    <div class="item-body">技源集团6433.98万股（占总股本<span class="red">16.08%</span>）将于<span class="highlight">7月23日</span>解禁。</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- 外围 -->
+<div class="section">
+  <div class="section-title"><span class="icon">🌏</span> 外围市场</div>
+  <div class="item">
+    <div class="item-title">美股 / 亚太</div>
+    <div class="item-body">美股三大指数集体收跌，纳指跌逾1%；费城半导体下挫。<br>
+    亚太科技股同步重挫（韩、日触发明显跌幅），隔夜情绪偏空。</div>
+  </div>
+  <div class="item">
+    <div class="item-title">今日A股研判</div>
+    <div class="item-body">科技方向或承压，但<span class="blue">WAIC事件催化</span>与<span class="blue">国产算力逻辑</span>形成对冲；注意高低切换。</div>
+  </div>
+</div>
+
+<!-- 风险提示 -->
+<div class="warning">
+  <div class="title">⚠️ 风险提示</div>
+  <div class="body">
+    · 上证跌破年线后尚未有效修复，技术面偏弱<br>
+    · 主力资金连续净流出，高位个股回调压力大<br>
+    · 腾讯云8月起对MySQL本地盘实例超用部分计费，关注云计算板块成本压力<br>
+    · 融资客年内最大"卸杠杆"，注意高融资占比个股波动
+  </div>
+</div>
+
+<div class="footer">
+  仅供参考，不构成投资建议。市场有风险，投资需谨慎。<br>
+  数据来源：证券时报 / 新浪财经 / 东方财富 / 腾讯财经<br>
+  整理时间：2026-07-17 08:00 | QClaw量化系统
+</div>
+
+</body>
+</html>

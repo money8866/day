@@ -2200,14 +2200,14 @@ def load_theme_pattern_stocks():
         
         # 生成文本格式
         lines = []
-        lines.append("═" * 60)
+        lines.append("")
         lines.append("主题个股池选股结果")
-        lines.append("═" * 60)
+        lines.append("")
         
         # 中期趋势主题
         if not mid_term.empty:
             lines.append("\n📈 中期趋势主题（60日趋势平均分TOP2）")
-            lines.append("─" * 80)
+            lines.append("")
             
             if not mid_term_zhongjun.empty:
                 lines.append("🏆 中军（中线布局）")
@@ -2238,7 +2238,7 @@ def load_theme_pattern_stocks():
         # 短线主线主题
         if not short_term.empty:
             lines.append("\n⚡ 短线主线（当日最强主线TOP3）")
-            lines.append("─" * 80)
+            lines.append("")
             
             if not short_term_zhongjun.empty:
                 lines.append("🏆 中军（短线跟随）")
@@ -2266,7 +2266,7 @@ def load_theme_pattern_stocks():
                                f"换手:{turnover_val:.2f}% | 市值:{mcap}")
                     lines.append(f"    推荐理由: {row.get('reason', '')}")
         
-        lines.append("═" * 60)
+        lines.append("")
         
         return df.to_dict('records'), "\n".join(lines)
     except Exception as e:
@@ -7350,6 +7350,14 @@ def deepseek(prompt, use_flash=False):
         print("⚠️ 无可用 AI API Key（ZHIPU_API_KEY / DEEPSEEK_API_KEY 均为空）")
         return ""
 
+    # 清理 prompt 中的联网搜索要求，避免 DeepSeek 凭空编造数据
+    try:
+        from ai_prompt_cleaner import strip_web_search_requirements
+        clean_prompt = strip_web_search_requirements(prompt)
+    except Exception as e:
+        print(f"⚠️ prompt 清理失败，使用原始 prompt: {e}")
+        clean_prompt = prompt
+
     url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -7359,8 +7367,16 @@ def deepseek(prompt, use_flash=False):
     data = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "你是A股顶级投资分析师"},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": (
+                    "你是A股顶级投资分析师，严格基于用户提供的数据进行分析，"
+                    "绝不编造任何数据、新闻、游资动向、龙虎榜信息或外部事件。"
+                    "如果数据中没有某只股票的信息，就如实说明'数据不足'，绝不能凭空捏造。"
+                    "股票名称和代码必须严格引用用户提供的数据，不得自行修改或臆造。"
+                )
+            },
+            {"role": "user", "content": clean_prompt}
         ],
         "temperature": 0.1,
     }
@@ -7382,7 +7398,7 @@ def _call_glm(prompt, use_flash=False):
         "Content-Type": "application/json"
     }
     # 模型选择：flash=免费快速，否则=旗舰深度
-    model = "glm-4-flash" if use_flash else "glm-4-plus"
+    model = "glm-5.2"
 
     data = {
         "model": model,
@@ -7390,32 +7406,41 @@ def _call_glm(prompt, use_flash=False):
             {
                 "role": "system",
                 "content": (
-                    "你是A股顶级投资分析师，必须调用联网搜索工具补充实时信息，"
-                    "对今日股池中每只个股都必须进行联网风险与舆情核查，并在各模块输出中体现。\n"
-                    "【效率优先-避免超时】联网搜索需精简高效，每只个股最多发起1次搜索查询（股票名+代码+最新风险/舆情），"
-                    "不要重复搜索同一只股票。如某股无明显风险舆情，直接输出'暂无'，不要反复搜索。\n"
-                    "【核心要求：个股级别联网核查】\n"
-                    "- 对第3部分（强势股票池前10名）、第4部分（ETF成份股）、第5部分（量能爆发池）中出现的每只个股，"
-                    "必须联网搜索其最新情况，并在该股分析中以独立行输出风险舆情\n"
+                    "你是A股顶级投资分析师，必须调用联网搜索工具补充实时信息。\n"
+                    "【效率优先-绝对不能超时】严格控制联网搜索次数，总搜索次数控制在5次以内，绝不超过。\n"
+                    "- 重点核查对象：突破股池前3名 + 量能爆发池强买信号股 +ETF成份股，每只最多1次搜索\n"
+                    "- 其他股票（突破股池4-10名）：不单独联网搜索，直接输出'风险舆情：数据待补充'，把搜索配额留给重点股\n"
+                    "【最高优先级-数据边界严格隔离】\n"
+                    "- 第3部分【今日突破股池分析】只能使用'**【今日突破股池】**'和'**【今日突破股池到此为止】**'两个标记之间的股票\n"
+                    "- 严禁把ETF数据区的成份股、量能爆发池的股票、中线股池的B浪信号股混入突破股池分析\n"
+                    "- 第5部分【量能爆发池】只能使用'🔥 量能爆发·强买信号/观察信号/蓄势大涨'段落中的股票\n"
+                    "- 第4/6部分【ETF】只能使用ETF数据区的成份股\n"
+                    "- 各模块股票不得交叉混用，每个模块只分析本模块数据区的股票\n"
+                    "【个股级别联网核查-仅重点股】\n"
+                    "- 仅对突破股池前3名和量能爆发池强买信号股做完整联网核查\n"
                     "- 风险维度：定增/减持/解禁/诉讼/财务造假/被监管立案/ST预警等利空\n"
                     "- 舆情维度：龙虎榜机构/游资动向、机构调研、业绩预告、重大合同、技术突破\n"
-                    "- 热榜维度：东财/同花顺/雪球热度榜排名、讨论热度变化\n"
+                    "- 热榜维度：东财/同花顺/雪球热度榜排名\n"
                     "- 发现重大利空时，必须在该股分析末尾标注【警告】并建议回避或剔除\n"
-                    "【维度1：主题与大盘风险】（第8部分汇总输出）\n"
-                    "- 主题拥挤度过高、政策利空、产业链逻辑证伪\n"
-                    "- 大盘系统性风险：外围暴跌、汇率异动、政策转向、流动性收紧\n"
-                    "【维度2：热点追踪】（第8部分输出）\n"
-                    "- 今日盘后最新新闻：涨停股涨停原因、政策催化、行业事件\n"
-                    "- 明日潜在热点：晚间新闻联播、部委政策、产业大会、重要数据发布\n"
-                    "- 龙头股最新动态：机构调研、业绩预告、重大合同、技术突破\n"
-                    "- 市场情绪：游资动向、北向资金流向、涨停板梯队变化\n"
+                    "【第6部分热点追踪-必须联网，禁止'数据待补充'】\n"
+                    "- 第6部分的热点追踪和风险扫描是 GLM 的核心任务，必须联网搜索输出，绝对不能输出'数据待补充'或'未联网核查'\n"
+                    "【维度1：主题与大盘风险】（第8部分汇总输出，必须联网）\n"
+                    "- 主题拥挤度过高、政策利空、产业链逻辑证伪（联网搜索今日相关主题的新闻）\n"
+                    "- 大盘系统性风险：外围暴跌、汇率异动、政策转向、流动性收紧（联网搜索外围市场和汇率）\n"
+                    "【维度2：热点追踪】（第6部分输出，必须联网搜索，禁止'数据待补充'）\n"
+                    "- 【今日涨停原因】联网搜索今日涨停股的涨停原因（至少1条真实信息）\n"
+                    "- 【明日潜在热点】联网搜索晚间新闻，预判1-2个明日热点方向\n"
+                    "- 【龙头股动态】联网搜索报告中提到的龙头股最新动态（业绩预告/机构调研/重大合同等）\n"
+                    "- 【市场情绪】联网搜索北向资金流向、游资动向、涨停板梯队数据\n"
                     "【输出要求】\n"
-                    "- 各模块个股分析中必须包含联网核查的风险舆情行\n"
-                    "- 报告最后第8部分为汇总性扫描，集中列出已标注警告的个股，避免与各模块重复"
+                    "- 第8部分：所有子项必须联网搜索输出真实信息，禁止出现'数据待补充'字样\n"
+                    "- 报告最后第8部分为汇总性扫描，集中列出已标注警告的个股"
                 )
             },
             {"role": "user", "content": prompt}
         ],
+        "reasoning_effort": "max",
+        "max_tokens": 65536,
         "temperature": 0.1,
         # 启用联网搜索工具（搜狗引擎，覆盖腾讯新闻/知乎/百科等）
         "tools": [{"type": "web_search", "web_search": {"enable": True, "search_result": True}}],
@@ -8589,9 +8614,9 @@ def get_tracking_stocks():
         
         # 生成AI需要的文本格式（精简版）
         lines = []
-        lines.append("═" * 60)
+        lines.append("")
         lines.append("🔥 跟踪分析股票池")
-        lines.append("═" * 60)
+        lines.append("")
         if tracking_stocks:
             for i, stock in enumerate(tracking_stocks, 1):
                 alpha_val = stock.get('alpha_score', 0)
@@ -8633,7 +8658,7 @@ def get_tracking_stocks():
                     yri_max_lb = stock.get('yri_max_consec_zt', 0)
                     lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_max_lb}板 标签={yri_tags}")
                 lines.append("")
-            lines.append("═" * 60)
+            lines.append("")
         #print(lines)
         return tracking_stocks, "\n".join(lines), ""
     except Exception as e:
@@ -9752,7 +9777,7 @@ def run(target_date=None, simple_mode=False):
             date_str = f" ({v6_date})" if v6_date else ""
             lines.append(f"Theme Alpha V6.2 引擎报告{date_str} (共{len(v6_data)}个主题)")
             lines.append(f"{'#':<3} {'主题':<16} {'综合':<6} {'FA分':<6} {'趋势':<6} {'资金':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'Gate':<12} {'龙头'}")
-            lines.append("─" * 120)
+            lines.append("")
             for i, r in enumerate(v6_data[:30]):
                 div_mark = r.get('divergence_buy', '')
                 gate = r.get('alpha_gate', '')
@@ -10072,11 +10097,11 @@ def run(target_date=None, simple_mode=False):
     # 按整合评分排序
     ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
     lines = []
-    lines.append("═" * 60)
+    lines.append("")
     lines.append("🔥 突破股池 (按整合评分排序)")
-    lines.append("═" * 60)
+    lines.append("")
     
-    top_stocks = ranked_stocks[:20]
+    top_stocks = ranked_stocks[:10]
     for i, s in enumerate(top_stocks, 1):
         alpha_val = s.get('Alpha评分', 0)
         alpha_sig = s.get('Alpha信号', '')
@@ -10131,9 +10156,7 @@ def run(target_date=None, simple_mode=False):
         vs_watch = sorted([x for x in _volume_surge_swing_results if x.get('观察信号') and not x.get('强买信号')], key=lambda x: -x['量能爆发评分'])
         vs_wave_surge = sorted([x for x in _volume_surge_swing_results if x.get('蓄势大涨信号')], key=lambda x: -x['量能爆发评分'])
 
-        vs_lines = ["═" * 60]
-        vs_lines.append("🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)")
-        vs_lines.append("═" * 60)
+        vs_lines = ["🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)"]
         if vs_strong_buy:
             vs_lines.append("【筛选条件】量能爆发+宽幅震荡 + 以下4组之一：")
             vs_lines.append("  ①距MA20<0%+MACD刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)")
@@ -10157,7 +10180,7 @@ def run(target_date=None, simple_mode=False):
         if vs_watch:
             vs_lines.append("")
             vs_lines.append("👀 量能爆发·观察信号 (MACD即将红柱，等待翻红确认)")
-            vs_lines.append("─" * 60)
+            vs_lines.append("")
             vs_lines.append("【观察逻辑】MACD绿柱连续缩短即将金叉，可关注后续翻红确认后介入")
             vs_lines.append("")
             for i, _vr in enumerate(vs_watch[:10], 1):
@@ -10175,7 +10198,7 @@ def run(target_date=None, simple_mode=False):
         if vs_wave_surge:
             vs_lines.append("")
             vs_lines.append("🌊 量能爆发·蓄势大涨信号 (波浪结构+量能爆发结合)")
-            vs_lines.append("─" * 60)
+            vs_lines.append("")
             vs_lines.append("【触发条件】量能爆发硬条件通过 + 波浪W2浅回调(<70%) + 距H1<3% + 今日涨>=5% + MACD绿柱缩短/刚红柱")
             vs_lines.append("【信号逻辑】当MACD尚未确认但波浪结构蓄势完成+涨幅确认启动时，可在突破前夜提前发现")
             vs_lines.append("")
@@ -10193,7 +10216,7 @@ def run(target_date=None, simple_mode=False):
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
     else:
-        volume_surge_swing_text = "═" * 60 + "\n🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)\n" + "═" * 60 + "\n今日无信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）\n\n【筛选条件】①距MA20<0%+刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)\n【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%"
+        volume_surge_swing_text = "\n🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)\n" + "\n今日无信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）\n\n【筛选条件】①距MA20<0%+刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)\n【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%"
         print(volume_surge_swing_text)
 
     # =========================
@@ -10208,9 +10231,9 @@ def run(target_date=None, simple_mode=False):
             if active_themes:
                 lines = []
                 lines.append("★ 主题可持续性分析（Theme Alpha V6.2引擎，信号=强买/看多/关注/持有）★")
-                lines.append("─" * 80)
+                lines.append("")
                 lines.append(f"  活跃主题数: {len(active_themes)} 个（V6信号确认，非一日游脉冲）")
-                lines.append("─" * 60)
+                lines.append("")
                 for r in active_themes[:16]:
                     div_mark = ' ★分歧买点' if r.get('divergence_buy') else ''
                     fa_score = r.get('forward_alpha', 0)
@@ -10226,7 +10249,7 @@ def run(target_date=None, simple_mode=False):
                         f"信号:{r.get('trade_signal', '')} "
                         f"龙头:{r.get('leader', '')}{div_mark}{gate_mark}"
                     )
-                lines.append("─" * 80)
+                lines.append("")
                 # 信号分布
                 from collections import Counter
                 sig_count = Counter(r.get('trade_signal', '') for r in active_themes)
@@ -10270,9 +10293,9 @@ def run(target_date=None, simple_mode=False):
 
             # 信号×阶段矩阵说明
             lines = []
-            lines.append("═" * 60)
+            lines.append("")
             lines.append("★ 信号×阶段实盘建议矩阵（V6自动生成）★")
-            lines.append("═" * 60)
+            lines.append("")
             lines.append("【策略原则】信号决定买什么方向，阶段决定什么时候买，大盘环境决定买多少")
             lines.append("")
             lines.append("【仓位分档】")
@@ -10304,7 +10327,7 @@ def run(target_date=None, simple_mode=False):
             if candidates:
                 lines.append("【今日实盘建议】")
                 lines.append(f"{'主题':<12} {'信号':<6} {'阶段':<10} {'FA分':<6} {'建议':<8} {'仓位':<10} {'操作'}")
-                lines.append("─" * 80)
+                lines.append("")
                 for r in candidates[:15]:
                     stage = r.get('stage', '')
                     sig = r.get('trade_signal', '')
@@ -10313,7 +10336,7 @@ def run(target_date=None, simple_mode=False):
                     lines.append(
                         f"  {r['theme']:<10} {sig:<6} {stage:<10} {fa:<6.0f} {pos:<8} {weight:<10} {action}"
                     )
-                lines.append("─" * 80)
+                lines.append("")
                 lines.append("")
 
                 # 统计
@@ -10329,135 +10352,69 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # ETF操作提示（从ETF轮动策略读取）
+    # ETF操作提示（从ETF主线轮动策略读取）
     # =========================
     etf_tips_text = ""
     try:
         rot_path = r'D:\mystock\cache_daily\etf_rotation_tips.json'
-        state_path = r'D:\mystock\etf_mainline_state_tushare.json'
         if os.path.exists(rot_path):
             import json as _json
             with open(rot_path, 'r', encoding='utf-8') as f:
                 rot_data = _json.load(f)
             etf_lines = []
             etf_lines.append("")
-            etf_lines.append("═" * 60)
+            etf_lines.append("")
             etf_lines.append("📊 ETF操作提示 (ETF主线轮动策略)")
-            etf_lines.append("═" * 60)
+            etf_lines.append("")
+            
+            # 1. ETF最强TOP3
+            etf_rankings = rot_data.get('etf_rankings', [])
+            if etf_rankings:
+                etf_lines.append(f"ETF最强TOP3:")
+                for i, r in enumerate(etf_rankings[:3], 1):
+                    etf_lines.append(f"  {i}. {r.get('name','')}({r.get('code','')}) 综合分:{r.get('total_score',0):.1f} 动量:{r.get('momentum',0):+.2f}%")
             
             # 当日最强ETF
             etf_name = rot_data.get('etf_name', '')
             if etf_name:
                 etf_lines.append(f"最强ETF: {etf_name}")
             
-            # 持仓信息
-            if os.path.exists(state_path):
-                with open(state_path, 'r', encoding='utf-8') as f:
-                    state = _json.load(f)
-                holding_name = state.get('holding_name', '')
-                holding_code = state.get('holding_code', '')
-                buy_price = state.get('buy_price', 0)
-                buy_date = state.get('last_rebalance_date', '')
-                if holding_name:
-                    etf_lines.append(f"当前持仓: {holding_name}({holding_code}) 买入日:{buy_date} 买入价:{buy_price:.3f}")
-            
             # 阶段分布
             stage_summary = rot_data.get('etf_stage_summary', {})
             stage_parts = []
-            for s in ['💪弱转强', '🚀启动', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
+            for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
                 cnt = stage_summary.get(s, 0)
                 if cnt > 0:
                     stage_parts.append(f"{s}{cnt}只")
             if stage_parts:
                 etf_lines.append(f"成份股阶段分布: {' | '.join(stage_parts)}")
             
-            # 弱转强
-            weak2strong = rot_data.get('weak2strong', [])
-            if weak2strong:
-                etf_lines.append(f"💪弱转强:")
-                for s in weak2strong:
-                    etf_lines.append(f"{s['name']}({s['code']}) 评分:{s['score']:.0f} 涨幅:+{s['pct_chg']:.1f}%")
+            # 2. 补涨TOP5
+            catchup_top = rot_data.get('catchup_top', [])
+            if catchup_top:
+                etf_lines.append("")
+                etf_lines.append("【补涨TOP5】")
+                for r in catchup_top[:5]:
+                    etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 补涨分:{r.get('catchup_score',0):.1f} 阶段:{r.get('stage','')}")
+            else:
+                etf_lines.append("")
+                etf_lines.append("【补涨TOP5】无补涨分≥70的标的")
             
-            # 可操作列表
-            actionable = rot_data.get('actionable', [])
-            buy_list = [a for a in actionable if a.get('action') == '🟢买入']
-            watch_list = [a for a in actionable if a.get('action') == '🟡关注']
-            if buy_list:
-                buy_names = '、'.join([f"{a['name']}({a['code']})" for a in buy_list[:3]])
-                etf_lines.append(f"🟢逢低买入: {buy_names}")
-            if watch_list and not buy_list:
-                watch_names = '、'.join([f"{a['name']}({a['code']})" for a in watch_list[:3]])
-                etf_lines.append(f"🟡关注: {watch_names}")
+            # 3. 强势TOP5
+            momentum_top = rot_data.get('momentum_top', [])
+            if momentum_top:
+                etf_lines.append("")
+                etf_lines.append("【强势TOP5】")
+                for r in momentum_top[:5]:
+                    etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 强势分:{r.get('momentum_score',0):.1f} 阶段:{r.get('stage','')}")
+            else:
+                etf_lines.append("")
+                etf_lines.append("【强势TOP5】无强势分≥60的标的")
             
             etf_tips_text = "\n".join(etf_lines)
             print(etf_tips_text)
     except Exception as e:
         print(f"[ETF提示] 获取失败: {e}")
-
-
-    # =========================
-    # ETF补涨扩散策略（按ETF分组展示成份股补涨分）
-    # =========================
-    try:
-        catchup_csv = r'd:\mystock\solo\etf_resonance\output\catchup_signals.csv'
-        if os.path.exists(catchup_csv):
-            import pandas as _pd
-            df_cu = _pd.read_csv(catchup_csv, dtype={'code': str, 'etf_code': str})
-            if len(df_cu) > 0:
-                cu_lines = []
-                cu_lines.append("")
-                cu_lines.append("═" * 60)
-                cu_lines.append("📊 ETF补涨信号 (多头刚成立+量能温和+涨幅适中)")
-                cu_lines.append("═" * 60)
-                # 按ETF分组，每组取补涨分最高的3只
-                for (ec, en), grp in df_cu.groupby(['etf_code', 'etf_name']):
-                    topn = grp.sort_values('catchup_score', ascending=False).head(3)
-                    stock_desc = '、'.join(
-                        f"{r.get('stock_name','')}({r['code']})(补涨分{int(r['catchup_score'])},"
-                        f"趋势{int(r.get('trend_setup',0))}/量温{int(r.get('vol_gentle',0))}/"
-                        f"60d{r.get('ret_60d',0):+.1f}%/涨停{int(r.get('limit_up_5d',0))}天)"
-                        for _, r in topn.iterrows()
-                    )
-                    cu_lines.append(f"  • {en}ETF ({ec}) 成份股{stock_desc}")
-                catchup_tips_text = "\n".join(cu_lines)
-                etf_tips_text = (etf_tips_text + "\n" + catchup_tips_text) if etf_tips_text else catchup_tips_text
-            else:
-                print("[ETF补涨] 无候选股票")
-        else:
-            print(f"[ETF补涨] 未找到 {catchup_csv}")
-    except Exception as e:
-        print(f"[ETF补涨] 获取失败: {e}")
-
-    # =========================
-    # ETF强势前排信号（按ETF分组展示创新高/趋势延续领涨股）
-    # =========================
-    try:
-        mom_csv = r'd:\mystock\solo\etf_resonance\output\trend_leaders.csv'
-        if os.path.exists(mom_csv):
-            import pandas as _pd_mom
-            df_mom = _pd_mom.read_csv(mom_csv, dtype={'code': str, 'etf_code': str})
-            if len(df_mom) > 0:
-                mom_lines = []
-                mom_lines.append("")
-                mom_lines.append("═" * 60)
-                mom_lines.append("🚀 ETF强势前排信号 (创新高/趋势延续)")
-                mom_lines.append("═" * 60)
-                for (ec, en), grp in df_mom.groupby(['etf_code', 'etf_name']):
-                    topn = grp.sort_values('momentum_score', ascending=False).head(3)
-                    stock_desc = '、'.join(
-                        f"{r.get('stock_name','')}({r['code']})(强势分{int(r['momentum_score'])},"
-                        f"今日{r['today_pct']:+.1f}%,距高{r['dist_to_high']:+.1f}%)"
-                        for _, r in topn.iterrows()
-                    )
-                    mom_lines.append(f"  • {en}ETF ({ec}) 领涨:{stock_desc}")
-                mom_tips_text = "\n".join(mom_lines)
-                etf_tips_text = (etf_tips_text + "\n" + mom_tips_text) if etf_tips_text else mom_tips_text
-            else:
-                print("[强势前排] 无候选股票")
-        else:
-            print(f"[强势前排] 未找到 {mom_csv}")
-    except Exception as e:
-        print(f"[强势前排] 获取失败: {e}")
 
 
 
@@ -10476,17 +10433,10 @@ def run(target_date=None, simple_mode=False):
 {non_daytrip_for_ai}
 
 **【今日突破股池】**
-
 {hot_money_open_text}
-**【今日突破股池到此为止，以下为今日量能爆发+宽幅震荡池分析】**
-
-**【今日量能爆发+宽幅震荡池】**
-（近60天量能大幅放大+宽幅震荡，常见于主力资金活跃的标的）
-{volume_surge_swing_text}
+**【今日突破股池到此为止】**
 
 
-**【今日ETF操作提示】**
-{etf_tips_text}
 
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
@@ -10509,10 +10459,17 @@ def run(target_date=None, simple_mode=False):
 
 3、**【今日突破股池分析】**
 （综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
-（【重要约束】本段落只取今日突破股池数据中股票，最多显示前面10名，不能自行截取，不要自行加入其它股池的股票，如果为空就提示今日无突破股池）：  
+（【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
+ 严禁从以下任何其它数据区读取股票进入本段分析：
+ - "🔥 量能爆发·强买信号"区（属第5部分量能爆发池，非本突破股池）
+ - "📊 ETF操作提示"区及其下方的"ETF补涨信号"、"ETF强势前排信号"成份股
+ - "📊 中线股池"区的B浪低点信号股
+ - "🟢逢低买入"行下的个股
+ 如突破股池数据区为空，直接提示"今日无突破股池"，不要用其它股池的股票填补。
+ 本段最多分析前10名，必须严格按整合评分从高到低排序，不得自行增减股票）：  
 **【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
-【第1名 - 明日首选】**股票名** (代码)
+【第1名】**股票名** (代码)
 【第2名】**股票名** (代码)
 【第3名】**股票名** (代码)
 依此往后
@@ -10564,47 +10521,21 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 4、**【ETF操作建议】**
+**【今日ETF操作提示】**
+{etf_tips_text}
+
 输出要求：
 - ETF操作提示 - 强制输出；
 - ETF补涨信号-强制输出：只显示股票代码和股票名称和补涨评分，不显示其他信息
 - ETF强势前排信号-强制输出：只显示股票代码和股票名称和分数，不显示其他信息
-- 【ETF成份股联网风险核查-强制】对ETF操作提示中、ETF补涨信号、ETF强势前排信号中列出的每只成份股，必须联网搜索其最新风险与舆情：
+- 【ETF成份股联网风险核查-强制显示有风险的个股，否则跳过】对ETF操作提示中、ETF补涨信号、ETF强势前排信号中列出的每只成份股，必须联网搜索其最新风险与舆情：
   * 风险扫描：定增/减持/解禁/诉讼/财务异常/被监管立案/ST预警
   * 舆情热度：近期新闻、机构调研、业绩预告、重大合同、技术突破
   * 龙虎榜：机构净买卖、游资席位动向
-  * 无风险的不用一个个显示，直接跳过
   * 【警告触发】发现重大利空时标注"【警告】建议剔除：XXX"
+
 5、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
-- 【强买信号优先】如果股池中存在"🔥 量能爆发·强买信号"段落（回测T+5胜率74%-100%），必须优先展示这些强买信号个股，并标注"强买信号"和胜率依据
-- 【必须输出】无论是否有符合条件的个股，都必须输出此段落
-- 【数据位置】在"今日量能爆发+宽幅震荡池"标题下方，分三段：强买信号段 + 观察信号段 + 蓄势大涨信号段
-- 【强买信号】优先分析（MACD刚红柱+回测胜率>=74%的组合），标注强买原因和回测胜率
-- 【观察信号】MACD即将红柱的标的，标注"观察·等待红柱"，提示等待MACD翻红确认后再介入
-- 【蓄势大涨信号】波浪结构+量能爆发结合的标的，标注"蓄势大涨"，提示波浪W2浅回调+距H1近+今日大涨+MACD绿柱缩短/刚红柱，可在突破H1前夜提前发现
-- 【主题关联分析-强制】每只股票必须结合其所属主题和阶段进行关联分析：
-* 标注所属主题名称和V6阶段（如"主题=创新药 | 阶段=主升加速"）
-* 判断该主题当前阶段是否支持量能爆发信号（主升/启动阶段=主题共振加分；调整/衰退阶段=警惕主题拖累）
-* 如个股无主题匹配（主题=无主题），提示"暂无主题关联，独立走势"
-- 每只精简为1小段（5行），用【股票名+代码】作为子标题，每个标题后换行，格式如下：
-- 【子标题】**股票名**(代码) | 评分=XX分 | MACD即将红柱还是刚刚红柱 | 回撤类型 | 距MA20=±X%
-- 第2行：主题=XXX | 阶段=XXX | 量比=X | 区间振幅=X% | 区间涨幅=X%
-- 第3行：分析判断（强买信号注明胜率依据；观察信号提示等待红柱确认；蓄势大涨信号注明波浪结构和距H1）
-- 第4行：主题关联分析（结合主题阶段判断共振或背离，无主题则提示独立走势）
-- 第5行：风险舆情（联网核查该股最新风险与舆情，详见下方格式要求）
-- 【第5行风险舆情-强制联网核查】对每只量能爆发股必须联网搜索：
-  * 风险扫描：定增/减持/解禁/诉讼/财务异常/被监管立案/ST预警
-  * 龙虎榜：机构净买卖、游资席位动向、大宗交易
-  * 舆情热度：近期新闻、机构调研、业绩预告、重大合同、技术突破
-  * 热榜舆情：东财/同花顺/雪球热度榜排名
-  * 【输出格式】风险舆情：风险=[风险类型或"暂无"] | 龙虎榜=[动向或"无数据"] | 舆情=[热点或"无"] | 热榜=[排名或"未上榜"]
-  * 【警告触发】发现重大利空时标注"【警告】联网发现：XXX"，建议回避
-- 【格式示例-强买】
-**新天科技**(300259.SZ) | 评分=100分 | MACD刚刚红柱 | 中回调 | 距MA20=-1.5% [强买信号]
-主题=半导体设备 | 阶段=主升 | 量比=6.39 | 区间振幅=74.4% | 区间涨幅=44.1%
-分析：强买信号触发（中回调+MACD刚红柱，回测79%胜率），量能爆发特征极显著，MACD刚刚翻红，短线爆发力强。
-主题关联：所属主题"半导体设备"处于主升阶段，与量能爆发信号形成共振，主题趋势确认+资金活跃，可重点关注。
-风险舆情：风险=暂无 | 龙虎榜=机构净买入1.2亿 | 舆情=近期获专利授权 | 热榜=东财热度榜第3名
-- 如果无数据，直接输出"今日无量能爆发+宽幅震荡的标的（筛选条件：合格股池+主题热点+量能放大+宽幅震荡+MACD即将/刚刚红柱+非一波游）"
+{volume_surge_swing_text}原文直接输出
 
 6、**【实时风险与热点扫描】**（必须调用联网搜索，最高优先级！）
 【说明】本部分为汇总性扫描，个股级别的风险舆情已在第3/4/5部分各股分析中输出，此处聚焦主题、大盘和热点的整体性判断，避免重复。
