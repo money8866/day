@@ -102,6 +102,8 @@ HOT_THEME_BASE = {
     "创新药": 70, "新能源车": 70, "液冷服务器": 75, "存储芯片": 72,
     "数据要素": 68, "锂电": 68, "电力链": 65, "氟化工制冷剂": 65,
     "化工农药链": 60, "消费电子": 60, "军工": 65,
+    "固态电池": 72, "钠离子电池": 65, "氢能源": 68, "CPO": 80,
+    "先进封装": 78, "AI应用": 72, "算力基础设施": 75,
 }
 
 # Tushare token来源
@@ -764,6 +766,7 @@ class ThemeScorerV2:
     def score_fallback(self, chain_tag: str) -> Tuple[float, str]:
         """
         回退方案：chain_tag 白名单匹配
+        chain_tag 来自 theme_stock_map_latest.json, 本身就是有效主题名
         """
         if not chain_tag or chain_tag == 'nan':
             return 0.0, ""
@@ -777,7 +780,8 @@ class ThemeScorerV2:
             if theme in chain_tag or chain_tag in theme:
                 return float(base), theme
 
-        return 0.0, ""
+        # chain_tag 来自 JSON 主题映射表,虽不在白名单中但仍是有效主题
+        return 55.0, chain_tag
 
 
 # ════════════════════════════════════════════════════════
@@ -1887,6 +1891,25 @@ class BullScoreV2Result:
     swing_quality_score: float = 0.0       # 波段属性(适合反复波段操作)
     forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
     forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
+    # v3.3 估值空间(从 v1 层透传) → v4.0 成长兑现模型
+    fair_value: float = 0.0            # 基准估值(亿元)
+    optimistic_value: float = 0.0      # 乐观估值(亿元)
+    valuation_space: float = 0.0      # 期望估值空间(%)
+    fair_pe: float = 0.0               # 合理PE
+    pe_ttm: float = 0.0                # 当前PE_TTM
+    pb: float = 0.0                    # 当前PB
+    close_price: float = 0.0           # 当前收盘价(元)
+    fair_price: float = 0.0            # 基准目标价(元) — 兼容旧字段
+    optimistic_price: float = 0.0      # 乐观目标价(元) — 兼容旧字段
+    # v4.0 Bear/Base/Bull 三档目标价 + 概率分布
+    bear_pe: float = 0.0               # 悲观PE
+    bull_pe: float = 0.0               # 乐观PE
+    bear_price: float = 0.0            # 悲观目标价(元)
+    base_price: float = 0.0            # 基准目标价(元)
+    bull_price: float = 0.0            # 乐观目标价(元)
+    bear_prob: int = 25                # 悲观概率(%)
+    base_prob: int = 50                # 基准概率(%)
+    bull_prob: int = 25                # 乐观概率(%)
 
     # 汇总
     bull_score_v2: float = 0.0
@@ -2264,6 +2287,25 @@ class BullScorerV2:
             swing_quality_score=round(base_result.swing_quality_score, 2),
             forecast_profit_change=round(base_result.forecast_profit_change, 2),
             forecast_vs_analyst_gap=round(base_result.forecast_vs_analyst_gap, 2),
+            # v3.3 估值空间透传 → v4.0 成长兑现模型
+            fair_value=base_result.fair_value,
+            optimistic_value=base_result.optimistic_value,
+            valuation_space=base_result.valuation_space,
+            fair_pe=base_result.fair_pe,
+            pe_ttm=base_result.pe_ttm,
+            pb=base_result.pb,
+            close_price=base_result.close_price,
+            fair_price=base_result.fair_price,
+            optimistic_price=base_result.optimistic_price,
+            # v4.0 Bear/Base/Bull 三档
+            bear_pe=base_result.bear_pe,
+            bull_pe=base_result.bull_pe,
+            bear_price=base_result.bear_price,
+            base_price=base_result.base_price,
+            bull_price=base_result.bull_price,
+            bear_prob=base_result.bear_prob,
+            base_prob=base_result.base_prob,
+            bull_prob=base_result.bull_prob,
             # 原有字段
             bull_score_v2=round(bull_v3, 2),  # v3.0改名为bull_v3
             theme=theme_name,
@@ -2424,6 +2466,20 @@ class BullScorerV2:
                 '波段属性': r.swing_quality_score,
                 '预告变动%': r.forecast_profit_change,
                 '预告偏离': r.forecast_vs_analyst_gap,
+                # v3.3 估值空间 → v4.0 成长兑现模型
+                'PE_TTM': r.pe_ttm,
+                'PB': r.pb,
+                '现价': r.close_price,
+                '合理PE': r.fair_pe,
+                '合理估值(亿)': r.fair_value,
+                '乐观估值(亿)': r.optimistic_value,
+                '估值空间%': r.valuation_space,
+                'Bear价': r.bear_price,
+                'Base价': r.base_price,
+                'Bull价': r.bull_price,
+                'Bear概率%': r.bear_prob,
+                'Base概率%': r.base_prob,
+                'Bull概率%': r.bull_prob,
                 '龙头类型': r.leader_type,
                 '特征标签': ','.join(r.leader_features),
                 # 总分
@@ -2486,12 +2542,13 @@ class BullScorerV2:
 
         top = results[:top_n]
         print(f"\nTop {top_n} 牛股:")
-        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'龙头类型':<6} {'Bull':>6} {'辨识度':>6} {'超预期':>6} {'波段':>6} {'筹码':>6} {'最终':>6} {'等级':<12}"
+        header = f"{'排名':>4} {'代码':>8} {'名称':<8} {'主题':<10} {'龙头':<4} {'Bull':>6} {'超预期':>6} {'波段':>6} {'估值空间':>6} {'最终':>6} {'等级':<12}"
         print(header)
-        print("-" * 110)
+        print("-" * 115)
         for i, r in enumerate(top, 1):
             code = r.ts_code.split('.')[0]
-            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.leader_type:<6} {r.bull_score_v2:>6.1f} {r.recognition_score:>6.1f} {r.earnings_surprise_score:>6.1f} {r.swing_quality_score:>6.1f} {r.chip_score:>6.1f} {r.final_score:>6.1f} {r.bull_level:<12}")
+            vs_str = f"{r.valuation_space:>+5.0f}%" if r.valuation_space else "  无"
+            print(f"{i:>4} {code:>8} {r.name:<8} {r.theme:<10} {r.leader_type:<4} {r.bull_score_v2:>6.1f} {r.earnings_surprise_score:>6.1f} {r.swing_quality_score:>6.1f} {vs_str:>6} {r.final_score:>6.1f} {r.bull_level:<12}")
 
         # 新增因子专项排名
         print(f"\n★ Top 10 筹码面最强:")
@@ -2514,6 +2571,16 @@ class BullScorerV2:
         print(f"\n★ Top 10 波段属性最强(适合反复波段):")
         for r in sorted(results, key=lambda x: x.swing_quality_score, reverse=True)[:10]:
             print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) 波段分={r.swing_quality_score:.1f}")
+
+        print(f"\n★ Top 10 估值空间最大(成长兑现模型 Bear/Base/Bull):")
+        for r in sorted(results, key=lambda x: x.valuation_space, reverse=True)[:10]:
+            print(f"  {r.name:<8} ({r.ts_code.split('.')[0]}) "
+                  f"空间={r.valuation_space:>+5.0f}% "
+                  f"PE(TTM)={r.pe_ttm:.1f}→合理={r.fair_pe:.1f} "
+                  f"现价={r.close_price:.2f} "
+                  f"Bear={r.bear_price:.1f}({r.bear_prob}%) "
+                  f"Base={r.base_price:.1f}({r.base_prob}%) "
+                  f"Bull={r.bull_price:.1f}({r.bull_prob}%)")
 
         print(f"\n★ 龙头股列表:")
         leaders = [r for r in results if r.leader_type == "龙头"]

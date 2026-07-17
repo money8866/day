@@ -214,14 +214,15 @@ def extract_bull_data(row: pd.Series,
                        report_rc_map: Dict = None,
                        chip_margin_data: Dict = None,
                        main_bz_data: List = None,
-                       trade_date: str = None) -> Optional[BullStockData]:
+                       trade_date: str = None,
+                       daily_history: pd.DataFrame = None) -> Optional[BullStockData]:
     """
     从原始数据提取 BullScore 所需数据
 
     Args:
         row: 股票基本信息行
         financial_data: 财务数据字典(income/balance/forecast/cashflow)
-        daily: 日线行情
+        daily: 日线行情（单日）
         daily_basic: 每日基本面(含市值)
         moneyflow: 大单资金流
         north_hold: 北向资金持股比例数据
@@ -230,6 +231,7 @@ def extract_bull_data(row: pd.Series,
         report_rc_map: 卖方盈利预测一致预期 (ts_code -> dict)
         chip_margin_data: BullScore v2 筹码面+估值安全数据 (来自 get_chip_margin_batch)
         main_bz_data: 主营业务构成 (来自 fina_mainbz)
+        daily_history: 历史日线行情（多日，用于波段属性评分）
     """
     ts_code = row['ts_code']
     name = row['name']
@@ -238,6 +240,7 @@ def extract_bull_data(row: pd.Series,
     income = financial_data.get('income', pd.DataFrame())
     balance = financial_data.get('balance', pd.DataFrame())
     forecast = financial_data.get('forecast', pd.DataFrame())
+    express = financial_data.get('express', pd.DataFrame())
     cashflow_data = financial_data.get('cashflow', pd.DataFrame())
 
     if len(income) == 0:
@@ -490,28 +493,64 @@ def extract_bull_data(row: pd.Series,
     forecast_last_parent_net = 0.0
     forecast_is_latest_period = False
     forecast_vs_analyst_gap = 0.0
+    # 判断是否对应最新报告期(半年报 end_date 以0630结尾, 年报以1231结尾)
+    today_str = trade_date
+    expected_periods = []
+    m = int(today_str[4:6])
+    if m >= 7:
+        expected_periods.append(f"{today_str[:4]}0630")
+    if m >= 11:
+        expected_periods.append(f"{today_str[:4]}0930")
     if len(forecast) > 0:
         lf = forecast.sort_values('ann_date', ascending=False).iloc[0]
         forecast_type = str(lf.get('type', '')) if pd.notna(lf.get('type')) else ''
-        forecast_profit_change = float(lf.get('profit_change')) if pd.notna(lf.get('profit_change')) else 0.0
-        forecast_ann_date = str(lf.get('ann_date', '')) if pd.notna(lf.get('ann_date')) else ''
-        forecast_end_date = str(lf.get('end_date', '')) if pd.notna(lf.get('end_date')) else ''
         forecast_p_change_min = float(lf.get('p_change_min')) if pd.notna(lf.get('p_change_min')) else 0.0
         forecast_p_change_max = float(lf.get('p_change_max')) if pd.notna(lf.get('p_change_max')) else 0.0
+        # forecast_vip 接口无 profit_change 字段, 优先用区间中值, 回退到字段值
+        _raw_profit_change = float(lf.get('profit_change')) if pd.notna(lf.get('profit_change')) else 0.0
+        if forecast_p_change_min != 0 or forecast_p_change_max != 0:
+            forecast_profit_change = (forecast_p_change_min + forecast_p_change_max) / 2.0
+        else:
+            forecast_profit_change = _raw_profit_change
+        forecast_ann_date = str(lf.get('ann_date', '')) if pd.notna(lf.get('ann_date')) else ''
+        forecast_end_date = str(lf.get('end_date', '')) if pd.notna(lf.get('end_date')) else ''
         forecast_net_profit_min = float(lf.get('net_profit_min')) if pd.notna(lf.get('net_profit_min')) else 0.0
         forecast_net_profit_max = float(lf.get('net_profit_max')) if pd.notna(lf.get('net_profit_max')) else 0.0
         forecast_last_parent_net = float(lf.get('last_parent_net')) if pd.notna(lf.get('last_parent_net')) else 0.0
-        # 判断预告是否对应最新报告期(半年报 end_date 以0630结尾, 年报以1231结尾)
-        today_str = trade_date
-        expected_periods = []
-        m = int(today_str[4:6])
-        if m >= 7:
-            expected_periods.append(f"{today_str[:4]}0630")
-        if m >= 11:
-            expected_periods.append(f"{today_str[:4]}0930")
         if forecast_end_date in expected_periods:
             forecast_is_latest_period = True
         # forecast_vs_analyst_gap 延迟到 np_growth_current 定义后计算
+
+    # ── 业绩快报（v3.3 新增：express_vip 全量接口） ──
+    express_revenue = 0.0
+    express_operate_profit = 0.0
+    express_total_profit = 0.0
+    express_n_income = 0.0
+    express_total_assets = 0.0
+    express_diluted_eps = 0.0
+    express_yoy_net_profit = 0.0
+    express_yoy_eps = 0.0
+    express_yoy_revenue = 0.0
+    express_ann_date = ''
+    express_end_date = ''
+    express_perf_summary = ''
+    express_is_latest_period = False
+    if len(express) > 0:
+        le = express.sort_values('ann_date', ascending=False).iloc[0]
+        express_revenue = float(le.get('revenue', 0)) if pd.notna(le.get('revenue')) else 0.0
+        express_operate_profit = float(le.get('operate_profit', 0)) if pd.notna(le.get('operate_profit')) else 0.0
+        express_total_profit = float(le.get('total_profit', 0)) if pd.notna(le.get('total_profit')) else 0.0
+        express_n_income = float(le.get('n_income', 0)) if pd.notna(le.get('n_income')) else 0.0
+        express_total_assets = float(le.get('total_assets', 0)) if pd.notna(le.get('total_assets')) else 0.0
+        express_diluted_eps = float(le.get('diluted_eps', 0)) if pd.notna(le.get('diluted_eps')) else 0.0
+        express_yoy_net_profit = float(le.get('yoy_net_profit', 0)) if pd.notna(le.get('yoy_net_profit')) else 0.0
+        express_yoy_eps = float(le.get('yoy_eps', 0)) if pd.notna(le.get('yoy_eps')) else 0.0
+        express_yoy_revenue = float(le.get('yoy_revenue', 0)) if pd.notna(le.get('yoy_revenue')) else 0.0
+        express_ann_date = str(le.get('ann_date', '')) if pd.notna(le.get('ann_date')) else ''
+        express_end_date = str(le.get('end_date', '')) if pd.notna(le.get('end_date')) else ''
+        express_perf_summary = str(le.get('perf_summary', '')) if pd.notna(le.get('perf_summary')) else ''
+        if express_end_date in expected_periods:
+            express_is_latest_period = True
 
     # ── 北向资金 ──
     north_bound_daily_net = 0.0
@@ -538,30 +577,41 @@ def extract_bull_data(row: pd.Series,
 
     # ── 市值 ──
     market_cap = 0.0
+    pe_ttm = 0.0
+    pb = 0.0
+    close_price = 0.0
     if daily_basic is not None and len(daily_basic) > 0:
         db_row = daily_basic[daily_basic['ts_code'] == ts_code]
         if len(db_row) > 0:
             market_cap = float(db_row.iloc[0].get('total_mv', 0)) if pd.notna(db_row.iloc[0].get('total_mv')) else 0.0
-            market_cap *= 10000  # 万元→元
+            market_cap *= 10000  # 万元->元
+            pe_ttm = float(db_row.iloc[0].get('pe_ttm', 0)) if pd.notna(db_row.iloc[0].get('pe_ttm')) else 0.0
+            pb = float(db_row.iloc[0].get('pb', 0)) if pd.notna(db_row.iloc[0].get('pb')) else 0.0
+            close_price = float(db_row.iloc[0].get('close', 0)) if pd.notna(db_row.iloc[0].get('close')) else 0.0
 
-    # ── 价格趋势 ──
+    # ── 价格趋势（优先使用历史日线数据，用于波段属性评分） ──
     price_trend_score = 0.0
     pct_chg = 0.0
     price_series = None
     avg_amount = 0.0
-    if daily is not None and len(daily) > 0:
-        sd = daily[daily['ts_code'] == ts_code].sort_values('trade_date')
+    sd = None
+    # 优先使用 daily_history（120天历史数据），回退到单日 daily
+    if daily_history is not None and len(daily_history) > 0:
+        sd = daily_history[daily_history['ts_code'] == ts_code].sort_values('trade_date').reset_index(drop=True)
+    elif daily is not None and len(daily) > 0:
+        sd = daily[daily['ts_code'] == ts_code].sort_values('trade_date').reset_index(drop=True)
+    if sd is not None and len(sd) >= 2:
+        prices = sd['close'].values
+        price_series = list(prices)  # 用于波段属性评分
         if len(sd) >= 20:
-            prices = sd['close'].values
-            price_series = list(prices)  # 用于波段属性评分
             ma20 = float(pd.Series(prices).tail(20).mean())
             curr_price = float(sd.iloc[-1]['close'])
             price_trend_score = 1.0 if (ma20 > 0 and curr_price > ma20) else max(0, curr_price / ma20) if ma20 > 0 else 0.0
-            pct_chg = float(sd.iloc[-1].get('pct_chg', 0)) if pd.notna(sd.iloc[-1].get('pct_chg')) else 0.0
-            # 计算近10日平均成交额(亿元) - amount单位为千元, /1e5转亿元
-            amt_series = sd['amount'].tail(10).values if 'amount' in sd.columns else None
-            if amt_series is not None and len(amt_series) > 0:
-                avg_amount = float(np.mean(amt_series) / 1e5)
+        pct_chg = float(sd.iloc[-1].get('pct_chg', 0)) if pd.notna(sd.iloc[-1].get('pct_chg')) else 0.0
+        # 计算近10日平均成交额(亿元) - amount单位为千元, /1e5转亿元
+        amt_series = sd['amount'].tail(10).values if 'amount' in sd.columns else None
+        if amt_series is not None and len(amt_series) > 0:
+            avg_amount = float(np.mean(amt_series) / 1e5)
 
     # ── 行业增速 ──
     industry_growth = float(industry_growth_map.get(industry, 0.0))
@@ -715,11 +765,28 @@ def extract_bull_data(row: pd.Series,
         forecast_end_date=forecast_end_date,
         forecast_is_latest_period=forecast_is_latest_period,
         forecast_vs_analyst_gap=forecast_vs_analyst_gap,
+        # v3.3 业绩快报
+        express_revenue=express_revenue,
+        express_operate_profit=express_operate_profit,
+        express_total_profit=express_total_profit,
+        express_n_income=express_n_income,
+        express_total_assets=express_total_assets,
+        express_diluted_eps=express_diluted_eps,
+        express_yoy_net_profit=express_yoy_net_profit,
+        express_yoy_eps=express_yoy_eps,
+        express_yoy_revenue=express_yoy_revenue,
+        express_ann_date=express_ann_date,
+        express_end_date=express_end_date,
+        express_perf_summary=express_perf_summary,
+        express_is_latest_period=express_is_latest_period,
         north_bound_daily_net=north_bound_daily_net,
         north_bound_ratio_change=north_bound_ratio_change,
         north_bound_holding_ratio=north_bound_holding_ratio,
         foreign_holding_ratio=foreign_holding_ratio,
         market_cap=market_cap,
+        pe_ttm=pe_ttm,
+        pb=pb,
+        close_price=close_price,
         price_trend_score=price_trend_score,
         pct_chg=pct_chg,
         price_series=price_series,
@@ -810,13 +877,38 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     total = len(stocks)
     logger.info(f"开始 BullScore 全市场扫描, 共 {total} 只股票...")
 
-    # ============ 阶段1: 并发拉取财务数据 ============
+    # ============ 阶段0: 全量VIP接口拉取业绩预告+快报 ============
+    trade_date = fetcher.get_last_trade_date()
+    today_dt = datetime.strptime(trade_date, '%Y%m%d')
+    # 确定当前报告期: 上半年用0630, 下半年用1231
+    if today_dt.month >= 7:
+        current_period = f"{today_dt.year}0630"  # 中报期
+    else:
+        current_period = f"{today_dt.year - 1}1231"  # 年报期
+
+    logger.info(f"阶段0a: 全量拉取业绩预告 (forecast_vip, period={current_period})...")
+    vip_start = time.time()
+    forecast_vip_df = fetcher.get_forecast_vip(period=current_period)
+    logger.info(f"业绩预告拉取完成, 共 {len(forecast_vip_df)} 条, 用时 {time.time()-vip_start:.0f}秒")
+
+    logger.info(f"阶段0b: 全量拉取业绩快报 (express_vip, period={current_period})...")
+    exp_start = time.time()
+    express_vip_df = fetcher.get_express_vip(period=current_period)
+    logger.info(f"业绩快报拉取完成, 共 {len(express_vip_df)} 条, 用时 {time.time()-exp_start:.0f}秒")
+
+    # ============ 阶段0c: 加载历史日线数据（用于波段属性评分） ============
+    logger.info("阶段0c: 加载历史日线数据（120天，用于波段属性评分）...")
+    hist_start = time.time()
+    daily_history = fetcher.get_daily_history(trade_date, days=120)
+    logger.info(f"历史日线数据加载完成: {len(daily_history)} 条记录, 用时 {time.time()-hist_start:.0f}秒")
+
+    # ============ 阶段1: 并发拉取财务数据(income/balance/cashflow) ============
     ts_code_list = stocks['ts_code'].tolist()
     start_year = str(datetime.now().year - 3)
 
     logger.info(f"阶段1: 并发拉取 {total} 只股票的财务数据...")
     fetch_start = time.time()
-    financial_batch = fetcher.get_stock_financial_batch(ts_code_list, start_year=start_year, max_workers=16)
+    financial_batch = fetcher.get_stock_financial_batch(ts_code_list, start_year=start_year, max_workers=16, forecast_vip_df=forecast_vip_df, express_vip_df=express_vip_df)
     logger.info(f"财务数据拉取完成, 共 {len(financial_batch)} 只, 用时 {time.time()-fetch_start:.0f}秒")
 
     # ============ 阶段1b: 拉取卖方盈利预测一致预期 ============
@@ -830,7 +922,6 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     # ============ 阶段2: 提取因子数据（第一轮，无筹码面数据）============
     logger.info("阶段2: 提取因子数据...")
     check_start = time.time()
-    trade_date = fetcher.get_last_trade_date()
 
     all_bull_data: List[BullStockData] = []
     skip_count = 0
@@ -843,7 +934,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
             skip_count += 1
             continue
 
-        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, north_hold, industry_growth_map, config, report_rc_map, main_bz_data=financial_data.get('mainbz', []), trade_date=trade_date)
+        bull_data = extract_bull_data(row, financial_data, daily, daily_basic, moneyflow, north_hold, industry_growth_map, config, report_rc_map, main_bz_data=financial_data.get('mainbz', []), trade_date=trade_date, daily_history=daily_history)
         if bull_data is not None:
             all_bull_data.append(bull_data)
         else:

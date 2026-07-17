@@ -1433,6 +1433,8 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
             chain_score = 20
         elif concept_overlap >= 1:
             chain_score = 15
+        elif info.get("industry_match"):
+            chain_score = 15
         elif info.get("source") in ("dc_industry_board", "stock_basic_industry"):
             chain_score = 10  # 行业匹配但无概念重叠
         else:
@@ -1466,7 +1468,8 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
         for ind in inds:
             if ind in (industry_list if industry_list else []):
                 if ind not in ('半导体', '电子', '自动化设备', '专用设备', '通用设备',
-                               '计算机设备', '通信设备', '消费电子', '电子元器件', '计算机'):
+                               '计算机设备', '通信设备', '消费电子', '电子元器件', '计算机',
+                               '机械设备', '游戏', '游戏Ⅱ', '游戏Ⅲ', '传媒'):
                     best_ind_score = 10
                     break
                 elif best_ind_score < 8:

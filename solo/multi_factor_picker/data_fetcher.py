@@ -187,6 +187,53 @@ class DataFetcher:
 
         return pd.DataFrame()
 
+    def get_daily_history(self, end_date: str, days: int = 120) -> pd.DataFrame:
+        """
+        获取历史日线行情（多日合并）
+
+        Args:
+            end_date: 截止日期 YYYYMMDD
+            days: 需要的交易日天数（默认120天）
+
+        Returns:
+            多日合并的日线 DataFrame, 含 trade_date 字段
+        """
+        from datetime import datetime, timedelta
+        import time
+
+        date_obj = datetime.strptime(end_date, '%Y%m%d')
+        all_data = []
+        collected = 0
+        offset = 0
+        max_lookback = days * 3  # 最多向前查找天数, 留足周末和假期
+
+        while collected < days and offset < max_lookback:
+            check_date = (date_obj - timedelta(days=offset)).strftime('%Y%m%d')
+            cache_key = f"daily_{check_date}"
+
+            df = None
+            if self.cache_enabled:
+                cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+                if cached is not None and len(cached) > 0:
+                    df = cached
+
+            if df is None:
+                df = self._retry_call(self.pro.daily, trade_date=check_date)
+                if df is not None and len(df) > 0 and self.cache_enabled:
+                    save_cache(df, self.cache_dir, cache_key)
+                time.sleep(0.12)  # 限速
+
+            if df is not None and len(df) > 0:
+                all_data.append(df)
+                collected += 1
+
+            offset += 1
+
+        if len(all_data) > 0:
+            result = pd.concat(all_data, ignore_index=True)
+            return result
+        return pd.DataFrame()
+
     def get_income(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
         """
         获取利润表数据(使用真实的Tushare字段名)
@@ -272,6 +319,65 @@ class DataFetcher:
                               fields='ts_code,ann_date,end_date,type,period,profit_change,profit_ratio,'
                                      'p_change_min,p_change_max,net_profit_min,net_profit_max,'
                                      'last_parent_net,summary,update_flag')
+
+        if self.cache_enabled and df is not None and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+
+        return df if df is not None else pd.DataFrame()
+
+    def get_forecast_vip(self, period: str) -> pd.DataFrame:
+        """
+        获取全量业绩预告 (v3.3 升级: 用 forecast_vip 替代逐只 forecast)
+
+        Args:
+            period: 报告期, 如 '20260630' 表示2026年中报
+
+        Returns:
+            全量业绩预告 DataFrame, 包含字段:
+            ts_code, ann_date, end_date, type, period,
+            profit_change, p_change_min, p_change_max,
+            net_profit_min, net_profit_max, last_parent_net,
+            summary, update_flag
+        """
+        cache_key = f"forecast_vip_{period}"
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        df = self._retry_call(self.pro.forecast_vip, period=period,
+                              fields='ts_code,ann_date,end_date,type,period,profit_change,'
+                                     'p_change_min,p_change_max,net_profit_min,net_profit_max,'
+                                     'last_parent_net,summary,update_flag')
+
+        if self.cache_enabled and df is not None and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+
+        return df if df is not None else pd.DataFrame()
+
+    def get_express_vip(self, period: str) -> pd.DataFrame:
+        """
+        获取全量业绩快报 (v3.3 新增: 业绩快报是比财报更及时的数据源)
+
+        Args:
+            period: 报告期, 如 '20260630' 表示2026年中报
+
+        Returns:
+            全量业绩快报 DataFrame, 包含字段:
+            ts_code, ann_date, end_date, revenue, operate_profit,
+            total_profit, n_income, total_assets, diluted_eps,
+            reason, yoy_net_profit, yoy_eps, yoy_revenue, perf_summary
+        """
+        cache_key = f"express_vip_{period}"
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        df = self._retry_call(self.pro.express_vip, period=period,
+                              fields='ts_code,ann_date,end_date,revenue,operate_profit,'
+                                     'total_profit,n_income,total_assets,diluted_eps,'
+                                     'reason,yoy_net_profit,yoy_eps,yoy_revenue,perf_summary')
 
         if self.cache_enabled and df is not None and len(df) > 0:
             save_cache(df, self.cache_dir, cache_key)
@@ -529,11 +635,18 @@ class DataFetcher:
         return results
 
     def get_stock_financial_batch(self, ts_codes: List[str], start_year: str,
-                                    max_workers: int = 10) -> Dict[str, Dict]:
+                                    max_workers: int = 10,
+                                    forecast_vip_df: pd.DataFrame = None,
+                                    express_vip_df: pd.DataFrame = None) -> Dict[str, Dict]:
         """
-        批量获取单只股票的四类财务数据（income + balance + forecast + cashflow）
+        批量获取单只股票的三类财务数据(income + balance + cashflow)
 
-        每只股票内部串行请求四类数据，股票之间并发
+        v3.3 升级: 业绩预告/快报改用全量VIP接口,移除逐只 forecast 调用
+        每只股票内部串行请求三类数据,股票之间并发
+
+        Args:
+            forecast_vip_df: 全量业绩预告 DataFrame(来自 get_forecast_vip)
+            express_vip_df: 全量业绩快报 DataFrame(来自 get_express_vip)
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -542,13 +655,11 @@ class DataFetcher:
         def fetch_all(code: str) -> tuple:
             income_df = self.get_income(code, start_year=start_year)
             balance_df = self.get_balance_sheet(code, start_year=start_year)
-            forecast_df = self.get_forecast(code)
             cashflow_df = self.get_cashflow(code, start_year=start_year)
             mainbz_list = self.get_fina_mainbz(code)
             return (code, {
                 'income': income_df if income_df is not None else pd.DataFrame(),
                 'balance': balance_df if balance_df is not None else pd.DataFrame(),
-                'forecast': forecast_df if forecast_df is not None else pd.DataFrame(),
                 'cashflow': cashflow_df if cashflow_df is not None else pd.DataFrame(),
                 'mainbz': mainbz_list if mainbz_list else [],
                 'years_available': 3
@@ -565,6 +676,17 @@ class DataFetcher:
                     results[code] = data
                 except Exception:
                     pass
+
+        # v3.3: 将全量VIP数据按ts_code分发到各股票
+        if forecast_vip_df is not None and len(forecast_vip_df) > 0:
+            for code in results:
+                per_stock = forecast_vip_df[forecast_vip_df['ts_code'] == code]
+                results[code]['forecast'] = per_stock if len(per_stock) > 0 else pd.DataFrame()
+
+        if express_vip_df is not None and len(express_vip_df) > 0:
+            for code in results:
+                per_stock = express_vip_df[express_vip_df['ts_code'] == code]
+                results[code]['express'] = per_stock if len(per_stock) > 0 else pd.DataFrame()
 
         return results
 

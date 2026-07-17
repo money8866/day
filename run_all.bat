@@ -58,7 +58,7 @@ echo.
 
 echo [Step 6/7] 汇总输出...
 echo =============================================
-python solo\daily_analysis_summarizer.py
+rem python solo\daily_analysis_summarizer.py
 echo.
 
 echo [Step 7/7] 主题成份生成...

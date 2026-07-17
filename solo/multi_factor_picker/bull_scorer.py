@@ -151,6 +151,21 @@ class BullStockData:
     forecast_ann_date: str = ""          # 预告公告日期
     forecast_end_date: str = ""          # 预告报告期（如20260630）
     forecast_is_latest_period: bool = False  # 预告是否对应最新报告期
+
+    # ── 业绩快报（v3.3 新增：express_vip 全量接口） ──
+    express_revenue: float = 0.0           # 快报营收(万元)
+    express_operate_profit: float = 0.0    # 快报营业利润(万元)
+    express_total_profit: float = 0.0      # 快报利润总额(万元)
+    express_n_income: float = 0.0          # 快报净利润(万元)
+    express_total_assets: float = 0.0      # 快报总资产(万元)
+    express_diluted_eps: float = 0.0       # 快报摊薄EPS(元)
+    express_yoy_net_profit: float = 0.0    # 快报净利润同比(%)  (express_vip 的 yoy_net_profit 字段)
+    express_yoy_eps: float = 0.0           # 快报EPS同比(%)
+    express_yoy_revenue: float = 0.0       # 快报营收同比(%)
+    express_ann_date: str = ""             # 快报公告日期
+    express_end_date: str = ""             # 快报报告期
+    express_perf_summary: str = ""         # 快报业绩摘要
+    express_is_latest_period: bool = False # 快报是否对应最新报告期
     forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
 
     # ── 卖方盈利预测一致性指标 (来自 report_rc) ──
@@ -176,6 +191,10 @@ class BullStockData:
 
     # ── 市值 ──
     market_cap: float = 0.0  # 总市值(元)
+    # v3.3 新增: 真实估值数据(来自 daily_basic, 之前被丢弃)
+    pe_ttm: float = 0.0          # 滚动市盈率
+    pb: float = 0.0              # 市净率
+    close_price: float = 0.0     # 最新收盘价(元)
 
     # ── 价格趋势 ──
     price_trend_score: float = 0.0  # MA20以上得分
@@ -250,8 +269,27 @@ class BullScoreResult:
     forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
     forecast_p_change_mid: float = 0.0        # 预告利润变动区间中值(%)
     forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
-
-    # 汇总
+    # v3.3 新增: 估值空间(基本面量化估值)
+    fair_value: float = 0.0            # 合理估值(亿元)
+    optimistic_value: float = 0.0      # 乐观估值(亿元)
+    conservative_value: float = 0.0    # 保守估值(亿元)
+    valuation_space: float = 0.0      # 估值空间(%,乐观vs当前)
+    fair_pe: float = 0.0               # 行业合理PE
+    optimistic_pe: float = 0.0          # 乐观PE
+    pe_ttm: float = 0.0                # 当前PE_TTM
+    pb: float = 0.0                    # 当前PB
+    close_price: float = 0.0           # 当前收盘价(元)
+    fair_price: float = 0.0            # 基准目标价(元) — 兼容旧字段
+    optimistic_price: float = 0.0      # 乐观目标价(元) — 兼容旧字段
+    # v4.0 成长兑现模型: Bear/Base/Bull 三档
+    bear_pe: float = 0.0               # 悲观PE
+    bull_pe: float = 0.0               # 乐观PE
+    bear_price: float = 0.0            # 悲观目标价(元)
+    base_price: float = 0.0            # 基准目标价(元)
+    bull_price: float = 0.0            # 乐观目标价(元)
+    bear_prob: int = 25                # 悲观概率(%)
+    base_prob: int = 50                # 基准概率(%)
+    bull_prob: int = 25                # 乐观概率(%)
     bull_score: float = 0.0
 
     # 主题
@@ -1260,6 +1298,279 @@ class BullScorer:
         details['raw_score'] = round(score, 1)
         return score, details
 
+    # 周期股行业关键词（用于增长率衰减调整）
+    _CYCLICAL_KEYWORDS = {
+        '黄金', '有色', '煤炭', '钢铁', '化工', '石油', '采矿', '采掘',
+        '化学原料', '化学制品', '贵金属', '能源金属', '小金属', '非金属',
+        '农药', '化纤', '橡胶', '塑料', '玻璃', '水泥', '钛白',
+    }
+
+    def _is_cyclical(self, industry: str) -> bool:
+        """判断是否为周期股行业"""
+        if not industry:
+            return False
+        for kw in self._CYCLICAL_KEYWORDS:
+            if kw in industry:
+                return True
+        return False
+
+    def _decay_growth(self, raw_growth: float, industry: str = '') -> float:
+        """
+        增长率衰减模型 — 均值回归 + 周期股调整
+
+        流程:
+          1. 均值回归: 增速≤50%直接采用; 超出部分按压缩系数衰减
+             - 普通股: 超出部分保留40%
+             - 周期股: 超出部分保留25% (周期股高增长更不可持续)
+          2. 通用衰减: growth × 0.5, 上限80%
+          3. 周期股额外衰减: 再×0.8
+
+        例: 招金黄金 原始增速275%(2.75), 周期股
+          Step1: 0.50 + (2.75-0.50)*0.25 = 0.50+0.5625 = 1.0625
+          Step2: min(1.0625*0.5, 0.80) = 0.53125
+          Step3: 0.53125*0.8 = 0.425 → 42.5%
+        """
+        if raw_growth <= 0:
+            return raw_growth * 0.5  # 负增长也做通用衰减
+
+        is_cyc = self._is_cyclical(industry)
+
+        # Step 1: 均值回归
+        if raw_growth <= 0.50:
+            growth = raw_growth
+        else:
+            excess = raw_growth - 0.50
+            compress = 0.25 if is_cyc else 0.40
+            growth = 0.50 + excess * compress
+
+        # Step 2: 通用衰减
+        growth = min(growth * 0.5, 0.80)
+
+        # Step 3: 周期股额外衰减
+        if is_cyc:
+            growth = growth * 0.8
+
+        return growth
+
+    def _compute_valuation_space(self, data: BullStockData,
+                                   group_data: Dict[str, List['BullStockData']]) -> Dict[str, float]:
+        """
+        成长兑现估值模型 (v4.1) — 多因子合理PE + 增长率衰减 + Bear/Base/Bull 三档
+
+        v4.1改进:
+          - 增长率衰减模型: 均值回归(>50%部分压缩) + 通用×0.5衰减 + 周期股额外调整
+          - Bear/Bull系数: 0.6/1.4 → 0.8/1.2 (更温和)
+          - PEG也使用衰减后增速,避免高增速推高合理PE
+
+        合理PE由5个因子加权决定:
+          1. 未来2年EPS复合增速 (35%) — PEG框架核心(使用衰减后增速)
+          2. 行业景气/主题生命周期 (20%) — ETF趋势+主题分
+          3. 历史估值分位 (15%) — PE/PB相对位置
+          4. ROE与现金流质量 (15%) — 盈利确定性
+          5. 产业链地位/龙头溢价 (15%) — 龙头给估值溢价
+        """
+        result = {
+            'fair_pe': 0.0,               # 合理PE
+            'bear_pe': 0.0,               # 悲观PE
+            'bull_pe': 0.0,               # 乐观PE
+            'eps_current': 0.0,           # 当年EPS
+            'eps_next': 0.0,              # 明年EPS
+            'current_price': 0.0,         # 当前价格
+            'bear_price': 0.0,            # 悲观目标价
+            'base_price': 0.0,            # 基准目标价
+            'bull_price': 0.0,            # 乐观目标价
+            'bear_prob': 25,              # 悲观概率(%)
+            'base_prob': 50,              # 基准概率(%)
+            'bull_prob': 25,              # 乐观概率(%)
+            'valuation_space': 0.0,       # 期望估值空间(%)
+            # 兼容旧字段
+            'fair_value': 0.0,
+            'optimistic_value': 0.0,
+            'conservative_value': 0.0,
+            'optimistic_pe': 0.0,
+            'fair_price': 0.0,
+            'optimistic_price': 0.0,
+        }
+
+        industry = data.industry or ''
+        market_cap = data.market_cap or 0.0
+        pe_ttm = data.pe_ttm or 0.0
+        pb = data.pb or 0.0
+        close_price = data.close_price or 0.0
+
+        if market_cap <= 0 or close_price <= 0:
+            return result
+
+        # PE<3 或 PE>200 时反推的EPS不可靠,跳过估值
+        if not (3.0 <= pe_ttm <= 200.0):
+            return result
+
+        # ── 0. 基础EPS + 增长率衰减 ──
+        eps_current = close_price / pe_ttm
+
+        # 未来2年复合增速(原始): 机构预测70% + 历史30%
+        np_growth = data.np_growth_current or 0.0
+        hist_growth = data.profit_yoy or 0.0
+        cagr_2y_raw = np_growth * 0.7 + hist_growth * 0.3
+
+        # ★ 增长率衰减: 均值回归 + 周期股调整
+        cagr_2y = self._decay_growth(cagr_2y_raw, industry)
+
+        # 明年EPS: 用衰减后增速推算
+        eps_next = eps_current * (1.0 + cagr_2y)
+        if eps_next <= 0:
+            eps_next = eps_current
+
+        result['eps_current'] = round(eps_current, 3)
+        result['eps_next'] = round(eps_next, 3)
+        result['current_price'] = round(close_price, 2)
+
+        # ── 因子1: 未来2年EPS复合增速 → PEG合理PE (权重35%) ──
+        # PEG框架: 合理PE ≈ 衰减后增速×100 (PEG=1)
+        peg_pe = 15.0  # 基准PE
+        if cagr_2y > 0:
+            peg_pe = min(max(cagr_2y * 100, 8.0), 60.0)
+        elif cagr_2y < 0:
+            peg_pe = max(8.0, 15.0 + cagr_2y * 100)
+        f1_score = peg_pe
+
+        # ── 因子2: 行业景气/主题生命周期 (权重20%) ──
+        # 主题分高=行业景气上行,给PE溢价
+        theme_score_val = 0.0
+        if hasattr(self, '_theme_scores_cache') and data.chain_tag:
+            theme_score_val = self._theme_scores_cache.get(data.chain_tag, 0.0)
+        industry_growth = data.industry_growth or 0.0
+        # 主题分0~100映射到PE 10~40
+        f2_pe = 15.0 + theme_score_val / 100.0 * 25.0 + industry_growth * 20.0
+        f2_pe = min(max(f2_pe, 8.0), 50.0)
+
+        # ── 因子3: 历史估值分位 (权重15%) ──
+        # 用行业PE分位判断当前估值高低,低估值=有修复空间
+        peers = group_data.get(industry, [])
+        pe_list = [m.pe_ttm for m in peers if m.pe_ttm and m.pe_ttm > 0 and m.pe_ttm < 500]
+        if len(pe_list) >= 5:
+            pe_series = pd.Series(pe_list)
+            industry_median_pe = float(pe_series.median())
+            industry_q75 = float(pe_series.quantile(0.75))
+            industry_q25 = float(pe_series.quantile(0.25))
+        else:
+            industry_median_pe = 30.0
+            industry_q75 = 50.0
+            industry_q25 = 18.0
+        # 当前PE在行业中的分位: 越低=越被低估
+        if pe_ttm < industry_q25:
+            f3_pe = industry_q75  # 低估,给行业乐观PE
+        elif pe_ttm > industry_q75:
+            f3_pe = industry_q25  # 高估,给行业保守PE
+        else:
+            f3_pe = industry_median_pe
+
+        # ── 因子4: ROE与现金流质量 (权重15%) ──
+        roe = data.roe_current or 0.0
+        cf_ratio = data.cashflow_ratio or 0.0
+        cf_growth = data.cashflow_growth or 0.0
+        # ROE>15%且现金流为正=高质量,给PE溢价
+        quality_score = 0.0
+        if roe > 0.20:
+            quality_score += 15.0
+        elif roe > 0.15:
+            quality_score += 10.0
+        elif roe > 0.10:
+            quality_score += 5.0
+        if cf_ratio > 0.1:
+            quality_score += 10.0
+        elif cf_ratio > 0:
+            quality_score += 5.0
+        if cf_growth > 0.2:
+            quality_score += 5.0
+        # 映射到PE: quality_score 0~30 → PE 10~35
+        f4_pe = 10.0 + quality_score
+
+        # ── 因子5: 产业链地位/龙头溢价 (权重15%) ──
+        leader_score_val = 0.0
+        # leader_score在compute_all_scores中计算,这里用data中的代理指标
+        # 市值越大+北向持仓越高=产业链地位越强
+        market_cap_b = market_cap / 1e8
+        foreign_ratio = data.foreign_holding_ratio or 0.0
+        if market_cap_b > 500 and foreign_ratio > 2.0:
+            f5_pe = 35.0  # 行业龙头
+        elif market_cap_b > 200:
+            f5_pe = 28.0
+        elif market_cap_b > 80:
+            f5_pe = 22.0
+        else:
+            f5_pe = 15.0
+
+        # ── 加权合成合理PE ──
+        fair_pe = (0.35 * f1_score + 0.20 * f2_pe + 0.15 * f3_pe +
+                   0.15 * f4_pe + 0.15 * f5_pe)
+
+        # 限制合理PE在当前PE的0.5~3.0倍范围内(锚定效应)
+        fair_pe = min(fair_pe, pe_ttm * 3.0)
+        fair_pe = max(fair_pe, pe_ttm * 0.5)
+        fair_pe = min(max(fair_pe, 5.0), 80.0)
+
+        # Bear/Bull PE: 合理PE的0.8倍/1.2倍 (v4.1: 更温和)
+        bear_pe = fair_pe * 0.8
+        bull_pe = fair_pe * 1.2
+
+        result['fair_pe'] = round(fair_pe, 1)
+        result['bear_pe'] = round(bear_pe, 1)
+        result['bull_pe'] = round(bull_pe, 1)
+        # 兼容旧字段
+        result['optimistic_pe'] = round(bull_pe, 1)
+
+        # ── 三档目标价 ──
+        # Bear: 当年EPS × 悲观PE (成长未兑现)
+        # Base: 明年EPS × 合理PE (成长兑现)
+        # Bull: 明年EPS × 乐观PE (成长超预期)
+        bear_price = eps_current * bear_pe
+        base_price = eps_next * fair_pe
+        bull_price = eps_next * bull_pe
+
+        result['bear_price'] = round(bear_price, 2)
+        result['base_price'] = round(base_price, 2)
+        result['bull_price'] = round(bull_price, 2)
+        # 兼容旧字段
+        result['fair_price'] = round(base_price, 2)
+        result['optimistic_price'] = round(bull_price, 2)
+
+        # ── 概率分布: 根据衰减后增速和因子一致性动态调整 ──
+        bear_prob = 25
+        base_prob = 50
+        bull_prob = 25
+
+        # 衰减后仍高增速+高质量 → 提高Bull概率
+        if cagr_2y > 0.20 and roe > 0.15 and cf_ratio > 0.05:
+            bear_prob = 15
+            base_prob = 45
+            bull_prob = 40
+        elif cagr_2y < 0 or roe < 0.05:
+            # 低增长/低质量 → 提高Bear概率
+            bear_prob = 40
+            base_prob = 45
+            bull_prob = 15
+
+        result['bear_prob'] = bear_prob
+        result['base_prob'] = base_prob
+        result['bull_prob'] = bull_prob
+
+        # ── 期望估值空间 = 加权目标价 vs 当前价格 ──
+        expected_price = (bear_price * bear_prob + base_price * base_prob + bull_price * bull_prob) / 100.0
+        if close_price > 0:
+            valuation_space = (expected_price - close_price) / close_price * 100
+            valuation_space = min(max(valuation_space, -80.0), 300.0)
+            result['valuation_space'] = round(valuation_space, 1)
+
+        # 兼容旧字段: 估值(亿元)
+        total_shares = market_cap / close_price if close_price > 0 else 0
+        if total_shares > 0:
+            result['fair_value'] = round(base_price * total_shares / 1e8, 2)
+            result['optimistic_value'] = round(bull_price * total_shares / 1e8, 2)
+            result['conservative_value'] = round(bear_price * total_shares / 1e8, 2)
+
+        return result
+
     def _score_valuation(self, data: BullStockData,
                          group_series: Dict[str, pd.Series]) -> Tuple[float, Dict]:
         """
@@ -1810,6 +2121,8 @@ class BullScorer:
         # v3.2 新增: 基于中报业绩预告的超预期因子 + 波段属性因子
         earn_surp, earn_surp_detail = self._score_earnings_surprise(data, group_series)
         swing, swing_detail = self._score_swing_quality(data, group_series)
+        # v3.3 新增: 估值空间计算
+        val_space = self._compute_valuation_space(data, group_data)
 
         # BullScore v3.2 - 权重调整（引入中报预告因子+波段因子）：
         # 产业景气 17%, 技术壁垒 10%, 订单爆发 13%, 业绩质量 12%
@@ -1876,6 +2189,27 @@ class BullScorer:
             forecast_profit_change=round(data.forecast_profit_change, 2),
             forecast_p_change_mid=round(((data.forecast_p_change_min or 0) + (data.forecast_p_change_max or 0)) / 2.0, 2),
             forecast_vs_analyst_gap=round(data.forecast_vs_analyst_gap, 2),
+            # v3.3 估值空间 → v4.0 成长兑现模型
+            fair_value=val_space.get('fair_value', 0.0),
+            optimistic_value=val_space.get('optimistic_value', 0.0),
+            conservative_value=val_space.get('conservative_value', 0.0),
+            valuation_space=val_space.get('valuation_space', 0.0),
+            fair_pe=val_space.get('fair_pe', 0.0),
+            optimistic_pe=val_space.get('optimistic_pe', 0.0),
+            pe_ttm=round(data.pe_ttm, 2),
+            pb=round(data.pb, 2),
+            close_price=round(data.close_price, 2),
+            fair_price=val_space.get('fair_price', 0.0),
+            optimistic_price=val_space.get('optimistic_price', 0.0),
+            # v4.0 Bear/Base/Bull 三档
+            bear_pe=val_space.get('bear_pe', 0.0),
+            bull_pe=val_space.get('bull_pe', 0.0),
+            bear_price=val_space.get('bear_price', 0.0),
+            base_price=val_space.get('base_price', 0.0),
+            bull_price=val_space.get('bull_price', 0.0),
+            bear_prob=val_space.get('bear_prob', 25),
+            base_prob=val_space.get('base_prob', 50),
+            bull_prob=val_space.get('bull_prob', 25),
             bull_score=round(bull_score, 2),
             theme_score=round(theme_score, 2),
             final_score=round(final_score, 2),

@@ -1395,41 +1395,57 @@ THEME_TO_CHAIN = {
 THEME_STOCK_MAP_PATH = r"D:\mystock\cache_daily\theme_stock_map_latest.json"
 
 # 全局缓存：股票代码 -> 主题名
+# None = 未加载, {} = 已加载但文件不存在/加载失败(不再重试)
 _stock_theme_cache = None
+_loaded_attempted = False  # 是否已尝试加载(避免重复打日志)
 
 
-def load_theme_stock_map() -> Dict[str, str]:
+def load_theme_stock_map(force_reload: bool = False) -> Dict[str, str]:
     """
     加载 theme_stock_map_latest.json，直接建立 股票代码 -> 主题名 的映射
-    
+
+    Args:
+        force_reload: 强制重新加载(忽略缓存)
+
     Returns:
         Dict[str, str]: {ts_code: theme_name}
     """
-    global _stock_theme_cache
+    global _stock_theme_cache, _loaded_attempted
+
+    if force_reload:
+        _stock_theme_cache = None
+        _loaded_attempted = False
+
     if _stock_theme_cache is not None:
         return _stock_theme_cache
-    
-    _stock_theme_cache = {}
-    
+
+    if _loaded_attempted:
+        return {}
+
+    _loaded_attempted = True
+
     if not os.path.exists(THEME_STOCK_MAP_PATH):
         logger.warning(f"未找到 theme_stock_map_latest.json: {THEME_STOCK_MAP_PATH}")
+        _stock_theme_cache = {}
         return {}
-    
+
     try:
         with open(THEME_STOCK_MAP_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
+
+        _stock_theme_cache = {}
         themes = data.get("themes", {})
         for theme_name, stocks in themes.items():
             for stock_info in stocks:
                 ts_code = stock_info.get("code", "")
                 if ts_code:
                     _stock_theme_cache[ts_code] = theme_name
-        
+
         logger.info(f"加载 theme_stock_map: {len(_stock_theme_cache)} 只股票 -> 主题映射")
         return _stock_theme_cache
     except Exception as e:
         logger.warning(f"加载 theme_stock_map 失败: {e}")
+        _stock_theme_cache = {}
         return {}
 
 
