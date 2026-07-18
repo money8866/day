@@ -211,7 +211,7 @@ def compute_trend_quality(daily, codes):
     ma20 = sub[sub["trade_date"].isin(sub["trade_date"].unique()[-20:])].groupby("ts_code")["close"].mean()
     latest_close = latest.set_index("ts_code")["close"]
 
-    common = latest_close.index.intersection(ma20.index)
+    common = latest_close.index.intersection(ma5.index).intersection(ma10.index).intersection(ma20.index)
     if len(common) == 0:
         return 50.0
 

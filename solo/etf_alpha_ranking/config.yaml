@@ -1,0 +1,264 @@
+# ============================================================
+# ETF Alpha Ranking System - 主配置
+# ============================================================
+# Learning-To-Rank (LambdaRank) 系统：预测未来20-60天行业ETF相对排名
+# 数据源优先级：TDX本地.day文件 > CSV缓存 > Tushare(仅低频参考)
+# ============================================================
+
+general:
+  project_name: "etf_alpha_ranking"
+  # 历史回看天数（需覆盖EMA120+60日风险窗口+回撤计算）
+  lookback_days: 500
+  min_trade_days: 120
+  output_dir: "./output"
+  report_dir: "./report"
+  data_dir: "./data"
+  # 基准指数
+  benchmark: "000300.SH"
+  risk_free_rate: 0.03
+  # 默认排序目标周期
+  target_horizon: 40
+
+# ============================================================
+# 数据源
+# ============================================================
+data:
+  # TDX本地日线数据根目录
+  tdx_root: "C:/new_tdx"
+  # CSV缓存目录（Tushare fund_daily 落盘，作为TDX缺失时的兜底）
+  daily_cache_path: "d:/mystock/cache_daily"
+  # 主题-个股映射（直接读取，不自运算）
+  theme_map_json: "d:/mystock/cache_daily/theme_stock_map_latest.json"
+  # Tushare token（可选，仅低频参考数据）
+  tushare_token_env: "TUSHARE_TOKEN"
+  tushare_env_file: "d:/mystock/config/.env"
+
+# ============================================================
+# 本地数据库（SQLite）
+# ============================================================
+database:
+  path: "./data/database/market.db"
+  # 批量写入大小
+  batch_size: 5000
+
+# ============================================================
+# Tushare 低频参考数据更新频率
+# ============================================================
+tushare_ref:
+  etf_basic_update_days: 7        # 周更
+  etf_components_update_days: 7   # 周更
+  financial_update_days: 90       # 季更
+  # ETF份额变化（可选）
+  enable_share_size: false
+
+# ============================================================
+# Module A: ETF Trend Features
+# ============================================================
+etf_trend:
+  return_periods: [5, 10, 20, 40, 60]
+  ma_short: 20
+  ma_long: 60
+  ema_short: 12
+  ema_long: 26
+  macd_signal: 9
+  breakout_period: 60
+  new_high_period: 60
+
+# ============================================================
+# Module B: Relative Strength
+# ============================================================
+relative_strength:
+  alpha_periods: [20, 40, 60]
+  rs_rank_method: "percentile"   # percentile | rank
+
+# ============================================================
+# Module C: Risk Features
+# ============================================================
+risk:
+  vol_short: 20
+  vol_long: 60
+  atr_period: 14
+  drawdown_period: 60
+  sharpe_period: [20, 60]
+  sortino_period: 60
+  ulcer_period: 60
+
+# ============================================================
+# Module D: Theme Persistence Engine
+# ============================================================
+# Theme Persistence = 0.25*TrendStability + 0.25*BreadthExpansion
+#                   + 0.20*LeaderPersistence + 0.15*CapitalConsistency
+#                   + 0.15*CatalystDuration - CrowdingPenalty
+theme_persistence:
+  trend_stability_weight: 0.25
+  breadth_expansion_weight: 0.25
+  leader_persistence_weight: 0.20
+  capital_consistency_weight: 0.15
+  catalyst_duration_weight: 0.15
+  crowding_penalty_max: 30.0
+  # 各子项计算窗口
+  trend_stability_period: 20
+  breadth_period: 20
+  leader_persistence_period: 20
+  capital_period: 20
+  catalyst_period: 40
+  crowding_period: 20
+  crowding_zscore_threshold: 1.5
+  # 主题状态阈值
+  state:
+    strong: 75
+    normal: 55
+    weak: 40
+
+# ============================================================
+# Module E: Leader Persistence Engine
+# ============================================================
+leader_persistence:
+  top_leader_count: 5
+  rs_period: 60
+  return_periods: [20, 60]
+  breakout_period: 60
+  health_period: 20
+  persistence_period: 20
+  min_leader_score: 70
+
+# ============================================================
+# Module F: Breadth Features
+# ============================================================
+breadth:
+  ma_short: 20
+  ma_long: 60
+  rs_top_pct: 0.30
+  strong_return_threshold: 0.03
+  breadth_accel_period: 10
+
+# ============================================================
+# Module G: Market Regime
+# ============================================================
+market_regime:
+  benchmark: "000300.SH"
+  ma_short: 20
+  ma_long: 60
+  breadth_period: 20
+  turnover_period: 20
+  vol_period: 20
+  state:
+    bull: 75
+    neutral: 50
+    weak: 35
+
+# ============================================================
+# Label 构建（排序标签）
+# ============================================================
+label:
+  horizons: [20, 40, 60]
+  default_horizon: 40
+  # 按未来收益在当日截面分位划分 0-3 标签
+  top10_label: 3
+  top30_label: 2
+  middle_label: 1
+  bottom_label: 0
+
+# ============================================================
+# LightGBM LGBMRanker
+# ============================================================
+model:
+  objective: "lambdarank"
+  metric: "ndcg"
+  n_estimators: 500
+  learning_rate: 0.03
+  num_leaves: 31
+  max_depth: 6
+  subsample: 0.8
+  colsample_bytree: 0.8
+  min_child_samples: 20
+  reg_lambda: 1.0
+  ndcg_eval_at: [1, 3, 5, 10]
+  early_stopping_rounds: 50
+  # 模型存储
+  model_path: "./data/models/lgb_ranker.pkl"
+  feature_names_path: "./data/models/feature_names.json"
+
+# ============================================================
+# 训练时间序列切分（无随机打乱）
+# ============================================================
+training:
+  train_start: "20180101"
+  train_end: "20231231"
+  valid_start: "20240101"
+  valid_end: "20241231"
+  test_start: "20250101"
+  test_end: ""
+  # 滚动再训练间隔（交易日）
+  retrain_interval: 60
+
+# ============================================================
+# 组合规则（单ETF策略）
+# ============================================================
+portfolio:
+  buy:
+    rank: 1
+  hold:
+    max_rank: 10
+  sell:
+    rank: 20
+    theme_persistence: 60
+    break_ma60: true
+  min_holding_days: 10
+
+# ============================================================
+# 回测
+# ============================================================
+backtest:
+  start_date: "20240101"
+  end_date: ""
+  commission: 0.0005
+  slippage: 0.001
+  rebalance_freq: 5   # 重新排名频率（交易日）
+
+# ============================================================
+# 输出报告
+# ============================================================
+report:
+  csv_dir: "./output/csv"
+  top_n: 20
+
+# ============================================================
+# ETF 列表与主题映射（行业ETF universe）
+# ============================================================
+etf_universe:
+  512480.SH: "半导体"
+  159995.SZ: "芯片"
+  159516.SZ: "半导体设备"
+  159819.SZ: "人工智能"
+  515230.SH: "软件"
+  515880.SH: "通信"
+  159732.SZ: "消费电子"
+  159851.SZ: "金融科技"
+  159869.SZ: "游戏"
+  516160.SH: "新能源"
+  515790.SH: "光伏"
+  159566.SZ: "储能"
+  159755.SZ: "电池"
+  515030.SH: "新能源车"
+  159992.SZ: "创新药"
+  159883.SZ: "医疗器械"
+  512010.SH: "医药"
+  512660.SH: "军工"
+  159227.SZ: "航空航天"
+  562500.SH: "机器人"
+  516650.SH: "有色金属"
+  159870.SZ: "化工"
+  515220.SH: "煤炭"
+  515210.SH: "钢铁"
+  159611.SZ: "电力"
+  561380.SH: "电网设备"
+  159928.SZ: "消费"
+  159736.SZ: "食品饮料"
+  512690.SH: "酒"
+  159996.SZ: "家电"
+  512880.SH: "证券"
+  512800.SH: "银行"
+  515180.SH: "红利"
+  518880.SH: "黄金"
+  159667.SZ: "工业母机"

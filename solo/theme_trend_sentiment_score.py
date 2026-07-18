@@ -630,9 +630,13 @@ def judge_hot_phase(hot_score, percentile, top10_count, top5_count, total_stocks
 
 
 def _strip_ii(name):
+    """剥离东财/申万行业板块名的层级后缀(Ⅱ/Ⅲ)，用于跨层级匹配。
+
+    例如：证券Ⅲ → 证券，证券Ⅱ → 证券，国有大型银行Ⅲ → 国有大型银行
+    """
     if not isinstance(name, str) or not name:
         return ""
-    for suf in ("Ⅱ",):
+    for suf in ("Ⅲ", "Ⅱ"):
         if name.endswith(suf):
             return name[: -len(suf)]
     return name
@@ -1432,9 +1436,30 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
         elif concept_overlap >= 2:
             chain_score = 20
         elif concept_overlap >= 1:
-            chain_score = 15
+            # 行业也匹配时，概念重叠1个给25分(原15分)，避免大金融/大消费龙头被过滤
+            if info.get("industry_match"):
+                chain_score = 25
+            else:
+                chain_score = 15
         elif info.get("industry_match"):
-            chain_score = 15
+            # 纯行业匹配无概念重叠：细分行业板块(非宽泛词)给20分，避免大金融/大消费龙头被过滤
+            # 宽泛词(半导体/电子等)给15分，需要更多验证信息
+            inds = stock_dc_industries.get(code, []) if stock_dc_industries else []
+            _GENERIC_INDS = ('半导体', '电子', '自动化设备', '专用设备', '通用设备',
+                             '计算机设备', '通信设备', '消费电子', '电子元器件', '计算机',
+                             '机械设备', '游戏', '游戏Ⅱ', '游戏Ⅲ', '传媒',
+                             '电气设备', '电力设备', '电子元件', '元件',
+                             '医药生物', '化学制药', '化学原料', '化学制品',
+                             '汽车', '汽车零部件', '有色金属', '工业金属',
+                             '基础化工', '机械设备', '通用设备', '专用设备')
+            has_precise_ind = False
+            for ind in inds:
+                if _in_industry_list(ind, industry_list):
+                    stripped_ind = _strip_ii(ind)
+                    if stripped_ind not in _GENERIC_INDS and stripped_ind not in [_strip_ii(x) for x in _GENERIC_INDS]:
+                        has_precise_ind = True
+                        break
+            chain_score = 20 if has_precise_ind else 15
         elif info.get("source") in ("dc_industry_board", "stock_basic_industry"):
             chain_score = 10  # 行业匹配但无概念重叠
         else:
@@ -1459,26 +1484,32 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
                 break
     detail['keyword'] = min(kw_score, 20)
 
-    # === 维度4: 行业板块 (满分10) ===
+    # === 维度4: 行业板块 (满分15) ===
+    # V13: 提升满分到15，让细分行业精确匹配的大金融/大消费龙头能突破40分阈值
     source = info.get("source", "")
     if source in ("dc_industry_board", "dc_industry"):
-        # 精确匹配（非宽泛词）= 10分，间接匹配 = 7分
+        # 精确匹配（非宽泛词）= 15分，宽泛词匹配=10分，间接匹配 = 7分
         inds = stock_dc_industries.get(code, []) if stock_dc_industries else []
         best_ind_score = 7
         for ind in inds:
-            if ind in (industry_list if industry_list else []):
-                if ind not in ('半导体', '电子', '自动化设备', '专用设备', '通用设备',
-                               '计算机设备', '通信设备', '消费电子', '电子元器件', '计算机',
-                               '机械设备', '游戏', '游戏Ⅱ', '游戏Ⅲ', '传媒'):
-                    best_ind_score = 10
+            if _in_industry_list(ind, industry_list):
+                stripped_ind = _strip_ii(ind)
+                if stripped_ind not in ('半导体', '电子', '自动化设备', '专用设备', '通用设备',
+                                        '计算机设备', '通信设备', '消费电子', '电子元器件', '计算机',
+                                        '机械设备', '游戏', '游戏Ⅱ', '游戏Ⅲ', '传媒',
+                                        '电气设备', '电力设备', '电子元件', '元件',
+                                        '医药生物', '化学制药', '化学原料', '化学制品',
+                                        '汽车', '汽车零部件', '有色金属', '工业金属',
+                                        '基础化工'):
+                    best_ind_score = 15
                     break
-                elif best_ind_score < 8:
-                    best_ind_score = 8
+                elif best_ind_score < 10:
+                    best_ind_score = 10
         detail['industry'] = best_ind_score
     elif source == "stock_basic_industry":
-        detail['industry'] = 7
-    elif source in ("sw_industry", "sw_industry_board"):
         detail['industry'] = 8
+    elif source in ("sw_industry", "sw_industry_board"):
+        detail['industry'] = 10
     elif source == "concept_as_industry":
         detail['industry'] = 6
     elif source == "concept_fallback":
@@ -1490,15 +1521,29 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
         detail['industry'] = 3
 
     # exclude_keywords 惩罚（扣分但不直接排除）
+    # V13: 区分股票名惩罚(-15)和概念惩罚(-5)
+    # 避免券商股因"参股银行"概念被误伤、医药股因"AI"概念被误伤等
     if exclude_keywords and not is_force:
+        # 股票名含exclude_keyword：重罚-15
+        name_hit = False
         for ek in exclude_keywords:
             if ek in stock_name:
                 detail['chain'] = max(0, detail['chain'] - 15)
+                name_hit = True
                 break
-            for c in concepts:
-                if ek in c:
-                    detail['chain'] = max(0, detail['chain'] - 15)
-                    break
+        # 概念含exclude_keyword：轻罚-5，但跳过"参股X"/"X概念"这类宽泛标签
+        if not name_hit:
+            for ek in exclude_keywords:
+                for c in concepts:
+                    # 跳过参股类、概念类标签（如"参股银行"、"银行概念"）
+                    if c.startswith('参股') or c.endswith('概念') or c.endswith('龙头'):
+                        continue
+                    if ek == c:
+                        detail['chain'] = max(0, detail['chain'] - 5)
+                        break
+                else:
+                    continue
+                break
 
     irs = detail['mainbiz'] + detail['chain'] + detail['keyword'] + detail['industry']
 

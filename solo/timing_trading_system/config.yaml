@@ -1,0 +1,150 @@
+# ============================================================
+# 三层择时交易系统 - 全局配置
+# ============================================================
+
+# --- 通用 ---
+general:
+  tdx_root: "C:\\new_tdx"                     # 通达信安装根目录
+  stock_pool_path: "D:\\mystock\\solo\\report_daily\\bull_stocks_qualified.csv"
+  theme_map_path: "D:\\mystock\\cache_daily\\theme_stock_map_latest.json"
+  output_dir: "output"
+
+# --- 大盘择时参数 ---
+market_timing:
+  enabled: true
+  indices:                                   # 监控的指数
+    - "000001.SH"                            # 上证
+    - "399006.SZ"                            # 创业板
+    - "000688.SH"                            # 科创50（可选）
+  ma_periods: [5, 10, 20, 60]               # 均线周期
+  adx_period: 14                            # ADX计算周期
+  volume_ma_period: 20                      # 成交量均线周期
+  # 涨跌家数（从TDX的000001.SH等判断，或用全市场ETF涨跌比例近似）
+  advance_decline:
+    enabled: true
+    use_etf_proxy: true                     # 用ETF涨跌比近似全市场涨跌比
+  # 状态定义阈值
+  states:
+    bull_market:                            # 主升浪
+      ma_condition: "ma5 > ma20 > ma60"     # 多头排列
+      adx_min: 25
+      advance_ratio: 1.5                    # 涨跌比
+    strong_oscillate:                       # 震荡偏强
+      ma20_trend: "up"                      # MA20向上
+      advance_ratio: 1.0
+    mid_adjust:                             # 中期调整
+      ma20_trend: "flat_or_down"
+      volume_shrink: 0.8                    # 缩量到均量80%以下
+    bear_market:                            # 主跌/退潮
+      ma_condition: "ma5 < ma10 < ma20 < ma60"
+      adx_max: 20
+
+# --- 主题评分参数 ---
+theme_timing:
+  enabled: true
+  min_stocks_per_theme: 3                   # 主题最少股数才打分
+  score_weights:                            # 主题评分权重
+    trend: 0.30                             # 趋势强度
+    breadth: 0.25                           # 广度
+    leader_health: 0.25                     # 龙头健康度
+    capital_flow: 0.20                      # 资金流向
+  top_n_themes: 5                           # 输出前N个主题
+
+# --- 个股技术面择时参数 ---
+stock_timing:
+  enabled: true
+  use_hfq: false                            # 是否用后复权（默认用前复权）
+  # 入场信号参数
+  entry:
+    breakout:
+      min_pct: 4.0                          # 突破最小涨幅%
+      min_vol_ratio: 1.3                    # 最小量比
+      max_distance_ma20: 25.0               # 距MA20最大距离%
+      max_rsi: 85                           # RSI上限
+    retrace_ma20:
+      max_deviation: -4.0                   # 双创最大回踩深度%
+      max_deviation_main: -5.0              # 主板最大回踩深度%
+      min_vol_shrink: 0.6                   # 回踩时最小缩量比例
+      resonance_threshold: 2                # 共振指标数（双创≥2，主板≥1）
+    wave2:
+      min_prev_wave: 25.0                   # 一波最小涨幅%
+      min_pullback: 10.0                    # 最小回撤深度%
+      max_pullback: 35.0                    # 最大回撤深度%
+      vol_shrink_to_peak: 0.4              # 缩量到峰值40%以下
+    vcp:
+      contraction_count: 3                  # VCP收敛次数
+      vol_contraction_min: 0.5             # 每次收缩量比
+      max_total_pullback: 30.0             # 总回撤上限
+  # 出场信号参数
+  exit:
+    stop_loss: -8.0                         # 固定止损%
+    trailing_stop: -12.0                    # 移动止损%
+    ma_break: "ma20"                        # 跌破哪条均线卖出
+    volume_divergence:                      # 量价背离
+      price_up_vol_down_days: 3
+    macd_divergence: true                   # MACD顶背离
+
+# --- LightGBM 动态权重学习 ---
+lgb:
+  enabled: true
+  model_dir: "output/models"
+  train_window: 120                         # 训练窗口（交易日）
+  retrain_freq: 10                          # 每N天重新训练
+  prediction_horizons: [5, 10, 20]          # 预测未来N天收益
+  feature_groups:                           # 特征组
+    - market_state                           # 大盘状态特征
+    - theme_state                            # 主题状态特征
+    - stock_technical                        # 个股技术特征
+    - stock_fundamental                     # 个股基本面特征
+  model_params:
+    num_leaves: 31
+    learning_rate: 0.05
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    num_boost_round: 200
+    early_stopping_rounds: 20
+
+# --- 仓位管理 ---
+position:
+  max_per_stock: 0.15                       # 单只上限15%
+  max_per_theme: 0.35                       # 单主题上限35%
+  max_total: 1.0                            # 总仓位上限100%
+  max_positions: 200                        # 最大持仓标的数（分散化利于组合稳定）
+  max_new_positions_per_day: 30             # 每日最大新开仓数
+  base_position: 0.20                       # 基础仓位（轻仓）
+  # 根据综合评分映射仓位（连续评分模式）
+  score_to_position:
+    80: 0.18                                # ≥80分18%
+    65: 0.15                                # ≥65分15%
+    55: 0.10                                # ≥55分10%
+    45: 0.06                                # ≥45分6%
+    0: 0.03                                 # <45分3%
+
+# --- 风控 ---
+risk:
+  max_drawdown: -15.0                       # 最大回撤限制%
+  daily_loss_limit: -8.0                    # 单日亏损限额%（放宽，避免首日停买）
+  max_correlated: 0.6                       # 同一产业链最大占比
+  blacklist: []                             # 黑名单
+
+# --- 回测 ---
+backtest:
+  initial_capital: 1_000_000
+  commission_rate: 0.0003                   # 万三佣金
+  slippage: 0.001                           # 滑点0.1%
+  start_date: "20240101"
+  end_date: ""                              # 空=最新数据日期
+  # Walk-Forward
+  walk_forward:
+    train_window: 120
+    test_window: 20
+    step: 10
+  # 网格搜索
+  grid_search:
+    enabled: true
+    param_grid:
+      entry_breakout_min_pct: [3.0, 4.0, 5.0]
+      entry_retrace_max_deviation: [-3.0, -4.0, -5.0]
+      exit_stop_loss: [-7.0, -8.0, -10.0]
+      position_score_70: [0.6, 0.7, 0.8]

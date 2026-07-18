@@ -1,6 +1,6 @@
 """
 Chip Alpha Engine V2 - 机构级动态筹码Alpha分析引擎
-Version: V2.0
+Version: V2.1
 
 核心理念：
   - 不分析静态筹码分布，提取预测性Alpha因子
@@ -8,18 +8,19 @@ Version: V2.0
   - 速度和方向 > 绝对水平
   - 质心 > 筹码峰
   - ATR基准阻力 > 固定百分比
+  - Kalman Filter提取趋势成分 > 简单线性回归
 
 10大动态因子：
-├── Factor 1: Chip Center Velocity（质心迁移速度）[最高优先级]
-├── Factor 2: Chip Peak Migration（Top3峰迁移合并）
+├── Factor 1: Chip Center Velocity（质心迁移速度）
+├── Factor 2: Chip Peak Migration（Top3峰迁移合并）[仅展示，不计入评分]
 ├── Factor 3: Winning Expansion Velocity（获利盘扩散速度）
 ├── Factor 4: Overhead Supply Decay（ATR基准上方压力衰减）
 ├── Factor 5: Chip Concentration（80%筹码集中度）
-├── Factor 6: Chip Rotation Efficiency CRE（筹码轮换效率）
+├── Factor 6: Chip Rotation Efficiency CRE（筹码轮换效率）[最高权重]
 ├── Factor 7: Chip Resilience（回调中质心韧性）
 ├── Factor 8: Absorption Quality（吸筹质量CLV）
-├── Factor 9: Multi-Day Consistency（多日一致性）
-└── Factor 10: Chip Trend Score（综合趋势分）
+├── Factor 9: Multi-Day Consistency（多日一致性）[仅风险参考]
+├── Factor 10: Chip Momentum（筹码动量）[NEW: Kalman Filter + Z-score]
 
 用法:
     engine = ChipAlphaEngineV2(token="your_tushare_token")
@@ -74,6 +75,75 @@ def _linear_slope(values: List[float]) -> float:
     return float(slope)
 
 
+def _rolling_percentile(values: List[float], window: int = 10) -> List[float]:
+    """Rolling percentile rank (0~100)，滚动窗口内当前值排位"""
+    result = []
+    for i in range(len(values)):
+        start = max(0, i - window + 1)
+        win = values[start:i + 1]
+        rank = sum(1 for v in win if v < values[i])
+        pct = (rank / (len(win) - 1)) * 100 if len(win) > 1 else 50.0
+        result.append(pct)
+    return result
+
+
+def _rolling_zscore(values: List[float], window: int = 10) -> List[float]:
+    """Rolling Z-score（滚动窗口标准化）"""
+    result = []
+    for i in range(len(values)):
+        start = max(0, i - window + 1)
+        win = values[start:i + 1]
+        if len(win) < 2:
+            result.append(0.0)
+        else:
+            mu = np.mean(win)
+            sigma = np.std(win)
+            result.append((values[i] - mu) / sigma if sigma > 1e-10 else 0.0)
+    return result
+
+
+def _kalman_filter_1d(values: List[float], process_noise: float = 0.01,
+                      measurement_noise: float = 0.1) -> List[float]:
+    """一维Kalman Filter，提取趋势成分 + 计算速度"""
+    if len(values) < 2:
+        return list(values)
+
+    x = values[0]        # 状态估计
+    v = 0.0              # 速度估计
+    p_xx = 1.0           # 位置协方差
+    p_xv = 0.0           # 位置-速度交叉协方差
+    p_vv = 1.0           # 速度协方差
+    q = process_noise    # 过程噪声
+    r = measurement_noise # 测量噪声
+
+    filtered = [x]
+    for i in range(1, len(values)):
+        # 预测
+        x_pred = x + v
+        v_pred = v
+        p_xx_pred = p_xx + 2 * p_xv + p_vv + q
+        p_xv_pred = p_xv + p_vv
+        p_vv_pred = p_vv + q
+
+        # 测量更新
+        z = values[i]
+        y = z - x_pred
+        s = p_xx_pred + r
+        k_x = p_xx_pred / s if s > 1e-10 else 0
+        k_v = p_xv_pred / s if s > 1e-10 else 0
+
+        x = x_pred + k_x * y
+        v = v_pred + k_v * y
+
+        p_xx = (1 - k_x) * p_xx_pred
+        p_xv = (1 - k_x) * p_xv_pred
+        p_vv = p_vv_pred - k_v * p_xv_pred
+
+        filtered.append(x)
+
+    return filtered
+
+
 def _safe_div(a: float, b: float, default: float = 0.0) -> float:
     if abs(b) < 1e-10:
         return default
@@ -91,16 +161,16 @@ class ChipAlphaEngineV2:
     输出：10大动态因子 + 趋势阶段 + 预测概率（JSON）
     """
 
-    # 综合评分权重
+    # 综合评分权重（V2.1: 降权冗余因子，升权CRE，新增ChipMomentum，移除PeakMigration）
     WEIGHTS = {
-        'center_velocity': 0.25,
-        'peak_migration': 0.15,
-        'winning_expansion': 0.15,
+        'cre': 0.25,
         'pressure_decay': 0.15,
-        'concentration': 0.10,
-        'cre': 0.10,
+        'chip_momentum': 0.15,
+        'absorption': 0.15,
+        'center_velocity': 0.10,
+        'winning_expansion': 0.10,
         'resilience': 0.05,
-        'absorption': 0.05,
+        'concentration': 0.05,
     }
 
     def __init__(self, token: Optional[str] = None, cache_dir: Optional[str] = None):
@@ -155,37 +225,52 @@ class ChipAlphaEngineV2:
     # 数据获取
     # --------------------------------------------------------
     def fetch_chip_history(self, ts_code: str, trade_dates: List[str]) -> Dict[str, Dict]:
-        """获取多日筹码分布数据"""
+        """获取多日筹码分布数据（按日期范围一次性获取）"""
         result = {}
+        if not trade_dates:
+            return result
+
+        start_date = trade_dates[0]   # 最早
+        end_date = trade_dates[-1]    # 最新
+        date_set = set(trade_dates)
+
+        # cyq_chips - 一次性获取整个日期范围
+        chips_cache_path = os.path.join(self.cache_dir, f"chips_{ts_code}_{start_date}_{end_date}.parquet")
+        all_chips = self._read_cache(chips_cache_path)
+        if all_chips is None or len(all_chips) == 0:
+            self._throttle()
+            try:
+                all_chips = self.pro.cyq_chips(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            except Exception as e:
+                print(f"  [筹码] cyq_chips 获取失败 {ts_code}: {e}")
+                all_chips = pd.DataFrame()
+            if all_chips is not None and len(all_chips) > 0:
+                self._write_cache(all_chips, chips_cache_path)
+
+        # cyq_perf - 一次性获取整个日期范围
+        perf_cache_path = os.path.join(self.cache_dir, f"perf_{ts_code}_{start_date}_{end_date}.parquet")
+        all_perf = self._read_cache(perf_cache_path)
+        if all_perf is None or len(all_perf) == 0:
+            self._throttle()
+            try:
+                all_perf = self.pro.cyq_perf(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            except Exception as e:
+                print(f"  [筹码] cyq_perf 获取失败 {ts_code}: {e}")
+                all_perf = pd.DataFrame()
+            if all_perf is not None and len(all_perf) > 0:
+                self._write_cache(all_perf, perf_cache_path)
+
+        # 按日期分组
         for td in trade_dates:
             day_data = {}
-            # cyq_chips
-            chips_path = self._cache_path(ts_code, td, 'chips')
-            chips_df = self._read_cache(chips_path)
-            if chips_df is None or len(chips_df) == 0:
-                self._throttle()
-                try:
-                    chips_df = self.pro.cyq_chips(ts_code=ts_code, trade_date=td)
-                except Exception as e:
-                    print(f"  [筹码] cyq_chips 获取失败 {ts_code} {td}: {e}")
-                    chips_df = pd.DataFrame()
-                if chips_df is not None and len(chips_df) > 0:
-                    self._write_cache(chips_df, chips_path)
-            day_data['chips'] = chips_df
-
-            # cyq_perf
-            perf_path = self._cache_path(ts_code, td, 'perf')
-            perf_df = self._read_cache(perf_path)
-            if perf_df is None or len(perf_df) == 0:
-                self._throttle()
-                try:
-                    perf_df = self.pro.cyq_perf(ts_code=ts_code, trade_date=td)
-                except Exception as e:
-                    print(f"  [筹码] cyq_perf 获取失败 {ts_code} {td}: {e}")
-                    perf_df = pd.DataFrame()
-                if perf_df is not None and len(perf_df) > 0:
-                    self._write_cache(perf_df, perf_path)
-            day_data['perf'] = perf_df
+            if all_chips is not None and len(all_chips) > 0 and 'trade_date' in all_chips.columns:
+                day_data['chips'] = all_chips[all_chips['trade_date'] == td].reset_index(drop=True)
+            else:
+                day_data['chips'] = pd.DataFrame()
+            if all_perf is not None and len(all_perf) > 0 and 'trade_date' in all_perf.columns:
+                day_data['perf'] = all_perf[all_perf['trade_date'] == td].reset_index(drop=True)
+            else:
+                day_data['perf'] = pd.DataFrame()
             result[td] = day_data
         return result
 
@@ -905,6 +990,58 @@ class ChipAlphaEngineV2:
         }
 
     # --------------------------------------------------------
+    # 因子 10: Chip Momentum（筹码动量）[NEW]
+    # 使用Kalman Filter提取质心趋势成分，计算速度与加速度
+    # --------------------------------------------------------
+    def calc_chip_momentum(self, centers: List[float], prices: List[float]) -> Dict:
+        """
+        Kalman Filter平滑质心序列，提取趋势成分
+        计算趋势速度（一阶导）和加速度（二阶导）
+        使用Rolling Z-score标准化
+        """
+        if len(centers) < 5:
+            return {'score': 50, 'momentum': 0, 'acceleration': 0, 'details': {'note': '数据不足'}}
+
+        kf = _kalman_filter_1d(centers, process_noise=0.005, measurement_noise=0.05)
+
+        velocity = []
+        for i in range(1, len(kf)):
+            velocity.append(kf[i] - kf[i - 1])
+        velocity.insert(0, velocity[0] if velocity else 0)
+
+        acceleration = []
+        for i in range(1, len(velocity)):
+            acceleration.append(velocity[i] - velocity[i - 1])
+        acceleration.insert(0, acceleration[0] if acceleration else 0)
+
+        latest_price = prices[-1] if prices else 1
+        momentum_pct = _safe_div(velocity[-1], latest_price, 0) * 100
+        accel_pct = _safe_div(acceleration[-1], latest_price, 0) * 100
+
+        vel_z = _rolling_zscore(velocity, window=min(10, len(velocity)))[-1]
+        accel_z = _rolling_zscore(acceleration, window=min(10, len(velocity)))[-1]
+
+        score = min(vel_z * 10 + 50, 95)
+        score = max(score, 5)
+        if accel_z > 0:
+            score = min(score + accel_z * 5, 100)
+
+        trend = 'up' if velocity[-1] > 0 else ('down' if velocity[-1] < 0 else 'flat')
+
+        return {
+            'score': round(score, 1),
+            'trend': trend,
+            'momentum': round(momentum_pct, 4),
+            'acceleration': round(accel_pct, 4),
+            'vel_zscore': round(vel_z, 3),
+            'accel_zscore': round(accel_z, 3),
+            'details': {
+                'kf_centers': [round(c, 2) for c in kf],
+                'velocity': [round(v, 4) for v in velocity],
+            }
+        }
+
+    # --------------------------------------------------------
     # 趋势阶段判定
     # --------------------------------------------------------
     def _determine_trend_stage(self, factors: Dict, prices: List[float]) -> str:
@@ -950,7 +1087,8 @@ class ChipAlphaEngineV2:
 
         # 龙头概率（需要多因子共振）
         strong_count = sum(1 for k in ['center_velocity', 'winning_expansion', 'pressure_decay',
-                                        'concentration', 'cre'] if factors[k]['score'] >= 70)
+                                        'concentration', 'cre', 'chip_momentum']
+                           if factors[k]['score'] >= 70)
         leader_prob = min(chip_trend_score * 0.5 + strong_count * 10, 95)
 
         # 预期持有天数
@@ -990,6 +1128,9 @@ class ChipAlphaEngineV2:
             signals.append('质心韧性极强：回调中价格下跌但质心几乎不动，机构未离场')
         if factors['concentration']['score'] >= 70:
             signals.append('筹码集中度收紧：80%筹码宽度收窄，主力控盘度提升')
+        if factors.get('chip_momentum', {}).get('score', 50) >= 65:
+            cm = factors['chip_momentum']
+            signals.append(f'筹码动量增强：Kalman趋势速度Z={cm.get("vel_zscore", 0):+.2f}，加速度Z={cm.get("accel_zscore", 0):+.2f}')
         if trend_stage in ('Early Trend', 'Expansion'):
             signals.append('趋势龙头候选：多因子共振，符合5~20日趋势领涨特征')
         if factors['center_velocity']['score'] < 35:
@@ -1046,32 +1187,31 @@ class ChipAlphaEngineV2:
             centers.append(self._calc_chip_center(chips))
 
         # 计算各因子
-        print(f"  计算因子 1/9 - Chip Center Velocity...")
+        print(f"  计算因子 1/10 - Chip Center Velocity...")
         f1 = self.calc_center_velocity(chip_history, dates_sorted, prices)
 
-        print(f"  计算因子 2/9 - Chip Peak Migration...")
+        print(f"  计算因子 2/10 - Chip Peak Migration...")
         f2 = self.calc_peak_migration(chip_history, dates_sorted, prices)
 
-        print(f"  计算因子 3/9 - Winning Expansion...")
+        print(f"  计算因子 3/10 - Winning Expansion...")
         f3 = self.calc_winning_expansion(chip_history, dates_sorted)
 
-        print(f"  计算因子 4/9 - Overhead Supply Decay...")
+        print(f"  计算因子 4/10 - Overhead Supply Decay...")
         f4 = self.calc_pressure_decay(chip_history, dates_sorted, daily_df, prices)
 
-        print(f"  计算因子 5/9 - Chip Concentration...")
+        print(f"  计算因子 5/10 - Chip Concentration...")
         f5 = self.calc_concentration(chip_history, dates_sorted)
 
-        print(f"  计算因子 6/9 - CRE...")
+        print(f"  计算因子 6/10 - CRE...")
         f6 = self.calc_cre(centers, turnovers)
 
-        print(f"  计算因子 7/9 - Chip Resilience...")
+        print(f"  计算因子 7/10 - Chip Resilience...")
         f7 = self.calc_resilience(centers, prices)
 
-        print(f"  计算因子 8/9 - Absorption Quality...")
+        print(f"  计算因子 8/10 - Absorption Quality...")
         f8 = self.calc_absorption(centers, daily_df, dates_sorted, turnovers)
 
-        # 因子9: 一致性（用前8个因子的历史评分）
-        print(f"  计算因子 9/9 - Multi-Day Consistency...")
+        print(f"  计算因子 9/10 - Multi-Day Consistency...")
         factor_scores_history = {
             'center_velocity': self._build_factor_history(chip_history, dates_sorted, prices, 'center'),
             'winning_expansion': self._build_factor_history(chip_history, dates_sorted, prices, 'winning'),
@@ -1079,29 +1219,33 @@ class ChipAlphaEngineV2:
         }
         f9 = self.calc_consistency(factor_scores_history)
 
+        print(f"  计算因子 10/10 - Chip Momentum (Kalman Filter)...")
+        f10 = self.calc_chip_momentum(centers, prices)
+
         # 汇总因子
         factors = {
             'center_velocity': f1,
-            'peak_migration': f2,
+            'peak_migration': f2,    # 仅展示，不计入评分
             'winning_expansion': f3,
             'pressure_decay': f4,
             'concentration': f5,
             'cre': f6,
             'resilience': f7,
             'absorption': f8,
-            'consistency': f9,
+            'consistency': f9,       # 仅风险参考，不计入评分
+            'chip_momentum': f10,
         }
 
-        # 综合评分
+        # V2.1 综合评分（8因子加权：移除PeakMigration，新增ChipMomentum）
         chip_trend_score = (
-            self.WEIGHTS['center_velocity'] * f1['score'] +
-            self.WEIGHTS['peak_migration'] * f2['score'] +
-            self.WEIGHTS['winning_expansion'] * f3['score'] +
-            self.WEIGHTS['pressure_decay'] * f4['score'] +
-            self.WEIGHTS['concentration'] * f5['score'] +
             self.WEIGHTS['cre'] * f6['score'] +
+            self.WEIGHTS['pressure_decay'] * f4['score'] +
+            self.WEIGHTS['chip_momentum'] * f10['score'] +
+            self.WEIGHTS['absorption'] * f8['score'] +
+            self.WEIGHTS['center_velocity'] * f1['score'] +
+            self.WEIGHTS['winning_expansion'] * f3['score'] +
             self.WEIGHTS['resilience'] * f7['score'] +
-            self.WEIGHTS['absorption'] * f8['score']
+            self.WEIGHTS['concentration'] * f5['score']
         )
 
         # 评级
@@ -1188,6 +1332,14 @@ class ChipAlphaEngineV2:
                     'positive_10d': f9.get('positive_10d', 0),
                     'positive_20d': f9.get('positive_20d', 0),
                 },
+                'ChipMomentum': {
+                    'score': f10['score'],
+                    'trend': f10.get('trend', 'flat'),
+                    'momentum': f10.get('momentum', 0),
+                    'acceleration': f10.get('acceleration', 0),
+                    'vel_zscore': f10.get('vel_zscore', 0),
+                    'accel_zscore': f10.get('accel_zscore', 0),
+                },
             },
             'Signals': signals,
             'Prediction': prediction,
@@ -1253,7 +1405,7 @@ class ChipAlphaEngineV2:
         lines = []
 
         lines.append("═" * 65)
-        lines.append(f"  Chip Alpha Engine V2 - {result['ts_code']}")
+        lines.append(f"  Chip Alpha Engine V2.1 - {result['ts_code']}")
         lines.append(f"  Date: {result['end_date']}  |  Lookback: {result['lookback_days']}d")
         lines.append("═" * 65)
         lines.append("")
@@ -1269,60 +1421,67 @@ class ChipAlphaEngineV2:
         lines.append("")
 
         lines.append("─" * 65)
-        lines.append("  【9 Dynamic Factors】")
+        lines.append("  【10 Dynamic Factors】")
         lines.append("─" * 65)
 
         # 1. Center Velocity
         cv = f['CenterVelocity']
         trend_arrow = {'up': '↑', 'down': '↓', 'flat': '→'}.get(cv['trend'], '→')
-        lines.append(f"  1. Center Velocity  [{cv['score']:.1f}] {trend_arrow}")
+        lines.append(f"  1. Center Velocity  [{cv['score']:.1f}] {trend_arrow}  (w=10%)")
         lines.append(f"     change20: {cv['change20']:+.2f}%  vel: {cv['velocity_pct']:+.3f}%/d")
         lines.append(f"     EMA trend: {cv['ema_trend']}  accel: {cv['acceleration']:+.4f}")
 
-        # 2. Peak Migration
+        # 2. Peak Migration [仅展示]
         pm = f['PeakMigration']
         merge_str = ' [MERGING]' if pm['merge_detected'] else ''
-        lines.append(f"  2. Peak Migration  [{pm['score']:.1f}]{merge_str}")
+        lines.append(f"  2. Peak Migration  [{pm['score']:.1f}]{merge_str}  [仅展示]")
         lines.append(f"     migration: {pm['migration_pct']:+.2f}%  vel: {pm['velocity_pct']:+.3f}%/d")
         lines.append(f"     stability: {pm['stability']:.3f}")
 
         # 3. Winning Expansion
         we = f['WinningExpansion']
-        lines.append(f"  3. Winning Expansion  [{we['score']:.1f}]")
+        lines.append(f"  3. Winning Expansion  [{we['score']:.1f}]  (w=10%)")
         lines.append(f"     vel: {we['velocity']:+.3f}%/d  accel: {we['acceleration']:+.3f}")
         lines.append(f"     consecutive_up: {we['consecutive_up_days']}d  EMA: {we['ema_trend']}")
 
         # 4. Pressure Decay
         pd = f['PressureDecay']
         decay_arrow = '↑' if pd['decay_rate'] > 0 else '↓'
-        lines.append(f"  4. Pressure Decay  [{pd['score']:.1f}] {decay_arrow}")
+        lines.append(f"  4. Pressure Decay  [{pd['score']:.1f}] {decay_arrow}  (w=15%)")
         lines.append(f"     decay: {pd['decay_rate']:+.3f}%/d  resistance: {pd['resistance_chips_pct']:.2f}%")
         lines.append(f"     change: {pd['change']:+.2f}%")
 
         # 5. Concentration
         conc = f['Concentration']
-        lines.append(f"  5. Concentration  [{conc['score']:.1f}]")
+        lines.append(f"  5. Concentration  [{conc['score']:.1f}]  (w=5%)")
         lines.append(f"     width: {conc['width_pct']:.2f}%  trend: {conc['trend']}")
 
-        # 6. CRE
+        # 6. CRE [最高权重]
         cre = f['CRE']
-        lines.append(f"  6. CRE  [{cre['score']:.1f}]")
+        lines.append(f"  6. CRE  [{cre['score']:.1f}]  ★ (w=25%)")
         lines.append(f"     efficiency: {cre['efficiency']:.4f}  accum_turnover: {cre['accum_turnover']:.1f}%")
 
         # 7. Resilience
         res = f['Resilience']
-        lines.append(f"  7. Resilience  [{res['score']:.1f}]")
+        lines.append(f"  7. Resilience  [{res['score']:.1f}]  (w=5%)")
         lines.append(f"     ratio: {res['resilience_ratio']:.4f}  price: {res['price_change_pct']:.2f}%  center: {res['center_change_pct']:.2f}%")
 
         # 8. Absorption
         ab = f['Absorption']
-        lines.append(f"  8. Absorption  [{ab['score']:.1f}]  {ab['signal']}")
+        lines.append(f"  8. Absorption  [{ab['score']:.1f}]  {ab['signal']}  (w=15%)")
         lines.append(f"     vol_ratio: {ab['vol_ratio']:.2f}  CLV: {ab['avg_clv']:.3f}")
 
-        # 9. Consistency
+        # 9. Consistency [仅风险参考]
         cons = f['Consistency']
-        lines.append(f"  9. Consistency  [{cons['score']:.1f}]")
+        lines.append(f"  9. Consistency  [{cons['score']:.1f}]  [风险参考]")
         lines.append(f"     5d: {cons['positive_5d']}/{cons.get('total_factors', 3)}  10d: {cons['positive_10d']}/{cons.get('total_factors', 3)}  20d: {cons['positive_20d']}/{cons.get('total_factors', 3)}")
+
+        # 10. Chip Momentum [NEW]
+        cm = f['ChipMomentum']
+        cm_arrow = {'up': '↑', 'down': '↓', 'flat': '→'}.get(cm['trend'], '→')
+        lines.append(f"  10. Chip Momentum  [{cm['score']:.1f}] {cm_arrow}  ★ (w=15%)")
+        lines.append(f"     momentum: {cm['momentum']:+.4f}%/d  accel: {cm['acceleration']:+.4f}%/d")
+        lines.append(f"     vel_zscore: {cm['vel_zscore']:+.3f}  accel_zscore: {cm['accel_zscore']:+.3f}")
 
         # Signals
         lines.append("")

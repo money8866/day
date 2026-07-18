@@ -8668,6 +8668,112 @@ def get_tracking_stocks():
         return [], "数据加载失败", ""
 
 # ======================================================
+# Chip Alpha Engine V2.1 集成
+# 动态筹码Alpha分析：CRE、ChipMomentum、ChipTrendScore 等
+# ======================================================
+_chip_alpha_engine = None
+
+def get_chip_alpha_engine():
+    """获取 ChipAlphaEngineV2 单例（延迟初始化）"""
+    global _chip_alpha_engine
+    if _chip_alpha_engine is None:
+        try:
+            from chip_alpha_engine_v2 import ChipAlphaEngineV2
+            _chip_alpha_engine = ChipAlphaEngineV2(token=TUSHARE_TOKEN)
+        except Exception as e:
+            print(f"[ChipAlpha] 引擎初始化失败: {e}")
+            return None
+    return _chip_alpha_engine
+
+
+def batch_chip_alpha(stocks, lookback_days=20):
+    """
+    批量计算筹码Alpha因子
+    参数: stocks - list of dict，至少包含'代码'字段
+    返回: dict {ts_code: chip_result_dict}
+    """
+    engine = get_chip_alpha_engine()
+    if engine is None:
+        return {}
+
+    results = {}
+    total = len(stocks)
+    for i, s in enumerate(stocks):
+        ts_code = s.get('代码') or s.get('code') or s.get('ts_code', '')
+        if not ts_code:
+            continue
+        try:
+            r = engine.analyze(ts_code, lookback_days=lookback_days)
+            results[ts_code] = r
+            if (i + 1) % 10 == 0:
+                print(f"[ChipAlpha] 批量计算 {i+1}/{total}")
+        except Exception as e:
+            print(f"[ChipAlpha] {ts_code} 计算失败: {e}")
+    return results
+
+
+def extract_chip_alpha_factors(chip_result):
+    """
+    从 ChipAlphaEngine 结果中提取关键因子（扁平化为简单dict）
+    """
+    if not chip_result:
+        return {
+            'ChipTrendScore': 50,
+            'ChipGrade': 'C',
+            'ChipStage': '未知',
+            'CRE_Score': 50,
+            'ChipMomentum_Score': 50,
+            'PressureDecay_Score': 50,
+            'Absorption_Score': 50,
+            'CenterVelocity_Score': 50,
+        }
+    f = chip_result.get('Factors', {})
+    return {
+        'ChipTrendScore': chip_result.get('ChipTrendScore', 50),
+        'ChipGrade': chip_result.get('Grade', 'C'),
+        'ChipStage': chip_result.get('TrendStage', '未知'),
+        'CRE_Score': f.get('CRE', {}).get('score', 50),
+        'ChipMomentum_Score': f.get('ChipMomentum', {}).get('score', 50),
+        'PressureDecay_Score': f.get('PressureDecay', {}).get('score', 50),
+        'Absorption_Score': f.get('Absorption', {}).get('score', 50),
+        'CenterVelocity_Score': f.get('CenterVelocity', {}).get('score', 50),
+    }
+
+
+def get_chip_alpha_suggestion(stock_dict):
+    """
+    根据筹码Alpha因子给出操作建议
+    返回 (建议, 理由)
+    """
+    score = stock_dict.get('ChipTrendScore', 50)
+    cre = stock_dict.get('CRE_Score', 50)
+    mom = stock_dict.get('ChipMomentum_Score', 50)
+    pressure = stock_dict.get('PressureDecay_Score', 50)
+    absorption = stock_dict.get('Absorption_Score', 50)
+    stage = stock_dict.get('ChipStage', '未知')
+
+    if score >= 75 and cre >= 65 and mom >= 60:
+        return "积极参与", f"趋势强+CRE高+动量足，{stage}，可沿5日线持有"
+    if score >= 65 and cre >= 50 and mom >= 50:
+        if pressure >= 80:
+            return "可逢低介入", f"趋势向好+上方压力轻，{stage}，回踩MA20低吸"
+        if cre >= 60 and mom >= 60:
+            return "可逢低介入", f"趋势转强+效率提升，{stage}，分批建仓"
+        return "关注观察", f"趋势中性偏强，{stage}，等待CRE/动量进一步确认"
+    if score >= 55 and cre >= 40:
+        if mom >= 60 and pressure >= 70:
+            return "左侧关注", f"动量转强+压力轻，但趋势分未达标，小仓位试错"
+        if absorption >= 60:
+            return "左侧关注", f"吸筹中+吸筹质量尚可，{stage}，等待启动信号"
+        return "纳入观察", f"筹码改善中，{stage}，等待趋势确认信号"
+    if mom >= 65 and pressure >= 80:
+        return "左侧试错", f"动量加速+压力极轻，但趋势分偏低，轻仓试错"
+    if score < 40:
+        return "回避", f"筹码结构弱，{stage}，暂不参与"
+    return "观望等待", f"筹码中性，{stage}，等待明确信号"
+
+
+# ======================================================
 # 筹码突破真假判断评分（基于 cyq_chips / cyq_perf）
 # 判断突破是否健康：真突破vs假突破
 # 返回 0-100 分，越高代表真突破可信度越高
@@ -8944,19 +9050,22 @@ def calc_max_limit_height():
 # =========================
 # 主题过滤：以60天平均综合分前15 + 当日前10为主题范围筛选
 # =========================
-def filter_by_top_themes(result_df, top_n=15):
+def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     """
-    主题筛选 - 使用 Theme Alpha V6.2 引擎输出
+    主题筛选 / 共振评分 - 使用 Theme Alpha V6.2 引擎输出
     
     加载 theme_alpha_v6_result.json，筛选 trade_signal 为"强买"/"看多"/"关注"/"持有"的主题，
-    然后保留 result_df 中匹配这些主题的股票，并注入 V6 多维评分字段。
+    然后匹配股票，注入 V6 多维评分字段和共振系数。
     
     参数：
         result_df: 待过滤的股票DataFrame
         top_n: 按V6综合分取前N个主题（默认15）
+        mode: 'filter'=二元过滤（淘汰不匹配股票，用于跟踪池）
+              'resonance'=共振评分（保留全部股票，注入共振系数，用于突破股池）
     
     返回：
-        过滤后的DataFrame，注入主题相关字段
+        mode='filter': 过滤后的DataFrame（仅保留匹配股票）
+        mode='resonance': 全部股票DataFrame + 共振系数列
     """
     if result_df.empty:
         return result_df
@@ -8965,7 +9074,15 @@ def filter_by_top_themes(result_df, top_n=15):
     v6_data = _load_v6_result(TRADE_DATE)
     if not v6_data:
         print(f"[主题过滤] V6.2引擎结果不可用，跳过过滤")
+        # 确保至少有所属主题列
+        if '所属主题' not in result_df.columns:
+            result_df['所属主题'] = ''
         return result_df
+
+    # 构建全部主题索引（用于 resonance 模式匹配任意主题）
+    all_themes_info = {}
+    for r in v6_data:
+        all_themes_info[r['theme']] = r
 
     # 筛选信号为强买/看多/关注/持有的主题（V6.2新信号体系）
     VALID_SIGNALS = {"强买", "看多", "关注", "持有"}
@@ -8977,33 +9094,48 @@ def filter_by_top_themes(result_df, top_n=15):
 
     if not keep_themes_info:
         print("[主题过滤] V6.2结果中无强买/看多/关注/持有主题，跳过过滤")
-        return result_df
+        # resonance 模式：降级使用全部主题进行匹配
+        if mode == 'resonance':
+            print("[主题过滤] resonance模式降级，使用全部主题进行匹配")
+            keep_themes_info = dict(all_themes_info)
+        else:
+            # 确保至少有所属主题列
+            if '所属主题' not in result_df.columns:
+                result_df['所属主题'] = ''
+            return result_df
 
-    # 按综合分排序，取前 top_n 个
-    sorted_items = sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])
-    keep_themes_info = dict(sorted_items[:top_n])
+    if mode == 'filter':
+        # 二元过滤模式：只保留强信号主题，按综合分排序取前 top_n 个
+        sorted_items = sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])
+        keep_themes_info = dict(sorted_items[:top_n])
+        
+        # 如果有效主题数量少于8个，添加"中性"信号的主题作为后备
+        if len(keep_themes_info) < 8:
+            backup_themes = {}
+            for r in v6_data:
+                signal = r.get('trade_signal', '')
+                if signal == "中性" and r['theme'] not in keep_themes_info:
+                    backup_themes[r['theme']] = r
+            sorted_backup = sorted(backup_themes.items(), key=lambda x: -x[1]['composite_score'])
+            need_count = 8 - len(keep_themes_info)
+            for t, info in sorted_backup[:need_count]:
+                keep_themes_info[t] = info
+            print(f"[主题过滤] 添加 {need_count} 个中性主题作为后备")
+    else:
+        # resonance 模式：使用全部主题进行匹配（不限制信号级别）
+        print(f"[主题过滤] resonance模式使用全部 {len(all_themes_info)} 个主题匹配")
+        keep_themes_info = dict(all_themes_info)
+
     keep_themes = set(keep_themes_info.keys())
-    
-    # 如果有效主题数量少于8个，添加"中性"信号的主题作为后备
-    if len(keep_themes) < 8:
-        backup_themes = {}
-        for r in v6_data:
-            signal = r.get('trade_signal', '')
-            if signal == "中性" and r['theme'] not in keep_themes:
-                backup_themes[r['theme']] = r
-        sorted_backup = sorted(backup_themes.items(), key=lambda x: -x[1]['composite_score'])
-        need_count = 8 - len(keep_themes)
-        for t, info in sorted_backup[:need_count]:
-            keep_themes_info[t] = info
-            keep_themes.add(t)
-        print(f"[主题过滤] 添加 {need_count} 个中性主题作为后备")
 
-    print(f"\n[主题过滤] V6.2引擎筛选 -> 保留 {len(keep_themes)} 个主题（信号=强买/看多/关注/持有）:")
-    for t, info in sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score']):
+    print(f"\n[主题过滤] V6.2引擎筛选 -> 保留 {len(keep_themes)} 个主题:")
+    for t, info in sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])[:15]:
         div_mark = ' ★分歧' if info.get('divergence_buy') else ''
         print(f"  {t:<16} composite={info['composite_score']:<5.1f} "
               f"signal={info['trade_signal']:<4} stage={info['stage']:<4} "
               f"cont={info['continuation_score']:<5.1f}{div_mark}")
+    if len(keep_themes_info) > 15:
+        print(f"  ... 还有 {len(keep_themes_info)-15} 个主题")
     print()
 
     # ===== 2. 加载主题配置（只保留有效主题）=====
@@ -9030,6 +9162,7 @@ def filter_by_top_themes(result_df, top_n=15):
     matched_themes = []
     match_scores = []
     secondary_themes_list = []
+    resonance_coeffs = []  # 共振系数（resonance mode）
     # V6 多维评分
     theme_stages = []
     theme_trends = []
@@ -9076,6 +9209,12 @@ def filter_by_top_themes(result_df, top_n=15):
             theme_cont_tags.append(vi.get("continuation_tag", ""))
             theme_leaders.append(vi.get("leader", ""))
             theme_div_buy.append(vi.get("divergence_buy", ""))
+            # 共振系数 = f(信号, 阶段, 延续分)
+            resonance_coeffs.append(_calc_resonance_coeff(
+                vi.get("trade_signal", ""),
+                vi.get("stage", ""),
+                vi.get("continuation_score", 50),
+            ))
         else:
             keep.append(False)
             matched_themes.append('')
@@ -9092,34 +9231,86 @@ def filter_by_top_themes(result_df, top_n=15):
             theme_cont_tags.append('')
             theme_leaders.append('')
             theme_div_buy.append('')
+            # 无主题匹配：基础共振系数 0.5
+            resonance_coeffs.append(0.5)
 
-    # ===== 5. 过滤 + 注入字段 =====
+    # ===== 5. 过滤/共振 处理 =====
     before = len(result_df)
-    result_df = result_df[keep].reset_index(drop=True)
-    kept_indices = [i for i in range(len(keep)) if keep[i]]
 
-    result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
-    result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
-    result_df['次强主题'] = [secondary_themes_list[i] for i in kept_indices]
-    # V6 多维评分（保持与下游代码兼容的字段名）
-    result_df['所属状态'] = [theme_cont_tags[i] for i in kept_indices]       # 延续标签（强势延续/分歧买点等）
-    result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
-    result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
-    # 新增V6特有字段
-    result_df['主题阶段'] = [theme_stages[i] for i in kept_indices]         # 生命周期阶段
-    result_df['主题资金分'] = [theme_capitals[i] for i in kept_indices]
-    result_df['主题延续分'] = [theme_continuations[i] for i in kept_indices]
-    result_df['主题风险分'] = [theme_risks[i] for i in kept_indices]
-    result_df['主题置信度'] = [theme_confidences[i] for i in kept_indices]
-    result_df['主题信号'] = [theme_signals[i] for i in kept_indices]
-    result_df['主题龙头'] = [theme_leaders[i] for i in kept_indices]
-    result_df['非一日游阶段'] = [theme_stages[i] for i in kept_indices]     # 兼容旧字段，映射到stage
-    result_df['确认天数'] = [0 for _ in kept_indices]                       # V6无此数据，默认0
-    result_df['龙头序列'] = [theme_leaders[i] for i in kept_indices]        # 兼容旧字段
-    result_df['分歧买点'] = [theme_div_buy[i] for i in kept_indices]
+    if mode == 'filter':
+        # ── 二元过滤模式：只保留匹配股票（跟踪池） ──
+        result_df = result_df[keep].reset_index(drop=True)
+        kept_indices = [i for i in range(len(keep)) if keep[i]]
 
-    print(f"[主题过滤] 过滤后 {before} -> {len(result_df)} 只")
+        result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
+        result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
+        result_df['次强主题'] = [secondary_themes_list[i] for i in kept_indices]
+        result_df['共振系数'] = [resonance_coeffs[i] for i in kept_indices]
+        # V6 多维评分
+        result_df['所属状态'] = [theme_cont_tags[i] for i in kept_indices]
+        result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
+        result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
+        result_df['主题阶段'] = [theme_stages[i] for i in kept_indices]
+        result_df['主题资金分'] = [theme_capitals[i] for i in kept_indices]
+        result_df['主题延续分'] = [theme_continuations[i] for i in kept_indices]
+        result_df['主题风险分'] = [theme_risks[i] for i in kept_indices]
+        result_df['主题置信度'] = [theme_confidences[i] for i in kept_indices]
+        result_df['主题信号'] = [theme_signals[i] for i in kept_indices]
+        result_df['主题龙头'] = [theme_leaders[i] for i in kept_indices]
+        result_df['非一日游阶段'] = [theme_stages[i] for i in kept_indices]
+        result_df['确认天数'] = [0 for _ in kept_indices]
+        result_df['龙头序列'] = [theme_leaders[i] for i in kept_indices]
+        result_df['分歧买点'] = [theme_div_buy[i] for i in kept_indices]
+    else:
+        # ── 共振模式：保留全部股票，不匹配的注入空值（突破股池） ──
+        kept_indices = list(range(len(result_df)))
+        result_df = result_df.reset_index(drop=True)
+        result_df['共振系数'] = resonance_coeffs
+        result_df['所属主题'] = matched_themes
+        result_df['主题匹配度'] = match_scores
+        result_df['次强主题'] = secondary_themes_list
+        result_df['所属状态'] = theme_cont_tags
+        result_df['主题趋势分'] = theme_trends
+        result_df['主题情绪分'] = theme_sentiments
+        result_df['主题阶段'] = theme_stages
+        result_df['主题资金分'] = theme_capitals
+        result_df['主题延续分'] = theme_continuations
+        result_df['主题风险分'] = theme_risks
+        result_df['主题置信度'] = theme_confidences
+        result_df['主题信号'] = theme_signals
+        result_df['主题龙头'] = theme_leaders
+        result_df['非一日游阶段'] = theme_stages
+        result_df['确认天数'] = [0] * len(result_df)
+        result_df['龙头序列'] = theme_leaders
+        result_df['分歧买点'] = theme_div_buy
+
+    print(f"[主题过滤] {'共振评分' if mode=='resonance' else '过滤'}后 {before} -> {len(result_df)} 只 (mode={mode})")
     return result_df
+
+
+def _calc_resonance_coeff(signal, stage, continuation_score):
+    """
+    计算个股-主题共振系数 (0.5 ~ 1.5)
+
+    核心逻辑：
+      个股技术与主题热度的共振强度。
+      主题越强、阶段越早期、延续分越高 → 共振系数越大 → 评分加权越高。
+      无主题匹配时系数=0.5（不死，但有惩罚）。
+
+    公式：
+      共振系数 = signal_weight * stage_weight * cont_weight
+        signal_weight: 强买1.3 / 看多1.15 / 关注1.0 / 持有0.9 / 中性0.8
+        stage_weight:  启动1.2 / 主升1.1 / 调整1.0 / 筑底0.9 / 高潮0.8 / 衰退0.7
+        cont_weight:   1.0 + (continuation_score - 50)/200
+        范围：0.5 ~ 1.5
+    """
+    signal_map = {'强买': 1.30, '看多': 1.15, '关注': 1.00, '持有': 0.90, '中性': 0.80}
+    stage_map = {'启动': 1.20, '主升': 1.10, '调整': 1.00, '筑底': 0.90, '高潮': 0.80, '衰退': 0.70}
+    signal_weight = signal_map.get(signal, 0.60)
+    stage_weight = stage_map.get(stage, 0.80)
+    cont_weight = 1.0 + (float(continuation_score) - 50) / 200
+    coeff = signal_weight * stage_weight * cont_weight
+    return round(max(min(coeff, 1.5), 0.5), 2)
 
 
 def _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg):
@@ -9944,6 +10135,21 @@ def run(target_date=None, simple_mode=False):
             if '代码' in _vs_df.columns:
                 _vs_df = add_themes_to_stocks_no_filter(_vs_df)
                 _volume_surge_swing_results = _vs_df.to_dict('records')
+
+        # =========================
+        # Chip Alpha 注入（量能爆发池）
+        # =========================
+        if _volume_surge_swing_results:
+            print(f"[ChipAlpha-量能池] 批量计算 {len(_volume_surge_swing_results)} 只股票的筹码Alpha...")
+            _chip_vs_results = batch_chip_alpha(_volume_surge_swing_results, lookback_days=20)
+            for s in _volume_surge_swing_results:
+                _code = s.get('代码', '')
+                _chip_r = _chip_vs_results.get(_code)
+                _factors = extract_chip_alpha_factors(_chip_r)
+                s.update(_factors)
+                _sug, _reason = get_chip_alpha_suggestion(s)
+                s['ChipSuggestion'] = _sug
+                s['ChipSuggestionReason'] = _reason
         for _v in _volume_surge_swing_results[:10]:
             _theme = _v.get('所属主题', '') or '无主题'
             _stage = _v.get('非一日游阶段', '') or ''
@@ -9963,7 +10169,7 @@ def run(target_date=None, simple_mode=False):
     # 主题过滤：注入所属主题等字段
     # =========================
     if not result_df.empty:
-        result_df = filter_by_top_themes(result_df)
+        result_df = filter_by_top_themes(result_df, mode='resonance')
 
 
     # =========================
@@ -9992,6 +10198,10 @@ def run(target_date=None, simple_mode=False):
             integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
                 df, ts_code, theme_name, theme_trend_score, theme_sentiment_score
             )
+            # 共振系数加权：个股×主题共振（0.5~1.5）
+            resonance_coeff = float(row.get('共振系数', 1.0))
+            integrated_score_orig = integrated_score
+            integrated_score = min(integrated_score * resonance_coeff, 100)
             tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
             
             stock_data = {
@@ -10006,6 +10216,8 @@ def run(target_date=None, simple_mode=False):
                 '非一日游阶段': str(row.get('非一日游阶段', '')),
                 '确认天数': int(row.get('确认天数', 0)),
                 '龙头序列': str(row.get('龙头序列', '')),
+                '共振系数': round(resonance_coeff, 2),
+                '原始整合评分': round(integrated_score_orig, 1),
                 'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                 'YRI最大连板': details.get('YRI最大连板', 0),
                 # 强势股池回测优化：保存买入日时点特征用于硬过滤
@@ -10094,8 +10306,23 @@ def run(target_date=None, simple_mode=False):
         reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
         print(f"[强势股池优化] 过滤追高/缩量/透支股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
 
-    # 按整合评分排序
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
+    # =========================
+    # Chip Alpha 注入（突破股池）
+    # =========================
+    if ranked_stocks:
+        print(f"[ChipAlpha-突破股池] 批量计算 {len(ranked_stocks)} 只股票的筹码Alpha...")
+        _chip_results = batch_chip_alpha(ranked_stocks, lookback_days=20)
+        for s in ranked_stocks:
+            _code = s.get('代码', '')
+            _chip_r = _chip_results.get(_code)
+            _factors = extract_chip_alpha_factors(_chip_r)
+            s.update(_factors)
+            _sug, _reason = get_chip_alpha_suggestion(s)
+            s['ChipSuggestion'] = _sug
+            s['ChipSuggestionReason'] = _reason
+
+    # 按综合分排序（整合评分 70% + ChipTrendScore 30%）
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -(x.get('整合评分', 0) * 0.7 + x.get('ChipTrendScore', 50) * 0.3))
     lines = []
     lines.append("")
     lines.append("🔥 突破股池 (按整合评分排序)")
@@ -10106,8 +10333,15 @@ def run(target_date=None, simple_mode=False):
         alpha_val = s.get('Alpha评分', 0)
         alpha_sig = s.get('Alpha信号', '')
         alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
-        lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}")
+        _chip_score = s.get('ChipTrendScore', 50)
+        _cre_score = s.get('CRE_Score', 50)
+        _mom_score = s.get('ChipMomentum_Score', 50)
+        _chip_str = f" 筹码={_chip_score:.0f}/CRE={_cre_score:.0f}/动量={_mom_score:.0f}"
+        lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{_chip_str}")
         lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
+        _chip_sug = s.get('ChipSuggestion', '观望等待')
+        _chip_sug_reason = s.get('ChipSuggestionReason', '')
+        lines.append(f"  筹码建议: {_chip_sug} | {_chip_sug_reason}")
         # 主题信息
         cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
         confirm_days = s.get('确认天数', 0)
@@ -10170,6 +10404,11 @@ def run(target_date=None, simple_mode=False):
                 _theme_str = f"主题={_theme}" + (f" | 阶段={_stage}" if _stage else "") + (f" | 信号={_sig}" if _sig else "")
                 vs_lines.append(f"  {_theme_str}")
                 vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+                _chip_score = _vr.get('ChipTrendScore', 50)
+                _cre_score = _vr.get('CRE_Score', 50)
+                _mom_score = _vr.get('ChipMomentum_Score', 50)
+                _chip_sug = _vr.get('ChipSuggestion', '观望等待')
+                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
                 vs_lines.append("")
         else:
             vs_lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
@@ -10192,6 +10431,11 @@ def run(target_date=None, simple_mode=False):
                 _theme_str = f"主题={_theme}" + (f" | 阶段={_stage}" if _stage else "") + (f" | 信号={_sig}" if _sig else "")
                 vs_lines.append(f"  {_theme_str}")
                 vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+                _chip_score = _vr.get('ChipTrendScore', 50)
+                _cre_score = _vr.get('CRE_Score', 50)
+                _mom_score = _vr.get('ChipMomentum_Score', 50)
+                _chip_sug = _vr.get('ChipSuggestion', '观望等待')
+                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
                 vs_lines.append("")
 
         # 蓄势大涨信号段落（波浪结构+量能爆发结合，MACD尚未确认但启动信号明确）
@@ -10212,6 +10456,11 @@ def run(target_date=None, simple_mode=False):
                 vs_lines.append(f"  {_theme_str}")
                 vs_lines.append(f"  W1涨幅={_vr['波浪W1涨幅']:.0f}% | W2回调={_vr['波浪W2回调']:.0f}% | 距H1={_vr['波浪距H1']:+.1f}%")
                 vs_lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 今日量比={_vr['今日量比']}")
+                _chip_score = _vr.get('ChipTrendScore', 50)
+                _cre_score = _vr.get('CRE_Score', 50)
+                _mom_score = _vr.get('ChipMomentum_Score', 50)
+                _chip_sug = _vr.get('ChipSuggestion', '观望等待')
+                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
                 vs_lines.append("")
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
@@ -10352,65 +10601,124 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # ETF操作提示（从ETF主线轮动策略读取）
+    # ETF操作提示（从ETF主线轮动策略读取 - 新版 Alpha Ranking）
     # =========================
     etf_tips_text = ""
     try:
+        # 优先读取最新版（etf_alpha_ranking_latest.json）
+        latest_path = r'D:\mystock\cache_daily\etf_alpha_ranking_latest.json'
         rot_path = r'D:\mystock\cache_daily\etf_rotation_tips.json'
-        if os.path.exists(rot_path):
+        chosen_path = None
+        if os.path.exists(latest_path):
+            chosen_path = latest_path
+        elif os.path.exists(rot_path):
+            chosen_path = rot_path
+
+        if chosen_path:
             import json as _json
-            with open(rot_path, 'r', encoding='utf-8') as f:
+            with open(chosen_path, 'r', encoding='utf-8') as f:
                 rot_data = _json.load(f)
+
             etf_lines = []
             etf_lines.append("")
             etf_lines.append("")
-            etf_lines.append("📊 ETF操作提示 (ETF主线轮动策略)")
+            etf_lines.append("📊 ETF操作提示 (ETF Alpha Ranking)")
             etf_lines.append("")
-            
-            # 1. ETF最强TOP3
-            etf_rankings = rot_data.get('etf_rankings', [])
-            if etf_rankings:
-                etf_lines.append(f"ETF最强TOP3:")
-                for i, r in enumerate(etf_rankings[:3], 1):
-                    etf_lines.append(f"  {i}. {r.get('name','')}({r.get('code','')}) 综合分:{r.get('total_score',0):.1f} 动量:{r.get('momentum',0):+.2f}%")
-            
-            # 当日最强ETF
-            etf_name = rot_data.get('etf_name', '')
-            if etf_name:
-                etf_lines.append(f"最强ETF: {etf_name}")
-            
-            # 阶段分布
-            stage_summary = rot_data.get('etf_stage_summary', {})
-            stage_parts = []
-            for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
-                cnt = stage_summary.get(s, 0)
-                if cnt > 0:
-                    stage_parts.append(f"{s}{cnt}只")
-            if stage_parts:
-                etf_lines.append(f"成份股阶段分布: {' | '.join(stage_parts)}")
-            
-            # 2. 补涨TOP5
-            catchup_top = rot_data.get('catchup_top', [])
-            if catchup_top:
-                etf_lines.append("")
-                etf_lines.append("【补涨TOP5】")
-                for r in catchup_top[:5]:
-                    etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 补涨分:{r.get('catchup_score',0):.1f} 阶段:{r.get('stage','')}")
+
+            # 判断数据版本
+            if 'top3_buy' in rot_data:
+                # ===== 新版：ETF Alpha Ranking 输出 =====
+                etf_name = rot_data.get('etf_name', '')
+                etf_code = rot_data.get('etf_code', '')
+                trade_date = rot_data.get('trade_date', rot_data.get('latest_update', ''))
+                valid_count = rot_data.get('valid_stock_count', 0)
+
+                if etf_name:
+                    etf_lines.append(f"最强ETF: {etf_name}({etf_code})  数据日期: {trade_date}")
+                if valid_count:
+                    etf_lines.append(f"有效成份股: {valid_count}只")
+
+                # 信号分布
+                sig_dist = rot_data.get('signal_distribution', {})
+                sig_parts = []
+                for s in ['CORE_ALPHA', 'STRONG', 'WATCH', 'AVOID']:
+                    cnt = sig_dist.get(s, 0)
+                    if cnt > 0:
+                        sig_parts.append(f"{s}:{cnt}")
+                if sig_parts:
+                    etf_lines.append(f"信号分布: {' | '.join(sig_parts)}")
+
+                # ★ TOP3 推荐买入（核心输出）
+                top3_buy = rot_data.get('top3_buy', [])
+                if top3_buy:
+                    etf_lines.append("")
+                    etf_lines.append("【★ TOP3 推荐买入】")
+                    for r in top3_buy:
+                        tags_str = f"[{','.join(r.get('tags', []))}]" if r.get('tags') else ""
+                        etf_lines.append(
+                            f"  {r.get('rank','')}. {r.get('name','')}({r.get('code','')}) "
+                            f"Score:{r.get('final_score',0):.1f} "
+                            f"Alpha5:{r.get('alpha5',0):+.1f}% "
+                            f"Accel:{r.get('alpha_accel_5_20',0):+.1f} "
+                            f"信号:{r.get('signal','')} {tags_str}"
+                        )
+
+                # TOP10 完整排名
+                top10 = rot_data.get('top10_ranking', [])
+                if top10:
+                    etf_lines.append("")
+                    etf_lines.append("【TOP10 排名】")
+                    for r in top10:
+                        etf_lines.append(
+                            f"  {r.get('rank','')}. {r.get('name','')}({r.get('code','')}) "
+                            f"Score:{r.get('final_score',0):.1f} "
+                            f"Alpha5:{r.get('alpha5',0):+.1f}% "
+                            f"Alpha20:{r.get('alpha20',0):+.1f}% "
+                            f"Alpha60:{r.get('alpha60',0):+.1f}% "
+                            f"信号:{r.get('signal','')}"
+                        )
             else:
-                etf_lines.append("")
-                etf_lines.append("【补涨TOP5】无补涨分≥70的标的")
-            
-            # 3. 强势TOP5
-            momentum_top = rot_data.get('momentum_top', [])
-            if momentum_top:
-                etf_lines.append("")
-                etf_lines.append("【强势TOP5】")
-                for r in momentum_top[:5]:
-                    etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 强势分:{r.get('momentum_score',0):.1f} 阶段:{r.get('stage','')}")
-            else:
-                etf_lines.append("")
-                etf_lines.append("【强势TOP5】无强势分≥60的标的")
-            
+                # ===== 旧版兼容：etf_rotation_tips.json =====
+                # 1. ETF最强TOP3
+                etf_rankings = rot_data.get('etf_rankings', [])
+                if etf_rankings:
+                    etf_lines.append(f"ETF最强TOP3:")
+                    for i, r in enumerate(etf_rankings[:3], 1):
+                        etf_lines.append(f"  {i}. {r.get('name','')}({r.get('code','')}) 综合分:{r.get('total_score',0):.1f} 动量:{r.get('momentum',0):+.2f}%")
+
+                etf_name = rot_data.get('etf_name', '')
+                if etf_name:
+                    etf_lines.append(f"最强ETF: {etf_name}")
+
+                stage_summary = rot_data.get('etf_stage_summary', {})
+                stage_parts = []
+                for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
+                    cnt = stage_summary.get(s, 0)
+                    if cnt > 0:
+                        stage_parts.append(f"{s}{cnt}只")
+                if stage_parts:
+                    etf_lines.append(f"成份股阶段分布: {' | '.join(stage_parts)}")
+
+                catchup_top = rot_data.get('catchup_top', [])
+                if catchup_top:
+                    etf_lines.append("")
+                    etf_lines.append("【补涨TOP5】")
+                    for r in catchup_top[:5]:
+                        etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 补涨分:{r.get('catchup_score',0):.1f} 阶段:{r.get('stage','')}")
+                else:
+                    etf_lines.append("")
+                    etf_lines.append("【补涨TOP5】无补涨分≥70的标的")
+
+                momentum_top = rot_data.get('momentum_top', [])
+                if momentum_top:
+                    etf_lines.append("")
+                    etf_lines.append("【强势TOP5】")
+                    for r in momentum_top[:5]:
+                        etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 强势分:{r.get('momentum_score',0):.1f} 阶段:{r.get('stage','')}")
+                else:
+                    etf_lines.append("")
+                    etf_lines.append("【强势TOP5】无强势分≥60的标的")
+
             etf_tips_text = "\n".join(etf_lines)
             print(etf_tips_text)
     except Exception as e:
@@ -10462,7 +10770,7 @@ def run(target_date=None, simple_mode=False):
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
  - "🔥 量能爆发·强买信号"区（属第5部分量能爆发池，非本突破股池）
- - "📊 ETF操作提示"区及其下方的"ETF补涨信号"、"ETF强势前排信号"成份股
+ - "📊 ETF操作提示"区及其下方的"ETF Alpha Ranking"、"TOP3 推荐买入"、"TOP10 排名"成份股
  - "📊 中线股池"区的B浪低点信号股
  - "🟢逢低买入"行下的个股
  如突破股池数据区为空，直接提示"今日无突破股池"，不要用其它股池的股票填补。
@@ -10476,6 +10784,7 @@ def run(target_date=None, simple_mode=False):
 - 对每只股票进行详细分析，包括：
 - 整合评分和失败概率
 - **[突破评分]**（必须包含）和 [突破信号]（加粗强调），格式例如：**[突破评分=XX]** | 突破信号：XXX
+- 筹码建议
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
 主题地位：【必须】直接输出规则判定结果，格式如下：
 "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
@@ -10521,18 +10830,19 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 4、**【ETF操作建议】**
-**【今日ETF操作提示】**
+**【今日ETF Alpha Ranking】**
 {etf_tips_text}
 
 输出要求：
-- ETF操作提示 - 强制输出；
-- ETF补涨信号-强制输出：只显示股票代码和股票名称和补涨评分，不显示其他信息
-- ETF强势前排信号-强制输出：只显示股票代码和股票名称和分数，不显示其他信息
-- 【ETF成份股联网风险核查-强制显示有风险的个股，否则跳过】对ETF操作提示中、ETF补涨信号、ETF强势前排信号中列出的每只成份股，必须联网搜索其最新风险与舆情：
+- ETF Alpha Ranking - 强制输出；
+- ★ TOP3 推荐买入-强制输出：只显示股票代码、股票名称、Alpha评分、Alpha5收益、加速度、信号标签，不显示其他信息
+- TOP10 排名-不输出
+- 【ETF成份股联网风险核查-强制显示有风险的个股，否则跳过】对TOP3推荐买入中列出的每只成份股，必须联网搜索其最新风险与舆情：
   * 风险扫描：定增/减持/解禁/诉讼/财务异常/被监管立案/ST预警
   * 舆情热度：近期新闻、机构调研、业绩预告、重大合同、技术突破
   * 龙虎榜：机构净买卖、游资席位动向
   * 【警告触发】发现重大利空时标注"【警告】建议剔除：XXX"
+- 【信号标签解读】[突破]=接近60日新高且放量，[弹簧]=波动收缩蓄势待发，[龙头]=Alpha排名前15%且近高点，[拥挤]=短期涨幅过大风险预警
 
 5、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
@@ -10555,8 +10865,8 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
   * 如无警告个股，输出"今日股池个股暂无重大利空"
 - 如无任何风险，输出"今日暂无重大风险事件"
 
-**【热点追踪】**（联网搜索今日盘后最新新闻，必须输出）
-- 【今日涨停原因】联网搜索今日涨停股的涨停原因（政策催化/业绩超预期/题材炒作/技术反弹）
+**【热点追踪】**（联网搜索今日盘中盘后最新新闻和小作文，必须输出）
+- 【今日涨停分析】联网搜索今日大面积涨停股的涨停原因（政策催化/业绩超预期/题材炒作/技术反弹）
   * 重点核查股池中涨停或涨幅居前个股的涨停原因
   * 格式：【股票名】涨停原因+催化事件+来源
 - 【明日潜在热点】联网搜索晚间新闻，预判明日可能的热点方向：
