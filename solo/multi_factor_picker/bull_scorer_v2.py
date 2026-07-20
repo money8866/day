@@ -48,8 +48,11 @@ Alpha因子评分器（已弃用v3.0）:
   - pro.daily_basic — 日线基础数据
   - pro.daily — 日线行情
   - pro.moneyflow — 资金流向
-  - pro.stk_news — 股票新闻
-  - pro.stk_research — 股票研报
+  - pro.stk_holdernumber — 股东人数
+  - pro.fund_portfolio — 公募基金持仓
+  - pro.stk_holdertrade — 股东增减持
+  - pro.pledge_stat — 股权质押
+  - pro.share_float — 限售股解禁
 """
 import os
 import sys
@@ -150,6 +153,7 @@ def _get_df():
         from data_fetcher import DataFetcher  # type: ignore
         token = _get_token()
         if not token:
+            logger.warning("_get_df: _get_token() 返回 None，无法创建 DataFetcher")
             return None
         config = {
             'cache': {
@@ -160,7 +164,8 @@ def _get_df():
             'tushare': {'max_retry': 3, 'retry_delay': 5},
         }
         _DF_SINGLETON = DataFetcher(token, config)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"_get_df 创建 DataFetcher 失败: {type(e).__name__}: {e}")
         return None
     return _DF_SINGLETON
 
@@ -1091,66 +1096,10 @@ class RecognitionScorer:
         details['personality_tags'] = personality_tags
         return float(score), details
     
-    def _score_sentiment(self, ts_code: str) -> Tuple[float, Dict]:
-        """⑤ 舆情热度评分 — 新闻和研报覆盖"""
-        details = {}
-        fetcher = self._get_df()
-        if fetcher is None and self._get_pro() is None:
-            return 50.0, {"error": "no token"}
-
-        try:
-            # 获取最近30天的新闻
-            if fetcher is not None:
-                try:
-                    news = fetcher.get_stk_news(ts_code, limit=30)
-                except Exception:
-                    news = None
-            else:
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=30)
-                news = self._get_pro().stk_news(
-                    ts_code=ts_code,
-                    start_date=start_date.strftime('%Y%m%d'),
-                    end_date=end_date.strftime('%Y%m%d'),
-                )
-
-            news_count = len(news) if news is not None else 0
-
-            # 获取最近的研报
-            if fetcher is not None:
-                try:
-                    reports = fetcher.get_stk_research(ts_code, limit=30)
-                except Exception:
-                    reports = None
-            else:
-                end_date = datetime.now()
-                start_date = end_date - timedelta(days=30)
-                reports = self._get_pro().stk_research(
-                    ts_code=ts_code,
-                    start_date=start_date.strftime('%Y%m%d'),
-                    end_date=end_date.strftime('%Y%m%d'),
-                )
-
-            report_count = len(reports) if reports is not None else 0
-            
-            # 评分
-            news_score = min(100, news_count * 5)  # 20条新闻=100分
-            report_score = min(100, report_count * 20)  # 5份研报=100分
-            
-            score = 0.6 * news_score + 0.4 * report_score
-            
-            details['news_count'] = news_count
-            details['report_count'] = report_count
-            return float(score), details
-        
-        except Exception as e:
-            logger.debug(f"sentiment score {ts_code}: {e}")
-            return 50.0, {"error": str(e)[:40]}
-    
     def compute(self, ts_code: str, market_cap: float = 0, industry: str = "") -> Tuple[float, Dict]:
         """
         综合历史辨识度评分 (0~100)
-        权重: 资金活跃度 25% + 涨停基因 25% + 空间记忆 20% + 股性画像 15% + 舆情热度 15%
+        权重: 资金活跃度 30% + 涨停基因 30% + 空间记忆 20% + 股性画像 20%
         """
         cache_key = f"{ts_code}_{market_cap:.0f}"
         if cache_key in self._cache:
@@ -1187,16 +1136,14 @@ class RecognitionScorer:
         s2, d2 = self._score_limit_up_history(ts_code, daily_df=_shared_daily)
         s3, d3 = self._score_price_momentum(ts_code, daily_df=_shared_daily)
         s4, d4 = self._score_stock_personality(market_cap, industry)
-        s5, d5 = self._score_sentiment(ts_code)
         
-        score = 0.25 * s1 + 0.25 * s2 + 0.20 * s3 + 0.15 * s4 + 0.15 * s5
+        score = 0.30 * s1 + 0.30 * s2 + 0.20 * s3 + 0.20 * s4
         
         result = (round(score, 1), {
             "activity": {"score": s1, **d1},
             "limit_up": {"score": s2, **d2},
             "momentum": {"score": s3, **d3},
             "personality": {"score": s4, **d4},
-            "sentiment": {"score": s5, **d5},
         })
         
         self._cache[cache_key] = result
@@ -1891,6 +1838,10 @@ class BullScoreV2Result:
     swing_quality_score: float = 0.0       # 波段属性(适合反复波段操作)
     forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
     forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
+    forecast_ann_date: str = ""                # 预告公告日期
+    quarterly_net_profit: float = 0.0          # 季度净利润
+    quarterly_net_profit_prev: float = 0.0     # 上年同期季度净利润
+    sequential_qoq_growth: float = 0.0         # 环比增速(最新季度 vs 上一季度)
     # v3.3 估值空间(从 v1 层透传) → v4.0 成长兑现模型
     fair_value: float = 0.0            # 基准估值(亿元)
     optimistic_value: float = 0.0      # 乐观估值(亿元)
@@ -2287,6 +2238,10 @@ class BullScorerV2:
             swing_quality_score=round(base_result.swing_quality_score, 2),
             forecast_profit_change=round(base_result.forecast_profit_change, 2),
             forecast_vs_analyst_gap=round(base_result.forecast_vs_analyst_gap, 2),
+            forecast_ann_date=base_result.forecast_ann_date,
+            quarterly_net_profit=round(base_result.quarterly_net_profit, 2),
+            quarterly_net_profit_prev=round(base_result.quarterly_net_profit_prev, 2),
+            sequential_qoq_growth=round(base_result.sequential_qoq_growth, 2),
             # v3.3 估值空间透传 → v4.0 成长兑现模型
             fair_value=base_result.fair_value,
             optimistic_value=base_result.optimistic_value,
@@ -2334,40 +2289,117 @@ class BullScorerV2:
                 return "观察名单"
         return "未排名"
 
-    def batch_compute(self, base_results: List['BullScoreResult'],
-                       batch_size: int = 12, delay: float = 0.15,
-                       filter_market_cap: bool = True) -> List[BullScoreV2Result]:
+    def _prewarm_caches(self, base_results: List['BullScoreResult']):
         """
-        批量计算（ThreadPoolExecutor 并发加速 + 批量缓存写入）
-        
-        Args:
-            base_results: 来自 bull_scorer.py 的基础评分结果
-            batch_size: 每批并发数(=线程数)
-            delay: 每批间隔(秒)
-            filter_market_cap: 是否过滤市值（60亿-5000亿）
+        预热缓存：先用 DataFetcher 本地 DB 获取真实评分；不可用时回退默认 0 分。
         """
-        # 市值过滤（60亿-5000亿）
+        total = len(base_results)
+        df = _get_df()
+        if df is None:
+            # DataFetcher 不可用 → 默认 0 分
+            logger.info("DataFetcher 不可用，使用默认 0 分")
+            for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+                cache = self._load_file_cache(cache_name)
+                count = sum(1 for br in base_results if br.ts_code not in cache)
+                for br in base_results:
+                    if br.ts_code not in cache:
+                        entry = {'score': 0.0, 'details': {}}
+                        if cache_name == 'theme':
+                            entry['theme'] = ''
+                        cache[br.ts_code] = entry
+                if count:
+                    self._flush_file_cache(cache_name)
+                    logger.info(f"  {cache_name}缓存: 填充{count}/{total}只默认0分")
+            return
+
+        # DataFetcher 可用 → 先清旧缓存文件，再逐只重新计算真实评分
+        logger.info(f"DataFetcher 可用，清旧缓存并预热 {total} 只真实评分...")
+        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+            path = self._cache_dir / f'{cache_name}.json'
+            if path.exists():
+                path.unlink()
+            self._file_caches.pop(cache_name, None)
+        t_start = time.time()
+        for i, br in enumerate(base_results):
+            # chip
+            try:
+                self._get_chip_score(br.ts_code)
+            except Exception:
+                c = self._load_file_cache('chip')
+                if br.ts_code not in c:
+                    c[br.ts_code] = {'score': 0.0, 'details': {}}
+            # safety
+            try:
+                self._get_safety_score(
+                    br.ts_code,
+                    br.profit_yoy / 100 if br.profit_yoy else 0,
+                    br.roe / 100 if br.roe else 0,
+                    br.sub_details.get('earnings_quality', {}).get('cashflow_growth_rank', 0),
+                    br.revenue,
+                )
+            except Exception:
+                c = self._load_file_cache('safety')
+                if br.ts_code not in c:
+                    c[br.ts_code] = {'score': 0.0, 'details': {}}
+            # theme
+            try:
+                self._get_theme_score_v2(br.ts_code, br.chain_tag)
+            except Exception:
+                c = self._load_file_cache('theme')
+                if br.ts_code not in c:
+                    c[br.ts_code] = {'score': 0.0, 'theme': '', 'details': {}}
+            # recognition
+            try:
+                self._get_recognition_score(br.ts_code, br.market_cap or 0, br.industry or "")
+            except Exception:
+                c = self._load_file_cache('recognition')
+                if br.ts_code not in c:
+                    c[br.ts_code] = {'score': 0.0, 'details': {}}
+
+            if (i + 1) % 100 == 0 or (i + 1) == total:
+                elapsed = time.time() - t_start
+                speed = (i + 1) / max(elapsed, 1)
+                rem = (total - i - 1) / max(speed, 1)
+                # 统计各缓存已填充数
+                chip_n = len(self._load_file_cache('chip')) - 1
+                safe_n = len(self._load_file_cache('safety')) - 1
+                theme_n = len(self._load_file_cache('theme')) - 1
+                recog_n = len(self._load_file_cache('recognition')) - 1
+                logger.info(f"  预热 {i+1}/{total}  chip{chip_n} 安全{safe_n} 主题{theme_n} 辨识{recog_n}  {speed:.0f}只/分  剩余{rem/60:.0f}分钟")
+
+        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+            self._flush_file_cache(cache_name)
+        elapsed = time.time() - t_start
+        logger.info(f"预热完成! {total}只 耗时{elapsed/60:.1f}分钟")
+
+    def _batch_prewarm_and_score(self, base_results, batch_size=12, delay=0.15, filter_market_cap=True):
+        """预热缓存 → 批量并行评分（两步法）"""
+        # 市值过滤
         if filter_market_cap:
             filtered = []
             for br in base_results:
                 mc = br.market_cap or 0
                 if self.min_market_cap <= mc <= self.max_market_cap:
                     filtered.append(br)
-                else:
-                    logger.debug(f"市值过滤: {br.name} ({br.ts_code}) {mc/1e8:.1f}亿 超出范围")
             logger.info(f"市值过滤前: {len(base_results)}只, 过滤后: {len(filtered)}只")
             base_results = filtered
-        
-        # 批量模式：并发线程数 + 结束时统一写一次缓存
+
+        # Step 1: 串行预热缓存
+        self._prewarm_caches(base_results)
+
+        # Step 2: 批量并行评分（此时所有缓存已命中，零 API 调用）
+        return self._batch_score_only(base_results, batch_size, delay)
+
+    def _batch_score_only(self, base_results, batch_size=12, delay=0.15):
+        """只做评分计算（假设缓存已预热），不进行任何 tushare API 调用"""
         self._batch_mode = True
         logger.remove()
         results = []
         total = len(base_results)
-        logger.info(f"BullScore v2.1 开始计算 {total} 只股票...")
+        logger.info(f"批量评分计算 {total} 只（缓存预热完毕，零API调用）...")
         results_lock = threading.Lock()
 
         def _process_one(br):
-            """单只股票评分（线程安全）"""
             try:
                 r = self.compute_v2(br)
                 with results_lock:
@@ -2382,57 +2414,59 @@ class BullScorerV2:
                     ))
 
         for i in range(0, total, batch_size):
-            batch = base_results[i:i+batch_size]
+            batch = base_results[i:i + batch_size]
             with ThreadPoolExecutor(max_workers=batch_size) as executor:
                 futures = {executor.submit(_process_one, br): br for br in batch}
                 for f in as_completed(futures):
                     try:
                         f.result()
                     except Exception:
-                        pass  # _process_one 内部已处理异常
+                        pass
             if i + batch_size < total:
                 time.sleep(delay)
             done = min(i + batch_size, total)
-            if done % 25 == 0:
-                print(f"  v2进度: {done}/{total}", flush=True)
-            
-        # 恢复日志
-        logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
+            if done % 50 == 0 or done == total:
+                print(f"  v2评分: {done}/{total}", flush=True)
 
-        # 统一写一次全部缓存文件
+        logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
         for cache_name in ['chip', 'safety', 'theme', 'recognition']:
             self._flush_file_cache(cache_name)
-
-        # 排序
         results.sort(key=lambda r: r.final_score, reverse=True)
+        self._assign_leader_types(results)
+        logger.info(f"评分计算完成: {len(results)} 只")
+        return results
 
-        # 同行业龙头识别：按营收排名，各行业前1~2名为行业龙头
+    def _assign_leader_types(self, results):
+        """同行业龙头识别 + 等级分配"""
         industry_groups = {}
         for r in results:
             ind = r.industry or "未知"
-            if ind not in industry_groups:
-                industry_groups[ind] = []
-            industry_groups[ind].append(r)
-
+            industry_groups.setdefault(ind, []).append(r)
         for ind, group in industry_groups.items():
             if len(group) < 3:
-                continue  # 行业样本太少，不判定
-            # 按营收降序排列
+                continue
             group.sort(key=lambda x: x.revenue or 0, reverse=True)
-            # 营收最高的为行业龙头
             group[0].leader_type = "行业龙头"
             group[0].leader_features = group[0].leader_features + ["行业龙头"]
-            # 营收第二高的为行业龙二
             if len(group) >= 2:
                 group[1].leader_type = "行业龙二"
                 group[1].leader_features = group[1].leader_features + ["行业龙二"]
-
-        # 分配等级
         for idx, r in enumerate(results):
             r.bull_level = self._get_level(len(results), idx + 1)
 
-        logger.info(f"BullScore v2 计算完成: {len(results)} 只")
-        return results
+    def batch_compute(self, base_results: List['BullScoreResult'],
+                       batch_size: int = 12, delay: float = 0.15,
+                       filter_market_cap: bool = True) -> List[BullScoreV2Result]:
+        """
+        批量计算（两步法：先串行预热缓存，再并行评分）
+        
+        Args:
+            base_results: 来自 bull_scorer.py 的基础评分结果
+            batch_size: 每批并发数(=线程数)
+            delay: 每批间隔(秒)
+            filter_market_cap: 是否过滤市值（60亿-5000亿）
+        """
+        return self._batch_prewarm_and_score(base_results, batch_size, delay, filter_market_cap)
 
     def to_dataframe(self, results: List[BullScoreV2Result]) -> pd.DataFrame:
         """转 DataFrame"""

@@ -472,6 +472,7 @@ def extract_bull_data(row: pd.Series,
     # ── 季度业绩 ──
     quarterly_net_profit = latest_n_income
     quarterly_net_profit_prev = 0.0
+    sequential_qoq_growth = 0.0
     if len(income) >= 2:
         latest_end = str(latest.get('end_date', ''))
         for j in range(1, len(income)):
@@ -480,6 +481,21 @@ def extract_bull_data(row: pd.Series,
                 pn = float(income.iloc[j].get('n_income')) if pd.notna(income.iloc[j].get('n_income')) else 0.0
                 quarterly_net_profit_prev = pn
                 break
+        # 计算环比增速: 找上一季度(end_date前推3个月)
+        if len(income) >= 2:
+            prev_q_end = ''
+            if len(latest_end) >= 6:
+                yy = int(latest_end[:4])
+                mm = int(latest_end[4:6])
+                prev_mm = mm - 3 if mm > 3 else 9
+                prev_yy = yy if mm > 3 else yy - 1
+                prev_q_end = f"{prev_yy}{prev_mm:02d}31"
+            if prev_q_end:
+                prev_q_rows = income[income['end_date'] == prev_q_end]
+                if len(prev_q_rows) > 0:
+                    prev_q_profit = float(prev_q_rows.iloc[0].get('n_income')) if pd.notna(prev_q_rows.iloc[0].get('n_income')) else 0.0
+                    if prev_q_profit > 0:
+                        sequential_qoq_growth = (quarterly_net_profit - prev_q_profit) / prev_q_profit * 100
 
     # ── 业绩预告（v3.2 增强：完整中报预告数据） ──
     forecast_type = ''
@@ -765,6 +781,7 @@ def extract_bull_data(row: pd.Series,
         forecast_end_date=forecast_end_date,
         forecast_is_latest_period=forecast_is_latest_period,
         forecast_vs_analyst_gap=forecast_vs_analyst_gap,
+        sequential_qoq_growth=sequential_qoq_growth,
         # v3.3 业绩快报
         express_revenue=express_revenue,
         express_operate_profit=express_operate_profit,
@@ -953,7 +970,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     # BullScore v3.2 增强评分（历史辨识度 + 业绩超预期 + 波段属性 + 龙头/中军识别）
     logger.info("阶段3b: BullScore v3.2 增强评分（辨识度+业绩超预期+波段属性+龙头识别）...")
     scorer_v2 = BullScorerV2(token=get_token(config))
-    results_v2 = scorer_v2.batch_compute(base_results)
+    results_v2 = scorer_v2._batch_prewarm_and_score(base_results)
     logger.info(f"BullScore v2.1 增强评分完成: {len(results_v2)} 只")
 
     # 按 final_score 降序排序
@@ -1142,97 +1159,81 @@ def print_bull_results(results: List[BullScoreV2Result]) -> None:
     bull_scorer.print_summary(results)
 
 
-# ==================== 微信推送（PushPlus） ====================
-
-PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", "9dd91e1aad484af2b77e9e4e7b4bae37")
 
 
-def push_wechat_notification(all_results, qualified, elite, report_daily_dir):
+def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Result]:
     """
-    通过 PushPlus 推送 BullScore 报告摘要到微信
-
-    Args:
-        all_results: 全量评分结果
-        qualified: 合格股票(>=70分)
-        elite: 精选股票
-        report_daily_dir: 报告输出目录
+    7月中报行情预告硬核初筛（Step 1）
+    
+    预告期（7月）逻辑：
+    - 有预告数据的股票 → forecast_profit_change ≥ 30% + QoQ>0 + 市值200-1500亿
+    - 无预告数据的股票 → 跳过（等正式中报出来再筛）
+    
+    正式中报期（8月+）再启用 profit_yoy ≥ 50% 的严格标准
     """
-    import requests
     from datetime import datetime
+    now = datetime.now()
+    # 仅在7月-8月激活
+    if now.month < 6 or now.month > 8:
+        return results
 
-    logger.info("=" * 60)
-    logger.info("开始微信推送 (PushPlus)...")
-
-    # 构造推送标题
-    trade_date = datetime.now().strftime('%Y-%m-%d')
-    title = f"🐂 BullScore 选股日报 {trade_date}"
-
-    # 构造推送内容（Markdown 格式）
-    lines = [
-        f"## {title}",
-        f"> 扫描: {len(all_results)} 只 | 合格: {len(qualified)} 只 | 精选: {len(elite)} 只",
-        "",
-    ]
-
-    if elite:
-        lines.append("### 🏆 TOP 5 精选标的")
-        lines.append("| 排名 | 代码 | 名称 | 主题 | Bull分 | 主题分 | Final分 |")
-        lines.append("|------|------|------|------|--------|--------|---------|")
-        for i, r in enumerate(elite[:5], 1):
-            code = r.ts_code.replace('.SH', '').replace('.SZ', '').replace('.BJ', '')
-            name = getattr(r, 'name', '')
-            theme = getattr(r, 'theme', '')
-            bull = getattr(r, 'bull_score', 0)
-            t_score = getattr(r, 'theme_score', 0)
-            f_score = getattr(r, 'final_score', 0)
-            lines.append(f"| {i} | **{code}** | {name} | {theme} | {bull:.1f} | {t_score:.1f} | **{f_score:.1f}** |")
-        lines.append("")
-
-    if qualified:
-        lines.append("### 📈 各主题龙头分布 (Top 10)")
-        lines.append("| 主题 | 龙头 | Final分 |")
-        lines.append("|------|------|---------|")
-        # 按主题聚合，挑每个主题得分最高的
-        theme_top = {}
-        for r in qualified:
-            theme = getattr(r, 'theme', '')
-            if not theme:
+    before = len(results)
+    filtered = []
+    for r in results:
+        mc = r.market_cap
+        mc_b = mc / 1e8 if mc > 0 else 0
+        # 市值过滤（所有股票都适用）
+        if mc_b < 100 or mc_b > 1500:
+            continue
+        has_forecast = r.forecast_profit_change > 0
+        if has_forecast:
+            # 有预告数据：按预告增速+环比过滤
+            if r.forecast_profit_change < 30:
                 continue
-            f_score = getattr(r, 'final_score', 0)
-            if theme not in theme_top or f_score > theme_top[theme][1]:
-                theme_top[theme] = (getattr(r, 'name', ''), f_score)
-        sorted_themes = sorted(theme_top.items(), key=lambda x: x[1][1], reverse=True)[:10]
-        for theme, (name, score) in sorted_themes:
-            lines.append(f"| {theme} | {name} | {score:.1f} |")
-        lines.append("")
+            has_qoq_data = r.quarterly_net_profit > 0
+            if has_qoq_data and r.sequential_qoq_growth <= 0:
+                continue
+        # else: 无预告数据，跳过（仅市值过滤）
+        filtered.append(r)
+    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (有预告YoY≥30% + QoQ>0 + 市值100-1500亿)")
+    return filtered
 
-    lines.append("### 📁 生成文件")
-    lines.append(f"- 全量: `report_daily/bull_stocks_all.csv` ({len(all_results)}只)")
-    lines.append(f"- 合格: `report_daily/bull_stocks_qualified.csv` ({len(qualified)}只)")
-    lines.append(f"- 精选: `report_daily/bull_stocks_elite.csv` ({len(elite)}只)")
-    lines.append("")
-    lines.append(f"> 🤖 自动生成于 {datetime.now().strftime('%H:%M:%S')}")
 
-    content = "\n".join(lines)
+def _july_dump_penalty(results: List[BullScoreV2Result]) -> List[BullScoreV2Result]:
+    """
+    7月利好出尽防守补丁（Step 2）
+    如果业绩预告公告后，股价在预告发布当天开盘价之下，说明利好出尽，扣10分
+    """
+    from datetime import datetime
+    now = datetime.now()
+    if now.month < 6 or now.month > 8:
+        return results
 
-    # 调用 PushPlus API
-    url = "https://www.pushplus.plus/send"
-    payload = {
-        "token": PUSHPLUS_TOKEN,
-        "title": title,
-        "content": content,
-        "template": "markdown",
-    }
-    try:
-        resp = requests.post(url, json=payload, timeout=15)
-        result = resp.json()
-        if result.get('code') == 200:
-            logger.info(f"✅ 微信推送成功！请查看公众号 PushPlus 推送加 消息")
-            logger.info(f"   推送ID: {result.get('data')}")
-        else:
-            logger.warning(f"⚠️ 微信推送返回异常: {result.get('msg', result)}")
-    except Exception as e:
-        logger.warning(f"❌ 微信推送请求失败: {e}")
+    import sqlite3
+    DB = r'D:\mystock\cache_daily\stock_data.db'
+    penalty_count = 0
+    for r in results:
+        ann_date = r.forecast_ann_date
+        if not ann_date or len(ann_date) != 8:
+            continue
+        open_price = None
+        try:
+            conn = sqlite3.connect(DB)
+            cur = conn.execute(
+                "SELECT open FROM stk_factor_pro WHERE ts_code=? AND trade_date=?",
+                (r.ts_code, ann_date)
+            )
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0] and row[0] > 0:
+                open_price = float(row[0])
+        except Exception:
+            continue
+        if open_price and open_price > 0 and r.close_price > 0 and r.close_price < open_price:
+            r.final_score -= 10
+            penalty_count += 1
+    logger.info(f"Step2-7月利好出尽防守: {penalty_count} 只股票被扣分 (close < forecast_day_open)")
+    return results
 
 
 def main():
@@ -1255,8 +1256,14 @@ def main():
         qualified = [r for r in all_results if r.final_score >= 60]
         logger.info(f"一级过滤(>=60分): {len(qualified)} 只")
 
+        # ── Step 1: 7月中报硬核初筛 ──
+        qualified = _july_hard_filter(qualified)
+
+        # ── Step 2: 7月利好出尽防守（在 secondary_filter 前执行） ──
+        qualified = _july_dump_penalty(qualified)
+
         # ── 二级精选过滤（核心输出） ──
-        elite = secondary_filter(all_results)
+        elite = secondary_filter(qualified)
 
         # ── 主线归因 + 产业β过滤（新增） ──
         # 对合格标的执行主线归因，剔除周期股，保留AI/科技产业β驱动龙头
@@ -1267,6 +1274,20 @@ def main():
             print_bull_results(qualified)
         else:
             logger.info("未筛选出符合观察名单(>=60分)的股票")
+
+        # ── Step 3: TradeScore 排序 TOP 20（7月核心输出） ──
+        if qualified:
+            trade_sorted = sorted(qualified, key=lambda r:
+                0.5 * r.expectation_score + 0.3 * r.order_explosion_score + 0.2 * r.marketcap_score,
+                reverse=True)
+            print("\n" + "=" * 80)
+            print("  Step3-7月中报 TradeScore TOP 20（预期差+订单爆发+市值弹性）")
+            print("=" * 80)
+            print(f"  {'排名':>4} {'代码':>12} {'名称':>10} {'主题':>14} {'TradeScore':>10} {'预期差':>8} {'订单':>8} {'市值弹性':>8} {'利润YoY%':>8} {'环比%':>8} {'评级':>8}")
+            for i, r in enumerate(trade_sorted[:20], 1):
+                ts = 0.5 * r.expectation_score + 0.3 * r.order_explosion_score + 0.2 * r.marketcap_score
+                code = r.ts_code.replace('.SH','').replace('.SZ','').replace('.BJ','')
+                print(f"  {i:>4} {code:>12} {r.name:>10} {(r.theme or r.chain_tag or ''):>14} {ts:>8.1f}  {r.expectation_score:>6.1f}  {r.order_explosion_score:>6.1f}  {r.marketcap_score:>6.1f}  {r.profit_yoy:>6.1f}  {r.sequential_qoq_growth:>6.1f}  {r.bull_level:>8}")
 
         # ── 保存 ──
         scorer_v2 = BullScorerV2(token=token)
@@ -1326,12 +1347,6 @@ def main():
         if elite:
             scorer_v2.to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
             logger.info(f"精选数据已保存至(固定路径): {elite_fixed_path}")
-
-        # ── 微信推送（PushPlus） ──
-        try:
-            push_wechat_notification(all_results, qualified, elite, report_daily_dir)
-        except Exception as pe:
-            logger.warning(f"微信推送失败: {pe}")
 
         logger.info("=" * 60)
         logger.info("BullScore 选股完成")

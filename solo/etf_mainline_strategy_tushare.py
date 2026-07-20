@@ -1,4 +1,4 @@
-﻿"""
+"""
 ETF主线轮动策略 - Tushare版 (收盘后运行)
 策略: 多因子动量评分 (动量+量能+波动率+相对强弱)
 ETF池: 37只行业ETF (全验证)
@@ -11,7 +11,7 @@ ETF池: 37只行业ETF (全验证)
 """
 from dotenv import load_dotenv
 import os, datetime, pandas as pd, numpy as np, json, time, argparse
-load_dotenv("config/.env")
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", ".env"))
 TS_TOKEN = os.getenv("TUSHARE_TOKEN")
 WECHAT_KEY = os.getenv("WECHAT_KEY")
 import tushare as ts
@@ -23,6 +23,8 @@ STATE_FILE = os.path.join(os.path.dirname(__file__), "etf_mainline_state_tushare
 MOM_PERIOD = 20
 REBAL_DAYS = 60
 TOP_N = 1
+DYNAMIC_EXIT_TOPN = 5       # 动态退出: 跌出TOP5则触发调仓
+MIN_HOLD_DAYS = 5           # 动态退出保护: 最少持仓5个交易日才允许动态退出
 
 # ──────────────────────────────────────────
 # 缓存配置（复用 cache_daily 目录）
@@ -30,6 +32,7 @@ TOP_N = 1
 CACHE_DIR = r"D:\mystock\cache_daily"
 ETF_FUND_CACHE_DIR = os.path.join(CACHE_DIR, "etf_fund")
 ETF_CONS_CACHE_DIR = os.path.join(CACHE_DIR, "etf_cons")
+ETF_CONS_JSON = os.path.join(CACHE_DIR, "etf_constituents_all.json")
 os.makedirs(ETF_FUND_CACHE_DIR, exist_ok=True)
 os.makedirs(ETF_CONS_CACHE_DIR, exist_ok=True)
 
@@ -76,7 +79,6 @@ ETF_POOL = {
     '电力': '159611', '电网设备': '561380', '消费': '159928',
     '食品饮料': '159736', '酒': '512690', '家电': '159996',
     '证券': '512880', '银行': '512800', '红利': '515180',
-    '黄金': '518880', 
     '工业母机': '159667','科创半导体':'588170',
 }
 
@@ -149,10 +151,41 @@ def send_pushplus(msg, token):
 def get_etf_constituents(ts_code, trade_date):
     """
     获取ETF成份股列表
-    根据代码前缀选择接口：1开头→深圳 etf_sz_cons，5/6开头→上海 etf_sh_cons
-    返回：[(con_code, con_name, qty, cpr), ...]
+    1. 优先读 etf_constituents_all.json（由 download_etf_constituents.py 生成，含权重weight）
+    2. 缺失则走 API（etf_sz_cons / etf_sh_cons）并缓存到 etf_cons 目录
+    返回：[{con_code, con_name, weight, qty, cpr}, ...]
     """
-    # 优先读缓存
+    # ---- 1. 读 etf_constituents_all.json ----
+    if os.path.exists(ETF_CONS_JSON):
+        try:
+            with open(ETF_CONS_JSON, 'r', encoding='utf-8') as f:
+                cons_map = json.load(f)
+            etf_data = cons_map.get(ts_code)
+            if etf_data and isinstance(etf_data, dict) and 'constituents' in etf_data:
+                cons = etf_data['constituents']
+                return [
+                    {
+                        'con_code': c.get('con_code', ''),
+                        'con_name': c.get('con_name', ''),
+                        'weight': c.get('weight', c.get('cpr', 0)),
+                        'qty': c.get('qty', 0),
+                        'cpr': c.get('cpr', 0),
+                    }
+                    for c in cons
+                ]
+            elif etf_data and isinstance(etf_data, list):
+                # 旧格式兼容: 纯股票代码列表
+                try:
+                    sb = pro.stock_basic(list_status='L', fields='ts_code,name')
+                    name_map = dict(zip(sb['ts_code'], sb['name']))
+                except Exception:
+                    name_map = {}
+                return [{'con_code': c, 'con_name': name_map.get(c, ''),
+                         'weight': 0, 'qty': 0, 'cpr': 0} for c in etf_data]
+        except Exception:
+            pass
+
+    # ---- 2. 读单独CSV缓存（旧格式兼容） ----
     cache_file = _cache_key_cons(ts_code, trade_date)
     cached = _read_cache(cache_file)
     if cached is not None:
@@ -161,11 +194,13 @@ def get_etf_constituents(ts_code, trade_date):
             result.append({
                 'con_code': row.get('con_code', ''),
                 'con_name': row.get('con_name', ''),
+                'weight': row.get('weight', row.get('cpr', 0)),
                 'qty': row.get('qty', 0),
                 'cpr': row.get('cpr', 0),
             })
         return result
 
+    # ---- 3. API 拉取 ----
     prefix = ts_code[0]
     try:
         if prefix == '1':
@@ -180,20 +215,20 @@ def get_etf_constituents(ts_code, trade_date):
             )
         if df is None or df.empty:
             return []
-        
-        # 只保留指定日期之前的最新成份股列表
+
         df = df[df['trade_date'] <= trade_date]
         if df.empty:
             return []
         latest_date = df['trade_date'].max()
         df = df[df['trade_date'] == latest_date]
         _save_cache(df, cache_file)
-        
+
         result = []
         for _, row in df.iterrows():
             result.append({
                 'con_code': row.get('con_code', ''),
                 'con_name': row.get('con_name', ''),
+                'weight': row.get('weight', row.get('cpr', 0)),
                 'qty': row.get('qty', 0),
                 'cpr': row.get('cpr', 0),
             })
@@ -201,6 +236,132 @@ def get_etf_constituents(ts_code, trade_date):
     except Exception as e:
         print(f"  [WARN] 获取{ts_code}成份股失败: {e}")
         return []
+
+
+# ──────────────────────────────────────────
+# 申万行业纯度因子 (Purity Score)
+# ──────────────────────────────────────────
+SW_INDUSTRY_CACHE = os.path.join(CACHE_DIR, "sw_industry_map.json")
+
+# 每个ETF对应的"纯度行业白名单" (申万一级行业名称)
+# 不在此白名单的成份股将被过滤, 位置让给纯度更高的股票
+ETF_PURITY_WHITELIST = {
+    '创新药': ['医药生物'],
+    '医药':   ['医药生物'],
+    '医疗器械': ['医药生物'],
+    '半导体': ['电子'],
+    '芯片': ['电子'],
+    '半导体设备': ['电子', '机械设备'],
+    '科创半导体': ['电子'],
+    '人工智能': ['计算机', '通信', '电子', '传媒'],
+    '软件': ['计算机'],
+    '通信': ['通信'],
+    '消费电子': ['电子'],
+    '金融科技': ['计算机', '非银金融'],
+    '游戏': ['传媒', '计算机'],
+    '新能源': ['电力设备'],
+    '光伏': ['电力设备'],
+    '储能': ['电力设备'],
+    '电池': ['电力设备', '有色金属'],
+    '新能源车': ['汽车', '电力设备'],
+    '军工': ['国防军工'],
+    '航空航天': ['国防军工'],
+    '机器人': ['机械设备', '电力设备', '电子', '家用电器'],
+    '有色金属': ['有色金属'],
+    '化工': ['基础化工', '石油石化'],
+    '煤炭': ['煤炭'],
+    '钢铁': ['钢铁'],
+    '电力': ['公用事业'],
+    '电网设备': ['电力设备', '公用事业'],
+    '消费': ['食品饮料', '商贸零售', '纺织服饰', '社会服务', '家用电器', '农林牧渔', '轻工制造'],
+    '食品饮料': ['食品饮料'],
+    '酒': ['食品饮料'],
+    '家电': ['家用电器'],
+    '证券': ['非银金融'],
+    '银行': ['银行'],
+    '红利': [],  # 红利策略不限行业
+    '工业母机': ['机械设备'],
+}
+
+
+def get_sw_industry(ts_code):
+    """
+    获取股票的申万一级行业分类 (带缓存)
+    返回: l1_name (如"医药生物") 或 None
+    """
+    # 读缓存
+    cache = {}
+    if os.path.exists(SW_INDUSTRY_CACHE):
+        try:
+            with open(SW_INDUSTRY_CACHE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+        except Exception:
+            cache = {}
+
+    if ts_code in cache:
+        return cache[ts_code]
+
+    # API查询
+    try:
+        df = pro.index_member_all(ts_code=ts_code)
+        if df is not None and not df.empty:
+            # 取最新记录 (is_new='Y')
+            if 'is_new' in df.columns:
+                df = df[df['is_new'] == 'Y']
+            if not df.empty:
+                l1_name = str(df.iloc[0].get('l1_name', ''))
+                cache[ts_code] = l1_name
+                # 写缓存
+                with open(SW_INDUSTRY_CACHE, 'w', encoding='utf-8') as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=2)
+                return l1_name
+    except Exception:
+        pass
+
+    cache[ts_code] = None
+    with open(SW_INDUSTRY_CACHE, 'w', encoding='utf-8') as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
+    return None
+
+
+def filter_by_purity(constituents, etf_name, min_weight=2.0):
+    """
+    纯度因子过滤: 根据申万一级行业过滤非纯度成份股
+
+    Args:
+        constituents: [{con_code, con_name, weight, qty, cpr}, ...]
+        etf_name: ETF名称 (如 '创新药')
+        min_weight: 最小持仓占比阈值, 低于此值不过滤
+
+    Returns:
+        (filtered_list, removed_list, purity_ratio)
+    """
+    whitelist = ETF_PURITY_WHITELIST.get(etf_name, [])
+    if not whitelist:
+        return constituents, [], 1.0
+
+    filtered = []
+    removed = []
+
+    for con in constituents:
+        con_code = con.get('con_code', '')
+        weight = float(con.get('weight', con.get('cpr', 0)) or 0)
+
+        if weight > 0:
+            filtered.append(con)
+            continue
+
+        l1_name = get_sw_industry(con_code)
+
+        if l1_name and l1_name in whitelist:
+            filtered.append(con)
+        elif l1_name:
+            removed.append({**con, 'l1_name': l1_name, 'reason': f'行业({l1_name})不在白名单'})
+        else:
+            filtered.append(con)
+
+    purity_ratio = len(filtered) / len(constituents) if constituents else 0
+    return filtered, removed, purity_ratio
 
 
 def compute_stock_momentum_score(ts_code, pro, lookback_days=60):
@@ -292,14 +453,23 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
 
     mom_20d = close.pct_change(mom_period).iloc[-1] * 100
 
+    # 量能配合: 最近5日 vs 前15日(不重叠区间), 避免重叠稀释变化
     vol = df.get('vol', None)
-    if vol is None or len(vol) < mom_period:
-        vol_score = 50
+    if vol is not None and len(vol) >= mom_period:
+        recent_vol = vol.tail(5).mean()
+        prev_vol = vol.tail(mom_period).head(mom_period - 5).mean()
+        vol_ratio = recent_vol / (prev_vol + 1e-6)
+        vol_score = min(max(vol_ratio * 50, 0), 100)
     else:
-        recent_vol_avg = vol.tail(5).mean()
-        hist_vol_avg = vol.tail(mom_period).mean()
-        vol_ratio = recent_vol_avg / (hist_vol_avg + 1e-6)
-        vol_score = min(vol_ratio * 50, 100)
+        # vol缺失时尝试用amount替代
+        amount = df.get('amount', None)
+        if amount is not None and len(amount) >= mom_period:
+            recent_amt = amount.tail(5).mean()
+            prev_amt = amount.tail(mom_period).head(mom_period - 5).mean()
+            amt_ratio = recent_amt / (prev_amt + 1e-6)
+            vol_score = min(max(amt_ratio * 50, 0), 100)
+        else:
+            vol_score = 50
 
     daily_returns = close.pct_change().dropna()
     if len(daily_returns) >= mom_period:
@@ -724,75 +894,6 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     csv_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     lines.append(f"\n  CSV Report: {csv_path}")
 
-    # ── JSON Output (for tushare_quant.py to read) ──
-    json_dir = os.path.join(CACHE_DIR, "etf_alpha_ranking")
-    os.makedirs(json_dir, exist_ok=True)
-    json_path = os.path.join(json_dir, f"{safe_etf_name}_{trade_date}.json")
-
-    # TOP3 推荐买入（精简结构）
-    top3_list = []
-    for _, r in df.head(3).iterrows():
-        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-        tags = []
-        if r.get('breakout_bonus', 0) > 0: tags.append("突破")
-        if r.get('spring_bonus', 0) > 0: tags.append("弹簧")
-        if r.get('leader_bonus', 0) > 0: tags.append("龙头")
-        if r.get('crowding_penalty', 0) < 0: tags.append("拥挤")
-        top3_list.append({
-            'rank': len(top3_list) + 1,
-            'code': short_code,
-            'name': r['name'],
-            'final_score': round(float(r['final_score']), 1),
-            'alpha5': round(float(r['alpha5']), 2),
-            'alpha20': round(float(r['alpha20']), 2),
-            'alpha_accel_5_20': round(float(r['alpha_accel_5_20']), 2),
-            'trend_score': round(float(r['trend_quality']), 1),
-            'capital_score': round(float(r['capital']), 1),
-            'position_score': round(float(r['fundamental']), 1),
-            'signal': r['signal'],
-            'tags': tags,
-            'dist_to_high': round(float(r['dist_to_high']), 2),
-            'expected_hold_days': int(r['expected_hold_days']),
-        })
-
-    # TOP10 完整排名
-    top10_list = []
-    for _, r in df.head(10).iterrows():
-        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-        top10_list.append({
-            'rank': len(top10_list) + 1,
-            'code': short_code,
-            'name': r['name'],
-            'final_score': round(float(r['final_score']), 1),
-            'alpha5': round(float(r['alpha5']), 2),
-            'alpha20': round(float(r['alpha20']), 2),
-            'alpha60': round(float(r['alpha60']), 2),
-            'signal': r['signal'],
-        })
-
-    json_data = {
-        'etf_name': top_etf_name,
-        'etf_code': df['code'].iloc[0] if len(df) > 0 else '',
-        'trade_date': trade_date,
-        'valid_stock_count': len(df),
-        'top3_buy': top3_list,
-        'top10_ranking': top10_list,
-        'signal_distribution': {s: int(df['signal'].value_counts().get(s, 0))
-                                for s in ['CORE_ALPHA', 'STRONG', 'WATCH', 'AVOID']},
-        'csv_path': csv_path,
-    }
-
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(json_data, f, ensure_ascii=False, indent=2)
-    lines.append(f"  JSON Report: {json_path}")
-
-    # 同时写入固定文件名（供 tushare_quant.py 读取最新结果）
-    latest_json_path = os.path.join(CACHE_DIR, "etf_alpha_ranking_latest.json")
-    json_data_latest = dict(json_data)
-    json_data_latest['latest_update'] = trade_date
-    with open(latest_json_path, 'w', encoding='utf-8') as f:
-        json.dump(json_data_latest, f, ensure_ascii=False, indent=2)
-
     return "\n".join(lines), csv_path, df
 
 
@@ -827,12 +928,15 @@ def main(trade_date=None, backtest_mode=False):
         ts_code = codes_ts[code]
         cache_file = _cache_key_fund(ts_code, TRADE_DATE)
         df = _read_cache(cache_file)
+        # 旧缓存可能缺少vol列,需要重新请求
+        if df is not None and 'vol' not in df.columns:
+            df = None
         if df is None:
             try:
                 df = pro.fund_daily(ts_code=ts_code,
                                     start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
                                     end_date=TRADE_DATE,
-                                    fields="ts_code,trade_date,close")
+                                    fields="ts_code,trade_date,open,close,high,low,vol,amount")
                 _save_cache(df, cache_file)
                 time.sleep(0.25)
             except Exception as e:
@@ -848,12 +952,14 @@ def main(trade_date=None, backtest_mode=False):
     bm_ts = "510300.SH"
     cache_file = _cache_key_fund(bm_ts, TRADE_DATE)
     benchmark_df = _read_cache(cache_file)
+    if benchmark_df is not None and 'vol' not in benchmark_df.columns:
+        benchmark_df = None
     if benchmark_df is None:
         try:
             benchmark_df = pro.fund_daily(ts_code=bm_ts,
                                            start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
                                            end_date=TRADE_DATE,
-                                           fields="ts_code,trade_date,close")
+                                           fields="ts_code,trade_date,open,close,high,low,vol,amount")
             _save_cache(benchmark_df, cache_file)
         except Exception as e:
             print(f"  [WARN] 沪深300数据获取失败: {e}")
@@ -918,9 +1024,11 @@ def main(trade_date=None, backtest_mode=False):
     state = load_state()
     need_rebalance = False
     days_since = 0
+    rebalance_reason = ""
 
     if state is None:
         need_rebalance = True
+        rebalance_reason = "首次运行初始化"
         print(f"\n  [首次运行] 初始化策略...")
     else:
         days_since = count_trade_days(state["last_rebalance_date"], today)
@@ -942,16 +1050,36 @@ def main(trade_date=None, backtest_mode=False):
             pnl = (latest - state["buy_price"]) / state["buy_price"] * 100
             print(f"  当前价格: {latest:.3f}  持仓收益: {pnl:+.2f}%")
             result_message += f"  持仓收益 {pnl:+.2f}%"
+
+        # === 调仓触发条件1: 固定周期到期 ===
         if days_since >= REBAL_DAYS:
             need_rebalance = True
+            rebalance_reason = f"固定周期到期({days_since}>={REBAL_DAYS}天)"
+
+        # === 调仓触发条件2: 动态退出 (跌出TOP5 + 持仓满5天) ===
+        elif days_since >= MIN_HOLD_DAYS:
+            top_n_codes = {r['code'] for r in rankings[:DYNAMIC_EXIT_TOPN]}
+            if hc not in top_n_codes:
+                # 找到当前持仓在排名中的位置
+                hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
+                need_rebalance = True
+                rebalance_reason = f"跌出TOP{DYNAMIC_EXIT_TOPN}(当前第{hold_rank}名, 持仓{days_since}天)"
+
+        # === 提示: 持仓不满5天但已跌出TOP5 ===
+        elif days_since < MIN_HOLD_DAYS:
+            top_n_codes = {r['code'] for r in rankings[:DYNAMIC_EXIT_TOPN]}
+            if hc not in top_n_codes:
+                hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
+                print(f"  [提示] 已跌出TOP{DYNAMIC_EXIT_TOPN}(第{hold_rank}名), 但持仓仅{days_since}天<{MIN_HOLD_DAYS}天保护期, 暂不调仓")
+                result_message += f"\n[保护期] 跌出TOP{DYNAMIC_EXIT_TOPN}但持仓{days_since}天<{MIN_HOLD_DAYS}天, 暂不调仓\n"
 
     if need_rebalance:
         target = rankings[0]
         print(f"\n  {'='*40}")
         result_message += f"{'='*40}\n"
 
-        print(f"  [调仓信号] 需要调仓!")
-        result_message += f"[调仓信号] 需要调仓!\n"
+        print(f"  [调仓信号] 需要调仓! 原因: {rebalance_reason}")
+        result_message += f"[调仓信号] 需要调仓! 原因: {rebalance_reason}\n"
 
         print(f"  目标: {target['name']} ({target['code']})")
         result_message += f"目标 {target['name']} ({target['code']})\n"
@@ -1005,26 +1133,46 @@ def main(trade_date=None, backtest_mode=False):
     for i, r in enumerate(rankings[-5:]):
         print(f"  {len(rankings)-4+i:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f}")
 
-    # ========== TOP1 ETF 成份股 Alpha Ranking ==========
+    # ========== TOP3 ETF 成份股 Alpha Ranking (带纯度过滤) ==========
     if rankings:
-        top_etf = rankings[0]
-        top_etf_code = top_etf['code']
-        top_etf_name = top_etf['name']
-        top_etf_ts_code = codes_ts.get(top_etf_code,
-            f"{top_etf_code}.SZ" if top_etf_code.startswith('1')
-            else f"{top_etf_code}.SH")
-        
-        constituents = get_etf_constituents(top_etf_ts_code, TRADE_DATE)
-        if constituents:
+        top3_count = min(3, len(rankings))
+        print(f"\n  {'='*60}")
+        print(f"  Top{top3_count} ETF 成份股分析 (含申万行业纯度过滤)")
+        print(f"  {'='*60}")
+        for idx in range(top3_count):
+            top_etf = rankings[idx]
+            top_etf_code = top_etf['code']
+            top_etf_name = top_etf['name']
+            top_etf_ts_code = codes_ts.get(top_etf_code,
+                f"{top_etf_code}.SZ" if top_etf_code.startswith('1')
+                else f"{top_etf_code}.SH")
+            
+            constituents = get_etf_constituents(top_etf_ts_code, TRADE_DATE)
+            if not constituents:
+                print(f"\n  [第{idx+1}名] {top_etf_name}({top_etf_code}) - 无法获取成份股")
+                continue
+
+            # === 纯度因子过滤 ===
+            filtered_cons, removed_cons, purity_ratio = filter_by_purity(
+                constituents, top_etf_name, min_weight=2.0
+            )
+
+            print(f"\n  【第{idx+1}名】 {top_etf_name}({top_etf_code}) 综合分:{top_etf['total_score']:.1f}")
+            print(f"  [纯度过滤] 成份股 {len(constituents)} → {len(filtered_cons)} 只 "
+                  f"(纯度比 {purity_ratio*100:.1f}%)")
+            if removed_cons:
+                removed_names = [f"{r.get('con_name','?')}({r.get('l1_name', r.get('l2_name','?'))})" for r in removed_cons[:5]]
+                print(f"  [过滤剔除] {', '.join(removed_names)}{'...' if len(removed_cons)>5 else ''}")
+                result_message += f"\n[纯度过滤] 剔除{len(removed_cons)}只非纯度股: {', '.join(removed_names[:3])}\n"
+
             etf_df = all_data.get(top_etf_code)
-            if etf_df is not None:
+            if etf_df is not None and filtered_cons:
                 alpha_text, csv_path, df_ranked = stock_alpha_ranking(
-                    constituents, top_etf_name, today, pro, etf_df, TRADE_DATE
+                    filtered_cons, top_etf_name, today, pro, etf_df, TRADE_DATE
                 )
                 print(alpha_text)
-                # Build short markdown summary for push notification
                 if df_ranked is not None and len(df_ranked) > 0:
-                    result_message += f"\n**{top_etf_name} Alpha TOP3**\n"
+                    result_message += f"\n**第{idx+1}名 {top_etf_name} Alpha TOP3**\n"
                     for i, (_, r) in enumerate(df_ranked.head(3).iterrows()):
                         short_code = r['code'].replace('.SZ', '').replace('.SH', '')
                         tags = []
@@ -1035,14 +1183,25 @@ def main(trade_date=None, backtest_mode=False):
                         result_message += (f"{i+1}. {r['name']}({short_code}) "
                                            f"Score={r['final_score']:.1f} "
                                            f"Alpha5={r['alpha5']:+.1f}% {tag_str}\n")
+            elif not filtered_cons:
+                print(f"  [WARN] 纯度过滤后无可用成份股")
+                result_message += f"\n[WARN] {top_etf_name} 过滤后无可用股\n"
             else:
                 print(f"  [WARN] 无法获取{top_etf_name}的ETF日线数据")
                 result_message += f"  [WARN] 无法获取{top_etf_name}的ETF日线数据\n"
-        else:
-            print(f"  [WARN] 无法获取{top_etf_name}成份股")
-            result_message += f"  [WARN] 无法获取{top_etf_name}成份股\n"
 
     print(f"\n  {'='*60}")
+
+    # ========== 保存微信汇总报告 ==========
+    report_dir = os.path.join(os.path.dirname(__file__), '..', 'report_daily')
+    os.makedirs(report_dir, exist_ok=True)
+    report_path = os.path.join(report_dir, f"etf_mainline_summary_{TRADE_DATE}.txt")
+    try:
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(result_message)
+        print(f"\n  汇总报告: {report_path}")
+    except Exception as e:
+        print(f"\n  [WARN] 汇总报告保存失败: {e}")
 
     if not backtest_mode:
         send_wechat(

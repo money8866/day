@@ -1,0 +1,15 @@
+{
+  "weights": {
+    "alpha": 0.25,
+    "leader": 0.15,
+    "trend": 0.35,
+    "flow": 0.15,
+    "risk": 0.1
+  },
+  "metrics": {
+    "ic_20d": 0.5269,
+    "q5_q1_20d": 15.67,
+    "q5_win_20d": 71.4
+  },
+  "calibration_date": "20260719"
+}

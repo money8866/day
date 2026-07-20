@@ -149,6 +149,7 @@ class BullStockData:
     forecast_net_profit_max: float = 0.0  # 预告净利润上限(万元)
     forecast_last_parent_net: float = 0.0  # 上年同期母公司净利润(万元)
     forecast_ann_date: str = ""          # 预告公告日期
+    sequential_qoq_growth: float = 0.0     # 环比增速(最新季度 vs 上一季度, 用于Q2>Q1检测)
     forecast_end_date: str = ""          # 预告报告期（如20260630）
     forecast_is_latest_period: bool = False  # 预告是否对应最新报告期
 
@@ -269,6 +270,10 @@ class BullScoreResult:
     forecast_profit_change: float = 0.0       # 预告净利润变动幅度(%)
     forecast_p_change_mid: float = 0.0        # 预告利润变动区间中值(%)
     forecast_vs_analyst_gap: float = 0.0       # 预告vs卖方预期偏离(百分点)
+    forecast_ann_date: str = ""                # 预告公告日期
+    quarterly_net_profit: float = 0.0          # 季度净利润
+    quarterly_net_profit_prev: float = 0.0     # 上年同期季度净利润
+    sequential_qoq_growth: float = 0.0         # 环比增速(最新季度 vs 上一季度)
     # v3.3 新增: 估值空间(基本面量化估值)
     fair_value: float = 0.0            # 合理估值(亿元)
     optimistic_value: float = 0.0      # 乐观估值(亿元)
@@ -2189,6 +2194,10 @@ class BullScorer:
             forecast_profit_change=round(data.forecast_profit_change, 2),
             forecast_p_change_mid=round(((data.forecast_p_change_min or 0) + (data.forecast_p_change_max or 0)) / 2.0, 2),
             forecast_vs_analyst_gap=round(data.forecast_vs_analyst_gap, 2),
+            forecast_ann_date=data.forecast_ann_date,
+            quarterly_net_profit=round(data.quarterly_net_profit, 2),
+            quarterly_net_profit_prev=round(data.quarterly_net_profit_prev, 2),
+            sequential_qoq_growth=round(data.sequential_qoq_growth, 2),
             # v3.3 估值空间 → v4.0 成长兑现模型
             fair_value=val_space.get('fair_value', 0.0),
             optimistic_value=val_space.get('optimistic_value', 0.0),

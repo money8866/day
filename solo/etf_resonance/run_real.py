@@ -58,7 +58,7 @@ ETF_THEME_MAP = {
     '159611.SZ': '电力', '561380.SH': '电网设备', '159928.SZ': '消费',
     '159736.SZ': '食品饮料', '512690.SH': '酒', '159996.SZ': '家电',
     '512880.SH': '证券', '512800.SH': '银行', '515180.SH': '红利',
-    '518880.SH': '黄金', '159667.SZ': '工业母机',
+    '159667.SZ': '工业母机','科创半导体':'588170',
 }
 
 # ============== 1. 加载成份股 ==============
@@ -109,25 +109,12 @@ print(f"  ETF 补涨扩散+强势前排策略 | {ANALYSIS_END} | 补涨≥{CATCH
 print("=" * 70)
 
 print("\n[1] 加载成份股...")
-all_etf_constituents = {}
-json_path = r'd:\mystock\cache_daily\etf_constituents_all.json'
-if os.path.exists(json_path):
-    with open(json_path, 'r', encoding='utf-8') as f:
+CONS_JSON = r'd:\mystock\cache_daily\etf_constituents_all.json'
+if os.path.exists(CONS_JSON):
+    with open(CONS_JSON, 'r', encoding='utf-8') as f:
         all_etf_constituents = json.load(f)
-
-missing_etfs = [c for c in ETF_THEME_MAP if c not in all_etf_constituents]
-if missing_etfs:
-    for etf_code in missing_etfs:
-        try:
-            cons_df = dfetcher.get_etf_cons(ts_code=etf_code)
-            if cons_df is not None and not cons_df.empty:
-                latest = cons_df['trade_date'].max()
-                cons_df = cons_df[cons_df['trade_date'] == latest].sort_values('cpr', ascending=False)
-                stocks = [c for c in cons_df['con_code'].tolist()
-                          if not str(c).endswith('.BJ') and c != 'Au9999']
-                all_etf_constituents[etf_code] = stocks
-        except Exception:
-            pass
+else:
+    all_etf_constituents = {}
 
 constituents = {}
 all_stocks = set()
@@ -146,8 +133,27 @@ except Exception:
     name_map = {}
     industry_map = {}
 
-# ============== 2. 下载日线数据 ==============
+# ============== 2. 加载日线数据 ==============
+CACHE_DAILY = r'D:\mystock\cache_daily'
+
+def _read_stock_cache(ts_code: str) -> pd.DataFrame:
+    """从 cache_daily 读个股CSV缓存，格式: {ts_code}.csv"""
+    fpath = os.path.join(CACHE_DAILY, f'{ts_code}.csv')
+    if not os.path.exists(fpath):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(fpath, dtype={'ts_code': str, 'trade_date': str})
+        df['trade_date'] = df['trade_date'].astype(str).str.strip()
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        if 'vol' not in df.columns and 'volume' in df.columns:
+            df['vol'] = df['volume']
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 print("[2] 加载日线...")
+
+# —— ETF 日线（仍走 API/DataFetcher 缓存） ——
 etf_data = {}
 for etf_code in ETF_THEME_MAP:
     try:
@@ -158,17 +164,20 @@ for etf_code in ETF_THEME_MAP:
     except Exception:
         pass
 
+# —— 个股日线（优先读 cache_daily CSV，缺失则 API 回退） ——
 stock_data = {}
 for code in sorted(all_stocks):
-    try:
-        df = dfetcher.get_daily_by_code(ts_code=code, start_date=START_DATE, end_date=END_DATE)
-        if df is not None and not df.empty:
-            df = df[df['trade_date'] <= ANALYSIS_END]
-            if 'vol' not in df.columns and 'volume' in df.columns:
-                df['vol'] = df['volume']
+    df = _read_stock_cache(code)
+    if df.empty:
+        try:
+            df = dfetcher.get_daily_by_code(ts_code=code, start_date=START_DATE, end_date=END_DATE)
+        except Exception:
+            pass
+    if df is not None and not df.empty:
+        df = df[df['trade_date'] <= ANALYSIS_END]
+        df = df[(df['trade_date'] >= START_DATE)]
+        if not df.empty:
             stock_data[code] = df.sort_values('trade_date').reset_index(drop=True)
-    except Exception:
-        pass
 print(f"  ETF: {len(etf_data)} 个 | 股票: {len(stock_data)} 只")
 
 # ============== 3. 计算ETF趋势分 ==============

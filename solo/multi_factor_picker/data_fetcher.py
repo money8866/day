@@ -1668,22 +1668,6 @@ class DataFetcher:
             cache_key, self.pro.fina_mainbz, **kwargs,
         )
 
-    def get_stk_news(self, ts_code: str, limit: int = 20) -> pd.DataFrame:
-        """按股票代码查询新闻快讯（原始 DataFrame）"""
-        cache_key = f"stk_news_{self._safe_name(ts_code)}_{limit}"
-        return self._get_df_cached(
-            cache_key, self.pro.stk_news,
-            ts_code=ts_code, src='sina', limit=limit,
-        )
-
-    def get_stk_research(self, ts_code: str, limit: int = 20) -> pd.DataFrame:
-        """按股票代码查询研究报告（原始 DataFrame）"""
-        cache_key = f"stk_research_{self._safe_name(ts_code)}_{limit}"
-        return self._get_df_cached(
-            cache_key, self.pro.stk_research,
-            ts_code=ts_code, limit=limit,
-        )
-
     # ─── 以下为统一缓存补充接口（按 trade_date 维度） ───
 
     def get_trade_cal(self, start_date: str = None, end_date: str = None,

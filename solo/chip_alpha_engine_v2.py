@@ -31,10 +31,15 @@ import os
 import time
 import json
 import math
+import glob
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 import numpy as np
+
+# 全局API调用锁（确保多线程环境下120ms最小间隔）
+_API_LOCK = threading.Lock()
 
 
 # ============================================================
@@ -193,10 +198,11 @@ class ChipAlphaEngineV2:
     # 节流 & 缓存（复用V1逻辑）
     # --------------------------------------------------------
     def _throttle(self):
-        elapsed = time.time() - self._last_call_ts
-        if elapsed < self._min_interval:
-            time.sleep(self._min_interval - elapsed)
-        self._last_call_ts = time.time()
+        with _API_LOCK:
+            elapsed = time.time() - self._last_call_ts
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_call_ts = time.time()
 
     def _cache_path(self, ts_code: str, trade_date: str, dtype: str) -> str:
         return os.path.join(self.cache_dir, f"chip_{ts_code}_{trade_date}_{dtype}.parquet")
@@ -225,50 +231,94 @@ class ChipAlphaEngineV2:
     # 数据获取
     # --------------------------------------------------------
     def fetch_chip_history(self, ts_code: str, trade_dates: List[str]) -> Dict[str, Dict]:
-        """获取多日筹码分布数据（按日期范围一次性获取）"""
+        """获取多日筹码分布数据（增量缓存，跨日期复用，后续运行只拉取新增日期）"""
         result = {}
         if not trade_dates:
             return result
 
-        start_date = trade_dates[0]   # 最早
-        end_date = trade_dates[-1]    # 最新
+        start_date = trade_dates[0]
+        end_date = trade_dates[-1]
         date_set = set(trade_dates)
 
-        # cyq_chips - 一次性获取整个日期范围
-        chips_cache_path = os.path.join(self.cache_dir, f"chips_{ts_code}_{start_date}_{end_date}.parquet")
+        # 使用统一缓存文件名（无日期范围后缀，存储该股票全部历史数据）
+        chips_cache_path = os.path.join(self.cache_dir, f"chips_{ts_code}.parquet")
+        perf_cache_path = os.path.join(self.cache_dir, f"perf_{ts_code}.parquet")
+
+        # 读取已有缓存
         all_chips = self._read_cache(chips_cache_path)
-        if all_chips is None or len(all_chips) == 0:
+        all_perf = self._read_cache(perf_cache_path)
+
+        # 自动迁移旧格式缓存（chips_{ts_code}_{start}_{end}.parquet → chips_{ts_code}.parquet）
+        if (all_chips is None or len(all_chips) == 0):
+            old_chips = sorted(glob.glob(os.path.join(self.cache_dir, f"chips_{ts_code}_*.parquet")))
+            if old_chips:
+                old_df = self._read_cache(old_chips[-1])  # 最新日期的旧缓存
+                if old_df is not None and len(old_df) > 0:
+                    all_chips = old_df.sort_values('trade_date').reset_index(drop=True)
+                    self._write_cache(all_chips, chips_cache_path)
+        if (all_perf is None or len(all_perf) == 0):
+            old_perfs = sorted(glob.glob(os.path.join(self.cache_dir, f"perf_{ts_code}_*.parquet")))
+            if old_perfs:
+                old_df = self._read_cache(old_perfs[-1])
+                if old_df is not None and len(old_df) > 0:
+                    all_perf = old_df.sort_values('trade_date').reset_index(drop=True)
+                    self._write_cache(all_perf, perf_cache_path)
+
+        # 确定需要新增的日期
+        cached_chip_dates = set()
+        if all_chips is not None and len(all_chips) > 0 and 'trade_date' in all_chips.columns:
+            cached_chip_dates = set(all_chips['trade_date'].astype(str).unique())
+        cached_perf_dates = set()
+        if all_perf is not None and len(all_perf) > 0 and 'trade_date' in all_perf.columns:
+            cached_perf_dates = set(all_perf['trade_date'].astype(str).unique())
+
+        need_chip_dates = date_set - cached_chip_dates
+        need_perf_dates = date_set - cached_perf_dates
+
+        # 仅获取缺失日期的芯片数据，合并写入缓存
+        if need_chip_dates:
+            missing_start = min(need_chip_dates)
+            missing_end = max(need_chip_dates)
             self._throttle()
             try:
-                all_chips = self.pro.cyq_chips(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                new_chips = self.pro.cyq_chips(ts_code=ts_code, start_date=missing_start, end_date=missing_end)
+                if new_chips is not None and len(new_chips) > 0:
+                    if all_chips is not None and len(all_chips) > 0:
+                        combined = pd.concat([all_chips, new_chips], ignore_index=True)
+                        combined = combined.drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                    else:
+                        combined = new_chips.sort_values('trade_date').reset_index(drop=True)
+                    self._write_cache(combined, chips_cache_path)
+                    all_chips = combined
             except Exception as e:
                 print(f"  [筹码] cyq_chips 获取失败 {ts_code}: {e}")
-                all_chips = pd.DataFrame()
-            if all_chips is not None and len(all_chips) > 0:
-                self._write_cache(all_chips, chips_cache_path)
 
-        # cyq_perf - 一次性获取整个日期范围
-        perf_cache_path = os.path.join(self.cache_dir, f"perf_{ts_code}_{start_date}_{end_date}.parquet")
-        all_perf = self._read_cache(perf_cache_path)
-        if all_perf is None or len(all_perf) == 0:
+        if need_perf_dates:
+            missing_start = min(need_perf_dates)
+            missing_end = max(need_perf_dates)
             self._throttle()
             try:
-                all_perf = self.pro.cyq_perf(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                new_perf = self.pro.cyq_perf(ts_code=ts_code, start_date=missing_start, end_date=missing_end)
+                if new_perf is not None and len(new_perf) > 0:
+                    if all_perf is not None and len(all_perf) > 0:
+                        combined = pd.concat([all_perf, new_perf], ignore_index=True)
+                        combined = combined.drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                    else:
+                        combined = new_perf.sort_values('trade_date').reset_index(drop=True)
+                    self._write_cache(combined, perf_cache_path)
+                    all_perf = combined
             except Exception as e:
                 print(f"  [筹码] cyq_perf 获取失败 {ts_code}: {e}")
-                all_perf = pd.DataFrame()
-            if all_perf is not None and len(all_perf) > 0:
-                self._write_cache(all_perf, perf_cache_path)
 
         # 按日期分组
         for td in trade_dates:
             day_data = {}
             if all_chips is not None and len(all_chips) > 0 and 'trade_date' in all_chips.columns:
-                day_data['chips'] = all_chips[all_chips['trade_date'] == td].reset_index(drop=True)
+                day_data['chips'] = all_chips[all_chips['trade_date'].astype(str) == td].reset_index(drop=True)
             else:
                 day_data['chips'] = pd.DataFrame()
             if all_perf is not None and len(all_perf) > 0 and 'trade_date' in all_perf.columns:
-                day_data['perf'] = all_perf[all_perf['trade_date'] == td].reset_index(drop=True)
+                day_data['perf'] = all_perf[all_perf['trade_date'].astype(str) == td].reset_index(drop=True)
             else:
                 day_data['perf'] = pd.DataFrame()
             result[td] = day_data
@@ -484,7 +534,7 @@ class ChipAlphaEngineV2:
             if pct_change > 2:
                 merge_score = 1  # 峰在合并/集中
 
-        # 评分
+        # 评分（以 velocity_pct 为基础）
         if velocity_pct > 0.5:
             base = 85
         elif velocity_pct > 0.2:
@@ -499,6 +549,11 @@ class ChipAlphaEngineV2:
         score = base + stability * 10
         if merge_score:
             score = min(score + 10, 100)
+
+        # 迁移幅度修正：峰实际没移动时惩罚高分
+        # 防止 velocity_pct 因噪声高位震荡导致虚高（如 migration_pct≈0 但斜率>0.5）
+        migration_factor = min(abs(migration_pct) / 3.0, 1.0)  # 3%迁移 = 满因子1.0
+        score = round(score * (0.4 + 0.6 * migration_factor), 1)
 
         return {
             'score': round(min(score, 100), 1),
@@ -1103,10 +1158,27 @@ class ChipAlphaEngineV2:
         else:
             holding_days = '5~10'
 
+        # 趋势失效条件
+        invalidation_parts = []
+        if trend_stage in ('Early Trend', 'Expansion'):
+            invalidation_parts.append('跌破筹码质心（Chip Center）并连续两日放量')
+            if factors.get('pressure_decay', {}).get('score', 50) >= 50:
+                invalidation_parts.append('压力衰减指标重新恶化（阻力区筹码占比回升）')
+        elif trend_stage == 'Accumulation':
+            invalidation_parts.append('跌破筹码质心并三日内无法收回')
+            invalidation_parts.append('集中度指标趋势由 tightening 转为 loosening')
+        elif trend_stage == 'Distribution':
+            invalidation_parts.append('TrendStage 维持 Distribution 不变')
+            invalidation_parts.append('放量加速下跌')
+        else:
+            invalidation_parts.append('ChipTrendScore 跌破 40 分')
+        invalidation = '；'.join(invalidation_parts) if invalidation_parts else '暂无明确信号'
+
         return {
             'TrendProbability': round(trend_prob, 1),
             'ExpectedHoldingDays': holding_days,
-            'LeaderProbability': round(leader_prob, 1),
+            'LeaderScore': round(leader_prob, 1),
+            'InvalidationCondition': invalidation,
         }
 
     # --------------------------------------------------------
@@ -1138,6 +1210,24 @@ class ChipAlphaEngineV2:
         if factors['absorption']['signal'] == 'distribution':
             signals.append('警告：派发信号显现——放量+低CLV+质心下移，主力出货')
         return signals
+
+    # --------------------------------------------------------
+    # 维度评分：将10个因子重组为3个维度
+    # --------------------------------------------------------
+    def _calc_dimension_scores(self, *factor_scores) -> Dict:
+        """将因子分为 趋势动能、筹码质量、量价配合 三个维度"""
+        scores = list(factor_scores)
+        trend_momentum = np.mean([scores[i] for i in range(min(5, len(scores)))])  # 前5个
+        chip_quality = np.mean([scores[i] for i in range(min(4, max(0, len(scores)-4)))])  # 后4个
+        if len(scores) >= 3:
+            vol_price = np.mean(scores[-3:])
+        else:
+            vol_price = 50
+        return {
+            'trend_momentum': round(trend_momentum, 1),
+            'chip_quality': round(chip_quality, 1),
+            'vol_price_fit': round(vol_price, 1),
+        }
 
     # --------------------------------------------------------
     # 综合分析入口
@@ -1267,6 +1357,17 @@ class ChipAlphaEngineV2:
         # 预测
         prediction = self._calc_prediction(chip_trend_score, factors, trend_stage, prices)
 
+        # 维度评分：将10个因子重组为3个维度
+        dim_scores = self._calc_dimension_scores(
+            f1['score'], f2['score'], f3['score'],
+            f4['score'], f5['score'], f6['score'],
+            f7['score'], f8['score'], f10['score']
+        )
+        # 计算20日价格涨幅
+        price_20d_ago = prices[0] if len(prices) > 1 else 0
+        price_latest = prices[-1] if prices else 0
+        price_return_20d = round((price_latest - price_20d_ago) / price_20d_ago * 100, 2) if price_20d_ago > 0 else 0
+
         result = {
             'ts_code': ts_code,
             'end_date': end_date,
@@ -1274,6 +1375,11 @@ class ChipAlphaEngineV2:
             'ChipTrendScore': round(chip_trend_score, 1),
             'Grade': grade,
             'TrendStage': trend_stage,
+            'DimensionScores': dim_scores,
+            'chip_center': round(centers[-1], 2) if centers else 0,
+            'price_20d_ago': round(price_20d_ago, 2),
+            'price_latest': round(price_latest, 2),
+            'price_return_20d': price_return_20d,
             'Factors': {
                 'CenterVelocity': {
                     'score': f1['score'],
@@ -1398,6 +1504,52 @@ class ChipAlphaEngineV2:
         return history if history else [50]
 
     # --------------------------------------------------------
+    # 维度评分：因子 → 结构/资金/动量 三大维度
+    # --------------------------------------------------------
+    def _calc_dimension_scores(self, cv_score, pm_score, we_score,
+                                pd_score, conc_score, cre_score,
+                                res_score, ab_score, cm_score) -> Dict:
+        """
+        将10个因子（不含Consistency）重组为3个维度：
+          • 结构（Structure）：压力衰减+集中度+韧性 → 趋势基础
+          • 资金（Flow）：CRE+吸筹质量 → 资金承接
+          • 动量（Momentum）：质心速度+筹码动量+获利扩张 → 趋势加速
+        PeakMigration 仅展示，不参与加权。
+        """
+        # 结构：PressureDecay(w=15%) + Resilience(w=5%) + Concentration(w=5%)
+        struct_score = (pd_score * 15 + res_score * 5 + conc_score * 5) / 25
+        struct_conclusion = (
+            "优秀，筹码形态健康" if struct_score >= 80 else
+            "良好" if struct_score >= 65 else
+            "偏弱" if struct_score >= 50 else
+            "差，筹码结构受损"
+        )
+
+        # 资金：CRE(w=25%) + Absorption(w=15%)
+        flow_score = (cre_score * 25 + ab_score * 15) / 40
+        flow_conclusion = (
+            "强共振，资金持续承接" if flow_score >= 70 else
+            "中性偏强，仍有承接但未形成强共振" if flow_score >= 55 else
+            "偏弱，承接不足" if flow_score >= 40 else
+            "差，缺乏资金支撑"
+        )
+
+        # 动量：CenterVelocity(w=10%) + ChipMomentum(w=15%) + WinningExpansion(w=10%)
+        mom_score = (cv_score * 10 + cm_score * 15 + we_score * 10) / 35
+        mom_conclusion = (
+            "强势加速，动能充足" if mom_score >= 70 else
+            "偏强，趋势向上" if mom_score >= 60 else
+            "偏弱，短线需要进一步确认" if mom_score >= 45 else
+            "动能衰退，回避"
+        )
+
+        return {
+            'Structure': {'score': round(struct_score, 1), 'conclusion': struct_conclusion},
+            'Flow': {'score': round(flow_score, 1), 'conclusion': flow_conclusion},
+            'Momentum': {'score': round(mom_score, 1), 'conclusion': mom_conclusion},
+        }
+
+    # --------------------------------------------------------
     # 格式化报告
     # --------------------------------------------------------
     def format_report(self, result: Dict) -> str:
@@ -1410,15 +1562,33 @@ class ChipAlphaEngineV2:
         lines.append("═" * 65)
         lines.append("")
 
-        lines.append(f"  Price: {result['current_price']:.2f}")
+        lines.append(f"  Price: {result['current_price']:.2f}  |  Center: {result.get('chip_center', 0):.2f}（筹码质心/参考支撑）")
         lines.append(f"  ┌─────────────────────────────────────────────")
         lines.append(f"  │ ChipTrendScore: {result['ChipTrendScore']:.1f}  Grade: {result['Grade']}")
         lines.append(f"  │ TrendStage: {result['TrendStage']}")
         pred = result['Prediction']
-        lines.append(f"  │ TrendProb: {pred['TrendProbability']:.1f}%  LeaderProb: {pred['LeaderProbability']:.1f}%")
+        lines.append(f"  │ TrendProb: {pred['TrendProbability']:.1f}%  LeaderScore: {pred['LeaderScore']:.1f}")
         lines.append(f"  │ ExpectedHolding: {pred['ExpectedHoldingDays']} days")
+        lines.append(f"  │ Invalidation: {pred.get('InvalidationCondition', '')}")
         lines.append(f"  └─────────────────────────────────────────────")
         lines.append("")
+
+        # 维度摘要
+        dim = result.get('DimensionScores', {})
+        if dim:
+            lines.append("─" * 65)
+            lines.append("  【三维度质量】")
+            lines.append("─" * 65)
+            s = dim['Structure']
+            f_ = dim['Flow']
+            m = dim['Momentum']
+            bar_s = "█" * max(1, int(s['score'] / 10)) + "░" * max(0, 10 - max(1, int(s['score'] / 10)))
+            bar_f = "█" * max(1, int(f_['score'] / 10)) + "░" * max(0, 10 - max(1, int(f_['score'] / 10)))
+            bar_m = "█" * max(1, int(m['score'] / 10)) + "░" * max(0, 10 - max(1, int(m['score'] / 10)))
+            lines.append(f"  结构 | {s['score']:5.1f} | {bar_s} {s['conclusion']}")
+            lines.append(f"  资金 | {f_['score']:5.1f} | {bar_f} {f_['conclusion']}")
+            lines.append(f"  动量 | {m['score']:5.1f} | {bar_m} {m['conclusion']}")
+            lines.append("")
 
         lines.append("─" * 65)
         lines.append("  【10 Dynamic Factors】")
@@ -1456,10 +1626,10 @@ class ChipAlphaEngineV2:
         lines.append(f"  5. Concentration  [{conc['score']:.1f}]  (w=5%)")
         lines.append(f"     width: {conc['width_pct']:.2f}%  trend: {conc['trend']}")
 
-        # 6. CRE [最高权重]
+        # 6. CRE
         cre = f['CRE']
-        lines.append(f"  6. CRE  [{cre['score']:.1f}]  ★ (w=25%)")
-        lines.append(f"     efficiency: {cre['efficiency']:.4f}  accum_turnover: {cre['accum_turnover']:.1f}%")
+        lines.append(f"  6. CRE  [{cre['score']:.1f}]")
+        lines.append(f"     efficiency: {cre['efficiency']:.4f}  accum_turnover: {cre['accum_turnover']:.1f}%（累计换手率/筹码交换充分度）")
 
         # 7. Resilience
         res = f['Resilience']

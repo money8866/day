@@ -51,6 +51,7 @@ echo =============================================
 echo [Step 5.0] ETF补涨扩散策略 (生成catchup_signals.csv)...
 python solo\etf_resonance\run_real.py
 
+python solo\scan_etf_alpha_v5.py
 
 echo =============================================
 python solo\tushare_quant.py

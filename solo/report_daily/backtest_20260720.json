@@ -1,0 +1,146 @@
+[
+  {
+    "name": "基准参数",
+    "signals": 4118,
+    "elapsed": 43.0,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "dip_ma10_pct=2.0",
+    "signals": 4077,
+    "elapsed": 39.2,
+    "strong_signals": 2144,
+    "medium_signals": 2218,
+    "strong_winrate": 143.0,
+    "medium_winrate": 134.3
+  },
+  {
+    "name": "dip_ma10_pct=3.0",
+    "signals": 4118,
+    "elapsed": 34.2,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "dip_ma10_pct=5.0",
+    "signals": 4185,
+    "elapsed": 39.3,
+    "strong_signals": 2206,
+    "medium_signals": 2626,
+    "strong_winrate": 143.4,
+    "medium_winrate": 136.3
+  },
+  {
+    "name": "dip_rsi_over=30",
+    "signals": 4071,
+    "elapsed": 39.3,
+    "strong_signals": 2154,
+    "medium_signals": 2230,
+    "strong_winrate": 133.1,
+    "medium_winrate": 134.7
+  },
+  {
+    "name": "dip_rsi_over=35",
+    "signals": 4118,
+    "elapsed": 39.9,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "dip_rsi_over=40",
+    "signals": 4187,
+    "elapsed": 48.8,
+    "strong_signals": 2170,
+    "medium_signals": 2570,
+    "strong_winrate": 134.3,
+    "medium_winrate": 136.1
+  },
+  {
+    "name": "brk_chg=2.0",
+    "signals": 4124,
+    "elapsed": 23.0,
+    "strong_signals": 2160,
+    "medium_signals": 2364,
+    "strong_winrate": 136.2,
+    "medium_winrate": 154.5
+  },
+  {
+    "name": "brk_chg=3.0",
+    "signals": 4118,
+    "elapsed": 17.3,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "brk_chg=5.0",
+    "signals": 4109,
+    "elapsed": 27.4,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "strong_th=70",
+    "signals": 4118,
+    "elapsed": 31.3,
+    "strong_signals": 3136,
+    "medium_signals": 1384,
+    "strong_winrate": 140.1,
+    "medium_winrate": 132.3
+  },
+  {
+    "name": "strong_th=80",
+    "signals": 4118,
+    "elapsed": 34.5,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "strong_th=85",
+    "signals": 4118,
+    "elapsed": 34.3,
+    "strong_signals": 1146,
+    "medium_signals": 3374,
+    "strong_winrate": 128.8,
+    "medium_winrate": 137.5
+  },
+  {
+    "name": "ma_30_15",
+    "signals": 4118,
+    "elapsed": 33.4,
+    "strong_signals": 2160,
+    "medium_signals": 2360,
+    "strong_winrate": 136.2,
+    "medium_winrate": 134.5
+  },
+  {
+    "name": "ma_25_10",
+    "signals": 4059,
+    "elapsed": 39.5,
+    "strong_signals": 1188,
+    "medium_signals": 3178,
+    "strong_winrate": 167.3,
+    "medium_winrate": 158.5
+  },
+  {
+    "name": "ma_35_20",
+    "signals": 4123,
+    "elapsed": 24.3,
+    "strong_signals": 2532,
+    "medium_signals": 2210,
+    "strong_winrate": 136.7,
+    "medium_winrate": 131.5
+  }
+]

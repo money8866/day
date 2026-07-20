@@ -74,90 +74,123 @@ def get_data(ts_code: str) -> pd.DataFrame | None:
 
 def detect_awave(df: pd.DataFrame, lookback: int = 120) -> dict | None:
     """
-    识别A浪（主升浪）— 优化版本，基于波峰波谷检测
-    条件：
-    - 在最近lookback个交易日内（默认120）
-    - 涨幅 ≥60%（优先≥80%）
-    - 持续20-60个交易日
-    - MA20上行，价格多数在MA20之上
-    - 量比≥1.3
+    识别A浪（主升浪）— 箱体突破版（放宽版）
+    A浪起点 = 突破半年以上箱体上沿的位置
+    放宽条件: 振幅≤40%, 触碰≥1次, 量比≥1.0, 涨幅≥40%
     """
-    if len(df) < 130:
+    if len(df) < 150:
         return None
 
-    lookback = min(lookback, len(df) - 10)
-    start_idx = len(df) - lookback
-
-    # 找局部低点和局部高点
-    lows = []
-    highs = []
-    for i in range(start_idx, len(df) - 1):
-        if df.iloc[i]['close'] <= df.iloc[i - 1]['close'] and df.iloc[i]['close'] <= df.iloc[i + 1]['close']:
-            lows.append(i)
+    # 1. 找局部高点（A浪终点候选）
+    search_end = min(len(df) - 5, len(df) - 15)
+    search_start = max(0, len(df) - 200)
+    a_end_candidates = []
+    for i in range(search_start + 1, search_end):
         if df.iloc[i]['close'] >= df.iloc[i - 1]['close'] and df.iloc[i]['close'] >= df.iloc[i + 1]['close']:
-            highs.append(i)
+            a_end_candidates.append(i)
+
+    if not a_end_candidates:
+        return None
 
     best = None
-
-    # 对每个低点→高点对，检查A浪特征
-    for a_start in lows:
-        if a_start < start_idx:
-            continue
-        for a_end in highs:
-            if a_end <= a_start + 20 or a_end > a_start + 60:
-                continue
-            if a_end >= len(df) - 5:
+    for a_end in a_end_candidates:
+        box_end = a_end - 20
+        # 尝试不同箱体宽度：60, 90, 120, 150, 180, 210, 240天
+        for box_dur in [60, 90, 120, 150, 180, 210, 240]:
+            box_start = box_end - box_dur
+            if box_start < 0:
                 continue
 
-            start_price = df.iloc[a_start]['close']
+            box_slice = df.iloc[box_start:box_end + 1]
+            box_high = box_slice['close'].max()
+            box_low = box_slice['close'].min()
+            box_range = (box_high - box_low) / box_low * 100 if box_low > 0 else 0
+            if box_range > 40:
+                continue
+
+            # 检查箱体上下沿触碰次数（放宽到≥1次）
+            touch_top = 0
+            touch_bottom = 0
+            for i in range(box_start, box_end + 1):
+                c = df.iloc[i]['close']
+                if c >= box_high * 0.97:
+                    touch_top += 1
+                if c <= box_low * 1.03:
+                    touch_bottom += 1
+            if touch_top < 1 or touch_bottom < 1:
+                continue
+
+            # 找突破点（放宽量比到≥1.0）
+            breakout_idx = None
+            for i in range(box_end + 1, a_end + 1):
+                if df.iloc[i]['close'] > box_high * 1.03:
+                    vol_avg_40 = df.iloc[max(0, i - 40):i]['vol'].mean()
+                    vol_ratio = df.iloc[i]['vol'] / vol_avg_40 if vol_avg_40 > 0 else 0
+                    if vol_ratio >= 1.0:
+                        breakout_idx = i
+                        break
+            if breakout_idx is None:
+                continue
+
+            # A浪涨幅（放宽到40%-150%）
+            start_price = df.iloc[breakout_idx]['close']
             end_price = df.iloc[a_end]['close']
-            if start_price <= 0:
-                continue
-
             gain = (end_price / start_price - 1) * 100
-            if gain < 60:
-                continue
-            if gain > 100:  # 优化v3: A浪涨幅>100%过滤(胜率0%-50%)
+            if gain < 40 or gain > 150:
                 continue
 
-            duration = a_end - a_start
+            duration = a_end - breakout_idx
 
-            ma20_slice = df.iloc[a_start:a_end + 1]['ma_bfq_20'].values
-            ma20_up_count = sum(
-                1 for i in range(1, len(ma20_slice))
-                if ma20_slice[i] > ma20_slice[i - 1] and ma20_slice[i] > 0
-            )
+            # MA20上行（放宽到≥50%）
+            ma20_slice = df.iloc[breakout_idx:a_end + 1]['ma_bfq_20'].values
+            ma20_up_count = sum(1 for i in range(1, len(ma20_slice)) if ma20_slice[i] > ma20_slice[i - 1] and ma20_slice[i] > 0)
             ma20_up_ratio = ma20_up_count / max(len(ma20_slice) - 1, 1)
-            if ma20_up_ratio < 0.6:
+            if ma20_up_ratio < 0.5:
                 continue
 
-            above_ma20 = sum(
-                1 for i in range(a_start, a_end + 1)
-                if df.iloc[i]['close'] > df.iloc[i]['ma_bfq_20'] > 0
-            )
+            # 站MA20（放宽到≥50%）
+            above_ma20 = sum(1 for i in range(breakout_idx, a_end + 1) if df.iloc[i]['close'] > df.iloc[i]['ma_bfq_20'] > 0)
             above_ratio = above_ma20 / max(duration, 1)
-
-            a_vol = df.iloc[a_start:a_end + 1]['vol'].mean()
-            vol_40 = df.iloc[max(0, a_start - 40):a_start]['vol'].mean()
-            vol_ratio_a = a_vol / vol_40 if vol_40 > 0 else 0
-
-            if above_ratio < 0.6 or vol_ratio_a < 1.3:
+            if above_ratio < 0.5:
                 continue
+
+            # 量能
+            a_vol = df.iloc[breakout_idx:a_end + 1]['vol'].mean()
+            vol_40 = df.iloc[max(0, breakout_idx - 40):breakout_idx]['vol'].mean()
+            vol_ratio_a = a_vol / vol_40 if vol_40 > 0 else 0
+            if vol_ratio_a < 0.5:
+                continue
+
+            box_score = 0
+            if box_range <= 15:
+                box_score += 20
+            elif box_range <= 25:
+                box_score += 10
+            elif box_range <= 35:
+                box_score += 5
+            box_duration = box_end - box_start
+            if box_duration >= 180:
+                box_score += 10
+            elif box_duration >= 120:
+                box_score += 5
 
             score = 0
             if gain >= 80:
                 score += 40
             elif gain >= 60:
-                score += 25
+                score += 30
+            elif gain >= 40:
+                score += 20
             score += min(20, int(ma20_up_ratio * 20))
             score += min(20, int(above_ratio * 20))
             score += min(20, int(min(vol_ratio_a / 2, 1) * 20))
+            score += box_score
 
             if best is None or score > best['score']:
                 best = {
-                    'start_idx': a_start,
+                    'start_idx': breakout_idx,
                     'end_idx': a_end,
-                    'start_date': str(df.iloc[a_start]['trade_date']),
+                    'start_date': str(df.iloc[breakout_idx]['trade_date']),
                     'end_date': str(df.iloc[a_end]['trade_date']),
                     'start_price': round(start_price, 2),
                     'end_price': round(end_price, 2),
@@ -168,6 +201,12 @@ def detect_awave(df: pd.DataFrame, lookback: int = 120) -> dict | None:
                     'vol_ratio': round(vol_ratio_a, 2),
                     'score': score,
                     'avg_vol': a_vol,
+                    'box_high': round(box_high, 2),
+                    'box_low': round(box_low, 2),
+                    'box_range': round(box_range, 1),
+                    'box_duration': box_duration,
+                    'box_start_date': str(df.iloc[box_start]['trade_date']),
+                    'box_end_date': str(df.iloc[box_end]['trade_date']),
                 }
 
     return best
@@ -175,86 +214,117 @@ def detect_awave(df: pd.DataFrame, lookback: int = 120) -> dict | None:
 
 def detect_all_awaves(df: pd.DataFrame, lookback: int = 0) -> list:
     """
-    找数据中所有历史A浪（用于回测）
-    返回按时间排序的A浪列表
+    找数据中所有历史A浪（用于回测）— 箱体突破版（放宽版）
+    与detect_awave逻辑一致，但扫描全量历史数据
     """
-    if len(df) < 130:
+    if len(df) < 150:
         return []
 
-    if lookback <= 0:
-        lookback = len(df) - 10
-    lookback = min(lookback, len(df) - 10)
-    start_idx = len(df) - lookback
-
-    lows = []
-    highs = []
-    for i in range(start_idx, len(df) - 1):
-        if df.iloc[i]['close'] <= df.iloc[i - 1]['close'] and df.iloc[i]['close'] <= df.iloc[i + 1]['close']:
-            lows.append(i)
+    # 在全量历史中找局部高点（A浪终点候选），跳过最后15天
+    a_end_candidates = []
+    for i in range(120, len(df) - 15):
         if df.iloc[i]['close'] >= df.iloc[i - 1]['close'] and df.iloc[i]['close'] >= df.iloc[i + 1]['close']:
-            highs.append(i)
+            a_end_candidates.append(i)
+
+    if not a_end_candidates:
+        return []
 
     awaves = []
-    # 限制低点数量：只取最近60个低点
-    if len(lows) > 60:
-        lows = lows[-60:]
-    for a_start in lows:
-        if a_start < start_idx:
-            continue
-        # 只找a_start之后最近的2-3个高点（限定搜索范围）
-        nearby_highs = [h for h in highs if a_start + 20 < h <= a_start + 60 and h < len(df) - 5]
-        if len(nearby_highs) > 3:
-            nearby_highs = sorted(nearby_highs, key=lambda h: df.iloc[h]['close'], reverse=True)[:3]
-        for a_end in nearby_highs:
+    for a_end in a_end_candidates:
+        box_end = a_end - 20
+        # 尝试不同箱体宽度
+        for box_dur in [60, 90, 120, 150, 180, 210, 240]:
+            box_start = box_end - box_dur
+            if box_start < 0:
+                continue
 
-            start_price = df.iloc[a_start]['close']
+            box_slice = df.iloc[box_start:box_end + 1]
+            box_high = box_slice['close'].max()
+            box_low = box_slice['close'].min()
+            box_range = (box_high - box_low) / box_low * 100 if box_low > 0 else 0
+            if box_range > 40:
+                continue
+
+            # 检查箱体上下沿触碰次数（≥1次）
+            touch_top = 0
+            touch_bottom = 0
+            for i in range(box_start, box_end + 1):
+                c = df.iloc[i]['close']
+                if c >= box_high * 0.97:
+                    touch_top += 1
+                if c <= box_low * 1.03:
+                    touch_bottom += 1
+            if touch_top < 1 or touch_bottom < 1:
+                continue
+
+            # 找突破点（量比≥1.0）
+            breakout_idx = None
+            for i in range(box_end + 1, a_end + 1):
+                if df.iloc[i]['close'] > box_high * 1.03:
+                    vol_avg_40 = df.iloc[max(0, i - 40):i]['vol'].mean()
+                    vol_ratio = df.iloc[i]['vol'] / vol_avg_40 if vol_avg_40 > 0 else 0
+                    if vol_ratio >= 1.0:
+                        breakout_idx = i
+                        break
+            if breakout_idx is None:
+                continue
+
+            start_price = df.iloc[breakout_idx]['close']
             end_price = df.iloc[a_end]['close']
-            if start_price <= 0:
-                continue
-
             gain = (end_price / start_price - 1) * 100
-            if gain < 60:
-                continue
-            if gain > 100:  # 优化v3: A浪涨幅>100%过滤(胜率0%-50%)
+            if gain < 40 or gain > 150:
                 continue
 
-            duration = a_end - a_start
+            duration = a_end - breakout_idx
 
-            ma20_slice = df.iloc[a_start:a_end + 1]['ma_bfq_20'].values
-            ma20_up_count = sum(
-                1 for i in range(1, len(ma20_slice))
-                if ma20_slice[i] > ma20_slice[i - 1] and ma20_slice[i] > 0
-            )
+            # MA20上行（≥50%）
+            ma20_slice = df.iloc[breakout_idx:a_end + 1]['ma_bfq_20'].values
+            ma20_up_count = sum(1 for i in range(1, len(ma20_slice)) if ma20_slice[i] > ma20_slice[i - 1] and ma20_slice[i] > 0)
             ma20_up_ratio = ma20_up_count / max(len(ma20_slice) - 1, 1)
-            if ma20_up_ratio < 0.6:
+            if ma20_up_ratio < 0.5:
                 continue
 
-            above_ma20 = sum(
-                1 for i in range(a_start, a_end + 1)
-                if df.iloc[i]['close'] > df.iloc[i]['ma_bfq_20'] > 0
-            )
+            # 站MA20（≥50%）
+            above_ma20 = sum(1 for i in range(breakout_idx, a_end + 1) if df.iloc[i]['close'] > df.iloc[i]['ma_bfq_20'] > 0)
             above_ratio = above_ma20 / max(duration, 1)
-
-            a_vol = df.iloc[a_start:a_end + 1]['vol'].mean()
-            vol_40 = df.iloc[max(0, a_start - 40):a_start]['vol'].mean()
-            vol_ratio_a = a_vol / vol_40 if vol_40 > 0 else 0
-
-            if above_ratio < 0.6 or vol_ratio_a < 1.3:
+            if above_ratio < 0.5:
                 continue
+
+            a_vol = df.iloc[breakout_idx:a_end + 1]['vol'].mean()
+            vol_40 = df.iloc[max(0, breakout_idx - 40):breakout_idx]['vol'].mean()
+            vol_ratio_a = a_vol / vol_40 if vol_40 > 0 else 0
+            if vol_ratio_a < 0.5:
+                continue
+
+            box_score = 0
+            if box_range <= 15:
+                box_score += 20
+            elif box_range <= 25:
+                box_score += 10
+            elif box_range <= 35:
+                box_score += 5
+            box_duration = box_end - box_start
+            if box_duration >= 180:
+                box_score += 10
+            elif box_duration >= 120:
+                box_score += 5
 
             score = 0
             if gain >= 80:
                 score += 40
             elif gain >= 60:
-                score += 25
+                score += 30
+            elif gain >= 40:
+                score += 20
             score += min(20, int(ma20_up_ratio * 20))
             score += min(20, int(above_ratio * 20))
             score += min(20, int(min(vol_ratio_a / 2, 1) * 20))
+            score += box_score
 
             awaves.append({
-                'start_idx': a_start,
+                'start_idx': breakout_idx,
                 'end_idx': a_end,
-                'start_date': str(df.iloc[a_start]['trade_date']),
+                'start_date': str(df.iloc[breakout_idx]['trade_date']),
                 'end_date': str(df.iloc[a_end]['trade_date']),
                 'start_price': round(start_price, 2),
                 'end_price': round(end_price, 2),
@@ -265,26 +335,28 @@ def detect_all_awaves(df: pd.DataFrame, lookback: int = 0) -> list:
                 'vol_ratio': round(vol_ratio_a, 2),
                 'score': score,
                 'avg_vol': a_vol,
+                'box_high': round(box_high, 2),
+                'box_low': round(box_low, 2),
+                'box_range': round(box_range, 1),
+                'box_duration': box_duration,
+                'box_start_date': str(df.iloc[box_start]['trade_date']),
+                'box_end_date': str(df.iloc[box_end]['trade_date']),
             })
 
-    # 去重：同一end_idx只保留score最高的
+    # 去重：同终点保留最高分
     seen = {}
     for aw in awaves:
         key = aw['end_idx']
         if key not in seen or aw['score'] > seen[key]['score']:
             seen[key] = aw
-
-    # 去重2：同一波上涨只保留最优A浪（start_idx接近的视为同一波）
     deduped = sorted(seen.values(), key=lambda x: (x['start_idx'], -x['score']))
     final = []
     for aw in deduped:
         if final and aw['start_idx'] - final[-1]['start_idx'] < 10:
-            # 同一波上涨，保留score更高的
             if aw['score'] > final[-1]['score']:
                 final[-1] = aw
         else:
             final.append(aw)
-
     return sorted(final, key=lambda x: x['end_idx'])
 
 
@@ -304,7 +376,7 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
     a_vol_ratio = awave.get('vol_ratio', 1.0)
     
     best = None
-    search_end = min(a_end + a_duration * 2 + 10, len(df) - 5)
+    search_end = min(a_end + a_duration * 3 + 20, len(df) - 5)
     
     # 根据A浪量能特征动态调整缩量阈值
     if a_vol_ratio > 2.0:
@@ -323,7 +395,7 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 15 or drop > 25:  # 优化v4: 30->25, 20-25%胜率66%均收+20%
+        if drop < 15 or drop > 40:  # 中线版本: B浪回调放宽至15-40%
             continue
 
         b_duration = real_low_idx - a_end
@@ -343,7 +415,7 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
         ma120 = df.iloc[real_low_idx]['ma_120']
         low_price_val = df.loc[real_low_idx, 'close']
 
-        if ma120 > 0 and low_price_val < ma120 * 0.95:
+        if ma120 > 0 and low_price_val < ma120 * 0.80:
             continue
 
         ma60_30ago = df.iloc[max(0, real_low_idx - 30)]['ma_bfq_60']
@@ -352,9 +424,11 @@ def detect_bwave_relaxed(df: pd.DataFrame, awave: dict) -> dict | None:
         time_ratio = b_duration / a_duration if a_duration > 0 else 0
 
         score = 0
-        if 25 <= drop <= 35:
+        if 35 <= drop <= 45:
+            score += 35
+        elif 25 <= drop < 35:
             score += 30
-        elif 20 <= drop < 25 or 35 < drop <= 40:
+        elif 15 <= drop < 25 or 45 < drop <= 50:
             score += 20
         else:
             score += 10
@@ -413,7 +487,7 @@ def detect_bwave(df: pd.DataFrame, awave: dict) -> dict | None:
     a_vol_ratio = awave.get('vol_ratio', 1.0)
     
     best = None
-    search_end = min(a_end + a_duration * 2 + 10, len(df) - 5)
+    search_end = min(a_end + a_duration * 3 + 20, len(df) - 5)
     
     # 根据A浪量能特征动态调整缩量阈值
     # 放量型A浪（量比>2.0）：B浪量能可以更大，因为资金还在活跃
@@ -433,7 +507,7 @@ def detect_bwave(df: pd.DataFrame, awave: dict) -> dict | None:
         low_price = df.loc[real_low_idx, 'close']
 
         drop = (a_high - low_price) / a_high * 100
-        if drop < 20 or drop > 25:  # 优化v4: 30->25, 20-25%胜率66%均收+20%
+        if drop < 15 or drop > 50:  # 中线版本: B浪回调放宽至15-50%
             continue
 
         b_duration = real_low_idx - a_end
@@ -453,19 +527,22 @@ def detect_bwave(df: pd.DataFrame, awave: dict) -> dict | None:
         ma120 = df.iloc[real_low_idx]['ma_120']
         low_price_val = df.loc[real_low_idx, 'close']
 
-        if ma120 > 0 and low_price_val < ma120 * 0.97:
+        if ma120 > 0 and low_price_val < ma120 * 0.80:
             continue
 
         ma60_30ago = df.iloc[max(0, real_low_idx - 30)]['ma_bfq_60']
         ma60_up = ma60 > ma60_30ago if ma60_30ago > 0 else False
-        if not ma60_up:
+        ma60_drop_ratio = (ma60_30ago - ma60) / ma60_30ago if ma60_30ago > 0 else 0
+        if not ma60_up and ma60_drop_ratio > 0.15:
             continue
 
-        # B浪评分
+        # B浪评分（中线版本：回调越深评分越高）
         score = 0
-        if 25 <= drop <= 35:
+        if 35 <= drop <= 45:
+            score += 35
+        elif 25 <= drop < 35:
             score += 30
-        elif 20 <= drop < 25 or 35 < drop <= 40:
+        elif 15 <= drop < 25 or 45 < drop <= 50:
             score += 20
         else:
             score += 10
@@ -534,7 +611,7 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
     b_high = bwave['high_price']
     b_low = bwave['low_price']
     a_high = awave['end_price']
-    recovery_mid = b_low + (b_high - b_low) * 0.382
+    recovery_mid = b_low + (b_high - b_low) * 0.20
 
     rsi_golden_date = None
     macd_golden_date = None
@@ -582,7 +659,7 @@ def check_launch_signal(df: pd.DataFrame, awave: dict, bwave: dict) -> dict | No
         if close < recovery_mid:
             continue
 
-        if close > a_high * 1.00:
+        if close > a_high * 1.10:
             continue
 
         b_recovery = (close / b_low - 1) * 100 if b_low > 0 else 0
@@ -1022,7 +1099,7 @@ def calc_divergence_score(awave: dict, bwave: dict, div_signal: dict) -> dict:
 
 def detect_bwave_full(ts_code: str, backtest_idx: int = -1) -> dict | None:
     df = get_data(ts_code)
-    if df is None or len(df) < 250:
+    if df is None or len(df) < 150:
         return None
 
     if backtest_idx > 0:
@@ -1554,7 +1631,7 @@ def main():
 
             try:
                 df = get_data(ts_code)
-                if df is None or len(df) < 250:
+                if df is None or len(df) < 150:
                     continue
                 diag['checked'] += 1
 

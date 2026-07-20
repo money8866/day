@@ -7136,19 +7136,35 @@ def strategy(df, code, emotion_stage, total_mv=0):
     if not TJ:
         return False
     
-    # ===== XH 判断 =====
-    highest_close = C[-ztts-1:-1].max()
+    # ===== XH 判断（区分主板/双创）=====
+    is_main_board = code.startswith(('600', '601', '603', '000', '001', '002'))
+    is_chip_venture = code.startswith(('300', '688','301'))
     
-    # 量能接近前高条件：当前成交量达到ztts区间内最高成交量的80%以上
+    highest_close = C[-ztts-1:-1].max()
     vol_peak = VOL[-ztts-1:-1].max()
     vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
-    #做突破
-    cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
-    cond_xh3 = C[-2] < highest_close and C[-1] >= highest_close and  C[-1]/C[-2]<1.09
-    cond_xh2 = C[-1] > C[-2] and C[-1] / ma5[-1] < 1.11 and C[-1] / ma5[-1] > 0.97
     
-    return (cond_xh1 or cond_xh3) and cond_xh2 
-
+    if is_main_board:
+        # 主板做突破：放量突破近期高点 + 偏离MA5不过远
+        cond_break1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
+        cond_break3 = C[-2] < highest_close and C[-1] >= highest_close and C[-1]/C[-2]<1.09
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.11
+        result = (cond_break1 or cond_break3) and cond_near_ma5
+    elif is_chip_venture:
+        # 双创做低吸：回踩MA20企稳 + 缩量 + 距涨停高点有空间
+        dist_from_high = (highest_close - C[-1]) / highest_close
+        cond_pullback = 0.03 < dist_from_high < 0.15                      # 从涨停高点回落3%-15%
+        cond_ma_support = C[-1] >= ma20[-1] * 0.97 and C[-1] <= ma20[-1] * 1.15  # 在MA20附近
+        cond_shrink_vol = VOL[-1] < vol_peak * 0.6 if vol_peak > 0 else True      # 缩量企稳
+        cond_stable = abs(C[-1] / C[-2] - 1) < 0.04 and abs(C[-1] / C[-3] - 1) < 0.06  # 近2日波动温和
+        result = cond_pullback and cond_ma_support and cond_shrink_vol and cond_stable
+    else:
+        # 其他（北交所等）使用原逻辑
+        cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
+        cond_xh3 = C[-2] < highest_close and C[-1] >= highest_close and C[-1]/C[-2]<1.09
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.11
+        result = (cond_xh1 or cond_xh3) and cond_near_ma5 
+    return result
 
 def strategy_dx(df, code, emotion_stage, total_mv=0):
     """低吸策略：找上一波涨幅大+回调企稳的股票"""
@@ -7416,25 +7432,6 @@ def _call_glm(prompt, use_flash=False):
                     "- 第5部分【量能爆发池】只能使用'🔥 量能爆发·强买信号/观察信号/蓄势大涨'段落中的股票\n"
                     "- 第4/6部分【ETF】只能使用ETF数据区的成份股\n"
                     "- 各模块股票不得交叉混用，每个模块只分析本模块数据区的股票\n"
-                    "【个股级别联网核查-仅重点股】\n"
-                    "- 仅对突破股池前3名和量能爆发池强买信号股做完整联网核查\n"
-                    "- 风险维度：定增/减持/解禁/诉讼/财务造假/被监管立案/ST预警等利空\n"
-                    "- 舆情维度：龙虎榜机构/游资动向、机构调研、业绩预告、重大合同、技术突破\n"
-                    "- 热榜维度：东财/同花顺/雪球热度榜排名\n"
-                    "- 发现重大利空时，必须在该股分析末尾标注【警告】并建议回避或剔除\n"
-                    "【第6部分热点追踪-必须联网，禁止'数据待补充'】\n"
-                    "- 第6部分的热点追踪和风险扫描是 GLM 的核心任务，必须联网搜索输出，绝对不能输出'数据待补充'或'未联网核查'\n"
-                    "【维度1：主题与大盘风险】（第8部分汇总输出，必须联网）\n"
-                    "- 主题拥挤度过高、政策利空、产业链逻辑证伪（联网搜索今日相关主题的新闻）\n"
-                    "- 大盘系统性风险：外围暴跌、汇率异动、政策转向、流动性收紧（联网搜索外围市场和汇率）\n"
-                    "【维度2：热点追踪】（第6部分输出，必须联网搜索，禁止'数据待补充'）\n"
-                    "- 【今日涨停原因】联网搜索今日涨停股的涨停原因（至少1条真实信息）\n"
-                    "- 【明日潜在热点】联网搜索晚间新闻，预判1-2个明日热点方向\n"
-                    "- 【龙头股动态】联网搜索报告中提到的龙头股最新动态（业绩预告/机构调研/重大合同等）\n"
-                    "- 【市场情绪】联网搜索北向资金流向、游资动向、涨停板梯队数据\n"
-                    "【输出要求】\n"
-                    "- 第8部分：所有子项必须联网搜索输出真实信息，禁止出现'数据待补充'字样\n"
-                    "- 报告最后第8部分为汇总性扫描，集中列出已标注警告的个股"
                 )
             },
             {"role": "user", "content": prompt}
@@ -8728,15 +8725,23 @@ def extract_chip_alpha_factors(chip_result):
             'CenterVelocity_Score': 50,
         }
     f = chip_result.get('Factors', {})
+    dim = chip_result.get('DimensionScores', {})
     return {
         'ChipTrendScore': chip_result.get('ChipTrendScore', 50),
         'ChipGrade': chip_result.get('Grade', 'C'),
-        'ChipStage': chip_result.get('TrendStage', '未知'),
+        'ChipStage': {
+            'Accumulation': '吸筹中', 'Distribution': '派发中',
+            'Expansion': '扩张期', 'Early Trend': '早期趋势',
+            'Collapse': '崩溃', 'Unknown': '未知',
+        }.get(chip_result.get('TrendStage', ''), chip_result.get('TrendStage', '未知')),
         'CRE_Score': f.get('CRE', {}).get('score', 50),
         'ChipMomentum_Score': f.get('ChipMomentum', {}).get('score', 50),
         'PressureDecay_Score': f.get('PressureDecay', {}).get('score', 50),
         'Absorption_Score': f.get('Absorption', {}).get('score', 50),
         'CenterVelocity_Score': f.get('CenterVelocity', {}).get('score', 50),
+        'Structure_Score': dim.get('Structure', {}).get('score', 50),
+        'Flow_Score': dim.get('Flow', {}).get('score', 50),
+        'Momentum_Score': dim.get('Momentum', {}).get('score', 50),
     }
 
 
@@ -8771,6 +8776,206 @@ def get_chip_alpha_suggestion(stock_dict):
     if score < 40:
         return "回避", f"筹码结构弱，{stage}，暂不参与"
     return "观望等待", f"筹码中性，{stage}，等待明确信号"
+
+
+# ======================================================
+# Chip Alpha Engine V5 集成 — Institutional Trend Intelligence Engine
+# 集成到突破股池/量能爆发池，与V2共存互不冲突
+# ======================================================
+_chip_alpha_v5_engine = None
+
+def get_chip_alpha_v5_engine():
+    """获取 ChipAlphaV5Engine 单例（延迟初始化）"""
+    global _chip_alpha_v5_engine
+    if _chip_alpha_v5_engine is None:
+        try:
+            from chip_alpha_v5 import ChipAlphaV5Engine
+            _chip_alpha_v5_engine = ChipAlphaV5Engine(token=TUSHARE_TOKEN)
+        except Exception as e:
+            print(f"[ChipAlphaV5] 引擎初始化失败: {e}")
+            return None
+    return _chip_alpha_v5_engine
+
+
+def batch_chip_alpha_v5(v2_results):
+    """
+    一键V5升级：输入V2批量结果 {ts_code: v2_result}，输出V5批量分析 {ts_code: v5_profile}
+    V5构建在V2之上，无需额外API调用，纯计算无新增耗时。
+    """
+    engine = get_chip_alpha_v5_engine()
+    if engine is None:
+        return {}
+    v5_results = {}
+    total = len(v2_results)
+    for i, (ts_code, v2_r) in enumerate(v2_results.items()):
+        try:
+            v5 = engine.analyze_from_v2(v2_r)
+            v5_results[ts_code] = v5
+            if (i + 1) % 20 == 0:
+                print(f"[ChipAlphaV5] 升级 {i+1}/{total}")
+        except Exception as e:
+            print(f"[ChipAlphaV5] {ts_code} 升级失败: {e}")
+    return v5_results
+
+
+def extract_chip_alpha_v5_factors(v5_result):
+    """
+    从V5分析结果中提取关键展示字段（扁平化为简单dict）
+    用于注入突破/量能池的股票数据行
+    """
+    if not v5_result:
+        return {
+            'Alpha_Structure': 50, 'Alpha_Flow': 50, 'Alpha_Momentum': 50,
+            'Alpha_Composite': 50, 'Alpha_Grade': 'C',
+            'Risk_Score': 50, 'Risk_Level': 'Medium',
+            'Trend_State': 'Unknown', 'Trend_Desc': '',
+            'Next_State': 'Unknown', 'Next_Prob': 0,
+            'Action': 'Hold', 'Confidence': 50,
+            'DecisionSummary': '',
+            'Opportunity_Score': 50.0,
+            'OS_Details': '',
+        }
+    a = v5_result.get('alpha', {})
+    r = v5_result.get('risk', {})
+    t = v5_result.get('trend', {})
+    d = v5_result.get('decision', {})
+    tr = t.get('transition', {})
+    rd = r.get('dimensions', {})
+    price = v5_result.get('current_price', 0)
+    center = v5_result.get('chip_center', 0)
+    # 生成简短决策摘要
+    _s = a.get('Structure', 50)
+    _f = a.get('Flow', 50)
+    _m = a.get('Momentum', 50)
+    _c = a.get('Composite', 50)
+    _risk = r.get('Composite', 50)
+    _state = t.get('current_state', 'Unknown')
+    _next = tr.get('primary_next', '')
+    _prob = tr.get('primary_prob', 0)
+    _action = d.get('action', 'Hold')
+    _conf = d.get('confidence', 50)
+    _s_desc = '优' if _s >= 80 else ('良' if _s >= 60 else '弱')
+    _f_desc = '强' if _f >= 70 else ('中' if _f >= 50 else '弱')
+    _m_desc = '强' if _m >= 70 else ('中' if _m >= 50 else '弱')
+    _risk_desc = r.get('Level', 'Medium')
+    _trans = f"{_next}({_prob*100:.0f}%)" if _next else ''
+    # --- Alpha解读 ---
+    alpha_interpret = f"结构{_s_desc}({_s:.0f}) 资金{_f_desc}({_f:.0f}) 动量{_m_desc}({_m:.0f}) | 复合{_c:.0f}({a.get('Grade','C')})"
+    # --- 价格vs质心 ---
+    pv_text = ''
+    if price and center:
+        dist = (price - center) / center * 100
+        if dist < -5:
+            pv_text = f"现价{price:.2f} 远低于质心{center:.2f} ({dist:.1f}%)，当前即为低吸窗口"
+        elif dist < 0:
+            pv_text = f"现价{price:.2f} 低于质心{center:.2f} ({dist:.1f}%)，折价区间，无需等回踩"
+        elif dist < 5:
+            pv_text = f"现价{price:.2f} 略高于质心{center:.2f} ({dist:+.1f}%)，成本支撑有效，可等回踩"
+        elif dist < 15:
+            pv_text = f"现价{price:.2f} 高于质心{center:.2f} ({dist:+.1f}%)，注意回调风险"
+        else:
+            pv_text = f"现价{price:.2f} 大幅高于质心{center:.2f} ({dist:+.1f}%)，追高风险大"
+    # --- 风险维度详情 ---
+    risk_dim_names = {
+        'MomentumExhaustion': '动量衰竭',
+        'ProfitCrowding': '获利拥挤',
+        'Distribution': '派发信号',
+        'StructureBreakdown': '结构破裂',
+        'VolatilityExpansion': '波动放大',
+        'LiquidityRisk': '流动性',
+    }
+    high_dims = []
+    for k, name in risk_dim_names.items():
+        v = rd.get(k, 0)
+        if v >= 40:
+            high_dims.append(f"{name}({v:.0f})")
+    risk_detail = f"风险{_risk:.0f}({_risk_desc})"
+    if high_dims:
+        risk_detail += ' | 关注:' + ' '.join(high_dims)
+    # --- 生命周期 + 转移 ---
+    trans_detail = f"{_state}"
+    if _trans:
+        trans_detail += f" → {_trans}"
+    # --- 操作建议详细 ---
+    act_detail = f"{_action}({_conf:.0f}%)"
+    if _action in ('Buy', 'Strong Buy'):
+        if price and center:
+            dist = (price - center) / center * 100
+            if dist < 0:
+                # 现价已低于质心→当前就是低吸区间，止损以现价为基准
+                stop = price * 0.95
+                act_detail += f" | 止损{stop:.2f} | 现价已低于质心，当前即为低吸区间"
+            else:
+                # 现价高于质心→等待回踩，止损设在质心下方
+                stop = center * 0.97
+                act_detail += f" | 止损{stop:.2f} | 回踩质心{center:.2f}低吸"
+        else:
+            act_detail += " | 逢低建仓"
+    elif _action == 'Buy on Pullback':
+        act_detail += " | 不追高，等缩量回踩"
+    elif _action == 'Hold':
+        act_detail += " | 持有观望"
+    elif _action in ('Reduce', 'Take Profit'):
+        act_detail += " | 减仓控风险"
+    elif _action == 'Avoid':
+        act_detail += " | 暂不参与"
+    # --- 组合成详细决策行 ---
+    decision_detail_parts = [alpha_interpret]
+    if pv_text:
+        decision_detail_parts.append(pv_text)
+    decision_detail_parts.append(risk_detail)
+    decision_detail_parts.append(trans_detail)
+    decision_detail_parts.append(act_detail)
+    decision_detail = ' | '.join(decision_detail_parts)
+
+    # --- 简短摘要（向后兼容） ---
+    summary_parts = [
+        f"结构{_s_desc}({_s:.0f})",
+        f"资金{_f_desc}({_f:.0f})",
+        f"动量{_m_desc}({_m:.0f})",
+        f"复合{_c:.0f}({a.get('Grade','C')})",
+        f"风险{_risk:.0f}({_risk_desc})",
+    ]
+    if _trans:
+        summary_parts.append(f"{_state}→{_trans}")
+    summary_parts.append(f"{_action}({_conf:.0f}%)")
+    decision_summary = ' | '.join(summary_parts)
+
+    # --- Opportunity Score ---
+    _os = None
+    try:
+        from chip_alpha_v5 import calc_opportunity_score
+        _os = calc_opportunity_score(v5_result)
+    except Exception:
+        _os = None
+    os_score = _os['score'] if _os else 50.0
+    os_details = _os['details'] if _os else ''
+
+    return {
+        'Alpha_Structure': round(_s, 1),
+        'Alpha_Flow': round(_f, 1),
+        'Alpha_Momentum': round(_m, 1),
+        'Alpha_Composite': round(_c, 1),
+        'Alpha_Grade': a.get('Grade', 'C'),
+        'Risk_Score': round(_risk, 1),
+        'Risk_Level': _risk_desc,
+        'Trend_State': _state,
+        'Trend_Desc': t.get('description', ''),
+        'Next_State': tr.get('primary_next', 'Unknown'),
+        'Next_Prob': round(tr.get('primary_prob', 0) * 100, 1),
+        'Action': _action,
+        'Confidence': round(_conf, 1),
+        'Action_Combined': d.get('combined', ''),
+        'DecisionSummary': decision_summary,
+        'DecisionDetail': decision_detail,
+        'Price_vs_Center': pv_text,
+        'Risk_Detail': risk_detail,
+        'Alpha_Interpret': alpha_interpret,
+        'Trans_Detail': trans_detail,
+        'Act_Detail': act_detail,
+        'Opportunity_Score': os_score,
+        'OS_Details': os_details,
+    }
 
 
 # ======================================================
@@ -9668,6 +9873,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
                 # 明显下行（逐波走低）则排除
                 if ma20_chg_10d < -0.3 or ma20_chg_20d < -1.0:
                     return None
+            # 股价站上20日均线（排除仍在均线下方的弱势股）
+            close_latest = float(close_arr[-1])
+            if close_latest < ma20_now:
+                return None
         
         # =========================
         # 近期量能活跃度检查：对比起涨前基量（200天窗口内量能最高点前20日均量）
@@ -10086,7 +10295,7 @@ def run(target_date=None, simple_mode=False):
 
     _volume_surge_swing_results = []
     # 改为从"合格股池"扫描，而非全市场
-    _qs_pool_path = r'D:\mystock\solo\report_daily\bull_stocks_qualified.csv'
+    _qs_pool_path = r'D:\mystock\solo\report_daily\bull_stocks_all.csv'
     _qs_pool = None
     if os.path.exists(_qs_pool_path):
         try:
@@ -10150,6 +10359,14 @@ def run(target_date=None, simple_mode=False):
                 _sug, _reason = get_chip_alpha_suggestion(s)
                 s['ChipSuggestion'] = _sug
                 s['ChipSuggestionReason'] = _reason
+
+            # V5 升级（无额外API调用）
+            _v5_vs_results = batch_chip_alpha_v5(_chip_vs_results)
+            for s in _volume_surge_swing_results:
+                _code = s.get('代码', '')
+                _v5_r = _v5_vs_results.get(_code)
+                _v5_factors = extract_chip_alpha_v5_factors(_v5_r)
+                s.update(_v5_factors)
         for _v in _volume_surge_swing_results[:10]:
             _theme = _v.get('所属主题', '') or '无主题'
             _stage = _v.get('非一日游阶段', '') or ''
@@ -10321,11 +10538,19 @@ def run(target_date=None, simple_mode=False):
             s['ChipSuggestion'] = _sug
             s['ChipSuggestionReason'] = _reason
 
-    # 按综合分排序（整合评分 70% + ChipTrendScore 30%）
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -(x.get('整合评分', 0) * 0.7 + x.get('ChipTrendScore', 50) * 0.3))
+        # V5 升级（无额外API调用）
+        _v5_results = batch_chip_alpha_v5(_chip_results)
+        for s in ranked_stocks:
+            _code = s.get('代码', '')
+            _v5_r = _v5_results.get(_code)
+            _v5_factors = extract_chip_alpha_v5_factors(_v5_r)
+            s.update(_v5_factors)
+
+    # 按 Opportunity Score 排序（取代原整合评分排序）
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('Opportunity_Score', 50))
     lines = []
     lines.append("")
-    lines.append("🔥 突破股池 (按整合评分排序)")
+    lines.append("🔥 突破股池 (按 Opportunity Score 排序)")
     lines.append("")
     
     top_stocks = ranked_stocks[:10]
@@ -10342,6 +10567,38 @@ def run(target_date=None, simple_mode=False):
         _chip_sug = s.get('ChipSuggestion', '观望等待')
         _chip_sug_reason = s.get('ChipSuggestionReason', '')
         lines.append(f"  筹码建议: {_chip_sug} | {_chip_sug_reason}")
+        # V5 Alpha维度
+        _v5_s = s.get('Alpha_Structure', 50)
+        _v5_f = s.get('Alpha_Flow', 50)
+        _v5_m = s.get('Alpha_Momentum', 50)
+        _v5_c = s.get('Alpha_Composite', 50)
+        _v5_g = s.get('Alpha_Grade', 'C')
+        _v5_risk = s.get('Risk_Score', 50)
+        _v5_risk_lv = s.get('Risk_Level', 'Medium')
+        _v5_state = s.get('Trend_State', 'Unknown')
+        _v5_next = s.get('Next_State', '')
+        _v5_next_p = s.get('Next_Prob', 0)
+        _v5_action = s.get('Action', 'Hold')
+        _v5_conf = s.get('Confidence', 50)
+        _v5_dim_str = f"V5: 结构={_v5_s:.0f}/资金={_v5_f:.0f}/动量={_v5_m:.0f} | 复合={_v5_c:.0f}({_v5_g})"
+        _v5_risk_str = f"风险={_v5_risk:.0f}({_v5_risk_lv})"
+        _v5_trend_str = f"{_v5_state}→{_v5_next}({_v5_next_p:.0f}%)" if _v5_next else _v5_state
+        _v5_act_str = f"{_v5_action}({_v5_conf:.0f}%)"
+        lines.append(f"  V5 Trend: {_v5_dim_str} | {_v5_risk_str} | {_v5_trend_str} | {_v5_act_str}")
+        # 决策结论摘要
+        _v5_summary = s.get('DecisionSummary', '')
+        if _v5_summary:
+            lines.append(f"  V5 决策: {s.get('Alpha_Interpret', '')}")
+            _v5_pv = s.get('Price_vs_Center', '')
+            if _v5_pv:
+                lines.append(f"          {_v5_pv}")
+            lines.append(f"          {s.get('Risk_Detail', '')}")
+            lines.append(f"          {s.get('Trans_Detail', '')}")
+            lines.append(f"          {s.get('Act_Detail', '')}")
+        # OS 交易机会评分
+        _os_val = s.get('Opportunity_Score', 50)
+        _os_det = s.get('OS_Details', '')
+        lines.append(f"  OS 机会: {_os_val:.0f}/100 | {_os_det}")
         # 主题信息
         cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
         confirm_days = s.get('确认天数', 0)
@@ -10408,8 +10665,22 @@ def run(target_date=None, simple_mode=False):
                 _cre_score = _vr.get('CRE_Score', 50)
                 _mom_score = _vr.get('ChipMomentum_Score', 50)
                 _chip_sug = _vr.get('ChipSuggestion', '观望等待')
-                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
-                vs_lines.append("")
+                _v_v5s = _vr.get('Alpha_Structure', 50)
+                _v_v5f = _vr.get('Alpha_Flow', 50)
+                _v_v5m = _vr.get('Alpha_Momentum', 50)
+                _v_v5c = _vr.get('Alpha_Composite', 50)
+                _v_v5g = _vr.get('Alpha_Grade', 'C')
+                _v_v5risk = _vr.get('Risk_Score', 50)
+                _v_v5state = _vr.get('Trend_State', 'Unknown')
+                _v_v5act = _vr.get('Action', 'Hold')
+                _v_v5conf = _vr.get('Confidence', 50)
+                _v_os = _vr.get('Opportunity_Score', 50)
+                vs_lines.append(
+                    f"  筹码: 趋势{_chip_score:.0f}/CRE{_cre_score:.0f}/动量{_mom_score:.0f} "
+                    f"| V5:{_v_v5s:.0f}/{_v_v5f:.0f}/{_v_v5m:.0f}({_v_v5c:.0f}/{_v_v5g}) "
+                    f"| 风险={_v_v5risk:.0f} | {_v_v5state}→{_v_v5act}({_v_v5conf:.0f}%) "
+                    f"| 机会={_v_os:.0f} | {_chip_sug}"
+                )
         else:
             vs_lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
             vs_lines.append("")
@@ -10435,8 +10706,22 @@ def run(target_date=None, simple_mode=False):
                 _cre_score = _vr.get('CRE_Score', 50)
                 _mom_score = _vr.get('ChipMomentum_Score', 50)
                 _chip_sug = _vr.get('ChipSuggestion', '观望等待')
-                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
-                vs_lines.append("")
+                _v_v5s = _vr.get('Alpha_Structure', 50)
+                _v_v5f = _vr.get('Alpha_Flow', 50)
+                _v_v5m = _vr.get('Alpha_Momentum', 50)
+                _v_v5c = _vr.get('Alpha_Composite', 50)
+                _v_v5g = _vr.get('Alpha_Grade', 'C')
+                _v_v5risk = _vr.get('Risk_Score', 50)
+                _v_v5state = _vr.get('Trend_State', 'Unknown')
+                _v_v5act = _vr.get('Action', 'Hold')
+                _v_v5conf = _vr.get('Confidence', 50)
+                _v_os = _vr.get('Opportunity_Score', 50)
+                vs_lines.append(
+                    f"  筹码: 趋势{_chip_score:.0f}/CRE{_cre_score:.0f}/动量{_mom_score:.0f} "
+                    f"| V5:{_v_v5s:.0f}/{_v_v5f:.0f}/{_v_v5m:.0f}({_v_v5c:.0f}/{_v_v5g}) "
+                    f"| 风险={_v_v5risk:.0f} | {_v_v5state}→{_v_v5act}({_v_v5conf:.0f}%) "
+                    f"| 机会={_v_os:.0f} | {_chip_sug}"
+                )
 
         # 蓄势大涨信号段落（波浪结构+量能爆发结合，MACD尚未确认但启动信号明确）
         if vs_wave_surge:
@@ -10460,8 +10745,22 @@ def run(target_date=None, simple_mode=False):
                 _cre_score = _vr.get('CRE_Score', 50)
                 _mom_score = _vr.get('ChipMomentum_Score', 50)
                 _chip_sug = _vr.get('ChipSuggestion', '观望等待')
-                vs_lines.append(f"  筹码Alpha: 趋势分={_chip_score:.0f} | CRE={_cre_score:.0f} | 动量={_mom_score:.0f} | 建议={_chip_sug}")
-                vs_lines.append("")
+                _v_v5s = _vr.get('Alpha_Structure', 50)
+                _v_v5f = _vr.get('Alpha_Flow', 50)
+                _v_v5m = _vr.get('Alpha_Momentum', 50)
+                _v_v5c = _vr.get('Alpha_Composite', 50)
+                _v_v5g = _vr.get('Alpha_Grade', 'C')
+                _v_v5risk = _vr.get('Risk_Score', 50)
+                _v_v5state = _vr.get('Trend_State', 'Unknown')
+                _v_v5act = _vr.get('Action', 'Hold')
+                _v_v5conf = _vr.get('Confidence', 50)
+                _v_os = _vr.get('Opportunity_Score', 50)
+                vs_lines.append(
+                    f"  筹码: 趋势{_chip_score:.0f}/CRE{_cre_score:.0f}/动量{_mom_score:.0f} "
+                    f"| V5:{_v_v5s:.0f}/{_v_v5f:.0f}/{_v_v5m:.0f}({_v_v5c:.0f}/{_v_v5g}) "
+                    f"| 风险={_v_v5risk:.0f} | {_v_v5state}→{_v_v5act}({_v_v5conf:.0f}%) "
+                    f"| 机会={_v_os:.0f} | {_chip_sug}"
+                )
         volume_surge_swing_text = "\n".join(vs_lines)
         print(volume_surge_swing_text)
     else:
@@ -10601,128 +10900,93 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # ETF操作提示（从ETF主线轮动策略读取 - 新版 Alpha Ranking）
+    # ETF操作提示（读取ETF主线轮动汇总报告，由AI提炼输出）
     # =========================
     etf_tips_text = ""
+    summary_path = rf'D:\mystock\report_daily\etf_mainline_summary_{TRADE_DATE}.txt'
     try:
-        # 优先读取最新版（etf_alpha_ranking_latest.json）
-        latest_path = r'D:\mystock\cache_daily\etf_alpha_ranking_latest.json'
-        rot_path = r'D:\mystock\cache_daily\etf_rotation_tips.json'
-        chosen_path = None
-        if os.path.exists(latest_path):
-            chosen_path = latest_path
-        elif os.path.exists(rot_path):
-            chosen_path = rot_path
-
-        if chosen_path:
-            import json as _json
-            with open(chosen_path, 'r', encoding='utf-8') as f:
-                rot_data = _json.load(f)
-
-            etf_lines = []
-            etf_lines.append("")
-            etf_lines.append("")
-            etf_lines.append("📊 ETF操作提示 (ETF Alpha Ranking)")
-            etf_lines.append("")
-
-            # 判断数据版本
-            if 'top3_buy' in rot_data:
-                # ===== 新版：ETF Alpha Ranking 输出 =====
-                etf_name = rot_data.get('etf_name', '')
-                etf_code = rot_data.get('etf_code', '')
-                trade_date = rot_data.get('trade_date', rot_data.get('latest_update', ''))
-                valid_count = rot_data.get('valid_stock_count', 0)
-
-                if etf_name:
-                    etf_lines.append(f"最强ETF: {etf_name}({etf_code})  数据日期: {trade_date}")
-                if valid_count:
-                    etf_lines.append(f"有效成份股: {valid_count}只")
-
-                # 信号分布
-                sig_dist = rot_data.get('signal_distribution', {})
-                sig_parts = []
-                for s in ['CORE_ALPHA', 'STRONG', 'WATCH', 'AVOID']:
-                    cnt = sig_dist.get(s, 0)
-                    if cnt > 0:
-                        sig_parts.append(f"{s}:{cnt}")
-                if sig_parts:
-                    etf_lines.append(f"信号分布: {' | '.join(sig_parts)}")
-
-                # ★ TOP3 推荐买入（核心输出）
-                top3_buy = rot_data.get('top3_buy', [])
-                if top3_buy:
-                    etf_lines.append("")
-                    etf_lines.append("【★ TOP3 推荐买入】")
-                    for r in top3_buy:
-                        tags_str = f"[{','.join(r.get('tags', []))}]" if r.get('tags') else ""
-                        etf_lines.append(
-                            f"  {r.get('rank','')}. {r.get('name','')}({r.get('code','')}) "
-                            f"Score:{r.get('final_score',0):.1f} "
-                            f"Alpha5:{r.get('alpha5',0):+.1f}% "
-                            f"Accel:{r.get('alpha_accel_5_20',0):+.1f} "
-                            f"信号:{r.get('signal','')} {tags_str}"
-                        )
-
-                # TOP10 完整排名
-                top10 = rot_data.get('top10_ranking', [])
-                if top10:
-                    etf_lines.append("")
-                    etf_lines.append("【TOP10 排名】")
-                    for r in top10:
-                        etf_lines.append(
-                            f"  {r.get('rank','')}. {r.get('name','')}({r.get('code','')}) "
-                            f"Score:{r.get('final_score',0):.1f} "
-                            f"Alpha5:{r.get('alpha5',0):+.1f}% "
-                            f"Alpha20:{r.get('alpha20',0):+.1f}% "
-                            f"Alpha60:{r.get('alpha60',0):+.1f}% "
-                            f"信号:{r.get('signal','')}"
-                        )
-            else:
-                # ===== 旧版兼容：etf_rotation_tips.json =====
-                # 1. ETF最强TOP3
-                etf_rankings = rot_data.get('etf_rankings', [])
-                if etf_rankings:
-                    etf_lines.append(f"ETF最强TOP3:")
-                    for i, r in enumerate(etf_rankings[:3], 1):
-                        etf_lines.append(f"  {i}. {r.get('name','')}({r.get('code','')}) 综合分:{r.get('total_score',0):.1f} 动量:{r.get('momentum',0):+.2f}%")
-
-                etf_name = rot_data.get('etf_name', '')
-                if etf_name:
-                    etf_lines.append(f"最强ETF: {etf_name}")
-
-                stage_summary = rot_data.get('etf_stage_summary', {})
-                stage_parts = []
-                for s in ['💪弱转强', '🚀启动', '↩️回踩低吸', '🔥主升浪', '📈补涨', '⚠️过热', '➡️整理']:
-                    cnt = stage_summary.get(s, 0)
-                    if cnt > 0:
-                        stage_parts.append(f"{s}{cnt}只")
-                if stage_parts:
-                    etf_lines.append(f"成份股阶段分布: {' | '.join(stage_parts)}")
-
-                catchup_top = rot_data.get('catchup_top', [])
-                if catchup_top:
-                    etf_lines.append("")
-                    etf_lines.append("【补涨TOP5】")
-                    for r in catchup_top[:5]:
-                        etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 补涨分:{r.get('catchup_score',0):.1f} 阶段:{r.get('stage','')}")
-                else:
-                    etf_lines.append("")
-                    etf_lines.append("【补涨TOP5】无补涨分≥70的标的")
-
-                momentum_top = rot_data.get('momentum_top', [])
-                if momentum_top:
-                    etf_lines.append("")
-                    etf_lines.append("【强势TOP5】")
-                    for r in momentum_top[:5]:
-                        etf_lines.append(f"  {r.get('name','')}({r.get('code','')}) 强势分:{r.get('momentum_score',0):.1f} 阶段:{r.get('stage','')}")
-                else:
-                    etf_lines.append("")
-                    etf_lines.append("【强势TOP5】无强势分≥60的标的")
-
-            etf_tips_text = "\n".join(etf_lines)
+        if os.path.exists(summary_path):
+            with open(summary_path, 'r', encoding='utf-8') as f:
+                etf_tips_text = f.read().strip()
             print(etf_tips_text)
+        else:
+            etf_tips_text = ""
+            print(f"[ETF提示] 汇总报告未生成: {summary_path}")
     except Exception as e:
-        print(f"[ETF提示] 获取失败: {e}")
+        print(f"[ETF提示] 读取失败: {e}")
+
+    # =========================
+    # 筹码Alpha V5分析 - ETF前3名个股
+    # =========================
+    _chip_v5_text = ""
+    try:
+        from chip_alpha_v5 import ChipAlphaV5Engine, calc_opportunity_score
+        chip_engine = ChipAlphaV5Engine(token=TUSHARE_TOKEN)
+
+        _latest_path = r'D:\mystock\cache_daily\etf_alpha_ranking_latest.json'
+        if os.path.exists(_latest_path):
+            import json as _json2
+            with open(_latest_path, 'r', encoding='utf-8') as _f:
+                _data = _json2.load(_f)
+            _chip_top3 = (_data.get('top3_buy', []) or
+                          _data.get('top10_ranking', [])[:3])
+            if _chip_top3:
+                _chip_v5_lines = ["【ETF TOP3 筹码Alpha V5】"]
+                for _i, _r in enumerate(_chip_top3, 1):
+                    _code = _r.get('code', '')
+                    _name = _r.get('name', '')
+                    if not _code:
+                        continue
+                    try:
+                        _v5_engine = ChipAlphaV5Engine(token=TUSHARE_TOKEN)
+                        _v5 = _v5_engine.analyze(_code, lookback_days=20)
+                        _os = calc_opportunity_score(_v5)
+                        _a = _v5.get('alpha', {})
+                        _trend = _v5.get('trend', {})
+                        _dec = _v5.get('decision', {})
+                        _risk = _v5.get('risk', {})
+                        _s = _a.get('Structure',50)
+                        _f_val = _a.get('Flow',50)
+                        _m = _a.get('Momentum',50)
+                        _c = _a.get('Composite',50)
+                        _g = _a.get('Grade','C')
+                        _state = _trend.get('current_state','?')
+                        _act = _dec.get('action','?')
+                        _conf = _dec.get('confidence',50)
+                        _oss = _os.get('score',50)
+                        _line = (f"  {_i}.{_name}({_code}) "
+                                 f"V5:{_s:.0f}/{_f_val:.0f}/{_m:.0f}({_c:.0f}/{_g}) "
+                                 f"风险={_risk.get('Composite',50):.0f} "
+                                 f"{_state}→{_act}({_conf:.0f}%) "
+                                 f"机会={_oss:.1f}")
+                        _chip_v5_lines.append(_line)
+                    except Exception as _e2:
+                        _chip_v5_lines.append(f"  {_i}.{_name}({_code}) [分析失败]")
+                _chip_v5_text = "\n".join(_chip_v5_lines)
+                print(f"\n{_chip_v5_text}")
+            else:
+                _chip_v5_text = ""
+        else:
+            _chip_v5_text = ""
+    except Exception as _e:
+        _chip_v5_text = ""
+
+    # =========================
+    # ETF 筹码分析 V2 — 直接读取报告CSV
+    # =========================
+    _etf_v2_text = ""
+    _v2_txt = rf'D:\mystock\solo\report_daily\etf_alpha_v5_AI报告_{TRADE_DATE}.txt'
+    try:
+        if os.path.exists(_v2_txt):
+            with open(_v2_txt, 'r', encoding='utf-8') as _f:
+                _etf_v2_text = _f.read().strip()
+            print(_etf_v2_text)
+        else:
+            _etf_v2_text = ""
+            print(f"[ETF V2] 报告未生成: {_v2_txt}")
+    except Exception as _e:
+        _etf_v2_text = ""
+        print(f"[ETF V2] 读取失败: {_e}")
 
 
 
@@ -10833,61 +11097,31 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 **【今日ETF Alpha Ranking】**
 {etf_tips_text}
 
+{_chip_v5_text}
+
 输出要求：
-- ETF Alpha Ranking - 强制输出；
+- ETF Alpha Ranking - 强制输出；提示当前持仓和调仓建议。
 - ★ TOP3 推荐买入-强制输出：只显示股票代码、股票名称、Alpha评分、Alpha5收益、加速度、信号标签，不显示其他信息
 - TOP10 排名-不输出
-- 【ETF成份股联网风险核查-强制显示有风险的个股，否则跳过】对TOP3推荐买入中列出的每只成份股，必须联网搜索其最新风险与舆情：
-  * 风险扫描：定增/减持/解禁/诉讼/财务异常/被监管立案/ST预警
-  * 舆情热度：近期新闻、机构调研、业绩预告、重大合同、技术突破
-  * 龙虎榜：机构净买卖、游资席位动向
-  * 【警告触发】发现重大利空时标注"【警告】建议剔除：XXX"
 - 【信号标签解读】[突破]=接近60日新高且放量，[弹簧]=波动收缩蓄势待发，[龙头]=Alpha排名前15%且近高点，[拥挤]=短期涨幅过大风险预警
 
-5、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+5、ETF筹码分析策略（测试版V2）
+{_etf_v2_text}
+从报告中提炼
+（1）市场状态、核心机会和仓位建议；
+（2）TOP5的ETF名称和代码，操作与点评；
+（3）推荐的个股名称和代码(买入或持有信号)；（忽略其它字段）
+格式要求适合手机阅读。
+
+6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
-
-6、**【实时风险与热点扫描】**（必须调用联网搜索，最高优先级！）
-【说明】本部分为汇总性扫描，个股级别的风险舆情已在第3/4/5部分各股分析中输出，此处聚焦主题、大盘和热点的整体性判断，避免重复。
-**【风险扫描-汇总】**（联网核查，必须输出）
-- 【主题风险】核查报告中的强势主题是否出现：
-  * 拥挤度过高（换手率连续放大、成交占比异常）
-  * 政策利空（监管收紧、行业打压）
-  * 产业链逻辑证伪（技术路线变化、需求不及预期）
-  * 格式：【主题名】风险类型+具体说明
-- 【大盘系统性风险】核查今日盘后至报告生成时的：
-  * 外围市场（美股/港股/欧股）表现
-  * 汇率异动（人民币兑美元大幅贬值）
-  * 政策转向（央行流动性收紧、监管新规）
-  * 格式：风险项+具体数据+影响判断
-- 【股池风险汇总】汇总第3/4/5部分中已标注"【警告】"的个股，集中列出：
-  * 格式：【股票名(代码)】所属模块+风险类型+建议
-  * 如无警告个股，输出"今日股池个股暂无重大利空"
-- 如无任何风险，输出"今日暂无重大风险事件"
-
-**【热点追踪】**（联网搜索今日盘中盘后最新新闻和小作文，必须输出）
-- 【今日涨停分析】联网搜索今日大面积涨停股的涨停原因（政策催化/业绩超预期/题材炒作/技术反弹）
-  * 重点核查股池中涨停或涨幅居前个股的涨停原因
-  * 格式：【股票名】涨停原因+催化事件+来源
-- 【明日潜在热点】联网搜索晚间新闻，预判明日可能的热点方向：
-  * 新闻联播重要内容、部委政策发布、产业大会/峰会
-  * 重要数据发布（CPI/PPI/PMI/社融等）
-  * 海外市场重要事件（美联储决议、科技巨头发布会）
-  * 格式：【热点方向】催化事件+相关个股/主题
-- 【龙头股动态】联网搜索报告中提到的龙头股最新动态：
-  * 机构调研、业绩预告、重大合同、技术突破、股东增持
-  * 格式：【龙头股名】动态类型+具体内容+影响
-- 【市场情绪】联网搜索：
-  * 游资动向（知名游资席位买卖情况）
-  * 北向资金今日流向（净买入/净卖出金额+重点个股）
-  * 涨停板梯队变化（连板高度、炸板率、首板数量）
-  * 格式：情绪指标+数据+判断
 
 格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
 - 股票分析另起一行，分点说明
 - 风格简洁明了，适合阅读
 - 返回MD格式，字体大小适合手机阅读，注意换行符为\n，避免使用\r\n
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据
 
 """
     if not simple_mode:
