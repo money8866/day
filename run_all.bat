@@ -17,6 +17,7 @@ echo =============================================
 python solo\theme_trend_sentiment_score.py
 echo.
 python D:\mystock\solo\theme_alpha_v6\main.py
+python d:\mystock\solo\theme_forecast\main.py
 
 echo [Step 2/7] 指数分析...
 echo =============================================

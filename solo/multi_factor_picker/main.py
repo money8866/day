@@ -53,6 +53,7 @@ from bull_scorer import BullStockData, BullScoreResult, BullScorer as _BullScore
 from bull_scorer_v2 import BullScorerV2, BullScoreV2Result  # v2 评分引擎
 from chain_mapping import identify_chain_with_cache, load_concept_cache
 from mainline_filter import apply_mainline_filter, print_mainline_analysis
+from multi_factor_valuation import run_multifactor_selection
 
 
 # 配置日志
@@ -1350,6 +1351,41 @@ def main():
 
         logger.info("=" * 60)
         logger.info("BullScore 选股完成")
+
+        # ── 多因子重估（基于行业PE + 成长修正 + PEG风控） ──
+        try:
+            all_csv = report_daily_dir / "bull_stocks_all.csv"
+            if all_csv.exists():
+                df = pd.read_csv(all_csv, encoding='utf-8-sig')
+                logger.info(f"多因子重估开始: 加载 {len(df)} 只标的")
+                rename_map = {
+                    'PE_TTM': 'pe_ttm', '现价': 'current_price',
+                    '利润同比': 'net_profit_yoy', '筹码面': 'chip_score', '估值安全': 'safety_score',
+                }
+                rename_map = {k: v for k, v in rename_map.items() if k in df.columns}
+                df = df.rename(columns=rename_map)
+                required = {'code', 'name', 'theme', 'pe_ttm', 'current_price', 'net_profit_yoy'}
+                if required.issubset(set(df.columns)):
+                    df['net_profit_yoy'] = pd.to_numeric(df['net_profit_yoy'], errors='coerce').fillna(0)
+                    val_result = run_multifactor_selection(df)
+                    val_path = report_daily_dir / "multifactor_valuation.csv"
+                    val_result.to_csv(val_path, index=False, encoding='utf-8-sig')
+                    passed = val_result[val_result['filter_reason'] == '通过']
+                    logger.info(f"多因子重估完成: 通过 {len(passed)} 只 | 价值陷阱拦截 {len(val_result[val_result['filter_reason']=='价值陷阱'])} 只")
+                    logger.info(f"结果已保存: {val_path}")
+                    # 打印Top15
+                    print(f"\n{'='*90}")
+                    print(f"  多因子重估 TOP 15（估值空间+综合分排序）")
+                    print(f"{'='*90}")
+                    print(f"{'排名':>3} {'代码':>8} {'名称':<8} {'主题':<12} {'PE_TTM':>6} {'增速%':>7} {'PEG':>6} {'调整PE':>6} {'估值空间':>7} {'综合分':>6}")
+                    print(f"{'-'*90}")
+                    for i, (_, r) in enumerate(passed.head(15).iterrows(), 1):
+                        print(f"{i:>3} {r['code']:>8} {r['name']:<8} {r['theme']:<12} {r['pe_ttm']:>6.1f} {r['net_profit_yoy']:>+6.1f}% {r['peg']:>6.1f} {r['pe_adjusted']:>6.1f} {r['realistic_upside_%']:>+6.1f}% {r['composite_score']:>6.1f}")
+                else:
+                    missing = required - set(df.columns)
+                    logger.warning(f"多因子重估跳过: 缺少列 {missing}")
+        except Exception as ve:
+            logger.warning(f"多因子重估异常(不影响主流程): {ve}")
 
     except Exception as e:
         logger.error(f"程序执行出错: {e}")

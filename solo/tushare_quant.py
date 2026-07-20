@@ -236,7 +236,7 @@ def _load_theme_forecast(trade_date, top_n=5):
     forecast_path = os.path.join(BASE_DIR, 'theme_forecast', 'output', f'theme_forecast_{trade_date}.json')
     
     if not os.path.exists(forecast_path):
-        print(f"[ThemeForecast] 未找到 {trade_date} 预测文件")
+        print(f"[ThemeForecast] 未找到 {trade_date} 预测文件，请先运行: python -m theme_forecast.main")
         return []
     
     try:
@@ -5251,12 +5251,6 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
                             break
             except Exception as e:
                 pass  # 查询失败不阻塞
-        
-        # 过滤条件：非双创板股票且未上过热榜的，直接返回0分
-        # 双创板：创业板(300开头)、科创板(688开头)
-        is_innovation_board = ts_code.startswith('300') or ts_code.startswith('688')
-        if not is_innovation_board and hot_appear_count<=0:
-            return 0, "非双创板且未上热榜", {}, 90
         
         # 根据主题趋势分和情绪分调整热度（避免高潮后追高）
         # 情绪分过高（>80）= 高潮期，可能回落，降低热度

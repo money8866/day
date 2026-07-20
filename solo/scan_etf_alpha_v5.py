@@ -1485,74 +1485,54 @@ def save_etf_csv(etf_df: pd.DataFrame, output_path: str):
 def generate_comprehensive_report(etf_df: pd.DataFrame, scan_df: pd.DataFrame,
                                   top_n_etf: int = 5, top_n_stock: int = 5) -> str:
     """
-    Ultimate: ETF Alpha Daily Rotation Report
-    （三层模型 + Final Signal + 双Leader + Portfolio V2 + 风险监控）
+    ETF Alpha Rotation 投研日报
+    遵循：风控第一原则、自上而下逻辑锁、状态动态修正
     """
     const_map = load_constituents()
-    # 过滤掉 AVOID 的ETF
-    etf_display = etf_df[etf_df['Action'] != 'AVOID'] if 'Action' in etf_df.columns else etf_df
-    top_etfs = etf_display.head(top_n_etf)
     market_state = etf_df['MarketState'].iloc[0] if 'MarketState' in etf_df.columns else 'Neutral'
     market_score = int(etf_df['MarketScore'].iloc[0]) if 'MarketScore' in etf_df.columns else 50
-    # 建议仓位
-    if market_state == 'Risk ON':       pos_str = '70%-100%'
-    elif market_state == 'Neutral':     pos_str = '40%-70%'
-    else:                                pos_str = '0%-40%'
 
-    lines = []
-    lines.append("")
-    lines.append("━" * 64)
-    lines.append("ETF Alpha Rotation Daily Report (Ultimate)")
-    lines.append(f"日期: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(f"Market Regime: {market_state}  Score: {market_score}/100")
-    lines.append(f"建议总仓位: {pos_str}")
-    lines.append("━" * 64)
+    # ─── 仓位映射 ───
+    if market_state == 'Risk ON':
+        pos_str, pos_range, core_cmd, core_tone = '70%-100%', '高仓位', '积极建仓', '进攻'
+    elif market_state == 'Neutral':
+        pos_str, pos_range, core_cmd, core_tone = '40%-70%', '中仓位', '观察待变', '中性'
+    else:
+        pos_str, pos_range, core_cmd, core_tone = '0%-40%', '低仓位', '坚决防守', '防御'
 
-    # ─── TOP ETF ───
-    for idx, (_, erow) in enumerate(top_etfs.iterrows(), 1):
-        etf_name = erow['ETF']
-        etf_code = erow['代码']
-        eos = erow['EOS']
-        opp = erow.get('OpportunityScore', 0)
-        exe = erow.get('ExecutionScore', 0)
-        pos = erow.get('PositionScore', 0)
-        radj = erow.get('RiskAdjusted', 0)
-        stage = erow.get('Stage', '')
-        breadth = erow.get('Breadth', 0)
-        health = erow.get('Health', 0)
-        rotation = erow.get('Rotation', '―')
-        crowding = erow.get('Crowding', 'Low')
-        dual_m = erow.get('DualMatrix', '')
-        ns = erow.get('NextStage', '')
-        success_p = erow.get('SuccessProb', 0)
-        failure_p = erow.get('FailureProb', 0)
-        action = erow.get('Action', '')
-        valid_ret = erow.get('20日涨幅_验证', 0)
-        if eos >= 80: rating = '★★★★★'
-        elif eos >= 70: rating = '★★★★☆'
-        else: rating = '★★★☆☆'
-        ret_tag = f"+{valid_ret:.1f}%" if valid_ret > 0 else f"{valid_ret:.1f}%"
+    # ─── 过滤 AVOID ───
+    etf_display = etf_df[etf_df['Action'] != 'AVOID'] if 'Action' in etf_df.columns else etf_df
+    top_etfs = etf_display.head(top_n_etf)
 
-        lines.append("")
-        lines.append(f"【#{idx} {etf_name} ETF】")
-        lines.append(f"  代码: {etf_code}")
-        lines.append(f"  EOS: {eos:.0f}  |  Opportunity: {opp:.0f}  |  Execution: {exe:.0f}  |  "
-                     f"Position: {pos:.0f}  |  RiskAdj: {radj:.0f}  |  {rating}")
-        lines.append(f"  Stage: {stage}")
-        lines.append(f"  Transition: {ns}  |  Success: {success_p}%  Failure: {failure_p}%")
-        lines.append(f"  Breadth: {breadth:.0f}%  |  Health: {health:.0f}  |  "
-                     f"Rotation: {rotation}  |  Crowding: {crowding}")
-        lines.append(f"  DualMatrix: {dual_m}  |  RiskAdj: {radj:.0f}  |  验证20日: {ret_tag}")
-        lines.append(f"  ETF Action: {action}")
+    # ─── 矩阵分类 ───
+    dm_col = 'DualMatrix' if 'DualMatrix' in etf_df.columns else None
+    aplus = etf_df[etf_df[dm_col] == 'A+']['ETF'].tolist() if dm_col else []
+    a_list = etf_df[etf_df[dm_col] == 'A']['ETF'].tolist() if dm_col else []
+    b_list = etf_df[etf_df[dm_col] == 'B']['ETF'].tolist() if dm_col else []
+    c_list = etf_df[etf_df[dm_col] == 'C']['ETF'].tolist() if dm_col else []
+    all_c = len(aplus) + len(a_list) + len(b_list) == 0
 
-        # 成分股
+    def _fix_stage(stg: str) -> str:
+        """规则3: Birth/Recovery 加前缀"""
+        if not stg:
+            return ''
+        stg_str = str(stg)
+        if 'Birth' in stg_str:
+            return f"假突破风险/{stg_str}"
+        if 'Recovery' in stg_str:
+            return f"弱反弹/{stg_str}"
+        return stg_str
+
+    def _load_stocks_for_etf(etf_code: str) -> list:
+        """加载ETF成分股扫描结果"""
         cons = const_map.get(etf_code, [])
         if not cons:
             short = etf_code.split('.')[0]
             for k, v in const_map.items():
-                if k.split('.')[0] == short or k == short: cons = v; break
-        stock_rows = []
+                if k.split('.')[0] == short or k == short:
+                    cons = v; break
         scan_codes = set(scan_df['代码'].tolist())
+        stock_rows = []
         for con in cons:
             if con in scan_codes:
                 hit = scan_df[scan_df['代码'] == con]
@@ -1561,85 +1541,247 @@ def generate_comprehensive_report(etf_df: pd.DataFrame, scan_df: pd.DataFrame,
                 con_short = con.split('.')[0]
                 hit2 = scan_df[scan_df['代码'] == con_short]
                 if not hit2.empty: stock_rows.append(hit2.iloc[0])
+        return stock_rows
 
-        if stock_rows:
-            # 双Leader
-            theme_leader = erow.get('Leader', '')
-            trading_leader = _get_trading_leader(stock_rows)
-            lines.append(f"  ─────────────────")
-            lines.append(f"  Theme Leader: {theme_leader}  |  Trading Leader: {trading_leader}")
+    def _trend_arrow(tag: str) -> str:
+        """打分: 简化的多空方向提示"""
+        m = {'↑': '偏多', '↓': '偏空', '→': '中性', '—': '不明'}
+        return m.get(tag, '')
 
-            stock_rows.sort(key=lambda r: r['Opportunity_Score'], reverse=True)
-            top_stocks = stock_rows[:top_n_stock]
-            lines.append(f"  【TOP Alpha Stocks】")
-            lines.append(f"  {'名称':<10}{'OS':>6}{'Alpha':>7}{'结构':>5}{'Flow':>5}{'Mom':>5}"
-                         f"{'风险':>5}{'阶段':<12}{'Raw':<8}{'Final':<8}")
-            lines.append(f"  {'─'*70}")
-            for s in top_stocks:
-                name_str = s.get('名称', '') or ''
-                os_val = s['Opportunity_Score']
-                alpha = s['复合Alpha']
-                struct = s['结构分']
-                flow_s = s['资金分']
-                mom = s['动量分']
-                risk_s = s['风险分']
-                stg = s['趋势阶段']
-                raw_act = s['操作建议']
-                raw_cn = 'Buy' if raw_act in ('Buy', 'Strong Buy') else (
-                    'Hold' if raw_act == 'Hold' else ('Reduce' if 'Reduce' in raw_act else 'Watch'))
-                final_sig = _calc_final_signal(dual_m, os_val, stg, stage)
-                lines.append(f"  {name_str:<10}{os_val:>6.0f}{alpha:>7.1f}{struct:>5.0f}"
-                             f"{flow_s:>5.0f}{mom:>5.0f}{risk_s:>5.0f}{stg:<12}{raw_cn:<8}{final_sig:<8}")
+    def _breadth_trend(v: float) -> str:
+        if v >= 40: return '↑ 宽度充足'
+        if v >= 20: return '→ 宽度收缩'
+        return '↓ 宽度不足'
 
-    # ─── ETF-Stock Matrix ───
+    def _crowd_str(c: str) -> str:
+        if c == 'High': return '拥挤 ↑ 风险积聚'
+        return '正常'
+
+    def _rotation_str(r: str) -> str:
+        if r in ('Accelerating', 'Improving'): return '加速 ↑ 动量增强'
+        if r in ('Stable', 'Steady'): return '稳定 →'
+        return '衰减 ↓ 轮动弱化'
+
+    lines = []
     lines.append("")
     lines.append("━" * 64)
-    lines.append("【ETF-Stock Matrix】")
+    lines.append("ETF Alpha Rotation 投研日报")
+    lines.append(f"日期: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     lines.append("━" * 64)
-    dm_col = 'DualMatrix' if 'DualMatrix' in etf_df.columns else None
-    aplus = etf_df[etf_df[dm_col] == 'A+']['ETF'].tolist() if dm_col else []
-    a_list = etf_df[etf_df[dm_col] == 'A']['ETF'].tolist() if dm_col else []
-    b_list = etf_df[etf_df[dm_col] == 'B']['ETF'].tolist() if dm_col else []
-    c_list = etf_df[etf_df[dm_col] == 'C']['ETF'].tolist() if dm_col else []
-    lines.append(f"  A+主升: {', '.join(aplus[:5]) if aplus else '无'}")
-    lines.append(f"  A主题增强: {', '.join(a_list[:5]) if a_list else '无'}")
-    lines.append(f"  B局部Alpha: {', '.join(b_list[:5]) if b_list else '无'}")
-    lines.append(f"  C无效: {', '.join(c_list[:5]) if c_list else '无'}")
 
-    # ─── Portfolio建议 (Ultimate) ───
+    # ════════════════════════════════════════
+    # 1. 核心投资决策
+    # ════════════════════════════════════════
     lines.append("")
-    lines.append("━" * 64)
-    lines.append("【Portfolio建议】")
-    lines.append("━" * 64)
-    portfolio_text = _build_portfolio_ultimate(etf_df, scan_df)
-    lines.append(portfolio_text)
-
-    # ─── 风险监控 ───
-    lines.append("")
-    lines.append("━" * 64)
-    lines.append("【风险监控】")
-    lines.append("━" * 64)
-    crowded = etf_df[etf_df['Crowding'] == 'High']['ETF'].tolist() if 'Crowding' in etf_df.columns else []
-    if crowded:
-        lines.append(f"  1. 高拥挤ETF: {', '.join(crowded[:3])} → 降低仓位")
-    low_breadth = etf_df[(etf_df['Breadth'] < 15) & (etf_df['EOS'] > 50)]['ETF'].tolist() if 'Breadth' in etf_df.columns else []
-    if low_breadth:
-        lines.append(f"  2. Breadth下降: {', '.join(low_breadth[:3])} → 监控")
-    climax = etf_df[etf_df['Stage'] == 'Climax']['ETF'].tolist() if 'Stage' in etf_df.columns else []
-    if climax:
-        lines.append(f"  3. Leader进入Climax: {', '.join(climax[:3])} → 准备减仓")
-    low_flow = etf_df[(etf_df['Flow'] < 30) & (etf_df['EOS'] > 60)]['ETF'].tolist() if 'Flow' in etf_df.columns else []
-    if low_flow:
-        lines.append(f"  4. 资金流出: {', '.join(low_flow[:3])} → 规避")
+    lines.append("## 1. 核心投资决策")
+    lines.append(f"- **市场状态**: {market_state} (得分: {market_score}/100)")
+    lines.append(f"- **建议仓位**: {pos_str}")
+    lines.append(f"- **核心操作指令**: {core_cmd}")
+    mainline = f"当前处于{core_tone}状态"
     if market_state == 'Risk OFF':
-        lines.append(f"  5. ⚠ 市场Risk OFF → 仓位0-40%，仅保留高质量信号")
-    if not (crowded or low_breadth or climax or low_flow) and market_state != 'Risk OFF':
-        lines.append("  当前无明显风险信号")
+        mainline += "，市场广度急剧下降，高位股补跌风险突出。核心策略：收缩仓位、严控回撤、等待企稳信号。"
+    elif market_state == 'Neutral':
+        mainline += "，主线不清晰，轮动加速。核心策略：中等仓位，聚焦B/A类板块局部机会。"
+    else:
+        mainline += "，主线明确。核心策略：提升仓位，聚焦A+主升板块。"
+    if all_c:
+        mainline += " **当前全市场无有效主线板块，所有ETF处于C类无效状态。**"
+    lines.append(f"- **主线与逻辑**: {mainline}")
+
+    # ════════════════════════════════════════
+    # 2. 行业/主题 ETF 矩阵概览
+    # ════════════════════════════════════════
+    lines.append("")
+    lines.append("## 2. 行业/主题 ETF 矩阵概览")
+    lines.append(f"| 分级 | 板块/ETF名称 | 代码 | 状态生命周期 | 核心评价与警示 |")
+    lines.append(f"| :--- | :--- | :--- | :--- | :--- |")
+
+    # A+ 主升
+    if aplus:
+        for ename in aplus:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            eos = erow['EOS']
+            brd = _breadth_trend(erow.get('Breadth', 0))
+            lines.append(f"| **A+ 主升** | **{ename}** | {ecode} | {stg} | EOS={eos:.0f}, {brd} |")
+    else:
+        lines.append(f"| **A+ 主升** | 无 | - | - | - |")
+
+    # A 主题增强
+    if a_list:
+        for ename in a_list:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            eos = erow['EOS']
+            brd = _breadth_trend(erow.get('Breadth', 0))
+            lines.append(f"| **A 主题增强** | **{ename}** | {ecode} | {stg} | EOS={eos:.0f}, {brd} |")
+    else:
+        lines.append(f"| **A 主题增强** | 无 | - | - | - |")
+
+    # B 局部Alpha
+    if b_list:
+        for ename in b_list:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            eos = erow['EOS']
+            brd = _breadth_trend(erow.get('Breadth', 0))
+            crowd = _crowd_str(erow.get('Crowding', 'Low'))
+            lines.append(f"| **B 局部Alpha** | **{ename}** | {ecode} | {stg} | EOS={eos:.0f}, {brd}, {crowd} |")
+    else:
+        lines.append(f"| **B 局部Alpha** | 无 | - | - | - |")
+
+    # C 风险/无效
+    if c_list:
+        for ename in c_list:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            eos = erow['EOS']
+            rot = _rotation_str(erow.get('Rotation', '―'))
+            lines.append(f"| **C 风险/无效** | {ename} | {ecode} | {stg} | EOS={eos:.0f}, {rot}, 严禁追高 |")
+    else:
+        lines.append(f"| **C 风险/无效** | 无 | - | - | - |")
+
+    # ════════════════════════════════════════
+    # 3. 龙头标的跟踪
+    # ════════════════════════════════════════
+    lines.append("")
+    lines.append("## 3. 龙头标的跟踪")
+    ab_etfs = [e for e in aplus + a_list + b_list if e in etf_df['ETF'].values]
+    if ab_etfs:
+        for ename in ab_etfs:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            theme_ld = erow.get('Leader', '未识别')
+            stock_rows = _load_stocks_for_etf(ecode)
+            trade_ld = _get_trading_leader(stock_rows) if stock_rows else '未识别'
+            lines.append(f"- **{ename}({ecode})**：产业龙頭：{theme_ld}｜交易龙头：{trade_ld}（{stg}）")
+    else:
+        # 全C类 → 简要点评避风港/相对韧性标的
+        lines.append(f"- 当前全市场均为 C 类无效状态，无明显主线龙头。")
+        # 找出评分相对最高的ETF
+        if not etf_df.empty:
+            top = etf_df.sort_values('EOS', ascending=False).head(3)
+            names = [f"{r['ETF']}({r['代码']}, EOS={r['EOS']:.0f})" for _, r in top.iterrows()]
+            lines.append(f"- 相对韧性标的：{'、'.join(names)}（仅作为流动性观察，不构成买入建议）")
+
+    # ════════════════════════════════════════
+    # 4. 个股 Alpha 精选（受逻辑锁过滤）
+    # ════════════════════════════════════════
+    lines.append("")
+    lines.append("## 4. 个股 Alpha 精选")
+    lines.append("> ⚠ **风控硬拦截**：")
+    if market_state == 'Risk OFF':
+        lines.append("> 当前市场处于 Risk OFF，已触发防守逻辑锁。")
+    if all_c:
+        lines.append("> 目标 ETF 均为 C 类无效状态，自上而下逻辑拦截生效。")
+    lines.append("")
+
+    if all_c or market_state == 'Risk OFF':
+        # 全C类或Risk OFF → 无开仓推荐
+        lines.append("- **今日开仓推荐**：**无（逻辑硬拦截，防止弱势补跌）**")
+        # 底层观察池（仅限极小仓位/左侧跟踪）
+        lines.append("- **底层观察池（仅限极小仓位/左侧跟踪，不作买入建议）**：")
+        obs_count = 0
+        for _, erow in etf_df.head(5).iterrows():
+            ecode = erow['代码']
+            ename = erow['ETF']
+            stg = _fix_stage(erow['Stage'])
+            stock_rows = _load_stocks_for_etf(ecode)
+            if stock_rows:
+                stock_rows.sort(key=lambda r: r['Opportunity_Score'], reverse=True)
+                for s in stock_rows[:2]:
+                    name_s = s.get('名称', '')
+                    os_val = s.get('Opportunity_Score', 0)
+                    s_stg = _fix_stage(s.get('趋势阶段', ''))
+                    lines.append(f"  - **{name_s}**(所属{ename}) | OS={os_val:.0f} | 状态: {s_stg} | 风险提示: 随板块C类承压")
+                    obs_count += 1
+                    if obs_count >= 4:
+                        break
+            if obs_count >= 4:
+                break
+    else:
+        # 有A/B类板块 → 输出推荐
+        lines.append("- **今日开仓推荐**：")
+        for ename in ab_etfs:
+            erow = etf_df[etf_df['ETF'] == ename].iloc[0]
+            ecode = erow['代码']
+            stg = _fix_stage(erow['Stage'])
+            stock_rows = _load_stocks_for_etf(ecode)
+            if not stock_rows:
+                continue
+            stock_rows.sort(key=lambda r: r['Opportunity_Score'], reverse=True)
+            top3 = stock_rows[:3]
+            for s in top3:
+                name_s = s.get('名称', '')
+                os_val = s.get('Opportunity_Score', 0)
+                alpha = s.get('复合Alpha', 0)
+                s_stg = _fix_stage(s.get('趋势阶段', ''))
+                raw_act = s.get('操作建议', '')
+                lines.append(f"  - **{name_s}**(所属{ename}) | OS={os_val:.0f} | Alpha={alpha:.0f} | 状态: {s_stg} | 信号: {raw_act}")
+
+        # 底层观察池
+        lines.append("- **底层观察池（仅限极小仓位/左侧跟踪）**：")
+        for _, erow in etf_df.iterrows():
+            if erow['ETF'] in ab_etfs:
+                continue
+            ecode = erow['代码']
+            ename = erow['ETF']
+            stg = _fix_stage(erow['Stage'])
+            stock_rows = _load_stocks_for_etf(ecode)
+            if not stock_rows:
+                continue
+            stock_rows.sort(key=lambda r: r['Opportunity_Score'], reverse=True)
+            for s in stock_rows[:1]:
+                name_s = s.get('名称', '')
+                os_val = s.get('Opportunity_Score', 0)
+                s_stg = _fix_stage(s.get('趋势阶段', ''))
+                lines.append(f"  - **{name_s}**(所属{ename}) | OS={os_val:.0f} | 状态: {s_stg} | 随板块C类承压")
+
+    # ════════════════════════════════════════
+    # 5. 尾部风险与应对策略
+    # ════════════════════════════════════════
+    lines.append("")
+    lines.append("## 5. 尾部风险与应对策略")
+    # 防守重点
+    risk_items = []
+    crowded_etfs = etf_df[etf_df['Crowding'] == 'High']['ETF'].tolist() if 'Crowding' in etf_df.columns else []
+    if crowded_etfs:
+        risk_items.append(f"高拥挤ETF：{' '.join(crowded_etfs[:3])} → 容量下降，准备减仓")
+    if market_state == 'Risk OFF':
+        risk_items.append(f"市场广度急剧下降，高位股补跌风险突出，优先保本")
+    climax_etfs = etf_df[etf_df['Stage'] == 'Climax']['ETF'].tolist() if 'Stage' in etf_df.columns else []
+    if climax_etfs:
+        risk_items.append(f"Climax阶段ETF：{' '.join(climax_etfs[:3])} → 情绪过热，随时反转")
+    low_breadth_etfs = etf_df[(etf_df['Breadth'] < 15) & (etf_df['EOS'] > 50)]['ETF'].tolist() if 'Breadth' in etf_df.columns else []
+    if low_breadth_etfs:
+        risk_items.append(f"成分股宽度不足：{' '.join(low_breadth_etfs[:3])} → 仅少数个股撑指数")
+    if all_c:
+        risk_items.append("全市场C类失效，无安全边际，静待市场企稳")
+    if not risk_items:
+        risk_items.append("当前无明显尾部风险信号")
+
+    lines.append(f"- **防守重点**：{'；'.join(risk_items)}")
+
+    # 翻多条件
+    if market_state == 'Risk OFF':
+        lines.append(f"- **翻多条件**：市场分值回升至40分以上，且出现A类主升板块（当前市场评分{market_score}分，距翻多阈值尚有{40-market_score}分差距）")
+        lines.append(f"- **短期关注**：若出现宽度回升+Breadth反弹+量能放大，可左侧小仓位试错B类板块龙头")
+    elif market_state == 'Neutral':
+        lines.append(f"- **翻多条件**：市场分值突破60分，且出现A+主升板块确认主线，可逐步加仓")
+        lines.append(f"- **防转空条件**：市场分值跌破30分，或C类板块占比超过70%，需启动防守模式")
+    else:
+        lines.append(f"- **维持条件**：市场分值保持在60分以上，龙头板块保持Breadth>40%")
+        lines.append(f"- **防转弱条件**：若市场分值跌破50分，或出现Climax/高拥挤板块，减仓至中性")
 
     lines.append("")
     lines.append("━" * 64)
-    lines.append("Opportunity = 50%EOS + 30%StageConf + 20%Breadth  |  "
-                 "Execution = 40%Trend + 25%Regime + 20%Rotation + 15%Crowding")
+    lines.append("Opportunity = 50%EOS + 30%StageConf + 20%Breadth")
+    lines.append("Execution = 40%Trend + 25%Regime + 20%Rotation + 15%Crowding")
     lines.append("Position = 60%Opportunity + 40%Execution")
     lines.append("免责声明: 基于筹码结构指标生成，不构成投资建议。")
     return '\n'.join(lines)
@@ -1755,67 +1897,53 @@ def _call_ai_report(prompt: str, use_flash: bool = True) -> str:
 
 
 def refine_report_with_ai(report_text: str, report_date: str) -> str:
-    """将综合报告交给 AI 提炼，输出手机友好格式（Ultimate三层评分版）"""
+    """将综合报告交给 AI 提炼，输出手机友好格式"""
     if not report_text.strip():
         return report_text
 
-    prompt = f"""以下是我自己计算的 ETF Alpha Rotation Ultimate 量化分析结果：
+    prompt = f"""以下是我自己计算的 ETF Alpha Rotation 投研日报：
 
 【报告日期】{report_date}
 
-【数据说明】
-本系统采用三层评分体系：
-- Opportunity Score（主题是否值得投资）：50%EOS + 30%StageConf + 20%Breadth
-- Execution Score（当前是否适合买入）：40%Trend + 25%Regime + 20%Rotation + 15%Crowding
-- Position Score（最终仓位决策）：60%Opportunity + 40%Execution
-
-辅助指标：
+【评分体系】
+- Opportunity Score = 50%EOS + 30%StageConf + 20%Breadth
+- Execution Score = 40%Trend + 25%Regime + 20%Rotation + 15%Crowding
+- Position Score = 60%Opportunity + 40%Execution
 - Risk Adjusted Score = Opportunity × MarketRiskFactor（ON=1.0, Neutral=0.8, OFF=0.5）
-- ETF Action: BUY/ACCUMULATE/HOLD/WATCH/AVOID
-- 三Leader体系: Theme Leader(产业龙头) / Trading Leader(交易最强) / Portfolio Leader(组合首选)
 
 【原始数据】
 {report_text}
 
 ---
-请基于以上数据，输出以下内容（适合手机微信阅读，简洁精炼，不要段落首行缩进）：
-
-标题：**ETF Alpha Rotation 投研日报 ({report_date})**
-
-1、**【今日投资结论】**：直接引用原始数据中的【今日投资结论】段落内容（市场状态、核心机会、推荐策略、主要风险）。
-
-2、**市场状态**：用1句话说明当前市场状态（Risk ON/Neutral/OFF）和分数，以及对应建议仓位。
-
-3、**TOP5 ETF 点评**：列出排序前5的有效ETF（跳过AVOID的ETF），每个用1行描述（**ETF名和代码必须同时出现**）：
-
-格式：
-- **ETF名**(代码) | 机会=XX 执行=XX 仓位=XX 风险调整=XX | 阶段=XX | 操作=买入/建仓/持有/观察/回避 | 核心逻辑一句话
-
-4、**矩阵概览**：用1行概括双矩阵分类结果：
-- A+主升: 无 / A主题增强: 创新药 / B局部Alpha: 无 / C无效: 银行、消费...
-
-5、**龙头体系**：列出每个TOP5 ETF的（**龙头名和股票代码必须同时出现**）：
-- 产业龙头: 股票名(代码)
-- 交易龙头: 股票名(代码)
-- 组合首选: 股票名(代码)
-
-6、**组合配置**：对每个有效ETF（非AVOID、非C类），精炼描述：
-格式：
-- **ETF名**(代码) | 仓位XX% | 仓位分=XX | 矩阵=XX | 组合首选: 股票名(代码)
-- 股票: 泰格医药(代码) 机会分=84 阶段=扩张 仓位3% 信号=买入  （最多3只）
-
-7、**推荐个股清单**：从所有有效ETF（跳过AVOID）中选出组合首选和机会分最高的个股，按机会分降序列出（最多8只，**股票名和代码必须同时出现**）：
-
-格式：
-- **股票名**(代码) | 机会分=XX | Alpha=XX | 所属ETF(代码) | 阶段 | 信号=买入/持有/观察
-
-8、**风险提示**：1-2句话提醒当前主要风险（高拥挤ETF、Risk OFF环境、Breadth不足等）。
-
-要求：
-- 只基于给定数据，绝不编造和自行搜索
+请基于以上数据，对原始报告进行精炼，输出适合手机微信阅读的版本。要求：
+- 保留原报告5段结构
+- 每行不超过45字，适合手机阅读
 - 不用表格，用纯文本+简洁符号
-- 段落简短，每行不超过45字
 - 标题用**加粗**标记
+- 必须保留所有ETF代码和股票代码
+- 只基于给定数据，绝不编造
+- 核心操作指令和风险提示保留原文结论
+
+输出格式：
+**ETF Alpha Rotation 投研日报 ({report_date})**
+
+**1、核心投资决策**
+- 市场状态：{直接引用原文}
+- 建议仓位：{直接引用原文}
+- 核心操作指令：{直接引用原文}
+- 主线与逻辑：{一句话精炼}
+
+**2、ETF 矩阵概览**
+按原文格式精炼
+
+**3、龙头标的跟踪**
+按原文格式精炼
+
+**4、个股 Alpha 精选**
+按原文格式精炼（保留逻辑锁阻断提示）
+
+**5、尾部风险与应对策略**
+按原文格式精炼
 """
     result = _call_ai_report(prompt, use_flash=True)
     return result if result else report_text

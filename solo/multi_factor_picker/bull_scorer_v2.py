@@ -2312,13 +2312,27 @@ class BullScorerV2:
                     logger.info(f"  {cache_name}缓存: 填充{count}/{total}只默认0分")
             return
 
-        # DataFetcher 可用 → 先清旧缓存文件，再逐只重新计算真实评分
-        logger.info(f"DataFetcher 可用，清旧缓存并预热 {total} 只真实评分...")
+        # DataFetcher 可用 → 检查缓存是否已足够，不足才预热
         for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+            cache = self._load_file_cache(cache_name)
+            # 如果缓存已有 ≥90% 的股票，说明今天已预热过，跳过
+            if len(cache) >= total * 0.9:
+                continue
+            # 缓存不足，删掉重建
             path = self._cache_dir / f'{cache_name}.json'
             if path.exists():
                 path.unlink()
             self._file_caches.pop(cache_name, None)
+        # 检查是否所有缓存都足够
+        all_ready = True
+        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+            cache = self._load_file_cache(cache_name)
+            if len(cache) < total * 0.9:
+                all_ready = False
+                break
+        if all_ready:
+            logger.info(f"缓存已预热（{total} 只），跳过重复预热")
+            return
         t_start = time.time()
         for i, br in enumerate(base_results):
             # chip

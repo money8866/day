@@ -125,9 +125,27 @@ def main():
     parser.add_argument("--theme", type=str, default="", help="只看指定主题")
     parser.add_argument("--min-stocks", type=int, default=5, help="最少成份股数")
     parser.add_argument("--output", type=str, default="", help="输出JSON路径")
+    parser.add_argument("--force", action="store_true", help="强制重新计算，忽略缓存")
     args = parser.parse_args()
 
     start_time = time.time()
+
+    # 获取交易日
+    trade_date = dl.get_last_trade_date()
+
+    # 检查缓存
+    output_path = args.output or str(PROJECT_ROOT / "theme_forecast" / "output" / f"theme_forecast_{trade_date}.json")
+    if not args.force and os.path.exists(output_path):
+        print(f"[缓存] 命中 {trade_date} 预测文件，直接读取")
+        import json as _json
+        with open(output_path, 'r', encoding='utf-8') as f:
+            all_results = _json.load(f)
+        if isinstance(all_results, dict) and 'results' in all_results:
+            all_results = all_results['results']
+        elapsed = time.time() - start_time
+        print(f"耗时: {elapsed:.1f}s")
+        _print_results(all_results, args.top, elapsed, trade_date, output_path)
+        return
 
     # 1. 加载主题映射
     print("[1/5] 加载主题成份股映射...")
@@ -192,10 +210,16 @@ def main():
         return -fp.get("prob", x.get("probability", 50))
     all_results.sort(key=sort_key)
 
-    if args.top > 0:
-        all_results = all_results[:args.top]
-
     elapsed = time.time() - start_time
+
+    _print_results(all_results, args.top, elapsed, trade_date, output_path)
+
+
+def _print_results(all_results: list, top_n: int, elapsed: float, trade_date: str, output_path: str):
+    """打印结果汇总并保存JSON"""
+    if top_n > 0:
+        all_results = all_results[:top_n]
+
     print(f"\n耗时: {elapsed:.1f}s")
     print(f"{'='*60}")
 
@@ -223,7 +247,6 @@ def main():
         print(f"{i:>3} {r['theme_name']:<22} {r['probability']:>4}% {p3:>4}% {p5:>4}% {p10:>4}% {ret5:>+7.2f}% {conf_label:<4}")
 
     # 保存JSON
-    output_path = args.output or str(PROJECT_ROOT / "theme_forecast" / "output" / f"theme_forecast_{trade_date}.json")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     save_report(all_results, output_path)
     print(f"\n报告已保存: {output_path}")
