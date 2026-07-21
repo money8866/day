@@ -8703,20 +8703,34 @@ def filter_by_top_themes(result_df, top_n=15):
     if result_df.empty:
         return result_df
 
-    # ===== 1. 加载 Theme Alpha V6 结果 =====
+    # ===== 1. 加载 Theme Alpha V8 结果（优先）/ V6 回退 =====
+    V8_RESULT_PATH = os.path.join(
+        BASE_DIR, 'theme_alpha_v6', 'cache', f'theme_alpha_v6_result_v8_{TRADE_DATE}.json'
+    )
     V6_RESULT_PATH = os.path.join(
         BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json'
     )
-    if not os.path.exists(V6_RESULT_PATH):
-        print(f"[主题过滤] V6引擎结果不存在: {V6_RESULT_PATH}，跳过过滤")
+    load_path = V8_RESULT_PATH if os.path.exists(V8_RESULT_PATH) else V6_RESULT_PATH
+    if not os.path.exists(load_path):
+        print(f"[主题过滤] 引擎结果不存在: {load_path}，跳过过滤")
         return result_df
 
     try:
-        with open(V6_RESULT_PATH, 'r', encoding='utf-8') as f:
+        with open(load_path, 'r', encoding='utf-8') as f:
             v6_data = json.load(f)
     except Exception as e:
-        print(f"[主题过滤] 读取V6结果失败: {e}")
+        print(f"[主题过滤] 读取引擎结果失败: {e}")
         return result_df
+
+    # V8中文字段 → V6兼容字段映射
+    for r in v6_data:
+        if '主题' in r:
+            r['theme'] = r.get('主题', '')
+            r['composite_score'] = r.get('V7综合得分', 0)
+            r['stage'] = r.get('D阶段', '')
+            r['continuation_score'] = 0
+            r['divergence_buy'] = ''
+            r['trade_signal'] = '强买' if r.get('V7综合得分', 0) >= 60 else '看多'
 
     # 筛选信号为强买/关注/持有的主题
     VALID_SIGNALS = {"强买", "关注", "持有"}

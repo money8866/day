@@ -47,17 +47,40 @@ pro = ts.pro_api(os.getenv("TUSHARE_TOKEN"))
 
 
 # =========================
-# 1. 加载 V6 引擎输出
+# 1. 加载 V6/V8 引擎输出
 # =========================
 def load_v6_results(path=None):
-    """加载 V6 引擎输出的主题评分数据"""
-    path = path or V6_RESULT_PATH
+    """加载 V8/V6 引擎输出的主题评分数据（优先 V8）"""
+    if path:
+        pass
+    else:
+        # 尝试找今天的 V8 结果
+        today_str = datetime.now().strftime("%Y%m%d")
+        v8_path = V6_RESULT_PATH.replace('.json', f'_v8_{today_str}.json')
+        if os.path.exists(v8_path):
+            path = v8_path
+        else:
+            path = V6_RESULT_PATH
     if not os.path.exists(path):
-        print(f"[错误] V6结果不存在: {path}")
+        print(f"[错误] 引擎结果不存在: {path}")
         return []
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    print(f"[V6] 加载 {len(data)} 个主题评分")
+    source = "V8" if '_v8_' in path else "V6"
+
+    # V8字段兼容映射
+    if source == "V8":
+        for r in data:
+            if '主题' in r:
+                r['theme'] = r.get('主题', '')
+                r['composite_score'] = r.get('V7综合得分', 0)
+                r['stage'] = r.get('D阶段', '')
+                r['continuation_score'] = 0
+                r['trend_score'] = r.get('趋势分', 0)
+                r['capital_score'] = r.get('资金分', 0)
+                r['trade_signal'] = r.get('策略动作', '')
+
+    print(f"[{source}] 加载 {len(data)} 个主题评分")
     return data
 
 

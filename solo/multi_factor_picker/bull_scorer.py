@@ -108,6 +108,7 @@ class BullStockData:
     total_assets: float = 0.0     # 总资产
     equity: float = 0.0           # 股东权益
     n_income: float = 0.0         # 净利润(最新报告期)
+    n_income_attr_p: float = 0.0  # 扣非净利润(最新报告期)
     revenue_yoy: float = 0.0      # 营收同比
     profit_yoy: float = 0.0       # 净利润同比
     gross_margin: float = 0.0     # 毛利率
@@ -308,6 +309,8 @@ class BullScoreResult:
     # 原始数据（用于输出）
     revenue: float = 0.0
     net_profit: float = 0.0
+    n_income_attr_p: float = 0.0   # 扣非净利润
+    non_recurring_ratio: float = 0.0  # 非经常性损益占比(%)
     roe: float = 0.0
     gross_margin: float = 0.0
     rd_expense_ratio: float = 0.0
@@ -2112,6 +2115,19 @@ class BullScorer:
         # 卖方一致预期综合得分（已由 _score_expectation 写入 data.analyst_expectation_score）
         _ae = round(data.analyst_expectation_score * 100, 2)
 
+        # ── 非经常性损益占比 ──
+        # 非经常性损益占比 = (n_income - n_income_attr_p) / n_income * 100 (%)
+        # 正值表示非经常性收益增厚利润，负值表示扣非比归母还高（极好信号）
+        recurring_ratio = 0.0
+        if data.n_income > 0 and data.n_income_attr_p > 0:
+            recurring_ratio = (data.n_income - data.n_income_attr_p) / data.n_income * 100.0
+        elif data.n_income > 0 and data.n_income_attr_p <= 0:
+            # 归母正利润但扣非亏损，严重依赖非经常性损益
+            recurring_ratio = 100.0
+        elif data.n_income <= 0 and data.n_income_attr_p > 0:
+            # 扣非正利润但归母亏损（罕见），视为0
+            recurring_ratio = -100.0
+
         return BullScoreResult(
             ts_code=data.ts_code,
             name=data.name,
@@ -2165,6 +2181,8 @@ class BullScorer:
             bull_level=get_bull_level(final_score),
             revenue=data.revenue,
             net_profit=data.net_profit,
+            n_income_attr_p=data.n_income_attr_p,
+            non_recurring_ratio=round(float(recurring_ratio), 2),
             roe=round(data.roe_current * 100, 2),
             gross_margin=round(data.gross_margin * 100, 2),
             rd_expense_ratio=round(data.rd_expense_ratio * 100, 2),
@@ -2234,6 +2252,7 @@ class BullScorer:
                 'rd_ratio': f"{r.rd_expense_ratio:.1f}%" if r.rd_expense_ratio else "0%",
                 'revenue_yoy': f"{r.revenue_yoy:.1f}%" if r.revenue_yoy else "0%",
                 'profit_yoy': f"{r.profit_yoy:.1f}%" if r.profit_yoy else "0%",
+                'q1_profit_yoy': round(r.q1_profit_yoy * 100, 1) if r.q1_profit_yoy is not None else '',
                 'contract_liability_yoy': f"{r.contract_liability_yoy:.1f}%",
                 'forecast_type': r.forecast_type,
                 # 龙头地位四维度（来自市占率×技术护城河）

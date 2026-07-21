@@ -2471,11 +2471,15 @@ class RealtimeThemeMonitor:
         self.load_turnover_cache()
 
         # ── 连接 ──
-        if not self.connect():
-            print("⏳ 首次连接失败,启动服务器轮巡...")
-            if not self.reconnect_round_robin():
-                print("❌ 所有通达信服务器均不可用,退出")
-                return
+        if TDX_AVAILABLE:
+            if not self.connect():
+                print("⏳ 首次连接失败,启动服务器轮巡...")
+                if not self.reconnect_round_robin():
+                    print("⚠️ 通达信服务器不可用,将使用新浪/东方财富API获取行情")
+            else:
+                print(f"✅ 通达信行情可用")
+        else:
+            print("⚠️ mootdx未安装,将使用新浪/东方财富API获取行情")
 
         print(f"\n📊 开始监控 {len(self.theme_stocks)} 个主题 {sum(len(v) for v in self.theme_stocks.values())} 只股票")
         print("   交易时段: 9:30-11:30, 13:00-15:00")
@@ -2507,19 +2511,15 @@ class RealtimeThemeMonitor:
                 # ── 获取行情(个股 + 指数) ──
                 ok = self.fetch_all_quotes()
                 if not ok:
-                    print(f"[{now.strftime('%H:%M:%S')}] ⚠ 行情获取失败,尝试重连+重试...")
-                    self.connected = False
-                    for attempt in range(2):
-                        if not self.reconnect_round_robin():
-                            print(f"   第{attempt+1}次重连失败,5秒后重试...")
-                            time.sleep(5)
-                            continue
-                        for quote_retry in range(3):
-                            ok = self.fetch_all_quotes()
-                            if ok: break
-                            print(f"   连接成功但取行情失败,第{quote_retry+1}次重试...")
-                            time.sleep(2)
-                        if ok: break
+                    print(f"[{now.strftime('%H:%M:%S')}] ⚠ 行情获取失败,尝试重试...")
+                    # 行情获取使用新浪/东方财富HTTP API,不依赖通达信连接
+                    for quote_retry in range(3):
+                        time.sleep(3)
+                        ok = self.fetch_all_quotes()
+                        if ok:
+                            print(f"   第{quote_retry+1}次重试成功")
+                            break
+                        print(f"   第{quote_retry+1}次重试失败...")
                     if not ok:
                         print(f"   ❌ 放弃本轮,等待下一周期")
                         time.sleep(10)

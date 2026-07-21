@@ -1874,11 +1874,14 @@ class BullScoreV2Result:
     # 原始数据
     revenue: float = 0.0
     net_profit: float = 0.0
+    n_income_attr_p: float = 0.0   # 扣非净利润
+    non_recurring_ratio: float = 0.0  # 非经常性损益占比(%)
     roe: float = 0.0
     gross_margin: float = 0.0
     rd_expense_ratio: float = 0.0
     revenue_yoy: float = 0.0
     profit_yoy: float = 0.0
+    q1_profit_yoy: float = None  # Q1净利润同比（可能为None）
     market_cap: float = 0.0
 
     # 细节
@@ -1934,8 +1937,8 @@ class BullScorerV2:
         self._alpha_cache: Dict[str, Tuple[float, Dict]] = {}
         self._leader_cache: Dict[str, Dict] = {}
         
-        # 市值过滤范围（100亿-5000亿）
-        self.min_market_cap = 100 * 1e8   # 100亿
+        # 市值过滤范围（80亿-5000亿）
+        self.min_market_cap = 80 * 1e8   # 80亿
         self.max_market_cap = 5000 * 1e8 # 5000亿
         
         # 持久化文件缓存（同一天不重拉Tushare）
@@ -2269,11 +2272,14 @@ class BullScorerV2:
             bull_level=level,
             revenue=base_result.revenue,
             net_profit=base_result.net_profit,
+            n_income_attr_p=base_result.n_income_attr_p,
+            non_recurring_ratio=base_result.non_recurring_ratio,
             roe=base_result.roe,
             gross_margin=base_result.gross_margin,
             rd_expense_ratio=base_result.rd_expense_ratio,
             revenue_yoy=base_result.revenue_yoy,
             profit_yoy=base_result.profit_yoy,
+            q1_profit_yoy=base_result.q1_profit_yoy,
             market_cap=base_result.market_cap,
             sub_details=sub_details,
         )
@@ -2538,6 +2544,9 @@ class BullScorerV2:
                 # 关键财务
                 '营收同比': r.revenue_yoy,
                 '利润同比': r.profit_yoy,
+                'Q1利润同比': round(r.q1_profit_yoy * 100, 1) if r.q1_profit_yoy is not None else '',
+                '扣非净利润(亿)': round(r.n_income_attr_p / 1e8, 2) if r.n_income_attr_p else '',
+                '非经常损益%': r.non_recurring_ratio,
                 'ROE': r.roe,
                 '毛利率': r.gross_margin,
                 '研发投入%': r.rd_expense_ratio,

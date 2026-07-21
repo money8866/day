@@ -33,7 +33,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed as futures_as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 from loguru import logger
@@ -52,8 +52,7 @@ from data_fetcher import DataFetcher
 from bull_scorer import BullStockData, BullScoreResult, BullScorer as _BullScorer  # 数据类型的兼容引用，仅用于基础评分
 from bull_scorer_v2 import BullScorerV2, BullScoreV2Result  # v2 评分引擎
 from chain_mapping import identify_chain_with_cache, load_concept_cache
-from mainline_filter import apply_mainline_filter, print_mainline_analysis
-from multi_factor_valuation import run_multifactor_selection
+from double_score import run_double_score, print_top
 
 
 # 配置日志
@@ -275,6 +274,7 @@ def extract_bull_data(row: pd.Series,
     latest = income.iloc[0]
     latest_revenue = float(latest.get('revenue')) if pd.notna(latest.get('revenue')) else 0.0
     latest_n_income = float(latest.get('n_income')) if pd.notna(latest.get('n_income')) else 0.0
+    latest_n_income_attr_p = float(latest.get('n_income_attr_p')) if pd.notna(latest.get('n_income_attr_p')) else 0.0
     latest_total_cogs = float(latest.get('total_cogs')) if pd.notna(latest.get('total_cogs')) else 0.0
     latest_rd_exp = float(latest.get('rd_exp')) if pd.notna(latest.get('rd_exp')) else 0.0
 
@@ -538,6 +538,13 @@ def extract_bull_data(row: pd.Series,
             forecast_is_latest_period = True
         # forecast_vs_analyst_gap 延迟到 np_growth_current 定义后计算
 
+        # ── 中报预告增长率覆盖 profit_yoy ──
+        # 当最新一期为中报预告(0630)时，用预告净利润增长率(区间中值)作为 profit_yoy
+        # 预告数据比历史实际财报更能反映当前经营趋势
+        if forecast_is_latest_period and forecast_end_date.endswith('0630') and forecast_profit_change != 0:
+            profit_yoy = forecast_profit_change / 100.0
+            data_source = 'forecast_semi'
+
     # ── 业绩快报（v3.3 新增：express_vip 全量接口） ──
     express_revenue = 0.0
     express_operate_profit = 0.0
@@ -754,6 +761,7 @@ def extract_bull_data(row: pd.Series,
         total_assets=total_assets,
         equity=equity,
         n_income=latest_n_income,
+        n_income_attr_p=latest_n_income_attr_p,
         revenue_yoy=revenue_yoy,
         profit_yoy=profit_yoy,
         gross_margin=gross_margin,
@@ -908,6 +916,17 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     vip_start = time.time()
     forecast_vip_df = fetcher.get_forecast_vip(period=current_period)
     logger.info(f"业绩预告拉取完成, 共 {len(forecast_vip_df)} 条, 用时 {time.time()-vip_start:.0f}秒")
+
+    # ── 仅保留有中报预告的股票 ──
+    if 'ts_code' in forecast_vip_df.columns and len(forecast_vip_df) > 0:
+        forecast_ts_codes = set(forecast_vip_df['ts_code'].tolist())
+        before = len(stocks)
+        stocks = stocks[stocks['ts_code'].isin(forecast_ts_codes)].copy()
+        logger.info(f"中报预告过滤: {before} → {len(stocks)} 只 (仅保留有中报预告数据的股票)")
+        if len(stocks) == 0:
+            logger.warning("没有找到有中报预告数据的股票，退出")
+            return []
+        total = len(stocks)
 
     logger.info(f"阶段0b: 全量拉取业绩快报 (express_vip, period={current_period})...")
     exp_start = time.time()
@@ -1184,7 +1203,7 @@ def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Resul
         mc = r.market_cap
         mc_b = mc / 1e8 if mc > 0 else 0
         # 市值过滤（所有股票都适用）
-        if mc_b < 100 or mc_b > 1500:
+        if mc_b < 80 or mc_b > 5000:
             continue
         has_forecast = r.forecast_profit_change > 0
         if has_forecast:
@@ -1196,7 +1215,7 @@ def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Resul
                 continue
         # else: 无预告数据，跳过（仅市值过滤）
         filtered.append(r)
-    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (有预告YoY≥30% + QoQ>0 + 市值100-1500亿)")
+    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (有预告YoY≥30% + QoQ>0 + 市值80-5000亿)")
     return filtered
 
 
@@ -1238,9 +1257,9 @@ def _july_dump_penalty(results: List[BullScoreV2Result]) -> List[BullScoreV2Resu
 
 
 def main():
-    """主函数"""
+    """主函数 — 精简版：仅拉取数据 + 评分 + 保存CSV"""
     logger.info("=" * 60)
-    logger.info("BullScore 中长线牛股选股系统启动")
+    logger.info("BullScore 数据拉取 + 评分 启动")
     logger.info("=" * 60)
 
     try:
@@ -1250,142 +1269,30 @@ def main():
 
         fetcher = DataFetcher(token, config)
 
-        # 全市场 BullScore 扫描
+        # 全市场 BullScore 扫描（含数据拉取 + 评分）
         all_results = bull_scan(config, fetcher)
+        logger.info(f"BullScore 评分完成: {len(all_results)} 只")
 
-        # ── 一级过滤: 观察名单以上 ──
-        qualified = [r for r in all_results if r.final_score >= 60]
-        logger.info(f"一级过滤(>=60分): {len(qualified)} 只")
-
-        # ── Step 1: 7月中报硬核初筛 ──
-        qualified = _july_hard_filter(qualified)
-
-        # ── Step 2: 7月利好出尽防守（在 secondary_filter 前执行） ──
-        qualified = _july_dump_penalty(qualified)
-
-        # ── 二级精选过滤（核心输出） ──
-        elite = secondary_filter(qualified)
-
-        # ── 主线归因 + 产业β过滤（新增） ──
-        # 对合格标的执行主线归因，剔除周期股，保留AI/科技产业β驱动龙头
-        mainline_results = apply_mainline_filter(qualified)
-
-        # ── 输出 ──
-        if qualified:
-            print_bull_results(qualified)
-        else:
-            logger.info("未筛选出符合观察名单(>=60分)的股票")
-
-        # ── Step 3: TradeScore 排序 TOP 20（7月核心输出） ──
-        if qualified:
-            trade_sorted = sorted(qualified, key=lambda r:
-                0.5 * r.expectation_score + 0.3 * r.order_explosion_score + 0.2 * r.marketcap_score,
-                reverse=True)
-            print("\n" + "=" * 80)
-            print("  Step3-7月中报 TradeScore TOP 20（预期差+订单爆发+市值弹性）")
-            print("=" * 80)
-            print(f"  {'排名':>4} {'代码':>12} {'名称':>10} {'主题':>14} {'TradeScore':>10} {'预期差':>8} {'订单':>8} {'市值弹性':>8} {'利润YoY%':>8} {'环比%':>8} {'评级':>8}")
-            for i, r in enumerate(trade_sorted[:20], 1):
-                ts = 0.5 * r.expectation_score + 0.3 * r.order_explosion_score + 0.2 * r.marketcap_score
-                code = r.ts_code.replace('.SH','').replace('.SZ','').replace('.BJ','')
-                print(f"  {i:>4} {code:>12} {r.name:>10} {(r.theme or r.chain_tag or ''):>14} {ts:>8.1f}  {r.expectation_score:>6.1f}  {r.order_explosion_score:>6.1f}  {r.marketcap_score:>6.1f}  {r.profit_yoy:>6.1f}  {r.sequential_qoq_growth:>6.1f}  {r.bull_level:>8}")
-
-        # ── 保存 ──
-        scorer_v2 = BullScorerV2(token=token)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_dir = Path(config.get('output', {}).get('dir', 'output'))
-        if not output_dir.is_absolute():
-            output_dir = Path(__file__).parent / output_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # 保存主线精选结果（最核心输出）
-        if mainline_results:
-            mainline_path = output_dir / f"mainline_stocks_{timestamp}.csv"
-            scorer_v2.to_dataframe(mainline_results).to_csv(mainline_path, index=False, encoding='utf-8-sig')
-            logger.info(f"主线精选结果已保存至: {mainline_path}")
-
-            # 打印完整主线归因分析
-            print_mainline_analysis(mainline_results)
-        else:
-            logger.warning("主线归因过滤后无合格标的，使用二级精选作为保底")
-
-        # 保存二级精选结果（保底/对比用）
-        if elite:
-            elite_path = output_dir / f"elite_stocks_{timestamp}.csv"
-            scorer_v2.to_dataframe(elite).to_csv(elite_path, index=False, encoding='utf-8-sig')
-            logger.info(f"二级精选结果已保存至: {elite_path}")
-
-        # 保存全量合格结果(含一级过滤)
-        if qualified:
-            full_path = output_dir / f"bull_stocks_{timestamp}.csv"
-            scorer_v2.to_dataframe(qualified).to_csv(full_path, index=False, encoding='utf-8-sig')
-            logger.info(f"全量结果已保存至: {full_path}")
-
-            # 保存所有数据(含淘汰)用于追溯
-            if all_results and len(all_results) > len(qualified):
-                all_path = output_dir / f"bull_all_{timestamp}.csv"
-                scorer_v2.to_dataframe(all_results).to_csv(all_path, index=False, encoding='utf-8-sig')
-                logger.info(f"原始全量数据已保存至: {all_path}")
-
-        # ── 固定路径输出：供其他程序调用 ──
+        # ── 保存CSV（仅保存一份全量数据，供后续 --double-score 使用） ──
         report_daily_dir = Path(__file__).parent.parent / "report_daily"
         report_daily_dir.mkdir(parents=True, exist_ok=True)
 
-        # 全量数据（含淘汰）：固定文件名，每次覆盖
+        scorer_v2 = BullScorerV2(token=token)
         full_fixed_path = report_daily_dir / "bull_stocks_all.csv"
-        if all_results:
+        try:
             scorer_v2.to_dataframe(all_results).to_csv(full_fixed_path, index=False, encoding='utf-8-sig')
-            logger.info(f"全量数据已保存至(固定路径): {full_fixed_path}")
-
-        # 合格数据(>=60分)：固定文件名
-        qualified_fixed_path = report_daily_dir / "bull_stocks_qualified.csv"
-        if qualified:
-            scorer_v2.to_dataframe(qualified).to_csv(qualified_fixed_path, index=False, encoding='utf-8-sig')
-            logger.info(f"合格数据已保存至(固定路径): {qualified_fixed_path}")
-
-        # 精选数据：固定文件名
-        elite_fixed_path = report_daily_dir / "bull_stocks_elite.csv"
-        if elite:
-            scorer_v2.to_dataframe(elite).to_csv(elite_fixed_path, index=False, encoding='utf-8-sig')
-            logger.info(f"精选数据已保存至(固定路径): {elite_fixed_path}")
+            logger.info(f"全量数据已保存至: {full_fixed_path} ({len(all_results)} 只)")
+        except PermissionError:
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            fallback_path = report_daily_dir / f"bull_stocks_all_{ts}.csv"
+            scorer_v2.to_dataframe(all_results).to_csv(fallback_path, index=False, encoding='utf-8-sig')
+            logger.warning(f"目标文件被占用，已保存至: {fallback_path} ({len(all_results)} 只)")
+            logger.warning(f"请关闭占用 {full_fixed_path} 的程序后，手动重命名为 bull_stocks_all.csv")
 
         logger.info("=" * 60)
-        logger.info("BullScore 选股完成")
-
-        # ── 多因子重估（基于行业PE + 成长修正 + PEG风控） ──
-        try:
-            all_csv = report_daily_dir / "bull_stocks_all.csv"
-            if all_csv.exists():
-                df = pd.read_csv(all_csv, encoding='utf-8-sig')
-                logger.info(f"多因子重估开始: 加载 {len(df)} 只标的")
-                rename_map = {
-                    'PE_TTM': 'pe_ttm', '现价': 'current_price',
-                    '利润同比': 'net_profit_yoy', '筹码面': 'chip_score', '估值安全': 'safety_score',
-                }
-                rename_map = {k: v for k, v in rename_map.items() if k in df.columns}
-                df = df.rename(columns=rename_map)
-                required = {'code', 'name', 'theme', 'pe_ttm', 'current_price', 'net_profit_yoy'}
-                if required.issubset(set(df.columns)):
-                    df['net_profit_yoy'] = pd.to_numeric(df['net_profit_yoy'], errors='coerce').fillna(0)
-                    val_result = run_multifactor_selection(df)
-                    val_path = report_daily_dir / "multifactor_valuation.csv"
-                    val_result.to_csv(val_path, index=False, encoding='utf-8-sig')
-                    passed = val_result[val_result['filter_reason'] == '通过']
-                    logger.info(f"多因子重估完成: 通过 {len(passed)} 只 | 价值陷阱拦截 {len(val_result[val_result['filter_reason']=='价值陷阱'])} 只")
-                    logger.info(f"结果已保存: {val_path}")
-                    # 打印Top15
-                    print(f"\n{'='*90}")
-                    print(f"  多因子重估 TOP 15（估值空间+综合分排序）")
-                    print(f"{'='*90}")
-                    print(f"{'排名':>3} {'代码':>8} {'名称':<8} {'主题':<12} {'PE_TTM':>6} {'增速%':>7} {'PEG':>6} {'调整PE':>6} {'估值空间':>7} {'综合分':>6}")
-                    print(f"{'-'*90}")
-                    for i, (_, r) in enumerate(passed.head(15).iterrows(), 1):
-                        print(f"{i:>3} {r['code']:>8} {r['name']:<8} {r['theme']:<12} {r['pe_ttm']:>6.1f} {r['net_profit_yoy']:>+6.1f}% {r['peg']:>6.1f} {r['pe_adjusted']:>6.1f} {r['realistic_upside_%']:>+6.1f}% {r['composite_score']:>6.1f}")
-                else:
-                    missing = required - set(df.columns)
-                    logger.warning(f"多因子重估跳过: 缺少列 {missing}")
-        except Exception as ve:
-            logger.warning(f"多因子重估异常(不影响主流程): {ve}")
+        logger.info("BullScore 数据拉取完成")
+        logger.info("提示: 运行 python main.py --double-score 查看翻倍黑马评分")
+        logger.info("=" * 60)
 
     except Exception as e:
         logger.error(f"程序执行出错: {e}")
@@ -1395,4 +1302,27 @@ def main():
 
 
 if __name__ == "__main__":
+    # 快速模式: 跳过全市场扫描，直接从已有数据运行 DoubleScore
+    if '--double-score' in sys.argv or '-d' in sys.argv:
+        from double_score import run_double_score, print_top
+
+        csv_path = Path(__file__).parent.parent / "report_daily" / "bull_stocks_all.csv"
+        if not csv_path.exists():
+            print(f"错误: 找不到 {csv_path}，请先运行完整模式")
+            sys.exit(1)
+
+        print("=" * 60)
+        print("翻倍黑马评分系统 (DoubleScore) — 快速模式")
+        print("跳过全市场扫描，直接从已有数据计算 12 因子评分")
+        print("=" * 60)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        result = run_double_score(csv_path=str(csv_path))
+        print_top(result, n=15)
+
+        out_path = Path(__file__).parent.parent / "report_daily" / f"double_score_{timestamp}.csv"
+        result.to_csv(out_path, index=False, encoding='utf-8-sig')
+        print(f"\n结果已保存: {out_path}")
+        sys.exit(0)
+
     main()

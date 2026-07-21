@@ -39,6 +39,9 @@ from risk import compute_risk_score
 from continuation import compute_continuation_score, continuation_signal
 from composite import compute_composite, trade_signal, confidence
 from forward_alpha import compute_forward_alpha
+from score_v7 import calculate_theme_score_v7
+from v7_theme_scorer import calculate_v7_theme_score as calculate_v7_standalone
+from v8_theme_rhythm import calculate_v8_theme_score
 
 
 def main(trade_date=None):
@@ -244,6 +247,304 @@ def main(trade_date=None):
     dated_csv = config.OUTPUT_CSV.replace(".csv", f"_{trade_date}.csv")
     df.to_json(dated_json, orient="records", force_ascii=False, indent=2)
     df.to_csv(dated_csv, index=False, encoding="utf-8-sig")
+
+    # ===== V7 并行分析：梯队爆发力评分 =====
+    print(f"[V7] 梯队爆发力评分中...")
+    v7_results = []
+    for i, tname in enumerate(theme_names):
+        codes = universe[tname]
+        if len(codes) < config.MIN_THEME_STOCKS:
+            continue
+
+        v7 = calculate_theme_score_v7(daily, codes, daily_basic, top_df, limit_df)
+
+        theme_sub = daily[daily["ts_code"].isin(codes)]
+        if not theme_sub.empty:
+            latest_td = theme_sub["trade_date"].max()
+            latest_theme = theme_sub[theme_sub["trade_date"] == latest_td]
+            theme_today_ret = latest_theme["pct_chg"].mean() if not latest_theme.empty else 0
+        else:
+            theme_today_ret = 0
+
+        v7_results.append({
+            "theme": tname,
+            "trade_date": trade_date,
+            "composite_score": v7["composite_score"],
+            "capital_vitality": v7["capital_vitality"],
+            "echelon_integrity": v7["echelon_integrity"],
+            "trend_momentum": v7["trend_momentum"],
+            "stage": v7["stage"],
+            "signal": v7["signal"],
+            "today_return": round(theme_today_ret, 2),
+            "penalties": v7["penalties"],
+            **v7["sub_metrics"],
+        })
+
+        if (i + 1) % 10 == 0:
+            print(f"      V7进度: {i+1}/{len(theme_names)}")
+
+    # 保存V7结果
+    v7_df = pd.DataFrame(v7_results)
+    v7_json = config.OUTPUT_JSON.replace(".json", f"_v7_{trade_date}.json")
+    v7_csv = config.OUTPUT_CSV.replace(".csv", f"_v7_{trade_date}.csv")
+    v7_df.to_json(v7_json, orient="records", force_ascii=False, indent=2)
+    v7_df.to_csv(v7_csv, index=False, encoding="utf-8-sig")
+    print(f"      V7结果已保存: {v7_json}")
+
+    # ===== V7 报告打印 =====
+    v7_top = v7_df.sort_values("composite_score", ascending=False).head(15)
+    print(f"\n{'='*100}")
+    print(f"  Theme Alpha V7 梯队爆发力报告 - {trade_date}")
+    print(f"{'='*100}")
+    if len(v7_top) > 0:
+        print(f"\n  ★ TOP 15 主题（梯队完整度 + 资金活跃 + 趋势质量）")
+        print(f"  {'#':<3} {'主题':<18} {'综合':<6} {'资金':<6} {'梯队':<6} {'趋势':<6} {'阶段':<8} {'信号':<6} {'今日':<6} {'罚项'}")
+        print(f"  {'-'*100}")
+        for j, (_, row) in enumerate(v7_top.iterrows()):
+            penalty_str = str(len(row.get("penalties", []))) if row.get("penalties") else "0"
+            today_str = f"{row.get('today_return', 0):+.1f}%"
+            print(f"  {j+1:<3} {row['theme']:<18} {row['composite_score']:<6.1f} "
+                  f"{row['capital_vitality']:<6.1f} {row['echelon_integrity']:<6.1f} "
+                  f"{row['trend_momentum']:<6.1f} {row['stage']:<8} {row['signal']:<6} "
+                  f"{today_str:<6} {penalty_str}")
+
+    # V7 vs V6 对比
+    print(f"\n  ★ V6.2 vs V7 排名对比（Top 10 差异）")
+    v6_top10 = set(df.head(10)["theme"].tolist())
+    v7_top10 = set(v7_top.head(10)["theme"].tolist())
+    common = v6_top10 & v7_top10
+    only_v6 = v6_top10 - v7_top10
+    only_v7 = v7_top10 - v6_top10
+    print(f"  共同上榜: {len(common)} 个")
+    print(f"  V6独有(被V7淘汰): {', '.join(only_v6) if only_v6 else '无'}")
+    print(f"  V7新进(被V7识别): {', '.join(only_v7) if only_v7 else '无'}")
+    print(f"{'='*100}")
+
+    # ===== V7.2 独立版评分（完整算法实现）=====
+    print(f"[V7.2] 梯队爆发力完整评分中...")
+    try:
+        # 准备数据：合并daily_basic（换手率/流通市值）
+        v7_data = daily.copy()
+        if not daily_basic.empty:
+            v7_data = v7_data.merge(
+                daily_basic[["ts_code", "turnover_rate", "circ_mv"]],
+                on="ts_code", how="left"
+            )
+        else:
+            v7_data["turnover_rate"] = np.nan
+            v7_data["circ_mv"] = np.nan
+
+        # 合并资金流
+        if not moneyflow.empty:
+            mf_today = moneyflow[moneyflow["trade_date"] == trade_date].copy()
+            if not mf_today.empty:
+                mf_today["net_money_flow"] = mf_today["net_mf_amount"] * 1e4
+                mf_today["net_money_flow_main"] = (
+                    (mf_today["buy_lg_amount"] + mf_today["buy_elg_amount"] -
+                     mf_today["sell_lg_amount"] - mf_today["sell_elg_amount"])
+                ) * 1e4
+                v7_data = v7_data.merge(
+                    mf_today[["ts_code", "net_money_flow", "net_money_flow_main"]],
+                    on="ts_code", how="left"
+                )
+
+        # 构建theme数据
+        theme_rows = []
+        for tname, codes in universe.items():
+            for code in codes:
+                sub = v7_data[v7_data["ts_code"] == code].copy()
+                if not sub.empty:
+                    sub["theme"] = tname
+                    theme_rows.append(sub)
+
+        if theme_rows:
+            v7_df = pd.concat(theme_rows, ignore_index=True)
+            v7_result = calculate_v7_standalone(v7_df)
+
+            v7_standalone_json = config.OUTPUT_JSON.replace(".json", f"_v72_{trade_date}.json")
+            v7_standalone_csv = config.OUTPUT_CSV.replace(".csv", f"_v72_{trade_date}.csv")
+            v7_result.to_json(v7_standalone_json, orient="records", force_ascii=False, indent=2)
+            v7_result.to_csv(v7_standalone_csv, index=False, encoding="utf-8-sig")
+            print(f"      V7.2结果已保存: {v7_standalone_json}")
+
+            v7_top = v7_result.head(15)
+            print(f"\n{'='*100}")
+            print(f"  Theme Alpha V7.2 完整评分报告 - {trade_date}")
+            print(f"{'='*100}")
+            if len(v7_top) > 0:
+                cols = ["排名", "主题", "V7综合得分", "V7阶段", "资金分", "梯队分", "趋势分", "基础分", "惩罚项说明"]
+                print(f"\n  ★ TOP 15 主题")
+                print(f"  {'#':<3} {'主题':<18} {'综合':<6} {'阶段':<8} {'资金':<6} {'梯队':<6} {'趋势':<6} {'基础':<6} {'惩罚'}")
+                print(f"  {'-'*100}")
+                for _, row in v7_top.iterrows():
+                    penalty_str = (row["惩罚项说明"][:25] + "..." if len(str(row["惩罚项说明"])) > 28 else row["惩罚项说明"]) if row["惩罚项说明"] else ""
+                    print(f"  {row['排名']:<3} {row['主题']:<18} {row['V7综合得分']:<6.1f} "
+                          f"{row['V7阶段']:<8} {row['资金分']:<6.1f} {row['梯队分']:<6.1f} "
+                          f"{row['趋势分']:<6.1f} {row['基础分']:<6.1f} {penalty_str}")
+
+            # V7.2 vs V6.2 对比
+            print(f"\n  ★ V6.2 vs V7.2 排名对比（Top 10 差异）")
+            v6_top10 = set(df.head(10)["theme"].tolist())
+            v7_top10 = set(v7_top.head(10)["主题"].tolist())
+            common = v6_top10 & v7_top10
+            only_v6 = v6_top10 - v7_top10
+            only_v7 = v7_top10 - v6_top10
+            print(f"  共同上榜: {len(common)} 个")
+            print(f"  V6独有(被V7淘汰): {', '.join(only_v6) if only_v6 else '无'}")
+            print(f"  V7新进(被V7识别): {', '.join(only_v7) if only_v7 else '无'}")
+            print(f"{'='*100}")
+    except Exception as e:
+        print(f"      [V7.2] 评分异常: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # ===== V8.0 主题生命周期节奏与高确定性中军交易指导系统 =====
+    print(f"[V8.0] 主题生命周期节奏与中军交易指导系统...")
+    try:
+        # 构建V8数据（复用V7.2的数据准备逻辑）
+        v8_data = daily.copy()
+        if not daily_basic.empty:
+            v8_data = v8_data.merge(
+                daily_basic[["ts_code", "turnover_rate", "circ_mv"]],
+                on="ts_code", how="left"
+            )
+        else:
+            v8_data["turnover_rate"] = np.nan
+            v8_data["circ_mv"] = np.nan
+
+        if not moneyflow.empty:
+            mf_today = moneyflow[moneyflow["trade_date"] == trade_date].copy()
+            if not mf_today.empty:
+                mf_today["net_money_flow"] = mf_today["net_mf_amount"] * 1e4
+                mf_today["net_money_flow_main"] = (
+                    (mf_today["buy_lg_amount"] + mf_today["buy_elg_amount"] -
+                     mf_today["sell_lg_amount"] - mf_today["sell_elg_amount"])
+                ) * 1e4
+                v8_data = v8_data.merge(
+                    mf_today[["ts_code", "net_money_flow", "net_money_flow_main"]],
+                    on="ts_code", how="left"
+                )
+
+        v8_theme_rows = []
+        for tname, codes in universe.items():
+            for code in codes:
+                sub = v8_data[v8_data["ts_code"] == code].copy()
+                if not sub.empty:
+                    sub["theme"] = tname
+                    v8_theme_rows.append(sub)
+
+        if not v8_theme_rows:
+            print("      [V8.0] 无主题数据")
+        else:
+            v8_df = pd.concat(v8_theme_rows, ignore_index=True)
+            v8_result, v8_center_df, v8_trading_card = calculate_v8_theme_score(v8_df)
+
+            v8_json = config.OUTPUT_JSON.replace(".json", f"_v8_{trade_date}.json")
+            v8_csv = config.OUTPUT_CSV.replace(".csv", f"_v8_{trade_date}.csv")
+            v8_result.to_json(v8_json, orient="records", force_ascii=False, indent=2)
+            v8_result.to_csv(v8_csv, index=False, encoding="utf-8-sig")
+            print(f"      V8.0结果已保存: {v8_json}")
+
+            if not v8_center_df.empty:
+                v8_center_csv = config.OUTPUT_CSV.replace(".csv", f"_v8_center_{trade_date}.csv")
+                v8_center_df.to_csv(v8_center_csv, index=False, encoding="utf-8-sig")
+                print(f"      中军标的已保存: {v8_center_csv}")
+
+            v8_card_file = os.path.join(BASE_DIR, "cache", f"trading_card_{trade_date}.md")
+            with open(v8_card_file, "w", encoding="utf-8") as f:
+                f.write(v8_trading_card)
+            print(f"      指导卡已保存: {v8_card_file}")
+
+            # 打印V8.0 TOP 20
+            print(f"\n{'='*100}")
+            print(f"  V8.0 主题生命周期节奏报告 - {trade_date}")
+            print(f"{'='*100}")
+            v8_top = v8_result.head(20)
+            if len(v8_top) > 0:
+                print(f"\n  ★ TOP 20 主题（天数节奏 + 中军筛选）")
+                print(f"  {'#':<3} {'主题':<18} {'V8分':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'资金':<5} {'梯队':<5} {'趋势':<5} {'基础':<5} {'惩罚'}")
+                print(f"  {'-'*120}")
+                for _, row in v8_top.iterrows():
+                    penalty_str = str(row.get("惩罚项说明", ""))[:25] if row.get("惩罚项说明") else ""
+                    print(f"  {row['排名']:<3} {row['主题']:<18} {row['V7综合得分']:<6.1f} "
+                          f"{row.get('D阶段',''):<8} {row.get('策略动作',''):<12} "
+                          f"{row.get('T_start',0):<4} {row.get('T_MA',0):<4} "
+                          f"{row.get('R_volume',0):<6.2f} {row['资金分']:<5.1f} {row['梯队分']:<5.1f} "
+                          f"{row['趋势分']:<5.1f} {row['基础分']:<5.1f} {penalty_str}")
+
+            # 打印中军标的
+            if not v8_center_df.empty:
+                print(f"\n  ★ 高确定性中军标的")
+                center_cols = ["主题", "主题排名", "D阶段", "ts_code", "自由流通市值(亿)",
+                               "确定性得分", "均线多头天数", "Beta_theme", "近10日最大回撤%",
+                               "低吸参考价", "防守止损位"]
+                center_cols = [c for c in center_cols if c in v8_center_df.columns]
+                print(f"  {v8_center_df[center_cols].to_string(index=False).replace(chr(10), chr(10)+'  ')}")
+
+            # D阶段分布统计
+            stage_counts = v8_result["D阶段"].value_counts()
+            print(f"\n  D阶段分布:")
+            for stage, cnt in stage_counts.items():
+                pct = cnt / len(v8_result) * 100
+                print(f"    {stage}: {cnt} 个 ({pct:.1f}%)")
+
+            print(f"\n  ★ 次日实盘交易指导卡 (TOP 1: {v8_result.iloc[0]['主题']})")
+            print(f"    已保存至: {v8_card_file}")
+            print(f"{'='*100}")
+
+    except Exception as e:
+        print(f"      [V8.0] 异常: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # ===== V9.0 实盘交易执行引擎 =====
+    print(f"\n  [V9.0] 实盘交易执行引擎...")
+    try:
+        from v9_execution_engine import calculate_v9_execution_signals
+        from rotation import load_stock_name_map
+
+        _, code_to_name = load_stock_name_map()
+
+        v9_sig_df, v9_card = calculate_v9_execution_signals(
+            v8_theme_result=v8_result,
+            v8_center_df=v8_center_df,
+            daily_data=daily,
+            trade_date=trade_date,
+            name_map=code_to_name,
+        )
+
+        if not v9_sig_df.empty:
+            v9_sig_csv = os.path.join(BASE_DIR, "cache", f"v9_execution_signals_{trade_date}.csv")
+            v9_card_file = os.path.join(BASE_DIR, "cache", f"v9_execution_card_{trade_date}.md")
+
+            v9_sig_df.to_csv(v9_sig_csv, index=False, encoding="utf-8-sig")
+            with open(v9_card_file, "w", encoding="utf-8") as f:
+                f.write(v9_card)
+
+            print(f"    V9.0 执行指令卡已保存: {v9_card_file}")
+            print(f"    V9.0 信号明细已保存: {v9_sig_csv}")
+
+            buy_count = (v9_sig_df["信号指令"].isin(["BUY_LIMIT", "BUY_BREAK"])).sum()
+            sell_count = (v9_sig_df["信号指令"] == "SELL_STOP").sum()
+            hold_count = (v9_sig_df["信号指令"] == "HOLD_WAIT").sum()
+            total_pos = v9_sig_df["推荐仓位(%)"].sum()
+            print(f"    信号分布: 限价低吸+突破追强={buy_count} | 硬止损={sell_count} | 观望={hold_count} | 总仓位={total_pos:.1f}%")
+
+            print(f"\n  ★ V9.0 实盘执行指令卡 (TOP 5 买入信号)")
+            print(f"  {'标的代码':<12} {'标的名称':<12} {'主题':<14} {'信号':<10} {'目标价':>8} {'止损价':>8} {'仓位%':>6}")
+            print(f"  {'-'*80}")
+            buy_signals = v9_sig_df[v9_sig_df["信号指令"].isin(["BUY_LIMIT", "BUY_BREAK"])].head(5)
+            for _, row in buy_signals.iterrows():
+                signal_display = "限价低吸" if row["信号指令"] == "BUY_LIMIT" else "突破追强"
+                print(f"  {row['标的代码']:<12} {row['标的名称']:<12} {row['所属主题']:<14} "
+                      f"{signal_display:<10} {row['目标价格']:>8.2f} {row['止损价格']:>8.2f} {row['推荐仓位(%)']:>6.1f}")
+        else:
+            print(f"    [V9.0] 无可用数据，跳过")
+
+    except Exception as e:
+        print(f"      [V9.0] 异常: {e}")
+        import traceback
+        traceback.print_exc()
 
     # ===== 第七步：打印报告 =====
     print(f"[7/7] 打印报告...")
