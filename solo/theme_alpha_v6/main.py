@@ -516,11 +516,24 @@ def main(trade_date=None):
         if not v9_sig_df.empty:
             v9_sig_csv = os.path.join(BASE_DIR, "cache", f"v9_execution_signals_{trade_date}.csv")
             v9_card_file = os.path.join(BASE_DIR, "cache", f"v9_execution_card_{trade_date}.md")
+            v10_card_file = os.path.join(BASE_DIR, "cache", f"v10_mobile_card_{trade_date}.md")
 
             v9_sig_df.to_csv(v9_sig_csv, index=False, encoding="utf-8-sig")
             with open(v9_card_file, "w", encoding="utf-8") as f:
                 f.write(v9_card)
 
+            from v9_execution_engine import generate_v10_mobile_card
+            v10_card = generate_v10_mobile_card(
+                signals_df=v9_sig_df,
+                trade_date=trade_date,
+                v8_top_theme=v8_result.iloc[0].to_dict() if len(v8_result) > 0 else None,
+                v8_center_df=v8_center_df,
+                max_buy_picks=2,
+            )
+            with open(v10_card_file, "w", encoding="utf-8") as f:
+                f.write(v10_card)
+
+            print(f"    V10.0 手机端指令卡已保存: {v10_card_file}")
             print(f"    V9.0 执行指令卡已保存: {v9_card_file}")
             print(f"    V9.0 信号明细已保存: {v9_sig_csv}")
 

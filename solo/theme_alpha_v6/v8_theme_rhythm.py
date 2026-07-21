@@ -362,73 +362,122 @@ def _get_d_stage_action(d_stage: str) -> str:
 
 def _calc_center_scores(sub: pd.DataFrame, codes: List[str]) -> List[dict]:
     """
-    高确定性趋势中军筛选与确定性得分
+    V8.1 高确定性中军筛选（参考顶级私募量化框架）
 
-    筛选条件:
-      1. 主题内自由流通市值 Top 20%
-      2. 绝对市值 > 100 亿 (circ_mv > 1,000,000 万元)
+    硬门槛:
+      1. 自由流通市值 > 100亿 (circ_mv > 1,000,000万元)
+      2. 近20日均成交额 > 2亿 (流动性硬门槛)
 
-    确定性得分:
-      CenterScore = 0.4 * 均线多头天数分 + 0.3 * Beta_theme + 0.3 * (1 - 近10日最大回撤)
+    五维确定性得分:
+      CenterScore = 0.25 * TrendQuality + 0.25 * LiquidityCapacity
+                  + 0.20 * RelativeStrength + 0.15 * Stability + 0.15 * MarketStatus
+
+    各维度说明:
+      - TrendQuality (趋势质量): MA多头天数 + MA斜率 + 价格相对MA20位置
+      - LiquidityCapacity (流动性容量): 日均成交额 + 自由流通市值 (300-1500亿最优)
+      - RelativeStrength (相对强度): Beta_theme (0.8-1.2最优) + 个股超额收益
+      - Stability (稳定性): 低换手率 + 低回撤 + 量能稳定性
+      - MarketStatus (市场地位): 主题内市值排名 + 成交额排名
     """
     latest_day = sub["trade_date"].max()
     latest = sub[sub["trade_date"] == latest_day]
 
+    # ---- 初筛: 市值 + 流动性 硬门槛 ----
+    # 日均成交额（近20日）
+    daily_amt = sub.groupby(["trade_date", "ts_code"])["amount"].sum().reset_index()
+    avg_amt_20d = daily_amt.groupby("ts_code")["amount"].mean()
+
     circ_mv_sorted = latest.groupby("ts_code")["circ_mv"].first().sort_values(ascending=False)
+    candidates = circ_mv_sorted[circ_mv_sorted > 1_000_000]       # > 100亿
+    candidates = candidates[candidates.index.isin(
+        avg_amt_20d[avg_amt_20d > 2e8].index                        # 日均成交额 > 2亿
+    )]
 
-    # 筛选 Top 20% 且市值 > 100亿
-    n_top = max(1, len(circ_mv_sorted) // 5)
-    candidates = circ_mv_sorted.head(n_top)
-    candidates = candidates[candidates > 1_000_000]
-
-    # 如果不够2只，放宽到 Top 5 只
     if len(candidates) < 2:
-        candidates = circ_mv_sorted.head(5)
-        candidates = candidates[candidates > 500_000]
+        # 放宽: 市值 > 50亿即可
+        candidates = circ_mv_sorted[circ_mv_sorted > 500_000]
+        candidates = candidates.head(5)
 
     if len(candidates) < 1:
         return []
 
     theme_index = _build_theme_index(sub, codes)
-
     results = []
+
+    # 预计算主题内的排名基准 (用于MarketStatus)
+    total_in_theme = len(circ_mv_sorted)
+
     for code in candidates.index.tolist():
         stock = sub[sub["ts_code"] == code].sort_values("trade_date")
         if len(stock) < 20:
             continue
 
+        # ---- 维度1: TrendQuality (趋势质量, 25%) ----
         ma_days = _calc_stock_ma_days(stock)
-        ma_score = _normalize_ma_days(ma_days)
+        trend_ma = _normalize_trend_ma(ma_days)       # 0-100
 
+        ma_slope = _calc_ma_slope(stock)               # 0-100
+        price_position = _calc_price_position(stock)    # 0-100
+
+        trend_quality = 0.45 * trend_ma + 0.30 * ma_slope + 0.25 * price_position
+
+        # ---- 维度2: LiquidityCapacity (流动性容量, 25%) ----
+        mv_val = float(circ_mv_sorted.get(code, 0)) / 10000  # 亿
+        amt_val = float(avg_amt_20d.get(code, 0)) / 1e8      # 亿
+
+        liq_mv = _normalize_market_cap(mv_val)         # 0-100
+        liq_amt = _normalize_amount(amt_val)            # 0-100
+
+        liquidity_capacity = 0.40 * liq_mv + 0.60 * liq_amt
+
+        # ---- 维度3: RelativeStrength (相对强度, 20%) ----
         beta = _calc_beta_theme(stock, theme_index)
+        beta_score = _normalize_beta(beta)              # 0-100 (0.8-1.2最优)
 
-        max_dd = _calc_max_drawdown_10d(stock)
+        excess_return = _calc_excess_return(stock, theme_index)
+        excess_score = _normalize_excess_return(excess_return)
 
-        center_score = 0.4 * ma_score + 0.3 * beta + 0.3 * (1.0 - max_dd)
+        relative_strength = 0.50 * beta_score + 0.50 * excess_score
+
+        # ---- 维度4: Stability (稳定性, 15%) ----
+        max_dd_30 = _calc_max_drawdown_n(stock, 30)    # 近30日最大回撤
+        dd_score = max(0, 100.0 - max_dd_30 * 200)     # 回撤5%→90, 10%→80, 20%→60, 50%→0
+
+        turnover_stability = _calc_turnover_stability(stock)
+        vol_stability = _calc_volume_stability(stock)
+
+        stability = 0.40 * dd_score + 0.30 * turnover_stability + 0.30 * vol_stability
+
+        # ---- 维度5: MarketStatus (市场地位, 15%) ----
+        mv_rank = circ_mv_sorted.index.get_loc(code) + 1 if code in circ_mv_sorted else total_in_theme
+        rank_score = max(0, 100.0 - (mv_rank - 1) / max(1, total_in_theme) * 100)
+        market_status = rank_score
+
+        # ---- 综合 ----
+        center_score = (0.25 * trend_quality + 0.25 * liquidity_capacity
+                        + 0.20 * relative_strength + 0.15 * stability
+                        + 0.15 * market_status)
         center_score = float(np.clip(center_score, 0, 100))
 
+        # ---- 买卖参考价（沿用MA逻辑） ----
         close = stock["close"].values
-        if len(close) >= 10:
-            ma10 = np.mean(close[-10:])
-        else:
-            ma10 = close[-1] if len(close) > 0 else 0.0
-
-        if len(close) >= 5:
-            ma5 = np.mean(close[-5:])
-        else:
-            ma5 = close[-1] if len(close) > 0 else 0.0
-
+        ma10 = np.mean(close[-10:]) if len(close) >= 10 else close[-1]
+        ma5 = np.mean(close[-5:]) if len(close) >= 5 else close[-1]
         latest_close = close[-1] if len(close) > 0 else 0.0
         low_absorb_price = min(ma5, latest_close * 0.985)
         stop_loss_price = ma10
 
         results.append({
             "ts_code": code,
-            "自由流通市值(亿)": round(float(circ_mv_sorted.get(code, 0)) / 10000, 1),
+            "自由流通市值(亿)": round(mv_val, 1),
             "均线多头天数": ma_days,
-            "均线多头天数分": round(ma_score, 1),
+            "趋势质量分": round(trend_quality, 1),
+            "流动性容量分": round(liquidity_capacity, 1),
+            "相对强度分": round(relative_strength, 1),
+            "稳定性分": round(stability, 1),
+            "市场地位分": round(market_status, 1),
             "Beta_theme": round(beta, 3),
-            "近10日最大回撤%": round(max_dd * 100, 1),
+            "近10日最大回撤%": round(_calc_max_drawdown_n(stock, 10) * 100, 1),
             "确定性得分": round(center_score, 1),
             "低吸参考价": round(low_absorb_price, 2),
             "防守止损位": round(stop_loss_price, 2),
@@ -476,16 +525,75 @@ def _calc_stock_ma_days(stock: pd.DataFrame) -> int:
     return count
 
 
-def _normalize_ma_days(days: int) -> float:
+def _normalize_trend_ma(days: int) -> float:
     """
-    均线多头天数归一化到 0-100 分
+    均线多头天数归一化（非线性曲线，更符合中军特征）
 
-    1天→10, 3天→30, 5天→50, 8天→80, 10天+→100
+    1天→5,  3天→25,  5天→55,  8天→80,  10天→90,  15天+→100
+    早期快速加分(有就行)，中期稳定增长，长期饱和
     """
     if days <= 0:
         return 0.0
-    score = min(100.0, days * 10.0)
-    return score
+    if days >= 15:
+        return 100.0
+    # logistic 式曲线: 在 3-8 天区间加速, 之后趋缓
+    return min(100.0, 100.0 / (1.0 + np.exp(-0.45 * (days - 5.0))))
+
+
+def _calc_ma_slope(stock: pd.DataFrame) -> float:
+    """
+    计算近10日MA20斜率的强度 (0-100)
+
+    用线性回归拟合近10日收盘价，斜率表示趋势强度
+    """
+    close = stock["close"].values
+    n = min(20, len(close))
+    if n < 5:
+        return 50.0
+
+    y = close[-n:]
+    x = np.arange(n)
+    slope = np.polyfit(x, y, 1)[0]
+    # 斜率归一化: 以价格均值为基准
+    base_price = np.mean(y)
+    if base_price <= 0:
+        return 50.0
+    pct_slope = slope / base_price * 100  # 每日斜率百分比
+    # 0%→50, 0.2%→60, 0.5%→75, 1%→90, 2%+→100
+    score = 50.0 + pct_slope * 50.0
+    return float(np.clip(score, 0, 100))
+
+
+def _calc_price_position(stock: pd.DataFrame) -> float:
+    """
+    计算价格相对MA20的位置评分 (0-100)
+
+    紧贴MA20上方(0-5%)最优→100分
+    远离MA20(>20%)或跌破MA20(<0%)→扣分
+    """
+    close = stock["close"].values
+    if len(close) < 20:
+        return 50.0
+
+    ma20 = np.mean(close[-20:])
+    latest = close[-1]
+    if ma20 <= 0:
+        return 50.0
+
+    deviation = (latest - ma20) / ma20 * 100
+    # 0-5% 最优
+    if 0 <= deviation <= 5:
+        return 100.0
+    elif -2 <= deviation < 0:
+        return 70.0
+    elif 5 < deviation <= 10:
+        return 80.0
+    elif 10 < deviation <= 20:
+        return 60.0
+    elif -5 <= deviation < -2:
+        return 50.0
+    else:
+        return max(0, 30.0 - abs(deviation))
 
 
 def _calc_beta_theme(stock: pd.DataFrame, theme_index: pd.Series) -> float:
@@ -525,17 +633,19 @@ def _calc_beta_theme(stock: pd.DataFrame, theme_index: pd.Series) -> float:
     return float(np.clip(beta_score, 0, 100))
 
 
-def _calc_max_drawdown_10d(stock: pd.DataFrame) -> float:
+def _calc_max_drawdown_n(stock: pd.DataFrame, n: int = 10) -> float:
     """
-    计算近10个交易日的最大回撤
+    计算近 N 个交易日的最大回撤
 
     MaxDD = (max - min) / max
     """
     close = stock["close"].values
-    if len(close) < 10:
+    if len(close) < n:
+        n = len(close)
+    if n < 2:
         return 0.0
 
-    recent = close[-10:]
+    recent = close[-n:]
     max_price = np.max(recent)
     min_price = np.min(recent)
 
@@ -543,6 +653,166 @@ def _calc_max_drawdown_10d(stock: pd.DataFrame) -> float:
         return 0.0
 
     return (max_price - min_price) / max_price
+
+
+def _normalize_market_cap(mv_yi: float) -> float:
+    """
+    自由流通市值归一化 (0-100)
+
+    顶级私募视角: 300-1500亿为最优中军区间
+    100亿→10, 200亿→50, 300亿→80, 800亿→100, 1500亿→85, 3000亿→60
+    """
+    if mv_yi <= 0:
+        return 0.0
+    if mv_yi >= 3000:
+        return max(30.0, 100.0 - (mv_yi - 800) / 2200 * 70)
+    # 峰值在 800 亿左右, 向两侧递减
+    # 使用 half-normal 分布: peak at 800
+    peak = 800.0
+    sigma = 600.0
+    score = 100.0 * np.exp(-0.5 * ((mv_yi - peak) / sigma) ** 2)
+    return float(np.clip(score, 0, 100))
+
+
+def _normalize_amount(amt_yi: float) -> float:
+    """
+    日均成交额归一化 (0-100)
+
+    2亿→10, 5亿→40, 10亿→65, 20亿→85, 30亿+→100
+    """
+    if amt_yi <= 0:
+        return 0.0
+    # 对数增长: log10(amt_yi) 映射
+    score = 100.0 * (np.log10(max(amt_yi, 0.5)) - np.log10(0.5)) / (np.log10(50) - np.log10(0.5))
+    return float(np.clip(score, 0, 100))
+
+
+def _normalize_beta(beta: float) -> float:
+    """
+    Beta 归一化 (0-100)
+
+    0.8-1.2 最优区间→100分
+    偏离越远分越低: <0.5 或 >2.0 大幅扣分
+    """
+    if beta <= 0.5 or beta >= 2.0:
+        return max(0.0, 30.0 - abs(beta - 1.0) * 40.0)
+    if 0.8 <= beta <= 1.2:
+        return 100.0
+    if beta < 0.8:
+        return 50.0 + (beta - 0.5) / 0.3 * 50.0
+    # beta > 1.2
+    return 100.0 - (beta - 1.2) / 0.8 * 70.0
+
+
+def _calc_excess_return(stock: pd.DataFrame, theme_index: pd.Series) -> float:
+    """
+    计算个股相对主题指数的超额收益 (近20日)
+    """
+    stock_copy = stock.copy()
+    stock_copy["trade_date"] = stock_copy["trade_date"].astype(str)
+    stock_copy = stock_copy.set_index("trade_date")
+
+    common_dates = stock_copy.index.intersection(theme_index.index)
+    if len(common_dates) < 5:
+        return 0.0
+
+    common = common_dates[-20:] if len(common_dates) > 20 else common_dates
+
+    stock_ret = stock_copy.loc[common, "pct_chg"].mean()
+    theme_close = theme_index.loc[common]
+    theme_ret = theme_close.pct_change().dropna().mean() * 100
+
+    if np.isnan(theme_ret):
+        return float(stock_ret)
+
+    return float(stock_ret - theme_ret)
+
+
+def _normalize_excess_return(excess: float) -> float:
+    """
+    超额收益归一化 (0-100)
+
+    0%→50(跟上主题), +5%→75, +10%→90, +20%+→100
+    -5%→25, -10%→10, -20%→0
+    """
+    # sigmoid-like centered at 0
+    score = 50.0 + excess * 4.0
+    return float(np.clip(score, 0, 100))
+
+
+def _calc_turnover_stability(stock: pd.DataFrame) -> float:
+    """
+    换手率稳定性评分 (0-100)
+
+    中军特征: 换手率适中且稳定 (日均2-8%最佳, 变异系数小)
+    """
+    if "turnover_rate" not in stock.columns:
+        return 50.0
+
+    tr = stock["turnover_rate"].dropna().values[-20:]
+    if len(tr) < 5:
+        return 50.0
+
+    mean_tr = np.mean(tr)
+    std_tr = np.std(tr)
+
+    # 日均换手率评分: 2-8% 最优
+    if mean_tr < 1:
+        tr_level = 30.0
+    elif 2 <= mean_tr <= 8:
+        tr_level = 100.0
+    elif mean_tr > 20:
+        tr_level = 20.0
+    elif mean_tr > 8:
+        tr_level = max(30.0, 100.0 - (mean_tr - 8) / 12 * 70)
+    else:
+        tr_level = 30.0 + (mean_tr - 1) / 1 * 70
+
+    # 稳定性评分: CV越小越稳定
+    cv = std_tr / max(mean_tr, 0.01)
+    cv_score = max(0, 100.0 - cv * 50.0)
+
+    return 0.5 * tr_level + 0.5 * cv_score
+
+
+def _calc_volume_stability(stock: pd.DataFrame) -> float:
+    """
+    量能稳定性评分 (0-100)
+
+    中军特征: 量能稳定放大, 不放巨量也不急剧萎缩
+    """
+    if "amount" not in stock.columns:
+        return 50.0
+
+    amt = stock["amount"].dropna().values[-20:]
+    if len(amt) < 5:
+        return 50.0
+
+    mean_amt = np.mean(amt)
+    std_amt = np.std(amt)
+
+    if mean_amt <= 0:
+        return 50.0
+
+    # 量能变异系数: 越小越稳定
+    cv = std_amt / mean_amt
+    cv_score = max(0, 100.0 - cv * 40.0)
+
+    # 量比合理性: R_volume 0.8-1.5 为健康
+    today_amt = amt[-1]
+    r_vol = today_amt / max(mean_amt, 0.01)
+    if 0.8 <= r_vol <= 1.5:
+        r_score = 100.0
+    elif r_vol > 3.0:
+        r_score = 30.0
+    elif r_vol > 1.5:
+        r_score = 70.0 - (r_vol - 1.5) / 1.5 * 40
+    elif r_vol < 0.5:
+        r_score = 40.0
+    else:
+        r_score = 70.0
+
+    return 0.5 * cv_score + 0.5 * r_score
 
 
 # =========================================================================
@@ -659,18 +929,20 @@ def generate_next_day_trading_card(
         card += """
 ## 五、高确定性中军标的
 
-| 标的 | 自由流通市值(亿) | 均线多头天数 | 均线多头天数分 | Beta_theme | 近10日最大回撤% | 确定性得分 |
-|:----:|:--------------:|:----------:|:------------:|:----------:|:-------------:|:---------:|
+| 标的 | 自由流通市值(亿) | 均线多头天数 | 趋势质量 | 流动性容量 | 相对强度 | 稳定性 | 市场地位 | 确定性得分 |
+|:----:|:--------------:|:----------:|:-------:|:---------:|:-------:|:-----:|:-------:|:---------:|
 """
         for c in center_stocks:
             code = c.get("ts_code", "")
             mv = c.get("自由流通市值(亿)", 0)
             ma_days = c.get("均线多头天数", 0)
-            ma_score = c.get("均线多头天数分", 0)
-            beta = c.get("Beta_theme", 0)
-            max_dd = c.get("近10日最大回撤%", 0)
+            tq = c.get("趋势质量分", 0)
+            lq = c.get("流动性容量分", 0)
+            rs = c.get("相对强度分", 0)
+            stb = c.get("稳定性分", 0)
+            mkt = c.get("市场地位分", 0)
             cs = c.get("确定性得分", 0)
-            card += f"| {code} | {mv} | {ma_days} | {ma_score} | {beta} | {max_dd} | {cs} |\n"
+            card += f"| {code} | {mv} | {ma_days} | {tq} | {lq} | {rs} | {stb} | {mkt} | {cs} |\n"
 
         card += """
 ## 六、次日定量买卖参考位

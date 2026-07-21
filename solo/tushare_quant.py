@@ -265,6 +265,8 @@ def _load_v8_center_data(trade_date):
 
     try:
         import pandas as pd
+        from theme_alpha_v6.rotation import load_stock_name_map
+        _, code_to_name = load_stock_name_map()
         df = pd.read_csv(center_csv)
         if df.empty:
             return ""
@@ -282,6 +284,7 @@ def _load_v8_center_data(trade_date):
             lines.append(f"  ● {theme} [{d_stage}]")
             for _, row in theme_df.head(3).iterrows():
                 code = row['ts_code']
+                name = code_to_name.get(code, code)
                 det_score = row.get('确定性得分', 0)
                 ma_days = row.get('均线多头天数', 0)
                 beta = row.get('Beta_theme', 0)
@@ -293,7 +296,7 @@ def _load_v8_center_data(trade_date):
                 stop_ref = f"止损:{stop_loss}" if pd.notna(stop_loss) and stop_loss != '' else ''
                 price_info = f" | {buy_ref} {stop_ref}" if buy_ref or stop_ref else ""
                 lines.append(
-                    f"    {code:<12} 确定性:{det_score:.1f} "
+                    f"    {name}({code}) 确定性:{det_score:.1f} "
                     f"均线多头:{ma_days}天 Beta:{beta:.1f} "
                     f"回撤:{mdd:.1f}% 市值:{market_cap:.0f}亿{price_info}"
                 )
@@ -11133,21 +11136,40 @@ def run(target_date=None, simple_mode=False):
         _chip_v5_text = ""
 
     # =========================
-    # ETF 筹码分析 V2 — 直接读取报告CSV
+    # ETF 筹码分析 V2 — 读取或自动生成AI报告
     # =========================
     _etf_v2_text = ""
     _v2_txt = rf'D:\mystock\solo\report_daily\etf_alpha_v5_AI报告_{TRADE_DATE}.txt'
+    _v2_csv = rf'D:\mystock\solo\report_daily\etf_alpha_v5_综合报告_{TRADE_DATE}.csv'
     try:
         if os.path.exists(_v2_txt):
             with open(_v2_txt, 'r', encoding='utf-8') as _f:
                 _etf_v2_text = _f.read().strip()
-            print(_etf_v2_text)
+            print(f"[ETF V2] 已加载AI报告")
+        elif os.path.exists(_v2_csv):
+            print(f"[ETF V2] AI报告未生成，从综合报告自动提炼...")
+            with open(_v2_csv, 'r', encoding='utf-8') as _f:
+                _report_text = _f.read().strip()
+            if _report_text:
+                from scan_etf_alpha_v5 import refine_report_with_ai
+                _ai_report = refine_report_with_ai(_report_text, TRADE_DATE)
+                if _ai_report and _ai_report != _report_text:
+                    _etf_v2_text = _ai_report
+                    with open(_v2_txt, 'w', encoding='utf-8') as _f:
+                        _f.write(_ai_report)
+                    print(f"[ETF V2] AI报告已自动生成并保存")
+                else:
+                    _etf_v2_text = _report_text
+                    print(f"[ETF V2] AI提炼失败，使用原始综合报告")
+            else:
+                _etf_v2_text = ""
+                print(f"[ETF V2] 综合报告为空")
         else:
             _etf_v2_text = ""
-            print(f"[ETF V2] 报告未生成: {_v2_txt}")
+            print(f"[ETF V2] AI报告和综合报告均不存在: {_v2_txt}")
     except Exception as _e:
         _etf_v2_text = ""
-        print(f"[ETF V2] 读取失败: {_e}")
+        print(f"[ETF V2] 读取/生成失败: {_e}")
 
 
 
@@ -11182,46 +11204,21 @@ def run(target_date=None, simple_mode=False):
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分)：
 1、**大盘分析**：重点显示仓位建议（显示为红色加粗字体），显示理由。严格按照给定的内容进行分析。
-2、**今日主题分析情况**:
+2、**主题分析、中军标的与实盘交易指令**（V8+V9.0）
 【严格按以下固定模板输出，禁止自由发挥格式】
 
-第一段：用1-2句话概述今日市场风格，**必须引用V8天数节奏模型**来分析核心主线所处的生命周期阶段（D1-D2启动/发酵期、D3分歧首分日、D4-D5主升加速期、D6-D7加速高潮/派发期、D8+衰退期/退潮期），并给出对应的策略动作（试错/轻仓、首分低吸/加仓、持股锁仓、逢高落袋、清仓回避）。
+**市场风格与主线节奏**
+用1-2句话概述今日市场风格，**必须引用V8天数节奏模型**来分析核心主线所处的生命周期阶段（D1-D2启动/发酵期、D3分歧首分日、D4-D5主升加速期、D6-D7加速高潮/派发期、D8+衰退期/退潮期），并给出对应的策略动作（试错/轻仓、首分低吸/加仓、持股锁仓、逢高落袋、清仓回避）。
 
-操作要点：
-- 要点1（锁定核心方向） - 基于V8天数节奏模型，给出当前天数阶段(T_start/T_MA/R_volume)最匹配的主线主题和策略动作
-- 要点2（操作风格/市值偏好提示）
-
-对强买和看多信号的主题分析（结合V8主题生命周期节奏）：
+**最强主题速览**（结合V8主题生命周期节奏，最多列出5个）：
 - 主题名1:【D阶段】策略动作 | 操作建议、龙头
 - 主题名2:【D阶段】策略动作 | 操作建议、龙头
-- 【最多列出5个最强主题，每个主题必须标注其D阶段和策略动作】
 
-3、**【V8高确定性中军标的推荐】**
-（基于V8中军筛选模型：自由流通市值 Top 20% 且 > 100亿，确定性分=0.4*均线多头天数分+0.3*Beta_theme+0.3*(1-近10日最大回撤)）
-（数据来源：上述"★ V8 高确定性中军标的推荐"区块，按主题分组列出）
-- 对每个主题 Top 3 中军标的，简要分析其确定性优势（均线多头天数、Beta弹性、回撤控制）
-- 标注低吸参考价和防守止损位
+**V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
+- 每主题精简列出 Top 3：名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
 - 重点推荐确定性得分最高的主题及其核心中军
-- 格式：
-  **主题名 (D阶段)**
-  - 代码 确定性:XX 均线多头:X天 Beta:X.X 回撤:X.X% | 低吸:XX.XX 止损:XX.XX
-  - 简要说明买入逻辑
 
-4、**【V9.0 实盘交易执行指令卡】**
-（数据来源：上述"V9.0 实盘执行指令卡" Markdown 区块，已自动精选 Top 3 最优开仓信号）
-- **强制输出**：将指令卡中的"今日精选 (Top 3 开仓信号)"表格完整输出，不要遗漏
-- 重点标注买入信号（BUY_LIMIT / BUY_BREAK），并标注精选仓位合计
-- 同时输出"止盈止损监控"表中的 SELL_STOP 信号（最高优先级）
-- 格式要求：
-  **今日精选 Top 3 开仓指令**
-  | 代码 | 名称 | 主题 | 指令 | 目标价 | 止损价 | 仓位% | 时间窗 |
-  | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-  **止盈止损监控**
-  | 代码 | 名称 | 主题 | 止损价 | 触发规则 |
-  | :--- | :--- | :--- | :--- | :--- |
-- 执行建议：盘前按此 3 只挂单，严格遵守时间窗口和失效规则，单日最多开仓 3 只
-
-5、**【今日突破股池分析】**
+3、**【今日突破股池分析】**
 （综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
@@ -11285,7 +11282,7 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-6、**【ETF操作建议】**
+4、**【ETF操作建议】**
 **【今日ETF Alpha Ranking】**
 {etf_tips_text}
 
@@ -11297,7 +11294,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 - TOP10 排名-不输出
 - 【信号标签解读】[突破]=接近60日新高且放量，[弹簧]=波动收缩蓄势待发，[龙头]=Alpha排名前15%且近高点，[拥挤]=短期涨幅过大风险预警
 
-7、ETF筹码分析策略（测试版V2）
+5、ETF筹码分析策略（测试版V2）
 {_etf_v2_text}
 从报告中提炼
 （1）市场状态、核心机会和仓位建议；
@@ -11305,7 +11302,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 （3）推荐的个股名称和代码(买入或持有信号)；（忽略其它字段）
 格式要求适合手机阅读。
 
-8、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
 
 格式要求：
