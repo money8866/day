@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from theme_forecast import data_loader as dl
-from theme_forecast.factors import momentum, synergy
+from theme_forecast.factors import momentum, synergy, flow
 
 
 # ====================================================================
@@ -93,6 +93,11 @@ def run_backtest(themes: dict, n_months: int = 6, horizon_days: list = None,
         print("[回测] 大盘指数加载失败")
         return pd.DataFrame()
 
+    # 3b. 加载ETF份额规模数据（一次性加载全部，按日期过滤）
+    print(f"\n  加载ETF份额规模数据...")
+    etf_size_all = dl.load_etf_share_size_all(start_date, end_date)
+    print(f"  ETF数据: {len(etf_size_all)} 条 ({etf_size_all['ts_code'].nunique() if not etf_size_all.empty else 0}只ETF)")
+
     # 4. 获取交易日列表（K线中实际存在的日期）
     all_dates = sorted(set(market_index["trade_date"].astype(str).tolist()))
     # 回测起点：留够horizon_max天用于未来收益
@@ -138,10 +143,16 @@ def run_backtest(themes: dict, n_months: int = 6, horizon_days: list = None,
             if len(theme_klines) < min_stocks:
                 continue
 
-            # 计算因子（只用K线类因子）
+            # 计算因子
             try:
                 mom = momentum.calc_all_momentum(theme_klines, mkt_up_to_t)
                 syn = synergy.calc_all_synergy(theme_klines)
+
+                # ETF规模因子（过滤到t_date，避免未来信息泄露）
+                etf_size_up_to_t = etf_size_all[
+                    etf_size_all["trade_date"].astype(str) <= t_date
+                ].copy() if not etf_size_all.empty else pd.DataFrame()
+                etf_factor = flow.calc_etf_scale_factor(etf_size_up_to_t, theme_name)
 
                 # 计算未来收益
                 future_rets = {}
@@ -179,6 +190,11 @@ def run_backtest(themes: dict, n_months: int = 6, horizon_days: list = None,
                     if isinstance(val, dict) and "score" in val:
                         record[f"f_{key}"] = val["score"]
                         record[f"f_{key}_signal"] = val.get("signal", "")
+
+                # ETF规模因子
+                if isinstance(etf_factor, dict) and "score" in etf_factor:
+                    record["f_etf_scale"] = etf_factor["score"]
+                    record["f_etf_scale_signal"] = etf_factor.get("signal", "")
 
                 # 未来收益
                 for h in horizon_days:
@@ -290,6 +306,7 @@ def format_probability_table(cp_df: pd.DataFrame) -> str:
         "f_synergy_coefficient": "协同度",
         "f_leadership_divergence": "分化度",
         "f_breakout_ratio": "突破比例",
+        "f_etf_scale": "ETF资金流(规模)",
     }
 
     for factor in cp_df["factor"].unique():

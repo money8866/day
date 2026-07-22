@@ -64,136 +64,6 @@
         "score_min": 123.5,
         "score_max": 134.0
       }
-    ],
-    "3d": [
-      {
-        "bin_min": 5.0,
-        "bin_max": 15.0,
-        "up_prob": 38.92,
-        "avg_ret": -0.3889,
-        "n_samples": 600,
-        "score_min": -44.499999999999986,
-        "score_max": -23.5
-      },
-      {
-        "bin_min": 20.0,
-        "bin_max": 25.0,
-        "up_prob": 43.9,
-        "avg_ret": -0.2906,
-        "n_samples": 401,
-        "score_min": -13.0,
-        "score_max": -2.5
-      },
-      {
-        "bin_min": 30.0,
-        "bin_max": 33.0,
-        "up_prob": 44.34,
-        "avg_ret": -0.1437,
-        "n_samples": 277,
-        "score_min": 8.0,
-        "score_max": 14.300000000000004
-      },
-      {
-        "bin_min": 35.0,
-        "bin_max": 48.0,
-        "up_prob": 51.15,
-        "avg_ret": 0.2228,
-        "n_samples": 474,
-        "score_min": 18.5,
-        "score_max": 45.8
-      },
-      {
-        "bin_min": 50.0,
-        "bin_max": 63.0,
-        "up_prob": 55.06,
-        "avg_ret": 0.6152,
-        "n_samples": 375,
-        "score_min": 50.0,
-        "score_max": 77.3
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 83.0,
-        "up_prob": 55.14,
-        "avg_ret": 1.0334,
-        "n_samples": 427,
-        "score_min": 81.5,
-        "score_max": 119.3
-      },
-      {
-        "bin_min": 85.0,
-        "bin_max": 90.0,
-        "up_prob": 64.54,
-        "avg_ret": 1.8591,
-        "n_samples": 404,
-        "score_min": 123.5,
-        "score_max": 134.0
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 5.0,
-        "bin_max": 15.0,
-        "up_prob": 32.27,
-        "avg_ret": -2.1831,
-        "n_samples": 600,
-        "score_min": -44.499999999999986,
-        "score_max": -23.5
-      },
-      {
-        "bin_min": 20.0,
-        "bin_max": 25.0,
-        "up_prob": 37.86,
-        "avg_ret": -1.3588,
-        "n_samples": 401,
-        "score_min": -13.0,
-        "score_max": -2.5
-      },
-      {
-        "bin_min": 30.0,
-        "bin_max": 33.0,
-        "up_prob": 40.91,
-        "avg_ret": -0.8796,
-        "n_samples": 277,
-        "score_min": 8.0,
-        "score_max": 14.300000000000004
-      },
-      {
-        "bin_min": 35.0,
-        "bin_max": 48.0,
-        "up_prob": 46.71,
-        "avg_ret": 0.734,
-        "n_samples": 474,
-        "score_min": 18.5,
-        "score_max": 45.8
-      },
-      {
-        "bin_min": 50.0,
-        "bin_max": 63.0,
-        "up_prob": 57.59,
-        "avg_ret": 1.8132,
-        "n_samples": 375,
-        "score_min": 50.0,
-        "score_max": 77.3
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 83.0,
-        "up_prob": 60.12,
-        "avg_ret": 3.1588,
-        "n_samples": 427,
-        "score_min": 81.5,
-        "score_max": 119.3
-      },
-      {
-        "bin_min": 85.0,
-        "bin_max": 90.0,
-        "up_prob": 62.06,
-        "avg_ret": 5.2529,
-        "n_samples": 404,
-        "score_min": 123.5,
-        "score_max": 134.0
-      }
     ]
   },
   "f_mom": {
@@ -261,136 +131,6 @@
         "score_min": 123.5,
         "score_max": 155.0
       }
-    ],
-    "3d": [
-      {
-        "bin_min": 0.0,
-        "bin_max": 22.0,
-        "up_prob": 42.09,
-        "avg_ret": 0.1182,
-        "n_samples": 456,
-        "score_min": -55.0,
-        "score_max": -8.799999999999997
-      },
-      {
-        "bin_min": 25.0,
-        "bin_max": 40.0,
-        "up_prob": 43.32,
-        "avg_ret": -0.0627,
-        "n_samples": 594,
-        "score_min": -2.5,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 42.0,
-        "bin_max": 45.0,
-        "up_prob": 51.64,
-        "avg_ret": 0.313,
-        "n_samples": 285,
-        "score_min": 33.2,
-        "score_max": 39.5
-      },
-      {
-        "bin_min": 47.0,
-        "bin_max": 55.0,
-        "up_prob": 47.23,
-        "avg_ret": 0.1604,
-        "n_samples": 456,
-        "score_min": 43.7,
-        "score_max": 60.5
-      },
-      {
-        "bin_min": 58.0,
-        "bin_max": 68.0,
-        "up_prob": 48.06,
-        "avg_ret": 0.1371,
-        "n_samples": 414,
-        "score_min": 66.8,
-        "score_max": 87.8
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 88.0,
-        "up_prob": 55.77,
-        "avg_ret": 0.4101,
-        "n_samples": 366,
-        "score_min": 92.0,
-        "score_max": 129.8
-      },
-      {
-        "bin_min": 90.0,
-        "bin_max": 100.0,
-        "up_prob": 67.51,
-        "avg_ret": 1.9328,
-        "n_samples": 387,
-        "score_min": 134.0,
-        "score_max": 155.0
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 0.0,
-        "bin_max": 22.0,
-        "up_prob": 36.52,
-        "avg_ret": -0.3917,
-        "n_samples": 456,
-        "score_min": -55.0,
-        "score_max": -8.799999999999997
-      },
-      {
-        "bin_min": 25.0,
-        "bin_max": 40.0,
-        "up_prob": 44.99,
-        "avg_ret": 0.1702,
-        "n_samples": 594,
-        "score_min": -2.5,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 42.0,
-        "bin_max": 45.0,
-        "up_prob": 50.38,
-        "avg_ret": 0.8716,
-        "n_samples": 285,
-        "score_min": 33.2,
-        "score_max": 39.5
-      },
-      {
-        "bin_min": 47.0,
-        "bin_max": 55.0,
-        "up_prob": 47.19,
-        "avg_ret": 0.1363,
-        "n_samples": 456,
-        "score_min": 43.7,
-        "score_max": 60.5
-      },
-      {
-        "bin_min": 58.0,
-        "bin_max": 68.0,
-        "up_prob": 46.07,
-        "avg_ret": 0.3535,
-        "n_samples": 414,
-        "score_min": 66.8,
-        "score_max": 87.8
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 88.0,
-        "up_prob": 48.98,
-        "avg_ret": 0.947,
-        "n_samples": 366,
-        "score_min": 92.0,
-        "score_max": 129.8
-      },
-      {
-        "bin_min": 90.0,
-        "bin_max": 100.0,
-        "up_prob": 62.42,
-        "avg_ret": 4.3409,
-        "n_samples": 387,
-        "score_min": 134.0,
-        "score_max": 155.0
-      }
     ]
   },
   "f_adx": {
@@ -449,100 +189,6 @@
         "score_min": 155.0,
         "score_max": 155.0
       }
-    ],
-    "3d": [
-      {
-        "bin_min": 35.0,
-        "bin_max": 50.0,
-        "up_prob": 53.12,
-        "avg_ret": 0.5119,
-        "n_samples": 1586,
-        "score_min": 18.5,
-        "score_max": 50.0
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 60.0,
-        "up_prob": 40.0,
-        "avg_ret": -0.3927,
-        "n_samples": 515,
-        "score_min": 71.0,
-        "score_max": 71.0
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 65.0,
-        "up_prob": 47.87,
-        "avg_ret": 0.3175,
-        "n_samples": 326,
-        "score_min": 81.5,
-        "score_max": 81.5
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 80.0,
-        "up_prob": 38.65,
-        "avg_ret": -0.6218,
-        "n_samples": 157,
-        "score_min": 92.0,
-        "score_max": 113.0
-      },
-      {
-        "bin_min": 90.0,
-        "bin_max": 100.0,
-        "up_prob": 58.73,
-        "avg_ret": 1.5993,
-        "n_samples": 374,
-        "score_min": 134.0,
-        "score_max": 155.0
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 35.0,
-        "bin_max": 50.0,
-        "up_prob": 55.43,
-        "avg_ret": 1.7257,
-        "n_samples": 1586,
-        "score_min": 18.5,
-        "score_max": 50.0
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 60.0,
-        "up_prob": 31.99,
-        "avg_ret": -1.9115,
-        "n_samples": 515,
-        "score_min": 71.0,
-        "score_max": 71.0
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 65.0,
-        "up_prob": 46.75,
-        "avg_ret": 1.8143,
-        "n_samples": 326,
-        "score_min": 81.5,
-        "score_max": 81.5
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 80.0,
-        "up_prob": 28.39,
-        "avg_ret": -1.8589,
-        "n_samples": 157,
-        "score_min": 92.0,
-        "score_max": 113.0
-      },
-      {
-        "bin_min": 90.0,
-        "bin_max": 100.0,
-        "up_prob": 47.82,
-        "avg_ret": 1.6198,
-        "n_samples": 374,
-        "score_min": 134.0,
-        "score_max": 155.0
-      }
     ]
   },
   "f_syn": {
@@ -592,118 +238,6 @@
         "score_min": 92.0,
         "score_max": 144.5
       }
-    ],
-    "3d": [
-      {
-        "bin_min": 15.0,
-        "bin_max": 30.0,
-        "up_prob": 44.41,
-        "avg_ret": 0.0387,
-        "n_samples": 702,
-        "score_min": -23.5,
-        "score_max": 8.0
-      },
-      {
-        "bin_min": 35.0,
-        "bin_max": 40.0,
-        "up_prob": 34.9,
-        "avg_ret": -0.8776,
-        "n_samples": 334,
-        "score_min": 18.5,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 45.0,
-        "bin_max": 45.0,
-        "up_prob": 53.25,
-        "avg_ret": 0.8889,
-        "n_samples": 365,
-        "score_min": 39.5,
-        "score_max": 39.5
-      },
-      {
-        "bin_min": 50.0,
-        "bin_max": 55.0,
-        "up_prob": 51.6,
-        "avg_ret": 0.5231,
-        "n_samples": 890,
-        "score_min": 50.0,
-        "score_max": 60.5
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 65.0,
-        "up_prob": 53.62,
-        "avg_ret": 0.605,
-        "n_samples": 295,
-        "score_min": 71.0,
-        "score_max": 81.5
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 95.0,
-        "up_prob": 63.98,
-        "avg_ret": 1.2392,
-        "n_samples": 372,
-        "score_min": 92.0,
-        "score_max": 144.5
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 15.0,
-        "bin_max": 30.0,
-        "up_prob": 39.73,
-        "avg_ret": -0.649,
-        "n_samples": 702,
-        "score_min": -23.5,
-        "score_max": 8.0
-      },
-      {
-        "bin_min": 35.0,
-        "bin_max": 40.0,
-        "up_prob": 30.41,
-        "avg_ret": -2.2169,
-        "n_samples": 334,
-        "score_min": 18.5,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 45.0,
-        "bin_max": 45.0,
-        "up_prob": 48.38,
-        "avg_ret": 1.3536,
-        "n_samples": 365,
-        "score_min": 39.5,
-        "score_max": 39.5
-      },
-      {
-        "bin_min": 50.0,
-        "bin_max": 55.0,
-        "up_prob": 51.46,
-        "avg_ret": 1.5849,
-        "n_samples": 890,
-        "score_min": 50.0,
-        "score_max": 60.5
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 65.0,
-        "up_prob": 55.0,
-        "avg_ret": 1.6303,
-        "n_samples": 295,
-        "score_min": 71.0,
-        "score_max": 81.5
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 95.0,
-        "up_prob": 61.32,
-        "avg_ret": 3.4425,
-        "n_samples": 372,
-        "score_min": 92.0,
-        "score_max": 144.5
-      }
     ]
   },
   "f_div": {
@@ -732,64 +266,6 @@
         "up_prob": 55.43,
         "avg_ret": 0.5364,
         "n_samples": 8246,
-        "score_min": 81.5,
-        "score_max": 81.5
-      }
-    ],
-    "3d": [
-      {
-        "bin_min": 35.0,
-        "bin_max": 50.0,
-        "up_prob": 46.77,
-        "avg_ret": 0.1497,
-        "n_samples": 1605,
-        "score_min": 18.5,
-        "score_max": 50.0
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 60.0,
-        "up_prob": 61.9,
-        "avg_ret": 1.5014,
-        "n_samples": 391,
-        "score_min": 71.0,
-        "score_max": 71.0
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 65.0,
-        "up_prob": 50.1,
-        "avg_ret": 0.3702,
-        "n_samples": 962,
-        "score_min": 81.5,
-        "score_max": 81.5
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 35.0,
-        "bin_max": 50.0,
-        "up_prob": 42.52,
-        "avg_ret": -0.0078,
-        "n_samples": 1605,
-        "score_min": 18.5,
-        "score_max": 50.0
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 60.0,
-        "up_prob": 67.29,
-        "avg_ret": 5.3214,
-        "n_samples": 391,
-        "score_min": 71.0,
-        "score_max": 71.0
-      },
-      {
-        "bin_min": 65.0,
-        "bin_max": 65.0,
-        "up_prob": 47.11,
-        "avg_ret": 0.3888,
-        "n_samples": 962,
         "score_min": 81.5,
         "score_max": 81.5
       }
@@ -842,99 +318,36 @@
         "score_min": 102.5,
         "score_max": 123.5
       }
-    ],
-    "3d": [
+    ]
+  },
+  "f_etf_scale": {
+    "5d": [
       {
-        "bin_min": 30.0,
-        "bin_max": 40.0,
-        "up_prob": 42.41,
-        "avg_ret": -0.1701,
-        "n_samples": 1499,
-        "score_min": 8.0,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 50.0,
+        "bin_min": 15.0,
         "bin_max": 50.0,
-        "up_prob": 51.27,
-        "avg_ret": 0.5853,
-        "n_samples": 422,
-        "score_min": 50.0,
+        "up_prob": 56.1,
+        "avg_ret": 0.6772,
+        "n_samples": 17896,
+        "score_min": -23.5,
         "score_max": 50.0
       },
       {
-        "bin_min": 60.0,
-        "bin_max": 65.0,
-        "up_prob": 56.88,
-        "avg_ret": 0.8949,
-        "n_samples": 597,
-        "score_min": 71.0,
-        "score_max": 81.5
+        "bin_min": 53.0,
+        "bin_max": 60.0,
+        "up_prob": 59.85,
+        "avg_ret": 0.815,
+        "n_samples": 588,
+        "score_min": 56.3,
+        "score_max": 71.0
       },
       {
-        "bin_min": 70.0,
-        "bin_max": 75.0,
-        "up_prob": 63.23,
-        "avg_ret": 1.4456,
-        "n_samples": 328,
-        "score_min": 92.0,
-        "score_max": 102.5
-      },
-      {
-        "bin_min": 85.0,
-        "bin_max": 85.0,
-        "up_prob": 60.49,
-        "avg_ret": 0.9024,
-        "n_samples": 112,
-        "score_min": 123.5,
-        "score_max": 123.5
-      }
-    ],
-    "10d": [
-      {
-        "bin_min": 30.0,
-        "bin_max": 40.0,
-        "up_prob": 37.36,
-        "avg_ret": -0.9881,
-        "n_samples": 1499,
-        "score_min": 8.0,
-        "score_max": 29.0
-      },
-      {
-        "bin_min": 50.0,
-        "bin_max": 50.0,
-        "up_prob": 49.74,
-        "avg_ret": 1.5945,
-        "n_samples": 422,
-        "score_min": 50.0,
-        "score_max": 50.0
-      },
-      {
-        "bin_min": 60.0,
-        "bin_max": 65.0,
-        "up_prob": 56.69,
-        "avg_ret": 2.416,
-        "n_samples": 597,
-        "score_min": 71.0,
-        "score_max": 81.5
-      },
-      {
-        "bin_min": 70.0,
-        "bin_max": 75.0,
-        "up_prob": 64.75,
-        "avg_ret": 4.0705,
-        "n_samples": 328,
-        "score_min": 92.0,
-        "score_max": 102.5
-      },
-      {
-        "bin_min": 85.0,
-        "bin_max": 85.0,
-        "up_prob": 61.58,
-        "avg_ret": 2.4907,
-        "n_samples": 112,
-        "score_min": 123.5,
-        "score_max": 123.5
+        "bin_min": 63.0,
+        "bin_max": 100.0,
+        "up_prob": 52.46,
+        "avg_ret": 0.4208,
+        "n_samples": 2933,
+        "score_min": 77.3,
+        "score_max": 155.0
       }
     ]
   }

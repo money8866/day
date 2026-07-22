@@ -54,6 +54,7 @@ FACTOR_TO_LOOKUP_KEY = {
     "synergy_coefficient": "f_syn",
     "leadership_divergence": "f_div",
     "breakout_ratio": "f_brk",
+    "etf_scale_flow": "f_etf_scale",
 }
 
 # 因子权重配置（总权重100）
@@ -69,9 +70,10 @@ FACTOR_WEIGHTS = {
     # 情绪层 20%
     "limit_up_ladder": 12,
     "turnover_distribution": 8,
-    # 资金流层 25%
-    "etf_net_inflow": 15,
-    "north_flow": 10,
+    # 资金流层 25% (旧15+10 → 新12+5+8)
+    "etf_net_inflow": 12,
+    "north_flow": 5,
+    "etf_scale_flow": 8,
 }
 
 # 因子中文名
@@ -86,6 +88,7 @@ FACTOR_NAMES = {
     "turnover_distribution": "换手率分布",
     "etf_net_inflow": "ETF净申购",
     "north_flow": "北向资金",
+    "etf_scale_flow": "ETF规模变化",
 }
 
 # 因子所属层级
@@ -100,6 +103,7 @@ FACTOR_LAYERS = {
     "turnover_distribution": "情绪",
     "etf_net_inflow": "资金",
     "north_flow": "资金",
+    "etf_scale_flow": "资金",
 }
 
 

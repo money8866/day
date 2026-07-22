@@ -110,17 +110,30 @@ def _compute_bayesian_bin_stats(bin_data: pd.DataFrame, overall_up_rate: float,
 # 1. 加载回测样本
 # ====================================================================
 def load_backtest_samples():
-    """加载通达信回测产出的样本"""
+    """加载回测样本（优先加载含ETF因子的新CSV）"""
+    # 优先使用含ETF因子的新回测样本
+    new_path = OUTPUT_DIR / "backtest_samples.csv"
+    if new_path.exists():
+        df = pd.read_csv(new_path)
+        if "f_etf_scale" in df.columns and len(df) > 3000:
+            print(f"加载含ETF因子的新回测样本: {new_path}")
+            print(f"  {len(df)}条, {df['trade_date'].min()}~{df['trade_date'].max()}")
+            print(f"  主题数: {df['theme'].nunique()}")
+            return df
+        else:
+            print(f"  backtest_samples.csv存在但无ETF因子或样本不足，尝试其他来源...")
+
+    # 回退：使用通-信达回测的大样本
     csv_path = OUTPUT_DIR / "tdx_backtest_20250101_20260713_h5.csv"
-    if not csv_path.exists():
-        print(f"错误: 未找到回测样本 {csv_path}")
-        print("请先运行: python -m theme_forecast.tdx_backtest --start 20250101 --horizon 5")
-        return None
-    df = pd.read_csv(csv_path)
-    print(f"加载回测样本: {len(df)}条")
-    print(f"  日期范围: {df['trade_date'].min()}~{df['trade_date'].max()}")
-    print(f"  主题数: {df['theme'].nunique()}")
-    return df
+    if csv_path.exists():
+        df = pd.read_csv(csv_path)
+        print(f"加载通达信回测样本: {len(df)}条")
+        print(f"  日期范围: {df['trade_date'].min()}~{df['trade_date'].max()}")
+        print(f"  主题数: {df['theme'].nunique()}")
+        return df
+
+    print(f"错误: 未找到回测样本文件")
+    return None
 
 
 # ====================================================================
@@ -431,6 +444,7 @@ def format_walk_forward_report(train_lookup: dict, test_stats: dict, full_lookup
     factor_names = {
         "f_rs": "相对强度", "f_mom": "动量加速度", "f_adx": "ADX趋势",
         "f_syn": "协同度", "f_div": "分化度", "f_brk": "突破比例",
+        "f_etf_scale": "ETF资金流(规模)",
     }
     for factor_key, factor_data in full_lookup.items():
         name = factor_names.get(factor_key, factor_key)
@@ -464,7 +478,14 @@ def main():
     if df is None:
         return
 
-    factor_cols = ["f_rs", "f_mom", "f_adx", "f_syn", "f_div", "f_brk"]
+    factor_cols = ["f_rs", "f_mom", "f_adx", "f_syn", "f_div", "f_brk", "f_etf_scale"]
+
+    # 只使用实际存在的因子列
+    available_factors = [c for c in factor_cols if c in df.columns]
+    missing = set(factor_cols) - set(available_factors)
+    if missing:
+        print(f"  [跳过] 以下因子列不存在: {missing}")
+    factor_cols = available_factors
 
     # 2. Walk Forward验证（5d，保持原逻辑）
     print("\n[2/4] Walk Forward验证（5d）...")

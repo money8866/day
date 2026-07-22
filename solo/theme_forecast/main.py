@@ -62,7 +62,8 @@ ETF_THEME_MAP = {
 
 def run_prediction(theme_name: str, theme_stocks: list, trade_date: str,
                    market_index=None, moneyflow=None, limit_list=None,
-                   limit_step=None, daily_basic=None, north_hold=None) -> dict:
+                   limit_step=None, daily_basic=None, north_hold=None,
+                   etf_size_all=None) -> dict:
     """运行单主题预测"""
     codes = [s["code"] for s in theme_stocks]
     n_stocks = len(codes)
@@ -99,12 +100,17 @@ def run_prediction(theme_name: str, theme_stocks: list, trade_date: str,
 
     fl = flow.calc_all_flow(etf_share_df, etf_daily_df, codes, moneyflow, north_hold, klines)
 
+    # ETF规模因子（使用批量加载的etf_share_size数据）
+    esf = flow.calc_etf_scale_factor(etf_size_all, theme_name) if etf_size_all is not None and not etf_size_all.empty else {}
+
     # 合并所有因子
     all_factors = {}
     all_factors.update(mom)
     all_factors.update(syn)
     all_factors.update(sent)
     all_factors.update(fl)
+    if esf:
+        all_factors["etf_scale_flow"] = esf
 
     # 移除非因子字段
     all_factors.pop("theme_index_close", None)
@@ -176,6 +182,13 @@ def main():
     north_hold = dl.load_north_hold(trade_date)
     print(f"  北向: {len(north_hold) if north_hold is not None else 0} 条")
 
+    # ETF份额规模数据（一次性加载，所有主题共享）
+    print(f"  加载ETF份额规模数据...")
+    etf_size_start = "20260101"  # 需要约20日回看数据
+    etf_size_end = trade_date
+    etf_size_all = dl.load_etf_share_size_all(etf_size_start, etf_size_end)
+    print(f"  ETF数据: {len(etf_size_all)} 条")
+
     # 4. 逐主题预测
     print(f"[4/5] 计算主题涨跌概率...")
 
@@ -194,7 +207,7 @@ def main():
         try:
             result = run_prediction(name, stocks, trade_date, market_index,
                                     moneyflow, limit_list, limit_step,
-                                    daily_basic, north_hold)
+                                    daily_basic, north_hold, etf_size_all)
             if result:
                 all_results.append(result)
                 prob = result["probability"]

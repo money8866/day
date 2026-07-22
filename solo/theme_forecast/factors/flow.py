@@ -106,6 +106,117 @@ def calc_etf_net_inflow(etf_share_df: pd.DataFrame, etf_daily_df: pd.DataFrame,
             "mainflow_ratio": round(mainflow_ratio, 2), "signal": signal}
 
 
+def calc_etf_scale_factor(etf_size_df: pd.DataFrame, theme_name: str,
+                           lookback: int = 20) -> dict:
+    """
+    基于 etf_share_size 的ETF规模/份额因子（批量加载版）
+
+    利用 etf_share_size 接口提供的规模(scale)、份额(shares)、净值(nav)数据，
+    计算资金埋伏信号：
+    - 规模变化 = 真实资金流入（份额×净值）
+    - 份额变化 = 申购赎回强度
+    - 份额↑+价格↓ = 资金埋伏（最强信号）
+    - 规模↑+价格↑ = 趋势加速
+
+    Args:
+        etf_size_df: 批量加载的DataFrame(ts_code, trade_date, scale, shares, nav, close)
+        theme_name: 主题名称（与ETF_THEME_MAP匹配）
+        lookback: 回看天数
+
+    Returns:
+        {"score": 0-100, "scale_change_5d": float, "share_change_20d": float,
+         "price_change_20d": float, "divergence": float, "signal": str}
+    """
+    if etf_size_df is None or etf_size_df.empty:
+        return {"score": 50, "scale_change_5d": 0, "share_change_20d": 0,
+                "price_change_20d": 0, "divergence": 0, "signal": "数据不足"}
+
+    # 找主题对应的ETF代码
+    from theme_forecast.data_loader import get_etf_for_theme
+    etf_code = get_etf_for_theme(theme_name)
+    if etf_code is None:
+        return {"score": 50, "scale_change_5d": 0, "share_change_20d": 0,
+                "price_change_20d": 0, "divergence": 0, "signal": "无ETF映射"}
+
+    # 筛选该ETF的数据
+    etf_data = etf_size_df[etf_size_df["ts_code"] == etf_code].copy()
+    if etf_data.empty:
+        return {"score": 50, "scale_change_5d": 0, "share_change_20d": 0,
+                "price_change_20d": 0, "divergence": 0, "signal": "无ETF数据"}
+
+    etf_data = etf_data.sort_values("trade_date")
+    total_share_series = etf_data["total_share"].astype(float)
+    total_size_series = etf_data["total_size"].astype(float)
+    close_series = etf_data["close"].astype(float) if "close" in etf_data.columns else None
+    nav_series = etf_data["nav"].astype(float) if "nav" in etf_data.columns else None
+
+    def _pct_change(series, periods):
+        if len(series) <= periods:
+            return 0
+        return float((series.iloc[-1] - series.iloc[-periods - 1]) / series.iloc[-periods - 1] * 100)
+
+    # 变化率
+    scale_change_5d = _pct_change(total_size_series, 5)
+    scale_change_20d = _pct_change(total_size_series, 20)
+    share_change_5d = _pct_change(total_share_series, 5)
+    share_change_20d = _pct_change(total_share_series, 20)
+    price_change_20d = _pct_change(close_series, 20) if close_series is not None else 0
+
+    # 资金埋伏指数：份额增但价格不涨（或跌）= 机构暗中吸筹
+    divergence = 0
+    if share_change_20d > 1:
+        divergence = share_change_20d - price_change_20d
+
+    # ===== 评分 =====
+    score = 50
+    signal = "中性"
+
+    # 1) 规模持续增长 → 真实资金流入
+    if scale_change_5d > 3:
+        score += 15
+    elif scale_change_5d > 1:
+        score += 8
+    elif scale_change_5d < -3:
+        score -= 15
+
+    if scale_change_20d > 5:
+        score += 10
+    elif scale_change_20d > 2:
+        score += 5
+    elif scale_change_20d < -5:
+        score -= 10
+
+    # 2) 份额增长（更多份额=资金流入）
+    if share_change_20d > 3:
+        score += 10
+    elif share_change_20d > 1:
+        score += 5
+    elif share_change_20d < -3:
+        score -= 10
+
+    # 3) 资金埋伏信号：份额↑+价格不涨
+    if divergence > 5 and price_change_20d < 3:
+        score += 20  # 🎯 最强信号
+        signal = "资金埋伏·强看涨"
+    elif divergence > 3:
+        score += 10
+        signal = "份额增长·看涨"
+    elif divergence < -5:
+        score -= 10
+        signal = "价涨份额跌·减持"
+
+    # 4) 份额稳定 + 价格大涨 → 趋势加速（非埋伏，但确认趋势）
+    if -1 < share_change_20d < 1 and price_change_20d > 8:
+        score += 8
+        signal = "趋势加速"
+
+    score = max(0, min(100, score))
+    return {"score": round(score, 1), "scale_change_5d": round(scale_change_5d, 2),
+            "share_change_20d": round(share_change_20d, 2),
+            "price_change_20d": round(price_change_20d, 2),
+            "divergence": round(divergence, 2), "signal": signal}
+
+
 def calc_north_flow(north_hold: pd.DataFrame, theme_codes: list,
                     klines: dict = None) -> dict:
     """

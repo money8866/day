@@ -294,9 +294,110 @@ def load_daily_basic(trade_date: str) -> pd.DataFrame:
 # ====================================================================
 # ETF 数据
 # ====================================================================
+
+# ETF→主题映射（与main.py共享）
+ETF_THEME_MAP = {
+    "159516.SZ": "半导体设备",
+    "159732.SZ": "消费电子与AI终端",
+    "159995.SZ": "消费电子与AI终端",
+    "512480.SH": "半导体制造",
+    "512760.SH": "半导体制造",
+    "159825.SZ": "农业",
+    "159997.SZ": "家电家居",
+    "515030.SH": "新能源汽车链",
+    "515050.SH": "5G通信",
+    "515170.SH": "基建地产链",
+    "515790.SH": "发电与电源设备",
+    "512660.SH": "军工",
+    "512800.SH": "基建地产链",
+    "512880.SH": "券商",
+    "512980.SH": "传媒",
+    "516160.SH": "商超零售",
+    "516510.SH": "人形机器人",
+    "516950.SH": "基建地产链",
+    "588200.SH": "券商",
+    "159870.SZ": "化工链",
+    "562500.SH": "半导体设备",
+    "159998.SZ": "大农业",
+    "512010.SH": "医药产业链",
+    "512170.SH": "医药产业链",
+    "512690.SH": "白酒",
+    "515220.SH": "煤炭",
+    "516150.SH": "稀土",
+    "516970.SH": "基建地产链",
+    "515210.SH": "钢铁",
+    "515880.SH": "光通信",
+    "159992.SZ": "创新药",
+    "563000.SH": "人形机器人",
+}
+
+# ETF代码列表（用于批量加载）
+ETF_CODE_LIST = list(ETF_THEME_MAP.keys())
+
+
+def load_etf_share_size_all(start_date: str, end_date: str,
+                              etf_codes: list = None) -> pd.DataFrame:
+    """
+    逐个加载所有ETF的份额和规模数据（使用 etf_share_size 接口）
+
+    API限制：每次只能传1只ETF代码，但单次最多5000条足够覆盖1.5年
+
+    Args:
+        start_date: 起始日期 YYYYMMDD
+        end_date: 结束日期 YYYYMMDD
+        etf_codes: ETF代码列表，默认全部
+
+    Returns:
+        DataFrame(ts_code, trade_date, total_share, total_size, nav, close)
+    """
+    if etf_codes is None:
+        etf_codes = ETF_CODE_LIST
+
+    pro = get_pro()
+    all_data = []
+
+    for i, code in enumerate(etf_codes):
+        # 缓存键按代码+日期范围
+        cache_key = f"{code}_{start_date}_{end_date}"
+        cached = cache_get("etf_share_size_single", code=code, start=start_date, end=end_date)
+        if cached is not None and not cached.empty:
+            all_data.append(cached)
+            continue
+
+        try:
+            df = pro.etf_share_size(ts_code=code, start_date=start_date, end_date=end_date,
+                                    fields="ts_code,trade_date,total_share,total_size,nav,close")
+            if df is not None and not df.empty:
+                df["trade_date"] = df["trade_date"].astype(str)
+                cache_set("etf_share_size_single", df, expire_hours=168,
+                          code=code, start=start_date, end=end_date)
+                all_data.append(df)
+        except Exception as e:
+            print(f"  [ETF] {code}: {e}")
+
+        if (i + 1) % 10 == 0:
+            print(f"  [ETF] 进度: {i+1}/{len(etf_codes)}")
+        time.sleep(0.13)
+
+    if all_data:
+        result = pd.concat(all_data, ignore_index=True)
+        result = result.drop_duplicates(subset=["ts_code", "trade_date"])
+        print(f"  [ETF] 完成: {len(result)}条, {result['ts_code'].nunique()}只ETF")
+        return result
+    return pd.DataFrame()
+
+
+def get_etf_for_theme(theme_name: str) -> str:
+    """获取主题对应的ETF代码"""
+    for ec, tn in ETF_THEME_MAP.items():
+        if tn == theme_name or theme_name in tn or tn in theme_name:
+            return ec
+    return None
+
+
 def load_etf_share(ts_code: str, n_days: int = 30) -> pd.DataFrame:
     """
-    ETF份额变动数据
+    ETF份额变动数据（单只，旧接口，保持向后兼容）
 
     Returns:
         DataFrame(trade_date, total_share)
