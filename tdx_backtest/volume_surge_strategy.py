@@ -42,7 +42,7 @@ class VolSurgeFilters:
     hist_vol_pct_min:  float = 50.0      # 近历史最高量%下限
     ma20_chg_10d_min:  float = -0.3      # MA20近10天变化率下限
     ma20_chg_20d_min:  float = -1.0      # MA20近20天变化率下限
-    vol_vs_base_min:   float = 1.3       # 近20日均量/起涨前基量下限
+    vol_vs_base_min:   float = 1.1       # 近20日均量/起涨前基量下限
     vol_vs_peak_min:   float = 0.5       # 近20日均量/高点5日均量下限
     a_gain_min:        float = 15.0      # A浪涨幅下限
     fib_786_ratio:     float = 0.92      # B浪回撤不跌穿78.6%的容差
@@ -229,7 +229,7 @@ def volume_surge_strategy_vectorized(
         if len(vol_ma20_local) == 0 or vol_ma20_local[-1] == 0:
             continue
         vol_ratio_local = vol_arr / np.maximum(vol_ma20_local, 1)
-        max_vol_ratio = float(np.max(vol_ratio_local))
+        max_vol_ratio = float(np.nanmax(vol_ratio_local))
         vol_ratio_gt2 = int(np.sum(vol_ratio_local > 2.0))
         vol_ratio_gt3 = int(np.sum(vol_ratio_local > 3.0))
 
@@ -240,7 +240,7 @@ def volume_surge_strategy_vectorized(
 
         # === 2. 振幅条件 ===
         amplitude = (high_arr - low_arr) / np.maximum(close_arr, 0.01) * 100
-        avg_amplitude = float(np.mean(amplitude))
+        avg_amplitude = float(np.mean(amplitude[-120:]))
         amp_gt8_count = int(np.sum(amplitude > 8))
         range_high = float(np.max(high_arr))
         range_low = float(np.min(low_arr))
@@ -407,6 +407,12 @@ def volume_surge_strategy_vectorized(
             macd_pass = True
         # ③ 刚刚红柱（最慢信号，可靠度最高）
         if not macd_pass and prev_bar < 0 < cur_bar:
+            macd_pass = True
+        # ④ 红柱回调缩短+接近0：上升趋势中短暂回调，红柱接近零轴（放宽连续缩短要求，0.7倍阈值）
+        if not macd_pass and cur_bar > 0 and prev_bar > 0 and cur_bar < abs(macd_bar[i - 4]) * 0.7:
+            macd_pass = True
+        # ⑤ 红柱回调后反弹：上升趋势中短暂回调后重新发力（cur>prev且prev<prev2）
+        if not macd_pass and cur_bar > 0 and prev_bar > 0 and cur_bar > prev_bar and prev_bar < prev2_bar:
             macd_pass = True
 
         if not macd_pass:

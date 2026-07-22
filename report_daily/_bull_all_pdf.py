@@ -6,22 +6,22 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER
 
 FONT = 'Chinese'
 pdfmetrics.registerFont(TTFont(FONT, r'C:\Windows\Fonts\msyh.ttc'))
 
-C_BLUE  = colors.HexColor('#1a3a8a')
-C_RED   = colors.HexColor('#c0392b')
-C_GREEN = colors.HexColor('#27ae60')
-C_ORANGE= colors.HexColor('#e67e22')
-C_PURPLE= colors.HexColor('#8e44ad')
-C_GREY  = colors.HexColor('#6c757d')
-C_WHITE = colors.whitesmoke
-C_DARK  = colors.HexColor('#1a1a2e')
-C_GOLD  = colors.HexColor('#d4a017')
+C_BLUE   = colors.HexColor('#1a3a8a')
+C_RED    = colors.HexColor('#c0392b')
+C_GREEN  = colors.HexColor('#27ae60')
+C_ORANGE = colors.HexColor('#e67e22')
+C_PURPLE = colors.HexColor('#8e44ad')
+C_GREY   = colors.HexColor('#6c757d')
+C_WHITE  = colors.whitesmoke
+C_DARK   = colors.HexColor('#1a1a2e')
+C_GOLD   = colors.HexColor('#d4a017')
 
 def ps(name, **kw):
     base = dict(fontName=FONT, fontSize=9, leading=14, textColor=C_DARK)
@@ -39,226 +39,173 @@ def hdr_style(bg=C_BLUE, fs=8):
         ('ROWBACKGROUNDS', (0,1), (-1,-1),
          [colors.HexColor('#f8f9fa'), colors.HexColor('#eef1f5')]),
         ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#cccccc')),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 2.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
     ])
 
-def fix_code(c):
-    s = str(int(float(c))) if not pd.isna(c) else ''
-    return s.zfill(6) if s.isdigit() and len(s) < 6 else s
-
 # ── 数据 ──
-df = pd.read_csv('D:/mystock/solo/report_daily/bull_stocks_all_20260721_004031.csv', encoding='utf-8-sig')
-df['code'] = df['code'].apply(fix_code)
-df = df.sort_values('最终分', ascending=False).reset_index(drop=True)
+SRC = 'D:/mystock/solo/report_daily/enhanced_timing_bull_all_20260721.csv'
+df = pd.read_csv(SRC, encoding='utf-8-sig')
+df = df.sort_values('量化择时分', ascending=False).reset_index(drop=True)
 
 today = '20260721'
-out = f'D:/mystock/report_daily/BullScore_All_{today}.pdf'
+out = f'D:/mystock/report_daily/enhanced_timing_bull_all_{today}.pdf'
 doc = SimpleDocTemplate(
     out, pagesize=landscape(A4),
-    leftMargin=12*mm, rightMargin=12*mm,
-    topMargin=12*mm, bottomMargin=10*mm
+    leftMargin=10*mm, rightMargin=10*mm,
+    topMargin=10*mm, bottomMargin=8*mm
 )
 story = []
 
 # ═══════════ 标题 ═══════════
-story.append(Paragraph('BullScore 全量合格股池', ps('tit', fontSize=16, textColor=C_BLUE, alignment=TA_CENTER, spaceAfter=2)))
-story.append(Paragraph(f'BullScore v3.1  |  {len(df)}只  |  全量输出  |  {today} 凌晨', ps('sub', fontSize=8, textColor=C_GREY, alignment=TA_CENTER, spaceAfter=4)))
-story.append(HRFlowable(width='100%', thickness=2, color=C_BLUE, spaceAfter=6))
+story.append(Paragraph('增强择时 · 全市场Bull股池', ps('tit', fontSize=15, textColor=C_BLUE, alignment=TA_CENTER, spaceAfter=2)))
+story.append(Paragraph(f'Timing分 + 筹码突破 + 回踩确认 + ATR风控  |  {len(df)}只  |  2026-07-21 盘前', ps('sub', fontSize=8, textColor=C_GREY, alignment=TA_CENTER, spaceAfter=4)))
+story.append(HRFlowable(width='100%', thickness=2, color=C_BLUE, spaceAfter=5))
 
-# ═══════════ 概览 ── ═══════════
+# ═══════════ 概览 ═══════════
 n_total = len(df)
-n_a = len(df[df['等级'] == 'A级产业龙头'])
-n_b = len(df[df['等级'] == 'B级成长股'])
-n_obs = len(df[df['等级'] == '观察名单'])
-n_over80 = len(df[df['Bull_v2.1分'] >= 80])
-n_over75 = len(df[df['Bull_v2.1分'] >= 75])
-n_sp100 = len(df[df['估值空间%'] >= 100])
-avg_score = df['Bull_v2.1分'].mean()
-avg_sp = df['估值空间%'].mean()
+grade_order = ['S', 'A', 'B', 'C', 'D', 'E']
+grade_cnt = {g: len(df[df['修正后胜率分级'] == g]) for g in grade_order}
+n_true = len(df[df['真突破判定'].str.contains('真突破', na=False)])
+n_pull = len(df[df['回踩确认'].str.contains('是', na=False)])
+n_attn = len(df[df['交易决策'].str.contains('关注|极高胜率', na=False)])
 
 stats_data = [
-    ['总数', 'A级龙头', 'B级成长', '观察名单', '≥80分', '≥75分', '空间≥100%', '均评分', '均空间%'],
-    [f'{n_total}只', f'{n_a}只', f'{n_b}只', f'{n_obs}只', f'{n_over80}只', f'{n_over75}只', f'{n_sp100}只', f'{avg_score:.1f}', f'{avg_sp:.1f}%'],
+    ['总数', 'S级', 'A级', 'B级', 'C/D/E级', '真突破', '回踩确认', '可关注'],
+    [f'{n_total}只', f'{grade_cnt["S"]}只', f'{grade_cnt["A"]}只', f'{grade_cnt["B"]}只',
+     f'{grade_cnt["C"]+grade_cnt["D"]+grade_cnt["E"]}只', f'{n_true}只', f'{n_pull}只', f'{n_attn}只'],
 ]
-t = Table(stats_data, colWidths=[46]*9)
+t = Table(stats_data, colWidths=[42]*8)
 t.setStyle(TableStyle([
     ('BACKGROUND', (0,0), (-1,0), C_BLUE),
     ('TEXTCOLOR', (0,0), (-1,0), C_WHITE),
     ('FONTNAME', (0,0), (-1,-1), FONT),
-    ('FONTSIZE', (0,0), (-1,-1), 8.5),
+    ('FONTSIZE', (0,0), (-1,-1), 8),
     ('ALIGN', (0,0), (-1,-1), 'CENTER'),
     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ('ROWBACKGROUNDS', (0,1), (-1,1), [C_GOLD, colors.HexColor('#fff8e1')]),
     ('GRID', (0,0), (-1,-1), 0.4, colors.HexColor('#cccccc')),
-    ('TOPPADDING', (0,0), (-1,-1), 4),
-    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ('TOPPADDING', (0,0), (-1,-1), 3),
+    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
 ]))
 story.append(t)
+story.append(Spacer(1, 2.5*mm))
+
+# ═══════════ 分级分布 ═══════════
+story.append(Paragraph('▶ 胜率分级分布', ps('h2', fontSize=10, textColor=C_ORANGE, spaceBefore=2, spaceAfter=3)))
+grade_rows = [['分级', '数量', '占比', '均Timing分', '均修正评分', '真突破率']]
+for g in grade_order:
+    cnt = grade_cnt[g]
+    if cnt == 0: continue
+    sub = df[df['修正后胜率分级'] == g]
+    tr = len(sub[sub['真突破判定'].str.contains('真突破', na=False)]) / cnt * 100
+    grade_rows.append([
+        g, str(cnt), f'{cnt/n_total*100:.1f}%',
+        f"{sub['量化择时分'].mean():.1f}",
+        f"{sub['修正后评分'].mean():.1f}",
+        f"{tr:.0f}%",
+    ])
+t = Table(grade_rows, colWidths=[32, 36, 36, 52, 52, 48])
+ts = hdr_style(C_ORANGE, 8)
+for i in range(1, len(grade_rows)):
+    g = grade_rows[i][0]
+    if g == 'S': ts.add('BACKGROUND', (0,i), (0,i), colors.HexColor('#ff6b6b')); ts.add('TEXTCOLOR', (0,i), (0,i), colors.white)
+    elif g == 'A': ts.add('TEXTCOLOR', (0,i), (0,i), C_GREEN)
+    elif g == 'B': ts.add('TEXTCOLOR', (0,i), (0,i), C_ORANGE)
+    elif g in ('C', 'D', 'E'): ts.add('TEXTCOLOR', (0,i), (0,i), C_GREY)
+t.setStyle(ts)
+story.append(t)
 story.append(Spacer(1, 3*mm))
 
-# ═══════════ TOP 30 ── ═══════════
-story.append(Paragraph('▶ TOP 30 精选（按最终分降序）', ps('h2', fontSize=11, textColor=C_RED, spaceBefore=4, spaceAfter=4)))
+# ═══════════ TOP 30 精选 ═══════════
+story.append(Paragraph('▶ TOP 30 精选（按量化择时分排序）', ps('h2', fontSize=10, textColor=C_RED, spaceBefore=2, spaceAfter=3)))
 
 top = df.head(30)
-cols = ['code','name','industry','theme','Bull_v2.1分','最终分','估值空间%','等级',
-        '产业景气','预期差','筹码面','利润同比','ROE','PEG']
-col_names = ['代码','名称','行业','主题','Bull评分','最终分','空间%','等级','产业景气','预期差','筹码面','利润YoY%','ROE%','PEG']
-cw = [42, 36, 52, 52, 36, 36, 30, 46, 34, 34, 28, 34, 24, 22]
+h = ['代码', '名称', '行业', '择时分', '修正分', '分级', '真突破', '回踩', '买点类型', '现价', 'ATR止损', 'ATR止盈', '交易决策']
+cw = [22, 30, 36, 28, 26, 20, 26, 22, 96, 30, 32, 32, 88]
 
-rows = [col_names]
+rows = [h]
 for _, r in top.iterrows():
-    sp = r['估值空间%']
+    code = str(r['代码']).replace('.SH','').replace('.SZ','').zfill(6)
     rows.append([
-        r['code'],
-        r['name'][:4],
-        str(r['industry'])[:6],
-        str(r['theme'])[:8],
-        f"{r['Bull_v2.1分']:.1f}",
-        f"{r['最终分']:.1f}",
-        f"{sp:.0f}%",
-        r['等级'][:5] if pd.notna(r['等级']) else '-',
-        f"{r['产业景气']:.0f}",
-        f"{r['预期差']:.0f}",
-        f"{r['筹码面']:.0f}",
-        f"{r['利润同比']:.1f}" if pd.notna(r['利润同比']) else '-',
-        f"{r['ROE']:.1f}" if pd.notna(r['ROE']) else '-',
-        f"{r['PEG']:.2f}" if pd.notna(r['PEG']) else '-',
+        code,
+        str(r['名称'])[:4],
+        str(r['行业'])[:6],
+        f"{r['量化择时分']:.1f}",
+        f"{r['修正后评分']:.1f}",
+        r['修正后胜率分级'],
+        '✅' if '真突破' in str(r['真突破判定']) else '❌',
+        '✅' if '是' in str(r['回踩确认']) else '❌',
+        str(r['推荐买点类型'])[:16],
+        f"{r['现价']:.2f}",
+        f"{r['ATR动态止损价']:.2f}",
+        f"{r['ATR跟踪止盈价']:.2f}",
+        str(r['交易决策'])[:14],
     ])
 
-t = Table(rows, colWidths=cw)
+t = Table(rows, colWidths=cw, repeatRows=1)
 ts = hdr_style(C_RED, 7)
 for i in range(1, len(rows)):
-    v = float(rows[i][4])
-    if v >= 85: ts.add('BACKGROUND', (4,i), (4,i), colors.HexColor('#fff3e0'))
-    elif v >= 80: ts.add('BACKGROUND', (4,i), (4,i), colors.HexColor('#fff8e1'))
-    if v >= 85: ts.add('BACKGROUND', (5,i), (5,i), colors.HexColor('#fff3e0'))
-    sp_str = rows[i][6].rstrip('%')
-    if sp_str != '-':
-        spf = float(sp_str)
-        if spf >= 100: ts.add('TEXTCOLOR', (6,i), (6,i), C_RED)
-        elif spf >= 50: ts.add('TEXTCOLOR', (6,i), (6,i), C_ORANGE)
-        else: ts.add('TEXTCOLOR', (6,i), (6,i), C_GREEN)
-    lvl = rows[i][7]
-    if 'A级' in lvl: ts.add('TEXTCOLOR', (7,i), (7,i), C_RED)
-    elif 'B级' in lvl: ts.add('TEXTCOLOR', (7,i), (7,i), C_ORANGE)
-t.setStyle(ts)
-story.append(t)
-story.append(Spacer(1, 4*mm))
-
-# ═══════════ 主题分布 ═══════════
-story.append(Paragraph('▶ 主题分布 TOP 10', ps('h2', fontSize=11, textColor=C_BLUE, spaceBefore=4, spaceAfter=4)))
-thm_dist = df['theme'].value_counts().head(10)
-thm_rows = [['排名','主题','数量','占比','均Bull评分','均最终分','均估值空间%','均利润YoY%']]
-for i, (thm, cnt) in enumerate(thm_dist.items(), 1):
-    sub = df[df['theme'] == thm]
-    thm_rows.append([
-        str(i), thm, str(cnt), f'{cnt/n_total*100:.1f}%',
-        f"{sub['Bull_v2.1分'].mean():.1f}",
-        f"{sub['最终分'].mean():.1f}",
-        f"{sub['估值空间%'].mean():.1f}%",
-        f"{sub['利润同比'].mean():.0f}%" if '利润同比' in sub.columns and sub['利润同比'].notna().any() else '-',
-    ])
-t = Table(thm_rows, colWidths=[18, 62, 24, 28, 46, 44, 50, 50])
-t.setStyle(hdr_style(C_BLUE, 7.5))
-story.append(t)
-story.append(Spacer(1, 3*mm))
-
-# ═══════════ 行业分布 ── ═══════════
-story.append(Paragraph('▶ 行业分布 TOP 10', ps('h2', fontSize=11, textColor=C_ORANGE, spaceBefore=4, spaceAfter=4)))
-ind_dist = df['industry'].value_counts().head(10)
-ind_rows = [['排名','行业','数量','占比','均Bull评分','均最终分']]
-for i, (ind, cnt) in enumerate(ind_dist.items(), 1):
-    sub = df[df['industry'] == ind]
-    ind_rows.append([
-        str(i), ind, str(cnt), f'{cnt/n_total*100:.1f}%',
-        f"{sub['Bull_v2.1分'].mean():.1f}",
-        f"{sub['最终分'].mean():.1f}",
-    ])
-t = Table(ind_rows, colWidths=[18, 72, 24, 28, 46, 44])
-t.setStyle(hdr_style(C_ORANGE, 7.5))
-story.append(t)
-story.append(Spacer(1, 3*mm))
-
-# ═══════════ 等级分布 ── ═══════════
-story.append(Paragraph('▶ 等级分布', ps('h2', fontSize=11, textColor=C_PURPLE, spaceBefore=4, spaceAfter=4)))
-lvl_dist = df['等级'].value_counts()
-lvl_rows = [['等级','数量','占比','均Bull评分','均最终分','均估值空间%','均利润YoY%']]
-for lvl, cnt in lvl_dist.items():
-    sub = df[df['等级'] == lvl]
-    lvl_rows.append([
-        lvl, str(cnt), f'{cnt/n_total*100:.1f}%',
-        f"{sub['Bull_v2.1分'].mean():.1f}",
-        f"{sub['最终分'].mean():.1f}",
-        f"{sub['估值空间%'].mean():.1f}%",
-        f"{sub['利润同比'].mean():.0f}%",
-    ])
-t = Table(lvl_rows, colWidths=[56, 32, 28, 46, 44, 50, 50])
-ts = hdr_style(C_PURPLE, 8)
-# A级B级颜色
-lvl_colors = {'A级产业龙头': C_RED, 'B级成长股': C_ORANGE, '观察名单': C_GREY}
-for i, row in enumerate(lvl_rows[1:], 1):
-    c = lvl_colors.get(row[0], C_DARK)
-    ts.add('TEXTCOLOR', (0,i), (0,i), c)
+    grade = rows[i][5]
+    if grade == 'S': ts.add('BACKGROUND', (5,i), (5,i), colors.HexColor('#ff6b6b')); ts.add('TEXTCOLOR', (5,i), (5,i), colors.white)
+    elif grade == 'A': ts.add('TEXTCOLOR', (5,i), (5,i), C_GREEN)
+    elif grade == 'B': ts.add('TEXTCOLOR', (5,i), (5,i), C_ORANGE)
+    elif grade in ('C','D','E'): ts.add('TEXTCOLOR', (5,i), (5,i), C_GREY)
+    if rows[i][6] == '✅': ts.add('TEXTCOLOR', (6,i), (6,i), C_GREEN)
+    else: ts.add('TEXTCOLOR', (6,i), (6,i), C_RED)
+    if rows[i][7] == '✅': ts.add('TEXTCOLOR', (7,i), (7,i), C_GREEN)
+    else: ts.add('TEXTCOLOR', (7,i), (7,i), C_GREY)
 t.setStyle(ts)
 story.append(t)
 story.append(Spacer(1, 3*mm))
 
-# ═══════════ 全量列表（第二页） ── ═══════════
-story.append(PageBreak())
-story.append(Paragraph(f'全量列表（{n_total}只，按最终分降序）', ps('h2', fontSize=11, textColor=C_BLUE, spaceBefore=2, spaceAfter=4)))
+# ═══════════ 全量列表 ═══════════
+story.append(Paragraph(f'▶ 全量列表（{n_total}只，按择时分降序）', ps('h2', fontSize=10, textColor=C_BLUE, spaceBefore=2, spaceAfter=3)))
 
-# 分页：每页约55行
-PAGE_SIZE = 55
-all_cols = ['code','name','industry','theme','Bull_v2.1分','最终分','估值空间%','等级','产业景气','预期差','筹码面']
-all_col_names = ['代码','名称','行业','主题','Bull评分','最终分','空间%','等级','产业','预期差','筹码面']
-all_cw = [42, 36, 50, 52, 34, 34, 28, 44, 28, 34, 28]
+all_h = ['代码', '名称', '行业', '择时分', '修正分', '分级', '真突破', '回踩', '现价', 'MA20', 'VWAP', 'ATR止损', 'ATR止盈', '交易决策']
+all_cw = [22, 30, 34, 26, 24, 20, 24, 22, 30, 30, 30, 32, 32, 80]
+all_rows = [all_h]
 
-for page_start in range(0, len(df), PAGE_SIZE):
-    page_df = df.iloc[page_start:page_start + PAGE_SIZE].reset_index(drop=True)
-    rows2 = [all_col_names]
-    for _, r in page_df.iterrows():
-        sp = r['估值空间%']
-        rows2.append([
-            r['code'],
-            r['name'][:4],
-            str(r['industry'])[:6],
-            str(r['theme'])[:8],
-            f"{r['Bull_v2.1分']:.1f}",
-            f"{r['最终分']:.1f}",
-            f"{sp:.0f}%",
-            r['等级'][:5] if pd.notna(r['等级']) else '-',
-            f"{r['产业景气']:.0f}",
-            f"{r['预期差']:.0f}",
-            f"{r['筹码面']:.0f}",
-        ])
+for _, r in df.iterrows():
+    code = str(r['代码']).replace('.SH','').replace('.SZ','').zfill(6)
+    all_rows.append([
+        code,
+        str(r['名称'])[:4],
+        str(r['行业'])[:5],
+        f"{r['量化择时分']:.1f}",
+        f"{r['修正后评分']:.1f}",
+        r['修正后胜率分级'],
+        '✅' if '真突破' in str(r['真突破判定']) else '❌',
+        '✅' if '是' in str(r['回踩确认']) else '❌',
+        f"{r['现价']:.2f}",
+        f"{r['MA20']:.2f}",
+        f"{r['VWAP']:.2f}",
+        f"{r['ATR动态止损价']:.2f}",
+        f"{r['ATR跟踪止盈价']:.2f}",
+        str(r['交易决策'])[:13],
+    ])
 
-    t = Table(rows2, colWidths=all_cw)
-    ts = hdr_style(C_BLUE, 7)
-    for i in range(1, len(rows2)):
-        v = float(rows2[i][4])
-        if v >= 85: ts.add('BACKGROUND', (4,i), (4,i), colors.HexColor('#fff3e0'))
-        elif v >= 80: ts.add('BACKGROUND', (4,i), (4,i), colors.HexColor('#fff8e1'))
-        sp_str = rows2[i][6].rstrip('%')
-        if sp_str != '-':
-            spf = float(sp_str)
-            if spf >= 100: ts.add('TEXTCOLOR', (6,i), (6,i), C_RED)
-            elif spf >= 50: ts.add('TEXTCOLOR', (6,i), (6,i), C_ORANGE)
-            else: ts.add('TEXTCOLOR', (6,i), (6,i), C_GREEN)
-        lvl = rows2[i][7]
-        if 'A级' in lvl: ts.add('TEXTCOLOR', (7,i), (7,i), C_RED)
-        elif 'B级' in lvl: ts.add('TEXTCOLOR', (7,i), (7,i), C_ORANGE)
-    t.setStyle(ts)
-    story.append(t)
-    if page_start + PAGE_SIZE < len(df):
-        story.append(Spacer(1, 3*mm))
+t = Table(all_rows, colWidths=all_cw, repeatRows=1)
+ts = hdr_style(C_BLUE, 6.5)
+for i in range(1, len(all_rows)):
+    grade = all_rows[i][5]
+    if grade == 'S': ts.add('BACKGROUND', (5,i), (5,i), colors.HexColor('#ff6b6b')); ts.add('TEXTCOLOR', (5,i), (5,i), colors.white)
+    elif grade == 'A': ts.add('TEXTCOLOR', (5,i), (5,i), C_GREEN)
+    elif grade == 'B': ts.add('TEXTCOLOR', (5,i), (5,i), C_ORANGE)
+    elif grade in ('C','D','E'): ts.add('TEXTCOLOR', (5,i), (5,i), C_GREY)
+    if all_rows[i][6] == '✅': ts.add('TEXTCOLOR', (6,i), (6,i), C_GREEN)
+    else: ts.add('TEXTCOLOR', (6,i), (6,i), C_RED)
+    if all_rows[i][7] == '✅': ts.add('TEXTCOLOR', (7,i), (7,i), C_GREEN)
+    else: ts.add('TEXTCOLOR', (7,i), (7,i), C_GREY)
+t.setStyle(ts)
+story.append(t)
 
 # Footer
-story.append(Spacer(1, 3*mm))
-story.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#cccccc'), spaceBefore=4))
+story.append(Spacer(1, 2*mm))
+story.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#cccccc'), spaceBefore=3))
 story.append(Paragraph(
-    f'BullScore v3.1  |  共{n_total}只  |  生成{today}  |  QClaw量化系统  |  仅供参考，不构成投资建议',
-    ps('foot', fontSize=7, textColor=C_GREY, alignment=TA_CENTER)
+    f'增强择时 = Timing分 + 筹码突破 + 回踩确认 + ATR风控  |  {n_total}只全市场Bull股池  |  2026-07-21 盘前  |  QClaw量化系统  |  仅供参考',
+    ps('foot', fontSize=6.5, textColor=C_GREY, alignment=TA_CENTER)
 ))
 
 doc.build(story)

@@ -131,10 +131,12 @@ def calculate_v8_theme_score(df_theme_data: pd.DataFrame) -> Tuple[pd.DataFrame,
 
 def _calc_t_start(sub: pd.DataFrame, codes: List[str]) -> int:
     """
-    主升爆发天数 T_start
+    主升爆发天数 T_start - V8.2 改进版
 
-    主题成分股中涨幅 > 5% 的股票比例持续 > 15% 的连续交易日天数。
-    从最新交易日向前追溯。
+    主题成分股中涨幅 > 5% 的股票比例 > 15% 的交易日天数。
+    - 如果今天激活：返回连续激活天数（同原版）
+    - 如果今天未激活：回看近15天，返回最近一次激活期的峰值天数
+    支持跟踪二波启动：即使中间有间隔，只要最近有过激活就不归零。
     """
     daily_pct = sub.groupby("trade_date")["pct_chg"].apply(
         lambda x: (x > 5).sum() / len(x) if len(x) > 0 else 0
@@ -143,14 +145,32 @@ def _calc_t_start(sub: pd.DataFrame, codes: List[str]) -> int:
     if daily_pct.empty:
         return 0
 
-    count = 0
-    for pct in daily_pct.iloc[::-1]:
-        if pct > 0.15:
-            count += 1
-        else:
-            break
+    values = daily_pct.values
 
-    return count
+    # 模式1：今天激活 → 连续计数（原版行为）
+    if values[-1] > 0.15:
+        count = 0
+        for v in values[::-1]:
+            if v > 0.15:
+                count += 1
+            else:
+                break
+        return count
+
+    # 模式2：今天未激活 → 回看最近15天，找最近一次激活期的峰值
+    lookback = min(15, len(values))
+    recent_values = values[-lookback:]
+
+    current_streak = 0
+    max_streak = 0
+    for v in recent_values:
+        if v > 0.15:
+            current_streak += 1
+            max_streak = max(max_streak, current_streak)
+        else:
+            current_streak = 0
+
+    return max_streak
 
 
 def _calc_t_ma(sub: pd.DataFrame, codes: List[str]) -> int:
@@ -216,9 +236,13 @@ def _calc_r_volume(sub: pd.DataFrame, codes: List[str]) -> float:
 def _classify_d_stage(T_start: int, T_MA: int, R_volume: float,
                       sub: pd.DataFrame, codes: List[str]) -> str:
     """
-    基于天数节奏指标判定 D1-D8+ 阶段
+    基于天数节奏指标判定 D1-D8+ 阶段 - V8.2 改进版
 
-    判定优先级: D8+ > D6-D7 > D4-D5 > D3 > D1-D2
+    新增:
+      - 今日激活强度 > T_start 历史 → 二波启动/升级阶段
+      - T_start>0 + 今日未激活 + 中军健康 → 回调蓄势（非潜伏期）
+
+    判定优先级: D8+ > D6-D7 > 今日激活强度 > D4-D5 > D3 > 回调蓄势 > D1-D2 > 潜伏期
     """
     latest_day = sub["trade_date"].max()
     latest = sub[sub["trade_date"] == latest_day]
@@ -226,6 +250,7 @@ def _classify_d_stage(T_start: int, T_MA: int, R_volume: float,
     pct = latest["pct_chg"].dropna()
     up_ratio = (pct > 0).mean() if len(pct) > 0 else 0
     gt3_ratio = (pct > 3).mean() if len(pct) > 0 else 0
+    gt5_ratio = (pct > 5).mean() if len(pct) > 0 else 0
     limit_up_count = (pct > 9.5).sum() if len(pct) > 0 else 0
 
     # D8+: 中军跌破10日线或20日线
@@ -234,18 +259,40 @@ def _classify_d_stage(T_start: int, T_MA: int, R_volume: float,
     if _check_backbone_break_ma(sub, latest, codes, ma_period=20):
         return "D8+"
 
-    # 放巨量检查: R_volume > 1.5
+    # 放巨量检查
     is_high_volume = R_volume > 1.5
-
-    # 炸板率近似: 涨停股数多但整体涨幅低
-    if limit_up_count >= 2 and gt3_ratio < 0.30:
-        zha_ban_signal = True
-    else:
-        zha_ban_signal = False
+    zha_ban_signal = limit_up_count >= 2 and gt3_ratio < 0.30
 
     # D6-D7: 加速高潮/派发期
     if T_start >= 6 and (is_high_volume or zha_ban_signal):
         return "D6-D7"
+
+    # === 新增：今日激活强度判定 ===
+    # 如果今天极高激活(>50%成分股涨超5%)且有历史激活记录 → 直接认定为D4-D5主升加速
+    if gt5_ratio > 0.50 and T_start > 0:
+        return "D4-D5"
+    # 如果今天高激活(>30%)且有历史激活记录 → 二波启动/D3
+    if gt5_ratio > 0.30 and T_start > 0:
+        return "D3"
+
+    # === 新增：健康回调判定 ===
+    # T_start>0但今天未激活 → 检查是否健康回调
+    if T_start > 0 and gt5_ratio <= 0.15:
+        backbone_healthy = _check_backbone_healthy(sub, latest, codes)
+        if backbone_healthy and R_volume < 1.1:
+            if T_start >= 4:
+                return "D4-D5(回调蓄势)"
+            elif T_start == 3:
+                return "D3(回调休整)"
+            else:
+                return "D1-D2(回调)"
+        elif backbone_healthy:
+            if T_start >= 4:
+                return "D4-D5(缩量回调)"
+            else:
+                return "D1-D2(缩量回调)"
+        else:
+            return "D8+"
 
     # D4-D5: 主升加速期
     if 4 <= T_start <= 5 and gt3_ratio > 0.50:
@@ -352,6 +399,11 @@ def _get_d_stage_action(d_stage: str) -> str:
         "D8+": "清仓/回避",
         "潜伏期": "观望等待",
         "数据不足": "观望",
+        "D4-D5(回调蓄势)": "等待二波启动/低吸",
+        "D4-D5(缩量回调)": "等待缩量企稳/低吸",
+        "D3(回调休整)": "观望/准备低吸",
+        "D1-D2(回调)": "观望/准备低吸",
+        "D1-D2(缩量回调)": "缩量企稳可低吸",
     }
     return action_map.get(d_stage, "观望")
 
@@ -384,13 +436,15 @@ def _calc_center_scores(sub: pd.DataFrame, codes: List[str]) -> List[dict]:
 
     # ---- 初筛: 市值 + 流动性 硬门槛 ----
     # 日均成交额（近20日）
-    daily_amt = sub.groupby(["trade_date", "ts_code"])["amount"].sum().reset_index()
+    daily_amt = sub[["trade_date", "ts_code", "amount"]].drop_duplicates()
+    daily_amt = daily_amt.groupby(["trade_date", "ts_code"])["amount"].sum().reset_index()
     avg_amt_20d = daily_amt.groupby("ts_code")["amount"].mean()
 
     circ_mv_sorted = latest.groupby("ts_code")["circ_mv"].first().sort_values(ascending=False)
     candidates = circ_mv_sorted[circ_mv_sorted > 1_000_000]       # > 100亿
+    # amount 单位为千元, 2亿 = 200,000千元
     candidates = candidates[candidates.index.isin(
-        avg_amt_20d[avg_amt_20d > 2e8].index                        # 日均成交额 > 2亿
+        avg_amt_20d[avg_amt_20d > 200_000].index                    # 日均成交额 > 2亿
     )]
 
     if len(candidates) < 2:
@@ -423,7 +477,9 @@ def _calc_center_scores(sub: pd.DataFrame, codes: List[str]) -> List[dict]:
 
         # ---- 维度2: LiquidityCapacity (流动性容量, 25%) ----
         mv_val = float(circ_mv_sorted.get(code, 0)) / 10000  # 亿
-        amt_val = float(avg_amt_20d.get(code, 0)) / 1e8      # 亿
+        raw_amt = float(avg_amt_20d.get(code, 0))
+        # amount 单位为千元（tushare 标准），换算成亿: / 100000
+        amt_val = raw_amt / 100000                            # 亿
 
         liq_mv = _normalize_market_cap(mv_val)         # 0-100
         liq_amt = _normalize_amount(amt_val)            # 0-100
@@ -608,7 +664,7 @@ def _calc_beta_theme(stock: pd.DataFrame, theme_index: pd.Series) -> float:
 
     common_dates = stock.index.intersection(theme_index.index)
     if len(common_dates) < 10:
-        return 50.0
+        return 1.0  # 数据不足时返回中性 Beta=1
 
     stock_ret = stock.loc[common_dates, "pct_chg"].iloc[-20:] / 100.0
     theme_close = theme_index.loc[common_dates].iloc[-20:]
@@ -619,18 +675,16 @@ def _calc_beta_theme(stock: pd.DataFrame, theme_index: pd.Series) -> float:
     theme_ret = theme_ret[valid].values
 
     if len(stock_ret) < 5 or np.std(theme_ret) < 1e-9:
-        return 50.0
+        return 1.0  # 数据不足时返回中性 Beta=1
 
     cov = np.cov(stock_ret, theme_ret)[0, 1]
     var = np.var(theme_ret)
 
     if var < 1e-9:
-        return 50.0
+        return 1.0  # 方差为0时返回中性 Beta=1
 
     beta = cov / var
-
-    beta_score = 50.0 + (beta - 1.0) * 40.0
-    return float(np.clip(beta_score, 0, 100))
+    return float(beta)  # 返回原始 Beta（实际值如 1.39），由调用方用 _normalize_beta 归一化
 
 
 def _calc_max_drawdown_n(stock: pd.DataFrame, n: int = 10) -> float:
@@ -876,6 +930,11 @@ def generate_next_day_trading_card(
         "D6-D7": "加速高潮/派发期：放巨量（R_volume>1.5）或炸板率上升，筹码开始松动，需逢高减仓。",
         "D8+": "衰退期/退潮期：中军跌破10日/20日线，趋势破位，应清仓回避。",
         "潜伏期": "潜伏期：主题尚未爆发，需等待启动信号。",
+        "D4-D5(回调蓄势)": "主升后健康回调：之前有过强势主升（T_start>=4），缩量回调蓄势，等待二波启动信号。",
+        "D4-D5(缩量回调)": "主升后缩量回调：量能收缩，中军健康，适合观察低吸机会。",
+        "D3(回调休整)": "首分后回调休整：经历首分分歧后进入回调，等待企稳。",
+        "D1-D2(回调)": "启动后回调：刚启动就遇回调，观察是否企稳。",
+        "D1-D2(缩量回调)": "启动后缩量回调：缩量企稳可能是二次介入机会。",
     }
     stage_desc = stage_descriptions.get(d_stage, "")
 

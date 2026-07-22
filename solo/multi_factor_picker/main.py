@@ -1205,17 +1205,14 @@ def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Resul
         # 市值过滤（所有股票都适用）
         if mc_b < 80 or mc_b > 5000:
             continue
-        has_forecast = r.forecast_profit_change > 0
+        has_forecast = r.forecast_profit_change != 0
         if has_forecast:
-            # 有预告数据：按预告增速+环比过滤
+            # 有预告数据：按预告增速过滤
             if r.forecast_profit_change < 30:
-                continue
-            has_qoq_data = r.quarterly_net_profit > 0
-            if has_qoq_data and r.sequential_qoq_growth <= 0:
                 continue
         # else: 无预告数据，跳过（仅市值过滤）
         filtered.append(r)
-    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (有预告YoY≥30% + QoQ>0 + 市值80-5000亿)")
+    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (预告YoY≥30% + 市值80-5000亿)")
     return filtered
 
 
@@ -1272,6 +1269,10 @@ def main():
         # 全市场 BullScore 扫描（含数据拉取 + 评分）
         all_results = bull_scan(config, fetcher)
         logger.info(f"BullScore 评分完成: {len(all_results)} 只")
+
+        # ── 中报基本面硬核过滤（7-8月） ──
+        all_results = _july_hard_filter(all_results)
+        logger.info(f"中报基本面过滤后: {len(all_results)} 只")
 
         # ── 保存CSV（仅保存一份全量数据，供后续 --double-score 使用） ──
         report_daily_dir = Path(__file__).parent.parent / "report_daily"

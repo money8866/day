@@ -7461,22 +7461,14 @@ def strategy_dx(df, code, emotion_stage, total_mv=0):
 
 
 
-def deepseek(prompt, use_flash=False):
-    """AI 报告生成（优先 GLM-5.2 联网搜索，自动 fallback 到 DeepSeek）
+def deepseek(prompt, use_flash=True):
+    """AI 报告生成（DeepSeek flash，无联网搜索，精简输出）
     Args:
         prompt: 提示词
-        use_flash: True=用Flash快速模型，False=用深度模型
+        use_flash: True=用Flash快速模型（默认）
     """
-    # ===== 优先使用 GLM-5.2 + 联网搜索 =====
-    if ZHIPU_API_KEY:
-        try:
-            return _call_glm(prompt, use_flash)
-        except Exception as e:
-            print(f"⚠️ GLM 调用失败，回退到 DeepSeek: {e}")
-
-    # ===== Fallback: DeepSeek（无联网） =====
     if not DEEPSEEK_API_KEY:
-        print("⚠️ 无可用 AI API Key（ZHIPU_API_KEY / DEEPSEEK_API_KEY 均为空）")
+        print("⚠️ 无可用 AI API Key（DEEPSEEK_API_KEY 为空）")
         return ""
 
     # 清理 prompt 中的联网搜索要求，避免 DeepSeek 凭空编造数据
@@ -7503,6 +7495,7 @@ def deepseek(prompt, use_flash=False):
                     "绝不编造任何数据、新闻、游资动向、龙虎榜信息或外部事件。"
                     "如果数据中没有某只股票的信息，就如实说明'数据不足'，绝不能凭空捏造。"
                     "股票名称和代码必须严格引用用户提供的数据，不得自行修改或臆造。"
+                    "输出要求：精简精炼，每只股票分析不超过3句话，重点突出关键数据和结论。"
                 )
             },
             {"role": "user", "content": clean_prompt}
@@ -9915,10 +9908,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
     """检测量能爆发+宽幅震荡模式"""
     try:
         df = _df_override if _df_override is not None else get_hist_data(ts_code)
-        if df is None or len(df) < 80:
+        if df is None or len(df) < 180:
             return None
-        recent = df.tail(60)
-        if len(recent) < 20:
+        recent = df.tail(200)
+        if len(recent) < 60:
             return None
         vol_arr = recent['vol'].values.astype(float)
         high_arr = recent['high'].values.astype(float)
@@ -9928,7 +9921,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         
         vol_ma20 = pd.Series(vol_arr).rolling(20, min_periods=1).mean().values
         vol_ratio = vol_arr / np.maximum(vol_ma20, 1)
-        max_vol_ratio = float(np.max(vol_ratio))
+        max_vol_ratio = float(np.nanmax(vol_ratio))
         vol_ratio_gt2 = int(np.sum(vol_ratio > 2.0))
         vol_ratio_gt3 = int(np.sum(vol_ratio > 3.0))
         
@@ -9937,7 +9930,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         vol_vs_hist_pct = (recent_vol_max / hist_vol_max * 100) if hist_vol_max > 0 else 0
         
         amplitude = (high_arr - low_arr) / np.maximum(pre_close_arr, 0.01) * 100
-        avg_amplitude = float(np.mean(amplitude))
+        avg_amplitude = float(np.mean(amplitude[-120:]))
         amp_gt8_count = int(np.sum(amplitude > 8))
         
         range_high = float(np.max(high_arr))
@@ -10014,8 +10007,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         _recent_vol = float(np.mean(_vol200[-20:])) if len(_vol200) >= 20 else float(np.mean(_vol200))
         _vol_vs_base = _recent_vol / _base_vol
         
-        # 近20天均量至少是起涨前基量的1.3倍（保持比起涨前活跃）
-        if _vol_vs_base < 1.3:
+        # 近20天均量至少是起涨前基量的1.1倍（保持比起涨前活跃）
+        if _vol_vs_base < 1.1:
             return None
         
         # =========================
@@ -10122,6 +10115,14 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         elif cur_bar < 0 and cur_bar > prev_bar > prev2_bar:
             macd_status = '即将红柱（绿柱连续缩短）'
             macd_pass = True
+        # 红柱回调缩短+接近0：上升趋势中短暂回调，红柱接近零轴（放宽连续缩短要求，0.7倍阈值）
+        elif cur_bar > 0 and prev_bar > 0 and cur_bar < abs(macd_bar[-4]) * 0.7:
+            macd_status = '红柱回调缩短（趋势延续）'
+            macd_pass = True
+        # 红柱回调后反弹：上升趋势中短暂回调后重新发力（cur>prev且prev<prev2）
+        elif cur_bar > 0 and prev_bar > 0 and cur_bar > prev_bar and prev_bar < prev2_bar:
+            macd_status = '红柱回调后反弹（趋势延续）'
+            macd_pass = True
         
         if not macd_pass:
             # MACD未确认时，不直接返回None，先检测蓄势大涨信号
@@ -10185,6 +10186,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
 
         # 是否刚刚红柱（布尔值）
         is_fresh_red = (macd_status == '刚刚红柱 ✅')
+        # 是否红柱回调缩短
+        is_red_retrace = (macd_status == '红柱回调缩短（趋势延续）')
+        # 是否红柱回调后反弹
+        is_red_bounce = (macd_status == '红柱回调后反弹（趋势延续）')
 
         # === 强买信号判定（基于回测胜率最高的组合）===
         # 回测验证：以下组合T+5胜率>=74%
@@ -10206,12 +10211,16 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         elif 65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0:
             strong_buy = True
             strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(回测76%胜率)'
+        # 组合5: 红柱回调缩短/反弹 + 评分>=70 + 量比>=1.0（趋势延续）
+        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 1.0:
+            strong_buy = True
+            strong_buy_reason = '红柱回调+高评分+量比达标(趋势延续)'
 
         # === 观察信号判定（即将红柱，等待确认）===
         # 即将红柱的股票不作为强买信号，但保留观察，提示等待红柱确认
         watch = False
         watch_reason = ''
-        if not strong_buy and not is_fresh_red:
+        if not strong_buy and not is_fresh_red and not is_red_retrace and not is_red_bounce:
             # 即将红柱：绿柱连续缩短，等待翻红
             watch = True
             watch_reason = '观察·等待红柱（MACD绿柱连续缩短，即将金叉，可关注翻红确认）'
@@ -10352,14 +10361,16 @@ def run(target_date=None, simple_mode=False):
     # 直接用 txt 报告原文作为 emotion_text
     emotion_text = ma_txt if ma_txt else "（无大盘分析报告）"
     
-    # 加载 theme_forecast 5日上涨概率TOP5主题
-    forecast_top5 = _load_theme_forecast(TRADE_DATE, top_n=5)
-    if forecast_top5:
-        emotion_text += "\n\n【主题5日上涨概率预测 TOP5】"
-        for i, t in enumerate(forecast_top5, 1):
-            conf_label = {"high": "高", "medium": "中", "low": "低"}.get(t['confidence'], "")
-            emotion_text += (f"\n{i}. {t['theme']} - 5日上涨概率{t['prob_5d']:.1f}% "
-                             f"预期收益{t['avg_ret']:+.2f}% 置信度:{conf_label}")
+    # 过滤掉【指数趋势分】【市场趋势总评分】【市场情绪】三个区块（手机端冗余）
+    emotion_text = _re.sub(
+        r'【指数趋势分】[^\n]*\n?', '', emotion_text
+    )
+    emotion_text = _re.sub(
+        r'【市场趋势总评分】[^\n]*\n?', '', emotion_text
+    )
+    emotion_text = _re.sub(
+        r'【市场情绪】[^\n]*\n?', '', emotion_text
+    )
     
     print(emotion_text)
 
@@ -10893,6 +10904,56 @@ def run(target_date=None, simple_mode=False):
         print(volume_surge_swing_text)
 
     # =========================
+    # 中报预增股池择时（幻方量化算法）
+    # =========================
+    timing_pool_text = ""
+    try:
+        _timing_csv = os.path.join(BASE_DIR, 'report_daily', f'enhanced_timing_bull_all_{TRADE_DATE}.csv')
+        if os.path.exists(_timing_csv):
+            _timing_df = pd.read_csv(_timing_csv)
+            # 筛选S级和A级，且有明确买入信号
+            _sa_pool = _timing_df[_timing_df['修正后胜率分级'].isin(['S', 'A'])].copy()
+            if len(_sa_pool) > 0:
+                _lines = []
+                _lines.append(f"📊 中报预增股池择时（幻方算法） - {TRADE_DATE}")
+                _lines.append(f"  S/A级共{len(_sa_pool)}只，以下为明确买入信号：")
+                _lines.append("")
+                try:
+                    _, _, _, _stock_concepts = _load_theme_stock_map_from_json()
+                except:
+                    _stock_concepts = {}
+                for _, _r in _sa_pool.iterrows():
+                    _decision = str(_r.get('交易决策', ''))
+                    # 只显示有明确买入信号的
+                    if any(kw in _decision for kw in ['极高胜率', 'VWAP确认', '关注']):
+                        _grade = _r.get('修正后胜率分级', '')
+                        _name = _r.get('名称', '')
+                        _code = _r.get('代码', '')
+                        _score = _r.get('量化择时分', 0)
+                        _vwap = _r.get('VWAP', 0)
+                        _price = _r.get('现价', 0)
+                        _stop = _r.get('ATR动态止损价', 0)
+                        _buy_pt = _r.get('推荐买点类型', '')
+                        _profit_yoy = _r.get('中报业绩亮点', '')
+                        _concepts = _stock_concepts.get(_code, [])
+                        _theme_str = ' | 主题=' + ','.join(_concepts[:3]) if _concepts else ''
+                        _lines.append(f"  [{_grade}] {_name} ({_code}) 量化分={_score:.1f}{_theme_str}")
+                        _lines.append(f"    VWAP={_vwap:.2f} 现价={_price:.2f} 止损={_stop:.2f}")
+                        _lines.append(f"    买点={_buy_pt} | 中报={_profit_yoy}")
+                        _lines.append(f"    决策: {_decision}")
+                        _lines.append("")
+                timing_pool_text = "\n".join(_lines)
+                print(f"\n[中报预增择时] 加载 {len(_sa_pool)} 只S/A级")
+            else:
+                timing_pool_text = "\n📊 中报预增股池择时（幻方算法）\n\n今日无S/A级信号\n"
+        else:
+            timing_pool_text = f"\n📊 中报预增股池择时（幻方算法）\n\n未找到 {TRADE_DATE} 的择时数据，请先运行: python multi_factor_picker/enhanced_timing_bull_all.py\n"
+            print(f"[中报预增择时] 未找到 {_timing_csv}")
+    except Exception as e:
+        timing_pool_text = f"\n📊 中报预增股池择时（幻方算法）\n\n加载失败: {e}\n"
+        print(f"[中报预增择时] 加载失败: {e}")
+
+    # =========================
     # 获取主题可持续性数据（供AI分析，来自Theme Alpha V8.0引擎）
     # =========================
     non_daytrip_for_ai = ""
@@ -11079,99 +11140,6 @@ def run(target_date=None, simple_mode=False):
     except Exception as e:
         print(f"[ETF提示] 读取失败: {e}")
 
-    # =========================
-    # 筹码Alpha V5分析 - ETF前3名个股
-    # =========================
-    _chip_v5_text = ""
-    try:
-        from chip_alpha_v5 import ChipAlphaV5Engine, calc_opportunity_score
-        chip_engine = ChipAlphaV5Engine(token=TUSHARE_TOKEN)
-
-        _latest_path = r'D:\mystock\cache_daily\etf_alpha_ranking_latest.json'
-        if os.path.exists(_latest_path):
-            import json as _json2
-            with open(_latest_path, 'r', encoding='utf-8') as _f:
-                _data = _json2.load(_f)
-            _chip_top3 = (_data.get('top3_buy', []) or
-                          _data.get('top10_ranking', [])[:3])
-            if _chip_top3:
-                _chip_v5_lines = ["【ETF TOP3 筹码Alpha V5】"]
-                for _i, _r in enumerate(_chip_top3, 1):
-                    _code = _r.get('code', '')
-                    _name = _r.get('name', '')
-                    if not _code:
-                        continue
-                    try:
-                        _v5_engine = ChipAlphaV5Engine(token=TUSHARE_TOKEN)
-                        _v5 = _v5_engine.analyze(_code, lookback_days=20)
-                        _os = calc_opportunity_score(_v5)
-                        _a = _v5.get('alpha', {})
-                        _trend = _v5.get('trend', {})
-                        _dec = _v5.get('decision', {})
-                        _risk = _v5.get('risk', {})
-                        _s = _a.get('Structure',50)
-                        _f_val = _a.get('Flow',50)
-                        _m = _a.get('Momentum',50)
-                        _c = _a.get('Composite',50)
-                        _g = _a.get('Grade','C')
-                        _state = _trend.get('current_state','?')
-                        _act = _dec.get('action','?')
-                        _conf = _dec.get('confidence',50)
-                        _oss = _os.get('score',50)
-                        _line = (f"  {_i}.{_name}({_code}) "
-                                 f"V5:{_s:.0f}/{_f_val:.0f}/{_m:.0f}({_c:.0f}/{_g}) "
-                                 f"风险={_risk.get('Composite',50):.0f} "
-                                 f"{_state}→{_act}({_conf:.0f}%) "
-                                 f"机会={_oss:.1f}")
-                        _chip_v5_lines.append(_line)
-                    except Exception as _e2:
-                        _chip_v5_lines.append(f"  {_i}.{_name}({_code}) [分析失败]")
-                _chip_v5_text = "\n".join(_chip_v5_lines)
-                print(f"\n{_chip_v5_text}")
-            else:
-                _chip_v5_text = ""
-        else:
-            _chip_v5_text = ""
-    except Exception as _e:
-        _chip_v5_text = ""
-
-    # =========================
-    # ETF 筹码分析 V2 — 读取或自动生成AI报告
-    # =========================
-    _etf_v2_text = ""
-    _v2_txt = rf'D:\mystock\solo\report_daily\etf_alpha_v5_AI报告_{TRADE_DATE}.txt'
-    _v2_csv = rf'D:\mystock\solo\report_daily\etf_alpha_v5_综合报告_{TRADE_DATE}.csv'
-    try:
-        if os.path.exists(_v2_txt):
-            with open(_v2_txt, 'r', encoding='utf-8') as _f:
-                _etf_v2_text = _f.read().strip()
-            print(f"[ETF V2] 已加载AI报告")
-        elif os.path.exists(_v2_csv):
-            print(f"[ETF V2] AI报告未生成，从综合报告自动提炼...")
-            with open(_v2_csv, 'r', encoding='utf-8') as _f:
-                _report_text = _f.read().strip()
-            if _report_text:
-                from scan_etf_alpha_v5 import refine_report_with_ai
-                _ai_report = refine_report_with_ai(_report_text, TRADE_DATE)
-                if _ai_report and _ai_report != _report_text:
-                    _etf_v2_text = _ai_report
-                    with open(_v2_txt, 'w', encoding='utf-8') as _f:
-                        _f.write(_ai_report)
-                    print(f"[ETF V2] AI报告已自动生成并保存")
-                else:
-                    _etf_v2_text = _report_text
-                    print(f"[ETF V2] AI提炼失败，使用原始综合报告")
-            else:
-                _etf_v2_text = ""
-                print(f"[ETF V2] 综合报告为空")
-        else:
-            _etf_v2_text = ""
-            print(f"[ETF V2] AI报告和综合报告均不存在: {_v2_txt}")
-    except Exception as _e:
-        _etf_v2_text = ""
-        print(f"[ETF V2] 读取/生成失败: {_e}")
-
-
 
     #return
 
@@ -11190,8 +11158,6 @@ def run(target_date=None, simple_mode=False):
 {trade_advice_text}
 
 {v8_center_text}
-
-{v9_execution_text}
 
 **【今日突破股池】**
 {hot_money_open_text}
@@ -11286,30 +11252,28 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 **【今日ETF Alpha Ranking】**
 {etf_tips_text}
 
-{_chip_v5_text}
-
 输出要求：
 - ETF Alpha Ranking - 强制输出；提示当前持仓和调仓建议。
 - ★ TOP3 推荐买入-强制输出：只显示股票代码、股票名称、Alpha评分、Alpha5收益、加速度、信号标签，不显示其他信息
 - TOP10 排名-不输出
 - 【信号标签解读】[突破]=接近60日新高且放量，[弹簧]=波动收缩蓄势待发，[龙头]=Alpha排名前15%且近高点，[拥挤]=短期涨幅过大风险预警
 
-5、ETF筹码分析策略（测试版V2）
-{_etf_v2_text}
-从报告中提炼
-（1）市场状态、核心机会和仓位建议；
-（2）TOP5的ETF名称和代码，操作与点评；
-（3）推荐的个股名称和代码(买入或持有信号)；（忽略其它字段）
-格式要求适合手机阅读。
-
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
 
-格式要求：
+7、**【中报预增股池择时（幻方算法）】**（预告利润增速≥30% + 6因子量化择时，格式强要求：个股之间加换行）
+{timing_pool_text}
+【S】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
+【A1】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
+【A2】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
+
+------------------
+以上全局格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
 - 股票分析另起一行，分点说明
-- 风格简洁明了，适合阅读
-- 返回MD格式，字体大小适合手机阅读，注意换行符为\n，避免使用\r\n
+- 段落标题加粗即可，不用放大字体
+- 风格简洁明了，适合手机阅读
+- 返回MD格式，字体大小适合手机阅读
 - **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据
 
 """

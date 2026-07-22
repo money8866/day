@@ -766,7 +766,8 @@ def batch_prefetch_daily_by_date(candidates: list, cache_dir: str,
               f"跳过批量预取，由引擎按需获取")
         return start_date
 
-    # 按交易日分批次汇总
+    # 按交易日分批次汇总，边拉边写缓存（避免中断后丢失全部数据）
+    # 内存中只累积当天的数据，写完后释放
     daily_acc = {code: [] for code in need_codes}
     basic_acc = {code: [] for code in need_codes}
 
@@ -795,25 +796,29 @@ def batch_prefetch_daily_by_date(candidates: list, cache_dir: str,
                     basic_acc[code].append(r.to_dict())
         time.sleep(0.13)
 
-    # 写入缓存parquet
-    write_count = 0
-    for code, rows_list in daily_acc.items():
-        if rows_list:
-            df = pd.DataFrame(rows_list).sort_values('trade_date').reset_index(drop=True)
-            path = _daily_path(code)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            df.to_parquet(path, index=False)
-            write_count += 1
-    for code, rows_list in basic_acc.items():
-        if rows_list:
-            df = pd.DataFrame(rows_list).sort_values('trade_date').reset_index(drop=True)
-            path = _basic_path(code)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            df.to_parquet(path, index=False)
-            write_count += 1
-
-    if write_count > 0:
-        print(f"[预取] 已写入 {write_count} 个缓存文件")
+        # 每处理完一个交易日，立即追加写入缓存（增量写入，中断后不丢失）
+        for code, rows_list in daily_acc.items():
+            if rows_list:
+                df_part = pd.DataFrame(rows_list).sort_values('trade_date').reset_index(drop=True)
+                path = _daily_path(code)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                # 如果已有缓存（之前交易日已写入），合并后写回
+                if os.path.exists(path):
+                    existing = pd.read_parquet(path)
+                    df_part = pd.concat([existing, df_part]).drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                df_part.to_parquet(path, index=False)
+                daily_acc[code] = []  # 清空内存，下一个交易日重新累积
+        for code, rows_list in basic_acc.items():
+            if rows_list:
+                df_part = pd.DataFrame(rows_list).sort_values('trade_date').reset_index(drop=True)
+                path = _basic_path(code)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                if os.path.exists(path):
+                    existing = pd.read_parquet(path)
+                    df_part = pd.concat([existing, df_part]).drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                df_part.to_parquet(path, index=False)
+                basic_acc[code] = []  # 清空内存
+        # 内存中累积的当天数据已写入，清空并行字典
     return start_date
 
 

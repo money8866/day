@@ -46,13 +46,20 @@ rem python solo\bwave_strategy.py
 rem python solo\etf_resonance\wave3_detector.py --scan --scope etf --top 20
 rem python solo\etf_resonance/rebound_detector.py --scope etf --min-score 60 --top 20
 
-echo [Step 5/7] 自选量化
+echo [Step 5.1/7] 自选量化
 
 echo =============================================
-echo [Step 5.0] ETF补涨扩散策略 (生成catchup_signals.csv)...
+echo [Step 5.2/7] ETF补涨扩散策略 (生成catchup_signals.csv)...
 python solo\etf_resonance\run_real.py
 
 python solo\scan_etf_alpha_v5.py
+
+
+echo [Step 5.3/7] 中报预增股池择时（幻方算法）
+
+echo =============================================
+python d:\mystock\solo\multi_factor_picker\main.py
+python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
 echo =============================================
 python solo\tushare_quant.py
