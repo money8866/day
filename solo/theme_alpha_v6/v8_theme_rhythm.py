@@ -126,6 +126,89 @@ def calculate_v8_theme_score(df_theme_data: pd.DataFrame) -> Tuple[pd.DataFrame,
 
 
 # =========================================================================
+# 三、基于融合排名信号的中军筛选（替代原Step3）
+# =========================================================================
+
+def generate_center_by_fusion(df_theme_data: pd.DataFrame,
+                               fusion_results: list,
+                               min_action: str = "轻仓参与",
+                               max_themes: int = 15,
+                               max_per_theme: int = 3) -> pd.DataFrame:
+    """
+    根据融合排名的操作建议生成中军列表。
+
+    替代原有的"V8排名前10+D阶段过滤"逻辑，
+    改为"融合排名中操作为强买/看多的主题"。
+
+    Args:
+        df_theme_data: 主题日线数据（与V8共用）
+        fusion_results: 融合排名结果列表（含'主题'、'操作建议'、'融合分'等字段）
+        min_action: 最低操作级别
+        max_themes: 最多生成中军的主题数
+        max_per_theme: 每个主题最多中军数（宁缺勿滥）
+
+    Returns:
+        center_df: 中军标的DataFrame
+    """
+    # 定义操作建议的优先级
+    action_priority = ["核心仓位", "轻仓参与", "试探建仓", "观望等待", "回避/清仓"]
+    min_priority = action_priority.index(min_action) if min_action in action_priority else 1
+
+    # 筛选满足条件的主题
+    target_themes = []
+    for r in fusion_results:
+        action = r.get("操作建议", "观望等待")
+        if action in action_priority:
+            if action_priority.index(action) <= min_priority:
+                target_themes.append(r)
+
+    # 按融合分降序，限制数量
+    target_themes = sorted(target_themes, key=lambda x: x.get("融合分", 0), reverse=True)
+    target_themes = target_themes[:max_themes]
+
+    if not target_themes:
+        print(f"  [中军-融合筛选] 无符合条件的主题（min_action={min_action}）")
+        return pd.DataFrame()
+
+    print(f"  [中军-融合筛选] 检测到{len(target_themes)}个活跃主题（操作建议≥{min_action}）:")
+    for t in target_themes:
+        print(f"    #{t.get('排名','?')} {t['主题']:<16} 融合分={t['融合分']:.1f} 操作={t['操作建议']}")
+
+    # 生成中军
+    center_records = []
+    for t in target_themes:
+        theme = t["主题"]
+        sub = df_theme_data[df_theme_data["theme"] == theme].copy()
+        if sub.empty:
+            continue
+        codes = sub["ts_code"].unique().tolist()
+        if len(codes) < 5:
+            continue
+        centers = _calc_center_scores(sub, codes)
+        for c in centers:
+            c["主题"] = theme
+            c["融合分"] = t.get("融合分", 0)
+            c["操作建议"] = t.get("操作建议", "")
+            c["融合排名"] = t.get("排名", 0)
+        center_records.extend(centers)
+
+    if not center_records:
+        return pd.DataFrame()
+
+    center_df = pd.DataFrame(center_records)
+    center_df = center_df.sort_values("确定性得分", ascending=False)
+
+    # 每个主题最多选max_per_只（优中选中，宁缺勿滥）
+    if max_per_theme > 0:
+        before = len(center_df)
+        center_df = center_df.groupby("主题").head(max_per_theme).reset_index(drop=True)
+        print(f"  [中军-融合筛选] 共{before}只 → 优中选中→{len(center_df)}只（每主题最多{max_per_theme}只）")
+    else:
+        print(f"  [中军-融合筛选] 共{len(center_df)}只中军标的（来自{len(target_themes)}个活跃主题）")
+    return center_df
+
+
+# =========================================================================
 # 一、天数节奏模型 (Theme Life Cycle Rhythm Engine)
 # =========================================================================
 

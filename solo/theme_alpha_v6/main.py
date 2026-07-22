@@ -452,6 +452,42 @@ def main(trade_date=None):
         import traceback
         traceback.print_exc()
 
+    # ===== FUSION-based 中军筛选（按活跃主题信号）=====
+    try:
+        _fusion_json = os.path.join(
+            os.path.dirname(config.BASE_DIR),
+            "theme_alpha_v6", "cache", f"theme_fusion_rank_{trade_date}.json"
+        )
+        import json as _json
+        if os.path.exists(_fusion_json):
+            with open(_fusion_json, 'r', encoding='utf-8') as _f:
+                _fusion_data = _json.load(_f)
+            _fusion_list = _fusion_data.get("data", _fusion_data) if isinstance(_fusion_data, dict) else _fusion_data
+
+            # v8_df是否可用
+            try:
+                _v8_df_ref = v8_df
+            except NameError:
+                _v8_df_ref = None
+
+            if _v8_df_ref is not None and not _v8_df_ref.empty:
+                from v8_theme_rhythm import generate_center_by_fusion
+                _center_fusion = generate_center_by_fusion(
+                    _v8_df_ref, _fusion_list,
+                    min_action="轻仓参与", max_themes=15
+                )
+                if not _center_fusion.empty:
+                    _center_csv = config.OUTPUT_CSV.replace(
+                        ".csv", f"_v8_center_{trade_date}.csv"
+                    )
+                    _center_fusion.to_csv(_center_csv, index=False, encoding="utf-8-sig")
+                    print(f"      [融合中军] 已保存: {_center_csv} ({len(_center_fusion)}只)")
+                else:
+                    print(f"      [融合中军] 无符合条件的标的")
+                del _center_fusion
+    except Exception as _e_center:
+        print(f"      [融合中军] 异常: {_e_center}")
+
     # ===== 第七步：打印报告 =====
     print(f"[7/7] 打印报告...")
 

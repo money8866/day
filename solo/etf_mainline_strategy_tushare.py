@@ -33,8 +33,10 @@ CACHE_DIR = r"D:\mystock\cache_daily"
 ETF_FUND_CACHE_DIR = os.path.join(CACHE_DIR, "etf_fund")
 ETF_CONS_CACHE_DIR = os.path.join(CACHE_DIR, "etf_cons")
 ETF_CONS_JSON = os.path.join(CACHE_DIR, "etf_constituents_all.json")
+ETF_SHARE_CACHE_DIR = os.path.join(CACHE_DIR, "etf_share")
 os.makedirs(ETF_FUND_CACHE_DIR, exist_ok=True)
 os.makedirs(ETF_CONS_CACHE_DIR, exist_ok=True)
+os.makedirs(ETF_SHARE_CACHE_DIR, exist_ok=True)
 
 def _read_cache(filepath):
     try:
@@ -61,6 +63,11 @@ def _cache_key_cons(ts_code, trade_date):
     """ETF成份股缓存key"""
     safe_name = ts_code.replace('.', '_')
     return os.path.join(ETF_CONS_CACHE_DIR, f"{safe_name}_{trade_date}.csv")
+
+def _cache_key_share(ts_code, trade_date):
+    """ETF份额规模缓存key"""
+    safe_name = ts_code.replace('.', '_')
+    return os.path.join(ETF_SHARE_CACHE_DIR, f"share_{safe_name}_{trade_date}.csv")
 
 def _cache_key_stock(ts_code, trade_date):
     """个股日线缓存key"""
@@ -438,11 +445,11 @@ def normalize_score(series):
     return (series - min_val) / (max_val - min_val) * 100
 
 
-def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
+def calculate_multi_factor_score(df, benchmark_df, mom_period=20, share_df=None):
     """
     计算多因子综合评分
     因子1: 20日动量 (40%)
-    因子2: 量能配合 (25%) - 近期量能是否放大
+    因子2: 量能配合 (25%) - 成交量放大 + ETF份额规模变化
     因子3: 风险调整收益 (20%) - 动量/波动率
     因子4: 相对强弱 (15%) - 相对于沪深300的表现
     """
@@ -471,6 +478,22 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
         else:
             vol_score = 50
 
+    # ETF份额规模变化评分: 反映资金净申购/赎回流向
+    share_score = 50  # 默认中性
+    if share_df is not None and len(share_df) >= 10:
+        share_df = share_df.sort_values("trade_date").reset_index(drop=True)
+        if 'total_share' in share_df.columns:
+            total_share = share_df['total_share']
+            recent_share = total_share.tail(5).mean()
+            prev_share = total_share.head(len(total_share) - 5).mean() if len(total_share) > 5 else total_share.mean()
+            if prev_share > 0:
+                share_change = (recent_share - prev_share) / prev_share * 100
+                # 份额增长=资金流入=加分: +1%→65分, +3%→80分, +5%→100分
+                # 份额减少=资金流出=减分: -1%→35分, -3%→20分
+                share_score = max(0, min(100, 50 + share_change * 15))
+    # 量能总分 = 成交量(60%) + 份额规模变化(40%)
+    vol_score = vol_score * 0.60 + share_score * 0.40
+
     daily_returns = close.pct_change().dropna()
     if len(daily_returns) >= mom_period:
         volatility = daily_returns.tail(mom_period).std() * np.sqrt(252) * 100
@@ -489,8 +512,10 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     else:
         rel_score = 50
 
+    # 动量映射到0-100分: +0%→50分, +10%→70分, +25%→100分, -10%→30分
+    mom_score = max(0, min(100, 50 + mom_20d * 2))
     total_score = (
-        mom_20d * 0.40 +
+        mom_score * 0.40 +
         vol_score * 0.25 +
         risk_adj_score * 0.20 +
         rel_score * 0.15
@@ -501,6 +526,7 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
         'vol_score': round(vol_score, 2),
         'risk_adj': round(risk_adj_score, 2),
         'rel_strength': round(rel_score, 2),
+        'share_score': round(share_score, 2),
         'total_score': round(total_score, 2)
     }
 
@@ -570,6 +596,8 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             
             close_arr = con_df['close'].values
             vol_arr = con_df['vol'].values
+            high_arr = con_df['high'].values
+            low_arr = con_df['low'].values
             # Tushare pro.daily: amount=千元, vol=手(1手=100股)
             if 'amount' in con_df.columns:
                 amount_arr = con_df['amount'].values * 1000  # 千元 → 元
@@ -594,6 +622,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             # PHASE 1: Collect Raw Metrics (defer scoring to Phase 2 for cross-sectional ranking)
             # ──────────────────────────────────────────
             stock_ret_5 = (close_arr[-1] / close_arr[-6] - 1) * 100 if len(close_arr) >= 6 else 0
+            today_ret = (close_arr[-1] / close_arr[-2] - 1) * 100 if len(close_arr) >= 2 else 0
             stock_ret_10 = (close_arr[-1] / close_arr[-11] - 1) * 100 if len(close_arr) >= 11 else 0
             stock_ret_20 = (close_arr[-1] / close_arr[-21] - 1) * 100 if len(close_arr) >= 21 else 0
             stock_ret_40 = (close_arr[-1] / close_arr[-41] - 1) * 100 if len(close_arr) >= 41 else 0
@@ -615,6 +644,9 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             alpha_accel_5_20 = alpha5 - alpha20
             alpha_accel_10_40 = alpha10 - alpha40
             alpha_accel_20_60 = alpha20 - alpha60
+            # 二阶加速度 (加速度的加速度): (alpha5-alpha10) - (alpha10-alpha20) = alpha5+alpha20-2*alpha10
+            # 正值=近端加速比远端更快 = 爆发力正在增强而非衰减
+            alpha_accel2_5_10_20 = alpha5 + alpha20 - 2 * alpha10
 
             # MA values
             ma5 = np.mean(close_arr[-5:]) if len(close_arr) >= 5 else close_arr[-1]
@@ -653,6 +685,23 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             down_avg = np.mean(down_vols) if down_vols else 0
             vol_price_ratio = up_avg / (down_avg + 1e-6) if down_avg > 0 else 1.0
 
+            # 突破质量评分: 量比+涨幅+突破前蓄势紧凑度
+            vol_ratio_today = vol_arr[-1] / (vol_arr[-20:].mean() + 1e-6)
+            low_10 = low_arr[-10:].min() if len(low_arr) >= 10 else low_arr[-1]
+            high_10 = high_arr[-10:].max() if len(high_arr) >= 10 else high_arr[-1]
+            low_20 = low_arr[-20:].min() if len(low_arr) >= 20 else low_arr[-1]
+            high_20 = high_arr[-20:].max() if len(high_arr) >= 20 else high_arr[-1]
+            range_10_pct = (high_10 / low_10 - 1) * 100
+            range_20_pct = (high_20 / low_20 - 1) * 100
+            pre_compress = range_10_pct / (range_20_pct + 1e-6)
+            # 综合突破质量(0-100): 涨幅/量比/突破幅度/压缩程度各25分
+            breakout_quality = (
+                max(0, min(today_ret * 8, 25)) +
+                max(0, min(vol_ratio_today * 12, 25)) +
+                max(0, min(-dist_to_high * 5, 25)) +
+                max(0, (1 - min(pre_compress, 1)) * 25)
+            )
+
             # MA alignment (bullish stacking: close > MA5 > MA10 > MA20 > MA60)
             ma_alignment = 0
             if close_arr[-1] > ma5: ma_alignment += 1
@@ -671,6 +720,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
                 'alpha_accel_5_20': alpha_accel_5_20,
                 'alpha_accel_10_40': alpha_accel_10_40,
                 'alpha_accel_20_60': alpha_accel_20_60,
+                'alpha_accel2_5_10_20': alpha_accel2_5_10_20,
                 # Returns
                 'stock_ret5': stock_ret_5, 'stock_ret10': stock_ret_10,
                 'stock_ret20': stock_ret_20, 'stock_ret60': stock_ret_60,
@@ -685,6 +735,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
                 # Capital
                 'amt_accel_short': amt_accel_short, 'amt_accel_med': amt_accel_med,
                 'vol_price_ratio': vol_price_ratio,
+                'breakout_quality': breakout_quality,
                 'avg_amount': avg_amount,
             })
         except Exception:
@@ -717,9 +768,11 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     # 1b. Alpha acceleration percentile (21%) - THE KEY DIFFERENTIATOR
     #     Accelerating outperformance (alpha5 > alpha20 > alpha60) predicts
     #     continued future gains much better than alpha level alone
-    alpha_accel_pct = (_pct(df['alpha_accel_5_20']) * 0.50 +
-                       _pct(df['alpha_accel_10_40']) * 0.30 +
-                       _pct(df['alpha_accel_20_60']) * 0.20)
+    #     + 二阶加速度: 近端加速 > 远端加速 = 爆发力增强
+    alpha_accel_pct = (_pct(df['alpha_accel_5_20']) * 0.35 +
+                       _pct(df['alpha_accel_10_40']) * 0.25 +
+                       _pct(df['alpha_accel_20_60']) * 0.15 +
+                       _pct(df['alpha_accel2_5_10_20']) * 0.25)
     
     module1_score = alpha_level_pct * 0.40 + alpha_accel_pct * 0.60
     
@@ -756,18 +809,21 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     module3_score = (amt_inflow_score * 0.40 + vol_price_score * 0.35 +
                      coiled_spring_score * 0.25)
     
-    # ── MODULE 4: Position Quality (12%) ──
-    # 4a. Distance from 60D high (6%) - closer to high = momentum persistence
+    # ── MODULE 4: Position Quality + 突破质量 (12%) ──
+    # 4a. Distance from 60D high (5%) - closer to high = momentum persistence
     dist_high_score = _pct(-df['dist_to_high'])
     
-    # 4b. Position in 60D range (4%)
+    # 4b. Position in 60D range (3%)
     pos_range_score = _pct(df['pos_in_range'])
     
     # 4c. Breakout proximity (2%) - at/near 60D high
     breakout_prox = df['dist_to_high'].apply(
         lambda x: 100 if x >= -2 else (80 if x >= -5 else (50 if x >= -10 else 20)))
     
-    module4_score = dist_high_score * 0.50 + pos_range_score * 0.33 + breakout_prox * 0.17
+    # 4d. 突破质量评分 (2%) - 今日涨幅/量比/突破幅度/蓄势紧凑度
+    bq_score = _pct(df['breakout_quality'])
+    
+    module4_score = dist_high_score * 0.42 + pos_range_score * 0.25 + breakout_prox * 0.16 + bq_score * 0.17
     
     # ── MODULE 5: Volatility Quality (8%) ──
     # Low volatility = institutional accumulation, less noise, higher win rate
@@ -793,9 +849,9 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     df['leader_bonus'] = 0
     df.loc[(alpha_rank_pct <= 0.15) & (df['dist_to_high'] >= -8), 'leader_bonus'] = 8
     
-    # Breakout Bonus: at 60D high + volume expansion → +10 (highest probability setup)
+    # Breakout Bonus: 突破质量>=70分 + 距60日高<3% → +10 (highest probability setup)
     df['breakout_bonus'] = 0
-    df.loc[(df['dist_to_high'] >= -3) & (df['amt_accel_short'] > 1.2), 'breakout_bonus'] = 10
+    df.loc[(df['breakout_quality'] >= 70) & (df['dist_to_high'] >= -3), 'breakout_bonus'] = 10
     
     # Coiled Spring Bonus: vol contraction + near high + money inflow → +8
     df['spring_bonus'] = 0
@@ -828,8 +884,8 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     # ── Console Output ──
     lines.append(f"  Valid stocks after filtering: {len(df)}")
     lines.append(f"")
-    lines.append(f"  {'Rank':<5} {'Code':<10} {'Name':<8} {'Score':>6} {'Alpha5':>7} {'A20':>6} {'Accel':>6} {'Trend':>5} {'Cap':>5} {'Pos':>5} {'Bonus':>5} {'Signal':>12}")
-    lines.append(f"  {'-'*92}")
+    lines.append(f"  {'Rank':<5} {'Code':<10} {'Name':<8} {'Score':>6} {'Alpha5':>7} {'A20':>6} {'Accel2':>6} {'BQ':>4} {'Trend':>5} {'Cap':>5} {'Pos':>5} {'Bonus':>5} {'Signal':>12}")
+    lines.append(f"  {'-'*96}")
     
     for i, (_, r) in enumerate(df.iterrows()):
         if i >= 15: break
@@ -838,7 +894,8 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
         bonus_str = f"{total_bonus:+d}" if total_bonus != 0 else "-"
         lines.append(f"  {i+1:<5} {short_code:<10} {r['name']:<8} {r['final_score']:>6.1f} "
                      f"{r['alpha5']:>+6.1f}% {r['alpha20']:>+5.1f}% "
-                     f"{r['alpha_accel_5_20']:>+5.1f} "
+                     f"{r.get('alpha_accel2_5_10_20', 0):>+5.1f} "
+                     f"{r.get('breakout_quality', 0):>4.0f} "
                      f"{r['trend_quality']:>5.1f} {r['capital']:>5.1f} "
                      f"{r['fundamental']:>5.1f} {bonus_str:>5} {r['signal']:>12}")
     
@@ -868,8 +925,10 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
         if r.get('leader_bonus',0) > 0: tags.append("龙头")
         if r.get('crowding_penalty',0) < 0: tags.append("拥挤")
         tag_str = f" [{','.join(tags)}]" if tags else ""
+        bq = r.get('breakout_quality', 0)
+        accel2 = r.get('alpha_accel2_5_10_20', 0)
         lines.append(f"    {i+1}. {r['name']}({short_code}) Score={r['final_score']:.1f} "
-                     f"Alpha5={r['alpha5']:+.1f}% Accel={r['alpha_accel_5_20']:+.1f}{tag_str}")
+                     f"Alpha5={r['alpha5']:+.1f}% Accel2={accel2:+.1f} BQ={bq:.0f}{tag_str}")
     
     # ── CSV Output ──
     csv_dir = os.path.join(CACHE_DIR, "etf_alpha_ranking")
@@ -879,17 +938,17 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     
     csv_df = df[['alpha_score', 'code', 'name', 'final_score',
                   'alpha5', 'alpha10', 'alpha20', 'alpha40', 'alpha60',
-                  'alpha_accel_5_20', 'alpha_accel_10_40', 'alpha_accel_20_60',
+                  'alpha_accel_5_20', 'alpha_accel_10_40', 'alpha_accel_20_60', 'alpha_accel2_5_10_20',
                   'relative_alpha', 'trend_quality', 'capital', 'fundamental',
                   'leader_bonus', 'breakout_bonus', 'spring_bonus', 'crowding_penalty',
-                  'dist_to_high', 'vol_contraction', 'amt_accel_short',
+                  'dist_to_high', 'vol_contraction', 'amt_accel_short', 'breakout_quality',
                   'signal', 'expected_hold_days']].copy()
     csv_df.columns = ['AlphaBase', 'StockCode', 'StockName', 'FinalScore',
                        'Alpha5', 'Alpha10', 'Alpha20', 'Alpha40', 'Alpha60',
-                       'Accel5_20', 'Accel10_40', 'Accel20_60',
+                       'Accel5_20', 'Accel10_40', 'Accel20_60', 'Accel2_5_10_20',
                        'RelAlphaScore', 'TrendScore', 'CapitalScore', 'PositionScore',
                        'LeaderBonus', 'BreakoutBonus', 'SpringBonus', 'CrowdingPenalty',
-                       'DistToHigh', 'VolContraction', 'AmtAccelShort',
+                       'DistToHigh', 'VolContraction', 'AmtAccelShort', 'BreakoutQuality',
                        'Signal', 'ExpectedHoldDays']
     csv_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     lines.append(f"\n  CSV Report: {csv_path}")
@@ -949,6 +1008,27 @@ def main(trade_date=None, backtest_mode=False):
             df = df[df["trade_date"] <= today].reset_index(drop=True)
             all_data[code] = df
 
+    # === 获取ETF份额规模数据（资金净申购/赎回流向） ===
+    print("  正在获取ETF份额规模数据...")
+    share_data = {}
+    for name, code in ETF_POOL.items():
+        ts_code = codes_ts[code]
+        share_cache = _cache_key_share(ts_code, TRADE_DATE)
+        sdf = _read_cache(share_cache)
+        if sdf is None:
+            try:
+                sdf = pro.etf_share_size(ts_code=ts_code,
+                                         start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
+                                         end_date=TRADE_DATE)
+                _save_cache(sdf, share_cache)
+                time.sleep(0.25)
+            except Exception as e:
+                continue
+        if sdf is not None and len(sdf) > 0 and 'total_share' in sdf.columns:
+            sdf["trade_date"] = pd.to_datetime(sdf["trade_date"], format="%Y%m%d")
+            sdf = sdf.sort_values("trade_date").reset_index(drop=True)
+            share_data[code] = sdf
+
     bm_ts = "510300.SH"
     cache_file = _cache_key_fund(bm_ts, TRADE_DATE)
     benchmark_df = _read_cache(cache_file)
@@ -983,7 +1063,8 @@ def main(trade_date=None, backtest_mode=False):
     rankings = []
     for code, df in all_data.items():
         bm_for_etf = benchmark_df if benchmark_df is not None else None
-        factors = calculate_multi_factor_score(df, bm_for_etf, MOM_PERIOD)
+        share_df = share_data.get(code)
+        factors = calculate_multi_factor_score(df, bm_for_etf, MOM_PERIOD, share_df=share_df)
         if factors is None:
             continue
 
@@ -1002,16 +1083,16 @@ def main(trade_date=None, backtest_mode=False):
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
     print(f"\n  --- 多因子综合评分 TOP 10 ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量':>7} {'量能':>6} {'风险':>6} {'相对':>6}")
-    print(f"  {'-'*60}")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量':>7} {'量能':>6} {'份额':>6} {'风险':>6} {'相对':>6}")
+    print(f"  {'-'*65}")
 
     for i, r in enumerate(rankings[:10]):
         print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} "
-              f"{r['momentum']:>+7.2f}% {r['vol_score']:>6.1f} {r['risk_adj']:>6.1f} {r['rel_strength']:>6.1f}")
+              f"{r['momentum']:>+7.2f}% {r['vol_score']:>6.1f} {r['share_score']:>6.1f} {r['risk_adj']:>6.1f} {r['rel_strength']:>6.1f}")
 
     result_message += f"  ---多因子评分 TOP 5 ---\n"
     for i, r in enumerate(rankings[:5]):
-        result_message += f"  {i+1}. {r['name']}({r['code']}) 综合分:{r['total_score']:.1f} 动量:{r['momentum']:+.2f}%\n"
+        result_message += f"  {i+1}. {r['name']}({r['code']}) 综合分:{r['total_score']:.1f} 动量:{r['momentum']:+.2f}% 份额:{r['share_score']:.0f}\n"
 
     def count_trade_days(start_str, end_date):
         ref = all_data.get("512880")
