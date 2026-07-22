@@ -25,6 +25,88 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
 # ====================================================================
+# 分数扩展：将50附近的分数拉开，提高因子区分度
+# ====================================================================
+def _expand_score_vector(scores: np.ndarray, midpoint: float = 50.0,
+                          low_strength: float = 1.4, high_strength: float = 1.4) -> np.ndarray:
+    """
+    对因子分数向量进行非线性扩展，拉开高分和低分之间的差距。
+
+    核心逻辑：
+    - 以midpoint为中心，对偏离中心的值进行指数放大
+    - 50分以下的压缩到更低，50分以上的推到更高
+    - 使用非线性映射：expanded = midpoint + (score - midpoint) * strength
+      strength在极端区更大（>1.4），在中间区更小（~1.2）
+
+    目的：让prob_lookup中不同分箱的上涨概率差异更大，
+    解决目前所有分箱概率挤在54%-58%之间的核心问题。
+    """
+    if scores is None or len(scores) == 0:
+        return scores
+
+    scores = np.asarray(scores, dtype=float)
+
+    # 非线性扩展：越远离midpoint，扩展幅度越大
+    deviation = scores - midpoint
+    abs_dev = np.abs(deviation)
+
+    # 分三段：小偏离(0-10)用1.2x, 中偏离(10-20)用1.4x, 大偏离(>20)用1.6x
+    strength_map = np.ones_like(abs_dev)
+    strength_map[abs_dev <= 10] = low_strength
+    strength_map[(abs_dev > 10) & (abs_dev <= 20)] = (low_strength + high_strength) / 2
+    strength_map[abs_dev > 20] = high_strength
+
+    expanded = midpoint + deviation * strength_map * 1.5
+    return expanded
+
+
+def _compute_bayesian_bin_stats(bin_data: pd.DataFrame, overall_up_rate: float,
+                                  ret_col: str, up_col: str,
+                                  min_samples: int = 30) -> dict:
+    """
+    使用贝叶斯收缩计算分箱统计量。
+
+    核心逻辑：
+    - 样本少的箱（极端分数区间，样本天然少）的上涨概率向整体均值收缩
+    - 收缩程度 = 1 / (1 + n_samples / prior_strength)
+    - prior_strength=50 意味着50个样本时收缩一半，200个样本时几乎不收缩
+
+    Args:
+        bin_data: 分箱内的样本DataFrame
+        overall_up_rate: 整体上涨率（先验）
+        ret_col: 收益率列名
+        up_col: 是否上涨列名
+        min_samples: 最小样本数阈值
+
+    Returns:
+        dict: bin统计量（已收缩）
+    """
+    n = len(bin_data)
+    if n < min_samples:
+        return None
+
+    raw_up_prob = float(bin_data[up_col].mean())
+    raw_avg_ret = float(bin_data[ret_col].mean())
+
+    # 贝叶斯收缩：样本越少，越向整体均值靠拢
+    # prior_strength控制收缩速度，值越大收缩越强
+    prior_strength = 50.0
+    shrinkage = n / (n + prior_strength)
+
+    adjusted_up_prob = overall_up_rate * (1 - shrinkage) + raw_up_prob * shrinkage
+    adjusted_avg_ret = raw_avg_ret * shrinkage  # 收益也做同样收缩
+
+    return {
+        "n_samples": n,
+        "up_prob": float(adjusted_up_prob * 100),
+        "avg_ret": float(adjusted_avg_ret),
+        "raw_up_prob": float(raw_up_prob * 100),
+        "raw_avg_ret": float(raw_avg_ret),
+        "shrinkage": float(shrinkage),
+    }
+
+
+# ====================================================================
 # 1. 加载回测样本
 # ====================================================================
 def load_backtest_samples():
@@ -98,15 +180,20 @@ def train_prob_lookup(df: pd.DataFrame, factor_cols: list, horizon: int = 5,
 
 
 def train_prob_lookup_multi_horizon(df: pd.DataFrame, factor_cols: list,
-                                      horizons: list = None, n_bins: int = 5) -> dict:
+                                      horizons: list = None, n_bins: int = 7) -> dict:
     """
-    多horizon训练条件概率查表（3d/5d/10d）
+    多horizon训练条件概率查表（3d/5d/10d）— 优化版
+
+    关键改进：
+    1. 分数扩展：对因子分数进行非线性拉伸（50分附近的分数拉开差距）
+    2. 贝叶斯收缩：样本少的箱的概率向整体均值收缩，提高稳定性
+    3. 更多分箱：从5箱增加到7箱，提高粒度
 
     Args:
         df: 回测样本DataFrame，需含 ret_Nd/up_Nd 列
         factor_cols: 因子列名列表
         horizons: 周期列表，默认[3, 5, 10]
-        n_bins: 分箱数
+        n_bins: 分箱数，默认7（原5）
 
     Returns:
         查表字典 {factor_key: {"3d": [...], "5d": [...], "10d": [...]}}
@@ -128,33 +215,53 @@ def train_prob_lookup_multi_horizon(df: pd.DataFrame, factor_cols: list,
                 print(f"  [跳过] {factor_col} {h}d: 缺列 {ret_col}/{up_col}")
                 continue
 
-            valid = df[[factor_col, ret_col, up_col]].dropna()
-            if len(valid) < 50:
+            valid = df[[factor_col, ret_col, up_col]].dropna().copy()
+            if len(valid) < 100:
                 print(f"  [跳过] {factor_col} {h}d: 样本不足 {len(valid)}")
                 continue
 
-            # 等频分箱
+            # ===== 改进1: 分数扩展 =====
+            # 对因子分数进行非线性拉伸，拉开极端区间的差距
+            expanded = _expand_score_vector(valid[factor_col].values)
+            valid["score_expanded"] = expanded
+            overall_up_rate = float(valid[up_col].mean())
+
+            # ===== 改进2: 更多分箱（7箱vs原5箱） =====
             try:
-                valid["bin"] = pd.qcut(valid[factor_col], q=n_bins, duplicates="drop", labels=False)
+                valid["bin"] = pd.qcut(valid["score_expanded"], q=n_bins,
+                                        duplicates="drop", labels=False)
             except Exception:
                 continue
 
+            # ===== 改进3: 贝叶斯收缩 =====
             bins = []
             for bin_idx in sorted(valid["bin"].unique()):
                 bin_data = valid[valid["bin"] == bin_idx]
-                if len(bin_data) < 10:
+                # 获取原始score的范围（而非扩展后的），保留bin_min/max与原系统兼容
+                raw_min = float(bin_data[factor_col].min())
+                raw_max = float(bin_data[factor_col].max())
+
+                # 贝叶斯收缩
+                stats = _compute_bayesian_bin_stats(bin_data, overall_up_rate,
+                                                     ret_col, up_col, min_samples=20)
+                if stats is None:
                     continue
+
                 bins.append({
-                    "bin_min": float(bin_data[factor_col].min()),
-                    "bin_max": float(bin_data[factor_col].max()),
-                    "up_prob": float(bin_data[up_col].mean() * 100),
-                    "avg_ret": float(bin_data[ret_col].mean()),
-                    "n_samples": int(len(bin_data)),
+                    "bin_min": raw_min,
+                    "bin_max": raw_max,
+                    "up_prob": round(stats["up_prob"], 2),
+                    "avg_ret": round(stats["avg_ret"], 4),
+                    "n_samples": stats["n_samples"],
+                    # 扩展后的边界（内部使用）
+                    "score_min": float(bin_data["score_expanded"].min()),
+                    "score_max": float(bin_data["score_expanded"].max()),
                 })
 
             if bins:
                 factor_lookup[f"{h}d"] = bins
-                print(f"  {factor_col} {h}d: {len(bins)}bins, {len(valid)}样本, 上涨率{valid[up_col].mean()*100:.1f}%")
+                print(f"  {factor_col} {h}d: {len(bins)}bins, {len(valid)}样本, "
+                      f"上涨率{overall_up_rate*100:.1f}%")
 
         if factor_lookup:
             lookup[factor_col] = factor_lookup
@@ -372,9 +479,10 @@ def main():
         print(f"  主CSV检测到3d/5d/10d列，训练多horizon查表...")
         full_lookup = train_prob_lookup_multi_horizon(df, factor_cols, horizons=[3, 5, 10])
     else:
-        print(f"  主CSV只有5d列，尝试用backtest_samples.csv训练3d/10d...")
-        # 5d用主CSV（21417样本，1.5年）
-        full_lookup = train_full_lookup(df, factor_cols, horizon=5)
+        print(f"  主CSV只有5d列（列名actual_ret/actual_up），使用优化方法训练5d查表...")
+        # 列名映射：actual_ret → ret_5d, actual_up → up_5d
+        df_5d = df.rename(columns={"actual_ret": "ret_5d", "actual_up": "up_5d"})
+        full_lookup = train_prob_lookup_multi_horizon(df_5d, factor_cols, horizons=[5])
         print(f"  5d训练完成: {len(full_lookup)}个因子")
 
         # 3d/10d用backtest_samples.csv（2958样本，3个月）

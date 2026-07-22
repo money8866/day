@@ -104,9 +104,7 @@ def _calc_leader_height(sub, latest, codes, top_df=None, limit_df=None):
     返回: 0-100
     """
     # 确定龙头候选：近5日涨幅最大 + 成交额最大
-    recent = sub.groupby("ts_code").apply(
-        lambda g: _get_latest_n(g, 5)
-    ).reset_index(drop=True)
+    recent = sub.sort_values("trade_date").groupby("ts_code").tail(5).reset_index(drop=True)
 
     if recent.empty:
         return 50.0
@@ -187,11 +185,6 @@ def _calc_leader_height(sub, latest, codes, top_df=None, limit_df=None):
         score -= 5
 
     return float(np.clip(score, 5, 98))
-
-
-def _get_latest_n(group, n):
-    """取每个group最近n条记录"""
-    return group.sort_values("trade_date").tail(n)
 
 
 def _calc_backbone_strength(sub, latest, codes):

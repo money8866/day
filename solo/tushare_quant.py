@@ -151,6 +151,45 @@ def _load_theme_stock_map_from_json():
     return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
 
 
+def _load_fusion_result(expected_date=None):
+    """加载 FUSION 融合排名结果。
+
+    优先读取 fusion_rank 生成的 JSON，
+    若不存在则回退到 _load_v6_result() 的逻辑。
+
+    Args:
+        expected_date: 交易日(YYYYMMDD)，None时不验证
+
+    Returns:
+        list: 融合排名结果列表（按融合分降序），含 meta + data 字段
+              回退时返回 _load_v6_result 的原始结果
+    """
+    fusion_path = None
+    if expected_date:
+        fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                   f'theme_fusion_rank_{expected_date}.json')
+
+    if fusion_path and os.path.exists(fusion_path):
+        try:
+            with open(fusion_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+            meta = payload.get("meta", {})
+            data = payload.get("data", payload)  # 兼容旧格式（无meta包装）
+            if isinstance(data, list) and len(data) > 0:
+                print(f"[FUSION] 加载融合排名: {len(data)}个主题 | "
+                      f"大盘={meta.get('大盘状态','?')} | 模式={meta.get('模式','?')}")
+                return data
+            else:
+                print(f"[FUSION] 融合排名数据异常，回退V6/V8")
+        except Exception as e:
+            print(f"[FUSION] 读取失败: {e}，回退V6/V8")
+    else:
+        print(f"[FUSION] 融合排名文件不存在，回退V6/V8")
+
+    # 回退：使用 V6/V8 原始结果
+    return _load_v6_result(expected_date)
+
+
 def _load_v6_result(expected_date=None):
     """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
     优先尝试加载 V8 文件 (theme_alpha_v6_result_v8_{date}.json)，
@@ -10288,42 +10327,66 @@ def run(target_date=None, simple_mode=False):
     # =========================
     # 主题状态全景（来自 Theme Alpha V8.0 引擎）
     # =========================
-    print("\n========== 主题状态全景（来自 Theme Alpha V8.0 引擎）==========\n")
+    print("\n========== 主题状态全景（来自 FUSION 融合排名引擎）==========\n")
     sector_text_his = ""
     try:
-        v6_data = _load_v6_result(TRADE_DATE)
+        # 优先加载融合排名，回退 V8/V6
+        v6_data = _load_fusion_result(TRADE_DATE)
         if v6_data:
-            # 构建主题状态文本
             lines = []
-            v6_date = v6_data[0].get('trade_date', '')
-            date_str = f" ({v6_date})" if v6_date else ""
-            source_label = "V8.0" if any('T_start' in r for r in v6_data[:5]) else "V6.2"
-            lines.append(f"Theme Alpha {source_label} 引擎报告{date_str} (共{len(v6_data)}个主题)")
-            lines.append(f"{'#':<3} {'主题':<14} {'综合':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'趋势':<6} {'资金':<6} {'信号':<6}")
-            lines.append("")
-            for i, r in enumerate(v6_data[:30]):
-                t_start = r.get('T_start', '')
-                t_ma = r.get('T_MA', '')
-                r_vol = r.get('R_volume', '')
-                d_stage = r.get('D阶段', r.get('stage', ''))
-                d_action = r.get('策略动作', '')
-                if t_start == '' or t_start is None:
-                    t_start = '-'
-                if t_ma == '' or t_ma is None:
-                    t_ma = '-'
-                if r_vol == '' or r_vol is None:
-                    r_vol = '-'
-                else:
-                    r_vol = f"{r_vol:.2f}" if isinstance(r_vol, (int, float)) else r_vol
-                lines.append(f"{i+1:<3} {r.get('theme',''):<14} {r.get('composite_score',0):<6.1f} "
-                             f"{str(d_stage):<8} {str(d_action):<12} "
-                             f"{str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} "
-                             f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
-                             f"{r.get('trade_signal',''):<6}")
+            # 判断数据源：融合排名有"融合分"字段
+            is_fusion = '融合分' in (v6_data[0] if v6_data else {})
+            if is_fusion:
+                meta = {}
+                try:
+                    fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                               f'theme_fusion_rank_{TRADE_DATE}.json')
+                    if os.path.exists(fusion_path):
+                        with open(fusion_path, encoding='utf-8') as _ff:
+                            _fp = json.load(_ff)
+                            meta = _fp.get("meta", {})
+                except Exception:
+                    pass
+                mode = meta.get('模式', '')
+                date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
+                lines.append(f"FUSION 融合排名报告{date_str} | {mode} | 共{len(v6_data)}个主题")
+                lines.append(f"{'#':<3} {'主题':<14} {'融合分':<6} {'V6':<6} {'V8':<6} {'奖惩':<5} {'信号':<18} {'操作建议':<10}")
+                lines.append("")
+                for i, r in enumerate(v6_data[:30]):
+                    lines.append(f"{i+1:<3} {r.get('主题',''):<14} {r.get('融合分',0):<6.1f} "
+                                 f"{r.get('V6分',0):<6.1f} {r.get('V8分',0):<6.1f} "
+                                 f"{r.get('奖惩',0):<5} {r.get('信号',''):<18} {r.get('操作建议',''):<10}")
+            else:
+                # 回退：原 V8/V6 格式
+                v6_date = v6_data[0].get('trade_date', '')
+                date_str = f" ({v6_date})" if v6_date else ""
+                source_label = "V8.0" if any('T_start' in r for r in v6_data[:5]) else "V6.2"
+                lines.append(f"Theme Alpha {source_label} 引擎报告{date_str} (共{len(v6_data)}个主题)")
+                lines.append(f"{'#':<3} {'主题':<14} {'综合':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'趋势':<6} {'资金':<6} {'信号':<6}")
+                lines.append("")
+                for i, r in enumerate(v6_data[:30]):
+                    t_start = r.get('T_start', '')
+                    t_ma = r.get('T_MA', '')
+                    r_vol = r.get('R_volume', '')
+                    d_stage = r.get('D阶段', r.get('stage', ''))
+                    d_action = r.get('策略动作', '')
+                    if t_start == '' or t_start is None:
+                        t_start = '-'
+                    if t_ma == '' or t_ma is None:
+                        t_ma = '-'
+                    if r_vol == '' or r_vol is None:
+                        r_vol = '-'
+                    else:
+                        r_vol = f"{r_vol:.2f}" if isinstance(r_vol, (int, float)) else r_vol
+                    lines.append(f"{i+1:<3} {r.get('theme',''):<14} {r.get('composite_score',0):<6.1f} "
+                                 f"{str(d_stage):<8} {str(d_action):<12} "
+                                 f"{str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} "
+                                 f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
+                                 f"{r.get('trade_signal',''):<6}")
             lines.append("")
             sector_text_his = "\n".join(lines)
         else:
-            print(f"  V8.0 引擎结果不可用或日期不匹配")
+            print(f"  引擎结果不可用或日期不匹配")
             print(f"  请先运行: python theme_alpha_v6/main.py --date {TRADE_DATE}")
             sector_text_his = ""
     except Exception as e:

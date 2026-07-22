@@ -39,7 +39,7 @@ echo.
 
 echo 先生成趋势信号
 
-rem python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks_qualified.csv --output csv --pdf --today
+rem python solo\multi_factor_picker\wave2_pattern_scanner.py --csv D:\mystock\solo\report_daily\bull_stocks.csv --output csv --pdf --today
 
 rem python solo\bwave_strategy.py
 

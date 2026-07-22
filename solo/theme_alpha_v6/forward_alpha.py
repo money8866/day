@@ -454,14 +454,14 @@ def compute_forward_alpha(daily, codes, moneyflow=None,
     rel_rot = compute_relative_rotation(daily, codes, all_momentums)
     leader_eco = compute_leader_ecology(daily, codes, leader_code, leader_score)
 
-    # 加权合成
+    # 加权合成 - V6.3: 提升相对轮动权重
     forward_score = (
         rotation * 0.25 +      # Rotation Timing
         cap_persist * 0.20 +   # Capital Persistence
         trend_q * 0.20 +       # Trend Quality
-        catalyst * 0.15 +      # Catalyst
-        rel_rot * 0.10 +       # Relative Rotation
-        leader_eco * 0.10      # Leader Ecology
+        catalyst * 0.10 +      # Catalyst
+        rel_rot * 0.20 +       # Relative Rotation (↑10%→20%: 放量强于大盘的信号)
+        leader_eco * 0.05      # Leader Ecology
     )
 
     # 信号生成

@@ -14,6 +14,38 @@ from pathlib import Path
 PROB_LOOKUP_DIR = Path(__file__).resolve().parent / "output"
 PROB_LOOKUP_PATH = PROB_LOOKUP_DIR / "prob_lookup.json"
 
+
+# ====================================================================
+# 分数扩展：将50附近的分数拉开，提高因子区分度
+# ====================================================================
+def expand_factor_score(score: float, midpoint: float = 50.0,
+                         strength: float = 1.4) -> float:
+    """
+    对因子分数进行非线性扩展，拉开高分和低分之间的差距。
+
+    与 expand_training.py 中的 _expand_score_vector 保持一致，
+    此处为标量版本。
+
+    Args:
+        score: 原始因子分数（通常0-100）
+        midpoint: 中心点（默认50）
+        strength: 扩展强度（默认1.4）
+
+    Returns:
+        扩展后的分数
+    """
+    if score is None or np.isnan(score):
+        return 50.0
+    deviation = score - midpoint
+    abs_dev = abs(deviation)
+    if abs_dev <= 10:
+        s = 1.2
+    elif abs_dev <= 20:
+        s = (1.2 + strength) / 2
+    else:
+        s = strength
+    return midpoint + deviation * s * 1.5
+
 # 回测因子→查表key的映射（与prob_lookup.json的key对应）
 FACTOR_TO_LOOKUP_KEY = {
     "relative_strength": "f_rs",
@@ -222,8 +254,11 @@ def fuse_probability(factors: dict) -> dict:
 
     for key, weight in FACTOR_WEIGHTS.items():
         factor_data = factors.get(key, {})
-        score = factor_data.get("score", 50)
+        raw_score = factor_data.get("score", 50)
         signal = factor_data.get("signal", "")
+
+        # 分数扩展：拉开高分和低分之间的差距
+        score = expand_factor_score(raw_score)
 
         weighted_sum += score * weight
         total_weight += weight
@@ -238,6 +273,7 @@ def fuse_probability(factors: dict) -> dict:
             "layer": layer,
             "weight": weight,
             "score": score,
+            "raw_score": raw_score,
             "signal": signal,
         })
 

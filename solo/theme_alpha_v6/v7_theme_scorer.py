@@ -386,9 +386,7 @@ def _calc_leader(sub: pd.DataFrame, latest: pd.DataFrame, codes: List[str]) -> T
     龙头 = 近5日涨幅×0.6 + 成交额百分位×0.4 综合排名 Top 1-2
     考量: 涨幅强度、创新高(60日)、连板(涨停)
     """
-    recent = sub.groupby("ts_code").apply(
-        lambda g: g.sort_values("trade_date").tail(5)
-    ).reset_index(drop=True)
+    recent = sub.sort_values("trade_date").groupby("ts_code").tail(5).reset_index(drop=True)
 
     if recent.empty:
         return 50.0, {}
@@ -944,11 +942,11 @@ def _rule_backbone_veto(score: float, sub: pd.DataFrame, latest: pd.DataFrame,
     breakdown_ratio = breakdown_count / len(backbone_codes)
     heavy_ratio = heavy_breakdown_count / len(backbone_codes)
 
-    if breakdown_ratio > 0.30:
-        penalty = -15
-        reason = (f"中军破位硬否决: {breakdown_ratio:.0%}中军跌破20日线 "
-                  f"(严重{heavy_ratio:.0%}), 强制降级退潮期")
-        return score + penalty, [{"规则": "中军破位硬否决", "惩罚": penalty, "原因": reason}], True
+    if breakdown_ratio > 0.50:
+        penalty = -10
+        reason = (f"中军破位: {breakdown_ratio:.0%}中军跌破2% "
+                  f"(严重{heavy_ratio:.0%}), 降级退潮期")
+        return score + penalty, [{"规则": "backbone_breakdown", "惩罚": penalty, "原因": reason}], True
 
     return score, [], False
 

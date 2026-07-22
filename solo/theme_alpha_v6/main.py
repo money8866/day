@@ -293,32 +293,9 @@ def main(trade_date=None):
 
     # ===== V7 报告打印 =====
     v7_top = v7_df.sort_values("composite_score", ascending=False).head(15)
-    print(f"\n{'='*100}")
-    print(f"  Theme Alpha V7 梯队爆发力报告 - {trade_date}")
-    print(f"{'='*100}")
-    if len(v7_top) > 0:
-        print(f"\n  ★ TOP 15 主题（梯队完整度 + 资金活跃 + 趋势质量）")
-        print(f"  {'#':<3} {'主题':<18} {'综合':<6} {'资金':<6} {'梯队':<6} {'趋势':<6} {'阶段':<8} {'信号':<6} {'今日':<6} {'罚项'}")
-        print(f"  {'-'*100}")
-        for j, (_, row) in enumerate(v7_top.iterrows()):
-            penalty_str = str(len(row.get("penalties", []))) if row.get("penalties") else "0"
-            today_str = f"{row.get('today_return', 0):+.1f}%"
-            print(f"  {j+1:<3} {row['theme']:<18} {row['composite_score']:<6.1f} "
-                  f"{row['capital_vitality']:<6.1f} {row['echelon_integrity']:<6.1f} "
-                  f"{row['trend_momentum']:<6.1f} {row['stage']:<8} {row['signal']:<6} "
-                  f"{today_str:<6} {penalty_str}")
-
-    # V7 vs V6 对比
-    print(f"\n  ★ V6.2 vs V7 排名对比（Top 10 差异）")
-    v6_top10 = set(df.head(10)["theme"].tolist())
-    v7_top10 = set(v7_top.head(10)["theme"].tolist())
-    common = v6_top10 & v7_top10
-    only_v6 = v6_top10 - v7_top10
-    only_v7 = v7_top10 - v6_top10
-    print(f"  共同上榜: {len(common)} 个")
-    print(f"  V6独有(被V7淘汰): {', '.join(only_v6) if only_v6 else '无'}")
-    print(f"  V7新进(被V7识别): {', '.join(only_v7) if only_v7 else '无'}")
-    print(f"{'='*100}")
+    v7_common = len(set(df.head(10)["theme"].tolist()) & set(v7_top.head(10)["theme"].tolist()))
+    print(f"      V7梯队分计算完成: TOP1={v7_top.iloc[0]['theme']}({v7_top.iloc[0]['composite_score']:.1f}) | "
+          f"与V6共同上榜={v7_common}个")
 
     # ===== V7.2 独立版评分（完整算法实现）=====
     print(f"[V7.2] 梯队爆发力完整评分中...")
@@ -368,31 +345,9 @@ def main(trade_date=None):
             print(f"      V7.2结果已保存: {v7_standalone_json}")
 
             v7_top = v7_result.head(15)
-            print(f"\n{'='*100}")
-            print(f"  Theme Alpha V7.2 完整评分报告 - {trade_date}")
-            print(f"{'='*100}")
-            if len(v7_top) > 0:
-                cols = ["排名", "主题", "V7综合得分", "V7阶段", "资金分", "梯队分", "趋势分", "基础分", "惩罚项说明"]
-                print(f"\n  ★ TOP 15 主题")
-                print(f"  {'#':<3} {'主题':<18} {'综合':<6} {'阶段':<8} {'资金':<6} {'梯队':<6} {'趋势':<6} {'基础':<6} {'惩罚'}")
-                print(f"  {'-'*100}")
-                for _, row in v7_top.iterrows():
-                    penalty_str = (row["惩罚项说明"][:25] + "..." if len(str(row["惩罚项说明"])) > 28 else row["惩罚项说明"]) if row["惩罚项说明"] else ""
-                    print(f"  {row['排名']:<3} {row['主题']:<18} {row['V7综合得分']:<6.1f} "
-                          f"{row['V7阶段']:<8} {row['资金分']:<6.1f} {row['梯队分']:<6.1f} "
-                          f"{row['趋势分']:<6.1f} {row['基础分']:<6.1f} {penalty_str}")
-
-            # V7.2 vs V6.2 对比
-            print(f"\n  ★ V6.2 vs V7.2 排名对比（Top 10 差异）")
-            v6_top10 = set(df.head(10)["theme"].tolist())
-            v7_top10 = set(v7_top.head(10)["主题"].tolist())
-            common = v6_top10 & v7_top10
-            only_v6 = v6_top10 - v7_top10
-            only_v7 = v7_top10 - v6_top10
-            print(f"  共同上榜: {len(common)} 个")
-            print(f"  V6独有(被V7淘汰): {', '.join(only_v6) if only_v6 else '无'}")
-            print(f"  V7新进(被V7识别): {', '.join(only_v7) if only_v7 else '无'}")
-            print(f"{'='*100}")
+            v7_common2 = len(set(df.head(10)["theme"].tolist()) & set(v7_top.head(10)["主题"].tolist()))
+            print(f"      V7.2完整分计算完成: TOP1={v7_top.iloc[0]['主题']}({v7_top.iloc[0]['V7综合得分']:.1f}) | "
+                  f"与V6共同上榜={v7_common2}个")
     except Exception as e:
         print(f"      [V7.2] 评分异常: {e}")
         import traceback
@@ -455,238 +410,57 @@ def main(trade_date=None):
                 f.write(v8_trading_card)
             print(f"      指导卡已保存: {v8_card_file}")
 
-            # 打印V8.0 TOP 20
-            print(f"\n{'='*100}")
-            print(f"  V8.0 主题生命周期节奏报告 - {trade_date}")
-            print(f"{'='*100}")
-            v8_top = v8_result.head(20)
-            if len(v8_top) > 0:
-                print(f"\n  ★ TOP 20 主题（天数节奏 + 中军筛选）")
-                print(f"  {'#':<3} {'主题':<18} {'V8分':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'资金':<5} {'梯队':<5} {'趋势':<5} {'基础':<5} {'惩罚'}")
-                print(f"  {'-'*120}")
-                for _, row in v8_top.iterrows():
-                    penalty_str = str(row.get("惩罚项说明", ""))[:25] if row.get("惩罚项说明") else ""
-                    print(f"  {row['排名']:<3} {row['主题']:<18} {row['V7综合得分']:<6.1f} "
-                          f"{row.get('D阶段',''):<8} {row.get('策略动作',''):<12} "
-                          f"{row.get('T_start',0):<4} {row.get('T_MA',0):<4} "
-                          f"{row.get('R_volume',0):<6.2f} {row['资金分']:<5.1f} {row['梯队分']:<5.1f} "
-                          f"{row['趋势分']:<5.1f} {row['基础分']:<5.1f} {penalty_str}")
-
-            # 打印中军标的
-            if not v8_center_df.empty:
-                print(f"\n  ★ 高确定性中军标的")
-                center_cols = ["主题", "主题排名", "D阶段", "ts_code", "自由流通市值(亿)",
-                               "确定性得分", "均线多头天数", "Beta_theme", "近10日最大回撤%",
-                               "低吸参考价", "防守止损位"]
-                center_cols = [c for c in center_cols if c in v8_center_df.columns]
-                print(f"  {v8_center_df[center_cols].to_string(index=False).replace(chr(10), chr(10)+'  ')}")
-
-            # D阶段分布统计
+            # D阶段分布统计（精简输出）
             stage_counts = v8_result["D阶段"].value_counts()
-            print(f"\n  D阶段分布:")
-            for stage, cnt in stage_counts.items():
-                pct = cnt / len(v8_result) * 100
-                print(f"    {stage}: {cnt} 个 ({pct:.1f}%)")
-
-            print(f"\n  ★ 次日实盘交易指导卡 (TOP 1: {v8_result.iloc[0]['主题']})")
-            print(f"    已保存至: {v8_card_file}")
-            print(f"{'='*100}")
+            stage_summary = " | ".join([f"{s}={c}" for s, c in stage_counts.items()])
+            print(f"      V8生命周期计算完成: TOP1={v8_result.iloc[0]['主题']}({v8_result.iloc[0]['V7综合得分']:.1f}) | "
+                  f"D阶段: {stage_summary}")
+            print(f"      中军标的: {len(v8_center_df)}只 | 指导卡: {v8_card_file}")
 
     except Exception as e:
         print(f"      [V8.0] 异常: {e}")
         import traceback
         traceback.print_exc()
 
-    # ===== V9.0 实盘交易执行引擎 =====
-    print(f"\n  [V9.0] 实盘交易执行引擎...")
+    # ===== V9.0/V10.0 已废弃（tushare_quant.py不引用）=====
+    pass
+
+    # ===== FUSION: V6+V8 融合排名 =====
+    print(f"\n  [FUSION] V6+V8 主题融合排名...")
     try:
-        from v9_execution_engine import calculate_v9_execution_signals
-        from rotation import load_stock_name_map
-
-        _, code_to_name = load_stock_name_map()
-
-        v9_sig_df, v9_card = calculate_v9_execution_signals(
-            v8_theme_result=v8_result,
-            v8_center_df=v8_center_df,
-            daily_data=daily,
-            trade_date=trade_date,
-            name_map=code_to_name,
-        )
-
-        if not v9_sig_df.empty:
-            v9_sig_csv = os.path.join(BASE_DIR, "cache", f"v9_execution_signals_{trade_date}.csv")
-            v9_card_file = os.path.join(BASE_DIR, "cache", f"v9_execution_card_{trade_date}.md")
-            v10_card_file = os.path.join(BASE_DIR, "cache", f"v10_mobile_card_{trade_date}.md")
-
-            v9_sig_df.to_csv(v9_sig_csv, index=False, encoding="utf-8-sig")
-            with open(v9_card_file, "w", encoding="utf-8") as f:
-                f.write(v9_card)
-
-            from v9_execution_engine import generate_v10_mobile_card
-            v10_card = generate_v10_mobile_card(
-                signals_df=v9_sig_df,
-                trade_date=trade_date,
-                v8_top_theme=v8_result.iloc[0].to_dict() if len(v8_result) > 0 else None,
-                v8_center_df=v8_center_df,
-                max_buy_picks=2,
-            )
-            with open(v10_card_file, "w", encoding="utf-8") as f:
-                f.write(v10_card)
-
-            print(f"    V10.0 手机端指令卡已保存: {v10_card_file}")
-            print(f"    V9.0 执行指令卡已保存: {v9_card_file}")
-            print(f"    V9.0 信号明细已保存: {v9_sig_csv}")
-
-            buy_count = (v9_sig_df["信号指令"].isin(["BUY_LIMIT", "BUY_BREAK"])).sum()
-            sell_count = (v9_sig_df["信号指令"] == "SELL_STOP").sum()
-            hold_count = (v9_sig_df["信号指令"] == "HOLD_WAIT").sum()
-            total_pos = v9_sig_df["推荐仓位(%)"].sum()
-            print(f"    信号分布: 限价低吸+突破追强={buy_count} | 硬止损={sell_count} | 观望={hold_count} | 总仓位={total_pos:.1f}%")
-
-            print(f"\n  ★ V9.0 实盘执行指令卡 (TOP 5 买入信号)")
-            print(f"  {'标的代码':<12} {'标的名称':<12} {'主题':<14} {'信号':<10} {'目标价':>8} {'止损价':>8} {'仓位%':>6}")
-            print(f"  {'-'*80}")
-            buy_signals = v9_sig_df[v9_sig_df["信号指令"].isin(["BUY_LIMIT", "BUY_BREAK"])].head(5)
-            for _, row in buy_signals.iterrows():
-                signal_display = "限价低吸" if row["信号指令"] == "BUY_LIMIT" else "突破追强"
-                print(f"  {row['标的代码']:<12} {row['标的名称']:<12} {row['所属主题']:<14} "
-                      f"{signal_display:<10} {row['目标价格']:>8.2f} {row['止损价格']:>8.2f} {row['推荐仓位(%)']:>6.1f}")
-        else:
-            print(f"    [V9.0] 无可用数据，跳过")
-
+        from fusion_rank import build_fusion_rank
+        # 从大盘分析获取状态
+        import re as _re_fusion
+        _ma_txt_fusion = ""
+        try:
+            _ma_path = os.path.join(os.path.dirname(config.BASE_DIR),
+                                    "cache_backbone_tushare",
+                                    f"market_analysis_{trade_date}.txt")
+            if os.path.exists(_ma_path):
+                with open(_ma_path, encoding='utf-8') as _f:
+                    _ma_txt_fusion = _f.read()
+        except Exception:
+            pass
+        _m_ts = _re_fusion.search(r'总趋势分.*?:\s*(\d+\.?\d*)', _ma_txt_fusion)
+        _ts_f = float(_m_ts.group(1)) if _m_ts else 50.0
+        _m_ms = _re_fusion.search(r'市场状态:\s*(.+)', _ma_txt_fusion)
+        _ms_f = _m_ms.group(1).strip() if _m_ms else "震荡"
+        build_fusion_rank(trade_date, market_regime=_ms_f, trend_score=_ts_f, quiet=True)
+        print(f"      FUSION融合排名已保存")
     except Exception as e:
-        print(f"      [V9.0] 异常: {e}")
+        print(f"      [FUSION] 异常: {e}")
         import traceback
         traceback.print_exc()
 
     # ===== 第七步：打印报告 =====
     print(f"[7/7] 打印报告...")
-    print(f"\n{'='*100}")
-    print(f"  Theme Alpha V6.2 报告 - {trade_date} (Future Alpha)")
-    print(f"{'='*100}")
 
-    # ===== TOP 15 主题（仅Alpha Gate通过者！）=====
-    top15 = gate_passed.head(15)
-    if len(top15) > 0:
-        print(f"\n  ★ TOP 15 主题（Alpha Gate 通过 + 综合分排序）")
-        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'FA分':<6} {'趋势':<6} {'资金':<6} {'持续%':<6} {'轮动%':<6} {'情绪':<6} {'延续':<6} {'阶段':<8} {'信号':<6} {'龙头'}")
-        print(f"  {'-'*120}")
-        for i, row in top15.iterrows():
-            print(f"  {i+1:<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
-                  f"{row.get('forward_alpha',0):<6.1f} "
-                  f"{row['trend_score']:<6.1f} {row['capital_score']:<6.1f} "
-                  f"{row.get('cap_persist_pct',0):<6.1f} {row.get('cap_rotation_pct',0):<6.1f} "
-                  f"{row['sentiment_score']:<6.1f} {row['continuation_score']:<6.1f} "
-                  f"{row['stage']:<8} {row['trade_signal']:<6} {row['leader']}")
-    else:
-        print(f"\n  ⚠ Alpha Gate 无通过主题（市场弱势，降低门槛或等待）")
-
-    # 分歧买点专区（综合分不高但延续分高）
-    div_df = df[df.get('divergence_buy', '') == '★'].head(10)
-    if not div_df.empty:
-        print(f"\n  ★ 分歧买点专区（综合分一般，但延续概率高 - 分歧后大概率回归强势）")
-        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'延续':<6} {'阶段':<8} {'龙头':<12} {'标记'}")
-        print(f"  {'-'*70}")
-        for _, row in div_df.iterrows():
-            print(f"  {'':<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
-                  f"{row['continuation_score']:<6.1f} {row['stage']:<8} "
-                  f"{row['leader']:<12} {row['trade_signal']}")
-
-    # Alpha Gate 被淘汰主题（高综合分但未通过资格赛）
-    gate_fail_top = gate_failed.sort_values("composite_score", ascending=False).head(10)
-    if not gate_fail_top.empty:
-        print(f"\n  ⚠ Alpha Gate 淘汰区（综合分可能高，但未通过资格赛 - 趋势/持续/轮动不达标）")
-        print(f"  {'#':<3} {'主题':<16} {'综合':<6} {'趋势':<6} {'持续%':<6} {'轮动%':<6} {'淘汰原因':<12} {'信号'}")
-        print(f"  {'-'*80}")
-        for _, row in gate_fail_top.iterrows():
-            print(f"  {'':<3} {row['theme']:<16} {row['composite_score']:<6.1f} "
-                  f"{row['trend_score']:<6.1f} {row.get('cap_persist_pct',0):<6.1f} "
-                  f"{row.get('cap_rotation_pct',0):<6.1f} {row['alpha_gate']:<12} "
-                  f"{row['trade_signal']}")
-
-    # 延续排名 TOP 10（按延续分排序，找持续走强概率最高的）
-    cont_top = df.sort_values('continuation_score', ascending=False).head(10)
-    print(f"\n  延续概率 TOP 10（持续走强概率最高，不一定综合分最高）")
-    print(f"  {'#':<3} {'主题':<16} {'延续':<6} {'综合':<6} {'阶段':<8} {'信号':<6} {'龙头'}")
-    print(f"  {'-'*70}")
-    for j, (_, row) in enumerate(cont_top.iterrows()):
-        print(f"  {j+1:<3} {row['theme']:<16} {row['continuation_score']:<6.1f} "
-              f"{row['composite_score']:<6.1f} {row['stage']:<8} "
-              f"{row['trade_signal']:<6} {row['leader']}")
-
-    # ===== V6.2: Future Alpha TOP 15（六因子核心输出）=====
-    if "forward_alpha" in df.columns:
-        fa_top = df.sort_values('forward_alpha', ascending=False).head(15)
-        print(f"\n  {'='*120}")
-        print(f"  ★ Future Alpha TOP 15（六因子预测 - V6.2核心）")
-        print(f"  {'='*120}")
-        print(f"  {'#':<3} {'主题':<14} {'FA分':<6} {'FA信号':<8} {'轮动':<6} {'资金':<6} {'趋势Q':<6} {'催化':<6} {'相对':<6} {'龙头':<6} {'综合':<6} {'信号':<6} {'今日':<6} {'预测理由'}")
-        print(f"  {'-'*130}")
-        for j, (_, row) in enumerate(fa_top.iterrows()):
-            today_str = f"{row.get('today_return', 0):+.1f}%" if 'today_return' in row else "N/A"
-            print(f"  {j+1:<3} {row['theme']:<14} {row['forward_alpha']:<6.1f} "
-                  f"{row.get('forward_signal',''):<8} "
-                  f"{row.get('fa_rotation_timing',0):<6.1f} "
-                  f"{row.get('fa_capital_persist',0):<6.1f} "
-                  f"{row.get('fa_trend_quality',0):<6.1f} "
-                  f"{row.get('fa_catalyst',0):<6.1f} "
-                  f"{row.get('fa_relative_rotation',0):<6.1f} "
-                  f"{row.get('fa_leader_ecology',0):<6.1f} "
-                  f"{row['composite_score']:<6.1f} {row['trade_signal']:<6} "
-                  f"{today_str:<6} {row.get('forward_reason','')}")
-
-        # Future Alpha 信号分布
-        fa_sig_counts = df["forward_signal"].value_counts()
-        print(f"\n  Future Alpha 信号分布: ", end="")
-        for sig in ["强烈看多", "看多", "中性", "看空", "强烈看空"]:
-            cnt = fa_sig_counts.get(sig, 0)
-            print(f"{sig}={cnt} ", end="")
-        print()
-    else:
-        fa_top = pd.DataFrame()
-
-    # 资金分 TOP 10（含六维子指标）
-    cap_top = df.sort_values('capital_score', ascending=False).head(10)
-    print(f"\n  资金分 TOP 10（六维子指标明细）")
-    print(f"  {'#':<3} {'主题':<14} {'资金':<5} {'占比':<6} {'加速':<6} {'质量':<5} {'集中':<5} {'持续':<5} {'轮动':<6}")
-    print(f"  {'-'*68}")
-    for j, (_, row) in enumerate(cap_top.iterrows()):
-        print(f"  {j+1:<3} {row['theme']:<14} {row['capital_score']:<5.1f} "
-              f"{row.get('cap_share',0):<6.2f} {row.get('cap_accel',0):<6.2f} "
-              f"{row.get('cap_mflow',0):<5.1f} {row.get('cap_conc',0):<5.1f} "
-              f"{row.get('cap_persist',0):<5.1f} {row.get('cap_rotation',0):<6.2f}")
-
-    # 资金分分布（验证非线性放大效果）
+    # 资金分分布
     cap_scores = df['capital_score'].values
-    print(f"\n  资金分分布: min={cap_scores.min():.1f} p25={np.percentile(cap_scores,25):.1f} "
-          f"p50={np.percentile(cap_scores,50):.1f} p75={np.percentile(cap_scores,75):.1f} "
-          f"max={cap_scores.max():.1f} std={cap_scores.std():.1f}")
-
-    # 信号统计
-    sig_counts = df["trade_signal"].value_counts()
-    print(f"\n  信号分布: ", end="")
-    for sig in ["强买", "看多", "关注", "中性", "持有", "看空", "强烈看空", "回避"]:
-        cnt = sig_counts.get(sig, 0)
-        if cnt > 0:
-            print(f"{sig}={cnt} ", end="")
-    print(f"(总计 {len(df)})")
-
-    # 阶段统计
-    stage_counts = df["stage"].value_counts()
-    print(f"  阶段分布: ", end="")
-    for stg in ["筑底", "启动", "主升", "高潮", "调整", "衰退"]:
-        cnt = stage_counts.get(stg, 0)
-        print(f"{stg}={cnt} ", end="")
-    print()
-
-    # 延续标签统计
-    if "continuation_tag" in df.columns:
-        tag_counts = df["continuation_tag"].value_counts()
-        print(f"  延续标签: ", end="")
-        for tag in ["强势延续", "分歧买点", "观察等待", "趋势走弱"]:
-            cnt = tag_counts.get(tag, 0)
-            print(f"{tag}={cnt} ", end="")
-        print()
+    print(f"      Alpha Gate通过={len(gate_passed)} | "
+          f"综合分范围={df['composite_score'].min():.1f}~{df['composite_score'].max():.1f} | "
+          f"资金分: p25={np.percentile(cap_scores,25):.1f} p50={np.percentile(cap_scores,50):.1f} p75={np.percentile(cap_scores,75):.1f} | "
+          f"ForwardAlpha信号: 看多={df['forward_signal'].value_counts().get('看多',0)} 中性={df['forward_signal'].value_counts().get('中性',0)}")
 
     print(f"\n  结果已保存:")
     print(f"    {config.OUTPUT_JSON}")
