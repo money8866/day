@@ -284,6 +284,24 @@ _SPECIALIZED_KEYWORDS = [
     '密封', '轴承', '齿轮', '液压', '气动',
     '润滑', '胶粘', '粘接', '密封胶',
     '过滤', '净化', '纯化', '提纯',
+    # ---- 生命科学 ----
+    '基因编辑', 'CRISPR', '基因治疗', '细胞治疗', 'CAR-T', '干细胞',
+    '合成生物', '生物制造', '脑机接口', '神经接口',
+    'ADC', '双抗', 'mRNA', '小核酸',
+    '生物芯片', '微流控', 'AI制药',
+    # ---- AI链 ----
+    'AI芯片', '大模型', '多模态', '智能体', 'Agent',
+    '具身智能', '人形机器人', '灵巧手',
+    '边缘AI', '端侧AI', '存算一体', '类脑芯片',
+    '自动驾驶', '无人驾驶', 'Robotaxi',
+    # ---- 航天 ----
+    '商业航天', '低轨卫星', '卫星互联网', '火箭回收',
+    'eVTOL', '飞行汽车', '高超声速',
+    '无人机', '工业无人机',
+    # ---- 前沿 ----
+    '量子计算', '量子芯片', '核聚变', '托卡马克',
+    '6G', '太赫兹', '固态电池', '钙钛矿', '氢能',
+    '脑科学', '空间计算', '数字孪生',
 ]
 
 _INDUSTRY_BARRIER_KEYWORDS = [
@@ -300,6 +318,17 @@ _INDUSTRY_BARRIER_KEYWORDS = [
     '树脂', '吸附', '分离', '膜', '催化', '靶材',
     '超纯', '高纯', '特种气体',
     '智能装备', '精密',
+    # ---- 未来高壁垒赛道 ----
+    '生命科学', '基因治疗', '细胞治疗', '合成生物',
+    '人工智能', '大模型', 'AI芯片', '智能体',
+    '卫星互联网', '商业航天', '低轨卫星',
+    '量子计算', '量子通信',
+    '脑机接口', '神经科学',
+    '核聚变', '聚变能',
+    '自动驾驶', '智能驾驶', '无人驾驶',
+    '具身智能', '人形机器人',
+    '6G', '太赫兹',
+    '固态电池', '钙钛矿',
 ]
 
 
@@ -408,7 +437,7 @@ def _get_industry_pe(industry: str, industry_pe_df: pd.DataFrame = None) -> floa
 
 def compute_score(row: dict, industry_pe_df: pd.DataFrame = None) -> Dict:
     """
-    综合评分（100分制）
+    综合评分（100+3分制）
 
     维度：
       - 寻宝策略壁垒分 40分
@@ -426,6 +455,8 @@ def compute_score(row: dict, industry_pe_df: pd.DataFrame = None) -> Dict:
         - PE_TTM vs 行业PE 12分
         - PEG 6分
         - PB 7分
+      - 未来赛道加分 3分（额外）
+        - 生命科学/AI链/航天航空/前沿技术布局
     """
     details = {}
     total = 0.0
@@ -666,6 +697,46 @@ def compute_score(row: dict, industry_pe_df: pd.DataFrame = None) -> Dict:
     total += pb_score
     details['PB分'] = round(pb_score, 1)
     details['PB'] = round(pb, 2) if pb > 0 else 0
+
+    # ══════════════════════════════════════════════════════
+    # 四、未来赛道加分（3分） — 识别未来高壁垒行业布局
+    # ══════════════════════════════════════════════════════
+    future_score = 0.0
+    future_track = ''
+    name = str(row.get('name', ''))
+    bz_items = str(row.get('main_bz', ''))
+
+    _FUTURE_TRACKS = {
+        '生命科学': ['基因', '细胞', '合成生物', '脑机', 'ADC', 'mRNA',
+                    'CAR-T', '干细胞', 'AI制药', '微流控'],
+        '人工智能链': ['AI芯片', '大模型', '多模态', '智能体', '具身智能',
+                     '人形机器人', '边缘AI', '存算一体', '类脑',
+                     '自动驾驶', '无人驾驶'],
+        '航天航空': ['商业航天', '低轨卫星', '卫星互联网', '火箭回收',
+                   'eVTOL', '飞行汽车', '高超声速'],
+        '前沿技术': ['量子', '核聚变', '6G', '太赫兹', '固态电池', '钙钛矿'],
+    }
+
+    for track_name, keywords in _FUTURE_TRACKS.items():
+        ind_match = any(kw in industry for kw in keywords)
+        name_match = any(kw in name for kw in keywords)
+        bz_match = any(kw in bz_items for kw in keywords)
+        if ind_match or name_match or bz_match:
+            future_score += 1.0
+            if future_track:
+                future_track += f'|{track_name}'
+            else:
+                future_track = track_name
+            if name_match or bz_match:
+                future_score += 0.5
+
+    if '|' in future_track:
+        future_score += 0.5
+
+    future_score = min(3.0, future_score)
+    total += future_score
+    details['未来赛道分'] = round(future_score, 1)
+    details['未来赛道'] = future_track if future_track else ''
 
     # ── 总分 ──
     total = round(total, 1)
@@ -923,6 +994,17 @@ def print_report(passed: pd.DataFrame, failed_quality: pd.DataFrame,
         print(f"  平均PE_TTM: {passed['PE_TTM'].mean():.1f}")
         print(f"  平均PEG: {passed['PEG'].mean():.2f}")
         print(f"  平均市值: {passed['总市值(亿)'].mean():.1f}亿")
+        if '未来赛道' in passed.columns and '未来赛道分' in passed.columns:
+            future_count = len(passed[passed['未来赛道'] != ''])
+            if future_count > 0:
+                print(f"\n  未来赛道分布:")
+                all_tracks = {}
+                for tracks in passed[passed['未来赛道'] != '']['未来赛道']:
+                    for t in str(tracks).split('|'):
+                        all_tracks[t] = all_tracks.get(t, 0) + 1
+                for t, c in sorted(all_tracks.items(), key=lambda x: -x[1]):
+                    print(f"    {t}: {c} 只")
+                print(f"  平均未来赛道分: {passed['未来赛道分'].mean():.1f}")
 
     print(f"\n{'═'*70}")
     print(f"  操作建议")
@@ -930,6 +1012,7 @@ def print_report(passed: pd.DataFrame, failed_quality: pd.DataFrame,
     print(f"  • 精选标的：高壁垒+高增长+低估值，重点关注")
     print(f"  • 寻宝属性强的标的弹性更大，适合大盘Risk OFF时布局")
     print(f"  • 增长质量未通过的标的需警惕：营收不匹配/ROE异常/非经常性收益")
+    print(f"  • 未来赛道扩展：已识别生命科学/AI链/航天航空/前沿技术布局")
     print(f"  • 随着更多公司发布中报预告，每天运行一次即可更新")
     print(f"{'═'*70}")
 
@@ -938,6 +1021,7 @@ def _print_card(r):
     tags = str(r.get('标签', ''))
     bz = str(r.get('主营业务', ''))
     quality = str(r.get('quality_reason', ''))
+    future_track = str(r.get('未来赛道', ''))
     print(f"\n  ┌─────────────────────────────────────────────────────┐")
     print(f"  │ {r['name']} ({r['ts_code']})  ┃  总分: {r['总分']:>5.1f}")
     print(f"  ├─────────────────────────────────────────────────────┤")
@@ -947,6 +1031,8 @@ def _print_card(r):
     print(f"  │ 市值 {r.get('总市值(亿)', 0):>6.1f}亿  │ PB {r.get('PB', 0):>6.2f}  │ 标签 {r.get('标签分', 0):>2.0f}分")
     if tags:
         print(f"  │ 标签: {tags}")
+    if future_track:
+        print(f"  │ 未来赛道: {future_track}  [{r.get('未来赛道分', 0):.0f}分]")
     if bz:
         bz_short = bz if len(bz) <= 76 else bz[:73] + '...'
         print(f"  │ 主营: {bz_short}")

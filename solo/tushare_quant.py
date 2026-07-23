@@ -443,6 +443,7 @@ NEWS_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "news_cache")
 # Tushare API 数据缓存（研报、调研）
 TUSHARE_API_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "tushare_api_cache")
 FUND_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_fundamental")
+MONEYFLOW_STOCK_DIR = os.path.join(CACHE_DIR, "moneyflow_stock")
 
 os.makedirs(STOCK_DATA_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -450,6 +451,7 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 os.makedirs(NEWS_CACHE_DIR, exist_ok=True)
 os.makedirs(TUSHARE_API_CACHE_DIR, exist_ok=True)
 os.makedirs(FUND_CACHE_DIR, exist_ok=True)
+os.makedirs(MONEYFLOW_STOCK_DIR, exist_ok=True)
 
 # ═══════════════════════════════════════════════════════
 # 缓存API调用（统一入口：sc.* 详见 stock_cache.py）
@@ -5038,764 +5040,653 @@ def calc_capital_dominance_score(ts_code, stock_info, theme, v75_result, df):
         print(f'[capital_dominance] 失败: {e}')
         return 50, {}
 
+
+def _get_stock_moneyflow_features(ts_code):
+    """
+    获取个股资金流向的60日行为特征 (缓存加速版)
+    优先 moneyflow（标准接口），fallback moneyflow_ths（同花顺）
+    返回: {'mf_slope': float, 'mf_persistence': float, 'mf_diffusion': float, 'mf_available': bool}
+    """
+    result = {'mf_slope': 0, 'mf_persistence': 0, 'mf_diffusion': 0.5, 'mf_available': False}
+    if not ts_code:
+        return result
+    safe_name = ts_code.replace('.', '_')
+    cache_path = os.path.join(MONEYFLOW_STOCK_DIR, f"{safe_name}.csv")
+    try:
+        mf_df = None
+        if os.path.exists(cache_path):
+            mf_age = time.time() - os.path.getmtime(cache_path)
+            if mf_age < 86400 * 3:  # 3天内有效
+                mf_df = pd.read_csv(cache_path)
+        if mf_df is None:
+            # 优先用 moneyflow（标准接口，大单/中单/小单）
+            mf_df = pro.moneyflow(ts_code=ts_code,
+                                  start_date=(datetime.now() - timedelta(days=60)).strftime("%Y%m%d"),
+                                  end_date=TRADE_DATE)
+            if mf_df is None or len(mf_df) == 0:
+                # fallback: moneyflow_ths（同花顺，特大单/大单/小单）
+                mf_df = pro.moneyflow_ths(ts_code=ts_code,
+                                          start_date=(datetime.now() - timedelta(days=60)).strftime("%Y%m%d"),
+                                          end_date=TRADE_DATE)
+            if mf_df is not None and len(mf_df) > 0:
+                mf_df.to_csv(cache_path, index=False, encoding='utf-8-sig')
+        if mf_df is not None and len(mf_df) >= 10:
+            mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
+            # 判断数据源类型：moneyflow 有 buy_lg_amount（大单金额）；moneyflow_ths 有 buy_elg_amount（特大单金额）
+            is_standard = 'buy_lg_amount' in mf_df.columns and 'sell_lg_amount' in mf_df.columns
+            if is_standard:
+                net_lg = (mf_df['buy_lg_amount'] - mf_df['sell_lg_amount']).values
+                # 中单+小单作为非机构资金
+                sm_cols = []
+                if 'buy_md_amount' in mf_df.columns:
+                    sm_cols.extend(['buy_md_amount', 'sell_md_amount'])
+                if 'buy_sm_amount' in mf_df.columns:
+                    sm_cols.extend(['buy_sm_amount', 'sell_sm_amount'])
+                if sm_cols:
+                    net_sm = mf_df[sm_cols[0::2]].sum(axis=1).values - mf_df[sm_cols[1::2]].sum(axis=1).values
+                else:
+                    net_sm = np.zeros(len(mf_df))
+            else:
+                # moneyflow_ths: 返回 buy_lg_amount(大单净额), buy_md_amount(中单净额),
+                # buy_sm_amount(小单净额), net_amount(总净额), 均为净值(负=流出)
+                if 'net_amount' in mf_df.columns:
+                    net_lg = mf_df['buy_lg_amount'].values if 'buy_lg_amount' in mf_df.columns else np.zeros(len(mf_df))
+                    # 中单归入机构端
+                    if 'buy_md_amount' in mf_df.columns:
+                        net_lg = net_lg + mf_df['buy_md_amount'].values
+                    net_sm = mf_df['buy_sm_amount'].values if 'buy_sm_amount' in mf_df.columns else np.zeros(len(mf_df))
+                else:
+                    return result
+            net_total = net_lg + net_sm
+            n = min(20, len(net_total))
+            net_20 = net_total[-n:]
+            # Slope: 线性回归标准化
+            if n >= 5 and np.std(net_20) > 0:
+                slope, _ = np.polyfit(np.arange(n), net_20, 1)
+                result['mf_slope'] = slope / (np.std(net_20) + 1e-12) * 10
+            # Persistence: 最长连续净流入
+            streak, max_s = 0, 0
+            for v in net_20:
+                if v > 0: streak += 1; max_s = max(max_s, streak)
+                else: streak = 0
+            result['mf_persistence'] = max_s / n
+            # Diffusion: 机构主导度
+            lg_abs = np.abs(net_lg[-n:]).sum() + 1e-12
+            sm_abs = np.abs(net_sm[-n:]).sum() + 1e-12
+            result['mf_diffusion'] = lg_abs / (lg_abs + sm_abs)
+            result['mf_available'] = True
+    except Exception:
+        pass
+    return result
+
+
 def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0):
     """
-    统一股票评分算法 - 整合V9和整合评分
-    
-    目标：找到次日介入后上涨概率高、失败概率低的股票
-    
-    核心公式：
-    FinalScore = 趋势强度(30%) + 资金健康度(25%) + 位置安全性(15%) + 热度持续性(20%) + 基本面(10%)
-    
-    输出：
-        - 综合评分 (0-100)
-        - 失败概率 (10-90%)
-        - 推荐理由
-        - 各维度评分详情
+    V10: 幻方风格整合评分 — 爆发力导向
+    =====================================
+    核心变化（对V9）：
+      1. ret_5 从均值回归 → 动量正向打分
+      2. 新增 ma20/ma10 斜率加速度（二阶加速度）
+      3. 新增 ret_accel（近3日 vs 前7日）
+      4. 连续新高在量能配合时奖励
+      5. 新增同花顺资金流向3特征
+      6. 热度权重 20%→10%
+      7. 惩罚系统精简
+
+    FinalScore = 动量爆发力(35%) + 资金行为(25%) + 位置安全性(15%)
+               + 热度(10%) + 基本面(15%)
     """
     try:
         if df is None or not isinstance(df, pd.DataFrame) or len(df) < 20:
             return 0, "数据不足", {}, 50
-        
+
         df = df.reset_index(drop=True)
         C = df['close'].values
         ts_code = ts_code or ''
-        
-        # =========================
-        # 基础数据计算
-        # =========================
+
         close_series = df['close']
         high_series = df['high']
         MA5 = float(close_series.rolling(5).mean().iloc[-1])
         MA10 = float(close_series.rolling(10).mean().iloc[-1])
         MA20 = float(close_series.rolling(20).mean().iloc[-1])
         MA60 = float(close_series.rolling(60).mean().iloc[-1])
-        # 修复: HHV用最高价(非收盘价)，且排除当天数据避免"今天创新高则HHV=今天高点"的循环
         HHV20 = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(close_series.tail(20).max())
         HHV60 = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(close_series.tail(60).max())
         LLV20 = float(close_series.tail(20).min())
         current_price = float(C[-1])
-        
-        if len(C) >= 2:
-            today_pct = float((C[-1] / C[-2] - 1) * 100)
-        else:
-            today_pct = 0
-        
-        # =========================
-        # 1. 趋势强度评分（30%）- 互斥评分
-        # =========================
-        trend_score = 0
-        
-        # 均线斜率（趋势反转导向，不依赖均线排列）
-        # MA20均线斜率（权重加大）
-        if len(C) >= 25:
-            ma20_slope = (MA20 - float(close_series.rolling(20).mean().iloc[-6])) / MA20
-            if ma20_slope > 0.05:
-                trend_score += 35  # 极强上升
-            elif ma20_slope > 0.03:
-                trend_score += 28  # 强上升
-            elif ma20_slope > 0.015:
-                trend_score += 20  # 温和上升
-            elif ma20_slope > 0:
-                trend_score += 10  # 缓慢上升
-            elif ma20_slope > -0.015:
-                trend_score -= 5   # 轻微下降
+        today_pct = float((C[-1] / C[-2] - 1) * 100) if len(C) >= 2 else 0
+
+        # ──────────────────────────────────────────────
+        # 1. 动量爆发力 Momentum Power (35%)
+        # ──────────────────────────────────────────────
+        momentum_score = 50
+
+        # 1a. MA20 斜率加速度 (8.75%) — 从"斜率水平"改为"斜率变化"
+        if len(C) >= 30:
+            ma20_now = float(close_series.rolling(20).mean().iloc[-1])
+            ma20_5ago = float(close_series.rolling(20).mean().iloc[-6])
+            ma20_10ago = float(close_series.rolling(20).mean().iloc[-11])
+            slope_now = (ma20_now - ma20_5ago) / ma20_now if ma20_now > 0 else 0
+            slope_prev = (ma20_5ago - ma20_10ago) / ma20_5ago if ma20_5ago > 0 else 0
+            ma20_accel = slope_now - slope_prev  # 正值=刚翘头=最强爆发信号
+            if ma20_accel > 0.02:
+                momentum_score += 30  # MA20 明显翘头
+            elif ma20_accel > 0.008:
+                momentum_score += 20  # MA20 开始翘头
+            elif ma20_accel > 0:
+                momentum_score += 10  # 微幅加速
+            elif ma20_accel > -0.008:
+                momentum_score += 0   # 基本持平
             else:
-                trend_score -= 15  # 明显下降
-        
-        # MA10均线斜率（新增，权重加大）
-        if len(C) >= 15:
-            ma10_current = float(close_series.rolling(10).mean().iloc[-1])
-            ma10_prev = float(close_series.rolling(10).mean().iloc[-6])
-            ma10_slope = (ma10_current - ma10_prev) / ma10_current if ma10_current > 0 else 0
-            if ma10_slope > 0.06:
-                trend_score += 30  # 极强上升
-            elif ma10_slope > 0.04:
-                trend_score += 24  # 强上升
-            elif ma10_slope > 0.02:
-                trend_score += 18  # 温和上升
-            elif ma10_slope > 0:
-                trend_score += 8   # 缓慢上升
-            elif ma10_slope > -0.02:
-                trend_score -= 3   # 轻微下降
+                momentum_score -= 12  # 趋势走平/走弱
+
+        # 1b. MA10 斜率加速度 (7%) — 短线加速
+        if len(C) >= 20:
+            ma10_now = float(close_series.rolling(10).mean().iloc[-1])
+            ma10_5ago = float(close_series.rolling(10).mean().iloc[-6])
+            ma10_10ago = float(close_series.rolling(10).mean().iloc[-11])
+            s_now = (ma10_now - ma10_5ago) / ma10_now if ma10_now > 0 else 0
+            s_prev = (ma10_5ago - ma10_10ago) / ma10_5ago if ma10_5ago > 0 else 0
+            ma10_accel = s_now - s_prev
+            if ma10_accel > 0.03:
+                momentum_score += 25
+            elif ma10_accel > 0.012:
+                momentum_score += 16
+            elif ma10_accel > 0:
+                momentum_score += 8
+            elif ma10_accel > -0.012:
+                momentum_score -= 3
             else:
-                trend_score -= 12  # 明显下降
-        
-        # 近期涨幅（5日，趋势反转导向：回调可能是二波机会）
+                momentum_score -= 10
+
+        # 1c. ret_5 动量正向打分 (7%) — 从均值回归改为动量导向
         if len(C) >= 6:
             ret_5 = (C[-1] / C[-6] - 1) * 100
-            if 3 <= ret_5 <= 12:
-                trend_score += 15  # 最佳区间：稳健上涨
-            elif ret_5 > 12:
-                trend_score += 5   # 涨幅过大，谨慎
-            elif -8 <= ret_5 < 3:
-                trend_score += 10  # 小幅回调或横盘，可能是二波蓄力机会
-            elif -15 <= ret_5 < -8:
-                trend_score += 15  # 深度回调后，反转预期更强
-            elif ret_5 < -15:
-                trend_score += 5   # 跌幅过大，风险较高
+            if ret_5 > 15:
+                momentum_score += 25  # 强者恒强
+            elif ret_5 > 8:
+                momentum_score += 18  # 强势
+            elif ret_5 > 3:
+                momentum_score += 10  # 温和上涨
+            elif ret_5 > -3:
+                momentum_score += 3   # 横盘
+            elif ret_5 > -10:
+                momentum_score -= 5   # 回调=弱势
             else:
-                trend_score -= 5
-        
-        # 计算120日高点（用最高价，排除当天）
-        HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
-        
-        # 突破前高（不加分，只记录状态用于其他计算）
-        breakout_strength = 0.5
+                momentum_score -= 15  # 大跌=无爆发力
+
+        # 1d. 二阶加速度 ret_accel (7%) — 近端涨幅加速度
+        if len(C) >= 11:
+            ret_3 = (C[-1] / C[-4] - 1) * 100  # 近3日
+            ret_7ago = (C[-4] / C[-11] - 1) * 100  # 前7日(不含近3日)
+            ret_accel = ret_3 - ret_7ago  # 正值=短线正在加速
+            if ret_accel > 8:
+                momentum_score += 25
+            elif ret_accel > 4:
+                momentum_score += 18
+            elif ret_accel > 1:
+                momentum_score += 10
+            elif ret_accel > -2:
+                momentum_score += 3
+            else:
+                momentum_score -= 8
+
+        # 1e. 突破强度 (5.25%) — 突破前高质量+量能
+        dist_to_h20 = (HHV20 - current_price) / HHV20 if HHV20 > 0 else 0
         if current_price >= HHV20:
-            breakout_strength = 1.0
-        elif current_price >= HHV20 * 0.97:
-            breakout_strength = 0.85
-        elif current_price >= HHV20 * 0.90:
-            breakout_strength = 0.6
-        
-        # 120日新高状态（用于强度减分）
-        is_new_high_120 = current_price >= HHV120
-        dist_to_120high = (HHV120 - current_price) / HHV120 if HHV120 > 0 else 0
-        
-        # =========================
-        # 新增：假突破识别
-        # =========================
-        # 判断1：检测'二波'-60日内有过高点后快速回落（失败突破）
-        failed_breakout_penalty = 0
+            breakout_power = 1.0
+        elif dist_to_h20 <= 0.03:
+            breakout_power = 0.85
+        elif dist_to_h20 <= 0.08:
+            breakout_power = 0.6
+        elif dist_to_h20 <= 0.15:
+            breakout_power = 0.3
+        else:
+            breakout_power = 0
+        if breakout_power > 0 and len(C) >= 5:
+            vol_recent = float(df['vol'].iloc[-5:].mean()) if 'vol' in df.columns else 0
+            vol_prev = float(df['vol'].iloc[-15:-5].mean()) if 'vol' in df.columns and len(df) >= 15 else vol_recent
+            vol_ratio_5_15 = vol_recent / (vol_prev + 1e-6) if vol_prev > 0 else 1.0
+            if breakout_power >= 0.85 and vol_ratio_5_15 > 1.3:
+                momentum_score += 20  # 放量突破=最强爆发信号
+            elif breakout_power >= 0.85:
+                momentum_score += 10  # 突破但量能一般
+            elif breakout_power >= 0.6:
+                momentum_score += 5   # 临近突破
+        momentum_score = min(100, max(0, momentum_score))
 
-        if len(C) >= 30:
-            lookback = min(60, len(C) - 5)
-            H_series = df['high'].values
-            for offset_days_ago in range(lookback, 8, -1):
-                idx = len(C) - offset_days_ago
-                if idx < 5:
-                    continue
-                day_high = float(H_series[idx])
-                prev_start = max(0, idx - 20)
-                hhv_before = float(max(C[prev_start:idx]))
-                if hhv_before <= 0:
-                    continue
-                if day_high >= hhv_before * 0.98:
-                    after_3_idx = min(len(C) - 1, idx + 3)
-                    if after_3_idx < len(C):
-                        after_3_price = float(C[after_3_idx])
-                        drop_from_high = (day_high - after_3_price) / day_high * 100
-                        if drop_from_high > 8:
-                            failed_breakout_penalty = 20
-                            break
-
-        # 判断2：长上影K线（冲高回落信号）
-        # 注意：科创板/创业板波动大，且大涨日上影5%是正常的
-        upper_shadow_penalty = 0
-        if 'high' in df.columns and len(df) >= 2:
-            today_high = float(df['high'].iloc[-1])
-            today_close = C[-1]
-            upper_shadow_pct = (today_high - today_close) / today_close * 100
-
-            # 当日涨幅越大，允许的上影越长（科创板涨10%时上影5%很正常）
-            if today_pct > 10:
-                # 大涨日：上影>8%才算异常
-                if upper_shadow_pct > 10:
-                    upper_shadow_penalty = 20
-                elif upper_shadow_pct > 8:
-                    upper_shadow_penalty = 10
-            elif today_pct > 5:
-                # 中涨日：上影>5%开始扣分
-                if upper_shadow_pct > 7:
-                    upper_shadow_penalty = 15
-                elif upper_shadow_pct > 5:
-                    upper_shadow_penalty = 8
-            else:
-                # 小涨/下跌日：上影>3%开始扣分
-                if upper_shadow_pct > 6:
-                    upper_shadow_penalty = 20
-                elif upper_shadow_pct > 4:
-                    upper_shadow_penalty = 15
-                elif upper_shadow_pct > 3:
-                    upper_shadow_penalty = 8
-
-        # 判断3：删除"接近高点未突破"惩罚
-        # 理由：接近高点是强势表现，只有"突破后快速回落"才是假突破
-        # 该判断已被判断1（失败突破检测）覆盖，此处不再重复惩罚
-        near_high_no_break_penalty = 0
-
-        # 假突破综合惩罚
-        total_fake_breakout_penalty = failed_breakout_penalty + upper_shadow_penalty + near_high_no_break_penalty
-        trend_score -= total_fake_breakout_penalty
-
-        trend_score = min(100, max(0, trend_score))  # 限制上限
-
-        
-        # =========================
-        # 2. 资金健康度评分（25%）
-        # =========================
+        # ──────────────────────────────────────────────
+        # 2. 资金行为 Capital Flow (25%)
+        # ──────────────────────────────────────────────
         capital_score = 50
-        
-        # 量能分析（使用当日量比：当日成交量/5日均量，均线排除当天）
-        vol_ratio = 1.0
-        vol_vs_high_ratio = 1.0  # 当日量能 vs 60日最高量能
-        vol_recent_long_ratio = 1.0  # 近期均量 vs 长期均量
-        if 'vol' in df.columns and len(df) >= 10:
-            vol_today = float(df['vol'].iloc[-1])
-            vol_hist = df['vol'].iloc[:-1]  # 排除当天的历史成交量
-            vol_ma5 = float(vol_hist.tail(5).mean()) if len(vol_hist) >= 5 else vol_today
-            vol_ma20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vol_today
-            # 当日量比 = 当日成交量 / 5日均量（均线不含当天，真实放量倍数）
-            vol_ratio = vol_today / vol_ma5 if vol_ma5 > 0 else 1.0
-            # 5日/20日量比用于平滑判断
-            vol_ma_ratio = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
-            
-            # 关键改进：当日量 vs 60日最高量（识别量能萎缩，max不含当天）
-            vol_max_60d = float(vol_hist.tail(60).max()) if len(vol_hist) >= 5 else vol_today
-            vol_vs_high_ratio = vol_today / vol_max_60d if vol_max_60d > 0 else 1.0
-            
-            # 新增：近期均量 vs 长期均量（判断量能持续性）
-            # 近期=20日，长期=60日
-            vol_ma60 = float(vol_hist.tail(60).mean()) if len(vol_hist) >= 60 else vol_today
-            vol_recent_long_ratio = vol_ma20 / vol_ma60 if vol_ma60 > 0 else 1.0
-            
-            # 当日放量越大，加分越多
+
+        # 2a. 量能趋势 (5%) — 连续放量天数 + 近期均量趋势
+        if 'vol' in df.columns:
+            vol_arr = df['vol'].values
+            vol_hist = df['vol'].iloc[:-1]
+            vol_ma5 = float(vol_hist.tail(5).mean()) if len(vol_hist) >= 5 else float(vol_arr[-1])
+            vol_ma20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vol_ma5
+            vol_ma60 = float(vol_hist.tail(60).mean()) if len(vol_hist) >= 60 else vol_ma20
+            vol_ratio = float(vol_arr[-1]) / vol_ma5 if vol_ma5 > 0 else 1.0
+            vol_ratio_5_20 = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
+            vol_ratio_20_60 = vol_ma20 / vol_ma60 if vol_ma60 > 0 else 1.0
+
+            # 连续放量天数（近5日 vs 前5日不重叠）
+            consec_vol_up = 0
+            for i in range(1, 6):
+                if len(vol_arr) > i * 2 + 5:
+                    cur_5 = vol_arr[-(i*2+5):-(i*2)]
+                    prev_5 = vol_arr[-(i*2+10):-(i*2+5)]
+                    if cur_5.mean() > prev_5.mean() * 1.1:
+                        consec_vol_up += 1
+            # 量能趋势评分
+            if consec_vol_up >= 3 and vol_ratio_20_60 > 1.5:
+                capital_score += 25  # 持续堆量 = 大资金进场
+            elif consec_vol_up >= 2 and vol_ratio_20_60 > 1.3:
+                capital_score += 18
+            elif vol_ratio_20_60 > 1.5:
+                capital_score += 12  # 长期量能放大
+            elif vol_ratio_20_60 > 1.2:
+                capital_score += 6
+            elif vol_ratio_20_60 > 1.0:
+                capital_score += 2
+            elif vol_ratio_20_60 > 0.7:
+                capital_score -= 5   # 量能萎缩
+            else:
+                capital_score -= 15  # 严重缩量
+
+            # 当日量比强化
             if vol_ratio > 3.0:
-                capital_score += 35  # 巨量爆发
+                capital_score += 10
             elif vol_ratio > 2.0:
-                capital_score += 25  # 明显放量
-            elif vol_ratio > 1.5:
-                capital_score += 15  # 温和放量
-            elif vol_ratio > 1.0:
-                capital_score += 5   # 轻微放量
-            
-            # 5日/20日量比辅助判断持续性
-            if vol_ma_ratio > 2.0:
-                capital_score += 10  # 持续放量
-            
-            # 新增：近期均量 vs 长期均量（核心因子）
-            # 比例越大，说明量能持续放大，资金关注度高
-            if vol_recent_long_ratio > 3.0:
-                capital_score += 30  # 量能爆发性持续
-            elif vol_recent_long_ratio > 2.0:
-                capital_score += 20  # 量能明显放大
-            elif vol_recent_long_ratio > 1.5:
-                capital_score += 10  # 量能温和放大
-            elif vol_recent_long_ratio > 1.2:
-                capital_score += 5   # 量能略有放大
-            elif vol_recent_long_ratio > 1.0:
-                capital_score += 2   # 量能持平
-            elif vol_recent_long_ratio > 0.8:
-                capital_score -= 2   # 量能略有萎缩
-            elif vol_recent_long_ratio > 0.6:
-                capital_score -= 8   # 量能明显萎缩
-            elif vol_recent_long_ratio > 0.4:
-                capital_score -= 15  # 量能严重萎缩
+                capital_score += 6
+            elif vol_ratio > 1.3:
+                capital_score += 3
+
+        # 2b. 量价关系 (5%) — 上涨日量能 vs 下跌日量能
+        if len(C) >= 20:
+            up_vols, down_vols = [], []
+            for i in range(1, min(20, len(C))):
+                v = float(df['vol'].iloc[-i]) if 'vol' in df.columns else 0
+                if C[-i] > C[-i-1]:
+                    up_vols.append(v)
+                elif C[-i] < C[-i-1]:
+                    down_vols.append(v)
+            up_avg_vol = np.mean(up_vols) if up_vols else 0
+            down_avg_vol = np.mean(down_vols) if down_vols else 0
+            vol_price_ratio = up_avg_vol / (down_avg_vol + 1e-6) if down_avg_vol > 0 else 1.0
+            if vol_price_ratio > 1.5:
+                capital_score += 10
+            elif vol_price_ratio > 1.2:
+                capital_score += 5
+
+        # 2c. 同花顺资金流向特征 (10%) — 斜率/持续性/扩散率
+        mf = _get_stock_moneyflow_features(ts_code)
+        mf_avail = mf.get('mf_available', False)
+        if mf_avail:
+            ms = mf.get('mf_slope', 0)
+            mp = mf.get('mf_persistence', 0)
+            md = mf.get('mf_diffusion', 0.5)
+            # 斜率: 正值机构持续流入
+            if ms > 2.0:
+                capital_score += 20
+            elif ms > 1.0:
+                capital_score += 14
+            elif ms > 0.3:
+                capital_score += 7
+            elif ms > -0.3:
+                capital_score += 0
+            elif ms > -1.0:
+                capital_score -= 5
             else:
-                capital_score -= 25  # 量能极度萎缩（不足长期均量40%）
-            
-            # 当日量能 vs 60日最高量能（量能萎缩惩罚）
-            if vol_vs_high_ratio < 0.2:
-                capital_score -= 15  # 量能极度萎缩（不足高峰期的20%）
-            elif vol_vs_high_ratio < 0.3:
-                capital_score -= 10  # 量能严重萎缩（<30%）
-            elif vol_vs_high_ratio < 0.4:
-                capital_score -= 8   # 量能明显萎缩（<40%）
-            elif vol_vs_high_ratio < 0.5:
-                capital_score -= 4   # 量能有所萎缩（<50%）
-        
-        # 机构资金流
+                capital_score -= 12
+            # 持续性: 连续净流入越长越好
+            if mp >= 0.4:
+                capital_score += 12
+            elif mp >= 0.25:
+                capital_score += 7
+            elif mp >= 0.15:
+                capital_score += 3
+            # 扩散率: 机构主导度 (0-1, >0.6=机构主导)
+            if md > 0.7:
+                capital_score += 8
+            elif md > 0.6:
+                capital_score += 4
+            elif md < 0.35:
+                capital_score -= 5  # 散户主导=弱
+
+        # 2d. 机构资金流 (5%) — 保留原 calc_institutional_flow_score
         inst_flow_score = calc_institutional_flow_score(ts_code)
-        capital_score += inst_flow_score * 15
-        
+        capital_score += inst_flow_score * 3
+
         capital_score = min(100, max(0, capital_score))
-        
-        # =========================
-        # 3. 位置安全性评分（15%）
-        # =========================
+
+        # ──────────────────────────────────────────────
+        # 3. 位置安全性 Position Safety (15%)
+        # ──────────────────────────────────────────────
         position_score = 50
-        
-        # 距离前高位置
-        dist_to_high = (HHV20 - current_price) / HHV20 if HHV20 > 0 else 0
-        
-        # 判断是否创新高
-        is_new_high = current_price >= HHV20
-        
-        # 判断是否连续新高：检查前N天是否也创新高
-        # 第一天新高（昨天比前天低，今天创新高）：突破形态，不用减分
-        # 连续新高：追高风险大，要减分
-        is_consecutive_high = False
-        if is_new_high and len(C) >= 5:
-            # 检查最近5天是否连续创新高（至少2天连续新高）
-            _high_hist = high_series.iloc[:-1]  # 不含今天
-            _high_20_ma = _high_hist.rolling(20, min_periods=1).max()
-            _is_high_list = _high_hist >= _high_20_ma
-            # 统计连续新高天数（从昨天开始向前数）
-            _consec_days = 0
-            for i in range(min(5, len(_is_high_list))):
-                if _is_high_list.iloc[-(i+1)]:
-                    _consec_days += 1
+
+        # 3a. 距20日高点距离
+        if current_price >= HHV20:
+            # 创新高：检查是否连续新高+量能配合
+            is_consec_high = False
+            if len(C) >= 5:
+                _high_hist = high_series.iloc[:-1]
+                _high_20_ma = _high_hist.rolling(20, min_periods=1).max()
+                _is_high_list = _high_hist >= _high_20_ma
+                _cd = 0
+                for ii in range(min(5, len(_is_high_list))):
+                    if _is_high_list.iloc[-(ii+1)]:
+                        _cd += 1
+                    else:
+                        break
+                is_consec_high = _cd >= 2
+            # 量能确认
+            vol_strong = False
+            if 'vol' in df.columns and len(df) >= 10:
+                _v5 = float(df['vol'].iloc[-6:-1].mean())
+                _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) >= 16 else _v5
+                vol_strong = _v5 > _v15 * 1.2
+
+            if is_consec_high:
+                if vol_strong:
+                    position_score += 20  # 连续新高+放量=最强龙头信号
                 else:
-                    break
-            # 如果昨天也创新高，且前天也创新高，算连续新高
-            if _consec_days >= 2:
-                is_consecutive_high = True
-        
-        # 临近高点比创新高的成功率更高
-        if dist_to_high <= 0:
-            # 创新高
-            if is_consecutive_high:
-                # 连续新高：追高风险大，扣分
-                position_score += 10  # 创新高给予基础加分
-                position_score -= 15  # 连续新高惩罚（风险大）
+                    position_score += 5   # 连续新高但缩量=谨慎
             else:
-                # 第一天新高（昨天比前天低）：突破形态，不扣分
-                position_score += 15  # 第一天新高加分（突破信号）
-        elif dist_to_high <= 0.03:
-            # 极接近前高（3%内）：蓄势待突破，较好位置
-            position_score += 12  # 适度加分
-        elif dist_to_high <= 0.08:
-            # 临近前高（3%-8%）：强势蓄能，不错的位置
+                position_score += 15  # 第一天新高=突破形态
+        elif dist_to_h20 <= 0.03:
+            position_score += 12  # 极接近前高
+        elif dist_to_h20 <= 0.08:
             position_score += 8
-        elif dist_to_high <= 0.15:
-            # 距离前高8%-15%：温和蓄能，一般位置
+        elif dist_to_h20 <= 0.15:
             position_score += 4
-        elif dist_to_high <= 0.25:
-            # 距离前高15%-25%：适中位置
+        elif dist_to_h20 <= 0.25:
             position_score += 2
-        
-        # 从低点涨幅
+
+        # 3b. 从低点涨幅 (安全垫)
         run_up = (current_price - LLV20) / LLV20 if LLV20 > 0 else 0
         if run_up <= 0.15:
-            position_score += 20
+            position_score += 12
         elif run_up <= 0.25:
-            position_score += 10
-        
-        # 90日振幅（压缩度）
+            position_score += 6
+
+        # 3c. 90日振幅压缩度 (蓄势充分)
         if len(df) >= 90:
             range90 = (df['high'].values[-90:].max() - df['low'].values[-90:].min()) / df['low'].values[-90:].min()
             if range90 < 0.25:
-                position_score += 10
-        
-        # 创新高额外惩罚：只有连续历史新高才惩罚
-        if is_new_high:
-            if is_consecutive_high:
-                # 连续新高才检查120日新高惩罚
-                HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
-                if current_price >= HHV120:
-                    # 连续120日新高：额外惩罚
-                    position_score -= 5
-        
+                position_score += 8
+
+        # 3d. 120日新高惩罚：仅缩量连续新高才惩罚
+        if len(C) >= 120:
+            HHV120 = float(high_series.iloc[:-1].tail(120).max())
+            if current_price >= HHV120:
+                is_consec_high_120 = False
+                _h120 = high_series.iloc[:-1]
+                _h120_ma = _h120.rolling(20, min_periods=1).max()
+                _cd120 = 0
+                for ii in range(min(3, len(_h120))):
+                    if _h120.iloc[-(ii+1)] >= _h120_ma.iloc[-(ii+1)]:
+                        _cd120 += 1
+                    else:
+                        break
+                if _cd120 >= 2:
+                    # 连续120日新高+缩量=风险
+                    if 'vol' in df.columns and len(df) >= 10:
+                        _v5 = float(df['vol'].iloc[-6:-1].mean())
+                        _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) >= 16 else _v5
+                        if _v5 <= _v15 * 1.1:
+                            position_score -= 8
         position_score = min(100, max(0, position_score))
-        
-        # =========================
-        # 4. 热度持续性评分（20%）
-        # =========================
+
+        # ──────────────────────────────────────────────
+        # 4. 热度持续性 Hotness (10%) — 从20%降至10%
+        # ──────────────────────────────────────────────
         hot_score = 50
-        
-        # 主题生命力（降低加分幅度）
         tli_score, _ = calc_tli_score(theme, top_n=10, days=60)
-        hot_score += (tli_score - 50) * 0.3  # 从0.5降到0.3
-        
-        # 热榜排名加分
+        hot_score += (tli_score - 50) * 0.2
+
         hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=60)
-        hot_score += hot_rank_bonus * 0.5  # 降低热榜加分权重
-        
-        # 检查主题是否处于高潮阶段（避免追涨高潮主题）
+        hot_score += hot_rank_bonus * 0.3
+
         if theme:
             try:
                 v6_data = _load_v6_result(TRADE_DATE)
                 if v6_data:
-                    # 查找该主题的V6数据
                     for r in v6_data:
                         if r.get('theme') == theme:
-                            # 信号为看空/强烈看空/回避 或 阶段为高潮/衰退 = 追涨惩罚
                             signal = r.get('trade_signal', '')
                             stage = r.get('stage', '')
                             if signal in ('回避', '看空', '强烈看空') or stage in ('高潮', '衰退'):
-                                hot_score -= 15  # 高潮退潮，追涨风险高
-                                recommendation = recommendation.replace("热榜Top1", "⚠️高潮退潮")
+                                hot_score -= 15
                             break
-            except Exception as e:
-                pass  # 查询失败不阻塞
-        
-        # 根据主题趋势分和情绪分调整热度（避免高潮后追高）
-        # 情绪分过高（>80）= 高潮期，可能回落，降低热度
-        # 趋势分下降（<30）= 主题走弱，降低热度
+            except Exception:
+                pass
+
         if theme_sentiment_score > 80:
-            # 情绪高潮，可能即将回落
             hot_score -= 15
         elif theme_sentiment_score > 70:
-            # 情绪偏高，谨慎
             hot_score -= 8
         elif theme_sentiment_score < 30:
-            # 情绪低迷，热度不足
-            hot_score -= 10
-        
+            hot_score -= 8
+
         if theme_trend_score < 30:
-            # 趋势走弱
             hot_score -= 12
         elif theme_trend_score < 40:
-            # 趋势偏弱
             hot_score -= 5
         elif theme_trend_score > 70:
-            # 趋势强劲，热度有支撑
             hot_score += 5
-        
-        # 主题TOP3次数
-        if hasattr(getattr(globals().get('result_df', None), 'iloc', None), '__call__'):
-            # 从主题评分中获取
-            pass
-        
         hot_score = min(100, max(0, hot_score))
-        
-        # =========================
-        # 5. 基本面评分（使用V2增强模块）
-        # =========================
-        # 调用新的基本面评分模块
+
+        # ──────────────────────────────────────────────
+        # 5. 基本面 Fundamentals (15%)
+        # ──────────────────────────────────────────────
         try:
-            fund_result = calc_fundamental_score_v2(
-                ts_code=ts_code,
-                theme_name=theme,
+            fund_result = calc_fundamental_score_v3(
+                ts_code=ts_code, theme_name=theme,
                 theme_trend_score=theme_trend_score,
                 theme_sentiment_score=theme_sentiment_score,
                 hot_rank=best_rank if best_rank <= 100 else 9999,
                 hot_count=hot_appear_count
             )
-            fundamental_score = fund_result['base_score']  # 使用base_score作为基本面分
-            synergy_coeff = fund_result['synergy_coeff']   # 共振系数用于后续调整
+            fundamental_score = fund_result['base_score']
+            synergy_coeff = fund_result['synergy_coeff']
             fund_logic = fund_result['logic']
-        except Exception as e:
-            print(f"[统一评分] 基本面V2评分失败: {e}")
+        except Exception:
             fundamental_score = 50
             synergy_coeff = 1.0
             fund_logic = []
-        
+
         fundamental_score = min(100, max(0, fundamental_score))
-        
-        # 独立的Alpha评分（机构基本面+北向资金共振，0-100分，已缓存）
-        fundamental_alpha_score_val = 0
-        fundamental_alpha_signal = ""
-        try:
-            alpha_result = stock_fundamental_alpha_score(ts_code, pro)
-            fundamental_alpha_score_val = alpha_result.get('alpha_score', 0)
-            fundamental_alpha_signal = alpha_result.get('signal', '')
-        except Exception:
-            pass
-        
-        # =========================
-        # 6. 追高惩罚（优化版：考虑缩量调整后风险释放）
-        # =========================
+
+        # ──────────────────────────────────────────────
+        # 6. 追高惩罚（精简版）
+        # ──────────────────────────────────────────────
         penalty = 0
         if len(C) >= 6:
             ret_5 = (C[-1] / C[-6] - 1) * 100
-            if ret_5 > 8:
-                penalty += min((ret_5 - 8) * 3, 25)
+            ret_10 = (C[-1] / C[-11] - 1) * 100 if len(C) >= 11 else 0
+            # 仅对同时满足"涨幅过大+量能萎缩/乖离过大"才惩罚
             if ret_5 > 15:
-                penalty += 10  # 额外惩罚
-        
-        # 新增：缩量调整折扣系数（基于 MA20 乖离率 + 趋势过热保护）
-        # 区分两种情形：
-        #   1. 严重透支（MA20乖离>20% 或 近10日涨幅>25%）：过热 → 保持高惩罚
-        #   2. 温和整理（MA20乖离<15% + 量能萎缩）：风险释放 → 惩罚打折
-        if penalty > 0 and len(C) >= 10 and len(df) >= 10:
-            position_discount = 1.0
-            ma20_discount = 1.0
-            volume_discount = 1.0
-            consolidation_factor = 1.0
-            reasons = []
-
-            # 判断1：MA20 乖离率（核心指标）
-            if MA20 > 0:
-                bias_to_ma20 = (C[-1] - MA20) / MA20 * 100
-                if bias_to_ma20 > 20:
-                    ma20_discount = 1.0  # 严重乖离 → 不打折
-                    reasons.append(f"严重乖离{bias_to_ma20:.0f}%")
+                bias_to_ma20 = (C[-1] - MA20) / MA20 * 100 if MA20 > 0 else 0
+                if bias_to_ma20 > 25:
+                    penalty += 20  # 严重乖离+大涨
+                elif ret_5 > 25:
+                    penalty += 15  # 纯大涨
+                elif ret_10 > 35:
+                    penalty += 10  # 10日过热
                 elif bias_to_ma20 > 15:
-                    ma20_discount = 0.9  # 偏高
-                    reasons.append(f"乖离偏高{bias_to_ma20:.0f}%")
-                elif bias_to_ma20 > 10:
-                    ma20_discount = 0.7  # 中等
-                    reasons.append(f"乖离中等{bias_to_ma20:.0f}%")
-                else:
-                    ma20_discount = 0.5  # 接近趋势线
-                    reasons.append(f"乖离健康{bias_to_ma20:.0f}%")
+                    penalty += 5
 
-            # 判断2：趋势过热保护（新增）
-            # 如果近10日涨幅过高，即使MA20乖离合理也不能大折扣
-            ret_10 = (C[-1] / C[-11] - 1) * 100
-            ret_5_local = (C[-1] / C[-6] - 1) * 100
-            trend_overheat_limit = 0.0  # 默认=不限制（取更严格的折扣）
-            if ret_10 > 30:
-                trend_overheat_limit = 1.0  # 近10日涨超30% → 不打折
-                reasons.append(f"10日过热{ret_10:.0f}%")
-            elif ret_10 > 25:
-                trend_overheat_limit = 0.95  # 近10日25-30% → 几乎不打折
-                reasons.append(f"10日偏热{ret_10:.0f}%")
-            elif ret_5_local > 20:
-                trend_overheat_limit = 0.9  # 近5日>20% → 轻微限制
-                reasons.append(f"5日过热{ret_5_local:.0f}%")
+        # 长上影惩罚（保留）
+        upper_shadow_penalty = 0
+        if 'high' in df.columns and len(df) >= 2:
+            today_high = float(df['high'].iloc[-1])
+            upper_shadow_pct = (today_high - current_price) / current_price * 100
+            if today_pct > 10 and upper_shadow_pct > 10:
+                upper_shadow_penalty = 20
+            elif today_pct > 5 and upper_shadow_pct > 7:
+                upper_shadow_penalty = 12
+            elif upper_shadow_pct > 4:
+                upper_shadow_penalty = 8
+        penalty += upper_shadow_penalty
 
-            # 判断3：位置修复（距20日高点回撤）
-            if dist_to_high > 0.03:
-                if dist_to_high > 0.15:
-                    position_discount = 0.5
-                elif dist_to_high > 0.08:
-                    position_discount = 0.7
-                else:
-                    position_discount = 0.8
-                reasons.append(f"高点回撤{dist_to_high*100:.0f}%")
-
-            # 判断4：量能萎缩（不是放量冲顶）
-            if vol_ratio < 1.0:
-                volume_discount = 0.7
-                reasons.append(f"缩量(量比{vol_ratio:.1f})")
-            elif vol_ratio < 1.3:
-                volume_discount = 0.85
-                reasons.append(f"温和量能(量比{vol_ratio:.1f})")
-
-            # 判断5：近3日横盘整理（振幅<10%）
-            if len(C) >= 8:
-                recent_3_high = max(C[-1], C[-2], C[-3])
-                recent_3_low = min(C[-1], C[-2], C[-3])
-                consolidation_range = (recent_3_high - recent_3_low) / recent_3_low * 100
-                if consolidation_range < 6:
-                    consolidation_factor = 0.7
-                    reasons.append(f"横盘整理(振幅{consolidation_range:.0f}%)")
-                elif consolidation_range < 10:
-                    consolidation_factor = 0.85
-
-            # 综合折扣 = 先取各维度最严格的，再被过热保护限制
-            raw_discount = min(position_discount, ma20_discount, volume_discount, consolidation_factor)
-            discount = max(raw_discount, trend_overheat_limit)  # 过热保护不允许折扣过低
-
-            if discount < 1.0:
-                penalty = round(penalty * discount, 1)
-        
-        # =========================
-        # 7. 龙头/核心加分
-        # =========================
+        # ──────────────────────────────────────────────
+        # 7. 龙头/辨识度加分
+        # ──────────────────────────────────────────────
         leader_bonus = 0
-        if breakout_strength >= 0.95 and dist_to_high <= 0.05:
-            leader_bonus = 15  # 突破前高的龙头
-        elif breakout_strength >= 0.80:
-            leader_bonus = 8   # 接近前高的核心
-        
-        # =========================
-        # 8. 历史辨识度加分（YRI-H） + 二波机会
-        # =========================
-        second_wave_bonus = 0
+        if current_price >= HHV20 * 0.97:
+            if 'vol' in df.columns:
+                _v5 = float(df['vol'].iloc[-6:-1].mean()) if len(df) > 6 else 0
+                _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) > 16 else _v5
+                if _v5 > _v15 * 1.2:
+                    leader_bonus = 12  # 放量近高点=龙头
+                else:
+                    leader_bonus = 6
+            else:
+                leader_bonus = 6
+
+        # YRI-H 历史辨识度
         recognition_bonus = 0
         yri_h_score = 0
         yri_h_tags = []
-        yri_level = ""
-        yri_portrait = ""
-        yri_avg_amount = 0
-        yri_zt_count = 0
-        yri_max_consec_zt = 0
-        
-        # 优先使用 YRI-H 历史辨识度评分（替换旧的 calc_yri_score）
         if ts_code:
             try:
                 yri_result = calc_yri_history(ts_code, debug=False)
                 if isinstance(yri_result, dict) and "错误" not in yri_result:
                     yri_h_score = float(yri_result.get("YRI历史总分", 0))
                     yri_h_tags = yri_result.get("核心历史标签", [])
-                    yri_level = yri_result.get("等级", "")
-                    yri_portrait = yri_result.get("股性画像", "")
-                    yri_a = yri_result.get("A_资金活跃度", {})
-                    if isinstance(yri_a, dict):
-                        yri_avg_amount = float(yri_a.get("日均成交额(万元)", 0))
-                    yri_g = yri_result.get("G_涨停基因", {})
-                    if isinstance(yri_g, dict):
-                        yri_zt_count = int(yri_g.get("涨停次数", 0))
-                    yri_s = yri_result.get("S_空间记忆", {})
-                    if isinstance(yri_s, dict):
-                        yri_max_consec_zt = int(yri_s.get("最大连板", 0))
-                    # YRI-H 总分100分，最高贡献 +10分（从0-5分提升至0-10分）
-                    recognition_bonus = (yri_h_score / 100) * 10
-                    if recognition_bonus > 0:
-                        recommendation = f"YRI{yri_h_score:.0f} | " + recommendation
+                    recognition_bonus = (yri_h_score / 100) * 8
             except Exception:
                 pass
-        
-        # 降级方案：尝试读取二波扫描结果
-        if recognition_bonus == 0:
-            second_wave_file = os.path.join(BASE_DIR, 'report_daily', 'mainboard_second_wave.json')
-            if os.path.exists(second_wave_file):
-                try:
-                    with open(second_wave_file, 'r', encoding='utf-8') as f:
-                        second_wave_data = json.load(f)
-                    for stock in second_wave_data.get('data', []):
-                        if stock.get('ts_code') == ts_code:
-                            recognition_score = stock.get('recognition_score', 0)
-                            second_wave_score = stock.get('second_wave_score', 0)
-                            recognition_bonus = (recognition_score / 100) * 5
-                            second_wave_bonus = (second_wave_score / 100) * 8
-                            if recognition_bonus > 0:
-                                recommendation = f"辨识度{recognition_score:.0f} | " + recommendation
-                            if second_wave_bonus > 0:
-                                recommendation = f"二波{second_wave_score:.0f} | " + recommendation
-                            break
-                except Exception:
-                    pass
-        
-        # =========================
-        # 9. 综合得分 - 趋势强度主导
-        # =========================
-        # 基础分 = 其他维度加权（降低热度权重）
+
+        # ──────────────────────────────────────────────
+        # 8. 综合得分
+        # ──────────────────────────────────────────────
         base_score = (
-            capital_score * 0.30 +
+            capital_score * 0.35 +
             position_score * 0.25 +
-            hot_score * 0.20 +
+            hot_score * 0.15 +
             fundamental_score * 0.25
         )
-        
-        # 趋势强度作为乘数因子（趋势越强，总分越高）
-        # 缩窄倍数范围，避免顶部聚类
-        trend_multiplier = 0.7 + (trend_score / 100) * 0.6  # 0.7 ~ 1.3
-        
-        # 共振系数改为加法项而非乘法，避免双乘数叠加导致的顶部溢出
-        synergy_bonus = (synergy_coeff - 0.8) * 25  # 系数0.5→-7.5分, 1.0→+5分, 1.5→+17.5分
-        
-        # 综合分 = 基础分 × 趋势乘数 + 共振加分 - 惩罚 + 龙头加分 + 二波加分
-        final_score = base_score * trend_multiplier + synergy_bonus - penalty + leader_bonus + second_wave_bonus + recognition_bonus
-        
-        # 趋势强度额外加成：趋势分>70的股票获得额外加分
-        if trend_score >= 80:
-            final_score += 8  # 强趋势加成
-        elif trend_score >= 70:
-            final_score += 4   # 中等趋势加成
-        elif trend_score < 40:
-            final_score -= 8   # 弱趋势惩罚
-        
+        # 动量爆发力作为乘数 + 龙头加分 - 惩罚 + 辨识度
+        momentum_mult = 0.7 + (momentum_score / 100) * 0.6  # 0.7 ~ 1.3
+        synergy_bonus = (synergy_coeff - 0.8) * 25
+        final_score = base_score * momentum_mult + synergy_bonus - penalty + leader_bonus + recognition_bonus
+
+        if momentum_score >= 80:
+            final_score += 6
+        elif momentum_score >= 65:
+            final_score += 3
+        elif momentum_score < 40:
+            final_score -= 6
         final_score = min(100, max(5, final_score))
-        
-        # =========================
-        # 9. 失败概率计算
-        # =========================
+
+        # ──────────────────────────────────────────────
+        # 9. 失败概率（幻方风格：动量越强失败越低）
+        # ──────────────────────────────────────────────
         failure_prob = 50
-        
-        failure_prob -= (trend_score - 50) * 0.25
-        failure_prob -= (capital_score - 50) * 0.35  # 提高资金健康度权重
-        failure_prob -= (position_score - 50) * 0.20
-        failure_prob -= (hot_score - 50) * 0.15
-        failure_prob -= (fundamental_score - 50) * 0.15
-        
-        # 新增：量能直接影响失败概率
-        # 量能越大，失败概率越低
-        if vol_recent_long_ratio > 2.0:
-            failure_prob -= 15  # 量能爆发性持续，失败概率大幅降低
-        elif vol_recent_long_ratio > 1.5:
-            failure_prob -= 10  # 量能明显放大，失败概率降低
-        elif vol_recent_long_ratio > 1.2:
-            failure_prob -= 5   # 量能温和放大，失败概率略降
-        elif vol_recent_long_ratio > 1.0:
-            failure_prob -= 2   # 量能持平，失败概率小幅降低
-        elif vol_recent_long_ratio < 0.6:
-            failure_prob += 10  # 量能明显萎缩，失败概率上升
-        elif vol_recent_long_ratio < 0.4:
-            failure_prob += 18  # 量能严重萎缩，失败概率大幅上升
-        
-        # 当日量比强化
-        if vol_ratio > 3.0:
-            failure_prob -= 8   # 巨量爆发，失败概率大幅降低
-        elif vol_ratio > 2.0:
-            failure_prob -= 5   # 明显放量，失败概率降低
-        
-        # 创新高惩罚：只有连续新高才惩罚，第一天新高不惩罚
-        if is_new_high:
-            if is_consecutive_high:
-                # 连续新高：失败概率上升
-                failure_prob += 10  # 连续新高追高风险大
-                # 120日新高额外惩罚
-                HHV120 = float(high_series.iloc[:-1].tail(120).max()) if len(C) >= 120 else HHV20
-                if current_price >= HHV120:
-                    failure_prob += 5   # 连续历史新高，风险更大
-            # 第一天新高（昨天比前天低，今天创新高）：突破形态，不惩罚
-        elif dist_to_high <= 0.08:
-            # 临近高点（8%以内）：蓄势待突破，失败概率小幅降低
-            failure_prob -= 3   # 临近高点成功率略高
-        
-        failure_prob += penalty * 1.5
-        
+        failure_prob -= (momentum_score - 50) * 0.30   # 动量爆发力 权重最大
+        failure_prob -= (capital_score - 50) * 0.35    # 资金行为
+        failure_prob -= (position_score - 50) * 0.18   # 位置
+        failure_prob -= (hot_score - 50) * 0.10        # 热度（降低权重）
+        failure_prob -= (fundamental_score - 50) * 0.12
+
+        # 量能强化
+        if 'vol' in df.columns and len(df) >= 10:
+            vol_hist = df['vol'].iloc[:-1]
+            vm5 = float(vol_hist.tail(5).mean())
+            vm20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vm5
+            vrr = vm5 / vm20 if vm20 > 0 else 1.0
+            if vrr > 1.5:
+                failure_prob -= 10
+            elif vrr > 1.2:
+                failure_prob -= 5
+            elif vrr < 0.6:
+                failure_prob += 12
+            elif vrr < 0.8:
+                failure_prob += 5
+
+        # 资金流向强化
+        if mf_avail:
+            ms = mf.get('mf_slope', 0)
+            mp = mf.get('mf_persistence', 0)
+            if ms > 1.5 and mp > 0.3:
+                failure_prob -= 10  # 机构持续流入=低失败
+            elif ms < -1.5:
+                failure_prob += 10
+
+        failure_prob += penalty * 1.2
         if hot_score >= 85:
-            failure_prob += 8  # 过热风险
-        elif hot_score < 40:
-            # 关键修正：缩量整理(vol_ratio<1.2)≠缺乏热度，而是健康洗盘
-            if vol_ratio >= 1.2:
-                failure_prob += 10  # 放量下跌或长期无人关注 = 缺乏热度风险
-        
+            failure_prob += 8
         failure_prob = min(90, max(10, failure_prob))
-        
-        # 失败概率修正：失败概率越低，加分越多（反向激励）
-        # 以30%为基准，每低1%加0.5分，每高1%扣0.5分
-        failure_bonus = (30 - failure_prob) * 0.5
+
+        failure_bonus = (30 - failure_prob) * 0.4
         final_score += failure_bonus
-        
-        # =========================
+
+        # ──────────────────────────────────────────────
         # 10. 推荐理由
-        # =========================
+        # ──────────────────────────────────────────────
         reason_parts = []
-        
-        if trend_score >= 80:
-            reason_parts.append("趋势强劲")
-        elif trend_score >= 60:
-            reason_parts.append("趋势良好")
-        
+        if momentum_score >= 80:
+            reason_parts.append("🚀爆发力强")
+        elif momentum_score >= 60:
+            reason_parts.append("动量良好")
+
         if capital_score >= 80:
             reason_parts.append("资金充沛")
         elif capital_score >= 60:
             reason_parts.append("资金健康")
-        
-        if position_score >= 80:
+
+        if position_score >= 75:
             reason_parts.append("位置安全")
-        elif position_score >= 60:
+        elif position_score >= 55:
             reason_parts.append("位置合理")
-        
-        if hot_score >= 70:
-            reason_parts.append("热度持续")
-        
+
         if leader_bonus >= 10:
             reason_parts.append("👑龙头")
         elif leader_bonus >= 5:
             reason_parts.append("⭐核心")
-        
-        if hot_rank_bonus > 0:
-            reason_parts.append(f"热榜Top{best_rank}")
-        
-        if penalty > 5:
+
+        if penalty > 8:
             reason_parts.append(f"⚠️追高-{penalty:.0f}")
-        
+        if yri_h_tags:
+            reason_parts.append("/".join(yri_h_tags[:2]))
         recommendation = " | ".join(reason_parts) if reason_parts else "观察中"
-        
-        # =========================
+
+        # ──────────────────────────────────────────────
         # 11. 详细信息
-        # =========================
+        # ──────────────────────────────────────────────
         details = {
-            '趋势强度': round(trend_score, 1),
-            '资金健康度': round(capital_score, 1),
+            '动量爆发力': round(momentum_score, 1),
+            '资金行为': round(capital_score, 1),
             '位置安全性': round(position_score, 1),
-            '热度持续性': round(hot_score, 1),
+            '热度': round(hot_score, 1),
             '基本面': round(fundamental_score, 1),
-            'Alpha评分': round(fundamental_alpha_score_val, 1),
-            'Alpha信号': fundamental_alpha_signal,
-            '共振系数': round(synergy_coeff, 2),
             '追高惩罚': round(penalty, 1),
             '龙头加分': leader_bonus,
-            '二波加分': round(second_wave_bonus, 1),
             '辨识度加分': round(recognition_bonus, 1),
-            'YRI历史总分': round(yri_h_score, 1),
-            'YRI标签': ", ".join(yri_h_tags) if yri_h_tags else "",
-            '量能爆发': round(vol_ratio, 2),
+            'YRI总分': round(yri_h_score, 1),
+            'YRI标签': ", ".join(yri_h_tags[:3]) if yri_h_tags else "",
+            '量比': round(vol_ratio, 2) if 'vol' in df.columns else 0,
             '热榜最佳排名': best_rank if best_rank <= 100 else 0,
             '热榜上榜次数': hot_appear_count,
+            '共振系数': round(synergy_coeff, 2),
             '基本面逻辑': fund_logic[:3] if fund_logic else [],
-            'YRI等级': yri_level,
-            'YRI股性画像': yri_portrait,
-            'YRI日均成交(万)': round(yri_avg_amount, 0),
-            'YRI涨停次数': yri_zt_count,
-            'YRI最大连板': yri_max_consec_zt,
+            '资金斜率': round(mf.get('mf_slope', 0), 2),
+            '资金持续性': round(mf.get('mf_persistence', 0), 2),
+            '资金扩散率': round(mf.get('mf_diffusion', 0), 3),
+            'Alpha信号': '',
         }
-        
+
         return round(final_score, 1), recommendation, details, round(failure_prob, 1)
-        
+
     except Exception as e:
-        print(f"[统一评分] 异常: {e}")
         import traceback
         traceback.print_exc()
         return 0, "计算异常", {}, 50
+
+
 
 
 def calc_dual_layer_score_v9(df, ts_code='', stock_info=None, theme=''):
@@ -6134,14 +6025,35 @@ def calc_tech_barrier_score(ts_code, pro=None):
 def calc_institutional_flow_score(ts_code):
     """
     机构资金流评分
-    从 moneyflow 缓存读取大单数据
+    从 moneyflow 缓存（优先）或实时调用获取大单数据
 
     Returns:
         float: 0~5 分
     """
     try:
-        # 尝试从当日 moneyflow 数据获取
         from datetime import datetime, timedelta
+        # 优先从 per-stock 缓存读取（_get_stock_moneyflow_features 已缓存）
+        safe_name = ts_code.replace('.', '_')
+        stock_cache = os.path.join(MONEYFLOW_STOCK_DIR, f"{safe_name}.csv")
+        if os.path.exists(stock_cache):
+            mf_df = pd.read_csv(stock_cache)
+            if len(mf_df) > 0:
+                mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
+                latest = mf_df.iloc[-1]
+                if 'buy_lg_amount' in mf_df.columns:
+                    buy_lg = float(latest.get('buy_lg_amount', 0))
+                    sell_lg = float(latest.get('sell_lg_amount', 0))
+                else:
+                    buy_lg = float(latest.get('buy_lg_vol', 0))
+                    sell_lg = float(latest.get('sell_lg_vol', 0))
+                net_lg = buy_lg - sell_lg
+                if net_lg > 1e6:
+                    return 5
+                elif net_lg > 0:
+                    return 3
+                else:
+                    return 0
+        # fallback: 从 moneyflow_{date}.csv 批量缓存获取
         for offset in range(5):
             check_date = (datetime.now() - timedelta(days=offset)).strftime('%Y%m%d')
             mf_path = os.path.join(CACHE_DIR, f"moneyflow_{check_date}.csv")
@@ -6153,11 +6065,11 @@ def calc_institutional_flow_score(ts_code):
                     sell_lg = float(row.get('sell_lg_vol', 0)) if pd.notna(row.get('sell_lg_vol')) else 0
                     net_lg = buy_lg - sell_lg
                     if net_lg > 1e6:
-                        return 5  # 大单大幅净买入
+                        return 5
                     elif net_lg > 0:
-                        return 3  # 大单小幅净买入
+                        return 3
                     else:
-                        return 0  # 大单净卖出
+                        return 0
         return 0
     except Exception:
         return 0
@@ -6474,6 +6386,181 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
             "stage": "未知",
             "logic": ["评分异常，使用默认值"]
         }
+
+
+def calc_fundamental_score_v3(ts_code, theme_name='', theme_trend_score=0, theme_sentiment_score=0,
+                                stock_info=None, hot_rank=9999, hot_count=0):
+    """
+    V3: 真实基本面因子版 — 接入利润增速/ROE/半年度预告/大宗交易
+    返回: 与 V2 格式一致
+    """
+    try:
+        logic = []
+
+        # ── PART A: 热榜+主题信号 (30%) ──
+        trend_str = 50
+        if theme_trend_score >= 80: trend_str = 95
+        elif theme_trend_score >= 65: trend_str = 80
+        elif theme_trend_score >= 45: trend_str = 65
+        elif theme_trend_score >= 30: trend_str = 45
+        else: trend_str = 25
+
+        concent = 50
+        if hot_count >= 5:
+            concent = 95 if hot_rank <= 10 else (80 if hot_rank <= 30 else 65)
+        elif hot_count >= 2:
+            concent = 55
+        else:
+            concent = 40
+
+        stage_score = 50; stage = "未知"
+        if theme_sentiment_score >= 80: stage, stage_score = "高潮期", 55
+        elif theme_sentiment_score >= 60: stage, stage_score = "发酵期", 75
+        elif theme_sentiment_score >= 40: stage, stage_score = "启动期", 90
+        else: stage, stage_score = "退潮期", 30
+
+        emotion_heat = min(90, 30 + hot_count * 6)
+        heat_base = trend_str * 0.25 + concent * 0.25 + stage_score * 0.25 + emotion_heat * 0.25
+
+        # ── PART B: 真实基本面因子 (70%) ──
+        cache_key = f"{ts_code}_fund_v3.json"
+        cache_path = os.path.join(FUND_CACHE_DIR, cache_key)
+        fund_data = {}
+        if os.path.exists(cache_path):
+            age = time.time() - os.path.getmtime(cache_path)
+            if age < 86400 * 7:
+                try:
+                    with open(cache_path, 'r', encoding='utf-8') as f:
+                        fund_data = json.load(f)
+                except: pass
+        if not fund_data:
+            try: fin_df = pro.fina_indicator(ts_code=ts_code, fields="ts_code,end_date,roe,ystz,sjlrtz")
+            except: fin_df = None
+            try: fc_df = pro.forecast(ts_code=ts_code, fields="ts_code,end_date,type,p_change_min,p_change_max")
+            except: fc_df = None
+            try: bt_df = pro.block_trade(ts_code=ts_code, fields="ts_code,trade_date,price,vol,amount,discount")
+            except: bt_df = None
+            fund_data = {'fin': {}, 'fc': {}, 'bt': {}}
+            if fin_df is not None and len(fin_df) > 0:
+                fin_df = fin_df.sort_values("end_date", ascending=False)
+                lr = fin_df.iloc[0]
+                fund_data['fin']['roe'] = float(lr.get('roe', 0)) if pd.notna(lr.get('roe', 0)) else 0
+                fund_data['fin']['ystz'] = float(lr.get('ystz', 0)) if pd.notna(lr.get('ystz', 0)) else 0
+                fund_data['fin']['sjlrtz'] = float(lr.get('sjlrtz', 0)) if pd.notna(lr.get('sjlrtz', 0)) else 0
+            if fc_df is not None and len(fc_df) > 0:
+                fc_df = fc_df.sort_values("end_date", ascending=False)
+                # forecast.type 可能是字符串(如"预增")，映射为整数
+                _forecast_type_map = {
+                    '预增': 1, '预减': 2, '略增': 3, '略减': 4,
+                    '扭亏': 5, '首亏': 6, '续亏': 7, '续盈': 8, '减亏': 9
+                }
+                def _to_fc_type(v):
+                    if pd.isna(v):
+                        return 0
+                    if isinstance(v, str):
+                        return _forecast_type_map.get(v, 0)
+                    try:
+                        return int(v)
+                    except (ValueError, TypeError):
+                        return 0
+                for _, rr in fc_df.iterrows():
+                    ed = str(rr.get('end_date', ''))
+                    if '0630' in ed or '06-30' in ed:
+                        fund_data['fc']['half_p_min'] = float(rr.get('p_change_min', 0)) if pd.notna(rr.get('p_change_min', 0)) else 0
+                        fund_data['fc']['half_p_max'] = float(rr.get('p_change_max', 0)) if pd.notna(rr.get('p_change_max', 0)) else 0
+                        fund_data['fc']['half_type'] = _to_fc_type(rr.get('type'))
+                        break
+                lst = fc_df.iloc[0]
+                fund_data['fc']['p_min'] = float(lst.get('p_change_min', 0)) if pd.notna(lst.get('p_change_min', 0)) else 0
+                fund_data['fc']['p_max'] = float(lst.get('p_change_max', 0)) if pd.notna(lst.get('p_change_max', 0)) else 0
+                fund_data['fc']['type'] = _to_fc_type(lst.get('type'))
+            if bt_df is not None and len(bt_df) > 0:
+                bt_df = bt_df.sort_values("trade_date", ascending=False)
+                if 'discount' in bt_df.columns:
+                    dsc = bt_df.head(10)['discount'].dropna().values
+                    fund_data['bt']['avg_discount'] = float(np.mean(dsc)) if len(dsc) > 0 else 0
+                fund_data['bt']['count'] = len(bt_df.head(10))
+            time.sleep(0.15)
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(fund_data, f, ensure_ascii=False)
+
+        # 因子①: 利润同比增速 (30%)
+        sjlrtz = fund_data.get('fin', {}).get('sjlrtz', 0)
+        ps = 50
+        if sjlrtz > 100: ps = 95; logic.append(f"利润爆发: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 50: ps = 85; logic.append(f"利润高增: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 20: ps = 70; logic.append(f"利润良好: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 0: ps = 55; logic.append(f"利润微增: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > -20: ps = 35; logic.append(f"利润下滑: {sjlrtz:.0f}%")
+        else: ps = 20; logic.append(f"利润大降: {sjlrtz:.0f}%")
+
+        # 因子②: 半年度预告加分 (25%)
+        fc = fund_data.get('fc', {})
+        fs = 50
+        hp_min = fc.get('half_p_min', 0); hp_max = fc.get('half_p_max', 0)
+        ht = fc.get('half_type', 0)
+        if ht == 5:
+            fs = 90; logic.append(f"半年度: 扭亏为盈({hp_min:.0f}%~{hp_max:.0f}%)")
+        elif ht in (1, 6, 8):
+            ap = (hp_min + hp_max) / 2
+            if ap > 100: fs = 95; logic.append(f"半年度: 预增+{ap:.0f}%(超预期)")
+            elif ap > 50: fs = 85; logic.append(f"半年度: 预增+{ap:.0f}%")
+            elif ap > 20: fs = 75; logic.append(f"半年度: 预增+{ap:.0f}%")
+            else: fs = 65; logic.append(f"半年度: 略增+{ap:.0f}%")
+        elif ht in (2, 7): fs = 35; logic.append(f"半年度: 预减({hp_min:.0f}%~{hp_max:.0f}%)")
+        elif ht in (3, 4): fs = 15; logic.append(f"半年度: 亏损预警")
+        else:
+            pm = fc.get('p_min', 0); px = fc.get('p_max', 0)
+            if pm > 0 or px > 0:
+                ap = (pm + px) / 2
+                fs = 75 if ap > 50 else 60
+                logic.append(f"最新预告: {'预增' if ap>0 else '预减'}+{ap:.0f}%")
+
+        # 因子③: ROE_TTM (25%)
+        roe = fund_data.get('fin', {}).get('roe', 0)
+        rs = 50
+        if roe > 25: rs = 95; logic.append(f"ROE: {roe:.1f}%(卓越)")
+        elif roe > 18: rs = 85; logic.append(f"ROE: {roe:.1f}%(优秀)")
+        elif roe > 12: rs = 70; logic.append(f"ROE: {roe:.1f}%(良好)")
+        elif roe > 6: rs = 55; logic.append(f"ROE: {roe:.1f}%(一般)")
+        elif roe > 0: rs = 40; logic.append(f"ROE: {roe:.1f}%(偏低)")
+        else: rs = 25; logic.append(f"ROE: {roe:.1f}%(亏损)")
+
+        # 因子④: 大宗交易折溢价 (20%)
+        bt = fund_data.get('bt', {})
+        bs = 50; bt_cnt = bt.get('count', 0)
+        if bt_cnt >= 3:
+            ad = bt.get('avg_discount', 0)
+            if ad > 3: bs = 90; logic.append(f"大宗: 溢价{ad:.1f}%(抢筹)")
+            elif ad > 0: bs = 75; logic.append(f"大宗: 小幅溢价{ad:.1f}%")
+            elif ad > -5: bs = 60; logic.append(f"大宗: 折价{abs(ad):.1f}%(正常)")
+            elif ad > -10: bs = 45; logic.append(f"大宗: 折价{abs(ad):.1f}%(偏大)")
+            else: bs = 30; logic.append(f"大宗: 大幅折价{abs(ad):.1f}%(异常)")
+        elif bt_cnt > 0: bs = 55
+        else: bs = 50
+
+        real_score = min(100, max(0, ps * 0.30 + fs * 0.25 + rs * 0.25 + bs * 0.20))
+        combined = heat_base * 0.30 + real_score * 0.70
+
+        has_data = sjlrtz != 0 or roe != 0 or bt_cnt > 0 or hp_min != 0 or fc.get('p_min', 0) != 0
+        if has_data and real_score >= 70: sc = 1.20 + min(0.3, (real_score - 70) / 100)
+        elif has_data and real_score >= 50: sc = 1.0 + (real_score - 50) / 100
+        elif has_data: sc = 0.85
+        else: sc = 0.75
+
+        if theme_sentiment_score >= 85 and hot_count >= 5: sc *= 0.9
+        sc = round(max(0.5, min(1.5, sc)), 2)
+
+        return {
+            "industry_score": round(heat_base, 1), "fundamental_score": round(real_score, 1),
+            "base_score": round(combined, 1), "synergy_coeff": sc,
+            "is_mainline": not (heat_base < 40 and real_score < 45),
+            "stage": stage, "logic": logic
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"industry_score": 50, "fundamental_score": 50, "base_score": 50,
+                "synergy_coeff": 1.0, "is_mainline": False, "stage": "未知", "logic": ["评分异常"]}
 
 
 def rank_top_stocks_for_open(df_list, results_list):
@@ -10636,6 +10723,8 @@ def run(target_date=None, simple_mode=False):
                 '原始整合评分': round(integrated_score_orig, 1),
                 'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
                 'YRI最大连板': details.get('YRI最大连板', 0),
+                # V10 完整评分详情（传递给AI prompt）
+                '评分详情': details,
                 # 强势股池回测优化：保存买入日时点特征用于硬过滤
                 # 回测验证：量比<1胜率0%, 距MA20>20%胜率9%, 近20日涨幅>40%胜率0%, 距MA5<0%胜率20%
                 '当日量比': _calc_vol_ratio(df),
@@ -10763,6 +10852,25 @@ def run(target_date=None, simple_mode=False):
         _chip_str = f" 筹码={_chip_score:.0f}/CRE={_cre_score:.0f}/动量={_mom_score:.0f}"
         lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{_chip_str}")
         lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
+        _det = s.get('评分详情', {})
+        if _det and isinstance(_det, dict):
+            _mom = _det.get('动量爆发力', 0)
+            _cap = _det.get('资金行为', 0)
+            _pos = _det.get('位置安全性', 0)
+            _hot = _det.get('热度', 0)
+            _fun = _det.get('基本面', 0)
+            _pen = _det.get('追高惩罚', 0)
+            _ldb = _det.get('龙头加分', 0)
+            _rec = _det.get('辨识度加分', 0)
+            _msl = _det.get('资金斜率', 0)
+            _mps = _det.get('资金持续性', 0)
+            _md = _det.get('资金扩散率', 0)
+            _fl = _det.get('基本面逻辑', [])
+            _qbi = _det.get('量比', 0)
+            lines.append(f"  V10: 动量={_mom:.0f} 资金={_cap:.0f} 位置={_pos:.0f} 热度={_hot:.0f} 基本面={_fun:.0f}")
+            lines.append(f"  资金: 斜率={_msl:.1f}/持续={_mps:.0%}/扩散={_md:.0%} | 量比={_qbi:.1f} | 惩罚={_pen:.0f} 龙头={_ldb:.0f} 辨识={_rec:.0f}")
+            if _fl:
+                lines.append(f"  基本面因子: {' | '.join(str(x) for x in _fl[:4])}")
         _chip_sug = s.get('ChipSuggestion', '观望等待')
         _chip_sug_reason = s.get('ChipSuggestionReason', '')
         lines.append(f"  筹码建议: {_chip_sug} | {_chip_sug_reason}")
@@ -10981,10 +11089,6 @@ def run(target_date=None, simple_mode=False):
                 _lines.append(f"📊 中报预增股池择时（幻方算法） - {TRADE_DATE}")
                 _lines.append(f"  S/A级共{len(_sa_pool)}只，以下为明确买入信号：")
                 _lines.append("")
-                try:
-                    _, _, _, _stock_concepts = _load_theme_stock_map_from_json()
-                except:
-                    _stock_concepts = {}
                 for _, _r in _sa_pool.iterrows():
                     _decision = str(_r.get('交易决策', ''))
                     # 只显示有明确买入信号的
@@ -10998,8 +11102,8 @@ def run(target_date=None, simple_mode=False):
                         _stop = _r.get('ATR动态止损价', 0)
                         _buy_pt = _r.get('推荐买点类型', '')
                         _profit_yoy = _r.get('中报业绩亮点', '')
-                        _concepts = _stock_concepts.get(_code, [])
-                        _theme_str = ' | 主题=' + ','.join(_concepts[:3]) if _concepts else ''
+                        _concepts = _r.get('主题', '')
+                        _theme_str = f' | 主题={_concepts}' if _concepts else ''
                         _lines.append(f"  [{_grade}] {_name} ({_code}) 量化分={_score:.1f}{_theme_str}")
                         _lines.append(f"    VWAP={_vwap:.2f} 现价={_price:.2f} 止损={_stop:.2f}")
                         _lines.append(f"    买点={_buy_pt} | 中报={_profit_yoy}")
@@ -11226,18 +11330,13 @@ def run(target_date=None, simple_mode=False):
 
 **V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
 - 每主题精简列出 Top 3，格式要求：
-主题1
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
-主题2
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
-名称(代码) 确定性:XX | 低吸:XX.XX 止损:XX.XX
+主题1(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
+主题2(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
+主题3(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
 依此往下
 
 3、**【今日突破股池分析】**
-（综合趋势强度、资金健康度、位置安全性、热度持续性、基本面五个维度评分）
+（综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
  - "🔥 量能爆发·强买信号"区（属第5部分量能爆发池，非本突破股池）
@@ -11254,7 +11353,8 @@ def run(target_date=None, simple_mode=False):
 依此往后
 - 对每只股票进行详细分析，包括：
 - 整合评分和失败概率
-- **[突破评分]**（必须包含）和 [突破信号]（加粗强调），格式例如：**[突破评分=XX]** | 突破信号：XXX
+- V10 五维分解分（动量爆发力/资金行为/位置安全性/热度/基本面）及资金行为细节（斜率/持续性/扩散率）
+- 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
 - 筹码建议
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
 主题地位：【必须】直接输出规则判定结果，格式如下：
@@ -11268,13 +11368,6 @@ def run(target_date=None, simple_mode=False):
 - 50-59分：中性（中线收益5-10%），收息/观望为主
 - <40分：减仓/卖出，长线回避
 【输出格式】Alpha评分=X分，信号=XXX | 中线建议：XXX | 长线建议：XXX
-- 【联网风险与舆情核查-强制】对每只个股必须联网搜索其最新情况，独立成行输出：
-  * 风险扫描：定增预案/大额减持/解禁压力/诉讼仲裁/财务异常/被监管立案/ST预警
-  * 龙虎榜：机构净买入/净卖出、知名游资席位动向、大宗交易折价
-  * 舆情热度：近期新闻舆情、机构调研、业绩预告/快报、重大合同、技术突破、股东增减持
-  * 热榜舆情：东财/同花顺/雪球热度榜排名、讨论热度变化、关注度异动
-  * 【输出格式】风险舆情：风险=[风险类型或"暂无重大利空"] | 龙虎榜=[动向或"无数据"] | 舆情=[热点或"无重大舆情"] | 热榜=[排名/热度或"未上榜"]
-  * 【警告触发】如联网发现重大利空（被监管立案/财务造假/重大减持/ST预警等），在该股分析末尾标注"【警告】联网核查发现重大风险：XXX"，并建议回避或剔除
 - <span style="color:red;">【重要提醒】如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，<span style="color:red;">**突出建议勿追高！**</span></span>
 - 如遇个股重大基本面风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由。技术性风险无须提示和输出。
 其它要求：
@@ -11322,11 +11415,11 @@ ETF名称（ETF代码）：
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
 
-7、**【中报预增股池择时（幻方算法）】**（预告利润增速≥30% + 6因子量化择时，格式强要求：个股之间加html换行）
+7、**【中报预增股池择时（幻方算法）】**（预告利润增速≥30% + 6因子量化择时）
 {timing_pool_text}
-【S】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
-【A1】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
-【A2】**股票名** (代码)/量化分/中报增：XX%/止损：XXX/止盈：XXX/决策
+【S】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
+【A1】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
+【A2】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
 
 ------------------
 以上全局格式要求：

@@ -33,9 +33,11 @@ CACHE_DIR = r"D:\mystock\cache_daily"
 ETF_FUND_CACHE_DIR = os.path.join(CACHE_DIR, "etf_fund")
 ETF_CONS_CACHE_DIR = os.path.join(CACHE_DIR, "etf_cons")
 ETF_CONS_JSON = os.path.join(CACHE_DIR, "etf_constituents_all.json")
+MONEYFLOW_CACHE_DIR = os.path.join(CACHE_DIR, "etf_moneyflow")
 ETF_SHARE_CACHE_DIR = os.path.join(CACHE_DIR, "etf_share")
 os.makedirs(ETF_FUND_CACHE_DIR, exist_ok=True)
 os.makedirs(ETF_CONS_CACHE_DIR, exist_ok=True)
+os.makedirs(MONEYFLOW_CACHE_DIR, exist_ok=True)
 os.makedirs(ETF_SHARE_CACHE_DIR, exist_ok=True)
 
 def _read_cache(filepath):
@@ -68,6 +70,11 @@ def _cache_key_share(ts_code, trade_date):
     """ETF份额规模缓存key"""
     safe_name = ts_code.replace('.', '_')
     return os.path.join(ETF_SHARE_CACHE_DIR, f"share_{safe_name}_{trade_date}.csv")
+
+def _cache_key_moneyflow(ts_code, trade_date):
+    """个股资金流向缓存key"""
+    safe_name = ts_code.replace('.', '_')
+    return os.path.join(MONEYFLOW_CACHE_DIR, f"mf_{safe_name}_{trade_date}.csv")
 
 def _cache_key_stock(ts_code, trade_date):
     """个股日线缓存key"""
@@ -445,11 +452,11 @@ def normalize_score(series):
     return (series - min_val) / (max_val - min_val) * 100
 
 
-def calculate_multi_factor_score(df, benchmark_df, mom_period=20, share_df=None):
+def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     """
     计算多因子综合评分
     因子1: 20日动量 (40%)
-    因子2: 量能配合 (25%) - 成交量放大 + ETF份额规模变化
+    因子2: 量能配合 (25%) - 成交量放大
     因子3: 风险调整收益 (20%) - 动量/波动率
     因子4: 相对强弱 (15%) - 相对于沪深300的表现
     """
@@ -478,27 +485,12 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20, share_df=None)
         else:
             vol_score = 50
 
-    # ETF份额规模变化评分: 反映资金净申购/赎回流向
-    share_score = 50  # 默认中性
-    if share_df is not None and len(share_df) >= 10:
-        share_df = share_df.sort_values("trade_date").reset_index(drop=True)
-        if 'total_share' in share_df.columns:
-            total_share = share_df['total_share']
-            recent_share = total_share.tail(5).mean()
-            prev_share = total_share.head(len(total_share) - 5).mean() if len(total_share) > 5 else total_share.mean()
-            if prev_share > 0:
-                share_change = (recent_share - prev_share) / prev_share * 100
-                # 份额增长=资金流入=加分: +1%→65分, +3%→80分, +5%→100分
-                # 份额减少=资金流出=减分: -1%→35分, -3%→20分
-                share_score = max(0, min(100, 50 + share_change * 15))
-    # 量能总分 = 成交量(60%) + 份额规模变化(40%)
-    vol_score = vol_score * 0.60 + share_score * 0.40
-
     daily_returns = close.pct_change().dropna()
     if len(daily_returns) >= mom_period:
         volatility = daily_returns.tail(mom_period).std() * np.sqrt(252) * 100
         if volatility > 0:
-            risk_adj_score = min(mom_20d / volatility * 10, 100)
+            sharpe_like = mom_20d / volatility
+            risk_adj_score = max(0, min(100, 50 + (sharpe_like - 0.5) * 50))
         else:
             risk_adj_score = 50
     else:
@@ -526,7 +518,6 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20, share_df=None)
         'vol_score': round(vol_score, 2),
         'risk_adj': round(risk_adj_score, 2),
         'rel_strength': round(rel_score, 2),
-        'share_score': round(share_score, 2),
         'total_score': round(total_score, 2)
     }
 
@@ -593,7 +584,61 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             
             if len(con_df) < 60:
                 continue
-            
+
+            # ── 获取同花顺资金流向数据 ──
+            mf_cache = _cache_key_moneyflow(con_ts_code, trade_date)
+            mf_df = _read_cache(mf_cache)
+            if mf_df is None:
+                try:
+                    mf_df = pro.moneyflow_ths(ts_code=con_ts_code,
+                                              start_date=(today - datetime.timedelta(days=60)).strftime("%Y%m%d"),
+                                              end_date=trade_date)
+                    _save_cache(mf_df, mf_cache)
+                    time.sleep(0.15)
+                except Exception:
+                    mf_df = None
+            # 资金行为特征: 20日净流入斜率/持续性/扩散率
+            mf_slope = 0
+            mf_persistence = 0
+            mf_diffusion = 0
+            if mf_df is not None and len(mf_df) >= 10:
+                mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
+                # moneyflow_ths 实际返回: net_amount(总净额), buy_lg_amount(大单净额),
+                # buy_md_amount(中单净额), buy_sm_amount(小单净额), 均为净值(负=流出)
+                if 'net_amount' in mf_df.columns:
+                    net_total = mf_df['net_amount'].values
+                    net_lg = mf_df['buy_lg_amount'].values if 'buy_lg_amount' in mf_df.columns else net_total
+                    net_sm = mf_df['buy_sm_amount'].values if 'buy_sm_amount' in mf_df.columns else np.zeros(len(net_total))
+
+                    # 取最近20天
+                    n_20 = min(20, len(net_total))
+                    net_20 = net_total[-n_20:]
+                    x = np.arange(n_20)
+
+                    # (1) Slope: 线性回归斜率(标准化), 正值=资金持续流入
+                    if n_20 >= 5 and np.std(net_20) > 0:
+                        slope, _ = np.polyfit(x, net_20, 1)
+                        # 斜率的z-score (除以规模标准化)
+                        mf_slope = slope / (np.std(net_20) + 1e-12) * 10
+
+                    # (2) Persistence: 20日中净流入>0的连续最长天数(权重流)
+                    pos_streak = 0
+                    max_streak = 0
+                    for v in net_20:
+                        if v > 0:
+                            pos_streak += 1
+                            max_streak = max(max_streak, pos_streak)
+                        else:
+                            pos_streak = 0
+                    # 加权: 连续天数越长越好, 用占比(0~1)表示
+                    mf_persistence = max_streak / n_20
+
+                    # (3) Diffusion: 大单vs小单的驱动比
+                    # 大单净额比率高=机构主导, 低=散户主导
+                    lg_abs = np.abs(net_lg[-n_20:]).sum() + 1e-12
+                    sm_abs = np.abs(net_sm[-n_20:]).sum() + 1e-12
+                    mf_diffusion = lg_abs / (lg_abs + sm_abs)
+
             close_arr = con_df['close'].values
             vol_arr = con_df['vol'].values
             high_arr = con_df['high'].values
@@ -736,6 +781,10 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
                 'amt_accel_short': amt_accel_short, 'amt_accel_med': amt_accel_med,
                 'vol_price_ratio': vol_price_ratio,
                 'breakout_quality': breakout_quality,
+                # Money flow behavior
+                'mf_slope': mf_slope,
+                'mf_persistence': mf_persistence,
+                'mf_diffusion': mf_diffusion,
                 'avg_amount': avg_amount,
             })
         except Exception:
@@ -794,33 +843,43 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     module2_score = (ma_align_score * 0.32 + momentum_pct * 0.40 +
                      ma_slope_score * 0.16 + pullback_score * 0.12)
     
-    # ── MODULE 3: Capital Flow Pattern (20%) ──
-    # 3a. Short-term money inflow (8%)
+    # ── MODULE 3: Capital Flow Pattern + 资金行为 (22%) ──
+    # 3a. Short-term money inflow (5.5%)
     amt_inflow_score = _pct(df['amt_accel_short'])
     
-    # 3b. Volume-price dominance (7%) - up-day volume > down-day volume
+    # 3b. Volume-price dominance (5.5%) - up-day volume > down-day volume
     vol_price_score = _pct(df['vol_price_ratio'])
     
-    # 3c. Coiled spring: vol contraction + volume expansion (5%)
-    #     Low recent volatility + recent money inflow = breakout setup
+    # 3c. Coiled spring (3.3%) - vol contraction + volume expansion
     vol_contraction_score = _pct(-df['vol_contraction'])  # lower ratio = contraction
     coiled_spring_score = vol_contraction_score * 0.5 + amt_inflow_score * 0.5
     
-    module3_score = (amt_inflow_score * 0.40 + vol_price_score * 0.35 +
-                     coiled_spring_score * 0.25)
+    # 3d. 资金行为: 20日净流入斜率 (3.3%) - 线性回归斜率标准化
+    mf_slope_score = _pct(df['mf_slope'])
     
-    # ── MODULE 4: Position Quality + 突破质量 (12%) ──
-    # 4a. Distance from 60D high (5%) - closer to high = momentum persistence
+    # 3e. 资金行为: 持续性 (2.2%) - 最长连续净流入天数占比
+    mf_persist_score = _pct(df['mf_persistence'])
+    
+    # 3f. 资金行为: 扩散率 (2.2%) - 大单绝对额占比(机构主导度)
+    mf_diffuse_score = _pct(df['mf_diffusion'])
+    
+    module3_score = (amt_inflow_score * 0.25 + vol_price_score * 0.25 +
+                     coiled_spring_score * 0.15 +
+                     mf_slope_score * 0.15 + mf_persist_score * 0.10 +
+                     mf_diffuse_score * 0.10)
+    
+    # ── MODULE 4: Position Quality + 突破质量 (10%) ──
+    # 4a. Distance from 60D high (4.2%) - closer to high = momentum persistence
     dist_high_score = _pct(-df['dist_to_high'])
     
-    # 4b. Position in 60D range (3%)
+    # 4b. Position in 60D range (2.5%)
     pos_range_score = _pct(df['pos_in_range'])
     
-    # 4c. Breakout proximity (2%) - at/near 60D high
+    # 4c. Breakout proximity (1.6%) - at/near 60D high
     breakout_prox = df['dist_to_high'].apply(
         lambda x: 100 if x >= -2 else (80 if x >= -5 else (50 if x >= -10 else 20)))
     
-    # 4d. 突破质量评分 (2%) - 今日涨幅/量比/突破幅度/蓄势紧凑度
+    # 4d. 突破质量评分 (1.7%) - 今日涨幅/量比/突破幅度/蓄势紧凑度
     bq_score = _pct(df['breakout_quality'])
     
     module4_score = dist_high_score * 0.42 + pos_range_score * 0.25 + breakout_prox * 0.16 + bq_score * 0.17
@@ -832,7 +891,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     # === FINAL ALPHA SCORE ===
     df['alpha_score'] = (
         module1_score * 0.35 + module2_score * 0.25 +
-        module3_score * 0.20 + module4_score * 0.12 +
+        module3_score * 0.22 + module4_score * 0.10 +
         module5_score * 0.08
     ).clip(0, 100)
     
@@ -927,8 +986,14 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
         tag_str = f" [{','.join(tags)}]" if tags else ""
         bq = r.get('breakout_quality', 0)
         accel2 = r.get('alpha_accel2_5_10_20', 0)
-        lines.append(f"    {i+1}. {r['name']}({short_code}) Score={r['final_score']:.1f} "
-                     f"Alpha5={r['alpha5']:+.1f}% Accel2={accel2:+.1f} BQ={bq:.0f}{tag_str}")
+        line = (f"    {i+1}. {r['name']}({short_code}) Score={r['final_score']:.1f} "
+                f"Alpha5={r['alpha5']:+.1f}% Accel2={accel2:+.1f} BQ={bq:.0f}{tag_str}")
+        # 资金行为信息(如有)
+        ms = r.get('mf_slope', 0)
+        mp = r.get('mf_persistence', 0)
+        if ms != 0 or mp != 0:
+            line += f"  资金:斜率{ms:+.2f}/持续{mp:.0%}"
+        lines.append(line)
     
     # ── CSV Output ──
     csv_dir = os.path.join(CACHE_DIR, "etf_alpha_ranking")
@@ -942,6 +1007,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
                   'relative_alpha', 'trend_quality', 'capital', 'fundamental',
                   'leader_bonus', 'breakout_bonus', 'spring_bonus', 'crowding_penalty',
                   'dist_to_high', 'vol_contraction', 'amt_accel_short', 'breakout_quality',
+                  'mf_slope', 'mf_persistence', 'mf_diffusion',
                   'signal', 'expected_hold_days']].copy()
     csv_df.columns = ['AlphaBase', 'StockCode', 'StockName', 'FinalScore',
                        'Alpha5', 'Alpha10', 'Alpha20', 'Alpha40', 'Alpha60',
@@ -949,6 +1015,7 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
                        'RelAlphaScore', 'TrendScore', 'CapitalScore', 'PositionScore',
                        'LeaderBonus', 'BreakoutBonus', 'SpringBonus', 'CrowdingPenalty',
                        'DistToHigh', 'VolContraction', 'AmtAccelShort', 'BreakoutQuality',
+                       'MF_Slope', 'MF_Persistence', 'MF_Diffusion',
                        'Signal', 'ExpectedHoldDays']
     csv_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     lines.append(f"\n  CSV Report: {csv_path}")
@@ -1008,7 +1075,7 @@ def main(trade_date=None, backtest_mode=False):
             df = df[df["trade_date"] <= today].reset_index(drop=True)
             all_data[code] = df
 
-    # === 获取ETF份额规模数据（资金净申购/赎回流向） ===
+    # === 获取ETF份额规模数据（用于规模提示） ===
     print("  正在获取ETF份额规模数据...")
     share_data = {}
     for name, code in ETF_POOL.items():
@@ -1018,11 +1085,11 @@ def main(trade_date=None, backtest_mode=False):
         if sdf is None:
             try:
                 sdf = pro.etf_share_size(ts_code=ts_code,
-                                         start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
+                                         start_date=(today - datetime.timedelta(days=30)).strftime("%Y%m%d"),
                                          end_date=TRADE_DATE)
                 _save_cache(sdf, share_cache)
-                time.sleep(0.25)
-            except Exception as e:
+                time.sleep(0.15)
+            except Exception:
                 continue
         if sdf is not None and len(sdf) > 0 and 'total_share' in sdf.columns:
             sdf["trade_date"] = pd.to_datetime(sdf["trade_date"], format="%Y%m%d")
@@ -1063,8 +1130,7 @@ def main(trade_date=None, backtest_mode=False):
     rankings = []
     for code, df in all_data.items():
         bm_for_etf = benchmark_df if benchmark_df is not None else None
-        share_df = share_data.get(code)
-        factors = calculate_multi_factor_score(df, bm_for_etf, MOM_PERIOD, share_df=share_df)
+        factors = calculate_multi_factor_score(df, bm_for_etf, MOM_PERIOD)
         if factors is None:
             continue
 
@@ -1072,27 +1138,43 @@ def main(trade_date=None, backtest_mode=False):
         prev = df["close"].iloc[-2] if len(df) >= 2 else latest
         day_chg = (latest - prev) / prev * 100
 
+        # === 份额规模提示 ===
+        share_signal = ""
+        sdf = share_data.get(code)
+        if sdf is not None and len(sdf) >= 2:
+            share_latest = sdf['total_share'].iloc[-1]
+            share_prev = sdf['total_share'].iloc[0]
+            share_chg = (share_latest - share_prev) / share_prev * 100 if share_prev > 0 else 0
+            if day_chg < 0 and share_chg > 0:
+                share_signal = f"逆势加仓({share_chg:+.1f}%)"
+            elif day_chg < 0 and share_chg < 0:
+                share_signal = f"减仓中({share_chg:+.1f}%)"
+
         rankings.append({
             "code": code,
             "name": code_to_name.get(code, code),
             "close": latest,
             "day_chg": round(day_chg, 2),
+            "share_signal": share_signal,
             **factors
         })
 
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
     print(f"\n  --- 多因子综合评分 TOP 10 ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量':>7} {'量能':>6} {'份额':>6} {'风险':>6} {'相对':>6}")
-    print(f"  {'-'*65}")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'动量':>7} {'量能':>6} {'风险':>6} {'相对':>6} {'规模提示'}")
+    print(f"  {'-'*75}")
 
     for i, r in enumerate(rankings[:10]):
+        sig = r.get('share_signal', '')
         print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} "
-              f"{r['momentum']:>+7.2f}% {r['vol_score']:>6.1f} {r['share_score']:>6.1f} {r['risk_adj']:>6.1f} {r['rel_strength']:>6.1f}")
+              f"{r['momentum']:>+7.2f}% {r['vol_score']:>6.1f} {r['risk_adj']:>6.1f} {r['rel_strength']:>6.1f}  {sig}")
 
     result_message += f"  ---多因子评分 TOP 5 ---\n"
     for i, r in enumerate(rankings[:5]):
-        result_message += f"  {i+1}. {r['name']}({r['code']}) 综合分:{r['total_score']:.1f} 动量:{r['momentum']:+.2f}% 份额:{r['share_score']:.0f}\n"
+        sig = r.get('share_signal', '')
+        sig_text = f" [{sig}]" if sig else ""
+        result_message += f"  {i+1}. {r['name']}({r['code']}) 综合分:{r['total_score']:.1f} 动量:{r['momentum']:+.2f}%{sig_text}\n"
 
     def count_trade_days(start_str, end_date):
         ref = all_data.get("512880")

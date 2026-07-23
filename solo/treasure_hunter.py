@@ -280,7 +280,27 @@ def get_mainbz(ts_code: str) -> List[Dict]:
 
 # ── 专精特新关键词库 ─────────────────────────────────────
 
+# 高壁垒行业白名单（自动加分，继承build_theme_stock_map.py的行业白名单思路）
+# 涵盖当前壁垒行业 + 未来高壁垒赛道（生命科学、AI链、航天航空等）
+_HIGH_BARRIER_INDUSTRIES = [
+    '半导体', '芯片', '集成电路', '生物医药', '创新药', '医疗器械',
+    '航空航天', '军工', '核电', '核能',
+    '机器人', '数控机床', '精密仪器', '智能装备',
+    '新材料', '特种材料', '高端材料',
+    '功率器件', '传感器',
+    # ---- 未来高壁垒赛道 ----
+    '生命科学', '生物技术', '基因', '细胞治疗', '合成生物',
+    '人工智能', '大模型', 'AI', '智能体',
+    '航天', '卫星', '商业航天', '低轨卫星',
+    '量子', '超导',
+    '脑机', '神经科学',
+    '核聚变', '可控核聚变',
+    '自动驾驶', '无人驾驶',
+    '具身智能', '人形机器人',
+]
+
 # 专精特新/高壁垒关键词（匹配股票简称、改名记录、主营业务）
+# 继承build_theme_stock_map.py的THEME_MAINBIZ_KEYWORDS精细关键词体系
 _SPECIALIZED_KEYWORDS = [
     '微球', '树脂', '吸附', '分离', '膜', '催化', '靶材', '溅射',
     '石英', '陶瓷', '碳化硅', '氮化', '碳纤维', '复合材料',
@@ -300,6 +320,83 @@ _SPECIALIZED_KEYWORDS = [
     '密封', '轴承', '齿轮', '液压', '气动',
     '润滑', '胶粘', '粘接', '密封胶',
     '过滤', '净化', '纯化', '提纯',
+    # 以下从THEME_MAINBIZ_KEYWORDS提炼
+    '算力', '光模块', '散热', '液冷', '交换机', 'ICT',
+    '人工智能', '大模型', '智能体', 'Agent',
+    'GPU', '处理器', '功率', 'IGBT', 'SiC', 'GaN',
+    '先进封装', 'TSV', 'Bumping', 'Chiplet', 'CoWoS',
+    '硅片', '光刻胶', '抛光液', '抛光垫', '前驱体', '湿电子',
+    '刻蚀', '薄膜沉积', 'PVD', 'CVD', 'ALD', '清洗设备', '离子注入',
+    '减速器', '丝杠', '执行器', '关节', '驱动器', '控制器',
+    '滚珠丝杠', '空心杯电机', '无框电机', '灵巧手',
+    '变频器', 'PLC', '工控', '加工中心', '数控系统',
+    '工业软件', '智能制造', '数字孪生', '工业互联网',
+    '无人机', '飞行器', 'eVTOL', '飞行汽车',
+    '卫星', '宇航', '火箭', '太空',
+    '脑机', '神经', 'MEMS',
+    '超导', '聚变', '托卡马克', '量子',
+    '金刚石', '超硬材料', '人造金刚石',
+    '电容器', '电感', '电子陶瓷', '石英晶体',
+    'PCB', '覆铜板', '印制电路',
+    '碳化硅', '氮化镓', '砷化镓', '磷化铟',
+    '生物制造', '发酵', '合成生物', '细胞', '基因',
+    '电解水', '燃料电池', '加氢', '储氢',
+    '固态', '半固态', '凝聚态', '电解质',
+    '培育钻石', '金刚石线', '超硬',
+    # ════════════════════════════════════════════════════════
+    # 未来高壁垒赛道 — 生命科学类
+    # ════════════════════════════════════════════════════════
+    '基因编辑', 'CRISPR', '基因治疗', '基因药物', '核酸药物',
+    'CAR-T', 'CAR-NK', 'TCR-T', '细胞治疗', '干细胞', 'iPSC',
+    '合成生物', '生物制造', '生物基', '发酵', '酶催化',
+    '脑机接口', '神经接口', '神经调控', '深脑刺激',
+    '生物芯片', '微流控', '器官芯片', '类器官',
+    'ADC', '双抗', '双特异性', '抗体偶联',
+    'mRNA', '环状RNA', 'siRNA', '小核酸',
+    '生物反应器', '一次性生物', '连续流',
+    '基因测序', '单细胞', '空间转录组',
+    '蛋白质设计', '定向进化', 'AI制药',
+    # ════════════════════════════════════════════════════════
+    # 未来高壁垒赛道 — 人工智能链
+    # ════════════════════════════════════════════════════════
+    'AI芯片', '神经网络芯片', '存算一体', '类脑芯片', '神经形态',
+    '大模型', '预训练', '多模态', '基础模型', 'LLM',
+    'AI Agent', '智能体', '自主智能', 'Multi-Agent',
+    '具身智能', '人形机器人', '双足机器人', '灵巧手',
+    '边缘AI', '端侧AI', 'AI推理', 'AI加速',
+    'AI安全', '对齐', '可解释AI',
+    'AI算力', '智算中心', 'AI服务器', 'AI集群',
+    'AI平台', '模型训练', '模型部署', '推理引擎',
+    '自然语言', '计算机视觉', '语音识别', '多模态感知',
+    '向量数据库', '知识图谱', 'RAG', '检索增强',
+    'AI应用', 'AI编程', 'AI设计', 'AI生成',
+    '自动驾驶', '无人驾驶', 'Robotaxi', '感知融合',
+    '决策规划', '高精地图', '定位',
+    # ════════════════════════════════════════════════════════
+    # 未来高壁垒赛道 — 航天航空
+    # ════════════════════════════════════════════════════════
+    '商业航天', '民营火箭', '火箭回收', '可回收火箭',
+    '低轨卫星', '卫星互联网', '星链', '卫星通信',
+    '卫星导航', '遥感卫星', '合成孔径', 'SAR',
+    '高超声速', '高超音速', '超燃冲压',
+    'eVTOL', '飞行汽车', '城市空中交通', 'UAM',
+    '工业无人机', '重载无人机', '无人货运',
+    '卫星制造', '卫星组网', '地面终端',
+    '太空旅游', '空间站', '深空探测',
+    '相控阵', '星载', '抗辐射',
+    # ════════════════════════════════════════════════════════
+    # 未来高壁垒赛道 — 前沿技术
+    # ════════════════════════════════════════════════════════
+    '量子芯片', '量子比特', '量子计算', '量子通信', '量子加密',
+    '核聚变', '可控核聚变', '托卡马克', '仿星器', '聚变堆',
+    '6G', '太赫兹', '可见光通信', '智能超表面', 'RIS',
+    '空间计算', 'XR', '扩展现实', '数字孪生',
+    'SMR', '小型模块化核反应堆', '第四代核电',
+    '氢能', '绿氢', '电解水', 'PEM', 'SOEC',
+    '固态电池', '半固态', '凝聚态', '锂金属',
+    '钙钛矿', '叠层', '异质结', 'HJT',
+    '4D打印', '4D打印', '智能材料', '自修复',
+    '脑科学', '认知科学', '神经环路',
 ]
 
 _INDUSTRY_BARRIER_KEYWORDS = [
@@ -317,6 +414,24 @@ _INDUSTRY_BARRIER_KEYWORDS = [
     '树脂', '吸附', '分离', '膜', '催化', '靶材',
     '超纯', '高纯', '特种气体',
     '智能装备', '精密',
+    # 从THEME_MAINBIZ_KEYWORDS补充（精细化行业屏障关键词）
+    '功率器件', '传感器', '光电器件', '电子元器件',
+    '先进封装', '半导体材料', '半导体设备',
+    '航天装备', '航空装备', '军工电子',
+    '智能电网', '特高压',
+    '生物技术', '生物制品', '基因',
+    '新型材料', '复合材料', '功能材料',
+    # ---- 未来高壁垒赛道 ----
+    '生命科学', '基因治疗', '细胞治疗', '合成生物',
+    '人工智能', '大模型', 'AI芯片', '智能体', '机器学习',
+    '卫星互联网', '商业航天', '低轨卫星', '火箭',
+    '量子计算', '量子通信',
+    '脑机接口', '神经科学',
+    '核聚变', '聚变能',
+    '自动驾驶', '智能驾驶', '无人驾驶',
+    '具身智能', '人形机器人',
+    '6G', '太赫兹',
+    '固态电池', '氢能', '钙钛矿',
 ]
 
 # ── 评分系统 ──────────────────────────────────────────────
@@ -332,10 +447,11 @@ def compute_score(row: dict) -> Tuple[float, dict]:
       - 净利率扎实度      15分  — 净利率>12%且毛利率-净利率<40pp
       - 研发管理效率分     8分  — adminexp_of_gr代理
       - ROE分           10分  — >15%满分
-      - 动量分           10分  — 接近120日新高
+      - 动量分            5分  — 接近120日新高（降权，长线策略不依赖短期动量）
       - 板块加分          5分  — 双创/科创板
       - 标签/关键词分     15分  — 专精特新+工业替代关键词+行业壁垒
       - 行业排除调整      2分  — 非消费/非金融行业奖励
+      - 未来赛道分        5分  — 生命科学/AI链/航天航空/前沿技术布局
     """
     details = {}
     total = 0.0
@@ -436,17 +552,17 @@ def compute_score(row: dict) -> Tuple[float, dict]:
     details['ROE分'] = round(roe_score, 1)
     details['ROE(%)'] = round(roe, 1)
 
-    # ── 6. 动量分（0~10分）：接近120日新高 ──
+    # ── 6. 动量分（0~5分）：接近120日新高 ──
     pct_from_120d_high = row.get('pct_from_120d_high', 100)
     # pct_from_120d_high = (high_120 - current) / high_120 * 100
     if pct_from_120d_high <= 2:
-        mom_score = 10.0
+        mom_score = 5.0
     elif pct_from_120d_high <= 5:
-        mom_score = 8.0 + (5 - pct_from_120d_high) / 3 * 2
+        mom_score = 4.0 + (5 - pct_from_120d_high) / 3 * 1
     elif pct_from_120d_high <= 10:
-        mom_score = 5.0 + (10 - pct_from_120d_high) / 5 * 3
+        mom_score = 2.5 + (10 - pct_from_120d_high) / 5 * 1.5
     elif pct_from_120d_high <= 20:
-        mom_score = 2.0 + (20 - pct_from_120d_high) / 10 * 3
+        mom_score = 1.0 + (20 - pct_from_120d_high) / 10 * 1.5
     else:
         mom_score = 0.0
     total += mom_score
@@ -477,7 +593,8 @@ def compute_score(row: dict) -> Tuple[float, dict]:
     name = row.get('name', '')
     matched_name_kw = [kw for kw in _SPECIALIZED_KEYWORDS if kw in name]
     if matched_name_kw:
-        tag_score += min(2.0, len(matched_name_kw) * 0.8)
+        # 名称匹配权重提高：每匹配1个关键词给1.0分，上限2.5分
+        tag_score += min(2.5, len(matched_name_kw) * 1.0)
         tag_details.extend(matched_name_kw[:3])
 
     # 8c. 主营业务含壁垒关键词（匹配两个关键词集）
@@ -486,21 +603,24 @@ def compute_score(row: dict) -> Tuple[float, dict]:
     matched_bz_kw2 = [kw for kw in _SPECIALIZED_KEYWORDS if kw in bz_items and kw not in matched_bz_kw]
     all_matched_bz = list(set(matched_bz_kw + matched_bz_kw2))
     if all_matched_bz:
-        tag_score += min(6.0, len(all_matched_bz) * 1.2)
+        tag_score += min(6.0, len(all_matched_bz) * 1.0)
         tag_details.extend(all_matched_bz[:5])
 
-    # 8d. 行业含壁垒关键词
+    # 8d. 行业含壁垒关键词（阶梯式评分 + 高壁垒白名单加分）
     industry = row.get('industry', '')
-    if any(kw in industry for kw in _INDUSTRY_BARRIER_KEYWORDS):
-        tag_score += 2.0
+    # 高壁垒行业白名单自动加分（继承build_theme_stock_map.py思路）
+    if any(hw in industry for hw in _HIGH_BARRIER_INDUSTRIES):
+        tag_score += 3.0  # 核心高壁垒行业：半导体/生物医药/航空航天等
+        tag_details.append(f'高壁垒行业:{industry}')
+    elif any(kw in industry for kw in _INDUSTRY_BARRIER_KEYWORDS):
+        tag_score += 2.0  # 一般壁垒行业
         tag_details.append(f'行业:{industry}')
-    # 额外加分：行业关键词匹配数量
-    matched_ind_kw = [kw for kw in _INDUSTRY_BARRIER_KEYWORDS if kw in industry]
-    if len(matched_ind_kw) >= 2:
-        tag_score += 1.0
 
-    # 8e. 排除惩罚：没有任何壁垒关键词匹配（属于消费/非工业股）
-    if not all_matched_bz and not matched_name_kw and not any(kw in industry for kw in _INDUSTRY_BARRIER_KEYWORDS):
+    # 排除惩罚：没有任何壁垒关键词匹配（属于消费/非工业股）
+    has_any_match = bool(all_matched_bz) or bool(matched_name_kw) or \
+                    any(hw in industry for hw in _HIGH_BARRIER_INDUSTRIES) or \
+                    any(kw in industry for kw in _INDUSTRY_BARRIER_KEYWORDS)
+    if not has_any_match:
         tag_score *= 0.3  # 大幅降权
 
     tag_score = min(15.0, tag_score)
@@ -523,6 +643,51 @@ def compute_score(row: dict) -> Tuple[float, dict]:
         ind_adj = 0.0
     total += ind_adj
     details['行业排除调整'] = ind_adj
+
+    # ── 10. 未来赛道分（0~5分）：识别未来高壁垒赛道布局 ──
+    future_score = 0.0
+    future_track = ''
+    name = str(row.get('name', ''))
+    bz_items = str(row.get('main_bz', ''))
+
+    # 定义未来赛道及其关键词映射
+    _FUTURE_TRACKS = {
+        '生命科学': ['基因', '细胞', '合成生物', '脑机', 'ADC', 'mRNA',
+                    '抗体', 'CAR-T', '干细胞', '测序', '蛋白质设计',
+                    'AI制药', '生物芯片', '类器官', '微流控'],
+        '人工智能链': ['AI芯片', '大模型', '多模态', '智能体', '具身智能',
+                     '人形机器人', '边缘AI', '存算一体', '类脑',
+                     '自动驾驶', '无人驾驶', 'Robotaxi'],
+        '航天航空': ['商业航天', '低轨卫星', '卫星互联网', '火箭回收',
+                   'eVTOL', '飞行汽车', '高超声速', '星载', '相控阵'],
+        '前沿技术': ['量子', '核聚变', '托卡马克', '6G', '太赫兹',
+                   '固态电池', '钙钛矿', '氢能', 'SMR'],
+    }
+
+    # 在行业、名称、主营中查找未来赛道线索
+    for track_name, keywords in _FUTURE_TRACKS.items():
+        ind_match = any(kw in industry for kw in keywords)
+        name_match = any(kw in name for kw in keywords)
+        bz_match = any(kw in bz_items for kw in keywords)
+        if ind_match or name_match or bz_match:
+            future_score += 2.0  # 每个赛道2分
+            if future_track:
+                future_track += f'|{track_name}'
+            else:
+                future_track = track_name
+
+            # 名称/主营高度匹配再加分（行业匹配已经通过白名单加分了）
+            if name_match or bz_match:
+                future_score += 0.5
+
+    # 多个赛道叠加奖励（跨领域布局更有弹性）
+    if '|' in future_track:
+        future_score += 1.0
+
+    future_score = min(5.0, future_score)
+    total += future_score
+    details['未来赛道分'] = round(future_score, 1)
+    details['未来赛道'] = future_track if future_track else ''
 
     # ── 总分 ──
     total = round(total, 1)
@@ -800,8 +965,8 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
 
     # 入围筛选（总分达标 + 至少有一定壁垒标签匹配）
     passed = result_df[result_df['总分'] >= min_score].copy()
-    # 寻宝策略核心：必须有壁垒关键词匹配，纯高财务分的消费股不符合
-    passed = passed[passed['标签分'] >= 3.0].copy()
+    # 壁垒过滤：高壁垒行业(3分)或一般壁垒行业(2分)或主营/名称有匹配
+    passed = passed[passed['标签分'] >= 2.0].copy()
     passed = passed.sort_values('总分', ascending=False).reset_index(drop=True)
     print(f"\n{'='*70}")
     print(f"  扫描完成！")
@@ -884,6 +1049,17 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
     if '距120日高(%)' in passed.columns:
         near_high = len(passed[passed['距120日高(%)'] <= 5])
         print(f"  接近120日新高(≤5%): {near_high} 只")
+    if '未来赛道' in passed.columns and '未来赛道分' in passed.columns:
+        future_count = len(passed[passed['未来赛道'] != ''])
+        if future_count > 0:
+            print(f"\n  未来赛道分布:")
+            all_tracks = {}
+            for tracks in passed[passed['未来赛道'] != '']['未来赛道']:
+                for t in str(tracks).split('|'):
+                    all_tracks[t] = all_tracks.get(t, 0) + 1
+            for t, c in sorted(all_tracks.items(), key=lambda x: -x[1]):
+                print(f"    {t}: {c} 只")
+            print(f"  平均未来赛道分: {passed['未来赛道分'].mean():.1f}")
 
     # ── 操作建议 ──
     print(f"\n{'═'*70}")
@@ -895,6 +1071,8 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
     print(f"  • 趋势确认：站上MA20+大阳线≥4%+量比≥1.3+KDJ多头")
     print(f"  • 仓位控制：单只≤日均成交额的10%（流动性风控）")
     print(f"  • 北交所标的已自动排除")
+    print(f"  • 未来高壁垒赛道已扩展至：生命科学、人工智能链、")
+    print(f"    航天航空、前沿技术（量子/核聚变/6G等）")
     print(f"  • 争光股份对标标的聚焦于：吸附分离、高纯材料、")
     print(f"    工业卡脖子配套等细分领域")
     print(f"{'═'*70}")
@@ -904,6 +1082,7 @@ def _print_stock_card(r):
     """打印个股详情卡片"""
     tags = str(r.get('标签', ''))
     bz = str(r.get('主营业务', ''))
+    future_track = str(r.get('未来赛道', ''))
     print(f"\n  ┌─────────────────────────────────────────────────────┐")
     print(f"  │ {r['name']} ({r['ts_code']})  ┃  总分: {r['总分']}")
     print(f"  ├─────────────────────────────────────────────────────┤")
@@ -911,6 +1090,8 @@ def _print_stock_card(r):
     print(f"  │ ROE {r.get('ROE(%)', 'N/A'):>6}%  │ 研发 {r.get('研发占比(%)', 'N/A'):>5}%  │ 距120日高 {r.get('距120日高(%)', 'N/A'):>5}%")
     if tags:
         print(f"  │ 标签: {tags}")
+    if future_track:
+        print(f"  │ 未来赛道: {future_track}  [{r.get('未来赛道分', 0):.0f}分]")
     if bz:
         _bz_short = bz if len(bz) <= 78 else bz[:75] + '...'
         print(f"  │ 主营: {_bz_short}")
@@ -919,11 +1100,14 @@ def _print_stock_card(r):
 
 def _print_stock_mini(r):
     """打印个股简略信息"""
+    future_track = str(r.get('未来赛道', ''))
+    track_info = f' [{future_track}]' if future_track else ''
     print(f"  {r['name']:>8}({r['ts_code']})  "
           f"总分{r['总分']:>5.1f}  "
           f"市值{r.get('总市值(亿)', 0):>5.1f}亿  "
           f"毛利率{r.get('毛利率(%)', 0):>5.1f}%  "
-          f"距120日高{r.get('距120日高(%)', 0):>5.1f}%")
+          f"距120日高{r.get('距120日高(%)', 0):>5.1f}%"
+          f"{track_info}")
 
 
 # ── 主入口 ──────────────────────────────────────────────

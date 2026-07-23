@@ -1,0 +1,203 @@
+{
+  "start": "20260101",
+  "end": "20260722",
+  "total_return": 22.79,
+  "annual_return": 50.78,
+  "sharpe_ratio": 1.59,
+  "max_drawdown": -10.85,
+  "win_rate": 52.63,
+  "total_trades": 19,
+  "avg_return": 7.08,
+  "trades": [
+    {
+      "ts_code": "300620.SZ",
+      "name": "光库科技",
+      "entry_date": "20260415",
+      "entry_price": 227.67744999999996,
+      "exit_date": "20260422",
+      "exit_price": 274.52,
+      "exit_reason": "止盈",
+      "pnl_pct": 20.57
+    },
+    {
+      "ts_code": "300383.SZ",
+      "name": "光环新网",
+      "entry_date": "20260415",
+      "entry_price": 17.86785,
+      "exit_date": "20260427",
+      "exit_price": 16.14,
+      "exit_reason": "止损",
+      "pnl_pct": -9.67
+    },
+    {
+      "ts_code": "688488.SH",
+      "name": "艾迪药业",
+      "entry_date": "20260410",
+      "entry_price": 18.308289999999996,
+      "exit_date": "20260428",
+      "exit_price": 17.03,
+      "exit_reason": "跌破MA20",
+      "pnl_pct": -6.98
+    },
+    {
+      "ts_code": "300570.SZ",
+      "name": "太辰光",
+      "entry_date": "20260415",
+      "entry_price": 130.16002999999998,
+      "exit_date": "20260508",
+      "exit_price": 162.1,
+      "exit_reason": "止盈",
+      "pnl_pct": 24.54
+    },
+    {
+      "ts_code": "300489.SZ",
+      "name": "光智科技",
+      "entry_date": "20260429",
+      "entry_price": 94.42432999999998,
+      "exit_date": "20260511",
+      "exit_price": 127.9,
+      "exit_reason": "止盈",
+      "pnl_pct": 35.45
+    },
+    {
+      "ts_code": "300136.SZ",
+      "name": "信维通信",
+      "entry_date": "20260429",
+      "entry_price": 85.59550999999999,
+      "exit_date": "20260511",
+      "exit_price": 115.57,
+      "exit_reason": "止盈",
+      "pnl_pct": 35.02
+    },
+    {
+      "ts_code": "300738.SZ",
+      "name": "奥飞数据",
+      "entry_date": "20260428",
+      "entry_price": 24.724699999999995,
+      "exit_date": "20260521",
+      "exit_price": 24.47,
+      "exit_reason": "跌破MA20",
+      "pnl_pct": -1.03
+    },
+    {
+      "ts_code": "300604.SZ",
+      "name": "长川科技",
+      "entry_date": "20260518",
+      "entry_price": 209.37916999999996,
+      "exit_date": "20260525",
+      "exit_price": 248.0,
+      "exit_reason": "止盈",
+      "pnl_pct": 18.45
+    },
+    {
+      "ts_code": "300323.SZ",
+      "name": "华灿光电",
+      "entry_date": "20260525",
+      "entry_price": 17.69768,
+      "exit_date": "20260529",
+      "exit_price": 15.54,
+      "exit_reason": "止损",
+      "pnl_pct": -12.19
+    },
+    {
+      "ts_code": "300323.SZ",
+      "name": "华灿光电",
+      "entry_date": "20260529",
+      "entry_price": 17.69768,
+      "exit_date": "20260601",
+      "exit_price": 15.01,
+      "exit_reason": "止损",
+      "pnl_pct": -15.19
+    },
+    {
+      "ts_code": "688234.SH",
+      "name": "天岳先进",
+      "entry_date": "20260518",
+      "entry_price": 149.98984,
+      "exit_date": "20260602",
+      "exit_price": 135.0,
+      "exit_reason": "跌破MA20",
+      "pnl_pct": -9.99
+    },
+    {
+      "ts_code": "300620.SZ",
+      "name": "光库科技",
+      "entry_date": "20260602",
+      "entry_price": 278.92864999999995,
+      "exit_date": "20260603",
+      "exit_price": 337.06,
+      "exit_reason": "止盈",
+      "pnl_pct": 20.84
+    },
+    {
+      "ts_code": "300666.SZ",
+      "name": "江丰电子",
+      "entry_date": "20260511",
+      "entry_price": 185.18499999999997,
+      "exit_date": "20260608",
+      "exit_price": 193.57,
+      "exit_reason": "超期(20天)",
+      "pnl_pct": 4.53
+    },
+    {
+      "ts_code": "300620.SZ",
+      "name": "光库科技",
+      "entry_date": "20260603",
+      "entry_price": 278.92864999999995,
+      "exit_date": "20260615",
+      "exit_price": 343.05,
+      "exit_reason": "止盈",
+      "pnl_pct": 22.99
+    },
+    {
+      "ts_code": "601001.SH",
+      "name": "晋控煤业",
+      "entry_date": "20260608",
+      "entry_price": 21.701679999999996,
+      "exit_date": "20260617",
+      "exit_price": 19.1,
+      "exit_reason": "止损",
+      "pnl_pct": -11.99
+    },
+    {
+      "ts_code": "300223.SZ",
+      "name": "北京君正",
+      "entry_date": "20260602",
+      "entry_price": 144.25411,
+      "exit_date": "20260622",
+      "exit_price": 192.75,
+      "exit_reason": "止盈",
+      "pnl_pct": 33.62
+    },
+    {
+      "ts_code": "300163.SZ",
+      "name": "先锋新材",
+      "entry_date": "20260601",
+      "entry_price": 6.2062,
+      "exit_date": "20260625",
+      "exit_price": 5.83,
+      "exit_reason": "止损",
+      "pnl_pct": -6.06
+    },
+    {
+      "ts_code": "300400.SZ",
+      "name": "劲拓股份",
+      "entry_date": "20260623",
+      "entry_price": 41.55150999999999,
+      "exit_date": "20260701",
+      "exit_price": 35.85,
+      "exit_reason": "跌破MA20",
+      "pnl_pct": -13.72
+    },
+    {
+      "ts_code": "300260.SZ",
+      "name": "新莱应材",
+      "entry_date": "20260615",
+      "entry_price": 75.48540999999999,
+      "exit_date": "20260713",
+      "exit_price": 79.52,
+      "exit_reason": "跌破MA20",
+      "pnl_pct": 5.34
+    }
+  ]
+}
