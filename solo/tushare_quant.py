@@ -10729,6 +10729,7 @@ def run(target_date=None, simple_mode=False):
                 # 回测验证：量比<1胜率0%, 距MA20>20%胜率9%, 近20日涨幅>40%胜率0%, 距MA5<0%胜率20%
                 '当日量比': _calc_vol_ratio(df),
                 '距MA5_pct': _calc_dist_ma(df, 5),
+                '距MA10_pct': _calc_dist_ma(df, 10),
                 '距MA20_pct': _calc_dist_ma(df, 20),
                 '近20日涨幅_pct': _calc_pct_n(df, 20),
             }
@@ -10778,38 +10779,33 @@ def run(target_date=None, simple_mode=False):
         print(f"[突破股池] 过滤假突破: {before_filter} -> {after_filter} 只")
 
     # ====================================================================
-    # 强势股池硬过滤优化（基于近30天回测：胜率24.4% → 预估70-80%）
-    # 1. 量比 ≥ 1.0        —— 缩量上涨是顶背离信号（量比<1胜率0%）
-    # 2. 近20日涨幅 ≤ 40%  —— 涨幅透支后进场即被套（>40%胜率0% 平均-12.76%）
-    # 3. 距MA20 ≤ 20%      —— 远离均线表示追高过度（>20%胜率9% 平均-8.09%）
-    # 4. 距MA5 ≥ 0%       —— 跌破MA5表示趋势走弱（<0%胜率20%）
+    # 强势股池硬过滤优化
+    # 1. 近20日涨幅 ≤ 80%  —— 涨幅透支后进场即被套
+    # 2. 距MA20 ≤ 30%      —— 远离均线表示追高过度
+    # 3. 距MA10 ≥ 0%      —— 跌破MA10表示趋势走弱
     # ====================================================================
     before_strong_filter = len(ranked_stocks)
     strong_pass = []
-    strong_filtered_reasons = {'量比<1.0': 0, '近20日涨幅>40%': 0, '距MA20>20%': 0, '距MA5<0%': 0}
+    strong_filtered_reasons = {'近20日涨幅>80%': 0, '距MA20>30%': 0, '距MA10<0%': 0}
     for s in ranked_stocks:
-        vol_ratio = s.get('当日量比', 0) or 0
         pct_20d = s.get('近20日涨幅_pct', 0) or 0
         dist_ma20 = s.get('距MA20_pct', 0) or 0
-        dist_ma5 = s.get('距MA5_pct', 0) or 0
-        if vol_ratio < 1.0:
-            strong_filtered_reasons['量比<1.0'] += 1
-            continue
+        dist_ma10 = s.get('距MA10_pct', 0) or 0
         if pct_20d > 80:
             strong_filtered_reasons['近20日涨幅>80%'] += 1
             continue
         if dist_ma20 > 30:
             strong_filtered_reasons['距MA20>30%'] += 1  
             continue
-        if dist_ma5 < 0:
-            strong_filtered_reasons['距MA5<0%'] += 1
+        if dist_ma10 < 0:
+            strong_filtered_reasons['距MA10<0%'] += 1
             continue
         strong_pass.append(s)
     ranked_stocks = strong_pass
     after_strong_filter = len(ranked_stocks)
     if before_strong_filter != after_strong_filter:
         reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
-        print(f"[强势股池优化] 过滤追高/缩量/透支股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
+        print(f"[强势股池优化] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
 
     # =========================
     # Chip Alpha 注入（突破股池）
