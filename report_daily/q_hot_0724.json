@@ -1,0 +1,280 @@
+{
+  "code": 0,
+  "message": "success",
+  "request_id": "23b3735c4e8c471585c54a2e9c682f60",
+  "data": {
+    "timestamp": 1784885067044,
+    "item": [
+      {
+        "thscode": "002156.SZ",
+        "ticker": "002156",
+        "name": "通富微电",
+        "rank": 1,
+        "heat": "5715953",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "001258.SZ",
+        "ticker": "001258",
+        "name": "立新能源",
+        "rank": 2,
+        "heat": "5527290",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "001309.SZ",
+        "ticker": "001309",
+        "name": "德明利",
+        "rank": 3,
+        "heat": "5329310",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "000938.SZ",
+        "ticker": "000938",
+        "name": "紫光股份",
+        "rank": 4,
+        "heat": "5223640",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "600584.SH",
+        "ticker": "600584",
+        "name": "长电科技",
+        "rank": 5,
+        "heat": "3924291",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "600664.SH",
+        "ticker": "600664",
+        "name": "哈药股份",
+        "rank": 6,
+        "heat": "3845465",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "002185.SZ",
+        "ticker": "002185",
+        "name": "华天科技",
+        "rank": 7,
+        "heat": "3551234",
+        "rank_change": 1,
+        "rank_trend": "up"
+      },
+      {
+        "thscode": "600396.SH",
+        "ticker": "600396",
+        "name": "华电辽能",
+        "rank": 8,
+        "heat": "3423590",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "603986.SH",
+        "ticker": "603986",
+        "name": "兆易创新",
+        "rank": 9,
+        "heat": "2950047",
+        "rank_change": 1,
+        "rank_trend": "up"
+      },
+      {
+        "thscode": "002384.SZ",
+        "ticker": "002384",
+        "name": "东山精密",
+        "rank": 10,
+        "heat": "2933880",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "000021.SZ",
+        "ticker": "000021",
+        "name": "深科技",
+        "rank": 11,
+        "heat": "2830692",
+        "rank_change": 1,
+        "rank_trend": "up"
+      },
+      {
+        "thscode": "600744.SH",
+        "ticker": "600744",
+        "name": "华银电力",
+        "rank": 12,
+        "heat": "2653349",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "000815.SZ",
+        "ticker": "000815",
+        "name": "美利云",
+        "rank": 13,
+        "heat": "2648158",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "601179.SH",
+        "ticker": "601179",
+        "name": "中国西电",
+        "rank": 14,
+        "heat": "2536460",
+        "rank_change": 1,
+        "rank_trend": "up"
+      },
+      {
+        "thscode": "601991.SH",
+        "ticker": "601991",
+        "name": "大唐发电",
+        "rank": 15,
+        "heat": "2501981",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "300308.SZ",
+        "ticker": "300308",
+        "name": "中际旭创",
+        "rank": 16,
+        "heat": "2449219",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "000725.SZ",
+        "ticker": "000725",
+        "name": "京东方A",
+        "rank": 17,
+        "heat": "2430553",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "301583.SZ",
+        "ticker": "301583",
+        "name": "托伦斯",
+        "rank": 18,
+        "heat": "2165306",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "600722.SH",
+        "ticker": "600722",
+        "name": "金牛化工",
+        "rank": 19,
+        "heat": "1943128",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "600206.SH",
+        "ticker": "600206",
+        "name": "有研新材",
+        "rank": 20,
+        "heat": "1937878",
+        "rank_change": 2,
+        "rank_trend": "up"
+      },
+      {
+        "thscode": "600487.SH",
+        "ticker": "600487",
+        "name": "亨通光电",
+        "rank": 21,
+        "heat": "1933560",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "601606.SH",
+        "ticker": "601606",
+        "name": "长城军工",
+        "rank": 22,
+        "heat": "1920906",
+        "rank_change": -1,
+        "rank_trend": "down"
+      },
+      {
+        "thscode": "000977.SZ",
+        "ticker": "000977",
+        "name": "浪潮信息",
+        "rank": 23,
+        "heat": "1838057",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "002407.SZ",
+        "ticker": "002407",
+        "name": "多氟多",
+        "rank": 24,
+        "heat": "1792914",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "300502.SZ",
+        "ticker": "300502",
+        "name": "新易盛",
+        "rank": 25,
+        "heat": "1786356",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "002428.SZ",
+        "ticker": "002428",
+        "name": "云南锗业",
+        "rank": 26,
+        "heat": "1775393",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "601899.SH",
+        "ticker": "601899",
+        "name": "紫金矿业",
+        "rank": 27,
+        "heat": "1720134",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "603629.SH",
+        "ticker": "603629",
+        "name": "利通电子",
+        "rank": 28,
+        "heat": "1681035",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "688008.SH",
+        "ticker": "688008",
+        "name": "澜起科技",
+        "rank": 29,
+        "heat": "1669559",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      },
+      {
+        "thscode": "601678.SH",
+        "ticker": "601678",
+        "name": "滨化股份",
+        "rank": 30,
+        "heat": "1580167",
+        "rank_change": 0,
+        "rank_trend": "flat"
+      }
+    ]
+  }
+}

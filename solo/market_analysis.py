@@ -693,6 +693,126 @@ def _get_prev_position(trade_date=None):
     return None
 
 
+def _get_recent_trend_scores(trade_date=None, days=10):
+    """从数据库读取最近N个交易日的趋势分（用于计算连续回升天数）"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    try:
+        db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+        if not os.path.exists(db_path):
+            return []
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT trade_date, trend_score FROM overall_analysis
+            WHERE trade_date < ? AND trend_score IS NOT NULL
+            ORDER BY trade_date DESC LIMIT ?
+        ''', (trade_date, days))
+        rows = cursor.fetchall()
+        conn.close()
+        if rows:
+            return [(r[0], float(r[1])) for r in rows][::-1]
+    except Exception:
+        pass
+    return []
+
+
+def _calc_consecutive_rise_days(recent_scores, current_score):
+    """
+    计算从底部反弹的连续回升天数
+    算法：从今日往回数，找到最近的最低点，然后计算从低点到今日的连续上升天数
+    """
+    if not recent_scores or len(recent_scores) < 1:
+        return 0
+    
+    all_scores = [s[1] for s in recent_scores] + [current_score]
+    
+    min_idx = 0
+    min_val = all_scores[0]
+    for i in range(1, len(all_scores)):
+        if all_scores[i] < min_val:
+            min_val = all_scores[i]
+            min_idx = i
+    
+    if min_idx == len(all_scores) - 1:
+        return 0
+    
+    consecutive = 0
+    for i in range(min_idx, len(all_scores) - 1):
+        if all_scores[i + 1] > all_scores[i]:
+            consecutive += 1
+        else:
+            consecutive = 0
+    
+    return consecutive
+
+
+def _calc_ma20_slope(index_results):
+    """
+    计算主要指数的MA20斜率，判断中期趋势方向
+    返回：(斜率均值, 是否向下)
+    斜率以5日MA20变动百分比计算
+    """
+    slopes = []
+    for r in index_results:
+        detail = r.get('trend_detail', {})
+        ma20_slope = detail.get('ma20_slope', 0)
+        slopes.append(ma20_slope)
+    
+    if not slopes:
+        return 0.0, False
+    
+    avg_slope = sum(slopes) / len(slopes)
+    return avg_slope, avg_slope < -0.3
+
+
+def _apply_position_filters(position, trend_score, market_regime, 
+                            prev_trend_score, recent_scores, 
+                            ma20_slope, ma20_down, index_results):
+    """
+    V8.1 仓位过滤器：三重防护机制
+    1. MA20斜率过滤：中期趋势向下时，仓位上限锁死25%
+    2. 阶梯式确认：底部反弹按连续回升天数阶梯提升仓位上限
+    3. 状态联动仓位：冰点反弹期仓位强制锁定在10-20%
+    """
+    original_position = position
+    filters_applied = []
+    
+    # --- 第一重：MA20斜率过滤 ---
+    if ma20_down and position > 25:
+        position = min(position, 25)
+        filters_applied.append(f"MA20向下({ma20_slope:.2f}%)，仓位上限锁死25%")
+    
+    # --- 第二重：阶梯式确认 ---
+    if prev_trend_score is not None and prev_trend_score < 40:
+        consecutive_days = _calc_consecutive_rise_days(recent_scores, trend_score)
+        
+        if consecutive_days <= 1:
+            step_cap = 15
+        elif consecutive_days == 2:
+            step_cap = 25
+        elif consecutive_days == 3:
+            step_cap = 35
+        else:
+            step_cap = 50
+        
+        if position > step_cap:
+            position = min(position, step_cap)
+            filters_applied.append(f"底部反弹第{consecutive_days}天，阶梯上限{step_cap}%")
+    
+    # --- 第三重：状态联动 ---
+    if market_regime == "冰点反弹期":
+        if position > 20:
+            position = min(position, 20)
+            filters_applied.append("冰点反弹期，仓位上限20%")
+    elif market_regime == "主跌退潮期":
+        if position > 5:
+            position = min(position, 5)
+            filters_applied.append("主跌退潮期，仓位上限5%")
+    
+    return int(position), filters_applied
+
+
 def analyze_market(trade_date=None):
     if trade_date is None:
         trade_date = TRADE_DATE
@@ -778,23 +898,32 @@ def analyze_market(trade_date=None):
         # 持仓结构建议
         portfolio_structure = suggest_portfolio_structure(market_regime)
         
-        # 下跌中继风险控制：如果前日趋势分极低（<25），今日加仓上限不超过10%
-        # 机构原则：主跌段后的反弹，首日最多试探性建仓，确认趋势后再加
-        if prev_trend_score is not None and prev_trend_score < 25:
-            crash_limit = 10
-            if position > crash_limit:
-                reason_addon = f"前日趋势分{prev_trend_score:.0f}极低（主跌段），加仓上限{crash_limit}%，需连续2日趋势确认后方可加仓"
-                position = min(position, crash_limit)
-                market_regime = "冰点反弹期"
-                portfolio_structure = suggest_portfolio_structure(market_regime)
-            else:
-                reason_addon = ""
-        else:
-            reason_addon = ""
+        # V8.1 三重仓位过滤器
+        recent_scores = _get_recent_trend_scores(trade_date, days=10)
+        ma20_slope, ma20_down = _calc_ma20_slope(results)
+        
+        position, filter_reasons = _apply_position_filters(
+            position, trend_score, market_regime,
+            prev_trend_score, recent_scores,
+            ma20_slope, ma20_down, results
+        )
+        
+        # 如果仓位被过滤器压低，同步更新市场状态和持仓结构
+        if filter_reasons:
+            if position <= 10:
+                if market_regime not in ("主跌退潮期", "冰点反弹期"):
+                    market_regime = "冰点反弹期"
+                    portfolio_structure = suggest_portfolio_structure(market_regime)
+            elif position <= 25:
+                if market_regime in ("主升加速期",):
+                    market_regime = "震荡轮动期"
+                    portfolio_structure = suggest_portfolio_structure(market_regime)
+        
+        reason_addon = " | ".join(filter_reasons) if filter_reasons else ""
         
         reason = f"当前市场处于【{market_regime}】阶段 - {regime_reason}"
         if reason_addon:
-            reason += f" | {reason_addon}"
+            reason += f" | [V8.1过滤] {reason_addon}"
         if prev_position is not None and prev_position != position:
             reason += f"（前日仓位{prev_position}% -> 今日{position}%，滞回机制生效）"
         elif prev_position is not None and prev_position == position:

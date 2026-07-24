@@ -1,0 +1,89 @@
+{
+  "code": 0,
+  "message": "success",
+  "request_id": "1597a42e564f44df9078e4ede6f4d6ea",
+  "data": {
+    "timestamp": 1784885066000,
+    "total": 6,
+    "item": [
+      {
+        "thscode": "000001.SZ",
+        "ticker": "000001",
+        "volume": 114093292,
+        "turnover": 1269361120,
+        "last_price": 11.1,
+        "price_change": 0.02,
+        "price_change_ratio_pct": 0.180505,
+        "open_price": 11.09,
+        "high_price": 11.18,
+        "low_price": 11.09,
+        "prev_price": 11.08
+      },
+      {
+        "thscode": "399001.SZ",
+        "ticker": "399001",
+        "volume": 56871089000,
+        "turnover": 1015773620000,
+        "last_price": 13774.676,
+        "price_change": -348.631,
+        "price_change_ratio_pct": -2.46848,
+        "open_price": 13915.038,
+        "high_price": 14061.027,
+        "low_price": 13774.676,
+        "prev_price": 14123.307
+      },
+      {
+        "thscode": "399006.SZ",
+        "ticker": "399006",
+        "volume": 17391944000,
+        "turnover": 449292070000,
+        "last_price": 3480.8702,
+        "price_change": -94.65,
+        "price_change_ratio_pct": -2.647167,
+        "open_price": 3515.5037,
+        "high_price": 3561.3499,
+        "low_price": 3480.8702,
+        "prev_price": 3575.5202
+      },
+      {
+        "thscode": "000300.SH",
+        "ticker": "1B0300",
+        "volume": 22126121000,
+        "turnover": 626378640000,
+        "last_price": 4649.19,
+        "price_change": -78.81,
+        "price_change_ratio_pct": -1.666878,
+        "open_price": 4685.41,
+        "high_price": 4704.08,
+        "low_price": 4642.94,
+        "prev_price": 4728
+      },
+      {
+        "thscode": "000905.SH",
+        "ticker": "1B0905",
+        "volume": 18662484000,
+        "turnover": 402009190000,
+        "last_price": 7532.7,
+        "price_change": -201.61,
+        "price_change_ratio_pct": -2.606697,
+        "open_price": 7625.2,
+        "high_price": 7703.6,
+        "low_price": 7532.67,
+        "prev_price": 7734.31
+      },
+      {
+        "thscode": "000852.SH",
+        "ticker": "1B0852",
+        "volume": 22902664000,
+        "turnover": 379813290000,
+        "last_price": 6995.69,
+        "price_change": -199.81,
+        "price_change_ratio_pct": -2.776874,
+        "open_price": 7109.25,
+        "high_price": 7174.55,
+        "low_price": 6995.69,
+        "prev_price": 7195.5
+      }
+    ]
+  }
+}

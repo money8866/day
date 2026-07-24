@@ -422,6 +422,150 @@ def check_growth_quality(fin_df: pd.DataFrame) -> dict:
     return result
 
 
+# ── 未来千亿评分 — 赛道天花板关键词分级 ────────────────
+
+_GIANT_TRACK_TIER1 = [
+    'AI芯片', '人工智能', '大模型', '算力', '机器人', '人形机器人', '具身智能',
+    '自动驾驶', '无人驾驶', '半导体', '芯片', '先进封装', '光刻',
+    '创新药', '生物医药', '基因治疗', '细胞治疗',
+    '商业航天', '低轨卫星', '卫星互联网',
+]
+_GIANT_TRACK_TIER2 = [
+    '物联网', '云计算', '大数据', '信创', '工业软件', '操作系统',
+    '医疗器械', '新能源', '储能', '光伏', '氢能',
+    '新材料', '特种材料', '航空', '航天',
+    '量子', '6G', '核聚变',
+]
+_GIANT_PLATFORM_KEYWORDS = [
+    '平台', '生态', '软件', '解决方案', '一站式', '系统集成',
+    '开发者', 'IP', 'EDA', '操作系统', '中间件',
+    'SaaS', 'PaaS', '云服务', '芯片设计',
+]
+_GIANT_GLOBAL_KEYWORDS = [
+    '出海', '海外', '全球', '国际', '出口', '外资',
+    '国产替代', '进口替代', '卡脖子',
+    '汽车电子', '消费电子',
+]
+_GIANT_CHAIN_KEYWORDS = [
+    '核心', '关键材料', '关键设备', 'IP', '专利', '标准',
+    'EDA', '高速互连', '先进封装', '光刻', '薄膜',
+    '衬底', '外延', '靶材', '前驱体', '特种气体',
+    '精密制造', '精密加工',
+]
+
+
+def _compute_future_giant_score(row: dict) -> Dict:
+    """
+    未来千亿评分模块（20分）— 识别具备成长为千亿市值潜力的标的
+    
+    维度：
+      - 赛道天花板   8分 — AI/机器人/半导体等全球级市场
+      - 平台属性     6分 — 单一产品→生态/平台扩展性
+      - 全球竞争力    4分 — 出海能力+国产替代+全球客户
+      - 产业链控制力  2分 — 核心IP/关键材料/关键设备
+    """
+    result = {}
+    total = 0.0
+    
+    name = str(row.get('name', ''))
+    industry = str(row.get('industry', ''))
+    bz_items = str(row.get('main_bz', ''))
+    is_hs = str(row.get('is_hs', ''))
+    board = str(row.get('board', ''))
+    
+    search_text = f'{industry} {name} {bz_items}'
+    
+    # ── 1. 赛道天花板 (8分) ──
+    track_score = 0.0
+    track_details = []
+    
+    t1_matches = [kw for kw in _GIANT_TRACK_TIER1 if kw in search_text]
+    if t1_matches:
+        track_score += 5.0
+        track_details.extend(t1_matches[:3])
+    
+    t2_matches = [kw for kw in _GIANT_TRACK_TIER2 if kw in search_text]
+    if t2_matches:
+        track_score += 3.0
+        track_details.extend(t2_matches[:2])
+    
+    if board in ('创业板', '科创板'):
+        track_score += 1.0
+        track_details.append(board)
+    
+    if not t1_matches and not t2_matches:
+        track_score = 0.0
+    
+    track_score = min(8.0, track_score)
+    total += track_score
+    result['赛道天花板'] = round(track_score, 1)
+    result['赛道标签'] = ';'.join(track_details[:4]) if track_details else ''
+    
+    # ── 2. 平台属性 (6分) ──
+    plat_score = 0.0
+    plat_details = []
+    
+    plat_matches = [kw for kw in _GIANT_PLATFORM_KEYWORDS if kw in search_text]
+    if plat_matches:
+        plat_score += min(4.0, len(plat_matches) * 1.0)
+        plat_details.extend(plat_matches[:3])
+    
+    bz_items_list = [b.strip() for b in bz_items.replace('；', ';').split(';') if b.strip()]
+    if len(bz_items_list) >= 3:
+        plat_score += 1.5
+    elif len(bz_items_list) >= 2:
+        plat_score += 0.5
+    
+    if board in ('科创板',):
+        plat_score += 0.5
+    
+    plat_score = min(6.0, plat_score)
+    total += plat_score
+    result['平台属性'] = round(plat_score, 1)
+    result['平台标签'] = ';'.join(plat_details[:3]) if plat_details else ''
+    
+    # ── 3. 全球竞争力 (4分) ──
+    global_score = 0.0
+    global_details = []
+    
+    global_matches = [kw for kw in _GIANT_GLOBAL_KEYWORDS if kw in search_text]
+    if global_matches:
+        global_score += min(2.0, len(global_matches) * 0.5)
+        global_details.extend(global_matches[:2])
+    
+    if is_hs in ('H', 'S'):
+        global_score += 1.0
+        global_details.append('沪深港通')
+    
+    if board in ('科创板', '创业板'):
+        global_score += 0.5
+    
+    if t1_matches:
+        global_score += 0.5
+    
+    global_score = min(4.0, global_score)
+    total += global_score
+    result['全球竞争力'] = round(global_score, 1)
+    result['全球标签'] = ';'.join(global_details[:2]) if global_details else ''
+    
+    # ── 4. 产业链控制力 (2分) ──
+    chain_score = 0.0
+    chain_details = []
+    
+    chain_matches = [kw for kw in _GIANT_CHAIN_KEYWORDS if kw in search_text]
+    if chain_matches:
+        chain_score += min(2.0, len(chain_matches) * 0.5)
+        chain_details.extend(chain_matches[:3])
+    
+    chain_score = min(2.0, chain_score)
+    total += chain_score
+    result['产业链控制力'] = round(chain_score, 1)
+    result['产业链标签'] = ';'.join(chain_details[:2]) if chain_details else ''
+    
+    result['未来千亿总分'] = round(total, 1)
+    return result
+
+
 # ── 评分系统（100分制） ─────────────────────────────
 
 def _get_industry_pe(industry: str, industry_pe_df: pd.DataFrame = None) -> float:
@@ -742,6 +886,11 @@ def compute_score(row: dict, industry_pe_df: pd.DataFrame = None) -> Dict:
     details['未来赛道分'] = round(future_score, 1)
     details['未来赛道'] = future_track if future_track else ''
 
+    # ── 未来千亿加分（20分）— 识别具备成长为千亿市值潜力的标的 ──
+    giant_score = _compute_future_giant_score(row)
+    details.update(giant_score)
+    total += giant_score['未来千亿总分']
+
     # ── 总分 ──
     total = round(total, 1)
     details['总分'] = total
@@ -998,6 +1147,16 @@ def print_report(passed: pd.DataFrame, failed_quality: pd.DataFrame,
         print(f"  平均PE_TTM: {passed['PE_TTM'].mean():.1f}")
         print(f"  平均PEG: {passed['PEG'].mean():.2f}")
         print(f"  平均市值: {passed['总市值(亿)'].mean():.1f}亿")
+        if '未来千亿总分' in passed.columns:
+            giant_mean = passed['未来千亿总分'].mean()
+            giant_high = len(passed[passed['未来千亿总分'] >= 10])
+            print(f"\n  未来千亿评分:")
+            print(f"    平均分: {giant_mean:.1f}")
+            print(f"    高分(≥10分): {giant_high} 只")
+            for dim in ['赛道天花板', '平台属性', '全球竞争力', '产业链控制力']:
+                if dim in passed.columns:
+                    avg_dim = passed[dim].mean()
+                    print(f"    {dim}: {avg_dim:.2f}分(平均)")
         if '未来赛道' in passed.columns and '未来赛道分' in passed.columns:
             future_count = len(passed[passed['未来赛道'] != ''])
             if future_count > 0:
@@ -1016,6 +1175,7 @@ def print_report(passed: pd.DataFrame, failed_quality: pd.DataFrame,
     print(f"  • 精选标的：高壁垒+高增长+低估值，重点关注")
     print(f"  • 寻宝属性强的标的弹性更大，适合大盘Risk OFF时布局")
     print(f"  • 增长质量未通过的标的需警惕：营收不匹配/ROE异常/非经常性收益")
+    print(f"  • 未来千亿评分模块已上线：赛道天花板(8分)+平台属性(6分)+全球竞争力(4分)+产业链控制力(2分)")
     print(f"  • 未来赛道扩展：已识别生命科学/AI链/航天航空/前沿技术布局")
     print(f"  • 随着更多公司发布中报预告，每天运行一次即可更新")
     print(f"{'═'*70}")
@@ -1026,6 +1186,7 @@ def _print_card(r):
     bz = str(r.get('主营业务', ''))
     quality = str(r.get('quality_reason', ''))
     future_track = str(r.get('未来赛道', ''))
+    giant_score = r.get('未来千亿总分', 0)
     print(f"\n  ┌─────────────────────────────────────────────────────┐")
     print(f"  │ {r['name']} ({r['ts_code']})  ┃  总分: {r['总分']:>5.1f}")
     print(f"  ├─────────────────────────────────────────────────────┤")
@@ -1033,6 +1194,12 @@ def _print_card(r):
     print(f"  │ 营收增速 {r.get('营收增速(%)', 0):>6.1f}%  │ 毛利率 {r.get('毛利率(%)', 0):>6.1f}%  │ 净利率 {r.get('净利率(%)', 0):>6.1f}%")
     print(f"  │ PE_TTM {r.get('PE_TTM', 0):>6.1f}  │ 行业PE {r.get('行业参考PE', 0):>6.1f}  │ PEG {r.get('PEG', 0):>6.2f}")
     print(f"  │ 市值 {r.get('总市值(亿)', 0):>6.1f}亿  │ PB {r.get('PB', 0):>6.2f}  │ 标签 {r.get('标签分', 0):>2.0f}分")
+    if giant_score > 0:
+        track = r.get('赛道天花板', 0)
+        plat = r.get('平台属性', 0)
+        glob = r.get('全球竞争力', 0)
+        chain = r.get('产业链控制力', 0)
+        print(f"  │ 千亿评分 {giant_score:>4.1f}分  │ 赛道{track} 平台{plat} 全球{glob} 产业链{chain}")
     if tags:
         print(f"  │ 标签: {tags}")
     if future_track:

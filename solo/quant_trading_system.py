@@ -27,6 +27,11 @@ import time
 import argparse
 import warnings
 from datetime import datetime, timedelta
+
+# 对接 market_analysis V8 大盘分析模块
+SOLO_DIR = os.path.dirname(os.path.abspath(__file__))
+if SOLO_DIR not in sys.path:
+    sys.path.insert(0, SOLO_DIR)
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -241,65 +246,187 @@ class MarketRegimeJudge:
               sh_df: pd.DataFrame,
               hs300_df: pd.DataFrame,
               zz2000_df: pd.DataFrame,
+              trade_date: str = None,
               ) -> MarketRegimeResult:
         """
-        综合三大指数判断市场状态 (V8算法)
-        IndexTrend = sh*0.5 + hs300*0.3 + zz2000*0.2
-        TrendScore = IndexTrend (无主题分时使用纯指数分)
+        调用 market_analysis.py V8 算法判断市场状态
+        包含: 真实市场广度(涨跌家数)、TOP3主题趋势分、仓位滞回、趋势确认
         """
+        try:
+            import market_analysis as ma
+
+            # 确定交易日: 优先用传入参数, 其次从sh_df推断
+            if not trade_date and sh_df is not None and len(sh_df) > 0:
+                if "trade_date" in sh_df.columns:
+                    raw_date = str(sh_df["trade_date"].values[-1])
+                    if "T" in raw_date or "-" in raw_date:
+                        trade_date = raw_date[:10].replace("-", "")
+                    else:
+                        trade_date = raw_date
+
+            # 调用 V8 分析流程 — 直接用tushare拉取最新数据, 绕过缓存
+            start_dt = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
+
+            # 拉取全市场涨跌家数 (用于BREADTH_SCORE)
+            daily_df = ma.pro.daily(trade_date=trade_date)
+            up_count = int((daily_df["pct_chg"] > 0).sum()) if daily_df is not None and not daily_df.empty else 0
+            down_count = int((daily_df["pct_chg"] < 0).sum()) if daily_df is not None and not daily_df.empty else 0
+            total_count = up_count + down_count
+            total_amount = float(daily_df["amount"].sum() / 100000) if daily_df is not None and not daily_df.empty else 0  # 千元→亿元
+
+            # 涨停数据
+            try:
+                zt_df = ma.pro.limit_list_ths(trade_date=trade_date, limit_type="涨停池")
+                zt_count = len(zt_df) if zt_df is not None else 0
+            except:
+                zt_count = 0
+            zhaban_rate = 0.0
+
+            overview = {
+                'up_count': up_count, 'down_count': down_count,
+                'total_amount': total_amount, 'zt_count': zt_count, 'zb_rate': zhaban_rate,
+            }
+
+            indices = {
+                "上证指数": "000001.SH",
+                "沪深300": "000300.SH",
+                "中证2000": "932000.CSI"
+            }
+
+            results = []
+            start_dt = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
+            print(f"[V8] trade_date={trade_date} up={up_count} down={down_count} total={total_count}")
+            for name, code in indices.items():
+                # 直接用 tushare 拉取, 绕过 market_analysis 缓存
+                df = ma.pro.index_daily(ts_code=code, start_date=start_dt, end_date=trade_date)
+                if df is None or df.empty:
+                    continue
+                df = df.sort_values('trade_date').reset_index(drop=True)
+                if df is None or df.empty:
+                    continue
+                latest = df.iloc[-1]
+                up_count = overview.get('up_count', 0)
+                total_count = overview.get('up_count', 0) + overview.get('down_count', 0)
+                trend_score, trend_status, trend_detail = ma.calc_trend_score(df, up_count, total_count)
+                zt_count = overview.get('zt_count', 0)
+                zhaban_rate = overview.get('zb_rate', 0)
+                sentiment_score, sentiment_status = ma.calc_sentiment_score(
+                    df, zt_count, zhaban_rate, overview.get('total_amount', 0))
+                results.append({
+                    "name": name, "code": code,
+                    "trend_score": trend_score, "trend_status": trend_status,
+                    "sentiment_score": sentiment_score, "sentiment_status": sentiment_status,
+                    "close": latest['close'], "pct_chg": latest.get('pct_chg', 0),
+                    "trend_detail": trend_detail,
+                })
+
+            if not results:
+                return self._fallback_judge(sh_df, hs300_df, zz2000_df)
+
+            # TOP3 主题趋势分
+            theme_top3_scores = ma.get_top3_theme_scores(trade_date)
+
+            # 市场趋势总评分
+            trend_score, index_trend, theme_trend = ma.calculate_market_trend_score(
+                results, theme_top3_scores, trade_date)
+
+            prev_position = ma._get_prev_position(trade_date)
+            prev_trend_score = ma._get_prev_trend_score(trade_date)
+            avg_sentiment = sum(r['sentiment_score'] for r in results) / len(results)
+
+            zhaban_rate = overview.get('zb_rate', 0)
+            market_status, position_range, position = ma.get_market_status_and_position(
+                trend_score, prev_position=prev_position, sentiment_score=avg_sentiment)
+
+            market_regime, regime_reason = ma.classify_market_regime(
+                trend_score, avg_sentiment, zhaban_rate=zhaban_rate,
+                prev_trend_score=prev_trend_score)
+
+            # V8.1 三重仓位过滤器
+            recent_scores = ma._get_recent_trend_scores(trade_date, days=10)
+            ma20_slope, ma20_down = ma._calc_ma20_slope(results)
+            position, filter_reasons = ma._apply_position_filters(
+                position, trend_score, market_regime,
+                prev_trend_score, recent_scores,
+                ma20_slope, ma20_down, results
+            )
+
+            # 如果仓位被过滤器压低，同步更新市场状态
+            if filter_reasons:
+                if position <= 10:
+                    if market_regime not in ("主跌退潮期", "冰点反弹期"):
+                        market_regime = "冰点反弹期"
+                elif position <= 25:
+                    if market_regime in ("主升加速期",):
+                        market_regime = "震荡轮动期"
+                filter_note = " | [V8.1过滤] " + " | ".join(filter_reasons)
+                regime_reason += filter_note
+
+            portfolio_structure = ma.suggest_portfolio_structure(market_regime)
+
+            # 映射到交易系统的状态
+            regime_mapped = self._map_regime(market_regime, trend_score)
+
+            # 指数详情
+            sh_s = next((r['trend_score'] for r in results if r['name'] == '上证指数'), 50)
+            hs300_s = next((r['trend_score'] for r in results if r['name'] == '沪深300'), 50)
+            zz2000_s = next((r['trend_score'] for r in results if r['name'] == '中证2000'), 50)
+
+            return MarketRegimeResult(
+                regime=regime_mapped,
+                regime_score=round(trend_score, 2),
+                position_pct=float(position),
+                position_range=position_range,
+                trend_score=round(trend_score, 2),
+                sentiment_score=round(avg_sentiment, 2),
+                detail={
+                    "sh_score": round(sh_s, 2),
+                    "hs300_score": round(hs300_s, 2),
+                    "zz2000_score": round(zz2000_s, 2),
+                    "regime_reason": regime_reason,
+                    "structure": portfolio_structure,
+                    "index_trend": round(index_trend, 2),
+                    "theme_trend": round(theme_trend, 2),
+                    "market_regime": market_regime,
+                },
+            )
+
+        except Exception as e:
+            print(f"[V8对接] 调用market_analysis失败: {e}, 使用内置算法")
+            return self._fallback_judge(sh_df, hs300_df, zz2000_df)
+
+    def _map_regime(self, ma_regime: str, trend_score: float) -> str:
+        """将 market_analysis 的状态映射到交易系统状态"""
+        # 直接使用 V8 状态名，但根据仓位决定是否交易
+        if ma_regime in ("主跌退潮期",):
+            return "主跌退潮期"
+        if ma_regime in ("顶部分歧期",):
+            return "顶部分歧期"
+        if ma_regime in ("主升加速期",):
+            return "主升加速期"
+        if ma_regime in ("震荡轮动期", "冰点反弹期"):
+            return ma_regime
+        return ma_regime
+
+    def _fallback_judge(self, sh_df, hs300_df, zz2000_df) -> MarketRegimeResult:
+        """降级方案: 使用内置简化算法 (当market_analysis不可用时)"""
         sh_score = self._calc_v8_trend_score(sh_df)
         hs300_score = self._calc_v8_trend_score(hs300_df)
         zz2000_score = self._calc_v8_trend_score(zz2000_df)
-
-        # 指数趋势分 (V8权重: 上证50%, 沪深300 30%, 中证2000 20%)
         trend_score = sh_score * 0.50 + hs300_score * 0.30 + zz2000_score * 0.20
-
-        # 情绪分 (各指数均值)
-        sh_sent = self._calc_v8_sentiment(sh_df)
-        hs300_sent = self._calc_v8_sentiment(hs300_df)
-        zz2000_sent = self._calc_v8_sentiment(zz2000_df)
-        sentiment = (sh_sent + hs300_sent + zz2000_sent) / 3.0
-
-        # 涨跌惩罚
-        if sh_df is not None and len(sh_df) >= 1:
-            sh_pct = sh_df["pct_chg"].values[-1] if "pct_chg" in sh_df.columns else 0
-            if sh_pct < -1.0:
-                trend_score -= abs(sh_pct) * 3
-        if zz2000_df is not None and len(zz2000_df) >= 1:
-            zz_pct = zz2000_df["pct_chg"].values[-1] if "pct_chg" in zz2000_df.columns else 0
-            if zz_pct < -3.0:
-                trend_score -= abs(zz_pct) * 2
-
-        # 情绪退潮惩罚
-        if sh_sent < 30 or zz2000_sent < 25:
-            trend_score -= 5
-
+        sentiment = (self._calc_v8_sentiment(sh_df) + self._calc_v8_sentiment(hs300_df) + self._calc_v8_sentiment(zz2000_df)) / 3.0
         trend_score = max(0, min(100, trend_score))
-
-        # V8 6状态分类
         regime, regime_reason = self._classify_regime_v8(trend_score, sentiment)
-
-        # 仓位计算 (带滞回)
         position, position_range = self._get_position_v8(trend_score)
-        # 顶部分歧期: 仓位覆盖为25%
         if regime == "顶部分歧期":
             position = 25.0
             position_range = "20~30%"
-
         return MarketRegimeResult(
-            regime=regime,
-            regime_score=round(trend_score, 2),
-            position_pct=position,
-            position_range=position_range,
-            trend_score=round(trend_score, 2),
-            sentiment_score=round(sentiment, 2),
-            detail={
-                "sh_score": round(sh_score, 2),
-                "hs300_score": round(hs300_score, 2),
-                "zz2000_score": round(zz2000_score, 2),
-                "regime_reason": regime_reason,
-                "structure": self._suggest_structure(regime),
-            },
+            regime=regime, regime_score=round(trend_score, 2),
+            position_pct=position, position_range=position_range,
+            trend_score=round(trend_score, 2), sentiment_score=round(sentiment, 2),
+            detail={"sh_score": round(sh_score, 2), "hs300_score": round(hs300_score, 2),
+                    "zz2000_score": round(zz2000_score, 2), "regime_reason": regime_reason},
         )
 
     def _calc_v8_trend_score(self, df: pd.DataFrame) -> float:
@@ -1496,7 +1623,7 @@ class BacktestEngine:
         if sh_df is None or len(sh_df) < 60:
             return None
 
-        return self.regime_judge.judge(sh_df, hs300_df if hs300_df is not None and len(hs300_df) >= 60 else sh_df, zz2000_df if zz2000_df is not None and len(zz2000_df) >= 60 else sh_df)
+        return self.regime_judge.judge(sh_df, hs300_df if hs300_df is not None and len(hs300_df) >= 60 else sh_df, zz2000_df if zz2000_df is not None and len(zz2000_df) >= 60 else sh_df, trade_date=date_str)
 
     def _generate_signals_for_date(self, date_str: str,
                                    regime_result: MarketRegimeResult) -> List[BuySignal]:
@@ -1709,7 +1836,7 @@ class DailyRunner:
             lines.append("  [错误] 指数数据不足，无法判断大势")
             return "\n".join(lines)
 
-        regime = self.regime_judge.judge(sh_df, hs300_df if hs300_df is not None and len(hs300_df) >= 60 else sh_df, zz2000_df if zz2000_df is not None and len(zz2000_df) >= 60 else sh_df)
+        regime = self.regime_judge.judge(sh_df, hs300_df if hs300_df is not None and len(hs300_df) >= 60 else sh_df, zz2000_df if zz2000_df is not None and len(zz2000_df) >= 60 else sh_df, trade_date=self.trade_date)
 
         lines.append(f"  市场状态: {regime.regime}")
         lines.append(f"  综合评分: {regime.regime_score:.1f}/100")
@@ -1718,6 +1845,10 @@ class DailyRunner:
         lines.append(f"  指数详情: 上证{regime.detail['sh_score']:.1f} "
                      f"沪深300:{regime.detail['hs300_score']:.1f} "
                      f"中证2000:{regime.detail['zz2000_score']:.1f}")
+        if "index_trend" in regime.detail:
+            lines.append(f"  指数趋势: {regime.detail['index_trend']:.1f}  主题趋势: {regime.detail.get('theme_trend', 0):.1f}")
+        if "market_regime" in regime.detail:
+            lines.append(f"  V8状态: {regime.detail['market_regime']}")
         if "regime_reason" in regime.detail:
             lines.append(f"  判定理由: {regime.detail['regime_reason']}")
         if "structure" in regime.detail:
@@ -1899,10 +2030,21 @@ class DailyRunner:
             if in_buy_section:
                 if stripped.startswith("(无") or stripped == "":
                     continue
+                # 检测到分隔线或免责声明, 结束
+                if stripped.startswith("===") or "免责声明" in stripped:
+                    break
+                # 新的股票条目 (以数字开头)
                 if stripped and stripped[0].isdigit():
                     buy_lines.append(f"- {stripped}")
-                elif buy_lines and not stripped.startswith("    "):
-                    in_buy_section = False
+                # 信号说明行 (缩进的补充信息), 追加到上一条
+                elif stripped.startswith("信号:") or stripped.startswith("均线:"):
+                    if buy_lines:
+                        buy_lines[-1] += f"\n  {stripped}"
+                # 其他非空且非数字开头, 可能是结束标记
+                elif stripped and not line.startswith("       "):
+                    # 不是缩进的补充行, 退出
+                    if not line.startswith("    "):
+                        break
 
         if buy_lines:
             msg.append("### 买入信号")
