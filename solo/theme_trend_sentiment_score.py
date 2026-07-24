@@ -1065,11 +1065,14 @@ def get_daily_kline(ts_codes, start, end):
                     df['trade_date'] = df['trade_date'].astype(str)
                     # 过滤日期范围
                     df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
-                    if not df.empty:
+                    if not df.empty and str(df['trade_date'].iloc[-1]) == str(end):
                         # 添加均线列
                         df = _add_ma_columns(df)
                         all_parts.append(df)
                         continue
+                    elif not df.empty:
+                        # CSV 数据不包含最新交易日 {end}，最后日期={df['trade_date'].iloc[-1]}，标记为需重新拉取
+                        pass
             except Exception as e:
                 print(f"[KLine] 读取CSV失败 {csv_path}: {e}")
         
@@ -1077,11 +1080,20 @@ def get_daily_kline(ts_codes, start, end):
         cache_key = f"daily_kline_{code}_{start}_{end}"
         cached = cache_get(cache_key)
         if cached is not None:
-            # 检查缓存数据是否有均线列，没有则补充并更新缓存
-            if 'ma5' not in cached.columns:
-                cached = _add_ma_columns(cached)
-                cache_set(cache_key, cached)  # 更新缓存（写入带均线的版本）
-            all_parts.append(cached)
+            if 'trade_date' in cached.columns and str(cached['trade_date'].astype(str).iloc[-1]) == str(end):
+                # 检查缓存数据是否有均线列，没有则补充并更新缓存
+                if 'ma5' not in cached.columns:
+                    cached = _add_ma_columns(cached)
+                    cache_set(cache_key, cached)  # 更新缓存（写入带均线的版本）
+                all_parts.append(cached)
+            elif 'trade_date' not in cached.columns:
+                # 无 trade_date 列，直接使用
+                if 'ma5' not in cached.columns:
+                    cached = _add_ma_columns(cached)
+                all_parts.append(cached)
+            else:
+                # SQLite 缓存数据不包含最新交易日 {end}
+                need_fetch_codes.append(code)
         else:
             # 跳过已确认无法获取的股票（黑名单），避免重复请求
             if _is_failed_stock(code):
@@ -1103,10 +1115,12 @@ def get_daily_kline(ts_codes, start, end):
                             # 将 trade_date 转换为字符串类型，避免类型比较错误
                             df['trade_date'] = df['trade_date'].astype(str)
                             df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
-                            if not df.empty:
+                            if not df.empty and str(df['trade_date'].iloc[-1]) == str(end):
                                 df = _add_ma_columns(df)
                                 all_parts.append(df)
                                 need_fetch_codes.remove(code)
+                            elif not df.empty:
+                                print(f"  [警告] {code} CSV 重新预取后仍不包含 {end}，最后日期={df['trade_date'].iloc[-1]}")
                     except Exception as e:
                         print(f"[KLine] 读取tq生成的CSV失败 {csv_path}: {e}")
         except Exception as e:
