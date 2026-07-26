@@ -190,6 +190,43 @@ def _load_fusion_result(expected_date=None):
     return _load_v6_result(expected_date)
 
 
+def _load_v2_theme_scores(trade_date):
+    """加载 theme_score_v2.py 输出的 CSV 评分结果。
+
+    Args:
+        trade_date: 交易日(YYYYMMDD)
+
+    Returns:
+        list[dict]: 按综合分降序排列的评分列表, None 表示不可用
+    """
+    v2_csv = os.path.join(BASE_DIR, 'report_daily', f'theme_scores_v2_{trade_date}.csv')
+    if not os.path.exists(v2_csv):
+        print(f"[V2评分] 文件不存在: {v2_csv}")
+        return None
+
+    try:
+        import pandas as pd
+        df = pd.read_csv(v2_csv)
+        if df.empty:
+            return None
+        # 填充 NaN
+        df = df.where(pd.notna(df), None)
+        records = df.to_dict('records')
+        # 从扁平列重建 migration_factors 嵌套dict
+        factor_keys = ['proximity', 'momentum', 'confirmation', 'money_resonance', 'leader_health', 'regime', 'age_penalty', 'macro_filter']
+        for r in records:
+            mf = {}
+            for k in factor_keys:
+                if k in r and r[k] is not None:
+                    mf[k] = float(r[k])
+            r['migration_factors'] = mf
+        print(f"[V2评分] 加载完成: {len(records)} 个主题 (日期 {trade_date})")
+        return records
+    except Exception as e:
+        print(f"[V2评分] 读取失败: {e}")
+        return None
+
+
 def _load_v6_result(expected_date=None):
     """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
     优先尝试加载 V8 文件 (theme_alpha_v6_result_v8_{date}.json)，
@@ -10412,72 +10449,114 @@ def run(target_date=None, simple_mode=False):
         print(f"{'='*60}\n")
     
     # =========================
-    # 主题状态全景（来自 Theme Alpha V8.0 引擎）
+    # 主题状态全景（来自 Theme Score V2 引擎，含阶段迁移预测）
     # =========================
-    print("\n========== 主题状态全景（来自 FUSION 融合排名引擎）==========\n")
+    print("\n========== 主题状态全景（来自 Theme Score V2 引擎）==========\n")
     sector_text_his = ""
     try:
-        # 优先加载融合排名，回退 V8/V6
-        v6_data = _load_fusion_result(TRADE_DATE)
-        if v6_data:
+        # 优先加载 V2 评分结果
+        v2_data = _load_v2_theme_scores(TRADE_DATE)
+        if v2_data:
             lines = []
-            # 判断数据源：融合排名有"融合分"字段
-            is_fusion = '融合分' in (v6_data[0] if v6_data else {})
-            if is_fusion:
-                meta = {}
-                try:
-                    fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
-                                               f'theme_fusion_rank_{TRADE_DATE}.json')
-                    if os.path.exists(fusion_path):
-                        with open(fusion_path, encoding='utf-8') as _ff:
-                            _fp = json.load(_ff)
-                            meta = _fp.get("meta", {})
-                except Exception:
-                    pass
-                mode = meta.get('模式', '')
-                date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
-                lines.append(f"FUSION 融合排名报告{date_str} | {mode} | 共{len(v6_data)}个主题")
-                lines.append(f"{'#':<3} {'主题':<14} {'融合分':<6} {'V6':<6} {'V8':<6} {'奖惩':<5} {'信号':<18} {'操作建议':<10}")
-                lines.append("")
-                for i, r in enumerate(v6_data[:30]):
-                    lines.append(f"{i+1:<3} {r.get('主题',''):<14} {r.get('融合分',0):<6.1f} "
-                                 f"{r.get('V6分',0):<6.1f} {r.get('V8分',0):<6.1f} "
-                                 f"{r.get('奖惩',0):<5} {r.get('信号',''):<18} {r.get('操作建议',''):<10}")
-            else:
-                # 回退：原 V8/V6 格式
-                v6_date = v6_data[0].get('trade_date', '')
-                date_str = f" ({v6_date})" if v6_date else ""
-                source_label = "V8.0" if any('T_start' in r for r in v6_data[:5]) else "V6.2"
-                lines.append(f"Theme Alpha {source_label} 引擎报告{date_str} (共{len(v6_data)}个主题)")
-                lines.append(f"{'#':<3} {'主题':<14} {'综合':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'趋势':<6} {'资金':<6} {'信号':<6}")
-                lines.append("")
-                for i, r in enumerate(v6_data[:30]):
-                    t_start = r.get('T_start', '')
-                    t_ma = r.get('T_MA', '')
-                    r_vol = r.get('R_volume', '')
-                    d_stage = r.get('D阶段', r.get('stage', ''))
-                    d_action = r.get('策略动作', '')
-                    if t_start == '' or t_start is None:
-                        t_start = '-'
-                    if t_ma == '' or t_ma is None:
-                        t_ma = '-'
-                    if r_vol == '' or r_vol is None:
-                        r_vol = '-'
-                    else:
-                        r_vol = f"{r_vol:.2f}" if isinstance(r_vol, (int, float)) else r_vol
-                    lines.append(f"{i+1:<3} {r.get('theme',''):<14} {r.get('composite_score',0):<6.1f} "
-                                 f"{str(d_stage):<8} {str(d_action):<12} "
-                                 f"{str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} "
-                                 f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
-                                 f"{r.get('trade_signal',''):<6}")
+            date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
+            lines.append(f"━━ V2 Theme Score 引擎报告{date_str} ━━")
+            lines.append(f"共{len(v2_data)}个主题 | 趋势分(长期动量)+情绪分(短期爆发)→综合分 | 含阶段迁移预测&交易动作建议")
             lines.append("")
+
+            # ── 排名表 ──
+            lines.append(f"{'#':<3} {'主题':<12} {'趋势':<6} {'情绪':<6} {'综合':<6} {'涨停':<4} {'状态':<8} {'迁移分':<6} {'目标':<8} {'交易动作':<8}")
+            lines.append("")
+            for i, r in enumerate(v2_data[:30]):
+                lines.append(
+                    f"{i+1:<3} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} "
+                    f"{r['composite_score']:<6.1f} {r.get('zt_count',0):<4} {r.get('theme_state',''):<8} "
+                    f"{r.get('migration_score',0):<6.1f} {r.get('target_state',''):<8} {r.get('trade_action',''):<8}"
+                )
+            lines.append("")
+
+            # ── 迁移预测详情 ──
+            lines.append("【阶段迁移预测（未来3-5个交易日）- 6因子分解】")
+            lines.append(f"{'#':<3} {'主题':<12} {'P':<5} {'M':<5} {'C':<5} {'$':<5} {'L':<5} {'R':<5} {'方向':<6} {'目标':<8} {'动作':<8} {'理由'}")
+            lines.append("")
+            for i, r in enumerate(v2_data[:7]):
+                mf = r.get('migration_factors', {}) or {}
+                direction_icon = '↑向上' if r.get('migration_direction') == 'upward' else ('↓向下' if r.get('migration_direction') == 'downward' else '→震荡')
+                lines.append(
+                    f"{i+1:<3} {r['theme']:<12} "
+                    f"{mf.get('proximity',0):<5.0f} {mf.get('momentum',0):<5.0f} {mf.get('confirmation',0):<5.0f} "
+                    f"{mf.get('money_resonance',0):<5.0f} {mf.get('leader_health',0):<5.0f} {mf.get('regime',0):<5.0f} "
+                    f"{direction_icon:<6} {r.get('target_state',''):<8} {r.get('trade_action',''):<8} {r.get('action_reason','')}"
+                )
+            lines.append("")
+
+            # ── 龙头/中军一览 ──
+            lines.append("【龙头 & 中军一览（V2引擎评分）】")
+            for i, r in enumerate(v2_data[:7]):
+                leader = r.get('leader_name', '') or '-'
+                core = r.get('core_name', '') or '-'
+                lines.append(f"  {r['theme']:<12} 龙头:{leader} 中军:{core}")
+            lines.append("")
+
             sector_text_his = "\n".join(lines)
         else:
-            print(f"  引擎结果不可用或日期不匹配")
-            print(f"  请先运行: python theme_alpha_v6/main.py --date {TRADE_DATE}")
-            sector_text_his = ""
+            print(f"  V2评分数据不可用")
+
+            # 回退：使用原 FUSION/V8 引擎当兜底
+            v6_data = _load_fusion_result(TRADE_DATE)
+            if v6_data:
+                lines = []
+                is_fusion = '融合分' in (v6_data[0] if v6_data else {})
+                if is_fusion:
+                    meta = {}
+                    try:
+                        fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                                   f'theme_fusion_rank_{TRADE_DATE}.json')
+                        if os.path.exists(fusion_path):
+                            with open(fusion_path, encoding='utf-8') as _ff:
+                                _fp = json.load(_ff)
+                                meta = _fp.get("meta", {})
+                    except Exception:
+                        pass
+                    mode = meta.get('模式', '')
+                    date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
+                    lines.append(f"FUSION 融合排名报告{date_str} | {mode} | 共{len(v6_data)}个主题（V2数据不可用，回退）")
+                    lines.append(f"{'#':<3} {'主题':<14} {'融合分':<6} {'V6':<6} {'V8':<6} {'奖惩':<5} {'信号':<18} {'操作建议':<10}")
+                    lines.append("")
+                    for i, r in enumerate(v6_data[:30]):
+                        lines.append(f"{i+1:<3} {r.get('主题',''):<14} {r.get('融合分',0):<6.1f} "
+                                     f"{r.get('V6分',0):<6.1f} {r.get('V8分',0):<6.1f} "
+                                     f"{r.get('奖惩',0):<5} {r.get('信号',''):<18} {r.get('操作建议',''):<10}")
+                else:
+                    v6_date = v6_data[0].get('trade_date', '')
+                    date_str = f" ({v6_date})" if v6_date else ""
+                    source_label = "V8.0" if any('T_start' in r for r in v6_data[:5]) else "V6.2"
+                    lines.append(f"Theme Alpha {source_label} 引擎报告{date_str} (共{len(v6_data)}个主题, V2回退)")
+                    lines.append(f"{'#':<3} {'主题':<14} {'综合':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'趋势':<6} {'资金':<6} {'信号':<6}")
+                    lines.append("")
+                    for i, r in enumerate(v6_data[:30]):
+                        t_start = r.get('T_start', '')
+                        t_ma = r.get('T_MA', '')
+                        r_vol = r.get('R_volume', '')
+                        d_stage = r.get('D阶段', r.get('stage', ''))
+                        d_action = r.get('策略动作', '')
+                        if t_start == '' or t_start is None: t_start = '-'
+                        if t_ma == '' or t_ma is None: t_ma = '-'
+                        if r_vol == '' or r_vol is None: r_vol = '-'
+                        else: r_vol = f"{r_vol:.2f}" if isinstance(r_vol, (int, float)) else r_vol
+                        lines.append(f"{i+1:<3} {r.get('theme',''):<14} {r.get('composite_score',0):<6.1f} "
+                                     f"{str(d_stage):<8} {str(d_action):<12} "
+                                     f"{str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} "
+                                     f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
+                                     f"{r.get('trade_signal',''):<6}")
+                lines.append("")
+                sector_text_his = "\n".join(lines)
+            else:
+                print(f"  引擎结果均不可用")
+                sector_text_his = ""
     except Exception as e:
         print(f"⚠️ 读取主题状态简报失败: {e}")
+        import traceback
+        traceback.print_exc()
         sector_text_his = ""
     
     emotion_stage = "强"
@@ -11117,6 +11196,52 @@ def run(target_date=None, simple_mode=False):
         print(f"[中报预增择时] 加载失败: {e}")
 
     # =========================
+    # 中报预增股池超跌择时（7因子超跌评分）
+    # =========================
+    oversold_timing_text = ""
+    try:
+        _oversold_csv = os.path.join(BASE_DIR, 'report_daily', f'enhanced_timing_oversold_{TRADE_DATE}.csv')
+        if os.path.exists(_oversold_csv):
+            _oversold_df = pd.read_csv(_oversold_csv)
+            _strong = _oversold_df[_oversold_df['超跌择时分'] >= 80].copy()
+            _moderate = _oversold_df[(_oversold_df['超跌择时分'] >= 65) & (_oversold_df['超跌择时分'] < 80)].copy()
+            if len(_strong) > 0 or len(_moderate) > 0:
+                _lines = []
+                _lines.append(f"📊 中报预增股池超跌择时（7因子评分） - {TRADE_DATE}")
+                _lines.append(f"  强烈反弹{len(_strong)}只 | 一般反弹{len(_moderate)}只")
+                _lines.append("")
+                if len(_strong) > 0:
+                    _lines.append("⭐⭐⭐ 强烈超跌反弹信号（≥80分，回撤充分+卖压衰竭+止跌共振）：")
+                    for _, _r in _strong.head(10).iterrows():
+                        _lines.append(f"  [{_r['名称']}]({_r['代码']}) "
+                                      f"超跌分={_r['超跌择时分']:.0f} "
+                                      f"回撤={_r['回撤幅度%']:.1f}% "
+                                      f"量比={_r['量比']:.2f} "
+                                      f"RSI={_r['RSI(6)']:.0f} "
+                                      f"止损={_r['止损价']} "
+                                      f"目标={_r['目标价']}")
+                    _lines.append("")
+                if len(_moderate) > 0:
+                    _lines.append("⭐⭐ 一般超跌反弹信号（65-79分，缩量止跌，等待放量确认）：")
+                    for _, _r in _moderate.head(10).iterrows():
+                        _lines.append(f"  [{_r['名称']}]({_r['代码']}) "
+                                      f"超跌分={_r['超跌择时分']:.0f} "
+                                      f"回撤={_r['回撤幅度%']:.1f}% "
+                                      f"量比={_r['量比']:.2f} "
+                                      f"RSI={_r['RSI(6)']:.0f}")
+                    _lines.append("")
+                oversold_timing_text = "\n".join(_lines)
+                print(f"[超跌择时] 强烈{len(_strong)}只 + 一般{len(_moderate)}只")
+            else:
+                oversold_timing_text = "\n📊 中报预增股池超跌择时（7因子评分）\n\n今日无超跌信号（需回撤8-15%+缩量+RSI<35共振）\n"
+        else:
+            oversold_timing_text = f"\n📊 中报预增股池超跌择时（7因子评分）\n\n未找到 {TRADE_DATE} 的超跌择时数据，请先运行: python multi_factor_picker/enhanced_timing_oversold.py\n"
+            print(f"[超跌择时] 未找到 {_oversold_csv}")
+    except Exception as e:
+        oversold_timing_text = f"\n📊 中报预增股池超跌择时（7因子评分）\n\n加载失败: {e}\n"
+        print(f"[超跌择时] 加载失败: {e}")
+
+    # =========================
     # 获取主题可持续性数据（供AI分析，来自Theme Alpha V8.0引擎）
     # =========================
     non_daytrip_for_ai = ""
@@ -11318,9 +11443,9 @@ def run(target_date=None, simple_mode=False):
 2、**主题分析**
 【严格按以下固定模板输出，禁止自由发挥格式】
 **市场风格与主线节奏**
-用1-2句话概述今日市场风格，**必须引用FUSION 融合排名报告**来分析有共振信号的核心主线。
+用1-2句话概述今日市场风格，**必须引用V2 Theme Score 报告**来分析有共振信号的核心主线。
 
-**可持续性主题**（结合V8主题可持续性分析，最多列出5个活跃主题）：
+**可持续性主题**（结合V2阶段迁移预测，最多列出5个活跃主题）：
 - 主题名1:【D阶段时间窗口】动作、信号、龙头
 - 主题名2:【D阶段时间窗口】动作、信号、龙头
 
@@ -11416,6 +11541,9 @@ ETF名称（ETF代码）：
 【S】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
 【A1】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
 【A2】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
+
+8、**【中报预增股池超跌择时（7因子评分）】**（业绩预增股的超跌反弹左侧买入时机）
+{oversold_timing_text}
 
 ------------------
 以上全局格式要求：
@@ -11921,6 +12049,33 @@ def yri_batch_analysis(codes):
         print(f"{'='*120}\n")
         return results_df
     return None
+
+
+# ═══════════════════════════════════════════════════════════
+# 主题精华报告（V4.3+）
+# ═══════════════════════════════════════════════════════════
+
+def generate_theme_essence_report(trade_date: str = None, prefix: str = None):
+    """
+    生成主题→子主题→个股 精华报告
+
+    从 cache_daily/theme_stock_map_v2_{trade_date}.json 提取
+    主题/子主题/个股的精华内容，输出多格式报告到 report_daily/
+
+    参数:
+      trade_date: 日期 YYYYMMDD（None=自动使用最新）
+      prefix: 文件名前缀（可选）
+
+    用法:
+      from tushare_quant import generate_theme_essence_report
+      generate_theme_essence_report('20260724')
+
+    输出:
+      report_daily/theme_essence_{trade_date}.txt
+      report_daily/theme_essence_{trade_date}.md
+    """
+    from theme_summary_report import generate_theme_essence_report as _gen
+    return _gen(trade_date=trade_date, prefix=prefix)
 
 
 # =========================

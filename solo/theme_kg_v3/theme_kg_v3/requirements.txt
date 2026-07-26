@@ -1,0 +1,21 @@
+# Theme Knowledge Graph V3 - 依赖
+# Python 3.12+
+
+# 核心框架 (SQLite)
+sqlalchemy>=2.0,<3.0
+
+# 数据模型
+pydantic>=2.0,<3.0
+
+# 配置
+pyyaml>=6.0
+
+# 工具
+python-dateutil>=2.8
+
+# 测试
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# 可选 - 中文分词
+jieba>=0.42.1

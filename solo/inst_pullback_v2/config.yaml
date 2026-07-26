@@ -1,0 +1,113 @@
+# Institution First Pullback Alpha V2
+# 机构主线第一次回调系统
+
+general:
+  lookback_days: 250
+  min_trade_days: 120
+  top_n_output: 10
+  output_dir: "./output"
+
+market_state:
+  indices:
+    - "000001.SH"   # 上证指数
+    - "000300.SH"   # 沪深300
+    - "000852.SH"   # 中证1000
+    - "399006.SZ"   # 创业板
+    - "000688.SH"   # 科创50
+  etf_pool_file: "D:/mystock/solo/etf_alpha_engine_v2.py"
+  trend_score_weight: 0.25
+  money_score_weight: 0.20
+  breadth_weight: 0.25
+  new_high_weight: 0.15
+  sentiment_weight: 0.15
+  allowed_states:
+    - "BULL_TREND"
+    - "BULL_PULLBACK"
+
+theme_engine:
+  top_n: 5
+  theme_score_weight: 0.25
+  trend_weight: 0.15
+  money_weight: 0.15
+  duration_weight: 0.10
+  etf_trend_weight: 0.05
+  leader_strength_weight: 0.15
+  momentum_weight: 0.15
+
+leader_engine:
+  top_n_per_theme: 3
+  cross_section_weight: 0.55
+  persistence_weight: 0.45
+  cross_section_weights:
+    ret_60d: 0.20
+    ret_20d: 0.12
+    amount: 0.18
+    new_high: 0.12
+    etf_corr: 0.10
+    inst_money: 0.10
+    theme_purity: 0.10
+    market_recognition: 0.08
+  persistence_weights:
+    tenure: 0.25
+    rank_stability: 0.15
+    top3_ratio_20d: 0.18
+    top3_ratio_60d: 0.12
+    rank_momentum: 0.12
+    history_weighted: 0.18
+
+pullback:
+  min_ret_60d: 0.30
+  pullback_range_min: 0.05
+  pullback_range_max: 0.20
+  ma_targets: [10, 20, 30]
+  max_pullback_count: 2
+  no_volume_panic_days: 20
+
+chip_analysis:
+  centroid_drop_max: 0.03
+  profit_ratio_min: 0.55
+  concentration_threshold: 0.6
+
+etf_resonance:
+  trend_score_min: 75
+  new_high_window: 10
+  new_high_min_count: 1
+
+fund_flow:
+  flow_window: 3
+  require_turn_positive: true
+
+trend_health:
+  ema_periods: [20, 60, 120]
+  require_bullish_alignment: true
+  macd_zero_area: true
+
+theme_lifecycle:
+  allowed_stages:
+    - "BIRTH"
+    - "EXPANSION"
+    - "EARLY_MATURE"
+
+risk_filter:
+  min_amount: 200000
+  exclude_st: true
+  exclude_delist: true
+  max_consecutive_limit_down: 1
+  exclude_high_goodwill: true
+
+alpha_scorer:
+  weights:
+    market_state: 20
+    theme_strength: 15
+    leader_score: 15
+    pullback_quality: 20
+    etf_resonance: 10
+    chip_stability: 10
+    fund_flow_recovery: 5
+    trend_health: 5
+
+verification:
+  forward_days: [5, 10, 20, 40]
+  target_returns: [0.10, 0.20, 0.30]
+  weekly_report_day: 5
+  db_path: "D:/mystock/cache_daily/verification_v2.db"

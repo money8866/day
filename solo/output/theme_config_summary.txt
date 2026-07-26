@@ -1,0 +1,29 @@
+AI_COMPUTE                AI算力       keywords=['AI算力', '算力', 'GPU', 'AI芯片', '人工智能芯片'] stocks=0
+SEMICONDUCTOR             半导体        keywords=['半导体', '芯片', '集成电路', 'IC', '晶圆'] stocks=0
+ROBOT                     机器人        keywords=['机器人', '人形机器人', '工业机器人', '服务机器人', '协作机器人'] stocks=0
+INNOVATIVE_DRUG           创新药        keywords=['创新药', '原研药', '新药研发', '生物药', '小分子'] stocks=0
+CONSUMER_ELECTRONICS      消费电子       keywords=['消费电子', '智能手机', 'AI手机', 'AI PC', '笔记本电脑'] stocks=0
+SMART_DRIVING             智能驾驶       keywords=['智能驾驶', '自动驾驶', 'ADAS', '高级辅助驾驶', '无人驾驶'] stocks=0
+DEFENSE                   军工         keywords=['军工', '国防', '航空航天', '航空', '航天'] stocks=0
+NEW_ENERGY_VEHICLE        新能源车       keywords=['新能源车', '新能源汽车', '电动车', '电动汽车', '动力电池'] stocks=0
+GOLD                      黄金         keywords=['黄金', '金矿', '黄金开采', '黄金矿业', '黄金冶炼'] stocks=0
+BANKING                   银行         keywords=['银行', '商业银行', '国有大行', '国有银行', '股份制银行'] stocks=0
+SECURITIES                证券         keywords=['证券', '券商', '证券公司', '投行', '投资银行'] stocks=0
+COAL                      煤炭         keywords=['煤炭', '动力煤', '焦煤', '焦炭', '炼焦煤'] stocks=0
+ELECTRIC_POWER            电力         keywords=['电力', '发电', '供电', '火电', '火力发电'] stocks=0
+XINCHUANG                 信创         keywords=['信创', '信息技术创新', '国产替代', '国产化', '自主可控'] stocks=0
+LOW_ALTITUDE              低空经济       keywords=['低空经济', 'eVTOL', '电动垂直起降', '飞行汽车', '无人机'] stocks=0
+CONSUMPTION               消费         keywords=['消费', '大消费', '消费升级', '品牌消费', '新消费'] stocks=0
+GAMING                    游戏         keywords=['游戏', '手游', '手机游戏', '端游', '客户端游戏'] stocks=0
+CHEMICAL                  化工         keywords=['化工', '化学工业', '基础化工', '石油化工', '精细化工'] stocks=0
+COMMERCIAL_SPACE          商业航天       keywords=['商业航天', '火箭', '运载火箭', '可回收火箭', '卫星'] stocks=0
+CONTROLLABLE_FUSION       可控核聚变      keywords=['核聚变', '可控核聚变', '人造太阳', '托卡马克', '仿星器'] stocks=0
+BRAIN_COMPUTER_INTERFACE  脑机接口       keywords=['脑机接口', 'BCI', '脑机', '神经接口', '神经芯片'] stocks=0
+QUANTUM_COMPUTING         量子计算       keywords=['量子计算', '量子计算机', '量子芯片', '量子比特', '超导量子'] stocks=0
+SYNTHETIC_BIOLOGY         合成生物       keywords=['合成生物', '合成生物学', '基因合成', 'DNA合成', '基因编辑'] stocks=0
+ADVANCED_MATERIALS        高端材料       keywords=['高端材料', '新材料', '化工新材料', '制冷剂', '氟化工'] stocks=0
+INDUSTRIAL_METALS         工业金属       keywords=['铜矿', '电解铜', '阴极铜', '铜冶炼', '铜加工'] stocks=0
+RARE_EARTH                稀土永磁       keywords=['稀土', '稀土永磁', '永磁材料', '钕铁硼', '磁性材料'] stocks=0
+ENERGY_METALS             能源金属       keywords=['锂矿', '碳酸锂', '氢氧化锂', '锂盐', '盐湖提锂'] stocks=0
+MINOR_METALS              小金属        keywords=['锑矿', '锑锭', '氧化锑', '钨矿', '钨精矿'] stocks=0
+_flow                                keywords=[] stocks=0

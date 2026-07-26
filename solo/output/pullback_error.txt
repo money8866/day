@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "d:\mystock\solo\output\check_pullback.py", line 28, in <module>
+    pd_engine = PullbackDetector(pb_config)
+                ^^^^^^^^^^^^^^^^
+NameError: name 'PullbackDetector' is not defined

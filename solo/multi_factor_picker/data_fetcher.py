@@ -1568,6 +1568,53 @@ class DataFetcher:
             save_cache(df, self.cache_dir, cache_key)
         return df
 
+    def get_index_daily(self, ts_code: str,
+                        start_date: str = None,
+                        end_date: str = None,
+                        fields: str = None) -> pd.DataFrame:
+        """
+        查询指数日线行情（使用 index_daily 接口）
+
+        Args:
+            ts_code: 指数代码，如 '000300.SH' (沪深300)
+            start_date: 起始日期 YYYYMMDD
+            end_date: 结束日期 YYYYMMDD（默认今天）
+            fields: 字段，默认全部
+
+        Returns:
+            日线 DataFrame
+        """
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y%m%d')
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+        if fields is None:
+            fields = 'ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount'
+        cache_key = f"index_daily_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        try:
+            df = self._retry_call(
+                self.pro.index_daily,
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                fields=fields,
+            )
+        except Exception:
+            df = None
+
+        if df is None:
+            df = pd.DataFrame()
+
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
     # ─── 以下为 bull_scorer_v2 等评分器复用的原始 DataFrame 接口 ───
 
     def _get_df_cached(self, cache_key: str, api_func, **kwargs) -> pd.DataFrame:
@@ -1728,6 +1775,200 @@ class DataFetcher:
         return self._get_df_cached(
             cache_key, self.pro.stk_factor_pro, **kwargs,
         )
+
+    def get_stk_factor_pro_range(self, ts_code: str, start_date: str = None,
+                                  end_date: str = None) -> pd.DataFrame:
+        """按股票代码+日期范围查询stk_factor_pro技术因子（范围缓存）
+
+        优先使用现有范围缓存，不足时只补缺失部分。
+        缓存命名: stk_factor_pro_range_{ts_code}_{start}_{end}.parquet
+
+        Args:
+            ts_code: 股票代码
+            start_date: 起始日期 YYYYMMDD（默认近200天）
+            end_date: 结束日期 YYYYMMDD（默认最新交易日）
+
+        Returns:
+            带全部技术因子字段的 DataFrame，含 trade_date 列
+        """
+        from datetime import datetime as dt2, timedelta
+        if end_date is None:
+            end_date = self.get_last_trade_date()
+        if start_date is None:
+            start_date = (dt2.strptime(end_date, '%Y%m%d') - timedelta(days=200)).strftime('%Y%m%d')
+
+        safe = self._safe_name(ts_code)
+        cache_key = f"stk_factor_pro_range_{safe}_{start_date}_{end_date}"
+
+        # 1) 精确缓存命中
+        if self.cache_enabled:
+            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            if cached is not None:
+                return cached
+
+        # 2) 查找已有范围缓存（可能日期范围不同），尝试复用
+        import glob as _glob
+        pattern = str(self.cache_dir / f"stk_factor_pro_range_{safe}_*.parquet")
+        existing_files = _glob.glob(pattern)
+        existing_cached = None
+        for fpath in sorted(existing_files, reverse=True):
+            try:
+                dfp = pd.read_parquet(fpath)
+                if dfp is not None and len(dfp) > 0:
+                    min_d = str(dfp['trade_date'].min())
+                    max_d = str(dfp['trade_date'].max())
+                    # 如果已有缓存完全覆盖请求范围 → 直接返回
+                    if min_d <= start_date and max_d >= end_date:
+                        logger.debug(f"stk_factor_pro[{ts_code}] 复用缓存 {min_d}~{max_d}")
+                        # 截取请求范围
+                        dfp = dfp[(dfp['trade_date'] >= start_date) & (dfp['trade_date'] <= end_date)]
+                        return dfp.reset_index(drop=True)
+                    # 如果部分覆盖 → 保留下来后续合并
+                    if max_d >= start_date:
+                        existing_cached = dfp
+            except Exception:
+                continue
+
+        # 3) 需要从API获取（或合并）
+        if existing_cached is not None:
+            existing_cached = existing_cached.sort_values('trade_date')
+            cache_max = str(existing_cached['trade_date'].max())
+            # 只补缺失部分
+            if cache_max < end_date:
+                fetch_start = (dt2.strptime(cache_max, '%Y%m%d') + timedelta(days=1)).strftime('%Y%m%d')
+                try:
+                    new_df = self._retry_call(
+                        self.pro.stk_factor_pro,
+                        ts_code=ts_code, start_date=fetch_start, end_date=end_date,
+                    )
+                    if new_df is not None and len(new_df) > 0:
+                        combined = pd.concat([existing_cached, new_df], ignore_index=True)
+                        combined = combined.drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                        # 保存完整范围
+                        full_start = min(str(combined['trade_date'].min()), start_date)
+                        full_end = max(str(combined['trade_date'].max()), end_date)
+                        full_key = f"stk_factor_pro_range_{safe}_{full_start}_{full_end}"
+                        if self.cache_enabled:
+                            save_cache(combined, self.cache_dir, full_key)
+                        return combined[(combined['trade_date'] >= start_date) & (combined['trade_date'] <= end_date)].reset_index(drop=True)
+                except Exception as e:
+                    logger.warning(f"stk_factor_pro[{ts_code}] 补数据失败: {e}")
+            # 已有缓存但不足，直接返回已有部分
+            return existing_cached[(existing_cached['trade_date'] >= start_date) & (existing_cached['trade_date'] <= end_date)].reset_index(drop=True)
+
+        # 4) 全新获取
+        try:
+            df = self._retry_call(
+                self.pro.stk_factor_pro,
+                ts_code=ts_code, start_date=start_date, end_date=end_date,
+            )
+        except Exception as e:
+            logger.warning(f"stk_factor_pro[{ts_code}] 获取失败: {e}")
+            df = None
+
+        if df is None:
+            df = pd.DataFrame()
+
+        if self.cache_enabled and len(df) > 0:
+            save_cache(df, self.cache_dir, cache_key)
+        return df
+
+    def replenish_stk_factor_pro_batch(self, ts_codes: list, end_date: str = None,
+                                        force: bool = False) -> dict:
+        """批量补全stk_factor_pro数据到最新日期
+
+        对每只股票:
+          - 检查已有缓存的最新日期
+          - 如果最新日期 < end_date，补缺失部分
+          - 如果 force=True，强制全量刷新
+
+        Args:
+            ts_codes: 股票代码列表
+            end_date: 目标截止日期（默认最新交易日）
+            force: 是否强制全量刷新
+
+        Returns:
+            {ts_code: 状态} 状态: 'ok' / 'no_data' / 'error'
+        """
+        from datetime import datetime as dt2, timedelta
+        if end_date is None:
+            end_date = self.get_last_trade_date()
+
+        results = {}
+        for i, ts_code in enumerate(ts_codes):
+            safe = self._safe_name(ts_code)
+            import glob as _glob
+            pattern = str(self.cache_dir / f"stk_factor_pro_range_{safe}_*.parquet")
+            existing_files = _glob.glob(pattern)
+
+            latest_in_cache = None
+            cached_df = None
+
+            if existing_files and not force:
+                # 找最新日期的缓存
+                for fpath in sorted(existing_files, reverse=True):
+                    try:
+                        dfp = pd.read_parquet(fpath)
+                        if dfp is not None and len(dfp) > 0:
+                            max_d = str(dfp['trade_date'].max())
+                            if latest_in_cache is None or max_d > latest_in_cache:
+                                latest_in_cache = max_d
+                                cached_df = dfp
+                    except Exception:
+                        continue
+
+            if latest_in_cache and latest_in_cache >= end_date:
+                # 已有最新数据
+                results[ts_code] = 'ok'
+                if i % 50 == 0:
+                    logger.info(f"  补数据[{i+1}/{len(ts_codes)}] {ts_code} 已是最新({latest_in_cache})")
+                continue
+
+            # 需要补数据
+            if latest_in_cache:
+                fetch_start = (dt2.strptime(latest_in_cache, '%Y%m%d') + timedelta(days=1)).strftime('%Y%m%d')
+                logger.info(f"  补数据[{i+1}/{len(ts_codes)}] {ts_code} 缓存到{latest_in_cache}, 补{fetch_start}~{end_date}")
+            else:
+                fetch_start = (dt2.strptime(end_date, '%Y%m%d') - timedelta(days=200)).strftime('%Y%m%d')
+                logger.info(f"  补数据[{i+1}/{len(ts_codes)}] {ts_code} 无缓存, 获取{fetch_start}~{end_date}")
+
+            try:
+                new_df = self._retry_call(
+                    self.pro.stk_factor_pro,
+                    ts_code=ts_code, start_date=fetch_start, end_date=end_date,
+                )
+                if new_df is not None and len(new_df) > 0:
+                    if cached_df is not None:
+                        # 合并已有缓存
+                        cached_df = cached_df[cached_df['trade_date'] < fetch_start]
+                        combined = pd.concat([cached_df, new_df], ignore_index=True)
+                        combined = combined.drop_duplicates(subset=['trade_date']).sort_values('trade_date').reset_index(drop=True)
+                    else:
+                        combined = new_df
+
+                    # 保存完整范围
+                    full_start = str(combined['trade_date'].min())
+                    full_end = str(combined['trade_date'].max())
+                    full_key = f"stk_factor_pro_range_{safe}_{full_start}_{full_end}"
+                    if self.cache_enabled:
+                        save_cache(combined, self.cache_dir, full_key)
+
+                    # 删除旧缓存碎片
+                    for fpath in existing_files:
+                        try:
+                            os.remove(fpath)
+                        except Exception:
+                            pass
+
+                    results[ts_code] = 'ok'
+                    logger.info(f"    → {ts_code} 完成: {full_start}~{full_end} ({len(combined)}行)")
+                else:
+                    results[ts_code] = 'no_data'
+            except Exception as e:
+                logger.warning(f"    → {ts_code} 失败: {e}")
+                results[ts_code] = 'error'
+
+        return results
 
     # ─── 按 ts_code 维度 ───
 

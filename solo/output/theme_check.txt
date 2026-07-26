@@ -1,0 +1,9 @@
+002536.SZ 出现在以下主题:
+  新能源车: 飞龙股份 评分=49
+
+theme_config.json 结构:
+  key: AI_COMPUTE
+  key: SEMICONDUCTOR
+  key: ROBOT
+  key: INNOVATIVE_DRUG
+  key: CONSUMER_ELECTRONICS

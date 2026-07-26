@@ -396,7 +396,7 @@ def get_effective_date(force_date: str = '') -> str:
     if force_date and len(force_date) == 8 and force_date.isdigit():
         return force_date
     now = datetime.datetime.now()
-    if now.hour < 15:
+    if now.hour < 16:
         d = now - datetime.timedelta(days=1)
     else:
         d = now
