@@ -317,41 +317,54 @@ state_machine:
 exposure:
   model:
     type: "piecewise"  # piecewise | linear
+    # V4: 更积极的基础仓位曲线（低分区间不放空仓）
     levels:
       - score_min: 0
-        score_max: 40
-        exposure_min: 0.0
-        exposure_max: 0.10
-      - score_min: 40
-        score_max: 50
+        score_max: 30
         exposure_min: 0.10
         exposure_max: 0.20
-      - score_min: 50
-        score_max: 60
+      - score_min: 30
+        score_max: 50
         exposure_min: 0.20
-        exposure_max: 0.35
-      - score_min: 60
+        exposure_max: 0.40
+      - score_min: 50
         score_max: 70
-        exposure_min: 0.35
-        exposure_max: 0.50
+        exposure_min: 0.40
+        exposure_max: 0.60
       - score_min: 70
-        score_max: 80
-        exposure_min: 0.50
-        exposure_max: 0.65
-      - score_min: 80
         score_max: 90
-        exposure_min: 0.65
+        exposure_min: 0.60
         exposure_max: 0.80
       - score_min: 90
         score_max: 100
         exposure_min: 0.80
         exposure_max: 1.00
-    # 风险偏好修正
-    risk_appetite_adjustment:
-      high_appetite_increase: 0.10
-      low_appetite_decrease: 0.15
-      high_appetite_threshold: 70
-      low_appetite_threshold: 30
+    # V4: 风险偏好 → 乘数（0.6~1.3），替代旧的加减法
+    risk_appetite_multiplier:
+      min_multiplier: 0.6   # risk_score=0 时
+      max_multiplier: 1.3   # risk_score=100 时
+      score_min: 0
+      score_max: 100
+    # V4: Regime 仓位区间限制
+    regime_limits:
+      Bear:
+        floor: 0.00
+        cap: 0.10
+      Recovery:
+        floor: 0.15
+        cap: 0.50
+      Neutral:
+        floor: 0.25
+        cap: 0.65
+      Bull:
+        floor: 0.40
+        cap: 0.80
+      Euphoria:
+        floor: 0.60
+        cap: 1.00
+    # V4: 热度对仓位的乘数调整（引用 heat_engine 的热度等级）
+    heat_adjustment:
+      enabled: true
   # 主题数量建议
   theme_count:
     levels:
@@ -567,7 +580,7 @@ theme_beta:
 # ============================================================
 leader_quality:
   top_n_per_theme: 5
-  enable_theme_optimizer: true  # 主题归属优化：基于概念重叠度将个股重分配到最匹配的主题
+  enable_theme_optimizer: false  # 主题归属优化已禁用：以 build_theme_stock_map_v2.py 输出为准
   enable_dynamic_correlation: true  # 动态量价相关性分析(三因子模型)，解决双叙事交叉股归属
   sub_weights:
     cross_section: 0.40
@@ -668,8 +681,8 @@ risk_control:
   max_positions: 5
   max_per_position_pct: 0.15
   max_per_theme_pct: 0.30
-  stop_loss_atr_multiple: 2.0
-  take_profit_atr_multiple: 3.0
+  stop_loss_atr_multiple: 1.2
+  take_profit_atr_multiple: 2.0
   max_daily_drawdown: 0.03
   max_weekly_drawdown: 0.06
   max_monthly_drawdown: 0.12

@@ -50,16 +50,18 @@ echo [Step 5.1/7] 自选量化
 
 echo =============================================
 echo [Step 5.2/7] ETF补涨扩散策略 (生成catchup_signals.csv)...
-python solo\etf_resonance\run_real.py
-
-python solo\scan_etf_alpha_v5.py
+rem python solo\etf_resonance\run_real.py
+rem python solo\scan_etf_alpha_v5.py
 
 
 echo [Step 5.3/7] 中报预增股池择时（幻方算法）
 
 echo =============================================
-python d:\mystock\solo\multi_factor_picker\main.py
-python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
+rem python d:\mystock\solo\multi_factor_picker\main.py
+rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
+python d:/mystock/solo/build_theme_stock_map_v2.py
+python D:\mystock\solo\theme_score_v2.py
+
 
 echo =============================================
 python solo\tushare_quant.py

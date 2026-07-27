@@ -126,6 +126,15 @@ def build_summary(report_dict: Dict) -> str:
             is_first = item.get("is_first_pullback", False)
 
             lines.append(f"**{i+1}. {name}（{code}）** 主题：{theme}")
+            sub = item.get("subtheme", "")
+            dom = item.get("dominant_theme", "")
+            extra_parts = []
+            if sub:
+                extra_parts.append(f"子主题: {sub}")
+            if dom and dom != theme:
+                extra_parts.append(f"叙事修正: {dom}")
+            if extra_parts:
+                lines.append(f"  {' | '.join(extra_parts)}")
             lines.append(f"  龙头评分: {score:.0f}分 | 60日涨幅: {ret_60d*100:.0f}% | "
                          f"回撤: {drawdown*100:.1f}%")
             lines.append(f"  回踩: {pullback_ma} | 首次回调: {'是' if is_first else '否'} | "

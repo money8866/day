@@ -177,8 +177,13 @@ class MarketRegimeV3:
             market_score=market_score_result.score,
             risk_appetite_score=risk_result.score,
             regime_name=regime.primary,
+            heat_score=heat_result.score,
+            heat_level=heat_result.level,
         )
         print(f"  总仓位: {exposure_result.portfolio_exposure_pct:.0f}%")
+        print(f"  计算链: Base {exposure_result.base_exposure:.0%} × RA×{exposure_result.risk_appetite_multiplier:.2f} × Heat×{exposure_result.heat_multiplier:.2f}"
+              f" → Raw {exposure_result.raw_exposure:.0%}"
+              f" | Regime[{regime.primary}] {exposure_result.regime_floor:.0%}~{exposure_result.regime_cap:.0%}")
         print(f"  配置: ETF {exposure_result.etf_allocation*100:.0f}% "
               f"龙头 {exposure_result.leader_allocation*100:.0f}% "
               f"跟风 {exposure_result.follower_allocation*100:.0f}% "
@@ -211,10 +216,22 @@ class MarketRegimeV3:
         from market_regime_v3.engines import resolve_theme_stock_map_path
         theme_map_path = resolve_theme_stock_map_path(trade_date)
         theme_stock_map = {}
+        stock_meta = {}  # {ts_code: {subtheme, dominant_theme}}
         if os.path.exists(theme_map_path):
             with open(theme_map_path, 'r', encoding='utf-8') as f:
                 raw = _json.load(f)
             theme_stock_map = raw.get('themes', raw) if isinstance(raw, dict) else {}
+            # 加载 stocks 中的子主题和主导叙事字段
+            raw_stocks = raw.get('stocks', {}) if isinstance(raw, dict) else {}
+            for code, sinfo in raw_stocks.items():
+                if isinstance(sinfo, dict):
+                    sub = sinfo.get('subtheme', '')
+                    dom = sinfo.get('dominant_theme', '')
+                    if sub or dom:
+                        stock_meta[code] = {
+                            'subtheme': sub,
+                            'dominant_theme': dom,
+                        }
         else:
             print(f"  ⚠️ 主题映射文件不存在: {theme_map_path}")
 
@@ -247,20 +264,67 @@ class MarketRegimeV3:
                     close_hfq = df['close_hfq'].values if 'close_hfq' in df.columns else df['close'].values
                     ma5 = df['ma_bfq_5'].values if 'ma_bfq_5' in df.columns else None
                     ma10 = df['ma_bfq_10'].values if 'ma_bfq_10' in df.columns else None
+                    ma20 = df['ma_bfq_20'].values if 'ma_bfq_20' in df.columns else None
+                    ma30 = df['ma_bfq_30'].values if 'ma_bfq_30' in df.columns else None
 
                     latest_close = close_hfq[-1]
-                    ref_price = min(ma5[-1], latest_close * 0.985) if ma5 is not None else latest_close * 0.985
-                    stop_loss = ma10[-1] if ma10 is not None else ref_price * 0.93
 
                     atr_val = 0.0
                     if 'atr_bfq' in df.columns:
                         atr_val = float(df['atr_bfq'].iloc[-1]) if pd.notna(df['atr_bfq'].iloc[-1]) else 0.0
-                    take_profit = ref_price + 3.0 * atr_val
 
+                    # ── 获取回踩均线价格（短线量化核心锚点） ──
+                    pb_ma_price = None
+                    pm = pb_result.pullback_ma
+                    if pm == 'MA10' and ma10 is not None:
+                        pb_ma_price = float(ma10[-1])
+                    elif pm == 'MA20' and ma20 is not None:
+                        pb_ma_price = float(ma20[-1])
+                    elif pm == 'MA30' and ma30 is not None:
+                        pb_ma_price = float(ma30[-1])
+
+                    # ── 低吸参考价：锚定回踩均线，叠加短期过滤 ──
+                    candidates = [latest_close * 0.985]
+                    if ma5 is not None:
+                        candidates.append(ma5[-1])
+                    if pb_ma_price is not None:
+                        candidates.append(pb_ma_price * 1.01)  # 回踩MA上方1%，确认回踩有效
+                    ref_price = min(candidates)
+
+                    # ── 短线止损：多层递进，硬上限8% ──
+                    # 第一层：MA10下方2%（短线经典支撑破位止损）
+                    sl_candidates = []
+                    if ma10 is not None:
+                        sl_candidates.append(ma10[-1] * 0.98)
+                    # 第二层：回踩均线下方3%（跌破回踩支撑位出局）
+                    if pb_ma_price is not None:
+                        sl_candidates.append(pb_ma_price * 0.97)
+                    # 第三层：ATR窄幅止损（仅当无均线可用时）
+                    if not sl_candidates:
+                        sl_candidates.append(ref_price - atr_val * 1.2)
+
+                    stop_loss = min(sl_candidates)
+                    # 硬上限：最大亏损不超过8%
+                    stop_loss = max(stop_loss, ref_price * 0.92)
+                    # 动态硬下限：止损至少远离入场价，避免被日内噪音打掉
+                    # 按 ATR 比例动态调整：至少 2.5% 或 0.4×ATR%，取较大值
+                    atr_pct = atr_val / ref_price if ref_price > 0 and atr_val > 0 else 0
+                    min_stop_pct = max(0.025, atr_pct * 0.4)
+                    stop_loss = min(stop_loss, ref_price * (1 - min_stop_pct))
+
+                    # ── 止盈：2倍ATR，上限15% ──
+                    take_profit = ref_price + atr_val * 2.0
+                    take_profit = min(take_profit, ref_price * 1.15)
+                    take_profit = max(take_profit, ref_price * 1.03)
+
+                    # 从 stock_meta 获取子主题和主导叙事
+                    meta = stock_meta.get(code, {})
                     pullback_qualified.append({
                         "ts_code": code,
                         "name": name,
                         "theme": theme,
+                        "subtheme": meta.get('subtheme', ''),
+                        "dominant_theme": meta.get('dominant_theme', ''),
                         "leader_score": ld['total_score'],
                         "ret_60d": pb_result.ret_60d,
                         "drawdown": pb_result.drawdown_from_high,
@@ -277,7 +341,14 @@ class MarketRegimeV3:
             print(f"\n  ✅ 符合回踩条件: {len(pullback_qualified)}只")
             for pq in pullback_qualified:
                 profit_pct = (pq['take_profit'] / pq['ref_price'] - 1) * 100
-                lines = f"    {pq['name']}({pq['ts_code']}) ←{pq['pullback_ma']} 入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f}({(pq['stop_loss']/pq['ref_price']-1)*100:.1f}%) 止盈+{profit_pct:.0f}%"
+                sub = pq.get('subtheme', '')
+                dom = pq.get('dominant_theme', '')
+                extra = ''
+                if sub:
+                    extra += f' 子主题={sub}'
+                if dom and dom != pq['theme']:
+                    extra += f' 叙事={dom}'
+                lines = f"    {pq['name']}({pq['ts_code']}) ←{pq['pullback_ma']} 入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f}({(pq['stop_loss']/pq['ref_price']-1)*100:.1f}%) 止盈+{profit_pct:.0f}%{extra}"
                 print(lines)
 
         # ── 第5层: Trading Style ──

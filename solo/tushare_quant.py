@@ -300,6 +300,112 @@ def _load_v6_result(expected_date=None):
     return data
 
 
+def _load_future_potential_themes(trade_date):
+    """从 V2 全量数据提取未来有上涨空间的子主题（优中选优）
+
+    筛选逻辑：
+      1. 子主题生命周期 = 潜伏（蓄势待发）
+      2. 综合评分 >= 45（高确定性）
+      3. 升温概率 >= 55%（催化剂临近）
+      4. 配套输出每子主题最优的龙头和中军
+
+    返回精简的多行文本，供 AI prompt 直接引用。
+    """
+    json_path = os.path.join(CACHE_DIR, f"theme_stock_map_v2_{trade_date}.json")
+    if not os.path.exists(json_path):
+        return ""
+
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return ""
+
+    # 子主题生命周期
+    sr = data.get('subtheme_report', {})
+    if isinstance(sr, dict) and 'subtheme_matrix' in sr:
+        sr = sr['subtheme_matrix']
+
+    re = data.get('role_evolution', {})
+    sd = data.get('subtheme_dynamic_correlation', {})
+    stocks = data.get('stocks', {})
+    top_picks = data.get('top_picks', [])
+
+    # 潜伏期 + 高评分候选
+    candidates = []
+    for parent, subs in sr.items():
+        for si in subs:
+            st = si.get('stage', '')
+            sc = si.get('score', 0) or 0
+            nm = si.get('name', '')
+            tp = si.get('transition_prob', 0) or 0
+            if st == '潜伏' and sc >= 45 and tp >= 0.55:
+                candidates.append((parent, nm, sc, tp))
+
+    candidates.sort(key=lambda x: -x[2])
+    candidates = candidates[:6]
+
+    # Top Pick 子主题计数
+    from collections import Counter
+    sp = Counter()
+    for pick in top_picks:
+        st = pick.get('subtheme', '')
+        if st:
+            sp[st] += 1
+
+    if not candidates:
+        return ""
+
+    # 构建 {subtheme: [{code, name, role, alpha}]}
+    from collections import defaultdict
+    by_sub = defaultdict(list)
+    for code, info in re.items():
+        st_info = sd.get(code, {})
+        sub = st_info.get('subtheme', '')
+        if not sub:
+            continue
+        by_sub[sub].append({
+            'code': code,
+            'name': stocks.get(code, {}).get('name', code),
+            'role': info.get('role', ''),
+            'role_score': info.get('role_score', 0),
+            'alpha': stocks.get(code, {}).get('stock_alpha', 0),
+        })
+
+    lines = []
+    lines.append("★ 未来上涨潜力方向（潜伏期+高分，优中选优）★")
+    for p, nm, sc, tp in candidates:
+        pick_cnt = sp.get(nm, 0)
+        tp_str = f"{tp:.0%}" if tp else "-"
+        star = "★" * min(pick_cnt, 3)
+
+        # 找该子主题的龙头+中军
+        stk_list = by_sub.get(nm, [])
+        leaders = [s for s in stk_list if s['role'] in ('Leader', '龙一', '龙头')]
+        centers = [s for s in stk_list if s['role'] in ('Core', '中军')]
+        leaders.sort(key=lambda x: -x['role_score'])
+        centers.sort(key=lambda x: -x['role_score'])
+
+        # 补充 Top Pick 中该子主题得分最高的（当角色数据不足时）
+        sub_picks = [pk for pk in top_picks if pk.get('subtheme', '') == nm]
+        sub_picks.sort(key=lambda x: -(x.get('trade_score', 0) or 0))
+
+        line = f"  [{p}] {nm}  评分{sc:.0f}  升温概率{tp_str}  TopPick{pick_cnt}{star}"
+        if leaders:
+            ps = '  '.join(['%s(%s) a=%d' % (s['name'], s['code'], s['alpha']) for s in leaders[:2]])
+            line += '  龙头: ' + ps
+        if centers:
+            ps = '  '.join(['%s(%s) a=%d' % (s['name'], s['code'], s['alpha']) for s in centers[:2]])
+            line += '  中军: ' + ps
+        if not leaders and not centers and sub_picks:
+            # 兜底显示 Top Pick 前2
+            ps = '  '.join(['%s(%s) a=%d' % (pk.get('name',''), pk.get('code',''), pk.get('stock_alpha',0)) for pk in sub_picks[:2]])
+            line += '  核心: ' + ps
+        lines.append(line)
+
+    return "\n".join(lines) + "\n（注：a=Alpha评分，数值越高基本面+技术面综合质量越好）"
+
+
 def _v8_stage_to_signal(d_stage, score):
     """V8 天数阶段 → V6 信号映射"""
     if d_stage in ("D1-D2",):
@@ -11301,7 +11407,12 @@ def run(target_date=None, simple_mode=False):
         print(f"[V8中军] 加载失败: {e}")
         v8_center_text = ""
 
-
+    # =========================
+    # 未来上涨潜力方向（优中选优）
+    # =========================
+    future_potential_text = _load_future_potential_themes(TRADE_DATE)
+    if future_potential_text:
+        print("[潜力方向] 已加载")
 
 
     # =========================
@@ -11339,6 +11450,8 @@ def run(target_date=None, simple_mode=False):
 
 {v8_center_text}
 
+{future_potential_text}
+
 **【今日突破股池】**
 {hot_money_open_text}
 **【今日突破股池到此为止】**
@@ -11358,6 +11471,9 @@ def run(target_date=None, simple_mode=False):
 **可持续性主题**（结合V2阶段迁移预测，最多列出5个活跃主题）：
 - 主题名1:【D阶段时间窗口】动作、信号、龙头
 - 主题名2:【D阶段时间窗口】动作、信号、龙头
+
+**未来上涨潜力方向**（潜伏期+高评分，优中选优，直接引用上方{future_potential_text}数据）：
+- 直接展示筛选出的最具弹性方向，一句话点评每个方向的催化剂预期
 
 **V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
 - 每主题精简列出 Top 3，格式要求：

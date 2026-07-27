@@ -362,13 +362,23 @@ class MarketReportGenerator:
         exp = data.get("exposure", {})
         lines.append("## 十、仓位建议")
         lines.append("")
-        lines.append(f"- 基础暴露: {exp.get('raw_exposure', 0)*100:.0f}%")
-        lines.append(f"- 风险修正: {exp.get('risk_adjustment', 0):+.0f}%")
-        lines.append(f"- 最终仓位: {exp.get('final_exposure', exp.get('exposure_pct', 0))*100:.0f}%")
+        base_pct = exp.get("base_exposure", exp.get("raw_exposure", 0)) * 100
+        lines.append(f"- 基础仓位: {base_pct:.0f}%（Market Score）")
+        risk_mult = exp.get("risk_appetite_multiplier", 1.0)
+        lines.append(f"- 风险偏好乘数: ×{risk_mult:.2f}")
+        heat_mult = exp.get("heat_multiplier", 1.0)
+        lines.append(f"- 热度乘数: ×{heat_mult:.2f}")
+        raw_pct = exp.get("raw_exposure", 0) * 100
+        lines.append(f"- 合成仓位: {raw_pct:.0f}%")
+        floor = exp.get("regime_floor", 0) * 100
+        cap = exp.get("regime_cap", 100) * 100
+        lines.append(f"- Regime限幅: {floor:.0f}%~{cap:.0f}%")
+        lines.append(f"- 最终仓位: {exp.get('portfolio_exposure_pct', 0):.0f}%")
         lines.append(f"- 主题数量: {exp.get('theme_count_min', 0)}~{exp.get('theme_count_max', 0)}个")
-        lines.append(f"- ETF配置: {exp.get('etf_alloc', exp.get('etf_allocation', 0))*100:.0f}%")
-        lines.append(f"- 龙头配置: {exp.get('leader_alloc', exp.get('leader_allocation', 0))*100:.0f}%")
-        lines.append(f"- 现金: {exp.get('cash_alloc', exp.get('cash_allocation', 0))*100:.0f}%")
+        lines.append(f"- ETF配置: {exp.get('etf_allocation', 0)*100:.0f}%")
+        lines.append(f"- 龙头配置: {exp.get('leader_allocation', 0)*100:.0f}%")
+        lines.append(f"- 跟风配置: {exp.get('follower_allocation', 0)*100:.0f}%")
+        lines.append(f"- 现金: {exp.get('cash_allocation', 0)*100:.0f}%")
         lines.append("")
 
         # ── 十一、Risk Control（风控） ──
@@ -653,7 +663,11 @@ class MarketReportGenerator:
         """构建仓位建议数据"""
         return {
             "raw_exposure": result.raw_exposure,
-            "risk_appetite_adjustment": result.risk_appetite_adjustment,
+            "base_exposure": result.base_exposure,
+            "risk_appetite_multiplier": result.risk_appetite_multiplier,
+            "heat_multiplier": result.heat_multiplier,
+            "regime_floor": result.regime_floor,
+            "regime_cap": result.regime_cap,
             "portfolio_exposure_pct": result.portfolio_exposure_pct,
             "theme_count_min": result.theme_count_min,
             "theme_count_max": result.theme_count_max,
@@ -779,12 +793,17 @@ class MarketReportGenerator:
         # ── 八、仓位建议 ──
         ex = data["exposure"]
         lines.append("## 八、仓位建议")
-        # 基础暴露（百分比）
+        base_pct = ex.get("base_exposure", ex["raw_exposure"]) * 100
+        lines.append(f"- 基础仓位: {base_pct:.0f}%（Market Score）")
+        risk_mult = ex.get("risk_appetite_multiplier", 1.0)
+        lines.append(f"- 风险偏好乘数: ×{risk_mult:.2f}")
+        heat_mult = ex.get("heat_multiplier", 1.0)
+        lines.append(f"- 热度乘数: ×{heat_mult:.2f}")
         raw_pct = ex["raw_exposure"] * 100
-        lines.append(f"- 基础暴露: {raw_pct:.0f}%")
-        adj = ex["risk_appetite_adjustment"]
-        adj_sign = "+" if adj >= 0 else ""
-        lines.append(f"- 风险偏好修正: {adj_sign}{adj*100:.0f}%")
+        lines.append(f"- 合成仓位: {raw_pct:.0f}%")
+        floor = ex.get("regime_floor", 0) * 100
+        cap = ex.get("regime_cap", 100) * 100
+        lines.append(f"- Regime限幅: {floor:.0f}%~{cap:.0f}%")
         lines.append(f"- 最终仓位: {ex['portfolio_exposure_pct']:.0f}%")
         lines.append(f"- 主题数量: {ex['theme_count_min']}~{ex['theme_count_max']}个")
         lines.append(f"- ETF配置: {ex['etf_allocation']*100:.0f}%")

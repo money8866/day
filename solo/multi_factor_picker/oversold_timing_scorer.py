@@ -468,19 +468,6 @@ def classify_oversold_signal(total_score: float,
                               min_score_moderate: float = 65) -> Tuple[str, str]:
     """
     根据超跌评分给出信号等级（支持动态市场阈值）
-
-    Parameters
-    ----------
-    total_score : float
-        0-100综合评分
-    min_score_strong : float
-        强烈反弹阈值（动态调整，默认80）
-    min_score_moderate : float
-        一般反弹阈值（动态调整，默认65）
-
-    Returns
-    -------
-    (signal_level, signal_desc) : (str, str)
     """
     if total_score >= min_score_strong:
         return '强烈超跌反弹', '回撤充分+卖压衰竭+止跌信号共振，极高胜率左侧买入时机'
@@ -488,3 +475,645 @@ def classify_oversold_signal(total_score: float,
         return '一般超跌反弹', '回撤后缩量止跌，可轻仓试探，等待放量确认'
     else:
         return '等待观望', '回调未到位或卖压未衰竭，继续观察'
+
+
+# ====================================================================
+# 新算法：震荡缩量到尾声 + MACD波动收窄
+# ====================================================================
+# 核心理念：中报预增股经过前期上涨后，进入震荡整理阶段。
+# 震荡缩量到尾声 = 价格横盘 + 成交量持续萎缩
+# MACD波动收窄 = DIF-DEA间距收敛 + MACD柱缩短
+# 两者共振时，意味着浮动筹码清洗干净、多空平衡即将打破，
+# 是二次拉升或反弹的前兆信号。
+# 总分100分：震荡缩量(50分) + MACD收窄(50分)
+# ====================================================================
+
+
+def calc_consolidation_factors(factor_df: pd.DataFrame) -> Dict[str, float]:
+    """计算震荡缩量+MACD收窄因子原始值
+
+    factor_df 需包含: close, high, low (不复权用于震荡区间),
+                      close_hfq (后复权用于MACD归一化),
+                      vol, macd_dif_hfq, macd_dea_hfq, macd_hfq
+
+    Returns
+    -------
+    dict: 各因子原始值
+    """
+    if factor_df is None or len(factor_df) < 40:
+        return None
+
+    df = factor_df.sort_values('trade_date').reset_index(drop=True)
+    n = len(df)
+    result = {}
+
+    # 价格用不复权(close)，避免复权因子导致区间失真
+    price = float(df['close'].iloc[-1])
+    result['close'] = price
+
+    # ── Part 1: 震荡缩量 ──
+
+    # 价格震荡范围 (近20日不复权high-low / 收盘价%)
+    lookback = min(20, n)
+    recent_high = float(df['high'].iloc[-lookback:].max())
+    recent_low = float(df['low'].iloc[-lookback:].min())
+    osc_range = (recent_high - recent_low) / price * 100
+    result['osc_range_pct'] = round(osc_range, 2)
+
+    # 量比 = 5日均量 / 20日均量
+    vols = df['vol'].values.astype(float)
+    vol_5 = float(np.mean(vols[-5:]))
+    vol_20 = float(np.mean(vols[-20:]))
+    vol_ratio = vol_5 / vol_20 if vol_20 > 0 else 99
+    result['vol_ratio'] = round(vol_ratio, 3)
+
+    # 量能趋势: 近15日成交量线性斜率(归一化)
+    if n >= 15:
+        recent_vols = vols[-15:].astype(float)
+        x = np.arange(len(recent_vols))
+        slope = np.polyfit(x, recent_vols, 1)[0]
+        vol_slope = slope / (np.mean(recent_vols) + 1e-10) * 100
+    else:
+        vol_slope = 0.0
+    result['vol_slope_pct'] = round(vol_slope, 4)
+
+    # 近期量能是否持续创新低: 近5日最低量 < 近20日最低量
+    vol_5_low = float(np.min(vols[-5:]))
+    vol_20_low = float(np.min(vols[-20:]))
+    result['vol_new_low'] = (vol_5_low <= vol_20_low * 1.05)
+
+    # ── Part 2: MACD收窄 ──
+
+    dif = df['macd_dif_hfq'].values.astype(float)
+    dea = df['macd_dea_hfq'].values.astype(float)
+    macd_hist = df['macd_hfq'].values.astype(float)
+
+    # DIF-DEA间距（归一化到后复权价格%）
+    close_hfq = df['close_hfq'].values.astype(float)
+    current_hfq_price = float(close_hfq[-1])
+
+    current_gap = abs(float(dif[-1] - dea[-1]))
+    lookback_gap = min(20, n)
+    gaps = np.abs(dif[-lookback_gap:] - dea[-lookback_gap:])
+    max_gap = float(np.max(gaps))
+    gap_ratio = current_gap / max_gap if max_gap > 1e-10 else 0
+    result['macd_gap_current'] = round(current_gap, 4)
+    result['macd_gap_max'] = round(max_gap, 4)
+    result['macd_gap_ratio'] = round(gap_ratio, 4)
+
+    # MACD柱收缩: 近5日绝对值均值 < 前5日 * 0.8
+    if n >= 10:
+        recent_abs = np.abs(macd_hist[-5:])
+        prev_abs = np.abs(macd_hist[-10:-5])
+        macd_shrinking = float(np.mean(recent_abs)) < float(np.mean(prev_abs)) * 0.85
+    else:
+        macd_shrinking = False
+    result['macd_shrinking'] = macd_shrinking
+
+    # MACD绝对值趋势: 近5日 vs 前5日
+    if n >= 10:
+        result['macd_abs_ratio'] = round(
+            float(np.mean(np.abs(macd_hist[-5:]))) / (
+                float(np.mean(np.abs(macd_hist[-10:-5]))) + 1e-10), 3
+        )
+    else:
+        result['macd_abs_ratio'] = 1.0
+
+    # MACD当前位置 = macd_hfq / close_hfq * 100 (% of price, 归一化)
+    macd_val = float(macd_hist[-1])
+    macd_norm = macd_val / current_hfq_price * 100 if current_hfq_price > 0 else 0
+    result['macd_value'] = round(macd_val, 4)
+    result['macd_norm'] = round(macd_norm, 4)
+
+    # MACD位置描述（使用归一化值）
+    if abs(macd_norm) < 0.5:
+        pos_desc = '零轴附近'
+    elif macd_norm > 0:
+        pos_desc = '零轴上'
+    else:
+        pos_desc = '零轴下'
+    result['macd_position'] = pos_desc
+
+    # DIF与DEA是否金叉/死叉
+    if n >= 2:
+        prev_dif, prev_dea = float(dif[-2]), float(dea[-2])
+        curr_cross = dif[-1] > dea[-1]
+        prev_cross = prev_dif > prev_dea
+        if curr_cross and not prev_cross:
+            result['macd_cross'] = '金叉'
+        elif not curr_cross and prev_cross:
+            result['macd_cross'] = '死叉'
+        else:
+            result['macd_cross'] = '无'
+    else:
+        result['macd_cross'] = '无'
+
+    return result
+
+
+def score_consolidation(factors: Dict) -> Tuple[float, Dict[str, float]]:
+    """评分: 震荡缩量(50分) + MACD收窄(50分) = 100分"""
+    if factors is None:
+        return 0, {}
+
+    sub = {}
+
+    # ═══════════════════════════════════════════
+    #   Part A: 震荡缩量评分 (50分)
+    # ═══════════════════════════════════════════
+
+    # A1. 价格震荡区间 (15分) — 横盘越标准越好
+    osc = factors.get('osc_range_pct', 0)
+    if 5 <= osc <= 12:
+        f_osc = 15        # 完美震荡区间
+    elif 3 <= osc < 5:
+        f_osc = 12        # 偏窄但可接受
+    elif 12 < osc <= 18:
+        f_osc = 10        # 偏宽，仍在横盘范畴
+    elif 18 < osc <= 25:
+        f_osc = 5         # 过宽，可能仍在趋势中
+    elif osc < 3:
+        f_osc = 8         # 太窄，可能是持续阴跌或僵尸股
+    else:
+        f_osc = 2         # >25%，明显趋势中，非震荡
+    # 接近最低点加分：价格靠近震荡区间下沿
+    price = factors.get('close', 0)
+    if price > 0 and 'close' in factors:
+        # 已在前面震荡区间计算好了，这里不再重复加分
+        pass
+    sub['震荡区间'] = f_osc
+
+    # A2. 量比缩量 (20分) — 量越缩越好
+    vr = factors.get('vol_ratio', 99)
+    if vr <= 0.55:
+        f_vr = 20
+    elif vr <= 0.70:
+        f_vr = 17
+    elif vr <= 0.85:
+        f_vr = 13
+    elif vr <= 1.00:
+        f_vr = 8
+    elif vr <= 1.20:
+        f_vr = 3
+    else:
+        f_vr = 0
+    sub['量比缩量'] = f_vr
+
+    # A3. 量能趋势 (15分) — 持续缩量趋势
+    vs = factors.get('vol_slope_pct', 0)
+    if vs < -1.5:
+        f_vs = 15         # 强烈缩量趋势
+    elif vs < -0.8:
+        f_vs = 13
+    elif vs < -0.3:
+        f_vs = 10         # 温和缩量
+    elif vs < 0.3:
+        f_vs = 7          # 基本走平
+    elif vs < 1.0:
+        f_vs = 3
+    else:
+        f_vs = 0          # 放量，非缩量整理
+    sub['量能趋势'] = f_vs
+
+    consolidate_score = f_osc + f_vr + f_vs
+    sub['震荡缩量'] = consolidate_score
+
+    # ═══════════════════════════════════════════
+    #   Part B: MACD收窄评分 (50分)
+    # ═══════════════════════════════════════════
+
+    # B1. DIF-DEA间距收敛 (25分) — 间距越小越好
+    gr = factors.get('macd_gap_ratio', 1)
+    if gr <= 0.15:
+        f_gap = 25        # 高度收敛，近乎粘合
+    elif gr <= 0.30:
+        f_gap = 22
+    elif gr <= 0.45:
+        f_gap = 18
+    elif gr <= 0.60:
+        f_gap = 14
+    elif gr <= 0.80:
+        f_gap = 8
+    else:
+        f_gap = 3         # 间距仍在扩大
+    sub['DIF-DEA收敛'] = f_gap
+
+    # B2. MACD柱收缩 (15分)
+    if factors.get('macd_shrinking', False):
+        f_shrink = 15
+    else:
+        # 即使没明显收缩，如果间距已经很小也部分得分
+        if gr <= 0.30:
+            f_shrink = 10
+        else:
+            f_shrink = 5
+    sub['MACD柱收缩'] = f_shrink
+
+    # B3. MACD位置 (10分) — 使用归一化 macd_norm (% of price)
+    macd_norm = factors.get('macd_norm', 0)
+    pos = factors.get('macd_position', '')
+    cross = factors.get('macd_cross', '无')
+
+    if abs(macd_norm) < 0.3:
+        f_pos = 10        # 零轴附近，最佳
+    elif -1.5 <= macd_norm < -0.3:
+        f_pos = 9         # 零轴下，超卖区收敛可靠
+    elif 0.3 <= macd_norm <= 1.5:
+        f_pos = 7         # 零轴上但不高
+    elif macd_norm < -1.5:
+        f_pos = 6         # 远离零轴下方，跌过头
+    else:
+        f_pos = 5         # 远离零轴上方
+
+    # 金叉加分
+    if cross == '金叉':
+        f_pos += 3
+
+    sub['MACD位置'] = min(13, f_pos)
+
+    macd_score = f_gap + f_shrink + min(13, f_pos)
+    sub['MACD收窄'] = macd_score
+
+    total = consolidate_score + macd_score
+
+    return round(total, 1), sub
+
+
+def classify_consolidation_signal(total_score: float) -> Tuple[str, str]:
+    """根据震荡缩量+MACD收窄评分给出信号等级"""
+    if total_score >= 80:
+        return '强烈信号', '震荡缩量充分+MACD高度收敛，双重共振，变盘前兆'
+    elif total_score >= 65:
+        return '一般信号', '缩量震荡中+MACD趋向收敛，关注后续确认'
+    elif total_score >= 50:
+        return '弱信号', '震荡或MACD收敛一方不足，继续观察'
+    else:
+        return '无信号', '未满足震荡缩量或MACD收敛条件'
+
+
+# ====================================================================
+# 三级入场信号：缩量低吸(A) / MACD金叉确认(B) / 放量突破(C)
+# ====================================================================
+# 入场优先级权重：B类(最佳性价比) > C类(趋势确认) > A类(左侧试探)
+# ====================================================================
+
+
+def calc_entry_timing(factors: dict, factor_df: pd.DataFrame) -> dict:
+    """
+    在 calc_consolidation_factors 的基础上，计算入场时机信号
+
+    Parameters
+    ----------
+    factors : dict
+        calc_consolidation_factors() 的输出
+    factor_df : DataFrame
+        原始 stk_factor_pro DataFrame（需含 ma_bfq_5, high, low, close,
+        macd_dif_hfq, macd_dea_hfq 等列）
+
+    Returns
+    -------
+    dict: 包含 entry_signal, entry_score, entry_type, stop_loss,
+          target, risk_reward 等
+    """
+    if factors is None or factor_df is None or len(factor_df) < 20:
+        return {
+            'entry_signal': False,
+            'entry_score': 0,
+            'entry_type': '无信号',
+            'entry_type_name': '无',
+            'detail': {},
+        }
+
+    df = factor_df.sort_values('trade_date').reset_index(drop=True)
+    n = len(df)
+
+    detail = {}
+
+    # ── 从 factors 读取已有计算结果 ──
+    close = factors.get('close', 0)
+    vol_ratio = factors.get('vol_ratio', 99)
+    osc_range = factors.get('osc_range_pct', 0)
+    macd_gap_ratio = factors.get('macd_gap_ratio', 1)
+    macd_cross = factors.get('macd_cross', '无')
+    macd_norm = factors.get('macd_norm', 0)
+    vol_slope = factors.get('vol_slope_pct', 0)
+    macd_shrinking = factors.get('macd_shrinking', False)
+
+    # ── 从 factor_df 读取额外数据 ──
+    lookback = min(20, n)
+    high_20d = float(df['high'].iloc[-lookback:].max())
+    low_20d = float(df['low'].iloc[-lookback:].min())
+
+    # 价格在震荡区间内的位置 (0~1)
+    price_range = high_20d - low_20d
+    price_position = (close - low_20d) / price_range if price_range > 1e-10 else 0.5
+    detail['price_position'] = round(price_position, 4)
+
+    # MA5（不复权）
+    ma_bfq_5 = None
+    if 'ma_bfq_5' in df.columns:
+        ma_bfq_5 = float(df['ma_bfq_5'].iloc[-1])
+
+    # MACD DIF / DEA（后复权）
+    macd_dif = None
+    macd_dea = None
+    if 'macd_dif_hfq' in df.columns and 'macd_dea_hfq' in df.columns:
+        macd_dif = float(df['macd_dif_hfq'].iloc[-1])
+        macd_dea = float(df['macd_dea_hfq'].iloc[-1])
+
+    # ── 计算震荡缩量分和MACD收窄分（与 score_consolidation 保持一致） ──
+
+    # 震荡缩量 (满分50)
+    if 5 <= osc_range <= 12:
+        f_osc = 15
+    elif 3 <= osc_range < 5:
+        f_osc = 12
+    elif 12 < osc_range <= 18:
+        f_osc = 10
+    elif 18 < osc_range <= 25:
+        f_osc = 5
+    elif osc_range < 3:
+        f_osc = 8
+    else:
+        f_osc = 2
+
+    if vol_ratio <= 0.55:
+        f_vr = 20
+    elif vol_ratio <= 0.70:
+        f_vr = 17
+    elif vol_ratio <= 0.85:
+        f_vr = 13
+    elif vol_ratio <= 1.00:
+        f_vr = 8
+    elif vol_ratio <= 1.20:
+        f_vr = 3
+    else:
+        f_vr = 0
+
+    if vol_slope < -1.5:
+        f_vs = 15
+    elif vol_slope < -0.8:
+        f_vs = 13
+    elif vol_slope < -0.3:
+        f_vs = 10
+    elif vol_slope < 0.3:
+        f_vs = 7
+    elif vol_slope < 1.0:
+        f_vs = 3
+    else:
+        f_vs = 0
+
+    consolidate_score = f_osc + f_vr + f_vs
+    detail['震荡缩量分'] = consolidate_score
+
+    # MACD收窄 (满分50)
+    if macd_gap_ratio <= 0.15:
+        f_gap = 25
+    elif macd_gap_ratio <= 0.30:
+        f_gap = 22
+    elif macd_gap_ratio <= 0.45:
+        f_gap = 18
+    elif macd_gap_ratio <= 0.60:
+        f_gap = 14
+    elif macd_gap_ratio <= 0.80:
+        f_gap = 8
+    else:
+        f_gap = 3
+
+    if macd_shrinking:
+        f_shrink = 15
+    else:
+        f_shrink = 10 if macd_gap_ratio <= 0.30 else 5
+
+    if abs(macd_norm) < 0.3:
+        f_pos = 10
+    elif -1.5 <= macd_norm < -0.3:
+        f_pos = 9
+    elif 0.3 <= macd_norm <= 1.5:
+        f_pos = 7
+    elif macd_norm < -1.5:
+        f_pos = 6
+    else:
+        f_pos = 5
+    if macd_cross == '金叉':
+        f_pos += 3
+    f_pos = min(13, f_pos)
+
+    macd_score = f_gap + f_shrink + f_pos
+    detail['MACD收窄分'] = macd_score
+
+    # ═══════════════════════════════════════════
+    #  A类: 缩量低吸（左侧试探）
+    # ═══════════════════════════════════════════
+    a_raw = 0
+    a_conds = []
+    if price_position < 0.33:
+        a_conds.append('价格在区间下1/3')
+        a_raw += 25
+    if vol_ratio < 0.6:
+        a_conds.append('极度缩量')
+        a_raw += 25
+    if consolidate_score >= 30:
+        a_conds.append('震荡缩量到位')
+        a_raw += 20
+    if close > low_20d * 1.02:
+        a_conds.append('未创新低')
+        a_raw += 10
+    a_score = min(80, 60 + a_raw // 5) if a_raw >= 30 else 0
+    a_detail = {
+        'signal': a_raw >= 30,
+        'score': a_score,
+        'conditions': a_conds,
+    }
+    detail['A类信号'] = a_detail
+
+    # ═══════════════════════════════════════════
+    #  B类: MACD金叉确认（最佳买点）
+    # ═══════════════════════════════════════════
+    b_raw = 0
+    b_conds = []
+    if macd_cross == '金叉':
+        b_conds.append('MACD金叉')
+        b_raw += 30
+    if vol_ratio is not None and 0.7 <= vol_ratio <= 1.2:
+        b_conds.append('量能温和')
+        b_raw += 20
+    if ma_bfq_5 is not None and close > ma_bfq_5:
+        b_conds.append('站上MA5')
+        b_raw += 20
+    if consolidate_score >= 25:
+        b_conds.append('震荡缩量达标')
+        b_raw += 15
+    if macd_score >= 30:
+        b_conds.append('MACD收窄达标')
+        b_raw += 15
+    b_score = min(100, 80 + b_raw // 10) if macd_cross == '金叉' and b_raw >= 30 else 0
+    b_detail = {
+        'signal': macd_cross == '金叉' and b_raw >= 30,
+        'score': b_score,
+        'conditions': b_conds,
+    }
+    detail['B类信号'] = b_detail
+
+    # ═══════════════════════════════════════════
+    #  C类: 放量突破（右侧追入）
+    #  ⚠️ 必要条件：必须突破或放量，缺一不可
+    # ═══════════════════════════════════════════
+    c_raw = 0
+    c_conds = []
+    c_has_breakout = False
+    c_has_volume = False
+    if close > high_20d * 0.98:
+        c_conds.append('接近/突破近期高点')
+        c_raw += 30
+        c_has_breakout = True
+    if vol_ratio > 1.3:
+        c_conds.append('放量')
+        c_raw += 25
+        c_has_volume = True
+    if macd_dif is not None and macd_dea is not None and macd_dif > macd_dea:
+        c_conds.append('MACD多头')
+        c_raw += 20
+    if consolidate_score >= 20:
+        c_conds.append('震荡缩量基础')
+        c_raw += 15
+    # 核心条件: 必须突破 or 放量
+    c_core_ok = c_has_breakout or c_has_volume
+    c_score = min(90, 70 + c_raw // 5) if c_raw >= 30 and c_core_ok else 0
+    c_detail = {
+        'signal': c_core_ok and c_raw >= 30,
+        'score': c_score,
+        'conditions': c_conds,
+    }
+    detail['C类信号'] = c_detail
+
+    # ═══════════════════════════════════════════
+    #  选择最优信号（优先级 B > A > C）
+    #  下跌市中A类(左侧低吸)比C类(追入)更安全
+    # ═══════════════════════════════════════════
+    selected_type = None
+    selected_detail = None
+    for st in ('B', 'A', 'C'):
+        sd = {'B': b_detail, 'A': a_detail, 'C': c_detail}[st]
+        if sd['signal']:
+            selected_type = st
+            selected_detail = sd
+            break
+
+    type_names = {
+        'A': '缩量低吸(左侧试探)',
+        'B': 'MACD金叉确认(最佳买点)',
+        'C': '放量突破(右侧追入)',
+    }
+
+    result = {
+        'entry_signal': selected_type is not None,
+        'entry_type': selected_type if selected_type else '无信号',
+        'entry_type_name': type_names.get(selected_type, '无'),
+        'entry_score': selected_detail['score'] if selected_detail else 0,
+        'close': close,
+        'high_20d': high_20d,
+        'low_20d': low_20d,
+        'price_position': round(price_position, 4),
+        'detail': detail,
+    }
+
+    # ── 止损价 ──
+    recent_5_low = float(df['low'].iloc[-5:].min()) if n >= 5 else low_20d
+    if selected_type == 'A':
+        stop_loss = round(min(low_20d, recent_5_low), 2)
+    elif selected_type == 'B':
+        stop_loss = round(low_20d * 0.97, 2)
+    elif selected_type == 'C':
+        recent_3_low = float(df['low'].iloc[-3:].min()) if n >= 3 else low_20d
+        stop_loss = round(min(high_20d * 0.95, recent_3_low), 2)
+    else:
+        stop_loss = round(low_20d * 0.95, 2)
+    result['stop_loss'] = stop_loss
+
+    # ── 止盈价 ──
+    risk = close - stop_loss
+    if risk <= 0:
+        risk = close * 0.02
+    if selected_type == 'A':
+        target = round(close + risk * 2.0, 2)
+    elif selected_type == 'B':
+        target = round(close + risk * 2.5, 2)
+    elif selected_type == 'C':
+        target = round(close + risk * 1.8, 2)
+    else:
+        target = round(close + risk * 1.5, 2)
+    result['target'] = target
+
+    result['risk_reward'] = round((target - close) / risk, 2) if risk > 0 else 0
+
+    return result
+
+
+def score_entry_timing(entry_info: dict) -> tuple:
+    """
+    对入场时机评分，结合震荡缩量总分给出综合操作建议
+
+    Returns
+    -------
+    (entry_score, entry_grade, action_advice)
+    entry_score : float  0-100
+    entry_grade : str    'A级最佳买点' / 'B级可入场' / 'C级观望' / 'D级等待'
+    action_advice : str  具体操作建议字符串
+    """
+    if not entry_info or not entry_info.get('entry_signal'):
+        return (0, 'D级等待', '当前无入场信号，继续观察等待')
+
+    entry_type = entry_info.get('entry_type', '')
+    entry_score = entry_info.get('entry_score', 0)
+    risk_reward = entry_info.get('risk_reward', 0)
+
+    rr_score = min(100, risk_reward / 3.0 * 100)
+    final_score = round(entry_score * 0.7 + rr_score * 0.3, 1)
+
+    # ── 等级判定 ──
+    if entry_type == 'B' and entry_score >= 80 and risk_reward >= 2.0:
+        grade = 'A级最佳买点'
+    elif entry_type == 'B' and entry_score >= 70:
+        grade = 'B级可入场'
+    elif entry_type == 'C' and entry_score >= 75:
+        grade = 'B级可入场'
+    elif entry_type == 'A' and entry_score >= 60:
+        grade = 'C级观望'
+    elif entry_type in ('B', 'C') and entry_score >= 50:
+        grade = 'C级观望'
+    else:
+        grade = 'D级等待'
+
+    # ── 操作建议 ──
+    close = entry_info.get('close', 0)
+    stop_loss = entry_info.get('stop_loss', 0)
+    target = entry_info.get('target', 0)
+    type_name = entry_info.get('entry_type_name', '')
+
+    if grade == 'A级最佳买点':
+        advice = (
+            f'★★★★★ {type_name}，综合评分{final_score}分，'
+            f'风险收益比1:{risk_reward}\n'
+            f'建议仓位：6-8成。入场价{close:.2f}附近，'
+            f'止损{stop_loss:.2f}，止盈{target:.2f}'
+        )
+    elif grade == 'B级可入场':
+        advice = (
+            f'★★★☆☆ {type_name}，综合评分{final_score}分，'
+            f'风险收益比1:{risk_reward}\n'
+            f'建议仓位：3-5成。入场价{close:.2f}附近，'
+            f'止损{stop_loss:.2f}，止盈{target:.2f}'
+        )
+    elif grade == 'C级观望':
+        advice = (
+            f'★☆☆☆☆ {type_name}，综合评分{final_score}分，'
+            f'风险收益比1:{risk_reward}\n'
+            f'条件部分满足，建议轻仓试探或等待进一步确认'
+        )
+    else:
+        advice = (
+            f'当前无合适入场信号（综合评分{final_score}分），建议继续等待'
+        )
+
+    return (final_score, grade, advice)

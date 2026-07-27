@@ -94,18 +94,6 @@ ETF_POOL = {
     '食品饮料': '159736', '酒': '512690', '家电': '159996',
     '证券': '512880', '银行': '512800', '红利': '515180',
     '工业母机': '159667', '科创半导体':'588170',
-    # ── 补充TERE主题缺失ETF ──
-    'AI算力': '515980', '半导体设备材料': '512760',
-    '半导体材料': '159813', '机器人ETF': '159770',
-    '创新药产业': '159858', '创新药沪港深': '515120',
-    '消费电子龙头': '159310', '智能驾驶': '159889',
-    '智能网联汽车': '159856', '国防军工': '512710',
-    '军工龙头': '512670', '新能源车ETF': '159806',
-    '黄金': '159812', '银行ETF': '512700',
-    '证券ETF': '159841', '电力ETF': '561560',
-    '信创ETF': '562030', '信创产业': '159540',
-    '消费龙头': '159843', '消费50': '510150',
-    '低空经济': '159356',
 }
 
 BENCHMARK_CODE = '510300'
@@ -1232,17 +1220,16 @@ def main(trade_date=None, backtest_mode=False):
             sdf = sdf.sort_values("trade_date").reset_index(drop=True)
             share_data[code] = sdf
 
-    bm_ts = "510300.SH"
-    cache_file = _cache_key_fund(bm_ts, TRADE_DATE)
+    bm_ts = "000300.SH"
+    cache_file = os.path.join(ETF_FUND_CACHE_DIR, f"idx_000300_{TRADE_DATE}.csv")
     benchmark_df = _read_cache(cache_file)
     if benchmark_df is not None and 'vol' not in benchmark_df.columns:
         benchmark_df = None
     if benchmark_df is None:
         try:
-            benchmark_df = pro.fund_daily(ts_code=bm_ts,
+            benchmark_df = pro.index_daily(ts_code=bm_ts,
                                            start_date=(today - datetime.timedelta(days=150)).strftime("%Y%m%d"),
-                                           end_date=TRADE_DATE,
-                                           fields="ts_code,trade_date,open,close,high,low,vol,amount")
+                                           end_date=TRADE_DATE,)
             _save_cache(benchmark_df, cache_file)
         except Exception as e:
             print(f"  [WARN] 沪深300数据获取失败: {e}")

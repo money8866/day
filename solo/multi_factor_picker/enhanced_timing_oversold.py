@@ -1,35 +1,71 @@
 """
-中报预增股超跌择时分析 — 左侧/左侧偏右买入时机（市场状态感知）
+中报预增股震荡缩量择时分析 — 震荡缩量到尾声 + MACD波动收窄
 ================================================================
-基于7因子评分系统 + 沪深300市场状态动态参数调整：
-  F1: 回撤深度(20%)  F2: 缩量程度(15%)  F3: 支撑强度(15%)
-  F4: RSI超卖(15%)   F5: K线止跌(10%)   F6: 基本面锚定(10%)
-  F7: 趋势保护(15%)  ← 权重从5%提升至15%（回测最强区分度因子）
+核心理念：中报预增股经过前期上涨后进入震荡整理，当
+  1) 震荡缩量到尾声 — 价格横盘 + 成交量持续萎缩至地量
+  2) MACD波动收窄 — DIF-DEA间距收敛 + MACD柱缩短
+  两者共振时，浮动筹码清洗干净，多空平衡即将打破，
+  是二次拉升或反弹的前兆信号。
 
-市场状态感知：根据沪深300指数趋势/波动率/回撤动态调整各因子评分曲线和阈值
+评分体系（总分100分）:
+  震荡缩量(50分) = 震荡区间(15) + 量比缩量(20) + 量能趋势(15)
+  MACD收窄(50分) = DIF-DEA收敛(25) + MACD柱收缩(15) + MACD位置(10)
 
 输出:
   - enhanced_timing_oversold_{trade_date}.csv
-  - 终端打印超跌信号汇总 + 当前市场状态
+  - 终端打印信号汇总
 """
-import sys, os, pandas as pd, numpy as np
+import sys, os, json, pandas as pd, numpy as np
 import argparse
 from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data_fetcher import DataFetcher
 from loguru import logger
-from oversold_timing_scorer import calc_oversold_factors, score_oversold, classify_oversold_signal
+from oversold_timing_scorer import calc_consolidation_factors, score_consolidation, classify_consolidation_signal, calc_entry_timing, score_entry_timing
+from theme_market_integration import (
+    calc_theme_scores, calc_etf_trend_score, load_theme_etf_map,
+    market_state_adjustment, compute_boosted_score
+)
 from market_regime import detect_market_regime
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
 
+def load_theme_stock_json() -> dict:
+    """加载 build_theme_stock_map_v2.py 生成的 JSON
+
+    Returns:
+        {'stocks': {ts_code: {name, industry, themes, subtheme, ...}},
+         'themes': {主题名: [{code, name, score, ...}, ...]}}
+    """
+    json_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'report_daily', 'theme_stock_map_latest_v2.json'
+    )
+    if not os.path.exists(json_path):
+        json_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'cache_daily', 'theme_stock_map_latest.json'
+        )
+    if not os.path.exists(json_path):
+        logger.warning(f"未找到主题映射JSON")
+        return {'stocks': {}, 'themes': {}}
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    stocks_map = data.get('stocks', {})
+    themes_map = data.get('themes', {})
+    logger.info(f"加载主题映射JSON: {os.path.basename(json_path)} ({len(stocks_map)}只股票, {len(themes_map)}个主题)")
+    return {'stocks': stocks_map, 'themes': themes_map}
+
+
 def main():
-    parser = argparse.ArgumentParser(description='中报预增股超跌择时分析')
+    parser = argparse.ArgumentParser(description='中报预增股震荡缩量择时分析')
     parser.add_argument('--date', type=str, default=None, help='指定交易日 YYYYMMDD（默认：最新交易日）')
     parser.add_argument('--replenish', action='store_true', help='补全stk_factor_pro缓存数据到最新')
+    parser.add_argument('--simple', action='store_true', help='简化模式（跳过非核心功能）')
     args = parser.parse_args()
 
     report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'report_daily')
@@ -40,7 +76,7 @@ def main():
     logger.info(f"读取: {bull_csv}")
     df = pd.read_csv(bull_csv, encoding='utf-8-sig')
     total = len(df)
-    logger.info(f"共 {total} 只股票, 超跌择时分析开始...")
+    logger.info(f"共 {total} 只股票, 震荡缩量择时分析开始...")
 
     # ── 导入配置 ──
     import importlib.util
@@ -64,6 +100,25 @@ def main():
     ref_date = datetime.strptime(trade_date, '%Y%m%d')
 
     # ═══════════════════════════════════════════
+    # 加载主题映射数据（build_theme_stock_map_v2.py 输出的JSON）
+    # ═══════════════════════════════════════════
+    json_data = load_theme_stock_json()
+    theme_stock_map = json_data.get('stocks', {})   # 个股→主题查表
+    theme_stock_list = json_data.get('themes', {})   # 主题→个股列表
+
+    # ═══════════════════════════════════════════
+    # 计算主题强度评分 (多维因子)
+    # ═══════════════════════════════════════════
+    logger.info("计算主题多因子强度评分...")
+    theme_scores = calc_theme_scores(fetcher, trade_date, theme_stock_list)
+    theme_etf_map = load_theme_etf_map()
+    logger.info(f"  主题评分完成: {len(theme_scores)} 个主题有有效数据")
+
+    # 主题排名
+    theme_ranking = sorted(theme_scores.items(), key=lambda x: -x[1])
+    logger.info(f"  前三强主题: {theme_ranking[:3] if len(theme_ranking)>=3 else theme_ranking}")
+
+    # ═══════════════════════════════════════════
     # 可选：补全 stk_factor_pro 缓存
     # ═══════════════════════════════════════════
     if args.replenish:
@@ -78,7 +133,6 @@ def main():
             else:
                 code_padded = code_raw.zfill(6)
             ts_code = code_padded + ('.SH' if code_padded.startswith('6') or code_padded.startswith('9') else '.SZ')
-            # 跳过北交所
             if ts_code.startswith('8') or ts_code.startswith('4'):
                 continue
             ts_codes.append(ts_code)
@@ -89,24 +143,38 @@ def main():
         logger.info(f"补数据完成: {ok_count}成功 / {err_count}失败 / {len(result)}总")
 
     # ═══════════════════════════════════════════
-    # 市场状态检测
+    # 市场状态检测（仅用于大盘环境参考，不参与个股评分）
     # ═══════════════════════════════════════════
     hs300 = fetcher.get_index_daily('000300.SH',
                                        start_date=(ref_date - timedelta(days=400)).strftime('%Y%m%d'),
                                        end_date=trade_date)
     regime_info = detect_market_regime(hs300)
     market_params = regime_info['params']
-    min_score = market_params.get('min_score', 80)
-    logger.info(f"市场状态: {regime_info['regime_name']} | 动态阈值: ≥{min_score}分")
-    logger.info(f"参数说明: {market_params.get('description', '')}")
+    logger.info(f"市场状态: {regime_info['regime_name']} (仅供参考)")
 
-    # ── 批量计算超跌因子 ──
+    # ═══════════════════════════════════════════
+    # 市场状态门控调整
+    # ═══════════════════════════════════════════
+    market_adj = market_state_adjustment(regime_info['regime_name'])
+    logger.info(f"市场门控: {market_adj['description']} (乘数={market_adj['multiplier']}, 降级={market_adj['grade_downgrade']}档)")
+
+    # ETF评分缓存（同一ETF只计算一次）
+    _etf_score_cache = {}
+
+    def _get_etf_score(etf_code: str) -> float:
+        if not etf_code:
+            return 0.5
+        if etf_code not in _etf_score_cache:
+            _etf_score_cache[etf_code] = calc_etf_trend_score(fetcher, etf_code, trade_date)
+        return _etf_score_cache[etf_code]
+
+    # ── 批量计算 ──
     results = []
     for i, (_, row) in enumerate(df.iterrows(), 1):
         code_raw = str(row['code']).strip().lstrip('0')
         name = str(row['name'])
         industry = str(row.get('industry', ''))
-        theme = str(row.get('theme', ''))
+        # 主题从JSON获取，bull_csv的theme列作为后备
         forecast_profit_yoy = float(row.get('利润同比', 0)) if pd.notna(row.get('利润同比', 0)) else 0
 
         if len(code_raw) == 5:
@@ -117,97 +185,134 @@ def main():
             code_padded = code_raw.zfill(6)
         ts_code = code_padded + ('.SH' if code_padded.startswith('6') or code_padded.startswith('9') else '.SZ')
 
+        # ── 从JSON获取主题和子主题 ──
+        json_info = theme_stock_map.get(ts_code, {})
+        themes = json_info.get('themes', [])
+        theme_str = ';'.join(themes) if themes else str(row.get('theme', ''))
+        subtheme = json_info.get('subtheme', '')
+
+        # ── 主题强度分：取第一个主题的评分 ──
+        stock_theme_score = max([theme_scores.get(t, 0.5) for t in themes]) if themes else 0.5
+
+        # ── ETF共振：取第一个主题的ETF ──
+        first_theme = themes[0] if themes else ''
+        etf_code = theme_etf_map.get(first_theme, '') if first_theme else ''
+        etf_res_score = _get_etf_score(etf_code)
+
         if i % 50 == 1 or i <= 3 or i == total:
             logger.info(f"[{i}/{total}] {name} ({ts_code})")
 
-        # ── 获取 stk_factor_pro 技术因子数据 ──
+        # ── 获取 stk_factor_pro 技术因子数据（需含MACD字段） ──
         end_date = trade_date
         start_date = (ref_date - timedelta(days=200)).strftime('%Y%m%d')
         factor_df = fetcher.get_stk_factor_pro_range(ts_code, start_date=start_date, end_date=end_date)
 
-        # 同时获取日线数据作为后备（以及volume_ratio等补充字段）
-        daily = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
-
-        # 判断数据是否充足
         if factor_df is None or len(factor_df) < 40:
-            if daily is None or len(daily) < 40:
-                continue
-            # 降级：仅用 daily 数据
-            factors = calc_oversold_factors(daily, forecast_profit_yoy, factor_df=None)
-        else:
-            # 优先使用 stk_factor_pro
-            factors = calc_oversold_factors(daily, forecast_profit_yoy, factor_df=factor_df)
+            continue
 
+        # 确保有MACD字段
+        if not all(c in factor_df.columns for c in ['macd_dif_hfq', 'macd_dea_hfq', 'macd_hfq']):
+            continue
+
+        factors = calc_consolidation_factors(factor_df)
         if factors is None:
             continue
 
-        total_score, sub_scores = score_oversold(factors, market_params)
-        signal_level, signal_desc = classify_oversold_signal(total_score, min_score_strong=min_score)
+        total_score, sub_scores = score_consolidation(factors)
+        signal_level, signal_desc = classify_consolidation_signal(total_score)
+
+        # ── 入场时机信号 ──
+        entry_info = calc_entry_timing(factors, factor_df)
+        entry_final_score, entry_grade, entry_advice = score_entry_timing(entry_info)
+
+        # ── 三维融合：主题强度 + ETF共振 + 市场状态 ──
+        # 仅作为辅助参考，不改变评分和评级
+        boosted_total, boost_detail = compute_boosted_score(
+            total_score, stock_theme_score, etf_res_score, market_adj
+        )
+        # 保留原始总分和入场评级
+        final_score = total_score
+        final_grade = entry_grade
 
         # 辅助价格数据
-        closes = daily['close'].values.astype(float)
-        price = float(closes[-1])
-        ma20_val = factors.get('ma20')
-        ma60_val = factors.get('ma60')
-        drawdown = factors.get('drawdown_pct', 0)
+        price = factors.get('close', 0)
         vol_ratio = factors.get('vol_ratio', 0)
-        rsi_6 = factors.get('rsi_6', 0)
+        osc_range = factors.get('osc_range_pct', 0)
+        gap_ratio = factors.get('macd_gap_ratio', 0)
+        macd_norm = factors.get('macd_norm', 0)
+        macd_pos = factors.get('macd_position', '')
+        macd_cross = factors.get('macd_cross', '无')
 
-        # ATR止损
-        from enhanced_timing_analysis import _calc_atr
-        atr = _calc_atr(daily, 14)
-        if atr and atr > 0:
-            stop_loss = price - 1.5 * atr
-            target = price + 2.5 * atr
-            risk_reward = 2.5 / 1.5
-            risk_pct = (price - stop_loss) / price * 100 if price > 0 else 0
+        # ── ATR止损价（用日线数据计算） ──
+        daily = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
+        if daily is not None and len(daily) > 10:
+            from enhanced_timing_analysis import _calc_atr
+            atr = _calc_atr(daily, 14)
+            if atr and atr > 0:
+                close_price = float(daily['close'].values.astype(float)[-1])
+                stop_loss = close_price - 1.5 * atr
+                target = close_price + 2.5 * atr
+                risk_reward = 2.5 / 1.5
+                risk_pct = (close_price - stop_loss) / close_price * 100 if close_price > 0 else 0
+            else:
+                stop_loss = price * 0.95 if price > 0 else 0
+                target = price * 1.08 if price > 0 else 0
+                risk_reward = 1.6
+                risk_pct = 5.0
         else:
-            stop_loss = price * 0.95
-            target = price * 1.08
+            stop_loss = price * 0.95 if price > 0 else 0
+            target = price * 1.08 if price > 0 else 0
             risk_reward = 1.6
             risk_pct = 5.0
 
-        # 综合操作建议（使用动态阈值）
-        if total_score >= min_score:
-            action = '重点关注' if drawdown >= market_params.get('f1_peak_start', 8) else '轻仓试探'
+        # 操作建议
+        if total_score >= 80:
+            action = '重点关注'
             risk_level = '低'
-        elif total_score >= min_score * 0.8:
+        elif total_score >= 65:
             action = '轻仓试探'
             risk_level = '中'
+        elif total_score >= 50:
+            action = '观望'
+            risk_level = '中高'
         else:
-            action = '等待观望'
+            action = '等待'
             risk_level = '高'
-
-        # 子分的详细输出
-        sub_detail = ' | '.join(f'{k}={v:.0f}' for k, v in sorted(sub_scores.items()))
 
         results.append({
             '代码': ts_code,
             '名称': name,
             '行业': industry,
-            '主题': theme,
+            '主题': theme_str,
+            '子主题': subtheme,
             '中报增速%': round(forecast_profit_yoy, 1),
-            '超跌择时分': total_score,
+            '择时分': final_score,
             '信号等级': signal_level,
-            '操作建议': action,
-            '风险等级': risk_level,
+            '入场类型': entry_info.get('entry_type_name', ''),
+            '入场评分': entry_final_score,
+            '入场评级': final_grade,
+            '主题强度': round(stock_theme_score, 3),
+            'ETF共振': round(etf_res_score, 3),
+            '市场状态': regime_info['regime_name'],
             '现价': round(price, 2),
-            'MA20': round(ma20_val, 2) if ma20_val else None,
-            'MA60': round(ma60_val, 2) if ma60_val else None,
-            '回撤幅度%': round(drawdown, 1),
+            '震荡区间%': round(osc_range, 1),
             '量比': round(vol_ratio, 2),
-            'RSI(6)': round(rsi_6, 1),
-            '止损价': round(stop_loss, 2),
-            '目标价': round(target, 2),
-            '盈亏比': round(risk_reward, 2),
-            '最大亏损%': round(risk_pct, 1),
-            'F1回撤深度': round(sub_scores.get('F1回撤深度', 0)),
-            'F2缩量程度': round(sub_scores.get('F2缩量程度', 0)),
-            'F3支撑强度': round(sub_scores.get('F3支撑强度', 0)),
-            'F4_RSI超卖': round(sub_scores.get('F4_RSI超卖', 0)),
-            'F5_K线止跌': round(sub_scores.get('F5_K线止跌', 0)),
-            'F6基本面锚定': round(sub_scores.get('F6基本面锚定', 0)),
-            'F7趋势保护': round(sub_scores.get('F7趋势保护', 0)),
+            'MACD%': round(macd_norm, 2),
+            'DIF-DEA收敛比': round(gap_ratio, 2),
+            'MACD位置': macd_pos,
+            'MACD交叉': macd_cross,
+            '入场价': round(entry_info.get('close', price), 2),
+            '止损价': round(entry_info.get('stop_loss', 0), 2),
+            '目标价': round(entry_info.get('target', 0), 2),
+            '盈亏比': round(entry_info.get('risk_reward', 0), 2),
+            '震荡区间': round(sub_scores.get('震荡区间', 0)),
+            '量比缩量': round(sub_scores.get('量比缩量', 0)),
+            '量能趋势': round(sub_scores.get('量能趋势', 0)),
+            '震荡缩量': round(sub_scores.get('震荡缩量', 0)),
+            'DIF-DEA收敛': round(sub_scores.get('DIF-DEA收敛', 0)),
+            'MACD柱收缩': round(sub_scores.get('MACD柱收缩', 0)),
+            'MACD位置分': round(sub_scores.get('MACD位置', 0)),
+            'MACD收窄': round(sub_scores.get('MACD收窄', 0)),
         })
 
     if len(results) == 0:
@@ -216,7 +321,7 @@ def main():
 
     # ── 排序 + 保存 ──
     out_df = pd.DataFrame(results)
-    out_df = out_df.sort_values('超跌择时分', ascending=False).reset_index(drop=True)
+    out_df = out_df.sort_values('择时分', ascending=False).reset_index(drop=True)
     out_path = os.path.join(report_dir, f'enhanced_timing_oversold_{trade_date}.csv')
     out_df.to_csv(out_path, index=False, encoding='utf-8-sig')
     logger.info(f"结果已保存: {out_path}")
@@ -225,64 +330,60 @@ def main():
     # 打印报告
     # ============================================================
     sep_char = '═'
-    market_stats = market_params.get('market_stats', {})
+    # 入场信号分布统计(使用市场调整后的评级)
+    a_top = sum(1 for r in results if r['入场评级'] == 'A级最佳买点')
+    b_top = sum(1 for r in results if r['入场评级'] == 'B级可入场')
+    c_top = sum(1 for r in results if r['入场评级'] == 'C级观望')
+    d_top = sum(1 for r in results if r['入场评级'] == 'D级等待')
 
     print(f'\n{sep_char*140}')
-    print(f'  中报预增股 超跌择时分析 (7因子评分 + 市场状态感知)')
+    print(f'  中报预增股 震荡缩量择时分析 (震荡缩量+MACD收窄 + 三级入场信号)')
     print(f'  分析日期: {datetime.now().strftime("%Y-%m-%d %H:%M")}  交易日: {trade_date}')
-    print(f'  市场状态: {regime_info["regime_name"]} (阈值: ≥{min_score}分)')
-    adj = market_params.get('adjustment', 0)
-    if adj != 0:
-        print(f'  大盘调整: {adj:+d}分（连续阴线保护）')
-    if market_stats:
-        print(f'  沪深300: {market_stats.get("hs300_price", "N/A")}  '
-              f'MA20斜率: {market_stats.get("ma20_slope%", "N/A")}%  '
-              f'60日回撤: {market_stats.get("max_drawdown60%", "N/A")}%  '
-              f'20日上涨: {market_stats.get("up_days_20d", "N/A")}/20天')
-    print(f'  参数: {market_params.get("description", "")}')
-    print(f'  成功分析: {len(results)} 只')
+    print(f'  市场状态: {regime_info["regime_name"]} (仅供大盘环境参考)')
+    print(f'  成功分析: {len(results)} 只 (需stk_factor_pro含MACD字段)')
+    print(f'  入场信号: A级最佳买点={a_top}  B级可入场={b_top}  C级观望={c_top}  D级等待={d_top}')
     print(f'{sep_char*140}')
 
-    # 信号分布（使用动态阈值）
-    strong = sum(1 for r in results if r['超跌择时分'] >= min_score)
-    moderate = sum(1 for r in results if min_score * 0.8 <= r['超跌择时分'] < min_score)
-    wait = sum(1 for r in results if r['超跌择时分'] < min_score * 0.8)
-    print(f'\n  信号分布(阈值≥{min_score}): 强烈反弹 {strong}只 | 一般反弹 {moderate}只 | 等待 {wait}只')
+    # 信号分布
+    strong = sum(1 for r in results if r['择时分'] >= 80)
+    moderate = sum(1 for r in results if 65 <= r['择时分'] < 80)
+    weak = sum(1 for r in results if 50 <= r['择时分'] < 65)
+    no_signal = sum(1 for r in results if r['择时分'] < 50)
+    print(f'\n  形态分布: 强烈 {strong}只 | 一般 {moderate}只 | 弱 {weak}只 | 无 {no_signal}只')
     print(f'{sep_char*140}')
 
-    # 强烈超跌反弹信号
-    strong_list = [r for r in results if r['超跌择时分'] >= min_score]
+    # 强烈信号
+    strong_list = [r for r in results if r['择时分'] >= 80]
     if strong_list:
         print(f'\n{sep_char*140}')
-        print(f'  ⭐⭐⭐ 强烈超跌反弹信号 (≥{min_score}分)')
+        print(f'  ⭐⭐⭐ 强烈信号 (≥80分) — 震荡缩量+MACD收敛双重共振')
         print(f'{sep_char*140}')
         for r in strong_list[:15]:
-            print(f'  [{r["信号等级"]}] {r["名称"]:8s} ({r["代码"]}) '
-                  f'超跌分={r["超跌择时分"]:.1f} 回撤={r["回撤幅度%"]:.1f}% '
-                  f'量比={r["量比"]:.2f} RSI={r["RSI(6)"]:.0f} 止损={r["止损价"]} 目标={r["目标价"]}')
+            grade_short = r['入场评级'][:2] if r['入场评级'] else '  '
+            print(f'  {grade_short} {r["名称"]:8s} ({r["代码"]}) '
+                  f'总分={r["择时分"]:.0f} 入场评={r["入场评分"]:.0f} '
+                  f'主题={r["主题强度"]:.2f} ETF={r["ETF共振"]:.2f} '
+                  f'震荡{r["震荡区间%"]:.1f}% 量比={r["量比"]:.2f} '
+                  f'MACD%={r["MACD%"]:.2f} {r["入场类型"]}')
 
-    # 一般超跌反弹信号
-    moderate_list = [r for r in results if min_score * 0.8 <= r['超跌择时分'] < min_score]
+    # 一般信号
+    moderate_list = [r for r in results if 65 <= r['择时分'] < 80]
     if moderate_list:
         print(f'\n{sep_char*140}')
-        print(f'  ⭐⭐ 一般超跌反弹信号 ({int(min_score*0.8)}-{int(min_score-1)}分)')
+        print(f'  ⭐⭐ 一般信号 (65-79分) — 缩量震荡+MACD趋向收敛')
         print(f'{sep_char*140}')
         for r in moderate_list[:20]:
             print(f'  {r["名称"]:8s} ({r["代码"]}) '
-                  f'超跌分={r["超跌择时分"]:.1f} 回撤={r["回撤幅度%"]:.1f}% '
-                  f'量比={r["量比"]:.2f} RSI={r["RSI(6)"]:.0f}')
-
-    if wait > 0:
-        print(f'\n{sep_char*140}')
-        print(f'  等待观望: {wait}只（超跌分<{int(min_score*0.8)}，回撤不到位或卖压未衰竭）')
-        print(f'{sep_char*140}')
+                  f'总分={r["择时分"]:.0f} 震荡{r["震荡区间%"]:.1f}% '
+                  f'量比={r["量比"]:.2f} MACD%={r["MACD%"]:.2f} {r["MACD交叉"]}')
 
     print(f'\n结果已保存: {out_path}')
     print(f'{sep_char*140}')
     print(f'  信号解读:')
-    print(f'  ⭐⭐⭐ 强烈超跌反弹(≥{min_score}分): 回撤充分+缩量止跌+RSI超卖共振，左侧买入时机')
-    print(f'  ⭐⭐  一般超跌反弹({int(min_score*0.8)}-{int(min_score-1)}分): 回调后缩量止跌，可轻仓试探，等放量确认')
-    print(f'  ⭐   等待(<{int(min_score*0.8)}分): 回调未到位或卖压未衰竭，继续观察')
+    print(f'  ⭐⭐⭐ 强烈信号(≥80): 震荡缩量充分+MACD高度收敛，双重共振，变盘前兆')
+    print(f'  ⭐⭐  一般信号(65-79): 缩量震荡中+MACD趋向收敛，关注后续确认')
+    print(f'  ⭐   弱信号(50-64): 震荡或MACD收敛一方不足，继续观察')
+    print(f'  -    无信号(<50): 未满足震荡缩量或MACD收敛条件')
     print(f'{sep_char*140}')
 
 
