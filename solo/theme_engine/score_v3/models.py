@@ -19,6 +19,8 @@ class ETFTrendResult:
     new_high_60d_count: int = 0
     max_drawdown_20d: float = 0.0
     sharpe_20d: float = 0.0
+    trend_direction: float = 0.0     # 趋势方向分 0~100 (由return/ema/macd/new_high合成)
+    trend_quality: float = 0.0       # 趋势质量分 0~100 (由sharpe/drawdown/volume合成)
     details: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -60,6 +62,10 @@ class LeaderResult:
     chip_score: float = 0.0
     new_high_score: float = 0.0
     top_leaders: List[str] = field(default_factory=list)
+    persistent_leaders: List[str] = field(default_factory=list)  # 持续性龙头 (连续≥2天在TOP5)
+    persistent_days: Dict[str, int] = field(default_factory=dict) # 各龙头持续天数
+    zhongjun: List[str] = field(default_factory=list)            # 中军 (大市值+大成交额+稳定)
+    zhongjun_days: Dict[str, int] = field(default_factory=dict)  # 各中军持续天数
     details: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -187,6 +193,8 @@ class ThemeV3Score:
     transition_direction: str = ""              # 迁移方向: ACCELERATING/PEAKING/...
     transition_strength: float = 0.0             # 迁移强度
     pre_rotate: bool = False                    # 提前轮动信号
+    migration_priority: float = 0.0              # 迁移优先级 0~100 (未来接力潜力)
+    forward_score: float = 0.0                   # 前瞻评分 (tradable×0.7 + migration×0.3)
     signal: str = "WATCH"
     rotation_prob_5d: float = 0.0
     confidence: float = 0.0

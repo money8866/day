@@ -857,7 +857,7 @@ class LeaderQualityEngine:
             return per_theme
 
         # 1. 构建主题画像(仅使用概念类字段，避免关键词稀释)
-        theme_profiles = self._load_theme_profiles(top_themes)
+        theme_profiles = self._load_theme_profiles()
         if not theme_profiles:
             return per_theme
 
@@ -926,11 +926,18 @@ class LeaderQualityEngine:
                                           f"零概念重叠(via={entry_via},score={entry_score})"))
                         continue  # 跳过后续迁移检查
 
+                # 跳过非低置信度的核心公司/龙头（它们已正确归属）
+                # 只有低置信度入场(through dc_industry_board / 低分匹配)的股票
+                # 才需要通过主题归属优化纠正归属
+                if not is_low_confidence:
+                    continue
+
                 # 计算增量重叠: 与其他主题的重叠中，不被当前主题覆盖的部分
                 best_theme = theme_name
                 best_incremental = 0.0
                 best_overlap_raw = 0.0
                 best_corr_score = 0.0
+                best_composite = 0.0
 
                 for other_name, other_profile in theme_profiles.items():
                     if other_name == theme_name:
@@ -952,9 +959,12 @@ class LeaderQualityEngine:
                         # 首次遇到该股票时评估相关性（仅一次，结果缓存）
                         if code not in corr_cache:
                             try:
+                                # 使用全部主题（而非仅top_themes）计算相关性，
+                                # 确保AI算力等非Top主题也有相关性数据可用
+                                all_themes = list(theme_profiles.keys())
                                 corr_cache[code] = self._corr_engine.evaluate(
                                     code, trade_date,
-                                    top_themes
+                                    all_themes
                                 )
                                 corr_done.add(code)
                             except Exception as _exc:
@@ -962,17 +972,26 @@ class LeaderQualityEngine:
                         if code in corr_cache and corr_cache[code]:
                             other_corr = corr_cache[code].get(other_name, 0.0)
                             current_corr = corr_cache[code].get(theme_name, 0.0)
-                            cond_c = (other_corr > current_corr + 0.05)
+                            # 对Top主题使用严格阈值(0.05)，非Top主题使用宽松阈值(0.01)
+                            # 确保AI算力等非Top主题也能进入复合评分竞争
+                            corr_threshold = 0.01 if other_name not in top_themes else 0.05
+                            cond_c = (other_corr > current_corr + corr_threshold)
 
                     if cond_a or cond_b or cond_c:
-                        # 综合评分: 选增量重叠最高的(静态胜出时)或相关性最高的(动态胜出时)
-                        if cond_c:
+                        # 综合评分（多维度融合）：将增量重叠与动态相关性融合成复合评分
+                        # 避免单一维度误导双叙事交叉股的归属判断
+                        if code in corr_cache and corr_cache[code]:
                             corr_val = corr_cache[code].get(other_name, 0.0)
-                            if corr_val > best_corr_score:
+                            # 增量重叠归一化(经验上限8.0，超过视为满分)
+                            inc_norm = min(incremental / 8.0, 1.0)
+                            # 复合评分 = 概念重叠×0.4 + 动态相关×0.6
+                            composite = inc_norm * 0.4 + corr_val * 0.6
+                            if composite > best_composite:
                                 best_theme = other_name
                                 best_incremental = incremental
                                 best_overlap_raw = other_overlap
                                 best_corr_score = corr_val
+                                best_composite = composite
                         elif incremental > best_incremental:
                             best_theme = other_name
                             best_incremental = incremental
@@ -1100,13 +1119,15 @@ class LeaderQualityEngine:
     def _prepare_corr_engine(self, top_themes: List[str]):
         """准备动态相关性引擎的主题资产映射(ETF+龙头代码)"""
         try:
-            self._corr_engine.prepare_theme_assets(_THEME_CONFIG_PATH, top_themes)
+            # 加载全部主题（不只是top_themes），确保AI算力等非Top主题
+            # 也能作为双叙事交叉股的迁移目标被相关性引擎评估
+            self._corr_engine.prepare_theme_assets(_THEME_CONFIG_PATH, None)
         except Exception as e:
             print(f"  [主题归属优化] 准备相关性引擎失败: {e}")
 
-    def _load_theme_profiles(self, top_themes: List[str]) -> Dict[str, dict]:
+    def _load_theme_profiles(self) -> Dict[str, dict]:
         """
-        从 theme_config.json 加载活跃主题的 keywords + eastmoney_concepts。
+        从 theme_config.json 加载全部主题的 keywords + eastmoney_concepts。
 
         返回增强画像，包含按来源分层的术语权重：
         - eastmoney(官方概念分类): 权重4.0
@@ -1133,12 +1154,11 @@ class LeaderQualityEngine:
             return {}
 
         profiles = {}
-        top_set = set(top_themes)
         for eng_key, cfg in raw.items():
             if not isinstance(cfg, dict):
                 continue
             cn_name = cfg.get('name_cn', '')
-            if not cn_name or cn_name not in top_set:
+            if not cn_name:
                 continue
 
             weighted = {}  # term -> weight

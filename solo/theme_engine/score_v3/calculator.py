@@ -94,6 +94,8 @@ class V3Calculator:
             leader_expand=leader_expand,
             rank_momentum=rank_momentum,
             money=money,
+            etf_trend_result=etf_trend_result,
+            theme_name=theme_name,
         )
 
         # ── Layer 2: IntrinsicScore (主题自身强度) ──
@@ -192,9 +194,20 @@ class V3Calculator:
     ) -> List[ThemeV3Score]:
         """对主题列表排名并预测轮动概率.
 
-        按 tradable_score 排序 (市场调整后分数).
+        排序逻辑 (V2 — 迁移优先级):
+          1. 计算每个主题的 migration_priority (未来接力潜力)
+          2. forward_score = tradable_score × 0.7 + migration_priority × 0.3
+          3. 按 forward_score 降序排列
         """
-        sorted_themes = sorted(themes, key=lambda x: x.tradable_score, reverse=True)
+        # 计算迁移优先级
+        for t in themes:
+            t.migration_priority = round(self._calc_migration_priority(t), 2)
+            t.forward_score = round(
+                t.tradable_score * 0.70 + t.migration_priority * 0.30, 2
+            )
+
+        # 按前瞻评分排序
+        sorted_themes = sorted(themes, key=lambda x: x.forward_score, reverse=True)
 
         for i, t in enumerate(sorted_themes):
             t.rank = i + 1
@@ -209,6 +222,66 @@ class V3Calculator:
 
         return sorted_themes
 
+    @staticmethod
+    def _calc_migration_priority(theme: ThemeV3Score) -> float:
+        """计算迁移优先级 — 主题轮动接力潜力评分.
+
+        公式:
+          MigrationScore = 0.40 × 迁移方向分
+                         + 0.25 × 先锋分 (龙头健康度+资金共振+扩散确认+动量)
+                         + 0.20 × 资金分 (资金共振)
+                         + 0.10 × 龙头分 (龙头健康度)
+                         + 0.05 × 市场共振 (resonance_multiplier)
+
+        迁移方向分:
+          Growth → MainUp: 100  (主升潜力最大)
+          Birth  → Growth: 85   (启动初期)
+          MainUp → Late:   55   (高位接力有限)
+          Late   → Decline: 20  (衰退概率高)
+          Decline→ Birth:  70   (筑底反弹)
+          STABLE / 无迁移数据: 30
+        """
+        tr = theme.transition_result
+        if not tr:
+            return 30.0
+
+        # 1. 迁移方向分 (40%)
+        dir_score = {
+            ("growth", "main_up"): 100,
+            ("birth", "growth"): 85,
+            ("decline", "birth"): 70,
+            ("main_up", "late"): 55,
+            ("late", "decline"): 20,
+        }.get((tr.from_stage, tr.to_stage), 30)
+
+        # 2. 先锋分 (25%) — 龙头健康度×0.35 + 资金共振×0.25 + 扩散确认×0.20 + 动量×0.20
+        pioneer = (
+            tr.leader_health_score * 0.35
+            + tr.money_resonance_score * 0.25
+            + tr.confirmation_score * 0.20
+            + tr.momentum_score * 0.20
+        )
+
+        # 3. 资金分 (20%)
+        money_score = tr.money_resonance_score
+
+        # 4. 龙头分 (10%)
+        leader_score = tr.leader_health_score
+
+        # 5. 市场共振 (5%)
+        market_resonance = theme.resonance_multiplier * 50
+
+        # 综合
+        migration = (
+            dir_score * 0.40
+            + pioneer * 0.25
+            + money_score * 0.20
+            + leader_score * 0.10
+            + market_resonance * 0.05
+        )
+
+        return max(0.0, min(100.0, migration))
+
     def _calc_weighted_base(
         self,
         etf_trend: float = 0.0,
@@ -218,8 +291,19 @@ class V3Calculator:
         leader_expand: float = 0.0,
         rank_momentum: float = 0.0,
         money: float = 0.0,
+        etf_trend_result=None,
+        theme_name: str = "",
     ) -> float:
-        """加权基础分."""
+        """加权基础分 (V2 — 动态因子调整).
+
+        动态调整规则:
+        1. 龙头健康度>60 → 从ETF趋势和排名动量转移权重给龙头
+           (机构已在布局, 趋势滞后于龙头)
+        2. ETF趋势方向弱(<40)但趋势质量高(>50) → 用质量分修正方向分
+           (缩量整理/筹码沉淀主题, 避免被低方向分误判)
+        3. 防御型主题(银行/电力/煤炭) → ETF趋势权重自动降低
+           (防御型趋势强≠进攻能力强)
+        """
         scores = {
             "etf_trend": etf_trend,
             "etf_accel": etf_accel,
@@ -230,12 +314,40 @@ class V3Calculator:
             "rank_momentum": rank_momentum,
         }
 
-        total_weight = sum(self._layer_weights.values())
+        weights = dict(self._layer_weights)
+
+        # 1. 动态龙头加权: 龙头>60 → 转移权重给龙头
+        if leader > 60:
+            boost = min(0.05, (leader - 60) / 40 * 0.05)
+            etf_reduce = min(boost * 0.6, weights.get("etf_trend", 0.20) - 0.10)
+            mom_reduce = min(boost * 0.4, weights.get("rank_momentum", 0.05) - 0.01)
+            weights["leader"] = weights.get("leader", 0.20) + etf_reduce + mom_reduce
+            weights["etf_trend"] = weights.get("etf_trend", 0.20) - etf_reduce
+            weights["rank_momentum"] = weights.get("rank_momentum", 0.05) - mom_reduce
+
+        # 2. ETF趋势质量调整: 方向弱但质量高 → 混合修正
+        if etf_trend_result is not None:
+            direction = getattr(etf_trend_result, 'trend_direction', 50.0)
+            quality = getattr(etf_trend_result, 'trend_quality', 50.0)
+            if direction < 40 and quality > 50:
+                scores["etf_trend"] = round(direction * 0.40 + quality * 0.60, 1)
+
+        # 3. 防御型主题: ETF趋势权重降权 (防御型趋势强≠进攻能力强)
+        _DEFENSIVE = {"银行", "电力", "煤炭", "黄金", "公用事业", "红利"}
+        if any(kw in theme_name for kw in _DEFENSIVE):
+            if weights.get("etf_trend", 0.20) > 0.12:
+                etf_cut = weights["etf_trend"] - 0.12
+                weights["etf_trend"] = 0.12
+                weights["money"] = weights.get("money", 0.09) + etf_cut * 0.6
+                weights["leader"] = weights.get("leader", 0.20) + etf_cut * 0.4
+
+        # 加权总分
+        total_weight = sum(weights.values())
         if total_weight <= 0:
             return 0.0
 
         weighted = 0.0
-        for key, weight in self._layer_weights.items():
+        for key, weight in weights.items():
             s = scores.get(key, 0.0)
             weighted += s * weight
 

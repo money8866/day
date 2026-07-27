@@ -159,6 +159,22 @@ async def calc_etf_trend(
                 break
 
     result.score = score / total_weight if total_weight > 0 else 0.0
+
+    # ── 分离趋势方向分与趋势质量分 ──
+    dir_keys = {"return_20d", "return_60d", "ema_20", "ema_60", "macd", "new_high_20d", "new_high_60d"}
+    quality_keys = {"max_drawdown_20d", "sharpe_20d", "volume_trend"}
+
+    dir_sum = qual_sum = 0.0
+    dir_cnt = qual_cnt = 0
+    for k, v in sub_scores.items():
+        if k in dir_keys:
+            dir_sum += v
+            dir_cnt += 1
+        elif k in quality_keys:
+            qual_sum += v
+            qual_cnt += 1
+    result.trend_direction = round(dir_sum / max(dir_cnt, 1), 1)
+    result.trend_quality = round(qual_sum / max(qual_cnt, 1), 1)
     result.return_20d = round(r20, 2)
     result.return_60d = round(r60, 2)
     result.ema_20_pos = round(ema20_pos, 2)

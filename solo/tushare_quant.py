@@ -11149,97 +11149,7 @@ def run(target_date=None, simple_mode=False):
         volume_surge_swing_text = "\n🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)\n" + "\n今日无信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）\n\n【筛选条件】①距MA20<0%+刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)\n【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%"
         print(volume_surge_swing_text)
 
-    # =========================
-    # 中报预增股池择时（幻方量化算法）
-    # =========================
-    timing_pool_text = ""
-    try:
-        _timing_csv = os.path.join(BASE_DIR, 'report_daily', f'enhanced_timing_bull_all_{TRADE_DATE}.csv')
-        if os.path.exists(_timing_csv):
-            _timing_df = pd.read_csv(_timing_csv)
-            # 筛选S级和A级，且有明确买入信号
-            _sa_pool = _timing_df[_timing_df['修正后胜率分级'].isin(['S', 'A'])].copy()
-            if len(_sa_pool) > 0:
-                _lines = []
-                _lines.append(f"📊 中报预增股池择时（幻方算法） - {TRADE_DATE}")
-                _lines.append(f"  S/A级共{len(_sa_pool)}只，以下为明确买入信号：")
-                _lines.append("")
-                for _, _r in _sa_pool.iterrows():
-                    _decision = str(_r.get('交易决策', ''))
-                    # 只显示有明确买入信号的
-                    if any(kw in _decision for kw in ['极高胜率', 'VWAP确认', '关注']):
-                        _grade = _r.get('修正后胜率分级', '')
-                        _name = _r.get('名称', '')
-                        _code = _r.get('代码', '')
-                        _score = _r.get('量化择时分', 0)
-                        _vwap = _r.get('VWAP', 0)
-                        _price = _r.get('现价', 0)
-                        _stop = _r.get('ATR动态止损价', 0)
-                        _buy_pt = _r.get('推荐买点类型', '')
-                        _profit_yoy = _r.get('中报业绩亮点', '')
-                        _concepts = _r.get('主题', '')
-                        _theme_str = f' | 主题={_concepts}' if _concepts else ''
-                        _lines.append(f"  [{_grade}] {_name} ({_code}) 量化分={_score:.1f}{_theme_str}")
-                        _lines.append(f"    VWAP={_vwap:.2f} 现价={_price:.2f} 止损={_stop:.2f}")
-                        _lines.append(f"    买点={_buy_pt} | 中报={_profit_yoy}")
-                        _lines.append(f"    决策: {_decision}")
-                        _lines.append("")
-                timing_pool_text = "\n".join(_lines)
-                print(f"\n[中报预增择时] 加载 {len(_sa_pool)} 只S/A级")
-            else:
-                timing_pool_text = "\n📊 中报预增股池择时（幻方算法）\n\n今日无S/A级信号\n"
-        else:
-            timing_pool_text = f"\n📊 中报预增股池择时（幻方算法）\n\n未找到 {TRADE_DATE} 的择时数据，请先运行: python multi_factor_picker/enhanced_timing_bull_all.py\n"
-            print(f"[中报预增择时] 未找到 {_timing_csv}")
-    except Exception as e:
-        timing_pool_text = f"\n📊 中报预增股池择时（幻方算法）\n\n加载失败: {e}\n"
-        print(f"[中报预增择时] 加载失败: {e}")
 
-    # =========================
-    # 中报预增股池超跌择时（7因子超跌评分）
-    # =========================
-    oversold_timing_text = ""
-    try:
-        _oversold_csv = os.path.join(BASE_DIR, 'report_daily', f'enhanced_timing_oversold_{TRADE_DATE}.csv')
-        if os.path.exists(_oversold_csv):
-            _oversold_df = pd.read_csv(_oversold_csv)
-            _strong = _oversold_df[_oversold_df['超跌择时分'] >= 80].copy()
-            _moderate = _oversold_df[(_oversold_df['超跌择时分'] >= 65) & (_oversold_df['超跌择时分'] < 80)].copy()
-            if len(_strong) > 0 or len(_moderate) > 0:
-                _lines = []
-                _lines.append(f"📊 中报预增股池超跌择时（7因子评分） - {TRADE_DATE}")
-                _lines.append(f"  强烈反弹{len(_strong)}只 | 一般反弹{len(_moderate)}只")
-                _lines.append("")
-                if len(_strong) > 0:
-                    _lines.append("⭐⭐⭐ 强烈超跌反弹信号（≥80分，回撤充分+卖压衰竭+止跌共振）：")
-                    for _, _r in _strong.head(10).iterrows():
-                        _lines.append(f"  [{_r['名称']}]({_r['代码']}) "
-                                      f"超跌分={_r['超跌择时分']:.0f} "
-                                      f"回撤={_r['回撤幅度%']:.1f}% "
-                                      f"量比={_r['量比']:.2f} "
-                                      f"RSI={_r['RSI(6)']:.0f} "
-                                      f"止损={_r['止损价']} "
-                                      f"目标={_r['目标价']}")
-                    _lines.append("")
-                if len(_moderate) > 0:
-                    _lines.append("⭐⭐ 一般超跌反弹信号（65-79分，缩量止跌，等待放量确认）：")
-                    for _, _r in _moderate.head(10).iterrows():
-                        _lines.append(f"  [{_r['名称']}]({_r['代码']}) "
-                                      f"超跌分={_r['超跌择时分']:.0f} "
-                                      f"回撤={_r['回撤幅度%']:.1f}% "
-                                      f"量比={_r['量比']:.2f} "
-                                      f"RSI={_r['RSI(6)']:.0f}")
-                    _lines.append("")
-                oversold_timing_text = "\n".join(_lines)
-                print(f"[超跌择时] 强烈{len(_strong)}只 + 一般{len(_moderate)}只")
-            else:
-                oversold_timing_text = "\n📊 中报预增股池超跌择时（7因子评分）\n\n今日无超跌信号（需回撤8-15%+缩量+RSI<35共振）\n"
-        else:
-            oversold_timing_text = f"\n📊 中报预增股池超跌择时（7因子评分）\n\n未找到 {TRADE_DATE} 的超跌择时数据，请先运行: python multi_factor_picker/enhanced_timing_oversold.py\n"
-            print(f"[超跌择时] 未找到 {_oversold_csv}")
-    except Exception as e:
-        oversold_timing_text = f"\n📊 中报预增股池超跌择时（7因子评分）\n\n加载失败: {e}\n"
-        print(f"[超跌择时] 加载失败: {e}")
 
     # =========================
     # 获取主题可持续性数据（供AI分析，来自Theme Alpha V8.0引擎）
@@ -11535,15 +11445,6 @@ ETF名称（ETF代码）：
 
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
-
-7、**【中报预增股池择时（幻方算法）】**（预告利润增速≥30% + 6因子量化择时）
-{timing_pool_text}
-【S】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
-【A1】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
-【A2】**股票名** (代码)/所属主题：XXX/量化分/中报增：XX%/止损：XXX/决策\n
-
-8、**【中报预增股池超跌择时（7因子评分）】**（业绩预增股的超跌反弹左侧买入时机）
-{oversold_timing_text}
 
 ------------------
 以上全局格式要求：

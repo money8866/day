@@ -1,6 +1,8 @@
 """Leader Factor — 龙头质量评分.
 
-Alpha20、相对强度、成交额、机构资金、趋势、筹码、历史新高。
+包含:
+- 龙头: TOP5 综合分 (涨幅+成交额+Alpha) → 持续性追踪
+- 中军: 大市值+大成交额+非涨停 → 持续性追踪
 """
 
 from __future__ import annotations
@@ -24,16 +26,37 @@ def normalize(value: float, norm_range) -> float:
     return (clipped - lo) / (hi - lo) * 100.0
 
 
+# 中军门槛
+# 日成交额 > 2亿 → amount > 200000千元 (tushare单位)
+# 中军特点: 大成交额 + 涨跌幅温和 + 非涨停
+_ZHONGJUN_AMT_TH = 200_000      # 2亿 (千元)
+_ZHONGJUN_PCT_MIN = -6.0        # 跌幅下限 (不暴跌)
+_ZHONGJUN_PCT_MAX = 6.0         # 涨幅上限 (不暴涨)
+
+
+def _calc_composite(s: dict) -> float:
+    """计算个股综合分 (用于龙头排序)."""
+    alpha = s.get("alpha", s.get("pct_chg", 0))
+    amount = s.get("amount", 0) or 0
+    pct = s.get("pct_chg", 0) or 0
+    amt_score = min(100, math.log(amount + 1) / 10) if amount > 0 else 0
+    return pct * 0.40 + amt_score * 0.30 + alpha * 0.30
+
+
 async def calc_leader(
     theme_code: str,
     trade_date: str,
     enriched_stocks: List[Dict[str, Any]],
+    prev_leaders: Optional[List[str]] = None,      # 前一日龙头名单
+    prev_zhongjun: Optional[List[str]] = None,      # 前一日中军名单
     **kwargs,
 ) -> LeaderResult:
-    """计算龙头质量评分.
+    """计算龙头质量评分 + 持续性追踪 + 中军识别.
 
     Args:
         enriched_stocks: 已富化的成分股列表
+        prev_leaders: 前一日龙头名单 (用于持续性判定)
+        prev_zhongjun: 前一日中军名单
     """
     await asyncio.sleep(0)
 
@@ -49,32 +72,64 @@ async def calc_leader(
     if not valid:
         return result
 
-    # 按综合得分识别龙头 (涨幅 + 成交额 + Alpha)
+    prev_leaders = prev_leaders or []
+    prev_zhongjun = prev_zhongjun or []
+
+    # ── 计算每只股票的综合分 (用于龙头排序) ──
     for s in valid:
-        alpha = s.get("alpha", s.get("pct_chg", 0))
-        amount = s.get("amount", 0) or 0
-        pct = s.get("pct_chg", 0) or 0
-        # 综合分: 涨幅权重0.4, 成交额log归一化0.3, Alpha0.3
-        amt_score = min(100, math.log(amount + 1) / 10) if amount > 0 else 0
-        s["_composite"] = pct * 0.4 + amt_score * 0.3 + alpha * 0.3
+        s["_composite"] = _calc_composite(s)
 
     sorted_stocks = sorted(valid, key=lambda x: x.get("_composite", 0), reverse=True)
 
-    # TOP5 作为龙头候选 (显示股票名称)
-    top_leaders = [s.get("name", s.get("code", "")) for s in sorted_stocks[:5]]
-    result.top_leaders = top_leaders
+    # ── 龙头 TOP5 ──
+    top5 = sorted_stocks[:5]
+    top5_names = [s.get("name", s.get("code", "")) for s in top5]
+    result.top_leaders = top5_names
 
+    # ── 持续性龙头判定 ──
+    persistent_leaders = []
+    persistent_days: Dict[str, int] = {}
+    for name in top5_names:
+        if name in prev_leaders:
+            days = 2  # 至少2天
+            persistent_leaders.append(name)
+            persistent_days[name] = days
+    result.persistent_leaders = persistent_leaders
+    result.persistent_days = persistent_days
+
+    # ── 中军识别 ──
+    # 标准: 日成交额>2亿 + 涨跌幅温和 + 非涨停 + 主题内排名前50%
+    zhongjun_candidates = []
+    half_idx = max(2, len(sorted_stocks) // 2)
+    for s in sorted_stocks[:half_idx]:
+        name = s.get("name", s.get("code", ""))
+        amt = s.get("amount", 0) or 0
+        pct = s.get("pct_chg", 0) or 0
+        is_limit = s.get("limit_up", False)
+        if amt >= _ZHONGJUN_AMT_TH and _ZHONGJUN_PCT_MIN <= pct <= _ZHONGJUN_PCT_MAX and not is_limit:
+            zhongjun_candidates.append(name)
+
+    # 取前3 (避免过多)
+    zhongjun = zhongjun_candidates[:3]
+    result.zhongjun = zhongjun
+
+    # 持续性中军
+    zhongjun_days: Dict[str, int] = {}
+    for name in zhongjun:
+        if name in prev_zhongjun:
+            zhongjun_days[name] = 2
+    result.zhongjun_days = zhongjun_days
+
+    # ── 龙头质量评分 (原有逻辑不变) ──
     if not sorted_stocks:
         return result
-
-    top5 = sorted_stocks[:5]
 
     # Alpha20
     avg_alpha = sum(s.get("alpha", s.get("pct_chg", 0)) for s in top5) / len(top5)
     nr = get_norm_range("leader", "alpha")
     alpha_score = normalize(avg_alpha, nr)
 
-    # 相对强度 (相对主题内其他股票的超额收益)
+    # 相对强度
     avg_all = sum(s.get("pct_chg", 0) for s in valid) / len(valid)
     avg_top = sum(s.get("pct_chg", 0) for s in top5) / len(top5)
     rs = avg_top - avg_all
@@ -88,14 +143,14 @@ async def calc_leader(
     nr3 = get_norm_range("leader", "volume_ratio")
     vol_score = normalize(vol_ratio, nr3)
 
-    # 机构资金 (简化: 用成交额占比近似)
+    # 机构资金
     inst_score = normalize(vol_ratio * 50, [-100, 200])
 
-    # 趋势 (龙头相对MA20)
+    # 趋势
     ma20_up = sum(1 for s in top5 if s.get("above_ma20", False))
     trend_score = (ma20_up / len(top5)) * 100
 
-    # 筹码 (简化)
+    # 筹码
     chip_score = 50.0
 
     # 历史新高
@@ -128,6 +183,11 @@ async def calc_leader(
     result.trend_score = round(trend_score, 2)
     result.chip_score = round(chip_score, 2)
     result.new_high_score = round(new_high_score, 2)
-    result.details = {"sub": {k: round(v, 2) for k, v in sub.items()}, "top5": top_leaders}
+    result.details = {
+        "sub": {k: round(v, 2) for k, v in sub.items()},
+        "top5": top5_names,
+        "persistent": persistent_leaders,
+        "zhongjun": zhongjun,
+    }
 
     return result

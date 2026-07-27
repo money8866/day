@@ -13,6 +13,7 @@ import sys
 import os
 import json
 import csv
+import math
 from datetime import datetime
 from collections import defaultdict
 
@@ -60,7 +61,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ============================================================
 # 新 config → 旧 format 转换器
 # ============================================================
-def convert_new_config_to_old(new_config_path, stock_basic_df):
+def convert_new_config_to_old(new_config, stock_basic_df):
     """
     将 theme_kg_v3/theme_config.json 格式转换为 match_theme_stocks()
     所需的旧格式 {主题中文名: {industry, concept, keywords, ...}}
@@ -70,20 +71,18 @@ def convert_new_config_to_old(new_config_path, stock_basic_df):
       eastmoney_concepts + ths_concepts      → concept（用于东财/同花顺概念匹配）
       leaders(代码) + core_stocks(代码)       → leader_companies/core_companies(名称)
       keywords / exclude_keywords             → 直接映射
+
+    参数:
+      new_config: 已解析的 theme_config.json dict（避免重复I/O）
     """
     # 建立代码→名称映射
     code_to_name = {}
-    name_to_code = {}
     if stock_basic_df is not None and not stock_basic_df.empty:
         for _, row in stock_basic_df.iterrows():
             ts_code = row.get("ts_code", "")
             name = row.get("name", "")
             if ts_code and name:
                 code_to_name[ts_code] = name
-                name_to_code[name] = ts_code
-
-    with open(new_config_path, 'r', encoding='utf-8') as f:
-        new_config = json.load(f)
 
     old_format = {}
     convert_log = []
@@ -204,9 +203,9 @@ THEME_INDUSTRY_EXCLUDE = {
 
 # 主题-股票黑名单
 THEME_STOCK_BLACKLIST = {
-    'AI算力': ['思源电气', '中国宝安', '诺德股份'],
-    '消费电子': ['禾盛新材', '慧谷新材'],
-    '创新药': ['利民股份', '富邦科技'],
+    'AI算力': {'思源电气', '中国宝安', '诺德股份'},
+    '消费电子': {'禾盛新材', '慧谷新材'},
+    '创新药': {'利民股份', '富邦科技'},
 }
 
 # 主题互斥对
@@ -231,6 +230,9 @@ THEME_MUTEX_PAIRS = [
     ('证券', '银行'),
     ('消费', '游戏'),
 ]
+
+# 预编译互斥对为 frozenset 集合，实现 O(1) 查找
+_THEME_MUTEX_SET = {frozenset(p) for p in THEME_MUTEX_PAIRS}
 
 
 # ============================================================
@@ -271,12 +273,13 @@ def build_theme_stock_map_v2():
         print(f"[错误] 未找到 theme_config.json")
         return None
 
-    old_format_themes = convert_new_config_to_old(new_config_path, stock_basic_df)
-    print(f"  转换完成: {len(old_format_themes)} 个主题")
-
-    # 打印转换对照
+    # 一次性读取配置，避免重复 I/O
     with open(new_config_path, 'r', encoding='utf-8') as f:
         new_cfg = json.load(f)
+
+    old_format_themes = convert_new_config_to_old(new_cfg, stock_basic_df)
+    print(f"  转换完成: {len(old_format_themes)} 个主题")
+
     print("\n  主题映射对照:")
     for key, cfg in new_cfg.items():
         if key.startswith('_'):
@@ -392,18 +395,12 @@ def build_theme_stock_map_v2():
         theme_items = [(t, info['scores'][t], info['vias'][t]) for t in info['themes']]
         theme_items.sort(key=lambda x: (-via_priority.get(x[2], -1), -x[1]))
 
-        # 互斥过滤
-        def is_mutex(t1, t2):
-            for p in THEME_MUTEX_PAIRS:
-                if (t1 == p[0] and t2 == p[1]) or (t1 == p[1] and t2 == p[0]):
-                    return True
-            return False
-
+        # 互斥过滤（O(1) frozenset 查找）
         selected = []
         for t in theme_items:
             if len(selected) >= MAX_THEMES_PER_STOCK:
                 break
-            if any(is_mutex(t[0], st[0]) for st in selected):
+            if any(frozenset({t[0], st[0]}) in _THEME_MUTEX_SET for st in selected):
                 continue
             # concept_fallback超3个时只保留3个
             fallback_count = sum(1 for st in selected if st[2] == 'concept_fallback')
@@ -517,7 +514,12 @@ def build_theme_stock_map_v2():
 
         stock_subtheme_map = run_subtheme_dynamic_correlation(
             themes_output, stocks_output, stock_mainbiz, new_cfg,
-            etf_corr_map=etf_corr_map
+            etf_corr_map=etf_corr_map,
+
+            # ── 市场叙事热度：从预计算的 subtheme_heat 矩阵提取子主题热度 ──
+            # 热度经四维加权（集中度+关键词渗透+母主题占比+核心覆盖）
+            # 再通过 sigmoid 变换放大，作用于子主题候选排名
+            subtheme_heat_lookup=_build_subtheme_heat_lookup(subtheme_heat),
         )
 
         # 将子主题数据写入 stocks_output（仅新增字段）
@@ -1024,7 +1026,7 @@ def load_subtheme_map():
         return json.load(f)
 
 
-def _match_stock_to_subtheme(stock_info, subtheme_cfg, stock_mainbiz=''):
+def _match_stock_to_subtheme(stock_info, subtheme_cfg, stock_mainbiz='', text_lower=None):
     """
     判断个股是否匹配子主题，返回匹配分数。
     
@@ -1035,6 +1037,9 @@ def _match_stock_to_subtheme(stock_info, subtheme_cfg, stock_mainbiz=''):
     4. 核心公司：stock_name 在 subtheme.core_companies 中（+15）
     
     过滤阈值：总得分 >= 6 才认为匹配（至少2个关键词命中或1个核心公司）
+
+    参数:
+      text_lower: 预计算的文本特征（小写），避免重复拼接，由 calc_subtheme_heat_matrix 传入
     """
     name = stock_info.get('name', '')
     industry = stock_info.get('industry', '')
@@ -1045,9 +1050,10 @@ def _match_stock_to_subtheme(stock_info, subtheme_cfg, stock_mainbiz=''):
     sub_industry = subtheme_cfg.get('industry', [])
     core_companies = subtheme_cfg.get('core_companies', [])
     
-    # 拼接文本特征
-    text_features = f"{name} {stock_mainbiz} {' '.join(concepts)}"
-    text_lower = text_features.lower()
+    # 拼接文本特征（若已预计算则跳过，减少重复内存开销）
+    if text_lower is None:
+        text_features = f"{name} {stock_mainbiz} {' '.join(concepts)}"
+        text_lower = text_features.lower()
     
     # 排除关键词检查
     for ek in exclude:
@@ -1124,15 +1130,25 @@ def calc_subtheme_heat_matrix(themes_output, stocks_output, stock_mainbiz, new_c
             continue
         
         total_parent = len(parent_stocks)
-        parent_all_stock_names = set(s['name'] for s in parent_stocks)
-        
+
+        # 预计算个股文本特征（避免每子主题循环重复拼接）
+        stock_text_cache = {}
+        for s in parent_stocks:
+            code = s['code']
+            name = s.get('name', '')
+            concepts = s.get('concepts', [])
+            mainbiz_text = stock_mainbiz.get(code, '')
+            stock_text_cache[code] = f"{name} {mainbiz_text} {' '.join(concepts)}".lower()
+
         subtheme_data = {}
         for sub_name, sub_cfg in subthemes.items():
             matched = []
             for s in parent_stocks:
                 code = s['code']
-                mainbiz_text = stock_mainbiz.get(code, '')
-                score = _match_stock_to_subtheme(s, sub_cfg, mainbiz_text)
+                score = _match_stock_to_subtheme(
+                    s, sub_cfg, stock_mainbiz.get(code, ''),
+                    text_lower=stock_text_cache[code]
+                )
                 if score > 0:
                     matched.append({
                         'code': code,
@@ -1386,6 +1402,63 @@ def _calc_subtheme_correlation_score(stock_code, stock_kline_dict, sub_cfg, pare
     return 0.5  # 无数据时的中性值
 
 
+# ═══════════════════════════════════════════════════════════
+# Stage 7 (Dynamic): Sub-theme Market Narrative Heat — 子主题市场叙事热度
+# ═══════════════════════════════════════════════════════════
+
+def _amplify_heat(heat_score):
+    """用 sigmoid 变换放大子主题热度差异
+
+    原始 heat_score 范围通常在 [0, 0.7]，区别微小（如 0.39 vs 0.334）。
+    用 sigmoid 映射到 (0, 1) 并放大中间差异：
+      amplified = 1 / (1 + e^(-15*(heat - 0.35)))
+
+    该函数使 heat_score > 0.35 的子主题获得指数级升温，
+    heat_score < 0.35 的子主题降温，大幅拉大热门与冷门子主题的分差。
+    
+    例（steepness=15）:
+      液冷 heat=0.39     → amplified=0.69
+      汽车热管理 heat=0.334 → amplified=0.44
+      差值: 0.25 → 配合 HEAT_BOOST_RATE=0.20 → 5%分差
+    """
+    x = (heat_score - 0.35) * 15  # 中心化+放大（steepness=15）
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _build_subtheme_heat_lookup(subtheme_heat):
+    """从预计算的 subtheme_heat_matrix 提取子主题热度查找表
+
+    输入结构（来自 calc_subtheme_heat_matrix）:
+      {parent_theme: {
+          'total_stocks': N,
+          'subthemes': {sub_name: {'heat_score': 0.xxx, ...}}
+      }}
+
+    输出结构:
+      {(parent_theme, sub_name): heat_score_0to1}
+
+    子主题 heat_score 已经过四维加权（集中度×0.25 + 关键词渗透×0.30 +
+    母主题占比×0.15 + 核心公司覆盖×0.30），反映当前市场的真实活跃度。
+    """
+    if not subtheme_heat:
+        return {}
+    lookup = {}
+    for parent, pdata in subtheme_heat.items():
+        subs = pdata.get('subthemes', {})
+        for sname, sdata in subs.items():
+            lookup[(parent, sname)] = sdata.get('heat_score', 0.0)
+    return lookup
+
+
+# 市场叙事热度加成系数
+# 最终加成公式：score *= (1 + amplified_heat × HEAT_BOOST_RATE)
+# amplified_heat 通过 sigmoid 变换放大热门与冷门子主题的差异。
+# 液冷 heat=0.39 → sigmoid放大后 ~0.69 → 加成 0.69×0.20=13.8%
+ # 汽车热管理 heat=0.334 → sigmoid放大后 ~0.44 → 加成 0.44×0.20=8.8%
+ # 差值 ~5%，足以翻转 1.5分的原始差距
+HEAT_BOOST_RATE = 0.20
+
+
 def _compute_subtheme_pipeline_for_stock(stock_info, stock_mainbiz, sub_cfgs, 
                                           parent_theme_etf_corr=None, stock_kline_dict=None):
     """
@@ -1487,7 +1560,7 @@ def _compute_subtheme_pipeline_for_stock(stock_info, stock_mainbiz, sub_cfgs,
 
 
 def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz, new_cfg,
-                                     etf_corr_map=None):
+                                     etf_corr_map=None, subtheme_heat_lookup=None):
     """
     对每只股票运行 Sub-theme Dynamic Correlation，结果写入 stocks_output。
     
@@ -1574,6 +1647,16 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                     corr_score * weights['correlation']
                 )
 
+                # ── Stage 7: Market Narrative Heat 乘数加成 ──
+                # 使用子主题级别热度（预计算的 subtheme_heat_matrix），
+                # 经 sigmoid 变换放大后作为乘数作用于综合分
+                # 例：液冷(heat=0.39) > 汽车热管理(heat=0.334)，液冷获得更高加成
+                if subtheme_heat_lookup:
+                    raw_heat = subtheme_heat_lookup.get((parent_theme, sub_name), 0.35)
+                    amplified = _amplify_heat(raw_heat)
+                    heat_boost = 1.0 + amplified * HEAT_BOOST_RATE
+                    composite *= heat_boost
+
                 all_candidates.append({
                     'name': sub_name,
                     'parent_theme': parent_theme,
@@ -1585,6 +1668,7 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                         'core_company_score': round(core_score, 3),
                         'embedding_score': round(emb_score, 3),
                         'correlation_score': round(corr_score, 3),
+                        'heat_boost': round(heat_boost - 1.0, 4) if subtheme_heat_lookup else 0,
                     }
                 })
 
@@ -1620,6 +1704,13 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                     emb_score * weights['embedding']
                 )
 
+                # ── Step 2 也应用 Market Narrative Heat 乘数 ──
+                if subtheme_heat_lookup:
+                    raw_heat = subtheme_heat_lookup.get((x_parent, x_sub_name), 0.35)
+                    amplified = _amplify_heat(raw_heat)
+                    heat_boost = 1.0 + amplified * HEAT_BOOST_RATE
+                    composite *= heat_boost
+
                 all_candidates.append({
                     'name': x_sub_name,
                     'parent_theme': x_parent,
@@ -1632,6 +1723,7 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                         'core_company_score': round(core_score, 3),
                         'embedding_score': round(emb_score, 3),
                         'correlation_score': 0,
+                        'heat_boost': round(heat_boost - 1.0, 4) if subtheme_heat_lookup else 0,
                     }
                 })
 
@@ -1814,15 +1906,34 @@ def _export_with_dominant(dominant_map, themes_output, stocks_output, new_cfg,
                             entry_count += 1
             print(f"  [EntryTiming] 入场时机+双评分数据已追加到 {entry_count} 只股票")
 
+            # 丰富 top_picks：用实际 entry_signal 和 trade_score 替代合成信号
+            enriched = 0
+            stock_map = data.get('stocks', {})
+            for pick in data.get('top_picks', []):
+                code = pick.get('code', '')
+                si = stock_map.get(code, {})
+                pick['entry_signal'] = si.get('entry_signal', pick.get('signal', ''))
+                pick['trade_score'] = si.get('trade_score', pick.get('final_score', 0))
+                pick['holding_priority'] = si.get('holding_priority', 0)
+                enriched += 1
+            print(f"  [TopPicks] 已丰富 {enriched} 个 Top Picks 的 entry_signal/trade_score")
+
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"  [JSON] 已追加主导叙事分析: {json_file}")
 
         # 另存一份不带日期的最新版本
-        latest_json = os.path.join(OUTPUT_DIR, f'theme_stock_map_latest_v2.json')
-        with open(latest_json, 'w', encoding='utf-8') as f:
+        latest_v2 = os.path.join(OUTPUT_DIR, 'theme_stock_map_latest_v2.json')
+        with open(latest_v2, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"  [JSON] 已保存最新版: {latest_json}")
+        print(f"  [JSON] 已保存最新版: {latest_v2}")
+
+        # ── 兼容输出到 cache_daily（供 tushare_quant.py _load_theme_stock_map_from_json 读取）──
+        compat_path = os.path.join(CACHE_DIR, 'theme_stock_map_latest.json')
+        if os.path.abspath(compat_path) != os.path.abspath(latest_v2):
+            with open(compat_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"  [JSON] 兼容输出: {compat_path}")
 
 
 # ═══════════════════════════════════════════════════════════

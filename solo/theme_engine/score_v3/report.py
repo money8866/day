@@ -54,11 +54,12 @@ def render_full_report(result: EngineV3Result) -> str:
 
     header = (f"  {'排名':>3} {'主题名称':<14}"
               f" {'Intrinsic':>9} {'Tradable':>9}"
+              f" {'Forward':>8} {'迁移分':>6}"
               f" {'信号':<12} {'轮动概率':>7}"
               f" {'生命周期':<7} {'迁移':<8}"
               f" {'预期收益':<8} {'风险':<5}")
     lines.append(header)
-    lines.append(f"  {'─' * 82}")
+    lines.append(f"  {'─' * 100}")
 
     life_cn_map = {
         "birth": "萌芽", "growth": "成长", "main_up": "主升",
@@ -81,6 +82,8 @@ def render_full_report(result: EngineV3Result) -> str:
             f"{theme.theme_name:<14} "
             f"{theme.intrinsic_score:>8.0f} "
             f"{theme.tradable_score:>8.0f} "
+            f"{theme.forward_score:>7.0f} "
+            f"{theme.migration_priority:>5.0f} "
             f"{theme.signal:<12} "
             f"{prob:>7} "
             f"{life_cn:<7} "
@@ -141,7 +144,8 @@ def render_full_report(result: EngineV3Result) -> str:
 
             lines.append(f"    预期收益: {theme.expected_return}  "
                          f"风险: {theme.risk}  "
-                         f"轮动概率: {theme.rotation_prob_5d:.0f}%")
+                         f"轮动概率: {theme.rotation_prob_5d:.0f}%  "
+                         f"迁移优先: {theme.migration_priority:.0f}")
             lines.append(f"    信号: {theme.signal} — {sig_desc}")
 
             # 8个因子分
@@ -157,10 +161,30 @@ def render_full_report(result: EngineV3Result) -> str:
             )
             lines.append(f"    因子分解: {factors}")
 
-            # 龙头股
+            # 龙头股 (含持续性标签)
             if theme.top_leaders:
-                leaders = ", ".join(theme.top_leaders[:5])
-                lines.append(f"    龙头股: {leaders}")
+                lr = theme.leader_result
+                persistent = set(lr.persistent_leaders) if lr else set()
+                pdays = lr.persistent_days if lr else {}
+                leaders = []
+                for name in theme.top_leaders[:5]:
+                    tag = ""
+                    if name in persistent:
+                        d = pdays.get(name, 2)
+                        tag = f"(持续{d}d)"
+                    leaders.append(f"{name}{tag}")
+                lines.append(f"    龙头股: {'、'.join(leaders)}")
+
+            # 中军 (大市值+大成交额)
+            if theme.leader_result and theme.leader_result.zhongjun:
+                zj = theme.leader_result.zhongjun
+                zd = theme.leader_result.zhongjun_days
+                zj_display = []
+                for name in zj:
+                    tag = f"(持续{zd.get(name, 1)}d)" if name in zd else ""
+                    zj_display.append(f"{name}{tag}")
+                lines.append(f"    中军: {'、'.join(zj_display)}")
+
             if theme.etf_code:
                 lines.append(f"    ETF: {theme.etf_code}")
             lines.append("")

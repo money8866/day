@@ -40,6 +40,8 @@ from theme_engine.services.etf_service import ETFService
 from theme_engine.services.stock_service import StockService
 from theme_engine.services.theme_service import ThemeService
 
+from theme_engine.score_v3.ai_report import generate_ai_report
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +64,8 @@ class V3Engine:
         self._dry_run: bool = False
         self._stage_history: Dict[str, Dict[str, Any]] = {}
         self._stage_history_path = Path(__file__).resolve().parent / "cache" / "stage_history.json"
+        self._leader_history: Dict[str, Dict[str, Any]] = {}
+        self._leader_history_path = Path(__file__).resolve().parent / "cache" / "leader_history.json"
 
     async def _load_stage_history(self) -> Dict[str, Dict[str, Any]]:
         """加载历史阶段记录."""
@@ -99,6 +103,56 @@ class V3Engine:
             days = 1
         self._stage_history[theme_code] = {"stage": stage, "date": trade_date, "days": days}
 
+    # ── 龙头/中军历史 ──
+
+    async def _load_leader_history(self) -> Dict[str, Dict[str, Any]]:
+        """加载前日龙头/中军记录."""
+        if self._leader_history_path.exists():
+            try:
+                with open(self._leader_history_path, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _save_leader_history(self, history: Dict[str, Dict[str, Any]]) -> None:
+        """保存龙头/中军记录."""
+        self._leader_history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._leader_history_path, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+
+    def _get_prev_leaders(self, theme_code: str) -> tuple[List[str], List[str]]:
+        """获取前一日龙头和中军名单."""
+        record = self._leader_history.get(theme_code, {})
+        return record.get("leaders", []), record.get("zhongjun", [])
+
+    def _update_leader_history(self, theme_code: str, leaders: List[str], zhongjun: List[str]) -> None:
+        """更新龙头/中军记录 (不立即写盘)."""
+        old_rec = self._leader_history.get(theme_code, {})
+        # 龙头持续性天数递增
+        old_leaders = old_rec.get("leaders", [])
+        leader_days = dict(old_rec.get("leader_days", {}))
+        for name in leaders:
+            if name in old_leaders:
+                leader_days[name] = leader_days.get(name, 1) + 1
+            else:
+                leader_days[name] = 1
+        # 中军持续性天数递增
+        old_zhongjun = old_rec.get("zhongjun", [])
+        zhongjun_days = dict(old_rec.get("zhongjun_days", {}))
+        for name in zhongjun:
+            if name in old_zhongjun:
+                zhongjun_days[name] = zhongjun_days.get(name, 1) + 1
+            else:
+                zhongjun_days[name] = 1
+
+        self._leader_history[theme_code] = {
+            "leaders": leaders,
+            "leader_days": leader_days,
+            "zhongjun": zhongjun,
+            "zhongjun_days": zhongjun_days,
+        }
+
     async def run(
         self,
         trade_date: Optional[str] = None,
@@ -134,8 +188,9 @@ class V3Engine:
         )
 
         try:
-            # 0. 加载阶段历史
+            # 0. 加载历史记录
             self._stage_history = await self._load_stage_history()
+            self._leader_history = await self._load_leader_history()
 
             # 1. 加载 V3 配置
             cfg = load_config()
@@ -205,13 +260,23 @@ class V3Engine:
             result.ranking = all_scores
             result.top_themes = all_scores[:10]
 
-            # 6. 保存阶段历史 (非 dry_run 模式)
+            # 6. 保存历史记录 (非 dry_run 模式)
             if not self._dry_run:
                 self._save_stage_history(self._stage_history)
+                self._save_leader_history(self._leader_history)
 
             # 7. 摘要
             summary = self._build_summary(all_scores)
             logger.info("V3排名 Top5: %s", " | ".join(summary))
+
+            # 8. AI 研判报告 + 双通道微信推送 (非 dry_run 时才实际推送)
+            ai_report = generate_ai_report(
+                result,
+                trade_date,
+                dry_run=self._dry_run,
+            )
+            if ai_report:
+                logger.info("AI 研判报告已生成 (%d字符)", len(ai_report))
 
             elapsed = (datetime.now() - start_time).total_seconds()
             logger.info(
@@ -275,16 +340,25 @@ class V3Engine:
             )
             breadth_score = breadth_result.score
 
-        # 4. 龙头质量
+        # 4. 龙头质量 (含持续性追踪 + 中军识别)
         leader_result = None
         leader_score = 0.0
         if "leader" not in skip_factors:
+            prev_leaders, prev_zhongjun = self._get_prev_leaders(theme_code)
             leader_result = await calc_leader(
                 theme_code, trade_date, enriched_stocks,
+                prev_leaders=prev_leaders,
+                prev_zhongjun=prev_zhongjun,
             )
             leader_score = leader_result.score
             if leader_result and leader_result.top_leaders:
                 leader_result.top_leaders = leader_result.top_leaders[:5]
+            # 更新龙头/中军历史
+            self._update_leader_history(
+                theme_code,
+                leader_result.top_leaders,
+                leader_result.zhongjun,
+            )
 
         # 5. 龙头扩散 (使用当前数据计算宽度/集中度)
         leader_expand_result = None

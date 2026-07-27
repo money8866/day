@@ -305,40 +305,16 @@ class ThreeGateFilter:
 
 # Trade Score: "今天是不是一个好买点？"
 # 基于 Entry Signal / 门禁状态 / Alpha / 风险 综合判断
-def compute_trade_score(
-    entry_signal: str, entry_score: float, stock_alpha: float,
-    risk_level: str = 'medium', holding_priority: int = 3,
-    entry_reason: str = '',
-) -> float:
+def compute_trade_score(final_score: float, entry_score: float) -> float:
     """
-    Trade Score (0-100) — 当前是否值得交易
+    Trade Score (0-100) — 真正用于排序和实盘推荐
 
-    权重分配：
-      Signal Base   60%  — SIGNAL_RANK 归一化
-      Entry Score   15%  — entry_score / 100 * 15
-      Alpha Bonus   10%  — stock_alpha / 100 * 10
-      Risk Adj      10%  — low=+5, medium=0, high=-10
-      Priority       5%  — holding_priority / 5 * 5
+    Trade Score = 0.70 × Final Score + 0.30 × Entry Score
+
+    Final Score：衡量"这只股票整体有多值得关注"
+    Entry Score：衡量"今天是不是一个好的介入时点"
     """
-    # Signal base (60%)
-    signal_base = SIGNAL_RANK.get(entry_signal, 35) / 70 * 60  # 70=max rank
-
-    # Entry score bonus (15%)
-    entry_bonus = min(entry_score, 100) / 100 * 15
-
-    # Alpha bonus (10%)
-    alpha_bonus = min(stock_alpha, 100) / 100 * 10
-
-    # Risk adjustment (10%)
-    risk_adj = {'low': 8, 'medium': 4, 'high': -5}.get(risk_level, 4)
-
-    # Priority bonus (5%)
-    priority_bonus = min(holding_priority, 5) / 5 * 5
-
-    # Gate penalty: 被门禁拦截的信号 Trade Score 打折
-    gate_penalty = -15 if '门禁' in entry_reason else 0
-
-    raw = signal_base + entry_bonus + alpha_bonus + risk_adj + priority_bonus + gate_penalty
+    raw = 0.70 * min(final_score, 100) + 0.30 * min(entry_score, 100)
     return round(min(100, max(0, raw)), 1)
 
 
@@ -1091,15 +1067,10 @@ def run_entry_timing_for_all(
             sub_stage = sub_data.get('subtheme_stage', '')
             for code, entry in stocks_data.items():
                 sa = stock_alpha_map.get(code, 50) if stock_alpha_map else 50
-                # Trade Score
-                entry['trade_score'] = compute_trade_score(
-                    entry.get('entry_signal', 'WATCH'),
-                    entry.get('entry_score', 0),
-                    sa,
-                    entry.get('risk_level', 'medium'),
-                    entry.get('holding_priority', 3),
-                    entry.get('entry_reason', ''),
-                )
+                fs = stocks_output.get(code, {}).get('final_score', 50) or 50
+                # Trade Score = 0.70 × Final + 0.30 × Entry
+                es = entry.get('entry_score', 0) or 0
+                entry['trade_score'] = compute_trade_score(fs, es)
                 trade_count += 1
                 # Investment Score
                 rr = role_results.get(code, {})
@@ -1136,12 +1107,14 @@ def print_entry_timing_report(all_results: Dict[str, Dict], top_n: int = 10,
                     **entry,
                 })
 
-    # 按入场分排序
-    flat.sort(key=lambda x: -x['entry_score'])
+    # 按 Trade Score 排序（用于实盘推荐）
+    for item in flat:
+        item['_sort_key'] = item.get('trade_score', item.get('entry_score', 0))
+    flat.sort(key=lambda x: -x['_sort_key'])
 
-    print(f"\n  [EntryTiming] 入场优先级 Top {min(top_n, len(flat))}:")
-    header = (f"  {'代码':<10} {'名称':<8} {'信号':<16} {'E分':<5} "
-              f"{'T分':<5} {'I分':<5} {'α':<5} {'风险':<6} {'星级':<4}")
+    print(f"\n  [EntryTiming] 入场优先级 Top {min(top_n, len(flat))} (按 Trade Score):")
+    header = (f"  {'代码':<10} {'名称':<8} {'信号':<16} {'E':<5} "
+              f"{'T':<5} {'I':<5} {'α':<5} {'风险':<6} {'星级':<4}")
     print(header)
     print(f"  {'─'*len(header)}")
     for item in flat[:top_n]:

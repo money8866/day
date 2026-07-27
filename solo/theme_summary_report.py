@@ -325,48 +325,62 @@ class ThemeEssenceReport:
                 theme_picks = summary.get('top_picks', [])
                 for pick in theme_picks:
                     if pick.get('subtheme') == s['name']:
+                        ts = pick.get('trade_score', pick.get('final_score', 0))
                         lines.append(f"    │   >>> TOP PICK: {pick['name']} {pick['role']} "
-                                     f"Final={pick['final_score']} α={pick['stock_alpha']}")
+                                     f"T={ts:.0f} F={pick['final_score']:.0f} α={pick['stock_alpha']:.0f}")
                 lines.append("")
 
-            # 主题 Top Picks 汇总
+            # 主题 Top Picks 汇总（按 Trade Score）
             if summary['top_picks']:
                 lines.append(f"    主题 Top Picks:")
-                for pick in summary['top_picks'][:3]:
+                for pick in sorted(summary['top_picks'], 
+                                   key=lambda x: -(x.get('trade_score', x.get('final_score', 0))))[:3]:
+                    ts = pick.get('trade_score', pick.get('final_score', 0))
+                    # 优先用已丰富的 entry_signal，再回退到 stock 查找，最后用合成信号
+                    actual_signal = (pick.get('entry_signal') or 
+                                     self.stocks.get(pick.get('code', ''), {}).get('entry_signal') or
+                                     pick.get('signal', ''))
                     lines.append(f"      → {pick['name']:<6} {pick['role']:<10} "
-                                 f"α={pick['stock_alpha']} Final={pick['final_score']} "
-                                 f"{SIGNAL_SYMBOL.get(pick['signal'],'')} {pick['signal']}")
+                                 f"α={pick['stock_alpha']:.0f} T={ts:.0f} "
+                                 f"{SIGNAL_SYMBOL.get(actual_signal,'')} {actual_signal}")
                 lines.append("")
 
-        # ── 全市场 Top Picks ──
+        # ── 全市场 Top Picks（按 Trade Score 排序） ──
         lines.append(self.SEPARATOR_H)
-        lines.append("【全市场 Top Picks - 按 Final Score 排序】")
+        lines.append("【全市场 Top Picks - 按 Trade Score 排序】")
         lines.append(self.SEPARATOR_H)
-        sorted_picks = sorted(self.top_picks, key=lambda x: -x['final_score'])
+        sorted_picks = sorted(self.top_picks, key=lambda x: -(x.get('trade_score', x.get('final_score', 0))))
         for idx, pick in enumerate(sorted_picks[:20], 1):
-            sig_sym = SIGNAL_SYMBOL.get(pick['signal'], '')
-            prio = '★' * pick.get('holding_priority', 0) if pick.get('holding_priority') else ''
-            lines.append(f"  {idx:2d}. {sig_sym} {pick['name']:<6} "
-                         f"α={pick['stock_alpha']:.0f} Final={pick['final_score']:.0f} "
+            # 优先用已丰富的 entry_signal，再回退到 stock 查找
+            actual_signal = (pick.get('entry_signal') or 
+                             self.stocks.get(pick.get('code', ''), {}).get('entry_signal') or
+                             pick.get('signal', ''))
+            sig_sym = SIGNAL_SYMBOL.get(actual_signal, '')
+            prio = '★' * (pick.get('holding_priority', 0) or
+                          self.stocks.get(pick.get('code', ''), {}).get('holding_priority', 0) or 0)
+            ts = pick.get('trade_score', pick.get('final_score', 0))
+            lines.append(f"  {idx:2d}. {pick['name']:<6} "
+                         f"T={ts:.0f} α={pick['stock_alpha']:.0f} "
                          f"{pick['role']:<10} {pick['subtheme']:<10} "
-                         f"[{pick['signal']}] {prio}")
+                         f"[{actual_signal}] {prio}")
 
-        # ── 买入信号 Top 20（按 entry_score） ──
+        # ── 买入信号 Top 20（按 Trade Score 排序，与 Top Picks 天然一致） ──
         lines.append("")
         lines.append(self.SEPARATOR_H)
-        lines.append("【买入信号 Top 20 - 按 Entry Score 排序】")
+        lines.append("【买入信号 Top 20 - 按 Trade Score 排序】")
         lines.append(self.SEPARATOR_H)
         buy_list = []
         for code, info in self.stocks.items():
             sig = info.get('entry_signal', '')
             if sig in ('BREAKOUT BUY', 'PULLBACK BUY', 'PRE_ROTATE BUY'):
-                buy_list.append((code, info))
-        buy_list.sort(key=lambda x: -x[1].get('entry_score', 0))
-        for idx, (code, info) in enumerate(buy_list[:20], 1):
+                ts = info.get('trade_score', info.get('final_score', 0))
+                buy_list.append((code, info, ts))
+        buy_list.sort(key=lambda x: -x[2])  # 按 Trade Score
+        for idx, (code, info, ts) in enumerate(buy_list[:20], 1):
             sig_sym = SIGNAL_SYMBOL.get(info.get('entry_signal', ''), '')
             prio = '★' * info.get('holding_priority', 0)
             lines.append(f"  {idx:2d}. {sig_sym} {info.get('name',''):<6}({code:.9s}) "
-                         f"T={info.get('trade_score',0):.0f} I={info.get('investment_score',0):.0f} "
+                         f"T={ts:.0f} I={info.get('investment_score',0):.0f} "
                          f"α={info.get('stock_alpha',0):.0f} "
                          f"{info.get('role',''):<10} {info.get('subtheme',''):<10} "
                          f"[{info.get('entry_signal','')}] {prio}")
@@ -433,10 +447,15 @@ class ThemeEssenceReport:
             # Top Picks
             if summary['top_picks']:
                 lines.append("**主题 Top Picks:**\n")
-                for pick in summary['top_picks'][:3]:
+                for pick in sorted(summary['top_picks'], 
+                                   key=lambda x: -(x.get('trade_score', x.get('final_score', 0))))[:3]:
+                    ts = pick.get('trade_score', pick.get('final_score', 0))
+                    actual_signal = (pick.get('entry_signal') or 
+                                     self.stocks.get(pick.get('code', ''), {}).get('entry_signal') or
+                                     pick.get('signal', ''))
                     lines.append(f"- {pick['name']} `{pick['role']}` "
-                                 f"Alpha={pick['stock_alpha']} Final={pick['final_score']} "
-                                 f"Signal={pick['signal']}")
+                                 f"α={pick['stock_alpha']:.0f} T={ts:.0f} "
+                                 f"Signal={actual_signal}")
                 lines.append("")
 
         lines.append("---\n")
