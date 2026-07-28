@@ -43,7 +43,7 @@ DIM_EARNINGS: Final[str] = "earnings"
 DIM_INSTITUTION: Final[str] = "institution"
 DIM_CHIP: Final[str] = "chip"
 DIM_TREND: Final[str] = "trend"
-DIM_INDUSTRY: Final[str] = "industry"
+DIM_INDUSTRY: Final[str] = "industry_score"
 DIM_FRESHNESS: Final[str] = "freshness"
 DIM_EXPECTATION_GAP: Final[str] = "expectation_gap"
 DIM_SIMILARITY: Final[str] = "similarity"
@@ -82,6 +82,28 @@ MARKET_MULTIPLIER: Final[dict[MarketRegime, float]] = {
 
 
 # ──────────────────────────────────────────────
+# ELD V2 机构吸筹状态枚举
+# ──────────────────────────────────────────────
+class InstitutionState(Enum):
+    ACCUMULATION = "吸筹"
+    WASHING = "洗盘"
+    LAUNCH = "启动"
+    ACCELERATE = "加速"
+    DISTRIBUTE = "派发"
+    UNKNOWN = "未知"
+
+
+# ──────────────────────────────────────────────
+# 业绩回踩买点信号枚举
+# ──────────────────────────────────────────────
+class EarningsBuySignal(Enum):
+    BUY = "BUY"
+    WATCH = "WATCH"
+    IGNORE = "IGNORE"
+    NONE = "NONE"
+
+
+# ──────────────────────────────────────────────
 # 买点状态枚举
 # ──────────────────────────────────────────────
 class BuyPointState(Enum):
@@ -91,6 +113,7 @@ class BuyPointState(Enum):
     BASE_BUILDING = "BASE_BUILDING"
     SECOND_BREAKOUT = "SECOND_BREAKOUT"
     TREND = "TREND"
+    EARNINGS_PULLBACK = "EARNINGS_PULLBACK"  # 业绩回踩买点
     NONE = "NONE"
 
 
@@ -111,7 +134,9 @@ CSV_COLUMNS: Final[list[str]] = [
     "announce_date",
     "forecast_pct",
     "els",
+    "els_v2",
     "final_score",
+    "final_score_v2",
     "rank",
     DIM_EVENT_QUALITY,
     DIM_INSTITUTION,
@@ -121,8 +146,14 @@ CSV_COLUMNS: Final[list[str]] = [
     DIM_FRESHNESS,
     DIM_EXPECTATION_GAP,
     DIM_SIMILARITY,
+    "expectation_gap_v2",
+    "institution_accumulation",
+    "institution_state",
+    "earnings_buy_signal",
+    "earnings_buy_score",
     "buy_point",
     "recommendation",
+    "recommendation_v2",
 ]
 
 

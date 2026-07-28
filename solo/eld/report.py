@@ -63,10 +63,10 @@ class ReportGenerator:
             lines.append("")
             return "\n".join(lines)
 
-        lines.append("## TOP 排行榜")
+        lines.append("## TOP 排行榜 (ELD V2)")
         lines.append("")
-        lines.append("| 排名 | 代码 | 名称 | 行业 | 预告增幅 | ELS | 最终分 | 事件 | 基本面 | 资金 | 筹码 | 趋势 | 行业 | 时效 | 预期差 | 相似度 | 买点 | 建议 |")
-        lines.append("|------|------|------|------|----------|------|--------|------|--------|------|------|------|------|------|--------|--------|------|------|")
+        lines.append("| 排名 | 代码 | 名称 | 行业 | 预告增幅 | V2分 | V1分 | 事件 | 预期差V2 | 趋势 | 机构吸筹 | 主题 | 买点信号 | 机构状态 | 建议V2 |")
+        lines.append("|------|------|------|------|----------|------|------|------|----------|------|----------|------|----------|----------|--------|")
 
         top_n = min(self.rc.top_n, len(report.results))
         for r in report.results[:top_n]:
@@ -74,11 +74,11 @@ class ReportGenerator:
             if self.rc.include_detail:
                 lines.append(
                     f"| {d['rank']} | {d['ts_code']} | {d['name']} | {d['industry']} "
-                    f"| {d['forecast_pct']:.0f}% | {d['els']:.1f} | {d['final_score']:.1f} "
-                    f"| {d['event_quality']:.0f} | {d['earnings']:.0f} | {d['institution']:.0f} "
-                    f"| {d['chip']:.0f} | {d['trend']:.0f} | {d['industry']:.0f} "
-                    f"| {d['freshness']:.0f} | {d['expectation_gap']:.0f} | {d['similarity']:.0f} "
-                    f"| {d['buy_point']} | {d['recommendation']} |"
+                    f"| {d['forecast_pct']:.0f}% | {d['final_score_v2']:.1f} | {d['final_score']:.1f} "
+                    f"| {d['event_quality']:.0f} | {d['expectation_gap_v2']:.0f} "
+                    f"| {d['trend']:.0f} | {d['institution_accumulation']:.0f} "
+                    f"| {d['industry_score']:.0f} | {d['earnings_buy_signal']} "
+                    f"| {d['institution_state']} | {d['recommendation_v2']} |"
                 )
 
         lines.append("")
@@ -94,39 +94,65 @@ class ReportGenerator:
                 lines.append(f"- **行业**: {r.industry}")
                 lines.append(f"- **公告日期**: {r.announce_date}")
                 lines.append(f"- **预告增幅**: {r.forecast_pct:.1f}%")
-                lines.append(f"- **ELS**: {r.els:.1f} → **最终分**: {r.final_score:.1f}")
-                lines.append(f"- **建议**: {r.recommendation}")
+                lines.append(f"- **ELS V2**: {r.els_v2:.1f} → **最终分V2**: {r.final_score_v2:.1f}")
+                lines.append(f"- **ELS V1**: {r.els:.1f} → **最终分V1**: {r.final_score:.1f}")
+                lines.append(f"- **建议(V2)**: {r.recommendation_v2}")
                 lines.append("")
 
-                # 各维度评分
-                lines.append("| 维度 | 评分 | 逻辑 |")
-                lines.append("|------|------|------|")
-                details = [
+                # ELD V2 新增维度概要
+                lines.append("#### ELD V2 新增维度")
+                lines.append("")
+                lines.append(f"- **预期差V2**: {r.expectation_gap_v2_score:.0f}分")
+                if r.expectation_gap_v2_detail:
+                    eg = r.expectation_gap_v2_detail
+                    lines.append(f"  - 行业增速: {eg.industry_growth:+.1f}% | 公司增速: {eg.company_growth:+.1f}% | 超额: {eg.gap:+.1f}%")
+                    lines.append(f"  - 加速度: {eg.acceleration:+.1f}% | 可比公司: {eg.peer_count}")
+                lines.append(f"- **机构吸筹**: {r.institution_accumulation_score:.0f}分 | 状态: {r.institution_state}")
+                if r.institution_accumulation_detail:
+                    ia = r.institution_accumulation_detail
+                    lines.append(f"  - 资金趋势: {ia.fund_flow_score:.0f} | 量价结构: {ia.volume_price_score:.0f} | 筹码变化: {ia.chip_change_score:.0f}")
+                lines.append(f"- **业绩回踩买点**: {r.earnings_buy_signal} (评分: {r.earnings_buy_score:.0f})")
+                if r.earnings_buy_point_detail:
+                    ebp = r.earnings_buy_point_detail
+                    lines.append(f"  - 距公告: {ebp.days_since_announce}天 | 回撤: {ebp.pullback_from_high_pct:.1f}% | 量比: {ebp.volume_ratio:.2f}")
+                lines.append("")
+
+                # V2 各维度评分逻辑
+                lines.append("#### V2 评分详情")
+                lines.append("")
+                lines.append("| V2维度 | 评分 | 逻辑 |")
+                lines.append("|--------|------|------|")
+                v2_details = [
                     ("事件质量", r.event_detail),
-                    ("基本面", r.earnings_detail),
-                    ("机构资金", r.institution_detail),
-                    ("筹码", r.chip_detail),
-                    ("趋势", r.trend_detail),
-                    ("行业", r.industry_detail),
-                    ("公告时效", r.freshness_detail),
-                    ("预期差", r.expectation_gap_detail),
-                    ("历史相似度", r.similarity_detail),
+                    ("预期差V2", r.expectation_gap_v2_detail),
+                    ("趋势Alpha", r.trend_detail),
+                    ("机构吸筹", r.institution_accumulation_detail),
+                    ("行业主题", r.industry_detail),
+                    ("ETF", None),
                 ]
-                for name, detail in details:
+                for name, detail in v2_details:
                     if detail and detail.logic:
                         brief = detail.logic[0] if len(detail.logic) > 0 else ""
-                        lines.append(f"| {name} | {detail.score:.0f} | {brief} |")
+                        score = detail.score
+                        lines.append(f"| {name} | {score:.0f} | {brief} |")
                     elif detail:
                         lines.append(f"| {name} | {detail.score:.0f} | - |")
+                    else:
+                        lines.append(f"| {name} | 50 | ETF评分默认中性 |")
 
                 lines.append("")
 
-                # 买点
+                # 买点详情
+                lines.append("#### 买点信号")
+                lines.append("")
                 if r.buy_point_detail:
-                    lines.append(f"**买点信号**: {r.buy_point_detail.state.value} (星级: {'★' * r.buy_point_detail.stars_int})")
-                    if r.buy_point_detail.logic:
-                        lines.append("- " + "\n- ".join(r.buy_point_detail.logic))
-                    lines.append("")
+                    lines.append(f"- **传统买点**: {r.buy_point_detail.state.value} (星级: {'★' * r.buy_point_detail.stars_int})")
+                lines.append(f"- **业绩回踩买点**: {r.earnings_buy_signal}")
+                if r.earnings_buy_point_detail and r.earnings_buy_point_detail.logic:
+                    lines.append("  - 回踩逻辑:")
+                    for log_line in r.earnings_buy_point_detail.logic[:5]:  # 只显示前5条
+                        lines.append(f"    - {log_line}")
+                lines.append("")
 
                 lines.append("---")
                 lines.append("")
@@ -160,8 +186,9 @@ class ReportGenerator:
         conn = sqlite3.connect(filepath)
         cursor = conn.cursor()
 
+        cursor.execute("DROP TABLE IF EXISTS eld_results")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS eld_results (
+            CREATE TABLE eld_results (
                 rank INTEGER,
                 ts_code TEXT,
                 name TEXT,
@@ -170,7 +197,9 @@ class ReportGenerator:
                 announce_date TEXT,
                 forecast_pct REAL,
                 els REAL,
+                els_v2 REAL,
                 final_score REAL,
+                final_score_v2 REAL,
                 event_quality REAL,
                 earnings REAL,
                 institution REAL,
@@ -180,8 +209,14 @@ class ReportGenerator:
                 freshness REAL,
                 expectation_gap REAL,
                 similarity REAL,
+                expectation_gap_v2 REAL,
+                institution_accumulation REAL,
+                institution_state TEXT,
+                earnings_buy_signal TEXT,
+                earnings_buy_score REAL,
                 buy_point TEXT,
                 recommendation TEXT,
+                recommendation_v2 TEXT,
                 run_date TEXT
             )
         """)
@@ -192,15 +227,20 @@ class ReportGenerator:
             d = r.to_dict()
             cursor.execute(
                 """INSERT INTO eld_results VALUES (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
                 )""",
                 (
                     d["rank"], d["ts_code"], d["name"], d["industry"], d.get("theme", ""),
-                    d["announce_date"], d["forecast_pct"], d["els"], d["final_score"],
+                    d["announce_date"], d["forecast_pct"],
+                    d["els"], d["els_v2"], d["final_score"], d["final_score_v2"],
                     d["event_quality"], d["earnings"], d["institution"],
-                    d["chip"], d["trend"], d["industry"],
+                    d["chip"], d["trend"], d["industry_score"],
                     d["freshness"], d["expectation_gap"], d["similarity"],
-                    d["buy_point"], d["recommendation"], self._get_date_str(),
+                    d["expectation_gap_v2"], d["institution_accumulation"],
+                    d["institution_state"], d["earnings_buy_signal"],
+                    d["earnings_buy_score"],
+                    d["buy_point"], d["recommendation"], d["recommendation_v2"],
+                    self._get_date_str(),
                 ),
             )
 

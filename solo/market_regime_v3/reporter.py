@@ -140,6 +140,7 @@ class MarketReportGenerator:
         leader_result=None,
         trading_style_result=None,
         risk_control_result=None,
+        v61_data=None,
     ) -> Dict:
         """生成6层Pipeline完整报告"""
         # 基础报告
@@ -216,7 +217,176 @@ class MarketReportGenerator:
         markdown = self._render_markdown_v2(report_dict)
         report_dict["markdown"] = markdown
 
+        # ── V6.1: 机构研报格式个股输出 ──
+        if v61_data:
+            report_dict.update(v61_data)
+        v61_markdown = self._render_v61_institutional_report(report_dict)
+        if v61_markdown:
+            report_dict["markdown"] += "\n" + v61_markdown
+
         return report_dict
+
+    # ------------------------------------------------------------------
+    # V6.1 机构研报格式输出
+    # ------------------------------------------------------------------
+
+    def _render_v61_institutional_report(self, data: Dict) -> str:
+        """渲染V6.1机构研报格式的个股分析（V6.2增强：Pattern Type/Adjusted EV/System Mode）"""
+        lines = []
+        pullback_list = data.get("pullback_qualified", [])
+        if not pullback_list:
+            return ""
+
+        pattern_data = data.get("v61_pattern")
+        ev_data = data.get("v61_ev")
+        sm_data = data.get("v61_smart_money")
+        rb_data = data.get("v61_risk_budget")
+        overview = data.get("overview", {})
+
+        # V6.2: 系统模式
+        system_mode = 'LIVE'
+        if rb_data:
+            system_mode = rb_data.system_mode
+
+        lines.append("")
+        lines.append("## 十四、V6.2 候选标的深度分析")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append(f"**系统模式**: {system_mode}")
+        if rb_data and rb_data.learning_count > 0:
+            lines.append(f" | **学习仓位**: {rb_data.learning_count}只")
+        lines.append("")
+        lines.append("")
+
+        for pq in pullback_list:
+            code = pq.get('ts_code', '')
+            name = pq.get('name', '')
+            theme = pq.get('theme', '')
+            subtheme = pq.get('subtheme', '')
+            dom_theme = pq.get('dominant_theme', '')
+
+            pm = pattern_data.matches.get(code) if pattern_data and pattern_data.matches else None
+            ev_r = ev_data.results.get(code) if ev_data and ev_data.results else None
+            sm_r = sm_data.get(code) if sm_data else None
+            pos_r = rb_data.positions.get(code) if rb_data and rb_data.positions else None
+
+            lines.append(f"### {name}（{code}）")
+            lines.append("")
+            lines.append(f"| 维度 | 数据 |")
+            lines.append(f"|------|------|")
+            lines.append(f"| Market Regime | {overview.get('regime', 'N/A')}（{overview.get('regime_cn', '')}） |")
+            lines.append(f"| Market Score | {overview.get('market_score', 0):.0f}/100 |")
+            lines.append(f"| Theme | {theme} |")
+            if subtheme:
+                lines.append(f"| Subtheme | {subtheme} |")
+            if dom_theme and dom_theme != theme:
+                lines.append(f"| Dominant Theme | {dom_theme} |")
+            lines.append(f"| Alpha Rank | {pq.get('leader_score', 0):.0f}/100（龙头评分） |")
+            lines.append("")
+
+            # Historical Pattern — V6.2 含Pattern Type
+            if pm:
+                lines.append("#### Pattern")
+                lines.append("")
+                lines.append(f"| 指标 | 数值 |")
+                lines.append(f"|------|------|")
+                lines.append(f"| 模式类型 | {pm.pattern_type} |")
+                lines.append(f"| 相似案例 | {pm.n_samples}次 |")
+                if pm.n_samples >= 5:
+                    lines.append(f"| 上涨概率 | {pm.win_probability:.0%} |")
+                    lines.append(f"| 平均收益(5日) | {pm.avg_return_5d:+.2%} |")
+                    lines.append(f"| 平均收益(10日) | {pm.avg_return_10d:+.2%} |")
+                    lines.append(f"| 平均收益(20日) | {pm.avg_return_20d:+.2%} |")
+                    lines.append(f"| 中位收益(10日) | {pm.median_return_10d:+.2%} |")
+                    lines.append(f"| 预期最大回撤 | {pm.avg_max_drawdown:.1%} |")
+                    lines.append(f"| 平均持有天数 | {pm.avg_holding_days:.0f}天 |")
+                else:
+                    lines.append(f"| 上涨概率 | {pm.win_probability:.0%}（冷启动） |")
+                lines.append("")
+            else:
+                lines.append("#### Pattern")
+                lines.append("")
+                lines.append("无匹配数据")
+                lines.append("")
+
+            # Smart Money
+            if sm_r:
+                lines.append("#### Smart Money")
+                lines.append("")
+                att = sm_r.attribution
+                lines.append(f"| 因子 | 贡献 |")
+                lines.append(f"|------|------|")
+                lines.append(f"| Smart Money Score | {sm_r.composite_score:.0f}分 |")
+                lines.append(f"| 主力资金 | +{att.main_force_score:.0f} |")
+                lines.append(f"| 超大单 | +{att.super_large_score:.0f} |")
+                lines.append(f"| 筹码 | +{att.chip_concentration:.0f} |")
+                lines.append(f"| 换手 | +{att.turnover_health:.0f} |")
+                lines.append(f"| 方向 | {sm_r.direction} |")
+                lines.append("")
+
+            # Expected Value — V6.2 含Adjusted EV + Confidence Level
+            if ev_r:
+                lines.append("#### Expected Value")
+                lines.append("")
+                lines.append(f"| 指标 | 数值 |")
+                lines.append(f"|------|------|")
+                lines.append(f"| Probability | {ev_r.win_probability:.0%} |")
+                lines.append(f"| Expected 5D | {ev_r.expected_return_5d:+.2%} |")
+                lines.append(f"| Expected 10D (EV) | {ev_r.expected_value_10d:+.2%} |")
+                lines.append(f"| Expected 20D | {ev_r.expected_return_20d:+.2%} |")
+                lines.append(f"| Expected Drawdown | {ev_r.expected_drawdown:.1%} |")
+                lines.append(f"| Risk Reward Ratio | {ev_r.risk_reward_ratio:.2f} |")
+                lines.append(f"| EV Score | {ev_r.ev_score:.0f}分 |")
+                lines.append(f"| Confidence | {ev_r.confidence:.2f} |")
+                lines.append(f"| Confidence Level | {ev_r.confidence_level}（n={ev_r.n_samples}） |")
+                lines.append(f"| **Adjusted EV** | **{ev_r.adjusted_ev:+.2%}** |")
+                lines.append(f"| 建议 | {ev_r.signal.value} |")
+                lines.append("")
+
+            # Risk Budget Position — V6.2 含System Mode + Learning
+            if pos_r and pos_r.position_pct > 0:
+                exp = pos_r.explanation
+                lines.append("#### Position")
+                lines.append("")
+                lines.append(f"| 维度 | 说明 |")
+                lines.append(f"|------|------|")
+                lines.append(f"| 系统模式 | {exp.system_mode} |")
+                if pos_r.is_learning:
+                    lines.append(f"| 仓位类型 | **学习仓位**（仅用于积累样本） |")
+                lines.append(f"| 最终仓位 | {exp.final_position_pct:.1f}% |")
+                if not pos_r.is_learning:
+                    lines.append(f"| 仓位计算 | {exp.base_position_pct:.0f}% × {exp.market_multiplier:.1f}(市) × {exp.ev_multiplier:.1f}(EV) × {exp.risk_multiplier:.1f}(风) |")
+                lines.append(f"| 市场状态 | {exp.regime_label} → 乘数{exp.market_multiplier:.1f} |")
+                if not pos_r.is_learning:
+                    lines.append(f"| EV贡献 | {exp.ev_label} → 乘数{exp.ev_multiplier:.1f} |")
+                lines.append(f"| 风险贡献 | {exp.risk_label} |")
+                lines.append(f"| 单票上限 | {exp.max_per_position_pct:.0f}% |")
+                lines.append("")
+            elif pos_r:
+                lines.append("#### Position")
+                lines.append("")
+                lines.append(f"不建仓（信号：{pos_r.signal} | 模式: {pos_r.explanation.system_mode}）")
+                lines.append("")
+
+            # 入场逻辑
+            lines.append("#### Entry Logic")
+            lines.append("")
+            stop_pct = (pq.get('stop_loss', 0) / max(pq.get('ref_price', 1), 0.01) - 1) * 100
+            profit_pct = (pq.get('take_profit', 0) / max(pq.get('ref_price', 1), 0.01) - 1) * 100
+            lines.append(f"| 指标 | 数值 |")
+            lines.append(f"|------|------|")
+            lines.append(f"| 入场参考 | {pq.get('ref_price', 0):.2f} |")
+            lines.append(f"| 止损 | {pq.get('stop_loss', 0):.2f}（{stop_pct:+.1f}%） |")
+            lines.append(f"| 止盈 | {pq.get('take_profit', 0):.2f}（{profit_pct:+.1f}%） |")
+            lines.append(f"| ATR | {pq.get('atr', 0):.2f} |")
+            lines.append(f"| 回踩均线 | {pq.get('pullback_ma', '')} |")
+            lines.append(f"| 60日涨幅 | {pq.get('ret_60d', 0)*100:.0f}% |")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # V2 Markdown 渲染

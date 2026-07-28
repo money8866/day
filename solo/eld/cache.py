@@ -49,10 +49,9 @@ CREATE TABLE IF NOT EXISTS price_cache (
 
 CREATE TABLE IF NOT EXISTS price_batch_cache (
     ts_code TEXT NOT NULL,
-    date_range TEXT NOT NULL,
     data_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (ts_code, date_range)
+    PRIMARY KEY (ts_code)
 );
 
 CREATE TABLE IF NOT EXISTS daily_basic_cache (
@@ -65,10 +64,9 @@ CREATE TABLE IF NOT EXISTS daily_basic_cache (
 
 CREATE TABLE IF NOT EXISTS moneyflow_cache (
     ts_code TEXT NOT NULL,
-    trade_date TEXT NOT NULL,
     data_json TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    PRIMARY KEY (ts_code, trade_date)
+    PRIMARY KEY (ts_code)
 );
 
 CREATE TABLE IF NOT EXISTS cyq_cache (
@@ -168,6 +166,17 @@ class EldCache:
         """初始化数据库表结构。"""
         conn = self._get_conn()
         conn.executescript(_CREATE_TABLES_SQL)
+        # 迁移：旧版 moneyflow_cache 是 (ts_code, trade_date) 复合主键，
+        # 新版本改为 ts_code 单主键。检测旧表结构并重建。
+        try:
+            cursor = conn.execute("PRAGMA table_info(moneyflow_cache)")
+            cols = {row["name"] for row in cursor.fetchall()}
+            if "trade_date" in cols:
+                conn.execute("DROP TABLE IF EXISTS moneyflow_cache")
+                conn.executescript(_CREATE_TABLES_SQL)
+                self._log("已迁移 moneyflow_cache 表结构", "INFO")
+        except Exception:
+            pass
         conn.commit()
 
     def _now_str(self) -> str:
@@ -323,6 +332,33 @@ class EldCache:
         except Exception as exc:
             self._log(f"CSV读取失败 [{filepath}]: {exc}", "WARNING")
             return []
+
+    # ─── 通用缓存接口（供外部调用，公开 _get_cached/_set_cached） ──
+
+    def get_cached(
+        self, table: str, key_col: str, key_val: str,
+        expire_hours: Optional[int] = None,
+    ) -> Optional[list[dict[str, Any]]]:
+        """通用 SQLite 缓存读取。
+        Args:
+            table: 表名。
+            key_col: 主键列名。
+            key_val: 主键值。
+            expire_hours: 过期时间（小时），默认使用配置值。
+        Returns:
+            缓存的 JSON 数据列表，若不存在或已过期返回 None。
+        """
+        return self._get_cached(table, key_col, key_val, expire_hours)
+
+    def set_cached(self, table: str, key_col: str, key_val: str, data: Any) -> None:
+        """通用 SQLite 缓存写入。
+        Args:
+            table: 表名。
+            key_col: 主键列名。
+            key_val: 主键值。
+            data: 要缓存的数据（会自动 JSON 序列化）。
+        """
+        self._set_cached(table, key_col, key_val, data)
 
     # ─── 专用缓存接口 ────────────────────────
 

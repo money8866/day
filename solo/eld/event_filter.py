@@ -35,17 +35,23 @@ def _check_non_recurring(
 ) -> list[str]:
     """检查预告和财务数据中是否包含非经常性损益关键词。
 
+    使用预告原文 summary 进行关键词匹配，比单纯匹配 type 更准确。
+
     Returns:
         匹配到的非经常性项目列表。
     """
     items: list[str] = []
-    candidate_texts = [forecast.type, forecast.announce_date]
 
-    # 用关键字匹配预告类型
-    for kw in config.exclude_keywords:
-        for text in candidate_texts:
-            if kw.lower() in text.lower():
-                items.append(f"预告含非经常性关键词: {kw}")
+    # 用关键字匹配预告原文摘要（summary 包含实际公告内容，如"主要系非经常性损益影响"）
+    if forecast.summary:
+        for kw in config.exclude_keywords:
+            if kw.lower() in forecast.summary.lower():
+                items.append(f"预告原文含非经常性关键词「{kw}」")
+    else:
+        # 无 summary 时，降级匹配 type 字段（如"扭亏"可能隐含非经常性）
+        for kw in config.exclude_keywords:
+            if kw.lower() in forecast.type.lower():
+                items.append(f"预告类型含非经常性关键词: {kw}")
                 break
 
     # 检测财务特征
@@ -104,6 +110,19 @@ def analyze_event_quality(
     score: float = 100.0
     has_non_recurring: bool = False
     non_recurring_items: list[str] = []
+
+    # ── 0. 预告利润增速过滤（新增） ────────────
+    forecast_growth = (forecast.p_change_min + forecast.p_change_max) / 2
+    if forecast_growth < config.min_forecast_growth:
+        shortage = config.min_forecast_growth - forecast_growth
+        penalty = min(40.0, shortage * 0.5)  # 每低1%扣0.5分，最高扣40分
+        score -= penalty
+        logic.append(
+            f"预告利润增速 {forecast_growth:.1f}% < {config.min_forecast_growth:.0f}%: "
+            f"扣{penalty:.0f}分"
+        )
+    else:
+        logic.append(f"预告利润增速 {forecast_growth:.1f}% ≥ {config.min_forecast_growth:.0f}%: 通过")
 
     # ── 1. 检测非经常性项目 ──────────────────
     non_recurring_items = _check_non_recurring(forecast, financial, config)

@@ -59,8 +59,8 @@ echo [Step 5.3/7] 中报预增股池择时（幻方算法）
 echo =============================================
 rem python d:\mystock\solo\multi_factor_picker\main.py
 rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
-python d:/mystock/solo/build_theme_stock_map_v2.py
-python D:\mystock\solo\theme_score_v2.py
+python solo\build_theme_stock_map_v2.py
+python solo\theme_score_v2.py
 
 
 echo =============================================
@@ -82,6 +82,11 @@ python genindex.py
 echo.
 
 push.bat
+
+
+echo 机构主线第一次回踩
+cd d:\mystock\solo\market_regime_v3
+python -u main.py --push
 
 
 echo =============================================

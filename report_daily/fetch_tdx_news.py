@@ -12,7 +12,7 @@ import subprocess, json, datetime, os, re
 SKILL_DIR = r"C:\Users\kongx\.qclaw\skills\tongdaxin-mcp"
 
 
-def ps_run(cmd, timeout=60):
+def ps_run(cmd, timeout=180):
     r = subprocess.run(
         ["powershell", "-Command", cmd],
         capture_output=True, encoding="utf-8", errors="replace", timeout=timeout
@@ -48,7 +48,7 @@ def ensure_mcp_config(token):
     )
 
 
-def mcp_call(tool, timeout=60, **kwargs):
+def mcp_call(tool, timeout=180, **kwargs):
     """调用 TDX MCP 工具，写 ps1 文件绕过 PowerShell 管道符转义问题"""
     args_parts = [f'{k}=\'{v}\'' for k, v in kwargs.items()]
     args_line = " ".join(args_parts)

@@ -1,16 +1,24 @@
-"""Market Regime Engine V3 - 主编排器
+"""Market Regime Engine V3 - 主编排器 + Alpha引擎
 
-6层 Pipeline:
+7层 Pipeline:
 1. Market Regime (指数强度 → 宽度 → 情绪 → 风格 → 风险偏好 → 主题共振 → 总评分 → 状态机 → 热度)
 2. Exposure (仓位模型)
 3. Theme Beta (主题资金分配)
-4. Leader Quality (龙头质量评分)
-5. Trading Style (交易风格)
-6. Risk Control (风控执行)
+4. Full Ranking (龙头质量 + 全市场截面排序 + 资金行为)
+5. Probability (概率预测模型)
+6. Trading Style (交易风格)
+7. Portfolio (组合优化 + 风控执行)
+
+Alpha引擎扩展:
+  - Cross-Sectional Ranking: 20因子全市场排序，扩展候选池至Top50
+  - Capital Flow Engine: 北向资金 + 机构资金流 + 大单强度
+  - Probability Model: Logistic Regression 回调成功率预测
+  - Portfolio Optimizer: Kelly准则 + Risk Parity + 均值方差
 """
 
 import os
 import sys
+import numpy as np
 import yaml
 import argparse
 import pandas as pd
@@ -34,6 +42,16 @@ from market_regime_v3.engines.risk_control import RiskControlEngine
 from market_regime_v3.reporter import MarketReportGenerator
 from market_regime_v3.explainer import MarketExplainer
 from market_regime_v3.wechat_push import send_pushplus, build_summary
+
+# Alpha Engines
+from market_regime_v3.alpha_engines.cross_sectional import CrossSectionalRanking
+from market_regime_v3.alpha_engines.capital_flow import CapitalFlowEngine
+from market_regime_v3.alpha_engines.probability import ProbabilityModel
+from market_regime_v3.alpha_engines.portfolio import PortfolioOptimizer, OptimizationMethod
+from market_regime_v3.alpha_engines.pattern_engine import HistoricalPatternEngine
+from market_regime_v3.alpha_engines.ev_engine import EVEngine
+from market_regime_v3.alpha_engines.smart_money_v2 import SmartMoneyScoreV2
+from market_regime_v3.alpha_engines.risk_budget_position import RiskBudgetPositionEngine
 
 import stock_cache as sc
 
@@ -71,20 +89,43 @@ class MarketRegimeV3:
         # 第4层: Leader Quality
         self.leader_quality_engine = LeaderQualityEngine(self.config)
 
+        # Alpha 引擎扩展
+        alpha_cfg = self.config
+        self.cross_sectional_engine = CrossSectionalRanking(alpha_cfg) if alpha_cfg.get('cross_sectional', {}).get('enabled', True) else None
+        self.capital_flow_engine = CapitalFlowEngine(alpha_cfg) if alpha_cfg.get('capital_flow', {}).get('enabled', True) else None
+        self.probability_model = ProbabilityModel(alpha_cfg) if alpha_cfg.get('probability_model', {}).get('enabled', True) else None
+        self.portfolio_optimizer = PortfolioOptimizer(alpha_cfg) if alpha_cfg.get('portfolio_optimizer', {}).get('enabled', True) else None
+
         # 第5层: Trading Style
         self.trading_style_engine = TradingStyleEngine(self.config)
 
-        # 第6层: Risk Control
+        # 第6层: Risk Control (简化)
         self.risk_control_engine = RiskControlEngine(self.config)
+
+        # 第7层: Portfolio (集成组合优化)
+        # 运行在 risk_control 之后
+
+        # ── V6.1 引擎扩展 ──
+        self.pattern_engine = HistoricalPatternEngine(self.config) if self.config.get('pattern_engine', {}).get('enabled', True) else None
+        self.ev_engine = EVEngine(self.config) if self.config.get('ev_engine', {}).get('enabled', True) else None
+        self.smart_money_v2 = SmartMoneyScoreV2(self.config) if self.config.get('smart_money_v2', {}).get('enabled', True) else None
+        self.risk_budget_engine = RiskBudgetPositionEngine(self.config) if self.config.get('risk_budget_position', {}).get('enabled', True) else None
 
         self.reporter = MarketReportGenerator()
         self.trade_date = None
         self._push_enabled = False
 
-    def run(self, trade_date: str = None) -> Dict:
+    def run(self, trade_date: str = None, mode: str = None) -> Dict:
+        """运行完整Pipeline
+
+        Args:
+            trade_date: 交易日 YYYYMMDD
+            mode: 系统模式（V6.2）LIVE/LEARNING/VALIDATION，None=自动判断
+        """
         if trade_date is None:
             trade_date = sc.get_effective_date()
         self.trade_date = trade_date
+        self._forced_mode = mode
 
         print(f"\n{'═' * 60}")
         print(f"  Market Regime Engine V3")
@@ -108,9 +149,32 @@ class MarketRegimeV3:
         # Step 2: 市场宽度
         print("\n[2/6] 计算市场宽度...")
         breadth_result = self.breadth_engine.evaluate(trade_date)
-        print(f"  宽度评分: {breadth_result.score:.1f}分")
-        print(f"  上涨{breadth_result.up_ratio*100:.0f}% 涨停{breadth_result.limit_up_count}家 "
-              f"跌停{breadth_result.limit_down_count}家 中位数{breadth_result.median_return:.2f}%")
+        if breadth_result is None:
+            print("  ⚠️ 数据库无当日数据，自动调用Tushare缓存...")
+            try:
+                sc.batch_cache_stk_factor_pro(trade_date)
+            except Exception as e:
+                print(f"  ❌ 缓存失败: {e}")
+                return None
+            # 重试
+            breadth_result = self.breadth_engine.evaluate(trade_date)
+            if breadth_result is None:
+                print("  ❌ 缓存后仍无数据，跳过")
+                return None
+
+        # 数据完整性检查：若当日数据量不足，按个股补全
+        if breadth_result is not None:
+            import sqlite3 as _sc
+            _conn = _sc.connect(sc.DB_PATH)
+            _cur = _conn.cursor()
+            _cur.execute('SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date=?', (trade_date,))
+            _row_count = _cur.fetchone()[0]
+            _conn.close()
+            if _row_count < 5000:
+                _supplemented = sc.supplement_missing_stocks(trade_date, target_count=5000)
+                if _supplemented > 0:
+                    print(f"  ✅ 补全完成，重新计算宽度...")
+                    breadth_result = self.breadth_engine.evaluate(trade_date)
 
         # Step 3: 情绪
         print("\n[3/6] 计算市场情绪...")
@@ -351,6 +415,222 @@ class MarketRegimeV3:
                 lines = f"    {pq['name']}({pq['ts_code']}) ←{pq['pullback_ma']} 入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f}({(pq['stop_loss']/pq['ref_price']-1)*100:.1f}%) 止盈+{profit_pct:.0f}%{extra}"
                 print(lines)
 
+        # ── V6.1 Layer: Pattern → Smart Money → EV → Risk Budget ──
+        # ════════════════════════════════════════════════════════════
+        pattern_result = None
+        ev_result = None
+        sm_result = None
+        rb_result = None
+
+        if pullback_qualified:
+            print(f"\n{'─' * 40}")
+            print("【V6.1 Layer】Historical Pattern · EV · Smart Money · Risk Budget")
+
+        # V6.1-a) Historical Pattern Engine
+        if self.pattern_engine and pullback_qualified:
+            print("\n[V6.1/1] 历史模式匹配...")
+            try:
+                pattern_result = self.pattern_engine.evaluate(
+                    trade_date=trade_date,
+                    pullback_candidates=pullback_qualified,
+                    market_regime=regime.primary if regime else 'Unknown',
+                    market_score=market_score_result.score if market_score_result else 50,
+                    risk_appetite=risk_result.score if risk_result else 50,
+                    heat_score=heat_result.score if heat_result else 50,
+                )
+                for code, pm in pattern_result.matches.items():
+                    phase_mark = {'cold': '❄️', 'warm': '🔥', 'data_driven': '✅'}.get(pm.cold_start_phase, '')
+                    if pm.n_samples >= 5:
+                        print(f"    {pm.name:8s}({code}) [{pm.pattern_type[:10]:10s}] "
+                              f"样本{pm.n_samples:3d}次 P={pm.win_probability:.0%} "
+                              f"10日EV={pm.avg_return_10d:+.2%} DD={pm.avg_max_drawdown:.1%} "
+                              f"Conf={pm.confidence:.2f} {phase_mark}")
+                    else:
+                        print(f"    {pm.name:8s}({code}) [{pm.pattern_type[:10]:10s}] "
+                              f"冷启P={pm.win_probability:.0%} "
+                              f"样本{pm.n_samples}次<{self.pattern_engine.min_samples} {phase_mark}")
+            except Exception as e:
+                print(f"  ⚠️ 历史模式匹配异常: {e}")
+
+        # V6.1-b) Smart Money Score V2
+        sm_scores = {}
+        if self.smart_money_v2 and pullback_qualified:
+            print("\n[V6.1/2] Smart Money Score V2...")
+            try:
+                pb_codes = [pq['ts_code'] for pq in pullback_qualified]
+                sm_result = self.smart_money_v2.evaluate(trade_date, codes=pb_codes)
+                for code, smr in sm_result.items():
+                    sm_scores[code] = smr.composite_score
+                    att = smr.attribution
+                    print(f"    {smr.ts_code} S={smr.composite_score:.0f} 主力{att.main_force_score:+.0f} "
+                          f"超大单{att.super_large_score:+.0f} 换手{att.turnover_health:.0f} 筹码{att.chip_concentration:.0f}")
+            except Exception as e:
+                print(f"  ⚠️ Smart Money Score异常: {e}")
+
+        # V6.1-c) 写入Pattern DB（含Smart Money Score + 龙头 + 截面）
+        if self.pattern_engine and pullback_qualified and regime:
+            try:
+                # 准备龙头列表和截面列表（转为dict以兼容）
+                leading_list = leader_result.top_leaders if leader_result and leader_result.top_leaders else None
+                cs_list = cs_result.top_n if cs_result and cs_result.top_n else None
+
+                n_saved = self.pattern_engine.save_pattern_records(
+                    trade_date=trade_date,
+                    pullback_candidates=pullback_qualified,
+                    market_regime=regime.primary if regime else 'Unknown',
+                    market_score=market_score_result.score if market_score_result else 50,
+                    risk_appetite=risk_result.score if risk_result else 50,
+                    heat_score=heat_result.score if heat_result else 50,
+                    smart_money_scores=sm_scores,
+                    leading_stocks=leading_list,           # ← V6.1 龙头样本
+                    cross_sectional_stocks=cs_list,         # ← V6.1 截面样本
+                )
+                if n_saved > 0:
+                    print(f"\n  [PatternDB] 已保存 {n_saved} 条模式记录 (回撤+龙头+截面)")
+            except Exception as e:
+                print(f"  ⚠️ PatternDB写入异常: {e}")
+
+        # V6.2: 确定系统模式
+        # ─────────────────────────────────────
+        if self._forced_mode:
+            system_mode = self._forced_mode
+        else:
+            system_mode = 'LIVE'
+            if pattern_result and pattern_result.matches:
+                has_learning_candidate = any(
+                    pm.n_samples < 30 for pm in pattern_result.matches.values()
+                )
+                regime_ok = regime and regime.primary in ['Recovery', 'Neutral', 'Bull', 'Euphoria']
+                if has_learning_candidate and regime_ok:
+                    system_mode = 'LEARNING'
+        print(f"\n  [V6.2] System Mode: {system_mode}")
+
+        # V6.1-d) EV Engine
+        if self.ev_engine and pattern_result and pattern_result.matches:
+            print("\n[V6.1/3] Expected Value 计算...")
+            try:
+                ev_result = self.ev_engine.evaluate(
+                    trade_date=trade_date,
+                    pattern_matches=pattern_result.matches,
+                )
+                for ev_r in ev_result.ranked_list:
+                    phase_mark = {'cold': '❄️', 'warm': '🔥', 'data_driven': '✅'}.get(ev_r.cold_start_phase, '')
+                    print(f"    #{ev_r.rank:2d} {ev_r.name:8s}({ev_r.ts_code}) "
+                          f"P={ev_r.win_probability:.0%} EV={ev_r.expected_value_10d:+.2%} "
+                          f"AdjEV={ev_r.adjusted_ev:+.2%} Conf={ev_r.confidence:.2f}({ev_r.confidence_level}) "
+                          f"n={ev_r.n_samples} {ev_r.pattern_type[:8]} "
+                          f"{phase_mark}{ev_r.cold_start_phase[:4]} → {ev_r.signal.value}")
+            except Exception as e:
+                print(f"  ⚠️ EV计算异常: {e}")
+
+        # V6.1-e) Risk Budget Position
+        if self.risk_budget_engine and ev_result and pullback_qualified:
+            print("\n[V6.1/4] Risk Budget 仓位分配...")
+            try:
+                base_pct = exposure_result.portfolio_exposure_pct if exposure_result else 0
+                rb_result = self.risk_budget_engine.allocate(
+                    trade_date=trade_date,
+                    candidates=pullback_qualified,
+                    base_exposure_pct=base_pct,
+                    regime_name=regime.primary if regime else 'Unknown',
+                    ev_results=ev_result.results,
+                    market_score=market_score_result.score if market_score_result else 50,
+                    system_mode=system_mode,
+                    smart_money_scores=sm_scores,
+                )
+                for code, pr in rb_result.positions.items():
+                    if pr.position_pct > 0:
+                        exp = pr.explanation
+                        mode_tag = " [学习]" if pr.is_learning else ""
+                        print(f"    {pr.name:8s}({code}) 仓位={pr.position_pct:.1f}%{mode_tag} "
+                              f"({exp.base_position_pct:.0f}%×{exp.market_multiplier:.1f}×{exp.ev_multiplier:.1f}×{exp.risk_multiplier:.1f})")
+                print(f"    总仓位: {rb_result.total_exposure:.1f}% | 标的数: {rb_result.asset_count} | "
+                      f"剩余现金: {rb_result.remaining_cash:.1f}% | 模式: {rb_result.system_mode}", end='')
+                if rb_result.learning_count > 0:
+                    print(f" | 学习仓位: {rb_result.learning_count}只", end='')
+                print()
+            except Exception as e:
+                print(f"  ⚠️ 仓位分配异常: {e}")
+
+        # ── Alpha Layer: 全市场截面排序 + 资金行为 + 概率预测 ──
+        # ═══════════════════════════════════════════════════════
+        print(f"\n{'─' * 40}")
+        print("【Alpha Layer】截面排序 · 资金流 · 概率")
+
+        # 4a) 全市场截面排序
+        cs_result = None
+        if self.cross_sectional_engine:
+            print("\n[Alpha/1] 全市场截面排序...")
+            try:
+                cs_result = self.cross_sectional_engine.evaluate(
+                    trade_date, theme_stock_map, stock_meta,
+                    n_stocks_limit=None
+                )
+                if cs_result and cs_result.top_n:
+                    print(f"  分析 {cs_result.n_stocks_analyzed} 只股票")
+                    print(f"  Top10:")
+                    for sa in cs_result.top_n[:10]:
+                        themes_str = ','.join(sa.themes[:2]) if sa.themes else ''
+                        print(f"    #{sa.cross_sectional_rank:4d} {sa.name:8s}({sa.ts_code:12s}) {sa.total_score:5.1f}分 [{themes_str}]")
+            except Exception as e:
+                print(f"  ⚠️ 截面排序异常: {e}")
+
+        # 4b) 资金流分析
+        cf_result = None
+        if self.capital_flow_engine:
+            print("\n[Alpha/2] 资金行为分析...")
+            try:
+                cf_result = self.capital_flow_engine.evaluate(trade_date)
+                if cf_result:
+                    nb = cf_result.north_bound
+                    if nb:
+                        print(f"  北向资金: 当日{nb.total_inflow_today:+.1f}亿 | 5日{nb.total_inflow_5d:+.1f}亿 | {nb.trend}")
+                    print(f"  市场净流入: {cf_result.market_net_inflow:.0f}万")
+                    print(f"  资金综合评分: {cf_result.composite_score:.1f}分")
+            except Exception as e:
+                print(f"  ⚠️ 资金流分析异常: {e}")
+
+        # 4c) 概率预测
+        prob_results = []
+        if self.probability_model and pullback_qualified:
+            print("\n[Alpha/3] 回调成功率预测...")
+            try:
+                # 加载因子数据用于预测
+                pb_codes = [pq['ts_code'] for pq in pullback_qualified]
+                df_cache = {}
+                for code in pb_codes:
+                    df = self._load_stock_data(code, trade_date)
+                    if df is not None:
+                        df_cache[code] = df
+
+                theme_qualities = {}
+                if theme_beta_result and hasattr(theme_beta_result, 'theme_scores'):
+                    theme_qualities = theme_beta_result.theme_scores
+
+                leader_scores = {}
+                for ld in leader_result.top_leaders[:10] if leader_result.top_leaders else []:
+                    leader_scores[ld['ts_code']] = ld.get('total_score', 0)
+
+                candidates_for_prob = [
+                    {'ts_code': pq['ts_code'], 'name': pq['name'],
+                     'theme': pq.get('theme', ''), 'pb_result': pq}
+                    for pq in pullback_qualified
+                ]
+
+                prob_results = self.probability_model.predict_batch(
+                    candidates=candidates_for_prob,
+                    df_cache=df_cache,
+                    market_score=market_score_result.score,
+                    theme_qualities=theme_qualities,
+                    leader_scores=leader_scores,
+                    capital_flow_scores={},
+                )
+                print(f"  预测 {len(prob_results)} 只标的:")
+                for pr in sorted(prob_results, key=lambda x: x.probability, reverse=True)[:5]:
+                    print(f"    {pr.name:8s}({pr.ts_code}) P={pr.probability:.1%} → {pr.signal}")
+            except Exception as e:
+                print(f"  ⚠️ 概率预测异常: {e}")
+
         # ── 第5层: Trading Style ──
         # ═════════════════════════
         print(f"\n{'─' * 40}")
@@ -377,9 +657,64 @@ class MarketRegimeV3:
         if risk_control_result.actions:
             print(f"  建议操作: {'; '.join(risk_control_result.actions[:3])}")
 
-        # ── 生成完整报告 ──
+        # ── 第7层: Portfolio Optimizer ──
+        # ═════════════════════════════
+        print(f"\n{'─' * 40}")
+        print("【第7层】Portfolio Optimizer")
+
+        portfolio_result = None
+        if self.portfolio_optimizer and pullback_qualified:
+            try:
+                # 构建候选标的（含概率预测结果）
+                prob_map = {pr.ts_code: pr.probability for pr in prob_results} if prob_results else {}
+                port_candidates = []
+                for pq in pullback_qualified:
+                    code = pq['ts_code']
+                    prob = prob_map.get(code, 0.5)
+                    vol = (pq.get('atr', 0) / max(pq.get('ref_price', 1), 0.1)) * np.sqrt(252)
+                    vol = max(0.15, min(0.60, vol))
+                    exp_ret = (pq.get('take_profit', 0) / max(pq.get('ref_price', 1), 0.1) - 1) * 0.5
+                    port_candidates.append({
+                        'ts_code': code,
+                        'name': pq.get('name', ''),
+                        'probability': prob,
+                        'volatility': vol,
+                        'expected_return': max(exp_ret, 0.02),
+                    })
+
+                if port_candidates:
+                    total_exp = exposure_result.leader_allocation if exposure_result else 0.5
+                    portfolio_result = self.portfolio_optimizer.optimize(
+                        candidates=port_candidates,
+                        total_exposure=total_exp,
+                        probabilities=prob_map,
+                    )
+                    print(f"  方法: {portfolio_result.method.value}")
+                    print(f"  配置 {portfolio_result.n_assets} 标的 | 预期收益: {portfolio_result.expected_return:.1%}"
+                          f" 波动: {portfolio_result.expected_volatility:.1%} 夏普: {portfolio_result.sharpe_ratio:.2f}")
+                    print(f"  HHI集中度: {portfolio_result.concentration:.3f} | 再平衡: {portfolio_result.rebalance_signal}")
+                    print(f"  Top配置:")
+                    for a in portfolio_result.allocations[:5]:
+                        if a.weight > 0.01:
+                            print(f"    {a.name:8s}({a.ts_code:12s}) {a.weight:.1%} "
+                                  f"[P={a.probability:.0%} Kelly={a.kelly_fraction:.1%}]")
+            except Exception as e:
+                print(f"  ⚠️ 组合优化异常: {e}")
+        else:
+            print("  无符合条件的候选标的或优化器未启用")
+
+        # ── 生成最终报告 ──
         print(f"\n{'═' * 60}")
         print("  生成最终报告...")
+
+        # 先填充V6.1数据（让report_dict就绪）
+        v61_data = {
+            "v61_pattern": pattern_result,
+            "v61_ev": ev_result,
+            "v61_smart_money": sm_result,
+            "v61_risk_budget": rb_result,
+            "pullback_qualified": pullback_qualified,
+        }
 
         report_dict = self.reporter.generate_report_v2(
             trade_date=trade_date,
@@ -397,10 +732,47 @@ class MarketRegimeV3:
             leader_result=leader_result,
             trading_style_result=style_result_v5,
             risk_control_result=risk_control_result,
+            v61_data=v61_data,
         )
 
-        # 补充回调检测结果 + overview 字段
+        # 补充回调检测结果 + Alpha引擎结果 + overview 字段
         report_dict["pullback_qualified"] = pullback_qualified
+        if cs_result:
+            report_dict["cross_sectional"] = {
+                "n_stocks": cs_result.n_stocks_analyzed,
+                "top_stocks": [
+                    {"ts_code": sa.ts_code, "name": sa.name,
+                     "score": sa.total_score, "rank": sa.cross_sectional_rank}
+                    for sa in cs_result.top_n[:20]
+                ]
+            }
+        if cf_result:
+            report_dict["capital_flow"] = {
+                "composite_score": cf_result.composite_score,
+                "north_bound_today": cf_result.north_bound.total_inflow_today if cf_result.north_bound else None,
+                "north_bound_5d": cf_result.north_bound.total_inflow_5d if cf_result.north_bound else None,
+                "north_trend": cf_result.north_bound.trend if cf_result.north_bound else None,
+            }
+        if prob_results:
+            report_dict["probabilities"] = [
+                {"ts_code": pr.ts_code, "name": pr.name,
+                 "probability": pr.probability, "signal": pr.signal}
+                for pr in sorted(prob_results, key=lambda x: x.probability, reverse=True)
+            ]
+        if portfolio_result:
+            report_dict["portfolio"] = {
+                "method": portfolio_result.method.value,
+                "expected_return": portfolio_result.expected_return,
+                "expected_vol": portfolio_result.expected_volatility,
+                "sharpe": portfolio_result.sharpe_ratio,
+                "hhi": portfolio_result.concentration,
+                "allocations": [
+                    {"ts_code": a.ts_code, "name": a.name,
+                     "weight": a.weight, "kelly": a.kelly_fraction,
+                     "prob": a.probability}
+                    for a in portfolio_result.allocations if a.weight > 0.01
+                ]
+            }
         report_dict["overview"]["index_score"] = round(index_result.weighted_score)
         report_dict["overview"]["breadth_score"] = round(breadth_result.score)
         report_dict["overview"]["sentiment_score"] = round(sentiment_result.score)
@@ -435,12 +807,14 @@ def main():
     parser.add_argument('--date', type=str, default=None, help='交易日期 YYYYMMDD')
     parser.add_argument('--config', type=str, default=None, help='配置文件路径')
     parser.add_argument('--push', action='store_true', help='推送微信')
+    parser.add_argument('--mode', type=str, default='LIVE', choices=['LIVE', 'LEARNING', 'VALIDATION'],
+                        help='系统模式（V6.2）')
     args = parser.parse_args()
 
     engine = MarketRegimeV3(config_path=args.config)
     if args.push:
         engine._push_enabled = True
-    engine.run(trade_date=args.date)
+    engine.run(trade_date=args.date, mode=args.mode)
 
 
 if __name__ == '__main__':

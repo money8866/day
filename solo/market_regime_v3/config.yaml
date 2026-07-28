@@ -695,3 +695,142 @@ risk_control:
     volatility_multiplier: 1.5
     max_stop_loss: 0.12
     min_stop_loss: 0.03
+
+# ============================================================
+# Alpha Engine — Cross-Sectional Ranking 配置
+# ============================================================
+cross_sectional:
+  enabled: true
+  lookback_days: 120
+  top_n: 50
+  max_stocks: 300        # 每日Pipeline最大分析数（防超时）
+  load_threads: 8        # 并行加载线程数
+  min_volume: 0
+  factor_weights:
+    cross_sectional_rank: 0.06
+    momentum_5d: 0.075
+    momentum_20d: 0.125
+    momentum_60d: 0.05
+    momentum_accel: 0.10
+    volume_price_synergy: 0.25
+    trend_quality: 0.10
+    northbound_flow_5d: 0.02
+    institutional_flow_5d: 0.02
+    large_order_intensity: 0.02
+    rsi_14: 0.015
+    macd_hist: 0.015
+    volatility_ratio: 0.015
+    market_cap_score: 0.015
+    turnover_stability: 0.015
+    profit_growth: 0.01
+    dist_ma20: 0.01
+    dist_ma60: 0.01
+    volume_shrink: 0.01
+    limit_up_history: 0.01
+    relative_strength: 0.01
+
+# ============================================================
+# Alpha Engine — Capital Flow 配置
+# ============================================================
+capital_flow:
+  enabled: true
+  north_lookback_days: 20
+  moneyflow_lookback_days: 10
+  recovery_window: 3
+  recovery_threshold: 0
+
+# ============================================================
+# Alpha Engine — Probability Model 配置
+# ============================================================
+probability_model:
+  enabled: true
+  model_path: "models/pullback_probability.pkl"
+  use_heuristic: true
+  default_probability: 0.5
+
+# ============================================================
+# Alpha Engine — Portfolio Optimizer 配置
+# ============================================================
+portfolio_optimizer:
+  enabled: true
+  default_method: "risk_parity"
+  max_single_weight: 0.25
+  min_single_weight: 0.02
+  max_industry_weight: 0.40
+  target_volatility: 0.25
+  kelly_fraction: 0.25
+  rebalance_threshold: 0.05
+
+# ============================================================
+# V6.1 — Historical Pattern Engine 配置
+# ============================================================
+pattern_engine:
+  enabled: true
+  min_samples: 5                  # 最低匹配样本数
+  default_probability: 0.5        # 冷启动默认概率（已废弃，使用heuristic）
+  drawdown_tolerance: 0.03        # 回撤容忍度 ±3%
+  ret_60d_tolerance: 0.10         # 60日涨幅容忍度 ±10%
+
+  # V6.1 — Cold Start 配置
+  cold_start:
+    enabled: true
+    warmup_threshold: 15          # 暖机样本阈值：超过此值逐步切换到数据驱动
+    heuristic_mix_min: 0.70       # 冷启动阶段启发式权重上限
+    heuristic_mix_max: 0.05       # 暖机后启发式权重下限
+
+  # V6.1 — Confidence 配置
+  confidence:
+    sample_weight: 0.40           # 样本量权重
+    recency_weight: 0.35          # 时效性权重
+    quality_weight: 0.25          # 匹配质量权重
+    buy_threshold: 0.40           # BUY信号最低置信度
+    wait_threshold: 0.25          # WAIT信号最低置信度
+
+# ============================================================
+# V6.1 — Expected Value Engine 配置
+# ============================================================
+ev_engine:
+  enabled: true
+  min_samples: 5                  # 最低样本数
+  buy_threshold: 0.03             # EV >= 3% → BUY
+  wait_threshold: 0.0             # EV >= 0% → WAIT
+  min_win_prob: 0.55              # 最低胜率55%
+  max_drawdown_penalty: 0.05      # 预期回撤 >5% 降级
+
+# ============================================================
+# V6.1 — Smart Money Score V2 配置
+# ============================================================
+smart_money_v2:
+  enabled: true
+  lookback_days: 10
+  weights:
+    main_force: 0.35              # 主力资金净流入
+    super_large: 0.25             # 超大单净额
+    turnover_health: 0.20         # 换手率健康度
+    chip_concentration: 0.20      # 筹码集中度变化
+
+# ============================================================
+# V6.1 — Risk Budget Position Engine 配置
+# ============================================================
+risk_budget_position:
+  enabled: true
+
+# ============================================================
+# V6.2 — Learning Mode 配置
+# ============================================================
+learning_mode:
+  enabled: true                    # 启用学习模式
+  min_samples_live: 30             # 进入LIVE模式的最低样本数
+  base_learning_position: 5        # Base Learning Position (%)
+  # Confidence Level → Adjustment Multiplier
+  confidence_adjustment:
+    A: 1.0                         # 样本>=50
+    B: 0.8                         # 样本20-50
+    C: 0.6                         # 样本5-20
+    D: 0.4                         # 样本<5
+  clamp_min: 3                     # 最终仓位下限（%）
+  clamp_max: 8                     # 最终仓位上限（%）
+  max_total_learning: 20           # 学习仓位总上限（%）
+  regime_min: "Recovery"           # 允许学习的最低市场状态
+  leader_rank_max: 100             # 学习模式龙头排名上限
+  smart_money_min: 60              # 学习模式聪明钱最低分

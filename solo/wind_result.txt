@@ -1,0 +1,13 @@
+EXIT: 0
+STDOUT:
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"data\": {\"items\": [], \"total\": 0}, \"error\": null}"
+    }
+  ],
+  "isError": false
+}
+
+STDERR:

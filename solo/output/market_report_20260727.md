@@ -3,12 +3,12 @@
 
 ## 一、综合概览
 
-- Market Score: 42/100
+- Market Score: 43/100
 - Market Regime: Recovery（修复反弹）
 - Risk Appetite: Very Low
 - Heat Score: 56/100 (Normal)
 - Dominant Style: Dividend
-- Recommended Exposure: 27%
+- Recommended Exposure: 29%
 - Active Themes: 10个
 - Trading Style: 回调低吸
 - Risk Status: ✅ 安全
@@ -28,18 +28,18 @@
 
 ## 四、市场宽度
 
-- 上涨比例: 93%
-- 涨停: 81家 | 跌停: 5家
-- 20日新高: 2.1%
-- 站上MA20: 82%
-- 涨幅中位数: 2.57%
+- 上涨比例: 94%
+- 涨停: 130家 | 跌停: 8家
+- 20日新高: 2.4%
+- 站上MA20: 87%
+- 涨幅中位数: 2.73%
 
 ## 五、市场情绪
 
-- 涨停率: 2.78%
+- 涨停率: 2.64%
 - 炸板率: 30%
 - 最高连板: 3板
-- 20cm涨停: 5家
+- 20cm涨停: 8家
 - 北向资金: +0亿
 
 ## 六、风格轮动 & 交易风格
@@ -88,17 +88,17 @@
 
 ## 十、仓位建议
 
-- 基础仓位: 32%（Market Score）
+- 基础仓位: 33%（Market Score）
 - 风险偏好乘数: ×0.83
 - 热度乘数: ×1.05
-- 合成仓位: 27%
+- 合成仓位: 29%
 - Regime限幅: 15%~50%
-- 最终仓位: 27%
+- 最终仓位: 29%
 - 主题数量: 0~1个
 - ETF配置: 11%
 - 龙头配置: 11%
 - 跟风配置: 0%
-- 现金: 78%
+- 现金: 77%
 
 ## 十一、Risk Control（风控执行）
 
@@ -123,3 +123,58 @@
 
 ---
 *Market Regime Engine V3 · 6层 Pipeline 自动生成*
+
+## 十四、V6.1 候选标的深度分析
+
+---
+
+### 北方华创（002371.SZ）
+
+| 维度 | 数据 |
+|------|------|
+| Market Regime | Recovery（修复反弹） |
+| Market Score | 43/100 |
+| Theme | 半导体 |
+| Subtheme | 半导体设备 |
+| Alpha Rank | 88/100（龙头评分） |
+
+#### Historical Pattern
+
+样本不足（<5），使用默认概率50%
+
+#### Expected Value
+
+| 指标 | 数值 |
+|------|------|
+| Probability | 50% |
+| Expected 5D | +0.00% |
+| Expected 10D | +0.00% |
+| Expected 20D | +0.00% |
+| Expected Drawdown | 0.0% |
+| Risk Reward Ratio | 0.00 |
+| EV Score | 50分 |
+| 建议 | WAIT |
+
+#### Position
+
+| 维度 | 说明 |
+|------|------|
+| 最终仓位 | 1.4% |
+| 仓位计算 | 14% × 0.6(市) × 0.5(EV) × 0.3(风) |
+| 市场状态 | Recovery → 乘数0.6 |
+| EV贡献 | EV=+0.00% → 乘数0.5 |
+| 风险贡献 | ATR=8.5% DD=5.0% → 乘数0.3 |
+| 单票上限 | 15% |
+
+#### Entry Logic
+
+| 指标 | 数值 |
+|------|------|
+| 入场参考 | 755.12 |
+| 止损 | 720.21（-4.6%） |
+| 止盈 | 868.39（+15.0%） |
+| ATR | 64.21 |
+| 回踩均线 | MA20 |
+| 60日涨幅 | 60% |
+
+---

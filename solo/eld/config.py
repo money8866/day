@@ -74,6 +74,8 @@ class EventFilterConfig:
     min_deducted_ratio: float = 0.7
     # 营收增长最低要求
     min_revenue_growth: float = -10.0  # 允许小幅下滑
+    # 预告利润增速最低要求（p_change_min 平均值 < 此值则降级）
+    min_forecast_growth: float = 30.0  # 预告利润增速≥30%才保留
 
 
 # ──────────────────────────────────────────────
@@ -180,31 +182,135 @@ class IndustryScoreConfig:
 
 
 # ──────────────────────────────────────────────
-# 预期差评分配置
+# 预期差评分配置（原版保持兼容）
 # ──────────────────────────────────────────────
 @dataclass
 class ExpectationGapConfig:
     positive_surprise_score: float = 100.0
     neutral_score: float = 60.0
     negative_surprise_score: float = 20.0
-    surprise_threshold_pct: float = 10.0  # 超过预期10%为正向惊喜
+    surprise_threshold_pct: float = 10.0
 
 
 # ──────────────────────────────────────────────
-# 最终评分权重配置
+# 预期差引擎 V2 配置（代理预期模型）
+# ──────────────────────────────────────────────
+@dataclass
+class ExpectationGapV2Config:
+    """预期差引擎 V2 配置 — 代理预期模型"""
+    # 行业基准：回溯季度数
+    industry_lookback_quarters: int = 4
+    # 行业采样公司数上限
+    max_industry_samples: int = 20
+
+    # gap >100% → 90-100分
+    gap_over_100_score: float = 95.0
+    # gap 50%-100% → 75-90分
+    gap_50_100_score_min: float = 75.0
+    gap_50_100_score_max: float = 90.0
+    # gap 20%-50% → 60-75分
+    gap_20_50_score_min: float = 60.0
+    gap_20_50_score_max: float = 75.0
+    # gap <20% → 40-60分
+    gap_under_20_score_min: float = 40.0
+    gap_under_20_score_max: float = 60.0
+
+    # 加速度加分
+    acceleration_bonus_weight: float = 0.10  # 加速度占总分10%
+    max_acceleration_bonus: float = 10.0
+
+    # 分位数选择：mean 或 median
+    benchmark_stat: str = "median"
+
+
+# ──────────────────────────────────────────────
+# 机构吸筹引擎配置
+# ──────────────────────────────────────────────
+@dataclass
+class InstitutionAccumulationConfig:
+    """机构吸筹检测配置"""
+    # 权重
+    fund_flow_weight: float = 0.40      # 资金趋势权重
+    volume_price_weight: float = 0.30   # 量价结构权重
+    chip_change_weight: float = 0.30    # 筹码变化权重
+
+    # 资金指标
+    short_term_days: int = 5
+    mid_term_days: int = 10
+    long_term_days: int = 20
+
+    # 量价指标
+    volume_trend_days: int = 20
+    up_volume_threshold: float = 1.2    # 上涨日量比阈值
+    down_shrink_threshold: float = 0.8  # 下跌日缩量阈值
+    turnover_change_days: int = 10
+
+    # 筹码指标
+    chip_lookback_days: int = 10
+
+    # 状态评分阈值
+    accumulation_score_threshold: float = 60.0  # 吸筹
+    wash_score_threshold: float = 40.0          # 洗盘
+    launch_score_threshold: float = 75.0        # 启动
+    accelerate_score_threshold: float = 85.0    # 加速
+    distribute_score_threshold: float = 30.0    # 派发
+
+
+# ──────────────────────────────────────────────
+# 业绩回踩买点引擎配置
+# ──────────────────────────────────────────────
+@dataclass
+class EarningsBuyPointConfig:
+    """业绩回踩买点检测配置"""
+    # 公告时间窗口
+    min_days_since_announce: int = 5
+    max_days_since_announce: int = 20
+
+    # 趋势要求
+    ma_period: int = 20  # MA20
+
+    # 回撤要求
+    max_pullback_from_high_pct: float = 10.0  # 距离公告后高点<10%
+
+    # 缩量要求
+    max_volume_ratio: float = 0.6  # 量比<0.6
+
+    # Alpha要求
+    min_alpha: float = 70.0
+
+    # 评分映射
+    buy_score_threshold: float = 75.0   # BUY
+    watch_score_threshold: float = 50.0  # WATCH
+
+
+# ──────────────────────────────────────────────
+# 最终评分权重配置（ELD V2）
 # ──────────────────────────────────────────────
 @dataclass
 class FinalScoreConfig:
-    """ELD 最终评分权重 = ELS(25/20/15/10/10/5/5/5/5)"""
-    event_quality_weight: float = 0.25
-    earnings_weight: float = 0.20
-    institution_weight: float = 0.15
-    chip_weight: float = 0.10
-    trend_weight: float = 0.10
-    industry_weight: float = 0.05
-    freshness_weight: float = 0.05
-    expectation_gap_weight: float = 0.05
-    similarity_weight: float = 0.05
+    """ELD V2 最终评分权重
+
+    V2 (6维度): 30/20/20/15/10/5 = 1.00
+    V1 (9维度): 25/20/15/10/10/5/5/5/5 = 1.00（v1_* 前缀）
+    """
+    # ── V2 新权重（compute_els_v2 使用） ──
+    event_quality_weight: float = 0.30     # 事件质量 30%
+    expectation_gap_weight: float = 0.20   # 预期差 20%
+    trend_weight: float = 0.20             # 趋势Alpha 20%
+    institution_weight: float = 0.15       # 机构资金 15%
+    industry_weight: float = 0.10          # 主题 10%
+    etf_weight: float = 0.05               # ETF 5%
+
+    # ── V1 权重（compute_els V1 使用） ──
+    v1_event_quality_weight: float = 0.25
+    v1_earnings_weight: float = 0.20
+    v1_institution_weight: float = 0.15
+    v1_chip_weight: float = 0.10
+    v1_trend_weight: float = 0.10
+    v1_industry_weight: float = 0.05
+    v1_freshness_weight: float = 0.05
+    v1_expectation_gap_weight: float = 0.05
+    v1_similarity_weight: float = 0.05
 
 
 # ──────────────────────────────────────────────
@@ -237,6 +343,9 @@ class Config:
     trend: TrendScoreConfig = field(default_factory=TrendScoreConfig)
     industry: IndustryScoreConfig = field(default_factory=IndustryScoreConfig)
     expectation_gap: ExpectationGapConfig = field(default_factory=ExpectationGapConfig)
+    expectation_gap_v2: ExpectationGapV2Config = field(default_factory=ExpectationGapV2Config)
+    institution_accumulation: InstitutionAccumulationConfig = field(default_factory=InstitutionAccumulationConfig)
+    earnings_buy_point: EarningsBuyPointConfig = field(default_factory=EarningsBuyPointConfig)
     final_score: FinalScoreConfig = field(default_factory=FinalScoreConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
 

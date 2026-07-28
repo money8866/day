@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from .constants import BuyPointState, StarRating
+from .constants import BuyPointState, EarningsBuySignal, InstitutionState, StarRating
 
 
 # ──────────────────────────────────────────────
@@ -37,6 +37,7 @@ class ForecastData:
     p_change_max: float = 0.0
     announce_date: str = ""
     fiscal_quarter: str = ""
+    summary: str = ""  # 业绩预告原文摘要，用于检测非经常性损益关键词
 
 
 @dataclass
@@ -247,6 +248,58 @@ class BuyPointResult:
 
 
 # ──────────────────────────────────────────────
+# ELD V2 新增模块结果模型
+# ──────────────────────────────────────────────
+@dataclass
+class ExpectationGapV2Result:
+    """预期差引擎 V2 结果（代理预期模型）"""
+    score: float = 0.0
+    industry_growth: float = 0.0          # 行业基准增速（%）
+    company_growth: float = 0.0           # 公司预告增速（%）
+    gap: float = 0.0                      # 超额增长（%）
+    acceleration: float = 0.0             # 增长加速度
+    profit_acceleration: float = 0.0      # 利润加速度
+    revenue_acceleration: float = 0.0     # 营收加速度
+    industry_median: float = 0.0          # 行业中位数增速
+    industry_mean: float = 0.0            # 行业平均增速
+    peer_count: int = 0                   # 可比公司数
+    logic: list[str] = field(default_factory=list)
+
+
+@dataclass
+class InstitutionAccumulationResult:
+    """机构吸筹检测结果"""
+    score: float = 0.0
+    state: InstitutionState = InstitutionState.UNKNOWN
+    fund_flow_score: float = 0.0          # 资金趋势分
+    volume_price_score: float = 0.0       # 量价结构分
+    chip_change_score: float = 0.0        # 筹码变化分
+    short_term_flow_ratio: float = 0.0    # 近5日净大单流入比
+    mid_term_flow_ratio: float = 0.0      # 近10日净大单流入比
+    long_term_flow_ratio: float = 0.0     # 近20日净大单流入比
+    volume_trend_score: float = 0.0       # 量能趋势得分
+    concentration_change: float = 0.0     # 集中度变化
+    avg_cost_change: float = 0.0          # 平均成本变化
+    profit_ratio_change: float = 0.0      # 获利盘变化
+    logic: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EarningsBuyPointResult:
+    """业绩回踩买点检测结果"""
+    signal: EarningsBuySignal = EarningsBuySignal.NONE
+    score: float = 0.0
+    stage: str = ""                        # BUY / WATCH / IGNORE
+    days_since_announce: int = 0           # 距公告天数
+    pullback_from_high_pct: float = 0.0    # 距高点回撤%
+    volume_ratio: float = 0.0             # 量比
+    close_above_ma20: bool = False         # 是否在MA20上方
+    alpha: float = 0.0                    # Alpha值
+    institution_state: str = ""            # 当前机构状态
+    logic: list[str] = field(default_factory=list)
+
+
+# ──────────────────────────────────────────────
 # 最终评分模型
 # ──────────────────────────────────────────────
 @dataclass
@@ -269,7 +322,7 @@ class FinalScoreResult:
     announce_date: str = ""
     forecast_pct: float = 0.0
 
-    # ELS 各维度
+    # ELS 各维度（保留原有字段保持兼容）
     event_quality_score: float = 0.0
     earnings_score: float = 0.0
     institution_score: float = 0.0
@@ -280,10 +333,19 @@ class FinalScoreResult:
     expectation_gap_score: float = 0.0
     similarity_score: float = 0.0
 
+    # ELD V2 新增维度
+    expectation_gap_v2_score: float = 0.0     # 预期差V2
+    institution_accumulation_score: float = 0.0  # 机构吸筹评分
+    institution_state: str = ""                # 机构状态
+    earnings_buy_signal: str = ""              # 业绩回踩买点信号
+    earnings_buy_score: float = 0.0            # 业绩回踩买点评分
+
     # 综合
     els: float = 0.0
+    els_v2: float = 0.0    # ELD V2 评分
     market_multiplier: float = 1.0
     final_score: float = 0.0
+    final_score_v2: float = 0.0  # ELD V2 最终分
     rank: int = 0
 
     # 详细结果（用于报告）
@@ -297,13 +359,19 @@ class FinalScoreResult:
     expectation_gap_detail: Optional[ExpectationGapResult] = None
     similarity_detail: Optional[SimilarityResult] = None
 
+    # ELD V2 新增详细结果
+    expectation_gap_v2_detail: Optional[ExpectationGapV2Result] = None
+    institution_accumulation_detail: Optional[InstitutionAccumulationResult] = None
+    earnings_buy_point_detail: Optional[EarningsBuyPointResult] = None
+
     buy_point_detail: Optional[BuyPointResult] = None
 
     recommendation: str = "观望"
+    recommendation_v2: str = "观望"  # V2 建议
 
     def to_dict(self) -> dict[str, Any]:
         """转为扁平字典"""
-        return {
+        d = {
             "ts_code": self.ts_code,
             "name": self.name,
             "industry": self.industry,
@@ -311,20 +379,30 @@ class FinalScoreResult:
             "announce_date": self.announce_date,
             "forecast_pct": self.forecast_pct,
             "els": round(self.els, 2),
+            "els_v2": round(self.els_v2, 2),
             "final_score": round(self.final_score, 2),
+            "final_score_v2": round(self.final_score_v2, 2),
             "rank": self.rank,
             "event_quality": round(self.event_quality_score, 1),
             "earnings": round(self.earnings_score, 1),
             "institution": round(self.institution_score, 1),
             "chip": round(self.chip_score, 1),
             "trend": round(self.trend_score, 1),
-            "industry": round(self.industry_score, 1),
+            "industry_score": round(self.industry_score, 1),
             "freshness": round(self.freshness_score, 1),
             "expectation_gap": round(self.expectation_gap_score, 1),
             "similarity": round(self.similarity_score, 1),
+            # V2 新增字段
+            "expectation_gap_v2": round(self.expectation_gap_v2_score, 1),
+            "institution_accumulation": round(self.institution_accumulation_score, 1),
+            "institution_state": self.institution_state,
+            "earnings_buy_signal": self.earnings_buy_signal,
+            "earnings_buy_score": round(self.earnings_buy_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,
+            "recommendation_v2": self.recommendation_v2,
         }
+        return d
 
 
 # ──────────────────────────────────────────────

@@ -1,0 +1,538 @@
+══════════════════════════════════════════════════
+  主题精华报告 - 20260728
+══════════════════════════════════════════════════
+
+【市场总览】
+  市场状态     : 震荡
+  活跃主题     : 28 个
+  子主题数量   : 71 个
+  活跃子主题   : 0 个（升温+主升）
+  覆盖股票     : 3057 只
+  Top Picks   : 232 个
+
+  买入信号统计:
+
+──────────────────────────────────────────────────
+   1. AI算力 ×
+      子主题:7个 | 股票:211只 | α均:50.9 | F均:47.2 | T均:44.5 I均:53.2 | 买入:0个
+      角色分布: {'Beta': 46, 'Momentum': 42, 'Defensive': 33, 'Weak': 7, 'Follower': 7}
+
+    ├─ 光模块          × 弱势 [58分] 
+    │   ○ 中际旭创  (300308.SZ) Weak       α54 F56 T49 I43 [WATCH] ★★
+    │   ○ 新易盛   (300502.SZ) Weak       α52 F55 T49 I47 [WATCH] ★★
+    │   ▽ 华工科技  (000988.SZ) Defensive  α50 F54 T49 I45 [REDUCE] ★★
+    │   ✕ 联特科技  (301205.SZ) Defensive  α57 F57 T47 I48 [SELL] ★
+
+    ├─ 光芯片          × 弱势 [51分] 
+    │   ○ 长光华芯  (688048.SH) Follower   α51 F56 T50 I49 [WATCH] ★★
+    │   ✕ 源杰科技  (688498.SH) Weak       α55 F56 T46 I44 [SELL] ★
+    │   ✕ 永鼎股份  (600105.SH) Defensive  α52 F56 T46 I46 [SELL] ★
+    │   ✕ 光库科技  (300620.SZ) Defensive  α53 F53 T44 I46 [SELL] ★
+
+    ├─ AI服务器        ↓↓ 退潮 [50分] 
+    │   ▽ 工业富联  (601138.SH) Defensive  α51 F52 T48 I46 [REDUCE] ★★
+    │   ▽ 神州数码  (000034.SZ) Defensive  α54 F52 T48 I47 [REDUCE] ★★
+    │   ▽ 中科曙光  (603019.SH) Defensive  α50 F51 T47 I50 [REDUCE] ★★
+    │   ▽ 拓维信息  (002261.SZ) Defensive  α49 F51 T46 I45 [REDUCE] ★★
+
+    ├─ PCB高速互连      × 弱势 [44分] 
+    │   ○ 景旺电子  (603228.SH) Defensive  α80 F62 T54 I65 [WATCH] ★★
+    │   ○ 东山精密  (002384.SZ) Follower   α49 F51 T46 I49 [WATCH] ★★
+    │   ○ 奕东电子  (301123.SZ) Follower   α41 F50 T46 I46 [WATCH] ★★
+    │   ▽ 方正科技  (600601.SH) Defensive  α48 F52 T48 I44 [REDUCE] ★★
+
+    ├─ IDC          ↓ 潜伏 [42分] 
+    │   ○ 中光防雷  (300414.SZ) Beta       α76 F69 T59 I67 [WATCH] ★★
+    │   ○ 高伟达   (300465.SZ) Beta       α68 F63 T55 I67 [WATCH] ★★
+    │   ○ 海峡创新  (300300.SZ) Beta       α65 F63 T54 I58 [WATCH] ★★
+    │   ○ 汇金股份  (300368.SZ) Beta       α62 F62 T54 I64 [WATCH] ★★
+    │   >>> TOP PICK: 梦网科技 Momentum T=52 F=59 α=59
+    │   >>> TOP PICK: 超讯科技 Momentum T=50 F=57 α=56
+    │   >>> TOP PICK: 中光防雷 Beta T=59 F=69 α=76
+
+    ├─ 液冷           × 弱势 [39分] 
+    │   ▽ 高澜股份  (300499.SZ) Defensive  α52 F51 T47 I46 [REDUCE] ★★
+    │   ✕ 申菱环境  (301018.SZ) Follower   α52 F52 T43 I50 [SELL] ★
+    │   ✕ 飞龙股份  (002536.SZ) Defensive  α54 F50 T41 I51 [SELL] ★
+
+    ├─ 智算运营         ↓ 潜伏 [37分] 
+    │   ○ 鸿博股份  (002229.SZ) Beta       α54 F51 T46 I58 [WATCH] ★★
+    │   ○ 中贝通信  (603220.SH) Momentum   α51 F51 T46 I56 [WATCH] ★★
+    │   ○ 利通电子  (603629.SH) Beta       α52 F48 T44 I53 [WATCH] ★★
+
+    主题 Top Picks:
+      → 中光防雷   Beta       α=76 T=59 ○ WATCH
+      → 梦网科技   Momentum   α=59 T=52 ○ WATCH
+      → 超讯科技   Momentum   α=56 T=50 ○ WATCH
+
+──────────────────────────────────────────────────
+   2. 低空经济 ↓
+      子主题:6个 | 股票:118只 | α均:51.5 | F均:44.1 | T均:43.5 I均:54.8 | 买入:0个
+      角色分布: {'Beta': 31, 'Momentum': 21, 'Defensive': 2, 'Weak': 1}
+
+    ├─ 无人机          ↓ 潜伏 [48分] 
+    │   ○ 永悦科技  (603879.SH) Momentum   α66 F64 T55 I66 [WATCH] ★★
+    │   ○ 新余国科  (300722.SZ) Beta       α60 F59 T52 I56 [WATCH] ★★
+    │   ○ 晨曦航空  (300581.SZ) Beta       α58 F59 T52 I55 [WATCH] ★★
+    │   ○ 宇瞳光学  (300790.SZ) Beta       α52 F58 T51 I53 [WATCH] ★★
+    │   >>> TOP PICK: 永悦科技 Momentum T=55 F=64 α=66
+    │   >>> TOP PICK: 顺丰控股 Momentum T=46 F=51 α=55
+    │   >>> TOP PICK: 新余国科 Beta T=52 F=59 α=60
+
+    ├─ 空管/导航        ↓ 潜伏 [42分] 
+    │   ○ 川大智胜  (002253.SZ) Momentum   α52 F52 T47 I56 [WATCH] ★★
+    │   ○ 四创电子  (600990.SH) Momentum   α53 F48 T44 I56 [WATCH] ★★
+
+    ├─ 低空基础设施       ↓ 潜伏 [39分] 
+    │   ○ 莱斯信息  (688631.SH) Beta       α52 F56 T50 I54 [WATCH] ★★
+
+    ├─ 低空运营         ↓ 潜伏 [38分] 
+    │   ○ 麦迪科技  (603990.SH) Momentum   α69 F64 T55 I63 [WATCH] ★★
+    │   ○ 思特奇   (300608.SZ) Beta       α73 F63 T54 I62 [WATCH] ★★
+    │   ○ 新晨科技  (300542.SZ) Beta       α62 F57 T51 I65 [WATCH] ★★
+    │   ○ 华平股份  (300074.SZ) Beta       α62 F57 T50 I61 [WATCH] ★★
+
+    ├─ 航空材料         × 弱势 [36分] 
+    │   ▽ 宝钛股份  (600456.SH) Weak       α53 F52 T48 I52 [REDUCE] ★★
+    │   ✕ 中航高科  (600862.SH) Defensive  α52 F50 T42 I50 [SELL] ★
+
+    ├─ eVTOL/飞行汽车   ↓↓ 退潮 [35分] 
+    │   ▽ 万丰奥威  (002085.SZ) Defensive  α52 F50 T47 I50 [REDUCE] ★★
+
+    主题 Top Picks:
+      → 永悦科技   Momentum   α=66 T=55 ○ WATCH
+      → 新余国科   Beta       α=60 T=52 ○ WATCH
+      → 顺丰控股   Momentum   α=55 T=46 ○ WATCH
+
+──────────────────────────────────────────────────
+   3. 军工 ↓
+      子主题:7个 | 股票:224只 | α均:50.9 | F均:41.9 | T均:42.5 I均:51.7 | 买入:0个
+      角色分布: {'Defensive': 36, 'Momentum': 12, 'Beta': 11, 'Follower': 2, 'Leader': 2}
+
+    ├─ 卫星/航天        ↓↓ 退潮 [50分] 
+    │   ○ 华体科技  (603679.SH) Momentum   α52 F57 T50 I56 [WATCH] ★★
+    │   ○ 航宇微   (300053.SZ)            α52 F38 T41 I54 [WATCH] ★★
+    │   ○ 创远信科  (920961.BJ)            α52 F38 T41 I54 [WATCH] ★★
+    │   ○ 海昌新材  (300885.SZ)            α52 F38 T41 I54 [WATCH] ★★
+
+    ├─ 军工材料         ↓↓ 退潮 [48分] 
+    │   ▽ 光威复材  (300699.SZ) Defensive  α54 F54 T50 I47 [REDUCE] ★★
+    │   ▽ 钢研高纳  (300034.SZ) Defensive  α52 F52 T48 I46 [REDUCE] ★★
+    │   ▽ 西部超导  (688122.SH) Defensive  α51 F52 T48 I46 [REDUCE] ★★
+
+    ├─ 舰船           ↓ 潜伏 [47分] 
+    │   ○ 中国船舶  (600150.SH) Momentum   α53 F51 T46 I57 [WATCH] ★★
+    │   ○ 中国动力  (600482.SH) Momentum   α52 F50 T45 I56 [WATCH] ★★
+
+    ├─ 航空发动机        ↓ 潜伏 [47分] 
+    │   ○ 图南股份  (300855.SZ) Beta       α49 F54 T48 I51 [WATCH] ★★
+    │   ○ 航发科技  (600391.SH) Momentum   α52 F53 T47 I56 [WATCH] ★★
+    │   ○ 航发控制  (000738.SZ) Beta       α57 F52 T47 I59 [WATCH] ★★
+    │   ○ 航发动力  (600893.SH) Leader     α53 F46 T42 I64 [WATCH] ★★
+    │   >>> TOP PICK: 航发动力 Leader T=42 F=46 α=53
+
+    ├─ 导弹/弹药        ↓ 潜伏 [44分] ★
+    │   ○ 中兵红箭  (000519.SZ) Momentum   α51 F54 T48 I56 [WATCH] ★★
+    │   ○ 光电股份  (600184.SH) Momentum   α48 F53 T47 I54 [WATCH] ★★
+    │   ○ 长城军工  (601606.SH) Leader     α57 F50 T45 I72 [WATCH] ★★
+    │   ○ 北方导航  (600435.SH) Momentum   α53 F49 T45 I57 [WATCH] ★★
+
+    ├─ 雷达/电子对抗      ↓↓ 退潮 [44分] 
+    │   ▽ 国睿科技  (600562.SH) Defensive  α54 F54 T49 I58 [REDUCE] ★★
+    │   ▽ 纳睿雷达  (688522.SH) Defensive  α50 F50 T46 I45 [REDUCE] ★★
+    │   ✕ 雷电微力  (301050.SZ) Defensive  α53 F55 T45 I47 [SELL] ★
+
+    ├─ 军工电子/信息化     ↓ 潜伏 [41分] 
+    │   ○ 振华科技  (000733.SZ) Momentum   α52 F52 T47 I56 [WATCH] ★★
+    │   ○ 七一二   (603712.SH) Momentum   α53 F49 T45 I57 [WATCH] ★★
+    │   >>> TOP PICK: 振华科技 Momentum T=47 F=52 α=52
+    │   >>> TOP PICK: 七一二 Momentum T=45 F=49 α=53
+
+    主题 Top Picks:
+      → 振华科技   Momentum   α=52 T=47 ○ WATCH
+      → 七一二    Momentum   α=53 T=45 ○ WATCH
+      → 航发动力   Leader     α=53 T=42 ○ WATCH
+
+──────────────────────────────────────────────────
+   4. 创新药 ↓↓
+      子主题:7个 | 股票:186只 | α均:50.9 | F均:42.9 | T均:42.7 I均:52.5 | 买入:0个
+      角色分布: {'Defensive': 76, 'Weak': 13, 'Beta': 1, 'Momentum': 1}
+
+    ├─ ADC          ↓↓ 退潮 [55分] 
+    │   ▽ 恒瑞医药  (600276.SH) Defensive  α54 F52 T48 I52 [REDUCE] ★★
+    │   ▽ 百利天恒  (688506.SH) Weak       α53 F52 T48 I55 [REDUCE] ★★
+    │   ▽ 荣昌生物  (688331.SH) Defensive  α50 F50 T46 I45 [REDUCE] ★★
+
+    ├─ CXO/CRO/CDMO ↓↓ 退潮 [49分] 
+    │   ▽ 药明康德  (603259.SH) Defensive  α61 F54 T50 I61 [REDUCE] ★★
+    │   ▽ 康龙化成  (300759.SZ) Weak       α60 F53 T49 I57 [REDUCE] ★★
+    │   ▽ 九洲药业  (603456.SH) Defensive  α58 F53 T49 I60 [REDUCE] ★★
+    │   ▽ 和元生物  (688238.SH) Defensive  α51 F51 T47 I50 [REDUCE] ★★
+
+    ├─ 生物药/抗体       ↓↓ 退潮 [46分] 
+    │   ○ 国际医学  (000516.SZ) Defensive  α64 F56 T50 I63 [WATCH] ★★
+    │   ▽ 复星医药  (600196.SH) Defensive  α56 F52 T48 I60 [REDUCE] ★★
+    │   ▽ 双鹭药业  (002038.SZ) Defensive  α48 F51 T47 I44 [REDUCE] ★★
+    │   ▽ 百济神州  (688235.SH) Defensive  α57 F50 T46 I60 [REDUCE] ★★
+
+    ├─ 创新化药         ↓↓ 退潮 [44分] 
+    │   ○ 乐普医疗  (300003.SZ) Defensive  α73 F57 T50 I66 [WATCH] ★★
+    │   ○ 万邦医药  (301520.SZ) Defensive  α64 F56 T56 I62 [WATCH] ★★★
+    │   ○ 哈三联   (002900.SZ) Defensive  α69 F55 T49 I64 [WATCH] ★★
+    │   ○ 昭衍新药  (603127.SH) Defensive  α66 F54 T48 I63 [WATCH] ★★
+
+    ├─ 中药创新         ↓ 潜伏 [33分] 
+    │   ○ 天士力   (600535.SH) Momentum   α52 F47 T44 I69 [WATCH] ★★
+    │   >>> TOP PICK: 天士力 Momentum T=44 F=47 α=52
+
+    ├─ 疫苗           ↓ 潜伏 [32分] 
+    │   ○ 康泰生物  (300601.SZ) Beta       α52 F52 T47 I66 [WATCH] ★★
+    │   >>> TOP PICK: 康泰生物 Beta T=47 F=52 α=52
+
+    ├─ 细胞/基因治疗      ↓ 潜伏 [21分] 
+
+    主题 Top Picks:
+      → 康泰生物   Beta       α=52 T=47 ○ WATCH
+      → 天士力    Momentum   α=52 T=44 ○ WATCH
+
+──────────────────────────────────────────────────
+   5. 化工 ↓
+      子主题:5个 | 股票:253只 | α均:50.6 | F均:41.7 | T均:42.4 I均:53.7 | 买入:0个
+      角色分布: {'Momentum': 40, 'Beta': 29, 'Defensive': 4, 'Leader': 2, 'Follower': 1}
+
+    ├─ 氟化工/制冷剂      × 弱势 [48分] 
+    │   ○ 昊华科技  (600378.SH) Defensive  α53 F55 T49 I46 [WATCH] ★★
+    │   ○ 巨化股份  (600160.SH) Momentum   α53 F52 T47 I56 [WATCH] ★★
+    │   ○ 三美股份  (603379.SH) Momentum   α52 F49 T45 I56 [WATCH] ★★
+    │   ▽ 永和股份  (605020.SH) Defensive  α52 F56 T50 I46 [REDUCE] ★★
+
+    ├─ 染料/颜料        ↓ 潜伏 [45分] 
+    │   ○ 七彩化学  (300758.SZ) Momentum   α53 F55 T49 I56 [WATCH] ★★
+    │   ○ 闰土股份  (002440.SZ) Beta       α53 F55 T49 I65 [WATCH] ★★
+    │   ○ 双乐股份  (301036.SZ) Momentum   α53 F55 T49 I56 [WATCH] ★★
+    │   ○ 浙江龙盛  (600352.SH) Momentum   α52 F53 T48 I67 [WATCH] ★★
+
+    ├─ 精细化工/新材料     ↓ 潜伏 [44分] 
+    │   ○ 日科化学  (300214.SZ) Momentum   α78 F73 T62 I77 [WATCH] ★★
+    │   ○ 多氟多   (002407.SZ) Momentum   α74 F68 T58 I64 [WATCH] ★★
+    │   ○ 中触媒   (688267.SH) Beta       α70 F66 T56 I60 [WATCH] ★★
+    │   ○ 星辉环材  (300834.SZ) Beta       α65 F64 T55 I58 [WATCH] ★★
+    │   >>> TOP PICK: 云天化 Leader T=44 F=48 α=61
+    │   >>> TOP PICK: 日科化学 Momentum T=62 F=73 α=78
+    │   >>> TOP PICK: 多氟多 Momentum T=58 F=68 α=74
+
+    ├─ 工程塑料         × 弱势 [42分] 
+    │   ○ 普利特   (002324.SZ) Defensive  α54 F56 T49 I46 [WATCH] ★★
+    │   ○ 金发科技  (600143.SH) Momentum   α52 F51 T46 I56 [WATCH] ★★
+    │   ▽ 道恩股份  (002838.SZ) Follower   α51 F53 T48 I49 [REDUCE] ★★
+    │   ▽ 国恩股份  (002768.SZ) Defensive  α53 F51 T47 I46 [REDUCE] ★★
+
+    ├─ 聚氨酯/MDI      ↓ 潜伏 [39分] 
+    │   ○ 万华化学  (600309.SH) Leader     α52 F50 T45 I72 [WATCH] ★★
+    │   ○ 华峰化学  (002064.SZ) Beta       α52 F50 T45 I64 [WATCH] ★★
+    │   ○ 沧州大化  (600230.SH) Momentum   α53 F50 T45 I61 [WATCH] ★★
+
+    主题 Top Picks:
+      → 日科化学   Momentum   α=78 T=62 ○ WATCH
+      → 多氟多    Momentum   α=74 T=58 ○ WATCH
+      → 云天化    Leader     α=61 T=44 ○ WATCH
+
+──────────────────────────────────────────────────
+   6. 半导体 ×
+      子主题:10个 | 股票:283只 | α均:51.2 | F均:46.1 | T均:43.9 I均:40.7 | 买入:0个
+      角色分布: {'Defensive': 85, 'Weak': 26, 'Follower': 25, 'Beta': 10, 'Momentum': 2}
+
+    ├─ 晶圆制造         × 弱势 [54分] 
+    │   ○ 中芯国际  (688981.SH) Beta       α52 F62 T54 I57 [WATCH] ★★
+    │   ▽ 芯联集成  (688469.SH) Defensive  α54 F55 T50 I36 [REDUCE] ★★
+    │   ✕ 赛微电子  (300456.SZ) Defensive  α53 F55 T46 I36 [SELL] ★
+    │   ✕ 晶合集成  (688249.SH) Weak       α51 F54 T45 I32 [SELL] ★
+
+    ├─ 功率半导体        × 弱势 [52分] 
+    │   ▽ 斯达半导  (603290.SH) Defensive  α55 F57 T52 I37 [REDUCE] ★★
+    │   ▽ 华润微   (688396.SH) Weak       α52 F55 T49 I33 [REDUCE] ★★
+    │   ▽ 宏微科技  (688711.SH) Defensive  α50 F53 T49 I35 [REDUCE] ★★
+    │   ✕ 士兰微   (600460.SH) Defensive  α55 F57 T47 I37 [SELL] ★
+
+    ├─ 半导体设备        ↓↓ 退潮 [51分] 
+    │   ○ 北方华创  (002371.SZ) Defensive  α53 F55 T49 I36 [WATCH] ★★
+    │   ○ 芯源微   (688037.SH) Defensive  α52 F52 T47 I36 [WATCH] ★★
+    │   ▽ 中微公司  (688012.SH) Defensive  α55 F53 T49 I37 [REDUCE] ★★
+    │   ▽ 拓荆科技  (688072.SH) Defensive  α55 F52 T48 I41 [REDUCE] ★★
+
+    ├─ EDA/IP       × 弱势 [50分] 
+    │   ○ 概伦电子  (688206.SH) Beta       α52 F63 T55 I53 [WATCH] ★★
+    │   ○ 国芯科技  (688262.SH) Follower   α52 F55 T49 I40 [WATCH] ★★
+    │   ▽ 芯原股份  (688521.SH) Weak       α52 F56 T50 I33 [REDUCE] ★★
+    │   ✕ 华大九天  (301269.SZ) Defensive  α54 F56 T46 I36 [SELL] ★
+
+    ├─ 半导体材料        × 弱势 [50分] 
+    │   ✕ 立昂微   (605358.SH) Defensive  α51 F55 T45 I35 [SELL] ★
+    │   ✕ 江丰电子  (300666.SZ) Defensive  α54 F54 T44 I37 [SELL] ★
+    │   ✕ 沪硅产业  (688126.SH) Defensive  α53 F54 T44 I36 [SELL] ★
+
+    ├─ 模拟芯片         × 弱势 [49分] 
+    │   ○ 思瑞浦   (688536.SH) Follower   α52 F54 T49 I40 [WATCH] ★★
+    │   ○ 杰华特   (688141.SH) Weak       α52 F54 T48 I33 [WATCH] ★★
+    │   ○ 圣邦股份  (300661.SZ) Defensive  α52 F54 T48 I36 [WATCH] ★★
+    │   ▽ 艾为电子  (688798.SH) Defensive  α49 F52 T48 I35 [REDUCE] ★★
+
+    ├─ 存储芯片         × 弱势 [46分] 
+    │   ○ 盈方微   (000670.SZ) Defensive  α81 F66 T64 I47 [WATCH] ★★★
+    │   ○ 至纯科技  (603690.SH) Defensive  α74 F64 T55 I44 [WATCH] ★★
+    │   ○ 太极实业  (600667.SH) Defensive  α70 F62 T54 I43 [WATCH] ★★
+    │   ○ 强一股份  (688809.SH) Defensive  α70 F59 T52 I43 [WATCH] ★★
+    │   >>> TOP PICK: 正帆科技 Follower T=51 F=58 α=66
+    │   >>> TOP PICK: 德明利 Follower T=50 F=57 α=51
+
+    ├─ 先进封装         × 弱势 [46分] 
+    │   ○ 通富微电  (002156.SZ) Defensive  α79 F62 T60 I58 [WATCH] ★★★
+    │   ○ 联讯仪器  (688808.SH) Weak       α71 F61 T53 I41 [WATCH] ★★
+    │   ○ 华天科技  (002185.SZ) Follower   α65 F61 T53 I45 [WATCH] ★★
+    │   ○ 戈碧迦   (920438.BJ) Defensive  α67 F60 T59 I42 [WATCH] ★★★
+
+    ├─ CIS图像传感器     × 弱势 [45分] 
+    │   ○ 思特威   (688213.SH) Defensive  α62 F54 T48 I40 [WATCH] ★★
+    │   ○ 帝奥微   (688381.SH) Follower   α48 F54 T48 I38 [WATCH] ★★
+    │   ○ 银河微电  (688689.SH) Follower   α46 F53 T47 I37 [WATCH] ★★
+    │   ▽ 灿瑞科技  (688061.SH) Weak       α45 F49 T44 I30 [REDUCE] ★
+    │   >>> TOP PICK: 帝奥微 Follower T=48 F=54 α=48
+
+    ├─ 半导体检测        ↓ 潜伏 [43分] 
+    │   ○ 中科飞测  (688361.SH) Beta       α54 F63 T55 I44 [WATCH] ★★
+    │   ○ 华兴源创  (688001.SH) Beta       α51 F61 T53 I42 [WATCH] ★★
+
+    主题 Top Picks:
+      → 正帆科技   Follower   α=66 T=51 ○ WATCH
+      → 德明利    Follower   α=51 T=50 ○ WATCH
+      → 帝奥微    Follower   α=48 T=48 ○ WATCH
+
+──────────────────────────────────────────────────
+   7. 新能源车 ↓
+      子主题:6个 | 股票:379只 | α均:50.6 | F均:48.3 | T均:45.1 I均:54.7 | 买入:0个
+      角色分布: {'Momentum': 148, 'Beta': 83, 'Defensive': 35, 'Follower': 12, 'Leader': 5}
+
+    ├─ 汽车热管理        × 弱势 [49分] 
+    │   ○ 拓普集团  (601689.SH) Defensive  α51 F55 T49 I45 [WATCH] ★★
+    │   ○ 中鼎股份  (000887.SZ) Defensive  α55 F55 T49 I47 [WATCH] ★★
+    │   ✕ 银轮股份  (002126.SZ) Follower   α52 F54 T44 I50 [SELL] ★
+    │   ✕ 三花智控  (002050.SZ) Defensive  α52 F54 T45 I46 [SELL] ★
+    │   >>> TOP PICK: 银轮股份 Follower T=44 F=54 α=52
+
+    ├─ 充电桩          × 弱势 [47分] 
+    │   ○ 华菱线缆  (001208.SZ) Defensive  α73 F63 T61 I54 [WATCH] ★★★
+    │   ○ 太阳电缆  (002300.SZ) Defensive  α74 F60 T60 I59 [WATCH] ★★★
+    │   ○ 福华尚纬  (603333.SH) Defensive  α66 F59 T58 I64 [WATCH] ★★★
+    │   ○ 紫建电子  (301121.SZ) Follower   α62 F59 T52 I54 [WATCH] ★★
+
+    ├─ 整车           ↓ 潜伏 [46分] 
+    │   ○ 阿尔特   (300825.SZ) Momentum   α79 F72 T61 I66 [WATCH] ★★
+    │   ○ 浙江黎明  (603048.SH) Momentum   α76 F67 T58 I65 [WATCH] ★★
+    │   ○ 欣旺达   (300207.SZ) Beta       α76 F65 T56 I67 [WATCH] ★★
+    │   ○ 科恒股份  (300340.SZ) Beta       α74 F64 T55 I62 [WATCH] ★★
+    │   >>> TOP PICK: 湖南天雁 Leader T=59 F=59 α=78
+    │   >>> TOP PICK: 隆源股份 Core T=51 F=48 α=68
+
+    ├─ 电驱/电控        ↓ 潜伏 [44分] 
+    │   ○ 精进电动  (688280.SH) Beta       α53 F58 T51 I53 [WATCH] ★★
+    │   ○ 英搏尔   (300681.SZ) Beta       α52 F56 T50 I53 [WATCH] ★★
+
+    ├─ 动力电池         ↓ 潜伏 [42分] 
+    │   ○ 孚能科技  (688567.SH) Beta       α51 F55 T49 I57 [WATCH] ★★
+    │   ○ 宁德时代  (300750.SZ) Beta       α55 F55 T49 I62 [WATCH] ★★
+    │   ○ 国轩高科  (002074.SZ) Beta       α52 F48 T44 I61 [WATCH] ★★
+
+    ├─ 智能座舱         ↓ 潜伏 [39分] 
+    │   ○ 经纬恒润  (688326.SH) Beta       α51 F56 T50 I57 [WATCH] ★★
+    │   ○ 德赛西威  (002920.SZ) Beta       α54 F50 T45 I59 [WATCH] ★★
+    │   ○ 均胜电子  (600699.SH) Momentum   α51 F50 T45 I56 [WATCH] ★★
+    │   ○ 华阳集团  (002906.SZ) Momentum   α54 F49 T45 I61 [WATCH] ★★
+
+    主题 Top Picks:
+      → 湖南天雁   Leader     α=78 T=59 ○ WATCH
+      → 隆源股份   Core       α=68 T=51 ○ WATCH
+      → 银轮股份   Follower   α=52 T=44 ✕ SELL
+
+──────────────────────────────────────────────────
+   8. 机器人 ↓
+      子主题:9个 | 股票:290只 | α均:51.2 | F均:44.6 | T均:43.3 I均:51.3 | 买入:0个
+      角色分布: {'Defensive': 54, 'Beta': 39, 'Momentum': 31, 'Follower': 10, 'Weak': 4}
+
+    ├─ 关节模组         ↓ 潜伏 [47分] 
+
+    ├─ 减速器          × 弱势 [46分] 
+    │   ○ 秦川机床  (000837.SZ) Defensive  α62 F59 T52 I50 [WATCH] ★★
+    │   ○ 新时达   (002527.SZ) Defensive  α60 F58 T51 I49 [WATCH] ★★
+    │   ○ 国茂股份  (603915.SH) Defensive  α51 F55 T49 I46 [WATCH] ★★
+    │   ○ 兆威机电  (003021.SZ) Defensive  α47 F53 T47 I44 [WATCH] ★★
+
+    ├─ 机器视觉         × 弱势 [45分] 
+    │   ○ 矩子科技  (300802.SZ) Defensive  α77 F62 T61 I56 [WATCH] ★★★
+    │   ○ 美亚光电  (002690.SZ) Defensive  α71 F58 T58 I66 [WATCH] ★★★
+    │   ○ 智立方   (301312.SZ) Follower   α55 F55 T49 I51 [WATCH] ★★
+    │   ○ 奥普特   (688686.SH) Defensive  α52 F53 T48 I46 [WATCH] ★★
+
+    ├─ 人形机器人        ↓ 潜伏 [44分] 
+    │   ○ 东方精工  (002611.SZ) Momentum   α74 F62 T54 I65 [WATCH] ★★
+    │   ○ 珠海冠宇  (688772.SH) Beta       α56 F61 T53 I54 [WATCH] ★★
+    │   ○ 力星股份  (300421.SZ) Beta       α62 F61 T53 I57 [WATCH] ★★
+    │   ○ 博实股份  (002698.SZ) Beta       α76 F61 T53 I67 [WATCH] ★★
+
+    ├─ 力传感器         ↓ 潜伏 [39分] 
+    │   ○ 山科智能  (300897.SZ) Beta       α74 F67 T57 I62 [WATCH] ★★
+    │   ○ 万讯自控  (300112.SZ) Beta       α63 F61 T53 I66 [WATCH] ★★
+    │   ○ 久之洋   (300516.SZ) Beta       α62 F61 T53 I57 [WATCH] ★★
+    │   ○ 华丰股份  (605100.SH) Momentum   α69 F60 T53 I62 [WATCH] ★★
+    │   >>> TOP PICK: 华丰股份 Momentum T=53 F=60 α=69
+    │   >>> TOP PICK: 驰诚股份 Momentum T=46 F=51 α=61
+    │   >>> TOP PICK: 山科智能 Beta T=57 F=67 α=74
+
+    ├─ 工业机器人        × 弱势 [37分] 
+    │   ✕ 华中数控  (300161.SZ) Defensive  α52 F53 T44 I46 [SELL] ★
+
+    ├─ 灵巧手          ↓ 潜伏 [34分] 
+
+    ├─ 丝杠           ↓ 潜伏 [34分] 
+
+    ├─ 空心杯电机        ↓ 潜伏 [33分] 
+
+    主题 Top Picks:
+      → 山科智能   Beta       α=74 T=57 ○ WATCH
+      → 华丰股份   Momentum   α=69 T=53 ○ WATCH
+      → 驰诚股份   Momentum   α=61 T=46 ○ WATCH
+
+──────────────────────────────────────────────────
+   9. 消费电子 ×
+      子主题:7个 | 股票:131只 | α均:52.1 | F均:47.4 | T均:44.7 I均:51.0 | 买入:0个
+      角色分布: {'Defensive': 31, 'Beta': 23, 'Momentum': 12, 'Follower': 10, 'Weak': 7}
+
+    ├─ 连接器/结构件      × 弱势 [47分] 
+    │   ○ 长盈精密  (300115.SZ) Follower   α52 F53 T48 I50 [WATCH] ★★
+    │   ○ 硕贝德   (300322.SZ)            α52 F38 T41 I54 [WATCH] ★★
+
+    ├─ 显示面板         × 弱势 [45分] 
+    │   ○ 星星科技  (300256.SZ) Defensive  α74 F60 T60 I59 [WATCH] ★★★
+    │   ○ 智动力   (300686.SZ) Defensive  α64 F58 T51 I51 [WATCH] ★★
+    │   ○ 三利谱   (002876.SZ) Defensive  α58 F57 T50 I48 [WATCH] ★★
+    │   ○ 和辉光电  (688538.SH) Weak       α63 F55 T54 I52 [WATCH] ★★
+    │   >>> TOP PICK: 激智科技 Follower T=46 F=50 α=41
+
+    ├─ 射频前端         × 弱势 [45分] 
+    │   ○ 唯捷创芯  (688153.SH) Defensive  α54 F53 T48 I47 [WATCH] ★★
+    │   ▽ 卓胜微   (300782.SZ) Defensive  α51 F53 T48 I45 [REDUCE] ★★
+    │   ✕ 麦捷科技  (300319.SZ) Defensive  α52 F52 T44 I46 [SELL] ★
+
+    ├─ AI终端/边缘AI    × 弱势 [44分] 
+    │   ○ 格林精密  (300968.SZ) Weak       α62 F58 T58 I54 [WATCH] ★★★
+    │   ○ 福蓉科技  (603327.SH) Defensive  α68 F57 T57 I60 [WATCH] ★★★
+    │   ○ 全志科技  (300458.SZ) Defensive  α71 F56 T55 I65 [WATCH] ★★
+    │   ○ 瑞芯微   (603893.SH) Follower   α63 F56 T49 I66 [WATCH] ★★
+    │   >>> TOP PICK: 瑞芯微 Follower T=49 F=56 α=63
+    │   >>> TOP PICK: 光弘科技 Follower T=44 F=48 α=42
+
+    ├─ 智能手机         ↓ 潜伏 [42分] 
+    │   ○ 传音控股  (688036.SH) Beta       α54 F59 T52 I65 [WATCH] ★★
+    │   ○ 领益智造  (002600.SZ) Beta       α51 F51 T46 I52 [WATCH] ★★
+
+    ├─ 光学镜头         ↓ 潜伏 [41分] 
+    │   ○ 蓝特光学  (688127.SH) Beta       α50 F59 T52 I52 [WATCH] ★★
+    │   ○ 联创电子  (002036.SZ) Momentum   α56 F55 T49 I57 [WATCH] ★★
+    │   ○ 欧菲光   (002456.SZ) Momentum   α52 F51 T46 I56 [WATCH] ★★
+    │   ○ 水晶光电  (002273.SZ)            α52 F38 T41 I54 [WATCH] ★★
+
+    ├─ 可穿戴          ↓ 潜伏 [36分] 
+    │   ○ 盈趣科技  (002925.SZ) Beta       α73 F60 T53 I61 [WATCH] ★★
+    │   ○ 恒玄科技  (688608.SH) Beta       α56 F60 T52 I62 [WATCH] ★★
+    │   ○ 统联精密  (688210.SH) Beta       α58 F59 T52 I55 [WATCH] ★★
+    │   ○ 三环集团  (300408.SZ) Beta       α51 F57 T51 I52 [WATCH] ★★
+
+    主题 Top Picks:
+      → 瑞芯微    Follower   α=63 T=49 ○ WATCH
+      → 激智科技   Follower   α=41 T=46 ○ WATCH
+      → 光弘科技   Follower   α=42 T=44 ○ WATCH
+
+──────────────────────────────────────────────────
+  10. 电力 ↓
+      子主题:7个 | 股票:383只 | α均:51.2 | F均:44.4 | T均:43.6 I均:55.6 | 买入:0个
+      角色分布: {'Beta': 89, 'Momentum': 88, 'Defensive': 15, 'Leader': 7, 'Follower': 3}
+
+    ├─ 电网/特高压       ↓ 潜伏 [43分] 
+    │   ○ 中能电气  (300062.SZ) Beta       α73 F66 T57 I70 [WATCH] ★★
+    │   ○ 新联电子  (002546.SZ) Momentum   α70 F64 T56 I75 [WATCH] ★★
+    │   ○ 双杰电气  (300444.SZ) Beta       α64 F64 T55 I58 [WATCH] ★★
+    │   ○ 红相股份  (300427.SZ) Beta       α68 F63 T55 I60 [WATCH] ★★
+    │   >>> TOP PICK: 中国西电 Leader T=53 F=52 α=64
+    │   >>> TOP PICK: 益坤电气 Core T=46 F=42 α=57
+    │   >>> TOP PICK: 新联电子 Momentum T=56 F=64 α=70
+
+    ├─ 水电           ↓ 潜伏 [42分] 
+    │   ○ 国投电力  (600886.SH) Momentum   α55 F52 T47 I70 [WATCH] ★★
+    │   ○ 华能水电  (600025.SH) Momentum   α52 F52 T47 I69 [WATCH] ★★
+    │   ○ 川投能源  (600674.SH) Momentum   α54 F52 T47 I70 [WATCH] ★★
+    │   ○ 桂冠电力  (600236.SH) Beta       α51 F46 T48 I64 [WATCH] ★★
+
+    ├─ 储能           ↓ 潜伏 [41分] 
+    │   ○ 长江电力  (600900.SH) Momentum   α69 F62 T54 I76 [WATCH] ★★
+    │   ○ 南网储能  (600995.SH) Momentum   α72 F57 T50 I72 [WATCH] ★★
+    │   ○ 广州发展  (600098.SH) Momentum   α67 F57 T50 I71 [WATCH] ★★
+    │   ○ 川能动力  (000155.SZ) Beta       α65 F55 T49 I63 [WATCH] ★★
+
+    ├─ 光伏           ↓ 潜伏 [41分] 
+    │   ○ 拓日新能  (002218.SZ) Beta       α70 F58 T51 I68 [WATCH] ★★
+    │   ○ 东方新能  (002310.SZ) Beta       α60 F56 T50 I64 [WATCH] ★★
+    │   ○ 三峡能源  (600905.SH) Momentum   α62 F56 T49 I69 [WATCH] ★★
+    │   ○ 立新能源  (001258.SZ) Beta       α67 F54 T48 I71 [WATCH] ★★
+
+    ├─ 核电           ↓ 潜伏 [39分] 
+    │   ○ 中国核电  (601985.SH) Momentum   α54 F51 T46 I65 [WATCH] ★★
+    │   ○ 福能股份  (600483.SH) Momentum   α51 F48 T44 I64 [WATCH] ★★
+    │   ○ 中国广核  (003816.SZ) Momentum   α56 F48 T44 I66 [WATCH] ★★
+    │   ○ 电投产融  (000958.SZ) Momentum   α50 F47 T44 I60 [WATCH] ★★
+
+    ├─ 风电           ↓ 潜伏 [38分] 
+    │   ○ 电气风电  (688660.SH) Beta       α65 F63 T55 I62 [WATCH] ★★
+    │   ○ 吉鑫科技  (601218.SH) Momentum   α75 F59 T52 I69 [WATCH] ★★
+    │   ○ 金雷股份  (300443.SZ) Beta       α64 F58 T51 I62 [WATCH] ★★
+    │   ○ 运达股份  (300772.SZ) Beta       α64 F57 T51 I62 [WATCH] ★★
+
+    ├─ 火电           ↓ 潜伏 [34分] 
+    │   ○ 富春环保  (002479.SZ) Momentum   α54 F50 T45 I70 [WATCH] ★★
+    │   ○ 国电电力  (600795.SH) Momentum   α53 F48 T44 I69 [WATCH] ★★
+    │   ○ 华电国际  (600027.SH) Momentum   α51 F46 T42 I64 [WATCH] ★★
+
+    主题 Top Picks:
+      → 新联电子   Momentum   α=70 T=56 ○ WATCH
+      → 中国西电   Leader     α=64 T=53 ○ WATCH
+      → 益坤电气   Core       α=57 T=46 ○ WATCH
+
+══════════════════════════════════════════════════
+【全市场 Top Picks - 按 Trade Score 排序】
+══════════════════════════════════════════════════
+   1. 日科化学   T=62 α=78 Momentum   精细化工/新材料   [WATCH] ★★
+   2. 阿尔特    T=61 α=79 Momentum   整车         [WATCH] ★★
+   3. 森马服饰   T=60 α=77 Momentum   消费         [WATCH] ★★
+   4. 永杉锂业   T=60 α=78 Momentum   小金属        [WATCH] ★★
+   5. 湖南天雁   T=59 α=78 Leader     整车         [WATCH] ★★★
+   6. 中光防雷   T=59 α=76 Beta       IDC        [WATCH] ★★
+   7. 诺唯赞    T=59 α=70 Beta       合成生物       [WATCH] ★★
+   8. 纬德信息   T=58 α=65 Beta       信创         [WATCH] ★★
+   9. 多氟多    T=58 α=74 Momentum   精细化工/新材料   [WATCH] ★★
+  10. 安德利    T=58 α=71 Momentum   消费         [WATCH] ★★
+  11. 雄帝科技   T=58 α=76 Beta       信创         [WATCH] ★★
+  12. 锦鸡股份   T=58 α=75 Beta       高端材料       [WATCH] ★★
+  13. 安诺其    T=58 α=70 Beta       高端材料       [WATCH] ★★
+  14. 浙江黎明   T=58 α=76 Momentum   整车         [WATCH] ★★
+  15. 科力装备   T=58 α=75 Momentum   智能驾驶       [WATCH] ★★
+  16. 百奥赛图   T=58 α=62 Beta       合成生物       [WATCH] ★★
+  17. 格尔软件   T=57 α=74 Momentum   信创         [WATCH] ★★
+  18. 山科智能   T=57 α=74 Beta       力传感器       [WATCH] ★★
+  19. 亚康股份   T=57 α=72 Momentum   智能驾驶       [WATCH] ★★
+  20. 中能电气   T=57 α=73 Beta       电网/特高压     [WATCH] ★★
+
+══════════════════════════════════════════════════
+【买入信号 Top 20 - 按 Trade Score 排序】
+══════════════════════════════════════════════════
+
+══════════════════════════════════════════════════
+  报告生成: 2026-07-28 19:58
+══════════════════════════════════════════════════

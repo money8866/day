@@ -1,9 +1,12 @@
 """
 ELD V2 最终评分模块
 
-ELS = Σ(维度评分 × 权重) × 市场乘数
+ELS (V1) = Σ(维度评分 × 权重) × 市场乘数
+ELS V2   = Event×30% + ExpectationGap×20% + TrendAlpha×20% + Institution×15% + Theme×10% + ETF×5%
 
 组合所有评分维度，应用市场乘数，生成最终排序。
+
+V1 评分保持兼容，V2 评分新增。
 """
 
 from __future__ import annotations
@@ -43,10 +46,30 @@ from .models import (
     ForecastData,
     FinancialData,
     DailyPriceData,
+    ExpectationGapV2Result,
+    InstitutionAccumulationResult,
+    EarningsBuyPointResult,
 )
 from .market_score import get_market_score
 
 logger = logging.getLogger("eld.final_score")
+
+# ELD V2 评分维度名称
+DIM_V2_EVENT_QUALITY = "v2_event_quality"
+DIM_V2_EXPECTATION_GAP = "v2_expectation_gap"
+DIM_V2_TREND = "v2_trend"
+DIM_V2_INSTITUTION = "v2_institution"
+DIM_V2_INDUSTRY = "v2_industry"
+DIM_V2_ETF = "v2_etf"
+
+ALL_V2_DIMENSIONS = [
+    DIM_V2_EVENT_QUALITY,
+    DIM_V2_EXPECTATION_GAP,
+    DIM_V2_TREND,
+    DIM_V2_INSTITUTION,
+    DIM_V2_INDUSTRY,
+    DIM_V2_ETF,
+]
 
 
 class FinalScoreEngine:
@@ -65,6 +88,10 @@ class FinalScoreEngine:
         gap_scorer=None,
         similarity_engine=None,
         buy_point_engine=None,
+        # ELD V2 新增模块
+        expectation_gap_v2_engine=None,
+        institution_accumulation_engine=None,
+        earnings_buy_point_engine=None,
     ):
         self.cfg = config or get_config()
         self.fc = self.cfg.final_score
@@ -80,6 +107,10 @@ class FinalScoreEngine:
         self._gap_scorer = gap_scorer
         self._similarity_engine = similarity_engine
         self._buy_point_engine = buy_point_engine
+        # ELD V2 新增
+        self._expectation_gap_v2_engine = expectation_gap_v2_engine
+        self._institution_accumulation_engine = institution_accumulation_engine
+        self._earnings_buy_point_engine = earnings_buy_point_engine
 
     def compute_els(
         self,
@@ -115,15 +146,15 @@ class FinalScoreEngine:
         }
 
         weights = {
-            DIM_EVENT_QUALITY: self.fc.event_quality_weight,
-            DIM_EARNINGS: self.fc.earnings_weight,
-            DIM_INSTITUTION: self.fc.institution_weight,
-            DIM_CHIP: self.fc.chip_weight,
-            DIM_TREND: self.fc.trend_weight,
-            DIM_INDUSTRY: self.fc.industry_weight,
-            DIM_FRESHNESS: self.fc.freshness_weight,
-            DIM_EXPECTATION_GAP: self.fc.expectation_gap_weight,
-            DIM_SIMILARITY: self.fc.similarity_weight,
+            DIM_EVENT_QUALITY: self.fc.v1_event_quality_weight,
+            DIM_EARNINGS: self.fc.v1_earnings_weight,
+            DIM_INSTITUTION: self.fc.v1_institution_weight,
+            DIM_CHIP: self.fc.v1_chip_weight,
+            DIM_TREND: self.fc.v1_trend_weight,
+            DIM_INDUSTRY: self.fc.v1_industry_weight,
+            DIM_FRESHNESS: self.fc.v1_freshness_weight,
+            DIM_EXPECTATION_GAP: self.fc.v1_expectation_gap_weight,
+            DIM_SIMILARITY: self.fc.v1_similarity_weight,
         }
 
         total_weight = sum(weights.values())
@@ -186,6 +217,107 @@ class FinalScoreEngine:
             return f"{base} · 当前买点极佳({buy_point.state.value})"
         elif buy_point and buy_point.stars_int >= 3:
             return f"{base} · 买点尚可({buy_point.state.value})"
+
+        return base
+
+    def compute_els_v2(
+        self,
+        event_score: float,
+        gap_v2_score: float,
+        trend_score: float,
+        inst_accum_score: float,
+        industry_score: float,
+        etf_score: float = 50.0,
+    ) -> float:
+        """
+        计算 ELD V2 评分
+
+        ELS V2 = Event×30% + ExpectationGap×20% + TrendAlpha×20%
+               + Institution×15% + Theme×10% + ETF×5%
+
+        Args:
+            event_score: 事件质量评分 (0-100)
+            gap_v2_score: 预期差V2评分 (0-100)
+            trend_score: 趋势Alpha评分 (0-100)
+            inst_accum_score: 机构吸筹评分 (0-100)
+            industry_score: 行业主题评分 (0-100)
+            etf_score: ETF评分 (0-100), 默认中性50分
+
+        Returns:
+            0-100 的 ELS V2 分数
+        """
+        weights = {
+            DIM_V2_EVENT_QUALITY: self.fc.event_quality_weight,
+            DIM_V2_EXPECTATION_GAP: self.fc.expectation_gap_weight,
+            DIM_V2_TREND: self.fc.trend_weight,
+            DIM_V2_INSTITUTION: self.fc.institution_weight,
+            DIM_V2_INDUSTRY: self.fc.industry_weight,
+            DIM_V2_ETF: self.fc.etf_weight,
+        }
+
+        scores = {
+            DIM_V2_EVENT_QUALITY: event_score,
+            DIM_V2_EXPECTATION_GAP: gap_v2_score,
+            DIM_V2_TREND: trend_score,
+            DIM_V2_INSTITUTION: inst_accum_score,
+            DIM_V2_INDUSTRY: industry_score,
+            DIM_V2_ETF: etf_score,
+        }
+
+        total_weight = sum(weights.values())
+        if abs(total_weight - 1.0) > 0.001:
+            logger.warning("ELS V2 weights sum to %.4f, normalizing", total_weight)
+            for k in weights:
+                weights[k] /= total_weight
+
+        els_v2 = sum(scores[d] * weights[d] for d in ALL_V2_DIMENSIONS)
+        els_v2 = max(0.0, min(100.0, els_v2))
+
+        logger.debug(
+            "ELS_V2=%.2f | event=%.1f gap=%.1f trend=%.1f inst=%.1f ind=%.1f etf=%.1f",
+            els_v2, event_score, gap_v2_score, trend_score,
+            inst_accum_score, industry_score, etf_score,
+        )
+
+        return els_v2
+
+    def generate_recommendation_v2(
+        self,
+        final_score: float,
+        earnings_buy_signal: Optional[str] = None,
+        institution_state: Optional[str] = None,
+    ) -> str:
+        """
+        根据 V2 分数和信号生成建议。
+
+        Args:
+            final_score: 最终评分 (0-100)
+            earnings_buy_signal: 业绩回踩买点信号
+            institution_state: 机构吸筹状态
+
+        Returns:
+            建议文本
+        """
+        if final_score >= 85:
+            base = "强烈买入"
+        elif final_score >= 70:
+            base = "买入"
+        elif final_score >= 55:
+            base = "关注"
+        elif final_score >= 40:
+            base = "观望"
+        else:
+            base = "回避"
+
+        # 买点增强
+        if earnings_buy_signal == "BUY":
+            base += " · 业绩回踩买点"
+        elif earnings_buy_signal == "WATCH":
+            base += " · 关注回踩"
+
+        # 机构状态增强
+        if institution_state:
+            base += f" · {institution_state}"
 
         return base
 
@@ -289,9 +421,11 @@ class FinalScoreEngine:
         if self._similarity_engine:
             sim_r = self._similarity_engine.compute_similarity(stock.ts_code, stock_data)
         else:
-            from .similarity_engine import SimilarityEngine
-            sim_eng = SimilarityEngine(data_source)
-            sim_r = sim_eng.compute_similarity(stock.ts_code, stock_data)
+            # 无相似度引擎时使用中性评分
+            sim_r = SimilarityResult(
+                score=50.0, similar_stocks=[], cosine_sim=0.0,
+                euclidean_dist=0.0, xgb_probability=0.5, logic=["简易模式跳过相似度"],
+            )
         result.similarity_score = sim_r.score
         result.similarity_detail = sim_r
 
@@ -303,13 +437,70 @@ class FinalScoreEngine:
             bp_r = analyze_buy_point(stock.ts_code, daily_data, chip_r, trend_r)
         result.buy_point_detail = bp_r
 
-        # Stage 12: 最终评分
+        # ── ELD V2 新增评分 ──
+
+        # Stage V2-1: 预期差V2
+        if self._expectation_gap_v2_engine:
+            gap_v2_r = self._expectation_gap_v2_engine(stock.ts_code, data_source)
+        else:
+            from .expectation_gap import calc_expectation_gap
+            gap_v2_r = calc_expectation_gap(stock.ts_code, data_source)
+        result.expectation_gap_v2_score = gap_v2_r.score
+        result.expectation_gap_v2_detail = gap_v2_r
+
+        # Stage V2-2: 机构吸筹检测
+        if self._institution_accumulation_engine:
+            inst_acc_r = self._institution_accumulation_engine(stock.ts_code, data_source)
+        else:
+            from .institution_accumulation import calc_institution_accumulation
+            inst_acc_r = calc_institution_accumulation(stock.ts_code, data_source)
+        result.institution_accumulation_score = inst_acc_r.score
+        result.institution_accumulation_detail = inst_acc_r
+        result.institution_state = inst_acc_r.state.value if hasattr(inst_acc_r.state, 'value') else str(inst_acc_r.state)
+
+        # Stage V2-3: 业绩回踩买点
+        if self._earnings_buy_point_engine:
+            ebp_r = self._earnings_buy_point_engine(
+                stock.ts_code, data_source, daily_data,
+                announce_date=forecast.announce_date,
+                trend_result=trend_r,
+                institution_state=result.institution_state,
+            )
+        else:
+            from .earnings_buy_point import detect_earnings_pullback
+            ebp_r = detect_earnings_pullback(
+                stock.ts_code, data_source, daily_data,
+                announce_date=forecast.announce_date,
+                trend_result=trend_r,
+                institution_state=result.institution_state,
+            )
+        result.earnings_buy_point_detail = ebp_r
+        result.earnings_buy_signal = ebp_r.signal.value if hasattr(ebp_r.signal, 'value') else str(ebp_r.signal)
+        result.earnings_buy_score = ebp_r.score
+
+        # Stage 12: 最终评分（V1 保持兼容）
         result.els = self.compute_els(
             event_r, earn_r, inst_r, chip_r, trend_r,
             ind_r, fresh_r, gap_r, sim_r,
         )
         result.final_score = self.apply_market_multiplier(result.els, market)
         result.recommendation = self.generate_recommendation(result.final_score, bp_r)
+
+        # Stage 13: ELD V2 最终评分
+        result.els_v2 = self.compute_els_v2(
+            event_score=event_r.score,
+            gap_v2_score=gap_v2_r.score,
+            trend_score=trend_r.score,
+            inst_accum_score=inst_acc_r.score,
+            industry_score=ind_r.score,
+            etf_score=50.0,  # ETF 评分默认为中性，可扩展
+        )
+        result.final_score_v2 = self.apply_market_multiplier(result.els_v2, market)
+        result.recommendation_v2 = self.generate_recommendation_v2(
+            result.final_score_v2,
+            earnings_buy_signal=result.earnings_buy_signal,
+            institution_state=result.institution_state,
+        )
 
         return result
 
@@ -378,8 +569,8 @@ class FinalScoreEngine:
                 except Exception:
                     logger.exception("Failed to score %s", ts_code)
 
-        # 按最终评分排序
-        results.sort(key=lambda r: r.final_score, reverse=True)
+        # 按 V2 最终评分排序（V2 优先，V1 作为备选）
+        results.sort(key=lambda r: (r.final_score_v2, r.final_score), reverse=True)
         for i, r in enumerate(results):
             r.rank = i + 1
 
@@ -387,7 +578,7 @@ class FinalScoreEngine:
         report.results = results
 
         logger.info(
-            "Pipeline complete: %d/%d stocks scored",
+            "Pipeline complete: %d/%d stocks scored (V2排序)",
             len(results), report.total_stocks,
         )
 

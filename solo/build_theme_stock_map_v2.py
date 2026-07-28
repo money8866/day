@@ -497,78 +497,119 @@ def build_theme_stock_map_v2():
         themes_output, stocks_output, new_cfg, TRADE_DATE
     )
     stock_subtheme_map = {}
-    if dominant_map:
-        n_updated = sum(1 for v in dominant_map.values() if v.get('dominant_theme'))
-        n_cross = sum(1 for v in dominant_map.values() if v.get('is_cross_narrative', 0))
-        print(f"  主导叙事识别完成: {n_updated}只分析, {n_cross}只交叉叙事股")
 
-        # ─── 7. Sub-theme Dynamic Correlation ───
-        print("\n[7/7] Sub-theme Dynamic Correlation（六阶段流水线）...")
-        # 从 dominant_map 提取 ETF 相关性映射
+    # ─── 7. Sub-theme Dynamic Correlation ───
+    # 无论 dominant_map 是否有数据，都执行子主题分配
+    #（无 ETF 数据时使用概念/关键词匹配，无子主题配置时用一级主题兜底）
+    print("\n[7/7] Sub-theme Dynamic Correlation（子主题分配）...")
+    if dominant_map:
         etf_corr_map = {}
         for code, dm in dominant_map.items():
             corr_details = dm.get('corr_details', {})
             etf_corr_map[code] = {}
             for theme_name, details in corr_details.items():
                 etf_corr_map[code][theme_name] = details
-
-        stock_subtheme_map = run_subtheme_dynamic_correlation(
-            themes_output, stocks_output, stock_mainbiz, new_cfg,
-            etf_corr_map=etf_corr_map,
-
-            # ── 市场叙事热度：从预计算的 subtheme_heat 矩阵提取子主题热度 ──
-            # 热度经四维加权（集中度+关键词渗透+母主题占比+核心覆盖）
-            # 再通过 sigmoid 变换放大，作用于子主题候选排名
-            subtheme_heat_lookup=_build_subtheme_heat_lookup(subtheme_heat),
-        )
-
-        # 将子主题数据写入 stocks_output（仅新增字段）
-        for code, info in stocks_output.items():
-            st = stock_subtheme_map.get(code, {})
-            if st:
-                info['subtheme'] = st['subtheme']
-                info['subtheme_confidence'] = st['subtheme_confidence']
-                info['candidate_subthemes'] = st['candidate_subthemes']
-                info['subtheme_features'] = st['subtheme_features']
-
-        # ─── 9. Sub-theme Heat Matrix Engine ───
-        print("\n[9/11] Sub-theme Heat Matrix Engine（四维评分+贡献度+内部轮动）...")
-        subtheme_report = run_subtheme_heat_engine(
-            themes_output, stocks_output, stock_subtheme_map,
-            subtheme_heat, TRADE_DATE
-        )
-
-        # ─── 10. Stock Role Evolution Engine ───
-        print("\n[10/11] Stock Role Evolution Engine（角色演化引擎）...")
-        role_results = _run_role_evolution_layer(
-            stocks_output, stock_subtheme_map, subtheme_report, TRADE_DATE
-        )
-
-        # ─── 11. Sub-theme Stock Scoring ───
-        print("\n[11/11] Sub-theme Stock Scoring（子主题内部股票评分）...")
-        scoring_results = _run_scoring_layer(
-            stocks_output, stock_subtheme_map, subtheme_report,
-            role_results, TRADE_DATE
-        )
-
-        # ─── 12. Entry Timing Engine ───
-        print("\n[12/12] Entry Timing Engine（入场时机引擎）...")
-        entry_timing_results = _run_entry_timing_layer(
-            stocks_output, subtheme_report, role_results,
-            scoring_results, TRADE_DATE
-        )
-
-        # 重新输出包含所有分析层的CSV + JSON
-        _export_with_dominant(dominant_map, themes_output, stocks_output, new_cfg,
-                              subtheme_heat, stock_subtheme_map, subtheme_report,
-                              role_results, scoring_results, entry_timing_results)
-
-        # 自动生成主题精华报告
-        _generate_essence_report(TRADE_DATE)
     else:
-        print("  动态相关性分析跳过（数据不足）")
-        _export_with_dominant(dominant_map, themes_output, stocks_output, new_cfg,
-                              subtheme_heat, stock_subtheme_map)
+        etf_corr_map = {}
+        print("  动态相关性分析跳过（使用概念/关键词匹配兜底）")
+
+    stock_subtheme_map = run_subtheme_dynamic_correlation(
+        themes_output, stocks_output, stock_mainbiz, new_cfg,
+        etf_corr_map=etf_corr_map,
+        subtheme_heat_lookup=_build_subtheme_heat_lookup(subtheme_heat),
+    )
+
+    # 将子主题数据写入 stocks_output（仅新增字段）
+    for code, info in stocks_output.items():
+        st = stock_subtheme_map.get(code, {})
+        if st:
+            info['subtheme'] = st['subtheme']
+            info['subtheme_confidence'] = st['subtheme_confidence']
+            info['candidate_subthemes'] = st['candidate_subthemes']
+            info['subtheme_features'] = st['subtheme_features']
+
+    # ─── 8. 补全兜底主题的热力矩阵 ───
+    # 对于无子主题配置的一级主题（如脑机接口），
+    # subtheme_heat 中没有数据，导致热力引擎跳过、精华报告不显示。
+    # 此处从 stock_subtheme_map 收集所有出现的一级主题，
+    # 为缺失的主题创建兜底热力条目：一级主题名=子主题名。
+    print("\n[8/12] 补全兜底主题的热力矩阵...")
+    fallback_themes_added = 0
+    collected_parents = set()
+    for code, st_info in stock_subtheme_map.items():
+        p = st_info.get('parent_theme', '')
+        if p:
+            collected_parents.add(p)
+    for parent_theme in sorted(collected_parents):
+        if parent_theme in subtheme_heat:
+            continue  # 已有热力数据，跳过
+        # 从 themes_output 获取该主题的个股池
+        parent_stocks = themes_output.get(parent_theme, [])
+        if not parent_stocks:
+            continue
+        # 以一级主题名作为子主题名，构建兜底热力条目
+        total_parent = len(parent_stocks)
+        fallback_sub = {
+            parent_theme: {  # 子主题名=一级主题名
+                'stock_count': total_parent,
+                'parent_ratio': 1.0,
+                'concentration': round(min(5.0 / max(total_parent, 1) * 3, 1.0), 3),
+                'keyword_penetration': 0.5,
+                'core_ratio': 0.3,
+                'avg_raw_score': 5.0,
+                'heat_score': 0.35,
+                'top_stocks': [
+                    {'code': s['code'], 'name': s['name'], 'score': s.get('score', 50)}
+                    for s in parent_stocks[:10]
+                ],
+            }
+        }
+        subtheme_heat[parent_theme] = {
+            'total_stocks': total_parent,
+            'subthemes': fallback_sub,
+        }
+        fallback_themes_added += 1
+        print(f"  [补全] {parent_theme}: {total_parent}只股票, 子主题={parent_theme}")
+
+    if fallback_themes_added:
+        print(f"  共补全 {fallback_themes_added} 个兜底主题的热力矩阵")
+    else:
+        print("  无需补全")
+
+    # ─── 9. Sub-theme Heat Matrix Engine ───
+    print("\n[9/12] Sub-theme Heat Matrix Engine（四维评分+贡献度+内部轮动）...")
+    subtheme_report = run_subtheme_heat_engine(
+        themes_output, stocks_output, stock_subtheme_map,
+        subtheme_heat, TRADE_DATE
+    )
+
+    # ─── 10. Stock Role Evolution Engine ───
+    print("\n[10/12] Stock Role Evolution Engine（角色演化引擎）...")
+    role_results = _run_role_evolution_layer(
+        stocks_output, stock_subtheme_map, subtheme_report, TRADE_DATE
+    )
+
+    # ─── 11. Sub-theme Stock Scoring ───
+    print("\n[11/12] Sub-theme Stock Scoring（子主题内部股票评分）...")
+    scoring_results = _run_scoring_layer(
+        stocks_output, stock_subtheme_map, subtheme_report,
+        role_results, TRADE_DATE
+    )
+
+    # ─── 12. Entry Timing Engine ───
+    print("\n[12/12] Entry Timing Engine（入场时机引擎）...")
+    entry_timing_results = _run_entry_timing_layer(
+        stocks_output, subtheme_report, role_results,
+        scoring_results, TRADE_DATE
+    )
+
+    # 重新输出包含所有分析层的CSV + JSON
+    _export_with_dominant(dominant_map, themes_output, stocks_output, new_cfg,
+                          subtheme_heat, stock_subtheme_map, subtheme_report,
+                          role_results, scoring_results, entry_timing_results)
+
+    # 自动生成主题精华报告
+    _generate_essence_report(TRADE_DATE)
 
     return themes_output
 
@@ -1728,7 +1769,25 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                 })
 
         if not all_candidates:
-            continue
+            # ── Fallback: 无子主题匹配时，用一级主题名作为子主题兜底 ──
+            # 解决脑机接口等 level=2 主题无子主题配置时，股票被完全遗漏的问题
+            for parent_theme in stock_themes:
+                default_score = 50.0  # 中等分数，后续评分会重新计算
+                all_candidates.append({
+                    'name': parent_theme,  # 一级主题名作为子主题名
+                    'parent_theme': parent_theme,
+                    'score': default_score,
+                    'fallback': True,
+                    'features': {
+                        'industry_score': 0.5,
+                        'concept_score': 0.5,
+                        'keyword_score': 0,
+                        'core_company_score': 0,
+                        'embedding_score': 0,
+                        'correlation_score': 0,
+                        'heat_boost': 0,
+                    }
+                })
 
         # ── Step 3: 选最佳子主题 ──
         all_candidates.sort(key=lambda x: -x['score'])

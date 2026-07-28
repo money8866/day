@@ -64,34 +64,69 @@ def validate_date(date_str: str) -> bool:
 def get_last_trade_date() -> str:
     """获取最近一个交易日，格式 YYYYMMDD。
 
-    优先从 TUSHARE_TOKEN 环境变量取 token，
-    尝试调用 tushare 交易日历，失败则回退到最近工作日。
+    参考 multi_factor_picker.data_fetcher.get_last_trade_date:
+      - 当前时间 < 16:00（盘前/盘中），使用前一交易日（pretrade_date）
+      - 当前时间 >= 16:00（盘后），若今天是交易日则用今天，否则用前一交易日
+
+    优先级：
+      1. Tushare 交易日历 API（含 pretrade_date 判断）
+      2. cache_daily/daily_YYYYMMDD.csv 最新文件名（兜底）
+      3. 最近工作日回退
     """
+    now = datetime.now()
+    today = now.strftime("%Y%m%d")
+
+    # 1. Tushare 交易日历 API（优先，含 pretrade_date 精确判断）
     try:
+        import os as _os
         import tushare as ts
 
-        token = os.getenv("TUSHARE_TOKEN", "")
+        token = _os.getenv("TUSHARE_TOKEN", "")
         pro = ts.pro_api(token) if token else ts.pro_api()
-        df = pro.trade_cal(
-            start_date=(datetime.now() - timedelta(days=30)).strftime("%Y%m%d"),
-            end_date=datetime.now().strftime("%Y%m%d"),
-        )
-        if df is not None and not df.empty:
+        start = (now - timedelta(days=7)).strftime("%Y%m%d")
+        df = pro.trade_cal(exchange="SSE", start_date=start, end_date=today)
+        if df is not None and len(df) > 0:
+            today_row = df[df["cal_date"] == today]
+            if len(today_row) > 0:
+                today_is_open = today_row.iloc[0]["is_open"] == 1
+                pretrade_date = str(today_row.iloc[0]["pretrade_date"])
+
+                if now.hour < 16:
+                    # 收盘前：无论今天是否开盘，都用前一交易日
+                    return pretrade_date
+                elif today_is_open:
+                    # 收盘后且今天是交易日：用今天
+                    return today
+                else:
+                    # 收盘后但今天非交易日：用前一交易日
+                    return pretrade_date
+            # 没有今天记录，用最近开盘日
             cal = df[df["is_open"] == 1]
             if not cal.empty:
                 return cal["cal_date"].iloc[-1]
     except Exception:
         pass
 
-    # 回退：取最近一个工作日（跳过周末）
-    today = datetime.now()
-    offset = 0
-    while offset < 7:
-        d = today - timedelta(days=offset)
+    # 2. cache_daily 日线文件（兜底）
+    import os as _os
+
+    _cache_daily = r"d:\mystock\cache_daily"
+    if _os.path.isdir(_cache_daily):
+        latest = ""
+        for f in _os.listdir(_cache_daily):
+            if f.startswith("daily_") and f.endswith(".csv") and len(f) == 18:
+                d = f[6:14]
+                if d > latest:
+                    latest = d
+        if latest:
+            return latest
+
+    # 3. 回退：取最近一个工作日
+    for offset in range(7):
+        d = now - timedelta(days=offset)
         if d.weekday() < 5:
             return d.strftime("%Y%m%d")
-        offset += 1
-    return today.strftime("%Y%m%d")
+    return today
 
 
 # ──────────────────────────────────────────────

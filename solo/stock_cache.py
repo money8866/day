@@ -563,6 +563,101 @@ def batch_cache_stk_factor_pro(target_date):
         import traceback; traceback.print_exc()
 
 
+def supplement_missing_stocks(trade_date: str, target_count: int = 5000) -> int:
+    """按个股补全当日缺失的 stk_factor_pro 数据
+
+    当批量缓存返回的数据不全（如市场刚收盘，Tushare尚未计算完所有股票的因子），
+    逐个查询缺失股票的 stk_factor_pro 并写入 SQLite。
+
+    Args:
+        trade_date: 交易日 YYYYMMDD
+        target_count: 目标记录数，达到后停止补全
+
+    Returns:
+        补全的行数
+    """
+    import sqlite3 as _sc, time as _time
+
+    # 1. 找上一个完整交易日
+    _conn = _sc.connect(DB_PATH)
+    _cur = _conn.cursor()
+    _cur.execute("""
+        SELECT trade_date, COUNT(*) as cnt
+        FROM stk_factor_pro
+        WHERE trade_date < ? AND trade_date >= ?
+        GROUP BY trade_date
+        ORDER BY trade_date DESC
+        LIMIT 5
+    """, (trade_date, str(int(trade_date) - 8)))
+    _prev_rows = _cur.fetchall()
+
+    _prev_date = None
+    for _d, _c in _prev_rows:
+        if _c >= target_count:
+            _prev_date = _d
+            break
+
+    if _prev_date is None:
+        print(f"  ⚠️ 找不到上一个完整交易日，跳过补全")
+        _conn.close()
+        return 0
+
+    # 2. 获取上一交易日完整股票列表
+    _cur.execute('SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date=?', (_prev_date,))
+    _all_codes = {r[0] for r in _cur.fetchall()}
+
+    # 3. 获取当日已有股票
+    _cur.execute('SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date=?', (trade_date,))
+    _today_codes = {r[0] for r in _cur.fetchall()}
+    _conn.close()
+
+    _missing = sorted(_all_codes - _today_codes)
+    if not _missing:
+        print(f"  ✅ {trade_date} 数据已完整（{len(_today_codes)}只）")
+        return 0
+
+    # 仅补全到 target_count 所需数量
+    _need = max(0, target_count - len(_today_codes))
+    _to_supplement = _missing[:_need]
+    print(f"  ⏳ 按个股补全 {len(_to_supplement)}/{len(_missing)} 只缺失股票...")
+
+    _pro = _get_pro()
+    _supplemented = 0
+    _batch_dfs = []
+
+    for _i, _code in enumerate(_to_supplement):
+        try:
+            _df = _pro.stk_factor_pro(
+                ts_code=_code, start_date=trade_date, end_date=trade_date,
+                fields=_STK_FACTOR_FIELDS
+            )
+            _time.sleep(0.12)
+            if _df is not None and not _df.empty:
+                _df['trade_date'] = _df['trade_date'].astype(str)
+                _batch_dfs.append(_df)
+                _supplemented += len(_df)
+            # 每100只批量写入一次
+            if len(_batch_dfs) >= 100:
+                _combined = pd.concat(_batch_dfs, ignore_index=True)
+                batch_insert_stk_factor_pro(_combined)
+                _batch_dfs = []
+                print(f"   进度: {_i+1}/{len(_to_supplement)}（已补{_supplemented}行）")
+        except Exception:
+            _time.sleep(0.5)
+            continue
+
+    # 写入剩余
+    if _batch_dfs:
+        _combined = pd.concat(_batch_dfs, ignore_index=True)
+        batch_insert_stk_factor_pro(_combined)
+
+    if _supplemented > 0:
+        print(f"  ✅ 补全完成：新增 {_supplemented} 行数据（共 {len(_today_codes) + _supplemented} 只股票）")
+    else:
+        print(f"  ℹ️ 补全无新增数据（Tushare 尚未计算完成）")
+    return _supplemented
+
+
 def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
     """带缓存的 stk_factor_pro（SQLite + 按需补充）
     
