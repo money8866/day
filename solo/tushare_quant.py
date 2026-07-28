@@ -229,8 +229,8 @@ def _load_v2_theme_scores(trade_date):
 
 def _load_v6_result(expected_date=None):
     """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
-    优先尝试加载 V8 文件 (theme_alpha_v6_result_v8_{date}.json)，
-    若不存在则回退到 V6 文件 (theme_alpha_v6_result.json)。
+    优先尝试 V8 CSV (theme_alpha_v6_result_v8_{date}.csv)，
+    其次 V8 JSON，最后回退到 V6 JSON。
 
     Args:
         expected_date: 期望的交易日(YYYYMMDD)，None时不验证
@@ -238,28 +238,57 @@ def _load_v6_result(expected_date=None):
     Returns:
         list: 结果列表，若文件不存在或日期不匹配则返回None
     """
-    v8_result_path = None
+    v8_csv_path = None
+    v8_json_path = None
     if expected_date:
-        v8_result_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
-                                      f'theme_alpha_v6_result_v8_{expected_date}.json')
+        v8_csv_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                    f'theme_alpha_v6_result_v8_{expected_date}.csv')
+        v8_json_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                    f'theme_alpha_v6_result_v8_{expected_date}.json')
 
     v6_result_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json')
 
     load_path = None
-    if v8_result_path and os.path.exists(v8_result_path):
-        load_path = v8_result_path
+    source = None
+    if v8_csv_path and os.path.exists(v8_csv_path):
+        load_path = v8_csv_path
+        source = "V8_CSV"
+    elif v8_json_path and os.path.exists(v8_json_path):
+        load_path = v8_json_path
         source = "V8"
     elif os.path.exists(v6_result_path):
         load_path = v6_result_path
         source = "V6"
     else:
-        print(f"[V8] 引擎结果不存在: {v8_result_path}")
+        print(f"[V8] 引擎结果不存在: {v8_csv_path} / {v8_json_path}")
         print(f"[V6] 回退文件也不存在: {v6_result_path}")
         return None
 
     try:
-        with open(load_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        if source == "V8_CSV":
+            import csv
+            data = []
+            NUMERIC_FIELDS = {'排名', 'V7综合得分', '资金分', '梯队分', '趋势分', '基础分',
+                              '资金_换手率Z分', '资金_自由流通市值流入比', '资金_大阳线渗透率',
+                              '梯队_龙头涨幅', '梯队_龙头创新高', '梯队_龙头连板',
+                              '梯队_中军数量', '梯队_中军5日涨幅', '梯队_中军破位比例',
+                              '梯队_中军缩量比例', '梯队_跟风>3%比例', '梯队_跟风>5%比例',
+                              '梯队_跟风上涨比例', '趋势_RSRS强度', '趋势_均线多头天数',
+                              '基础_催化得分', '基础_业绩预期分', '基础_事件驱动分',
+                              'T_start', 'T_MA', 'R_volume'}
+            with open(load_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    for field in NUMERIC_FIELDS:
+                        if field in row and row[field]:
+                            try:
+                                row[field] = float(row[field]) if '.' in row[field] else int(row[field])
+                            except ValueError:
+                                pass
+                    data.append(row)
+        else:
+            with open(load_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
     except Exception as e:
         print(f"[{source}] 读取结果失败: {e}")
         return None
@@ -268,8 +297,8 @@ def _load_v6_result(expected_date=None):
         print(f"[{source}] 引擎结果为空")
         return None
 
-    # 验证 trade_date
-    if expected_date:
+    # 验证 trade_date（CSV 无该列，跳过）
+    if expected_date and source != "V8_CSV":
         v_date = data[0].get('trade_date', '')
         if not v_date:
             pass
@@ -278,8 +307,8 @@ def _load_v6_result(expected_date=None):
             print(f"  请先运行 python main.py --date {expected_date} 生成当天结果")
             return None
 
-    # V8 → V6 字段兼容映射
-    if source == "V8":
+    # V8/V8_CSV → V6 字段兼容映射
+    if source in ("V8", "V8_CSV"):
         for r in data:
             r['theme'] = r.get('主题', '')
             r['composite_score'] = r.get('V7综合得分', r.get('V7综合得分', 0))
@@ -397,13 +426,71 @@ def _load_future_potential_themes(trade_date):
         if centers:
             ps = '  '.join(['%s(%s) a=%d' % (s['name'], s['code'], s['alpha']) for s in centers[:2]])
             line += '  中军: ' + ps
-        if not leaders and not centers and sub_picks:
-            # 兜底显示 Top Pick 前2
-            ps = '  '.join(['%s(%s) a=%d' % (pk.get('name',''), pk.get('code',''), pk.get('stock_alpha',0)) for pk in sub_picks[:2]])
-            line += '  核心: ' + ps
+        if not leaders and not centers:
+            # 无显式角色时，用 Top Pick 作为龙头展示
+            sub_picks = [pk for pk in top_picks if pk.get('subtheme', '') == nm]
+            sub_picks.sort(key=lambda x: -(x.get('trade_score', 0) or 0))
+            if sub_picks:
+                ps = '  '.join(['%s(%s) a=%d' % (pk.get('name',''), pk.get('code',''), pk.get('stock_alpha',0)) for pk in sub_picks[:2]])
+                line += '  龙头: ' + ps
+            else:
+                # 兜底：按 alpha 取该子主题最高分股票
+                stk_sorted = sorted(stk_list, key=lambda x: -x.get('alpha', 0))
+                if stk_sorted:
+                    ps = '  '.join(['%s(%s) a=%d' % (s['name'], s['code'], s['alpha']) for s in stk_sorted[:2]])
+                    line += '  龙头: ' + ps
         lines.append(line)
 
     return "\n".join(lines) + "\n（注：a=Alpha评分，数值越高基本面+技术面综合质量越好）"
+
+
+def _load_rising_subthemes(trade_date):
+    """从 V2 全量数据提取处于上升阶段的子主题（主升/升温/分歧）
+    返回精简文本，供 AI prompt 直接引用。
+    """
+    json_path = os.path.join(CACHE_DIR, f"theme_stock_map_v2_{trade_date}.json")
+    if not os.path.exists(json_path):
+        return ""
+
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return ""
+
+    sr = data.get('subtheme_report', {})
+    if isinstance(sr, dict) and 'subtheme_matrix' in sr:
+        sm = sr['subtheme_matrix']
+    else:
+        sm = sr
+
+    top_picks = data.get('top_picks', [])
+    from collections import defaultdict
+    by_sub = defaultdict(list)
+    for t in top_picks:
+        by_sub[t.get('subtheme', '')].append(t)
+
+    rising_stages = {'主升', '升温', '分歧'}
+    lines = []
+    for parent, subs in sm.items():
+        for si in subs:
+            stage = si.get('stage', '')
+            name = si.get('name', '')
+            score = si.get('score', 0)
+            if stage in rising_stages:
+                sub_tp = by_sub.get(name, [])
+                sub_tp.sort(key=lambda x: -(x.get('trade_score', x.get('final_score', 0)) or 0))
+                top3 = sub_tp[:3]
+                if top3:
+                    stk_str = '  '.join(['%s(%s) role=%s a=%d' % (t.get('name',''), t.get('code',''), t.get('role',''), t.get('stock_alpha',0)) for t in top3])
+                else:
+                    stk_str = '(无可选标的)'
+                lines.append(f"  [{parent}] {name}  {stage}阶段  评分{score:.0f}  {stk_str}")
+
+    if not lines:
+        return ""
+
+    return "\n".join(lines)
 
 
 def _v8_stage_to_signal(d_stage, score):
@@ -11331,8 +11418,22 @@ def run(target_date=None, simple_mode=False):
                     return "禁止", "0%", "不买"
                 return "观察", "0-3%", "观望"
 
-            # 信号×阶段矩阵说明
+            # ── 所有主题排名总览 ──
             lines = []
+            all_themes_sorted = sorted(v6_data2, key=lambda r: r.get('排名', 999))
+            lines.append("")
+            lines.append("【所有主题 V7 阶段总览】")
+            lines.append(f"{'排名':<4} {'主题':<12} {'V7阶段':<10} {'策略动作'}")
+            lines.append("-" * 50)
+            for r in all_themes_sorted:
+                rank = r.get('排名', '-')
+                theme = r.get('主题', '')
+                v7_stage = r.get('V7阶段', '')
+                action = r.get('策略动作', '')
+                lines.append(f"  {rank:<4} {theme:<12} {v7_stage:<10} {action}")
+            lines.append("")
+
+            # 信号×阶段矩阵说明
             lines.append("")
             lines.append("★ 信号×阶段实盘建议矩阵（V8主题生命周期节奏自动生成）★")
             lines.append("")
@@ -11414,6 +11515,13 @@ def run(target_date=None, simple_mode=False):
     if future_potential_text:
         print("[潜力方向] 已加载")
 
+    # =========================
+    # 活跃上升子主题（主升/升温/分歧阶段，有买入信号）
+    # =========================
+    rising_subtheme_text = _load_rising_subthemes(TRADE_DATE)
+    if rising_subtheme_text:
+        print("[上升子主题] 已加载")
+
 
     # =========================
     # ETF操作提示（读取ETF主线轮动汇总报告，由AI提炼输出）
@@ -11442,15 +11550,10 @@ def run(target_date=None, simple_mode=False):
 {emotion_text}
 
 **【今日主题分析情况】**
-{sector_text_his}
-
-{non_daytrip_for_ai}
-
 {trade_advice_text}
 
 {v8_center_text}
 
-{future_potential_text}
 
 **【今日突破股池】**
 {hot_money_open_text}
@@ -11466,14 +11569,18 @@ def run(target_date=None, simple_mode=False):
 2、**主题分析**
 【严格按以下固定模板输出，禁止自由发挥格式】
 **市场风格与主线节奏**
-用1-2句话概述今日市场风格，**必须引用V2 Theme Score 报告**来分析有共振信号的核心主线。
+用1-2句话概述今日市场风格，**必须引用主题分析报告**。
 
-**可持续性主题**（结合V2阶段迁移预测，最多列出5个活跃主题）：
-- 主题名1:【D阶段时间窗口】动作、信号、龙头
-- 主题名2:【D阶段时间窗口】动作、信号、龙头
+**可持续性主题**（结合信号，最多列出5个活跃主题）：
+- 主题名1:【D阶段时间窗口】动作、信号
+- 主题名2:【D阶段时间窗口】动作、信号
 
-**未来上涨潜力方向**（潜伏期+高评分，优中选优，直接引用上方{future_potential_text}数据）：
+**未来上涨潜力方向**（潜伏期+高评分，优中选优，直接引用如下：{future_potential_text}）：
 - 直接展示筛选出的最具弹性方向，一句话点评每个方向的催化剂预期
+
+**活跃上升子主题**（主升/升温/分歧阶段，直接引用如下）：
+{rising_subtheme_text}
+- 分析这些子主题的持续性和追高风险，给出是否可参与的判断
 
 **V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
 - 每主题精简列出 Top 3，格式要求：

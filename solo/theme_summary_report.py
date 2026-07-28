@@ -284,6 +284,37 @@ class ThemeEssenceReport:
             lines.append(f"    {SIGNAL_SYMBOL.get(sig, '')} {sig:<18}: {cnt}")
         lines.append("")
 
+        # ── 主题状态总结 ──
+        # 按子主题强势度分组，上升的在前
+        stage_order_rising = {'主升': 0, '升温': 1, '分歧': 2}
+        rising_groups = defaultdict(list)
+        for tn in self._subtheme_matrix:
+            subs = self._subtheme_matrix[tn]
+            summary = self._get_theme_summary(tn)
+            if not summary:
+                continue
+            best_stage = None
+            for s in subs:
+                if s['stage'] in stage_order_rising:
+                    if best_stage is None or stage_order_rising.get(s['stage'], 99) < stage_order_rising.get(best_stage, 99):
+                        best_stage = s['stage']
+            if best_stage:
+                rising_groups[best_stage].append((tn, summary, subs))
+        lines.append("")
+        lines.append("【主题状态总结 — 按子主题热度排序】")
+        for stage in ('主升', '升温', '分歧'):
+            items = rising_groups.get(stage, [])
+            if not items:
+                continue
+            lines.append(f"  {STAGE_SYMBOL.get(stage,'')} {stage}:")
+            for tn, summary, subs in items:
+                hot_subs = [s for s in subs if s['stage'] in stage_order_rising and 
+                           stage_order_rising.get(s['stage'], 99) <= stage_order_rising.get(stage, 99)]
+                sub_detail = '、'.join([f"{s['name']}({s['score']:.0f}分)" for s in hot_subs[:3]])
+                lines.append(f"    {tn:<12} 子主题: {sub_detail}  "
+                             f"股票{summary['n_stocks']}只 α均{summary['avg_alpha']}")
+            lines.append("")
+
         # ── 各主题 ──
         theme_names = list(self._subtheme_matrix.keys())
         for idx, tn in enumerate(theme_names, 1):
@@ -416,6 +447,35 @@ class ThemeEssenceReport:
         for sig, cnt in sorted(overview['buy_signals'].items(), key=lambda x: -x[1]):
             lines.append(f"| {sig} | {cnt} |")
         lines.append("")
+
+        # ── Markdown 主题状态总结 ──
+        stage_order_rising = {'主升': 0, '升温': 1, '分歧': 2}
+        rising_groups = defaultdict(list)
+        for tn in self._subtheme_matrix:
+            subs = self._subtheme_matrix[tn]
+            summary = self._get_theme_summary(tn)
+            if not summary:
+                continue
+            best_stage = None
+            for s in subs:
+                if s['stage'] in stage_order_rising:
+                    if best_stage is None or stage_order_rising.get(s['stage'], 99) < stage_order_rising.get(best_stage, 99):
+                        best_stage = s['stage']
+            if best_stage:
+                rising_groups[best_stage].append((tn, summary, subs))
+        lines.append("## 主题状态总结 — 按子主题热度排序\n")
+        for stage in ('主升', '升温', '分歧'):
+            items = rising_groups.get(stage, [])
+            if not items:
+                continue
+            lines.append(f"### {STAGE_SYMBOL.get(stage,'')} {stage}\n")
+            for tn, summary, subs in items:
+                hot_subs = [s for s in subs if s['stage'] in stage_order_rising and 
+                           stage_order_rising.get(s['stage'], 99) <= stage_order_rising.get(stage, 99)]
+                sub_detail = '、'.join([f"`{s['name']}`({s['score']:.0f}分)" for s in hot_subs[:3]])
+                lines.append(f"- **{tn}**: {sub_detail}  "
+                             f"（股票{summary['n_stocks']}只, α均{summary['avg_alpha']}）")
+            lines.append("")
 
         for tn in self._subtheme_matrix.keys():
             summary = self._get_theme_summary(tn)

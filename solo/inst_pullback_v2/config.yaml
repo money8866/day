@@ -63,6 +63,14 @@ pullback:
   max_pullback_count: 2
   no_volume_panic_days: 20
 
+  # ── 形态质量过滤（V2.1新增）──
+  max_daily_drop: 0.05           # 回踩日最大跌幅<=5%，超过判定为破位大阴线（pct_chg单位%）
+  max_drop_to_ma: 0.05           # 昨日收盘到回踩均线的最大日跌幅<=5%（防止暴跌触均线）
+  volume_shrink_ratio: 0.60      # 回踩日量能/主升峰值量 < 0.6 才算缩量回踩
+  volume_shrink_peak_window: 30  # 峰值量回看窗口（交易日）
+  rsi_min: 35                    # RSI_6最低阈值，低于此值判定为趋势走坏
+  macd_hist_decline_days: 3      # MACD柱连续下降天数阈值，>=此值判定为空头加速
+
 chip_analysis:
   centroid_drop_max: 0.03
   profit_ratio_min: 0.55

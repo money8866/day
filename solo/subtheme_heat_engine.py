@@ -451,14 +451,17 @@ class SubthemeHeatEngine:
             return {'transition_prob': 0, 'next_stage': stage,
                     'pre_rotate': False, 'days_left': 10, 'details': {}}
 
-        # 方向性动量修正
+        # 方向性动量修正（连续渐变，非二值开关）
         ret3 = features.get('avg_ret_3', 0)
         ret5 = features.get('avg_ret_5', 0)
         vol = features.get('avg_vol_ratio', 1.0)
 
         momentum_boost = 0
-        if stage == '潜伏' and ret3 > 0.5 and vol > 1.1:
-            momentum_boost = 0.15  # 潜伏末期放量 → 升温概率增加
+        if stage == '潜伏':
+            # ret3越高、vol越大 → 升温概率越高（0~0.18范围渐变）
+            ret_factor = max(0, min(ret3, 3)) / 3 * 0.12
+            vol_factor = max(0, min(vol - 0.8, 1.2)) / 1.2 * 0.06
+            momentum_boost = ret_factor + vol_factor
         elif stage == '升温' and ret3 > 3 and vol > 1.3:
             momentum_boost = 0.20  # 强升温 → 主升概率增加
         elif stage == '主升' and (ret3 < 0 or vol > 2.0):
@@ -468,23 +471,20 @@ class SubthemeHeatEngine:
         elif stage == '退潮' and ret5 > -1 and vol < 0.8:
             momentum_boost = 0.10  # 退潮缩量企稳 → 潜伏概率增加
 
-        # 内在质量修正
-        quality_boost = 0
-        if intrinsic_score < 30:
-            quality_boost = -0.10  # 质量差 → 迁移受阻
-        elif intrinsic_score > 70:
-            quality_boost = 0.08   # 质量好 → 正向迁移加速
+        # 内在质量修正（连续渐变，非二值开关）
+        # 50分=0，30分≈-0.08，70分≈+0.08，极端→±0.15
+        quality_boost = max(-0.15, min(0.15, (intrinsic_score - 50) / 250))
 
         next_stage = candidates[0][0]
-        best_prob = candidates[0][1]
+        best_prob = float(candidates[0][1])
         
-        # 应用修正
-        prob = min(best_prob + momentum_boost + quality_boost, 0.95)
+        # 应用修正（确保 Python 原生 float，避免 numpy 类型泄漏到 JSON）
+        prob = float(min(best_prob + momentum_boost + quality_boost, 0.95))
         prob = max(prob, 0.05)
 
         # PRE_ROTATE 判定：概率 > 阈值且动量信号明确
         threshold = 0.55 if stage in ('潜伏', '升温') else 0.50
-        pre_rotate = prob > threshold and momentum_boost > 0
+        pre_rotate = bool(prob > threshold and momentum_boost > 0)
 
         # 预计剩余天数（基于概率的反比关系）
         days_left = max(2, int(10 * (1 - prob) + 2))

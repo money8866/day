@@ -189,6 +189,16 @@ class IndexStrengthEngine:
             total_score = 0.0
         total_score = max(0.0, min(100.0, total_score))
 
+        # 日线冲击惩罚：单日大跌时降低总分，反映当日真实情况
+        if len(df) >= 2 and 'pct_chg' in df.columns:
+            today_ret = float(df['pct_chg'].iloc[-1])
+            if today_ret < -2:
+                # -2%→1.0, -3%→0.86, -5%→0.58, -7%→0.30, -9%+→0.05
+                shock = max(0, abs(today_ret) - 2)
+                penalty = max(0.05, 1.0 - shock * 0.14)
+                total_score *= penalty
+                details.append(f"冲击惩罚={penalty:.2f}(日涨幅{today_ret:.1f}%)")
+
         explain_str = f"{code}: 总分{total_score:.1f} | " + ", ".join(details)
         return total_score, subs, explain_str
 

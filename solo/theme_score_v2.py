@@ -1271,12 +1271,16 @@ def calc_theme_state_v2(r, prev_data=None):
         t_score < prev_t_score + 2):
         return "分歧"
 
-    # ── 7. 退潮（增加趋势下降检测）──
-    trend_declining = (prev_data and t_score < prev_t_score - 3)
-    if ((t_score < 45 and s_score < 40) or   # 双低
-        (trend_declining and s_score < 45)):  # 趋势拐头+情绪消退
-        if (avg_slope_10 < -0.03 or trend_declining) and (up_ratio < 35 or zt_count == 0):
-            return "退潮"
+    # ── 7. 退潮（增加趋势下降检测 + MA5位置保护）──
+    # 当半数以上股票在MA5上方时，不判退潮（避免银行等低波动蓝筹误判）
+    if pct_above_ma5 > 50:
+        pass  # 跳过退潮判定
+    else:
+        trend_declining = (prev_data and t_score < prev_t_score - 3)
+        if ((t_score < 45 and s_score < 40) or   # 双低
+            (trend_declining and s_score < 45)):  # 趋势拐头+情绪消退
+            if (avg_slope_10 < -0.03 or trend_declining) and (up_ratio < 35 or zt_count == 0):
+                return "退潮"
 
     # ── 8. 弱趋势 ──
     if t_score >= 40 and s_score >= 35 and abs(avg_slope_10) < 0.05:
@@ -1294,7 +1298,11 @@ def calc_theme_state_v2(r, prev_data=None):
 # ═══════════════════════════════════════════════════════════
 
 # 宏观敏感主题列表（受宏观变量影响较大，需要特殊修正）
-MACRO_SENSITIVE_THEMES = {'黄金', '证券', '工业金属', '能源金属', '小金属', '稀土永磁', '煤炭', '银行'}
+# 防御性主题：市场差→受益（资金避险），市场好→承压（资金流出）
+DEFENSIVE_THEMES = {'黄金', '银行'}
+# 周期性主题：市场差→承压，市场好→受益
+CYCLICAL_THEMES = {'证券', '工业金属', '能源金属', '小金属', '稀土永磁', '煤炭'}
+MACRO_SENSITIVE_THEMES = DEFENSIVE_THEMES | CYCLICAL_THEMES
 
 # 状态迁移表（向上）
 STATE_TRANSITION_UP = {
@@ -1461,10 +1469,13 @@ def calc_phase_migration(r, market_ret_10, idx_df, prev_data=None, age_days=1):
     theme_name = r.get('theme', '')
     macro_filter = 0.0
     if theme_name in MACRO_SENSITIVE_THEMES:
+        is_defensive = theme_name in DEFENSIVE_THEMES
         if regime < -0.2:
-            macro_filter = -0.15  # 市场差 → 宏观敏感主题承压
+            # 市场差 → 周期性主题承压，防御性主题受益（避险资金流入）
+            macro_filter = -0.15 if not is_defensive else 0.15
         elif regime > 0.3:
-            macro_filter = 0.10   # 市场好 → 宏观敏感主题受益
+            # 市场好 → 周期性主题受益，防御性主题承压（资金流出防御板块）
+            macro_filter = 0.10 if not is_defensive else -0.10
         # else: regime中性 → 无修正
 
     # 应用修正

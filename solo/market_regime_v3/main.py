@@ -355,26 +355,23 @@ class MarketRegimeV3:
                         candidates.append(pb_ma_price * 1.01)  # 回踩MA上方1%，确认回踩有效
                     ref_price = min(candidates)
 
-                    # ── 短线止损：多层递进，硬上限8% ──
-                    # 第一层：MA10下方2%（短线经典支撑破位止损）
-                    sl_candidates = []
-                    if ma10 is not None:
-                        sl_candidates.append(ma10[-1] * 0.98)
-                    # 第二层：回踩均线下方3%（跌破回踩支撑位出局）
-                    if pb_ma_price is not None:
-                        sl_candidates.append(pb_ma_price * 0.97)
-                    # 第三层：ATR窄幅止损（仅当无均线可用时）
-                    if not sl_candidates:
-                        sl_candidates.append(ref_price - atr_val * 1.2)
-
-                    stop_loss = min(sl_candidates)
-                    # 硬上限：最大亏损不超过8%
-                    stop_loss = max(stop_loss, ref_price * 0.92)
-                    # 动态硬下限：止损至少远离入场价，避免被日内噪音打掉
-                    # 按 ATR 比例动态调整：至少 2.5% 或 0.4×ATR%，取较大值
+                    # ── 短线止损：基于ATR的动态距离 + 均线辅助验证 ──
+                    # 主基准：ATR止损距离 = max(1.5×ATR%, 3%)，上限20%
                     atr_pct = atr_val / ref_price if ref_price > 0 and atr_val > 0 else 0
-                    min_stop_pct = max(0.025, atr_pct * 0.4)
-                    stop_loss = min(stop_loss, ref_price * (1 - min_stop_pct))
+                    sl_dist_pct = max(atr_pct * 1.5, 0.03)
+                    sl_dist_pct = min(sl_dist_pct, 0.20)
+                    stop_loss = ref_price * (1 - sl_dist_pct)
+
+                    # 辅助基准：MA10下方2%（若均线止损更宽，以均线为准收紧）
+                    if ma10 is not None:
+                        ma_stop = ma10[-1] * 0.98
+                        if ma_stop > stop_loss:
+                            stop_loss = ma_stop
+                    # 回踩均线下方3%（若均线止损更宽，以均线为准收紧）
+                    if pb_ma_price is not None:
+                        pb_stop = pb_ma_price * 0.97
+                        if pb_stop > stop_loss:
+                            stop_loss = pb_stop
 
                     # ── 止盈：2倍ATR，上限15% ──
                     take_profit = ref_price + atr_val * 2.0
