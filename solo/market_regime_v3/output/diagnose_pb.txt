@@ -1,0 +1,10 @@
+美的集团(000333.SZ): ma_up=True|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+伟星股份(002003.SZ): ma_up=True|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+奥飞娱乐(002292.SZ): ma_up=False|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+五洋自控(300420.SZ): ma_up=True|ret_60d=71.1%|dd=36.5%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+中国电信(601728.SH): ma_up=True|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+贵州茅台(600519.SH): ma_up=False|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+五粮液(000858.SZ): ma_up=False|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+比亚迪(002594.SZ): ma_up=False|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+宁德时代(300750.SZ): ma_up=False|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False
+中芯国际(688981.SH): ma_up=True|ret_60d=0.0%|dd=0.0%|pb_ma=|no_panic=False|qual=0.00|is_q=False

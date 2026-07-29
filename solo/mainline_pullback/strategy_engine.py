@@ -20,6 +20,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+import stock_cache as sc
 from .config import get_config
 from .data_loader import load_local_data, get_last_trade_date
 
@@ -74,6 +75,20 @@ class StockResult:
     stop_loss: float = 0.0                     # 止损价
     take_profit: float = 0.0                   # 止盈价（第一预期）
 
+    # 精准买点信号（来自 _refine_buy_point）
+    buy_signal: str = ""                       # READY / WATCH / WAIT
+    buy_readiness: float = 0.0                 # 买入 readiness 分 0-100
+    buy_price_low: float = 0.0                 # 买入区间下限
+    buy_price_high: float = 0.0                # 买入区间上限
+    kdj_j: float = 0.0                        # KDJ  J值
+    kdj_turn: str = ""                         # KDJ拐头方向 up/down/-
+    rsi_6: float = 0.0                        # RSI 6
+    macd_dif: float = 0.0                     # MACD DIF
+    macd_dea: float = 0.0                     # MACD DEA
+    bb_lower: float = 0.0                     # 布林下轨
+    candle_pattern: str = ""                   # 蜡烛形态 small/large/doji
+    consecutive_down: int = 0                  # 连跌天数
+
 
 # ──────────────────────────────────────────────
 # 策略引擎
@@ -119,13 +134,10 @@ class StrategyEngine:
         candidates_a = self._hard_filter(td)
         logger.info("[A层] 基础过滤通过: %d 只", len(candidates_a))
 
-        # ── 2. B层：主升浪动量筛选 ──
-        candidates_b = self._momentum_filter(candidates_a, td)
-        logger.info("[B层] 主升浪动量通过: %d 只", len(candidates_b))
-
-        # ── 3. C层：首次回踩检测（按需逐只分析）──
-        # 先批量加载日线数据，再并发计算
-        results = self._pullback_scan(candidates_b, td)
+        # ── 2. C层：首次回踩检测（含主升浪动量校验，逐只并发分析）──
+        # 使用 stock_cache.cached_stk_factor_pro 加载个股历史数据，
+        # 确保 MA、涨幅、涨停计数等计算有足够的历史窗口
+        results = self._pullback_scan(candidates_a, td)
         results.sort(key=lambda r: r.score, reverse=True)
 
         logger.info("[C层] 回踩信号通过: %d 只", sum(1 for r in results if r.pass_c))
@@ -174,6 +186,12 @@ class StrategyEngine:
         sb_valid = sb[~st_mask].copy()
         logger.debug("  A1 ST剔除: %d → %d", len(sb), len(sb_valid))
 
+        # ── 1.1b 剔除北交所（代码 8/4/92 开头）──
+        bj_mask = sb_valid["ts_code"].str.match(r'^[489]\d|^92\d')
+        sb_valid = sb_valid[~bj_mask].copy()
+        sb_valid = sb_valid[~sb_valid["ts_code"].str.endswith('.BJ')].copy()
+        logger.debug("  A1b 北交所剔除: %d", len(sb_valid))
+
         # ── 1.2 上市天数 ≥ 60 ──
         sb_valid["list_date"] = sb_valid["list_date"].astype(str)
         sb_valid["list_days"] = (
@@ -192,71 +210,7 @@ class StrategyEngine:
         return sorted(valid_codes)
 
     # ══════════════════════════════════════════════
-    # B层：主升浪动量筛选（向量化）
-    # ══════════════════════════════════════════════
-
-    def _momentum_filter(self, codes: list[str], trade_date: str) -> list[str]:
-        """B层过滤 — 检查过去N日内是否存在主升浪特征
-
-        使用全市场日快照 + 向量化计算，避免逐只个股循环。
-        """
-        cfg = self.cfg.momentum
-        lookback = cfg.lookback_days
-
-        # 计算需要回溯的日期范围
-        start_date = self._calc_start_date(trade_date, lookback + 5)
-
-        # 加载全市场范围内数据
-        market_daily = load_local_data("daily", start_date=start_date, end_date=trade_date)
-        if market_daily is None or market_daily.empty:
-            logger.warning("[B层] 无历史数据 %s~%s", start_date, trade_date)
-            return []
-
-        # 只保留候选股票
-        market_daily = market_daily[market_daily["ts_code"].isin(codes)].copy()
-        if market_daily.empty:
-            return []
-
-        # 数值类型
-        for col in ["high", "low", "pct_chg", "vol"]:
-            market_daily[col] = pd.to_numeric(market_daily[col], errors="coerce").fillna(0)
-
-        # ── B1: 最大涨幅 / 最低价 > 1.30 ──
-        grouped = market_daily.groupby("ts_code")
-        wave_high = grouped["high"].transform("max")
-        wave_low = grouped["low"].transform("min")
-        wave_gain = wave_high / wave_low
-
-        # 取每个股票最后一天的数据判断
-        recent = market_daily.sort_values(["ts_code", "trade_date"]).groupby("ts_code").last().reset_index()
-        recent["wave_gain"] = wave_gain.groupby(market_daily["ts_code"]).first().values
-        mask_b1 = recent["wave_gain"] >= cfg.min_wave_gain
-        logger.debug("  B1 涨幅>30%%: %d/%d", mask_b1.sum(), len(recent))
-
-        # ── B2: 涨停/大阳线计数（近20日）──
-        # 取最近 lookback 天的数据（基于 trade_date 过滤而非 nlargest）
-        all_dates = sorted(market_daily["trade_date"].unique(), reverse=True)
-        recent_dates = all_dates[:min(lookback, len(all_dates))]
-        recent_days = market_daily[market_daily["trade_date"].isin(recent_dates)].copy()
-
-        limit_up_count = (
-            (recent_days["pct_chg"] >= cfg.limit_up_threshold) |
-            (recent_days["pct_chg"] >= cfg.big_positive_threshold)
-        ).groupby(recent_days["ts_code"]).sum()
-
-        recent = recent.merge(limit_up_count.rename("limit_up_count"), left_on="ts_code", right_index=True, how="left")
-        recent["limit_up_count"] = recent["limit_up_count"].fillna(0)
-        mask_b2 = recent["limit_up_count"] >= cfg.min_limit_up_count
-        logger.debug("  B2 涨停/大阳≥2: %d/%d", mask_b2.sum(), len(recent))
-
-        # ── 合并 B1 & B2 ──
-        mask_final = mask_b1 & mask_b2
-        result = recent[mask_final]["ts_code"].tolist()
-        logger.debug("  B层综合通过: %d", len(result))
-        return result
-
-    # ══════════════════════════════════════════════
-    # C层：首次回踩检测
+    # C层（含B层）：首次回踩检测 + 主升浪动量校验
     # ══════════════════════════════════════════════
 
     def _pullback_scan(self, codes: list[str], trade_date: str) -> list[StockResult]:
@@ -300,14 +254,15 @@ class StrategyEngine:
         cfg_momentum = self.cfg.momentum
         cfg_scoring = self.cfg.scoring
 
-        # ── 1. 加载个股日线数据 ──
-        df = load_local_data("daily", ts_code=ts_code, start_date=start_date, end_date=trade_date)
+        # ── 1. 加载个股日线数据（通过 stock_cache 缓存，SQLite+API 自动补全）──
+        df = sc.cached_stk_factor_pro(ts_code, start_date, trade_date, silent=True)
         if df is None or len(df) < 30:
             return None
 
         # 数值类型转换
         for col in ["open", "high", "low", "close", "vol", "amount", "pct_chg"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         df = df.sort_values("trade_date").reset_index(drop=True)
 
@@ -422,6 +377,15 @@ class StrategyEngine:
 
         if not result.pass_c:
             return None
+
+        # ── 8b. 精准买点细化 ──
+        self._refine_buy_point(
+            df, result,
+            support_ma=support_ma,
+            support_price=support_price,
+            dist_to_ma=dist_to_ma,
+            vol_shrink=vol_shrink,
+        )
 
         # ── 9. 评分计算 ──
         self._calc_score(result, cfg_scoring)
@@ -544,6 +508,165 @@ class StrategyEngine:
             r.risk_reward_ratio = round(profit_potential / loss_risk, 2)
         else:
             r.risk_reward_ratio = 0.0
+
+    # ══════════════════════════════════════════════
+    # 精准买点细化
+    # ══════════════════════════════════════════════
+
+    def _refine_buy_point(
+        self,
+        df: pd.DataFrame,
+        result: StockResult,
+        support_ma: int,
+        support_price: float,
+        dist_to_ma: float,
+        vol_shrink: float,
+    ) -> None:
+        """利用因子数据（KDJ/RSI/MACD/布林带/蜡烛形态）判定精确买点
+
+        输出写入 result 的 buy_signal / buy_readiness / buy_price_low~high 等字段。
+        """
+        latest = df.iloc[-1]
+
+        # ── 1. 读取因子值 ──
+        kdj_j = float(latest.get("kdj_bfq", latest.get("kdj_j", 50)))
+        kdj_k = float(latest.get("kdj_k_bfq", latest.get("kdj_k", 50)))
+        rsi_6 = float(latest.get("rsi_bfq_6", latest.get("rsi_6", 50)))
+        macd_dif = float(latest.get("macd_dif_bfq", latest.get("macd_dif", 0)))
+        macd_dea = float(latest.get("macd_dea_bfq", latest.get("macd_dea", 0)))
+        bb_lower = float(latest.get("boll_lower_bfq", latest.get("boll_lower", 0)))
+        bb_mid = float(latest.get("boll_mid_bfq", latest.get("boll_mid", 0)))
+        open_p = float(latest.get("open", 0))
+        close_p = float(latest.get("close", 0))
+        high_p = float(latest.get("high", 0))
+        low_p = float(latest.get("low", 0))
+
+        # ── 2. KDJ拐头方向 ──
+        kdj_turn = "-"
+        if len(df) >= 2:
+            prev_j = float(df.iloc[-2].get("kdj_bfq", df.iloc[-2].get("kdj_j", 50)))
+            if kdj_j > prev_j:
+                kdj_turn = "up"
+            elif kdj_j < prev_j:
+                kdj_turn = "down"
+
+        # ── 3. 蜡烛形态判断 ──
+        body = abs(close_p - open_p)
+        candle_range = high_p - low_p if high_p > low_p else body * 2
+        body_ratio = body / candle_range if candle_range > 0 else 1.0
+
+        if body_ratio < 0.15:
+            candle_pattern = "doji"
+        elif body_ratio < 0.4:
+            candle_pattern = "small"
+        elif body_ratio < 0.7:
+            candle_pattern = "moderate"
+        else:
+            candle_pattern = "large"
+
+        # ── 4. 连跌天数 ──
+        consecutive_down = 0
+        for i in range(len(df) - 1, 0, -1):
+            pct = float(df.iloc[i].get("pct_chg", 0))
+            if pct < 0:
+                consecutive_down += 1
+            else:
+                break
+
+        # ── 5. 买入 readiness 评分 ──
+        # 5a) 支撑距离分 (30%)
+        abs_dist = abs(dist_to_ma) * 100  # 转百分比
+        if abs_dist <= 0.5:
+            dist_score = 100.0
+        elif abs_dist <= 1.0:
+            dist_score = 80.0
+        elif abs_dist <= 2.0:
+            dist_score = 60.0
+        elif abs_dist <= 3.0:
+            dist_score = 40.0
+        else:
+            dist_score = max(0, 40 - (abs_dist - 3.0) * 10)
+
+        # 5b) 缩量分 (20%)
+        if vol_shrink <= 0.3:
+            vol_score = 100.0
+        elif vol_shrink <= 0.4:
+            vol_score = 90.0
+        elif vol_shrink <= 0.5:
+            vol_score = 75.0
+        elif vol_shrink <= 0.6:
+            vol_score = 60.0
+        else:
+            vol_score = max(0, 60 - (vol_shrink - 0.6) * 100)
+
+        # 5c) KDJ超卖分 (25%)
+        if kdj_j < 10:
+            kdj_score = 100.0
+        elif kdj_j < 20:
+            kdj_score = 85.0
+        elif kdj_j < 35:
+            kdj_score = 65.0
+        else:
+            kdj_score = 40.0
+        # KDJ拐头向上加分
+        if kdj_turn == "up":
+            kdj_score = min(100, kdj_score + 15)
+
+        # 5d) RSI分 (15%)
+        if rsi_6 < 25:
+            rsi_score = 100.0
+        elif rsi_6 < 35:
+            rsi_score = 80.0
+        elif rsi_6 < 45:
+            rsi_score = 60.0
+        else:
+            rsi_score = 40.0
+
+        # 5e) 蜡烛形态分 (10%)
+        if candle_pattern in ("doji", "small"):
+            candle_score = 100.0
+        elif candle_pattern == "moderate":
+            candle_score = 70.0
+        else:
+            candle_score = 40.0
+        # 阳线在支撑位加分
+        if close_p >= open_p and abs_dist <= 1.0:
+            candle_score = min(100, candle_score + 10)
+
+        # 综合分
+        buy_readiness = (
+            dist_score * 0.30
+            + vol_score * 0.20
+            + kdj_score * 0.25
+            + rsi_score * 0.15
+            + candle_score * 0.10
+        )
+
+        # ── 6. 买点信号判定 ──
+        if buy_readiness >= 80:
+            buy_signal = "READY"
+        elif buy_readiness >= 60:
+            buy_signal = "WATCH"
+        else:
+            buy_signal = "WAIT"
+
+        # ── 7. 精确买入区间 ──
+        buy_low = min(support_price * 0.99, close_p * 0.99)
+        buy_high = max(support_price * 1.02, close_p)
+
+        # ── 写入 result ──
+        result.buy_signal = buy_signal
+        result.buy_readiness = round(buy_readiness, 1)
+        result.buy_price_low = round(buy_low, 2)
+        result.buy_price_high = round(buy_high, 2)
+        result.kdj_j = round(kdj_j, 1)
+        result.kdj_turn = kdj_turn
+        result.rsi_6 = round(rsi_6, 1)
+        result.macd_dif = round(macd_dif, 2)
+        result.macd_dea = round(macd_dea, 2)
+        result.bb_lower = round(bb_lower, 2)
+        result.candle_pattern = candle_pattern
+        result.consecutive_down = consecutive_down
 
     # ══════════════════════════════════════════════
     # 工具

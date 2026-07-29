@@ -371,8 +371,9 @@ def _load_future_potential_themes(trade_date):
             if st == '潜伏' and sc >= 45 and tp >= 0.55:
                 candidates.append((parent, nm, sc, tp))
 
-    candidates.sort(key=lambda x: -x[2])
-    candidates = candidates[:6]
+    # 按升温概率降序，只保留两个最高的
+    candidates.sort(key=lambda x: -x[3])
+    candidates = candidates[:2]
 
     # Top Pick 子主题计数
     from collections import Counter
@@ -11575,12 +11576,11 @@ def run(target_date=None, simple_mode=False):
 - 主题名1:【D阶段时间窗口】动作、信号
 - 主题名2:【D阶段时间窗口】动作、信号
 
-**未来上涨潜力方向**（潜伏期+高评分，优中选优，直接引用如下：{future_potential_text}）：
-- 直接展示筛选出的最具弹性方向，一句话点评每个方向的催化剂预期
+从“{future_potential_text}”提炼输出主题/子主题：升温概率
 
-**活跃上升子主题**（主升/升温/分歧阶段，直接引用如下）：
-{rising_subtheme_text}
-- 分析这些子主题的持续性和追高风险，给出是否可参与的判断
+从“{rising_subtheme_text}”中提炼为**活跃上升子主题**（主升/升温/分歧阶段，显示主题名称和龙头股）：
+
+
 
 **V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
 - 每主题精简列出 Top 3，格式要求：

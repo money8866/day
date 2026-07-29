@@ -28,6 +28,133 @@ def _safe_float(series, idx=-1):
         return float(series.values[idx])
 
 
+def _calc_washout_recovery(closes, highs, lows, vols):
+    """
+    洗盘后修复因子 (washout_recovery)
+
+    检测"极端洗盘 → 缩量止跌 → 温和放量修复 → 均线支撑"的完整结构，
+    即闰土股份(002440)式：跌停洗盘→缩量企稳→中阳修复→二波涨停启动。
+
+    Returns:
+        float: 连续因子值，正值越大说明洗盘修复结构越完整
+    """
+    n = len(closes)
+    if n < 25:
+        return 0.0
+
+    price = closes[-1]
+
+    # 1. 近30日涨跌幅序列
+    ret_30d = np.diff(closes[-31:]) / closes[-31:-1] * 100 if n >= 31 else \
+              np.diff(closes) / closes[:-1] * 100
+    if len(ret_30d) == 0:
+        return 0.0
+    ret_30d_full = np.concatenate([[0], ret_30d]) if len(ret_30d) < len(closes[-31:]) else ret_30d
+
+    max_gain_30d = np.max(ret_30d)  # 最大单日涨幅
+    max_loss_10d = np.min(ret_30d[-10:]) if len(ret_30d) >= 10 else np.min(ret_30d)  # 近10日最大单日跌幅
+
+    # 2. 找最近一次大跌日(洗盘日): 跌幅 <= -7% 或 跌停
+    washout_idx = -1
+    for i in range(1, min(15, n)):
+        ret = (closes[-i] / closes[-i-1] - 1) * 100
+        if ret <= -7:
+            washout_idx = n - i
+            break
+
+    # 3. 量价分析
+    vol_ratio_latest = vols[-1] / np.mean(vols[-20:-1]) if n >= 20 else 1.0  # 最新量比
+    latest_ret = (closes[-1] / closes[-2] - 1) * 100 if n >= 2 else 0
+
+    # 缩量程度: 洗盘后3日均量 vs 洗盘前10日均量
+    vol_shrink = 1.0
+    if washout_idx > 0 and washout_idx + 3 < n:
+        post_vol = np.mean(vols[washout_idx+1:washout_idx+4])  # 洗盘后3天
+        pre_vol = np.mean(vols[max(0, washout_idx-10):washout_idx])  # 洗盘前10天
+        vol_shrink = post_vol / pre_vol if pre_vol > 0 else 1.0
+
+    # 无洗盘事件时，用近5日/近20日均量比代替
+    if washout_idx < 0:
+        vol_shrink = np.mean(vols[-5:]) / np.mean(vols[-20:]) if n >= 20 else 1.0
+
+    # 4. 均线结构
+    ma5 = np.mean(closes[-5:])
+    ma10 = np.mean(closes[-10:]) if n >= 10 else ma5
+    ma20 = np.mean(closes[-20:]) if n >= 20 else ma10
+
+    # 5. 回撤健康度: 从近30日高点回撤
+    peak_30d = np.max(closes[-30:]) if n >= 30 else np.max(closes)
+    drawdown = (peak_30d - price) / peak_30d * 100
+
+    # ================================================================
+    # 连续因子合成 (负值=无此形态, 正值=形态越完整)
+    # ================================================================
+    # 子项A: 前期有过一波上涨 (0~2)
+    prev_wave_score = min(max_gain_30d / 10, 2.0)
+
+    # 子项B: 洗盘事件强度 (0~1.5) - 需要有大跌洗盘
+    washout_score = abs(min(max_loss_10d, 0)) / 10
+    washout_score = min(washout_score, 1.5)
+
+    # 子项C: 缩量止跌程度 (0~3) - 缩量越充分越高分
+    if washout_idx > 0:
+        # 有明确洗盘事件: 缩量越极致越好
+        shrink_score = max(0, 1.0 - vol_shrink) * 2.0 + 0.3
+    else:
+        # 无洗盘但近期缩量: 给基础分
+        shrink_score = max(0, 1.0 - vol_shrink) * 1.0
+
+    # 子项D: 温和放量修复 (-0.5~2.0)
+    # 中阳+2%~+7% 且 量比0.8~1.5 = 最高分
+    # 涨幅过高(涨停) = 追高风险, 涨幅为负 = 仍在下行
+    if 2 <= latest_ret <= 7 and 0.8 <= vol_ratio_latest <= 1.5:
+        recovery_score = 1.5 + (latest_ret - 2) / 10  # 2%得1.5, 7%得2.0
+    elif 0 < latest_ret < 2 and 0.8 <= vol_ratio_latest <= 1.5:
+        recovery_score = 1.0  # 小阳线给基础分
+    elif latest_ret > 7:
+        recovery_score = 0.5  # 大涨但可能是追涨，不是温和修复
+    elif latest_ret <= 0:
+        recovery_score = -0.5  # 仍在下跌
+    else:
+        recovery_score = 0.0
+    recovery_score = max(-0.5, min(2.0, recovery_score))
+
+    # 子项E: 均线结构 (0~1.5)
+    if ma5 > ma10 > ma20:
+        # 完美多头: 按发散程度加分
+        ma_spread = (ma5 - ma20) / ma20 * 100
+        ma_score = 1.0 + min(ma_spread / 5, 0.5)
+    elif ma5 > ma20:
+        ma_score = 0.5  # 短期强但中期一般
+    elif price > ma20:
+        ma_score = 0.3  # 仅站上MA20
+    else:
+        ma_score = -0.5  # 空头
+
+    # 子项F: 回撤健康度 (0~1)
+    # 回撤5%~15%为最佳(充分调整但未破位)
+    if 5 <= drawdown <= 15:
+        dd_score = 1.0
+    elif 0 <= drawdown < 5:
+        dd_score = 0.3  # 调整不够充分
+    elif 15 < drawdown <= 25:
+        dd_score = 0.6  # 调整过深但可接受
+    else:
+        dd_score = 0.0  # 无回撤或回撤过大
+
+    # 加权合成
+    factor = (
+        prev_wave_score * 0.15 +
+        washout_score * 0.20 +
+        shrink_score * 0.25 +
+        recovery_score * 0.20 +
+        ma_score * 0.12 +
+        dd_score * 0.08
+    )
+
+    return factor
+
+
 def compute_raw_factors(daily: pd.DataFrame, moneyflow: Optional[pd.DataFrame] = None) -> Dict[str, float]:
     """
     计算单只股票的6个原始因子值（未归一化，用于后续交叉截面排名）
@@ -169,6 +296,9 @@ def compute_raw_factors(daily: pd.DataFrame, moneyflow: Optional[pd.DataFrame] =
         except:
             money_flow = 0.0
 
+    # 第7因子: 洗盘后修复因子 (washout_recovery)
+    washout_recovery = _calc_washout_recovery(closes, highs, lows, vols)
+
     return {
         'trend_strength': trend_strength,
         'ma_alignment': ma_alignment,
@@ -176,6 +306,7 @@ def compute_raw_factors(daily: pd.DataFrame, moneyflow: Optional[pd.DataFrame] =
         'volume_price': volume_price,
         'money_flow': money_flow,
         'vol_adj_return': vol_adj_return,
+        'washout_recovery': washout_recovery,
     }
 
 
@@ -193,12 +324,13 @@ def cross_sectional_score(factor_df: pd.DataFrame) -> pd.Series:
         pd.Series: 0-100的量化择时分
     """
     FACTOR_WEIGHTS = {
-        'trend_strength': 0.25,
-        'ma_alignment': 0.20,
-        'momentum': 0.20,
-        'volume_price': 0.15,
-        'vol_adj_return': 0.10,
+        'trend_strength': 0.22,
+        'ma_alignment': 0.18,
+        'momentum': 0.18,
+        'volume_price': 0.13,
+        'vol_adj_return': 0.09,
         'money_flow': 0.10,
+        'washout_recovery': 0.10,
     }
 
     scores = pd.Series(0.0, index=factor_df.index)
@@ -236,15 +368,17 @@ def quant_score_single(daily: pd.DataFrame, moneyflow: Optional[pd.DataFrame] = 
         'volume_price': (0.2, 0.8),     # 量价中心0.2，尺度0.8
         'vol_adj_return': (0, 0.5),     # 夏普中心0，尺度0.5
         'money_flow': (0, 5),           # 主力净流向占比%，中心0，尺度5
+        'washout_recovery': (0.5, 0.8), # 洗盘修复中心0.5，尺度0.8
     }
 
     FACTOR_WEIGHTS = {
-        'trend_strength': 0.25,
-        'ma_alignment': 0.20,
-        'momentum': 0.20,
-        'volume_price': 0.15,
-        'vol_adj_return': 0.10,
+        'trend_strength': 0.22,
+        'ma_alignment': 0.18,
+        'momentum': 0.18,
+        'volume_price': 0.13,
+        'vol_adj_return': 0.09,
         'money_flow': 0.10,
+        'washout_recovery': 0.10,
     }
 
     total_score = 0.0

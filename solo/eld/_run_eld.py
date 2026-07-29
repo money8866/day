@@ -1,7 +1,8 @@
 """
 ELD V2 完整运行脚本
 
-全流程：数据获取 → 评分 → 报告生成
+全流程：数据获取 → 评分 → 报告生成 → 微信推送
+支持每日 17:00 定时自动运行（非交易日自动跳过）。
 """
 import logging
 import os
@@ -26,6 +27,25 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("eld.run")
+
+# ── 交易日守卫 ──
+# 定时任务每日 17:00 触发，非交易日直接跳过
+_now = datetime.now()
+_today_str = _now.strftime("%Y%m%d")
+try:
+    import tushare as ts
+    _pro = ts.pro_api(os.getenv("TUSHARE_TOKEN", ""))
+    _cal_df = _pro.trade_cal(exchange="SSE", start_date=_today_str, end_date=_today_str)
+    if _cal_df is not None and len(_cal_df) > 0:
+        _today_open = _cal_df.iloc[0]["is_open"] == 1
+        if not _today_open and _now.hour >= 16:
+            logger.info("今日非交易日（%s），自动跳过运行。", _today_str)
+            sys.exit(0)
+except Exception:
+    # 兜底：周末直接跳过
+    if _now.weekday() >= 5:
+        logger.info("今日为周末（%s），自动跳过运行。", _today_str)
+        sys.exit(0)
 
 from eld.config import get_config
 from eld.cache import EldCache
@@ -174,3 +194,13 @@ for i, r in enumerate(report.results[:10]):
                 r.final_score_v2, r.final_score,
                 r.expectation_gap_v2_score, r.institution_accumulation_score,
                 r.earnings_buy_signal)
+
+# ── 8. 微信推送 ──
+logger.info("")
+logger.info("Step 8: 微信推送...")
+try:
+    from eld._push_eld_theme import main as push_main
+    push_main()
+    logger.info("  微信推送完成")
+except Exception as e:
+    logger.warning("  微信推送失败: %s", e)

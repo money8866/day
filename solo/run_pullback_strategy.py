@@ -75,9 +75,10 @@ def print_markdown_table(results: list[StockResult]) -> None:
 
     # ── 表头 ──
     headers = [
-        "排名", "代码", "名称", "收盘价", "涨跌幅%", "成交额亿",
+        "排名", "代码", "名称", "收盘价", "涨跌幅%",
         "主升涨幅%", "涨停数", "回撤%", "支撑MA",
         "距MA%", "缩量比", "综合分", "盈亏比",
+        "买点信号", "Ready分", "买入区间",
     ]
     header_line = "| " + " | ".join(headers) + " |"
     sep_line = "|" + "|".join(["---"] * len(headers)) + "|"
@@ -87,13 +88,13 @@ def print_markdown_table(results: list[StockResult]) -> None:
 
     # ── 数据行 ──
     for rank, r in enumerate(passed, 1):
+        buy_range = f"{r.buy_price_low:.2f}~{r.buy_price_high:.2f}" if r.buy_price_low else "-"
         row = [
             str(rank),
             f"`{r.ts_code}`",
             r.name,
             f"{r.close:.2f}",
             f"{r.pct_chg:+.2f}",
-            f"{r.amount:.2f}",
             f"{r.wave_gain_pct:.1f}",
             str(r.limit_up_count),
             f"{r.pullback_from_high:.1f}",
@@ -102,6 +103,9 @@ def print_markdown_table(results: list[StockResult]) -> None:
             f"{r.vol_shrink_ratio:.2f}",
             f"**{r.score:.1f}**",
             f"{r.risk_reward_ratio:.1f}",
+            r.buy_signal,
+            f"{r.buy_readiness:.0f}",
+            buy_range,
         ]
         line = "| " + " | ".join(row) + " |"
         print(line)
@@ -109,20 +113,16 @@ def print_markdown_table(results: list[StockResult]) -> None:
     print(f"\n{'='*100}\n")
 
     # ── 操作建议区 ──
-    print("📋 **操作建议**")
+    print("📋 **操作建议（按买入 readiness 排序）**")
     print()
-    for r in passed[:10]:  # 只显示TOP10
-        action = ""
-        if r.risk_reward_ratio >= 2.0:
-            action = "✅ 较优机会"
-        elif r.risk_reward_ratio >= 1.5:
-            action = "👍 可关注"
-        else:
-            action = "👀 观察"
+    for r in sorted(passed, key=lambda x: x.buy_readiness, reverse=True)[:10]:
+        signal_icon = {"READY": "🔴 可买入", "WATCH": "🟡 观察", "WAIT": "⚪ 等待"}.get(r.buy_signal, "⚪")
+        kdj_info = f"KDJ(J={r.kdj_j:.0f} {'↑' if r.kdj_turn == 'up' else '↓'})" if r.kdj_j else ""
+        rsi_info = f"RSI={r.rsi_6:.0f}" if r.rsi_6 else ""
 
         print(f"  - **{r.name}** ({r.ts_code})")
-        print(f"    {action}")
-        print(f"    入场: {r.entry_price:.2f} | 止损: {r.stop_loss:.2f} | 止盈: {r.take_profit:.2f} | 盈亏比: {r.risk_reward_ratio:.1f}")
+        print(f"    {signal_icon} | readiness={r.buy_readiness:.0f} | {kdj_info} {rsi_info} | {r.candle_pattern}")
+        print(f"    买入区: {r.buy_price_low:.2f}~{r.buy_price_high:.2f} | 止损: {r.stop_loss:.2f} | 止盈: {r.take_profit:.2f} | 盈亏比: {r.risk_reward_ratio:.1f}")
         print()
 
 
@@ -140,6 +140,8 @@ def save_to_csv(results: list[StockResult], output_path: str) -> None:
         "score", "wave_score", "pullback_score", "shrink_score",
         "support_score", "volume_ratio_score",
         "risk_reward_ratio", "entry_price", "stop_loss", "take_profit",
+        "buy_signal", "buy_readiness", "buy_price_low", "buy_price_high",
+        "kdj_j", "kdj_turn", "rsi_6", "candle_pattern", "consecutive_down",
     ]
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -159,8 +161,7 @@ def print_summary(results: list[StockResult], trade_date: str) -> None:
     print("📈 **统计摘要**")
     print(f"  - 交易日: {trade_date}")
     print(f"  - A层基础过滤候选: {len(results) + len(passed) if results else 0} 只")
-    print(f"  - B层主升浪动量通过: {len(results)} 只")
-    print(f"  - C层首次回踩信号: {len(passed)} 只")
+    print(f"  - C层（含主升浪动量+首次回踩）通过: {len(passed)} 只")
     if passed:
         scores = [r.score for r in passed]
         print(f"  - 综合评分均值: {sum(scores) / len(scores):.1f}")

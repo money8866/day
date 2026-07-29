@@ -188,6 +188,19 @@ def main():
     meta_df = pd.DataFrame(stock_meta)
     meta_df['quant_score'] = quant_scores.values
 
+    # 提取洗盘修复因子值 (用于输出列)
+    washout_recovery_map = {}
+    if 'washout_recovery' in factor_df.columns:
+        for i, code in enumerate(factor_df['ts_code']):
+            washout_recovery_map[code] = factor_df.iloc[i]['washout_recovery']
+
+    # 洗盘修复因子的截面排名分 (0-100)
+    if 'washout_recovery' in factor_df.columns:
+        wr_rank = factor_df['washout_recovery'].rank(pct=True) * 100
+        wr_rank_map = dict(zip(factor_df['ts_code'], wr_rank))
+    else:
+        wr_rank_map = {}
+
     results = []
 
     for _, m in meta_df.iterrows():
@@ -205,6 +218,10 @@ def main():
         ma20_val = m['ma20']
         pullback_confirm = m['pullback_confirm']
         raw_score = m['quant_score']
+
+        # 洗盘修复因子
+        wr_raw = washout_recovery_map.get(ts_code, 0.0)
+        wr_score = wr_rank_map.get(ts_code, 0.0)
 
         # 兑现冲击
         forecast_ann_date = ''
@@ -287,6 +304,15 @@ def main():
         else:
             buy_point = '未突破'
 
+        # 洗盘修复标签 (仅对高分股票标注)
+        washout_tag = ''
+        if wr_score >= 90:
+            washout_tag = '★★★ 洗盘修复完美'
+        elif wr_score >= 80:
+            washout_tag = '★★ 洗盘修复充分'
+        elif wr_score >= 70:
+            washout_tag = '★ 洗盘修复中'
+
         results.append({
             '代码': ts_code,
             '名称': name,
@@ -295,6 +321,8 @@ def main():
             '中报业绩亮点': f"{forecast_profit_yoy:.1f}%" if forecast_profit_yoy else '',
             '量化择时分': round(raw_score, 1),
             '修正后评分': round(corrected_score, 1) if not impact_blocked else 0,
+            '洗盘修复分': round(wr_score, 1),
+            '洗盘修复标签': washout_tag,
             '兑现冲击过滤': '⚠️ 是' if impact_blocked else '✅ 否',
             '冲击详情': impact['detail'],
             'VWAP': round(vwap, 2) if vwap else None,
@@ -359,12 +387,15 @@ def main():
 
     # S/A级
     print(f'\n{"="*160}')
-    print(f'  ★ 极高胜率 - S/A级')
+    print(f'  ★ 极高胜率 - S/A级 (标注洗盘修复标签)')
     print(f'{"="*160}')
     for r in results:
         if r['修正后胜率分级'] in ('S', 'A'):
+            tag = r.get('洗盘修复标签', '')
+            tag_str = f' [{tag}]' if tag else ''
             print(f'  [{r["修正后胜率分级"]}] {r["名称"]:8s} ({r["代码"]}) '
                   f'主题={r["主题"]:12s} 量化分={r["量化择时分"]:.1f} 修正={r["修正后评分"]:.1f} '
+                  f'洗盘修复={r["洗盘修复分"]:.1f}{tag_str} '
                   f'止损={r["ATR动态止损价"]} 决策={r["交易决策"]}')
 
     # B级 (前20)
@@ -386,6 +417,19 @@ def main():
         print(f'{"="*160}')
         for r in sorted(impact_stocks, key=lambda x: x['量化择时分'], reverse=True)[:20]:
             print(f'  {r["名称"]:8s} ({r["代码"]}) 量化分={r["量化择时分"]:.1f} 冲击={r["冲击详情"]}')
+
+    # 洗盘修复专题 (调整充分形态, 前20)
+    wr_stocks = [r for r in results if r.get('洗盘修复分', 0) >= 70]
+    if wr_stocks:
+        print(f'\n{"="*160}')
+        print(f'  ★ 洗盘修复专题 — 调整充分、二波潜力股 (前20)')
+        print(f'{"="*160}')
+        for r in sorted(wr_stocks, key=lambda x: x['洗盘修复分'], reverse=True)[:20]:
+            tag = r.get('洗盘修复标签', '')
+            print(f'  {tag} {r["名称"]:8s} ({r["代码"]}) '
+                  f'洗盘修复分={r["洗盘修复分"]:.1f} 量化分={r["量化择时分"]:.1f} '
+                  f'评级={r["修正后胜率分级"]} 主题={r["主题"]:12s} '
+                  f'现价={r["现价"]} 止损={r["ATR动态止损价"]} 决策={r["交易决策"]}')
 
     print(f'\n结果已保存: {out_path}')
     print(f'{"="*160}')

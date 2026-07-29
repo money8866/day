@@ -307,7 +307,7 @@ class MarketRegimeV3:
         else:
             print("  无符合条件龙头")
 
-        # ── 回调检测 + 入场逻辑 ──
+        # ── 回调检测 + 入场逻辑（全市场扫描）──
         from inst_pullback_v2.engines.pullback_detector import PullbackDetector
         pb_config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                       'inst_pullback_v2', 'config.yaml')
@@ -315,12 +315,54 @@ class MarketRegimeV3:
             pb_config = yaml.safe_load(f)
         pd_engine = PullbackDetector(pb_config)
 
-        pullback_qualified = []
-        for ld in leader_result.top_leaders[:5]:
+        # 构建全市场候选池
+        sb_cache = sc.load_stock_basic()
+        candidate_pool = []
+
+        # 策略1: 龙头质量前10直接加入候选
+        leader_codes = set()
+        for ld in leader_result.top_leaders[:10]:
             code = ld['ts_code']
-            name = ld['name']
-            theme = ld.get('theme', '')
+            candidate_pool.append(ld)
+            leader_codes.add(code)
+
+        # 策略2: 全市场预筛选补充（总市值>80亿，排除北交所/ST）
+        print("\n  [全市场扫描] 构建候选池...")
+        try:
+            pro = sc._get_pro()
+            db = pro.daily_basic(trade_date=trade_date,
+                                 fields='ts_code,total_mv,circ_mv,close,turnover_rate')
+            if db is not None and not db.empty:
+                # 排除北交所/ST
+                db = db[db['ts_code'].isin(sb_cache[sb_cache['ts_code'].str.endswith(('.SH','.SZ'))]['ts_code'])]
+                db = db[~db['ts_code'].str.startswith(('8','4','9'))]
+                db = db[~db['ts_code'].isin(leader_codes)]
+                # 总市值>80亿 (total_mv单位:万元, 80亿=800,000万)
+                db = db[db['total_mv'] > 800_000].sort_values('total_mv', ascending=False)
+                for _, row in db.iterrows():
+                    code = row['ts_code']
+                    name_row = sb_cache[sb_cache['ts_code'] == code]
+                    name = name_row['name'].values[0] if not name_row.empty else code
+                    candidate_pool.append({
+                        'ts_code': code, 'name': name, 'theme': '',
+                        'total_score': 0, 'from_market': True
+                    })
+                print(f"    龙头候选: {len(leader_codes)}只 + 全市场(总市值>80亿): {len(db)}只 = {len(candidate_pool)}只")
+        except Exception as e:
+            print(f"    全市场补充失败(仅用龙头): {e}")
+
+        # 运行 PullbackDetector
+        pullback_qualified = []
+        total = len(candidate_pool)
+        for idx, cand in enumerate(candidate_pool, 1):
+            code = cand['ts_code']
+            name = cand.get('name', code)
+            theme = cand.get('theme', '')
             pb_result = pd_engine.detect(code, trade_date)
+            # 每200只显示进度
+            if idx % 200 == 0 or idx == total:
+                print(f"    Pullback检测进度: {idx}/{total}")
+
             if pb_result and pb_result.is_qualified:
                 # 计算入场逻辑
                 df = self._load_stock_data(code, trade_date)
@@ -348,26 +390,22 @@ class MarketRegimeV3:
                         pb_ma_price = float(ma30[-1])
 
                     # ── 低吸参考价：锚定回踩均线，叠加短期过滤 ──
-                    candidates = [latest_close * 0.985]
+                    ref_candidates = [latest_close * 0.985]
                     if ma5 is not None:
-                        candidates.append(ma5[-1])
+                        ref_candidates.append(ma5[-1])
                     if pb_ma_price is not None:
-                        candidates.append(pb_ma_price * 1.01)  # 回踩MA上方1%，确认回踩有效
-                    ref_price = min(candidates)
+                        ref_candidates.append(pb_ma_price * 1.01)
+                    ref_price = min(ref_candidates)
 
                     # ── 短线止损：基于ATR的动态距离 + 均线辅助验证 ──
-                    # 主基准：ATR止损距离 = max(1.5×ATR%, 3%)，上限20%
                     atr_pct = atr_val / ref_price if ref_price > 0 and atr_val > 0 else 0
                     sl_dist_pct = max(atr_pct * 1.5, 0.03)
                     sl_dist_pct = min(sl_dist_pct, 0.20)
                     stop_loss = ref_price * (1 - sl_dist_pct)
-
-                    # 辅助基准：MA10下方2%（若均线止损更宽，以均线为准收紧）
                     if ma10 is not None:
                         ma_stop = ma10[-1] * 0.98
                         if ma_stop > stop_loss:
                             stop_loss = ma_stop
-                    # 回踩均线下方3%（若均线止损更宽，以均线为准收紧）
                     if pb_ma_price is not None:
                         pb_stop = pb_ma_price * 0.97
                         if pb_stop > stop_loss:
@@ -378,15 +416,15 @@ class MarketRegimeV3:
                     take_profit = min(take_profit, ref_price * 1.15)
                     take_profit = max(take_profit, ref_price * 1.03)
 
-                    # 从 stock_meta 获取子主题和主导叙事
+                    # 从 stock_meta 获取主题信息
                     meta = stock_meta.get(code, {})
                     pullback_qualified.append({
                         "ts_code": code,
                         "name": name,
-                        "theme": theme,
+                        "theme": theme or meta.get('subtheme', '') or meta.get('dominant_theme', ''),
                         "subtheme": meta.get('subtheme', ''),
                         "dominant_theme": meta.get('dominant_theme', ''),
-                        "leader_score": ld['total_score'],
+                        "leader_score": cand.get('total_score', 0),
                         "ret_60d": pb_result.ret_60d,
                         "drawdown": pb_result.drawdown_from_high,
                         "quality_score": pb_result.quality_score,
@@ -411,6 +449,8 @@ class MarketRegimeV3:
                     extra += f' 叙事={dom}'
                 lines = f"    {pq['name']}({pq['ts_code']}) ←{pq['pullback_ma']} 入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f}({(pq['stop_loss']/pq['ref_price']-1)*100:.1f}%) 止盈+{profit_pct:.0f}%{extra}"
                 print(lines)
+        else:
+            print("\n  全市场扫描完成，无符合回踩条件的标的。")
 
         # ── V6.1 Layer: Pattern → Smart Money → EV → Risk Budget ──
         # ════════════════════════════════════════════════════════════
@@ -465,11 +505,12 @@ class MarketRegimeV3:
                 print(f"  ⚠️ Smart Money Score异常: {e}")
 
         # V6.1-c) 写入Pattern DB（含Smart Money Score + 龙头 + 截面）
+        cs_result = None  # 提前初始化，供后续Alpha Layer和PatternDB使用
         if self.pattern_engine and pullback_qualified and regime:
             try:
                 # 准备龙头列表和截面列表（转为dict以兼容）
                 leading_list = leader_result.top_leaders if leader_result and leader_result.top_leaders else None
-                cs_list = cs_result.top_n if cs_result and cs_result.top_n else None
+                cs_list = None  # 截面数据在Alpha Layer获取，此处尚不可用
 
                 n_saved = self.pattern_engine.save_pattern_records(
                     trade_date=trade_date,
@@ -555,7 +596,6 @@ class MarketRegimeV3:
         print("【Alpha Layer】截面排序 · 资金流 · 概率")
 
         # 4a) 全市场截面排序
-        cs_result = None
         if self.cross_sectional_engine:
             print("\n[Alpha/1] 全市场截面排序...")
             try:

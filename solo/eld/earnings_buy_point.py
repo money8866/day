@@ -221,9 +221,16 @@ def detect_earnings_pullback(
         stage = "WATCH"
         all_logic.append("信号: WATCH — 部分条件满足，继续观察")
     else:
-        signal = EarningsBuySignal.IGNORE
-        stage = "IGNORE"
-        all_logic.append("信号: IGNORE — 关键条件不满足")
+        # 机构状态豁免：吸筹/洗盘阶段不低于 WATCH（洗盘本身就是潜在买点信号）
+        _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
+        if institution_state in _safe_states:
+            signal = EarningsBuySignal.WATCH
+            stage = "WATCH"
+            all_logic.append(f"信号: WATCH — 条件仅满足{conditions_met}/{total_conditions}，但机构{institution_state}状态给予观察评级")
+        else:
+            signal = EarningsBuySignal.IGNORE
+            stage = "IGNORE"
+            all_logic.append("信号: IGNORE — 关键条件不满足")
 
     result.signal = signal
     result.score = round(score, 2)
