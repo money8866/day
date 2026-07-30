@@ -1,5 +1,7 @@
 #config
 config/
+
+#Financial-API
 Financial-API/
 
 # Python
