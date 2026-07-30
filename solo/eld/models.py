@@ -339,6 +339,7 @@ class FinalScoreResult:
     institution_state: str = ""                # 机构状态
     earnings_buy_signal: str = ""              # 业绩回踩买点信号
     earnings_buy_score: float = 0.0            # 业绩回踩买点评分
+    etf_score: float = 50.0                    # ETF趋势评分
 
     # 综合
     els: float = 0.0
@@ -398,6 +399,7 @@ class FinalScoreResult:
             "institution_state": self.institution_state,
             "earnings_buy_signal": self.earnings_buy_signal,
             "earnings_buy_score": round(self.earnings_buy_score, 1),
+            "etf_score": round(self.etf_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,
             "recommendation_v2": self.recommendation_v2,

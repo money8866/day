@@ -151,6 +151,7 @@ CSV_COLUMNS: Final[list[str]] = [
     "institution_state",
     "earnings_buy_signal",
     "earnings_buy_score",
+    "etf_score",
     "buy_point",
     "recommendation",
     "recommendation_v2",

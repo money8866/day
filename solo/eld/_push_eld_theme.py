@@ -131,7 +131,13 @@ lines.append("")
 lines.append("熊市+26/28主题退潮，仓位≤2成")
 lines.append("入场：缩量回踩MA20(量比<0.6)+观望")
 lines.append("止损：收盘跌破MA10")
-lines.append("优先关注：金域医学、东方铁塔、全志科技")
+# 优先关注：TOP10中信号非忽略、机构非派发的标的
+_focus = [s for s in eld_stocks[:10]
+          if s['earnings_buy_signal'] != 'IGNORE'
+          and s['institution_state'] != '派发']
+if _focus:
+    _names = "、".join(s['name'] for s in _focus[:5])
+    lines.append(f"优先关注：{_names}")
 
 # ── 四、派发风险 ──
 distributors = [s for s in eld_stocks if s["institution_state"] == "派发"]

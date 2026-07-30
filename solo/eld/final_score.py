@@ -28,6 +28,7 @@ from .constants import (
     DIM_SIMILARITY,
     ALL_DIMENSIONS,
 )
+from .etf_score import calc_etf_score, _load_theme_stock_map, _load_theme_config
 from .models import (
     EldReport,
     FinalScoreResult,
@@ -92,6 +93,8 @@ class FinalScoreEngine:
         expectation_gap_v2_engine=None,
         institution_accumulation_engine=None,
         earnings_buy_point_engine=None,
+        # ETF 评分模块
+        etf_scorer=None,
     ):
         self.cfg = config or get_config()
         self.fc = self.cfg.final_score
@@ -111,6 +114,13 @@ class FinalScoreEngine:
         self._expectation_gap_v2_engine = expectation_gap_v2_engine
         self._institution_accumulation_engine = institution_accumulation_engine
         self._earnings_buy_point_engine = earnings_buy_point_engine
+        # ETF 评分
+        self._etf_scorer = etf_scorer
+
+        # 预加载主题映射数据（对所有股票共享，避免重复读文件）
+        _trade_date = self.cfg.global_.target_date or ""
+        self._theme_map = _load_theme_stock_map(_trade_date)
+        self._theme_config = _load_theme_config()
 
     def compute_els(
         self,
@@ -487,13 +497,30 @@ class FinalScoreEngine:
         result.recommendation = self.generate_recommendation(result.final_score, bp_r)
 
         # Stage 13: ELD V2 最终评分
+        # 计算 ETF 评分
+        _trade_date = self.cfg.global_.target_date or ""
+        if self._etf_scorer:
+            etf_score = self._etf_scorer(
+                stock.ts_code, data_source,
+                trade_date=_trade_date,
+                theme_map=self._theme_map,
+                theme_config=self._theme_config,
+            )
+        else:
+            etf_score = calc_etf_score(
+                stock.ts_code, data_source,
+                trade_date=_trade_date,
+                theme_map=self._theme_map,
+                theme_config=self._theme_config,
+            )
+        result.etf_score = etf_score
         result.els_v2 = self.compute_els_v2(
             event_score=event_r.score,
             gap_v2_score=gap_v2_r.score,
             trend_score=trend_r.score,
             inst_accum_score=inst_acc_r.score,
             industry_score=ind_r.score,
-            etf_score=50.0,  # ETF 评分默认为中性，可扩展
+            etf_score=etf_score,
         )
         result.final_score_v2 = self.apply_market_multiplier(result.els_v2, market)
         result.recommendation_v2 = self.generate_recommendation_v2(

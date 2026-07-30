@@ -230,6 +230,51 @@ class MarketReportGenerator:
     # V6.1 机构研报格式输出
     # ------------------------------------------------------------------
 
+    def _judge_market_env(self, regime: str, score: float) -> str:
+        """判断大盘环境类型"""
+        if regime in ('Bear',) or score < 32:
+            return "主跌期"
+        elif regime in ('Recovery', 'Neutral'):
+            return "震荡回暖期"
+        else:  # Bull, Euphoria
+            return "主升期"
+
+    def _judge_stock_type(self, theme: str, subtheme: str, dom_theme: str) -> str:
+        """判断个股类型：防御型 / 高弹性 / 中性"""
+        # 合并所有可用的主题字段
+        keywords = f"{theme} {subtheme} {dom_theme}".lower()
+
+        # 防御性主题关键词
+        defensive = ['电力', '银行', '煤炭', '钢铁', '公用事业', '高股息', '高速公路',
+                     '白酒', '家电', '食品', '医药商业', '运营商', '水务']
+        # 高弹性主题关键词
+        high_beta = ['半导体', '机器人', 'ai算力', '人工智能', '信创', '消费电子',
+                     '新能源车', '量子计算', '创新药', '创新化药', '整车',
+                     '光伏', '储能', '军工', '芯片', '软件', '金融科技']
+
+        for kw in defensive:
+            if kw in keywords:
+                return "防御型"
+        for kw in high_beta:
+            if kw in keywords:
+                return "高弹性"
+        return "中性"
+
+    def _build_trade_suggestion(self, market_env: str, stock_type: str) -> str:
+        """根据大盘环境和个股类型生成买卖提示"""
+        mapping = {
+            ("主跌期", "防御型"):   "防御配置优先（大盘主跌，防御性标的关注价值凸显）",
+            ("主跌期", "高弹性"):   "注意风险（大盘主跌，高弹性标的承压较大，需严格控仓）",
+            ("主跌期", "中性"):     "谨慎参与（大盘主跌，市场风险偏高，注意仓位管理）",
+            ("震荡回暖期", "防御型"): "稳健配置（大盘震荡回暖，防御标的可作底仓配置）",
+            ("震荡回暖期", "高弹性"): "弹性优先（大盘回暖，高弹性标的有望率先反弹）",
+            ("震荡回暖期", "中性"):   "伺机而动（大盘震荡回暖，等待明确信号再入场）",
+            ("主升期", "防御型"):    "顺势配置（大盘主升，防御标的亦可跟随）",
+            ("主升期", "高弹性"):    "积极做多（大盘主升，高弹性标的弹性放大，持仓为主）",
+            ("主升期", "中性"):      "顺势参与（大盘主升，可适当参与市场）",
+        }
+        return mapping.get((market_env, stock_type), "按计划执行")
+
     def _render_v61_institutional_report(self, data: Dict) -> str:
         """渲染V6.1机构研报格式的个股分析（V6.2增强：Pattern Type/Adjusted EV/System Mode）"""
         lines = []
@@ -248,6 +293,11 @@ class MarketReportGenerator:
         if rb_data:
             system_mode = rb_data.system_mode
 
+        # 大盘环境判断（用于买卖提示）
+        regime = overview.get('regime', '')
+        market_score = overview.get('market_score', 50)
+        market_env = self._judge_market_env(regime, market_score)
+
         lines.append("")
         lines.append("## 十四、V6.2 候选标的深度分析")
         lines.append("")
@@ -257,6 +307,8 @@ class MarketReportGenerator:
         if rb_data and rb_data.learning_count > 0:
             lines.append(f" | **学习仓位**: {rb_data.learning_count}只")
         lines.append("")
+        lines.append(f"> **大盘环境**: {market_env}（{regime} {market_score:.0f}分）")
+        lines.append("")
         lines.append("")
 
         for pq in pullback_list:
@@ -265,6 +317,13 @@ class MarketReportGenerator:
             theme = pq.get('theme', '')
             subtheme = pq.get('subtheme', '')
             dom_theme = pq.get('dominant_theme', '')
+
+            # 买卖提示
+            stock_type = self._judge_stock_type(theme, subtheme, dom_theme)
+            suggestion = self._build_trade_suggestion(market_env, stock_type)
+            # 写回 pullback_qualified 条目，供微信推送等模块使用
+            pq["stock_type"] = stock_type
+            pq["suggestion"] = suggestion
 
             pm = pattern_data.matches.get(code) if pattern_data and pattern_data.matches else None
             ev_r = ev_data.results.get(code) if ev_data and ev_data.results else None
@@ -283,6 +342,8 @@ class MarketReportGenerator:
             if dom_theme and dom_theme != theme:
                 lines.append(f"| Dominant Theme | {dom_theme} |")
             lines.append(f"| Alpha Rank | {pq.get('leader_score', 0):.0f}/100（龙头评分） |")
+            lines.append(f"| 个股类型 | {stock_type} |")
+            lines.append(f"| **买卖提示** | **{suggestion}** |")
             lines.append("")
 
             # Historical Pattern — V6.2 含Pattern Type

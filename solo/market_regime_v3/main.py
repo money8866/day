@@ -821,7 +821,7 @@ class MarketRegimeV3:
         if self._push_enabled:
             print("\n  推送微信...")
             summary = build_summary(report_dict)
-            send_pushplus(summary, title=f"市场状态报告 {trade_date}")
+            send_pushplus(summary, title=f"主线第一次回调模式 {trade_date}")
 
         print()
 

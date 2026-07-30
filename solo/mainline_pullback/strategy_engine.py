@@ -89,6 +89,12 @@ class StockResult:
     candle_pattern: str = ""                   # 蜡烛形态 small/large/doji
     consecutive_down: int = 0                  # 连跌天数
 
+    # 市场状态与风格适配
+    market_regime: str = ""                    # 大盘状态：主跌期/弱势震荡/震荡回暖/主升期
+    market_preference: str = ""                # 市场偏好：防御优先/高弹性优先/均衡
+    stock_style: str = ""                      # 个股风格：防御型/高弹性/均衡型
+    style_hint: str = ""                       # 风格适配提示：推荐优先/谨慎/中性
+
 
 # ──────────────────────────────────────────────
 # 策略引擎
@@ -130,6 +136,10 @@ class StrategyEngine:
         # ── 0. 预加载基础数据 ──
         self._load_basic_data(td)
 
+        # ── 0b. 检测市场状态 ──
+        market_info = self._detect_market_regime(td)
+        logger.info("大盘状态: %s | 风格偏好: %s", market_info['regime'], market_info['preference'])
+
         # ── 1. A层：基础硬过滤 ──
         candidates_a = self._hard_filter(td)
         logger.info("[A层] 基础过滤通过: %d 只", len(candidates_a))
@@ -137,7 +147,7 @@ class StrategyEngine:
         # ── 2. C层：首次回踩检测（含主升浪动量校验，逐只并发分析）──
         # 使用 stock_cache.cached_stk_factor_pro 加载个股历史数据，
         # 确保 MA、涨幅、涨停计数等计算有足够的历史窗口
-        results = self._pullback_scan(candidates_a, td)
+        results = self._pullback_scan(candidates_a, td, market_info)
         results.sort(key=lambda r: r.score, reverse=True)
 
         logger.info("[C层] 回踩信号通过: %d 只", sum(1 for r in results if r.pass_c))
@@ -213,7 +223,7 @@ class StrategyEngine:
     # C层（含B层）：首次回踩检测 + 主升浪动量校验
     # ══════════════════════════════════════════════
 
-    def _pullback_scan(self, codes: list[str], trade_date: str) -> list[StockResult]:
+    def _pullback_scan(self, codes: list[str], trade_date: str, market_info: dict) -> list[StockResult]:
         """C层 — 对候选股逐只计算回踩信号（并发执行）"""
         cfg = self.cfg.pullback
         lookback = self.cfg.momentum.lookback_days
@@ -229,7 +239,7 @@ class StrategyEngine:
             future_map = {}
             for code in codes:
                 fut = executor.submit(
-                    self._analyze_single_stock, code, trade_date, start_date
+                    self._analyze_single_stock, code, trade_date, start_date, market_info
                 )
                 future_map[fut] = code
 
@@ -247,7 +257,7 @@ class StrategyEngine:
         return results
 
     def _analyze_single_stock(
-        self, ts_code: str, trade_date: str, start_date: str
+        self, ts_code: str, trade_date: str, start_date: str, market_info: dict
     ) -> Optional[StockResult]:
         """分析单只股票的回踩信号"""
         cfg_pullback = self.cfg.pullback
@@ -379,12 +389,30 @@ class StrategyEngine:
             return None
 
         # ── 8b. 精准买点细化 ──
+        # 先分类个股风格
+        result.stock_style = self._classify_stock_style(ts_code, result)
+        result.market_regime = market_info.get('regime', '')
+        result.market_preference = market_info.get('preference', '均衡')
+        # 风格适配提示
+        pref = market_info.get('preference', '均衡')
+        if result.stock_style == '防御型' and pref == '防御优先':
+            result.style_hint = '推荐优先'
+        elif result.stock_style == '高弹性' and pref == '高弹性优先':
+            result.style_hint = '推荐优先'
+        elif result.stock_style == '防御型' and pref == '高弹性优先':
+            result.style_hint = '中性'
+        elif result.stock_style == '高弹性' and pref == '防御优先':
+            result.style_hint = '谨慎'
+        else:
+            result.style_hint = '中性'
+
         self._refine_buy_point(
             df, result,
             support_ma=support_ma,
             support_price=support_price,
             dist_to_ma=dist_to_ma,
             vol_shrink=vol_shrink,
+            market_info=market_info,
         )
 
         # ── 9. 评分计算 ──
@@ -521,6 +549,7 @@ class StrategyEngine:
         support_price: float,
         dist_to_ma: float,
         vol_shrink: float,
+        market_info: dict = None,
     ) -> None:
         """利用因子数据（KDJ/RSI/MACD/布林带/蜡烛形态）判定精确买点
 
@@ -643,7 +672,13 @@ class StrategyEngine:
         )
 
         # ── 6. 买点信号判定 ──
-        if buy_readiness >= 80:
+        # 先检查是否已大幅上涨（涨停/大阳线 = 错过了低吸）
+        pct_today = float(latest.get("pct_chg", 0))
+        if pct_today >= 7.0:
+            # 涨幅>7% 说明已大幅反弹，MA支撑位已失效
+            buy_signal = "WAIT"
+            buy_readiness = min(buy_readiness, 50.0)
+        elif buy_readiness >= 80:
             buy_signal = "READY"
         elif buy_readiness >= 60:
             buy_signal = "WATCH"
@@ -667,6 +702,105 @@ class StrategyEngine:
         result.bb_lower = round(bb_lower, 2)
         result.candle_pattern = candle_pattern
         result.consecutive_down = consecutive_down
+
+    # ══════════════════════════════════════════════
+    # 市场状态检测
+    # ══════════════════════════════════════════════
+
+    def _detect_market_regime(self, trade_date: str) -> dict:
+        """检测大盘状态，返回市场阶段和风格偏好
+
+        Returns:
+            dict: {'regime': str, 'trend': int, 'preference': str}
+        """
+        try:
+            import tushare as ts
+            pro = ts.pro_api()
+            start = self._calc_start_date(trade_date, 60)
+            df = pro.index_daily(ts_code='000001.SH', start_date=start, end_date=trade_date)
+            if df is None or df.empty:
+                return self._default_market_info()
+            df = df.sort_values('trade_date').reset_index(drop=True)
+            closes = df['close'].values
+            if len(closes) < 20:
+                return self._default_market_info()
+
+            import pandas as _pd
+            ma10 = _pd.Series(closes).rolling(10).mean().iloc[-1]
+            ma20 = _pd.Series(closes).rolling(20).mean().iloc[-1]
+            ma60 = _pd.Series(closes).rolling(60).mean().iloc[-1] if len(closes) >= 60 else ma20
+
+            latest = closes[-1]
+
+            # 主跌：指数在MA20下方、MA20下穿MA60、近期新低
+            if latest < ma20 and ma20 < ma60 and (len(closes) < 5 or closes[-1] <= closes[-5]):
+                return {'regime': '主跌期', 'trend': -2, 'preference': '防御优先'}
+            # 弱势调整：指数在MA20下方
+            if latest < ma20:
+                return {'regime': '弱势震荡', 'trend': -1, 'preference': '防御优先'}
+            # 主升：指数在MA20上方、MA20上穿MA60
+            if latest > ma20 and ma20 > ma60:
+                return {'regime': '主升期', 'trend': 2, 'preference': '高弹性优先'}
+            # 震荡回暖：指数站上MA20
+            if latest > ma20:
+                return {'regime': '震荡回暖', 'trend': 1, 'preference': '高弹性优先'}
+            return {'regime': '震荡', 'trend': 0, 'preference': '均衡'}
+        except Exception:
+            return self._default_market_info()
+
+    @staticmethod
+    def _default_market_info() -> dict:
+        return {'regime': '未知', 'trend': 0, 'preference': '均衡'}
+
+    # ══════════════════════════════════════════════
+    # 个股风格分类
+    # ══════════════════════════════════════════════
+
+    def _classify_stock_style(self, ts_code: str, result: StockResult) -> str:
+        """根据行业和动量特征分类个股风格：防御型 / 高弹性 / 均衡型
+
+        防御型行业：电力、水务、公路、银行、公用事业、医药商业等
+        高弹性行业：半导体、软件、机器人、航天、生物制品等
+        """
+        # 从 stock_basic 获取行业
+        industry = ''
+        if self._stock_basic is not None:
+            match = self._stock_basic[self._stock_basic['ts_code'] == ts_code]
+            if not match.empty and 'industry' in match.columns:
+                industry = str(match.iloc[0].get('industry', ''))
+
+        # 防御型行业关键词
+        defensive_keywords = [
+            '电力', '水务', '公路', '银行', '保险', '公用事业',
+            '医药商业', '燃气', '环保', '铁路', '港口', '高速公路',
+            '煤炭', '钢铁',
+        ]
+        # 高弹性行业/概念关键词
+        aggressive_keywords = [
+            '半导体', '芯片', '软件', '互联网', '机器人', '航天',
+            '生物制品', '医疗器械', '军工', '自动化', '人工智能',
+            '计算机', '电子', '通信设备', '电机', '专用设备',
+            '医疗器械', '生物医药',
+        ]
+
+        # 行业匹配
+        for kw in defensive_keywords:
+            if kw in industry:
+                return '防御型'
+
+        for kw in aggressive_keywords:
+            if kw in industry:
+                return '高弹性'
+
+        # 行业无法判断时，用量化特征
+        # 高涨幅+多涨停 → 高弹性
+        if result.wave_gain_pct >= 60 and result.limit_up_count >= 3:
+            return '高弹性'
+        # 低涨幅+少涨停 → 防御型（偏稳健）
+        if result.wave_gain_pct < 45 and result.limit_up_count <= 2:
+            return '防御型'
+
+        return '均衡型'
 
     # ══════════════════════════════════════════════
     # 工具

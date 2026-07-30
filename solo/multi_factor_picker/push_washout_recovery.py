@@ -48,8 +48,12 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
     """
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = []
-    lines.append(f'# 洗盘修复专题 — 调整充分二波潜力股')
+    lines.append(f'# 中报预增股择时算法 — 洗盘修复专题')
     lines.append(f'报告日期: {trade_date} | 推送时间: {now}')
+    lines.append('')
+    lines.append('> **说明**: 洗盘修复分=洗盘形态完整度(满分100)，排名仅代表形态标准程度。')
+    lines.append('> 综合评级(S/A/B)看的是趋势/动量/量价等7个因子综合得分，才是真正的强弱排序。')
+    lines.append('> 所以修复分高但评级低的(如100分A级)，说明刚启动不久、低吸安全；修复分略低但评级高的(如S级)，说明趋势已确立、确定性更强。')
     lines.append('')
 
     # ─── 精选标的 (S/A级且洗盘修复分>=80, 无兑现冲击) ───
@@ -148,7 +152,7 @@ def main():
     print(msg[:500] + '...' if len(msg) > 500 else msg)
 
     # 推送
-    success = push_to_wechat(msg, title=f'洗盘修复专题 — {trade_date}')
+    success = push_to_wechat(msg, title=f'中报预增股择时算法 — 洗盘修复专题 {trade_date}')
     if success:
         print(f'微信推送完成: {trade_date}')
     else:

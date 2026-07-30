@@ -1182,6 +1182,8 @@ class RealtimeThemeMonitor:
             'market_status': market_status,
             'position': pos,
             'position_range': pos_range,
+            # 赚钱效应惩罚信息(若有): {reason, original_pos, zt_count, dt_count, up_ratio, down_ratio}
+            'penalty_info': getattr(self, '_last_penalty_info', None),
         }
         self._last_report = report
         return report
@@ -1274,6 +1276,12 @@ class RealtimeThemeMonitor:
             if y_lb and isinstance(y_lb, (int, float)) and y_lb > 0:
                 yesterday_summary += f" 最高板{y_lb}板"
 
+        # 赚钱效应惩罚信息(若有)
+        penalty_info = report.get('penalty_info')
+        penalty_line = ""
+        if penalty_info:
+            penalty_line = f"\n⚠️ 空仓警示: {penalty_info['reason']} (原建议{penalty_info['original_pos']}%→{pos}%)"
+
         # 1) 过热/强势信号
         if ts >= 85 and up_ratio > 70:
             msg = f"🔥🔥【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
@@ -1292,11 +1300,21 @@ class RealtimeThemeMonitor:
             alerts.append({'type': 'market_strong', 'msg': msg})
         # 3) 弱势/退潮(已含冷却)
         elif ts <= 35:
-            msg = f"❄️❄️【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
+            msg = f"❄️❄️【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%({pos_range})\n"
             msg += f"📉 {index_summary}\n"
             msg += f"📊 {score_summary}\n"
             msg += f"下跌{down_count}/{total_count}({down_ratio}%) {zt_dt}"
             msg += yesterday_summary
+            msg += penalty_line
+            alerts.append({'type': 'market_fear', 'msg': msg})
+        # 3.5) 触发赚钱效应惩罚(空仓警示,优先级高于普通情绪)
+        elif penalty_info and pos <= 10:
+            msg = f"🛑🛑【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%({pos_range})\n"
+            msg += f"📉 {index_summary}\n"
+            msg += f"📊 {score_summary}\n"
+            msg += f"下跌{down_count}/{total_count}({down_ratio}%) {zt_dt}"
+            msg += yesterday_summary
+            msg += penalty_line
             alerts.append({'type': 'market_fear', 'msg': msg})
         # 4) 普通情绪(市场状态中间档,冷却10分钟)
         else:
@@ -1304,6 +1322,7 @@ class RealtimeThemeMonitor:
             msg += f"📍 {index_summary}\n"
             msg += f"📈 上涨{up_ratio}% 下跌{down_ratio}% {zt_dt}"
             msg += yesterday_summary
+            msg += penalty_line
             alerts.append({'type': 'market_neutral', 'msg': msg})
 
         if alerts:
@@ -1966,7 +1985,101 @@ class RealtimeThemeMonitor:
         else:
             market_status, pos_range, pos = "主跌段", "0~10%", 5
 
+        # ── 赚钱效应惩罚(顶级私募视角:不只是看趋势分,还要看实际赚钱效应) ──
+        # 解决"测强不测涨"问题:趋势分可能仍偏高,但跌停潮+恐慌性抛售时必须空仓
+        # 惩罚只下减不上加,且仅在弱势环境下生效(强势环境不惩罚)
+        penalty_info = self._apply_profit_effect_penalty(
+            trend_score, market_status, pos, pos_range,
+        )
+        self._last_penalty_info = penalty_info  # 保存供 report 使用
+        if penalty_info:
+            pos = penalty_info['pos']
+            pos_range = penalty_info['pos_range']
+            market_status = penalty_info['market_status']
+            # 调试日志
+            print(f"[赚钱效应惩罚] 原仓位→新仓位: {penalty_info['original_pos']}%→{pos}%  原因: {penalty_info['reason']}")
+
         return trend_score, index_trend, theme_trend, market_status, pos, pos_range
+
+    def _apply_profit_effect_penalty(self, trend_score, market_status, pos, pos_range):
+        """
+        赚钱效应惩罚机制(顶级私募量化策略)
+        基于实际市场亏钱效应,在弱势环境下进一步压低仓位,直至空仓
+        返回 None 表示不惩罚;返回 dict 表示惩罚后的新参数
+        """
+        # 仅在弱势及以下环境生效(趋势良好及以上不惩罚,避免误伤强势行情)
+        if trend_score >= 60:
+            return None
+
+        # 获取全市场统计(涨跌停、涨跌家数)
+        full_stats = self.get_full_market_stats()
+        if not full_stats:
+            return None
+
+        zt_count = full_stats.get('zt_count', 0) or 0
+        dt_count = full_stats.get('dt_count', 0) or 0
+        up_ratio = full_stats.get('up_ratio', 50) or 50
+        down_ratio = full_stats.get('down_ratio', 50) or 50
+        up_count = full_stats.get('up_count', 0) or 0
+        down_count = full_stats.get('down_count', 0) or 0
+
+        original_pos = pos
+        reason_parts = []
+
+        # ── 规则1: 跌停潮(最严厉) ──
+        # 跌停≥100家,无论趋势分多少,强制空仓
+        if dt_count >= 100:
+            pos = 0
+            pos_range = "0%(空仓)"
+            reason_parts.append(f"跌停潮({dt_count}家)")
+        # ── 规则2: 恐慌性抛售 ──
+        # 跌停≥50家 且 跌停 > 涨停 × 2,仓位压到 0~5%
+        elif dt_count >= 50 and zt_count > 0 and dt_count >= zt_count * 2:
+            pos = min(pos, 5)
+            pos_range = "0~5%(几乎空仓)"
+            reason_parts.append(f"恐慌抛售(跌停{dt_count}/涨停{zt_count})")
+        # ── 规则3: 跌停明显多于涨停 + 大面积下跌 ──
+        # 跌停 > 涨停 × 1.5 且 下跌 > 60%,仓位减半
+        elif (zt_count > 0 and dt_count >= zt_count * 1.5 and down_ratio > 60) or \
+             (zt_count == 0 and dt_count >= 30 and down_ratio > 60):
+            pos = min(pos, max(5, pos // 2))
+            pos_range = f"0~{max(10, pos)}%(极低仓位)"
+            reason_parts.append(f"跌多涨少(跌停{dt_count}/涨停{zt_count},下跌{down_ratio}%)")
+        # ── 规则4: 极端弱势(趋势分<45 + 跌停>30 + 上涨<40%) ──
+        # 仓位压到 0~5%
+        elif trend_score < 45 and dt_count >= 30 and up_ratio < 40:
+            pos = min(pos, 5)
+            pos_range = "0~5%(几乎空仓)"
+            reason_parts.append(f"极端弱势(评分{trend_score:.0f},跌停{dt_count},上涨{up_ratio}%)")
+        # ── 规则5: 弱势+赚钱效应缺失(趋势分<55 + 上涨<35% + 跌停>涨停) ──
+        # 仓位压到 ≤10%
+        elif trend_score < 55 and up_ratio < 35 and dt_count > zt_count:
+            pos = min(pos, 10)
+            pos_range = "0~10%(极低仓位)"
+            reason_parts.append(f"赚钱效应缺失(上涨{up_ratio}%,跌停{dt_count}>涨停{zt_count})")
+
+        if not reason_parts:
+            return None
+
+        # 市场状态升级(标注恐慌)
+        if pos == 0:
+            market_status = "恐慌空仓"
+        elif pos <= 5:
+            market_status = "极弱空仓"
+        elif pos <= 10:
+            market_status = "弱势空仓"
+
+        return {
+            'pos': pos,
+            'pos_range': pos_range,
+            'market_status': market_status,
+            'original_pos': original_pos,
+            'reason': ' + '.join(reason_parts),
+            'zt_count': zt_count,
+            'dt_count': dt_count,
+            'up_ratio': up_ratio,
+            'down_ratio': down_ratio,
+        }
 
     # ════════════════════════════════════════════
     # 2. 通达信连接

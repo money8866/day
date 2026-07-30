@@ -108,7 +108,12 @@ def build_summary(report_dict: Dict) -> str:
     # 核心：符合回踩条件的龙头标的 + 入场逻辑
     # ======================================================
     if pb_list:
+        # 大盘环境
+        regime = overview.get('regime', '')
+        market_score = overview.get('market_score', 50)
         lines.append("## 符合回踩条件的标的")
+        lines.append("")
+        lines.append(f"> **大盘环境**: {'主跌期' if regime in ('Bear',) or market_score < 32 else '震荡回暖期' if regime in ('Recovery', 'Neutral') else '主升期'}（{regime} {market_score:.0f}分）")
         lines.append("")
         for i, item in enumerate(pb_list):
             name = item.get("name", "")
@@ -139,6 +144,11 @@ def build_summary(report_dict: Dict) -> str:
                          f"回撤: {drawdown*100:.1f}%")
             lines.append(f"  回踩: {pullback_ma} | 首次回调: {'是' if is_first else '否'} | "
                          f"质量分: {quality:.2f}")
+            # 买卖提示
+            stock_type = item.get("stock_type", "")
+            suggestion = item.get("suggestion", "")
+            if stock_type and suggestion:
+                lines.append(f"  类型: {stock_type} | 提示: {suggestion}")
             lines.append(f"  ── 入场逻辑 ──")
             lines.append(f"  低吸参考价: **{ref_price:.2f}**（{pullback_ma}附近）")
             lines.append(f"  防守止损: **{stop_loss:.2f}**（{stop_loss/ref_price-1:.1%}）")
