@@ -1147,6 +1147,371 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
     return "\n".join(lines), csv_path, df
 
 
+# ────────────────────────────────────────────────────────────
+# EOS 评分加载 + 融合交易决策报告
+# ────────────────────────────────────────────────────────────
+
+def _load_eos_data(trade_date):
+    """
+    从 etf_alpha_v5 的排名 CSV 加载 EOS 评分数据。
+    
+    CSV 包含列：ETF名称, 代码, EOS, RiskScore, Action, Stage 等。
+    返回 {etf代码: {name, eos, risk, action, stage, ...}}。
+    若文件不存在返回空 dict，不报错。
+    """
+    # 尝试多个可能的 V5 排名 CSV 路径
+    candidates = [
+        os.path.join(os.path.dirname(__file__), 'report_daily',
+                     f'etf_alpha_v5_ranking_{trade_date}.csv'),
+        os.path.join(os.path.dirname(__file__), 'report_daily',
+                     'etf_alpha_v5_ranking.csv'),
+        os.path.join(os.path.dirname(__file__), '..', 'report_daily',
+                     f'etf_alpha_v5_ranking_{trade_date}.csv'),
+    ]
+    eos_csv = None
+    for p in candidates:
+        if os.path.exists(p):
+            eos_csv = p
+            break
+    if eos_csv is None:
+        return {}
+
+    try:
+        df = pd.read_csv(eos_csv, encoding='utf-8-sig')
+        if df.empty:
+            return {}
+    except Exception:
+        return {}
+
+    # 列名映射（兼容不同版本的列命名）
+    name_col = next((c for c in df.columns if '名称' in c), None)
+    if name_col is None:
+        name_col = next((c for c in df.columns if 'name' in c.lower() or 'ETF' in c), None)
+    if name_col is None:
+        name_col = df.columns[0]  # 取第一列
+
+    code_col = next((c for c in df.columns if c.lower() in ('代码', 'code', 'ts_code')), None)
+
+    result = {}
+    for _, row in df.iterrows():
+        name = str(row.get(name_col, ''))
+        code = str(row.get(code_col, '')) if code_col else ''
+        if not name:
+            continue
+
+        # 代码标准化：去掉 .SH/.SZ
+        code_clean = code.replace('.SH', '').replace('.SZ', '').replace('.sh', '').replace('.sz', '').strip()
+
+        eos = row.get('EOS', row.get('EOS评分', None))
+        risk = row.get('RiskScore', row.get('量价风险', None))
+        action = row.get('Action', row.get('操作信号', row.get('今日操作信号', '')))
+        stage = row.get('Stage', row.get('生命周期阶段', row.get('阶段', '')))
+
+        # 标记是否为"底部抢跑"：EOS较前值飙升（需要多日EOS，此处简化为 stage='Recovery' 且 EOS≥45 时标记）
+        squash = row.get('Crowding', row.get('拥挤度', '')) == 'Low'
+        dual = row.get('DualMatrix', row.get('双矩阵分类', ''))
+
+        result[code_clean] = {
+            'name': name,
+            'eos': float(eos) if eos is not None and eos != '' else 0,
+            'risk': float(risk) if risk is not None and risk != '' else 50,
+            'stage': str(stage) if stage else '',
+            'dual_matrix': str(dual) if dual else '',
+            'crowding_low': squash,
+        }
+
+    return result
+
+
+def _load_alpha_ranking_data(trade_date):
+    """
+    从 etf_alpha_ranking 的排名 CSV 加载 Alpha Ranking 数据（层级1）。
+    CSV 路径: output/csv/etf_ranking_{trade_date}.csv
+    返回 {etf代码: {rank, prediction_score, risk_score, trend_score, signal, ...}}。
+    若文件不存在返回空 dict，不报错。
+    """
+    base_dir = os.path.dirname(__file__)
+    candidates = [
+        os.path.join(base_dir, 'etf_alpha_ranking', 'output', 'csv',
+                     f'etf_ranking_{trade_date}.csv'),
+        os.path.join(base_dir, 'etf_alpha_ranking', 'output', 'csv',
+                     'etf_ranking_latest.csv'),
+    ]
+    alpha_csv = None
+    for p in candidates:
+        if os.path.exists(p):
+            alpha_csv = p
+            break
+    if alpha_csv is None:
+        return {}
+
+    try:
+        df = pd.read_csv(alpha_csv, encoding='utf-8-sig')
+        if df.empty:
+            return {}
+    except Exception:
+        return {}
+
+    result = {}
+    for _, row in df.iterrows():
+        etf_code = str(row.get('ETF', ''))  # "512800.SH"
+        code_clean = etf_code.replace('.SH', '').replace('.SZ', '').replace('.sh', '').replace('.sz', '').strip()
+        if not code_clean:
+            continue
+
+        rank = row.get('Rank', None)
+        pred_score = row.get('PredictionScore', row.get('Score', None))
+        risk = row.get('RiskScore', None)  # Alpha 层面的风险分（高=低波动）
+        trend = row.get('ETFTrendScore', None)  # 中枢趋势（50中性，>50正趋势）
+        theme = row.get('theme', row.get('Theme', ''))
+        signal = row.get('Signal', '')
+
+        result[code_clean] = {
+            'rank': int(rank) if rank is not None and rank != '' else 999,
+            'prediction_score': float(pred_score) if pred_score is not None and pred_score != '' else 0,
+            'risk_score': float(risk) if risk is not None and risk != '' else 50,
+            'trend_score': float(trend) if trend is not None and trend != '' else 50,
+            'theme': str(theme) if theme else '',
+            'signal': str(signal) if signal else '',
+            'theme_persistence': float(row.get('ThemePersistence', 0)) if pd.notna(row.get('ThemePersistence')) else 0,
+        }
+
+    return result
+
+
+def _generate_3layer_trade_report(rankings, state, eos_data, alpha_data, trade_date, all_data,
+                                  hold_days=0, hold_pnl=None, rebalance_days=60):
+    """
+    三层融合交易决策指令：
+      层级1：Alpha Ranking（Risk门神 + Trend + Signal）
+      层级2：多维综合评分（存量趋势健康度）
+      层级3：EOS评分（增量资金强度 + 边际加速度）
+    
+    调仓规则：
+      BUY:       Layer1通过(Risk≥38, Trend>40) + 综合分>50 + EOS≥42
+      ACCUMULATE: EOS≥45 + Layer1 Risk>35（低位抢跑）
+      HOLD:       EOS≥38 + Layer1 Risk未爆表
+      REDUCE:     EOS<38（持仓内止盈减仓 1/2）
+      SELL:       EOS<35 OR AlphaRisk<30 OR 20日动量破位
+    """
+    from datetime import datetime
+
+    today = datetime.strptime(trade_date, "%Y%m%d")
+    lines = []
+    lines.append(f"ETF 三层融合交易决策指令 — {trade_date}")
+    lines.append(f"（层级1:AlphaRanking | 层级2:多维综合分 | 层级3:EOS评分）")
+    lines.append("")
+
+    # ── 构建索引 ──
+    rank_by_code = {}
+    for i, r in enumerate(rankings):
+        rank_by_code[r['code']] = {'rank': i+1, 'score': r['total_score'], 'name': r['name'],
+                                    'momentum': r.get('momentum', 0), 'day_chg': r.get('day_chg', 0)}
+
+    hold_code = state.get('holding_code', '') if state else ''
+    hold_name = state.get('holding_name', '') if state else ''
+
+    # ─────────────────────────────────
+    # 1. 风格与风险偏好评估
+    # ─────────────────────────────────
+    lines.append("【一、今日风格与风险偏好评估】")
+    if rankings:
+        top5_names = [r['name'] for r in rankings[:5]]
+        bot5_names = [r['name'] for r in rankings[-5:]]
+        top_chg_avg = np.mean([r.get('day_chg', 0) for r in rankings[:5]])
+
+        # 从 Alpha 数据判断市场状态
+        alpha_high_risk = sum(1 for d in alpha_data.values() if d.get('risk_score', 50) < 38)
+        lines.append(f"  TOP5 板块: {'、'.join(top5_names)}")
+        lines.append(f"  垫底5 板块: {'、'.join(bot5_names)}")
+        lines.append(f"  Alpha Risk<38(高波动预警)标的: {alpha_high_risk}只")
+
+        hold_info = rank_by_code.get(hold_code)
+        if hold_info:
+            lines.append(f"  当前持仓 [{hold_name}] 排名第{hold_info['rank']}, "
+                         f"日涨幅{hold_info['day_chg']:+.2f}%")
+
+        if top_chg_avg > 1.5:
+            lines.append("  风格判断: 高低切换 / 进攻偏好，资金集中流入强势板块")
+        elif top_chg_avg > -0.5:
+            lines.append("  风格判断: 风格分化 / 轮动试盘，防御板块占优")
+        else:
+            lines.append("  风格判断: 防御避险 / 单边下行，资金撤退或观望")
+    lines.append("")
+
+    # ─────────────────────────────────
+    # 2. 持仓标的诊断（三层数据融合）
+    # ─────────────────────────────────
+    lines.append("【二、持仓标的诊断与操作指令（三层融合）】")
+    if hold_code:
+        lines.append(f"  【{hold_name} ({hold_code})】")
+        info = rank_by_code.get(hold_code, {})
+        alp = alpha_data.get(hold_code, {})
+        eos = eos_data.get(hold_code, {})
+
+        # 买入明细
+        bp = state.get('buy_price') if state else None
+        if bp is not None:
+            hold_str = f"  买入价:{bp:.3f} | 持有:{hold_days}/{rebalance_days}天"
+            if hold_pnl is not None:
+                hold_str += f" | 盈亏:{hold_pnl:+.2f}%"
+            lines.append(hold_str)
+
+        # 打印三层数据
+        l1_str = f"L1:Rank#{alp.get('rank', '?')} Risk={alp.get('risk_score', 0):.0f} Trend={alp.get('trend_score', 0):.0f} Sig={alp.get('signal', '-')}" if alp else "L1:无Alpha数据"
+        l2_str = f"L2:综合分{info.get('score', 0):.0f} 排名#{info.get('rank', '?')} 动量{info.get('momentum', 0):+.1f}%"
+        l3_str = f"L3:EOS={eos.get('eos', 0):.0f} 风险={eos.get('risk', 0):.0f} 阶段={eos.get('stage', '-')}" if eos else "L3:无EOS数据"
+        lines.append(f"  {l1_str}")
+        lines.append(f"  {l2_str}")
+        lines.append(f"  {l3_str}")
+
+        # ── 判定逻辑 ──
+        alpha_risk_pass = alp.get('risk_score', 50) >= 30 if alp else True  # 无Alpha数据时通过
+        eos_val = eos.get('eos', 0) if eos else 0
+        alpha_risk = alp.get('risk_score', 50)
+
+        if eos_val < 35:
+            lines.append("  >> 判定: SELL — EOS<35，边际动能枯竭，无条件清仓")
+        elif eos_val < 38:
+            lines.append("  >> 判定: REDUCE 止盈减仓1/2 — EOS<38，边际动量衰竭，高位兑现信号")
+        elif not alpha_risk_pass:
+            lines.append(f"  >> 判定: SELL — Alpha Risk={alpha_risk:.0f}<30，层级1拦截，无条件避险")
+        elif info.get('momentum', 0) < -15 and eos_val < 40:
+            lines.append("  >> 判定: SELL — 20日动量破位，层级1+层级3共振看空")
+        elif eos_val >= 38:
+            lines.append("  >> 判定: HOLD 继续持有 — EOS≥38且Alpha风险可控，忽略短期波动吃满60日波段")
+        else:
+            lines.append("  >> 判定: WATCH 关注预警 — 综合分偏低，准备减仓")
+    else:
+        lines.append("  (当前无持仓)")
+    lines.append("")
+
+    # ─────────────────────────────────
+    # 3. 候选池筛选（三层过滤）
+    # ─────────────────────────────────
+    lines.append("【三、候选池筛选与买入/抢跑建议（三层过滤）】")
+
+    strong_buy = []   # BUY: Layer1通过 + 综合分>50 + EOS≥42
+    accum_buy = []    # ACCUMULATE: EOS≥45 + Layer1 Risk>35（低位抢跑）
+    watch_list = []   # 观察：EOS≥38 但综合分一般
+
+    for r in rankings:
+        code = r['code']
+        if code == hold_code:
+            continue
+
+        alp = alpha_data.get(code, {})
+        eos = eos_data.get(code, {})
+        score = r['total_score']
+        eos_val = eos.get('eos', 0) if eos else 0
+
+        # Layer 1 过滤条件
+        alpha_risk = alp.get('risk_score', 50)
+        alpha_trend = alp.get('trend_score', 50)
+        # 有Alpha数据时严格过滤，无Alpha数据时宽松（只要求EOS）
+        if alp:
+            layer1_pass = alpha_risk >= 38 and alpha_trend > 35
+        else:
+            layer1_pass = True  # 无Alpha数据时宽松
+
+        if layer1_pass and score > 50 and eos_val >= 42:
+            strong_buy.append((r, eos_val, alp, 'BUY'))
+        elif eos_val >= 45 and (not alp or alp.get('risk_score', 50) > 35):
+            accum_buy.append((r, eos_val, alp, 'ACCUMULATE'))
+        elif eos_val >= 38:
+            watch_list.append((r, eos_val, alp))
+
+    strong_buy.sort(key=lambda x: -x[0]['total_score'])
+    accum_buy.sort(key=lambda x: -x[1])
+    watch_list.sort(key=lambda x: -x[1])
+
+    if strong_buy:
+        lines.append("  ★ 标准买入（Layer1通过 + 综合分>50 + EOS≥42）：")
+        for r, ev, alp, _ in strong_buy[:3]:
+            risk_tag = f"Risk={alp.get('risk_score',0):.0f}" if alp else ""
+            lines.append(f"    → {r['name']}({r['code']}) 综合分:{r['total_score']:.0f} "
+                         f"EOS:{ev:.0f} {risk_tag} 动量:{r.get('momentum',0):+.1f}%")
+    if accum_buy:
+        lines.append("  ★ 低位抢跑（EOS≥45 + Layer1 Risk>35，20%-30%先锋仓）：")
+        for r, ev, alp, _ in accum_buy[:3]:
+            lines.append(f"    → {r['name']}({r['code']}) EOS:{ev:.0f} "
+                         f"综合分:{r['total_score']:.0f} 建议轻仓20%-30%")
+    if watch_list:
+        lines.append("  ◆ 观察候选（EOS≥38 稳健区）：")
+        for r, ev, alp in watch_list[:5]:
+            risk_tag = f"Risk={alp.get('risk_score',0):.0f}" if alp else ""
+            lines.append(f"    → {r['name']}({r['code']}) EOS:{ev:.0f} 综合分:{r['total_score']:.0f} {risk_tag}")
+    if not strong_buy and not accum_buy and not watch_list:
+        lines.append("  (无候选标的通过三层过滤，维持现有仓位或空仓)")
+
+    # 列出被 Layer1 拦截的
+    all_eos_codes = [r['code'] for r in rankings if r['code'] != hold_code and eos_data.get(r['code'], {}).get('eos', 0) >= 42]
+    filtered_by_l1 = 0
+    for code in all_eos_codes:
+        if not any(x[0]['code'] == code for x in strong_buy):
+            alp = alpha_data.get(code, {})
+            if alp and (alp.get('risk_score', 50) < 38 or alp.get('trend_score', 50) <= 35):
+                filtered_by_l1 += 1
+    if filtered_by_l1 > 0:
+        lines.append(f"  (另有{filtered_by_l1}只标的被层级1 Risk/Trend拦截，剔除出候选池)")
+    lines.append("")
+
+    # ─────────────────────────────────
+    # 4. 次日执行清单
+    # ─────────────────────────────────
+    lines.append("【四、次日执行清单】")
+    lines.append(f"{'ETF名称':<8} {'代码':<8} {'动作':<10} {'建议仓位':<10} {'核心触发理由'}")
+
+    # 持仓
+    if hold_code:
+        eos = eos_data.get(hold_code, {})
+        alp = alpha_data.get(hold_code, {})
+        info = rank_by_code.get(hold_code, {})
+        eos_val = eos.get('eos', 0) if eos else 0
+        alpha_risk = alp.get('risk_score', 50)
+        hold_action = ""
+        hold_reason = ""
+
+        if eos_val < 35:
+            hold_action = "清仓"
+            hold_reason = f"EOS={eos_val:.0f}<35，边际动能枯竭，SELL"
+        elif eos_val < 38:
+            hold_action = "减仓1/2"
+            hold_reason = f"EOS={eos_val:.0f}<38顶部背离，REDUCE"
+        elif alp and alpha_risk < 30:
+            hold_action = "清仓"
+            hold_reason = f"AlphaRisk={alpha_risk:.0f}<30，层级1拦截，SELL"
+        elif info.get('momentum', 0) < -15 and eos_val < 40:
+            hold_action = "清仓"
+            hold_reason = f"动量破位+EOS={eos_val:.0f}，SELL"
+        elif eos_val >= 38:
+            hold_action = "继续持有"
+            hold_reason = f"EOS={eos_val:.0f}≥38+Risk可控，HOLD"
+        else:
+            hold_action = "关注预警"
+            hold_reason = f"综合分{info.get('score', 0):.0f}偏低"
+
+        lines.append(f"{hold_name:<8} {hold_code:<8} {hold_action:<10} {'100%':<10} {hold_reason}")
+
+    # 买入/抢跑
+    buy_list = []
+    for r, ev, alp, _ in strong_buy[:1]:
+        buy_list.append((r, '买入', '50%-70%', f"L1通过+L2{r['total_score']:.0f}+L3EOS{ev:.0f}"))
+    if not buy_list:
+        for r, ev, alp, _ in accum_buy[:1]:
+            buy_list.append((r, '抢跑', '20%-30%', f"EOS飙升至{ev:.0f}低位抢跑"))
+
+    for r, action, pos, reason in buy_list:
+        lines.append(f"{r['name']:<8} {r['code']:<8} {action:<10} {pos:<10} {reason}")
+
+    lines.append("")
+    lines.append("─" * 60)
+    lines.append("[免责] 以上为量化模型输出，仅供参考，不构成投资建议。")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 def main(trade_date=None, backtest_mode=False):
     global TRADE_DATE
     TRADE_DATE = get_last_trade_date(trade_date)
@@ -1528,9 +1893,38 @@ def main(trade_date=None, backtest_mode=False):
 
     print(f"\n  {'='*60}")
 
-    # ========== 保存微信汇总报告 ==========
+    # ========== 提前定义报告目录 ==========
     report_dir = os.path.join(os.path.dirname(__file__), '..', 'report_daily')
     os.makedirs(report_dir, exist_ok=True)
+
+    # ========== 三层融合交易决策报告（Alpha + 多维综合 + EOS） ==========
+    print("\n  [三层融合] 加载层级1 Alpha Ranking + 层级3 EOS 数据...")
+    eos_data = _load_eos_data(TRADE_DATE)
+    alpha_data = _load_alpha_ranking_data(TRADE_DATE)
+    if eos_data or alpha_data:
+        print(f"  [三层融合] Alpha: {len(alpha_data)}只 | EOS: {len(eos_data)}只")
+        # 持仓明细（兜底处理首次运行无state的场景）
+        _hold_pnl = locals().get('pnl', None) if state else None
+        _hold_days = locals().get('days_since', 0) if state else 0
+        layer_report = _generate_3layer_trade_report(
+            rankings, state, eos_data, alpha_data, TRADE_DATE, all_data,
+            hold_days=_hold_days,
+            hold_pnl=_hold_pnl,
+            rebalance_days=REBAL_DAYS,
+        )
+        if layer_report:
+            layer_report_path = os.path.join(report_dir, f"etf_3layer_decision_{TRADE_DATE}.txt")
+            try:
+                with open(layer_report_path, 'w', encoding='utf-8') as f:
+                    f.write(layer_report)
+                print(f"  [三层融合] 交易决策报告: {layer_report_path}")
+                result_message += "\n" + layer_report
+            except Exception as e:
+                print(f"  [WARN] 三层报告保存失败: {e}")
+    else:
+        print("  [三层融合] 未找到EOS/Alpha数据，跳过融合报告")
+
+    # ========== 保存微信汇总报告 ==========
     report_path = os.path.join(report_dir, f"etf_mainline_summary_{TRADE_DATE}.txt")
     try:
         with open(report_path, 'w', encoding='utf-8') as f:

@@ -65,12 +65,12 @@ LIFECYCLE_EVOLUTION = {
         'Follower': 3.0, 'Defensive': 3.0, 'Weak': 1.0,
     },
     '退潮': {  # 衰退
-        'Leader': 1.0, 'Core': 4.0, 'Momentum': 0.5, 'Beta': 0.5,
-        'Follower': 3.0, 'Defensive': 5.0, 'Weak': 3.0,
+        'Leader': 2.0, 'Core': 4.0, 'Momentum': 1.0, 'Beta': 1.0,
+        'Follower': 3.0, 'Defensive': 3.0, 'Weak': 2.0,
     },
     '弱势': {  # 筑底/弱势
-        'Leader': 0.5, 'Core': 3.0, 'Momentum': 1.0, 'Beta': 1.0,
-        'Follower': 5.0, 'Defensive': 5.0, 'Weak': 4.0,
+        'Leader': 1.5, 'Core': 3.0, 'Momentum': 1.5, 'Beta': 1.5,
+        'Follower': 4.0, 'Defensive': 3.0, 'Weak': 3.0,
     },
     '潜伏': {  # 筑底前期
         'Leader': 1.0, 'Core': 3.0, 'Momentum': 4.0, 'Beta': 3.0,
@@ -340,18 +340,43 @@ class StockRoleEngine:
 
         return max(0.0, min(1.0, (improvement + 10) / 20))
 
+    def _compute_alpha_score(self, code: str) -> float:
+        """
+        Alpha评分：个股近3日相对子主题均值的超额收益。
+        范围 [0,1]，越高表示相对越强势。
+        """
+        kdf = self._get_kline(code)
+        if kdf is None or len(kdf) < 15:
+            return 0.0
+
+        closes = kdf['close'].astype(float).values
+        ret_3 = (closes[-1] / closes[-4] - 1) * 100 if len(closes) >= 4 else 0
+
+        # 子主题均值
+        all_ret_3 = []
+        for c in self._codes:
+            ckdf = self._get_kline(c)
+            if ckdf is not None:
+                c_closes = ckdf['close'].astype(float).values
+                if len(c_closes) >= 4:
+                    all_ret_3.append((c_closes[-1] / c_closes[-4] - 1) * 100)
+
+        avg_ret_3 = np.mean(all_ret_3) if all_ret_3 else 0
+        alpha_3 = ret_3 - avg_ret_3
+        return max(0.0, min(1.0, (alpha_3 + 10) / 20))
+
     def _compute_beta_score(self, code: str) -> float:
         """Beta弹性：创业板(300)/科创板(688) + 高波动"""
         score = 0.0
 
-        # 市场板块
+        # 市场板块（降低代码加分，防止高Alpha双创股被"抢"到Beta）
         raw_code = code.split('.')[0]
         if raw_code.startswith('688'):
-            score += 0.5  # 科创板
+            score += 0.25  # 科创板（原0.5）
         elif raw_code.startswith('300'):
-            score += 0.4  # 创业板
+            score += 0.20  # 创业板（原0.4）
         elif raw_code.startswith('000') or raw_code.startswith('002'):
-            score += 0.2  # 中小板/主板
+            score += 0.10  # 中小板/主板（原0.2）
 
         # 高波动性
         kdf = self._get_kline(code)
@@ -428,6 +453,7 @@ class StockRoleEngine:
             'new_high_score': self._compute_new_high_score(code),
             'volume_surge': self._compute_volume_surge(code),
             'alpha_improvement': self._compute_alpha_improvement(code),
+            'alpha_score': self._compute_alpha_score(code),
             'beta_score': self._compute_beta_score(code),
             'money_flow': self._compute_money_flow(code),
             'drawdown': self._compute_drawdown(code),
@@ -440,23 +466,24 @@ class StockRoleEngine:
     # ═══════════════════════════════════════════════════════════
 
     def _score_leader(self, f: Dict) -> float:
-        """Leader: 相对强度最高 + 辨识度最高 + 趋势稳定 + 历史龙头概率高"""
+        """Leader: Alpha领先(权重最高) + 相对强度高 + 辨识度高 + 趋势稳定 + 历史龙头概率"""
         return (
-            f['relative_strength'] * 0.35 +
-            f['recognition'] * 0.25 +
+            f['alpha_score'] * 0.30 +         # 原0.20，强调强者恒强
+            f['relative_strength'] * 0.20 +    # 原0.30
+            f['recognition'] * 0.20 +
             f['trend_stability'] * 0.15 +
-            f['historical_leader_prob'] * 0.25
+            f['historical_leader_prob'] * 0.15
         )
 
     def _score_core(self, f: Dict) -> float:
-        """Core: 机构持仓高(辨识度代理) + 市值大 + 趋势稳定 + 回撤小 + 资金流入"""
-        # 市值代理：通过代码前缀做粗略估计（大市值=主板）
+        """Core: Alpha领先 + 辨识度高 + 趋势稳定 + 回撤小 + 资金流入"""
         return (
-            f['recognition'] * 0.25 +
-            f['trend_stability'] * 0.25 +
-            (1 - f['beta_score']) * 0.15 +  # 非高弹性
-            (1 - f['drawdown']) * 0.20 +
-            f['money_flow'] * 0.15
+            f['alpha_score'] * 0.30 +         # 原0.25
+            f['recognition'] * 0.20 +
+            f['trend_stability'] * 0.20 +
+            (1 - f['beta_score']) * 0.05 +    # 原0.10
+            (1 - f['drawdown']) * 0.15 +
+            f['money_flow'] * 0.10
         )
 
     def _score_momentum(self, f: Dict) -> float:
@@ -482,13 +509,16 @@ class StockRoleEngine:
         )
 
     def _score_defensive(self, f: Dict) -> float:
-        """Defensive: 回撤小 + 波动低 + 抗跌"""
+        """Defensive: 回撤小 + 波动低 + 抗跌（高Alpha股应被扣分、不能Defensive）"""
+        # 高Alpha惩罚：alpha > 0.55 时按线性扣减，最高扣0.40
+        alpha_penalty = max(0.0, (f['alpha_score'] - 0.55) / 0.45 * 0.40) if f['alpha_score'] > 0.55 else 0.0
         low_vol = 1.0 - f['beta_score'] * 0.5  # 低Beta=低波动
-        return (
+        base = (
             (1 - f['drawdown']) * 0.40 +
             low_vol * 0.30 +
             f['trend_stability'] * 0.30
         )
+        return base - alpha_penalty
 
     def _score_weak(self, f: Dict) -> float:
         """Weak: Alpha最低 + 趋势下降 + 资金流出"""

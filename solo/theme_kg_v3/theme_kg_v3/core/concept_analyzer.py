@@ -142,10 +142,14 @@ def fetch_concept_daily(concept_name: str, trade_date: str) -> pd.Series | None:
 # ────────────────────────────────────────────────────────────
 
 def fetch_ths_concept_list() -> pd.DataFrame:
-    """获取同花顺全量概念板块列表."""
+    """获取同花顺全量概念板块列表.
+
+    参考 theme_trend_sentiment_score.get_ths_members() 的调用方式，
+    使用 pro.ths_index(exchange='A', type='N') 获取概念列表。
+    """
     pro = get_pro()
     try:
-        df = pro.ths_concept()
+        df = pro.ths_index(exchange='A', type='N', fields='ts_code,name,count,list_date')
         time.sleep(0.12)
         if df is not None and not df.empty:
             logger.info("获取同花顺概念板块: %d 个", len(df))
@@ -155,16 +159,43 @@ def fetch_ths_concept_list() -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def fetch_ths_concept_daily(concept_code: str, trade_date: str) -> pd.Series | None:
-    """获取同花顺概念日线."""
+_ths_name_to_code: Optional[Dict[str, str]] = None
+
+
+def _get_ths_name_to_code() -> Dict[str, str]:
+    """构建同花顺概念名称→ts_code映射（带缓存）.
+
+    参考 theme_trend_sentiment_score.get_ths_members() 的调用方式。
+    """
+    global _ths_name_to_code
+    if _ths_name_to_code is not None:
+        return _ths_name_to_code
+    df = fetch_ths_concept_list()
+    if df is not None and not df.empty and "name" in df.columns:
+        _ths_name_to_code = dict(zip(df["name"], df["ts_code"]))
+    else:
+        _ths_name_to_code = {}
+    return _ths_name_to_code
+
+
+def fetch_ths_concept_daily(concept_name: str, trade_date: str) -> pd.Series | None:
+    """获取同花顺概念日线.
+
+    先通过 ths_index 获取名称→代码映射，再用 ts_code 调用 ths_daily。
+    """
+    name_map = _get_ths_name_to_code()
+    ts_code = name_map.get(concept_name)
+    if not ts_code:
+        logger.debug("同花顺概念 %s 未找到对应 ts_code", concept_name)
+        return None
     pro = get_pro()
     try:
-        df = pro.ths_daily(concept_code=concept_code, start_date=trade_date, end_date=trade_date)
+        df = pro.ths_daily(ts_code=ts_code, start_date=trade_date, end_date=trade_date)
         time.sleep(0.12)
         if df is not None and not df.empty:
             return df.iloc[0]
     except Exception as e:
-        logger.debug("获取同花顺概念 %s 日线失败: %s", concept_code, e)
+        logger.warning("获取同花顺概念 %s(%s) 日线失败: %s", concept_name, ts_code, e)
     return None
 
 

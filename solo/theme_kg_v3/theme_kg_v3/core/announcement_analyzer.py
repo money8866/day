@@ -66,7 +66,7 @@ def fetch_disclosure(trade_date: str) -> pd.DataFrame:
             logger.info("获取公司公告: %d 条", len(df))
             return df
     except Exception as e:
-        logger.debug("获取公司公告失败（无权限）: %s", e)
+        logger.warning("获取公司公告失败: %s", e)
     return pd.DataFrame()
 
 

@@ -11525,18 +11525,33 @@ def run(target_date=None, simple_mode=False):
 
 
     # =========================
-    # ETF操作提示（读取ETF主线轮动汇总报告，由AI提炼输出）
+    # ETF操作提示（读取三层融合决策报告的精简版）
     # =========================
     etf_tips_text = ""
+    # 优先读取三层融合的精简报告，回退到完整汇总报告
+    layer_path = rf'D:\mystock\report_daily\etf_3layer_decision_{TRADE_DATE}.txt'
     summary_path = rf'D:\mystock\report_daily\etf_mainline_summary_{TRADE_DATE}.txt'
     try:
-        if os.path.exists(summary_path):
-            with open(summary_path, 'r', encoding='utf-8') as f:
+        if os.path.exists(layer_path):
+            with open(layer_path, 'r', encoding='utf-8') as f:
                 etf_tips_text = f.read().strip()
-            print(etf_tips_text)
+            print(f"[ETF提示] 三层决策报告: {layer_path}")
+        elif os.path.exists(summary_path):
+            with open(summary_path, 'r', encoding='utf-8') as f:
+                full = f.read().strip()
+            # 截取最简版：只取TOP5 + 持仓 + 执行清单前面的部分
+            lines = full.split('\n')
+            simple_lines = []
+            for line in lines:
+                if 'TOP5' in line or '综合分' in line or '持仓' in line or '收益' in line or '调仓' in line or '执行清单' in line:
+                    simple_lines.append(line)
+                elif '【一、' in line or '【二、' in line or '【三、' in line or '【四、' in line:
+                    simple_lines.append(line)
+            etf_tips_text = '\n'.join(simple_lines[:30]) if simple_lines else full[:1000]
+            print(f"[ETF提示] 汇总报告缩略: {summary_path}")
         else:
             etf_tips_text = ""
-            print(f"[ETF提示] 汇总报告未生成: {summary_path}")
+            print(f"[ETF提示] 未生成ETF决策报告")
     except Exception as e:
         print(f"[ETF提示] 读取失败: {e}")
 
@@ -11648,23 +11663,13 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
 4、**【ETF操作建议】**
-**【今日ETF Alpha Ranking】**
+**【今日ETF三层决策指令】**
 {etf_tips_text}
 
 输出要求：
-- ETF Alpha Ranking - 强制输出；提示当前持仓和调仓建议。
-- ★ TOP3 推荐买入-强制输出：只显示股票代码、股票名称、Alpha评分、Alpha5收益、加速度、信号标签，不显示其他信息
-ETF名称（ETF代码）：
-股票1
-股票2
-股票3
-ETF名称（ETF代码）：
-股票1
-股票2
-股票3
-依此类推，显示TOP3个ETF
-- TOP10 排名-不输出
-- 【信号标签解读】[突破]=接近60日新高且放量，[弹簧]=波动收缩蓄势待发，[龙头]=Alpha排名前15%且近高点，[拥挤]=短期涨幅过大风险预警
+- 直接展示ETF三层决策指令中的**次日执行清单**（名称、代码、动作、建议仓位、理由）
+- 简要说明当前持仓诊断结论（来自【二、持仓标的诊断】）
+- 如果TOP5板块与主题分析一致，说明共振确认
 
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出

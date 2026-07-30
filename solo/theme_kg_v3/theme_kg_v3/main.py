@@ -710,8 +710,15 @@ def main() -> None:
         steps = summary.get("steps", {})
         for step_name, step_data in steps.items():
             if isinstance(step_data, dict):
-                status = step_data.get("status", step_data.get("config_updated", False))
-                print(f"  {step_name}: {'✓' if status else '-'}")
+                status = step_data.get("status", "")
+                if status in ("skipped", "failed", "dry_run"):
+                    mark = "⊘" if status == "skipped" else ("✗" if status == "failed" else "○")
+                    reason = step_data.get("reason", status)
+                    print(f"  {step_name}: {mark} ({reason})")
+                elif step_data.get("config_updated"):
+                    print(f"  {step_name}: ✓ (已更新)")
+                else:
+                    print(f"  {step_name}: ✓ (无变更)")
         print(f"  配置写入:   {'✓' if summary.get('config_written') else '-'}")
         print(f"  Git提交:    {'✓' if summary.get('git_committed') else '-'}")
         if summary.get("errors"):

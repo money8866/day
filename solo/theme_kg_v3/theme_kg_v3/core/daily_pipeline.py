@@ -317,26 +317,10 @@ def run_daily_update(
     else:
         logger.debug("[Step 4/8] 已跳过")
 
-    # ── Step 5: 公告分析 ────────────────────────────────
-    if not skip_announcement:
-        logger.info("")
-        logger.info("▸ [Step 5/8] 公告分析 & 自动更新 keywords")
-        logger.info("─" * 50)
-        if not dry_run:
-            try:
-                ann_result = _run_announcement(trade_date=trade_date)
-                summary["steps"]["announcement"] = ann_result
-                if ann_result.get("config_updated"):
-                    summary["config_written"] = True
-            except Exception as e:
-                logger.error("公告分析失败: %s", e)
-                summary["errors"].append(f"公告: {e}")
-                summary["steps"]["announcement"] = {"status": "failed", "error": str(e)}
-        else:
-            logger.info("[DRY RUN] 将分析公司公告")
-            summary["steps"]["announcement"] = {"status": "dry_run"}
-    else:
-        logger.debug("[Step 5/8] 已跳过")
+    # ── Step 5: 公告分析（已禁用：无接口权限）────────────
+    logger.info("")
+    logger.info("▸ [Step 5/8] 公告分析 - 跳过（无接口权限）")
+    summary["steps"]["announcement"] = {"status": "skipped", "reason": "no_permission"}
 
     # ── Step 6: 主营分析 ────────────────────────────────
     if not skip_business:

@@ -203,10 +203,11 @@ def analyze_dragon_tiger(trade_date: str) -> GroupedDT:
         ts_code = str(row.get("ts_code", ""))
         stock_name = str(row.get("name", ""))
         pct = float(row.get("pct_change", 0))
-        amount = float(row.get("amount", 0)) / 100000  # 千元→亿元
-        buy_amount = float(row.get("buy_amount", 0)) / 100000
-        sell_amount = float(row.get("sell_amount", 0)) / 100000
-        net_buy = buy_amount - sell_amount
+        amount = float(row.get("amount", 0)) / 1e8  # 元→亿元
+        # top_list 接口字段为 l_buy/l_sell/net_amount，单位为元
+        buy_amount = float(row.get("l_buy", 0)) / 1e8
+        sell_amount = float(row.get("l_sell", 0)) / 1e8
+        net_buy = float(row.get("net_amount", 0)) / 1e8
 
         # 确定所属主题
         theme_code = None
@@ -260,8 +261,8 @@ def analyze_dragon_tiger(trade_date: str) -> GroupedDT:
         grouped[theme_code]["total_sell"] += sell_amount
         grouped[theme_code]["total_net_buy"] += net_buy
 
-        # 净买入大且涨停的作为龙头候选
-        if net_buy > 0.5 and pct >= 9.8:
+        # 净买入较大且涨幅明显的作为龙头候选
+        if net_buy > 0.1 and pct >= 5.0:
             grouped[theme_code]["leader_candidates"].append(ts_code)
 
     return grouped

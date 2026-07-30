@@ -108,12 +108,11 @@ def calc_chain_distribution(
     for f in ("keywords", "product_keywords", "industry_keywords", "concept_keywords"):
         keywords.update(theme_cfg.get(f, []))
 
-    if len(current_chains) < 3:
-        # 从关键词中推荐新产业链节点
-        for kw in keywords:
-            if kw not in current_chains and len(kw) >= 2:
-                suggestions.append(kw)
-        suggestions = suggestions[:5]  # 最多推荐5个
+    # 始终尝试发现新节点（不再限制 len < 3）
+    for kw in keywords:
+        if kw not in current_chains and len(kw) >= 2:
+            suggestions.append(kw)
+    suggestions = suggestions[:5]  # 最多推荐5个
 
     return {
         "current_chains": current_chains,

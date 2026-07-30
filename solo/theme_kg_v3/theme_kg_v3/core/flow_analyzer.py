@@ -287,7 +287,7 @@ def run_flow_analysis(trade_date: Optional[str] = None) -> Dict[str, Any]:
             cfg = theme_config[theme_code]
             if isinstance(cfg, dict):
                 old_rot = cfg.get("rotation", 0)
-                if abs(rot - old_rot) > 5:  # 变化 > 5 才更新
+                if abs(rot - old_rot) > 1:  # 变化 > 1 才更新
                     cfg["rotation"] = rot
                     updated_count += 1
 
