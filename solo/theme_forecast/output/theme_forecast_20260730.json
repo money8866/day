@@ -1,0 +1,5539 @@
+{
+  "trade_date": "20260730",
+  "update_time": "2026-07-30 22:40:50",
+  "total_themes": 28,
+  "results": [
+    {
+      "probability": 74.1,
+      "direction": "看涨",
+      "weighted_score": 74.15,
+      "layer_scores": {
+        "动量": 109.5,
+        "协同": 83.2,
+        "情绪": 45.5,
+        "资金": 53.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 134.0,
+          "raw_score": 90,
+          "signal": "多头趋势"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 119.3,
+          "raw_score": 83,
+          "signal": "加速上涨"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 102.5,
+          "raw_score": 75,
+          "signal": "板块整体启动"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "资金聚焦龙头"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 75.35,
+          "raw_score": 63,
+          "signal": "中期偏强"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        }
+      ],
+      "top_signals": [
+        "相对强度: 中期偏强(75.35)",
+        "动量加速度: 加速上涨(119.3)",
+        "ADX趋势: 多头趋势(134.0)",
+        "分化度: 资金聚焦龙头(79.25)",
+        "突破比例: 板块整体启动(102.5)"
+      ],
+      "risk_signals": [],
+      "future_probs": {
+        "5d": {
+          "prob": 56.9,
+          "avg_ret": 0.77,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 55,
+              "up_prob": 59.85,
+              "avg_ret": 0.815,
+              "n_samples": 588,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 75,
+              "up_prob": 57.37,
+              "avg_ret": 1.0708,
+              "n_samples": 3056,
+              "weight": 7
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 83,
+              "up_prob": 57.17,
+              "avg_ret": 0.7224,
+              "n_samples": 3238,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 63,
+              "up_prob": 56.78,
+              "avg_ret": 0.7557,
+              "n_samples": 2553,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 90,
+              "up_prob": 56.11,
+              "avg_ret": 0.8428,
+              "n_samples": 5152,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 60,
+              "up_prob": 55.8,
+              "avg_ret": 0.7114,
+              "n_samples": 1715,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 65,
+              "up_prob": 55.43,
+              "avg_ret": 0.5364,
+              "n_samples": 8246,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "煤炭",
+      "stock_count": 25,
+      "trade_date": "20260730",
+      "etf_code": "515220.SH"
+    },
+    {
+      "probability": 85.1,
+      "direction": "看涨",
+      "weighted_score": 85.06,
+      "layer_scores": {
+        "动量": 138.2,
+        "协同": 92.0,
+        "情绪": 36.5,
+        "资金": 54.8
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 146.6,
+          "raw_score": 96,
+          "signal": "加速上涨"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 134.0,
+          "raw_score": 90,
+          "signal": "看涨"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 134.0,
+          "raw_score": 90,
+          "signal": "多头趋势"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 123.5,
+          "raw_score": 85,
+          "signal": "板块整体启动"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 102.5,
+          "raw_score": 75,
+          "signal": "协同走强"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "极度低迷"
+        }
+      ],
+      "top_signals": [
+        "相对强度: 看涨(134.0)",
+        "动量加速度: 加速上涨(146.6)",
+        "ADX趋势: 多头趋势(134.0)",
+        "协同度: 协同走强(102.5)",
+        "突破比例: 板块整体启动(123.5)"
+      ],
+      "risk_signals": [],
+      "future_probs": {
+        "5d": {
+          "prob": 56.4,
+          "avg_ret": 0.9,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 75,
+              "up_prob": 58.72,
+              "avg_ret": 1.0556,
+              "n_samples": 2746,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 96,
+              "up_prob": 57.55,
+              "avg_ret": 1.0478,
+              "n_samples": 2742,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 85,
+              "up_prob": 57.37,
+              "avg_ret": 1.0708,
+              "n_samples": 3056,
+              "weight": 7
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 90,
+              "up_prob": 56.11,
+              "avg_ret": 0.8428,
+              "n_samples": 5152,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 90,
+              "up_prob": 54.7,
+              "avg_ret": 0.955,
+              "n_samples": 2734,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "银行",
+      "stock_count": 41,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 65.2,
+      "direction": "偏多",
+      "weighted_score": 65.22,
+      "layer_scores": {
+        "动量": 89.6,
+        "协同": 59.8,
+        "情绪": 45.5,
+        "资金": 54.8
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 129.8,
+          "raw_score": 88,
+          "signal": "加速上涨"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 89.0,
+          "raw_score": 70,
+          "signal": "看涨"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "协同走强"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        }
+      ],
+      "top_signals": [
+        "相对强度: 看涨(89.0)",
+        "动量加速度: 加速上涨(129.8)",
+        "协同度: 协同走强(79.25)"
+      ],
+      "risk_signals": [],
+      "future_probs": {
+        "5d": {
+          "prob": 55.9,
+          "avg_ret": 0.69,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.2,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 88,
+              "up_prob": 57.55,
+              "avg_ret": 1.0478,
+              "n_samples": 2742,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 70,
+              "up_prob": 56.78,
+              "avg_ret": 0.7557,
+              "n_samples": 2553,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 65,
+              "up_prob": 55.8,
+              "avg_ret": 0.7114,
+              "n_samples": 1715,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "黄金",
+      "stock_count": 6,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 55.6,
+      "direction": "中性",
+      "weighted_score": 55.6,
+      "layer_scores": {
+        "动量": 77.9,
+        "协同": 46.2,
+        "情绪": 36.5,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 119.3,
+          "raw_score": 83,
+          "signal": "加速上涨"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "弱协同"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "极度低迷"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        }
+      ],
+      "top_signals": [
+        "动量加速度: 加速上涨(119.3)"
+      ],
+      "risk_signals": [
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.9,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.1,
+          "details": [
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 83,
+              "up_prob": 57.17,
+              "avg_ret": 0.7224,
+              "n_samples": 3238,
+              "weight": 10
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 58,
+              "up_prob": 57.03,
+              "avg_ret": 0.5458,
+              "n_samples": 3085,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 60,
+              "up_prob": 55.8,
+              "avg_ret": 0.7114,
+              "n_samples": 1715,
+              "weight": 10
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "证券",
+      "stock_count": 50,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 53.0,
+      "direction": "中性",
+      "weighted_score": 53.04,
+      "layer_scores": {
+        "动量": 38.9,
+        "协同": 37.2,
+        "情绪": 87.5,
+        "资金": 53.0
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 134.0,
+          "raw_score": 90,
+          "signal": "高度连板"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "顶部减速"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 16.85,
+          "raw_score": 33,
+          "signal": "中期偏弱"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 高度连板(134.0)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(16.85)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.5,
+          "avg_ret": 0.52,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.8,
+          "details": [
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 55,
+              "up_prob": 59.85,
+              "avg_ret": 0.815,
+              "n_samples": 588,
+              "weight": 8
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 40,
+              "up_prob": 54.78,
+              "avg_ret": 0.4579,
+              "n_samples": 4329,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 33,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "化工",
+      "stock_count": 248,
+      "trade_date": "20260730",
+      "etf_code": "159870.SZ"
+    },
+    {
+      "probability": 60.1,
+      "direction": "偏多",
+      "weighted_score": 60.12,
+      "layer_scores": {
+        "动量": 61.6,
+        "协同": 53.0,
+        "情绪": 97.2,
+        "资金": 25.5
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 144.5,
+          "raw_score": 95,
+          "signal": "高度连板"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "多数走强"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 55.4,
+          "raw_score": 53,
+          "signal": "顶部减速"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": -23.5,
+          "raw_score": 15,
+          "signal": "中性"
+        }
+      ],
+      "top_signals": [
+        "相对强度: 中性(79.25)",
+        "突破比例: 多数走强(79.25)",
+        "涨停梯队: 高度连板(144.5)"
+      ],
+      "risk_signals": [
+        "分化度: 龙头补跌(20.750000000000007)",
+        "ETF规模变化: 中性(-23.5)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.5,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.1,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 56.93,
+              "avg_ret": 0.8704,
+              "n_samples": 5063,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 65,
+              "up_prob": 56.78,
+              "avg_ret": 0.7557,
+              "n_samples": 2553,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 15,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 53,
+              "up_prob": 54.92,
+              "avg_ret": 0.4183,
+              "n_samples": 3446,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "消费",
+      "stock_count": 274,
+      "trade_date": "20260730",
+      "etf_code": "159732.SZ"
+    },
+    {
+      "probability": 29.8,
+      "direction": "看跌",
+      "weighted_score": 29.84,
+      "layer_scores": {
+        "动量": 21.0,
+        "协同": 24.0,
+        "情绪": 30.9,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "少数活跃·顶部警示"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "当日下跌"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日下跌(-2.5)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)",
+        "换手率分布: 少数活跃·顶部警示(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.4,
+          "avg_ret": 0.64,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.9,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "商业航天",
+      "stock_count": 13,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 42.4,
+      "direction": "偏空",
+      "weighted_score": 42.42,
+      "layer_scores": {
+        "动量": 47.9,
+        "协同": 37.0,
+        "情绪": 35.0,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "中性"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "有情绪"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 16.85,
+          "raw_score": 33,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "分歧加大·顶部预警"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(16.85)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "换手率分布: 分歧加大·顶部预警(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.4,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.9,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 55,
+              "up_prob": 54.92,
+              "avg_ret": 0.4183,
+              "n_samples": 3446,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 33,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "可控核聚变",
+      "stock_count": 9,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 26.3,
+      "direction": "看跌",
+      "weighted_score": 26.27,
+      "layer_scores": {
+        "动量": 10.5,
+        "协同": 24.0,
+        "情绪": 30.9,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "少数活跃·顶部警示"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -13.0,
+          "raw_score": 20,
+          "signal": "当日大跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -23.5,
+          "raw_score": 15,
+          "signal": "中期偏弱"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-23.5)",
+        "动量加速度: 当日大跌(-13.0)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)",
+        "换手率分布: 少数活跃·顶部警示(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.4,
+          "avg_ret": 0.64,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.9,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 20,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 15,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "小金属",
+      "stock_count": 30,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 48.9,
+      "direction": "中性",
+      "weighted_score": 48.92,
+      "layer_scores": {
+        "动量": 54.8,
+        "协同": 43.2,
+        "情绪": 39.9,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "中性"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "有情绪"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 55.4,
+          "raw_score": 53,
+          "signal": "顶部减速"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "少数活跃·顶部警示"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "分化度: 龙头补跌(20.750000000000007)",
+        "换手率分布: 少数活跃·顶部警示(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.4,
+          "avg_ret": 0.53,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.0,
+          "details": [
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 55,
+              "up_prob": 57.03,
+              "avg_ret": 0.5458,
+              "n_samples": 3085,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 53,
+              "up_prob": 54.92,
+              "avg_ret": 0.4183,
+              "n_samples": 3446,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "游戏",
+      "stock_count": 49,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 34.9,
+      "direction": "看跌",
+      "weighted_score": 34.94,
+      "layer_scores": {
+        "动量": 28.8,
+        "协同": 24.0,
+        "情绪": 45.5,
+        "资金": 53.6
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 46.4,
+          "raw_score": 48,
+          "signal": "中性"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "当日下跌"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日下跌(20.750000000000007)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.3,
+          "avg_ret": 0.57,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.9,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 48,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 35,
+              "up_prob": 54.78,
+              "avg_ret": 0.4579,
+              "n_samples": 4329,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "稀土永磁",
+      "stock_count": 25,
+      "trade_date": "20260730",
+      "etf_code": "516150.SH"
+    },
+    {
+      "probability": 32.3,
+      "direction": "看跌",
+      "weighted_score": 32.27,
+      "layer_scores": {
+        "动量": -10.5,
+        "协同": 30.3,
+        "情绪": 77.0,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 113.0,
+          "raw_score": 80,
+          "signal": "情绪主升"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -44.499999999999986,
+          "raw_score": 5,
+          "signal": "短期急跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -55.0,
+          "raw_score": 0,
+          "signal": "当日大跌"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 情绪主升(113.0)"
+      ],
+      "risk_signals": [
+        "相对强度: 短期急跌(-44.499999999999986)",
+        "动量加速度: 当日大跌(-55.0)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 0,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 5,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "AI算力",
+      "stock_count": 193,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 33.4,
+      "direction": "看跌",
+      "weighted_score": 33.38,
+      "layer_scores": {
+        "动量": 8.4,
+        "协同": 30.3,
+        "情绪": 54.5,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "有情绪"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -40.3,
+          "raw_score": 7,
+          "signal": "当日大跌"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日大跌(-40.3)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 7,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "量子计算",
+      "stock_count": 25,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 38.9,
+      "direction": "偏空",
+      "weighted_score": 38.88,
+      "layer_scores": {
+        "动量": 30.7,
+        "协同": 37.2,
+        "情绪": 41.0,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 26.6,
+          "raw_score": 38,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中性(26.6)",
+        "动量加速度: 顶部减速(-2.5)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.57,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.8,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 38,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "信创",
+      "stock_count": 75,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 21.4,
+      "direction": "看跌",
+      "weighted_score": 21.44,
+      "layer_scores": {
+        "动量": -10.5,
+        "协同": 30.3,
+        "情绪": 50.0,
+        "资金": 30.3
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "梯队断档·退潮预警"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "少数活跃·顶部警示"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": -23.5,
+          "raw_score": 15,
+          "signal": "中性"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -44.499999999999986,
+          "raw_score": 5,
+          "signal": "短期急跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -55.0,
+          "raw_score": 0,
+          "signal": "当日大跌"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 梯队断档·退潮预警(79.25)"
+      ],
+      "risk_signals": [
+        "相对强度: 短期急跌(-44.499999999999986)",
+        "动量加速度: 当日大跌(-55.0)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)",
+        "换手率分布: 少数活跃·顶部警示(20.750000000000007)",
+        "ETF规模变化: 中性(-23.5)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 15,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 0,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 5,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "消费电子",
+      "stock_count": 119,
+      "trade_date": "20260730",
+      "etf_code": "159732.SZ"
+    },
+    {
+      "probability": 46.8,
+      "direction": "中性",
+      "weighted_score": 46.76,
+      "layer_scores": {
+        "动量": 17.5,
+        "协同": 37.2,
+        "情绪": 92.8,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 144.5,
+          "raw_score": 95,
+          "signal": "情绪主升"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -13.0,
+          "raw_score": 20,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 情绪主升(144.5)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 顶部减速(-13.0)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 20,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "智能驾驶",
+      "stock_count": 137,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 46.4,
+      "direction": "中性",
+      "weighted_score": 46.35,
+      "layer_scores": {
+        "动量": 27.4,
+        "协同": 37.2,
+        "情绪": 77.0,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 113.0,
+          "raw_score": 80,
+          "signal": "情绪主升"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 16.85,
+          "raw_score": 33,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 情绪主升(113.0)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(16.85)",
+        "动量加速度: 顶部减速(-2.5)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.57,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.8,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 33,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "新能源车",
+      "stock_count": 300,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 30.3,
+      "direction": "看跌",
+      "weighted_score": 30.29,
+      "layer_scores": {
+        "动量": 12.5,
+        "协同": 37.0,
+        "情绪": 26.0,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "数据不足"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "放量下跌·恐慌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -44.499999999999986,
+          "raw_score": 5,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "动量加速度: 顶部减速(-44.499999999999986)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "换手率分布: 放量下跌·恐慌(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.64,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 5,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "脑机接口",
+      "stock_count": 9,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 37.2,
+      "direction": "偏空",
+      "weighted_score": 37.16,
+      "layer_scores": {
+        "动量": 21.0,
+        "协同": 30.3,
+        "情绪": 54.5,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "有情绪"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "当日下跌"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日下跌(-2.5)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.1,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            }
+          ]
+        }
+      },
+      "theme_name": "高端材料",
+      "stock_count": 83,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 32.5,
+      "direction": "看跌",
+      "weighted_score": 32.51,
+      "layer_scores": {
+        "动量": 20.9,
+        "协同": 21.3,
+        "情绪": 54.5,
+        "资金": 40.2
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "有情绪"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "中性"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -19.299999999999997,
+          "raw_score": 17,
+          "signal": "当日下跌"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "动量加速度: 当日下跌(-19.299999999999997)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "ETF规模变化: 中性(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.0,
+          "avg_ret": 0.62,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 35,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 17,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 40,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "创新药",
+      "stock_count": 182,
+      "trade_date": "20260730",
+      "etf_code": "159992.SZ"
+    },
+    {
+      "probability": 37.6,
+      "direction": "偏空",
+      "weighted_score": 37.59,
+      "layer_scores": {
+        "动量": 32.2,
+        "协同": 24.0,
+        "情绪": 45.5,
+        "资金": 54.8
+      },
+      "factor_details": [
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "趋势衰竭"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 16.85,
+          "raw_score": 33,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(16.85)",
+        "ADX趋势: 趋势衰竭(20.750000000000007)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 55.0,
+          "avg_ret": 0.55,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 55,
+              "up_prob": 54.92,
+              "avg_ret": 0.4183,
+              "n_samples": 3446,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 33,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "能源金属",
+      "stock_count": 17,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 48.6,
+      "direction": "中性",
+      "weighted_score": 48.63,
+      "layer_scores": {
+        "动量": 48.8,
+        "协同": 44.0,
+        "情绪": 56.3,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "多数走强"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 62.6,
+          "raw_score": 57,
+          "signal": "梯队断档·退潮预警"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 46.4,
+          "raw_score": 48,
+          "signal": "中性"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "顶部减速"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "无板块效应"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        }
+      ],
+      "top_signals": [
+        "突破比例: 多数走强(79.25)"
+      ],
+      "risk_signals": [
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.9,
+          "avg_ret": 0.46,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.4,
+          "details": [
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 65,
+              "up_prob": 56.93,
+              "avg_ret": 0.8704,
+              "n_samples": 5063,
+              "weight": 7
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 40,
+              "up_prob": 54.78,
+              "avg_ret": 0.4579,
+              "n_samples": 4329,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 48,
+              "up_prob": 54.5,
+              "avg_ret": 0.3575,
+              "n_samples": 3278,
+              "weight": 12
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 40,
+              "up_prob": 52.26,
+              "avg_ret": 0.0063,
+              "n_samples": 2600,
+              "weight": 10
+            }
+          ]
+        }
+      },
+      "theme_name": "低空经济",
+      "stock_count": 112,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 28.9,
+      "direction": "看跌",
+      "weighted_score": 28.88,
+      "layer_scores": {
+        "动量": -10.5,
+        "协同": 24.0,
+        "情绪": 38.4,
+        "资金": 79.3
+      },
+      "factor_details": [
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 123.5,
+          "raw_score": 85,
+          "signal": "资金埋伏·强看涨"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "梯队断档·退潮预警"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "少数活跃·顶部警示"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -44.499999999999986,
+          "raw_score": 5,
+          "signal": "短期急跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -55.0,
+          "raw_score": 0,
+          "signal": "当日大跌"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 梯队断档·退潮预警(79.25)",
+        "ETF规模变化: 资金埋伏·强看涨(123.5)"
+      ],
+      "risk_signals": [
+        "相对强度: 短期急跌(-44.499999999999986)",
+        "动量加速度: 当日大跌(-55.0)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)",
+        "换手率分布: 少数活跃·顶部警示(-2.5)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.9,
+          "avg_ret": 0.6,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.3,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 0,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 50,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 5,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 85,
+              "up_prob": 52.46,
+              "avg_ret": 0.4208,
+              "n_samples": 2933,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "半导体",
+      "stock_count": 281,
+      "trade_date": "20260730",
+      "etf_code": "159516.SZ"
+    },
+    {
+      "probability": 43.7,
+      "direction": "偏空",
+      "weighted_score": 43.74,
+      "layer_scores": {
+        "动量": 15.0,
+        "协同": 43.2,
+        "情绪": 71.8,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 102.5,
+          "raw_score": 75,
+          "signal": "情绪主升"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 26.6,
+          "raw_score": 38,
+          "signal": "中性"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "趋势衰竭"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 情绪主升(102.5)"
+      ],
+      "risk_signals": [
+        "相对强度: 中性(26.6)",
+        "动量加速度: 顶部减速(-2.5)",
+        "ADX趋势: 趋势衰竭(20.750000000000007)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.9,
+          "avg_ret": 0.58,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.8,
+          "details": [
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 50,
+              "up_prob": 55.44,
+              "avg_ret": 0.5919,
+              "n_samples": 3312,
+              "weight": 7
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 38,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "电力",
+      "stock_count": 300,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 34.0,
+      "direction": "看跌",
+      "weighted_score": 34.02,
+      "layer_scores": {
+        "动量": 23.2,
+        "协同": 21.3,
+        "情绪": 45.5,
+        "资金": 54.8
+      },
+      "factor_details": [
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 64.4,
+          "raw_score": 58,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "当日下跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "趋势衰竭"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 16.85,
+          "raw_score": 33,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "齐跌·看跌"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中期偏弱(16.85)",
+        "ADX趋势: 趋势衰竭(20.750000000000007)",
+        "协同度: 齐跌·看跌(11.000000000000007)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.9,
+          "avg_ret": 0.55,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.0,
+          "details": [
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 30,
+              "up_prob": 56.84,
+              "avg_ret": 0.9361,
+              "n_samples": 4012,
+              "weight": 10
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 40,
+              "up_prob": 54.78,
+              "avg_ret": 0.4579,
+              "n_samples": 4329,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 33,
+              "up_prob": 53.86,
+              "avg_ret": 0.4259,
+              "n_samples": 3149,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 35,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "工业金属",
+      "stock_count": 64,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 35.2,
+      "direction": "偏空",
+      "weighted_score": 35.24,
+      "layer_scores": {
+        "动量": 16.0,
+        "协同": 37.2,
+        "情绪": 45.5,
+        "资金": 50.0
+      },
+      "factor_details": [
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "震荡"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "无ETF映射"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "情绪冷淡"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "中性"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -13.0,
+          "raw_score": 20,
+          "signal": "顶部减速"
+        }
+      ],
+      "top_signals": [],
+      "risk_signals": [
+        "相对强度: 中性(11.000000000000007)",
+        "动量加速度: 顶部减速(-13.0)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.8,
+          "avg_ret": 0.57,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 0.7,
+          "details": [
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 50,
+              "up_prob": 56.1,
+              "avg_ret": 0.6772,
+              "n_samples": 17896,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 20,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 30,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            },
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 50,
+              "up_prob": 53.77,
+              "avg_ret": 0.4045,
+              "n_samples": 7605,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "合成生物",
+      "stock_count": 84,
+      "trade_date": "20260730",
+      "etf_code": null
+    },
+    {
+      "probability": 44.7,
+      "direction": "偏空",
+      "weighted_score": 44.68,
+      "layer_scores": {
+        "动量": 21.0,
+        "协同": 37.2,
+        "情绪": 60.1,
+        "资金": 69.6
+      },
+      "factor_details": [
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 108.8,
+          "raw_score": 78,
+          "signal": "资金埋伏·强看涨"
+        },
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "梯队断档·退潮预警"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 32.0,
+          "raw_score": 40,
+          "signal": "偏弱"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "当日下跌"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 梯队断档·退潮预警(79.25)",
+        "ETF规模变化: 资金埋伏·强看涨(108.8)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日下跌(-2.5)",
+        "分化度: 龙头补跌(20.750000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.7,
+          "avg_ret": 0.54,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.1,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 25,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 40,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 78,
+              "up_prob": 52.46,
+              "avg_ret": 0.4208,
+              "n_samples": 2933,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "军工",
+      "stock_count": 214,
+      "trade_date": "20260730",
+      "etf_code": "512660.SH"
+    },
+    {
+      "probability": 37.1,
+      "direction": "偏空",
+      "weighted_score": 37.07,
+      "layer_scores": {
+        "动量": 8.4,
+        "协同": 30.3,
+        "情绪": 60.1,
+        "资金": 59.8
+      },
+      "factor_details": [
+        {
+          "key": "limit_up_ladder",
+          "name": "涨停梯队",
+          "layer": "情绪",
+          "weight": 12,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "梯队断档·退潮预警"
+        },
+        {
+          "key": "etf_scale_flow",
+          "name": "ETF规模变化",
+          "layer": "资金",
+          "weight": 8,
+          "score": 79.25,
+          "raw_score": 65,
+          "signal": "资金埋伏·强看涨"
+        },
+        {
+          "key": "adx_trend",
+          "name": "ADX趋势",
+          "layer": "动量",
+          "weight": 8,
+          "score": 68.0,
+          "raw_score": 60,
+          "signal": "空头趋势"
+        },
+        {
+          "key": "synergy_coefficient",
+          "name": "协同度",
+          "layer": "协同",
+          "weight": 10,
+          "score": 59.0,
+          "raw_score": 55,
+          "signal": "弱协同"
+        },
+        {
+          "key": "etf_net_inflow",
+          "name": "ETF净申购",
+          "layer": "资金",
+          "weight": 12,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "north_flow",
+          "name": "北向资金",
+          "layer": "资金",
+          "weight": 5,
+          "score": 50.0,
+          "raw_score": 50,
+          "signal": "中性"
+        },
+        {
+          "key": "turnover_distribution",
+          "name": "换手率分布",
+          "layer": "情绪",
+          "weight": 8,
+          "score": 41.0,
+          "raw_score": 45,
+          "signal": "中性"
+        },
+        {
+          "key": "leadership_divergence",
+          "name": "分化度",
+          "layer": "协同",
+          "weight": 8,
+          "score": 20.750000000000007,
+          "raw_score": 35,
+          "signal": "龙头补跌"
+        },
+        {
+          "key": "breakout_ratio",
+          "name": "突破比例",
+          "layer": "协同",
+          "weight": 7,
+          "score": 11.000000000000007,
+          "raw_score": 30,
+          "signal": "多数走弱"
+        },
+        {
+          "key": "relative_strength",
+          "name": "相对强度",
+          "layer": "动量",
+          "weight": 12,
+          "score": -2.5,
+          "raw_score": 25,
+          "signal": "中期偏弱"
+        },
+        {
+          "key": "momentum_acceleration",
+          "name": "动量加速度",
+          "layer": "动量",
+          "weight": 10,
+          "score": -40.3,
+          "raw_score": 7,
+          "signal": "当日大跌"
+        }
+      ],
+      "top_signals": [
+        "涨停梯队: 梯队断档·退潮预警(79.25)",
+        "ETF规模变化: 资金埋伏·强看涨(79.25)"
+      ],
+      "risk_signals": [
+        "相对强度: 中期偏弱(-2.5)",
+        "动量加速度: 当日大跌(-40.3)",
+        "分化度: 龙头补跌(20.750000000000007)",
+        "突破比例: 多数走弱(11.000000000000007)"
+      ],
+      "future_probs": {
+        "5d": {
+          "prob": 54.7,
+          "avg_ret": 0.54,
+          "confidence": "high",
+          "valid_factors": 7,
+          "prob_std": 1.1,
+          "details": [
+            {
+              "factor": "adx_trend",
+              "name": "ADX趋势",
+              "score": 60,
+              "up_prob": 56.12,
+              "avg_ret": 0.4924,
+              "n_samples": 3503,
+              "weight": 8
+            },
+            {
+              "factor": "synergy_coefficient",
+              "name": "协同度",
+              "score": 55,
+              "up_prob": 55.32,
+              "avg_ret": 0.5678,
+              "n_samples": 10344,
+              "weight": 10
+            },
+            {
+              "factor": "momentum_acceleration",
+              "name": "动量加速度",
+              "score": 7,
+              "up_prob": 55.24,
+              "avg_ret": 0.8781,
+              "n_samples": 3286,
+              "weight": 10
+            },
+            {
+              "factor": "leadership_divergence",
+              "name": "分化度",
+              "score": 35,
+              "up_prob": 54.73,
+              "avg_ret": 0.5362,
+              "n_samples": 10108,
+              "weight": 8
+            },
+            {
+              "factor": "breakout_ratio",
+              "name": "突破比例",
+              "score": 30,
+              "up_prob": 54.62,
+              "avg_ret": 0.4066,
+              "n_samples": 9930,
+              "weight": 7
+            },
+            {
+              "factor": "relative_strength",
+              "name": "相对强度",
+              "score": 25,
+              "up_prob": 54.15,
+              "avg_ret": 0.4485,
+              "n_samples": 3516,
+              "weight": 12
+            },
+            {
+              "factor": "etf_scale_flow",
+              "name": "ETF规模变化",
+              "score": 65,
+              "up_prob": 52.46,
+              "avg_ret": 0.4208,
+              "n_samples": 2933,
+              "weight": 8
+            }
+          ]
+        }
+      },
+      "theme_name": "机器人",
+      "stock_count": 285,
+      "trade_date": "20260730",
+      "etf_code": "516510.SH"
+    }
+  ]
+}

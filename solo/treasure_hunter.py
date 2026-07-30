@@ -868,6 +868,113 @@ def compute_score(row: dict) -> Tuple[float, dict]:
     return total, details
 
 
+# ── 择时模块 — 超跌评分（0~100分） ─────────────────────────
+
+
+def _compute_oversold_score(row: dict) -> Dict:
+    """
+    超跌评分（0~100分）— 识别超跌反弹潜力最大的标的
+
+    五维评分：
+      - 距高幅度   30分  — 距120日高点越远，超跌越充分
+      - RSI超卖    25分  — RSI越低，短期超卖越严重
+      - MA20偏离   20分  — 低于MA20越多，偏离修复空间越大
+      - 缩量枯竭   15分  — 成交量萎缩越厉害，卖压越枯竭
+      - 60日低位   10分  — 接近60日低点，支撑临近
+    """
+    scores = {}
+    total = 0.0
+
+    # ── 1. 距120日高幅度（30分） ──
+    pct_high = row.get('pct_from_120d_high', 999)
+    if pct_high >= 50:
+        score1 = 30.0
+    elif pct_high >= 35:
+        score1 = 25.0 + (pct_high - 35) / 15 * 5
+    elif pct_high >= 20:
+        score1 = 18.0 + (pct_high - 20) / 15 * 7
+    elif pct_high >= 10:
+        score1 = 10.0 + (pct_high - 10) / 10 * 8
+    elif pct_high >= 5:
+        score1 = 4.0 + (pct_high - 5) / 5 * 6
+    else:
+        score1 = 0.0
+    total += score1
+    scores['距高得分'] = round(score1, 1)
+    scores['距120日高(%)'] = round(pct_high, 1)
+
+    # ── 2. RSI超卖（25分） ──
+    rsi = row.get('rsi_14', 50)
+    if rsi <= 20:
+        score2 = 25.0
+    elif rsi <= 30:
+        score2 = 20.0 + (30 - rsi) / 10 * 5
+    elif rsi <= 40:
+        score2 = 12.0 + (40 - rsi) / 10 * 8
+    elif rsi <= 50:
+        score2 = 5.0 + (50 - rsi) / 10 * 7
+    else:
+        score2 = 0.0
+    total += score2
+    scores['RSI得分'] = round(score2, 1)
+    scores['RSI_14'] = round(rsi, 1)
+
+    # ── 3. MA20偏离（20分）— 低于MA20越远分越高 ──
+    pct_ma20 = row.get('pct_below_ma20', 0)  # 负值表示在MA20下方
+    below_ma20 = -pct_ma20 if pct_ma20 < 0 else 0
+    if below_ma20 >= 15:
+        score3 = 20.0
+    elif below_ma20 >= 10:
+        score3 = 15.0 + (below_ma20 - 10) / 5 * 5
+    elif below_ma20 >= 5:
+        score3 = 10.0 + (below_ma20 - 5) / 5 * 5
+    elif below_ma20 >= 3:
+        score3 = 5.0 + (below_ma20 - 3) / 2 * 5
+    elif below_ma20 > 0:
+        score3 = 2.0
+    else:
+        score3 = 0.0  # 在MA20上方，不超跌
+    total += score3
+    scores['MA20偏离得分'] = round(score3, 1)
+    scores['距MA20(%)'] = round(pct_ma20, 1)
+
+    # ── 4. 缩量枯竭（15分）— 量比越小，卖压越枯竭 ──
+    vol_ratio = row.get('volume_ratio', 1.0)
+    if vol_ratio <= 0.5:
+        score4 = 15.0
+    elif vol_ratio <= 0.7:
+        score4 = 10.0 + (0.7 - vol_ratio) / 0.2 * 5
+    elif vol_ratio <= 0.9:
+        score4 = 5.0 + (0.9 - vol_ratio) / 0.2 * 5
+    elif vol_ratio <= 1.1:
+        score4 = 2.0
+    else:
+        score4 = 0.0  # 放量下跌不超跌
+    total += score4
+    scores['缩量得分'] = round(score4, 1)
+    scores['量比'] = round(vol_ratio, 2)
+
+    # ── 5. 60日低位（10分）— 接近60日低点，支撑临近 ──
+    pct_60d_low = row.get('pct_from_60d_low', 999)
+    if pct_60d_low <= 3:
+        score5 = 10.0
+    elif pct_60d_low <= 8:
+        score5 = 7.0 + (8 - pct_60d_low) / 5 * 3
+    elif pct_60d_low <= 15:
+        score5 = 4.0 + (15 - pct_60d_low) / 7 * 3
+    elif pct_60d_low <= 25:
+        score5 = 1.0
+    else:
+        score5 = 0.0
+    total += score5
+    scores['60日低位得分'] = round(score5, 1)
+    scores['距60日低(%)'] = round(pct_60d_low, 1)
+
+    total = min(100.0, total)
+    scores['超跌总分'] = round(total, 1)
+    return scores
+
+
 # ── 主筛选流程 ──────────────────────────────────────────
 
 
@@ -1005,8 +1112,8 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
     ].copy()
     print(f"\n[Phase 3a] 毛利率>=20%或研发>=3%: {len(candidates)} 只")
 
-    # ── Phase 4: 获取动量数据（120日新高） ──
-    print(f"\n[Phase 4] 技术面动量检查...")
+    # ── Phase 4: 获取动量数据（120日新高 + 超跌指标） ──
+    print(f"\n[Phase 4] 技术面动量 & 超跌指标计算...")
     print(f"  → 需查询 {len(candidates)} 只股票的日线数据")
 
     momentum_data = {}
@@ -1018,43 +1125,100 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
             print(f"  [{idx+1}/{len(candidates)}] 动量查询中...{name}({code})")
 
         try:
-            daily = get_daily_by_code(code, days=150)
-            if daily is not None and len(daily) > 20:
-                daily = daily.sort_values('trade_date')
-                current_close = float(daily.iloc[-1]['close'])
-                # 120日最高价
+            daily = get_daily_by_code(code, days=180)
+            if daily is not None and len(daily) > 60:
+                daily = daily.sort_values('trade_date').reset_index(drop=True)
+
+                # ── 基础数据 ──
+                closes = daily['close'].astype(float).values
+                highs = daily['high'].astype(float).values
+                lows = daily['low'].astype(float).values
+                volumes = daily['vol'].astype(float).values
+                current_close = float(closes[-1])
+
+                # ── 120日最高价距幅 ──
                 recent_120 = daily.tail(120)
                 high_120 = float(recent_120['high'].max())
                 pct_from_high = (high_120 - current_close) / high_120 * 100 if high_120 > 0 else 999
 
-                # 20日均线斜率
-                if len(daily) >= 25:
-                    daily['ma20'] = daily['close'].rolling(20).mean()
-                    ma20_latest = float(daily['ma20'].dropna().iloc[-1])
-                    ma20_prev = float(daily['ma20'].dropna().iloc[-6]) if len(daily['ma20'].dropna()) >= 6 else ma20_latest
+                # ── 60日最低价距幅 ──
+                recent_60 = daily.tail(60)
+                low_60 = float(recent_60['low'].min())
+                pct_from_60d_low = (current_close - low_60) / low_60 * 100 if low_60 > 0 else 999
+
+                # ── MA20 / MA60 ──
+                daily['ma20'] = daily['close'].rolling(20).mean()
+                daily['ma60'] = daily['close'].rolling(60).mean()
+                ma20_val = float(daily['ma20'].dropna().iloc[-1]) if len(daily['ma20'].dropna()) > 0 else current_close
+                ma60_val = float(daily['ma60'].dropna().iloc[-1]) if len(daily['ma60'].dropna()) > 0 else current_close
+                pct_below_ma20 = (current_close - ma20_val) / ma20_val * 100 if ma20_val > 0 else 0  # 负值=在MA20下方
+                pct_below_ma60 = (current_close - ma60_val) / ma60_val * 100 if ma60_val > 0 else 0
+
+                # ── MA20斜率 ──
+                if len(daily['ma20'].dropna()) >= 6:
+                    ma20_latest = ma20_val
+                    ma20_prev = float(daily['ma20'].dropna().iloc[-6])
                     ma20_slope = (ma20_latest - ma20_prev) / ma20_prev * 100 if ma20_prev > 0 else 0
                 else:
                     ma20_slope = 0
+
+                # ── RSI-14 ──
+                rsi_14 = 50.0
+                if len(closes) >= 15:
+                    deltas = np.diff(closes[-15:])
+                    gains = np.where(deltas > 0, deltas, 0)
+                    losses = np.where(deltas < 0, -deltas, 0)
+                    avg_gain = gains.mean()
+                    avg_loss = losses.mean()
+                    if avg_loss > 0:
+                        rs = avg_gain / avg_loss
+                        rsi_14 = 100.0 - (100.0 / (1.0 + rs))
+                    elif avg_gain > 0:
+                        rsi_14 = 100.0
+                    else:
+                        rsi_14 = 50.0
+
+                # ── 量比（近5日均量 vs 近20日均量） ──
+                if len(volumes) >= 20:
+                    vol_5d = np.mean(volumes[-5:])
+                    vol_20d = np.mean(volumes[-20:])
+                    volume_ratio = vol_5d / vol_20d if vol_20d > 0 else 1.0
+                else:
+                    volume_ratio = 1.0
 
                 momentum_data[code] = {
                     'pct_from_120d_high': round(pct_from_high, 2),
                     'ma20_slope': round(ma20_slope, 2),
                     'current_close': round(current_close, 2),
+                    # ── 超跌指标 ──
+                    'rsi_14': round(rsi_14, 2),
+                    'pct_below_ma20': round(pct_below_ma20, 2),
+                    'pct_below_ma60': round(pct_below_ma60, 2),
+                    'volume_ratio': round(volume_ratio, 2),
+                    'pct_from_60d_low': round(pct_from_60d_low, 2),
+                    'ma20': round(ma20_val, 2),
+                    'ma60': round(ma60_val, 2),
                 }
             else:
                 momentum_data[code] = {
                     'pct_from_120d_high': 999,
                     'ma20_slope': 0,
                     'current_close': 0,
+                    'rsi_14': 50, 'pct_below_ma20': 0, 'pct_below_ma60': 0,
+                    'volume_ratio': 1.0, 'pct_from_60d_low': 999,
+                    'ma20': 0, 'ma60': 0,
                 }
         except Exception:
             momentum_data[code] = {
                 'pct_from_120d_high': 999,
                 'ma20_slope': 0,
                 'current_close': 0,
+                'rsi_14': 50, 'pct_below_ma20': 0, 'pct_below_ma60': 0,
+                'volume_ratio': 1.0, 'pct_from_60d_low': 999,
+                'ma20': 0, 'ma60': 0,
             }
 
-    # 合并动量数据
+    # 合并动量 & 超跌数据
     mom_records = []
     for _, row in candidates.iterrows():
         code = row['ts_code']
@@ -1064,6 +1228,13 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
             'pct_from_120d_high': md.get('pct_from_120d_high', 999),
             'ma20_slope': md.get('ma20_slope', 0),
             'current_close': md.get('current_close', 0),
+            'rsi_14': md.get('rsi_14', 50),
+            'pct_below_ma20': md.get('pct_below_ma20', 0),
+            'pct_below_ma60': md.get('pct_below_ma60', 0),
+            'volume_ratio': md.get('volume_ratio', 1.0),
+            'pct_from_60d_low': md.get('pct_from_60d_low', 999),
+            'ma20': md.get('ma20', 0),
+            'ma60': md.get('ma60', 0),
         })
     candidates = pd.DataFrame(mom_records)
 
@@ -1122,6 +1293,9 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
     score_results = []
     for _, row in candidates.iterrows():
         total_score, details = compute_score(row.to_dict())
+        # 超跌择时评分
+        oversold = _compute_oversold_score(row.to_dict())
+        details.update(oversold)
         score_results.append({
             'ts_code': row['ts_code'],
             'name': row['name'],
@@ -1152,7 +1326,7 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
 # ── 报告输出 ──────────────────────────────────────────
 
 
-def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, min_score: float = 60.0):
+def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, min_score: float = 60.0, timing: str = 'oversold'):
     """打印格式化报告"""
 
     # 输出文件
@@ -1243,6 +1417,32 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
                 print(f"    {t}: {c} 只")
             print(f"  平均未来赛道分: {passed['未来赛道分'].mean():.1f}")
 
+    # ── 择时超跌评分 ──
+    if '超跌总分' in passed.columns:
+        print(f"\n{'─'*70}")
+        print(f"  择时超跌评分")
+        print(f"{'─'*70}")
+        # 按超跌分排序
+        oversold_sorted = passed.sort_values('超跌总分', ascending=False).head(10)
+        avg_oversold = passed['超跌总分'].mean()
+        high_oversold = len(passed[passed['超跌总分'] >= 60])
+        print(f"  平均超跌分: {avg_oversold:.1f}")
+        print(f"  高分超跌(≥60分): {high_oversold} 只")
+        print(f"\n  ═══ 超跌择时 TOP10 ═══")
+        for idx, (_, r) in enumerate(oversold_sorted.iterrows()):
+            os_score = r.get('超跌总分', 0)
+            rsi_val = r.get('RSI_14', 50)
+            pct_ma20 = r.get('距MA20(%)', 0)
+            pct_high = r.get('距120日高(%)', 0)
+            vol_r = r.get('量比', 1.0)
+            bar = '█' * int(os_score / 10) + '░' * (10 - int(os_score / 10))
+            print(f"  {idx+1:>2}. {r['name']:>8}({r['ts_code']})  "
+                  f"超跌{os_score:>5.1f} {bar}  "
+                  f"RSI{rsi_val:>5.1f}  "
+                  f"MA20{pct_ma20:>+6.1f}%  "
+                  f"距高{pct_high:>5.1f}%  "
+                  f"量比{vol_r:>.2f}")
+
     # ── 操作建议 ──
     print(f"\n{'═'*70}")
     print(f"  操作建议（基于用户交易规则）")
@@ -1257,6 +1457,7 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
     print(f"    航天航空、前沿技术（量子/核聚变/6G等）")
     print(f"  • 争光股份对标标的聚焦于：吸附分离、高纯材料、")
     print(f"    工业卡脖子配套等细分领域")
+    print(f"  • 今日择时算法: 最大超跌（五维评分：距高+RSI+MA20偏离+缩量+60日低位）")
     print(f"{'═'*70}")
 
 
@@ -1266,11 +1467,17 @@ def _print_stock_card(r):
     bz = str(r.get('主营业务', ''))
     future_track = str(r.get('未来赛道', ''))
     giant_score = r.get('未来千亿总分', 0)
+    oversold_score = r.get('超跌总分', 0)
     print(f"  ┌─────────────────────────────────────────────────────┐")
     print(f"  │ {r['name']} ({r['ts_code']})  ┃  总分: {r['总分']}")
     print(f"  ├─────────────────────────────────────────────────────┤")
     print(f"  │ 市值 {r.get('总市值(亿)', 'N/A'):>8}亿  │ 毛利率 {r.get('毛利率(%)', 'N/A'):>5}%  │ 净利率 {r.get('净利率(%)', 'N/A'):>5}%")
     print(f"  │ ROE {r.get('ROE(%)', 'N/A'):>6}%  │ 研发 {r.get('研发占比(%)', 'N/A'):>5}%  │ 距120日高 {r.get('距120日高(%)', 'N/A'):>5}%")
+    if oversold_score > 0:
+        rsi = r.get('RSI_14', 50)
+        ma20 = r.get('距MA20(%)', 0)
+        vol_r = r.get('量比', 1.0)
+        print(f"  │ 超跌 {oversold_score:>5.1f}分  │ RSI {rsi:>5.1f}  │ 距MA20 {ma20:>+6.1f}%  │ 量比 {vol_r:>.2f}")
     if giant_score > 0:
         track = r.get('赛道天花板', 0)
         plat = r.get('平台属性', 0)
@@ -1314,6 +1521,9 @@ if __name__ == '__main__':
                         help='最低入围分数（默认60分）')
     parser.add_argument('--quick', action='store_true',
                         help='快速模式：跳过主营/标签查询（仅基于财务+动量筛选）')
+    parser.add_argument('--timing', type=str, default='oversold',
+                        choices=['oversold'],
+                        help='择时算法（默认oversold=最大超跌）')
 
     args = parser.parse_args()
     min_score = args.min_score
@@ -1325,7 +1535,8 @@ if __name__ == '__main__':
     )
 
     trade_date = args.trade_date or get_last_trade_date()
-    print_report(passed, all_df, trade_date, min_score=min_score)
+    print_report(passed, all_df, trade_date, min_score=min_score,
+                 timing=args.timing)
 
     elapsed = time.time() - t0
     print(f"\n⏱ 总耗时: {elapsed:.0f}秒 ({elapsed/60:.1f}分钟)")

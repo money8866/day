@@ -415,6 +415,39 @@ def build_theme_stock_map_v2():
             "concepts": info.get("concepts", []),
         }
 
+    # 4c.5. 子主题名 → 母主题名映射
+    # IRS匹配时可能将子主题（如"人形机器人"）作为独立主题名纳入，
+    # 导致后续子主题匹配时找不到 parent_subtheme_index["人形机器人"]。
+    # 这里将子主题名映射回母主题名（如"人形机器人"→"机器人"）。
+    # 修复三花智控（人形机器人核心公司）未被纳入机器人主题的问题。
+    try:
+        _subtheme_cfg = load_subtheme_map()
+        if _subtheme_cfg:
+            sub_to_parent = {}
+            for parent, subthemes in _subtheme_cfg.items():
+                for sub_name in subthemes.keys():
+                    sub_to_parent[sub_name] = parent
+            remap_count = 0
+            for code in list(stocks_output.keys()):
+                themes = stocks_output[code].get('themes', [])
+                new_themes = []
+                changed = False
+                for t in themes:
+                    if t in sub_to_parent:
+                        parent = sub_to_parent[t]
+                        if parent not in new_themes:
+                            new_themes.append(parent)
+                            changed = True
+                    else:
+                        new_themes.append(t)
+                if changed:
+                    stocks_output[code]['themes'] = new_themes
+                    remap_count += 1
+            if remap_count:
+                print(f"  [子主题映射] 已修正 {remap_count} 只股票的子主题→母主题归属")
+    except Exception as e:
+        print(f"  [警告] 子主题名映射失败: {e}")
+
     # 4d. 重建最终主题→股票
     themes_output = {}
     for code, info in stocks_output.items():
@@ -1677,7 +1710,8 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
 
                 weights = _SUBTHEME_STAGE_WEIGHTS
                 # ── 概念门控：如果概念零匹配且行业仅过宽带词命中，直接跳过 ──
-                if conc_score == 0 and ind_score < 1.0:
+                # 但核心公司（核心公司精确匹配）绕过概念门控，确保子公司归位母主题
+                if conc_score == 0 and ind_score < 1.0 and core_score < 0.5:
                     continue
                 composite = (
                     ind_score * weights['industry'] +
@@ -1755,7 +1789,7 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                 all_candidates.append({
                     'name': x_sub_name,
                     'parent_theme': x_parent,
-                    'score': round(composite * 100 + 20, 1),  # +20 跨主题核心公司加成
+                    'score': round(composite * 100 + (40 if core_score >= 0.8 else 20), 1),  # +40精确核心公司/+20其他
                     'cross_core_match': True,
                     'features': {
                         'industry_score': round(ind_score, 3),
