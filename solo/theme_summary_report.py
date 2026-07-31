@@ -255,6 +255,39 @@ class ThemeEssenceReport:
         ))
         return stocks_in[:top_n]
 
+    def _get_theme_orphan_stocks(self, parent: str, top_n: int = 5) -> List[Dict]:
+        """获取属于主题但子主题未匹配任何本主题子主题的股票（兜底展示）"""
+        sub_names = {s['name'] for s in self._subtheme_matrix.get(parent, [])}
+        if not sub_names:
+            return []
+
+        orphans = []
+        for code, info in self.stocks.items():
+            if parent not in info.get('themes', []):
+                continue
+            st = info.get('subtheme', '')
+            if st and st in sub_names:
+                continue  # 已有匹配子主题，跳过
+
+            entry = {}
+            if st:
+                entry = self.entry_timing.get(parent, {}).get(st, {}).get('stocks', {}).get(code, {})
+            orphans.append({
+                'code': code,
+                'name': info.get('name', ''),
+                'subtheme': st if st else '(无)',
+                'role': info.get('role', ''),
+                'stock_alpha': info.get('stock_alpha', 0),
+                'final_score': info.get('final_score', 0),
+                'entry_signal': entry.get('entry_signal', info.get('entry_signal', '')),
+                'trade_score': entry.get('trade_score', info.get('trade_score', 0)),
+                'investment_score': entry.get('investment_score', info.get('investment_score', 0)),
+                'holding_priority': entry.get('holding_priority', info.get('holding_priority', 0)),
+            })
+
+        orphans.sort(key=lambda x: -x['final_score'])
+        return orphans[:top_n]
+
     # ═══════════════════════════════════════════════════════════
     # 文本报告
     # ═══════════════════════════════════════════════════════════
@@ -374,6 +407,20 @@ class ThemeEssenceReport:
                     lines.append(f"      → {pick['name']:<6} {pick['role']:<10} "
                                  f"α={pick['stock_alpha']:.0f} T={ts:.0f} "
                                  f"{SIGNAL_SYMBOL.get(actual_signal,'')} {actual_signal}")
+                lines.append("")
+
+            # ── 兜底：跨主题未分配子主题的股票 ──
+            orphans = self._get_theme_orphan_stocks(tn, top_n=5)
+            if orphans:
+                lines.append(f"    ├─ 其他(跨主题)     [兜底]")
+                for stk in orphans:
+                    sig_sym = SIGNAL_SYMBOL.get(stk['entry_signal'], ' ')
+                    prio = '★' * stk['holding_priority'] if stk['holding_priority'] else ''
+                    lines.append(f"    │   {sig_sym} {stk['name']:<6}({stk['code']:.9s}) "
+                                 f"{stk['role']:<10} α{stk['stock_alpha']:.0f} "
+                                 f"F{stk['final_score']:.0f} "
+                                 f"[{stk['entry_signal']}] {prio} "
+                                 f"子主题={stk['subtheme']}")
                 lines.append("")
 
         # ── 全市场 Top Picks（按 Trade Score 排序） ──
@@ -516,6 +563,18 @@ class ThemeEssenceReport:
                     lines.append(f"- {pick['name']} `{pick['role']}` "
                                  f"α={pick['stock_alpha']:.0f} T={ts:.0f} "
                                  f"Signal={actual_signal}")
+                lines.append("")
+
+            # 跨主题兜底股票
+            orphans = self._get_theme_orphan_stocks(tn, top_n=5)
+            if orphans:
+                lines.append("**跨主题股票（子主题非本主题）:**\n")
+                lines.append("| 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |")
+                lines.append("|------|------|------|----|----|--------|------|")
+                for stk in orphans:
+                    lines.append(f"| {stk['code']:.9s} | {stk['name']} | {stk['role']} | "
+                                 f"{stk['stock_alpha']:.0f} | {stk['final_score']:.0f} | "
+                                 f"{stk['subtheme']} | {stk['entry_signal']} |")
                 lines.append("")
 
         lines.append("---\n")

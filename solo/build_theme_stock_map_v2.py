@@ -1721,6 +1721,10 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                     emb_score * weights['embedding'] +
                     corr_score * weights['correlation']
                 )
+                # 子主题匹配优先级加成（来自 subtheme_map.json 的 match_priority）
+                _sub_prio = sub_cfg.get('match_priority', 1.0)
+                if _sub_prio != 1.0:
+                    composite *= _sub_prio
 
                 # ── Stage 7: Market Narrative Heat 乘数加成 ──
                 # 使用子主题级别热度（预计算的 subtheme_heat_matrix），
@@ -1778,6 +1782,10 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                     core_score * weights['core_company'] +
                     emb_score * weights['embedding']
                 )
+                # 子主题匹配优先级加成（来自 subtheme_map.json 的 match_priority）
+                _sub_prio = x_sub_cfg.get('match_priority', 1.0)
+                if _sub_prio != 1.0:
+                    composite *= _sub_prio
 
                 # ── Step 2 也应用 Market Narrative Heat 乘数 ──
                 if subtheme_heat_lookup:

@@ -496,8 +496,10 @@ class StockRoleEngine:
         )
 
     def _score_beta(self, f: Dict) -> float:
-        """Beta: 创业板/科创板 + 高波动 + 弹性最高"""
-        return f['beta_score']
+        """Beta: 创业板/科创板 + 高波动（高Alpha股应被扣分、不能Beta）"""
+        # 高Alpha惩罚：alpha > 0.50 时按线性扣减，最高扣0.50
+        alpha_penalty = max(0.0, (f['alpha_score'] - 0.50) / 0.50 * 0.50) if f['alpha_score'] > 0.50 else 0.0
+        return max(0.0, f['beta_score'] - alpha_penalty)
 
     def _score_follower(self, f: Dict) -> float:
         """Follower: 涨幅落后 + Alpha改善 + 资金流入改善"""
@@ -510,8 +512,8 @@ class StockRoleEngine:
 
     def _score_defensive(self, f: Dict) -> float:
         """Defensive: 回撤小 + 波动低 + 抗跌（高Alpha股应被扣分、不能Defensive）"""
-        # 高Alpha惩罚：alpha > 0.55 时按线性扣减，最高扣0.40
-        alpha_penalty = max(0.0, (f['alpha_score'] - 0.55) / 0.45 * 0.40) if f['alpha_score'] > 0.55 else 0.0
+        # 高Alpha惩罚：alpha > 0.50 时按线性扣减，最高扣0.60
+        alpha_penalty = max(0.0, (f['alpha_score'] - 0.50) / 0.50 * 0.60) if f['alpha_score'] > 0.50 else 0.0
         low_vol = 1.0 - f['beta_score'] * 0.5  # 低Beta=低波动
         base = (
             (1 - f['drawdown']) * 0.40 +

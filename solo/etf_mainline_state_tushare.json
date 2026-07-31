@@ -1,9 +1,9 @@
 {
-  "last_rebalance_date": "2026-07-24",
-  "holding_code": "159611",
-  "holding_name": "电力",
-  "buy_price": 1.054,
-  "score_at_buy": 60.87,
-  "momentum_at_buy": 2.13,
-  "rebalance_count": 2
+  "last_rebalance_date": "2026-07-31",
+  "holding_code": "512800",
+  "holding_name": "银行",
+  "buy_price": 0.836,
+  "score_at_buy": 61.35,
+  "momentum_at_buy": 11.91,
+  "rebalance_count": 3
 }
