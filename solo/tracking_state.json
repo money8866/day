@@ -1,0 +1,127 @@
+{
+  "人工智能": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "软件": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "消费电子": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "金融科技": {
+    "stage": "试仓",
+    "position": 0.05,
+    "entry": 0.631,
+    "stop": 0.568,
+    "t1": 0.726,
+    "t2": 0.789,
+    "hold_days": 0
+  },
+  "游戏": {
+    "stage": "试仓",
+    "position": 0.05,
+    "entry": 1.115,
+    "stop": 1.026,
+    "t1": 1.282,
+    "t2": 1.394,
+    "hold_days": 0
+  },
+  "新能源": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "光伏": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "储能": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "电池": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "新能源车": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "创新药": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "医疗器械": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "医药": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "军工": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "航空航天": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "机器人": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "有色金属": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "化工": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "煤炭": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "钢铁": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "电力": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "消费": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "食品饮料": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "酒": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "家电": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "证券": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "银行": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "红利": {
+    "stage": "观察",
+    "position": 0.0
+  },
+  "_meta": {
+    "last_date": "20260731"
+  }
+}

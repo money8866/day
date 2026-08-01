@@ -1044,6 +1044,24 @@ def _add_ma_columns(df):
     return df
 
 
+def _kline_cache_fresh(last_date, end_date, max_gap_days=10):
+    """判断K线缓存是否已覆盖到该股票最新可用交易日。
+
+    正常交易股：最后日期 == end_date，直接命中。
+    停牌/退市股：最后日期在 end_date 之前 ≤ max_gap_days 个自然日，
+    视为已是最新（数据正确），避免每次运行都触发重复下载。
+    10个自然日约覆盖2周以内的停牌核查。
+    """
+    if last_date == end_date:
+        return True
+    try:
+        gap = (datetime.strptime(end_date, '%Y%m%d')
+               - datetime.strptime(last_date, '%Y%m%d')).days
+        return 0 <= gap <= max_gap_days
+    except Exception:
+        return False
+
+
 def get_daily_kline(ts_codes, start, end):
     if pro is None or not ts_codes:
         return pd.DataFrame()
@@ -1080,7 +1098,10 @@ def get_daily_kline(ts_codes, start, end):
         cache_key = f"daily_kline_{code}_{start}_{end}"
         cached = cache_get(cache_key)
         if cached is not None:
-            if 'trade_date' in cached.columns and str(cached['trade_date'].astype(str).iloc[-1]) == str(end):
+            if 'trade_date' in cached.columns and (
+                _kline_cache_fresh(str(cached['trade_date'].astype(str).iloc[-1]), str(end))
+                or _is_failed_stock(code)  # 黑名单（停牌/退市确认）股票直接用缓存
+            ):
                 # 检查缓存数据是否有均线列，没有则补充并更新缓存
                 if 'ma5' not in cached.columns:
                     cached = _add_ma_columns(cached)
@@ -1115,7 +1136,10 @@ def get_daily_kline(ts_codes, start, end):
                             # 将 trade_date 转换为字符串类型，避免类型比较错误
                             df['trade_date'] = df['trade_date'].astype(str)
                             df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
-                            if not df.empty and str(df['trade_date'].iloc[-1]) == str(end):
+                            if not df.empty and (
+                                _kline_cache_fresh(str(df['trade_date'].iloc[-1]), str(end))
+                                or _is_failed_stock(code)
+                            ):
                                 df = _add_ma_columns(df)
                                 all_parts.append(df)
                                 need_fetch_codes.remove(code)
@@ -1154,6 +1178,20 @@ def get_daily_kline(ts_codes, start, end):
                             all_parts.append(code_df)
                             if code in need_fetch_codes:
                                 need_fetch_codes.remove(code)
+                            # API已确认该股无end日数据（停牌/退市），写入黑名单避免下次重复下载
+                            if not _kline_cache_fresh(str(code_df['trade_date'].astype(str).iloc[-1]), str(end)):
+                                try:
+                                    conn = sqlite3.connect(DB_PATH)
+                                    cur = conn.cursor()
+                                    cur.execute("INSERT OR REPLACE INTO failed_stocks (ts_code, fail_date, fail_count) VALUES (?,?,1)",
+                                                (code, TRADE_DATE))
+                                    conn.commit()
+                                    conn.close()
+                                except Exception:
+                                    pass
+                                if FAILED_STOCKS_CACHE is not None:
+                                    FAILED_STOCKS_CACHE[code] = TRADE_DATE
+                                print(f"  [警告] {code} 停牌/退市确认：最后交易日={str(code_df['trade_date'].astype(str).iloc[-1])}，已加入黑名单避免重复下载")
                 time.sleep(0.15)
             except Exception as e:
                 print(f"[KLine] 批次 {ci + 1}/{len(chunks)} 失败: {e}")
@@ -1191,23 +1229,40 @@ def _mark_failed_stocks(codes):
     for code in codes:
         print(f"       {code}")
     print(f"       原因推测：退市/停牌/代码格式错误/无交易数据")
+    if FAILED_STOCKS_CACHE is not None:
+        for code in codes:
+            FAILED_STOCKS_CACHE[code] = TRADE_DATE
 
 
 FAILED_STOCKS_CACHE = None
-def _is_failed_stock(ts_code):
-    """检查是否在黑名单中"""
+def _is_failed_stock(ts_code, max_blacklist_days=30):
+    """检查是否在黑名单中。
+
+    超过 max_blacklist_days 天未再次确认失败的记录视为过期，允许重试一次，
+    以便检测停牌股是否已复牌（复牌后数据会自动刷新并退出黑名单）。
+    """
     global FAILED_STOCKS_CACHE
     if FAILED_STOCKS_CACHE is None:
-        FAILED_STOCKS_CACHE = set()
+        FAILED_STOCKS_CACHE = {}
         try:
             conn = sqlite3.connect(DB_PATH)
             cur = conn.cursor()
-            cur.execute("SELECT ts_code FROM failed_stocks")
-            FAILED_STOCKS_CACHE = {row[0] for row in cur.fetchall()}
+            cur.execute("SELECT ts_code, fail_date FROM failed_stocks")
+            FAILED_STOCKS_CACHE = {row[0]: row[1] for row in cur.fetchall()}
             conn.close()
         except Exception:
             pass
-    return ts_code in FAILED_STOCKS_CACHE
+    fail_date = FAILED_STOCKS_CACHE.get(ts_code)
+    if fail_date is None:
+        return False
+    try:
+        age = (datetime.strptime(TRADE_DATE, '%Y%m%d')
+               - datetime.strptime(str(fail_date)[:8], '%Y%m%d')).days
+        if age > max_blacklist_days:
+            return False  # 黑名单过期，允许重试一次检测复牌
+    except Exception:
+        pass
+    return True
 
 
 def get_index_kline(ts_code="000300.SH", start=None, end=None):
@@ -1420,6 +1475,13 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
     is_force, force_type = _is_force_include(code, stock_name, core_companies, leader_companies)
     if is_force and mb_score < 20:
         mb_score = 30 if force_type == "leader_company" else 25
+    # V14 主营保底分：行业权威路径精确命中（申万二级/东财行业板块/stock_basic），
+    # 即使主营文本不含主题关键词也给基础分，避免真行业股被误杀
+    # （如 SW游戏行业的星辉娱乐主营是"车模玩具"、顺网科技主营是"互联网娱乐平台"）
+    if mb_score == 0 and info.get("industry_match"):
+        if info.get("source") in ("sw_industry", "sw_industry_board",
+                                  "dc_industry_board", "dc_industry", "stock_basic_industry"):
+            mb_score = 15
     detail['mainbiz'] = min(mb_score, 40)
 
     # === 维度2: 产业链距离 (满分30) ===
@@ -1546,7 +1608,11 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
                 name_hit = True
                 break
         # 概念含exclude_keyword：轻罚-5，但跳过"参股X"/"X概念"这类宽泛标签
-        if not name_hit:
+        # V14: 行业权威背书（申万二级/东财行业精确匹配）的股票跳过概念惩罚，
+        # 避免"游戏股带AI概念"被误伤（如汤姆猫有AI应用概念但属SW游戏行业成员）
+        if not name_hit and info.get("source") not in (
+                "sw_industry", "sw_industry_board", "dc_industry_board",
+                "dc_industry", "stock_basic_industry"):
             for ek in exclude_keywords:
                 for c in concepts:
                     # 跳过参股类、概念类标签（如"参股银行"、"银行概念"）
@@ -1857,6 +1923,53 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df, stock_mainbiz=None, sw
                 if dna_match:
                     filtered_candidates[code] = info
             candidates = filtered_candidates
+
+        # ====================================================================
+        # Phase 1.6: 主营排他词过滤（成分股纯度修复）
+        #   防止"主营碰瓷"的股票混入主题（如影视/出版/日化股主营含
+        #   "游戏及其衍生业务"等点缀描述）。仅当主题配置 mainbiz_exclude 时生效。
+        #   规则：
+        #     1) 排他主营词命中主营文本：
+        #        - 有申万行业背书（SW行业成员）：仅当排他词位置在行业关键词之前
+        #          才排除（非游戏业务为第一主业，如文投控股"影院及院线运营、游戏研发"）
+        #        - 无申万行业背书（概念兜底/东财行业混入）：直接排除
+        #     2) 强制纳入公司（leader/core）跳过本检查
+        # ====================================================================
+        mainbiz_exclude = cfg.get("mainbiz_exclude", [])
+        if mainbiz_exclude and stock_mainbiz and candidates:
+            for code, info in list(candidates.items()):
+                is_force, _ = _is_force_include(code, name_map_basic.get(code, ""),
+                                                core_companies, leader_companies)
+                if is_force:
+                    continue
+                mb = stock_mainbiz.get(code, "")
+                if not mb:
+                    continue
+                # 主营中命中的排他词
+                hit_terms = [t for t in mainbiz_exclude if t and t in mb]
+                if not hit_terms:
+                    continue
+                # 是否有申万行业背书（申万二级行业精确属于主题行业）
+                sw_backed = False
+                for sw_ind in sw_stock_industries.get(code, []):
+                    if _in_industry_list(sw_ind, industry_list):
+                        sw_backed = True
+                        break
+                if sw_backed:
+                    # 位置规则：排他词须位于行业关键词之前（非主题业务为第一主业）
+                    kw_pos = len(mb)
+                    for kw in keyword_list:
+                        p = mb.find(kw)
+                        if p >= 0:
+                            kw_pos = min(kw_pos, p)
+                    if kw_pos == len(mb):
+                        continue  # 主营无行业关键词 → 行业背书可靠，保留
+                    for t in hit_terms:
+                        if mb.find(t) < kw_pos:
+                            candidates.pop(code)
+                            break
+                else:
+                    candidates.pop(code)
 
         # ====================================================================
         # Phase 2: IRS 评分 + 分层（替代原 chain_distance 硬过滤）

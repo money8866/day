@@ -975,6 +975,151 @@ def _compute_oversold_score(row: dict) -> Dict:
     return scores
 
 
+# ── 择时模块 — 中线右侧买点评分（0~100分） ─────────────────
+
+
+def _compute_midterm_buy_score(row: dict) -> Dict:
+    """
+    中线右侧买点评分（0~100分）— 识别趋势反转确认后的中线入场机会
+
+    与左侧抄底（超跌评分）不同，右侧买点要求"底部确认后买入"：
+    股价已站上均线、趋势转强、出现MACD金叉等确认信号。
+
+    五维评分：
+      - 站上均线   25分  — 股价站上MA20/MA60，多头排列
+      - 趋势转强   20分  — MA20斜率上翘 + 脱离底部区域
+      - MACD金叉   25分  — DIF上穿DEA + 零轴上方 + 红柱
+      - 量能配合   15分  — 温和放量确认（非暴量追高）
+      - 右侧确认   15分  — 脱离60日低点 + 未过度透支
+    """
+    scores = {}
+    total = 0.0
+
+    current_close = row.get('current_close', 0)
+    ma20 = row.get('ma20', 0)
+    ma60 = row.get('ma60', 0)
+    pct_below_ma20 = row.get('pct_below_ma20', 0)   # 正=在上方，负=在下方
+    pct_below_ma60 = row.get('pct_below_ma60', 0)
+    ma20_slope = row.get('ma20_slope', 0)
+    pct_from_60d_low = row.get('pct_from_60d_low', 999)
+    pct_from_high = row.get('pct_from_120d_high', 999)
+    volume_ratio = row.get('volume_ratio', 1.0)
+    macd_dif = row.get('macd_dif', 0)
+    macd_dea = row.get('macd_dea', 0)
+    macd_hist = row.get('macd_hist', 0)
+    golden_cross = row.get('macd_golden_cross', False)
+
+    # ── 1. 站上均线（25分） ──
+    score1 = 0.0
+    # 1a. 股价站上MA20（10分）
+    if pct_below_ma20 > 0:
+        score1 += 10.0
+    # 1b. 股价站上MA60（8分）
+    if pct_below_ma60 > 0:
+        score1 += 8.0
+    # 1c. MA20 > MA60 多头排列（7分）
+    if ma20 > 0 and ma60 > 0 and ma20 > ma60:
+        score1 += 7.0
+    total += score1
+    scores['站上均线得分'] = round(score1, 1)
+
+    # ── 2. 趋势转强（20分） ──
+    score2 = 0.0
+    # 2a. MA20斜率上翘（10分）
+    if ma20_slope > 0.5:
+        score2 += 10.0
+    elif ma20_slope > 0:
+        score2 += 5.0
+    elif ma20_slope > -0.5:
+        score2 += 2.0  # 走平
+    # 2b. 脱离底部区域（10分）：距60日低点5%~35%为右侧启动区
+    if 5 <= pct_from_60d_low <= 35:
+        score2 += 10.0
+    elif 35 < pct_from_60d_low <= 50:
+        score2 += 5.0
+    elif 2 <= pct_from_60d_low < 5:
+        score2 += 4.0  # 刚起步，接近底部
+    total += score2
+    scores['趋势转强得分'] = round(score2, 1)
+
+    # ── 3. MACD金叉（25分） ──
+    score3 = 0.0
+    # 3a. DIF上穿DEA金叉（12分）
+    if golden_cross:
+        score3 += 12.0
+    elif macd_dif > macd_dea:
+        score3 += 7.0  # 已在多头状态（金叉后延续）
+    # 3b. DIF在零轴上方（5分）
+    if macd_dif > 0:
+        score3 += 5.0
+    # 3c. MACD柱为正（红柱）（8分）
+    if macd_hist > 0:
+        score3 += 8.0
+    total += score3
+    scores['MACD得分'] = round(score3, 1)
+
+    # ── 4. 量能配合（15分）— 温和放量确认，暴量视为透支 ──
+    score4 = 0.0
+    if 1.0 <= volume_ratio <= 1.8:
+        score4 += 10.0  # 温和放量
+    elif 0.8 <= volume_ratio < 1.0:
+        score4 += 5.0   # 平量
+    elif 1.8 < volume_ratio <= 2.5:
+        score4 += 4.0   # 偏大，警惕
+    # 底部区域放量（距60日低<15%且量比>1.2）加分（5分）
+    if pct_from_60d_low <= 15 and volume_ratio > 1.2:
+        score4 += 5.0
+    total += score4
+    scores['量能配合得分'] = round(score4, 1)
+
+    # ── 5. 右侧确认（15分） ──
+    score5 = 0.0
+    # 5a. 脱离60日低点>5%（8分）— 确认底部成立，非下跌中继
+    if pct_from_60d_low > 5:
+        score5 += 8.0
+    elif pct_from_60d_low > 2:
+        score5 += 3.0
+    # 5b. 距120日高<30%（7分）— 未过度透支，仍在中线安全区
+    if pct_from_high <= 15:
+        score5 += 7.0
+    elif pct_from_high <= 30:
+        score5 += 4.0
+    elif pct_from_high <= 45:
+        score5 += 1.0
+    total += score5
+    scores['右侧确认得分'] = round(score5, 1)
+
+    # ── 6. 形态健康度惩罚（-0~20分）— 防止高位放量回落被误判为右侧买点 ──
+    penalty = 0.0
+    recent_chg_1d = row.get('recent_chg_1d', 0)
+    recent_chg_2d = row.get('recent_chg_2d', 0)
+    is_negative_day = row.get('is_negative_day', False)
+
+    # 6a. 近2日大跌（-12分）— 形态已坏，右侧买点不成立
+    if recent_chg_2d <= -8:
+        penalty += 12.0
+    elif recent_chg_2d <= -5:
+        penalty += 8.0
+    # 6b. 单日大跌（-6分）
+    if recent_chg_1d <= -5:
+        penalty += 6.0
+    # 6c. 放量阴线（-5分）— 量比>1.3且收阴=抛压
+    if is_negative_day and volume_ratio > 1.3:
+        penalty += 5.0
+    # 6d. 高位放量阴线（-5分）— 距高>20%+阴线+放量=高位出货
+    if pct_from_high > 20 and is_negative_day and volume_ratio > 1.2:
+        penalty += 5.0
+
+    penalty = min(20.0, penalty)
+    total -= penalty
+    total = max(0.0, min(100.0, total))
+    scores['形态惩罚'] = round(penalty, 1)
+
+    total = min(100.0, total)
+    scores['中线买点总分'] = round(total, 1)
+    return scores
+
+
 # ── 主筛选流程 ──────────────────────────────────────────
 
 
@@ -1186,6 +1331,36 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                 else:
                     volume_ratio = 1.0
 
+                # ── MACD (12, 26, 9) ──
+                close_s = pd.Series(closes)
+                ema12 = close_s.ewm(span=12, adjust=False).mean()
+                ema26 = close_s.ewm(span=26, adjust=False).mean()
+                dif = ema12 - ema26
+                dea = dif.ewm(span=9, adjust=False).mean()
+                macd_hist = (dif - dea) * 2
+                macd_dif = float(dif.iloc[-1])
+                macd_dea = float(dea.iloc[-1])
+                macd_hist_val = float(macd_hist.iloc[-1])
+                # 金叉检测：DIF上穿DEA
+                if len(dif) >= 2:
+                    golden_cross = bool(dif.iloc[-1] > dea.iloc[-1] and dif.iloc[-2] <= dea.iloc[-2])
+                else:
+                    golden_cross = bool(macd_dif > macd_dea)
+
+                # ── 距60日低点天数（右侧确认：底部确认后回升时间） ──
+                low_idx_60 = int(recent_60['low'].idxmin())
+                days_since_60d_low = len(daily) - 1 - low_idx_60 if low_idx_60 >= 0 else 99
+
+                # ── 近期走势（形态健康度） ──
+                recent_chg_1d = 0.0   # 最新日涨跌幅
+                recent_chg_2d = 0.0   # 最近2日累计涨跌幅
+                if len(daily) >= 3:
+                    recent_chg_1d = (closes[-1] / closes[-2] - 1) * 100 if closes[-2] > 0 else 0
+                    recent_chg_2d = (closes[-1] / closes[-3] - 1) * 100 if closes[-3] > 0 else 0
+                # 当日是否阴线（收<开）
+                last_row = daily.iloc[-1]
+                is_negative_day = bool(last_row['close'] < last_row['open'])
+
                 momentum_data[code] = {
                     'pct_from_120d_high': round(pct_from_high, 2),
                     'ma20_slope': round(ma20_slope, 2),
@@ -1198,6 +1373,16 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                     'pct_from_60d_low': round(pct_from_60d_low, 2),
                     'ma20': round(ma20_val, 2),
                     'ma60': round(ma60_val, 2),
+                    # ── 中线右侧指标 ──
+                    'macd_dif': round(macd_dif, 3),
+                    'macd_dea': round(macd_dea, 3),
+                    'macd_hist': round(macd_hist_val, 3),
+                    'macd_golden_cross': golden_cross,
+                    'days_since_60d_low': days_since_60d_low,
+                    # ── 形态健康度 ──
+                    'recent_chg_1d': round(recent_chg_1d, 2),
+                    'recent_chg_2d': round(recent_chg_2d, 2),
+                    'is_negative_day': is_negative_day,
                 }
             else:
                 momentum_data[code] = {
@@ -1207,6 +1392,9 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                     'rsi_14': 50, 'pct_below_ma20': 0, 'pct_below_ma60': 0,
                     'volume_ratio': 1.0, 'pct_from_60d_low': 999,
                     'ma20': 0, 'ma60': 0,
+                    'macd_dif': 0, 'macd_dea': 0, 'macd_hist': 0,
+                    'macd_golden_cross': False, 'days_since_60d_low': 99,
+                    'recent_chg_1d': 0, 'recent_chg_2d': 0, 'is_negative_day': False,
                 }
         except Exception:
             momentum_data[code] = {
@@ -1216,6 +1404,9 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                 'rsi_14': 50, 'pct_below_ma20': 0, 'pct_below_ma60': 0,
                 'volume_ratio': 1.0, 'pct_from_60d_low': 999,
                 'ma20': 0, 'ma60': 0,
+                'macd_dif': 0, 'macd_dea': 0, 'macd_hist': 0,
+                'macd_golden_cross': False, 'days_since_60d_low': 99,
+                'recent_chg_1d': 0, 'recent_chg_2d': 0, 'is_negative_day': False,
             }
 
     # 合并动量 & 超跌数据
@@ -1235,6 +1426,14 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
             'pct_from_60d_low': md.get('pct_from_60d_low', 999),
             'ma20': md.get('ma20', 0),
             'ma60': md.get('ma60', 0),
+            'macd_dif': md.get('macd_dif', 0),
+            'macd_dea': md.get('macd_dea', 0),
+            'macd_hist': md.get('macd_hist', 0),
+            'macd_golden_cross': md.get('macd_golden_cross', False),
+            'days_since_60d_low': md.get('days_since_60d_low', 99),
+            'recent_chg_1d': md.get('recent_chg_1d', 0),
+            'recent_chg_2d': md.get('recent_chg_2d', 0),
+            'is_negative_day': md.get('is_negative_day', False),
         })
     candidates = pd.DataFrame(mom_records)
 
@@ -1296,6 +1495,9 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
         # 超跌择时评分
         oversold = _compute_oversold_score(row.to_dict())
         details.update(oversold)
+        # 中线右侧买点评分
+        midterm = _compute_midterm_buy_score(row.to_dict())
+        details.update(midterm)
         score_results.append({
             'ts_code': row['ts_code'],
             'name': row['name'],
@@ -1417,31 +1619,17 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
                 print(f"    {t}: {c} 只")
             print(f"  平均未来赛道分: {passed['未来赛道分'].mean():.1f}")
 
-    # ── 择时超跌评分 ──
-    if '超跌总分' in passed.columns:
-        print(f"\n{'─'*70}")
-        print(f"  择时超跌评分")
-        print(f"{'─'*70}")
-        # 按超跌分排序
-        oversold_sorted = passed.sort_values('超跌总分', ascending=False).head(10)
-        avg_oversold = passed['超跌总分'].mean()
-        high_oversold = len(passed[passed['超跌总分'] >= 60])
-        print(f"  平均超跌分: {avg_oversold:.1f}")
-        print(f"  高分超跌(≥60分): {high_oversold} 只")
-        print(f"\n  ═══ 超跌择时 TOP10 ═══")
-        for idx, (_, r) in enumerate(oversold_sorted.iterrows()):
-            os_score = r.get('超跌总分', 0)
-            rsi_val = r.get('RSI_14', 50)
-            pct_ma20 = r.get('距MA20(%)', 0)
-            pct_high = r.get('距120日高(%)', 0)
-            vol_r = r.get('量比', 1.0)
-            bar = '█' * int(os_score / 10) + '░' * (10 - int(os_score / 10))
-            print(f"  {idx+1:>2}. {r['name']:>8}({r['ts_code']})  "
-                  f"超跌{os_score:>5.1f} {bar}  "
-                  f"RSI{rsi_val:>5.1f}  "
-                  f"MA20{pct_ma20:>+6.1f}%  "
-                  f"距高{pct_high:>5.1f}%  "
-                  f"量比{vol_r:>.2f}")
+    # ── 择时评分 ──
+    # 选中的择时算法排在最前
+    if timing == 'midterm' and '中线买点总分' in passed.columns:
+        _print_midterm_timing(passed)
+        if '超跌总分' in passed.columns:
+            _print_oversold_timing(passed, brief=True)
+    else:
+        if '超跌总分' in passed.columns:
+            _print_oversold_timing(passed)
+        if '中线买点总分' in passed.columns:
+            _print_midterm_timing(passed, brief=(timing == 'oversold'))
 
     # ── 操作建议 ──
     print(f"\n{'═'*70}")
@@ -1457,8 +1645,70 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
     print(f"    航天航空、前沿技术（量子/核聚变/6G等）")
     print(f"  • 争光股份对标标的聚焦于：吸附分离、高纯材料、")
     print(f"    工业卡脖子配套等细分领域")
-    print(f"  • 今日择时算法: 最大超跌（五维评分：距高+RSI+MA20偏离+缩量+60日低位）")
+    if timing == 'midterm':
+        print(f"  • 今日择时算法: 中线右侧买点（站上均线+趋势转强+MACD金叉+量能配合）")
+        print(f"    → 适合基本面壁垒高、趋势刚反转确认的中线标的")
+    else:
+        print(f"  • 今日择时算法: 最大超跌（五维评分：距高+RSI+MA20偏离+缩量+60日低位）")
+        print(f"    → 适合左侧低吸、超跌反弹的短线标的")
     print(f"{'═'*70}")
+
+
+def _print_oversold_timing(passed: pd.DataFrame, brief: bool = False):
+    """打印超跌择时TOP10"""
+    print(f"\n{'─'*70}")
+    title = "择时: 最大超跌评分（辅助）" if brief else "择时: 最大超跌评分"
+    print(f"  {title}")
+    print(f"{'─'*70}")
+    oversold_sorted = passed.sort_values('超跌总分', ascending=False).head(10)
+    avg_oversold = passed['超跌总分'].mean()
+    high_oversold = len(passed[passed['超跌总分'] >= 60])
+    print(f"  平均超跌分: {avg_oversold:.1f}  |  高分超跌(≥60分): {high_oversold} 只")
+    print(f"\n  ═══ 超跌择时 TOP10 ═══")
+    for idx, (_, r) in enumerate(oversold_sorted.iterrows()):
+        os_score = r.get('超跌总分', 0)
+        rsi_val = r.get('RSI_14', 50)
+        pct_ma20 = r.get('距MA20(%)', 0)
+        pct_high = r.get('距120日高(%)', 0)
+        vol_r = r.get('量比', 1.0)
+        bar = '█' * int(os_score / 10) + '░' * (10 - int(os_score / 10))
+        print(f"  {idx+1:>2}. {r['name']:>8}({r['ts_code']})  "
+              f"超跌{os_score:>5.1f} {bar}  "
+              f"RSI{rsi_val:>5.1f}  "
+              f"MA20{pct_ma20:>+6.1f}%  "
+              f"距高{pct_high:>5.1f}%  "
+              f"量比{vol_r:>.2f}")
+
+
+def _print_midterm_timing(passed: pd.DataFrame, brief: bool = False):
+    """打印中线右侧买点TOP10"""
+    print(f"\n{'─'*70}")
+    title = "择时: 中线右侧买点（辅助）" if brief else "择时: 中线右侧买点"
+    print(f"  {title}")
+    print(f"{'─'*70}")
+    midterm_sorted = passed.sort_values('中线买点总分', ascending=False).head(10)
+    avg_midterm = passed['中线买点总分'].mean()
+    high_midterm = len(passed[passed['中线买点总分'] >= 60])
+    print(f"  平均中线买点分: {avg_midterm:.1f}  |  强买点(≥60分): {high_midterm} 只")
+    print(f"\n  ═══ 中线右侧买点 TOP10 ═══")
+    for idx, (_, r) in enumerate(midterm_sorted.iterrows()):
+        mid_score = r.get('中线买点总分', 0)
+        penalty = r.get('形态惩罚', 0)
+        ma20_pct = r.get('距MA20(%)', 0)
+        ma60_pct = r.get('距MA60(%)', 0)
+        macd_hist = r.get('macd_hist', 0)
+        pct_high = r.get('距120日高(%)', 0)
+        vol_r = r.get('量比', 1.0)
+        bar = '█' * int(mid_score / 10) + '░' * (10 - int(mid_score / 10))
+        macd_tag = '金叉' if r.get('macd_golden_cross', False) else ('红柱' if macd_hist > 0 else '绿柱')
+        pen_tag = f"  ⚠形态罚{penalty:.0f}" if penalty > 0 else ""
+        print(f"  {idx+1:>2}. {r['name']:>8}({r['ts_code']})  "
+              f"买点{mid_score:>5.1f} {bar}  "
+              f"MA20{ma20_pct:>+6.1f}%  "
+              f"MA60{ma60_pct:>+6.1f}%  "
+              f"{macd_tag}  "
+              f"距高{pct_high:>5.1f}%  "
+              f"量比{vol_r:>.2f}{pen_tag}")
 
 
 def _print_stock_card(r):
@@ -1468,16 +1718,23 @@ def _print_stock_card(r):
     future_track = str(r.get('未来赛道', ''))
     giant_score = r.get('未来千亿总分', 0)
     oversold_score = r.get('超跌总分', 0)
+    midterm_score = r.get('中线买点总分', 0)
     print(f"  ┌─────────────────────────────────────────────────────┐")
     print(f"  │ {r['name']} ({r['ts_code']})  ┃  总分: {r['总分']}")
     print(f"  ├─────────────────────────────────────────────────────┤")
     print(f"  │ 市值 {r.get('总市值(亿)', 'N/A'):>8}亿  │ 毛利率 {r.get('毛利率(%)', 'N/A'):>5}%  │ 净利率 {r.get('净利率(%)', 'N/A'):>5}%")
     print(f"  │ ROE {r.get('ROE(%)', 'N/A'):>6}%  │ 研发 {r.get('研发占比(%)', 'N/A'):>5}%  │ 距120日高 {r.get('距120日高(%)', 'N/A'):>5}%")
-    if oversold_score > 0:
+    if oversold_score > 0 or midterm_score > 0:
         rsi = r.get('RSI_14', 50)
         ma20 = r.get('距MA20(%)', 0)
         vol_r = r.get('量比', 1.0)
-        print(f"  │ 超跌 {oversold_score:>5.1f}分  │ RSI {rsi:>5.1f}  │ 距MA20 {ma20:>+6.1f}%  │ 量比 {vol_r:>.2f}")
+        macd_tag = '金叉' if r.get('macd_golden_cross', False) else ('红柱' if r.get('macd_hist', 0) > 0 else '绿柱')
+        _parts = []
+        if oversold_score > 0:
+            _parts.append(f"超跌{oversold_score:.1f}")
+        if midterm_score > 0:
+            _parts.append(f"买点{midterm_score:.1f}")
+        print(f"  │ {' '.join(_parts)}  │ RSI {rsi:>5.1f}  │ 距MA20 {ma20:>+6.1f}%  │ 量比 {vol_r:>.2f}  │ {macd_tag}")
     if giant_score > 0:
         track = r.get('赛道天花板', 0)
         plat = r.get('平台属性', 0)
@@ -1522,8 +1779,8 @@ if __name__ == '__main__':
     parser.add_argument('--quick', action='store_true',
                         help='快速模式：跳过主营/标签查询（仅基于财务+动量筛选）')
     parser.add_argument('--timing', type=str, default='oversold',
-                        choices=['oversold'],
-                        help='择时算法（默认oversold=最大超跌）')
+                        choices=['oversold', 'midterm'],
+                        help='择时算法（oversold=最大超跌, midterm=中线右侧买点）')
 
     args = parser.parse_args()
     min_score = args.min_score

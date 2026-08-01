@@ -31,13 +31,27 @@ sys.path.append(BASE_DIR)
 
 import theme_trend_sentiment_score as theme_ts
 
-# ── 7个角色定义 ──
-ROLES = ['Leader', 'Core', 'Momentum', 'Beta', 'Follower', 'Defensive', 'Weak']
+# ── 8个角色定义 ──
+ROLES = ['Emotion Leader', 'Momentum Leader', 'Institution Core',
+         'Momentum', 'Beta', 'Follower', 'Defensive', 'Weak']
+
+# ── 聚合大类（兼容旧版 role 判断） ──
+ROLE_CLASS_MAP = {
+    'Emotion Leader': 'Leader',
+    'Momentum Leader': 'Leader',
+    'Institution Core': 'Core',
+    'Momentum': 'Momentum',
+    'Beta': 'Beta',
+    'Follower': 'Follower',
+    'Defensive': 'Defensive',
+    'Weak': 'Weak',
+}
 
 # ── 角色描述 ──
 ROLE_DESCRIPTIONS = {
-    'Leader': '相对强度最高，辨识度领先，成交额主导，趋势最稳定',
-    'Core': '机构持仓高，市值较大，趋势稳定，回撤小',
+    'Emotion Leader': '情绪龙：短线涨停/连板驱动，换手活跃，辨识度高，情绪带动性最强',
+    'Momentum Leader': '趋势龙：相对强度领先，新高突破，趋势稳定，决定板块趋势方向',
+    'Institution Core': '机构中军：成交额/市值主导，趋势稳定，回撤小，机构资金核心持仓',
     'Momentum': '加速上涨，新高突破，放量，Alpha快速提升',
     'Beta': '创业板/科创板，高波动，弹性最大',
     'Follower': '涨幅落后，Alpha改善，资金流入改善',
@@ -49,38 +63,46 @@ ROLE_DESCRIPTIONS = {
 # 每个阶段各角色的权重乘数
 LIFECYCLE_EVOLUTION = {
     '萌芽': {
-        'Leader': 3.0, 'Core': 2.0, 'Momentum': 5.0, 'Beta': 5.0,
+        'Emotion Leader': 3.0, 'Momentum Leader': 3.0, 'Institution Core': 2.0,
+        'Momentum': 5.0, 'Beta': 5.0,
         'Follower': 1.0, 'Defensive': 0.5, 'Weak': 0.0,
     },
     '成长': {  # 升温
-        'Leader': 5.0, 'Core': 5.0, 'Momentum': 4.0, 'Beta': 2.0,
+        'Emotion Leader': 5.0, 'Momentum Leader': 5.0, 'Institution Core': 5.0,
+        'Momentum': 4.0, 'Beta': 2.0,
         'Follower': 3.0, 'Defensive': 0.5, 'Weak': 0.0,
     },
     '主升': {
-        'Leader': 5.0, 'Core': 5.0, 'Momentum': 3.0, 'Beta': 1.0,
+        'Emotion Leader': 5.0, 'Momentum Leader': 5.0, 'Institution Core': 5.0,
+        'Momentum': 3.0, 'Beta': 1.0,
         'Follower': 4.0, 'Defensive': 0.5, 'Weak': 0.0,
     },
     '分歧': {  # 分歧期
-        'Leader': 3.0, 'Core': 4.0, 'Momentum': 2.0, 'Beta': 2.0,
+        'Emotion Leader': 3.0, 'Momentum Leader': 3.0, 'Institution Core': 4.0,
+        'Momentum': 2.0, 'Beta': 2.0,
         'Follower': 3.0, 'Defensive': 3.0, 'Weak': 1.0,
     },
     '退潮': {  # 衰退
-        'Leader': 2.0, 'Core': 4.0, 'Momentum': 1.0, 'Beta': 1.0,
+        'Emotion Leader': 1.5, 'Momentum Leader': 2.0, 'Institution Core': 4.0,
+        'Momentum': 1.0, 'Beta': 1.0,
         'Follower': 3.0, 'Defensive': 3.0, 'Weak': 2.0,
     },
     '弱势': {  # 筑底/弱势
-        'Leader': 1.5, 'Core': 3.0, 'Momentum': 1.5, 'Beta': 1.5,
+        'Emotion Leader': 1.0, 'Momentum Leader': 1.5, 'Institution Core': 3.0,
+        'Momentum': 1.5, 'Beta': 1.5,
         'Follower': 4.0, 'Defensive': 3.0, 'Weak': 3.0,
     },
     '潜伏': {  # 筑底前期
-        'Leader': 1.0, 'Core': 3.0, 'Momentum': 4.0, 'Beta': 3.0,
+        'Emotion Leader': 1.0, 'Momentum Leader': 1.0, 'Institution Core': 3.0,
+        'Momentum': 4.0, 'Beta': 3.0,
         'Follower': 5.0, 'Defensive': 3.0, 'Weak': 1.0,
     },
 }
 
 # ── 默认演化权重（生命周期未匹配时） ──
 DEFAULT_EVOLUTION = {
-    'Leader': 1.0, 'Core': 1.0, 'Momentum': 1.0, 'Beta': 1.0,
+    'Emotion Leader': 1.0, 'Momentum Leader': 1.0, 'Institution Core': 1.0,
+    'Momentum': 1.0, 'Beta': 1.0,
     'Follower': 1.0, 'Defensive': 1.0, 'Weak': 1.0,
 }
 
@@ -462,28 +484,46 @@ class StockRoleEngine:
         return features
 
     # ═══════════════════════════════════════════════════════════
-    # 7角色独立评分函数
+    # 8角色独立评分函数
     # ═══════════════════════════════════════════════════════════
 
-    def _score_leader(self, f: Dict) -> float:
-        """Leader: Alpha领先(权重最高) + 相对强度高 + 辨识度高 + 趋势稳定 + 历史龙头概率"""
+    def _score_emotion_leader(self, f: Dict) -> float:
+        """情绪龙: 涨停/连板驱动 + 放量加速 + 换手辨识度 + Alpha领先
+        短线情绪核心，带动性最强（游资/敢死队标的）
+        """
+        # Alpha一致性约束：α<0.50 不应成为情绪龙
+        alpha_floor_penalty = max(0.0, (0.50 - f['alpha_score']) * 1.2 + 0.06) if f['alpha_score'] < 0.50 else 0.0
         return (
-            f['alpha_score'] * 0.30 +         # 原0.20，强调强者恒强
-            f['relative_strength'] * 0.20 +    # 原0.30
-            f['recognition'] * 0.20 +
-            f['trend_stability'] * 0.15 +
-            f['historical_leader_prob'] * 0.15
-        )
+            f['historical_leader_prob'] * 0.25 +   # 涨停/连板概率（情绪龙核心）
+            f['momentum_acceleration'] * 0.20 +     # 短线加速度
+            f['volume_surge'] * 0.15 +              # 放量
+            f['alpha_score'] * 0.20 +
+            f['recognition'] * 0.20                 # 换手/成交辨识度
+        ) - alpha_floor_penalty
 
-    def _score_core(self, f: Dict) -> float:
-        """Core: Alpha领先 + 辨识度高 + 趋势稳定 + 回撤小 + 资金流入"""
+    def _score_momentum_leader(self, f: Dict) -> float:
+        """趋势龙: 相对强度领先 + 新高突破 + 趋势稳定 + Alpha持续
+        中线趋势核心，决定板块趋势方向（机构趋势资金标的）
+        """
+        alpha_floor_penalty = max(0.0, (0.50 - f['alpha_score']) * 1.2 + 0.06) if f['alpha_score'] < 0.50 else 0.0
         return (
-            f['alpha_score'] * 0.30 +         # 原0.25
-            f['recognition'] * 0.20 +
+            f['relative_strength'] * 0.25 +         # 趋势强度（趋势龙核心）
+            f['new_high_score'] * 0.20 +            # 新高突破
+            f['alpha_score'] * 0.20 +
+            f['trend_stability'] * 0.20 +           # 趋势稳定（拒绝暴涨暴跌）
+            f['money_flow'] * 0.15
+        ) - alpha_floor_penalty
+
+    def _score_institution_core(self, f: Dict) -> float:
+        """机构中军: 成交额主导 + 趋势稳定 + 低回撤 + 资金流入 + Alpha适中
+        机构核心持仓，市值大、辨识度高，情绪退潮时的板块压舱石
+        """
+        return (
+            f['recognition'] * 0.25 +               # 成交额/市值主导（机构中军核心）
             f['trend_stability'] * 0.20 +
-            (1 - f['beta_score']) * 0.05 +    # 原0.10
-            (1 - f['drawdown']) * 0.15 +
-            f['money_flow'] * 0.10
+            (1 - f['drawdown']) * 0.20 +            # 回撤小
+            f['money_flow'] * 0.15 +
+            f['alpha_score'] * 0.20
         )
 
     def _score_momentum(self, f: Dict) -> float:
@@ -558,10 +598,11 @@ class StockRoleEngine:
                 'role_features': {},
             }
 
-        # 7角色原始评分
+        # 8角色原始评分
         raw_scores = {
-            'Leader': self._score_leader(features),
-            'Core': self._score_core(features),
+            'Emotion Leader': self._score_emotion_leader(features),
+            'Momentum Leader': self._score_momentum_leader(features),
+            'Institution Core': self._score_institution_core(features),
             'Momentum': self._score_momentum(features),
             'Beta': self._score_beta(features),
             'Follower': self._score_follower(features),
@@ -602,6 +643,7 @@ class StockRoleEngine:
 
         return {
             'role': best_role,
+            'role_class': ROLE_CLASS_MAP.get(best_role, best_role),
             'role_score': round(best_score, 4),
             'role_reason': ROLE_DESCRIPTIONS.get(best_role, ''),
             'leader_similarity': round(leader_similarity, 3),
@@ -640,17 +682,15 @@ class StockRoleEngine:
             pct = count / max(len(results), 1) * 100
             print(f"    {role:<12}: {count:3d}只 ({pct:5.1f}%)")
 
-        # 输出Leader和Core
-        leaders = [(c, r) for c, r in results.items() if r['role'] == 'Leader']
-        cores = [(c, r) for c, r in results.items() if r['role'] == 'Core']
-        if leaders:
-            top_leader = max(leaders, key=lambda x: x[1]['role_score'])
-            name = self._code_map.get(top_leader[0], {}).get('name', top_leader[0])
-            print(f"  [RoleEngine] 龙头: {name}({top_leader[0]}) score={top_leader[1]['role_score']:.3f}")
-        if cores:
-            top_core = max(cores, key=lambda x: x[1]['role_score'])
-            name = self._code_map.get(top_core[0], {}).get('name', top_core[0])
-            print(f"  [RoleEngine] 中军: {name}({top_core[0]}) score={top_core[1]['role_score']:.3f}")
+        # 输出三龙三核心摘要
+        for role, label in [('Emotion Leader', '情绪龙'),
+                            ('Momentum Leader', '趋势龙'),
+                            ('Institution Core', '机构中军')]:
+            hits = [(c, r) for c, r in results.items() if r['role'] == role]
+            if hits:
+                top = max(hits, key=lambda x: x[1]['role_score'])
+                name = self._code_map.get(top[0], {}).get('name', top[0])
+                print(f"  [RoleEngine] {label}: {name}({top[0]}) score={top[1]['role_score']:.3f}")
 
 
 # ═══════════════════════════════════════════════════════════

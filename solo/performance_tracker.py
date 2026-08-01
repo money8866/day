@@ -38,8 +38,8 @@ LOOKBACK_DAYS = [3, 5, 10]
 
 # ── 信号模拟阈值（用于旧版 JSON 无法提取真实 entry_signal 时的近似） ──
 SIMULATED_SIGNAL_RULES = {
-    'BREAKOUT BUY':  {'final_min': 70, 'roles': {'Leader', 'Core', 'Momentum'}},
-    'PULLBACK BUY':  {'final_min': 60, 'roles': {'Core', 'Momentum', 'Follower', 'Beta'}},
+    'BREAKOUT BUY':  {'final_min': 70, 'roles': {'Emotion Leader', 'Momentum Leader', 'Institution Core', 'Momentum', 'Leader', 'Core'}},
+    'PULLBACK BUY':  {'final_min': 60, 'roles': {'Institution Core', 'Momentum', 'Follower', 'Beta', 'Core', 'Leader'}},
     'PRE_ROTATE BUY': {'final_min': 55, 'roles': {'Follower', 'Momentum', 'Beta', 'Defensive'}},
 }
 
@@ -55,13 +55,17 @@ STAGE_SIGNAL_MAP = {
 
 # ── Role → 推荐信号偏好（与 EntryTimingEngine.ROLE_SIGNAL_BIAS 一致） ──
 ROLE_SIGNAL_BIAS = {
-    'Leader': 'HOLD',
-    'Core': 'PULLBACK BUY',
+    'Emotion Leader': 'HOLD',
+    'Momentum Leader': 'HOLD',
+    'Institution Core': 'PULLBACK BUY',
     'Momentum': 'BREAKOUT BUY',
     'Beta': 'BREAKOUT BUY',
     'Follower': 'PRE_ROTATE BUY',
     'Defensive': 'WATCH',
     'Weak': 'WATCH',
+    # 兼容旧角色名
+    'Leader': 'HOLD',
+    'Core': 'PULLBACK BUY',
 }
 
 # ── 各信号的最低 Alpha 要求 ──
@@ -244,7 +248,7 @@ class PerformanceTracker:
             'theme': '',
             'subtheme': subtheme,
             'risk_level': 'medium',
-            'holding_priority': 3 if role in ('Leader', 'Core') else 2,
+            'holding_priority': 3 if role in ('Emotion Leader', 'Momentum Leader', 'Institution Core', 'Leader', 'Core') else 2,
             'source': 'simulated',
         }
 
@@ -346,7 +350,7 @@ class PerformanceTracker:
                         'theme': '',
                         'subtheme': si.get('subtheme', ''),
                         'risk_level': 'medium',
-                        'holding_priority': 3 if role in ('Leader', 'Core') else 2,
+                        'holding_priority': 3 if role in ('Emotion Leader', 'Momentum Leader', 'Institution Core', 'Leader', 'Core') else 2,
                         'source': 'simulated',
                     })
                     break
@@ -670,7 +674,7 @@ class PerformanceTracker:
         by_role = self.stats.get('by_role', {})
         lines.append(f"  {'Role':<15} {'数量':<6} {'5D胜率':<10} {'5D均收益':<10}")
         lines.append(f"  {'─'*40}")
-        for role in ['Leader', 'Core', 'Momentum', 'Beta', 'Follower', 'Defensive', 'Weak']:
+        for role in ['Emotion Leader', 'Momentum Leader', 'Institution Core', 'Momentum', 'Beta', 'Follower', 'Defensive', 'Weak', 'Leader', 'Core']:
             st = by_role.get(role, {})
             if st:
                 lines.append(f"  {role:<15} {st['count']:<6} {st['win_rate_5d']:<10.1%} {st['avg_return_5d']:<10.2%}")

@@ -484,13 +484,17 @@ class EntryTimingEngine:
 
     # 角色 → 推荐信号偏好
     ROLE_SIGNAL_BIAS = {
-        'Leader': 'HOLD',
-        'Core': 'PULLBACK BUY',
+        'Emotion Leader': 'HOLD',
+        'Momentum Leader': 'HOLD',
+        'Institution Core': 'PULLBACK BUY',
         'Momentum': 'BREAKOUT BUY',
         'Beta': 'BREAKOUT BUY',
         'Follower': 'PRE_ROTATE BUY',
         'Defensive': 'WATCH',
         'Weak': 'WATCH',
+        # 兼容旧角色名
+        'Leader': 'HOLD',
+        'Core': 'PULLBACK BUY',
     }
 
     def __init__(self, subtheme_name: str, stocks: List[Dict],

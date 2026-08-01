@@ -136,6 +136,7 @@ def convert_new_config_to_old(new_config, stock_basic_df):
             "concept": concept_list,
             "keywords": cfg.get("keywords", []),
             "exclude_keywords": cfg.get("exclude_keywords", []),
+            "mainbiz_exclude": cfg.get("mainbiz_exclude", []),
             "core_companies": all_core,
             "leader_companies": leader_names,
         }

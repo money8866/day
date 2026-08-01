@@ -62,15 +62,17 @@ STOCK_ALPHA_WEIGHTS = {
 
 # ── Top Picks 每角色数量配置 ──
 TOP_PICKS_CONFIG = {
-    'Leader': 1,
-    'Core': 2,
+    'Emotion Leader': 1,
+    'Momentum Leader': 1,
+    'Institution Core': 2,
     'Momentum': 2,
     'Beta': 2,
     'Follower': 2,
 }
 
 # ── 输出角色（Defensive/Weak 不输出 Top Picks） ──
-OUTPUT_ROLES = ['Leader', 'Core', 'Momentum', 'Beta', 'Follower']
+OUTPUT_ROLES = ['Emotion Leader', 'Momentum Leader', 'Institution Core',
+                'Momentum', 'Beta', 'Follower']
 
 
 class SubthemeStockScorer:

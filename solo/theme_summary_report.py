@@ -380,7 +380,7 @@ class ThemeEssenceReport:
                     sig_sym = SIGNAL_SYMBOL.get(stk['entry_signal'], ' ')
                     prio = '★' * stk['holding_priority'] if stk['holding_priority'] else ''
                     lines.append(f"    │   {sig_sym} {stk['name']:<6}({stk['code']:.9s}) "
-                                 f"{stk['role']:<10} α{stk['stock_alpha']:.0f} "
+                                 f"{stk['role']:<18} α{stk['stock_alpha']:.0f} "
                                  f"F{stk['final_score']:.0f} "
                                  f"T{stk['trade_score']:.0f} I{stk['investment_score']:.0f} "
                                  f"[{stk['entry_signal']}] {prio}")
