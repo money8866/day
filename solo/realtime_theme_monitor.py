@@ -123,6 +123,10 @@ class RealtimeThemeMonitor:
         # ── 成分股历史K线(用于主题趋势/情绪分计算) ──
         self.stock_klines = {}      # ts_code -> DataFrame (trade_date, close, high, low, vol, pct_chg)
 
+        # ── 个股技术因子缓存(从cache_daily/stk_factor_*.csv加载,含MACD/KDJ/RSI/BOLL) ──
+        self.stock_factors = {}     # ts_code -> DataFrame (含技术指标)
+        self.stock_mv = {}          # ts_code -> total_mv (总市值,单位万元)
+
         # ── 冷却控制(避免重复推送) ──
         self.last_theme_alert = {}      # theme_name -> timestamp
         self.last_market_alert = 0
@@ -147,6 +151,11 @@ class RealtimeThemeMonitor:
         self.snapshot_tail_done = False       # 14:30基准已采集
         self.last_w2s_scan_time = 0           # 弱转强扫描冷却
         self.w2s_debug_printed = False       # 弱转强首次扫描输出统计
+        self.last_tail_entry_scan_time = 0   # 尾盘突袭扫描冷却
+        self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
+        # 尾盘信号跟踪表(用于未来交易日盘后回填和胜率分析)
+        self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
+        self._init_tail_tracker()
 
         # ── 换手率缓存(从cache_daily加载) ──
         self.turnover_cache = {}              # ts_code -> turnover_rate(%)
@@ -462,24 +471,47 @@ class RealtimeThemeMonitor:
 
         tushare_count = 0
         if TS_AVAILABLE:
+            # V2: 优先从 daily_cache 表查 trade_date 当天数据
+            daily = None
             try:
-                daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
-                time.sleep(0.3)
-
-                if len(all_codes) > 3000:
-                    daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
-                    import pandas as pd
-                    daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
-
-                if not daily.empty:
-                    for _, row in daily.iterrows():
-                        self.ref_prices[row['ts_code']] = {
-                            'close': row['close'],
-                            'pct_chg': row['pct_chg']
-                        }
-                    tushare_count = len(daily)
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                cnt = get_daily_by_date_count(trade_date)
+                if cnt >= len(all_codes):
+                    daily = get_daily_by_date(trade_date)
+                    if daily is not None and not daily.empty:
+                        # 只保留需要的 codes
+                        daily = daily[daily['ts_code'].isin(all_codes)]
             except Exception as e:
-                print(f"   ⚠ Tushare获取失败: {e}, 将从新浪行情获取昨收")
+                print(f"   ⚠ daily_cache 读取失败: {e}, 走 pro.daily")
+
+            if daily is None or daily.empty:
+                try:
+                    daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
+                    time.sleep(0.3)
+
+                    if len(all_codes) > 3000:
+                        daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
+                        import pandas as pd
+                        daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
+
+                    # 回写 daily_cache 表
+                    if daily is not None and not daily.empty:
+                        try:
+                            batch_insert_daily_cache(daily)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"   ⚠ Tushare获取失败: {e}, 将从新浪行情获取昨收")
+                    daily = None
+
+            if daily is not None and not daily.empty:
+                for _, row in daily.iterrows():
+                    self.ref_prices[row['ts_code']] = {
+                        'close': row['close'],
+                        'pct_chg': row['pct_chg']
+                    }
+                tushare_count = len(daily)
+            elif daily is None:
                 tushare_count = 0
         else:
             print("   ⚠ Tushare不可用,将从新浪行情获取昨收")
@@ -668,17 +700,47 @@ class RealtimeThemeMonitor:
 
         print(f"⏳ 加载成分股K线: {len(all_codes)} 只, {start_date}~{trade_date}...")
 
-        # 分批获取(每批50只)
-        batch_size = 50
+        # V2: 优先从 daily_cache 表逐只查询，未命中的再批量下载
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        cached_codes = []
+        missing_codes = []
+        for code in all_codes:
+            try:
+                _, max_date = get_daily_cache_range(code)
+                if max_date is not None and str(max_date) >= str(trade_date):
+                    cached_codes.append(code)
+                else:
+                    missing_codes.append(code)
+            except Exception:
+                missing_codes.append(code)
+
         total_loaded = 0
-        for i in range(0, len(all_codes), batch_size):
-            batch = all_codes[i:i+batch_size]
+        # 1) 命中缓存的部分
+        for code in cached_codes:
+            try:
+                df = get_daily_cache(code, start_date, trade_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+                    grp_sorted = df.sort_values('trade_date').reset_index(drop=True)
+                    grp_sorted = grp_sorted[['trade_date', 'close', 'high', 'low', 'vol', 'pct_chg']]
+                    self.stock_klines[code] = grp_sorted
+                    total_loaded += 1
+            except Exception:
+                pass
+
+        # 2) 未命中的批量下载
+        batch_size = 50
+        for i in range(0, len(missing_codes), batch_size):
+            batch = missing_codes[i:i+batch_size]
             try:
                 df = pro.daily(ts_code=",".join(batch), start_date=start_date, end_date=trade_date)
                 if df is not None and not df.empty:
+                    try:
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
                     for code, grp in df.groupby('ts_code'):
                         grp_sorted = grp.sort_values('trade_date').reset_index(drop=True)
-                        # 只保留需要的列
                         grp_sorted = grp_sorted[['trade_date', 'close', 'high', 'low', 'vol', 'pct_chg']]
                         self.stock_klines[code] = grp_sorted
                         total_loaded += 1
@@ -714,6 +776,91 @@ class RealtimeThemeMonitor:
             print(f"[缓存] 换手率已加载: {len(self.turnover_cache)} 只 ({os.path.basename(cache_file)})")
         except Exception as e:
             print(f"⚠ 换手率缓存加载失败: {e}")
+
+    def load_stock_factors_cache(self):
+        """
+        从SQLite(stock_data.db)加载最新交易日技术指标(MACD/KDJ/RSI/BOLL/CCI)
+        以及从market_*.csv加载总市值
+        """
+        import os
+        import glob
+        import sqlite3
+        import pandas as pd
+
+        cache_daily = os.path.join(BASE_DIR, '..', 'cache_daily')
+        if not os.path.isdir(cache_daily):
+            cache_daily = r'D:\mystock\cache_daily'
+
+        # ── 1. 从SQLite加载技术因子(替代旧的stk_factor_*.csv) ──
+        db_path = os.path.join(cache_daily, 'stock_data.db')
+        if not os.path.exists(db_path):
+            print(f"⚠ SQLite数据库不存在: {db_path},技术因子未加载")
+        else:
+            try:
+                conn = sqlite3.connect(db_path, timeout=10.0)
+                # 技术指标是前一个交易日收盘后运算的,并非当日实时
+                # 取次新交易日(T-1)的数据,避免使用尚未生成的当日数据
+                rows = conn.execute(
+                    'SELECT DISTINCT trade_date FROM stk_factor_pro ORDER BY trade_date DESC LIMIT 2'
+                ).fetchall()
+                if not rows:
+                    conn.close()
+                    print("⚠ SQLite中stk_factor_pro表为空,技术因子未加载")
+                else:
+                    # 有>=2天数据时取次新(T-1),只有1天时取当天
+                    latest_date = str(rows[1][0]) if len(rows) >= 2 else str(rows[0][0])
+                    # 查询T-1交易日所有股票数据
+                    df_all = pd.read_sql_query(
+                        'SELECT * FROM stk_factor_pro WHERE trade_date = ?',
+                        conn, params=(latest_date,)
+                    )
+                    conn.close()
+
+                    if df_all.empty:
+                        print(f"⚠ SQLite中{latest_date}无技术因子数据")
+                    else:
+                        # 重命名字段 (_bfq后缀 -> 简洁名,与_tail_technical_score对齐)
+                        factor_rename = {
+                            'macd_dif_bfq': 'macd_dif',
+                            'macd_dea_bfq': 'macd_dea',
+                            'macd_bfq': 'macd',
+                            'kdj_bfq': 'kdj_j',
+                            'kdj_k_bfq': 'kdj_k',
+                            'kdj_d_bfq': 'kdj_d',
+                            'rsi_bfq_6': 'rsi_6',
+                            'rsi_bfq_12': 'rsi_12',
+                            'rsi_bfq_24': 'rsi_24',
+                            'boll_mid_bfq': 'boll_mid',
+                            'boll_upper_bfq': 'boll_upper',
+                            'boll_lower_bfq': 'boll_lower',
+                            'cci_bfq': 'cci',
+                        }
+                        valid_rename = {k: v for k, v in factor_rename.items() if k in df_all.columns}
+                        df_all = df_all.rename(columns=valid_rename)
+
+                        # 按ts_code分组存储
+                        for code, group_df in df_all.groupby('ts_code'):
+                            self.stock_factors[code] = group_df.sort_values('trade_date').reset_index(drop=True)
+
+                        print(f"[缓存] 技术因子已加载: {len(self.stock_factors)} 只 (SQLite {latest_date})")
+            except Exception as e:
+                print(f"⚠ SQLite技术因子加载失败: {e}")
+
+        # ── 2. 加载总市值 ──
+        trade_date = self._get_last_trade_date()
+        mv_file = os.path.join(cache_daily, f'market_{trade_date}.csv')
+        if not os.path.exists(mv_file):
+            files = glob.glob(os.path.join(cache_daily, 'market_*.csv'))
+            if files:
+                mv_file = max(files, key=os.path.getmtime)
+        if os.path.exists(mv_file):
+            try:
+                df_mv = pd.read_csv(mv_file)
+                # total_mv 单位: 万元
+                self.stock_mv = dict(zip(df_mv['ts_code'], df_mv['total_mv'].astype(float)))
+                print(f"[缓存] 总市值已加载: {len(self.stock_mv)} 只 ({os.path.basename(mv_file)})")
+            except Exception as e:
+                print(f"⚠ 总市值加载失败: {e}")
 
     # ── 计算主题趋势/情绪/综合分(每15分钟) ──
     # ── 主题生命周期判定(启动/主升/分歧/退潮) ──
@@ -2583,6 +2730,9 @@ class RealtimeThemeMonitor:
         # 加载换手率缓存(用于弱转强量价评分)
         self.load_turnover_cache()
 
+        # 加载技术因子+总市值缓存(用于尾盘突袭技术形态评分+市值过滤)
+        self.load_stock_factors_cache()
+
         # ── 连接 ──
         if TDX_AVAILABLE:
             if not self.connect():
@@ -2776,6 +2926,78 @@ class RealtimeThemeMonitor:
                                 self.send_wechat(f"🎯 弱转强 {now.strftime('%H:%M')}", content)
 
                         self.last_w2s_scan_time = time.time()
+
+                # ── 14:50后每2分钟扫描「猎尾」尾盘突袭 ──
+                if now.hour == 14 and now.minute >= 50:
+                    if time.time() - self.last_tail_entry_scan_time >= 120:
+                        tail_signals = self.scan_tail_end_entry()
+                        # 写入跟踪表(用于未来交易日盘后回填和胜率分析)
+                        self._save_tail_signals_to_tracker(tail_signals)
+                        if tail_signals:
+                            # 控制台输出
+                            print(f"\n{'='*110}")
+                            print(f"🎯 「猎尾」尾盘突袭 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'攻击':>4} {'结构':>4} {'位置':>4} {'共振':>4} {'技术':>4} {'诱多':>4} {'信号':<6} {'涨幅':>6} {'关键特征'}")
+                            print(f"{'-'*110}")
+                            for i, s in enumerate(tail_signals[:10], 1):
+                                emoji = {'强买入': '✅', '买入': '🟢', '关注': '👀'}.get(s['signal'], '')
+                                d = s.get('detail', {})
+                                feats = []
+                                if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
+                                if d.get('tail_vol_ratio') and d['tail_vol_ratio'] > 0.05: feats.append(f"尾量{d['tail_vol_ratio']:.2f}")
+                                if d.get('amplitude') and d['amplitude'] < 5: feats.append(f"振幅{d['amplitude']}%")
+                                if d.get('vol_ratio_5d') and d['vol_ratio_5d'] < 0.85: feats.append(f"缩量{d['vol_ratio_5d']:.2f}")
+                                if d.get('close_ratio') and d['close_ratio'] > 0.95: feats.append('光头阳')
+                                if d.get('layer') == 'leader': feats.append('龙头')
+                                # 技术因子标记
+                                if d.get('macd') == '零上多头': feats.append('MACD零上')
+                                elif d.get('macd') == '多头': feats.append('MACD多头')
+                                if d.get('kdj') == '金叉': feats.append('KDJ金叉')
+                                if d.get('rsi_6'): feats.append(f"RSI{d['rsi_6']:.0f}")
+                                # 诱多红旗标记
+                                trap_flags = []
+                                if d.get('trap_weak_day'): trap_flags.append('⚠全天弱')
+                                if d.get('trap_long_lower'): trap_flags.append('⚠长下影')
+                                if d.get('trap_high_stall'): trap_flags.append('⚠高位滞涨')
+                                if d.get('trap_isolated'): trap_flags.append('⚠孤立')
+                                if d.get('trap_upper_shadow'): trap_flags.append('⚠上影')
+                                feats.extend(trap_flags)
+                                feat_str = ' '.join(feats[:6]) if feats else '-'
+                                trap_str = f"-{s.get('trap_penalty', 0)}" if s.get('trap_penalty', 0) > 0 else '0'
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['attack_score']:>4} {s['structure_score']:>4} {s['position_score']:>4} {s['theme_score']:>4} {s.get('tech_score', 0):>4} {trap_str:>4} {emoji:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
+                            print(f"{'='*110}\n")
+
+                            # 推送强买入+买入信号到微信
+                            buy_signals = [s for s in tail_signals if s['signal'] in ('强买入', '买入')]
+                            if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
+                                lines = []
+                                for s in buy_signals[:5]:
+                                    d = s.get('detail', {})
+                                    feats = []
+                                    if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
+                                    if d.get('vol_ratio_5d') and d['vol_ratio_5d'] < 0.85: feats.append(f"缩量")
+                                    layer_tag = {'leader': '龙头', 'middle': '中军'}.get(d.get('layer', ''), '')
+                                    feats.append(layer_tag) if layer_tag else None
+                                    # 技术因子标记
+                                    tech_tags = []
+                                    if d.get('macd') == '零上多头': tech_tags.append('MACD零上')
+                                    elif d.get('macd') == '多头': tech_tags.append('MACD多头')
+                                    if d.get('kdj') == '金叉': tech_tags.append('KDJ金叉')
+                                    if tech_tags:
+                                        feats.append(' '.join(tech_tags))
+                                    # 诱多警示
+                                    trap_warns = []
+                                    if d.get('trap_weak_day'): trap_warns.append('⚠全天弱尾拉')
+                                    if d.get('trap_long_lower'): trap_warns.append('⚠长下影')
+                                    if d.get('trap_high_stall'): trap_warns.append('⚠高位滞涨')
+                                    if trap_warns:
+                                        feats.append(' '.join(trap_warns))
+                                    feat_str = ' '.join(feats) if feats else ''
+                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
+                                content = f"🎯 「猎尾」尾盘买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                                self.send_wechat(f"🎯 猎尾买入 {now.strftime('%H:%M')}", content)
+
+                        self.last_tail_entry_scan_time = time.time()
 
                 time.sleep(60 - (datetime.now().second % 60))
 
@@ -3152,6 +3374,802 @@ class RealtimeThemeMonitor:
                 print(f"  最高分: {max(max_scores)}  平均分: {sum(max_scores)/len(max_scores):.1f}")
             print(f"  换手率缓存: {len(self.turnover_cache)}只")
             print(f"  分时快照: {len(self.intraday_snapshots)}只")
+            print(f"{'='*70}\n")
+
+        signals.sort(key=lambda x: x['total_score'], reverse=True)
+        return signals
+
+    # ════════════════════════════════════════════
+    # 「猎尾」2:50尾盘突袭战法
+    # ════════════════════════════════════════════
+    def _tail_hard_filter(self, ts_code, q):
+        """
+        尾盘突袭硬过滤: 返回 (True/False, reason)
+        排除: 涨停/跌停/振幅>8%/收盘跌>2.5%/不在主题/连板≥2
+        """
+        pct = q.get('pct_chg', 0)
+        high = q.get('high', 0)
+        low = q.get('low', 0)
+        last_close = q.get('last_close', 0)
+        price = q.get('price', 0)
+
+        # 1. 涨停/跌停排除
+        limit_up = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+        if pct >= limit_up:
+            return False, '涨停'
+        if pct <= -9.5:
+            return False, '跌停'
+
+        # 2. 振幅>8%排除 (太妖,次日方向不确定)
+        if last_close > 0 and high > 0 and low > 0:
+            amplitude = (high - low) / last_close * 100
+            if amplitude > 8:
+                return False, f'振幅{amplitude:.1f}%'
+
+        # 3. 收盘跌>2.5%排除 (弱势,次日大概率继续跌)
+        if pct < -2.5:
+            return False, f'跌{pct:.1f}%'
+
+        # 4. 不在任何主题中排除
+        themes = self.stock_themes.get(ts_code, [])
+        if not themes:
+            return False, '无主题'
+
+        # 5. 连续涨停≥2天排除 (已过度拉伸,次日追高风险大)
+        kl = self.stock_klines.get(ts_code)
+        if kl is not None and len(kl) >= 3:
+            # 检查昨日和前天是否涨停
+            prev_pct = float(kl['pct_chg'].iloc[-1]) if 'pct_chg' in kl.columns else 0
+            prev2_pct = float(kl['pct_chg'].iloc[-2]) if 'pct_chg' in kl.columns else 0
+            prev_limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+            if prev_pct >= prev_limit and prev2_pct >= prev_limit:
+                return False, '连板2天'
+
+        # 6. 距MA20太远(>25%)排除,高位风险
+        if kl is not None and len(kl) >= 20:
+            ma20 = kl['close'].iloc[-20:].mean()
+            if price > 0 and price > ma20 * 1.25:
+                return False, '距MA20>25%'
+
+        # 7. 近5日涨幅>15%排除 (高位滞涨,尾盘拉升多为出货)
+        if kl is not None and len(kl) >= 6:
+            close_5d_ago = float(kl['close'].iloc[-6]) if len(kl) >= 6 else float(kl['close'].iloc[0])
+            if close_5d_ago > 0:
+                gain_5d = (price - close_5d_ago) / close_5d_ago * 100
+                if gain_5d > 15:
+                    return False, f'5日涨{gain_5d:.1f}%'
+
+        # 8. 换手率异常排除 (>15%对倒出货嫌疑, <0.5%流动性差易操纵)
+        turn_rate = self.turnover_cache.get(ts_code, 0)
+        if turn_rate > 0:
+            if turn_rate > 15:
+                return False, f'换手{turn_rate:.1f}%过高'
+            if turn_rate < 0.5:
+                return False, f'换手{turn_rate:.1f}%过低'
+
+        # 9. 主题强度<-1排除 (主题退潮期的尾盘拉升多为诱多)
+        themes = self.stock_themes.get(ts_code, [])
+        if themes:
+            best_strength = max(
+                (self.theme_score_history[t][-1] if self.theme_score_history.get(t) else 0)
+                for t in themes
+            )
+            if best_strength < -1:
+                return False, '主题退潮'
+
+        # 10. 总市值<8亿排除 (小盘股易被操纵,尾盘拉升多为游资诱多)
+        total_mv = self.stock_mv.get(ts_code, 0)
+        if total_mv > 0:
+            # total_mv 单位万元, 8亿=80000万
+            if total_mv < 80000:
+                return False, f'市值{total_mv/10000:.1f}亿'
+
+        return True, 'OK'
+
+    def _tail_trap_penalty(self, ts_code, q):
+        """
+        诱多风险扣分: 返回 (扣分, detail)
+        识别"尾盘拉高次日低开"的典型诱多形态
+
+        四大诱多红旗:
+        1. 全天弱势+尾盘急拉 (-15分): 最危险的诱多形态
+        2. 长下影线+尾盘拉回 (-10分): 盘中暴跌尾盘拉回,次日大概率低开
+        3. 高位滞涨+尾盘偷袭 (-8分): 近期涨幅大但当日涨不动,尾盘偷袭
+        4. 孤立拉升无配合 (-5分): 主题内无涨停配合,单只孤立异动
+        """
+        snap = self.intraday_snapshots.get(ts_code, {})
+        penalty = 0
+        detail = {}
+
+        open_p = q.get('open', 0)
+        close = q.get('price', 0)
+        high = q.get('high', 0)
+        low = q.get('low', 0)
+        last_close = q.get('last_close', 0)
+        pct = q.get('pct_chg', 0)
+        tail_base_price = snap.get('tail_base_price', 0)
+
+        # ── 红旗1: 全天弱势+尾盘急拉 (-15分) ──
+        # 判断: 尾盘拉升>0.5% 但 全天下跌(close<open)
+        if tail_base_price > 0 and close > 0 and open_p > 0:
+            tail_rally = (close - tail_base_price) / tail_base_price * 100
+            day_change = (close - open_p) / open_p * 100
+            if tail_rally > 0.5 and day_change < -0.3:
+                penalty += 15
+                detail['trap_weak_day'] = f'全天{day_change:+.1f}%尾拉{tail_rally:+.1f}%'
+            elif tail_rally > 0.3 and day_change < 0:
+                penalty += 8
+                detail['trap_weak_day'] = f'全天{day_change:+.1f}%尾拉{tail_rally:+.1f}%'
+
+        # ── 红旗2: 长下影线+尾盘拉回 (-10分) ──
+        # 判断: 下影线长度 > 实体2倍 且 收盘在上半区(尾盘拉回)
+        if last_close > 0 and high > 0 and low > 0 and close > 0 and open_p > 0:
+            body = abs(close - open_p)
+            lower_shadow = min(open_p, close) - low
+            upper_shadow = high - max(open_p, close)
+            price_range = high - low
+            if price_range > 0 and last_close > 0:
+                # 下影线占振幅比例
+                lower_ratio = lower_shadow / price_range
+                body_ratio = body / price_range
+                # 长下影线(>40%振幅) + 小实体(<30%振幅) = 盘中暴跌尾盘拉回
+                if lower_ratio > 0.4 and body_ratio < 0.3:
+                    penalty += 10
+                    detail['trap_long_lower'] = f'下影{lower_ratio:.0%}实体{body_ratio:.0%}'
+                # 上影线长(冲高回落) + 尾盘在下半区 = 次日大概率跌
+                elif upper_shadow > body * 2 and close < (high + low) / 2:
+                    penalty += 5
+                    detail['trap_upper_shadow'] = True
+
+        # ── 红旗3: 高位滞涨+尾盘偷袭 (-8分) ──
+        # 判断: 近5日涨幅>8% 但 当日涨幅<1% 且 尾盘拉升
+        kl = self.stock_klines.get(ts_code)
+        if kl is not None and len(kl) >= 6:
+            close_5d_ago = float(kl['close'].iloc[-6])
+            if close_5d_ago > 0 and close > 0:
+                gain_5d = (close - close_5d_ago) / close_5d_ago * 100
+                if gain_5d > 8 and pct < 1 and tail_base_price > 0:
+                    tail_rally = (close - tail_base_price) / tail_base_price * 100 if tail_base_price > 0 else 0
+                    if tail_rally > 0.3:
+                        penalty += 8
+                        detail['trap_high_stall'] = f'5日{gain_5d:.1f}%今{pct:+.1f}%'
+
+        # ── 红旗4: 孤立拉升无配合 (-5分) ──
+        # 判断: 主题强度<1 且 主题内涨停=0
+        themes = self.stock_themes.get(ts_code, [])
+        if themes:
+            best_strength = 0
+            best_zt = 0
+            for t in themes:
+                strength = self.theme_score_history[t][-1] if self.theme_score_history.get(t) else 0
+                zt_cnt = 0
+                for code, name, ly in self.theme_stocks.get(t, []):
+                    qt = self.quotes.get(code)
+                    if qt:
+                        limit = 19.5 if code.startswith(('300', '688')) else 9.5
+                        if qt.get('pct_chg', 0) >= limit:
+                            zt_cnt += 1
+                if strength > best_strength:
+                    best_strength = strength
+                    best_zt = zt_cnt
+            if best_strength < 1 and best_zt == 0:
+                penalty += 5
+                detail['trap_isolated'] = f'强度{best_strength:.1f}涨停0'
+
+        return min(penalty, 30), detail
+
+    def _tail_attack_score(self, ts_code, q):
+        """尾盘攻击力 (25分): 尾盘拉升幅度 + 尾盘量能爆发 + 收盘位置"""
+        snap = self.intraday_snapshots.get(ts_code, {})
+        score = 0
+        detail = {}
+
+        tail_base_price = snap.get('tail_base_price', 0)
+        tail_base_vol = snap.get('tail_base_vol', 0)
+        morning_vol = snap.get('morning_vol', 0)
+        current_price = q.get('price', 0)
+        current_vol = q.get('vol', 0)
+        high = q.get('high', 0)
+
+        # ── 1. 尾盘拉升幅度 (8分) ──
+        if tail_base_price > 0 and current_price > 0:
+            tail_rally = (current_price - tail_base_price) / tail_base_price * 100
+            detail['tail_rally'] = round(tail_rally, 2)
+            if tail_rally > 1.0:
+                score += 8
+            elif tail_rally > 0.5:
+                score += 6
+            elif tail_rally > 0.2:
+                score += 4
+            elif tail_rally > 0:
+                score += 2
+        else:
+            detail['tail_rally'] = 0
+
+        # ── 2. 尾盘量能爆发 (10分) ──
+        if tail_base_vol > 0 and morning_vol > 0 and current_vol > tail_base_vol:
+            tail_vol_inc = current_vol - tail_base_vol
+            tail_vol_ratio = tail_vol_inc / morning_vol
+            detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+            if tail_vol_ratio > 0.25:
+                score += 10
+            elif tail_vol_ratio > 0.18:
+                score += 8
+            elif tail_vol_ratio > 0.10:
+                score += 5
+            elif tail_vol_ratio > 0.05:
+                score += 3
+        else:
+            detail['tail_vol_ratio'] = 0
+
+        # ── 3. 收盘位置 (7分): 光头阳线=次日惯性高开 ──
+        if high > 0 and current_price > 0:
+            close_ratio = current_price / high
+            detail['close_ratio'] = round(close_ratio, 2)
+            if close_ratio > 0.98:
+                score += 7
+            elif close_ratio > 0.95:
+                score += 5
+            elif close_ratio > 0.90:
+                score += 3
+        else:
+            detail['close_ratio'] = 0
+
+        return min(score, 25), detail
+
+    def _tail_structure_score(self, ts_code, q):
+        """全天结构质量 (35分): 振幅控制 + 阳线实体 + 缩量程度"""
+        high = q.get('high', 0)
+        low = q.get('low', 0)
+        last_close = q.get('last_close', 0)
+        price = q.get('price', 0)
+        pct = q.get('pct_chg', 0)
+        vol = q.get('vol', 0)
+        score = 0
+        detail = {}
+
+        # ── 1. 全天振幅控制 (12分): 振幅越小=主力控盘越强 ──
+        if last_close > 0 and high > 0 and low > 0:
+            amplitude = (high - low) / last_close * 100
+            detail['amplitude'] = round(amplitude, 1)
+            if amplitude < 3:
+                score += 12
+            elif amplitude < 5:
+                score += 8
+            elif amplitude < 7:
+                score += 5
+        else:
+            detail['amplitude'] = 0
+
+        # ── 2. 阳线实体 (10分): 收阳=多头占优 ──
+        if pct > 2:
+            score += 10
+            detail['yang_line'] = True
+        elif pct > 1:
+            score += 7
+            detail['yang_line'] = True
+        elif pct > 0:
+            score += 4
+            detail['yang_line'] = True
+        else:
+            detail['yang_line'] = False
+
+        # ── 3. 缩量程度 (13分): 缩量=洗盘结束,蓄力待发 ──
+        kl = self.stock_klines.get(ts_code)
+        if kl is not None and len(kl) >= 5:
+            avg_vol_5d = kl['vol'].iloc[-5:].mean()
+            if avg_vol_5d > 0:
+                vol_ratio = vol / avg_vol_5d
+                detail['vol_ratio_5d'] = round(vol_ratio, 2)
+                if vol_ratio < 0.7:
+                    score += 13  # 极度缩量: 浮筹清洗干净
+                elif vol_ratio < 0.85:
+                    score += 10
+                elif vol_ratio < 1.0:
+                    score += 7
+                elif vol_ratio < 1.2:
+                    score += 4
+                else:
+                    score += 1  # 放量也给1分,不是扣分项
+        else:
+            detail['vol_ratio_5d'] = 0
+
+        return min(score, 35), detail
+
+    def _tail_position_score(self, ts_code, q):
+        """位置安全边际 (20分): 距MA5 + 距MA10 + 距20日高回撤"""
+        price = q.get('price', 0)
+        score = 0
+        detail = {}
+
+        kl = self.stock_klines.get(ts_code)
+        if kl is None or len(kl) < 20:
+            detail['ma5_dist'] = 0
+            detail['ma10_dist'] = 0
+            detail['pullback'] = 0
+            return 5, detail  # 无K线数据给基础分
+
+        ma5 = kl['close'].iloc[-5:].mean()
+        ma10 = kl['close'].iloc[-10:].mean()
+        high_20d = kl['high'].iloc[-20:].max()
+
+        # ── 1. 距MA5 (8分): 在MA5附近=短线支撑有效 ──
+        if price > 0 and ma5 > 0:
+            ma5_dist = abs(price - ma5) / ma5 * 100
+            detail['ma5_dist'] = round(ma5_dist, 1)
+            if ma5_dist < 2:
+                score += 8
+            elif ma5_dist < 4:
+                score += 5
+            elif ma5_dist < 6:
+                score += 2
+        else:
+            detail['ma5_dist'] = 0
+
+        # ── 2. 距MA10 (7分): 在MA10上方=中期趋势健康 ──
+        if price > 0 and ma10 > 0:
+            ma10_ratio = price / ma10
+            detail['ma10_ratio'] = round(ma10_ratio, 2)
+            if 0.97 <= ma10_ratio <= 1.05:
+                score += 7
+            elif 0.94 <= ma10_ratio <= 1.08:
+                score += 4
+            else:
+                score += 1
+        else:
+            detail['ma10_ratio'] = 0
+
+        # ── 3. 距20日高回撤 (5分): 有回撤=有上涨空间 ──
+        if price > 0 and high_20d > 0:
+            pullback = (high_20d - price) / high_20d * 100
+            detail['pullback'] = round(pullback, 1)
+            if pullback > 5:
+                score += 5
+            elif pullback > 2:
+                score += 3
+            elif pullback > 0:
+                score += 1
+        else:
+            detail['pullback'] = 0
+
+        return min(score, 20), detail
+
+    def _tail_technical_score(self, ts_code, q):
+        """
+        技术形态加分 (20分,基于stk_factor缓存)
+        利用MACD/KDJ/RSI/BOLL/CCI等技术指标识别技术面健康度
+        
+        这是胜率提升的核心因子:
+        - MACD金叉/多头: 趋势向上,次日延续概率高
+        - KDJ J<80未超买: 有上涨空间,不易冲高回落
+        - RSI 40-70健康区: 不超买不超卖,走势稳健
+        - 收盘在BOLL中轨上方: 中期趋势偏多
+        - CCI正向: 动能为正
+        """
+        score = 0
+        detail = {}
+
+        fdf = self.stock_factors.get(ts_code)
+        if fdf is None or fdf.empty:
+            return 0, detail  # 无技术因子数据不加分
+
+        # 取最新一行
+        row = fdf.iloc[-1]
+
+        # ── 1. MACD趋势 (6分) ──
+        try:
+            dif = float(row.get('macd_dif', 0))
+            dea = float(row.get('macd_dea', 0))
+            macd = float(row.get('macd', 0))
+            if dif > dea:  # MACD多头
+                score += 4
+                detail['macd'] = '多头'
+                if dif > 0 and dea > 0:  # 零轴上方多头=强势
+                    score += 2
+                    detail['macd'] = '零上多头'
+        except Exception:
+            pass
+
+        # ── 2. KDJ超买控制 (5分) ──
+        try:
+            kdj_j = float(row.get('kdj_j', 50))
+            kdj_k = float(row.get('kdj_k', 50))
+            detail['kdj_j'] = round(kdj_j, 1)
+            # J<K 且 J<80 = 未超买且有金叉倾向
+            if kdj_j < 80:
+                if kdj_j > kdj_k:  # J上穿K,金叉
+                    score += 5
+                    detail['kdj'] = '金叉'
+                elif kdj_j > 20:  # 未超卖
+                    score += 3
+                    detail['kdj'] = '健康'
+            # J>90超买不加分
+        except Exception:
+            pass
+
+        # ── 3. RSI健康度 (5分) ──
+        try:
+            rsi_6 = float(row.get('rsi_6', 50))
+            rsi_12 = float(row.get('rsi_12', 50))
+            detail['rsi_6'] = round(rsi_6, 1)
+            # RSI 40-70 为健康区,不超买不超卖
+            if 40 <= rsi_6 <= 70:
+                score += 5
+            elif 30 <= rsi_6 < 40:
+                score += 3  # 接近超卖,有反弹空间
+            elif 70 < rsi_6 <= 80:
+                score += 2  # 偏强但未严重超买
+            # RSI6>RSI12 = 短期强于中期
+            if rsi_6 > rsi_12:
+                score += 0  # 已在上面的区间内体现
+        except Exception:
+            pass
+
+        # ── 4. BOLL位置 (4分) ──
+        try:
+            close = float(row.get('close', 0))
+            boll_mid = float(row.get('boll_mid', 0))
+            boll_upper = float(row.get('boll_upper', 0))
+            boll_lower = float(row.get('boll_lower', 0))
+            if close > 0 and boll_mid > 0:
+                # 收盘在中轨上方=中期偏多
+                if close > boll_mid:
+                    score += 2
+                    detail['boll'] = '中轨上方'
+                    # 接近上轨但不冲破=强势但未过热
+                    if boll_upper > close and (boll_upper - close) / close * 100 < 3:
+                        score += 1
+                        detail['boll'] = '接近上轨'
+                # 在下轨附近=超卖反弹位
+                elif boll_lower > 0 and (close - boll_lower) / boll_lower * 100 < 2:
+                    score += 1
+                    detail['boll'] = '下轨支撑'
+        except Exception:
+            pass
+
+        return min(score, 20), detail
+
+    def _tail_theme_score(self, ts_code, q):
+        """主题共振 (20分): 主题强度 + 龙头地位 + 涨停配合"""
+        score = 0
+        detail = {}
+
+        themes = self.stock_themes.get(ts_code, [])
+        if not themes:
+            return 0, detail
+
+        # 取最强主题
+        best_theme = themes[0]
+        best_strength = 0
+        best_layer = 'follower'
+        best_zt_count = 0
+
+        for theme_name in themes:
+            # 主题强度
+            strength = 0
+            if self.theme_score_history.get(theme_name):
+                strength = self.theme_score_history[theme_name][-1] if self.theme_score_history[theme_name] else 0
+
+            # 涨停统计
+            stocks = self.theme_stocks.get(theme_name, [])
+            zt_cnt = 0
+            layer = 'follower'
+            for code, name, ly in stocks:
+                if code == ts_code:
+                    layer = ly
+                qt = self.quotes.get(code)
+                if qt:
+                    limit = 19.5 if code.startswith(('300', '688')) else 9.5
+                    if qt.get('pct_chg', 0) >= limit:
+                        zt_cnt += 1
+
+            if strength > best_strength:
+                best_strength = strength
+                best_theme = theme_name
+                best_layer = layer
+                best_zt_count = zt_cnt
+
+        detail['theme'] = best_theme
+        detail['theme_strength'] = round(best_strength, 1)
+        detail['theme_zt'] = best_zt_count
+        detail['layer'] = best_layer
+
+        # ── 主题强度 (8分) ──
+        if best_strength > 2:
+            score += 8
+        elif best_strength > 0:
+            score += 6
+        elif best_strength > -1:
+            score += 4
+        else:
+            score += 2
+
+        # ── 龙头地位 (8分) ──
+        if best_layer == 'leader':
+            score += 8
+        elif best_layer == 'middle':
+            score += 6
+        else:
+            score += 3
+
+        # ── 主题内有涨停配合 (4分) ──
+        if best_zt_count >= 3:
+            score += 4
+        elif best_zt_count >= 2:
+            score += 3
+        elif best_zt_count >= 1:
+            score += 2
+
+        return min(score, 20), detail
+
+    def _init_tail_tracker(self):
+        """初始化尾盘信号跟踪表(独立SQLite,便于后续回填分析)"""
+        try:
+            import sqlite3 as _sqlite3
+            conn = _sqlite3.connect(self.tail_tracker_db, timeout=10.0)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS tail_signal_tracker (
+                    signal_date   TEXT NOT NULL,
+                    signal_time   TEXT,
+                    ts_code       TEXT NOT NULL,
+                    name          TEXT,
+                    theme         TEXT,
+                    signal        TEXT,
+                    total_score   INTEGER,
+                    attack_score  INTEGER,
+                    structure_score INTEGER,
+                    position_score INTEGER,
+                    theme_score   INTEGER,
+                    tech_score    INTEGER,
+                    trap_penalty  INTEGER,
+                    pct_chg       REAL,
+                    price         REAL,
+                    detail_json   TEXT,
+                    -- 跟踪回填字段(未来交易日盘后更新)
+                    next_open     REAL,
+                    next_close    REAL,
+                    next_pct_chg  REAL,
+                    next_high     REAL,
+                    next_low      REAL,
+                    next_5d_pct   REAL,
+                    next_10d_pct  REAL,
+                    max_gain      REAL,
+                    max_drawdown  REAL,
+                    exit_date     TEXT,
+                    exit_price    REAL,
+                    exit_reason   TEXT,
+                    pnl           REAL,
+                    status        TEXT DEFAULT 'pending',
+                    note          TEXT,
+                    updated_at    TEXT,
+                    PRIMARY KEY (signal_date, ts_code)
+                )
+            ''')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_tracker_date ON tail_signal_tracker(signal_date)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_tracker_status ON tail_signal_tracker(status)')
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠ 尾盘信号跟踪表初始化失败: {e}")
+
+    def _save_tail_signals_to_tracker(self, signals):
+        """
+        将尾盘信号写入跟踪表(同一交易日同一只股票覆盖,保留最新评分)
+
+        实盘入表筛选条件(方案K,目标10~30只可操作信号):
+        1. 总分 >= 88
+        2. 无诱多风险扣分 (trap_penalty == 0)
+        3. 技术分 >= 12 (MACD多头+KDJ健康+RSI健康区等共振)
+        4. 排除北交所 (9xxxxx/4xxxxx)
+        5. 每主题最多TOP2 (按总分降序,避免同主题过度集中)
+        """
+        if not signals:
+            return
+        try:
+            import sqlite3 as _sqlite3
+            import json as _json
+            now = datetime.now()
+            signal_date = self._get_last_trade_date()
+            signal_time = now.strftime('%H:%M:%S')
+
+            # ── 筛选条件 1~4 ──
+            candidates = []
+            for s in signals:
+                # 基础门槛: 买入级及以上
+                if s.get('signal') not in ('强买入', '买入'):
+                    continue
+                # 总分 >= 88
+                if s.get('total_score', 0) < 88:
+                    continue
+                # 无诱多风险
+                if s.get('trap_penalty', 0) != 0:
+                    continue
+                # 技术分 >= 12
+                if s.get('tech_score', 0) < 12:
+                    continue
+                # 排除北交所
+                code = s.get('ts_code', '')
+                if code.startswith(('9', '4')):
+                    continue
+                candidates.append(s)
+
+            # ── 筛选条件 5: 每主题TOP2 ──
+            theme_groups = {}
+            for s in candidates:
+                theme = s.get('theme', '其他')
+                theme_groups.setdefault(theme, []).append(s)
+
+            final_signals = []
+            for theme, stocks in theme_groups.items():
+                # 按总分降序排序,取TOP2
+                stocks_sorted = sorted(stocks, key=lambda x: -x.get('total_score', 0))
+                final_signals.extend(stocks_sorted[:2])
+
+            if not final_signals:
+                print(f"[跟踪] 无信号满足筛选条件(>=88+无诱多+技>=12+排北交所+每主题TOP2)")
+                return
+
+            conn = _sqlite3.connect(self.tail_tracker_db, timeout=10.0)
+            for s in final_signals:
+                conn.execute('''
+                    INSERT OR REPLACE INTO tail_signal_tracker (
+                        signal_date, signal_time, ts_code, name, theme, signal,
+                        total_score, attack_score, structure_score, position_score,
+                        theme_score, tech_score, trap_penalty, pct_chg, price, detail_json,
+                        next_open, next_close, next_pct_chg, next_high, next_low,
+                        next_5d_pct, next_10d_pct, max_gain, max_drawdown,
+                        exit_date, exit_price, exit_reason, pnl, status, note, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL, 'pending', NULL, ?
+                    )
+                ''', (
+                    signal_date, signal_time, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
+                    s['total_score'], s['attack_score'], s['structure_score'], s['position_score'],
+                    s['theme_score'], s.get('tech_score', 0), s.get('trap_penalty', 0),
+                    s.get('pct_chg', 0), s.get('price', 0), _json.dumps(s.get('detail', {}), ensure_ascii=False),
+                    signal_time,
+                ))
+            conn.commit()
+            conn.close()
+            print(f"[跟踪] 已写入{len(final_signals)}只精选信号到跟踪表 (>=88+无诱多+技>=12+每主题TOP2, signal_date={signal_date})")
+        except Exception as e:
+            print(f"⚠ 尾盘信号写入跟踪表失败: {e}")
+
+    def scan_tail_end_entry(self):
+        """
+        「猎尾」2:50尾盘突袭战法 — 次日套利最高胜率
+
+        14:50后扫描全市场主题内股票，识别尾盘抢筹信号。
+        评分模型 (100分 + 20技术分 - 诱多扣分):
+        - 全天结构   (35分): 振幅控制 + 阳线实体 + 缩量程度
+        - 尾盘攻击力 (25分): 尾盘拉升幅度 + 量能爆发 + 收盘位置
+        - 主题共振   (20分): 主题强度 + 龙头地位 + 涨停配合
+        - 位置安全   (20分): 距MA5/MA10 + 距20日高回撤
+        - 技术形态   (20分): MACD/KDJ/RSI/BOLL
+        - 诱多扣分   (≤30分): 四大诱多红旗
+
+        硬过滤: 涨停/跌停/振幅>8%/跌>2.5%/不在主题/连板≥2/距MA20>25%
+        信号: ≥85强买入  ≥65买入  ≥50关注
+
+        返回: 信号列表,按总分降序
+        """
+        now = datetime.now()
+        signals = []
+
+        # 首次扫描输出诊断统计
+        if not self.tail_entry_debug_printed:
+            debug_stats = {
+                'total_in_theme': 0, 'no_quote': 0,
+                'hardfilter_fail': {}, 'score_dist': {'<50': 0, '50-64': 0, '65-84': 0, '>=85': 0},
+                'max_scores': []
+            }
+
+        # 遍历所有在主题中的股票
+        for ts_code, themes in self.stock_themes.items():
+            if not themes:
+                continue
+
+            if not self.tail_entry_debug_printed:
+                debug_stats['total_in_theme'] += 1
+
+            q = self.quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                if not self.tail_entry_debug_printed:
+                    debug_stats['no_quote'] += 1
+                continue
+
+            # 硬过滤
+            passed, reason = self._tail_hard_filter(ts_code, q)
+            if not passed:
+                if not self.tail_entry_debug_printed:
+                    debug_stats['hardfilter_fail'][reason] = debug_stats['hardfilter_fail'].get(reason, 0) + 1
+                continue
+
+            # 四维评分
+            attack_score, attack_detail = self._tail_attack_score(ts_code, q)
+            structure_score, structure_detail = self._tail_structure_score(ts_code, q)
+            position_score, position_detail = self._tail_position_score(ts_code, q)
+            theme_score, theme_detail = self._tail_theme_score(ts_code, q)
+            # 技术形态加分 (基于MACD/KDJ/RSI/BOLL缓存,核心胜率因子)
+            tech_score, tech_detail = self._tail_technical_score(ts_code, q)
+
+            # 诱多风险扣分 (识别"尾盘拉高次日低开"陷阱)
+            trap_penalty, trap_detail = self._tail_trap_penalty(ts_code, q)
+
+            total_score = attack_score + structure_score + position_score + theme_score + tech_score - trap_penalty
+
+            if not self.tail_entry_debug_printed:
+                debug_stats['max_scores'].append(total_score)
+                if total_score < 50:
+                    debug_stats['score_dist']['<50'] += 1
+                elif total_score < 65:
+                    debug_stats['score_dist']['50-64'] += 1
+                elif total_score < 85:
+                    debug_stats['score_dist']['65-84'] += 1
+                else:
+                    debug_stats['score_dist']['>=85'] += 1
+
+            if total_score < 50:
+                continue
+
+            # 信号分级
+            if total_score >= 85:
+                signal = '强买入'
+            elif total_score >= 65:
+                signal = '买入'
+            else:
+                signal = '关注'
+
+            name = ''
+            for theme, stocks in self.theme_stocks.items():
+                for code, n, _ in stocks:
+                    if code == ts_code:
+                        name = n
+                        break
+                if name:
+                    break
+
+            best_theme = theme_detail.get('theme', themes[0])
+
+            signals.append({
+                'ts_code': ts_code,
+                'name': name,
+                'theme': best_theme,
+                'total_score': total_score,
+                'attack_score': attack_score,
+                'structure_score': structure_score,
+                'position_score': position_score,
+                'theme_score': theme_score,
+                'tech_score': tech_score,
+                'trap_penalty': trap_penalty,
+                'signal': signal,
+                'pct_chg': q.get('pct_chg', 0),
+                'price': q.get('price', 0),
+                'detail': {**attack_detail, **structure_detail, **position_detail, **theme_detail, **tech_detail, **trap_detail},
+            })
+
+        # 首次扫描输出诊断
+        if not self.tail_entry_debug_printed:
+            self.tail_entry_debug_printed = True
+            passed_count = debug_stats['total_in_theme'] - debug_stats['no_quote'] - sum(debug_stats['hardfilter_fail'].values())
+            print(f"\n{'='*70}")
+            print(f"🔍 「猎尾」尾盘突袭首次扫描诊断 [{now.strftime('%H:%M:%S')}]")
+            print(f"  主题内股票总数: {debug_stats['total_in_theme']}")
+            print(f"  无行情: {debug_stats['no_quote']}")
+            print(f"  硬过滤拦截:")
+            for r, cnt in sorted(debug_stats['hardfilter_fail'].items(), key=lambda x: -x[1]):
+                print(f"    {r}: {cnt}只")
+            print(f"  通过硬过滤: {passed_count}只")
+            print(f"  分数分布: {debug_stats['score_dist']}")
+            if debug_stats['max_scores']:
+                print(f"  最高分: {max(debug_stats['max_scores'])}  平均分: {sum(debug_stats['max_scores'])/len(debug_stats['max_scores']):.1f}")
+            print(f"  分时快照: {len(self.intraday_snapshots)}只")
+            print(f"  换手率缓存: {len(self.turnover_cache)}只")
             print(f"{'='*70}\n")
 
         signals.sort(key=lambda x: x['total_score'], reverse=True)

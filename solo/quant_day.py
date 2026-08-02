@@ -1364,8 +1364,26 @@ def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min
         lookback = 90
         start_date = (datetime.datetime.strptime(end_date, '%Y%m%d') - datetime.timedelta(days=lookback+30)).strftime('%Y%m%d')
 
-        # 日线（优先用缓存）
-        daily = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        # 日线（V2: 优先 daily_cache 表）
+        daily = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= str(end_date):
+                cached = get_daily_cache(ts_code, start_date, end_date)
+                if cached is not None and not cached.empty:
+                    cached['trade_date'] = cached['trade_date'].astype(str)
+                    daily = cached
+        except Exception:
+            pass
+        if daily is None:
+            daily = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if daily is not None and not daily.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(daily)
+                except Exception:
+                    pass
         if daily is None or len(daily) < 40:
             return result
         daily = daily.sort_values('trade_date').reset_index(drop=True)
@@ -2054,45 +2072,43 @@ def get_stock_name(code):
 # 缓存历史数据
 # =========================
 def get_hist_data(ts_code):
+    """获取单只股票历史日线（V3: 统一从 SQLite daily_cache 表读写）
 
-    cache_file = os.path.join(
-        CACHE_DIR,
-        f"{ts_code}.csv"
-    )
-
-    # =========================
-    # 优先读取缓存
-    # =========================
-    df = None
-    if os.path.exists(cache_file):
-        try:
-            df = pd.read_csv(cache_file)
-            df['trade_date'] = df['trade_date'].astype(str)
-            if (df['trade_date'] == TRADE_DATE).any():
-                df = df[df['trade_date'] <= TRADE_DATE].sort_values('trade_date')
-            else:
-                df = None  # 无最新日，重新拉取
-        except Exception as e:
-            print(f"{ts_code} 缓存读取失败: {e}")
-            df = None
+    旧版用 {ts_code}.csv 缓存，分裂且占用 inode；现统一接入 daily_cache 表，
+    与 theme_ts.get_daily_kline / tushare_quant.batch_prefetch_hist_data 共享缓存。
+    """
+    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
 
     # =========================
-    # 缓存缺失 → 重新拉取日线
+    # 优先从 daily_cache 表读取（要求包含 TRADE_DATE 才算命中）
     # =========================
-    if df is None or df.empty:
-        try:
-            df = pro.daily(ts_code=ts_code, start_date='20250101', end_date=TRADE_DATE)
-            if df is None or df.empty:
-                return None
-            df['trade_date'] = df['trade_date'].astype(str)
-            df = df.sort_values('trade_date')
-            df.to_csv(cache_file, index=False)
-            time.sleep(0.15)
-        except Exception as e:
-            print(f"{ts_code} 下载失败:", e)
+    try:
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= str(TRADE_DATE):
+            df = get_daily_cache(ts_code, '20250101', TRADE_DATE)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
+                return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception as e:
+        print(f"{ts_code} daily_cache 读取失败: {e}")
+
+    # =========================
+    # 缓存缺失 → 单只下载并写入 daily_cache 表
+    # =========================
+    try:
+        df = pro.daily(ts_code=ts_code, start_date='20250101', end_date=TRADE_DATE)
+        if df is None or df.empty:
             return None
-
-    return df
+        df['trade_date'] = df['trade_date'].astype(str)
+        try:
+            batch_insert_daily_cache(df)
+        except Exception:
+            pass
+        time.sleep(0.15)
+        return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception as e:
+        print(f"{ts_code} 下载失败:", e)
+        return None
 
 
 
@@ -2100,163 +2116,71 @@ def get_hist_data(ts_code):
 # 批量预取历史数据（解决高频API调用问题）
 # ======================================================
 def batch_prefetch_hist_data(codes, start_date='20250101'):
-    """
-    在主循环之前批量预取所有股票数据到本地缓存
-    使用 tushare 批量接口 pro.daily(ts_code="code1,code2,...")
-    之后 get_hist_data() 将全部命中本地缓存，不再调API
-    
-    注意：tushare 批量接口有单次返回行数上限（~5000行），
-    因此批量下载后，会对每只股票单独回填完整历史数据（从 start_date 开始），
-    确保缓存文件包含从 start_date 至今的全量数据。
+    """批量预取股票日线数据到 SQLite daily_cache 表（V3: thin wrapper）
+
+    旧版独立实现 pro.daily + {ts_code}.csv 缓存，与 tushare_quant 版本分裂。
+    现直接委托给 tushare_quant.batch_prefetch_hist_data（已接入 daily_cache 表），
+    与 theme_ts.get_daily_kline / quant_day.get_hist_data 共享同一缓存。
     """
     if not codes:
         return
-    
-    # 检查有多少已经在缓存中有今日数据
+    try:
+        import tushare_quant as _tq
+        _tq.batch_prefetch_hist_data(codes, start_date=start_date)
+        return
+    except Exception as e:
+        print(f"  [WARN] tushare_quant.batch_prefetch_hist_data 不可用，降级到本地实现: {e}")
+
+    # 降级：直接批量调 pro.daily 并写入 daily_cache 表（保留兜底）
+    from stock_cache import get_daily_cache_range, batch_insert_daily_cache
     cached = []
     missing = []
     for ts_code in codes:
-        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-        if os.path.exists(cache_file):
-            try:
-                df = pd.read_csv(cache_file)
-                df['trade_date'] = df['trade_date'].astype(str)
-                if (df['trade_date'] == TRADE_DATE).any():
-                    cached.append(ts_code)
-                    continue
-            except:
-                pass
+        try:
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= str(TRADE_DATE):
+                cached.append(ts_code)
+                continue
+        except Exception:
+            pass
         missing.append(ts_code)
-    
-    print(f"  批量预取: {len(cached)} 已缓存, {len(missing)} 需下载")
-    
+
+    print(f"  批量预取: 传入 {len(codes)} 只, {len(cached)} 已缓存/ {len(missing)} 需下载")
+
     if not missing:
         return
-    
-    # 分批下载，每批最多20只（避免单次返回行数限制导致数据不全）
+
     batch_size = 20
-    batch_downloaded = set()  # 记录批量下载成功的股票
     for i in range(0, len(missing), batch_size):
         batch = missing[i:i + batch_size]
         try:
-            # 拼接为逗号分隔的代码列表
             ts_list = ",".join(batch)
-            df = pro.daily(
-                ts_code=ts_list,
-                start_date=start_date,
-                end_date=TRADE_DATE
-            )
-            
+            df = pro.daily(ts_code=ts_list, start_date=start_date, end_date=TRADE_DATE)
             if df is not None and not df.empty:
-                # 按股票代码分组，保存到各自的缓存文件
-                for ts_code in batch:
-                    stock_df = df[df['ts_code'] == ts_code]
-                    if not stock_df.empty:
-                        stock_df = stock_df.sort_values('trade_date')
-                        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-                        # 合并已有缓存（批次接口返回的数据量有限，不能覆盖已有缓存）
-                        if os.path.exists(cache_file):
-                            try:
-                                old_df = pd.read_csv(cache_file)
-                                old_df['trade_date'] = old_df['trade_date'].astype(str)
-                                stock_df['trade_date'] = stock_df['trade_date'].astype(str)
-                                # 合并新旧数据，按trade_date去重，保留旧数据中的非重复行
-                                merged = pd.concat([old_df, stock_df], ignore_index=True)
-                                merged = merged.drop_duplicates(subset=['trade_date', 'ts_code'], keep='last')
-                                merged = merged.sort_values('trade_date').reset_index(drop=True)
-                                merged.to_csv(cache_file, index=False)
-                                batch_downloaded.add(ts_code)
-                                continue
-                            except Exception:
-                                pass
-                        stock_df.to_csv(cache_file, index=False)
-                        batch_downloaded.add(ts_code)
-                
+                df['trade_date'] = df['trade_date'].astype(str)
+                try:
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
                 downloaded_count = df['ts_code'].nunique()
                 print(f"  批次 {i//batch_size + 1}: 成功下载 {downloaded_count}/{len(batch)} 只")
             else:
                 print(f"  批次 {i//batch_size + 1}: 下载返回空")
-            
-            # 防止频率限制
             time.sleep(0.15)
-            
         except Exception as e:
             print(f"  批次 {i//batch_size + 1} 下载失败: {e}")
-            # 单批失败则逐只重试
             for ts_code in batch:
                 try:
-                    single_df = pro.daily(
-                        ts_code=ts_code,
-                        start_date=start_date,
-                        end_date=TRADE_DATE
-                    )
+                    single_df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=TRADE_DATE)
                     if single_df is not None and not single_df.empty:
-                        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-                        single_df.to_csv(cache_file, index=False)
-                        batch_downloaded.add(ts_code)
+                        single_df['trade_date'] = single_df['trade_date'].astype(str)
+                        try:
+                            batch_insert_daily_cache(single_df)
+                        except Exception:
+                            pass
                     time.sleep(0.15)
                 except:
                     pass
-    
-    # =============================================
-    # 回填全量数据：批量接口有行数上限，返回的数据
-    # 可能只有最近几十行，需要单独下载补全历史
-    # =============================================
-    print(f"  回填全量数据: 检查 {len(batch_downloaded)} 只批量下载的股票...")
-    backfill_count = 0
-    for ts_code in batch_downloaded:
-        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-        if not os.path.exists(cache_file):
-            continue
-        try:
-            df_cache = pd.read_csv(cache_file)
-            df_cache['trade_date'] = df_cache['trade_date'].astype(str)
-            df_cache = df_cache.sort_values('trade_date')
-            
-            # 检查缓存是否包含从 start_date 开始的数据
-            # 如果 start_date 不是交易日，找其后第一个交易日作为基准
-            start_date_to_check = start_date
-            if pro is not None:
-                try:
-                    cal = pro.trade_cal(exchange='', start_date=start_date, end_date=start_date)
-                    if cal.empty or cal.iloc[0]['is_open'] != 1:
-                        # start_date 不是交易日，找其后第一个交易日
-                        end_cal = (datetime.strptime(start_date, '%Y%m%d') + timedelta(days=30)).strftime('%Y%m%d')
-                        cal = pro.trade_cal(exchange='', start_date=start_date, end_date=end_cal)
-                        cal = cal[cal['is_open'] == 1]
-                        first_trade_after_start = cal[cal['cal_date'] >= start_date]['cal_date'].min()
-                        if first_trade_after_start:
-                            start_date_to_check = str(first_trade_after_start)
-                except:
-                    pass
-            
-            earliest_date = df_cache['trade_date'].iloc[0] if not df_cache.empty else TRADE_DATE
-            if earliest_date <= start_date_to_check:
-                continue  # 已有全量数据，跳过
-            
-            # 缺失历史数据，单独下载补全
-            single_df = pro.daily(
-                ts_code=ts_code,
-                start_date=start_date,
-                end_date=TRADE_DATE
-            )
-            if single_df is not None and not single_df.empty:
-                single_df = single_df.sort_values('trade_date')
-                single_df['trade_date'] = single_df['trade_date'].astype(str)
-                
-                # 合并并去重
-                merged = pd.concat([df_cache, single_df], ignore_index=True)
-                merged = merged.drop_duplicates(subset=['trade_date', 'ts_code'], keep='last')
-                merged = merged.sort_values('trade_date').reset_index(drop=True)
-                merged.to_csv(cache_file, index=False)
-                backfill_count += 1
-            
-            time.sleep(0.12)  # 频率控制
-        except Exception as e:
-            print(f"    回填失败 {ts_code}: {e}")
-    
-    if backfill_count > 0:
-        print(f"  回填完成: {backfill_count} 只股票已补全历史数据至 {start_date}")
     
 
 
@@ -7040,9 +6964,21 @@ def get_market():
 
     print("[DBG] get_market 准备调用API"); sys.stdout.flush()
 
-    daily = pro.daily(
-        trade_date=TRADE_DATE
-    )
+    # V2: 优先 daily_cache 表
+    try:
+        from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+        daily = None
+        if get_daily_by_date_count(TRADE_DATE) > 0:
+            daily = get_daily_by_date(TRADE_DATE)
+        if daily is None or daily.empty:
+            daily = pro.daily(trade_date=TRADE_DATE)
+            if daily is not None and not daily.empty:
+                try:
+                    batch_insert_daily_cache(daily)
+                except Exception:
+                    pass
+    except Exception:
+        daily = pro.daily(trade_date=TRADE_DATE)
 
     basic = pro.stock_basic(
         exchange='',
@@ -7225,19 +7161,23 @@ def get_chip_distribution(ts_code, trade_date, current_price=None):
             return result
 
         if current_price is None:
-            # 从 daily 数据取最近收盘价（不走缓存路径，因为 get_hist_data 已有缓存）
-            cache_daily = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-            if os.path.exists(cache_daily):
-                try:
-                    d = pd.read_csv(cache_daily)
-                    if d is not None and len(d) > 0:
-                        current_price = float(d['close'].iloc[-1])
-                except Exception:
-                    pass
+            # V2: 从 daily_cache 表取最近收盘价（与 get_hist_data 共享缓存）
+            try:
+                from stock_cache import get_daily_cache
+                d = get_daily_cache(ts_code, td, td)
+                if d is not None and not d.empty:
+                    current_price = float(d['close'].iloc[0])
+            except Exception:
+                pass
             if current_price is None:
                 d = pro.daily(ts_code=ts_code, trade_date=td)
                 if d is not None and len(d) > 0:
                     current_price = float(d['close'].iloc[0])
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(d)
+                    except Exception:
+                        pass
                 else:
                     return result
 
@@ -8010,8 +7950,22 @@ def get_limit_stats():
 
         # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）
         try:
-            # 获取当日所有股票的收盘价和涨跌幅
-            daily = pro.daily(trade_date=TRADE_DATE)
+            # 获取当日所有股票的收盘价和涨跌幅（V2: 优先 daily_cache 表）
+            daily = None
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                if get_daily_by_date_count(TRADE_DATE) > 0:
+                    daily = get_daily_by_date(TRADE_DATE)
+            except Exception:
+                pass
+            if daily is None or daily.empty:
+                daily = pro.daily(trade_date=TRADE_DATE)
+                if daily is not None and not daily.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(daily)
+                    except Exception:
+                        pass
             if daily is not None and not daily.empty:
                 # 计算涨跌停阈值（简化版：主板10%，科创板/创业板20%）
                 daily['is_kcb'] = daily['ts_code'].str.startswith(('688', '301'))

@@ -570,20 +570,22 @@ def get_daily_kline(ts_codes, start, end):
     need_fetch_codes = []
     LOCAL_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache_daily")
     
+    # V2: 从 SQLite daily_cache 读取（替代 CSV）
+    from stock_cache import get_daily_cache, get_daily_cache_range
     for code in ts_codes:
-        csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
-        if os.path.exists(csv_path):
-            try:
-                df = pd.read_csv(csv_path)
-                if not df.empty:
+        try:
+            _, max_date = get_daily_cache_range(code)
+            if max_date is not None:
+                df = get_daily_cache(code, start, end)
+                if df is not None and not df.empty:
                     df['trade_date'] = df['trade_date'].astype(str)
                     df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
                     if not df.empty:
                         df = _add_ma_columns(df)
                         all_parts.append(df)
                         continue
-            except Exception:
-                pass
+        except Exception:
+            pass
         
         cached = cache_get(f"daily_kline_{code}_{start}_{end}")
         if cached is not None:
@@ -598,20 +600,19 @@ def get_daily_kline(ts_codes, start, end):
         print(f"[KLine] 使用 tushare_quant 批量预取 {len(need_fetch_codes)} 只股票")
         try:
             tq.batch_prefetch_hist_data(need_fetch_codes, start_date=start)
+            # V2: 从 SQLite daily_cache 读取刚预取的数据
             for code in need_fetch_codes[:]:
-                csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
-                if os.path.exists(csv_path):
-                    try:
-                        df = pd.read_csv(csv_path)
+                try:
+                    df = get_daily_cache(code, start, end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+                        df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
                         if not df.empty:
-                            df['trade_date'] = df['trade_date'].astype(str)
-                            df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
-                            if not df.empty:
-                                df = _add_ma_columns(df)
-                                all_parts.append(df)
-                                need_fetch_codes.remove(code)
-                    except Exception:
-                        pass
+                            df = _add_ma_columns(df)
+                            all_parts.append(df)
+                            need_fetch_codes.remove(code)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[KLine] tushare_quant 调用失败: {e}")
     
@@ -665,7 +666,25 @@ def get_index_kline(ts_code="000300.SH", start=None, end=None):
         if _df_inst is not None:
             df = _df_inst.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
         else:
-            df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+            df = None
+            # V2: 优先 daily_cache 表
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, _max_date = get_daily_cache_range(ts_code)
+                if _max_date is not None and str(_max_date) >= str(end):
+                    df = get_daily_cache(ts_code, start, end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+            except Exception:
+                pass
+            if df is None or df.empty:
+                df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+                if df is not None and not df.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
     time.sleep(0.15)
     if df is not None and not df.empty:
         cache_set("idx_kline", df, ts_code=ts_code, start=start, end=end)

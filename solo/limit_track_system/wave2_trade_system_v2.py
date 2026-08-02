@@ -378,7 +378,25 @@ def filter_stocks_by_trade_signal_v2(trade_date, lookback_days=20):
                     continue
                 
                 start = (datetime.strptime(trade_date, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d')
-                daily_df = pro.daily(ts_code=ts_code, start_date=start, end_date=trade_date)
+                # V2: 优先 daily_cache 表
+                daily_df = None
+                try:
+                    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                    _, _max_date = get_daily_cache_range(ts_code)
+                    if _max_date is not None and str(_max_date) >= str(trade_date):
+                        daily_df = get_daily_cache(ts_code, start, trade_date)
+                        if daily_df is not None and not daily_df.empty:
+                            daily_df['trade_date'] = daily_df['trade_date'].astype(str)
+                except Exception:
+                    pass
+                if daily_df is None or daily_df.empty:
+                    daily_df = pro.daily(ts_code=ts_code, start_date=start, end_date=trade_date)
+                    if daily_df is not None and not daily_df.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(daily_df)
+                        except Exception:
+                            pass
                 
                 if daily_df is None or daily_df.empty:
                     continue
@@ -549,7 +567,23 @@ def check_and_execute_trades_v2(trade_date):
         for pos in positions:
             ts_code = pos['ts_code']
             try:
-                df = pro.daily(ts_code=ts_code, trade_date=trade_date)
+                # V2: 优先 daily_cache 表
+                df = None
+                try:
+                    from stock_cache import get_daily_cache, batch_insert_daily_cache
+                    df = get_daily_cache(ts_code, trade_date, trade_date)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+                except Exception:
+                    pass
+                if df is None or df.empty:
+                    df = pro.daily(ts_code=ts_code, trade_date=trade_date)
+                    if df is not None and not df.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(df)
+                        except Exception:
+                            pass
                 if df is not None and not df.empty:
                     current_prices[ts_code] = df['close'].iloc[-1]
             except:
@@ -723,7 +757,25 @@ def backtest_strategy_v2(start_date, end_date, lookback_days=20):
                     future_end = (datetime.strptime(trade_date, '%Y%m%d') + timedelta(days=18)).strftime('%Y%m%d')
                     
                     try:
-                        daily_df = pro.daily(ts_code=ts_code, start_date=future_start, end_date=future_end)
+                        # V2: 优先 daily_cache 表
+                        daily_df = None
+                        try:
+                            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                            _, _max_date = get_daily_cache_range(ts_code)
+                            if _max_date is not None and str(_max_date) >= str(future_end):
+                                daily_df = get_daily_cache(ts_code, future_start, future_end)
+                                if daily_df is not None and not daily_df.empty:
+                                    daily_df['trade_date'] = daily_df['trade_date'].astype(str)
+                        except Exception:
+                            pass
+                        if daily_df is None or daily_df.empty:
+                            daily_df = pro.daily(ts_code=ts_code, start_date=future_start, end_date=future_end)
+                            if daily_df is not None and not daily_df.empty:
+                                try:
+                                    from stock_cache import batch_insert_daily_cache
+                                    batch_insert_daily_cache(daily_df)
+                                except Exception:
+                                    pass
                         
                         if daily_df is None or daily_df.empty or len(daily_df) < 5:
                             continue

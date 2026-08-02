@@ -267,8 +267,35 @@ class MarketRegimeJudge:
             # 调用 V8 分析流程 — 直接用tushare拉取最新数据, 绕过缓存
             start_dt = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
 
-            # 拉取全市场涨跌家数 (用于BREADTH_SCORE)
-            daily_df = ma.pro.daily(trade_date=trade_date)
+            # 拉取全市场涨跌家数 (用于BREADTH_SCORE) — V2: 优先 daily_cache 表
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                daily_df = None
+                if get_daily_by_date_count(trade_date) > 0:
+                    daily_df = get_daily_by_date(trade_date)
+                if daily_df is None or daily_df.empty:
+                    daily_df = ma.pro.daily(trade_date=trade_date)
+                    if daily_df is not None and not daily_df.empty:
+                        try:
+                            batch_insert_daily_cache(daily_df)
+                        except Exception:
+                            pass
+            except Exception:
+                daily_df = None
+                try:
+                    from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                    if get_daily_by_date_count(trade_date) > 0:
+                        daily_df = get_daily_by_date(trade_date)
+                except Exception:
+                    pass
+                if daily_df is None or daily_df.empty:
+                    daily_df = ma.pro.daily(trade_date=trade_date)
+                    if daily_df is not None and not daily_df.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(daily_df)
+                        except Exception:
+                            pass
             up_count = int((daily_df["pct_chg"] > 0).sum()) if daily_df is not None and not daily_df.empty else 0
             down_count = int((daily_df["pct_chg"] < 0).sum()) if daily_df is not None and not daily_df.empty else 0
             total_count = up_count + down_count

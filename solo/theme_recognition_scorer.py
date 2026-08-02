@@ -325,7 +325,25 @@ class ThemeRecognitionScorer:
             if self._get_pro() is not None:
                 try:
                     pro = self._get_pro()
-                    daily_df = pro.daily(ts_code=ts_code, start_date=start_daily, end_date=end)
+                    # V2: 优先 daily_cache 表
+                    daily_df = None
+                    try:
+                        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                        _, _max_date = get_daily_cache_range(ts_code)
+                        if _max_date is not None and str(_max_date) >= str(end):
+                            daily_df = get_daily_cache(ts_code, start_daily, end)
+                            if daily_df is not None and not daily_df.empty:
+                                daily_df['trade_date'] = daily_df['trade_date'].astype(str)
+                    except Exception:
+                        pass
+                    if daily_df is None or daily_df.empty:
+                        daily_df = pro.daily(ts_code=ts_code, start_date=start_daily, end_date=end)
+                        if daily_df is not None and not daily_df.empty:
+                            try:
+                                from stock_cache import batch_insert_daily_cache
+                                batch_insert_daily_cache(daily_df)
+                            except Exception:
+                                pass
                     if daily_df is not None and len(daily_df) > 0:
                         daily_df = daily_df.sort_values('trade_date').tail(20)
                         avg_amt = float(daily_df['amount'].mean()) / 100000
@@ -449,12 +467,29 @@ class ThemeRecognitionScorer:
             if pro is None:
                 return 50.0, {"error": "no data source"}
             try:
-                daily_df = pro.daily(
-                    ts_code=ts_code,
-                    start_date=start_str,
-                    end_date=end_str,
-                    fields='ts_code,trade_date,pct_chg',
-                )
+                # V2: 优先 daily_cache 表
+                try:
+                    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                    _, _max_date = get_daily_cache_range(ts_code)
+                    if _max_date is not None and str(_max_date) >= str(end_str):
+                        daily_df = get_daily_cache(ts_code, start_str, end_str)
+                        if daily_df is not None and not daily_df.empty:
+                            daily_df['trade_date'] = daily_df['trade_date'].astype(str)
+                except Exception:
+                    pass
+                if daily_df is None or daily_df.empty:
+                    daily_df = pro.daily(
+                        ts_code=ts_code,
+                        start_date=start_str,
+                        end_date=end_str,
+                        fields='ts_code,trade_date,pct_chg',
+                    )
+                    if daily_df is not None and not daily_df.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(daily_df)
+                        except Exception:
+                            pass
             except Exception as e:
                 return 50.0, {"error": str(e)[:40]}
 

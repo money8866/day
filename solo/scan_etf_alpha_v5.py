@@ -779,7 +779,22 @@ def batch_prefetch_daily_by_date(candidates: list, cache_dir: str,
             print(f"[预取] 日线进度: {done_d}/{len(candidates)} 基本面: {done_b}/{len(candidates)}")
 
         # daily
-        df = pro.daily(trade_date=td)
+        # V2: 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            if get_daily_by_date_count(td) > 0:
+                df = get_daily_by_date(td)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(trade_date=td)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         if df is not None and len(df) > 0:
             for _, r in df.iterrows():
                 code = r['ts_code']

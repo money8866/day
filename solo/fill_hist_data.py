@@ -205,7 +205,25 @@ def fetch_and_save(ts_code, start_date, end_date, overwrite=False):
             return True, days, "已完整缓存"
 
     try:
-        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        # V2: 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(end_date):
+                df = get_daily_cache(ts_code, start_date, end_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         if df is None or df.empty:
             return False, 0, "空数据"
 
@@ -240,7 +258,42 @@ def fetch_batch_and_save(ts_codes, start_date, end_date, overwrite=False, sleep_
     failed_codes = []
 
     try:
-        combined_df = pro.daily(ts_code=batch_codes_str, start_date=start_date, end_date=end_date)
+        # V2: 优先 daily_cache 表（按只读取，未命中再批量API）
+        combined_df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _cached_parts = []
+            _missing = []
+            for _code in to_fetch:
+                _, _max_date = get_daily_cache_range(_code)
+                if _max_date is not None and str(_max_date) >= str(end_date):
+                    _c = get_daily_cache(_code, start_date, end_date)
+                    if _c is not None and not _c.empty:
+                        _cached_parts.append(_c)
+                    else:
+                        _missing.append(_code)
+                else:
+                    _missing.append(_code)
+            if _missing:
+                _b = pro.daily(ts_code=",".join(_missing), start_date=start_date, end_date=end_date)
+                if _b is not None and not _b.empty:
+                    try:
+                        batch_insert_daily_cache(_b)
+                    except Exception:
+                        pass
+                    _cached_parts.append(_b)
+            if _cached_parts:
+                combined_df = pd.concat(_cached_parts, ignore_index=True)
+        except Exception:
+            pass
+        if combined_df is None or combined_df.empty:
+            combined_df = pro.daily(ts_code=batch_codes_str, start_date=start_date, end_date=end_date)
+            if combined_df is not None and not combined_df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(combined_df)
+                except Exception:
+                    pass
         if combined_df is None or combined_df.empty:
             # 批量失败 → 回退逐只拉取
             for c in to_fetch:

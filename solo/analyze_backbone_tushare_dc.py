@@ -93,13 +93,31 @@ def get_hist_data(ts_code, n_days=120):
     
     # 下载最新数据
     try:
-        df = pro.daily(
-            ts_code=ts_code,
-            start_date='20250101',
-            end_date=TRADE_DATE
-        )
-        
-        if df.empty:
+        # V2: 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(TRADE_DATE):
+                df = get_daily_cache(ts_code, '20250101', TRADE_DATE)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(
+                ts_code=ts_code,
+                start_date='20250101',
+                end_date=TRADE_DATE
+            )
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
+
+        if df is None or df.empty:
             return None
         
         df = df.sort_values('trade_date')

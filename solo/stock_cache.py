@@ -200,6 +200,134 @@ def get_last_adj_factor(ts_code):
     return row[0] if row and row[0] is not None else None
 
 
+# =========================================================
+# daily_cache 表：专门存储 pro.daily 的 11 列基础行情数据
+# 与 stk_factor_pro 表（261列技术指标）隔离，避免 INSERT OR REPLACE 破坏技术指标
+# =========================================================
+
+DAILY_CACHE_TABLE = 'daily_cache'
+
+_DAILY_CACHE_COLS = [
+    'ts_code', 'trade_date', 'open', 'high', 'low', 'close',
+    'pre_close', 'change', 'pct_chg', 'vol', 'amount'
+]
+
+
+def _ensure_daily_cache_table():
+    """确保 daily_cache 表存在"""
+    with get_conn() as conn:
+        conn.execute(f'''
+            CREATE TABLE IF NOT EXISTS "{DAILY_CACHE_TABLE}" (
+                "ts_code" TEXT,
+                "trade_date" TEXT,
+                "open" REAL,
+                "high" REAL,
+                "low" REAL,
+                "close" REAL,
+                "pre_close" REAL,
+                "change" REAL,
+                "pct_chg" REAL,
+                "vol" REAL,
+                "amount" REAL,
+                PRIMARY KEY ("ts_code", "trade_date")
+            )
+        ''')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_daily_code_date" ON "{DAILY_CACHE_TABLE}" ("ts_code", "trade_date")')
+
+
+def get_daily_cache(ts_code, start_date=None, end_date=None):
+    """从 daily_cache 表读取单股日线数据
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return None
+    sql = f'SELECT * FROM {DAILY_CACHE_TABLE} WHERE ts_code = ?'
+    params = [ts_code]
+    if start_date:
+        sql += ' AND trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def get_daily_cache_range(ts_code):
+    """获取 daily_cache 表中某股票的日期范围
+
+    Returns: (min_date, max_date) 或 (None, None)
+    """
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return None, None
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT MIN(trade_date), MAX(trade_date) FROM {DAILY_CACHE_TABLE} WHERE ts_code = ?',
+            (ts_code,)
+        ).fetchone()
+    if row and row[0]:
+        return str(row[0]), str(row[1])
+    return None, None
+
+
+def batch_insert_daily_cache(df_all):
+    """批量插入/更新 daily_cache 数据（INSERT OR REPLACE，安全：仅 11 列）
+
+    Returns: 插入/更新的行数
+    """
+    if df_all is None or df_all.empty:
+        return 0
+    _ensure_daily_cache_table()
+    # 只保留 daily_cache 表的 11 列，忽略多余列
+    cols = [c for c in _DAILY_CACHE_COLS if c in df_all.columns]
+    df_valid = df_all[cols].copy()
+    # 确保 trade_date 为字符串
+    df_valid['trade_date'] = df_valid['trade_date'].astype(str)
+    placeholders = ','.join(['?'] * len(cols))
+    col_str = ','.join([f'"{c}"' for c in cols])
+    sql = f'INSERT OR REPLACE INTO {DAILY_CACHE_TABLE} ({col_str}) VALUES ({placeholders})'
+    values = [
+        [None if pd.isna(v) else v for v in row]
+        for row in df_valid[cols].values.tolist()
+    ]
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+# =========================================================
+# 全市场单日查询（C 类：替代 pro.daily(trade_date=...)）
+# daily_cache 表的主键是 (ts_code, trade_date)，可直接按 trade_date 反查全市场
+# =========================================================
+
+def get_daily_by_date(trade_date):
+    """按交易日查询全市场日线（替代 pro.daily(trade_date=...)）
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return None
+    sql = (f'SELECT * FROM {DAILY_CACHE_TABLE} WHERE trade_date = ?')
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=(str(trade_date),))
+    return df if not df.empty else None
+
+
+def get_daily_by_date_count(trade_date):
+    """统计 daily_cache 表中某交易日的记录数（用于判断是否已缓存全市场数据）"""
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return 0
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT COUNT(*) FROM {DAILY_CACHE_TABLE} WHERE trade_date = ?',
+            (str(trade_date),)
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def batch_insert_stk_factor_pro(df_all):
     """批量插入/更新 stk_factor_pro 数据（INSERT OR REPLACE，keep='last' 语义）
     
@@ -422,30 +550,23 @@ def get_effective_date(force_date: str = '') -> str:
     return base_date
 
 def cached_daily(ts_code, start_date, end_date, pro=None):
-    """带CSV缓存的 pro.daily() 调用"""
+    """带缓存的 pro.daily() 调用（V3: 使用独立的 daily_cache 表，避免破坏 stk_factor_pro 技术指标）
+
+    daily_cache 表仅存储 pro.daily 的 11 列基础行情数据（open/high/low/close/vol/amount 等），
+    与 stk_factor_pro 表（261列技术指标）隔离，INSERT OR REPLACE 不会破坏技术指标数据。
+    """
+    # 优先从 daily_cache 读取
+    df = get_daily_cache(ts_code, start_date, end_date)
+    if df is not None and not df.empty:
+        return df.sort_values('trade_date').reset_index(drop=True)
+    # 缓存未命中，调用 API 并写入 daily_cache
     pro = pro or _get_pro()
-    cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-    df_cache = read_cache_csv(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        cached_min = df_cache['trade_date'].min()
-        cached_max = df_cache['trade_date'].max()
-        if cached_min <= start_date and cached_max >= end_date:
-            actual_last_date = df_cache['trade_date'].iloc[-1]
-            if actual_last_date >= end_date:
-                mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-                subset = df_cache[mask].copy()
-                if not subset.empty:
-                    return subset.sort_values('trade_date').reset_index(drop=True)
     df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
     time.sleep(0.06)
     if df is None or df.empty:
         return None
     df['trade_date'] = df['trade_date'].astype(str)
-    if df_cache is not None:
-        combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-        save_cache_csv(combined, cache_file)
-    else:
-        save_cache_csv(df, cache_file)
+    batch_insert_daily_cache(df)
     return df.sort_values('trade_date').reset_index(drop=True)
 
 
@@ -781,6 +902,92 @@ def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
     if df is not None and not df.empty:
         return df.reset_index(drop=True)
     return None
+
+
+# ═══════════════════════════════════════════════════════
+# 数据库维护：VACUUM 压缩 + 缓存清理
+# ═══════════════════════════════════════════════════════
+
+def vacuum_database():
+    """VACUUM 压缩 stock_data.db，回收碎片空间（建议每月执行一次）
+
+    注意：VACUUM 需要数据库独占访问，执行期间无法读写。
+    """
+    import time as _time
+    before = os.path.getsize(DB_PATH) / (1024 ** 3)
+    t0 = _time.time()
+    with get_conn() as conn:
+        conn.execute('PRAGMA journal_mode=DELETE')
+        conn.execute('VACUUM')
+    after = os.path.getsize(DB_PATH) / (1024 ** 3)
+    print(f'[VACUUM] {before:.2f} GB -> {after:.2f} GB (释放 {before-after:.2f} GB, 耗时 {_time.time()-t0:.1f}s)')
+
+
+def cleanup_old_cache(keep_days=5):
+    """清理过期缓存文件（建议每日收盘后执行）
+
+    Args:
+        keep_days: 保留最近 N 天的缓存文件
+    """
+    import glob as _glob
+    import time as _time
+    cutoff = _time.time() - keep_days * 86400
+    removed = 0
+    freed_mb = 0.0
+
+    # 1. 清理 theme_stock_map 历史版本（保留 latest + 最近 keep_days 天）
+    for f in _glob.glob(os.path.join(CACHE_DIR, 'theme_stock_map_v*_*.json')):
+        try:
+            if os.path.getmtime(f) < cutoff:
+                sz = os.path.getsize(f)
+                os.remove(f)
+                removed += 1
+                freed_mb += sz / (1024 ** 2)
+        except Exception:
+            pass
+
+    # 2. 清理过期的择时结果 CSV（enhanced_timing_bull_all_YYYYMMDD.csv）
+    for f in _glob.glob(os.path.join(CACHE_DIR, 'enhanced_timing_bull_all_*.csv')):
+        try:
+            if os.path.getmtime(f) < cutoff:
+                sz = os.path.getsize(f)
+                os.remove(f)
+                removed += 1
+                freed_mb += sz / (1024 ** 2)
+        except Exception:
+            pass
+
+    # 3. 清理过期的 VolMaSync 结果 CSV
+    for f in _glob.glob(os.path.join(CACHE_DIR, 'VolMaSync_Stocks_*.csv')):
+        try:
+            if os.path.getmtime(f) < cutoff:
+                sz = os.path.getsize(f)
+                os.remove(f)
+                removed += 1
+                freed_mb += sz / (1024 ** 2)
+        except Exception:
+            pass
+
+    # 4. 清理 Parquet 缓存目录中过期文件（统一 PARQUET_DIR）
+    try:
+        from cache_config import PARQUET_DIR
+        for f in _glob.glob(os.path.join(PARQUET_DIR, '*.parquet')):
+            try:
+                if os.path.getmtime(f) < cutoff:
+                    sz = os.path.getsize(f)
+                    os.remove(f)
+                    removed += 1
+                    freed_mb += sz / (1024 ** 2)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if removed > 0:
+        print(f'[清理] 删除 {removed} 个过期文件, 释放 {freed_mb:.1f} MB')
+    else:
+        print('[清理] 无过期文件')
+    return removed
 
 
 # ═══════════════════════════════════════════════════════

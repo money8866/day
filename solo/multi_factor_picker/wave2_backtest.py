@@ -68,7 +68,7 @@ def _get_df():
                             break
         if not token:
             return None
-        config = {'cache': {'enabled': True, 'dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        config = {'cache': {'enabled': True, 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
         _df_singleton = DataFetcher(token, config)
     except Exception:
         return None

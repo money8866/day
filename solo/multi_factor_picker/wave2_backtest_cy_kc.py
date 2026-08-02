@@ -25,9 +25,27 @@ def get_cy_kc_pool():
     return cy['ts_code'].tolist()
 
 def get_daily_data(ts_code, start, end):
+    """V2: 优先从 daily_cache 表读取，未命中再调 pro.daily 并回写"""
+    try:
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= str(end):
+            cached = get_daily_cache(ts_code, start, end)
+            if cached is not None and not cached.empty:
+                cached['trade_date'] = cached['trade_date'].astype(str)
+                cached = cached.sort_values('trade_date')
+                cached['close_qfq'] = cached['close']
+                return cached
+    except Exception:
+        pass
     try:
         df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
         if df is not None and not df.empty:
+            try:
+                from stock_cache import batch_insert_daily_cache
+                batch_insert_daily_cache(df)
+            except Exception:
+                pass
             df = df.sort_values('trade_date')
             df['close_qfq'] = df['close']  # 简化：用close代替qfq
             return df

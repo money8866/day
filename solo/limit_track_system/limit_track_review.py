@@ -836,7 +836,25 @@ def get_stock_daily_data(ts_code, start_date, end_date, force_refresh=False):
             if _fetcher is not None:
                 df = _fetcher.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
             else:
-                df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                # V2: 优先 daily_cache 表
+                df = None
+                try:
+                    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                    _, _max_date = get_daily_cache_range(ts_code)
+                    if _max_date is not None and str(_max_date) >= str(end_date):
+                        df = get_daily_cache(ts_code, start_date, end_date)
+                        if df is not None and not df.empty:
+                            df['trade_date'] = df['trade_date'].astype(str)
+                except Exception:
+                    pass
+                if df is None or df.empty:
+                    df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                    if df is not None and not df.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(df)
+                        except Exception:
+                            pass
             if df is not None and not df.empty:
                 df = df.sort_values('trade_date')
             return df

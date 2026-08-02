@@ -522,7 +522,22 @@ def cached_daily_single(trade_date):
     cached_data = cache_manager.get(func_name, trade_date=trade_date)
     if cached_data is not None:
         return cached_data
-    df = pro.daily(trade_date=trade_date)
+    # V2: 优先 daily_cache 表
+    df = None
+    try:
+        from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+        if get_daily_by_date_count(trade_date) > 0:
+            df = get_daily_by_date(trade_date)
+    except Exception:
+        pass
+    if df is None or df.empty:
+        df = pro.daily(trade_date=trade_date)
+        if df is not None and not df.empty:
+            try:
+                from stock_cache import batch_insert_daily_cache
+                batch_insert_daily_cache(df)
+            except Exception:
+                pass
     if df is not None and not df.empty:
         cache_manager.set(func_name, df, trade_date=trade_date)
     return df
@@ -889,7 +904,25 @@ def cached_daily(ts_code, start_date, end_date):
         return cached_data
     
     try:
-        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        # V2: 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(end_date):
+                df = get_daily_cache(ts_code, start_date, end_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         time.sleep(0.02)
         
         cache_manager.expire_minutes = 999999999
@@ -1772,8 +1805,42 @@ def identify_leader_core_supplement(theme_stocks, name_map, trade_date):
     stock_info = {}
 
     try:
-        df = pro.daily(ts_code=','.join(list(theme_stocks)[:50]),
-                       start_date=start_date, end_date=trade_date)
+        # V2: 优先 daily_cache 表（按只读取，未命中再批量API）
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _cached_parts = []
+            _missing_codes = []
+            for _code in list(theme_stocks)[:50]:
+                _, _max_date = get_daily_cache_range(_code)
+                if _max_date is not None and str(_max_date) >= str(trade_date):
+                    _c = get_daily_cache(_code, start_date, trade_date)
+                    if _c is not None and not _c.empty:
+                        _cached_parts.append(_c)
+                    else:
+                        _missing_codes.append(_code)
+                else:
+                    _missing_codes.append(_code)
+            if _missing_codes:
+                _batch_df = pro.daily(ts_code=','.join(_missing_codes), start_date=start_date, end_date=trade_date)
+                if _batch_df is not None and not _batch_df.empty:
+                    try:
+                        batch_insert_daily_cache(_batch_df)
+                    except Exception:
+                        pass
+                    _cached_parts.append(_batch_df)
+            if _cached_parts:
+                df = pd.concat(_cached_parts, ignore_index=True)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(ts_code=','.join(list(theme_stocks)[:50]), start_date=start_date, end_date=trade_date)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         if df is not None and not df.empty:
             for ts_code, grp in df.groupby('ts_code'):
                 daily_data[ts_code] = grp.sort_values('trade_date')
@@ -2293,7 +2360,25 @@ def analyze_short_term_potentials(ranked_themes, theme_leaders, theme_summary, t
                     end_date = datetime.now().strftime('%Y%m%d')
                     start_date = (datetime.now() - timedelta(days=40)).strftime('%Y%m%d')
                     
-                    stock_df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                    # V2: 优先 daily_cache 表
+                    stock_df = None
+                    try:
+                        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                        _, _max_date = get_daily_cache_range(ts_code)
+                        if _max_date is not None and str(_max_date) >= str(end_date):
+                            stock_df = get_daily_cache(ts_code, start_date, end_date)
+                            if stock_df is not None and not stock_df.empty:
+                                stock_df['trade_date'] = stock_df['trade_date'].astype(str)
+                    except Exception:
+                        pass
+                    if stock_df is None or stock_df.empty:
+                        stock_df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+                        if stock_df is not None and not stock_df.empty:
+                            try:
+                                from stock_cache import batch_insert_daily_cache
+                                batch_insert_daily_cache(stock_df)
+                            except Exception:
+                                pass
                     if stock_df is None or len(stock_df) < 25:
                         continue
                     
@@ -3020,7 +3105,25 @@ def calculate_today_market_scores(theme_stocks_map, trade_date):
 
         for ts_code in list(stocks)[:15]:
             try:
-                df_20d = pro.daily(ts_code=ts_code, start_date=start_date_20, end_date=trade_date)
+                # V2: 优先 daily_cache 表
+                df_20d = None
+                try:
+                    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                    _, _max_date = get_daily_cache_range(ts_code)
+                    if _max_date is not None and str(_max_date) >= str(trade_date):
+                        df_20d = get_daily_cache(ts_code, start_date_20, trade_date)
+                        if df_20d is not None and not df_20d.empty:
+                            df_20d['trade_date'] = df_20d['trade_date'].astype(str)
+                except Exception:
+                    pass
+                if df_20d is None or df_20d.empty:
+                    df_20d = pro.daily(ts_code=ts_code, start_date=start_date_20, end_date=trade_date)
+                    if df_20d is not None and not df_20d.empty:
+                        try:
+                            from stock_cache import batch_insert_daily_cache
+                            batch_insert_daily_cache(df_20d)
+                        except Exception:
+                            pass
                 if df_20d is not None and not df_20d.empty and len(df_20d) >= 20:
                     df_20d = df_20d.sort_values('trade_date')
                     close_start = df_20d['close'].iloc[0]

@@ -308,37 +308,86 @@ class IntradayStrategy:
                 self.rtm = None
     
     def load_prev_closes(self):
-        """加载昨日收盘价"""
+        """加载昨日收盘价（V2: 优先 daily_cache 表）"""
         try:
             prev_trade_date = get_prev_trade_date(TRADE_DATE)
-            df = pro.daily(trade_date=prev_trade_date)
-            if not df.empty:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            df = None
+            if get_daily_by_date_count(prev_trade_date) > 0:
+                df = get_daily_by_date(prev_trade_date)
+            if df is None or df.empty:
+                df = pro.daily(trade_date=prev_trade_date)
+                if df is not None and not df.empty:
+                    try:
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
+            if df is not None and not df.empty:
                 self.prev_closes = dict(zip(df['ts_code'], df['close']))
         except Exception:
             pass
-    
+
     def get_current_market_data(self) -> pd.DataFrame:
-        """获取当前市场实时数据"""
+        """获取当前市场实时数据（V2: 优先 daily_cache 表）"""
         try:
-            df = pro.daily(trade_date=TRADE_DATE)
-            if not df.empty:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            df = None
+            if get_daily_by_date_count(TRADE_DATE) > 0:
+                df = get_daily_by_date(TRADE_DATE)
+            if df is None or df.empty:
+                df = pro.daily(trade_date=TRADE_DATE)
+                if df is not None and not df.empty:
+                    try:
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
+            if df is not None and not df.empty:
                 df = df[['ts_code', 'open', 'high', 'low', 'close', 'vol', 'amount', 'pct_chg', 'pre_close']]
                 df = df.rename(columns={'pct_chg': 'change', 'vol': 'volume'})
-                
+
                 df['volume_ratio'] = self.calculate_volume_ratio(df)
                 return df
         except Exception as e:
             print(f"获取市场数据失败: {e}")
         return pd.DataFrame()
-    
+
     def calculate_volume_ratio(self, current_df: pd.DataFrame) -> pd.Series:
         """计算真实量比（当前成交量/前5日均量）"""
         try:
             prev_trade_date = get_prev_trade_date(TRADE_DATE)
             start_date = (pd.Timestamp(prev_trade_date) - pd.Timedelta(days=10)).strftime('%Y%m%d')
-            
-            hist_df = pro.daily(start_date=start_date, end_date=prev_trade_date)
-            if not hist_df.empty:
+
+            # V2: daily_cache 表里没有"全市场跨日"的批量接口，但可按 trade_date 逐日取并合并
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            hist_df = None
+            try:
+                # 把 start_date~prev_trade_date 之间 daily_cache 表里已有的日期合并
+                import pandas as pd
+                # 直接按 ts_code 维度批量取，跨日范围更高效
+                from stock_cache import get_daily_cache_range
+                # 改用按 trade_date 多日合并（仅取缓存中已有的）
+                from datetime import datetime as _dt, timedelta as _td
+                cur = _dt.strptime(start_date, '%Y%m%d')
+                end = _dt.strptime(prev_trade_date, '%Y%m%d')
+                parts = []
+                while cur <= end:
+                    d = cur.strftime('%Y%m%d')
+                    if get_daily_by_date_count(d) > 0:
+                        parts.append(get_daily_by_date(d))
+                    cur += _td(days=1)
+                if parts:
+                    hist_df = pd.concat(parts, ignore_index=True)
+            except Exception:
+                pass
+
+            if hist_df is None or hist_df.empty:
+                hist_df = pro.daily(start_date=start_date, end_date=prev_trade_date)
+                if hist_df is not None and not hist_df.empty:
+                    try:
+                        batch_insert_daily_cache(hist_df)
+                    except Exception:
+                        pass
+            if hist_df is not None and not hist_df.empty:
                 hist_df = hist_df.rename(columns={'vol': 'volume'})
                 avg_vol = hist_df.groupby('ts_code')['volume'].mean()
                 

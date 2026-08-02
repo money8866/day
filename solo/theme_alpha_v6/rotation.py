@@ -222,10 +222,27 @@ def get_leader_stock(theme_info, theme_stocks, name_to_code):
 # 4. 获取个股行情 & 计算信号
 # =========================
 def get_stock_daily(ts_code, trade_date, lookback=60):
-    """获取个股日线数据，返回 DataFrame"""
+    """获取个股日线数据，返回 DataFrame（V2: 优先 daily_cache 表）"""
     try:
-        df = pro.daily(ts_code=ts_code, start_date='', end_date=trade_date)
-        if df.empty:
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(trade_date):
+                df = get_daily_cache(ts_code, '20250101', trade_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(ts_code=ts_code, start_date='', end_date=trade_date)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
+        if df is None or df.empty:
             return None
         df = df.sort_values('trade_date').tail(lookback)
         return df

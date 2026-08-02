@@ -15,10 +15,20 @@ logger = loguru.logger
 
 
 def get_cache_dir(config: Dict) -> Path:
-    """获取缓存目录"""
-    cache_dir = Path(config.get('cache', {}).get('dir', 'cache'))
-    if not cache_dir.is_absolute():
-        cache_dir = Path(__file__).parent / cache_dir
+    """获取缓存目录（V2: 统一到 cache_config.PARQUET_DIR，消除相对路径分裂）
+
+    旧版用 Path(__file__).parent / 'cache' 解析，导致不同 CWD 调用方
+    生成 solo/cache 和 multi_factor_picker/cache 两套互不相通的缓存。
+    现统一指向 D:\\mystock\\cache_daily\\parquet，可被 MSTOCK_CACHE 环境变量覆盖。
+    """
+    try:
+        from cache_config import PARQUET_DIR
+        cache_dir = Path(PARQUET_DIR)
+    except Exception:
+        # 回退：config 显式指定绝对路径时仍尊重
+        cache_dir = Path(config.get('cache', {}).get('dir', 'cache'))
+        if not cache_dir.is_absolute():
+            cache_dir = Path(__file__).parent / cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -87,6 +97,44 @@ def save_cache(df: pd.DataFrame, cache_dir: Path, key: str) -> None:
         csv_path = cache_path.with_suffix('.csv')
         df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     logger.debug(f"缓存已保存: {key}")
+
+
+def cached_api(cache_key_prefix: str, expire_hours: int = 24):
+    """Parquet 缓存装饰器（消除 get_xxx 方法中重复的 load_cache/save_cache 样板）
+
+    用法：
+        @cached_api("income", expire_hours=24*90)
+        def get_income(self, ts_code, start_year=None, end_year=None):
+            return self._retry_call(self.pro.income, ts_code=ts_code, ...)
+
+    装饰器自动：
+      1. 拼接 cache_key = f"{prefix}_{kwargs 值拼接}"
+      2. 命中缓存则直接返回
+      3. 未命中则调用原函数，结果非空时写缓存
+    """
+    def decorator(func: Callable):
+        def wrapper(self, *args, **kwargs):
+            if not getattr(self, 'cache_enabled', True):
+                return func(self, *args, **kwargs)
+            # 拼接 cache_key：prefix + 位置参数 + 关键参数值
+            parts = [cache_key_prefix]
+            for a in args:
+                if a is not None:
+                    parts.append(str(a))
+            for k in ('ts_code', 'trade_date', 'period', 'list_status', 'start_year', 'end_year', 'n_days', 'n_periods'):
+                if k in kwargs and kwargs[k] is not None:
+                    parts.append(str(kwargs[k]))
+            # ts_code 含点号，替换为下划线保证文件名安全
+            cache_key = '_'.join(parts).replace('.', '_')
+            cached = load_cache(self.cache_dir, cache_key, expire_hours)
+            if cached is not None:
+                return cached
+            df = func(self, *args, **kwargs)
+            if df is not None and len(df) > 0:
+                save_cache(df, self.cache_dir, cache_key)
+            return df if df is not None else pd.DataFrame()
+        return wrapper
+    return decorator
 
 
 class DataFetcher:
@@ -234,155 +282,50 @@ class DataFetcher:
             return result
         return pd.DataFrame()
 
+    @cached_api("income", expire_hours=24*90)
     def get_income(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
-        """
-        获取利润表数据(使用真实的Tushare字段名)
-        """
-        cache_key = f"income_{ts_code}_{start_year}_{end_year}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
+        """获取利润表数据(使用真实的Tushare字段名)"""
         # 使用更全的字段(包含 rd_exp, n_income, total_cogs 等关键财务指标)
         fields = 'ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,end_type,basic_eps,diluted_eps,total_revenue,revenue,n_income,n_income_attr_p,rd_exp,total_profit,total_cogs,operate_profit,oper_exp'
-        df = self._retry_call(self.pro.income, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
+        return self._retry_call(self.pro.income, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
 
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
-
+    @cached_api("balance", expire_hours=24*90)
     def get_balance_sheet(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
-        """
-        获取资产负债表(使用真实的Tushare字段名)
-        """
-        cache_key = f"balance_{ts_code}_{start_year}_{end_year}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
+        """获取资产负债表(使用真实的Tushare字段名)"""
         # 关键字段: inventories(存货)、fix_assets(固定资产)、total_hldr_eqy_exc_min_int(股东权益)、total_assets
         # 新增需求链指标: contract_liability(合同负债)、advance_payment(预付款)
         fields = 'ts_code,ann_date,f_ann_date,end_date,report_type,total_assets,total_current_assets,inventories,fix_assets,total_liability,total_hldr_eqy_exc_min_int,total_hldr_eqy_inc_min_int,contract_liability,advance_payment,operating_liability,operating_asset'
-        df = self._retry_call(self.pro.balancesheet, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
+        return self._retry_call(self.pro.balancesheet, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
 
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
-
+    @cached_api("cashflow", expire_hours=24*90)
     def get_cashflow(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
-        """
-        获取现金流量表
-
-        Args:
-            ts_code: 股票代码
-            start_year: 开始年份 YYYY
-            end_year: 结束年份 YYYY
-
-        Returns:
-            现金流量表DataFrame
-        """
-        cache_key = f"cashflow_{ts_code}_{start_year}_{end_year}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
-        df = self._retry_call(self.pro.cashflow, ts_code=ts_code, start_year=start_year, end_year=end_year,
+        """获取现金流量表"""
+        return self._retry_call(self.pro.cashflow, ts_code=ts_code, start_year=start_year, end_year=end_year,
                               fields='ts_code,ann_date,f_ann_date,end_date,report_type,net_operate_cash_flow,net_invest_cash_flow,payment_for_assets,cap_expend_ra')
 
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
-
+    @cached_api("forecast", expire_hours=24*30)
     def get_forecast(self, ts_code: str) -> pd.DataFrame:
-        """
-        获取业绩预告
-
-        Args:
-            ts_code: 股票代码
-
-        Returns:
-            业绩预告DataFrame
-        """
-        cache_key = f"forecast_{ts_code}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
-        df = self._retry_call(self.pro.forecast, ts_code=ts_code,
+        """获取业绩预告"""
+        return self._retry_call(self.pro.forecast, ts_code=ts_code,
                               fields='ts_code,ann_date,end_date,type,period,profit_change,profit_ratio,'
                                      'p_change_min,p_change_max,net_profit_min,net_profit_max,'
                                      'last_parent_net,summary,update_flag')
 
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
-
+    @cached_api("forecast_vip", expire_hours=24*30)
     def get_forecast_vip(self, period: str) -> pd.DataFrame:
-        """
-        获取全量业绩预告 (v3.3 升级: 用 forecast_vip 替代逐只 forecast)
-
-        Args:
-            period: 报告期, 如 '20260630' 表示2026年中报
-
-        Returns:
-            全量业绩预告 DataFrame, 包含字段:
-            ts_code, ann_date, end_date, type, period,
-            profit_change, p_change_min, p_change_max,
-            net_profit_min, net_profit_max, last_parent_net,
-            summary, update_flag
-        """
-        cache_key = f"forecast_vip_{period}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
-        df = self._retry_call(self.pro.forecast_vip, period=period,
+        """获取全量业绩预告 (v3.3 升级: 用 forecast_vip 替代逐只 forecast)"""
+        return self._retry_call(self.pro.forecast_vip, period=period,
                               fields='ts_code,ann_date,end_date,type,period,profit_change,'
                                      'p_change_min,p_change_max,net_profit_min,net_profit_max,'
                                      'last_parent_net,summary,update_flag')
 
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
-
+    @cached_api("express_vip", expire_hours=24*30)
     def get_express_vip(self, period: str) -> pd.DataFrame:
-        """
-        获取全量业绩快报 (v3.3 新增: 业绩快报是比财报更及时的数据源)
-
-        Args:
-            period: 报告期, 如 '20260630' 表示2026年中报
-
-        Returns:
-            全量业绩快报 DataFrame, 包含字段:
-            ts_code, ann_date, end_date, revenue, operate_profit,
-            total_profit, n_income, total_assets, diluted_eps,
-            reason, yoy_net_profit, yoy_eps, yoy_revenue, perf_summary
-        """
-        cache_key = f"express_vip_{period}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None:
-                return cached
-
-        df = self._retry_call(self.pro.express_vip, period=period,
+        """获取全量业绩快报 (v3.3 新增: 业绩快报是比财报更及时的数据源)"""
+        return self._retry_call(self.pro.express_vip, period=period,
                               fields='ts_code,ann_date,end_date,revenue,operate_profit,'
                                      'total_profit,n_income,total_assets,diluted_eps,'
                                      'reason,yoy_net_profit,yoy_eps,yoy_revenue,perf_summary')
-
-        if self.cache_enabled and df is not None and len(df) > 0:
-            save_cache(df, self.cache_dir, cache_key)
-
-        return df if df is not None else pd.DataFrame()
 
     def get_moneyflow(self, trade_date: str) -> pd.DataFrame:
         """
@@ -441,29 +384,15 @@ class DataFetcher:
 
         return pd.DataFrame()
 
+    @cached_api("holder_trade", expire_hours=24*7)
     def get_holder_trade(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """
-        获取股东增减持数据（含社保等机构）
-        
-        Returns: DataFrame with holder trade information
-        """
-        cache_key = f"holder_trade_{self._safe_name(ts_code)}_{start_date}_{end_date}"
-        if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-            if cached is not None and len(cached) > 0:
-                return cached
-
+        """获取股东增减持数据（含社保等机构）"""
         try:
             df = self._retry_call(self.pro.stk_holdertrade, ts_code=ts_code,
                                   start_date=start_date, end_date=end_date)
-            if df is not None and len(df) > 0:
-                if self.cache_enabled:
-                    save_cache(df, self.cache_dir, cache_key)
-                return df
+            return df if df is not None else pd.DataFrame()
         except Exception:
-            pass
-
-        return pd.DataFrame()
+            return pd.DataFrame()
 
     def get_daily_basic(self, trade_date: str) -> pd.DataFrame:
         """
@@ -492,36 +421,16 @@ class DataFetcher:
 
         return pd.DataFrame()
 
+    @cached_api("industry", expire_hours=24*30)
     def get_stk_industry(self, ts_code: str = None) -> pd.DataFrame:
-        """
-        获取行业分类
-
-        Args:
-            ts_code: 股票代码(可选,不传则获取全市场)
-
-        Returns:
-            行业分类DataFrame
-        """
-        if ts_code:
-            cache_key = f"industry_{ts_code}"
-            if self.cache_enabled:
-                cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
-                if cached is not None:
-                    return cached
-
-            df = self._retry_call(self.pro.stk_industry, ts_code=ts_code)
-            if self.cache_enabled and df is not None and len(df) > 0:
-                save_cache(df, self.cache_dir, cache_key)
-            return df if df is not None else pd.DataFrame()
-        else:
-            # 获取所有行业分类
+        """获取行业分类（ts_code=None 时获取全市场）"""
+        if ts_code is None:
+            # 全市场分支：批量获取（装饰器仅缓存单股，全市场走原逻辑）
             cache_key = "industry_all"
             if self.cache_enabled:
                 cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
                 if cached is not None:
                     return cached
-
-            # 批量获取(需要遍历)
             all_industries = []
             stocks = self.get_stock_list()
             for _, row in stocks.iterrows():
@@ -532,15 +441,11 @@ class DataFetcher:
                         all_industries.append(df)
                 except:
                     pass
-
-            if all_industries:
-                result = pd.concat(all_industries, ignore_index=True)
-            else:
-                result = pd.DataFrame()
-
+            result = pd.concat(all_industries, ignore_index=True) if all_industries else pd.DataFrame()
             if self.cache_enabled and len(result) > 0:
                 save_cache(result, self.cache_dir, cache_key)
             return result
+        return self._retry_call(self.pro.stk_industry, ts_code=ts_code)
 
     def get_last_trade_date(self) -> str:
         """获取最近可用交易日

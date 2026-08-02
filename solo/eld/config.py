@@ -24,7 +24,7 @@ class GlobalConfig:
     log_file: Optional[str] = os.getenv("ELD_LOG_FILE", None)
     data_dir: str = os.getenv("ELD_DATA_DIR", "d:/mystock")
     output_dir: str = os.getenv("ELD_OUTPUT_DIR", "d:/mystock/report_daily")
-    cache_dir: str = os.getenv("ELD_CACHE_DIR", "cache/eld")
+    cache_dir: str = os.getenv("ELD_CACHE_DIR", "")  # 留空则由 CacheConfig.__post_init__ 解析
     max_workers: int = int(os.getenv("ELD_MAX_WORKERS", "8"))
     target_date: Optional[str] = os.getenv("ELD_TARGET_DATE", None)
 
@@ -47,14 +47,28 @@ class TushareConfig:
 # ──────────────────────────────────────────────
 @dataclass
 class CacheConfig:
-    """缓存配置"""
+    """缓存配置（V2: 统一到 cache_config.CACHE_ROOT，消除相对路径分裂）"""
     sqlite_enabled: bool = True
     csv_enabled: bool = True
     expire_hours: int = 6
+    # 统一缓存根目录：优先从 cache_config 读取，环境变量 ELD_CACHE_DIR 可覆盖
+    _cache_root: str = os.getenv("ELD_CACHE_DIR", "")
     sqlite_db: str = "eld_cache.sqlite"
-    sqlite_cache_dir: str = "cache/eld"
-    csv_cache_dir: str = "cache/eld/csv"
+    sqlite_cache_dir: str = ""  # 运行时由 _resolve_cache_dir() 填充
+    csv_cache_dir: str = ""
     incremental_update: bool = True
+
+    def __post_init__(self):
+        if not self.sqlite_cache_dir or not self.csv_cache_dir:
+            root = self._cache_root
+            if not root:
+                try:
+                    from cache_config import CACHE_ROOT
+                    root = CACHE_ROOT
+                except Exception:
+                    root = "d:/mystock/cache_daily"
+            self.sqlite_cache_dir = root
+            self.csv_cache_dir = os.path.join(root, "eld_csv")
 
 
 # ──────────────────────────────────────────────

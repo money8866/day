@@ -1072,27 +1072,22 @@ def get_daily_kline(ts_codes, start, end):
     # 定义本地缓存目录
     LOCAL_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache_daily")
     
-    # 先尝试从本地CSV缓存读取（优先级最高）
+    # 先尝试从 SQLite daily_cache 读取（V2: 替代 CSV 缓存）
+    from stock_cache import get_daily_cache, get_daily_cache_range
     for code in ts_codes:
-        csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
-        if os.path.exists(csv_path):
-            try:
-                df = pd.read_csv(csv_path)
-                if not df.empty:
-                    # 将 trade_date 转换为字符串类型，避免类型比较错误
+        try:
+            _, max_date = get_daily_cache_range(code)
+            if max_date is not None and str(max_date) >= str(end):
+                df = get_daily_cache(code, start, end)
+                if df is not None and not df.empty:
                     df['trade_date'] = df['trade_date'].astype(str)
-                    # 过滤日期范围
                     df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
                     if not df.empty and str(df['trade_date'].iloc[-1]) == str(end):
-                        # 添加均线列
                         df = _add_ma_columns(df)
                         all_parts.append(df)
                         continue
-                    elif not df.empty:
-                        # CSV 数据不包含最新交易日 {end}，最后日期={df['trade_date'].iloc[-1]}，标记为需重新拉取
-                        pass
-            except Exception as e:
-                print(f"[KLine] 读取CSV失败 {csv_path}: {e}")
+        except Exception:
+            pass
         
         # 再尝试从SQLite缓存读取
         cache_key = f"daily_kline_{code}_{start}_{end}"
@@ -1121,32 +1116,29 @@ def get_daily_kline(ts_codes, start, end):
                 continue
             need_fetch_codes.append(code)
     
-    # 需要拉取的股票：先尝试用 tushare_quant 生成CSV缓存
+    # 需要拉取的股票：用 tushare_quant 批量预取到 SQLite daily_cache
     if need_fetch_codes and TQ_AVAILABLE:
         print(f"[KLine] 使用 tushare_quant 批量预取 {len(need_fetch_codes)} 只股票数据")
         try:
             tq.batch_prefetch_hist_data(need_fetch_codes, start_date=start)
-            # 重新从CSV读取刚生成的缓存
-            for code in need_fetch_codes[:]:  # 使用副本迭代
-                csv_path = os.path.join(LOCAL_CACHE_DIR, f"{code}.csv")
-                if os.path.exists(csv_path):
-                    try:
-                        df = pd.read_csv(csv_path)
-                        if not df.empty:
-                            # 将 trade_date 转换为字符串类型，避免类型比较错误
-                            df['trade_date'] = df['trade_date'].astype(str)
-                            df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
-                            if not df.empty and (
-                                _kline_cache_fresh(str(df['trade_date'].iloc[-1]), str(end))
-                                or _is_failed_stock(code)
-                            ):
-                                df = _add_ma_columns(df)
-                                all_parts.append(df)
-                                need_fetch_codes.remove(code)
-                            elif not df.empty:
-                                print(f"  [警告] {code} CSV 重新预取后仍不包含 {end}，最后日期={df['trade_date'].iloc[-1]}")
-                    except Exception as e:
-                        print(f"[KLine] 读取tq生成的CSV失败 {csv_path}: {e}")
+            # 重新从 SQLite daily_cache 读取刚生成的缓存
+            for code in need_fetch_codes[:]:
+                try:
+                    df = get_daily_cache(code, start, end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+                        df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)].copy()
+                        if not df.empty and (
+                            _kline_cache_fresh(str(df['trade_date'].iloc[-1]), str(end))
+                            or _is_failed_stock(code)
+                        ):
+                            df = _add_ma_columns(df)
+                            all_parts.append(df)
+                            need_fetch_codes.remove(code)
+                        elif not df.empty:
+                            print(f"  [警告] {code} 预取后仍不包含 {end}，最后日期={df['trade_date'].iloc[-1]}")
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[KLine] tushare_quant 调用失败: {e}")
     
@@ -1294,7 +1286,25 @@ def get_index_kline(ts_code="000300.SH", start=None, end=None):
         if _df_inst is not None:
             df = _df_inst.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
         else:
-            df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+            df = None
+            # V2: 优先 daily_cache 表
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, _max_date = get_daily_cache_range(ts_code)
+                if _max_date is not None and str(_max_date) >= str(end):
+                    df = get_daily_cache(ts_code, start, end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+            except Exception:
+                pass
+            if df is None or df.empty:
+                df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+                if df is not None and not df.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
     time.sleep(0.15)
     if df is not None and not df.empty:
         cache_set("idx_kline", df, ts_code=ts_code, start=start, end=end)

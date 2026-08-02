@@ -158,7 +158,6 @@ def _get_df():
         config = {
             'cache': {
                 'enabled': True,
-                'dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'),
                 'expire_hours': 168,  # 7 天
             },
             'tushare': {'max_retry': 3, 'retry_delay': 5},
@@ -1120,17 +1119,34 @@ class RecognitionScorer:
             except Exception:
                 pass
         else:
-            pro = self._get_pro()
-            if pro is not None:
-                try:
-                    _shared_daily = pro.daily(
-                        ts_code=ts_code,
-                        start_date=start_str,
-                        end_date=end_str,
-                        fields='ts_code,trade_date,high,close,pct_chg',
-                    )
-                except Exception:
-                    pass
+            # V2: 优先 daily_cache 表
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, max_date = get_daily_cache_range(ts_code)
+                if max_date is not None and str(max_date) >= str(end_str):
+                    cached = get_daily_cache(ts_code, start_str, end_str)
+                    if cached is not None and not cached.empty:
+                        cached['trade_date'] = cached['trade_date'].astype(str)
+                        _shared_daily = cached
+            except Exception:
+                pass
+            if _shared_daily is None:
+                pro = self._get_pro()
+                if pro is not None:
+                    try:
+                        _shared_daily = pro.daily(
+                            ts_code=ts_code,
+                            start_date=start_str,
+                            end_date=end_str,
+                            fields='ts_code,trade_date,high,close,pct_chg',
+                        )
+                        if _shared_daily is not None and not _shared_daily.empty:
+                            try:
+                                batch_insert_daily_cache(_shared_daily)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
 
         s1, d1 = self._score_activity(ts_code)
         s2, d2 = self._score_limit_up_history(ts_code, daily_df=_shared_daily)
@@ -1346,16 +1362,33 @@ class AlphaScorer:
             except Exception:
                 df = None
         else:
-            pro = self._get_pro()
-            if pro is None:
-                return 50.0, {"error": "no token"}
+            # V2: 优先 daily_cache 表
             try:
-                df = pro.daily(
-                    ts_code=ts_code, start_date=start_str, end_date=end_str,
-                    fields='ts_code,trade_date,close',
-                )
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, max_date = get_daily_cache_range(ts_code)
+                if max_date is not None and str(max_date) >= str(end_str):
+                    cached = get_daily_cache(ts_code, start_str, end_str)
+                    if cached is not None and not cached.empty:
+                        cached['trade_date'] = cached['trade_date'].astype(str)
+                        df = cached
             except Exception:
-                df = None
+                pass
+            if df is None:
+                pro = self._get_pro()
+                if pro is None:
+                    return 50.0, {"error": "no token"}
+                try:
+                    df = pro.daily(
+                        ts_code=ts_code, start_date=start_str, end_date=end_str,
+                        fields='ts_code,trade_date,close',
+                    )
+                    if df is not None and not df.empty:
+                        try:
+                            batch_insert_daily_cache(df)
+                        except Exception:
+                            pass
+                except Exception:
+                    df = None
 
         try:
             if df is None or len(df) < 20:
@@ -1423,16 +1456,33 @@ class AlphaScorer:
             except Exception:
                 df = None
         else:
-            pro = self._get_pro()
-            if pro is None:
-                return 50.0, {"error": "no token"}
+            # V2: 优先 daily_cache 表
             try:
-                df = pro.daily(
-                    ts_code=ts_code, start_date=start_str, end_date=end_str,
-                    fields='ts_code,trade_date,amount,vol,close',
-                )
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, max_date = get_daily_cache_range(ts_code)
+                if max_date is not None and str(max_date) >= str(end_str):
+                    cached = get_daily_cache(ts_code, start_str, end_str)
+                    if cached is not None and not cached.empty:
+                        cached['trade_date'] = cached['trade_date'].astype(str)
+                        df = cached
             except Exception:
-                df = None
+                pass
+            if df is None:
+                pro = self._get_pro()
+                if pro is None:
+                    return 50.0, {"error": "no token"}
+                try:
+                    df = pro.daily(
+                        ts_code=ts_code, start_date=start_str, end_date=end_str,
+                        fields='ts_code,trade_date,amount,vol,close',
+                    )
+                    if df is not None and not df.empty:
+                        try:
+                            batch_insert_daily_cache(df)
+                        except Exception:
+                            pass
+                except Exception:
+                    df = None
 
         try:
             if df is None or len(df) < 10:
@@ -1941,8 +1991,12 @@ class BullScorerV2:
         self.min_market_cap = 80 * 1e8   # 80亿
         self.max_market_cap = 5000 * 1e8 # 5000亿
         
-        # 持久化文件缓存（同一天不重拉Tushare）
-        self._cache_dir = Path(__file__).parent / 'cache'
+        # 持久化文件缓存（同一天不重拉Tushare）— 统一到 cache_config.PARQUET_DIR
+        try:
+            from cache_config import PARQUET_DIR
+            self._cache_dir = Path(PARQUET_DIR)
+        except Exception:
+            self._cache_dir = Path(__file__).parent / 'cache'
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_date = datetime.now().strftime('%Y%m%d')
         self._file_caches: Dict[str, dict] = {}

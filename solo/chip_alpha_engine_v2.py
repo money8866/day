@@ -325,6 +325,20 @@ class ChipAlphaEngineV2:
         return result
 
     def fetch_daily_history(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """获取单股日线（V2: 优先 SQLite daily_cache 表，缺失时降级 parquet + pro.daily）"""
+        # 1) 优先 SQLite daily_cache 表（与全项目共享）
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= str(end_date):
+                df = get_daily_cache(ts_code, start_date, end_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+                    return df.sort_values('trade_date').reset_index(drop=True)
+        except Exception:
+            pass
+
+        # 2) 降级：本地 parquet 缓存（旧路径，保留兜底）
         cache_path = os.path.join(self.cache_dir, f"daily_{ts_code}_{start_date}_{end_date}.parquet")
         df = self._read_cache(cache_path)
         if df is None or len(df) == 0:
@@ -337,6 +351,11 @@ class ChipAlphaEngineV2:
             if df is not None and len(df) > 0:
                 df = df.sort_values('trade_date').reset_index(drop=True)
                 self._write_cache(df, cache_path)
+                # 同步写入 daily_cache 表，供其他模块复用
+                try:
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         return df
 
     def fetch_daily_basic(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:

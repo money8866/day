@@ -156,6 +156,18 @@ class ChipDynamicsEngine:
         cache_path = os.path.join(self.cache_dir, f"daily_{ts_code}_{start_date}_{end_date}.parquet")
         df = self._read_cache(cache_path)
         if df is None or len(df) == 0:
+            # V2: 优先 daily_cache 表
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, _max_date = get_daily_cache_range(ts_code)
+                if _max_date is not None and str(_max_date) >= str(end_date):
+                    _c = get_daily_cache(ts_code, start_date, end_date)
+                    if _c is not None and not _c.empty:
+                        _c['trade_date'] = _c['trade_date'].astype(str)
+                        df = _c
+            except Exception:
+                pass
+        if df is None or len(df) == 0:
             self._throttle()
             try:
                 df = self.pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
@@ -163,6 +175,11 @@ class ChipDynamicsEngine:
                 print(f"  [筹码] daily 获取失败 {ts_code}: {e}")
                 df = pd.DataFrame()
             if df is not None and len(df) > 0:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
                 df = df.sort_values('trade_date').reset_index(drop=True)
                 self._write_cache(df, cache_path)
         return df

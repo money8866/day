@@ -382,16 +382,39 @@ def compute_stock_momentum_score(ts_code, pro, lookback_days=60):
     """
     轻量动量评分（0-100）
     因子：5日涨幅(25%) + 10日涨幅(25%) + 20日涨幅(25%) + 量价趋势(15%) + MACD状态(10%)
+
+    V2: 优先从 SQLite daily_cache 表读取，避免高频调 pro.daily
     """
     try:
         end_date = TRADE_DATE
-        start_date = (datetime.datetime.strptime(end_date, "%Y%m%d") - 
+        start_date = (datetime.datetime.strptime(end_date, "%Y%m%d") -
                       datetime.timedelta(days=lookback_days)).strftime("%Y%m%d")
-        
-        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                      fields="trade_date,close,vol")
-        if df is None or len(df) < 20:
-            return None
+
+        # 1) 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= str(end_date):
+                cached = get_daily_cache(ts_code, start_date, end_date)
+                if cached is not None and not cached.empty and {'close', 'vol'}.issubset(cached.columns):
+                    cached['trade_date'] = cached['trade_date'].astype(str)
+                    if len(cached) >= 20:
+                        df = cached
+        except Exception:
+            pass
+
+        # 2) 缓存缺失 → 调 pro.daily，并回写 daily_cache 表
+        if df is None:
+            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date,
+                          fields="trade_date,close,vol")
+            if df is None or len(df) < 20:
+                return None
+            try:
+                from stock_cache import batch_insert_daily_cache
+                batch_insert_daily_cache(df)
+            except Exception:
+                pass
         
         df = df.sort_values("trade_date").reset_index(drop=True)
         close = df['close']
@@ -652,15 +675,37 @@ def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_da
             con_ts_code = f"{con_code}.SH" if con_code.startswith('6') else f"{con_code}.SZ"
         
         try:
-            cache_file = _cache_key_stock(con_ts_code, trade_date)
-            con_df = _read_cache(cache_file)
+            # V2: 优先 daily_cache 表，缺失再走本地 parquet + pro.daily
+            con_df = None
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, max_date = get_daily_cache_range(con_ts_code)
+                if max_date is not None and str(max_date) >= str(trade_date):
+                    cached = get_daily_cache(con_ts_code,
+                                             (today - datetime.timedelta(days=250)).strftime("%Y%m%d"),
+                                             trade_date)
+                    if cached is not None and not cached.empty:
+                        cached['trade_date'] = cached['trade_date'].astype(str)
+                        con_df = cached
+            except Exception:
+                pass
+
             if con_df is None:
-                con_df = pro.daily(ts_code=con_ts_code,
-                                   start_date=(today - datetime.timedelta(days=250)).strftime("%Y%m%d"),
-                                   end_date=trade_date,
-                                   fields="ts_code,trade_date,open,close,high,low,vol,amount")
-                _save_cache(con_df, cache_file)
-                time.sleep(0.1)
+                cache_file = _cache_key_stock(con_ts_code, trade_date)
+                con_df = _read_cache(cache_file)
+                if con_df is None:
+                    con_df = pro.daily(ts_code=con_ts_code,
+                                       start_date=(today - datetime.timedelta(days=250)).strftime("%Y%m%d"),
+                                       end_date=trade_date,
+                                       fields="ts_code,trade_date,open,close,high,low,vol,amount")
+                    _save_cache(con_df, cache_file)
+                    # 同步回写 daily_cache 表
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(con_df)
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
             
             if con_df is None or len(con_df) < 60:
                 continue

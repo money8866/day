@@ -33,6 +33,24 @@ parent_dir = os.path.dirname(BASE_DIR)
 sys.path.append(parent_dir)
 sys.path.append(BASE_DIR)
 
+
+def _cleanup_old_theme_maps(cache_dir, keep_days=5):
+    """清理历史 theme_stock_map 版本（保留 latest + 最近 keep_days 天）"""
+    import glob
+    import time
+    cutoff = time.time() - keep_days * 86400
+    removed = 0
+    for f in glob.glob(os.path.join(cache_dir, 'theme_stock_map_v*_*.json')):
+        try:
+            if os.path.getmtime(f) < cutoff:
+                os.remove(f)
+                removed += 1
+        except Exception:
+            pass
+    if removed > 0:
+        print(f"  [清理] 删除 {removed} 个过期 theme_stock_map 历史版本")
+
+
 from tushare_quant import pro, TRADE_DATE
 import theme_trend_sentiment_score as theme_ts
 from subtheme_heat_engine import run_subtheme_heat_engine
@@ -505,6 +523,9 @@ def build_theme_stock_map_v2():
     }
     with open(json_file, 'w', encoding='utf-8') as f:
         json.dump(json_output, f, ensure_ascii=False, indent=2)
+
+    # 清理历史 theme_stock_map 版本（保留最近 5 天 + latest）
+    _cleanup_old_theme_maps(CACHE_DIR, keep_days=5)
 
     total_refs = sum(len(v) for v in themes_output.values())
     print(f"\n{'='*60}")

@@ -243,18 +243,61 @@ def _supplement_daily_from_api(
     try:
         if ts_code:
             logger.info("[API补全] %s 日线 %s~%s", ts_code, actual_start, actual_end)
-            df = pro.daily(
-                ts_code=ts_code,
-                start_date=actual_start,
-                end_date=actual_end,
-            )
+            # V2: 优先 daily_cache 表
+            df = None
+            try:
+                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                _, _max_date = get_daily_cache_range(ts_code)
+                if _max_date is not None and str(_max_date) >= str(actual_end):
+                    df = get_daily_cache(ts_code, actual_start, actual_end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+            except Exception:
+                pass
+            if df is None or df.empty:
+                df = pro.daily(
+                    ts_code=ts_code,
+                    start_date=actual_start,
+                    end_date=actual_end,
+                )
+                if df is not None and not df.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
             time.sleep(0.12)
         else:
             logger.info("[API补全] 全市场日线 %s~%s", actual_start, actual_end)
-            df = pro.daily(
-                start_date=actual_start,
-                end_date=actual_end,
-            )
+            # V2: 优先 daily_cache 表（按日期遍历）
+            df = None
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                _parts = []
+                _cur = datetime.strptime(actual_start, '%Y%m%d')
+                _end_dt = datetime.strptime(actual_end, '%Y%m%d')
+                while _cur <= _end_dt:
+                    _td = _cur.strftime('%Y%m%d')
+                    if get_daily_by_date_count(_td) > 0:
+                        _d = get_daily_by_date(_td)
+                        if _d is not None and not _d.empty:
+                            _parts.append(_d)
+                    _cur += timedelta(days=1)
+                if _parts:
+                    df = pd.concat(_parts, ignore_index=True)
+            except Exception:
+                pass
+            if df is None or df.empty:
+                df = pro.daily(
+                    start_date=actual_start,
+                    end_date=actual_end,
+                )
+                if df is not None and not df.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(df)
+                    except Exception:
+                        pass
             time.sleep(0.12)
 
         if df is None or df.empty:

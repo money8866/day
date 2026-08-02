@@ -3090,44 +3090,59 @@ def get_stock_name(code):
 # =========================
 # 缓存历史数据
 # =========================
+def _get_daily_from_sqlite(ts_code, start_date='20250101', end_date=None):
+    """从 SQLite daily_cache 表读取单股日线数据（替代 {ts_code}.csv 读取）
+
+    供 get_news_sentiment / 价格壁垒评分 / 成长弹性评分 / 筹码分析等场景统一调用。
+    返回 DataFrame（含 trade_date/close/open/high/low/vol/amount/pct_chg 等字段）或 None。
+    """
+    if end_date is None:
+        end_date = TRADE_DATE
+    try:
+        from stock_cache import get_daily_cache
+        df = get_daily_cache(ts_code, start_date, end_date)
+        if df is not None and not df.empty:
+            df['trade_date'] = df['trade_date'].astype(str)
+            return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception:
+        pass
+    return None
+
+
 def get_hist_data(ts_code):
-
-    cache_file = os.path.join(
-        CACHE_DIR,
-        f"{ts_code}.csv"
-    )
+    """获取单股历史日线数据（V2: 统一从 SQLite daily_cache 读取，废弃 CSV）"""
 
     # =========================
-    # 优先读取缓存
+    # 优先读取 SQLite daily_cache
     # =========================
-    df = None
-    if os.path.exists(cache_file):
-        try:
-            df = pd.read_csv(cache_file)
-            df['trade_date'] = df['trade_date'].astype(str)
-            if (df['trade_date'] == TRADE_DATE).any():
-                df = df[df['trade_date'] <= TRADE_DATE].sort_values('trade_date')
-            else:
-                df = None  # 无最新日，重新拉取
-        except Exception as e:
-            print(f"{ts_code} 缓存读取失败: {e}")
-            df = None
+    try:
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= TRADE_DATE:
+            df = get_daily_cache(ts_code, '20250101', TRADE_DATE)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
+                return df[df['trade_date'] <= TRADE_DATE].sort_values('trade_date').reset_index(drop=True)
+    except Exception as e:
+        print(f"{ts_code} SQLite缓存读取失败: {e}")
 
     # =========================
-    # 缓存缺失 → 重新拉取日线
+    # 缓存缺失 → 重新拉取日线并写入 SQLite daily_cache
     # =========================
-    if df is None or df.empty:
-        try:
-            df = _df_daily_by_code(ts_code, start_date='20250101', end_date=TRADE_DATE)
-            if df is None or df.empty:
-                return None
-            df['trade_date'] = df['trade_date'].astype(str)
-            df = df.sort_values('trade_date')
-            df.to_csv(cache_file, index=False)
-            time.sleep(0.15)
-        except Exception as e:
-            print(f"{ts_code} 下载失败:", e)
+    try:
+        df = _df_daily_by_code(ts_code, start_date='20250101', end_date=TRADE_DATE)
+        if df is None or df.empty:
             return None
+        df['trade_date'] = df['trade_date'].astype(str)
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        try:
+            batch_insert_daily_cache(df)
+        except Exception:
+            pass
+        time.sleep(0.15)
+    except Exception as e:
+        print(f"{ts_code} 下载失败:", e)
+        return None
 
     return df
 
@@ -3185,85 +3200,65 @@ def _calc_pct_n(df, n=20):
 # ======================================================
 def batch_prefetch_hist_data(codes, start_date='20250101'):
     """
-    在主循环之前批量预取所有股票数据到本地缓存
+    在主循环之前批量预取所有股票数据到本地缓存（V2: 统一用 SQLite stk_factor_pro）
     使用 tushare 批量接口 pro.daily(ts_code="code1,code2,...")
-    之后 get_hist_data() 将全部命中本地缓存，不再调API
-    
-    注意：tushare 批量接口有单次返回行数上限（~5000行），
-    因此批量下载后，会对每只股票单独回填完整历史数据（从 start_date 开始），
-    确保缓存文件包含从 start_date 至今的全量数据。
+    之后 get_hist_data() 将全部命中 SQLite 缓存，不再调API
     """
     if not codes:
         return
-    
-    # 检查有多少已经在缓存中有今日数据
+
+    from stock_cache import get_daily_cache_range, batch_insert_daily_cache
+
+    # 入参 codes 已由上游 get_daily_kline 判定为缺失（daily_cache 表里没有 max_date>=TRADE_DATE），
+    # 这里再校验一次是为了防止并发其他流程刚写入；正常情况下 cached 数为 0 是预期。
     cached = []
     missing = []
     for ts_code in codes:
-        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-        if os.path.exists(cache_file):
-            try:
-                df = pd.read_csv(cache_file)
-                df['trade_date'] = df['trade_date'].astype(str)
-                if (df['trade_date'] == TRADE_DATE).any():
-                    cached.append(ts_code)
-                    continue
-            except:
-                pass
+        try:
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= TRADE_DATE:
+                cached.append(ts_code)
+                continue
+        except Exception:
+            pass
         missing.append(ts_code)
-    
-    print(f"  批量预取: {len(cached)} 已缓存, {len(missing)} 需下载")
-    
+
+    print(f"  批量预取: 传入 {len(codes)} 只(上游已判定缺失), 二次校验 {len(cached)} 已存在/ {len(missing)} 仍需下载")
+
     if not missing:
         return
-    
+
     # 分批下载，每批最多20只（避免单次返回行数限制导致数据不全）
     batch_size = 20
-    batch_downloaded = set()  # 记录批量下载成功的股票
+    batch_downloaded = set()
     for i in range(0, len(missing), batch_size):
         batch = missing[i:i + batch_size]
         try:
-            # 拼接为逗号分隔的代码列表
             ts_list = ",".join(batch)
             df = pro.daily(
                 ts_code=ts_list,
                 start_date=start_date,
                 end_date=TRADE_DATE
             )
-            
+
             if df is not None and not df.empty:
-                # 按股票代码分组，保存到各自的缓存文件
+                df['trade_date'] = df['trade_date'].astype(str)
+                # 批量写入 SQLite daily_cache（INSERT OR REPLACE，安全：仅 11 列）
+                try:
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
                 for ts_code in batch:
-                    stock_df = df[df['ts_code'] == ts_code]
-                    if not stock_df.empty:
-                        stock_df = stock_df.sort_values('trade_date')
-                        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-                        # 合并已有缓存（批次接口返回的数据量有限，不能覆盖已有缓存）
-                        if os.path.exists(cache_file):
-                            try:
-                                old_df = pd.read_csv(cache_file)
-                                old_df['trade_date'] = old_df['trade_date'].astype(str)
-                                stock_df['trade_date'] = stock_df['trade_date'].astype(str)
-                                # 合并新旧数据，按trade_date去重，保留旧数据中的非重复行
-                                merged = pd.concat([old_df, stock_df], ignore_index=True)
-                                merged = merged.drop_duplicates(subset=['trade_date', 'ts_code'], keep='last')
-                                merged = merged.sort_values('trade_date').reset_index(drop=True)
-                                merged.to_csv(cache_file, index=False)
-                                batch_downloaded.add(ts_code)
-                                continue
-                            except Exception:
-                                pass
-                        stock_df.to_csv(cache_file, index=False)
+                    if ts_code in df['ts_code'].values:
                         batch_downloaded.add(ts_code)
-                
+
                 downloaded_count = df['ts_code'].nunique()
                 print(f"  批次 {i//batch_size + 1}: 成功下载 {downloaded_count}/{len(batch)} 只")
             else:
                 print(f"  批次 {i//batch_size + 1}: 下载返回空")
-            
-            # 防止频率限制
+
             time.sleep(0.15)
-            
+
         except Exception as e:
             print(f"  批次 {i//batch_size + 1} 下载失败: {e}")
             # 单批失败则逐只重试
@@ -3275,36 +3270,34 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
                         end_date=TRADE_DATE
                     )
                     if single_df is not None and not single_df.empty:
-                        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-                        single_df.to_csv(cache_file, index=False)
+                        single_df['trade_date'] = single_df['trade_date'].astype(str)
+                        try:
+                            batch_insert_daily_cache(single_df)
+                        except Exception:
+                            pass
                         batch_downloaded.add(ts_code)
                     time.sleep(0.15)
                 except:
                     pass
-    
+
     # =============================================
     # 回填全量数据：批量接口有行数上限，返回的数据
-    # 可能只有最近几十行，需要单独下载补全历史
+    # 可能只有最近几十行，需要单独下载补全历史（V2: 改用 SQLite 检查）
     # =============================================
     print(f"  回填全量数据: 检查 {len(batch_downloaded)} 只批量下载的股票...")
     backfill_count = 0
     for ts_code in batch_downloaded:
-        cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-        if not os.path.exists(cache_file):
-            continue
         try:
-            df_cache = pd.read_csv(cache_file)
-            df_cache['trade_date'] = df_cache['trade_date'].astype(str)
-            df_cache = df_cache.sort_values('trade_date')
-            
+            min_date, max_date = get_daily_cache_range(ts_code)
+            if min_date is None:
+                continue
+
             # 检查缓存是否包含从 start_date 开始的数据
-            # 如果 start_date 不是交易日，找其后第一个交易日作为基准
             start_date_to_check = start_date
             if pro is not None:
                 try:
                     cal = _df_trade_cal(start_date=start_date, end_date=start_date)
                     if cal.empty or cal.iloc[0]['is_open'] != 1:
-                        # start_date 不是交易日，找其后第一个交易日
                         end_cal = (datetime.strptime(start_date, '%Y%m%d') + timedelta(days=30)).strftime('%Y%m%d')
                         cal = _df_trade_cal(start_date=start_date, end_date=end_cal)
                         cal = cal[cal['is_open'] == 1]
@@ -3313,11 +3306,10 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
                             start_date_to_check = str(first_trade_after_start)
                 except:
                     pass
-            
-            earliest_date = df_cache['trade_date'].iloc[0] if not df_cache.empty else TRADE_DATE
-            if earliest_date <= start_date_to_check:
+
+            if str(min_date) <= start_date_to_check:
                 continue  # 已有全量数据，跳过
-            
+
             # 缺失历史数据，单独下载补全
             single_df = _df_daily_by_code(
                 ts_code,
@@ -3327,18 +3319,17 @@ def batch_prefetch_hist_data(codes, start_date='20250101'):
             if single_df is not None and not single_df.empty:
                 single_df = single_df.sort_values('trade_date')
                 single_df['trade_date'] = single_df['trade_date'].astype(str)
-                
-                # 合并并去重
-                merged = pd.concat([df_cache, single_df], ignore_index=True)
-                merged = merged.drop_duplicates(subset=['trade_date', 'ts_code'], keep='last')
-                merged = merged.sort_values('trade_date').reset_index(drop=True)
-                merged.to_csv(cache_file, index=False)
+                # 写入 SQLite daily_cache（INSERT OR REPLACE 自动去重）
+                try:
+                    batch_insert_daily_cache(single_df)
+                except Exception:
+                    pass
                 backfill_count += 1
-            
-            time.sleep(0.12)  # 频率控制
+
+            time.sleep(0.12)
         except Exception as e:
             print(f"    回填失败 {ts_code}: {e}")
-    
+
     if backfill_count > 0:
         print(f"  回填完成: {backfill_count} 只股票已补全历史数据至 {start_date}")
     
@@ -3510,25 +3501,21 @@ def get_news_sentiment(
     # 3. 行情数据（一周涨跌幅、成交量变化）
     price_text = ""
     try:
-        cache_file_k = os.path.join(CACHE_DIR, f"{code}.csv")
-        if os.path.exists(cache_file_k):
-            df = pd.read_csv(cache_file_k)
-            df['trade_date'] = df['trade_date'].astype(str)
+        df = _get_daily_from_sqlite(code)
+        if df is not None and len(df) >= 5:
             df = df[df['trade_date'] <= TRADE_DATE]
-            df = df.sort_values('trade_date')
-            if len(df) >= 5:
-                recent = df.tail(5)
-                chg_5d = ((recent['close'].iloc[-1] / recent['close'].iloc[0]) - 1) * 100
-                avg_vol_5d = recent['vol'].mean()
-                avg_vol_20d = df.tail(20)['vol'].mean() if len(df) >= 20 else avg_vol_5d
-                vol_ratio = avg_vol_5d / avg_vol_20d if avg_vol_20d > 0 else 1.0
-                price_text = (
-                    f"  近5日涨跌幅: {chg_5d:+.2f}%\n"
-                    f"  最新收盘: {recent['close'].iloc[-1]:.2f}\n"
-                    f"  量比(5日/20日): {vol_ratio:.2f}\n"
-                    f"  5日日均成交: {avg_vol_5d/10000:.0f}万\n"
-                    f"  5日高-低: {recent['high'].max():.2f} - {recent['low'].min():.2f}"
-                )
+            recent = df.tail(5)
+            chg_5d = ((recent['close'].iloc[-1] / recent['close'].iloc[0]) - 1) * 100
+            avg_vol_5d = recent['vol'].mean()
+            avg_vol_20d = df.tail(20)['vol'].mean() if len(df) >= 20 else avg_vol_5d
+            vol_ratio = avg_vol_5d / avg_vol_20d if avg_vol_20d > 0 else 1.0
+            price_text = (
+                f"  近5日涨跌幅: {chg_5d:+.2f}%\n"
+                f"  最新收盘: {recent['close'].iloc[-1]:.2f}\n"
+                f"  量比(5日/20日): {vol_ratio:.2f}\n"
+                f"  5日日均成交: {avg_vol_5d/10000:.0f}万\n"
+                f"  5日高-低: {recent['high'].max():.2f} - {recent['low'].min():.2f}"
+            )
     except Exception as e:
         pass
     
@@ -6212,36 +6199,34 @@ def calc_tech_barrier_score(ts_code, pro=None):
         fund_score = min(fund_score, cap)
 
         # ── 二、价格壁垒信号评分（0~3分） ──
-        csv_path = os.path.join(CACHE_DIR, f"{ts_code}.csv")
+        df = _get_daily_from_sqlite(ts_code)
         price_score = 0.0
-        if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            if not df.empty and 'close' in df.columns:
-                df = df.sort_values('trade_date', ascending=False)
+        if df is not None and not df.empty and 'close' in df.columns:
+            df = df.sort_values('trade_date', ascending=False)
 
-                # 低波动加分（壁垒稳固）
-                if 'pct_chg' in df.columns and len(df) >= 20:
-                    pct_vals = df['pct_chg'].head(60).dropna().astype(float)
-                    if len(pct_vals) >= 20:
-                        vol = pct_vals.std()
-                        vol_score = max(0, min(3, 3 * (4 - vol) / 2))
-                    else:
-                        vol_score = 0
+            # 低波动加分（壁垒稳固）
+            if 'pct_chg' in df.columns and len(df) >= 20:
+                pct_vals = df['pct_chg'].head(60).dropna().astype(float)
+                if len(pct_vals) >= 20:
+                    vol = pct_vals.std()
+                    vol_score = max(0, min(3, 3 * (4 - vol) / 2))
                 else:
                     vol_score = 0
+            else:
+                vol_score = 0
 
-                # 60日趋势加分（基本面向好）
-                if len(df) >= 60:
-                    close_60d = float(df.iloc[min(59, len(df)-1)]['close'])
-                    close_now = float(df.iloc[0]['close'])
-                    ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
-                    trend_boost = min(1.0, max(0, ret_60d * 3))
-                else:
-                    trend_boost = 0
+            # 60日趋势加分（基本面向好）
+            if len(df) >= 60:
+                close_60d = float(df.iloc[min(59, len(df)-1)]['close'])
+                close_now = float(df.iloc[0]['close'])
+                ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
+                trend_boost = min(1.0, max(0, ret_60d * 3))
+            else:
+                trend_boost = 0
 
-                price_score = min(3.0, vol_score + trend_boost)
-                details['volatility'] = round(vol_score, 1)
-                details['trend_boost'] = round(trend_boost, 1)
+            price_score = min(3.0, vol_score + trend_boost)
+            details['volatility'] = round(vol_score, 1)
+            details['trend_boost'] = round(trend_boost, 1)
 
         total = round(min(10, fund_score + price_score), 1)
         details['fund_score'] = round(fund_score, 1)
@@ -6492,27 +6477,25 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
         growth_score = 50
         # 使用60日涨幅作为代理
         try:
-            csv_path = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-            if os.path.exists(csv_path):
-                df = pd.read_csv(csv_path)
-                if len(df) >= 60:
-                    df = df.sort_values('trade_date', ascending=True)
-                    close_60d = float(df.iloc[-60]['close'])
-                    close_now = float(df.iloc[-1]['close'])
-                    ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
-                    
-                    if ret_60d >= 0.5:
-                        growth_score = 95
-                        logic.append(f"成长弹性：强趋势（60日涨幅{ret_60d*100:.0f}%）")
-                    elif ret_60d >= 0.3:
-                        growth_score = 80
-                        logic.append(f"成长弹性：良好（60日涨幅{ret_60d*100:.0f}%）")
-                    elif ret_60d >= 0.1:
-                        growth_score = 65
-                        logic.append(f"成长弹性：一般（60日涨幅{ret_60d*100:.0f}%）")
-                    else:
-                        growth_score = 45
-                        logic.append(f"成长弹性：偏弱（60日涨幅{ret_60d*100:.0f}%）")
+            df = _get_daily_from_sqlite(ts_code)
+            if df is not None and len(df) >= 60:
+                df = df.sort_values('trade_date', ascending=True)
+                close_60d = float(df.iloc[-60]['close'])
+                close_now = float(df.iloc[-1]['close'])
+                ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
+
+                if ret_60d >= 0.5:
+                    growth_score = 95
+                    logic.append(f"成长弹性：强趋势（60日涨幅{ret_60d*100:.0f}%）")
+                elif ret_60d >= 0.3:
+                    growth_score = 80
+                    logic.append(f"成长弹性：良好（60日涨幅{ret_60d*100:.0f}%）")
+                elif ret_60d >= 0.1:
+                    growth_score = 65
+                    logic.append(f"成长弹性：一般（60日涨幅{ret_60d*100:.0f}%）")
+                else:
+                    growth_score = 45
+                    logic.append(f"成长弹性：偏弱（60日涨幅{ret_60d*100:.0f}%）")
         except:
             pass
         
@@ -8498,15 +8481,10 @@ def get_chip_distribution(ts_code, trade_date, current_price=None):
             return result
 
         if current_price is None:
-            # 从 daily 数据取最近收盘价（不走缓存路径，因为 get_hist_data 已有缓存）
-            cache_daily = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-            if os.path.exists(cache_daily):
-                try:
-                    d = pd.read_csv(cache_daily)
-                    if d is not None and len(d) > 0:
-                        current_price = float(d['close'].iloc[-1])
-                except Exception:
-                    pass
+            # 从 SQLite daily 缓存取最近收盘价
+            d = _get_daily_from_sqlite(ts_code)
+            if d is not None and len(d) > 0:
+                current_price = float(d['close'].iloc[-1])
             if current_price is None:
                 d = _df_daily_by_code(ts_code, start_date=td, end_date=td)
                 if d is not None and len(d) > 0:
@@ -8865,21 +8843,14 @@ def get_tracking_stocks():
             stock_name = row['名称']
             
             try:
-                # 读取股票K线数据
-                cache_file = os.path.join(CACHE_DIR, f"{ts_code}.csv")
-                old_cache_file = os.path.join(os.path.dirname(BASE_DIR), "cache_daily", f"{ts_code}.csv")
-                
-                if os.path.exists(cache_file):
-                    df = pd.read_csv(cache_file)
-                elif os.path.exists(old_cache_file):
-                    df = pd.read_csv(old_cache_file)
-                else:
+                # 读取股票K线数据（V2: 从 SQLite 读取）
+                df = _get_daily_from_sqlite(ts_code)
+                if df is None or df.empty:
                     continue
-                
-                df['trade_date'] = df['trade_date'].astype(str)
+
                 df = df[df['trade_date'] <= TRADE_DATE]
                 df = df.sort_values('trade_date').reset_index(drop=True)
-                
+
                 if len(df) < 20:
                     continue
                 
@@ -11498,6 +11469,59 @@ def run(target_date=None, simple_mode=False):
         trade_advice_text = ""
 
     # =========================
+    # ELD 中报预增股池择时信号
+    # =========================
+    def _load_eld_buy_signals(trade_date: str) -> str:
+        """读取 ELD 中报预增股池报告，提取 TOP 10 买入信号"""
+        import glob as _glob
+        csv_dir = r"D:\mystock\report_daily"
+        files = _glob.glob(os.path.join(csv_dir, f"eld_report_{trade_date}.csv"))
+        if not files:
+            # 回退到所有文件中的最新
+            files = _glob.glob(os.path.join(csv_dir, "eld_report_*.csv"))
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            df = pd.read_csv(latest)
+            if df.empty:
+                return ""
+            lines = []
+            lines.append(f"【中报预增股池择时（幻方算法）】")
+            lines.append(f"数据来源：ELD V2 评分系统，筛选信号非忽略、机构非派发的标的")
+            lines.append("")
+            for i, row in df.head(10).iterrows():
+                code = row.get("ts_code", "")
+                name = row.get("name", "")
+                v2 = row.get("final_score_v2", 0)
+                inst = row.get("institution_state", "")
+                sig = row.get("earnings_buy_signal", "NONE")
+                etf = row.get("etf_score", 0)
+                theme = row.get("theme", "")
+                # 信号翻译
+                sig_cn = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "无"}.get(sig, sig)
+                theme_str = str(theme) if theme and str(theme) != "nan" else "无"
+                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn} ETF:{etf:.0f} 主题:{theme_str}")
+            # 优先关注（信号非忽略+机构非派发）
+            focus = []
+            for _, row in df.head(10).iterrows():
+                sig = row.get("earnings_buy_signal", "")
+                inst = str(row.get("institution_state", ""))
+                if sig != "IGNORE" and "派发" not in inst:
+                    focus.append(row.get("name", ""))
+            if focus:
+                lines.append("")
+                lines.append(f"优先关注：{'、'.join(focus[:5])}")
+            return "\n".join(lines)
+        except Exception as e:
+            print(f"[ELD] 加载失败: {e}")
+            return ""
+
+    eld_buy_text = _load_eld_buy_signals(TRADE_DATE)
+    if eld_buy_text:
+        print("[ELD] 已加载中报预增股池择时信号")
+
+    # =========================
     # V8 中军标的推荐数据
     # =========================
     v8_center_text = ""
@@ -11673,6 +11697,9 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
+
+7、**【中报预增股池择时（幻方算法）】**
+{eld_buy_text}
 
 ------------------
 以上全局格式要求：

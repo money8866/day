@@ -114,22 +114,28 @@ def load_watchlist(days_back=7):
 
 
 def get_stock_daily(ts_code):
-    cache_file = os.path.join(CACHE_DIR, f"stock_{ts_code.replace('.', '_')}.csv")
-    if os.path.exists(cache_file):
-        try:
-            df = pd.read_csv(cache_file)
-            df['trade_date'] = df['trade_date'].astype(str)
-            if len(df) > 30 and (df['trade_date'] == TRADE_DATE).any():
-                return df.sort_values('trade_date')
-        except:
-            pass
+    """获取单只股票历史日线（V2: 统一接入 SQLite daily_cache 表）"""
+    from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+    try:
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= str(TRADE_DATE):
+            df = get_daily_cache(ts_code, '20250101', TRADE_DATE)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
+                if len(df) > 30:
+                    return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception:
+        pass
     try:
         time.sleep(0.12)
         df = pro.daily(ts_code=ts_code, start_date='20250101', end_date=TRADE_DATE)
-        if not df.empty:
-            df = df.sort_values('trade_date')
-            df.to_csv(cache_file, index=False)
-            return df
+        if df is not None and not df.empty:
+            df['trade_date'] = df['trade_date'].astype(str)
+            try:
+                batch_insert_daily_cache(df)
+            except Exception:
+                pass
+            return df.sort_values('trade_date').reset_index(drop=True)
     except Exception as e:
         print(f"  [WARN] 获取{ts_code}日线失败: {e}")
     return None

@@ -68,7 +68,7 @@ def _get_df():
                             break
         if not token:
             return None
-        config = {'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        config = {'cache': {'enabled': True, 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
         _df_singleton = DataFetcher(token, config)
     except Exception:
         return None
@@ -105,16 +105,34 @@ def _save_cache(df, cache_file):
         pass
 
 def cached_daily(ts_code, start_date, end_date):
-    """缓存版 pro.daily()，已接入 DataFetcher 统一缓存（保留包装供外部调用）"""
-    df_inst = _get_df()
+    """缓存版 pro.daily()，已接入 DataFetcher 统一缓存（V2: 优先 daily_cache 表）"""
+    # V2: 优先 daily_cache 表
+    df = None
     try:
-        if df_inst is not None:
-            df = df_inst.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
-        else:
-            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)  # 降级fallback
-            time.sleep(0.06)
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, _max_date = get_daily_cache_range(ts_code)
+        if _max_date is not None and str(_max_date) >= str(end_date):
+            df = get_daily_cache(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
     except Exception:
-        df = None
+        pass
+    if df is None or df.empty:
+        df_inst = _get_df()
+        try:
+            if df_inst is not None:
+                df = df_inst.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
+            else:
+                df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)  # 降级fallback
+                time.sleep(0.06)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
+        except Exception:
+            df = None
 
     if df is None or df.empty:
         return None

@@ -57,17 +57,41 @@ def _get_df():
 
 
 def _query_daily_by_code(ts_code, start_date=None, end_date=None, trade_date=None):
-    """通过DataFetcher查询日线（失败降级到pro直调）"""
+    """通过DataFetcher查询日线（V2: 优先 daily_cache 表，失败降级到pro直调）"""
     if trade_date:
         start_date = trade_date
         end_date = trade_date
+    # V2: 优先 daily_cache 表
+    try:
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= str(end_date):
+            cached = get_daily_cache(ts_code, start_date, end_date)
+            if cached is not None and not cached.empty:
+                cached['trade_date'] = cached['trade_date'].astype(str)
+                return cached
+    except Exception:
+        pass
     df = _get_df()
     if df is not None:
         try:
-            return df.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            result = df.get_daily_by_code(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if result is not None and not result.empty:
+                try:
+                    batch_insert_daily_cache(result)
+                except Exception:
+                    pass
+            return result
         except Exception:
             pass
-    return pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+    result = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+    if result is not None and not result.empty:
+        try:
+            from stock_cache import batch_insert_daily_cache
+            batch_insert_daily_cache(result)
+        except Exception:
+            pass
+    return result
 
 
 def _query_trade_cal(start_date=None, end_date=None):

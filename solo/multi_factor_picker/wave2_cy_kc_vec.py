@@ -55,11 +55,29 @@ for i, ts_code in enumerate(pool):
         log(f"  进度: {i}/{len(pool)} ({elapsed:.0f}s)")
     
     try:
-        df = pro.daily(ts_code=ts_code, start_date=START, end_date=END)
-        time.sleep(0.06)
+        # V2: 优先 daily_cache 表
+        df = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, max_date = get_daily_cache_range(ts_code)
+            if max_date is not None and str(max_date) >= str(END):
+                cached = get_daily_cache(ts_code, START, END)
+                if cached is not None and not cached.empty:
+                    cached['trade_date'] = cached['trade_date'].astype(str)
+                    df = cached
+        except Exception:
+            pass
+        if df is None:
+            df = pro.daily(ts_code=ts_code, start_date=START, end_date=END)
+            time.sleep(0.06)
+            if df is not None and not df.empty:
+                try:
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
         if df is None or len(df) < 60:
             continue
-        
+
         df = df.sort_values('trade_date').reset_index(drop=True)
         closes = df['close'].values.astype(np.float64)
         n = len(closes)

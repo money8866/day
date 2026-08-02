@@ -204,7 +204,24 @@ def get_index_kline(ts_code="000300.SH", trade_date=None):
     print(f"[Index] 拉取 {ts_code} 数据: {start_date} ~ {trade_date}")
     df = pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
     if df is None or df.empty:
-        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
+        # V2: 优先 daily_cache 表
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(trade_date):
+                df = get_daily_cache(ts_code, start_date, trade_date)
+                if df is not None and not df.empty:
+                    df['trade_date'] = df['trade_date'].astype(str)
+        except Exception:
+            pass
+        if df is None or df.empty:
+            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
+            if df is not None and not df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(df)
+                except Exception:
+                    pass
     
     if df is not None and not df.empty:
         df = df.sort_values('trade_date').reset_index(drop=True)
@@ -587,8 +604,35 @@ def get_market_overview(trade_date=None):
             overview["sh_index"] = sh_df.iloc[0]["close"]
             overview["sh_pct"] = sh_df.iloc[0]["pct_chg"]
 
-        # 全市场成交额（日线所有股票 amount 之和，千元→亿元）
-        daily_df = pro.daily(trade_date=trade_date)
+        # 全市场成交额（日线所有股票 amount 之和，千元→亿元）— V2: 优先 daily_cache 表
+        try:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            daily_df = None
+            if get_daily_by_date_count(trade_date) > 0:
+                daily_df = get_daily_by_date(trade_date)
+            if daily_df is None or daily_df.empty:
+                daily_df = pro.daily(trade_date=trade_date)
+                if daily_df is not None and not daily_df.empty:
+                    try:
+                        batch_insert_daily_cache(daily_df)
+                    except Exception:
+                        pass
+        except Exception:
+            daily_df = None
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                if get_daily_by_date_count(trade_date) > 0:
+                    daily_df = get_daily_by_date(trade_date)
+            except Exception:
+                pass
+            if daily_df is None or daily_df.empty:
+                daily_df = pro.daily(trade_date=trade_date)
+                if daily_df is not None and not daily_df.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(daily_df)
+                    except Exception:
+                        pass
         if daily_df is not None and not daily_df.empty:
             total_amt = daily_df["amount"].sum() / 100000  # 千元→亿元
             overview["total_amount"] = round(total_amt, 0)
@@ -1659,8 +1703,35 @@ def get_limit_up_down_stats(trade_date=None):
     zhaban_count = 0
     
     try:
-        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）
-        daily = pro.daily(trade_date=trade_date)
+        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）— V2: 优先 daily_cache 表
+        try:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            daily = None
+            if get_daily_by_date_count(trade_date) > 0:
+                daily = get_daily_by_date(trade_date)
+            if daily is None or daily.empty:
+                daily = pro.daily(trade_date=trade_date)
+                if daily is not None and not daily.empty:
+                    try:
+                        batch_insert_daily_cache(daily)
+                    except Exception:
+                        pass
+        except Exception:
+            daily = None
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                if get_daily_by_date_count(trade_date) > 0:
+                    daily = get_daily_by_date(trade_date)
+            except Exception:
+                pass
+            if daily is None or daily.empty:
+                daily = pro.daily(trade_date=trade_date)
+                if daily is not None and not daily.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(daily)
+                    except Exception:
+                        pass
         if daily is not None and not daily.empty:
             # 计算涨跌停阈值（简化版：主板10%，科创板/创业板20%）
             daily['is_kcb'] = daily['ts_code'].str.startswith(('688', '301'))
@@ -1727,7 +1798,35 @@ def get_limit_up_down_stats(trade_date=None):
     down_ratio = 0.0
     
     try:
-        daily = pro.daily(trade_date=trade_date)
+        # V2: 优先 daily_cache 表
+        try:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            daily = None
+            if get_daily_by_date_count(trade_date) > 0:
+                daily = get_daily_by_date(trade_date)
+            if daily is None or daily.empty:
+                daily = pro.daily(trade_date=trade_date)
+                if daily is not None and not daily.empty:
+                    try:
+                        batch_insert_daily_cache(daily)
+                    except Exception:
+                        pass
+        except Exception:
+            daily = None
+            try:
+                from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+                if get_daily_by_date_count(trade_date) > 0:
+                    daily = get_daily_by_date(trade_date)
+            except Exception:
+                pass
+            if daily is None or daily.empty:
+                daily = pro.daily(trade_date=trade_date)
+                if daily is not None and not daily.empty:
+                    try:
+                        from stock_cache import batch_insert_daily_cache
+                        batch_insert_daily_cache(daily)
+                    except Exception:
+                        pass
         if daily is not None and not daily.empty:
             up_count = int((daily['pct_chg'] > 0).sum())
             down_count = int((daily['pct_chg'] < 0).sum())

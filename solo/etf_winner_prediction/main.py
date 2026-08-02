@@ -359,8 +359,43 @@ class ETFWinnerPredictionEngine:
                 for i in range(0, len(all_codes), batch_size):
                     batch = all_codes[i:i + batch_size]
                     try:
-                        df_batch = pro.daily(ts_code=",".join(batch),
-                                            start_date=start_date, end_date=trade_date)
+                        # V2: 优先 daily_cache 表（按只读取，未命中再批量API）
+                        df_batch = None
+                        try:
+                            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+                            _cached_parts = []
+                            _missing = []
+                            for _code in batch:
+                                _, _max_date = get_daily_cache_range(_code)
+                                if _max_date is not None and str(_max_date) >= str(trade_date):
+                                    _c = get_daily_cache(_code, start_date, trade_date)
+                                    if _c is not None and not _c.empty:
+                                        _cached_parts.append(_c)
+                                    else:
+                                        _missing.append(_code)
+                                else:
+                                    _missing.append(_code)
+                            if _missing:
+                                _b = pro.daily(ts_code=",".join(_missing), start_date=start_date, end_date=trade_date)
+                                if _b is not None and not _b.empty:
+                                    try:
+                                        batch_insert_daily_cache(_b)
+                                    except Exception:
+                                        pass
+                                    _cached_parts.append(_b)
+                            if _cached_parts:
+                                df_batch = pd.concat(_cached_parts, ignore_index=True)
+                        except Exception:
+                            pass
+                        if df_batch is None or df_batch.empty:
+                            df_batch = pro.daily(ts_code=",".join(batch),
+                                                start_date=start_date, end_date=trade_date)
+                            if df_batch is not None and not df_batch.empty:
+                                try:
+                                    from stock_cache import batch_insert_daily_cache
+                                    batch_insert_daily_cache(df_batch)
+                                except Exception:
+                                    pass
                         if df_batch is not None and not df_batch.empty:
                             df_batch["trade_date"] = df_batch["trade_date"].astype(str)
                             for code, grp in df_batch.groupby("ts_code"):

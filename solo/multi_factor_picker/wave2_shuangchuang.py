@@ -64,7 +64,7 @@ def _get_df():
                             break
         if not token:
             return None
-        config = {'cache': {'enabled': True, 'dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'), 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
+        config = {'cache': {'enabled': True, 'expire_hours': 168}, 'tushare': {'max_retry': 3, 'retry_delay': 5}}
         _df_singleton = DataFetcher(token, config)
     except Exception:
         return None
@@ -125,10 +125,28 @@ print("[Step 3] 获取股票日线数据和技术因子...")
 
 def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
     try:
-        if _dfetch is not None:
-            daily = _dfetch.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
-        else:
-            daily = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        # V2: 优先 daily_cache 表
+        daily = None
+        try:
+            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+            _, _max_date = get_daily_cache_range(ts_code)
+            if _max_date is not None and str(_max_date) >= str(end):
+                daily = get_daily_cache(ts_code, start, end)
+                if daily is not None and not daily.empty:
+                    daily['trade_date'] = daily['trade_date'].astype(str)
+        except Exception:
+            pass
+        if daily is None or daily.empty:
+            if _dfetch is not None:
+                daily = _dfetch.get_daily_by_code(ts_code=ts_code, start_date=start, end_date=end)
+            else:
+                daily = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+            if daily is not None and not daily.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(daily)
+                except Exception:
+                    pass
         if daily is None or len(daily) < 60:
             return None
         daily = daily.sort_values('trade_date').reset_index(drop=True)

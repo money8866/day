@@ -203,13 +203,30 @@ def get_market_cap(ts_code, trade_date):
 
 
 def get_daily_from_tushare(ts_code, trade_date, n_days=120):
-    """从 Tushare 获取日线数据"""
+    """从 Tushare 获取日线数据（V2: 优先 daily_cache 表）"""
     dates = get_previous_trade_dates(trade_date, n_days)
     start_date = dates[0] if dates else trade_date
-    
+
+    # V2: 优先 daily_cache 表
+    try:
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= str(trade_date):
+            cached = get_daily_cache(ts_code, start_date, trade_date)
+            if cached is not None and not cached.empty:
+                cached['trade_date'] = cached['trade_date'].astype(str)
+                return cached.sort_values('trade_date', ascending=True).reset_index(drop=True)
+    except Exception:
+        pass
+
     try:
         df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
         if df is not None and not df.empty:
+            try:
+                from stock_cache import batch_insert_daily_cache
+                batch_insert_daily_cache(df)
+            except Exception:
+                pass
             df = df.sort_values('trade_date', ascending=True).reset_index(drop=True)
         return df
     except Exception as e:
@@ -724,16 +741,38 @@ def analyze_all_sectors(trade_date, concept_map, industry_map, use_tdx=False):
     """分析所有板块"""
     print("获取全市场行情...")
     
-    # 获取全市场当日行情
-    cache_file = os.path.join(CACHE_DIR, f"daily_{trade_date}.csv")
-    if os.path.exists(cache_file):
-        daily_df = pd.read_csv(cache_file, dtype={'ts_code': str})
-    else:
-        daily_df = pro.daily(trade_date=trade_date)
-        if daily_df.empty:
-            return pd.DataFrame()
-        daily_df['amount'] = daily_df['amount'] / 100000
-        daily_df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+    # 获取全市场当日行情 — V2: 优先 daily_cache 表，缺失才走 CSV/pro.daily
+    try:
+        from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+        daily_df = None
+        if get_daily_by_date_count(trade_date) > 0:
+            daily_df = get_daily_by_date(trade_date)
+        if daily_df is None or daily_df.empty:
+            daily_df = pro.daily(trade_date=trade_date)
+            if daily_df is not None and not daily_df.empty:
+                try:
+                    batch_insert_daily_cache(daily_df)
+                except Exception:
+                    pass
+    except Exception:
+        daily_df = None
+        try:
+            from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
+            if get_daily_by_date_count(trade_date) > 0:
+                daily_df = get_daily_by_date(trade_date)
+        except Exception:
+            pass
+        if daily_df is None or daily_df.empty:
+            daily_df = pro.daily(trade_date=trade_date)
+            if daily_df is not None and not daily_df.empty:
+                try:
+                    from stock_cache import batch_insert_daily_cache
+                    batch_insert_daily_cache(daily_df)
+                except Exception:
+                    pass
+    if daily_df is None or daily_df.empty:
+        return pd.DataFrame()
+    daily_df['amount'] = daily_df['amount'] / 100000
     
     results = []
     
