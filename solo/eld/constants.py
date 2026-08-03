@@ -155,6 +155,8 @@ CSV_COLUMNS: Final[list[str]] = [
     "stop_loss_price",
     "pre_announce_runup_pct",
     "is_sell_on_news",
+    "next_day_buyable",
+    "next_day_buy_reason",
     "etf_score",
     "buy_point",
     "recommendation",

@@ -678,15 +678,20 @@ def per_stock_features_v2(df_one):
     drawdown = (close[max(0, last - 9) : last + 1] / running_max - 1.0)
     max_dd_10 = drawdown.min() * 100 if len(drawdown) > 0 else 0.0
 
-    zt_flag = 1 if (pct[last] is not None and pct[last] >= 9.5) else 0
+    # ── 涨停阈值按板型区分（修复：原统一用9.5%判涨停，20cm板涨10-19%被漏计）──
+    # 创业板(300/301)/科创板(688) 涨停20%，沪深主板10%（ST 5%近似按10%处理，容差内）
+    _code_prefix = str(df_one.get('ts_code', '')).split('.')[0] if 'ts_code' in df_one.columns else ''
+    _zt_th = 19.5 if _code_prefix.startswith(('300', '301', '688')) else 9.5
+
+    zt_flag = 1 if (pct[last] is not None and pct[last] >= _zt_th) else 0
     strong_flag = 1 if (pct[last] is not None and pct[last] >= 5.0) else 0
     amount_latest = float(df_one.iloc[last].get("amount", 0) or 0) / 100000
 
-    # 连板检测
+    # 连板检测（按板型阈值）
     lb_height = 0
     for j in range(last, -1, -1):
         p = float(pct[j]) if pct[j] is not None else 0
-        if p >= 9.5:
+        if p >= _zt_th:
             lb_height += 1
         else:
             break
@@ -720,10 +725,10 @@ def per_stock_features_v2(df_one):
     ret_20_ret = safe_pct(close[last], close[last - 20]) if last - 20 >= 0 else ret_10
 
     # ── V3 新增因子（A股实战经验优化）──
-    # 8. 炸板信号：开盘涨停（开>=前收*1.095）但收盘不板
+    # 8. 炸板信号：开盘涨停（开>=涨停价附近，含容差）但收盘不板（按板型阈值）
     prev_c = close[last - 1] if last - 1 >= 0 else close[last]
-    zt_price = prev_c * 1.095
-    boom_flag = 1 if (open_p[last] >= zt_price and pct[last] < 9.5) else 0
+    zt_price = prev_c * (1 + (_zt_th - 0.5) / 100)
+    boom_flag = 1 if (open_p[last] >= zt_price and pct[last] < _zt_th) else 0
 
     # 9. 缩量调整比：当日量/前20日均量，<0.7=明显缩量（A股洗盘信号）
     vol_ma20 = vol[max(0, last - 19) : last + 1].mean()

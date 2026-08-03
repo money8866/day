@@ -144,12 +144,12 @@ def load_theme_stocks(theme_file=None):
 # ============================================================
 def calc_theme_strength(theme_name, theme_stocks, all_klines, trade_date):
     """
-    简化主题强度: 主题内成份股当日平均涨幅
-    返回: (strength, zt_count)
+    返回: (strength, zt_count, avg_pct)
+    avg_pct: 主题内成份股当日平均涨幅
     """
     stocks = theme_stocks.get(theme_name, [])
     if not stocks:
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     gains = []
     zt_count = 0
@@ -168,12 +168,69 @@ def calc_theme_strength(theme_name, theme_stocks, all_klines, trade_date):
             zt_count += 1
 
     if not gains:
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     avg_gain = sum(gains) / len(gains)
-    # 简化强度: 平均涨幅 - 大盘平均(近似0)
-    strength = avg_gain
-    return strength, zt_count
+    return avg_gain, zt_count, avg_gain
+
+
+# ============================================================
+# V2 实时主题动量 — 回测版(从日线数据计算5个轻量指标)
+# ============================================================
+def calc_theme_momentum_daily(theme_name, theme_stocks, all_klines, trade_date):
+    """
+    V2 主题动量 (回测模式,从日线数据计算)
+    返回: (up_ratio, avg_return, leader_return, bullish_count, tail_momentum)
+    tail_momentum 在回测模式下为 None
+    """
+    stocks = theme_stocks.get(theme_name, [])
+    if not stocks:
+        return 0, 0, 0, 0, None
+
+    up_count = 0
+    total_pct = 0
+    leader_pct = 0
+    leader_found = False
+    bullish_score = 0
+    valid_count = 0
+
+    for code, name, layer in stocks:
+        kl = all_klines.get(code)
+        if kl is None or kl.empty:
+            continue
+        row = kl[kl['trade_date'] == trade_date]
+        if row.empty:
+            continue
+        pct = float(row.iloc[0]['pct_chg'])
+        valid_count += 1
+        total_pct += pct
+
+        # 上涨家数
+        if pct > 0:
+            up_count += 1
+
+        # 大涨股数量 (>7% +2, >5% +1)
+        if pct > 7:
+            bullish_score += 2
+        elif pct > 5:
+            bullish_score += 1
+
+        # 龙头表现(取最强龙头,而非第一个)
+        if layer == 'leader':
+            if not leader_found:
+                leader_pct = pct
+                leader_found = True
+            else:
+                leader_pct = max(leader_pct, pct)
+
+    if valid_count == 0:
+        return 0, 0, 0, 0, None
+
+    up_ratio = up_count / valid_count * 100
+    avg_return = total_pct / valid_count
+    bullish_count = min(bullish_score, 100)
+
+    return up_ratio, avg_return, leader_pct, bullish_count, None
 
 
 # ============================================================
@@ -208,6 +265,10 @@ class TailBacktester:
                 theme_score   INTEGER,
                 tech_score    INTEGER,
                 trap_penalty  INTEGER,
+                trend_score    INTEGER,
+                rel_strength_score INTEGER,
+                breakout_score INTEGER,
+                vol_penalty    INTEGER,
                 entry_price   REAL,
                 entry_date    TEXT,
                 -- 退出与盈亏
@@ -233,6 +294,9 @@ class TailBacktester:
         cols = [c[1] for c in conn.execute('PRAGMA table_info(tail_backtest)').fetchall()]
         if 'k_filtered' not in cols:
             conn.execute('ALTER TABLE tail_backtest ADD COLUMN k_filtered INTEGER DEFAULT 0')
+        for col_name in ['trend_score', 'rel_strength_score', 'breakout_score', 'vol_penalty']:
+            if col_name not in cols:
+                conn.execute(f'ALTER TABLE tail_backtest ADD COLUMN {col_name} INTEGER DEFAULT 0')
         conn.commit()
         conn.close()
 
@@ -299,6 +363,7 @@ class TailBacktester:
             'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
             'boll_mid_bfq': 'boll_mid', 'boll_upper_bfq': 'boll_upper',
             'boll_lower_bfq': 'boll_lower', 'cci_bfq': 'cci',
+            'atr_bfq': 'atr_bfq',
         }
 
         # 扩展前一日(技术指标是前一交易日收盘后运算的)
@@ -310,7 +375,7 @@ class TailBacktester:
             'macd_dif_bfq, macd_dea_bfq, macd_bfq, '
             'kdj_bfq, kdj_k_bfq, kdj_d_bfq, '
             'rsi_bfq_6, rsi_bfq_12, rsi_bfq_24, '
-            'boll_mid_bfq, boll_upper_bfq, boll_lower_bfq, cci_bfq '
+            'boll_mid_bfq, boll_upper_bfq, boll_lower_bfq, cci_bfq, atr_bfq '
             'FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ?',
             conn, params=(extend_start, self.end_date)
         )
@@ -358,12 +423,14 @@ class TailBacktester:
                         signal_date, ts_code, name, theme, signal,
                         total_score, attack_score, structure_score, position_score,
                         theme_score, tech_score, trap_penalty,
+                        trend_score, rel_strength_score, breakout_score, vol_penalty,
                         entry_price, entry_date, status, k_filtered, detail_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_date, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
                     s['total_score'], s['attack_score'], s['structure_score'], s['position_score'],
                     s['theme_score'], s['tech_score'], s['trap_penalty'],
+                    s.get('trend_score', 0), s.get('rel_strength_score', 0), s.get('breakout_score', 0), s.get('vol_penalty', 0),
                     s['price'], trade_date, is_k, json.dumps(s.get('detail', {}), ensure_ascii=False),
                 ))
 
@@ -384,13 +451,30 @@ class TailBacktester:
     def _scan_day(self, trade_date):
         """扫描某交易日所有股票,返回信号列表"""
         signals = []
-        # 先计算所有主题强度
+        # 先计算所有主题强度(旧版) + V2动量
         theme_strengths = {}
         theme_zt_counts = {}
+        theme_avg_pcts = {}
+        theme_momentums = {}  # V2: {theme_name: (up_ratio, avg_return, leader_return, bullish_count, tail_momentum)}
         for theme_name in self.theme_stocks:
-            s, z = calc_theme_strength(theme_name, self.theme_stocks, self.all_klines, trade_date)
+            s, z, avg_pct = calc_theme_strength(theme_name, self.theme_stocks, self.all_klines, trade_date)
             theme_strengths[theme_name] = s
             theme_zt_counts[theme_name] = z
+            theme_avg_pcts[theme_name] = avg_pct
+            # V2 动量
+            theme_momentums[theme_name] = calc_theme_momentum_daily(theme_name, self.theme_stocks, self.all_klines, trade_date)
+
+        # 按主题强度排序生成排名
+        theme_strength_list = sorted(theme_strengths.items(), key=lambda x: -x[1])
+        theme_rank_map = {name: i+1 for i, (name, _) in enumerate(theme_strength_list)}
+
+        # 计算指数涨幅(用上证指数近似)
+        index_pct = None
+        sh_kl = self.all_klines.get('000001.SH')
+        if sh_kl is not None:
+            sh_row = sh_kl[sh_kl['trade_date'] == trade_date]
+            if not sh_row.empty:
+                index_pct = float(sh_row.iloc[0]['pct_chg'])
 
         # 遍历所有股票
         for ts_code, themes in self.stock_themes.items():
@@ -466,9 +550,41 @@ class TailBacktester:
                     break
 
             # 评分
+            # 生命周期分近似(回测简化)
+            if best_strength > 2:
+                lifecycle_score = 80
+            elif best_strength > 1:
+                lifecycle_score = 60
+            elif best_strength > 0:
+                lifecycle_score = 40
+            elif best_strength > -1:
+                lifecycle_score = 20
+            else:
+                lifecycle_score = 0
+
+            # 前瞻分近似(回测简化)
+            if best_strength > 2:
+                forward_score = 70
+            elif best_strength > 1:
+                forward_score = 50
+            elif best_strength > 0:
+                forward_score = 30
+            else:
+                forward_score = 0
+
+            # V2 主题动量
+            up_ratio, avg_return, leader_return, bullish_count, tail_momentum = theme_momentums.get(best_theme, (0, 0, 0, 0, None))
+
             sig = self.strategy.score(
                 ts_code, q, kline_up_to, factor_row, turnover, total_mv,
-                best_theme, best_strength, best_layer, best_zt, snap=None, prev_factor_row=prev_factor_row
+                best_theme, best_strength, best_layer, best_zt, snap=None, prev_factor_row=prev_factor_row,
+                theme_avg_pct=theme_avg_pcts.get(best_theme),
+                index_pct=index_pct,
+                theme_rank=theme_rank_map.get(best_theme, 99),
+                lifecycle_score=lifecycle_score,
+                forward_score=forward_score,
+                up_ratio=up_ratio, avg_return=avg_return, leader_return=leader_return,
+                bullish_count=bullish_count, tail_momentum=tail_momentum,
             )
             if sig is not None:
                 sig['name'] = name
@@ -658,25 +774,27 @@ def show_status():
     print(f"\n  TOP10盈利信号:")
     rows = conn.execute('''
         SELECT signal_date, ts_code, name, theme, total_score, tech_score,
+               trend_score, rel_strength_score, breakout_score, vol_penalty,
                exit_reason, pnl, hold_days
         FROM tail_backtest WHERE pnl IS NOT NULL
         ORDER BY pnl DESC LIMIT 10
     ''').fetchall()
-    print(f"  {'信号日':<10} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'技分':>4} {'退出':>6} {'盈亏':>7} {'持仓':>4}")
+    print(f"  {'信号日':<10} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'技分':>4} {'趋势':>4} {'强度':>4} {'突破':>4} {'波动':>4} {'退出':>6} {'盈亏':>7} {'持仓':>4}")
     for r in rows:
-        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<10} {r[3]:<12} {r[4]:>4} {r[5]:>4} {r[6]:>6} {r[7]:>+7.1f}% {r[8]:>4}天")
+        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<10} {r[3]:<12} {r[4]:>4} {r[5]:>4} {r[6] or 0:>4} {r[7] or 0:>4} {r[8] or 0:>4} {r[9] or 0:>4} {r[10]:>6} {r[11]:>+7.1f}% {r[12]:>4}天")
 
     # TOP10亏损信号
     print(f"\n  TOP10亏损信号:")
     rows = conn.execute('''
         SELECT signal_date, ts_code, name, theme, total_score, tech_score,
+               trend_score, rel_strength_score, breakout_score, vol_penalty,
                exit_reason, pnl, hold_days
         FROM tail_backtest WHERE pnl IS NOT NULL
         ORDER BY pnl ASC LIMIT 10
     ''').fetchall()
-    print(f"  {'信号日':<10} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'技分':>4} {'退出':>6} {'盈亏':>7} {'持仓':>4}")
+    print(f"  {'信号日':<10} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'技分':>4} {'趋势':>4} {'强度':>4} {'突破':>4} {'波动':>4} {'退出':>6} {'盈亏':>7} {'持仓':>4}")
     for r in rows:
-        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<10} {r[3]:<12} {r[4]:>4} {r[5]:>4} {r[6]:>6} {r[7]:>+7.1f}% {r[8]:>4}天")
+        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<10} {r[3]:<12} {r[4]:>4} {r[5]:>4} {r[6] or 0:>4} {r[7] or 0:>4} {r[8] or 0:>4} {r[9] or 0:>4} {r[10]:>6} {r[11]:>+7.1f}% {r[12]:>4}天")
 
     # 整体统计
     print(f"\n  整体统计(全部信号):")

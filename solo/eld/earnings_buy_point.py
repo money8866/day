@@ -36,6 +36,65 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+def _check_next_day_buyable(
+    sorted_data: list[DailyPriceData],
+    ma20: float,
+    alpha: float,
+    institution_state: Optional[str],
+    is_sell_on_news: bool,
+    close_above_ma20: bool,
+) -> tuple[bool, str]:
+    """检查是否在回调中，且次日是更好的买入时机。
+
+    核心逻辑：
+    - 今日下跌（收盘 < 昨收）= 正在回调中，明日可能给出更低买点
+    - 趋势完好（Alpha>60, 在MA20上方或附近）
+    - 机构状态支持（吸筹/洗盘阶段，回调是洗盘而非出货）
+    - 非利好兑现（或利好兑现但回调已充分，跌幅>10%）
+
+    Returns:
+        (is_buyable, reason)
+    """
+    if len(sorted_data) < 2:
+        return False, "数据不足无法判断"
+
+    today = sorted_data[-1]
+    yesterday = sorted_data[-2]
+
+    # ── 条件1: 今日下跌，正在回调中 ──
+    is_down_day = today.close < yesterday.close
+    if not is_down_day:
+        # 今日未下跌，但如果是小幅上涨后缩量企稳也可以
+        pct_change = (today.close - yesterday.close) / yesterday.close * 100
+        if pct_change > 1.0:
+            return False, f"今日上涨{pct_change:.1f}%，非回调日，不宜追高"
+
+    # ── 条件2: 趋势未破坏 ──
+    if not close_above_ma20:
+        # 允许小幅跌破MA20（不超过3%）
+        pct_below = (ma20 - today.close) / ma20 * 100
+        if pct_below > 3:
+            return False, f"跌破MA20 {pct_below:.1f}%，支撑已破"
+    if alpha < 60:
+        return False, f"Alpha={alpha:.1f} < 60，趋势偏弱"
+
+    # ── 条件3: 机构状态支持 ──
+    _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
+    if institution_state and institution_state not in _safe_states:
+        return False, f"机构状态{institution_state}，非吸筹/洗盘阶段"
+
+    # ── 条件4: 利好兑现处理 ──
+    if is_sell_on_news:
+        # 利好兑现但回调充分（距近期高点>10%），可关注
+        recent_high = max(d.high for d in sorted_data[-20:])
+        pullback_from_high = (recent_high - today.close) / recent_high * 100
+        if pullback_from_high < 10:
+            return False, f"利好兑现且回调不充分（仅{pullback_from_high:.1f}%）"
+        return True, f"利好兑现但回调充分（{pullback_from_high:.1f}%），明日可关注企稳信号"
+
+    return True, "回调中，趋势完好，机构吸筹/洗盘阶段，明日是更好的买入时机"
+
+
 def _compute_ma(data: list[DailyPriceData], period: int) -> float:
     """计算移动平均线。"""
     prices = [d.close for d in data[-period:]]
@@ -322,6 +381,13 @@ def detect_earnings_pullback(
 
     result.is_sell_on_news = is_sell_on_news
 
+    # ── 次日可买性评估 ──
+    next_day_buyable, next_day_reason = _check_next_day_buyable(
+        sorted_data, ma20, alpha, institution_state, is_sell_on_news, above_ma20,
+    )
+    result.next_day_buyable = next_day_buyable
+    result.next_day_buy_reason = next_day_reason
+
     # ── 评分与信号 ──
     score = (conditions_met / total_conditions) * 100.0
 
@@ -330,12 +396,24 @@ def detect_earnings_pullback(
     if trend_result is not None and alpha < cfg.trend_alpha_floor:
         alpha_floor_ok = False
 
+    # 信号决策（优化版）：考虑次日可买性
     if conditions_met >= 6 and alpha_floor_ok:
+        # 条件充分 → BUY
         signal = EarningsBuySignal.BUY
         stage = "BUY"
         all_logic.append(f"信号: BUY — {conditions_met}/{total_conditions}条件满足，可建仓")
         all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}，收盘×0.985={current_close*0.985:.2f}）")
         all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
+    elif conditions_met >= 4 and next_day_buyable:
+        # 条件基本满足 + 回调中次日可买 → BUY（可操作）
+        signal = EarningsBuySignal.BUY
+        stage = "BUY"
+        all_logic.append(f"信号: BUY — {conditions_met}/{total_conditions}条件满足+回调中，明日是更好的买入时机")
+        # 回调中，参考买入价取今日收盘价（更贴近实际）
+        ref_price = current_close
+        all_logic.append(f"参考买入价: {ref_price:.2f}（今日收盘价，回调买入）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
+        all_logic.append(f"回调提示: {next_day_reason}")
     elif conditions_met >= 4:
         # 利好兑现风险降级：没有机构豁免时，WATCH 降为 IGNORE
         if is_sell_on_news and not alpha_floor_ok:
@@ -360,6 +438,15 @@ def detect_earnings_pullback(
             all_logic.append(f"信号: WATCH — 条件{conditions_met}/{total_conditions}，继续观察")
             all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}）")
             all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    elif conditions_met >= 3 and next_day_buyable:
+        # 条件较少，但次日可买（回调中+机构吸筹/洗盘）
+        signal = EarningsBuySignal.BUY
+        stage = "BUY"
+        all_logic.append(f"信号: BUY — 条件仅{conditions_met}/{total_conditions}，但回调充分+机构{institution_state}，明日可低吸")
+        ref_price = current_close
+        all_logic.append(f"参考买入价: {ref_price:.2f}（今日收盘价，回调低吸）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
+        all_logic.append(f"回调提示: {next_day_reason}")
     else:
         # 机构状态豁免：吸筹/洗盘阶段不低于 WATCH
         _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}

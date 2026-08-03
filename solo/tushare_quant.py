@@ -10281,6 +10281,14 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         # 排除已大幅拉升的（区间涨幅>100%的可能已是强弩之末）
         if price_change > 100:
             return None
+        # =========================
+        # 排除今日大跌/跌停：单日大幅下杀（<=-7%）是恐慌出货而非健康回调
+        # 实测案例：宏桥控股(002379) 2026-08-03 跌停-10.01%，仍被"红柱回调缩短"误判为强买
+        # "红柱回调缩短/反弹"等形态只代表MACD柱体变化，不区分价格方向，必须用涨跌幅硬约束
+        # =========================
+        today_pct = (close_arr[-1] / pre_close_arr[-1] - 1) * 100 if pre_close_arr[-1] > 0 else 0
+        if today_pct <= -7.0:
+            return None
         # 排除新股上市不足180天（次新股的巨量由IPO效应导致，不具可比性）
         if len(df) < 180:
             return None
@@ -10292,6 +10300,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         # MA20趋势检查：20日均线必须走平或上行
         # 排除中线均线压制逐波走低的股票（如金田股份）
         # 判定：近10天MA20变化率>=-0.3%（走平）且近20天MA20变化率>=-1%（中线未走低）
+        # 2026-08-03 放宽（适配大市值股池）：股价允许在MA20下方5%以内（第二波回调介入点），
+        #   MA20斜率容忍度放宽为 近10天>=-1%、近20天>=-2%
         # =========================
         ma20_full = pd.Series(df['close'].values.astype(float)).rolling(20, min_periods=20).mean().values
         if len(ma20_full) >= 41:
@@ -10303,13 +10313,14 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
                     and not np.isnan(ma20_20ago) and ma20_20ago > 0):
                 ma20_chg_10d = (ma20_now / ma20_10ago - 1) * 100
                 ma20_chg_20d = (ma20_now / ma20_20ago - 1) * 100
-                # 走平或上行：近10天变化率>=-0.3% AND 近20天变化率>=-1%
+                # 走平或上行（放宽后容忍小幅下行）：近10天变化率>=-1% AND 近20天变化率>=-2%
                 # 明显下行（逐波走低）则排除
-                if ma20_chg_10d < -0.3 or ma20_chg_20d < -1.0:
+                if ma20_chg_10d < -1.0 or ma20_chg_20d < -2.0:
                     return None
-            # 股价站上20日均线（排除仍在均线下方的弱势股）
+            # 股价允许在20日均线下方5%以内（放宽前要求必须站上MA20）
+            # 回调后股价略低于MA20正是第二波介入点，无需死等站上均线
             close_latest = float(close_arr[-1])
-            if close_latest < ma20_now:
+            if close_latest < ma20_now * 0.95:
                 return None
         
         # =========================
@@ -10577,6 +10588,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '区间涨幅': round(price_change, 1),
             '近历史最高量%': round(vol_vs_hist_pct, 0),
             '今日量比': round(today_vol_ratio, 2),
+            '今日涨跌幅': round(today_pct, 2),
             'MACD状态': macd_status,
             '回撤类型': retrace_type,
             '距MA20': round(pos_ma20, 1),
@@ -10824,42 +10836,14 @@ def run(target_date=None, simple_mode=False):
             continue
 
     _volume_surge_swing_results = []
-    # 改为从"合格股池"扫描，而非全市场
-    _qs_pool_path = r'D:\mystock\solo\report_daily\bull_stocks_all.csv'
-    _qs_pool = None
-    if os.path.exists(_qs_pool_path):
-        try:
-            _qs_pool = pd.read_csv(_qs_pool_path)
-            print(f'\n[量能宽幅震荡-合格股池] 加载 {len(_qs_pool)} 只合格股')
-        except Exception as e:
-            print(f'\n[量能宽幅震荡-合格股池] 加载失败: {e}')
+    # 目标股池：全市场总市值 > 80亿 的所有股票（不再依赖 bull_stocks_all.csv 合格股池）
+    # market 来自 get_market()，total_mv 字段单位为万元（100亿 = 1,000,000 万元；80亿 = 800,000 万元）
+    # 2026-08-03 门槛从100亿下调至80亿：适配高波动中小盘股（如北投科技97.6亿此前被排除）
+    if market is not None and not market.empty:
+        _filtered = market[market['total_mv'].fillna(0) > 800000]
+        _filtered_codes = set(_filtered['ts_code'].tolist())
 
-    if _qs_pool is not None and not _qs_pool.empty and market is not None:
-        # 将合格股池的code转为ts_code，建立映射
-        _code_to_ts = {}
-        for _, _mr in market.iterrows():
-            _ts_code = _mr['ts_code']
-            _code_num = int(_ts_code[:6])  # "002709.SZ" -> 2709
-            _code_to_ts[_code_num] = _ts_code
-
-        # 构建合格股池的代码列表（兼容可能已带后缀的code）
-        _pool_codes = []
-        for _, _qr in _qs_pool.iterrows():
-            _c = int(_qr['code'])
-            if _c in _code_to_ts:
-                _pool_codes.append(_code_to_ts[_c])
-            else:
-                _sc = str(_c).zfill(6)
-                # 根据前缀判断交易所
-                if _sc.startswith('6') or _sc.startswith('8') or _sc.startswith('9'):
-                    _pool_codes.append(_sc + '.SH')
-                else:
-                    _pool_codes.append(_sc + '.SZ')
-
-        # 不做主题过滤，使用全部合格股池
-        _filtered_codes = set(_pool_codes)
-
-        print(f'\n[量能宽幅震荡] 扫描 {len(_filtered_codes)} 只合格股...')
+        print(f'\n[量能宽幅震荡-目标股池] 总市值>80亿共 {len(_filtered_codes)} 只，开始扫描...')
         for _vsi, _vcode in enumerate(_filtered_codes):
             _vname = get_stock_name(_vcode)
             _vres = detect_volume_surge_swing(_vcode, _vname)
@@ -11503,28 +11487,43 @@ def run(target_date=None, simple_mode=False):
                 stop_loss = row.get("stop_loss_price", 0)
                 sell_news = row.get("is_sell_on_news", False)
                 pre_runup = row.get("pre_announce_runup_pct", 0)
+                next_day = str(row.get("next_day_buyable", "")).lower() == "true"
                 # 信号翻译
                 sig_cn = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "无"}.get(sig, sig)
                 theme_str = str(theme) if theme and str(theme) != "nan" else "无"
                 # 买入信号和价格提示
                 price_hint = ""
                 if ref_price and ref_price > 0 and sig != "IGNORE":
-                    price_hint = f" 参考买入价{ref_price:.2f} 止损{stop_loss:.2f}"
+                    price_hint = f" 参考价{ref_price:.2f}"
                 sell_news_hint = " ⚠️利好兑现" if sell_news else ""
                 if pre_runup and pre_runup > 0:
-                    sell_news_hint = f" 公告前涨幅{pre_runup:.0f}%" + (" ⚠️利好兑现" if sell_news else "")
-                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint} ETF:{etf:.0f} 主题:{theme_str}")
-            # 优先关注（信号非忽略+机构非派发）
-            focus = []
+                    sell_news_hint = f" 公告前{pre_runup:.0f}%" + (" ⚠️利好兑现" if sell_news else "")
+                next_day_hint = " 🎯明日可买" if next_day else ""
+                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint}{next_day_hint} ETF:{etf:.0f} 主题:{theme_str}")
+            # 优先关注：次日可买 > BUY > WATCH，过滤派发+利好兑现+跌破MA20
+            focus_buy = []      # 次日可买 + BUY信号
+            focus_watch = []    # 仅WATCH
             for _, row in df.head(10).iterrows():
                 sig = row.get("earnings_buy_signal", "")
                 inst = str(row.get("institution_state", ""))
                 sell_news = row.get("is_sell_on_news", False)
-                if sig != "IGNORE" and "派发" not in inst and not sell_news:
-                    focus.append(row.get("name", ""))
-            if focus:
+                next_day = str(row.get("next_day_buyable", "")).lower() == "true"
+                # 排除：IGNORE、派发、利好兑现
+                if sig == "IGNORE" or "派发" in inst or sell_news:
+                    continue
+                name = row.get("name", "")
+                if next_day or sig == "BUY":
+                    focus_buy.append(name)
+                elif sig == "WATCH":
+                    focus_watch.append(name)
+            # 优先展示可操作信号，WATCH仅在没有BUY/次日可买时补充
+            focus = focus_buy + focus_watch
+            if focus_buy:
                 lines.append("")
-                lines.append(f"优先关注：{'、'.join(focus[:5])}")
+                lines.append(f"优先关注（可操作）：{'、'.join(focus_buy[:5])}")
+            elif focus_watch:
+                lines.append("")
+                lines.append(f"优先关注（观察中）：{'、'.join(focus_watch[:5])}")
             return "\n".join(lines)
         except Exception as e:
             print(f"[ELD] 加载失败: {e}")
@@ -11659,9 +11658,8 @@ def run(target_date=None, simple_mode=False):
 依此往后
 - 对每只股票进行详细分析，包括：
 - 整合评分和失败概率
-- V10 五维分解分（动量爆发力/资金行为/位置安全性/热度/基本面）及资金行为细节（斜率/持续性/扩散率）
+- V5决策的Buy(XX%) | 止损 | 操作建议
 - 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
-- 筹码建议
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
 主题地位：【必须】直接输出规则判定结果，格式如下：
 "主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"

@@ -142,6 +142,7 @@ class RealtimeThemeMonitor:
         self.stock_zt_first_time = {}      # ts_code -> 首次涨停时间(datetime)
         self.theme_amount_at_1430 = {}     # theme_name -> 14:30成交额基准
         self.theme_lifecycle_cache = {}    # theme_name -> (stage, score, detail)
+        self.theme_forward_cache = {}      # theme_name -> t1_score (前瞻分)
 
         # ── 中军弱转强:分时快照 ──
         # ts_code -> {'morning_min_pct':, 'morning_avg_pct':, 'morning_min_price':, 'morning_amount':, 'afternoon_amount':, 'tail_amount':, 'morning_vol':, 'tail_vol':}
@@ -1094,6 +1095,7 @@ class RealtimeThemeMonitor:
 
         # 2. T+1预测因子
         t1_score, t1_detail = self.calc_t1_prediction_factors(theme_name)
+        self.theme_forward_cache[theme_name] = t1_score
 
         # 3. 未充分定价(逆向因子)
         # 热度低 + 龙头未超买 = 未充分定价
@@ -3500,6 +3502,126 @@ class RealtimeThemeMonitor:
 
         return True, 'OK'
 
+    def _tail_trend_consistency_score(self, ts_code, q):
+        """趋势一致性(10分): MA5>MA10 + MA10>MA20 + Close>MA20"""
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+        kl = self.stock_klines.get(ts_code)
+        if kl is None or len(kl) < 20:
+            return 0, detail
+        ma5 = kl['close'].iloc[-5:].mean()
+        ma10 = kl['close'].iloc[-10:].mean()
+        ma20 = kl['close'].iloc[-20:].mean()
+        if ma5 > ma10:
+            score += 3
+            detail['ma5_gt_ma10'] = True
+        else:
+            detail['ma5_gt_ma10'] = False
+        if ma10 > ma20:
+            score += 3
+            detail['ma10_gt_ma20'] = True
+        else:
+            detail['ma10_gt_ma20'] = False
+        if price > ma20:
+            score += 4
+            detail['close_gt_ma20'] = True
+        else:
+            detail['close_gt_ma20'] = False
+        return min(score, 10), detail
+
+    def _tail_relative_strength_score(self, ts_code, q, theme_name, index_pct):
+        """相对强度(15分): RS=个股涨幅-主题均涨幅, Alpha=个股涨幅-指数涨幅"""
+        pct = q.get('pct_chg', 0)
+        score = 0
+        detail = {}
+        # RS vs 主题(8分)
+        theme_avg_pct = 0
+        if theme_name:
+            stocks = self.theme_stocks.get(theme_name, [])
+            gains = []
+            for code, name, ly in stocks:
+                qt = self.quotes.get(code)
+                if qt and qt.get('pct_chg') is not None:
+                    gains.append(qt.get('pct_chg', 0))
+            theme_avg_pct = sum(gains) / len(gains) if gains else 0
+        rs = pct - theme_avg_pct
+        detail['rs_vs_theme'] = round(rs, 2)
+        if rs > 3:
+            score += 8
+        elif rs > 2:
+            score += 6
+        elif rs > 1:
+            score += 4
+        elif rs > 0:
+            score += 2
+        # Alpha vs 指数(7分)
+        if index_pct is not None:
+            alpha = pct - index_pct
+            detail['alpha_vs_index'] = round(alpha, 2)
+            if alpha > 3:
+                score += 7
+            elif alpha > 2:
+                score += 5
+            elif alpha > 1:
+                score += 3
+        else:
+            detail['alpha_vs_index'] = 0
+        return min(score, 15), detail
+
+    def _tail_breakout_score(self, ts_code, q):
+        """新高突破(8分): Close突破10日高=资金流代理变量"""
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+        kl = self.stock_klines.get(ts_code)
+        if kl is None or len(kl) < 20:
+            return 0, detail
+        high_10d = kl['high'].iloc[-10:].max()
+        high_20d = kl['high'].iloc[-20:].max()
+        if price > high_10d:
+            score += 8
+            detail['breakout_10d'] = True
+        elif price > 0 and high_20d > 0:
+            dist_20d = (high_20d - price) / price * 100
+            detail['dist_20d_high'] = round(dist_20d, 2)
+            if dist_20d < 2:
+                score += 5
+                detail['near_20d_high'] = True
+        else:
+            detail['breakout_10d'] = False
+        return min(score, 8), detail
+
+    def _tail_volatility_penalty(self, ts_code, q):
+        """波动率扣分(≤10分): ATR过大扣分"""
+        penalty = 0
+        detail = {}
+        fdf = self.stock_factors.get(ts_code)
+        if fdf is None or fdf.empty:
+            return 0, detail
+        try:
+            row = fdf.iloc[-1]
+            atr = float(row.get('atr_bfq', 0) or 0)
+            close = float(row.get('close', 0) or 0)
+            if atr > 0 and close > 0:
+                atr_pct = atr / close * 100
+                detail['atr_pct'] = round(atr_pct, 2)
+                kl = self.stock_klines.get(ts_code)
+                if kl is not None and len(kl) >= 20:
+                    prices = kl['close'].iloc[-20:].values
+                    amp_20d = (kl['high'].iloc[-20:].values - kl['low'].iloc[-20:].values) / prices
+                    avg_atr_20d = float(amp_20d.mean() * 100)
+                    detail['atr_20d_avg'] = round(avg_atr_20d, 2)
+                    if avg_atr_20d > 0 and atr_pct > avg_atr_20d * 2:
+                        penalty += 10
+                        detail['vol_penalty'] = 'ATR过大'
+                    elif avg_atr_20d > 0 and atr_pct > avg_atr_20d * 1.5:
+                        penalty += 5
+                        detail['vol_penalty'] = 'ATR偏高'
+        except Exception:
+            pass
+        return min(penalty, 10), detail
+
     def _tail_trap_penalty(self, ts_code, q):
         """
         诱多风险扣分: 返回 (扣分, detail)
@@ -3593,66 +3715,61 @@ class RealtimeThemeMonitor:
         return min(penalty, 30), detail
 
     def _tail_attack_score(self, ts_code, q):
-        """尾盘攻击力 (25分): 尾盘拉升幅度 + 尾盘量能爆发 + 收盘位置"""
+        """尾盘攻击力 (20分): 尾盘量占全天比例 + 距最高价距离 + 尾盘拉升"""
         snap = self.intraday_snapshots.get(ts_code, {})
         score = 0
         detail = {}
 
-        tail_base_price = snap.get('tail_base_price', 0)
-        tail_base_vol = snap.get('tail_base_vol', 0)
         morning_vol = snap.get('morning_vol', 0)
         current_price = q.get('price', 0)
         current_vol = q.get('vol', 0)
         high = q.get('high', 0)
 
-        # ── 1. 尾盘拉升幅度 (8分) ──
+        # ── 1. 尾盘拉升幅度 (2分): 降低权重(尾盘拉升≠次日高开) ──
+        tail_base_price = snap.get('tail_base_price', 0)
         if tail_base_price > 0 and current_price > 0:
             tail_rally = (current_price - tail_base_price) / tail_base_price * 100
             detail['tail_rally'] = round(tail_rally, 2)
             if tail_rally > 1.0:
-                score += 8
-            elif tail_rally > 0.5:
-                score += 6
-            elif tail_rally > 0.2:
-                score += 4
-            elif tail_rally > 0:
                 score += 2
+            elif tail_rally > 0.5:
+                score += 1
         else:
             detail['tail_rally'] = 0
 
-        # ── 2. 尾盘量能爆发 (10分) ──
-        if tail_base_vol > 0 and morning_vol > 0 and current_vol > tail_base_vol:
-            tail_vol_inc = current_vol - tail_base_vol
-            tail_vol_ratio = tail_vol_inc / morning_vol
-            detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
-            if tail_vol_ratio > 0.25:
+        # ── 2. 尾盘量占全天比例 (10分): 核心攻击力指标 ──
+        if current_vol > 0:
+            tail_vol = snap.get('tail_vol', 0)
+            tail_vol_ratio = tail_vol / current_vol * 100
+            detail['tail_vol_ratio_pct'] = round(tail_vol_ratio, 1)
+            if tail_vol_ratio > 35:
                 score += 10
-            elif tail_vol_ratio > 0.18:
+            elif tail_vol_ratio > 30:
                 score += 8
-            elif tail_vol_ratio > 0.10:
+            elif tail_vol_ratio > 25:
                 score += 5
-            elif tail_vol_ratio > 0.05:
-                score += 3
+            elif tail_vol_ratio > 20:
+                score += 2
         else:
-            detail['tail_vol_ratio'] = 0
+            detail['tail_vol_ratio_pct'] = 0
 
-        # ── 3. 收盘位置 (7分): 光头阳线=次日惯性高开 ──
+        # ── 3. 距最高价距离 (8分): 收盘越接近最高价越强 ──
         if high > 0 and current_price > 0:
-            close_ratio = current_price / high
-            detail['close_ratio'] = round(close_ratio, 2)
-            if close_ratio > 0.98:
-                score += 7
-            elif close_ratio > 0.95:
-                score += 5
-            elif close_ratio > 0.90:
+            dist_from_high = (high - current_price) / current_price * 100
+            detail['dist_from_high'] = round(dist_from_high, 2)
+            if dist_from_high < 0.3:
+                score += 8
+            elif dist_from_high < 0.6:
+                score += 6
+            elif dist_from_high < 1.0:
                 score += 3
         else:
-            detail['close_ratio'] = 0
+            detail['dist_from_high'] = 0
 
-        return min(score, 25), detail
+        return min(score, 20), detail
 
     def _tail_structure_score(self, ts_code, q):
-        """全天结构质量 (35分): 振幅控制 + 阳线实体 + 缩量程度"""
+        """全天结构质量 (25分): 阳线实体 + 缩量程度 + 连续性(3日连阳)"""
         high = q.get('high', 0)
         low = q.get('low', 0)
         last_close = q.get('last_close', 0)
@@ -3662,20 +3779,7 @@ class RealtimeThemeMonitor:
         score = 0
         detail = {}
 
-        # ── 1. 全天振幅控制 (12分): 振幅越小=主力控盘越强 ──
-        if last_close > 0 and high > 0 and low > 0:
-            amplitude = (high - low) / last_close * 100
-            detail['amplitude'] = round(amplitude, 1)
-            if amplitude < 3:
-                score += 12
-            elif amplitude < 5:
-                score += 8
-            elif amplitude < 7:
-                score += 5
-        else:
-            detail['amplitude'] = 0
-
-        # ── 2. 阳线实体 (10分): 收阳=多头占优 ──
+        # ── 1. 阳线实体 (10分): 收阳=多头占优 ──
         if pct > 2:
             score += 10
             detail['yang_line'] = True
@@ -3688,7 +3792,7 @@ class RealtimeThemeMonitor:
         else:
             detail['yang_line'] = False
 
-        # ── 3. 缩量程度 (13分): 缩量=洗盘结束,蓄力待发 ──
+        # ── 2. 缩量程度 (10分): 缩量=洗盘结束,蓄力待发 ──
         kl = self.stock_klines.get(ts_code)
         if kl is not None and len(kl) >= 5:
             avg_vol_5d = kl['vol'].iloc[-5:].mean()
@@ -3696,22 +3800,39 @@ class RealtimeThemeMonitor:
                 vol_ratio = vol / avg_vol_5d
                 detail['vol_ratio_5d'] = round(vol_ratio, 2)
                 if vol_ratio < 0.7:
-                    score += 13  # 极度缩量: 浮筹清洗干净
+                    score += 10  # 极度缩量: 浮筹清洗干净
                 elif vol_ratio < 0.85:
-                    score += 10
+                    score += 8
                 elif vol_ratio < 1.0:
-                    score += 7
+                    score += 5
                 elif vol_ratio < 1.2:
-                    score += 4
-                else:
-                    score += 1  # 放量也给1分,不是扣分项
+                    score += 3
         else:
             detail['vol_ratio_5d'] = 0
 
-        return min(score, 35), detail
+        # ── 3. 连续性 (5分): 3日连阳+5, 2阳1阴+3 ──
+        if kl is not None and len(kl) >= 3:
+            closes = kl['close'].iloc[-3:].values
+            opens = kl['open'].iloc[-3:].values if 'open' in kl.columns else None
+            yang_count = 0
+            for i in range(3):
+                if opens is not None and closes[i] >= opens[i]:
+                    yang_count += 1
+                elif opens is None and i > 0 and closes[i] >= closes[i-1]:
+                    yang_count += 1
+            if opens is not None:
+                if yang_count >= 3:
+                    score += 5
+                    detail['continuity'] = '3日连阳'
+                elif yang_count >= 2:
+                    score += 3
+                    detail['continuity'] = '2阳1阴'
+            detail['yang_days'] = yang_count
+
+        return min(score, 25), detail
 
     def _tail_position_score(self, ts_code, q):
-        """位置安全边际 (20分): 距MA5 + 距MA10 + 距20日高回撤"""
+        """位置安全边际 (15分): 距MA5 + 距MA10 + 距20日高回撤"""
         price = q.get('price', 0)
         score = 0
         detail = {}
@@ -3721,33 +3842,33 @@ class RealtimeThemeMonitor:
             detail['ma5_dist'] = 0
             detail['ma10_dist'] = 0
             detail['pullback'] = 0
-            return 5, detail  # 无K线数据给基础分
+            return 3, detail  # 无K线数据给基础分
 
         ma5 = kl['close'].iloc[-5:].mean()
         ma10 = kl['close'].iloc[-10:].mean()
         high_20d = kl['high'].iloc[-20:].max()
 
-        # ── 1. 距MA5 (8分): 在MA5附近=短线支撑有效 ──
+        # ── 1. 距MA5 (5分): 在MA5附近=短线支撑有效 ──
         if price > 0 and ma5 > 0:
             ma5_dist = abs(price - ma5) / ma5 * 100
             detail['ma5_dist'] = round(ma5_dist, 1)
             if ma5_dist < 2:
-                score += 8
-            elif ma5_dist < 4:
                 score += 5
+            elif ma5_dist < 4:
+                score += 3
             elif ma5_dist < 6:
-                score += 2
+                score += 1
         else:
             detail['ma5_dist'] = 0
 
-        # ── 2. 距MA10 (7分): 在MA10上方=中期趋势健康 ──
+        # ── 2. 距MA10 (5分): 在MA10上方=中期趋势健康 ──
         if price > 0 and ma10 > 0:
             ma10_ratio = price / ma10
             detail['ma10_ratio'] = round(ma10_ratio, 2)
             if 0.97 <= ma10_ratio <= 1.05:
-                score += 7
+                score += 5
             elif 0.94 <= ma10_ratio <= 1.08:
-                score += 4
+                score += 3
             else:
                 score += 1
         else:
@@ -3766,19 +3887,16 @@ class RealtimeThemeMonitor:
         else:
             detail['pullback'] = 0
 
-        return min(score, 20), detail
+        return min(score, 15), detail
 
     def _tail_technical_score(self, ts_code, q):
         """
-        技术形态加分 (20分,基于stk_factor缓存)
-        利用MACD/KDJ/RSI/BOLL/CCI等技术指标识别技术面健康度
+        技术形态加分 (10分,基于stk_factor缓存)
+        利用KDJ/RSI技术指标识别技术面健康度
         
         这是胜率提升的核心因子:
-        - MACD金叉/多头: 趋势向上,次日延续概率高
-        - KDJ J<80未超买: 有上涨空间,不易冲高回落
+        - KDJ金叉: 短期动能向上
         - RSI 40-70健康区: 不超买不超卖,走势稳健
-        - 收盘在BOLL中轨上方: 中期趋势偏多
-        - CCI正向: 动能为正
         """
         score = 0
         detail = {}
@@ -3790,21 +3908,7 @@ class RealtimeThemeMonitor:
         # 取最新一行
         row = fdf.iloc[-1]
 
-        # ── 1. MACD趋势 (6分) ──
-        try:
-            dif = float(row.get('macd_dif', 0))
-            dea = float(row.get('macd_dea', 0))
-            macd = float(row.get('macd', 0))
-            if dif > dea:  # MACD多头
-                score += 4
-                detail['macd'] = '多头'
-                if dif > 0 and dea > 0:  # 零轴上方多头=强势
-                    score += 2
-                    detail['macd'] = '零上多头'
-        except Exception:
-            pass
-
-        # ── 2. KDJ金叉/位置 (5分) ──
+        # ── 1. KDJ金叉/位置 (5分) ──
         # KDJ金叉=K上穿D,非J上穿K; 低位金叉信号最强
         try:
             kdj_k = float(row.get('kdj_k', 50))
@@ -3846,7 +3950,7 @@ class RealtimeThemeMonitor:
         except Exception:
             pass
 
-        # ── 3. RSI健康度 (5分) ──
+        # ── 2. RSI健康度 (5分) ──
         try:
             rsi_6 = float(row.get('rsi_6', 50))
             rsi_12 = float(row.get('rsi_12', 50))
@@ -3858,106 +3962,193 @@ class RealtimeThemeMonitor:
                 score += 3  # 接近超卖,有反弹空间
             elif 70 < rsi_6 <= 80:
                 score += 2  # 偏强但未严重超买
-            # RSI6>RSI12 = 短期强于中期
-            if rsi_6 > rsi_12:
-                score += 0  # 已在上面的区间内体现
         except Exception:
             pass
 
-        # ── 4. BOLL位置 (4分) ──
-        try:
-            close = float(row.get('close', 0))
-            boll_mid = float(row.get('boll_mid', 0))
-            boll_upper = float(row.get('boll_upper', 0))
-            boll_lower = float(row.get('boll_lower', 0))
-            if close > 0 and boll_mid > 0:
-                # 收盘在中轨上方=中期偏多
-                if close > boll_mid:
-                    score += 2
-                    detail['boll'] = '中轨上方'
-                    # 接近上轨但不冲破=强势但未过热
-                    if boll_upper > close and (boll_upper - close) / close * 100 < 3:
-                        score += 1
-                        detail['boll'] = '接近上轨'
-                # 在下轨附近=超卖反弹位
-                elif boll_lower > 0 and (close - boll_lower) / boll_lower * 100 < 2:
-                    score += 1
-                    detail['boll'] = '下轨支撑'
-        except Exception:
-            pass
+        return min(score, 10), detail
+
+    def _calc_theme_momentum(self, theme_name):
+        """
+        V2 实时主题动量 (5个轻量指标, 2-5ms/主题)
+        返回: (up_ratio, avg_return, leader_return, bullish_count, tail_momentum)
+        全部基于盘中实时行情,不计算MACD/RSI/KDJ/生命周期/前瞻分
+        """
+        stocks = self.theme_stocks.get(theme_name, [])
+        if not stocks:
+            return 0, 0, 0, 0, None
+
+        up_count = 0
+        total_pct = 0
+        leader_pct = 0
+        leader_found = False
+        bullish_score = 0
+        valid_count = 0
+
+        for ts_code, name, layer in stocks:
+            q = self.quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                continue
+            pct = q.get('pct_chg', 0)
+            if pct is None:
+                continue
+
+            valid_count += 1
+            total_pct += pct
+
+            # 上涨家数
+            if pct > 0:
+                up_count += 1
+
+            # 大涨股数量 (>7% +2, >5% +1)
+            if pct > 7:
+                bullish_score += 2
+            elif pct > 5:
+                bullish_score += 1
+
+            # 龙头表现(取最强龙头,而非第一个)
+            if layer == 'leader':
+                if not leader_found:
+                    leader_pct = pct
+                    leader_found = True
+                else:
+                    leader_pct = max(leader_pct, pct)
+
+        if valid_count == 0:
+            return 0, 0, 0, 0, None
+
+        # 上涨家数比例
+        up_ratio = up_count / valid_count * 100
+
+        # 平均涨幅
+        avg_return = total_pct / valid_count
+
+        # 大涨股评分(上限100)
+        bullish_count = min(bullish_score, 100)
+
+        # 尾盘动量: 14:30后主题平均涨跌幅
+        tail_momentum = None
+        now = datetime.now()
+        if now.hour >= 14 or (now.hour == 14 and now.minute >= 30):
+            # 如果有快照,用快照中的14:30基准价; 否则用当日开盘价近似
+            tail_pct_sum = 0
+            tail_valid = 0
+            for ts_code, name, layer in stocks:
+                q = self.quotes.get(ts_code)
+                if not q or q.get('price', 0) <= 0:
+                    continue
+                snap = self.intraday_snapshots.get(ts_code, {})
+                base_price = snap.get('tail_base_price', 0)
+                if base_price <= 0:
+                    base_price = q.get('open', 0)
+                if base_price > 0:
+                    tail_pct = (q['price'] - base_price) / base_price * 100
+                    tail_pct_sum += tail_pct
+                    tail_valid += 1
+            if tail_valid > 0:
+                tail_momentum = tail_pct_sum / tail_valid
+
+        return up_ratio, avg_return, leader_pct, bullish_count, tail_momentum
+
+    def _tail_v2_trade_score(self, up_ratio, avg_return, leader_return, bullish_count, tail_momentum):
+        """
+        V2 实时主题动量评分 (20分)
+        与 tail_strategy.v2_trade_score 保持同步
+        """
+        score = 0
+        detail = {
+            'up_ratio': round(up_ratio, 1),
+            'avg_return': round(avg_return, 2),
+            'leader_return': round(leader_return, 2),
+            'bullish_count': round(bullish_count, 1),
+            'tail_momentum': round(tail_momentum, 2) if tail_momentum is not None else None,
+        }
+
+        # 1. 上涨家数比例 (7分)
+        if up_ratio >= 80:
+            score += 7
+        elif up_ratio >= 60:
+            score += 5
+        elif up_ratio >= 40:
+            score += 3
+        elif up_ratio >= 20:
+            score += 1
+
+        # 2. 平均涨幅 (5分)
+        if avg_return > 3:
+            score += 5
+        elif avg_return > 2:
+            score += 4
+        elif avg_return > 1:
+            score += 3
+        elif avg_return > 0:
+            score += 1
+
+        # 3. 龙头表现 (4分)
+        if leader_return > 5:
+            score += 4
+        elif leader_return > 3:
+            score += 3
+        elif leader_return > 0:
+            score += 2
+
+        # 4. 大涨股数量 (2分)
+        if bullish_count >= 80:
+            score += 2
+        elif bullish_count >= 50:
+            score += 1
+
+        # 5. 尾盘动量 (2分)
+        if tail_momentum is not None:
+            if tail_momentum > 1.0:
+                score += 2
+            elif tail_momentum > 0.5:
+                score += 1
 
         return min(score, 20), detail
 
-    def _tail_theme_score(self, ts_code, q):
-        """主题共振 (20分): 主题强度 + 龙头地位 + 涨停配合"""
+    def _tail_theme_score(self, ts_code, q, theme_rank, lifecycle_score, forward_score, layer):
+        """主题共振 (20分): 主题排名 + 生命周期分 + 前瞻分 + 龙头地位"""
         score = 0
         detail = {}
 
-        themes = self.stock_themes.get(ts_code, [])
-        if not themes:
-            return 0, detail
+        detail['theme_rank'] = theme_rank
+        detail['lifecycle_score'] = lifecycle_score
+        detail['forward_score'] = forward_score
+        detail['layer'] = layer
 
-        # 取最强主题
-        best_theme = themes[0]
-        best_strength = 0
-        best_layer = 'follower'
-        best_zt_count = 0
+        # ── 主题排名 (5分): 排名越靠前越强 ──
+        if theme_rank <= 2:
+            score += 5
+        elif theme_rank <= 5:
+            score += 3
+        elif theme_rank <= 10:
+            score += 1
 
-        for theme_name in themes:
-            # 主题强度
-            strength = 0
-            if self.theme_score_history.get(theme_name):
-                strength = self.theme_score_history[theme_name][-1] if self.theme_score_history[theme_name] else 0
-
-            # 涨停统计
-            stocks = self.theme_stocks.get(theme_name, [])
-            zt_cnt = 0
-            layer = 'follower'
-            for code, name, ly in stocks:
-                if code == ts_code:
-                    layer = ly
-                qt = self.quotes.get(code)
-                if qt:
-                    limit = 19.5 if code.startswith(('300', '688')) else 9.5
-                    if qt.get('pct_chg', 0) >= limit:
-                        zt_cnt += 1
-
-            if strength > best_strength:
-                best_strength = strength
-                best_theme = theme_name
-                best_layer = layer
-                best_zt_count = zt_cnt
-
-        detail['theme'] = best_theme
-        detail['theme_strength'] = round(best_strength, 1)
-        detail['theme_zt'] = best_zt_count
-        detail['layer'] = best_layer
-
-        # ── 主题强度 (8分) ──
-        if best_strength > 2:
+        # ── 生命周期分 (8分): 生命周期阶段越健康越强 ──
+        if lifecycle_score > 80:
             score += 8
-        elif best_strength > 0:
+        elif lifecycle_score > 60:
             score += 6
-        elif best_strength > -1:
+        elif lifecycle_score > 40:
             score += 4
-        else:
+        elif lifecycle_score > 20:
             score += 2
 
-        # ── 龙头地位 (8分) ──
-        if best_layer == 'leader':
-            score += 8
-        elif best_layer == 'middle':
-            score += 6
-        else:
-            score += 3
-
-        # ── 主题内有涨停配合 (4分) ──
-        if best_zt_count >= 3:
+        # ── 前瞻分 (4分): T+1预测强度 ──
+        if forward_score > 80:
             score += 4
-        elif best_zt_count >= 2:
+        elif forward_score > 50:
             score += 3
-        elif best_zt_count >= 1:
+        elif forward_score > 30:
+            score += 1
+
+        # ── 龙头地位 (3分): 龙头/中军/跟风 ──
+        if layer == 'leader':
+            score += 3
+        elif layer == 'middle':
             score += 2
+        elif layer == 'follower':
+            score += 1
 
         return min(score, 20), detail
 
@@ -3981,6 +4172,10 @@ class RealtimeThemeMonitor:
                     theme_score   INTEGER,
                     tech_score    INTEGER,
                     trap_penalty  INTEGER,
+                    trend_score   INTEGER,
+                    rel_strength_score INTEGER,
+                    breakout_score INTEGER,
+                    vol_penalty   INTEGER,
                     pct_chg       REAL,
                     price         REAL,
                     detail_json   TEXT,
@@ -4074,13 +4269,16 @@ class RealtimeThemeMonitor:
                     INSERT OR REPLACE INTO tail_signal_tracker (
                         signal_date, signal_time, ts_code, name, theme, signal,
                         total_score, attack_score, structure_score, position_score,
-                        theme_score, tech_score, trap_penalty, pct_chg, price, detail_json,
+                        theme_score, tech_score, trap_penalty, trend_score,
+                        rel_strength_score, breakout_score, vol_penalty,
+                        pct_chg, price, detail_json,
                         next_open, next_close, next_pct_chg, next_high, next_low,
                         next_5d_pct, next_10d_pct, max_gain, max_drawdown,
                         exit_date, exit_price, exit_reason, pnl, status, note, updated_at
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?,
                         NULL, NULL, NULL, NULL, NULL,
                         NULL, NULL, NULL, NULL,
@@ -4090,6 +4288,8 @@ class RealtimeThemeMonitor:
                     signal_date, signal_time, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
                     s['total_score'], s['attack_score'], s['structure_score'], s['position_score'],
                     s['theme_score'], s.get('tech_score', 0), s.get('trap_penalty', 0),
+                    s.get('trend_score', 0), s.get('rel_strength_score', 0),
+                    s.get('breakout_score', 0), s.get('vol_penalty', 0),
                     s.get('pct_chg', 0), s.get('price', 0), _json.dumps(s.get('detail', {}), ensure_ascii=False),
                     signal_time,
                 ))
@@ -4104,12 +4304,16 @@ class RealtimeThemeMonitor:
         「猎尾」2:50尾盘突袭战法 — 次日套利最高胜率
 
         14:50后扫描全市场主题内股票，识别尾盘抢筹信号。
-        评分模型 (100分 + 20技术分 - 诱多扣分):
-        - 全天结构   (35分): 振幅控制 + 阳线实体 + 缩量程度
-        - 尾盘攻击力 (25分): 尾盘拉升幅度 + 量能爆发 + 收盘位置
-        - 主题共振   (20分): 主题强度 + 龙头地位 + 涨停配合
-        - 位置安全   (20分): 距MA5/MA10 + 距20日高回撤
-        - 技术形态   (20分): MACD/KDJ/RSI/BOLL
+        评分模型 (满分 = 133 - 扣分):
+        - 全天结构   (25分): 阳线实体 + 缩量程度 + 连续性
+        - 尾盘攻击力 (20分): 尾盘量占比 + 距最高价 + 尾盘拉升
+        - 位置安全   (15分): 距MA5/MA10 + 距20日高回撤
+        - 趋势一致性 (10分): MA5>MA10/MA10>MA20/Close>MA20
+        - 主题共振   (20分): 主题排名 + 生命周期分 + 前瞻分 + 龙头地位
+        - 相对强度   (15分): RS(相对主题) + Alpha(相对指数)
+        - 新高突破   ( 8分): Close突破10日高/距20日高<2%
+        - 技术形态   (10分): KDJ金叉 + RSI健康度
+        - 波动率扣分 (≤10分): ATR过大扣分
         - 诱多扣分   (≤30分): 四大诱多红旗
 
         硬过滤: 涨停/跌停/振幅>8%/跌>2.5%/不在主题/连板≥2/距MA20>25%
@@ -4119,6 +4323,28 @@ class RealtimeThemeMonitor:
         """
         now = datetime.now()
         signals = []
+
+        # ── 全局数据预计算 ──
+        # 1. 主题排名: 按最新分数排序生成 {theme_name: rank} 字典
+        theme_rank_map = {}
+        theme_scores = []
+        for tname, scores in self.theme_score_history.items():
+            if scores:
+                theme_scores.append((tname, scores[-1]))
+        theme_scores.sort(key=lambda x: -x[1])
+        for rank, (tname, _) in enumerate(theme_scores, 1):
+            theme_rank_map[tname] = rank
+
+        # 2. 上证指数涨幅
+        index_pct = None
+        index_q = self.quotes.get('000001.SH')
+        if index_q:
+            index_pct = index_q.get('pct_chg', None)
+
+        # 3. V2 实时主题动量: 预计算所有主题的5个轻量指标(2-5ms/主题)
+        theme_momentum_cache = {}
+        for theme_name in self.theme_stocks:
+            theme_momentum_cache[theme_name] = self._calc_theme_momentum(theme_name)
 
         # 首次扫描输出诊断统计
         if not self.tail_entry_debug_printed:
@@ -4149,18 +4375,38 @@ class RealtimeThemeMonitor:
                     debug_stats['hardfilter_fail'][reason] = debug_stats['hardfilter_fail'].get(reason, 0) + 1
                 continue
 
-            # 四维评分
+            # 获取主题数据
+            theme_name = themes[0]  # 取最强主题
+            # 获取排名
+            theme_rank = theme_rank_map.get(theme_name, 99)
+            # 获取生命周期和前瞻分
+            lc = self.theme_lifecycle_cache.get(theme_name)
+            lifecycle_score = lc[1] if lc else 0
+            forward_score = self.theme_forward_cache.get(theme_name, 0) if hasattr(self, 'theme_forward_cache') else 0
+            # 获取layer
+            layer = 'follower'
+            for code, name, ly in self.theme_stocks.get(theme_name, []):
+                if code == ts_code:
+                    layer = ly
+                    break
+
+            # 多维评分
             attack_score, attack_detail = self._tail_attack_score(ts_code, q)
             structure_score, structure_detail = self._tail_structure_score(ts_code, q)
             position_score, position_detail = self._tail_position_score(ts_code, q)
-            theme_score, theme_detail = self._tail_theme_score(ts_code, q)
-            # 技术形态加分 (基于MACD/KDJ/RSI/BOLL缓存,核心胜率因子)
+            trend_score, trend_detail = self._tail_trend_consistency_score(ts_code, q)
+            # V2: 实时主题动量替代旧版 _tail_theme_score
+            up_ratio, avg_return, leader_return, bullish_count, tail_momentum = theme_momentum_cache.get(theme_name, (0, 0, 0, 0, None))
+            theme_score, theme_detail = self._tail_v2_trade_score(up_ratio, avg_return, leader_return, bullish_count, tail_momentum)
+            rel_score, rel_detail = self._tail_relative_strength_score(ts_code, q, theme_name, index_pct)
+            breakout_score, breakout_detail = self._tail_breakout_score(ts_code, q)
             tech_score, tech_detail = self._tail_technical_score(ts_code, q)
-
-            # 诱多风险扣分 (识别"尾盘拉高次日低开"陷阱)
+            vol_penalty, vol_detail = self._tail_volatility_penalty(ts_code, q)
             trap_penalty, trap_detail = self._tail_trap_penalty(ts_code, q)
 
-            total_score = attack_score + structure_score + position_score + theme_score + tech_score - trap_penalty
+            total_score = (attack_score + structure_score + position_score + trend_score +
+                           theme_score + rel_score + breakout_score + tech_score -
+                           vol_penalty - trap_penalty)
 
             if not self.tail_entry_debug_printed:
                 debug_stats['max_scores'].append(total_score)
@@ -4193,12 +4439,12 @@ class RealtimeThemeMonitor:
                 if name:
                     break
 
-            best_theme = theme_detail.get('theme', themes[0])
+            theme_detail['theme'] = theme_name
 
             signals.append({
                 'ts_code': ts_code,
                 'name': name,
-                'theme': best_theme,
+                'theme': theme_name,
                 'total_score': total_score,
                 'attack_score': attack_score,
                 'structure_score': structure_score,
@@ -4206,10 +4452,16 @@ class RealtimeThemeMonitor:
                 'theme_score': theme_score,
                 'tech_score': tech_score,
                 'trap_penalty': trap_penalty,
+                'trend_score': trend_score,
+                'rel_strength_score': rel_score,
+                'breakout_score': breakout_score,
+                'vol_penalty': vol_penalty,
                 'signal': signal,
                 'pct_chg': q.get('pct_chg', 0),
                 'price': q.get('price', 0),
-                'detail': {**attack_detail, **structure_detail, **position_detail, **theme_detail, **tech_detail, **trap_detail},
+                'detail': {**attack_detail, **structure_detail, **position_detail, **trend_detail,
+                           **theme_detail, **rel_detail, **breakout_detail, **tech_detail,
+                           **vol_detail, **trap_detail, 'layer': layer},
             })
 
         # 首次扫描输出诊断

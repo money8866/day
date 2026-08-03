@@ -88,7 +88,7 @@ _SIGNAL_CN = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "�
 def _sig_cn(s: str) -> str:
     return _SIGNAL_CN.get(s, s)
 
-lines.append(f"> 熊市 | {len(eld_stocks)-len(unmapped)}/50映射主题")
+lines.append(f"> {len(eld_stocks)-len(unmapped)}/50映射主题")
 
 # ── 一、核心关注 ──
 absorbers = [s for s in eld_stocks if s["institution_state"] == "吸筹"]
@@ -124,20 +124,46 @@ for i, s in enumerate(eld_stocks[:20], 1):
     pct = round(float(s["forecast_pct"]))
     lines.append(f"{i}.{s['name']} V2:{v2} 预增{pct}% {icon} {_sig_cn(s['earnings_buy_signal'])}")
 
-# ── 三、操作策略 ──
+# ── 三、次日可买（新增） ──
+_buyable = [s for s in eld_stocks
+            if s.get("next_day_buyable", "").lower() == "true"
+            and s['institution_state'] != '派发']
+if _buyable:
+    lines.append("")
+    lines.append("**🎯次日可买（回调中低吸机会）**")
+    for s in _buyable[:10]:
+        inst = s["institution_state"]
+        v2 = round(float(s['final_score_v2']))
+        ref_price = float(s.get("reference_buy_price", 0))
+        stop_loss = float(s.get("stop_loss_price", 0))
+        price_str = f" 参考价{ref_price:.2f} 止损{stop_loss:.2f}" if ref_price > 0 else ""
+        lines.append(f" - {s['name']} V2:{v2} {inst}{price_str}")
+
+# ── 四、操作策略 ──
 lines.append("")
 lines.append("**操作策略**")
 lines.append("")
-lines.append("熊市+26/28主题退潮，仓位≤2成")
-lines.append("入场：缩量回踩MA20(量比<0.6)+观望")
-lines.append("止损：收盘跌破MA10")
-# 优先关注：TOP10中信号非忽略、机构非派发的标的
-_focus = [s for s in eld_stocks[:10]
-          if s['earnings_buy_signal'] != 'IGNORE'
-          and s['institution_state'] != '派发']
-if _focus:
-    _names = "、".join(s['name'] for s in _focus[:5])
-    lines.append(f"优先关注：{_names}")
+lines.append("入场：次日可买标的 - 回调中低吸，参考价附近建仓")
+lines.append("止损：收盘跌破止损价或MA10")
+# 优先关注：次日可买 > BUY > WATCH，过滤派发+利好兑现
+_focus_buy = []
+_focus_watch = []
+for s in eld_stocks[:10]:
+    sig = s.get('earnings_buy_signal', 'IGNORE')
+    inst = s.get('institution_state', '')
+    sell_news = str(s.get('is_sell_on_news', '')).lower() == 'true'
+    next_day = str(s.get('next_day_buyable', '')).lower() == 'true'
+    if sig == 'IGNORE' or '派发' in inst or sell_news:
+        continue
+    name = s['name']
+    if next_day or sig == 'BUY':
+        _focus_buy.append(name)
+    elif sig == 'WATCH':
+        _focus_watch.append(name)
+if _focus_buy:
+    lines.append(f"优先关注（可操作）：{'、'.join(_focus_buy[:5])}")
+elif _focus_watch:
+    lines.append(f"优先关注（观察中）：{'、'.join(_focus_watch[:5])}")
 
 # ── 四、派发风险 ──
 distributors = [s for s in eld_stocks if s["institution_state"] == "派发"]

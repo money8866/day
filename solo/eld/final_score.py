@@ -316,6 +316,7 @@ class FinalScoreEngine:
         final_score: float,
         earnings_buy_signal: Optional[str] = None,
         institution_state: Optional[str] = None,
+        next_day_buyable: bool = False,
     ) -> str:
         """
         根据 V2 分数和信号生成建议。
@@ -324,6 +325,7 @@ class FinalScoreEngine:
             final_score: 最终评分 (0-100)
             earnings_buy_signal: 业绩回踩买点信号
             institution_state: 机构吸筹状态
+            next_day_buyable: 次日可买标记
 
         Returns:
             建议文本
@@ -348,6 +350,10 @@ class FinalScoreEngine:
         # 机构状态增强
         if institution_state:
             base += f" · {institution_state}"
+
+        # 次日可买增强
+        if next_day_buyable:
+            base += " · 明日可低吸"
 
         return base
 
@@ -548,6 +554,7 @@ class FinalScoreEngine:
             result.final_score_v2,
             earnings_buy_signal=result.earnings_buy_signal,
             institution_state=result.institution_state,
+            next_day_buyable=ebp_r.next_day_buyable if ebp_r else False,
         )
 
         return result

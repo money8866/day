@@ -300,6 +300,8 @@ class EarningsBuyPointResult:
     reference_buy_price: float = 0.0       # 参考买入价（MA20支撑位）
     stop_loss_price: float = 0.0           # 止损价
     is_sell_on_news: bool = False          # 利好兑现标记
+    next_day_buyable: bool = False         # 次日可买信号（回调中，明天是更好的买入时机）
+    next_day_buy_reason: str = ""          # 次日可买原因
     logic: list[str] = field(default_factory=list)
 
 
@@ -408,6 +410,8 @@ class FinalScoreResult:
             "stop_loss_price": round(self.earnings_buy_point_detail.stop_loss_price, 2) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.stop_loss_price > 0 else 0.0,
             "pre_announce_runup_pct": round(self.earnings_buy_point_detail.pre_announce_runup_pct, 1) if self.earnings_buy_point_detail else 0.0,
             "is_sell_on_news": self.earnings_buy_point_detail.is_sell_on_news if self.earnings_buy_point_detail else False,
+            "next_day_buyable": self.earnings_buy_point_detail.next_day_buyable if self.earnings_buy_point_detail else False,
+            "next_day_buy_reason": self.earnings_buy_point_detail.next_day_buy_reason if self.earnings_buy_point_detail else "",
             "etf_score": round(self.etf_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,

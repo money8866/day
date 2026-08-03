@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-「猎尾」尾盘突袭战法 - 独立策略模块
+「猎尾」尾盘突袭战法 - 独立策略模块 v2
 从 realtime_theme_monitor.py 提炼,用于历史回测
 
-评分模型 (100分 + 20技术分 - 诱多扣分):
-- 全天结构   (35分): 振幅控制 + 阳线实体 + 缩量程度
-- 尾盘攻击力 (25分): 尾盘拉升幅度 + 收盘位置(回测模式不可靠,降低权重)
-- 主题共振   (20分): 主题强度 + 龙头地位 + 涨停配合
-- 位置安全   (20分): 距MA5/MA10 + 距20日高回撤
-- 技术形态   (20分): MACD/KDJ/RSI/BOLL/CCI
+评分模型 (100分 + 加分项 - 扣分项):
+- 全天结构   (25分): 阳线实体 + 缩量程度 + 连续性
+- 尾盘攻击力 (20分): 尾盘量占比 + 距最高价 + 尾盘拉升
+- 位置安全   (15分): 距MA5/MA10 + 距20日高回撤
+- 趋势一致性 (10分): MA5>MA10/MA10>MA20/Close>MA20
+- 主题共振   (20分): 主题排名 + 生命周期 + 前瞻 + 龙头
+- 相对强度   (15分): RS(相对主题) + Alpha(相对指数)
+- 新高突破   ( 8分): Close突破10日高/距20日高<2%
+- 技术形态   (10分): KDJ金叉 + RSI健康度
+- 波动率扣分 (≤10分): ATR过大扣分
 - 诱多扣分   (≤30分): 四大诱多红旗
 
-硬过滤: 涨停/跌停/振幅>8%/跌>2.5%/不在主题/连板≥2/距MA20>25%
+硬过滤: 涨停/跌停/振幅>8%/跌>2.5%/涨幅<1%/不在主题/连板≥2/距MA20>25%
         5日涨>15%/换手>15%或<0.5%/主题退潮/市值<8亿
 
 实盘入表筛选(方案K):
@@ -40,14 +44,6 @@ class TailStrategy:
     # 硬过滤
     # ═══════════════════════════════════════════════════════
     def hard_filter(self, ts_code, q, kline, turnover, total_mv, theme_strength):
-        """
-        硬过滤: 返回 (True/False, reason)
-        q: 行情 dict(open/high/low/price/last_close/pct_chg/vol)
-        kline: DataFrame 含 close/high/low/vol/pct_chg 列
-        turnover: 换手率%
-        total_mv: 总市值(万元)
-        theme_strength: 最强主题强度分
-        """
         pct = q.get('pct_chg', 0)
         high = q.get('high', 0)
         low = q.get('low', 0)
@@ -71,11 +67,11 @@ class TailStrategy:
         if pct < -2.5:
             return False, f'跌{pct:.1f}%'
 
-        # 3.5 收阴线或微涨<1%排除(尾盘战法要求阳线实体,次日惯性高开概率更高)
+        # 3.5 收阴线或微涨<1%排除
         if pct < 1.0:
             return False, f'涨幅{pct:.1f}%过低'
 
-        # 4. 不在任何主题中排除(由调用方保证,这里不检查)
+        # 4. 不在任何主题中排除(由调用方保证)
 
         # 5. 连续涨停≥2天排除
         if kline is not None and len(kline) >= 3:
@@ -93,7 +89,7 @@ class TailStrategy:
 
         # 7. 近5日涨幅>15%排除
         if kline is not None and len(kline) >= 6:
-            close_5d_ago = float(kline['close'].iloc[-6]) if len(kline) >= 6 else float(kline['close'].iloc[0])
+            close_5d_ago = float(kline['close'].iloc[-6])
             if close_5d_ago > 0:
                 gain_5d = (price - close_5d_ago) / close_5d_ago * 100
                 if gain_5d > 15:
@@ -110,103 +106,27 @@ class TailStrategy:
         if theme_strength < -1:
             return False, '主题退潮'
 
-        # 10. 总市值<8亿(80000万)排除
+        # 10. 总市值<8亿排除
         if total_mv > 0 and total_mv < 80000:
             return False, f'市值{total_mv/10000:.1f}亿'
 
         return True, 'OK'
 
     # ═══════════════════════════════════════════════════════
-    # 尾盘攻击力 (25分)
-    # ═══════════════════════════════════════════════════════
-    def attack_score(self, q, snap):
-        """
-        尾盘攻击力 (25分) — 降低权重,因回测模式收盘-开盘模拟不可靠
-        snap: 分时快照 dict(tail_base_price, tail_base_vol, morning_vol)
-              回测模式下 snap 可为空,用开盘价代替tail_base_price
-        """
-        score = 0
-        detail = {}
-
-        tail_base_price = snap.get('tail_base_price', 0) if snap else 0
-        current_price = q.get('price', 0)
-        high = q.get('high', 0)
-
-        # ── 1. 尾盘拉升幅度 (6分) ──
-        if tail_base_price > 0 and current_price > 0:
-            tail_rally = (current_price - tail_base_price) / tail_base_price * 100
-            detail['tail_rally'] = round(tail_rally, 2)
-            if tail_rally > 1.0:
-                score += 6
-            elif tail_rally > 0.5:
-                score += 4
-            elif tail_rally > 0.2:
-                score += 2
-            elif tail_rally > 0:
-                score += 1
-        else:
-            # 回测模式: 无分时数据,用收盘-开盘估算尾盘拉升
-            open_p = q.get('open', 0)
-            if open_p > 0 and current_price > 0:
-                tail_rally = (current_price - open_p) / open_p * 100
-                detail['tail_rally'] = round(tail_rally, 2)
-                # 回测模式保守给分
-                if tail_rally > 2.0:
-                    score += 4
-                elif tail_rally > 1.0:
-                    score += 3
-                elif tail_rally > 0.5:
-                    score += 2
-                elif tail_rally > 0:
-                    score += 1
-            else:
-                detail['tail_rally'] = 0
-
-        # ── 2. 尾盘量能爆发 (10分) — 回测无数据,不给分 ──
-        detail['tail_vol_ratio'] = 0
-
-        # ── 3. 收盘位置 (9分): 光头阳线=次日惯性高开 ──
-        if high > 0 and current_price > 0:
-            close_ratio = current_price / high
-            detail['close_ratio'] = round(close_ratio, 2)
-            if close_ratio > 0.98:
-                score += 9
-            elif close_ratio > 0.95:
-                score += 6
-            elif close_ratio > 0.90:
-                score += 3
-        else:
-            detail['close_ratio'] = 0
-
-        return min(score, 25), detail
-
-    # ═══════════════════════════════════════════════════════
-    # 全天结构 (35分)
+    # 全天结构 (25分): 阳线实体 + 缩量 + 连续性
     # ═══════════════════════════════════════════════════════
     def structure_score(self, q, kline):
-        """全天结构质量 (35分)"""
+        """全天结构质量 (25分)"""
         high = q.get('high', 0)
         low = q.get('low', 0)
         last_close = q.get('last_close', 0)
         pct = q.get('pct_chg', 0)
         vol = q.get('vol', 0)
+        price = q.get('price', 0)
         score = 0
         detail = {}
 
-        # 1. 振幅控制 (12分)
-        if last_close > 0 and high > 0 and low > 0:
-            amplitude = (high - low) / last_close * 100
-            detail['amplitude'] = round(amplitude, 1)
-            if amplitude < 3:
-                score += 12
-            elif amplitude < 5:
-                score += 8
-            elif amplitude < 7:
-                score += 4
-        else:
-            detail['amplitude'] = 0
-
-        # 2. 阳线实体 (10分)
+        # 1. 阳线实体 (10分)
         if pct > 2:
             score += 10
             detail['yang_line'] = True
@@ -219,67 +139,144 @@ class TailStrategy:
         else:
             detail['yang_line'] = False
 
-        # 3. 缩量程度 (13分)
+        # 2. 缩量程度 (10分)
         if kline is not None and len(kline) >= 5:
             avg_vol_5d = kline['vol'].iloc[-5:].mean()
             if avg_vol_5d > 0:
                 vol_ratio = vol / avg_vol_5d
                 detail['vol_ratio_5d'] = round(vol_ratio, 2)
                 if vol_ratio < 0.7:
-                    score += 13
-                elif vol_ratio < 0.85:
                     score += 10
+                elif vol_ratio < 0.85:
+                    score += 8
                 elif vol_ratio < 1.0:
-                    score += 7
+                    score += 5
                 elif vol_ratio < 1.2:
-                    score += 4
+                    score += 3
                 else:
                     score += 1
         else:
             detail['vol_ratio_5d'] = 0
 
-        return min(score, 35), detail
+        # 3. 连续性: 3日连阳 (5分)
+        if kline is not None and len(kline) >= 3:
+            pct_today = pct
+            pct_t1 = float(kline['pct_chg'].iloc[-1]) if 'pct_chg' in kline.columns else 0
+            pct_t2 = float(kline['pct_chg'].iloc[-2]) if 'pct_chg' in kline.columns else 0
+            yang_count = sum(1 for p in [pct_t2, pct_t1, pct_today] if p > 0)
+            if yang_count == 3:
+                score += 5
+                detail['continuity'] = '3连阳'
+            elif yang_count == 2:
+                score += 3
+                detail['continuity'] = '2阳1阴'
+            else:
+                detail['continuity'] = f'{yang_count}阳'
+        else:
+            detail['continuity'] = '?'
+
+        return min(score, 25), detail
 
     # ═══════════════════════════════════════════════════════
-    # 位置安全 (20分)
+    # 尾盘攻击力 (20分): 量占比 + 距最高价 + 拉升
+    # ═══════════════════════════════════════════════════════
+    def attack_score(self, q, snap):
+        """
+        尾盘攻击力 (20分)
+        snap: 分时快照 dict(tail_vol_ratio, tail_base_price, ...)
+              回测模式下 snap 可为空
+        """
+        score = 0
+        detail = {}
+        current_price = q.get('price', 0)
+        high = q.get('high', 0)
+        open_p = q.get('open', 0)
+
+        # 1. 尾盘量占全天比例 (10分) — 比量能放大更稳定
+        tail_vol_ratio = snap.get('tail_vol_ratio', 0) if snap else 0
+        detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+        if tail_vol_ratio > 0.35:
+            score += 10
+        elif tail_vol_ratio > 0.30:
+            score += 8
+        elif tail_vol_ratio > 0.25:
+            score += 5
+        elif tail_vol_ratio > 0.20:
+            score += 2
+        # 回测模式下无分时数据,不给分
+
+        # 2. 距今日最高价距离 (8分) — 尾盘重要指标
+        if high > 0 and current_price > 0:
+            dist_to_high = (high - current_price) / current_price * 100
+            detail['dist_to_high'] = round(dist_to_high, 2)
+            if dist_to_high < 0.3:
+                score += 8
+            elif dist_to_high < 0.6:
+                score += 6
+            elif dist_to_high < 1.0:
+                score += 3
+        else:
+            detail['dist_to_high'] = 0
+
+        # 3. 尾盘拉升幅度 (2分) — 权重降低,回测不可靠
+        tail_base_price = snap.get('tail_base_price', 0) if snap else 0
+        if tail_base_price > 0 and current_price > 0:
+            tail_rally = (current_price - tail_base_price) / tail_base_price * 100
+            detail['tail_rally'] = round(tail_rally, 2)
+            if tail_rally > 1.0:
+                score += 2
+            elif tail_rally > 0.5:
+                score += 1
+        else:
+            if open_p > 0 and current_price > 0:
+                tail_rally = (current_price - open_p) / open_p * 100
+                detail['tail_rally'] = round(tail_rally, 2)
+                if tail_rally > 2.0:
+                    score += 2
+                elif tail_rally > 1.0:
+                    score += 1
+            else:
+                detail['tail_rally'] = 0
+
+        return min(score, 20), detail
+
+    # ═══════════════════════════════════════════════════════
+    # 位置安全 (15分)
     # ═══════════════════════════════════════════════════════
     def position_score(self, q, kline):
-        """位置安全边际 (20分)"""
+        """位置安全边际 (15分)"""
         price = q.get('price', 0)
         score = 0
         detail = {}
 
         if kline is None or len(kline) < 20:
-            detail['ma5_dist'] = 0
-            detail['ma10_dist'] = 0
-            detail['pullback'] = 0
-            return 5, detail
+            return 3, detail
 
         ma5 = kline['close'].iloc[-5:].mean()
         ma10 = kline['close'].iloc[-10:].mean()
         high_20d = kline['high'].iloc[-20:].max()
 
-        # 1. 距MA5 (8分)
+        # 1. 距MA5 (5分)
         if price > 0 and ma5 > 0:
             ma5_dist = abs(price - ma5) / ma5 * 100
             detail['ma5_dist'] = round(ma5_dist, 1)
             if ma5_dist < 2:
-                score += 8
-            elif ma5_dist < 4:
                 score += 5
+            elif ma5_dist < 4:
+                score += 3
             elif ma5_dist < 6:
-                score += 2
+                score += 1
         else:
             detail['ma5_dist'] = 0
 
-        # 2. 距MA10 (7分)
+        # 2. 距MA10 (5分)
         if price > 0 and ma10 > 0:
             ma10_ratio = price / ma10
             detail['ma10_ratio'] = round(ma10_ratio, 2)
             if 0.97 <= ma10_ratio <= 1.05:
-                score += 7
+                score += 5
             elif 0.94 <= ma10_ratio <= 1.08:
-                score += 4
+                score += 3
             else:
                 score += 1
         else:
@@ -298,82 +295,300 @@ class TailStrategy:
         else:
             detail['pullback'] = 0
 
-        return min(score, 20), detail
+        return min(score, 15), detail
 
     # ═══════════════════════════════════════════════════════
-    # 主题共振 (20分)
+    # 趋势一致性 (10分): MA排列替代MACD
     # ═══════════════════════════════════════════════════════
-    def theme_score(self, theme_strength, layer, theme_zt_count):
+    def trend_consistency_score(self, q, kline):
         """
-        主题共振 (20分)
-        theme_strength: 主题强度分
+        趋势一致性 (10分)
+        MA5>MA10>MA20 多头排列,比MACD更稳定
+        """
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+
+        if kline is None or len(kline) < 20:
+            return 0, detail
+
+        ma5 = kline['close'].iloc[-5:].mean()
+        ma10 = kline['close'].iloc[-10:].mean()
+        ma20 = kline['close'].iloc[-20:].mean()
+
+        # MA5 > MA10: +3
+        if ma5 > ma10:
+            score += 3
+            detail['ma5_gt_ma10'] = True
+        else:
+            detail['ma5_gt_ma10'] = False
+
+        # MA10 > MA20: +3
+        if ma10 > ma20:
+            score += 3
+            detail['ma10_gt_ma20'] = True
+        else:
+            detail['ma10_gt_ma20'] = False
+
+        # Close > MA20: +4
+        if price > ma20:
+            score += 4
+            detail['close_gt_ma20'] = True
+        else:
+            detail['close_gt_ma20'] = False
+
+        return min(score, 10), detail
+
+    # ═══════════════════════════════════════════════════════
+    # 主题共振 (20分): 排名 + 生命周期 + 前瞻 + 龙头 (旧版,保留兼容)
+    # ═══════════════════════════════════════════════════════
+    def theme_score(self, theme_rank, lifecycle_score, forward_score, layer):
+        """
+        主题共振 (20分) — 使用自有主题系统数据
+        theme_rank: 主题强度排名(1-based)
+        lifecycle_score: 生命周期分
+        forward_score: T+1前瞻分
         layer: 'leader'/'middle'/'follower'
-        theme_zt_count: 主题内涨停股数
         """
         score = 0
         detail = {
-            'theme_strength': round(theme_strength, 1),
-            'theme_zt': theme_zt_count,
+            'theme_rank': theme_rank,
+            'lifecycle': round(lifecycle_score, 1) if lifecycle_score else 0,
+            'forward': round(forward_score, 1) if forward_score else 0,
             'layer': layer,
         }
 
-        # 1. 主题强度 (8分)
-        if theme_strength > 2:
-            score += 8
-        elif theme_strength > 0:
-            score += 6
-        elif theme_strength > -1:
-            score += 4
-        else:
+        # 1. 主题排名 (5分) — 顺势
+        if theme_rank <= 2:
+            score += 5
+        elif theme_rank <= 5:
+            score += 3
+        elif theme_rank <= 10:
             score += 1
 
-        # 2. 龙头地位 (8分)
-        if layer == 'leader':
+        # 2. 生命周期分 (8分) — 比主题强度更精准
+        if lifecycle_score and lifecycle_score > 80:
             score += 8
-        elif layer == 'middle':
-            score += 5
-        else:
+        elif lifecycle_score and lifecycle_score > 60:
+            score += 6
+        elif lifecycle_score and lifecycle_score > 40:
+            score += 4
+        elif lifecycle_score and lifecycle_score > 20:
             score += 2
 
-        # 3. 主题内有涨停配合 (4分)
-        if theme_zt_count >= 3:
+        # 3. 前瞻分 (4分) — T+1预测
+        if forward_score and forward_score > 80:
             score += 4
-        elif theme_zt_count >= 2:
+        elif forward_score and forward_score > 50:
             score += 3
-        elif theme_zt_count >= 1:
+        elif forward_score and forward_score > 30:
+            score += 1
+
+        # 4. 龙头地位 (3分)
+        if layer == 'leader':
+            score += 3
+        elif layer == 'middle':
+            score += 2
+        else:
             score += 1
 
         return min(score, 20), detail
 
     # ═══════════════════════════════════════════════════════
-    # 技术形态 (20分)
+    # V2 实时主题动量 (20分): 5个轻量实时指标
+    # ═══════════════════════════════════════════════════════
+    def v2_trade_score(self, up_ratio, avg_return, leader_return, bullish_count, tail_momentum=None):
+        """
+        V2 实时主题动量 (20分) — 替代旧版 theme_score
+        仅使用盘中实时可计算的5个轻量指标,不重算复杂因子
+
+        up_ratio:      上涨家数比例 (0-100)
+        avg_return:    主题平均涨幅 (%)
+        leader_return: 龙头涨幅 (%)
+        bullish_count: 大涨股数量评分 (0-100, >7% +2分/家, >5% +1分/家)
+        tail_momentum: 尾盘动量 (%), None=回测模式
+
+        权重: 35% + 25% + 20% + 10% + 10% = 100% → 缩放到20分
+        """
+        score = 0
+        detail = {
+            'up_ratio': round(up_ratio, 1),
+            'avg_return': round(avg_return, 2),
+            'leader_return': round(leader_return, 2),
+            'bullish_count': round(bullish_count, 1),
+            'tail_momentum': round(tail_momentum, 2) if tail_momentum is not None else None,
+        }
+
+        # 1. 上涨家数比例 (7分 = 35% × 20)
+        if up_ratio >= 80:
+            score += 7
+        elif up_ratio >= 60:
+            score += 5
+        elif up_ratio >= 40:
+            score += 3
+        elif up_ratio >= 20:
+            score += 1
+
+        # 2. 平均涨幅 (5分 = 25% × 20)
+        if avg_return > 3:
+            score += 5
+        elif avg_return > 2:
+            score += 4
+        elif avg_return > 1:
+            score += 3
+        elif avg_return > 0:
+            score += 1
+
+        # 3. 龙头表现 (4分 = 20% × 20)
+        if leader_return > 5:
+            score += 4
+        elif leader_return > 3:
+            score += 3
+        elif leader_return > 0:
+            score += 2
+        # 龙头下跌不加分(0分)
+
+        # 4. 大涨股数量 (2分 = 10% × 20)
+        if bullish_count >= 80:
+            score += 2
+        elif bullish_count >= 50:
+            score += 1
+
+        # 5. 尾盘动量 (2分 = 10% × 20)
+        if tail_momentum is not None:
+            if tail_momentum > 1.0:
+                score += 2
+            elif tail_momentum > 0.5:
+                score += 1
+        # 回测模式无尾盘动量,权重自动重新分配
+
+        return min(score, 20), detail
+
+    # ═══════════════════════════════════════════════════════
+    # V2 入场信号检测: 实时动量 + 盘后生命周期 → 入场判断
+    # ═══════════════════════════════════════════════════════
+    def v2_entry_signal(self, v2_momentum, lifecycle_stage, theme_rank, layer):
+        """
+        V2 入场信号检测
+        基于实时主题动量 + 盘后生命周期,判断入场类型
+
+        返回: (entry_type, confidence)
+        entry_type: 'breakout'/'pullback'/'pre_rotate'/None
+        confidence: 0-100
+
+        breakout:    动量>80 + 生命周期MainUp/Recovery + 排名前3
+        pullback:    动量>60 + 生命周期Recovery/Consolidation + 回调充分
+        pre_rotate:  动量>70 + 生命周期Recovery + 排名前5 + 龙头
+        """
+        entry_type = None
+        confidence = 0
+
+        # ── Breakout: 强势突破信号 ──
+        if v2_momentum > 80 and lifecycle_stage in ('MainUp', 'Recovery') and theme_rank <= 3:
+            entry_type = 'breakout'
+            confidence = min(95, v2_momentum)
+        # ── Pre-Rotate: 轮动预备信号 (比pullback更具体,先判断) ──
+        elif v2_momentum > 70 and lifecycle_stage == 'Recovery' and theme_rank <= 5 and layer == 'leader':
+            entry_type = 'pre_rotate'
+            confidence = min(85, v2_momentum + 5)
+        # ── Pullback: 回调低吸信号 ──
+        elif v2_momentum > 60 and lifecycle_stage in ('Recovery', 'Consolidation'):
+            entry_type = 'pullback'
+            confidence = min(80, v2_momentum + 10)
+
+        return entry_type, confidence
+
+    # ═══════════════════════════════════════════════════════
+    # 相对强度 (15分): RS + Alpha
+    # ═══════════════════════════════════════════════════════
+    def relative_strength_score(self, q, theme_avg_pct, index_pct):
+        """
+        相对强度 (15分)
+        RS = 个股涨幅 - 主题均涨幅
+        Alpha = 个股涨幅 - 指数涨幅
+        """
+        pct = q.get('pct_chg', 0)
+        score = 0
+        detail = {}
+
+        # 1. Relative Strength vs 主题 (8分)
+        if theme_avg_pct is not None:
+            rs = pct - theme_avg_pct
+            detail['rs_vs_theme'] = round(rs, 2)
+            if rs > 3:
+                score += 8
+            elif rs > 2:
+                score += 6
+            elif rs > 1:
+                score += 4
+            elif rs > 0:
+                score += 2
+        else:
+            detail['rs_vs_theme'] = 0
+
+        # 2. Alpha vs 指数 (7分)
+        if index_pct is not None:
+            alpha = pct - index_pct
+            detail['alpha_vs_index'] = round(alpha, 2)
+            if alpha > 3:
+                score += 7
+            elif alpha > 2:
+                score += 5
+            elif alpha > 1:
+                score += 3
+        else:
+            detail['alpha_vs_index'] = 0
+
+        return min(score, 15), detail
+
+    # ═══════════════════════════════════════════════════════
+    # 新高突破 (8分)
+    # ═══════════════════════════════════════════════════════
+    def breakout_score(self, q, kline):
+        """
+        新高突破 (8分)
+        Close突破10日高 = 资金流最好的代理变量
+        """
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+
+        if kline is None or len(kline) < 20:
+            return 0, detail
+
+        high_10d = kline['high'].iloc[-10:].max()
+        high_20d = kline['high'].iloc[-20:].max()
+
+        # 1. Close突破10日最高 (8分)
+        if price > high_10d:
+            score += 8
+            detail['breakout_10d'] = True
+        elif price > 0 and high_20d > 0:
+            # 2. Close距20日最高<2% (5分)
+            dist_20d = (high_20d - price) / price * 100
+            detail['dist_20d_high'] = round(dist_20d, 2)
+            if dist_20d < 2:
+                score += 5
+                detail['near_20d_high'] = True
+        else:
+            detail['breakout_10d'] = False
+
+        return min(score, 8), detail
+
+    # ═══════════════════════════════════════════════════════
+    # 技术形态 (10分): KDJ + RSI
     # ═══════════════════════════════════════════════════════
     def technical_score(self, factor_row, prev_factor_row=None):
         """
-        技术形态加分 (20分)
-        factor_row: stk_factor_pro 一行数据 (已重命名为简洁字段名)
-        prev_factor_row: 前一交易日数据(用于KDJ金叉/死叉判断)
+        技术形态 (10分): KDJ金叉 + RSI健康度
+        MACD和BOLL已移除,由趋势一致性替代
         """
         score = 0
         detail = {}
         if factor_row is None:
             return 0, detail
 
-        # 1. MACD趋势 (6分)
-        try:
-            dif = float(factor_row.get('macd_dif', 0) or 0)
-            dea = float(factor_row.get('macd_dea', 0) or 0)
-            if dif > dea:
-                score += 4
-                detail['macd'] = '多头'
-                if dif > 0 and dea > 0:
-                    score += 2
-                    detail['macd'] = '零上多头'
-        except Exception:
-            pass
-
-        # 2. KDJ金叉/位置 (5分)
-        # KDJ金叉=K上穿D,非J上穿K; 低位金叉信号最强
+        # 1. KDJ金叉/位置 (5分)
         try:
             kdj_k = float(factor_row.get('kdj_k', 50) or 50)
             kdj_d = float(factor_row.get('kdj_d', 50) or 50)
@@ -381,7 +596,6 @@ class TailStrategy:
             detail['kdj_k'] = round(kdj_k, 1)
             detail['kdj_j'] = round(kdj_j, 1)
 
-            # 金叉判定:需前后两天对比,K从下穿到上穿D
             if prev_factor_row is not None:
                 prev_k = float(prev_factor_row.get('kdj_k', 50) or 50)
                 prev_d = float(prev_factor_row.get('kdj_d', 50) or 50)
@@ -393,30 +607,23 @@ class TailStrategy:
 
             if is_golden_cross:
                 if kdj_k < 20:
-                    score += 5  # 低位金叉:信号最强
-                    detail['kdj'] = '低位金叉'
+                    score += 5; detail['kdj'] = '低位金叉'
                 elif kdj_k < 50:
-                    score += 4  # 中低位金叉
-                    detail['kdj'] = '金叉'
+                    score += 4; detail['kdj'] = '金叉'
                 elif kdj_k < 80:
-                    score += 3  # 中位金叉:趋势转强
-                    detail['kdj'] = '中位金叉'
+                    score += 3; detail['kdj'] = '中位金叉'
                 else:
-                    score += 1  # 高位金叉:需谨慎
-                    detail['kdj'] = '高位金叉'
+                    score += 1; detail['kdj'] = '高位金叉'
             elif is_dead_cross:
-                score += 0  # 死叉不加分
                 detail['kdj'] = '死叉'
             elif kdj_j < 80 and kdj_j > 20:
-                score += 2  # 无金叉但KDJ在健康区间
-                detail['kdj'] = '健康'
+                score += 2; detail['kdj'] = '健康'
         except Exception:
             pass
 
-        # 3. RSI健康度 (5分)
+        # 2. RSI健康度 (5分)
         try:
             rsi_6 = float(factor_row.get('rsi_6', 50) or 50)
-            rsi_12 = float(factor_row.get('rsi_12', 50) or 50)
             detail['rsi_6'] = round(rsi_6, 1)
             if 40 <= rsi_6 <= 70:
                 score += 5
@@ -427,47 +634,61 @@ class TailStrategy:
         except Exception:
             pass
 
-        # 4. BOLL位置 (4分)
+        return min(score, 10), detail
+
+    # ═══════════════════════════════════════════════════════
+    # 波动率扣分 (≤10分): ATR-based
+    # ═══════════════════════════════════════════════════════
+    def volatility_penalty(self, factor_row, q, kline):
+        """
+        波动率扣分 (≤10分)
+        ATR过大 = 波动过激,不适合尾盘策略
+        """
+        penalty = 0
+        detail = {}
+
         try:
-            close = float(factor_row.get('close', 0) or 0)
-            boll_mid = float(factor_row.get('boll_mid', 0) or 0)
-            boll_upper = float(factor_row.get('boll_upper', 0) or 0)
-            boll_lower = float(factor_row.get('boll_lower', 0) or 0)
-            if close > 0 and boll_mid > 0:
-                if close > boll_mid:
-                    score += 2
-                    detail['boll'] = '中轨上方'
-                    if boll_upper > close and (boll_upper - close) / close * 100 < 3:
-                        score += 2
-                        detail['boll'] = '接近上轨'
-                elif boll_lower > 0 and (close - boll_lower) / boll_lower * 100 < 2:
-                    score += 1
-                    detail['boll'] = '下轨支撑'
+            if factor_row is not None:
+                atr = float(factor_row.get('atr_bfq', 0) or 0)
+                close = float(factor_row.get('close', 0) or 0)
+                if atr > 0 and close > 0:
+                    atr_pct = atr / close * 100
+                    detail['atr_pct'] = round(atr_pct, 2)
+                    # ATR超过2倍20日均值 = 波动过大
+                    if kline is not None and len(kline) >= 20:
+                        avg_atr_20d = 0
+                        prices = kline['close'].iloc[-20:].values
+                        if len(prices) >= 20:
+                            # 简化:用20日平均振幅
+                            amp_20d = (kline['high'].iloc[-20:].values - kline['low'].iloc[-20:].values) / prices
+                            avg_atr_20d = float(amp_20d.mean() * 100)
+                            detail['atr_20d_avg'] = round(avg_atr_20d, 2)
+                            if avg_atr_20d > 0 and atr_pct > avg_atr_20d * 2:
+                                penalty += 10
+                                detail['vol_penalty'] = 'ATR过大'
+                            elif avg_atr_20d > 0 and atr_pct > avg_atr_20d * 1.5:
+                                penalty += 5
+                                detail['vol_penalty'] = 'ATR偏高'
         except Exception:
             pass
 
-        return min(score, 20), detail
+        return min(penalty, 10), detail
 
     # ═══════════════════════════════════════════════════════
     # 诱多风险扣分 (≤30分)
     # ═══════════════════════════════════════════════════════
     def trap_penalty(self, q, kline, theme_strength, theme_zt_count, snap=None):
-        """
-        诱多风险扣分 (≤30分)
-        回测模式: snap=None,用开盘价代替tail_base_price
-        """
         penalty = 0
         detail = {}
-
         open_p = q.get('open', 0)
         close = q.get('price', 0)
         high = q.get('high', 0)
         low = q.get('low', 0)
         last_close = q.get('last_close', 0)
         pct = q.get('pct_chg', 0)
-        tail_base_price = snap.get('tail_base_price', 0) if snap else open_p  # 回测用开盘价代替
+        tail_base_price = snap.get('tail_base_price', 0) if snap else open_p
 
-        # 红旗1: 全天弱势+尾盘急拉 — 最大陷阱,扣分加重
+        # 红旗1: 全天弱势+尾盘急拉
         if tail_base_price > 0 and close > 0 and open_p > 0:
             tail_rally = (close - tail_base_price) / tail_base_price * 100
             day_change = (close - open_p) / open_p * 100
@@ -487,7 +708,7 @@ class TailStrategy:
             lower_shadow = min(open_p, close) - low
             upper_shadow = high - max(open_p, close)
             price_range = high - low
-            if price_range > 0 and last_close > 0:
+            if price_range > 0:
                 lower_ratio = lower_shadow / price_range
                 body_ratio = body / price_range
                 if lower_ratio > 0.4 and body_ratio < 0.3:
@@ -516,13 +737,31 @@ class TailStrategy:
         return min(penalty, 30), detail
 
     # ═══════════════════════════════════════════════════════
-    # 完整评分
+    # 完整评分 (V2)
     # ═══════════════════════════════════════════════════════
     def score(self, ts_code, q, kline, factor_row, turnover, total_mv,
-              theme_name, theme_strength, layer, theme_zt_count, snap=None, prev_factor_row=None):
+              theme_name, theme_strength, layer, theme_zt_count,
+              snap=None, prev_factor_row=None,
+              theme_avg_pct=None, index_pct=None,
+              theme_rank=99, lifecycle_score=0, forward_score=0,
+              up_ratio=0, avg_return=0, leader_return=0, bullish_count=0, tail_momentum=None):
         """
-        完整评分流程
-        返回: signal_dict 或 None(未通过硬过滤/分数太低)
+        完整评分流程 (V2: 实时主题动量替代旧版theme_score)
+        返回: signal_dict 或 None
+
+        V2新增参数(实时主题动量):
+        - up_ratio: 上涨家数比例 (0-100)
+        - avg_return: 主题平均涨幅 (%)
+        - leader_return: 龙头涨幅 (%)
+        - bullish_count: 大涨股数量评分 (0-100)
+        - tail_momentum: 尾盘动量 (%), None=回测模式
+
+        旧版参数(保留兼容):
+        - theme_avg_pct: 主题平均涨幅 (Relative Strength)
+        - index_pct: 指数涨幅 (Alpha)
+        - theme_rank: 主题排名 (Theme Rank)
+        - lifecycle_score: 生命周期分
+        - forward_score: 前瞻分 (T+1预测)
         """
         # 硬过滤
         passed, reason = self.hard_filter(
@@ -531,17 +770,22 @@ class TailStrategy:
         if not passed:
             return None
 
-        # 五维评分
-        atk_s, atk_d = self.attack_score(q, snap)
+        # 多维评分
         str_s, str_d = self.structure_score(q, kline)
+        atk_s, atk_d = self.attack_score(q, snap)
         pos_s, pos_d = self.position_score(q, kline)
-        thm_s, thm_d = self.theme_score(theme_strength, layer, theme_zt_count)
+        trd_s, trd_d = self.trend_consistency_score(q, kline)
+        # V2: 实时主题动量替代旧版 theme_score
+        thm_s, thm_d = self.v2_trade_score(up_ratio, avg_return, leader_return, bullish_count, tail_momentum)
+        rel_s, rel_d = self.relative_strength_score(q, theme_avg_pct, index_pct)
+        brk_s, brk_d = self.breakout_score(q, kline)
         tech_s, tech_d = self.technical_score(factor_row, prev_factor_row)
 
-        # 诱多扣分
+        # 扣分
+        vol_p, vol_d = self.volatility_penalty(factor_row, q, kline)
         trap_p, trap_d = self.trap_penalty(q, kline, theme_strength, theme_zt_count, snap)
 
-        total = atk_s + str_s + pos_s + thm_s + tech_s - trap_p
+        total = str_s + atk_s + pos_s + trd_s + thm_s + rel_s + brk_s + tech_s - vol_p - trap_p
 
         if total < self.WATCH_THRESHOLD:
             return None
@@ -553,20 +797,29 @@ class TailStrategy:
         else:
             signal = '关注'
 
+        # V2 入场信号
+        v2_entry, v2_conf = self.v2_entry_signal(thm_s, 'Recovery', theme_rank, layer)
+
         return {
             'ts_code': ts_code,
             'theme': theme_name,
             'total_score': total,
-            'attack_score': atk_s,
             'structure_score': str_s,
+            'attack_score': atk_s,
             'position_score': pos_s,
+            'trend_score': trd_s,
             'theme_score': thm_s,
+            'rel_strength_score': rel_s,
+            'breakout_score': brk_s,
             'tech_score': tech_s,
+            'vol_penalty': vol_p,
             'trap_penalty': trap_p,
             'signal': signal,
             'pct_chg': q.get('pct_chg', 0),
             'price': q.get('price', 0),
-            'detail': {**atk_d, **str_d, **pos_d, **thm_d, **tech_d, **trap_d},
+            'v2_entry': v2_entry,
+            'v2_confidence': v2_conf,
+            'detail': {**str_d, **atk_d, **pos_d, **trd_d, **thm_d, **rel_d, **brk_d, **tech_d, **vol_d, **trap_d},
         }
 
     # ═══════════════════════════════════════════════════════
@@ -596,7 +849,6 @@ class TailStrategy:
                 continue
             candidates.append(s)
 
-        # 每主题TOP2
         theme_groups = {}
         for s in candidates:
             theme = s.get('theme', '其他')

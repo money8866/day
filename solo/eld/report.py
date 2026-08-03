@@ -65,20 +65,21 @@ class ReportGenerator:
 
         lines.append("## TOP 排行榜 (ELD V2)")
         lines.append("")
-        lines.append("| 排名 | 代码 | 名称 | 行业 | 预告增幅 | V2分 | V1分 | 事件 | 预期差V2 | 趋势 | 机构吸筹 | 主题 | 买点信号 | 机构状态 | 建议V2 |")
-        lines.append("|------|------|------|------|----------|------|------|------|----------|------|----------|------|----------|----------|--------|")
+        lines.append("| 排名 | 代码 | 名称 | 行业 | 预告增幅 | V2分 | V1分 | 事件 | 预期差V2 | 趋势 | 机构吸筹 | 主题 | 买点信号 | 机构状态 | 次日可买 | 建议V2 |")
+        lines.append("|------|------|------|------|----------|------|------|------|----------|------|----------|------|----------|----------|----------|--------|")
 
         top_n = min(self.rc.top_n, len(report.results))
         for r in report.results[:top_n]:
             d = r.to_dict()
             if self.rc.include_detail:
+                buyable_flag = "🎯是" if d.get('next_day_buyable') else "否"
                 lines.append(
                     f"| {d['rank']} | {d['ts_code']} | {d['name']} | {d['industry']} "
                     f"| {d['forecast_pct']:.0f}% | {d['final_score_v2']:.1f} | {d['final_score']:.1f} "
                     f"| {d['event_quality']:.0f} | {d['expectation_gap_v2']:.0f} "
                     f"| {d['trend']:.0f} | {d['institution_accumulation']:.0f} "
                     f"| {d['industry_score']:.0f} | {d['earnings_buy_signal']} "
-                    f"| {d['institution_state']} | {d['recommendation_v2']} |"
+                    f"| {d['institution_state']} | {buyable_flag} | {d['recommendation_v2']} |"
                 )
 
         lines.append("")
@@ -119,6 +120,8 @@ class ReportGenerator:
                         lines.append(f"  - 参考买入价: {ebp.reference_buy_price:.2f} | 止损价: {ebp.stop_loss_price:.2f}")
                     if ebp.pre_announce_runup_pct > 0:
                         lines.append(f"  - 公告前涨幅: {ebp.pre_announce_runup_pct:.1f}% {'⚠️利好兑现' if ebp.is_sell_on_news else '✅正常'}")
+                    if ebp.next_day_buyable:
+                        lines.append(f"  - **🎯明日可买**: {ebp.next_day_buy_reason}")
                 lines.append("")
 
                 # V2 各维度评分逻辑
