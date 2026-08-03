@@ -432,9 +432,14 @@ class TailBacktester:
             # 找前一个交易日
             prev_dates = kl[kl['trade_date'] < trade_date]['trade_date'].tolist()
             factor_row = None
+            prev_factor_row = None
             if prev_dates:
                 prev_date = prev_dates[-1]
                 factor_row = self.factor_cache.get((ts_code, prev_date))
+                # T-2数据(用于KDJ金叉/死叉前后对比)
+                if len(prev_dates) >= 2:
+                    prev2_date = prev_dates[-2]
+                    prev_factor_row = self.factor_cache.get((ts_code, prev2_date))
 
             # 换手率
             turnover = float(factor_row.get('turnover_rate', 0) or 0) if factor_row else 0
@@ -463,7 +468,7 @@ class TailBacktester:
             # 评分
             sig = self.strategy.score(
                 ts_code, q, kline_up_to, factor_row, turnover, total_mv,
-                best_theme, best_strength, best_layer, best_zt, snap=None
+                best_theme, best_strength, best_layer, best_zt, snap=None, prev_factor_row=prev_factor_row
             )
             if sig is not None:
                 sig['name'] = name

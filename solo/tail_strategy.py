@@ -71,6 +71,10 @@ class TailStrategy:
         if pct < -2.5:
             return False, f'跌{pct:.1f}%'
 
+        # 3.5 收阴线或微涨<1%排除(尾盘战法要求阳线实体,次日惯性高开概率更高)
+        if pct < 1.0:
+            return False, f'涨幅{pct:.1f}%过低'
+
         # 4. 不在任何主题中排除(由调用方保证,这里不检查)
 
         # 5. 连续涨停≥2天排除
@@ -344,10 +348,11 @@ class TailStrategy:
     # ═══════════════════════════════════════════════════════
     # 技术形态 (20分)
     # ═══════════════════════════════════════════════════════
-    def technical_score(self, factor_row):
+    def technical_score(self, factor_row, prev_factor_row=None):
         """
         技术形态加分 (20分)
         factor_row: stk_factor_pro 一行数据 (已重命名为简洁字段名)
+        prev_factor_row: 前一交易日数据(用于KDJ金叉/死叉判断)
         """
         score = 0
         detail = {}
@@ -367,18 +372,44 @@ class TailStrategy:
         except Exception:
             pass
 
-        # 2. KDJ超买控制 (5分)
+        # 2. KDJ金叉/位置 (5分)
+        # KDJ金叉=K上穿D,非J上穿K; 低位金叉信号最强
         try:
-            kdj_j = float(factor_row.get('kdj_j', 50) or 50)
             kdj_k = float(factor_row.get('kdj_k', 50) or 50)
+            kdj_d = float(factor_row.get('kdj_d', 50) or 50)
+            kdj_j = float(factor_row.get('kdj_j', 50) or 50)
+            detail['kdj_k'] = round(kdj_k, 1)
             detail['kdj_j'] = round(kdj_j, 1)
-            if kdj_j < 80:
-                if kdj_j > kdj_k:
-                    score += 5
+
+            # 金叉判定:需前后两天对比,K从下穿到上穿D
+            if prev_factor_row is not None:
+                prev_k = float(prev_factor_row.get('kdj_k', 50) or 50)
+                prev_d = float(prev_factor_row.get('kdj_d', 50) or 50)
+                is_golden_cross = (prev_k <= prev_d) and (kdj_k > kdj_d)
+                is_dead_cross = (prev_k >= prev_d) and (kdj_k < kdj_d)
+            else:
+                is_golden_cross = (kdj_k > kdj_d) and (kdj_k < 80)
+                is_dead_cross = False
+
+            if is_golden_cross:
+                if kdj_k < 20:
+                    score += 5  # 低位金叉:信号最强
+                    detail['kdj'] = '低位金叉'
+                elif kdj_k < 50:
+                    score += 4  # 中低位金叉
                     detail['kdj'] = '金叉'
-                elif kdj_j > 20:
-                    score += 3
-                    detail['kdj'] = '健康'
+                elif kdj_k < 80:
+                    score += 3  # 中位金叉:趋势转强
+                    detail['kdj'] = '中位金叉'
+                else:
+                    score += 1  # 高位金叉:需谨慎
+                    detail['kdj'] = '高位金叉'
+            elif is_dead_cross:
+                score += 0  # 死叉不加分
+                detail['kdj'] = '死叉'
+            elif kdj_j < 80 and kdj_j > 20:
+                score += 2  # 无金叉但KDJ在健康区间
+                detail['kdj'] = '健康'
         except Exception:
             pass
 
@@ -488,7 +519,7 @@ class TailStrategy:
     # 完整评分
     # ═══════════════════════════════════════════════════════
     def score(self, ts_code, q, kline, factor_row, turnover, total_mv,
-              theme_name, theme_strength, layer, theme_zt_count, snap=None):
+              theme_name, theme_strength, layer, theme_zt_count, snap=None, prev_factor_row=None):
         """
         完整评分流程
         返回: signal_dict 或 None(未通过硬过滤/分数太低)
@@ -505,7 +536,7 @@ class TailStrategy:
         str_s, str_d = self.structure_score(q, kline)
         pos_s, pos_d = self.position_score(q, kline)
         thm_s, thm_d = self.theme_score(theme_strength, layer, theme_zt_count)
-        tech_s, tech_d = self.technical_score(factor_row)
+        tech_s, tech_d = self.technical_score(factor_row, prev_factor_row)
 
         # 诱多扣分
         trap_p, trap_d = self.trap_penalty(q, kline, theme_strength, theme_zt_count, snap)

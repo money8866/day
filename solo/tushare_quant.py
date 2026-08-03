@@ -11498,16 +11498,29 @@ def run(target_date=None, simple_mode=False):
                 sig = row.get("earnings_buy_signal", "NONE")
                 etf = row.get("etf_score", 0)
                 theme = row.get("theme", "")
+                # 新字段
+                ref_price = row.get("reference_buy_price", 0)
+                stop_loss = row.get("stop_loss_price", 0)
+                sell_news = row.get("is_sell_on_news", False)
+                pre_runup = row.get("pre_announce_runup_pct", 0)
                 # 信号翻译
                 sig_cn = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "无"}.get(sig, sig)
                 theme_str = str(theme) if theme and str(theme) != "nan" else "无"
-                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn} ETF:{etf:.0f} 主题:{theme_str}")
+                # 买入信号和价格提示
+                price_hint = ""
+                if ref_price and ref_price > 0 and sig != "IGNORE":
+                    price_hint = f" 参考买入价{ref_price:.2f} 止损{stop_loss:.2f}"
+                sell_news_hint = " ⚠️利好兑现" if sell_news else ""
+                if pre_runup and pre_runup > 0:
+                    sell_news_hint = f" 公告前涨幅{pre_runup:.0f}%" + (" ⚠️利好兑现" if sell_news else "")
+                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint} ETF:{etf:.0f} 主题:{theme_str}")
             # 优先关注（信号非忽略+机构非派发）
             focus = []
             for _, row in df.head(10).iterrows():
                 sig = row.get("earnings_buy_signal", "")
                 inst = str(row.get("institution_state", ""))
-                if sig != "IGNORE" and "派发" not in inst:
+                sell_news = row.get("is_sell_on_news", False)
+                if sig != "IGNORE" and "派发" not in inst and not sell_news:
                     focus.append(row.get("name", ""))
             if focus:
                 lines.append("")

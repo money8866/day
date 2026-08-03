@@ -4,14 +4,15 @@
 专为业绩公告后设计的回踩买点检测。
 不替换已有 Buy Point Engine，作为事件专用补充。
 
-判断条件：
+判断条件（8项）：
 1. 公告时间窗口：5-20个交易日
 2. 趋势：close > MA20
 3. 回撤：距离公告后高点 < 10%
 4. 成交量：缩量，量比 < 0.6
 5. 趋势强度：Alpha > 70
-6. 筹码：没有明显松动
-7. 机构状态：不能是派发(DISTRIBUTE)
+6. 筹码：没有明显松动（机构状态非派发）
+7. 利好兑现检测：公告前20日涨幅 < 20%
+8. 公告后价格反应：公告后未出现持续下跌
 
 输出：
 - BUY：全部条件满足
@@ -36,29 +37,13 @@ logger = logging.getLogger(__name__)
 
 
 def _compute_ma(data: list[DailyPriceData], period: int) -> float:
-    """计算移动平均线。
-
-    Args:
-        data: 日线数据列表。
-        period: 周期。
-
-    Returns:
-        MA 值。
-    """
+    """计算移动平均线。"""
     prices = [d.close for d in data[-period:]]
     return sum(prices) / len(prices) if prices else 0.0
 
 
 def _compute_volume_ratio(data: list[DailyPriceData], period: int = 20) -> float:
-    """计算量比（当日量 / 均量）。
-
-    Args:
-        data: 日线数据列表。
-        period: 均量计算周期。
-
-    Returns:
-        量比值。
-    """
+    """计算量比（当日量 / 均量）。"""
     if len(data) < period + 1:
         return 1.0
     current_vol = data[-1].vol
@@ -66,19 +51,23 @@ def _compute_volume_ratio(data: list[DailyPriceData], period: int = 20) -> float
     return current_vol / avg_vol if avg_vol > 0 else 1.0
 
 
+def _compute_atr(data: list[DailyPriceData], period: int = 14) -> float:
+    """计算简单ATR（平均真实波幅）。
+    
+    简化为近 period 日平均振幅（high-low）/ close 的百分比。
+    """
+    if len(data) < period + 1:
+        return 0.0
+    recent = data[-period:]
+    ranges = [(d.high - d.low) / d.close * 100.0 for d in recent if d.close > 0]
+    return sum(ranges) / len(ranges) if ranges else 0.0
+
+
 def _find_highest_since_announce(
     data: list[DailyPriceData],
     announce_date: str,
 ) -> tuple[float, int]:
-    """找到公告日至今的最高价。
-
-    Args:
-        data: 日线数据（从旧到新排序）。
-        announce_date: 公告日期 YYYYMMDD。
-
-    Returns:
-        (最高价, 距今天数)
-    """
+    """找到公告日至今的最高价。"""
     highest = 0.0
     days_since = 0
     found = False
@@ -89,9 +78,80 @@ def _find_highest_since_announce(
         if found:
             if bar.high > highest:
                 highest = bar.high
-            days_since = len(data) - i - 1  # 距最后一天的天数
+            days_since = len(data) - i - 1
 
     return highest, days_since
+
+
+def _compute_pre_announce_runup(
+    data: list[DailyPriceData],
+    announce_date: str,
+    lookback_days: int = 20,
+) -> float:
+    """计算公告前 lookback_days 日的涨幅（用于利好兑现检测）。
+    
+    Returns:
+        涨幅百分比（如 25.0 表示涨了25%）
+    """
+    # 找到公告日在数据中的位置
+    announce_idx = -1
+    for i, bar in enumerate(data):
+        if bar.trade_date == announce_date:
+            announce_idx = i
+            break
+
+    if announce_idx < lookback_days:
+        return 0.0  # 数据不足
+
+    start_close = data[announce_idx - lookback_days].close
+    if start_close <= 0:
+        return 0.0
+
+    # 公告前一天的收盘价
+    pre_announce_close = data[announce_idx - 1].close
+    runup_pct = (pre_announce_close - start_close) / start_close * 100.0
+    return round(runup_pct, 2)
+
+
+def _check_post_announce_decline(
+    data: list[DailyPriceData],
+    announce_date: str,
+    lookback_days: int = 5,
+    max_decline_pct: float = -5.0,
+) -> tuple[bool, float]:
+    """检查公告后是否出现持续下跌（利好兑现出货）。
+    
+    Returns:
+        (is_declining, worst_decline_pct)
+    """
+    announce_idx = -1
+    for i, bar in enumerate(data):
+        if bar.trade_date == announce_date:
+            announce_idx = i
+            break
+
+    if announce_idx < 0 or announce_idx >= len(data) - 1:
+        return False, 0.0  # 公告日就是最后一天，无法判断
+
+    # 公告后第1天（排除公告当天，因为公告当天可能已经包含在涨幅中）
+    post_data = data[announce_idx + 1:]
+
+    if len(post_data) < 2:
+        return False, 0.0
+
+    # 检查最近 lookback_days 天
+    recent = post_data[:min(lookback_days, len(post_data))]
+    first_close = recent[0].close
+    if first_close <= 0:
+        return False, 0.0
+
+    worst_decline = 0.0
+    for bar in recent:
+        decline = (bar.close - first_close) / first_close * 100.0
+        if decline < worst_decline:
+            worst_decline = decline
+
+    return worst_decline < max_decline_pct, round(worst_decline, 2)
 
 
 def detect_earnings_pullback(
@@ -130,8 +190,10 @@ def detect_earnings_pullback(
         return result
 
     conditions_met = 0
-    total_conditions = 6  # 公告时间 + 趋势 + 回撤 + 缩量 + Alpha + 机构状态
+    total_conditions = 8  # 公告时间 + 趋势 + 回撤 + 缩量 + Alpha + 机构 + 利好兑现 + 公告后反应
     reasons: list[str] = []
+    warnings: list[str] = []
+    is_sell_on_news = False
 
     # ── 条件1: 公告时间窗口 ──
     days_since = 0
@@ -145,8 +207,7 @@ def detect_earnings_pullback(
             reasons.append(f"公告后{days_since}天，不在{cfg.min_days_since_announce}-{cfg.max_days_since_announce}天窗口")
     else:
         reasons.append("无公告日期，跳过窗口检查")
-        # 没有公告日期时，放宽条件
-        conditions_met += 1
+        conditions_met += 1  # 放宽
 
     # ── 条件2: close > MA20 ──
     ma20 = _compute_ma(sorted_data, cfg.ma_period)
@@ -160,6 +221,7 @@ def detect_earnings_pullback(
 
     # ── 条件3: 回撤 < 10% ──
     highest_since, _ = _find_highest_since_announce(sorted_data, announce_date or "")
+    pullback_pct = 0.0
     if highest_since > 0:
         pullback_pct = (highest_since - current_close) / highest_since * 100.0
         within_pullback = pullback_pct < cfg.max_pullback_from_high_pct
@@ -167,6 +229,7 @@ def detect_earnings_pullback(
             conditions_met += 1
             reasons.append(f"距高点回撤{pullback_pct:.1f}% < {cfg.max_pullback_from_high_pct}%")
         else:
+            warnings.append(f"距高点回撤{pullback_pct:.1f}% ≥ {cfg.max_pullback_from_high_pct}%")
             reasons.append(f"距高点回撤{pullback_pct:.1f}% ≥ {cfg.max_pullback_from_high_pct}%")
     else:
         reasons.append("无法计算高点回撤")
@@ -192,7 +255,7 @@ def detect_earnings_pullback(
             reasons.append(f"Alpha({alpha:.1f}) < {cfg.min_alpha}")
     else:
         reasons.append("无趋势评分数据，Alpha检查跳过")
-        conditions_met += 1  # 无数据时放宽
+        conditions_met += 1  # 放宽
 
     # ── 条件6: 机构状态非派发 ──
     if institution_state:
@@ -201,36 +264,115 @@ def detect_earnings_pullback(
             conditions_met += 1
             reasons.append(f"机构状态: {institution_state}（非派发）")
         else:
+            warnings.append(f"机构状态: {institution_state}（派发中，回避）")
             reasons.append(f"机构状态: {institution_state}（派发中，回避）")
     else:
         reasons.append("无机构状态数据，检查跳过")
-        conditions_met += 1  # 无数据时放宽
+        conditions_met += 1  # 放宽
+
+    # ── 条件7: 利好兑现检测 — 公告前涨幅 ──
+    pre_runup = 0.0
+    if announce_date:
+        pre_runup = _compute_pre_announce_runup(
+            sorted_data, announce_date, cfg.pre_announce_runup_days
+        )
+        result.pre_announce_runup_pct = pre_runup
+        if pre_runup <= cfg.pre_announce_runup_threshold:
+            conditions_met += 1
+            reasons.append(f"公告前{cfg.pre_announce_runup_days}日涨幅{pre_runup:.1f}% ≤ {cfg.pre_announce_runup_threshold}%（无利好兑现风险）")
+        else:
+            is_sell_on_news = True
+            warnings.append(f"公告前涨幅{pre_runup:.1f}% ≥ {cfg.pre_announce_runup_threshold}%，利好兑现风险较高")
+            reasons.append(f"公告前涨幅{pre_runup:.1f}% ≥ {cfg.pre_announce_runup_threshold}%，利好兑现风险较高")
+    else:
+        reasons.append("无公告日期，利好兑现检测跳过")
+        conditions_met += 1  # 放宽
+
+    # ── 条件8: 公告后价格反应 ──
+    has_declined = False
+    post_decline = 0.0
+    if announce_date:
+        has_declined, post_decline = _check_post_announce_decline(
+            sorted_data, announce_date,
+            cfg.post_announce_decline_days, cfg.max_post_announce_decline,
+        )
+        if not has_declined:
+            conditions_met += 1
+            reasons.append(f"公告后无持续下跌（最差跌幅{post_decline:.1f}%，阈值{cfg.max_post_announce_decline}%）")
+        else:
+            is_sell_on_news = True
+            warnings.append(f"公告后持续下跌（最差{post_decline:.1f}%，利好兑现出货信号）")
+            reasons.append(f"公告后持续下跌（最差{post_decline:.1f}%，利好兑现出货信号）")
+    else:
+        reasons.append("无公告日期，公告后反应检测跳过")
+        conditions_met += 1  # 放宽
 
     all_logic.extend(reasons)
     all_logic.append(f"满足条件: {conditions_met}/{total_conditions}")
 
+    if warnings:
+        all_logic.append(f"警告: {'; '.join(warnings)}")
+
+    # ── 参考买入价与止损价 ──
+    reference_buy_price = min(ma20, current_close * 0.985)
+    atr_pct = _compute_atr(sorted_data)
+    stop_loss_price = reference_buy_price * (1 - 2 * atr_pct / 100)
+    result.reference_buy_price = round(reference_buy_price, 2)
+    result.stop_loss_price = round(stop_loss_price, 2)
+
+    result.is_sell_on_news = is_sell_on_news
+
     # ── 评分与信号 ──
     score = (conditions_met / total_conditions) * 100.0
 
-    if conditions_met >= 5:
+    # 趋势Alpha兜底：Alpha < floor 时 BUY 降级为 WATCH
+    alpha_floor_ok = True
+    if trend_result is not None and alpha < cfg.trend_alpha_floor:
+        alpha_floor_ok = False
+
+    if conditions_met >= 6 and alpha_floor_ok:
         signal = EarningsBuySignal.BUY
         stage = "BUY"
-        all_logic.append("信号: BUY — 大部分条件满足，适合建仓")
-    elif conditions_met >= 3:
-        signal = EarningsBuySignal.WATCH
-        stage = "WATCH"
-        all_logic.append("信号: WATCH — 部分条件满足，继续观察")
-    else:
-        # 机构状态豁免：吸筹/洗盘阶段不低于 WATCH（洗盘本身就是潜在买点信号）
-        _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
-        if institution_state in _safe_states:
+        all_logic.append(f"信号: BUY — {conditions_met}/{total_conditions}条件满足，可建仓")
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}，收盘×0.985={current_close*0.985:.2f}）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
+    elif conditions_met >= 4:
+        # 利好兑现风险降级：没有机构豁免时，WATCH 降为 IGNORE
+        if is_sell_on_news and not alpha_floor_ok:
+            signal = EarningsBuySignal.IGNORE
+            stage = "IGNORE"
+            digest = [w for w in warnings if "利好兑现" in w or "持续下跌" in w]
+            all_logic.append(f"信号: IGNORE — 利好兑现风险+趋势偏弱，条件{conditions_met}/{total_conditions}")
+            if digest:
+                all_logic.append(f"原因: {'; '.join(digest)}")
+        elif is_sell_on_news:
             signal = EarningsBuySignal.WATCH
             stage = "WATCH"
-            all_logic.append(f"信号: WATCH — 条件仅满足{conditions_met}/{total_conditions}，但机构{institution_state}状态给予观察评级")
+            digest = [w for w in warnings if "利好兑现" in w or "持续下跌" in w]
+            all_logic.append(f"信号: WATCH — 条件{conditions_met}/{total_conditions}，但存在利好兑现风险，需等待缩量企稳确认")
+            if digest:
+                all_logic.append(f"原因: {'; '.join(digest)}")
+            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}，需缩量确认）")
+            all_logic.append(f"止损价: {stop_loss_price:.2f}")
+        else:
+            signal = EarningsBuySignal.WATCH
+            stage = "WATCH"
+            all_logic.append(f"信号: WATCH — 条件{conditions_met}/{total_conditions}，继续观察")
+            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}）")
+            all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    else:
+        # 机构状态豁免：吸筹/洗盘阶段不低于 WATCH
+        _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
+        if institution_state in _safe_states and not is_sell_on_news:
+            signal = EarningsBuySignal.WATCH
+            stage = "WATCH"
+            all_logic.append(f"信号: WATCH — 条件仅{conditions_met}/{total_conditions}，但机构{institution_state}状态给予观察评级")
+            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}）")
+            all_logic.append(f"止损价: {stop_loss_price:.2f}")
         else:
             signal = EarningsBuySignal.IGNORE
             stage = "IGNORE"
-            all_logic.append("信号: IGNORE — 关键条件不满足")
+            all_logic.append(f"信号: IGNORE — 关键条件不满足（{conditions_met}/{total_conditions}）")
 
     result.signal = signal
     result.score = round(score, 2)

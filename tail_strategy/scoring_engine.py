@@ -73,11 +73,11 @@ class TailScoringEngine:
         row: 当日行情数据 (open, high, low, close, vol, pct_chg, ...)
         daily_df: 历史日线(含当日之前)
         """
-        pct = float(row.get('pct_chg', 0))
-        high = float(row.get('high', 0))
-        low = float(row.get('low', 0))
-        close = float(row.get('close', 0))
-        pre_close = float(row.get('pre_close', 0))
+        pct = float(row.get('pct_chg', 0) or 0)
+        high = float(row.get('high', 0) or 0)
+        low = float(row.get('low', 0) or 0)
+        close = float(row.get('close', 0) or 0)
+        pre_close = float(row.get('pre_close', 0) or 0)
 
         # 1. 涨停/跌停
         limit_up = 19.5 if ts_code.startswith(('300', '688')) else 9.5
@@ -147,12 +147,12 @@ class TailScoringEngine:
         score = 0.0
         detail = {}
 
-        close = float(row.get('close', 0))
-        high = float(row.get('high', 0))
-        low = float(row.get('low', 0))
-        open_p = float(row.get('open', 0))
-        vol = float(row.get('vol', 0))
-        pct = float(row.get('pct_chg', 0))
+        close = float(row.get('close', 0) or 0)
+        high = float(row.get('high', 0) or 0)
+        low = float(row.get('low', 0) or 0)
+        open_p = float(row.get('open', 0) or 0)
+        vol = float(row.get('vol', 0) or 0)
+        pct = float(row.get('pct_chg', 0) or 0)
 
         # ── 尾盘拉升幅度 (12分) ──
         # 用 (close - low) / (high - low) 衡量收盘在日内区间的位置
@@ -227,12 +227,12 @@ class TailScoringEngine:
         score = 0.0
         detail = {}
 
-        close = float(row.get('close', 0))
-        high = float(row.get('high', 0))
-        low = float(row.get('low', 0))
-        open_p = float(row.get('open', 0))
-        pre_close = float(row.get('pre_close', 0))
-        pct = float(row.get('pct_chg', 0))
+        close = float(row.get('close', 0) or 0)
+        high = float(row.get('high', 0) or 0)
+        low = float(row.get('low', 0) or 0)
+        open_p = float(row.get('open', 0) or 0)
+        pre_close = float(row.get('pre_close', 0) or 0)
+        pct = float(row.get('pct_chg', 0) or 0)
 
         # ── 振幅控制 (8分) ──
         if pre_close > 0 and high > 0 and low > 0:
@@ -319,7 +319,7 @@ class TailScoringEngine:
         """
         score = 0.0
         detail = {}
-        close = float(row.get('close', 0))
+        close = float(row.get('close', 0) or 0)
 
         if daily_df is None or len(daily_df) < 20 or close <= 0:
             return 5.0, {'note': '数据不足'}
@@ -646,12 +646,12 @@ class TailScoringEngine:
         penalty = 0.0
         detail = {}
 
-        close = float(row.get('close', 0))
-        high = float(row.get('high', 0))
-        low = float(row.get('low', 0))
-        open_p = float(row.get('open', 0))
-        pre_close = float(row.get('pre_close', 0))
-        pct = float(row.get('pct_chg', 0))
+        close = float(row.get('close', 0) or 0)
+        high = float(row.get('high', 0) or 0)
+        low = float(row.get('low', 0) or 0)
+        open_p = float(row.get('open', 0) or 0)
+        pre_close = float(row.get('pre_close', 0) or 0)
+        pct = float(row.get('pct_chg', 0) or 0)
 
         if close <= 0 or open_p <= 0 or high <= 0 or low <= 0:
             return 0, detail
@@ -777,7 +777,7 @@ class TailScoringEngine:
             capital_score=round(capital, 1),
             trap_penalty=round(trap, 1),
             signal=signal,
-            pct_chg=float(row.get('pct_chg', 0)),
-            price=float(row.get('close', 0)),
+            pct_chg=float(row.get('pct_chg', 0) or 0),
+            price=float(row.get('close', 0) or 0),
             detail={**atk_d, **str_d, **pos_d, **tech_d, **theme_d, **cap_d, **trap_d},
         )

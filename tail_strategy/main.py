@@ -9,6 +9,7 @@
   python -m tail_strategy.main report      # 胜率报告
   python -m tail_strategy.main backfill    # 回填信号收益
   python -m tail_strategy.main scan        # 立即扫描一次(不限时段)
+  python -m tail_strategy.main scan-daily --date 20260731  # 盘后扫描指定日期(daily_cache)
 
 核心策略逻辑:
   尾盘(14:50后)捕捉"放量拉升收在高位"的个股, 利用次日惯性高开获利
@@ -58,6 +59,15 @@ def cmd_scan(args):
         scanner._save_signals(signals)
 
 
+def cmd_scan_daily(args):
+    """盘后扫描指定日期 (daily_cache 统一缓存)"""
+    from .daily_scan import scan_date, print_signals
+    date = args.date or datetime.now().strftime('%Y%m%d')
+    signals = scan_date(date, min_score=args.min_score)
+    print(f"\n盘后扫描 {date}: {len(signals)}个信号 (按总分排序)")
+    print_signals(signals, args.top_n)
+
+
 def cmd_backtest(args):
     """历史回测"""
     from .backtest import BacktestEngine
@@ -104,6 +114,12 @@ def main():
     p_scan.add_argument('--min-score', type=float, default=65, help='最低信号分数')
     p_scan.add_argument('--top-n', type=int, default=15, help='最多信号数')
 
+    # scan-daily (盘后, daily_cache数据源)
+    p_sd = subparsers.add_parser('scan-daily', help='盘后扫描指定日期(daily_cache)')
+    p_sd.add_argument('--date', type=str, default=None, help='扫描日期YYYYMMDD(默认今天)')
+    p_sd.add_argument('--min-score', type=float, default=50, help='最低信号分数')
+    p_sd.add_argument('--top-n', type=int, default=40, help='最多信号数')
+
     # backtest
     p_bt = subparsers.add_parser('backtest', help='历史回测')
     p_bt.add_argument('--start', type=str, default='20250101', help='起始日期')
@@ -124,6 +140,8 @@ def main():
         cmd_live(args)
     elif args.command == 'scan':
         cmd_scan(args)
+    elif args.command == 'scan-daily':
+        cmd_scan_daily(args)
     elif args.command == 'backtest':
         cmd_backtest(args)
     elif args.command == 'report':

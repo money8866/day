@@ -115,6 +115,10 @@ class ReportGenerator:
                 if r.earnings_buy_point_detail:
                     ebp = r.earnings_buy_point_detail
                     lines.append(f"  - 距公告: {ebp.days_since_announce}天 | 回撤: {ebp.pullback_from_high_pct:.1f}% | 量比: {ebp.volume_ratio:.2f}")
+                    if ebp.reference_buy_price > 0:
+                        lines.append(f"  - 参考买入价: {ebp.reference_buy_price:.2f} | 止损价: {ebp.stop_loss_price:.2f}")
+                    if ebp.pre_announce_runup_pct > 0:
+                        lines.append(f"  - 公告前涨幅: {ebp.pre_announce_runup_pct:.1f}% {'⚠️利好兑现' if ebp.is_sell_on_news else '✅正常'}")
                 lines.append("")
 
                 # V2 各维度评分逻辑
@@ -152,6 +156,9 @@ class ReportGenerator:
                     lines.append("  - 回踩逻辑:")
                     for log_line in r.earnings_buy_point_detail.logic[:5]:  # 只显示前5条
                         lines.append(f"    - {log_line}")
+                    ebp = r.earnings_buy_point_detail
+                    if ebp.reference_buy_price > 0:
+                        lines.append(f"  - 参考买入价: {ebp.reference_buy_price:.2f} | 止损价: {ebp.stop_loss_price:.2f}")
                 lines.append("")
 
                 lines.append("---")

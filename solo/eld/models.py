@@ -296,6 +296,10 @@ class EarningsBuyPointResult:
     close_above_ma20: bool = False         # 是否在MA20上方
     alpha: float = 0.0                    # Alpha值
     institution_state: str = ""            # 当前机构状态
+    pre_announce_runup_pct: float = 0.0    # 公告前20日涨幅（利好兑现检测）
+    reference_buy_price: float = 0.0       # 参考买入价（MA20支撑位）
+    stop_loss_price: float = 0.0           # 止损价
+    is_sell_on_news: bool = False          # 利好兑现标记
     logic: list[str] = field(default_factory=list)
 
 
@@ -399,6 +403,11 @@ class FinalScoreResult:
             "institution_state": self.institution_state,
             "earnings_buy_signal": self.earnings_buy_signal,
             "earnings_buy_score": round(self.earnings_buy_score, 1),
+            # 买点价格详情（从EarningsBuyPointResult读取）
+            "reference_buy_price": round(self.earnings_buy_point_detail.reference_buy_price, 2) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.reference_buy_price > 0 else 0.0,
+            "stop_loss_price": round(self.earnings_buy_point_detail.stop_loss_price, 2) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.stop_loss_price > 0 else 0.0,
+            "pre_announce_runup_pct": round(self.earnings_buy_point_detail.pre_announce_runup_pct, 1) if self.earnings_buy_point_detail else 0.0,
+            "is_sell_on_news": self.earnings_buy_point_detail.is_sell_on_news if self.earnings_buy_point_detail else False,
             "etf_score": round(self.etf_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,

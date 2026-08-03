@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-数据加载模块 - 复用项目已有缓存数据
-数据源优先级: 本地parquet > SQLite(stock_data.db) > Tushare API
+数据加载模块 - 遵循 daily_cache 统一缓存最佳实践
+数据源优先级: daily_cache(stock_cache.py) > Tushare API(写回daily_cache) > parquet兜底
+
+三种调用模式:
+  1. load_daily()        单只股票区间查询
+  2. load_market_daily() 全市场单日查询
+  3. load_daily_batch()  批量多只股票查询
 """
 import os
 import sys
@@ -10,7 +15,6 @@ import glob
 import time
 import json
 import sqlite3
-import pickle
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -42,6 +46,20 @@ try:
 except Exception:
     TS_AVAILABLE = False
 
+# daily_cache 统一缓存 API (solo/stock_cache.py)
+_SOLO_DIR = os.path.join(PROJECT_ROOT, 'solo')
+if _SOLO_DIR not in sys.path:
+    sys.path.insert(0, _SOLO_DIR)
+try:
+    from stock_cache import (
+        get_daily_cache, get_daily_cache_range,
+        get_daily_by_date, get_daily_by_date_count,
+        batch_insert_daily_cache,
+    )
+    STOCK_CACHE_AVAILABLE = True
+except Exception:
+    STOCK_CACHE_AVAILABLE = False
+
 
 def get_last_trade_date() -> str:
     """获取最近交易日 YYYYMMDD"""
@@ -50,7 +68,6 @@ def get_last_trade_date() -> str:
         q = (now - timedelta(days=1)).strftime('%Y%m%d')
     else:
         q = now.strftime('%Y%m%d')
-    # 周末回退
     dt = datetime.strptime(q, '%Y%m%d')
     while dt.weekday() >= 5:  # 5=Sat, 6=Sun
         dt -= timedelta(days=1)
@@ -76,13 +93,12 @@ def get_trade_dates(start: str, end: str) -> List[str]:
 
 
 class DataLoader:
-    """统一数据加载器, 复用项目缓存"""
+    """统一数据加载器 - daily_cache 优先, API兜底并写回"""
 
     def __init__(self):
         self.theme_stocks: Dict[str, List[Tuple[str, str, str]]] = {}  # theme -> [(code, name, layer)]
         self.stock_themes: Dict[str, List[str]] = {}  # code -> [themes]
-        self.daily_cache: Dict[str, pd.DataFrame] = {}  # code -> daily df
-        self.factor_cache: Dict[str, pd.DataFrame] = {}  # code -> factor df
+        self._mem_cache: Dict[str, pd.DataFrame] = {}  # 进程内内存缓存
         self._factor_conn = None
 
     # ═══════════════════════════════════════════
@@ -121,35 +137,147 @@ class DataLoader:
         return True
 
     # ═══════════════════════════════════════════
-    # 日线数据加载 (parquet优先)
+    # 模式1: 单只股票区间查询 (daily_cache优先)
     # ═══════════════════════════════════════════
     def load_daily(self, ts_code: str, start: str = '20240101', end: str = None) -> Optional[pd.DataFrame]:
         """
         加载个股日线数据
-        优先从parquet缓存读取, 缺失时从Tushare补充
+        ① daily_cache 表 → ② Tushare API(写回daily_cache) → ③ parquet兜底
         返回: DataFrame(trade_date, open, high, low, close, vol, amount, pct_chg, ...)
         """
         if end is None:
             end = get_last_trade_date()
 
-        # 内存缓存
         cache_key = f"{ts_code}_{start}_{end}"
-        if cache_key in self.daily_cache:
-            return self.daily_cache[cache_key]
+        if cache_key in self._mem_cache:
+            return self._mem_cache[cache_key]
 
-        df = self._load_daily_from_parquet(ts_code, start, end)
+        df = None
+        # ① 优先读 daily_cache 表
+        if STOCK_CACHE_AVAILABLE:
+            try:
+                _, max_date = get_daily_cache_range(ts_code)
+                if max_date is not None and str(max_date) >= str(end):
+                    df = get_daily_cache(ts_code, start, end)
+                    if df is not None and not df.empty:
+                        df['trade_date'] = df['trade_date'].astype(str)
+            except Exception:
+                pass
+
+        # ② 缓存未命中 → 调API并写回
+        if (df is None or df.empty) and TS_AVAILABLE:
+            try:
+                time.sleep(0.15)
+                api_df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+                if api_df is not None and not api_df.empty:
+                    try:
+                        batch_insert_daily_cache(api_df)
+                    except Exception:
+                        pass
+                    df = api_df
+            except Exception:
+                pass
+
+        # ③ parquet 兜底
         if df is None or df.empty:
-            df = self._load_daily_from_tushare(ts_code, start, end)
+            df = self._load_daily_from_parquet(ts_code, start, end)
 
         if df is not None and not df.empty:
+            df['trade_date'] = df['trade_date'].astype(str)
             df = df.sort_values('trade_date').reset_index(drop=True)
-            self.daily_cache[cache_key] = df
+            df = df[(df['trade_date'] >= start) & (df['trade_date'] <= end)]
+            self._mem_cache[cache_key] = df
             return df
         return None
 
+    # ═══════════════════════════════════════════
+    # 模式2: 全市场单日查询 (daily_cache优先)
+    # ═══════════════════════════════════════════
+    def load_market_daily(self, trade_date: str) -> pd.DataFrame:
+        """
+        加载全市场某日日线 (替代 pro.daily(trade_date=...))
+        ① daily_cache 表 → ② Tushare API(写回daily_cache)
+        """
+        df = None
+        if STOCK_CACHE_AVAILABLE:
+            try:
+                if get_daily_by_date_count(trade_date) > 0:
+                    df = get_daily_by_date(trade_date)
+            except Exception:
+                pass
+
+        if (df is None or df.empty) and TS_AVAILABLE:
+            try:
+                api_df = pro.daily(trade_date=trade_date)
+                if api_df is not None and not api_df.empty:
+                    try:
+                        batch_insert_daily_cache(api_df)
+                    except Exception:
+                        pass
+                    df = api_df
+            except Exception:
+                pass
+
+        if df is not None and not df.empty:
+            df['trade_date'] = df['trade_date'].astype(str)
+        return df if df is not None else pd.DataFrame()
+
+    # ═══════════════════════════════════════════
+    # 模式3: 批量多只股票查询
+    # ═══════════════════════════════════════════
+    def load_daily_batch(self, codes: List[str], start: str, end: str) -> pd.DataFrame:
+        """
+        批量加载日线: 逐只检查缓存, 未命中合并API一次取回并写回
+        返回合并后的 DataFrame
+        """
+        cached_parts = []
+        missing = []
+
+        if STOCK_CACHE_AVAILABLE:
+            for code in codes:
+                try:
+                    _, max_date = get_daily_cache_range(code)
+                    if max_date is not None and str(max_date) >= str(end):
+                        c = get_daily_cache(code, start, end)
+                        if c is not None and not c.empty:
+                            cached_parts.append(c)
+                            continue
+                except Exception:
+                    pass
+                missing.append(code)
+
+            if missing and TS_AVAILABLE:
+                # tushare批量接口单次上限有限, 分批合并
+                batch_size = 500
+                for i in range(0, len(missing), batch_size):
+                    chunk = missing[i:i + batch_size]
+                    try:
+                        batch_df = pro.daily(ts_code=','.join(chunk),
+                                             start_date=start, end_date=end)
+                        if batch_df is not None and not batch_df.empty:
+                            try:
+                                batch_insert_daily_cache(batch_df)
+                            except Exception:
+                                pass
+                            cached_parts.append(batch_df)
+                        time.sleep(0.3)
+                    except Exception:
+                        pass
+        else:
+            # 无 stock_cache 时逐只走 load_daily
+            for code in codes:
+                df = self.load_daily(code, start, end)
+                if df is not None and not df.empty:
+                    cached_parts.append(df)
+
+        if not cached_parts:
+            return pd.DataFrame()
+        result = pd.concat(cached_parts, ignore_index=True)
+        result['trade_date'] = result['trade_date'].astype(str)
+        return result.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+
     def _load_daily_from_parquet(self, ts_code: str, start: str, end: str) -> Optional[pd.DataFrame]:
-        """从parquet缓存加载日线"""
-        # 文件名格式: daily_code_000001_SZ_20240101_20260620.parquet
+        """从parquet缓存加载日线(兜底)"""
         code_part = ts_code.replace('.', '_')  # 000001_SZ
         pattern = os.path.join(PARQUET_DIR, f"daily_code_{code_part}_*.parquet")
         files = glob.glob(pattern)
@@ -163,44 +291,83 @@ class DataLoader:
         except Exception:
             return None
 
-    def _load_daily_from_tushare(self, ts_code: str, start: str, end: str) -> Optional[pd.DataFrame]:
-        """从Tushare加载日线(带频率控制)"""
-        if not TS_AVAILABLE:
-            return None
-        try:
-            time.sleep(0.15)
-            df = pro.daily(ts_code=ts_code, start_date=start, end_date=end)
-            if df is not None and not df.empty:
-                return df.sort_values('trade_date').reset_index(drop=True)
-        except Exception:
-            pass
-        return None
+    # ═══════════════════════════════════════════
+    # daily_basic (换手率/市值) - API + 本地表缓存
+    # ═══════════════════════════════════════════
+    def load_daily_basic(self, trade_date: str) -> pd.DataFrame:
+        """
+        加载全市场某日 daily_basic (turnover_rate, total_mv等)
+        ① stock_data.db daily_basic_cache 表 → ② Tushare API(写回)
+        """
+        conn = self._get_factor_conn()
+        if conn is not None:
+            try:
+                df = pd.read_sql_query(
+                    "SELECT * FROM daily_basic_cache WHERE trade_date=?",
+                    conn, params=(str(trade_date),)
+                )
+                if not df.empty:
+                    return df
+            except Exception:
+                pass
 
-    def load_daily_batch(self, codes: List[str], start: str, end: str) -> Dict[str, pd.DataFrame]:
-        """批量加载日线数据"""
-        result = {}
-        for i, code in enumerate(codes):
-            df = self.load_daily(code, start, end)
-            if df is not None and not df.empty:
-                result[code] = df
-            if (i + 1) % 100 == 0:
-                print(f"  日线加载进度: {i+1}/{len(codes)}")
-        return result
+        if TS_AVAILABLE:
+            try:
+                api_df = pro.daily_basic(trade_date=trade_date,
+                                         fields='ts_code,trade_date,turnover_rate,volume_ratio,total_mv,circ_mv')
+                if api_df is not None and not api_df.empty:
+                    try:
+                        self._save_daily_basic(api_df)
+                    except Exception:
+                        pass
+                    return api_df
+            except Exception:
+                pass
+        return pd.DataFrame()
+
+    def _save_daily_basic(self, df: pd.DataFrame):
+        """写回 daily_basic_cache 表"""
+        conn = self._get_factor_conn()
+        if conn is None or df is None or df.empty:
+            return
+        cols = [c for c in ('ts_code', 'trade_date', 'turnover_rate',
+                            'volume_ratio', 'total_mv', 'circ_mv') if c in df.columns]
+        df_v = df[cols].copy()
+        df_v['trade_date'] = df_v['trade_date'].astype(str)
+        col_defs = ', '.join(
+            f'{c} {"TEXT" if c in ("ts_code", "trade_date") else "REAL"}' for c in cols
+        )
+        conn.execute(f"CREATE TABLE IF NOT EXISTS daily_basic_cache ({col_defs}, "
+                     f"PRIMARY KEY(ts_code, trade_date))")
+        placeholders = ','.join(['?'] * len(cols))
+        col_str = ','.join(cols)
+        values = [[None if pd.isna(v) else v for v in row]
+                  for row in df_v[cols].values.tolist()]
+        conn.executemany(
+            f"INSERT OR REPLACE INTO daily_basic_cache ({col_str}) VALUES ({placeholders})",
+            values
+        )
+        conn.commit()
 
     # ═══════════════════════════════════════════
-    # 技术因子加载 (stock_data.db)
+    # stk_factor_pro 因子查询 (已有缓存直接用)
     # ═══════════════════════════════════════════
-    def load_factors(self, ts_code: str, trade_date: str) -> Optional[pd.Series]:
-        """加载指定股票指定日期的技术因子"""
+    def _get_factor_conn(self):
         if self._factor_conn is None:
             if not os.path.exists(STOCK_DATA_DB):
                 return None
             self._factor_conn = sqlite3.connect(STOCK_DATA_DB, timeout=10.0)
+        return self._factor_conn
 
+    def load_factors(self, ts_code: str, trade_date: str) -> Optional[pd.Series]:
+        """加载指定股票指定日期的技术因子(stk_factor_pro)"""
+        conn = self._get_factor_conn()
+        if conn is None:
+            return None
         try:
             df = pd.read_sql_query(
                 "SELECT * FROM stk_factor_pro WHERE ts_code=? AND trade_date=?",
-                self._factor_conn, params=(ts_code, trade_date)
+                conn, params=(ts_code, str(trade_date))
             )
             if df.empty:
                 return None
@@ -209,23 +376,21 @@ class DataLoader:
             return None
 
     def load_factors_batch(self, trade_date: str, codes: List[str] = None) -> pd.DataFrame:
-        """批量加载某日所有股票技术因子"""
-        if self._factor_conn is None:
-            if not os.path.exists(STOCK_DATA_DB):
-                return pd.DataFrame()
-            self._factor_conn = sqlite3.connect(STOCK_DATA_DB, timeout=10.0)
-
+        """批量加载某日所有股票技术因子(stk_factor_pro)"""
+        conn = self._get_factor_conn()
+        if conn is None:
+            return pd.DataFrame()
         try:
             if codes:
                 placeholders = ','.join(['?' for _ in codes])
                 df = pd.read_sql_query(
                     f"SELECT * FROM stk_factor_pro WHERE trade_date=? AND ts_code IN ({placeholders})",
-                    self._factor_conn, params=[trade_date] + codes
+                    conn, params=[str(trade_date)] + codes
                 )
             else:
                 df = pd.read_sql_query(
                     "SELECT * FROM stk_factor_pro WHERE trade_date=?",
-                    self._factor_conn, params=(trade_date,)
+                    conn, params=(str(trade_date),)
                 )
             return df
         except Exception as e:
@@ -234,12 +399,11 @@ class DataLoader:
 
     def get_factor_dates(self, limit: int = 10) -> List[str]:
         """获取最近N个有因子数据的交易日"""
-        if self._factor_conn is None:
-            if not os.path.exists(STOCK_DATA_DB):
-                return []
-            self._factor_conn = sqlite3.connect(STOCK_DATA_DB, timeout=10.0)
+        conn = self._get_factor_conn()
+        if conn is None:
+            return []
         try:
-            rows = self._factor_conn.execute(
+            rows = conn.execute(
                 "SELECT DISTINCT trade_date FROM stk_factor_pro ORDER BY trade_date DESC LIMIT ?",
                 (limit,)
             ).fetchall()
@@ -256,11 +420,10 @@ class DataLoader:
         codes = []
         for f in files:
             basename = os.path.basename(f)
-            # daily_code_000001_SZ_20240101_20260620.parquet
             parts = basename.replace('.parquet', '').split('_')
             if len(parts) >= 4:
-                code = parts[2]  # 000001
-                market = parts[3]  # SZ
+                code = parts[2]
+                market = parts[3]
                 codes.append(f"{code}.{market}")
         return codes
 

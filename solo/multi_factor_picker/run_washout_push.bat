@@ -1,20 +1,21 @@
 @echo off
 chcp 65001 >nul
 cd /d D:\mystock\solo\multi_factor_picker
-set LOG=%TEMP%\washout_push_%date:~0,10%.log
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set LOGDATE=%%i
+set LOG=%TEMP%\washout_push_%LOGDATE%.log
 
-echo [%date% %time%] å¼€å§‹ç”Ÿæˆæ´—ç›˜ä¿®å¤æŠ¥å‘Š... > %LOG%
+echo [%date% %time%] ¿ªÊ¼Éú³ÉÏ´ÅÌÐÞ¸´±¨¸æ... > %LOG%
 python enhanced_timing_bull_all.py >> %LOG% 2>&1
 if %errorlevel% neq 0 (
-    echo [%date% %time%] æŠ¥å‘Šç”Ÿæˆå¤±è´¥ï¼Œé”™è¯¯ç =%errorlevel% >> %LOG%
+    echo [%date% %time%] ±¨¸æÉú³ÉÊ§°Ü£¬´íÎóÂë=%errorlevel% >> %LOG%
     exit /b %errorlevel%
 )
 
-echo [%date% %time%] å¼€å§‹æŽ¨é€å¾®ä¿¡... >> %LOG%
+echo [%date% %time%] ¿ªÊ¼ÍÆËÍÎ¢ÐÅ... >> %LOG%
 python push_washout_recovery.py >> %LOG% 2>&1
 if %errorlevel% neq 0 (
-    echo [%date% %time%] å¾®ä¿¡æŽ¨é€å¤±è´¥ï¼Œé”™è¯¯ç =%errorlevel% >> %LOG%
+    echo [%date% %time%] Î¢ÐÅÍÆËÍÊ§°Ü£¬´íÎóÂë=%errorlevel% >> %LOG%
     exit /b %errorlevel%
 )
 
-echo [%date% %time%] å…¨éƒ¨å®Œæˆï¼>> %LOG%
+echo [%date% %time%] È«²¿Íê³É£¡>> %LOG%

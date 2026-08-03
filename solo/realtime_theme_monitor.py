@@ -471,48 +471,48 @@ class RealtimeThemeMonitor:
 
         tushare_count = 0
         if TS_AVAILABLE:
-            # V2: 优先从 daily_cache 表查 trade_date 当天数据
-            daily = None
+            # V3: 优先从 daily_cache 表读取已有数据(即使不完整也先用)
             try:
                 from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
-                cnt = get_daily_by_date_count(trade_date)
-                if cnt >= len(all_codes):
-                    daily = get_daily_by_date(trade_date)
-                    if daily is not None and not daily.empty:
-                        # 只保留需要的 codes
-                        daily = daily[daily['ts_code'].isin(all_codes)]
+                daily = get_daily_by_date(trade_date)
+                if daily is not None and not daily.empty:
+                    daily = daily[daily['ts_code'].isin(all_codes)]
+                    for _, row in daily.iterrows():
+                        self.ref_prices[row['ts_code']] = {
+                            'close': row['close'],
+                            'pct_chg': row['pct_chg']
+                        }
+                    tushare_count = len(self.ref_prices)
+                    cached_count = len(self.ref_prices)
+                    print(f"   [缓存] daily_cache命中 {cached_count}/{len(all_codes)} 只")
             except Exception as e:
-                print(f"   ⚠ daily_cache 读取失败: {e}, 走 pro.daily")
+                print(f"   ⚠ daily_cache 读取失败: {e}")
+                cached_count = 0
 
-            if daily is None or daily.empty:
+            # 只对缓存中缺失的股票走Tushare
+            missing_from_cache = [code for code in all_codes if code not in self.ref_prices]
+            if missing_from_cache:
+                print(f"   ⏳ 缓存缺失{len(missing_from_cache)}只,走Tushare补充...")
                 try:
-                    daily = pro.daily(ts_code=','.join(all_codes[:3000]), start_date=trade_date, end_date=trade_date)
-                    time.sleep(0.3)
-
-                    if len(all_codes) > 3000:
-                        daily2 = pro.daily(ts_code=','.join(all_codes[3000:]), start_date=trade_date, end_date=trade_date)
-                        import pandas as pd
-                        daily = pd.concat([daily, daily2], ignore_index=True) if not daily2.empty else daily
-
-                    # 回写 daily_cache 表
-                    if daily is not None and not daily.empty:
-                        try:
-                            batch_insert_daily_cache(daily)
-                        except Exception:
-                            pass
+                    # Tushare pro.daily 限制:每次最多1000只
+                    for i in range(0, len(missing_from_cache), 1000):
+                        batch = missing_from_cache[i:i+1000]
+                        daily2 = pro.daily(ts_code=','.join(batch), start_date=trade_date, end_date=trade_date)
+                        time.sleep(0.3)
+                        if daily2 is not None and not daily2.empty:
+                            for _, row in daily2.iterrows():
+                                self.ref_prices[row['ts_code']] = {
+                                    'close': row['close'],
+                                    'pct_chg': row['pct_chg']
+                                }
+                            tushare_count += len(daily2)
+                            # 回写 daily_cache 表
+                            try:
+                                batch_insert_daily_cache(daily2)
+                            except Exception:
+                                pass
                 except Exception as e:
-                    print(f"   ⚠ Tushare获取失败: {e}, 将从新浪行情获取昨收")
-                    daily = None
-
-            if daily is not None and not daily.empty:
-                for _, row in daily.iterrows():
-                    self.ref_prices[row['ts_code']] = {
-                        'close': row['close'],
-                        'pct_chg': row['pct_chg']
-                    }
-                tushare_count = len(daily)
-            elif daily is None:
-                tushare_count = 0
+                    print(f"   ⚠ Tushare补充失败: {e}, 将从新浪行情获取昨收")
         else:
             print("   ⚠ Tushare不可用,将从新浪行情获取昨收")
 
@@ -799,7 +799,7 @@ class RealtimeThemeMonitor:
             try:
                 conn = sqlite3.connect(db_path, timeout=10.0)
                 # 技术指标是前一个交易日收盘后运算的,并非当日实时
-                # 取次新交易日(T-1)的数据,避免使用尚未生成的当日数据
+                # 取最新交易日数据,但如果最新数据不完整(<1000只)则回退到次新
                 rows = conn.execute(
                     'SELECT DISTINCT trade_date FROM stk_factor_pro ORDER BY trade_date DESC LIMIT 2'
                 ).fetchall()
@@ -807,12 +807,23 @@ class RealtimeThemeMonitor:
                     conn.close()
                     print("⚠ SQLite中stk_factor_pro表为空,技术因子未加载")
                 else:
-                    # 有>=2天数据时取次新(T-1),只有1天时取当天
-                    latest_date = str(rows[1][0]) if len(rows) >= 2 else str(rows[0][0])
-                    # 查询T-1交易日所有股票数据
+                    # 检查最新日期数据量,数据量足够时直接取最新(即为T-1)
+                    latest_count = conn.execute(
+                        'SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date = ?', (rows[0][0],)
+                    ).fetchone()[0]
+                    if latest_count > 1000:
+                        latest_date = str(rows[0][0])
+                    elif len(rows) >= 2:
+                        latest_date = str(rows[1][0])
+                        print(f"  最新日期{rows[0][0]}数据量仅{latest_count}只,回退到{latest_date}")
+                    else:
+                        latest_date = str(rows[0][0])
+                    # 查询最近2个交易日数据(用于KDJ金叉/死叉的前后对比)
+                    dates = [str(r[0]) for r in rows[:2]]
+                    placeholders = ','.join('?' * len(dates))
                     df_all = pd.read_sql_query(
-                        'SELECT * FROM stk_factor_pro WHERE trade_date = ?',
-                        conn, params=(latest_date,)
+                        f'SELECT * FROM stk_factor_pro WHERE trade_date IN ({placeholders}) ORDER BY ts_code, trade_date',
+                        conn, params=dates
                     )
                     conn.close()
 
@@ -1974,7 +1985,9 @@ class RealtimeThemeMonitor:
         返回: (trend_score, index_trend, theme_trend, market_status, position)
         
         与market_analysis.py保持一致的算法:
-        IndexTrend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
+        IndexTrend = sh_score * 0.35 + hs300_score * 0.25 + zz2000_score * 0.40
+        （原权重0.5/0.3/0.2大盘占80%过度主导,调整为更均衡的0.35/0.25/0.40,
+          中证2000反映市场实际赚钱效应,提高权重避免分化市误判）
         ThemeTrend = TOP3主题平均分(无主题数据时用index_trend)
         TrendScore = IndexTrend * 0.4 + ThemeTrend * 0.6
         
@@ -2006,8 +2019,8 @@ class RealtimeThemeMonitor:
             elif r['name'] == '中证2000':
                 zz2000_score = r['trend_score']
         
-        # 计算指数趋势分(固定权重,与market_analysis.py一致)
-        index_trend = sh_score * 0.5 + hs300_score * 0.3 + zz2000_score * 0.2
+        # 计算指数趋势分(调整权重:中证2000提高至0.40,反映实际赚钱效应)
+        index_trend = sh_score * 0.35 + hs300_score * 0.25 + zz2000_score * 0.40
         
         # ── 2. 主题趋势分 ──
         # 有足够主题历史数据(每主题≥5轮)时用TOP3主题平均分,不足时用指数趋势
@@ -2057,6 +2070,23 @@ class RealtimeThemeMonitor:
         # 注:实时量能难以获取60日对比,暂用上涨比例替代判断
         if up_ratio >= 70:
             trend_score_raw += 5  # 大面积上涨视为量能放大
+        
+        # 赚钱效应修正:涨停/跌停比反映市场真实强弱,弥补指数权重不足
+        zt_count = overview.get('zt_count', 0) if overview else 0
+        dt_count = overview.get('dt_count', 0) if overview else 0
+        if zt_count > 0 and dt_count >= 0:
+            zt_dt_ratio = zt_count / max(dt_count, 1)
+            if zt_count >= 20 and dt_count <= 3 and zt_dt_ratio > 5:
+                trend_score_raw += 8  # 涨停潮+几乎无跌停=强势赚钱效应
+            elif zt_count >= 15 and dt_count <= 5 and zt_dt_ratio > 3:
+                trend_score_raw += 5  # 明显赚钱效应
+            elif zt_count >= 10 and zt_dt_ratio > 2:
+                trend_score_raw += 3  # 温和赚钱效应
+            # 反向惩罚:跌停>涨停时扣分
+            if dt_count > zt_count and dt_count >= 10:
+                trend_score_raw -= 8  # 跌停潮=恐慌
+            elif dt_count > zt_count and dt_count >= 5:
+                trend_score_raw -= 4
         
         trend_score_raw = min(100, max(0, trend_score_raw))
         
@@ -3410,6 +3440,10 @@ class RealtimeThemeMonitor:
         if pct < -2.5:
             return False, f'跌{pct:.1f}%'
 
+        # 3.5 收阴线或微涨<1%排除(尾盘战法要求阳线实体,次日惯性高开概率更高)
+        if pct < 1.0:
+            return False, f'涨幅{pct:.1f}%过低'
+
         # 4. 不在任何主题中排除
         themes = self.stock_themes.get(ts_code, [])
         if not themes:
@@ -3770,20 +3804,45 @@ class RealtimeThemeMonitor:
         except Exception:
             pass
 
-        # ── 2. KDJ超买控制 (5分) ──
+        # ── 2. KDJ金叉/位置 (5分) ──
+        # KDJ金叉=K上穿D,非J上穿K; 低位金叉信号最强
         try:
-            kdj_j = float(row.get('kdj_j', 50))
             kdj_k = float(row.get('kdj_k', 50))
+            kdj_d = float(row.get('kdj_d', 50))
+            kdj_j = float(row.get('kdj_j', 50))
+            detail['kdj_k'] = round(kdj_k, 1)
             detail['kdj_j'] = round(kdj_j, 1)
-            # J<K 且 J<80 = 未超买且有金叉倾向
-            if kdj_j < 80:
-                if kdj_j > kdj_k:  # J上穿K,金叉
-                    score += 5
+
+            # 金叉判定:需前后两天对比,K从下穿到上穿D
+            if fdf is not None and len(fdf) >= 2:
+                prev_k = float(fdf.iloc[-2].get('kdj_k', 50))
+                prev_d = float(fdf.iloc[-2].get('kdj_d', 50))
+                is_golden_cross = (prev_k <= prev_d) and (kdj_k > kdj_d)
+                is_dead_cross = (prev_k >= prev_d) and (kdj_k < kdj_d)
+            else:
+                is_golden_cross = (kdj_k > kdj_d) and (kdj_k < 80)
+                is_dead_cross = False
+
+            if is_golden_cross:
+                if kdj_k < 20:
+                    score += 5  # 低位金叉:信号最强
+                    detail['kdj'] = '低位金叉'
+                elif kdj_k < 50:
+                    score += 4  # 中低位金叉
                     detail['kdj'] = '金叉'
-                elif kdj_j > 20:  # 未超卖
-                    score += 3
-                    detail['kdj'] = '健康'
-            # J>90超买不加分
+                elif kdj_k < 80:
+                    score += 3  # 中位金叉:趋势转强
+                    detail['kdj'] = '中位金叉'
+                else:
+                    score += 1  # 高位金叉:需谨慎
+                    detail['kdj'] = '高位金叉'
+            elif is_dead_cross:
+                score += 0  # 死叉不加分
+                detail['kdj'] = '死叉'
+            elif kdj_j < 80 and kdj_j > 20:
+                score += 2  # 无金叉但KDJ在健康区间
+                detail['kdj'] = '健康'
+            # J>80超买不加分
         except Exception:
             pass
 

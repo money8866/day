@@ -292,6 +292,15 @@ class EarningsBuyPointConfig:
     # Alpha要求
     min_alpha: float = 70.0
 
+    # 利好兑现检测
+    pre_announce_runup_days: int = 20     # 公告前回看天数
+    pre_announce_runup_threshold: float = 20.0  # 公告前涨幅≥此值视为利好兑现风险
+    max_post_announce_decline: float = -5.0     # 公告后最大允许跌幅（不含首日）
+    post_announce_decline_days: int = 5          # 公告后观察天数
+
+    # 趋势Alpha兜底
+    trend_alpha_floor: float = 60.0       # 趋势Alpha<此值，BUY降级为WATCH
+
     # 评分映射
     buy_score_threshold: float = 75.0   # BUY
     watch_score_threshold: float = 50.0  # WATCH

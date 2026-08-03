@@ -22,6 +22,7 @@ import pandas as pd
 
 from .data_loader import DataLoader, get_last_trade_date, PARQUET_DIR, STOCK_DATA_DB, CACHE_DAILY
 from .scoring_engine import TailScoringEngine, TailSignal
+from .indicators import enrich_indicators
 
 
 @dataclass
@@ -113,10 +114,10 @@ class BacktestEngine:
         if verbose:
             print(f"📊 回测参数: {start_date} ~ {end_date}, 股票池 {len(codes)} 只, 最低分 {self.min_score}")
 
-        # 从 stk_factor_pro 加载全量数据(含OHLCV+技术指标, 一次加载)
+        # 按指南加载数据: daily_cache 优先 (模式3批量查询), API兜底写回
         if verbose:
-            print(f"⏳ 从 stock_data.db 加载因子+行情数据...")
-        self._load_all_from_factor_db(codes, start_date, end_date, verbose)
+            print(f"⏳ 从 daily_cache 加载日线数据(含指标计算)...")
+        self._load_all_from_daily_cache(codes, start_date, end_date, verbose)
         if verbose:
             print(f"✅ 数据加载完成: {len(self._all_daily)} 只股票")
 
@@ -129,8 +130,14 @@ class BacktestEngine:
         if verbose:
             print(f"📅 交易日: {len(trade_dates)} 天 ({trade_dates[0]} ~ {trade_dates[-1]})")
 
-        # 因子日期集合(用于判断哪些日期有因子)
-        factor_dates = set(trade_dates)  # stk_factor_pro每天都有
+        # 逐日加载 daily_basic(换手/市值/量比), 本地表缓存优先
+        self._basic_by_date: Dict[str, Dict] = {}
+        if verbose:
+            print(f"⏳ 加载 daily_basic(换手/市值)...")
+        for td in trade_dates:
+            bdf = self.loader.load_daily_basic(td)
+            if bdf is not None and not bdf.empty:
+                self._basic_by_date[td] = bdf.set_index('ts_code').to_dict('index')
 
         # 逐日回测
         self.results = []
@@ -139,7 +146,7 @@ class BacktestEngine:
                 print(f"  进度: {i+1}/{len(trade_dates)} ({td}) 已产生 {len(self.results)} 个信号")
 
             # 当日信号
-            signals = self._scan_day(td, codes, factor_dates)
+            signals = self._scan_day(td, codes)
             if not signals:
                 continue
 
@@ -159,80 +166,43 @@ class BacktestEngine:
             self._print_stats(stats)
         return stats
 
-    def _load_all_from_factor_db(self, codes: List[str], start: str, end: str, verbose: bool = True):
+    def _load_all_from_daily_cache(self, codes: List[str], start: str, end: str, verbose: bool = True):
         """
-        从 stock_data.db 的 stk_factor_pro 表加载数据
-        按日期加载(利用trade_date索引), 比按股票快得多
+        按 daily_cache 统一缓存指南加载数据 (模式3: 批量多只股票查询)
+        daily_cache 优先 → 未命中合并API写回; 技术指标由 OHLCV 本地计算
         """
-        import sqlite3 as _sq
         from datetime import datetime as _dt, timedelta as _td
 
-        if not os.path.exists(STOCK_DATA_DB):
-            print(f"❌ 数据库不存在: {STOCK_DATA_DB}")
-            return
-
-        # 向前多取40天(用于MA20等计算)
+        # 向前多取~60个自然日用于指标预热(MACD/KDJ/MA20)
         try:
-            dt_start = _dt.strptime(start, '%Y%m%d') - _td(days=60)
+            dt_start = _dt.strptime(start, '%Y%m%d') - _td(days=90)
             ext_start = dt_start.strftime('%Y%m%d')
         except Exception:
             ext_start = start
 
-        conn = _sq.connect(STOCK_DATA_DB, timeout=30.0)
+        # daily_cache 表覆盖范围自20250102起
+        if ext_start < '20250102':
+            ext_start = '20250102'
 
-        # 只取需要的列(减少内存)
-        cols = ('ts_code, trade_date, open, high, low, close, pre_close, '
-                'pct_chg, vol, amount, turnover_rate, volume_ratio, total_mv, '
-                'macd_dif_bfq, macd_dea_bfq, macd_bfq, '
-                'kdj_bfq, kdj_k_bfq, kdj_d_bfq, '
-                'rsi_bfq_6, rsi_bfq_12, '
-                'boll_mid_bfq, boll_upper_bfq, boll_lower_bfq, '
-                'cci_bfq, ma_bfq_5, ma_bfq_10, ma_bfq_20')
-
-        # 获取日期范围内的交易日
-        dates_rows = conn.execute(
-            "SELECT DISTINCT trade_date FROM stk_factor_pro WHERE trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
-            (ext_start, end)
-        ).fetchall()
-        all_dates = [r[0] for r in dates_rows]
+        all_df = self.loader.load_daily_batch(codes, ext_start, end)
+        if all_df is None or all_df.empty:
+            print("❌ daily_cache 无数据")
+            return
 
         if verbose:
-            print(f"    交易日: {len(all_dates)}天 ({all_dates[0] if all_dates else '?'} ~ {all_dates[-1] if all_dates else '?'})")
+            dmin = all_df['trade_date'].min()
+            dmax = all_df['trade_date'].max()
+            print(f"    日线: {len(all_df)}行, {all_df['ts_code'].nunique()}只 ({dmin} ~ {dmax})")
 
-        # 按日期批量加载(利用trade_date索引, 每天一次查询)
-        codes_set = set(codes)
+        # 逐只计算技术指标并组装
         loaded = 0
-        chunks = []  # 收集所有DataFrame片段
-
-        for di, td in enumerate(all_dates):
-            try:
-                df = pd.read_sql_query(
-                    f"SELECT {cols} FROM stk_factor_pro WHERE trade_date = ?",
-                    conn, params=(td,)
-                )
-                if df.empty:
-                    continue
-                # 只保留股票池内的
-                df = df[df['ts_code'].isin(codes_set)]
-                if not df.empty:
-                    chunks.append(df)
-            except Exception as e:
-                if verbose and di < 3:
-                    print(f"    ⚠ {td} 加载失败: {e}")
-
-            if verbose and (di + 1) % 20 == 0:
-                print(f"    日期进度: {di+1}/{len(all_dates)}")
-
-        conn.close()
-
-        # 组装: 合并所有片段 -> 按股票分组
-        if chunks:
-            all_df = pd.concat(chunks, ignore_index=True)
-            all_df['trade_date'] = all_df['trade_date'].astype(str)
-            for code, grp in all_df.groupby('ts_code'):
-                if len(grp) >= 20:
-                    self._all_daily[code] = grp.sort_values('trade_date').reset_index(drop=True)
-                    loaded += 1
+        for code, grp in all_df.groupby('ts_code'):
+            grp = grp.sort_values('trade_date').reset_index(drop=True)
+            if len(grp) < 20:
+                continue
+            grp = enrich_indicators(grp)
+            self._all_daily[code] = grp
+            loaded += 1
 
         if verbose:
             print(f"    组装完成: {loaded}只股票有足够数据")
@@ -271,8 +241,7 @@ class BacktestEngine:
         dates = self.loader.get_factor_dates(limit=9000)
         return sorted([d for d in dates if start <= d <= end])
 
-    def _scan_day(self, trade_date: str, codes: List[str],
-                  factor_dates: set) -> List[TailSignal]:
+    def _scan_day(self, trade_date: str, codes: List[str]) -> List[TailSignal]:
         """扫描单日所有股票的尾盘信号(使用预加载数据)"""
         signals = []
 
@@ -306,13 +275,23 @@ class BacktestEngine:
                 if name:
                     break
 
-            # 因子数据已在row中(stk_factor_pro含技术指标)
+            # 因子行: 技术指标(本地计算) + daily_basic(换手/市值/量比)
+            factor_row = row
+            basic_map = getattr(self, '_basic_by_date', {}).get(trade_date)
+            if basic_map:
+                b = basic_map.get(ts_code)
+                if b:
+                    factor_row = row.copy()
+                    factor_row['turnover_rate'] = b.get('turnover_rate', None)
+                    factor_row['volume_ratio'] = b.get('volume_ratio', None)
+                    factor_row['total_mv'] = b.get('total_mv', None)
+
             sig = self.engine.score_stock(
                 ts_code=ts_code,
                 name=name,
                 row=row,
                 daily_df=hist_df,
-                factor_row=row,  # row本身就含技术因子
+                factor_row=factor_row,
                 theme_stocks=self.loader.theme_stocks,
                 stock_themes=self.loader.stock_themes,
                 all_quotes=None,

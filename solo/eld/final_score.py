@@ -238,12 +238,17 @@ class FinalScoreEngine:
         inst_accum_score: float,
         industry_score: float,
         etf_score: float = 50.0,
+        trend_alpha: float = 0.0,
     ) -> float:
         """
         计算 ELD V2 评分
 
         ELS V2 = Event×30% + ExpectationGap×20% + TrendAlpha×20%
                + Institution×15% + Theme×10% + ETF×5%
+
+        趋势Alpha兜底：
+          - trend_alpha < 60: V2 × 0.7（趋势偏弱，事件质量再高也要打折）
+          - trend_alpha < 45: V2 × 0.5（趋势很弱，坚决回避）
 
         Args:
             event_score: 事件质量评分 (0-100)
@@ -252,6 +257,7 @@ class FinalScoreEngine:
             inst_accum_score: 机构吸筹评分 (0-100)
             industry_score: 行业主题评分 (0-100)
             etf_score: ETF评分 (0-100), 默认中性50分
+            trend_alpha: 趋势Alpha值（用于兜底惩罚，非归一化分数）
 
         Returns:
             0-100 的 ELS V2 分数
@@ -283,10 +289,24 @@ class FinalScoreEngine:
         els_v2 = sum(scores[d] * weights[d] for d in ALL_V2_DIMENSIONS)
         els_v2 = max(0.0, min(100.0, els_v2))
 
+        # ── 趋势Alpha兜底惩罚 ──
+        if trend_alpha > 0:
+            if trend_alpha < 45:
+                penalty = 0.5
+                logger.debug("趋势Alpha=%.1f<45, V2×%.1f", trend_alpha, penalty)
+            elif trend_alpha < 60:
+                penalty = 0.7
+                logger.debug("趋势Alpha=%.1f<60, V2×%.1f", trend_alpha, penalty)
+            else:
+                penalty = 1.0
+            els_v2 *= penalty
+            els_v2 = max(0.0, min(100.0, els_v2))
+
         logger.debug(
-            "ELS_V2=%.2f | event=%.1f gap=%.1f trend=%.1f inst=%.1f ind=%.1f etf=%.1f",
+            "ELS_V2=%.2f | event=%.1f gap=%.1f trend=%.1f inst=%.1f ind=%.1f etf=%.1f alpha=%.1f penalty=%.1f",
             els_v2, event_score, gap_v2_score, trend_score,
             inst_accum_score, industry_score, etf_score,
+            trend_alpha, penalty if trend_alpha > 0 else 1.0,
         )
 
         return els_v2
@@ -521,6 +541,7 @@ class FinalScoreEngine:
             inst_accum_score=inst_acc_r.score,
             industry_score=ind_r.score,
             etf_score=etf_score,
+            trend_alpha=trend_r.alpha,  # 传入趋势Alpha用于兜底惩罚
         )
         result.final_score_v2 = self.apply_market_multiplier(result.els_v2, market)
         result.recommendation_v2 = self.generate_recommendation_v2(
