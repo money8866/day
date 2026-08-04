@@ -479,7 +479,7 @@ def build_theme_stock_map():
         json.dump(output, f, ensure_ascii=False, indent=2)
     
     # 同时更新最新版本（无日期后缀，方便引用）
-    latest_file = os.path.join(CACHE_DIR, "theme_stock_map_latest.json")
+    latest_file = os.path.join(CACHE_DIR, "theme_stock_map_latest_v1.json")
     with open(latest_file, 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
     

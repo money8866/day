@@ -816,6 +816,38 @@ risk_budget_position:
   enabled: true
 
 # ============================================================
+# V7.0 — 主线第一次回调升级：区间放量多涨停拉升后回调 + 低开阳线承接
+# ============================================================
+rally_pullback:
+  # 阶段1: 拉升区间识别
+  rally:
+    lookback: 60                   # 拉升区间回看天数
+    min_amplitude: 0.25            # 最低拉升幅度（25%）
+    vol_expansion_min: 1.5         # 拉升段放量倍数（拉升均量/前期均量）
+    min_limit_up: 2                # 最低涨停次数（含一字板）
+    limit_up_threshold: 9.5        # 涨停判定涨幅阈值(%)
+  # 阶段2: 回调检测
+  pullback:
+    drawdown_min: 0.05             # 最低回撤
+    drawdown_max: 0.20             # 最高回撤
+    max_pullback_days: 30          # 最长回调天数
+    min_pullback_days: 3           # 最短回调天数
+  # 阶段3: 低开阳线承接信号
+  candle:
+    min_open_gap: 0.005            # 最低低开幅度(0.5%)
+    max_open_gap: 0.05             # 最高低开幅度(5%)
+    min_body_pct: 0.005            # 最低阳线实体(0.5%)
+    max_lower_shadow_ratio: 2.0    # 下影线/实体最大比例（排除长下影针）
+  # 评分权重
+  scoring:
+    vol_expansion: 30              # 区间放量分
+    limit_up: 25                   # 多涨停分
+    pullback_quality: 20           # 回调质量分
+    candle_signal: 15              # 低开阳线分
+    volume_confirm: 10             # 量能确认分
+    threshold: 60                  # 有效信号阈值
+
+# ============================================================
 # V6.2 — Learning Mode 配置
 # ============================================================
 learning_mode:

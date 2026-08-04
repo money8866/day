@@ -35,6 +35,7 @@ from market_regime_v3.engines.market_score import MarketScoreEngine
 from market_regime_v3.engines.state_machine import StateMachine
 from market_regime_v3.engines.exposure_model import ExposureModel
 from market_regime_v3.engines.heat_engine import HeatEngine
+from market_regime_v3.engines.rally_pullback_engine import RallyPullbackEngine
 from market_regime_v3.engines.theme_beta import ThemeBetaEngine
 from market_regime_v3.engines.leader_quality import LeaderQualityEngine
 from market_regime_v3.engines.trading_style import TradingStyleEngine
@@ -307,37 +308,28 @@ class MarketRegimeV3:
         else:
             print("  无符合条件龙头")
 
-        # ── 回调检测 + 入场逻辑（全市场扫描）──
-        from inst_pullback_v2.engines.pullback_detector import PullbackDetector
-        pb_config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                      'inst_pullback_v2', 'config.yaml')
-        with open(pb_config_path, 'r', encoding='utf-8') as f:
-            pb_config = yaml.safe_load(f)
-        pd_engine = PullbackDetector(pb_config)
+        # ── V7.0 主线第一次回调升级：区间放量多涨停拉升后回调 + 低开阳线承接 ──
+        rp_engine = RallyPullbackEngine(self.config)
+        print("\n  [全市场扫描] 区间放量多涨停回调检测...")
 
-        # 构建全市场候选池
+        # 构建全市场候选池（龙头前10 + 总市值>80亿）
         sb_cache = sc.load_stock_basic()
         candidate_pool = []
-
-        # 策略1: 龙头质量前10直接加入候选
         leader_codes = set()
+
         for ld in leader_result.top_leaders[:10]:
             code = ld['ts_code']
             candidate_pool.append(ld)
             leader_codes.add(code)
 
-        # 策略2: 全市场预筛选补充（总市值>80亿，排除北交所/ST）
-        print("\n  [全市场扫描] 构建候选池...")
         try:
             pro = sc._get_pro()
             db = pro.daily_basic(trade_date=trade_date,
                                  fields='ts_code,total_mv,circ_mv,close,turnover_rate')
             if db is not None and not db.empty:
-                # 排除北交所/ST
                 db = db[db['ts_code'].isin(sb_cache[sb_cache['ts_code'].str.endswith(('.SH','.SZ'))]['ts_code'])]
                 db = db[~db['ts_code'].str.startswith(('8','4','9'))]
                 db = db[~db['ts_code'].isin(leader_codes)]
-                # 总市值>80亿 (total_mv单位:万元, 80亿=800,000万)
                 db = db[db['total_mv'] > 800_000].sort_values('total_mv', ascending=False)
                 for _, row in db.iterrows():
                     code = row['ts_code']
@@ -351,106 +343,67 @@ class MarketRegimeV3:
         except Exception as e:
             print(f"    全市场补充失败(仅用龙头): {e}")
 
-        # 运行 PullbackDetector
+        # 运行 RallyPullbackEngine
         pullback_qualified = []
         total = len(candidate_pool)
         for idx, cand in enumerate(candidate_pool, 1):
             code = cand['ts_code']
             name = cand.get('name', code)
             theme = cand.get('theme', '')
-            pb_result = pd_engine.detect(code, trade_date)
-            # 每200只显示进度
+            rp_result = rp_engine.detect(code, trade_date)
             if idx % 200 == 0 or idx == total:
-                print(f"    Pullback检测进度: {idx}/{total}")
+                print(f"    检测进度: {idx}/{total}")
 
-            if pb_result and pb_result.is_qualified:
-                # 计算入场逻辑
-                df = self._load_stock_data(code, trade_date)
-                if df is not None and not df.empty:
-                    close_hfq = df['close_hfq'].values if 'close_hfq' in df.columns else df['close'].values
-                    ma5 = df['ma_bfq_5'].values if 'ma_bfq_5' in df.columns else None
-                    ma10 = df['ma_bfq_10'].values if 'ma_bfq_10' in df.columns else None
-                    ma20 = df['ma_bfq_20'].values if 'ma_bfq_20' in df.columns else None
-                    ma30 = df['ma_bfq_30'].values if 'ma_bfq_30' in df.columns else None
-
-                    latest_close = close_hfq[-1]
-
-                    atr_val = 0.0
-                    if 'atr_bfq' in df.columns:
-                        atr_val = float(df['atr_bfq'].iloc[-1]) if pd.notna(df['atr_bfq'].iloc[-1]) else 0.0
-
-                    # ── 获取回踩均线价格（短线量化核心锚点） ──
-                    pb_ma_price = None
-                    pm = pb_result.pullback_ma
-                    if pm == 'MA10' and ma10 is not None:
-                        pb_ma_price = float(ma10[-1])
-                    elif pm == 'MA20' and ma20 is not None:
-                        pb_ma_price = float(ma20[-1])
-                    elif pm == 'MA30' and ma30 is not None:
-                        pb_ma_price = float(ma30[-1])
-
-                    # ── 低吸参考价：锚定回踩均线，叠加短期过滤 ──
-                    ref_candidates = [latest_close * 0.985]
-                    if ma5 is not None:
-                        ref_candidates.append(ma5[-1])
-                    if pb_ma_price is not None:
-                        ref_candidates.append(pb_ma_price * 1.01)
-                    ref_price = min(ref_candidates)
-
-                    # ── 短线止损：基于ATR的动态距离 + 均线辅助验证 ──
-                    atr_pct = atr_val / ref_price if ref_price > 0 and atr_val > 0 else 0
-                    sl_dist_pct = max(atr_pct * 1.5, 0.03)
-                    sl_dist_pct = min(sl_dist_pct, 0.20)
-                    stop_loss = ref_price * (1 - sl_dist_pct)
-                    if ma10 is not None:
-                        ma_stop = ma10[-1] * 0.98
-                        if ma_stop > stop_loss:
-                            stop_loss = ma_stop
-                    if pb_ma_price is not None:
-                        pb_stop = pb_ma_price * 0.97
-                        if pb_stop > stop_loss:
-                            stop_loss = pb_stop
-
-                    # ── 止盈：2倍ATR，上限15% ──
-                    take_profit = ref_price + atr_val * 2.0
-                    take_profit = min(take_profit, ref_price * 1.15)
-                    take_profit = max(take_profit, ref_price * 1.03)
-
-                    # 从 stock_meta 获取主题信息
-                    meta = stock_meta.get(code, {})
-                    pullback_qualified.append({
-                        "ts_code": code,
-                        "name": name,
-                        "theme": theme or meta.get('subtheme', '') or meta.get('dominant_theme', ''),
-                        "subtheme": meta.get('subtheme', ''),
-                        "dominant_theme": meta.get('dominant_theme', ''),
-                        "leader_score": cand.get('total_score', 0),
-                        "ret_60d": pb_result.ret_60d,
-                        "drawdown": pb_result.drawdown_from_high,
-                        "quality_score": pb_result.quality_score,
-                        "pullback_ma": pb_result.pullback_ma,
-                        "is_first_pullback": pb_result.is_first_pullback,
-                        "ref_price": round(ref_price, 2),
-                        "stop_loss": round(stop_loss, 2),
-                        "take_profit": round(take_profit, 2),
-                        "atr": round(atr_val, 2),
-                    })
+            if rp_result and rp_result.is_qualified:
+                meta = stock_meta.get(code, {})
+                pullback_qualified.append({
+                    "ts_code": code,
+                    "name": name,
+                    "theme": theme or meta.get('subtheme', '') or meta.get('dominant_theme', ''),
+                    "subtheme": meta.get('subtheme', ''),
+                    "dominant_theme": meta.get('dominant_theme', ''),
+                    "leader_score": cand.get('total_score', 0),
+                    # V7.0 新字段
+                    "total_score": rp_result.total_score,
+                    "rally_amplitude": rp_result.rally_amplitude,
+                    "rally_vol_expansion": rp_result.rally_vol_expansion,
+                    "rally_limit_up_count": rp_result.rally_limit_up_count,
+                    "rally_max_consecutive_lu": rp_result.rally_max_consecutive_limit_up,
+                    "rally_high_date": rp_result.rally_high_date,
+                    "drawdown": rp_result.drawdown_from_high,
+                    "pullback_days": rp_result.pullback_days,
+                    "is_low_open_positive": rp_result.is_low_open_positive,
+                    "candle_open_gap": rp_result.candle_open_gap,
+                    "candle_body_pct": rp_result.candle_body_pct,
+                    "subs": rp_result.subs,
+                    # 入场逻辑
+                    "ref_price": rp_result.ref_price,
+                    "stop_loss": rp_result.stop_loss,
+                    "take_profit": rp_result.take_profit,
+                    "atr": rp_result.atr,
+                })
 
         if pullback_qualified:
-            print(f"\n  ✅ 符合回踩条件: {len(pullback_qualified)}只")
+            pullback_qualified.sort(key=lambda x: x['total_score'], reverse=True)
+            print(f"\n  ✅ 符合区间放量多涨停回调条件: {len(pullback_qualified)}只")
             for pq in pullback_qualified:
+                amps = pq['rally_amplitude'] * 100
+                subs = pq.get('subs', {})
+                vol_s = subs.get('vol_expansion', 0)
+                lu_s = subs.get('limit_up', 0)
+                pb_s = subs.get('pullback', 0)
+                cdl_s = subs.get('candle', 0)
                 profit_pct = (pq['take_profit'] / pq['ref_price'] - 1) * 100
-                sub = pq.get('subtheme', '')
-                dom = pq.get('dominant_theme', '')
-                extra = ''
-                if sub:
-                    extra += f' 子主题={sub}'
-                if dom and dom != pq['theme']:
-                    extra += f' 叙事={dom}'
-                lines = f"    {pq['name']}({pq['ts_code']}) ←{pq['pullback_ma']} 入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f}({(pq['stop_loss']/pq['ref_price']-1)*100:.1f}%) 止盈+{profit_pct:.0f}%{extra}"
-                print(lines)
+                print(f"    {pq['name']}({pq['ts_code']}) "
+                      f"总分{pq['total_score']:.0f} "
+                      f"涨停×{pq['rally_limit_up_count']} 拉升+{amps:.0f}% "
+                      f"放量{pq['rally_vol_expansion']:.1f}倍 "
+                      f"回撤{pq['drawdown']*100:.1f}% "
+                      f"低开{pq['candle_open_gap']*100:.1f}%阳线{pq['candle_body_pct']*100:.1f}% "
+                      f"放{vol_s:.0f}涨{lu_s:.0f}回{pb_s:.0f}阳{cdl_s:.0f} "
+                      f"入场{pq['ref_price']:.2f} 止损{pq['stop_loss']:.2f} +{profit_pct:.0f}%")
         else:
-            print("\n  全市场扫描完成，无符合回踩条件的标的。")
+            print("\n  全市场扫描完成，无符合区间放量多涨停回调条件的标的。")
 
         # ── V6.1 Layer: Pattern → Smart Money → EV → Risk Budget ──
         # ════════════════════════════════════════════════════════════

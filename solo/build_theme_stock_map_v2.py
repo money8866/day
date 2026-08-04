@@ -1315,13 +1315,22 @@ def calc_subtheme_heat_matrix(themes_output, stocks_output, stock_mainbiz, new_c
 # ═══════════════════════════════════════════════════════════
 
 # 各阶段权重（用于合成 final_confidence）
+# V2 简化：Stage 4+5 合并为 similarity 通道（核心公司/全文 二元组 Jaccard），去掉伪 TF-IDF 层
+# correlation 通道仅当母主题 ETF 相关性数据可用时启用；
+# 无数据时用 _SUBTHEME_WEIGHTS_NO_CORR 将 correlation 权重重分配给 keyword/concept
 _SUBTHEME_STAGE_WEIGHTS = {
     'industry': 0.10,
     'concept': 0.15,
     'keyword': 0.25,
-    'core_company': 0.15,
-    'embedding': 0.20,
+    'similarity': 0.35,
     'correlation': 0.15,
+}
+_SUBTHEME_WEIGHTS_NO_CORR = {
+    'industry': 0.10,
+    'concept': 0.23,
+    'keyword': 0.32,
+    'similarity': 0.35,
+    'correlation': 0.0,
 }
 
 
@@ -1416,86 +1425,48 @@ def _calc_core_company_similarity(stock_name, sub_cfg):
     return best
 
 
-def _calc_embedding_similarity(stock_info, stock_mainbiz, sub_cfg):
-    """Stage 5: Embedding Similarity — 基于字符TF-IDF的向量相似度
-    
-    实现轻量级TF-IDF（不使用sklearn），比较股票文本与子主题关键词文本的余弦相似度。
-    """
-    from collections import Counter
-    import math
+def _calc_text_bigram_similarity(stock_info, stock_mainbiz, sub_cfg):
+    """Stage 5: Text Bigram Similarity — 股票全文与子主题文本的二元组 Jaccard 相似度
 
+    V2 简化：原实现为伪 TF-IDF 余弦（仅 2 篇文档的语料库，IDF 无区分度），
+    改为与 Stage 4 同族的字符二元组 Jaccard，二者可合并为同一个 similarity 通道。
+    """
     name = stock_info.get('name', '')
     concepts = stock_info.get('concepts', [])
     keywords = sub_cfg.get('keywords', [])
     sub_industry = sub_cfg.get('industry', [])
     sub_concepts = sub_cfg.get('concept', [])
 
-    # 构建股票文本向量（基于字符二元组）
+    # 股票文本（名称 + 主营 + 概念）
     stock_text = f"{name} {stock_mainbiz}".lower()
     stock_text += ' ' + ' '.join(concepts).lower()
-
-    # 构建子主题文本向量
+    # 子主题文本（关键词 + 行业 + 概念）
     sub_text = ' '.join(keywords).lower()
     sub_text += ' ' + ' '.join(sub_industry).lower()
     sub_text += ' ' + ' '.join(sub_concepts).lower()
 
-    # 提取字符二元组
-    def extract_bigrams(text):
-        return [text[i:i+2] for i in range(max(0, len(text)-1))]
+    def bigram_set(s):
+        return set(s[i:i + 2] for i in range(max(0, len(s) - 1)))
 
-    stock_bg = extract_bigrams(stock_text)
-    sub_bg = extract_bigrams(sub_text)
-
+    stock_bg = bigram_set(stock_text)
+    sub_bg = bigram_set(sub_text)
     if not stock_bg or not sub_bg:
         return 0.0
-
-    # TF-IDF 权重计算（简化版：用 idf = log(N/df+1)）
-    # 将两组 bigram 合并作为"语料库"
-    all_bg = list(set(stock_bg + sub_bg))
-    
-    # 计算 TF
-    stock_tf = Counter(stock_bg)
-    sub_tf = Counter(sub_bg)
-
-    # 计算 IDF（2篇文档的语料库）
-    n_docs = 2
-    stock_set = set(stock_bg)
-    sub_set = set(sub_bg)
-
-    def cosine_sim(tf_a, tf_b, all_vocab):
-        dot = 0.0
-        norm_a = 0.0
-        norm_b = 0.0
-        for bg in all_vocab:
-            idf = math.log((n_docs + 1) / (1 + (1 if bg in stock_set else 0) + (1 if bg in sub_set else 0))) + 1
-            va = tf_a.get(bg, 0) * idf
-            vb = tf_b.get(bg, 0) * idf
-            dot += va * vb
-            norm_a += va * va
-            norm_b += vb * vb
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
-
-    sim = cosine_sim(stock_tf, sub_tf, all_bg)
-    # 将余弦相似度从[-1,1]映射到[0,1]
-    return max(0.0, (sim + 1.0) / 2.0)
+    inter = len(stock_bg & sub_bg)
+    union = len(stock_bg | sub_bg)
+    return inter / union if union > 0 else 0.0
 
 
 def _calc_subtheme_correlation_score(stock_code, stock_kline_dict, sub_cfg, parent_theme_etf_corr=None):
-    """Stage 6: Correlation Score — 与子主题核心股的价格相关性
-    
-    若子主题核心公司≥3家且有K线数据，计算个股与核心股平均收益的相关系数。
-    否则回退到母主题ETF相关性。
+    """Stage 6: Correlation Score — 与母主题 ETF 的量价协同相关性
+
+    V2 简化：原实现未使用 stock_kline_dict 且无 ETF 数据时固定返回 0.5（常数噪音），
+    现改为仅在母主题 ETF 相关性数据可用时启用该通道（目前只有交叉股有 ETF 分析）；
+    无数据时返回 0.0，权重由 _SUBTHEME_WEIGHTS_NO_CORR 重分配给 keyword/concept。
     """
-    import numpy as np
-    core = sub_cfg.get('core_companies', [])
-    
-    # 如果有母主题ETF相关性，以此作为基准
-    if parent_theme_etf_corr is not None:
-        return max(0.0, min(1.0, (parent_theme_etf_corr + 1.0) / 2.0))
-    
-    return 0.5  # 无数据时的中性值
+    if parent_theme_etf_corr is None:
+        return 0.0
+    return max(0.0, min(1.0, (parent_theme_etf_corr + 1.0) / 2.0))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1553,106 +1524,6 @@ def _build_subtheme_heat_lookup(subtheme_heat):
  # 汽车热管理 heat=0.334 → sigmoid放大后 ~0.44 → 加成 0.44×0.20=8.8%
  # 差值 ~5%，足以翻转 1.5分的原始差距
 HEAT_BOOST_RATE = 0.20
-
-
-def _compute_subtheme_pipeline_for_stock(stock_info, stock_mainbiz, sub_cfgs, 
-                                          parent_theme_etf_corr=None, stock_kline_dict=None):
-    """
-    对一只股票运行六阶段流水线，返回结构化 Sub-theme Assignment。
-    
-    输出:
-    {
-        'subtheme': 'PCB高速互连',
-        'subtheme_confidence': 0.91,
-        'candidate_subthemes': [
-            {'name': 'PCB高速互连', 'score': 91},
-            {'name': 'AI服务器', 'score': 76},
-            ...
-        ],
-        'subtheme_features': {
-            'industry_score': 1.0,
-            'concept_score': 0.67,
-            'keyword_score': 0.85,
-            'core_company_score': 0.0,
-            'embedding_score': 0.72,
-            'correlation_score': 0.65,
-        }
-    }
-    """
-    code = stock_info.get('code', '')
-    name = stock_info.get('name', '')
-    industry = stock_info.get('industry', '')
-    concepts = stock_info.get('concepts', [])
-
-    candidates = []
-    for sub_name, sub_cfg in sub_cfgs.items():
-        # Stage 1: Industry
-        ind_score = _calc_industry_score(industry, sub_cfg)
-
-        # Stage 2: Concept
-        conc_score = _calc_concept_score(concepts, sub_cfg)
-
-        # Stage 3: Keyword（否决机制）
-        kw_score = _calc_keyword_score(stock_info, stock_mainbiz, sub_cfg)
-        if kw_score < 0:  # 被排除关键词否决
-            continue
-
-        # Stage 4: Core Company
-        core_score = _calc_core_company_similarity(name, sub_cfg)
-
-        # Stage 5: Embedding
-        emb_score = _calc_embedding_similarity(stock_info, stock_mainbiz, sub_cfg)
-
-        # Stage 6: Correlation
-        corr_score = _calc_subtheme_correlation_score(
-            code, stock_kline_dict, sub_cfg, parent_theme_etf_corr
-        )
-
-        # 加权综合得分
-        weights = _SUBTHEME_STAGE_WEIGHTS
-        composite = (
-            ind_score * weights['industry'] +
-            conc_score * weights['concept'] +
-            kw_score * weights['keyword'] +
-            core_score * weights['core_company'] +
-            emb_score * weights['embedding'] +
-            corr_score * weights['correlation']
-        )
-
-        candidates.append({
-            'name': sub_name,
-            'score': round(composite * 100, 1),
-            'features': {
-                'industry_score': round(ind_score, 3),
-                'concept_score': round(conc_score, 3),
-                'keyword_score': round(kw_score, 3),
-                'core_company_score': round(core_score, 3),
-                'embedding_score': round(emb_score, 3),
-                'correlation_score': round(corr_score, 3),
-            }
-        })
-
-    if not candidates:
-        return None
-
-    # 按得分排序
-    candidates.sort(key=lambda x: -x['score'])
-    best = candidates[0]
-
-    # 置信度 = 最佳得分 / 理论满分 - 第二名差距惩罚
-    best_score = best['score'] / 100.0
-    if len(candidates) > 1:
-        margin = (best['score'] - candidates[1]['score']) / 100.0
-    else:
-        margin = best_score
-    confidence = max(0.0, min(1.0, best_score * 0.7 + margin * 0.3))
-
-    return {
-        'subtheme': best['name'],
-        'subtheme_confidence': round(confidence, 3),
-        'candidate_subthemes': [{'name': c['name'], 'score': c['score']} for c in candidates[:3]],
-        'subtheme_features': best['features'],
-    }
 
 
 def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz, new_cfg,
@@ -1725,22 +1596,26 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                 if kw_score < 0:  # 被排除关键词否决
                     continue
                 core_score = _calc_core_company_similarity(stock_name, sub_cfg)
-                emb_score = _calc_embedding_similarity(stock_info, mainbiz, sub_cfg)
+                text_sim_score = _calc_text_bigram_similarity(stock_info, mainbiz, sub_cfg)
                 corr_score = _calc_subtheme_correlation_score(
                     code, None, sub_cfg, parent_etf_corr
                 )
 
-                weights = _SUBTHEME_STAGE_WEIGHTS
+                # ── 动态权重：仅当母主题 ETF 相关性可用时启用 correlation 通道 ──
+                # 无数据时（大多数个股）用 NO_CORR 表，权重重分配给 keyword/concept，权重和保持 1.0
+                weights = (_SUBTHEME_STAGE_WEIGHTS if parent_etf_corr is not None
+                           else _SUBTHEME_WEIGHTS_NO_CORR)
                 # ── 概念门控：如果概念零匹配且行业仅过宽带词命中，直接跳过 ──
                 # 但核心公司（核心公司精确匹配）绕过概念门控，确保子公司归位母主题
                 if conc_score == 0 and ind_score < 1.0 and core_score < 0.5:
                     continue
+                # 合并 Stage 4+5：核心公司/全文 二元组相似度取高，作为单一 similarity 通道
+                sim_score = max(core_score, text_sim_score)
                 composite = (
                     ind_score * weights['industry'] +
                     conc_score * weights['concept'] +
                     kw_score * weights['keyword'] +
-                    core_score * weights['core_company'] +
-                    emb_score * weights['embedding'] +
+                    sim_score * weights['similarity'] +
                     corr_score * weights['correlation']
                 )
                 # 子主题匹配优先级加成（来自 subtheme_map.json 的 match_priority）
@@ -1767,7 +1642,7 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                         'concept_score': round(conc_score, 3),
                         'keyword_score': round(kw_score, 3),
                         'core_company_score': round(core_score, 3),
-                        'embedding_score': round(emb_score, 3),
+                        'embedding_score': round(text_sim_score, 3),
                         'correlation_score': round(corr_score, 3),
                         'heat_boost': round(heat_boost - 1.0, 4) if subtheme_heat_lookup else 0,
                     }
@@ -1794,15 +1669,17 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                 if kw_score < 0:
                     continue
                 core_score = _calc_core_company_similarity(stock_name, x_sub_cfg)
-                emb_score = _calc_embedding_similarity(stock_info, mainbiz, x_sub_cfg)
+                text_sim_score = _calc_text_bigram_similarity(stock_info, mainbiz, x_sub_cfg)
 
-                weights = _SUBTHEME_STAGE_WEIGHTS
+                # 跨主题增强无 ETF 相关性通道，固定用 NO_CORR 权重表（权重和=1.0，
+                # 原实现权重和仅 0.85 未归一，导致跨主题候选分数系统性偏低）
+                weights = _SUBTHEME_WEIGHTS_NO_CORR
+                sim_score = max(core_score, text_sim_score)
                 composite = (
                     ind_score * weights['industry'] +
                     conc_score * weights['concept'] +
                     kw_score * weights['keyword'] +
-                    core_score * weights['core_company'] +
-                    emb_score * weights['embedding']
+                    sim_score * weights['similarity']
                 )
                 # 子主题匹配优先级加成（来自 subtheme_map.json 的 match_priority）
                 _sub_prio = x_sub_cfg.get('match_priority', 1.0)
@@ -1826,7 +1703,7 @@ def run_subtheme_dynamic_correlation(themes_output, stocks_output, stock_mainbiz
                         'concept_score': round(conc_score, 3),
                         'keyword_score': round(kw_score, 3),
                         'core_company_score': round(core_score, 3),
-                        'embedding_score': round(emb_score, 3),
+                        'embedding_score': round(text_sim_score, 3),
                         'correlation_score': 0,
                         'heat_boost': round(heat_boost - 1.0, 4) if subtheme_heat_lookup else 0,
                     }

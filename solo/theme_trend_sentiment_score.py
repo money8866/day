@@ -1652,7 +1652,7 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
 
 THEME_STOCK_MAP_CACHE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "cache_daily", "theme_stock_map_latest.json"
+    "cache_daily", "theme_stock_map_latest_v1.json"
 )
 
 

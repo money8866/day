@@ -111,7 +111,7 @@ def build_summary(report_dict: Dict) -> str:
         # 大盘环境
         regime = overview.get('regime', '')
         market_score = overview.get('market_score', 50)
-        lines.append("## 符合回踩条件的标的")
+        lines.append("## 区间放量多涨停回调信号")
         lines.append("")
         lines.append(f"> **大盘环境**: {'主跌期' if regime in ('Bear',) or market_score < 32 else '震荡回暖期' if regime in ('Recovery', 'Neutral') else '主升期'}（{regime} {market_score:.0f}分）")
         lines.append("")
@@ -119,16 +119,22 @@ def build_summary(report_dict: Dict) -> str:
             name = item.get("name", "")
             code = item.get("ts_code", "")
             theme = item.get("theme", "")
-            score = item.get("leader_score", 0)
-            ret_60d = item.get("ret_60d", 0)
+            total_score = item.get("total_score", 0)
+            rally_amplitude = item.get("rally_amplitude", 0)
+            rally_vol_exp = item.get("rally_vol_expansion", 0)
+            rally_lu_count = item.get("rally_limit_up_count", 0)
+            rally_max_lu = item.get("rally_max_consecutive_lu", 0)
+            rally_high_date = item.get("rally_high_date", "")
             drawdown = item.get("drawdown", 0)
-            quality = item.get("quality_score", 0)
-            pullback_ma = item.get("pullback_ma", "")
+            pullback_days = item.get("pullback_days", 0)
+            is_low_open = item.get("is_low_open_positive", False)
+            candle_open_gap = item.get("candle_open_gap", 0)
+            candle_body = item.get("candle_body_pct", 0)
+            subs = item.get("subs", {})
             ref_price = item.get("ref_price", 0)
             stop_loss = item.get("stop_loss", 0)
             take_profit = item.get("take_profit", 0)
             atr_val = item.get("atr", 0)
-            is_first = item.get("is_first_pullback", False)
 
             lines.append(f"**{i+1}. {name}（{code}）** 主题：{theme}")
             sub = item.get("subtheme", "")
@@ -140,18 +146,28 @@ def build_summary(report_dict: Dict) -> str:
                 extra_parts.append(f"叙事修正: {dom}")
             if extra_parts:
                 lines.append(f"  {' | '.join(extra_parts)}")
-            lines.append(f"  龙头评分: {score:.0f}分 | 60日涨幅: {ret_60d*100:.0f}% | "
-                         f"回撤: {drawdown*100:.1f}%")
-            lines.append(f"  回踩: {pullback_ma} | 首次回调: {'是' if is_first else '否'} | "
-                         f"质量分: {quality:.2f}")
+            lines.append(f"  总分: **{total_score:.0f}/100** | "
+                         f"拉升+{rally_amplitude*100:.0f}% | "
+                         f"涨停×{rally_lu_count}(连板{rally_max_lu}) | "
+                         f"放量{rally_vol_exp:.1f}倍")
+            lines.append(f"  回撤: {drawdown*100:.1f}% | "
+                         f"回调{pullback_days}天 | "
+                         f"高点: {rally_high_date}")
+            lines.append(f"  {'✅' if is_low_open else '❌'}低开阳线: "
+                         f"低开{candle_open_gap*100:.1f}% → 阳线实体{candle_body*100:.1f}%")
+            lines.append(f"  分项: 放量{subs.get('vol_expansion',0):.0f} "
+                         f"涨停{subs.get('limit_up',0):.0f} "
+                         f"回调{subs.get('pullback',0):.0f} "
+                         f"阳线{subs.get('candle',0):.0f} "
+                         f"量能{subs.get('volume_confirm',0):.0f}")
             # 买卖提示
             stock_type = item.get("stock_type", "")
             suggestion = item.get("suggestion", "")
             if stock_type and suggestion:
                 lines.append(f"  类型: {stock_type} | 提示: {suggestion}")
             lines.append(f"  ── 入场逻辑 ──")
-            lines.append(f"  低吸参考价: **{ref_price:.2f}**（{pullback_ma}附近）")
-            lines.append(f"  防守止损: **{stop_loss:.2f}**（{stop_loss/ref_price-1:.1%}）")
+            lines.append(f"  低吸参考价: **{ref_price:.2f}**")
+            lines.append(f"  防守止损: **{stop_loss:.2f}**（{stop_loss/ref_price-1:+.1%}）")
             if take_profit > ref_price:
                 lines.append(f"  目标止盈: **{take_profit:.2f}**（+{take_profit/ref_price-1:.1%}）")
             lines.append(f"  ATR: {atr_val:.2f}")

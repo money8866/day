@@ -2959,75 +2959,61 @@ class RealtimeThemeMonitor:
 
                         self.last_w2s_scan_time = time.time()
 
-                # ── 14:50后每2分钟扫描「猎尾」尾盘突袭 ──
+                # ── 14:50后每2分钟扫描「猎尾V3」尾盘突袭 ──
                 if now.hour == 14 and now.minute >= 50:
                     if time.time() - self.last_tail_entry_scan_time >= 120:
-                        tail_signals = self.scan_tail_end_entry()
+                        tail_signals = self.scan_tail_end_entry_v3()
                         # 写入跟踪表(用于未来交易日盘后回填和胜率分析)
-                        self._save_tail_signals_to_tracker(tail_signals)
+                        self._save_tail_signals_to_tracker_v3(tail_signals)
                         if tail_signals:
                             # 控制台输出
                             print(f"\n{'='*110}")
-                            print(f"🎯 「猎尾」尾盘突袭 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'攻击':>4} {'结构':>4} {'位置':>4} {'共振':>4} {'技术':>4} {'诱多':>4} {'信号':<6} {'涨幅':>6} {'关键特征'}")
+                            print(f"🎯 「猎尾V3」尾盘突袭 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'主题':>4} {'资金':>4} {'角色':>4} {'技术':>4} {'尾盘':>4} {'风险':>4} {'信号':<6} {'角色':<6} {'涨幅':>6} {'关键特征'}")
                             print(f"{'-'*110}")
                             for i, s in enumerate(tail_signals[:10], 1):
-                                emoji = {'强买入': '✅', '买入': '🟢', '关注': '👀'}.get(s['signal'], '')
+                                emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
                                 d = s.get('detail', {})
+                                role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(s.get('role', ''), s.get('role', ''))
                                 feats = []
                                 if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
-                                if d.get('tail_vol_ratio') and d['tail_vol_ratio'] > 0.05: feats.append(f"尾量{d['tail_vol_ratio']:.2f}")
-                                if d.get('amplitude') and d['amplitude'] < 5: feats.append(f"振幅{d['amplitude']}%")
-                                if d.get('vol_ratio_5d') and d['vol_ratio_5d'] < 0.85: feats.append(f"缩量{d['vol_ratio_5d']:.2f}")
-                                if d.get('close_ratio') and d['close_ratio'] > 0.95: feats.append('光头阳')
+                                if d.get('tail_vol_ratio') and d['tail_vol_ratio'] > 0.20: feats.append(f"尾量{d['tail_vol_ratio']:.2f}")
+                                if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
                                 if d.get('layer') == 'leader': feats.append('龙头')
-                                # 技术因子标记
-                                if d.get('macd') == '零上多头': feats.append('MACD零上')
-                                elif d.get('macd') == '多头': feats.append('MACD多头')
-                                if d.get('kdj') == '金叉': feats.append('KDJ金叉')
-                                if d.get('rsi_6'): feats.append(f"RSI{d['rsi_6']:.0f}")
-                                # 诱多红旗标记
+                                if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
+                                # 风险标记
                                 trap_flags = []
                                 if d.get('trap_weak_day'): trap_flags.append('⚠全天弱')
                                 if d.get('trap_long_lower'): trap_flags.append('⚠长下影')
-                                if d.get('trap_high_stall'): trap_flags.append('⚠高位滞涨')
-                                if d.get('trap_isolated'): trap_flags.append('⚠孤立')
-                                if d.get('trap_upper_shadow'): trap_flags.append('⚠上影')
+                                if d.get('risk_high'): trap_flags.append('⚠高位')
+                                if d.get('risk_isolated'): trap_flags.append('⚠孤立')
                                 feats.extend(trap_flags)
                                 feat_str = ' '.join(feats[:6]) if feats else '-'
-                                trap_str = f"-{s.get('trap_penalty', 0)}" if s.get('trap_penalty', 0) > 0 else '0'
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['attack_score']:>4} {s['structure_score']:>4} {s['position_score']:>4} {s['theme_score']:>4} {s.get('tech_score', 0):>4} {trap_str:>4} {emoji:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['theme_score']:>4} {s['capital_score']:>4} {s['role_score']:>4} {s['technical_score']:>4} {s['timing_score']:>4} {s['risk_penalty']:>4} {emoji:<6} {role_cn:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
                             print(f"{'='*110}\n")
 
-                            # 推送强买入+买入信号到微信
-                            buy_signals = [s for s in tail_signals if s['signal'] in ('强买入', '买入')]
+                            # 推送75分及以上信号到微信
+                            buy_signals = [s for s in tail_signals if s.get('total_score', 0) >= 75]
                             if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
                                 lines = []
                                 for s in buy_signals[:5]:
                                     d = s.get('detail', {})
+                                    role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(s.get('role', ''), s.get('role', ''))
+                                    buy_cn = {'LEADER_BREAKOUT': '龙头突破', 'CORE_PULLBACK': '中军回踩', 'ROTATION_ENTRY': '轮动入场', 'TAIL_TIMING': '尾盘择时'}.get(s.get('buy_type', ''), s.get('buy_type', ''))
                                     feats = []
                                     if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
-                                    if d.get('vol_ratio_5d') and d['vol_ratio_5d'] < 0.85: feats.append(f"缩量")
-                                    layer_tag = {'leader': '龙头', 'middle': '中军'}.get(d.get('layer', ''), '')
-                                    feats.append(layer_tag) if layer_tag else None
-                                    # 技术因子标记
-                                    tech_tags = []
-                                    if d.get('macd') == '零上多头': tech_tags.append('MACD零上')
-                                    elif d.get('macd') == '多头': tech_tags.append('MACD多头')
-                                    if d.get('kdj') == '金叉': tech_tags.append('KDJ金叉')
-                                    if tech_tags:
-                                        feats.append(' '.join(tech_tags))
-                                    # 诱多警示
+                                    if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
+                                    if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
+                                    # 风险警示
                                     trap_warns = []
                                     if d.get('trap_weak_day'): trap_warns.append('⚠全天弱尾拉')
                                     if d.get('trap_long_lower'): trap_warns.append('⚠长下影')
-                                    if d.get('trap_high_stall'): trap_warns.append('⚠高位滞涨')
                                     if trap_warns:
                                         feats.append(' '.join(trap_warns))
                                     feat_str = ' '.join(feats) if feats else ''
-                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
-                                content = f"🎯 「猎尾」尾盘买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                                self.send_wechat(f"🎯 猎尾买入 {now.strftime('%H:%M')}", content)
+                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} [{role_cn}|{buy_cn}] {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
+                                content = f"🎯 「猎尾V3」尾盘买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                                self.send_wechat(f"🎯 猎尾V3买入 {now.strftime('%H:%M')}", content)
 
                         self.last_tail_entry_scan_time = time.time()
 
@@ -4299,6 +4285,127 @@ class RealtimeThemeMonitor:
         except Exception as e:
             print(f"⚠ 尾盘信号写入跟踪表失败: {e}")
 
+    def _save_tail_signals_to_tracker_v3(self, signals):
+        """
+        「猎尾V3」尾盘信号写入跟踪表(与V2同库,独立表 tail_signal_tracker_v3)
+
+        V3入表筛选条件:
+        1. 信号级别 >= 买入观察 (total_score >= 75)
+        2. 排除北交所 (9xxxxx/4xxxxx)
+        3. 每主题最多TOP3 (按总分降序)
+        """
+        if not signals:
+            return
+        try:
+            import sqlite3 as _sqlite3
+            import json as _json
+            now = datetime.now()
+            signal_date = self._get_last_trade_date()
+            signal_time = now.strftime('%H:%M:%S')
+
+            conn = _sqlite3.connect(self.tail_tracker_db, timeout=10.0)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS tail_signal_tracker_v3 (
+                    signal_date   TEXT NOT NULL,
+                    signal_time   TEXT,
+                    ts_code       TEXT NOT NULL,
+                    name          TEXT,
+                    theme         TEXT,
+                    signal        TEXT,
+                    total_score   INTEGER,
+                    theme_score   INTEGER,
+                    capital_score INTEGER,
+                    role_score    INTEGER,
+                    technical_score INTEGER,
+                    timing_score  INTEGER,
+                    room_score    INTEGER,
+                    risk_penalty  INTEGER,
+                    role          TEXT,
+                    buy_type      TEXT,
+                    confidence    INTEGER,
+                    next_day_expectation TEXT,
+                    pct_chg       REAL,
+                    price         REAL,
+                    detail_json   TEXT,
+                    next_open     REAL,
+                    next_close    REAL,
+                    next_pct_chg  REAL,
+                    next_high     REAL,
+                    next_low      REAL,
+                    next_5d_pct   REAL,
+                    next_10d_pct  REAL,
+                    max_gain      REAL,
+                    max_drawdown  REAL,
+                    exit_date     TEXT,
+                    exit_price    REAL,
+                    exit_reason   TEXT,
+                    pnl           REAL,
+                    status        TEXT DEFAULT 'pending',
+                    note          TEXT,
+                    updated_at    TEXT,
+                    PRIMARY KEY (signal_date, ts_code)
+                )
+            ''')
+            # ── 筛选: >=75 + 排除北交所 ──
+            candidates = []
+            for s in signals:
+                if s.get('total_score', 0) < 75:
+                    continue
+                code = s.get('ts_code', '')
+                if code.startswith(('9', '4')):
+                    continue
+                candidates.append(s)
+
+            # ── 每主题TOP3 ──
+            theme_groups = {}
+            for s in candidates:
+                theme = s.get('theme', '其他')
+                theme_groups.setdefault(theme, []).append(s)
+            final_signals = []
+            for theme, stocks in theme_groups.items():
+                stocks_sorted = sorted(stocks, key=lambda x: -x.get('total_score', 0))
+                final_signals.extend(stocks_sorted[:3])
+
+            if not final_signals:
+                print(f"[跟踪V3] 无信号满足筛选条件(>=75+排北交所+每主题TOP3)")
+                conn.close()
+                return
+
+            for s in final_signals:
+                conn.execute('''
+                    INSERT OR REPLACE INTO tail_signal_tracker_v3 (
+                        signal_date, signal_time, ts_code, name, theme, signal,
+                        total_score, theme_score, capital_score, role_score,
+                        technical_score, timing_score, room_score, risk_penalty,
+                        role, buy_type, confidence, next_day_expectation,
+                        pct_chg, price, detail_json,
+                        next_open, next_close, next_pct_chg, next_high, next_low,
+                        next_5d_pct, next_10d_pct, max_gain, max_drawdown,
+                        exit_date, exit_price, exit_reason, pnl, status, note, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?,
+                        NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL, 'pending', NULL, ?
+                    )
+                ''', (
+                    signal_date, signal_time, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
+                    s['total_score'], s.get('theme_score', 0), s.get('capital_score', 0), s.get('role_score', 0),
+                    s.get('technical_score', 0), s.get('timing_score', 0), s.get('room_score', 0), s.get('risk_penalty', 0),
+                    s.get('role', ''), s.get('buy_type', ''), s.get('confidence', 0), s.get('next_day_expectation', ''),
+                    s.get('pct_chg', 0), s.get('price', 0), _json.dumps(s.get('detail', {}), ensure_ascii=False),
+                    signal_time,
+                ))
+            conn.commit()
+            conn.close()
+            print(f"[跟踪V3] 已写入{len(final_signals)}只信号到跟踪表V3 (>=75+排北交所+每主题TOP3, signal_date={signal_date})")
+        except Exception as e:
+            print(f"⚠ V3尾盘信号写入跟踪表失败: {e}")
+
     def scan_tail_end_entry(self):
         """
         「猎尾」2:50尾盘突袭战法 — 次日套利最高胜率
@@ -4317,7 +4424,7 @@ class RealtimeThemeMonitor:
         - 诱多扣分   (≤30分): 四大诱多红旗
 
         硬过滤: 涨停/跌停/振幅>8%/跌>2.5%/不在主题/连板≥2/距MA20>25%
-        信号: ≥85强买入  ≥65买入  ≥50关注
+        信号: ≥75强买入  ≥65买入  ≥50关注
 
         返回: 信号列表,按总分降序
         """
@@ -4350,7 +4457,7 @@ class RealtimeThemeMonitor:
         if not self.tail_entry_debug_printed:
             debug_stats = {
                 'total_in_theme': 0, 'no_quote': 0,
-                'hardfilter_fail': {}, 'score_dist': {'<50': 0, '50-64': 0, '65-84': 0, '>=85': 0},
+                'hardfilter_fail': {}, 'score_dist': {'<50': 0, '50-64': 0, '65-74': 0, '>=75': 0},
                 'max_scores': []
             }
 
@@ -4414,16 +4521,16 @@ class RealtimeThemeMonitor:
                     debug_stats['score_dist']['<50'] += 1
                 elif total_score < 65:
                     debug_stats['score_dist']['50-64'] += 1
-                elif total_score < 85:
-                    debug_stats['score_dist']['65-84'] += 1
+                elif total_score < 75:
+                    debug_stats['score_dist']['65-74'] += 1
                 else:
-                    debug_stats['score_dist']['>=85'] += 1
+                    debug_stats['score_dist']['>=75'] += 1
 
             if total_score < 50:
                 continue
 
             # 信号分级
-            if total_score >= 85:
+            if total_score >= 75:
                 signal = '强买入'
             elif total_score >= 65:
                 signal = '买入'
@@ -4481,6 +4588,247 @@ class RealtimeThemeMonitor:
                 print(f"  最高分: {max(debug_stats['max_scores'])}  平均分: {sum(debug_stats['max_scores'])/len(debug_stats['max_scores']):.1f}")
             print(f"  分时快照: {len(self.intraday_snapshots)}只")
             print(f"  换手率缓存: {len(self.turnover_cache)}只")
+            print(f"{'='*70}\n")
+
+        signals.sort(key=lambda x: x['total_score'], reverse=True)
+        return signals
+
+    # ═══════════════════════════════════════════════════════
+    # V3 猎尾扫描: 主线资金驱动型多层决策系统
+    # ═══════════════════════════════════════════════════════
+    def scan_tail_end_entry_v3(self):
+        """
+        「猎尾V3」2:50尾盘突袭战法 — 多层交易决策系统
+
+        评分模型:
+        Final = Theme(30) + Capital(25) + Role(20) + Technical(15) + Timing(10)
+                + TomorrowRoom(±5) - Risk(20)
+
+        信号: ≥85强买入  ≥75买入观察  ≥65关注
+        返回: 信号列表,按总分降序
+        """
+        from tail_strategy import TailStrategy
+        from theme_engine_v3 import theme_score_v3
+        from capital_engine_v3 import capital_score_v3
+        from role_engine_v3 import calc_stock_role_score_from_layer
+
+        v3 = TailStrategy()
+        now = datetime.now()
+        signals = []
+
+        # ── 全局数据预计算 ──
+        # 1. 主题排名
+        theme_rank_map = {}
+        theme_scores = []
+        for tname, scores in self.theme_score_history.items():
+            if scores:
+                theme_scores.append((tname, scores[-1]))
+        theme_scores.sort(key=lambda x: -x[1])
+        for rank, (tname, _) in enumerate(theme_scores, 1):
+            theme_rank_map[tname] = rank
+
+        # 2. 上证指数涨幅
+        index_pct = None
+        index_q = self.quotes.get('000001.SH')
+        if index_q:
+            index_pct = index_q.get('pct_chg', None)
+
+        # 3. V2 实时主题动量: 预计算所有主题
+        theme_momentum_cache = {}
+        for theme_name in self.theme_stocks:
+            theme_momentum_cache[theme_name] = self._calc_theme_momentum(theme_name)
+
+        # 4. 计算每个主题的涨停数量 + 龙头强度(主题内最高涨幅, 无论配置层)
+        theme_zt_counts = {}
+        theme_leader_ret = {}
+        for theme_name, stocks in self.theme_stocks.items():
+            zt = 0
+            mx = 0
+            for ts_code, _, _ in stocks:
+                q = self.quotes.get(ts_code)
+                if q and q.get('price', 0) > 0:
+                    pct = q.get('pct_chg', 0)
+                    limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+                    if pct >= limit:
+                        zt += 1
+                    if pct > mx:
+                        mx = pct
+            theme_zt_counts[theme_name] = zt
+            theme_leader_ret[theme_name] = mx
+
+        # 首次扫描诊断
+        if not self.tail_entry_debug_printed:
+            debug_stats = {
+                'total_in_theme': 0, 'no_quote': 0,
+                'hardfilter_fail': {}, 'score_dist': {'<65': 0, '65-74': 0, '75-84': 0, '>=85': 0},
+                'max_scores': [], 'v3': True
+            }
+
+        # 遍历所有在主题中的股票
+        for ts_code, themes in self.stock_themes.items():
+            if not themes:
+                continue
+
+            if not self.tail_entry_debug_printed:
+                debug_stats['total_in_theme'] += 1
+
+            q = self.quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                if not self.tail_entry_debug_printed:
+                    debug_stats['no_quote'] += 1
+                continue
+
+            # 获取主题数据
+            theme_name = themes[0]
+            kl = self.stock_klines.get(ts_code)
+            turnover = self.turnover_cache.get(ts_code, 0)
+            total_mv = self.stock_mv.get(ts_code, 0) if hasattr(self, 'stock_mv') and self.stock_mv else 0
+
+            # 主题强度
+            theme_strength = 0
+            if theme_name in self.theme_score_history and self.theme_score_history[theme_name]:
+                theme_strength = self.theme_score_history[theme_name][-1]
+            # 从momentum cache获取主题数据 (leader_return用主题内实际最高涨幅)
+            up_ratio, avg_return, _, _, _ = theme_momentum_cache.get(theme_name, (0, 0, 0, 0, None))
+            leader_return = theme_leader_ret.get(theme_name, 0)
+            theme_limit_count = theme_zt_counts.get(theme_name, 0)
+            theme_avg_pct = avg_return
+
+            # 获取layer
+            layer = 'follower'
+            for code, name, ly in self.theme_stocks.get(theme_name, []):
+                if code == ts_code:
+                    layer = ly
+                    break
+
+            # 获取股票名称
+            stock_name = ''
+            for code, n, _ in self.theme_stocks.get(theme_name, []):
+                if code == ts_code:
+                    stock_name = n
+                    break
+
+            # 角色识别
+            role, role_score, role_detail = calc_stock_role_score_from_layer(
+                layer, ts_code, theme_name, self.theme_stocks, self.quotes,
+                kline_cache=self.stock_klines
+            )
+
+            # 硬过滤(V3)
+            is_leader = (role == 'leader')
+            passed, reason = v3.hard_filter_v3(
+                ts_code, q, kl, turnover, total_mv, theme_strength,
+                is_theme_leader=is_leader
+            )
+            if not passed:
+                if not self.tail_entry_debug_printed:
+                    debug_stats['hardfilter_fail'][reason] = debug_stats['hardfilter_fail'].get(reason, 0) + 1
+                continue
+
+            # ── V3 多维评分 ──
+            # 1. 主题资金层 (30分)
+            thm_s, thm_d = theme_score_v3(
+                theme_limit_count=theme_limit_count,
+                theme_up_ratio=up_ratio,
+                leader_change=leader_return,
+                theme_avg_change=theme_avg_pct,
+                theme_strength=theme_strength,
+            )
+
+            # 2. 个股资金行为 (25分)
+            cap_s, cap_d = capital_score_v3(ts_code, q, kl, turnover, snap=self.intraday_snapshots.get(ts_code, {}))
+
+            # 3. 技术结构 (15分)
+            tech_s, tech_d = v3.technical_structure_v3(q, kl)
+
+            # 4. 尾盘交易 (10分)
+            tail_s, tail_d = v3.tail_timing_v3(q, self.intraday_snapshots.get(ts_code, {}))
+
+            # 5. 次日收益空间 (±5)
+            room_s, room_d = v3.tomorrow_room_score(q, kl)
+
+            # 6. 风险扣分 (max -20)
+            risk_p, risk_d = v3.risk_penalty_v3(
+                q, kl, turnover, up_ratio, theme_limit_count,
+                is_theme_leader=is_leader,
+                snap=self.intraday_snapshots.get(ts_code, {})
+            )
+
+            total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+
+            if not self.tail_entry_debug_printed:
+                debug_stats['max_scores'].append(total)
+                if total < 65:
+                    debug_stats['score_dist']['<65'] += 1
+                elif total < 75:
+                    debug_stats['score_dist']['65-74'] += 1
+                elif total < 85:
+                    debug_stats['score_dist']['75-84'] += 1
+                else:
+                    debug_stats['score_dist']['>=85'] += 1
+
+            if total < 65:
+                continue
+
+            # 信号分级
+            if total >= 85:
+                signal = '强买入'
+            elif total >= 75:
+                signal = '买入观察'
+            else:
+                signal = '关注'
+
+            # 买入类型
+            pullback_quality = tech_d.get('pullback_v3', 0)
+            buy_type, confidence = v3.classify_buy_type_v3(
+                role, thm_s, up_ratio, theme_limit_count, tech_s, pullback_quality
+            )
+
+            # 次日预期
+            next_day = v3._estimate_next_day(room_s, role, thm_s, cap_s)
+
+            signal_data = {
+                'ts_code': ts_code,
+                'name': stock_name,
+                'theme': theme_name,
+                'total_score': total,
+                'theme_score': thm_s,
+                'capital_score': cap_s,
+                'role_score': role_score,
+                'technical_score': tech_s,
+                'timing_score': tail_s,
+                'room_score': room_s,
+                'risk_penalty': risk_p,
+                'signal': signal,
+                'role': role,
+                'buy_type': buy_type,
+                'confidence': confidence,
+                'next_day_expectation': next_day,
+                'pct_chg': q.get('pct_chg', 0),
+                'price': q.get('price', 0),
+                'detail': {
+                    **thm_d, **cap_d, **role_detail, **tech_d, **tail_d, **room_d, **risk_d,
+                    'layer': layer, 'v3_filter_reason': reason,
+                },
+            }
+            signal_data['explain'] = v3.explain_score_v3(signal_data)
+            signals.append(signal_data)
+
+        # 首次扫描输出诊断
+        if not self.tail_entry_debug_printed:
+            self.tail_entry_debug_printed = True
+            passed_count = debug_stats['total_in_theme'] - debug_stats['no_quote'] - sum(debug_stats['hardfilter_fail'].values())
+            print(f"\n{'='*70}")
+            print(f"🔍 「猎尾V3」尾盘突袭首次扫描诊断 [{now.strftime('%H:%M:%S')}]")
+            print(f"  主题内股票总数: {debug_stats['total_in_theme']}")
+            print(f"  无行情: {debug_stats['no_quote']}")
+            print(f"  硬过滤拦截:")
+            for r, cnt in sorted(debug_stats['hardfilter_fail'].items(), key=lambda x: -x[1]):
+                print(f"    {r}: {cnt}只")
+            print(f"  通过硬过滤: {passed_count}只")
+            print(f"  分数分布: {debug_stats['score_dist']}")
+            if debug_stats['max_scores']:
+                print(f"  最高分: {max(debug_stats['max_scores'])}  平均分: {sum(debug_stats['max_scores'])/len(debug_stats['max_scores']):.1f}")
             print(f"{'='*70}\n")
 
         signals.sort(key=lambda x: x['total_score'], reverse=True)

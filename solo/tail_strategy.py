@@ -22,13 +22,16 @@
     总分≥88 + 无诱多 + 技术分≥12 + 排北交所 + 每主题TOP2
 """
 import math
+from theme_engine_v3 import theme_score_v3
+from role_engine_v3 import detect_stock_role, calc_stock_role_score_from_layer
+from capital_engine_v3 import capital_score_v3
 
 
 class TailStrategy:
     """尾盘突袭战法评分引擎(纯函数,无外部依赖)"""
 
     # 信号阈值
-    STRONG_BUY_THRESHOLD = 85
+    STRONG_BUY_THRESHOLD = 75
     BUY_THRESHOLD = 65
     WATCH_THRESHOLD = 50
 
@@ -858,5 +861,624 @@ class TailStrategy:
         for theme, stocks in theme_groups.items():
             stocks_sorted = sorted(stocks, key=lambda x: -x.get('total_score', 0))
             final.extend(stocks_sorted[:self.TRACK_TOP_N_PER_THEME])
+
+        return final
+
+    # ═══════════════════════════════════════════════════════
+    # V3 信号阈值与交易类型
+    # ═══════════════════════════════════════════════════════
+    V3_STRONG_BUY = 85       # 强买入
+    V3_BUY_OBSERVE = 75      # 买入观察
+    V3_WATCH = 65            # 关注
+    V3_MIN_SCORE = 65        # 最低入池分
+
+    # ═══════════════════════════════════════════════════════
+    # V3 硬过滤 (优化: 允许高位龙头进入)
+    # ═══════════════════════════════════════════════════════
+    def hard_filter_v3(self, ts_code, q, kline, turnover, total_mv, theme_strength,
+                       is_theme_leader=False, role_detail=None):
+        """
+        V3硬过滤, 与V2相比的优化:
+        - 近5日涨幅>15%的龙头允许进入(如果距5日高<5%)
+        """
+        pct = q.get('pct_chg', 0)
+        high = q.get('high', 0)
+        low = q.get('low', 0)
+        last_close = q.get('last_close', 0)
+        price = q.get('price', 0)
+
+        # 1. 涨停/跌停排除
+        limit_up = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+        if pct >= limit_up:
+            return False, '涨停'
+        if pct <= -9.5:
+            return False, '跌停'
+
+        # 2. 振幅>8%排除
+        if last_close > 0 and high > 0 and low > 0:
+            amplitude = (high - low) / last_close * 100
+            if amplitude > 8:
+                return False, f'振幅{amplitude:.1f}%'
+
+        # 3. 收盘跌>2.5%排除
+        if pct < -2.5:
+            return False, f'跌{pct:.1f}%'
+
+        # 3.5 收阴线或微涨<1%排除
+        if pct < 1.0:
+            return False, f'涨幅{pct:.1f}%过低'
+
+        # 4. 连续涨停≥2天排除
+        if kline is not None and len(kline) >= 3:
+            prev_pct = float(kline['pct_chg'].iloc[-1]) if 'pct_chg' in kline.columns else 0
+            prev2_pct = float(kline['pct_chg'].iloc[-2]) if 'pct_chg' in kline.columns else 0
+            prev_limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+            if prev_pct >= prev_limit and prev2_pct >= prev_limit:
+                return False, '连板2天'
+
+        # 5. 距MA20太远(>25%)排除
+        if kline is not None and len(kline) >= 20:
+            ma20 = kline['close'].iloc[-20:].mean()
+            if price > 0 and price > ma20 * 1.25:
+                return False, '距MA20>25%'
+
+        # 6. 近5日涨幅>15% — V3优化: 龙头且距5日高<5%允许进入
+        if kline is not None and len(kline) >= 6:
+            close_5d_ago = float(kline['close'].iloc[-6])
+            if close_5d_ago > 0:
+                gain_5d = (price - close_5d_ago) / close_5d_ago * 100
+                if gain_5d > 15:
+                    # 龙头特权: 距5日高<5%允许进入
+                    if is_theme_leader:
+                        high_5d = kline['high'].iloc[-5:].max()
+                        if high_5d > 0:
+                            dist_5d_high = (high_5d - price) / price * 100
+                            if dist_5d_high < 5:
+                                pass  # 龙头豁免
+                            else:
+                                return False, f'5日涨{gain_5d:.1f}%距高{dist_5d_high:.1f}%'
+                        else:
+                            pass  # 龙头豁免
+                    else:
+                        return False, f'5日涨{gain_5d:.1f}%'
+
+        # 7. 换手率异常
+        if turnover > 0:
+            if turnover > 15:
+                return False, f'换手{turnover:.1f}%过高'
+            if turnover < 0.5:
+                return False, f'换手{turnover:.1f}%过低'
+
+        # 8. 主题强度<-1排除
+        if theme_strength < -1:
+            return False, '主题退潮'
+
+        # 9. 总市值<8亿排除
+        if total_mv > 0 and total_mv < 80000:
+            return False, f'市值{total_mv/10000:.1f}亿'
+
+        return True, 'OK'
+
+    # ═══════════════════════════════════════════════════════
+    # V3 技术结构评分 (15分): 压缩后的趋势+回踩+突破
+    # ═══════════════════════════════════════════════════════
+    def technical_structure_v3(self, q, kline):
+        """
+        V3 技术结构 (15分): 趋势 + 回踩质量 + 突破结构
+        将V2的趋势一致性(10)、新高突破(8)、位置安全(15)部分维度
+        压缩整合为15分
+        """
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+
+        if kline is None or len(kline) < 20:
+            return 3, detail
+
+        ma5 = kline['close'].iloc[-5:].mean()
+        ma10 = kline['close'].iloc[-10:].mean()
+        ma20 = kline['close'].iloc[-20:].mean()
+        high_10d = kline['high'].iloc[-10:].max()
+        high_20d = kline['high'].iloc[-20:].max()
+
+        # ── 1. 趋势 (5分) ──
+        trend_score = 0
+        if ma5 > ma10 > ma20:
+            trend_score = 5
+        elif ma10 > ma20:
+            trend_score = 3
+        detail['trend_v3'] = trend_score
+        detail['ma5'] = round(ma5, 2) if hasattr(ma5, '__float__') else 0
+        detail['ma20'] = round(ma20, 2) if hasattr(ma20, '__float__') else 0
+        score += trend_score
+
+        # ── 2. 回踩质量 (5分) ──
+        pullback_score = 0
+        if price > 0 and ma20 > 0:
+            dist_ma20 = (price - ma20) / ma20 * 100
+            detail['dist_ma20_pct'] = round(dist_ma20, 1)
+            if 2 <= dist_ma20 <= 5:
+                pullback_score = 5
+            elif 5 < dist_ma20 <= 8:
+                pullback_score = 3
+            elif 0 <= dist_ma20 < 2:
+                pullback_score = 2
+        detail['pullback_v3'] = pullback_score
+        score += pullback_score
+
+        # ── 3. 突破结构 (5分) ──
+        breakout_score = 0
+        if price > high_10d:
+            breakout_score = 5
+            detail['breakout_10d_v3'] = True
+        elif price > 0 and high_20d > 0:
+            dist_20d = (high_20d - price) / price * 100
+            detail['dist_20d_high_v3'] = round(dist_20d, 2)
+            if dist_20d < 3:
+                breakout_score = 3
+                detail['near_20d_high_v3'] = True
+        detail['breakout_v3'] = breakout_score
+        score += breakout_score
+
+        return min(score, 15), detail
+
+    # ═══════════════════════════════════════════════════════
+    # V3 尾盘交易模型 (10分): 保留核心尾盘攻击力
+    # ═══════════════════════════════════════════════════════
+    def tail_timing_v3(self, q, snap):
+        """
+        V3 尾盘交易 (10分): 保留尾盘量占比 + 接近最高价 + 尾盘拉升
+        从V2的20分压缩到10分
+        """
+        score = 0
+        detail = {}
+        current_price = q.get('price', 0)
+        high = q.get('high', 0)
+        open_p = q.get('open', 0)
+
+        # 1. 尾盘量占全天比例 (5分)
+        tail_vol_ratio = snap.get('tail_vol_ratio', 0) if snap else 0
+        detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
+        if tail_vol_ratio > 0.35:
+            score += 5
+        elif tail_vol_ratio > 0.30:
+            score += 4
+        elif tail_vol_ratio > 0.25:
+            score += 3
+        elif tail_vol_ratio > 0.20:
+            score += 1
+
+        # 2. 收盘接近最高 (3分)
+        if high > 0 and current_price > 0:
+            dist_to_high = (high - current_price) / current_price * 100
+            detail['dist_to_high'] = round(dist_to_high, 2)
+            if dist_to_high < 0.3:
+                score += 3
+            elif dist_to_high < 0.6:
+                score += 2
+            elif dist_to_high < 1.0:
+                score += 1
+        else:
+            detail['dist_to_high'] = 0
+
+        # 3. 尾盘主动拉升 (2分)
+        tail_base_price = snap.get('tail_base_price', 0) if snap else 0
+        if tail_base_price > 0 and current_price > 0:
+            tail_rally = (current_price - tail_base_price) / tail_base_price * 100
+            detail['tail_rally'] = round(tail_rally, 2)
+            if tail_rally > 1.0:
+                score += 2
+            elif tail_rally > 0.5:
+                score += 1
+        else:
+            if open_p > 0 and current_price > 0:
+                tail_rally = (current_price - open_p) / open_p * 100
+                detail['tail_rally'] = round(tail_rally, 2)
+                if tail_rally > 2.0:
+                    score += 2
+                elif tail_rally > 1.0:
+                    score += 1
+            else:
+                detail['tail_rally'] = 0
+
+        return min(score, 10), detail
+
+    # ═══════════════════════════════════════════════════════
+    # V3 次日收益空间 (加分项, 最高+5)
+    # ═══════════════════════════════════════════════════════
+    def tomorrow_room_score(self, q, kline):
+        """
+        次日收益空间: 距前高/压力位/筹码密集区的上涨空间
+        避免买入已经涨满的股票
+        """
+        price = q.get('price', 0)
+        detail = {}
+        if kline is None or len(kline) < 20 or price <= 0:
+            return 0, detail
+
+        high_20d = kline['high'].iloc[-20:].max()
+        high_60d = kline['high'].iloc[-60:].max() if len(kline) >= 60 else high_20d
+
+        # 最近压力位: 取20日高和60日高中的较近者
+        if high_20d > price:
+            room_20d = (high_20d - price) / price * 100
+        else:
+            room_20d = 999  # 已突破,无压力
+
+        if high_60d > price:
+            room_60d = (high_60d - price) / price * 100
+        else:
+            room_60d = 999
+
+        room = min(room_20d, room_60d)
+        detail['pressure_room_pct'] = round(room, 1)
+        detail['high_20d'] = round(high_20d, 2)
+        detail['high_60d'] = round(high_60d, 2)
+
+        if room > 10:
+            return 5, detail
+        elif room > 5:
+            return 3, detail
+        elif room > 3:
+            return 0, detail
+        else:
+            return -5, detail
+
+    # ═══════════════════════════════════════════════════════
+    # V3 风险控制 (最高-20分)
+    # ═══════════════════════════════════════════════════════
+    def risk_penalty_v3(self, q, kline, turnover, theme_up_ratio, theme_limit_count,
+                        is_theme_leader=False, snap=None):
+        """
+        V3 风险扣分: 高位风险 + 高换手 + 孤立上涨 + 尾盘诱多
+        最高扣20分
+        """
+        penalty = 0
+        detail = {}
+        pct = q.get('pct_chg', 0)
+        price = q.get('price', 0)
+        high = q.get('high', 0)
+        low = q.get('low', 0)
+        open_p = q.get('open', 0)
+        close = price
+
+        # ── 1. 高位风险 (最高-8) ──
+        if kline is not None and len(kline) >= 6:
+            close_5d_ago = float(kline['close'].iloc[-6])
+            if close_5d_ago > 0:
+                gain_5d = (price - close_5d_ago) / close_5d_ago * 100
+                if gain_5d > 15 and high > 0:
+                    dist_high = (high - price) / price * 100
+                    if dist_high < 3:
+                        # 龙头豁免高位风险
+                        if not is_theme_leader:
+                            penalty += 8
+                            detail['risk_high'] = f'5日涨{gain_5d:.1f}%距高{dist_high:.1f}%'
+
+        # ── 2. 高换手风险 (最高-5) ──
+        if turnover > 20:
+            penalty += 5
+            detail['risk_high_turnover'] = f'换手{turnover:.1f}%'
+
+        # ── 3. 孤立上涨 (最高-5) ──
+        if theme_limit_count == 0 and theme_up_ratio < 40:
+            penalty += 5
+            detail['risk_isolated'] = f'涨停0 上涨比{theme_up_ratio:.0f}%'
+
+        # ── 4. 尾盘诱多 (最高-10) — 保留V2逻辑
+        tail_base_price = snap.get('tail_base_price', 0) if snap else open_p
+        if tail_base_price > 0 and close > 0 and open_p > 0:
+            tail_rally = (close - tail_base_price) / tail_base_price * 100
+            day_change = (close - open_p) / open_p * 100
+            if tail_rally > 0.5 and day_change < -0.3:
+                penalty += 10
+                detail['trap_weak_day'] = f'全天{day_change:+.1f}%尾拉{tail_rally:+.1f}%'
+            elif tail_rally > 0.3 and day_change < 0:
+                penalty += 5
+                detail['trap_weak_day'] = f'全天{day_change:+.1f}%尾拉{tail_rally:+.1f}%'
+            elif tail_rally > 0.5 and day_change < 1:
+                penalty += 3
+                detail['trap_weak_day'] = f'全天{day_change:+.1f}%尾拉{tail_rally:+.1f}%'
+
+        # 长下影线诱多
+        if open_p > 0 and high > 0 and low > 0 and close > 0 and open_p > 0:
+            body = abs(close - open_p)
+            lower_shadow = min(open_p, close) - low
+            price_range = high - low
+            if price_range > 0:
+                lower_ratio = lower_shadow / price_range
+                body_ratio = body / price_range
+                if lower_ratio > 0.4 and body_ratio < 0.3:
+                    if penalty == 0 or 'trap_weak_day' not in detail:
+                        penalty += 5
+                        detail['trap_long_lower'] = f'下影{lower_ratio:.0%}'
+
+        return min(penalty, 20), detail
+
+    # ═══════════════════════════════════════════════════════
+    # V3 买入类型分类
+    # ═══════════════════════════════════════════════════════
+    def classify_buy_type_v3(self, role, theme_score, theme_up_ratio, theme_limit_count,
+                             technical_score, pullback_quality):
+        """
+        V3 交易标签分类:
+        1. LEADER_BREAKOUT: 龙头 + 主题强 + 突破
+        2. CORE_PULLBACK:   中军 + 主线 + 回踩
+        3. ROTATION_ENTRY:  主题升温 + 个股资金增强
+        """
+        # LEADER_BREAKOUT
+        if role == 'leader' and theme_score >= 20 and technical_score >= 10:
+            return 'LEADER_BREAKOUT', 90
+
+        # CORE_PULLBACK
+        if role in ('leader', 'core') and theme_score >= 15 and pullback_quality >= 3:
+            return 'CORE_PULLBACK', 80
+
+        # ROTATION_ENTRY
+        if theme_up_ratio >= 50 and theme_limit_count >= 1:
+            return 'ROTATION_ENTRY', 70
+
+        return 'TAIL_TIMING', 60
+
+    # ═══════════════════════════════════════════════════════
+    # V3 完整评分
+    # ═══════════════════════════════════════════════════════
+    def score_v3(self, ts_code, q, kline, factor_row, turnover, total_mv,
+                 theme_name, theme_strength, layer, theme_limit_count,
+                 theme_up_ratio, theme_avg_pct, leader_change, theme_amount_ratio=None,
+                 snap=None, prev_factor_row=None, index_pct=None,
+                 role_override=None, theme_stocks=None, quotes=None):
+        """
+        V3 完整评分流程:
+        Final = Theme(30) + Capital(25) + Role(20) + Technical(15) + Timing(10)
+                - Risk(20) + TomorrowRoom(±5)
+
+        返回: signal_dict 或 None
+        """
+        # ── 股票角色识别 ──
+        if role_override:
+            role = role_override
+            role_score = 20 if role == 'leader' else (12 if role == 'core' else 0)
+        else:
+            # 基于layer+实时数据判断角色
+            role = 'follower'
+            role_score = 0
+            if layer == 'leader':
+                role = 'leader'
+                role_score = 20
+            elif layer == 'middle':
+                role = 'core'
+                role_score = 12
+            else:
+                # 检测是否有升级潜力
+                if theme_stocks and quotes and ts_code in quotes:
+                    role, role_score, _ = calc_stock_role_score_from_layer(
+                        layer, ts_code, theme_name, theme_stocks, quotes,
+                        kline_cache={ts_code: kline} if kline is not None else None
+                    )
+
+        is_theme_leader = (role == 'leader')
+
+        # ── 硬过滤(V3) ──
+        passed, reason = self.hard_filter_v3(
+            ts_code, q, kline, turnover, total_mv, theme_strength,
+            is_theme_leader=is_theme_leader
+        )
+        if not passed:
+            return None
+
+        # ── 1. 主题资金层 (30分) ──
+        thm_s, thm_d = theme_score_v3(
+            theme_limit_count=theme_limit_count,
+            theme_up_ratio=theme_up_ratio,
+            leader_change=leader_change,
+            theme_amount_ratio=theme_amount_ratio,
+            theme_avg_change=theme_avg_pct,
+            theme_strength=theme_strength,
+        )
+
+        # ── 2. 个股资金行为 (25分) ──
+        cap_s, cap_d = capital_score_v3(ts_code, q, kline, turnover, snap=snap)
+
+        # ── 3. 股票角色 (20分) ──
+        role_d = {'role': role, 'role_score': role_score, 'layer': layer}
+
+        # ── 4. 技术结构 (15分) ──
+        tech_s, tech_d = self.technical_structure_v3(q, kline)
+
+        # ── 5. 尾盘交易 (10分) ──
+        tail_s, tail_d = self.tail_timing_v3(q, snap)
+
+        # ── 加分: 次日收益空间 (±5) ──
+        room_s, room_d = self.tomorrow_room_score(q, kline)
+
+        # ── 扣分: 风险控制 (max -20) ──
+        risk_p, risk_d = self.risk_penalty_v3(
+            q, kline, turnover, theme_up_ratio, theme_limit_count,
+            is_theme_leader=is_theme_leader, snap=snap
+        )
+
+        total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+
+        # ── 信号分级 ──
+        if total >= self.V3_STRONG_BUY:
+            signal = '强买入'
+        elif total >= self.V3_BUY_OBSERVE:
+            signal = '买入观察'
+        elif total >= self.V3_WATCH:
+            signal = '关注'
+        else:
+            return None
+
+        # ── 买入类型 ──
+        pullback_quality = tech_d.get('pullback_v3', 0)
+        buy_type, confidence = self.classify_buy_type_v3(
+            role, thm_s, theme_up_ratio, theme_limit_count, tech_s, pullback_quality
+        )
+
+        # ── 次日预期 ──
+        next_day_expectation = self._estimate_next_day(room_s, role, thm_s, cap_s)
+
+        signal_data = {
+            'ts_code': ts_code,
+            'theme': theme_name,
+            'total_score': total,
+            'theme_score': thm_s,
+            'capital_score': cap_s,
+            'role_score': role_score,
+            'technical_score': tech_s,
+            'timing_score': tail_s,
+            'room_score': room_s,
+            'risk_penalty': risk_p,
+            'signal': signal,
+            'role': role,
+            'buy_type': buy_type,
+            'confidence': confidence,
+            'next_day_expectation': next_day_expectation,
+            'pct_chg': q.get('pct_chg', 0),
+            'price': q.get('price', 0),
+            'detail': {
+                **thm_d, **cap_d, **role_d, **tech_d, **tail_d, **room_d, **risk_d,
+                'v3_filter_reason': reason,
+            },
+        }
+
+        # 可解释性文本
+        signal_data['explain'] = self.explain_score_v3(signal_data)
+
+        return signal_data
+
+    def _estimate_next_day(self, room_score, role, theme_score, capital_score):
+        """估算次日预期表现"""
+        if room_score < 0:
+            return '空间有限,谨慎'
+        if role == 'leader' and theme_score >= 25 and capital_score >= 15:
+            return '龙头强主题,次日高开概率大'
+        if role == 'leader' and theme_score >= 20:
+            return '龙头领涨,次日有望延续'
+        if role == 'core' and theme_score >= 15:
+            return '中军稳健,次日小幅上涨'
+        if capital_score >= 15:
+            return '资金关注,次日有冲高机会'
+        return '关注次日开盘确认'
+
+    def explain_score_v3(self, sig):
+        """
+        生成V3评分的可解释性文本
+        输入: score_v3返回的signal dict
+        输出: 多行中文解释文本
+        """
+        lines = []
+        ts_code = sig.get('ts_code', '')
+        name = sig.get('name', ts_code)
+        total = sig.get('total_score', 0)
+        role = sig.get('role', '')
+        buy_type = sig.get('buy_type', '')
+        signal = sig.get('signal', '')
+        detail = sig.get('detail', {})
+
+        role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(role, role)
+        buy_cn = {
+            'LEADER_BREAKOUT': '龙头突破',
+            'CORE_PULLBACK': '中军回踩',
+            'ROTATION_ENTRY': '轮动入场',
+            'TAIL_TIMING': '尾盘择时',
+        }.get(buy_type, buy_type)
+
+        lines.append(f"【{name}({ts_code})】V3评分: {total}分 | {signal} | {role_cn} | {buy_cn}")
+
+        # 主题资金层
+        thm_s = sig.get('theme_score', 0)
+        lines.append(f"\n 主题资金层 ({thm_s}/30分):")
+        lines.append(f"   涨停数={detail.get('limit_count', 0)}只 上涨比={detail.get('up_ratio', 0)}% 龙头涨幅={detail.get('leader_change', 0)}%")
+        lines.append(f"   热度={detail.get('heat_score', 0)} + 龙头强度={detail.get('leader_score', 0)} + 资金扩散={detail.get('diffusion_score', 0)}")
+
+        # 个股资金行为
+        cap_s = sig.get('capital_score', 0)
+        lines.append(f"\n 个股资金行为 ({cap_s}/25分):")
+        lines.append(f"   量比={detail.get('amount_ratio', 0)} 换手={detail.get('turnover', 0)}%")
+        lines.append(f"   成交额异常={detail.get('amount_abnormal', 0)} + 换手质量={detail.get('turnover_quality', 0)} + 主力代理={detail.get('moneyflow_proxy', 0)}")
+
+        # 股票角色
+        role_s = sig.get('role_score', 0)
+        lines.append(f"\n 股票角色 ({role_s}/20分): {role_cn}")
+        lines.append(f"   主题内涨幅排名第{detail.get('rank_in_theme', '?')} 成交额排名第{detail.get('amount_rank_in_theme', '?')}")
+
+        # 技术结构
+        tech_s = sig.get('technical_score', 0)
+        lines.append(f"\n 技术结构 ({tech_s}/15分):")
+        lines.append(f"   趋势={detail.get('trend_v3', 0)} + 回踩={detail.get('pullback_v3', 0)}(距MA20={detail.get('dist_ma20_pct', '?')}%) + 突破={detail.get('breakout_v3', 0)}")
+
+        # 尾盘交易
+        tail_s = sig.get('timing_score', 0)
+        lines.append(f"\n 尾盘交易 ({tail_s}/10分):")
+        lines.append(f"   尾盘量占比={detail.get('tail_vol_ratio', 0)} 距最高={detail.get('dist_to_high', '?')}% 尾拉={detail.get('tail_rally', '?')}%")
+
+        # 次日空间
+        room_s = sig.get('room_score', 0)
+        lines.append(f"\n 次日空间 ({room_s:+d}分):")
+        lines.append(f"   距压力位={detail.get('pressure_room_pct', '?')}%")
+
+        # 风险扣分
+        risk_p = sig.get('risk_penalty', 0)
+        lines.append(f"\n 风险扣分 (-{risk_p}分):")
+        risk_items = []
+        for k in ['risk_high', 'risk_high_turnover', 'risk_isolated', 'trap_weak_day', 'trap_long_lower']:
+            if detail.get(k):
+                risk_items.append(f"   {detail[k]}")
+        if risk_items:
+            lines.extend(risk_items)
+        else:
+            lines.append("   无风险项触发")
+
+        # 买入理由
+        lines.append(f"\n 买入理由:")
+        if role == 'leader':
+            lines.append(f"   龙头股,主题内涨幅排名第{detail.get('rank_in_theme', '?')}位,辨识度高")
+        elif role == 'core':
+            lines.append(f"   中军股,成交额主题内排名第{detail.get('amount_rank_in_theme', '?')}位,趋势稳健")
+        if detail.get('heat_score', 0) >= 7:
+            lines.append(f"   主题涨停{detail.get('limit_count', 0)}只,热度较高")
+        if detail.get('amount_ratio', 0) >= 1.5:
+            lines.append(f"   量比{detail.get('amount_ratio', 0)},资金明显放大")
+        if detail.get('pullback_v3', 0) >= 3:
+            lines.append(f"   距MA20={detail.get('dist_ma20_pct', '?')}%,回踩到位")
+        if detail.get('breakout_v3', 0) >= 5:
+            lines.append("   突破10日新高,结构强势")
+        if detail.get('pressure_room_pct', 0) and detail.get('pressure_room_pct', 0) > 5:
+            lines.append(f"   距压力位{detail.get('pressure_room_pct', 0)}%,次日空间充足")
+        lines.append(f"   买入类型: {buy_cn}")
+
+        return '\n'.join(lines)
+
+    # ═══════════════════════════════════════════════════════
+    # V3 实盘入表筛选
+    # ═══════════════════════════════════════════════════════
+    def filter_for_tracking_v3(self, signals):
+        """
+        V3 实盘入表筛选:
+        1. 信号为强买入或买入观察
+        2. 排除北交所
+        3. 每主题最多TOP3 (V3比V2更宽松,因为多层过滤已足够)
+        """
+        candidates = []
+        for s in signals:
+            sig = s.get('signal', '')
+            if sig not in ('强买入', '买入观察'):
+                continue
+            code = s.get('ts_code', '')
+            if code.startswith(('9', '4')):
+                continue
+            candidates.append(s)
+
+        theme_groups = {}
+        for s in candidates:
+            theme = s.get('theme', '其他')
+            theme_groups.setdefault(theme, []).append(s)
+
+        final = []
+        for theme, stocks in theme_groups.items():
+            stocks_sorted = sorted(stocks, key=lambda x: -x.get('total_score', 0))
+            final.extend(stocks_sorted[:3])
 
         return final

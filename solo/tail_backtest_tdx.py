@@ -12,9 +12,9 @@
 
 回测规则:
   1. 每个交易日14:50模拟扫描(用当日收盘价作为信号触发价)
-  2. 入库所有强买入信号(>=85分),并标注是否通过方案K(>=88+无诱多+技>=12+排北交所+每主题TOP2)
-  3. T+1开盘价买入(次日开盘)
-  4. 止损: -5% / 止盈: +10% / 到期: 持仓10个交易日
+  2. 入库所有强买入信号(>=75分),并标注是否通过方案K(>=88+无诱多+技>=12+排北交所+每主题TOP2)
+  3. 以信号日收盘价买入(信号触发价即买入价)
+  4. 次日收盘价卖出(持仓1日)
   5. 统计胜率/盈亏/最大收益/回撤(全部信号 vs 方案K信号)
 
 用法:
@@ -431,7 +431,7 @@ class TailBacktester:
                     s['total_score'], s['attack_score'], s['structure_score'], s['position_score'],
                     s['theme_score'], s['tech_score'], s['trap_penalty'],
                     s.get('trend_score', 0), s.get('rel_strength_score', 0), s.get('breakout_score', 0), s.get('vol_penalty', 0),
-                    s['price'], trade_date, is_k, json.dumps(s.get('detail', {}), ensure_ascii=False),
+                    s['price'], trade_date, 'pending', is_k, json.dumps(s.get('detail', {}), ensure_ascii=False),
                 ))
 
             total_signals += len(tracked)
@@ -625,7 +625,7 @@ class TailBacktester:
                     ''', (
                         exit_date, exit_price, exit_reason, pnl,
                         hold_days, max_gain, max_dd, next_5d, next_10d,
-                        exit_date,  # entry_date = T+1(实际买入日)
+                        signal_date,  # entry_date = 信号日(以收盘价买入)
                         signal_date, ts_code
                     ))
                     ok += 1
@@ -639,7 +639,7 @@ class TailBacktester:
         print(f"  完成: 成功{ok}, 失败{fail}")
 
     def _compute_exit_one(self, signal_date, ts_code, entry_price):
-        """计算单只信号退出"""
+        """计算单只信号退出(以信号日收盘价买入, 次日收盘价卖出)"""
         kl = self.all_klines.get(ts_code)
         if kl is None or entry_price <= 0:
             return None
@@ -649,55 +649,21 @@ class TailBacktester:
         if future.empty:
             return None
 
-        # T+1开盘价买入
+        # 以信号日收盘价买入(entry_price即信号日收盘价), 次日收盘价卖出
+        buy_price = entry_price
         t1 = future.iloc[0]
-        buy_price = float(t1['open'])
-        buy_date = t1['trade_date']
-
-        stop_loss = buy_price * 0.95
-        take_profit = buy_price * 1.10
-
-        exit_date = None
-        exit_price = None
-        exit_reason = None
-        hold_days = 0
-
-        # 从T+1开始遍历(买入当天不算持仓)
-        for i, (_, row) in enumerate(future.iterrows()):
-            hold_days = i + 1
-            # 止损优先
-            if float(row['low']) <= stop_loss:
-                exit_date = row['trade_date']
-                exit_price = stop_loss
-                exit_reason = '止损'
-                break
-            # 止盈
-            if float(row['high']) >= take_profit:
-                exit_date = row['trade_date']
-                exit_price = take_profit
-                exit_reason = '止盈'
-                break
-            # 到期
-            if hold_days >= 10:
-                exit_date = row['trade_date']
-                exit_price = float(row['close'])
-                exit_reason = '到期'
-                break
-
-        if exit_date is None:
-            # 未触发退出,用最后一日收盘
-            last = future.iloc[-1]
-            exit_date = last['trade_date']
-            exit_price = float(last['close'])
-            exit_reason = '持仓中'
+        exit_date = t1['trade_date']
+        exit_price = float(t1['close'])
+        exit_reason = '次日卖出'
+        hold_days = 1
 
         pnl = (exit_price - buy_price) / buy_price * 100
 
-        # 区间统计
-        highs = future['high'].astype(float).values
-        lows = future['low'].astype(float).values
-        max_gain = (max(highs) - buy_price) / buy_price * 100 if len(highs) > 0 else 0
-        max_dd = (min(lows) - buy_price) / buy_price * 100 if len(lows) > 0 else 0
+        # 次日日内高低点统计(相对买入价)
+        next_high = float(t1['high'])
+        next_low = float(t1['low'])
+        max_gain = (next_high - buy_price) / buy_price * 100
+        max_dd = (next_low - buy_price) / buy_price * 100
 
         # T+5/T+10累计涨幅(从买入价算)
         next_5d = None
@@ -712,10 +678,334 @@ class TailBacktester:
                 round(next_5d, 2) if next_5d is not None else None,
                 round(next_10d, 2) if next_10d is not None else None)
 
+    # ═══════════════════════════════════════════════════════
+    # V3 回测
+    # ═══════════════════════════════════════════════════════
+    def _scan_day_v3(self, trade_date):
+        """V3: 扫描某交易日所有股票,返回V3信号列表"""
+        from theme_engine_v3 import theme_score_v3
+        from capital_engine_v3 import capital_score_v3
+        from role_engine_v3 import calc_stock_role_score_from_layer
 
-# ============================================================
-# 结果统计与展示
-# ============================================================
+        signals = []
+        # 计算所有主题数据
+        theme_strengths = {}
+        theme_zt_counts = {}
+        theme_avg_pcts = {}
+        theme_momentums = {}
+        for theme_name in self.theme_stocks:
+            s, z, avg_pct = calc_theme_strength(theme_name, self.theme_stocks, self.all_klines, trade_date)
+            theme_strengths[theme_name] = s
+            theme_zt_counts[theme_name] = z
+            theme_avg_pcts[theme_name] = avg_pct
+            theme_momentums[theme_name] = calc_theme_momentum_daily(theme_name, self.theme_stocks, self.all_klines, trade_date)
+
+        # 按主题强度排序生成排名
+        theme_strength_list = sorted(theme_strengths.items(), key=lambda x: -x[1])
+        theme_rank_map = {name: i+1 for i, (name, _) in enumerate(theme_strength_list)}
+
+        # 模拟quotes(用K线数据构造)
+        mock_quotes = {}
+        for ts_code, kl in self.all_klines.items():
+            row = kl[kl['trade_date'] == trade_date]
+            if not row.empty:
+                day = row.iloc[0]
+                mock_quotes[ts_code] = {
+                    'open': float(day['open']),
+                    'high': float(day['high']),
+                    'low': float(day['low']),
+                    'price': float(day['close']),
+                    'last_close': float(day['pre_close']) if not pd.isna(day['pre_close']) else 0,
+                    'pct_chg': float(day['pct_chg']),
+                    'vol': float(day['vol']),
+                    'amount': float(day['amount']) if 'amount' in day else 0,
+                }
+
+        # 遍历所有股票
+        for ts_code, themes in self.stock_themes.items():
+            if ts_code.startswith(('9', '4')):
+                continue
+            kl = self.all_klines.get(ts_code)
+            if kl is None or kl.empty:
+                continue
+
+            day_row = kl[kl['trade_date'] == trade_date]
+            if day_row.empty:
+                continue
+            day = day_row.iloc[0]
+
+            kline_up_to = kl[kl['trade_date'] <= trade_date].copy()
+            if len(kline_up_to) < 20:
+                continue
+
+            # 取最强主题
+            best_theme = themes[0]
+            best_strength = theme_strengths.get(themes[0], 0)
+            best_layer = 'follower'
+            for t in themes:
+                s = theme_strengths.get(t, 0)
+                if s > best_strength:
+                    best_strength = s
+                    best_theme = t
+                for code, name, ly in self.theme_stocks.get(t, []):
+                    if code == ts_code and s >= best_strength:
+                        best_layer = ly
+
+            # 技术因子
+            prev_dates = kl[kl['trade_date'] < trade_date]['trade_date'].tolist()
+            factor_row = None
+            if prev_dates:
+                prev_date = prev_dates[-1]
+                factor_row = self.factor_cache.get((ts_code, prev_date))
+
+            turnover = float(factor_row.get('turnover_rate', 0) or 0) if factor_row else 0
+            total_mv = float(factor_row.get('total_mv', 0) or 0) if factor_row else 0
+
+            q = mock_quotes.get(ts_code, {
+                'open': float(day['open']),
+                'high': float(day['high']),
+                'low': float(day['low']),
+                'price': float(day['close']),
+                'last_close': float(day['pre_close']) if not pd.isna(day['pre_close']) else 0,
+                'pct_chg': float(day['pct_chg']),
+                'vol': float(day['vol']),
+                'amount': float(day['amount']) if 'amount' in day else 0,
+            })
+
+            # V3 主题动量数据
+            up_ratio, avg_return, leader_return, _, _ = theme_momentums.get(best_theme, (0, 0, 0, 0, None))
+            theme_zt_count = theme_zt_counts.get(best_theme, 0)
+            theme_avg_pct = theme_avg_pcts.get(best_theme)
+
+            # 角色识别
+            role, role_score, role_detail = calc_stock_role_score_from_layer(
+                best_layer, ts_code, best_theme, self.theme_stocks, mock_quotes,
+                kline_cache=self.all_klines
+            )
+
+            is_leader = (role == 'leader')
+
+            # 硬过滤(V3)
+            passed, reason = self.strategy.hard_filter_v3(
+                ts_code, q, kline_up_to, turnover, total_mv, best_strength,
+                is_theme_leader=is_leader
+            )
+            if not passed:
+                continue
+
+            # V3 评分
+            thm_s, thm_d = theme_score_v3(
+                theme_limit_count=theme_zt_count,
+                theme_up_ratio=up_ratio,
+                leader_change=leader_return,
+                theme_avg_change=theme_avg_pct,
+                theme_strength=best_strength,
+            )
+
+            cap_s, cap_d = capital_score_v3(ts_code, q, kline_up_to, turnover)
+
+            tech_s, tech_d = self.strategy.technical_structure_v3(q, kline_up_to)
+
+            tail_s, tail_d = self.strategy.tail_timing_v3(q, None)  # 回测无快照
+
+            room_s, room_d = self.strategy.tomorrow_room_score(q, kline_up_to)
+
+            risk_p, risk_d = self.strategy.risk_penalty_v3(
+                q, kline_up_to, turnover, up_ratio, theme_zt_count,
+                is_theme_leader=is_leader
+            )
+
+            total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+
+            if total < 65:
+                continue
+
+            if total >= 85:
+                signal = '强买入'
+            elif total >= 75:
+                signal = '买入观察'
+            else:
+                signal = '关注'
+
+            pullback_quality = tech_d.get('pullback_v3', 0)
+            buy_type, confidence = self.strategy.classify_buy_type_v3(
+                role, thm_s, up_ratio, theme_zt_count, tech_s, pullback_quality
+            )
+
+            next_day = self.strategy._estimate_next_day(room_s, role, thm_s, cap_s)
+
+            name = ''
+            for code, n, ly in self.theme_stocks.get(best_theme, []):
+                if code == ts_code:
+                    name = n
+                    break
+
+            signal_data = {
+                'ts_code': ts_code,
+                'name': name,
+                'theme': best_theme,
+                'total_score': total,
+                'theme_score': thm_s,
+                'capital_score': cap_s,
+                'role_score': role_score,
+                'technical_score': tech_s,
+                'timing_score': tail_s,
+                'room_score': room_s,
+                'risk_penalty': risk_p,
+                'signal': signal,
+                'role': role,
+                'buy_type': buy_type,
+                'confidence': confidence,
+                'next_day_expectation': next_day,
+                'pct_chg': q.get('pct_chg', 0),
+                'price': q.get('price', 0),
+                'detail': {**thm_d, **cap_d, **role_detail, **tech_d, **tail_d, **room_d, **risk_d},
+            }
+            signal_data['explain'] = self.strategy.explain_score_v3(signal_data)
+            signals.append(signal_data)
+
+        return signals
+
+    def run_v3(self):
+        """V3 回测"""
+        print(f"\n{'═' * 60}")
+        print(f"  「猎尾V3」尾盘突袭战法 - TDX历史回测")
+        print(f"{'═' * 60}")
+
+        # V3 数据库表
+        conn = sqlite3.connect(TRACKER_DB, timeout=10.0)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tail_backtest_v3 (
+                signal_date   TEXT NOT NULL,
+                ts_code       TEXT NOT NULL,
+                name          TEXT,
+                theme         TEXT,
+                signal        TEXT,
+                total_score   INTEGER,
+                theme_score   INTEGER,
+                capital_score INTEGER,
+                role_score    INTEGER,
+                technical_score INTEGER,
+                timing_score  INTEGER,
+                room_score    INTEGER,
+                risk_penalty  INTEGER,
+                role          TEXT,
+                buy_type      TEXT,
+                confidence    INTEGER,
+                next_day_expectation TEXT,
+                entry_price   REAL,
+                entry_date    TEXT,
+                exit_date     TEXT,
+                exit_price    REAL,
+                exit_reason   TEXT,
+                pnl           REAL,
+                hold_days     INTEGER,
+                max_gain      REAL,
+                max_drawdown  REAL,
+                next_5d_pct   REAL,
+                next_10d_pct  REAL,
+                status        TEXT DEFAULT 'pending',
+                detail_json   TEXT,
+                PRIMARY KEY (signal_date, ts_code)
+            )
+        ''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_bt_v3_date ON tail_backtest_v3(signal_date)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_bt_v3_status ON tail_backtest_v3(status)')
+        conn.commit()
+        conn.close()
+
+        conn = sqlite3.connect(TRACKER_DB, timeout=10.0)
+        total_signals = 0
+        total_strong = 0
+        t0 = time.time()
+
+        for i, trade_date in enumerate(self.trading_dates):
+            pct_done = (i + 1) / len(self.trading_dates) * 100
+            elapsed = time.time() - t0
+            eta = elapsed / max(i + 1, 1) * (len(self.trading_dates) - i - 1)
+            print(f"  [{i+1}/{len(self.trading_dates)}] {pct_done:.0f}% {trade_date}  ETA {eta:.0f}s", end='')
+
+            day_signals = self._scan_day_v3(trade_date)
+            strong = [s for s in day_signals if s['signal'] in ('强买入', '买入观察')]
+
+            for s in day_signals:
+                conn.execute('''
+                    INSERT OR REPLACE INTO tail_backtest_v3 (
+                        signal_date, ts_code, name, theme, signal,
+                        total_score, theme_score, capital_score, role_score,
+                        technical_score, timing_score, room_score, risk_penalty,
+                        role, buy_type, confidence, next_day_expectation,
+                        entry_price, entry_date, status, detail_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    trade_date, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
+                    s['total_score'], s['theme_score'], s['capital_score'], s['role_score'],
+                    s['technical_score'], s['timing_score'], s.get('room_score', 0), s['risk_penalty'],
+                    s['role'], s['buy_type'], s['confidence'], s['next_day_expectation'],
+                    s['price'], trade_date, 'pending',
+                    json.dumps(s.get('detail', {}), ensure_ascii=False),
+                ))
+
+            total_signals += len(day_signals)
+            total_strong += len(strong)
+            print(f"  候选{len(day_signals)}只 强信号{len(strong)}只 (累计{total_signals}/{total_strong})")
+
+        conn.commit()
+        conn.close()
+
+        print(f"\n{'═' * 60}")
+        print(f"  V3回测完成! 共{total_signals}只信号(强信号{total_strong}只), 耗时{time.time()-t0:.0f}s")
+        print(f"{'═' * 60}")
+
+        # 计算退出与盈亏
+        self._compute_exits_v3()
+
+    def _compute_exits_v3(self):
+        """V3: 计算退出与盈亏"""
+        print(f"\n{'═' * 60}")
+        print(f"  计算V3退出与盈亏...")
+        print(f"{'═' * 60}")
+
+        conn = sqlite3.connect(TRACKER_DB, timeout=10.0)
+        rows = conn.execute(
+            'SELECT signal_date, ts_code, entry_price FROM tail_backtest_v3 WHERE status = ?',
+            ('pending',)
+        ).fetchall()
+
+        if not rows:
+            print("  无待计算信号")
+            conn.close()
+            return
+
+        ok, fail = 0, 0
+        for signal_date, ts_code, entry_price in rows:
+            try:
+                result = self._compute_exit_one(signal_date, ts_code, entry_price)
+                if result:
+                    exit_date, exit_price, exit_reason, pnl, hold_days, max_gain, max_dd, next_5d, next_10d = result
+                    conn.execute('''
+                        UPDATE tail_backtest_v3 SET
+                            exit_date = ?, exit_price = ?, exit_reason = ?, pnl = ?,
+                            hold_days = ?, max_gain = ?, max_drawdown = ?,
+                            next_5d_pct = ?, next_10d_pct = ?, status = 'closed',
+                            entry_date = ?
+                        WHERE signal_date = ? AND ts_code = ?
+                    ''', (
+                        exit_date, exit_price, exit_reason, pnl,
+                        hold_days, max_gain, max_dd, next_5d, next_10d,
+                        signal_date, signal_date, ts_code
+                    ))
+                    ok += 1
+                else:
+                    fail += 1
+            except Exception as e:
+                fail += 1
+
+        conn.commit()
+        conn.close()
+        print(f"  完成: 成功{ok}, 失败{fail}")
+
+
 def show_status():
     """展示回测结果统计"""
     if not os.path.exists(TRACKER_DB):
@@ -873,6 +1163,184 @@ def show_status():
     print(f"{'═' * 70}\n")
 
 
+def show_status_v3():
+    """展示V3回测结果统计"""
+    if not os.path.exists(TRACKER_DB):
+        print(f"回测数据库不存在: {TRACKER_DB}")
+        return
+
+    conn = sqlite3.connect(TRACKER_DB, timeout=10.0)
+    total = conn.execute('SELECT COUNT(*) FROM tail_backtest_v3').fetchone()[0]
+    if total == 0:
+        print("V3回测数据库为空")
+        conn.close()
+        return
+
+    closed = conn.execute("SELECT COUNT(*) FROM tail_backtest_v3 WHERE status='closed'").fetchone()[0]
+    print(f"\n{'═' * 70}")
+    print(f"  「猎尾V3」尾盘突袭战法 - 回测结果")
+    print(f"{'═' * 70}")
+    print(f"  总信号数: {total} (已平仓: {closed})")
+
+    if closed == 0:
+        print(f"\n  无已平仓信号,跳过统计")
+        conn.close()
+        print(f"{'═' * 70}\n")
+        return
+
+    # 整体统计
+    print(f"\n  整体统计(已平仓):")
+    rows = conn.execute('''
+        SELECT
+            COUNT(*) as total,
+            COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win,
+            COALESCE(SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END), 0) as lose,
+            ROUND(AVG(pnl), 2) as avg_pnl,
+            ROUND(AVG(max_gain), 2) as avg_max_gain,
+            ROUND(AVG(max_drawdown), 2) as avg_max_dd,
+            ROUND(AVG(hold_days), 1) as avg_hold,
+            ROUND(AVG(next_5d_pct), 2) as avg_5d,
+            ROUND(AVG(next_10d_pct), 2) as avg_10d
+        FROM tail_backtest_v3 WHERE status = 'closed'
+    ''').fetchone()
+    win_count = rows[1] or 0
+    lose_count = rows[2] or 0
+    win_rate = win_count/(win_count+lose_count)*100 if (win_count+lose_count) > 0 else 0
+    print(f"    胜率: {win_rate:.1f}% ({win_count}胜/{lose_count}负/{rows[0]}总)")
+    print(f"    均盈亏: {rows[3]}%  均最大收益: {rows[4]}%  均最大回撤: {rows[5]}%")
+    print(f"    均持仓: {rows[6]}天  T+5均涨: {rows[7]}%  T+10均涨: {rows[8]}%")
+
+    # 按月统计
+    print(f"\n  按月统计:")
+    print(f"  {'月份':<8} {'信号':>4} {'平仓':>4} {'胜':>4} {'负':>4} {'胜率':>6} {'均盈亏':>8} {'总盈亏':>8}")
+    rows = conn.execute('''
+        SELECT substr(signal_date, 1, 6) as month,
+               COUNT(*) as total,
+               COALESCE(SUM(CASE WHEN status='closed' THEN 1 ELSE 0 END), 0) as closed,
+               COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win,
+               COALESCE(SUM(CASE WHEN pnl <= 0 AND status='closed' THEN 1 ELSE 0 END), 0) as lose,
+               ROUND(AVG(CASE WHEN status='closed' THEN pnl END), 2) as avg_pnl,
+               ROUND(SUM(CASE WHEN status='closed' THEN pnl END), 2) as sum_pnl
+        FROM tail_backtest_v3
+        GROUP BY month ORDER BY month
+    ''').fetchall()
+    for r in rows:
+        w = r[3] or 0
+        l = r[4] or 0
+        win_rate = f"{w/(w+l)*100:.1f}%" if (w+l) > 0 else '-'
+        avg_pnl = f"{r[5]}%" if r[5] is not None else '-'
+        sum_pnl = f"{r[6]}%" if r[6] is not None else '-'
+        print(f"  {r[0]:<8} {r[1]:>4} {r[2]:>4} {w:>4} {l:>4} {win_rate:>6} {avg_pnl:>8} {sum_pnl:>8}")
+
+    # 按分数段统计
+    print(f"\n  按总分段统计(已平仓):")
+    print(f"  {'分数段':<10} {'总数':>5} {'胜':>4} {'负':>4} {'胜率':>7} {'均盈亏':>8} {'T+5':>7} {'T+10':>7}")
+    rows = conn.execute('''
+        SELECT
+            CASE
+                WHEN total_score >= 85 THEN '85+强买入'
+                WHEN total_score >= 75 THEN '75-85买入观察'
+                WHEN total_score >= 65 THEN '65-75关注'
+                ELSE '<65'
+            END as bucket,
+            COUNT(*) as total,
+            COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win,
+            COALESCE(SUM(CASE WHEN pnl <= 0 AND status='closed' THEN 1 ELSE 0 END), 0) as lose,
+            ROUND(AVG(CASE WHEN status='closed' THEN pnl END), 2) as avg_pnl,
+            ROUND(AVG(CASE WHEN status='closed' THEN next_5d_pct END), 2) as avg_5d,
+            ROUND(AVG(CASE WHEN status='closed' THEN next_10d_pct END), 2) as avg_10d
+        FROM tail_backtest_v3
+        GROUP BY bucket ORDER BY bucket DESC
+    ''').fetchall()
+    for r in rows:
+        w = r[2] or 0
+        l = r[3] or 0
+        wr = f"{w/(w+l)*100:.1f}%" if (w+l) > 0 else '-'
+        ap = f"{r[4]}%" if r[4] is not None else '-'
+        a5 = f"{r[5]}%" if r[5] is not None else '-'
+        a10 = f"{r[6]}%" if r[6] is not None else '-'
+        print(f"  {r[0]:<10} {r[1]:>5} {w:>4} {l:>4} {wr:>7} {ap:>8} {a5:>7} {a10:>7}")
+
+    # 按角色统计
+    print(f"\n  按角色统计(已平仓):")
+    print(f"  {'角色':<10} {'总数':>5} {'胜':>4} {'负':>4} {'胜率':>7} {'均盈亏':>8}")
+    rows = conn.execute('''
+        SELECT role, COUNT(*) as total,
+               COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win,
+               COALESCE(SUM(CASE WHEN pnl <= 0 AND status='closed' THEN 1 ELSE 0 END), 0) as lose,
+               ROUND(AVG(CASE WHEN status='closed' THEN pnl END), 2) as avg_pnl
+        FROM tail_backtest_v3
+        GROUP BY role ORDER BY avg_pnl DESC
+    ''').fetchall()
+    for r in rows:
+        w = r[2] or 0
+        l = r[3] or 0
+        wr = f"{w/(w+l)*100:.1f}%" if (w+l) > 0 else '-'
+        ap = f"{r[4]}%" if r[4] is not None else '-'
+        print(f"  {r[0] or 'NULL':<10} {r[1]:>5} {w:>4} {l:>4} {wr:>7} {ap:>8}")
+
+    # 按买入类型统计
+    print(f"\n  按买入类型统计(已平仓):")
+    print(f"  {'类型':<20} {'总数':>5} {'胜':>4} {'负':>4} {'胜率':>7} {'均盈亏':>8}")
+    rows = conn.execute('''
+        SELECT buy_type, COUNT(*) as total,
+               COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as win,
+               COALESCE(SUM(CASE WHEN pnl <= 0 AND status='closed' THEN 1 ELSE 0 END), 0) as lose,
+               ROUND(AVG(CASE WHEN status='closed' THEN pnl END), 2) as avg_pnl
+        FROM tail_backtest_v3
+        GROUP BY buy_type ORDER BY avg_pnl DESC
+    ''').fetchall()
+    for r in rows:
+        w = r[2] or 0
+        l = r[3] or 0
+        wr = f"{w/(w+l)*100:.1f}%" if (w+l) > 0 else '-'
+        ap = f"{r[4]}%" if r[4] is not None else '-'
+        print(f"  {r[0] or 'NULL':<20} {r[1]:>5} {w:>4} {l:>4} {wr:>7} {ap:>8}")
+
+    # 按分项得分贡献统计
+    print(f"\n  分项得分均值(已平仓):")
+    print(f"  {'信号':<10} {'主题分':>6} {'资金分':>6} {'角色分':>6} {'技术分':>6} {'尾盘分':>6} {'空间分':>6} {'风险扣':>6}")
+    rows = conn.execute('''
+        SELECT signal,
+               ROUND(AVG(theme_score), 1),
+               ROUND(AVG(capital_score), 1),
+               ROUND(AVG(role_score), 1),
+               ROUND(AVG(technical_score), 1),
+               ROUND(AVG(timing_score), 1),
+               ROUND(AVG(room_score), 1),
+               ROUND(AVG(risk_penalty), 1)
+        FROM tail_backtest_v3 WHERE status = 'closed'
+        GROUP BY signal ORDER BY signal
+    ''').fetchall()
+    for r in rows:
+        print(f"  {r[0]:<10} {r[1]:>6} {r[2]:>6} {r[3]:>6} {r[4]:>6} {r[5]:>6} {r[6]:>6} {r[7]:>6}")
+
+    # TOP10盈利信号
+    print(f"\n  TOP10盈利信号:")
+    rows = conn.execute('''
+        SELECT signal_date, ts_code, name, theme, total_score, role, buy_type, signal, pnl
+        FROM tail_backtest_v3 WHERE pnl IS NOT NULL
+        ORDER BY pnl DESC LIMIT 10
+    ''').fetchall()
+    print(f"  {'信号日':<10} {'代码':<12} {'名称':<8} {'主题':<12} {'总分':>4} {'角色':<8} {'买型':<18} {'信号':<8} {'盈亏':>7}")
+    for r in rows:
+        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<8} {r[3]:<12} {r[4]:>4} {r[5] or '':<8} {r[6] or '':<18} {r[7]:<8} {r[8]:>+7.1f}%")
+
+    # TOP10亏损信号
+    print(f"\n  TOP10亏损信号:")
+    rows = conn.execute('''
+        SELECT signal_date, ts_code, name, theme, total_score, role, buy_type, signal, pnl
+        FROM tail_backtest_v3 WHERE pnl IS NOT NULL
+        ORDER BY pnl ASC LIMIT 10
+    ''').fetchall()
+    print(f"  {'信号日':<10} {'代码':<12} {'名称':<8} {'主题':<12} {'总分':>4} {'角色':<8} {'买型':<18} {'信号':<8} {'盈亏':>7}")
+    for r in rows:
+        print(f"  {r[0]:<10} {r[1]:<12} {r[2]:<8} {r[3]:<12} {r[4]:>4} {r[5] or '':<8} {r[6] or '':<18} {r[7]:<8} {r[8]:>+7.1f}%")
+
+    conn.close()
+    print(f"{'═' * 70}\n")
+
+
 # ============================================================
 # 主入口
 # ============================================================
@@ -880,23 +1348,33 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='「猎尾」尾盘突袭战法 - TDX历史回测')
     parser.add_argument('--start', default='20260101', help='起始日期 YYYYMMDD (默认20260101)')
     parser.add_argument('--end', default='20260731', help='结束日期 YYYYMMDD (默认20260731)')
-    parser.add_argument('--status', action='store_true', help='只查看回测结果')
+    parser.add_argument('--status', action='store_true', help='只查看V2回测结果')
+    parser.add_argument('--status-v3', action='store_true', help='只查看V3回测结果')
+    parser.add_argument('--v3', action='store_true', help='运行V3回测')
     parser.add_argument('--report', action='store_true', help='生成Excel报告')
     args = parser.parse_args()
 
     if args.status:
         show_status()
+    elif args.status_v3:
+        show_status_v3()
     else:
         bt = TailBacktester(args.start, args.end)
         bt.prepare_data()
-        bt.run()
-        show_status()
+        if args.v3:
+            bt.run_v3()
+            show_status_v3()
+        else:
+            bt.run()
+            show_status()
 
         if args.report:
             # 导出Excel
+            table = 'tail_backtest_v3' if args.v3 else 'tail_backtest'
             conn = sqlite3.connect(TRACKER_DB, timeout=10.0)
-            df = pd.read_sql_query('SELECT * FROM tail_backtest ORDER BY signal_date, pnl DESC', conn)
+            df = pd.read_sql_query(f'SELECT * FROM {table} ORDER BY signal_date, pnl DESC', conn)
             conn.close()
-            report_file = os.path.join(CACHE_DIR, f'tail_backtest_report_{args.start}_{args.end}.xlsx')
+            tag = 'v3' if args.v3 else 'v2'
+            report_file = os.path.join(CACHE_DIR, f'tail_backtest_{tag}_{args.start}_{args.end}.xlsx')
             df.to_excel(report_file, index=False)
             print(f"\n  Excel报告已生成: {report_file}")

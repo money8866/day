@@ -123,6 +123,196 @@ def load_stock_concepts(ts_codes):
     return stock_concepts
 
 
+def get_moneyflow_thsc(trade_date, force_refresh=False):
+    """拉取全市场同花顺资金流单日数据（moneyflow_ths），带 CSV 缓存
+
+    moneyflow_ths 字段（均为净值，负=流出）：
+      net_amount(总净额), buy_lg_amount(大单净额), buy_md_amount(中单净额), buy_sm_amount(小单净额)
+    单位：万元。用于 V3 Rotation 引擎的 Fund（主力资金净流入）因子。
+    """
+    cache_path = os.path.join(CACHE_DIR, f"moneyflow_ths_{trade_date}.csv")
+    if os.path.exists(cache_path) and not force_refresh:
+        try:
+            df = pd.read_csv(cache_path)
+            if not df.empty:
+                print(f"[Moneyflow] 缓存命中: {trade_date}, {len(df)} 条")
+                return df
+        except Exception:
+            pass
+
+    try:
+        from theme_trend_sentiment_score import pro as _pro
+    except Exception:
+        _pro = None
+    if _pro is None:
+        print("[Moneyflow] 缺少 Tushare pro，跳过资金流")
+        return pd.DataFrame()
+
+    print(f"[Moneyflow] 拉取全市场资金流: {trade_date}")
+    all_data = []
+    offset = 0
+    limit = 5000  # tushare 单次返回上限
+    for _ in range(12):
+        try:
+            df = _pro.moneyflow_ths(trade_date=trade_date, offset=offset, limit=limit)
+        except Exception as e:
+            print(f"[Moneyflow] 拉取失败: {e}")
+            break
+        if df is None or df.empty:
+            break
+        all_data.append(df)
+        if len(df) < limit:
+            break
+        offset += limit
+        time.sleep(0.15)
+
+    if not all_data:
+        return pd.DataFrame()
+    mf = pd.concat(all_data, ignore_index=True)
+    if 'ts_code' in mf.columns:
+        mf = mf.drop_duplicates(subset=['ts_code'])
+    mf.to_csv(cache_path, index=False, encoding='utf-8-sig')
+    print(f"[Moneyflow] 完成: {len(mf)} 条 → {os.path.basename(cache_path)}")
+    return mf
+
+
+def get_etf_kline(ts_code, start=None, end=None):
+    """拉取 ETF 日线（fund_daily），带 SQLite 缓存
+
+    ETF 是基金代码，pro.index_daily 对其返回空，必须用 pro.fund_daily。
+    fund_daily.amount 单位：千元（与 daily 一致，/100000 后为亿元）。
+    """
+    if start is None:
+        start = START_DATE
+    if end is None:
+        end = TRADE_DATE
+    cached = cache_get("etf_kline", ts_code=ts_code, start=start, end=end)
+    if cached is not None and 'trade_date' in cached.columns:
+        max_date = str(cached['trade_date'].max())
+        if max_date == str(end):
+            if not cached['trade_date'].is_monotonic_increasing:
+                cached = cached.sort_values('trade_date').reset_index(drop=True)
+            return cached
+        print(f"[ETF] 缓存过期（最新: {max_date}, 需要: {end}），重新拉取")
+
+    try:
+        from theme_trend_sentiment_score import pro as _pro
+    except Exception:
+        _pro = None
+    if _pro is None:
+        return pd.DataFrame()
+
+    print(f"[ETF] 拉取 {ts_code} 数据: {start} ~ {end}")
+    try:
+        df = _pro.fund_daily(ts_code=ts_code, start_date=start, end_date=end)
+    except Exception as e:
+        print(f"[ETF] 拉取失败: {e}")
+        return pd.DataFrame()
+    time.sleep(0.15)
+    if df is not None and not df.empty:
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        cache_set("etf_kline", df, ts_code=ts_code, start=start, end=end)
+        print(f"[ETF] 已缓存: {ts_code} ({len(df)} 条)")
+    return df
+
+
+ETF_NAME_MAP_FILE = os.path.join(CACHE_DIR, "etf_name_map.json")
+
+
+def get_etf_name_map(force_refresh=False):
+    """获取场内 ETF 代码→名称映射（fund_basic market='E'），缓存 JSON
+
+    theme_config.json 的 main_etf 只有代码（如 159869.SZ），报告需显示真实
+    ETF 名称（如"游戏ETF"）才能给出可执行的配置建议。
+    """
+    if os.path.exists(ETF_NAME_MAP_FILE) and not force_refresh:
+        try:
+            with open(ETF_NAME_MAP_FILE, 'r', encoding='utf-8') as f:
+                m = json.load(f)
+            if m:
+                return m
+        except Exception:
+            pass
+
+    try:
+        from theme_trend_sentiment_score import pro as _pro
+    except Exception:
+        _pro = None
+    if _pro is None:
+        return {}
+
+    print(f"[ETF] 拉取场内 ETF 名称列表...")
+    try:
+        fb = _pro.fund_basic(market='E', fields='ts_code,name')
+    except Exception as e:
+        print(f"[ETF] fund_basic 拉取失败: {e}")
+        return {}
+    if fb is None or fb.empty:
+        return {}
+
+    name_map = dict(zip(fb['ts_code'].astype(str), fb['name'].astype(str)))
+    try:
+        with open(ETF_NAME_MAP_FILE, 'w', encoding='utf-8') as f:
+            json.dump(name_map, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    print(f"[ETF] ETF 名称缓存完成: {len(name_map)} 只")
+    return name_map
+
+
+def judge_etf_trend(ek):
+    """基于 ETF K线判断自身趋势（多头/回踩/弱势），供配置建议参考
+
+    数据来自 run_v2_analysis 预取的 etf_kline_map（fund_daily，已按日期升序）。
+    """
+    if ek is None or ek.empty or len(ek) < 20:
+        return None
+    try:
+        close = ek['close'].astype(float).values
+        cur = float(close[-1])
+        ma5 = float(close[-5:].mean())
+        ma10 = float(close[-10:].mean())
+        ma20 = float(close[-20:].mean())
+        ret5 = (cur / close[-6] - 1) * 100 if len(close) >= 6 else 0.0
+    except Exception:
+        return None
+    if cur >= ma20 and ret5 > 1.0:
+        state = '多头'
+    elif cur >= ma20:
+        state = '回踩'
+    else:
+        state = '弱势'
+    return {'state': state, 'ret5': round(ret5, 1), 'above_ma20': cur >= ma20}
+
+
+ETF_NAME_PREFIXES = ['华夏', '华富', '万家', '华宝', '易方达', '广发', '南方', '嘉实', '富国',
+                     '汇添富', '国泰', '招商', '华泰柏瑞', '天弘', '博时', '鹏华', '工银',
+                     '平安', '大成', '兴全', '银华', '景顺长城', '华安', '中欧', '建信',
+                     '交银', '农银', '上投摩根', '诺安', '国联安', '海富通', '浦银安盛',
+                     '长信', '新华', '中银', '方正', '东方', '泰康', '永赢', '国寿',
+                     '前海开源', '西部利得', '创金合信', '德邦', '东财', '国金', '民生加银',
+                     '摩根', '融通', '瑞银', '申万菱信', '泰达宏利', '太平', '同泰',
+                     '兴业', '圆信永丰', '中加', '中信保诚', '中信建投', '朱雀']
+ETF_INDEX_PREFIXES = ['中证', '上证', '深证', '国证', '创业板', '科创50', '科创', '沪深300', '中债']
+
+
+def short_etf_name(name):
+    """简化 ETF 全名（如"华夏中证动漫游戏ETF"→"动漫游戏ETF"），便于移动端展示"""
+    if not name:
+        return name
+    for p in ETF_NAME_PREFIXES:
+        if name.startswith(p):
+            name = name[len(p):]
+            break
+    for p in ETF_INDEX_PREFIXES:
+        if name.startswith(p):
+            name = name[len(p):]
+            break
+    if not name.endswith('ETF'):
+        name = name + 'ETF'
+    return name
+
+
 # ─────────── 主评分流程 ───────────
 def run_v2_analysis(trade_date=None):
     """对 v2 映射运行主题评分分析"""
@@ -130,6 +320,7 @@ def run_v2_analysis(trade_date=None):
 
     if trade_date is None:
         trade_date = GLOBAL_TRADE_DATE
+    TRADE_DATE = str(trade_date)  # 同步模块级 TRADE_DATE（get_etf_kline 等默认 end 参数依赖）
     TRADE_DATE_str = str(trade_date)
 
     # 计算周期起始日
@@ -220,6 +411,41 @@ def run_v2_analysis(trade_date=None):
 
     # ── 6b. 读取前一日数据（用于判断状态变化）──
     prev_theme_data = get_prev_day_theme_data()
+
+    # ── 6c. V3 Rotation 引擎数据准备 ──
+    print("  准备 V3 资金流数据（moneyflow_ths）...")
+    mf_df = get_moneyflow_thsc(TRADE_DATE_str)
+    mf_map = {}
+    if mf_df is not None and not mf_df.empty and 'ts_code' in mf_df.columns and 'net_amount' in mf_df.columns:
+        mf_map = dict(zip(mf_df['ts_code'].astype(str), mf_df['net_amount'].astype(float)))
+        print(f"  资金流可用: {len(mf_map)} 只")
+
+    # 全市场活跃池成交额：所有主题成分股去重后的当日成交额之和（单位十亿）
+    print("  计算全市场活跃池成交额...")
+    pool_amount = 0.0
+    for code in all_codes:
+        kdf = kline_groups.get(code)
+        if kdf is None or len(kdf) < 6:
+            continue
+        feat0 = per_stock_features_v2(kdf)
+        if feat0 is None:
+            continue
+        pool_amount += float(feat0.get('amount_latest', 0) or 0)
+    print(f"  活跃池成交额: {pool_amount:.1f} 亿元")
+
+    # ETF K线缓存（各主题 main_etf 去重后预取，ETF 用 fund_daily）
+    print("  预取主题 ETF K线...")
+    etf_kline_map = {}
+    for _key, _cfg in theme_config_map.items():
+        _etf = _cfg.get('main_etf', '')
+        if _etf and _etf not in etf_kline_map:
+            try:
+                _ek = get_etf_kline(_etf)
+                if _ek is not None and not _ek.empty:
+                    etf_kline_map[_etf] = _ek
+            except Exception as _e:
+                print(f"  [ETF] {_etf} 预取异常: {_e}")
+    print(f"  ETF K线可用: {len(etf_kline_map)} 只")
 
     results = []
     rows_per_theme = {}
@@ -348,6 +574,20 @@ def run_v2_analysis(trade_date=None):
         core_name = core_stock['name'] if core_stock else ""
         core_code = core_stock['ts_code'] if core_stock else ""
 
+        # ── V3 Rotation Engine 因子计算 ──
+        etf_kline = etf_kline_map.get(cfg.get('main_etf', ''), None)
+        fund_score, fund_detail = calc_fund_score_v3(all_rows, mf_map, pool_amount, etf_kline=etf_kline)
+        breadth_score, breadth_detail = calc_breadth_score_v3(all_rows)
+        leader_score, leader_detail = calc_leader_score_v3(all_rows, market_ret_10)
+        persistence = calc_persistence_v3(t_detail)
+        heat_v3 = hot_percentile  # Heat 用热榜百分位（0-100）
+        # Strength = 30%Trend + 25%Emotion + 20%Fund + 15%Breadth + 10%Leader
+        strength = round(0.30 * t_score + 0.25 * s_score + 0.20 * fund_score +
+                         0.15 * breadth_score + 0.10 * leader_score, 1)
+        # MTI = 25%Strength + 25%Fund + 20%Leader + 15%Heat + 15%Persistence
+        mti = calc_mti_v3(strength, fund_score, leader_score, heat_v3, persistence)
+        mti_level = get_mti_level(mti)
+
         results.append({
             'theme': theme_name, 'n_stocks': all_total,
             'trend_score': t_score, 'sentiment_score': s_score,
@@ -360,6 +600,12 @@ def run_v2_analysis(trade_date=None):
             'hot_score': round(hot_score, 2), 'hot_percentile': hot_percentile,
             'hot_phase': hot_phase, 'hot_warning': hot_warning,
             'hot_detail': hot_detail,
+            # ── V3 Rotation Engine 字段 ──
+            'fund_score': fund_score, 'fund_detail': fund_detail,
+            'breadth_score': breadth_score, 'breadth_detail': breadth_detail,
+            'leader_v3_score': leader_score, 'leader_v3_detail': leader_detail,
+            'persistence': persistence, 'heat_v3': heat_v3,
+            'strength_score': strength, 'mti': mti, 'mti_level': mti_level,
         })
         rows_per_theme[theme_name] = top_rows
 
@@ -367,6 +613,28 @@ def run_v2_analysis(trade_date=None):
     results.sort(key=lambda x: x["composite_score"], reverse=True)
     for i, r in enumerate(results, 1):
         r['rank'] = i
+
+    # ── MTI 横截面分层（修复压缩：让主线/准主线/轮动真正拉开层次）──
+    # 原因：Strength/Fund 分项被压缩在 0~50，绝对加权 MTI 永远到不了 65/80 阈值
+    #       （8/3 全部主题 MTI 挤在 18.8~54.8，16/28 个"非主线"）
+    # 方案：MTI = 30%×原始加权分 + 70%×五因子横截面百分位加权分
+    #       保留绝对水平发言权的同时，保证每期最强主题能进入主线/准主线档
+    print("  计算 MTI 横截面分层...")
+    mti_factor_keys = ['strength_score', 'fund_score', 'leader_v3_score', 'heat_v3', 'persistence']
+    mti_rank_map = {}
+    for fk in mti_factor_keys:
+        vals = pd.Series([r.get(fk, 0) for r in results])
+        mti_rank_map[fk] = vals.rank(pct=True).values * 100.0
+    for i, r in enumerate(results):
+        raw_mti = r.get('mti', 0)
+        rank_mti = (0.25 * mti_rank_map['strength_score'][i] +
+                    0.25 * mti_rank_map['fund_score'][i] +
+                    0.20 * mti_rank_map['leader_v3_score'][i] +
+                    0.15 * mti_rank_map['heat_v3'][i] +
+                    0.15 * mti_rank_map['persistence'][i])
+        mti_new = 0.3 * raw_mti + 0.7 * rank_mti
+        r['mti'] = round(mti_new, 1)
+        r['mti_level'] = get_mti_level(mti_new)
 
     # 计算主题状态 + 年龄追踪
     print("  计算主题状态...")
@@ -392,6 +660,47 @@ def run_v2_analysis(trade_date=None):
         )
         r.update(migration)
 
+    # ── V3 Rotation Engine：生命周期分类 + Trade Score + Final 修正 ──
+    print("  计算 V3 生命周期与交易得分...")
+    for r in results:
+        lifecycle = classify_v3_lifecycle(r)
+        r['lifecycle'] = lifecycle
+        # FundAcc = 主力净流入强度（净流入占比 1%~3% 为强）
+        net_ratio = (r.get('fund_detail', {}) or {}).get('fund_net_ratio', 0)
+        fund_acc = max(0.0, min(100.0, linear(net_ratio, -0.01, 0.03) * 100))
+        r['fund_acc'] = round(fund_acc, 1)
+        leader_quality = (r.get('sentiment_detail', {}) or {}).get('leader_quality', 50)
+        # Base Trade Score = 30%Strength + 25%Stage + 20%Transition + 15%LeaderQ + 10%FundAcc
+        base_trade = calc_trade_score_v3(
+            r.get('strength_score', 50), lifecycle,
+            r.get('migration_score', 50), leader_quality, fund_acc,
+        )
+        r['base_trade_score'] = round(base_trade, 1)
+        # 小主题可信度修正：Adjusted = Trade×Confidence + History×(1-Confidence)
+        conf = calc_confidence_v3(r['n_stocks'])
+        r['confidence'] = round(conf, 3)
+        history = r.get('persistence', 50)  # History Score 用持续性分代理
+        if lifecycle in ('高潮', '退潮'):
+            # 高潮/退潮主题禁止通过持续性高分通道回补（否则防御性长牛板块如黄金，
+            # 退潮时仍凭高持续性霸榜），直接按基础交易分，确保"退潮坚决回避"
+            adjusted = base_trade
+        else:
+            adjusted = base_trade * conf + history * (1 - conf)
+        # 成长性因子
+        growth = get_growth_factor(r['theme'])
+        r['growth_factor'] = growth
+        # Lifecycle 乘法修正（硬主导）：退潮×0.55 / 高潮×0.75 / 升温×1.10 / 启动×1.15
+        lc_mult = LC_TRADE_MULT.get(lifecycle, 1.0)
+        r['lc_mult'] = lc_mult
+        r['final_trade_score'] = round(adjusted * growth * lc_mult, 1)
+        # 基于 Trade 而非 Strength 的推荐排序
+        r['trade_rank'] = 0
+
+    # Trade 排序（交易优先级）
+    results_trade_sorted = sorted(results, key=lambda x: x['final_trade_score'], reverse=True)
+    for i, r in enumerate(results_trade_sorted, 1):
+        r['trade_rank'] = i
+
     # 风格分析（top5）
     style_result = analyze_style_trend(results[:5])
 
@@ -404,8 +713,9 @@ def run_v2_analysis(trade_date=None):
     # SQLite
     save_to_sqlite_v2(results)
 
-    # 文本报告
-    save_to_text_report_v2(results, kg_v3_cfg, en_to_cn)
+    # 文本报告（V3 规范）
+    save_to_text_report_v2(results, kg_v3_cfg, en_to_cn,
+                           market_ret_10=market_ret_10, etf_kline_map=etf_kline_map)
 
     # 打印排名
     print(f"\n{'='*80}")
@@ -424,6 +734,233 @@ def run_v2_analysis(trade_date=None):
 
     print(f"\n完成! 共 {len(results)} 个主题评分")
     return results
+
+
+# ═══════════════════════════════════════════════════════════
+# V3 Rotation Engine（MTI / Strength / Fund / Breadth / Leader / Lifecycle / Trade Score）
+# 规格依据：A股机构主题轮动分析系统（Theme Rotation Engine V3）
+# ═══════════════════════════════════════════════════════════
+
+# 成长性因子（Growth Factor）：避免无成长性的低弹性防御/周期板块长期霸榜
+GROWTH_RULES = [
+    ("AI", 1.00), ("算力", 1.00), ("机器人", 1.00), ("低空", 1.00), ("商业航天", 1.00),
+    ("军工", 1.00), ("智能驾驶", 1.00), ("半导体", 1.00), ("游戏", 1.00),
+    ("新能源", 0.95), ("光伏", 0.95), ("储能", 0.95), ("汽车", 0.95), ("核聚变", 0.95),
+    ("周期", 0.90), ("有色", 0.90), ("稀土", 0.90), ("小金属", 0.90), ("工业金属", 0.90),
+    ("煤炭", 0.90), ("钢铁", 0.90), ("石油", 0.90), ("化工", 0.90),
+    ("红利", 0.85), ("银行", 0.85), ("公用", 0.85), ("电力", 0.85), ("证券", 0.85), ("保险", 0.85),
+    ("消费", 0.80), ("食品", 0.80), ("白酒", 0.80), ("医药", 0.80), ("医疗", 0.80),
+    ("农牧", 0.80), ("家电", 0.80), ("零售", 0.80),
+]
+
+
+def get_growth_factor(theme_name):
+    """按主题名关键词匹配成长性因子，默认 0.95"""
+    for kw, gf in GROWTH_RULES:
+        if kw in theme_name:
+            return gf
+    return 0.95
+
+
+def calc_fund_score_v3(rows, mf_map, pool_amount, etf_kline=None):
+    """Fund 资金流向分（0-100）
+    = 40%成交额增速 + 30%主力资金净流入 + 20%ETF资金变化 + 10%成交额占活跃池比例
+    moneyflow_ths: net_amount 单位万元（负=流出）；amount_latest 单位十亿。
+    """
+    amt_today = sum(float(r.get('amount_latest', 0) or 0) for r in rows)
+    amt_ma5 = sum(float(r.get('amount_ma5', 0) or 0) for r in rows)
+    growth = (amt_today / amt_ma5 - 1) if amt_ma5 > 0 else 0.0
+    growth_score = linear(growth, 0.0, 0.5) * 100
+
+    # 主力净流入：moneyflow_ths net_amount 单位万元 → 亿元；与成交额统一口径
+    # 注意：amount_latest = tushare daily.amount(千元)/100000 = 亿元
+    net_sum = 0.0
+    mf_hit = 0
+    for r in rows:
+        mf = mf_map.get(r.get('ts_code', ''))
+        if mf is not None:
+            net_sum += mf
+            mf_hit += 1
+    amt_yi = amt_today  # 亿元
+    net_ratio = (net_sum / 10000.0) / amt_yi if amt_yi > 0 else 0.0
+    net_score = linear(net_ratio, -0.02, 0.04) * 100
+
+    # ETF 资金变化：ETF K线成交额增速（无 ETF 数据用主题成交额增速替代）
+    etf_score = growth_score
+    if etf_kline is not None and len(etf_kline) >= 6:
+        try:
+            etf_amt = etf_kline['amount'].astype(float).values
+            e_now = etf_amt[-1]
+            e_ma5 = etf_amt[-6:-1].mean()
+            e_growth = (e_now / e_ma5 - 1) if e_ma5 > 0 else 0.0
+            etf_score = linear(e_growth, -0.2, 0.5) * 100
+        except Exception:
+            pass
+
+    # 成交额占活跃池比例
+    share = (amt_today / pool_amount) if pool_amount > 0 else 0.0
+    share_score = linear(share, 0.02, 0.15) * 100
+
+    fund = 0.4 * growth_score + 0.3 * net_score + 0.2 * etf_score + 0.1 * share_score
+    return round(max(0.0, min(100.0, fund)), 1), {
+        'fund_growth': round(growth, 3), 'fund_net_ratio': round(net_ratio, 4),
+        'fund_net': round(net_sum / 10000.0, 2), 'fund_mf_hit': mf_hit,
+        'fund_etf_score': round(etf_score, 1), 'fund_share': round(share, 4),
+        'fund_score': round(fund, 1),
+    }
+
+
+def calc_breadth_score_v3(rows):
+    """Breadth 赚钱效应广度（0-100）：上涨25% + 创新高25% + MA20 25% + 放量25%"""
+    n = len(rows) or 1
+    up = sum(1 for r in rows if (r.get('pct_chg', 0) or 0) > 0) / n
+    nh = sum(1 for r in rows if r.get('new_high_flag', 0) == 1) / n
+    ma20 = sum(1 for r in rows if r.get('above_ma20_flag', 0) == 1) / n
+    vl = sum(1 for r in rows if (r.get('vol_ratio_today', 0) or 0) > 1.2) / n
+    score = 100 * (0.25 * up + 0.25 * nh + 0.25 * ma20 + 0.25 * vl)
+    return round(max(0.0, min(100.0, score)), 1), {
+        'breadth_up': round(up * 100, 1), 'breadth_new_high': round(nh * 100, 1),
+        'breadth_ma20': round(ma20 * 100, 1), 'breadth_vol': round(vl * 100, 1),
+    }
+
+
+def _lb_score_v3(lb):
+    """连板非线性评分：1板15 / 2板40 / 3板70 / 4板90 / 5板+100"""
+    if lb <= 0:
+        return 0
+    return {1: 15, 2: 40, 3: 70, 4: 90}.get(lb, 100)
+
+
+def calc_leader_score_v3(rows, market_ret):
+    """Leader 龙头效应（0-100）：龙头涨停20% + 成交额20% + RS 20% + 连续性20% + 新高20%"""
+    if not rows:
+        return 0.0, {}
+    # 龙头识别：2连板优先，其次大成交上涨股
+    leaders = [r for r in rows if r.get('lb_height', 0) >= 2]
+    if not leaders:
+        leaders = sorted([r for r in rows if (r.get('pct_chg', 0) or 0) > 0],
+                         key=lambda x: x.get('amount_latest', 0), reverse=True)
+    if not leaders:
+        leaders = sorted(rows, key=lambda x: x.get('amount_latest', 0), reverse=True)
+    ld = leaders[0]
+    lb = ld.get('lb_height', 0)
+    lb_score = _lb_score_v3(lb)
+    amt_score = min(float(ld.get('amount_latest', 0) or 0) / 10.0, 1.0) * 100  # 10亿成交满分
+    rs = (ld.get('pct_chg', 0) or 0) - market_ret
+    rs_score = linear(rs, -3, 12) * 100
+    cont_score = min(lb * 20 + max(ld.get('ret_5', 0) or 0, 0) * 3, 100)
+    nh_score = 100 if ld.get('new_high_flag', 0) == 1 else 0
+    score = 0.2 * lb_score + 0.2 * amt_score + 0.2 * rs_score + 0.2 * cont_score + 0.2 * nh_score
+    return round(max(0.0, min(100.0, score)), 1), {
+        'leader_v3': ld.get('name', ''), 'leader_lb_v3': lb,
+        'leader_amt_v3': round(float(ld.get('amount_latest', 0) or 0), 2),
+        'leader_rs_v3': round(rs, 2), 'leader_new_high_v3': ld.get('new_high_flag', 0),
+    }
+
+
+def calc_persistence_v3(t_detail):
+    """Persistence 持续性（0-100）：5日40% + 10日30% + 10日斜率20% + 加速度10%"""
+    r5 = t_detail.get('avg_ret_5', 0) or 0
+    r10 = t_detail.get('avg_ret_10', 0) or 0
+    slope = t_detail.get('avg_slope_10', 0) or 0
+    acc = t_detail.get('avg_acc_5_10', 0) or 0
+    score = (linear(r5, -2, 6) * 0.4 + linear(r10, -5, 12) * 0.3 +
+             linear(slope, -0.5, 0.5) * 0.2 + linear(acc, -2, 4) * 0.1) * 100
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def classify_v3_lifecycle(r):
+    """六大生命周期分类（唯一）：高潮 > 退潮 > 分歧 > 主升 > 升温 > 启动
+
+    全部基于 V3 因子判定（不依赖 V2 theme_state 状态机），避免"趋势弱但情绪强"
+    的题材（如 AI算力 回撤后当日反抽）被兜底误判为退潮。
+    """
+    trend = r.get('trend_score', 0)
+    emotion = r.get('sentiment_score', 0)
+    sd = r.get('sentiment_detail', {}) or {}
+    fund = r.get('fund_score', 0)
+    breadth = r.get('breadth_score', 0)
+    max_lb = sd.get('max_lb', 0)
+    boom = sd.get('boom_count', 0)
+    climax = sd.get('climax_flag', 0)
+    up_ratio = sd.get('up_ratio', 0)
+    zt_ratio = sd.get('zt_ratio', 0)
+    hot_phase = r.get('hot_phase', '')
+
+    # 1. 高潮：情绪极致化（涨停密度极高 / 连板极高 / 热榜顶峰 / 涨停绝对数≥15）
+    if climax == 1 or (max_lb >= 3 and zt_ratio >= 0.025) or hot_phase == '高潮':
+        return '高潮'
+    # 2. 退潮：趋势+情绪双弱 且 赚钱效应消失（上涨率<40%）
+    if trend < 35 and emotion < 35 and up_ratio < 40:
+        return '退潮'
+    # 3. 分歧：炸板增加（涨停被砸）→ 情绪与趋势不协调
+    if boom >= 2:
+        return '分歧'
+    # 4. 主升：趋势与情绪共振
+    if trend >= 55 and emotion >= 50:
+        return '主升'
+    # 5. 升温：广度扩散（普涨）+ 趋势或情绪达标
+    if up_ratio >= 70 and (trend >= 45 or emotion >= 45):
+        return '升温'
+    # 6. 启动：趋势初现（趋势站上40）或 情绪活跃+上涨过半
+    if trend >= 40 or (emotion >= 55 and up_ratio >= 55):
+        return '启动'
+    # 7. 低强度分歧：情绪与趋势不协调但未死
+    if emotion >= 40 and trend >= 30:
+        return '分歧'
+    # 8. 兜底：三弱 → 退潮
+    return '退潮'
+
+
+# 生命周期阶段加减分（Base Trade Score 的 Stage 项）
+# '分歧' 与 '分歧转一致' 同档：分歧即分歧转一致的前置买点（逢低低吸），故共享同档
+# V3 升级：Bonus 区间拉大（-25 ~ +22），配合 Stage 权重 35%，让生命周期真正主导 Trade Score
+STAGE_BONUS = {'启动': 22, '升温': 16, '分歧': 12, '分歧转一致': 12, '主升': 8, '震荡': 0, '高潮': -10, '退潮': -25}
+
+# 生命周期乘法修正（最终 Trade Score 的硬主导）
+# 即使退潮主题强度/资金极高，×0.55 后也难超越普通升温主题（×1.10）
+LC_TRADE_MULT = {'启动': 1.15, '升温': 1.10, '分歧': 1.05, '分歧转一致': 1.05, '主升': 1.00, '震荡': 0.90, '高潮': 0.75, '退潮': 0.55}
+
+
+def calc_stage_score_v3(lifecycle):
+    bonus = STAGE_BONUS.get(lifecycle, 0)
+    return max(0.0, min(100.0, 50.0 + bonus))
+
+
+def calc_trade_score_v3(strength, lifecycle, migration_score, leader_quality, fund_acc):
+    """Base Trade Score = 25%Strength + 35%Stage + 15%Transition + 15%LeaderQ + 10%FundAcc
+
+    V3 升级：Stage 权重升至 35%（原 25%），Lifecycle 成为 Base Trade 的第一权重。
+    """
+    stage = calc_stage_score_v3(lifecycle)
+    base = strength * 0.25 + stage * 0.35 + migration_score * 0.15 + leader_quality * 0.15 + fund_acc * 0.10
+    return max(0.0, min(100.0, base))
+
+
+def calc_confidence_v3(n_stocks):
+    """小主题可信度修正：min(1, sqrt(成份股数量/60))，防止小板块偶发暴涨"""
+    return min(1.0, float(np.sqrt(n_stocks / 60.0)))
+
+
+def calc_mti_v3(strength, fund, leader, heat, persistence):
+    """MTI 原始加权分 = 25%Strength + 25%Fund + 20%Leader + 15%Heat + 15%Persistence
+
+    注意：此函数只做绝对加权，最终 MTI 在 run_v2_analysis 中再做横截面分层
+    （30%原始分 + 70%横截面百分位加权），以修复分项压缩导致的分层不足。
+    """
+    return round(0.25 * strength + 0.25 * fund + 0.20 * leader + 0.15 * heat + 0.15 * persistence, 1)
+
+
+def get_mti_level(mti):
+    if mti >= 80:
+        return '主线'
+    if mti >= 65:
+        return '准主线'
+    if mti >= 50:
+        return '轮动主题'
+    if mti >= 35:
+        return '补涨主题'
+    return '非主线'
 
 
 def save_to_csv_v2(results):
@@ -452,6 +989,27 @@ def save_to_csv_v2(results):
                "confirmation": mf.get("confirmation", 0), "money_resonance": mf.get("money_resonance", 0),
                "leader_health": mf.get("leader_health", 0), "regime": mf.get("regime", 0),
                "age_penalty": mf.get("age_penalty", 0), "macro_filter": mf.get("macro_filter", 0),
+               # ── V3 Rotation Engine 字段 ──
+               "lifecycle": r.get("lifecycle", ""),
+               "strength_score": r.get("strength_score", 0),
+               "fund_score": r.get("fund_score", 0),
+               "breadth_score": r.get("breadth_score", 0),
+               "leader_v3_score": r.get("leader_v3_score", 0),
+               "persistence": r.get("persistence", 0),
+               "heat_v3": r.get("heat_v3", 0),
+               "mti": r.get("mti", 0), "mti_level": r.get("mti_level", ""),
+               "base_trade_score": r.get("base_trade_score", 0),
+               "final_trade_score": r.get("final_trade_score", 0),
+               "trade_rank": r.get("trade_rank", 0),
+               "fund_acc": r.get("fund_acc", 0),
+               "lc_mult": r.get("lc_mult", 0),
+               "confidence": r.get("confidence", 0),
+               "growth_factor": r.get("growth_factor", 0),
+               "fund_net": (r.get("fund_detail") or {}).get("fund_net", 0),
+               "fund_net_ratio": (r.get("fund_detail") or {}).get("fund_net_ratio", 0),
+               "fund_growth": (r.get("fund_detail") or {}).get("fund_growth", 0),
+               "fund_share": (r.get("fund_detail") or {}).get("fund_share", 0),
+               "leader_v3": (r.get("leader_v3_detail") or {}).get("leader_v3", ""),
                }
         row.update({f"t_{k}": v for k, v in (r.get("trend_detail") or {}).items()})
         row.update({f"s_{k}": v for k, v in sd.items()})
@@ -513,95 +1071,226 @@ def save_to_sqlite_v2(results):
     print(f"[保存] SQLite: {OUTPUT_DB} ({len(results)} 条)")
 
 
-def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn):
-    """生成文本报告（含主题配置信息）"""
+def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_kline_map=None):
+    """生成 V3 规范文本报告（Theme Rotation Engine V3 输出规范）
+
+    结构：
+      1. 今日交易优先级（六大生命周期分类，按 Trade Score 推荐）
+      2. 数据定量汇总表（Trade TOP20 / Strength TOP20 / Transition TOP10）
+      3. 机构配置策略建议（ETF 配置 / 整体仓位 / 核心风险）
+
+    输出偏好：分隔线使用全角 ━(U+2550) / ─(U+2500)，正文无段落缩进（移动端浏览）
+    """
+    if etf_kline_map is None:
+        etf_kline_map = {}
     report_path = os.path.join(REPORT_DIR, f"theme_analysis_v2_{TRADE_DATE_str}.txt")
     buf = []
     def w(s=""):
         buf.append(s)
 
-    w("━" * 80)
-    w(f"  主题评分分析报告 V2 - {TRADE_DATE_str}")
-    w("━" * 80)
+    # 生命周期显示名：'分歧' → '分歧转一致'（规范六类）
+    LC_DISPLAY = {'启动': '启动', '升温': '升温', '主升': '主升',
+                  '分歧': '分歧转一致', '高潮': '高潮', '退潮': '退潮'}
+    lc_order = ['启动', '升温', '主升', '分歧转一致', '高潮', '退潮']
+    lc_num = {'启动': '①', '升温': '②', '主升': '③', '分歧转一致': '④', '高潮': '⑤', '退潮': '⑥'}
+    lc_title = {'启动': '启动（重点布局 ★★★★★）', '升温': '升温（加仓跟进 ★★★★☆）',
+                '主升': '主升（趋势持有 ★★★★☆）', '分歧转一致': '分歧转一致（逢低低吸 ★★★★☆）',
+                '高潮': '高潮（谨防落干 / 逐步止盈 ★☆☆☆☆）',
+                '退潮': '退潮（坚决回避 / 止损 ☆☆☆☆☆）'}
+    # V3 生命周期未来3日迁移路径（与左侧分类同语言，消除"启动却预判震荡/弱势"的矛盾）
+    # 方向取自 V2 迁移引擎 migration_direction；向上/中性走乐观路径，向下走谨慎路径
+    LC_NEXT_UP = {'启动': '升温', '升温': '主升', '分歧': '升温', '主升': '高潮', '高潮': '分歧', '退潮': '启动'}
+    LC_NEXT_DOWN = {'启动': '震荡', '升温': '分歧', '分歧': '退潮', '主升': '分歧', '高潮': '退潮', '退潮': '退潮'}
+
+    # 主题 → 主 ETF（保留完整代码如 159869.SZ，与 etf_kline_map / fund_basic 的 key 一致）
+    etf_map = {}
+    for _key, _cfg in kg_v3_cfg.items():
+        if _key.startswith('_'):
+            continue
+        _cn = _cfg.get("name_cn", _key)
+        etf_map[_cn] = str(_cfg.get("main_etf", "") or "")
+
+    # 按 Trade 排序
+    results_trade = sorted(results, key=lambda x: x.get('final_trade_score', 0), reverse=True)
+
+    w("━" * 60)
+    w(f"  主题评分分析报告 V3（Theme Rotation Engine）- {TRADE_DATE_str}")
+    w("━" * 60)
     w()
 
-    # ── 重点机会 ──
-    divergence_to_consensus = [r for r in results if r.get("theme_state") == "分歧转一致"]
-    if divergence_to_consensus:
-        w("━ 分歧转一致（重点关注）")
-        w("─" * 60)
-        for r in divergence_to_consensus:
-            sd = r.get("sentiment_detail", {}) or {}
-            w(f"  {r['theme']:<12} 趋势:{r['trend_score']:5.1f} 情绪:{r['sentiment_score']:5.1f} 涨停:{sd.get('zt_count', 0)}家 上涨:{sd.get('up_ratio', 0):.0f}%")
-            w(f"              龙头:{r.get('leader_name', '')}")
+    # ── 1. 今日交易优先级 ──
+    w("━" * 60)
+    w("### ★★★★★ 今日交易优先级（按 Trade Score 与 Lifecycle 综合推荐）")
+    w("━" * 60)
+    w()
+
+    groups = {}
+    for r in results:
+        lc = r.get('lifecycle', '退潮')
+        groups.setdefault(LC_DISPLAY.get(lc, lc), []).append(r)
+
+    for lc in lc_order:
+        items = groups.get(lc, [])
+        items.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
+        w(f"{lc_num[lc]} {lc_title[lc]}")
+        if not items:
+            w("  （今日无此类主题）")
+            w()
+            continue
+        for r in items[:8]:  # 每类最多8只
+            theme = r['theme']
+            mti = r.get('mti', 0)
+            mti_lv = r.get('mti_level', '')
+            leader = (r.get('leader_v3_detail') or {}).get('leader_v3', '') or r.get('leader_name', '') or '-'
+            action = r.get('trade_action', '')
+            # 未来3日迁移路径：用 V3 生命周期语言（与左侧分类一致）
+            direction = r.get('migration_direction', 'sideways')
+            lc_raw = '分歧' if lc == '分歧转一致' else lc  # 迁移表 key 用原始生命周期
+            lc_cur = LC_DISPLAY.get(lc_raw, lc)
+            # 退潮强制走下行路径（退潮→退潮），避免"退潮→启动"的突兀
+            if lc_raw == '退潮' or direction == 'downward':
+                lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
+            else:
+                lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
+            forecast = f"{lc_cur}→{lc_next}"
+            if lc in ('高潮', '退潮'):
+                sd = r.get('sentiment_detail', {}) or {}
+                if lc == '高潮':
+                    reason = f"涨停{sd.get('zt_count', 0)}家/连板{sd.get('max_lb', 0)}板/炸板{sd.get('boom_count', 0)}"
+                else:
+                    reason = f"趋势{r.get('trend_score', 0):.0f}/情绪{r.get('sentiment_score', 0):.0f}/资金{r.get('fund_score', 0):.0f} 三重走弱"
+                w(f"* {theme}：MTI {mti:.1f}({mti_lv}) | {reason} | 预判未来3日: {forecast}（{action}）")
+            else:
+                w(f"* {theme}：MTI {mti:.1f}({mti_lv}) | 龙头:{leader} | 预判未来3日: {forecast}（{action}）")
         w()
 
-    start_rising = [r for r in results if r.get("theme_state") in ["启动", "强趋势"]]
-    if start_rising:
-        w("━ 启动/强趋势（趋势向好）")
-        w("─" * 60)
-        for r in start_rising[:5]:
-            sd = r.get("sentiment_detail", {}) or {}
-            w(f"  {r['theme']:<12} 趋势:{r['trend_score']:5.1f} 情绪:{r['sentiment_score']:5.1f} 涨停:{sd.get('zt_count', 0)}家 龙头:{r.get('leader_name', '')}")
-        w()
-
-    # ── 排名表 ──
-    w("─" * 80)
-    w(f"{'排名':<4} {'主题':<12} {'趋势':<6} {'情绪':<6} {'综合':<6} {'ETF'} {'状态':<10}")
-    w("─" * 80)
-    for r in results:
-        # 查找对应 ETF
-        theme_name = r['theme']
-        etf_info = ""
-        for key, cfg in kg_v3_cfg.items():
-            if key.startswith('_'):
-                continue
-            if cfg.get("name_cn", key) == theme_name:
-                etf = cfg.get("main_etf", "")
-                if etf:
-                    # 去后缀
-                    etf_info = etf.replace('.SH', '').replace('.SZ', '')[:8]
-                break
-
-        state = r.get('theme_state', '')
-        state_icon = ""
-        if state == "抱团主升": state_icon = "抱团主升"
-        elif state == "强趋势": state_icon = "强趋势↑"
-        elif state == "分歧转一致": state_icon = "转一致⭐"
-        elif state == "启动": state_icon = "启动↑"
-        elif state == "分歧": state_icon = "分歧~"
-        elif state == "退潮": state_icon = "退潮↓"
-        elif state == "弱趋势": state_icon = "弱趋势→"
-        elif state == "震荡": state_icon = "震荡→"
-        else: state_icon = state
-        w(f"{r['rank']:<4} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} {r['composite_score']:<6.1f} {etf_info:<8} {state_icon:<10}")
-    w("─" * 80)
+    # ── 2. 数据定量汇总表 ──
+    w("━" * 60)
+    w("### 数据定量汇总表")
+    w("━" * 60)
     w()
 
-    # ── 阶段迁移预测 + 交易动作建议 ──
-    w("━" * 80)
-    w("  阶段迁移预测 & 交易动作建议")
-    w("─" * 80)
-    w(f"{'排名':<4} {'主题':<12} {'当前状态':<10} {'迁移分':<6} {'预测方向':<8} {'目标状态':<10} {'交易动作':<10} {'因子详解':<30}")
-    w(f"{'-'*80}")
-    for r in results:
-        direction_icon = ""
-        if r.get('migration_direction') == 'upward': direction_icon = '↑向上'
-        elif r.get('migration_direction') == 'downward': direction_icon = '↓向下'
-        else: direction_icon = '→震荡'
-        mf = r.get('migration_factors', {}) or {}
-        factor_str = f"P:{mf.get('proximity',0):.0f} M:{mf.get('momentum',0):.0f} C:{mf.get('confirmation',0):.0f} $:{mf.get('money_resonance',0):.0f} L:{mf.get('leader_health',0):.0f} R:{mf.get('regime',0):.0f}"
-        w(f"{r['rank']:<4} {r['theme']:<12} {r.get('theme_state',''):<10} {r.get('migration_score',0):<6.1f} {direction_icon:<8} {r.get('target_state',''):<10} {r.get('trade_action',''):<10} {factor_str}")
-    w("─" * 80)
+    # 2.1 Trade Score TOP20
+    w("1. Trade Score 交易排名 TOP20")
+    w("─" * 60)
+    w(f"{'排名':<4}{'主题':<10}{'Trade':<8}{'生命周期':<8}{'MTI等级'}")
+    for i, r in enumerate(results_trade[:20], 1):
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        w(f"{i:<4}{r['theme']:<10}{r.get('final_trade_score', 0):<8.1f}{lc_disp:<8}{r.get('mti_level', '')}")
     w()
 
-    w("━" * 80)
+    # 2.2 Strength Score TOP20
+    results_strength = sorted(results, key=lambda x: x.get('strength_score', 0), reverse=True)
+    w("2. Strength Score 强度排名 TOP20")
+    w("─" * 60)
+    w(f"{'排名':<4}{'主题':<10}{'Strength':<10}{'ΔTrade'}")
+    for i, r in enumerate(results_strength[:20], 1):
+        diff = r.get('final_trade_score', 0) - r.get('strength_score', 0)
+        w(f"{i:<4}{r['theme']:<10}{r.get('strength_score', 0):<10.1f}{diff:+.1f}")
+    w()
+
+    # 2.3 Transition TOP10（状态语言统一为 V3 生命周期，Transition 分数保留 V2 迁移引擎）
+    results_mig = sorted(results, key=lambda x: x.get('migration_score', 0), reverse=True)
+    w("3. Transition 状态迁移预判 TOP10")
+    w("─" * 60)
+    w(f"{'主题':<10}{'Transition':<10}{'当前状态':<8}{'预测未来3日目标'}")
+    for r in results_mig[:10]:
+        lc = r.get('lifecycle', '退潮')
+        direction = r.get('migration_direction', 'sideways')
+        lc_raw = '分歧' if lc == '分歧' else lc
+        lc_disp = LC_DISPLAY.get(lc_raw, lc)
+        if lc_raw == '退潮' or direction == 'downward':
+            lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
+        else:
+            lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
+        w(f"{r['theme']:<10}{r.get('migration_score', 0):<10.1f}{lc_disp:<8}{lc_disp}→{lc_next}")
+    w()
+
+    # ── 3. 机构配置策略建议 ──
+    w("━" * 60)
+    w("### 机构配置策略建议")
+    w("━" * 60)
+    w()
+
+    # ETF 配置建议（按 Trade 排序，剔除高潮/退潮；含 ETF 名称与自身趋势）
+    w("* ETF 配置建议（Trade TOP5，剔除高潮/退潮；括号内为 ETF 自身趋势）")
+    etf_name_map = get_etf_name_map()
+    etf_pace = {'启动': '回踩5日线分批建仓', '升温': '逢低分批加仓',
+                '主升': '持有跟随，破10日线减仓', '分歧': '急跌低吸博一致'}
+    top_etf = []
+    for r in results_trade:
+        if r.get('lifecycle') in ('高潮', '退潮'):
+            continue
+        etf = etf_map.get(r['theme'], '')  # 完整代码，如 159869.SZ
+        if not etf:
+            continue
+        etf_code = etf.replace('.SH', '').replace('.SZ', '')
+        # ETF 真实名称（如"动漫游戏ETF"），缺失时用主题名兜底
+        name = short_etf_name(etf_name_map.get(etf, ''))
+        if not name:
+            name = f"{r['theme']}ETF"
+        # ETF 自身趋势（多头/回踩/弱势）来自预取的 fund_daily K线
+        etf_state = judge_etf_trend(etf_kline_map.get(etf, None))
+        # 未来3日方向（与第一部分同语言）
+        direction = r.get('migration_direction', 'sideways')
+        lc = r.get('lifecycle', '')
+        lc_raw = '分歧' if lc == '分歧' else lc
+        if lc_raw == '退潮' or direction == 'downward':
+            lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
+        else:
+            lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
+        # 节奏：ETF 破位时收紧，否则按生命周期
+        if etf_state and etf_state['state'] == '弱势':
+            pace = 'ETF破位，暂缓/轻仓'
+        else:
+            pace = etf_pace.get(lc, '分批布局')
+        etf_tag = ""
+        if etf_state:
+            etf_tag = f"ETF{etf_state['state']}({etf_state['ret5']:+.1f}%)"
+        else:
+            etf_tag = "ETF趋势未知"
+        top_etf.append((r, etf_code, name, f"{LC_DISPLAY.get(lc, lc)}→{lc_next}", etf_tag, pace))
+        if len(top_etf) >= 5:
+            break
+    if top_etf:
+        for r, etf_code, name, path, etf_tag, pace in top_etf:
+            w(f"  ▸ {name}({etf_code}) | {path} | Trade {r.get('final_trade_score', 0):.1f} | {etf_tag} | {pace}")
+    else:
+        w("  暂无明显主线 ETF 标的，等待启动确认")
+
+    # 整体仓位建议
+    pos_cnt = sum(1 for r in results if r.get('lifecycle') in ('启动', '升温', '主升', '分歧'))
+    neg_cnt = sum(1 for r in results if r.get('lifecycle') in ('高潮', '退潮'))
+    total = len(results) or 1
+    pos_ratio = pos_cnt / total
+    neg_ratio = neg_cnt / total
+    base = 50.0 + (pos_ratio - neg_ratio) * 60.0
+    # 大盘环境修正（沪深300 近10日收益，最多 ±15%）
+    mkt_adj = max(-15.0, min(15.0, market_ret_10))
+    position = max(0.0, min(100.0, base + mkt_adj))
+    pos_lv = "高仓位" if position >= 70 else "中等仓位" if position >= 45 else "低仓位"
+    w(f"* 整体仓位建议：{position:.0f}%（{pos_lv}；启动/升温类{pos_cnt}只 vs 高潮/退潮类{neg_cnt}只，沪深300近10日{market_ret_10:+.1f}%）")
+
+    # 核心风险提示
+    risks = []
+    if market_ret_10 < -2:
+        risks.append(f"大盘环境偏弱（沪深300近10日{market_ret_10:+.1f}%），注意控制仓位")
+    elif market_ret_10 > 3:
+        risks.append(f"大盘强势（沪深300近10日{market_ret_10:+.1f}%），但需防范高位题材退潮")
+    if neg_ratio > 0.3:
+        risks.append("高潮/退潮主题占比偏高，注意高位股退潮与补跌风险")
+    if not risks:
+        risks.append("市场中性环境，跟随主线节奏，避免追高已加速主题")
+    w("* 核心风险提示：" + "；".join(risks))
+    w()
+
+    w("━" * 60)
     w(f"报告生成: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     w()
 
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(buf))
-    print(f"[保存] 文本报告: {report_path}")
+    print(f"[保存] 文本报告(V3规范): {report_path}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -629,6 +1318,8 @@ def per_stock_features_v2(df_one):
     low = df_one["low"].astype(float).values
     vol = df_one["vol"].astype(float).values
     pct = df_one["pct_chg"].astype(float).values
+    # 修复：停牌日 pct_chg 为 NaN，会污染下游 median/mean 计算导致评分失真
+    pct = np.where(np.isnan(pct), 0.0, pct)
     open_p = df_one.get("open", df_one["close"]).astype(float).values
 
     n = len(close)
@@ -763,6 +1454,22 @@ def per_stock_features_v2(df_one):
     else:
         pos_in_20 = 0.5
 
+    # ── V3 Rotation 引擎新增因子 ──
+    # 14. 前5日日均成交额（不含今日，用于 Fund 成交额增速）
+    _amount_arr = df_one["amount"].astype(float).values if "amount" in df_one.columns else np.zeros(n)
+    amount_ma5 = float(np.mean(_amount_arr[max(0, last - 5): last])) / 100000 if last >= 5 else amount_latest
+
+    # 15. 创20日新高（今日收盘 ≥ 前20日最高收盘，不含今日）
+    if last >= 20:
+        new_high_flag = 1 if close[last] >= np.max(close[last - 20: last]) else 0
+    elif last > 0:
+        new_high_flag = 1 if close[last] >= np.max(close[: last]) else 0
+    else:
+        new_high_flag = 1
+
+    # 16. 站上 MA20
+    above_ma20_flag = 1 if (n >= 20 and close[last] > ma20) else (1 if n < 20 and close[last] > ma5 else 0)
+
     return {
         # ── 原版特征 ──
         "ret_5": ret_5, "ret_10": ret_10, "ret_20": ret_20,
@@ -793,6 +1500,10 @@ def per_stock_features_v2(df_one):
         "consec_up": consec_up,           # 连阳
         "open_strength": open_strength,   # 开盘强度
         "pos_in_20": round(pos_in_20, 3), # 20日位置分位数
+        # ── V3 Rotation 引擎字段 ──
+        "amount_ma5": amount_ma5,         # 前5日日均成交额（十亿）
+        "new_high_flag": new_high_flag,   # 创20日新高
+        "above_ma20_flag": above_ma20_flag,  # 站上 MA20
     }
 
 
@@ -1010,19 +1721,18 @@ def calc_trend_score_v2(stock_feats, market_index_ret):
 
 def calc_sentiment_score_v2(stock_feats, market_index_ret):
     """
-    V4 梯队优化版情绪评分
-    
-    私募量化视角的梯队分析要点：
-    1. 涨停梯队完整性（龙头+中军+跟风三层结构）决定题材持续力
-       - 有高度板(3板+)=打开了空间 → 题材有想象力
-       - 有中军涨停(市值>200亿)=大资金认可 → 题材有容量
-       - 有跟风首板=情绪扩散 → 题材有广度
-       - 三层齐全=最完整梯队，持续性最强
-    2. 龙头质量影响持续性
-       - 换手板龙头 > 一字板龙头（换手板有充分博弈，分歧转一致更强）
-       - 一字板龙头多是一波流，开板即见顶
-    3. 多只中军涨停=机构级别行情
-       - 中军可以不涨停但趋势上涨，代表大资金持续布局
+    V5 情绪评分（修复版：龙头质量 + 资金共振为核心因子）
+
+    2026-08-03 结合实盘数据修复（私募量化视角）：
+    1. 涨停判定已按板型区分（20cm/10cm），修复涨停数与连板高度低估
+    2. 涨停强度改为「绝对数+相对比例」混合，修复大主题稀释（294只化工 vs 11只可控核聚变）
+    3. 中军门槛 200亿→100亿：实盘 25/28 主题中军因子为0，失去区分度
+    4. 量比因子修复：原线性区间(0.6,3.5)在普涨缩量日(均值0.85-1.1)全部失效且与情绪分负相关，
+       改为「放量上涨占比」量价共振
+    5. 龙头质量重构：原仅看最高连板股换手率且无连板直接=0（19/28主题为0），
+       改为 龙头识别(无连板取大成交额上涨股) + 连板地位/成交规模/换手博弈/主线纯度/封板质量 五维
+    6. 新增资金共振因子：主题总成交规模 + 大额成交广度 + 龙头资金集中度 + 量价共振
+    7. 权重重构：龙头质量18% + 资金共振14% 成为核心支柱，替代原加性 bonus 堆叠
     """
     if not stock_feats:
         return 0.0, {}
@@ -1031,147 +1741,175 @@ def calc_sentiment_score_v2(stock_feats, market_index_ret):
     if n == 0:
         return 0.0, {}
 
+    # 修复：防御性清洗 NaN（停牌成分股 pct_chg/amount/turnover 可能为 NaN，
+    # 未清洗会污染 median/mean → profit_score=sigmoid(NaN)=NaN → score01 被 min/max 误钳为满分）
+    stock_feats = [dict(s) for s in stock_feats]
+    for s in stock_feats:
+        for k in ("pct_chg", "amount_latest", "turnover", "vol_ratio_today", "vol_ratio"):
+            v = s.get(k)
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                s[k] = 0.0
+
     pcts = [s["pct_chg"] for s in stock_feats]
     up_n = sum(1 for p in pcts if p > 0)
     down_n = sum(1 for p in pcts if p < 0)
     zt_n = sum(1 for s in stock_feats if s["zt_flag"] == 1)
     strong_n = sum(1 for s in stock_feats if s["strong_flag"] == 1)
 
-    # ── 1. 广度分 ──
+    # ── 1. 广度分（普涨效应）──
     breadth = up_n / n
     breadth_score = linear(breadth, 0.15, 0.80)
 
-    # ── 2. 涨停分 ──
+    # ── 2. 涨停强度分（修复：绝对数+相对比例混合，避免大主题稀释）──
     zt_ratio = zt_n / n
-    zt_score = linear(zt_ratio, 0, 0.25)
+    zt_score = 0.5 * linear(zt_n, 0, 8) + 0.5 * linear(zt_ratio, 0, 0.15)
 
     # ── 3. 强势股分 ──
     strong_ratio = strong_n / n
     strong_score = linear(strong_ratio, 0, 0.50)
 
-    # ── 4. 量比分 ──
-    vol_ratios = [s.get("vol_ratio", 0) for s in stock_feats]
-    avg_vol_ratio = float(np.nanmean(vol_ratios)) if vol_ratios else 0.0
-    vol_score = linear(avg_vol_ratio, 0.6, 3.5)
-
-    # ── 5. 换手率分 ──
-    turnovers = [s.get("turnover", 0) for s in stock_feats]
-    avg_turnover = float(np.nanmean(turnovers)) if turnovers else 0.0
-    turnover_score = linear(avg_turnover, 0.5, 15.0)
-
-    # ── 6. 盈亏效应分 ──
-    median_pct = float(np.median(pcts))
-    mean_pct = float(np.mean(pcts))
+    # ── 4. 盈亏效应分 ──
+    median_pct = float(np.nanmedian(pcts))
+    mean_pct = float(np.nanmean(pcts))
     profit_score = sigmoid(median_pct * 0.5 + mean_pct * 0.5, k=0.3, c=0)
 
-    # ── 7. 共振评分（涨停连板共振）──
-    top1 = max(pcts) if pcts else 0
-    zt_effective = zt_n / max(n * 0.10, 1)
-    resonance_raw = np.tanh(zt_effective * 0.8 + max(0, top1 - 7) / 10 * 0.2)
-    resonance_score = min(resonance_raw, 1.0)
+    # ── 5. 量价共振分（修复：原量比分在缩量日失效且方向错误）──
+    # 放量上涨占比：当日量比>1.2 且上涨的个股比例（量价配合才是真实情绪）
+    vol_up_n = sum(1 for s in stock_feats
+                   if s.get("vol_ratio_today", 0) > 1.2 and s.get("pct_chg", 0) > 0)
+    up_vol_ratio = vol_up_n / n if n > 0 else 0
+    vol_resonance_score = linear(up_vol_ratio, 0, 0.40)
 
-    # ── 8. 连板密度因子 ──
+    # ── 6. 连板高度分（非线性：3板+ 才具龙头辨识度）──
     lb_counts = [s.get("lb_height", 0) for s in stock_feats]
-    multi_lb_count = sum(1 for lb in lb_counts if lb >= 2)
     max_lb = max(lb_counts) if lb_counts else 0
-    lb_density = multi_lb_count / max(n * 0.05, 1)
-    lb_score = min(np.tanh(lb_density * 0.6 + max_lb / 10 * 0.4), 1.0)
+    multi_lb_count = sum(1 for lb in lb_counts if lb >= 2)
 
-    # ── 9. 梯队完整度（龙头+中军+跟风三层结构，核心新增）──
-    mid_cap_threshold = 2000000  # 200亿
-    # 9a. 高度板梯队：3板+ 打开空间
+    def _lb_score(n_lb):
+        if n_lb <= 0: return 0
+        if n_lb == 1: return 15
+        if n_lb == 2: return 40
+        if n_lb == 3: return 70
+        if n_lb == 4: return 90
+        return 100  # 5板+
+    lb_score = _lb_score(max_lb) / 100.0
+    lb_density_bonus = min(multi_lb_count * 0.05, 0.15)  # 每多一只2板+加5%，上限15%
+
+    # ── 7. 梯队完整度（高度板+中军+跟风；修复中军门槛200亿→100亿）──
+    mid_cap_threshold = 1000000  # 100亿（万元）
     high_board_count = sum(1 for s in stock_feats if s.get('lb_height', 0) >= 3)
     has_high_board = 1 if high_board_count > 0 else 0
-    high_board_bonus = min(high_board_count * 0.10, 0.20)  # 每只3板+加10%，上限20%
-    # 9b. 中军涨停梯队：市值>200亿的涨停（大资金认可）
-    mid_cap_zt_count = sum(1 for s in stock_feats if s.get('total_mv', 0) >= mid_cap_threshold and s.get('zt_flag', 0) == 1)
-    mid_cap_strong_count = sum(1 for s in stock_feats if s.get('total_mv', 0) >= mid_cap_threshold and s.get('pct_chg', 0) >= 5 and s.get('zt_flag', 0) == 0)
-    has_mid_cap_zt = 1 if mid_cap_zt_count > 0 else 0
-    mid_cap_zt_bonus = min(mid_cap_zt_count * 0.08 + mid_cap_strong_count * 0.03, 0.20)
-    # 9c. 跟风首板梯队：lb_height==1的涨停（情绪扩散）
-    follower_zt_count = sum(1 for s in stock_feats if s.get('lb_height', 0) == 1 and s.get('zt_flag', 0) == 1)
+    # 中军：市值>=100亿 的涨停或大涨(>=5%)
+    mid_cap_zt_count = sum(1 for s in stock_feats
+                           if s.get('total_mv', 0) >= mid_cap_threshold and s.get('zt_flag', 0) == 1)
+    mid_cap_strong_count = sum(1 for s in stock_feats
+                               if s.get('total_mv', 0) >= mid_cap_threshold
+                               and s.get('pct_chg', 0) >= 5 and s.get('zt_flag', 0) == 0)
+    has_mid_cap_zt = 1 if (mid_cap_zt_count + mid_cap_strong_count) > 0 else 0
+    # 跟风首板：lb_height==1 的涨停
+    follower_zt_count = sum(1 for s in stock_feats
+                            if s.get('lb_height', 0) == 1 and s.get('zt_flag', 0) == 1)
     has_followers = 1 if follower_zt_count > 0 else 0
-    follower_bonus = min(follower_zt_count * 0.04, 0.12)  # 每只首板+4%，上限12%
-    # 9d. 梯队完整性基础分
     echelon_levels = has_high_board + has_mid_cap_zt + has_followers
-    echelon_base = (echelon_levels / 3.0) ** 0.7  # 非线性 0.44/0.76/1.0，三层齐全更突出
+    echelon_base = (echelon_levels / 3.0) ** 0.7
 
-    # ── 10. 龙头质量（换手板vs一字板）──
-    # 连板2板+的个股中，换手率中位数越高=换手板质量越高
+    # ── 8. 龙头质量因子（重构：五维综合，无连板也不丢分）──
+    # 8a. 龙头识别：最高连板股优先；无连板则取当日上涨且成交额最大的股
     leaders_2plus = [s for s in stock_feats if s.get('lb_height', 0) >= 2]
     if leaders_2plus:
-        # 取最高连板股为龙头
-        leaders_2plus.sort(key=lambda s: s.get('lb_height', 0), reverse=True)
-        top_leader = leaders_2plus[0]
-        leader_turnover = top_leader.get('turnover', 0)
-        # 换手率判断：
-        # <0.5% = 一字板（质量差，一波流）
-        # 0.5-3% = 弱换手（一般）
-        # 3-10% = 健康换手（好，有充分博弈）
-        # >10% = 爆量分歧（分歧大，但换手龙）
-        if leader_turnover < 0.5:
-            leader_quality = 0.2  # 一字板
-        elif leader_turnover < 3:
-            leader_quality = linear(leader_turnover, 0.5, 3) * 0.5 + 0.2  # 0.2-0.7
-        elif leader_turnover <= 10:
-            leader_quality = linear(leader_turnover, 3, 10) * 0.3 + 0.7  # 0.7-1.0
-        else:
-            leader_quality = max(1.0 - (leader_turnover - 10) * 0.02, 0.5)  # 爆量分歧递减
+        leaders_2plus.sort(key=lambda s: (s.get('lb_height', 0), s.get('amount_latest', 0)), reverse=True)
+        leader = leaders_2plus[0]
     else:
-        leader_quality = 0
+        candidates = [s for s in stock_feats if s.get('pct_chg', 0) > 0] or stock_feats
+        candidates.sort(key=lambda s: s.get('amount_latest', 0), reverse=True)
+        leader = candidates[0]
+    leader_lb = leader.get('lb_height', 0)
+    leader_turnover = leader.get('turnover', 0)
+    leader_amount = leader.get('amount_latest', 0)
+    leader_purity = leader.get('purity', 0)
+    leader_boom = leader.get('boom_flag', 0)
+    # 8b. 连板地位：龙头辨识度（3板+=强龙头）
+    lb_q = _lb_score(leader_lb) / 100.0
+    # 8c. 成交规模：龙头当日成交额（亿），20亿+ 大资金真金白银=满分
+    amt_q = min(leader_amount / 20.0, 1.0)
+    # 8d. 换手博弈：1-10%=健康换手（充分博弈），<1%=一字板，>25%=爆量分歧
+    if np.isnan(leader_turnover) or leader_turnover < 1:
+        tq_q = 0.15
+    elif leader_turnover < 10:
+        tq_q = 0.15 + 0.75 * (leader_turnover - 1) / 9.0
+    else:
+        tq_q = max(0.90 - (leader_turnover - 10) * 0.015, 0.40)
+    # 8e. 主线纯度：龙头与主题概念贴合度
+    purity_q = min(leader_purity / 4.0, 1.0)
+    # 8f. 封板质量：炸板龙头扣分
+    boom_q = 0.8 if leader_boom == 1 else 1.0
+    leader_quality = (
+        lb_q * 0.35 +
+        amt_q * 0.25 +
+        tq_q * 0.20 +
+        purity_q * 0.10 +
+        boom_q * 0.10
+    )
 
-    # ── 11. 情绪脆弱性调整（炸板率惩罚）──
+    # ── 9. 资金共振因子（新增）──
+    total_amount = float(np.sum([s.get("amount_latest", 0) for s in stock_feats]))
+    money_scale_score = linear(total_amount, 30, 300)      # 主题当日总成交（亿），30亿冷清→300亿+活跃
+    big_amount_n = sum(1 for s in stock_feats if s.get("amount_latest", 0) >= 10)
+    big_amount_ratio = big_amount_n / n if n > 0 else 0
+    big_amount_score = linear(big_amount_ratio, 0, 0.15)   # 10亿+大额成交股占比
+    leader_amount_ratio = leader_amount / total_amount if total_amount > 0 else 0
+    if 0.15 <= leader_amount_ratio <= 0.60:
+        focus_score = 1.0                                  # 龙头资金集中度健康区
+    elif leader_amount_ratio < 0.15:
+        focus_score = linear(leader_amount_ratio, 0, 0.15)
+    else:
+        focus_score = max(1.0 - (leader_amount_ratio - 0.60) * 1.2, 0.3)  # 过度抱团递减
+    money_resonance = (
+        money_scale_score * 0.35 +
+        big_amount_score * 0.30 +
+        focus_score * 0.20 +
+        vol_resonance_score * 0.15
+    )
+
+    # ── 10. 热榜加分（辅助）──
+    hot_scores = [s.get("hot_rank_score", 0) for s in stock_feats]
+    avg_hot_score = np.mean(hot_scores) if hot_scores else 0
+    hot_bonus = sigmoid(avg_hot_score, k=0.35, c=4) * 0.05
+
+    # ── 11. 情绪脆弱性惩罚（炸板率 + 封板率）──
     boom_count = sum(1 for s in stock_feats if s.get("boom_flag", 0) == 1)
     boom_ratio = boom_count / n if n > 0 else 0
     boom_penalty = min(max(boom_ratio - 0.10, 0) * 0.5, 0.10)
-
-    # ── 11b. 封板质量检测 ──
-    # 封板率=涨停未炸板比例，封板率低于60%说明封板意愿弱
     board_seal_rate = max(zt_n - boom_count, 0) / max(zt_n, 1) if zt_n > 0 else 1.0
-    board_quality_penalty = min(max(0.6 - board_seal_rate, 0) * 0.30, 0.12)  # 封板率每低10%扣3%，上限12%
+    board_quality_penalty = min(max(0.6 - board_seal_rate, 0) * 0.30, 0.12)
 
-    # ── 基础情绪分（梯队优化权重）──
-    base_score = (
-        breadth_score * 0.15 +   # 18→15 广度
-        zt_score * 0.15 +        # 20→15 涨停
-        strong_score * 0.08 +    # 10→8  强势股
-        vol_score * 0.05 +       # 5     量比
-        turnover_score * 0.05 +  # 6→5   换手率
-        profit_score * 0.05 +    # 6→5   盈亏效应
-        resonance_score * 0.10 + # 12→10 共振
-        lb_score * 0.10 +        # 12→10 连板密度
-        echelon_base * 0.15      # 10→15 梯队完整度（提高权重）
-    )
-
-    # ── 12. 梯队综合加分（高度板+中军+跟风，龙头质量独立计算）──
-    echelon_bonus = (
-        high_board_bonus +       # 高度板加分
-        mid_cap_zt_bonus +       # 中军涨停加分
-        follower_bonus           # 跟风首板加分
-    )
-
-    # ── 13. 热榜加分（降低权重，梯队更重要）──
-    hot_scores = [s.get("hot_rank_score", 0) for s in stock_feats]
-    avg_hot_score = np.mean(hot_scores) if hot_scores else 0
-    hot_bonus = sigmoid(avg_hot_score, k=0.35, c=4) * 0.07  # 10%→7%（梯队更重要）
-
-    # ── 14. 极端情绪判定 ──
+    # ── 12. 极端情绪判定 ──
     climax_flag = 1 if zt_n >= 15 else 0
 
-    # ── 龙头质量独立加分项（最高10%）──
-    leader_quality_bonus = leader_quality * 0.10
+    # ── 最终得分（权重重构：龙头质量18% + 资金共振14% 为核心支柱）──
+    score01 = (
+        breadth_score * 0.10 +      # 广度
+        zt_score * 0.13 +           # 涨停强度
+        strong_score * 0.05 +       # 强势股
+        profit_score * 0.08 +       # 盈亏效应
+        lb_score * 0.12 +           # 连板高度
+        echelon_base * 0.12 +       # 梯队完整
+        leader_quality * 0.18 +     # 龙头质量（核心）
+        money_resonance * 0.14 +    # 资金共振（核心）
+        hot_bonus                   # 热榜
+    ) + lb_density_bonus - boom_penalty - board_quality_penalty
 
-    # ── 最终得分 ──
-    score01 = min(base_score + hot_bonus + echelon_bonus + leader_quality_bonus - boom_penalty - board_quality_penalty, 1.0)
-    score01 = max(0.0, score01)
+    score01 = max(0.0, min(1.0, score01))
 
     detail = {
         "up_ratio": round(breadth * 100, 1), "down_ratio": round(down_n / n * 100, 1),
         "zt_count": zt_n, "zt_ratio": round(zt_ratio * 100, 1),
         "strong_ratio": round(strong_ratio * 100, 1),
-        "avg_vol_ratio": round(avg_vol_ratio, 2), "avg_turnover": round(avg_turnover, 2),
+        "avg_vol_ratio": round(float(np.nanmean([s.get("vol_ratio", 0) for s in stock_feats])), 2),
+        "avg_turnover": round(float(np.nanmean([s.get("turnover", 0) for s in stock_feats])), 2),
         "median_pct": round(median_pct, 2), "mean_pct": round(mean_pct, 2),
-        "top1_pct": round(top1, 2), "resonance": round(resonance_raw, 3),
+        "top1_pct": round(max(pcts), 2) if pcts else 0,
+        "resonance": round(float(np.tanh(zt_n / max(n * 0.10, 1) * 0.8 + max(0, max(pcts) - 7) / 10 * 0.2)), 3),
         "multi_lb_count": multi_lb_count, "max_lb": max_lb,
         "avg_hot_score": round(avg_hot_score, 1), "hot_bonus": round(hot_bonus * 100, 1),
         "boom_count": boom_count, "boom_penalty": round(boom_penalty * 100, 1),
@@ -1183,11 +1921,26 @@ def calc_sentiment_score_v2(stock_feats, market_index_ret):
         "follower_zt_count": follower_zt_count,
         "echelon_levels": echelon_levels,
         "echelon_base": round(echelon_base * 100, 1),
+        # 龙头质量明细（新）
+        "leader_name": leader.get('name', ''),
+        "leader_lb": leader_lb,
+        "leader_turnover": round(leader_turnover, 2),
+        "leader_amount": round(leader_amount, 1),
+        "leader_purity": leader_purity,
+        "leader_boom": leader_boom,
         "leader_quality": round(leader_quality * 100, 1),
-        "leader_quality_bonus": round(leader_quality_bonus * 100, 1),
+        "leader_quality_bonus": round(leader_quality * 0.18 * 100, 1),
+        # 资金共振明细（新）
+        "money_scale": round(total_amount, 1),
+        "big_amount_ratio": round(big_amount_ratio * 100, 1),
+        "leader_amount_ratio": round(leader_amount_ratio * 100, 1),
+        "up_vol_ratio": round(up_vol_ratio * 100, 1),
+        "focus_score": round(focus_score * 100, 1),
+        "money_resonance": round(money_resonance * 100, 1),
+        # 封板质量
         "board_seal_rate": round(board_seal_rate * 100, 1),
         "board_quality_penalty": round(board_quality_penalty * 100, 1),
-        "echelon_bonus": round(echelon_bonus * 100, 1),
+        "echelon_bonus": round(echelon_base * 0.12 * 100 + lb_density_bonus * 100, 1),
     }
     return round(score01 * 100, 1), detail
 
