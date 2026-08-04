@@ -785,9 +785,9 @@ class TailBacktester:
 
             is_leader = (role == 'leader')
 
-            # 硬过滤(V3)
+            # 硬过滤(V3) - 传全量K线(含当日), 与盘中模式语义一致
             passed, reason = self.strategy.hard_filter_v3(
-                ts_code, q, kline_up_to, turnover, total_mv, best_strength,
+                ts_code, q, kl, turnover, total_mv, best_strength,
                 is_theme_leader=is_leader
             )
             if not passed:
@@ -802,20 +802,22 @@ class TailBacktester:
                 theme_strength=best_strength,
             )
 
-            cap_s, cap_d = capital_score_v3(ts_code, q, kline_up_to, turnover)
+            cap_s, cap_d = capital_score_v3(ts_code, q, kl, turnover)
 
-            tech_s, tech_d = self.strategy.technical_structure_v3(q, kline_up_to)
+            tech_s, tech_d = self.strategy.technical_structure_v3(q, kl)
 
             tail_s, tail_d = self.strategy.tail_timing_v3(q, None)  # 回测无快照
 
-            room_s, room_d = self.strategy.tomorrow_room_score(q, kline_up_to)
+            gap_s, gap_d = self.strategy.pullback_gap_score_v3(q, kl, ts_code)
+
+            room_s, room_d = self.strategy.tomorrow_room_score(q, kl)
 
             risk_p, risk_d = self.strategy.risk_penalty_v3(
-                q, kline_up_to, turnover, up_ratio, theme_zt_count,
+                q, kl, turnover, up_ratio, theme_zt_count,
                 is_theme_leader=is_leader
             )
 
-            total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+            total = min(100, thm_s + cap_s + role_score + tech_s + tail_s + gap_s + room_s - risk_p)
 
             if total < 65:
                 continue
@@ -831,8 +833,13 @@ class TailBacktester:
             buy_type, confidence = self.strategy.classify_buy_type_v3(
                 role, thm_s, up_ratio, theme_zt_count, tech_s, pullback_quality
             )
+            if gap_s >= 10:
+                buy_type = 'PULLBACK_GAP'
+                confidence = max(confidence, 85)
 
             next_day = self.strategy._estimate_next_day(room_s, role, thm_s, cap_s)
+            if gap_s >= 10:
+                next_day = '强势回调低吸,次日反抽概率大'
 
             name = ''
             for code, n, ly in self.theme_stocks.get(best_theme, []):
@@ -850,6 +857,7 @@ class TailBacktester:
                 'role_score': role_score,
                 'technical_score': tech_s,
                 'timing_score': tail_s,
+                'gap_score': gap_s,
                 'room_score': room_s,
                 'risk_penalty': risk_p,
                 'signal': signal,
@@ -859,7 +867,7 @@ class TailBacktester:
                 'next_day_expectation': next_day,
                 'pct_chg': q.get('pct_chg', 0),
                 'price': q.get('price', 0),
-                'detail': {**thm_d, **cap_d, **role_detail, **tech_d, **tail_d, **room_d, **risk_d},
+                'detail': {**thm_d, **cap_d, **role_detail, **tech_d, **tail_d, **gap_d, **room_d, **risk_d},
             }
             signal_data['explain'] = self.strategy.explain_score_v3(signal_data)
             signals.append(signal_data)

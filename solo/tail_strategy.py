@@ -904,8 +904,8 @@ class TailStrategy:
         if pct < -2.5:
             return False, f'跌{pct:.1f}%'
 
-        # 3.5 收阴线或微涨<1%排除
-        if pct < 1.0:
+        # 3.5 收阴线或微涨<0.5%排除 (强势回调低吸形态允许低开高走收盘微涨)
+        if pct < 0.5:
             return False, f'涨幅{pct:.1f}%过低'
 
         # 4. 连续涨停≥2天排除
@@ -957,7 +957,166 @@ class TailStrategy:
         if total_mv > 0 and total_mv < 80000:
             return False, f'市值{total_mv/10000:.1f}亿'
 
+        # 10. 强势基因回调低吸形态 (V3核心): 20天涨停多+回调阴线+低开承接
+        passed_gap, gap_reason, _ = self.pullback_gap_signal_v3(q, kline, ts_code)
+        if not passed_gap:
+            return False, gap_reason
+
         return True, 'OK'
+
+    # ═══════════════════════════════════════════════════════
+    # V3 强势基因回调低吸形态 (核心)
+    # 识别: 20天内涨停多 → 回调阴线 → 第一个低开承接 → 尾盘确认
+    # ═══════════════════════════════════════════════════════
+    def count_limit_up_20d(self, kline, ts_code):
+        """
+        统计近20个交易日涨停次数(不含当日)
+        涨停阈值: 双创19.5%, 主板9.5%
+        """
+        if kline is None or len(kline) < 3:
+            return 0
+        kl = kline.iloc[-21:-1] if len(kline) >= 21 else kline.iloc[:-1]
+        limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+        cnt = 0
+        for _, row in kl.iterrows():
+            pct = float(row.get('pct_chg', 0))
+            if pct >= limit:
+                cnt += 1
+        return cnt
+
+    def pullback_gap_signal_v3(self, q, kline, ts_code):
+        """
+        强势基因回调低吸形态硬过滤:
+        1. 20天涨停>=2次 (强势基因)
+        2. 回调阴线: 昨日收阴线(回调中) + 从20日高回撤>=5%
+        3. 第一个低开: 今日低开(open<pre_close), 且昨日未低开
+        4. 阴线后第一根阳线: 低开高走(price>open)收阳
+        5. 低开承接: 低开幅度0.3%~6%
+        返回 (passed, reason, detail)
+        """
+        detail = {}
+        price = q.get('price', 0)
+        open_p = q.get('open', 0)
+        last_close = q.get('last_close', 0)
+        if kline is None or len(kline) < 6 or price <= 0:
+            return False, 'K线数据不足', detail
+
+        # 1. 20天涨停>=2 (强势基因)
+        limit_up_20d = self.count_limit_up_20d(kline, ts_code)
+        detail['limit_up_20d'] = limit_up_20d
+        if limit_up_20d < 2:
+            return False, f'20日涨停{limit_up_20d}次<2', detail
+
+        # 2a. 近5日有回调阴线 (不含当日)
+        recent = kline.iloc[-6:-1] if len(kline) >= 6 else kline.iloc[:-1]
+        has_yin = any(float(r.get('pct_chg', 0)) < 0 for _, r in recent.iterrows())
+        if not has_yin:
+            return False, '近5日无回调阴线', detail
+
+        # 2c. 阴线后第一根阳线: 昨日收阴线(回调中), 今日才出现第一根阳线
+        if len(kline) >= 2:
+            yesterday_pct = float(kline.iloc[-2].get('pct_chg', 0))
+            detail['yesterday_pct'] = round(yesterday_pct, 2)
+            if yesterday_pct >= 0:
+                return False, '昨日非阴线(非阴线后第一根阳线)', detail
+
+        # 2b. 从20日高回撤>=5%
+        if len(kline) >= 20:
+            high_20d = kline['high'].iloc[-20:].max()
+            if high_20d > 0:
+                drawdown = (high_20d - price) / high_20d * 100
+                detail['drawdown_from_20d_high'] = round(drawdown, 1)
+                if drawdown < 5:
+                    return False, f'距20日高仅{drawdown:.1f}%回调不足', detail
+
+        # 3. 第一个低开: 今日低开 + 昨日未低开(回调阴线后首次低开承接)
+        if open_p <= 0 or last_close <= 0:
+            return False, '无开盘数据', detail
+        gap_pct = (open_p - last_close) / last_close * 100
+        detail['gap_pct'] = round(gap_pct, 2)
+        if open_p >= last_close:
+            return False, '今日非低开', detail
+        if gap_pct < -6:
+            return False, f'低开{gap_pct:.1f}%过大', detail
+        # 昨日(不含今日)是否有低开
+        idx = -2
+        if len(kline) >= 3:
+            r_open = float(kline.iloc[idx].get('open', 0))
+            r_pre = float(kline.iloc[idx - 1].get('close', 0))
+            if r_open > 0 and r_pre > 0 and r_open < r_pre:
+                return False, f'昨日已有低开(非第一个)', detail
+
+        # 4. 低开承接: 低开高走
+        if price <= open_p:
+            return False, '低开后未翻红承接弱', detail
+
+        detail['gap_pullback_pass'] = True
+        return True, 'OK', detail
+
+    def pullback_gap_score_v3(self, q, kline, ts_code):
+        """
+        强势基因回调低吸形态加分 (最高+15):
+        涨停基因+6 + 回调质量+4 + 低开承接+5
+        """
+        score = 0
+        detail = {}
+        price = q.get('price', 0)
+        open_p = q.get('open', 0)
+        last_close = q.get('last_close', 0)
+
+        # 1. 涨停基因 (6分): 20天涨停次数
+        limit_up_20d = self.count_limit_up_20d(kline, ts_code)
+        if limit_up_20d >= 4:
+            gene_score = 6
+        elif limit_up_20d >= 3:
+            gene_score = 4
+        elif limit_up_20d >= 2:
+            gene_score = 2
+        else:
+            gene_score = 0
+        detail['limit_up_20d'] = limit_up_20d
+        detail['gene_score'] = gene_score
+        score += gene_score
+
+        # 2. 回调质量 (4分): 距20日高回撤深度
+        pb_score = 0
+        if kline is not None and len(kline) >= 20 and price > 0:
+            high_20d = kline['high'].iloc[-20:].max()
+            if high_20d > 0:
+                drawdown = (high_20d - price) / high_20d * 100
+                detail['drawdown_from_20d_high'] = round(drawdown, 1)
+                if 10 <= drawdown <= 20:
+                    pb_score = 4
+                elif 5 <= drawdown < 10:
+                    pb_score = 3
+                elif 3 <= drawdown < 5:
+                    pb_score = 1
+        detail['pullback_quality_score'] = pb_score
+        score += pb_score
+
+        # 3. 低开承接 (5分): 低开幅度+高走强度
+        gap_score = 0
+        if open_p > 0 and last_close > 0 and price > 0:
+            gap_pct = (open_p - last_close) / last_close * 100
+            detail['gap_pct'] = round(gap_pct, 2)
+            day_gain = (price - open_p) / open_p * 100  # 低开后的盘中涨幅
+            detail['intraday_gain'] = round(day_gain, 2)
+            if open_p < last_close and price > open_p:
+                if -5 <= gap_pct <= -2 and day_gain >= 1.5:
+                    gap_score = 5
+                elif -2 < gap_pct <= -0.3 and day_gain >= 1.0:
+                    gap_score = 4
+                elif -5 <= gap_pct <= -0.3 and day_gain >= 0:
+                    gap_score = 3
+                else:
+                    gap_score = 2
+            elif price > last_close:
+                gap_score = 1
+        detail['gap_absorb_score'] = gap_score
+        score += gap_score
+
+        detail['gap_pullback_total'] = min(score, 15)
+        return min(score, 15), detail
 
     # ═══════════════════════════════════════════════════════
     # V3 技术结构评分 (15分): 压缩后的趋势+回踩+突破
@@ -1038,6 +1197,15 @@ class TailStrategy:
 
         # 1. 尾盘量占全天比例 (5分)
         tail_vol_ratio = snap.get('tail_vol_ratio', 0) if snap else 0
+        if tail_vol_ratio <= 0 and snap:
+            # 兜底: 用14:30后量能增量/早盘量估算尾盘量占比
+            tbv = snap.get('tail_base_vol', 0)
+            mv = snap.get('morning_vol', 0)
+            cv = q.get('vol', 0)
+            if tbv > 0 and mv > 0 and cv > tbv:
+                tail_vol_ratio = (cv - tbv) / mv
+            elif mv > 0 and cv > 0:
+                tail_vol_ratio = cv / mv
         detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
         if tail_vol_ratio > 0.35:
             score += 5
@@ -1289,6 +1457,9 @@ class TailStrategy:
         # ── 5. 尾盘交易 (10分) ──
         tail_s, tail_d = self.tail_timing_v3(q, snap)
 
+        # ── 6. 强势基因回调低吸形态加分 (最高+15) ──
+        gap_s, gap_d = self.pullback_gap_score_v3(q, kline, ts_code)
+
         # ── 加分: 次日收益空间 (±5) ──
         room_s, room_d = self.tomorrow_room_score(q, kline)
 
@@ -1298,7 +1469,7 @@ class TailStrategy:
             is_theme_leader=is_theme_leader, snap=snap
         )
 
-        total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+        total = min(100, thm_s + cap_s + role_score + tech_s + tail_s + gap_s + room_s - risk_p)
 
         # ── 信号分级 ──
         if total >= self.V3_STRONG_BUY:
@@ -1315,9 +1486,15 @@ class TailStrategy:
         buy_type, confidence = self.classify_buy_type_v3(
             role, thm_s, theme_up_ratio, theme_limit_count, tech_s, pullback_quality
         )
+        # 强势回调低吸形态: 形态分高时优先标记
+        if gap_s >= 10:
+            buy_type = 'PULLBACK_GAP'
+            confidence = max(confidence, 85)
 
         # ── 次日预期 ──
         next_day_expectation = self._estimate_next_day(room_s, role, thm_s, cap_s)
+        if gap_s >= 10:
+            next_day_expectation = '强势回调低吸,次日反抽概率大'
 
         signal_data = {
             'ts_code': ts_code,
@@ -1328,6 +1505,7 @@ class TailStrategy:
             'role_score': role_score,
             'technical_score': tech_s,
             'timing_score': tail_s,
+            'gap_score': gap_s,
             'room_score': room_s,
             'risk_penalty': risk_p,
             'signal': signal,
@@ -1338,7 +1516,7 @@ class TailStrategy:
             'pct_chg': q.get('pct_chg', 0),
             'price': q.get('price', 0),
             'detail': {
-                **thm_d, **cap_d, **role_d, **tech_d, **tail_d, **room_d, **risk_d,
+                **thm_d, **cap_d, **role_d, **tech_d, **tail_d, **gap_d, **room_d, **risk_d,
                 'v3_filter_reason': reason,
             },
         }
@@ -1383,6 +1561,7 @@ class TailStrategy:
             'CORE_PULLBACK': '中军回踩',
             'ROTATION_ENTRY': '轮动入场',
             'TAIL_TIMING': '尾盘择时',
+            'PULLBACK_GAP': '强势回调低吸',
         }.get(buy_type, buy_type)
 
         lines.append(f"【{name}({ts_code})】V3评分: {total}分 | {signal} | {role_cn} | {buy_cn}")
@@ -1413,6 +1592,13 @@ class TailStrategy:
         tail_s = sig.get('timing_score', 0)
         lines.append(f"\n 尾盘交易 ({tail_s}/10分):")
         lines.append(f"   尾盘量占比={detail.get('tail_vol_ratio', 0)} 距最高={detail.get('dist_to_high', '?')}% 尾拉={detail.get('tail_rally', '?')}%")
+
+        # 强势基因回调低吸形态
+        gap_s = sig.get('gap_score', 0)
+        lines.append(f"\n 回调低吸形态 ({gap_s}/15分):")
+        lines.append(f"   20日涨停={detail.get('limit_up_20d', '?')}次 基因={detail.get('gene_score', 0)}")
+        lines.append(f"   回撤={detail.get('drawdown_from_20d_high', '?')}% 回调质量={detail.get('pullback_quality_score', 0)}")
+        lines.append(f"   低开={detail.get('gap_pct', '?')}% 承接={detail.get('gap_absorb_score', 0)} 盘中={detail.get('intraday_gain', '?')}%")
 
         # 次日空间
         room_s = sig.get('room_score', 0)
@@ -1445,6 +1631,12 @@ class TailStrategy:
             lines.append(f"   距MA20={detail.get('dist_ma20_pct', '?')}%,回踩到位")
         if detail.get('breakout_v3', 0) >= 5:
             lines.append("   突破10日新高,结构强势")
+        if detail.get('limit_up_20d', 0) >= 2:
+            lines.append(f"   20日{detail.get('limit_up_20d', 0)}次涨停,强势基因")
+        if detail.get('gap_pct', 0) and detail.get('gap_pct', 0) < 0:
+            lines.append(f"   今日低开{detail.get('gap_pct', 0)}%,低开高走承接好")
+        if detail.get('pullback_quality_score', 0) >= 3:
+            lines.append(f"   距20日高回撤{detail.get('drawdown_from_20d_high', '?')}%,回调充分")
         if detail.get('pressure_room_pct', 0) and detail.get('pressure_room_pct', 0) > 5:
             lines.append(f"   距压力位{detail.get('pressure_room_pct', 0)}%,次日空间充足")
         lines.append(f"   买入类型: {buy_cn}")

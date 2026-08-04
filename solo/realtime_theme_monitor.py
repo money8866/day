@@ -2981,6 +2981,7 @@ class RealtimeThemeMonitor:
                                 if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
                                 if d.get('layer') == 'leader': feats.append('龙头')
                                 if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
+                                if d.get('gap_pct') is not None and d.get('gap_pct', 0) < 0: feats.append(f"低开{d['gap_pct']:.2f}%承接")
                                 # 风险标记
                                 trap_flags = []
                                 if d.get('trap_weak_day'): trap_flags.append('⚠全天弱')
@@ -2992,18 +2993,22 @@ class RealtimeThemeMonitor:
                                 print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['theme_score']:>4} {s['capital_score']:>4} {s['role_score']:>4} {s['technical_score']:>4} {s['timing_score']:>4} {s['risk_penalty']:>4} {emoji:<6} {role_cn:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
                             print(f"{'='*110}\n")
 
-                            # 推送75分及以上信号到微信
-                            buy_signals = [s for s in tail_signals if s.get('total_score', 0) >= 75]
+                            # 推送信号到微信: 75分及以上, 或强势回调低吸形态≥65分
+                            buy_signals = [s for s in tail_signals
+                                           if s.get('total_score', 0) >= 75
+                                           or (s.get('buy_type') == 'PULLBACK_GAP' and s.get('total_score', 0) >= 65)]
                             if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
                                 lines = []
                                 for s in buy_signals[:5]:
                                     d = s.get('detail', {})
                                     role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(s.get('role', ''), s.get('role', ''))
-                                    buy_cn = {'LEADER_BREAKOUT': '龙头突破', 'CORE_PULLBACK': '中军回踩', 'ROTATION_ENTRY': '轮动入场', 'TAIL_TIMING': '尾盘择时'}.get(s.get('buy_type', ''), s.get('buy_type', ''))
+                                    buy_cn = {'LEADER_BREAKOUT': '龙头突破', 'CORE_PULLBACK': '中军回踩', 'ROTATION_ENTRY': '轮动入场', 'TAIL_TIMING': '尾盘择时', 'PULLBACK_GAP': '回调低吸'}.get(s.get('buy_type', ''), s.get('buy_type', ''))
                                     feats = []
                                     if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
                                     if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
                                     if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
+                                    if d.get('gap_pct') is not None and d.get('gap_pct', 0) < 0: feats.append(f"低开{d['gap_pct']:.2f}%承接")
+                                    if d.get('limit_up_20d', 0) >= 2: feats.append(f"20日{d['limit_up_20d']}涨停")
                                     # 风险警示
                                     trap_warns = []
                                     if d.get('trap_weak_day'): trap_warns.append('⚠全天弱尾拉')
@@ -4754,7 +4759,10 @@ class RealtimeThemeMonitor:
                 snap=self.intraday_snapshots.get(ts_code, {})
             )
 
-            total = thm_s + cap_s + role_score + tech_s + tail_s + room_s - risk_p
+            # 6.5 强势基因回调低吸形态加分 (最高+15)
+            gap_s, gap_d = v3.pullback_gap_score_v3(q, kl, ts_code)
+
+            total = min(100, thm_s + cap_s + role_score + tech_s + tail_s + gap_s + room_s - risk_p)
 
             if not self.tail_entry_debug_printed:
                 debug_stats['max_scores'].append(total)
@@ -4783,6 +4791,10 @@ class RealtimeThemeMonitor:
             buy_type, confidence = v3.classify_buy_type_v3(
                 role, thm_s, up_ratio, theme_limit_count, tech_s, pullback_quality
             )
+            # 强势基因回调低吸形态: 加分≥10 覆盖为 PULLBACK_GAP 高置信
+            if gap_s >= 10:
+                buy_type = 'PULLBACK_GAP'
+                confidence = max(confidence, 85)
 
             # 次日预期
             next_day = v3._estimate_next_day(room_s, role, thm_s, cap_s)
@@ -4799,6 +4811,7 @@ class RealtimeThemeMonitor:
                 'timing_score': tail_s,
                 'room_score': room_s,
                 'risk_penalty': risk_p,
+                'gap_score': gap_s,
                 'signal': signal,
                 'role': role,
                 'buy_type': buy_type,
@@ -4808,6 +4821,7 @@ class RealtimeThemeMonitor:
                 'price': q.get('price', 0),
                 'detail': {
                     **thm_d, **cap_d, **role_detail, **tech_d, **tail_d, **room_d, **risk_d,
+                    **gap_d,
                     'layer': layer, 'v3_filter_reason': reason,
                 },
             }

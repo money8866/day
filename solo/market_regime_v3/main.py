@@ -312,13 +312,15 @@ class MarketRegimeV3:
         rp_engine = RallyPullbackEngine(self.config)
         print("\n  [全市场扫描] 区间放量多涨停回调检测...")
 
-        # 构建全市场候选池（龙头前10 + 总市值>80亿）
+        # 构建全市场候选池（龙头前10 + 总市值>80亿）— V7.1: 只做主板（60/00开头）
         sb_cache = sc.load_stock_basic()
         candidate_pool = []
         leader_codes = set()
 
         for ld in leader_result.top_leaders[:10]:
             code = ld['ts_code']
+            if not (code.startswith('60') or code.startswith('00')):
+                continue  # 只做主板，跳过创业板300/科创板688
             candidate_pool.append(ld)
             leader_codes.add(code)
 
@@ -328,7 +330,8 @@ class MarketRegimeV3:
                                  fields='ts_code,total_mv,circ_mv,close,turnover_rate')
             if db is not None and not db.empty:
                 db = db[db['ts_code'].isin(sb_cache[sb_cache['ts_code'].str.endswith(('.SH','.SZ'))]['ts_code'])]
-                db = db[~db['ts_code'].str.startswith(('8','4','9'))]
+                # 只做主板：60开头(沪主板) 或 00开头(深主板)，排除创业板300/科创板688/北交所8·4·9
+                db = db[db['ts_code'].str.startswith(('60', '00'))]
                 db = db[~db['ts_code'].isin(leader_codes)]
                 db = db[db['total_mv'] > 800_000].sort_values('total_mv', ascending=False)
                 for _, row in db.iterrows():

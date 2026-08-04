@@ -1,7 +1,7 @@
 """Rally Pullback Engine — 区间放量多涨停拉升后回调 + 低开阳线承接
 
 核心逻辑：
-  阶段1: 识别拉升区间（60日内放量+多涨停拉升）
+  阶段1: 识别拉升区间（20日内放量+多涨停短线爆发拉升）
   阶段2: 检测回调质量（回撤幅度、MA60支撑）
   阶段3: 识别低开阳线承接信号（低开收阳 → 买点）
 
@@ -64,7 +64,7 @@ class RallyPullbackEngine:
 
     配置参数:
       rally:
-        lookback: 60                 # 拉升区间回看天数
+        lookback: 20                 # 拉升区间回看天数（短线20天内爆发）
         min_amplitude: 0.25          # 最低拉升幅度
         vol_expansion_min: 1.5       # 拉升段放量倍数
         min_limit_up: 2              # 最低涨停次数
@@ -102,7 +102,7 @@ class RallyPullbackEngine:
         td = self.loader.trade_date
 
         # 加载数据
-        lookback = self.cfg.get('rally', {}).get('lookback', 60) + 80
+        lookback = self.cfg.get('rally', {}).get('lookback', 20) + 80
         start_date = (pd.to_datetime(td) - pd.Timedelta(days=lookback + 30)).strftime('%Y%m%d')
         df = self.loader.load_stk_factor(ts_code, start_date, td, silent=True)
 
@@ -128,7 +128,7 @@ class RallyPullbackEngine:
         # 阶段1: 识别拉升区间（放量+多涨停拉升）
         # ═══════════════════════════════════════════════════════
         rally_cfg = self.cfg.get('rally', {})
-        lookback_rally = rally_cfg.get('lookback', 60)
+        lookback_rally = rally_cfg.get('lookback', 20)
         rally_start = max(0, n - lookback_rally)
 
         # 找拉升区间内的最高点

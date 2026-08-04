@@ -1225,125 +1225,6 @@ def _compute_rightside_strength(row: dict) -> Dict:
     return scores
 
 
-# ── 择时模块 — 主升后回调择时（0~100分） ──────────────────
-# 目标形态：强势股主升浪后健康回调（缩量不破位），即将启动二波
-# 案例：000533顺钠股份 7/23~7/28四连板主升(+75%) → 7/30跌停/7/31企稳
-#       回调18%缩量 → 8/3反包涨停。现有超跌/中线/右侧强度均无法覆盖
-#       此形态：超跌=左侧(RSI64不超卖)，中线=被2日跌>8%形态罚误杀，
-#       右侧强度=要求贴MA20回踩(回调日在MA20上方13%处)。
-
-
-def _compute_pullback_score(row: dict) -> Dict:
-    """
-    主升后回调择时评分（满分100）— 识别主升浪后的健康回调（二波买点）
-
-    强势股结构：先有一波主升（大涨幅/连板），回调不破位且缩量，再启动二波。
-    与超跌（左侧抄底）、中线（右侧确认）、右侧强度（贴MA20回踩）互补。
-
-    1. 主升确认  30分 — 60日高低差涨幅≥25%才具备主升结构
-    2. 回调到位  25分 — 距60日高回撤8%~18%最优（回踩但未破坏趋势）
-    3. 缩量回调  20分 — 当日量/前5日均量0.4~0.8最优（缩量回踩）
-    4. 趋势未破  15分 — 收在MA20上方 + MA20斜率向上 + MA20>MA60
-    5. 二波空间  10分 — 距120日高>25%（还有创新高空间）
-    惩罚：当日跌停(≤-9.5%)→-15；放量阴线(当日量比>1.3)→-8
-    """
-    scores = {}
-    total = 0.0
-
-    rally_gain = row.get('rally_gain', 0)                 # 60日主升涨幅%
-    pullback = row.get('pullback_from_high', 0)           # 距60日高回撤%
-    vol_ratio = row.get('vol_today_vs_5d', 1.0)           # 当日量/前5日均量
-    pct_ma20 = row.get('pct_below_ma20', 0)               # 正=在MA20上方
-    ma20_slope = row.get('ma20_slope', 0)
-    ma20 = row.get('ma20', 0)
-    ma60 = row.get('ma60', 0)
-    pct_high = row.get('pct_from_120d_high', 999)
-    chg_1d = row.get('recent_chg_1d', 0)
-    is_negative_day = row.get('is_negative_day', False)
-
-    # ── 1. 主升确认（30分） ──
-    if rally_gain >= 50:
-        score1 = 30.0
-    elif rally_gain >= 35:
-        score1 = 24.0
-    elif rally_gain >= 25:
-        score1 = 18.0
-    elif rally_gain >= 18:
-        score1 = 10.0
-    else:
-        score1 = 0.0
-    total += score1
-    scores['主升确认'] = round(score1, 1)
-    scores['主升涨幅(%)'] = round(rally_gain, 1)
-
-    # ── 2. 回调到位（25分）— 距60日高回撤8%~18%最优 ──
-    if 8 <= pullback <= 18:
-        score2 = 25.0
-    elif 5 <= pullback < 8 or 18 < pullback <= 25:
-        score2 = 18.0
-    elif 3 <= pullback < 5 or 25 < pullback <= 35:
-        score2 = 10.0
-    else:
-        score2 = 0.0   # 太浅=未回调 / 太深=趋势破坏
-    total += score2
-    scores['回调到位'] = round(score2, 1)
-    scores['回调幅度(%)'] = round(pullback, 1)
-
-    # ── 3. 缩量回调（20分）— 当日量/前5日均量 ──
-    if 0.4 <= vol_ratio < 0.8:
-        score3 = 20.0           # 缩量回踩，抛压枯竭
-    elif 0.8 <= vol_ratio < 1.0:
-        score3 = 12.0
-    elif 1.0 <= vol_ratio < 1.3:
-        score3 = 6.0
-    elif vol_ratio >= 1.5:
-        score3 = 0.0            # 放量回调，警惕出货
-    elif vol_ratio < 0.4:
-        score3 = 8.0            # 极度缩量（可能流动性枯竭）
-    else:
-        score3 = 2.0
-    total += score3
-    scores['缩量回调'] = round(score3, 1)
-    scores['当日量比'] = round(vol_ratio, 2)
-
-    # ── 4. 趋势未破（15分） ──
-    score4 = 0.0
-    if pct_ma20 > 0:
-        score4 += 5.0           # 收在MA20上方
-    elif pct_ma20 > -3:
-        score4 += 2.0           # 微破MA20
-    if ma20_slope > 0:
-        score4 += 5.0           # MA20斜率向上
-    if ma20 > 0 and ma60 > 0 and ma20 > ma60:
-        score4 += 5.0           # 多头排列
-    total += score4
-    scores['趋势未破'] = round(score4, 1)
-
-    # ── 5. 二波空间（10分）— 距120日高>25%还有创新高空间 ──
-    if pct_high > 25:
-        score5 = 10.0
-    elif pct_high > 10:
-        score5 = 6.0
-    else:
-        score5 = 2.0            # 贴近新高，回调可能更深
-    total += score5
-    scores['二波空间'] = round(score5, 1)
-
-    # ── 惩罚（-0~20分） ──
-    penalty = 0.0
-    if chg_1d <= -9.5:
-        penalty += 15.0         # 当日跌停，回调未完
-    if is_negative_day and vol_ratio > 1.3:
-        penalty += 8.0          # 放量阴线，抛压未释放
-    penalty = min(20.0, penalty)
-    total -= penalty
-    scores['回调惩罚'] = round(penalty, 1)
-
-    total = max(0.0, min(100.0, total))
-    scores['主升后回调总分'] = round(total, 1)
-    return scores
-
-
 # ── 主筛选流程 ──────────────────────────────────────────
 
 
@@ -1593,25 +1474,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                         break
                     days_above_ma20 += 1
 
-                # ── 主升后回调指标（二波买点） ──
-                recent_60d = daily.tail(60)
-                low_60d = float(recent_60d['low'].min())
-                # 主升浪参考高 = 60日最低点之后（本波启动起）的最高价，
-                # 避免混入启动前的旧高点导致回撤计算失真
-                low_pos = int(recent_60d['low'].idxmin())
-                seg = recent_60d.loc[low_pos:]
-                rally_high = float(seg['high'].max()) if len(seg) > 0 else current_close
-                # 60日主升涨幅（低点→主升浪高）
-                rally_gain = (rally_high - low_60d) / low_60d * 100 if low_60d > 0 else 0
-                # 距主升浪高点回撤%
-                pullback_from_high = (rally_high - current_close) / rally_high * 100 if rally_high > 0 else 0
-                # 当日量/前5日均量（缩量回调检测，规避主升放量后5日/20日量比失真）
-                if len(volumes) >= 6:
-                    prev_5d = np.mean(volumes[-6:-1])
-                    vol_today_vs_5d = volumes[-1] / prev_5d if prev_5d > 0 else 1.0
-                else:
-                    vol_today_vs_5d = 1.0
-
                 momentum_data[code] = {
                     'pct_from_120d_high': round(pct_from_high, 2),
                     'ma20_slope': round(ma20_slope, 2),
@@ -1636,10 +1498,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                     'is_negative_day': is_negative_day,
                     # ── 右侧启动新鲜度 ──
                     'days_above_ma20': days_above_ma20,
-                    # ── 主升后回调 ──
-                    'rally_gain': round(rally_gain, 2),
-                    'pullback_from_high': round(pullback_from_high, 2),
-                    'vol_today_vs_5d': round(vol_today_vs_5d, 2),
                 }
             else:
                 momentum_data[code] = {
@@ -1653,7 +1511,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                     'macd_golden_cross': False, 'days_since_60d_low': 99,
                     'recent_chg_1d': 0, 'recent_chg_2d': 0, 'is_negative_day': False,
                     'days_above_ma20': 0,
-                    'rally_gain': 0, 'pullback_from_high': 0, 'vol_today_vs_5d': 1.0,
                 }
         except Exception:
             momentum_data[code] = {
@@ -1667,7 +1524,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
                 'macd_golden_cross': False, 'days_since_60d_low': 99,
                 'recent_chg_1d': 0, 'recent_chg_2d': 0, 'is_negative_day': False,
                 'days_above_ma20': 0,
-                'rally_gain': 0, 'pullback_from_high': 0, 'vol_today_vs_5d': 1.0,
             }
 
     # 合并动量 & 超跌数据
@@ -1696,9 +1552,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
             'recent_chg_2d': md.get('recent_chg_2d', 0),
             'is_negative_day': md.get('is_negative_day', False),
             'days_above_ma20': md.get('days_above_ma20', 0),
-            'rally_gain': md.get('rally_gain', 0),
-            'pullback_from_high': md.get('pullback_from_high', 0),
-            'vol_today_vs_5d': md.get('vol_today_vs_5d', 1.0),
         })
     candidates = pd.DataFrame(mom_records)
 
@@ -1766,9 +1619,6 @@ def run_screening(trade_date: str = None, min_score: float = 50.0) -> pd.DataFra
         # 右侧回踩确认强度因子（组合择时：超跌过滤 → 强度排序）
         rightside = _compute_rightside_strength(row.to_dict())
         details.update(rightside)
-        # 主升后回调择时（二波买点，作用于全量名单）
-        pullback = _compute_pullback_score(row.to_dict())
-        details.update(pullback)
         score_results.append({
             'ts_code': row['ts_code'],
             'name': row['name'],
@@ -1892,26 +1742,14 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
 
     # ── 择时评分 ──
     # 组合择时（回测验证最优）：先超跌过滤，再按右侧强度排序
-    if timing == 'pullback' and '主升后回调总分' in all_df.columns:
-        _print_pullback_timing(all_df)
-        if '右侧强度总分' in passed.columns:
-            _print_combo_timing(passed, brief=True)
-        if '超跌总分' in passed.columns:
-            _print_oversold_timing(passed, brief=True)
-        if '中线买点总分' in passed.columns:
-            _print_midterm_timing(passed, brief=True)
-    elif timing == 'combo':
+    if timing == 'combo':
         _print_combo_timing(passed)
-        if '主升后回调总分' in all_df.columns:
-            _print_pullback_timing(all_df, brief=True)
         if '超跌总分' in passed.columns:
             _print_oversold_timing(passed, brief=True)
         if '中线买点总分' in passed.columns:
             _print_midterm_timing(passed, brief=True)
     elif timing == 'midterm' and '中线买点总分' in passed.columns:
         _print_midterm_timing(passed)
-        if '主升后回调总分' in all_df.columns:
-            _print_pullback_timing(all_df, brief=True)
         if '右侧强度总分' in passed.columns:
             _print_combo_timing(passed, brief=True)
         if '超跌总分' in passed.columns:
@@ -1919,8 +1757,6 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
     else:
         if '超跌总分' in passed.columns:
             _print_oversold_timing(passed)
-        if '主升后回调总分' in all_df.columns:
-            _print_pullback_timing(all_df, brief=True)
         if '右侧强度总分' in passed.columns:
             _print_combo_timing(passed, brief=True)
         if '中线买点总分' in passed.columns:
@@ -1947,10 +1783,6 @@ def print_report(passed: pd.DataFrame, all_df: pd.DataFrame, trade_date: str, mi
         print(f"  • 今日择时算法: 组合逻辑（超跌过滤≥50 → 右侧强度排序）")
         print(f"    → 回测验证(2026-01~07, 7017样本): 排名越前20日上涨概率越高")
         print(f"      超跌≥50池内强度Spearman rho≈+0.38；强度最高十分位20日涨率≈76%")
-    elif timing == 'pullback':
-        print(f"  • 今日择时算法: 主升后回调（全量名单·形态观察）")
-        print(f"    → 强势股主升≥25%后回撤8~18%且缩量的形态展示（仅信息提示）")
-        print(f"      注意: 2026-01~07全样本回测该形态20日为负期望，不参与精选/排序")
     else:
         print(f"  • 今日择时算法: 最大超跌（五维评分：距高+RSI+MA20偏离+缩量+60日低位）")
         print(f"    → 适合左侧低吸、超跌反弹的短线标的")
@@ -1996,48 +1828,6 @@ def _print_combo_timing(passed: pd.DataFrame, brief: bool = False):
               f"站上{days_up:>2}日{fresh_tag}  "
               f"量比{vol_r:>.2f}  "
               f"距高{pct_high:>5.1f}%")
-
-
-def _print_pullback_timing(all_df: pd.DataFrame, brief: bool = False):
-    """打印主升后回调形态TOP10（全量名单·仅信息展示，不参与精选/排序）"""
-    print(f"\n{'─'*70}")
-    title = "择时: 主升后回调形态（全量名单·信息展示）（辅助）" if brief else \
-            "择时: 主升后回调形态（全量名单·信息展示）"
-    print(f"  {title}")
-    print(f"{'─'*70}")
-    if '主升后回调总分' not in all_df.columns:
-        print("  缺少主升后回调字段，跳过")
-        return
-    thr = 60.0
-    pool = all_df[all_df['主升后回调总分'] >= thr].copy()
-    pool = pool.sort_values('主升后回调总分', ascending=False)
-    n_main = len(pool[pool['主升涨幅(%)'] >= 25])
-    print(f"  全量池: {len(all_df)} 只  |  满足主升回调结构(≥{thr:.0f}分): {len(pool)} 只"
-          f"（其中主升≥25%: {n_main} 只）")
-    if len(pool) == 0:
-        print("  （当前无主升后回调形态，注意新启动的主升浪）")
-        return
-    print(f"\n  ═══ 主升后回调 TOP10 ═══")
-    for idx, (_, r) in enumerate(pool.head(10).iterrows()):
-        pb_score = r.get('主升后回调总分', 0)
-        total_s = r.get('总分', 0)
-        rg = r.get('主升涨幅(%)', 0)
-        pb = r.get('回调幅度(%)', 0)
-        v5 = r.get('当日量比', 1.0)
-        ma20_pct = r.get('距MA20(%)', 0)
-        pct_high = r.get('距120日高(%)', 0)
-        bar = '█' * int(pb_score / 10) + '░' * (10 - int(pb_score / 10))
-        name = str(r.get('name', '')).strip()
-        if len(name) > 6:
-            name = name[:6]
-        print(f"  {idx+1:>2}. {name:>6}({r.get('ts_code','')})  "
-              f"回调{pb_score:>5.1f} {bar}  "
-              f"总分{total_s:>5.1f}  "
-              f"主升{rg:>5.1f}%  回撤{pb:>5.1f}%  "
-              f"当日量比{v5:>4.2f}  "
-              f"MA20{ma20_pct:>+5.1f}%  距高{pct_high:>5.1f}%")
-    print(f"\n  注意: 2026-01~07全样本(25万样本)回测该形态20日为负期望(连板≥3股20日-9.5%)，"
-          f"本板块仅作形态观察，不构成买入信号；跌停日/放量阴线已被惩罚过滤")
 
 
 def _print_oversold_timing(passed: pd.DataFrame, brief: bool = False):
@@ -2167,8 +1957,8 @@ if __name__ == '__main__':
     parser.add_argument('--quick', action='store_true',
                         help='快速模式：跳过主营/标签查询（仅基于财务+动量筛选）')
     parser.add_argument('--timing', type=str, default='combo',
-                        choices=['oversold', 'midterm', 'combo', 'pullback'],
-                        help='择时算法（combo=超跌过滤+右侧强度[精选池回测最优], pullback=主升后回调二波[全量名单], oversold=最大超跌, midterm=中线右侧买点）')
+                        choices=['oversold', 'midterm', 'combo'],
+                        help='择时算法（combo=超跌过滤+右侧强度排序[回测最优], oversold=最大超跌, midterm=中线右侧买点）')
 
     args = parser.parse_args()
     min_score = args.min_score
