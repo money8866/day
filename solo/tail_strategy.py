@@ -908,10 +908,18 @@ class TailStrategy:
         if pct < 0.5:
             return False, f'涨幅{pct:.1f}%过低'
 
-        # 4. 连续涨停≥2天排除
+        # 4. 连续涨停≥2天排除 (数据缺失按0处理,避免None崩溃)
         if kline is not None and len(kline) >= 3:
-            prev_pct = float(kline['pct_chg'].iloc[-1]) if 'pct_chg' in kline.columns else 0
-            prev2_pct = float(kline['pct_chg'].iloc[-2]) if 'pct_chg' in kline.columns else 0
+            def _safe_pct(idx):
+                if 'pct_chg' not in kline.columns:
+                    return 0
+                try:
+                    v = kline['pct_chg'].iloc[idx]
+                    return float(v) if v is not None else 0
+                except (TypeError, ValueError):
+                    return 0
+            prev_pct = _safe_pct(-1)
+            prev2_pct = _safe_pct(-2)
             prev_limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
             if prev_pct >= prev_limit and prev2_pct >= prev_limit:
                 return False, '连板2天'

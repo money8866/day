@@ -302,6 +302,8 @@ class EarningsBuyPointResult:
     is_sell_on_news: bool = False          # 利好兑现标记
     next_day_buyable: bool = False         # 次日可买信号（回调中，明天是更好的买入时机）
     next_day_buy_reason: str = ""          # 次日可买原因
+    stock_pullback_score: float = 0.0      # 个股回踩企稳评分（独立于大盘Alpha）
+    stock_pullback_reason: str = ""        # 个股回踩企稳原因
     logic: list[str] = field(default_factory=list)
 
 
@@ -412,6 +414,8 @@ class FinalScoreResult:
             "is_sell_on_news": self.earnings_buy_point_detail.is_sell_on_news if self.earnings_buy_point_detail else False,
             "next_day_buyable": self.earnings_buy_point_detail.next_day_buyable if self.earnings_buy_point_detail else False,
             "next_day_buy_reason": self.earnings_buy_point_detail.next_day_buy_reason if self.earnings_buy_point_detail else "",
+            "stock_pullback_score": round(self.earnings_buy_point_detail.stock_pullback_score, 0) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.stock_pullback_score > 0 else 0,
+            "stock_pullback_reason": self.earnings_buy_point_detail.stock_pullback_reason if self.earnings_buy_point_detail else "",
             "etf_score": round(self.etf_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,

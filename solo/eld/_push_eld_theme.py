@@ -124,7 +124,28 @@ for i, s in enumerate(eld_stocks[:20], 1):
     pct = round(float(s["forecast_pct"]))
     lines.append(f"{i}.{s['name']} V2:{v2} 预增{pct}% {icon} {_sig_cn(s['earnings_buy_signal'])}")
 
-# ── 三、次日可买（新增） ──
+# ── 三、个股回踩企稳（独立于大盘信号，新增） ──
+_pullback = [s for s in eld_stocks
+             if float(s.get("stock_pullback_score", 0) or 0) >= 60
+             and s['institution_state'] != '派发']
+if _pullback:
+    lines.append("")
+    lines.append("**🎯个股回踩企稳（缩量企稳买点，独立于大盘）**")
+    for s in sorted(_pullback, key=lambda x: -float(x.get("stock_pullback_score", 0) or 0))[:10]:
+        inst = s["institution_state"]
+        v2 = round(float(s['final_score_v2']))
+        pb_score = round(float(s.get("stock_pullback_score", 0) or 0))
+        reason = s.get("stock_pullback_reason", "")
+        price_str = ""
+        ref_price = float(s.get("reference_buy_price", 0))
+        stop_loss = float(s.get("stop_loss_price", 0))
+        if ref_price > 0:
+            price_str = f" 参考价{ref_price:.2f} 止损{stop_loss:.2f}"
+        lines.append(f" - {s['name']} 回踩:{pb_score}分 V2:{v2} {inst}{price_str}")
+        if reason:
+            lines.append(f"    ↳ {reason}")
+
+# ── 四、次日可买 ──
 _buyable = [s for s in eld_stocks
             if s.get("next_day_buyable", "").lower() == "true"
             and s['institution_state'] != '派发']
@@ -139,7 +160,7 @@ if _buyable:
         price_str = f" 参考价{ref_price:.2f} 止损{stop_loss:.2f}" if ref_price > 0 else ""
         lines.append(f" - {s['name']} V2:{v2} {inst}{price_str}")
 
-# ── 四、操作策略 ──
+# ── 五、操作策略 ──
 lines.append("")
 lines.append("**操作策略**")
 lines.append("")
@@ -165,7 +186,7 @@ if _focus_buy:
 elif _focus_watch:
     lines.append(f"优先关注（观察中）：{'、'.join(_focus_watch[:5])}")
 
-# ── 四、派发风险 ──
+# ── 六、派发风险 ──
 distributors = [s for s in eld_stocks if s["institution_state"] == "派发"]
 if distributors:
     lines.append("")

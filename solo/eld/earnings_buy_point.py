@@ -25,6 +25,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+import pandas as pd
+
 from .config import get_config
 from .constants import EarningsBuySignal, InstitutionState
 from .models import (
@@ -93,6 +95,182 @@ def _check_next_day_buyable(
         return True, f"利好兑现但回调充分（{pullback_from_high:.1f}%），明日可关注企稳信号"
 
     return True, "回调中，趋势完好，机构吸筹/洗盘阶段，明日是更好的买入时机"
+
+
+def _detect_stock_level_pullback(
+    sorted_data: list[DailyPriceData],
+    ma20: float,
+    close_above_ma20: bool,
+    institution_state: Optional[str],
+    is_sell_on_news: bool,
+) -> Optional[dict]:
+    """个股级别回踩企稳检测（独立于大盘Alpha）
+
+    从博通集成0804特征提炼：
+    - 前期有过上涨（非单边下跌）
+    - 近2日缩量企稳（跌不动了）
+    - 收盘在MA5/MA20附近（均线支撑）
+    - MACD绿柱缩小（动能收敛）
+    - 机构状态非派发
+
+    Returns:
+        dict with 'score', 'reason' or None
+    """
+    if len(sorted_data) < 30:
+        return None
+
+    today = sorted_data[-1]
+    yesterday = sorted_data[-2]
+
+    # ── 条件1: 机构状态非派发 ──
+    _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value, ""}
+    if institution_state and institution_state not in _safe_states:
+        return None
+
+    # ── 条件2: 利好兑现的不做（太危险） ──
+    if is_sell_on_news:
+        return None
+
+    # ── 条件3: 收盘在MA20附近（不超过±5%） ──
+    dist_ma20 = abs(today.close / ma20 - 1) * 100
+    if dist_ma20 > 5:
+        return None
+
+    # ── 条件4: MA20斜率向上（20日均线上行=中期趋势在） ──
+    if len(sorted_data) < 25:
+        return None
+    ma20_5ago = _compute_ma(sorted_data[:-5], 20)
+    ma20_slope = (ma20 / ma20_5ago - 1) * 100 if ma20_5ago > 0 else 0
+    if ma20_slope < -2:
+        return None  # MA20加速下行，不接
+
+    # ── 条件5: 近2日缩量企稳 ──
+    # 今日或昨日涨跌幅在[-3.5%, +2.5%]区间（小阴小阳企稳）
+    today_chg = (today.close / yesterday.close - 1) * 100
+    if today_chg > 2.5 or today_chg < -3.5:
+        return None
+
+    # 前一天（T-2）应该是下跌的（回调中）
+    if len(sorted_data) >= 3:
+        prev_chg = (yesterday.close / sorted_data[-3].close - 1) * 100
+        if prev_chg > 1.0:
+            return None  # 前一天没跌，不是回踩企稳
+
+    # ── 条件6: 缩量（今日量 < 20日均量×0.9） ──
+    vol_ma20 = sum(d.vol for d in sorted_data[-21:-1]) / 20
+    vol_ratio = today.vol / vol_ma20 if vol_ma20 > 0 else 1.0
+    if vol_ratio > 1.2:
+        return None  # 放量不是企稳
+
+    # ── 条件7: MACD绿柱缩小或红柱放大（动能收敛/反转） ──
+    closes = [d.close for d in sorted_data[-30:]]
+    ema12 = pd.Series(closes).ewm(span=12, adjust=False).mean().values
+    ema26 = pd.Series(closes).ewm(span=26, adjust=False).mean().values
+    dif = ema12 - ema26
+    dea = pd.Series(dif).ewm(span=9, adjust=False).mean().values
+    macd_bar = (dif - dea) * 2
+    macd_converging = False
+    if len(macd_bar) >= 2:
+        if macd_bar[-1] < 0 and macd_bar[-1] > macd_bar[-2]:
+            macd_converging = True  # 绿柱缩小
+        elif macd_bar[-1] > 0 and macd_bar[-1] > macd_bar[-2]:
+            macd_converging = True  # 红柱放大
+    if not macd_converging:
+        return None
+
+    # ── 条件8: 近20日有过上涨（不是单边下跌的票） ──
+    if len(sorted_data) >= 21:
+        chg_20d = (today.close / sorted_data[-21].close - 1) * 100
+        if chg_20d < -15:
+            return None  # 20日跌太多，不是回踩是破位
+
+    # ========== 评分（100分制） ==========
+    score = 0
+    reasons = []
+
+    # MA20斜率 (25分)
+    if ma20_slope > 3:
+        score += 25
+        reasons.append(f"MA20斜率{ma20_slope:+.1f}%（强势上行）")
+    elif ma20_slope > 1:
+        score += 20
+        reasons.append(f"MA20斜率{ma20_slope:+.1f}%（上行）")
+    elif ma20_slope > 0:
+        score += 15
+        reasons.append(f"MA20斜率{ma20_slope:+.1f}%（走平偏上）")
+    elif ma20_slope > -2:
+        score += 8
+        reasons.append(f"MA20斜率{ma20_slope:+.1f}%（走平）")
+
+    # 缩量程度 (25分)
+    if vol_ratio < 0.6:
+        score += 25
+        reasons.append(f"极度缩量(量比{vol_ratio:.2f})")
+    elif vol_ratio < 0.8:
+        score += 20
+        reasons.append(f"显著缩量(量比{vol_ratio:.2f})")
+    elif vol_ratio < 0.9:
+        score += 15
+        reasons.append(f"缩量(量比{vol_ratio:.2f})")
+    elif vol_ratio <= 1.0:
+        score += 10
+        reasons.append(f"量能温和(量比{vol_ratio:.2f})")
+    else:
+        score += 5
+        reasons.append(f"量比{vol_ratio:.2f}")
+
+    # MACD收敛 (20分)
+    if macd_bar[-1] < 0 and macd_bar[-1] > macd_bar[-2]:
+        diff = macd_bar[-2] - macd_bar[-1]
+        if diff > 0.05:
+            score += 20
+            reasons.append("MACD绿柱快速缩小")
+        else:
+            score += 15
+            reasons.append("MACD绿柱缩小")
+    elif macd_bar[-1] > 0 and macd_bar[-1] > macd_bar[-2]:
+        score += 20
+        reasons.append("MACD红柱放大")
+
+    # 均线支撑 (15分)
+    ma5 = _compute_ma(sorted_data, 5)
+    if abs(today.close / ma5 - 1) * 100 < 1.5:
+        score += 15
+        reasons.append(f"收盘紧贴MA5({ma5:.2f})")
+    elif dist_ma20 < 2:
+        score += 12
+        reasons.append(f"收盘在MA20附近(偏差{dist_ma20:.1f}%)")
+    elif dist_ma20 < 5:
+        score += 8
+        reasons.append(f"收盘距MA20 {dist_ma20:.1f}%")
+
+    # 企稳确认 (15分)
+    if today_chg >= 0 and today_chg <= 2.5:
+        score += 15
+        reasons.append(f"今日小阳企稳({today_chg:+.1f}%)")
+    elif today_chg >= -1:
+        score += 10
+        reasons.append(f"今日微跌企稳({today_chg:+.1f}%)")
+    else:
+        score += 5
+        reasons.append(f"今日跌{today_chg:+.1f}%")
+
+    # 机构状态加分 (0-10分，额外)
+    if institution_state == InstitutionState.ACCUMULATION.value:
+        score = min(100, score + 5)
+        reasons.append("机构吸筹")
+    elif institution_state == InstitutionState.WASHING.value:
+        score = min(100, score + 3)
+        reasons.append("机构洗盘")
+
+    return {
+        "score": score,
+        "reason": "；".join(reasons),
+        "vol_ratio": round(vol_ratio, 2),
+        "ma20_slope": round(ma20_slope, 2),
+        "today_chg": round(today_chg, 2),
+        "dist_ma20": round(dist_ma20, 2),
+    }
 
 
 def _compute_ma(data: list[DailyPriceData], period: int) -> float:
@@ -396,8 +574,36 @@ def detect_earnings_pullback(
     if trend_result is not None and alpha < cfg.trend_alpha_floor:
         alpha_floor_ok = False
 
-    # 信号决策（优化版）：考虑次日可买性
-    if conditions_met >= 6 and alpha_floor_ok:
+    # ── 个股级别回踩企稳检测（独立于大盘Alpha） ──
+    # 当个股形态满足"缩量企稳+均线支撑+MACD收敛"时，不依赖Alpha直接给BUY
+    # 适用于大盘bear但个股独立走强的场景（如博通集成0804）
+    stock_pullback_buy = _detect_stock_level_pullback(
+        sorted_data, ma20, above_ma20, institution_state, is_sell_on_news,
+    )
+    if stock_pullback_buy is not None:
+        stock_pullback_buy["conditions_met"] = conditions_met
+        stock_pullback_buy["total_conditions"] = total_conditions
+        # 写入结果对象，供CSV/推送使用
+        result.stock_pullback_score = stock_pullback_buy["score"]
+        result.stock_pullback_reason = stock_pullback_buy["reason"]
+    all_logic.append(
+        f"个股回踩企稳: {stock_pullback_buy['reason'] if stock_pullback_buy else '未触发'}"
+    )
+
+    # 信号决策（优化版）：考虑次日可买性 + 个股回踩企稳
+    if stock_pullback_buy and not is_sell_on_news:
+        # 个股级别回踩企稳触发 → 直接BUY（不受Alpha/大盘限制）
+        signal = EarningsBuySignal.BUY
+        stage = "BUY"
+        all_logic.append(
+            f"信号: BUY — 个股回踩企稳触发（{stock_pullback_buy['score']:.0f}分），"
+            f"独立于大盘Alpha={alpha:.1f}"
+        )
+        ref_price = current_close
+        all_logic.append(f"参考买入价: {ref_price:.2f}（今日收盘价，回踩企稳买入）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
+        all_logic.append(f"回调提示: {stock_pullback_buy['reason']}")
+    elif conditions_met >= 6 and alpha_floor_ok:
         # 条件充分 → BUY
         signal = EarningsBuySignal.BUY
         stage = "BUY"

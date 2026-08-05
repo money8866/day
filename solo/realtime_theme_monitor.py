@@ -4617,6 +4617,7 @@ class RealtimeThemeMonitor:
         from capital_engine_v3 import capital_score_v3
         from role_engine_v3 import calc_stock_role_score_from_layer
 
+        import pandas as pd
         v3 = TailStrategy()
         now = datetime.now()
         signals = []
@@ -4686,6 +4687,11 @@ class RealtimeThemeMonitor:
             # 获取主题数据
             theme_name = themes[0]
             kl = self.stock_klines.get(ts_code)
+            if kl is not None and len(kl) > 0:
+                # 数值列清洗: 缺失值填0, 防止 float(None) 崩溃
+                for _col in ('open', 'high', 'low', 'close', 'pct_chg', 'vol', 'amount'):
+                    if _col in kl.columns:
+                        kl[_col] = pd.to_numeric(kl[_col], errors='coerce').fillna(0)
             turnover = self.turnover_cache.get(ts_code, 0)
             total_mv = self.stock_mv.get(ts_code, 0) if hasattr(self, 'stock_mv') and self.stock_mv else 0
 

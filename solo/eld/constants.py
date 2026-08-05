@@ -157,6 +157,8 @@ CSV_COLUMNS: Final[list[str]] = [
     "is_sell_on_news",
     "next_day_buyable",
     "next_day_buy_reason",
+    "stock_pullback_score",
+    "stock_pullback_reason",
     "etf_score",
     "buy_point",
     "recommendation",

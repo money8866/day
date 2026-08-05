@@ -12,13 +12,13 @@
     "position": 0.0
   },
   "金融科技": {
-    "stage": "试仓",
-    "position": 0.05,
+    "stage": "加仓",
+    "position": 0.15,
     "entry": 0.631,
     "stop": 0.568,
     "t1": 0.726,
     "t2": 0.789,
-    "hold_days": 2
+    "hold_days": 3
   },
   "游戏": {
     "stage": "加仓",
@@ -27,7 +27,7 @@
     "stop": 1.026,
     "t1": 1.282,
     "t2": 1.394,
-    "hold_days": 2
+    "hold_days": 3
   },
   "新能源": {
     "stage": "观察",
@@ -112,7 +112,7 @@
     "stop": 1.297,
     "t1": 1.621,
     "t2": 1.762,
-    "hold_days": 0
+    "hold_days": 1
   },
   "证券": {
     "stage": "观察",
@@ -127,6 +127,6 @@
     "position": 0.0
   },
   "_meta": {
-    "last_date": "20260804"
+    "last_date": "20260805"
   }
 }
