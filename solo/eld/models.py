@@ -304,6 +304,11 @@ class EarningsBuyPointResult:
     next_day_buy_reason: str = ""          # 次日可买原因
     stock_pullback_score: float = 0.0      # 个股回踩企稳评分（独立于大盘Alpha）
     stock_pullback_reason: str = ""        # 个股回踩企稳原因
+    # ── 最佳买点信号（V3） ──
+    buy_point_type: str = ""               # 买点类型: VCP_PULLBACK/MA20_BOUNCE/MA10_BOUNCE/BREAKOUT/TREND_FOLLOW/CHASE_HIGH
+    bias_pct: float = 0.0                  # 乖离率 ((close-ma20)/ma20*100)
+    buy_quality_score: float = 0.0         # 买点质量评分（0-100，综合乖离/回踩/缩量/企稳/机构）
+    quality_reason: str = ""               # 质量评分原因
     logic: list[str] = field(default_factory=list)
 
 
@@ -416,6 +421,11 @@ class FinalScoreResult:
             "next_day_buy_reason": self.earnings_buy_point_detail.next_day_buy_reason if self.earnings_buy_point_detail else "",
             "stock_pullback_score": round(self.earnings_buy_point_detail.stock_pullback_score, 0) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.stock_pullback_score > 0 else 0,
             "stock_pullback_reason": self.earnings_buy_point_detail.stock_pullback_reason if self.earnings_buy_point_detail else "",
+            # 最佳买点信号（V3）
+            "buy_point_type": self.earnings_buy_point_detail.buy_point_type if self.earnings_buy_point_detail else "",
+            "bias_pct": round(self.earnings_buy_point_detail.bias_pct, 1) if self.earnings_buy_point_detail else 0.0,
+            "buy_quality_score": round(self.earnings_buy_point_detail.buy_quality_score, 0) if self.earnings_buy_point_detail else 0.0,
+            "quality_reason": self.earnings_buy_point_detail.quality_reason if self.earnings_buy_point_detail else "",
             "etf_score": round(self.etf_score, 1),
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,

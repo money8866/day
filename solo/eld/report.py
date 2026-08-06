@@ -116,6 +116,10 @@ class ReportGenerator:
                 if r.earnings_buy_point_detail:
                     ebp = r.earnings_buy_point_detail
                     lines.append(f"  - 距公告: {ebp.days_since_announce}天 | 回撤: {ebp.pullback_from_high_pct:.1f}% | 量比: {ebp.volume_ratio:.2f}")
+                    if ebp.buy_point_type:
+                        lines.append(f"  - 买点类型: {ebp.buy_point_type} | 乖离MA20: {ebp.bias_pct:+.1f}% | 买点质量: {ebp.buy_quality_score:.0f}/100")
+                        if ebp.quality_reason:
+                            lines.append(f"  - 质量明细: {ebp.quality_reason}")
                     if ebp.reference_buy_price > 0:
                         lines.append(f"  - 参考买入价: {ebp.reference_buy_price:.2f} | 止损价: {ebp.stop_loss_price:.2f}")
                     if ebp.pre_announce_runup_pct > 0:

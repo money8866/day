@@ -533,9 +533,41 @@ class EldDataSource:
     ) -> list[DailyPriceData]:
         """获取日线价格数据。
 
-        优先从 cache_daily/daily_YYYYMMDD.csv 读取，其次 SQLite，最后 API。
+        优先级：
+          1. 通用 daily_cache 表（stock_cache.py，全项目共享 SQLite）
+          2. cache_daily/daily_YYYYMMDD.csv
+          3. ELD 自身 SQLite 缓存
+          4. API（结果写回通用 daily_cache 表）
         """
-        # 1. SQLite 缓存
+        # 0. 通用 daily_cache 表（全项目共享，其他模块如 chip_alpha_engine 也在用）
+        try:
+            from stock_cache import get_daily_cache
+            df_cache = get_daily_cache(ts_code, start_date, end_date)
+            if df_cache is not None and len(df_cache) >= 10:
+                results = [
+                    DailyPriceData(
+                        ts_code=str(row["ts_code"]),
+                        trade_date=str(row["trade_date"]),
+                        open=safe_float(row.get("open")),
+                        high=safe_float(row.get("high")),
+                        low=safe_float(row.get("low")),
+                        close=safe_float(row.get("close")),
+                        pre_close=safe_float(row.get("pre_close")),
+                        change=safe_float(row.get("change")),
+                        pct_change=safe_float(row.get("pct_chg")),
+                        vol=safe_float(row.get("vol")),
+                        amount=safe_float(row.get("amount")),
+                    )
+                    for _, row in df_cache.iterrows()
+                ]
+                results.sort(key=lambda x: x.trade_date)
+                return results
+        except ImportError:
+            pass  # stock_cache 不可用时回退
+        except Exception as exc:
+            logger.debug("读取通用 daily_cache 表失败 %s: %s", ts_code, exc)
+
+        # 1. ELD 自身 SQLite 缓存
         cached = self._cache.get_price_cache(ts_code)
         if cached is not None:
             return [DailyPriceData(**item) for item in cached]
@@ -598,6 +630,19 @@ class EldDataSource:
                     vol=safe_float(row.get("vol")),
                     amount=safe_float(row.get("amount")),
                 ))
+
+        # 写回通用 daily_cache 表（供其他模块复用，避免重复调 API）
+        if len(results) >= 10:
+            try:
+                from stock_cache import batch_insert_daily_cache
+                df_write = df[[
+                    c for c in ("ts_code", "trade_date", "open", "high", "low",
+                                "close", "pre_close", "change", "pct_chg", "vol", "amount")
+                    if c in df.columns
+                ]].copy()
+                batch_insert_daily_cache(df_write)
+            except Exception as exc:
+                logger.debug("写回通用 daily_cache 表失败 %s: %s", ts_code, exc)
 
         return results
 

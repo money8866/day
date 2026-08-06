@@ -513,8 +513,6 @@ class FinalScoreEngine:
         result.earnings_buy_point_detail = ebp_r
         result.earnings_buy_signal = ebp_r.signal.value if hasattr(ebp_r.signal, 'value') else str(ebp_r.signal)
         result.earnings_buy_score = ebp_r.score
-
-        # Stage 12: 最终评分（V1 保持兼容）
         result.els = self.compute_els(
             event_r, earn_r, inst_r, chip_r, trend_r,
             ind_r, fresh_r, gap_r, sim_r,
@@ -547,9 +545,22 @@ class FinalScoreEngine:
             inst_accum_score=inst_acc_r.score,
             industry_score=ind_r.score,
             etf_score=etf_score,
-            trend_alpha=trend_r.alpha,  # 传入趋势Alpha用于兜底惩罚
+            trend_alpha=trend_r.alpha * 100.0,  # 小数收益率→百分数，用于兜底惩罚
         )
         result.final_score_v2 = self.apply_market_multiplier(result.els_v2, market)
+
+        # Stage 13.5: 最佳买点信号 V2门槛校验
+        # 质量分高但V2<55时，BUY降级为WATCH（基本面不达标不追）
+        if result.earnings_buy_signal == "BUY" and ebp_r is not None:
+            v2_min = self.cfg.earnings_buy_point.v2_min_for_buy
+            if result.final_score_v2 < v2_min:
+                result.earnings_buy_signal = "WATCH"
+                ebp_r.stage = "WATCH"
+                ebp_r.logic.append(
+                    f"信号降级: BUY→WATCH — V2={result.final_score_v2:.1f}<{v2_min:.0f}，"
+                    f"买点质量虽高但基本面评分不达标"
+                )
+
         result.recommendation_v2 = self.generate_recommendation_v2(
             result.final_score_v2,
             earnings_buy_signal=result.earnings_buy_signal,

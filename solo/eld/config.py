@@ -282,6 +282,8 @@ class EarningsBuyPointConfig:
 
     # 趋势要求
     ma_period: int = 20  # MA20
+    ma10_period: int = 10
+    ma5_period: int = 5
 
     # 回撤要求
     max_pullback_from_high_pct: float = 10.0  # 距离公告后高点<10%
@@ -300,6 +302,31 @@ class EarningsBuyPointConfig:
 
     # 趋势Alpha兜底
     trend_alpha_floor: float = 60.0       # 趋势Alpha<此值，BUY降级为WATCH
+
+    # ── 最佳买点信号（V3） ──
+    # 乖离率控制（(close-ma20)/ma20*100）
+    bias_chase_threshold: float = 15.0    # 乖离>15% = 追高风险，BUY降级WATCH
+    bias_optimal_min: float = -2.0        # 最佳买入区：乖离 -2%~8%（回测2026-01~07 ELD场景内5~10优于0~5）
+    bias_optimal_max: float = 8.0
+    bias_ok_max: float = 10.0             # 乖离≤10% 允许WATCH
+
+    # 市场环境门控（回测结论：大盘<MA20 期间买点信号负期望，应整体降级）
+    market_gate_enabled: bool = True      # 开关：大盘(沪深300)<MA20 时 BUY 降级 WATCH
+    market_gate_benchmark: str = "000300.SH"  # 大盘基准指数
+
+    # 买点质量评分权重（0-100）
+    quality_bias_weight: float = 0.25     # 乖离合理度
+    quality_pullback_weight: float = 0.25 # 回踩深度（贴近MA10/MA20）
+    quality_volume_weight: float = 0.20   # 缩量程度
+    quality_stabilize_weight: float = 0.15 # 企稳确认（小阴小阳+MACD收敛）
+    quality_institution_weight: float = 0.15 # 机构状态
+
+    # 质量分阈值
+    quality_buy_threshold: float = 80.0   # ≥80 强买点BUY（与V2≥55联合）
+    quality_watch_threshold: float = 50.0 # ≥50 WATCH
+
+    # BUY 所需最低 V2 分（在final_score层校验）
+    v2_min_for_buy: float = 55.0          # 质量分高但V2<55时BUY降级WATCH
 
     # 评分映射
     buy_score_threshold: float = 75.0   # BUY

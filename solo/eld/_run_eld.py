@@ -196,11 +196,18 @@ for i, r in enumerate(report.results[:10]):
                 r.earnings_buy_signal)
 
 # ── 8. 微信推送 ──
+# 支持 --no-push 跳过推送（调试用），其余 argv 保留给推送脚本传日期
+_no_push = "--no-push" in sys.argv
+if _no_push:
+    sys.argv = [a for a in sys.argv if a != "--no-push"]
 logger.info("")
-logger.info("Step 8: 微信推送...")
-try:
-    from eld._push_eld_theme import main as push_main
-    push_main()
-    logger.info("  微信推送完成")
-except Exception as e:
-    logger.warning("  微信推送失败: %s", e)
+if _no_push:
+    logger.info("Step 8: 微信推送 (已跳过 --no-push)")
+else:
+    logger.info("Step 8: 微信推送...")
+    try:
+        from eld._push_eld_theme import main as push_main
+        push_main()
+        logger.info("  微信推送完成")
+    except Exception as e:
+        logger.warning("  微信推送失败: %s", e)

@@ -174,7 +174,7 @@ def _check_alpha_direction(
     if trend_result is None:
         return "unknown", "无趋势数据"
 
-    alpha = trend_result.alpha
+    alpha = trend_result.alpha * 100.0  # 小数收益率→百分数
     if alpha > 5.0:
         return "positive", f"Alpha 正向({alpha:+.2f})"
     elif alpha < -5.0:

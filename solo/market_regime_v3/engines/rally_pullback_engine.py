@@ -66,6 +66,7 @@ class RallyPullbackEngine:
       rally:
         lookback: 20                 # 拉升区间回看天数（短线20天内爆发）
         min_amplitude: 0.25          # 最低拉升幅度
+        max_amplitude: 0.80          # V7.2: 最高拉升幅度（排除妖股极端拉升）
         vol_expansion_min: 1.5       # 拉升段放量倍数
         min_limit_up: 2              # 最低涨停次数
         limit_up_threshold: 9.5      # 涨停判定涨幅(%)
@@ -74,6 +75,7 @@ class RallyPullbackEngine:
         drawdown_max: 0.20           # 最高回撤
         max_pullback_days: 30        # 最长回调天数
         min_pullback_days: 3         # 最短回调天数
+        max_drop_in_pullback: 7.0    # V7.2: 回调区间最大单日跌幅%（超过=退潮，排除）
       candle:
         min_open_gap: 0.005          # 最低低开幅度(0.5%)
         max_open_gap: 0.05           # 最高低开幅度(5%)
@@ -143,7 +145,11 @@ class RallyPullbackEngine:
         rally_days = high_idx - low_idx
 
         min_amplitude = rally_cfg.get('min_amplitude', 0.25)
+        max_amplitude = rally_cfg.get('max_amplitude', 0.80)
         if rally_amplitude < min_amplitude:
+            return result
+        if rally_amplitude > max_amplitude:
+            # V7.2: 拉升幅度超过上限 = 妖股极端拉升，退潮风险大，直接排除
             return result
 
         result.rally_amplitude = rally_amplitude
@@ -203,6 +209,13 @@ class RallyPullbackEngine:
         min_pb_days = pb_cfg.get('min_pullback_days', 3)
         if result.pullback_days < min_pb_days or result.pullback_days > max_pb_days:
             return result
+
+        # V7.2: 回调区间恐慌检测 — 高点后出现单日大跌/跌停 = 高位炸板退潮（非健康回调），排除
+        if pct_chg is not None and high_idx < n - 1:
+            max_drop = pb_cfg.get('max_drop_in_pullback', 7.0)
+            pb_pct = pct_chg[high_idx + 1:]  # 拉升高点之后的每日涨跌幅
+            if len(pb_pct) > 0 and np.min(pb_pct) <= -max_drop:
+                return result
 
         # MA60支撑
         if 'ma_qfq_60' in df.columns:

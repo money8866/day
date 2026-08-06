@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 import pandas as pd
@@ -34,8 +35,46 @@ from .models import (
     DailyPriceData,
     TrendScoreResult,
 )
+from .utils import get_last_trade_date
 
 logger = logging.getLogger(__name__)
+
+# 市场环境门控缓存（key=交易日, value=大盘是否在MA20下方）
+# run_pipeline 用线程池并发调用，必须加锁
+_market_gate_cache: dict[str, Optional[bool]] = {}
+_market_gate_lock = threading.Lock()
+
+
+def _get_market_ma20_below(data_source: Any) -> Optional[bool]:
+    """计算大盘基准指数（沪深300）收盘是否在 MA20 下方。
+
+    回测结论（2026-01~07, 30万样本）：大盘<MA20 期间买点信号整体负期望，
+    故用该开关在弱市整体降级 BUY。结果按交易日缓存，全市场只算一次。
+
+    Returns:
+        True=大盘<MA20(弱市), False=大盘≥MA20, None=无法计算
+    """
+    try:
+        end_date = get_last_trade_date()
+        with _market_gate_lock:
+            if end_date in _market_gate_cache:
+                return _market_gate_cache[end_date]
+
+        if not hasattr(data_source, "get_benchmark_daily"):
+            return None
+        cfg = get_config().earnings_buy_point
+        benchmark = data_source.get_benchmark_daily(cfg.market_gate_benchmark)
+        if not benchmark or len(benchmark) < 25:
+            return None
+        closes = [d.close for d in sorted(benchmark, key=lambda x: x.trade_date)]
+        ma20 = sum(closes[-20:]) / 20.0
+        below = closes[-1] < ma20
+        with _market_gate_lock:
+            _market_gate_cache[end_date] = below
+        return below
+    except Exception as exc:
+        logger.warning("市场环境门控计算失败: %s", exc)
+        return None
 
 
 def _check_next_day_buyable(
@@ -79,6 +118,12 @@ def _check_next_day_buyable(
             return False, f"跌破MA20 {pct_below:.1f}%，支撑已破"
     if alpha < 60:
         return False, f"Alpha={alpha:.1f} < 60，趋势偏弱"
+
+    # ── 条件2.5: 乖离控制（追高禁止） ──
+    bias = (today.close / ma20 - 1) * 100 if ma20 > 0 else 0.0
+    cfg = get_config().earnings_buy_point
+    if bias > cfg.bias_chase_threshold:
+        return False, f"乖离{bias:.1f}%过大，追高风险，等待回踩MA10/MA20"
 
     # ── 条件3: 机构状态支持 ──
     _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
@@ -288,6 +333,185 @@ def _compute_volume_ratio(data: list[DailyPriceData], period: int = 20) -> float
     return current_vol / avg_vol if avg_vol > 0 else 1.0
 
 
+def _classify_buy_point_type(
+    sorted_data: list[DailyPriceData],
+    ma5: float,
+    ma10: float,
+    ma20: float,
+    bias_pct: float,
+    vol_ratio: float,
+    above_ma20: bool,
+) -> tuple[str, str]:
+    """识别最佳买点类型。
+
+    类型定义（质量从高到低）：
+    - VCP_PULLBACK: 缩量回踩MA10/MA20且波动收敛，最佳买点
+    - MA20_BOUNCE: 回踩MA20企稳反弹（贴近MA20）
+    - MA10_BOUNCE: 回踩MA10企稳（强势浅回踩）
+    - BREAKOUT: 放量突破前高，中速买点
+    - TREND_FOLLOW: 沿均线多头上行，谨慎追
+    - CHASE_HIGH: 乖离过大，追高风险（禁止BUY）
+
+    Returns:
+        (type, description)
+    """
+    if len(sorted_data) < 20:
+        return "UNKNOWN", "数据不足"
+
+    today = sorted_data[-1]
+    close = today.close
+
+    # 1. 追高风险：乖离>15%
+    if bias_pct > 15:
+        return "CHASE_HIGH", f"乖离{bias_pct:.1f}%过大，追高风险"
+
+    # 2. 突破：创20日新高 + 放量
+    recent_high = max(d.high for d in sorted_data[-20:])
+    if close >= recent_high and vol_ratio >= 1.2:
+        return "BREAKOUT", f"放量突破20日新高（量比{vol_ratio:.2f}）"
+
+    # 3. 回踩企稳（最佳）：贴近MA10/MA20 + 缩量
+    dist_ma10 = abs(close / ma10 - 1) * 100 if ma10 > 0 else 99
+    dist_ma20 = abs(close / ma20 - 1) * 100 if ma20 > 0 else 99
+
+    # VCP：贴近MA20(≤3%) 或 贴近MA10(≤2%)，且缩量
+    vcp_tight = (dist_ma20 <= 3) or (dist_ma10 <= 2)
+    if vcp_tight and vol_ratio <= 0.9:
+        if dist_ma20 <= 3:
+            return "VCP_PULLBACK", f"缩量回踩MA20企稳（乖离{bias_pct:+.1f}%，量比{vol_ratio:.2f}）"
+        return "VCP_PULLBACK", f"缩量回踩MA10企稳（乖离{bias_pct:+.1f}%，量比{vol_ratio:.2f}）"
+
+    # 4. MA20支撑：贴近MA20（≤5%）
+    if dist_ma20 <= 5 and above_ma20:
+        return "MA20_BOUNCE", f"回踩MA20支撑（乖离{bias_pct:+.1f}%）"
+
+    # 5. MA10支撑：贴近MA10（≤3%）
+    if dist_ma10 <= 3 and above_ma20:
+        return "MA10_BOUNCE", f"回踩MA10支撑（乖离{bias_pct:+.1f}%）"
+
+    # 6. 趋势跟随
+    if above_ma20 and bias_pct > 5:
+        return "TREND_FOLLOW", f"沿MA20上行（乖离{bias_pct:+.1f}%），趋势跟随"
+
+    return "UNKNOWN", f"无明确买点（乖离{bias_pct:+.1f}%，距MA10 {dist_ma10:.1f}%，距MA20 {dist_ma20:.1f}%）"
+
+
+def _compute_buy_quality(
+    sorted_data: list[DailyPriceData],
+    ma5: float,
+    ma10: float,
+    ma20: float,
+    bias_pct: float,
+    vol_ratio: float,
+    institution_state: Optional[str],
+) -> tuple[float, str]:
+    """计算买点质量评分（0-100）。
+
+    维度权重（config）：
+    - 乖离合理度 25%：最佳区 -2%~5%，>15%大幅扣分
+    - 回踩深度 25%：贴近MA10/MA20（支撑有效性）
+    - 缩量程度 20%：量比越低越好
+    - 企稳确认 15%：今日涨跌幅小 + MACD绿柱收敛
+    - 机构状态 15%：吸筹>洗盘>启动>派发
+
+    Returns:
+        (score, reason)
+    """
+    cfg = get_config().earnings_buy_point
+    reasons: list[str] = []
+    score = 0.0
+
+    # ── 1. 乖离合理度 (25分) ──
+    if cfg.bias_optimal_min <= bias_pct <= cfg.bias_optimal_max:
+        score += 25
+        reasons.append(f"乖离{bias_pct:+.1f}%（最佳区）")
+    elif bias_pct <= cfg.bias_ok_max:
+        score += 18
+        reasons.append(f"乖离{bias_pct:+.1f}%（可接受）")
+    elif bias_pct <= cfg.bias_chase_threshold:
+        score += 8
+        reasons.append(f"乖离{bias_pct:+.1f}%（偏大）")
+    else:
+        score += 0
+        reasons.append(f"乖离{bias_pct:+.1f}%（追高风险）")
+
+    # ── 2. 回踩深度 (25分)：贴近MA10/MA20 ──
+    dist_ma10 = abs(sorted_data[-1].close / ma10 - 1) * 100 if ma10 > 0 else 99
+    dist_ma20 = abs(sorted_data[-1].close / ma20 - 1) * 100 if ma20 > 0 else 99
+    if dist_ma20 <= 2:
+        score += 25
+        reasons.append(f"贴近MA20（{dist_ma20:.1f}%）")
+    elif dist_ma10 <= 2:
+        score += 22
+        reasons.append(f"贴近MA10（{dist_ma10:.1f}%）")
+    elif dist_ma20 <= 5:
+        score += 18
+        reasons.append(f"距MA20 {dist_ma20:.1f}%")
+    elif dist_ma10 <= 4:
+        score += 12
+        reasons.append(f"距MA10 {dist_ma10:.1f}%")
+    else:
+        score += 5
+        reasons.append(f"远离均线（MA20偏差{dist_ma20:.1f}%）")
+
+    # ── 3. 缩量程度 (20分) ──
+    if vol_ratio < 0.6:
+        score += 20
+        reasons.append(f"极度缩量（量比{vol_ratio:.2f}）")
+    elif vol_ratio < 0.8:
+        score += 16
+        reasons.append(f"显著缩量（量比{vol_ratio:.2f}）")
+    elif vol_ratio < 1.0:
+        score += 10
+        reasons.append(f"量能温和（量比{vol_ratio:.2f}）")
+    else:
+        score += 4
+        reasons.append(f"放量（量比{vol_ratio:.2f}）")
+
+    # ── 4. 企稳确认 (15分)：小涨小跌 + MACD绿柱收敛 ──
+    stabilize = 0
+    if len(sorted_data) >= 2:
+        today = sorted_data[-1]
+        yesterday = sorted_data[-2]
+        chg = (today.close / yesterday.close - 1) * 100
+        if -3 <= chg <= 3:
+            stabilize += 8
+            reasons.append(f"今日{chg:+.1f}%（小波动企稳）")
+        else:
+            reasons.append(f"今日{chg:+.1f}%（波动大）")
+        # MACD绿柱收敛
+        if len(sorted_data) >= 30:
+            closes = [d.close for d in sorted_data[-30:]]
+            ema12 = pd.Series(closes).ewm(span=12, adjust=False).mean().values
+            ema26 = pd.Series(closes).ewm(span=26, adjust=False).mean().values
+            dif = ema12 - ema26
+            dea = pd.Series(dif).ewm(span=9, adjust=False).mean().values
+            macd_bar = (dif - dea) * 2
+            if len(macd_bar) >= 2 and macd_bar[-1] > macd_bar[-2] and macd_bar[-1] < 0:
+                stabilize += 7
+                reasons.append("MACD绿柱收敛")
+    score += stabilize
+
+    # ── 5. 机构状态 (15分) ──
+    if institution_state == InstitutionState.ACCUMULATION.value:
+        score += 15
+        reasons.append("机构吸筹")
+    elif institution_state == InstitutionState.WASHING.value:
+        score += 12
+        reasons.append("机构洗盘")
+    elif institution_state == InstitutionState.LAUNCH.value:
+        score += 8
+        reasons.append("机构启动")
+    elif institution_state == InstitutionState.DISTRIBUTE.value:
+        score += 0
+        reasons.append("机构派发（回避）")
+    else:
+        score += 6
+        reasons.append(f"机构{institution_state or '未知'}")
+
+    return round(min(100.0, score), 1), "；".join(reasons)
+
+
 def _compute_atr(data: list[DailyPriceData], period: int = 14) -> float:
     """计算简单ATR（平均真实波幅）。
     
@@ -398,6 +622,7 @@ def detect_earnings_pullback(
     announce_date: Optional[str] = None,
     trend_result: Optional[TrendScoreResult] = None,
     institution_state: Optional[str] = None,
+    market_ma20_below: Optional[bool] = None,
 ) -> EarningsBuyPointResult:
     """检测业绩回踩买点。
 
@@ -408,6 +633,7 @@ def detect_earnings_pullback(
         announce_date: 公告日期 YYYYMMDD。
         trend_result: 趋势评分结果（可选）。
         institution_state: 机构吸筹状态（可选）。
+        market_ma20_below: 大盘是否在MA20下方（可选，None时自动计算）。
 
     Returns:
         EarningsBuyPointResult: 业绩回踩买点检测结果。
@@ -481,9 +707,11 @@ def detect_earnings_pullback(
         reasons.append(f"量能未萎缩(量比{vol_ratio:.2f} ≥ {cfg.max_volume_ratio})")
 
     # ── 条件5: Alpha > 70 ──
+    # 注意: trend_result.alpha 是小数收益率（如0.05=5%），需×100转为百分数
+    # 才能与 min_alpha（百分制）比较
     alpha = 0.0
     if trend_result is not None:
-        alpha = trend_result.alpha
+        alpha = trend_result.alpha * 100.0
         alpha_ok = alpha >= cfg.min_alpha
         if alpha_ok:
             conditions_met += 1
@@ -550,16 +778,50 @@ def detect_earnings_pullback(
     if warnings:
         all_logic.append(f"警告: {'; '.join(warnings)}")
 
-    # ── 参考买入价与止损价 ──
-    reference_buy_price = min(ma20, current_close * 0.985)
+    # ── 最佳买点信号（V3）：买点类型 + 乖离控制 + 质量评分 ──
+    ma5 = _compute_ma(sorted_data, cfg.ma5_period)
+    ma10 = _compute_ma(sorted_data, cfg.ma10_period)
+    bias_pct = (current_close / ma20 - 1) * 100.0 if ma20 > 0 else 0.0
+    result.bias_pct = round(bias_pct, 1)
+
+    buy_point_type, type_desc = _classify_buy_point_type(
+        sorted_data, ma5, ma10, ma20, bias_pct, vol_ratio, above_ma20,
+    )
+    result.buy_point_type = buy_point_type
+
+    quality_score, quality_reason = _compute_buy_quality(
+        sorted_data, ma5, ma10, ma20, bias_pct, vol_ratio, institution_state,
+    )
+    result.buy_quality_score = quality_score
+    result.quality_reason = quality_reason
+    all_logic.append(f"买点类型: {buy_point_type} — {type_desc}")
+    all_logic.append(f"乖离率: {bias_pct:+.1f}% | 买点质量: {quality_score:.0f}/100")
+    all_logic.append(f"质量明细: {quality_reason}")
+
+    # ── 参考买入价与止损价（买点类型驱动） ──
     atr_pct = _compute_atr(sorted_data)
+    if buy_point_type in ("VCP_PULLBACK", "MA20_BOUNCE"):
+        # 回踩MA20支撑，参考买入价=MA20（贴近实际支撑）
+        reference_buy_price = ma20
+        ref_desc = f"回踩MA20({ma20:.2f})支撑位"
+    elif buy_point_type in ("MA10_BOUNCE",):
+        reference_buy_price = ma10
+        ref_desc = f"回踩MA10({ma10:.2f})支撑位"
+    elif buy_point_type == "BREAKOUT":
+        # 突破买点：现价附近，略回踩
+        reference_buy_price = current_close * 0.99
+        ref_desc = f"突破确认位({reference_buy_price:.2f})"
+    else:
+        # 追高/未知：不给乐观价，用现价×0.985（保守）
+        reference_buy_price = current_close * 0.985
+        ref_desc = f"保守价({reference_buy_price:.2f})"
     stop_loss_price = reference_buy_price * (1 - 2 * atr_pct / 100)
     result.reference_buy_price = round(reference_buy_price, 2)
     result.stop_loss_price = round(stop_loss_price, 2)
 
     result.is_sell_on_news = is_sell_on_news
 
-    # ── 次日可买性评估 ──
+    # ── 次日可买性评估（含乖离控制） ──
     next_day_buyable, next_day_reason = _check_next_day_buyable(
         sorted_data, ma20, alpha, institution_state, is_sell_on_news, above_ma20,
     )
@@ -590,9 +852,41 @@ def detect_earnings_pullback(
         f"个股回踩企稳: {stock_pullback_buy['reason'] if stock_pullback_buy else '未触发'}"
     )
 
-    # 信号决策（优化版）：考虑次日可买性 + 个股回踩企稳
-    if stock_pullback_buy and not is_sell_on_news:
-        # 个股级别回踩企稳触发 → 直接BUY（不受Alpha/大盘限制）
+    # ── 信号决策（V3：追高降级 + 质量评分驱动 + 市场环境门控） ──
+    # 追高风险判定：乖离>阈值 或 买点类型=CHASE_HIGH
+    chase_risk = (bias_pct > cfg.bias_chase_threshold) or (buy_point_type == "CHASE_HIGH")
+    quality_buy_ok = quality_score >= cfg.quality_buy_threshold
+
+    # 市场环境门控：大盘<MA20 时 BUY 整体降级 WATCH（回测2026-01~07弱市负期望）
+    market_weak = False
+    if cfg.market_gate_enabled:
+        if market_ma20_below is None:
+            market_ma20_below = _get_market_ma20_below(data_source)
+        market_weak = bool(market_ma20_below)
+
+    if chase_risk:
+        # 追高风险 → 绝不BUY，降级WATCH等待回踩
+        signal = EarningsBuySignal.WATCH
+        stage = "WATCH"
+        all_logic.append(
+            f"信号: WATCH — 乖离{bias_pct:.1f}%过大（>{cfg.bias_chase_threshold}%），追高风险，"
+            f"等待回踩MA10/MA20再介入"
+        )
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    elif market_weak:
+        # 市场环境弱（大盘<MA20）→ BUY 整体降级 WATCH
+        signal = EarningsBuySignal.WATCH
+        stage = "WATCH"
+        all_logic.append(
+            f"信号: WATCH — 市场环境弱（大盘{cfg.market_gate_benchmark} < MA20），"
+            f"买点质量{quality_score:.0f}分/乖离{bias_pct:.1f}%也降级，等待大盘企稳"
+        )
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    elif stock_pullback_buy and not is_sell_on_news:
+        # 个股级别回踩企稳触发 → 直接BUY（独立于个股Alpha）
+        # 注意：仍受市场环境门控约束（大盘<MA20 时已在上一分支整体降级 WATCH）
         signal = EarningsBuySignal.BUY
         stage = "BUY"
         all_logic.append(
@@ -603,12 +897,16 @@ def detect_earnings_pullback(
         all_logic.append(f"参考买入价: {ref_price:.2f}（今日收盘价，回踩企稳买入）")
         all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
         all_logic.append(f"回调提示: {stock_pullback_buy['reason']}")
-    elif conditions_met >= 6 and alpha_floor_ok:
-        # 条件充分 → BUY
+    elif quality_buy_ok:
+        # 买点质量达标 → BUY（质量分是可操作门槛，须与事件窗口/市场环境组合；回测显示无排序价值）
         signal = EarningsBuySignal.BUY
         stage = "BUY"
-        all_logic.append(f"信号: BUY — {conditions_met}/{total_conditions}条件满足，可建仓")
-        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}，收盘×0.985={current_close*0.985:.2f}）")
+        alpha_note = f"（Alpha={alpha:.1f}，形态已含趋势）" if not alpha_floor_ok else ""
+        all_logic.append(
+            f"信号: BUY — 买点质量{quality_score:.0f}分达标（≥{cfg.quality_buy_threshold:.0f}），"
+            f"类型:{buy_point_type}{alpha_note}，条件{conditions_met}/{total_conditions}"
+        )
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
         all_logic.append(f"止损价: {stop_loss_price:.2f}（基于ATR {atr_pct:.1f}%）")
     elif conditions_met >= 4 and next_day_buyable:
         # 条件基本满足 + 回调中次日可买 → BUY（可操作）
@@ -641,8 +939,8 @@ def detect_earnings_pullback(
         else:
             signal = EarningsBuySignal.WATCH
             stage = "WATCH"
-            all_logic.append(f"信号: WATCH — 条件{conditions_met}/{total_conditions}，继续观察")
-            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}）")
+            all_logic.append(f"信号: WATCH — 条件{conditions_met}/{total_conditions}，买点质量{quality_score:.0f}分")
+            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
             all_logic.append(f"止损价: {stop_loss_price:.2f}")
     elif conditions_met >= 3 and next_day_buyable:
         # 条件较少，但次日可买（回调中+机构吸筹/洗盘）
@@ -660,12 +958,12 @@ def detect_earnings_pullback(
             signal = EarningsBuySignal.WATCH
             stage = "WATCH"
             all_logic.append(f"信号: WATCH — 条件仅{conditions_met}/{total_conditions}，但机构{institution_state}状态给予观察评级")
-            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（MA20={ma20:.2f}）")
+            all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
             all_logic.append(f"止损价: {stop_loss_price:.2f}")
         else:
             signal = EarningsBuySignal.IGNORE
             stage = "IGNORE"
-            all_logic.append(f"信号: IGNORE — 关键条件不满足（{conditions_met}/{total_conditions}）")
+            all_logic.append(f"信号: IGNORE — 关键条件不满足（{conditions_met}/{total_conditions}），买点质量{quality_score:.0f}分")
 
     result.signal = signal
     result.score = round(score, 2)

@@ -52,6 +52,101 @@ CORE_THEMES = {
     '出海链', '医疗器械',
 }
 
+# ─────────────────────────────────────────────
+# 增强维度配置 (v1.1)
+# ─────────────────────────────────────────────
+
+# 1. 利润质量过滤 — 低基数识别
+# 利润同比 > 1000% 且 营收同比 < 30% → 低基数/一次性恢复嫌疑
+LOW_BASE_PROFIT_YOY = 1000.0   # 触发低基数检查的利润同比阈值
+LOW_BASE_REV_YOY = 30.0        # 营收同比低于该值视为"营收无法支撑利润高增"
+LOW_BASE_Q1_PROOF = 500.0      # Q1利润同比高于该值 → 趋势延续(Q1已高增)，低基数嫌疑较小
+LOW_BASE_DISCOUNT_MILD = 0.90  # Q1已高增时的折扣
+LOW_BASE_DISCOUNT_SEVERE = 0.75  # 无Q1支撑时的折扣(疑似一次性恢复)
+LOW_BASE_NR_EXTRA = 0.85       # 叠加非经常损益>20%的额外折扣
+
+# 2. 主题真实性校验 — 主题 → 允许的行业白名单(关键词子串匹配)
+# 行业不在白名单 → 主题-主业匹配存疑(如航运公司被归入"低空经济")
+# 白名单覆盖主题的产业链上下游，避免误伤合理相关行业
+THEME_INDUSTRY_MAP = {
+    '低空经济':    ['航空', '航天', '通信设备', '电气设备', 'IT设备', '元器件', '电器仪表', '通用机械', '专用机械', '仪器仪表', '汽车配件', '电机', '仓储物流', '快递'],
+    '存储芯片':    ['半导体', '元器件', 'IT设备'],
+    'AI算力':     ['半导体', '通信设备', 'IT设备', '软件服务', '元器件', '互联网', '电器仪表', '电气设备', '数据中心'],
+    'AI芯片':     ['半导体', '元器件'],
+    'AI应用':     ['软件服务', '互联网', 'IT设备', '传媒', '游戏', '影视音像'],
+    '光模块':     ['通信设备', '元器件', '半导体'],
+    '半导体设备':   ['半导体', '专用机械', '电气设备', '机械基件', '电器仪表', '元器件', '化工原料', '仪器仪表'],
+    '半导体材料':   ['半导体', '化工原料', '玻璃', '材料', '元器件'],
+    '机器人':     ['机械基件', '电气设备', '元器件', '专用机械', '通用机械', '仪器仪表', '汽车配件', '电机', '轻工机械'],
+    '人形机器人':   ['机械基件', '电气设备', '元器件', '专用机械', '通用机械', '仪器仪表', '汽车配件', '电机', '轻工机械'],
+    '智能驾驶':    ['汽车配件', '通信设备', '软件服务', '元器件', '半导体', 'IT设备', '摩托车', '汽车整车'],
+    '创新药':     ['化学制药', '医疗保健', '生物制品', '医药', '化学原料药', '医疗', '生物制药', '生物科技'],
+    '新能源车':    ['电气设备', '汽车配件', '小金属', '铝', '化工原料', '能源金属', '汽车整车', '电机', '铜', '塑料', '玻璃'],
+    '固态电池':    ['电气设备', '化工原料', '能源金属', '小金属'],
+    '储能':       ['电气设备', '电力', '化工原料', '元器件', '能源金属'],
+    '氢能':       ['电气设备', '化工原料', '煤气', '专用机械'],
+    '数据要素':    ['软件服务', '互联网', 'IT设备', '传媒', '通信设备'],
+    '云计算':     ['软件服务', 'IT设备', '通信设备'],
+    '工业互联网':   ['软件服务', 'IT设备', '电气设备', '通信设备', '元器件'],
+    '人工智能':    ['软件服务', 'IT设备', '通信设备', '互联网', '半导体', '元器件'],
+    '军工':       ['航空', '国防军工', '航天', '通信设备', '船舶', '专用机械', '电气设备', '军工', '兵器', '电器仪表', '元器件', '玻璃', '仪器仪表'],
+    '航天军工':    ['航空', '航天', '国防军工', '通信设备', '军工'],
+    '商业航天':    ['航空', '航天', '通信设备', '军工', '专用机械', '互联网'],
+    '船舶制造':    ['船舶', '机械基件', '专用机械'],
+    '出海链':     ['汽车配件', '家电', '纺织', '机械', '元器件', '电气设备', '家用电器', '摩托车', '汽车整车', '船舶'],
+    '医疗器械':    ['医疗保健', '医疗器械', '化学制药', '医药'],
+    '半导体':     ['半导体', '元器件', 'IT设备', '电器仪表'],
+    'PCB':       ['元器件', '半导体', '电气设备', '机械基件', '专用机械', '玻璃', '化工原料'],
+    '消费电子':    ['元器件', 'IT设备', '半导体', '通信设备', '家用电器', '电器仪表', '汽车配件', '塑料', '电气设备', '机械基件'],
+    '游戏':       ['互联网', '软件服务', '传媒', '影视音像'],
+    '信创':       ['软件服务', 'IT设备', '通信设备', '元器件'],
+    '氟化工制冷剂':  ['化工原料', '化工', '氟化工', '化纤', '塑料', '农药化肥'],
+    '高端材料':    ['化工原料', '小金属', '玻璃', '材料', '塑料', '化纤', '染料涂料', '纺织', '矿物制品', '石油加工'],
+    '电力链':     ['电气设备', '电力', '元器件', '仪器仪表', '煤炭开采', '水力发电', '通信设备', '软件服务', '化工原料', '玻璃', '火力发电', '铝'],
+    '工业金属':    ['铜', '铝', '铅锌', '小金属', '有色金属', '矿物制品'],
+    '小金属':     ['小金属', '有色金属', '稀有金属', '化工原料', '铅锌', '铜'],
+    '能源金属':    ['小金属', '能源金属', '有色金属', '电气设备', '化工原料'],
+    '黄金':       ['黄金', '有色金属'],
+    '稀土永磁':    ['小金属', '稀土', '元器件', '电气设备', '矿物制品'],
+    '量子计算':    ['IT设备', '软件服务', '通信设备', '半导体', '元器件'],
+    '液冷服务器':   ['IT设备', '元器件', '电气设备', '通信设备'],
+    '光伏链':     ['电气设备', '玻璃', '化工原料', '元器件', '有色金属', '矿物制品'],
+    '煤炭':       ['煤炭开采', '焦炭'],
+    '证券':       ['证券', '多元金融'],
+    '合成生物':    ['化工原料', '化学制药', '生物制品', '食品', '医疗保健', '医药', '生物制药'],
+    '化工农药链':   ['农药化肥', '化工原料', '化纤', '石油加工', '石油开采'],
+    '汽车零部件':   ['汽车配件', '电气设备', '电机', '汽车整车'],
+    '高端装备':    ['专用机械', '通用机械', '电气设备', '船舶', '轻工机械', '机械基件'],
+    '先进封装':    ['半导体', '元器件'],
+    '算力租赁':    ['软件服务', 'IT设备', '互联网'],
+    '云计算':     ['软件服务', 'IT设备', '通信设备'],
+    '半导体设备':   ['半导体', '专用机械', '电气设备', '机械基件', '电器仪表', '元器件', '化工原料', '仪器仪表', '装修装饰'],
+}
+
+# 主题真实性折扣
+THEME_AUTH_MATCHED = 1.00     # 行业在主营业白名单内
+THEME_AUTH_UNKNOWN = 0.95     # 主题未配置白名单(不惩罚过重)
+THEME_AUTH_MISMATCH = 0.80    # 行业不在白名单内 → 主题-主业存疑
+
+# 3. 景气周期因子 — 作为乘数而非加分项
+# 基于产业景气分(0~100)非线性映射：上行周期给更高权重，下行周期压制
+CYCLE_MULT = [
+    (85.0, 1.10),   # 强上行(存储芯片/AI算力/先进封装等景气高峰)
+    (75.0, 1.05),   # 上行
+    (65.0, 1.00),   # 平稳
+    (55.0, 0.92),   # 下行初期
+    (0.0,  0.82),   # 下行
+]
+
+# 4. 估值约束 — 在成长评分之外叠加估值纪律
+# PE_TTM / 合理PE 比值过高 → 高成长+高估值的中线回撤风险
+VALUATION_PE_RATIO_STRICT = 1.50   # 超过该比值开始打折
+VALUATION_PE_RATIO_MILD = 2.00
+VALUATION_PE_RATIO_SEVERE = 3.00
+VALUATION_DISCOUNT_MILD = 0.90
+VALUATION_DISCOUNT_MILD2 = 0.80
+VALUATION_DISCOUNT_SEVERE = 0.70
+
 
 def _normalize_code(code) -> str:
     code_str = str(code).strip()
@@ -78,6 +173,97 @@ def _score_one(value, min_val, max_val, higher_is_better):
         if value >= max_val:
             return 0.0
         return (max_val - value) / (max_val - min_val) * 100.0
+
+
+# ─────────────────────────────────────────────
+# 增强维度计算函数 (v1.1)
+# ─────────────────────────────────────────────
+
+def _calc_low_base_discount(row) -> float:
+    """
+    利润质量过滤 — 低基数识别
+    利润同比 > 1000% 且 营收同比 < 30% → 低基数/一次性恢复嫌疑
+    Q1利润同比也超高(>500%) → 趋势延续，低基数嫌疑较小(轻微折扣)
+    无Q1支撑 → 疑似一次性恢复(较重折扣)；叠加非经常损益>20%再额外扣
+    """
+    profit_yoy = pd.to_numeric(row.get('利润同比', 0), errors='coerce')
+    rev_yoy = pd.to_numeric(row.get('营收同比', 0), errors='coerce')
+    q1_yoy = pd.to_numeric(row.get('Q1利润同比', None), errors='coerce')
+    nr = pd.to_numeric(row.get('非经常损益%', 0), errors='coerce')
+
+    # 利润同比未超过阈值 → 不做低基数检查
+    if pd.isna(profit_yoy) or profit_yoy <= LOW_BASE_PROFIT_YOY:
+        return 1.0
+    # 营收同比 >= 30% → 利润高增有营收支撑，非低基数
+    if pd.isna(rev_yoy) or rev_yoy >= LOW_BASE_REV_YOY:
+        return 1.0
+
+    # 低基数嫌疑成立：利润高增但营收低增
+    if pd.isna(q1_yoy) or q1_yoy <= LOW_BASE_Q1_PROOF:
+        discount = LOW_BASE_DISCOUNT_SEVERE  # 疑似一次性恢复
+    else:
+        discount = LOW_BASE_DISCOUNT_MILD    # Q1已高增，趋势延续
+    # 非经常损益占比高 → 利润含金量再打折扣
+    if pd.notna(nr) and nr > 20:
+        discount *= LOW_BASE_NR_EXTRA
+    return discount
+
+
+def _calc_theme_authenticity(row) -> float:
+    """
+    主题真实性校验 — 主营业务(行业)与主题映射交叉验证
+    行业在主题白名单内 → 1.00；主题未配置白名单 → 0.95(不惩罚过重)；行业不匹配 → 0.80
+    """
+    theme = row.get('theme', None)
+    industry = row.get('industry', None)
+    if pd.isna(theme) or pd.isna(industry):
+        return 1.0  # 主题缺失不是不匹配，不惩罚
+    theme_str = str(theme).strip()
+    industry_str = str(industry).strip()
+    if not theme_str or not industry_str:
+        return 1.0
+    # 在主题白名单中查找
+    for t, allowed in THEME_INDUSTRY_MAP.items():
+        if t in theme_str:
+            # 行业是否在允许列表内
+            for kw in allowed:
+                if kw in industry_str:
+                    return THEME_AUTH_MATCHED
+            return THEME_AUTH_MISMATCH
+    return THEME_AUTH_UNKNOWN
+
+
+def _calc_cycle_multiplier(row) -> float:
+    """
+    景气周期因子 — 作为乘数而非加分项
+    基于产业景气分(0~100)映射：上行周期 >1.0，下行周期 <1.0
+    """
+    cycle = pd.to_numeric(row.get('产业景气', None), errors='coerce')
+    if pd.isna(cycle):
+        return 1.0
+    for threshold, mult in CYCLE_MULT:
+        if cycle >= threshold:
+            return mult
+    return CYCLE_MULT[-1][1]
+
+
+def _calc_valuation_discount(row) -> float:
+    """
+    估值约束 — PE_TTM/合理PE 比值过高 → 高成长+高估值的中线回撤风险
+    比值 > 3.0 → 0.70；> 2.0 → 0.80；> 1.5 → 0.90；其余 → 1.00
+    """
+    pe_ttm = pd.to_numeric(row.get('PE_TTM', None), errors='coerce')
+    fair_pe = pd.to_numeric(row.get('合理PE', None), errors='coerce')
+    if pd.isna(pe_ttm) or pd.isna(fair_pe) or fair_pe <= 0 or pe_ttm <= 0:
+        return 1.0
+    ratio = pe_ttm / fair_pe
+    if ratio >= VALUATION_PE_RATIO_SEVERE:
+        return VALUATION_DISCOUNT_SEVERE
+    if ratio >= VALUATION_PE_RATIO_MILD:
+        return VALUATION_DISCOUNT_MILD2
+    if ratio >= VALUATION_PE_RATIO_STRICT:
+        return VALUATION_DISCOUNT_MILD
+    return 1.0
 
 
 def run_double_score(csv_path: str = None, df: pd.DataFrame = None) -> pd.DataFrame:
@@ -252,6 +438,36 @@ def run_double_score(csv_path: str = None, df: pd.DataFrame = None) -> pd.DataFr
             return 0.50      # 严重减速（半年度远不及Q1）
     passed['_q1_accel_discount'] = passed.apply(_calc_q1_accel_discount, axis=1)
 
+    # ── 增强维度 v1.1：4 个乘数因子 ──
+    # 1. 利润质量过滤（低基数识别）
+    passed['_low_base_discount'] = passed.apply(_calc_low_base_discount, axis=1)
+    # 2. 主题真实性校验（主营业务×主题交叉验证）
+    passed['_theme_auth'] = passed.apply(_calc_theme_authenticity, axis=1)
+    # 3. 景气周期因子（行业景气度作为乘数）
+    passed['_cycle_mult'] = passed.apply(_calc_cycle_multiplier, axis=1)
+    # 4. 估值约束（PE_TTM/合理PE 比值）
+    passed['_valuation_discount'] = passed.apply(_calc_valuation_discount, axis=1)
+
+    # 增强标签（输出诊断用）
+    def _enhance_tags(row):
+        tags = []
+        lb = row.get('_low_base_discount', 1.0)
+        if lb < 1.0:
+            tags.append(f'低基数{lb:.0%}')
+        ta = row.get('_theme_auth', 1.0)
+        if ta < 1.0:
+            tags.append(f'主题存疑{ta:.0%}')
+        cm = row.get('_cycle_mult', 1.0)
+        if cm > 1.0:
+            tags.append(f'景气上行x{cm:.2f}')
+        elif cm < 1.0:
+            tags.append(f'景气下行{cm:.0%}')
+        vd = row.get('_valuation_discount', 1.0)
+        if vd < 1.0:
+            tags.append(f'估值约束{vd:.0%}')
+        return ' | '.join(tags) if tags else ''
+    passed['_enhance_tags'] = passed.apply(_enhance_tags, axis=1)
+
     # ── Step 3: 加权综合得分 ──
     passed['DoubleScore'] = (
         passed['_s_营收同比'] * 0.10 +
@@ -278,6 +494,12 @@ def run_double_score(csv_path: str = None, df: pd.DataFrame = None) -> pd.DataFr
     # 半年度预告增长率不及Q1实际增长率，说明业绩在减速，折扣越大
     passed['DoubleScore'] = passed['DoubleScore'] * passed['_q1_accel_discount']
 
+    # ── 增强维度 v1.1：4 个乘数作用于总分 ──
+    passed['DoubleScore'] = passed['DoubleScore'] * passed['_low_base_discount']  # 利润质量(低基数)
+    passed['DoubleScore'] = passed['DoubleScore'] * passed['_theme_auth']         # 主题真实性
+    passed['DoubleScore'] = passed['DoubleScore'] * passed['_cycle_mult']         # 景气周期乘数
+    passed['DoubleScore'] = passed['DoubleScore'] * passed['_valuation_discount'] # 估值约束
+
     # ── Step 4: 排序输出 ──
     result = passed.sort_values('DoubleScore', ascending=False).reset_index(drop=True)
 
@@ -298,6 +520,7 @@ def run_double_score(csv_path: str = None, df: pd.DataFrame = None) -> pd.DataFr
             '估值空间%': round(float(row['_upside_val']), 1),
             '龙头类型': row['龙头类型'],
             '非经常损益%': row.get('非经常损益%', ''),
+            '增强提示': row.get('_enhance_tags', ''),
             'DoubleScore': round(float(row['DoubleScore']), 1),
         })
     output = pd.DataFrame(output_rows)
@@ -406,7 +629,7 @@ def run_double_score(csv_path: str = None, df: pd.DataFrame = None) -> pd.DataFr
 def print_top(result: pd.DataFrame, n: int = 15):
     """打印 TOP N 结果"""
     display_cols = ['代码', '名称', '主题', '市值(亿)', '营收YoY%', '利润YoY%', 'Q1利润YoY%',
-                    'ROE%', '毛利率%', 'PEG', '估值空间%', '龙头类型', 'DoubleScore', '核心逻辑']
+                    'ROE%', '毛利率%', 'PEG', '估值空间%', '龙头类型', '增强提示', 'DoubleScore', '核心逻辑']
     cols = [c for c in display_cols if c in result.columns]
 
     print(f"\n{'='*120}")

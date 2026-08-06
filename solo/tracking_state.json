@@ -18,7 +18,7 @@
     "stop": 0.568,
     "t1": 0.726,
     "t2": 0.789,
-    "hold_days": 3
+    "hold_days": 4
   },
   "游戏": {
     "stage": "加仓",
@@ -27,15 +27,20 @@
     "stop": 1.026,
     "t1": 1.282,
     "t2": 1.394,
-    "hold_days": 3
+    "hold_days": 4
   },
   "新能源": {
     "stage": "观察",
     "position": 0.0
   },
   "光伏": {
-    "stage": "观察",
-    "position": 0.0
+    "stage": "试仓",
+    "position": 0.06,
+    "entry": 0.845,
+    "stop": 0.777,
+    "t1": 0.946,
+    "t2": 1.031,
+    "hold_days": 0
   },
   "储能": {
     "stage": "观察",
@@ -62,8 +67,13 @@
     "position": 0.0
   },
   "军工": {
-    "stage": "观察",
-    "position": 0.0
+    "stage": "试仓",
+    "position": 0.06,
+    "entry": 1.135,
+    "stop": 1.044,
+    "t1": 1.271,
+    "t2": 1.385,
+    "hold_days": 0
   },
   "航空航天": {
     "stage": "观察",
@@ -82,8 +92,13 @@
     "position": 0.0
   },
   "煤炭": {
-    "stage": "观察",
-    "position": 0.0
+    "stage": "试仓",
+    "position": 0.1,
+    "entry": 1.243,
+    "stop": 1.144,
+    "t1": 1.429,
+    "t2": 1.554,
+    "hold_days": 0
   },
   "钢铁": {
     "stage": "观察",
@@ -112,7 +127,7 @@
     "stop": 1.297,
     "t1": 1.621,
     "t2": 1.762,
-    "hold_days": 1
+    "hold_days": 2
   },
   "证券": {
     "stage": "观察",
@@ -127,6 +142,6 @@
     "position": 0.0
   },
   "_meta": {
-    "last_date": "20260805"
+    "last_date": "20260806"
   }
 }

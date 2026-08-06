@@ -11488,9 +11488,15 @@ def run(target_date=None, simple_mode=False):
                 sell_news = row.get("is_sell_on_news", False)
                 pre_runup = row.get("pre_announce_runup_pct", 0)
                 next_day = str(row.get("next_day_buyable", "")).lower() == "true"
+                buy_point_type = row.get("buy_point_type", "")
+                buy_quality = row.get("buy_quality_score", 0)
+                bias = row.get("bias_pct", 0)
                 # 信号翻译
                 sig_cn = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "无"}.get(sig, sig)
                 theme_str = str(theme) if theme and str(theme) != "nan" else "无"
+                # 买点类型翻译
+                bpt_cn = {"VCP_PULLBACK": "回踩企稳", "MA20_BOUNCE": "MA20支撑", "MA10_BOUNCE": "MA10支撑",
+                          "BREAKOUT": "突破", "TREND_FOLLOW": "趋势", "CHASE_HIGH": "⚠️追高"}.get(str(buy_point_type), "")
                 # 买入信号和价格提示
                 price_hint = ""
                 if ref_price and ref_price > 0 and sig != "IGNORE":
@@ -11499,7 +11505,8 @@ def run(target_date=None, simple_mode=False):
                 if pre_runup and pre_runup > 0:
                     sell_news_hint = f" 公告前{pre_runup:.0f}%" + (" ⚠️利好兑现" if sell_news else "")
                 next_day_hint = " 🎯明日可买" if next_day else ""
-                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint}{next_day_hint} ETF:{etf:.0f} 主题:{theme_str}")
+                bpt_hint = f" {bpt_cn}({float(buy_quality):.0f})" if bpt_cn else ""
+                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint}{next_day_hint}{bpt_hint} ETF:{etf:.0f} 主题:{theme_str}")
             # 优先关注：次日可买 > BUY > WATCH，过滤派发+利好兑现+跌破MA20
             focus_buy = []      # 次日可买 + BUY信号
             focus_watch = []    # 仅WATCH

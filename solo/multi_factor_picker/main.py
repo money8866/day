@@ -990,7 +990,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     # BullScore v3.2 增强评分（历史辨识度 + 业绩超预期 + 波段属性 + 龙头/中军识别）
     logger.info("阶段3b: BullScore v3.2 增强评分（辨识度+业绩超预期+波段属性+龙头识别）...")
     scorer_v2 = BullScorerV2(token=get_token(config))
-    results_v2 = scorer_v2._batch_prewarm_and_score(base_results)
+    results_v2 = scorer_v2._batch_prewarm_and_score(base_results, filter_market_cap=False)
     logger.info(f"BullScore v2.1 增强评分完成: {len(results_v2)} 只")
 
     # 按 final_score 降序排序
@@ -1200,19 +1200,14 @@ def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Resul
     before = len(results)
     filtered = []
     for r in results:
-        mc = r.market_cap
-        mc_b = mc / 1e8 if mc > 0 else 0
-        # 市值过滤（所有股票都适用）
-        if mc_b < 80 or mc_b > 5000:
-            continue
         has_forecast = r.forecast_profit_change != 0
         if has_forecast:
             # 有预告数据：按预告增速过滤
             if r.forecast_profit_change < 30:
                 continue
-        # else: 无预告数据，跳过（仅市值过滤）
+        # else: 无预告数据，跳过（不做市值过滤）
         filtered.append(r)
-    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (预告YoY≥30% + 市值80-5000亿)")
+    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (预告YoY≥30%)")
     return filtered
 
 

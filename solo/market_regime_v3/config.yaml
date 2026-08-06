@@ -823,6 +823,7 @@ rally_pullback:
   rally:
     lookback: 20                   # 拉升区间回看天数（V7.1: 短线20天内爆发，含回调期）
     min_amplitude: 0.25            # 最低拉升幅度（25%）
+    max_amplitude: 0.80            # V7.2: 最高拉升幅度（80%上限，排除妖股极端拉升）
     vol_expansion_min: 1.5         # 拉升段放量倍数（拉升均量/前期均量）
     min_limit_up: 2                # 最低涨停次数（含一字板）
     limit_up_threshold: 9.5        # 涨停判定涨幅阈值(%)
@@ -832,6 +833,7 @@ rally_pullback:
     drawdown_max: 0.20             # 最高回撤
     max_pullback_days: 30          # 最长回调天数
     min_pullback_days: 3           # 最短回调天数
+    max_drop_in_pullback: 7.0      # V7.2: 回调区间最大单日跌幅%(超过=恐慌抛售/退潮，排除)
   # 阶段3: 低开阳线承接信号
   candle:
     min_open_gap: 0.005            # 最低低开幅度(0.5%)
