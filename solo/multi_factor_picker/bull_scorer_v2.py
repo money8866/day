@@ -109,6 +109,37 @@ HOT_THEME_BASE = {
     "先进封装": 78, "AI应用": 72, "算力基础设施": 75,
 }
 
+# 主营产业映射（申万行业 → 主营产业名）
+# 主题评分优先使用主营业务（IndustryTheme），概念标签(chain_tag)仅作参考
+# 避免"仓储物流→低空经济、水运→低空经济"这类概念炒作误配
+INDUSTRY_THEME_MAP = {
+    '仓储物流': '物流', '快递': '物流', '物流': '物流',
+    '水运': '航运', '航运': '航运', '港口': '航运',
+    '轻工机械': '机器人/智能制造', '机械基件': '智能制造', '专用机械': '高端装备',
+    '航空': '航空运输', '机场': '航空运输',
+    '公路铁路': '交通运输', '铁路': '交通运输', '公路': '交通运输',
+    '银行': '银行', '保险': '保险', '证券': '证券', '多元金融': '金融',
+    '煤炭开采': '煤炭', '焦炭': '煤炭',
+    '石油开采': '石油石化', '石油加工': '石油石化',
+    '房地产开发': '房地产', '房地产': '房地产',
+    '白酒': '白酒', '啤酒': '食品饮料', '食品': '食品饮料', '软饮料': '食品饮料',
+    '家用电器': '家电', '家电': '家电',
+    '汽车整车': '汽车', '汽车配件': '汽车零部件', '摩托车': '汽车',
+    '化学制药': '医药', '中成药': '医药', '生物制品': '医药', '医疗保健': '医疗器械',
+    '医疗器械': '医疗器械',
+    '电力': '电力', '火力发电': '电力', '水力发电': '电力', '电力设备': '电力设备',
+    '半导体': '半导体', '元器件': '电子元件', '光学光电': '消费电子', 'IT设备': '消费电子',
+    '软件服务': '软件', '互联网': '互联网', '通信设备': '通信', '电信运营': '通信',
+    '传媒': '传媒', '游戏': '游戏', '影视音像': '传媒',
+    '钢铁': '钢铁', '铜': '有色金属', '铝': '有色金属', '铅锌': '有色金属',
+    '小金属': '小金属', '能源金属': '能源金属', '黄金': '黄金', '稀土': '稀土永磁',
+    '化工原料': '化工', '化学原料': '化工', '农药化肥': '农化', '化纤': '化工', '塑料': '化工',
+    '水泥': '建材', '玻璃': '建材', '建材': '建材',
+    '纺织': '纺织服装', '服装': '纺织服装',
+    '造纸': '轻工制造', '包装印刷': '包装印刷', '家居用品': '家居',
+    '船舶': '船舶制造', '航天': '航天军工', '兵器': '军工', '国防军工': '军工',
+}
+
 # Tushare token来源
 TUSHARE_TOKEN_ENV = "TUSHARE_TOKEN"
 
@@ -766,6 +797,25 @@ class ThemeScorerV2:
         except Exception as e:
             logger.debug(f"fina_mainbz {ts_code}: {e}")
             return 0.0, "", {"error": str(e)[:40]}
+
+    def score_by_industry(self, industry: str) -> Tuple[float, str]:
+        """
+        主营产业兜底：用申万行业名直接映射主营产业(IndustryTheme)
+        主题只使用主营业务，不使用概念炒作标签。
+        例: 仓储物流→物流, 水运→航运, 轻工机械→机器人/智能制造
+        """
+        if not industry or str(industry) in ('nan', ''):
+            return 0.0, ""
+        ind = str(industry).strip()
+        # 精确匹配
+        if ind in INDUSTRY_THEME_MAP:
+            theme = INDUSTRY_THEME_MAP[ind]
+            return float(HOT_THEME_BASE.get(theme, 55.0)), theme
+        # 关键词子串匹配（如 "船舶制造" → "船舶"）
+        for ind_kw, theme in INDUSTRY_THEME_MAP.items():
+            if ind_kw in ind:
+                return float(HOT_THEME_BASE.get(theme, 55.0)), theme
+        return 0.0, ""
 
     def score_fallback(self, chain_tag: str) -> Tuple[float, str]:
         """
@@ -1918,6 +1968,8 @@ class BullScoreV2Result:
     # 主题
     theme: str = ""
     theme_score_v2: float = 0.0
+    industry_theme: str = ""  # 主营产业(IndustryTheme, 来自申万行业映射)
+    concept_theme: str = ""   # 概念主题(ConceptTheme, 来自chain_tag, 仅作轮动参考)
     final_score: float = 0.0
     bull_level: str = ""
 
@@ -1932,6 +1984,9 @@ class BullScoreV2Result:
     revenue_yoy: float = 0.0
     profit_yoy: float = 0.0
     q1_profit_yoy: float = None  # Q1净利润同比（可能为None）
+    deduct_profit_yoy: float = 0.0  # 扣非净利润同比(%)
+    profit_cagr_3y: float = 0.0     # 近3年净利润CAGR(%)
+    cashflow_ratio: float = 0.0     # 经营现金流/营收
     market_cap: float = 0.0
 
     # 细节
@@ -2088,7 +2143,7 @@ class BullScorerV2:
         self._save_file_cache('safety')
         return score, details
 
-    def _get_theme_score_v2(self, ts_code: str, chain_tag: str) -> Tuple[float, str, Dict]:
+    def _get_theme_score_v2(self, ts_code: str, chain_tag: str, industry: str = "") -> Tuple[float, str, Dict]:
         """带缓存的主题加成评分（支持文件持久化）"""
         cache = self._load_file_cache('theme')
         if ts_code in cache:
@@ -2096,8 +2151,14 @@ class BullScorerV2:
             return entry['score'], entry['theme'], entry['details']
         score, theme, details = self.theme_scorer.score_by_mainbz(ts_code)
         if score < 1.0:
-            score, theme = self.theme_scorer.score_fallback(chain_tag)
-            details = {"fallback": True, "chain_tag": chain_tag}
+            # 优先主营产业(IndustryTheme)兜底，避免概念标签(chain_tag)误配
+            # 例: 仓储物流→物流, 水运→航运, 轻工机械→机器人/智能制造
+            score, theme = self.theme_scorer.score_by_industry(industry)
+            if score >= 1.0:
+                details = {"fallback": True, "method": "industry", "industry": industry}
+            else:
+                score, theme = self.theme_scorer.score_fallback(chain_tag)
+                details = {"fallback": True, "method": "chain_tag", "chain_tag": chain_tag}
         cache[ts_code] = {'score': score, 'theme': theme, 'details': details}
         self._save_file_cache('theme')
         return score, theme, details
@@ -2322,6 +2383,8 @@ class BullScorerV2:
             bull_score_v2=round(bull_v3, 2),  # v3.0改名为bull_v3
             theme=theme_name,
             theme_score_v2=round(theme_score_v2, 2),
+            industry_theme=self.theme_scorer.score_by_industry(base_result.industry or "")[1],
+            concept_theme=base_result.chain_tag or "",
             final_score=round(final, 2),
             bull_level=level,
             revenue=base_result.revenue,
@@ -2334,6 +2397,9 @@ class BullScorerV2:
             revenue_yoy=base_result.revenue_yoy,
             profit_yoy=base_result.profit_yoy,
             q1_profit_yoy=base_result.q1_profit_yoy,
+            deduct_profit_yoy=base_result.deduct_profit_yoy,
+            profit_cagr_3y=base_result.profit_cagr_3y,
+            cashflow_ratio=base_result.cashflow_ratio,
             market_cap=base_result.market_cap,
             sub_details=sub_details,
         )
@@ -2417,7 +2483,7 @@ class BullScorerV2:
                     c[br.ts_code] = {'score': 0.0, 'details': {}}
             # theme
             try:
-                self._get_theme_score_v2(br.ts_code, br.chain_tag)
+                self._get_theme_score_v2(br.ts_code, br.chain_tag, br.industry or "")
             except Exception:
                 c = self._load_file_cache('theme')
                 if br.ts_code not in c:
@@ -2556,6 +2622,8 @@ class BullScorerV2:
             rows.append({
                 'code': code, 'name': r.name, 'industry': r.industry,
                 'theme': r.theme,
+                '主营产业': r.industry_theme,
+                '概念主题': r.concept_theme,
                 # 原8因子
                 '产业景气': r.industry_demand_score,
                 '技术壁垒': r.tech_barrier_score,
@@ -2599,6 +2667,9 @@ class BullScorerV2:
                 '营收同比': r.revenue_yoy,
                 '利润同比': r.profit_yoy,
                 'Q1利润同比': round(r.q1_profit_yoy * 100, 1) if r.q1_profit_yoy is not None else '',
+                '扣非利润同比': round(r.deduct_profit_yoy, 1) if r.deduct_profit_yoy else '',
+                '3年利润CAGR': round(r.profit_cagr_3y, 1) if r.profit_cagr_3y else '',
+                '现金流/营收比': round(r.cashflow_ratio, 3) if r.cashflow_ratio else '',
                 '扣非净利润(亿)': round(r.n_income_attr_p / 1e8, 2) if r.n_income_attr_p else '',
                 '非经常损益%': r.non_recurring_ratio,
                 'ROE': r.roe,
@@ -2614,7 +2685,7 @@ class BullScorerV2:
                 '质押率%': safety_d.get('pledge', {}).get('pledge_ratio', ''),
                 '解禁占比%': safety_d.get('float', {}).get('float_ratio_60d', ''),
                 # 主题详情
-                '主题匹配方式': 'fina_mainbz' if not theme_d.get('fallback') else 'chain_tag',
+                '主题匹配方式': theme_d.get('method', 'fina_mainbz'),
                 # 辨识度详情
                 '涨停次数': recog_d.get('limit_up', {}).get('limit_up_count', ''),
                 '连板能力': recog_d.get('limit_up', {}).get('max_consecutive_zt', ''),

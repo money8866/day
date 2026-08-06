@@ -362,6 +362,11 @@ class FinalScoreResult:
     final_score_v2: float = 0.0  # ELD V2 最终分
     rank: int = 0
 
+    # Buy Score（交易价值，研究价值解耦）：谁今天风险收益比最好、真正可以买
+    buy_score: float = 0.0
+    buy_score_level: str = "禁止追高"  # 推荐买/观察/等回踩/禁止追高
+    buy_score_breakdown: dict[str, Any] = field(default_factory=dict)
+
     # 详细结果（用于报告）
     event_detail: Optional[EventQualityResult] = None
     earnings_detail: Optional[EarningsScoreResult] = None
@@ -430,6 +435,10 @@ class FinalScoreResult:
             "buy_point": self.buy_point_detail.state.value if self.buy_point_detail else "",
             "recommendation": self.recommendation,
             "recommendation_v2": self.recommendation_v2,
+            # Buy Score（交易价值）
+            "buy_score": round(self.buy_score, 1),
+            "buy_score_level": self.buy_score_level,
+            "buy_cons_count": int(self.buy_score_breakdown.get("cons_count", 0)) if self.buy_score_breakdown else 0,
         }
         return d
 

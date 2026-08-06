@@ -111,6 +111,8 @@ class BullStockData:
     n_income_attr_p: float = 0.0  # 扣非净利润(最新报告期)
     revenue_yoy: float = 0.0      # 营收同比
     profit_yoy: float = 0.0       # 净利润同比
+    deduct_profit_yoy: float = 0.0  # 扣非净利润同比(%)
+    profit_cagr_3y: float = 0.0     # 近3年净利润CAGR(%)
     gross_margin: float = 0.0     # 毛利率
     gross_margin_change: float = 0.0  # 毛利率变化
     rd_expense_ratio: float = 0.0 # 研发费用率

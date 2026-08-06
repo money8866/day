@@ -8,7 +8,7 @@
   子主题数量   : 89 个
   活跃子主题   : 47 个（升温+主升）
   覆盖股票     : 4729 只
-  Top Picks   : 346 个
+  Top Picks   : 347 个
 
   买入信号统计:
 
@@ -25,9 +25,9 @@
     商业航天         子主题: 商业航天(57分)  股票25只 α均51.6
     小金属          子主题: 小金属(64分)  股票38只 α均53.6
     工业金属         子主题: 工业金属(62分)  股票81只 α均51.1
-    新能源车         子主题: 整车(60分)、汽车热管理(56分)  股票389只 α均50.7
+    新能源车         子主题: 整车(60分)、汽车热管理(53分)  股票389只 α均50.7
     智能驾驶         子主题: 智能驾驶(60分)  股票274只 α均50.7
-    机器人          子主题: 丝杠(66分)、空心杯电机(59分)、关节模组(58分)  股票684只 α均50.7
+    机器人          子主题: 丝杠(67分)、空心杯电机(59分)、关节模组(58分)  股票684只 α均50.7
     消费电子         子主题: 连接器/结构件(62分)、显示面板(56分)、光学镜头(55分)  股票221只 α均51.5
     煤炭           子主题: 煤炭(59分)  股票25只 α均52.0
     电力           子主题: 储能(54分)  股票467只 α均51.0
@@ -258,16 +258,16 @@
     │   >>> TOP PICK: 百利天恒 Momentum T=50 F=57 α=51
     │   >>> TOP PICK: 博瑞医药 Beta T=51 F=58 α=55
 
-    ├─ 中药创新         ↓↓ 退潮 [47分] 
-    │   ▽ 以岭药业  (002603.SZ) Institution Core   α55 F51 T47 I55 [REDUCE] ★★
-    │   ▽ 天士力   (600535.SH) Institution Core   α53 F49 T46 I61 [REDUCE] ★★
-    │   ▽ 同仁堂   (600085.SH) Institution Core   α51 F48 T45 I60 [REDUCE] ★★
-    │   ▽ 片仔癀   (600436.SH) Institution Core   α53 F48 T45 I60 [REDUCE] ★★
-
     ├─ 细胞/基因治疗      ↑↑ 主升 [47分] 
     │   ○ 和元生物  (688238.SH) Momentum Leader    α54 F57 T54 I49 [WATCH] ★★
     │   ○ 北陆药业  (300016.SZ) Institution Core   α52 F51 T46 I52 [WATCH] ★★
     │   ○ 安科生物  (300009.SZ) Institution Core   α51 F50 T51 I52 [WATCH] ★★
+
+    ├─ 中药创新         ↓↓ 退潮 [46分] 
+    │   ▽ 以岭药业  (002603.SZ) Institution Core   α55 F51 T47 I55 [REDUCE] ★★
+    │   ▽ 天士力   (600535.SH) Institution Core   α53 F49 T46 I61 [REDUCE] ★★
+    │   ▽ 同仁堂   (600085.SH) Institution Core   α51 F48 T45 I60 [REDUCE] ★★
+    │   ▽ 片仔癀   (600436.SH) Institution Core   α53 F48 T45 I60 [REDUCE] ★★
 
     ├─ 创新化药         ↑↑ 主升 [45分] 
     │   ○ 百花医药  (600721.SH) Momentum Leader    α67 F65 T56 I65 [WATCH] ★★
@@ -294,10 +294,10 @@
 
     ├─ 其他(跨主题)     [兜底]
     │   ○ 阳光诺和  (688621.SH)            α50 F37 [WATCH] ★★ 子主题=创新药
-    │   ○ 吉贝尔   (688566.SH)            α50 F37 [WATCH] ★★ 子主题=创新药
-    │   ○ 步长制药  (603858.SH)            α50 F37 [WATCH] ★★ 子主题=创新药
-    │   ○ 东北制药  (000597.SZ)            α50 F37 [WATCH] ★★ 子主题=创新药
     │   ○ 新华制药  (000756.SZ)            α50 F37 [WATCH] ★★ 子主题=创新药
+    │   ○ 京新药业  (002020.SZ)            α50 F37 [WATCH] ★★ 子主题=创新药
+    │   ○ 联环药业  (600513.SH)            α50 F37 [WATCH] ★★ 子主题=创新药
+    │   ○ 力生制药  (002393.SZ)            α50 F37 [WATCH] ★★ 子主题=创新药
 
 ──────────────────────────────────────────────────
    6. 化工 ↑↑
@@ -481,7 +481,7 @@
 ──────────────────────────────────────────────────
   10. 商业航天 ↑↑
       子主题:1个 | 股票:25只 | α均:51.6 | F均:51.6 | T均:49.3 I均:53.9 | 买入:0个
-      角色分布: {'Institution Core': 11, 'Beta': 3, 'Momentum': 3, 'Momentum Leader': 3, 'Emotion Leader': 2}
+      角色分布: {'Institution Core': 11, 'Momentum': 3, 'Beta': 3, 'Momentum Leader': 3, 'Emotion Leader': 2}
 
     ├─ 商业航天         ↑↑ 主升 [57分] 
     │   ○ 华如科技  (301302.SZ) Momentum Leader    α62 F62 T60 I59 [WATCH] ★★★
@@ -558,7 +558,7 @@
 
 ──────────────────────────────────────────────────
   13. 新能源车 ↓
-      子主题:6个 | 股票:389只 | α均:50.7 | F均:48.8 | T均:46.1 I均:54.7 | 买入:0个
+      子主题:6个 | 股票:389只 | α均:50.7 | F均:48.7 | T均:46.1 I均:54.7 | 买入:0个
       角色分布: {'Institution Core': 148, 'Momentum Leader': 46, 'Momentum': 43, 'Follower': 23, 'Beta': 17}
 
     ├─ 整车           ↑↑ 主升 [60分] ★
@@ -567,11 +567,11 @@
     │   ○ 兴民智通  (002355.SZ) Momentum Leader    α71 F67 T58 I68 [WATCH] ★★
     │   ○ 宝武镁业  (002182.SZ) Institution Core   α70 F65 T56 I63 [WATCH] ★★
 
-    ├─ 汽车热管理        ↑↑ 主升 [56分] 
-    │   ○ 腾龙股份  (603158.SH) Momentum Leader    α56 F58 T56 I53 [WATCH] ★★
-    │   ○ 中鼎股份  (000887.SZ) Institution Core   α55 F57 T55 I53 [WATCH] ★★
-    │   ○ 三花智控  (002050.SZ) Institution Core   α52 F54 T54 I48 [WATCH] ★★
+    ├─ 汽车热管理        ↑↑ 主升 [53分] 
+    │   ○ 腾龙股份  (603158.SH) Momentum Leader    α56 F58 T56 I54 [WATCH] ★★
+    │   ○ 中鼎股份  (000887.SZ) Institution Core   α56 F57 T56 I53 [WATCH] ★★
     │   ○ 拓普集团  (601689.SH) Institution Core   α52 F54 T54 I48 [WATCH] ★★
+    │   ○ 三花智控  (002050.SZ) Institution Core   α51 F53 T53 I48 [WATCH] ★★
 
     ├─ 充电桩          ↓ 潜伏 [44分] ★
     │   ○ 英杰电气  (300820.SZ) Momentum           α63 F64 T56 I60 [WATCH] ★★
@@ -592,11 +592,11 @@
     │   ○ 均胜电子  (600699.SH) Momentum           α53 F50 T46 I64 [WATCH] ★★
     │   ○ 经纬恒润  (688326.SH) Beta               α52 F49 T45 I61 [WATCH] ★★
     │   ○ 华阳集团  (002906.SZ) Momentum           α54 F48 T44 I65 [WATCH] ★★
-    │   ○ 德赛西威  (002920.SZ) Beta               α52 F46 T43 I65 [WATCH] ★★
+    │   ○ 德赛西威  (002920.SZ) Beta               α52 F46 T42 I65 [WATCH] ★★
 
     ├─ 动力电池         ↓ 潜伏 [38分] 
     │   ○ 国轩高科  (002074.SZ) Momentum           α52 F51 T46 I68 [WATCH] ★★
-    │   ○ 宁德时代  (300750.SZ) Momentum           α54 F51 T46 I70 [WATCH] ★★
+    │   ○ 宁德时代  (300750.SZ) Momentum           α54 F50 T46 I70 [WATCH] ★★
     │   ○ 孚能科技  (688567.SH) Beta               α52 F49 T45 I61 [WATCH] ★★
 
     主题 Top Picks:
@@ -639,19 +639,19 @@
 
 ──────────────────────────────────────────────────
   15. 机器人 ↑↑
-      子主题:9个 | 股票:684只 | α均:50.7 | F均:42.7 | T均:44.1 I均:52.8 | 买入:0个
+      子主题:9个 | 股票:684只 | α均:50.7 | F均:42.8 | T均:44.1 I均:52.8 | 买入:0个
       角色分布: {'Institution Core': 99, 'Momentum': 33, 'Momentum Leader': 24, 'Emotion Leader': 20, 'Beta': 12}
 
-    ├─ 丝杠           ↑↑ 主升 [66分] 
-    │   ○ 长盛轴承  (300718.SZ) Momentum Leader    α57 F61 T57 I57 [WATCH] ★★
-    │   ○ 慈星股份  (300307.SZ) Institution Core   α54 F57 T56 I56 [WATCH] ★★
-    │   ○ 力星股份  (300421.SZ) Momentum Leader    α52 F57 T51 I55 [WATCH] ★★
+    ├─ 丝杠           ↑↑ 主升 [67分] 
+    │   ○ 长盛轴承  (300718.SZ) Momentum Leader    α57 F61 T58 I57 [WATCH] ★★
+    │   ○ 慈星股份  (300307.SZ) Institution Core   α54 F58 T56 I56 [WATCH] ★★
+    │   ○ 力星股份  (300421.SZ) Momentum Leader    α52 F58 T51 I55 [WATCH] ★★
     │   ○ 贝斯特   (300580.SZ) Momentum Leader    α51 F57 T55 I52 [WATCH] ★★
 
     ├─ 空心杯电机        ↑↑ 主升 [59分] 
-    │   ○ 申科股份  (002633.SZ) Momentum Leader    α52 F57 T56 I52 [WATCH] ★★
+    │   ○ 申科股份  (002633.SZ) Momentum Leader    α52 F58 T56 I52 [WATCH] ★★
     │   ○ 江苏雷利  (300660.SZ) Institution Core   α53 F56 T55 I53 [WATCH] ★★
-    │   ○ 伟创电气  (688698.SH) Momentum Leader    α52 F55 T53 I52 [WATCH] ★★
+    │   ○ 伟创电气  (688698.SH) Momentum Leader    α52 F56 T53 I52 [WATCH] ★★
     │   ○ 步科股份  (688160.SH) Institution Core   α54 F55 T54 I53 [WATCH] ★★
 
     ├─ 关节模组         ↑↑ 主升 [58分] 
@@ -673,10 +673,10 @@
     │   ○ 禾川科技  (688320.SH) Momentum Leader    α51 F56 T55 I51 [WATCH] ★★
 
     ├─ 减速器          ↑↑ 主升 [56分] 
-    │   ○ 宇环数控  (002903.SZ) Institution Core   α65 F64 T62 I53 [WATCH] ★★★
+    │   ○ 宇环数控  (002903.SZ) Institution Core   α65 F64 T61 I53 [WATCH] ★★
     │   ○ 昊志机电  (300503.SZ) Emotion Leader     α62 F64 T61 I52 [WATCH] ★★★
     │   ○ 中大力德  (002896.SZ) Momentum Leader    α64 F63 T60 I57 [WATCH] ★★
-    │   ○ 德新科技  (603032.SH) Institution Core   α62 F62 T58 I52 [WATCH] ★★
+    │   ○ 德新科技  (603032.SH) Institution Core   α62 F61 T58 I52 [WATCH] ★★
 
     ├─ 力传感器         ↑↑ 主升 [50分] 
     │   ○ 爱克股份  (300889.SZ) Momentum Leader    α68 F64 T61 I54 [WATCH] ★★
@@ -722,13 +722,13 @@
     │   ○ 金健米业  (600127.SH) Momentum           α75 F67 T57 I78 [WATCH] ★★
     │   ○ 新迅达   (300518.SZ) Momentum           α67 F67 T57 I62 [WATCH] ★★
     │   >>> TOP PICK: 爱丽家居 Momentum Leader T=50 F=56 α=60
-    │   >>> TOP PICK: 900910.SH Institution Core T=32 F=27 α=23
-    │   >>> TOP PICK: 200521.SZ Institution Core T=32 F=27 α=23
+    │   >>> TOP PICK: 千岸科技 Institution Core T=36 F=31 α=26
+    │   >>> TOP PICK: 900942.SH Institution Core T=32 F=27 α=23
 
     主题 Top Picks:
       → 爱丽家居   Momentum Leader α=60 T=50 ○ WATCH
-      → 900910.SH Institution Core α=23 T=32 ○ WATCH
-      → 200521.SZ Institution Core α=23 T=32 ○ WATCH
+      → 千岸科技   Institution Core α=26 T=36 ○ WATCH
+      → 900942.SH Institution Core α=23 T=32 ○ WATCH
 
     ├─ 其他(跨主题)     [兜底]
     │   ○ 回盛生物  (300871.SZ) Momentum Leader α53 F57 [WATCH] ★★ 子主题=合成生物
@@ -898,7 +898,7 @@
 ──────────────────────────────────────────────────
   21. 稀土永磁 ↑↑
       子主题:1个 | 股票:25只 | α均:52.0 | F均:52.8 | T均:51.8 I均:52.7 | 买入:0个
-      角色分布: {'Institution Core': 9, 'Momentum Leader': 5, 'Emotion Leader': 5, 'Momentum': 1}
+      角色分布: {'Institution Core': 9, 'Emotion Leader': 5, 'Momentum Leader': 5, 'Momentum': 1}
 
     ├─ 稀土永磁         ↑↑ 主升 [60分] 
     │   ○ 中科磁业  (301141.SZ) Momentum Leader    α64 F66 T63 I60 [WATCH] ★★★
@@ -942,7 +942,7 @@
 
     ├─ 其他(跨主题)     [兜底]
     │   ○ 亿纬锂能  (300014.SZ) Momentum   α58 F54 [WATCH] ★★ 子主题=充电桩
-    │   ○ 宁德时代  (300750.SZ) Momentum   α54 F51 [WATCH] ★★ 子主题=动力电池
+    │   ○ 宁德时代  (300750.SZ) Momentum   α54 F50 [WATCH] ★★ 子主题=动力电池
     │   ○ 融捷股份  (002192.SZ)            α51 F37 [WATCH] ★★ 子主题=新能源车
     │   ○ 永兴材料  (002756.SZ)            α51 F37 [WATCH] ★★ 子主题=新能源车
     │   ○ 中矿资源  (002738.SZ)            α51 F37 [WATCH] ★★ 子主题=新能源车
@@ -1015,7 +1015,7 @@
     │   ○ 光迅科技  (002281.SZ) Emotion Leader α51 F56 [WATCH] ★★ 子主题=光模块
     │   ○ 会畅科技  (300578.SZ) Institution Core α46 F49 [WATCH] ★★ 子主题=IDC
     │   ○ 恒实科技  (300513.SZ)            α52 F39 [WATCH] ★★ 子主题=电网/特高压
-    │   ○ 200468.SZ(200468.SZ)            α50 F38 [WATCH] ★★ 子主题=AI算力
+    │   ○ 世纪恒通  (301428.SZ)            α50 F38 [WATCH] ★★ 子主题=AI算力
 
 ──────────────────────────────────────────────────
   26. 银行 ↓
@@ -1094,13 +1094,13 @@
   10. 乔锋智能   T=62 α=65 Emotion Leader 人形机器人      [WATCH] ★★★
   11. 山子高科   T=62 α=68 Institution Core 智能驾驶       [WATCH] ★★★
   12. 四会富仕   T=62 α=64 Institution Core 智能驾驶       [WATCH] ★★
-  13. 宇环数控   T=62 α=65 Institution Core 减速器        [WATCH] ★★★
+  13. 天奇股份   T=62 α=69 Institution Core 人形机器人      [WATCH] ★★★
   14. 东方锆业   T=62 α=57 Emotion Leader 稀土永磁       [WATCH] ★★
   15. 天孚通信   T=62 α=59 Emotion Leader 光模块        [WATCH] ★★★
-  16. 天奇股份   T=62 α=69 Institution Core 人形机器人      [WATCH] ★★★
-  17. 恒逸石化   T=61 α=66 Momentum Leader 高端材料       [WATCH] ★★★
-  18. 昊志机电   T=61 α=62 Emotion Leader 减速器        [WATCH] ★★★
-  19. 利和兴    T=61 α=65 Institution Core 人形机器人      [WATCH] ★★★
+  16. 恒逸石化   T=61 α=66 Momentum Leader 高端材料       [WATCH] ★★★
+  17. 宇环数控   T=61 α=65 Institution Core 减速器        [WATCH] ★★
+  18. 利和兴    T=61 α=65 Institution Core 人形机器人      [WATCH] ★★★
+  19. 昊志机电   T=61 α=62 Emotion Leader 减速器        [WATCH] ★★★
   20. 睿创微纳   T=61 α=66 Momentum Leader 卫星/航天      [WATCH] ★★★
 
 ══════════════════════════════════════════════════
@@ -1108,5 +1108,5 @@
 ══════════════════════════════════════════════════
 
 ══════════════════════════════════════════════════
-  报告生成: 2026-08-06 20:24
+  报告生成: 2026-08-06 22:48
 ══════════════════════════════════════════════════

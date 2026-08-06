@@ -167,6 +167,10 @@ CSV_COLUMNS: Final[list[str]] = [
     "buy_point",
     "recommendation",
     "recommendation_v2",
+    # Buy Score（交易价值，与V2研究价值解耦）
+    "buy_score",
+    "buy_score_level",
+    "buy_cons_count",
 ]
 
 

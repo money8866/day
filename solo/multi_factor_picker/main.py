@@ -470,6 +470,41 @@ def extract_bull_data(row: pd.Series,
     else:
         net_operate_cash_flow = 0.0
 
+    # ── 扣非净利润同比 (V12.3新增) ──
+    # 用最新报告期 vs 上年同期 扣非净利润计算，避免归母利润中非经常损益干扰
+    deduct_profit_yoy = 0.0
+    if len(income) >= 2:
+        lat_row = income.iloc[0]
+        lat_attr = float(lat_row.get('n_income_attr_p')) if pd.notna(lat_row.get('n_income_attr_p')) else np.nan
+        lat_end = str(lat_row.get('end_date', ''))
+        if len(lat_end) >= 6 and pd.notna(lat_attr):
+            prev_year = int(lat_end[:4]) - 1
+            prev_end = f"{prev_year}{lat_end[4:]}"
+            prev_rows = income[income['end_date'] == prev_end]
+            if len(prev_rows) > 0:
+                prev_attr = float(prev_rows.iloc[0].get('n_income_attr_p')) if pd.notna(prev_rows.iloc[0].get('n_income_attr_p')) else np.nan
+                if pd.notna(prev_attr) and prev_attr > 0:
+                    deduct_profit_yoy = (lat_attr - prev_attr) / prev_attr * 100.0
+
+    # ── 近3年净利润CAGR (V12.3新增) ──
+    # 用最近4个年度 n_income 计算3年CAGR；不足4年用3年算2年CAGR；任一年为负则取0
+    profit_cagr_3y = 0.0
+    if len(annual_income_sorted) >= 3:
+        ann_vals = []
+        for i in range(min(4, len(annual_income_sorted))):
+            nv = float(annual_income_sorted.iloc[i].get('n_income')) if pd.notna(annual_income_sorted.iloc[i].get('n_income')) else np.nan
+            if pd.isna(nv) or nv <= 0:
+                break
+            ann_vals.append(nv)
+        if len(ann_vals) >= 4:
+            first, last, years = ann_vals[3], ann_vals[0], 3
+        elif len(ann_vals) >= 3:
+            first, last, years = ann_vals[2], ann_vals[0], 2
+        else:
+            first, last, years = None, None, 0
+        if first and last and first > 0 and years > 0:
+            profit_cagr_3y = (max(last / first, 0.0) ** (1.0 / years) - 1.0) * 100.0
+
     # ── 季度业绩 ──
     quarterly_net_profit = latest_n_income
     quarterly_net_profit_prev = 0.0
@@ -764,6 +799,8 @@ def extract_bull_data(row: pd.Series,
         n_income_attr_p=latest_n_income_attr_p,
         revenue_yoy=revenue_yoy,
         profit_yoy=profit_yoy,
+        deduct_profit_yoy=deduct_profit_yoy,
+        profit_cagr_3y=profit_cagr_3y,
         gross_margin=gross_margin,
         gross_margin_change=gross_margin_change,
         rd_expense_ratio=rd_expense_ratio,

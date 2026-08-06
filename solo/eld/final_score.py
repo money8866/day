@@ -568,6 +568,25 @@ class FinalScoreEngine:
             next_day_buyable=ebp_r.next_day_buyable if ebp_r else False,
         )
 
+        # Stage 13.6: Buy Score 交易价值（研究价值与交易价值解耦）
+        # 30%买点质量 + 25%乖离 + 20%机构 + 15%连板惩罚 + 10%风险收益比
+        # 解决"V2第一=研究价值第一≠应该买入"的认知冲突（如4连板高位股）
+        try:
+            from .buy_score import compute_buy_score
+            buy_score, buy_level, buy_bd = compute_buy_score(
+                stock.ts_code,
+                daily_data,
+                buy_quality=ebp_r.buy_quality_score if ebp_r else 0.0,
+                bias=ebp_r.bias_pct if ebp_r else 0.0,
+                inst_state=result.institution_state,
+                event_quality=event_r.score,
+            )
+            result.buy_score = buy_score
+            result.buy_score_level = buy_level
+            result.buy_score_breakdown = buy_bd
+        except Exception as exc:
+            logger.warning("Buy Score 计算失败 %s: %s", stock.ts_code, exc)
+
         return result
 
     def run_pipeline(
