@@ -364,7 +364,7 @@ class FinalScoreResult:
 
     # Buy Score（交易价值，研究价值解耦）：谁今天风险收益比最好、真正可以买
     buy_score: float = 0.0
-    buy_score_level: str = "禁止追高"  # 推荐买/观察/等回踩/禁止追高
+    buy_score_level: str = "禁止"  # 可买/谨慎/禁止（风控三档）
     buy_score_breakdown: dict[str, Any] = field(default_factory=dict)
 
     # 详细结果（用于报告）
@@ -439,6 +439,9 @@ class FinalScoreResult:
             "buy_score": round(self.buy_score, 1),
             "buy_score_level": self.buy_score_level,
             "buy_cons_count": int(self.buy_score_breakdown.get("cons_count", 0)) if self.buy_score_breakdown else 0,
+            # 量能/事件窗口（回测实证: 非放量×ELD窗口才是alpha来源）
+            "volume_ratio": round(self.earnings_buy_point_detail.volume_ratio, 2) if self.earnings_buy_point_detail else 0.0,
+            "days_since_ann": self.earnings_buy_point_detail.days_since_announce if self.earnings_buy_point_detail else 0,
         }
         return d
 

@@ -887,6 +887,11 @@ class TailStrategy:
         last_close = q.get('last_close', 0)
         price = q.get('price', 0)
 
+        # 0. 形态判断前置 (V3核心): 强势基因回调低吸形态通过后豁免冲突风控
+        #    (低开高走天然振幅大/收盘涨幅常<0.5%; 20日涨停≥2的强势股5日涨幅常>15%)
+        passed_gap, gap_reason, _ = self.pullback_gap_signal_v3(q, kline, ts_code)
+        is_pullback_gap = passed_gap
+
         # 1. 涨停/跌停排除
         limit_up = 19.5 if ts_code.startswith(('300', '688')) else 9.5
         if pct >= limit_up:
@@ -894,19 +899,21 @@ class TailStrategy:
         if pct <= -9.5:
             return False, '跌停'
 
-        # 2. 振幅>8%排除
-        if last_close > 0 and high > 0 and low > 0:
-            amplitude = (high - low) / last_close * 100
-            if amplitude > 8:
-                return False, f'振幅{amplitude:.1f}%'
+        # 2. 振幅>8%排除 (形态股票豁免: 低开高走天然振幅大)
+        if not is_pullback_gap:
+            if last_close > 0 and high > 0 and low > 0:
+                amplitude = (high - low) / last_close * 100
+                if amplitude > 8:
+                    return False, f'振幅{amplitude:.1f}%'
 
         # 3. 收盘跌>2.5%排除
         if pct < -2.5:
             return False, f'跌{pct:.1f}%'
 
-        # 3.5 收阴线或微涨<0.5%排除 (强势回调低吸形态允许低开高走收盘微涨)
-        if pct < 0.5:
-            return False, f'涨幅{pct:.1f}%过低'
+        # 3.5 收阴线或微涨<0.5%排除 (形态股票豁免: 低开高走收阳即可, 低开吃掉涨幅)
+        if not is_pullback_gap:
+            if pct < 0.5:
+                return False, f'涨幅{pct:.1f}%过低'
 
         # 4. 连续涨停≥2天排除 (数据缺失按0处理,避免None崩溃)
         if kline is not None and len(kline) >= 3:
@@ -930,8 +937,9 @@ class TailStrategy:
             if price > 0 and price > ma20 * 1.25:
                 return False, '距MA20>25%'
 
-        # 6. 近5日涨幅>15% — V3优化: 龙头且距5日高<5%允许进入
-        if kline is not None and len(kline) >= 6:
+        # 6. 近5日涨幅>15% — 形态股票豁免(20日涨停≥2的强势股5日涨幅常>15%, 与形态基因冲突);
+        #    非形态: V3优化 龙头且距5日高<5%允许进入
+        if not is_pullback_gap and kline is not None and len(kline) >= 6:
             close_5d_ago = float(kline['close'].iloc[-6])
             if close_5d_ago > 0:
                 gain_5d = (price - close_5d_ago) / close_5d_ago * 100
@@ -965,8 +973,7 @@ class TailStrategy:
         if total_mv > 0 and total_mv < 80000:
             return False, f'市值{total_mv/10000:.1f}亿'
 
-        # 10. 强势基因回调低吸形态 (V3核心): 20天涨停多+回调阴线+低开承接
-        passed_gap, gap_reason, _ = self.pullback_gap_signal_v3(q, kline, ts_code)
+        # 10. 强势基因回调低吸形态 (V3核心): 已在前置步骤0判断
         if not passed_gap:
             return False, gap_reason
 
@@ -997,9 +1004,8 @@ class TailStrategy:
         强势基因回调低吸形态硬过滤:
         1. 20天涨停>=2次 (强势基因)
         2. 回调阴线: 昨日收阴线(回调中) + 从20日高回撤>=5%
-        3. 第一个低开: 今日低开(open<pre_close), 且昨日未低开
+        3. 今日低开(open<pre_close), 低开幅度0.3%~6%
         4. 阴线后第一根阳线: 低开高走(price>open)收阳
-        5. 低开承接: 低开幅度0.3%~6%
         返回 (passed, reason, detail)
         """
         detail = {}
@@ -1037,7 +1043,7 @@ class TailStrategy:
                 if drawdown < 5:
                     return False, f'距20日高仅{drawdown:.1f}%回调不足', detail
 
-        # 3. 第一个低开: 今日低开 + 昨日未低开(回调阴线后首次低开承接)
+        # 3. 今日低开(open<pre_close), 低开幅度0.3%~6%
         if open_p <= 0 or last_close <= 0:
             return False, '无开盘数据', detail
         gap_pct = (open_p - last_close) / last_close * 100
@@ -1046,13 +1052,6 @@ class TailStrategy:
             return False, '今日非低开', detail
         if gap_pct < -6:
             return False, f'低开{gap_pct:.1f}%过大', detail
-        # 昨日(不含今日)是否有低开
-        idx = -2
-        if len(kline) >= 3:
-            r_open = float(kline.iloc[idx].get('open', 0))
-            r_pre = float(kline.iloc[idx - 1].get('close', 0))
-            if r_open > 0 and r_pre > 0 and r_open < r_pre:
-                return False, f'昨日已有低开(非第一个)', detail
 
         # 4. 低开承接: 低开高走
         if price <= open_p:

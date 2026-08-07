@@ -1989,6 +1989,12 @@ class BullScoreV2Result:
     cashflow_ratio: float = 0.0     # 经营现金流/营收
     market_cap: float = 0.0
 
+    # ── 风险相关字段（V14 新增，RiskScore 输入） ──
+    debt_ratio: float = 0.0         # 资产负债率(%)
+    goodwill_ratio: float = 0.0     # 商誉/总资产(%)
+    receiv_yoy: float = 0.0         # 应收账款同比(%)
+    invent_yoy: float = 0.0         # 存货同比(%)
+
     # 细节
     sub_details: Dict = field(default_factory=dict)
 
@@ -2235,7 +2241,7 @@ class BullScorerV2:
 
         # 3. 主题加成 v2
         theme_score_v2, theme_name, theme_detail = self._get_theme_score_v2(
-            base_result.ts_code, base_result.chain_tag
+            base_result.ts_code, base_result.chain_tag, base_result.industry or ""
         )
 
         # 4. 预期差非线性放大（v3.1: 增加增长趋势信号）
@@ -2400,6 +2406,10 @@ class BullScorerV2:
             deduct_profit_yoy=base_result.deduct_profit_yoy,
             profit_cagr_3y=base_result.profit_cagr_3y,
             cashflow_ratio=base_result.cashflow_ratio,
+            debt_ratio=base_result.debt_ratio,
+            goodwill_ratio=base_result.goodwill_ratio,
+            receiv_yoy=base_result.receiv_yoy,
+            invent_yoy=base_result.invent_yoy,
             market_cap=base_result.market_cap,
             sub_details=sub_details,
         )
@@ -2545,7 +2555,13 @@ class BullScorerV2:
                 with results_lock:
                     results.append(r)
             except Exception as e:
-                logger.debug(f"v2评分失败 {br.ts_code} {br.name}: {e}")
+                import traceback as _tb
+                _msg = f"v2评分失败 {br.ts_code} {br.name}: {e}\n{_tb.format_exc()}"
+                try:
+                    with open(r'D:\mystock\solo\multi_factor_picker\v2_score_errors.log', 'a', encoding='utf-8') as _f:
+                        _f.write(_msg + "\n")
+                except Exception:
+                    pass
                 with results_lock:
                     results.append(BullScoreV2Result(
                         ts_code=br.ts_code, name=br.name, industry=br.industry,
@@ -2670,6 +2686,10 @@ class BullScorerV2:
                 '扣非利润同比': round(r.deduct_profit_yoy, 1) if r.deduct_profit_yoy else '',
                 '3年利润CAGR': round(r.profit_cagr_3y, 1) if r.profit_cagr_3y else '',
                 '现金流/营收比': round(r.cashflow_ratio, 3) if r.cashflow_ratio else '',
+                '资产负债率%': round(r.debt_ratio, 1) if r.debt_ratio else '',
+                '商誉占比%': round(r.goodwill_ratio, 1) if r.goodwill_ratio else '',
+                '应收增速%': round(r.receiv_yoy, 1) if r.receiv_yoy else '',
+                '存货增速%': round(r.invent_yoy, 1) if r.invent_yoy else '',
                 '扣非净利润(亿)': round(r.n_income_attr_p / 1e8, 2) if r.n_income_attr_p else '',
                 '非经常损益%': r.non_recurring_ratio,
                 'ROE': r.roe,

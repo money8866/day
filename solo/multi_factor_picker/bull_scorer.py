@@ -231,6 +231,12 @@ class BullStockData:
     audit_risk_score: float = 100.0     # 审计风险分
     cashflow_ratio: float = 0.0        # 经营现金流/营收
 
+    # ── 风险相关字段（V14 新增，RiskScore 输入） ──
+    debt_ratio: float = 0.0         # 资产负债率(%)
+    goodwill_ratio: float = 0.0     # 商誉/总资产(%)
+    receiv_yoy: float = 0.0         # 应收账款同比(%)
+    invent_yoy: float = 0.0         # 存货同比(%)
+
     # 主营业务构成（用于主题匹配）
     main_business_items: list = field(default_factory=list)  # [{bz_item, bz_ratio}, ...]
 
@@ -318,6 +324,13 @@ class BullScoreResult:
     rd_expense_ratio: float = 0.0
     revenue_yoy: float = 0.0
     profit_yoy: float = 0.0
+    deduct_profit_yoy: float = 0.0  # 扣非净利润同比(%)
+    profit_cagr_3y: float = 0.0     # 近3年净利润CAGR(%)
+    cashflow_ratio: float = 0.0     # 经营现金流/营收
+    debt_ratio: float = 0.0         # 资产负债率(%)
+    goodwill_ratio: float = 0.0     # 商誉/总资产(%)
+    receiv_yoy: float = 0.0         # 应收账款同比(%)
+    invent_yoy: float = 0.0         # 存货同比(%)
     contract_liability_yoy: float = 0.0
     market_cap: float = 0.0
     forecast_type: str = ""
@@ -2190,6 +2203,13 @@ class BullScorer:
             rd_expense_ratio=round(data.rd_expense_ratio * 100, 2),
             revenue_yoy=round(data.revenue_yoy * 100, 2),
             profit_yoy=round(data.profit_yoy * 100, 2),
+            deduct_profit_yoy=round(data.deduct_profit_yoy, 1),
+            profit_cagr_3y=round(data.profit_cagr_3y, 1),
+            cashflow_ratio=round(data.cashflow_ratio, 3),
+            debt_ratio=round(data.debt_ratio, 1),
+            goodwill_ratio=round(data.goodwill_ratio, 1),
+            receiv_yoy=round(data.receiv_yoy, 1),
+            invent_yoy=round(data.invent_yoy, 1),
             contract_liability_yoy=round(data.contract_liability_yoy * 100, 2),
             market_cap=data.market_cap,
             forecast_type=data.forecast_type,

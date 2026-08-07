@@ -155,6 +155,7 @@ def convert_new_config_to_old(new_config, stock_basic_df):
             "keywords": cfg.get("keywords", []),
             "exclude_keywords": cfg.get("exclude_keywords", []),
             "mainbiz_exclude": cfg.get("mainbiz_exclude", []),
+            "dna_concept_required": cfg.get("dna_concept_required", []),
             "core_companies": all_core,
             "leader_companies": leader_names,
         }
@@ -196,6 +197,11 @@ THEME_MAINBIZ_KEYWORDS = {
     '可控核聚变': ['聚变', '超导', '托卡马克', '第一壁', '偏滤器', '核聚变', '人造太阳', '超导磁体'],
     '脑机接口': ['脑机', '神经', '脑科', '神经康复', '疼痛', '康复', '医疗器械'],
     '量子计算': ['量子', '量子计算', '量子通信', '量子加密', '量子芯片'],
+    '地产链': ['地产', '房地产', '住宅', '商品房', '物业', '园区开发', '商业地产', '保障房', '城市更新', '房产服务'],
+    '节能环保': ['环保', '环境治理', '污水处理', '水务', '固废', '垃圾焚烧', '危废', '大气治理', '水处理', '节能减排', '供气供热'],
+    '钢铁': ['钢铁', '钢材', '普钢', '特钢', '特种钢', '板材', '线材', '型钢', '钢管', '钢加工', '金属制品', '冶炼'],
+    '传媒': ['传媒', '广告', '影视', '电影', '电视剧', '出版', '图书', '报刊', '广播电视', '视频', '短剧', '文化传媒'],
+    '建筑装饰': ['建筑', '基建', '基础建设', '工程', '装修', '装饰', '建筑施工', '房建', '公路', '桥梁', '隧道', '园林'],
 }
 
 # ST过滤
@@ -207,7 +213,9 @@ THEME_INDUSTRY_WHITELIST = {
     '证券': ['证券', '资本市场服务'],
     '券商': ['证券', '资本市场服务'],
     '煤炭': ['煤炭'],
-    '黄金': ['有色金属'],
+    # 黄金矿企的 stock_basic 行业标签是"黄金"（有色金属的子类），
+    # 仅白名单"有色金属"会把赤峰黄金/恒邦股份等真黄金股全部误杀
+    '黄金': ['有色金属', '黄金'],
 }
 
 # 主题-行业互斥规则
@@ -348,6 +356,10 @@ def build_theme_stock_map_v2():
             if ST_FILTER_ENABLED and ('ST' in stock_name or '*ST' in stock_name):
                 continue
 
+            # B股过滤（900xxx.SH / 200xxx.SZ / 201xxx.SZ / 202xxx.SZ）及名称未解析代码
+            if code.startswith(('900', '200', '201', '202')) or stock_name == code:
+                continue
+
             # 黑名单
             if theme_name in THEME_STOCK_BLACKLIST:
                 if stock_name in THEME_STOCK_BLACKLIST[theme_name]:
@@ -359,10 +371,12 @@ def build_theme_stock_map_v2():
                 if not any(w in industry for w in whitelist):
                     continue
 
-            # 行业互斥
+            # 行业互斥（强制纳入公司豁免：leader/core 是人工核验的名单，
+            # 不应被行业标签误杀——如紫金矿业 stock_basic 行业为"铜"，
+            # 却被黄金主题的"铜"互斥规则挡在门外）
             if theme_name in THEME_INDUSTRY_EXCLUDE:
                 excluded = THEME_INDUSTRY_EXCLUDE[theme_name]
-                if any(ex in industry for ex in excluded):
+                if via not in ('leader_company', 'core_company') and any(ex in industry for ex in excluded):
                     continue
 
             # IRS分层过滤

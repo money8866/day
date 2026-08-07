@@ -256,9 +256,14 @@ def main():
         corrected_score = max(0, min(100, corrected_score))
 
         # 评级基于原始量化分（交叉截面排名，不受K因子影响）
+        # S级修复分硬门槛: 洗盘修复分<70 的"伪强势"（结构差但动量高）降为A级
         if true_bt and pullback_confirm and raw_score >= 85:
-            grade = 'S'
-            trade_decision = '极高胜率重仓买入'
+            if wr_score >= 70:
+                grade = 'S'
+                trade_decision = '极高胜率重仓买入'
+            else:
+                grade = 'A'
+                trade_decision = f'回踩VWAP确认加仓 ⚠️修复分{wr_score:.0f}<70,S→A降级'
         elif true_bt and raw_score >= 75:
             grade = 'A'
             trade_decision = '回踩VWAP确认加仓'
@@ -304,6 +309,17 @@ def main():
         else:
             buy_point = '未突破'
 
+        # ─── 结构增强分 (经验1-4融合) ───
+        # 左侧结构: 洗盘修复分(抛压衰竭+承接转强形态完整度)
+        # 右侧确认: 买点质量(买点2回踩VWAP确认 > 买点1放量突破 > 未突破)
+        # 动量基础: 量化择时分
+        buy_quality = {'买点2(缩量回踩VWAP确认)': 100, '买点1(放量突破VWAP+筹码峰)': 70, '未突破': 40}
+        structure_boost = (
+            wr_score * 0.30 +          # 洗盘修复形态
+            raw_score * 0.50 +         # 量化动量
+            buy_quality.get(buy_point, 40) * 0.20  # 买点质量(双确认+回踩)
+        )
+
         # 洗盘修复标签 (仅对高分股票标注)
         washout_tag = ''
         if wr_score >= 90:
@@ -322,6 +338,7 @@ def main():
             '量化择时分': round(raw_score, 1),
             '修正后评分': round(corrected_score, 1) if not impact_blocked else 0,
             '洗盘修复分': round(wr_score, 1),
+            '结构增强分': round(structure_boost, 1),
             '洗盘修复标签': washout_tag,
             '兑现冲击过滤': '⚠️ 是' if impact_blocked else '✅ 否',
             '冲击详情': impact['detail'],
@@ -344,11 +361,11 @@ def main():
             '交易决策': trade_decision,
         })
 
-    # ─── 排序 + 保存 ───
+    # ─── 排序 + 保存 (同评级内按结构增强分: 洗盘修复形态+买点质量+动量 融合) ───
     out_df = pd.DataFrame(results)
     grade_order = {'S': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
     out_df['_grade_order'] = out_df['修正后胜率分级'].map(grade_order)
-    out_df = out_df.sort_values(['_grade_order', '量化择时分'], ascending=[True, False]).reset_index(drop=True)
+    out_df = out_df.sort_values(['_grade_order', '结构增强分'], ascending=[True, False]).reset_index(drop=True)
     out_df = out_df.drop(columns=['_grade_order'])
 
     trade_date = fetcher.get_last_trade_date()

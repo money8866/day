@@ -13,11 +13,11 @@ Buy Score 独立回答"谁今天风险收益比最好、真正可以买"。
     15% 连板惩罚     - 0板100 / 1板70 / 2板45 / 3板20 / ≥4板0（连板末期禁止追）
     10% 风险收益比   - 事件强度(上行空间) × 乖离(下行风险) 组合
 
-分级:
-    >80    ✅ 推荐买
-    60-80  👀 观察
-    40-60  ⏳ 等回踩
-    <40    ❌ 禁止追高
+分级（三档 + 硬拦截，20260806 回测 30 万信号确认无排序 alpha 后改为风控档）:
+    ≥80    ✅ 可买
+    60-80  👀 谨慎
+    <60    ❌ 禁止
+硬拦截（回测负期望，直接禁止）: 1连板追入(T+10 -3.8%) / 乖离>15%追高 / 机构派发
 """
 from __future__ import annotations
 
@@ -85,12 +85,10 @@ def _rr_score(event_quality: float, bias: float) -> float:
 
 def buy_score_level(score: float) -> str:
     if score > 80:
-        return "推荐买"
+        return "可买"
     if score >= 60:
-        return "观察"
-    if score >= 40:
-        return "等回踩"
-    return "禁止追高"
+        return "谨慎"
+    return "禁止"
 
 
 def compute_buy_score(
@@ -113,6 +111,8 @@ def compute_buy_score(
 
     Returns:
         (buy_score, level, breakdown)
+        level 三档: 可买(≥80) / 谨慎(60-80) / 禁止(<60 或硬拦截)
+        硬拦截: 1连板追入 / 乖离>15%追高 / 机构派发 → 直接禁止
     """
     q = min(100.0, max(0.0, float(buy_quality or 0)))
     b = float(bias or 0)
@@ -124,9 +124,21 @@ def compute_buy_score(
     score = 0.30 * q + 0.25 * _bias_score(b) + 0.20 * inst + 0.15 * cs + 0.10 * rr
     score = min(100.0, score)
     level = buy_score_level(score)
+
+    # 硬拦截（回测负期望，直接禁止）: 连板追入 > 追高 > 派发
+    block_reason = ""
+    if cons >= 1:
+        block_reason = f"连板追入({cons}板)"
+    elif b > 15:
+        block_reason = f"乖离{b:.0f}%追高"
+    elif (inst_state or "") == "派发":
+        block_reason = "机构派发"
+    if block_reason:
+        level = "禁止"
+
     breakdown = {
         "quality": round(q, 1), "bias_score": round(_bias_score(b), 1),
         "inst_score": round(inst, 1), "cons_count": cons, "cons_score": round(cs, 1),
-        "rr_score": round(rr, 1),
+        "rr_score": round(rr, 1), "block_reason": block_reason,
     }
     return round(score, 1), level, breakdown

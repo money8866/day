@@ -2418,6 +2418,7 @@ class RealtimeThemeMonitor:
                         if len(fields) < 32:
                             continue
 
+                        open_px = float(fields[1])       # fields[1]=今开价
                         prev_close = float(fields[2])
                         price = float(fields[3])
                         high = float(fields[4])
@@ -2436,6 +2437,7 @@ class RealtimeThemeMonitor:
                             'amount': amount,
                             'vol': int(volume),
                             'last_close': prev_close,
+                            'open': open_px,
                             'high': high,
                             'low': low,
                         }
@@ -2451,7 +2453,7 @@ class RealtimeThemeMonitor:
         # ── 备用:东方财富接口 ──
         if not quote_map:
             em_url = 'https://push2.eastmoney.com/api/qt/ulist.np/get'
-            em_fields = 'f12,f14,f3,f4,f5,f6,f7'
+            em_fields = 'f12,f14,f3,f4,f5,f6,f7,f15,f16,f17'
             secids = []
             for code in stock_codes:
                 if code.endswith('.SH'):
@@ -2499,8 +2501,9 @@ class RealtimeThemeMonitor:
                             'amount': f6,
                             'vol': int(f5),
                             'last_close': prev_close,
-                            'high': 0,
-                            'low': 0,
+                            'open': item.get('f17', 0),
+                            'high': item.get('f15', 0),
+                            'low': item.get('f16', 0),
                         }
                     source = '东方财富API'
                 except Exception as e:
@@ -2959,66 +2962,41 @@ class RealtimeThemeMonitor:
 
                         self.last_w2s_scan_time = time.time()
 
-                # ── 14:50后每2分钟扫描「猎尾V3」尾盘突袭 ──
+                # ── 14:50后每2分钟扫描「猎尾V4」中报池最佳回踩 ──
                 if now.hour == 14 and now.minute >= 50:
                     if time.time() - self.last_tail_entry_scan_time >= 120:
-                        tail_signals = self.scan_tail_end_entry_v3()
+                        tail_signals = self.scan_tail_recovery_v3()
                         # 写入跟踪表(用于未来交易日盘后回填和胜率分析)
-                        self._save_tail_signals_to_tracker_v3(tail_signals)
+                        self._save_tail_recovery_signals_to_tracker(tail_signals)
                         if tail_signals:
                             # 控制台输出
                             print(f"\n{'='*110}")
-                            print(f"🎯 「猎尾V3」尾盘突袭 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'主题':>4} {'资金':>4} {'角色':>4} {'技术':>4} {'尾盘':>4} {'风险':>4} {'信号':<6} {'角色':<6} {'涨幅':>6} {'关键特征'}")
+                            print(f"🎯 「猎尾V4」中报池回踩信号 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<10} {'总分':>4} {'量化':>5} {'二次':>4} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
                             print(f"{'-'*110}")
                             for i, s in enumerate(tail_signals[:10], 1):
-                                emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
                                 d = s.get('detail', {})
-                                role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(s.get('role', ''), s.get('role', ''))
-                                feats = []
-                                if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
-                                if d.get('tail_vol_ratio') and d['tail_vol_ratio'] > 0.20: feats.append(f"尾量{d['tail_vol_ratio']:.2f}")
-                                if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
-                                if d.get('layer') == 'leader': feats.append('龙头')
-                                if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
-                                if d.get('gap_pct') is not None and d.get('gap_pct', 0) < 0: feats.append(f"低开{d['gap_pct']:.2f}%承接")
-                                # 风险标记
-                                trap_flags = []
-                                if d.get('trap_weak_day'): trap_flags.append('⚠全天弱')
-                                if d.get('trap_long_lower'): trap_flags.append('⚠长下影')
-                                if d.get('risk_high'): trap_flags.append('⚠高位')
-                                if d.get('risk_isolated'): trap_flags.append('⚠孤立')
-                                feats.extend(trap_flags)
-                                feat_str = ' '.join(feats[:6]) if feats else '-'
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['theme_score']:>4} {s['capital_score']:>4} {s['role_score']:>4} {s['technical_score']:>4} {s['timing_score']:>4} {s['risk_penalty']:>4} {emoji:<6} {role_cn:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
+                                emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
+                                vol_label = str(d.get('tail_vol_label', '-'))
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>4} {d.get('quant_score', 0):>5.1f} {d.get('realtime_score', 0):>4} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
                             print(f"{'='*110}\n")
 
-                            # 推送信号到微信: 75分及以上, 或强势回调低吸形态≥65分
-                            buy_signals = [s for s in tail_signals
-                                           if s.get('total_score', 0) >= 75
-                                           or (s.get('buy_type') == 'PULLBACK_GAP' and s.get('total_score', 0) >= 65)]
+                            # 推送信号到微信: 中报池回踩形态≥65分推送
+                            buy_signals = [s for s in tail_signals if s.get('total_score', 0) >= 65]
                             if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
                                 lines = []
                                 for s in buy_signals[:5]:
                                     d = s.get('detail', {})
-                                    role_cn = {'leader': '龙头', 'core': '中军', 'follow': '跟风', 'weak': '弱关联'}.get(s.get('role', ''), s.get('role', ''))
-                                    buy_cn = {'LEADER_BREAKOUT': '龙头突破', 'CORE_PULLBACK': '中军回踩', 'ROTATION_ENTRY': '轮动入场', 'TAIL_TIMING': '尾盘择时', 'PULLBACK_GAP': '回调低吸'}.get(s.get('buy_type', ''), s.get('buy_type', ''))
                                     feats = []
-                                    if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.2f}%")
-                                    if d.get('amount_ratio') and d['amount_ratio'] >= 1.5: feats.append(f"量比{d['amount_ratio']:.1f}")
-                                    if d.get('pressure_room_pct') and d['pressure_room_pct'] > 5: feats.append(f"空间{d['pressure_room_pct']:.0f}%")
-                                    if d.get('gap_pct') is not None and d.get('gap_pct', 0) < 0: feats.append(f"低开{d['gap_pct']:.2f}%承接")
-                                    if d.get('limit_up_20d', 0) >= 2: feats.append(f"20日{d['limit_up_20d']}涨停")
-                                    # 风险警示
-                                    trap_warns = []
-                                    if d.get('trap_weak_day'): trap_warns.append('⚠全天弱尾拉')
-                                    if d.get('trap_long_lower'): trap_warns.append('⚠长下影')
-                                    if trap_warns:
-                                        feats.append(' '.join(trap_warns))
+                                    if d.get('weak_market'): feats.append('⚠弱市')
+                                    if d.get('rise_gap_vwap', 0) < 0: feats.append(f"贴VWAP{d['rise_gap_vwap']:+.1f}%")
+                                    vol_label = str(d.get('tail_vol_label', ''))
+                                    if vol_label.startswith('缩量'): feats.append(f"尾盘{vol_label}")
+                                    if d.get('chip_conc', 0) > 50: feats.append(f"筹码{d['chip_conc']:.0f}%")
                                     feat_str = ' '.join(feats) if feats else ''
-                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} [{role_cn}|{buy_cn}] {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
-                                content = f"🎯 「猎尾V3」尾盘买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                                self.send_wechat(f"🎯 猎尾V3买入 {now.strftime('%H:%M')}", content)
+                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} 量化{d.get('quant_score', 0):.1f}/二次{d.get('realtime_score', 0)} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{d.get('buy_point', '')}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
+                                content = f"🎯 「猎尾V4」中报池回踩买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                                self.send_wechat(f"🎯 猎尾V4回踩 {now.strftime('%H:%M')}", content)
 
                         self.last_tail_entry_scan_time = time.time()
 
@@ -4410,6 +4388,421 @@ class RealtimeThemeMonitor:
             print(f"[跟踪V3] 已写入{len(final_signals)}只信号到跟踪表V3 (>=75+排北交所+每主题TOP3, signal_date={signal_date})")
         except Exception as e:
             print(f"⚠ V3尾盘信号写入跟踪表失败: {e}")
+
+    # ════════════════════════════════════════════
+    # 猎尾V4: 中报优质股池最佳回踩 (学习 push_washout_recovery.py)
+    # ════════════════════════════════════════════
+
+    def _fetch_recovery_quotes(self, ts_codes):
+        """按需补拉指定股票实时行情(新浪),合并进 self.quotes (中报池不在主题池内的股票用)"""
+        need = [c for c in ts_codes if c not in self.quotes or not self.quotes.get(c)]
+        if not need:
+            return {}
+        quote_map = {}
+        for offset in range(0, len(need), 80):
+            batch = need[offset:offset + 80]
+            sina_list = []
+            for code in batch:
+                if code.endswith('.SH'):
+                    sina_list.append('sh' + code.replace('.SH', ''))
+                elif code.endswith('.SZ'):
+                    sina_list.append('sz' + code.replace('.SZ', ''))
+                else:
+                    sina_list.append('sz' + code)  # 无后缀默认深市
+            url = f"https://hq.sinajs.cn/list={','.join(sina_list)}"
+            try:
+                resp = requests.get(url, headers={
+                    'Referer': 'https://finance.sina.com.cn',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }, timeout=8)
+                resp.encoding = 'gbk'
+                for line in resp.text.strip().split('\n'):
+                    line = line.strip()
+                    if not line or '=' not in line:
+                        continue
+                    try:
+                        var_part = line.split('=', 1)[1]
+                        if var_part.count('"') < 2:
+                            continue
+                        fields = var_part.split('"')[1].split(',')
+                        var_name = line.split('hq_str_')[1].split('=')[0]
+                        if var_name.startswith('sz'):
+                            ts_c = var_name[2:].zfill(6) + '.SZ'
+                        elif var_name.startswith('sh'):
+                            ts_c = var_name[2:].zfill(6) + '.SH'
+                        else:
+                            continue
+                        if len(fields) < 32:
+                            continue
+                        open_px = float(fields[1])
+                        prev_close = float(fields[2])
+                        price = float(fields[3])
+                        high = float(fields[4])
+                        low = float(fields[5])
+                        volume = float(fields[8])
+                        amount = float(fields[9])
+                        if prev_close > 0 and price > 0:
+                            pct_chg = (price - prev_close) / prev_close * 100
+                        else:
+                            pct_chg = 0
+                        quote_map[ts_c] = {
+                            'price': price, 'pct_chg': round(pct_chg, 2),
+                            'amount': amount, 'vol': int(volume),
+                            'last_close': prev_close, 'open': open_px,
+                            'high': high, 'low': low,
+                        }
+                    except (IndexError, ValueError):
+                        continue
+            except Exception as e:
+                print(f"  ⚠ 中报池补拉行情失败: {e}")
+        if quote_map:
+            self.quotes.update(quote_map)
+        return quote_map
+
+    def scan_tail_recovery_v3(self):
+        """
+        「猎尾V4」中报优质股池最佳回踩 — 学习 push_washout_recovery.py 的精选逻辑
+
+        股票池: report_daily/enhanced_timing_bull_all_*.csv (前一交易日收盘后生成)
+        精选条件(沿用 push_washout_recovery.py):
+            修正后胜率分级 in [S,A] + 洗盘修复分>=80 + 兑现冲击过滤✅ + 回踩确认✅
+        14:50 实时二次确认(找"最佳回踩"):
+            ① 今日回踩幅度   (30分): 相对昨收小回调-3%~0%满分(回踩到位), 追高大幅扣分
+            ② 现价乖离MA20   (25分): 回踩区(0~+8%)满分, 破位MA20直接剔除
+            ③ 现价乖离VWAP   (15分): 越贴近主力成本区(20日VWAP)越"回踩到位"
+            ④ 尾盘量能       (15分): 缩量回踩确认(14:30尾盘增量<=0.15)满分
+            ⑤ 至止盈位空间   (10分): 5%~20%满分, 空间不足剔除
+            ⑥ 买点类型       ( 5分): 买点2(缩量回踩VWAP确认)优先
+        综合分 = 前日量化择时分*0.55 + 实时二次确认*0.45
+        信号: >=80强买入 >=70买入观察 >=65关注(推送线65)
+        """
+        import re as _re
+        import pandas as pd
+
+        report_dir = os.path.join(BASE_DIR, 'report_daily')
+        files = [f for f in os.listdir(report_dir)
+                 if f.startswith('enhanced_timing_bull_all_') and f.endswith('.csv')]
+        if not files:
+            print('⚠ 「猎尾V4」未找到 enhanced_timing_bull_all 报告,跳过中报池回踩扫描')
+            return []
+        files.sort(reverse=True)
+        report_path = os.path.join(report_dir, files[0])
+        _m = _re.search(r'enhanced_timing_bull_all_(\d{8})\.csv', files[0])
+        report_date = _m.group(1) if _m else '未知'
+
+        df = pd.read_csv(report_path, encoding='utf-8-sig')
+        for c in ('洗盘修复分', '量化择时分', '修正后评分', '结构增强分',
+                  '现价', 'VWAP', 'MA20', '筹码峰顶', '筹码集中度%',
+                  'ATR动态止损价', 'ATR跟踪止盈价'):
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+
+        # ── 1. 精选: S/A + 修复>=80 + 无冲击 + 回踩确认 (沿用push逻辑) ──
+        elite = df[
+            df['修正后胜率分级'].isin(['S', 'A']) &
+            (df['洗盘修复分'] >= 80) &
+            df['兑现冲击过滤'].astype(str).str.contains('✅', na=False) &
+            df['回踩确认'].astype(str).str.contains('✅', na=False)
+        ].copy()
+        if elite.empty:
+            print('⚠ 「猎尾V4」中报池精选(S/A+修复>=80+回踩确认)为空,无信号')
+            return []
+
+        # ── 2. 补拉不在主题池内的精选股实时行情 ──
+        missing = [str(r['代码']).strip() for _, r in elite.iterrows()
+                   if str(r['代码']).strip() not in self.quotes]
+        if missing:
+            fetched = self._fetch_recovery_quotes(missing)
+            if fetched:
+                print(f"  ✅ 补拉中报池行情: {len(fetched)}只 (不在主题池)")
+
+        # ── 3. 逐只 14:50 实时二次确认 ──
+        now = datetime.now()
+        index_q = self.quotes.get('000001.SH')
+        index_pct = index_q.get('pct_chg', None) if index_q else None
+
+        signals = []
+        rejects = {}          # 诊断: 二次确认拦截原因分布
+        no_quote_codes = []
+        for _, r in elite.iterrows():
+            ts_code = str(r['代码']).strip()
+            name = str(r['名称']).strip()
+            theme = str(r.get('主题', '')).strip() if pd.notna(r.get('主题')) else ''
+            quant = float(r['量化择时分'])
+            wash = float(r['洗盘修复分'])
+            vwap = float(r['VWAP'])
+            ma20 = float(r['MA20'])
+            chip_peak = float(r['筹码峰顶'])
+            chip_conc = float(r['筹码集中度%'])
+            buy_point = str(r.get('推荐买点类型', '')) if pd.notna(r.get('推荐买点类型')) else ''
+            stop_loss = float(r['ATR动态止损价'])
+            target = float(r['ATR跟踪止盈价'])
+            market_status = str(r.get('大盘状态', '')) if pd.notna(r.get('大盘状态')) else ''
+
+            q = self.quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                no_quote_codes.append(ts_code)
+                continue
+            price = q.get('price', 0)
+            pct = q.get('pct_chg', 0)
+
+            rise_vwap = (price / vwap - 1) * 100 if vwap > 0 else 0
+            ma20_gap = (price / ma20 - 1) * 100 if ma20 > 0 else 0
+            upside = (target / price - 1) * 100 if price > 0 and target > 0 else 0
+            prev_close = float(r['现价'])            # 昨收=CSV现价(生成日收盘)
+            ret_pct = (price / prev_close - 1) * 100 if prev_close > 0 else 0  # 今日相对昨收回踩幅度
+
+            # ── 硬性实时条件: 回踩未破位 + 不追高 + 空间足够 ──
+            reject = None
+            if ma20_gap < -3:
+                reject = f'破位MA20({ma20_gap:+.1f}%)'
+            elif rise_vwap < -3:
+                reject = f'跌破成本区({rise_vwap:+.1f}%)'
+            elif ret_pct < -4:
+                reject = f'今日回踩过深({ret_pct:.1f}%)'
+            elif ret_pct > 7:
+                reject = f'今日追高({ret_pct:+.1f}%)'
+            elif upside < 2:
+                reject = f'止盈空间不足({upside:+.1f}%)'
+            if reject:
+                rejects.setdefault(reject, []).append(ts_code)
+                continue
+
+            # ── 二次确认评分(0-100) ──
+            # ① 今日回踩幅度(30): 最佳回踩=相对昨收小回调/企稳(-3%~+2%), 追高大幅扣分
+            if -3 <= ret_pct <= 0:
+                s_ret = 30
+            elif 0 < ret_pct <= 2:
+                s_ret = 26
+            elif 2 < ret_pct <= 5:
+                s_ret = 16
+            elif -4 <= ret_pct < -3:
+                s_ret = 14
+            elif ret_pct > 5:
+                s_ret = 6
+            else:
+                s_ret = 4
+            # ② 乖离MA20(25): 回踩区(0~+8%)满分, 深贴/远离均扣分
+            if 0 <= ma20_gap < 8:
+                s_ma20 = 25
+            elif -3 <= ma20_gap < 0:
+                s_ma20 = 18
+            elif 8 <= ma20_gap < 12:
+                s_ma20 = 16
+            elif 12 <= ma20_gap < 18:
+                s_ma20 = 10
+            else:
+                s_ma20 = 6
+            # ③ 乖离VWAP(15): 越贴近主力成本区(20日VWAP)越"回踩到位"
+            if 0 <= rise_vwap < 8:
+                s_vwap = 15
+            elif 8 <= rise_vwap < 15:
+                s_vwap = 12
+            elif 15 <= rise_vwap < 25:
+                s_vwap = 8
+            elif rise_vwap < 0:
+                s_vwap = 10
+            else:  # >=25
+                s_vwap = 5
+            # ④ 尾盘量能(15): 缩量回踩确认
+            snap = self.intraday_snapshots.get(ts_code, {})
+            noon_vol = snap.get('noon_vol', 0) or 0
+            tail_base_vol = snap.get('tail_base_vol', 0) or 0
+            if noon_vol > 0 and tail_base_vol >= noon_vol:
+                tail_add = (tail_base_vol - noon_vol) / noon_vol  # 14:00→14:30半小时增量占比
+                if tail_add <= 0.15:
+                    s_vol = 15; vol_label = f'缩量{tail_add:.2f}'
+                elif tail_add <= 0.25:
+                    s_vol = 11; vol_label = f'温和{tail_add:.2f}'
+                elif tail_add <= 0.40:
+                    s_vol = 8; vol_label = f'微放{tail_add:.2f}'
+                else:
+                    s_vol = 4; vol_label = f'放量{tail_add:.2f}'
+            else:
+                s_vol = 8; vol_label = '无快照'
+            # ⑤ 至止盈空间(10)
+            if 5 <= upside <= 20:
+                s_room = 10
+            elif 2 <= upside < 5:
+                s_room = 6
+            elif upside > 20:
+                s_room = 8
+            else:
+                s_room = 3
+            # ⑥ 买点类型(5): 买点2(缩量回踩VWAP确认)优先
+            if '买点2' in buy_point:
+                s_buy = 5
+            elif '买点1' in buy_point:
+                s_buy = 3
+            else:
+                s_buy = 2
+
+            rt_score = s_ret + s_ma20 + s_vwap + s_vol + s_room + s_buy
+            weak_market = False
+            if index_pct is not None and index_pct <= -1.5:
+                rt_score -= 8
+                weak_market = True
+            rt_score = max(0, min(100, rt_score))
+
+            # ── 综合分: 前日量化 55% + 实时二次确认 45% ──
+            total = int(round(quant * 0.55 + rt_score * 0.45))
+            if total >= 80:
+                signal = '强买入'
+            elif total >= 70:
+                signal = '买入观察'
+            else:
+                signal = '关注'
+            confidence = int(round(wash * 0.5 + rt_score * 0.5))
+
+            signals.append({
+                'ts_code': ts_code,
+                'name': name,
+                'theme': theme,
+                'total_score': total,
+                'quant_score': round(quant, 1),
+                'realtime_score': rt_score,
+                'wash_score': wash,
+                'theme_score': 0, 'capital_score': 0, 'role_score': 0,
+                'technical_score': 0, 'timing_score': 0, 'risk_penalty': 0,
+                'gap_score': 0,
+                'signal': signal,
+                'role': 'recovery',
+                'buy_type': 'PULLBACK_GAP',
+                'confidence': confidence,
+                'next_day_expectation': f'回踩{ret_pct:+.1f}% 乖离VWAP{rise_vwap:+.1f}% 空间{upside:+.1f}% 止损{stop_loss:.2f}',
+                'pct_chg': pct,
+                'price': price,
+                'detail': {
+                    'quant_score': round(quant, 1),
+                    'realtime_score': rt_score,
+                    'wash_score': wash,
+                    'ret_pct': round(ret_pct, 2),
+                    'rise_gap_vwap': round(rise_vwap, 2),
+                    'rise_gap_ma20': round(ma20_gap, 2),
+                    'upside_pct': round(upside, 1),
+                    'buy_point': buy_point,
+                    'tail_vol_label': vol_label,
+                    'chip_peak': chip_peak,
+                    'chip_conc': chip_conc,
+                    'stop_loss': stop_loss,
+                    'take_profit': target,
+                    'market_status': market_status,
+                    'index_pct': index_pct,
+                    'report_date': report_date,
+                    'weak_market': weak_market,
+                },
+                'explain': (f'中报优质股池{report_date} 评级{signal} 洗盘修复{wash:.0f}分 今日回踩{ret_pct:+.1f}% '
+                            f'乖离VWAP{rise_vwap:+.1f}% MA20{ma20_gap:+.1f}% 至止盈{upside:+.1f}% [{buy_point}]'),
+            })
+
+        # 诊断输出(首次)
+        if not self.tail_entry_debug_printed:
+            self.tail_entry_debug_printed = True
+            passed = len(signals)
+            print(f"\n{'='*70}")
+            print(f"🔍 「猎尾V4」中报池回踩扫描诊断 [{now.strftime('%H:%M:%S')}] 报告:{report_date}")
+            print(f"  精选池: {len(elite)}只 (S/A+修复>=80+兑现过滤+回踩确认)")
+            if no_quote_codes:
+                print(f"  无实时行情: {len(no_quote_codes)}只 {no_quote_codes[:5]}")
+            print(f"  二次确认拦截:")
+            for r2, codes in sorted(rejects.items(), key=lambda x: -len(x[1])):
+                print(f"    {r2}: {len(codes)}只 {codes[:5]}")
+            print(f"  通过二次确认: {passed}只")
+            if passed:
+                print(f"  总分范围: {min(s['total_score'] for s in signals)}~{max(s['total_score'] for s in signals)}")
+            print(f"{'='*70}\n")
+
+        signals.sort(key=lambda x: x['total_score'], reverse=True)
+        return signals
+
+    def _save_tail_recovery_signals_to_tracker(self, signals):
+        """
+        「猎尾V4」中报池回踩信号写入跟踪表 tail_signal_tracker_v4
+        入表筛选: total_score >= 65 + 排除北交所
+        """
+        if not signals:
+            return
+        try:
+            import json as _json
+            now = datetime.now()
+            signal_date = self._get_last_trade_date()
+            signal_time = now.strftime('%H:%M:%S')
+
+            conn = sqlite3.connect(self.tail_tracker_db, timeout=10.0)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS tail_signal_tracker_v4 (
+                    signal_date   TEXT NOT NULL,
+                    signal_time   TEXT,
+                    ts_code       TEXT NOT NULL,
+                    name          TEXT,
+                    theme         TEXT,
+                    signal        TEXT,
+                    total_score   INTEGER,
+                    quant_score   REAL,
+                    realtime_score INTEGER,
+                    wash_score    REAL,
+                    confidence    INTEGER,
+                    next_day_expectation TEXT,
+                    pct_chg       REAL,
+                    price         REAL,
+                    detail_json   TEXT,
+                    next_open     REAL,
+                    next_close    REAL,
+                    next_pct_chg  REAL,
+                    next_high     REAL,
+                    next_low      REAL,
+                    next_5d_pct   REAL,
+                    next_10d_pct  REAL,
+                    max_gain      REAL,
+                    max_drawdown  REAL,
+                    exit_date     TEXT,
+                    exit_price    REAL,
+                    exit_reason   TEXT,
+                    pnl           REAL,
+                    status        TEXT DEFAULT 'pending',
+                    note          TEXT,
+                    updated_at    TEXT,
+                    PRIMARY KEY (signal_date, ts_code)
+                )
+            ''')
+            candidates = []
+            for s in signals:
+                if s.get('total_score', 0) < 65:
+                    continue
+                code = s.get('ts_code', '')
+                if code.startswith(('9', '4')):
+                    continue
+                candidates.append(s)
+            if not candidates:
+                print(f"[跟踪V4] 无信号满足筛选条件(>=65+排北交所)")
+                conn.close()
+                return
+            for s in candidates:
+                conn.execute('''
+                    INSERT OR REPLACE INTO tail_signal_tracker_v4 (
+                        signal_date, signal_time, ts_code, name, theme, signal,
+                        total_score, quant_score, realtime_score, wash_score, confidence,
+                        next_day_expectation, pct_chg, price, detail_json,
+                        next_open, next_close, next_pct_chg, next_high, next_low,
+                        next_5d_pct, next_10d_pct, max_gain, max_drawdown,
+                        exit_date, exit_price, exit_reason, pnl, status, note, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL, 'pending', NULL, ?
+                    )
+                ''', (
+                    signal_date, signal_time, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
+                    s['total_score'], s.get('quant_score', 0), s.get('realtime_score', 0), s.get('wash_score', 0), s.get('confidence', 0),
+                    s.get('next_day_expectation', ''), s.get('pct_chg', 0), s.get('price', 0),
+                    _json.dumps(s.get('detail', {}), ensure_ascii=False),
+                    signal_time,
+                ))
+            conn.commit()
+            conn.close()
+            print(f"[跟踪V4] 已写入{len(candidates)}只信号到跟踪表V4 (>=65+排北交所, signal_date={signal_date})")
+        except Exception as e:
+            print(f"⚠ V4尾盘信号写入跟踪表失败: {e}")
 
     def scan_tail_end_entry(self):
         """

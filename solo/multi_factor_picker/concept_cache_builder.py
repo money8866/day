@@ -24,7 +24,11 @@ from datetime import datetime
 from loguru import logger
 
 import tushare as ts
-from main import load_config, get_token
+try:
+    from main import load_config, get_token
+except ImportError:
+    # 以 multi_factor_picker.main 模块方式导入时，顶层 d:\mystock\solo\main.py 会截获
+    from multi_factor_picker.main import load_config, get_token
 from data_fetcher import save_cache, load_cache, get_cache_dir
 
 # 配置日志

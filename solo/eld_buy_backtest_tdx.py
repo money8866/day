@@ -203,8 +203,9 @@ def run_backtest(start_date, end_date):
         if sig is not None and len(sig) > 0:
             sig = sig[sig['trade_date'] >= start_date]
             if len(sig) > 0:
-                # 标记是否 ELD 场景（预增公告后5-20交易日窗口）
+                # 标记是否 ELD 场景（预增公告后5-20交易日窗口）+ 窗口内第几天
                 sig['in_eld_window'] = False
+                sig['days_since_ann'] = 0
                 anns = forecast_map.get(ts_code, [])
                 if anns:
                     all_dates = sorted(df['trade_date'].unique().tolist())
@@ -220,6 +221,7 @@ def run_backtest(start_date, end_date):
                             days = date_idx[sig_date] - a_idx
                             if 5 <= days <= 20:
                                 sig.at[j, 'in_eld_window'] = True
+                                sig.at[j, 'days_since_ann'] = int(days)
                                 break
                 all_signals.append(sig)
 

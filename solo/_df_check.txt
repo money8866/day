@@ -1,0 +1,15 @@
+=== bull_stocks_all.csv 全部列 (67) ===
+code|name|industry|theme|主营产业|概念主题|产业景气|技术壁垒|订单爆发|业绩质量|龙头地位|预期差|机构认可|市值弹性|估值安全|筹码面|历史辨识度|业绩超预期|波段属性|预告变动%|预告偏离|PE_TTM|PB|现价|合理PE|合理估值(亿)|乐观估值(亿)|估值空间%|Bear价|Base价|Bull价|Bear概率%|Base概率%|Bull概率%|龙头类型|特征标签|Bull_v2.1分|主题分v2|最终分|等级|营收同比|利润同比|Q1利润同比|扣非利润同比|3年利润CAGR|现金流/营收比|资产负债率%|商誉占比%|应收增速%|存货增速%|扣非净利润(亿)|非经常损益%|ROE|毛利率|研发投入%|市值(亿)|资金流入(亿)|股东数变化%|公募持仓变化%|PEG|质押率%|解禁占比%|主题匹配方式|涨停次数|连板能力|60日收益%|日均成交额(亿)
+
+=== 交易面候选列 ===
+技术壁垒|资金流入(亿)|涨停次数|连板能力|60日收益%|日均成交额(亿)
+
+=== 样例值（宝丰能源 600989）===
+ 技术壁垒  资金流入(亿)  涨停次数  连板能力  60日收益%  日均成交额(亿)
+ 50.0      NaN     2     1     NaN       NaN
+
+=== themes via 分布 ===
+leader_company:66|dc_industry_board:3933|core_company:191|ths_concept:19|concept_fallback:47|sw_industry:5|stock_basic_industry:1|dc_industry:16
+
+=== 各主题 leader/core 龙头 ===
+AI算力:300308.SZ 中际旭创 via:leader_company|量子计算:002224.SZ 三力士 via:core_company|信创:688041.SH 海光信息 via:leader_company|智能驾驶:000716.SZ 黑芝麻 via:core_company|低空经济:300980.SZ 祥源新材 via:core_company|电力:600900.SH 长江电力 via:leader_company|消费电子:601567.SH 三星电气 via:core_company|商业航天:600118.SH 中国卫星 via:leader_company|机器人:300979.SZ 华利集团 via:core_company|军工:600760.SH 中航沈飞 via:leader_company|化工:600426.SH 华鲁恒升 via:leader_company|脑机接口:002173.SZ 创新医疗 via:leader_company|半导体:002371.SZ 北方华创 via:leader_company|新能源车:300750.SZ 宁德时代 via:leader_company|黄金:600547.SH 山东黄金 via:leader_company|消费:000333.SZ 美的集团 via:leader_company|可控核聚变:600363.SH 联创光电 via:leader_company|创新药:600276.SH 恒瑞医药 via:leader_company|合成生物:000930.SZ 中粮科技 via:core_company|高端材料:300777.SZ 中简科技 via:core_company|能源金属:600516.SH 方大炭素 via:leader_company|工业金属:600673.SH 东阳光 via:core_company|稀土永磁:000831.SZ 中国稀土 via:leader_company|小金属:600549.SH 厦门钨业 via:leader_company|银行:601398.SH 工商银行 via:leader_company|证券:600030.SH 中信证券 via:leader_company|煤炭:601088.SH 中国神华 via:leader_company|游戏:002555.SZ 三七互娱 via:leader_company

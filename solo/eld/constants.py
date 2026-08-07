@@ -171,6 +171,9 @@ CSV_COLUMNS: Final[list[str]] = [
     "buy_score",
     "buy_score_level",
     "buy_cons_count",
+    # 量能/事件窗口（回测实证: 非放量×ELD窗口才是alpha来源）
+    "volume_ratio",
+    "days_since_ann",
 ]
 
 

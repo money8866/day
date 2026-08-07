@@ -289,19 +289,23 @@ class DataFetcher:
         fields = 'ts_code,ann_date,f_ann_date,end_date,report_type,comp_type,end_type,basic_eps,diluted_eps,total_revenue,revenue,n_income,n_income_attr_p,rd_exp,total_profit,total_cogs,operate_profit,oper_exp'
         return self._retry_call(self.pro.income, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
 
-    @cached_api("balance", expire_hours=24*90)
+    @cached_api("balance_v14", expire_hours=24*90)
     def get_balance_sheet(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
-        """获取资产负债表(使用真实的Tushare字段名)"""
+        """获取资产负债表(使用真实的Tushare字段名)
+        v14: 缓存前缀加版本号 balance_v14，旧缓存(缺 goodwill/accounts_receiv/total_liability 列)自然失效"""
         # 关键字段: inventories(存货)、fix_assets(固定资产)、total_hldr_eqy_exc_min_int(股东权益)、total_assets
         # 新增需求链指标: contract_liability(合同负债)、advance_payment(预付款)
-        fields = 'ts_code,ann_date,f_ann_date,end_date,report_type,total_assets,total_current_assets,inventories,fix_assets,total_liability,total_hldr_eqy_exc_min_int,total_hldr_eqy_inc_min_int,contract_liability,advance_payment,operating_liability,operating_asset'
+        fields = 'ts_code,ann_date,f_ann_date,end_date,report_type,total_assets,total_current_assets,inventories,fix_assets,total_liability,total_hldr_eqy_exc_min_int,total_hldr_eqy_inc_min_int,contract_liability,advance_payment,operating_liability,operating_asset,goodwill,accounts_receiv'
         return self._retry_call(self.pro.balancesheet, ts_code=ts_code, start_year=start_year, end_year=end_year, fields=fields)
 
     @cached_api("cashflow", expire_hours=24*90)
     def get_cashflow(self, ts_code: str, start_year: str = None, end_year: str = None) -> pd.DataFrame:
-        """获取现金流量表"""
+        """获取现金流量表
+        注意: net_operate_cash_flow/cap_expend_ra 等字段需要更高积分权限，当前token不可用，
+              改用默认可用字段 n_cashflow_act(经营现金流净额)/c_pay_acq_const_fiolta(购建资产支付现金)
+        """
         return self._retry_call(self.pro.cashflow, ts_code=ts_code, start_year=start_year, end_year=end_year,
-                              fields='ts_code,ann_date,f_ann_date,end_date,report_type,net_operate_cash_flow,net_invest_cash_flow,payment_for_assets,cap_expend_ra')
+                              fields='ts_code,ann_date,f_ann_date,end_date,report_type,n_cashflow_act,n_cashflow_inv_act,n_cash_flows_fnc_act,c_pay_acq_const_fiolta')
 
     @cached_api("forecast", expire_hours=24*30)
     def get_forecast(self, ts_code: str) -> pd.DataFrame:

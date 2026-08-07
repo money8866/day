@@ -1086,15 +1086,15 @@ FINANCIAL_FIELDS = {
     ],
     "cashflow": [
         "ts_code", "end_date",
-        "net_operate_cash_flow", "net_invest_cash_flow",  # 经营现金流、投资现金流
-        "cap_expend_ra"  # 资本开支
+        "n_cashflow_act", "n_cashflow_inv_act",  # 经营现金流净额、投资现金流净额
+        "c_pay_acq_const_fiolta"  # 购建固定资产等支付的现金(资本开支)
     ]
 }
 
 # 计算公式配置
 DERIVED_METRICS = {
     "gross_margin": "gross_profit / revenue if revenue > 0",
-    "capex_to_revenue": "cap_expend_ra / revenue if revenue > 0",
+    "capex_to_revenue": "c_pay_acq_const_fiolta / revenue if revenue > 0",
     "inventory_turnover_change": "需要对比两年数据计算",
     "fixed_asset_turnover": "revenue / fix_assets if fix_assets > 0",
     "contract_liability_yoy": "需要对比两年数据计算",

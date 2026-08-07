@@ -110,8 +110,10 @@ mapped_n = len(eld_stocks) - len(unmapped)
 lines.append(f"> {mapped_n}/50映射主题 ｜ {mkt_str}")
 lines.append("")
 
-# ── 分级工具（Buy Score） ──
-_LEVEL_ICON = {"推荐买": "✅", "观察": "👀", "等回踩": "⏳", "禁止追高": "❌"}
+# ── 分级工具（Buy Score 三档风控） ──
+_LEVEL_ICON = {"可买": "✅", "谨慎": "👀", "禁止": "❌"}
+# 旧四档兼容映射（历史CSV可能仍是旧标签）
+_OLD_LEVEL_MAP = {"推荐买": "可买", "观察": "谨慎", "等回踩": "禁止", "禁止追高": "禁止"}
 
 def _buy_score_of(s) -> float:
     try:
@@ -119,12 +121,19 @@ def _buy_score_of(s) -> float:
     except (TypeError, ValueError):
         return 0.0
 
+def _v2_of(s) -> float:
+    try:
+        return float(s.get('final_score_v2', 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
 def _buy_level_of(s) -> str:
     lv = str(s.get("buy_score_level", "") or "")
+    lv = _OLD_LEVEL_MAP.get(lv, lv)
     if lv in _LEVEL_ICON:
         return lv
     bs = _buy_score_of(s)
-    return "推荐买" if bs > 80 else "观察" if bs >= 60 else "等回踩" if bs >= 40 else "禁止追高"
+    return "可买" if bs > 80 else "谨慎" if bs >= 60 else "禁止"
 
 def _bpt_cn(bpt: str) -> str:
     return {"VCP_PULLBACK": "回踩企稳", "MA20_BOUNCE": "MA20支撑", "MA10_BOUNCE": "MA10支撑",
@@ -141,6 +150,19 @@ def _is_chase(s) -> bool:
 def _not_operable(s) -> bool:
     """排除：机构派发 / 利好兑现"""
     return s['institution_state'] == '派发' or str(s.get('is_sell_on_news', '')).lower() == 'true'
+
+def _vol_of(s) -> float:
+    try:
+        return float(s.get("volume_ratio", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+def _dsa_of(s) -> int:
+    """公告后第几天（交易日）。0=无公告/未知"""
+    try:
+        return int(s.get("days_since_ann", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 # ── 一、今日研究价值 TOP10（V2 排序 · 回答"谁最值得研究"） ──
 lines.append("**📚 今日研究价值 TOP10（V2·谁最值得研究）**")
@@ -163,44 +185,38 @@ if _chase_cnt > 0:
     lines.append(f"> ⚠️ {_chase_cnt}只标注'追高'（乖离>15%高位/连板）：研究第一≠买入第一，仅供跟踪不可追买")
 lines.append("")
 
-# ── 二、今日可操作 TOP10（Buy Score 排序 · 回答"谁今天值得买"） ──
-# 可操作 = Buy≥60(推荐买/观察) + V2≥55(研究达标, 与BUY信号v2_min_for_buy一致) + 非派发/追高/利好兑现
-_tradeable = [s for s in eld_stocks
-              if _buy_score_of(s) >= 60
-              and float(s.get('final_score_v2', 0) or 0) >= 55
-              and not _not_operable(s)
-              and not _is_chase(s)]
-_wait_pull = [s for s in eld_stocks
-              if 40 <= _buy_score_of(s) < 60
-              and float(s.get('final_score_v2', 0) or 0) >= 55
-              and not _not_operable(s)
-              and not _is_chase(s)]
-lines.append("**🛒 今日可操作 TOP10（Buy≥60 且 V2≥55）**")
-if _tradeable:
-    if _market_weak_flag:
-        lines.append("> 弱市（大盘<MA20）：买点已整体降级，仅作观察名单，待大盘企稳再介入")
-    for s in sorted(_tradeable, key=lambda x: -_buy_score_of(x))[:10]:
-        buy = _buy_score_of(s)
-        lv = _buy_level_of(s)
-        lv_icon = _LEVEL_ICON.get(lv, "")
-        v2 = round(float(s['final_score_v2']))
-        inst = s["institution_state"]
-        q = round(float(s.get('buy_quality_score', 0) or 0))
-        qual = f" {_bpt_cn(s.get('buy_point_type', ''))}:{q}" if q > 0 else ""
-        bias = float(s.get('bias_pct', 0) or 0)
-        lines.append(f" - {s['name']} Buy:{buy:.0f}{lv_icon}({lv}) V2:{v2} {inst}{qual} 乖离{bias:+.1f}%{_price_str(s)}")
-elif _wait_pull:
-    if _market_weak_flag:
-        lines.append(" - 弱市无推荐买，以下等回踩（Buy40-60 且 V2≥55）：")
-    else:
-        lines.append(" - 今日无推荐买（Buy<60 或 V2<55），等回踩候选：")
-    for s in sorted(_wait_pull, key=lambda x: -_buy_score_of(x))[:5]:
-        lines.append(f"   · {s['name']} Buy:{_buy_score_of(s):.0f}{_LEVEL_ICON.get(_buy_level_of(s), '')}({_buy_level_of(s)}) V2:{round(float(s['final_score_v2']))} {s['institution_state']}")
+# ── 二、今日可操作 TOP10（V2 排序 · 回答"谁今天值得买"） ──
+# 可操作 = Buy风控通过(可买/谨慎) + V2≥55 + 非派发/追高 + 非放量(量比≤1.0) + 公告后5-12交易日
+# 回测实证: 放量alpha归零; 窗口13天后alpha转负(T+5 -0.6%)，只做5-12日
+lines.append("**🛒 今日可操作 TOP10（风控通过·量比≤1.0·公告后5-12日 · V2排序）**")
+if _market_weak_flag:
+    lines.append("")
+    lines.append("❌ 弱市禁止交易（回测实证：弱市月 ELD窗口 T+5 均值 -2.6%，事件alpha消失）")
+    lines.append("> 仅保留研究榜跟踪，等待大盘站上MA20后再开仓")
 else:
-    if _market_weak_flag:
-        lines.append(" - 无（弱市整体降级，等待大盘站上MA20再看）")
+    _tradeable = [s for s in eld_stocks
+                  if _buy_level_of(s) in ("可买", "谨慎")
+                  and _v2_of(s) >= 55
+                  and not _not_operable(s)
+                  and not _is_chase(s)
+                  and 0 < _vol_of(s) <= 1.0
+                  and 5 <= _dsa_of(s) <= 12]
+    if _tradeable:
+        for s in sorted(_tradeable, key=lambda x: -_v2_of(x))[:10]:
+            buy = _buy_score_of(s)
+            lv = _buy_level_of(s)
+            lv_icon = _LEVEL_ICON.get(lv, "")
+            v2 = round(_v2_of(s))
+            inst = s["institution_state"]
+            q = round(float(s.get('buy_quality_score', 0) or 0))
+            qual = f" {_bpt_cn(s.get('buy_point_type', ''))}:{q}" if q > 0 else ""
+            bias = float(s.get('bias_pct', 0) or 0)
+            vol = _vol_of(s)
+            dsa = _dsa_of(s)
+            lines.append(f" - {s['name']} V2:{v2} Buy:{buy:.0f}{lv_icon}({lv}) {inst}{qual} 量比{vol:.2f} 公告后{dsa}日 乖离{bias:+.1f}%{_price_str(s)}")
     else:
-        lines.append(" - 今日无 Buy≥60 可操作标的，等回踩或关注低吸买点段")
+        lines.append(" - 今日无符合条件标的（风控/量比≤1.0/公告后5-12日 至少一项未达标）")
+        lines.append(" - 可关注研究榜中机构吸筹、公告后13-20日的回调标的（临近窗口尾声，谨慎）")
 lines.append("")
 
 # ── 三、低吸买点（质量≥80 或 回踩企稳≥60，合并去重） ──
@@ -244,35 +260,27 @@ if distributors:
         lines.append(f" - {s['name']} V2:{v2} {_sig_cn(s['earnings_buy_signal'])}")
     lines.append("")
 
-# ── 五、操作策略（Buy Score 驱动） ──
+# ── 五、操作策略（Buy 风控 + V2 优先 + 回测实证） ──
 lines.append("**操作策略**")
 lines.append("")
-lines.append("入场：今日可操作榜 Buy≥60 标的 - 回调低吸，参考价附近分批建仓")
-lines.append("止损：收盘跌破止损价或MA10")
-# 优先关注：Buy≥60 可买 > Buy40-60 等回踩（均叠加 V2≥55，过滤派发+利好兑现+追高）
-def _v2_of(s) -> float:
-    try:
-        return float(s.get('final_score_v2', 0) or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-_focus_buy = [s for s in eld_stocks
-              if _buy_score_of(s) >= 60 and _v2_of(s) >= 55
-              and not _not_operable(s) and not _is_chase(s)]
-_focus_wait = [s for s in eld_stocks
-               if 40 <= _buy_score_of(s) < 60 and _v2_of(s) >= 55
-               and not _not_operable(s) and not _is_chase(s)]
-if _focus_buy:
-    _focus_buy.sort(key=lambda x: -_buy_score_of(x))
-    _txt = "、".join(f"{s['name']}(Buy{_buy_score_of(s):.0f})" for s in _focus_buy[:5])
-    lines.append(f"优先关注（Buy≥60 可买）：{_txt}")
-elif _focus_wait:
-    _focus_wait.sort(key=lambda x: -_buy_score_of(x))
-    _txt = "、".join(f"{s['name']}(Buy{_buy_score_of(s):.0f})" for s in _focus_wait[:5])
-    lines.append(f"优先关注（Buy40-60 等回踩）：{_txt}")
 if _market_weak_flag:
+    lines.append("❌ 今日禁止开仓（弱市，大盘<MA20）")
+    lines.append("> 等待大盘站上MA20，或强市信号出现后再按可操作榜执行")
+else:
+    lines.append("持仓周期：5-10 个交易日（回测实证 T+5 是有效周期，T+1 无净alpha）")
+    lines.append("预期收益：强市 ELD窗口 T+5 均值 +0.9%~+1.9%（胜率约50%，靠大赢家贡献）")
+    lines.append("仓位规则：每只等分建仓（单只不超过总仓位20%），跌破止损价严格执行")
+    lines.append("执行确认：以次日开盘价为准，高开>3%放弃本次买点；参考价为收盘价，实际买入+0.2%滑点")
     lines.append("")
-    lines.append("⚠️ 大盘<MA20 弱市提醒：买点信号已整体降级，重点等企稳信号")
+    _focus_buy = [s for s in eld_stocks
+                  if _buy_level_of(s) in ("可买", "谨慎") and _v2_of(s) >= 55
+                  and not _not_operable(s) and not _is_chase(s)
+                  and 0 < _vol_of(s) <= 1.0
+                  and 5 <= _dsa_of(s) <= 12]
+    if _focus_buy:
+        _focus_buy.sort(key=lambda x: -_v2_of(x))
+        _txt = "、".join(f"{s['name']}(V2{_v2_of(s):.0f})" for s in _focus_buy[:5])
+        lines.append(f"优先关注（风控通过+量比≤1.0）：{_txt}")
 
 # 合并消息
 msg = "\n".join(lines)

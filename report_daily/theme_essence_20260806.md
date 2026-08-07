@@ -4,9 +4,9 @@
 
 - 市场状态: **震荡**
 - 活跃主题: 28 个
-- 子主题: 89 个（活跃: 47 个）
-- 覆盖股票: 4729 只
-- Top Picks: 347 个
+- 子主题: 88 个（活跃: 48 个）
+- 覆盖股票: 4423 只
+- Top Picks: 341 个
 
 ### 买入信号分布
 
@@ -17,36 +17,37 @@
 
 ### ↑↑ 主升
 
-- **AI算力**: `光芯片`(56分)、`智算运营`(55分)、`IDC`(53分)  （股票363只, α均50.8）
-- **低空经济**: `空管/导航`(54分)、`低空基础设施`(54分)、`低空运营`(52分)  （股票262只, α均51.1）
-- **信创**: `信创`(64分)  （股票241只, α均51.2）
-- **军工**: `卫星/航天`(56分)、`雷达/电子对抗`(53分)、`军工电子/信息化`(49分)  （股票515只, α均50.6）
-- **创新药**: `CXO/CRO/CDMO`(54分)、`细胞/基因治疗`(47分)、`创新化药`(45分)  （股票373只, α均50.6）
-- **化工**: `精细化工/新材料`(56分)、`染料/颜料`(55分)、`氟化工/制冷剂`(53分)  （股票355只, α均50.6）
-- **合成生物**: `合成生物`(58分)  （股票268只, α均50.5）
-- **商业航天**: `商业航天`(57分)  （股票25只, α均51.6）
-- **小金属**: `小金属`(64分)  （股票38只, α均53.6）
-- **工业金属**: `工业金属`(62分)  （股票81只, α均51.1）
-- **新能源车**: `整车`(60分)、`汽车热管理`(53分)  （股票389只, α均50.7）
-- **智能驾驶**: `智能驾驶`(60分)  （股票274只, α均50.7）
-- **机器人**: `丝杠`(67分)、`空心杯电机`(59分)、`关节模组`(58分)  （股票684只, α均50.7）
-- **消费电子**: `连接器/结构件`(62分)、`显示面板`(56分)、`光学镜头`(55分)  （股票221只, α均51.5）
+- **AI算力**: `智算运营`(55分)、`光芯片`(55分)、`IDC`(53分)  （股票333只, α均50.9）
+- **低空经济**: `空管/导航`(54分)、`低空运营`(50分)  （股票83只, α均52.6）
+- **信创**: `信创`(64分)  （股票231只, α均51.2）
+- **军工**: `卫星/航天`(56分)、`雷达/电子对抗`(53分)、`军工电子/信息化`(49分)  （股票495只, α均50.6）
+- **创新药**: `CXO/CRO/CDMO`(54分)、`细胞/基因治疗`(47分)、`创新化药`(45分)  （股票354只, α均50.6）
+- **化工**: `精细化工/新材料`(56分)、`染料/颜料`(55分)、`氟化工/制冷剂`(53分)  （股票341只, α均50.6）
+- **可控核聚变**: `可控核聚变`(52分)  （股票13只, α均52.4）
+- **合成生物**: `合成生物`(58分)  （股票244只, α均50.6）
+- **商业航天**: `商业航天`(58分)  （股票24只, α均51.9）
+- **小金属**: `小金属`(64分)  （股票37只, α均53.9）
+- **工业金属**: `工业金属`(62分)  （股票79只, α均51.4）
+- **新能源车**: `整车`(60分)、`汽车热管理`(57分)  （股票384只, α均50.7）
+- **智能驾驶**: `智能驾驶`(60分)  （股票244只, α均50.8）
+- **机器人**: `丝杠`(66分)、`空心杯电机`(59分)、`关节模组`(58分)  （股票659只, α均50.7）
+- **消费电子**: `连接器/结构件`(62分)、`显示面板`(56分)、`光学镜头`(55分)  （股票202只, α均51.5）
 - **煤炭**: `煤炭`(59分)  （股票25只, α均52.0）
-- **电力**: `储能`(54分)  （股票467只, α均51.0）
-- **稀土永磁**: `稀土永磁`(60分)  （股票25只, α均52.0）
-- **能源金属**: `能源金属`(54分)  （股票18只, α均52.5）
-- **脑机接口**: `脑机接口`(51分)  （股票16只, α均52.1）
-- **量子计算**: `量子计算`(62分)  （股票70只, α均50.6）
-- **高端材料**: `高端材料`(61分)  （股票165只, α均50.8）
-- **黄金**: `黄金`(50分)  （股票6只, α均52.5）
+- **电力**: `储能`(54分)  （股票453只, α均51.0）
+- **稀土永磁**: `稀土永磁`(60分)  （股票23只, α均52.1）
+- **能源金属**: `能源金属`(55分)  （股票19只, α均53.2）
+- **脑机接口**: `脑机接口`(56分)  （股票47只, α均50.9）
+- **量子计算**: `量子计算`(62分)  （股票62只, α均50.8）
+- **高端材料**: `高端材料`(60分)  （股票166只, α均50.8）
+- **黄金**: `黄金`(55分)  （股票13只, α均53.9）
 
 ### ↑ 升温
 
-- **游戏**: `游戏`(59分)  （股票28只, α均51.8）
+- **游戏**: `游戏`(58分)  （股票24只, α均52.1）
 
 ## AI算力 ↑↑
 
-子主题 7 个 | 股票 363 只 | α均50.8 | F均45.4 | T均46.2 I均52.7 | 买入 0 个
+子主题 7 个 | 股票 333 只 | α均50.9 | F均46.1 | T均46.7 I均52.6 | 买入 0 个
 
 ### ↑ 光模块 `升温` [63分] 
 
@@ -58,16 +59,6 @@
 | 300308.SZ | 中际旭创 | Momentum | 53 | 55 | 49 | 56 | WATCH |
 | 300502.SZ | 新易盛 | Momentum | 52 | 55 | 49 | 56 | WATCH |
 
-### ↑↑ 光芯片 `主升` [56分] 
-
-| 代码 | 名称 | 角色 | α | F | T | I | 信号 |
-|------|------|------|----|----|----|----|------|
-| 300620.SZ | 光库科技 | Emotion Leader | 56 | 62 | 60 | 49 | WATCH |
-| 688313.SH | 仕佳光子 | Emotion Leader | 55 | 61 | 59 | 49 | WATCH |
-| 600105.SH | 永鼎股份 | Emotion Leader | 54 | 61 | 53 | 48 | WATCH |
-| 688498.SH | 源杰科技 | Follower | 50 | 52 | 47 | 49 | WATCH |
-| 688048.SH | 长光华芯 | Follower | 48 | 52 | 47 | 48 | WATCH |
-
 ### ↑↑ 智算运营 `主升` [55分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
@@ -77,6 +68,16 @@
 | 603985.SH | 恒润股份 | Institution Core | 50 | 52 | 52 | 47 | WATCH |
 | 002229.SZ | 鸿博股份 | Institution Core | 52 | 51 | 52 | 56 | WATCH |
 
+### ↑↑ 光芯片 `主升` [55分] 
+
+| 代码 | 名称 | 角色 | α | F | T | I | 信号 |
+|------|------|------|----|----|----|----|------|
+| 300620.SZ | 光库科技 | Emotion Leader | 56 | 62 | 60 | 49 | WATCH |
+| 688313.SH | 仕佳光子 | Emotion Leader | 55 | 61 | 59 | 49 | WATCH |
+| 600105.SH | 永鼎股份 | Emotion Leader | 54 | 60 | 53 | 48 | WATCH |
+| 688498.SH | 源杰科技 | Follower | 50 | 52 | 47 | 49 | WATCH |
+| 688048.SH | 长光华芯 | Follower | 48 | 52 | 47 | 48 | WATCH |
+
 ### ↓ AI服务器 `潜伏` [53分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
@@ -84,7 +85,7 @@
 | 601138.SH | 工业富联 | Momentum | 58 | 61 | 53 | 62 | WATCH |
 | 000938.SZ | 紫光股份 | Momentum | 54 | 59 | 52 | 60 | WATCH |
 | 000034.SZ | 神州数码 | Momentum | 51 | 55 | 49 | 59 | WATCH |
-| 603019.SH | 中科曙光 | Momentum | 49 | 53 | 48 | 55 | WATCH |
+| 603019.SH | 中科曙光 | Momentum | 49 | 53 | 47 | 55 | WATCH |
 | 002261.SZ | 拓维信息 | Momentum | 51 | 52 | 47 | 56 | WATCH |
 
 ### ↑↑ IDC `主升` [53分] 
@@ -97,14 +98,14 @@
 | 002929.SZ | 润建股份 | Emotion Leader | 64 | 63 | 61 | 53 | WATCH |
 | 600410.SH | 华胜天成 | Institution Core | 64 | 63 | 60 | 56 | WATCH |
 
-### ↑↑ PCB高速互连 `主升` [52分] 
+### ↑↑ PCB高速互连 `主升` [51分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 600330.SH | 天通股份 | Emotion Leader | 72 | 70 | 66 | 56 | WATCH |
-| 600601.SH | 方正科技 | Emotion Leader | 70 | 69 | 65 | 55 | WATCH |
-| 300476.SZ | 胜宏科技 | Emotion Leader | 69 | 67 | 64 | 54 | WATCH |
-| 301251.SZ | 威尔高 | Emotion Leader | 70 | 67 | 64 | 55 | WATCH |
+| 600601.SH | 方正科技 | Emotion Leader | 70 | 68 | 65 | 55 | WATCH |
+| 300476.SZ | 胜宏科技 | Emotion Leader | 69 | 67 | 63 | 54 | WATCH |
+| 301251.SZ | 威尔高 | Emotion Leader | 70 | 66 | 64 | 55 | WATCH |
 | 600183.SH | 生益科技 | Emotion Leader | 56 | 62 | 60 | 49 | WATCH |
 
 ### ↓ 液冷 `潜伏` [40分] ★
@@ -126,15 +127,15 @@
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 300319.SZ | 麦捷科技 | Momentum | 54 | 57 | 射频前端 | WATCH |
+| 300319.SZ | 麦捷科技 | Emotion Leader | 54 | 60 | 射频前端 | WATCH |
+| 688568.SH | 中科星图 | Institution Core | 59 | 60 | 商业航天 | WATCH |
 | 301095.SZ | 广立微 | Momentum | 52 | 56 | EDA/IP | WATCH |
-| 688041.SH | 海光信息 | Institution Core | 38 | 53 | 信创 | WATCH |
+| 688041.SH | 海光信息 | Institution Core | 38 | 52 | 信创 | WATCH |
 | 300735.SZ | 光弘科技 | Beta | 58 | 52 | AI终端/边缘AI | WATCH |
-| 920491.BJ | 奥迪威 | Institution Core | 39 | 46 | 力传感器 | WATCH |
 
-## 低空经济 ↑↑
+## 低空经济 ↓
 
-子主题 6 个 | 股票 262 只 | α均51.1 | F均41.1 | T均42.7 I均54.4 | 买入 0 个
+子主题 6 个 | 股票 83 只 | α均52.6 | F均48.0 | T均46.4 I均57.8 | 买入 0 个
 
 ### ↑↑ 空管/导航 `主升` [54分] 
 
@@ -142,26 +143,27 @@
 |------|------|------|----|----|----|----|------|
 | 002253.SZ | 川大智胜 | Momentum Leader | 52 | 56 | 55 | 56 | WATCH |
 
-### ↑↑ 低空基础设施 `主升` [54分] 
+### ↑↑ 低空运营 `主升` [50分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 002465.SZ | 海格通信 | Institution Core | 52 | 57 | 56 | 52 | WATCH |
-| 688631.SH | 莱斯信息 | Momentum Leader | 52 | 53 | 48 | 55 | WATCH |
-| 000801.SZ | 四川九洲 | Institution Core | 53 | 52 | 47 | 57 | WATCH |
-| 920036.BJ | 觅睿科技 |  | 52 | 39 | 42 | 54 | WATCH |
+| 688507.SH | 索辰科技 | Emotion Leader | 67 | 64 | 62 | 54 | WATCH |
+| 603990.SH | 麦迪科技 | Emotion Leader | 61 | 61 | 53 | 59 | WATCH |
+| 920806.BJ | 云星宇 | Momentum Leader | 66 | 60 | 59 | 66 | WATCH |
+| 920493.BJ | 并行科技 | Institution Core | 64 | 56 | 56 | 64 | WATCH |
+| 300397.SZ | 天和防务 | Institution Core | 49 | 53 | 53 | 50 | WATCH |
 
-### ↑↑ 低空运营 `主升` [52分] 
+### ↓ 低空基础设施 `潜伏` [46分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 688507.SH | 索辰科技 | Emotion Leader | 67 | 65 | 63 | 54 | WATCH |
-| 603990.SH | 麦迪科技 | Emotion Leader | 61 | 62 | 54 | 59 | WATCH |
-| 920806.BJ | 云星宇 | Momentum Leader | 67 | 61 | 60 | 66 | WATCH |
-| 920493.BJ | 并行科技 | Institution Core | 65 | 57 | 56 | 64 | WATCH |
-| 300397.SZ | 天和防务 | Institution Core | 50 | 54 | 53 | 51 | WATCH |
+| 301091.SZ | 深城交 | Momentum Leader | 56 | 51 | 46 | 62 | WATCH |
+| 002465.SZ | 海格通信 | Momentum | 51 | 51 | 46 | 60 | WATCH |
+| 603018.SH | 华设集团 | Momentum | 53 | 50 | 45 | 65 | WATCH |
+| 688631.SH | 莱斯信息 | Beta | 51 | 49 | 45 | 60 | WATCH |
+| 000801.SZ | 四川九洲 | Momentum | 52 | 48 | 44 | 64 | WATCH |
 
-### ↓ 无人机 `潜伏` [45分] ★
+### ↓ 无人机 `潜伏` [46分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
@@ -171,17 +173,17 @@
 | 688297.SH | 中无人机 | Momentum | 59 | 54 | 49 | 67 | WATCH |
 | 002414.SZ | 高德红外 | Momentum | 47 | 54 | 48 | 58 | WATCH |
 
-### ↓ eVTOL/飞行汽车 `潜伏` [38分] 
+### ↓ eVTOL/飞行汽车 `潜伏` [40分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 601021.SH | 春秋航空 | Momentum | 60 | 56 | 50 | 68 | WATCH |
-| 600029.SH | 南方航空 | Momentum | 59 | 55 | 49 | 68 | WATCH |
-| 600115.SH | 中国东航 | Momentum | 63 | 55 | 49 | 69 | WATCH |
-| 601111.SH | 中国国航 | Momentum | 59 | 53 | 48 | 67 | WATCH |
-| 600316.SH | 洪都航空 | Momentum | 53 | 53 | 48 | 61 | WATCH |
+| 002171.SZ | 楚江新材 | Momentum | 56 | 52 | 47 | 57 | WATCH |
+| 600038.SH | 中直股份 | Momentum | 54 | 51 | 46 | 70 | WATCH |
+| 002085.SZ | 万丰奥威 | Momentum | 57 | 50 | 46 | 66 | WATCH |
+| 300690.SZ | 双一科技 | Beta | 55 | 49 | 45 | 62 | WATCH |
+| 300775.SZ | 三角防务 | Beta | 52 | 49 | 45 | 60 | WATCH |
 
-### ↓ 航空材料 `潜伏` [32分] ★
+### ↓ 航空材料 `潜伏` [33分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
@@ -190,9 +192,9 @@
 
 **主题 Top Picks:**
 
-- 春秋航空 `Momentum` α=60 T=50 Signal=WATCH
-- 海特高新 `Momentum Leader` α=52 T=49 Signal=WATCH
-- 南方航空 `Momentum` α=59 T=49 Signal=WATCH
+- 楚江新材 `Momentum` α=56 T=47 Signal=WATCH
+- 中直股份 `Momentum` α=54 T=46 Signal=WATCH
+- 海特高新 `Momentum Leader` α=54 T=45 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
@@ -206,14 +208,14 @@
 
 ## 信创 ↑↑
 
-子主题 1 个 | 股票 241 只 | α均51.2 | F均51.2 | T均50.1 I均55.0 | 买入 0 个
+子主题 1 个 | 股票 231 只 | α均51.2 | F均51.7 | T均50.5 I均55.1 | 买入 0 个
 
 ### ↑↑ 信创 `主升` [64分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 603106.SH | 恒银科技 | Momentum Leader | 58 | 69 | 59 | 63 | WATCH |
-| 300941.SZ | 创识科技 | Momentum Leader | 64 | 69 | 59 | 65 | WATCH |
+| 300941.SZ | 创识科技 | Momentum Leader | 63 | 69 | 59 | 65 | WATCH |
 | 300188.SZ | 国投智能 | Momentum Leader | 71 | 69 | 66 | 68 | WATCH |
 | 300386.SZ | 飞天诚信 | Momentum Leader | 58 | 69 | 59 | 58 | WATCH |
 | 300311.SZ | 任子行 | Momentum Leader | 64 | 68 | 58 | 64 | WATCH |
@@ -229,24 +231,24 @@
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 301396.SZ | 宏景科技 | Emotion Leader | 69 | 68 | IDC | WATCH |
-| 002990.SZ | 盛视科技 | Emotion Leader | 65 | 68 | 智能驾驶 | WATCH |
-| 300170.SZ | 汉得信息 | Momentum Leader | 67 | 66 | 智能驾驶 | WATCH |
-| 601360.SH | 三六零 | Institution Core | 67 | 63 | 智能驾驶 | WATCH |
+| 002990.SZ | 盛视科技 | Emotion Leader | 64 | 67 | 智能驾驶 | WATCH |
+| 300170.SZ | 汉得信息 | Momentum Leader | 66 | 66 | 智能驾驶 | WATCH |
+| 601360.SH | 三六零 | Institution Core | 66 | 63 | 智能驾驶 | WATCH |
 | 301248.SZ | 杰创智能 | Emotion Leader | 60 | 62 | IDC | WATCH |
 
 ## 军工 ↓
 
-子主题 7 个 | 股票 515 只 | α均50.6 | F均40.3 | T均42.4 I均52.9 | 买入 0 个
+子主题 7 个 | 股票 495 只 | α均50.6 | F均40.4 | T均42.4 I均53.1 | 买入 0 个
 
 ### ↑↑ 卫星/航天 `主升` [56分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 002446.SZ | 盛路通信 | Institution Core | 71 | 66 | 63 | 55 | WATCH |
-| 001270.SZ | 铖昌科技 | Emotion Leader | 69 | 65 | 61 | 54 | WATCH |
-| 688002.SH | 睿创微纳 | Momentum Leader | 66 | 63 | 61 | 61 | WATCH |
-| 002413.SZ | 雷科防务 | Institution Core | 65 | 62 | 60 | 57 | WATCH |
-| 000547.SZ | 航天发展 | Institution Core | 58 | 60 | 58 | 54 | WATCH |
+| 001270.SZ | 铖昌科技 | Emotion Leader | 68 | 64 | 61 | 54 | WATCH |
+| 688002.SH | 睿创微纳 | Momentum Leader | 67 | 63 | 61 | 61 | WATCH |
+| 002413.SZ | 雷科防务 | Institution Core | 66 | 62 | 61 | 58 | WATCH |
+| 000547.SZ | 航天发展 | Institution Core | 59 | 60 | 58 | 54 | WATCH |
 
 ### ↑↑ 雷达/电子对抗 `主升` [53分] 
 
@@ -301,7 +303,7 @@
 
 **主题 Top Picks:**
 
-- 铖昌科技 `Emotion Leader` α=69 T=61 Signal=WATCH
+- 铖昌科技 `Emotion Leader` α=68 T=61 Signal=WATCH
 - 隆华科技 `Institution Core` α=53 T=55 Signal=WATCH
 - 振华科技 `Institution Core` α=52 T=53 Signal=WATCH
 
@@ -317,7 +319,7 @@
 
 ## 创新药 ↑↑
 
-子主题 7 个 | 股票 373 只 | α均50.6 | F均41.8 | T均43.3 I均52.4 | 买入 0 个
+子主题 7 个 | 股票 354 只 | α均50.6 | F均42.1 | T均43.5 I均52.4 | 买入 0 个
 
 ### ↑↑ CXO/CRO/CDMO `主升` [54分] 
 
@@ -374,7 +376,7 @@
 | 688235.SH | 百济神州 | Momentum Leader | 61 | 60 | 52 | 57 | WATCH |
 | 000518.SZ | 四环生物 | Momentum Leader | 59 | 59 | 58 | 55 | WATCH |
 | 000504.SZ | 南华生物 | Momentum Leader | 58 | 57 | 56 | 54 | WATCH |
-| 002030.SZ | 达安基因 | Institution Core | 63 | 57 | 57 | 65 | WATCH |
+| 002030.SZ | 达安基因 | Institution Core | 63 | 57 | 56 | 65 | WATCH |
 | 301166.SZ | 优宁维 | Momentum Leader | 59 | 56 | 56 | 55 | WATCH |
 
 ### ↓↓ 疫苗 `退潮` [45分] 
@@ -398,14 +400,14 @@
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 688621.SH | 阳光诺和 |  | 50 | 37 | 创新药 | WATCH |
-| 000756.SZ | 新华制药 |  | 50 | 37 | 创新药 | WATCH |
-| 002020.SZ | 京新药业 |  | 50 | 37 | 创新药 | WATCH |
-| 600513.SH | 联环药业 |  | 50 | 37 | 创新药 | WATCH |
-| 002393.SZ | 力生制药 |  | 50 | 37 | 创新药 | WATCH |
+| 000650.SZ | 仁和药业 |  | 50 | 37 | 创新药 | WATCH |
+| 300534.SZ | 陇神戎发 |  | 50 | 37 | 创新药 | WATCH |
+| 002019.SZ | 亿帆医药 |  | 50 | 37 | 创新药 | WATCH |
+| 300683.SZ | 海特生物 |  | 50 | 37 | 创新药 | WATCH |
 
 ## 化工 ↑↑
 
-子主题 5 个 | 股票 355 只 | α均50.6 | F均41.8 | T均43.6 I均52.8 | 买入 0 个
+子主题 5 个 | 股票 341 只 | α均50.6 | F均42.0 | T均43.8 I均52.8 | 买入 0 个
 
 ### ↑↑ 精细化工/新材料 `主升` [56分] 
 
@@ -437,7 +439,7 @@
 | 002140.SZ | 东华科技 | Institution Core | 54 | 52 | 52 | 57 | WATCH |
 | 003002.SZ | 壶化股份 | Institution Core | 51 | 51 | 52 | 52 | WATCH |
 
-### ↑↑ 聚氨酯/MDI `主升` [52分] 
+### ↑↑ 聚氨酯/MDI `主升` [53分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
@@ -467,14 +469,14 @@
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 601208.SH | 东材科技 | Emotion Leader | 54 | 64 | 高端材料 | WATCH |
+| 603650.SH | 彤程新材 | Momentum | 51 | 56 | 半导体材料 | WATCH |
 | 300387.SZ | 富邦科技 | Institution Core | 57 | 56 | 合成生物 | WATCH |
 | 603276.SH | 恒兴新材 | Institution Core | 56 | 56 | 合成生物 | WATCH |
-| 603650.SH | 彤程新材 | Momentum | 51 | 56 | 半导体材料 | WATCH |
 | 300200.SZ | 高盟新材 | Institution Core | 47 | 54 | 高端材料 | WATCH |
 
 ## 半导体 ↓
 
-子主题 10 个 | 股票 291 只 | α均51.1 | F均46.4 | T均45.0 I均53.9 | 买入 0 个
+子主题 10 个 | 股票 286 只 | α均51.1 | F均46.5 | T均45.0 I均53.8 | 买入 0 个
 
 ### ↓ 晶圆制造 `潜伏` [50分] ★
 
@@ -584,43 +586,43 @@
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 001270.SZ | 铖昌科技 | Emotion Leader | 69 | 65 | 卫星/航天 | WATCH |
-| 300139.SZ | 晓程科技 | Momentum | 72 | 64 | 电网/特高压 | WATCH |
+| 001270.SZ | 铖昌科技 | Emotion Leader | 68 | 64 | 卫星/航天 | WATCH |
 | 600183.SH | 生益科技 | Emotion Leader | 56 | 62 | PCB高速互连 | WATCH |
 | 603203.SH | 快克智能 | Momentum | 54 | 61 | 机器视觉 | WATCH |
 | 300054.SZ | 鼎龙股份 | Emotion Leader | 53 | 60 | 精细化工/新材料 | WATCH |
+| 300398.SZ | 飞凯材料 | Emotion Leader | 45 | 58 | 精细化工/新材料 | WATCH |
 
-## 可控核聚变 ↓
+## 可控核聚变 ↑↑
 
-子主题 1 个 | 股票 11 只 | α均52.4 | F均48.4 | T均46.3 I均56.9 | 买入 0 个
+子主题 1 个 | 股票 13 只 | α均52.4 | F均53.2 | T均51.7 I均52.3 | 买入 0 个
 
-### ↓ 可控核聚变 `潜伏` [39分] 
+### ↑↑ 可控核聚变 `主升` [52分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 601179.SH | 中国西电 | Momentum | 59 | 54 | 48 | 66 | WATCH |
-| 920576.BJ | 天力复合 | Momentum | 54 | 52 | 47 | 56 | WATCH |
-| 000969.SZ | 安泰科技 | Momentum | 52 | 49 | 45 | 60 | WATCH |
-| 002176.SZ | 江特电机 | Momentum Leader | 59 | 49 | 51 | 58 | WATCH |
-| 688776.SH | 国光电气 | Beta | 51 | 48 | 44 | 56 | WATCH |
+| 603011.SH | 合锻智能 | Institution Core | 60 | 62 | 60 | 51 | WATCH |
+| 000962.SZ | 东方钽业 | Emotion Leader | 56 | 61 | 59 | 49 | WATCH |
+| 002176.SZ | 江特电机 | Institution Core | 60 | 58 | 57 | 59 | WATCH |
+| 601179.SH | 中国西电 | Institution Core | 60 | 58 | 57 | 58 | WATCH |
+| 920576.BJ | 天力复合 | Institution Core | 52 | 54 | 52 | 48 | WATCH |
 
 **主题 Top Picks:**
 
-- 江特电机 `Momentum Leader` α=59 T=51 Signal=WATCH
-- 中国西电 `Momentum` α=59 T=48 Signal=WATCH
-- 天力复合 `Momentum` α=54 T=47 Signal=WATCH
+- 合锻智能 `Institution Core` α=60 T=60 Signal=WATCH
+- 东方钽业 `Emotion Leader` α=56 T=59 Signal=WATCH
+- 江特电机 `Institution Core` α=60 T=57 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 600105.SH | 永鼎股份 | Emotion Leader | 54 | 61 | 光芯片 | WATCH |
+| 600105.SH | 永鼎股份 | Emotion Leader | 54 | 60 | 光芯片 | WATCH |
 | 688122.SH | 西部超导 | Beta | 52 | 51 | 军工材料 | WATCH |
 | 603819.SH | 神力股份 |  | 50 | 38 | 机器人 | WATCH |
 
 ## 合成生物 ↑↑
 
-子主题 1 个 | 股票 268 只 | α均50.5 | F均42.6 | T均43.9 I均53.2 | 买入 0 个
+子主题 1 个 | 股票 244 只 | α均50.6 | F均43.1 | T均44.2 I均53.3 | 买入 0 个
 
 ### ↑↑ 合成生物 `主升` [58分] 
 
@@ -629,7 +631,7 @@
 | 301047.SZ | 义翘神州 | Momentum Leader | 74 | 71 | 60 | 68 | WATCH |
 | 688105.SH | 诺唯赞 | Momentum Leader | 74 | 69 | 65 | 69 | WATCH |
 | 688046.SH | 药康生物 | Emotion Leader | 67 | 67 | 63 | 65 | WATCH |
-| 605589.SH | 圣泉集团 | Emotion Leader | 58 | 65 | 56 | 50 | WATCH |
+| 605589.SH | 圣泉集团 | Emotion Leader | 57 | 64 | 56 | 50 | WATCH |
 | 300358.SZ | 楚天科技 | Momentum Leader | 66 | 64 | 61 | 66 | WATCH |
 
 **主题 Top Picks:**
@@ -650,52 +652,52 @@
 
 ## 商业航天 ↑↑
 
-子主题 1 个 | 股票 25 只 | α均51.6 | F均51.6 | T均49.3 I均53.9 | 买入 0 个
+子主题 1 个 | 股票 24 只 | α均51.9 | F均53.3 | T均50.8 I均53.2 | 买入 0 个
 
-### ↑↑ 商业航天 `主升` [57分] 
+### ↑↑ 商业航天 `主升` [58分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 301302.SZ | 华如科技 | Momentum Leader | 62 | 62 | 60 | 59 | WATCH |
-| 600343.SH | 航天动力 | Institution Core | 53 | 59 | 57 | 48 | WATCH |
-| 301213.SZ | 观想科技 | Momentum Leader | 56 | 58 | 57 | 56 | WATCH |
-| 000901.SZ | 航天科技 | Institution Core | 50 | 56 | 55 | 51 | WATCH |
-| 688552.SH | 航天南湖 | Institution Core | 54 | 54 | 49 | 56 | WATCH |
+| 301302.SZ | 华如科技 | Momentum Leader | 64 | 63 | 61 | 60 | WATCH |
+| 688568.SH | 中科星图 | Institution Core | 59 | 60 | 58 | 55 | WATCH |
+| 688523.SH | 航天环宇 | Momentum Leader | 56 | 59 | 56 | 50 | WATCH |
+| 600343.SH | 航天动力 | Institution Core | 52 | 58 | 57 | 48 | WATCH |
+| 301213.SZ | 观想科技 | Momentum Leader | 56 | 58 | 56 | 56 | WATCH |
 
 **主题 Top Picks:**
 
-- 华如科技 `Momentum Leader` α=62 T=60 Signal=WATCH
-- 航天动力 `Institution Core` α=53 T=57 Signal=WATCH
-- 中天火箭 `Emotion Leader` α=46 T=52 Signal=WATCH
+- 华如科技 `Momentum Leader` α=64 T=61 Signal=WATCH
+- 中科星图 `Institution Core` α=59 T=58 Signal=WATCH
+- 航天动力 `Institution Core` α=52 T=57 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 001270.SZ | 铖昌科技 | Emotion Leader | 69 | 65 | 卫星/航天 | WATCH |
-| 600118.SH | 中国卫星 | Institution Core | 54 | 58 | 卫星/航天 | WATCH |
-| 300762.SZ | 上海瀚讯 | Institution Core | 44 | 51 | 卫星/航天 | WATCH |
-| 600879.SH | 航天电子 | Institution Core | 40 | 51 | 卫星/航天 | WATCH |
-| 002025.SZ | 航天电器 | Institution Core | 45 | 51 | 卫星/航天 | WATCH |
+| 001270.SZ | 铖昌科技 | Emotion Leader | 68 | 64 | 卫星/航天 | WATCH |
+| 600118.SH | 中国卫星 | Institution Core | 55 | 58 | 卫星/航天 | WATCH |
+| 300762.SZ | 上海瀚讯 | Institution Core | 45 | 52 | 卫星/航天 | WATCH |
+| 600879.SH | 航天电子 | Institution Core | 41 | 52 | 卫星/航天 | WATCH |
+| 688122.SH | 西部超导 | Beta | 52 | 51 | 军工材料 | WATCH |
 
 ## 小金属 ↑↑
 
-子主题 1 个 | 股票 38 只 | α均53.6 | F均55.5 | T均52.4 I均54.3 | 买入 0 个
+子主题 1 个 | 股票 37 只 | α均53.9 | F均56.7 | T均53.0 I均54.5 | 买入 0 个
 
 ### ↑↑ 小金属 `主升` [64分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 600549.SH | 厦门钨业 | Emotion Leader | 66 | 70 | 66 | 53 | WATCH |
-| 002842.SZ | 翔鹭钨业 | Emotion Leader | 62 | 67 | 64 | 52 | WATCH |
+| 000426.SZ | 兴业银锡 | Emotion Leader | 70 | 70 | 59 | 62 | WATCH |
+| 600549.SH | 厦门钨业 | Emotion Leader | 65 | 69 | 65 | 53 | WATCH |
+| 002842.SZ | 翔鹭钨业 | Emotion Leader | 60 | 66 | 63 | 51 | WATCH |
 | 301026.SZ | 浩通科技 | Momentum Leader | 65 | 66 | 57 | 62 | WATCH |
-| 600961.SH | 株冶集团 | Emotion Leader | 64 | 66 | 57 | 57 | WATCH |
-| 002378.SZ | 章源钨业 | Institution Core | 62 | 64 | 61 | 52 | WATCH |
+| 600961.SH | 株冶集团 | Emotion Leader | 62 | 65 | 56 | 56 | WATCH |
 
 **主题 Top Picks:**
 
-- 厦门钨业 `Emotion Leader` α=66 T=66 Signal=WATCH
-- 章源钨业 `Institution Core` α=62 T=61 Signal=WATCH
+- 章源钨业 `Institution Core` α=60 T=60 Signal=WATCH
+- 兴业银锡 `Emotion Leader` α=70 T=59 Signal=WATCH
 - 浩通科技 `Momentum Leader` α=65 T=57 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
@@ -703,44 +705,44 @@
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 000657.SZ | 中钨高新 | Emotion Leader | 67 | 71 | 工业金属 | WATCH |
-| 002167.SZ | 东方锆业 | Emotion Leader | 57 | 65 | 稀土永磁 | WATCH |
 | 002182.SZ | 宝武镁业 | Institution Core | 70 | 65 | 整车 | WATCH |
-| 600362.SH | 江西铜业 | Emotion Leader | 64 | 64 | 工业金属 | WATCH |
+| 002167.SZ | 东方锆业 | Emotion Leader | 57 | 65 | 稀土永磁 | WATCH |
+| 600362.SH | 江西铜业 | Emotion Leader | 65 | 64 | 工业金属 | WATCH |
 | 000831.SZ | 中国稀土 | Momentum Leader | 67 | 63 | 稀土永磁 | WATCH |
 
 ## 工业金属 ↑↑
 
-子主题 1 个 | 股票 81 只 | α均51.1 | F均54.0 | T均51.1 I均54.9 | 买入 0 个
+子主题 1 个 | 股票 79 只 | α均51.4 | F均54.6 | T均51.5 I均55.1 | 买入 0 个
 
 ### ↑↑ 工业金属 `主升` [62分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 000657.SZ | 中钨高新 | Emotion Leader | 67 | 71 | 60 | 54 | WATCH |
-| 000426.SZ | 兴业银锡 | Emotion Leader | 70 | 71 | 60 | 63 | WATCH |
-| 688456.SH | 有研粉材 | Emotion Leader | 62 | 66 | 57 | 52 | WATCH |
-| 000603.SZ | 盛达资源 | Momentum Leader | 62 | 65 | 56 | 64 | WATCH |
+| 688456.SH | 有研粉材 | Emotion Leader | 63 | 67 | 57 | 52 | WATCH |
+| 601899.SH | 紫金矿业 | Momentum Leader | 71 | 66 | 57 | 68 | WATCH |
 | 000630.SZ | 铜陵有色 | Institution Core | 70 | 65 | 56 | 64 | WATCH |
+| 000603.SZ | 盛达资源 | Momentum Leader | 63 | 65 | 56 | 64 | WATCH |
 
 **主题 Top Picks:**
 
 - 中钨高新 `Emotion Leader` α=67 T=60 Signal=WATCH
-- 盛达资源 `Momentum Leader` α=62 T=56 Signal=WATCH
+- 紫金矿业 `Momentum Leader` α=71 T=57 Signal=WATCH
 - 铜陵有色 `Institution Core` α=70 T=56 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 600549.SH | 厦门钨业 | Emotion Leader | 66 | 70 | 小金属 | WATCH |
-| 000751.SZ | 锌业股份 | Institution Core | 64 | 63 | 小金属 | WATCH |
-| 600301.SH | 华锡有色 | Momentum Leader | 56 | 60 | 小金属 | WATCH |
-| 603799.SH | 华友钴业 | Institution Core | 61 | 59 | 能源金属 | WATCH |
-| 600259.SH | 中稀有色 | Momentum Leader | 55 | 59 | 稀土永磁 | WATCH |
+| 000426.SZ | 兴业银锡 | Emotion Leader | 70 | 70 | 小金属 | WATCH |
+| 600549.SH | 厦门钨业 | Emotion Leader | 65 | 69 | 小金属 | WATCH |
+| 000751.SZ | 锌业股份 | Institution Core | 63 | 63 | 小金属 | WATCH |
+| 603799.SH | 华友钴业 | Institution Core | 66 | 62 | 整车 | WATCH |
+| 600301.SH | 华锡有色 | Momentum Leader | 54 | 59 | 小金属 | WATCH |
 
 ## 新能源车 ↓
 
-子主题 6 个 | 股票 389 只 | α均50.7 | F均48.7 | T均46.1 I均54.7 | 买入 0 个
+子主题 5 个 | 股票 384 只 | α均50.7 | F均49.0 | T均46.3 I均54.7 | 买入 0 个
 
 ### ↑↑ 整车 `主升` [60分] ★
 
@@ -748,61 +750,52 @@
 |------|------|------|----|----|----|----|------|
 | 300283.SZ | 温州宏丰 | Emotion Leader | 67 | 68 | 58 | 54 | WATCH |
 | 300127.SZ | 银河磁体 | Momentum Leader | 71 | 68 | 58 | 63 | WATCH |
-| 002355.SZ | 兴民智通 | Momentum Leader | 71 | 67 | 58 | 68 | WATCH |
+| 002355.SZ | 兴民智通 | Momentum Leader | 71 | 68 | 58 | 68 | WATCH |
 | 002182.SZ | 宝武镁业 | Institution Core | 70 | 65 | 56 | 63 | WATCH |
-| 300619.SZ | 金银河 | Institution Core | 68 | 64 | 56 | 58 | WATCH |
+| 300619.SZ | 金银河 | Institution Core | 67 | 64 | 56 | 58 | WATCH |
 
-### ↑↑ 汽车热管理 `主升` [53分] 
+### ↑↑ 汽车热管理 `主升` [57分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 603158.SH | 腾龙股份 | Momentum Leader | 56 | 58 | 56 | 54 | WATCH |
-| 000887.SZ | 中鼎股份 | Institution Core | 56 | 57 | 56 | 53 | WATCH |
+| 603158.SH | 腾龙股份 | Momentum Leader | 56 | 58 | 56 | 53 | WATCH |
+| 000887.SZ | 中鼎股份 | Institution Core | 55 | 58 | 56 | 53 | WATCH |
+| 002050.SZ | 三花智控 | Institution Core | 52 | 54 | 54 | 48 | WATCH |
 | 601689.SH | 拓普集团 | Institution Core | 52 | 54 | 54 | 48 | WATCH |
-| 002050.SZ | 三花智控 | Institution Core | 51 | 53 | 53 | 48 | WATCH |
-| 002126.SZ | 银轮股份 | Institution Core | 46 | 51 | 50 | 46 | WATCH |
+| 002126.SZ | 银轮股份 | Institution Core | 47 | 52 | 51 | 46 | WATCH |
 
 ### ↓ 充电桩 `潜伏` [44分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 300820.SZ | 英杰电气 | Momentum | 63 | 64 | 56 | 60 | WATCH |
-| 603333.SH | 福华尚纬 | Momentum | 73 | 63 | 55 | 77 | WATCH |
+| 300820.SZ | 英杰电气 | Momentum | 62 | 64 | 56 | 60 | WATCH |
+| 603333.SH | 福华尚纬 | Momentum | 73 | 64 | 55 | 77 | WATCH |
 | 300811.SZ | 铂科新材 | Momentum | 62 | 63 | 55 | 60 | WATCH |
 | 600869.SH | 远东股份 | Momentum | 54 | 60 | 52 | 57 | WATCH |
-| 002870.SZ | 香山股份 | Momentum | 56 | 57 | 50 | 66 | WATCH |
+| 002870.SZ | 香山股份 | Momentum | 55 | 57 | 51 | 66 | WATCH |
 
 ### ↓ 电驱/电控 `潜伏` [40分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 300681.SZ | 英搏尔 | Momentum | 52 | 54 | 48 | 56 | WATCH |
-| 688280.SH | 精进电动 | Beta | 53 | 53 | 47 | 60 | WATCH |
-| 300124.SZ | 汇川技术 | Momentum | 52 | 51 | 46 | 64 | WATCH |
+| 688280.SH | 精进电动 | Beta | 53 | 53 | 48 | 60 | WATCH |
+| 300124.SZ | 汇川技术 | Momentum | 52 | 52 | 47 | 64 | WATCH |
 | 002249.SZ | 大洋电机 | Momentum | 53 | 48 | 44 | 65 | WATCH |
-
-### ↓ 智能座舱 `潜伏` [38分] ★
-
-| 代码 | 名称 | 角色 | α | F | T | I | 信号 |
-|------|------|------|----|----|----|----|------|
-| 600699.SH | 均胜电子 | Momentum | 53 | 50 | 46 | 64 | WATCH |
-| 688326.SH | 经纬恒润 | Beta | 52 | 49 | 45 | 61 | WATCH |
-| 002906.SZ | 华阳集团 | Momentum | 54 | 48 | 44 | 65 | WATCH |
-| 002920.SZ | 德赛西威 | Beta | 52 | 46 | 42 | 65 | WATCH |
 
 ### ↓ 动力电池 `潜伏` [38分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 002074.SZ | 国轩高科 | Momentum | 52 | 51 | 46 | 68 | WATCH |
-| 300750.SZ | 宁德时代 | Momentum | 54 | 50 | 46 | 70 | WATCH |
+| 300750.SZ | 宁德时代 | Momentum | 54 | 51 | 46 | 70 | WATCH |
 | 688567.SH | 孚能科技 | Beta | 52 | 49 | 45 | 61 | WATCH |
 
 **主题 Top Picks:**
 
 - 英搏尔 `Momentum` α=52 T=48 Signal=WATCH
-- 精进电动 `Beta` α=53 T=47 Signal=WATCH
-- 汇川技术 `Momentum` α=52 T=46 Signal=WATCH
+- 精进电动 `Beta` α=53 T=48 Signal=WATCH
+- 汇川技术 `Momentum` α=52 T=47 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
@@ -811,28 +804,28 @@
 | 600875.SH | 东方电气 | Momentum | 65 | 60 | 风电 | WATCH |
 | 300580.SZ | 贝斯特 | Momentum Leader | 51 | 57 | 丝杠 | WATCH |
 | 002536.SZ | 飞龙股份 | Momentum | 53 | 55 | 液冷 | WATCH |
-| 300919.SZ | 中伟新材 | Institution Core | 51 | 51 | 能源金属 | WATCH |
+| 300919.SZ | 中伟新材 | Follower | 50 | 51 | 能源金属 | WATCH |
 | 600406.SH | 国电南瑞 | Momentum | 54 | 51 | 电网/特高压 | WATCH |
 
 ## 智能驾驶 ↑↑
 
-子主题 1 个 | 股票 274 只 | α均50.7 | F均48.6 | T均48.1 I均54.2 | 买入 0 个
+子主题 1 个 | 股票 244 只 | α均50.8 | F均49.3 | T均48.6 I均54.3 | 买入 0 个
 
 ### ↑↑ 智能驾驶 `主升` [60分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 002649.SZ | 博彦科技 | Momentum Leader | 65 | 72 | 61 | 66 | WATCH |
-| 603776.SH | 永安行 | Momentum Leader | 71 | 70 | 59 | 64 | WATCH |
-| 002990.SZ | 盛视科技 | Emotion Leader | 65 | 68 | 64 | 53 | WATCH |
-| 301236.SZ | 软通动力 | Momentum Leader | 67 | 67 | 57 | 58 | WATCH |
-| 300170.SZ | 汉得信息 | Momentum Leader | 67 | 66 | 57 | 65 | WATCH |
+| 002649.SZ | 博彦科技 | Momentum Leader | 64 | 71 | 60 | 66 | WATCH |
+| 603776.SH | 永安行 | Momentum Leader | 71 | 69 | 59 | 64 | WATCH |
+| 002990.SZ | 盛视科技 | Emotion Leader | 64 | 67 | 64 | 52 | WATCH |
+| 300170.SZ | 汉得信息 | Momentum Leader | 66 | 66 | 57 | 65 | WATCH |
+| 301236.SZ | 软通动力 | Momentum Leader | 65 | 66 | 57 | 58 | WATCH |
 
 **主题 Top Picks:**
 
-- 盛视科技 `Emotion Leader` α=65 T=64 Signal=WATCH
-- 四会富仕 `Institution Core` α=64 T=62 Signal=WATCH
-- 博彦科技 `Momentum Leader` α=65 T=61 Signal=WATCH
+- 盛视科技 `Emotion Leader` α=64 T=64 Signal=WATCH
+- 山子高科 `Institution Core` α=67 T=62 Signal=WATCH
+- 博彦科技 `Momentum Leader` α=64 T=60 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
@@ -842,29 +835,29 @@
 | 000158.SZ | 常山北明 | Institution Core | 61 | 57 | IDC | WATCH |
 | 002463.SZ | 沪电股份 | Emotion Leader | 56 | 57 | PCB高速互连 | WATCH |
 | 603228.SH | 景旺电子 | Institution Core | 61 | 57 | PCB高速互连 | WATCH |
-| 002065.SZ | 东华软件 | Institution Core | 53 | 57 | IDC | WATCH |
+| 002065.SZ | 东华软件 | Institution Core | 53 | 56 | IDC | WATCH |
 
 ## 机器人 ↑↑
 
-子主题 9 个 | 股票 684 只 | α均50.7 | F均42.8 | T均44.1 I均52.8 | 买入 0 个
+子主题 9 个 | 股票 659 只 | α均50.7 | F均42.9 | T均44.2 I均52.9 | 买入 0 个
 
-### ↑↑ 丝杠 `主升` [67分] 
+### ↑↑ 丝杠 `主升` [66分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 300718.SZ | 长盛轴承 | Momentum Leader | 57 | 61 | 58 | 57 | WATCH |
-| 300307.SZ | 慈星股份 | Institution Core | 54 | 58 | 56 | 56 | WATCH |
-| 300421.SZ | 力星股份 | Momentum Leader | 52 | 58 | 51 | 55 | WATCH |
+| 300718.SZ | 长盛轴承 | Momentum Leader | 57 | 61 | 57 | 57 | WATCH |
+| 300307.SZ | 慈星股份 | Institution Core | 54 | 57 | 56 | 56 | WATCH |
+| 300421.SZ | 力星股份 | Momentum Leader | 52 | 57 | 51 | 55 | WATCH |
 | 300580.SZ | 贝斯特 | Momentum Leader | 51 | 57 | 55 | 52 | WATCH |
-| 601100.SH | 恒立液压 | Follower | 50 | 55 | 49 | 54 | WATCH |
+| 601100.SH | 恒立液压 | Follower | 50 | 54 | 49 | 54 | WATCH |
 
 ### ↑↑ 空心杯电机 `主升` [59分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 002633.SZ | 申科股份 | Momentum Leader | 52 | 58 | 56 | 52 | WATCH |
+| 002633.SZ | 申科股份 | Momentum Leader | 52 | 57 | 56 | 52 | WATCH |
 | 300660.SZ | 江苏雷利 | Institution Core | 53 | 56 | 55 | 53 | WATCH |
-| 688698.SH | 伟创电气 | Momentum Leader | 52 | 56 | 53 | 52 | WATCH |
+| 688698.SH | 伟创电气 | Momentum Leader | 52 | 55 | 53 | 52 | WATCH |
 | 688160.SH | 步科股份 | Institution Core | 54 | 55 | 54 | 53 | WATCH |
 
 ### ↑↑ 关节模组 `主升` [58分] 
@@ -884,13 +877,13 @@
 | 301603.SZ | 乔锋智能 | Emotion Leader | 65 | 65 | 62 | 53 | WATCH |
 | 300083.SZ | 创世纪 | Emotion Leader | 64 | 65 | 61 | 57 | WATCH |
 | 301013.SZ | 利和兴 | Institution Core | 65 | 64 | 61 | 53 | WATCH |
-| 002009.SZ | 天奇股份 | Institution Core | 69 | 64 | 62 | 62 | WATCH |
+| 002009.SZ | 天奇股份 | Institution Core | 69 | 63 | 62 | 62 | WATCH |
 
 ### ↑↑ 工业机器人 `主升` [57分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 002747.SZ | 埃斯顿 | Emotion Leader | 56 | 61 | 57 | 49 | WATCH |
+| 002747.SZ | 埃斯顿 | Emotion Leader | 56 | 61 | 58 | 49 | WATCH |
 | 300607.SZ | 拓斯达 | Institution Core | 57 | 59 | 56 | 50 | WATCH |
 | 300161.SZ | 华中数控 | Institution Core | 55 | 57 | 55 | 53 | WATCH |
 | 688320.SH | 禾川科技 | Momentum Leader | 51 | 56 | 55 | 51 | WATCH |
@@ -911,10 +904,10 @@
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 300889.SZ | 爱克股份 | Momentum Leader | 68 | 64 | 61 | 54 | WATCH |
-| 000823.SZ | 超声电子 | Emotion Leader | 57 | 62 | 59 | 50 | WATCH |
+| 000823.SZ | 超声电子 | Emotion Leader | 58 | 62 | 59 | 50 | WATCH |
+| 300897.SZ | 山科智能 | Momentum Leader | 64 | 61 | 53 | 60 | WATCH |
 | 002138.SZ | 顺络电子 | Institution Core | 63 | 61 | 58 | 56 | WATCH |
 | 300349.SZ | 金卡智能 | Institution Core | 70 | 61 | 60 | 63 | WATCH |
-| 300897.SZ | 山科智能 | Momentum Leader | 64 | 61 | 53 | 60 | WATCH |
 
 ### ↓ 机器视觉 `潜伏` [47分] ★
 
@@ -939,7 +932,7 @@
 **主题 Top Picks:**
 
 - 爱克股份 `Momentum Leader` α=68 T=61 Signal=WATCH
-- 超声电子 `Emotion Leader` α=57 T=59 Signal=WATCH
+- 超声电子 `Emotion Leader` α=58 T=59 Signal=WATCH
 - 顺络电子 `Institution Core` α=63 T=58 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
@@ -947,30 +940,30 @@
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 603005.SH | 晶方科技 | Momentum | 60 | 58 | CIS图像传感器 | WATCH |
-| 301132.SZ | 满坤科技 | Emotion Leader | 58 | 57 | PCB高速互连 | WATCH |
-| 000988.SZ | 华工科技 | Institution Core | 48 | 56 | 光模块 | WATCH |
+| 301132.SZ | 满坤科技 | Emotion Leader | 58 | 56 | PCB高速互连 | WATCH |
 | 300567.SZ | 精测电子 | Momentum | 54 | 56 | 半导体设备 | WATCH |
 | 688396.SH | 华润微 | Momentum | 49 | 56 | 功率半导体 | WATCH |
+| 688001.SH | 华兴源创 | Momentum | 53 | 55 | 半导体检测 | WATCH |
 
 ## 消费 ↓
 
-子主题 1 个 | 股票 761 只 | α均50.1 | F均49.2 | T均45.1 I均62.4 | 买入 0 个
+子主题 1 个 | 股票 703 只 | α均50.1 | F均50.0 | T均45.5 I均63.0 | 买入 0 个
 
 ### ↓ 消费 `潜伏` [49分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 301169.SZ | 零点有数 | Momentum | 68 | 68 | 58 | 62 | WATCH |
-| 603373.SH | 安邦护卫 | Momentum | 72 | 68 | 58 | 72 | WATCH |
+| 301169.SZ | 零点有数 | Momentum | 67 | 68 | 58 | 62 | WATCH |
+| 603373.SH | 安邦护卫 | Momentum | 71 | 67 | 58 | 72 | WATCH |
 | 600127.SH | 金健米业 | Momentum | 75 | 67 | 57 | 78 | WATCH |
-| 300518.SZ | 新迅达 | Momentum | 67 | 67 | 57 | 62 | WATCH |
-| 600354.SH | 敦煌种业 | Momentum | 73 | 67 | 57 | 77 | WATCH |
+| 600354.SH | 敦煌种业 | Momentum | 73 | 66 | 57 | 77 | WATCH |
+| 300518.SZ | 新迅达 | Momentum | 66 | 66 | 57 | 61 | WATCH |
 
 **主题 Top Picks:**
 
+- 零点有数 `Momentum` α=67 T=58 Signal=WATCH
 - 爱丽家居 `Momentum Leader` α=60 T=50 Signal=WATCH
-- 千岸科技 `Institution Core` α=26 T=36 Signal=WATCH
-- 900942.SH `Institution Core` α=23 T=32 Signal=WATCH
+- 千岸科技 `Institution Core` α=25 T=35 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
@@ -978,13 +971,13 @@
 |------|------|------|----|----|--------|------|
 | 300871.SZ | 回盛生物 | Momentum Leader | 53 | 57 | 合成生物 | WATCH |
 | 601965.SH | 中国汽研 | Follower | 56 | 54 | 整车 | WATCH |
-| 600612.SH | 老凤祥 | Follower | 49 | 49 | 黄金 | WATCH |
+| 600612.SH | 老凤祥 | Follower | 47 | 50 | 黄金 | WATCH |
 | 688757.SH | 胜科纳米 |  | 52 | 39 | 先进封装 | WATCH |
 | 301508.SZ | 中机认检 |  | 52 | 39 | 整车 | WATCH |
 
-## 消费电子 ↓
+## 消费电子 ↑↑
 
-子主题 7 个 | 股票 221 只 | α均51.5 | F均44.2 | T均44.4 I均53.7 | 买入 0 个
+子主题 7 个 | 股票 202 只 | α均51.5 | F均44.9 | T均44.9 I均53.6 | 买入 0 个
 
 ### ↑↑ 连接器/结构件 `主升` [62分] 
 
@@ -999,9 +992,9 @@
 |------|------|------|----|----|----|----|------|
 | 300686.SZ | 智动力 | Institution Core | 63 | 63 | 60 | 56 | WATCH |
 | 600707.SH | 彩虹股份 | Emotion Leader | 54 | 61 | 59 | 49 | WATCH |
-| 301045.SZ | 天禄科技 | Emotion Leader | 56 | 60 | 52 | 49 | WATCH |
-| 001308.SZ | 康冠科技 | Institution Core | 66 | 58 | 58 | 58 | WATCH |
-| 000536.SZ | 华映科技 | Institution Core | 64 | 58 | 57 | 60 | WATCH |
+| 301045.SZ | 天禄科技 | Emotion Leader | 56 | 60 | 53 | 49 | WATCH |
+| 001308.SZ | 康冠科技 | Institution Core | 66 | 59 | 58 | 58 | WATCH |
+| 000536.SZ | 华映科技 | Institution Core | 64 | 58 | 58 | 60 | WATCH |
 
 ### ↑↑ 光学镜头 `主升` [55分] 
 
@@ -1009,8 +1002,18 @@
 |------|------|------|----|----|----|----|------|
 | 002456.SZ | 欧菲光 | Institution Core | 53 | 57 | 56 | 48 | WATCH |
 | 002273.SZ | 水晶光电 | Emotion Leader | 52 | 55 | 54 | 48 | WATCH |
-| 002036.SZ | 联创电子 | Institution Core | 55 | 54 | 54 | 56 | WATCH |
+| 002036.SZ | 联创电子 | Institution Core | 55 | 55 | 54 | 56 | WATCH |
 | 688127.SH | 蓝特光学 | Emotion Leader | 50 | 54 | 48 | 47 | WATCH |
+
+### ↑↑ 射频前端 `主升` [51分] 
+
+| 代码 | 名称 | 角色 | α | F | T | I | 信号 |
+|------|------|------|----|----|----|----|------|
+| 300319.SZ | 麦捷科技 | Emotion Leader | 54 | 60 | 58 | 49 | WATCH |
+| 300782.SZ | 卓胜微 | Institution Core | 53 | 55 | 53 | 48 | WATCH |
+| 000727.SZ | 冠捷科技 | Institution Core | 53 | 51 | 52 | 57 | WATCH |
+| 688153.SH | 唯捷创芯 | Institution Core | 50 | 51 | 46 | 47 | WATCH |
+| 300136.SZ | 信维通信 |  | 52 | 39 | 42 | 54 | WATCH |
 
 ### ↓ 智能手机 `潜伏` [43分] ★
 
@@ -1019,25 +1022,15 @@
 | 688036.SH | 传音控股 | Beta | 52 | 52 | 47 | 57 | WATCH |
 | 002600.SZ | 领益智造 | Momentum | 53 | 50 | 46 | 60 | WATCH |
 
-### ↓ 射频前端 `潜伏` [42分] ★
-
-| 代码 | 名称 | 角色 | α | F | T | I | 信号 |
-|------|------|------|----|----|----|----|------|
-| 300319.SZ | 麦捷科技 | Momentum | 54 | 57 | 50 | 57 | WATCH |
-| 300782.SZ | 卓胜微 | Momentum | 53 | 57 | 50 | 56 | WATCH |
-| 688153.SH | 唯捷创芯 | Beta | 50 | 52 | 47 | 52 | WATCH |
-| 000727.SZ | 冠捷科技 | Momentum | 53 | 48 | 44 | 65 | WATCH |
-| 300136.SZ | 信维通信 |  | 52 | 39 | 42 | 54 | WATCH |
-
 ### ↓ 可穿戴 `潜伏` [40分] ★
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 601231.SH | 环旭电子 | Momentum | 73 | 68 | 58 | 64 | WATCH |
-| 688519.SH | 南亚新材 | Momentum | 64 | 63 | 55 | 61 | WATCH |
+| 688519.SH | 南亚新材 | Momentum | 64 | 64 | 55 | 61 | WATCH |
 | 300975.SZ | 商络电子 | Momentum | 62 | 63 | 54 | 60 | WATCH |
 | 002475.SZ | 立讯精密 | Momentum | 53 | 56 | 50 | 61 | WATCH |
-| 300408.SZ | 三环集团 | Beta | 62 | 56 | 49 | 64 | WATCH |
+| 300408.SZ | 三环集团 | Beta | 62 | 56 | 50 | 64 | WATCH |
 
 ### ↓ AI终端/边缘AI `潜伏` [34分] ★
 
@@ -1046,7 +1039,7 @@
 | 300766.SZ | 每日互动 | Beta | 61 | 56 | 50 | 68 | WATCH |
 | 920190.BJ | 雷神科技 | Momentum | 55 | 55 | 49 | 57 | WATCH |
 | 301389.SZ | 隆扬电子 | Momentum | 48 | 55 | 49 | 54 | WATCH |
-| 603890.SH | 春秋电子 | Momentum | 48 | 54 | 48 | 54 | WATCH |
+| 603890.SH | 春秋电子 | Momentum | 48 | 54 | 49 | 54 | WATCH |
 | 603893.SH | 瑞芯微 | Momentum | 49 | 54 | 48 | 54 | WATCH |
 
 **主题 Top Picks:**
@@ -1067,23 +1060,23 @@
 
 ## 游戏 ↑
 
-子主题 1 个 | 股票 28 只 | α均51.8 | F均53.4 | T均51.8 I均55.6 | 买入 0 个
+子主题 1 个 | 股票 24 只 | α均52.1 | F均54.4 | T均52.5 I均56.1 | 买入 0 个
 
-### ↑ 游戏 `升温` [59分] 
+### ↑ 游戏 `升温` [58分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 600892.SH | 大晟文化 | Momentum Leader | 66 | 68 | 58 | 61 | WATCH |
-| 002425.SZ | 凯撒文化 | Momentum Leader | 65 | 68 | 58 | 64 | WATCH |
-| 300494.SZ | 盛天网络 | Momentum Leader | 67 | 65 | 56 | 62 | WATCH |
-| 300052.SZ | 中青宝 | Institution Core | 67 | 64 | 61 | 61 | WATCH |
-| 300031.SZ | 宝通科技 | Momentum Leader | 64 | 63 | 60 | 57 | WATCH |
+| 600892.SH | 大晟文化 | Momentum Leader | 64 | 67 | 58 | 60 | WATCH |
+| 002425.SZ | 凯撒文化 | Momentum Leader | 63 | 67 | 57 | 64 | WATCH |
+| 300494.SZ | 盛天网络 | Momentum Leader | 65 | 64 | 55 | 60 | WATCH |
+| 300052.SZ | 中青宝 | Institution Core | 66 | 63 | 60 | 60 | WATCH |
+| 300031.SZ | 宝通科技 | Momentum Leader | 62 | 61 | 59 | 56 | WATCH |
 
 **主题 Top Picks:**
 
-- 中青宝 `Institution Core` α=67 T=61 Signal=WATCH
-- 浙数文化 `Institution Core` α=70 T=60 Signal=WATCH
-- 大晟文化 `Momentum Leader` α=66 T=58 Signal=WATCH
+- 中青宝 `Institution Core` α=66 T=60 Signal=WATCH
+- 浙数文化 `Institution Core` α=67 T=58 Signal=WATCH
+- 大晟文化 `Momentum Leader` α=64 T=58 Signal=WATCH
 
 ## 煤炭 ↑↑
 
@@ -1107,7 +1100,7 @@
 
 ## 电力 ↓
 
-子主题 7 个 | 股票 467 只 | α均51.0 | F均43.2 | T均43.1 I均56.5 | 买入 0 个
+子主题 7 个 | 股票 453 只 | α均51.0 | F均43.3 | T均43.2 I均56.6 | 买入 0 个
 
 ### ↑↑ 储能 `主升` [54分] 
 
@@ -1133,11 +1126,11 @@
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 300139.SZ | 晓程科技 | Momentum | 72 | 64 | 56 | 76 | WATCH |
 | 301291.SZ | 明阳电气 | Momentum | 67 | 62 | 54 | 74 | WATCH |
-| 601126.SH | 四方股份 | Momentum | 59 | 61 | 53 | 58 | WATCH |
+| 601126.SH | 四方股份 | Momentum | 59 | 61 | 53 | 59 | WATCH |
 | 600379.SH | 宝光股份 | Momentum | 63 | 59 | 52 | 64 | WATCH |
 | 300040.SZ | 九洲集团 | Momentum | 58 | 59 | 52 | 70 | WATCH |
+| 600644.SH | 乐山电力 | Momentum | 64 | 59 | 52 | 72 | WATCH |
 
 ### ↓ 核电 `潜伏` [40分] 
 
@@ -1180,9 +1173,9 @@
 
 **主题 Top Picks:**
 
-- 晓程科技 `Momentum` α=72 T=56 Signal=WATCH
-- 明阳电气 `Momentum` α=67 T=54 Signal=WATCH
-- 风范股份 `Momentum Leader` α=69 T=50 Signal=WATCH
+- 应流股份 `Momentum` α=55 T=50 Signal=WATCH
+- 中国核建 `Momentum Leader` α=57 T=49 Signal=WATCH
+- 中国核电 `Momentum` α=52 T=48 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
@@ -1191,12 +1184,12 @@
 | 002340.SZ | 格林美 | Institution Core | 67 | 61 | 整车 | WATCH |
 | 301310.SZ | 鑫宏业 | Emotion Leader | 53 | 60 | 整车 | WATCH |
 | 600869.SH | 远东股份 | Momentum | 54 | 60 | 充电桩 | WATCH |
-| 300953.SZ | 震裕科技 | Institution Core | 57 | 59 | 整车 | WATCH |
+| 300953.SZ | 震裕科技 | Institution Core | 56 | 59 | 整车 | WATCH |
 | 600482.SH | 中国动力 | Momentum | 53 | 58 | 舰船 | WATCH |
 
 ## 稀土永磁 ↑↑
 
-子主题 1 个 | 股票 25 只 | α均52.0 | F均52.8 | T均51.8 I均52.7 | 买入 0 个
+子主题 1 个 | 股票 23 只 | α均52.1 | F均54.1 | T均52.7 I均52.7 | 买入 0 个
 
 ### ↑↑ 稀土永磁 `主升` [60分] 
 
@@ -1218,70 +1211,71 @@
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 600549.SH | 厦门钨业 | Emotion Leader | 66 | 70 | 小金属 | WATCH |
+| 600549.SH | 厦门钨业 | Emotion Leader | 65 | 69 | 小金属 | WATCH |
 | 301531.SZ | 春光集团 | Momentum Leader | 51 | 57 | 工业金属 | WATCH |
-| 688786.SH | 悦安新材 | Emotion Leader | 35 | 52 | 工业金属 | WATCH |
+| 688786.SH | 悦安新材 | Emotion Leader | 36 | 52 | 工业金属 | WATCH |
 | 002600.SZ | 领益智造 | Momentum | 53 | 50 | 智能手机 | WATCH |
 | 002056.SZ | 横店东磁 |  | 52 | 40 | 整车 | WATCH |
 
 ## 能源金属 ↑↑
 
-子主题 1 个 | 股票 18 只 | α均52.5 | F均49.7 | T均48.7 I均56.2 | 买入 0 个
+子主题 1 个 | 股票 19 只 | α均53.2 | F均51.1 | T均49.5 I均56.5 | 买入 0 个
 
-### ↑↑ 能源金属 `主升` [54分] 
+### ↑↑ 能源金属 `主升` [55分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
 | 600711.SH | 盛屯矿业 | Emotion Leader | 64 | 62 | 60 | 60 | WATCH |
-| 603799.SH | 华友钴业 | Institution Core | 61 | 59 | 52 | 59 | WATCH |
-| 002240.SZ | 盛新锂能 | Momentum Leader | 55 | 58 | 56 | 53 | WATCH |
-| 301219.SZ | 腾远钴业 | Momentum Leader | 57 | 57 | 56 | 57 | WATCH |
-| 002460.SZ | 赣锋锂业 | Institution Core | 56 | 56 | 54 | 57 | WATCH |
+| 002240.SZ | 盛新锂能 | Institution Core | 54 | 57 | 55 | 53 | WATCH |
+| 300390.SZ | 天华新能 | Momentum Leader | 52 | 57 | 55 | 52 | WATCH |
+| 301219.SZ | 腾远钴业 | Momentum Leader | 55 | 56 | 56 | 57 | WATCH |
+| 000792.SZ | 盐湖股份 | Institution Core | 55 | 56 | 50 | 58 | WATCH |
 
 **主题 Top Picks:**
 
 - 盛屯矿业 `Emotion Leader` α=64 T=60 Signal=WATCH
-- 盛新锂能 `Momentum Leader` α=55 T=56 Signal=WATCH
-- 华友钴业 `Institution Core` α=61 T=52 Signal=WATCH
+- 盛新锂能 `Institution Core` α=54 T=55 Signal=WATCH
+- 天华新能 `Momentum Leader` α=52 T=55 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
-| 300014.SZ | 亿纬锂能 | Momentum | 58 | 54 | 充电桩 | WATCH |
-| 300750.SZ | 宁德时代 | Momentum | 54 | 50 | 动力电池 | WATCH |
-| 002192.SZ | 融捷股份 |  | 51 | 37 | 新能源车 | WATCH |
-| 002756.SZ | 永兴材料 |  | 51 | 37 | 新能源车 | WATCH |
-| 002738.SZ | 中矿资源 |  | 51 | 37 | 新能源车 | WATCH |
+| 603799.SH | 华友钴业 | Institution Core | 66 | 62 | 整车 | WATCH |
+| 300014.SZ | 亿纬锂能 | Momentum | 58 | 55 | 充电桩 | WATCH |
+| 300750.SZ | 宁德时代 | Momentum | 54 | 51 | 动力电池 | WATCH |
+| 002192.SZ | 融捷股份 |  | 51 | 38 | 新能源车 | WATCH |
+| 002738.SZ | 中矿资源 |  | 51 | 38 | 新能源车 | WATCH |
 
 ## 脑机接口 ↑↑
 
-子主题 1 个 | 股票 16 只 | α均52.1 | F均48.7 | T均46.7 I均54.9 | 买入 0 个
+子主题 1 个 | 股票 47 只 | α均50.9 | F均41.8 | T均43.1 I均53.3 | 买入 0 个
 
-### ↑↑ 脑机接口 `主升` [51分] 
+### ↑↑ 脑机接口 `主升` [56分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 002173.SZ | 创新医疗 | Emotion Leader | 63 | 62 | 54 | 64 | WATCH |
-| 002421.SZ | 达实智能 | Institution Core | 61 | 60 | 57 | 59 | WATCH |
-| 300753.SZ | 爱朋医疗 | Institution Core | 58 | 54 | 48 | 62 | WATCH |
-| 301293.SZ | 三博脑科 | Institution Core | 58 | 54 | 48 | 62 | WATCH |
-| 300238.SZ | 冠昊生物 | Institution Core | 56 | 54 | 48 | 54 | WATCH |
+| 002173.SZ | 创新医疗 | Emotion Leader | 62 | 62 | 54 | 63 | WATCH |
+| 002421.SZ | 达实智能 | Institution Core | 60 | 61 | 58 | 58 | WATCH |
+| 300753.SZ | 爱朋医疗 | Institution Core | 56 | 55 | 49 | 61 | WATCH |
+| 301293.SZ | 三博脑科 | Institution Core | 56 | 54 | 49 | 61 | WATCH |
+| 300238.SZ | 冠昊生物 | Institution Core | 55 | 54 | 48 | 53 | WATCH |
 
 **主题 Top Picks:**
 
-- 达实智能 `Institution Core` α=61 T=57 Signal=WATCH
-- 创新医疗 `Emotion Leader` α=63 T=54 Signal=WATCH
-- 伟思医疗 `Momentum Leader` α=46 T=46 Signal=WATCH
+- 达实智能 `Institution Core` α=60 T=58 Signal=WATCH
+- 创新医疗 `Emotion Leader` α=62 T=54 Signal=WATCH
+- 伟思医疗 `Momentum Leader` α=44 T=47 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 300007.SZ | 汉威科技 |  | 52 | 39 | 人形机器人 | WATCH |
-| 688078.SH | 龙软科技 |  | 50 | 38 | AI算力 | WATCH |
-| 300379.SZ | 300379.SZ |  | 50 | 38 | AI算力 | WATCH |
-| 000787.SZ | 000787.SZ |  | 50 | 38 | AI算力 | WATCH |
+| 688291.SH | 金橙子 |  | 50 | 38 | AI算力 | WATCH |
+| 300399.SZ | 天利科技 |  | 50 | 38 | AI算力 | WATCH |
+| 300682.SZ | 朗新科技 |  | 50 | 38 | AI算力 | WATCH |
+| 300226.SZ | 上海钢联 |  | 50 | 38 | AI算力 | WATCH |
 
 ## 证券 ↓
 
@@ -1305,32 +1299,33 @@
 
 ## 量子计算 ↑↑
 
-子主题 1 个 | 股票 70 只 | α均50.6 | F均39.9 | T均42.4 I均52.7 | 买入 0 个
+子主题 1 个 | 股票 62 只 | α均50.8 | F均41.0 | T均43.3 I均52.7 | 买入 0 个
 
 ### ↑↑ 量子计算 `主升` [62分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 300353.SZ | 东土科技 | Momentum Leader | 56 | 61 | 59 | 50 | WATCH |
-| 000555.SZ | 神州信息 | Institution Core | 51 | 59 | 52 | 60 | WATCH |
-| 300520.SZ | 科大国创 | Institution Core | 53 | 56 | 55 | 56 | WATCH |
-| 688027.SH | 国盾量子 | Institution Core | 51 | 54 | 54 | 52 | WATCH |
+| 300353.SZ | 东土科技 | Momentum Leader | 57 | 61 | 59 | 50 | WATCH |
+| 000555.SZ | 神州信息 | Institution Core | 52 | 60 | 52 | 60 | WATCH |
+| 300520.SZ | 科大国创 | Momentum Leader | 54 | 57 | 54 | 56 | WATCH |
+| 688027.SH | 国盾量子 | Institution Core | 50 | 54 | 54 | 52 | WATCH |
+| 002224.SZ | 三力士 | Institution Core | 50 | 52 | 52 | 60 | WATCH |
 
 **主题 Top Picks:**
 
-- 东土科技 `Momentum Leader` α=56 T=59 Signal=WATCH
-- 科大国创 `Institution Core` α=53 T=55 Signal=WATCH
-- 神州信息 `Institution Core` α=51 T=52 Signal=WATCH
+- 东土科技 `Momentum Leader` α=57 T=59 Signal=WATCH
+- 国盾量子 `Institution Core` α=50 T=54 Signal=WATCH
+- 神州信息 `Institution Core` α=52 T=52 Signal=WATCH
 
 **跨主题股票（子主题非本主题）:**
 
 | 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
 |------|------|------|----|----|--------|------|
 | 301382.SZ | 蜂助手 | Institution Core | 65 | 63 | IDC | WATCH |
+| 300620.SZ | 光库科技 | Emotion Leader | 56 | 62 | 光芯片 | WATCH |
+| 000988.SZ | 华工科技 | Institution Core | 48 | 56 | 光模块 | WATCH |
 | 002281.SZ | 光迅科技 | Emotion Leader | 51 | 56 | 光模块 | WATCH |
 | 300578.SZ | 会畅科技 | Institution Core | 46 | 49 | IDC | WATCH |
-| 300513.SZ | 恒实科技 |  | 52 | 39 | 电网/特高压 | WATCH |
-| 301428.SZ | 世纪恒通 |  | 50 | 38 | AI算力 | WATCH |
 
 ## 银行 ↓
 
@@ -1353,9 +1348,9 @@
 
 ## 高端材料 ↑↑
 
-子主题 1 个 | 股票 165 只 | α均50.8 | F均52.5 | T均50.6 I均53.5 | 买入 0 个
+子主题 1 个 | 股票 166 只 | α均50.8 | F均52.5 | T均50.5 I均53.5 | 买入 0 个
 
-### ↑↑ 高端材料 `主升` [61分] 
+### ↑↑ 高端材料 `主升` [60分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
@@ -1363,7 +1358,7 @@
 | 002361.SZ | 神剑股份 | Institution Core | 63 | 66 | 63 | 56 | WATCH |
 | 301196.SZ | 唯科科技 | Emotion Leader | 60 | 65 | 62 | 51 | WATCH |
 | 688323.SH | 瑞华泰 | Emotion Leader | 57 | 64 | 61 | 50 | WATCH |
-| 601208.SH | 东材科技 | Emotion Leader | 54 | 64 | 55 | 49 | WATCH |
+| 000703.SZ | 恒逸石化 | Momentum Leader | 66 | 64 | 61 | 66 | WATCH |
 
 **主题 Top Picks:**
 
@@ -1378,29 +1373,36 @@
 | 002407.SZ | 多氟多 | Emotion Leader | 63 | 64 | 精细化工/新材料 | WATCH |
 | 002915.SZ | 中欣氟材 | Momentum Leader | 63 | 62 | 精细化工/新材料 | WATCH |
 | 605020.SH | 永和股份 | Emotion Leader | 54 | 59 | 氟化工/制冷剂 | WATCH |
-| 688295.SH | 中复神鹰 | Momentum | 53 | 54 | 航空材料 | WATCH |
 | 002324.SZ | 普利特 | Institution Core | 52 | 54 | 工程塑料 | WATCH |
+| 688295.SH | 中复神鹰 | Momentum | 53 | 54 | 航空材料 | WATCH |
 
 ## 黄金 ↑↑
 
-子主题 1 个 | 股票 6 只 | α均52.5 | F均53.3 | T均48.5 I均60.1 | 买入 0 个
+子主题 1 个 | 股票 13 只 | α均53.9 | F均54.6 | T均49.8 I均60.2 | 买入 0 个
 
-### ↑↑ 黄金 `主升` [50分] 
+### ↑↑ 黄金 `主升` [55分] 
 
 | 代码 | 名称 | 角色 | α | F | T | I | 信号 |
 |------|------|------|----|----|----|----|------|
-| 600489.SH | 中金黄金 | Momentum Leader | 55 | 59 | 52 | 62 | WATCH |
-| 002155.SZ | 湖南黄金 | Momentum Leader | 54 | 55 | 49 | 56 | WATCH |
-| 000975.SZ | 山金国际 | Momentum Leader | 52 | 55 | 49 | 60 | WATCH |
-| 600547.SH | 山东黄金 | Institution Core | 53 | 53 | 48 | 61 | WATCH |
-| 600612.SH | 老凤祥 | Follower | 49 | 49 | 45 | 61 | WATCH |
+| 001337.SZ | 四川黄金 | Momentum Leader | 57 | 60 | 52 | 61 | WATCH |
+| 600489.SH | 中金黄金 | Momentum Leader | 57 | 60 | 52 | 62 | WATCH |
+| 000506.SZ | 招金黄金 | Momentum Leader | 52 | 58 | 51 | 59 | WATCH |
+| 002155.SZ | 湖南黄金 | Institution Core | 56 | 57 | 50 | 57 | WATCH |
+| 601069.SH | 西部黄金 | Momentum Leader | 50 | 56 | 50 | 59 | WATCH |
 
 **主题 Top Picks:**
 
-- 中金黄金 `Momentum Leader` α=55 T=52 Signal=WATCH
-- 中国黄金 `Institution Core` α=52 T=49 Signal=WATCH
-- 山东黄金 `Institution Core` α=53 T=48 Signal=WATCH
+- 四川黄金 `Momentum Leader` α=57 T=52 Signal=WATCH
+- 湖南黄金 `Institution Core` α=56 T=50 Signal=WATCH
+- 山金国际 `Emotion Leader` α=51 T=49 Signal=WATCH
+
+**跨主题股票（子主题非本主题）:**
+
+| 代码 | 名称 | 角色 | α | F | 子主题 | 信号 |
+|------|------|------|----|----|--------|------|
+| 601899.SH | 紫金矿业 | Momentum Leader | 71 | 66 | 工业金属 | WATCH |
+| 300139.SZ | 晓程科技 |  | 52 | 39 | 电网/特高压 | WATCH |
 
 ---
 
-_报告生成: 2026-08-06 22:48_
+_报告生成: 2026-08-07 09:24_

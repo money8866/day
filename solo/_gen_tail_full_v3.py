@@ -10,7 +10,7 @@ import tushare as ts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, '..', 'cache_daily')
-TRADE_DATE = '20260803'
+TRADE_DATE = '20260806'
 
 # 1. 加载主题成份股
 json_path = os.path.join(CACHE_DIR, 'theme_stock_map_latest.json')

@@ -620,6 +620,7 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     return {
         'momentum': round(mom_20d, 2),       # 显示用(20日原始涨幅)
         'mom_weighted': round(mom_weighted, 2),  # 截面排名输入
+        'mom_accel': round(mom_accel, 2),    # 加速度原始值(截面排名输入)
         'accel_score': round(accel_score, 2),
         'vol_score': round(vol_score, 2),
         'risk_adj': round(risk_adj_score, 2),
@@ -1724,6 +1725,18 @@ def main(trade_date=None, backtest_mode=False):
             # 百分位排名: 第1名(最强)取最大值
             rank_pct = (i / (n_total - 1)) * 100  # 0~100
             r['mom_cross_score'] = round(rank_pct, 2)
+
+    # === 截面加速度排名 (mom_accel 升序 → 百分位0-100) ===
+    # 修复: 原绝对映射(50+mom_accel*10)在普跌市中 mom_5d-mom_20d 大面积为正且封顶100,
+    # 导致 18/35 只ETF加速度同分、完全失去区分度, 下跌ETF借机排第一。
+    # 改为截面百分位后, 加速度只在池内比较, 消除饱和失真。
+    valid_accel = [r for r in rankings if r.get('mom_accel') is not None]
+    n_accel = len(valid_accel)
+    if n_accel > 1:
+        sorted_by_accel = sorted(valid_accel, key=lambda x: x['mom_accel'])
+        for i, r in enumerate(sorted_by_accel):
+            rank_pct = (i / (n_accel - 1)) * 100
+            r['accel_score'] = round(rank_pct, 2)
 
     # === 计算综合分 (动态权重 · 市场状态调节器) ===
     for r in rankings:

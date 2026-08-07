@@ -515,69 +515,6 @@ def _v8_stage_to_signal(d_stage, score):
     return "中性"
 
 
-def _load_v8_center_data(trade_date):
-    """加载 V8 中军标的 CSV 数据，按主题分组返回格式化的文本。
-    优先使用 trade_date 对应文件，找不到则回退到最近可用的 CSV 文件。
-    """
-    cache_dir = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache')
-    center_csv = os.path.join(cache_dir, f'theme_alpha_v6_result_v8_center_{trade_date}.csv')
-
-    if not os.path.exists(center_csv):
-        import glob
-        pattern = os.path.join(cache_dir, 'theme_alpha_v6_result_v8_center_*.csv')
-        candidates = sorted(glob.glob(pattern), reverse=True)
-        if not candidates:
-            print(f"[V8中军] 未找到任何中军标的 CSV 文件")
-            return ""
-        center_csv = candidates[0]
-        actual_date = os.path.basename(center_csv).replace('theme_alpha_v6_result_v8_center_', '').replace('.csv', '')
-        print(f"[V8中军] 当前无 {trade_date} 数据，回退至最近可用: {actual_date}")
-
-    try:
-        import pandas as pd
-        from theme_alpha_v6.rotation import load_stock_name_map
-        _, code_to_name = load_stock_name_map()
-        df = pd.read_csv(center_csv)
-        if df.empty:
-            return ""
-
-        lines = []
-        lines.append("★ V8 高确定性中军标的推荐 ★")
-        lines.append("")
-        lines.append("【V8中军筛选标准】自由流通市值 Top 20% 且 > 100亿，确定性分=0.4*均线多头+0.3*Beta+0.3*(1-最大回撤)")
-        lines.append("")
-
-        top_themes = sorted(df['主题'].unique(), key=lambda t: df[df['主题']==t]['确定性得分'].max(), reverse=True)
-        for theme in top_themes[:6]:
-            theme_df = df[df['主题'] == theme].sort_values('确定性得分', ascending=False)
-            d_stage = theme_df.iloc[0]['D阶段'] if 'D阶段' in theme_df.columns else ''
-            lines.append(f"  ● {theme} [{d_stage}]")
-            for _, row in theme_df.head(3).iterrows():
-                code = row['ts_code']
-                name = code_to_name.get(code, code)
-                det_score = row.get('确定性得分', 0)
-                ma_days = row.get('均线多头天数', 0)
-                beta = row.get('Beta_theme', 0)
-                mdd = row.get('近10日最大回撤%', 0)
-                ref_price = row.get('低吸参考价', '')
-                stop_loss = row.get('防守止损位', '')
-                market_cap = row.get('自由流通市值(亿)', 0)
-                buy_ref = f"低吸:{ref_price}" if pd.notna(ref_price) and ref_price != '' else ''
-                stop_ref = f"止损:{stop_loss}" if pd.notna(stop_loss) and stop_loss != '' else ''
-                price_info = f" | {buy_ref} {stop_ref}" if buy_ref or stop_ref else ""
-                lines.append(
-                    f"    {name}({code}) 确定性:{det_score:.1f} "
-                    f"均线多头:{ma_days}天 Beta:{beta:.1f} "
-                    f"回撤:{mdd:.1f}% 市值:{market_cap:.0f}亿{price_info}"
-                )
-            lines.append("")
-
-        return "\n".join(lines)
-    except Exception as e:
-        print(f"[V8中军] 读取失败: {e}")
-        return ""
-
-
 def _load_market_analysis_result(trade_date):
     """读取 market_analysis.py 已生成的 txt 报告（避免重复运行 analyze_market）
     
@@ -11453,105 +11390,68 @@ def run(target_date=None, simple_mode=False):
         trade_advice_text = ""
 
     # =========================
-    # ELD 中报预增股池择时信号
+    # 回踩买点形态信号（中报优质股池买点）
     # =========================
-    def _load_eld_buy_signals(trade_date: str) -> str:
-        """读取 ELD 中报预增股池报告，提取 TOP 10 买入信号"""
-        import glob as _glob
-        csv_dir = r"D:\mystock\report_daily"
-        files = _glob.glob(os.path.join(csv_dir, f"eld_report_{trade_date}.csv"))
+    def _load_pullback_buy_signals(trade_date: str) -> str:
+        """读取回踩买点形态检测器结果，提取 PullbackScore>=60 的形态信号"""
+        import glob as _glob2
+        # pullback_buy 输出在 solo/report_daily，兼容 d:\mystock\report_daily
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"pullback_buy_{trade_date}.csv"),
+            os.path.join(REPORT_DIR, f"pullback_buy_{trade_date}.csv"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
         if not files:
-            # 回退到所有文件中的最新
-            files = _glob.glob(os.path.join(csv_dir, "eld_report_*.csv"))
+            files = _glob2.glob(os.path.join(r"D:\mystock\solo\report_daily", "pullback_buy_*.csv"))
+            files += _glob2.glob(os.path.join(REPORT_DIR, "pullback_buy_*.csv"))
         if not files:
             return ""
         latest = max(files, key=os.path.getmtime)
         try:
-            df = pd.read_csv(latest)
-            if df.empty:
+            df = pd.read_csv(latest, encoding="utf-8-sig")
+            if df.empty or "pullback_score" not in df.columns:
                 return ""
+            hi = df[pd.to_numeric(df["pullback_score"], errors="coerce") >= 60].copy()
+            if hi.empty:
+                return ""
+            # 阶段排序：回踩中 > 回踩完成 > 首阳确认 > 洗盘缩量
+            _stage_order = {"回踩中": 0, "回踩完成": 1, "首阳确认": 2, "洗盘缩量": 3}
+            hi["_so"] = hi.get("stage", "").map(_stage_order).fillna(9)
+            hi = hi.sort_values(["_so", "pullback_score"], ascending=[True, False])
             lines = []
-            lines.append(f"【中报预增股池择时（幻方算法）】")
-            lines.append(f"数据来源：ELD V2 评分系统，筛选信号非忽略、机构非派发的标的")
+            lines.append("【中报优质股池买点】")
+            lines.append(f"数据来源：回踩买点形态检测器 PullbackScore≥60（共{len(hi)}只），形态=洗盘→放量首阳→缩量回踩不破")
             lines.append("")
-            for i, row in df.head(10).iterrows():
-                code = row.get("ts_code", "")
+            for _, row in hi.iterrows():
+                code = str(row.get("code", ""))
                 name = row.get("name", "")
-                v2 = row.get("final_score_v2", 0)
-                inst = row.get("institution_state", "")
-                sig = row.get("earnings_buy_signal", "NONE")
-                etf = row.get("etf_score", 0)
-                theme = row.get("theme", "")
-                # 新字段
-                ref_price = row.get("reference_buy_price", 0)
-                stop_loss = row.get("stop_loss_price", 0)
-                sell_news = row.get("is_sell_on_news", False)
-                pre_runup = row.get("pre_announce_runup_pct", 0)
-                next_day = str(row.get("next_day_buyable", "")).lower() == "true"
-                buy_point_type = row.get("buy_point_type", "")
-                buy_quality = row.get("buy_quality_score", 0)
-                bias = row.get("bias_pct", 0)
-                # 信号翻译
-                sig_cn = {"BUY": "买入", "WATCH": "观望", "IGNORE": "忽略", "NONE": "无"}.get(sig, sig)
-                theme_str = str(theme) if theme and str(theme) != "nan" else "无"
-                # 买点类型翻译
-                bpt_cn = {"VCP_PULLBACK": "回踩企稳", "MA20_BOUNCE": "MA20支撑", "MA10_BOUNCE": "MA10支撑",
-                          "BREAKOUT": "突破", "TREND_FOLLOW": "趋势", "CHASE_HIGH": "⚠️追高"}.get(str(buy_point_type), "")
-                # 买入信号和价格提示
-                price_hint = ""
-                if ref_price and ref_price > 0 and sig != "IGNORE":
-                    price_hint = f" 参考价{ref_price:.2f}"
-                sell_news_hint = " ⚠️利好兑现" if sell_news else ""
-                if pre_runup and pre_runup > 0:
-                    sell_news_hint = f" 公告前{pre_runup:.0f}%" + (" ⚠️利好兑现" if sell_news else "")
-                next_day_hint = " 🎯明日可买" if next_day else ""
-                bpt_hint = f" {bpt_cn}({float(buy_quality):.0f})" if bpt_cn else ""
-                lines.append(f"【{name}】({code}) V2:{v2:.1f} 机构:{inst} 信号:{sig_cn}{price_hint}{sell_news_hint}{next_day_hint}{bpt_hint} ETF:{etf:.0f} 主题:{theme_str}")
-            # 优先关注：次日可买 > BUY > WATCH，过滤派发+利好兑现+跌破MA20
-            focus_buy = []      # 次日可买 + BUY信号
-            focus_watch = []    # 仅WATCH
-            for _, row in df.head(10).iterrows():
-                sig = row.get("earnings_buy_signal", "")
-                inst = str(row.get("institution_state", ""))
-                sell_news = row.get("is_sell_on_news", False)
-                next_day = str(row.get("next_day_buyable", "")).lower() == "true"
-                # 排除：IGNORE、派发、利好兑现
-                if sig == "IGNORE" or "派发" in inst or sell_news:
-                    continue
-                name = row.get("name", "")
-                if next_day or sig == "BUY":
-                    focus_buy.append(name)
-                elif sig == "WATCH":
-                    focus_watch.append(name)
-            # 优先展示可操作信号，WATCH仅在没有BUY/次日可买时补充
-            focus = focus_buy + focus_watch
-            if focus_buy:
-                lines.append("")
-                lines.append(f"优先关注（可操作）：{'、'.join(focus_buy[:5])}")
-            elif focus_watch:
-                lines.append("")
-                lines.append(f"优先关注（观察中）：{'、'.join(focus_watch[:5])}")
+                stage = row.get("stage", "")
+                score = float(row.get("pullback_score", 0))
+                fyd = str(row.get("first_yang_date", ""))[:8]
+                fyp = row.get("first_yang_pct", 0)
+                fyv = row.get("first_yang_vr", 0)
+                pdays = row.get("pullback_days", 0)
+                pshr = row.get("pullback_shrink", 0)
+                mdd = row.get("max_dd10", 0)
+                v15 = row.get("FinalScore", np.nan)
+                rec = str(row.get("Recommendation", "")).strip()
+                theme = str(row.get("theme", "")).strip()
+                v15s = f"{float(v15):.1f}" if pd.notna(v15) else "-"
+                yang_s = f"首阳:{fyd[4:6]}/{fyd[6:8]}(+{float(fyp):.1f}%量{float(fyv):.1f})" if fyd and str(fyd) != "nan" else "无首阳"
+                pull_s = f"回踩{pdays}天缩量{float(pshr):.2f}" if pdays and int(pdays) > 0 else "首阳当日"
+                wash_s = f"洗盘-{abs(float(mdd)):.1f}%" if mdd and float(mdd) < 0 else ""
+                theme_s = f" 主题:{theme}" if theme and theme != "nan" else ""
+                lines.append(f"【{name}】({code}) 形态:{stage} 评分:{score:.0f} {yang_s} {pull_s} {wash_s} | V15:{v15s} {rec}{theme_s}")
             return "\n".join(lines)
         except Exception as e:
-            print(f"[ELD] 加载失败: {e}")
+            print(f"[回踩买点] 加载失败: {e}")
             return ""
 
-    eld_buy_text = _load_eld_buy_signals(TRADE_DATE)
-    if eld_buy_text:
-        print("[ELD] 已加载中报预增股池择时信号")
+    pullback_buy_text = _load_pullback_buy_signals(TRADE_DATE)
+    if pullback_buy_text:
+        print("[回踩买点] 已加载中报优质股池买点信号")
 
     # =========================
-    # V8 中军标的推荐数据
-    # =========================
-    v8_center_text = ""
-    try:
-        v8_center_text = _load_v8_center_data(TRADE_DATE)
-        if v8_center_text:
-            print("[V8中军] 已加载中军标的推荐数据")
-    except Exception as e:
-        print(f"[V8中军] 加载失败: {e}")
-        v8_center_text = ""
-
     # =========================
     # 未来上涨潜力方向（优中选优）
     # =========================
@@ -11611,9 +11511,6 @@ def run(target_date=None, simple_mode=False):
 **【今日主题分析情况】**
 {trade_advice_text}
 
-{v8_center_text}
-
-
 **【今日突破股池】**
 {hot_money_open_text}
 **【今日突破股池到此为止】**
@@ -11637,15 +11534,6 @@ def run(target_date=None, simple_mode=False):
 从“{future_potential_text}”提炼输出主题/子主题：升温概率
 
 从“{rising_subtheme_text}”中提炼为**活跃上升子主题**（主升/升温/分歧阶段，显示主题名称和龙头股）：
-
-
-
-**V8高确定性中军标的**（数据来源：V8中军筛选模型，按主题分组）
-- 每主题精简列出 Top 3，格式要求：
-主题1(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
-主题2(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
-主题3(粗体字):名称(代码) ,名称(代码) ,名称(代码) 
-依此往下
 
 3、**【今日突破股池分析】**
 （综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
@@ -11716,8 +11604,9 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
 
-7、**【中报预增股池择时（幻方算法）】**
-{eld_buy_text}
+7、**【中报优质股池买点】**（回踩买点形态，PullbackScore≥60，形态=急跌洗盘→放量首阳→缩量回踩不破，次日存在二次启动概率）：
+{pullback_buy_text}
+（【数据边界】本段落只分析上方"【中报优质股池买点】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无中报优质股池买点信号"。按 PullbackScore 从高到低分析前10名，每只力求精简，优先标注"回踩中"阶段个股的次日买点与止损位）
 
 ------------------
 以上全局格式要求：

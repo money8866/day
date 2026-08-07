@@ -1,0 +1,49 @@
+=== 关键股票交易面 ===
+code_s name    theme  涨停次数  连板能力  资金流入(亿)  60日收益%  日均成交额(亿)  筹码面  波段属性  市值(亿)
+600989 宝丰能源       化工     2     1      NaN     NaN       NaN 50.0 63.75 1721.1
+688578  艾力斯       医药     5     1      NaN     NaN       NaN 41.2 75.75  498.2
+  1309  德明利     存储芯片    20     3      NaN     NaN       NaN 50.0 64.75  880.7
+688308  欧科亿     智能制造    13     2      NaN     NaN       NaN 50.0 60.00  157.9
+600150 中国船舶     船舶制造     0     0      NaN     NaN       NaN 61.2 71.75 2626.4
+  2611 东方精工 机器人/智能制造     5     1      NaN     NaN       NaN 45.0 64.50  197.1
+  2379 宏桥控股     有色金属     3     2      NaN     NaN       NaN 41.2 69.75 2457.7
+  2648 卫星化学       化工     2     1      NaN     NaN       NaN 61.2 77.75  854.6
+  2448 中原内配      机器人     5     1      NaN     NaN       NaN 48.8 57.00   72.1
+   792 盐湖股份       农化     1     1      NaN     NaN       NaN 45.0 67.75 1509.7
+  2039 黔源电力      电力链     1     1      NaN     NaN       NaN 56.2 69.50   84.5
+   807 云铝股份     有色金属     1     1      NaN     NaN       NaN 48.8 69.75  924.6
+300475 香农芯创      机器人    18     2      NaN     NaN       NaN 41.2 57.25  716.5
+688525 佰维存储     存储芯片    10     1      NaN     NaN       NaN 45.2 70.75 1098.5
+600961 株冶集团     有色金属     8     4      NaN     NaN       NaN 56.2 67.75  289.4
+301308  江波龙     存储芯片    14     2      NaN     NaN       NaN 54.0 58.75 1549.8
+  2440 闰土股份     高端材料    10     2      NaN     NaN       NaN 50.0 72.50  146.6
+301031 中熔电气      电力链     5     1      NaN     NaN       NaN 54.0 57.00  128.6
+601899 紫金矿业     有色金属     1     1      NaN     NaN       NaN 41.2 67.75 9173.8
+600346 恒力石化    化工农药链     1     1      NaN     NaN       NaN 48.8 60.50 1228.3
+  2432 九安医疗     医疗器械    18     2      NaN     NaN       NaN 50.0 58.75  332.5
+
+=== 关键股票 via 龙头标识 ===
+600989: core_company
+1309: dc_industry_board
+688525: dc_industry_board
+301308: dc_industry_board
+688578: dc_industry_board
+600961: core_company
+2648: core_company
+300475: dc_industry_board
+792: core_company
+2379: dc_industry_board
+301031: dc_industry_board
+807: core_company
+688308: dc_industry_board
+2448: dc_industry_board
+2039: dc_industry_board
+2611: dc_industry_board
+2440: dc_industry_board
+600150: core_company
+600346: core_company
+601899: leader_company
+2432: dc_industry_board
+
+=== 各主题 leader+core 数量（唯一性参考）===
+新能源车:5|脑机接口:6|证券:6|煤炭:6|量子计算:7|电力:7|消费电子:7|黄金:7|消费:7|可控核聚变:7|创新药:7|游戏:7|低空经济:8|机器人:8|AI算力:9|智能驾驶:9|商业航天:9|军工:9|化工:9|信创:10|半导体:10|高端材料:11|工业金属:11|稀土永磁:11|小金属:13|能源金属:14|银行:17|合成生物:20

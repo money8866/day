@@ -453,8 +453,8 @@ def extract_bull_data(row: pd.Series,
     capex_growth = 0.0
     if len(cashflow_data) >= 2:
         cf = cashflow_data.sort_values('end_date', ascending=False).reset_index(drop=True)
-        cap_c = float(cf.iloc[0].get('cap_expend_ra', 0)) if pd.notna(cf.iloc[0].get('cap_expend_ra')) else 0.0
-        cap_p = float(cf.iloc[1].get('cap_expend_ra', 0)) if pd.notna(cf.iloc[1].get('cap_expend_ra')) else 0.0
+        cap_c = float(cf.iloc[0].get('c_pay_acq_const_fiolta', 0)) if pd.notna(cf.iloc[0].get('c_pay_acq_const_fiolta')) else 0.0
+        cap_p = float(cf.iloc[1].get('c_pay_acq_const_fiolta', 0)) if pd.notna(cf.iloc[1].get('c_pay_acq_const_fiolta')) else 0.0
         if cap_p > 0:
             capex_growth = (cap_c - cap_p) / cap_p
 
@@ -462,8 +462,8 @@ def extract_bull_data(row: pd.Series,
     cashflow_growth = 0.0
     if len(cashflow_data) >= 2:
         cf = cashflow_data.sort_values('end_date', ascending=False).reset_index(drop=True)
-        nocf_c = float(cf.iloc[0].get('net_operate_cash_flow', 0)) if pd.notna(cf.iloc[0].get('net_operate_cash_flow')) else 0.0
-        nocf_p = float(cf.iloc[1].get('net_operate_cash_flow', 0)) if pd.notna(cf.iloc[1].get('net_operate_cash_flow')) else 0.0
+        nocf_c = float(cf.iloc[0].get('n_cashflow_act', 0)) if pd.notna(cf.iloc[0].get('n_cashflow_act')) else 0.0
+        nocf_p = float(cf.iloc[1].get('n_cashflow_act', 0)) if pd.notna(cf.iloc[1].get('n_cashflow_act')) else 0.0
         if nocf_p > 0:
             cashflow_growth = (nocf_c - nocf_p) / nocf_p
         net_operate_cash_flow = nocf_c
@@ -504,6 +504,42 @@ def extract_bull_data(row: pd.Series,
             first, last, years = None, None, 0
         if first and last and first > 0 and years > 0:
             profit_cagr_3y = (max(last / first, 0.0) ** (1.0 / years) - 1.0) * 100.0
+
+    # ── 风险相关字段 (V14新增) ──
+    debt_ratio = 0.0       # 资产负债率(%)
+    goodwill_ratio = 0.0   # 商誉/总资产(%)
+    receiv_yoy = 0.0       # 应收账款同比(%)
+    invent_yoy = 0.0       # 存货同比(%)
+    if len(balance) > 0:
+        bs0 = balance.iloc[0]
+        _ta = float(bs0.get('total_assets', 0)) if pd.notna(bs0.get('total_assets')) else 0.0
+        # total_liability 字段被 Tushare 权限过滤(同 cashflow 坑) → 用 总资产-股东权益合计 反推
+        _tl_raw = bs0.get('total_liability', None)
+        _eq_raw = bs0.get('total_hldr_eqy_inc_min_int', None)
+        if _tl_raw is not None and pd.notna(_tl_raw):
+            _tl = float(_tl_raw)
+        elif _eq_raw is not None and pd.notna(_eq_raw) and _ta > 0:
+            _tl = _ta - float(_eq_raw)
+        else:
+            _tl = 0.0
+        _gw = float(bs0.get('goodwill', 0)) if pd.notna(bs0.get('goodwill')) else 0.0
+        if _ta > 0:
+            debt_ratio = _tl / _ta * 100.0
+            goodwill_ratio = _gw / _ta * 100.0
+        _bs0_end = str(bs0.get('end_date', ''))
+        if len(_bs0_end) >= 6:
+            _prev_bs_end = f"{int(_bs0_end[:4]) - 1}{_bs0_end[4:]}"
+            _prev_bs_rows = balance[balance['end_date'] == _prev_bs_end]
+            if len(_prev_bs_rows) > 0:
+                _pb = _prev_bs_rows.iloc[0]
+                _rc = float(bs0.get('accounts_receiv', 0)) if pd.notna(bs0.get('accounts_receiv')) else 0.0
+                _rp = float(_pb.get('accounts_receiv', 0)) if pd.notna(_pb.get('accounts_receiv')) else 0.0
+                _ic = float(bs0.get('inventories', 0)) if pd.notna(bs0.get('inventories')) else 0.0
+                _ip = float(_pb.get('inventories', 0)) if pd.notna(_pb.get('inventories')) else 0.0
+                if _rp > 0:
+                    receiv_yoy = (_rc - _rp) / _rp * 100.0
+                if _ip > 0:
+                    invent_yoy = (_ic - _ip) / _ip * 100.0
 
     # ── 季度业绩 ──
     quarterly_net_profit = latest_n_income
@@ -884,6 +920,10 @@ def extract_bull_data(row: pd.Series,
         unlock_risk_score=unlock_risk_score,
         audit_risk_score=audit_risk_score,
         cashflow_ratio=cashflow_ratio,
+        debt_ratio=debt_ratio,
+        goodwill_ratio=goodwill_ratio,
+        receiv_yoy=receiv_yoy,
+        invent_yoy=invent_yoy,
         main_business_items=main_bz_data or [],
         # BullScore v3.1 新增字段
         growth_trend=growth_trend,
@@ -1351,7 +1391,7 @@ if __name__ == "__main__":
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         result = run_double_score(csv_path=str(csv_path))
-        print_top(result, n=15)
+        print_top(result, n=20)
 
         out_path = Path(__file__).parent.parent / "report_daily" / f"double_score_{timestamp}.csv"
         result.to_csv(out_path, index=False, encoding='utf-8-sig')
