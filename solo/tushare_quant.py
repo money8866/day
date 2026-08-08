@@ -5275,21 +5275,17 @@ def _get_stock_moneyflow_features(ts_code):
     return result
 
 
-def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0):
+def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0,
+                             mainline_type='', mainline_quality=0, extra_mult=1.0):
     """
-    V10: 幻方风格整合评分 — 爆发力导向
+    V11: 主线分级系数 + 拆天花板 + 统一软顶
     =====================================
-    核心变化（对V9）：
-      1. ret_5 从均值回归 → 动量正向打分
-      2. 新增 ma20/ma10 斜率加速度（二阶加速度）
-      3. 新增 ret_accel（近3日 vs 前7日）
-      4. 连续新高在量能配合时奖励
-      5. 新增同花顺资金流向3特征
-      6. 热度权重 20%→10%
-      7. 惩罚系统精简
+    在 V10 幻方风格基础上升级三点：
+      1. 主题层级系数：主线核心 > 次主线 > 轮动 > 非主线（避免轮动周期股拿满分）
+      2. 软天花板：S型压缩到 0~97，100分不再扎堆，排名有差异化
+      3. extra_mult：外部乘数（如共振系数）统一纳入软顶计算，避免硬顶扎堆
 
-    FinalScore = 动量爆发力(35%) + 资金行为(25%) + 位置安全性(15%)
-               + 热度(10%) + 基本面(15%)
+    FinalScore = (base_raw + failure_bonus) × theme_mult × extra_mult → 软天花板
     """
     try:
         if df is None or not isinstance(df, pd.DataFrame) or len(df) < 20:
@@ -5727,15 +5723,15 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         # 动量爆发力作为乘数 + 龙头加分 - 惩罚 + 辨识度
         momentum_mult = 0.7 + (momentum_score / 100) * 0.6  # 0.7 ~ 1.3
         synergy_bonus = (synergy_coeff - 0.8) * 25
-        final_score = base_score * momentum_mult + synergy_bonus - penalty + leader_bonus + recognition_bonus
+        base_raw = base_score * momentum_mult + synergy_bonus - penalty + leader_bonus + recognition_bonus
 
         if momentum_score >= 80:
-            final_score += 6
+            base_raw += 6
         elif momentum_score >= 65:
-            final_score += 3
+            base_raw += 3
         elif momentum_score < 40:
-            final_score -= 6
-        final_score = min(100, max(5, final_score))
+            base_raw -= 6
+        base_raw = min(120, max(5, base_raw))  # 暂存，后面还要乘主题系数
 
         # ──────────────────────────────────────────────
         # 9. 失败概率（幻方风格：动量越强失败越低）
@@ -5777,7 +5773,55 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         failure_prob = min(90, max(10, failure_prob))
 
         failure_bonus = (30 - failure_prob) * 0.4
-        final_score += failure_bonus
+        after_bonus = base_raw + failure_bonus
+
+        # ── V11: 主题层级系数（主线分级 V1.0 集成）──
+        # 主线核心(≥85): ×1.10   强主线(80~84): ×1.05
+        # 次主线(70~79): ×1.00   轮动主题(60~69): ×0.90
+        # 非主线(<60):   ×0.80   无主题数据: ×1.00（中性，不惩罚）
+        if mainline_quality > 0:
+            if mainline_quality >= 85:
+                theme_mult = 1.10
+            elif mainline_quality >= 80:
+                theme_mult = 1.05
+            elif mainline_quality >= 70:
+                theme_mult = 1.00
+            elif mainline_quality >= 60:
+                theme_mult = 0.90
+            else:
+                theme_mult = 0.80
+        else:
+            theme_mult = 1.00
+
+        after_theme = after_bonus * theme_mult * extra_mult
+
+        # ── V11: 主题层级天花板（轮动股信号再强也不能超过主线高度）──
+        # 核心主线(≥90): 上限 97   强主线(80-89): 上限 95
+        # 次主线(70-79): 上限 90   轮动主题(60-69): 上限 85
+        # 非主线(<60):   上限 78   无主题数据: 不设限（兼容旧数据）
+        if mainline_quality > 0:
+            if mainline_quality >= 90:
+                tier_cap = 97.0
+            elif mainline_quality >= 80:
+                tier_cap = 95.0
+            elif mainline_quality >= 70:
+                tier_cap = 90.0
+            elif mainline_quality >= 60:
+                tier_cap = 85.0
+            else:
+                tier_cap = 78.0
+        else:
+            tier_cap = 97.0  # 无数据不限制
+
+        # ── V11: 软天花板（S型压缩到 5~tier_cap，高分段拉开差异）──
+        # soft_cap(x) = tier_cap - (tier_cap * 0.31) / (1 + exp(0.14 * (x - 80)))
+        final_score = after_theme
+        if final_score > 70:
+            import math
+            # S型压缩，上限为 tier_cap；压缩量 = tier_cap × 0.31（约30%的压缩空间）
+            compress_range = tier_cap * 0.31
+            final_score = tier_cap - compress_range / (1.0 + math.exp(0.14 * (final_score - 80.0)))
+        final_score = max(5.0, min(tier_cap, final_score))
 
         # ──────────────────────────────────────────────
         # 10. 推荐理由
@@ -5827,6 +5871,11 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             '热榜最佳排名': best_rank if best_rank <= 100 else 0,
             '热榜上榜次数': hot_appear_count,
             '共振系数': round(synergy_coeff, 2),
+            '主题层级系数': round(theme_mult, 3),
+            '主线类型': mainline_type,
+            '主线质量分': mainline_quality,
+            '层级上限': tier_cap,
+            '基础裸分': round(base_raw, 1),
             '基本面逻辑': fund_logic[:3] if fund_logic else [],
             '资金斜率': round(mf.get('mf_slope', 0), 2),
             '资金持续性': round(mf.get('mf_persistence', 0), 2),
@@ -6340,7 +6389,7 @@ def calc_fundamental_score_v2(ts_code, theme_name='', theme_trend_score=0, theme
             '军工',
         }
         traditional_themes = {
-            '电力链', '煤炭链', '银行', '保险', '券商', '贵金属', '工业金属', '小金属',
+            '电力链', '煤炭链', '银行', '保险', '券商', '贵金属', '工业金属', '战略与小金属',
             '能源金属', '新能源汽车链', '必选消费红利链', '情绪消费成长链',
             '创新医药主线', '硫磺磷化工链', '电力设备出海',
         }
@@ -8840,8 +8889,19 @@ def get_tracking_stocks():
                 try:
                     df_hist = get_hist_data(ts_code)
                     if df_hist is not None and len(df_hist) >= 60:
+                        # V11: 传入主题层级（主线分级 V1.0）
+                        _theme_name = str(row.get('所属主题', ''))
+                        _theme_trend = float(row.get('主题趋势分', 0) or 0)
+                        _theme_senti = float(row.get('主题情绪分', 0) or 0)
+                        _ml_type = str(row.get('主线类型', ''))
+                        _ml_quality = float(row.get('主线质量分', 0) or 0)
                         integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
-                            df_hist, ts_code
+                            df_hist, ts_code,
+                            theme=_theme_name,
+                            theme_trend_score=_theme_trend,
+                            theme_sentiment_score=_theme_senti,
+                            mainline_type=_ml_type,
+                            mainline_quality=_ml_quality,
                         )
                         tech = calc_tech_indicators(df_hist, ts_code, TRADE_DATE)
                 except Exception as e:
@@ -9634,12 +9694,13 @@ _LC_STAGE_V6 = {'启动': '启动', '升温': '启动', '主升': '主升', '分
 def _load_mainline_rotation_themes(trade_date):
     """读取 theme_analysis_v2_{date}.txt，提取 主线(▶)+轮动(▸) 主题及其报告字段
 
-    报告行格式（theme_score_v2.py 生成）：
-      主线: ▶ 半导体 [主升] A-绝对主线 | 趋势81 情绪74 涨停13 迁移11.0
-      轮动: ▸ 可控核聚变 [升温] | 趋势50 综合51 涨停1 迁移6.9
+    报告行格式（theme_score_v2.py 生成，含主线类型分级 V1.0）：
+      主线: ▶ 半导体 [主升] 情绪+趋势共振 质量90 | 策略:龙头+中军 | 趋势81 情绪74 涨停13 迁移11.0
+      轮动: ▸ 可控核聚变 [升温] 非主线 质量55 | 趋势50 综合51 涨停1 迁移6.9
       回避: ✕ 消费 [退潮] 综合34 → 【坚决回避/清仓】
-    返回 {主题名: {theme, stage, kind, trend_score, sentiment_score,
-                   composite_score, zt_count, migration_score, stage_v6, ...}}
+    返回 {主题名: {theme, stage, kind, mainline_type, mainline_quality, trading_style,
+                   trend_score, sentiment_score, composite_score, zt_count,
+                   migration_score, stage_v6, ...}}
     """
     path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -9678,8 +9739,15 @@ def _load_mainline_rotation_themes(trade_date):
         trend = _num(r'趋势([\d.]+)')
         senti = _num(r'情绪([\d.]+)')
         comp = _num(r'综合([\d.]+)')
+        # 主线类型分级 V1.0 附加字段（无则留空，兼容旧报告）
+        _mt = re.search(r'(情绪\+趋势共振|情绪主线|趋势主线)', rest)
+        _mq = re.search(r'质量(\d+)', rest)
+        _ms = re.search(r'策略:([^\s|]+)', rest)
         themes[theme] = {
             'theme': theme, 'stage': stage, 'kind': section,
+            'mainline_type': _mt.group(1) if _mt else '',
+            'mainline_quality': int(_mq.group(1)) if _mq else 0,
+            'trading_style': _ms.group(1) if _ms else '',
             'trend_score': trend,
             'sentiment_score': senti,
             'composite_score': comp if comp else trend,  # 主线行无综合，用趋势兜底
@@ -9777,6 +9845,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     theme_cont_tags = []
     theme_leaders = []
     theme_div_buy = []
+    theme_mainline_types = []
+    theme_mainline_qualities = []
+    theme_mainline_labels = []
+    theme_trading_styles = []
 
     for _, row in result_df.iterrows():
         ts_code = row['代码']
@@ -9811,6 +9883,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
             theme_cont_tags.append(vi.get("continuation_tag", ""))
             theme_leaders.append(vi.get("leader", ""))
             theme_div_buy.append(vi.get("divergence_buy", ""))
+            theme_mainline_types.append(vi.get("mainline_type", ""))
+            theme_mainline_qualities.append(vi.get("mainline_quality", 0))
+            theme_mainline_labels.append(vi.get("mainline_quality_label", ""))
+            theme_trading_styles.append(vi.get("trading_style", ""))
             # 共振系数 = f(信号, 阶段, 延续分)（阶段用 V3 生命周期映射后的 V6 阶段）
             resonance_coeffs.append(_calc_resonance_coeff(
                 vi.get("trade_signal", ""),
@@ -9841,6 +9917,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
                 theme_cont_tags.append(jv.get("continuation_tag", ""))
                 theme_leaders.append(jv.get("leader", ""))
                 theme_div_buy.append(jv.get("divergence_buy", ""))
+                theme_mainline_types.append(jv.get("mainline_type", "非主线"))
+                theme_mainline_qualities.append(jv.get("mainline_quality", 0))
+                theme_mainline_labels.append(jv.get("mainline_quality_label", ""))
+                theme_trading_styles.append(jv.get("trading_style", ""))
                 # 回避区主题：共振系数压到最低
                 resonance_coeffs.append(0.3)
             else:
@@ -9859,6 +9939,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
                 theme_cont_tags.append('')
                 theme_leaders.append('')
                 theme_div_buy.append('')
+                theme_mainline_types.append('')
+                theme_mainline_qualities.append(0)
+                theme_mainline_labels.append('')
+                theme_trading_styles.append('')
                 # 无主题匹配：基础共振系数 0.5
                 resonance_coeffs.append(0.5)
 
@@ -9889,6 +9973,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
         result_df['确认天数'] = [0 for _ in kept_indices]
         result_df['龙头序列'] = [theme_leaders[i] for i in kept_indices]
         result_df['分歧买点'] = [theme_div_buy[i] for i in kept_indices]
+        result_df['主线类型'] = [theme_mainline_types[i] for i in kept_indices]
+        result_df['主线质量分'] = [theme_mainline_qualities[i] for i in kept_indices]
+        result_df['主线质量'] = [theme_mainline_labels[i] for i in kept_indices]
+        result_df['交易方式'] = [theme_trading_styles[i] for i in kept_indices]
     else:
         # ── 共振模式：保留全部股票，不匹配的注入空值（突破股池） ──
         kept_indices = list(range(len(result_df)))
@@ -9911,6 +9999,10 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
         result_df['确认天数'] = [0] * len(result_df)
         result_df['龙头序列'] = theme_leaders
         result_df['分歧买点'] = theme_div_buy
+        result_df['主线类型'] = theme_mainline_types
+        result_df['主线质量分'] = theme_mainline_qualities
+        result_df['主线质量'] = theme_mainline_labels
+        result_df['交易方式'] = theme_trading_styles
 
     print(f"[主题过滤] {'共振评分' if mode=='resonance' else '过滤'}后 {before} -> {len(result_df)} 只 (mode={mode})")
     return result_df
@@ -10915,13 +11007,16 @@ def run(target_date=None, simple_mode=False):
             
             theme_trend_score = float(row.get('主题趋势分', 0))
             theme_sentiment_score = float(row.get('主题情绪分', 0))
-            integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
-                df, ts_code, theme_name, theme_trend_score, theme_sentiment_score
-            )
-            # 共振系数加权：个股×主题共振（0.5~1.5）
+            _ml_type = str(row.get('主线类型', ''))
+            _ml_quality = float(row.get('主线质量分', 0) or 0)
+            # 共振系数统一纳入软天花板计算（避免硬顶扎堆）
             resonance_coeff = float(row.get('共振系数', 1.0))
-            integrated_score_orig = integrated_score
-            integrated_score = min(integrated_score * resonance_coeff, 100)
+            integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
+                df, ts_code, theme_name, theme_trend_score, theme_sentiment_score,
+                mainline_type=_ml_type, mainline_quality=_ml_quality,
+                extra_mult=resonance_coeff,
+            )
+            integrated_score_orig = details.get('基础裸分', integrated_score)
             tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
             
             stock_data = {
@@ -11047,11 +11142,11 @@ def run(target_date=None, simple_mode=False):
             _v5_factors = extract_chip_alpha_v5_factors(_v5_r)
             s.update(_v5_factors)
 
-    # 按 Opportunity Score 排序（取代原整合评分排序）
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('Opportunity_Score', 50))
+    # 按整合评分从高到低排序
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
     lines = []
     lines.append("")
-    lines.append("🔥 突破股池 (按 Opportunity Score 排序)")
+    lines.append("🔥 突破股池 (按整合评分排序)")
     lines.append("")
     
     top_stocks = ranked_stocks[:10]
@@ -11321,53 +11416,93 @@ def run(target_date=None, simple_mode=False):
         latest = max(files, key=os.path.getmtime)
         try:
             df = pd.read_csv(latest, encoding="utf-8-sig")
-            if df.empty or "形态阶段" not in df.columns:
+            if df.empty:
                 return ""
-            has = df[df["形态阶段"].fillna("") != ""].copy()
+            # 新旧格式兼容：20260807 起含 形态阶段/回踩买点分 等回踩形态列（pullback_buy 已合并）；
+            # 更早的旧格式文件无这些列，降级用 洗盘修复分+评级+无冲击+修正后评分 过滤，避免整表被丢弃
+            is_new = "形态阶段" in df.columns and "回踩买点分" in df.columns
+            stage_col = "形态阶段" if is_new else "洗盘修复标签"
+            score_col = "回踩买点分" if is_new else "洗盘修复分"
+            has = df[df.get(stage_col, "").fillna("") != ""].copy()
             if has.empty:
                 return ""
             # 双确认过滤（20260808 与 push_washout_recovery.py 同步）:
-            #   形态: 回踩买点分>=60（原 PullbackScore 语义）
-            #   综合风控: 评级S/A/B + 无兑现冲击 + 修正后评分>0（排除 C级/业绩背离/冲击 伪信号）
-            score = pd.to_numeric(has.get("回踩买点分", pd.Series(np.nan, index=has.index)), errors="coerce")
+            #   形态: 回踩买点分>=60（原 PullbackScore 语义；旧格式用洗盘修复分代替）
+            #   综合风控: 无兑现冲击 + 修正后评分>0 + (评级S/A/B 或 中报业绩正增长)
+            #   注: 评级门槛会误杀"突破前夜"形态——美迪西/奥浦迈 20260806 评级D(未突破)但业绩
+            #       +507%/+229%、无冲击，次日放量突破升 S/A。评级不再一票否决，业绩方向+兑现
+            #       冲击才是拦截核心（伪信号如中欣氟材: 业绩-48.5%+冲击⚠️+评分清零，仍被拦）。
+            score = pd.to_numeric(has.get(score_col, pd.Series(np.nan, index=has.index)), errors="coerce")
             grade = has.get("修正后胜率分级", "").astype(str).str.strip()
             impact = has.get("兑现冲击过滤", "").astype(str)
             corr = pd.to_numeric(has.get("修正后评分", pd.Series(np.nan, index=has.index)), errors="coerce").fillna(0)
+
+            def _parse_growth(v):
+                s = str(v).replace("%", "").replace("+", "").strip()
+                try:
+                    return float(s)
+                except Exception:
+                    return float("nan")
+
+            if "中报业绩亮点" in has.columns:
+                growth = pd.to_numeric(has["中报业绩亮点"].apply(_parse_growth), errors="coerce")
+            else:
+                growth = pd.Series(float("nan"), index=has.index)
+            # is_new 格式要求次日操作=✅可买入（与 push_washout_recovery buy_mask 一致，
+            # 排除"回踩完成/首阳确认"等买点分达标但未到买点的观察类票）；旧格式无此列不限制
+            if is_new and "次日操作" in has.columns:
+                _op_ok = has["次日操作"].astype(str).str.strip() == "✅ 次日可买入"
+            else:
+                _op_ok = pd.Series(True, index=has.index)
             hi = has[
                 (score >= 60) &
-                (grade.isin(["S", "A", "B"])) &
+                (_op_ok) &
                 (impact.str.contains("✅", na=False)) &
-                (corr > 0)
+                (corr > 0) &
+                (grade.isin(["S", "A", "B"]) | (growth.fillna(-1) > 0))
             ].copy()
             if hi.empty:
                 return ""
-            # 排序：次日可买入 > 观察 > 不买入
-            _op_order = {"✅ 次日可买入": 0, "⚠️ 次日观察等回踩": 1, "⚠️ 观察": 1, "❌ 仅观察不买入": 2, "❌ 等待首阳": 2}
-            hi["_oo"] = hi.get("次日操作", "").map(_op_order).fillna(9)
-            hi = hi.sort_values(["_oo", "回踩买点分"], ascending=[True, False])
+            # 排序：次日可买入 > 观察 > 不买入（旧格式无次日操作列，按评分排序）
+            if is_new:
+                _op_order = {"✅ 次日可买入": 0, "⚠️ 次日观察等回踩": 1, "⚠️ 观察": 1, "❌ 仅观察不买入": 2, "❌ 等待首阳": 2}
+                hi["_oo"] = hi.get("次日操作", "").map(_op_order).fillna(9)
+                hi = hi.sort_values(["_oo", score_col], ascending=[True, False])
+            else:
+                hi = hi.sort_values(["修正后评分", score_col], ascending=[False, False])
             lines = []
             lines.append("【中报优质股池买点】")
-            lines.append(f"数据来源：洗盘修复专题形态信号（回踩买点分≥60+评级S/A/B+无冲击，双确认共{len(hi)}只），形态=洗盘→放量首阳→缩量回踩不破")
+            lines.append(f"数据来源：洗盘修复专题形态信号（{score_col}≥60+评级S/A/B+无冲击，双确认共{len(hi)}只），形态=洗盘→放量首阳→缩量回踩不破")
             lines.append("")
             for _, row in hi.iterrows():
                 code = str(row.get("代码", ""))
                 name = row.get("名称", "")
-                stage = row.get("形态阶段", "")
+                stage = row.get(stage_col, "")
                 decision = str(row.get("次日操作", "")).strip()
-                score_v = float(row.get("回踩买点分", 0) or 0)
+                score_v = float(row.get(score_col, 0) or 0)
                 fyd = str(row.get("首阳日期", ""))[:8]
                 pdays = row.get("回踩天数", 0)
                 grade = str(row.get("修正后胜率分级", "")).strip()
-                wr = row.get("洗盘修复分", np.nan)
+                wr_col = "洗盘修复分" if is_new else "结构增强分"
+                wr = row.get(wr_col, np.nan)
                 theme = str(row.get("主题", "")).strip()
                 trade_dec = str(row.get("交易决策", "")).strip()
+                # 20260808 一致化：✅次日可买入 的票若 enhanced 仍标"低胜率规避"（未突破时的
+                # 追认措辞，非否决信号），改写为中性描述，避免误导 AI 判 ❌次日不买入；
+                # 并附业绩方向（美迪西/奥浦迈 20260806 评级D+业绩+507%/+229% 次日放量突破大涨）
+                if decision == "✅ 次日可买入":
+                    if "低胜率规避" in trade_dec:
+                        trade_dec = "回踩完成待放量突破"
+                    _g = str(row.get("中报业绩亮点", "")).strip()
+                    if _g and str(_g).lower() != "nan":
+                        trade_dec += f"，业绩:{_g}"
                 wr_s = f"{float(wr):.0f}" if pd.notna(wr) else "-"
                 yang_s = f"首阳:{fyd[4:6]}/{fyd[6:8]}" if fyd and str(fyd) != "nan" else "无首阳"
                 pull_s = f"回踩{pdays}天" if pdays and int(pdays) > 0 else "首阳当日"
                 theme_s = f" 主题:{theme}" if theme and theme != "nan" else ""
                 decision_s = f" 次日操作:{decision}" if decision and decision != "nan" else ""
                 grade_s = f" 评级:{grade}" if grade and grade != "nan" else ""
-                lines.append(f"【{name}】({code}){decision_s} 形态:{stage} 回踩买点分:{score_v:.1f} {yang_s} {pull_s} | 洗盘修复分:{wr_s}{grade_s} 决策:{trade_dec}{theme_s}")
+                lines.append(f"【{name}】({code}){decision_s} 形态:{stage} {score_col}:{score_v:.1f} {yang_s} {pull_s} | {wr_col}:{wr_s}{grade_s} 决策:{trade_dec}{theme_s}")
             return "\n".join(lines)
         except Exception as e:
             print(f"[回踩买点] 加载失败: {e}")
@@ -11439,7 +11574,7 @@ def run(target_date=None, simple_mode=False):
 2、**主题分析**
 【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
 **主线**
-#### 核心主线：XXXX
+#### 核心主线：XXXX（趋势主线/情绪主线/共振）
 * **最佳子主题**：存储芯片（推荐理由：资金强力沉淀（迁移分净流入最密集）；涨停0家/最高0连板/资金净流入228320万元）
 * **【龙头】标的**：688123.SH 聚辰股份
   - 角色：情绪领涨 / 超短爆发（0连板, 市值205亿, 成交额15.7亿）
@@ -11448,7 +11583,7 @@ def run(target_date=None, simple_mode=False):
   - 角色：容量承载 / 趋势慢牛（市值2927亿, 日成交额305.2亿）
   - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（建议仓位 15%-20%）
 
-#### 核心主线：XXXX
+#### 核心主线：XXXX（趋势主线/情绪主线/共振）
 * **最佳子主题**：CXO/CRO/CDMO（推荐理由：涨停梯队最齐（含高位连板）；涨停5家/最高1连板/资金净流入282995万元）
 * **【龙头】标的**：300363.SZ 博腾股份
   - 角色：情绪领涨 / 超短爆发（1连板, 市值111亿, 成交额13.8亿）
@@ -11457,7 +11592,7 @@ def run(target_date=None, simple_mode=False):
   - 角色：容量承载 / 趋势慢牛（市值4619亿, 日成交额139.6亿）
   - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（建议仓位 15%-20%）
 
-#### 核心主线：XXXX
+#### 核心主线：XXXX（趋势主线/情绪主线/共振）
 * **最佳子主题**：光模块（推荐理由：资金强力沉淀（迁移分净流入最密集）；涨停1家/最高1连板/资金净流入203252万元）
 * **【龙头】标的**：002281.SZ 光迅科技
   - 角色：情绪领涨 / 超短爆发（1连板, 市值1598亿, 成交额132.9亿）
@@ -11499,8 +11634,11 @@ def run(target_date=None, simple_mode=False):
 - 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
 主题地位：【必须】直接输出规则判定结果，格式如下：
-"主题与地位: 所属主题为XXX（主线/轮动/归避）"
-例如："主题与地位: 所属主题为小金属（主线）"
+"主题与地位: 所属主题为XXX（情绪+趋势共振/情绪主线/趋势主线/轮动主题/非主线·质量XX）"
+例如："主题与地位: 所属主题为小金属（情绪+趋势共振·质量83）"
+例如："主题与地位: 所属主题为创新药（情绪+趋势共振·质量89）"
+例如："主题与地位: 所属主题为工业金属（趋势主线·质量74）"
+例如："主题与地位: 所属主题为新能源车（趋势主线·质量58）"
 - 基本面Alpha评分（0-100分，越高越好）及中长线解读：
 【评分标准】
 - 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
@@ -11537,7 +11675,8 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 5、**【中报优质股池买点】**（回踩买点形态，PullbackScore≥60，形态=急跌洗盘→放量首阳→缩量回踩不破，次日存在二次启动概率）：
 {pullback_buy_text}
 （【数据边界】本段落只分析上方"【中报优质股池买点】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无中报优质股池买点信号"。
-【输出要求-最高优先级】每只股票第一行必须直接给出明确结论：✅次日可买入 / ⚠️次日观察等回踩 / ❌次日不买入，严格引用上方标注的"次日操作:"字段原值，禁止自行改判或美化；禁止把"❌仅观察不买入"或"⚠️观察"的股票描述成"形态健康可买入"。仅对"✅次日可买入"（回踩中）的个股补充次日买点与止损位，每只力求精简）
+【输出要求-最高优先级】每只股票第一行必须直接给出明确结论：✅次日可买入 / ⚠️次日观察等回踩 / ❌次日不买入，严格引用上方标注的"次日操作:"字段原值，禁止自行改判或美化；禁止把"❌仅观察不买入"或"⚠️观察"的股票描述成"形态健康可买入"。仅对"✅次日可买入"（回踩中）的个股补充次日买点与止损位，每只力求精简。
+【买卖结论优先级】凡标注"次日操作:✅次日可买入"的个股，一律判定为✅次日可买入并给出次日买点/止损位；其"决策:"与"评级:"字段仅反映当日趋势确认程度（如"回踩完成待放量突破"=突破前夜，次日存在二次启动概率），不改变"✅次日可买入"的结论，严禁因评级低/决策含"规避"字样而改判"❌次日不买入"）
 
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出

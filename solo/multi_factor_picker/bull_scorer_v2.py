@@ -727,76 +727,72 @@ class ThemeScorerV2:
             self._df = _get_df()
         return self._df
 
+    # 主题成份表反查索引（进程内只加载一次）
+    _theme_map_by_code = None
+    _theme_map_loaded = False
+
+    @classmethod
+    def _load_theme_map(cls) -> Dict[str, List[Tuple[str, float]]]:
+        """
+        加载 theme_stock_map_latest.json，构建 ts_code → [(主题, 主题分)] 反查索引。
+        零接口：直接从已生成的 v2 主题成份表取主题归属。
+        """
+        if cls._theme_map_loaded:
+            return cls._theme_map_by_code
+        cls._theme_map_loaded = True
+        cls._theme_map_by_code = {}
+        base = os.environ.get('MSTOCK_CACHE') or r'D:\mystock\cache_daily'
+        path = None
+        for name in ('theme_stock_map_latest.json', 'theme_stock_map_v2_20260807.json'):
+            p = Path(base) / name
+            if p.exists():
+                path = p
+                break
+        if path is None:
+            logger.warning(f"主题成份表不存在: {base}/theme_stock_map_latest.json")
+            return cls._theme_map_by_code
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for theme, stocks in (data.get('themes') or {}).items():
+                for st in stocks:
+                    code = st.get('code', '')
+                    if not code:
+                        continue
+                    score = float(st.get('score') or 0)
+                    cls._theme_map_by_code.setdefault(code, []).append((theme, score))
+            logger.info(f"主题成份表加载完成: {len(cls._theme_map_by_code)} 只股票, {len(data.get('themes') or {})} 主题")
+        except Exception as e:
+            logger.debug(f"加载主题成份表失败: {e}")
+        return cls._theme_map_by_code
+
+    def score_by_theme_map(self, ts_code: str) -> Tuple[float, str, Dict]:
+        """查 v2 主题成份表反查索引（零接口）：返回 (主题分0~100, 主题名, 详情)"""
+        index = self._load_theme_map()
+        entries = index.get(ts_code)
+        if not entries:
+            return 0.0, "", {"no_theme_map": True}
+        best = max(entries, key=lambda x: x[1])
+        theme, score = best
+        return float(score), theme, {
+            "method": "theme_map", "theme_map": True, "theme": theme, "score": round(score, 1),
+            "all_themes": sorted({t for t, _ in entries}),
+        }
+
     def score_by_mainbz(self, ts_code: str, period: str = None) -> Tuple[float, str, Dict]:
         """
-        通过主营业务构成匹配主题
+        主题评分（方案C 零接口版）：
+          1. 优先查 v2 主题成份表(theme_stock_map_latest.json) 反查索引
+          2. 未命中 → 返回 0，由上层走 industry/chain_tag 本地兜底
+        不再调用 fina_mainbz 接口。
         Returns: (主题分 0~100, 主题名称, 详情)
         """
-        df = self._get_df()
-        if df is None and self._pro is None:
-            return 0.0, "", {"error": "no token"}
-        try:
-            if period is None:
-                period = f"{datetime.now().year}1231"
-            if df is not None:
-                mz = df.get_fina_mainbz_raw(ts_code, period=period)
-            else:
-                mz = self._pro.fina_mainbz(ts_code=ts_code, period=period)
-            if mz is None or len(mz) == 0:
-                # 尝试更早的报告期
-                period = f"{datetime.now().year - 1}1231"
-                if df is not None:
-                    mz = df.get_fina_mainbz_raw(ts_code, period=period)
-                else:
-                    mz = self._pro.fina_mainbz(ts_code=ts_code, period=period)
-                if mz is None or len(mz) == 0:
-                    return 0.0, "", {"no_data": True}
-
-            bz_items = []
-            bz_ratios = {}
-            for _, row in mz.iterrows():
-                item = str(row.get('bz_item', ''))
-                ratio = float(row.get('bz_ratio', 0) or 0)
-                bz_items.append(item)
-                bz_ratios[item] = ratio
-
-            # 关键词匹配
-            match_scores = {}
-            for theme, keywords in THEME_KEYWORDS.items():
-                score = 0.0
-                matched_items = []
-                for item, ratio in bz_ratios.items():
-                    for kw in keywords:
-                        if kw.lower() in item.lower():
-                            # 按营收占比加权
-                            score += min(ratio or 5, 50)  # 单条上限50%
-                            matched_items.append((item, ratio))
-                            break
-                if score > 0:
-                    # 归一化到 0~100
-                    theme_base = HOT_THEME_BASE.get(theme, 50)
-                    match_intensity = min(score / 30, 1.0)  # 匹配强度
-                    # 基础分 + 匹配加成
-                    match_scores[theme] = theme_base * (0.5 + 0.5 * match_intensity)
-
-            if not match_scores:
-                return 0.0, "", {"no_match": True, "bz_items_sample": bz_items[:3]}
-
-            # 取最高分主题
-            best_theme = max(match_scores, key=match_scores.get)
-            best_score = match_scores[best_theme]
-
-            details = {
-                "theme": best_theme,
-                "score": round(best_score, 1),
-                "matched_themes": match_scores,
-                "bz_items": bz_items[:5],
-            }
-            return round(best_score, 1), best_theme, details
-
-        except Exception as e:
-            logger.debug(f"fina_mainbz {ts_code}: {e}")
-            return 0.0, "", {"error": str(e)[:40]}
+        # 1. 查主题成份表（零接口）
+        s_map, t_map, d_map = self.score_by_theme_map(ts_code)
+        if s_map > 0:
+            return s_map, t_map, d_map
+        # 2. 未命中 → 交上层本地兜底，不调接口
+        return 0.0, "", {"no_theme_map": True}
 
     def score_by_industry(self, industry: str) -> Tuple[float, str]:
         """
@@ -2277,21 +2273,20 @@ class BullScorerV2:
             max_consecutive_zt
         )
 
-        # 7. BullScore v3.0 计算（Alpha因子已移除）
-        ind_w = 0.12        # 0.14->0.12
-        order_w = 0.12      # 0.14->0.12
-        tech_w = 0.09       # 0.10->0.09
-        earn_w = 0.11       # 0.12->0.11
-        expect_w = 0.12     # 0.14->0.12（部分权重让给超预期因子,避免重复计权）
-        leader_w = 0.07     # 0.08->0.07
-        inst_w = 0.07       # 0.08->0.07
-        mc_w = 0.04         # 0.05->0.04
-        chip_w = 0.00       # 筹码面已移除
-        safety_w = 0.06     # 0.07->0.06
-        recognition_w = 0.07  # 0.08->0.07
-        # v3.2 新增: 业绩超预期(基于中报预告PEAD信号) + 波段属性(适合反复波段)
-        earn_surp_w = 0.08  # 业绩超预期 8%
-        swing_w = 0.05      # 波段属性 5%
+        # 7. BullScore 计算（方案C: safety/recognition 接口评分已砍，权重按比例回补核心因子，总分尺度不变）
+        ind_w = 0.138        # 原0.12 → 回补
+        order_w = 0.138      # 原0.12 → 回补
+        tech_w = 0.103       # 原0.09 → 回补
+        earn_w = 0.126       # 原0.11 → 回补
+        expect_w = 0.138     # 原0.12 → 回补（含超预期放大）
+        leader_w = 0.080     # 原0.07 → 回补
+        inst_w = 0.080       # 原0.07 → 回补
+        mc_w = 0.046         # 原0.04 → 回补
+        chip_w = 0.00        # 筹码面已移除
+        safety_w = 0.00      # 方案C: 砍掉接口评分(原0.06)
+        recognition_w = 0.00 # 方案C: 砍掉接口评分(原0.07)
+        earn_surp_w = 0.092  # 业绩超预期(原0.08 → 回补)
+        swing_w = 0.057      # 波段属性(原0.05 → 回补)
         total_weight_check = sum([ind_w, order_w, tech_w, earn_w, expect_w,
                                   leader_w, inst_w, mc_w, safety_w, recognition_w,
                                   earn_surp_w, swing_w])
@@ -2427,100 +2422,45 @@ class BullScorerV2:
 
     def _prewarm_caches(self, base_results: List['BullScoreResult']):
         """
-        预热缓存：先用 DataFetcher 本地 DB 获取真实评分；不可用时回退默认 0 分。
+        方案C: 零API本地预热
+          - chip/safety/recognition: 权重已归零，直接填默认 0 分缓存
+          - theme: 查 v2 主题成份表(score_by_theme_map) + industry/chain_tag 本地兜底
+        全程不进行任何 Tushare API 调用。
         """
         total = len(base_results)
-        df = _get_df()
-        if df is None:
-            # DataFetcher 不可用 → 默认 0 分
-            logger.info("DataFetcher 不可用，使用默认 0 分")
-            for cache_name in ['chip', 'safety', 'theme', 'recognition']:
-                cache = self._load_file_cache(cache_name)
-                count = sum(1 for br in base_results if br.ts_code not in cache)
-                for br in base_results:
-                    if br.ts_code not in cache:
-                        entry = {'score': 0.0, 'details': {}}
-                        if cache_name == 'theme':
-                            entry['theme'] = ''
-                        cache[br.ts_code] = entry
-                if count:
-                    self._flush_file_cache(cache_name)
-                    logger.info(f"  {cache_name}缓存: 填充{count}/{total}只默认0分")
-            return
-
-        # DataFetcher 可用 → 检查缓存是否已足够，不足才预热
-        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
-            cache = self._load_file_cache(cache_name)
-            # 如果缓存已有 ≥90% 的股票，说明今天已预热过，跳过
-            if len(cache) >= total * 0.9:
-                continue
-            # 缓存不足，删掉重建
-            path = self._cache_dir / f'{cache_name}.json'
-            if path.exists():
-                path.unlink()
-            self._file_caches.pop(cache_name, None)
-        # 检查是否所有缓存都足够
-        all_ready = True
-        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
-            cache = self._load_file_cache(cache_name)
-            if len(cache) < total * 0.9:
-                all_ready = False
-                break
-        if all_ready:
-            logger.info(f"缓存已预热（{total} 只），跳过重复预热")
-            return
         t_start = time.time()
-        for i, br in enumerate(base_results):
-            # chip
-            try:
-                self._get_chip_score(br.ts_code)
-            except Exception:
-                c = self._load_file_cache('chip')
-                if br.ts_code not in c:
-                    c[br.ts_code] = {'score': 0.0, 'details': {}}
-            # safety
-            try:
-                self._get_safety_score(
-                    br.ts_code,
-                    br.profit_yoy / 100 if br.profit_yoy else 0,
-                    br.roe / 100 if br.roe else 0,
-                    br.sub_details.get('earnings_quality', {}).get('cashflow_growth_rank', 0),
-                    br.revenue,
-                )
-            except Exception:
-                c = self._load_file_cache('safety')
-                if br.ts_code not in c:
-                    c[br.ts_code] = {'score': 0.0, 'details': {}}
-            # theme
-            try:
-                self._get_theme_score_v2(br.ts_code, br.chain_tag, br.industry or "")
-            except Exception:
-                c = self._load_file_cache('theme')
-                if br.ts_code not in c:
-                    c[br.ts_code] = {'score': 0.0, 'theme': '', 'details': {}}
-            # recognition
-            try:
-                self._get_recognition_score(br.ts_code, br.market_cap or 0, br.industry or "")
-            except Exception:
-                c = self._load_file_cache('recognition')
-                if br.ts_code not in c:
-                    c[br.ts_code] = {'score': 0.0, 'details': {}}
 
-            if (i + 1) % 100 == 0 or (i + 1) == total:
-                elapsed = time.time() - t_start
-                speed = (i + 1) / max(elapsed, 1)
-                rem = (total - i - 1) / max(speed, 1)
-                # 统计各缓存已填充数
-                chip_n = len(self._load_file_cache('chip')) - 1
-                safe_n = len(self._load_file_cache('safety')) - 1
-                theme_n = len(self._load_file_cache('theme')) - 1
-                recog_n = len(self._load_file_cache('recognition')) - 1
-                logger.info(f"  预热 {i+1}/{total}  chip{chip_n} 安全{safe_n} 主题{theme_n} 辨识{recog_n}  {speed:.0f}只/分  剩余{rem/60:.0f}分钟")
-
-        for cache_name in ['chip', 'safety', 'theme', 'recognition']:
+        # 1. chip/safety/recognition: 0 权重，填默认缓存（零API）
+        for cache_name in ['chip', 'safety', 'recognition']:
+            cache = self._load_file_cache(cache_name)
+            filled = 0
+            for br in base_results:
+                if br.ts_code not in cache:
+                    cache[br.ts_code] = {'score': 0.0, 'details': {}}
+                    filled += 1
             self._flush_file_cache(cache_name)
+            logger.info(f"  {cache_name}缓存: 填充{filled}只默认0分(零API, 共{len(cache)}只)")
+
+        # 2. theme: 查表 + 本地兜底（零API, 绕过 _get_theme_score_v2 的缓存短路强制刷新）
+        cache = self._load_file_cache('theme')
+        for br in base_results:
+            score, theme, details = self.theme_scorer.score_by_mainbz(br.ts_code)
+            if score < 1.0:
+                s2, t2 = self.theme_scorer.score_by_industry(br.industry or "")
+                if s2 >= 1.0:
+                    score, theme = s2, t2
+                    details = {"method": "industry", "theme": theme, "score": round(score, 1)}
+                else:
+                    s3, t3 = self.theme_scorer.score_fallback(br.chain_tag)
+                    if s3 >= 1.0:
+                        score, theme = s3, t3
+                        details = {"method": "chain_tag", "theme": theme, "score": round(score, 1)}
+            cache[br.ts_code] = {'score': score, 'theme': theme, 'details': details}
+        self._flush_file_cache('theme')
+        logger.info(f"  theme缓存: 查表填充完成(零API, 共{len(cache)}只)")
+
         elapsed = time.time() - t_start
-        logger.info(f"预热完成! {total}只 耗时{elapsed/60:.1f}分钟")
+        logger.info(f"预热完成! {total}只 耗时{elapsed:.1f}秒(方案C零API)")
 
     def _batch_prewarm_and_score(self, base_results, batch_size=12, delay=0.15, filter_market_cap=True):
         """预热缓存 → 批量并行评分（两步法）"""
@@ -2705,7 +2645,7 @@ class BullScorerV2:
                 '质押率%': safety_d.get('pledge', {}).get('pledge_ratio', ''),
                 '解禁占比%': safety_d.get('float', {}).get('float_ratio_60d', ''),
                 # 主题详情
-                '主题匹配方式': theme_d.get('method', 'fina_mainbz'),
+                '主题匹配方式': theme_d.get('method', 'unmatched'),
                 # 辨识度详情
                 '涨停次数': recog_d.get('limit_up', {}).get('limit_up_count', ''),
                 '连板能力': recog_d.get('limit_up', {}).get('max_consecutive_zt', ''),

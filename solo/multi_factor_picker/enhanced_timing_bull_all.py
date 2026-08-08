@@ -31,10 +31,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pullback_buy import analyze_shape
 
 
-def collect_raw_factors(ts_code: str, fetcher: DataFetcher) -> dict:
-    """Phase 1: 收集单只股票的原始因子值和基础数据"""
-    end_date = datetime.now().strftime('%Y%m%d')
-    start_date = (datetime.now() - timedelta(days=200)).strftime('%Y%m%d')
+def collect_raw_factors(ts_code: str, fetcher: DataFetcher, end_date: str = None) -> dict:
+    """Phase 1: 收集单只股票的原始因子值和基础数据
+    end_date: 数据截止日 YYYYMMDD（默认今天，重跑历史交易日时用 --date 传入）
+    """
+    if end_date is None:
+        end_date = datetime.now().strftime('%Y%m%d')
+    end_dt = datetime.strptime(end_date, '%Y%m%d')
+    start_date = (end_dt - timedelta(days=200)).strftime('%Y%m%d')
 
     daily = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
     if daily is None or len(daily) < 30:
@@ -95,6 +99,12 @@ def collect_raw_factors(ts_code: str, fetcher: DataFetcher) -> dict:
 
 
 def main():
+    # 支持重跑历史交易日: python enhanced_timing_bull_all.py --date 20260806
+    run_date = None
+    if '--date' in sys.argv:
+        idx = sys.argv.index('--date')
+        run_date = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else None
+
     report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'report_daily')
     bull_csv = os.path.join(report_dir, 'bull_stocks_all.csv')
     if not os.path.exists(bull_csv):
@@ -141,7 +151,7 @@ def main():
         if i % 50 == 1 or i <= 3 or i == total:
             logger.info(f"[{i}/{total}] {name} ({ts_code})")
 
-        rd = collect_raw_factors(ts_code, fetcher)
+        rd = collect_raw_factors(ts_code, fetcher, run_date)
         if rd is None:
             continue
 
@@ -389,7 +399,7 @@ def main():
     out_df = out_df.sort_values(['_op_order', '_grade_order', '结构增强分'], ascending=[True, True, False]).reset_index(drop=True)
     out_df = out_df.drop(columns=['_op_order', '_grade_order'])
 
-    trade_date = fetcher.get_last_trade_date()
+    trade_date = run_date or fetcher.get_last_trade_date()
     out_path = os.path.join(report_dir, f'enhanced_timing_bull_all_{trade_date}.csv')
     out_df.to_csv(out_path, index=False, encoding='utf-8-sig')
     logger.info(f"结果已保存: {out_path}")

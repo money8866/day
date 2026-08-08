@@ -1607,8 +1607,8 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
         detail['industry'] = 3
 
     # exclude_keywords 惩罚（扣分但不直接排除）
-    # V13: 区分股票名惩罚(-15)和概念惩罚(-5)
-    # 避免券商股因"参股银行"概念被误伤、医药股因"AI"概念被误伤等
+    # V15: 增加行业字段匹配（行业名含排除词也扣分，中罚-10）
+    # 避免"医药生物"大行业把医疗器械/医疗服务等不相关子行业收进来
     if exclude_keywords and not is_force:
         # 股票名含exclude_keyword：重罚-15
         name_hit = False
@@ -1617,9 +1617,24 @@ def compute_irs_score(code, stock_name, concepts, info, concept_list, keyword_li
                 detail['chain'] = max(0, detail['chain'] - 15)
                 name_hit = True
                 break
+        # 行业含exclude_keyword：中罚-10（行业权威匹配的也罚，
+        # 因为 exclude_keywords 本身就代表"这个行业方向不相关"）
+        if not name_hit:
+            # stock_dc_industries 是 {code: [行业板块名]} 字典，用 get(code) 取该股行业
+            industries = list(stock_dc_industries.get(code, [])) if stock_dc_industries else []
+            # info.source 带来的行业名也加入检查
+            src_industry = info.get("industry_name", "") or info.get("industry", "")
+            if src_industry and src_industry not in industries:
+                industries.append(src_industry)
+            for ek in exclude_keywords:
+                for ind in industries:
+                    if ek in ind:
+                        detail['chain'] = max(0, detail['chain'] - 10)
+                        name_hit = True
+                        break
+                if name_hit:
+                    break
         # 概念含exclude_keyword：轻罚-5，但跳过"参股X"/"X概念"这类宽泛标签
-        # V14: 行业权威背书（申万二级/东财行业精确匹配）的股票跳过概念惩罚，
-        # 避免"游戏股带AI概念"被误伤（如汤姆猫有AI应用概念但属SW游戏行业成员）
         if not name_hit and info.get("source") not in (
                 "sw_industry", "sw_industry_board", "dc_industry_board",
                 "dc_industry", "stock_basic_industry"):

@@ -608,6 +608,8 @@ def run_v2_analysis(trade_date=None):
             'strength_score': strength, 'mti': mti, 'mti_level': mti_level,
             # 主线穿透用：完整成份股特征（全量 rows，非 top30）
             'stock_rows': rows,
+            # 主线类型分级用：主ETF代码（ETF共振维度）
+            'main_etf': cfg.get('main_etf', ''),
         })
         rows_per_theme[theme_name] = top_rows
 
@@ -702,6 +704,8 @@ def run_v2_analysis(trade_date=None):
         # V3 实盘交易动作 + 建议仓位（覆盖原迁移引擎的简单 trade_action）
         act = calc_trade_action_v3(r)
         r.update(act)
+        # A股主线类型分级 V1.0（MainlineType / MainlineQuality / TradingStyle）
+        r.update(calc_mainline_type_v3(r, etf_kline_map))
         # 主线细分穿透：仅对核心主线执行（最佳子主题 / 龙头 / 中军）
         is_m, _mtype = _is_mainline(r)
         if is_m:
@@ -762,7 +766,7 @@ GROWTH_RULES = [
     ("AI", 1.00), ("算力", 1.00), ("机器人", 1.00), ("低空", 1.00), ("商业航天", 1.00),
     ("军工", 1.00), ("智能驾驶", 1.00), ("半导体", 1.00), ("游戏", 1.00),
     ("新能源", 0.95), ("光伏", 0.95), ("储能", 0.95), ("汽车", 0.95), ("核聚变", 0.95),
-    ("周期", 0.90), ("有色", 0.90), ("稀土", 0.90), ("小金属", 0.90), ("工业金属", 0.90),
+    ("周期", 0.90), ("有色", 0.90), ("稀土", 0.90), ("战略", 0.90), ("工业金属", 0.90),
     ("煤炭", 0.90), ("钢铁", 0.90), ("石油", 0.90), ("化工", 0.90),
     ("红利", 0.85), ("银行", 0.85), ("公用", 0.85), ("电力", 0.85), ("证券", 0.85), ("保险", 0.85),
     ("消费", 0.80), ("食品", 0.80), ("白酒", 0.80), ("医药", 0.80), ("医疗", 0.80),
@@ -953,6 +957,165 @@ def calc_trade_score_v3(strength, lifecycle, migration_score, leader_quality, fu
     return max(0.0, min(100.0, base))
 
 
+# ═══════════════════════════════════════════════════════════
+# A股主线分级 V1.0（MainlineType / MainlineQuality / TradingStyle）
+# 不重构现有评分体系，只增加一层分类判断；六维度独立计算后判定主线类型
+# ═══════════════════════════════════════════════════════════
+def _ml_clamp(x, lo=0.0, hi=100.0):
+    return max(lo, min(hi, x))
+
+
+def calc_mainline_type_v3(r, etf_kline_map=None):
+    """主线类型分级 V1.0
+
+    独立计算 6 维度（不改变原 ThemeScore/TrendScore/LifecycleScore）：
+      ml_emotion_score        情绪强度：涨停数量30% + 连板高度30% + 情绪分25% + 涨停密度15%
+      ml_trend_score          趋势强度：现有趋势分
+      ml_capital_persistence  资金持续性：资金分60% + 持续性40%
+      ml_leader_score         龙头强度：龙头效应70% + 龙头连板30%
+      ml_center_score         中军强度：大市值核心(>200亿)上涨率40% + 成交25% + 相对强度35%
+      ml_resonance_score      ETF/行业共振：ETF自身趋势50% + 板块趋势50%
+
+    类型判定（简单规则）：
+      情绪强>趋势强 → 情绪主线
+      趋势强>情绪强 → 趋势主线
+      情绪强+趋势强 → 情绪+趋势共振（必须同时 龙头强+中军强+资金持续+板块趋势强，否则退化为单类型）
+      双弱          → 非主线（不得进入核心推荐）
+
+    MainlineQuality（主线质量，独立于类型）：
+      90+ 核心主线 / 80-89 强主线 / 70-79 次主线 / 60-69 轮动主题 / <60 非主线
+
+    TradingStyle（主线类型决定交易方式，结合生命周期）：
+      情绪主线→龙头/前排优先（注意高位风险）
+      趋势主线→中军/核心优先，回踩低吸
+      情绪+趋势共振→优先级最高，可同时做龙头和中军
+      轮动/非主线→降低仓位，不追涨
+    """
+    sd = r.get('sentiment_detail', {}) or {}
+    zt = int(sd.get('zt_count', 0) or 0)
+    max_lb = int(sd.get('max_lb', 0) or 0)
+    zt_ratio = float(sd.get('zt_ratio', 0) or 0)
+    sentiment = float(r.get('sentiment_score', 0) or 0)
+    trend = float(r.get('trend_score', 0) or 0)
+    fund = float(r.get('fund_score', 0) or 0)
+    persist = float(r.get('persistence', 0) or 0)
+    leader_v3 = float(r.get('leader_v3_score', 0) or 0)
+
+    # 1) 情绪强度：涨停数量(30%) + 连板高度(30%) + 情绪分(25%) + 涨停密度(15%)
+    zt_score = _ml_clamp(zt / 10.0 * 100)              # 10家涨停满分
+    lb_score = _lb_score_v3(max_lb)                     # 复用连板非线性评分（1板15/4板90/5板+100）
+    zt_density_score = _ml_clamp(zt_ratio * 400)        # 2.5% 涨停密度满分（与高潮判定口径一致）
+    emotion = round(0.30 * zt_score + 0.30 * lb_score + 0.25 * sentiment + 0.15 * zt_density_score, 1)
+
+    # 2) 趋势强度：现有趋势分
+    trend_s = round(_ml_clamp(trend), 1)
+
+    # 3) 资金持续性：资金强度(60%) + 持续性(40%)
+    capital = round(0.60 * fund + 0.40 * persist, 1)
+
+    # 4) 龙头强度：龙头效应(70%) + 龙头连板高度(30%)
+    leader = round(0.70 * leader_v3 + 0.30 * lb_score, 1)
+
+    # 5) 中军强度：大市值核心(>200亿)整体走强（上涨率/成交额/相对强度）
+    rows = r.get('stock_rows', []) or []
+    big = [x for x in rows if (x.get('total_mv', 0) or 0) > 2000000]  # 市值>200亿(万元)
+    if big:
+        up_r = sum(1 for x in big if (x.get('pct_chg', 0) or 0) > 0) / len(big)
+        amt_sum = sum(float(x.get('amount_latest', 0) or 0) for x in big)  # 亿元
+        avg_pct = sum(float(x.get('pct_chg', 0) or 0) for x in big) / len(big)
+        center = 100 * (0.40 * up_r + 0.25 * _ml_clamp(amt_sum / 80.0, 0, 1) + 0.35 * linear(avg_pct, -2, 4))
+    else:
+        center = 30.0  # 无大市值核心 → 中军弱
+    center = round(_ml_clamp(center), 1)
+
+    # 6) ETF/行业共振：ETF自身趋势(50%) + 板块趋势(50%)；无ETF数据用板块趋势兜底
+    etf_state = None
+    main_etf = r.get('main_etf', '')
+    if etf_kline_map and main_etf:
+        etf_state = judge_etf_trend(etf_kline_map.get(main_etf, None))
+    if etf_state is not None:
+        etf_base = 100 if etf_state['state'] == '多头' else (60 if etf_state['state'] == '回踩' else 25)
+        etf_ret = float(etf_state.get('ret5', 0) or 0)
+        etf_trend_score = _ml_clamp(0.7 * etf_base + 0.3 * linear(etf_ret, -3, 5) * 100)
+    else:
+        etf_trend_score = trend_s
+    resonance = round(0.50 * etf_trend_score + 0.50 * trend_s, 1)
+
+    # ── 类型判定 ──
+    # 共振必须同时：龙头强 + 中军强 + 资金持续 + 板块趋势强 + ETF/行业共振
+    # 阈值从严（龙头60/中军55/资金55/共振55），避免"涨停多就判共振"
+    e_strong = emotion >= 50
+    t_strong = trend_s >= 55
+    l_strong = leader >= 60
+    c_strong = center >= 55
+    cap_strong = capital >= 55
+    r_strong = resonance >= 55
+    if e_strong and t_strong:
+        # 情绪+趋势共振：必须同时 龙头强+中军强+资金持续+板块趋势强+行业共振
+        if l_strong and c_strong and cap_strong and r_strong:
+            mainline_type = '情绪+趋势共振'
+        else:
+            # 双强但缺共振要素 → 退化为强势侧主导的单类型
+            mainline_type = '情绪主线' if emotion >= trend_s else '趋势主线'
+    elif e_strong:
+        mainline_type = '情绪主线'
+    elif t_strong:
+        mainline_type = '趋势主线'
+    else:
+        mainline_type = '非主线'
+
+    # ── 主线质量（独立于类型）──
+    if mainline_type == '情绪+趋势共振':
+        quality = 0.30 * emotion + 0.30 * trend_s + 0.15 * capital + 0.10 * leader + 0.10 * center + 0.05 * resonance
+    elif mainline_type == '情绪主线':
+        quality = 0.40 * emotion + 0.15 * trend_s + 0.15 * capital + 0.15 * leader + 0.10 * center + 0.05 * resonance
+    elif mainline_type == '趋势主线':
+        quality = 0.15 * emotion + 0.40 * trend_s + 0.15 * capital + 0.10 * leader + 0.15 * center + 0.05 * resonance
+    else:
+        quality = 0.25 * emotion + 0.25 * trend_s + 0.20 * capital + 0.10 * leader + 0.10 * center + 0.10 * resonance
+    quality = round(_ml_clamp(quality), 1)
+
+    def _qlabel(q):
+        if q >= 90:
+            return '核心主线'
+        if q >= 80:
+            return '强主线'
+        if q >= 70:
+            return '次主线'
+        if q >= 60:
+            return '轮动主题'
+        return '非主线'
+
+    # ── 交易方式（类型决定方式，结合生命周期）──
+    lc = r.get('lifecycle', '')
+    if mainline_type == '情绪+趋势共振':
+        style = {'主升': '龙头+中军', '升温': '龙头+中军', '启动': '龙头+中军',
+                 '分歧': '等回踩', '高潮': '龙头打高度/注意兑现', '退潮': '空仓等待'}.get(lc, '龙头+中军')
+    elif mainline_type == '情绪主线':
+        style = {'主升': '龙头接力/分歧低吸', '高潮': '龙头/分歧低吸·防高位兑现',
+                 '升温': '龙头/前排跟随', '启动': '龙头/前排跟随',
+                 '分歧': '分歧低吸', '退潮': '空仓等待'}.get(lc, '龙头/分歧低吸')
+    elif mainline_type == '趋势主线':
+        style = {'主升': '趋势低吸/回踩MA20', '升温': '中军/核心低吸',
+                 '启动': '中军/核心低吸', '分歧': '回踩确认',
+                 '高潮': '持有/逐步减仓', '退潮': '观望'}.get(lc, '趋势低吸')
+    else:
+        style = '降低仓位/不追涨'
+
+    return {
+        'mainline_type': mainline_type,
+        'mainline_quality': quality,
+        'mainline_quality_label': _qlabel(quality),
+        'trading_style': style,
+        'ml_emotion_score': emotion,
+        'ml_trend_score': trend_s,
+        'ml_capital_persistence': capital,
+        'ml_leader_score': leader,
+        'ml_center_score': center,
+        'ml_resonance_score': resonance,
+    }
+
+
 def calc_trade_action_v3(r):
     """实盘交易动作 + 建议仓位（QMT/CTP 对接用）
 
@@ -1140,6 +1303,17 @@ def save_to_csv_v2(results):
                "base_trade_score": r.get("base_trade_score", 0),
                "final_trade_score": r.get("final_trade_score", 0),
                "trade_rank": r.get("trade_rank", 0),
+               # ── A股主线类型分级 V1.0 ──
+               "mainline_type": r.get("mainline_type", ""),
+               "mainline_quality": r.get("mainline_quality", 0),
+               "mainline_quality_label": r.get("mainline_quality_label", ""),
+               "trading_style": r.get("trading_style", ""),
+               "ml_emotion_score": r.get("ml_emotion_score", 0),
+               "ml_trend_score": r.get("ml_trend_score", 0),
+               "ml_capital_persistence": r.get("ml_capital_persistence", 0),
+               "ml_leader_score": r.get("ml_leader_score", 0),
+               "ml_center_score": r.get("ml_center_score", 0),
+               "ml_resonance_score": r.get("ml_resonance_score", 0),
                "fund_acc": r.get("fund_acc", 0),
                "lc_mult": r.get("lc_mult", 0),
                "confidence": r.get("confidence", 0),
@@ -1442,14 +1616,26 @@ def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map
 
     # ── Step3: 龙头 / 中军 ──
     leader = engine = None
-    leader_cands = [x for x in best_stocks if 5e5 <= x.get('total_mv', 0) <= 3e6]
+    # 龙头判定：连板/涨停优先级最高（历史连板数=龙头辨识度第一因子）；
+    # 市值 50~300亿 区间仅为偏好（带内优先），不再是硬过滤——
+    # 避免 4连板领涨股因市值>300亿被挡在候选外、0连板股当选龙头。
+    leader_cands = [x for x in best_stocks if x.get('total_mv', 0) > 0]
     if not leader_cands:
-        # 降级：无50~300亿候选时，取市值最小但连板/涨停/涨幅最高的活跃股（龙头=小市值高弹性）
-        leader_cands = [x for x in best_stocks if x.get('total_mv', 0) > 0]
+        leader_cands = list(best_stocks)  # 全无市值信息时全量兜底
     if leader_cands:
-        leader = max(leader_cands, key=lambda x: (x.get('lb_height', 0), x.get('zt_flag', 0),
-                                                  abs(x.get('pct_chg', 0) or 0), -x.get('total_mv', 0)))
-    engine_cands = [x for x in best_stocks if x.get('total_mv', 0) > 5e6]
+
+        def _leader_key(x):
+            mv = x.get('total_mv', 0)
+            in_band = 1 if (5e5 <= mv <= 3e6) else 0  # 50~300亿 带内优先
+            lb = x.get('lb_height', 0)
+            zt = x.get('zt_flag', 0)
+            return (1 if (lb > 0 or zt > 0) else 0, lb, zt, in_band,
+                    abs(x.get('pct_chg', 0) or 0), -mv)
+
+        leader = max(leader_cands, key=_leader_key)
+    # 中军：市值>500亿 且日成交额最高（排除已当选龙头，避免与龙头重复）
+    engine_cands = [x for x in best_stocks
+                    if x is not leader and x.get('total_mv', 0) > 5e6]
     if engine_cands:
         engine = max(engine_cands, key=lambda x: x.get('amount_latest', 0) or 0)
 
@@ -1639,8 +1825,9 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         pos_lbl = r.get('position_label', '')
         pos_pct = r.get('position_pct', 0)
         pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
-        w(f"▶ {theme} [{lc_disp}] {mtype} | 趋势{r.get('trend_score', 0):.0f} 情绪{r.get('sentiment_score', 0):.0f} "
-          f"涨停{zt} 迁移{mig:.1f}")
+        w(f"▶ {theme} [{lc_disp}] {r.get('mainline_type', '')} 质量{r.get('mainline_quality', 0):.0f} | "
+          f"策略:{r.get('trading_style', '')} | 趋势{r.get('trend_score', 0):.0f} "
+          f"情绪{r.get('sentiment_score', 0):.0f} 涨停{zt} 迁移{mig:.1f}")
         w(f"    胜率预估 {wr}% | 盈亏比 {rr}:1 | 建议仓位 {pos_str}")
         w(f"    实盘买点：{action}")
     # 主线细分穿透：最佳子主题 / 龙头 / 中军
@@ -1676,7 +1863,8 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         pos_lbl = r.get('position_label', '')
         pos_pct = r.get('position_pct', 0)
         pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
-        w(f"▸ {theme} [{lc_disp}] | 趋势{r.get('trend_score', 0):.0f} 综合{r.get('composite_score', 0):.0f} "
+        w(f"▸ {theme} [{lc_disp}] {r.get('mainline_type', '')} 质量{r.get('mainline_quality', 0):.0f} | "
+          f"趋势{r.get('trend_score', 0):.0f} 综合{r.get('composite_score', 0):.0f} "
           f"涨停{zt} 迁移{mig:.1f}")
         w(f"    成为主线概率 {prob}% | 确认条件：{confirm} | 建议仓位 {pos_str}")
         w(f"    交易动作：{action}")
@@ -1704,7 +1892,7 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     w("━" * 60)
     w()
     w("─" * 100)
-    w(f"{'优先级':<4}{'主题':<10}{'主线属性':<10}{'胜率':<5}{'转化概率':<8}{'目标状态':<10}{'建议仓位':<14}{'交易动作'}")
+    w(f"{'优先级':<4}{'主题':<10}{'类型/质量':<18}{'胜率':<5}{'转化概率':<8}{'目标状态':<10}{'建议仓位':<14}{'交易动作'}")
     w("─" * 100)
     order = 0
     for r, mtype in mainlines:
@@ -1716,18 +1904,21 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         pos_lbl = r.get('position_label', '')
         pos_pct = r.get('position_pct', 0)
         pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
-        w(f"{order:<4}{r['theme']:<10}{'主线':<10}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
+        ml_str = f"{r.get('mainline_type', '')} {r.get('mainline_quality', 0):.0f}"
+        w(f"{order:<4}{r['theme']:<10}{ml_str:<18}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
     for r in rotations[:20]:
         order += 1
         lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
         pos_lbl = r.get('position_label', '')
         pos_pct = r.get('position_pct', 0)
         pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
-        w(f"{order:<4}{r['theme']:<10}{'轮动':<10}{_est_winrate(r):<5}{str(_est_mainline_prob(r)) + '%':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
+        ml_str = f"{r.get('mainline_type', '')} {r.get('mainline_quality', 0):.0f}"
+        w(f"{order:<4}{r['theme']:<10}{ml_str:<18}{_est_winrate(r):<5}{str(_est_mainline_prob(r)) + '%':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
     for r in junk[:20]:
         order += 1
         lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
-        w(f"{order:<4}{r['theme']:<10}{'杂毛':<10}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{'0%':<14}{'清仓回避'}")
+        ml_str = f"{r.get('mainline_type', '')} {r.get('mainline_quality', 0):.0f}"
+        w(f"{order:<4}{r['theme']:<10}{ml_str:<18}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{'0%':<14}{'清仓回避'}")
     w()
 
     # ── 3. 机构配置策略建议 ──
@@ -2583,7 +2774,7 @@ def calc_theme_state_v2(r, prev_data=None):
 # 防御性主题：市场差→受益（资金避险），市场好→承压（资金流出）
 DEFENSIVE_THEMES = {'黄金', '银行'}
 # 周期性主题：市场差→承压，市场好→受益
-CYCLICAL_THEMES = {'证券', '工业金属', '能源金属', '小金属', '稀土永磁', '煤炭'}
+CYCLICAL_THEMES = {'证券', '工业金属', '能源金属', '战略与小金属', '煤炭'}
 MACRO_SENSITIVE_THEMES = DEFENSIVE_THEMES | CYCLICAL_THEMES
 
 # 状态迁移表（向上）

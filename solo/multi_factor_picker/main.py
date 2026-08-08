@@ -1362,9 +1362,25 @@ def main():
             logger.warning(f"目标文件被占用，已保存至: {fallback_path} ({len(all_results)} 只)")
             logger.warning(f"请关闭占用 {full_fixed_path} 的程序后，手动重命名为 bull_stocks_all.csv")
 
+        # ── 合并流程:自动执行 DoubleScore 评分（无需单独跑 --double-score） ──
+        ds_csv = full_fixed_path if full_fixed_path.exists() else fallback_path
+        try:
+            from double_score import run_double_score, print_top
+            logger.info("=" * 60)
+            logger.info("自动执行 DoubleScore 翻倍黑马评分")
+            logger.info("=" * 60)
+            result = run_double_score(csv_path=str(ds_csv))
+            print_top(result, n=20)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            out_path = report_daily_dir / f"double_score_{timestamp}.csv"
+            result.to_csv(out_path, index=False, encoding='utf-8-sig')
+            logger.info(f"DoubleScore 结果已保存: {out_path}")
+        except Exception as e:
+            logger.error(f"DoubleScore 评分执行失败: {e}")
+            logger.warning("可稍后单独运行 python main.py --double-score 补算")
+
         logger.info("=" * 60)
-        logger.info("BullScore 数据拉取完成")
-        logger.info("提示: 运行 python main.py --double-score 查看翻倍黑马评分")
+        logger.info("BullScore 数据拉取 + 评分完成")
         logger.info("=" * 60)
 
     except Exception as e:

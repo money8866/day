@@ -21,11 +21,12 @@ echo [Step 2/7] 主题趋势分 + 情绪分...
 echo =============================================
 python solo\build_theme_stock_map_v2.py
 python solo\theme_score_v2.py
+python d:\mystock\solo\multi_factor_picker\main.py
 
-python solo\theme_trend_sentiment_score.py
+REM python solo\theme_trend_sentiment_score.py
 echo.
-python D:\mystock\solo\theme_alpha_v6\main.py
-python d:\mystock\solo\theme_forecast\main.py
+REM python D:\mystock\solo\theme_alpha_v6\main.py
+REM python d:\mystock\solo\theme_forecast\main.py
 
 
 
@@ -39,7 +40,6 @@ echo [Step 4/7] 个股形态选股...
 echo =============================================
 rem python solo\theme_pattern_stock_picker.py
 echo.
-
 
 echo 先生成趋势信号
 
@@ -58,11 +58,11 @@ rem python solo\etf_resonance\run_real.py
 rem python solo\scan_etf_alpha_v5.py
 
 
-echo [Step 5.3/7] 中报预增股池择时（幻方算法）
+echo [Step 5.3/7] 中报预增股池择时（回踩算法）
 
 echo =============================================
-rem python d:\mystock\solo\multi_factor_picker\main.py
-rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
+
+python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
 
 

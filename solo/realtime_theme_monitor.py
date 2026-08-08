@@ -38,6 +38,9 @@ if sys.platform == 'win32':
 import requests
 from dotenv import load_dotenv
 
+# ── 同花顺扶摇 MCP 补充数据源 ──
+from fuyao_mcp_client import FuyaoMCPClient, format_limit_up_summary, format_hot_stock_summary
+
 # 优先加载项目根目录下 .env；向后兼容 config/.env
 _pwd = os.path.dirname(os.path.abspath(__file__))
 for _env_path in (
@@ -154,9 +157,18 @@ class RealtimeThemeMonitor:
         self.w2s_debug_printed = False       # 弱转强首次扫描输出统计
         self.last_tail_entry_scan_time = 0   # 尾盘突袭扫描冷却
         self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
+        self.last_market_action_alert = 0      # 大盘动作信号冷却
+        self._market_action_triggered = {}     # 防重复: {条件名: 触发时间}
         # 尾盘信号跟踪表(用于未来交易日盘后回填和胜率分析)
         self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
         self._init_tail_tracker()
+
+        # ── 同花顺扶摇 MCP 补充数据 ──
+        self.fuyao = FuyaoMCPClient()
+        self.fuyao_data = {}                  # 缓存MCP数据
+        self.fuyao_last_fetch = {}            # 各工具上次调用时间
+        self.fuyao_zt_pool_enabled = True     # 涨停池是否启用
+        self.fuyao_dragon_tiger_done = False  # 龙虎榜是否已获取
 
         # ── 换手率缓存(从cache_daily加载) ──
         self.turnover_cache = {}              # ts_code -> turnover_rate(%)
@@ -1490,6 +1502,293 @@ class RealtimeThemeMonitor:
             self.last_score_alert = now_ts
         return alerts
 
+    # ════════════════════════════════════════════
+    # 大盘动作信号监测（解析V9.9报告，盘中跟进加仓/减仓条件）
+    # ════════════════════════════════════════════
+
+    def _parse_market_action_report(self):
+        """
+        解析最新 V9.9 市场分析报告，提取动作条件。
+        返回: {action, add_conditions, reduce_conditions, position, market_regime, ...}
+        条件格式: [(label, op, threshold, current), ...]
+        """
+        import re, os
+        report_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+        files = [f for f in os.listdir(report_dir)
+                 if f.startswith('market_analysis_') and f.endswith('.txt')
+                 and not f.endswith('_v8.txt') and not f.endswith('_v9.txt')]
+        if not files:
+            self._parsed_action = None
+            return None
+        files.sort(reverse=True)
+        report_path = os.path.join(report_dir, files[0])
+
+        try:
+            with open(report_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except Exception:
+            self._parsed_action = None
+            return None
+
+        result = {
+            'action': '维持',
+            'add_conditions': [],
+            'reduce_conditions': [],
+            'position': 0,
+            'market_regime': '',
+            'report_date': files[0].replace('market_analysis_', '').replace('.txt', ''),
+        }
+
+        # 提取动作
+        m = re.search(r'【动作】(\S+)', text)
+        if m:
+            result['action'] = m.group(1)
+
+        # 提取仓位目标
+        m = re.search(r'当前目标：(\d+)%', text)
+        if m:
+            result['position'] = int(m.group(1))
+
+        # 提取市场状态
+        m = re.search(r'市场：(\S+)', text)
+        if m:
+            result['market_regime'] = m.group(1)
+
+        # 提取加仓条件
+        in_add = False
+        in_reduce = False
+        for line in text.split('\n'):
+            line = line.strip()
+            if line == '加仓：':
+                in_add = True
+                in_reduce = False
+                continue
+            if line == '减仓：':
+                in_add = False
+                in_reduce = True
+                continue
+            if line.startswith('【') or line.startswith('─'):
+                in_add = False
+                in_reduce = False
+                continue
+
+            if in_add and line:
+                cond = self._parse_action_condition(line)
+                if cond:
+                    result['add_conditions'].append(cond)
+            if in_reduce and line:
+                cond = self._parse_action_condition(line)
+                if cond:
+                    result['reduce_conditions'].append(cond)
+
+        self._parsed_action = result
+        return result
+
+    def _parse_action_condition(self, line):
+        """解析单行条件: '① 上涨家数 >55%（当前 53%）' → (label, op, threshold, current)"""
+        import re
+        # 去掉序号 ① ② ③
+        line = re.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩]\s*', '', line.strip())
+        # 匹配: 标签 操作符 阈值%（当前 XX%） 或 标签 描述
+        m = re.search(r'(.+?)\s*([><])\s*([\d.]+)%\s*[（(]当前\s*([\d.]+)%\s*[）)]', line)
+        if m:
+            return (m.group(1).strip(), m.group(2), float(m.group(3)), float(m.group(4)))
+        # 无数字条件: "主线强度继续提升" / "主线龙头破位或退潮"
+        m = re.search(r'(.+?)(继续提升|破位或退潮|退潮|破位)', line)
+        if m:
+            return (m.group(1).strip() + m.group(2), 'qualitative', None, None)
+        return None
+
+    def _check_market_action_signals(self):
+        """
+        盘中实时检查大盘动作信号。
+        对比报告中的加仓/减仓条件 vs 实时数据。
+        触发时返回预警消息列表。
+        30分钟冷却，同日同条件不重复触发。
+        """
+        now_ts = time.time()
+        now_dt = datetime.now()
+
+        # 冷却: 30分钟
+        if now_ts - self.last_market_action_alert < 1800:
+            return []
+
+        # 解析报告（每天只解析一次，缓存）
+        if not hasattr(self, '_parsed_action') or self._parsed_action is None:
+            parsed = self._parse_market_action_report()
+            if parsed is None:
+                return []
+        else:
+            parsed = self._parsed_action
+
+        # 获取实时数据
+        full = self.full_market_stats if hasattr(self, 'full_market_stats') and self.full_market_stats else {}
+        rt_up_ratio = full.get('up_ratio', 0)
+        rt_zt_count = full.get('zt_count', 0)
+        rt_dt_count = full.get('dt_count', 0)
+
+        if rt_up_ratio <= 0:
+            # 无全市场数据，用主题池数据近似
+            ms = self.compute_market_overview()
+            rt_up_ratio = ms.get('up_ratio', 50)
+            rt_zt_count = ms.get('zt', 0)
+            rt_dt_count = ms.get('dt', 0)
+
+        # 获取昨日炸板率（从market_analysis.db）
+        yesterday_broken = self._get_yesterday_broken_rate()
+        rt_broken = yesterday_broken  # 实时炸板率暂无精确数据，用昨日值
+
+        # 主线强度: 实时主题评分
+        mainline_score = self._get_mainline_strength()
+
+        alerts = []
+
+        # ── 检查加仓条件 ──
+        add_met = []
+        for label, op, threshold, current in parsed.get('add_conditions', []):
+            if op == 'qualitative':
+                continue  # "主线强度继续提升" 由下方单独判断
+            val = None
+            if '上涨家数' in label:
+                val = rt_up_ratio
+            elif '炸板率' in label:
+                val = rt_broken
+            if val is not None and threshold is not None:
+                if op == '>' and val > threshold:
+                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ✅)")
+                elif op == '<' and val < threshold:
+                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ✅)")
+                elif op == '>' and val <= threshold:
+                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ❌)")
+                elif op == '<' and val >= threshold:
+                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ❌)")
+
+        # 主线强度判断: 量化评分≥70且较昨日提升
+        if mainline_score >= 70:
+            add_met.append("主线强度: 强(≥70) ✅")
+        elif mainline_score >= 55:
+            add_met.append(f"主线强度: 中({mainline_score:.0f}) ⚠")
+        else:
+            add_met.append(f"主线强度: 弱({mainline_score:.0f}) ❌")
+
+        # ── 检查减仓条件 ──
+        reduce_met = []
+        for label, op, threshold, current in parsed.get('reduce_conditions', []):
+            if op == 'qualitative':
+                continue
+            val = None
+            if '上涨家数' in label:
+                val = rt_up_ratio
+            elif '炸板率' in label:
+                val = rt_broken
+            if val is not None and threshold is not None:
+                if op == '<' and val < threshold:
+                    reduce_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ⚠)")
+                elif op == '>' and val > threshold:
+                    reduce_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ⚠)")
+
+        # 主线退潮判断
+        if mainline_score < 35:
+            reduce_met.append(f"主线强度: 极度弱({mainline_score:.0f}) ⚠")
+        elif mainline_score < 45:
+            reduce_met.append(f"主线强度: 弱({mainline_score:.0f}) ⚠")
+
+        # ── 生成预警 ──
+        n_add_met = sum(1 for m in add_met if '✅' in m)
+        n_reduce_met = sum(1 for m in reduce_met if '⚠' in m)
+
+        if n_add_met >= 2:
+            # 加仓信号触发
+            key = f"add_{now_dt.strftime('%Y%m%d')}"
+            if key not in self._market_action_triggered:
+                self._market_action_triggered[key] = now_ts
+                msg = self._build_action_alert(parsed, '加仓', add_met, reduce_met,
+                                               rt_up_ratio, rt_zt_count, rt_dt_count, mainline_score)
+                alerts.append({'type': 'market_action_add', 'msg': msg})
+        elif n_reduce_met >= 2:
+            # 减仓信号触发
+            key = f"reduce_{now_dt.strftime('%Y%m%d')}"
+            if key not in self._market_action_triggered:
+                self._market_action_triggered[key] = now_ts
+                msg = self._build_action_alert(parsed, '减仓', add_met, reduce_met,
+                                               rt_up_ratio, rt_zt_count, rt_dt_count, mainline_score)
+                alerts.append({'type': 'market_action_reduce', 'msg': msg})
+
+        if alerts:
+            self.last_market_action_alert = now_ts
+
+        return alerts
+
+    def _build_action_alert(self, parsed, signal_type, add_met, reduce_met,
+                            up_ratio, zt, dt, mainline):
+        """构建大盘动作预警消息"""
+        now = datetime.now()
+        lines = [
+            f"📊 大盘动作预警 [{now.strftime('%H:%M')}]",
+            f"报告: {parsed.get('report_date', '?')} 原建议: {parsed.get('action', '维持')}",
+            f"市场: {parsed.get('market_regime', '?')} 目标仓位: {parsed.get('position', '?')}%",
+            f"─" * 30,
+            f"实时: 上涨{up_ratio:.0f}% 涨停{zt} 跌停{dt} 主线{mainline:.0f}",
+            f"",
+        ]
+        if signal_type == '加仓':
+            lines.append(f"🟢 【动作】加仓信号触发！")
+            lines.append(f"加仓条件检查:")
+            for m in add_met:
+                lines.append(f"  {m}")
+            lines.append(f"减仓条件检查:")
+            for m in reduce_met:
+                lines.append(f"  {m}")
+        else:
+            lines.append(f"🔴 【动作】减仓信号触发！")
+            lines.append(f"减仓条件检查:")
+            for m in reduce_met:
+                lines.append(f"  {m}")
+            lines.append(f"加仓条件检查:")
+            for m in add_met:
+                lines.append(f"  {m}")
+
+        lines.append(f"─" * 30)
+        lines.append(f"⚠ 炸板率数据为前日值({parsed.get('report_date', '?')})，实时炸板率需人工确认")
+
+        return '\n'.join(lines)
+
+    def _get_yesterday_broken_rate(self):
+        """从 market_analysis.db 获取昨日炸板率"""
+        import sqlite3
+        try:
+            db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
+            if not os.path.exists(db_path):
+                return 25  # 默认值
+            conn = sqlite3.connect(db_path)
+            row = conn.execute(
+                "SELECT broken_rate FROM limit_stats ORDER BY trade_date DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if row and row[0] is not None:
+                return float(row[0])
+        except Exception:
+            pass
+        return 25
+
+    def _get_mainline_strength(self):
+        """实时主线强度: 取TOP3主题量化评分均值"""
+        # 优先用 _last_theme_results (由 compute_theme_scores_realtime 设置)
+        if hasattr(self, '_last_theme_results') and self._last_theme_results:
+            top3 = sorted(self._last_theme_results,
+                          key=lambda x: x.get('alpha', 0), reverse=True)[:3]
+            if top3:
+                return sum(r.get('alpha', 0) for r in top3) / len(top3)
+        # 回退: theme_scores dict
+        if hasattr(self, 'theme_scores') and self.theme_scores:
+            try:
+                top3 = sorted(self.theme_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+                if top3:
+                    return sum(v for _, v in top3) / len(top3)
+            except Exception:
+                pass
+        return 50
+
     def get_yesterday_market_data(self):
         """获取上一个交易日市场分析数据(用于盘前/盘中对比)
         优先通过 Tushare trade_cal 接口获取上一个交易日,避免周末/节假日指向非交易日
@@ -1669,6 +1968,68 @@ class RealtimeThemeMonitor:
             'up_ratio': round(up / total * 100, 1) if total else 0,
             'down_ratio': round(down / total * 100, 1) if total else 0,
         }
+
+    # ── 10.4 同花顺扶摇 MCP 补充数据获取 ──
+    def fetch_fuyao_data(self, now: datetime):
+        """
+        从同花顺扶摇MCP获取补充数据，作为新浪API的增强
+        调用频率:
+          - 涨停池: 每60秒(服务端30秒缓存)
+          - 热股榜/飙升榜: 每10分钟(600秒)
+          - 龙虎榜: 15:00后仅一次
+        数据存入 self.fuyao_data 供 print_summary 使用
+        """
+        if not self.fuyao.is_healthy:
+            return
+
+        t = time.time()
+
+        # ── 涨停池 (每60秒) ──
+        if self.fuyao_zt_pool_enabled:
+            key = 'limit_up_pool'
+            if t - self.fuyao_last_fetch.get(key, 0) >= 60:
+                zt = self.fuyao.get_limit_up_pool(size=20, sort_field='continue_day_cnt')
+                if zt and zt.get('code') == 0:
+                    self.fuyao_data[key] = zt
+                    self.fuyao_last_fetch[key] = t
+                    items = zt.get('data', {}).get('item', [])
+                    if items:
+                        top_info = f"{items[0].get('name','')}({items[0].get('continue_day_cnt',0)}板)" if items else '无'
+                        print(f"   📈 [扶摇] 涨停池 {len(items)}只 | 最高:{top_info}")
+                else:
+                    self.fuyao_data[key] = None
+
+        # ── 热股榜 (每10分钟) ──
+        key = 'hot_stock_list'
+        if t - self.fuyao_last_fetch.get(key, 0) >= 600:
+            hot = self.fuyao.get_hot_stock_list()
+            if hot and hot.get('code') == 0:
+                self.fuyao_data[key] = hot
+                self.fuyao_last_fetch[key] = t
+            else:
+                self.fuyao_data[key] = None
+
+        # ── 飙升榜 (每10分钟) ──
+        key = 'skyrocket_list'
+        if t - self.fuyao_last_fetch.get(key, 0) >= 600:
+            sky = self.fuyao.get_skyrocket_list()
+            if sky and sky.get('code') == 0:
+                self.fuyao_data[key] = sky
+                self.fuyao_last_fetch[key] = t
+            else:
+                self.fuyao_data[key] = None
+
+        # ── 龙虎榜 (15:00后仅一次) ──
+        if now.hour >= 15 and not self.fuyao_dragon_tiger_done:
+            key = 'dragon_tiger_list'
+            dt_data = self.fuyao.get_dragon_tiger_list()
+            if dt_data and dt_data.get('code') == 0:
+                self.fuyao_data[key] = dt_data
+                self.fuyao_dragon_tiger_done = True
+                self.fuyao_last_fetch[key] = t
+                print(f"   🐉 [扶摇] 龙虎榜已获取")
+            else:
+                self.fuyao_data[key] = None
 
     # ── 10.5 新浪全市场涨跌停统计(后台任务) ──
     def fetch_full_market_stats_sina(self):
@@ -2826,6 +3187,9 @@ class RealtimeThemeMonitor:
                 # ── 计算趋势评分+市场情绪(新算法) ──
                 _ = self.compute_market_sentiment_report()
 
+                # ── 同花顺扶摇 MCP 补充数据 ──
+                self.fetch_fuyao_data(now)
+
                 # ── 9:32 开盘分析(仅一次) ──
                 if not self.opening_analysis_done and now.hour == 9 and 32 <= now.minute <= 35:
                     print(f"\n[{now.strftime('%H:%M:%S')}] ⏰ 触发开盘分析...")
@@ -2871,6 +3235,7 @@ class RealtimeThemeMonitor:
 
                     # ── 每15分钟计算并输出主题综合分TOP10 ──
                     theme_scores = self.compute_theme_scores_realtime()
+                    self._last_theme_results = theme_scores  # 供大盘动作信号监测使用
                     if theme_scores:
                         print(f"\n{'='*90}")
                         print(f"📊 次日套利Alpha TOP10 [{now.strftime('%H:%M:%S')}]")
@@ -2916,6 +3281,11 @@ class RealtimeThemeMonitor:
                 # ── 大盘情绪检测 → 推送 ──
                 all_alerts = []
                 all_alerts.extend(self.detect_market_sentiment(results))
+
+                # ── 大盘动作信号(加仓/减仓) → 推送 ──
+                action_alerts = self._check_market_action_signals()
+                if action_alerts:
+                    all_alerts.extend(action_alerts)
 
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
@@ -5248,7 +5618,7 @@ class RealtimeThemeMonitor:
         return signals
 
     def print_summary(self, results):
-        """控制台输出摘要(含趋势评分+仓位建议)"""
+        """控制台输出摘要(含趋势评分+仓位建议+扶摇MCP数据)"""
         now = datetime.now().strftime('%H:%M:%S')
         ms = results['market_stats']
         report = results.get('sentiment_report')
@@ -5262,14 +5632,48 @@ class RealtimeThemeMonitor:
             print(f"   指数评分: " + " | ".join(idx))
             print(f"   市场状态【{report['market_status']}】趋势总评分{report['trend_score']:.1f} 建议仓位{report['position']}%({report['position_range']})")
 
+        # ── 扶摇 MCP 补充数据 ──
+        fuyao_status = self.fuyao.status if self.fuyao.is_healthy else f"⚠ {self.fuyao.status}"
+        print(f"   扶摇MCP: {fuyao_status}")
+
+        # 涨停池摘要
+        zt_data = self.fuyao_data.get('limit_up_pool')
+        if zt_data:
+            items = zt_data.get('data', {}).get('item', [])
+            if items:
+                top5 = [f"{it.get('name','')}({it.get('continue_day_cnt',0)}板)" for it in items[:5]]
+                print(f"   📈 涨停池(连板): {', '.join(top5)}" + (f" ...共{len(items)}只" if len(items) > 5 else ""))
+
+        # 热股榜摘要
+        hot_data = self.fuyao_data.get('hot_stock_list')
+        if hot_data:
+            items = hot_data.get('data', {}).get('item', [])
+            if items:
+                top5 = []
+                for it in items[:5]:
+                    trend = it.get('rank_trend', 'flat')
+                    t_emoji = {'up': '↑', 'down': '↓', 'flat': '→'}.get(trend, '')
+                    top5.append(f"{it.get('name','')}{t_emoji}")
+                print(f"   🔥 热股榜: {', '.join(top5)}")
+
+        # 龙虎榜摘要
+        dt_data = self.fuyao_data.get('dragon_tiger_list')
+        if dt_data:
+            items = dt_data.get('data', {}).get('stock_items', [])
+            if items:
+                top3 = [f"{it.get('name','')}(净{'买入' if it.get('net_value',0)>0 else '卖出'}{abs(it.get('net_value',0))/1e8:.1f}亿)" for it in items[:3]]
+                print(f"   🐉 龙虎榜: {', '.join(top3)} ...共{len(items)}只")
+
         print(f"{'='*60}")
 
     def push_alerts(self, alerts, now):
         """批量推送微信通知(纯文本格式,避免Markdown渲染异常)"""
         ts = now.strftime('%H:%M:%S')
 
-        # 分类(仅保留市场情绪预警,主题异动已由次日套利Alpha接管)
-        market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_')]
+        # 分类
+        market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_') and
+                       not a['type'].startswith('market_action_')]
+        action_alerts = [a for a in alerts if a['type'].startswith('market_action_')]
 
         # ── 市场情绪预警 ──
         if market_msgs:
@@ -5285,6 +5689,12 @@ class RealtimeThemeMonitor:
                 f"📊 数据基于实时主题成分股统计",
             ])
             self.send_wechat(title, '\n'.join(content_lines))
+
+        # ── 大盘动作信号(加仓/减仓) 独立推送 ──
+        for a in action_alerts:
+            prefix = '🟢 加仓' if a['type'] == 'market_action_add' else '🔴 减仓'
+            title = f"{prefix}信号 {ts}"
+            self.send_wechat(title, a['msg'])
 
         # ── 控制台输出 ──
         print(f"\n📱 [{ts}] 推送:")

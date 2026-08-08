@@ -92,15 +92,26 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
     lines.append('')
 
     # ─── ✅ 次日可买入 (回踩中形态 × 综合风控双确认，直接回答"明天能不能买") ───
-    # 修复记录 20260808: 中欣氟材(C级/业绩-48.5%/T+0阴线放量3.8x)曾被误推"次日可买入"。
+    # 修复记录 20260808: 中欣氟材(业绩-48.5%/T+0阴线放量3.8x/评分清零)曾被误推"次日可买入"。
     # 形态达标(回踩中+分≥60)只是门槛，必须叠加 enhanced 综合风控:
-    #   评级 S/A/B(排除C/D/E低胜率) + 无兑现冲击 + 修正后评分>0(未被冲击/业绩背离清零)
+    #   无兑现冲击 + 修正后评分>0(未被冲击/业绩背离清零) + (评级S/A/B 或 中报业绩正增长)
+    # 注: 评级门槛会误杀"突破前夜"形态——美迪西/奥浦迈 20260806 评级D(未突破)但业绩
+    #     +507%/+229%、无冲击，次日放量突破升 S/A。评级不再一票否决，业绩方向+兑现冲击
+    #     才是拦截核心（伪信号如中欣氟材仍被业绩负/冲击/评分清零拦截）。
     if '次日操作' in df.columns:
+        def _parse_growth(v):
+            s = str(v).replace('%', '').replace('+', '').strip()
+            try:
+                return float(s)
+            except Exception:
+                return float('nan')
+        growth = (pd.to_numeric(df['中报业绩亮点'].apply(_parse_growth), errors='coerce')
+                  if '中报业绩亮点' in df.columns else pd.Series(float('nan'), index=df.index))
         buy_mask = (
             (df['次日操作'] == '✅ 次日可买入') &
-            (df['修正后胜率分级'].isin(['S', 'A', 'B'])) &
             (df['兑现冲击过滤'].astype(str).str.contains('✅', na=False)) &
-            (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0)
+            (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0) &
+            (df['修正后胜率分级'].isin(['S', 'A', 'B']) | (growth.fillna(-1) > 0))
         )
         buy = df[buy_mask].sort_values('回踩买点分', ascending=False)
         if len(buy) > 0:
