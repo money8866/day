@@ -1,6 +1,9 @@
 """
 ETF主线轮动策略 - Tushare版 (收盘后运行)
-策略: 多因子动量评分 (动量+量能+波动率+相对强弱)
+策略: 动量轮动与趋势跟踪组合算法 (最强中线主线)
+  选品: RSI + 20日/60日/120日复合动量, 排名Top2~3且站上20日均线
+  趋势: EMA(12)/EMA(50)双均线金叉 + MACD零轴上方二次金叉
+  离场: 动量排名跌出Top20% 或 跌破30日离场线(MA30)
 ETF池: 37只行业ETF (全验证)
 数据源: Tushare API
 
@@ -13,7 +16,6 @@ from dotenv import load_dotenv
 import os, datetime, pandas as pd, numpy as np, json, time, argparse
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", ".env"))
 TS_TOKEN = os.getenv("TUSHARE_TOKEN")
-WECHAT_KEY = os.getenv("WECHAT_KEY")
 import tushare as ts
 import requests
 ts.set_token(TS_TOKEN)
@@ -23,7 +25,7 @@ STATE_FILE = os.path.join(os.path.dirname(__file__), "etf_mainline_state_tushare
 MOM_PERIOD = 20
 REBAL_DAYS = 60
 TOP_N = 1
-DYNAMIC_EXIT_TOPN = 5       # 动态退出: 跌出TOP5则触发调仓
+DYNAMIC_EXIT_TOP_PCT = 0.20 # 动态退出: 动量排名跌出Top20%则触发调仓
 MIN_HOLD_DAYS = 5           # 动态退出保护: 最少持仓5个交易日才允许动态退出
 
 # ──────────────────────────────────────────
@@ -31,13 +33,8 @@ MIN_HOLD_DAYS = 5           # 动态退出保护: 最少持仓5个交易日才�
 # ──────────────────────────────────────────
 CACHE_DIR = r"D:\mystock\cache_daily"
 ETF_FUND_CACHE_DIR = os.path.join(CACHE_DIR, "etf_fund")
-ETF_CONS_CACHE_DIR = os.path.join(CACHE_DIR, "etf_cons")
-ETF_CONS_JSON = os.path.join(CACHE_DIR, "etf_constituents_all.json")
-MONEYFLOW_CACHE_DIR = os.path.join(CACHE_DIR, "etf_moneyflow")
 ETF_SHARE_CACHE_DIR = os.path.join(CACHE_DIR, "etf_share")
 os.makedirs(ETF_FUND_CACHE_DIR, exist_ok=True)
-os.makedirs(ETF_CONS_CACHE_DIR, exist_ok=True)
-os.makedirs(MONEYFLOW_CACHE_DIR, exist_ok=True)
 os.makedirs(ETF_SHARE_CACHE_DIR, exist_ok=True)
 
 def _read_cache(filepath):
@@ -61,25 +58,12 @@ def _cache_key_fund(ts_code, trade_date):
     """ETF基金净值缓存key"""
     return os.path.join(ETF_FUND_CACHE_DIR, f"{ts_code}_{trade_date}.csv")
 
-def _cache_key_cons(ts_code, trade_date):
-    """ETF成份股缓存key"""
-    safe_name = ts_code.replace('.', '_')
-    return os.path.join(ETF_CONS_CACHE_DIR, f"{safe_name}_{trade_date}.csv")
 
 def _cache_key_share(ts_code, trade_date):
     """ETF份额规模缓存key"""
     safe_name = ts_code.replace('.', '_')
     return os.path.join(ETF_SHARE_CACHE_DIR, f"share_{safe_name}_{trade_date}.csv")
 
-def _cache_key_moneyflow(ts_code, trade_date):
-    """个股资金流向缓存key"""
-    safe_name = ts_code.replace('.', '_')
-    return os.path.join(MONEYFLOW_CACHE_DIR, f"mf_{safe_name}_{trade_date}.csv")
-
-def _cache_key_stock(ts_code, trade_date):
-    """个股日线缓存key"""
-    safe_name = ts_code.replace('.', '_')
-    return os.path.join(ETF_CONS_CACHE_DIR, f"stock_{safe_name}_{trade_date}.csv")
 
 ETF_POOL = {
     '半导体': '512480', '芯片': '159995', '半导体设备': '159516',
@@ -162,319 +146,6 @@ def send_pushplus(msg, token):
         print(f"⚠️ PushPlus 异常: {e}")
 
 
-def get_etf_constituents(ts_code, trade_date):
-    """
-    获取ETF成份股列表
-    1. 优先读 etf_constituents_all.json（由 download_etf_constituents.py 生成，含权重weight）
-    2. 缺失则走 API（etf_sz_cons / etf_sh_cons）并缓存到 etf_cons 目录
-    返回：[{con_code, con_name, weight, qty, cpr}, ...]
-    """
-    # ---- 1. 读 etf_constituents_all.json ----
-    if os.path.exists(ETF_CONS_JSON):
-        try:
-            with open(ETF_CONS_JSON, 'r', encoding='utf-8') as f:
-                cons_map = json.load(f)
-            etf_data = cons_map.get(ts_code)
-            if etf_data and isinstance(etf_data, dict) and 'constituents' in etf_data:
-                cons = etf_data['constituents']
-                return [
-                    {
-                        'con_code': c.get('con_code', ''),
-                        'con_name': c.get('con_name', ''),
-                        'weight': c.get('weight', c.get('cpr', 0)),
-                        'qty': c.get('qty', 0),
-                        'cpr': c.get('cpr', 0),
-                    }
-                    for c in cons
-                ]
-            elif etf_data and isinstance(etf_data, list):
-                # 旧格式兼容: 纯股票代码列表
-                try:
-                    sb = pro.stock_basic(list_status='L', fields='ts_code,name')
-                    name_map = dict(zip(sb['ts_code'], sb['name']))
-                except Exception:
-                    name_map = {}
-                return [{'con_code': c, 'con_name': name_map.get(c, ''),
-                         'weight': 0, 'qty': 0, 'cpr': 0} for c in etf_data]
-        except Exception:
-            pass
-
-    # ---- 2. 读单独CSV缓存（旧格式兼容） ----
-    cache_file = _cache_key_cons(ts_code, trade_date)
-    cached = _read_cache(cache_file)
-    if cached is not None:
-        result = []
-        for _, row in cached.iterrows():
-            result.append({
-                'con_code': row.get('con_code', ''),
-                'con_name': row.get('con_name', ''),
-                'weight': row.get('weight', row.get('cpr', 0)),
-                'qty': row.get('qty', 0),
-                'cpr': row.get('cpr', 0),
-            })
-        return result
-
-    # ---- 3. API 拉取 ----
-    prefix = ts_code[0]
-    try:
-        if prefix == '1':
-            df = pro.etf_sz_cons(
-                ts_code=ts_code,
-                fields=["trade_date", "ts_code", "con_code", "con_name", "qty", "cpr"]
-            )
-        else:
-            df = pro.etf_sh_cons(
-                ts_code=ts_code,
-                fields=["trade_date", "ts_code", "con_code", "con_name", "qty", "cpr"]
-            )
-        if df is None or df.empty:
-            return []
-
-        df = df[df['trade_date'] <= trade_date]
-        if df.empty:
-            return []
-        latest_date = df['trade_date'].max()
-        df = df[df['trade_date'] == latest_date]
-        _save_cache(df, cache_file)
-
-        result = []
-        for _, row in df.iterrows():
-            result.append({
-                'con_code': row.get('con_code', ''),
-                'con_name': row.get('con_name', ''),
-                'weight': row.get('weight', row.get('cpr', 0)),
-                'qty': row.get('qty', 0),
-                'cpr': row.get('cpr', 0),
-            })
-        return result
-    except Exception as e:
-        print(f"  [WARN] 获取{ts_code}成份股失败: {e}")
-        return []
-
-
-# ──────────────────────────────────────────
-# 申万行业纯度因子 (Purity Score)
-# ──────────────────────────────────────────
-SW_INDUSTRY_CACHE = os.path.join(CACHE_DIR, "sw_industry_map.json")
-
-# 每个ETF对应的"纯度行业白名单" (申万一级行业名称)
-# 不在此白名单的成份股将被过滤, 位置让给纯度更高的股票
-ETF_PURITY_WHITELIST = {
-    '创新药': ['医药生物'],
-    '医药':   ['医药生物'],
-    '医疗器械': ['医药生物'],
-    '半导体': ['电子'],
-    '芯片': ['电子'],
-    '半导体设备': ['电子', '机械设备'],
-    '科创半导体': ['电子'],
-    '人工智能': ['计算机', '通信', '电子', '传媒'],
-    '软件': ['计算机'],
-    '通信': ['通信'],
-    '消费电子': ['电子'],
-    '金融科技': ['计算机', '非银金融'],
-    '游戏': ['传媒', '计算机'],
-    '新能源': ['电力设备'],
-    '光伏': ['电力设备'],
-    '储能': ['电力设备'],
-    '电池': ['电力设备', '有色金属'],
-    '新能源车': ['汽车', '电力设备'],
-    '军工': ['国防军工'],
-    '航空航天': ['国防军工'],
-    '机器人': ['机械设备', '电力设备', '电子', '家用电器'],
-    '有色金属': ['有色金属'],
-    '化工': ['基础化工', '石油石化'],
-    '煤炭': ['煤炭'],
-    '钢铁': ['钢铁'],
-    '电力': ['公用事业'],
-    '电网设备': ['电力设备', '公用事业'],
-    '消费': ['食品饮料', '商贸零售', '纺织服饰', '社会服务', '家用电器', '农林牧渔', '轻工制造'],
-    '食品饮料': ['食品饮料'],
-    '酒': ['食品饮料'],
-    '家电': ['家用电器'],
-    '证券': ['非银金融'],
-    '银行': ['银行'],
-    '红利': [],  # 红利策略不限行业
-    '工业母机': ['机械设备'],
-}
-
-
-def get_sw_industry(ts_code):
-    """
-    获取股票的申万一级行业分类 (带缓存)
-    返回: l1_name (如"医药生物") 或 None
-    """
-    # 读缓存
-    cache = {}
-    if os.path.exists(SW_INDUSTRY_CACHE):
-        try:
-            with open(SW_INDUSTRY_CACHE, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-        except Exception:
-            cache = {}
-
-    if ts_code in cache:
-        return cache[ts_code]
-
-    # API查询
-    try:
-        df = pro.index_member_all(ts_code=ts_code)
-        if df is not None and not df.empty:
-            # 取最新记录 (is_new='Y')
-            if 'is_new' in df.columns:
-                df = df[df['is_new'] == 'Y']
-            if not df.empty:
-                l1_name = str(df.iloc[0].get('l1_name', ''))
-                cache[ts_code] = l1_name
-                # 写缓存
-                with open(SW_INDUSTRY_CACHE, 'w', encoding='utf-8') as f:
-                    json.dump(cache, f, ensure_ascii=False, indent=2)
-                return l1_name
-    except Exception:
-        pass
-
-    cache[ts_code] = None
-    with open(SW_INDUSTRY_CACHE, 'w', encoding='utf-8') as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
-    return None
-
-
-def filter_by_purity(constituents, etf_name, min_weight=2.0):
-    """
-    纯度因子过滤: 根据申万一级行业过滤非纯度成份股
-
-    Args:
-        constituents: [{con_code, con_name, weight, qty, cpr}, ...]
-        etf_name: ETF名称 (如 '创新药')
-        min_weight: 最小持仓占比阈值, 低于此值不过滤
-
-    Returns:
-        (filtered_list, removed_list, purity_ratio)
-    """
-    whitelist = ETF_PURITY_WHITELIST.get(etf_name, [])
-    if not whitelist:
-        return constituents, [], 1.0
-
-    filtered = []
-    removed = []
-
-    for con in constituents:
-        con_code = con.get('con_code', '')
-        weight = float(con.get('weight', con.get('cpr', 0)) or 0)
-
-        if weight > 0:
-            filtered.append(con)
-            continue
-
-        l1_name = get_sw_industry(con_code)
-
-        if l1_name and l1_name in whitelist:
-            filtered.append(con)
-        elif l1_name:
-            removed.append({**con, 'l1_name': l1_name, 'reason': f'行业({l1_name})不在白名单'})
-        else:
-            filtered.append(con)
-
-    purity_ratio = len(filtered) / len(constituents) if constituents else 0
-    return filtered, removed, purity_ratio
-
-
-def compute_stock_momentum_score(ts_code, pro, lookback_days=60):
-    """
-    轻量动量评分（0-100）
-    因子：5日涨幅(25%) + 10日涨幅(25%) + 20日涨幅(25%) + 量价趋势(15%) + MACD状态(10%)
-
-    V2: 优先从 SQLite daily_cache 表读取，避免高频调 pro.daily
-    """
-    try:
-        end_date = TRADE_DATE
-        start_date = (datetime.datetime.strptime(end_date, "%Y%m%d") -
-                      datetime.timedelta(days=lookback_days)).strftime("%Y%m%d")
-
-        # 1) 优先 daily_cache 表
-        df = None
-        try:
-            from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
-            _, max_date = get_daily_cache_range(ts_code)
-            if max_date is not None and str(max_date) >= str(end_date):
-                cached = get_daily_cache(ts_code, start_date, end_date)
-                if cached is not None and not cached.empty and {'close', 'vol'}.issubset(cached.columns):
-                    cached['trade_date'] = cached['trade_date'].astype(str)
-                    if len(cached) >= 20:
-                        df = cached
-        except Exception:
-            pass
-
-        # 2) 缓存缺失 → 调 pro.daily，并回写 daily_cache 表
-        if df is None:
-            df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                          fields="trade_date,close,vol")
-            if df is None or len(df) < 20:
-                return None
-            try:
-                from stock_cache import batch_insert_daily_cache
-                batch_insert_daily_cache(df)
-            except Exception:
-                pass
-        
-        df = df.sort_values("trade_date").reset_index(drop=True)
-        close = df['close']
-        vol = df['vol']
-        
-        mom5 = close.pct_change(5).iloc[-1] * 100 if len(close) >= 5 else 0
-        mom10 = close.pct_change(10).iloc[-1] * 100 if len(close) >= 10 else 0
-        mom20 = close.pct_change(20).iloc[-1] * 100 if len(close) >= 20 else 0
-        
-        vol_recent = vol.tail(5).mean() if len(vol) >= 5 else 0
-        vol_hist = vol.tail(20).mean() if len(vol) >= 20 else 0
-        vol_ratio = vol_recent / (vol_hist + 1e-6) if vol_hist > 0 else 1
-        
-        ma5 = close.rolling(5).mean().iloc[-1] if len(close) >= 5 else close.iloc[-1]
-        ma20 = close.rolling(20).mean().iloc[-1] if len(close) >= 20 else close.iloc[-1]
-        ma_trend = 1 if ma5 > ma20 else 0
-        
-        macd_df = pro.fina_indicator(ts_code=ts_code, start_date=start_date, end_date=end_date,
-                                     fields="end_date,macd_dif,macd_dea,macd")
-        macd_status = 0
-        if macd_df is not None and len(macd_df) > 0:
-            last = macd_df.sort_values("end_date").iloc[-1]
-            dif = float(last.get('macd_dif', 0) or 0)
-            dea = float(last.get('macd_dea', 0) or 0)
-            macd_status = 1 if dif > dea else 0
-        
-        score = (
-            min(100, max(-100, mom5)) * 0.25 +
-            min(100, max(-100, mom10)) * 0.25 +
-            min(100, max(-100, mom20)) * 0.25 +
-            (100 if ma_trend and vol_ratio >= 1 else 50) * 0.15 +
-            (100 if macd_status else 0) * 0.10
-        )
-        score = max(0, min(100, score))
-        
-        return {
-            'score': round(score, 2),
-            'mom5': round(mom5, 2),
-            'mom10': round(mom10, 2),
-            'mom20': round(mom20, 2),
-            'vol_ratio': round(vol_ratio, 2),
-            'ma_trend': ma_trend,
-            'macd_status': macd_status,
-        }
-    except Exception as e:
-        print(f"  [WARN] {ts_code}动量评分失败: {e}")
-        return None
-
-
-def normalize_score(series):
-    """将序列归一化到0-100分"""
-    if len(series) < 2:
-        return pd.Series([50] * len(series), index=series.index)
-    min_val = series.min()
-    max_val = series.max()
-    if max_val == min_val:
-        return pd.Series([50] * len(series), index=series.index)
-    return (series - min_val) / (max_val - min_val) * 100
-
-
 def classify_market_state(benchmark_df, mom_period=20):
     """
     分类市场状态: trending(趋势) / oscillating(震荡) / declining(下跌)
@@ -493,88 +164,113 @@ def classify_market_state(benchmark_df, mom_period=20):
 
     if ret_20 > 3 and above_ma20 and ma20_direction == 'up':
         state = 'trending'
-        desc = f"趋势上涨(沪深300:{ret_20:+.1f}%,站上MA20)"
+        desc = f"趋势上涨(沪深300:{ret_20:+.2f}%,站上MA20)"
     elif ret_20 < -5:
         state = 'declining'
-        desc = f"下跌(沪深300:{ret_20:+.1f}%)"
+        desc = f"下跌(沪深300:{ret_20:+.2f}%)"
     elif ret_20 < -3 and not above_ma20:
         state = 'declining'
-        desc = f"下跌(沪深300:{ret_20:+.1f}%,跌破MA20)"
+        desc = f"下跌(沪深300:{ret_20:+.2f}%,跌破MA20)"
     else:
         state = 'oscillating'
-        desc = f"震荡(沪深300:{ret_20:+.1f}%)"
+        desc = f"震荡(沪深300:{ret_20:+.2f}%)"
 
     return state, desc
 
 
 def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     """
-    计算多因子综合评分（A股动量优化版）
-    因子1: 多窗口动量 (25%) - 5日30%/20日50%/60日20%加权 → 截面排名(在调用处补)
-    因子2: 动量加速度 (10%) - mom_5d - mom_20d
-    因子3: 量价协同 (25%) - 涨跌方向 × 量比方向 耦合
-    因子4: 风险调整 (15%) - Sharpe-like
-    因子5: 相对强弱 (15%) - 相对于沪深300
-    因子6: 趋势质量 (10%) - 上涨天数占比+回撤+MA20上方占比
+    动量轮动 + 趋势跟踪组合评分（简化版）
+    ============================================
+    核心逻辑（行业ETF中线主线）：
+      选品: 复合动量(20日/60日/120日加权) + RSI + 20日均线上方
+      趋势: EMA(12)/EMA(50) 双均线金叉 + MACD零轴上方(二次金叉)
+      离场: 30日离场线(MA30)标记，供卖出判定
+
+    因子:
+      1. 复合动量 mom_weighted (20日0.5 + 60日0.3 + 120日0.2) → 截面排名(调用处)
+      2. 动量加速度 mom_accel = 20日 - 60日
+      3. RSI(14) 强度
+      4. 趋势确认 trend_quality: EMA多头/金叉 + MACD零轴上 + 20日均线上方
+      5. 风险调整 risk_adj (回撤惩罚)
+      6. 相对强弱 rel_strength (对沪深300)
 
     注: 截面动量排名分(mom_cross_score)由调用处统一计算后注入
     """
-    if len(df) < mom_period + 5:
+    min_len = max(mom_period, 60) + 5
+    if len(df) < min_len:
         return None
 
     close = df['close']
     n = len(close)
 
-    # === 多窗口动量 (绝对分, 后续由调用处转截面排名) ===
-    mom_5d  = close.pct_change(5).iloc[-1] * 100  if n >= 6  else 0
-    mom_20d = close.pct_change(mom_period).iloc[-1] * 100
-    mom_60d = close.pct_change(60).iloc[-1] * 100 if n >= 61 else mom_20d
-    # 加权绝对动量: 仅用于截面排名的输入(此处不映射到0-100)
-    mom_weighted = mom_5d * 0.30 + mom_20d * 0.50 + mom_60d * 0.20
+    # === 多窗口复合动量 (20日/60日/120日加权) ===
+    mom_20d  = close.pct_change(20).iloc[-1] * 100 if n >= 21 else 0
+    mom_60d  = close.pct_change(60).iloc[-1] * 100 if n >= 61 else mom_20d
+    mom_120d = close.pct_change(120).iloc[-1] * 100 if n >= 121 else mom_60d
+    # 复合动量: 中期为主, 长期为续航确认
+    mom_weighted = mom_20d * 0.50 + mom_60d * 0.30 + mom_120d * 0.20
 
     # === 动量加速度 ===
-    mom_accel = mom_5d - mom_20d  # 正=加速, 负=减速
-    # 映射: 加速+5%→100, 0→50, 减速-5%→0
-    accel_score = max(0, min(100, 50 + mom_accel * 10))
+    mom_accel = mom_20d - mom_60d  # 正=加速, 负=减速
 
-    # === 量价协同 ===
-    vol = df.get('vol', None)
-    if vol is not None and len(vol) >= mom_period:
-        recent_vol = vol.tail(5).mean()
-        prev_vol = vol.tail(mom_period).head(mom_period - 5).mean()
-        vol_ratio = recent_vol / (prev_vol + 1e-6)
-        # 量比放大倍数(相对1.0)
-        vol_amp = max(vol_ratio, 1.0 / (vol_ratio + 1e-6))  # 取放大方向
-        # 当日涨跌方向
-        day_chg = (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100 if n >= 2 else 0
-        if day_chg > 0 and vol_ratio > 1:
-            # 量价齐升: 加分
-            vol_score = min(100, 50 + (vol_ratio - 1) * 50)
-        elif day_chg < 0 and vol_ratio > 1:
-            # 放量下跌: 扣分
-            vol_score = max(0, 50 - (vol_ratio - 1) * 50)
-        elif day_chg < 0 and vol_ratio < 1:
-            # 缩量下跌: 企稳信号, 略加分
-            vol_score = min(100, 50 + (1 - vol_ratio) * 50)
-        else:
-            # 缩量上涨/平量: 中性
-            vol_score = 50
-    else:
-        vol_score = 50
+    # === RSI(14) ===
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / (loss + 1e-9)
+    rsi = 100 - 100 / (1 + rs)
+    rsi_last = 50.0
+    if len(rsi) > 0 and not np.isnan(rsi.iloc[-1]):
+        rsi_last = float(rsi.iloc[-1])
+    # 映射: RSI 30→0, 70→100 (强度线性)
+    rsi_score = max(0, min(100, (rsi_last - 30) / 40 * 100))
 
-    # === 风险调整 (Sharpe-like) ===
-    daily_returns = close.pct_change().dropna()
-    if len(daily_returns) >= mom_period:
-        volatility = daily_returns.tail(mom_period).std() * np.sqrt(252) * 100
-        if volatility > 0:
-            sharpe_like = mom_20d / volatility
-            risk_adj_score = max(0, min(100, 50 + (sharpe_like - 0.5) * 50))
-        else:
-            risk_adj_score = 50
-    else:
-        risk_adj_score = 50
+    # === 趋势确认: EMA(12)/EMA(50) + MACD + MA20 ===
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    ema50 = close.ewm(span=50, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
 
-    # === 相对强弱 ===
+    ema_bull = ema12.iloc[-1] > ema50.iloc[-1]          # EMA12>EMA50 多头排列
+    # 近5日是否发生 EMA 金叉
+    golden_cross = False
+    for k in range(1, min(6, n)):
+        if ema12.iloc[-k] > ema50.iloc[-k] and ema12.iloc[-k-1] <= ema50.iloc[-k-1]:
+            golden_cross = True
+            break
+    macd_above_zero = dif.iloc[-1] > 0                   # DIF 在零轴上方
+    # 近10日 MACD 零轴上方二次金叉（DIF 上穿 DEA 且 DIF>0）
+    macd_second_golden = False
+    for k in range(1, min(11, n)):
+        if (dif.iloc[-k] > dea.iloc[-k] and dif.iloc[-k-1] <= dea.iloc[-k-1]
+                and dif.iloc[-k] > 0):
+            macd_second_golden = True
+            break
+
+    ma20 = close.rolling(20).mean()
+    ma30 = close.rolling(30).mean()
+    above_ma20 = close.iloc[-1] > ma20.iloc[-1]
+    above_ma30 = close.iloc[-1] > ma30.iloc[-1]          # 30日离场线
+
+    # 趋势质量分 0-100
+    trend_quality = 0.0
+    trend_quality += 30 if ema_bull else 0
+    trend_quality += 15 if golden_cross else 0
+    trend_quality += 25 if above_ma20 else 0
+    trend_quality += 15 if macd_above_zero else 0
+    trend_quality += 15 if macd_second_golden else 0
+    trend_quality = min(100, trend_quality)
+
+    # === 风险调整 (20日回撤惩罚) ===
+    close_tail = close.tail(mom_period)
+    cummax = close_tail.cummax()
+    drawdown = (close_tail - cummax) / cummax
+    max_dd = drawdown.min() * 100  # 负值
+    risk_adj_score = max(0, min(100, 100 + max_dd * 5))  # 回撤0%→100, -20%→0
+
+    # === 相对强弱 (对沪深300, 20日) ===
     if benchmark_df is not None and len(benchmark_df) >= mom_period + 1:
         bm_return = benchmark_df['close'].pct_change(mom_period).iloc[-1] * 100
         relative_strength = mom_20d - bm_return
@@ -582,980 +278,39 @@ def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     else:
         rel_score = 50
 
-    # === 趋势质量 ===
-    close_tail = close.tail(mom_period)
-    # 上涨天数占比
-    up_days_ratio = (close_tail.diff().dropna() > 0).sum() / (mom_period - 1)
-    # 20日内最大回撤
-    cummax = close_tail.cummax()
-    drawdown = (close_tail - cummax) / cummax
-    max_dd = drawdown.min() * 100  # 负值
-    # MA20上方天数占比
-    ma20 = close.rolling(mom_period).mean()
-    above_ma20_ratio = (close.tail(mom_period) > ma20.tail(mom_period)).sum() / mom_period
-    # 综合映射
-    tq1 = up_days_ratio * 100  # 0-100
-    tq2 = max(0, min(100, 100 + max_dd * 5))  # 回撤0%→100, -20%→0
-    tq3 = above_ma20_ratio * 100  # 0-100
-    trend_quality = tq1 * 0.35 + tq2 * 0.35 + tq3 * 0.30
-
-    # === 缩量企稳评分 (市场状态调节器: 震荡期关键因子) ===
-    # 缩量 + 价格波动小 = 企稳蓄势; 放量 = 分歧
+    # === 量能(简化, 仅保留量比信号) ===
+    vol = df.get('vol', None)
     if vol is not None and len(vol) >= mom_period:
-        price_std = close.tail(10).std()
-        price_mean = close.tail(10).mean()
-        cv = price_std / price_mean if price_mean > 0 else 0.01  # 价格变异系数
-        if vol_ratio < 1:
-            # 缩量程度 + 价格稳定度
-            shrink_factor = (1 - vol_ratio) * 100  # 0~100
-            stability_factor = max(0, (1 - cv * 100)) * 50  # 0~50
-            shrink_stability = min(100, shrink_factor + stability_factor)
-        elif vol_ratio < 1.3:
-            shrink_stability = max(0, 50 - (vol_ratio - 1) * 50)  # 50~35
-        else:
-            shrink_stability = max(0, 35 - (vol_ratio - 1.3) * 30)  # 35~0
+        recent_vol = vol.tail(5).mean()
+        prev_vol = vol.tail(mom_period).head(mom_period - 5).mean()
+        vol_ratio = recent_vol / (prev_vol + 1e-6)
+        vol_score = max(0, min(100, 50 + (vol_ratio - 1) * 50))
     else:
-        shrink_stability = 50
+        vol_score = 50
 
     return {
         'momentum': round(mom_20d, 2),       # 显示用(20日原始涨幅)
         'mom_weighted': round(mom_weighted, 2),  # 截面排名输入
         'mom_accel': round(mom_accel, 2),    # 加速度原始值(截面排名输入)
-        'accel_score': round(accel_score, 2),
+        'accel_score': round(mom_accel, 2),  # 占位(由调用处截面排名覆盖)
         'vol_score': round(vol_score, 2),
         'risk_adj': round(risk_adj_score, 2),
         'rel_strength': round(rel_score, 2),
         'trend_quality': round(trend_quality, 2),
-        'shrink_stability': round(shrink_stability, 2),
+        'rsi': round(rsi_last, 2),
+        'rsi_score': round(rsi_score, 2),
+        'ema_bull': ema_bull,
+        'golden_cross': golden_cross,
+        'macd_above_zero': macd_above_zero,
+        'macd_second_golden': macd_second_golden,
+        'above_ma20': above_ma20,
+        'above_ma30': above_ma30,
+        'shrink_stability': 50,              # 已废弃, 保留字段兼容
         # 占位: 截面排名分由调用处注入
         'mom_cross_score': None,
         # 综合分待调用处注入 mom_cross_score 后计算
         'total_score': None,
     }
-
-
-def stock_alpha_ranking(constituents, top_etf_name, today, pro, etf_df, trade_date):
-    """
-    ETF Component Stock Alpha Ranking Engine V1.0
-    
-    对TOP1 ETF的成份股进行Alpha评分，选出未来20-60个交易日内
-    最可能跑赢该ETF的股票。
-    
-    四模块评分体系：
-    - Module 1: Relative Strength Alpha (40%) - 相对ETF的超额收益
-    - Module 2: Trend Quality (25%) - 趋势质量
-    - Module 3: Capital Strength (20%) - 资金强度
-    - Module 4: Fundamental Quality (15%) - 基本面质量
-    
-    Returns: (console_text, csv_path, df_ranked)
-    """
-    lines = []
-    
-    lines.append(f"\n  {'='*70}")
-    lines.append(f"  ETF Component Stock Alpha Ranking V1.0")
-    lines.append(f"  ETF: {top_etf_name}  |  Trade Date: {trade_date}")
-    lines.append(f"  {'='*70}")
-    
-    # ──────────────────────────────────────────
-    # 1. STOCK POOL FILTER
-    # ──────────────────────────────────────────
-    lines.append(f"\n  [Step 1] Stock Pool Filter (target: 30-100 liquid stocks)")
-    
-    etf_close = etf_df['close'].values
-    stock_results = []
-    
-    for con in constituents:
-        con_code = con['con_code']
-        con_name = con['con_name']
-        if not con_code:
-            continue
-        
-        if '.' in con_code:
-            con_ts_code = con_code
-        else:
-            con_ts_code = f"{con_code}.SH" if con_code.startswith('6') else f"{con_code}.SZ"
-        
-        try:
-            # V2: 优先 daily_cache 表，缺失再走本地 parquet + pro.daily
-            con_df = None
-            try:
-                from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
-                _, max_date = get_daily_cache_range(con_ts_code)
-                if max_date is not None and str(max_date) >= str(trade_date):
-                    cached = get_daily_cache(con_ts_code,
-                                             (today - datetime.timedelta(days=250)).strftime("%Y%m%d"),
-                                             trade_date)
-                    if cached is not None and not cached.empty:
-                        cached['trade_date'] = cached['trade_date'].astype(str)
-                        con_df = cached
-            except Exception:
-                pass
-
-            if con_df is None:
-                cache_file = _cache_key_stock(con_ts_code, trade_date)
-                con_df = _read_cache(cache_file)
-                if con_df is None:
-                    con_df = pro.daily(ts_code=con_ts_code,
-                                       start_date=(today - datetime.timedelta(days=250)).strftime("%Y%m%d"),
-                                       end_date=trade_date,
-                                       fields="ts_code,trade_date,open,close,high,low,vol,amount")
-                    _save_cache(con_df, cache_file)
-                    # 同步回写 daily_cache 表
-                    try:
-                        from stock_cache import batch_insert_daily_cache
-                        batch_insert_daily_cache(con_df)
-                    except Exception:
-                        pass
-                    time.sleep(0.1)
-            
-            if con_df is None or len(con_df) < 60:
-                continue
-            
-            con_df = con_df.copy()
-            con_df["trade_date"] = pd.to_datetime(con_df["trade_date"], format="%Y%m%d")
-            con_df = con_df.sort_values("trade_date").reset_index(drop=True)
-            con_df = con_df[con_df["trade_date"] <= today].reset_index(drop=True)
-            
-            if len(con_df) < 60:
-                continue
-
-            # ── 获取同花顺资金流向数据 ──
-            mf_cache = _cache_key_moneyflow(con_ts_code, trade_date)
-            mf_df = _read_cache(mf_cache)
-            if mf_df is None:
-                try:
-                    mf_df = pro.moneyflow_ths(ts_code=con_ts_code,
-                                              start_date=(today - datetime.timedelta(days=60)).strftime("%Y%m%d"),
-                                              end_date=trade_date)
-                    _save_cache(mf_df, mf_cache)
-                    time.sleep(0.15)
-                except Exception:
-                    mf_df = None
-            # 资金行为特征: 20日净流入斜率/持续性/扩散率
-            mf_slope = 0
-            mf_persistence = 0
-            mf_diffusion = 0
-            if mf_df is not None and len(mf_df) >= 10:
-                mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
-                # moneyflow_ths 实际返回: net_amount(总净额), buy_lg_amount(大单净额),
-                # buy_md_amount(中单净额), buy_sm_amount(小单净额), 均为净值(负=流出)
-                if 'net_amount' in mf_df.columns:
-                    net_total = mf_df['net_amount'].values
-                    net_lg = mf_df['buy_lg_amount'].values if 'buy_lg_amount' in mf_df.columns else net_total
-                    net_sm = mf_df['buy_sm_amount'].values if 'buy_sm_amount' in mf_df.columns else np.zeros(len(net_total))
-
-                    # 取最近20天
-                    n_20 = min(20, len(net_total))
-                    net_20 = net_total[-n_20:]
-                    x = np.arange(n_20)
-
-                    # (1) Slope: 线性回归斜率(标准化), 正值=资金持续流入
-                    if n_20 >= 5 and np.std(net_20) > 0:
-                        slope, _ = np.polyfit(x, net_20, 1)
-                        # 斜率的z-score (除以规模标准化)
-                        mf_slope = slope / (np.std(net_20) + 1e-12) * 10
-
-                    # (2) Persistence: 20日中净流入>0的连续最长天数(权重流)
-                    pos_streak = 0
-                    max_streak = 0
-                    for v in net_20:
-                        if v > 0:
-                            pos_streak += 1
-                            max_streak = max(max_streak, pos_streak)
-                        else:
-                            pos_streak = 0
-                    # 加权: 连续天数越长越好, 用占比(0~1)表示
-                    mf_persistence = max_streak / n_20
-
-                    # (3) Diffusion: 大单vs小单的驱动比
-                    # 大单净额比率高=机构主导, 低=散户主导
-                    lg_abs = np.abs(net_lg[-n_20:]).sum() + 1e-12
-                    sm_abs = np.abs(net_sm[-n_20:]).sum() + 1e-12
-                    mf_diffusion = lg_abs / (lg_abs + sm_abs)
-
-            close_arr = con_df['close'].values
-            vol_arr = con_df['vol'].values
-            high_arr = con_df['high'].values
-            low_arr = con_df['low'].values
-            # Tushare pro.daily: amount=千元, vol=手(1手=100股)
-            if 'amount' in con_df.columns:
-                amount_arr = con_df['amount'].values * 1000  # 千元 → 元
-            else:
-                amount_arr = vol_arr * 100 * close_arr  # 手×100股/手×元/股 = 元
-            
-            # === FILTERS ===
-            # 上市天数检查：至少需要60天数据用于MA计算
-            listing_days = len(con_df)
-            if listing_days < 60:
-                continue
-            avg_amount = amount_arr[-20:].mean() if listing_days >= 20 else amount_arr.mean()
-            if avg_amount < 30000000:  # 日均成交额低于3000万元则过滤
-                continue
-            ma60 = np.mean(close_arr[-60:]) if len(close_arr) >= 60 else close_arr.mean()
-            if close_arr[-1] < ma60:
-                continue
-            if vol_arr[-1] == 0 or vol_arr[-2] == 0:
-                continue
-            
-            # ──────────────────────────────────────────
-            # PHASE 1: Collect Raw Metrics (defer scoring to Phase 2 for cross-sectional ranking)
-            # ──────────────────────────────────────────
-            stock_ret_5 = (close_arr[-1] / close_arr[-6] - 1) * 100 if len(close_arr) >= 6 else 0
-            today_ret = (close_arr[-1] / close_arr[-2] - 1) * 100 if len(close_arr) >= 2 else 0
-            stock_ret_10 = (close_arr[-1] / close_arr[-11] - 1) * 100 if len(close_arr) >= 11 else 0
-            stock_ret_20 = (close_arr[-1] / close_arr[-21] - 1) * 100 if len(close_arr) >= 21 else 0
-            stock_ret_40 = (close_arr[-1] / close_arr[-41] - 1) * 100 if len(close_arr) >= 41 else 0
-            stock_ret_60 = (close_arr[-1] / close_arr[-61] - 1) * 100 if len(close_arr) >= 61 else 0
-
-            etf_ret_5 = (etf_close[-1] / etf_close[-6] - 1) * 100 if len(etf_close) >= 6 else 0
-            etf_ret_10 = (etf_close[-1] / etf_close[-11] - 1) * 100 if len(etf_close) >= 11 else 0
-            etf_ret_20 = (etf_close[-1] / etf_close[-21] - 1) * 100 if len(etf_close) >= 21 else 0
-            etf_ret_40 = (etf_close[-1] / etf_close[-41] - 1) * 100 if len(etf_close) >= 41 else 0
-            etf_ret_60 = (etf_close[-1] / etf_close[-61] - 1) * 100 if len(etf_close) >= 61 else 0
-
-            alpha5 = stock_ret_5 - etf_ret_5
-            alpha10 = stock_ret_10 - etf_ret_10
-            alpha20 = stock_ret_20 - etf_ret_20
-            alpha40 = stock_ret_40 - etf_ret_40
-            alpha60 = stock_ret_60 - etf_ret_60
-
-            # Alpha acceleration: short-term alpha - long-term alpha (KEY DIFFERENTIATOR)
-            alpha_accel_5_20 = alpha5 - alpha20
-            alpha_accel_10_40 = alpha10 - alpha40
-            alpha_accel_20_60 = alpha20 - alpha60
-            # 二阶加速度 (加速度的加速度): (alpha5-alpha10) - (alpha10-alpha20) = alpha5+alpha20-2*alpha10
-            # 正值=近端加速比远端更快 = 爆发力正在增强而非衰减
-            alpha_accel2_5_10_20 = alpha5 + alpha20 - 2 * alpha10
-
-            # MA values
-            ma5 = np.mean(close_arr[-5:]) if len(close_arr) >= 5 else close_arr[-1]
-            ma10 = np.mean(close_arr[-10:]) if len(close_arr) >= 10 else close_arr[-1]
-            ma20 = np.mean(close_arr[-20:]) if len(close_arr) >= 20 else close_arr[-1]
-            ma20_prev = np.mean(close_arr[-21:-1]) if len(close_arr) >= 21 else ma20
-            ma_slope = (ma20 / ma20_prev - 1) * 100 if ma20_prev > 0 else 0
-
-            # Volatility (for coiled spring detection)
-            ret_5d_arr = np.diff(np.log(close_arr[-6:])) * 100 if len(close_arr) >= 6 else np.array([0.0])
-            ret_20d_arr = np.diff(np.log(close_arr[-21:])) * 100 if len(close_arr) >= 21 else np.array([0.0])
-            vol_5d = float(np.std(ret_5d_arr)) if len(ret_5d_arr) > 1 else 5.0
-            vol_20d = float(np.std(ret_20d_arr)) if len(ret_20d_arr) > 1 else 5.0
-            vol_contraction = vol_5d / (vol_20d + 1e-6)  # <1 = contraction (coiled spring)
-
-            # Position metrics
-            high_60 = close_arr[-60:].max() if len(close_arr) >= 60 else close_arr.max()
-            low_60 = close_arr[-60:].min() if len(close_arr) >= 60 else close_arr.min()
-            dist_to_high = (close_arr[-1] / high_60 - 1) * 100
-            pos_in_range = (close_arr[-1] - low_60) / (high_60 - low_60 + 1e-6) * 100
-            pullback = (high_60 / close_arr[-1] - 1) * 100
-
-            # Capital flow metrics
-            amt_5 = amount_arr[-5:].mean() if len(amount_arr) >= 5 else amount_arr.mean()
-            amt_20 = amount_arr[-20:].mean() if len(amount_arr) >= 20 else amount_arr.mean()
-            amt_60 = amount_arr[-60:].mean() if len(amount_arr) >= 60 else amount_arr.mean()
-            amt_accel_short = amt_5 / (amt_20 + 1e-6)  # short-term money inflow
-            amt_accel_med = amt_20 / (amt_60 + 1e-6)
-
-            # Volume-price: up-day vs down-day volume
-            up_vols = []; down_vols = []
-            for i in range(1, min(20, len(close_arr))):
-                if close_arr[-i] > close_arr[-i-1]: up_vols.append(vol_arr[-i])
-                elif close_arr[-i] < close_arr[-i-1]: down_vols.append(vol_arr[-i])
-            up_avg = np.mean(up_vols) if up_vols else 0
-            down_avg = np.mean(down_vols) if down_vols else 0
-            vol_price_ratio = up_avg / (down_avg + 1e-6) if down_avg > 0 else 1.0
-
-            # 突破质量评分: 量比+涨幅+突破前蓄势紧凑度
-            vol_ratio_today = vol_arr[-1] / (vol_arr[-20:].mean() + 1e-6)
-            low_10 = low_arr[-10:].min() if len(low_arr) >= 10 else low_arr[-1]
-            high_10 = high_arr[-10:].max() if len(high_arr) >= 10 else high_arr[-1]
-            low_20 = low_arr[-20:].min() if len(low_arr) >= 20 else low_arr[-1]
-            high_20 = high_arr[-20:].max() if len(high_arr) >= 20 else high_arr[-1]
-            range_10_pct = (high_10 / low_10 - 1) * 100
-            range_20_pct = (high_20 / low_20 - 1) * 100
-            pre_compress = range_10_pct / (range_20_pct + 1e-6)
-            # 综合突破质量(0-100): 涨幅/量比/突破幅度/压缩程度各25分
-            breakout_quality = (
-                max(0, min(today_ret * 8, 25)) +
-                max(0, min(vol_ratio_today * 12, 25)) +
-                max(0, min(-dist_to_high * 5, 25)) +
-                max(0, (1 - min(pre_compress, 1)) * 25)
-            )
-
-            # === [P2] 量价背离检测 ===
-            vol_ratio_5 = (vol_arr[-5:].mean() / (vol_arr[-20:].mean() + 1e-6)) if len(vol_arr) >= 20 else 1.0
-            # 正背离: 缩量回调守住前低
-            if stock_ret_5 < 0 and vol_ratio_5 < 0.8:
-                hold_pct = (close_arr[-1] / low_10 - 1) * 100 if low_10 > 0 else 0
-                if hold_pct > 1:
-                    shrink = max(0, (1 - vol_ratio_5)) * 30
-                    hold_score = min(hold_pct, 10) * 2
-                    divergence_score = min(100, 50 + shrink + hold_score)
-                else:
-                    divergence_score = 50
-            # 负背离: 放量滞涨无法创新高
-            elif stock_ret_5 > 0 and vol_ratio_5 > 1.5 and dist_to_high < -3:
-                over_vol = min((vol_ratio_5 - 1.5), 1.0) * 30
-                stuck = min(-dist_to_high - 3, 10) * 2
-                divergence_score = max(0, 50 - over_vol - stuck)
-            else:
-                divergence_score = 50
-
-            # === [P1] Alpha稳定性: 20日每日超额收益波动率(越低越稳定) ===
-            if len(close_arr) >= 21 and len(etf_close) >= 21:
-                stk_daily_ret = np.diff(np.log(close_arr[-21:])) * 100
-                etf_daily_ret = np.diff(np.log(etf_close[-21:])) * 100
-                daily_alpha_std = np.std(stk_daily_ret - etf_daily_ret)
-            else:
-                daily_alpha_std = 5.0
-
-            # MA alignment (bullish stacking: close > MA5 > MA10 > MA20 > MA60)
-            ma_alignment = 0
-            if close_arr[-1] > ma5: ma_alignment += 1
-            if close_arr[-1] > ma10: ma_alignment += 1
-            if close_arr[-1] > ma20: ma_alignment += 1
-            if close_arr[-1] > ma60: ma_alignment += 1
-            if ma5 > ma10: ma_alignment += 1
-            if ma10 > ma20: ma_alignment += 1
-            if ma20 > ma60: ma_alignment += 1
-
-            stock_results.append({
-                'code': con_code, 'name': con_name,
-                # Raw alphas
-                'alpha5': alpha5, 'alpha10': alpha10,
-                'alpha20': alpha20, 'alpha40': alpha40, 'alpha60': alpha60,
-                'alpha_accel_5_20': alpha_accel_5_20,
-                'alpha_accel_10_40': alpha_accel_10_40,
-                'alpha_accel_20_60': alpha_accel_20_60,
-                'alpha_accel2_5_10_20': alpha_accel2_5_10_20,
-                # Returns
-                'stock_ret5': stock_ret_5, 'stock_ret10': stock_ret_10,
-                'stock_ret20': stock_ret_20, 'stock_ret60': stock_ret_60,
-                # Trend
-                'ma_alignment': ma_alignment, 'ma_slope': ma_slope,
-                'close': close_arr[-1], 'ma60': ma60,
-                # Volatility
-                'vol_5d': vol_5d, 'vol_contraction': vol_contraction,
-                # Position
-                'dist_to_high': dist_to_high, 'pos_in_range': pos_in_range,
-                'pullback': pullback,
-                # Capital
-                'amt_accel_short': amt_accel_short, 'amt_accel_med': amt_accel_med,
-                'vol_price_ratio': vol_price_ratio,
-                'breakout_quality': breakout_quality,
-                # Money flow behavior
-                'mf_slope': mf_slope,
-                'mf_persistence': mf_persistence,
-                'mf_diffusion': mf_diffusion,
-                'avg_amount': avg_amount,
-                # [P2] 量价背离分
-                'divergence_score': divergence_score,
-                # [P1] Alpha稳定性
-                'daily_alpha_std': daily_alpha_std,
-            })
-        except Exception:
-            pass
-    
-    if len(stock_results) < 5:
-        msg = f"  Not enough valid stocks ({len(stock_results)}), cannot rank"
-        lines.append(msg)
-        return "\n".join(lines), None, pd.DataFrame()
-    
-    df = pd.DataFrame(stock_results)
-    
-    # ════════════════════════════════════════════════════════════
-    # PHASE 2: Cross-Sectional Percentile Scoring
-    # Key principle: percentile-based scoring gives MAXIMUM differentiation
-    # at the top end (TOP3 must score meaningfully higher than TOP4-5)
-    # ════════════════════════════════════════════════════════════
-    
-    def _pct(series, ascending=True):
-        """Percentile rank 0-100. ascending=True: higher value = higher score."""
-        r = series.rank(pct=True)
-        return r * 100 if ascending else (1 - r) * 100
-    
-    # ── MODULE 1: Alpha Acceleration + Level + Stability (35%) ──
-    # [P1] 1a. Alpha level percentile (absolute 18%)
-    alpha_level_pct = (_pct(df['alpha10']) * 0.35 +
-                       _pct(df['alpha20']) * 0.40 +
-                       _pct(df['alpha60']) * 0.25)
-    
-    # [P1] 1b. Alpha acceleration percentile (absolute 12%, 原21%→降权)
-    alpha_accel_pct = (_pct(df['alpha_accel_5_20']) * 0.35 +
-                       _pct(df['alpha_accel_10_40']) * 0.25 +
-                       _pct(df['alpha_accel_20_60']) * 0.15 +
-                       _pct(df['alpha_accel2_5_10_20']) * 0.25)
-    
-    # [P1] 1c. Alpha stability percentile (absolute 5%) - 超额收益波动率越低越稳定
-    #    低波动率的Alpha = 机构持续介入 = 可持续性高
-    alpha_stability_pct = _pct(-df['daily_alpha_std'])  # 负向: std越小分越高
-    
-    # 内部权重: level 18%/35%=51.4%, accel 12%/35%=34.3%, stability 5%/35%=14.3%
-    module1_score = alpha_level_pct * 0.514 + alpha_accel_pct * 0.343 + alpha_stability_pct * 0.143
-    
-    # ── MODULE 2: Momentum & Trend Quality (25%) ──
-    # 2a. MA alignment (8%) - bullish stacking (close > MA5 > MA10 > MA20 > MA60)
-    ma_align_score = df['ma_alignment'] / 7 * 100
-    
-    # 2b. Momentum percentile (10%)
-    momentum_pct = (_pct(df['stock_ret5']) * 0.30 +
-                    _pct(df['stock_ret10']) * 0.35 +
-                    _pct(df['stock_ret20']) * 0.35)
-    
-    # 2c. MA slope (4%) - trend direction strength
-    ma_slope_score = _pct(df['ma_slope'])
-    
-    # 2d. Pullback depth (3%) - shallow pullback from high = healthy trend
-    pullback_score = _pct(-df['pullback'])  # lower pullback is better
-    
-    module2_score = (ma_align_score * 0.32 + momentum_pct * 0.40 +
-                     ma_slope_score * 0.16 + pullback_score * 0.12)
-    
-    # ── MODULE 3: Capital Flow Pattern + 资金行为 (22%) ──
-    # 3a. Short-term money inflow (5.5%)
-    amt_inflow_score = _pct(df['amt_accel_short'])
-    
-    # 3b. Volume-price dominance (5.5%) - up-day volume > down-day volume
-    vol_price_score = _pct(df['vol_price_ratio'])
-    
-    # 3c. Coiled spring (1.8%, 原3.3%→降权) - vol contraction + volume expansion
-    vol_contraction_score = _pct(-df['vol_contraction'])  # lower ratio = contraction
-    coiled_spring_score = vol_contraction_score * 0.5 + amt_inflow_score * 0.5
-    
-    # [P2] 3d. 量价背离 (1.5%) - 缩量回调蓄势加分, 放量滞涨扣分
-    diverg_score = _pct(df['divergence_score'])
-    
-    # 3e. 资金行为: 20日净流入斜率 (3.3%) - 线性回归斜率标准化
-    mf_slope_score = _pct(df['mf_slope'])
-    
-    # 3f. 资金行为: 持续性 (2.2%) - 最长连续净流入天数占比
-    mf_persist_score = _pct(df['mf_persistence'])
-    
-    # 3g. 资金行为: 扩散率 (2.2%) - 大单绝对额占比(机构主导度)
-    mf_diffuse_score = _pct(df['mf_diffusion'])
-    
-    module3_score = (amt_inflow_score * 0.25 + vol_price_score * 0.25 +
-                     coiled_spring_score * 0.08 +
-                     diverg_score * 0.07 +
-                     mf_slope_score * 0.15 + mf_persist_score * 0.10 +
-                     mf_diffuse_score * 0.10)
-    
-    # ── MODULE 4: Position Quality + 突破质量 (10%) ──
-    # 4a. Distance from 60D high (4.2%) - closer to high = momentum persistence
-    dist_high_score = _pct(-df['dist_to_high'])
-    
-    # 4b. Position in 60D range (2.5%)
-    pos_range_score = _pct(df['pos_in_range'])
-    
-    # 4c. Breakout proximity (1.6%) - at/near 60D high
-    breakout_prox = df['dist_to_high'].apply(
-        lambda x: 100 if x >= -2 else (80 if x >= -5 else (50 if x >= -10 else 20)))
-    
-    # 4d. 突破质量评分 (1.7%) - 今日涨幅/量比/突破幅度/蓄势紧凑度
-    bq_score = _pct(df['breakout_quality'])
-    
-    module4_score = dist_high_score * 0.42 + pos_range_score * 0.25 + breakout_prox * 0.16 + bq_score * 0.17
-    
-    # ── MODULE 5: Volatility Quality (8%) ──
-    # Low volatility = institutional accumulation, less noise, higher win rate
-    module5_score = _pct(-df['vol_5d'])
-    
-    # === [P0] Special Factors: 比例调节 (上限+15%) ===
-    df['alpha_score'] = (
-        module1_score * 0.35 + module2_score * 0.25 +
-        module3_score * 0.22 + module4_score * 0.10 +
-        module5_score * 0.08
-    ).clip(0, 100)
-    
-    # Store module scores for display
-    df['relative_alpha'] = module1_score
-    df['trend_quality'] = module2_score
-    df['capital'] = module3_score
-    df['fundamental'] = module4_score  # now "position quality"
-    
-    # Leader tag: top 15% alpha + near 60D high → ×1.05
-    df['leader_mult'] = 1.0
-    alpha_rank_pct = df['alpha_score'].rank(pct=True, ascending=False)
-    df.loc[(alpha_rank_pct <= 0.15) & (df['dist_to_high'] >= -8), 'leader_mult'] = 1.05
-    
-    # Breakout tag: 突破质量>=70 + 距60日高<3% → ×1.06
-    df['breakout_mult'] = 1.0
-    df.loc[(df['breakout_quality'] >= 70) & (df['dist_to_high'] >= -3), 'breakout_mult'] = 1.06
-    
-    # Spring tag: vol contraction + near high + money inflow → ×1.05
-    df['spring_mult'] = 1.0
-    df.loc[(df['vol_contraction'] < 0.7) & (df['dist_to_high'] >= -10) &
-           (df['amt_accel_short'] > 1.0), 'spring_mult'] = 1.05
-    
-    # Crowding tag: extreme 5D return + extreme volume → ×0.92
-    df['crowding_mult'] = 1.0
-    ret_95 = df['stock_ret5'].quantile(0.95)
-    df.loc[(df['stock_ret5'] > ret_95) & (df['amt_accel_short'] > 2.5), 'crowding_mult'] = 0.92
-    
-    # 综合调节因子 ≤ 1.15
-    df['adj_mult'] = (df['leader_mult'] * df['breakout_mult'] *
-                      df['spring_mult'] * df['crowding_mult']).clip(upper=1.15)
-    
-    df['final_score'] = (df['alpha_score'] * df['adj_mult']).clip(0, 100)
-    
-    df = df.sort_values('final_score', ascending=False).reset_index(drop=True)
-    
-    # === Trading Signals ===
-    def assign_signal(row):
-        s = row['final_score']; a20 = row['alpha20']
-        if s > 85 and a20 > 5: return 'CORE_ALPHA'
-        elif s >= 75: return 'STRONG'
-        elif s >= 65: return 'WATCH'
-        return 'AVOID'
-    
-    df['signal'] = df.apply(assign_signal, axis=1)
-    df['expected_hold_days'] = df['signal'].map({'CORE_ALPHA': 40, 'STRONG': 30, 'WATCH': 20, 'AVOID': 0})
-    
-    # ── Console Output ──
-    lines.append(f"  Valid stocks after filtering: {len(df)}")
-    lines.append(f"")
-    lines.append(f"  {'Rank':<5} {'Code':<10} {'Name':<8} {'Score':>6} {'Alpha5':>7} {'A20':>6} {'Accel2':>6} {'BQ':>4} {'Trend':>5} {'Cap':>5} {'Pos':>5} {'Bonus':>5} {'Signal':>12}")
-    lines.append(f"  {'-'*96}")
-    
-    for i, (_, r) in enumerate(df.iterrows()):
-        if i >= 15: break
-        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-        adj_pct = (r.get('adj_mult', 1.0) - 1) * 100
-        bonus_str = f"{adj_pct:+.0f}%" if abs(adj_pct) > 0.5 else "-"
-        lines.append(f"  {i+1:<5} {short_code:<10} {r['name']:<8} {r['final_score']:>6.1f} "
-                     f"{r['alpha5']:>+6.1f}% {r['alpha20']:>+5.1f}% "
-                     f"{r.get('alpha_accel2_5_10_20', 0):>+5.1f} "
-                     f"{r.get('breakout_quality', 0):>4.0f} "
-                     f"{r['trend_quality']:>5.1f} {r['capital']:>5.1f} "
-                     f"{r['fundamental']:>5.1f} {bonus_str:>5} {r['signal']:>12}")
-    
-    signal_counts = df['signal'].value_counts()
-    lines.append(f"  {'-'*92}")
-    sig_parts = []
-    for s in ['CORE_ALPHA', 'STRONG', 'WATCH', 'AVOID']:
-        cnt = signal_counts.get(s, 0)
-        if cnt > 0: sig_parts.append(f"{s}:{cnt}")
-    lines.append(f"  Signals: {' | '.join(sig_parts)}")
-    
-    core = df[df['signal'] == 'CORE_ALPHA']
-    strong = df[df['signal'] == 'STRONG']
-    if len(core) > 0:
-        lines.append(f"  CORE_ALPHA: {'、'.join(core.head(3)['name'].tolist())}")
-    if len(strong) > 0:
-        lines.append(f"  STRONG: {'、'.join(strong.head(3)['name'].tolist())}")
-    
-    # TOP3 亮点
-    lines.append(f"")
-    lines.append(f"  ★ TOP3 推荐买入:")
-    for i, (_, r) in enumerate(df.head(3).iterrows()):
-        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-        tags = []
-        if r.get('breakout_mult', 1.0) > 1.0: tags.append("突破")
-        if r.get('spring_mult', 1.0) > 1.0: tags.append("弹簧")
-        if r.get('leader_mult', 1.0) > 1.0: tags.append("龙头")
-        if r.get('crowding_mult', 1.0) < 1.0: tags.append("拥挤")
-        tag_str = f" [{','.join(tags)}]" if tags else ""
-        bq = r.get('breakout_quality', 0)
-        accel2 = r.get('alpha_accel2_5_10_20', 0)
-        line = (f"    {i+1}. {r['name']}({short_code}) Score={r['final_score']:.1f} "
-                f"Alpha5={r['alpha5']:+.1f}% Accel2={accel2:+.1f} BQ={bq:.0f}{tag_str}")
-        # 资金行为信息(如有)
-        ms = r.get('mf_slope', 0)
-        mp = r.get('mf_persistence', 0)
-        if ms != 0 or mp != 0:
-            line += f"  资金:斜率{ms:+.2f}/持续{mp:.0%}"
-        lines.append(line)
-    
-    # ── CSV Output ──
-    csv_dir = os.path.join(CACHE_DIR, "etf_alpha_ranking")
-    os.makedirs(csv_dir, exist_ok=True)
-    safe_etf_name = top_etf_name.replace('/', '_').replace('\\', '_')
-    csv_path = os.path.join(csv_dir, f"{safe_etf_name}_{trade_date}.csv")
-    
-    csv_df = df[['alpha_score', 'code', 'name', 'final_score',
-                  'alpha5', 'alpha10', 'alpha20', 'alpha40', 'alpha60',
-                  'alpha_accel_5_20', 'alpha_accel_10_40', 'alpha_accel_20_60', 'alpha_accel2_5_10_20',
-                  'relative_alpha', 'trend_quality', 'capital', 'fundamental',
-                  'leader_mult', 'breakout_mult', 'spring_mult', 'crowding_mult', 'adj_mult',
-                  'dist_to_high', 'vol_contraction', 'amt_accel_short', 'breakout_quality',
-                  'mf_slope', 'mf_persistence', 'mf_diffusion',
-                  'signal', 'expected_hold_days']].copy()
-    csv_df.columns = ['AlphaBase', 'StockCode', 'StockName', 'FinalScore',
-                       'Alpha5', 'Alpha10', 'Alpha20', 'Alpha40', 'Alpha60',
-                       'Accel5_20', 'Accel10_40', 'Accel20_60', 'Accel2_5_10_20',
-                       'RelAlphaScore', 'TrendScore', 'CapitalScore', 'PositionScore',
-                       'LeaderMult', 'BreakoutMult', 'SpringMult', 'CrowdingMult', 'AdjMult',
-                       'DistToHigh', 'VolContraction', 'AmtAccelShort', 'BreakoutQuality',
-                       'MF_Slope', 'MF_Persistence', 'MF_Diffusion',
-                       'Signal', 'ExpectedHoldDays']
-    csv_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-    lines.append(f"\n  CSV Report: {csv_path}")
-
-    return "\n".join(lines), csv_path, df
-
-
-# ────────────────────────────────────────────────────────────
-# EOS 评分加载 + 融合交易决策报告
-# ────────────────────────────────────────────────────────────
-
-def _load_eos_data(trade_date):
-    """
-    从 etf_alpha_v5 的排名 CSV 加载 EOS 评分数据。
-    
-    CSV 包含列：ETF名称, 代码, EOS, RiskScore, Action, Stage 等。
-    返回 {etf代码: {name, eos, risk, action, stage, ...}}。
-    若文件不存在返回空 dict，不报错。
-    """
-    # 尝试多个可能的 V5 排名 CSV 路径
-    candidates = [
-        os.path.join(os.path.dirname(__file__), 'report_daily',
-                     f'etf_alpha_v5_ranking_{trade_date}.csv'),
-        os.path.join(os.path.dirname(__file__), 'report_daily',
-                     'etf_alpha_v5_ranking.csv'),
-        os.path.join(os.path.dirname(__file__), '..', 'report_daily',
-                     f'etf_alpha_v5_ranking_{trade_date}.csv'),
-    ]
-    eos_csv = None
-    for p in candidates:
-        if os.path.exists(p):
-            eos_csv = p
-            break
-    if eos_csv is None:
-        return {}
-
-    try:
-        df = pd.read_csv(eos_csv, encoding='utf-8-sig')
-        if df.empty:
-            return {}
-    except Exception:
-        return {}
-
-    # 列名映射（兼容不同版本的列命名）
-    name_col = next((c for c in df.columns if '名称' in c), None)
-    if name_col is None:
-        name_col = next((c for c in df.columns if 'name' in c.lower() or 'ETF' in c), None)
-    if name_col is None:
-        name_col = df.columns[0]  # 取第一列
-
-    code_col = next((c for c in df.columns if c.lower() in ('代码', 'code', 'ts_code')), None)
-
-    result = {}
-    for _, row in df.iterrows():
-        name = str(row.get(name_col, ''))
-        code = str(row.get(code_col, '')) if code_col else ''
-        if not name:
-            continue
-
-        # 代码标准化：去掉 .SH/.SZ
-        code_clean = code.replace('.SH', '').replace('.SZ', '').replace('.sh', '').replace('.sz', '').strip()
-
-        eos = row.get('EOS', row.get('EOS评分', None))
-        risk = row.get('RiskScore', row.get('量价风险', None))
-        action = row.get('Action', row.get('操作信号', row.get('今日操作信号', '')))
-        stage = row.get('Stage', row.get('生命周期阶段', row.get('阶段', '')))
-
-        # 标记是否为"底部抢跑"：EOS较前值飙升（需要多日EOS，此处简化为 stage='Recovery' 且 EOS≥45 时标记）
-        squash = row.get('Crowding', row.get('拥挤度', '')) == 'Low'
-        dual = row.get('DualMatrix', row.get('双矩阵分类', ''))
-
-        result[code_clean] = {
-            'name': name,
-            'eos': float(eos) if eos is not None and eos != '' else 0,
-            'risk': float(risk) if risk is not None and risk != '' else 50,
-            'stage': str(stage) if stage else '',
-            'dual_matrix': str(dual) if dual else '',
-            'crowding_low': squash,
-        }
-
-    return result
-
-
-def _load_alpha_ranking_data(trade_date):
-    """
-    从 etf_alpha_ranking 的排名 CSV 加载 Alpha Ranking 数据（层级1）。
-    CSV 路径: output/csv/etf_ranking_{trade_date}.csv
-    返回 {etf代码: {rank, prediction_score, risk_score, trend_score, signal, ...}}。
-    若文件不存在返回空 dict，不报错。
-    """
-    base_dir = os.path.dirname(__file__)
-    candidates = [
-        os.path.join(base_dir, 'etf_alpha_ranking', 'output', 'csv',
-                     f'etf_ranking_{trade_date}.csv'),
-        os.path.join(base_dir, 'etf_alpha_ranking', 'output', 'csv',
-                     'etf_ranking_latest.csv'),
-    ]
-    alpha_csv = None
-    for p in candidates:
-        if os.path.exists(p):
-            alpha_csv = p
-            break
-    if alpha_csv is None:
-        return {}
-
-    try:
-        df = pd.read_csv(alpha_csv, encoding='utf-8-sig')
-        if df.empty:
-            return {}
-    except Exception:
-        return {}
-
-    result = {}
-    for _, row in df.iterrows():
-        etf_code = str(row.get('ETF', ''))  # "512800.SH"
-        code_clean = etf_code.replace('.SH', '').replace('.SZ', '').replace('.sh', '').replace('.sz', '').strip()
-        if not code_clean:
-            continue
-
-        rank = row.get('Rank', None)
-        pred_score = row.get('PredictionScore', row.get('Score', None))
-        risk = row.get('RiskScore', None)  # Alpha 层面的风险分（高=低波动）
-        trend = row.get('ETFTrendScore', None)  # 中枢趋势（50中性，>50正趋势）
-        theme = row.get('theme', row.get('Theme', ''))
-        signal = row.get('Signal', '')
-
-        result[code_clean] = {
-            'rank': int(rank) if rank is not None and rank != '' else 999,
-            'prediction_score': float(pred_score) if pred_score is not None and pred_score != '' else 0,
-            'risk_score': float(risk) if risk is not None and risk != '' else 50,
-            'trend_score': float(trend) if trend is not None and trend != '' else 50,
-            'theme': str(theme) if theme else '',
-            'signal': str(signal) if signal else '',
-            'theme_persistence': float(row.get('ThemePersistence', 0)) if pd.notna(row.get('ThemePersistence')) else 0,
-        }
-
-    return result
-
-
-def _generate_3layer_trade_report(rankings, state, eos_data, alpha_data, trade_date, all_data,
-                                  hold_days=0, hold_pnl=None, rebalance_days=60):
-    """
-    三层融合交易决策指令：
-      层级1：Alpha Ranking（Risk门神 + Trend + Signal）
-      层级2：多维综合评分（存量趋势健康度）
-      层级3：EOS评分（增量资金强度 + 边际加速度）
-    
-    调仓规则：
-      BUY:       Layer1通过(Risk≥38, Trend>40) + 综合分>50 + EOS≥42
-      ACCUMULATE: EOS≥45 + Layer1 Risk>35（低位抢跑）
-      HOLD:       EOS≥38 + Layer1 Risk未爆表
-      REDUCE:     EOS<38（持仓内止盈减仓 1/2）
-      SELL:       EOS<35 OR AlphaRisk<30 OR 20日动量破位
-    """
-    from datetime import datetime
-
-    today = datetime.strptime(trade_date, "%Y%m%d")
-    lines = []
-    lines.append(f"ETF 三层融合交易决策指令 — {trade_date}")
-    lines.append(f"（层级1:AlphaRanking | 层级2:多维综合分 | 层级3:EOS评分）")
-    lines.append("")
-
-    # ── 构建索引 ──
-    rank_by_code = {}
-    for i, r in enumerate(rankings):
-        rank_by_code[r['code']] = {'rank': i+1, 'score': r['total_score'], 'name': r['name'],
-                                    'momentum': r.get('momentum', 0), 'day_chg': r.get('day_chg', 0)}
-
-    hold_code = state.get('holding_code', '') if state else ''
-    hold_name = state.get('holding_name', '') if state else ''
-
-    # ─────────────────────────────────
-    # 1. 风格与风险偏好评估
-    # ─────────────────────────────────
-    lines.append("【一、今日风格与风险偏好评估】")
-    if rankings:
-        top5_names = [r['name'] for r in rankings[:5]]
-        bot5_names = [r['name'] for r in rankings[-5:]]
-        top_chg_avg = np.mean([r.get('day_chg', 0) for r in rankings[:5]])
-
-        # 从 Alpha 数据判断市场状态
-        alpha_high_risk = sum(1 for d in alpha_data.values() if d.get('risk_score', 50) < 38)
-        lines.append(f"  TOP5 板块: {'、'.join(top5_names)}")
-        lines.append(f"  垫底5 板块: {'、'.join(bot5_names)}")
-        lines.append(f"  Alpha Risk<38(高波动预警)标的: {alpha_high_risk}只")
-
-        hold_info = rank_by_code.get(hold_code)
-        if hold_info:
-            lines.append(f"  当前持仓 [{hold_name}] 排名第{hold_info['rank']}, "
-                         f"日涨幅{hold_info['day_chg']:+.2f}%")
-
-        if top_chg_avg > 1.5:
-            lines.append("  风格判断: 高低切换 / 进攻偏好，资金集中流入强势板块")
-        elif top_chg_avg > -0.5:
-            lines.append("  风格判断: 风格分化 / 轮动试盘，防御板块占优")
-        else:
-            lines.append("  风格判断: 防御避险 / 单边下行，资金撤退或观望")
-    lines.append("")
-
-    # ─────────────────────────────────
-    # 2. 持仓标的诊断（三层数据融合）
-    # ─────────────────────────────────
-    lines.append("【二、持仓标的诊断与操作指令（三层融合）】")
-    if hold_code:
-        lines.append(f"  【{hold_name} ({hold_code})】")
-        info = rank_by_code.get(hold_code, {})
-        alp = alpha_data.get(hold_code, {})
-        eos = eos_data.get(hold_code, {})
-
-        # 买入明细
-        bp = state.get('buy_price') if state else None
-        if bp is not None:
-            hold_str = f"  买入价:{bp:.3f} | 持有:{hold_days}/{rebalance_days}天"
-            if hold_pnl is not None:
-                hold_str += f" | 盈亏:{hold_pnl:+.2f}%"
-            lines.append(hold_str)
-
-        # 打印三层数据
-        l1_str = f"L1:Rank#{alp.get('rank', '?')} Risk={alp.get('risk_score', 0):.0f} Trend={alp.get('trend_score', 0):.0f} Sig={alp.get('signal', '-')}" if alp else "L1:无Alpha数据"
-        l2_str = f"L2:综合分{info.get('score', 0):.0f} 排名#{info.get('rank', '?')} 动量{info.get('momentum', 0):+.1f}%"
-        l3_str = f"L3:EOS={eos.get('eos', 0):.0f} 风险={eos.get('risk', 0):.0f} 阶段={eos.get('stage', '-')}" if eos else "L3:无EOS数据"
-        lines.append(f"  {l1_str}")
-        lines.append(f"  {l2_str}")
-        lines.append(f"  {l3_str}")
-
-        # ── 判定逻辑 ──
-        alpha_risk_pass = alp.get('risk_score', 50) >= 30 if alp else True  # 无Alpha数据时通过
-        eos_val = eos.get('eos', 0) if eos else 0
-        alpha_risk = alp.get('risk_score', 50)
-
-        if eos_val < 35:
-            lines.append("  >> 判定: SELL — EOS<35，边际动能枯竭，无条件清仓")
-        elif eos_val < 38:
-            lines.append("  >> 判定: REDUCE 止盈减仓1/2 — EOS<38，边际动量衰竭，高位兑现信号")
-        elif not alpha_risk_pass:
-            lines.append(f"  >> 判定: SELL — Alpha Risk={alpha_risk:.0f}<30，层级1拦截，无条件避险")
-        elif info.get('momentum', 0) < -15 and eos_val < 40:
-            lines.append("  >> 判定: SELL — 20日动量破位，层级1+层级3共振看空")
-        elif eos_val >= 38:
-            lines.append("  >> 判定: HOLD 继续持有 — EOS≥38且Alpha风险可控，忽略短期波动吃满60日波段")
-        else:
-            lines.append("  >> 判定: WATCH 关注预警 — 综合分偏低，准备减仓")
-    else:
-        lines.append("  (当前无持仓)")
-    lines.append("")
-
-    # ─────────────────────────────────
-    # 3. 候选池筛选（三层过滤）
-    # ─────────────────────────────────
-    lines.append("【三、候选池筛选与买入/抢跑建议（三层过滤）】")
-
-    strong_buy = []   # BUY: Layer1通过 + 综合分>50 + EOS≥42
-    accum_buy = []    # ACCUMULATE: EOS≥45 + Layer1 Risk>35（低位抢跑）
-    watch_list = []   # 观察：EOS≥38 但综合分一般
-
-    for r in rankings:
-        code = r['code']
-        if code == hold_code:
-            continue
-
-        alp = alpha_data.get(code, {})
-        eos = eos_data.get(code, {})
-        score = r['total_score']
-        eos_val = eos.get('eos', 0) if eos else 0
-
-        # Layer 1 过滤条件
-        alpha_risk = alp.get('risk_score', 50)
-        alpha_trend = alp.get('trend_score', 50)
-        # 有Alpha数据时严格过滤，无Alpha数据时宽松（只要求EOS）
-        if alp:
-            layer1_pass = alpha_risk >= 38 and alpha_trend > 35
-        else:
-            layer1_pass = True  # 无Alpha数据时宽松
-
-        if layer1_pass and score > 50 and eos_val >= 42:
-            strong_buy.append((r, eos_val, alp, 'BUY'))
-        elif eos_val >= 45 and (not alp or alp.get('risk_score', 50) > 35):
-            accum_buy.append((r, eos_val, alp, 'ACCUMULATE'))
-        elif eos_val >= 38:
-            watch_list.append((r, eos_val, alp))
-
-    strong_buy.sort(key=lambda x: -x[0]['total_score'])
-    accum_buy.sort(key=lambda x: -x[1])
-    watch_list.sort(key=lambda x: -x[1])
-
-    if strong_buy:
-        lines.append("  ★ 标准买入（Layer1通过 + 综合分>50 + EOS≥42）：")
-        for r, ev, alp, _ in strong_buy[:3]:
-            risk_tag = f"Risk={alp.get('risk_score',0):.0f}" if alp else ""
-            lines.append(f"    → {r['name']}({r['code']}) 综合分:{r['total_score']:.0f} "
-                         f"EOS:{ev:.0f} {risk_tag} 动量:{r.get('momentum',0):+.1f}%")
-    if accum_buy:
-        lines.append("  ★ 低位抢跑（EOS≥45 + Layer1 Risk>35，20%-30%先锋仓）：")
-        for r, ev, alp, _ in accum_buy[:3]:
-            lines.append(f"    → {r['name']}({r['code']}) EOS:{ev:.0f} "
-                         f"综合分:{r['total_score']:.0f} 建议轻仓20%-30%")
-    if watch_list:
-        lines.append("  ◆ 观察候选（EOS≥38 稳健区）：")
-        for r, ev, alp in watch_list[:5]:
-            risk_tag = f"Risk={alp.get('risk_score',0):.0f}" if alp else ""
-            lines.append(f"    → {r['name']}({r['code']}) EOS:{ev:.0f} 综合分:{r['total_score']:.0f} {risk_tag}")
-    if not strong_buy and not accum_buy and not watch_list:
-        lines.append("  (无候选标的通过三层过滤，维持现有仓位或空仓)")
-
-    # 列出被 Layer1 拦截的
-    all_eos_codes = [r['code'] for r in rankings if r['code'] != hold_code and eos_data.get(r['code'], {}).get('eos', 0) >= 42]
-    filtered_by_l1 = 0
-    for code in all_eos_codes:
-        if not any(x[0]['code'] == code for x in strong_buy):
-            alp = alpha_data.get(code, {})
-            if alp and (alp.get('risk_score', 50) < 38 or alp.get('trend_score', 50) <= 35):
-                filtered_by_l1 += 1
-    if filtered_by_l1 > 0:
-        lines.append(f"  (另有{filtered_by_l1}只标的被层级1 Risk/Trend拦截，剔除出候选池)")
-    lines.append("")
-
-    # ─────────────────────────────────
-    # 4. 次日执行清单
-    # ─────────────────────────────────
-    lines.append("【四、次日执行清单】")
-    lines.append(f"{'ETF名称':<8} {'代码':<8} {'动作':<10} {'建议仓位':<10} {'核心触发理由'}")
-
-    # 持仓
-    if hold_code:
-        eos = eos_data.get(hold_code, {})
-        alp = alpha_data.get(hold_code, {})
-        info = rank_by_code.get(hold_code, {})
-        eos_val = eos.get('eos', 0) if eos else 0
-        alpha_risk = alp.get('risk_score', 50)
-        hold_action = ""
-        hold_reason = ""
-
-        if eos_val < 35:
-            hold_action = "清仓"
-            hold_reason = f"EOS={eos_val:.0f}<35，边际动能枯竭，SELL"
-        elif eos_val < 38:
-            hold_action = "减仓1/2"
-            hold_reason = f"EOS={eos_val:.0f}<38顶部背离，REDUCE"
-        elif alp and alpha_risk < 30:
-            hold_action = "清仓"
-            hold_reason = f"AlphaRisk={alpha_risk:.0f}<30，层级1拦截，SELL"
-        elif info.get('momentum', 0) < -15 and eos_val < 40:
-            hold_action = "清仓"
-            hold_reason = f"动量破位+EOS={eos_val:.0f}，SELL"
-        elif eos_val >= 38:
-            hold_action = "继续持有"
-            hold_reason = f"EOS={eos_val:.0f}≥38+Risk可控，HOLD"
-        else:
-            hold_action = "关注预警"
-            hold_reason = f"综合分{info.get('score', 0):.0f}偏低"
-
-        lines.append(f"{hold_name:<8} {hold_code:<8} {hold_action:<10} {'100%':<10} {hold_reason}")
-
-    # 买入/抢跑
-    buy_list = []
-    for r, ev, alp, _ in strong_buy[:1]:
-        buy_list.append((r, '买入', '50%-70%', f"L1通过+L2{r['total_score']:.0f}+L3EOS{ev:.0f}"))
-    if not buy_list:
-        for r, ev, alp, _ in accum_buy[:1]:
-            buy_list.append((r, '抢跑', '20%-30%', f"EOS飙升至{ev:.0f}低位抢跑"))
-
-    for r, action, pos, reason in buy_list:
-        lines.append(f"{r['name']:<8} {r['code']:<8} {action:<10} {pos:<10} {reason}")
-
-    lines.append("")
-    lines.append("─" * 60)
-    lines.append("[免责] 以上为量化模型输出，仅供参考，不构成投资建议。")
-    lines.append("")
-
-    return "\n".join(lines)
 
 
 def main(trade_date=None, backtest_mode=False):
@@ -1663,20 +418,18 @@ def main(trade_date=None, backtest_mode=False):
     market_state, state_desc = classify_market_state(benchmark_df, MOM_PERIOD)
     print(f"  市场状态: {state_desc}")
 
-    # 根据市场状态选择权重矩阵
-    # trending(趋势): 动量>加速度, 重视趋势质量
-    # oscillating(震荡): 加速度>动量, 新增缩量企稳
-    # declining(下跌): 风险+相对>动量, 偏防御
+    # 根据市场状态选择权重矩阵 (简化版: 动量轮动+趋势跟踪)
+    # trending(趋势): 复合动量为主, 趋势确认为辅
+    # oscillating(震荡): 动量+加速度+RSI 均衡
+    # declining(下跌): 风险+相对优先, 偏防御
     WEIGHT_MATRIX = {
-        'trending':   {'mom_cross': 0.30, 'accel': 0.08, 'vol': 0.25, 'risk': 0.12, 'rel': 0.12, 'trend': 0.13, 'shrink': 0.00},
-        'oscillating':{'mom_cross': 0.12, 'accel': 0.25, 'vol': 0.15, 'risk': 0.10, 'rel': 0.10, 'trend': 0.08, 'shrink': 0.20},
-        'declining':  {'mom_cross': 0.20, 'accel': 0.10, 'vol': 0.15, 'risk': 0.20, 'rel': 0.20, 'trend': 0.10, 'shrink': 0.05},
+        'trending':   {'mom_cross': 0.40, 'accel': 0.10, 'rsi': 0.10, 'vol': 0.10, 'risk': 0.10, 'rel': 0.05, 'trend': 0.15, 'shrink': 0.00},
+        'oscillating':{'mom_cross': 0.25, 'accel': 0.20, 'rsi': 0.15, 'vol': 0.10, 'risk': 0.10, 'rel': 0.05, 'trend': 0.15, 'shrink': 0.00},
+        'declining':  {'mom_cross': 0.25, 'accel': 0.05, 'rsi': 0.10, 'vol': 0.05, 'risk': 0.25, 'rel': 0.15, 'trend': 0.15, 'shrink': 0.00},
     }
     w = WEIGHT_MATRIX.get(market_state, WEIGHT_MATRIX['oscillating'])
-    weight_desc = (f"截面动量{w['mom_cross']:.0%}+加速度{w['accel']:.0%}+量价{w['vol']:.0%}+"
+    weight_desc = (f"复合动量{w['mom_cross']:.0%}+加速度{w['accel']:.0%}+RSI{w['rsi']:.0%}+量价{w['vol']:.0%}+"
                    f"风险{w['risk']:.0%}+相对{w['rel']:.0%}+趋势{w['trend']:.0%}")
-    if w['shrink'] > 0:
-        weight_desc += f"+缩量企稳{w['shrink']:.0%}"
     result_message += f"  市场状态: {state_desc}\n"
     result_message += f"  当前权重: {weight_desc}\n\n"
 
@@ -1744,18 +497,18 @@ def main(trade_date=None, backtest_mode=False):
         total = (
             mom_cross * w['mom_cross'] +
             r['accel_score'] * w['accel'] +
+            r.get('rsi_score', 50) * w['rsi'] +
             r['vol_score'] * w['vol'] +
             r['risk_adj'] * w['risk'] +
             r['rel_strength'] * w['rel'] +
-            r['trend_quality'] * w['trend'] +
-            r.get('shrink_stability', 50) * w['shrink']
+            r['trend_quality'] * w['trend']
         )
         r['total_score'] = round(total, 2)
 
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
     print(f"\n  --- 多因子综合评分 TOP 10 [{state_desc}] ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'截面动量':>6} {'加速度':>6} {'量价':>6} {'风险':>6} {'相对':>6} {'趋势':>6} {'缩量企稳':>6} {'规模提示'}")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'复合动量':>6} {'加速度':>6} {'RSI':>5} {'量价':>6} {'风险':>6} {'相对':>6} {'趋势':>6} {'规模提示'}")
     print(f"  {'-'*105}")
 
     for i, r in enumerate(rankings[:10]):
@@ -1763,8 +516,8 @@ def main(trade_date=None, backtest_mode=False):
         mc = r.get('mom_cross_score')
         mc_str = f"{mc:>6.1f}" if mc is not None else "   N/A"
         print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} "
-              f"{mc_str} {r['accel_score']:>6.1f} {r['vol_score']:>6.1f} {r['risk_adj']:>6.1f} "
-              f"{r['rel_strength']:>6.1f} {r['trend_quality']:>6.1f} {r.get('shrink_stability', 0):>6.1f}  {sig}")
+              f"{mc_str} {r['accel_score']:>6.1f} {r.get('rsi', 50):>5.1f} {r['vol_score']:>6.1f} {r['risk_adj']:>6.1f} "
+              f"{r['rel_strength']:>6.1f} {r['trend_quality']:>6.1f}  {sig}")
 
     result_message += f"  ---多因子评分 TOP 5 [{state_desc}] ---\n"
     for i, r in enumerate(rankings[:5]):
@@ -1815,25 +568,38 @@ def main(trade_date=None, backtest_mode=False):
             need_rebalance = True
             rebalance_reason = f"固定周期到期({days_since}>={REBAL_DAYS}天)"
 
-        # === 调仓触发条件2: 动态退出 (跌出TOP5 + 持仓满5天) ===
+        # === 调仓触发条件2/3: 动态退出 (动量排名跌出Top20% 或 跌破MA30离场线; 持仓满5天保护) ===
         elif days_since >= MIN_HOLD_DAYS:
-            top_n_codes = {r['code'] for r in rankings[:DYNAMIC_EXIT_TOPN]}
-            if hc not in top_n_codes:
-                # 找到当前持仓在排名中的位置
-                hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
+            top_pct_n = max(1, int(len(rankings) * DYNAMIC_EXIT_TOP_PCT))
+            hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
+            hold_factors = next((r for r in rankings if r['code'] == hc), None)
+            below_ma30 = bool(hold_factors is None or not hold_factors.get('above_ma30', True))
+            if hold_rank > top_pct_n:
                 need_rebalance = True
-                rebalance_reason = f"跌出TOP{DYNAMIC_EXIT_TOPN}(当前第{hold_rank}名, 持仓{days_since}天)"
+                rebalance_reason = f"动量排名跌出Top{top_pct_n}(当前第{hold_rank}/{len(rankings)}名, 持仓{days_since}天)"
+            elif below_ma30:
+                need_rebalance = True
+                rebalance_reason = f"跌破30日离场线(MA30, 持仓{days_since}天)"
 
-        # === 提示: 持仓不满5天但已跌出TOP5 ===
+        # === 提示: 持仓不满5天但已触发离场信号 ===
         elif days_since < MIN_HOLD_DAYS:
-            top_n_codes = {r['code'] for r in rankings[:DYNAMIC_EXIT_TOPN]}
-            if hc not in top_n_codes:
-                hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
-                print(f"  [提示] 已跌出TOP{DYNAMIC_EXIT_TOPN}(第{hold_rank}名), 但持仓仅{days_since}天<{MIN_HOLD_DAYS}天保护期, 暂不调仓")
-                result_message += f"\n[保护期] 跌出TOP{DYNAMIC_EXIT_TOPN}但持仓{days_since}天<{MIN_HOLD_DAYS}天, 暂不调仓\n"
+            top_pct_n = max(1, int(len(rankings) * DYNAMIC_EXIT_TOP_PCT))
+            hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
+            hold_factors = next((r for r in rankings if r['code'] == hc), None)
+            below_ma30 = bool(hold_factors is None or not hold_factors.get('above_ma30', True))
+            if hold_rank > top_pct_n or below_ma30:
+                print(f"  [提示] 动量排名第{hold_rank}名(跌出Top{top_pct_n})或跌破MA30, 但持仓仅{days_since}天<{MIN_HOLD_DAYS}天保护期, 暂不调仓")
+                result_message += f"\n[保护期] 触发离场信号但持仓{days_since}天<{MIN_HOLD_DAYS}天, 暂不调仓\n"
 
     if need_rebalance:
-        target = rankings[0]
+        # === 选品: 排名Top 2~3 且站上20日均线(优先), 全部跌破则取第一名兜底 ===
+        target = None
+        for r in rankings[:min(3, len(rankings))]:
+            if r.get('above_ma20', True):
+                target = r
+                break
+        if target is None:
+            target = rankings[0]
         print(f"\n  {'='*40}")
         result_message += f"{'='*40}\n"
 
@@ -1846,8 +612,15 @@ def main(trade_date=None, backtest_mode=False):
         print(f"  综合评分: {target['total_score']:.1f}")
         result_message += f"综合评分 {target['total_score']:.1f}\n"
 
-        print(f"  动量: {target['momentum']:+.2f}% | 量能: {target['vol_score']:.1f} | 风险调整: {target['risk_adj']:.1f}")
-        result_message += f"动量:{target['momentum']:+.2f}% 量能:{target['vol_score']:.1f} 风险调整:{target['risk_adj']:.1f}\n"
+        trend_flags = []
+        if target.get('ema_bull'): trend_flags.append("EMA多头")
+        if target.get('golden_cross'): trend_flags.append("金叉")
+        if target.get('macd_above_zero'): trend_flags.append("MACD零轴上")
+        if target.get('macd_second_golden'): trend_flags.append("二次金叉")
+        trend_flag_str = "/".join(trend_flags) if trend_flags else "无"
+
+        print(f"  动量: {target['momentum']:+.2f}% | RSI: {target.get('rsi', 50):.1f} | 趋势: {trend_flag_str}")
+        result_message += f"动量:{target['momentum']:+.2f}% RSI:{target.get('rsi', 50):.1f} 趋势:{trend_flag_str}\n"
 
         print(f"  现价: {target['close']:.3f}")
         result_message += f"现价 {target['close']:.3f}\n"
@@ -1867,6 +640,7 @@ def main(trade_date=None, backtest_mode=False):
             "buy_price": target["close"],
             "score_at_buy": target['total_score'],
             "momentum_at_buy": target['momentum'],
+            "rsi_at_buy": target.get('rsi', 50),
             "rebalance_count": (state.get("rebalance_count", 0) + 1) if state else 1,
         }
         if not backtest_mode:
@@ -1892,95 +666,12 @@ def main(trade_date=None, backtest_mode=False):
     for i, r in enumerate(rankings[-5:]):
         print(f"  {len(rankings)-4+i:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f}")
 
-    # ========== TOP3 ETF 成份股 Alpha Ranking (带纯度过滤) ==========
-    if rankings:
-        top3_count = min(3, len(rankings))
-        print(f"\n  {'='*60}")
-        print(f"  Top{top3_count} ETF 成份股分析 (含申万行业纯度过滤)")
-        print(f"  {'='*60}")
-        for idx in range(top3_count):
-            top_etf = rankings[idx]
-            top_etf_code = top_etf['code']
-            top_etf_name = top_etf['name']
-            top_etf_ts_code = codes_ts.get(top_etf_code,
-                f"{top_etf_code}.SZ" if top_etf_code.startswith('1')
-                else f"{top_etf_code}.SH")
-            
-            constituents = get_etf_constituents(top_etf_ts_code, TRADE_DATE)
-            if not constituents:
-                print(f"\n  [第{idx+1}名] {top_etf_name}({top_etf_code}) - 无法获取成份股")
-                continue
-
-            # === 纯度因子过滤 ===
-            filtered_cons, removed_cons, purity_ratio = filter_by_purity(
-                constituents, top_etf_name, min_weight=2.0
-            )
-
-            print(f"\n  【第{idx+1}名】 {top_etf_name}({top_etf_code}) 综合分:{top_etf['total_score']:.1f}")
-            print(f"  [纯度过滤] 成份股 {len(constituents)} → {len(filtered_cons)} 只 "
-                  f"(纯度比 {purity_ratio*100:.1f}%)")
-            if removed_cons:
-                removed_names = [f"{r.get('con_name','?')}({r.get('l1_name', r.get('l2_name','?'))})" for r in removed_cons[:5]]
-                print(f"  [过滤剔除] {', '.join(removed_names)}{'...' if len(removed_cons)>5 else ''}")
-                result_message += f"\n[纯度过滤] 剔除{len(removed_cons)}只非纯度股: {', '.join(removed_names[:3])}\n"
-
-            etf_df = all_data.get(top_etf_code)
-            if etf_df is not None and filtered_cons:
-                alpha_text, csv_path, df_ranked = stock_alpha_ranking(
-                    filtered_cons, top_etf_name, today, pro, etf_df, TRADE_DATE
-                )
-                print(alpha_text)
-                if df_ranked is not None and len(df_ranked) > 0:
-                    result_message += f"\n**第{idx+1}名 {top_etf_name} Alpha TOP3**\n"
-                    for i, (_, r) in enumerate(df_ranked.head(3).iterrows()):
-                        short_code = r['code'].replace('.SZ', '').replace('.SH', '')
-                        tags = []
-                        if r.get('breakout_mult', 1.0) > 1.0: tags.append("突破")
-                        if r.get('spring_mult', 1.0) > 1.0: tags.append("弹簧")
-                        if r.get('leader_mult', 1.0) > 1.0: tags.append("龙头")
-                        tag_str = f"[{','.join(tags)}]" if tags else ""
-                        result_message += (f"{i+1}. {r['name']}({short_code}) "
-                                           f"Score={r['final_score']:.1f} "
-                                           f"Alpha5={r['alpha5']:+.1f}% {tag_str}\n")
-            elif not filtered_cons:
-                print(f"  [WARN] 纯度过滤后无可用成份股")
-                result_message += f"\n[WARN] {top_etf_name} 过滤后无可用股\n"
-            else:
-                print(f"  [WARN] 无法获取{top_etf_name}的ETF日线数据")
-                result_message += f"  [WARN] 无法获取{top_etf_name}的ETF日线数据\n"
 
     print(f"\n  {'='*60}")
 
     # ========== 提前定义报告目录 ==========
     report_dir = os.path.join(os.path.dirname(__file__), '..', 'report_daily')
     os.makedirs(report_dir, exist_ok=True)
-
-    # ========== 三层融合交易决策报告（Alpha + 多维综合 + EOS） ==========
-    print("\n  [三层融合] 加载层级1 Alpha Ranking + 层级3 EOS 数据...")
-    eos_data = _load_eos_data(TRADE_DATE)
-    alpha_data = _load_alpha_ranking_data(TRADE_DATE)
-    if eos_data or alpha_data:
-        print(f"  [三层融合] Alpha: {len(alpha_data)}只 | EOS: {len(eos_data)}只")
-        # 持仓明细（兜底处理首次运行无state的场景）
-        _hold_pnl = locals().get('pnl', None) if state else None
-        _hold_days = locals().get('days_since', 0) if state else 0
-        layer_report = _generate_3layer_trade_report(
-            rankings, state, eos_data, alpha_data, TRADE_DATE, all_data,
-            hold_days=_hold_days,
-            hold_pnl=_hold_pnl,
-            rebalance_days=REBAL_DAYS,
-        )
-        if layer_report:
-            layer_report_path = os.path.join(report_dir, f"etf_3layer_decision_{TRADE_DATE}.txt")
-            try:
-                with open(layer_report_path, 'w', encoding='utf-8') as f:
-                    f.write(layer_report)
-                print(f"  [三层融合] 交易决策报告: {layer_report_path}")
-                result_message += "\n" + layer_report
-            except Exception as e:
-                print(f"  [WARN] 三层报告保存失败: {e}")
-    else:
-        print("  [三层融合] 未找到EOS/Alpha数据，跳过融合报告")
 
     # ========== 保存微信汇总报告 ==========
     report_path = os.path.join(report_dir, f"etf_mainline_summary_{TRADE_DATE}.txt")

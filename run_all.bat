@@ -12,17 +12,21 @@ cd /d %BASE%
 
 REM python solo\build_theme_stock_map.py 
 
-echo [Step 1/7] 主题趋势分 + 情绪分...
+echo [Step 1/7] 指数分析...
 echo =============================================
+python solo\market_analysis.py
+echo.
+
+echo [Step 2/7] 主题趋势分 + 情绪分...
+echo =============================================
+python solo\build_theme_stock_map_v2.py
+python solo\theme_score_v2.py
+
 python solo\theme_trend_sentiment_score.py
 echo.
 python D:\mystock\solo\theme_alpha_v6\main.py
 python d:\mystock\solo\theme_forecast\main.py
 
-echo [Step 2/7] 指数分析...
-echo =============================================
-python solo\market_analysis.py
-echo.
 
 
 echo [Step 3/7] ETF分析（引用主题）...
@@ -59,8 +63,7 @@ echo [Step 5.3/7] 中报预增股池择时（幻方算法）
 echo =============================================
 rem python d:\mystock\solo\multi_factor_picker\main.py
 rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
-python solo\build_theme_stock_map_v2.py
-python solo\theme_score_v2.py
+
 
 
 echo =============================================
@@ -85,7 +88,7 @@ push.bat
 
 
 echo 机构主线第一次回踩
-cd d:\mystock\solo\market_regime_v3
+cd /d d:\mystock\solo\market_regime_v3
 python -u main.py --push
 
 

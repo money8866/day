@@ -25,6 +25,11 @@ get_token = main_mod.get_token
 from quant_timing_scorer import compute_raw_factors, cross_sectional_score
 from enhanced_timing_analysis import _calc_vwap, _calc_atr, _calc_chip_concentration_peak, _calc_market_beta, _check_forecast_impact
 
+# 回踩买点形态检测器（pullback_buy.py 已合并为本脚本的被调用模块；
+# 日常只跑本脚本即同时输出 洗盘修复评分 + 回踩形态阶段 + 次日操作，不再单独跑 pullback_buy.py）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pullback_buy import analyze_shape
+
 
 def collect_raw_factors(ts_code: str, fetcher: DataFetcher) -> dict:
     """Phase 1: 收集单只股票的原始因子值和基础数据"""
@@ -329,6 +334,15 @@ def main():
         elif wr_score >= 70:
             washout_tag = '★ 洗盘修复中'
 
+        # ─── 回踩买点形态（合并自 pullback_buy.analyze_shape，直接回答"次日是否可买入"）───
+        rd = raw_data.get(ts_code, {})
+        shape = analyze_shape(rd['daily']) if rd.get('daily') is not None else None
+        shape_stage = shape.get('stage', '') if shape else ''
+        shape_decision = shape.get('decision', '') if shape else ''
+        shape_score = shape.get('pullback_score', 0) if shape else 0
+        shape_fyd = shape.get('first_yang_date', '') if shape else ''
+        shape_pdays = shape.get('pullback_days', 0) if shape else 0
+
         results.append({
             '代码': ts_code,
             '名称': name,
@@ -340,6 +354,11 @@ def main():
             '洗盘修复分': round(wr_score, 1),
             '结构增强分': round(structure_boost, 1),
             '洗盘修复标签': washout_tag,
+            '形态阶段': shape_stage,
+            '次日操作': shape_decision,
+            '回踩买点分': round(shape_score, 1) if shape_score else '',
+            '首阳日期': str(shape_fyd) if shape_fyd else '',
+            '回踩天数': shape_pdays,
             '兑现冲击过滤': '⚠️ 是' if impact_blocked else '✅ 否',
             '冲击详情': impact['detail'],
             'VWAP': round(vwap, 2) if vwap else None,
@@ -361,12 +380,14 @@ def main():
             '交易决策': trade_decision,
         })
 
-    # ─── 排序 + 保存 (同评级内按结构增强分: 洗盘修复形态+买点质量+动量 融合) ───
+    # ─── 排序 + 保存 (次日操作可买入优先 → 评级 → 结构增强分) ───
     out_df = pd.DataFrame(results)
     grade_order = {'S': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
+    op_order = {'✅ 次日可买入': 0, '⚠️ 次日观察等回踩': 1, '⚠️ 观察': 1, '❌ 仅观察不买入': 2, '❌ 等待首阳': 2, '': 3}
+    out_df['_op_order'] = out_df['次日操作'].map(op_order).fillna(3)
     out_df['_grade_order'] = out_df['修正后胜率分级'].map(grade_order)
-    out_df = out_df.sort_values(['_grade_order', '结构增强分'], ascending=[True, False]).reset_index(drop=True)
-    out_df = out_df.drop(columns=['_grade_order'])
+    out_df = out_df.sort_values(['_op_order', '_grade_order', '结构增强分'], ascending=[True, True, False]).reset_index(drop=True)
+    out_df = out_df.drop(columns=['_op_order', '_grade_order'])
 
     trade_date = fetcher.get_last_trade_date()
     out_path = os.path.join(report_dir, f'enhanced_timing_bull_all_{trade_date}.csv')

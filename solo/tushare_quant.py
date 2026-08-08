@@ -9624,21 +9624,90 @@ def calc_max_limit_height():
 
 
 # =========================
-# 主题过滤：以60天平均综合分前15 + 当日前10为主题范围筛选
+# 主题过滤：读取 theme_analysis_v2 报告，以 主线 + 轮动 主题为过滤范围
 # =========================
+# V3 生命周期 → 共振系数可识别阶段
+_LC_STAGE_V6 = {'启动': '启动', '升温': '启动', '主升': '主升', '分歧转一致': '调整',
+                '高潮': '高潮', '退潮': '衰退', '震荡': '调整', '弱势': '衰退'}
+
+
+def _load_mainline_rotation_themes(trade_date):
+    """读取 theme_analysis_v2_{date}.txt，提取 主线(▶)+轮动(▸) 主题及其报告字段
+
+    报告行格式（theme_score_v2.py 生成）：
+      主线: ▶ 半导体 [主升] A-绝对主线 | 趋势81 情绪74 涨停13 迁移11.0
+      轮动: ▸ 可控核聚变 [升温] | 趋势50 综合51 涨停1 迁移6.9
+      回避: ✕ 消费 [退潮] 综合34 → 【坚决回避/清仓】
+    返回 {主题名: {theme, stage, kind, trend_score, sentiment_score,
+                   composite_score, zt_count, migration_score, stage_v6, ...}}
+    """
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "report_daily", f"theme_analysis_v2_{trade_date}.txt")
+    if not os.path.exists(path):
+        print(f"[主题过滤] 未找到主题评分报告: {path}")
+        return {}
+
+    themes = {}
+    section = None
+    with open(path, 'r', encoding='utf-8') as f:
+        lines = f.read().splitlines()
+    for ln in lines:
+        ln = ln.strip()
+        if ln.startswith('### 第一部分'):
+            section = 'mainline'
+            continue
+        if ln.startswith('### 第二部分'):
+            section = 'rotation'
+            continue
+        if ln.startswith('### 第三部分'):
+            section = 'junk'
+            continue
+        if ln.startswith('### 主线与轮动交易决策表'):
+            break
+        if section not in ('mainline', 'rotation', 'junk'):
+            continue
+        if not (ln.startswith('▶') or ln.startswith('▸') or ln.startswith('✕')):
+            continue
+        m = re.match(r'^[▶▸✕]\s+(\S+)\s+\[([^\]]+)\](.*)$', ln)
+        if not m:
+            continue
+        theme, stage, rest = m.group(1), m.group(2), m.group(3)
+        _num = lambda pat: (lambda mm: float(mm.group(1)) if mm else 0.0)(re.search(pat, rest))
+        _int = lambda pat: (lambda mm: int(float(mm.group(1))) if mm else 0)(re.search(pat, rest))
+        trend = _num(r'趋势([\d.]+)')
+        senti = _num(r'情绪([\d.]+)')
+        comp = _num(r'综合([\d.]+)')
+        themes[theme] = {
+            'theme': theme, 'stage': stage, 'kind': section,
+            'trend_score': trend,
+            'sentiment_score': senti,
+            'composite_score': comp if comp else trend,  # 主线行无综合，用趋势兜底
+            'zt_count': _int(r'涨停(\d+)'),
+            'migration_score': _num(r'迁移([\d.]+)'),
+            'stage_v6': _LC_STAGE_V6.get(stage, '调整'),
+            # V6 兼容默认字段（报告未提供）
+            'capital_score': 0, 'continuation_score': 50,
+            'risk_score': 50, 'confidence': 0,
+            'continuation_tag': '', 'leader': '', 'divergence_buy': False,
+            'trade_signal': '看多' if section == 'mainline' else ('回避' if section == 'junk' else '关注'),
+        }
+    return themes
+
+
 def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     """
-    主题筛选 / 共振评分 - 使用 Theme Alpha V6.2 引擎输出
-    
-    加载 theme_alpha_v6_result.json，筛选 trade_signal 为"强买"/"看多"/"关注"/"持有"的主题，
-    然后匹配股票，注入 V6 多维评分字段和共振系数。
-    
+    主题筛选 / 共振评分 - 使用 theme_analysis_v2 报告（主线+轮动主题）
+
+    加载 report_daily/theme_analysis_v2_{date}.txt，提取"核心主线阵营(▶)"与
+    "潜在轮动与接力机会(▸)"全部主题作为过滤范围，然后匹配股票并注入评分字段。
+
     参数：
         result_df: 待过滤的股票DataFrame
-        top_n: 按V6综合分取前N个主题（默认15）
+        top_n: 保留（兼容旧签名；主线+轮动为主题范围，不截断）
         mode: 'filter'=二元过滤（淘汰不匹配股票，用于跟踪池）
               'resonance'=共振评分（保留全部股票，注入共振系数，用于突破股池）
-    
+
     返回：
         mode='filter': 过滤后的DataFrame（仅保留匹配股票）
         mode='resonance': 全部股票DataFrame + 共振系数列
@@ -9646,72 +9715,29 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     if result_df.empty:
         return result_df
 
-    # ===== 1. 加载 Theme Alpha V6.2 结果 =====
-    v6_data = _load_v6_result(TRADE_DATE)
-    if not v6_data:
-        print(f"[主题过滤] V6.2引擎结果不可用，跳过过滤")
+    # ===== 1. 加载主线+轮动主题（读取 theme_analysis_v2 报告）=====
+    theme_report_data = _load_mainline_rotation_themes(TRADE_DATE)
+    if not theme_report_data:
+        print(f"[主题过滤] 主题评分报告不可用，跳过过滤")
         # 确保至少有所属主题列
         if '所属主题' not in result_df.columns:
             result_df['所属主题'] = ''
         return result_df
 
-    # 构建全部主题索引（用于 resonance 模式匹配任意主题）
-    all_themes_info = {}
-    for r in v6_data:
-        all_themes_info[r['theme']] = r
-
-    # 筛选信号为强买/看多/关注/持有的主题（V6.2新信号体系）
-    VALID_SIGNALS = {"强买", "看多", "关注", "持有"}
-    keep_themes_info = {}
-    for r in v6_data:
-        signal = r.get('trade_signal', '')
-        if signal in VALID_SIGNALS:
-            keep_themes_info[r['theme']] = r
-
-    if not keep_themes_info:
-        print("[主题过滤] V6.2结果中无强买/看多/关注/持有主题，跳过过滤")
-        # resonance 模式：降级使用全部主题进行匹配
-        if mode == 'resonance':
-            print("[主题过滤] resonance模式降级，使用全部主题进行匹配")
-            keep_themes_info = dict(all_themes_info)
-        else:
-            # 确保至少有所属主题列
-            if '所属主题' not in result_df.columns:
-                result_df['所属主题'] = ''
-            return result_df
-
-    if mode == 'filter':
-        # 二元过滤模式：只保留强信号主题，按综合分排序取前 top_n 个
-        sorted_items = sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])
-        keep_themes_info = dict(sorted_items[:top_n])
-        
-        # 如果有效主题数量少于8个，添加"中性"信号的主题作为后备
-        if len(keep_themes_info) < 8:
-            backup_themes = {}
-            for r in v6_data:
-                signal = r.get('trade_signal', '')
-                if signal == "中性" and r['theme'] not in keep_themes_info:
-                    backup_themes[r['theme']] = r
-            sorted_backup = sorted(backup_themes.items(), key=lambda x: -x[1]['composite_score'])
-            need_count = 8 - len(keep_themes_info)
-            for t, info in sorted_backup[:need_count]:
-                keep_themes_info[t] = info
-            print(f"[主题过滤] 添加 {need_count} 个中性主题作为后备")
-    else:
-        # resonance 模式：使用全部主题进行匹配（不限制信号级别）
-        print(f"[主题过滤] resonance模式使用全部 {len(all_themes_info)} 个主题匹配")
-        keep_themes_info = dict(all_themes_info)
-
+    # 主线+轮动全部作为过滤范围；回避区(✕)主题单独处理，命中时标注"(回避)"
+    junk_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') == 'junk'}
+    keep_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') != 'junk'}
     keep_themes = set(keep_themes_info.keys())
 
-    print(f"\n[主题过滤] V6.2引擎筛选 -> 保留 {len(keep_themes)} 个主题:")
-    for t, info in sorted(keep_themes_info.items(), key=lambda x: -x[1]['composite_score'])[:15]:
-        div_mark = ' ★分歧' if info.get('divergence_buy') else ''
-        print(f"  {t:<16} composite={info['composite_score']:<5.1f} "
-              f"signal={info['trade_signal']:<4} stage={info['stage']:<4} "
-              f"cont={info['continuation_score']:<5.1f}{div_mark}")
-    if len(keep_themes_info) > 15:
-        print(f"  ... 还有 {len(keep_themes_info)-15} 个主题")
+    print(f"\n[主题过滤] 主线+轮动 -> 保留 {len(keep_themes)} 个主题:")
+    for t, info in sorted(
+            keep_themes_info.items(),
+            key=lambda x: (0 if x[1].get('kind') == 'mainline' else 1,
+                           -x[1].get('composite_score', 0))):
+        print(f"  [{info.get('kind', ''):<8}] {t:<16} stage={info.get('stage', ''):<4} "
+              f"趋势{info.get('trend_score', 0):<5.1f} 涨停{info.get('zt_count', 0)}")
+    if junk_themes_info:
+        print(f"  回避区主题 {len(junk_themes_info)} 个: {', '.join(sorted(junk_themes_info))}")
     print()
 
     # ===== 2. 加载主题配置（只保留有效主题）=====
@@ -9785,30 +9811,56 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
             theme_cont_tags.append(vi.get("continuation_tag", ""))
             theme_leaders.append(vi.get("leader", ""))
             theme_div_buy.append(vi.get("divergence_buy", ""))
-            # 共振系数 = f(信号, 阶段, 延续分)
+            # 共振系数 = f(信号, 阶段, 延续分)（阶段用 V3 生命周期映射后的 V6 阶段）
             resonance_coeffs.append(_calc_resonance_coeff(
                 vi.get("trade_signal", ""),
-                vi.get("stage", ""),
+                vi.get("stage_v6", vi.get("stage", "")),
                 vi.get("continuation_score", 50),
             ))
         else:
-            keep.append(False)
-            matched_themes.append('')
-            match_scores.append(0)
-            secondary_themes_list.append('')
-            theme_stages.append('')
-            theme_trends.append(0)
-            theme_capitals.append(0)
-            theme_sentiments.append(0)
-            theme_continuations.append(0)
-            theme_risks.append(0)
-            theme_confidences.append(0)
-            theme_signals.append('')
-            theme_cont_tags.append('')
-            theme_leaders.append('')
-            theme_div_buy.append('')
-            # 无主题匹配：基础共振系数 0.5
-            resonance_coeffs.append(0.5)
+            # 无主线/轮动主题匹配：检查是否属于回避区主题（标注"(回避)"，不入选）
+            junk_hit = ''
+            for jname in junk_themes_info:
+                if ts_code in theme_stock_map.get(jname, {}):
+                    junk_hit = jname
+                    break
+            if junk_hit:
+                jv = junk_themes_info[junk_hit]
+                keep.append(False)
+                matched_themes.append(f"{junk_hit}(回避)")
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_stages.append(jv.get("stage", ""))
+                theme_trends.append(jv.get("trend_score", 0))
+                theme_capitals.append(jv.get("capital_score", 0))
+                theme_sentiments.append(jv.get("sentiment_score", 0))
+                theme_continuations.append(jv.get("continuation_score", 0))
+                theme_risks.append(jv.get("risk_score", 0))
+                theme_confidences.append(jv.get("confidence", 0))
+                theme_signals.append(jv.get("trade_signal", "回避"))
+                theme_cont_tags.append(jv.get("continuation_tag", ""))
+                theme_leaders.append(jv.get("leader", ""))
+                theme_div_buy.append(jv.get("divergence_buy", ""))
+                # 回避区主题：共振系数压到最低
+                resonance_coeffs.append(0.3)
+            else:
+                keep.append(False)
+                matched_themes.append('')
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_stages.append('')
+                theme_trends.append(0)
+                theme_capitals.append(0)
+                theme_sentiments.append(0)
+                theme_continuations.append(0)
+                theme_risks.append(0)
+                theme_confidences.append(0)
+                theme_signals.append('')
+                theme_cont_tags.append('')
+                theme_leaders.append('')
+                theme_div_buy.append('')
+                # 无主题匹配：基础共振系数 0.5
+                resonance_coeffs.append(0.5)
 
     # ===== 5. 过滤/共振 处理 =====
     before = len(result_df)
@@ -11235,213 +11287,87 @@ def run(target_date=None, simple_mode=False):
         volume_surge_swing_text = "\n🔥 量能爆发·强买信号 (回测T+5胜率>=74%的形态)\n" + "\n今日无信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）\n\n【筛选条件】①距MA20<0%+刚红柱(100%) ②中回调+刚红柱(79%) ③浅回调+刚红柱+评分>=70(74%) ④评分65-80+量比1.0-1.5+距MA20-3~0%(76%)\n【回测验证】基于6月历史回测223只样本：T+5胜率74%-100%"
         print(volume_surge_swing_text)
 
-
-
     # =========================
-    # 获取主题可持续性数据（供AI分析，来自Theme Alpha V8.0引擎）
-    # =========================
-    non_daytrip_for_ai = ""
-    try:
-        v6_data = _load_v6_result(TRADE_DATE)
-        if v6_data:
-            # 筛选信号为强买/看多/关注/持有的主题（V8.0信号体系）
-            active_themes = [r for r in v6_data if r.get('trade_signal') in ('强买', '看多', '关注', '持有')]
-            if active_themes:
-                lines = []
-                lines.append("★ 主题可持续性分析（Theme Alpha V8.0引擎，含生命周期节奏）★")
-                lines.append("")
-                lines.append(f"  活跃主题数: {len(active_themes)} 个（V8信号确认，非一日游脉冲）")
-                lines.append("")
-                for r in active_themes[:16]:
-                    t_start = r.get('T_start', '-')
-                    t_ma = r.get('T_MA', '-')
-                    r_vol = r.get('R_volume', '-')
-                    if isinstance(r_vol, (int, float)):
-                        r_vol = f"{r_vol:.2f}"
-                    d_stage = r.get('D阶段', r.get('stage', ''))
-                    d_action = r.get('策略动作', '')
-                    div_mark = ' ★分歧买点' if r.get('divergence_buy') else ''
-                    lines.append(
-                        f"  ● {r['theme']:<12} [{d_stage}] "
-                        f"T_s:{t_start} T_M:{t_ma} R_v:{r_vol} "
-                        f"动作:{d_action} "
-                        f"综:{r.get('composite_score', 0):.0f} 趋势:{r.get('trend_score', 0):.0f} "
-                        f"资金:{r.get('capital_score', 0):.0f} "
-                        f"信号:{r.get('trade_signal', '')}"
-                    )
-                lines.append("")
-                # 信号分布
-                from collections import Counter
-                sig_count = Counter(r.get('trade_signal', '') for r in active_themes)
-                sig_str = "、".join([f"{k}{v}个" for k, v in sig_count.most_common()])
-                lines.append(f"  信号分布: {sig_str}")
-                lines.append("")
-                lines.append("  【V8节奏说明】D阶段决定时间窗口：D1-D2(试错)、D3(首分低吸)、D4-D5(锁仓)、D6-D7(减仓)、D8+(清仓)")
-                lines.append("  【动作说明】T_start=主升爆发天数，T_MA=中军均线多头天数，R_volume=量比")
-                lines.append("")
-                non_daytrip_for_ai = "\n".join(lines)
-    except Exception as e:
-        print(f"[主题可持续性] AI数据获取失败: {e}")
-        non_daytrip_for_ai = ""
-
-
-    # =========================
-    # 信号×阶段实盘建议矩阵（基于V6数据自动生成）
+    # 实盘交易建议（直接读取主题评分报告 theme_analysis_v2）
     # =========================
     trade_advice_text = ""
     try:
-        v6_data2 = _load_v6_result(TRADE_DATE)
-        if v6_data2:
-            # 阶段分类 (V8 D阶段映射)
-            D_CORE_BUY    = ["D1-D2", "D4-D5"]               # 核心仓位: 启动/主升加速
-            D_STANDARD    = ["D3",]                           # 标准仓位: 分歧首分低吸
-            D_OBSERVE     = []                                # 观察仓位
-            D_FORBIDDEN   = ["D6-D7", "D8+", "潜伏期", "数据不足"]  # 禁止区: 高潮/退潮
-
-            def _pos_advice(stage, signal):
-                if stage in D_CORE_BUY and signal in ("强买", "看多"):
-                    return "★核心", "15-20%", "出击"
-                if stage in D_STANDARD and signal == "强买":
-                    return "★标准", "10-15%", "分批买入"
-                if stage in D_STANDARD and signal == "看多":
-                    return "标准", "5-10%", "试探建仓"
-                if stage in D_OBSERVE and signal in ("强买", "看多"):
-                    return "观察", "3-5%", "小仓试错"
-                if stage in D_FORBIDDEN:
-                    return "禁止", "0%", "不买"
-                return "观察", "0-3%", "观望"
-
-            # ── 所有主题排名总览 ──
-            lines = []
-            all_themes_sorted = sorted(v6_data2, key=lambda r: r.get('排名', 999))
-            lines.append("")
-            lines.append("【所有主题 V7 阶段总览】")
-            lines.append(f"{'排名':<4} {'主题':<12} {'V7阶段':<10} {'策略动作'}")
-            lines.append("-" * 50)
-            for r in all_themes_sorted:
-                rank = r.get('排名', '-')
-                theme = r.get('主题', '')
-                v7_stage = r.get('V7阶段', '')
-                action = r.get('策略动作', '')
-                lines.append(f"  {rank:<4} {theme:<12} {v7_stage:<10} {action}")
-            lines.append("")
-
-            # 信号×阶段矩阵说明
-            lines.append("")
-            lines.append("★ 信号×阶段实盘建议矩阵（V8主题生命周期节奏自动生成）★")
-            lines.append("")
-            lines.append("【策略原则】V8天数节奏(D阶段)决定时间窗口，V8综合得分决定方向强度，大盘环境决定仓位大小")
-            lines.append("")
-            lines.append("【仓位分档】")
-            lines.append("  ★核心(15-20%): D1-D2(启动期)/D4-D5(主升加速) + 强买/看多 = 趋势刚成立+预测强")
-            lines.append("  ★标准(10-15%): D3(分歧首分日) + 强买 = 黄金低吸窗口，最佳买点")
-            lines.append("  标准(5-10%):  D3(分歧首分日) + 看多 = 趋势形成中，可布局低吸")
-            lines.append("  观察(3-5%):   其他阶段 + 看多 = 轻仓等转正")
-            lines.append("  禁止(0%):     D6-D7(高潮派发)/D8+(退潮期) = 筹码松动或趋势破位")
-            lines.append("")
-
-            # 筛选V6有效信号
-            valid_signals = ("强买", "看多", "关注", "持有")
-            candidates = [r for r in v6_data2 if r.get('trade_signal') in valid_signals]
-
-            # 按优先级排序 (V8 D阶段 + 综合得分)
-            def _priority(r):
-                stage = r.get('D阶段', r.get('stage', ''))
-                sig = r.get('trade_signal', '')
-                if stage in D_CORE_BUY and sig == "强买": return 0
-                if stage in D_CORE_BUY and sig == "看多": return 1
-                if stage in D_STANDARD and sig == "强买": return 2
-                if stage in D_STANDARD and sig == "看多": return 3
-                if stage in D_OBSERVE and sig in ("强买", "看多"): return 4
-                if stage in D_FORBIDDEN: return 9
-                return 5
-
-            candidates.sort(key=_priority)
-
-            if candidates:
-                lines.append("【今日实盘建议（V8主题生命周期节奏）】")
-                lines.append(f"{'主题':<12} {'信号':<6} {'D阶段':<10} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'建议':<8} {'仓位':<10} {'操作'}")
-                lines.append("")
-                for r in candidates[:15]:
-                    stage = r.get('D阶段', r.get('stage', ''))
-                    sig = r.get('trade_signal', '')
-                    score = r.get('composite_score', 0)
-                    t_start = r.get('T_start', '-')
-                    t_ma = r.get('T_MA', '-')
-                    r_vol = r.get('R_volume', '-')
-                    if isinstance(r_vol, (int, float)):
-                        r_vol = f"{r_vol:.2f}"
-                    pos, weight, action = _pos_advice(stage, sig)
-                    lines.append(
-                        f"  {r['theme']:<10} {sig:<6} {stage:<10} {str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} {pos:<8} {weight:<10} {action}"
-                    )
-                lines.append("")
-                lines.append("")
-
-                # 统计
-                core_cnt = sum(1 for r in candidates if _pos_advice(r.get('D阶段', r.get('stage','')), r.get('trade_signal',''))[0] == "★核心")
-                std_cnt = sum(1 for r in candidates if "标准" in _pos_advice(r.get('D阶段', r.get('stage','')), r.get('trade_signal',''))[0])
-                forb_cnt = sum(1 for r in candidates if _pos_advice(r.get('D阶段', r.get('stage','')), r.get('trade_signal',''))[0] == "禁止")
-                lines.append(f"【统计】核心出击={core_cnt}个 | 标准仓位={std_cnt}个 | 禁止区={forb_cnt}个")
-
-            trade_advice_text = "\n".join(lines)
+        theme_report = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "report_daily", f"theme_analysis_v2_{TRADE_DATE}.txt")
+        if os.path.exists(theme_report):
+            with open(theme_report, 'r', encoding='utf-8') as f:
+                trade_advice_text = f.read().strip()
+            print(f"[实盘建议] 主题评分报告: {theme_report}")
+        else:
+            print(f"[实盘建议] 未找到主题评分报告: {theme_report}")
     except Exception as e:
-        print(f"[实盘建议矩阵] 生成失败: {e}")
+        print(f"[实盘建议] 读取失败: {e}")
         trade_advice_text = ""
 
     # =========================
     # 回踩买点形态信号（中报优质股池买点）
     # =========================
     def _load_pullback_buy_signals(trade_date: str) -> str:
-        """读取回踩买点形态检测器结果，提取 PullbackScore>=60 的形态信号"""
-        import glob as _glob2
-        # pullback_buy 输出在 solo/report_daily，兼容 d:\mystock\report_daily
+        """读取增强择时报告中的回踩买点形态信号（原 pullback_buy.py 已合并进 enhanced_timing_bull_all，只读当日文件，缺失直接跳过）"""
+        # enhanced 输出在 solo/report_daily，兼容 d:\mystock\report_daily
         cand = [
-            os.path.join(r"D:\mystock\solo\report_daily", f"pullback_buy_{trade_date}.csv"),
-            os.path.join(REPORT_DIR, f"pullback_buy_{trade_date}.csv"),
+            os.path.join(r"D:\mystock\solo\report_daily", f"enhanced_timing_bull_all_{trade_date}.csv"),
+            os.path.join(REPORT_DIR, f"enhanced_timing_bull_all_{trade_date}.csv"),
         ]
         files = [p for p in cand if os.path.exists(p)]
-        if not files:
-            files = _glob2.glob(os.path.join(r"D:\mystock\solo\report_daily", "pullback_buy_*.csv"))
-            files += _glob2.glob(os.path.join(REPORT_DIR, "pullback_buy_*.csv"))
         if not files:
             return ""
         latest = max(files, key=os.path.getmtime)
         try:
             df = pd.read_csv(latest, encoding="utf-8-sig")
-            if df.empty or "pullback_score" not in df.columns:
+            if df.empty or "形态阶段" not in df.columns:
                 return ""
-            hi = df[pd.to_numeric(df["pullback_score"], errors="coerce") >= 60].copy()
+            has = df[df["形态阶段"].fillna("") != ""].copy()
+            if has.empty:
+                return ""
+            # 双确认过滤（20260808 与 push_washout_recovery.py 同步）:
+            #   形态: 回踩买点分>=60（原 PullbackScore 语义）
+            #   综合风控: 评级S/A/B + 无兑现冲击 + 修正后评分>0（排除 C级/业绩背离/冲击 伪信号）
+            score = pd.to_numeric(has.get("回踩买点分", pd.Series(np.nan, index=has.index)), errors="coerce")
+            grade = has.get("修正后胜率分级", "").astype(str).str.strip()
+            impact = has.get("兑现冲击过滤", "").astype(str)
+            corr = pd.to_numeric(has.get("修正后评分", pd.Series(np.nan, index=has.index)), errors="coerce").fillna(0)
+            hi = has[
+                (score >= 60) &
+                (grade.isin(["S", "A", "B"])) &
+                (impact.str.contains("✅", na=False)) &
+                (corr > 0)
+            ].copy()
             if hi.empty:
                 return ""
-            # 阶段排序：回踩中 > 回踩完成 > 首阳确认 > 洗盘缩量
-            _stage_order = {"回踩中": 0, "回踩完成": 1, "首阳确认": 2, "洗盘缩量": 3}
-            hi["_so"] = hi.get("stage", "").map(_stage_order).fillna(9)
-            hi = hi.sort_values(["_so", "pullback_score"], ascending=[True, False])
+            # 排序：次日可买入 > 观察 > 不买入
+            _op_order = {"✅ 次日可买入": 0, "⚠️ 次日观察等回踩": 1, "⚠️ 观察": 1, "❌ 仅观察不买入": 2, "❌ 等待首阳": 2}
+            hi["_oo"] = hi.get("次日操作", "").map(_op_order).fillna(9)
+            hi = hi.sort_values(["_oo", "回踩买点分"], ascending=[True, False])
             lines = []
             lines.append("【中报优质股池买点】")
-            lines.append(f"数据来源：回踩买点形态检测器 PullbackScore≥60（共{len(hi)}只），形态=洗盘→放量首阳→缩量回踩不破")
+            lines.append(f"数据来源：洗盘修复专题形态信号（回踩买点分≥60+评级S/A/B+无冲击，双确认共{len(hi)}只），形态=洗盘→放量首阳→缩量回踩不破")
             lines.append("")
             for _, row in hi.iterrows():
-                code = str(row.get("code", ""))
-                name = row.get("name", "")
-                stage = row.get("stage", "")
-                score = float(row.get("pullback_score", 0))
-                fyd = str(row.get("first_yang_date", ""))[:8]
-                fyp = row.get("first_yang_pct", 0)
-                fyv = row.get("first_yang_vr", 0)
-                pdays = row.get("pullback_days", 0)
-                pshr = row.get("pullback_shrink", 0)
-                mdd = row.get("max_dd10", 0)
-                v15 = row.get("FinalScore", np.nan)
-                rec = str(row.get("Recommendation", "")).strip()
-                theme = str(row.get("theme", "")).strip()
-                v15s = f"{float(v15):.1f}" if pd.notna(v15) else "-"
-                yang_s = f"首阳:{fyd[4:6]}/{fyd[6:8]}(+{float(fyp):.1f}%量{float(fyv):.1f})" if fyd and str(fyd) != "nan" else "无首阳"
-                pull_s = f"回踩{pdays}天缩量{float(pshr):.2f}" if pdays and int(pdays) > 0 else "首阳当日"
-                wash_s = f"洗盘-{abs(float(mdd)):.1f}%" if mdd and float(mdd) < 0 else ""
+                code = str(row.get("代码", ""))
+                name = row.get("名称", "")
+                stage = row.get("形态阶段", "")
+                decision = str(row.get("次日操作", "")).strip()
+                score_v = float(row.get("回踩买点分", 0) or 0)
+                fyd = str(row.get("首阳日期", ""))[:8]
+                pdays = row.get("回踩天数", 0)
+                grade = str(row.get("修正后胜率分级", "")).strip()
+                wr = row.get("洗盘修复分", np.nan)
+                theme = str(row.get("主题", "")).strip()
+                trade_dec = str(row.get("交易决策", "")).strip()
+                wr_s = f"{float(wr):.0f}" if pd.notna(wr) else "-"
+                yang_s = f"首阳:{fyd[4:6]}/{fyd[6:8]}" if fyd and str(fyd) != "nan" else "无首阳"
+                pull_s = f"回踩{pdays}天" if pdays and int(pdays) > 0 else "首阳当日"
                 theme_s = f" 主题:{theme}" if theme and theme != "nan" else ""
-                lines.append(f"【{name}】({code}) 形态:{stage} 评分:{score:.0f} {yang_s} {pull_s} {wash_s} | V15:{v15s} {rec}{theme_s}")
+                decision_s = f" 次日操作:{decision}" if decision and decision != "nan" else ""
+                grade_s = f" 评级:{grade}" if grade and grade != "nan" else ""
+                lines.append(f"【{name}】({code}){decision_s} 形态:{stage} 回踩买点分:{score_v:.1f} {yang_s} {pull_s} | 洗盘修复分:{wr_s}{grade_s} 决策:{trade_dec}{theme_s}")
             return "\n".join(lines)
         except Exception as e:
             print(f"[回踩买点] 加载失败: {e}")
@@ -11452,34 +11378,12 @@ def run(target_date=None, simple_mode=False):
         print("[回踩买点] 已加载中报优质股池买点信号")
 
     # =========================
-    # =========================
-    # 未来上涨潜力方向（优中选优）
-    # =========================
-    future_potential_text = _load_future_potential_themes(TRADE_DATE)
-    if future_potential_text:
-        print("[潜力方向] 已加载")
-
-    # =========================
-    # 活跃上升子主题（主升/升温/分歧阶段，有买入信号）
-    # =========================
-    rising_subtheme_text = _load_rising_subthemes(TRADE_DATE)
-    if rising_subtheme_text:
-        print("[上升子主题] 已加载")
-
-
-    # =========================
-    # ETF操作提示（读取三层融合决策报告的精简版）
+    # ETF操作提示（读取主线轮动汇总报告的精简版）
     # =========================
     etf_tips_text = ""
-    # 优先读取三层融合的精简报告，回退到完整汇总报告
-    layer_path = rf'D:\mystock\report_daily\etf_3layer_decision_{TRADE_DATE}.txt'
     summary_path = rf'D:\mystock\report_daily\etf_mainline_summary_{TRADE_DATE}.txt'
     try:
-        if os.path.exists(layer_path):
-            with open(layer_path, 'r', encoding='utf-8') as f:
-                etf_tips_text = f.read().strip()
-            print(f"[ETF提示] 三层决策报告: {layer_path}")
-        elif os.path.exists(summary_path):
+        if os.path.exists(summary_path):
             with open(summary_path, 'r', encoding='utf-8') as f:
                 full = f.read().strip()
             # 截取最简版：只取TOP5 + 持仓 + 执行清单前面的部分
@@ -11504,7 +11408,7 @@ def run(target_date=None, simple_mode=False):
     prompt = f"""
 以下是我自己计算的量化分析结果：
 
-**【当前市场情绪】**
+**【大盘分析】**
 
 {emotion_text}
 
@@ -11521,21 +11425,59 @@ def run(target_date=None, simple_mode=False):
 开头以“这是大盘和个股推送微信消息”开头
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分)：
-1、**大盘分析**：重点显示仓位建议（显示为红色加粗字体），显示理由。严格按照给定的内容进行分析。
+1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
+#### 市场分析
+* 上证指数：XXXX | 成交额：XX万亿 | 涨跌比 X%
+* 市场：XXXXX | 赚钱：XX 
+* 风险：XXXXXX | 节奏：XXXXXX
+#### 仓位建议
+* 当前目标：xx%   可加仓空间：xx%
+* 正常区间：xx%～xx%   确认上限：xx%
+* 一句话：XXXXX。
+#### 策略：XXXX
+* 最终：XXXXXX
 2、**主题分析**
-【严格按以下固定模板输出，禁止自由发挥格式】
-**市场风格与主线节奏**
-用1-2句话概述今日市场风格，**必须引用主题分析报告**。
+【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
+**主线**
+#### 核心主线：XXXX
+* **最佳子主题**：存储芯片（推荐理由：资金强力沉淀（迁移分净流入最密集）；涨停0家/最高0连板/资金净流入228320万元）
+* **【龙头】标的**：688123.SH 聚辰股份
+  - 角色：情绪领涨 / 超短爆发（0连板, 市值205亿, 成交额15.7亿）
+  - 匹配动作：打板接力 / 右侧突破追买（建议仓位 10%）
+* **【中军】标的**：603986.SH 兆易创新
+  - 角色：容量承载 / 趋势慢牛（市值2927亿, 日成交额305.2亿）
+  - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（建议仓位 15%-20%）
 
-**可持续性主题**（结合信号，最多列出5个活跃主题）：
-- 主题名1:【D阶段时间窗口】动作、信号
-- 主题名2:【D阶段时间窗口】动作、信号
+#### 核心主线：XXXX
+* **最佳子主题**：CXO/CRO/CDMO（推荐理由：涨停梯队最齐（含高位连板）；涨停5家/最高1连板/资金净流入282995万元）
+* **【龙头】标的**：300363.SZ 博腾股份
+  - 角色：情绪领涨 / 超短爆发（1连板, 市值111亿, 成交额13.8亿）
+  - 匹配动作：打板接力 / 右侧突破追买（建议仓位 10%）
+* **【中军】标的**：603259.SH 药明康德
+  - 角色：容量承载 / 趋势慢牛（市值4619亿, 日成交额139.6亿）
+  - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（建议仓位 15%-20%）
 
-从“{future_potential_text}”提炼输出主题/子主题：升温概率
+#### 核心主线：XXXX
+* **最佳子主题**：光模块（推荐理由：资金强力沉淀（迁移分净流入最密集）；涨停1家/最高1连板/资金净流入203252万元）
+* **【龙头】标的**：002281.SZ 光迅科技
+  - 角色：情绪领涨 / 超短爆发（1连板, 市值1598亿, 成交额132.9亿）
+  - 匹配动作：打板接力 / 右侧突破追买（建议仓位 10%）
+* **【中军】标的**：300308.SZ 中际旭创
+  - 角色：容量承载 / 趋势慢牛（市值10760亿, 日成交额546.7亿）
+  - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（建议仓位 15%-20%）
 
-从“{rising_subtheme_text}”中提炼为**活跃上升子主题**（主升/升温/分歧阶段，显示主题名称和龙头股）：
+####轮动主题：XXXX/XXXX/XXXX
+####规避杂毛：XXXX/XXXX/XXXX
+3、**【ETF操作建议】**
+**【今日ETF主线轮动操作指令】**
+{etf_tips_text}
 
-3、**【今日突破股池分析】**
+输出要求：
+- 直接展示ETF主线轮动指令中的**调仓信号**（名称、代码、动作、建议仓位、理由）
+- 简要说明当前持仓诊断结论（来自【二、持仓标的诊断】）
+- 如果TOP5板块与主题分析一致，说明共振确认
+
+4、**【今日突破股池分析】**
 （综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
@@ -11557,9 +11499,8 @@ def run(target_date=None, simple_mode=False):
 - 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
 主题地位：【必须】直接输出规则判定结果，格式如下：
-"主题与地位: 所属主题为XXX（XXX，非一日游：XXX(连续X天)，龙头：XXX→XXX→XXX）。主题地位：XXX。辨识度YRI总分=XX。"
-例如："主题与地位: 所属主题为小金属（抱团主升，非一日游：启动确认(1天)，龙头：厦门钨业→章源钨业→铜陵有色）。主题地位：中军。辨识度YRI总分=59"
-【约束】如上方数据中无"非一日游:XXX"或"龙头:XXX"字段，则括号内只输出主题状态；如有则必须严格引用上方标注的非一日游阶段和龙头序列
+"主题与地位: 所属主题为XXX（主线/轮动/归避）"
+例如："主题与地位: 所属主题为小金属（主线）"
 - 基本面Alpha评分（0-100分，越高越好）及中长线解读：
 【评分标准】
 - 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
@@ -11592,21 +11533,15 @@ C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画�
 * 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
 D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
 E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-4、**【ETF操作建议】**
-**【今日ETF三层决策指令】**
-{etf_tips_text}
 
-输出要求：
-- 直接展示ETF三层决策指令中的**次日执行清单**（名称、代码、动作、建议仓位、理由）
-- 简要说明当前持仓诊断结论（来自【二、持仓标的诊断】）
-- 如果TOP5板块与主题分析一致，说明共振确认
+5、**【中报优质股池买点】**（回踩买点形态，PullbackScore≥60，形态=急跌洗盘→放量首阳→缩量回踩不破，次日存在二次启动概率）：
+{pullback_buy_text}
+（【数据边界】本段落只分析上方"【中报优质股池买点】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无中报优质股池买点信号"。
+【输出要求-最高优先级】每只股票第一行必须直接给出明确结论：✅次日可买入 / ⚠️次日观察等回踩 / ❌次日不买入，严格引用上方标注的"次日操作:"字段原值，禁止自行改判或美化；禁止把"❌仅观察不买入"或"⚠️观察"的股票描述成"形态健康可买入"。仅对"✅次日可买入"（回踩中）的个股补充次日买点与止损位，每只力求精简）
 
 6、**【今日量能爆发+宽幅震荡池分析（测试中）】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}原文直接输出
 
-7、**【中报优质股池买点】**（回踩买点形态，PullbackScore≥60，形态=急跌洗盘→放量首阳→缩量回踩不破，次日存在二次启动概率）：
-{pullback_buy_text}
-（【数据边界】本段落只分析上方"【中报优质股池买点】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无中报优质股池买点信号"。按 PullbackScore 从高到低分析前10名，每只力求精简，优先标注"回踩中"阶段个股的次日买点与止损位）
 
 ------------------
 以上全局格式要求：

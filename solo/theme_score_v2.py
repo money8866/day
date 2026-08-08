@@ -10,7 +10,7 @@
     python theme_score_v2.py 20260724  # 指定日期
 """
 
-import sys, os, json, csv, time, sqlite3
+import sys, os, json, csv, time, sqlite3, re
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -606,6 +606,8 @@ def run_v2_analysis(trade_date=None):
             'leader_v3_score': leader_score, 'leader_v3_detail': leader_detail,
             'persistence': persistence, 'heat_v3': heat_v3,
             'strength_score': strength, 'mti': mti, 'mti_level': mti_level,
+            # 主线穿透用：完整成份股特征（全量 rows，非 top30）
+            'stock_rows': rows,
         })
         rows_per_theme[theme_name] = top_rows
 
@@ -662,6 +664,8 @@ def run_v2_analysis(trade_date=None):
 
     # ── V3 Rotation Engine：生命周期分类 + Trade Score + Final 修正 ──
     print("  计算 V3 生命周期与交易得分...")
+    # 主线细分穿透：加载子主题映射（仅主线执行）
+    subtheme_map = _load_subtheme_map_v2()
     for r in results:
         lifecycle = classify_v3_lifecycle(r)
         r['lifecycle'] = lifecycle
@@ -695,6 +699,16 @@ def run_v2_analysis(trade_date=None):
         r['final_trade_score'] = round(adjusted * growth * lc_mult, 1)
         # 基于 Trade 而非 Strength 的推荐排序
         r['trade_rank'] = 0
+        # V3 实盘交易动作 + 建议仓位（覆盖原迁移引擎的简单 trade_action）
+        act = calc_trade_action_v3(r)
+        r.update(act)
+        # 主线细分穿透：仅对核心主线执行（最佳子主题 / 龙头 / 中军）
+        is_m, _mtype = _is_mainline(r)
+        if is_m:
+            pen = analyze_mainline_penetration(
+                r['theme'], r.get('stock_rows', []), theme_stock_map, subtheme_map, mf_map)
+            if pen:
+                r['penetration'] = pen
 
     # Trade 排序（交易优先级）
     results_trade_sorted = sorted(results, key=lambda x: x['final_trade_score'], reverse=True)
@@ -718,19 +732,21 @@ def run_v2_analysis(trade_date=None):
                            market_ret_10=market_ret_10, etf_kline_map=etf_kline_map)
 
     # 打印排名
-    print(f"\n{'='*80}")
+    print(f"\n{'='*100}")
     print(f"主题评分排名 V2 - {TRADE_DATE_str}")
-    print(f"{'='*80}")
-    print(f"{'排名':<4} {'主题':<12} {'趋势':<6} {'情绪':<6} {'综合':<6} {'涨停':<4} {'迁移分':<6} {'目标状态':<12} {'交易动作':<8}")
-    print(f"{'-'*80}")
+    print(f"{'='*100}")
+    print(f"{'排名':<4} {'主题':<12} {'趋势':<6} {'情绪':<6} {'综合':<6} {'涨停':<4} {'迁移分':<6} {'目标状态':<10} {'建议仓位':<10} {'实盘交易动作':<20}")
+    print(f"{'-'*100}")
     for r in results[:20]:  # 只打印前20
         sd = r.get('sentiment_detail', {}) or {}
         zt = sd.get('zt_count', 0)
-        state = r.get('theme_state', '')
+        state = r.get('target_state', '')
         mig = r.get('migration_score', 0)
-        target = r.get('target_state', '')
         action = r.get('trade_action', '')
-        print(f"{r['rank']:<4} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} {r['composite_score']:<6.1f} {zt:<4} {mig:<6.1f} {target:<12} {action:<8}")
+        pos = r.get('position_label', '')
+        pos_pct = r.get('position_pct', 0)
+        pos_str = f"{pos}({pos_pct:.0f}%)" if pos_pct > 0 else pos
+        print(f"{r['rank']:<4} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} {r['composite_score']:<6.1f} {zt:<4} {mig:<6.1f} {state:<10} {pos_str:<10} {action:<20}")
 
     print(f"\n完成! 共 {len(results)} 个主题评分")
     return results
@@ -937,6 +953,126 @@ def calc_trade_score_v3(strength, lifecycle, migration_score, leader_quality, fu
     return max(0.0, min(100.0, base))
 
 
+def calc_trade_action_v3(r):
+    """实盘交易动作 + 建议仓位（QMT/CTP 对接用）
+
+    输入字段（来自 result dict）：
+      trend_score / sentiment_score / composite_score / zt_count / migration_score / lifecycle(target_state)
+    输出：dict { trade_action, position_pct, position_label, suggested_position, action_reason }
+
+    动作优先级（严格从上到下）：
+      1. 退潮期优先     : Status==退潮 或 Composite<30 → 坚决止损
+      2. 启动/升温修复   : Status∈{启动,升温} 且 Migration>=15 → 试错建仓低吸
+                        : Status∈{启动,升温} 且 Composite<50 → 底仓观察等突破（防误杀）
+      3. 分歧转一致     : Status==分歧转一致 → 右侧突破追买（极佳右侧点）
+      4. 打板/接力      : LimitUp>=20 且 Status∈{抱团, 分歧转一致}
+      5. 强力加仓/低吸   : Migration>=15 或 (Migration>=10 且 Composite>=75)
+      6. 趋势持股/做T   : Trend>=80 且 LimitUp<10
+      7. 逢高减仓       : Status==分歧 或 (Sentiment<45 且 Migration<5)
+      8. 观望等待       : 其余且 Composite<70
+      9. 兜底持有跟随    : Composite>=70
+
+    仓位（单主题上限比例）：
+      极高配 25%~30% : Composite>=80 且 Migration>=10
+      高配  15%~20%  : Composite>=75 或 LimitUp>=20
+      中配  10%~15%  : 65<=Composite<75
+      低配  5%~10%   : 50<=Composite<65
+      清仓  0%       : Composite<30 或 Status==退潮/弱势
+    """
+    trend = float(r.get('trend_score', 0) or 0)
+    sentiment = float(r.get('sentiment_score', 0) or 0)
+    composite = float(r.get('composite_score', 0) or 0)
+    sd = r.get('sentiment_detail', {}) or {}
+    limit_up = int(sd.get('zt_count', 0) or 0)
+    migration = float(r.get('migration_score', 0) or 0)
+    # 目标状态优先（迁移引擎输出），次选当前生命周期
+    status = r.get('target_state', '') or r.get('lifecycle', '') or r.get('theme_state', '')
+    status = str(status)
+
+    # ── 仓位基准（动作无特殊覆盖时使用） ──
+    if composite < 30 or '退潮' in status or status == '弱势':
+        position_pct = 0.0
+        position_label = '清仓/空仓(0%)'
+    elif composite >= 80 and migration >= 10:
+        position_pct = 27.5   # 25~30% 区间中位
+        position_label = '极高配置(25%-30%)'
+    elif composite >= 75 or limit_up >= 20:
+        position_pct = 17.5   # 15~20%
+        position_label = '高配置(15%-20%)'
+    elif composite >= 65:
+        position_pct = 12.5   # 10~15%
+        position_label = '中配置(10%-15%)'
+    else:  # 50<=composite<65
+        position_pct = 7.5    # 5~10%
+        position_label = '低配置(5%-10%)'
+
+    def _out(action, reason, pct, label, sp=None):
+        return {'trade_action': action, 'action_reason': reason,
+                'position_pct': pct, 'position_label': label,
+                'suggested_position': sp or label}
+
+    # ── 交易动作（严格优先级） ──
+    # 1. 退潮期优先：坚决止损（Composite<30 不再细分状态；弱势=资金持续流出同清仓）
+    if '退潮' in status or status == '弱势' or composite < 30:
+        return _out('清仓离场 / 止损出局',
+                    f'退潮期/极弱 坚决止损 Status={status}, Composite={composite:.0f}',
+                    0.0, '清仓/空仓(0%)')
+
+    # 2. 启动/升温期修复：防止低综合分误杀高迁移分的启动板块
+    if '启动' in status or '升温' in status:
+        if migration >= 15:  # 资金强力流入的启动板
+            return _out('试错建仓 / 回踩分批吸筹',
+                        f'启动期资金强力流入 Migration={migration:.0f}，试错建仓',
+                        7.5, '低配置(5%-10%)')
+        elif composite < 50:
+            return _out('底仓观察 / 等待放量突破',
+                        f'启动期但综合分偏低({composite:.0f})，底仓观察等放量',
+                        2.5, '试错(0%-5%)')
+
+    # 3. 分歧转一致：极佳右侧点
+    if '分歧转一致' in status:
+        return _out('右侧突破追买 / 确认放量加仓',
+                    f'分歧转一致，极佳右侧点 Composite={composite:.0f}',
+                    12.5, '中配置(10%-15%)')
+
+    # 4. 打板/接力
+    if limit_up >= 20 and ('抱团' in status or '分歧转一致' in status):
+        return _out('龙头打板 / 板块补涨接力',
+                    f'情绪极高(涨停{limit_up}家)且状态={status}，梯队完整',
+                    position_pct, position_label)
+
+    # 5. 强力加仓/低吸
+    if migration >= 15 or (migration >= 10 and composite >= 75):
+        action = '逢低分批加仓（重点关注5日/10日线）'
+        reason = f'资金强力净流入 Migration={migration:.0f}, Composite={composite:.0f}'
+        pct = min(30.0, position_pct * 1.15) if position_pct > 0 else 0
+        return _out(action, reason, round(pct, 1), position_label)
+
+    # 6. 趋势持股/做T
+    if trend >= 80 and limit_up < 10:
+        return _out('通道持股 / 动态网格做T',
+                    f'机构慢牛趋势 Trend={trend:.0f}, 涨停仅{limit_up}家',
+                    position_pct, position_label)
+
+    # 7. 逢高减仓
+    if status == '分歧' or (sentiment < 45 and migration < 5):
+        pct = max(0.0, position_pct * 0.5)
+        return _out('逢高分批减仓 / 防御性收缩',
+                    f'情绪见顶/分歧加剧 Status={status}, Sentiment={sentiment:.0f}, Migration={migration:.0f}',
+                    round(pct, 1), position_label)
+
+    # 8. 观望等待
+    if composite < 70:
+        return _out('空仓观望 / 保持关注',
+                    f'无明确趋势和资金流向，震荡板块 Composite={composite:.0f}',
+                    0.0, '观望(0%)')
+
+    # 9. 兜底（Composite>=70 但不满足4-6任何一条 → 偏积极持有）
+    return _out('持有跟随 / 5日线止盈',
+                f'综合分尚可 Composite={composite:.0f}，无明确买卖信号',
+                position_pct, position_label)
+
+
 def calc_confidence_v3(n_stocks):
     """小主题可信度修正：min(1, sqrt(成份股数量/60))，防止小板块偶发暴涨"""
     return min(1.0, float(np.sqrt(n_stocks / 60.0)))
@@ -985,6 +1121,9 @@ def save_to_csv_v2(results):
                "target_state": r.get("target_state", ""),
                "trade_action": r.get("trade_action", ""),
                "action_reason": r.get("action_reason", ""),
+               "position_pct": r.get("position_pct", 0),
+               "position_label": r.get("position_label", ""),
+               "suggested_position": r.get("suggested_position", ""),
                "proximity": mf.get("proximity", 0), "momentum": mf.get("momentum", 0),
                "confirmation": mf.get("confirmation", 0), "money_resonance": mf.get("money_resonance", 0),
                "leader_health": mf.get("leader_health", 0), "regime": mf.get("regime", 0),
@@ -1033,7 +1172,8 @@ def save_to_sqlite_v2(results):
         trade_date TEXT, theme_state TEXT, hot_score REAL, hot_percentile REAL, hot_phase TEXT, hot_warning TEXT
     )""")
     # 新增迁移预测列（兼容旧表）
-    for col in ["migration_score REAL", "migration_direction TEXT", "target_state TEXT", "trade_action TEXT"]:
+    for col in ["migration_score REAL", "migration_direction TEXT", "target_state TEXT", "trade_action TEXT",
+                "position_pct REAL", "position_label TEXT", "suggested_position TEXT"]:
         try:
             cur.execute(f"ALTER TABLE theme_scores ADD COLUMN {col}")
         except sqlite3.OperationalError:
@@ -1053,8 +1193,9 @@ def save_to_sqlite_v2(results):
              core_name, core_code, core_score,
              ret_5, ret_10, ret_20, up_ratio, zt_count,
              trade_date, theme_state, hot_score, hot_percentile, hot_phase, hot_warning,
-             migration_score, migration_direction, target_state, trade_action)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             migration_score, migration_direction, target_state, trade_action,
+             position_pct, position_label, suggested_position)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (r['rank'], r['theme'], r['n_stocks'], r['trend_score'], r['sentiment_score'], r['composite_score'],
              climax_warning, r.get('leader_name', ''), r.get('leader_code', ''), r.get('leader_score', 0),
              r.get('core_name', ''), r.get('core_code', ''), r.get('core_score', 0),
@@ -1064,20 +1205,338 @@ def save_to_sqlite_v2(results):
              r.get('hot_score', 0), r.get('hot_percentile', 50),
              r.get('hot_phase', '正常'), r.get('hot_warning', ''),
              r.get('migration_score', 0), r.get('migration_direction', 'sideways'),
-             r.get('target_state', ''), r.get('trade_action', '')))
+             r.get('target_state', ''), r.get('trade_action', ''),
+             r.get('position_pct', 0), r.get('position_label', ''), r.get('suggested_position', '')))
 
     conn.commit()
     conn.close()
     print(f"[保存] SQLite: {OUTPUT_DB} ({len(results)} 条)")
 
 
+# ══════════════════════════════════════════════════════════════
+# 大盘择时指令 + 主线判定（Mainline Gatekeeper）+ 胜率/概率估算
+# ══════════════════════════════════════════════════════════════
+
+def _load_market_directive(trade_date):
+    """读取大盘择时报告，提取最高指令与目标仓位
+
+    Returns: dict {directive, target_pos, action, strategy, mainline_only}
+    """
+    ma_path = os.path.join(BASE_DIR, "cache_backbone_tushare", f"market_analysis_{trade_date}.txt")
+    out = {'directive': '', 'target_pos': None, 'action': '', 'strategy': '', 'mainline_only': False}
+    if not os.path.exists(ma_path):
+        return out
+    try:
+        with open(ma_path, 'r', encoding='utf-8') as f:
+            txt = f.read()
+        # 一句话
+        m = re.search(r'一句话[:：]\s*(.+)', txt)
+        if m:
+            out['directive'] = m.group(1).strip()
+        # 当前目标仓位
+        m = re.search(r'当前目标[:：]\s*(\d+)%', txt)
+        if m:
+            out['target_pos'] = int(m.group(1))
+        # 动作
+        m = re.search(r'【动作】\s*(.+)', txt)
+        if m:
+            out['action'] = m.group(1).strip()
+        # 策略
+        m = re.search(r'【策略】\s*(.+)', txt)
+        if m:
+            out['strategy'] = m.group(1).strip()
+        # 主线模式判断：只做主线 / 少做非主线 → 严格过滤
+        if re.search(r'只做主线|不追杂毛|非主线：少做|只做主线，不追杂毛', txt):
+            out['mainline_only'] = True
+    except Exception as e:
+        print(f"[报告] 大盘指令读取失败: {e}")
+    return out
+
+
+def _is_mainline(r):
+    """主线判定（Mainline Gatekeeper）
+
+    条件A（绝对主线）：Status∈[主升,高潮] 且 (LimitUp>=10 或 Trend>=80) 且 Composite>=75
+    条件B（加速主线）：Migration>=20 且 Composite>=75 且 Trend>=75
+    返回: (is_mainline, 条件标签)
+    """
+    trend = float(r.get('trend_score', 0) or 0)
+    composite = float(r.get('composite_score', 0) or 0)
+    sd = r.get('sentiment_detail', {}) or {}
+    zt = int(sd.get('zt_count', 0) or 0)
+    mig = float(r.get('migration_score', 0) or 0)
+    lc = str(r.get('lifecycle', '') or '')
+    if lc in ('主升', '高潮') and (zt >= 10 or trend >= 80) and composite >= 75:
+        return True, 'A-绝对主线'
+    if mig >= 20 and composite >= 75 and trend >= 75:
+        return True, 'B-加速主线'
+    return False, ''
+
+
+def _est_winrate(r):
+    """预估交易胜率 (%)：生命周期基准 + 综合分/资金/涨停修正"""
+    lc = r.get('lifecycle', '')
+    composite = float(r.get('composite_score', 0) or 0)
+    sd = r.get('sentiment_detail', {}) or {}
+    zt = int(sd.get('zt_count', 0) or 0)
+    mig = float(r.get('migration_score', 0) or 0)
+    base = {'主升': 60, '升温': 55, '启动': 50, '分歧': 52, '高潮': 58, '退潮': 28}
+    wr = base.get(lc, 45) + (composite - 60) * 0.25 + min(5, mig * 0.15)
+    if zt >= 10:
+        wr += 3
+    if zt >= 20:
+        wr += 2
+    return int(max(15, min(72, wr)))
+
+
+def _est_rr(r):
+    """预期盈亏比 R:R"""
+    lc = r.get('lifecycle', '')
+    composite = float(r.get('composite_score', 0) or 0)
+    base = {'主升': 2.8, '升温': 2.2, '启动': 1.8, '分歧': 2.0, '高潮': 2.5, '退潮': 0.8}
+    rr = base.get(lc, 1.5)
+    if composite >= 80:
+        rr += 0.3
+    elif composite < 60:
+        rr -= 0.3
+    return round(max(0.5, min(3.5, rr)), 1)
+
+
+def _est_mainline_prob(r):
+    """轮动板块 → 主线的转化概率估算 (%)"""
+    mig = float(r.get('migration_score', 0) or 0)
+    trend = float(r.get('trend_score', 0) or 0)
+    composite = float(r.get('composite_score', 0) or 0)
+    sd = r.get('sentiment_detail', {}) or {}
+    zt = int(sd.get('zt_count', 0) or 0)
+    prob = 10 + min(25, mig * 1.0) + max(0, trend - 50) * 0.6 + max(0, composite - 55) * 0.5
+    if zt >= 5:
+        prob += 10
+    if zt >= 10:
+        prob += 5
+    return int(max(5, min(80, prob)))
+
+
+def _mainline_confirm(r):
+    """触发成为主线的确认条件"""
+    lc = str(r.get('lifecycle', '') or '')
+    ts = str(r.get('target_state', '') or '')
+    if lc == '升温' or '升温' in ts:
+        return "放量突破20日线 + 涨停≥10家"
+    if lc == '分歧' or '分歧转一致' in ts:
+        return "连续2日涨停≥10家 + 龙头封板"
+    if lc == '启动' or '启动' in ts:
+        return "突破20日线 + 涨停≥5家"
+    return "资金连续3日净流入 + 趋势站上60日线"
+
+
+def _load_subtheme_map_v2():
+    """加载 subtheme_map.json：{母主题: {子主题: {industry, concept, keywords, core_companies}}}"""
+    paths = [
+        os.path.join(BASE_DIR, "theme_kg_v3", "theme_kg_v3", "config", "subtheme_map.json"),
+        os.path.join(BASE_DIR, "theme_kg_v3", "config", "subtheme_map.json"),
+        os.path.join(BASE_DIR, "theme_kg_v3", "config", "subtheme_map.json"),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            try:
+                with open(p, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[子主题] 加载失败 {p}: {e}")
+    print("[子主题] 未找到 subtheme_map.json，主线穿透跳过")
+    return {}
+
+
+def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map, mf_map):
+    """主线细分穿透算法：定位最佳子主题 + 龙头/中军
+
+    Step1: 将主线成份股按子主题归属（核心公司名 > 行业 > 关键词）
+    Step2: 子主题得分 = 涨停集中度(涨停数*2+最高连板)*3 + 资金迁移(净流入万元/1e5)
+           → 锁定 TOP1 最佳子主题
+    Step3: 最佳子主题内选龙头（市值50~300亿、连板/涨停/领涨最优）
+           与中军（市值>500亿、日成交额最高）
+
+    Returns: dict 或 None
+    """
+    subs = subtheme_map.get(theme_name)
+    if not subs:
+        for k in subtheme_map:
+            if theme_name in k or k in theme_name:
+                subs = subtheme_map[k]
+                break
+    if not subs:
+        # 兜底：无子主题配置时，用主题本身作为子主题（保证每条主线都有穿透输出）
+        subs = {theme_name: {}}
+    # 无子主题配置的纯兜底（如小金属）：未匹配股票归入主题本身，而不是"未细分"
+    fallback_only = not any(cfg for cfg in subs.values())
+
+    # ── Step1: 股票 → 子主题 归属 ──
+    # 匹配优先级：核心公司名(100) > 行业(40, 双向子串含"专用机械→机械/化工原料→化工") > 名称关键词(20)
+    # 未匹配股票不丢弃，归入"未细分"桶（否则涨停股被丢弃→涨停集中度统计失真）
+    sub_stocks = defaultdict(list)
+    theme_meta = theme_stock_map.get(theme_name, {})
+    for row in rows:
+        code = row.get('ts_code', '')
+        name = row.get('name', '')
+        industry = (theme_meta.get(code) or {}).get('industry', '')
+        best_sub, best_score = None, 0
+        for sub_name, sub_cfg in subs.items():
+            sc = 0
+            core_names = sub_cfg.get('core_companies', [])
+            inds = sub_cfg.get('industry', [])
+            kws = sub_cfg.get('keywords', [])
+            if name and name in core_names:
+                sc += 100
+            if industry and inds:
+                if industry in inds or any(ind in industry for ind in inds):
+                    sc += 40
+            if name:
+                for kw in kws:
+                    if kw and kw in name:
+                        sc += 20
+                        break
+            if sc > best_score:
+                best_score, best_sub = sc, sub_name
+        if best_sub:
+            sub_stocks[best_sub].append(row)
+        elif fallback_only:
+            # 纯兜底主题：全部归入主题本身（保证显示为主题名而非"未细分"）
+            sub_stocks[theme_name].append(row)
+        else:
+            sub_stocks["未细分"].append(row)
+
+    if not sub_stocks:
+        # 兜底2：全部成份股未匹配到任何子主题（如无子主题配置的主题），
+        # 用主题本身作为子主题承载全部股票，保证穿透必有输出
+        sub_stocks[theme_name] = list(rows)
+
+    # ── Step2: 子主题得分 → TOP1 ──
+    # 得分 = 涨停集中度(涨停数*2+最高连板)*3 + 资金净流入(万元/1e5，仅计净流入)
+    # "未细分"桶不参与最佳子主题评选（细分映射未覆盖，避免无意义胜出）；
+    # 若所有具名子主题为空才退化为用未细分桶兜底。
+    scored = []
+    for sub_name, stock_rows in sub_stocks.items():
+        if sub_name == "未细分" and len(sub_stocks) > 1:
+            continue
+        n = len(stock_rows)
+        zt = sum(1 for x in stock_rows if x.get('zt_flag', 0) == 1)
+        lb_max = max([x.get('lb_height', 0) for x in stock_rows], default=0)
+        mig = sum(max(0.0, mf_map.get(x.get('ts_code', ''), 0) or 0) for x in stock_rows)
+        zt_density = zt * 2 + lb_max
+        score = zt_density * 3 + mig / 1e5
+        scored.append((score, sub_name, stock_rows, zt, lb_max, n, mig))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    if not scored:
+        return None
+    _, best_sub, best_stocks, best_zt, best_lb, best_n, best_mig = scored[0]
+
+    # 推荐理由
+    if best_zt >= 3:
+        reason = "涨停梯队最齐（含高位连板）"
+    elif best_mig > 0:
+        reason = "资金强力沉淀（迁移分净流入最密集）"
+    else:
+        reason = "涨停集中度+资金双优"
+
+    # ── Step3: 龙头 / 中军 ──
+    leader = engine = None
+    leader_cands = [x for x in best_stocks if 5e5 <= x.get('total_mv', 0) <= 3e6]
+    if not leader_cands:
+        # 降级：无50~300亿候选时，取市值最小但连板/涨停/涨幅最高的活跃股（龙头=小市值高弹性）
+        leader_cands = [x for x in best_stocks if x.get('total_mv', 0) > 0]
+    if leader_cands:
+        leader = max(leader_cands, key=lambda x: (x.get('lb_height', 0), x.get('zt_flag', 0),
+                                                  abs(x.get('pct_chg', 0) or 0), -x.get('total_mv', 0)))
+    engine_cands = [x for x in best_stocks if x.get('total_mv', 0) > 5e6]
+    if engine_cands:
+        engine = max(engine_cands, key=lambda x: x.get('amount_latest', 0) or 0)
+
+    return {
+        'best_subtheme': best_sub, 'reason': reason,
+        'zt_count': best_zt, 'lb_max': best_lb, 'n_stocks': best_n,
+        'migration_sum': round(best_mig, 1),
+        'leader': leader, 'engine': engine,
+    }
+
+
+def _mainline_penetration_rows(r):
+    """辅助：从主线结果 dict 输出穿透报告的龙头/中军文本行"""
+    pen = r.get('penetration')
+    if not pen:
+        return []
+    lines = []
+    lines.append(f"#### 核心主线：{r['theme']}")
+    lines.append(f"* **最佳子主题**：{pen['best_subtheme']}（推荐理由：{pen['reason']}；"
+                 f"涨停{pen['zt_count']}家/最高{pen['lb_max']}连板/资金净流入{pen['migration_sum']:.0f}万元）")
+    ld = pen.get('leader')
+    if ld:
+        mv_yi = (ld.get('total_mv', 0) or 0) / 10000
+        ld_pos = r.get('leader_target_pos')
+        ld_pos_str = f"建议仓位 {ld_pos * 100:.1f}%" if ld_pos is not None else "建议仓位 10%"
+        lines.append(f"* **【龙头】标的**：{ld.get('ts_code', '')} {ld.get('name', '')}")
+        lines.append(f"  - 角色：情绪领涨 / 超短爆发（{ld.get('lb_height', 0)}连板, "
+                     f"市值{mv_yi:.0f}亿, 成交额{(ld.get('amount_latest', 0) or 0):.1f}亿）")
+        lines.append(f"  - 匹配动作：打板接力 / 右侧突破追买（{ld_pos_str}）")
+    eng = pen.get('engine')
+    if eng:
+        mv_yi = (eng.get('total_mv', 0) or 0) / 10000
+        core_pos = r.get('core_target_pos')
+        core_pos_str = f"建议仓位 {core_pos * 100:.1f}%" if core_pos is not None else "建议仓位 15%-20%"
+        lines.append(f"* **【中军】标的**：{eng.get('ts_code', '')} {eng.get('name', '')}")
+        lines.append(f"  - 角色：容量承载 / 趋势慢牛（市值{mv_yi:.0f}亿, "
+                     f"日成交额{(eng.get('amount_latest', 0) or 0):.1f}亿）")
+        lines.append(f"  - 匹配动作：回踩5日/10日线分批低吸 / 通道网格做T（{core_pos_str}）")
+    return lines
+
+
+def _apply_rotation_v4(mainlines, rotations, ma):
+    """V4 主线轮动仓位归一化（适配 process_theme_rotation_v4 逻辑）
+
+    Step1: 大盘 strict_mainline_only → 轮动板块仓位全部清零（只做主线）
+    Step2: 主线 raw_weight（取 final_trade_score）求和
+    Step3: 每条主线 allocated_position = raw/total × 大盘目标仓位上限（默认30%）
+    Step4: 穿透至龙头/中军（4:6 固定分配：龙头40% / 中军60%）
+
+    就地回写：主线 r 增加 allocated_position / leader_target_pos / core_target_pos，
+    并同步 position_pct / position_label（报告输出层统一使用）。
+    """
+    # Step1: 严格主线模式下，轮动仓位清零（动作同步改为观望，避免仓位/动作矛盾）
+    if ma.get('mainline_only'):
+        for r in rotations:
+            r['position_pct'] = 0.0
+            r['position_label'] = '观察(0%)'
+            r['trade_action'] = '空仓观望 / 保持关注'
+
+    # Step2-3: 主线归一化折算
+    raw_w = [max(0.0, float(r.get('final_trade_score', 0) or 0)) for r, _ in mainlines]
+    total_w = sum(raw_w)
+    if total_w <= 0:
+        total_w = len(raw_w)  # 极端兜底：平均分配
+    cap_limit = (ma.get('target_pos') or 0) / 100.0 if ma.get('target_pos') else 0.30
+    for r, _mtype in mainlines:
+        raw = max(0.0, float(r.get('final_trade_score', 0) or 0))
+        allocated = round(raw / total_w * cap_limit, 4)
+        r['allocated_position'] = allocated
+        # Step4: 龙头/中军 4:6 固定分配
+        r['leader_target_pos'] = round(allocated * 0.40, 4)
+        r['core_target_pos'] = round(allocated * 0.60, 4)
+        # 回写展示字段（报告/决策表输出层统一读取）
+        r['position_pct'] = round(allocated * 100, 1)
+        r['position_label'] = '主线配仓'
+
+
 def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_kline_map=None):
-    """生成 V3 规范文本报告（Theme Rotation Engine V3 输出规范）
+    """生成 V3 规范文本报告（主线优先结构，对接实盘 QMT/CTP）
 
     结构：
-      1. 今日交易优先级（六大生命周期分类，按 Trade Score 推荐）
-      2. 数据定量汇总表（Trade TOP20 / Strength TOP20 / Transition TOP10）
-      3. 机构配置策略建议（ETF 配置 / 整体仓位 / 核心风险）
+      0. 大盘择时指令（读取 market_analysis 报告）
+      1. 第一部分：核心主线阵营（建议配仓 80%~90%）+ 主线细分穿透（最佳子主题/龙头/中军）
+      2. 第二部分：潜在轮动与接力机会（建议配仓 0%~20%）
+      3. 第三部分：杂毛/退潮与风险回避区（建议仓位 0%）
+      4. 主线与轮动交易决策表（全量，含主线属性 / 胜率 / 转化概率）
+      5. 机构配置策略建议（ETF 配置 / 整体仓位 / 核心风险）
 
     输出偏好：分隔线使用全角 ━(U+2550) / ─(U+2500)，正文无段落缩进（移动端浏览）
     """
@@ -1091,12 +1550,6 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     # 生命周期显示名：'分歧' → '分歧转一致'（规范六类）
     LC_DISPLAY = {'启动': '启动', '升温': '升温', '主升': '主升',
                   '分歧': '分歧转一致', '高潮': '高潮', '退潮': '退潮'}
-    lc_order = ['启动', '升温', '主升', '分歧转一致', '高潮', '退潮']
-    lc_num = {'启动': '①', '升温': '②', '主升': '③', '分歧转一致': '④', '高潮': '⑤', '退潮': '⑥'}
-    lc_title = {'启动': '启动（重点布局 ★★★★★）', '升温': '升温（加仓跟进 ★★★★☆）',
-                '主升': '主升（趋势持有 ★★★★☆）', '分歧转一致': '分歧转一致（逢低低吸 ★★★★☆）',
-                '高潮': '高潮（谨防落干 / 逐步止盈 ★☆☆☆☆）',
-                '退潮': '退潮（坚决回避 / 止损 ☆☆☆☆☆）'}
     # V3 生命周期未来3日迁移路径（与左侧分类同语言，消除"启动却预判震荡/弱势"的矛盾）
     # 方向取自 V2 迁移引擎 migration_direction；向上/中性走乐观路径，向下走谨慎路径
     LC_NEXT_UP = {'启动': '升温', '升温': '主升', '分歧': '升温', '主升': '高潮', '高潮': '分歧', '退潮': '启动'}
@@ -1113,97 +1566,168 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     # 按 Trade 排序
     results_trade = sorted(results, key=lambda x: x.get('final_trade_score', 0), reverse=True)
 
+    # 大盘择时指令
+    ma = _load_market_directive(TRADE_DATE_str)
+
     w("━" * 60)
-    w(f"  主题评分分析报告 V3（Theme Rotation Engine）- {TRADE_DATE_str}")
+    w(f"  主题评分分析报告 V3（主线优先 · Theme Rotation Engine）- {TRADE_DATE_str}")
     w("━" * 60)
     w()
 
-    # ── 1. 今日交易优先级 ──
+    # ── 0. 大盘择时指令 ──
     w("━" * 60)
-    w("### ★★★★★ 今日交易优先级（按 Trade Score 与 Lifecycle 综合推荐）")
+    w("### ★★★ 大盘择时指令（Market Directive）")
     w("━" * 60)
+    if ma['directive']:
+        w(f"* 一句话：{ma['directive']}")
+    if ma['action'] or ma['strategy']:
+        w(f"* 择时动作：{ma['action'] or '—'} | 策略：{ma['strategy'] or '—'}")
+    if ma['target_pos'] is not None:
+        w(f"* 大盘目标仓位：{ma['target_pos']}%（正常区间上限建议不超过此值）")
+    if ma['mainline_only']:
+        w("* 最高指令：大盘环境仅允许做主线，严格过滤非主线与杂毛轮动")
+    elif ma['directive'] or ma['action']:
+        w("* 最高指令：主线优先，轮动机会轻仓试探，杂毛坚决回避")
+    else:
+        w("* 最高指令：未读取到大盘择时报告，按中性环境执行（主线优先）")
     w()
 
-    groups = {}
+    # ── 主线 / 轮动 / 杂毛 三分类 ──
+    mainlines, rotations, junk = [], [], []
     for r in results:
-        lc = r.get('lifecycle', '退潮')
-        groups.setdefault(LC_DISPLAY.get(lc, lc), []).append(r)
+        is_m, mtype = _is_mainline(r)
+        lc = str(r.get('lifecycle', '') or '')
+        ts = str(r.get('target_state', '') or '')
+        mig = float(r.get('migration_score', 0) or 0)
+        comp = float(r.get('composite_score', 0) or 0)
+        # 与交易动作同源的"状态"（target_state 优先）
+        status = ts or lc
+        # 启动/升温高迁移保护：资金强力流入的启动板块不可归入回避区（防误杀）
+        is_protected = ('启动' in status or '升温' in status) and mig >= 15
+        if is_m:
+            mainlines.append((r, mtype))
+        elif lc == '退潮' or (comp < 50 and not is_protected):
+            junk.append(r)
+        elif (lc in ('分歧', '升温') or '分歧转一致' in ts or '升温' in ts) or mig >= 15:
+            rotations.append(r)
+        else:
+            rotations.append(r)  # 其余一律归轮动观察（低概率但非杂毛）
 
-    for lc in lc_order:
-        items = groups.get(lc, [])
-        items.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
-        w(f"{lc_num[lc]} {lc_title[lc]}")
-        if not items:
-            w("  （今日无此类主题）")
-            w()
-            continue
-        for r in items[:8]:  # 每类最多8只
-            theme = r['theme']
-            mti = r.get('mti', 0)
-            mti_lv = r.get('mti_level', '')
-            leader = (r.get('leader_v3_detail') or {}).get('leader_v3', '') or r.get('leader_name', '') or '-'
-            action = r.get('trade_action', '')
-            # 未来3日迁移路径：用 V3 生命周期语言（与左侧分类一致）
-            direction = r.get('migration_direction', 'sideways')
-            lc_raw = '分歧' if lc == '分歧转一致' else lc  # 迁移表 key 用原始生命周期
-            lc_cur = LC_DISPLAY.get(lc_raw, lc)
-            # 退潮强制走下行路径（退潮→退潮），避免"退潮→启动"的突兀
-            if lc_raw == '退潮' or direction == 'downward':
-                lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
-            else:
-                lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
-            forecast = f"{lc_cur}→{lc_next}"
-            if lc in ('高潮', '退潮'):
-                sd = r.get('sentiment_detail', {}) or {}
-                if lc == '高潮':
-                    reason = f"涨停{sd.get('zt_count', 0)}家/连板{sd.get('max_lb', 0)}板/炸板{sd.get('boom_count', 0)}"
-                else:
-                    reason = f"趋势{r.get('trend_score', 0):.0f}/情绪{r.get('sentiment_score', 0):.0f}/资金{r.get('fund_score', 0):.0f} 三重走弱"
-                w(f"* {theme}：MTI {mti:.1f}({mti_lv}) | {reason} | 预判未来3日: {forecast}（{action}）")
-            else:
-                w(f"* {theme}：MTI {mti:.1f}({mti_lv}) | 龙头:{leader} | 预判未来3日: {forecast}（{action}）")
+    mainlines.sort(key=lambda x: x[0].get('final_trade_score', 0), reverse=True)
+    rotations.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
+    junk.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
+
+    # ── V4 主线仓位归一化（process_theme_rotation_v4：轮动清零 / 主线按比例折算 / 穿透4:6）──
+    _apply_rotation_v4(mainlines, rotations, ma)
+
+    # ── 1. 第一部分：核心主线阵营 ──
+    w("━" * 60)
+    w("### 第一部分：核心主线阵营（Mainline Core · V4归一化配仓，合计≤大盘目标仓位）")
+    w("━" * 60)
+    if not mainlines:
+        w("* 今日无符合主线判定逻辑的核心主线，建议空仓或极轻仓等待确认")
+        w()
+    for r, mtype in mainlines:
+        theme = r['theme']
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        sd = r.get('sentiment_detail', {}) or {}
+        zt = sd.get('zt_count', 0)
+        mig = r.get('migration_score', 0)
+        wr = _est_winrate(r)
+        rr = _est_rr(r)
+        action = r.get('trade_action', '')
+        pos_lbl = r.get('position_label', '')
+        pos_pct = r.get('position_pct', 0)
+        pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
+        w(f"▶ {theme} [{lc_disp}] {mtype} | 趋势{r.get('trend_score', 0):.0f} 情绪{r.get('sentiment_score', 0):.0f} "
+          f"涨停{zt} 迁移{mig:.1f}")
+        w(f"    胜率预估 {wr}% | 盈亏比 {rr}:1 | 建议仓位 {pos_str}")
+        w(f"    实盘买点：{action}")
+    # 主线细分穿透：最佳子主题 / 龙头 / 中军
+    if mainlines:
+        w()
+        w("─" * 60)
+        w("### 主线细分穿透（最佳子主题 / 龙头 / 中军）")
+        w("─" * 60)
+        for r, _mtype in mainlines:
+            pen_lines = _mainline_penetration_rows(r)
+            if pen_lines:
+                for pl in pen_lines:
+                    w(pl)
+                w()
         w()
 
-    # ── 2. 数据定量汇总表 ──
+    # ── 2. 第二部分：潜在轮动与接力机会 ──
     w("━" * 60)
-    w("### 数据定量汇总表")
+    w("### 第二部分：潜在轮动与接力机会（Rotation · 建议配仓 0%~20%，仅观察/轻仓防守）")
     w("━" * 60)
-    w()
-
-    # 2.1 Trade Score TOP20
-    w("1. Trade Score 交易排名 TOP20")
-    w("─" * 60)
-    w(f"{'排名':<4}{'主题':<10}{'Trade':<8}{'生命周期':<8}{'MTI等级'}")
-    for i, r in enumerate(results_trade[:20], 1):
+    if not rotations:
+        w("* 今日无潜在轮动机会")
+        w()
+    for r in rotations[:15]:
+        theme = r['theme']
         lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
-        w(f"{i:<4}{r['theme']:<10}{r.get('final_trade_score', 0):<8.1f}{lc_disp:<8}{r.get('mti_level', '')}")
+        sd = r.get('sentiment_detail', {}) or {}
+        zt = sd.get('zt_count', 0)
+        mig = r.get('migration_score', 0)
+        prob = _est_mainline_prob(r)
+        confirm = _mainline_confirm(r)
+        action = r.get('trade_action', '')
+        pos_lbl = r.get('position_label', '')
+        pos_pct = r.get('position_pct', 0)
+        pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
+        w(f"▸ {theme} [{lc_disp}] | 趋势{r.get('trend_score', 0):.0f} 综合{r.get('composite_score', 0):.0f} "
+          f"涨停{zt} 迁移{mig:.1f}")
+        w(f"    成为主线概率 {prob}% | 确认条件：{confirm} | 建议仓位 {pos_str}")
+        w(f"    交易动作：{action}")
     w()
 
-    # 2.2 Strength Score TOP20
-    results_strength = sorted(results, key=lambda x: x.get('strength_score', 0), reverse=True)
-    w("2. Strength Score 强度排名 TOP20")
-    w("─" * 60)
-    w(f"{'排名':<4}{'主题':<10}{'Strength':<10}{'ΔTrade'}")
-    for i, r in enumerate(results_strength[:20], 1):
-        diff = r.get('final_trade_score', 0) - r.get('strength_score', 0)
-        w(f"{i:<4}{r['theme']:<10}{r.get('strength_score', 0):<10.1f}{diff:+.1f}")
+    # ── 3. 第三部分：杂毛/退潮与风险回避区 ──
+    w("━" * 60)
+    w("### 第三部分：杂毛/退潮与风险回避区（Filtered · 建议仓位 0%）")
+    w("━" * 60)
+    if not junk:
+        w("* 今日无退潮/低分回避主题")
+        w()
+    for r in junk[:15]:
+        theme = r['theme']
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        comp = r.get('composite_score', 0)
+        w(f"✕ {theme} [{lc_disp}] 综合{comp:.0f} → 【坚决回避/清仓】")
+    if len(junk) > 15:
+        w(f"  … 其余 {len(junk) - 15} 只同类回避主题省略")
     w()
 
-    # 2.3 Transition TOP10（状态语言统一为 V3 生命周期，Transition 分数保留 V2 迁移引擎）
-    results_mig = sorted(results, key=lambda x: x.get('migration_score', 0), reverse=True)
-    w("3. Transition 状态迁移预判 TOP10")
-    w("─" * 60)
-    w(f"{'主题':<10}{'Transition':<10}{'当前状态':<8}{'预测未来3日目标'}")
-    for r in results_mig[:10]:
-        lc = r.get('lifecycle', '退潮')
-        direction = r.get('migration_direction', 'sideways')
-        lc_raw = '分歧' if lc == '分歧' else lc
-        lc_disp = LC_DISPLAY.get(lc_raw, lc)
-        if lc_raw == '退潮' or direction == 'downward':
-            lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
-        else:
-            lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
-        w(f"{r['theme']:<10}{r.get('migration_score', 0):<10.1f}{lc_disp:<8}{lc_disp}→{lc_next}")
+    # ── 4. 主线与轮动交易决策表（全量） ──
+    w("━" * 60)
+    w("### 主线与轮动交易决策表（全量）")
+    w("━" * 60)
+    w()
+    w("─" * 100)
+    w(f"{'优先级':<4}{'主题':<10}{'主线属性':<10}{'胜率':<5}{'转化概率':<8}{'目标状态':<10}{'建议仓位':<14}{'交易动作'}")
+    w("─" * 100)
+    order = 0
+    for r, mtype in mainlines:
+        order += 1
+        sd = r.get('sentiment_detail', {}) or {}
+        zt = sd.get('zt_count', 0)
+        mig = r.get('migration_score', 0)
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        pos_lbl = r.get('position_label', '')
+        pos_pct = r.get('position_pct', 0)
+        pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
+        w(f"{order:<4}{r['theme']:<10}{'主线':<10}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
+    for r in rotations[:20]:
+        order += 1
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        pos_lbl = r.get('position_label', '')
+        pos_pct = r.get('position_pct', 0)
+        pos_str = f"{pos_lbl}({pos_pct:.0f}%)" if pos_pct > 0 else pos_lbl
+        w(f"{order:<4}{r['theme']:<10}{'轮动':<10}{_est_winrate(r):<5}{str(_est_mainline_prob(r)) + '%':<8}{lc_disp:<10}{pos_str:<14}{r.get('trade_action', '')}")
+    for r in junk[:20]:
+        order += 1
+        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+        w(f"{order:<4}{r['theme']:<10}{'杂毛':<10}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{'0%':<14}{'清仓回避'}")
     w()
 
     # ── 3. 机构配置策略建议 ──

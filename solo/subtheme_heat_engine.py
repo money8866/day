@@ -784,9 +784,8 @@ if __name__ == '__main__':
     if os.path.exists(json_file):
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        from build_theme_stock_map_v2 import (
-            calc_subtheme_heat_matrix
-        )
+        # 注: build_theme_stock_map_v2 已精简为只生成成份股映射，
+        # 不再提供 calc_subtheme_heat_matrix（子主题热度由本引擎从 JSON 读取）
         themes_output = {}  # 需要从data重建
         stocks_output = data.get('stocks', {})
         stock_subtheme_map = data.get('subtheme_dynamic_correlation', {})

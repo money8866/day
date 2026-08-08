@@ -91,6 +91,38 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
     lines.append('> 所以修复分高但评级低的(如100分A级)，说明刚启动不久、低吸安全；修复分略低但评级高的(如S级)，说明趋势已确立、确定性更强。')
     lines.append('')
 
+    # ─── ✅ 次日可买入 (回踩中形态 × 综合风控双确认，直接回答"明天能不能买") ───
+    # 修复记录 20260808: 中欣氟材(C级/业绩-48.5%/T+0阴线放量3.8x)曾被误推"次日可买入"。
+    # 形态达标(回踩中+分≥60)只是门槛，必须叠加 enhanced 综合风控:
+    #   评级 S/A/B(排除C/D/E低胜率) + 无兑现冲击 + 修正后评分>0(未被冲击/业绩背离清零)
+    if '次日操作' in df.columns:
+        buy_mask = (
+            (df['次日操作'] == '✅ 次日可买入') &
+            (df['修正后胜率分级'].isin(['S', 'A', 'B'])) &
+            (df['兑现冲击过滤'].astype(str).str.contains('✅', na=False)) &
+            (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0)
+        )
+        buy = df[buy_mask].sort_values('回踩买点分', ascending=False)
+        if len(buy) > 0:
+            lines.append('## ✅ 次日可买入（形态回踩中 × 综合风控双确认）')
+            lines.append('')
+            lines.append('| 股票 | 评级 | 回踩买点分 | 洗盘修复分 | 主题 | 现价 | 止损 |')
+            lines.append('|------|:----:|:--------:|:--------:|------|:---:|:---:|')
+            for _, r in buy.iterrows():
+                name = f"{r['名称']}({str(r['代码']).replace('.SZ','').replace('.SH','')})"
+                stop_loss = f"{r['ATR动态止损价']:.2f}" if pd.notna(r.get('ATR动态止损价')) else '-'
+                price = f"{r['现价']:.2f}" if pd.notna(r.get('现价')) else '-'
+                theme = str(r.get('主题', '')) if pd.notna(r.get('主题')) else '-'
+                pb = f"{r['回踩买点分']:.0f}" if pd.notna(r.get('回踩买点分')) else '-'
+                lines.append(f"| {name} | {r['修正后胜率分级']} | {pb} | {r['洗盘修复分']:.0f} | {theme} | {price} | {stop_loss} |")
+            lines.append('')
+        else:
+            lines.append('## ✅ 次日可买入（形态回踩中 × 综合风控双确认）')
+            lines.append('')
+            lines.append('> 今日无：回踩形态达标者均未通过综合风控（评级/量能/业绩），宁缺毋滥。')
+            lines.append('> 强势票见下方 AI 二次分析。')
+            lines.append('')
+
     # ─── 精选标的 (S/A级且洗盘修复分>=80, 无兑现冲击) ───
     # 排序: 结构增强分(洗盘修复形态+买点质量+动量融合)优先
     sort_col = '结构增强分' if '结构增强分' in df.columns else '洗盘修复分'
@@ -101,10 +133,19 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
     ].sort_values(sort_col, ascending=False)
 
     if len(elite) > 0:
-        lines.append('## 精选标的 (S/A + 洗盘修复分≥80 + 无兑现冲击)')
+        # ─── DeepSeek 二次分析（放精选表之前，先给结论）───
+        ai_text = _ai_analyze_elite(elite)
+        if ai_text:
+            lines.append('## 🤖 AI 二次分析 (DeepSeek)')
+            lines.append('')
+            lines.append(ai_text)
+            lines.append('')
+
+        # ─── 附: 精选标的评分表（放最后，作为评分原始数据）───
+        lines.append('## 附: 精选标的评分表 (S/A + 洗盘修复分≥80 + 无兑现冲击)')
         lines.append('')
-        lines.append('| 股票 | 评级 | 洗盘修复分 | 结构增强 | 主题 | 现价 | 止损 | 决策 |')
-        lines.append('|------|:----:|:--------:|:------:|------|:---:|:---:|------|')
+        lines.append('| 股票 | 评级 | 洗盘修复分 | 结构增强 | 主题 | 现价 | 止损 | 次日操作 | 决策 |')
+        lines.append('|------|:----:|:--------:|:------:|------|:---:|:---:|:---:|------|')
         for _, r in elite.iterrows():
             name = f"{r['名称']}({str(r['代码']).replace('.SZ','').replace('.SH','')})"
             decision = str(r['交易决策'])[:20]
@@ -112,16 +153,9 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
             price = f"{r['现价']:.2f}" if pd.notna(r.get('现价')) else '-'
             theme = str(r.get('主题', '')) if pd.notna(r.get('主题')) else '-'
             boost = f"{r['结构增强分']:.0f}" if '结构增强分' in df.columns else '-'
-            lines.append(f"| {name} | {r['修正后胜率分级']} | {r['洗盘修复分']:.0f} | {boost} | {theme} | {price} | {stop_loss} | {decision} |")
+            op = str(r.get('次日操作', '')) if pd.notna(r.get('次日操作', '')) else ''
+            lines.append(f"| {name} | {r['修正后胜率分级']} | {r['洗盘修复分']:.0f} | {boost} | {theme} | {price} | {stop_loss} | {op} | {decision} |")
         lines.append('')
-
-        # ─── DeepSeek 二次分析 ───
-        ai_text = _ai_analyze_elite(elite)
-        if ai_text:
-            lines.append('## 🤖 AI 二次分析 (DeepSeek)')
-            lines.append('')
-            lines.append(ai_text)
-            lines.append('')
 
     return '\n'.join(lines)
 
@@ -145,6 +179,7 @@ def _ai_analyze_elite(elite: pd.DataFrame) -> str:
         peak = r.get('筹码峰顶', 0) if pd.notna(r.get('筹码峰顶', 0)) else 0
         conc = r.get('筹码集中度%', 0) if pd.notna(r.get('筹码集中度%', 0)) else 0
         pullback = r.get('回踩确认', '') if pd.notna(r.get('回踩确认', '')) else '-'
+        op = r.get('次日操作', '') if pd.notna(r.get('次日操作', '')) else ''
         target = r.get('ATR跟踪止盈价', 0) if pd.notna(r.get('ATR跟踪止盈价', 0)) else 0
         market = r.get('大盘状态', '') if pd.notna(r.get('大盘状态', '')) else '-'
         rise_gap = (price / vwap - 1) * 100 if vwap else 0       # 现价乖离VWAP
@@ -154,7 +189,7 @@ def _ai_analyze_elite(elite: pd.DataFrame) -> str:
             f"- {r['名称']}({code}) 评级{r['修正后胜率分级']} 量化{quant:.1f} 修复{r['洗盘修复分']:.0f} "
             f"增强{boost:.1f} 主题[{theme}] 现价{price:.2f} 乖离VWAP{rise_gap:+.1f}% 乖离MA20{ma20_gap:+.1f}% "
             f"筹码峰顶{peak:.2f}(集中度{conc:.0f}%) 回踩[{pullback}] 买点[{buy_point}] 止损{r['ATR动态止损价']:.2f} "
-            f"止盈{r.get('ATR跟踪止盈价', 0):.2f}(空间{upside:+.1f}%) 大盘[{market}] 决策[{r['交易决策']}]"
+            f"止盈{r.get('ATR跟踪止盈价', 0):.2f}(空间{upside:+.1f}%) 大盘[{market}] 次日操作[{op}] 决策[{r['交易决策']}]"
         )
     system = (
         '你是A股顶级超短线交易员（隔日/3-5日波段打法），极其严格、纪律优先、胜率至上。'
@@ -223,6 +258,16 @@ def main():
     # 构建消息
     msg = build_wechat_msg(df, trade_date)
     print(msg[:500] + '...' if len(msg) > 500 else msg)
+
+    # 保存 AI 报告文本（与 etf_alpha_v5_AI报告 同风格落盘，便于回看；即使推送失败也有留档）
+    try:
+        run_date = datetime.now().strftime('%Y%m%d')
+        ai_report_file = os.path.join(REPORT_DIR, f'washout_AI报告_{trade_date}_{run_date}.txt')
+        with open(ai_report_file, 'w', encoding='utf-8') as f:
+            f.write(msg)
+        print(f'✅ AI报告已保存: {ai_report_file}')
+    except Exception as e:
+        print(f'⚠️ AI报告保存失败: {e}')
 
     # 推送
     success = push_to_wechat(msg, title=f'中报预增股择时算法 — 洗盘修复专题 {trade_date}')

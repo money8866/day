@@ -11,6 +11,13 @@
   - 首阳确认 : 当日放量收大阳（首阳日，次日观察回踩）
   - 回踩中   : 首阳后 1-3 日缩量小阳/小阴且未破首阳实体（最优买点）
   - 回踩完成 : 回踩 2-4 日缩量到位、贴近首阳实体/MA5（次日启动窗口）
+  - 延续上涨 : 首阳后继续大涨/放量（主升中继），非回踩，直接剔除不进名单
+
+次日操作决策列（decision，直接回答"次日是否可买入"）：
+  - ✅ 次日可买入 : 回踩中 且 PullbackScore≥60（最优买点窗口）
+  - ⚠️ 次日观察等回踩 : 首阳确认（次日需缩量回踩不破才算买点）
+  - ❌ 仅观察不买入 : 回踩完成（回踩≥3日无次日alpha）
+  - ❌ 等待首阳 : 洗盘缩量
 
 评分（PullbackScore 0-100）：
   洗盘深度 20 + 首阳质量 30 + 回踩质量 30 + 结构健康 20
@@ -24,9 +31,12 @@
   - 药康生物基准案例全程命中：08-05 回踩中63.1 → 08-06 62.5 → 08-07 20cm涨停
 
 用法：
+  【已合并】本文件已并入 enhanced_timing_bull_all.py（每日由 run_washout_push.bat 自动调度），
+           日常不需要单独运行；本 main() 仅保留为形态调试/回测入口。
   python pullback_buy.py --date 20260806 --input report_daily/double_score_full.csv
 输出：
   report_daily/pullback_buy_YYYYMMDD.csv（形态匹配股票 + 评分 + V15/TAE 参考列）
+  （正式流程的输出为 report_daily/enhanced_timing_bull_all_YYYYMMDD.csv 中的 形态阶段/次日操作/回踩买点分 列）
 """
 import argparse
 import os
@@ -81,6 +91,19 @@ def analyze_shape(daily: pd.DataFrame):
     max_dd = min(dd10, 0.0)
 
     # ── 2. 放量首阳：扫描近 LOOKBACK 日 ──
+    # 首阳前置校验：首阳前13日窗口内必须有洗盘回撤（窗口内高点→低点 ≥8%），
+    # 排除上升趋势中的中继大阳/追高大阳被误判为"首阳"（如连涨中继涨停）
+    def _wash_before(i):
+        lo = max(0, i - 13)
+        hi = i - 1  # 首阳前一日截止，洗盘低点最晚出现在首阳前一日
+        if hi <= lo:
+            return False
+        seg = closes[lo:hi + 1]
+        seg_high = seg.max()
+        if seg_high <= 0:
+            return False
+        return (seg.min() / seg_high - 1) * 100 <= -WASH_MAX_DD
+
     first_yang = None
     for i in range(max(1, n - LOOKBACK), n):
         prev5 = np.mean(vols[max(0, i - 5):i])
@@ -88,17 +111,22 @@ def analyze_shape(daily: pd.DataFrame):
             continue
         vr = vols[i] / prev5
         if pcts[i] >= YANG_MIN_PCT and vr >= YANG_MIN_VR and d["close"].iloc[i] >= d["open"].iloc[i]:
+            if not _wash_before(i):
+                continue  # 无洗盘前置 → 非有效首阳，继续往前找
+            # 首阳须为"洗盘后第一根大阳"：前一日非大涨（拦截连板中继大阳当首阳）
+            if i >= 1 and pcts[i - 1] > 5.0:
+                continue
             first_yang = {"idx": i, "date": d["trade_date"].iloc[i], "pct": pcts[i],
                           "vr": vr, "close": closes[i], "open": d["open"].iloc[i],
                           "vol": vols[i]}
-            break  # 取最近一次（倒序扫描）
+            break
 
     if first_yang is None:
         # 无首阳：若洗盘充分且当前缩量横盘 → "洗盘缩量"阶段（低分观察）
         vol_ratio_5v20 = np.mean(vols[-5:]) / np.mean(vols[-20:]) if np.mean(vols[-20:]) > 0 else 1.0
         if max_dd <= -WASH_MAX_DD and vol_ratio_5v20 <= 0.9 and abs(pcts[-1]) < 3:
             return {
-                "stage": "洗盘缩量", "pullback_score": 40.0,
+                "stage": "洗盘缩量", "decision": "❌ 等待首阳", "pullback_score": 40.0,
                 "first_yang_date": "", "first_yang_pct": 0.0, "first_yang_vr": 0.0,
                 "pullback_days": 0, "pullback_shrink": 0.0,
                 "max_dd10": round(max_dd, 1), "vol_ratio_5v20": round(vol_ratio_5v20, 2),
@@ -116,9 +144,16 @@ def analyze_shape(daily: pd.DataFrame):
     pull_days = 0
     pull_shrink = 1.0
     broke = False
+    rising = False   # 首阳后延续上涨（大涨/放量）→ 非回踩
     for j in range(y["idx"] + 1, n):
         if d["close"].iloc[j] < body_low * 0.99:  # 跌破首阳实体 = 形态破坏
             broke = True
+            break
+        # 回踩日要求：不涨停 且 量能≤首阳量1.2倍 且 相对首阳收盘累计涨幅≤5%
+        # （缩量小幅整理才叫回踩；持续上涨=趋势延续，放量/涨停=主升加速）
+        if pcts[j] >= 9.0 or (y["vol"] > 0 and vols[j] > y["vol"] * 1.2) \
+                or (d["close"].iloc[j] / y["close"] - 1) * 100 > 5.0:
+            rising = True
             break
         pull_days += 1
         if pull_days == 1:
@@ -129,6 +164,8 @@ def analyze_shape(daily: pd.DataFrame):
     # ── 4. 阶段判定 ──
     if days_since_yang == 0:
         stage = "首阳确认"
+    elif rising:
+        stage = "延续上涨"
     elif not broke and pull_days >= 1 and pull_days <= PULLBACK_MAX_DAY:
         if pull_days <= 2:
             stage = "回踩中"
@@ -158,12 +195,23 @@ def analyze_shape(daily: pd.DataFrame):
     struct_s += 5.0 if headroom > 8 else 0.0
 
     score = round(dd_score + yang_s + pull_s + struct_s, 1)
-    # 破位或回踩过长 → 不推荐
-    if broke or pull_days > PULLBACK_MAX_DAY:
+    # 破位 / 回踩过长 / 延续上涨（主升中继）→ 不推荐，不进名单
+    if broke or pull_days > PULLBACK_MAX_DAY or stage in ("延续上涨", "首阳后破位"):
         return None
+
+    # ── 6. 次日操作决策（回测结论：回踩中1-2日为最优窗口；回踩≥3日无次日alpha）──
+    if stage == "回踩中":
+        decision = "✅ 次日可买入" if score >= 60 else "⚠️ 观察"
+    elif stage == "首阳确认":
+        decision = "⚠️ 次日观察等回踩"
+    elif stage == "回踩完成":
+        decision = "❌ 仅观察不买入"
+    else:  # 洗盘缩量
+        decision = "❌ 等待首阳"
 
     return {
         "stage": stage,
+        "decision": decision,
         "pullback_score": score,
         "first_yang_date": str(y["date"]),
         "first_yang_pct": round(y["pct"], 1),
@@ -260,7 +308,7 @@ def main():
     res.to_csv(out, index=False, encoding="utf-8-sig")
     print(f"\n✅ 形态匹配 {len(res)} 只 → {out}")
     print("\n阶段分布:", res["stage"].value_counts().to_dict())
-    show = ["code", "name", "theme", "stage", "pullback_score", "first_yang_date",
+    show = ["code", "name", "theme", "stage", "decision", "pullback_score", "first_yang_date",
             "first_yang_pct", "first_yang_vr", "pullback_days", "pullback_shrink",
             "max_dd10", "FinalScore", "Recommendation"]
     show = [c for c in show if c in res.columns]

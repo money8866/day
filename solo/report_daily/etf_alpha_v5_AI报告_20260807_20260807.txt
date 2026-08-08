@@ -1,0 +1,94 @@
+**ETF Alpha Rotation 投研日报 (20260807)**
+
+**1、核心投资决策**
+- 市场状态：Neutral (得分: 63/100)
+- 建议仓位：40%-70%
+- 核心操作指令：观察待变
+- 主线与逻辑：中性状态主线不清晰，轮动加速，聚焦B/A类局部机会。
+
+**2、ETF 矩阵概览**
+**A+ 主升**
+- 有色金属(516650.SH) Acceleration
+  EOS=80, ↑宽度充足
+**A 主题增强**
+- 煤炭(515220.SH) 弱反弹/Recovery
+  EOS=66, ↑宽度充足
+- 酒(512690.SH) 弱反弹/Recovery
+  EOS=62, ↑宽度充足
+- 科创半导体(588170.SH) Early
+  EOS=63, ↑宽度充足
+- 电网设备(561380.SH) 弱反弹/Recovery
+  EOS=64, ↑宽度充足
+- 新能源车(515030.SH) 弱反弹/Recovery
+  EOS=62, ↑宽度充足
+- 机器人(562500.SH) 假突破风险/Birth
+  EOS=62, ↑宽度充足
+**B 局部Alpha**
+- 军工(512660.SH) 假突破风险/Birth
+  EOS=58, ↑宽度充足, 正常
+**C 风险/无效**
+- 软件(515230.SH) Early
+  EOS=80, 衰减↓轮动弱化, 严禁追高
+- 红利(515180.SH) 弱反弹/Recovery
+  EOS=59, 衰减↓轮动弱化, 严禁追高
+- 游戏(159869.SZ) 弱反弹/Recovery
+  EOS=58, 衰减↓轮动弱化, 严禁追高
+- 医疗器械(159883.SZ) 弱反弹/Recovery
+  EOS=56, 衰减↓轮动弱化, 严禁追高
+
+**3、龙头标的跟踪**
+- 有色金属(516650.SH)
+  产业/交易龙头：厦门钨业
+- 煤炭(515220.SH)
+  产业/交易龙头：郑州煤电
+- 酒(512690.SH)
+  产业/交易龙头：酒鬼酒
+- 科创半导体(588170.SH)
+  产业/交易龙头：西安奕材
+- 电网设备(561380.SH)
+  产业/交易龙头：亨通光电
+- 新能源车(515030.SH)
+  产业龙头：德福科技
+  交易龙头：盛新锂能
+- 机器人(562500.SH)
+  产业/交易龙头：天智航
+- 军工(512660.SH)
+  产业/交易龙头：睿创微纳
+
+**4、个股 Alpha 精选**
+⚠ **风控硬拦截**
+**今日开仓推荐**
+- 厦门钨业(有色金属) OS=81 Alpha=76 Expansion Buy
+- 斯瑞新材(有色金属) OS=81 Alpha=74 Expansion Buy
+- 国城矿业(有色金属) OS=80 Alpha=70 Expansion Buy
+- 宝泰隆(煤炭) OS=81 Alpha=73 Expansion Buy
+- 郑州煤电(煤炭) OS=80 Alpha=74 Expansion Buy
+- 陕西黑猫(煤炭) OS=80 Alpha=74 Expansion Buy
+- 酒鬼酒(酒) OS=82 Alpha=75 Expansion Buy
+- 舍得酒业(酒) OS=79 Alpha=75 Expansion Buy
+- 金徽酒(酒) OS=78 Alpha=72 Expansion Buy
+- 神工股份(科创半导体) OS=81 Alpha=73 Expansion Buy
+- 西安奕材(科创半导体) OS=80 Alpha=75 Expansion Buy
+- 中船特气(科创半导体) OS=80 Alpha=70 Expansion Buy
+- 四方股份(电网设备) OS=81 Alpha=73 Expansion Buy
+- 斯瑞新材(电网设备) OS=81 Alpha=74 Expansion Buy
+- 中天科技(电网设备) OS=81 Alpha=73 Expansion Buy
+- 德福科技(新能源车) OS=81 Alpha=74 Expansion Buy
+- 威迈斯(新能源车) OS=80 Alpha=70 Expansion Buy
+- 当升科技(新能源车) OS=79 Alpha=73 Expansion Buy
+- 博杰股份(机器人) OS=81 Alpha=74 Expansion Buy
+- 科瑞技术(机器人) OS=81 Alpha=73 Expansion Buy
+- 天智航(机器人) OS=81 Alpha=78 Acceleration Hold
+- 睿创微纳(军工) OS=82 Alpha=74 Expansion Buy
+- 菲利华(军工) OS=81 Alpha=73 Expansion Buy
+- 旭光电子(军工) OS=81 Alpha=73 Expansion Buy
+**底层观察池（极小仓位/左侧）**
+- 财富趋势(软件) OS=79 Expansion 随板块C类承压
+- 工商银行(红利) OS=86 Expansion 随板块C类承压
+- 宝通科技(游戏) OS=74 Early 随板块C类承压
+- 英诺特(医疗器械) OS=82 Acceleration 随板块C类承压
+
+**5、尾部风险与应对策略**
+- 防守重点：当前无明显尾部风险信号
+- 翻多条件：市场分值突破60分，且出现A+主升板块确认主线，可逐步加仓
+- 防转空条件：市场分值跌破30分，或C类板块占比超70%，需启动防守模式

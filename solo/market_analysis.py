@@ -1030,6 +1030,100 @@ def analyze_market(trade_date=None):
         save_to_database(trade_date, results, position, reason, 
                         trend_score, index_trend, theme_trend, market_regime)
         
+        # ===== V9.0 动态仓位引擎 =====
+        print(f"\n{'='*80}")
+        print("🚀 V9.0 短线动态仓位引擎 (Regime-Aware Adaptive Position Engine)")
+        print(f"{'='*80}")
+        
+        try:
+            # 获取六大指数K线（为V9提供完整数据）
+            index_data_dict = _build_index_data_dict_for_v9(trade_date)
+            
+            # 获取历史涨跌停数据（用于动量/风险加速度计算）
+            hist_limit = None
+            try:
+                hist_limit = get_historical_data(days=20)
+                if hist_limit is not None and hist_limit.empty:
+                    hist_limit = None
+            except Exception:
+                pass
+            
+            # 运行 V9 引擎
+            v9_result, v9_report = run_v9_position_engine_v9(
+                overview=overview,
+                index_results=results,
+                limit_stats=limit_stats,
+                max_limit_height=max_lb,
+                theme_top3_scores=theme_top3_scores,
+                trade_date=trade_date,
+                prev_position=prev_position,
+                hist_limit=hist_limit,
+                index_data_dict=index_data_dict,
+            )
+            
+            if v9_result is not None:
+                # 输出 V9 报告
+                print(v9_report)
+                
+                # 保存 V9 报告到文件
+                v9_report_file = os.path.join(safe_cache_dir, f"position_engine_v9_{trade_date}.txt")
+                try:
+                    with open(v9_report_file, 'w', encoding='utf-8') as f:
+                        f.write(v9_report)
+                    print(f"[V9引擎] 报告已保存: {v9_report_file}")
+                except Exception as e:
+                    print(f"[V9引擎] 保存报告失败: {e}")
+            else:
+                print("[V9引擎] 运行失败，结果为空")
+                
+        except Exception as v9_error:
+            print(f"[V9引擎] 运行异常: {v9_error}")
+            import traceback
+            traceback.print_exc()
+        
+        # ===== V9.9 极简仓位建议 =====
+        try:
+            from position_engine_v95 import PositionEngineV99, MarketDataBundle as V99Bundle
+            v99_engine = PositionEngineV99()
+            v99_data = V99Bundle()
+            v99_data.index_data = index_data_dict
+            v99_data.overview = overview
+            v99_data.limit_stats = limit_stats
+            v99_data.max_limit_height = max_lb
+            v99_data.theme_top3_scores = theme_top3_scores or []
+            v99_data.hist_limit = hist_limit
+            
+            v99_result = v99_engine.analyze(v99_data, prev_position)
+            v99_report = v99_engine.generate_report(v99_result)
+            
+            print(f"\n{'='*80}")
+            print("⚡ V9.9 极简仓位建议")
+            print(f"{'='*80}")
+            print(v99_report)
+            
+            # 保存报告（直接替换 market_analysis_yyyymmdd.txt）
+            v99_report_file = os.path.join(safe_cache_dir, f"market_analysis_{trade_date}.txt")
+            try:
+                with open(v99_report_file, 'w', encoding='utf-8') as f:
+                    f.write(v99_report)
+                print(f"[V9.9] 报告已保存: {v99_report_file}")
+            except Exception as e:
+                print(f"[V9.9] 保存报告失败: {e}")
+
+            # 一致性检查结果
+            checks = getattr(v99_result, 'consistency_checks', {})
+            if checks:
+                all_pass = all(v.startswith("PASS") for v in checks.values())
+                print("")
+                print("[V9.9] 一致性检查：%s" % ("✅ 全部通过" if all_pass else "❌ 存在失败"))
+                for name, res in checks.items():
+                    print("  %s：%s" % (name, res))
+                
+        except Exception as v99_error:
+            print(f"[V9.9] 运行异常: {v99_error}")
+            import traceback
+            traceback.print_exc()
+        
         return results, position, reason, [], overview
     
     return None, 0, "", [], None
@@ -1912,6 +2006,121 @@ def save_limit_stats_to_cache(data):
         print(f"[涨跌停] 缓存已保存: {daily_cache_file}")
     except Exception as e:
         print(f"[涨跌停] 保存缓存失败: {e}")
+
+
+# ============================================================
+# V9.0 仓位引擎集成
+# ============================================================
+
+def run_v9_position_engine_v9(
+    overview: dict, 
+    index_results: list,
+    limit_stats: dict,
+    max_limit_height: int,
+    theme_top3_scores: list = None,
+    trade_date: str = None,
+    prev_position: float = None,
+    hist_limit: pd.DataFrame = None,
+    index_data_dict: dict = None,
+) -> tuple:
+    """
+    运行 V9.0 动态仓位引擎
+    
+    Args:
+        overview: 市场概况字典
+        index_results: 指数分析结果列表
+        limit_stats: 涨跌停统计
+        max_limit_height: 最高连板高度
+        theme_top3_scores: TOP3 主题评分
+        trade_date: 交易日
+        prev_position: 前一日推荐仓位（用于滞回）
+        hist_limit: 历史涨跌停数据
+        index_data_dict: 指数原始K线数据 {name: DataFrame}
+    
+    Returns:
+        (v9_result, v9_report_text)
+    """
+    try:
+        from position_engine_v9 import (
+            PositionEngineV9, MarketDataBundle, EngineV9Result, RegimeResult,
+            REGIME_DEFINITIONS
+        )
+    except ImportError as e:
+        print(f"[V9引擎] 导入失败: {e}")
+        return None, ""
+    
+    data = MarketDataBundle()
+    
+    # 1. 指数数据
+    if index_data_dict:
+        data.index_data = index_data_dict
+    else:
+        # 如果没有原始K线，从 index_results 中尽可能提取（信息有限）
+        pass
+    
+    # 2. 市场概况
+    data.overview = overview or {}
+    
+    # 3. 涨跌停统计
+    data.limit_stats = limit_stats or {}
+    
+    # 4. 连板高度
+    data.max_limit_height = max_limit_height or 0
+    
+    # 5. 主题数据
+    data.theme_top3_scores = theme_top3_scores or []
+    
+    # 6. 历史数据
+    data.hist_limit = hist_limit
+    
+    # 7. 前一日结果（用于滞回和状态迁移）
+    if prev_position is not None:
+        from position_engine_v9 import EngineV9Result as _EVR, RegimeResult as _RR
+        prev = _EVR()
+        prev.position.recommended_position = float(prev_position)
+        # 从历史数据中尝试获取 prev_regime
+        if hist_limit is not None and len(hist_limit) >= 2:
+            pass  # 暂不深追，先用 UNKNOWN
+        data.prev_result = prev
+    
+    # 8. 组合回撤（暂时没有，后续可扩展）
+    data.portfolio_drawdown = 0.0
+    
+    # 运行引擎
+    engine = PositionEngineV9()
+    result = engine.analyze(data)
+    result.trade_date = trade_date or ""
+    
+    # 生成报告
+    report = engine.generate_report(result)
+    
+    return result, report
+
+
+def _build_index_data_dict_for_v9(trade_date: str = None) -> dict:
+    """
+    为 V9 引擎构建指数数据字典
+    复用 get_index_kline 获取六大指数K线
+    """
+    v9_indices = [
+        ("上证指数", "000001.SH"),
+        ("沪深300", "000300.SH"),
+        ("中证1000", "000852.SH"),
+        ("中证2000", "932000.CSI"),
+        ("创业板指", "399006.SZ"),
+        ("科创50", "000688.SH"),
+    ]
+    
+    index_data = {}
+    for name, code in v9_indices:
+        try:
+            df = get_index_kline(code, trade_date)
+            if df is not None and not df.empty:
+                index_data[name] = df
+        except Exception as e:
+            print(f"[V9引擎] 获取{name}数据失败: {e}")
+    
+    return index_data
 
 
 if __name__ == '__main__':
