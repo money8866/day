@@ -1722,7 +1722,7 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
       2. 第二部分：潜在轮动与接力机会（建议配仓 0%~20%）
       3. 第三部分：杂毛/退潮与风险回避区（建议仓位 0%）
       4. 主线与轮动交易决策表（全量，含主线属性 / 胜率 / 转化概率）
-      5. 机构配置策略建议（ETF 配置 / 整体仓位 / 核心风险）
+      5. 机构配置策略建议（整体仓位 / 核心风险）
 
     输出偏好：分隔线使用全角 ━(U+2550) / ─(U+2500)，正文无段落缩进（移动端浏览）
     """
@@ -1740,14 +1740,6 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     # 方向取自 V2 迁移引擎 migration_direction；向上/中性走乐观路径，向下走谨慎路径
     LC_NEXT_UP = {'启动': '升温', '升温': '主升', '分歧': '升温', '主升': '高潮', '高潮': '分歧', '退潮': '启动'}
     LC_NEXT_DOWN = {'启动': '震荡', '升温': '分歧', '分歧': '退潮', '主升': '分歧', '高潮': '退潮', '退潮': '退潮'}
-
-    # 主题 → 主 ETF（保留完整代码如 159869.SZ，与 etf_kline_map / fund_basic 的 key 一致）
-    etf_map = {}
-    for _key, _cfg in kg_v3_cfg.items():
-        if _key.startswith('_'):
-            continue
-        _cn = _cfg.get("name_cn", _key)
-        etf_map[_cn] = str(_cfg.get("main_etf", "") or "")
 
     # 按 Trade 排序
     results_trade = sorted(results, key=lambda x: x.get('final_trade_score', 0), reverse=True)
@@ -1926,52 +1918,6 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     w("### 机构配置策略建议")
     w("━" * 60)
     w()
-
-    # ETF 配置建议（按 Trade 排序，剔除高潮/退潮；含 ETF 名称与自身趋势）
-    w("* ETF 配置建议（Trade TOP5，剔除高潮/退潮；括号内为 ETF 自身趋势）")
-    etf_name_map = get_etf_name_map()
-    etf_pace = {'启动': '回踩5日线分批建仓', '升温': '逢低分批加仓',
-                '主升': '持有跟随，破10日线减仓', '分歧': '急跌低吸博一致'}
-    top_etf = []
-    for r in results_trade:
-        if r.get('lifecycle') in ('高潮', '退潮'):
-            continue
-        etf = etf_map.get(r['theme'], '')  # 完整代码，如 159869.SZ
-        if not etf:
-            continue
-        etf_code = etf.replace('.SH', '').replace('.SZ', '')
-        # ETF 真实名称（如"动漫游戏ETF"），缺失时用主题名兜底
-        name = short_etf_name(etf_name_map.get(etf, ''))
-        if not name:
-            name = f"{r['theme']}ETF"
-        # ETF 自身趋势（多头/回踩/弱势）来自预取的 fund_daily K线
-        etf_state = judge_etf_trend(etf_kline_map.get(etf, None))
-        # 未来3日方向（与第一部分同语言）
-        direction = r.get('migration_direction', 'sideways')
-        lc = r.get('lifecycle', '')
-        lc_raw = '分歧' if lc == '分歧' else lc
-        if lc_raw == '退潮' or direction == 'downward':
-            lc_next = LC_NEXT_DOWN.get(lc_raw, lc_raw)
-        else:
-            lc_next = LC_NEXT_UP.get(lc_raw, lc_raw)
-        # 节奏：ETF 破位时收紧，否则按生命周期
-        if etf_state and etf_state['state'] == '弱势':
-            pace = 'ETF破位，暂缓/轻仓'
-        else:
-            pace = etf_pace.get(lc, '分批布局')
-        etf_tag = ""
-        if etf_state:
-            etf_tag = f"ETF{etf_state['state']}({etf_state['ret5']:+.1f}%)"
-        else:
-            etf_tag = "ETF趋势未知"
-        top_etf.append((r, etf_code, name, f"{LC_DISPLAY.get(lc, lc)}→{lc_next}", etf_tag, pace))
-        if len(top_etf) >= 5:
-            break
-    if top_etf:
-        for r, etf_code, name, path, etf_tag, pace in top_etf:
-            w(f"  ▸ {name}({etf_code}) | {path} | Trade {r.get('final_trade_score', 0):.1f} | {etf_tag} | {pace}")
-    else:
-        w("  暂无明显主线 ETF 标的，等待启动确认")
 
     # 整体仓位建议
     pos_cnt = sum(1 for r in results if r.get('lifecycle') in ('启动', '升温', '主升', '分歧'))

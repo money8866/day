@@ -1,3 +1,4 @@
+# ENTRY_NEXT_OPEN_PATCHED 买入价=次日开盘(回测+1.76%优于收盘+1.08%)
 # -*- coding: utf-8 -*-
 """
 量能爆发+宽幅震荡选股策略 — 通达信回测版
@@ -180,7 +181,7 @@ def volume_surge_strategy_vectorized(
         vf = VolSurgeFilters()
 
     n = len(df_pre)
-    signals = np.zeros(n, dtype=bool)
+    signals = np.zeros(n, dtype=np.float64)
     if n < 180:
         return signals
     if code.startswith("1") or code.startswith("2"):
@@ -455,6 +456,10 @@ def load_stock_pool_from_csv(csv_path: str) -> List[str]:
     return codes
 
 
+# 大盘过滤阈值: 三指数(上证/沪深300/创业板指)20日动量均值(%), 高于此值才允许交易
+MOM_GATE_THRESHOLD = 3.0
+
+
 def run_backtest(start_date: str = "20240101",
                  end_date: str = None,
                  hold_days: int = 5,
@@ -484,7 +489,7 @@ def run_backtest(start_date: str = "20240101",
     print("=" * 60)
     print(f"  量能爆发+宽幅震荡策略 回测")
     print(f"  区间: {start_date} ~ {end_date}  持有: T+{hold_days}  每日选股: 最多{max_daily}只")
-    print(f"  过滤: {vf.label()}  硬止损: -7%  大盘过滤: 是")
+    print(f"  过滤: {vf.label()}  硬止损: -7%  大盘过滤: 三指数动量>+3%  买入: 次日开盘")
     print(f"  MA聚合起涨: 三线偏离<{vf.ma_converge_max_dev}% 涨幅{vf.entry_pct_chg_min}%~{vf.entry_pct_chg_max}%")
     print("=" * 60)
 
@@ -498,20 +503,29 @@ def run_backtest(start_date: str = "20240101",
     dt = datetime.strptime(start_date, "%Y%m%d")
     load_start = (dt - timedelta(days=400)).strftime("%Y%m%d")
 
-    # --- 加载大盘状态（沪深300 MA20/MA60 趋势） ---
-    hs300_trend = {}  # trade_date -> True(多头)
+    # --- 加载大盘状态（三指数 20日动量均值） ---
+    idx3_mom20 = {}  # trade_date -> 三指数20日动量均值(%)
     try:
-        hs300_df = load_kline("000300.SH", start_date=load_start, end_date=end_date)
-        if not hs300_df.empty:
-            hs300_df = precompute_indicators(hs300_df)
-            for _, row in hs300_df.iterrows():
-                hs300_trend[row["trade_date"]] = (
-                    row["ma20"] > row["ma60"]
-                )
-        print(f"[Market] HS300 趋势数据: {len(hs300_trend)} 天, "
-              f"多头={sum(1 for v in hs300_trend.values() if v)} 天")
+        mom_maps = []
+        for _code in ("000001.SH", "000300.SH", "399006.SZ"):
+            _df = load_kline(_code, start_date=load_start, end_date=end_date)
+            if not _df.empty:
+                _df = precompute_indicators(_df)
+                _mom = (_df["close"] / _df["close"].shift(20) - 1) * 100
+                mom_maps.append(dict(zip(_df["trade_date"].values,
+                                         _mom.values)))
+        if len(mom_maps) == 3:
+            _all = sorted(set().union(*[set(m) for m in mom_maps]))
+            for _d in _all:
+                _vals = [m[_d] for m in mom_maps
+                         if _d in m and not pd.isna(m[_d])]
+                if len(_vals) == 3:
+                    idx3_mom20[_d] = float(np.mean(_vals))
+            _gt = sum(1 for v in idx3_mom20.values() if v > MOM_GATE_THRESHOLD)
+            print(f"[Market] 三指数动量数据: {len(idx3_mom20)} 天, "
+                  f"动量>+{MOM_GATE_THRESHOLD}% 天={_gt}")
     except Exception as e:
-        print(f"[Market] HS300 加载失败: {e}，不过滤")
+        print(f"[Market] 三指数加载失败: {e}，不过滤")
 
     if stock_pool:
         # 只加载股票池中的
@@ -533,7 +547,8 @@ def run_backtest(start_date: str = "20240101",
             if max_stocks and codes_loaded >= max_stocks:
                 break
             ts_code = tdx_filename_to_ts_code(path)
-            if not ts_code or ts_code.startswith("999") or ts_code.startswith("8") or ts_code.startswith("4"):
+            # 只保留沪深A股(首字符6/3/0)，排除基金5/1、B股2/9、北交所4/8
+            if not ts_code or ts_code[0] not in "630":
                 continue
             df = load_kline(ts_code, start_date=load_start, end_date=end_date)
             if df.empty or len(df) < 180:
@@ -572,15 +587,15 @@ def run_backtest(start_date: str = "20240101",
     market_skipped_days = 0  # 大盘过滤跳过的天数
 
     for td_idx, td in enumerate(trade_dates):
-        # === 大盘趋势过滤 ===
-        td_bull = hs300_trend.get(td)
-        if td_bull is not None and not td_bull:
+        # === 大盘过滤: 三指数20日动量均值 > 阈值 ===
+        td_mom20 = idx3_mom20.get(td)
+        if td_mom20 is not None and td_mom20 <= MOM_GATE_THRESHOLD:
             daily_counts.append(0)
             market_skipped_days += 1
             continue
 
         selected = []
-        # 收集当日所有信号及其评分，按评分择优选择
+        # 收集当日所有信号及其评分/距MA20 (r2排序需用)
         daily_candidates = []
         for ts_code, sig in signals_dict.items():
             idx_map = date_idx_map.get(ts_code)
@@ -591,11 +606,16 @@ def run_backtest(start_date: str = "20240101",
                 continue
             score = sig[i]
             if score > 0:
-                daily_candidates.append((ts_code, float(score)))
+                _df = kline_dict.get(ts_code)
+                if _df is None:
+                    continue
+                _ma20 = float(_df.iloc[i]["ma20"])
+                _pos = (float(_df.iloc[i]["close"]) / _ma20 - 1) * 100 if _ma20 > 0 else 99.0
+                daily_candidates.append((ts_code, float(score), _pos))
 
-        # 按评分取 Top N（默认每日最多5只）
+        # r2 择优: 距MA20升序优先(<=8%在前), >8% 排尾部补足
         if daily_candidates:
-            daily_candidates.sort(key=lambda x: -x[1])
+            daily_candidates.sort(key=lambda x: (x[2] > 8, x[2]))
             selected = [c[0] for c in daily_candidates[:max_daily]]
 
         daily_counts.append(len(selected))
@@ -611,21 +631,23 @@ def run_backtest(start_date: str = "20240101",
                 if not idx:
                     continue
                 i = idx[0]
-                buy_close = df.iloc[i]["close"]
-                # 硬止损检查：持有期内任何一天的最低价跌破止损位
-                exit_idx = i + hold_days
+                if i + 1 >= len(df):      # 需有次日数据(次日开盘买入)
+                    continue
+                buy_close = df.iloc[i + 1]["open"]   # 次日开盘价买入
+                # 硬止损检查：买入后持有期内任何一天的最低价跌破止损位
+                exit_idx = i + 1 + hold_days
                 if exit_idx >= len(df):
                     exit_idx = len(df) - 1
                 stopped = False
-                for j in range(i + 1, exit_idx + 1):
+                for j in range(i + 2, exit_idx + 1):
                     low_price = df.iloc[j]["low"]
                     if low_price / buy_close - 1 <= stop_loss_pct / 100:
                         ret = stop_loss_pct
                         stopped = True
                         break
                 if not stopped:
-                    if i + hold_days < len(df):
-                        sell_close = df.iloc[i + hold_days]["close"]
+                    if i + 1 + hold_days < len(df):
+                        sell_close = df.iloc[i + 1 + hold_days]["close"]
                         ret = (sell_close / buy_close - 1) * 100
                     else:
                         continue
@@ -652,7 +674,7 @@ def run_backtest(start_date: str = "20240101",
     print(f"  日均选股:     {np.mean(daily_counts):.1f} 只")
     print(f"  选股1-5只天数: {n_days_1_5} / {len(trade_dates)} ({n_days_1_5/len(trade_dates)*100:.0f}%)")
     print(f"  零选股天数:   {n_days_0} / {len(trade_dates)} ({n_days_0/len(trade_dates)*100:.0f}%)")
-    if hs300_trend:
+    if idx3_mom20:
         print(f"  大盘过滤跳过: {market_skipped_days} 天")
     print(f"  硬止损:       -7%")
     print(f"  总信号数:     {len(all_returns)}")

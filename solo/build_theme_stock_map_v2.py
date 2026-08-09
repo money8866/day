@@ -562,6 +562,13 @@ def build_theme_stock_map_v2():
     with open(latest_file, 'w', encoding='utf-8') as f:
         json.dump(json_output, f, ensure_ascii=False, indent=2)
 
+    # 同步写 report_daily/theme_stock_map_latest_v2.json
+    # （market_regime_v3 引擎 resolve_theme_stock_map_path 优先级第 1 位，
+    #   必须保持与 cache_daily 同源，否则旧快照会让医疗器械等新增主题缺失）
+    v2_latest_file = os.path.join(OUTPUT_DIR, "theme_stock_map_latest_v2.json")
+    with open(v2_latest_file, 'w', encoding='utf-8') as f:
+        json.dump(json_output, f, ensure_ascii=False, indent=2)
+
     # 清理历史 theme_stock_map 版本（保留最近 5 天 + latest）
     _cleanup_old_theme_maps(CACHE_DIR, keep_days=5)
 
@@ -571,6 +578,7 @@ def build_theme_stock_map_v2():
     print(f"  CSV: {csv_file}")
     print(f"  JSON: {json_file}")
     print(f"  LATEST: {latest_file}")
+    print(f"  V2-LATEST: {v2_latest_file}")
     print(f"  主题数: {len(themes_output)}")
     print(f"  个股数: {len(stocks_output)}")
     print(f"  映射数: {total_refs}")
