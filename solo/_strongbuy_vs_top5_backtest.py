@@ -14,7 +14,7 @@
 强买判定: 复刻 volume_surge_select.py detect_volume_surge_swing 的5条条件.
 tdx 信号要求收盘>=MA20, 故"回踩MA20下方+刚红柱"与"评分65-80+量比1.0-1.5+回踩MA20"
 两条在本信号集天然不触发, 实际生效为: 中回调+刚红柱 / 浅回调+刚红柱+评分>=70 /
-红柱回调(缩短或反弹)+评分>=70+量比>=1.0.
+红柱回调(缩短或反弹)+评分>=70+量比>=0.9 (20260810 门槛由1.0放宽至0.9, 允许放量后温和缩量整理).
 评分口径: tdx total_score = base_score + 强者恒强加分 (与select的纯量能评分略有差异).
 """
 import os, sys, time
@@ -92,7 +92,7 @@ def is_strong_buy(df_pre, i, score):
         return True, '浅回调+刚红柱+高评分'
     if 65 <= score < 80 and 1.0 <= today_vr < 1.5 and -3 <= pos_ma20 < 0:
         return True, '评分65-80+量比1.0-1.5+回踩MA20'
-    if (red_retrace or red_bounce) and score >= 70 and today_vr >= 1.0:
+    if (red_retrace or red_bounce) and score >= 70 and today_vr >= 0.9:
         return True, '红柱回调+高评分+量比达标'
     return False, ""
 

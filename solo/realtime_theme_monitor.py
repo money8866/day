@@ -19,6 +19,7 @@ import sys
 import time
 import json
 import sqlite3
+import subprocess
 import threading
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -5703,6 +5704,29 @@ class RealtimeThemeMonitor:
 
 
 if __name__ == "__main__":
+    def _is_process_alive(pid: int) -> bool:
+        """检查 PID 对应的 python 进程是否存活 (Windows 兼容)
+
+        注意: 不能使用 os.kill(pid, 0) —— Windows 上它会调用
+        TerminateProcess 直接杀死目标进程(而非查询), 且权限不足时会抛
+        OSError 被误判为"进程不存在", 导致锁失效、重复启动。
+        改用 tasklist 查询, 并校验进程名包含 python 防止 PID 复用误判。
+        """
+        try:
+            out = subprocess.run(
+                ['tasklist', '/FI', f'PID eq {pid}', '/NH'],
+                capture_output=True, timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            ).stdout
+            # tasklist 输出为系统本地编码(中文系统GBK), 用 errors=replace 容忍非ASCII字节
+            text = out.decode('utf-8', errors='replace')
+            return any(
+                str(pid) in line and 'python' in line.lower()
+                for line in text.splitlines()
+            )
+        except Exception:
+            return True  # 无法判断时保守视为存活, 阻止重复启动
+
     # ── 单实例锁定(仅使用PID文件检查) ──
     lock_file = os.path.join(BASE_DIR, "realtime_theme_monitor.lock")
     current_pid = os.getpid()
@@ -5715,11 +5739,10 @@ if __name__ == "__main__":
             if old_pid_str and old_pid_str.isdigit():
                 old_pid = int(old_pid_str)
                 if old_pid != current_pid:
-                    try:
-                        os.kill(old_pid, 0)  # 检查进程是否存在
+                    if _is_process_alive(old_pid):
                         print(f"⚠️  监控进程仍在运行 (PID: {old_pid}),退出。")
                         sys.exit(0)
-                    except OSError:
+                    else:
                         # 进程不存在，删除残留锁文件
                         print(f"✅ 清理残留锁文件 (旧进程 {old_pid} 已退出)")
                         os.remove(lock_file)

@@ -773,6 +773,23 @@ class MarketRegimeV3:
         report_path = self.reporter.save_report(report_dict['markdown'], trade_date)
         print(f"\n  ✅ 报告已保存: {report_path}")
 
+        # ── V7.2 导出结构化信号 JSON（供 tushare_quant.py 作为 AI 输出新段落读取）──
+        try:
+            import json as _json
+            rp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'report_daily')
+            os.makedirs(rp_dir, exist_ok=True)
+            rp_file = os.path.join(rp_dir, f"rally_pullback_{trade_date}.json")
+            with open(rp_file, 'w', encoding='utf-8') as f:
+                _json.dump({
+                    "trade_date": trade_date,
+                    "market_score": round(market_score_result.score) if market_score_result else None,
+                    "regime": regime.primary if regime else None,
+                    "signals": pullback_qualified,
+                }, f, ensure_ascii=False, indent=2, default=str)
+            print(f"  ✅ 信号JSON已导出: {rp_file} ({len(pullback_qualified)}只)")
+        except Exception as e:
+            print(f"  ⚠️ 信号JSON导出失败: {e}")
+
         # 微信推送
         if self._push_enabled:
             print("\n  推送微信...")

@@ -38,19 +38,19 @@ class VolSurgeFilters:
     vol_gt2_min:       int   = 3         # 量比>2天数的下限
     avg_amplitude_min: float = 4.5       # 日均振幅下限
     range_swing_min:   float = 35.0      # 区间振幅下限
-    price_change_min:  float = -10.0     # 区间涨幅下限
-    price_change_max:  float = 100.0     # 区间涨幅上限
+    price_change_min:  float = -10.0     # (已废弃) 区间涨幅下限, 仅参考不硬过滤
+    price_change_max:  float = 100.0     # (已废弃) 区间涨幅上限, 仅参考不硬过滤
     hist_vol_pct_min:  float = 50.0      # 近历史最高量%下限
     ma20_chg_10d_min:  float = -0.3      # MA20近10天变化率下限
     ma20_chg_20d_min:  float = -1.0      # MA20近20天变化率下限
     vol_vs_base_min:   float = 1.1       # 近20日均量/起涨前基量下限
     vol_vs_peak_min:   float = 0.5       # 近20日均量/高点5日均量下限
-    a_gain_min:        float = 15.0      # A浪涨幅下限
-    fib_786_ratio:     float = 0.92      # B浪回撤不跌穿78.6%的容差
-    retrace_ratio_max: float = 50.0      # B浪回撤/A浪比例上限
-    pre_peak_gain_max: float = 70.0      # 一波游：高峰前涨幅上限
-    dist_from_peak_max: float = 15.0     # 一波游：距高峰上限
-    bounce_min:        float = 10.0      # 一波游：反弹下限
+    a_gain_min:        float = 15.0      # (已废弃) A浪涨幅下限, 仅计算回撤类型
+    fib_786_ratio:     float = 0.92      # (已废弃) 斐波那契容差, 已不用于过滤
+    retrace_ratio_max: float = 50.0      # (已废弃) B浪回撤/A浪比例上限
+    pre_peak_gain_max: float = 70.0      # (已废弃) 一波游：高峰前涨幅上限
+    dist_from_peak_max: float = 15.0     # (已废弃) 一波游：距高峰上限
+    bounce_min:        float = 10.0      # (已废弃) 一波游：反弹下限
     total_score_min:   float = 65.0      # 综合评分下限
 
     # === MA聚合起涨过滤 ===
@@ -252,12 +252,8 @@ def volume_surge_strategy_vectorized(
         if range_swing < vf.range_swing_min:
             continue
 
-        # === 3. 区间涨幅 ===
+        # === 3. 区间涨幅 (仅参考不做硬过滤: 短线策略不设长周期涨跌幅限制) ===
         price_change = (close_arr[-1] / close_arr[0] - 1) * 100
-        if price_change < vf.price_change_min:
-            continue
-        if price_change > vf.price_change_max:
-            continue
 
         # === 4. 历史量 %% ===
         hist_vol = VOL[:i+1]
@@ -285,70 +281,38 @@ def volume_surge_strategy_vectorized(
         if ma20_latest > 0 and close_latest < ma20_latest:
             continue
 
-        # === 6. 基量 vs 活跃量 ===
+        # === 6. 基量 vs 活跃量 (近期量用最近10日, 基量用前10~40日, 识别近期放量) ===
         vol_200 = VOL[max(0, i-199):i+1]
-        if len(vol_200) < 20:
+        if len(vol_200) < 40:
             continue
-        peak_vol_idx = int(np.argmax(vol_200))
-        peak_vol_price = float(H[max(0, i-199)+peak_vol_idx])
-
-        pre_peak_start = max(0, peak_vol_idx - 20)
-        pre_peak_end = max(0, peak_vol_idx - 3)
-        if pre_peak_end <= pre_peak_start:
-            base_vol = float(np.mean(vol_200[:peak_vol_idx])) if peak_vol_idx > 0 else float(np.mean(vol_200))
-        else:
-            base_vol = float(np.mean(vol_200[pre_peak_start:pre_peak_end]))
+        recent_vol = float(np.mean(vol_200[-10:])) if len(vol_200) >= 10 else float(np.mean(vol_200))
+        base_vol = float(np.mean(vol_200[-40:-10])) if len(vol_200) >= 40 else float(np.mean(vol_200[:max(len(vol_200)//2, 5)]))
         base_vol = max(base_vol, 1)
-
-        recent_vol_20 = float(np.mean(vol_200[-20:])) if len(vol_200) >= 20 else float(np.mean(vol_200))
-        vol_vs_base = recent_vol_20 / base_vol
+        vol_vs_base = recent_vol / base_vol
         if vol_vs_base < vf.vol_vs_base_min:
             continue
 
         # === 7. 近期 vs 高点量能 ===
+        peak_vol_idx = int(np.argmax(vol_200))
+        peak_vol_price = float(H[max(0, i-199)+peak_vol_idx])
         peak_5d_start = max(0, peak_vol_idx - 5)
         peak_5d_end = min(len(vol_200), peak_vol_idx + 6)
-        peak_5d_vol = float(np.mean(vol_200[peak_5d_start:peak_5d_end])) if peak_5d_end > peak_5d_start else recent_vol_20
+        peak_5d_vol = float(np.mean(vol_200[peak_5d_start:peak_5d_end])) if peak_5d_end > peak_5d_start else recent_vol
         peak_5d_vol = max(peak_5d_vol, 1)
-        vol_vs_peak = recent_vol_20 / peak_5d_vol
+        vol_vs_peak = recent_vol / peak_5d_vol
         if vol_vs_peak < vf.vol_vs_peak_min:
             continue
 
-        # === 8. ABC 结构 ===
+        # === 8. ABC 回撤结构 (仅计算回撤类型供展示, 不做长周期波浪硬过滤) ===
         a_low = float(np.min(low_arr[:peak_vol_idx+1]))
         a_gain = (peak_vol_price / a_low - 1) * 100 if a_low > 0 else 0
-        if a_gain < vf.a_gain_min:
-            continue
-
         if peak_vol_idx < len(low_arr) - 3:
             b_low = float(np.min(low_arr[peak_vol_idx:]))
             b_drop = (1 - b_low / peak_vol_price) * 100
             retrace_ratio = b_drop / a_gain * 100 if a_gain > 0 else 0
         else:
-            b_low = close_latest
             retrace_ratio = 0
-
-        fib_786 = peak_vol_price - (peak_vol_price - a_low) * 0.786
-        if b_low < fib_786 * vf.fib_786_ratio:
-            continue
-        if retrace_ratio > vf.retrace_ratio_max:
-            continue
-
-        # === 9. 排除一波游 ===
-        peak_idx_local = int(np.argmax(high_arr))
-        peak_price_local = float(high_arr[peak_idx_local])
-        pre_peak_low = float(np.min(low_arr[:peak_idx_local+1])) if peak_idx_local > 0 else float(low_arr[0])
-        pre_peak_gain = (peak_price_local / pre_peak_low - 1) * 100 if pre_peak_low > 0 else 0
-        dist_from_peak = (1 - close_arr[-1] / peak_price_local) * 100
-
-        if peak_idx_local < len(high_arr) - 10:
-            post_peak_low = float(np.min(low_arr[peak_idx_local:]))
-            bounce = (close_arr[-1] / post_peak_low - 1) * 100 if post_peak_low > 0 else 0
-        else:
-            bounce = 0
-
-        if pre_peak_gain > vf.pre_peak_gain_max and dist_from_peak > vf.dist_from_peak_max and bounce < vf.bounce_min:
-            continue
+        # 一波游检查已移除 (短线策略不分析长周期波浪)
 
         # === 10. 综合评分（量能/振幅基础分） ===
         vol_score = min(max_vol_ratio / 5.0, 1) * 30

@@ -7614,8 +7614,8 @@ def run(target_date=None, simple_mode=False):
         if os.path.exists(_vs_report_path):
             with open(_vs_report_path, encoding='utf-8') as _vf:
                 _vs_report_full = _vf.read().strip()
-            # 只截取"🎯 算法输出 TOP5"段（到下一个 ## 段落标题为止），避免强买/观察等信号干扰 AI
-            _vs_marker = "## 🎯 算法输出 TOP5"
+            # 只截取"🎯 算法输出 TOP3"段（到下一个 ## 段落标题为止），避免强买/观察等信号干扰 AI
+            _vs_marker = "## 🎯 算法输出 TOP3"
             _vs_idx = _vs_report_full.find(_vs_marker)
             if _vs_idx >= 0:
                 _vs_next = _vs_report_full.find("\n## ", _vs_idx + len(_vs_marker))
@@ -7623,13 +7623,13 @@ def run(target_date=None, simple_mode=False):
             else:
                 volume_surge_swing_text = _vs_report_full
             volume_surge_swing_text = volume_surge_swing_text.strip()
-            print(f"[量能宽幅震荡] 已读取 {_vs_report_path} 的TOP5段（{len(volume_surge_swing_text)} 字符）")
+            print(f"[量能宽幅震荡] 已读取 {_vs_report_path} 的TOP3段（{len(volume_surge_swing_text)} 字符）")
         else:
             print(f"[量能宽幅震荡] 报告不存在: {_vs_report_path}（请先运行 volume_surge_select.py）")
     except Exception as _e:
         print(f"[量能宽幅震荡] 报告读取失败: {_e}")
     if not volume_surge_swing_text:
-        volume_surge_swing_text = ("🎯 算法输出 TOP5（次日开盘买入候选）\n"
+        volume_surge_swing_text = ("🎯 算法输出 TOP3（次日开盘买入候选）\n"
                                    "今日无信号或报告未生成（请先运行 volume_surge_select.py 生成当日报告）")
         print(volume_surge_swing_text)
 
@@ -7764,6 +7764,67 @@ def run(target_date=None, simple_mode=False):
         print("[回踩买点] 已加载中报优质股池买点信号")
 
     # =========================
+    # 主线第一次回调信号（V7.2：区间放量多涨停拉升后回调 + 低开阳线承接）
+    # 数据来源: market_regime_v3/main.py 盘后扫描导出的 rally_pullback_{trade_date}.json
+    # =========================
+    def _load_rally_pullback_signals(trade_date: str) -> str:
+        """读取主线第一次回调信号（区间放量多涨停拉升后回调 + 低开阳线承接）"""
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"rally_pullback_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"rally_pullback_{trade_date}.json"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        try:
+            import json as _json
+            with open(max(files, key=os.path.getmtime), 'r', encoding='utf-8') as f:
+                data = _json.load(f)
+            signals = data.get("signals", [])
+            if not signals:
+                return ""
+            lines = []
+            lines.append("【主线第一次回调信号】")
+            lines.append(f"数据来源：区间放量多涨停拉升后回调+低开阳线承接（V7.2，共{len(signals)}只，只做主板/20天短线爆发）")
+            lines.append("")
+            for i, s in enumerate(signals, 1):
+                name = s.get("name", "")
+                code = s.get("ts_code", "")
+                theme = s.get("theme", "")
+                total = s.get("total_score", 0)
+                amps = s.get("rally_amplitude", 0)
+                lu = s.get("rally_limit_up_count", 0)
+                mlu = s.get("rally_max_consecutive_lu", 0)
+                volx = s.get("rally_vol_expansion", 0)
+                dd = s.get("drawdown", 0)
+                pb_days = s.get("pullback_days", 0)
+                o_gap = s.get("candle_open_gap", 0)
+                body = s.get("candle_body_pct", 0)
+                ref = s.get("ref_price", 0)
+                sl = s.get("stop_loss", 0)
+                tp = s.get("take_profit", 0)
+                subs = s.get("subs", {})
+                theme_s = f" 主题:{theme}" if theme else ""
+                profit_s = f" 止盈:{tp}(+{(tp/ref-1)*100:.0f}%)" if ref and tp > ref else ""
+                lines.append(
+                    f"【{name}】({code}) 总分:{total:.0f}/100{theme_s} | "
+                    f"拉升+{amps*100:.0f}% 涨停×{lu}(连板{mlu}) 放量{volx:.1f}倍 | "
+                    f"回撤{dd*100:.1f}%(回调{pb_days}天) | "
+                    f"低开{o_gap*100:.1f}%→阳线{body*100:.1f}% | "
+                    f"分项:放量{subs.get('vol_expansion',0):.0f} 涨停{subs.get('limit_up',0):.0f} "
+                    f"回调{subs.get('pullback',0):.0f} 阳线{subs.get('candle',0):.0f} 量能{subs.get('volume_confirm',0):.0f} | "
+                    f"低吸:{ref:.2f} 止损:{sl:.2f}({(sl/ref-1)*100:+.0f}%){profit_s}"
+                )
+            return "\n".join(lines)
+        except Exception as e:
+            print(f"[主线回调] 加载失败: {e}")
+            return ""
+
+    rally_pullback_text = _load_rally_pullback_signals(TRADE_DATE)
+    if rally_pullback_text:
+        print("[主线回调] 已加载主线第一次回调信号")
+
+    # =========================
     # ETF操作提示（读取主线轮动汇总报告的精简版）
     # =========================
     etf_tips_text = ""
@@ -7804,6 +7865,10 @@ def run(target_date=None, simple_mode=False):
 **【今日突破股池】**
 {hot_money_open_text}
 **【今日突破股池到此为止】**
+
+**【主线第一次回调信号】**
+{rally_pullback_text or '  (今日无主线第一次回调信号，请提示"今日无主线回调信号")'}
+**【主线第一次回调信号到此为止】**
 
 
 请分析并输出内容：
@@ -7928,18 +7993,23 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 【输出要求-最高优先级】每只股票第一行必须直接给出明确结论：✅次日可买入 / ⚠️次日观察等回踩 / ❌次日不买入，严格引用上方标注的"次日操作:"字段原值，禁止自行改判或美化；禁止把"❌仅观察不买入"或"⚠️观察"的股票描述成"形态健康可买入"。仅对"✅次日可买入"（回踩中）的个股补充次日买点与止损位，每只力求精简。
 【买卖结论优先级】凡标注"次日操作:✅次日可买入"的个股，一律判定为✅次日可买入并给出次日买点/止损位；其"决策:"与"评级:"字段仅反映当日趋势确认程度（如"回踩完成待放量突破"=突破前夜，次日存在二次启动概率），不改变"✅次日可买入"的结论，严禁因评级低/决策含"规避"字样而改判"❌次日不买入"）
 
-6、**【今日量能爆发+宽幅震荡池·算法输出 TOP5】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
+6、**【今日量能爆发+宽幅震荡池·算法输出 TOP3】**（近60天量能大幅放大+宽幅震荡，MACD即将/刚刚红柱，且非一波游）：
 {volume_surge_swing_text}
-【输出要求-第6段】本段只输出上方"算法输出 TOP5"的 5 只，禁止输出强买/观察/蓄势等其他信号。严格引用 TOP5 的排序（注意：TOP5排序依据是"距MA20"升序优先，回踩充分者靠前，评分仅作候选资格），每只按下列格式输出，必须保留"距MA20"字段，且**每只股票之间空一行（加一个空行分隔），便于手机阅读**：
+【输出要求-第6段】本段只输出上方"算法输出 TOP3"的 3 只，禁止输出强买/观察/蓄势等其他信号。严格引用 TOP3 的排序（注意：TOP3排序依据是"距MA20"升序优先，回踩充分者靠前，评分仅作候选资格），每只按下列格式输出，必须保留"距MA20"字段，且**每只股票之间空一行（加一个空行分隔），便于手机阅读**：
 TOP1：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
 TOP2：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
 TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
-TOP4：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
-TOP5：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
+7、**【主线第一次回调信号】**（区间放量多涨停拉升后回调 + 低开阳线承接，只做主板/20天短线爆发）：
+（【数据边界-最高优先级】本段落只分析上方"**【主线第一次回调信号】**"和"**【主线第一次回调信号到此为止】**"两个标记之间的数据中股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无主线第一次回调信号"。
+【输出要求】每只股票第一行必须直接给出明确结论：✅回调低吸可买入 / ⚠️回踩未稳继续观察 / ❌退潮不碰，结论必须严格引用上方标注的"低开→阳线"形态与"回撤幅度"数据，禁止自行改判或美化：
+- ✅ 判定标准：低开阳线实体≥2% 且 回撤 5%~15%（回调深度适中）且 放量≥2倍
+- ⚠️ 判定标准：阳线实体<2%，或回撤<5%（回调不充分），或回调天数<3天
+- ❌ 判定标准：回撤>15%（回调过深，趋势可能破坏），或拉升幅度异常（涨停数≥5且连板≥4的高位炸板风险）
+仅对"✅回调低吸可买入"的个股补充低吸价/止损位（严格引用上方"低吸:"和"止损:"字段），每只力求精简，适合手机阅读。严禁编造上方数据中不存在的价格数字。）
 
 
 ------------------

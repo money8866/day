@@ -921,10 +921,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             return None
         if range_swing < 35:
             return None
-        if price_change < -10:
-            return None
-        if price_change > 100:
-            return None
+        # 区间涨幅(200日)仅展示不做硬过滤：短线策略不设长周期涨跌幅限制
         # 排除今日大跌/跌停
         today_pct = (close_arr[-1] / pre_close_arr[-1] - 1) * 100 if pre_close_arr[-1] > 0 else 0
         if today_pct <= -7.0:
@@ -950,7 +947,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             if close_latest < ma20_now * 0.95:
                 return None
 
-        # 近期量能活跃度检查：对比起涨前基量
+        # 近期量能活跃度检查：短期成交量对比前期基量（识别近期放量）
         _df200 = df.tail(200) if len(df) >= 200 else df
         _vol200 = _df200['vol'].values.astype(float)
         _high200 = _df200['high'].values.astype(float)
@@ -960,12 +957,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         _peak_vol_idx = int(np.argmax(_vol200))
         _peak_vol_price = float(_high200[_peak_vol_idx])
 
-        _pre_peak_start = max(0, _peak_vol_idx - 20)
-        _pre_peak_end = max(0, _peak_vol_idx - 3)
-        _base_vol = float(np.mean(_vol200[_pre_peak_start:_pre_peak_end])) if _pre_peak_end > _pre_peak_start else float(np.mean(_vol200[:_peak_vol_idx]))
+        # 近期量用最近10日均量（20日均量易被早期缩量稀释），基量用前10~40日均量（排除近期放量段）
+        _recent_vol = float(np.mean(_vol200[-10:])) if len(_vol200) >= 10 else float(np.mean(_vol200))
+        _base_vol = float(np.mean(_vol200[-40:-10])) if len(_vol200) >= 40 else float(np.mean(_vol200[:max(len(_vol200) // 2, 5)]))
         _base_vol = max(_base_vol, 1)
-
-        _recent_vol = float(np.mean(_vol200[-20:])) if len(_vol200) >= 20 else float(np.mean(_vol200))
         _vol_vs_base = _recent_vol / _base_vol
         if _vol_vs_base < 1.1:
             return None
@@ -979,13 +974,11 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         if _vol_vs_peak < 0.5:
             return None
 
-        # ABC结构检查
+        # ABC结构计算（仅用于回撤类型分类，不做长周期波浪硬过滤）
         _a_low = float(np.min(_low200[:_peak_vol_idx + 1]))
         _a_gain = (_peak_vol_price / _a_low - 1) * 100 if _a_low > 0 else 0
-        if _a_gain < 15:
-            return None
 
-        # B浪回撤检查
+        # B浪回撤计算（仅用于回撤类型分类，不做斐波那契硬过滤）
         if _peak_vol_idx < len(_low200) - 3:
             _b_low = float(np.min(_low200[_peak_vol_idx:]))
             _b_drop = (1 - _b_low / _peak_vol_price) * 100
@@ -994,33 +987,6 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             _b_low = close_arr[-1]
             _b_drop = 0
             _retrace_ratio = 0
-
-        _fib_618 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.618
-        _fib_786 = _peak_vol_price - (_peak_vol_price - _a_low) * 0.786
-
-        if _b_low < _fib_786 * 0.92:
-            return None
-        if _retrace_ratio > 50:
-            return None
-
-        # 排除"一波游"
-        _peak_idx = int(np.argmax(high_arr))
-        _peak_price = float(high_arr[_peak_idx])
-        _pre_peak_low = float(np.min(low_arr[:_peak_idx + 1])) if _peak_idx > 0 else float(low_arr[0])
-        _pre_peak_gain = (_peak_price / _pre_peak_low - 1) * 100 if _pre_peak_low > 0 else 0
-        _dist_from_peak = (1 - close_arr[-1] / _peak_price) * 100
-
-        if _peak_idx < len(high_arr) - 10:
-            _post_peak_low = float(np.min(low_arr[_peak_idx:]))
-            if _post_peak_low > 0:
-                _bounce = (close_arr[-1] / _post_peak_low - 1) * 100
-            else:
-                _bounce = 0
-        else:
-            _bounce = 0
-
-        if _pre_peak_gain > 70 and _dist_from_peak > 15 and _bounce < 10:
-            return None
 
         # 评分
         vol_score = min(max_vol_ratio / 5.0, 1) * 30
@@ -1061,37 +1027,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             macd_pass = True
 
         if not macd_pass:
-            # MACD未确认时，检测蓄势大涨信号
-            _w_ok, _w1, _w2, _dist = _detect_wave_surge_ready(df)
-            if _w_ok and total_score >= 65 and _w2 < 0.70 and abs(_dist) < 0.03:
-                today_pct = (close_arr[-1] / close_arr[-2] - 1) * 100 if len(close_arr) >= 2 and close_arr[-2] > 0 else 0
-                macd_turning = (cur_bar < 0 and cur_bar > prev_bar) or (prev_bar < 0 < cur_bar)
-                if today_pct >= 5 and macd_turning:
-                    wave_surge_reason = (f'波浪蓄势大涨(W1={_w1*100:.0f}% W2={_w2*100:.0f}% 距H1={_dist*100:+.1f}% '
-                                         f'今日涨{today_pct:.1f}% MACD{"绿柱缩短" if cur_bar < 0 else "刚红柱"})')
-                    result = {
-                        '代码': ts_code, '名称': name,
-                        '量能爆发评分': round(total_score, 1),
-                        '最大量比': round(max_vol_ratio, 2),
-                        '量比>2天数': vol_ratio_gt2,
-                        '量比>3天数': vol_ratio_gt3,
-                        '日均振幅': round(avg_amplitude, 2),
-                        '巨震天数(>8%)': amp_gt8_count,
-                        '区间振幅': round(range_swing, 1),
-                        '区间涨幅': round(price_change, 1),
-                        '近历史最高量%': round(vol_vs_hist_pct, 0),
-                        '今日量比': round(float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0, 2),
-                        'MACD状态': macd_status if macd_status else ('绿柱缩短' if cur_bar < 0 and cur_bar > prev_bar else '其他'),
-                        '回撤类型': '浅回调' if _retrace_ratio < 30 else ('中回调' if _retrace_ratio < 50 else '深回调'),
-                        '距MA20': round((float(close_arr[-1]) / float(pd.Series(close_arr).rolling(20).mean().values[-1]) - 1) * 100, 1) if not np.isnan(pd.Series(close_arr).rolling(20).mean().values[-1]) else 0,
-                        '强买信号': False, '强买原因': '',
-                        '观察信号': False, '观察原因': '',
-                        '蓄势大涨信号': True, '蓄势大涨原因': wave_surge_reason,
-                        '波浪W1涨幅': round(_w1 * 100, 1),
-                        '波浪W2回调': round(_w2 * 100, 1),
-                        '波浪距H1': round(_dist * 100, 1),
-                    }
-                    return result
+            # MACD未确认不入场（蓄势大涨信号仅展示，见主路径）
             return None
 
         today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
@@ -1111,7 +1047,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         is_red_retrace = (macd_status == '红柱回调缩短（趋势延续）')
         is_red_bounce = (macd_status == '红柱回调后反弹（趋势延续）')
 
-        # 强买信号判定（形态参考：全样本回测强买整体胜率32.2%低于评分Top5，不作为买入排序依据）
+        # 强买信号判定（形态参考：同等闸门回测强买全量44.8%不低于Top3，但"强买优先"排序负优化，不作买入排序依据）
         strong_buy = False
         strong_buy_reason = ''
         if pos_ma20 < 0 and is_fresh_red:
@@ -1126,7 +1062,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         elif 65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0:
             strong_buy = True
             strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(形态)'
-        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 1.0:
+        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 0.9:
             strong_buy = True
             strong_buy_reason = '红柱回调+高评分+量比达标(趋势延续)'
 
@@ -1143,8 +1079,17 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         wave_w2_retrace = 0.0
         wave_dist_h1 = 0.0
 
-        if not strong_buy and not watch and not wave_surge:
+        if not strong_buy and not watch:
             return None
+
+        # 蓄势大涨信号（仅展示，不入硬过滤）
+        _w_ok, _w1, _w2, _dist = _detect_wave_surge_ready(df)
+        if _w_ok:
+            wave_surge = True
+            wave_surge_reason = (f'波浪蓄势大涨(W1={_w1*100:.0f}% W2={_w2*100:.0f}% 距H1={_dist*100:+.1f}%)')
+            wave_w1_gain = _w1
+            wave_w2_retrace = _w2
+            wave_dist_h1 = _dist
 
         result = {
             '代码': ts_code, '名称': name,
@@ -1299,7 +1244,7 @@ def _chip_v5_line(s):
 
 
 def _output_report(results, simple=False, market_tip=None):
-    """输出大盘提示 + 算法Top5 + 强买/观察/蓄势三类信号 + 保存报告"""
+    """输出大盘提示 + 算法Top3 + 强买/观察/蓄势三类信号 + 保存报告"""
     if not results:
         print("\n今日无量能爆发信号")
         return
@@ -1318,12 +1263,14 @@ def _output_report(results, simple=False, market_tip=None):
                       for c in market_tip['per'])
         lines.append(f"> 大盘闸门(三指数20日动量均值): {market_tip['mom20_avg']:+.1f}% "
                      f"({_s}) → {_flag}")
-        lines.append("> 买入方式: 次日开盘 · 持有T+5 · 盘中-7%止损 · 每日Top5")
+        lines.append("> 买入方式: 次日开盘 · 持有T+5 · 盘中-7%止损 · 每日Top3")
         lines.append("")
 
-    # 🎯 算法输出 TOP5（r2：距MA20升序优先(<=8%在前)，>8%尾部补足；回测胜率+2.8pp）
-    vs_top5 = sorted(results, key=lambda x: (x['距MA20'] > 8, x['距MA20']))[:5]
-    lines.append("## 🎯 算法输出 TOP5（次日开盘买入候选）")
+    # 🎯 算法输出 TOP3（r2：距MA20升序优先(<=8%在前)，>8%尾部补足；回测胜率+2.8pp）
+    # 回测结论(2024-01~2026-08, 三指数动量>+3%闸门, T+5, 止损-7%): 每日只数5→3 胜率45.7%→47.7%、均收益+1.35%→+1.64%;
+    # "强买优先Top5"排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故买入排序只用 r2 距MA20，强买仅作形态参考
+    vs_top5 = sorted(results, key=lambda x: (x['距MA20'] > 8, x['距MA20']))[:3]
+    lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选）")
     if market_tip and not market_tip['gate']:
         lines.append("【⚠️ 大盘闸门未通过，以下仅观察，不建议买入】")
     for i, _vr in enumerate(vs_top5, 1):
@@ -1346,7 +1293,7 @@ def _output_report(results, simple=False, market_tip=None):
             lines.append(_chip_v5_line(_vr))
     else:
         lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
-    lines.append("【回测提示】全样本回测(2024-01~2026-08)：强买形态整体胜率32.2%低于评分Top5(r2)的42.9%，仅作形态观察，买入以🎯TOP5为准")
+    lines.append("【回测提示】同等闸门(2024-01~2026-08, T+5, 止损-7%)：强买全量胜率44.8%/均+1.73%并不低于评分Top3；但『强买优先』排序是负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，强买仅作形态参考，买入以🎯TOP3为准")
     lines.append("")
 
     if vs_watch:
