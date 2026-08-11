@@ -1864,19 +1864,24 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
 
     # ── 3. 第三部分：杂毛/退潮与风险回避区 ──
     w("━" * 60)
-    w("### 第三部分：杂毛/退潮与风险回避区（Filtered · 建议仓位 0%）")
+    w("### 第三部分：杂毛/退潮与风险回避区（建议仓位 0%）")
     w("━" * 60)
     if not junk:
         w("* 今日无退潮/低分回避主题")
         w()
-    for r in junk[:15]:
-        theme = r['theme']
-        lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
-        comp = r.get('composite_score', 0)
-        w(f"✕ {theme} [{lc_disp}] 综合{comp:.0f} → 【坚决回避/清仓】")
-    if len(junk) > 15:
-        w(f"  … 其余 {len(junk) - 15} 只同类回避主题省略")
-    w()
+    else:
+        w(f"* 多数主题未形成持续性，共 {len(junk)} 只未达主线交易标准。")
+        w("重点回避：")
+        for r in junk[:3]:
+            theme = r['theme']
+            lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+            comp = r.get('composite_score', 0)
+            w(f"  ✕ {theme} [{lc_disp}] 综合{comp:.0f} → 【坚决回避/清仓】")
+        if len(junk) > 3:
+            rest = "、".join(r['theme'] for r in junk[3:8])
+            w(f"  … 其余 {len(junk) - 3} 只同类回避（{rest}…）")
+        w("原因：强度不足 / 轮动过快 / 无持续性")
+        w()
 
     # ── 4. 主线与轮动交易决策表（全量） ──
     w("━" * 60)
@@ -1909,7 +1914,8 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     for r in junk[:20]:
         order += 1
         lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
-        ml_str = f"{r.get('mainline_type', '')} {r.get('mainline_quality', 0):.0f}"
+        # 回避区类型列固定为"回避"，避免"情绪主线+清仓回避"式矛盾
+        ml_str = f"回避 {r.get('mainline_quality', 0):.0f}"
         w(f"{order:<4}{r['theme']:<10}{ml_str:<18}{_est_winrate(r):<5}{'-':<8}{lc_disp:<10}{'0%':<14}{'清仓回避'}")
     w()
 
@@ -1919,18 +1925,26 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     w("━" * 60)
     w()
 
-    # 整体仓位建议
+    # 整体仓位建议（优先引用 market_analysis 的大盘目标仓位，未读到才用主题生命周期兜底）
+    ma_pos = ma.get('target_pos')
+    # 兜底指标（风险提示也引用）：主题生命周期分布
     pos_cnt = sum(1 for r in results if r.get('lifecycle') in ('启动', '升温', '主升', '分歧'))
     neg_cnt = sum(1 for r in results if r.get('lifecycle') in ('高潮', '退潮'))
     total = len(results) or 1
     pos_ratio = pos_cnt / total
     neg_ratio = neg_cnt / total
-    base = 50.0 + (pos_ratio - neg_ratio) * 60.0
-    # 大盘环境修正（沪深300 近10日收益，最多 ±15%）
-    mkt_adj = max(-15.0, min(15.0, market_ret_10))
-    position = max(0.0, min(100.0, base + mkt_adj))
-    pos_lv = "高仓位" if position >= 70 else "中等仓位" if position >= 45 else "低仓位"
-    w(f"* 整体仓位建议：{position:.0f}%（{pos_lv}；启动/升温类{pos_cnt}只 vs 高潮/退潮类{neg_cnt}只，沪深300近10日{market_ret_10:+.1f}%）")
+    if ma_pos is not None:
+        position = float(ma_pos)
+        pos_lv = "高仓位" if position >= 70 else "中等仓位" if position >= 45 else "低仓位"
+        w(f"* 整体仓位建议：{position:.0f}%（{pos_lv}；引用大盘仓位引擎 market_analysis）")
+    else:
+        base = 50.0 + (pos_ratio - neg_ratio) * 60.0
+        # 大盘环境修正（沪深300 近10日收益，最多 ±15%）
+        mkt_adj = max(-15.0, min(15.0, market_ret_10))
+        position = max(0.0, min(100.0, base + mkt_adj))
+        pos_lv = "高仓位" if position >= 70 else "中等仓位" if position >= 45 else "低仓位"
+        w(f"* 整体仓位建议：{position:.0f}%（{pos_lv}；兜底：启动/升温类{pos_cnt}只 vs 高潮/退潮类{neg_cnt}只，"
+          f"沪深300近10日{market_ret_10:+.1f}%，未读取到大盘仓位引擎）")
 
     # 核心风险提示
     risks = []

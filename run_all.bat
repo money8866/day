@@ -62,7 +62,7 @@ echo [Step 5.3/7] 中报预增股池择时（回踩算法）
 
 echo =============================================
 
-python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
+rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
 
 
@@ -84,7 +84,7 @@ echo =============================================
 python genindex.py
 echo.
 
-push.bat
+call push.bat
 
 
 echo 机构主线第一次回踩

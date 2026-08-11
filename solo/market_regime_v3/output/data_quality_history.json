@@ -1,0 +1,16 @@
+{
+ "20260810": {
+  "scores": {
+   "breadth": 55.0,
+   "sentiment": 60.0
+  },
+  "valid": true
+ },
+ "20260811": {
+  "scores": {
+   "breadth": 63.33,
+   "sentiment": 25.980951862507197
+  },
+  "valid": false
+ }
+}

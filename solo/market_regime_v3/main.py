@@ -32,6 +32,7 @@ from market_regime_v3.engines.style_engine import StyleEngine
 from market_regime_v3.engines.risk_engine import RiskAppetiteEngine
 from market_regime_v3.engines.theme_resonance import ThemeResonanceEngine
 from market_regime_v3.engines.market_score import MarketScoreEngine
+from market_regime_v3.engines.data_quality import DataQualityChecker
 from market_regime_v3.engines.state_machine import StateMachine
 from market_regime_v3.engines.exposure_model import ExposureModel
 from market_regime_v3.engines.heat_engine import HeatEngine
@@ -186,6 +187,25 @@ class MarketRegimeV3:
               f"最高连板{sentiment_result.max_continuous}板 "
               f"北向{sentiment_result.north_flow:+.0f}亿")
 
+        # ── 数据质量检查：宽度/情绪指标一致性（异常指标隔离，不参与 Market Score） ──
+        dq_checker = DataQualityChecker(self.config)
+        raw_breadth_score = breadth_result.score if breadth_result else None
+        dq_result = dq_checker.check(breadth_result, sentiment_result)
+        if dq_result.is_clean:
+            print(f"  数据检查: ✓ 指标一致")
+        else:
+            for anom in dq_result.anomalies:
+                print(f"  ⚠️ 数据检查: {anom['cause']}")
+            # 隔离异常指标：breadth 用前一交易日有效值，无则中性值
+            prev_breadth = dq_checker.get_prev_valid('breadth')
+            fallback = prev_breadth if prev_breadth is not None else dq_checker.neutral_value
+            src = '前一交易日有效值' if prev_breadth is not None else '中性值'
+            print(f"  → breadth 已隔离，使用{src} {fallback:.1f}（异常数据不参与评分）")
+            breadth_result.score = float(fallback)
+        dq_checker.record(trade_date,
+                          {'breadth': raw_breadth_score, 'sentiment': sentiment_result.score},
+                          valid=dq_result.is_clean)
+
         # Step 4: 风格轮动
         print("\n[4/6] 计算风格轮动...")
         style_result = self.style_engine.evaluate(start_date, trade_date)
@@ -307,6 +327,42 @@ class MarketRegimeV3:
                 print(f"    {ld['name']}({ld['ts_code']}) {ld['total_score']:.0f}分")
         else:
             print("  无符合条件龙头")
+
+        # ── V2修复: 最终仓位闸门校准 ──
+        # 主线/龙头状态在第3/4层后可得，据此重算 Final Position / ETF / Leader / Follow / Cash
+        has_mainline = bool(theme_beta_result.allocations) if theme_beta_result else False
+        has_leader = bool(leader_result.top_leaders) if leader_result else False
+
+        # ── V3.1: Recovery 两阶段判定（Watch 不加仓 / Confirmed 才允许提高仓位） ──
+        recovery_state = None
+        if regime and regime.primary == 'Recovery':
+            recovery_state = self._resolve_recovery_state(
+                market_score=market_score_result.score,
+                breadth_result=breadth_result,
+                sentiment_result=sentiment_result,
+                has_mainline=has_mainline,
+                risk_result=risk_result,
+            )
+            if recovery_state == 'Recovery Watch':
+                # Watch：不允许因 Recovery 本身提高仓位，Regime Cap 收紧至 20%
+                if exposure_result.regime_cap > 0.20:
+                    exposure_result.regime_cap = 0.20
+            print(f"  Recovery状态: {recovery_state}")
+
+        _ex_before_pct = exposure_result.portfolio_exposure_pct
+        exposure_result = self.exposure_model.reconcile(exposure_result, has_mainline, has_leader)
+        print(f"\n  [V2仓位校准] 有效主线={has_mainline} 有效龙头={has_leader}")
+        print(f"    Original Position: {_ex_before_pct:.0f}% | Mainline Cap: "
+              f"{exposure_result.mainline_cap*100:.0f}% | Final Position: "
+              f"{exposure_result.portfolio_exposure_pct:.0f}%")
+        print(f"    ETF {exposure_result.etf_allocation*100:.0f}% | "
+              f"Leader {exposure_result.leader_allocation*100:.0f}% | "
+              f"Follow {exposure_result.follower_allocation*100:.0f}% | "
+              f"Cash {exposure_result.cash_allocation*100:.0f}%")
+        if exposure_result.consistency_errors:
+            print("  ⚠️ Position Allocation Error: " + "; ".join(exposure_result.consistency_errors))
+        else:
+            print("  ✅ Position Consistency Check: OK")
 
         # ── V7.0 主线第一次回调升级：区间放量多涨停拉升后回调 + 低开阳线承接 ──
         rp_engine = RallyPullbackEngine(self.config)
@@ -726,6 +782,8 @@ class MarketRegimeV3:
             trading_style_result=style_result_v5,
             risk_control_result=risk_control_result,
             v61_data=v61_data,
+            data_quality_result=dq_result,
+            recovery_state=recovery_state,
         )
 
         # 补充回调检测结果 + Alpha引擎结果 + overview 字段
@@ -810,6 +868,34 @@ class MarketRegimeV3:
             return sc.cached_stk_factor_pro(ts_code, start, trade_date, silent=True)
         except Exception:
             return None
+
+    def _resolve_recovery_state(self, market_score: float, breadth_result,
+                                sentiment_result, has_mainline: bool, risk_result) -> str:
+        """V3.1 Recovery 两阶段判定
+
+        Recovery Confirmed 需同时满足：
+          - 4 项确认条件中至少 3 项：
+            1. 上涨比例 > 50%
+            2. 炸板率 < 25%
+            3. 短线情绪明显改善（情绪分 > 50）
+            4. 出现至少 1 个有效主线
+          - Market Score >= 50
+          - 无明显风险加速（风险偏好分 >= 30）
+        其余情况判定为 Recovery Watch（弱修复观察，不加仓）。
+        """
+        conds = 0
+        if breadth_result is not None and breadth_result.up_ratio > 0.50:
+            conds += 1
+        if sentiment_result is not None and sentiment_result.break_ratio < 0.25:
+            conds += 1
+        if sentiment_result is not None and sentiment_result.score > 50:
+            conds += 1
+        if has_mainline:
+            conds += 1
+        risk_accel = bool(risk_result is not None and risk_result.score < 30)
+        if conds >= 3 and market_score >= 50 and not risk_accel:
+            return 'Recovery Confirmed'
+        return 'Recovery Watch'
 
 
 def main():

@@ -32,7 +32,10 @@ class MarketReportGenerator:
     整合所有引擎的评估结果，生成结构化报告和格式化 Markdown 文本。
     """
 
-    def __init__(self, output_dir: str = "./output"):
+    def __init__(self, output_dir: str = None):
+        # 默认输出到本文件所在目录的 output/（避免依赖运行时 cwd）
+        if output_dir is None:
+            output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
         self.output_dir = output_dir
         self.explainer = MarketExplainer()
         os.makedirs(self.output_dir, exist_ok=True)
@@ -141,6 +144,8 @@ class MarketReportGenerator:
         trading_style_result=None,
         risk_control_result=None,
         v61_data=None,
+        data_quality_result=None,
+        recovery_state=None,
     ) -> Dict:
         """生成6层Pipeline完整报告"""
         # 基础报告
@@ -212,6 +217,35 @@ class MarketReportGenerator:
         report_dict["leader_quality"] = leader_section
         report_dict["trading_style"] = trading_style_section
         report_dict["risk_control"] = risk_control_section
+
+        # ── V3.1: 操作建议/频率与 Regime 联动 + Recovery 两阶段展示 ──
+        has_mainline = bool(theme_beta_section.get('allocations')) if theme_beta_section else False
+        sent_score = sentiment_result.score if sentiment_result else 50
+        # 策略：Recovery 按 Watch/Confirmed 联动，其余沿用原 Regime 策略
+        if recovery_state:
+            report_dict["suggestions"]["strategy"] = (
+                "回调低吸，可逐步加仓" if recovery_state == "Recovery Confirmed"
+                else "逢低观察，轻仓试错，不主动加仓"
+            )
+        else:
+            report_dict["suggestions"]["strategy"] = self._get_strategy(market_regime, heat_result)
+        # 交易频率：由市场状态动态决定（不固定 2 次/日）
+        trade_freq = self._get_trade_frequency(
+            market_regime.primary, has_mainline, recovery_state, sent_score
+        )
+        report_dict["suggestions"]["trade_frequency"] = trade_freq
+        report_dict["overview"]["trade_frequency"] = trade_freq
+        report_dict["overview"]["trade_frequency_display"] = trade_freq
+        # Recovery 两阶段展示字段（不覆盖 overview.regime，避免破坏 V6.1 大盘环境判定）
+        if recovery_state:
+            report_dict["overview"]["recovery_variant"] = recovery_state
+
+        # ── 数据质量检查结果（供渲染"数据检查"行） ──
+        if data_quality_result is not None:
+            if hasattr(data_quality_result, 'to_dict'):
+                report_dict["data_quality"] = data_quality_result.to_dict()
+            else:
+                report_dict["data_quality"] = data_quality_result
 
         # 生成V2 Markdown
         markdown = self._render_markdown_v2(report_dict)
@@ -473,23 +507,54 @@ class MarketReportGenerator:
         lines.append("## 一、综合概览")
         lines.append("")
         lines.append(f"- Market Score: {overview.get('market_score', 0):.0f}/100")
-        lines.append(f"- Market Regime: {overview.get('regime', '')}（{overview.get('regime_cn', '')}）")
+        rv = overview.get('recovery_variant')
+        if rv:
+            rv_cn = "弱修复观察" if "Watch" in rv else "修复确认"
+            lines.append(f"- Market Regime: {rv}（{rv_cn}）")
+            lines.append(f"- 修复状态：{'已确认' if 'Confirmed' in rv else '尚未确认'}")
+        else:
+            lines.append(f"- Market Regime: {overview.get('regime', '')}（{overview.get('regime_cn', '')}）")
         lines.append(f"- Risk Appetite: {overview.get('risk_appetite_level', '')}")
         lines.append(f"- Heat Score: {overview.get('heat_score', 0):.0f}/100 ({overview.get('heat_level', '')})")
         lines.append(f"- Dominant Style: {overview.get('dominant_style', '')}")
         lines.append(f"- Recommended Exposure: {overview.get('exposure', 0):.0f}%")
         lines.append(f"- Active Themes: {overview.get('theme_count', 0)}个")
         lines.append(f"- Trading Style: {data.get('trading_style', {}).get('label', '')}")
-        lines.append(f"- Risk Status: {'✅ 安全' if data.get('risk_control', {}).get('is_safe', True) else '⚠️ 有风险'}")
+        sys_risk, short_risk = self._assess_risk_levels(data)
+        lines.append(f"- 系统性风险: {sys_risk}")
+        lines.append(f"- 短线交易风险: {short_risk}")
         lines.append("")
+
+        # ── 数据质量检查（异常指标已隔离，不参与评分） ──
+        dq = data.get("data_quality", {})
+        if dq:
+            lines.append(f"数据检查：{dq.get('summary', '✓ 指标一致')}")
+            lines.append("")
 
         # ── 二、Market Score 分解 ──
         ms = data.get("market_score", {})
         lines.append("## 二、Market Score 分解")
         lines.append("")
-        for item in ms.get("detail", ms.get("items", [])):
-            lines.append(f"- {item}")
-        lines.append("")
+        contribs = ms.get("contributions", {})
+        if contribs:
+            for key, label in [
+                ("index_strength", "指数强度"),
+                ("breadth", "市场宽度"),
+                ("sentiment", "情绪"),
+                ("theme_resonance", "主题共振"),
+                ("risk_appetite", "风险偏好"),
+            ]:
+                val = contribs.get(key, 0)
+                if isinstance(val, (int, float)):
+                    lines.append(f"- {label}: {val:.1f}（贡献{val:+.1f}）")
+            lines.append(f"- 总分: {ms.get('score', 0):.0f}")
+            lines.append("")
+        explain_items = ms.get("explain_items", [])
+        if explain_items:
+            lines.append("评分解释:")
+            for item in explain_items:
+                lines.append(f"- {item}")
+            lines.append("")
 
         # ── 三、指数强度 ──
         idx = data.get("index_strength", {})
@@ -539,10 +604,9 @@ class MarketReportGenerator:
         lines.append("### 风格评分")
         lines.append("| 风格 | 得分 |")
         lines.append("|------|------|")
-        for s_name, s_score in sorted(style.get("items", {}).items(),
-                                       key=lambda x: x[1], reverse=True)[:7]:
-            cn = MarketReportGenerator._style_to_cn(s_name)
-            lines.append(f"| {cn} | {s_score:.0f} |")
+        style_list = style.get("style_list", [])
+        for s in style_list[:7]:
+            lines.append(f"| {s.get('name_cn', s.get('name', ''))} | {s.get('score', 0):.0f} |")
         lines.append("")
         if style.get("suggestions"):
             lines.append(f"建议关注: {', '.join(style['suggestions'][:5])}")
@@ -610,29 +674,42 @@ class MarketReportGenerator:
         floor = exp.get("regime_floor", 0) * 100
         cap = exp.get("regime_cap", 100) * 100
         lines.append(f"- Regime限幅: {floor:.0f}%~{cap:.0f}%")
+        mainline_cap = exp.get("mainline_cap", 1.0) * 100
+        orig_pct = exp.get("original_exposure_pct", raw_pct)
+        lines.append(f"- 主线仓位闸门: {mainline_cap:.0f}%（原始仓位 {orig_pct:.0f}%）")
         lines.append(f"- 最终仓位: {exp.get('portfolio_exposure_pct', 0):.0f}%")
         lines.append(f"- 主题数量: {exp.get('theme_count_min', 0)}~{exp.get('theme_count_max', 0)}个")
         lines.append(f"- ETF配置: {exp.get('etf_allocation', 0)*100:.0f}%")
         lines.append(f"- 龙头配置: {exp.get('leader_allocation', 0)*100:.0f}%")
         lines.append(f"- 跟风配置: {exp.get('follower_allocation', 0)*100:.0f}%")
         lines.append(f"- 现金: {exp.get('cash_allocation', 0)*100:.0f}%")
+        if not exp.get("consistency_ok", True):
+            lines.append(f"- ⚠️ Position Allocation Error: {'; '.join(exp.get('consistency_errors', []))}")
         lines.append("")
 
         # ── 十一、Risk Control（风控） ──
         rc = data.get("risk_control", {})
         lines.append("## 十一、Risk Control（风控执行）")
         lines.append("")
-        lines.append(f"- 安全状态: {'✅' if rc.get('is_safe', True) else '⚠️ 有风险'}")
         if rc.get("warnings"):
             lines.append("- 风险警告:")
             for w in rc.get("warnings", []):
                 lines.append(f"  - ⚠️ {w}")
-        if rc.get("actions"):
-            lines.append("- 建议操作:")
-            for a in rc.get("actions", []):
-                lines.append(f"  - {a}")
-        lines.append(f"- 止损: {rc.get('stop_loss_atr', 2.0)}倍ATR")
-        lines.append(f"- 止盈: {rc.get('take_profit_atr', 3.0)}倍ATR")
+        # 统一止损/止盈输出（V3.1）：动态止损百分比 + 约 ATR 倍数，或仅 ATR
+        import re as _re
+        sl_atr = rc.get('stop_loss_atr', 2.0)
+        tp_atr = rc.get('take_profit_atr', 3.0)
+        dyn_pct = None
+        for a in rc.get('actions', []):
+            m = _re.search(r'([\d.]+%)', a)
+            if m and '止损' in a:
+                dyn_pct = m.group(1)
+                break
+        if dyn_pct:
+            lines.append(f"- 动态止损: {dyn_pct}（约{sl_atr:.1f}×ATR）")
+        else:
+            lines.append(f"- 动态止损: {sl_atr:.1f}×ATR")
+        lines.append(f"- 止盈参考: {tp_atr:.1f}×ATR")
         lines.append(f"- 单票上限: {rc.get('max_per_position_pct', 0.15)*100:.0f}%")
         lines.append("")
 
@@ -654,7 +731,11 @@ class MarketReportGenerator:
         lines.append("## 十三、操作建议")
         lines.append("")
         lines.append(f"- 策略: {sug.get('strategy', '观望为主')}")
-        lines.append(f"- 交易频率: {sug.get('trade_frequency', 0)}次/日")
+        tf = sug.get('trade_frequency', 0)
+        if isinstance(tf, (int, float)):
+            lines.append(f"- 交易频率: {tf}次/日")
+        else:
+            lines.append(f"- 交易频率: {tf}")
         lines.append(f"- 风控: {sug.get('risk_control', '严格执行止盈止损')}")
         lines.append("")
         lines.append("---")
@@ -912,6 +993,10 @@ class MarketReportGenerator:
             "leader_allocation": result.leader_allocation,
             "follower_allocation": result.follower_allocation,
             "cash_allocation": result.cash_allocation,
+            "mainline_cap": result.mainline_cap,
+            "original_exposure_pct": result.original_exposure_pct,
+            "consistency_ok": result.consistency_ok,
+            "consistency_errors": list(result.consistency_errors),
         }
 
     # ------------------------------------------------------------------
@@ -1041,12 +1126,17 @@ class MarketReportGenerator:
         floor = ex.get("regime_floor", 0) * 100
         cap = ex.get("regime_cap", 100) * 100
         lines.append(f"- Regime限幅: {floor:.0f}%~{cap:.0f}%")
+        mainline_cap = ex.get("mainline_cap", 1.0) * 100
+        orig_pct = ex.get("original_exposure_pct", raw_pct)
+        lines.append(f"- 主线仓位闸门: {mainline_cap:.0f}%（原始仓位 {orig_pct:.0f}%）")
         lines.append(f"- 最终仓位: {ex['portfolio_exposure_pct']:.0f}%")
         lines.append(f"- 主题数量: {ex['theme_count_min']}~{ex['theme_count_max']}个")
         lines.append(f"- ETF配置: {ex['etf_allocation']*100:.0f}%")
         lines.append(f"- 龙头配置: {ex['leader_allocation']*100:.0f}%")
         lines.append(f"- 跟风配置: {ex['follower_allocation']*100:.0f}%")
         lines.append(f"- 现金: {ex['cash_allocation']*100:.0f}%")
+        if not ex.get("consistency_ok", True):
+            lines.append(f"- ⚠️ Position Allocation Error: {'; '.join(ex.get('consistency_errors', []))}")
         lines.append("")
 
         # ── 九、风险提示 ──
@@ -1099,6 +1189,57 @@ class MarketReportGenerator:
         if regime.primary == "Bear":
             return "防御为主，降低仓位，多看少动"
         return "观望为主，等待明确信号"
+
+    @staticmethod
+    def _get_trade_frequency(regime: str, has_mainline: bool,
+                             recovery_state: str, sentiment_score: float) -> str:
+        """V3.1: 交易频率由市场状态动态决定（交易机会决定，而非每日强制交易）"""
+        if recovery_state == "Recovery Confirmed":
+            return "中等，可逐步增加"
+        if recovery_state == "Recovery Watch":
+            return "低频观察"
+        if regime in ("Bull", "Euphoria"):
+            return "正常 / 积极"
+        if regime == "Neutral":
+            return "中等" if has_mainline else "低频"
+        if regime == "Bear":
+            return "禁止主动交易 / 仅观察" if sentiment_score < 20 else "极低"
+        return "低频"
+
+    @staticmethod
+    def _assess_risk_levels(data: Dict):
+        """V3.1: 区分系统性风险与短线交易风险
+
+        系统性风险（崩盘风险）→ 正常 / 升高 / 高风险 / 极端风险
+        短线交易风险（情绪/炸板）→ 低 / 正常 / 偏高 / 高
+        """
+        overview = data.get("overview", {})
+        ms = overview.get("market_score", 50)
+        breadth = data.get("breadth", {})
+        sent = data.get("sentiment", {})
+        brk = sent.get("break_ratio", 0)
+        sent_score = sent.get("score", 50)
+
+        # 系统性风险：以 Market Score 为主，避免"没崩盘"被误解为"短线好做"
+        if ms < 15:
+            sys_risk = "极端风险"
+        elif ms < 20:
+            sys_risk = "高风险"
+        elif ms < 32:
+            sys_risk = "升高"
+        else:
+            sys_risk = "正常"
+
+        # 短线交易风险：情绪分 + 炸板率
+        if sent_score >= 60:
+            short_risk = "低"
+        elif sent_score >= 45:
+            short_risk = "正常"
+        elif sent_score >= 30:
+            short_risk = "偏高" if brk > 0.30 else "正常"
+        else:
+            short_risk = "高" if brk > 0.35 else "偏高"
+        return sys_risk, short_risk
 
     # ------------------------------------------------------------------
     # 文件操作

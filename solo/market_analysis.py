@@ -35,6 +35,17 @@ original_expanduser = os.path.expanduser
 safe_cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
 os.makedirs(safe_cache_dir, exist_ok=True)
 
+# daily_cache 完整性阈值：全市场约5500只，少于5000视为缓存不完整（部分写入），需强制重拉
+DAILY_CACHE_MIN_ROWS = 5000
+
+def daily_cache_complete(trade_date):
+    """判断某交易日 daily_cache 是否已缓存完整全市场数据（防部分写入导致成交额/涨跌失真）"""
+    try:
+        from stock_cache import get_daily_by_date_count
+        return get_daily_by_date_count(trade_date) >= DAILY_CACHE_MIN_ROWS
+    except Exception:
+        return False
+
 def safe_expanduser(path):
     if '~/tk.csv' in path or '\\tk.csv' in path or 'tk.csv' in path:
         return os.path.join(safe_cache_dir, 'tk.csv')
@@ -604,11 +615,11 @@ def get_market_overview(trade_date=None):
             overview["sh_index"] = sh_df.iloc[0]["close"]
             overview["sh_pct"] = sh_df.iloc[0]["pct_chg"]
 
-        # 全市场成交额（日线所有股票 amount 之和，千元→亿元）— V2: 优先 daily_cache 表
+        # 全市场成交额（日线所有股票 amount 之和，千元→亿元）— V3: daily_cache 表需完整性校验
         try:
             from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
             daily_df = None
-            if get_daily_by_date_count(trade_date) > 0:
+            if daily_cache_complete(trade_date):
                 daily_df = get_daily_by_date(trade_date)
             if daily_df is None or daily_df.empty:
                 daily_df = pro.daily(trade_date=trade_date)
@@ -621,7 +632,7 @@ def get_market_overview(trade_date=None):
             daily_df = None
             try:
                 from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
-                if get_daily_by_date_count(trade_date) > 0:
+                if daily_cache_complete(trade_date):
                     daily_df = get_daily_by_date(trade_date)
             except Exception:
                 pass
@@ -1797,11 +1808,11 @@ def get_limit_up_down_stats(trade_date=None):
     zhaban_count = 0
     
     try:
-        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）— V2: 优先 daily_cache 表
+        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）— V3: daily_cache 表需完整性校验
         try:
             from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
             daily = None
-            if get_daily_by_date_count(trade_date) > 0:
+            if daily_cache_complete(trade_date):
                 daily = get_daily_by_date(trade_date)
             if daily is None or daily.empty:
                 daily = pro.daily(trade_date=trade_date)
@@ -1814,7 +1825,7 @@ def get_limit_up_down_stats(trade_date=None):
             daily = None
             try:
                 from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
-                if get_daily_by_date_count(trade_date) > 0:
+                if daily_cache_complete(trade_date):
                     daily = get_daily_by_date(trade_date)
             except Exception:
                 pass
@@ -1892,11 +1903,11 @@ def get_limit_up_down_stats(trade_date=None):
     down_ratio = 0.0
     
     try:
-        # V2: 优先 daily_cache 表
+        # V3: daily_cache 表需完整性校验
         try:
             from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
             daily = None
-            if get_daily_by_date_count(trade_date) > 0:
+            if daily_cache_complete(trade_date):
                 daily = get_daily_by_date(trade_date)
             if daily is None or daily.empty:
                 daily = pro.daily(trade_date=trade_date)
@@ -1909,7 +1920,7 @@ def get_limit_up_down_stats(trade_date=None):
             daily = None
             try:
                 from stock_cache import get_daily_by_date, get_daily_by_date_count, batch_insert_daily_cache
-                if get_daily_by_date_count(trade_date) > 0:
+                if daily_cache_complete(trade_date):
                     daily = get_daily_by_date(trade_date)
             except Exception:
                 pass

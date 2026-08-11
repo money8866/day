@@ -97,7 +97,7 @@ REGIME_MAP = {
 # 二、环境调整参数（简单 ±5% 体系）
 # ============================================================
 
-MONEY_EFFECT_ADJ = {"强": +5, "中": 0, "弱": -5}
+MONEY_EFFECT_ADJ = {"强": +5, "中": 0, "弱": -5, "低": -10, "极差": -15}
 MAINLINE_ADJ     = {"强": +5, "中": 0, "弱": -5, "无": -10}
 RISK_ADJ         = {"正常风险": 0, "高风险": -10}
 # 量价环境调整（最大影响 ±5%，与赚钱效应去重：只使用相对量能+涨跌方向，不重复用上涨比例）
@@ -145,6 +145,9 @@ class PositionV99Result:
 
     liquidity_env: str = "正常量能"
     amount_ratio: float = 1.0
+    up_ratio: float = 0.5
+    bomb_ratio: float = 0.2
+    weak_veto: bool = False
 
     base_position: int = 20
     money_adj: int = 0
@@ -335,6 +338,8 @@ def _check_level2_reduce(v9):
 # ============================================================
 
 def _one_sentence(regime_cn, trend, money, mainline, risk, liq_env="正常量能"):
+    if regime_cn == "情绪冰点/退潮":
+        return "情绪退潮，一票否决防守，等待上涨家数回暖再恢复。"
     if risk == "高风险":
         if regime_cn == "快速下跌":
             return "快速下跌行情，防守第一，等待企稳信号。"
@@ -377,7 +382,7 @@ def _final_grade(regime_cn, money, mainline, target, liq_env="正常量能"):
         return "★★ 轻仓参与"
     if regime_cn == "冰点修复":
         return "★★ 逐步恢复"
-    if regime_cn in ("快速下跌", "极度冰点"):
+    if regime_cn in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
         return "★ 防守为主"
     return "★★★ 中性"
 
@@ -455,13 +460,19 @@ def _extract_overview(data, v9):
         ov.up_count = int(total * up_ratio / 100)
         ov.down_count = int(total * (100 - up_ratio) / 100)
 
-    # 涨跌停数据
-    limit_stats = getattr(data, 'limit_stats', None)
-    if limit_stats:
-        ov.zt_count = int(limit_stats.get('zt_count', limit_stats.get('limit_up', 0)) or 0)
-        ov.dt_count = int(limit_stats.get('dt_count', limit_stats.get('limit_down', 0)) or 0)
-        ov.zb_count = int(limit_stats.get('zb_count', limit_stats.get('broken_count', limit_stats.get('broken', 0))) or 0)
-        ov.zb_rate = float(limit_stats.get('zb_rate', limit_stats.get('broken_rate', 0)) or 0)
+    # 涨跌停数据（优先 overview 涨停池/跌停池口径，与大盘概况一致；limit_stats 作兜底）
+    if overview:
+        ov.zt_count = int(overview.get('zt_count', 0) or 0)
+        ov.dt_count = int(overview.get('dt_count', 0) or 0)
+        ov.zb_count = int(overview.get('zb_count', 0) or 0)
+        ov.zb_rate = float(overview.get('zb_rate', 0) or 0)
+    if ov.zt_count == 0:
+        limit_stats = getattr(data, 'limit_stats', None)
+        if limit_stats:
+            ov.zt_count = int(limit_stats.get('zt_count', limit_stats.get('limit_up', 0)) or 0)
+            ov.dt_count = int(limit_stats.get('dt_count', limit_stats.get('limit_down', 0)) or 0)
+            ov.zb_count = int(limit_stats.get('zb_count', limit_stats.get('broken_count', limit_stats.get('broken', 0))) or 0)
+            ov.zb_rate = float(limit_stats.get('zb_rate', limit_stats.get('broken_rate', 0)) or 0)
 
     # 从 V9 l4_sentiment 兜底
     if ov.zt_count == 0:
@@ -490,8 +501,8 @@ def _extract_overview(data, v9):
 def _run_consistency_checks(r, v9):
     checks = {}
 
-    # 检查1：仓位一致（目标在正常区间内，极端风险除外）
-    if r.emergency_brake:
+    # 检查1：仓位一致（目标在正常区间内，极端风险/一票否决除外）
+    if r.emergency_brake or r.weak_veto:
         checks["仓位一致"] = "PASS"
     elif r.position_normal_min <= r.position_target <= r.position_normal_max:
         checks["仓位一致"] = "PASS"
@@ -541,6 +552,8 @@ def _run_consistency_checks(r, v9):
         expected_min, expected_max = 3, 4
     elif r.market_regime in ("震荡无主线",):
         expected_min, expected_max = 2, 3
+    elif r.market_regime in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
+        expected_min, expected_max = 1, 2
     else:
         expected_min, expected_max = 1, 2
     if expected_min <= star_count <= expected_max:
@@ -583,6 +596,17 @@ class PositionEngineV99:
         r.d_day, r.d_day_desc = _judge_dday(v9)
         r.liquidity_env, r.liq_adj, r.amount_ratio = _judge_liquidity_env(v9)
 
+        # 极弱风控数据：上涨家数比例 + 炸板率比例（一票否决闸门用）
+        up_ratio = v9.l2_breadth.details.get('up_ratio', 50) / 100.0
+        bomb_ratio = v9.l4_sentiment.details.get('broken_rate', 0) / 100.0
+        r.up_ratio = up_ratio
+        r.bomb_ratio = bomb_ratio
+        weak_veto = up_ratio < 0.35
+        r.weak_veto = weak_veto
+        # 一票否决时赚钱效应降级为"低"（上涨占比仅30%的盘面，不能再标"中"）
+        if weak_veto:
+            r.money_effect = "低"
+
         # Regime
         regime_key = _classify_regime(v9, r.market_trend, r.money_effect, r.mainline_strength)
         info = SEVEN_REGIMES[regime_key]
@@ -591,6 +615,14 @@ class PositionEngineV99:
         normal_min = info["normal_min"]
         normal_max = info["normal_max"]
         r.position_confirm_cap = info["confirm_cap"]
+
+        # 极弱风控一票否决：上涨家数<35% → 情绪冰点/退潮，无论其他因素，上限强制封死15%
+        if weak_veto:
+            r.market_regime = "情绪冰点/退潮"
+            r.position_confirm_cap = min(r.position_confirm_cap, 15)
+            normal_max = min(normal_max, 15)
+            if normal_min > normal_max:
+                normal_min = normal_max
 
         # 环境调整
         r.money_adj = MONEY_EFFECT_ADJ.get(r.money_effect, 0)
@@ -617,14 +649,27 @@ class PositionEngineV99:
             normal_max = 10
 
         # 动作判断（严格：条件不满足绝不输出"加仓"）
-        if _check_level2_add(v9):
-            r.action = "加仓"
-            r.action_detail = "5～10%"
-            target = min(potential_target, normal_max, target + 10)
-        elif _check_level1_add(v9):
-            r.action = "加仓"
-            r.action_detail = "5%"
-            target = min(potential_target, normal_max, target + 5)
+        # 一票否决：上涨家数<35% → 减仓/防守（优先于一切）
+        if weak_veto:
+            r.action = "减仓/防守"
+            r.action_detail = "极弱风控（上涨%.0f%%＜35%%）" % (up_ratio * 100)
+        elif up_ratio > 0.55 and bomb_ratio < 0.20:
+            # 加仓必须赚钱效应确认：上涨>55% 且 炸板率<20%（修复"弱势却加仓"BUG）
+            if _check_level2_add(v9):
+                r.action = "加仓"
+                r.action_detail = "5～10%"
+                target = min(potential_target, normal_max, target + 10)
+            elif _check_level1_add(v9):
+                r.action = "加仓"
+                r.action_detail = "5%"
+                target = min(potential_target, normal_max, target + 5)
+            else:
+                r.action = "维持"
+                r.action_detail = ""
+        elif up_ratio < 0.40 or bomb_ratio > 0.30 or r.d_day >= 6:
+            # 弱势/高炸板/高位谨慎 → 减仓控仓
+            r.action = "减仓/控仓"
+            r.action_detail = "弱势环境（涨%.0f%%/炸板%.0f%%/D%d）" % (up_ratio * 100, bomb_ratio * 100, r.d_day)
         elif _check_level2_reduce(v9):
             r.action = "快速减仓"
             r.action_detail = "10～20%"
@@ -658,13 +703,17 @@ class PositionEngineV99:
             target = _apply_hysteresis(target, prev_pos, r.emergency_brake, r.action)
         elif r.action == "快速减仓" and prev_pos is not None:
             target = _apply_hysteresis(target, prev_pos, r.emergency_brake, r.action)
+        elif r.action in ("减仓/防守", "减仓/控仓") and prev_pos is not None:
+            # 目标 = 当前减10%，且不超过风控上限（一票否决15%/普通确认上限）
+            cap = r.position_confirm_cap
+            target = max(0, min(prev_pos - 10, cap))
 
         # 最终限制
         target = max(0, min(r.position_confirm_cap, target))
         target = int(round(target))
 
-        # 目标仓位必须落在正常区间内（极端风险除外）
-        if not r.emergency_brake and r.action != "快速减仓":
+        # 目标仓位必须落在正常区间内（极端风险/一票否决除外）
+        if not r.emergency_brake and not r.weak_veto and r.action != "快速减仓":
             if target < normal_min:
                 # 低于正常区间下限：如果没有明显高风险，修正到下限；否则保持（说明状态需要降级）
                 if r.risk_state != "高风险":
@@ -692,8 +741,11 @@ class PositionEngineV99:
         # 短线策略
         r.short_term_hint = self._build_short_term_hint(r)
 
-        # 评级
-        r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.position_target, r.liquidity_env)
+        # 评级（一票否决时直接锁定防守星级）
+        if r.weak_veto:
+            r.final_grade = "★ 防守为主"
+        else:
+            r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.position_target, r.liquidity_env)
 
         # 置信度
         r.confidence = int(v9.regime.confidence * 100)
@@ -726,7 +778,7 @@ class PositionEngineV99:
         return conds[:3]
 
     def _build_short_term_hint(self, r):
-        if r.market_regime in ("快速下跌", "极度冰点"):
+        if r.market_regime in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
             return "空仓观望为主，不抄底"
         if r.mainline_strength == "无":
             return "无主线，少动多看"
@@ -817,7 +869,9 @@ class PositionEngineV99:
 
         # 策略
         L.append("【策略】%s" % r.short_term_hint)
-        if r.mainline_strength in ("强", "中"):
+        if r.weak_veto:
+            L.append("主线：少做  非主线：不做")
+        elif r.mainline_strength in ("强", "中"):
             L.append("主线：做    非主线：少做")
         else:
             L.append("主线：少做  非主线：不做")

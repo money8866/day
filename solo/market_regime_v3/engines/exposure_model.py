@@ -11,7 +11,7 @@ V4 升级要点：
 
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import yaml
@@ -39,7 +39,11 @@ class ExposureResult:
     heat_multiplier: float           # 热度乘数
     regime_floor: float              # Regime 下限
     regime_cap: float                # Regime 上限
-    explain: Dict[str, str]
+    mainline_cap: float = 1.0        # 主线仓位闸门（reconcile 后生效）
+    original_exposure_pct: float = 0.0  # reconcile 前的原始仓位（%）
+    consistency_ok: bool = True      # 仓位一致性检查结果
+    consistency_errors: List[str] = field(default_factory=list)
+    explain: Dict[str, str] = field(default_factory=dict)
 
 
 # ── 预设热度乘数（与 heat_engine config.yaml 同步） ──
@@ -270,6 +274,108 @@ class ExposureModel:
             regime_cap=cap,
             explain=explain,
         )
+
+    # ──────────────────────────────────────────────
+    # V2修复: 最终仓位闸门校准
+    # ──────────────────────────────────────────────
+
+    def reconcile(self, result: ExposureResult,
+                  has_mainline: bool, has_leader: bool) -> ExposureResult:
+        """V2修复：主线仓位闸门 + 仓位分配强制约束 + 一致性检查
+
+        Final Position = min(Original Position, Regime Cap, Mainline Cap)
+
+        Mainline Cap 规则：
+          有效主线 + 有效龙头 → 使用 Regime Cap
+          无主线   + 有龙头   → 20%
+          有主线   + 无龙头   → 20%
+          无主线   + 无龙头   → 15%
+
+        分配约束：
+          Active Themes=0         → ETF=0%、Follow=0%
+          Leader Quality=NONE    → Leader=0%
+          ETF + Leader + Follow <= Final Position
+          Final Position + Cash = 100%
+
+        Args:
+            result: calculate() 的原始结果
+            has_mainline: 是否存在有效主线（Active Themes > 0）
+            has_leader: 是否存在有效龙头（Leader Quality != NONE）
+        """
+        original = result.portfolio_exposure
+
+        # ── Step 1: Mainline Cap ──
+        if has_mainline and has_leader:
+            mainline_cap = result.regime_cap
+        elif has_mainline or has_leader:
+            mainline_cap = 0.20
+        else:
+            mainline_cap = 0.15
+
+        # ── Step 2: Final Position = min(Original, Regime Cap, Mainline Cap) ──
+        final_position = min(original, result.regime_cap, mainline_cap)
+        final_position = max(0.0, final_position)
+
+        # ── Step 3: 强制分配约束 ──
+        etf = result.etf_allocation if has_mainline else 0.0
+        leader = result.leader_allocation if has_leader else 0.0
+        follower = result.follower_allocation if has_mainline else 0.0
+
+        # ETF + Leader + Follow <= Final Position（超出时按比例缩放）
+        total_alloc = etf + leader + follower
+        if total_alloc > final_position + 1e-9 and total_alloc > 0:
+            scale = final_position / total_alloc
+            etf *= scale
+            leader *= scale
+            follower *= scale
+            total_alloc = final_position
+
+        cash = 1.0 - final_position
+        if cash < 0:
+            cash = 0.0
+
+        # ── Step 4: Position Consistency Check ──
+        errors: List[str] = []
+        if final_position > original + 1e-9:
+            errors.append("Final Position > Original Position")
+        if final_position > result.regime_cap + 1e-9:
+            errors.append("Final Position > Regime Cap")
+        if final_position > mainline_cap + 1e-9:
+            errors.append("Final Position > Mainline Cap")
+        if etf + leader + follower > final_position + 1e-9:
+            errors.append("ETF + Leader + Follow > Final Position")
+        if abs((final_position + cash) - 1.0) > 1e-6:
+            errors.append("Final Position + Cash != 100%")
+
+        # ── Step 5: 写回结果 ──
+        result.portfolio_exposure = round(final_position, 4)
+        result.portfolio_exposure_pct = round(final_position * 100.0, 2)
+        result.etf_allocation = round(etf, 4)
+        result.leader_allocation = round(leader, 4)
+        result.follower_allocation = round(follower, 4)
+        result.cash_allocation = round(cash, 4)
+        result.mainline_cap = round(mainline_cap, 4)
+        result.original_exposure_pct = round(original * 100.0, 2)
+        result.consistency_ok = not errors
+        result.consistency_errors = errors
+
+        result.explain['mainline_cap'] = (
+            f"主线={has_mainline} 龙头={has_leader} → Mainline Cap {mainline_cap:.0%}"
+        )
+        result.explain['final'] = (
+            f"Final = min(Original {original:.0%}, Regime Cap {result.regime_cap:.0%}, "
+            f"Mainline Cap {mainline_cap:.0%}) = {final_position:.0%}"
+        )
+        result.explain['effective'] = (
+            f"Final {final_position:.0%} → "
+            f"ETF {etf:.1%} / Leader {leader:.1%} / "
+            f"Follower {follower:.1%} / Cash {cash:.1%}"
+        )
+        result.explain['consistency'] = (
+            "✅ OK" if result.consistency_ok else "⚠️ Position Allocation Error: " + "; ".join(errors)
+        )
+
+        return result
 
 
 def load_config() -> dict:
