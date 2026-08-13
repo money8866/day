@@ -211,17 +211,30 @@ TRADE_DATE = get_last_trade_date()
 
 
 # =========================
-# 大盘可买入提示（三指数动量闸门）
+# 大盘环境提示（三指数动量，仅作参考，不再硬性拦截）
 # =========================
-# 回测验证: 三指数(上证/沪深300/创业板指)20日动量均值 > +3% 时买入, 胜率42.4% 均收益+1.76%
+# 回测验证(2024-01~2026-08, 每日Top3, T+5, 止损-7%)按动量分组:
+#   强市>+3%: 47.7%/+1.64% | 震荡偏强0~3%: 33.8%/-1.09% | 震荡偏弱-3~0%: 36.9%/-0.11% | 弱市<=-3%: 41.8%/-0.06%
+# 闸门越严整体期望越高，但震荡期个股差异大，故仅作环境提示，由用户自行选择
 INDEX_CODES_3 = ["000001.SH", "000300.SH", "399006.SZ"]
 INDEX_NAMES_3 = {"000001.SH": "上证", "000300.SH": "沪深300", "399006.SZ": "创业板"}
 MOM_GATE_THRESHOLD = 3.0
 
 
+def _mom_env(avg):
+    """按三指数20日动量均值返回环境档位 (label, 回测胜率参考)"""
+    if avg > MOM_GATE_THRESHOLD:
+        return "🟢 强市", "47.7%/+1.64%"
+    if avg > 0:
+        return "🟡 震荡偏强", "33.8%/-1.09%"
+    if avg > -3:
+        return "🟠 震荡偏弱", "36.9%/-0.11%"
+    return "🔴 弱市", "41.8%/-0.06%"
+
+
 def get_index_momentum(target_date=None):
-    """三指数20日动量均值(%) 与各指数动量, 用于大盘可买入闸门.
-    Returns: dict(date/mom20_avg/per/gate) 或 None(数据不足)
+    """三指数20日动量均值(%) 与各指数动量, 用于大盘环境提示.
+    Returns: dict(date/mom20_avg/per/env/win_ref) 或 None(数据不足)
     """
     end = str(target_date or TRADE_DATE)
     start = (datetime.strptime(end, "%Y%m%d") - timedelta(days=60)).strftime("%Y%m%d")
@@ -243,26 +256,22 @@ def get_index_momentum(target_date=None):
         return None
     avg = float(np.mean(list(per.values())))
     dset = set(dates.values())
+    env, win_ref = _mom_env(avg)
     return {
         'date': dset.pop() if len(dset) == 1 else sorted(dset)[-1],
         'mom20_avg': round(avg, 2),
         'per': per,
+        'env': env,
+        'win_ref': win_ref,
         'gate': avg > MOM_GATE_THRESHOLD,
     }
 
 
 def _print_market_tip(tip):
-    """打印大盘可买入提示"""
-    avg = tip['mom20_avg']
-    if tip['gate']:
-        flag, level = "🟢 可买入", f"三指数20日动量>{MOM_GATE_THRESHOLD}% 闸门通过"
-    elif avg > 0:
-        flag, level = "🟡 谨慎观望", "动量为正但未达闸门阈值"
-    else:
-        flag, level = "🔴 不建议买入", "三指数20日动量<=0"
+    """打印大盘环境提示"""
     s = " ".join(f"{INDEX_NAMES_3[c]}={tip['per'][c]:+.1f}%" for c in tip['per'])
-    print(f"\n[大盘提示] {tip['date']} 三指数20日动量均值 {avg:+.1f}% ({s}) → {flag}")
-    print(f"           {level}")
+    print(f"\n[大盘提示] {tip['date']} 三指数20日动量均值 {tip['mom20_avg']:+.1f}% ({s}) → {tip['env']}")
+    print(f"           回测参考(T+5): {tip['win_ref']}")
 
 
 # =========================
@@ -926,6 +935,12 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         today_pct = (close_arr[-1] / pre_close_arr[-1] - 1) * 100 if pre_close_arr[-1] > 0 else 0
         if today_pct <= -7.0:
             return None
+        # 排除今日涨停（用户偏好：只做低吸/小中阳突破，过滤涨停股）
+        # 双创(30x/688)涨停线20%，主板涨停线10%
+        _code6 = str(ts_code).split('.')[0]
+        _zt_line = 19.5 if _code6.startswith(('300', '301', '688')) else 9.8
+        if today_pct >= _zt_line:
+            return None
         if len(df) < 180:
             return None
         if vol_vs_hist_pct < 50:
@@ -1151,7 +1166,7 @@ def run(target_date=None, with_chip=True, simple=False):
     _filtered_codes = set(_filtered['ts_code'].tolist())
     print(f'\n[目标股池] 总市值>80亿共 {len(_filtered_codes)} 只，开始扫描...')
 
-    # 大盘可买入提示（三指数动量闸门，回测验证 >+3% 才可买入）
+    # 大盘环境提示（三指数动量，仅作参考，不拦截输出）
     market_tip = None
     try:
         market_tip = get_index_momentum(TRADE_DATE)
@@ -1160,7 +1175,7 @@ def run(target_date=None, with_chip=True, simple=False):
     if market_tip:
         _print_market_tip(market_tip)
     else:
-        print("[大盘提示] 指数动量数据不足，跳过闸门判断")
+        print("[大盘提示] 指数动量数据不足，跳过环境提示")
 
     # 批量预取（复用缓存）
     try:
@@ -1255,14 +1270,12 @@ def _output_report(results, simple=False, market_tip=None):
 
     lines = [f"# 量能爆发+宽幅震荡选股 — {TRADE_DATE}", ""]
 
-    # 大盘可买入提示（三指数动量闸门）
+    # 大盘环境提示（三指数动量，仅作参考，不再硬性拦截）
     if market_tip:
-        _flag = ("🟢 可买入" if market_tip['gate']
-                 else ("🟡 谨慎" if market_tip['mom20_avg'] > 0 else "🔴 不建议买入"))
         _s = " ".join(f"{INDEX_NAMES_3[c]}={market_tip['per'][c]:+.1f}%"
                       for c in market_tip['per'])
-        lines.append(f"> 大盘闸门(三指数20日动量均值): {market_tip['mom20_avg']:+.1f}% "
-                     f"({_s}) → {_flag}")
+        lines.append(f"> 大盘环境: {market_tip['env']} | 三指数20日动量均值 {market_tip['mom20_avg']:+.1f}% ({_s})")
+        lines.append(f"> 回测参考(T+5胜率/均收益): {market_tip['win_ref']} | 环境仅供自行决策，不构成买入拦截")
         lines.append("> 买入方式: 次日开盘 · 持有T+5 · 盘中-7%止损 · 每日Top3")
         lines.append("")
 
@@ -1270,9 +1283,9 @@ def _output_report(results, simple=False, market_tip=None):
     # 回测结论(2024-01~2026-08, 三指数动量>+3%闸门, T+5, 止损-7%): 每日只数5→3 胜率45.7%→47.7%、均收益+1.35%→+1.64%;
     # "强买优先Top5"排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故买入排序只用 r2 距MA20，强买仅作形态参考
     vs_top5 = sorted(results, key=lambda x: (x['距MA20'] > 8, x['距MA20']))[:3]
-    lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选）")
-    if market_tip and not market_tip['gate']:
-        lines.append("【⚠️ 大盘闸门未通过，以下仅观察，不建议买入】")
+    lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选，自行选择）")
+    if market_tip:
+        lines.append(f"【环境提示】{market_tip['env']}，回测参考(T+5): {market_tip['win_ref']} | 是否买入请自行决策")
     for i, _vr in enumerate(vs_top5, 1):
         _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
         lines.append(f"【TOP{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
@@ -1293,7 +1306,7 @@ def _output_report(results, simple=False, market_tip=None):
             lines.append(_chip_v5_line(_vr))
     else:
         lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
-    lines.append("【回测提示】同等闸门(2024-01~2026-08, T+5, 止损-7%)：强买全量胜率44.8%/均+1.73%并不低于评分Top3；但『强买优先』排序是负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，强买仅作形态参考，买入以🎯TOP3为准")
+    lines.append("【回测提示】同等闸门(2024-01~2026-08, T+5, 止损-7%)：强买全量胜率44.8%/均+1.73%并不低于评分Top3；『强买优先』排序是负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，强买仅作形态参考，买入以🎯TOP3为准")
     lines.append("")
 
     if vs_watch:
