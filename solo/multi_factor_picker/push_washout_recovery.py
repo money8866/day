@@ -253,7 +253,19 @@ def push_to_wechat(msg: str, title: str = None) -> bool:
 
 
 def main():
-    report_path = find_latest_report()
+    # 支持 --date YYYYMMDD 指定历史交易日（与 enhanced_timing_bull_all.py --date 一致），
+    # 不传时自动取最新报告
+    date_str = None
+    if len(sys.argv) >= 3 and sys.argv[1] == '--date':
+        date_str = sys.argv[2]
+    if date_str:
+        target = os.path.join(REPORT_DIR, f'enhanced_timing_bull_all_{date_str}.csv')
+        report_path = target if os.path.exists(target) else None
+        if not report_path:
+            print(f'未找到 {date_str} 的增强择时报告')
+            return
+    else:
+        report_path = find_latest_report()
     if not report_path:
         print('未找到增强择时报告')
         return
