@@ -49,12 +49,11 @@ if os.path.exists(ENV_PATH):
                 pushplus_token = line.split("=", 1)[1].strip()
 
 # ── 读取数据 ──
+# 读全量而非前50名：可操作榜/低吸买点需在全量池里筛（曾因只读rank≤50漏掉可操作标的）
 eld_stocks = []
 with open(ELD_CSV, encoding="utf-8-sig") as f:
     reader = csv.DictReader(f)
     for row in reader:
-        if int(row["rank"]) > 50:
-            break
         eld_stocks.append(row)
 
 with open(THEME_MAP, encoding="utf-8") as f:
@@ -68,7 +67,7 @@ for tname, stocks in ts_map.get("themes", {}).items():
         if code:
             stock_to_themes[code].append(tname)
 
-unmapped = [s for s in eld_stocks if not stock_to_themes.get(s["ts_code"], [])]
+unmapped = [s for s in eld_stocks[:50] if not stock_to_themes.get(s["ts_code"], [])]
 
 # ── 构建推送消息（最佳精简模式） ──
 # 结构: 市场状态 → 今日可操作 → 个股排行TOP10 → 低吸买点 → 风险提示 → 操作策略
@@ -106,7 +105,7 @@ def _market_weak() -> bool:
 
 _market_weak_flag = _market_weak()
 mkt_str = "⚠️弱市（大盘<MA20），今日以观望为主" if _market_weak_flag else "✅市场正常（大盘≥MA20）"
-mapped_n = len(eld_stocks) - len(unmapped)
+mapped_n = 50 - len(unmapped)
 lines.append(f"> {mapped_n}/50映射主题 ｜ {mkt_str}")
 lines.append("")
 

@@ -528,18 +528,23 @@ def _find_highest_since_announce(
     data: list[DailyPriceData],
     announce_date: str,
 ) -> tuple[float, int]:
-    """找到公告日至今的最高价。"""
+    """找到公告日至今的最高价，并返回公告后第几个交易日（days_since）。
+
+    修复: 原实现循环结束后 days_since 被最后一根bar覆盖为0，
+    导致"公告时间窗口"条件恒不满足、可操作榜5-12日过滤恒为空。
+    """
     highest = 0.0
     days_since = 0
-    found = False
+    ann_idx = -1
 
     for i, bar in enumerate(data):
         if bar.trade_date == announce_date:
-            found = True
-        if found:
-            if bar.high > highest:
-                highest = bar.high
-            days_since = len(data) - i - 1
+            ann_idx = i
+            break
+
+    if ann_idx >= 0:
+        days_since = len(data) - ann_idx - 1
+        highest = max((bar.high for bar in data[ann_idx:]), default=0.0)
 
     return highest, days_since
 

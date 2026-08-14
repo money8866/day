@@ -1455,7 +1455,8 @@ class DataFetcher:
         cache_key = f"daily_code_{self._safe_name(ts_code)}_{start_date}_{end_date}"
 
         if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            # 请求覆盖"今天"时缩短缓存过期(2h)，避免盘前旧缓存被收盘后/定时任务复用
+            cached = load_cache(self.cache_dir, cache_key, self._expire_for_end(end_date, self.expire_hours))
             if cached is not None:
                 return cached
 
@@ -1526,10 +1527,18 @@ class DataFetcher:
 
     # ─── 以下为 bull_scorer_v2 等评分器复用的原始 DataFrame 接口 ───
 
+    def _expire_for_end(self, end_date, base):
+        """请求覆盖'今天'时缩短缓存过期(2h)：盘前旧缓存不应被收盘后/定时任务复用"""
+        today = datetime.now().strftime('%Y%m%d')
+        if end_date and str(end_date) >= today:
+            return 2
+        return base
+
     def _get_df_cached(self, cache_key: str, api_func, **kwargs) -> pd.DataFrame:
         """通用：调用 API 获取原始 DataFrame 并缓存（parquet）"""
         if self.cache_enabled:
-            cached = load_cache(self.cache_dir, cache_key, self.expire_hours)
+            expire = self._expire_for_end(kwargs.get('end_date'), self.expire_hours)
+            cached = load_cache(self.cache_dir, cache_key, expire)
             if cached is not None:
                 return cached
         try:
