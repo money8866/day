@@ -1,5 +1,5 @@
 """
-量能爆发+宽幅震荡选股程序（独立版）
+VSW（Volume Surge + Wide-swing）量能爆发+宽幅震荡选股程序 — VSW V2（独立版）
 
 从 tushare_quant.py 提取的"量能爆发+宽幅震荡"选股策略：
 像火星人/时代电气/奥比中光/沃顿科技那样的"近期量能大幅放大创历史新高量能，且区间股价宽幅震荡"。
@@ -926,6 +926,15 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             return None
         if vol_ratio_gt2 < 3:
             return None
+        # 近20日量能活跃度硬条件（用户要求20260815：量能放大须发生在近期，而非仅靠历史峰值过关）
+        # 共进股份启动前形态：近20日 max≈2.48/mean≈1.63；华光环能近20日 max=2.70/mean=1.21 被过滤
+        _vol_ratio_20 = vol_ratio[-20:]
+        if len(_vol_ratio_20) < 20:
+            return None
+        if float(np.nanmax(_vol_ratio_20)) < 2.0:
+            return None
+        if float(np.nanmean(_vol_ratio_20)) < 1.4:
+            return None
         if avg_amplitude < 4.5:
             return None
         if range_swing < 35:
@@ -1153,7 +1162,7 @@ def run(target_date=None, with_chip=True, simple=False):
         target_date = str(target_date)
         TRADE_DATE = validate_trade_date(target_date)
         print(f"\n{'='*60}")
-        print(f"[量能选股] 目标日期: {TRADE_DATE}")
+        print(f"[VSW V2 量能选股] 目标日期: {TRADE_DATE}")
         print(f"{'='*60}\n")
 
     market = get_market()
@@ -1268,7 +1277,7 @@ def _output_report(results, simple=False, market_tip=None):
     vs_watch = sorted([x for x in results if x.get('观察信号') and not x.get('强买信号')], key=lambda x: -x['量能爆发评分'])
     vs_wave_surge = sorted([x for x in results if x.get('蓄势大涨信号')], key=lambda x: -x['量能爆发评分'])
 
-    lines = [f"# 量能爆发+宽幅震荡选股 — {TRADE_DATE}", ""]
+    lines = [f"# VSW V2 量能爆发+宽幅震荡选股 — {TRADE_DATE}", ""]
 
     # 大盘环境提示（三指数动量，仅作参考，不再硬性拦截）
     if market_tip:
@@ -1279,10 +1288,25 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append("> 买入方式: 次日开盘 · 持有T+5 · 盘中-7%止损 · 每日Top3")
         lines.append("")
 
-    # 🎯 算法输出 TOP3（r2：距MA20升序优先(<=8%在前)，>8%尾部补足；回测胜率+2.8pp）
+    # 🎯 算法输出 TOP3（r4：距MA20贴地优先(<=+3%)+红柱回调缩短分支优先+距MA20升序+评分次级）
     # 回测结论(2024-01~2026-08, 三指数动量>+3%闸门, T+5, 止损-7%): 每日只数5→3 胜率45.7%→47.7%、均收益+1.35%→+1.64%;
-    # "强买优先Top5"排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故买入排序只用 r2 距MA20，强买仅作形态参考
-    vs_top5 = sorted(results, key=lambda x: (x['距MA20'] > 8, x['距MA20']))[:3]
+    # "强买优先Top5"排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故买入排序只用 距MA20+评分 组合，强买仅作形态参考
+    # r4 相对 r3 改动(20260814回测)：叠加MACD形态偏好——红柱回调缩短④=49.7%/+2.29%为全分支最优(中位+0.00%唯一非负)，
+    #   红柱回调后反弹⑤=37.7%、刚刚红柱③=37.1%次之，即将红柱②=32.0%/-0.30%最差(共进形态全量负期望)；
+    #   贴地≤3%仍为第一优先级(全量∩≤3% 47.6% vs 全量44.3%；红柱回调∩≤3% 55.5%为全池最高胜率组合)
+    # 20260804~14 实测：距MA20<=3%贴地票8笔全盈利(均+11.7%)，距>+7%追高票2笔止损(-7%)，支撑贴地优先
+    _MACD_RANK = {
+        '红柱回调缩短（趋势延续）': 0,   # ④ 49.7%/+2.29% 最优
+        '红柱回调后反弹（趋势延续）': 1,   # ⑤ 37.7%/+0.65%
+        '刚刚红柱 ✅': 1,               # ③ 37.1%/+0.64%
+        '即将红柱（绿柱连续缩短）': 2,     # ② 32.0%/-0.30% 最差
+    }
+    vs_top5 = sorted(results, key=lambda x: (
+        x['距MA20'] > 3,                        # ① 距MA20<=+3% 贴地/回调到位 优先
+        _MACD_RANK.get(x['MACD状态'], 1),        # ② 红柱回调缩短分支优先（回测最优）
+        x['距MA20'],                            # ③ 距MA20升序（负值/贴地更靠前）
+        -x['量能爆发评分'],                       # ④ 同级评分降序（高分优先）
+    ))[:3]
     lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选，自行选择）")
     if market_tip:
         lines.append(f"【环境提示】{market_tip['env']}，回测参考(T+5): {market_tip['win_ref']} | 是否买入请自行决策")
@@ -1344,7 +1368,7 @@ def _output_report(results, simple=False, market_tip=None):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='量能爆发+宽幅震荡选股（独立版）')
+    parser = argparse.ArgumentParser(description='VSW V2 量能爆发+宽幅震荡选股（独立版）')
     parser.add_argument('target_date', nargs='?', default=None, help='目标日期 YYYYMMDD')
     parser.add_argument('--no-chip', action='store_true', help='不注入 Chip Alpha')
     parser.add_argument('--simple', action='store_true', help='简易模式（不保存报告）')

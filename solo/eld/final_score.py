@@ -545,9 +545,17 @@ class FinalScoreEngine:
             inst_accum_score=inst_acc_r.score,
             industry_score=ind_r.score,
             etf_score=etf_score,
-            trend_alpha=trend_r.alpha * 100.0,  # 小数收益率→百分数，用于兜底惩罚
+            trend_alpha=trend_r.alpha * 100.0,  # 小数收益率->百分数，用于兜底惩罚
         )
         result.final_score_v2 = self.apply_market_multiplier(result.els_v2, market)
+
+        # 行业热度加成（20260814 回测实证：industry_score>=90 加15分 / >=80 加10分，
+        # 0804 大牛股密度 2.01x->2.35x、TOP30 均值 +10.5%->+13.7%；0806 持平不损）
+        # 逻辑：预增池内 event_quality 近饱和(预过滤>=30%)，行业景气是主要区分维度
+        if ind_r.score >= 90:
+            result.final_score_v2 = min(100.0, result.final_score_v2 + 15.0)
+        elif ind_r.score >= 80:
+            result.final_score_v2 = min(100.0, result.final_score_v2 + 10.0)
 
         # Stage 13.5: 最佳买点信号 V2门槛校验
         # 质量分高但V2<55时，BUY降级为WATCH（基本面不达标不追）

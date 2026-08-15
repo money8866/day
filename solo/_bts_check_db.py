@@ -1,0 +1,11 @@
+import sqlite3, sys
+sys.stdout.reconfigure(encoding='utf-8')
+conn = sqlite3.connect(r'D:\mystock\cache_daily\stock_data.db')
+cur = conn.cursor()
+cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_cache'")
+print('schema:', cur.fetchone())
+cur.execute("SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='daily_cache'")
+print('indexes:', cur.fetchall())
+cur.execute("EXPLAIN QUERY PLAN SELECT close FROM daily_cache WHERE ts_code='300404.SZ' AND trade_date>='19900101' AND trade_date<='20260814' ORDER BY trade_date")
+print('plan:', cur.fetchall())
+conn.close()

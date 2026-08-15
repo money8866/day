@@ -7764,65 +7764,55 @@ def run(target_date=None, simple_mode=False):
         print("[回踩买点] 已加载中报优质股池买点信号")
 
     # =========================
-    # 主线第一次回调信号（V7.2：区间放量多涨停拉升后回调 + 低开阳线承接）
-    # 数据来源: market_regime_v3/main.py 盘后扫描导出的 rally_pullback_{trade_date}.json
+    # ELD 业绩预增买点 TOP3（读取 eld 每日评分报告 V2 前三，追加为报告最后一段）
     # =========================
-    def _load_rally_pullback_signals(trade_date: str) -> str:
-        """读取主线第一次回调信号（区间放量多涨停拉升后回调 + 低开阳线承接）"""
+    def _load_eld_top3(trade_date: str) -> str:
+        r"""读取 ELD 报告 CSV（D:\mystock\report_daily\eld_report_YYYYMMDD.csv），按 final_score_v2 取 TOP3"""
         cand = [
-            os.path.join(r"D:\mystock\solo\report_daily", f"rally_pullback_{trade_date}.json"),
-            os.path.join(REPORT_DIR, f"rally_pullback_{trade_date}.json"),
+            os.path.join(r"D:\mystock\report_daily", f"eld_report_{trade_date}.csv"),
+            os.path.join(REPORT_DIR, f"eld_report_{trade_date}.csv"),
+            os.path.join(r"D:\mystock\solo\report_daily", f"eld_report_{trade_date}.csv"),
         ]
         files = [p for p in cand if os.path.exists(p)]
         if not files:
             return ""
+        latest = max(files, key=os.path.getmtime)
         try:
-            import json as _json
-            with open(max(files, key=os.path.getmtime), 'r', encoding='utf-8') as f:
-                data = _json.load(f)
-            signals = data.get("signals", [])
-            if not signals:
+            df = pd.read_csv(latest, encoding="utf-8-sig")
+            if df.empty:
                 return ""
-            lines = []
-            lines.append("【主线第一次回调信号】")
-            lines.append(f"数据来源：区间放量多涨停拉升后回调+低开阳线承接（V7.2，共{len(signals)}只，只做主板/20天短线爆发）")
-            lines.append("")
-            for i, s in enumerate(signals, 1):
-                name = s.get("name", "")
-                code = s.get("ts_code", "")
-                theme = s.get("theme", "")
-                total = s.get("total_score", 0)
-                amps = s.get("rally_amplitude", 0)
-                lu = s.get("rally_limit_up_count", 0)
-                mlu = s.get("rally_max_consecutive_lu", 0)
-                volx = s.get("rally_vol_expansion", 0)
-                dd = s.get("drawdown", 0)
-                pb_days = s.get("pullback_days", 0)
-                o_gap = s.get("candle_open_gap", 0)
-                body = s.get("candle_body_pct", 0)
-                ref = s.get("ref_price", 0)
-                sl = s.get("stop_loss", 0)
-                tp = s.get("take_profit", 0)
-                subs = s.get("subs", {})
-                theme_s = f" 主题:{theme}" if theme else ""
-                profit_s = f" 止盈:{tp}(+{(tp/ref-1)*100:.0f}%)" if ref and tp > ref else ""
+            df = df.sort_values("final_score_v2", ascending=False).head(3)
+            _sig_map = {"BUY": "买入", "IGNORE": "忽略", "OBSERVE": "观望"}
+            lines = [
+                "【ELD 业绩预增买点 TOP3】",
+                f"数据来源：{os.path.basename(latest)}（业绩预增≥30%池·V2综合评分前三）",
+                "",
+            ]
+            for i, row in df.iterrows():
+                _sig = str(row.get("earnings_buy_signal", "")).strip().upper()
+                _sig_cn = _sig_map.get(_sig, _sig or "-")
+                _bp = float(row.get("reference_buy_price") or 0)
+                _sl = float(row.get("stop_loss_price") or 0)
+                _bp_s = f"{_bp:.2f}" if _bp > 0 else "-"
+                _sl_s = f"{_sl:.2f}" if _sl > 0 else "-"
                 lines.append(
-                    f"【{name}】({code}) 总分:{total:.0f}/100{theme_s} | "
-                    f"拉升+{amps*100:.0f}% 涨停×{lu}(连板{mlu}) 放量{volx:.1f}倍 | "
-                    f"回撤{dd*100:.1f}%(回调{pb_days}天) | "
-                    f"低开{o_gap*100:.1f}%→阳线{body*100:.1f}% | "
-                    f"分项:放量{subs.get('vol_expansion',0):.0f} 涨停{subs.get('limit_up',0):.0f} "
-                    f"回调{subs.get('pullback',0):.0f} 阳线{subs.get('candle',0):.0f} 量能{subs.get('volume_confirm',0):.0f} | "
-                    f"低吸:{ref:.2f} 止损:{sl:.2f}({(sl/ref-1)*100:+.0f}%){profit_s}"
+                    f"{len(lines)-2}.{row.get('name','')}({row.get('ts_code','')}) "
+                    f"V2:{float(row.get('final_score_v2') or 0):.0f} "
+                    f"预增+{float(row.get('forecast_pct') or 0):.0f}% "
+                    f"行业{float(row.get('industry_score') or 0):.0f} "
+                    f"机构:{row.get('institution_state','') or '-'} "
+                    f"买点:{_sig_cn} "
+                    f"Buy:{float(row.get('buy_score') or 0):.0f}({row.get('buy_score_level','') or '-'}) "
+                    f"参考价{_bp_s} 止损{_sl_s}"
                 )
             return "\n".join(lines)
         except Exception as e:
-            print(f"[主线回调] 加载失败: {e}")
+            print(f"[ELD TOP3] 加载失败: {e}")
             return ""
 
-    rally_pullback_text = _load_rally_pullback_signals(TRADE_DATE)
-    if rally_pullback_text:
-        print("[主线回调] 已加载主线第一次回调信号")
+    eld_top3_text = _load_eld_top3(TRADE_DATE)
+    if eld_top3_text:
+        print("[ELD TOP3] 已加载业绩预增买点TOP3")
 
     # =========================
     # ETF操作提示（读取主线轮动汇总报告的精简版）
@@ -7865,10 +7855,6 @@ def run(target_date=None, simple_mode=False):
 **【今日突破股池】**
 {hot_money_open_text}
 **【今日突破股池到此为止】**
-
-**【主线第一次回调信号】**
-{rally_pullback_text or '  (今日无主线第一次回调信号，请提示"今日无主线回调信号")'}
-**【主线第一次回调信号到此为止】**
 
 
 请分析并输出内容：
@@ -8003,14 +7989,11 @@ TOP2：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
 
-7、**【主线第一次回调信号】**（区间放量多涨停拉升后回调 + 低开阳线承接，只做主板/20天短线爆发）：
-（【数据边界-最高优先级】本段落只分析上方"**【主线第一次回调信号】**"和"**【主线第一次回调信号到此为止】**"两个标记之间的数据中股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无主线第一次回调信号"。
-【输出要求】每只股票第一行必须直接给出明确结论：✅回调低吸可买入 / ⚠️回踩未稳继续观察 / ❌退潮不碰，结论必须严格引用上方标注的"低开→阳线"形态与"回撤幅度"数据，禁止自行改判或美化：
-- ✅ 判定标准：低开阳线实体≥2% 且 回撤 5%~15%（回调深度适中）且 放量≥2倍
-- ⚠️ 判定标准：阳线实体<2%，或回撤<5%（回调不充分），或回调天数<3天
-- ❌ 判定标准：回撤>15%（回调过深，趋势可能破坏），或拉升幅度异常（涨停数≥5且连板≥4的高位炸板风险）
-仅对"✅回调低吸可买入"的个股补充低吸价/止损位（严格引用上方"低吸:"和"止损:"字段），每只力求精简，适合手机阅读。严禁编造上方数据中不存在的价格数字。）
-
+7、**【ELD 业绩预增买点 TOP3】**（业绩预增≥30%池·V2综合评分前三）：
+{eld_top3_text}
+【输出要求-第7段】本段只输出上方"【ELD 业绩预增买点 TOP3】"的 3 只，删除"数据来源"行，每只按下列格式输出，且**每只股票之间空一行（加一个空行分隔），便于手机阅读**：
+名称：代码, V2=xx分, 预增+xx%, 行业热度xx分, 机构:xx, 买点:✅可买入/⚠️谨慎/❌禁止, Buy:xx分, 参考价xx, 止损xx
+若 Buy<60（禁止）或机构=派发，务必标注风险提示；若该段落无数据则提示"今日无 ELD 业绩预增买点信号"。
 
 ------------------
 以上全局格式要求：
@@ -8019,7 +8002,7 @@ TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 7 段 ELD 业绩预增买点 TOP3）
 
 """
     if not simple_mode:

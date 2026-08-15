@@ -73,8 +73,11 @@ logger.info("=" * 60)
 cfg = get_config()
 cache = EldCache(cfg.cache)
 ds = EldDataSource(cfg.tushare.token, cache)
-trade_date = get_last_trade_date()
-logger.info("交易日: %s", trade_date)
+# 支持环境变量指定历史交易日重跑（如 ELD_TARGET_DATE=20260804 python eld/_run_eld.py）
+# 未指定时自动取最近交易日
+_env_date = os.environ.get("ELD_TARGET_DATE", "").strip()
+trade_date = _env_date if _env_date else get_last_trade_date()
+logger.info("交易日: %s%s", trade_date, " (ELD_TARGET_DATE指定)" if _env_date else "")
 
 # ── 1. 获取业绩预告 ──
 logger.info("Step 1: 获取业绩预告...")

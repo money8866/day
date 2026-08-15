@@ -1,0 +1,37 @@
+{
+  "trade_date": "20260804",
+  "market_score": null,
+  "regime": null,
+  "signals": [
+    {
+      "ts_code": "601606.SH",
+      "name": "长城军工",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 78.01189140758544,
+      "rally_amplitude": 0.4141213804046012,
+      "rally_vol_expansion": 3.0501058766222053,
+      "rally_limit_up_count": 3,
+      "rally_max_consecutive_lu": 3,
+      "rally_high_date": "20260730",
+      "drawdown": 0.06030855539971946,
+      "pullback_days": "3",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.01402011581834809,
+      "candle_body_pct": 0.03554868624420397,
+      "subs": {
+        "vol_expansion": 29.68689140758544,
+        "limit_up": 11.875,
+        "pullback": 14.0,
+        "candle": 12.45,
+        "volume_confirm": 10.0
+      },
+      "ref_price": 33.5,
+      "stop_loss": 30.31,
+      "take_profit": 39.89,
+      "atr": 2.13
+    }
+  ]
+}
