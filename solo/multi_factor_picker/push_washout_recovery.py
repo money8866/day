@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-EGPT (Earnings Growth Pullback Timing) v1.2.0 - 中报预增回踩择时·每日微信推送 (PushPlus)
+EGPT (Earnings Growth Pullback Timing) v1.3.1 - 中报预增回踩择时·每日微信推送 (PushPlus)
 =========================================
 读取最新 enhanced_timing_bull_all 报告，推送调整充分的二波潜力股到微信
 版本记录:
   v1.0.0 双确认过滤(形态+风控, 修复中欣氟材误推)
   v1.1.0 AI五要素交易计划(触发/仓位/止损/止盈/失效) + A组绿灯信号强制执行方案
   v1.2.0 缓存过期分级(--date重跑修复) + EGPT命名规范
+  v1.3.0 分级绿灯: A组严格双确认(次日可买入) + B组条件信号(⚠️观察/次日观察等回踩中
+        评级S/A/B+业绩正+无冲击top3, 需触发确认), 保证非绿灯日期也有信号
+  v1.3.1 绿灯B过滤首阳日当天(回踩天数=0): 首阳大阳乖离VWAP过大(梅雁吉祥8/13乖离14.3%
+        次日一路下跌-9.9%从未回踩确认), 回踩确认买点当天不可执行属伪候选;
+        仅保留已进入回踩结构(回踩天数≥1)形态可确认的标的
 """
 import os, sys, re
 import pandas as pd
@@ -81,7 +86,7 @@ def format_cash(val) -> str:
 
 
 EGPT_NAME = 'EGPT'
-EGPT_VERSION = 'v1.2.0'
+EGPT_VERSION = 'v1.3.1'
 EGPT_FULLNAME = 'EGPT (Earnings Growth Pullback Timing) - 中报预增回踩择时'
 
 
@@ -120,11 +125,31 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
             (df['次日操作'] == '✅ 次日可买入') &
             (df['兑现冲击过滤'].astype(str).str.contains('✅', na=False)) &
             (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0) &
-            (df['修正后胜率分级'].isin(['S', 'A', 'B']) | (growth.fillna(-1) > 0))
+            (df['修正后胜率分级'].isin(['S', 'A', 'B']) | (growth.fillna(-1) > 0)) &
+            (df['修正后胜率分级'] != 'E')
         )
         buy = df[buy_mask].sort_values('回踩买点分', ascending=False)
+        # v1.3.0 分级绿灯B(条件信号): "⚠️观察/⚠️次日观察等回踩"中评级S/A/B+业绩正+无冲击的top3。
+        # 形态尚未确认，非次日直接买点，需等待回踩/放量突破触发；保证非绿灯日期也有信号可跟。
+        # 排除"❌仅观察不买入/❌等待首阳"(明确不买)、E级(综合评分过低)与已在绿灯A中的标的。
+        cond_mask = df['次日操作'].astype(str).isin(['⚠️ 观察', '⚠️ 次日观察等回踩'])
+        # v1.3.1: 过滤首阳日当天(回踩天数=0)——首阳大阳乖离VWAP过大、回踩确认买点当天
+        # 不可执行(梅雁吉祥8/13乖离14.3%次日一路-9.9%从未回踩确认)。仅保留已进入回踩结构
+        # (回踩天数≥1)形态可确认的标的，避免"首阳追高未回踩"型伪候选。
+        pullback_days = (pd.to_numeric(df['回踩天数'], errors='coerce').fillna(0)
+                         if '回踩天数' in df.columns else pd.Series(0, index=df.index))
+        green_b = df[
+            cond_mask &
+            (pullback_days >= 1) &
+            (df['兑现冲击过滤'].astype(str).str.contains('✅', na=False)) &
+            (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0) &
+            (df['修正后胜率分级'].isin(['S', 'A', 'B']) | (growth.fillna(-1) > 0)) &
+            (df['修正后胜率分级'] != 'E') &
+            (~df.index.isin(buy.index))
+        ].sort_values('回踩买点分', ascending=False).head(3)
     else:
         buy = pd.DataFrame()
+        green_b = pd.DataFrame()
 
     if len(buy) > 0:
         lines.append('## ✅ 次日可买入（形态回踩中 × 综合风控双确认）')
@@ -146,6 +171,26 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
         lines.append('> 强势票见下方 AI 二次分析。')
         lines.append('')
 
+    # ─── 🟡 条件信号（绿灯B·观察转强）: 非次日直接买点，需触发确认 ───
+    # v1.3.0 新增: 当无绿灯A时保证每天至少有一个可跟踪信号
+    if len(green_b) > 0:
+        lines.append('## 🟡 条件信号（观察转强·需触发确认）')
+        lines.append('')
+        lines.append('> 评级/业绩/风控均已过关，但形态尚未确认，**非次日直接买点**。')
+        lines.append('> 需等待回踩VWAP/MA20企稳或放量突破后按 AI 触发方案执行，触发前仅跟踪。')
+        lines.append('')
+        lines.append('| 股票 | 评级 | 回踩买点分 | 洗盘修复分 | 主题 | 现价 | 止损 | 次日操作 |')
+        lines.append('|------|:----:|:--------:|:--------:|------|:---:|:---:|:---:|')
+        for _, r in green_b.iterrows():
+            name = f"{r['名称']}({str(r['代码']).replace('.SZ','').replace('.SH','')})"
+            stop_loss = f"{r['ATR动态止损价']:.2f}" if pd.notna(r.get('ATR动态止损价')) else '-'
+            price = f"{r['现价']:.2f}" if pd.notna(r.get('现价')) else '-'
+            theme = str(r.get('主题', '')) if pd.notna(r.get('主题')) else '-'
+            pb = f"{r['回踩买点分']:.0f}" if pd.notna(r.get('回踩买点分')) else '-'
+            op = str(r.get('次日操作', '')) if pd.notna(r.get('次日操作', '')) else ''
+            lines.append(f"| {name} | {r['修正后胜率分级']} | {pb} | {r['洗盘修复分']:.0f} | {theme} | {price} | {stop_loss} | {op} |")
+        lines.append('')
+
     # ─── 精选标的 (S/A级且洗盘修复分>=80, 无兑现冲击) ───
     # 排序: 结构增强分(洗盘修复形态+买点质量+动量融合)优先
     sort_col = '结构增强分' if '结构增强分' in df.columns else '洗盘修复分'
@@ -156,9 +201,9 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
     ].sort_values(sort_col, ascending=False)
 
     # ─── DeepSeek 二次分析（放精选表之前，先给结论）───
-    # A组=buy(系统绿灯信号,强制给T+1执行方案) B组=elite(精选池严格筛选)，任一非空即调用
-    if len(buy) > 0 or len(elite) > 0:
-        ai_text = _ai_analyze(buy, elite)
+    # A组=buy(系统绿灯信号,强制给T+1执行方案) B组=elite(精选池严格筛选) C组=green_b(条件信号给触发式计划)
+    if len(buy) > 0 or len(elite) > 0 or len(green_b) > 0:
+        ai_text = _ai_analyze(buy, elite, green_b)
         if ai_text:
             lines.append('## 🤖 AI 二次分析 (DeepSeek)')
             lines.append('')
@@ -227,12 +272,14 @@ def _fmt_stock_line(r) -> str:
     )
 
 
-def _ai_analyze(buy: pd.DataFrame, elite: pd.DataFrame) -> str:
-    """以顶级超短线交易员视角做二次筛选：A组系统绿灯信号强制给执行方案，B组精选池严格筛选"""
+def _ai_analyze(buy: pd.DataFrame, elite: pd.DataFrame, green_b: pd.DataFrame = None) -> str:
+    """以顶级超短线交易员视角做二次筛选：A组系统绿灯信号强制给执行方案，B组精选池严格筛选，C组条件信号给触发式计划"""
     # A组: 系统"次日可买入"信号(双确认已过) -- 是本策略的核心输出，T+1胜率跟踪80%/平均+11%
     # B组: 精选池(S/A+修复≥80+无冲击) -- 强势票严格二次筛选
+    # C组: 条件信号(⚠️观察中评级/业绩/风控合格top3) -- 形态未确认，只给触发式计划
     a_lines = [_fmt_stock_line(r) for _, r in buy.head(5).iterrows()] if buy is not None and len(buy) else []
     b_lines = [_fmt_stock_line(r) for _, r in elite.head(10).iterrows()] if elite is not None and len(elite) else []
+    c_lines = [_fmt_stock_line(r) for _, r in green_b.head(3).iterrows()] if green_b is not None and len(green_b) else []
 
     system = (
         '你是A股顶级超短线交易员（隔日/3-5日波段打法），极其严格、纪律优先、胜率至上。'
@@ -257,6 +304,9 @@ def _ai_analyze(buy: pd.DataFrame, elite: pd.DataFrame) -> str:
         '\n\n【B组·精选池】严格按超短纪律筛选：'
         '\n- 现价乖离VWAP/MA20过大（>+20%）且无回踩确认的，不构成现价买点，只能给等待价位；'
         '\n- 系统止损价若高于回踩VWAP买点价，指出止损失效矛盾并自行重设止损。'
+        '\n\n【C组·条件信号(绿灯B)】评级/业绩/风控已过关但形态未确认(⚠️观察/次日观察等回踩)，'
+        '**不是次日直接买点**。必须给出触发式计划：触发价位(如回踩VWAP/MA20企稳位或放量突破价)、'
+        '确认形态(缩量企稳/放量站上)、失效条件与时限；禁止写成可直接市价买入，未触发不追。'
         '\n\n每只【核心持仓】【可参与】与A组信号必须给出可执行的完整交易计划，五要素缺一不可：'
         '\n- ①触发条件：精确到价格与形态（如"竞价高开2%-4%且量比>2"或"回踩XX.XX元(VWAP)缩量企稳"，'
         'VWAP/MA20/筹码峰绝对价位已提供，直接引用）；'
@@ -271,6 +321,8 @@ def _ai_analyze(buy: pd.DataFrame, elite: pd.DataFrame) -> str:
     parts = []
     if a_lines:
         parts.append("【A组·系统绿灯信号】（双确认通过，必须给出T+1执行方案）：\n" + "\n".join(a_lines))
+    if c_lines:
+        parts.append("【C组·条件信号】（评级/业绩/风控合格但形态未确认，给出触发式计划）：\n" + "\n".join(c_lines))
     if b_lines:
         parts.append("【B组·精选池标的】（S/A级、洗盘修复分≥80、无兑现冲击，系统初筛结果）：\n" + "\n".join(b_lines))
     prompt = (
