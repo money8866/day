@@ -379,9 +379,40 @@ def extract_bull_data(row: pd.Series,
             if prev_q1_profit > 0:
                 q1_profit_yoy = (curr_q1_profit - prev_q1_profit) / prev_q1_profit
 
+    # Step 2b: 中报实际数据 YoY（V3.4 新增：8月正式中报陆续披露，实际值优先于预告）
+    # 当 income 最新报告期 = 当年中报(0630) 时，用实际中报利润/营收 vs 上年同期
+    h1_actual_profit_yoy = None
+    h1_actual_revenue_yoy = None
+    h1_actual_end_date = ''
+    if len(income) > 0:
+        _h1_period = f"{int(trade_date[:4])}0630" if int(trade_date[4:6]) >= 7 else f"{int(trade_date[:4]) - 1}0630"
+        h1_rows = income[income['end_date'] == _h1_period]
+        if len(h1_rows) > 0:
+            h1_row = h1_rows.iloc[0]
+            # NaN 保护: n_income 缺失时不启用实际口径(回退预告), 避免误算 -100%
+            if not pd.notna(h1_row.get('n_income')):
+                h1_rows = pd.DataFrame()
+            else:
+                h1_actual_end_date = _h1_period
+                _h1_profit = float(h1_row.get('n_income'))
+                _h1_rev = float(h1_row.get('revenue')) if pd.notna(h1_row.get('revenue')) else 0.0
+            _prev_h1_end = f"{int(_h1_period[:4]) - 1}0630"
+            prev_h1_rows = income[income['end_date'] == _prev_h1_end]
+            if len(prev_h1_rows) > 0:
+                _prev_profit = float(prev_h1_rows.iloc[0].get('n_income')) if pd.notna(prev_h1_rows.iloc[0].get('n_income')) else 0.0
+                _prev_rev = float(prev_h1_rows.iloc[0].get('revenue')) if pd.notna(prev_h1_rows.iloc[0].get('revenue')) else 0.0
+                if _prev_profit > 0:
+                    h1_actual_profit_yoy = (_h1_profit - _prev_profit) / _prev_profit * 100.0
+                if _prev_rev > 0:
+                    h1_actual_revenue_yoy = (_h1_rev - _prev_rev) / _prev_rev * 100.0
+
     # Step 3: 决定使用哪个数据源
-    # 加权平均：年报70% + 最新季报30%
-    if q1_revenue_yoy is not None and q1_profit_yoy is not None:
+    # V3.4: 已披露正式中报 -> 实际值最优先；否则维持 原年报/Q1加权 -> 预告覆盖
+    if h1_actual_profit_yoy is not None:
+        profit_yoy = h1_actual_profit_yoy / 100.0
+        revenue_yoy = (h1_actual_revenue_yoy / 100.0) if h1_actual_revenue_yoy is not None else revenue_yoy
+        data_source = 'h1_actual'
+    elif q1_revenue_yoy is not None and q1_profit_yoy is not None:
         # 有Q1数据，使用加权平均
         revenue_yoy = 0.7 * annual_revenue_yoy + 0.3 * q1_revenue_yoy
         profit_yoy = 0.7 * annual_profit_yoy + 0.3 * q1_profit_yoy
@@ -610,9 +641,18 @@ def extract_bull_data(row: pd.Series,
         # forecast_vs_analyst_gap 延迟到 np_growth_current 定义后计算
 
         # ── 中报预告增长率覆盖 profit_yoy ──
-        # 当最新一期为中报预告(0630)时，用预告净利润增长率(区间中值)作为 profit_yoy
-        # 预告数据比历史实际财报更能反映当前经营趋势
-        if forecast_is_latest_period and forecast_end_date.endswith('0630') and forecast_profit_change != 0:
+        # V3.4: 已披露正式中报(h1_actual)的股票, 实际值优先, 预告不再覆盖
+        # 未披露的维持原逻辑: 预告中值作为 profit_yoy
+        if h1_actual_profit_yoy is not None:
+            # 实际 vs 预告趋势对比(兑现度)
+            if forecast_profit_change != 0:
+                if h1_actual_profit_yoy < forecast_profit_change * 0.5:
+                    growth_trend = 'falling'
+                elif h1_actual_profit_yoy > forecast_profit_change:
+                    growth_trend = 'rising'
+        elif forecast_is_latest_period and forecast_end_date.endswith('0630') and forecast_profit_change != 0:
+            # 当最新一期为中报预告(0630)时，用预告净利润增长率(区间中值)作为 profit_yoy
+            # 预告数据比历史实际财报更能反映当前经营趋势
             profit_yoy = forecast_profit_change / 100.0
             data_source = 'forecast_semi'
 
@@ -994,9 +1034,24 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
     forecast_vip_df = fetcher.get_forecast_vip(period=current_period)
     logger.info(f"业绩预告拉取完成, 共 {len(forecast_vip_df)} 条, 用时 {time.time()-vip_start:.0f}秒")
 
-    # ── 仅保留有中报预告的股票 ──
-    if 'ts_code' in forecast_vip_df.columns and len(forecast_vip_df) > 0:
-        forecast_ts_codes = set(forecast_vip_df['ts_code'].tolist())
+    # ── V3.4: 入池条件 = 已披露正式中报(income_vip) 或 有中报预告 ──
+    # 8月起正式中报陆续披露, 无预告但已披露实际中报的股票也应入池
+    h1_actual_ts_codes = set()
+    if today_dt.month >= 7:
+        try:
+            income_vip_df = fetcher._retry_call(
+                fetcher.pro.income_vip, period=current_period,
+                fields='ts_code,end_date,ann_date,revenue,n_income')
+            logger.info(f"阶段0a+: 已披露正式中报(income_vip): {len(income_vip_df)} 条")
+            if 'ts_code' in income_vip_df.columns and len(income_vip_df) > 0:
+                h1_actual_ts_codes = set(income_vip_df['ts_code'].tolist())
+        except Exception as e:
+            logger.warning(f"income_vip 拉取失败, 回退仅预告入池: {e}")
+
+    # ── 入池过滤: 实际披露 ∪ 预告 ──
+    if 'ts_code' in forecast_vip_df.columns and len(forecast_vip_df) > 0 or h1_actual_ts_codes:
+        pool_codes = set(h1_actual_ts_codes) | set(forecast_vip_df['ts_code'].tolist())
+        forecast_ts_codes = pool_codes
         before = len(stocks)
         stocks = stocks[stocks['ts_code'].isin(forecast_ts_codes)].copy()
         logger.info(f"中报预告过滤: {before} → {len(stocks)} 只 (仅保留有中报预告数据的股票)")
@@ -1022,7 +1077,7 @@ def bull_scan(config: Dict, fetcher: DataFetcher) -> List[BullScoreV2Result]:
 
     logger.info(f"阶段1: 并发拉取 {total} 只股票的财务数据...")
     fetch_start = time.time()
-    financial_batch = fetcher.get_stock_financial_batch(ts_code_list, start_year=start_year, max_workers=16, forecast_vip_df=forecast_vip_df, express_vip_df=express_vip_df)
+    financial_batch = fetcher.get_stock_financial_batch(ts_code_list, start_year=start_year, max_workers=16, forecast_vip_df=forecast_vip_df, express_vip_df=express_vip_df, income_vip_df=(income_vip_df if today_dt.month >= 7 else None))
     logger.info(f"财务数据拉取完成, 共 {len(financial_batch)} 只, 用时 {time.time()-fetch_start:.0f}秒")
 
     # ============ 阶段1b: 拉取卖方盈利预测一致预期 ============
@@ -1277,14 +1332,15 @@ def _july_hard_filter(results: List[BullScoreV2Result]) -> List[BullScoreV2Resul
     before = len(results)
     filtered = []
     for r in results:
-        has_forecast = r.forecast_profit_change != 0
-        if has_forecast:
-            # 有预告数据：按预告增速过滤
-            if r.forecast_profit_change < 30:
-                continue
-        # else: 无预告数据，跳过（不做市值过滤）
+        # ── V3.4: 实际中报优先, 预告兜底 ──
+        # profit_yoy 已是统一口径(fetch_stock_data: h1_actual 优先, 否则预告中值)
+        # 实际口径(profit_yoy*100) 或 预告口径(forecast_profit_change) 任一 ≥30% 即通过
+        actual_yoy = (r.profit_yoy or 0) * 100.0
+        forecast_yoy = r.forecast_profit_change or 0
+        if actual_yoy < 30 and forecast_yoy < 30:
+            continue
         filtered.append(r)
-    logger.info(f"Step1-中报预告硬核初筛: {before}→{len(filtered)} 只 (预告YoY≥30%)")
+    logger.info(f"Step1-中报硬核初筛(V3.4 实际∪预告任一YoY≥30%): {before}->{len(filtered)} 只")
     return filtered
 
 

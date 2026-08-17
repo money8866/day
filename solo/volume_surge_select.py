@@ -1054,6 +1054,15 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             # MACD未确认不入场（蓄势大涨信号仅展示，见主路径）
             return None
 
+        # 死叉临界识别（20260817落地）：红柱回调缩短分支内，红柱已缩至极小 → 1~2日内可能实叉
+        # 例：顺钠000533(20260817) DIF-DEA=+0.043/红柱=0.085，距死叉仅一步却曾被排TOP1
+        # 判据：cur_bar < max(0.15, 近20日红柱峰值*20%) → 红柱剩余度不足、贴近零轴
+        death_cross_risk = False
+        if macd_status == '红柱回调缩短（趋势延续）':
+            _red_peak20 = float(np.max(np.maximum(macd_bar[-20:], 0))) if len(macd_bar) >= 20 else cur_bar
+            if cur_bar < max(0.15, _red_peak20 * 0.2):
+                death_cross_risk = True
+
         today_vol_ratio = float(vol_ratio[-1]) if len(vol_ratio) > 0 else 0
 
         if _retrace_ratio < 30:
@@ -1086,16 +1095,19 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         elif 65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0:
             strong_buy = True
             strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(形态)'
-        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 0.9:
+        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 0.9 and not death_cross_risk:
             strong_buy = True
             strong_buy_reason = '红柱回调+高评分+量比达标(趋势延续)'
 
-        # 观察信号（即将红柱，等待确认）
+        # 观察信号（即将红柱，等待确认；死叉临界票转为观察保留，避免被剔除）
         watch = False
         watch_reason = ''
         if not strong_buy and not is_fresh_red and not is_red_retrace and not is_red_bounce:
             watch = True
             watch_reason = '观察·等待红柱（MACD绿柱连续缩短，即将金叉，可关注翻红确认）'
+        elif death_cross_risk and not strong_buy:
+            watch = True
+            watch_reason = '观察·⚠️死叉临界（红柱已缩至极小，MACD 1~2日内可能实叉，等待方向选择）'
 
         wave_surge = False
         wave_surge_reason = ''
@@ -1129,6 +1141,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '今日量比': round(today_vol_ratio, 2),
             '今日涨跌幅': round(today_pct, 2),
             'MACD状态': macd_status,
+            '死叉临界': death_cross_risk,
             '回撤类型': retrace_type,
             '距MA20': round(pos_ma20, 1),
             '强买信号': strong_buy,
@@ -1239,7 +1252,7 @@ def run(target_date=None, with_chip=True, simple=False):
         _theme = _v.get('所属主题', '') or '无主题'
         _stage = _v.get('非一日游阶段', '') or ''
         _stage_str = f' 阶段={_stage}' if _stage else ''
-        print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 主题={_theme}{_stage_str} MACD={_v['MACD状态']}")
+        print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 主题={_theme}{_stage_str} MACD={_v['MACD状态']}{' ⚠️死叉临界' if _v.get('死叉临界') else ''}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
     return results
@@ -1301,11 +1314,17 @@ def _output_report(results, simple=False, market_tip=None):
         '刚刚红柱 ✅': 1,               # ③ 37.1%/+0.64%
         '即将红柱（绿柱连续缩短）': 2,     # ② 32.0%/-0.30% 最差
     }
+    # 死叉临界(20260817落地)：红柱已缩至极小、1~2日内可能实叉的票整体降末档（优先级最高，先于贴地/形态），
+    # 避免"启动高位+死叉临界+无量反弹"组合占据TOP1；若非临界票不足3只，死叉临界票仍带⚠️标注补入
+    def _macd_rank(_r):
+        _rk = _MACD_RANK.get(_r['MACD状态'], 1)
+        return 9 if _r.get('死叉临界', False) else _rk
     vs_top5 = sorted(results, key=lambda x: (
-        x['距MA20'] > 3,                        # ① 距MA20<=+3% 贴地/回调到位 优先
-        _MACD_RANK.get(x['MACD状态'], 1),        # ② 红柱回调缩短分支优先（回测最优）
-        x['距MA20'],                            # ③ 距MA20升序（负值/贴地更靠前）
-        -x['量能爆发评分'],                       # ④ 同级评分降序（高分优先）
+        x.get('死叉临界', False),               # ① 死叉临界整体末档（最高优先级，先于贴地）
+        x['距MA20'] > 3,                        # ② 距MA20<=+3% 贴地/回调到位 优先
+        _macd_rank(x),                          # ③ 红柱回调缩短分支优先
+        x['距MA20'],                            # ④ 距MA20升序（负值/贴地更靠前）
+        -x['量能爆发评分'],                       # ⑤ 同级评分降序（高分优先）
     ))[:3]
     lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选，自行选择）")
     if market_tip:
@@ -1314,7 +1333,8 @@ def _output_report(results, simple=False, market_tip=None):
         _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
         lines.append(f"【TOP{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
         lines.append(f"  {_t}")
-        lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+        _macd_tag = _vr['MACD状态'] + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
+        lines.append(f"  MACD={_macd_tag} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
         lines.append(_chip_v5_line(_vr))
     lines.append("")
 

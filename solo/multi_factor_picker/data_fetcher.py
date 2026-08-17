@@ -546,7 +546,8 @@ class DataFetcher:
     def get_stock_financial_batch(self, ts_codes: List[str], start_year: str,
                                     max_workers: int = 10,
                                     forecast_vip_df: pd.DataFrame = None,
-                                    express_vip_df: pd.DataFrame = None) -> Dict[str, Dict]:
+                                    express_vip_df: pd.DataFrame = None,
+                                    income_vip_df: pd.DataFrame = None) -> Dict[str, Dict]:
         """
         批量获取单只股票的三类财务数据(income + balance + cashflow)
 
@@ -596,6 +597,35 @@ class DataFetcher:
             for code in results:
                 per_stock = express_vip_df[express_vip_df['ts_code'] == code]
                 results[code]['express'] = per_stock if len(per_stock) > 0 else pd.DataFrame()
+
+        # v3.4: 将 income_vip(正式中报实际值)合并进 income, 修补 90 天缓存缺口
+        # 缓存的 income 拉取于 7 月中(预告期), 不含 8 月新披露的中报; income_vip 是全市场最新
+        # 合并策略: 按 ts_code + end_date 去重, income_vip 行优先保留
+        if income_vip_df is not None and len(income_vip_df) > 0:
+            vip_codes = set(income_vip_df['ts_code'].tolist())
+            merged = 0
+            for code in results:
+                if code not in vip_codes:
+                    continue
+                vip_rows = income_vip_df[income_vip_df['ts_code'] == code].copy()
+                inc_df = results[code].get('income', pd.DataFrame())
+                if len(inc_df) > 0 and 'end_date' in inc_df.columns:
+                    # VIP 行的 end_date 可能是 int/str, 统一为 str
+                    vip_rows['end_date'] = vip_rows['end_date'].astype(str)
+                    inc_df['end_date'] = inc_df['end_date'].astype(str)
+                    # 去重: income_vip 优先(保留 VIP 行, 丢弃缓存中同 end_date 旧行)
+                    dup_ends = set(vip_rows['end_date'].tolist())
+                    inc_keep = inc_df[~inc_df['end_date'].isin(dup_ends)]
+                    new_inc = pd.concat([inc_keep, vip_rows], ignore_index=True)
+                    new_inc = new_inc.sort_values('end_date', ascending=False).reset_index(drop=True)
+                    results[code]['income'] = new_inc
+                    merged += 1
+                elif len(vip_rows) > 0:
+                    vip_rows = vip_rows.sort_values('end_date', ascending=False).reset_index(drop=True)
+                    results[code]['income'] = vip_rows
+                    merged += 1
+            if merged:
+                print(f"  [income_vip merge] {merged} 只股票 income 已注入最新中报实际值")
 
         return results
 

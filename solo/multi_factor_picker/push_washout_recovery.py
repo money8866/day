@@ -12,6 +12,9 @@ EGPT (Earnings Growth Pullback Timing) v1.3.1 - 中报预增回踩择时·每日
   v1.3.1 绿灯B过滤首阳日当天(回踩天数=0): 首阳大阳乖离VWAP过大(梅雁吉祥8/13乖离14.3%
         次日一路下跌-9.9%从未回踩确认), 回踩确认买点当天不可执行属伪候选;
         仅保留已进入回踩结构(回踩天数≥1)形态可确认的标的
+  v1.3.2 绿灯B收紧评级门槛: S/A/B **且** 业绩正(双满足)。原"或"让D级靠业绩正混入
+        (华勤技术D 8/14/8/17连续进绿灯B却被AI判低胜率规避、和顺石油C被直接剔除),
+        与"条件信号=值得跟踪的观察标的"定位矛盾
 """
 import os, sys, re
 import pandas as pd
@@ -86,7 +89,7 @@ def format_cash(val) -> str:
 
 
 EGPT_NAME = 'EGPT'
-EGPT_VERSION = 'v1.3.1'
+EGPT_VERSION = 'v1.3.2'
 EGPT_FULLNAME = 'EGPT (Earnings Growth Pullback Timing) - 中报预增回踩择时'
 
 
@@ -143,8 +146,10 @@ def build_wechat_msg(df: pd.DataFrame, trade_date: str) -> str:
             (pullback_days >= 1) &
             (df['兑现冲击过滤'].astype(str).str.contains('✅', na=False)) &
             (pd.to_numeric(df.get('修正后评分'), errors='coerce').fillna(0) > 0) &
-            (df['修正后胜率分级'].isin(['S', 'A', 'B']) | (growth.fillna(-1) > 0)) &
-            (df['修正后胜率分级'] != 'E') &
+            # v1.3.2: 收紧——评级 S/A/B **且** 业绩正(双满足)。原"或"会让 D 级靠业绩正混入
+            # (华勤技术D 8/14/8/17 连续进绿灯B却被AI判低胜率规避/和顺C被直接剔除)，
+            # 与"条件信号=值得跟踪的观察标的"定位矛盾。
+            (df['修正后胜率分级'].isin(['S', 'A', 'B']) & (growth.fillna(-1) > 0)) &
             (~df.index.isin(buy.index))
         ].sort_values('回踩买点分', ascending=False).head(3)
     else:

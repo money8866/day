@@ -41,9 +41,9 @@ from data_fetcher import DataFetcher  # noqa: E402
 from market_regime import detect_market_regime  # noqa: E402
 
 CACHE_DIR = r'D:\mystock\cache_daily'
-CSV_PATH = r'D:\mystock\solo\report_daily\double_score_20260808_162927.csv'
+CSV_PATH = r'D:\mystock\solo\report_daily\double_score_20260817_220249.csv'
 THEME_MAP_PATH = r'D:\mystock\cache_daily\theme_stock_map_latest.json'
-OUT_CSV = r'D:\mystock\solo\report_daily\mbs_buyability_20260808.csv'
+OUT_CSV = r'D:\mystock\solo\report_daily\mbs_buyability_20260817.csv'
 
 # ─────────────────────────────────────────────
 # 权重配置
@@ -2017,7 +2017,7 @@ class MBSEngine:
         # 企稳在MA60上方更好
         close = tech['close']
         ma60 = tech['ma60']
-        if close > ma60 and s60 >= 0:
+        if ma60 is not None and close > ma60 and s60 >= 0:
             struct = min(struct + 5, 100)
         parts['结构'] = struct * 0.20
 
@@ -3218,7 +3218,7 @@ class MBSEngine:
             r.ma60_v = tech['ma60']
             r.d_ma20 = (tech['close'] / tech['ma20'] - 1) * 100
             r.d_ma30 = (tech['close'] / tech['ma30'] - 1) * 100 if tech['ma30'] else None
-            r.d_ma60 = (tech['close'] / tech['ma60'] - 1) * 100
+            r.d_ma60 = (tech['close'] / tech['ma60'] - 1) * 100 if tech['ma60'] else None
             r.d_hi = tech['dist_hi']
         r.one_line = self.one_line_conclusion(
             r.name, r.final, r.entry, r.pcs, state_code, r.signal, r.d_ma20, r.d_hi)

@@ -1,0 +1,39 @@
+{
+  "trade_date": "20260817",
+  "market_score": 64,
+  "regime": "Bull",
+  "signals": [
+    {
+      "ts_code": "600376.SH",
+      "name": "首开股份",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 70.87497062937766,
+      "rally_amplitude": 0.3812499999999999,
+      "rally_vol_expansion": 2.2728065477873134,
+      "rally_limit_up_count": 2,
+      "rally_max_consecutive_lu": 1,
+      "rally_high_date": "20260812",
+      "drawdown": 0.06334841628959281,
+      "pullback_days": "3",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.007518796992481265,
+      "candle_body_pct": 0.045454545454545386,
+      "subs": {
+        "vol_expansion": 26.92497062937765,
+        "limit_up": 7.5,
+        "pullback": 14.0,
+        "candle": 12.45,
+        "volume_confirm": 10.0
+      },
+      "ref_price": 4.14,
+      "stop_loss": 3.71,
+      "take_profit": 5.0,
+      "atr": 0.29,
+      "stock_type": "中性",
+      "suggestion": "顺势参与（大盘主升，可适当参与市场）"
+    }
+  ]
+}
