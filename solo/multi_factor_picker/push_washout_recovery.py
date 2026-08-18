@@ -341,7 +341,7 @@ def _ai_analyze(buy: pd.DataFrame, elite: pd.DataFrame, green_b: pd.DataFrame = 
 
 
 def push_to_wechat(msg: str, title: str = None) -> bool:
-    """通过 PushPlus 推送到微信"""
+    """通过 PushPlus 推送到微信（markdown 模板单条约限 9000 字符，超限自动降级精简）"""
     if not PUSHPLUS_TOKEN:
         print('错误: 未设置 PUSHPLUS 环境变量')
         return False
@@ -350,22 +350,53 @@ def push_to_wechat(msg: str, title: str = None) -> bool:
         title = f'洗盘修复专题 — {datetime.now().strftime("%Y%m%d")}'
 
     try:
-        resp = requests.post(PUSHPLUS_URL, json={
-            'token': PUSHPLUS_TOKEN,
-            'title': title,
-            'content': msg,
-            'template': 'markdown',
-        }, timeout=15)
-        result = resp.json()
+        result = _push_markdown(title, msg)
         if result.get('code') == 200:
             print(f'推送成功: {result.get("msg", "")}')
             return True
-        else:
-            print(f'推送失败: code={result.get("code")} msg={result.get("msg")}')
-            return False
+
+        # 超长降级1：去掉"附:评分表"附录段（本地 AI 报告文件已完整存档），重发
+        if '过大' in str(result.get('data', '')):
+            trimmed = msg.split('\n## 附:', 1)[0] + '\n\n> ⚠️ 消息过长已精简：附录评分表见本地 washout_AI报告 文件'
+            if len(trimmed) < len(msg):
+                print(f'消息过长({len(msg)}字符)，移除附录精简为{len(trimmed)}字符后重试...')
+                result = _push_markdown(title, trimmed)
+                if result.get('code') == 200:
+                    print(f'推送成功(精简版): {result.get("msg", "")}')
+                    return True
+                msg = trimmed
+
+        # 超长降级2：按行截断到安全长度
+        if '过大' in str(result.get('data', '')):
+            safe = 8000
+            lines, buf = msg.split('\n'), ''
+            for line in lines:
+                if len(buf) + len(line) + 1 > safe:
+                    break
+                buf += line + '\n'
+            msg = buf + '> ⚠️ 消息过长已截断，完整报告见本地 washout_AI报告 文件'
+            print(f'消息仍过长，截断为{len(msg)}字符后重试...')
+            result = _push_markdown(title, msg)
+            if result.get('code') == 200:
+                print(f'推送成功(截断版): {result.get("msg", "")}')
+                return True
+
+        print(f'推送失败: code={result.get("code")} msg={result.get("msg")} data={result.get("data", "")}')
+        return False
     except Exception as e:
         print(f'推送异常: {e}')
         return False
+
+
+def _push_markdown(title: str, content: str) -> dict:
+    """单次 PushPlus markdown 推送，返回响应 JSON"""
+    resp = requests.post(PUSHPLUS_URL, json={
+        'token': PUSHPLUS_TOKEN,
+        'title': title,
+        'content': content,
+        'template': 'markdown',
+    }, timeout=30)
+    return resp.json()
 
 
 def main():

@@ -1,1 +1,1 @@
-{"fin": {"roe": 4.6687, "ystz": 0.0, "sjlrtz": 0.0}, "fc": {"p_min": 384.26, "p_max": 443.88, "type": 1}, "bt": {}}
+{"fin": {"roe": 4.6687, "ystz": 0.0, "sjlrtz": 0.0}, "fc": {"half_p_min": 391.87, "half_p_max": 412.71, "half_type": 1, "p_min": 391.87, "p_max": 412.71, "type": 1}, "bt": {}}
