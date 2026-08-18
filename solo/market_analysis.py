@@ -748,6 +748,30 @@ def _get_prev_position(trade_date=None):
     return None
 
 
+def _writeback_v99_position(trade_date, v99_target):
+    """V9.9 目标仓位回写数据库：UPDATE 当日 overall_analysis.total_position。
+
+    使次日 _get_prev_position 读到 V9.9 自己的目标（链式滞回），
+    消除"老引擎25%轨迹 vs V9.9报告50%"的仓位断层。
+    仅 UPDATE 已存在行；若当日行缺失则静默跳过（不伪造数据）。"""
+    db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE overall_analysis SET total_position = ? WHERE trade_date = ?",
+            (int(v99_target), str(trade_date)))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"[V9.9] 目标仓位已回写数据库: {trade_date} -> {int(v99_target)}%")
+        else:
+            print(f"[V9.9] 当日无记录可回写: {trade_date}")
+    finally:
+        conn.close()
+
+
 def _get_recent_trend_scores(trade_date=None, days=10):
     """从数据库读取最近N个交易日的趋势分（用于计算连续回升天数）"""
     if trade_date is None:
@@ -1106,6 +1130,13 @@ def analyze_market(trade_date=None):
             
             v99_result = v99_engine.analyze(v99_data, prev_position)
             v99_report = v99_engine.generate_report(v99_result)
+            
+            # V9.9 目标仓位回写数据库（供次日滞回机制链式读取，避免与老引擎仓位轨迹脱节）
+            # 今日示例：8/17 强趋势目标50%，8/18 若链式读取 prev=50 -> 50-10=40 -> 确认上限35夹住 -> 35%
+            try:
+                _writeback_v99_position(trade_date, v99_result.position_target)
+            except Exception as wb_err:
+                print(f"[V9.9] 目标仓位回写失败: {wb_err}")
             
             print(f"\n{'='*80}")
             print("⚡ V9.9 极简仓位建议")

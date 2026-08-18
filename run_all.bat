@@ -12,12 +12,9 @@ cd /d %BASE%
 
 REM python solo\build_theme_stock_map.py 
 
-echo [Step 1/7] 指数分析...
-echo =============================================
-python solo\market_analysis.py
-echo.
 
-echo [Step 2/7] 主题趋势分 + 情绪分...
+
+echo [Step 1/7] 主题趋势分 + 情绪分...
 echo =============================================
 python solo\build_theme_stock_map_v2.py
 python solo\theme_score_v2.py
@@ -28,7 +25,10 @@ echo.
 REM python D:\mystock\solo\theme_alpha_v6\main.py
 REM python d:\mystock\solo\theme_forecast\main.py
 
-
+echo [Step 2/7] 指数分析...
+echo =============================================
+python solo\market_analysis.py
+echo.
 
 echo [Step 3/7] ETF分析（引用主题）...
 echo =============================================

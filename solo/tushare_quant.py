@@ -7750,10 +7750,22 @@ def run(target_date=None, simple_mode=False):
                 wr_s = f"{float(wr):.0f}" if pd.notna(wr) else "-"
                 yang_s = f"首阳:{fyd[4:6]}/{fyd[6:8]}" if fyd and str(fyd) != "nan" else "无首阳"
                 pull_s = f"回踩{pdays}天" if pdays and int(pdays) > 0 else "首阳当日"
+                # 20260818 补充 VWAP/现价/止损价/乖离: 让下游 AI 能给出具体买点与止损
+                # (原只给形态分无价位, AI 报"数据未提供无法给出"; 乖离=(现价/VWAP-1)*100)
+                vwap_v = pd.to_numeric(pd.Series([row.get("VWAP", np.nan)]), errors="coerce").iloc[0]
+                px_v = pd.to_numeric(pd.Series([row.get("现价", np.nan)]), errors="coerce").iloc[0]
+                stop_v = pd.to_numeric(pd.Series([row.get("ATR动态止损价", np.nan)]), errors="coerce").iloc[0]
+                vwap_s = f"{vwap_v:.2f}" if pd.notna(vwap_v) else "-"
+                px_s = f"{px_v:.2f}" if pd.notna(px_v) else "-"
+                stop_s = f"{stop_v:.2f}" if pd.notna(stop_v) else "-"
+                bias_s = "-"
+                if pd.notna(vwap_v) and vwap_v > 0 and pd.notna(px_v):
+                    bias_s = f"{(px_v / vwap_v - 1) * 100:+.1f}%"
+                px_block = f" 现价:{px_s} VWAP:{vwap_s}(乖离{bias_s}) 止损:{stop_s}"
                 theme_s = f" 主题:{theme}" if theme and theme != "nan" else ""
                 decision_s = f" 次日操作:{decision}" if decision and decision != "nan" else ""
                 grade_s = f" 评级:{grade}" if grade and grade != "nan" else ""
-                lines.append(f"【{name}】({code}){decision_s} 形态:{stage} {score_col}:{score_v:.1f} {yang_s} {pull_s} | {wr_col}:{wr_s}{grade_s} 决策:{trade_dec}{theme_s}")
+                lines.append(f"【{name}】({code}){decision_s} 形态:{stage} {score_col}:{score_v:.1f} {yang_s} {pull_s}{px_block} | {wr_col}:{wr_s}{grade_s} 决策:{trade_dec}{theme_s}")
             return "\n".join(lines)
         except Exception as e:
             print(f"[回踩买点] 加载失败: {e}")
