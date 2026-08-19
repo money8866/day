@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import json
+import re
 import warnings
 from datetime import datetime, timedelta
 
@@ -425,8 +426,76 @@ def get_market():
 
 
 # =========================
-# 主题关联（复用 theme_stock_map / theme_alpha_v6_result 缓存）
+# 主题关联（复用 theme_stock_map / theme_score_v2 报告）
 # =========================
+def _load_mainline_rotation_themes(trade_date):
+    """读取 theme_score_v2.py 生成的 theme_analysis_v2_{date}.txt，
+    提取 主线(▶)+轮动(▸) 主题作为主题过滤范围（与 tushare_quant.filter_by_top_themes 同源）。
+
+    报告行格式：
+      主线: ▶ 半导体 [主升] 情绪+趋势共振 质量90 | 策略:龙头+中军 | 趋势81 情绪74 涨停13 迁移11.0
+      轮动: ▸ 可控核聚变 [升温] 非主线 质量55 | 趋势50 综合51 涨停1 迁移6.9
+      回避: ✕ 消费 [退潮] 综合34 → 【坚决回避/清仓】
+    返回 {主题名: {kind, stage, trend_score, sentiment_score, composite_score, trade_signal, ...}}
+    """
+    path = os.path.join(BASE_DIR, "report_daily", f"theme_analysis_v2_{trade_date}.txt")
+    if not os.path.exists(path):
+        print(f"[主题关联] 未找到主题评分报告: {path}")
+        return {}
+
+    themes = {}
+    section = None
+    with open(path, 'r', encoding='utf-8') as f:
+        lines = f.read().splitlines()
+    for ln in lines:
+        ln = ln.strip()
+        if ln.startswith('### 第一部分'):
+            section = 'mainline'
+            continue
+        if ln.startswith('### 第二部分'):
+            section = 'rotation'
+            continue
+        if ln.startswith('### 第三部分'):
+            section = 'junk'
+            continue
+        if ln.startswith('### 主线与轮动交易决策表'):
+            break
+        if section not in ('mainline', 'rotation', 'junk'):
+            continue
+        if not (ln.startswith('▶') or ln.startswith('▸') or ln.startswith('✕')):
+            continue
+        m = re.match(r'^[▶▸✕]\s+(\S+)\s+\[([^\]]+)\](.*)$', ln)
+        if not m:
+            continue
+        theme, stage, rest = m.group(1), m.group(2), m.group(3)
+        _num = lambda pat: (lambda mm: float(mm.group(1)) if mm else 0.0)(re.search(pat, rest))
+        themes[theme] = {
+            'theme': theme, 'stage': stage, 'kind': section,
+            'trend_score': _num(r'趋势([\d.]+)'),
+            'sentiment_score': _num(r'情绪([\d.]+)'),
+            'composite_score': _num(r'综合([\d.]+)'),
+            'trade_signal': '看多' if section == 'mainline' else ('回避' if section == 'junk' else '关注'),
+        }
+    # 补充解析"主线与轮动交易决策表"：报告第三部分 ✕ 只列前3个，
+    # 其余回避主题在决策表中以"回避"类型出现，补全到 junk 集合
+    in_decision = False
+    for ln in lines:
+        if ln.startswith('### 主线与轮动交易决策表'):
+            in_decision = True
+            continue
+        if in_decision:
+            if ln.startswith('### '):
+                break
+            m = re.match(r'^\s*\d+\s+(\S+)\s+回避\s+\S+\s+\S+\s+\S+\s+(\S+)', ln)
+            if m and m.group(1) not in themes:
+                themes[m.group(1)] = {
+                    'theme': m.group(1), 'stage': m.group(2), 'kind': 'junk',
+                    'trend_score': 0, 'sentiment_score': 0, 'composite_score': 0,
+                    'trade_signal': '回避',
+                }
+    return themes
+
+
 def _v8_stage_to_signal(d_stage, score):
     """V8 天数阶段 → V6 信号映射"""
     if d_stage in ("D1-D2",):
@@ -569,23 +638,26 @@ def add_themes_to_stocks_no_filter(result_df):
         return result_df
 
     keep_themes = []
+    junk_themes_info = {}
     theme_state_map = {}
     try:
-        v6_data = _load_v6_result(TRADE_DATE)
-        if v6_data:
-            for r in v6_data:
-                tname = r.get('theme', '') if isinstance(r, dict) else ''
-                if tname:
-                    keep_themes.append(tname)
-                    theme_state_map[tname] = {
-                        'theme_state': r.get('trade_signal', ''),
-                        'trend_score': float(r.get('trend_score', 0) or 0),
-                        'sentiment_score': float(r.get('sentiment_score', 0) or 0),
-                        'composite_score': float(r.get('composite_score', 0) or 0),
-                        'cycle_phase': r.get('stage', ''),
-                    }
+        theme_report_data = _load_mainline_rotation_themes(TRADE_DATE)
+        if theme_report_data:
+            for tname, r in theme_report_data.items():
+                if r.get('kind') == 'junk':
+                    # 回避区主题单独保留：命中时标注"(回避)"
+                    junk_themes_info[tname] = r
+                    continue
+                keep_themes.append(tname)
+                theme_state_map[tname] = {
+                    'theme_state': r.get('trade_signal', ''),
+                    'trend_score': float(r.get('trend_score', 0) or 0),
+                    'sentiment_score': float(r.get('sentiment_score', 0) or 0),
+                    'composite_score': float(r.get('composite_score', 0) or 0),
+                    'cycle_phase': r.get('stage', ''),
+                }
     except Exception as e:
-        print(f"[添加主题] 读取V6结果失败: {e}")
+        print(f"[添加主题] 读取主题评分报告失败: {e}")
 
     if not keep_themes:
         return result_df
@@ -618,11 +690,25 @@ def add_themes_to_stocks_no_filter(result_df):
             theme_states_list.append(st.get("theme_state", ""))
             cycle_phases.append(st.get("cycle_phase", ""))
         else:
-            matched_themes.append('')
-            match_scores.append(0)
-            secondary_themes_list.append('')
-            theme_states_list.append('')
-            cycle_phases.append('')
+            # 无主线/轮动匹配：检查是否属于回避区主题（标注"(回避)"）
+            junk_hit = ''
+            for jname in junk_themes_info:
+                if ts_code in theme_stock_map.get(jname, {}):
+                    junk_hit = jname
+                    break
+            if junk_hit:
+                jv = junk_themes_info[junk_hit]
+                matched_themes.append(f"{junk_hit}(回避)")
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_states_list.append('回避')
+                cycle_phases.append(jv.get('stage', ''))
+            else:
+                matched_themes.append('')
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_states_list.append('')
+                cycle_phases.append('')
 
     result_df = result_df.copy()
     result_df['所属主题'] = matched_themes
@@ -1054,7 +1140,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             # MACD未确认不入场（蓄势大涨信号仅展示，见主路径）
             return None
 
-        # 死叉临界识别（20260817落地）：红柱回调缩短分支内，红柱已缩至极小 → 1~2日内可能实叉
+        # 死叉临界识别（20260817落地）：红柱回调缩短分支内，红柱已缩至极小 → 1~2日内可能死叉
         # 例：顺钠000533(20260817) DIF-DEA=+0.043/红柱=0.085，距死叉仅一步却曾被排TOP1
         # 判据：cur_bar < max(0.15, 近20日红柱峰值*20%) → 红柱剩余度不足、贴近零轴
         death_cross_risk = False
@@ -1107,7 +1193,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             watch_reason = '观察·等待红柱（MACD绿柱连续缩短，即将金叉，可关注翻红确认）'
         elif death_cross_risk and not strong_buy:
             watch = True
-            watch_reason = '观察·⚠️死叉临界（红柱已缩至极小，MACD 1~2日内可能实叉，等待方向选择）'
+            watch_reason = '观察·⚠️死叉临界（红柱已缩至极小，MACD 1~2日内可能死叉，等待方向选择）'
 
         wave_surge = False
         wave_surge_reason = ''
@@ -1314,7 +1400,7 @@ def _output_report(results, simple=False, market_tip=None):
         '刚刚红柱 ✅': 1,               # ③ 37.1%/+0.64%
         '即将红柱（绿柱连续缩短）': 2,     # ② 32.0%/-0.30% 最差
     }
-    # 死叉临界(20260817落地)：红柱已缩至极小、1~2日内可能实叉的票整体降末档（优先级最高，先于贴地/形态），
+    # 死叉临界(20260817落地)：红柱已缩至极小、1~2日内可能死叉的票整体降末档（优先级最高，先于贴地/形态），
     # 避免"启动高位+死叉临界+无量反弹"组合占据TOP1；若非临界票不足3只，死叉临界票仍带⚠️标注补入
     def _macd_rank(_r):
         _rk = _MACD_RANK.get(_r['MACD状态'], 1)

@@ -12,35 +12,35 @@
     "position": 0.0
   },
   "金融科技": {
-    "stage": "加仓",
-    "position": 0.15,
-    "entry": 0.631,
-    "stop": 0.568,
-    "t1": 0.726,
-    "t2": 0.789,
-    "hold_days": 11
+    "stage": "清仓",
+    "position": 0.0,
+    "entry": null,
+    "stop": null,
+    "t1": null,
+    "t2": null,
+    "hold_days": 12
   },
   "游戏": {
-    "stage": "加仓",
-    "position": 0.15,
-    "entry": 1.115,
-    "stop": 1.026,
-    "t1": 1.282,
-    "t2": 1.394,
-    "hold_days": 11
+    "stage": "清仓",
+    "position": 0.0,
+    "entry": null,
+    "stop": null,
+    "t1": null,
+    "t2": null,
+    "hold_days": 12
   },
   "新能源": {
     "stage": "观察",
     "position": 0.0
   },
   "光伏": {
-    "stage": "试仓",
-    "position": 0.06,
-    "entry": 0.845,
-    "stop": 0.777,
-    "t1": 0.946,
-    "t2": 1.031,
-    "hold_days": 7
+    "stage": "清仓",
+    "position": 0.0,
+    "entry": null,
+    "stop": null,
+    "t1": null,
+    "t2": null,
+    "hold_days": 8
   },
   "储能": {
     "stage": "观察",
@@ -61,7 +61,7 @@
     "stop": 0.837,
     "t1": 1.046,
     "t2": 1.137,
-    "hold_days": 6
+    "hold_days": 7
   },
   "医疗器械": {
     "stage": "观察",
@@ -74,16 +74,16 @@
     "stop": 0.364,
     "t1": 0.455,
     "t2": 0.495,
-    "hold_days": 6
+    "hold_days": 7
   },
   "军工": {
-    "stage": "试仓",
-    "position": 0.06,
-    "entry": 1.135,
-    "stop": 1.044,
-    "t1": 1.271,
-    "t2": 1.385,
-    "hold_days": 7
+    "stage": "清仓",
+    "position": 0.0,
+    "entry": null,
+    "stop": null,
+    "t1": null,
+    "t2": null,
+    "hold_days": 8
   },
   "航空航天": {
     "stage": "观察",
@@ -104,7 +104,7 @@
     "stop": 0.738,
     "t1": 0.898,
     "t2": 0.978,
-    "hold_days": 2
+    "hold_days": 3
   },
   "煤炭": {
     "stage": "加仓",
@@ -113,7 +113,7 @@
     "stop": 1.144,
     "t1": 1.429,
     "t2": 1.554,
-    "hold_days": 7
+    "hold_days": 8
   },
   "钢铁": {
     "stage": "试仓",
@@ -122,7 +122,7 @@
     "stop": 1.07,
     "t1": 1.303,
     "t2": 1.419,
-    "hold_days": 4
+    "hold_days": 5
   },
   "电力": {
     "stage": "试仓",
@@ -131,7 +131,7 @@
     "stop": 0.977,
     "t1": 1.168,
     "t2": 1.274,
-    "hold_days": 3
+    "hold_days": 4
   },
   "消费": {
     "stage": "观察",
@@ -142,13 +142,13 @@
     "position": 0.0
   },
   "酒": {
-    "stage": "试仓",
-    "position": 0.04,
+    "stage": "加仓",
+    "position": 0.19,
     "entry": 0.433,
     "stop": 0.398,
     "t1": 0.476,
     "t2": 0.52,
-    "hold_days": 0
+    "hold_days": 1
   },
   "家电": {
     "stage": "加仓",
@@ -157,7 +157,7 @@
     "stop": 1.297,
     "t1": 1.621,
     "t2": 1.762,
-    "hold_days": 9
+    "hold_days": 10
   },
   "证券": {
     "stage": "观察",
@@ -170,13 +170,13 @@
     "stop": 0.736,
     "t1": 0.88,
     "t2": 0.96,
-    "hold_days": 3
+    "hold_days": 4
   },
   "红利": {
     "stage": "观察",
     "position": 0.0
   },
   "_meta": {
-    "last_date": "20260818"
+    "last_date": "20260819"
   }
 }

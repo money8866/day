@@ -6651,6 +6651,29 @@ def _load_mainline_rotation_themes(trade_date):
             'continuation_tag': '', 'leader': '', 'divergence_buy': False,
             'trade_signal': '看多' if section == 'mainline' else ('回避' if section == 'junk' else '关注'),
         }
+    # 补充解析"主线与轮动交易决策表"：报告第三部分 ✕ 只列前3个，
+    # 其余回避主题在决策表中以"回避"类型出现，补全到 junk 集合（含医疗器械等）
+    in_decision = False
+    for ln in lines:
+        if ln.startswith('### 主线与轮动交易决策表'):
+            in_decision = True
+            continue
+        if in_decision:
+            if ln.startswith('### '):
+                break
+            m = re.match(r'^\s*\d+\s+(\S+)\s+回避\s+\S+\s+\S+\s+\S+\s+(\S+)', ln)
+            if m and m.group(1) not in themes:
+                themes[m.group(1)] = {
+                    'theme': m.group(1), 'stage': m.group(2), 'kind': 'junk',
+                    'trend_score': 0, 'sentiment_score': 0,
+                    'composite_score': 0, 'zt_count': 0, 'migration_score': 0.0,
+                    'mainline_type': '', 'mainline_quality': 0, 'trading_style': '',
+                    'stage_v6': '调整',
+                    'capital_score': 0, 'continuation_score': 50,
+                    'risk_score': 50, 'confidence': 0,
+                    'continuation_tag': '', 'leader': '', 'divergence_buy': False,
+                    'trade_signal': '回避',
+                }
     return themes
 
 

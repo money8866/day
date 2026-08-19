@@ -1239,13 +1239,39 @@ def save_result(results, position, reason, style_allocations=None, overview=None
 # ================
 def get_top3_theme_scores(trade_date=None):
     """
-    从 theme_trend_sentiment_score.py 生成的结果中读取 TOP3 主题趋势分
+    从主题评分系统生成的结果中读取 TOP3 主题趋势分
+    数据源优先级：
+      1) report_daily/theme_scores.db      （theme_score_v2 每日产出，最新）
+      2) cache_backbone_tushare/theme_trend_sentiment.db （旧引擎兜底）
+      3) theme_trend_sentiment.csv          （最后兜底，无日期过滤）
     返回: [score1, score2, score3] 或 None
     """
     if trade_date is None:
         trade_date = TRADE_DATE
     
-    # 先尝试从数据库读取指定日期的主题数据
+    # 优先：theme_score_v2 产出的最新主题库（report_daily/theme_scores.db）
+    v2_db = os.path.join(BASE_DIR, "report_daily", "theme_scores.db")
+    if os.path.exists(v2_db):
+        try:
+            conn = sqlite3.connect(v2_db)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT trend_score FROM theme_scores 
+                WHERE trade_date = ? 
+                ORDER BY rank ASC 
+                LIMIT 3
+            ''', (trade_date,))
+            rows = cursor.fetchall()
+            conn.close()
+            if rows:
+                scores = [row[0] for row in rows]
+                print(f"[Theme] 从最新主题库读取 {trade_date} TOP3主题趋势分: {scores}")
+                return scores
+        except Exception as e:
+            print(f"[Theme] 从最新主题库读取主题评分失败: {e}")
+        print(f"[Theme] 最新主题库无 {trade_date} 记录，尝试旧引擎兜底")
+
+    # 兜底1：旧引擎 theme_trend_sentiment.db（可能停更，用于向后兼容）
     theme_db = os.path.join(safe_cache_dir, "theme_trend_sentiment.db")
     if os.path.exists(theme_db):
         try:
