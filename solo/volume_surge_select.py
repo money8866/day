@@ -660,7 +660,9 @@ def add_themes_to_stocks_no_filter(result_df):
         print(f"[添加主题] 读取主题评分报告失败: {e}")
 
     if not keep_themes:
-        return result_df
+        # 主线/轮动为空（如20260819弱市全部主题进回避区）：不提前返回，
+        # 降级为仅用回避区主题做"(回避)"标注，避免全部显示"无主题"丢失信息
+        print("[添加主题] 主线/轮动为空，降级为仅标注回避区主题")
 
     try:
         theme_stock_map, _, _, _ = _load_theme_stock_map_from_json()

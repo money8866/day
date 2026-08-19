@@ -27,6 +27,7 @@ import os
 import sys
 import glob
 import time
+import json
 import argparse
 import sqlite3
 import datetime
@@ -42,6 +43,8 @@ BT_DB = os.path.join(CACHE_DIR, 'zhongbao_egpt_backtest_tdx.db')
 
 from tail_backtest_tdx import parse_tdx_day_file, ts_code_to_tdx_file  # noqa: E402
 from pullback_buy import analyze_shape  # noqa: E402
+from enhanced_timing_analysis import _calc_vwap, _calc_atr, _calc_chip_concentration_peak  # noqa: E402
+from zhongbao_egpt_timing import buy_point_type  # noqa: E402
 
 WINDOW_DAYS = 60          # 中报披露后扫描窗口(交易日)
 MIN_YEAR = '2023'         # 回测起始中报年
@@ -213,6 +216,10 @@ def run_backtest(start_date, end_date):
             continue
         dates = df['trade_date'].tolist()
         n = len(dates)
+        opens_all = df['open'].astype(float).values
+        lows_all = df['low'].astype(float).values
+        closes_all = df['close'].astype(float).values
+        vols_all = df['vol'].astype(float).values
 
         for year, year_map in pool.items():
             if ts_code not in year_map:
@@ -237,12 +244,29 @@ def run_backtest(start_date, end_date):
             for k in range(a_idx, last_idx + 1):
                 if k < 20:
                     continue
+                sub = df.iloc[:k + 1]
                 try:
-                    shape = analyze_shape(df.iloc[:k + 1])
+                    shape = analyze_shape(sub)
                 except Exception:
                     shape = None
                 if not shape or shape.get('decision') != '✅ 次日可买入':
                     continue
+                # ── 买点字段: 买点类型/VWAP/筹码峰/ATR止损/次日开盘/信号后21日路径 ──
+                vwap = _calc_vwap(sub, 20)
+                atr = _calc_atr(sub, 14)
+                peak_low, peak_high, _ = _calc_chip_concentration_peak(sub, 60)
+                price_v = float(closes_all[k])
+                ma20_v = float(np.mean(closes_all[k - 19:k + 1])) if k >= 19 else None
+                bp, confirm = buy_point_type(sub, vwap, peak_high, peak_low, price_v, ma20_v,
+                                             vols_all[:k + 1], closes_all[:k + 1])
+                atr_stop = round(price_v - 2.0 * atr, 3) if atr and atr > 0 else None
+                nxt_open = float(opens_all[k + 1]) if k + 1 < n else None
+                path_json = json.dumps({
+                    'closes': [round(float(x), 3) for x in closes_all[k:k + 21]],
+                    'lows': [round(float(x), 3) for x in lows_all[k:k + 21]],
+                    'opens': [round(float(x), 3) for x in opens_all[k:k + 21]],
+                    'dates': dates[k:k + 21],
+                })
                 ret = _future_returns(df, k)
                 sig_rows.append({
                     'ts_code': ts_code, 'year': year,
@@ -252,6 +276,10 @@ def run_backtest(start_date, end_date):
                     'pullback_days': shape.get('pullback_days'),
                     'max_dd10': shape.get('max_dd10'),
                     'dty': info['dty'], 'ny': info['ny'],
+                    'buy_point': bp, 'buy_confirm': int(bool(confirm)),
+                    'vwap': round(vwap, 3) if vwap else None,
+                    'peak_high': round(peak_high, 3) if peak_high else None,
+                    'atr_stop': atr_stop, 'next_open': nxt_open, 'path': path_json,
                     **ret})
 
         if (i + 1) % 500 == 0:
@@ -373,10 +401,194 @@ def show_stats(with_heat=False):
         thg = sorted([(k, v) for k, v in thg if len(v) >= 3], key=lambda x: -_fmt(x[1])[3])
         _table("EGPT 按主题明细(≥3笔,按T+3均降序)", thg)
 
+        # ── 组合过滤验证: EGPT + 主题热度甜区(5~15%) + 主题白名单 ──
+        WHITELIST = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+                     "机器人", "游戏", "建筑装饰", "传媒", "能源金属", "商业航天"}
+        sw = (sig['theme_heat'] >= 0.05) & (sig['theme_heat'] <= 0.15)
+        wl = sig['theme'].isin(WHITELIST)
+        _table("EGPT 组合过滤验证(甜区5~15%)", [
+            ('EGPT 全信号', sig),
+            ('EGPT + 甜区热度(5~15%)', sig[sw]),
+            ('EGPT + 白名单主题', sig[wl]),
+            ('EGPT + 甜区×白名单', sig[sw & wl]),
+            ('EGPT + 甜区×白名单×扣非≥50%', sig[sw & wl & (sig['dty'] >= 50)]),
+        ])
+
     # 导出CSV
     out = os.path.join(CACHE_DIR, 'zhongbao_egpt_backtest_detail.csv')
     sig.to_csv(out, index=False, encoding='utf-8-sig')
     print(f"\n  信号明细已导出: {out}")
+
+
+def grid_search():
+    """网格搜索: 以 T+5 胜率最高为目标, 精调 热度区间×白名单×回踩分×回踩天数×增速 组合"""
+    if not os.path.exists(BT_DB):
+        print(f"回测库不存在: {BT_DB}")
+        return
+    conn = sqlite3.connect(BT_DB)
+    sig = pd.read_sql_query('SELECT * FROM egpt_sig', conn)
+    conn.close()
+    print("\n[加载主题热度] ...")
+    stock2theme, theme2etf, etf_series = load_theme_heat_map()
+    sig = enrich_theme_heat(sig, stock2theme, theme2etf, etf_series)
+
+    WL_FULL = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+               "机器人", "游戏", "建筑装饰", "传媒", "能源金属", "商业航天"}
+    WL_CORE = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+               "机器人", "游戏"}
+
+    print(f"\n{'═' * 96}")
+    print(f"  T+5 胜率网格搜索（样本{len(sig)}笔, 仅列样本≥20）")
+    print(f"{'═' * 96}")
+    print(f"  {'组合':<30} {'信号':>5} {'T+1胜':>7} {'T+5均':>8} {'T+5胜':>7} {'T+10均':>8} {'T+20均':>8}")
+    print('  ' + '─' * 94)
+
+    combos = []
+    for heat_rng in [(None, None), (0, 0.05), (0, 0.10), (0, 0.15), (0, 0.20),
+                     (0.05, 0.15), (-0.05, 0.15), (0.05, 0.20)]:
+        for wl in [None, 'full', 'core']:
+            for sc in [None, 70]:
+                for pb in [None, (1, 2)]:
+                    for dty in [None, 50]:
+                        s = sig
+                        name = []
+                        if heat_rng[0] is not None:
+                            s = s[(s['theme_heat'] >= heat_rng[0]) & (s['theme_heat'] <= heat_rng[1])]
+                            name.append(f"热度{heat_rng[0]}-{heat_rng[1]}")
+                        if wl == 'full':
+                            s = s[s['theme'].isin(WL_FULL)]
+                            name.append("白名单全")
+                        elif wl == 'core':
+                            s = s[s['theme'].isin(WL_CORE)]
+                            name.append("白名单核心")
+                        if sc == 70:
+                            s = s[s['pullback_score'] >= 70]
+                            name.append("分≥70")
+                        if pb == (1, 2):
+                            s = s[s['pullback_days'].isin([1, 2])]
+                            name.append("回踩1-2日")
+                        if dty == 50:
+                            s = s[s['dty'] >= 50]
+                            name.append("扣非≥50%")
+                        if len(s) < 20:
+                            continue
+                        n = len(s)
+                        w5 = (s['t5'] > 0).mean() * 100
+                        m1 = s['t1'].mean() * 100
+                        m5 = s['t5'].mean() * 100
+                        m10 = s['t10'].mean() * 100
+                        m20 = s['t20'].mean() * 100
+                        combos.append((name, n, w5, m1, m5, m10, m20))
+
+    combos.sort(key=lambda x: -x[2])
+    for name, n, w5, m1, m5, m10, m20 in combos[:25]:
+        tag = " · ".join(name) if name else "全信号"
+        print(f"  {tag:<30} {n:>5} {m1:>6.1f}% {m5:>+7.2f}% {w5:>6.1f}% {m10:>+7.2f}% {m20:>+7.2f}%")
+
+    print('  ' + '─' * 94)
+    print("  说明: T+1胜=T+1上涨率; 组合为空名=仅基础EGPT信号")
+    # 保存 CSV
+    out = os.path.join(CACHE_DIR, 'zhongbao_egpt_grid_result.csv')
+    pd.DataFrame([{'组合': ' · '.join(c[0]) or '全信号', '信号': c[1], 'T+1胜率': c[3],
+                   'T+5均': c[4], 'T+5胜率': c[2], 'T+10均': c[5], 'T+20均': c[6]}
+                  for c in combos[:50]]).to_csv(out, index=False, encoding='utf-8-sig')
+    print(f"  网格结果已导出: {out}")
+
+
+def buy_point_opt():
+    """买点优化: 买点类型 × 买入时点 × 止损 三重维度
+    （在最优组合 甜区5~15%×白名单×扣非≥50% 内分析，需先重跑回测重建含买点字段的信号库）"""
+    if not os.path.exists(BT_DB):
+        print(f"回测库不存在: {BT_DB}")
+        return
+    conn = sqlite3.connect(BT_DB)
+    sig = pd.read_sql_query('SELECT * FROM egpt_sig', conn)
+    conn.close()
+    if 'buy_point' not in sig.columns:
+        print("[错误] 信号库无买点字段，请先重跑回测重建(会全量重算，约数分钟)")
+        return
+
+    print("\n[加载主题热度] ...")
+    stock2theme, theme2etf, etf_series = load_theme_heat_map()
+    sig = enrich_theme_heat(sig, stock2theme, theme2etf, etf_series)
+
+    WHITELIST = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+                 "机器人", "游戏", "建筑装饰", "传媒", "能源金属", "商业航天"}
+    sw = (sig['theme_heat'] >= 0.05) & (sig['theme_heat'] <= 0.15)
+    best = sig[sw & sig['theme'].isin(WHITELIST) & (sig['dty'] >= 50)].copy()
+
+    print(f"\n{'#' * 96}")
+    print(f"  买点优化分析（最优组合: 甜区5~15%×白名单×扣非≥50%，{len(best)} 笔）")
+    print(f"{'#' * 96}")
+
+    # ── A. 买点类型分层 ──
+    _table("A. 最优组合内 按买点类型(信号日收盘买入)", [
+        ('买点2(缩量回踩VWAP确认)', best[best['buy_point'] == '买点2(缩量回踩VWAP确认)']),
+        ('买点1(放量突破VWAP+筹码峰)', best[best['buy_point'] == '买点1(放量突破VWAP+筹码峰)']),
+        ('未突破', best[best['buy_point'] == '未突破']),
+    ])
+
+    # ── B. 买入时点: 信号日收盘 vs 次日开盘（真实可执行口径） ──
+    # 路径: path['closes'/'opens'][0]=信号日, [1]=次日...
+    def _entry_ret(r, entry_idx):
+        p = json.loads(r['path'])
+        closes, opens = p['closes'], p['opens']
+        if len(closes) < 21 or opens[entry_idx] <= 0:
+            return None
+        entry = opens[entry_idx]
+        out = {}
+        for h, col in ((1, 't1'), (3, 't3'), (5, 't5'), (10, 't10'), (20, 't20')):
+            out[col] = closes[h] / entry - 1
+        return out
+
+    next_open_rows = []
+    for _, r in best.iterrows():
+        v = _entry_ret(r, 1)
+        if v is not None:
+            next_open_rows.append(v)
+    no_df = pd.DataFrame(next_open_rows)
+    _table("B. 买入时点对比(最优组合)", [
+        ('信号日收盘买入', best[['t1', 't3', 't5', 't10', 't20']]),
+        ('次日开盘买入(真实可执行)', no_df[['t1', 't3', 't5', 't10', 't20']]),
+    ])
+
+    # ── C. 止损模拟（从次日开盘买入; 触及止损按止损价卖出, 否则持有至T+20） ──
+    def _stop_sim(r, stop_mode):
+        p = json.loads(r['path'])
+        closes, lows, opens = p['closes'], p['lows'], p['opens']
+        if len(closes) < 21 or opens[1] <= 0:
+            return None
+        entry = opens[1]
+        if stop_mode == 'none':
+            return closes[20] / entry - 1
+        if stop_mode == 'atr':
+            stop = r['atr_stop']
+            if not stop or stop <= 0:
+                return None
+        else:
+            stop = entry * (1.0 - stop_mode)
+        for i in range(1, len(closes)):
+            if lows[i] <= stop:
+                return stop / entry - 1
+        return closes[20] / entry - 1
+
+    print(f"\n{'═' * 96}")
+    print("  C. 止损对比（次日开盘买入, 触及止损按止损价卖, 否则持有至T+20）")
+    print(f"{'═' * 96}")
+    print(f"  {'止损方案':<30} {'信号':>5} {'均值':>8} {'胜率':>7} {'最大亏损':>9} {'超-10%占比':>9}")
+    print('  ' + '─' * 94)
+    for scope_name, scope in (("全部(买点1+2)", best[best['buy_point'].astype(str) != '未突破']),
+                              ("仅买点2(回踩VWAP确认)", best[best['buy_point'] == '买点2(缩量回踩VWAP确认)'])):
+        for label, mode in (("无止损", 'none'), ("ATR止损(信号日-2ATR)", 'atr'),
+                            ("固定-5%", 0.05), ("固定-8%", 0.08)):
+            vals = [v for v in (_stop_sim(r, mode) for _, r in scope.iterrows()) if v is not None]
+            if not vals:
+                continue
+            arr = np.array(vals)
+            win = (arr > 0).mean() * 100
+            worst = arr.min() * 100
+            big = (arr < -0.10).mean() * 100
+            print(f"  {scope_name}·{label:<12} {len(arr):>5} {arr.mean()*100:>+7.2f}% {win:>8.1f}% {worst:>+8.2f}% {big:>8.1f}%")
 
 
 def main():
@@ -385,8 +597,16 @@ def main():
     parser.add_argument('--end', default='20260818')
     parser.add_argument('--status', action='store_true', help='查看历史回测统计')
     parser.add_argument('--heat', action='store_true', help='查看统计并补算主题热度')
+    parser.add_argument('--grid', action='store_true', help='T+5胜率网格搜索')
+    parser.add_argument('--buypt', action='store_true', help='买点优化分析(买点类型×买入时点×止损)')
     args = parser.parse_args()
 
+    if args.buypt:
+        buy_point_opt()
+        return
+    if args.grid:
+        grid_search()
+        return
     if args.status or args.heat:
         show_stats(with_heat=args.heat)
         return

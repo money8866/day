@@ -41,9 +41,9 @@ from data_fetcher import DataFetcher  # noqa: E402
 from market_regime import detect_market_regime  # noqa: E402
 
 CACHE_DIR = r'D:\mystock\cache_daily'
-CSV_PATH = r'D:\mystock\solo\report_daily\double_score_20260817_220249.csv'
+CSV_PATH = r'D:\mystock\solo\report_daily\double_score_20260819_194702.csv'
 THEME_MAP_PATH = r'D:\mystock\cache_daily\theme_stock_map_latest.json'
-OUT_CSV = r'D:\mystock\solo\report_daily\mbs_buyability_20260817.csv'
+OUT_CSV = r'D:\mystock\solo\report_daily\mbs_buyability_20260819.csv'
 
 # ─────────────────────────────────────────────
 # 权重配置
@@ -303,8 +303,12 @@ class MBSEngine:
             self._market_regime, self._market_adj = '震荡', 0.0
             return
         try:
-            end = datetime.now().strftime('%Y%m%d')
-            start = (datetime.now() - timedelta(days=200)).strftime('%Y%m%d')
+            if self._last_trade_date:
+                end = self._last_trade_date
+                start = (datetime.strptime(end, '%Y%m%d') - timedelta(days=200)).strftime('%Y%m%d')
+            else:
+                end = datetime.now().strftime('%Y%m%d')
+                start = (datetime.now() - timedelta(days=200)).strftime('%Y%m%d')
             hs = fetcher.get_index_daily('000300.SH', start, end)
             if hs is None or hs.empty:
                 raise ValueError('hs300 empty')
@@ -3565,9 +3569,12 @@ def main():
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--no-tech', action='store_true', help='跳过技术面拉取(离线测试)')
     ap.add_argument('--test', action='store_true', help='只跑异常案例测试')
+    ap.add_argument('--date', type=str, default=None, help='技术面截止交易日 YYYYMMDD (默认最新交易日)')
     args = ap.parse_args()
 
     engine = MBSEngine()
+    if args.date:
+        engine._last_trade_date = args.date
     if args.test:
         run_edge_tests(engine)
         return
