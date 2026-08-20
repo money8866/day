@@ -55,11 +55,56 @@ def ts_to_tdx_sym(ts_code):
     return None
 
 
+class V5Selector:
+    """
+    V5精选器: 从当日信号中选出最多 max_per_day 只最佳标的
+    - 基于回测分析: ND2 10-11 甜点区 + BREAKOUT_TAIL 形态 + 尾流≥20
+    - 目标: 日频1-2信号, P_up 提升 20pp
+    """
+
+    @staticmethod
+    def select(signals, max_per_day=2):
+        if not signals:
+            return signals
+        # 硬门槛
+        qualified = []
+        for s in signals:
+            # 核心: ND2甜点区 (10-11)
+            if not (10 <= s.get('nd2_potential', 0) < 12):
+                continue
+            # 形态: 排除STEALTH (历史P_up 31%)
+            if s.get('pattern') == 'STEALTH_ACCUMULATION':
+                continue
+            # 尾流 ≥ 20
+            if s.get('tail_flow', 0) < 20:
+                continue
+            # 形态质量 ≥ 10
+            if s.get('pattern_quality', 0) < 10:
+                continue
+            # 强基因 ≥ 2
+            if s.get('strong_gene', 0) < 2:
+                continue
+            # 涨幅 ≥ 1.5%
+            if s.get('pct_chg', 0) < 1.5:
+                continue
+            # 总分 ≥ 68
+            if s.get('final_score', 0) < 68:
+                continue
+            # 风险 ≤ 2
+            if s.get('risk_penalty', 0) > 2:
+                continue
+            qualified.append(s)
+        # 按 rank_score 排序取前 max_per_day
+        qualified.sort(key=lambda s: -s.get('rank_score', 0))
+        return qualified[:max_per_day]
+
+
 class ND2Backtester:
-    def __init__(self, start_date, end_date, max_candidates=250):
+    def __init__(self, start_date, end_date, max_candidates=250, use_selector=False):
         self.start_date = start_date
         self.end_date = end_date
         self.max_candidates = max_candidates
+        self.use_selector = use_selector
         self.engine = ND2AlphaEngine()
         self.reader = None
         self.theme_stocks = {}      # {theme: [(code,name,layer)]}
@@ -442,6 +487,9 @@ class ND2Backtester:
             sig['_signal_date'] = trade_date
             sig['_snap'] = snap
             signals.append(sig)
+        # 精选: 每日最多2只
+        if self.use_selector:
+            signals = V5Selector.select(signals, max_per_day=2)
         return signals
 
     # ══════════════════════════════════════════
@@ -619,7 +667,8 @@ if __name__ == '__main__':
     parser.add_argument('--start', default='20260224', help='起始日期(默认20260224, 本地.lc5覆盖起点)')
     parser.add_argument('--end', default='20260522', help='结束日期(默认20260522, 本地.lc5覆盖终点)')
     parser.add_argument('--limit', type=int, default=250, help='每日候选上限(默认250)')
+    parser.add_argument('--selector', action='store_true', help='启用V5精选器(日频1-2)')
     args = parser.parse_args()
 
-    bt = ND2Backtester(args.start, args.end, args.limit)
+    bt = ND2Backtester(args.start, args.end, args.limit, use_selector=args.selector)
     bt.run()

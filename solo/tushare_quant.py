@@ -7802,7 +7802,9 @@ def run(target_date=None, simple_mode=False):
     # ELD 业绩预增买点 TOP3（读取 eld 每日评分报告 V2 前三，追加为报告最后一段）
     # =========================
     def _load_eld_top3(trade_date: str) -> str:
-        r"""读取 ELD 报告 CSV（D:\mystock\report_daily\eld_report_YYYYMMDD.csv），按 final_score_v2 取 TOP3"""
+        r"""读取 ELD 报告 CSV（D:\mystock\report_daily\eld_report_YYYYMMDD.csv）。
+        选股逻辑：先按 Buy 风控硬过滤（剔除机构派发、Buy禁止档、北交所），再按 V2+Buy 综合分取 TOP3。
+        """
         cand = [
             os.path.join(r"D:\mystock\report_daily", f"eld_report_{trade_date}.csv"),
             os.path.join(REPORT_DIR, f"eld_report_{trade_date}.csv"),
@@ -7816,11 +7818,26 @@ def run(target_date=None, simple_mode=False):
             df = pd.read_csv(latest, encoding="utf-8-sig")
             if df.empty:
                 return ""
-            df = df.sort_values("final_score_v2", ascending=False).head(3)
-            _sig_map = {"BUY": "买入", "IGNORE": "忽略", "OBSERVE": "观望"}
+            # ---- Buy 风控硬过滤（回测负期望信号不进买点榜）----
+            _n = len(df)
+            df = df[~df["ts_code"].astype(str).str.endswith(".BJ")]
+            df = df[df["institution_state"].astype(str) != "派发"]
+            df = df[df["buy_score_level"].astype(str) != "禁止"]
+            df = df[pd.to_numeric(df["buy_score"], errors="coerce").fillna(0) >= 60]
+            if _n != len(df):
+                print(f"[ELD TOP3] Buy风控过滤：{_n} -> {len(df)}（剔除派发/禁止档/北交所）")
+            if df.empty:
+                return "【ELD 业绩预增买点 TOP3】\n今日无通过 Buy 风控的 ELD 业绩预增买点信号"
+            # ---- 综合分排序：V2 研究价值 50% + Buy 可买性 50% ----
+            df = df.copy()
+            df["_v2"] = pd.to_numeric(df["final_score_v2"], errors="coerce").fillna(0)
+            df["_buy"] = pd.to_numeric(df["buy_score"], errors="coerce").fillna(0)
+            df["_rank_score"] = df["_v2"] * 0.3 + df["_buy"] * 0.7
+            df = df.sort_values("_rank_score", ascending=False).head(3)
+            _sig_map = {"BUY": "买入", "IGNORE": "忽略", "OBSERVE": "观望", "WATCH": "观望"}
             lines = [
                 "【ELD 业绩预增买点 TOP3】",
-                f"数据来源：{os.path.basename(latest)}（业绩预增≥30%池·V2综合评分前三）",
+                f"数据来源：{os.path.basename(latest)}（业绩预增≥30%池·Buy风控过滤后·V2×30%+Buy×70%综合分前三）",
                 "",
             ]
             for i, row in df.iterrows():
@@ -7833,11 +7850,11 @@ def run(target_date=None, simple_mode=False):
                 lines.append(
                     f"{len(lines)-2}.{row.get('name','')}({row.get('ts_code','')}) "
                     f"V2:{float(row.get('final_score_v2') or 0):.0f} "
+                    f"Buy:{float(row.get('buy_score') or 0):.0f}({row.get('buy_score_level','') or '-'}) "
+                    f"买点:{_sig_cn} "
                     f"预增+{float(row.get('forecast_pct') or 0):.0f}% "
                     f"行业{float(row.get('industry_score') or 0):.0f} "
                     f"机构:{row.get('institution_state','') or '-'} "
-                    f"买点:{_sig_cn} "
-                    f"Buy:{float(row.get('buy_score') or 0):.0f}({row.get('buy_score_level','') or '-'}) "
                     f"参考价{_bp_s} 止损{_sl_s}"
                 )
             return "\n".join(lines)
@@ -7954,11 +7971,11 @@ def run(target_date=None, simple_mode=False):
 【输出要求-最高优先级】每只股票第一行必须直接给出明确结论：✅次日可买入 / ⚠️次日观察等回踩 / ❌次日不买入，严格引用上方标注的"次日操作:"字段原值，禁止自行改判或美化；禁止把"❌仅观察不买入"或"⚠️观察"的股票描述成"形态健康可买入"。仅对"✅次日可买入"（回踩中）的个股补充次日买点与止损位，每只力求精简。
 【买卖结论优先级】凡标注"次日操作:✅次日可买入"的个股，一律判定为✅次日可买入并给出次日买点/止损位；其"决策:"与"评级:"字段仅反映当日趋势确认程度（如"回踩完成待放量突破"=突破前夜，次日存在二次启动概率），不改变"✅次日可买入"的结论，严禁因评级低/决策含"规避"字样而改判"❌次日不买入"）
 
-5、**【ELD 业绩预增买点 TOP3】**（业绩预增≥30%池·V2综合评分前三）：
+5、**【ELD 业绩预增买点 TOP3】**（业绩预增≥30%池·已剔除机构派发/Buy禁止档/北交所·V2×30%+Buy×70%综合分前三）：
 {eld_top3_text}
 【输出要求-第5段】本段只输出上方"【ELD 业绩预增买点 TOP3】"的 3 只，删除"数据来源"行，每只按下列格式输出，且**每只股票之间空一行（加一个空行分隔），便于手机阅读**：
-名称：代码, V2=xx分, 预增+xx%, 行业热度xx分, 机构:xx, 买点:✅可买入/⚠️谨慎/❌禁止, Buy:xx分, 参考价xx, 止损xx
-若 Buy<60（禁止）或机构=派发，务必标注风险提示；若该段落无数据则提示"今日无 ELD 业绩预增买点信号"。
+名称：代码, 综合分=xx(V2=xx×30%+Buy=xx×70%), 买点:✅可买入/⚠️谨慎, 预增+xx%, 行业热度xx分, 机构:xx, 参考价xx, 止损xx
+若机构=洗盘/未知 或 Buy<70（谨慎档），标注一句风险提示；本段已剔除派发与禁止档个股。
 
 6、**【今日突破股池分析】**
 （综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
