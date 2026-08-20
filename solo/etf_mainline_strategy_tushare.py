@@ -18,8 +18,8 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "
 TS_TOKEN = os.getenv("TUSHARE_TOKEN")
 import tushare as ts
 import requests
-ts.set_token(TS_TOKEN)
-pro = ts.pro_api()
+# 直接传 token 初始化，避免 set_token 写入 ~/tk.csv（沙箱禁止）
+pro = ts.pro_api(TS_TOKEN)
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), "etf_mainline_state_tushare.json")
 MOM_PERIOD = 20

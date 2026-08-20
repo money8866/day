@@ -67,14 +67,44 @@ def get_market_calendar(pool_df, start, end):
     return sorted(all_dates)
 
 
-def compute_factors_at(df_k, bt_idx):
-    """在 bt_idx 时点计算因子, 返回 dict"""
+def compute_factors_at(df_k, bt_idx, row):
+    """在 bt_idx 时点计算因子, 返回 dict (V8 口径: 含 SRS + 完整信号)"""
     slice_df = df_k.iloc[:bt_idx + 1].copy()
     if len(slice_df) < 60:
         return None
     tech = engine.compute_technical(slice_df)
     if tech is None:
         return None
+    # V8: 完整 score_one (含 SRS / 黄金坑V4 / signal_v8 / position_v8)
+    try:
+        r = engine.score_one(row, tech)
+    except Exception as e:
+        # 基本面字段缺失时降级为纯技术因子回退
+        r = None
+    if r is not None and r.final is not None:
+        entry_res = r.entry
+        return {
+            'entry': entry_res,
+            'pcs': r.pcs,
+            'acs': r.acs,
+            'bqs': r.bqs,
+            'dqs': r.dqs,
+            'srs': r.srs,
+            'mbs': r.final,
+            'conf': r.conf,
+            'signal': r.signal,
+            'gp': r.golden_pit,
+            'position': r.position,
+            'state': r._state_code,
+            'd_ma20': r.d_ma20,
+            'd_hi': r.d_hi,
+            'db_type': tech.get('db_type', ''),
+            'fall_pattern': tech.get('fall_pattern', ''),
+            'vpd_type': tech.get('vpd_type', ''),
+            'ma_conv': tech.get('ma_conv_score'),
+            'top_pattern': tech.get('top_pattern', ''),
+        }
+    # 降级: 纯技术因子 (无基本面)
     entry_res = engine.entry_score(tech)
     entry = entry_res[0] if isinstance(entry_res, tuple) else entry_res
     pcs = engine.pcs_score(tech)
@@ -82,12 +112,19 @@ def compute_factors_at(df_k, bt_idx):
     acs = engine.acs_score(tech, 70, 70, 60)
     bqs = engine.bottom_quality_score(tech, acs, pcs)
     dqs = engine.drop_quality_score(tech)
+    srs, _ = engine.strong_retracement_score(tech, acs)
     return {
         'entry': entry,
         'pcs': pcs,
         'acs': acs,
         'bqs': bqs,
         'dqs': dqs,
+        'srs': srs,
+        'mbs': None,
+        'conf': None,
+        'signal': '',
+        'gp': '',
+        'position': None,
         'state': state_code,
         'd_ma20': tech.get('dist_ma20'),
         'd_hi': tech.get('dist_hi'),
@@ -132,7 +169,7 @@ def future_returns(df_k, bt_idx, hold_days):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', default='20260101', help='回测起始日')
-    ap.add_argument('--end', default='20260807', help='回测结束日')
+    ap.add_argument('--end', default='20260819', help='回测结束日')
     ap.add_argument('--hold', type=int, default=30, help='持有期(交易日)')
     ap.add_argument('--step', type=int, default=10, help='调仓间隔(交易日)')
     args = ap.parse_args()
@@ -186,7 +223,7 @@ def main():
             if di < 119:
                 continue
             # 计算因子
-            f = compute_factors_at(df_k, di)
+            f = compute_factors_at(df_k, di, row)
             if f is None:
                 continue
             # 未来收益
@@ -215,7 +252,7 @@ def main():
     print(f'\n{"="*66}')
     print('1. 因子与未来收益相关性 (IC)')
     print(f'{"="*66}')
-    factors = ['entry', 'pcs', 'acs', 'bqs', 'dqs', 'd_ma20', 'd_hi', 'ma_conv']
+    factors = ['entry', 'pcs', 'acs', 'bqs', 'dqs', 'srs', 'mbs', 'd_ma20', 'd_hi', 'ma_conv']
     for f in factors:
         valid = df[df[f].notna()]
         if len(valid) < 50:
@@ -292,6 +329,60 @@ def main():
         print(f'  {v:20s}: 收益{avg:+.2f}% 胜率{win:.1f}% (样本{len(sub)})')
 
     # ════════════════════════════════════════════════════════
+    # 3.5 V8 信号等级胜率 (GP_A+/GP_A/GP_B + 信号档)
+    # ════════════════════════════════════════════════════════
+    print(f'\n{"="*66}')
+    print('3.5 V8 信号等级胜率 (signal_v8)')
+    print(f'{"="*66}')
+    sig_order = ['GP_A+', 'GP_A', 'GP_B', 'S', 'A', 'B', 'C+', 'C', 'D+', 'D', 'F']
+    print(f'\n  ── 全部信号档 (含基本面缺失降级, signal空行剔除) ──')
+    v8 = df[df['signal'] != ''].copy()
+    print(f'  有效样本: {len(v8)} / {len(df)}')
+    for sig in sig_order:
+        sub = v8[v8['signal'] == sig]
+        if len(sub) < 5:
+            continue
+        for h in ['fut_ret_10', 'fut_ret_20', 'fut_ret_30']:
+            wr = (sub[h] > 0).mean() * 100
+            if h == 'fut_ret_20':
+                dd = sub['fut_max_dd'].mean()
+                gain = sub['fut_max_gain'].mean()
+                print(f'  {sig:<6}: n={len(sub):>5}  10日胜率{(sub.fut_ret_10>0).mean()*100:5.1f}%  20日胜率{wr:5.1f}%  30日胜率{(sub.fut_ret_30>0).mean()*100:5.1f}%  20日均值{sub.fut_ret_20.mean():+.2f}%  回撤{dd:.1f}%  最高{gain:.1f}%')
+
+    print('\n  ── 黄金坑V4等级 ──')
+    gp_map = {'GOLD_PIT_A_PLUS': 'GP_A+', 'GOLD_PIT_A': 'GP_A', 'GOLD_PIT_B': 'GP_B', 'GOLD_PIT_C': 'GP_C'}
+    v8['gp_s'] = v8['gp'].map(gp_map)
+    for g in ['GP_A+', 'GP_A', 'GP_B', 'GP_C']:
+        sub = v8[v8['gp_s'] == g]
+        if len(sub) < 5:
+            continue
+        wr = (sub['fut_ret_20'] > 0).mean() * 100
+        dd = sub['fut_max_dd'].mean()
+        gain = sub['fut_max_gain'].mean()
+        print(f'  {g:<6}: n={len(sub):>5}  10日胜率{(sub.fut_ret_10>0).mean()*100:5.1f}%  20日胜率{wr:5.1f}%  30日胜率{(sub.fut_ret_30>0).mean()*100:5.1f}%  20日均值{sub.fut_ret_20.mean():+.2f}%  回撤{dd:.1f}%  最高{gain:.1f}%')
+
+    print('\n  ── 建议仓位>0 (V8 可买信号) ──')
+    buy = v8[v8['position'] is not None and v8['position'] > 0] if 'position' in v8.columns else pd.DataFrame()
+    if len(buy) > 0:
+        for h in ['fut_ret_10', 'fut_ret_20', 'fut_ret_30']:
+            wr = (buy[h] > 0).mean() * 100
+            print(f'  [{h}] 胜率{wr:5.1f}%  均值{buy[h].mean():+.2f}%')
+        dd = buy['fut_max_dd'].mean()
+        gain = buy['fut_max_gain'].mean()
+        print(f'  样本{len(buy)}  回撤{dd:.1f}%  最高{gain:.1f}%')
+    else:
+        print('  无样本')
+
+    print('\n  ── SRS 分档 (20日) ──')
+    for lo, hi, lab in [(80, 101, 'SRS>=80'), (72, 80, 'SRS 72-79'), (62, 72, 'SRS 62-71'),
+                        (52, 62, 'SRS 52-61'), (0, 52, 'SRS<52')]:
+        sub = v8[(v8['srs'] >= lo) & (v8['srs'] < hi)]
+        if len(sub) < 20:
+            continue
+        wr = (sub['fut_ret_20'] > 0).mean() * 100
+        print(f'  {lab:<10}: n={len(sub):>5}  20日胜率{wr:5.1f}%  20日均值{sub.fut_ret_20.mean():+.2f}%')
+
+    # ════════════════════════════════════════════════════════
     # 4. BQS / DQS 组合筛选
     # ════════════════════════════════════════════════════════
     print(f'\n{"="*66}')
@@ -339,7 +430,7 @@ def main():
         print('  无样本')
 
     # 保存结果
-    out_csv = os.path.join(BASE_DIR, 'report_daily', 'mbs_backtest_tdx.csv')
+    out_csv = os.path.join(BASE_DIR, 'report_daily', 'mbs_backtest_tdx_v8.csv')
     df.to_csv(out_csv, index=False, encoding='utf-8-sig')
     print(f'\n结果已保存: {out_csv}')
 

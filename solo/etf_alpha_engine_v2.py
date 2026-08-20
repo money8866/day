@@ -117,8 +117,8 @@ def init_tushare():
     token = os.getenv('TUSHARE_TOKEN')
     if not token:
         raise ValueError("TUSHARE_TOKEN 环境变量未设置")
-    ts.set_token(token)
-    return ts.pro_api()
+    # 直接传 token 初始化，避免 set_token 写入 ~/tk.csv（沙箱禁止）
+    return ts.pro_api(token)
 
 
 # ================================================

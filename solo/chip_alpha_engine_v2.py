@@ -183,8 +183,8 @@ class ChipAlphaEngineV2:
         if token is None:
             token = os.environ.get('TUSHARE_TOKEN', '')
         self.token = token
-        ts.set_token(token)
-        self.pro = ts.pro_api()
+        # 直接传 token 初始化，避免 set_token 写入 ~/tk.csv（沙箱禁止）
+        self.pro = ts.pro_api(token)
 
         if cache_dir is None:
             cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chip_cache')

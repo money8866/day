@@ -1,0 +1,82 @@
+﻿python : 12:59:53 [INFO] eld.run: ============================================================
+所在位置 C:\Users\kongx\AppData\Local\Temp\trae\run-command\scripts\ps-script-e36a05ff-6acd-499b-9843-5850ecd2705f.ps1:19 字
+符: 38
++ ... ELD_TARGET_DATE="20260819"; python _run_eld.py --no-push 2>&1 | Tee-O ...
++                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (12:59:53 [INFO]...===============:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+12:59:53 [INFO] eld.run: ELD V2 完整运行开始
+12:59:53 [INFO] eld.run: ============================================================
+12:59:53 [INFO] eld.run: 交易日: 20260819 (ELD_TARGET_DATE指定)
+12:59:53 [INFO] eld.run: Step 1: 获取业绩预告...
+12:59:53 [INFO] eld.datasource: 从本地 parquet 缓存读取业绩预告: 1818 条
+12:59:53 [INFO] eld.run:   获取到 1818 条业绩预告
+12:59:53 [INFO] eld.run:   Step 1b: 预告利润增速过滤 1818 → 907 (阈值≥30%)
+12:59:53 [INFO] eld.run: Step 2: 获取股票基本信息...
+12:59:53 [INFO] eld.datasource: 加载 stock_basic.csv: 5530 条记录
+12:59:53 [INFO] eld.run:   获取到 900 只股票基本信息
+12:59:53 [INFO] eld.run: Step 3: 获取财务数据...
+13:01:10 [INFO] eld.run:   进度: 200/907
+13:02:26 [INFO] eld.run:   进度: 400/907
+13:03:41 [INFO] eld.run:   进度: 600/907
+13:04:58 [INFO] eld.run:   进度: 800/907
+13:05:37 [INFO] eld.run:   获取到 900 只股票财务数据
+13:05:37 [INFO] eld.run: Step 4: 获取日线数据...
+13:05:40 [INFO] eld.datasource: 加载日线缓存 [20260515 ~ 20260819]: 5552 只股票
+13:05:45 [INFO] eld.run:   进度: 200/907
+13:05:50 [INFO] eld.run:   进度: 400/907
+13:05:54 [INFO] eld.run:   进度: 600/907
+13:05:57 [INFO] eld.run:   进度: 800/907
+13:05:59 [INFO] eld.run:   获取到 900 只股票日线数据
+13:05:59 [INFO] eld.run: Step 5: 获取市场评分...
+13:05:59 [INFO] eld.run:   市场状态: recovery (乘数: 1.00)
+13:05:59 [INFO] eld.run: Step 6: 运行评分流水线...
+13:05:59 [INFO] eld.final_score: Running ELD pipeline for 907 stocks with 8 workers
+13:05:59 [WARNING] eld.final_score: Stock 001232.SZ not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 688836.SH not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 688806.SH not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 688826.SH not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 688825.SH not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 301655.SZ not found in basic info, skipping
+13:05:59 [WARNING] eld.final_score: Stock 301717.SZ not found in basic info, skipping
+13:06:05 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:05 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:07 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:08 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:08 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:08 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:08 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:06:08 [INFO] eld.datasource: 行业热度评分: 30 个行业
+13:24:28 [WARNING] eld.datasource: 读取 parquet 缓存失败 [income_000850.SZ_20260630]: Could not open Parquet input source '<B
+uffer>': Parquet file size is 0 bytes
+13:32:22 [INFO] eld.final_score: Pipeline complete: 900/907 stocks scored (V2排序)
+13:32:22 [INFO] eld.run: Step 7: 生成报告...
+13:32:22 [INFO] eld.report: Markdown report saved: d:/mystock/report_daily\eld_report_20260819.md
+13:32:22 [INFO] eld.report: CSV report saved: d:/mystock/report_daily\eld_report_20260819.csv
+13:32:22 [INFO] eld.report: SQLite report saved: d:/mystock/report_daily\eld_report_20260819.db
+13:32:22 [INFO] eld.report: JSON report saved: d:/mystock/report_daily\eld_report_20260819.json
+13:32:22 [INFO] eld.run: ============================================================
+13:32:22 [INFO] eld.run: ELD V2 运行完成
+13:32:22 [INFO] eld.run:   扫描股票: 907
+13:32:22 [INFO] eld.run:   通过过滤: 900
+13:32:22 [INFO] eld.run:   市场状态: recovery
+13:32:22 [INFO] eld.run:   markdown: d:/mystock/report_daily\eld_report_20260819.md
+13:32:22 [INFO] eld.run:   csv: d:/mystock/report_daily\eld_report_20260819.csv
+13:32:22 [INFO] eld.run:   sqlite: d:/mystock/report_daily\eld_report_20260819.db
+13:32:22 [INFO] eld.run:   json: d:/mystock/report_daily\eld_report_20260819.json
+13:32:22 [INFO] eld.run: 
+13:32:22 [INFO] eld.run: TOP 10 结果 (ELD V2):
+13:32:22 [INFO] eld.run: 排名   代码           名称       行业     V2分    V1分    预期差V2    机构吸筹     买点信号
+13:32:22 [INFO] eld.run: 1    603330.SH    天洋新材     塑料     92.5   57.6   95       30       WATCH
+13:32:22 [INFO] eld.run: 2    301666.SZ    大普微      IT设备   88.8   69.1   95       41       WATCH
+13:32:22 [INFO] eld.run: 3    000066.SZ    中国长城     IT设备   88.0   61.5   95       30       WATCH
+13:32:22 [INFO] eld.run: 4    002557.SZ    洽洽食品     食品     87.8   65.5   95       34       WATCH
+13:32:22 [INFO] eld.run: 5    300531.SZ    优博讯      IT设备   87.6   63.2   95       27       WATCH
+13:32:22 [INFO] eld.run: 6    300604.SZ    长川科技     半导体    86.8   67.3   95       38       WATCH
+13:32:22 [INFO] eld.run: 7    000977.SZ    浪潮信息     IT设备   86.4   61.2   95       38       WATCH
+13:32:22 [INFO] eld.run: 8    000938.SZ    紫光股份     IT设备   86.3   61.7   95       29       WATCH
+13:32:22 [INFO] eld.run: 9    301536.SZ    星宸科技     半导体    85.7   67.1   95       37       WATCH
+13:32:22 [INFO] eld.run: 10   603993.SH    洛阳钼业     小金属    85.6   64.4   85       29       WATCH
+13:32:22 [INFO] eld.run: 
+13:32:22 [INFO] eld.run: Step 8: 微信推送 (已跳过 --no-push)

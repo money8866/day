@@ -425,7 +425,7 @@ class EldDataSource:
             "fina_indicator", fina_key,
             ts_code=ts_code, end_date=end,
             fields=(
-                "ts_code,end_date,roe,roic,gross_margin,"
+                "ts_code,end_date,ann_date,roe,roic,gross_margin,"
                 "ocf_to_orp,debt_to_assets,"
                 "profit_dedt,eps"
             ),
@@ -507,6 +507,7 @@ class EldDataSource:
         result = FinancialData(
             ts_code=ts_code,
             end_date=end_date,
+            report_date=str(fina_row.get("ann_date", "")) if fina_row is not None else "",
             revenue=revenue,
             revenue_yoy=revenue_yoy,
             deducted_profit=deducted_profit,

@@ -314,6 +314,16 @@ class EarningsBuyPointConfig:
     market_gate_enabled: bool = True      # 开关：大盘(沪深300)<MA20 时 BUY 降级 WATCH
     market_gate_benchmark: str = "000300.SH"  # 大盘基准指数
 
+    # ── 正式报告阶段规则（石药创新 2026-08 案例提炼：预告后→正式报告前走势） ──
+    # 预告已把业绩区间打明牌，报告披露日前后走势特征：
+    #   a) 报告披露前 N 个交易日（含披露日当日）资金抢跑，披露后常平盘/回落 → 追高无意义
+    #   b) 报告披露后 M 个交易日内为"利好落地观察期"，宜等回踩企稳再介入
+    # 仅在拿到正式披露日（financial.report_date）时生效；缺失则维持原逻辑
+    report_pre_days: int = 3         # 披露前 N 个交易日(含披露日) = 抢跑期，BUY 降级 WATCH
+    report_post_days: int = 2        # 披露后 N 个交易日内 = 落地观察期，BUY 降级 WATCH
+    report_stage_downgrade: bool = True  # 总开关：抢跑/落地期整体降级 BUY
+    report_stage_panic_ignore: bool = False  # 落地观察期内连涨追高(当日涨幅>10%)直接 IGNORE
+
     # 买点质量评分权重（0-100）
     quality_bias_weight: float = 0.25     # 乖离合理度
     quality_pullback_weight: float = 0.25 # 回踩深度（贴近MA10/MA20）

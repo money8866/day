@@ -174,6 +174,10 @@ CSV_COLUMNS: Final[list[str]] = [
     # 量能/事件窗口（回测实证: 非放量×ELD窗口才是alpha来源）
     "volume_ratio",
     "days_since_ann",
+    # 正式报告阶段（V4：报告抢跑/落地规则）
+    "report_date",
+    "report_stage",
+    "days_to_report",
 ]
 
 

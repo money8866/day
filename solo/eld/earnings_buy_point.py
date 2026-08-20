@@ -620,6 +620,52 @@ def _check_post_announce_decline(
     return worst_decline < max_decline_pct, round(worst_decline, 2)
 
 
+def _compute_report_stage(
+    sorted_data: list[DailyPriceData],
+    report_date: str,
+    cfg: Any,
+    announce_date: str = "",
+) -> tuple[str, int]:
+    """识别"正式报告披露日"前后阶段（石药创新 2026-08 案例提炼）。
+
+    预告已把业绩区间打明牌，正式报告披露日前资金常抢跑（披露后平盘/回落），
+    披露后 1-2 日为"利好落地观察期"。规则仅在此阶段对 BUY 降级，避免追高。
+
+    核心猎物判定：ELD 抓的是"预增预告已出 + 正式中报未披露"的窗口期标的。
+    当 report_date 早于预告公告日时（fina_indicator 回退返回上一财报期，如
+    中报预告 20260727 而 report_date=20260428 为一季报），说明当期中报未
+    落地，标记为 "ann_to_report"（预告→报告窗口持有期），不降级、仅高亮。
+
+    Returns:
+        (stage, days_to_report)
+        stage: "none"(无报告日/不在窗口) / "ann_to_report"(预告已出·报告未披露)
+               / "report_pre"(披露前抢跑期,含披露日当日) / "report_post"(披露后落地观察期)
+               / "normal"(远离披露日)
+        days_to_report: 报告日距当前最后交易日的交易天数（>0=披露前N日, 0=披露当日, <0=已过|N|日）
+    """
+    if not report_date or len(sorted_data) < 1:
+        return "none", 0
+
+    # 报告日早于预告公告日 → 该报告日是上一财报期披露日，当期中报未落地
+    if announce_date and announce_date > report_date:
+        return "ann_to_report", 0
+
+    report_idx = -1
+    for i, bar in enumerate(sorted_data):
+        if bar.trade_date == report_date:
+            report_idx = i
+            break
+    if report_idx < 0:
+        return "none", 0
+
+    days_to_report = report_idx - (len(sorted_data) - 1)
+    if days_to_report >= 0 and days_to_report <= cfg.report_pre_days:
+        return "report_pre", days_to_report
+    if days_to_report < 0 and -days_to_report <= cfg.report_post_days:
+        return "report_post", days_to_report
+    return "normal", days_to_report
+
+
 def detect_earnings_pullback(
     ts_code: str,
     data_source: Any,
@@ -628,6 +674,7 @@ def detect_earnings_pullback(
     trend_result: Optional[TrendScoreResult] = None,
     institution_state: Optional[str] = None,
     market_ma20_below: Optional[bool] = None,
+    report_date: Optional[str] = None,
 ) -> EarningsBuyPointResult:
     """检测业绩回踩买点。
 
@@ -639,6 +686,8 @@ def detect_earnings_pullback(
         trend_result: 趋势评分结果（可选）。
         institution_state: 机构吸筹状态（可选）。
         market_ma20_below: 大盘是否在MA20下方（可选，None时自动计算）。
+        report_date: 正式报告披露日 YYYYMMDD（可选，来自 financial.report_date）。
+            用于"报告抢跑/落地"阶段识别：披露前3日(含当日)与披露后2日内 BUY 降级 WATCH。
 
     Returns:
         EarningsBuyPointResult: 业绩回踩买点检测结果。
@@ -869,6 +918,40 @@ def detect_earnings_pullback(
             market_ma20_below = _get_market_ma20_below(data_source)
         market_weak = bool(market_ma20_below)
 
+    # ── 正式报告阶段识别（石药创新 2026-08 案例：预告→报告窗口经验） ──
+    report_stage, days_to_report = _compute_report_stage(
+        sorted_data, report_date or "", cfg, announce_date or ""
+    )
+    result.report_date = report_date or ""
+    result.report_stage = report_stage
+    result.days_to_report = days_to_report
+    if report_stage == "ann_to_report":
+        all_logic.append(
+            f"正式报告: 中报未披露（预告{announce_date}已出），处于预告→报告窗口持有期，"
+            f"事件博弈主战场；报告落地后需防利好兑现"
+        )
+    elif report_stage == "report_pre":
+        all_logic.append(
+            f"正式报告: 披露前{days_to_report}个交易日（抢跑期，报告披露后常平盘/回落，追高无意义）"
+        )
+    elif report_stage == "report_post":
+        all_logic.append(
+            f"正式报告: 已披露{-days_to_report}个交易日（落地观察期，利好兑现宜等回踩企稳）"
+        )
+
+    # 落地观察期内当日大涨追高 → 直接 IGNORE（默认关闭；开启可防石药8/19式涨停次日追高）
+    report_panic_ignore = False
+    if (
+        cfg.report_stage_panic_ignore
+        and report_stage == "report_post"
+        and len(sorted_data) >= 2
+    ):
+        day_chg = (
+            (sorted_data[-1].close / sorted_data[-2].close - 1) * 100
+            if sorted_data[-2].close > 0 else 0.0
+        )
+        report_panic_ignore = day_chg > 10.0
+
     if chase_risk:
         # 追高风险 → 绝不BUY，降级WATCH等待回踩
         signal = EarningsBuySignal.WATCH
@@ -887,6 +970,32 @@ def detect_earnings_pullback(
             f"信号: WATCH — 市场环境弱（大盘{cfg.market_gate_benchmark} < MA20），"
             f"买点质量{quality_score:.0f}分/乖离{bias_pct:.1f}%也降级，等待大盘企稳"
         )
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    elif report_panic_ignore:
+        # 正式报告落地观察期内当日大涨>10% → 直接 IGNORE（利好已兑现+短期透支）
+        signal = EarningsBuySignal.IGNORE
+        stage = "IGNORE"
+        all_logic.append(
+            f"信号: IGNORE — 正式报告落地观察期内当日大涨{day_chg:.1f}%，"
+            f"利好兑现+短期透支，禁止追高"
+        )
+    elif cfg.report_stage_downgrade and report_stage in ("report_pre", "report_post"):
+        # 正式报告抢跑/落地期：BUY 整体降级 WATCH（石药创新 2026-08 经验）
+        # 披露前资金抢跑、披露后常平盘/回落，此阶段追高赔率差，等回踩企稳再介入
+        signal = EarningsBuySignal.WATCH
+        stage = "WATCH"
+        if report_stage == "report_pre":
+            note = (
+                f"信号: WATCH — 正式报告披露前{days_to_report}个交易日（抢跑期），"
+                f"报告落地后常平盘/回落，追高无意义，等报告后回踩"
+            )
+        else:
+            note = (
+                f"信号: WATCH — 正式报告已披露{-days_to_report}个交易日（落地观察期），"
+                f"利好兑现宜等回踩企稳（缩量+贴近MA20）再介入"
+            )
+        all_logic.append(note)
         all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
         all_logic.append(f"止损价: {stop_loss_price:.2f}")
     elif stock_pullback_buy and not is_sell_on_news:

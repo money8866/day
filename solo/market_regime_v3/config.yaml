@@ -850,6 +850,66 @@ rally_pullback:
     threshold: 60                  # 有效信号阈值
 
 # ============================================================
+# V8.0 — RIGHT CONFIRM BUY 右侧确认买入引擎
+# 核心：前期放量多涨停 → 健康回调 → 右侧确认再买（不提前抄底）
+# FinalScore = Launch×20% + Pullback×30% + Confirm×40% + Theme×10%
+# ============================================================
+right_confirm_buy:
+  enabled: true
+  lookback: 100                   # 行情回看天数
+  # 阶段A: 启动质量
+  launch:
+    lookback: 40                  # 拉升区间回看
+    min_amplitude: 0.15           # 区间涨幅门槛 >15%
+    min_limit_up: 1               # 最低涨停次数
+    min_vol_expansion: 1.3        # 最低放量倍数
+    limit_up_threshold: 9.5       # 涨停判定涨幅(%)
+    weights:
+      vol_expansion: 0.25         # 放量强度
+      limit_up: 0.20              # 涨停强度
+      amplitude: 0.15             # 区间涨幅
+      breakout_quality: 0.20      # 突破质量
+      trend: 0.20                 # 趋势强度
+  # 阶段B: 回调健康
+  pullback:
+    drawdown_min: 0.05            # 健康回撤 5%~18%
+    drawdown_max: 0.18
+    min_days: 3                   # 回调 3~12 个交易日
+    max_days: 12
+    weights:
+      drawdown: 0.20              # 回撤幅度
+      days: 0.15                  # 回调时间
+      shrink: 0.20                # 缩量程度
+      structure: 0.20             # 结构完整度
+      support: 0.15               # 支撑有效性
+      candle: 0.10                # K线承接
+    distribution_penalty_threshold: 30   # >=30 直接 PASS
+  # 阶段C: 右侧确认
+  confirm:
+    weights:
+      pullback: 0.30              # 回踩质量
+      breakout: 0.25              # 突破确认
+      volume: 0.20                # 量价确认
+      trend: 0.10                 # 趋势恢复
+      ma: 0.05                    # VWAP/均线
+      theme: 0.10                 # 主题共振
+  # 阶段D: 最终权重
+  final_weights:
+    launch: 0.20
+    pullback: 0.30
+    confirm: 0.40
+    theme: 0.10
+  # 环境阈值（BUY 最低 FinalScore）
+  env_thresholds:
+    strong: 70
+    recovery: 75
+    neutral: 80
+    weak: 999
+  # 输出
+  top_n: 20                       # JSON 中保留前 N 只（按 final_score）
+  push_text: true                 # 是否在文本中附带信号输出
+
+# ============================================================
 # V7.3 — 数据质量检查（宽度/情绪指标一致性，异常指标隔离）
 # ============================================================
 data_quality:

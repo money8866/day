@@ -3,10 +3,10 @@
 
 ## 一、综合概览
 
-- Market Score: 57/100
+- Market Score: 58/100
 - Market Regime: Neutral（震荡中性）
 - Risk Appetite: Medium
-- Heat Score: 46/100 (Cool)
+- Heat Score: 50/100 (Cool)
 - Dominant Style: AI
 - Recommended Exposure: 15%
 - Active Themes: 0个
@@ -22,14 +22,14 @@
 - 市场宽度: 26.7（贡献+26.7）
 - 情绪: 3.8（贡献+3.8）
 - 主题共振: 5.0（贡献+5.0）
-- 风险偏好: 5.7（贡献+5.7）
-- 总分: 57
+- 风险偏好: 5.8（贡献+5.8）
+- 总分: 58
 
 评分解释:
 - 综合判断: 市场温和偏强
 - breadth: +26.7分
 - index_strength: +16.2分
-- risk_appetite: +5.7分
+- risk_appetite: +5.8分
 - theme_resonance: +5.0分
 - sentiment: +3.8分
 
@@ -79,7 +79,7 @@
 
 ## 七、市场热度
 
-- Heat Score: 46/100
+- Heat Score: 50/100
 - 等级: Cool | 趋势: Stable | 周期: Heating
 - 仓位修正: 1.00
 
@@ -93,7 +93,7 @@
 
 ## 十、仓位建议
 
-- 基础仓位: 47%（Market Score）
+- 基础仓位: 48%（Market Score）
 - 风险偏好乘数: ×1.00
 - 热度乘数: ×0.90
 - 合成仓位: 43%

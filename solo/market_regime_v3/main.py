@@ -37,6 +37,7 @@ from market_regime_v3.engines.state_machine import StateMachine
 from market_regime_v3.engines.exposure_model import ExposureModel
 from market_regime_v3.engines.heat_engine import HeatEngine
 from market_regime_v3.engines.rally_pullback_engine import RallyPullbackEngine
+from market_regime_v3.engines.right_confirm_buy_engine import RightConfirmBuyEngine
 from market_regime_v3.engines.theme_beta import ThemeBetaEngine
 from market_regime_v3.engines.leader_quality import LeaderQualityEngine
 from market_regime_v3.engines.trading_style import TradingStyleEngine
@@ -464,6 +465,57 @@ class MarketRegimeV3:
         else:
             print("\n  全市场扫描完成，无符合区间放量多涨停回调条件的标的。")
 
+        # ── V8.0 RIGHT CONFIRM BUY 右侧确认买入引擎（独立，复用候选池/行情/主题/大盘数据）──
+        # ════════════════════════════════════════════════════════════════════════════════
+        rcb_engine = RightConfirmBuyEngine(self.config)
+        rcb_cfg = self.config.get('right_confirm_buy', {})
+        rcb_results = []
+        if rcb_cfg.get('enabled', True) and candidate_pool:
+            print(f"\n  [全市场扫描] RIGHT CONFIRM BUY 右侧确认买入...")
+            market_env = {
+                'market_score': market_score_result.score if market_score_result else 50,
+                'regime': regime.primary if regime else '',
+                'recovery_state': recovery_state,
+                'risk_score': risk_result.score if risk_result else 50,
+                'breadth_score': breadth_result.score if breadth_result else 50,
+                'sentiment_score': sentiment_result.score if sentiment_result else 50,
+                'limit_up_ratio': sentiment_result.limit_up_ratio if sentiment_result else 0,
+                'top_themes': [t['name'] for t in theme_result.top_themes[:5]] if theme_result.top_themes else [],
+                'theme_scores': theme_beta_result.theme_scores if theme_beta_result else {},
+            }
+            theme_of = {}
+            for code, meta in stock_meta.items():
+                theme_of[code] = meta.get('dominant_theme', '') or meta.get('subtheme', '')
+            # 复用 rally_pullback 的候选池（龙头前10 + 主板总市值>80亿）
+            rcb_codes = [c['ts_code'] for c in candidate_pool]
+            total = len(rcb_codes)
+            _rcb_err = 0
+            for idx, code in enumerate(rcb_codes, 1):
+                try:
+                    r = rcb_engine.detect(code, trade_date, market_env=market_env,
+                                          stock_theme=theme_of.get(code, ''))
+                    if r is not None:
+                        rcb_results.append(r)
+                except Exception as e:
+                    _rcb_err += 1
+                    if _rcb_err <= 3:
+                        print(f"    [RCB] {code} 异常: {e}")
+                if idx % 300 == 0 or idx == total:
+                    print(f"    检测进度: {idx}/{total}")
+            if _rcb_err > 3:
+                print(f"    [RCB] 共 {_rcb_err} 只股票扫描异常（已跳过）")
+
+            rcb_results.sort(key=lambda x: x.final_score, reverse=True)
+            buy_list = [r for r in rcb_results if r.signal_level in ('S', 'A')]
+            watch_list = [r for r in rcb_results if r.signal_level in ('B', 'C')]
+            pass_n = sum(1 for r in rcb_results if r.signal_level == 'D')
+            print(f"\n  ✅ RIGHT CONFIRM BUY 扫描完成: 启动达标{len(rcb_results)}只 | "
+                  f"S/A买入级{len(buy_list)}只 | B/C观察级{len(watch_list)}只 | PASS {pass_n}只")
+            for r in buy_list[:10]:
+                print(f"    [{r.signal_level}] {r.name}({r.ts_code}) Final={r.final_score:.0f} "
+                      f"启动{r.launch_score:.0f} 回踩{r.pullback_score:.0f} 确认{r.confirm_score:.0f} "
+                      f"信号{r.confirm_count} 确认价{r.confirm_price:.2f} 止损{r.stop_loss:.2f}")
+
         # ── V6.1 Layer: Pattern → Smart Money → EV → Risk Budget ──
         # ════════════════════════════════════════════════════════════
         pattern_result = None
@@ -788,6 +840,13 @@ class MarketRegimeV3:
 
         # 补充回调检测结果 + Alpha引擎结果 + overview 字段
         report_dict["pullback_qualified"] = pullback_qualified
+        if rcb_results:
+            report_dict["right_confirm_buy"] = {
+                "market_score": market_score_result.score if market_score_result else None,
+                "regime": regime.primary if regime else None,
+                "env_tier": rcb_results[0].env_tier if rcb_results else None,
+                "signals": [_rcb_to_dict(r) for r in rcb_results],
+            }
         if cs_result:
             report_dict["cross_sectional"] = {
                 "n_stocks": cs_result.n_stocks_analyzed,
@@ -848,6 +907,25 @@ class MarketRegimeV3:
         except Exception as e:
             print(f"  ⚠️ 信号JSON导出失败: {e}")
 
+        # ── V8.0 导出 RIGHT CONFIRM BUY 信号 JSON（供 tushare_quant.py / 独立跟踪使用）──
+        if rcb_results:
+            try:
+                import json as _json
+                rcb_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'report_daily')
+                os.makedirs(rcb_dir, exist_ok=True)
+                rcb_file = os.path.join(rcb_dir, f"right_confirm_buy_{trade_date}.json")
+                with open(rcb_file, 'w', encoding='utf-8') as f:
+                    _json.dump({
+                        "trade_date": trade_date,
+                        "market_score": round(market_score_result.score) if market_score_result else None,
+                        "regime": regime.primary if regime else None,
+                        "env_tier": rcb_results[0].env_tier if rcb_results else None,
+                        "signals": [_rcb_to_dict(r) for r in rcb_results],
+                    }, f, ensure_ascii=False, indent=2, default=str)
+                print(f"  ✅ RIGHT CONFIRM BUY 信号JSON已导出: {rcb_file} ({len(rcb_results)}只)")
+            except Exception as e:
+                print(f"  ⚠️ RIGHT CONFIRM BUY 信号JSON导出失败: {e}")
+
         # 微信推送
         if self._push_enabled:
             print("\n  推送微信...")
@@ -896,6 +974,51 @@ class MarketRegimeV3:
         if conds >= 3 and market_score >= 50 and not risk_accel:
             return 'Recovery Confirmed'
         return 'Recovery Watch'
+
+
+def _rcb_to_dict(r) -> dict:
+    """RightConfirmResult → JSON dict"""
+    return {
+        "ts_code": r.ts_code,
+        "name": r.name,
+        "signal_level": r.signal_level,
+        "signal_label": r.signal_label,
+        "no_chase": r.no_chase,
+        "false_breakout": r.false_breakout,
+        "distribution_breakout": r.distribution_breakout,
+        "final_score": round(r.final_score, 1),
+        "launch_score": round(r.launch_score, 1),
+        "pullback_score": round(r.pullback_score, 1),
+        "confirm_score": round(r.confirm_score, 1),
+        "theme_score": round(r.theme_score, 1),
+        "launch_subs": r.launch_subs,
+        "pullback_subs": r.pullback_subs,
+        "confirm_subs": r.confirm_subs,
+        "confirm_signals": r.confirm_signals,
+        "confirm_count": r.confirm_count,
+        "distribution_penalty": round(r.distribution_penalty, 1),
+        "distribution_risk": r.distribution_risk,
+        "rally_amplitude": round(r.rally_amplitude, 3),
+        "rally_limit_up_count": r.rally_limit_up_count,
+        "rally_max_consecutive_lu": r.rally_max_consecutive_lu,
+        "rally_vol_expansion": round(r.rally_vol_expansion, 2),
+        "drawdown": round(r.drawdown, 4),
+        "pullback_days": r.pullback_days,
+        "structure": r.structure,
+        "entry": r.entry,
+        "confirm_price": r.confirm_price,
+        "safe_entry": r.safe_entry,
+        "aggressive_entry": r.aggressive_entry,
+        "stop_loss": r.stop_loss,
+        "tp1": r.tp1,
+        "tp2": r.tp2,
+        "risk_pct": round(r.risk_pct, 4),
+        "r_multiple": r.r_multiple,
+        "atr": r.atr,
+        "env_tier": r.env_tier,
+        "t1_confirm_advice": r.t1_confirm_advice,
+        "summary": r.summary,
+    }
 
 
 def main():

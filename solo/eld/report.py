@@ -94,6 +94,24 @@ class ReportGenerator:
                 lines.append("")
                 lines.append(f"- **行业**: {r.industry}")
                 lines.append(f"- **公告日期**: {r.announce_date}")
+                if r.report_stage:
+                    stage_label = {
+                        "ann_to_report": "预告→报告窗口",
+                        "report_pre": "报告抢跑期",
+                        "report_post": "报告落地观察期",
+                        "normal": "正常窗口",
+                    }.get(r.report_stage, r.report_stage)
+                    if r.report_stage == "ann_to_report":
+                        # 核心猎物：预增预告已出、中报未披露，处于事件博弈窗口持有期
+                        lines.append(
+                            f"- **正式报告**: 中报未披露(预告{r.announce_date}已出) | "
+                            f"阶段: {stage_label} 🎯核心猎物·窗口持有期"
+                        )
+                    else:
+                        lines.append(
+                            f"- **正式报告**: {r.report_date or 'N/A'} | 阶段: {stage_label} "
+                            f"({'披露前' + str(r.days_to_report) + '个交易日' if r.days_to_report > 0 else '披露日当日' if r.days_to_report == 0 else '披露后' + str(-r.days_to_report) + '个交易日'})"
+                        )
                 lines.append(f"- **预告增幅**: {r.forecast_pct:.1f}%")
                 lines.append(f"- **ELS V2**: {r.els_v2:.1f} → **最终分V2**: {r.final_score_v2:.1f}")
                 lines.append(f"- **ELS V1**: {r.els:.1f} → **最终分V1**: {r.final_score:.1f}")

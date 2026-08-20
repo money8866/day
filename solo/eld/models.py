@@ -45,6 +45,7 @@ class FinancialData:
     """财务数据"""
     ts_code: str
     end_date: str
+    report_date: str = ""        # 正式财报披露日 YYYYMMDD（fina_indicator.ann_date）
     revenue: float = 0.0         # 营业收入
     revenue_yoy: float = 0.0     # 营收同比
     deducted_profit: float = 0.0  # 扣非净利润
@@ -309,6 +310,10 @@ class EarningsBuyPointResult:
     bias_pct: float = 0.0                  # 乖离率 ((close-ma20)/ma20*100)
     buy_quality_score: float = 0.0         # 买点质量评分（0-100，综合乖离/回踩/缩量/企稳/机构）
     quality_reason: str = ""               # 质量评分原因
+    # ── 正式报告阶段（V4：报告抢跑/落地规则） ──
+    report_date: str = ""                  # 正式报告披露日 YYYYMMDD（可空）
+    report_stage: str = ""                 # report_pre/report_post/normal（无报告日时为空）
+    days_to_report: int = 0                # 距披露日交易天数：>0=披露前N日(0=披露日当日)，<0=已过|N|日
     logic: list[str] = field(default_factory=list)
 
 
@@ -334,6 +339,10 @@ class FinalScoreResult:
     theme: str = ""
     announce_date: str = ""
     forecast_pct: float = 0.0
+    # 正式报告阶段（V4）
+    report_date: str = ""          # 正式报告披露日 YYYYMMDD
+    report_stage: str = ""         # report_pre/report_post/normal
+    days_to_report: int = 0        # 距披露日交易天数
 
     # ELS 各维度（保留原有字段保持兼容）
     event_quality_score: float = 0.0
@@ -442,6 +451,10 @@ class FinalScoreResult:
             # 量能/事件窗口（回测实证: 非放量×ELD窗口才是alpha来源）
             "volume_ratio": round(self.earnings_buy_point_detail.volume_ratio, 2) if self.earnings_buy_point_detail else 0.0,
             "days_since_ann": self.earnings_buy_point_detail.days_since_announce if self.earnings_buy_point_detail else 0,
+            # 正式报告阶段（V4：报告抢跑/落地规则）
+            "report_date": self.report_date,
+            "report_stage": self.report_stage,
+            "days_to_report": self.days_to_report,
         }
         return d
 

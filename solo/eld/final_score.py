@@ -495,12 +495,14 @@ class FinalScoreEngine:
         result.institution_state = inst_acc_r.state.value if hasattr(inst_acc_r.state, 'value') else str(inst_acc_r.state)
 
         # Stage V2-3: 业绩回踩买点
+        report_date = getattr(financial, "report_date", "") or ""
         if self._earnings_buy_point_engine:
             ebp_r = self._earnings_buy_point_engine(
                 stock.ts_code, data_source, daily_data,
                 announce_date=forecast.announce_date,
                 trend_result=trend_r,
                 institution_state=result.institution_state,
+                report_date=report_date,
             )
         else:
             from .earnings_buy_point import detect_earnings_pullback
@@ -509,10 +511,14 @@ class FinalScoreEngine:
                 announce_date=forecast.announce_date,
                 trend_result=trend_r,
                 institution_state=result.institution_state,
+                report_date=report_date,
             )
         result.earnings_buy_point_detail = ebp_r
         result.earnings_buy_signal = ebp_r.signal.value if hasattr(ebp_r.signal, 'value') else str(ebp_r.signal)
         result.earnings_buy_score = ebp_r.score
+        result.report_date = report_date
+        result.report_stage = getattr(ebp_r, "report_stage", "") or ""
+        result.days_to_report = getattr(ebp_r, "days_to_report", 0) or 0
         result.els = self.compute_els(
             event_r, earn_r, inst_r, chip_r, trend_r,
             ind_r, fresh_r, gap_r, sim_r,

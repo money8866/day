@@ -42,6 +42,11 @@ from dotenv import load_dotenv
 # ── 同花顺扶摇 MCP 补充数据源 ──
 from fuyao_mcp_client import FuyaoMCPClient, format_limit_up_summary, format_hot_stock_summary
 
+# ── 猎尾V5 NEXT-DAY ALPHA ENGINE (ND2) ──
+from nd2_alpha import ND2AlphaEngine
+from nd2_store import ND2SnapshotStore
+from nd2_report import format_console_report, format_wechat_message, PATTERN_CN
+
 # 优先加载项目根目录下 .env；向后兼容 config/.env
 _pwd = os.path.dirname(os.path.abspath(__file__))
 for _env_path in (
@@ -170,6 +175,13 @@ class RealtimeThemeMonitor:
         self.fuyao_last_fetch = {}            # 各工具上次调用时间
         self.fuyao_zt_pool_enabled = True     # 涨停池是否启用
         self.fuyao_dragon_tiger_done = False  # 龙虎榜是否已获取
+
+        # ── 猎尾V5 NEXT-DAY ALPHA (ND2) ──
+        self.nd2_engine = ND2AlphaEngine()
+        self.nd2_store = ND2SnapshotStore()
+        self.nd2_last_scan_time = 0           # V5扫描冷却
+        self.nd2_debug_printed = False        # 首次扫描诊断输出
+        self.nd2_pushed_time = 0              # 推送冷却(每日一次S/A级推送)
 
         # ── 换手率缓存(从cache_daily加载) ──
         self.turnover_cache = {}              # ts_code -> turnover_rate(%)
@@ -3371,6 +3383,25 @@ class RealtimeThemeMonitor:
 
                         self.last_tail_entry_scan_time = time.time()
 
+                # ── 14:50后每3分钟扫描「猎尾V5」ND2次日Alpha ──
+                if now.hour == 14 and now.minute >= 50:
+                    # 扫描前先回填昨日快照标签(每个交易日仅一次), 让概率引擎持续学习
+                    if not getattr(self, '_nd2_backfill_done', False):
+                        self._nd2_backfill_done = True
+                        try:
+                            filled = self.backfill_nd2_labels_job()
+                            if filled:
+                                print(f"✅ [V5] ND2标签回填完成: {filled}只")
+                                self.nd2_engine.nd2.stats.reset()  # 刷新历史统计缓存
+                        except Exception as e:
+                            print(f"⚠ ND2标签回填异常: {e}")
+                    if time.time() - self.nd2_last_scan_time >= 180:
+                        try:
+                            self.run_nd2_alpha_scan(now)
+                        except Exception as e:
+                            print(f"⚠ V5 ND2扫描异常: {e}")
+                        self.nd2_last_scan_time = time.time()
+
                 time.sleep(60 - (datetime.now().second % 60))
 
         except KeyboardInterrupt:
@@ -5174,6 +5205,218 @@ class RealtimeThemeMonitor:
             print(f"[跟踪V4] 已写入{len(candidates)}只信号到跟踪表V4 (>=65+排北交所, signal_date={signal_date})")
         except Exception as e:
             print(f"⚠ V4尾盘信号写入跟踪表失败: {e}")
+
+    # ════════════════════════════════════════════
+    # 猎尾V5: NEXT-DAY ALPHA ENGINE (ND2)
+    # 14:50 扫描全主题池 -> 次日+2%概率引擎
+    # ════════════════════════════════════════════
+
+    def scan_nd2_alpha(self):
+        """
+        「猎尾V5」NEXT-DAY ALPHA ENGINE
+        四层决策: L0市场环境 -> L1分层硬过滤 -> L2三形态分类 -> L3多维评分
+        核心目标: 最大化 P(次日最高价 >= 买入价×1.02)
+        返回: 信号列表(按rank_score降序)
+        """
+        import pandas as pd
+        now = datetime.now()
+        signals = []
+
+        # ── L0 市场环境 ──
+        report = getattr(self, '_last_report', None)
+        trend_score = report.get('trend_score', 60) if report else 60
+        market_status = report.get('market_status', '') if report else ''
+        market_multiplier = ND2AlphaEngine.market_multiplier(trend_score, market_status)
+
+        index_q = self.index_quotes_cache.get('上证指数')
+        index_pct = index_q.get('pct_chg') if index_q else None
+
+        # ── 主题数据预计算(复用V3扫描的全局缓存逻辑) ──
+        theme_momentum_cache = {}
+        for theme_name in self.theme_stocks:
+            theme_momentum_cache[theme_name] = self._calc_theme_momentum(theme_name)
+
+        theme_zt_counts = {}
+        theme_leader_ret = {}
+        for theme_name, stocks in self.theme_stocks.items():
+            zt = 0
+            mx = 0
+            for ts_code, _, _ in stocks:
+                q = self.quotes.get(ts_code)
+                if q and q.get('price', 0) > 0:
+                    pct = q.get('pct_chg', 0)
+                    limit = 19.5 if ts_code.startswith(('300', '688')) else 9.5
+                    if pct >= limit:
+                        zt += 1
+                    if pct > mx:
+                        mx = pct
+            theme_zt_counts[theme_name] = zt
+            theme_leader_ret[theme_name] = mx
+
+        # ── 遍历主题池(仅评估有分时锚点的股票: 尾盘量比是V5核心输入) ──
+        total_scanned = 0
+        funnel = defaultdict(int)   # 逐层漏斗诊断
+        for ts_code, themes in self.stock_themes.items():
+            if not themes:
+                continue
+            q = self.quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                continue
+            snap = self.intraday_snapshots.get(ts_code)
+            if not snap or snap.get('tail_base_price', 0) <= 0:
+                funnel['无分时锚点'] += 1
+                continue
+            total_scanned += 1
+
+            theme_name = themes[0]
+            kl = self.stock_klines.get(ts_code)
+            if kl is not None and len(kl) > 0:
+                for _col in ('open', 'high', 'low', 'close', 'pct_chg', 'vol', 'amount'):
+                    if _col in kl.columns:
+                        kl[_col] = pd.to_numeric(kl[_col], errors='coerce').fillna(0)
+
+            turnover = self.turnover_cache.get(ts_code, 0)
+            total_mv = self.stock_mv.get(ts_code, 0) if self.stock_mv else 0
+
+            # 主题上下文
+            theme_strength = 0
+            if theme_name in self.theme_score_history and self.theme_score_history[theme_name]:
+                theme_strength = self.theme_score_history[theme_name][-1]
+            up_ratio, avg_return, _, _, _ = theme_momentum_cache.get(theme_name, (0, 0, 0, 0, None))
+            theme_limit_count = theme_zt_counts.get(theme_name, 0)
+            leader_return = theme_leader_ret.get(theme_name, 0)
+
+            # 股票名称
+            stock_name = ''
+            for code, n, _ in self.theme_stocks.get(theme_name, []):
+                if code == ts_code:
+                    stock_name = n
+                    break
+
+            q_with_name = dict(q)
+            q_with_name['name'] = stock_name
+
+            try:
+                sig = self.nd2_engine.evaluate(
+                    ts_code=ts_code,
+                    q=q_with_name,
+                    kline=kl,
+                    snap=snap,
+                    turnover=turnover,
+                    total_mv=total_mv,
+                    theme_name=theme_name,
+                    theme_strength=theme_strength,
+                    theme_up_ratio=up_ratio,
+                    theme_limit_count=theme_limit_count,
+                    theme_leader_pct=leader_return,
+                    trend_score=trend_score,
+                    market_status=market_status,
+                    index_pct=index_pct,
+                )
+            except Exception:
+                funnel['评估异常'] += 1
+                continue
+
+            if sig is None:
+                funnel['L1/L2过滤'] += 1
+                continue
+            if sig.get('grade') == 'REJECT':
+                funnel['REJECT(<65分)'] += 1
+                continue
+            signals.append(sig)
+
+        # ── 排序: rank_score (禁止只按FinalScore) ──
+        signals.sort(key=lambda s: -s.get('rank_score', 0))
+
+        # ── 首次扫描诊断 ──
+        if not self.nd2_debug_printed:
+            self.nd2_debug_printed = True
+            grade_dist = defaultdict(int)
+            pattern_dist = defaultdict(int)
+            for s in signals:
+                grade_dist[s['grade']] += 1
+                pattern_dist[s['pattern']] += 1
+            print(f"\n{'='*70}")
+            print(f"🔍 「猎尾V5」ND2首次扫描诊断 [{now.strftime('%H:%M:%S')}]")
+            print(f"  扫描股票(有锚点): {total_scanned}只 | 市场乘数: {market_multiplier:.2f} ({market_status or 'N/A'})")
+            print(f"  通过L1+L2+L3候选: {len(signals)}只")
+            print(f"  漏斗: " + " | ".join(f"{k}={v}" for k, v in sorted(funnel.items(), key=lambda x: -x[1])))
+            print(f"  形态分布: {dict(pattern_dist)}")
+            print(f"  分级分布: {dict(grade_dist)}")
+            if signals:
+                print(f"  最高FinalScore: {max(s['final_score'] for s in signals)} "
+                      f"| 最高rank: {max(s['rank_score'] for s in signals):.3f}")
+            print(f"{'='*70}\n")
+
+        return signals
+
+    def run_nd2_alpha_scan(self, now):
+        """V5扫描入口: 控制台报告 + 快照保存 + 微信推送"""
+        signals = self.scan_nd2_alpha()
+        signal_date = self._get_last_trade_date()
+
+        # 保存快照(>=60分含REJECT前的负样本已在scan内处理, 这里保存B级以上+REJECT前的60+分)
+        if signals:
+            # 快照保存需要包含负样本: 重新评估太贵, 保存B级以上即可(60+分)
+            saved = self.nd2_store.save_snapshot(
+                signal_date, [s for s in signals if s['final_score'] >= 60],
+                market_status=getattr(self, '_last_report', {}).get('market_status', '') if self._last_report else ''
+            )
+            if saved:
+                print(f"📸 [V5] ND2快照已保存: {saved}只 -> nd2_snapshot.db")
+
+        # 控制台完整报告
+        if signals:
+            report_str = format_console_report(signals, top_n=10)
+            print(report_str)
+
+            # S/A级推送(每日最多推送一次)
+            sa_signals = [s for s in signals if s['grade'] in ('S', 'A')]
+            if sa_signals and time.time() - self.nd2_pushed_time > 3600:
+                msg = format_wechat_message(sa_signals, max_n=5)
+                if msg:
+                    mkt_info = {
+                        'status': getattr(self, '_last_report', {}).get('market_status', '') if self._last_report else '',
+                        'multiplier': ND2AlphaEngine.market_multiplier(
+                            getattr(self, '_last_report', {}).get('trend_score', 60) if self._last_report else 60),
+                        'trend_score': getattr(self, '_last_report', {}).get('trend_score', 0) if self._last_report else 0,
+                    }
+                    full_msg = msg + '\n' + format_wechat_market(mkt_info)
+                    self.send_wechat(f"🎯 猎尾V5次日Alpha {now.strftime('%H:%M')}", full_msg)
+                    self.nd2_pushed_time = time.time()
+
+        return signals
+
+    def backfill_nd2_labels_job(self):
+        """盘后任务: 回填历史ND2快照标签(优先本地缓存)"""
+        try:
+            from stock_cache import get_daily_cache
+            trade_date = self._get_last_trade_date()
+            pending = self.nd2_store.pending_backfill_dates(trade_date)
+            if not pending:
+                return 0
+            total = 0
+            for sig_date in pending[:10]:  # 每次最多回填10天
+                # 下一交易日 = 快照日之后第一个有数据的交易日, 用缓存探测
+                nxt = None
+                probe = datetime.strptime(sig_date, '%Y%m%d')
+                for _ in range(10):
+                    probe = probe + timedelta(days=1)
+                    cand = probe.strftime('%Y%m%d')
+                    df = get_daily_cache('000001.SZ', cand, cand)
+                    if df is not None and not df.empty:
+                        nxt = cand
+                        break
+                if not nxt:
+                    continue
+                filled = self.nd2_store.backfill_labels(get_daily_cache, sig_date, nxt)
+                total += filled
+                if filled:
+                    print(f"[V5] ND2标签回填 {sig_date} -> {nxt}: {filled}只")
+            return total
+        except Exception as e:
+            print(f"⚠ ND2标签回填任务异常: {e}")
+            return 0
 
     def scan_tail_end_entry(self):
         """

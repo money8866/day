@@ -29,8 +29,8 @@
  },
  "20260814": {
   "scores": {
-   "breadth": 64.47,
-   "sentiment": 25.499356830704524
+   "breadth": 64.43,
+   "sentiment": 25.49776769180357
   },
   "valid": false
  },
@@ -50,8 +50,8 @@
  },
  "20260819": {
   "scores": {
-   "breadth": 36.69,
-   "sentiment": 17.05593024496074
+   "breadth": 35.72,
+   "sentiment": 17.062535056598588
   },
   "valid": false
  }
