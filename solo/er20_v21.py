@@ -980,7 +980,7 @@ def save_sqlite_v21(df, scan_date):
             'eq_label', 'eq_penalty', 'eq_detail',
             'decay_factor', 'alpha_refresh', 'decay_state',
             'entry', 'trigger', 'ees', 'probe_eligible', 'tradeability',
-            'grade', 'grade_reason']
+            'grade', 'grade_reason', 'rank_eligible']
     save = df[[c for c in cols if c in df.columns]].copy()
     save.insert(0, 'scan_date', str(scan_date))
     save['missing'] = df.get('missing', '')
@@ -1025,10 +1025,11 @@ def build_report_v21(df, scan_date, regime, market_mult):
     core = df[df['grade'] == 'CORE_BUY']
     test = df[df['grade'] == 'TEST_BUY']
     probe = df[df['grade'] == 'PROBE_BUY']
-    wait = df[df['grade'].isin(['WAIT_CONFIRM', 'WAIT_PULLBACK'])]
-    watch = df[df['grade'] == 'WATCH']
+    main_df = df[df['rank_eligible']]  # P0-2: D 类退出主榜单
+    wait = main_df[main_df['grade'].isin(['WAIT_CONFIRM', 'WAIT_PULLBACK'])]
+    watch = main_df[main_df['grade'] == 'WATCH']
     rej = df[df['grade'] == 'REJECT']
-    shown = df[(df['grade'] != 'REJECT') & (df['rank_eligible'])]  # P0-2: D 类排除
+    shown = main_df[main_df['grade'] != 'REJECT']
     d_signal = df[df['strategy'] == 'D_FALSE_SIGNAL']
 
     # 1. ALPHA TOP20

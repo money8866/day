@@ -64,6 +64,7 @@ echo =============================================
 
 rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
+python solo\volume_surge_select.py
 
 
 echo =============================================

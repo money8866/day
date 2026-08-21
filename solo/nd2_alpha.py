@@ -616,3 +616,59 @@ class ND2AlphaEngine:
             },
         }
         return signal
+
+
+class V5Selector:
+    """
+    V5精选器: 从当日信号中选出最多 max_per_day 只最佳标的
+    回测规律(20260820, 通达信收盘价口径60交易日):
+    - 第二轮: L0市场闸门(主升浪才出手, 强趋势日P_up 42.9%全灭)
+    - 涨幅甜点2.5~6% (6-8%追高段 P_up 33%全灭)
+    - 分数上限78 (75-80段 P_dd 57.1%最差, 不追高分级)
+    - 效果: P_dd 45.5%->20.0%, T+10 +4.97%->+8.99%, 15信号全BREAKOUT_TAIL
+    """
+
+    MARKET_GATE = 1.15   # 主升浪闸门
+    PCT_MIN = 2.5        # 涨幅甜点下界
+    PCT_MAX = 6.0        # 涨幅甜点上界(收盘价口径防追高)
+    SCORE_CAP = 78.0     # 分数上限(不追高)
+
+    @staticmethod
+    def select(signals, max_per_day=2):
+        if not signals:
+            return signals
+        qualified = []
+        for s in signals:
+            # L0 市场闸门: 主升浪才出手
+            if s.get('market_multiplier', 1.0) < V5Selector.MARKET_GATE:
+                continue
+            # 核心: ND2甜点区 (10-11)
+            if not (10 <= s.get('nd2_potential', 0) < 12):
+                continue
+            # 形态: 排除STEALTH (历史P_up 31%)
+            if s.get('pattern') == 'STEALTH_ACCUMULATION':
+                continue
+            # 尾流 ≥ 20
+            if s.get('tail_flow', 0) < 20:
+                continue
+            # 形态质量 ≥ 10
+            if s.get('pattern_quality', 0) < 10:
+                continue
+            # 强基因 ≥ 2
+            if s.get('strong_gene', 0) < 2:
+                continue
+            # 涨幅甜点 2.5~6%
+            pct = s.get('pct_chg', 0)
+            if not (V5Selector.PCT_MIN <= pct < V5Selector.PCT_MAX):
+                continue
+            # 总分 68 ~ 78 (不追高分级)
+            fs = s.get('final_score', 0)
+            if fs < 68 or fs >= V5Selector.SCORE_CAP:
+                continue
+            # 风险 ≤ 2
+            if s.get('risk_penalty', 0) > 2:
+                continue
+            qualified.append(s)
+        # 按 rank_score 排序取前 max_per_day
+        qualified.sort(key=lambda s: -s.get('rank_score', 0))
+        return qualified[:max_per_day]

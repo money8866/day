@@ -153,7 +153,40 @@ Decay: 0.000~0.300, mean=0.037
 
 ## 十二、已知局限
 
-1. **DATA_INCOMPLETE 117只**：缺失 suf_ocf_yoy/current_ratio/ar_turn 等字段，V2.1 无法做完整现金流语境分析
-2. **PROBE_BUY 仅1只**：当前市场 bull 但 Entry 触发偏少；如果市场转 warm/strong，PROBE 数量会自然增加
-3. **Relative Risk 未用行业全量 benchmark**：当前仅用 ATR 绝对值 + 行业标签判断高Beta，若后续有行业级波动率数据可进一步升级
-4. **ST/*ST 未过滤**：榜单出现 ST嘉澳/ST沈化，如需可加开关
+1. **DATA_INCOMPLETE 115只**：缺失 suf_ocf_yoy/current_ratio/ar_turn 等字段，无法做完整现金流语境分析（置信度已封顶85）
+2. **PROBE_BUY 0只**：当日 Entry 触发偏少；如果市场转 warm/strong，PROBE 数量会自然增加
+3. **行业 ATR 基准为抽样**：`_precompute_industry_atr` 每组抽样150只计算行业 ATR% 中位数，非全量；样本过小的行业退回绝对 ATR 逻辑
+
+## 十三、P0/P1 修复交付清单（20260820）
+
+| 编号 | 修复项 | 实现 | 验证结果 |
+|---|---|---|---|
+| P0-1 | Alpha Decay + Refresh 公式 | `final_mult = 1.0 - decay`（Refresh 不再并入 mult，单独 + 一次） | Refresh 双计消除 |
+| P0-2 | D_FALSE_SIGNAL 退出主排名 | 新增 `rank_eligible` 列（D 类=False），排序 D 类垫底；报告 TOP20/TODAY/WAIT 基于 `main_df` 过滤 | TOP20 中 D 类=0；128 只 D 类全部 rank_eligible=0 |
+| P0-3 | DataConfidence 重算 | 新增 `data_confidence_v21`：基础5维 + CF语境缺失封顶85 + EQ未知封顶88 + missing≥3封顶90/≥5封顶80 | DATA_INCOMPLETE 115只 max conf=85，100分=0 |
+| P0-4 | Relative Risk 真实计算 | 新增 `_precompute_industry_atr` 抽样行业 ATR% 中位数，主循环传入 `benchmark_vol` | 行业相对波动逻辑真实执行 |
+| P0-5 | 组合总仓位控制 | 新增 `_apply_portfolio_cap`：CORE≤20%、TEST≤12%、PROBE≤2%，总仓位>100% 优先挤 PROBE 再挤 TEST | 当日 TEST_BUY 8只×12%=96% ≤100% |
+| P1-1 | TEST_BUY Minimum Alpha Gate | TEST_BUY 且 Alpha<72 → WAIT_CONFIRM | TEST_BUY 最低 Alpha=73.5（保税科技），无 <72 |
+| P1-2 | Entry 69/70 断崖消除 | Entry 69~69.9 且 Alpha≥75 且非 C_EVENT_SPEC → 升级 TEST_BUY | 建新股份 Entry=69.0 → TEST_BUY |
+| P1-3 | ST 移出主策略 | 粗筛 `startswith('*ST'/'ST')` + 池级过滤 | 榜单 ST=0（此前 ST嘉澳/ST沈化在列） |
+
+### 修复后 V2.1 验证输出（20260820）
+
+```
+[PASS] NaN in alpha: 0
+[INFO] 现金流结构性恶化REJECT: 78 只
+[PASS] OCF单指标REJECT: 0
+[INFO] Event Age: min=2 max=10 mean=4.1
+[PASS] Refresh>10: 0
+[INFO] PROBE_BUY: 0 只
+[PASS] C_EVENT_SPEC in CORE_BUY: 0
+[PASS] Top20可交易: 4
+[INFO] 等级: WATCH=251  REJECT=99  WAIT_CONFIRM=76  WAIT_PULLBACK=9  TEST_BUY=8
+问题数: 0
+```
+
+### 修改文件
+
+- `er20_v21.py`：全部8项修复（未改 V1/V2）
+- `report_daily/er20_v21_report_20260820.md`：修复后重生成（含组合仓位已满标记）
+- `report_daily/er20_v21_scores.db`：新增 `rank_eligible` 列落库（0/1）

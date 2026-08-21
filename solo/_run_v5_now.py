@@ -204,14 +204,19 @@ def main():
         for s in signals:
             grades[s['grade']] = grades.get(s['grade'], 0) + 1
         print(f"\n📊 分级汇总: {grades}")
-        sa = [s for s in signals if s['grade'] in ('S', 'A')]
-        if sa:
-            print(f"\n🎯 S/A级信号(实盘可操作):")
-            for s in sa:
+
+        # ── V5Selector 精选(与实盘推送同规则, 每日最多2只) ──
+        from nd2_alpha import V5Selector
+        picked = V5Selector.select(signals, max_per_day=2)
+        if picked:
+            print(f"\n🎯 V5精选信号({len(picked)}只, 实盘可操作):")
+            for s in picked:
                 print(f"  {s['grade']}级 {s['name']}({s['ts_code']}) {s['final_score']}分 "
-                      f"P(次日高≥2%)={s['p_up_2']:.0%} 形态:{s['pattern']}")
+                      f"P(次日高≥2%)={s['p_up_2']:.0%} 形态:{s['pattern']} "
+                      f"尾流{s['tail_flow']} ND2={s.get('nd2_potential')} 乘数{s.get('market_multiplier')}")
+            print(f"  ⚠ 买入纪律: 主升浪闸门已通过, 涨幅{s['pct_chg']:.1f}%在甜点区2.5~6%, 次日开盘承接/回调承接")
         else:
-            print("\n(今日无S/A级信号 - 宁缺毋滥)")
+            print(f"\n🛑 今日{len(signals)}只候选均未通过V5精选(非主升浪/不在甜点区) → 空仓纪律")
     else:
         print("\n(无候选信号)")
 

@@ -857,22 +857,28 @@ def extract_chip_alpha_v5_factors(v5_result):
     t = v5_result.get('trend', {})
     d = v5_result.get('decision', {})
     tr = t.get('transition', {})
+    _os = None
+    try:
+        from chip_alpha_v5 import calc_opportunity_score
+        _os = calc_opportunity_score(v5_result)
+    except Exception:
+        _os = None
     return {
-        'Alpha_Structure': a.get('structure', 50),
-        'Alpha_Flow': a.get('flow', 50),
-        'Alpha_Momentum': a.get('momentum', 50),
-        'Alpha_Composite': a.get('composite', 50),
-        'Alpha_Grade': a.get('grade', 'C'),
-        'Risk_Score': r.get('total', 50),
-        'Risk_Level': r.get('level', 'Medium'),
-        'Trend_State': t.get('state', 'Unknown'),
+        'Alpha_Structure': a.get('Structure', 50),
+        'Alpha_Flow': a.get('Flow', 50),
+        'Alpha_Momentum': a.get('Momentum', 50),
+        'Alpha_Composite': a.get('Composite', 50),
+        'Alpha_Grade': a.get('Grade', 'C'),
+        'Risk_Score': r.get('Composite', 50),
+        'Risk_Level': r.get('Level', 'Medium'),
+        'Trend_State': t.get('current_state', 'Unknown'),
         'Trend_Desc': t.get('description', ''),
-        'Next_State': tr.get('target', 'Unknown'),
-        'Next_Prob': tr.get('probability', 0),
+        'Next_State': tr.get('primary_next', 'Unknown'),
+        'Next_Prob': tr.get('primary_prob', 0),
         'Action': d.get('action', 'Hold'),
         'Confidence': d.get('confidence', 50),
-        'DecisionSummary': d.get('summary', ''),
-        'Opportunity_Score': v5_result.get('opportunity', {}).get('score', 50.0),
+        'DecisionSummary': d.get('combined', ''),
+        'Opportunity_Score': _os['score'] if _os else 50.0,
     }
 
 
@@ -1009,7 +1015,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
 
         price_change = (close_arr[-1] / close_arr[0] - 1) * 100 if close_arr[0] > 0 else 0
 
-        # 硬条件
+        # 硬条件（20260821放宽后回测为负优化，恢复原阈值：胜率67%/均+8.96% 优于放宽后30%/-0.11%）
         if max_vol_ratio < 2.6:
             return None
         if vol_ratio_gt2 < 3:
@@ -1164,6 +1170,61 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         ma20_latest = pd.Series(close_arr).rolling(20).mean().values[-1]
         pos_ma20 = (close_latest / ma20_latest - 1) * 100 if not np.isnan(ma20_latest) and ma20_latest > 0 else 0
 
+        # ===== V2.0 次日新开仓模型输入（扩展字段，20260821） =====
+        _ma5 = pd.Series(close_arr).rolling(5).mean().values[-1]
+        _ma10 = pd.Series(close_arr).rolling(10).mean().values[-1]
+        pos_ma5 = (close_latest / _ma5 - 1) * 100 if not np.isnan(_ma5) and _ma5 > 0 else 0
+        pos_ma10 = (close_latest / _ma10 - 1) * 100 if not np.isnan(_ma10) and _ma10 > 0 else 0
+        _chg5 = (close_arr[-1] / close_arr[-6] - 1) * 100 if len(close_arr) >= 6 and close_arr[-6] > 0 else 0
+        _chg10 = (close_arr[-1] / close_arr[-11] - 1) * 100 if len(close_arr) >= 11 and close_arr[-11] > 0 else 0
+        _up_streak = 0
+        for _k in range(len(close_arr) - 1, 0, -1):
+            if close_arr[_k] > close_arr[_k - 1]:
+                _up_streak += 1
+            else:
+                break
+        _yang_streak = 0
+        for _k in range(len(close_arr) - 1, 0, -1):
+            if close_arr[_k] > pre_close_arr[_k]:
+                _yang_streak += 1
+            else:
+                break
+        _tr_arr = np.maximum(high_arr - low_arr, np.abs(close_arr - pre_close_arr))
+        _atr20_now = float(np.mean(_tr_arr[-20:]))
+        _atr20_prev = float(np.mean(_tr_arr[-40:-20])) if len(_tr_arr) >= 40 else _atr20_now
+        atr_expand = _atr20_now / max(_atr20_prev, 0.01)
+        _upper_shadow = 0.0
+        for _k in range(max(0, len(close_arr) - 3), len(close_arr)):
+            _rng = max(high_arr[_k] - low_arr[_k], 0.01)
+            _us = (high_arr[_k] - max(close_arr[_k], pre_close_arr[_k])) / _rng
+            _upper_shadow = max(_upper_shadow, _us)
+        _red_shrink = 0
+        for _k in range(len(macd_bar) - 1, max(0, len(macd_bar) - 6), -1):
+            if macd_bar[_k] < macd_bar[_k - 1] and macd_bar[_k] > 0:
+                _red_shrink += 1
+            else:
+                break
+        # 量价结构：近10日 涨日量均 vs 跌日量均（>1 = 上涨放量/回调缩量健康）
+        _up_vols, _dn_vols = [], []
+        for _k in range(max(0, len(close_arr) - 10), len(close_arr)):
+            _pc = close_arr[_k - 1] if _k > 0 else close_arr[_k]
+            if close_arr[_k] > _pc:
+                _up_vols.append(vol_arr[_k])
+            elif close_arr[_k] < _pc:
+                _dn_vols.append(vol_arr[_k])
+        _vol_up_ratio = (np.mean(_up_vols) / max(np.mean(_dn_vols), 0.01)) if _up_vols and _dn_vols else 1.0
+        # MA20 趋势（供新开仓模型位置判断）
+        if len(ma20_full) >= 21 and not np.isnan(ma20_full[-1]) and not np.isnan(ma20_full[-11]) and ma20_full[-11] > 0:
+            _ma20_chg = (ma20_full[-1] / ma20_full[-11] - 1) * 100
+        else:
+            _ma20_chg = 0.0
+        if _ma20_chg >= 0.5:
+            ma20_trend = 'up'
+        elif _ma20_chg >= -0.5:
+            ma20_trend = 'flat'
+        else:
+            ma20_trend = 'down'
+
         is_fresh_red = (macd_status == '刚刚红柱 ✅')
         is_red_retrace = (macd_status == '红柱回调缩短（趋势延续）')
         is_red_bounce = (macd_status == '红柱回调后反弹（趋势延续）')
@@ -1232,6 +1293,17 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '死叉临界': death_cross_risk,
             '回撤类型': retrace_type,
             '距MA20': round(pos_ma20, 1),
+            '距MA5': round(pos_ma5, 1),
+            '距MA10': round(pos_ma10, 1),
+            '5日涨幅': round(_chg5, 1),
+            '10日涨幅': round(_chg10, 1),
+            '连续上涨天数': _up_streak,
+            '连续阳线天数': _yang_streak,
+            'ATR扩张': round(atr_expand, 2),
+            '近3日最大上影': round(_upper_shadow, 2),
+            '红柱缩短天数': _red_shrink,
+            '涨日量/跌日量': round(_vol_up_ratio, 2),
+            'MA20趋势': ma20_trend,
             '强买信号': strong_buy,
             '强买原因': strong_buy_reason,
             '观察信号': watch,
@@ -1245,6 +1317,438 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         return result
     except Exception:
         return None
+
+
+# =========================
+# V2.0 次日开盘新开仓优先模型（20260821）
+# 核心原则：趋势强 ≠ 适合新开仓。排名第一 = 趋势健康 + 位置合理 + 主题支持 + 次日高开风险可控。
+# FinalEntryScore = BaseQuality + TrendContinuation + EntryTiming + ThemeResonance
+#                 + VolumeStructure + ChipStructure + MarketFit
+#                 - ExtensionPenalty - ExhaustionPenalty - GapRiskPenalty
+#                 - ThemeCyclePenalty - FailureRisk
+# =========================
+THEME_STAGE_BONUS = {'启动': 15, '升温': 12, '发酵': 8, '主升': 5,
+                     '高潮': -10, '分化': -5, '退潮': -15, '': 0}
+
+
+def _extension_penalty(dist20, chg5, chg10):
+    """乖离惩罚：区分趋势强度与开仓赔率，高位强势股不能以高趋势分抵消位置风险"""
+    if dist20 <= 5:
+        p = 0
+    elif dist20 <= 10:
+        p = -2
+    elif dist20 <= 15:
+        p = -5
+    elif dist20 <= 20:
+        p = -10
+    elif dist20 <= 25:
+        p = -15
+    elif dist20 <= 35:
+        p = -22
+    else:
+        p = -30
+    if dist20 > 25 and chg5 > 20:
+        p -= 8
+    if dist20 > 35 and chg10 > 30:
+        p -= 15
+    return max(p, -45)
+
+
+def _exhaustion_penalty(s):
+    """衰竭惩罚：买在加速末端的风险（连续大阳+异常放量+高乖离 / 5日暴涨+主题高潮 / 高位放量+长上影）"""
+    p = 0
+    d20 = s.get('距MA20', 0)
+    c5 = s.get('5日涨幅', 0)
+    streak = s.get('连续阳线天数', 0)
+    vr = s.get('今日量比', 1)
+    us = s.get('近3日最大上影', 0)
+    stage = s.get('非一日游阶段', '')
+    if streak >= 3 and vr >= 1.8 and d20 > 20:
+        p -= 15
+    if c5 > 25 and stage == '高潮':
+        p -= 12
+    if d20 > 15 and vr >= 1.8 and us >= 0.5:
+        p -= 10
+    # 注意：死叉临界属方向未定，已由 FailureRisk + TrendContinuation 计罚，此处不做重复惩罚
+    return max(p, -20)
+
+
+def _gap_risk(s, env_weak=False):
+    """T1GapRisk 次日高开低走风险: 0-2 Low / 3-5 Medium / 6-8 High / >=9 Extreme"""
+    pts = 0
+    d20 = s.get('距MA20', 0)
+    c5 = s.get('5日涨幅', 0)
+    c10 = s.get('10日涨幅', 0)
+    atr = s.get('ATR扩张', 1)
+    streak = s.get('连续上涨天数', 0)
+    us = s.get('近3日最大上影', 0)
+    vr = s.get('今日量比', 1)
+    stage = s.get('非一日游阶段', '')
+    if d20 > 25:
+        pts += 5
+    elif d20 > 15:
+        pts += 3
+    if c5 > 25:
+        pts += 3
+    elif c5 > 15:
+        pts += 2
+    if c10 > 25:
+        pts += 2
+    if atr >= 1.5:
+        pts += 2
+    if streak >= 4:
+        pts += 2
+    if us >= 0.5:
+        pts += 2
+    if d20 > 15 and vr >= 1.8:
+        pts += 3
+    if stage == '高潮':
+        pts += 2
+    if env_weak:
+        pts += 1
+    if pts >= 9:
+        return 'Extreme', -20
+    if pts >= 6:
+        return 'High', -12
+    if pts >= 3:
+        return 'Medium', -5
+    return 'Low', 0
+
+
+def _entry_timing(s):
+    """EntryTiming：今日收盘后明天是否适合新开仓（S/A/B/C 位置分级）"""
+    d20 = s.get('距MA20', 0)
+    c5 = s.get('5日涨幅', 0)
+    c10 = s.get('10日涨幅', 0)
+    vr = s.get('今日量比', 1)
+    vol_up_ratio = s.get('涨日量/跌日量', 1)
+    streak = s.get('连续阳线天数', 0)
+    death = s.get('死叉临界', False)
+    ma20_trend = s.get('MA20趋势', 'flat')
+    macd = s.get('MACD状态', '')
+    shrink_pullback = (vr < 1.2 and vol_up_ratio >= 1.2)
+    fresh = (macd == '刚刚红柱 ✅')
+    forbid = (d20 > 35 and c10 > 30)   # 强制过滤：巨幅乖离+急速上涨
+    grade = 'C'
+    score = 40
+    if d20 <= 10 and ma20_trend in ('up', 'flat') and shrink_pullback and not death and streak <= 3:
+        grade = 'S'
+        score = 90
+    elif d20 <= 15 and ma20_trend in ('up', 'flat') and (shrink_pullback or vr < 1.5):
+        # A级只看位置（规格：趋势向上+0~15%+回调充分+量正常/缩量），MACD风险交由其他模块计罚
+        grade = 'A'
+        score = 80
+    elif d20 <= 25:
+        # B级需强主题+资金回流+趋势加速刚启动，否则降低评分
+        if s.get('所属状态') == '看多' and shrink_pullback and fresh:
+            grade = 'B'
+            score = 68
+        else:
+            grade = 'B'
+            score = 58
+    else:
+        grade = 'C'   # >25% 默认不推荐新开仓
+        score = 40
+    if forbid:
+        grade = 'X'
+        score = 35
+    return score, grade, forbid
+
+
+def _theme_resonance(s):
+    """主题共振：个股上涨 vs 个股+板块+主线资金共振（0~15）"""
+    theme = s.get('所属主题', '') or ''
+    state = s.get('所属状态', '')
+    stage = s.get('非一日游阶段', '')
+    if '(回避)' in theme or state == '回避':
+        return 0
+    stage_bonus = THEME_STAGE_BONUS.get(stage, 0)
+    leader_bonus = 0
+    if s.get('_is_leader'):
+        leader_bonus += 15
+    elif s.get('_is_mainline'):
+        leader_bonus += 10
+    elif s.get('_is_rotation'):
+        leader_bonus += 4
+    if s.get('_is_mainline') and s.get('主题匹配度', 0) >= 80:
+        leader_bonus += 2
+    return max(0, min(15, stage_bonus + leader_bonus))
+
+
+def _theme_cycle_penalty(s):
+    """主题周期扣分：高潮/分化/退潮阶段不适合新开仓"""
+    stage = s.get('非一日游阶段', '')
+    if stage == '退潮' or '(回避)' in (s.get('所属主题', '') or ''):
+        return -15
+    if stage == '高潮':
+        return -10
+    if stage == '分化':
+        return -5
+    if stage == '主升':
+        return -2
+    return 0
+
+
+def _volume_structure(s):
+    """量价结构（0~12）：HealthyVolumeCycle / DistributionRisk / NextDayConfirmation"""
+    vol_up_ratio = s.get('涨日量/跌日量', 1)
+    vr = s.get('今日量比', 1)
+    death = s.get('死叉临界', False)
+    d20 = s.get('距MA20', 0)
+    score = 0
+    if vol_up_ratio >= 1.2 and vr < 1.5:
+        score = 10   # 上涨放量+回调缩量+再次温和放量
+    elif vol_up_ratio >= 1.2 and vr < 2.0:
+        score = 8
+    elif vol_up_ratio >= 1.0:
+        score = 6
+    else:
+        score = 4
+    if d20 > 15 and vr >= 2.0:
+        score -= 6   # 高位突然巨量=DistributionRisk
+        s['_distribution'] = True
+    if death and vr < 1.0:
+        score -= 3
+    return max(0, min(12, score))
+
+
+def _chip_structure(s):
+    """筹码结构（0~10）：Chip趋势/CRE/动量 + V5 Alpha/机会，风险低者加成"""
+    cs = s.get('ChipTrendScore', 50)
+    cre = s.get('CRE_Score', 50)
+    cm = s.get('ChipMomentum_Score', 50)
+    v5c = s.get('Alpha_Composite', 50)
+    os_ = s.get('Opportunity_Score', 50)
+    risk = s.get('Risk_Score', 50)
+    base = cs * 0.3 + cre * 0.2 + cm * 0.1 + v5c * 0.2 + os_ * 0.2
+    if risk <= 10:
+        base += 5
+    elif risk <= 15:
+        base += 2
+    elif risk > 25:
+        base -= 5
+    return max(0, min(10, base / 10))
+
+
+def _trend_continuation(s):
+    """趋势延续（0~20）：MA20方向 + MACD状态健康度 - 衰竭/死叉扣分"""
+    ma20_trend = s.get('MA20趋势', 'flat')
+    macd = s.get('MACD状态', '')
+    death = s.get('死叉临界', False)
+    red_shrink = s.get('红柱缩短天数', 0)
+    d20 = s.get('距MA20', 0)
+    score = 0
+    if ma20_trend == 'up':
+        score += 6
+    elif ma20_trend == 'flat':
+        score += 4
+    if macd == '红柱回调后反弹（趋势延续）':
+        score += 7
+    elif macd == '红柱回调缩短（趋势延续）':
+        score += 5
+    elif macd == '刚刚红柱 ✅':
+        score += 5
+    else:
+        score += 3
+    if death:
+        score -= 0   # 规格§10：死叉临界须按位置/量/MA/主题/筹码综合判断，不自动扣分，统一由 FailureRisk 计罚
+    if red_shrink >= 3:
+        score -= 3
+    if d20 < 0:
+        score += 3
+    return max(0, min(20, score))
+
+
+def _base_quality(s):
+    """基础质量（0~5）：量能爆发评分归一"""
+    return min(5, s.get('量能爆发评分', 0) / 100 * 5)
+
+
+def _momentum_strength(s):
+    """动量强度（0~10）：强者恒强 —— 温和强势的相对强度 + 量能放大 + 阳线连续性
+    与 ExtensionPenalty 互补：此处奖健康强势（未过热），彼处罚过热乖离"""
+    sc = 0
+    c5 = s.get('5日涨幅', 0)
+    c10 = s.get('10日涨幅', 0)
+    vr = s.get('今日量比', 1)
+    vol_up = s.get('涨日量/跌日量', 1)
+    streak = s.get('连续阳线天数', 0)
+    # 相对强度：温和上涨（过热部分交由 ExtensionPenalty 罚）
+    if 3 <= c5 <= 18:
+        sc += 3
+    elif 0 <= c5 < 3:
+        sc += 2
+    elif 18 < c5 <= 30:
+        sc += 1
+    if 3 <= c10 <= 25:
+        sc += 2
+    elif 0 <= c10 < 3:
+        sc += 1
+    # 量能温和放大（换手/量比活跃度）
+    if 1.0 <= vr < 2.0:
+        sc += 2
+    elif 0.8 <= vr < 1.0:
+        sc += 1
+    # 阳线连续性（强者恒强；连阳过多由 Exhaustion 计罚）
+    if streak >= 1:
+        sc += 1
+    if streak >= 2:
+        sc += 1
+    # 上涨放量/下跌缩量
+    if vol_up >= 1.2:
+        sc += 1
+    return max(0, min(10, sc))
+
+
+def _market_fit(s, env_mult):
+    """市场环境适配（0~8）：环境系数×位置惩罚（主题分值已取消，主题回避不再参与评分）"""
+    base = 8 * env_mult
+    if s.get('距MA20', 0) > 15:
+        base *= 0.7
+    return max(0, min(8, base))
+
+
+def _failure_risk(s):
+    """失败风险（0~20）：死叉临界/破位/无量滞涨/长上影/高位缩量组合"""
+    p = 0
+    if s.get('死叉临界'):
+        p += 8
+    if s.get('MA20趋势') == 'down':
+        p += 6
+    if s.get('今日量比', 1) < 0.8 and s.get('距MA20', 0) > 10:
+        p += 4
+    if s.get('近3日最大上影', 0) >= 0.6:
+        p += 3
+    if s.get('连续阳线天数', 0) == 0 and s.get('距MA20', 0) > 15:
+        p += 4
+    return min(p, 20)
+
+
+def _entry_eligibility(s, gap):
+    """次日开仓资格过滤：10 项至少满足 4 项，否则即使评分 99 也不能进 TOP3"""
+    checks = 0
+    if s.get('MA20趋势') in ('up', 'flat'):
+        checks += 1
+    if s.get('距MA20', 0) >= -3:
+        checks += 1
+    if s.get('距MA20', 0) < 20:
+        checks += 1
+    if not s.get('_distribution'):
+        checks += 1
+    if not s.get('死叉临界'):
+        checks += 1
+    if s.get('非一日游阶段') != '退潮' and '(回避)' not in (s.get('所属主题', '') or ''):
+        checks += 1
+    if gap != 'Extreme':
+        checks += 1
+    if s.get('Risk_Score', 50) <= 15:
+        checks += 1
+    if s.get('_et_score', 40) >= 55:   # S/A/B 级位置均合格（B级允许次日确认后介入）
+        checks += 1
+    if s.get('_mf_base', 8) >= 6.8:   # 弱势(×0.70) 不允许新开仓，震荡偏弱(×0.85)及以上允许
+        checks += 1
+    return checks >= 4
+
+
+def _open_strategy(s, gap):
+    """明日开盘执行方案"""
+    d20 = s.get('距MA20', 0)
+    if gap == 'Extreme':
+        return ['✘ 高开风险 Extreme，默认不追', '✘ 观望，等待次日量价确认']
+    if gap == 'High':
+        return ['⚠ 高开风险较高', '✔ 仅回踩确认后小仓介入', '✘ 高开3%以上不追', '✘ 盘中冲高不接力']
+    if gap == 'Medium' or d20 > 3:
+        return ['✔ 高开≤3%可关注', '✔ 回踩不破昨日低点+VWAP上方运行确认', '✘ 高开3%~5%降低仓位，等回踩', '✘ 高开>5%不追']
+    return ['✔ 平开/小高开可关注', '✔ 站稳VWAP后确认', '✔ 突破早盘高点可买', '✘ 高开超过5%不追']
+
+
+def _compute_entry_v2(s, env_mult=1.0, env_weak=False):
+    """计算 FinalEntryScore 全分量，写入 s；返回 s"""
+    s['_distribution'] = False
+    et_score, et_grade, forbid = _entry_timing(s)
+    s['_et_score'] = et_score
+    s['_mf_base'] = 8 * env_mult
+    ext_pen = _extension_penalty(s.get('距MA20', 0), s.get('5日涨幅', 0), s.get('10日涨幅', 0))
+    ex_pen = _exhaustion_penalty(s)
+    gap, gap_pen = _gap_risk(s, env_weak)
+    tr = _theme_resonance(s)
+    tcp = _theme_cycle_penalty(s)
+    vs = _volume_structure(s)
+    cs = _chip_structure(s)
+    mf = _market_fit(s, env_mult)
+    bq = _base_quality(s)
+    tc = _trend_continuation(s)
+    fr = _failure_risk(s)
+    mom = _momentum_strength(s)
+    final = round(bq + tc + et_score * 0.35 + vs + cs + mf + mom
+                  + ext_pen + ex_pen + gap_pen - fr, 1)   # 主题分值（共振/周期）已取消；择时权重 0.35，新增动量强度
+    final = max(0, min(100, final))
+    if final >= 85 and gap != 'Extreme' and et_score >= 80:
+        rating = 'S'
+    elif final >= 75 and gap != 'Extreme':
+        rating = 'A'
+    elif final >= 65:
+        rating = 'B'
+    else:
+        rating = 'C'
+    eligible = _entry_eligibility(s, gap)
+    s['TrendScore'] = round(s.get('量能爆发评分', 0), 1)                    # 趋势强度（0-100，沿用原趋势总分）
+    s['HoldScore'] = round(tc * 1.2, 1)
+    # 新开仓价值（0-100）：位置60% + 动量10% + 量价10% + 筹码10% + 市场10%（主题分值已取消）
+    s['EntryScore'] = round(max(0, min(100, et_score * 0.6 + mom
+                                       + vs / 12 * 10 + cs / 10 * 10 + mf / 8 * 10)), 1)
+    s['EntryTimingScore'] = et_score
+    s['EntryTimingGrade'] = et_grade
+    s['T1Score'] = round(tc + et_score * 0.35 + vs + cs + mom, 1)
+    s['T1Risk'] = gap
+    s['GapRiskPenalty'] = gap_pen
+    s['ExtensionPenalty'] = ext_pen
+    s['ExhaustionPenalty'] = ex_pen
+    s['ThemeCyclePenalty'] = tcp
+    s['FailureRisk'] = fr
+    s['ThemeResonance'] = tr
+    s['VolumeStructure'] = vs
+    s['ChipStructure'] = cs
+    s['MarketFit'] = round(mf, 1)
+    s['FinalEntryScore'] = final
+    s['Rating'] = rating
+    s['Eligible'] = eligible
+    s['ForbidTOP'] = forbid
+    s['GapAdvice'] = _open_strategy(s, gap)
+    # 强趋势弱开仓：TrendScore>90 但 FinalEntryScore<65 → 禁止标 BUY，只能 HOLD/WATCH（规格硬性）
+    if s.get('量能爆发评分', 0) > 90 and final < 65:
+        s['_v2_label'] = 'HOLD/WATCH'
+    elif rating in ('S', 'A') and eligible:
+        s['_v2_label'] = 'BUY'
+    elif rating == 'B' and eligible:
+        s['_v2_label'] = 'BUY·需次日确认'
+    else:
+        s['_v2_label'] = 'WATCH'
+    return s
+
+
+def _theme_ctx_from_report(trade_date):
+    """构建主题上下文：主线集合/轮动集合/龙头映射（供 ThemeResonance 使用）"""
+    ctx = {'mainline': set(), 'rotation': set(), 'leaders': {}}
+    try:
+        data = _load_mainline_rotation_themes(trade_date)
+        for tname, r in data.items():
+            if r.get('kind') == 'mainline':
+                ctx['mainline'].add(tname)
+            elif r.get('kind') == 'rotation':
+                ctx['rotation'].add(tname)
+    except Exception:
+        pass
+    try:
+        v6 = _load_v6_result(trade_date) or []
+        for r in v6:
+            _t = r.get('theme', '')
+            _ld = r.get('leader', '')
+            if _t and _ld and _t not in ctx['leaders']:
+                ctx['leaders'][_t] = str(_ld)
+    except Exception:
+        pass
+    return ctx
 
 
 # =========================
@@ -1271,10 +1775,11 @@ def run(target_date=None, with_chip=True, simple=False):
         print("❌ 市场数据为空，无法选股")
         return []
 
-    # 目标股池：总市值 > 80亿
-    _filtered = market[market['total_mv'].fillna(0) > 800000]
+    # 目标股池：总市值 > 50亿（剔除北交所 .BJ，用户规则：不碰北交所）
+    _filtered = market[market['total_mv'].fillna(0) > 500000]
+    _filtered = _filtered[~_filtered['ts_code'].str.endswith('.BJ')]
     _filtered_codes = set(_filtered['ts_code'].tolist())
-    print(f'\n[目标股池] 总市值>80亿共 {len(_filtered_codes)} 只，开始扫描...')
+    print(f'\n[目标股池] 总市值>50亿共 {len(_filtered_codes)} 只（已剔除北交所），开始扫描...')
 
     # 大盘环境提示（三指数动量，仅作参考，不拦截输出）
     market_tip = None
@@ -1336,11 +1841,43 @@ def run(target_date=None, with_chip=True, simple=False):
         except Exception as e:
             print(f"[ChipAlpha] 注入失败: {e}")
 
+    # ===== V2.0 次日新开仓评分（20260821）=====
+    if results:
+        try:
+            _theme_ctx = _theme_ctx_from_report(TRADE_DATE)
+            _env_label = (market_tip or {}).get('env', '') or ''
+            if '强市' in _env_label:
+                env_mult = 1.05
+            elif '震荡偏强' in _env_label:
+                env_mult = 1.0
+            elif '震荡偏弱' in _env_label:
+                env_mult = 0.85
+            else:
+                env_mult = 0.7
+            env_weak = ('偏弱' in _env_label or '弱市' in _env_label)
+            for s in results:
+                _t = s.get('所属主题', '')
+                _tn = str(_t).replace('(回避)', '')
+                s['_is_mainline'] = _tn in _theme_ctx['mainline']
+                s['_is_rotation'] = _tn in _theme_ctx['rotation']
+                s['_is_leader'] = _tn in _theme_ctx['leaders'] and _theme_ctx['leaders'].get(_tn) == s.get('名称', '')
+                _compute_entry_v2(s, env_mult=env_mult, env_weak=env_weak)
+            results.sort(key=lambda x: (
+                -x['FinalEntryScore'],
+                -x['EntryTimingScore'],
+                {'Extreme': 9, 'High': 8, 'Medium': 5, 'Low': 0}.get(x['T1Risk'], 5),
+                -x.get('量能爆发评分', 0),
+            ))
+        except Exception as e:
+            print(f"[V2.0评分] 注入失败: {e}")
+
     for _v in results[:10]:
         _theme = _v.get('所属主题', '') or '无主题'
         _stage = _v.get('非一日游阶段', '') or ''
         _stage_str = f' 阶段={_stage}' if _stage else ''
-        print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 主题={_theme}{_stage_str} MACD={_v['MACD状态']}{' ⚠️死叉临界' if _v.get('死叉临界') else ''}")
+        print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 主题={_theme}{_stage_str} "
+              f"Entry={_v.get('FinalEntryScore','-')} {_v.get('Rating','')} {_v.get('EntryTimingGrade','')} "
+              f"T1Risk={_v.get('T1Risk','-')} MACD={_v['MACD状态']}{' ⚠️死叉临界' if _v.get('死叉临界') else ''}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
     return results
@@ -1389,41 +1926,125 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append("> 买入方式: 次日开盘 · 持有T+5 · 盘中-7%止损 · 每日Top3")
         lines.append("")
 
-    # 🎯 算法输出 TOP3（r4：距MA20贴地优先(<=+3%)+红柱回调缩短分支优先+距MA20升序+评分次级）
-    # 回测结论(2024-01~2026-08, 三指数动量>+3%闸门, T+5, 止损-7%): 每日只数5→3 胜率45.7%→47.7%、均收益+1.35%→+1.64%;
-    # "强买优先Top5"排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故买入排序只用 距MA20+评分 组合，强买仅作形态参考
-    # r4 相对 r3 改动(20260814回测)：叠加MACD形态偏好——红柱回调缩短④=49.7%/+2.29%为全分支最优(中位+0.00%唯一非负)，
-    #   红柱回调后反弹⑤=37.7%、刚刚红柱③=37.1%次之，即将红柱②=32.0%/-0.30%最差(共进形态全量负期望)；
-    #   贴地≤3%仍为第一优先级(全量∩≤3% 47.6% vs 全量44.3%；红柱回调∩≤3% 55.5%为全池最高胜率组合)
-    # 20260804~14 实测：距MA20<=3%贴地票8笔全盈利(均+11.7%)，距>+7%追高票2笔止损(-7%)，支撑贴地优先
+    # 🎯 算法输出 TOP3（V2.0 次日新开仓优先：FinalEntryScore 排序，20260821）
+    # 旧 r4 排序（距MA20贴地+MACD分支）仅作 V2.0 评分缺失时的降级兜底
     _MACD_RANK = {
         '红柱回调缩短（趋势延续）': 0,   # ④ 49.7%/+2.29% 最优
         '红柱回调后反弹（趋势延续）': 1,   # ⑤ 37.7%/+0.65%
         '刚刚红柱 ✅': 1,               # ③ 37.1%/+0.64%
         '即将红柱（绿柱连续缩短）': 2,     # ② 32.0%/-0.30% 最差
     }
-    # 死叉临界(20260817落地)：红柱已缩至极小、1~2日内可能死叉的票整体降末档（优先级最高，先于贴地/形态），
-    # 避免"启动高位+死叉临界+无量反弹"组合占据TOP1；若非临界票不足3只，死叉临界票仍带⚠️标注补入
+
     def _macd_rank(_r):
         _rk = _MACD_RANK.get(_r['MACD状态'], 1)
         return 9 if _r.get('死叉临界', False) else _rk
-    vs_top5 = sorted(results, key=lambda x: (
-        x.get('死叉临界', False),               # ① 死叉临界整体末档（最高优先级，先于贴地）
-        x['距MA20'] > 3,                        # ② 距MA20<=+3% 贴地/回调到位 优先
-        _macd_rank(x),                          # ③ 红柱回调缩短分支优先
-        x['距MA20'],                            # ④ 距MA20升序（负值/贴地更靠前）
-        -x['量能爆发评分'],                       # ⑤ 同级评分降序（高分优先）
-    ))[:3]
-    lines.append("## 🎯 算法输出 TOP3（次日开盘买入候选，自行选择）")
+    _env_label = (market_tip or {}).get('env', '') or ''
+    if '强市' in _env_label:
+        _env_mult = 1.05
+    elif '震荡偏强' in _env_label:
+        _env_mult = 1.0
+    elif '震荡偏弱' in _env_label:
+        _env_mult = 0.85
+    else:
+        _env_mult = 0.7
+    if all(x.get('FinalEntryScore') is not None for x in results):
+        vs_top3 = results[:3]
+    else:
+        vs_top3 = sorted(results, key=lambda x: (
+            x.get('死叉临界', False), x['距MA20'] > 3, _macd_rank(x), x['距MA20'], -x['量能爆发评分']))[:3]
+    lines.append("## 🎯 算法输出 TOP3（T+1 次日开盘新开仓优先 · FinalEntryScore 排序）")
     if market_tip:
-        lines.append(f"【环境提示】{market_tip['env']}，回测参考(T+5): {market_tip['win_ref']} | 是否买入请自行决策")
-    for i, _vr in enumerate(vs_top5, 1):
-        _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
-        lines.append(f"【TOP{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
-        lines.append(f"  {_t}")
-        _macd_tag = _vr['MACD状态'] + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
-        lines.append(f"  MACD={_macd_tag} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
-        lines.append(_chip_v5_line(_vr))
+        lines.append(f"【环境提示】{market_tip['env']} | 新开仓系数 {_env_mult:.2f} | 回测参考(T+5): {market_tip['win_ref']} | 是否买入请自行决策")
+    for i, _vr in enumerate(vs_top3, 1):
+        _medals = ['🥇', '🥈', '🥉'][i - 1]
+        _fe = _vr.get('FinalEntryScore')
+        if _fe is not None:
+            lines.append(f"【TOP{i} {_medals}】{_vr['名称']}({_vr['代码']}) FinalEntryScore={_fe:.1f} 评级={_vr.get('Rating', 'C')}")
+            _wk = '⚠高位接力' if _vr.get('ForbidTOP') else ''
+            _tag = f"{_vr.get('_v2_label', '')} {_wk}".strip()
+            lines.append(f"  趋势={_vr.get('TrendScore', 0):.0f} | 开仓价值={_vr.get('EntryScore', 0):.0f} | "
+                         f"EntryTiming={_vr.get('EntryTimingScore', 0):.0f}({_vr.get('EntryTimingGrade', 'C')}) | "
+                         f"主题共振={_vr.get('ThemeResonance', 0):.0f} | T1GapRisk={_vr.get('T1Risk', '-')} | "
+                         f"RiskScore={_vr.get('Risk_Score', 50):.0f} | {_tag}")
+            lines.append(f"  位置: 距MA20={_vr['距MA20']:+.1f}% | 距MA5={_vr.get('距MA5', 0):+.1f}% | 距MA10={_vr.get('距MA10', 0):+.1f}% | "
+                         f"5日涨幅={_vr.get('5日涨幅', 0):+.1f}% | 10日涨幅={_vr.get('10日涨幅', 0):+.1f}%")
+            _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
+            lines.append(f"  {_t}")
+            if _vr.get('_distribution'):
+                _vq = '高位放量 ⚠Distribution'
+            elif _vr.get('涨日量/跌日量', 1) >= 1.2 and _vr.get('今日量比', 1) < 1.5:
+                _vq = '上涨放量→回调缩量→再次承接'
+            else:
+                _vq = '缩量整理·等待再放量'
+            _macd_tag = _vr['MACD状态'] + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
+            lines.append(f"  量价: {_vq} | MACD={_macd_tag} | 量比={_vr['今日量比']} | "
+                         f"区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+            lines.append(_chip_v5_line(_vr))
+            lines.append("  【开盘策略】")
+            for _g in _vr.get('GapAdvice', []):
+                lines.append(f"  {_g}")
+            if _vr.get('ForbidTOP'):
+                lines.append("  ⚠ 高位接力豁免：距MA20>35%且10日涨幅>30%，禁止常规开仓，仅重大事件+主升初期+龙头唯一+预期差时考虑，FinalEntryScore上限75")
+        else:
+            lines.append(f"【TOP{i} {_medals}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
+            _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
+            lines.append(f"  {_t}")
+            _macd_tag = _vr['MACD状态'] + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
+            lines.append(f"  MACD={_macd_tag} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
+            lines.append(_chip_v5_line(_vr))
+        lines.append("")
+    lines.append("")
+
+    # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
+    # 只列「未进入 TOP3」的高分股，TOP3 已按 FinalEntryScore 排序，不在排除清单中重复出现
+    _top3_codes = {x['代码'] for x in vs_top3}
+    _excluded = []
+    for _x in results:
+        if _x['代码'] in _top3_codes:
+            continue
+        if _x.get('ForbidTOP'):
+            _excluded.append((_x, '巨幅乖离+急速上涨（强制过滤）'))
+        elif _x.get('Rating') == 'C' and _x.get('量能爆发评分', 0) >= 85:
+            _reasons = []
+            if _x.get('距MA20', 0) > 25:
+                _reasons.append(f"距MA20={_x['距MA20']:+.1f}%")
+            if _x.get('非一日游阶段') == '高潮':
+                _reasons.append('主题高潮')
+            if _x.get('非一日游阶段') == '退潮' or '(回避)' in (_x.get('所属主题', '') or ''):
+                _reasons.append('主题退潮/回避')
+            if _x.get('T1Risk') == 'Extreme':
+                _reasons.append('T1GapRisk=Extreme')
+            # 死叉临界+低乖离+健康量价 = 方向待确认，应给机会；仅当位置高/筹码走弱/量能不足时才列入排除
+            if _x.get('死叉临界') and (_x.get('距MA20', 0) > 15 or _x.get('Risk_Score', 50) > 20 or _x.get('今日量比', 1) < 0.8):
+                _reasons.append('死叉临界')
+            if _reasons:
+                _excluded.append((_x, '；'.join(_reasons)))
+    if _excluded:
+        lines.append("## 🚨 排除的高分股票（趋势强 ≠ 适合次日新开仓）")
+        for _x, _why in _excluded[:10]:
+            lines.append(f"- {_x['名称']}({_x['代码']}) 原始评分{_x['量能爆发评分']:.0f} → FinalEntryScore={_x.get('FinalEntryScore', '-')} {_x.get('Rating', 'C')}")
+            _xpos = f"  位置: 距MA20={_x['距MA20']:+.1f}% | 5日涨幅={_x.get('5日涨幅', 0):+.1f}% | 10日涨幅={_x.get('10日涨幅', 0):+.1f}% | T1GapRisk={_x.get('T1Risk', '-')}"
+            if _x.get('非一日游阶段'):
+                _xpos += f" | 阶段={_x['非一日游阶段']}"
+            lines.append(_xpos)
+            lines.append(f"  原因: {_why} | 趋势强/适合持股，但次日开仓赔率差")
+        lines.append("")
+
+    # 最终结论
+    lines.append("## 最终结论（T+1 新开仓优先级）")
+    _buyable = [x for x in results[:6] if x.get('Eligible') and x.get('Rating') in ('S', 'A', 'B') and not x.get('ForbidTOP')]
+    if _buyable:
+        _pri = ['第一优先', '第二优先', '第三优先']
+        for _i, _b in enumerate(_buyable[:3]):
+            _btag = '（低吸/次日确认优先）' if _b.get('Rating') == 'B' else ''
+            lines.append(f"{_pri[_i]}：{_b['名称']}({_b['代码']}) FinalEntryScore={_b.get('FinalEntryScore', '-')} 评级={_b.get('Rating', '')}{_btag}")
+        lines.append("只买：低乖离 + 趋势未坏 + 主线共振 + 回调结束 + 次日高开风险可控")
+    else:
+        lines.append("今日无高胜率可买标的：无同时满足 低乖离+趋势健康+主线共振+回调结束+高开风险可控 的候选 → **空仓观望**")
+        _best = results[0] if results else None
+        if _best:
+            lines.append(f"最接近候选: {_best['名称']}({_best['代码']}) FinalEntryScore={_best.get('FinalEntryScore', '-')} 评级={_best.get('Rating', '')}（仍缺 主题共振/位置 等条件，仅观察）")
+    lines.append("坚决避免：高位 + 高潮 + 巨大乖离 + 放量加速末端 + 预期一致性过强")
     lines.append("")
 
     lines.append("## 🔥 量能爆发·强买信号（形态参考，非买入排序依据）")

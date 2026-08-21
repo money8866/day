@@ -40,7 +40,7 @@ THEME_MAP_FILE = os.path.join(CACHE_DIR, 'theme_stock_map_latest.json')
 OUT_CSV = os.path.join(CACHE_DIR, 'nd2_backtest_tdx.csv')
 
 sys.path.insert(0, BASE_DIR)
-from nd2_alpha import ND2AlphaEngine
+from nd2_alpha import ND2AlphaEngine, V5Selector
 
 
 def ts_to_tdx_sym(ts_code):
@@ -53,50 +53,6 @@ def ts_to_tdx_sym(ts_code):
     elif suffix == 'CSI':
         return 'sh' + code
     return None
-
-
-class V5Selector:
-    """
-    V5精选器: 从当日信号中选出最多 max_per_day 只最佳标的
-    - 基于回测分析: ND2 10-11 甜点区 + BREAKOUT_TAIL 形态 + 尾流≥20
-    - 目标: 日频1-2信号, P_up 提升 20pp
-    """
-
-    @staticmethod
-    def select(signals, max_per_day=2):
-        if not signals:
-            return signals
-        # 硬门槛
-        qualified = []
-        for s in signals:
-            # 核心: ND2甜点区 (10-11)
-            if not (10 <= s.get('nd2_potential', 0) < 12):
-                continue
-            # 形态: 排除STEALTH (历史P_up 31%)
-            if s.get('pattern') == 'STEALTH_ACCUMULATION':
-                continue
-            # 尾流 ≥ 20
-            if s.get('tail_flow', 0) < 20:
-                continue
-            # 形态质量 ≥ 10
-            if s.get('pattern_quality', 0) < 10:
-                continue
-            # 强基因 ≥ 2
-            if s.get('strong_gene', 0) < 2:
-                continue
-            # 涨幅 ≥ 1.5%
-            if s.get('pct_chg', 0) < 1.5:
-                continue
-            # 总分 ≥ 68
-            if s.get('final_score', 0) < 68:
-                continue
-            # 风险 ≤ 2
-            if s.get('risk_penalty', 0) > 2:
-                continue
-            qualified.append(s)
-        # 按 rank_score 排序取前 max_per_day
-        qualified.sort(key=lambda s: -s.get('rank_score', 0))
-        return qualified[:max_per_day]
 
 
 class ND2Backtester:

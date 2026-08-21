@@ -43,7 +43,7 @@ from dotenv import load_dotenv
 from fuyao_mcp_client import FuyaoMCPClient, format_limit_up_summary, format_hot_stock_summary
 
 # ── 猎尾V5 NEXT-DAY ALPHA ENGINE (ND2) ──
-from nd2_alpha import ND2AlphaEngine
+from nd2_alpha import ND2AlphaEngine, V5Selector
 from nd2_store import ND2SnapshotStore
 from nd2_report import format_console_report, format_wechat_message, PATTERN_CN
 
@@ -5351,39 +5351,45 @@ class RealtimeThemeMonitor:
         return signals
 
     def run_nd2_alpha_scan(self, now):
-        """V5扫描入口: 控制台报告 + 快照保存 + 微信推送"""
-        signals = self.scan_nd2_alpha()
+        """V5扫描入口: 控制台报告 + 快照保存 + 微信推送
+        精选层(V5Selector): 每日最多推送2只最佳信号, 非主升浪日自动空仓"""
+        all_signals = self.scan_nd2_alpha()
         signal_date = self._get_last_trade_date()
 
-        # 保存快照(>=60分含REJECT前的负样本已在scan内处理, 这里保存B级以上+REJECT前的60+分)
-        if signals:
-            # 快照保存需要包含负样本: 重新评估太贵, 保存B级以上即可(60+分)
+        # 保存快照(全量>=60分, 供标签回填学习)
+        if all_signals:
             saved = self.nd2_store.save_snapshot(
-                signal_date, [s for s in signals if s['final_score'] >= 60],
+                signal_date, [s for s in all_signals if s['final_score'] >= 60],
                 market_status=getattr(self, '_last_report', {}).get('market_status', '') if self._last_report else ''
             )
             if saved:
                 print(f"📸 [V5] ND2快照已保存: {saved}只 -> nd2_snapshot.db")
 
-        # 控制台完整报告
-        if signals:
-            report_str = format_console_report(signals, top_n=10)
-            print(report_str)
+        # ── V5Selector 精选: 每日最多2只最佳信号 ──
+        signals = V5Selector.select(all_signals, max_per_day=2)
 
-            # S/A级推送(每日最多推送一次)
-            sa_signals = [s for s in signals if s['grade'] in ('S', 'A')]
-            if sa_signals and time.time() - self.nd2_pushed_time > 3600:
-                msg = format_wechat_message(sa_signals, max_n=5)
-                if msg:
-                    mkt_info = {
-                        'status': getattr(self, '_last_report', {}).get('market_status', '') if self._last_report else '',
-                        'multiplier': ND2AlphaEngine.market_multiplier(
-                            getattr(self, '_last_report', {}).get('trend_score', 60) if self._last_report else 60),
-                        'trend_score': getattr(self, '_last_report', {}).get('trend_score', 0) if self._last_report else 0,
-                    }
-                    full_msg = msg + '\n' + format_wechat_market(mkt_info)
-                    self.send_wechat(f"🎯 猎尾V5次日Alpha {now.strftime('%H:%M')}", full_msg)
-                    self.nd2_pushed_time = time.time()
+        # 控制台报告(精选信号)
+        if signals:
+            report_str = format_console_report(signals, top_n=2)
+            print(report_str)
+        elif all_signals:
+            print(f"\n🛑 [V5] 今日{len(all_signals)}只候选均未通过精选(非主升浪/不在甜点区) → 空仓纪律")
+        else:
+            print(f"\n🛑 [V5] 今日无ND2候选 → 空仓")
+
+        # 精选信号推送(每日最多推送一次)
+        if signals and time.time() - self.nd2_pushed_time > 3600:
+            msg = format_wechat_message(signals, max_n=2)
+            if msg:
+                mkt_info = {
+                    'status': getattr(self, '_last_report', {}).get('market_status', '') if self._last_report else '',
+                    'multiplier': ND2AlphaEngine.market_multiplier(
+                        getattr(self, '_last_report', {}).get('trend_score', 60) if self._last_report else 60),
+                    'trend_score': getattr(self, '_last_report', {}).get('trend_score', 0) if self._last_report else 0,
+                }
+                full_msg = msg + '\n' + format_wechat_market(mkt_info)
+                self.send_wechat(f"🎯 猎尾V5精选·次日Alpha {now.strftime('%H:%M')}", full_msg)
+                self.nd2_pushed_time = time.time()
 
         return signals
 
