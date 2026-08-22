@@ -134,6 +134,22 @@ class V22Config:
         'conf_watch': 50.0,
         'overheat_pullback': 25.0,   # 透支>25 → WAIT_PULLBACK
     }
+    NEXT5 = {
+        'limit': 2,
+        'alpha': 0.35,
+        'ees': 0.25,
+        'ts': 0.20,
+        'conf': 0.10,
+        'risk': 0.10,
+    }
+    FUSION = {
+        'er20': 0.50,
+        'egpt_quality': 0.25,
+        'egpt_pullback': 0.15,
+        'execution': 0.10,
+        'min_score': 70.0,
+        'second_gap': 12.0,
+    }
     # ── 组合控制（规格十） ──
     PORTFOLIO = {
         'core_pos': 0.15, 'test_pos': 0.12, 'probe_pos': 0.05,
@@ -475,6 +491,46 @@ def calc_ees_v22(trend, ts, volume, pqs, overheat):
     return round(min(100.0, max(0.0, ees)), 1)
 
 
+def next5_score_v22(row):
+    cfg = V22Config.NEXT5
+    alpha = float(row.get('alpha', 0.0) or 0.0)
+    ees = float(row.get('ees', 0.0) or 0.0)
+    ts = float(row.get('ts', 0.0) or 0.0)
+    conf = float(row.get('conf', 0.0) or 0.0)
+    risk = float(row.get('rel_risk', 100.0) or 100.0)
+    score = (cfg['alpha'] * alpha + cfg['ees'] * ees + cfg['ts'] * ts
+             + cfg['conf'] * conf + cfg['risk'] * (100.0 - risk))
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def _load_egpt_fusion(scan_date):
+    path = os.path.join(REPORT_DIR, f'zhongbao_egpt_timing_{scan_date}.csv')
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        egpt = pd.read_csv(path, encoding='utf-8-sig')
+    except Exception:
+        return pd.DataFrame()
+    if '代码' not in egpt.columns:
+        return pd.DataFrame()
+    egpt = egpt.copy()
+    egpt['ts_code'] = egpt['代码'].astype(str).str.strip()
+    egpt['ts_code'] = egpt['ts_code'].apply(
+        lambda x: x if '.' in x else f'{x[:6]}.SH' if x.startswith(('5', '6', '9')) else f'{x[:6]}.SZ')
+    return egpt.drop_duplicates('ts_code', keep='first')
+
+
+def _fusion_score_v22(row):
+    cfg = V22Config.FUSION
+    er20 = float(row.get('next5_score', 0.0) or 0.0)
+    egpt_quality = float(row.get('egpt_quality_score', 50.0) or 50.0)
+    egpt_pullback = float(row.get('egpt_pullback_score', 50.0) or 50.0)
+    execution = float(row.get('execution_score', 75.0) or 75.0)
+    score = (cfg['er20'] * er20 + cfg['egpt_quality'] * egpt_quality
+             + cfg['egpt_pullback'] * egpt_pullback + cfg['execution'] * execution)
+    return round(max(0.0, min(100.0, score)), 1)
+
+
 # ============================================================
 # 模块6：Grade V2.2（规格九门槛）
 # ============================================================
@@ -716,6 +772,7 @@ def scan_v22(scan_date='20260820'):
 
         rows.append({
             'ts_code': code, 'name': r.get('name', ''), 'ann_date': ann, 'gap': gap,
+            'scan_close': float(daily.iloc[cur_idx]['close']),
             'event_age': event_age, 'strategy': strategy, 'cls_reason': cls_reason,
             'raw': round(raw, 1), 'fq': fq, 'rqs': rqs, 'gap_s': gap_s, 'ars': ars,
             'pqs': pqs, 'trend': trend, 'tqs': tqs, 'volume': volume,
@@ -763,6 +820,45 @@ def scan_v22(scan_date='20260820'):
     df['alpha'] = (df['er20_base'] * decay_mult + df['alpha_refresh'].fillna(0.0)
                    - df['eq_penalty'].fillna(0.0)).round(1)
     df['alpha'] = df['alpha'].clip(0, 100)
+    df['next5_score'] = df.apply(next5_score_v22, axis=1)
+
+    egpt = _load_egpt_fusion(scan_date)
+    if egpt.empty:
+        df['egpt_covered'] = 0
+        df['egpt_quality_score'] = 50.0
+        df['egpt_pullback_score'] = 50.0
+        df['egpt_buy_point'] = ''
+        df['egpt_theme_status'] = ''
+        df['egpt_decision'] = ''
+        df['execution_score'] = 75.0
+        df['fusion_gate'] = 1
+    else:
+        egpt_cols = [c for c in ['ts_code', '翻倍潜力分', '回踩买点分', '买点确认',
+                                 '主题状态', '次日操作', '主题热度%'] if c in egpt.columns]
+        df = df.merge(egpt[egpt_cols], on='ts_code', how='left')
+        covered = df['翻倍潜力分'].notna() | df['回踩买点分'].notna()
+        df['egpt_covered'] = covered.astype(int)
+        df['egpt_quality_score'] = pd.to_numeric(df.get('翻倍潜力分'), errors='coerce').fillna(50.0).clip(0, 100)
+        df['egpt_pullback_score'] = pd.to_numeric(df.get('回踩买点分'), errors='coerce').fillna(50.0).clip(0, 100)
+        df['egpt_buy_point'] = df.get('买点确认', '').fillna('').astype(str)
+        df['egpt_theme_status'] = df.get('主题状态', '').fillna('').astype(str)
+        df['egpt_decision'] = df.get('次日操作', '').fillna('').astype(str)
+        heat = pd.to_numeric(df.get('主题热度%'), errors='coerce').fillna(0.0)
+        df['execution_score'] = 75.0
+        df.loc[df['egpt_buy_point'].str.contains('买点2', na=False), 'execution_score'] += 12.0
+        df.loc[df['egpt_buy_point'].str.contains('买点1', na=False), 'execution_score'] += 5.0
+        df.loc[df['egpt_buy_point'].eq('未突破'), 'execution_score'] -= 8.0
+        df.loc[heat.between(5.0, 15.0), 'execution_score'] += 5.0
+        df.loc[heat.ge(15.0), 'execution_score'] -= 10.0
+        df['execution_score'] = df['execution_score'].clip(0, 100)
+        df['fusion_gate'] = 1
+        df.loc[df['egpt_decision'].str.startswith('❌'), 'fusion_gate'] = 0
+        df.loc[df['egpt_buy_point'].str.startswith('买点1') & heat.ge(15.0), 'fusion_gate'] = 0
+
+    df['fusion_score'] = df.apply(_fusion_score_v22, axis=1)
+    df.loc[df['egpt_covered'] == 0, 'fusion_score'] = df.loc[df['egpt_covered'] == 0, 'next5_score']
+    df['fusion_score'] = df['fusion_score'].clip(0, 100).round(1)
+    df['next5_rank'] = df['fusion_score'].rank(method='first', ascending=False).astype(int)
 
     # ── D_FALSE_SIGNAL 退出主排名（P0-2 延续） ──
     df['rank_eligible'] = df['strategy'] != 'D_FALSE_SIGNAL'
@@ -782,6 +878,26 @@ def scan_v22(scan_date='20260820'):
     # ── 组合仓位控制 V2.2 ──
     df = _apply_portfolio_cap_v22(df)
 
+    trade_dates = [str(d) for d in dates]
+    next_date = next((d for d in trade_dates if d > str(scan_date)), None)
+    df['entry_date'] = next_date
+    df['entry_price_model'] = '次日开盘价'
+    df['next_day_signal'] = 0
+    buy_mask = df['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])
+    eligible_signal = buy_mask & (df['fusion_gate'] == 1) & (df['fusion_score'] >= V22Config.FUSION['min_score'])
+    ranked = df.loc[eligible_signal].sort_values(
+        ['fusion_score', 'next5_score', 'alpha'], ascending=[False, False, False])
+    signal_idx = ranked.head(V22Config.NEXT5['limit']).index
+    if len(signal_idx) >= 2:
+        first_score = float(ranked.loc[signal_idx[0], 'fusion_score'])
+        second_score = float(ranked.loc[signal_idx[1], 'fusion_score'])
+        if first_score - second_score > V22Config.FUSION['second_gap']:
+            signal_idx = signal_idx[:1]
+    df.loc[signal_idx, 'next_day_signal'] = 1
+    limited_idx = df.index[buy_mask & ~df.index.isin(signal_idx)]
+    df.loc[limited_idx, 'grade'] = 'WAIT_CONFIRM'
+    df.loc[limited_idx, 'grade_reason'] = '次日信号已限额'
+
     # ── 排序（D 类垫底，其余按 Alpha） ──
     df = df.sort_values(['rank_eligible', 'alpha'], ascending=[False, False]).reset_index(drop=True)
     save_sqlite_v22(df, scan_date)
@@ -794,7 +910,9 @@ def scan_v22(scan_date='20260820'):
 # ============================================================
 def save_sqlite_v22(df, scan_date):
     cols = ['ts_code', 'name', 'ann_date', 'gap', 'event_age', 'strategy', 'cls_reason',
-            'raw', 'norm', 'er20_base', 'alpha',
+            'raw', 'norm', 'er20_base', 'alpha', 'next5_score', 'fusion_score', 'next5_rank',
+            'egpt_covered', 'egpt_quality_score', 'egpt_pullback_score', 'egpt_buy_point',
+            'egpt_theme_status', 'egpt_decision', 'execution_score', 'fusion_gate',
             'fq', 'rqs', 'gap_s', 'ars', 'pqs', 'trend', 'volume', 'tqs',
             'risk_v2', 'rel_risk', 'overheat', 'conf', 'theme_adj', 'theme',
             'cfcs', 'cf_label', 'cf_adj', 'cf_reason',
@@ -803,7 +921,8 @@ def save_sqlite_v22(df, scan_date):
             'pre_priced', 'decay_factor', 'alpha_refresh', 'decay_state',
             'ts', 'ttype', 'tdesc', 'ees',
             'dt_netprofit_yoy', 'tr_yoy', 'netprofit_yoy',
-            'grade', 'grade_reason', 'rank_eligible']
+            'grade', 'grade_reason', 'rank_eligible',
+            'entry_date', 'entry_price_model', 'next_day_signal']
     save = df[[c for c in cols if c in df.columns]].copy()
     save.insert(0, 'scan_date', str(scan_date))
     save['missing'] = df.get('missing', '')
@@ -897,7 +1016,7 @@ def build_report_v22(df, scan_date, regime, market_mult):
     # 【3. TODAY BUY】
     lines.append('【3. TODAY BUY】')
     for gname in ('CORE_BUY', 'TEST_BUY', 'PROBE_BUY'):
-        sub = df[df['grade'] == gname]
+        sub = df[(df['grade'] == gname) & (df['next_day_signal'] == 1)]
         lines.append(f'### {gname}（{len(sub)} 只）')
         if sub.empty:
             lines.append('无（纪律：宁可空仓，不降标准）')
@@ -906,7 +1025,8 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 pos = {'CORE_BUY': 0.15, 'TEST_BUY': 0.12, 'PROBE_BUY': 0.05}[gname]
                 bp = f"{r['ttype']} {r['ts']:.0f}分" if r['ttype'] != 'NO_TRIGGER' else r['tdesc']
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
-                             f"EES={r['ees']:.0f} | 买点={bp} | 仓位={pos:.0%}")
+                             f"融合分={r.get('fusion_score', r['next5_score']):.1f} | EES={r['ees']:.0f} | "
+                             f"买点={bp} | EGPT={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
     lines.append('')
 
     # 【4. WAIT TOP10】

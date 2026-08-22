@@ -553,10 +553,11 @@ def _load_v6_result(expected_date=None):
         if v8_json_path and os.path.exists(v8_json_path):
             load_path = v8_json_path
             source = "V8"
-        elif os.path.exists(v6_result_path):
-            load_path = v6_result_path
-            source = "V6"
         else:
+            # 不再回退到无日期后缀的 V6 旧文件：过期主题结果会让当日
+            # 评分静默使用旧数据（热度/阶段信号失真），宁可走"数据不足"。
+            print(f"[V8] 引擎结果不存在: {v8_json_path or v8_csv_path}")
+            print(f"  请先运行: python theme_alpha_v6/main.py --date {expected_date or ''}")
             return None
         try:
             with open(load_path, 'r', encoding='utf-8') as f:

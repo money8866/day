@@ -1,0 +1,71 @@
+{
+  "trade_date": "20260821",
+  "market_score": 42,
+  "regime": "Recovery",
+  "signals": [
+    {
+      "ts_code": "002882.SZ",
+      "name": "金龙羽",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 75.15640214958921,
+      "rally_amplitude": 0.36405005688282155,
+      "rally_vol_expansion": 2.644708003212444,
+      "rally_limit_up_count": 2,
+      "rally_max_consecutive_lu": 2,
+      "rally_high_date": "20260803",
+      "drawdown": 0.09924937447873224,
+      "pullback_days": "14",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.015223596574690785,
+      "candle_body_pct": 0.04347826086956532,
+      "subs": {
+        "vol_expansion": 28.95640214958921,
+        "limit_up": 7.5,
+        "pullback": 20.0,
+        "candle": 11.7,
+        "volume_confirm": 7.0
+      },
+      "ref_price": 21.6,
+      "stop_loss": 19.39,
+      "take_profit": 26.01,
+      "atr": 1.47,
+      "stock_type": "中性",
+      "suggestion": "伺机而动（大盘震荡回暖，等待明确信号再入场）"
+    },
+    {
+      "ts_code": "601858.SH",
+      "name": "中国科传",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 73.12313451488502,
+      "rally_amplitude": 0.5083094555873926,
+      "rally_vol_expansion": 2.4397661054684727,
+      "rally_limit_up_count": 3,
+      "rally_max_consecutive_lu": 2,
+      "rally_high_date": "20260807",
+      "drawdown": 0.1614741641337386,
+      "pullback_days": "10",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.018042399639152103,
+      "candle_body_pct": 0.013780431786862687,
+      "subs": {
+        "vol_expansion": 28.098134514885025,
+        "limit_up": 11.875,
+        "pullback": 16.400000000000002,
+        "candle": 12.75,
+        "volume_confirm": 4.0
+      },
+      "ref_price": 22.07,
+      "stop_loss": 19.96,
+      "take_profit": 26.29,
+      "atr": 1.41,
+      "stock_type": "中性",
+      "suggestion": "伺机而动（大盘震荡回暖，等待明确信号再入场）"
+    }
+  ]
+}

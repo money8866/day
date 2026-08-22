@@ -256,12 +256,14 @@ def _load_v6_result(expected_date=None):
     elif v8_json_path and os.path.exists(v8_json_path):
         load_path = v8_json_path
         source = "V8"
-    elif os.path.exists(v6_result_path):
-        load_path = v6_result_path
-        source = "V6"
     else:
-        print(f"[V8] 引擎结果不存在: {v8_csv_path} / {v8_json_path}")
-        print(f"[V6] 回退文件也不存在: {v6_result_path}")
+        # 不再回退到无日期后缀的 V6 旧文件：旧主题结果会让当日评分
+        # 静默使用过期数据（如热度、高潮/衰退信号），导致结论失真。
+        # 宁可返回 None 走"数据不足"中性处理，也不能用过期结果。
+        print(f"[V8] 引擎结果不存在: {v8_csv_path}")
+        print(f"  请先运行: python theme_alpha_v6/main.py --date {expected_date or ''}")
+        if expected_date and os.path.exists(v6_result_path):
+            print(f"  [提示] 存在旧V6结果({v6_result_path})，因日期可能过期已不回退，请生成当天V8结果")
         return None
 
     try:
@@ -3295,27 +3297,130 @@ def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
 def calc_tli_score(theme, top_n=10, days=60):
     """
     TLI (Theme Life Index) 主题生命力评分
-    
+
     核心逻辑：衡量主题在最近N天内的持续活跃程度
     高生命力 = 主题持续出现在市场前排，资金关注度高
-    
-    使用 Theme Alpha V6.2 引擎结果计算。
-    
+
+    数据源：Theme Score V2 引擎（theme_scores_v2_{date}.csv）
+    优先使用当日 V2 结果（综合分/生命周期/交易动作/迁移分/置信度），
+    并扫描最近若干交易日 V2 CSV 计算持续性；V2 不可用时回退 V8，
+    不回退到无日期后缀的旧 V6 文件。
+
     参数：
         theme: 主题名称
         top_n: 前排定义（默认前10名）
-        days: 统计天数（默认60天）
-    
+        days: 统计天数（默认60天，用于扫描历史 V2 CSV 的窗口）
+
     返回：0-100 的主题生命力评分
     """
     try:
         if not theme:
             return 50, {"错误": "主题为空"}
 
-        # 使用 V6 引擎结果
+        # ===== 优先：Theme Score V2 引擎 =====
+        v2_records = _load_v2_theme_scores(TRADE_DATE)
+        if v2_records:
+            theme_rec = None
+            rank = 0
+            for i, r in enumerate(v2_records):
+                if r.get('theme') == theme:
+                    theme_rec = r
+                    rank = i + 1  # 按综合分降序
+                    break
+            if not theme_rec:
+                return 50, {"说明": "V2中无该主题"}
+
+            composite = float(theme_rec.get('composite_score', 0) or 0)
+            lifecycle = str(theme_rec.get('lifecycle', ''))
+            trade_action = str(theme_rec.get('trade_action', ''))
+            confidence = float(theme_rec.get('confidence', 0) or 0)
+            migration = float(theme_rec.get('migration_score', 0) or 0)
+            climax_warning = int(theme_rec.get('climax_warning', 0) or 0)
+
+            # 基础分：综合分映射（V2综合68→60.6, 55→54.75）
+            base_score = 30 + composite * 0.45
+
+            # 生命周期修正（V2生命周期：启动/升温/主升 加分；高潮/退潮 扣分）
+            if lifecycle in ('主升', '升温', '启动'):
+                base_score += 8
+            elif lifecycle in ('高潮', '退潮'):
+                base_score -= 18
+
+            # 交易动作修正（V2 trade_action 语义更明确）
+            if '回避' in trade_action or '观望' in trade_action:
+                base_score -= 12
+            elif '通道持股' in trade_action or '加仓' in trade_action or '追买' in trade_action:
+                base_score += 10
+
+            # 迁移分（资金/情绪向该主题迁移 = 前瞻动量）
+            base_score += min(10, migration * 0.6)  # 迁移12 → +7.2
+
+            # 置信度加权（V2 confidence 0-100）
+            base_score += (confidence - 50) * 0.15
+
+            # 排名加分（前排生命力更高）
+            rank_bonus = 0
+            if rank <= 3:
+                rank_bonus = 10
+            elif rank <= 5:
+                rank_bonus = 7
+            elif rank <= 10:
+                rank_bonus = 4
+
+            # 历史持续性：扫描最近若干交易日 V2 CSV，取综合分均值
+            history_avg = None
+            try:
+                import glob as _glob
+                report_dir = os.path.join(BASE_DIR, 'report_daily')
+                v2_files = sorted(
+                    _glob.glob(os.path.join(report_dir, 'theme_scores_v2_*.csv')),
+                    reverse=True)
+                # 取最近 max(1, days//5) 个交易日文件（默认12个）作为持续性窗口
+                recent = [f for f in v2_files
+                          if f != os.path.join(report_dir, f'theme_scores_v2_{TRADE_DATE}.csv')][:max(1, days // 5)]
+                hist_comps = []
+                for fp in recent[:12]:
+                    try:
+                        _df = pd.read_csv(fp, encoding='utf-8-sig')
+                        _row = _df[_df['theme'] == theme]
+                        if not _row.empty:
+                            hist_comps.append(float(_row.iloc[0].get('composite_score', 0) or 0))
+                    except Exception:
+                        continue
+                if hist_comps:
+                    history_avg = float(np.mean(hist_comps))
+            except Exception:
+                history_avg = None
+
+            if history_avg is not None:
+                # 持续性强(历史均值≥55) +2；近期走弱(历史均值-当日≥8) -6
+                if history_avg >= 55:
+                    base_score += 2
+                if history_avg - composite >= 8:
+                    base_score -= 6
+
+            # 过热预警：高潮+情绪过热 → 扣分（避免接盘）
+            if climax_warning:
+                base_score -= 10
+
+            tli_score = base_score + rank_bonus
+            tli_score = min(100, max(0, tli_score))
+
+            details = {
+                "V6排名": rank,
+                "综合分": round(composite, 1),
+                "生命周期": lifecycle,
+                "交易动作": trade_action,
+                "迁移分": round(migration, 1),
+                "置信度": round(confidence, 1),
+                "历史均值": round(history_avg, 1) if history_avg is not None else None,
+            }
+            return round(tli_score, 1), details
+
+        # ===== 回退：V8 结果（不回退旧 V6 文件）=====
         v6_data = _load_v6_result(TRADE_DATE)
         if not v6_data:
-            return 50, {"错误": "V6结果不存在或日期不匹配"}
+            return 50, {"错误": "V2/V8结果均不存在或日期不匹配"}
         
         # 找到该主题
         theme_data = None
@@ -3455,6 +3560,91 @@ def _get_stock_moneyflow_features(ts_code):
     except Exception:
         pass
     return result
+
+
+def calc_20d_breakout_failure_risk(df, breakout_result, details=None):
+    """面向次日买入、持有20个交易日的突破失败风险评分（10~90，越低越好）。"""
+    details = details if isinstance(details, dict) else {}
+    risk = 50.0
+    reasons = []
+    b = breakout_result or {}
+    score = float(b.get('breakout_score', 0) or 0)
+    is_false = bool(b.get('is_false_breakout', False))
+    is_valid = bool(b.get('is_valid_breakout', False))
+    distance = float(b.get('distance_to_resistance', 0) or 0)
+    volume_ratio = float(b.get('volume_ratio', 1) or 1)
+    vol_5_to_20 = float(b.get('vol_5_to_20', 1) or 1)
+    atr_pctile = float(b.get('atr_percentile', 0.5) or 0.5)
+    ma20_slope = float(b.get('ma20_slope', 0) or 0)
+
+    # 突破质量：20日持有期首先要求突破成立，而不是只看综合动量。
+    if is_false:
+        risk += 25; reasons.append('假突破')
+    elif is_valid and score >= 80:
+        risk -= 10
+    elif is_valid:
+        risk -= 6
+    elif score >= 65:
+        risk += 4
+    else:
+        risk += 12; reasons.append('突破确认不足')
+
+    # 次日买入的追价风险：突破过深通常降低盈亏比。
+    if distance > 6:
+        risk += 12; reasons.append('远离阻力')
+    elif distance > 3:
+        risk += 6; reasons.append('突破偏深')
+    elif -2 <= distance <= 3:
+        risk -= 3
+    elif distance < -4:
+        risk += 8; reasons.append('尚未站上阻力')
+
+    # 量价质量：适度放量最好，极端爆量按情绪透支处理。
+    if volume_ratio < 0.9:
+        risk += 10; reasons.append('缩量突破')
+    elif 1.2 <= volume_ratio <= 2.5:
+        risk -= 5
+    elif volume_ratio > 3.5:
+        risk += 6; reasons.append('极端爆量')
+    if vol_5_to_20 < 0.8:
+        risk += 5
+    elif 1.1 <= vol_5_to_20 <= 1.8:
+        risk -= 3
+
+    if ma20_slope > 1.0:
+        risk -= 5
+    elif ma20_slope > 0:
+        risk -= 2
+    elif ma20_slope < -1.0:
+        risk += 8; reasons.append('MA20下行')
+    if atr_pctile < 0.3:
+        risk -= 4
+    elif atr_pctile > 0.8:
+        risk += 6; reasons.append('波动率高')
+
+    if isinstance(df, pd.DataFrame) and len(df) >= 20 and 'close' in df.columns:
+        close = float(df['close'].iloc[-1])
+        ma20 = float(df['close'].tail(20).mean())
+        if ma20 > 0:
+            dist_ma20 = (close / ma20 - 1) * 100
+            if dist_ma20 > 15:
+                risk += 10; reasons.append('远离MA20')
+            elif dist_ma20 > 8:
+                risk += 4
+            elif 0 <= dist_ma20 <= 5:
+                risk -= 3
+            elif dist_ma20 < -3:
+                risk += 8; reasons.append('跌破MA20')
+        ret20 = (close / float(df['close'].iloc[-20]) - 1) * 100 if float(df['close'].iloc[-20]) > 0 else 0
+        if ret20 > 35:
+            risk += 8; reasons.append('20日涨幅透支')
+        elif ret20 > 20:
+            risk += 3
+
+    risk = min(90.0, max(10.0, risk))
+    details['20日风险模型'] = '突破质量+追价+量价+波动+MA20+20日涨幅'
+    details['20日风险修正理由'] = '、'.join(reasons[:5]) if reasons else '结构正常'
+    return round(risk, 1)
 
 
 def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0,
@@ -3784,15 +3974,27 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
 
         if theme:
             try:
-                v6_data = _load_v6_result(TRADE_DATE)
-                if v6_data:
-                    for r in v6_data:
+                # 主题评分改用 Theme Score V2：生命周期"高潮/退潮"或交易动作含"回避" → 热度扣分
+                v2_data = _load_v2_theme_scores(TRADE_DATE)
+                if v2_data:
+                    for r in v2_data:
                         if r.get('theme') == theme:
-                            signal = r.get('trade_signal', '')
-                            stage = r.get('stage', '')
-                            if signal in ('回避', '看空', '强烈看空') or stage in ('高潮', '衰退'):
+                            lifecycle = str(r.get('lifecycle', ''))
+                            trade_action = str(r.get('trade_action', ''))
+                            if lifecycle in ('高潮', '退潮') or '回避' in trade_action:
                                 hot_score -= 15
                             break
+                else:
+                    # V2 不可用时回退 V8
+                    v6_data = _load_v6_result(TRADE_DATE)
+                    if v6_data:
+                        for r in v6_data:
+                            if r.get('theme') == theme:
+                                signal = r.get('trade_signal', '')
+                                stage = r.get('stage', '')
+                                if signal in ('回避', '看空', '强烈看空') or stage in ('高潮', '衰退'):
+                                    hot_score -= 15
+                                break
             except Exception:
                 pass
 
@@ -3894,25 +4096,71 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
                 pass
 
         # ──────────────────────────────────────────────
-        # 8. 综合得分
+        # 8. 综合得分：加入中线突破质量，降低短线动量放大
         # ──────────────────────────────────────────────
-        base_score = (
-            capital_score * 0.35 +
-            position_score * 0.25 +
-            hot_score * 0.15 +
-            fundamental_score * 0.25
-        )
-        # 动量爆发力作为乘数 + 龙头加分 - 惩罚 + 辨识度
-        momentum_mult = 0.7 + (momentum_score / 100) * 0.6  # 0.7 ~ 1.3
-        synergy_bonus = (synergy_coeff - 0.8) * 25
-        base_raw = base_score * momentum_mult + synergy_bonus - penalty + leader_bonus + recognition_bonus
+        breakout_quality = 50.0
+        prior_high = HHV20
+        breakout_gap = (current_price / prior_high - 1) * 100 if prior_high > 0 else 0
+        if current_price >= prior_high * 1.01:
+            breakout_quality += 25
+        elif current_price >= prior_high:
+            breakout_quality += 15
+        elif current_price >= prior_high * 0.97:
+            breakout_quality += 5
+        else:
+            breakout_quality -= 15
 
+        if 'vol' in df.columns and len(df) >= 20:
+            day_vol_ratio = float(df['vol'].iloc[-1]) / (float(df['vol'].iloc[:-1].tail(5).mean()) + 1e-6)
+            if 1.3 <= day_vol_ratio <= 3.0:
+                breakout_quality += 12
+            elif day_vol_ratio > 4.0:
+                breakout_quality -= 8
+            elif day_vol_ratio < 0.8:
+                breakout_quality -= 8
+        else:
+            day_vol_ratio = 1.0
+
+        day_range = float(high_series.iloc[-1] - df['low'].iloc[-1])
+        close_location = (current_price - float(df['low'].iloc[-1])) / day_range if day_range > 0 else 0.5
+        if close_location >= 0.75:
+            breakout_quality += 8
+        elif close_location < 0.45:
+            breakout_quality -= 12
+
+        ma20_slope_10 = (MA20 / float(close_series.rolling(20).mean().iloc[-11]) - 1) * 100 if len(C) >= 30 else 0
+        if ma20_slope_10 > 3:
+            breakout_quality += 8
+        elif ma20_slope_10 < -1:
+            breakout_quality -= 12
+
+        ret20 = (current_price / float(C[-21]) - 1) * 100 if len(C) >= 21 else 0
+        if ret20 > 35:
+            breakout_quality -= 15
+        elif ret20 > 25:
+            breakout_quality -= 8
+        breakout_quality = min(100, max(0, breakout_quality))
+
+        # 中线高胜率权重：结构和突破质量优先，短线动量只作辅助。
+        # 权重合计100%，避免动量乘数把高风险股票重新抬高。
+        base_score = (
+            capital_score * 0.24 +
+            position_score * 0.18 +
+            hot_score * 0.08 +
+            fundamental_score * 0.15 +
+            breakout_quality * 0.25 +
+            momentum_score * 0.10
+        )
+        synergy_bonus = (synergy_coeff - 0.8) * 12
+        base_raw = base_score + synergy_bonus - penalty + leader_bonus + recognition_bonus
+
+        # 动量只保留小幅排序作用，不能覆盖突破质量和追高风险。
         if momentum_score >= 80:
-            base_raw += 6
-        elif momentum_score >= 65:
             base_raw += 3
+        elif momentum_score >= 65:
+            base_raw += 1.5
         elif momentum_score < 40:
-            base_raw -= 6
+            base_raw -= 3
         base_raw = min(120, max(5, base_raw))  # 暂存，后面还要乘主题系数
 
         # ──────────────────────────────────────────────
@@ -3954,8 +4202,12 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             failure_prob += 8
         failure_prob = min(90, max(10, failure_prob))
 
-        failure_bonus = (30 - failure_prob) * 0.4
-        after_bonus = base_raw + failure_bonus
+        # 风险直接进入总分：高失败风险必须降低排名，避免“高分高风险”。
+        # 20日持有期优先保留风险<=35%的候选，风险超过50%后加速扣分。
+        risk_penalty = max(0.0, failure_prob - 35.0) * 0.55
+        if failure_prob > 50:
+            risk_penalty += (failure_prob - 50.0) * 0.45
+        after_bonus = base_raw - risk_penalty
 
         # ── V11: 主题层级系数（主线分级 V1.0 集成）──
         # 主线核心(≥85): ×1.10   强主线(80~84): ×1.05
@@ -4044,12 +4296,19 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             '位置安全性': round(position_score, 1),
             '热度': round(hot_score, 1),
             '基本面': round(fundamental_score, 1),
+            '突破质量': round(breakout_quality, 1),
+            '突破幅度': round(breakout_gap, 2),
+            '当日量比': round(day_vol_ratio, 2),
+            '收盘位置': round(close_location, 2),
+            '20日涨幅': round(ret20, 2),
             '追高惩罚': round(penalty, 1),
             '龙头加分': leader_bonus,
             '辨识度加分': round(recognition_bonus, 1),
             'YRI总分': round(yri_h_score, 1),
             'YRI标签': ", ".join(yri_h_tags[:3]) if yri_h_tags else "",
             '量比': round(vol_ratio, 2) if 'vol' in df.columns else 0,
+            # 量能爆发：5日均量/20日均量（0-100），与 V5 burst_score 同口径
+            '量能爆发': round(np.clip(vol_ratio_5_20 / 3.0, 0, 1) * 100, 1) if 'vol' in df.columns else 0,
             '热榜最佳排名': best_rank if best_rank <= 100 else 0,
             '热榜上榜次数': hot_appear_count,
             '共振系数': round(synergy_coeff, 2),
@@ -6674,6 +6933,73 @@ def _load_mainline_rotation_themes(trade_date):
                     'continuation_tag': '', 'leader': '', 'divergence_buy': False,
                     'trade_signal': '回避',
                 }
+    # 补充：CSV 补全主题评分
+    # 轮动区(▸)报告行缺情绪字段（theme_score_v2.py save_to_text_report_v2 未输出情绪），
+    # 导致 sentiment_score 解析为 0。优先用 theme_scores_v2_{date}.csv 的精确值覆盖。
+    csv_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "report_daily", f"theme_scores_v2_{trade_date}.csv")
+    if os.path.exists(csv_path):
+        try:
+            csv_df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            csv_map = {}
+            for _, r in csv_df.iterrows():
+                _t = str(r.get('theme', '')).strip()
+                if _t:
+                    csv_map[_t] = {
+                        'trend': float(r.get('trend_score', 0) or 0),
+                        'sentiment': float(r.get('sentiment_score', 0) or 0),
+                        'composite': float(r.get('composite_score', 0) or 0),
+                        # V2 额外字段（V6 兼容层）
+                        'capital': float(r.get('fund_score', 0) or 0),
+                        'continuation': float(r.get('persistence', 0) or 0),
+                        'confidence': float(r.get('confidence', 0) or 0),
+                        'migration': float(r.get('migration_score', 0) or 0),
+                        'leader': str(r.get('leader_name', '') or ''),
+                        'lifecycle': str(r.get('lifecycle', '') or ''),
+                        'trade_action': str(r.get('trade_action', '') or ''),
+                        'mainline_type': str(r.get('mainline_type', '') or ''),
+                        'mainline_quality': float(r.get('mainline_quality', 0) or 0),
+                        'trading_style': str(r.get('trading_style', '') or ''),
+                    }
+            _patched = 0
+            for t, info in themes.items():
+                cv = csv_map.get(t)
+                if cv:
+                    info['trend_score'] = cv['trend']
+                    info['sentiment_score'] = cv['sentiment']
+                    if cv['composite'] > 0:
+                        info['composite_score'] = cv['composite']
+                    # V2 字段覆盖 V6 兼容默认值
+                    info['capital_score'] = cv['capital']
+                    info['continuation_score'] = cv['continuation']
+                    info['confidence'] = cv['confidence']
+                    info['migration_score'] = cv['migration']
+                    if cv['leader']:
+                        info['leader'] = cv['leader']
+                    if cv['lifecycle']:
+                        info['stage'] = cv['lifecycle']
+                        info['stage_v6'] = _LC_STAGE_V6.get(cv['lifecycle'], info['stage_v6'])
+                    if cv['trade_action']:
+                        if '回避' in cv['trade_action'] or '观望' in cv['trade_action']:
+                            info['trade_signal'] = '回避'
+                        elif '加仓' in cv['trade_action'] or '追买' in cv['trade_action']:
+                            info['trade_signal'] = '强买'
+                        elif '持股' in cv['trade_action'] or '网格' in cv['trade_action']:
+                            info['trade_signal'] = '看多'
+                        else:
+                            info['trade_signal'] = '关注'
+                    if cv['mainline_type']:
+                        info['mainline_type'] = cv['mainline_type']
+                    if cv['mainline_quality'] > 0:
+                        info['mainline_quality'] = int(cv['mainline_quality'])
+                    if cv['trading_style']:
+                        info['trading_style'] = cv['trading_style']
+                    _patched += 1
+            if _patched:
+                print(f"[主题过滤] 已用 CSV 补全 {_patched} 个主题的评分字段（{os.path.basename(csv_path)}）")
+        except Exception as e:
+            print(f"[主题过滤] CSV 补全失败（保留报告解析值）: {e}")
     return themes
 
 
@@ -7007,26 +7333,47 @@ def add_themes_to_stocks_no_filter(result_df):
     theme_state_map = {}
     
     try:
-        v6_data = _load_v6_result(TRADE_DATE)
-        if v6_data:
-            for r in v6_data:
-                tname = r.get('theme', '')
+        # 主题评分改用 Theme Score V2（trade_action/lifecycle/mainline等）
+        v2_data = _load_v2_theme_scores(TRADE_DATE)
+        if v2_data:
+            for r in v2_data:
+                tname = str(r.get('theme', ''))
                 if tname:
                     keep_themes.append(tname)
                     theme_state_map[tname] = {
-                        'theme_state': r.get('trade_signal', ''),
+                        'theme_state': r.get('trade_action', '') or r.get('theme_state', ''),
                         'trend_score': float(r.get('trend_score', 0) or 0),
                         'sentiment_score': float(r.get('sentiment_score', 0) or 0),
                         'composite_score': float(r.get('composite_score', 0) or 0),
-                        'forward_alpha': float(r.get('forward_alpha', 0) or 0),
-                        'forward_signal': r.get('forward_signal', ''),
-                        'alpha_gate': r.get('alpha_gate', ''),
-                        'cycle_phase': r.get('stage', ''),
+                        'forward_alpha': float(r.get('migration_score', 0) or 0),
+                        'forward_signal': r.get('target_state', '') or r.get('migration_direction', ''),
+                        'alpha_gate': '',
+                        'cycle_phase': r.get('lifecycle', ''),
                         'confirmed_days': 0,
-                        'leader_sequence': r.get('leader', ''),
+                        'leader_sequence': r.get('leader_name', ''),
                     }
+        else:
+            # V2 不可用时回退 V8
+            v6_data = _load_v6_result(TRADE_DATE)
+            if v6_data:
+                for r in v6_data:
+                    tname = r.get('theme', '')
+                    if tname:
+                        keep_themes.append(tname)
+                        theme_state_map[tname] = {
+                            'theme_state': r.get('trade_signal', ''),
+                            'trend_score': float(r.get('trend_score', 0) or 0),
+                            'sentiment_score': float(r.get('sentiment_score', 0) or 0),
+                            'composite_score': float(r.get('composite_score', 0) or 0),
+                            'forward_alpha': float(r.get('forward_alpha', 0) or 0),
+                            'forward_signal': r.get('forward_signal', ''),
+                            'alpha_gate': r.get('alpha_gate', ''),
+                            'cycle_phase': r.get('stage', ''),
+                            'confirmed_days': 0,
+                            'leader_sequence': r.get('leader', ''),
+                        }
     except Exception as e:
-        print(f"[添加主题] 读取V6结果失败: {e}")
+        print(f"[添加主题] 读取主题评分失败: {e}")
     
     if not keep_themes:
         print("[添加主题] 无主题数据，仅返回原始DataFrame")
@@ -7364,6 +7711,20 @@ def run(target_date=None, simple_mode=False):
     # =========================
     # 突破股池：统一评分 + 二波形态 + 筹码
     # =========================
+    # 基本面 Bull 评分注入（读取 multi_factor_picker 每日生成的 bull_stocks_all.csv）
+    bull_score_map = {}
+    try:
+        _bull_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily", "bull_stocks_all.csv")
+        if os.path.exists(_bull_path):
+            _bull_df = pd.read_csv(_bull_path, dtype={'code': str}, encoding='utf-8-sig')
+            for _bidx, _br in _bull_df.iterrows():
+                bull_score_map[str(_br['code']).zfill(6)] = (_br.get('最终分', 0) or 0, str(_br.get('等级', '')))
+            print(f"[突破股池] 加载基本面Bull评分 {len(bull_score_map)} 只 (来源: {_bull_path})")
+        else:
+            print(f"[突破股池] 未找到Bull评分文件: {_bull_path}")
+    except Exception as _e:
+        print(f"[突破股池] Bull评分加载失败: {_e}")
+
     ranked_stocks = []
     for idx, row in result_df.iterrows():
         ts_code = row['代码']
@@ -7395,19 +7756,24 @@ def run(target_date=None, simple_mode=False):
             )
             integrated_score_orig = details.get('基础裸分', integrated_score)
             tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
+            # 基本面 Bull 评分（无则回退 details，均无视为数据不足）
+            _bull_rc = bull_score_map.get(str(ts_code).split('.')[0].zfill(6), (0, ''))
             
             stock_data = {
                 '代码': ts_code, '名称': name, '现价': today_close,
                 '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
                 '所属主题': theme_name, '整合评分': integrated_score, '失败概率': failure_prob,
                 '推荐理由': recommendation,
-                'Alpha评分': details.get('Alpha评分', 0), 'Alpha信号': details.get('Alpha信号', ''),
+                'Alpha评分': _bull_rc[0] if _bull_rc[0] else details.get('Alpha评分', 0),
+                'Alpha信号': _bull_rc[1] or details.get('Alpha信号', ''),
                 '量能爆发': details.get('量能爆发', 0),
                 '所属状态': str(row.get('所属状态', '')),
                 '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
                 '非一日游阶段': str(row.get('非一日游阶段', '')),
                 '确认天数': int(row.get('确认天数', 0)),
                 '龙头序列': str(row.get('龙头序列', '')),
+                '主线类型': str(row.get('主线类型', '')),
+                '主线质量分': float(row.get('主线质量分', 0) or 0),
                 '共振系数': round(resonance_coeff, 2),
                 '原始整合评分': round(integrated_score_orig, 1),
                 'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
@@ -7456,9 +7822,14 @@ def run(target_date=None, simple_mode=False):
             s['入场价'] = wave2_result.get('entry_price', 0)
             s['止损价'] = wave2_result.get('stop_loss', 0)
             s['目标价'] = wave2_result.get('target', 0)
+            # 面向次日买入、持有20日的专用失败风险模型
+            s['失败概率'] = calc_20d_breakout_failure_risk(
+                get_hist_data(s['代码']), breakout_result, s.get('评分详情', {}))
+            s['评分详情']['失败概率模型'] = '20日中线真突破风险模型'
         except Exception:
             s['突破信号'] = ''; s['突破评分'] = 0
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
+            s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
 
     # 过滤掉假突破的股票
     before_filter = len(ranked_stocks)
@@ -7598,10 +7969,18 @@ def run(target_date=None, simple_mode=False):
         days_str = f"{confirm_days}天" if confirm_days > 0 else ""
         leader_seq = s.get('龙头序列', '')
         leader_str = f"龙头:{leader_seq}" if leader_seq else ""
+        _ml_type = str(s.get('主线类型', ''))
+        _ml_qual = float(s.get('主线质量分', 0) or 0)
+        _ml_str = f"主线:{_ml_type}(质量{_ml_qual:.0f})" if _ml_type else ""
+        _tt_s = float(s.get('主题趋势分', 0) or 0)
+        _ts_s = float(s.get('主题情绪分', 0) or 0)
+        _ts_str = f"趋势分{_tt_s:.0f}/情绪分{_ts_s:.0f}"
         info_parts = [s['所属主题']]
+        if _ml_str: info_parts.append(_ml_str)
         if cycle_str: info_parts.append(cycle_str)
         if days_str: info_parts.append(days_str)
         if leader_str: info_parts.append(leader_str)
+        info_parts.append(_ts_str)
         lines.append(f"  主题: {' | '.join(info_parts)}")
         # 突破
         bs = s.get('突破信号', '')

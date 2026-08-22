@@ -39,6 +39,7 @@ from er20_v21 import (
 from er20_v22 import (
     V22Config, cashflow_context_engine_v22, price_absorption,
     calc_alpha_decay_v22, trigger_score_v22, calc_ees_v22, grade_v22,
+    next5_score_v22,
 )
 from er20_inst import load_northbound_snapshot, inst_adj_score
 from bts.data import load_daily, parse_tdx_day_file, load_stock_basic
@@ -186,8 +187,93 @@ def score_one(r, daily, ann_idx, s_idx, scan_date, bench, industry_atr, market_m
         'decay_factor': decay, 'alpha_refresh': refresh, 'decay_state': decay_state,
         'ts': ts, 'ttype': ttype, 'tdesc': tdesc, 'ees': ees,
         'dt_netprofit_yoy': r.get('dt_netprofit_yoy'), 'tr_yoy': r.get('tr_yoy'),
+        'netprofit_yoy': r.get('netprofit_yoy'),
     }
     return row
+
+
+def egpt_proxy_scores(row):
+    """用扫描日前已知的中报增速和技术结构重建 EGPT 质量/回踩分。"""
+    def num(value, default=0.0):
+        try:
+            value = float(value)
+            return default if not np.isfinite(value) else value
+        except Exception:
+            return default
+
+    netprofit = num(row.get('netprofit_yoy'), 0.0)
+    dt = num(row.get('dt_netprofit_yoy'), netprofit)
+    quality = 50.0
+    quality += min(25.0, max(-25.0, netprofit / 10.0))
+    quality += min(20.0, max(-20.0, dt / 10.0))
+    if num(row.get('cf_adj'), 0.0) > 0:
+        quality += 5.0
+    elif num(row.get('cf_adj'), 0.0) < -3:
+        quality -= 8.0
+
+    pullback = 0.45 * num(row.get('pqs'), 50.0)
+    pullback += 0.25 * num(row.get('volume'), 50.0)
+    pullback += 0.20 * num(row.get('trend'), 50.0)
+    pullback += 0.10 * num(row.get('ees'), 50.0)
+    if row.get('ttype') == 'T2_PULLBACK':
+        pullback += 8.0
+    elif row.get('ttype') == 'T3_RECLAIM':
+        pullback += 5.0
+    elif row.get('ttype') == 'T1_BREAKOUT':
+        pullback -= 8.0
+    return round(max(0.0, min(100.0, quality)), 1), round(max(0.0, min(100.0, pullback)), 1)
+
+
+def fusion_score_v22(row):
+    quality, pullback = egpt_proxy_scores(row)
+    er20 = float(row.get('next5_score', 0.0) or 0.0)
+    execution = 75.0
+    if row.get('ttype') == 'T2_PULLBACK':
+        execution += 12.0
+    elif row.get('ttype') == 'T3_RECLAIM':
+        execution += 6.0
+    elif row.get('ttype') == 'T1_BREAKOUT':
+        execution -= 15.0
+    risk = float(row.get('rel_risk', 100.0) or 100.0)
+    execution -= max(0.0, risk - 35.0) * 0.35
+    score = 0.50 * er20 + 0.25 * quality + 0.15 * pullback + 0.10 * execution
+    return round(max(0.0, min(100.0, score)), 1), quality, pullback, int(row.get('ttype') in ('T2_PULLBACK', 'T3_RECLAIM'))
+
+
+def next5_targets(daily, s_idx, bench_full, scan_date):
+    out = {
+        'next_open_ret': np.nan, 'close5_ret': np.nan, 'max5_ret': np.nan,
+        'max5_excess': np.nan, 'max5_drawdown': np.nan,
+        'entry_date': None, 'entry_price': np.nan, 'entry_executable': 0,
+    }
+    if s_idx + 1 >= len(daily):
+        return out
+    base = float(daily.iloc[s_idx]['close'])
+    entry = daily.iloc[s_idx + 1]
+    entry_price = float(entry['open'])
+    out['entry_date'] = str(entry['trade_date'])
+    out['entry_price'] = entry_price
+    out['entry_executable'] = int(entry_price <= base * 1.08)
+    out['next_open_ret'] = round((entry_price / base - 1.0) * 100, 2)
+    end = min(s_idx + 5, len(daily) - 1)
+    window = daily.iloc[s_idx + 1:end + 1]
+    if window.empty:
+        return out
+    highs = window['high'].astype(float)
+    lows = window['low'].astype(float)
+    closes = window['close'].astype(float)
+    out['max5_ret'] = round((highs.max() / entry_price - 1.0) * 100, 2)
+    out['max5_drawdown'] = round((lows.min() / entry_price - 1.0) * 100, 2)
+    if len(window) >= 5:
+        out['close5_ret'] = round((float(window.iloc[4]['close']) / entry_price - 1.0) * 100, 2)
+    bench = bench_full[bench_full['trade_date'].astype(str) == str(scan_date)]
+    if not bench.empty:
+        bi = bench.index[0]
+        if bi + 5 < len(bench_full):
+            bbase = float(bench_full.iloc[bi]['close'])
+            b5 = (float(bench_full.iloc[bi + 5]['close']) / bbase - 1.0) * 100
+            out['max5_excess'] = round(out['max5_ret'] - b5, 2)
+    return out
 
 
 def fwd_returns(daily, s_idx, bench_full, scan_date):
@@ -331,6 +417,7 @@ def main():
             bench = bench_full[bench_full['trade_date'] <= scan_date].reset_index(drop=True)
             d = daily.iloc[:s_idx + 1].reset_index(drop=True)
             row = score_one(r, d, ann_idx, s_idx, scan_date, bench, industry_atr, market_mult)
+            row.update(next5_targets(daily, s_idx, bench_full, scan_date))
             row.update(fwd_returns(daily, s_idx, bench_full, scan_date))
             row['market_mult'] = market_mult
             rows.append(row)
@@ -356,6 +443,12 @@ def main():
     decay_mult = bt['decay_factor'].map(lambda x: max(0.60, min(1.00, 1.0 - x)))
     bt['alpha'] = (bt['er20_base'] * decay_mult + bt['alpha_refresh'].fillna(0.0)
                    - bt['eq_penalty'].fillna(0.0)).round(1).clip(0, 100)
+    bt['next5_score'] = bt.apply(next5_score_v22, axis=1)
+    fusion_values = bt.apply(fusion_score_v22, axis=1, result_type='expand')
+    fusion_values.columns = ['fusion_score', 'egpt_quality_score', 'egpt_pullback_score', 'fusion_gate']
+    bt = pd.concat([bt, fusion_values], axis=1)
+    bt['fusion_rank'] = bt.groupby('scan_date')['fusion_score'].rank(method='first', ascending=False).astype(int)
+    bt['next5_rank'] = bt.groupby('scan_date')['next5_score'].rank(method='first', ascending=False).astype(int)
     bt['rank_eligible'] = bt['strategy'] != 'D_FALSE_SIGNAL'
 
     # ── 机构加分：北向 ratio → inst_adj 软加分，重算 er20_base/alpha ──
@@ -384,6 +477,8 @@ def main():
         'combo_inst': {'t1_cap': True, 'gate': {'test_alpha': 80.0, 'test_ees': 72.0,
                                                 'test_ts': 72.0, 'probe_alpha': 72.0},
                        'alpha_col': 'alpha_inst'},
+        'fusion': {'t1_cap': True, 'gate': {'test_alpha': 80.0, 'test_ees': 72.0,
+                                            'test_ts': 72.0, 'probe_alpha': 72.0}},
     }
     for vname, vcfg in VARIANTS.items():
         grades, reasons = [], []
@@ -394,6 +489,19 @@ def main():
         bt2 = bt.copy()
         bt2['grade'] = grades
         bt2['grade_reason'] = reasons
+        bt2['next5_signal'] = 0
+        buy_mask = bt2['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])
+        eligible = bt2[buy_mask & bt2['rank_eligible']]
+        if vname == 'fusion':
+            eligible = eligible[(eligible['fusion_gate'] == 1) & (eligible['fusion_score'] >= V22Config.FUSION['min_score'])]
+            rank_col = 'fusion_score'
+        else:
+            rank_col = 'next5_score'
+        for scan_date, grp in eligible.groupby('scan_date'):
+            keep = grp.sort_values(rank_col, ascending=False).head(V22Config.NEXT5['limit']).index
+            if len(keep) >= 2 and float(grp.loc[keep[0], rank_col]) - float(grp.loc[keep[1], rank_col]) > V22Config.FUSION['second_gap']:
+                keep = keep[:1]
+            bt2.loc[keep, 'next5_signal'] = 1
         csv = os.path.join(REPORT_DIR, f'er20_v22_backtest_2025H1_{vname}.csv')
         bt2.to_csv(csv, index=False, encoding='utf-8-sig')
         print(f'\n[{vname}] 回测明细: {csv} ({len(bt2)} 样本)')
@@ -404,7 +512,12 @@ def main():
         buy = bt2[bt2['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])]
         print(f'\n[{vname}] BUY 组 n={len(buy)}')
         summarize(buy, f'[{vname}] BUY', None)
-        summarize(bt2[~bt2['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])], f'[{vname}] 非BUY', None)
+        summarize(bt2[bt2['next5_signal'].eq(0)], f'[{vname}] 非Top2信号', None,
+                  key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
+        next5_buy = bt2[bt2['next5_signal'].eq(1)]
+        print(f'[{vname}] next5 Top2 信号 n={len(next5_buy)}')
+        summarize(next5_buy, f'[{vname}] next5 Top2', None,
+                  key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
         # 止损对比（仅 BUY 组）
         if not buy.empty:
             s20 = buy['fwd20'].dropna()
