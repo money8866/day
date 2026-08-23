@@ -217,94 +217,42 @@ def _s4_columns():
 
 def load_pool_v2(period='20260630', scan_date=''):
     """
-    全市场中报池（多源合并，与 V1 相同缓存，但保留全字段供 RQS/ARS 使用）。
+    全市场中报池（统一 parquet 缓存，所有字段已预计算）。
     返回列：
       ts_code/name/ann_date/src + 利润/收入/盈利/现金流/资产/单季 全部指标
       + q1_profit_yoy/q2_profit_yoy/q2_proxy
     """
-    year = period[:4]
-    q1_period = f'{year}0331'
-    # ── 主源：全量中报回填（S4，886+只，全字段） ──
     pool = pd.DataFrame()
     s4_path = os.path.join(CACHE_DIR, 'fin_ind_2026H1_full.parquet')
-    if os.path.exists(s4_path):
-        try:
-            s4 = pd.read_parquet(s4_path)
-            s4 = s4[s4['end_date'] == period].copy()
-            if scan_date:
-                s4 = s4[s4['ann_date'].astype(str) <= str(scan_date)]
-            s4 = s4.drop_duplicates('ts_code', keep='last').copy()
-            s4['src'] = 'fin_ind_full'
-            pool = s4
-        except Exception as e:
-            print('S4 读取失败:', e)
-    # ── S1 treasure 补字段（若 S4 缺失某列） ──
-    files = sorted(glob.glob(os.path.join(CACHE_DIR, 'treasure_fin_ind_*.parquet')))
-    rows = []
-    for fp in files:
-        try:
-            df = pd.read_parquet(fp)
-        except Exception:
-            continue
-        h1 = df[df['end_date'] == period]
-        if h1.empty:
-            continue
-        rec = h1.sort_values('ann_date').iloc[-1].to_dict()
-        if scan_date and str(rec.get('ann_date', '')) > str(scan_date):
-            continue
-        q1 = df[df['end_date'] == q1_period]
-        rec['q1_profit_yoy'] = q1.sort_values('ann_date')['netprofit_yoy'].iloc[-1] if not q1.empty else np.nan
-        rec['src'] = 'fina_indicator'
-        rows.append(rec)
-    if rows:
-        s1 = pd.DataFrame(rows)
-        if pool.empty:
-            pool = s1
-        else:
-            add = s1[~s1['ts_code'].isin(pool['ts_code'])]
-            if not add.empty:
-                pool = pd.concat([pool, add], ignore_index=True)
-    # ── S2/S3 补充（与 V1 相同的兜底来源） ──
-    hunts = sorted(glob.glob(os.path.join(REPORT_DIR, 'zhongbao_hunt_*.csv')))
-    if hunts:
-        try:
-            h = pd.read_csv(hunts[-1], dtype={'ts_code': str})
-            h = h[~h['ts_code'].isin(pool['ts_code'])][['ts_code', 'netprofit_yoy', 'dt_netprofit_yoy', 'tr_yoy']].copy()
-            if not h.empty:
-                h['src'] = 'zhongbao_hunt'
-                for c in pool.columns:
-                    if c not in h.columns:
-                        h[c] = np.nan
-                pool = pd.concat([pool, h[[c for c in pool.columns if c in h.columns]]], ignore_index=True)
-        except Exception:
-            pass
-    if pool.empty:
+    if not os.path.exists(s4_path):
+        print(f'[load_pool_v2] 缓存不存在: {s4_path}')
         return pool
-    # ── Q1 全量缓存合并 q1_profit_yoy ──
-    q1_map = {}
-    q1_full = os.path.join(CACHE_DIR, 'fin_ind_2026Q1_full.parquet')
-    if os.path.exists(q1_full):
-        try:
-            q1f = pd.read_parquet(q1_full, columns=['ts_code', 'end_date', 'netprofit_yoy', 'q_roe', 'q_sales_yoy'])
-            q1f = q1f[q1f['end_date'] == q1_period].drop_duplicates('ts_code', keep='last')
-            q1_map = {r['ts_code']: r for _, r in q1f.iterrows()}
-        except Exception:
-            pass
-    # ── Q2 拆分 + 补 Q1 ──
-    pool['q2_proxy'] = False
-    q2s, q1s, prox = [], [], []
-    for _, r in pool.iterrows():
-        q2, proxy = _calc_q2_single(r['ts_code'], period, r)
-        q2s.append(q2)
-        prox.append(proxy)
-        v = r.get('q1_profit_yoy', np.nan)
-        if not _valid(v) and r['ts_code'] in q1_map:
-            v = q1_map[r['ts_code']].get('netprofit_yoy', np.nan)
-        q1s.append(v if _valid(v) else np.nan)
-    pool['q2_profit_yoy'] = q2s
-    pool['q1_profit_yoy'] = q1s
-    pool['q2_proxy'] = prox
-    # ── 补名称 ──
+
+    try:
+        pool = pd.read_parquet(s4_path)
+    except Exception as e:
+        print(f'[load_pool_v2] 读取失败: {e}')
+        return pool
+
+    pool = pool[pool['end_date'] == period].copy()
+    if scan_date:
+        pool = pool[pool['ann_date'].astype(str) <= str(scan_date)]
+    pool = pool.drop_duplicates('ts_code', keep='last').copy()
+    pool['src'] = 'fin_ind_full'
+
+    if 'q1_profit_yoy' not in pool.columns:
+        pool['q1_profit_yoy'] = np.nan
+    if 'q2_profit_yoy' not in pool.columns:
+        q2s, proxs = [], []
+        for _, r in pool.iterrows():
+            q2, proxy = _calc_q2_single(r['ts_code'], period, r)
+            q2s.append(q2)
+            proxs.append(proxy)
+        pool['q2_profit_yoy'] = q2s
+        pool['q2_proxy'] = proxs
+    elif 'q2_proxy' not in pool.columns:
+        pool['q2_proxy'] = False
+
     if 'name' not in pool.columns or pool['name'].isna().all():
         from bts.data import load_stock_basic
         basic = load_stock_basic()

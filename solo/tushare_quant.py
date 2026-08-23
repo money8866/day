@@ -190,6 +190,86 @@ def _load_fusion_result(expected_date=None):
     return _load_v6_result(expected_date)
 
 
+def _load_er20_top2(trade_date=None):
+    db_path = os.path.join(BASE_DIR, 'report_daily', 'er20_v22_scores.db')
+    if not os.path.exists(db_path):
+        return []
+
+    query = """
+        SELECT
+            ts_code,
+            name,
+            grade,
+            alpha,
+            next5_score,
+            next5_rank,
+            next_day_signal,
+            ttype,
+            ts,
+            ees,
+            rel_risk,
+            overheat,
+            entry_date,
+            entry_price_model,
+            egpt_buy_point
+        FROM er20_v22_scores
+        WHERE scan_date = ?
+          AND CAST(next_day_signal AS INTEGER) = 1
+        ORDER BY CAST(next5_score AS REAL) DESC,
+                 CAST(ees AS REAL) DESC,
+                 CAST(alpha AS REAL) DESC
+        LIMIT 2
+    """
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            df = pd.read_sql_query(query, conn, params=[str(trade_date or '')])
+        if df.empty:
+            return []
+        df = df.where(pd.notna(df), None)
+        return df.to_dict('records')
+    except (sqlite3.Error, pd.errors.DatabaseError, OSError) as e:
+        print(f"[ER20 TOP2] 读取失败: {e}")
+        return []
+
+
+def _format_er20_top2(records):
+    lines = ["【ER20 TOP2 次日信号】"]
+    if not records:
+        lines.append("暂无 ER20 Top2 次日信号")
+        return "\n".join(lines)
+
+    TTYPE_CN = {
+        'T2_PULLBACK': '次日回踩买入',
+        'T3_RECLAIM': '次日收复买入',
+        'T1_BREAKOUT': '次日突破买入（不追，等回踩）',
+        'NO_TRIGGER': '无触发信号',
+    }
+
+    for i, row in enumerate(records, 1):
+        code = str(row.get('ts_code') or '-')
+        name = str(row.get('name') or '-')
+        grade = str(row.get('grade') or '-')
+        ttype = str(row.get('ttype') or '')
+        buy_cn = TTYPE_CN.get(ttype, ttype or '无触发')
+        entry_date = str(row.get('entry_date') or 'T+1')
+        entry_price = row.get('entry_price_model')
+        try:
+            price_text = f"建议买入价 {float(entry_price):.2f}"
+        except (TypeError, ValueError):
+            price_text = f"买入方式：{str(entry_price or '次日开盘价')}"
+        next5 = float(row.get('next5_score') or 0)
+        ees = float(row.get('ees') or 0)
+        alpha = float(row.get('alpha') or 0)
+        risk = float(row.get('rel_risk') or 0)
+        lines.append(
+            f"{i}. {name} ({code}) | {buy_cn} | {price_text} | "
+            f"ER20次日分={next5:.1f} | EES={ees:.1f} | Alpha={alpha:.1f} | "
+            f"等级={grade} | 相对风险={risk:.1f}"
+        )
+    return "\n".join(lines)
+
+
 def _load_v2_theme_scores(trade_date):
     """加载 theme_score_v2.py 输出的 CSV 评分结果。
 
@@ -7478,6 +7558,9 @@ def run(target_date=None, simple_mode=False):
         print(f"\n{'='*60}")
         print(f"[回溯模式] 目标日期: {TRADE_DATE}")
         print(f"{'='*60}\n")
+
+    er20_top2_text = _format_er20_top2(_load_er20_top2(TRADE_DATE))
+    print(f"\n{er20_top2_text}\n")
     
     # =========================
     # 主题状态全景（来自 Theme Score V2 引擎，含阶段迁移预测）
@@ -8279,6 +8362,9 @@ def run(target_date=None, simple_mode=False):
 **【大盘分析】**
 
 {emotion_text}
+
+**【ER20 TOP2 次日信号】**
+{er20_top2_text}
 
 **【今日主题分析情况】**
 {trade_advice_text}

@@ -858,7 +858,7 @@ def scan_v22(scan_date='20260820'):
     df['fusion_score'] = df.apply(_fusion_score_v22, axis=1)
     df.loc[df['egpt_covered'] == 0, 'fusion_score'] = df.loc[df['egpt_covered'] == 0, 'next5_score']
     df['fusion_score'] = df['fusion_score'].clip(0, 100).round(1)
-    df['next5_rank'] = df['fusion_score'].rank(method='first', ascending=False).astype(int)
+    df['next5_rank'] = df['next5_score'].rank(method='first', ascending=False).astype(int)
 
     # ── D_FALSE_SIGNAL 退出主排名（P0-2 延续） ──
     df['rank_eligible'] = df['strategy'] != 'D_FALSE_SIGNAL'
@@ -884,15 +884,10 @@ def scan_v22(scan_date='20260820'):
     df['entry_price_model'] = '次日开盘价'
     df['next_day_signal'] = 0
     buy_mask = df['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])
-    eligible_signal = buy_mask & (df['fusion_gate'] == 1) & (df['fusion_score'] >= V22Config.FUSION['min_score'])
+    eligible_signal = buy_mask
     ranked = df.loc[eligible_signal].sort_values(
-        ['fusion_score', 'next5_score', 'alpha'], ascending=[False, False, False])
+        ['next5_score', 'ees', 'alpha'], ascending=[False, False, False])
     signal_idx = ranked.head(V22Config.NEXT5['limit']).index
-    if len(signal_idx) >= 2:
-        first_score = float(ranked.loc[signal_idx[0], 'fusion_score'])
-        second_score = float(ranked.loc[signal_idx[1], 'fusion_score'])
-        if first_score - second_score > V22Config.FUSION['second_gap']:
-            signal_idx = signal_idx[:1]
     df.loc[signal_idx, 'next_day_signal'] = 1
     limited_idx = df.index[buy_mask & ~df.index.isin(signal_idx)]
     df.loc[limited_idx, 'grade'] = 'WAIT_CONFIRM'
@@ -1025,8 +1020,8 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 pos = {'CORE_BUY': 0.15, 'TEST_BUY': 0.12, 'PROBE_BUY': 0.05}[gname]
                 bp = f"{r['ttype']} {r['ts']:.0f}分" if r['ttype'] != 'NO_TRIGGER' else r['tdesc']
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
-                             f"融合分={r.get('fusion_score', r['next5_score']):.1f} | EES={r['ees']:.0f} | "
-                             f"买点={bp} | EGPT={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
+                             f"ER20次日分={r['next5_score']:.1f} | EES={r['ees']:.0f} | "
+                             f"买点={bp} | EGPT诊断={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
     lines.append('')
 
     # 【4. WAIT TOP10】
