@@ -8,12 +8,20 @@ from contextlib import contextmanager
 CACHE_DIR = r"D:\mystock\cache_daily"
 DB_PATH = os.path.join(CACHE_DIR, "stock_data.db")
 
-# Tushare API 懒初始化（调用方需确保已设置 TUSHARE_TOKEN 环境变量）
+# Tushare API 懒初始化（自动加载 d:\mystock\config\.env 中的 TUSHARE_TOKEN，新程序可零配置直接调用）
 import tushare as ts
 _pro = None
 def _get_pro():
     global _pro
     if _pro is None:
+        try:
+            if not os.getenv('TUSHARE_TOKEN'):
+                from dotenv import load_dotenv
+                _env = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', '.env')
+                if os.path.exists(_env):
+                    load_dotenv(_env)
+        except Exception:
+            pass
         _pro = ts.pro_api()
     return _pro
 
@@ -550,24 +558,277 @@ def get_effective_date(force_date: str = '') -> str:
     return base_date
 
 def cached_daily(ts_code, start_date, end_date, pro=None):
-    """带缓存的 pro.daily() 调用（V3: 使用独立的 daily_cache 表，避免破坏 stk_factor_pro 技术指标）
+    """带缓存的 pro.daily() 调用（V4: 委托统一 API daily()，获得新鲜度检查能力）
 
     daily_cache 表仅存储 pro.daily 的 11 列基础行情数据（open/high/low/close/vol/amount 等），
     与 stk_factor_pro 表（261列技术指标）隔离，INSERT OR REPLACE 不会破坏技术指标数据。
     """
-    # 优先从 daily_cache 读取
-    df = get_daily_cache(ts_code, start_date, end_date)
-    if df is not None and not df.empty:
-        return df.sort_values('trade_date').reset_index(drop=True)
-    # 缓存未命中，调用 API 并写入 daily_cache
-    pro = pro or _get_pro()
-    df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    time.sleep(0.06)
+    return daily(ts_code, start_date, end_date, pro=pro, auto_fill=True, silent=True)
+
+
+# ═══════════════════════════════════════════════════════
+# UDC 统一日线缓存 API（Unified Daily Cache）
+# 新程序一律从这里调用，替代手写 try/except 样板，禁止直接调 pro.daily
+# 内部自动完成：读缓存 -> 新鲜度检查 -> API 兜底 -> 写回缓存
+# ═══════════════════════════════════════════════════════
+
+# 全市场单日完整性阈值（A股每日约 5540 条，低于此值视为不完整）
+UDC_MARKET_MIN_COUNT = 4000
+
+
+def daily(ts_code, start_date, end_date, pro=None, auto_fill=True, silent=True):
+    """UDC① 单股日线：缓存优先 + 新鲜度检查 + API 兜底回写
+
+    Args:
+        ts_code:   股票代码，如 '000001.SZ'
+        start_date/end_date: 'YYYYMMDD' 字符串
+        pro:       可选，已初始化的 tushare pro_api 对象；不传则内部懒加载（自动读 config/.env）
+        auto_fill: True=缓存缺失时调 API 并写回；False=只读缓存（纯本地查询）
+        silent:    True=不打印日志；False=打印缓存命中/写入日志
+
+    Returns:
+        DataFrame（trade_date 升序，11 列标准 daily 格式）或 None（无数据）
+
+    用法:
+        from stock_cache import daily
+        df = daily('000001.SZ', '20250601', '20250801')
+    """
+    ts_code = str(ts_code)
+    start_date, end_date = str(start_date), str(end_date)
+    # ① 缓存优先：max_date 覆盖 end_date 即视为有效（区间内停牌缺行属正常）
+    try:
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= end_date:
+            df = get_daily_cache(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                if not silent:
+                    print(f'[daily_cache] 命中 {ts_code} {start_date}~{end_date} ({len(df)} 行)')
+                return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] 读取失败 {ts_code}: {e}')
+
+    # ② 缓存未命中/不够新
+    if not auto_fill:
+        # 只读模式：返回缓存中已有的部分数据
+        try:
+            df = get_daily_cache(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                return df.sort_values('trade_date').reset_index(drop=True)
+        except Exception:
+            pass
+        return None
+    try:
+        _pro = pro or _get_pro()
+        df = _pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        time.sleep(0.06)
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] API 调用失败 {ts_code}: {e}')
+        # 网络异常兜底：返回缓存中已有的部分数据
+        try:
+            df = get_daily_cache(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                return df.sort_values('trade_date').reset_index(drop=True)
+        except Exception:
+            pass
+        return None
     if df is None or df.empty:
         return None
     df['trade_date'] = df['trade_date'].astype(str)
-    batch_insert_daily_cache(df)
+    # ③ 写回缓存
+    try:
+        batch_insert_daily_cache(df)
+        if not silent:
+            print(f'[daily_cache] 写回 {ts_code} {len(df)} 行')
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] 写回失败 {ts_code}: {e}')
     return df.sort_values('trade_date').reset_index(drop=True)
+
+
+# （旧版 daily 已并入上方 UDC 区域，此处保留 daily_market / daily_batch / cache_status）
+
+def daily_market(trade_date, pro=None, auto_fill=True, min_rows=UDC_MARKET_MIN_COUNT, silent=True):
+    """UDC② 全市场单日日线：缓存优先 + 完整性检查 + API 兜底回写
+
+    非交易日首次拉取确认无数据后写入 meta 标记，避免节假日反复调 API。
+
+    Args:
+        trade_date: 'YYYYMMDD' 字符串
+        pro:        可选，已初始化的 pro_api 对象
+        auto_fill:  True=缓存缺失时调 API 并写回
+        min_rows:   缓存判定阈值：当日记录数 >= min_rows 视为已缓存全市场
+        silent:     True=不打印日志
+
+    Returns:
+        DataFrame（全市场当日数据）或 None（非交易日/无数据）
+
+    用法:
+        from stock_cache import daily_market
+        df = daily_market('20260821')
+    """
+    trade_date = str(trade_date)
+    # ① 缓存完整 -> 直接读
+    try:
+        cnt = get_daily_by_date_count(trade_date)
+        if cnt >= min_rows:
+            df = get_daily_by_date(trade_date)
+            if df is not None and not df.empty:
+                if not silent:
+                    print(f'[daily_cache] 命中全市场 {trade_date} ({len(df)} 行)')
+                return df
+        # ② 不完整但此前已确认该日无数据（节假日）-> 返回已有部分
+        elif get_meta(f'udc_market_empty_{trade_date}', '') == '1':
+            return get_daily_by_date(trade_date) if cnt > 0 else None
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] 读取失败 {trade_date}: {e}')
+
+    # ③ 拉全市场并写回
+    if not auto_fill:
+        try:
+            return get_daily_by_date(trade_date)
+        except Exception:
+            return None
+    try:
+        _pro = pro or _get_pro()
+        df = _pro.daily(trade_date=trade_date)
+        time.sleep(0.06)
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] API 调用失败 {trade_date}: {e}')
+        # 网络异常不记 empty 标记，允许下次重试；返回缓存已有部分
+        try:
+            return get_daily_by_date(trade_date)
+        except Exception:
+            return None
+    if df is None or df.empty:
+        # 确认非交易日/无数据，记标记避免重复调用
+        try:
+            set_meta(f'udc_market_empty_{trade_date}', '1')
+        except Exception:
+            pass
+        return None
+    # ④ 写回缓存
+    try:
+        batch_insert_daily_cache(df)
+        if not silent:
+            print(f'[daily_cache] 写回全市场 {trade_date} {len(df)} 行')
+    except Exception as e:
+        if not silent:
+            print(f'[daily_cache] 写回失败 {trade_date}: {e}')
+    return df
+
+
+def daily_batch(codes, start_date, end_date, pro=None, auto_fill=True, api_batch_size=50, silent=True):
+    """UDC③ 批量多股日线：逐只查缓存，未命中合并 API（每批上限 50 只）+ 写回
+
+    Args:
+        codes:      股票代码列表 ['000001.SZ', ...]
+        start_date/end_date: 'YYYYMMDD'
+        pro/auto_fill/silent: 同 daily()
+        api_batch_size: 每次 API 调用合并的股票数上限（Tushare 单次建议 <=50）
+
+    Returns:
+        DataFrame（多股合并，按 ts_code + trade_date 升序）或 None（无任何数据）
+
+    用法:
+        from stock_cache import daily_batch
+        df = daily_batch(['000001.SZ', '600519.SH'], '20250601', '20250801')
+    """
+    if not codes:
+        return None
+    cached_parts, missing = [], []
+    for code in codes:
+        code = str(code)
+        try:
+            _, max_date = get_daily_cache_range(code)
+            if max_date is not None and str(max_date) >= str(end_date):
+                c = get_daily_cache(code, start_date, end_date)
+                if c is not None and not c.empty:
+                    cached_parts.append(c)
+                    continue
+        except Exception:
+            pass
+        missing.append(code)
+
+    if missing and auto_fill:
+        _pro = pro or _get_pro()
+        for i in range(0, len(missing), api_batch_size):
+            chunk = missing[i:i + api_batch_size]
+            try:
+                batch_df = _pro.daily(ts_code=','.join(chunk), start_date=start_date, end_date=end_date)
+                time.sleep(0.06)
+                if batch_df is not None and not batch_df.empty:
+                    try:
+                        batch_insert_daily_cache(batch_df)
+                        if not silent:
+                            print(f'[daily_cache] 写回 {len(chunk)} 只 {len(batch_df)} 行')
+                    except Exception:
+                        pass
+                    cached_parts.append(batch_df)
+            except Exception as e:
+                if not silent:
+                    print(f'[daily_cache] 批量 API 失败（{chunk[0]} 等 {len(chunk)} 只）: {e}')
+
+    if not cached_parts:
+        return None
+    out = pd.concat(cached_parts, ignore_index=True)
+    out['trade_date'] = out['trade_date'].astype(str)
+    return out.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+
+
+def cache_status(ts_code=None, trade_date=None):
+    """UDC④ 缓存状态查询（诊断用）
+
+    Args:
+        ts_code:    传入则查单股缓存范围
+        trade_date: 传入则查当日全市场缓存条数
+
+    Returns:
+        dict，包含缓存覆盖信息
+
+    用法:
+        from stock_cache import cache_status
+        cache_status(ts_code='000001.SZ')
+        cache_status(trade_date='20260821')
+    """
+    info = {'db_path': DB_PATH}
+    if ts_code:
+        info['ts_code'] = ts_code
+        info['daily_cache_range'] = get_daily_cache_range(ts_code)
+        info['stk_factor_range'] = get_stk_factor_range(ts_code)
+    if trade_date:
+        info['trade_date'] = trade_date
+        info['daily_cache_count'] = get_daily_by_date_count(trade_date)
+    return info
+
+
+def udc_stats():
+    """UDC⑤ 缓存全貌：日期范围、股票数、总行数、最近 5 个交易日覆盖
+
+    用法:
+        from stock_cache import udc_stats
+        print(udc_stats())
+    """
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return {'exists': False}
+    with get_conn() as conn:
+        overall = conn.execute(
+            f'SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT ts_code), COUNT(*) FROM {DAILY_CACHE_TABLE}'
+        ).fetchone()
+        recent = conn.execute(
+            f'SELECT trade_date, COUNT(*) FROM {DAILY_CACHE_TABLE} '
+            f'GROUP BY trade_date ORDER BY trade_date DESC LIMIT 5'
+        ).fetchall()
+    return {
+        'exists': True,
+        'date_range': (overall[0], overall[1]),
+        'stock_count': overall[2],
+        'total_rows': overall[3],
+        'recent_days': [(d, c) for d, c in recent],
+    }
 
 
 # ── stk_factor_pro 共享字段列表（261个字段，tushare_quant 完备版）──

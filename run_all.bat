@@ -57,10 +57,10 @@ echo [Step 5.2/7] ETF补涨扩散策略 (生成catchup_signals.csv)...
 rem python solo\etf_resonance\run_real.py
 rem python solo\scan_etf_alpha_v5.py
 
-
 echo [Step 5.3/7] 中报预增股池择时（回踩算法）
 
 echo =============================================
+python -X utf8 zhongbao_hunter.py --backfill
 
 rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
@@ -88,9 +88,9 @@ echo.
 call push.bat
 
 
-echo 机构主线第一次回踩
-cd /d d:\mystock\solo\market_regime_v3
-python -u main.py --push
+rem echo 机构主线第一次回踩
+rem cd /d d:\mystock\solo\market_regime_v3
+rem python -u main.py --push
 
 
 echo =============================================

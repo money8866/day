@@ -1,129 +1,193 @@
 # -*- coding: utf-8 -*-
-"""调试单日扫描"""
-import os, sys, json, sqlite3
+"""Debug the _scan_for_impulse method."""
+import numpy as np
 import pandas as pd
-sys.path.insert(0, r'd:\mystock\solo')
-from tail_strategy import TailStrategy
-from tail_backtest_tdx import parse_tdx_day_file, ts_code_to_tdx_file, load_theme_stocks, calc_theme_strength
+from datetime import datetime, timedelta
+from rib.indicators import enrich, find_local_extremes
+from rib.engine import RIBEngine
 
-CACHE_DIR = r'D:\mystock\cache_daily'
-STOCK_DB = os.path.join(CACHE_DIR, 'stock_data.db')
-TRADE_DATE = '20260731'
 
-# 加载主题
-theme_stocks, stock_themes = load_theme_stocks()
-print(f"主题数: {len(theme_stocks)}, 股票数: {len(stock_themes)}")
+def create_rib_pattern():
+    np.random.seed(123)
+    n = 220
+    base_date = datetime(2025, 1, 2)
+    dates = [(base_date + timedelta(days=i)).strftime('%Y%m%d') for i in range(n)]
+    close = np.zeros(n)
+    for i in range(100):
+        trend = 50 - 32 * i / 100.0
+        wave = 6 * np.sin(2 * np.pi * i / 12)
+        close[i] = trend + wave + np.random.normal(0, 0.8)
+    for i in range(100, 118):
+        progress = (i - 99) / 19.0
+        close[i] = close[99] + (30 - close[99]) * progress + np.random.normal(0, 0.4)
+    for i in range(118, 140):
+        close[i] = 27 + 3 * np.sin(2 * np.pi * (i - 118) / 8) + np.random.normal(0, 0.5)
+    for i in range(140, 144):
+        progress = (i - 139) / 5.0
+        close[i] = 30 + (34 - 30) * progress + np.random.normal(0, 0.3)
+    for i in range(144, 151):
+        progress = (i - 143) / 8.0
+        close[i] = 34 - (34 - 31) * progress + np.random.normal(0, 0.3)
+    for i in range(151, n):
+        progress = (i - 150) / (n - 151)
+        close[i] = 31 + (45 - 31) * progress + np.random.normal(0, 0.5)
+    close = np.maximum(close, 5)
+    high = close + np.abs(np.random.normal(0, close * 0.02, n))
+    low = close - np.abs(np.random.normal(0, close * 0.02, n))
+    open_p = close + np.random.normal(0, close * 0.01, n)
+    volume = np.random.uniform(5e6, 2e7, n)
+    for i in range(100, 118): volume[i] *= 3.0
+    for i in range(118, 140): volume[i] *= 0.4
+    for i in range(140, 144): volume[i] *= 2.5
+    for i in range(144, 151): volume[i] *= 0.35
+    for i in range(151, n): volume[i] *= 1.5
+    return pd.DataFrame({
+        'trade_date': dates, 'open': open_p, 'high': high, 'low': low,
+        'close': close, 'vol': volume, 'amount': volume * close,
+    })
 
-# 测试 600594.SH (之前test_tail_end_0731.py 得到103分)
-test_code = '600594.SH'
-print(f"\n测试 {test_code}:")
 
-# 加载K线
-tdx_file = ts_code_to_tdx_file(test_code)
-df = parse_tdx_day_file(tdx_file)
-df = df[df['trade_date'] <= TRADE_DATE].copy()
-print(f"  K线数: {len(df)}")
+def main():
+    df = create_rib_pattern()
+    df = enrich(df)
+    end_idx = len(df) - 1
 
-# 当日行情
-day_row = df[df['trade_date'] == TRADE_DATE]
-if day_row.empty:
-    print(f"  {TRADE_DATE} 无行情")
-else:
-    day = day_row.iloc[0]
-    print(f"  当日: open={day['open']}, close={day['close']}, pct={day['pct_chg']:.2f}%")
+    highs = df["high"].values.astype(float)
+    lows = df["low"].values.astype(float)
+    closes = df["close"].values.astype(float)
+    vols = df["vol"].values.astype(float)
 
-# 技术因子(前一日)
-prev_date = df[df['trade_date'] < TRADE_DATE]['trade_date'].iloc[-1]
-print(f"  前一交易日: {prev_date}")
+    print(f"Data: {len(df)} rows, end_idx={end_idx}")
 
-conn = sqlite3.connect(STOCK_DB, timeout=10.0)
-factor_rename = {
-    'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea', 'macd_bfq': 'macd',
-    'kdj_bfq': 'kdj_j', 'kdj_k_bfq': 'kdj_k', 'kdj_d_bfq': 'kdj_d',
-    'rsi_bfq_6': 'rsi_6', 'rsi_bfq_12': 'rsi_12', 'rsi_bfq_24': 'rsi_24',
-    'boll_mid_bfq': 'boll_mid', 'boll_upper_bfq': 'boll_upper',
-    'boll_lower_bfq': 'boll_lower', 'cci_bfq': 'cci',
-}
-fdf = pd.read_sql_query(
-    'SELECT * FROM stk_factor_pro WHERE ts_code = ? AND trade_date = ?',
-    conn, params=(test_code, prev_date)
-)
-conn.close()
-if fdf.empty:
-    print(f"  无技术因子")
-else:
-    fdf = fdf.rename(columns=factor_rename)
-    factor_row = fdf.iloc[0].to_dict()
-    print(f"  macd_dif={factor_row.get('macd_dif')}, turnover_rate={factor_row.get('turnover_rate')}, total_mv={factor_row.get('total_mv')}")
+    # Check what _scan_for_impulse sees
+    cfg = {"min_return": 0.15, "max_days": 150}
+    min_return = cfg.get("min_return", 0.15)
+    max_lookback = cfg.get("max_days", 150)
 
-# 主题
-themes = stock_themes.get(test_code, [])
-print(f"  主题: {themes}")
+    scan_start = max(60, end_idx - max_lookback)
+    print(f"Scan range: [{scan_start}, {end_idx}] ({end_idx - scan_start} bars)")
 
-# 主题强度
-for t in themes:
-    s, z = calc_theme_strength(t, theme_stocks, {test_code: df}, TRADE_DATE)
-    print(f"    {t}: strength={s:.2f}, zt={z}")
+    # Find local lows
+    _, low_indices = find_local_extremes(lows[scan_start:end_idx+1], order=5)
+    print(f"Local lows (order=5): {len(low_indices)}")
+    low_indices = low_indices + scan_start
 
-# 注:calc_theme_strength需要所有主题成份股的K线,这里只加载了1只,结果不准确
-# 加载全市场K线
-print("\n加载全市场K线...")
-all_klines = {}
-for code in stock_themes.keys():
-    if code.startswith(('9', '4')):
-        continue
-    tf = ts_code_to_tdx_file(code)
-    if not tf or not os.path.exists(tf):
-        continue
-    kdf = parse_tdx_day_file(tf)
-    if kdf is None or kdf.empty:
-        continue
-    kdf = kdf[kdf['trade_date'] <= TRADE_DATE].copy()
-    if len(kdf) >= 30:
-        all_klines[code] = kdf
-print(f"  加载: {len(all_klines)}只")
+    # If none, try order=3
+    if len(low_indices) == 0:
+        _, low_indices = find_local_extremes(lows[scan_start:end_idx+1], order=3)
+        print(f"Local lows (order=3): {len(low_indices)}")
+        low_indices = low_indices + scan_start
 
-# 重新计算主题强度
-best_theme = themes[0] if themes else ''
-best_strength = -999
-best_zt = 0
-for t in themes:
-    s, z = calc_theme_strength(t, theme_stocks, all_klines, TRADE_DATE)
-    print(f"    {t}: strength={s:.2f}, zt={z}")
-    if s > best_strength:
-        best_strength = s
-        best_theme = t
-        best_zt = z
+    for li in low_indices:
+        print(f"  Low idx={li}, price={lows[li]:.2f}")
 
-# layer
-best_layer = 'follower'
-for code, name, ly in theme_stocks.get(best_theme, []):
-    if code == test_code:
-        best_layer = ly
-        break
-print(f"  best_theme={best_theme}, strength={best_strength:.2f}, zt={best_zt}, layer={best_layer}")
+    # Check each candidate
+    candidates = []
+    for low_idx in low_indices:
+        if low_idx + 3 > end_idx:
+            print(f"  Skip idx={low_idx}: too close to end")
+            continue
 
-# 评分
-strategy = TailStrategy()
-q = {
-    'open': float(day['open']),
-    'high': float(day['high']),
-    'low': float(day['low']),
-    'price': float(day['close']),
-    'last_close': float(day['pre_close']) if not pd.isna(day['pre_close']) else 0,
-    'pct_chg': float(day['pct_chg']),
-    'vol': float(day['vol']),
-}
-turnover = float(factor_row.get('turnover_rate', 0) or 0) if not fdf.empty else 0
-total_mv = float(factor_row.get('total_mv', 0) or 0) if not fdf.empty else 0
+        low_price = lows[low_idx]
+        seg_highs = highs[low_idx:end_idx + 1]
+        high_offset = int(np.argmax(seg_highs))
+        high_idx = low_idx + high_offset
+        high_price = seg_highs.max()
 
-# 硬过滤测试
-passed, reason = strategy.hard_filter(test_code, q, df, turnover, total_mv, best_strength)
-print(f"\n  硬过滤: passed={passed}, reason={reason}")
+        ret = (high_price - low_price) / low_price
+        days = high_idx - low_idx
 
-# 完整评分
-sig = strategy.score(
-    test_code, q, df, factor_row if not fdf.empty else None,
-    turnover, total_mv, best_theme, best_strength, best_layer, best_zt, snap=None
-)
-print(f"\n  评分结果: {sig}")
+        print(f"  Candidate: low={low_idx}({low_price:.2f}), high={high_idx}({high_price:.2f}), ret={ret*100:.1f}%, days={days}")
+
+        if ret < min_return:
+            print(f"    FAIL: ret {ret*100:.1f}% < {min_return*100:.0f}%")
+            continue
+
+        if days < 3 or days > 60:
+            print(f"    FAIL: days {days} out of range [3,60]")
+            continue
+
+        # Check MA breakouts
+        has_ma20 = "ma20" in df.columns
+        has_ma60 = "ma60" in df.columns
+        break_ma20 = False
+        break_ma60 = False
+        break_trend = False
+
+        if has_ma20 and has_ma60:
+            ma20_at_low = float(df["ma20"].values[low_idx]) if not np.isnan(df["ma20"].values[low_idx]) else low_price
+            ma60_at_low = float(df["ma60"].values[low_idx]) if not np.isnan(df["ma60"].values[low_idx]) else low_price
+            print(f"    MA20@low={ma20_at_low:.2f}, MA60@low={ma60_at_low:.2f}")
+            print(f"    high_price={high_price:.2f}")
+
+            if high_price > ma20_at_low:
+                break_ma20 = True
+                print(f"    BREAK MA20!")
+            if high_price > ma60_at_low:
+                break_ma60 = True
+                print(f"    BREAK MA60!")
+
+            prev_highs = highs[max(0, low_idx - 60):low_idx]
+            if len(prev_highs) > 10:
+                x = np.arange(len(prev_highs))
+                slope, intercept = np.polyfit(x, prev_highs, 1)
+                if slope < 0:
+                    trend_line = slope * len(prev_highs) + intercept
+                    print(f"    Trend slope={slope:.4f}, trend_line={trend_line:.2f}")
+                    if high_price > trend_line:
+                        break_trend = True
+                        print(f"    BREAK TREND!")
+
+        is_confirmed = break_ma20 or break_ma60 or break_trend
+        print(f"    Confirmed: {is_confirmed} (ma20={break_ma20}, ma60={break_ma60}, trend={break_trend})")
+
+        # Volume
+        impulse_vols = vols[low_idx:high_idx + 1]
+        vol_ma20_arr = df["vol_ma20"].values
+        baseline_vol = float(vol_ma20_arr[low_idx]) if not np.isnan(vol_ma20_arr[low_idx]) else np.mean(vols[max(0, low_idx - 20):low_idx])
+        avg_impulse_vol = np.mean(impulse_vols)
+        vol_ratio = avg_impulse_vol / baseline_vol if baseline_vol > 0 else 0
+        print(f"    Vol ratio: {vol_ratio:.2f} (baseline={baseline_vol:.0f}, avg={avg_impulse_vol:.0f})")
+
+        candidates.append({
+            "low_idx": low_idx, "high_idx": high_idx,
+            "ret": ret, "days": days, "confirmed": is_confirmed,
+        })
+
+    print(f"\nTotal candidates: {len(candidates)}")
+    confirmed = [c for c in candidates if c["confirmed"]]
+    print(f"Confirmed candidates: {len(confirmed)}")
+
+    if confirmed:
+        confirmed.sort(key=lambda c: c["low_idx"], reverse=True)
+        best = confirmed[0]
+        print(f"Best: low={best['low_idx']}, high={best['high_idx']}, ret={best['ret']*100:.1f}%, days={best['days']}")
+    elif candidates:
+        candidates.sort(key=lambda c: c["ret"], reverse=True)
+        best = candidates[0]
+        print(f"Best (unconfirmed): low={best['low_idx']}, high={best['high_idx']}, ret={best['ret']*100:.1f}%")
+    else:
+        print("NO candidates found!")
+
+        # Try scanning from the known impulse start point
+        print("\n--- Direct check of known impulse (idx ~99-117) ---")
+        low_99 = lows[99]
+        high_117 = highs[100:118].max()
+        ret_known = (high_117 - low_99) / low_99
+        days_known = 117 - 99
+        print(f"  low[99]={low_99:.2f}, high={high_117:.2f}, ret={ret_known*100:.1f}%, days={days_known}")
+
+        # Check why it's not found
+        # The issue: find_local_extremes with order=5 may not find idx=99 as a local low
+        # because the price before it might be even lower
+        print("\n  Checking local minima around idx 99...")
+        for offset in range(-20, 5):
+            idx = 99 + offset
+            if 0 <= idx < len(lows):
+                segment = lows[max(0, idx-5):idx+6]
+                is_min = lows[idx] == min(segment)
+                print(f"    idx={idx}, low={lows[idx]:.2f}, is_local_min={is_min}")
+
+
+if __name__ == '__main__':
+    main()

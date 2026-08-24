@@ -97,16 +97,28 @@ class RallyPullbackEngine:
     # ------------------------------------------------------------------
     # 主入口
     # ------------------------------------------------------------------
-    def detect(self, ts_code: str, trade_date: str = None) -> Optional[RallyPullbackResult]:
-        """检测单只股票"""
+    def detect(self, ts_code: str, trade_date: str = None, df: pd.DataFrame = None) -> Optional[RallyPullbackResult]:
+        """检测单只股票
+
+        Args:
+            ts_code: 股票代码
+            trade_date: 交易日 YYYYMMDD
+            df: 可选，外部传入的行情 DataFrame（TDX 回测用，列含
+                trade_date/open/high/low/close/vol/pct_chg 即可；
+                MA60/ATR 缺省时引擎内部自动回退计算）。
+                传 None 时走 DataLoader 加载（生产路径）。
+        """
         if trade_date:
             self.loader.trade_date = trade_date
         td = self.loader.trade_date
 
         # 加载数据
-        lookback = self.cfg.get('rally', {}).get('lookback', 20) + 80
-        start_date = (pd.to_datetime(td) - pd.Timedelta(days=lookback + 30)).strftime('%Y%m%d')
-        df = self.loader.load_stk_factor(ts_code, start_date, td, silent=True)
+        if df is None:
+            lookback = self.cfg.get('rally', {}).get('lookback', 20) + 80
+            start_date = (pd.to_datetime(td) - pd.Timedelta(days=lookback + 30)).strftime('%Y%m%d')
+            df = self.loader.load_stk_factor(ts_code, start_date, td, silent=True)
+        else:
+            df = df.copy()
 
         if df is None or df.empty or len(df) < 60:
             return None

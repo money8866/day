@@ -8261,6 +8261,80 @@ def run(target_date=None, simple_mode=False):
         print("[回踩买点] 已加载中报优质股池买点信号")
 
     # =========================
+    # V7.0 拉升回调买点（market_regime_v3 rally_pullback 引擎，读取当日 JSON）
+    # =========================
+    def _load_rally_pullback_v7(trade_date: str) -> str:
+        r"""读取 rally_pullback_{date}.json（market_regime_v3 V7 引擎输出）。
+        选股逻辑：20日内放量+≥2次涨停拉升 -> 回撤5%~20%洗盘 -> 当日低开阳线承接 -> 发出信号。
+        总分≥60 有效，按 total_score 降序；直接输出引擎自带的参考价/止损/止盈。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"rally_pullback_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"rally_pullback_{trade_date}.json"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            signals = d.get("signals") or []
+            if not signals:
+                return ""
+            lines = []
+            lines.append("【V7 拉升回调买点池】")
+            lines.append(
+                f"数据来源：market_regime_v3 拉升回调引擎（{d.get('trade_date', trade_date)}，"
+                f"市场分{d.get('market_score', '-')}，环境{d.get('regime', '-')}），共{len(signals)}只"
+                "（拉升->洗盘->低开阳线承接，总分≥60）"
+            )
+            lines.append("")
+            for i, s in enumerate(signals, 1):
+                code = str(s.get("ts_code") or "-")
+                name = str(s.get("name") or "-")
+                score_v = float(s.get("total_score") or 0)
+                amp = float(s.get("rally_amplitude") or 0) * 100
+                vexp = float(s.get("rally_vol_expansion") or 0)
+                lu_cnt = s.get("rally_limit_up_count") or 0
+                max_lu = s.get("rally_max_consecutive_lu") or 0
+                high_d = str(s.get("rally_high_date") or "")[:8]
+                dd = float(s.get("drawdown") or 0) * 100
+                pdays = s.get("pullback_days") or 0
+                lo_pos = s.get("is_low_open_positive")
+                gap = float(s.get("candle_open_gap") or 0) * 100
+                body = float(s.get("candle_body_pct") or 0) * 100
+                ref_p = s.get("ref_price")
+                sl = s.get("stop_loss")
+                tp = s.get("take_profit")
+                stype = str(s.get("stock_type") or "-")
+                sugg = str(s.get("suggestion") or "")
+
+                def _f2(v):
+                    try:
+                        return f"{float(v):.2f}"
+                    except (TypeError, ValueError):
+                        return "-"
+
+                candle = "低开阳线" if lo_pos else ("阳线" if (s.get("candle_body_pct") or 0) > 0 else "阴线")
+                gap_s = f"低开{gap:.1f}%" if gap > 0 else f"高开{abs(gap):.1f}%"
+                high_s = f"{high_d[4:6]}/{high_d[6:8]}" if len(high_d) == 8 else "-"
+                lines.append(
+                    f"【{name}】({code}) 总分:{score_v:.1f} | 拉升:{amp:.0f}% 量比:{vexp:.1f}倍 "
+                    f"涨停{lu_cnt}次(最大连板{max_lu}) 高点:{high_s} | 回撤:{dd:.1f}% 回调{pdays}天 | "
+                    f"当日:{candle}({gap_s},实体{body:.1f}%) | 参考价:{_f2(ref_p)} 止损:{_f2(sl)} "
+                    f"止盈:{_f2(tp)} | 类型:{stype} | 建议:{sugg}"
+                )
+            return "\n".join(lines)
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[V7拉升回调] 加载失败: {e}")
+            return ""
+
+    rally_pullback_v7_text = _load_rally_pullback_v7(TRADE_DATE)
+    if rally_pullback_v7_text:
+        print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
+
+    # =========================
     # ELD 业绩预增买点 TOP3（读取 eld 每日评分报告 V2 前三，追加为报告最后一段）
     # =========================
     def _load_eld_top3(trade_date: str) -> str:
@@ -8510,6 +8584,14 @@ TOP1：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 TOP2：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
 TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
+
+8、**【V7 拉升回调买点】**（20日内放量+≥2次涨停拉升 -> 回撤5%~20%洗盘 -> 当日低开阳线承接买入，总分≥60）：
+{rally_pullback_v7_text}
+（【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无V7拉升回调买点信号"。
+【输出要求-第8段】按总分从高到低逐只输出，**每只股票之间空一行（加一个空行分隔），便于手机阅读**，每只一行力求精简，严格引用引擎给出的价位，禁止改判：
+名称：代码, 总分xx, 拉升xx%(涨停x次/最大连板x), 回撤xx%回调x天, 当日低开阳线(低开x.x%), 买点:参考价xx, 止损xx, 止盈xx, 建议xxx
+若"建议"字段含"观望/伺机而动"字样，须原样保留该建议，不得美化成可买入；只有建议明确含"买入"字样才输出✅可买标记。
+止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。）
 
 ------------------
 以上全局格式要求：
