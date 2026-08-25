@@ -689,7 +689,7 @@ class PostImpulseBaseDetector:
             # 平台质量评分
             quality = self._score_base_quality(
                 e - s, base_range, pullback_depth, retain, vol_shrink,
-                seg_highs, seg_lows, seg_closes, df
+                seg_highs, seg_lows, seg_closes, df, e, impulse_high
             )
 
             cand = {
@@ -716,6 +716,10 @@ class PostImpulseBaseDetector:
         # 不是高位强势整理，不构成 POST_IMPULSE_BASE
         quality_min = self.cfg.get("quality_threshold", 40)
         if best_base["quality"] < quality_min:
+            return result
+
+        # ── 规范§7：涨幅保留率 <40%（严重）→ 直接 INVALID ──
+        if best_base["retain_ratio"] < self.cfg.get("retain_bad", 0.40):
             return result
 
         # 填入结果
@@ -753,20 +757,26 @@ class PostImpulseBaseDetector:
 
     def _score_base_quality(self, days, base_range, pullback_depth,
                             retain, vol_shrink, seg_highs, seg_lows,
-                            seg_closes, df) -> float:
-        """评分平台质量。"""
+                            seg_closes, df, end_idx, impulse_high) -> float:
+        """评分平台质量（V2.0 规范§9 动态评分）。
+
+        组成：时间15% + 回撤20% + 保留率20% + 缩量15% + 高低点结构15%
+              + MA20 10% + 平台内波动率5%。
+        奖励：价格越靠近 ImpulseHigh 且缩量（卖压弱）→ 加分。
+        惩罚：放量下跌 -15、吞噬涨幅(保留<40%) -20。
+        """
         s = 0.0
         cfg = self.cfg
 
-        # 平台时间 (10分)
+        # 平台时间 (15分)
         opt_lo = cfg.get("optimal_days_low", 7)
         opt_hi = cfg.get("optimal_days_high", 15)
         if opt_lo <= days <= opt_hi:
-            s += 10
+            s += 15
         elif days >= cfg.get("min_days", 5):
-            s += 6
+            s += 9
         else:
-            s += 2
+            s += 3
 
         # 回撤深度 (20分)
         d_opt_lo = cfg.get("pullback_optimal_low", 0.20)
@@ -786,24 +796,51 @@ class PostImpulseBaseDetector:
         elif retain >= cfg.get("retain_pass", 0.50):
             s += 8
 
-        # 缩量 (20分)
+        # 缩量 (15分)
         if vol_shrink <= cfg.get("volume_shrink_ratio", 0.70):
-            s += 20
+            s += 15
         elif vol_shrink <= 0.85:
-            s += 14
+            s += 10
         elif vol_shrink <= 1.0:
-            s += 6
+            s += 5
 
-        # 高低点结构 (20分)
-        # 高点：不创新低，低点抬高
+        # 高低点结构 (15分)
         if len(seg_lows) >= 3:
             low_trend = np.polyfit(range(len(seg_lows)), seg_lows, 1)
-            if low_trend[0] >= 0:  # 低点抬高
-                s += 10
+            if low_trend[0] >= 0:  # 低点抬高/持平
+                s += 8
         if len(seg_highs) >= 3:
             high_trend = np.polyfit(range(len(seg_highs)), seg_highs, 1)
             if high_trend[0] >= -0.01 * np.mean(seg_highs):  # 高点不显著下降
-                s += 10
+                s += 7
+
+        # MA20 (10分)
+        if "ma20" in df.columns and end_idx >= 5:
+            ma20_now = _safe_float(df["ma20"].values[end_idx], 0)
+            ma20_prev = _safe_float(df["ma20"].values[end_idx - 5], 0)
+            if ma20_prev > 0:
+                slope = ma20_now / ma20_prev - 1
+                if slope >= 0:
+                    s += 10
+                elif slope > -0.02:
+                    s += 5
+
+        # 平台内波动率 (5分) — 振幅小为佳
+        if base_range > 0:
+            if base_range <= 0.08:
+                s += 5
+            elif base_range <= 0.12:
+                s += 3
+            elif base_range <= 0.18:
+                s += 1
+
+        # 奖励：价格靠近 ImpulseHigh 且缩量（卖压弱）(规范§9)
+        if impulse_high > 0 and len(seg_highs) > 0:
+            proximity = float(np.max(seg_highs)) / impulse_high
+            if proximity >= 0.95 and vol_shrink <= 0.75:
+                s += 5
+            elif proximity >= 0.90 and vol_shrink <= 0.70:
+                s += 3
 
         # 惩罚
         if vol_shrink > 1.0:
@@ -860,31 +897,224 @@ class PostImpulseBaseDetector:
 
 
 # ═══════════════════════════════════════════════════════
-# 5. 预突破检测
+# 5. 预突破检测（V2.1 §9~§13：平台成熟度）
 # ═══════════════════════════════════════════════════════
 
+@dataclass
+class PreBreakoutResult:
+    """V2.1 PRE_BREAKOUT 成熟度检测结果。
+
+    PRE_BREAKOUT ≠ 平台内部突破，而是"平台已经成熟，
+    未来1~3个交易日存在突破可能"（§9/§10）。
+    """
+    is_pre_breakout: bool = False       # 是否达到成熟平台标准
+    score: float = 0.0                  # PRE_BREAKOUT_SCORE (§13)
+    grade: str = ""                     # A+ / A / B
+    distance_atr: float = 0.0           # DistanceToTrigger = (Trigger-Close)/ATR (§11)
+    distance_band: str = ""             # IMMINENT/VERY_NEAR/NEAR/NORMAL/FAR
+    trigger_price: float = 0.0          # BreakoutTrigger = ImpulseHigh + 0.3ATR
+    vol_contraction: bool = False       # 最近3~5日波动率收缩
+    upper_half: bool = False            # 最近价格位于平台上半区
+    aged: bool = False                  # PRE_BREAKOUT_AGED（>5日未突破）
+    expired: bool = False               # PRE_BREAKOUT_EXPIRED（>10日）
+    days_at_level: int = 0              # 成熟条件首次满足至今的交易日数
+    reasons: List[str] = field(default_factory=list)  # 满足/未满足的10条件
+
+
 class PreBreakoutDetector:
-    """检测平台内部突破（Close > BaseHigh）。"""
+    """V2.1 §9~§13：识别"成熟平台"（区别于早期平台 POST_IMPULSE_BASE）。
+
+    升级标准（满足大部分条件，§10）：
+      1. 平台>=7日  2. BASE_QUALITY>=75  3. Close距ImpulseHigh<=1.0ATR
+      4. BaseHigh距ImpulseHigh<=0.8ATR  5. 平台缩量  6. MA20走平或向上
+      7. 低点无明显破坏  8. 最近3~5日波动率收缩  9. 价格位于平台上半区
+      10. 无明显放量抛压
+
+    PRE_BREAKOUT_SCORE（§13）：
+      距离25 + 平台质量20 + 缩量15 + 高低点10 + MA20 10
+      + 波动率收缩10 + 收盘位置5 + 主题5
+      >=85 A+ / 80~84 A / 75~79 B / <75 继续 POST_IMPULSE_BASE
+
+    反直觉规则（§12）：距离突破位非常近 + 放量 + 长上影 = 抛压，
+    必须扣分（"接近"不等于"即将突破"）。
+    """
+
+    def __init__(self, config: Optional[dict] = None):
+        self.cfg = dict(RIB_CONFIG.get("v2", {}).get("pre_breakout", {}))
+        if config:
+            self.cfg.update(config)
+        self.v2 = dict(RIB_CONFIG.get("v2", {}))
 
     def detect(self, df: pd.DataFrame, base: PostImpulseBaseResult,
-              end_idx: int) -> Optional[Dict]:
-        """检测平台内部突破。"""
-        if not base.is_base:
-            return None
+               impulse: ImpulseResult, end_idx: int) -> PreBreakoutResult:
+        """检测平台是否成熟到 PRE_BREAKOUT。"""
+        result = PreBreakoutResult()
+        if not base.is_base or not impulse.is_impulse:
+            return result
 
         closes = df["close"].values.astype(float)
         highs = df["high"].values.astype(float)
+        lows = df["low"].values.astype(float)
+        vols = df["vol"].values.astype(float)
 
-        base_high = base.base_high
-        # 检查平台后是否有收盘价突破 BaseHigh
-        for i in range(base.platform_end_idx + 1, end_idx + 1):
-            if closes[i] > base_high:
-                return {
-                    "breakout_idx": i,
-                    "breakout_price": closes[i],
-                    "base_high": base_high,
-                }
-        return None
+        close = float(closes[end_idx])
+        atr = _safe_float(df["atr20"].values[end_idx], 0) if "atr20" in df.columns else 0
+        if atr <= 0:
+            return result
+
+        impulse_high = impulse.impulse_high
+        atr_buffer = RIB_CONFIG.get("breakout", {}).get("atr_buffer", 0.3)
+        trigger = impulse_high + atr_buffer * atr
+
+        result.trigger_price = trigger
+        result.distance_atr = round((trigger - close) / atr, 2)
+        result.distance_band = self._band(result.distance_atr)
+
+        # ── 10 条件逐项评估（§10）──
+        reasons = []
+        cfg = self.cfg
+
+        c1 = base.platform_days >= cfg.get("min_days", 7)
+        c2 = base.score >= cfg.get("min_quality", 75)
+        c3 = result.distance_atr <= cfg.get("close_to_impulse_atr", 1.0) + atr_buffer
+        basehigh_gap = (impulse_high - base.base_high) / atr
+        c4 = basehigh_gap <= cfg.get("basehigh_to_impulse_atr", 0.8)
+        c5 = base.volume_shrink_ratio <= cfg.get("min_vol_shrink", 0.9)
+        m20s = _safe_float(df["ma20_slope"].values[end_idx], 0) if "ma20_slope" in df.columns else 0
+        c6 = m20s >= -0.005
+        c7 = close >= base.base_low
+        c8, recent_vol = self._vol_contraction(df, end_idx)
+        seg_mid = (base.base_high + base.base_low) / 2
+        c9 = close >= seg_mid
+        vr = _safe_float(df["vol_ratio"].values[end_idx], 0) if "vol_ratio" in df.columns else 0
+        c10 = vr <= 1.5
+        us = _safe_float(df["upper_shadow"].values[end_idx], 0) if "upper_shadow" in df.columns else 0
+
+        if c1: reasons.append(f"平台{base.platform_days}日>=7")
+        else: reasons.append(f"平台仅{base.platform_days}日(<7)")
+        if c2: reasons.append(f"平台质量{base.score:.0f}>=75")
+        else: reasons.append(f"平台质量{base.score:.0f}<75")
+        if c3: reasons.append(f"收盘距触发位{result.distance_atr:.1f}ATR<=1.3ATR")
+        else: reasons.append(f"收盘距触发位{result.distance_atr:.1f}ATR过远")
+        if c4: reasons.append(f"平台高点距第一波高点{basehigh_gap:.1f}ATR<=0.8")
+        else: reasons.append(f"平台高点距第一波高点{basehigh_gap:.1f}ATR过远")
+        if c5: reasons.append(f"平台缩量({base.volume_shrink_ratio:.2f})")
+        else: reasons.append(f"平台未有效缩量({base.volume_shrink_ratio:.2f})")
+        if c6: reasons.append("MA20走平或向上")
+        else: reasons.append("MA20向下")
+        if c7: reasons.append("低点未破坏")
+        else: reasons.append("低点破坏")
+        if c8: reasons.append(f"近{len(recent_vol)}日波动率收缩")
+        else: reasons.append("波动率未收缩")
+        if c9: reasons.append("价格位于平台上半区")
+        else: reasons.append("价格位于平台下半区")
+        if c10: reasons.append("无放量抛压")
+        else: reasons.append(f"放量抛压(量比{vr:.2f})")
+        result.reasons = reasons
+
+        # ── PRE_BREAKOUT_SCORE（§13）──
+        w = RIB_CONFIG.get("v2", {}).get("pre_breakout_weights", {})
+        s = 0.0
+
+        # 距离突破位 (25)：越近越高，但§12反例需扣分
+        d = result.distance_atr
+        if d <= 0.3: s += 25
+        elif d <= 0.7: s += 21
+        elif d <= 1.0: s += 17
+        elif d <= 1.5: s += 10
+        else: s += 4
+
+        # 平台质量 (20)：线性映射 40~100 -> 0~20
+        s += 20.0 * max(0.0, min(1.0, (base.score - 40) / 60.0))
+
+        # 缩量 (15)
+        vs = base.volume_shrink_ratio
+        if vs <= 0.6: s += 15
+        elif vs <= 0.7: s += 12
+        elif vs <= 0.85: s += 8
+        elif vs <= 0.9: s += 5
+
+        # 高低点结构 (10)
+        if base.low_structure == "低点抬高": s += 10
+        elif base.low_structure == "低点持平": s += 7
+        if base.high_structure == "高点抬高": s += 3
+
+        # MA20 (10)
+        if m20s >= 0: s += 10
+        elif m20s >= -0.005: s += 6
+
+        # 波动率收缩 (10)
+        if c8: s += 10
+
+        # 收盘位置 (5)
+        cl = _safe_float(df["close_loc"].values[end_idx], 0.5) if "close_loc" in df.columns else 0.5
+        s += 5.0 * max(0.0, min(1.0, cl))
+
+        # 主题 (5)：无主题数据时给中性 2.5
+        s += 2.5
+
+        # ── §12 反直觉扣分：贴近阻力 + 放量 + 长上影 = 抛压 ──
+        if d <= 0.7 and (vr >= 1.5 or us >= 0.3):
+            pen = 12 if (vr >= 1.5 and us >= 0.3) else 7
+            s -= pen
+            result.reasons.append(f"贴近阻力但放量/长上影，扣{pen}分(§12)")
+
+        result.score = round(min(100.0, max(0.0, s)), 1)
+
+        # ── 分级（§13）──
+        if result.score >= 85: result.grade = "A+"
+        elif result.score >= 80: result.grade = "A"
+        elif result.score >= 75: result.grade = "B"
+
+        # ── 升级判定：满足大部分条件（>=8/10）且分数达标 ──
+        conditions = [c1, c2, c3, c4, c5, c6, c7, c8, c9, c10]
+        n_pass = sum(1 for c in conditions if c)
+        min_score = cfg.get("min_score", 75)
+        result.is_pre_breakout = (n_pass >= 8) and (result.score >= min_score)
+
+        # ── 老化检测（§33）：以平台结束日为起点计算 ──
+        days_since_base_end = end_idx - base.platform_end_idx
+        result.days_at_level = days_since_base_end
+        if result.is_pre_breakout:
+            if days_since_base_end > self.v2.get("pre_expired_days", 10):
+                result.expired = True
+            elif days_since_base_end > self.v2.get("pre_aged_days", 5):
+                result.aged = True
+
+        return result
+
+    def _band(self, d: float) -> str:
+        """触发距离五档分带（§11）。"""
+        v2 = RIB_CONFIG.get("v2", {})
+        if d <= v2.get("distance_imminent", 0.3):
+            return "IMMINENT"
+        if d <= v2.get("distance_very_near", 0.7):
+            return "VERY_NEAR"
+        if d <= v2.get("distance_near", 1.0):
+            return "NEAR"
+        if d <= v2.get("distance_normal", 1.5):
+            return "NORMAL"
+        return "FAR"
+
+    def _vol_contraction(self, df: pd.DataFrame,
+                         end_idx: int) -> tuple:
+        """最近3~5日波动率收缩：近段日均振幅 < 前段日均振幅的0.8倍。"""
+        try:
+            highs = df["high"].values.astype(float)
+            lows = df["low"].values.astype(float)
+            recent_n = 3
+            prev_n = 5
+            if end_idx < recent_n + prev_n:
+                return False, []
+            recent_amp = highs[end_idx - recent_n + 1:end_idx + 1] - \
+                lows[end_idx - recent_n + 1:end_idx + 1]
+            prev_amp = highs[end_idx - recent_n - prev_n + 1:end_idx - recent_n + 1] - \
+                lows[end_idx - recent_n - prev_n + 1:end_idx - recent_n + 1]
+            r = float(np.mean(recent_amp))
+            p = float(np.mean(prev_amp))
+            return (p > 0 and r / p <= 0.8), recent_amp.tolist()
+        except Exception:
+            return False, []
 
 
 # ═══════════════════════════════════════════════════════

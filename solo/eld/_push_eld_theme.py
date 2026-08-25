@@ -38,6 +38,15 @@ if not TRADE_DATE:
 
 ELD_CSV = rf"D:\mystock\report_daily\eld_report_{TRADE_DATE}.csv"
 THEME_MAP = rf"D:\mystock\cache_daily\theme_stock_map_v2_{TRADE_DATE}.json"
+_theme_map_date = TRADE_DATE
+if not os.path.exists(THEME_MAP):
+    _cands = sorted(glob.glob(r"D:\mystock\cache_daily\theme_stock_map_v2_*.json"))
+    if _cands:
+        THEME_MAP = _cands[-1]
+        _theme_map_date = os.path.basename(THEME_MAP).split("theme_stock_map_v2_")[1].split(".")[0]
+        print(f"⚠️ 当日主题映射缺失，回退使用: {os.path.basename(THEME_MAP)}")
+    else:
+        raise FileNotFoundError(f"主题映射文件不存在且无历史版本可回退: {THEME_MAP}")
 ENV_PATH = r"D:\mystock\config\.env"
 
 # 读取PushPlus token
@@ -72,7 +81,9 @@ unmapped = [s for s in eld_stocks[:50] if not stock_to_themes.get(s["ts_code"], 
 # ── 构建推送消息（最佳精简模式） ──
 # 结构: 市场状态 → 今日可操作 → 个股排行TOP10 → 低吸买点 → 风险提示 → 操作策略
 lines = []
-lines.append(f"# ELD × 主题关联 — {TRADE_DATE}")
+lines.append(f"# ELD × 主题关联 - {TRADE_DATE}")
+if _theme_map_date != TRADE_DATE:
+    lines.append(f"> 主题数据日期: {_theme_map_date}（当日映射未生成，自动回退）")
 lines.append("")
 
 # 信号翻译

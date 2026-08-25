@@ -57,7 +57,7 @@ for n,c,p in lst:
     print(f"{n} {c:+.2f}%")
 
 pro = ts.pro_api('1a4e203d2cd96efc75a0c0aaa5f68069e3277c3ac13d2abfa4463d34')
-mkt = pro.daily(trade_date='20260821')
+mkt = pro.daily(trade_date='20260825')
 if len(mkt):
     up = len(mkt[mkt['pct_chg']>0])
     dn = len(mkt[mkt['pct_chg']<0])

@@ -44,13 +44,16 @@ from .detectors import (
     ReAccelerationDetector,
     DowntrendResult, ImpulseResult, ImpulsePeakResult,
     PostImpulseBaseResult, BreakoutResult, PullbackResult,
-    ReAccelerationResult,
+    ReAccelerationResult, PreBreakoutResult,
 )
 from .scoring import FinalScorer, FinalScore
 from .filters import (
     MarketFilter, ThemeFilter, RiskRewardEngine, VetoChecker,
     MarketSnapshot, ThemeInfo, TradePlan,
 )
+from .v2_next_state import NextStateAnalyzer, classify_distance_to_breakout
+from .v2_readiness import ReadinessEngine, assign_tier
+from .v2_structure_risk import StructureRiskEngine
 
 
 @dataclass
@@ -91,6 +94,30 @@ class RIBResult:
     # ── 市场环境 ──
     market_regime: str = "normal"
 
+    # ── V2.0/V2.1 新增 ──
+    memory: dict = field(default_factory=dict)          # 历史记忆(§3)
+    buy_readiness: float = 0.0                          # BUY_READINESS(§23)
+    readiness_cap: float = 100.0
+    next_state: str = ""                                # NEXT_STATE(§21)
+    next_state_score: float = 0.0
+    next_state_level: str = "NOT_READY"                 # V2.1 §22 分级
+    next_state_gap_price: float = 0.0
+    next_state_gap_atr: float = 0.0
+    next_state_gap_desc: str = ""
+    next_state_trigger: str = ""
+    structure_risk: float = 0.0                         # STRUCTURE_RISK(§34)
+    structure_risk_items: List[str] = field(default_factory=list)
+    distance_to_breakout: str = ""                      # DISTANCE_TO_BREAKOUT(§11 五档)
+    distance_to_breakout_atr: float = 0.0
+    pool_tier: str = "IGNORE"                           # NOW/NEXT/WATCH(§24~28)
+    next_rule: str = ""                                 # V2.1 入选NEXT的规则(A/B/C/D)
+    priority_score: float = 0.0                         # PriorityScore(§37)
+    cannot_buy_reason: str = ""                         # 为什么现在不能买(§39)
+    base_quality: float = 0.0                           # BASE_QUALITY(§8)
+    structure_quality: float = 100.0                    # 100 - STRUCTURE_RISK
+    pre_breakout: Optional[PreBreakoutResult] = None    # V2.1 §9~13
+    prob_level: str = ""                                # V2.1 §30 结构概率等级
+
 
 class RIBEngine:
     """RIB 核心引擎。"""
@@ -118,6 +145,11 @@ class RIBEngine:
         self.theme_filter = ThemeFilter(self.cfg.get("theme"))
         self.rr_engine = RiskRewardEngine(self.cfg.get("rr"))
         self.veto_checker = VetoChecker(self.cfg.get("veto"))
+
+        # V2.0 引擎
+        self.next_state_analyzer = NextStateAnalyzer(self.cfg)
+        self.readiness_engine = ReadinessEngine(self.cfg)
+        self.structure_risk_engine = StructureRiskEngine(self.cfg)
 
     def analyze(
         self,
@@ -173,7 +205,7 @@ class RIBEngine:
                 "当前股票可能仍在下跌趋势中，或第一波反转尚未形成。"
             )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         result.impulse = imp
         impulse_start_idx = imp.impulse_low_idx
@@ -194,7 +226,7 @@ class RIBEngine:
                 f"但缺乏前置的下降趋势结构。"
             )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         if dt.score < self.cfg.get("downtrend", {}).get("score_min", 65):
             result.state = STATE_DOWNTREND
@@ -203,7 +235,7 @@ class RIBEngine:
                 f"第一波启动点({impulse_start_idx})前的下降趋势结构不够清晰。"
             )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_REVERSAL_SETUP, f"检测到长期下跌({dt.score:.0f}分)")
         sm.transition(STATE_IMPULSE_START, f"第一波启动({imp.impulse_return*100:.1f}%)")
@@ -224,7 +256,7 @@ class RIBEngine:
             result.state = STATE_IMPULSE_ACTIVE
             result.conclusion = "第一波高点尚未确认，仍在上涨通道中。"
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_IMPULSE_PEAK, f"第一波高点确认({peak.peak_price:.2f})")
 
@@ -238,7 +270,7 @@ class RIBEngine:
             result.state = STATE_IMPULSE_PEAK
             result.conclusion = "第一波后尚未形成高质量整理平台，可能仍在调整或已反转。"
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_POST_IMPULSE_BASE,
                        f"POST_IMPULSE_BASE形成({base.platform_days}日, 保留{base.retain_ratio*100:.0f}%)")
@@ -246,11 +278,8 @@ class RIBEngine:
         # ══════════════════════════════════════════════════════════
         # 阶段 4：检测预突破
         # ══════════════════════════════════════════════════════════
-        pre_breakout = self.pre_breakout_detector.detect(df, base, end_idx)
-
-        if pre_breakout is not None:
-            sm.transition(STATE_PRE_BREAKOUT,
-                           f"平台内部突破({pre_breakout['breakout_price']:.2f})")
+        pre_bo = self.pre_breakout_detector.detect(df, base, imp, end_idx)
+        result.pre_breakout = pre_bo
 
         # ══════════════════════════════════════════════════════════
         # 阶段 5：检测第二波突破
@@ -259,13 +288,33 @@ class RIBEngine:
         bo = result.breakout
 
         if not bo.is_breakout:
-            result.state = STATE_POST_IMPULSE_BASE
-            result.conclusion = (
-                f"尚未突破第一波高点({imp.impulse_high:.2f})。"
-                f"平台已形成({base.platform_days}日)，等待放量突破。"
-            )
+            # V2.1 §10：成熟平台 -> PRE_BREAKOUT；早期平台 -> POST_IMPULSE_BASE
+            if pre_bo.is_pre_breakout:
+                sm.transition(STATE_PRE_BREAKOUT,
+                              f"成熟平台(PB分{pre_bo.score:.0f}/{pre_bo.grade})")
+                if pre_bo.expired:
+                    result.state = STATE_PRE_BREAKOUT
+                    result.conclusion = (
+                        f"PRE_BREAKOUT_EXPIRED：平台成熟后{pre_bo.days_at_level}日"
+                        f"仍未突破第一波高点({imp.impulse_high:.2f})，"
+                        "信号过期，重新评估平台。"
+                    )
+                else:
+                    aged_tag = " PRE_BREAKOUT_AGED" if pre_bo.aged else ""
+                    result.state = STATE_PRE_BREAKOUT
+                    result.conclusion = (
+                        f"平台成熟（{base.platform_days}日，质量{base.score:.0f}，"
+                        f"距突破触发{pre_bo.distance_atr:.1f}ATR/{pre_bo.distance_band}）"
+                        f"{aged_tag}。等待放量突破{pre_bo.trigger_price:.2f}。"
+                    )
+            else:
+                result.state = STATE_POST_IMPULSE_BASE
+                result.conclusion = (
+                    f"平台形成中（{base.platform_days}日），尚未成熟到 PRE_BREAKOUT。"
+                    f"第一波高点{imp.impulse_high:.2f}未突破。"
+                )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_SECOND_LEG_BREAKOUT,
                        f"第二波突破({bo.breakout_price:.2f}, 量比{bo.volume_ratio:.2f})")
@@ -276,7 +325,7 @@ class RIBEngine:
             result.is_valid = False
             result.conclusion = "第二波突破距离过大或质量差，判定为假突破。"
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         # ══════════════════════════════════════════════════════════
         # 阶段 6：检测第一次回踩
@@ -285,13 +334,29 @@ class RIBEngine:
         pb = result.pullback
 
         if not pb.is_pullback:
+            # ── 突破信号时效检查：突破后超过回踩窗口(max_days)仍未回踩 → 信号过期 ──
+            # 短线模型(3-5日持仓)要求突破后窗口内出现健康回踩；窗口关闭后
+            # 仍未回踩，说明最佳介入时机已过（追高或形态周期结束），不再报信号。
+            pullback_cfg = self.cfg.get("pullback", {})
+            max_wait = pullback_cfg.get("max_days", 5)
+            days_since_breakout = end_idx - bo.breakout_idx
+            if days_since_breakout > max_wait:
+                result.state = STATE_DOWNTREND
+                result.is_valid = False
+                result.conclusion = (
+                    f"突破后{days_since_breakout}日仍未出现健康回踩，"
+                    f"突破信号已过期（> {max_wait}日），形态周期结束，等待新一轮形态。"
+                )
+                result.state_sequence = sm.state_sequence
+                return self._finalize_v2(result, df, sm)
+
             result.state = STATE_SECOND_LEG_BREAKOUT
             result.conclusion = (
                 "突破后尚未出现第一次健康回踩。"
                 "价格可能继续上行，或正在高位震荡。"
             )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_FIRST_PULLBACK,
                        f"第一次回踩({pb.pullback_depth*100:.0f}%, 量比{pb.pullback_volume_ratio:.2f})")
@@ -302,7 +367,29 @@ class RIBEngine:
             result.is_valid = False
             result.conclusion = "回踩深度过大，跌回平台内部，形态破坏。"
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
+
+        # ── V2.1 §18：PULLBACK_SUPPORT 需"缩量+深度有限+收盘站回关键位" ──
+        # 回踩发生但支撑尚未确认（放量/深度过大/未站回）-> 停留 FIRST_PULLBACK
+        pb_cfg = self.cfg.get("pullback", {})
+        vol_ok = pb.pullback_volume_ratio <= pb_cfg.get("volume_ratio_max", 0.80)
+        depth_ok = pb.pullback_depth <= 0.60
+        reclaim_ok = (not pb.broke_impulse_high) or pb.is_test_and_reclaim
+        if not (vol_ok and depth_ok and reclaim_ok):
+            result.state = STATE_FIRST_PULLBACK
+            fails = []
+            if not vol_ok:
+                fails.append(f"回踩放量(量比{pb.pullback_volume_ratio:.2f})")
+            if not depth_ok:
+                fails.append(f"回踩过深({pb.pullback_depth*100:.0f}%)")
+            if not reclaim_ok:
+                fails.append("收盘未站回关键位")
+            result.conclusion = (
+                "第一次回踩进行中，尚未确认健康回踩（"
+                + "；".join(fails) + "）。等待关键位承接确认。"
+            )
+            result.state_sequence = sm.state_sequence
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_PULLBACK_SUPPORT, "回踩关键位承接")
 
@@ -321,7 +408,7 @@ class RIBEngine:
                 "等待放量阳线确认。"
             )
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         sm.transition(STATE_RE_ACCELERATION,
                        f"二次启动({ra.reacc_price:.2f}, 量比{ra.volume_ratio:.2f})")
@@ -366,7 +453,7 @@ class RIBEngine:
             result.conclusion = "触发强制否决：\n" + "\n".join(f"  {r}" for r in veto_reasons)
             sm.invalidate("；".join(veto_reasons))
             result.state_sequence = sm.state_sequence
-            return result
+            return self._finalize_v2(result, df, sm)
 
         # ══════════════════════════════════════════════════════════
         # 最终评分
@@ -421,7 +508,293 @@ class RIBEngine:
             )
 
         result.state_sequence = sm.state_sequence
+        return self._finalize_v2(result, df, sm)
+
+    # ══════════════════════════════════════════════════════════
+    # V2.0 集中收尾
+    # ══════════════════════════════════════════════════════════
+    def _finalize_v2(self, result: RIBResult, df: pd.DataFrame,
+                     sm: StateMachine) -> RIBResult:
+        """V2.0 收尾：历史记忆 / 结构风险 / 距离突破 / 下一状态 /
+        BUY_READINESS / 三层池 / PriorityScore / "为什么现在不能买"。
+
+        所有返回路径统一经过这里，保证任何状态都输出完整 V2 字段。
+        """
+        # ── ① 历史记忆（§3）──
+        result.memory = self._build_memory(result, df)
+
+        # ── ② 结构破坏评分（§20）──
+        sr = self.structure_risk_engine.compute(df, result)
+        result.structure_risk = sr.score
+        result.structure_risk_items = sr.items
+        result.structure_quality = round(max(0.0, 100.0 - sr.score), 1)
+
+        # 终态（FAILED_*/HOLD/EXIT）保留原状态，其余状态风险>=70 → INVALIDATED
+        terminal = (STATE_FAILED_REVERSAL, STATE_FAILED_BREAKOUT,
+                    STATE_FAILED_PULLBACK, STATE_HOLD, STATE_EXIT)
+        if sr.score >= self.cfg["v2"]["structure_risk_invalidate"] \
+                and result.state not in terminal:
+            risk_desc = "、".join(sr.items) if sr.items else "结构破坏"
+            result.state = STATE_INVALIDATED
+            result.is_valid = False
+            result.cannot_buy_reason = (
+                f"结构破坏评分{sr.score:.0f}≥70（{risk_desc}），"
+                "本轮结构失效，必须重新寻找完整结构。"
+            )
+            sm.invalidate(risk_desc)
+            result.conclusion = result.cannot_buy_reason
+            result.state_sequence = sm.state_sequence
+            result.buy_readiness = 0.0
+            result.pool_tier = "IGNORE"
+            result.priority_score = 0.0
+            return result
+
+        # ── ③ DISTANCE_TO_BREAKOUT（V2.1 §11 五档：距触发位 ImpulseHigh+0.3ATR）──
+        if result.state in (STATE_POST_IMPULSE_BASE, STATE_PRE_BREAKOUT) and result.impulse:
+            atr = self._safe_atr(df)
+            cat, dist = classify_distance_to_breakout(
+                result.close, result.impulse.impulse_high, atr)
+            result.distance_to_breakout = cat
+            result.distance_to_breakout_atr = round(dist, 2)
+            # PRE_BREAKOUT 检测器结果优先（含§12抛压扣分后的精确值）
+            if result.pre_breakout and result.pre_breakout.is_pre_breakout:
+                result.distance_to_breakout = result.pre_breakout.distance_band
+                result.distance_to_breakout_atr = result.pre_breakout.distance_atr
+
+        # ── ④ NEXT_STATE 预测（V2.1 §21/§22）──
+        next_info = self.next_state_analyzer.analyze(df, result)
+        result.next_state = next_info.next_state
+        result.next_state_score = next_info.score
+        result.next_state_level = next_info.level
+        result.next_state_gap_price = round(next_info.gap_price, 2)
+        result.next_state_gap_atr = round(next_info.gap_atr, 2)
+        result.next_state_gap_desc = next_info.gap_desc
+        result.next_state_trigger = next_info.trigger_cond
+
+        # ── ⑤ BUY_READINESS（V2.1 §23）──
+        ri = self.readiness_engine.compute(df, result, next_info)
+        result.buy_readiness = ri.readiness
+        result.readiness_cap = ri.cap
+
+        # 追涨硬约束：>2ATR 禁止 PRIMARY_BUY（§22）
+        if result.state == STATE_PRIMARY_BUY and result.impulse:
+            atr = self._safe_atr(df)
+            if atr > 0 and \
+                    (result.close - result.impulse.impulse_high) / atr > \
+                    self.cfg["v2"]["chase_forbid_atr"]:
+                result.state = STATE_RE_ACCELERATION
+                result.conclusion = (
+                    f"二次启动已确认，但距第一波高点已超"
+                    f"{self.cfg['v2']['chase_forbid_atr']}ATR，追涨约束禁止 PRIMARY_BUY。"
+                )
+
+        # ── ⑥ BASE_QUALITY（§9）──
+        result.base_quality = round(result.base.score, 1) if \
+            result.base and result.base.is_base else 0.0
+
+        # ── ⑦ 三层交易池（V2.1 §24~§28）──
+        pre = result.pre_breakout
+        pre_score = pre.score if pre else 0.0
+        pb_dist = 99.0
+        if result.pullback and result.pullback.is_pullback:
+            atr_pb = self._safe_atr(df) or 1.0
+            support_lv = 0.0
+            if result.impulse:
+                support_lv = result.impulse.impulse_high
+            if support_lv <= 0 and result.base and result.base.is_base:
+                support_lv = result.base.base_high
+            if support_lv > 0:
+                pb_dist = max(0.0, (support_lv - result.close) / atr_pb)
+        result.pool_tier = assign_tier(
+            result.state, result.buy_readiness,
+            structure_risk=result.structure_risk,
+            risk_reward=result.risk_reward,
+            market_regime=result.market_regime,
+            distance_atr=result.distance_to_breakout_atr
+            if result.distance_to_breakout_atr > 0 else 99.0,
+            pre_score=pre_score,
+            pullback_vol_ratio=(result.pullback.pullback_volume_ratio
+                                if result.pullback and result.pullback.is_pullback
+                                else 1.0),
+            support_gap_atr=pb_dist,
+        )
+        if result.pool_tier == "NEXT":
+            result.next_rule = self._next_rule_of(result, pre_score, pb_dist)
+
+        # ── ⑧ PriorityScore（V2.1 §37）──
+        result.priority_score = self._compute_priority(result, next_info)
+
+        # ── ⑨ 状态转换概率等级（V2.1 §30，样本不足只给等级）──
+        result.prob_level = self._prob_level(result, next_info)
+
+        # ── ⑩ 为什么现在不能买（V2.1 §39）──
+        if result.state != STATE_PRIMARY_BUY:
+            result.cannot_buy_reason = self._build_cannot_buy_reason(result)
+
+        result.state_sequence = sm.state_sequence
         return result
+
+    def _next_rule_of(self, result: RIBResult, pre_score: float,
+                      pb_dist: float) -> str:
+        """V2.1 §24：标记入选 NEXT 的规则。"""
+        state = result.state
+        if state == "PRE_BREAKOUT" and pre_score >= 75:
+            return "A(成熟平台近突破位)"
+        if state == "PULLBACK_SUPPORT":
+            return "B(回踩承接待再加速)"
+        if state == "FIRST_PULLBACK" and pb_dist <= 0.5:
+            return "C(回踩近支撑缩量)"
+        if state == "RE_ACCELERATION":
+            return "D(二次启动待确认)"
+        if state == "PRIMARY_BUY":
+            return "PB(买点待条件补齐)"
+        return ""
+
+    def _prob_level(self, result: RIBResult, next_info) -> str:
+        """V2.1 §30：结构概率等级（无回测样本时不伪造概率数字）。
+
+        等级由 NEXT_STATE_SCORE 映射：
+          >=85 高 / 75~84 中高 / 65~74 中 / <65 低
+        """
+        s = next_info.score
+        if result.structure_risk >= 50:
+            return "低(结构风险≥50)"
+        if s >= 85:
+            return "高"
+        if s >= 75:
+            return "中高"
+        if s >= 65:
+            return "中"
+        return "低"
+
+    def _build_memory(self, result: RIBResult, df: pd.DataFrame) -> dict:
+        """构建状态历史记忆（§3）。"""
+        imp = result.impulse
+        base = result.base
+        bo = result.breakout
+        pb = result.pullback
+
+        mem = {
+            "previous_state": (result.state_sequence[-2]
+                               if len(result.state_sequence) >= 2 else ""),
+            "state_start_date": result.date,
+            "state_history": list(result.state_sequence),
+            "last_breakout_date": "",
+            "impulse_high": round(imp.impulse_high, 2) if imp else 0.0,
+            "impulse_low": round(imp.impulse_low, 2) if imp else 0.0,
+            "base_high": round(base.base_high, 2) if base and base.is_base else 0.0,
+            "base_low": round(base.base_low, 2) if base and base.is_base else 0.0,
+            "breakout_price": round(bo.breakout_price, 2) if bo and bo.is_breakout else 0.0,
+            "pullback_low": round(pb.pullback_low, 2) if pb and pb.is_pullback else 0.0,
+            "pullback_high": 0.0,
+            "failed_reason": result.conclusion,
+        }
+        if bo and bo.is_breakout and "trade_date" in df.columns:
+            idx = int(bo.breakout_idx)
+            if 0 <= idx < len(df):
+                mem["last_breakout_date"] = str(df["trade_date"].values[idx])
+        if pb and pb.is_pullback and len(df) > 0:
+            highs = df["high"].values.astype(float)
+            lo, hi = int(pb.pullback_start_idx), int(pb.pullback_low_idx)
+            if hi >= lo and 0 <= lo <= hi < len(df):
+                mem["pullback_high"] = round(float(np.max(highs[lo:hi + 1])), 2)
+        return mem
+
+    def _compute_priority(self, result: RIBResult,
+                          next_info) -> float:
+        """PriorityScore（§27）。"""
+        w = self.cfg["v2"]["priority_weights"]
+        imp_score = (result.impulse.score if result.impulse else 0.0) or 0.0
+        base_q = result.base_quality
+        mkt = float(self.cfg["v2"]["regime_scores"]
+                    .get(result.market_regime, 60))
+        rr_norm = min(1.0, result.risk_reward / 3.0) if result.risk_reward > 0 else 0.0
+        score = (
+            w["buy_readiness"] * result.buy_readiness +
+            w["next_state"] * next_info.score +
+            w["structure_quality"] * result.structure_quality +
+            w["impulse"] * imp_score +
+            w["base_quality"] * base_q +
+            w["market_align"] * mkt +
+            w["risk_reward"] * rr_norm * 100.0
+        )
+        return round(min(100.0, score), 1)
+
+    def _safe_atr(self, df: pd.DataFrame) -> float:
+        """读取最新 ATR20，异常返回 0。"""
+        if "atr20" in df.columns:
+            try:
+                v = float(df["atr20"].values[-1])
+                if math.isfinite(v) and v > 0:
+                    return v
+            except (TypeError, ValueError, IndexError):
+                pass
+        return 0.0
+
+    def _build_cannot_buy_reason(self, result: RIBResult) -> str:
+        """根据当前状态生成"为什么现在不能买"（§29）。"""
+        state = result.state
+        imp = result.impulse
+        base = result.base
+        bo = result.breakout
+
+        if state in (STATE_FAILED_REVERSAL, STATE_FAILED_BREAKOUT,
+                     STATE_FAILED_PULLBACK, STATE_INVALIDATED):
+            return result.conclusion
+
+        if state == STATE_DOWNTREND:
+            if result.downtrend and \
+                    result.downtrend.score < self.cfg.get("downtrend", {}).get("score_min", 65):
+                return (f"长期下跌结构强度不足（{result.downtrend.score:.0f}<65），"
+                        "尚未形成潜在反转背景，只能放入候选池。")
+            return ("尚未出现有效的第一波反转，当前仍处于下跌趋势，"
+                    "等待第一波放量反转信号（IMPULSE_RETURN≥15%）。")
+
+        if state == STATE_IMPULSE_ACTIVE:
+            return ("第一波上涨尚未结束，第一波高点未确认，"
+                    "此时介入属于追第一波，违背模型核心原则（不买第一波）。")
+
+        if state == STATE_IMPULSE_PEAK:
+            return ("第一波上涨刚结束，尚未形成有效 POST_IMPULSE_BASE，"
+                    "必须等待 5~20 日缩量强势平台形成。")
+
+        if state == STATE_POST_IMPULSE_BASE:
+            if imp:
+                return (f"平台尚未突破第一波高点{imp.impulse_high:.2f}，"
+                        "当前仍属于等待确认阶段，必须等待放量突破（量比≥1.3+收盘站上）。")
+            return "平台形成中，尚未突破第一波高点，等待放量突破确认。"
+
+        if state == STATE_PRE_BREAKOUT:
+            if result.pre_breakout and result.pre_breakout.is_pre_breakout:
+                p = result.pre_breakout
+                if p.expired:
+                    return ("成熟平台已超过10日仍未突破（EXPIRED），"
+                            "信号过期，等待重新评估平台或新结构。")
+                return (f"平台已成熟（PB分{p.score:.0f}/{p.grade}），"
+                        f"但尚未放量突破触发价{p.trigger_price:.2f}。"
+                        "下一步：放量突破+收盘站稳+无明显长上影；"
+                        f"触发后不追涨，等待第一次缩量回踩{p.trigger_price:.2f}附近，"
+                        "回踩不破再等重新加速。")
+            return ("平台内部已转强但尚未突破第一波高点，"
+                    "等待放量突破确认（收盘价+0.3ATR 且量比≥1.3）。")
+
+        if state == STATE_SECOND_LEG_BREAKOUT:
+            return ("第二波突破已完成但尚未出现第一次健康回踩，"
+                    "等待 1~5 日缩量回踩（优选2~3日），不追突破。")
+
+        if state == STATE_FIRST_PULLBACK:
+            return ("第一次回踩正在进行，尚未确认关键位承接，"
+                    "等待回踩缩量且收盘重新站回关键支撑。")
+
+        if state == STATE_PULLBACK_SUPPORT:
+            return ("回踩关键位已获承接，但尚未重新放量突破回踩高点，"
+                    "等待 RE_ACCELERATION 确认（量比≥1.1+收盘位置≥0.75）。")
+
+        if state == STATE_RE_ACCELERATION:
+            return ("二次启动已确认，但尚未完全满足 PRIMARY_BUY 条件"
+                    "（盈亏比≥2 / 市场非BEAR / 无追高/结构风险）。")
+
+        return result.conclusion
 
     def _scan_for_impulse(self, df: pd.DataFrame, end_idx: int) -> Optional[ImpulseResult]:
         """从 end_idx 往回扫描，寻找最近的第一波反转。

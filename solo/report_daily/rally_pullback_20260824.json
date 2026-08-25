@@ -1,0 +1,39 @@
+{
+  "trade_date": "20260824",
+  "market_score": 36,
+  "regime": "Bear",
+  "signals": [
+    {
+      "ts_code": "600326.SH",
+      "name": "西藏天路",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 70.4621950261988,
+      "rally_amplitude": 0.31034482758620685,
+      "rally_vol_expansion": 3.2211869327879565,
+      "rally_limit_up_count": 2,
+      "rally_max_consecutive_lu": 1,
+      "rally_high_date": "20260810",
+      "drawdown": 0.15191387559808608,
+      "pullback_days": "10",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.005698005698005577,
+      "candle_body_pct": 0.015759312320916822,
+      "subs": {
+        "vol_expansion": 29.812195026198793,
+        "limit_up": 7.5,
+        "pullback": 16.400000000000002,
+        "candle": 12.750000000000002,
+        "volume_confirm": 4.0
+      },
+      "ref_price": 7.09,
+      "stop_loss": 6.51,
+      "take_profit": 8.26,
+      "atr": 0.39,
+      "stock_type": "中性",
+      "suggestion": "谨慎参与（大盘主跌，市场风险偏高，注意仓位管理）"
+    }
+  ]
+}

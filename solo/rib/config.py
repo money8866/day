@@ -64,6 +64,97 @@ RIB_CONFIG = {
     "max_impulse_search": 60,       # 第一波搜索窗口
 
     # ═══════════════════════════════════════════════════
+    # V2.1 配置（在 V2.0 基础上修订）
+    # ═══════════════════════════════════════════════════
+    "v2": {
+        # ── BUY_READINESS 状态上限 (V2.1 §23) ──
+        "readiness_caps": {
+            "DOWNTREND": 30,
+            "REVERSAL_SETUP": 45,
+            "IMPULSE_ACTIVE": 50,
+            "IMPULSE_PEAK": 55,
+            "POST_IMPULSE_BASE": 80,
+            "PRE_BREAKOUT": 85,
+            "SECOND_LEG_BREAKOUT": 88,
+            "FIRST_PULLBACK": 90,
+            "PULLBACK_SUPPORT": 95,
+            "RE_ACCELERATION": 100,
+            "PRIMARY_BUY": 100,
+        },
+        # ── BUY_READINESS 组合权重 (§12) ──
+        "readiness_weights": {
+            "structure": 0.30,     # 结构完整度
+            "next_state": 0.25,    # 下一状态接近程度
+            "vol_price": 0.15,     # 量价条件
+            "support": 0.10,       # 支撑质量
+            "market": 0.10,        # 市场环境
+            "risk_reward": 0.10,   # 风险收益比
+        },
+        # ── 三层交易池门槛 ──
+        "pool_now_min": 85,
+        "pool_next_min": 70,
+        "pool_watch_min": 50,
+        "now_structure_risk_max": 35,   # NOW 要求结构风险<35 (V2.1 §25)
+        # ── PRE_BREAKOUT 平台成熟度标准 (V2.1 §10) ──
+        "pre_breakout": {
+            "min_days": 7,             # 平台>=7日
+            "min_quality": 75,         # BASE_QUALITY>=75
+            "close_to_impulse_atr": 1.0,   # Close距ImpulseHigh<=1.0ATR
+            "basehigh_to_impulse_atr": 0.8,  # BaseHigh距ImpulseHigh<=0.8ATR
+            "min_vol_shrink": 0.9,     # 平台成交量下降
+            "vol_contraction_days": 3, # 最近3~5日波动率收缩
+            "min_score": 75,           # PRE_BREAKOUT_SCORE>=75 才升级
+        },
+        # ── PRE_BREAKOUT_SCORE 权重 (V2.1 §13) ──
+        "pre_breakout_weights": {
+            "distance": 25,
+            "quality": 20,
+            "vol_shrink": 15,
+            "high_low": 10,
+            "ma20": 10,
+            "vol_contraction": 10,
+            "close_loc": 5,
+            "theme": 5,
+        },
+        # ── 触发距离五档分带 (V2.1 §11) ──
+        "distance_imminent": 0.3,
+        "distance_very_near": 0.7,
+        "distance_near": 1.0,
+        "distance_normal": 1.5,
+        "next_priority_distance_atr": 1.0,
+        # ── 过期机制 (V2.1 §33) ──
+        "breakout_aged_days": 5,       # 突破后>5日未回踩 -> BREAKOUT_AGED
+        "breakout_expired_days": 10,   # 突破后>10日未回踩 -> BREAKOUT_EXPIRED 重新寻找结构
+        "breakout_aged_penalty": 15,   # AGED 降低 BUY_READINESS
+        "pre_aged_days": 5,            # PRE_BREAKOUT>5日未突破 -> PRE_BREAKOUT_AGED
+        "pre_expired_days": 10,        # PRE_BREAKOUT>10日 -> EXPIRED 重新评估平台
+        "pre_aged_penalty": 10,        # AGED 降低 NEXT_SCORE
+        "downtrend_stale_days": 120,   # DOWNTREND 超时降优先级
+        # ── STRUCTURE_RISK 结构破坏评分 (§20) ──
+        "structure_risk_invalidate": 70,    # >=70 → INVALIDATED
+        "structure_risk_no_upgrade": 50,    # >=50 → 禁止升级/降池
+        # ── 避免追涨 (§22) ──
+        "chase_penalty_atr": 1.5,   # Close-ImpulseHigh>1.5ATR 降 BUY_READINESS
+        "chase_forbid_atr": 2.0,    # >2ATR 禁止 PRIMARY_BUY
+        "chase_penalty_max": 20,
+        # ── PriorityScore 权重 (V2.1 §37) ──
+        "priority_weights": {
+            "buy_readiness": 0.30,
+            "next_state": 0.25,
+            "structure_quality": 0.15,
+            "base_quality": 0.10,
+            "impulse": 0.10,
+            "market_align": 0.05,
+            "risk_reward": 0.05,
+        },
+        # ── 市场环境得分 (V2.1 §35) ──
+        "regime_scores": {
+            "bull": 100, "normal": 80, "recovery": 60,
+            "weak": 40, "bear": 20,
+        },
+    },
+
+    # ═══════════════════════════════════════════════════
     # 第一阶段：长期下跌识别
     # ═══════════════════════════════════════════════════
     "downtrend": {
