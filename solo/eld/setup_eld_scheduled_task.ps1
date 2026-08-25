@@ -1,11 +1,12 @@
 # ============================================================
-#   ELD V2 每日 17:00 自动任务 - Windows 任务计划程序安装脚本
+#   ELD V2 每日 19:40 自动任务 - Windows 任务计划程序安装脚本
+#   （19:30 run_all 生成主题映射后运行，确保微信推送能用当日映射）
 #   请以 管理员身份 运行 PowerShell 执行
 # ============================================================
 
 $ErrorActionPreference = "Continue"
 
-$TASK_NAME = "ELD_V2_Daily_1700"
+$TASK_NAME = "MyStock-ELD每日运行"
 $BAT_PATH = "D:\mystock\solo\eld\run_eld_daily.bat"
 $PYTHON_PATHS = @(
     "C:\Users\kongx\AppData\Local\Python\bin\python.exe",
@@ -71,10 +72,10 @@ $action = New-ScheduledTaskAction `
     -Argument "/c `"`"$BAT_PATH`"`"" `
     -WorkingDirectory $workDir
 
-# 交易日 = 周一 ~ 周五 17:00；非交易日时 Python 脚本内部会自动 skip
+# 交易日 = 周一 ~ 周五 19:40（19:30 run_all 生成主题映射后）；非交易日时 Python 脚本内部会自动 skip
 $trigger = New-ScheduledTaskTrigger `
     -Weekly `
-    -At "17:00" `
+    -At "19:40" `
     -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
 
 $settings = New-ScheduledTaskSettingsSet `
@@ -92,7 +93,7 @@ $principal = New-ScheduledTaskPrincipal `
 
 Register-ScheduledTask `
     -TaskName $TASK_NAME `
-    -Description "ELD V2 中报预增股池每日 17:00 自动运行（周一~周五），非交易日自动跳过。含评分、报告生成、微信推送。" `
+    -Description "ELD V2 中报预增股池每日 19:40 自动运行（周一~周五），非交易日自动跳过。含评分、报告生成、微信推送（依赖 19:30 run_all 生成的当日主题映射）。" `
     -Action $action `
     -Trigger $trigger `
     -Settings $settings `
@@ -108,7 +109,7 @@ if ($task) {
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "任务名称  : $TASK_NAME" -ForegroundColor Cyan
-    Write-Host "运行时间  : 周一 ~ 周五 17:00" -ForegroundColor Cyan
+    Write-Host "运行时间  : 周一 ~ 周五 19:40（run_all 19:30 生成主题映射之后）" -ForegroundColor Cyan
     Write-Host "启动脚本  : $BAT_PATH" -ForegroundColor Cyan
     Write-Host "Python    : $pythonExe" -ForegroundColor Cyan
     Write-Host ""

@@ -1,7 +1,8 @@
 @echo off
 REM ============================================================
 REM   ELD V2 Daily Run Script
-REM   Called by Windows Task Scheduler at 17:00 every weekday
+REM   Called by Windows Task Scheduler at 19:40 every weekday
+REM   (after run_all 19:30 generates theme_stock_map_v2)
 REM ============================================================
 
 setlocal
