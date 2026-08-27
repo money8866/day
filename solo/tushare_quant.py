@@ -8,6 +8,8 @@ import os
 import struct
 import sys
 
+from sqlalchemy import true
+
 # =========================
 # Windows GBK 控制台输出修复：强制 UTF-8 编码
 # =========================
@@ -5426,7 +5428,7 @@ def _call_glm(prompt, use_flash=False):
         "Content-Type": "application/json"
     }
     # 模型选择：flash=免费快速，否则=旗舰深度
-    model = "glm-5.2"
+    model = "GLM-5.3-Flash"
 
     data = {
         "model": model,
@@ -5434,16 +5436,8 @@ def _call_glm(prompt, use_flash=False):
             {
                 "role": "system",
                 "content": (
-                    "你是A股顶级投资分析师，必须调用联网搜索工具补充实时信息。\n"
+                    "你是A股顶级投资分析师，必须调用联网搜索工具分析个股风险事件，如有风险的必须给出警告。\n"
                     "【效率优先-绝对不能超时】严格控制联网搜索次数，总搜索次数控制在5次以内，绝不超过。\n"
-                    "- 重点核查对象：突破股池前3名 + 量能爆发池强买信号股 +ETF成份股，每只最多1次搜索\n"
-                    "- 其他股票（突破股池4-10名）：不单独联网搜索，直接输出'风险舆情：数据待补充'，把搜索配额留给重点股\n"
-                    "【最高优先级-数据边界严格隔离】\n"
-                    "- 第3部分【今日突破股池分析】只能使用'**【今日突破股池】**'和'**【今日突破股池到此为止】**'两个标记之间的股票\n"
-                    "- 严禁把ETF数据区的成份股、量能爆发池的股票、中线股池的B浪信号股混入突破股池分析\n"
-                    "- 第5部分【量能爆发池】只能使用'🔥 量能爆发·强买信号/观察信号/蓄势大涨'段落中的股票\n"
-                    "- 第4/6部分【ETF】只能使用ETF数据区的成份股\n"
-                    "- 各模块股票不得交叉混用，每个模块只分析本模块数据区的股票\n"
                 )
             },
             {"role": "user", "content": prompt}
@@ -8334,6 +8328,58 @@ def run(target_date=None, simple_mode=False):
     if rally_pullback_v7_text:
         print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
 
+    def _load_right_confirm_buy_v8(trade_date: str) -> str:
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"right_confirm_buy_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"right_confirm_buy_{trade_date}.json"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            signals = d.get("signals") or []
+            buy = [s for s in signals if s.get("signal_level") in ("S", "A")]
+            watch = [s for s in signals if s.get("signal_level") == "B"][:5]
+            if not buy and not watch:
+                return ""
+
+            def _f2(v):
+                try:
+                    return f"{float(v):.2f}"
+                except (TypeError, ValueError):
+                    return "-"
+
+            lines = [
+                "【V8右侧确认池】",
+                f"数据来源：market_regime_v3 RIGHT CONFIRM BUY（{d.get('trade_date', trade_date)}，"
+                f"市场分{d.get('market_score', '-')}，环境{d.get('regime', '-')}）",
+            ]
+            for s in buy:
+                lines.append(
+                    f"【{s.get('signal_level', '-')}｜可参与】{s.get('name', '-')}({s.get('ts_code', '-')}) "
+                    f"综合分:{float(s.get('final_score') or 0):.1f} | 确认:{'、'.join(s.get('confirm_signals') or [])} | "
+                    f"确认价:{_f2(s.get('confirm_price'))} 安全介入:{_f2(s.get('safe_entry'))} "
+                    f"止损:{_f2(s.get('stop_loss'))} | {s.get('t1_confirm_advice') or s.get('summary') or ''}"
+                )
+            for s in watch:
+                lines.append(
+                    f"【B｜等待确认】{s.get('name', '-')}({s.get('ts_code', '-')}) "
+                    f"综合分:{float(s.get('final_score') or 0):.1f} | 已有:{'、'.join(s.get('confirm_signals') or [])} | "
+                    f"确认价:{_f2(s.get('confirm_price'))} 止损:{_f2(s.get('stop_loss'))} | "
+                    f"{s.get('t1_confirm_advice') or s.get('summary') or ''}"
+                )
+            return "\n".join(lines)
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[V8右侧确认] 加载失败: {e}")
+            return ""
+
+    right_confirm_buy_v8_text = _load_right_confirm_buy_v8(TRADE_DATE)
+    if right_confirm_buy_v8_text:
+        print("[V8右侧确认] 已加载买入级与等待确认级信号")
+
     # =========================
     # ELD 业绩预增买点 TOP3（读取 eld 每日评分报告 V2 前三，追加为报告最后一段）
     # =========================
@@ -8585,13 +8631,15 @@ TOP2：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
 TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
 
-8、**【V7 拉升回调买点】**（20日内放量+≥2次涨停拉升 -> 回撤5%~20%洗盘 -> 当日低开阳线承接买入，总分≥60）：
+8、**【V7 严格拉升回调买点】**（仅适用于主板大市值、20日内放量且至少两涨停、回撤后当日低开阳线承接的窄形态策略）：
 {rally_pullback_v7_text}
-（【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票，严禁从其它数据区读取股票填入本段；若该段落为空则提示"今日无V7拉升回调买点信号"。
-【输出要求-第8段】按总分从高到低逐只输出，**每只股票之间空一行（加一个空行分隔），便于手机阅读**，每只一行力求精简，严格引用引擎给出的价位，禁止改判：
-名称：代码, 总分xx, 拉升xx%(涨停x次/最大连板x), 回撤xx%回调x天, 当日低开阳线(低开x.x%), 买点:参考价xx, 止损xx, 止盈xx, 建议xxx
-若"建议"字段含"观望/伺机而动"字样，须原样保留该建议，不得美化成可买入；只有建议明确含"买入"字样才输出✅可买标记。
-止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。）
+（【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票；若该段落为空则提示"今日无V7严格拉升回调买点信号"。该策略不是当日全市场强势股清单。）
+【输出要求-第8段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
+
+9、**【V8 右侧确认信号】**（前期启动后健康回调并重新转强；S/A 为可参与级，B 为等待确认级，不得将 B 写成买入）：
+{right_confirm_buy_v8_text}
+（【数据边界】本段只分析上方"【V8右侧确认池】"标记后列出的股票。S/A 需严格按确认价和止损执行；B 仅跟踪次日确认，不得提前买入。）
+【输出要求-第9段】按原始分级与顺序逐只输出，S/A 标明“可参与”，B 标明“等待确认”；严格引用确认价、安全介入价和止损价，不得新增或修改买卖结论。
 
 ------------------
 以上全局格式要求：
@@ -8610,7 +8658,8 @@ TOP3：名称/代码, 评分, 距MA20=+x.x%, 主题, MACD信号
             f.write(prompt)
         print(f"[DEBUG] Prompt已保存: {prompt_file}")
         #report = deepseek(prompt)
-        report = deepseek(prompt, use_flash=False)
+        report = deepseek(prompt, use_flash=True)
+        
         print(report)
 
         try:

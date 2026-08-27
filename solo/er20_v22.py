@@ -134,6 +134,9 @@ class V22Config:
         'conf_watch': 50.0,
         'overheat_pullback': 25.0,   # 透支>25 → WAIT_PULLBACK
     }
+    # ── T3_RECLAIM 屏蔽开关：2025H1 全量证据 fwd20 超额 -3.05%/胜率31%(n=77)，
+    #    唯一系统性亏损触发段 → 不入任何 BUY，降级 WAIT/WATCH 观察 ──
+    T3_RECLAIM_BLOCK = True
     NEXT5 = {
         'limit': 2,
         'alpha': 0.35,
@@ -156,6 +159,8 @@ class V22Config:
         'max_hold': 8,                # 重点持仓 5~8 只
         'theme_cap': 0.30,            # 同主题总仓位 ≤30%
     }
+    # ── 冲高兑现执行模板（V2.2 落地, 与 backtest SPIKE_TARGET/SPIKE_STOP 保持一致） ──
+    SPIKE = {'target': 0.05, 'stop': 0.08, 'max_hold': 5}
 
 
 class SeptemberConfig:
@@ -674,6 +679,11 @@ def grade_v22(alpha, ees, ts, ttype, risk, overheat, conf, fq, rqs,
         if alpha >= g['watch_alpha']:
             return 'WAIT_PULLBACK', 'T1突破不追，等回踩'
         return 'WATCH', 'T1突破不追'
+    # ── T3_RECLAIM 屏蔽（2025H1 全量证据：唯一系统性亏损触发段）→ 不入 BUY，降级观察 ──
+    if V22Config.T3_RECLAIM_BLOCK and ttype == 'T3_RECLAIM':
+        if alpha >= g['watch_alpha']:
+            return 'WAIT_CONFIRM', 'T3收复屏蔽，降级观察'
+        return 'WATCH', 'T3收复屏蔽'
     # ── CORE_BUY ──
     if (alpha >= g['core_alpha'] and ees >= g['core_ees'] and ts >= g['core_ts']
             and risk <= g['core_risk'] and conf >= g['core_conf']
@@ -1171,6 +1181,15 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
                              f"ER20次日分={r['next5_score']:.1f} | EES={r['ees']:.0f} | "
                              f"买点={bp} | EGPT诊断={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
+    # 冲高兑现执行模板（V2.2 落地, 2025H1 全量回测校准, 参数见 V22Config.SPIKE）
+    sp = V22Config.SPIKE
+    lines.append(f'### 执行模板（冲高兑现模式 · 持有上限 T+{sp["max_hold"]}）')
+    lines.append(f'- 入场: 次日开盘限价买入；开盘价 > 前收×1.08 视为不可执行，放弃')
+    lines.append(f'- 兑现: 挂单价 = 成本×(1+{sp["target"]:.0%})，当日盘中触及即成交，挂单全程有效')
+    lines.append(f'- 止损: 收盘较成本 -{sp["stop"]:.0%} 当日收盘离场，不等次日')
+    lines.append(f'- 到期: T+{sp["max_hold"]} 未触发冲高且未止损，收盘清仓，不展期')
+    lines.append('- 依据: 2025H1 全量回测——close 持有范式各窗口超额为负，alpha 集中于'
+                 '日内冲高兑现（Top2 净超额+3.25%/胜率81%）；T3_RECLAIM 已屏蔽降级观察')
     lines.append('')
 
     # 【3B. FILTER POOL 过滤线观察池】双模式之二

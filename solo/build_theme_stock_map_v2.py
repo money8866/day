@@ -220,6 +220,19 @@ THEME_STOCK_OVERRIDES = {
     '工业金属': ['601168.SH'],   # 西部矿业（铜铅锌多金属矿）
 }
 
+# 主题主营业务必要词过滤：成份股主营文本必须包含列表中至少一个词，
+# 否则视为"行业溢出/概念碰瓷"剔除。
+# 背景：量子计算等主题的 sw_industry_match 为一级行业（计算机/通信/电子），
+# 粒度过粗——楚天龙(智能卡)凭"通信设备"行业通过 Industry Gate 混入量子计算；
+# 东财宽泛概念板块（如"量子科技"含抗量子密码卡片厂商）进一步放大误入。
+# 豁免（人工核验名单，不做主营检查）：
+#   - leader/core 公司（match 阶段已 force include）
+#   - 代码是主题精确概念板块成员（东财概念名与配置 concept 完全一致的直接证据）
+#   - manual_override 补漏股票
+THEME_MAINBIZ_REQUIRED = {
+    '量子计算': ['量子'],
+}
+
 # 主题互斥对
 THEME_MUTEX_PAIRS = [
     ('AI算力', '游戏'),
@@ -272,6 +285,18 @@ def build_theme_stock_map_v2():
         with open(mainbiz_path, 'r', encoding='utf-8') as f:
             stock_mainbiz = json.load(f)
         print(f"  主营业务数据: {len(stock_mainbiz)} 只")
+
+    # 精确概念板块成员索引（概念名 -> {code,...}）：主营必要词过滤的豁免依据
+    dc_concept_members_exact = {}
+    if dc_df is not None and not dc_df.empty:
+        for _, _r in dc_df.iterrows():
+            try:
+                if not bool(_r.get('is_industry', False)):
+                    _b = str(_r['concept_name']).strip()
+                    if _b:
+                        dc_concept_members_exact.setdefault(_b, set()).add(_r['con_code'])
+            except Exception:
+                continue
 
     sw_data = theme_ts.get_sw_members()
     ths_data = theme_ts.get_ths_members()
@@ -390,6 +415,40 @@ def build_theme_stock_map_v2():
 
         stock_list.sort(key=lambda x: -x.get('irs_score', x.get('score', 0)))
         themes_output_raw[theme_name] = stock_list
+
+    # 4a.45 主营业务必要词过滤（成份股纯度治理）
+    # 行业Gate基于一级行业时粒度过粗，会造成行业溢出（如智能卡厂商凭
+    # "通信设备"混入量子计算）。此处要求主营文本含必要词，否则剔除。
+    if THEME_MAINBIZ_REQUIRED:
+        _force_via = ('leader_company', 'core_company', 'manual_override')
+        for _theme, _req_words in THEME_MAINBIZ_REQUIRED.items():
+            if _theme not in themes_output_raw:
+                continue
+            _cfg = old_format_themes.get(_theme, {})
+            _exempt_names = set(_cfg.get('core_companies', [])) | set(_cfg.get('leader_companies', []))
+            _concept_boards = [b.strip() for b in _cfg.get('concept', [])]
+            _kept, _dropped = [], []
+            for s in themes_output_raw[_theme]:
+                code, name = s['code'], s['name']
+                via = s.get('via', '')
+                # 豁免1：人工核验名单
+                if via in _force_via or name in _exempt_names:
+                    _kept.append(s)
+                    continue
+                # 豁免2：主题精确概念板块直接成员（如"量子通信"板块成员，
+                # 区别于宽泛的"量子科技"板块）
+                if any(code in dc_concept_members_exact.get(b, set())
+                       for b in _concept_boards):
+                    _kept.append(s)
+                    continue
+                mb_text = stock_mainbiz.get(code, '')
+                if mb_text and any(w in mb_text for w in _req_words):
+                    _kept.append(s)
+                    continue
+                _dropped.append(f"{name}({via}, 主营无[{','.join(_req_words)}])")
+            if _dropped:
+                print(f"  [主营必要词] {_theme}: 剔除 {len(_dropped)} 只 -> {'; '.join(_dropped[:8])}{'...' if len(_dropped) > 8 else ''}")
+            themes_output_raw[_theme] = _kept
 
     # 4a.5 人工补漏映射：match_theme_stocks 未能覆盖的明确成份股强制纳入对应主题
     if THEME_STOCK_OVERRIDES:

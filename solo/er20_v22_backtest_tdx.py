@@ -53,6 +53,13 @@ SEASONS = {
     '2025H1': {'period': '20250630', 'q1': '20250331', 'lo': '20250701', 'hi': '20251031', 'north': '20250630', 'fwd': 20},
     '2026H1': {'period': '20260630', 'q1': '20260331', 'lo': '20260701', 'hi': '20261231', 'north': None, 'fwd': 6},
 }
+# close-based 前瞻窗口族: 5/10 为短线锚, 15/20/30 为中线网格(PEA-Absorption 验证用)
+FWD_HORIZONS = (5, 10, 15, 20, 30)
+# 持有期×规模效应网格的 TopN 候选(2=现行生产基线, 其余为 PEA 策略备选规模)
+GRID_TOPN = (2, 3, 5, 8)
+# 冲高兑现(spike cashout)参数: 限价挂单模型, 挂单价触及即成交(不按盘中最高价计, 保守口径)
+SPIKE_TARGET = 0.05   # 挂单兑现价 = 入场价 × (1+5%), 当日最高≥挂单价视为成交
+SPIKE_STOP = 0.08     # 收盘价较入场价浮亏 -8% 则当日收盘止损离场
 PERIOD = SEASONS['2025H1']['period']
 Q1_PERIOD = SEASONS['2025H1']['q1']
 ANN_LO, ANN_HI = SEASONS['2025H1']['lo'], SEASONS['2025H1']['hi']
@@ -505,6 +512,9 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
         'max5_ret_net': np.nan, 'close5_ret_net': np.nan, 'max5_excess_net': np.nan,
         'cost_rt_pct': np.nan, 'participation': np.nan,
         'entry_date': None, 'entry_price': np.nan, 'entry_executable': 0,
+        'spike_exit_ret': np.nan, 'spike_exit_net': np.nan,
+        'spike_excess': np.nan, 'spike_excess_net': np.nan,
+        'spike_exit_day': np.nan, 'spike_exit_type': 'no_entry',
     }
     if s_idx + 1 >= len(daily):
         return out
@@ -535,6 +545,34 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
     if len(window) >= 5:
         gc5 = float(window.iloc[4]['close']) / entry_price
         out['close5_ret_net'] = round((gc5 * (1.0 - sell_frac) / (1.0 + buy_frac) - 1.0) * 100, 2)
+    # ── 冲高兑现(spike cashout)逐日模拟: T+1 开盘入场, 挂单价+5%冲高兑现,
+    #    收盘浮亏-8%止损, T+5(或窗口末)未触发按收盘清仓. 同日先判冲高(限价单触及即成交)后判止损 ──
+    exit_price, exit_day, exit_type = None, None, None
+    if int(out['entry_executable']) == 1:
+        tgt = entry_price * (1.0 + SPIKE_TARGET)
+        stp = entry_price * (1.0 - SPIKE_STOP)
+        last_day = len(window)
+        for d in range(len(window)):
+            row_d = window.iloc[d]
+            o, h, c = float(row_d['open']), float(row_d['high']), float(row_d['close'])
+            if o >= tgt:
+                exit_price, exit_day, exit_type = o, d + 1, 'spike'
+                break
+            if h >= tgt:
+                exit_price, exit_day, exit_type = tgt, d + 1, 'spike'
+                break
+            if c <= stp:
+                exit_price, exit_day, exit_type = c, d + 1, 'stop'
+                break
+            if d == last_day - 1:
+                exit_price, exit_day, exit_type = c, d + 1, 'expire'
+        if exit_price is not None:
+            out['spike_exit_ret'] = round((exit_price / entry_price - 1.0) * 100, 2)
+            out['spike_exit_day'] = exit_day
+            out['spike_exit_type'] = exit_type
+    if pd.notna(out.get('spike_exit_ret')):
+        ge = exit_price / entry_price
+        out['spike_exit_net'] = round((ge * (1.0 - sell_frac) / (1.0 + buy_frac) - 1.0) * 100, 2)
     bench = bench_full[bench_full['trade_date'].astype(str) == str(scan_date)]
     if not bench.empty:
         bi = bench.index[0]
@@ -543,13 +581,21 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
             b5 = (float(bench_full.iloc[bi + 5]['close']) / bbase - 1.0) * 100
             out['max5_excess'] = round(out['max5_ret'] - b5, 2)
             out['max5_excess_net'] = round(out['max5_ret_net'] - b5, 2)
+        # 冲高兑现超额: 按实际退出日对齐基准(持有天数逐笔一致)
+        if pd.notna(out.get('spike_exit_ret')):
+            bd = bi + int(out['spike_exit_day'])
+            if bd < len(bench_full):
+                b_exit = (float(bench_full.iloc[bd]['close'])
+                          / float(bench_full.iloc[bi]['close']) - 1.0) * 100
+                out['spike_excess'] = round(out['spike_exit_ret'] - b_exit, 2)
+                out['spike_excess_net'] = round(out['spike_exit_net'] - b_exit, 2)
     return out
 
 
 def fwd_returns(daily, s_idx, bench_full, scan_date):
     out = {}
     base = float(daily.iloc[s_idx]['close'])
-    for h in (5, 10, 20):
+    for h in FWD_HORIZONS:
         if s_idx + h < len(daily):
             out[f'fwd{h}'] = round((float(daily.iloc[s_idx + h]['close']) / base - 1) * 100, 2)
         else:
@@ -577,7 +623,7 @@ def fwd_returns(daily, s_idx, bench_full, scan_date):
     if not b.empty:
         bi = b.index[0]
         # 超额收益按各自窗口独立计算: 进行中季节没有完整 fwd20 窗口也不能吞掉 fwd5x/fwd10x
-        for h in (5, 10, 20):
+        for h in FWD_HORIZONS:
             x = out.get(f'fwd{h}')
             if pd.notna(x) and bi + h < len(bench_full):
                 bh = (float(bench_full.iloc[bi + h]['close'])
@@ -660,6 +706,69 @@ def summarize(bt, tag, group_col, key_cols=('fwd5x', 'fwd10x', 'fwd20x')):
                 continue
             parts.append(f'{k[:5]} {s.mean():+.2f}%/{((s > 0).mean() * 100):.0f}%')
         print(' | '.join(parts))
+
+
+def holding_grid(bt2, vname, rank_col, eligible):
+    """持有期×规模效应网格(PEA-Absorption 验证).
+    对 N∈GRID_TOPN 按现行 TopN 规则(含 second_gap 收缩)从 eligible 选信号,
+    统计各 close-based 窗口的超额收益/胜率/选股增量. 复用同一轮评分, 零重复扫描.
+    覆盖率(coverage)显式披露: 进行中季节长窗口会自然截断, 均值仅代表已完结样本."""
+    rows = []
+    if eligible.empty:
+        return rows
+    gap = V22Config.FUSION['second_gap']
+    for n in GRID_TOPN:
+        sigcol = f'topN{n}_signal'
+        bt2[sigcol] = 0
+        for scan_date, grp in eligible.groupby('scan_date'):
+            keep = grp.sort_values(rank_col, ascending=False).head(n).index
+            if len(keep) >= 2 and float(grp.loc[keep[0], rank_col]) - \
+                    float(grp.loc[keep[1], rank_col]) > gap:
+                keep = keep[:1]
+            bt2.loc[keep, sigcol] = 1
+    pool_elig = bt2[bt2['rank_eligible']]
+    costs = bt2['cost_rt_pct'].dropna()
+    avg_cost = float(costs.mean()) if len(costs) else 0.60
+    for n in GRID_TOPN:
+        sel = bt2[bt2[f'topN{n}_signal'].eq(1)]
+        for h in FWD_HORIZONS:
+            col = f'fwd{h}x'
+            x = sel[col].dropna()
+            p = pool_elig[col].dropna()
+            mean_x = float(x.mean()) if len(x) else np.nan
+            lift = (mean_x - float(p.mean())) if (len(x) and len(p)) else np.nan
+            rows.append({
+                'variant': vname, 'topn': n, 'window': f'close{h}',
+                'n_signals': len(sel), 'n_valid': len(x),
+                'coverage': round(len(x) / len(sel), 3) if len(sel) else np.nan,
+                'excess_mean': round(mean_x, 2),
+                'excess_median': round(float(x.median()), 2) if len(x) else np.nan,
+                'win_rate': round(float((x > 0).mean()) * 100, 1) if len(x) else np.nan,
+                'pool_mean': round(float(p.mean()), 2) if len(p) else np.nan,
+                'lift_vs_pool': round(lift, 2) if pd.notna(lift) else np.nan,
+                'net_mean_est': round(mean_x - avg_cost, 2) if pd.notna(mean_x) else np.nan,
+                'avg_cost_assumed': avg_cost,
+            })
+        # spike cashout 维度: 与 close 系窗口并列, net_mean_est 用真实成本净超额(spike_excess_net)
+        x = sel['spike_excess'].dropna()
+        xn = sel['spike_excess_net'].dropna()
+        p = pool_elig['spike_excess'].dropna()
+        mean_x = float(x.mean()) if len(x) else np.nan
+        mean_xn = float(xn.mean()) if len(xn) else np.nan
+        lift = (mean_x - float(p.mean())) if (len(x) and len(p)) else np.nan
+        rows.append({
+            'variant': vname, 'topn': n, 'window': 'spike5',
+            'n_signals': len(sel), 'n_valid': len(x),
+            'coverage': round(len(x) / len(sel), 3) if len(sel) else np.nan,
+            'excess_mean': round(mean_x, 2),
+            'excess_median': round(float(x.median()), 2) if len(x) else np.nan,
+            'win_rate': round(float((x > 0).mean()) * 100, 1) if len(x) else np.nan,
+            'pool_mean': round(float(p.mean()), 2) if len(p) else np.nan,
+            'lift_vs_pool': round(lift, 2) if pd.notna(lift) else np.nan,
+            'net_mean_est': round(mean_xn, 2) if pd.notna(mean_xn) else np.nan,
+            'avg_cost_assumed': avg_cost,
+        })
+    return rows
 
 
 def grade_variant(row, vcfg):
@@ -773,8 +882,9 @@ def main():
     if not rows:
         print('无回测样本'); return
     bt = pd.DataFrame(rows)
-    for c in ('fwd5', 'fwd10', 'fwd20', 'fwd5x', 'fwd10x', 'fwd20x',
-              'fwd20_stop', 'fwd20_stop_x', 'stop_day'):
+    for c in tuple(f'fwd{h}' for h in FWD_HORIZONS) + \
+             tuple(f'fwd{h}x' for h in FWD_HORIZONS) + \
+             ('fwd20_stop', 'fwd20_stop_x', 'stop_day'):
         if c not in bt.columns:
             bt[c] = np.nan
 
@@ -817,6 +927,7 @@ def main():
         bt['alpha_inst'] = bt['alpha']
 
     # ── 规则变体：同一评分、不同分级门槛与触发限制 ──
+    grid_rows = []
     VARIANTS = {
         'base':   {'t1_cap': False, 'gate': {}},
         't1_cap': {'t1_cap': True,  'gate': {}},
@@ -864,24 +975,42 @@ def main():
         print(f'\n[{vname}] BUY 组 n={len(buy)}')
         summarize(buy, f'[{vname}] BUY', None)
         summarize(bt2[bt2['next5_signal'].eq(0)], f'[{vname}] 非Top2信号', None,
-                  key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
+                  key_cols=('max5_excess', 'max5_ret', 'close5_ret', 'spike_excess'))
         next5_buy = bt2[bt2['next5_signal'].eq(1)]
         print(f'\n[{vname}] next5 Top2 信号 n={len(next5_buy)}')
         summarize(next5_buy, f'[{vname}] next5 Top2(毛收益)', None,
-                  key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
+                  key_cols=('max5_excess', 'max5_ret', 'close5_ret', 'spike_excess'))
         if not next5_buy.empty:
             summarize(next5_buy, f'[{vname}] next5 Top2(扣成本)', None,
-                      key_cols=('max5_excess_net', 'max5_ret_net', 'close5_ret_net'))
+                      key_cols=('max5_excess_net', 'max5_ret_net', 'close5_ret_net', 'spike_excess_net'))
             c = next5_buy['cost_rt_pct'].dropna()
             pp = next5_buy['participation'].dropna()
             print(f"[{vname}] Top2 往返成本: 均值{c.mean():.2f}% 中位{c.median():.2f}% "
                   f"最大{c.max():.2f}% 最小{c.min():.2f}% | 成交额参与率均值{pp.mean():.2f}%")
+            tc = next5_buy['spike_exit_type'].value_counts()
+            sd = next5_buy.loc[next5_buy['spike_exit_type'].eq('spike'), 'spike_exit_day']
+            print(f"[{vname}] Top2 冲高兑现分布: {' '.join(f'{k}={v}' for k, v in tc.items())}"
+                  + (f" | spike成交日均值 T+{sd.mean():.1f}" if len(sd) else ''))
         # 止损对比（仅 BUY 组）
         if not buy.empty:
             s20 = buy['fwd20'].dropna()
             stp = buy['fwd20_stop'].dropna()
             print(f'[{vname}] BUY 止损对比: 持有T+20 超额均值{s20.mean():+.2f}% 胜率{(s20>0).mean()*100:.0f}%'
                    f' | -8%止损后 超额均值{stp.mean():+.2f}% 胜率{(stp>0).mean()*100:.0f}% 触发率{(buy["stop_day"]>0).mean()*100:.0f}%')
+        grid_rows.extend(holding_grid(bt2, vname, rank_col, eligible))
+
+    # ── 持有期×规模效应网格落盘 ──
+    if grid_rows:
+        gdf = pd.DataFrame(grid_rows)
+        grid_csv = os.path.join(REPORT_DIR, f'er20_v22_grid_{args.season}.csv')
+        gdf.to_csv(grid_csv, index=False, encoding='utf-8-sig')
+        print(f'\n[网格] 持有期×规模效应: {grid_csv} ({len(gdf)} 组合)')
+        for w in ('close15', 'close20', 'close30', 'spike5'):
+            piv = gdf[gdf['window'] == w].pivot_table(
+                index='variant', columns='topn', values='excess_mean', dropna=False)
+            if not piv.empty:
+                print(f'\n[{w} 超额均值%% (TopN×变体)]')
+                print(piv.round(2).to_string())
 
     print(f'\n[总样本] 用时 {time.time() - t0:.0f}s')
 

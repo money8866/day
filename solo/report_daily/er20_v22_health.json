@@ -1,0 +1,110 @@
+{
+  "status": "NORMAL",
+  "counters": {
+    "C1_signal_dry": {
+      "streak": 0,
+      "threshold": 2,
+      "hit": false
+    },
+    "C2_quality_decline": {
+      "streak": 0,
+      "threshold": 2,
+      "drop_pp_vs_baseline": 0.53,
+      "hit": false
+    },
+    "C3_spread_negative": {
+      "last_spread": 34.46,
+      "floor": 6.0,
+      "hit": false
+    }
+  },
+  "batches": [
+    {
+      "scan_date": "20260820",
+      "n_total": 443,
+      "n_eligible": 315,
+      "n_filter_pass": 0,
+      "pass_rate": 0.0,
+      "n_buy": 0,
+      "elig_fusion_mean": null,
+      "head_fusion_mean": null,
+      "head_pool_spread": null,
+      "buy_codes": []
+    },
+    {
+      "scan_date": "20260821",
+      "n_total": 506,
+      "n_eligible": 309,
+      "n_filter_pass": 182,
+      "pass_rate": 0.36,
+      "n_buy": 2,
+      "elig_fusion_mean": 44.01,
+      "head_fusion_mean": 80.63,
+      "head_pool_spread": 36.62,
+      "buy_codes": [
+        "贵航股份",
+        "平安银行"
+      ]
+    },
+    {
+      "scan_date": "20260822",
+      "n_total": 506,
+      "n_eligible": 309,
+      "n_filter_pass": 0,
+      "pass_rate": 0.0,
+      "n_buy": 2,
+      "elig_fusion_mean": 43.43,
+      "head_fusion_mean": 80.41,
+      "head_pool_spread": 36.98,
+      "buy_codes": [
+        "贵航股份",
+        "平安银行"
+      ]
+    },
+    {
+      "scan_date": "20260825",
+      "n_total": 507,
+      "n_eligible": 309,
+      "n_filter_pass": 0,
+      "pass_rate": 0.0,
+      "n_buy": 2,
+      "elig_fusion_mean": 50.13,
+      "head_fusion_mean": 82.02,
+      "head_pool_spread": 31.89,
+      "buy_codes": [
+        "物产金轮",
+        "中策橡胶"
+      ]
+    },
+    {
+      "scan_date": "20260826",
+      "n_total": 1331,
+      "n_eligible": 722,
+      "n_filter_pass": 413,
+      "pass_rate": 0.31,
+      "n_buy": 2,
+      "elig_fusion_mean": 48.56,
+      "head_fusion_mean": 82.83,
+      "head_pool_spread": 34.27,
+      "buy_codes": [
+        "贵航股份",
+        "中策橡胶"
+      ]
+    },
+    {
+      "scan_date": "20260827",
+      "n_total": 1331,
+      "n_eligible": 722,
+      "n_filter_pass": 425,
+      "pass_rate": 0.319,
+      "n_buy": 2,
+      "elig_fusion_mean": 49.6,
+      "head_fusion_mean": 84.06,
+      "head_pool_spread": 34.46,
+      "buy_codes": [
+        "天桥起重",
+        "中策橡胶"
+      ]
+    }
+  ]
+}
