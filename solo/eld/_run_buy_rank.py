@@ -120,6 +120,9 @@ def rr_score_map(rr1: float) -> float:
 # 市场环境（由 ELD 报告 JSON 的 market_regime 字段注入，默认 NEUTRAL）
 market_regime: str = "NEUTRAL"
 
+# 治理红旗名单（ts_code -> [风险描述]），运行时由 main() 注入
+red_flag_map: dict[str, list[str]] = {}
+
 
 def load_market_regime(trade_date: str) -> str:
     """从 ELD V2 报告 JSON 读取 market_regime（BULL/NEUTRAL/RECOVERY/WEAK/BEAR）。"""
@@ -138,6 +141,54 @@ def load_market_regime(trade_date: str) -> str:
     except Exception as exc:
         logger.warning("读取市场环境失败(%s)，默认 NEUTRAL", exc)
         return "NEUTRAL"
+
+
+def load_red_flags(trade_date: str) -> dict[str, list[str]]:
+    """读取治理红旗名单：优先 eld_red_flags_<date>.csv，回退静态 eld_red_flags.csv。
+
+    列: ts_code,risk_type,risk_desc。同一 ts_code 多行记录合并为多条描述。
+    """
+    import csv
+
+    flag_path = REPORT_DIR / f"eld_red_flags_{trade_date}.csv"
+    if not flag_path.exists():
+        flag_path = REPORT_DIR / "eld_red_flags.csv"
+    if not flag_path.exists():
+        return {}
+    mapping: dict[str, list[str]] = {}
+    try:
+        with open(flag_path, encoding="utf-8-sig", newline="") as fh:
+            for rec in csv.DictReader(fh):
+                ts = _s(rec.get("ts_code")).strip()
+                rtype = _s(rec.get("risk_type")).strip()
+                desc = _s(rec.get("risk_desc")).strip()
+                label = f"{rtype}：{desc}" if (rtype and desc) else (rtype or desc or "治理红旗")
+                if ts:
+                    mapping.setdefault(ts, []).append(label)
+    except Exception as exc:
+        logger.warning("读取治理红旗失败(%s)，忽略 %s", exc, flag_path.name)
+        return {}
+    if mapping:
+        logger.info("治理红旗已加载: %d 只标的 / %d 条 (%s)",
+                    len(mapping), sum(len(v) for v in mapping.values()), flag_path.name)
+    return mapping
+
+
+def compress_position(pos: str) -> str:
+    """治理红旗仓位压缩：区间上下限各减半（12-16% -> 6-8%，<=10% -> ≤5%）。"""
+    p = (pos or "").strip().rstrip("%")
+    if not p or p == "0":
+        return "0%"
+    try:
+        if p.startswith("<="):
+            return f"≤{max(1.0, float(p[2:]) / 2):.0f}%"
+        parts = [x for x in p.split("-") if x]
+        if len(parts) >= 2:
+            lo, hi = float(parts[0]), float(parts[1])
+            return f"{max(1.0, lo / 2):.0f}-{hi / 2:.0f}%"
+        return f"≤{max(1.0, float(parts[0]) / 2):.0f}%"
+    except ValueError:
+        return "≤5%"
 
 
 def _f(val, default: float = 0.0) -> float:
@@ -201,6 +252,7 @@ class V3Result:
     # 诊断
     notes: list[str] = field(default_factory=list)
     veto: list[str] = field(default_factory=list)
+    redflags: list[str] = field(default_factory=list)
     # B榜触发模拟（NEXT/PROBE 升级路径）
     trigger_condition: str = ""
     trigger_price: float = 0.0
@@ -208,6 +260,7 @@ class V3Result:
     proj_position: str = "0%"
     proj_buy: float = 0.0
     proj_alpha: float = 0.0
+    proj_alpha_rr1: float = 0.0
 
 
 # ══════════════════════════════════════════════════════════════
@@ -229,8 +282,11 @@ def load_candidates(trade_date: str) -> pd.DataFrame:
     # 过滤 ST/*ST（不交易风险警示股）
     before = len(df)
     df = df[~df["name"].astype(str).str.upper().str.contains("ST", na=False)]
-    logger.info("候选池: %d 只 (来源 %s，剔除 ST %d 只)",
-                len(df), path.name, before - len(df))
+    # 过滤北交所（920/8/4 开头，用户不做北交所）
+    n_bse = len(df)
+    df = df[~df["ts_code"].astype(str).str.match(r"^(92[0-9]{4}|[84][0-9]{5})\.BJ$", na=False)]
+    logger.info("候选池: %d 只 (来源 %s，剔除 ST %d 只 + 北交所 %d 只)",
+                len(df), path.name, before - len(df), n_bse - len(df))
     return df
 
 
@@ -1091,6 +1147,12 @@ def score_stock(row: pd.Series, d: pd.DataFrame) -> V3Result:
     market = MARKET_POSITION.get(market_regime, MARKET_POSITION["NEUTRAL"])
     pos_primary, pos_probe_a, pos_probe_b, pos_probe_c = market
 
+    # 治理红旗：附标签、记入 notes（禁 PRIMARY，PROBE 仓位上限压缩）
+    flags = red_flag_map.get(ts_code, [])
+    if flags:
+        r.redflags = list(flags)
+        r.notes.append(f"⚠治理红旗: {'；'.join(flags)}")
+
     # ── V5 交易状态机（第二十二~二十七节）──
     # RR1 < 1.0: 无论评分多高，直接 WATCH（第十四/十五节）
     if r.rr1 < 1.0:
@@ -1107,7 +1169,7 @@ def score_stock(row: pd.Series, d: pd.DataFrame) -> V3Result:
     # 且 T1_CONFIRM / T2_CONFIRM / 强T3突破确认 + 无硬性淘汰
     strong_t3 = (buy_type == "T3" and r.confirmed)
     primary_ok = ((r.confirmed or strong_t3) and buy_type in ("T1", "T2", "T3")
-                  and not vetoed
+                  and not vetoed and not flags
                   and r.trade_alpha >= 85 and r.buy_score >= 82 and r.entry >= 85
                   and r.trend >= 75 and r.rr1 >= 1.5 and r.vp >= 75)
     if primary_ok:
@@ -1126,7 +1188,7 @@ def score_stock(row: pd.Series, d: pd.DataFrame) -> V3Result:
             and r.entry >= 80 and r.trigger >= 85 and r.rr1 >= 1.5
             and not vetoed and r.trend >= 70):
         r.level = "PROBE-A"
-        r.position = pos_probe_a
+        r.position = compress_position(pos_probe_a) if flags else pos_probe_a
         return r
     # PROBE-B: ALPHA 72~78 + T3 + ENTRY>=78 + TRIGGER>=80 + RR1>=1.3
     # RR1 < 1.5 时仓位上限 10%（第二十四节）
@@ -1134,13 +1196,14 @@ def score_stock(row: pd.Series, d: pd.DataFrame) -> V3Result:
             and r.trigger >= 80 and r.rr1 >= 1.3
             and not vetoed and r.trend >= 70):
         r.level = "PROBE-B"
-        r.position = "8-10%" if r.rr1 < 1.5 else pos_probe_b
+        base = "8-10%" if r.rr1 < 1.5 else pos_probe_b
+        r.position = compress_position(base) if flags else base
         return r
     # PROBE-C: T4 + ENTRY>=75 + TREND>=70 + RR1>=1.5
     if (buy_type == "T4" and r.entry >= 75 and r.trend >= 70
             and r.rr1 >= 1.5 and not vetoed and r.buy_score >= 75):
         r.level = "PROBE-C"
-        r.position = pos_probe_c
+        r.position = compress_position(pos_probe_c) if flags else pos_probe_c
         return r
 
     # NEXT: 高质量 + 未触发 + 触发后有较高交易价值（第二十六节）
@@ -1160,7 +1223,7 @@ def score_stock(row: pd.Series, d: pd.DataFrame) -> V3Result:
 # 输出
 # ══════════════════════════════════════════════════════════════
 
-# 等级优先序（V4 第二十二层）：PRIMARY > PROBE-A > PROBE-B > PROBE-C > NEXT > WATCH
+# 等级优先序（V5）：PRIMARY > PROBE-A > PROBE-B > PROBE-C > NEXT > WATCH
 LEVEL_ORDER = {"PRIMARY_BUY": 0, "PROBE-A": 1, "PROBE-B": 2, "PROBE-C": 3,
                "NEXT": 4, "WATCH": 5}
 # 买点类型优先级（数字越小越优先）
@@ -1168,32 +1231,29 @@ TYPE_ORDER = {"T1": 0, "T2": 1, "T3": 2, "T4": 3, "T5": 4}
 
 
 def sort_final(results: list[V3Result]) -> list[V3Result]:
-    """V4 最终排序规则（第二十二节）。
+    """V5 最终排序（第二十八~二十九节）。
 
     第一层: 交易状态 PRIMARY > PROBE-A > PROBE-B > PROBE-C > NEXT > WATCH
-    第二层: 买点类型 T1 > T2 > T3 > T4
-    第三层: ENTRY_SCORE
-    第四层: TRIGGER_SCORE
-    第五层: BUY_SCORE
-    第六层: RR_SCORE
+    第二层: TRADE_ALPHA DESC（交易价值，而非 BUY）
+    同分: ENTRY DESC > TRIGGER DESC > RR DESC > BUY DESC
 
-    B榜（NEXT）单独排序时用 sort_b_board（第二十一节）：
-    ENTRY > TRIGGER > BUY > TREND > RR（无买点类型层）。
+    禁止用 BUY_SCORE DESC 作为最终交易排名——BUY 回答"股票质量如何"，
+    TRADE_ALPHA 回答"这是不是一笔值得做的交易"。
     """
     return sorted(results, key=lambda r: (
         LEVEL_ORDER.get(r.level, 9),
-        TYPE_ORDER.get(r.buy_type, 9),
+        -r.trade_alpha,
         -r.entry,
         -r.trigger,
-        -r.buy_score,
         -r.rr,
+        -r.buy_score,
     ))
 
 
 def sort_b_board(results: list[V3Result]) -> list[V3Result]:
-    """B榜（触发即买榜）排序：ENTRY > TRIGGER > BUY > TREND > RR。"""
+    """B榜（触发即买榜）排序：TRADE_ALPHA > TRIGGER > ENTRY > RR。"""
     return sorted(results, key=lambda r: (
-        -r.entry, -r.trigger, -r.buy_score, -r.trend, -r.rr,
+        -r.trade_alpha, -r.trigger, -r.entry, -r.rr,
     ))
 
 
@@ -1201,8 +1261,8 @@ def build_trigger_info(r: V3Result, d: pd.DataFrame) -> None:
     """为 NEXT（及 PROBE_BUY 升级路径）估算触发条件与触发后等级。
 
     模拟假设：次日以触发价 T 收盘、放量>=1.3x、无冲高回落 -> 买点升级为 T1_CONFIRM。
-    重估 ENTRY（基准92+触发溢价）与 RR（止损上移至突破位/MA20 下沿），
-    再用六层权重重算 BUY_SCORE，判断触发后能否达到 PRIMARY_BUY。
+    重估 ENTRY（基准92+触发溢价）与 RR（基于触发价用 score_rr 重算 RR1），
+    再用六层权重重算 BUY_SCORE 与 TRADE_ALPHA，判断触发后能否达到 PRIMARY_BUY。
     """
     close = r.close
     trigger = r.breakout_price if r.breakout_price > close * 0.995 else close * 1.02
@@ -1218,19 +1278,10 @@ def build_trigger_info(r: V3Result, d: pd.DataFrame) -> None:
         proj_entry -= 15
     proj_entry = min(100.0, proj_entry)
 
-    # 触发后重估 RR：止损上移到突破位下方（或 MA20 下方 1.5%），目标不变
-    stop = max(trigger * 0.96, min(ma20 * 0.985, trigger - 1.5 * (trigger - ma20 * 0.985) / 2))
-    stop = min(stop, trigger * 0.97)  # 止损空间封顶 4%
-    stop_dist = (trigger - stop) / trigger * 100
-    target1 = r.target1 if r.target1 > trigger * 1.02 else trigger * 1.06
-    upside = (target1 / trigger - 1) * 100
-    # RR 评分映射（对齐 score_rr 的分档）
-    proj_rr = 50.0
-    proj_rr += 15 if 0 <= bias <= 5 else (5 if bias < 0 else 8 if bias <= 10 else -15)
-    proj_rr += 10 if abs((r.breakout_price / trigger - 1) * 100) <= 3 else 0
-    proj_rr += 15 if stop_dist <= 5 else (8 if stop_dist <= 7 else -15)
-    proj_rr += 12 if upside >= 8 else (6 if upside >= 5 else -10)
-    proj_rr = max(5.0, min(100.0, proj_rr))
+    # 触发后重估 RR：以触发价为锚，复用 score_rr（结构止损 + RR1 分档）
+    proj_rr, _, proj_info = score_rr(d, trigger, confirmed=True)
+    proj_rr1 = proj_info.get("rr1", 0.0)
+    r.proj_alpha_rr1 = proj_rr1
 
     # 触发后重估 TREND：突破使 MA20 继续向上、股价站上 -> 至少 B+，原趋势高则保持
     proj_trend = max(r.trend, 80.0) if r.trend >= 78 else min(100.0, r.trend + 12)
@@ -1244,15 +1295,24 @@ def build_trigger_info(r: V3Result, d: pd.DataFrame) -> None:
     proj_buy = max(0.0, min(100.0, proj_buy))
     r.proj_buy = proj_buy
 
+    # V5: 触发后 TRIG_CONF 高（已确认） + RR_FACTOR -> proj_alpha
+    proj_conf = 90.0
+    r.proj_alpha = max(0.0, min(100.0, proj_buy * (proj_conf / 100.0) * rr_factor(proj_rr1)))
+
     # 触发后等级与仓位（市场联动）
     market = MARKET_POSITION.get(market_regime, MARKET_POSITION["NEUTRAL"])
     pos_primary, pos_probe_a, _, _ = market
-    if proj_buy >= 85 and proj_entry >= 85 and proj_trend >= 75 and proj_rr >= 70 and proj_vp >= 75:
+    capped_pa = compress_position(pos_probe_a) if r.redflags else pos_probe_a
+    if ((not r.redflags) and r.proj_alpha >= 85 and proj_buy >= 82 and proj_entry >= 85
+            and proj_trend >= 75 and proj_rr1 >= 1.5 and proj_vp >= 75):
         r.proj_level = "PRIMARY_BUY"
         r.proj_position = pos_primary
-    else:
+    elif r.proj_alpha >= 78 and proj_rr1 >= 1.5:
         r.proj_level = "PROBE-A"
-        r.proj_position = pos_probe_a
+        r.proj_position = capped_pa
+    else:
+        r.proj_level = "NEXT"
+        r.proj_position = "0%"
 
     r.trigger_condition = (
         f"放量(≥1.3x均量)收盘突破{trigger:.2f}且收盘位置≥80%"
@@ -1260,45 +1320,48 @@ def build_trigger_info(r: V3Result, d: pd.DataFrame) -> None:
 
 
 def print_dual_boards(results: list[V3Result], top_n: int, trade_date: str) -> None:
-    """输出 A榜（当前可交易）/ B榜（触发即买）双榜单（V4 格式）。"""
+    """输出 A榜（当前可交易）/ B榜（触发即买）双榜单（V5 格式）。"""
     probe_levels = ("PRIMARY_BUY", "PROBE-A", "PROBE-B", "PROBE-C")
     list_a = [r for r in results if r.level in probe_levels]
     list_b = sort_b_board([r for r in results if r.level == "NEXT"])
 
     logger.info("")
-    logger.info("═" * 72)
-    logger.info("V4.0 双榜单 | 交易日 %s | 市场环境: %s", trade_date, market_regime)
-    logger.info("═" * 72)
+    logger.info("═" * 80)
+    logger.info("V5.0 双榜单 | 交易日 %s | 市场环境: %s", trade_date, market_regime)
+    logger.info("═" * 80)
 
-    # ── A榜：当前可交易 ──
+    # ── A榜：当前可交易（TRADE_ALPHA DESC）──
     logger.info("")
     logger.info("① 【A榜：当前可交易】(PRIMARY_BUY/PROBE-A/B/C，共 %d 只)", len(list_a))
     if not list_a:
         logger.info("  当前没有适合直接买入/试仓的股票。")
     else:
-        logger.info("%-5s %-12s %-8s %6s %6s %6s  %-6s %-10s %-22s %-8s %-8s %s",
-                    "排名", "代码", "名称", "BUY", "ENTRY", "TRIG", "买点", "等级",
-                    "触发条件", "止损", "目标1", "仓位")
+        logger.info("%-5s %-12s %-8s %6s %6s %6s %5s %-6s %-9s %-9s %-8s %-7s %s",
+                    "排名", "代码", "名称", "ALPHA", "BUY", "ENTRY", "TRIG", "买点",
+                    "等级", "触发价", "止损", "目标1", "仓位")
         for i, r in enumerate(list_a[:top_n]):
-            trig = "已触发" if r.confirmed else f"{r.trigger:.0f}"
-            cond = "T_CONFIRM" if r.confirmed else (r.trigger_condition[:20] if r.trigger_condition else "-")
-            logger.info("%-5d %-12s %-8s %6.1f %6.0f %6s  %-6s %-10s %-22s %-8.2f %-8.2f %s",
-                        i + 1, r.ts_code, r.name, r.buy_score, r.entry, trig,
-                        r.buy_type, r.level, cond, r.stop_loss, r.target1, r.position)
+            trig = "✓" if r.confirmed else f"{r.trigger:.0f}"
+            logger.info("%-5d %-12s %-8s %6.1f %6.1f %6.0f %5s %-6s %-9s %-9.2f %-8.2f %-7.2f %s",
+                        i + 1, r.ts_code, r.name + ("⚠" if r.redflags else ""),
+                        r.trade_alpha, r.buy_score, r.entry,
+                        trig, r.buy_type + ("✓" if r.confirmed else ""), r.level,
+                        r.trigger_price or r.breakout_price, r.stop_loss, r.target1, r.position)
 
-    # ── B榜：触发即买 ──
+    # ── B榜：触发即买（TRADE_ALPHA DESC）──
     logger.info("")
     logger.info("② 【B榜：触发即买】(仅 NEXT，共 %d 只，触发前禁止买入)", len(list_b))
     if not list_b:
         logger.info("  （空）")
     else:
-        logger.info("%-5s %-12s %-8s %6s %6s %6s  %-6s %-8s %-10s %-12s %s",
-                    "排名", "代码", "名称", "BUY", "ENTRY", "TRIG", "买点", "当前状态",
-                    "触发价", "触发后等级", "触发后仓位")
+        logger.info("%-5s %-12s %-8s %6s %6s %6s %5s %-6s %-9s %-9s %-12s %s",
+                    "排名", "代码", "名称", "ALPHA", "BUY", "ENTRY", "TRIG", "买点",
+                    "当前等级", "触发价", "触发后等级", "触发后仓位")
         for i, r in enumerate(list_b[:top_n]):
-            logger.info("%-5d %-12s %-8s %6.1f %6.0f %6.0f  %-6s %-8s %-10.2f %-12s %s",
-                        i + 1, r.ts_code, r.name, r.buy_score, r.entry, r.trigger,
-                        r.buy_type, "NEXT", r.trigger_price, r.proj_level, r.proj_position)
+            logger.info("%-5d %-12s %-8s %6.1f %6.1f %6.0f %5.0f %-6s %-9s %-9.2f %-12s %s",
+                        i + 1, r.ts_code, r.name + ("⚠" if r.redflags else ""),
+                        r.proj_alpha, r.buy_score, r.entry,
+                        r.trigger, r.buy_type, r.level, r.trigger_price,
+                        r.proj_level, r.proj_position)
 
     # ── 统计 ──
     n_primary = sum(1 for r in results if r.level == "PRIMARY_BUY")
@@ -1309,72 +1372,77 @@ def print_dual_boards(results: list[V3Result], top_n: int, trade_date: str) -> N
     logger.info("")
     if n_primary == 0:
         logger.info(">>> 当前没有符合最高胜率买点(PRIMARY_BUY)的股票。")
+    if n_pa + n_pb + n_pc == 0:
+        logger.info(">>> 当前没有适合试仓(PROBE)的股票。")
     logger.info("等级统计: PRIMARY_BUY=%d, PROBE-A=%d, PROBE-B=%d, PROBE-C=%d, NEXT=%d, WATCH=%d",
                 n_primary, n_pa, n_pb, n_pc, n_next,
                 len(results) - n_primary - n_pa - n_pb - n_pc - n_next)
-    logger.info("排序规则: 状态 > 买点类型 > ENTRY > TRIGGER > BUY > RR")
+    logger.info("排序规则: 状态分层 > TRADE_ALPHA DESC > ENTRY > TRIGGER > RR > BUY")
 
 
 def print_top5_detail(results: list[V3Result], trade_date: str) -> None:
-    """③ TOP 股票交易计划（V4 第二十六节格式）。"""
+    """③ TOP 股票交易计划（V5 第三十四节 C 部分，20 字段模板）。"""
     probe_levels = ("PRIMARY_BUY", "PROBE-A", "PROBE-B", "PROBE-C")
     list_a = [r for r in results if r.level in probe_levels]
     list_b = sort_b_board([r for r in results if r.level == "NEXT"])
     top5 = (list_a + list_b)[:5]
 
     logger.info("")
-    logger.info("─" * 70)
-    logger.info("③ TOP 股票交易计划（A榜优先）| %s | 市场: %s", trade_date, market_regime)
-    logger.info("─" * 70)
+    logger.info("─" * 76)
+    logger.info("③ TOP 交易计划（A榜优先）| %s | 市场: %s", trade_date, market_regime)
+    logger.info("─" * 76)
     for i, r in enumerate(top5):
         logger.info("")
-        logger.info("【%d】%s (%s) %s", i + 1, r.name, r.ts_code, r.industry)
-        logger.info("  当前状态: %s (BUY=%.1f, ENTRY=%.0f, TRIGGER=%.0f, V2=%.1f, 买点=%s%s)",
-                    r.level, r.buy_score, r.entry, r.trigger, r.v2_score, r.buy_type,
-                    "_CONFIRM" if r.confirmed else "")
-        logger.info("  核心逻辑: %s", "；".join(r.notes[:2]) if r.notes else "")
+        logger.info("【%d】%s%s (%s) %s", i + 1,
+                    r.name, "⚠" if r.redflags else "", r.ts_code, r.industry)
+        logger.info("  当前状态: %s", r.level)
+        if r.redflags:
+            logger.info("  ⚠治理红旗: %s（仓位已强制压缩）", "；".join(r.redflags))
+        logger.info("  TRADE_ALPHA: %.1f | BUY: %.1f | ENTRY: %.0f | TRIGGER: %.0f | TRIG_CONF: %.0f",
+                    r.trade_alpha, r.buy_score, r.entry, r.trigger, r.trig_conf)
         logger.info("  当前价格: %.2f", r.close)
-        logger.info("  关键支撑: MA20=%.2f / MA60=%.2f / 止损参考=%.2f", r.ma20, r.ma60, r.stop_loss)
+        logger.info("  MA20: %.2f | 核心支撑: %.2f", r.ma20,
+                    r.stop_loss if r.level in probe_levels else r.ma20)
         logger.info("  平台压力: %.2f", r.breakout_price if r.breakout_price > 0 else 0.0)
-        if r.level in probe_levels:
-            if r.confirmed:
-                logger.info("  TRIGGER_PRICE: 已触发(突破位%.2f已确认)", r.breakout_price)
-                logger.info("  买入条件: 已满足%s_CONFIRM，可按计划执行", r.buy_type)
-            else:
-                logger.info("  TRIGGER_PRICE: %.2f", r.trigger_price if r.trigger_price else r.breakout_price)
-                logger.info("  买入条件: %s", r.trigger_condition if r.trigger_condition else "突破平台压力且放量")
-        else:
-            logger.info("  TRIGGER_PRICE: %.2f", r.trigger_price if r.trigger_price else r.breakout_price)
-            logger.info("  买入条件: %s (触发后 BUY≈%.0f -> %s)",
-                        r.trigger_condition, r.proj_buy, r.proj_level)
-        logger.info("  止损价格: %.2f (距现价 %.1f%%)", r.stop_loss,
-                    (r.close / r.stop_loss - 1) * 100 if r.stop_loss > 0 else 0.0)
-        logger.info("  第一目标: %.2f (空间 %.1f%%)", r.target1,
-                    (r.target1 / r.close - 1) * 100 if r.target1 > 0 else 0.0)
-        logger.info("  第二目标: %.2f (空间 %.1f%%)", r.target2,
-                    (r.target2 / r.close - 1) * 100 if r.target2 > 0 else 0.0)
+        trigger_disp = r.trigger_price if r.trigger_price else r.breakout_price
+        logger.info("  触发价: %.2f", trigger_disp)
+        zone_base = r.close if r.confirmed else trigger_disp
+        logger.info("  买入区间: %.2f ~ %.2f", zone_base, zone_base * 1.02)
+        logger.info("  止损: %.2f（止损幅度 %.1f%%）", r.stop_loss,
+                    (1 - r.stop_loss / trigger_disp) * 100 if trigger_disp > 0 else 0.0)
+        logger.info("  目标1: %.2f | 目标2: %.2f", r.target1, r.target2)
+        logger.info("  RR1: %.2f | RR2: %.2f", r.rr1, r.rr2)
+        logger.info("  买入理由: %s", "；".join(r.notes[:3]) if r.notes else "")
+        # 主要风险
+        risks = [v for v in r.veto[:2]] if r.veto else []
+        if not risks:
+            if r.rr1 < 1.5:
+                risks.append(f"RR1={r.rr1:.2f} 偏弱，需低仓位")
+            if (r.trigger_price / r.close - 1) * 100 > 3:
+                risks.append(f"距触发价{(r.trigger_price/r.close-1)*100:.1f}% 尚远")
+        logger.info("  主要风险: %s", "；".join(risks) if risks else "结构健康，正常短线风险")
+        # 失效条件
         if r.veto:
-            fails = [f"出现硬性淘汰: {v}" for v in r.veto[:2]]
+            fails = [f"硬性淘汰: {v}" for v in r.veto[:2]]
         else:
-            fails = [f"收盘跌破止损位 {r.stop_loss:.2f}",
+            fails = [f"收盘跌破 {r.invalidation:.2f}（核心支撑+放量）",
                      f"放量跌破MA20({r.ma20:.2f})且MA20拐头向下"]
         logger.info("  失效条件: %s", "；".join(fails))
         logger.info("  建议仓位: %s", r.position)
-        # 为什么现在买/为什么现在不能买
         if r.level in probe_levels:
             if r.confirmed:
-                why = f"{r.buy_type}_CONFIRM 已确认，买点已出现，风险收益比{(r.target1/r.close-1)/max((r.close/r.stop_loss-1),0.001):.1f}"
+                why = f"TRADE_ALPHA={r.trade_alpha:.0f}，{r.buy_type}_CONFIRM 已确认，RR1={r.rr1:.2f}，买点成立"
             else:
-                why = f"距触发价仅{(r.trigger_price/r.close-1)*100:.1f}%，TRIGGER={r.trigger:.0f}，接近可执行买点"
+                why = f"距触发价{(trigger_disp/r.close-1)*100:.1f}%，TRIGGER={r.trigger:.0f}，接近可执行买点，等待放量突破确认"
         elif r.veto:
             why = f"当前禁止买入：{'；'.join(r.veto[:2])}。需先修复结构后重新评估"
-        elif r.trigger_price > 0 and r.trigger_price <= r.close:
-            why = f"已越过触发价{r.trigger_price:.2f}但未获有效突破确认（收盘位置/量能不达标），等待回踩缩量后重新突破"
+        elif trigger_disp > 0 and trigger_disp <= r.close:
+            why = f"已越过触发价{trigger_disp:.2f}但未获有效突破确认（收盘位置/量能不达标），等待回踩缩量后重新突破"
         else:
-            why = f"尚未突破，距触发价{(r.trigger_price/r.close-1)*100:.1f}%，禁止提前买入，等待放量突破确认"
+            why = f"尚未突破，距触发价{(trigger_disp/r.close-1)*100:.1f}%，触发后 ALPHA≈{r.proj_alpha:.0f} -> {r.proj_level}，禁止提前买入"
         logger.info("  为什么现在买/不能买: %s", why)
     logger.info("")
-    logger.info("─" * 70)
+    logger.info("─" * 76)
 
 
 def save_results(results: list[V3Result], trade_date: str) -> None:
@@ -1382,20 +1450,26 @@ def save_results(results: list[V3Result], trade_date: str) -> None:
     csv_path = REPORT_DIR / f"eld_buy_rank_{trade_date}.csv"
     df = pd.DataFrame([{
         "ts_code": r.ts_code, "name": r.name, "industry": r.industry,
+        "redflag": " | ".join(r.redflags),
         "close": r.close, "v2_score": r.v2_score,
+        "trade_alpha": round(r.trade_alpha, 1),
         "buy_score": round(r.buy_score, 1), "fund": round(r.fund, 1),
         "trend": round(r.trend, 1), "entry": round(r.entry, 1),
         "capital": round(r.capital, 1), "vp": round(r.vp, 1), "rr": round(r.rr, 1),
-        "trigger": round(r.trigger, 1), "confirmed": r.confirmed,
+        "trigger": round(r.trigger, 1), "trig_conf": round(r.trig_conf, 1),
+        "rr1": round(r.rr1, 2), "rr2": round(r.rr2, 2),
+        "confirmed": r.confirmed,
         "buy_type": r.buy_type, "level": r.level, "position": r.position,
         "ma20": round(r.ma20, 2), "ma60": round(r.ma60, 2),
         "breakout_price": round(r.breakout_price, 2),
         "stop_loss": round(r.stop_loss, 2), "target1": round(r.target1, 2),
-        "target2": round(r.target2, 2),
+        "target2": round(r.target2, 2), "buy_zone": r.buy_zone,
+        "invalidation": round(r.invalidation, 2),
         "trigger_condition": r.trigger_condition,
         "trigger_price": round(r.trigger_price, 2) if r.trigger_price else 0.0,
         "proj_level": r.proj_level, "proj_position": r.proj_position,
         "proj_buy": round(r.proj_buy, 1),
+        "proj_alpha": round(r.proj_alpha, 1),
         "veto": " | ".join(r.veto),
         "notes": " | ".join(r.notes),
     } for r in results])
@@ -1407,47 +1481,52 @@ def save_results(results: list[V3Result], trade_date: str) -> None:
     list_b = sort_b_board([r for r in results if r.level == "NEXT"])
     md_path = REPORT_DIR / f"eld_buy_rank_{trade_date}.md"
     lines = [
-        f"# ELD V4.0 双榜单买入排序报告 - {trade_date}（市场环境: {market_regime}）",
+        f"# ELD V5.0 Trade Alpha 双榜单买入排序报告 - {trade_date}（市场环境: {market_regime}）",
         "",
-        "> 排序铁律: 状态分层(PRIMARY>PROBE-A>PROBE-B>PROBE-C>NEXT>WATCH) -> 同层内 买点类型>ENTRY>TRIGGER>BUY>RR",
-        "> WATCH ≠ BUY。NEXT 禁止直接买入，仅触发后升级。宁可输出0个PRIMARY_BUY，也绝不凑数量。",
+        "> TRADE_ALPHA = BUY × TRIGGER_CONFIDENCE × RR_FACTOR。排序铁律: 状态分层(PRIMARY>PROBE-A>PROBE-B>PROBE-C>NEXT>WATCH) -> 同层内 TRADE_ALPHA DESC -> ENTRY > TRIGGER > RR > BUY",
+        "> Trade Alpha = 交易价值，不是股票质量。RR1<1.0 直接 WATCH，禁止任何主动买入。宁可输出0个PRIMARY_BUY，也绝不凑数量。",
         "",
         f"## A榜：当前可交易（{len(list_a)} 只）",
         "",
     ]
     if list_a:
         lines += [
-            "| 排名 | 代码 | 名称 | BUY | FUND | TREND | ENTRY | 资金 | 量价 | RR | 买点 | 等级 | 建议仓位 |",
-            "|------|------|------|-----|------|-------|-------|------|------|----|------|------|----------|",
+            "| 排名 | 代码 | 名称 | ALPHA | BUY | ENTRY | TRIG | RR1 | 买点 | 等级 | 触发价 | 止损 | 目标1 | 仓位 |",
+            "|------|------|------|-------|-----|-------|------|-----|------|------|--------|------|-------|------|",
         ]
         for i, r in enumerate(list_a[:20]):
             lines.append(
-                f"| {i+1} | {r.ts_code} | {r.name} | {r.buy_score:.1f} | {r.fund:.0f} | {r.trend:.0f} | "
-                f"{r.entry:.0f} | {r.capital:.0f} | {r.vp:.0f} | {r.rr:.0f} | {r.buy_type} | {r.level} | {r.position} |"
+                f"| {i+1} | {r.ts_code} | {r.name}{'⚠' if r.redflags else ''} | {r.trade_alpha:.1f} | {r.buy_score:.1f} | {r.entry:.0f} | "
+                f"{r.trigger:.0f} | {r.rr1:.2f} | {r.buy_type} | {r.level} | "
+                f"{r.trigger_price or r.breakout_price:.2f} | {r.stop_loss:.2f} | {r.target1:.2f} | {r.position} |"
             )
     else:
         lines += ["（空）"]
     if not any(r.level == "PRIMARY_BUY" for r in results):
         lines += ["", "**当前没有符合最高胜率买点(PRIMARY_BUY)的股票。**"]
+    if not list_a:
+        lines += ["", "**当前没有适合试仓(PROBE)的股票。**"]
     lines += [
         "",
         f"## B榜：触发即买（{len(list_b)} 只，触发前禁止买入）",
         "",
-        "| 排名 | 代码 | 名称 | BUY | ENTRY | 买点 | 触发条件 | 触发价 | 触发后等级 | 触发后仓位 |",
-        "|------|------|------|-----|-------|------|----------|--------|------------|------------|",
+        "| 排名 | 代码 | 名称 | ALPHA | BUY | ENTRY | TRIG | RR1 | 买点 | 触发价 | 触发后等级 | 触发后仓位 |",
+        "|------|------|------|-------|-----|-------|------|-----|------|--------|------------|------------|",
     ]
     for i, r in enumerate(list_b[:20]):
-        cond = r.trigger_condition if r.trigger_condition else "-"
         lines.append(
-            f"| {i+1} | {r.ts_code} | {r.name} | {r.buy_score:.1f} | {r.entry:.0f} | {r.buy_type} | "
-            f"{cond} | {r.trigger_price:.2f} | {r.proj_level} | {r.proj_position} |"
+            f"| {i+1} | {r.ts_code} | {r.name}{'⚠' if r.redflags else ''} | {r.proj_alpha:.1f} | {r.buy_score:.1f} | {r.entry:.0f} | "
+            f"{r.trigger:.0f} | {r.proj_alpha_rr1:.2f} | {r.buy_type} | "
+            f"{r.trigger_price:.2f} | {r.proj_level} | {r.proj_position} |"
         )
     top5 = (list_a + list_b)[:5]
     lines += ["", "## TOP 5 详细分析（A榜优先，不足补B榜）", ""]
     for i, r in enumerate(top5):
-        lines += [f"### {i+1}. {r.name} ({r.ts_code}) {r.industry}", ""]
-        lines += [f"- **状态**: {r.level} (BUY={r.buy_score:.1f}, ENTRY={r.entry:.0f}, TRIGGER={r.trigger:.0f}, V2={r.v2_score:.1f}, 买点={r.buy_type}{'_CONFIRM' if r.confirmed else ''})"]
-        lines += [f"- **核心逻辑**: {'；'.join(r.notes[:3])}"]
+        lines += [f"### {i+1}. {r.name}{'⚠' if r.redflags else ''} ({r.ts_code}) {r.industry}", ""]
+        lines += [f"- **状态**: {r.level} | ALPHA={r.trade_alpha:.1f} | BUY={r.buy_score:.1f} | ENTRY={r.entry:.0f} | TRIG={r.trigger:.0f} | TRIG_CONF={r.trig_conf:.0f} | RR1={r.rr1:.2f} | 买点={r.buy_type}{'_CONFIRM' if r.confirmed else ''}"]
+        if r.redflags:
+            lines += [f"- **⚠治理红旗**: {'；'.join(r.redflags)}（PRIMARY 已禁用，仓位上限压缩）"]
+        lines += [f"- **买入理由**: {'；'.join(r.notes[:3])}"]
         if r.level in probe_levels:
             if r.confirmed:
                 lines += [f"- **买点**: {r.buy_type}_CONFIRM 已确认 | 止损 {r.stop_loss:.2f} | 目标1 {r.target1:.2f} | 目标2 {r.target2:.2f}"]
@@ -1469,9 +1548,9 @@ def save_results(results: list[V3Result], trade_date: str) -> None:
 # ══════════════════════════════════════════════════════════════
 
 def main():
-    global market_regime
+    global market_regime, red_flag_map
 
-    parser = argparse.ArgumentParser(description="ELD V4.0 高胜率买入排序与触发引擎")
+    parser = argparse.ArgumentParser(description="ELD V5.0 Trade Alpha 终极买入排序引擎")
     parser.add_argument("--date", default="", help="交易日 (默认: 最近交易日)")
     parser.add_argument("--top", type=int, default=20, help="输出 TOP N (默认20)")
     parser.add_argument("--no-save", action="store_true", help="不保存文件")
@@ -1479,8 +1558,9 @@ def main():
 
     trade_date = args.date or get_last_trade_date()
     market_regime = load_market_regime(trade_date)
+    red_flag_map = load_red_flags(trade_date)
     logger.info("=" * 60)
-    logger.info("ELD V4.0 高胜率买入排序与触发引擎 开始 | 交易日: %s | 市场环境: %s",
+    logger.info("ELD V5.0 Trade Alpha 终极买入排序引擎 开始 | 交易日: %s | 市场环境: %s",
                 trade_date, market_regime)
     logger.info("=" * 60)
 

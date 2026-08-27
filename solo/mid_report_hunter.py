@@ -541,6 +541,11 @@ def run_screening(min_score: float = 50.0) -> Tuple[pd.DataFrame, pd.DataFrame]:
                   on='ts_code', how='inner')
     print(f"  → 合并后: {len(df)} 只")
 
+    # 硬过滤：偏好总市值≥50亿，<50亿剔除（前置过滤，省 Phase5/6 逐股接口）
+    n_before_mv = len(df)
+    df = df[(df['total_mv'] / 10000) >= 50].copy()
+    print(f"  → 市值硬过滤(<50亿剔除): {n_before_mv} → {len(df)} 只")
+
     # ── Phase 4: 获取行业PE数据 ──
     print("\n[Phase 4] 获取行业PE参考数据...")
     industry_pe_df = get_industry_pe()

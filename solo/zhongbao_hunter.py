@@ -534,8 +534,8 @@ def main():
     print(f"  数据日期: {trade_date}")
     print("=" * 70)
 
-    # ── Phase 1: 市值池 20~300亿 ──
-    print("\n[Phase 1] 构建市值池(20~300亿)...")
+    # ── Phase 1: 市值池 50~5000亿 ──
+    print("\n[Phase 1] 构建市值池(50~5000亿)...")
     stocks = th.get_stock_list()
     basic = th.get_daily_basic(trade_date)
     if basic is None or len(basic) == 0:
@@ -547,7 +547,7 @@ def main():
     # 排除北交所（.BJ 后缀 + 8/4/9开头.SZ老代码）
     df = df[~df["ts_code"].str.endswith(".BJ")].copy()
     df = df[~df["ts_code"].str.match(r"^(8\d{5}|4\d{5}|92\d{4})\.SZ$")].copy()
-    pool = df[(df["市值(亿)"] >= 20) & (df["市值(亿)"] <= 300)].copy()
+    pool = df[(df["市值(亿)"] >= 50) & (df["市值(亿)"] <= 5000)].copy()
     print(f"  → 市值池: {len(pool)} 只")
 
     # ── Phase 2: 中报实际业绩 ──

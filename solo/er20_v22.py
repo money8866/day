@@ -158,6 +158,104 @@ class V22Config:
     }
 
 
+class SeptemberConfig:
+    FUNDAMENTAL_CORE = 46.0
+    FUNDAMENTAL_WATCH = 34.0
+    SETUP_READY = 26.0
+    SETUP_WATCH = 18.0
+    MAX_PRE_RET = 20.0
+    MAX_POST_RET = 12.0
+    MAX_OVERHEAT = 20.0
+
+
+def _september_num(value):
+    try:
+        value = float(value)
+        return value if np.isfinite(value) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def calc_september_opportunity(r, cfcs, cf_label, eq_label, pre_ret, post_ret,
+                               overheat, rel_risk, decay_state, trigger_type,
+                               trigger_score, pullback_quality_score):
+    dt = _september_num(r.get('dt_netprofit_yoy'))
+    ni = _september_num(r.get('netprofit_yoy'))
+    rev = _september_num(r.get('tr_yoy'))
+    q1 = _september_num(r.get('q1_profit_yoy'))
+    q2 = _september_num(r.get('q2_profit_yoy'))
+    q_sales = _september_num(r.get('q_sales_yoy'))
+    gm = _september_num(r.get('grossprofit_margin'))
+    roe = _september_num(r.get('roe'))
+    ar_turn = _september_num(r.get('ar_turn'))
+    ca_turn = _september_num(r.get('ca_turn'))
+
+    growth = 0.0
+    growth += 10.0 if dt is not None and dt >= 30 else 6.0 if dt is not None and dt >= 15 else 2.0 if dt is not None and dt > 0 else 0.0
+    growth += 8.0 if ni is not None and ni >= 30 else 5.0 if ni is not None and ni >= 15 else 2.0 if ni is not None and ni > 0 else 0.0
+    growth += 10.0 if rev is not None and rev >= 20 else 6.0 if rev is not None and rev >= 10 else 2.0 if rev is not None and rev > 0 else 0.0
+
+    continuation = 0.0
+    accel = q2 - q1 if q2 is not None and q1 is not None else None
+    continuation += 10.0 if accel is not None and accel >= 20 else 7.0 if accel is not None and accel >= 0 else 3.0 if accel is not None and accel >= -20 else 0.0
+    continuation += 10.0 if q_sales is not None and rev is not None and q_sales >= rev else 6.0 if q_sales is not None and q_sales > 0 else 2.0 if q_sales is not None and q_sales >= -10 else 0.0
+
+    quality = 0.0
+    quality += 10.0 if cf_label == 'HEALTHY_CASHFLOW' else 7.0 if cf_label in ('SEASONAL_CYCLE', 'INVENTORY_BUILD', 'WORKING_CAPITAL_EXPANSION') else 2.0 if cf_label == 'DATA_INCOMPLETE' else 0.0
+    quality += 4.0 if cfcs is not None and cfcs >= 75 else 2.0 if cfcs is not None and cfcs >= 60 else 0.0
+    quality += 3.0 if gm is not None and gm >= 20 else 1.0 if gm is not None and gm >= 10 else 0.0
+    quality += 3.0 if roe is not None and roe >= 8 else 1.0 if roe is not None and roe >= 4 else 0.0
+
+    risk = 12.0
+    risk -= 6.0 if cf_label in ('RECEIVABLE_RISK', 'STRUCTURAL_CASHFLOW_WEAKNESS') else 0.0
+    risk -= 3.0 if ar_turn is not None and ar_turn < 1.0 else 0.0
+    risk -= 2.0 if ca_turn is not None and ca_turn < 0.5 else 0.0
+    risk -= 3.0 if rel_risk >= 60 else 1.0 if rel_risk >= 45 else 0.0
+    risk -= 4.0 if eq_label == 'ONE_OFF_DOMINATED' else 0.0
+    risk = max(0.0, risk)
+    fundamental_score = round(min(60.0, growth + continuation + quality + risk), 1)
+
+    expectation = 20.0
+    expectation -= 8.0 if pre_ret >= SeptemberConfig.MAX_PRE_RET else 4.0 if pre_ret >= 12 else 0.0
+    expectation -= 8.0 if post_ret >= SeptemberConfig.MAX_POST_RET else 4.0 if post_ret >= 8 else 0.0
+    expectation -= 4.0 if overheat >= SeptemberConfig.MAX_OVERHEAT else 0.0
+    expectation = max(0.0, expectation)
+    absorption = 8.0 if decay_state == 'SECONDARY_CONFIRM' else 6.0 if decay_state == 'NOT_ABSORBED' else 0.0
+    trigger = 8.0 if trigger_type in ('T2_PULLBACK', 'T3_RECLAIM') and trigger_score >= 72 else 3.0 if trigger_type in ('T2_PULLBACK', 'T3_RECLAIM') else 0.0
+    pullback = 4.0 if pullback_quality_score is not None and pullback_quality_score >= 65 else 2.0 if pullback_quality_score is not None and pullback_quality_score >= 50 else 0.0
+    setup_score = round(min(40.0, expectation + absorption + trigger + pullback), 1)
+
+    blocked = eq_label == 'ONE_OFF_DOMINATED' or cf_label in ('RECEIVABLE_RISK', 'STRUCTURAL_CASHFLOW_WEAKNESS')
+    fundamental_label = 'FUNDAMENTAL_CORE' if fundamental_score >= SeptemberConfig.FUNDAMENTAL_CORE and not blocked else 'FUNDAMENTAL_WATCH' if fundamental_score >= SeptemberConfig.FUNDAMENTAL_WATCH and not blocked else 'FUNDAMENTAL_REJECT'
+    setup_label = 'SETUP_READY' if setup_score >= SeptemberConfig.SETUP_READY else 'SETUP_WATCH' if setup_score >= SeptemberConfig.SETUP_WATCH else 'SETUP_WAIT'
+    opportunity_label = 'SEPTEMBER_OPPORTUNITY' if fundamental_label == 'FUNDAMENTAL_CORE' and setup_label == 'SETUP_READY' else 'RESEARCH_ONLY' if fundamental_label == 'FUNDAMENTAL_CORE' else 'WATCH'
+
+    continuation_note = 'Q2动能维持、营收与扣非继续共振、现金流不恶化'
+    invalidation = 'Q3增速显著降档或应收/现金流转弱'
+    if setup_label == 'SETUP_WAIT':
+        invalidation = '价格尚未消化，等待回踩MA20缩量或MA60放量收复'
+    elif blocked:
+        invalidation = '现金流或盈利质量未修复前不纳入研究池'
+    return {
+        'sep_score': round(fundamental_score + setup_score, 1),
+        'sep_label': opportunity_label,
+        'sep_fundamental_score': fundamental_score,
+        'sep_fundamental_label': fundamental_label,
+        'sep_setup_score': setup_score,
+        'sep_setup_label': setup_label,
+        'sep_growth': round(growth, 1),
+        'sep_continuation': round(continuation, 1),
+        'sep_quality': round(quality, 1),
+        'sep_expectation': round(expectation, 1),
+        'sep_risk': round(risk, 1),
+        'sep_absorption': round(absorption, 1),
+        'sep_trigger': round(trigger + pullback, 1),
+        'sep_accel': round(accel, 1) if accel is not None else None,
+        'sep_condition': continuation_note,
+        'sep_invalidation': invalidation,
+    }
+
+
 # ============================================================
 # 模块1：Cashflow Context Engine V2.2（7 分类 + 区间对齐）
 # ============================================================
@@ -746,6 +844,10 @@ def scan_v22(scan_date='20260820'):
             daily, ann_idx, cur_idx, event_age, ab)
         ts, ttype, tdesc = trigger_score_v22(daily, cur_idx)
         ees = calc_ees_v22(trend, ts, volume, pqs, overheat)
+        sep = calc_september_opportunity(
+            r, cfcs, cf_label, eq_label, ab['pre_ret'] * 100,
+            ab['post_ret'] * 100, overheat, rel_risk, decay_state,
+            ttype, ts, pqs)
 
         # ── 策略专属加权（raw） ──
         wmap = ER20Config.W_B if strategy == 'B_REVERSAL' else ER20Config.W_A
@@ -787,6 +889,7 @@ def scan_v22(scan_date='20260820'):
             'pre_priced': ab['pre_priced'],
             'decay_factor': decay, 'alpha_refresh': refresh, 'decay_state': decay_state,
             'ts': ts, 'ttype': ttype, 'tdesc': tdesc, 'ees': ees,
+            **sep,
             'missing': '|'.join(sorted(set(missing))),
             'dt_netprofit_yoy': r.get('dt_netprofit_yoy'),
             'tr_yoy': r.get('tr_yoy'),
@@ -875,6 +978,16 @@ def scan_v22(scan_date='20260820'):
     df['grade'] = grades
     df['grade_reason'] = reasons
 
+    # ── 双模式：质量线评级快照（组合限仓/Top2名额前，过滤模式依据） ──
+    # 2026H1 OOS 验证: PASS(非REJECT非WAIT_CONFIRM) 在 B2/B3 批次 close5 连续正 spread
+    # 生产口径比回测略严: 同步剔除 D_FALSE_SIGNAL 假信号事件(rank_eligible), 保证
+    # SQLite filter_pass=1 与报告【3B】区块展示集合一致
+    df['grade_filter'] = grades
+    _elig = df['strategy'] != 'D_FALSE_SIGNAL'
+    df['filter_pass'] = [
+        (g not in ('REJECT', 'WAIT_CONFIRM')) and bool(e)
+        for g, e in zip(grades, _elig)]
+
     # ── 组合仓位控制 V2.2 ──
     df = _apply_portfolio_cap_v22(df)
 
@@ -916,11 +1029,18 @@ def save_sqlite_v22(df, scan_date):
             'pre_priced', 'decay_factor', 'alpha_refresh', 'decay_state',
             'ts', 'ttype', 'tdesc', 'ees',
             'dt_netprofit_yoy', 'tr_yoy', 'netprofit_yoy',
-            'grade', 'grade_reason', 'rank_eligible',
+            'sep_score', 'sep_label', 'sep_fundamental_score', 'sep_fundamental_label',
+            'sep_setup_score', 'sep_setup_label', 'sep_growth', 'sep_continuation',
+            'sep_quality', 'sep_expectation', 'sep_risk', 'sep_absorption', 'sep_trigger',
+            'sep_accel', 'sep_condition', 'sep_invalidation',
+            'grade', 'grade_filter', 'filter_pass', 'grade_reason', 'rank_eligible',
             'entry_date', 'entry_price_model', 'next_day_signal']
     save = df[[c for c in cols if c in df.columns]].copy()
     save.insert(0, 'scan_date', str(scan_date))
     save['missing'] = df.get('missing', '')
+    # 表列均为 TEXT affinity; bool 直接入库会变成文本, 显式转 0/1 保证可比较
+    if 'filter_pass' in save.columns:
+        save['filter_pass'] = save['filter_pass'].astype(int)
     conn = sqlite3.connect(DB_PATH_V22)
     try:
         try:
@@ -1008,6 +1128,35 @@ def build_report_v22(df, scan_date, regime, market_mult):
                      f"{r['alpha']:.1f} | {fq_disp(r)} | {cf[:14]} | {r['ees']:.0f} | {trig} | {r['grade']} |")
     lines.append('')
 
+    fundamental = main_df[main_df['sep_fundamental_label'].eq('FUNDAMENTAL_CORE')].copy()
+    fundamental = fundamental.sort_values(['sep_fundamental_score', 'alpha'], ascending=[False, False]).head(20)
+    lines.append('【2B. SEPTEMBER FUNDAMENTAL CORE】')
+    lines.append('只表示业绩与质量研究优先级；不代表价格已具备交易条件。')
+    lines.append('| 股票 | 基本面分层 | 基本面分 | 增长/延续/质量/风险 | 当前执行 | 失效边界 |')
+    lines.append('|---|---|---:|---|---|---|')
+    for _, r in fundamental.iterrows():
+        parts = f"{r['sep_growth']:.0f}/{r['sep_continuation']:.0f}/{r['sep_quality']:.0f}/{r['sep_risk']:.0f}"
+        lines.append(f"| {r['name']}({r['ts_code'][:6]}) | {r['sep_fundamental_label']} | "
+                     f"{r['sep_fundamental_score']:.1f} | {parts} | {r['grade']} | {r['sep_invalidation']} |")
+    if fundamental.empty:
+        lines.append('当前公告窗口内没有基本面核心研究标的。')
+    lines.append('')
+
+    opportunity = main_df[main_df['sep_label'].eq('SEPTEMBER_OPPORTUNITY')].copy()
+    opportunity = opportunity.sort_values(['sep_setup_score', 'sep_fundamental_score', 'alpha'], ascending=[False, False, False]).head(20)
+    lines.append('【2C. SEPTEMBER OPPORTUNITY WATCH】')
+    lines.append('仅当基本面核心与价格吸收/触发同时成立才进入本池；仍以 TODAY BUY 的状态机为唯一执行依据。')
+    lines.append('| 股票 | 机会状态 | 基本面/准备度 | 预期/吸收/触发 | 当前执行 | 延续条件 |')
+    lines.append('|---|---|---:|---|---|---|')
+    for _, r in opportunity.iterrows():
+        setup = f"{r['sep_expectation']:.0f}/{r['sep_absorption']:.0f}/{r['sep_trigger']:.0f}"
+        scores = f"{r['sep_fundamental_score']:.0f}/{r['sep_setup_score']:.0f}"
+        lines.append(f"| {r['name']}({r['ts_code'][:6]}) | {r['sep_setup_label']} | {scores} | "
+                     f"{setup} | {r['grade']} | {r['sep_condition']} |")
+    if opportunity.empty:
+        lines.append('当前没有同时通过基本面核心与价格准备度约束的九月机会。')
+    lines.append('')
+
     # 【3. TODAY BUY】
     lines.append('【3. TODAY BUY】')
     for gname in ('CORE_BUY', 'TEST_BUY', 'PROBE_BUY'):
@@ -1022,6 +1171,35 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
                              f"ER20次日分={r['next5_score']:.1f} | EES={r['ees']:.0f} | "
                              f"买点={bp} | EGPT诊断={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
+    lines.append('')
+
+    # 【3B. FILTER POOL 过滤线观察池】双模式之二
+    # 依据: grade_filter 快照(限仓/名额前) 非REJECT非WAIT_CONFIRM, 与2026H1 OOS PASS口径一致
+    fp_df = df[(df.get('filter_pass', False)) & (df['rank_eligible'])]
+    lines.append('【3B. FILTER POOL 过滤线观察池】'
+                 f'共 {len(fp_df)} 只 / 全样本 {len(df)} '
+                 f'(质量线快照: TOP2 名额外可跟踪池)')
+    if fp_df.empty:
+        lines.append('今日无过滤线通过标的')
+    else:
+        fp_sorted = fp_df.sort_values(
+            ['alpha', 'fusion_score'], ascending=[False, False])
+        g_cnt = Counter(fp_df['grade_filter'])
+        cnt_s = ' | '.join(f'{g}×{n}' for g, n in g_cnt.most_common())
+        lines.append(f'池内分布: {cnt_s}')
+        show = fp_sorted.head(40)
+        lines.append('| 股票 | Alpha | Fusion | 初评 | 当前Status | Decay | Trigger | 下一动作 |')
+        lines.append('|---|---:|---:|---|---|---|---|---|')
+        for _, r in show.iterrows():
+            trig = f"{r['ttype']} {r['ts']:.0f}" if r['ttype'] != 'NO_TRIGGER' else '无触发'
+            act = 'T+1开盘可买(Top2)' if r['next_day_signal'] == 1 else _next_action(r)
+            status = r['grade'] if r['grade'] == r['grade_filter'] else \
+                f"{r['grade']}({r['grade_reason'][:8]})"
+            lines.append(f"| {r['name']}({r['ts_code'][:6]}) | {r['alpha']:.1f} | "
+                         f"{r['fusion_score']:.1f} | {r['grade_filter']} | {status} | "
+                         f"{r['decay_state'][:12]} | {trig} | {act[:14]} |")
+        if len(fp_sorted) > 40:
+            lines.append(f'…其余 {len(fp_sorted) - 40} 只按 Alpha 排序见 SQLite (filter_pass=1)')
     lines.append('')
 
     # 【4. WAIT TOP10】

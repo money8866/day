@@ -39,41 +39,252 @@ from er20_v21 import (
 from er20_v22 import (
     V22Config, cashflow_context_engine_v22, price_absorption,
     calc_alpha_decay_v22, trigger_score_v22, calc_ees_v22, grade_v22,
-    next5_score_v22,
+    next5_score_v22, calc_september_opportunity,
 )
 from er20_inst import load_northbound_snapshot, inst_adj_score
 from bts.data import load_daily, parse_tdx_day_file, load_stock_basic
 from bts.indicators import add_ma, add_rsi
+import datetime as _dt
+import bts.data as _bts_data
+import er20_v2 as _er20_v2_mod
+import er20_v21 as _er20_v21_mod
 
-PERIOD = '20250630'
-Q1_PERIOD = '20250331'
-ANN_LO, ANN_HI = '20250701', '20251031'
+SEASONS = {
+    '2025H1': {'period': '20250630', 'q1': '20250331', 'lo': '20250701', 'hi': '20251031', 'north': '20250630', 'fwd': 20},
+    '2026H1': {'period': '20260630', 'q1': '20260331', 'lo': '20260701', 'hi': '20261231', 'north': None, 'fwd': 6},
+}
+PERIOD = SEASONS['2025H1']['period']
+Q1_PERIOD = SEASONS['2025H1']['q1']
+ANN_LO, ANN_HI = SEASONS['2025H1']['lo'], SEASONS['2025H1']['hi']
 MARKS = (5, 10)   # 公告后扫描时点（交易日）
+
+# ── tushare 增量日线补丁：本地 TDX 尾端之后的数据，纯内存拼接不落盘 .day ──
+_BASE_COLS = ['trade_date', 'open', 'high', 'low', 'close', 'vol', 'amount', 'pre_close', 'pct_chg']
+TS_DELTA_PATH = os.path.join(CACHE_DIR, 'ts_daily_delta_20260827.parquet')
+TS_IDX_PATH = os.path.join(CACHE_DIR, 'ts_idx_delta_20260827.parquet')
+TS_BENCH_CODE = '000001.SH'
+_ts_delta = None
+_ts_idx_delta = None
+
+
+UNIFIED_POOL = {
+    '20250630': 'fin_ind_2025H1_full.parquet',
+    '20260630': 'fin_ind_2026H1_full.parquet',
+}
+
+
+def _tdx_tail_date():
+    """本地上证指数最后一根K线日期 = TDX 数据末端"""
+    idx = parse_tdx_day_file(os.path.join(TDX_PATH, 'sh', 'lday', 'sh000001.day'))
+    if idx is not None and len(idx):
+        return str(idx['trade_date'].iloc[-1])
+    return ''
+
+
+def _verify_overlap_unit(pro):
+    """重叠日(TDX末端)逐只精确对齐校验 tushare vs 本地 TDX 的单位口径"""
+    from bts.data import ts_code_to_tdx_file
+    checks, warns = [], []
+    for code in ('600519.SH', '000001.SZ', '600829.SH'):
+        fp = ts_code_to_tdx_file(code)
+        loc = parse_tdx_day_file(fp) if fp else None
+        if loc is None or not len(loc):
+            continue
+        last = str(loc['trade_date'].iloc[-1])
+        try:
+            df = pro.daily(ts_code=code, start_date=last, end_date=last)
+        except Exception as e:
+            warns.append(f'{code} API失败({e})')
+            continue
+        if df is None or df.empty:
+            continue
+        tr = df.iloc[0]
+        lc, lv, la = float(loc.iloc[-1]['close']), float(loc.iloc[-1]['vol']), float(loc.iloc[-1]['amount'])
+        tc_ = float(tr['close'])
+        rv = float(tr['vol']) / lv if lv else float('nan')
+        ra = float(tr['amount']) / la if la else float('nan')
+        okc = abs(tc_ - lc) < max(0.02, lc * 0.002)
+        oka = abs(ra - 1.0) < 0.02 if np.isfinite(ra) else False
+        checks.append(okc and oka)
+        print(f'[校验] {code}@{last}: close {lc} vs {tc_} {"✓" if okc else "✗"} '
+              f'| vol比={rv:.4f} amount比={ra:.4f}')
+    if not checks:
+        print('[数据补丁] ⚠ 无可校验样本, 请人工核对单位')
+        return False
+    if all(checks):
+        print('[数据补丁] 单位口径一致(vol=手/百股, amount=千元) ✓')
+        return True
+    print(f'[数据补丁] ⚠ 口径不一致样本 {checks.count(False)}/{len(checks)}, 请人工核对!')
+    return False
+
+
+def ensure_ts_delta(force=False):
+    """tushare 拉取 TDX 尾端之后的全市场日线 + 上证指数增量，缓存 parquet；
+    单位与 parse_tdx_day_file 对齐(vol=手/百股, amount=千元)，重叠日实测校验"""
+    global _ts_delta, _ts_idx_delta
+    if _ts_delta is not None and not force:
+        return True
+    if (not force) and os.path.exists(TS_DELTA_PATH) and os.path.exists(TS_IDX_PATH):
+        try:
+            _ts_delta = pd.read_parquet(TS_DELTA_PATH)
+            _ts_idx_delta = pd.read_parquet(TS_IDX_PATH)
+            print(f'[数据补丁] 缓存命中: 个股 {len(_ts_delta)} 行 / 指数 {len(_ts_idx_delta)} 天')
+            return True
+        except Exception as e:
+            print(f'[数据补丁] 缓存读取失败, 重新拉取: {e}')
+    tail = _tdx_tail_date()
+    if not tail:
+        print('[数据补丁] 本地指数缺失, 跳过补丁')
+        return False
+    try:
+        from zhongbao_hunter import _get_pro
+        pro = _get_pro()
+    except Exception as e:
+        print(f'[数据补丁] tushare 不可用({e}), 仅用 TDX 本地数据')
+        return False
+    start = (_dt.datetime.strptime(tail, '%Y%m%d') + _dt.timedelta(days=1)).strftime('%Y%m%d')
+    end = _dt.datetime.now().strftime('%Y%m%d')
+    _verify_overlap_unit(pro)
+    # ── 逐自然日全市场日线(非交易日返回空) ──
+    frames = []
+    cur = _dt.datetime.strptime(start, '%Y%m%d')
+    endd = _dt.datetime.strptime(end, '%Y%m%d')
+    while cur <= endd:
+        d = cur.strftime('%Y%m%d')
+        try:
+            df = pro.daily(trade_date=d)
+            if df is not None and len(df):
+                frames.append(df)
+                print(f'[数据补丁] {d}: {len(df)} 只')
+        except Exception as e:
+            print(f'[数据补丁] {d} 拉取失败: {e}')
+        cur += _dt.timedelta(days=1)
+    delta = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    idf = None
+    try:
+        idf = pro.index_daily(ts_code=TS_BENCH_CODE, start_date=start, end_date=end)
+        idf = idf[idf['trade_date'].astype(str) > tail].reset_index(drop=True)
+    except Exception as e:
+        print(f'[数据补丁] 指数拉取失败: {e}')
+    if delta.empty:
+        _ts_delta, _ts_idx_delta = pd.DataFrame(), pd.DataFrame()
+        return False
+    keep = [c for c in ['ts_code'] + _BASE_COLS if c in delta.columns]
+    delta = delta[keep].copy()
+    for c in keep[2:]:
+        delta[c] = pd.to_numeric(delta[c], errors='coerce')
+    # pct_chg 兜底重算(基于 pre_close), 避免 NaN
+    if 'pct_chg' in delta.columns:
+        pc = (delta['close'] / delta['pre_close'] - 1.0) * 100.0
+        delta['pct_chg'] = delta['pct_chg'].where(delta['pct_chg'].notna(), pc)
+    delta.to_parquet(TS_DELTA_PATH)
+    _ts_delta = delta.reset_index(drop=True)
+    if idf is not None and len(idf):
+        icols = [c for c in _BASE_COLS if c in idf.columns]
+        idf = idf[icols].copy()
+        for c in icols[1:]:
+            idf[c] = pd.to_numeric(idf[c], errors='coerce')
+        idf.to_parquet(TS_IDX_PATH)
+        _ts_idx_delta = idf.reset_index(drop=True)
+    else:
+        _ts_idx_delta = pd.DataFrame()
+    print(f'[数据补丁] 完成: 个股 {len(_ts_delta)} 行 ({delta["trade_date"].min()}~{delta["trade_date"].max()})'
+          f' / 指数 {len(_ts_idx_delta)} 天 → 已缓存')
+    return True
+
+
+def _merge_ts_delta(base, delta):
+    """把 tushare 增量行拼接到 TDX 序列尾部(纯内存); 返回新 DataFrame"""
+    if base is None or len(base) == 0:
+        return base
+    if delta is None or delta.empty:
+        return base
+    have = set(base['trade_date'].astype(str))
+    add = delta.copy()
+    add['trade_date'] = add['trade_date'].astype(str)
+    add = add[~add['trade_date'].isin(have)]
+    cols = _BASE_COLS
+    missing = [c for c in cols if c not in base.columns or c not in add.columns]
+    if add.empty or missing:
+        return base
+    part = add[cols].copy()
+    for c in cols[1:]:
+        part[c] = pd.to_numeric(part[c], errors='coerce')
+    out = pd.concat([base.copy(), part], ignore_index=True)
+    out['trade_date'] = out['trade_date'].astype(str)
+    return out.sort_values('trade_date').reset_index(drop=True)
+
+
+def install_ts_patches():
+    """monkeypatch: 让 market_multiplier(er20_v2.load_bench) 与事件年龄(get_trade_dates)
+    的数据面同步吃到增量尾部"""
+    idx_full = load_bench_full()
+
+    def patched_get_trade_dates(start_date, end_date):
+        if idx_full is None or not len(idx_full):
+            return []
+        return [d for d in idx_full['trade_date'].tolist()
+                if str(start_date) <= str(d) <= str(end_date)]
+
+    def patched_load_bench(scan_date):
+        key = str(scan_date)
+        if key in _er20_v2_mod._BENCH_CACHE:
+            return _er20_v2_mod._BENCH_CACHE[key]
+        b = None
+        if idx_full is not None and len(idx_full):
+            b = idx_full[idx_full['trade_date'] <= key].reset_index(drop=True)
+        if b is None or len(b) == 0:
+            _er20_v2_mod._BENCH_CACHE[key] = None
+            return None
+        b = b.copy()
+        b['pct_chg'] = b['close'].astype(float).pct_change() * 100.0
+        b['date'] = b['trade_date'].astype(str)
+        _er20_v2_mod._BENCH_CACHE[key] = b
+        return b
+
+    _bts_data.get_trade_dates = patched_get_trade_dates
+    _er20_v21_mod.get_trade_dates = patched_get_trade_dates
+    _er20_v2_mod.load_bench = patched_load_bench
+    n = len(idx_full) if idx_full is not None else 0
+    print(f'[数据补丁] monkeypatch 生效: 日历+市场档位基准({n}根, 至{_tdx_tail_date()})')
 
 
 def load_hist_pool():
-    """2025H1 中报事件池：treasure 全历史缓存，取首次披露锚点"""
-    files = sorted(glob.glob(os.path.join(CACHE_DIR, 'treasure_fin_ind_*.parquet')))
-    rows = []
-    for fp in files:
-        try:
-            df = pd.read_parquet(fp)
-        except Exception:
-            continue
-        h = df[df['end_date'] == PERIOD]
-        if h.empty:
-            continue
-        rec = h.sort_values('ann_date').iloc[0].copy()
-        ann = str(rec.get('ann_date', ''))
-        if not (ANN_LO <= ann <= ANN_HI):
-            continue
-        q1 = df[df['end_date'] == Q1_PERIOD]
-        rec['q1_profit_yoy'] = q1.sort_values('ann_date')['netprofit_yoy'].iloc[0] if not q1.empty else np.nan
-        rec['q2_proxy'] = False
-        rows.append(rec)
-    pool = pd.DataFrame(rows)
-    if pool.empty:
-        return pool
+    """中报事件池：优先统一 parquet(含预计算 q1/q2)，无则回退 treasure 全历史缓存"""
+    unified = os.path.join(CACHE_DIR, UNIFIED_POOL.get(str(PERIOD), ''))
+    pool = None
+    if str(PERIOD) in UNIFIED_POOL and os.path.exists(unified):
+        df = pd.read_parquet(unified)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
+        df['ann_date'] = df['ann_date'].astype(str)
+        df = df[(df['ann_date'] >= ANN_LO) & (df['ann_date'] <= ANN_HI)]
+        if df['ts_code'].duplicated().any():
+            df = df.sort_values('ann_date').drop_duplicates('ts_code', keep='first')
+        pool = df.reset_index(drop=True)
+    else:
+        files = sorted(glob.glob(os.path.join(CACHE_DIR, 'treasure_fin_ind_*.parquet')))
+        rows = []
+        for fp in files:
+            try:
+                df = pd.read_parquet(fp)
+            except Exception:
+                continue
+            h = df[df['end_date'] == PERIOD]
+            if h.empty:
+                continue
+            rec = h.sort_values('ann_date').iloc[0].copy()
+            ann = str(rec.get('ann_date', ''))
+            if not (ANN_LO <= ann <= ANN_HI):
+                continue
+            q1 = df[df['end_date'] == Q1_PERIOD]
+            rec['q1_profit_yoy'] = q1.sort_values('ann_date')['netprofit_yoy'].iloc[0] if not q1.empty else np.nan
+            rec['q2_proxy'] = False
+            rows.append(rec)
+        pool = pd.DataFrame(rows)
+    if pool is None or pool.empty:
+        return pd.DataFrame()
+    pool = pool.loc[:, ~pool.columns.duplicated()].copy()
+    pool['ts_code'] = pool['ts_code'].astype(str)
     basic = load_stock_basic()
     nm = dict(zip(basic['ts_code'], basic['name'])) if basic is not None else {}
     pool['name'] = pool.get('name', pd.Series('', index=pool.index)).fillna('')
@@ -81,13 +292,19 @@ def load_hist_pool():
     pool.loc[miss_nm, 'name'] = pool.loc[miss_nm, 'ts_code'].map(nm)
     pool = pool[~pool['ts_code'].astype(str).str.endswith('.BJ')]
     pool = pool[~pool['name'].astype(str).str.startswith(('*ST', 'ST'))]
-    q2s, prox = [], []
-    for _, r in pool.iterrows():
-        q2, pr = _calc_q2_single(r['ts_code'], PERIOD, r)
-        q2s.append(q2)
-        prox.append(pr)
-    pool['q2_profit_yoy'] = q2s
-    pool['q2_proxy'] = prox
+    if 'q2_profit_yoy' not in pool.columns:
+        pool['q2_profit_yoy'] = np.nan
+    if 'q2_proxy' not in pool.columns:
+        pool['q2_proxy'] = False
+    need = np.flatnonzero(pool['q2_profit_yoy'].isna().to_numpy())
+    q2_col = pool.columns.get_loc('q2_profit_yoy')
+    proxy_col = pool.columns.get_loc('q2_proxy')
+    for pos in need:
+        r = pool.iloc[pos]
+        code = r['ts_code']
+        q2, pr = _calc_q2_single(str(code), PERIOD, r)
+        pool.iat[pos, q2_col] = q2
+        pool.iat[pos, proxy_col] = pr
     pool = pool[pool['q2_profit_yoy'].notna() | pool['netprofit_yoy'].notna()].copy()
     return pool.reset_index(drop=True)
 
@@ -100,6 +317,7 @@ def load_daily_full(code):
         return None
     if daily is None or len(daily) < 120:
         return None
+    daily = _merge_ts_delta(daily, _ts_delta[_ts_delta['ts_code'] == code] if _ts_delta is not None else None)
     daily = daily.reset_index(drop=True)
     daily = add_ma(daily)
     if 'rsi' not in daily.columns:
@@ -111,12 +329,15 @@ def load_daily_full(code):
 
 
 def load_bench_full():
+    idx = None
     for p in (os.path.join(TDX_PATH, 'sh', 'lday', 'sh000001.day'),
               os.path.join(TDX_PATH, 'vipdoc', 'sh', 'lday', 'sh000001.day')):
         idx = parse_tdx_day_file(p)
         if idx is not None and len(idx):
-            return idx.reset_index(drop=True)
-    return None
+            break
+    if idx is None or not len(idx):
+        return None
+    return _merge_ts_delta(idx, _ts_idx_delta)
 
 
 def score_one(r, daily, ann_idx, s_idx, scan_date, bench, industry_atr, market_mult):
@@ -152,6 +373,10 @@ def score_one(r, daily, ann_idx, s_idx, scan_date, bench, industry_atr, market_m
     decay, refresh, mult, decay_state = calc_alpha_decay_v22(daily, ann_idx, s_idx, event_age, ab)
     ts, ttype, tdesc = trigger_score_v22(daily, s_idx)
     ees = calc_ees_v22(trend, ts, volume, pqs, overheat)
+    sep = calc_september_opportunity(
+        r, cfcs, cf_label, eq_label, ab['pre_ret'] * 100.0,
+        ab['post_ret'] * 100.0, overheat, rel_risk, decay_state,
+        ttype, ts, pqs)
 
     wmap = ER20Config.W_B if strategy == 'B_REVERSAL' else ER20Config.W_A
     parts = {}
@@ -188,6 +413,7 @@ def score_one(r, daily, ann_idx, s_idx, scan_date, bench, industry_atr, market_m
         'ts': ts, 'ttype': ttype, 'tdesc': tdesc, 'ees': ees,
         'dt_netprofit_yoy': r.get('dt_netprofit_yoy'), 'tr_yoy': r.get('tr_yoy'),
         'netprofit_yoy': r.get('netprofit_yoy'),
+        **sep,
     }
     return row
 
@@ -240,10 +466,44 @@ def fusion_score_v22(row):
     return round(max(0.0, min(100.0, score)), 1), quality, pullback, int(row.get('ttype') in ('T2_PULLBACK', 'T3_RECLAIM'))
 
 
+COST = {
+    'order_size': 2_000_000,
+    'commission': 0.00025,
+    'transfer': 0.00001,
+    'stamp_sell': 0.0005,
+    'k_impact': 0.8,
+    'sigma_default': 0.025,
+    'spread_tiers': [(50e6, 0.0020), (100e6, 0.0015), (500e6, 0.0010), (float('inf'), 0.0006)],
+}
+
+
+def entry_costs(daily, s_idx):
+    """往返交易成本估计：固定费用 + 成交额分层基础滑点 + 平方根冲击(σ·√p)，全部仅用扫描日已知数据。"""
+    amt = pd.to_numeric(pd.Series([daily.iloc[s_idx].get('amount')]), errors='coerce').iloc[0]
+    if amt is None or not np.isfinite(float(amt)) or float(amt) <= 0:
+        tail = daily['amount'].astype(float).iloc[max(0, s_idx - 60):s_idx]
+        adv_yuan = float(tail.median() if tail.notna().any() else 30e3) * 1000.0
+    else:
+        adv_yuan = float(amt) * 1000.0
+    for cap, slip in COST['spread_tiers']:
+        if adv_yuan < cap:
+            spread = slip
+            break
+    p = min(COST['order_size'] / max(adv_yuan, 1.0), 0.10)
+    rets = daily['close'].astype(float).pct_change().iloc[max(0, s_idx - 20):s_idx].dropna()
+    sigma = float(rets.std()) if len(rets) >= 10 else COST['sigma_default']
+    impact = COST['k_impact'] * sigma * float(np.sqrt(p))
+    buy_frac = COST['commission'] + COST['transfer'] + spread + impact
+    sell_frac = COST['commission'] + COST['transfer'] + COST['stamp_sell'] + spread + impact
+    return buy_frac, sell_frac, adv_yuan, p
+
+
 def next5_targets(daily, s_idx, bench_full, scan_date):
     out = {
         'next_open_ret': np.nan, 'close5_ret': np.nan, 'max5_ret': np.nan,
         'max5_excess': np.nan, 'max5_drawdown': np.nan,
+        'max5_ret_net': np.nan, 'close5_ret_net': np.nan, 'max5_excess_net': np.nan,
+        'cost_rt_pct': np.nan, 'participation': np.nan,
         'entry_date': None, 'entry_price': np.nan, 'entry_executable': 0,
     }
     if s_idx + 1 >= len(daily):
@@ -266,6 +526,15 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
     out['max5_drawdown'] = round((lows.min() / entry_price - 1.0) * 100, 2)
     if len(window) >= 5:
         out['close5_ret'] = round((float(window.iloc[4]['close']) / entry_price - 1.0) * 100, 2)
+    # ── 成本净额：买入成本抬高入场价、卖出成本折减退出价 ──
+    buy_frac, sell_frac, adv_yuan, part = entry_costs(daily, s_idx)
+    out['cost_rt_pct'] = round((buy_frac + sell_frac) * 100, 3)
+    out['participation'] = round(min(part, 1.0) * 100, 3)
+    gmax = float(highs.max()) / entry_price
+    out['max5_ret_net'] = round((gmax * (1.0 - sell_frac) / (1.0 + buy_frac) - 1.0) * 100, 2)
+    if len(window) >= 5:
+        gc5 = float(window.iloc[4]['close']) / entry_price
+        out['close5_ret_net'] = round((gc5 * (1.0 - sell_frac) / (1.0 + buy_frac) - 1.0) * 100, 2)
     bench = bench_full[bench_full['trade_date'].astype(str) == str(scan_date)]
     if not bench.empty:
         bi = bench.index[0]
@@ -273,6 +542,7 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
             bbase = float(bench_full.iloc[bi]['close'])
             b5 = (float(bench_full.iloc[bi + 5]['close']) / bbase - 1.0) * 100
             out['max5_excess'] = round(out['max5_ret'] - b5, 2)
+            out['max5_excess_net'] = round(out['max5_ret_net'] - b5, 2)
     return out
 
 
@@ -306,17 +576,68 @@ def fwd_returns(daily, s_idx, bench_full, scan_date):
     b = bench_full[bench_full['trade_date'] == str(scan_date)]
     if not b.empty:
         bi = b.index[0]
-        if bi + 20 < len(bench_full):
-            bbase = float(bench_full.iloc[bi]['close'])
-            b20 = (float(bench_full.iloc[bi + 20]['close']) / bbase - 1) * 100
-            for h in (5, 10, 20):
-                x = out.get(f'fwd{h}')
-                if pd.notna(x):
-                    out[f'fwd{h}x'] = round(x - b20 if h == 20 else
-                                            x - (float(bench_full.iloc[bi + h]['close']) / bbase - 1) * 100, 2)
-            if pd.notna(out.get('fwd20_stop')):
-                out['fwd20_stop_x'] = round(out['fwd20_stop'] - b20, 2)
+        # 超额收益按各自窗口独立计算: 进行中季节没有完整 fwd20 窗口也不能吞掉 fwd5x/fwd10x
+        for h in (5, 10, 20):
+            x = out.get(f'fwd{h}')
+            if pd.notna(x) and bi + h < len(bench_full):
+                bh = (float(bench_full.iloc[bi + h]['close'])
+                      / float(bench_full.iloc[bi]['close']) - 1) * 100
+                out[f'fwd{h}x'] = round(x - bh, 2)
+        if pd.notna(out.get('fwd20_stop')) and bi + 20 < len(bench_full):
+            b20 = (float(bench_full.iloc[bi + 20]['close'])
+                   / float(bench_full.iloc[bi]['close']) - 1) * 100
+            out['fwd20_stop_x'] = round(out['fwd20_stop'] - b20, 2)
     return out
+
+
+def september_significance(bt):
+    from scipy import stats
+
+    targets = ['fwd5x', 'fwd10x', 'fwd20x', 'fwd20_stop_x']
+    rows = []
+    for target in targets:
+        if target not in bt.columns:
+            continue
+        data = bt[[target, 'sep_label', 'scan_date']].copy()
+        data[target] = pd.to_numeric(data[target], errors='coerce')
+        data = data.dropna(subset=[target])
+        if data.empty:
+            continue
+        core = data.loc[data['sep_label'].eq('SEPTEMBER_OPPORTUNITY'), target].to_numpy()
+        rest = data.loc[~data['sep_label'].eq('SEPTEMBER_OPPORTUNITY'), target].to_numpy()
+        if len(core) < 2 or len(rest) < 2:
+            continue
+        diff = float(core.mean() - rest.mean())
+        rng = np.random.default_rng(20260827)
+        boots = []
+        for _ in range(4000):
+            boots.append(rng.choice(core, len(core), replace=True).mean()
+                        - rng.choice(rest, len(rest), replace=True).mean())
+        lo, hi = np.percentile(boots, [2.5, 97.5])
+        t_p = float(stats.ttest_ind(core, rest, equal_var=False, nan_policy='omit').pvalue)
+        u_p = float(stats.mannwhitneyu(core, rest, alternative='two-sided').pvalue)
+        rows.append({
+            'target': target, 'core_n': len(core), 'rest_n': len(rest),
+            'core_mean': core.mean(), 'rest_mean': rest.mean(), 'diff': diff,
+            'core_median': np.median(core), 'rest_median': np.median(rest),
+            'core_win': (core > 0).mean() * 100, 'rest_win': (rest > 0).mean() * 100,
+            'welch_p': t_p, 'mw_p': u_p, 'boot_lo': lo, 'boot_hi': hi,
+        })
+
+    result = pd.DataFrame(rows)
+    print('\\n' + '=' * 64)
+    print('C. 九月机会观察池收益显著性检验（SEPTEMBER_OPPORTUNITY vs 其余样本）')
+    print('=' * 64)
+    if result.empty:
+        print('有效收益样本不足')
+        return result
+    for _, r in result.iterrows():
+        sig = '显著' if r['welch_p'] < 0.05 and r['mw_p'] < 0.05 and r['boot_lo'] > 0 else '不显著'
+        print(f"{r['target']}: core n={r['core_n']} 均值{r['core_mean']:+.2f}% 中位{r['core_median']:+.2f}% 胜率{r['core_win']:.1f}% | "
+              f"rest n={r['rest_n']} 均值{r['rest_mean']:+.2f}% | 差{r['diff']:+.2f}% | "
+              f"Welch p={r['welch_p']:.4f} MW p={r['mw_p']:.4f} bootstrap95%[{r['boot_lo']:+.2f},{r['boot_hi']:+.2f}] => {sig}")
+    result.to_csv(os.path.join(REPORT_DIR, f'er20_v22_backtest_{PERIOD}_september_significance.csv'), index=False, encoding='utf-8-sig')
+    return result
 
 
 def summarize(bt, tag, group_col, key_cols=('fwd5x', 'fwd10x', 'fwd20x')):
@@ -366,11 +687,34 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--n', type=int, default=400, help='每时点抽样事件数')
     ap.add_argument('--seed', type=int, default=42)
+    ap.add_argument('--season', choices=list(SEASONS.keys()), default='2025H1')
+    ap.add_argument('--prep-data', action='store_true', help='仅拉取并缓存 tushare 增量日线后退出')
     args = ap.parse_args()
+
+    global PERIOD, Q1_PERIOD, ANN_LO, ANN_HI, FWD_MIN
+    scfg = SEASONS[args.season]
+    PERIOD = scfg['period']
+    Q1_PERIOD = scfg['q1']
+    ANN_LO, ANN_HI = scfg['lo'], scfg['hi']
+    FWD_MIN = int(scfg.get('fwd', 20))
+
+    if not ensure_ts_delta():
+        print('[回测] 无增量日线可用, 按本地 TDX 数据继续(末端截断风险)')
+    install_ts_patches()
+    if args.prep_data:
+        try:
+            from zhongbao_hunter import _get_pro
+            _verify_overlap_unit(_get_pro())
+        except Exception:
+            pass
+        b = load_bench_full()
+        tail = str(b['trade_date'].iloc[-1]) if b is not None and len(b) else 'N/A'
+        print(f'[预热] 补丁后基准末端: {tail}, 完成')
+        return
 
     t0 = time.time()
     pool = load_hist_pool()
-    print(f'[回测] 2025H1 事件池: {len(pool)} 只 (去ST/北交所, ann 20250701~20251031)')
+    print(f'[回测] {args.season} 事件池: {len(pool)} 只 (去ST/北交所, ann {ANN_LO}~{ANN_HI})')
     if pool.empty:
         return
     pool = pool.sample(min(args.n, len(pool)), random_state=args.seed)
@@ -380,13 +724,15 @@ def main():
     if bench_full is None:
         print('基准数据缺失'); return
 
-    # ── 北向机构加分（2025H1 扫描窗口前最近季末快照 20250630，无前视） ──
+    # ── 北向机构加分（扫描窗口前最近季末快照，无前视；2026H1 暂无快照则跳过） ──
     north_map = {}
-    try:
-        north_map = load_northbound_snapshot('20250630')
-        print(f'[机构加分] 北向快照 20250630: {len(north_map)} 只')
-    except Exception as e:
-        print(f'[机构加分] 北向快照加载失败，跳过: {e}')
+    north_date = scfg.get('north')
+    if north_date:
+        try:
+            north_map = load_northbound_snapshot(north_date)
+            print(f'[机构加分] 北向快照 {north_date}: {len(north_map)} 只')
+        except Exception as e:
+            print(f'[机构加分] 北向快照加载失败，跳过: {e}')
 
     rows = []
     daily_cache = {}
@@ -407,7 +753,7 @@ def main():
         ann_idx = nxt.index[0]
         for mark in MARKS:
             s_idx = ann_idx + mark - 1
-            if s_idx >= len(daily) or s_idx + 20 >= len(daily):
+            if s_idx >= len(daily) or s_idx + FWD_MIN >= len(daily):
                 continue
             scan_date = str(daily.iloc[s_idx]['trade_date'])
             if scan_date not in industry_atr_cache:
@@ -427,6 +773,10 @@ def main():
     if not rows:
         print('无回测样本'); return
     bt = pd.DataFrame(rows)
+    for c in ('fwd5', 'fwd10', 'fwd20', 'fwd5x', 'fwd10x', 'fwd20x',
+              'fwd20_stop', 'fwd20_stop_x', 'stop_day'):
+        if c not in bt.columns:
+            bt[c] = np.nan
 
     # ── norm: 按(扫描时点, 策略)组内百分位 ──
     bt['norm'] = np.nan
@@ -444,6 +794,7 @@ def main():
     bt['alpha'] = (bt['er20_base'] * decay_mult + bt['alpha_refresh'].fillna(0.0)
                    - bt['eq_penalty'].fillna(0.0)).round(1).clip(0, 100)
     bt['next5_score'] = bt.apply(next5_score_v22, axis=1)
+    september_significance(bt)
     fusion_values = bt.apply(fusion_score_v22, axis=1, result_type='expand')
     fusion_values.columns = ['fusion_score', 'egpt_quality_score', 'egpt_pullback_score', 'fusion_gate']
     bt = pd.concat([bt, fusion_values], axis=1)
@@ -502,7 +853,7 @@ def main():
             if len(keep) >= 2 and float(grp.loc[keep[0], rank_col]) - float(grp.loc[keep[1], rank_col]) > V22Config.FUSION['second_gap']:
                 keep = keep[:1]
             bt2.loc[keep, 'next5_signal'] = 1
-        csv = os.path.join(REPORT_DIR, f'er20_v22_backtest_2025H1_{vname}.csv')
+        csv = os.path.join(REPORT_DIR, f'er20_v22_backtest_{args.season}_{vname}.csv')
         bt2.to_csv(csv, index=False, encoding='utf-8-sig')
         print(f'\n[{vname}] 回测明细: {csv} ({len(bt2)} 样本)')
         summarize(bt2, f'[{vname}] 全样本', None)
@@ -515,9 +866,16 @@ def main():
         summarize(bt2[bt2['next5_signal'].eq(0)], f'[{vname}] 非Top2信号', None,
                   key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
         next5_buy = bt2[bt2['next5_signal'].eq(1)]
-        print(f'[{vname}] next5 Top2 信号 n={len(next5_buy)}')
-        summarize(next5_buy, f'[{vname}] next5 Top2', None,
+        print(f'\n[{vname}] next5 Top2 信号 n={len(next5_buy)}')
+        summarize(next5_buy, f'[{vname}] next5 Top2(毛收益)', None,
                   key_cols=('max5_excess', 'max5_ret', 'close5_ret'))
+        if not next5_buy.empty:
+            summarize(next5_buy, f'[{vname}] next5 Top2(扣成本)', None,
+                      key_cols=('max5_excess_net', 'max5_ret_net', 'close5_ret_net'))
+            c = next5_buy['cost_rt_pct'].dropna()
+            pp = next5_buy['participation'].dropna()
+            print(f"[{vname}] Top2 往返成本: 均值{c.mean():.2f}% 中位{c.median():.2f}% "
+                  f"最大{c.max():.2f}% 最小{c.min():.2f}% | 成交额参与率均值{pp.mean():.2f}%")
         # 止损对比（仅 BUY 组）
         if not buy.empty:
             s20 = buy['fwd20'].dropna()
