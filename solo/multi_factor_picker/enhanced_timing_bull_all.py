@@ -31,29 +31,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pullback_buy import analyze_shape
 
 
-def collect_raw_factors(ts_code: str, fetcher: DataFetcher, end_date: str = None) -> dict:
+def collect_raw_factors(ts_code: str, fetcher: DataFetcher, end_date: str = None,
+                        daily: pd.DataFrame = None, moneyflow: pd.DataFrame = None) -> dict:
     """Phase 1: 收集单只股票的原始因子值和基础数据
     end_date: 数据截止日 YYYYMMDD（默认今天，重跑历史交易日时用 --date 传入）
+    daily/moneyflow: 批量预取数据（Phase 0 按交易日拉全市场后按代码切片传入），
+                     传入后不再逐股调用 API
     """
     if end_date is None:
         end_date = datetime.now().strftime('%Y%m%d')
     end_dt = datetime.strptime(end_date, '%Y%m%d')
     start_date = (end_dt - timedelta(days=200)).strftime('%Y%m%d')
 
-    daily = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
+    if daily is None:
+        daily = fetcher.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date)
     if daily is None or len(daily) < 30:
         return None
 
     daily = daily.sort_values('trade_date').reset_index(drop=True)
 
     # 资金流向
-    moneyflow = None
-    try:
-        mf = fetcher.get_moneyflow_by_code(ts_code, start_date=start_date, end_date=end_date)
-        if mf is not None and len(mf) > 0:
-            moneyflow = mf.sort_values('trade_date').reset_index(drop=True)
-    except Exception:
-        pass
+    if moneyflow is None:
+        try:
+            mf = fetcher.get_moneyflow_by_code(ts_code, start_date=start_date, end_date=end_date)
+            if mf is not None and len(mf) > 0:
+                moneyflow = mf.sort_values('trade_date').reset_index(drop=True)
+        except Exception:
+            moneyflow = None
+    else:
+        moneyflow = moneyflow.sort_values('trade_date').reset_index(drop=True)
 
     # 计算6大因子原始值
     factors = compute_raw_factors(daily, moneyflow)
@@ -126,6 +132,35 @@ def main():
         forecast_vip_all = None
 
     # ============================================================
+    # Phase 0: 按交易日批量预取全市场日线+资金流（约140个交易日 x 2接口）
+    #          替代 2009只 x 2 次逐股调用：首次运行 ~15min -> ~2min，
+    #          次日重跑命中 per-date parquet 缓存后秒级完成
+    # ============================================================
+    end_dt = datetime.strptime(run_date or datetime.now().strftime('%Y%m%d'), '%Y%m%d')
+    logger.info("Phase 0: 批量预取全市场日线与资金流(按交易日)...")
+    daily_hist = fetcher.get_daily_history(end_date=end_dt.strftime('%Y%m%d'), days=140)
+    daily_by_code = {}
+    trade_dates_desc = []
+    if daily_hist is not None and len(daily_hist) > 0:
+        for _code, _g in daily_hist.groupby('ts_code'):
+            daily_by_code[_code] = _g.sort_values('trade_date').reset_index(drop=True)
+        trade_dates_desc = sorted(daily_hist['trade_date'].unique().tolist(), reverse=True)
+    logger.info(f"  日线预取完成: {len(daily_by_code)} 只 x {len(trade_dates_desc)} 个交易日")
+
+    mf_by_code = {}
+    if trade_dates_desc:
+        mf_frames = []
+        for _d in trade_dates_desc:
+            _mf = fetcher.get_moneyflow(_d)
+            if _mf is not None and len(_mf) > 0:
+                mf_frames.append(_mf)
+        if mf_frames:
+            mf_all = pd.concat(mf_frames, ignore_index=True)
+            for _code, _g in mf_all.groupby('ts_code'):
+                mf_by_code[_code] = _g.sort_values('trade_date').reset_index(drop=True)
+        logger.info(f"  资金流预取完成: {len(mf_by_code)} 只")
+
+    # ============================================================
     # Phase 1: 批量计算所有原始因子
     # ============================================================
     logger.info("Phase 1: 批量计算6大因子原始值...")
@@ -151,7 +186,9 @@ def main():
         if i % 50 == 1 or i <= 3 or i == total:
             logger.info(f"[{i}/{total}] {name} ({ts_code})")
 
-        rd = collect_raw_factors(ts_code, fetcher, run_date)
+        rd = collect_raw_factors(ts_code, fetcher, run_date,
+                                 daily=daily_by_code.get(ts_code),
+                                 moneyflow=mf_by_code.get(ts_code))
         if rd is None:
             continue
 

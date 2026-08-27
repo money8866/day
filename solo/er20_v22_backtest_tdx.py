@@ -60,6 +60,8 @@ GRID_TOPN = (2, 3, 5, 8)
 # 冲高兑现(spike cashout)参数: 限价挂单模型, 挂单价触及即成交(不按盘中最高价计, 保守口径)
 SPIKE_TARGET = 0.05   # 挂单兑现价 = 入场价 × (1+5%), 当日最高≥挂单价视为成交
 SPIKE_STOP = 0.08     # 收盘价较入场价浮亏 -8% 则当日收盘止损离场
+SPIKE_WINDOW = 5      # 冲高兑现挂单有效期(T+1..T+5), 期内未触及按末日收盘离场
+MIX_HOLD = 15         # 混合兑现: +5% 兑现半仓后, 余仓持有至 T+15 收盘(期间-8%止损仍有效)
 PERIOD = SEASONS['2025H1']['period']
 Q1_PERIOD = SEASONS['2025H1']['q1']
 ANN_LO, ANN_HI = SEASONS['2025H1']['lo'], SEASONS['2025H1']['hi']
@@ -515,6 +517,10 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
         'spike_exit_ret': np.nan, 'spike_exit_net': np.nan,
         'spike_excess': np.nan, 'spike_excess_net': np.nan,
         'spike_exit_day': np.nan, 'spike_exit_type': 'no_entry',
+        'mix_legA_ret': np.nan, 'mix_legA_day': np.nan, 'mix_legA_type': 'no_entry',
+        'mix_legB_ret': np.nan, 'mix_legB_day': np.nan, 'mix_legB_type': 'no_entry',
+        'mix_exit_ret': np.nan, 'mix_exit_net': np.nan,
+        'mix_excess': np.nan, 'mix_excess_net': np.nan,
     }
     if s_idx + 1 >= len(daily):
         return out
@@ -573,6 +579,48 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
     if pd.notna(out.get('spike_exit_ret')):
         ge = exit_price / entry_price
         out['spike_exit_net'] = round((ge * (1.0 - sell_frac) / (1.0 + buy_frac) - 1.0) * 100, 2)
+    # ── 混合兑现(mix cashout)模拟: +5% 触及兑现半仓(限价单 T+1..T+5 有效),
+    #    余仓持有至 T+15 收盘; 全程收盘浮亏-8% 整体止损. 同日先冲高后止损 ──
+    a_price = a_day = a_type = None
+    b_price = b_day = b_type = None
+    if int(out['entry_executable']) == 1:
+        tgt_m = entry_price * (1.0 + SPIKE_TARGET)
+        stp_m = entry_price * (1.0 - SPIKE_STOP)
+        wm = daily.iloc[s_idx + 1: min(s_idx + MIX_HOLD, len(daily) - 1) + 1]
+        last_no = len(wm)
+        for d in range(last_no):
+            row_d = wm.iloc[d]
+            o, h, c = float(row_d['open']), float(row_d['high']), float(row_d['close'])
+            no = d + 1
+            if a_price is None and no <= SPIKE_WINDOW:
+                if o >= tgt_m:
+                    a_price, a_day, a_type = o, no, 'spike'
+                elif h >= tgt_m:
+                    a_price, a_day, a_type = tgt_m, no, 'spike'
+                elif no == min(SPIKE_WINDOW, last_no) and c > stp_m:
+                    a_price, a_day, a_type = c, no, 'expire'
+            if b_price is None and c <= stp_m:
+                b_price, b_day, b_type = c, no, 'stop'
+            if no == last_no and b_price is None:
+                b_price, b_day, b_type = c, no, 'expire'
+            if a_price is None and c <= stp_m:
+                a_price, a_day, a_type = c, no, 'stop'
+        if a_price is None and last_no > 0:
+            c_last = float(wm.iloc[-1]['close'])
+            a_price, a_day, a_type = c_last, last_no, 'expire'
+    if a_price is not None and b_price is not None:
+        ra = (a_price / entry_price - 1.0) * 100
+        rb = (b_price / entry_price - 1.0) * 100
+        out['mix_legA_ret'] = round(ra, 2)
+        out['mix_legA_day'] = a_day
+        out['mix_legA_type'] = a_type
+        out['mix_legB_ret'] = round(rb, 2)
+        out['mix_legB_day'] = b_day
+        out['mix_legB_type'] = b_type
+        out['mix_exit_ret'] = round(0.5 * ra + 0.5 * rb, 2)
+        na = (a_price * (1.0 - sell_frac) / (entry_price * (1.0 + buy_frac)) - 1.0) * 100
+        nb = (b_price * (1.0 - sell_frac) / (entry_price * (1.0 + buy_frac)) - 1.0) * 100
+        out['mix_exit_net'] = round(0.5 * na + 0.5 * nb, 2)
     bench = bench_full[bench_full['trade_date'].astype(str) == str(scan_date)]
     if not bench.empty:
         bi = bench.index[0]
@@ -589,6 +637,16 @@ def next5_targets(daily, s_idx, bench_full, scan_date):
                           / float(bench_full.iloc[bi]['close']) - 1.0) * 100
                 out['spike_excess'] = round(out['spike_exit_ret'] - b_exit, 2)
                 out['spike_excess_net'] = round(out['spike_exit_net'] - b_exit, 2)
+        # 混合兑现超额: 两腿各自按退出日对齐基准后加权(半仓半仓)
+        if pd.notna(out.get('mix_exit_ret')):
+            ba_ = bi + int(out['mix_legA_day'])
+            bb_ = bi + int(out['mix_legB_day'])
+            if ba_ < len(bench_full) and bb_ < len(bench_full):
+                bxa = float(bench_full.iloc[ba_]['close']) / float(bench_full.iloc[bi]['close']) - 1.0
+                bxb = float(bench_full.iloc[bb_]['close']) / float(bench_full.iloc[bi]['close']) - 1.0
+                b_mix = (0.5 * bxa + 0.5 * bxb) * 100
+                out['mix_excess'] = round(out['mix_exit_ret'] - b_mix, 2)
+                out['mix_excess_net'] = round(out['mix_exit_net'] - b_mix, 2)
     return out
 
 
@@ -758,6 +816,25 @@ def holding_grid(bt2, vname, rank_col, eligible):
         lift = (mean_x - float(p.mean())) if (len(x) and len(p)) else np.nan
         rows.append({
             'variant': vname, 'topn': n, 'window': 'spike5',
+            'n_signals': len(sel), 'n_valid': len(x),
+            'coverage': round(len(x) / len(sel), 3) if len(sel) else np.nan,
+            'excess_mean': round(mean_x, 2),
+            'excess_median': round(float(x.median()), 2) if len(x) else np.nan,
+            'win_rate': round(float((x > 0).mean()) * 100, 1) if len(x) else np.nan,
+            'pool_mean': round(float(p.mean()), 2) if len(p) else np.nan,
+            'lift_vs_pool': round(lift, 2) if pd.notna(lift) else np.nan,
+            'net_mean_est': round(mean_xn, 2) if pd.notna(mean_xn) else np.nan,
+            'avg_cost_assumed': avg_cost,
+        })
+        # mix cashout 维度: 半仓+5%兑现/余仓T+15, net_mean_est 用真实成本净超额(mix_excess_net)
+        x = sel['mix_excess'].dropna()
+        xn = sel['mix_excess_net'].dropna()
+        p = pool_elig['mix_excess'].dropna()
+        mean_x = float(x.mean()) if len(x) else np.nan
+        mean_xn = float(xn.mean()) if len(xn) else np.nan
+        lift = (mean_x - float(p.mean())) if (len(x) and len(p)) else np.nan
+        rows.append({
+            'variant': vname, 'topn': n, 'window': 'mix15',
             'n_signals': len(sel), 'n_valid': len(x),
             'coverage': round(len(x) / len(sel), 3) if len(sel) else np.nan,
             'excess_mean': round(mean_x, 2),
@@ -979,10 +1056,11 @@ def main():
         next5_buy = bt2[bt2['next5_signal'].eq(1)]
         print(f'\n[{vname}] next5 Top2 信号 n={len(next5_buy)}')
         summarize(next5_buy, f'[{vname}] next5 Top2(毛收益)', None,
-                  key_cols=('max5_excess', 'max5_ret', 'close5_ret', 'spike_excess'))
+                  key_cols=('max5_excess', 'max5_ret', 'close5_ret', 'spike_excess', 'mix_excess'))
         if not next5_buy.empty:
             summarize(next5_buy, f'[{vname}] next5 Top2(扣成本)', None,
-                      key_cols=('max5_excess_net', 'max5_ret_net', 'close5_ret_net', 'spike_excess_net'))
+                      key_cols=('max5_excess_net', 'max5_ret_net', 'close5_ret_net',
+                                'spike_excess_net', 'mix_excess_net'))
             c = next5_buy['cost_rt_pct'].dropna()
             pp = next5_buy['participation'].dropna()
             print(f"[{vname}] Top2 往返成本: 均值{c.mean():.2f}% 中位{c.median():.2f}% "
@@ -991,6 +1069,10 @@ def main():
             sd = next5_buy.loc[next5_buy['spike_exit_type'].eq('spike'), 'spike_exit_day']
             print(f"[{vname}] Top2 冲高兑现分布: {' '.join(f'{k}={v}' for k, v in tc.items())}"
                   + (f" | spike成交日均值 T+{sd.mean():.1f}" if len(sd) else ''))
+            ta = next5_buy['mix_legA_type'].value_counts()
+            tb = next5_buy['mix_legB_type'].value_counts()
+            print(f"[{vname}] Top2 混合兑现: A腿 {' '.join(f'{k}={v}' for k, v in ta.items())}"
+                  f" | B腿 {' '.join(f'{k}={v}' for k, v in tb.items())}")
         # 止损对比（仅 BUY 组）
         if not buy.empty:
             s20 = buy['fwd20'].dropna()
@@ -1005,7 +1087,7 @@ def main():
         grid_csv = os.path.join(REPORT_DIR, f'er20_v22_grid_{args.season}.csv')
         gdf.to_csv(grid_csv, index=False, encoding='utf-8-sig')
         print(f'\n[网格] 持有期×规模效应: {grid_csv} ({len(gdf)} 组合)')
-        for w in ('close15', 'close20', 'close30', 'spike5'):
+        for w in ('close15', 'close20', 'close30', 'spike5', 'mix15'):
             piv = gdf[gdf['window'] == w].pivot_table(
                 index='variant', columns='topn', values='excess_mean', dropna=False)
             if not piv.empty:
