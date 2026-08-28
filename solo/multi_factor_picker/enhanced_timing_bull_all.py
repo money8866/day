@@ -24,6 +24,7 @@ get_token = main_mod.get_token
 
 from quant_timing_scorer import compute_raw_factors, cross_sectional_score
 from enhanced_timing_analysis import _calc_vwap, _calc_atr, _calc_chip_concentration_peak, _calc_market_beta, _check_forecast_impact
+from breakout_readiness import compute_breakout_readiness, print_breakout_report
 
 # 回踩买点形态检测器（pullback_buy.py 已合并为本脚本的被调用模块；
 # 日常只跑本脚本即同时输出 洗盘修复评分 + 回踩形态阶段 + 次日操作，不再单独跑 pullback_buy.py）
@@ -570,6 +571,25 @@ def main():
                   f'洗盘修复分={r["洗盘修复分"]:.1f} 量化分={r["量化择时分"]:.1f} '
                   f'评级={r["修正后胜率分级"]} 主题={r["主题"]:12s} '
                   f'现价={r["现价"]} 止损={r["ATR动态止损价"]} 决策={r["交易决策"]}')
+
+    # ============================================================
+    # ★ T+1 / T+3 BREAKOUT READINESS (突破准备度评分系统 V1.0)
+    #   候选池之上回答唯一问题: 谁最可能在未来1~3日放量突破→站稳→右侧买点
+    #   与 Washout/Quant/Alpha 四分严格分离, 禁止混为一个分数
+    # ============================================================
+    try:
+        logger.info("Phase 5: 计算 T+1/T+3 突破准备度...")
+        index_df = fetcher.get_index_daily('000001.SH')
+        br = compute_breakout_readiness(results, raw_data, mf_by_code,
+                                        index_df, forecast_vip_all)
+        print_breakout_report(br, {r['代码']: r for r in results},
+                              br.attrs.get('idx_close'))
+        br_out = br.reset_index()
+        br_path = os.path.join(report_dir, f'breakout_readiness_{trade_date}.csv')
+        br_out.to_csv(br_path, index=False, encoding='utf-8-sig')
+        print(f'\n突破准备度明细已保存: {br_path}')
+    except Exception as e:
+        logger.exception(f"突破准备度计算失败: {e}")
 
     print(f'\n结果已保存: {out_path}')
     print(f'{"="*160}')
