@@ -159,8 +159,10 @@ class V22Config:
         'max_hold': 8,                # 重点持仓 5~8 只
         'theme_cap': 0.30,            # 同主题总仓位 ≤30%
     }
-    # ── 冲高兑现执行模板（V2.2 落地, 与 backtest SPIKE_TARGET/SPIKE_STOP 保持一致） ──
-    SPIKE = {'target': 0.05, 'stop': 0.08, 'max_hold': 5}
+    # ── 执行模板参数（V2.2 落地, 与 backtest MIX_HOLD/SPIKE_STOP 校准口径一致）:
+    #    2025H1 全量 7 种退出方案对比, T+15 持有 + -8% 收盘止损为唯一净超额为正的可执行方案;
+    #    +5% 冲高兑现挂单(全额 spike5 净-1.24% / 半仓混合 mix15 净-0.45%)均跑输, 不采用 ──
+    EXEC = {'max_hold': 15, 'stop': 0.08}
 
 
 class SeptemberConfig:
@@ -1181,15 +1183,15 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
                              f"ER20次日分={r['next5_score']:.1f} | EES={r['ees']:.0f} | "
                              f"买点={bp} | EGPT诊断={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
-    # 冲高兑现执行模板（V2.2 落地, 2025H1 全量回测校准, 参数见 V22Config.SPIKE）
-    sp = V22Config.SPIKE
-    lines.append(f'### 执行模板（冲高兑现模式 · 持有上限 T+{sp["max_hold"]}）')
+    # 执行模板（V2.2 落地, 2025H1 全量 7 退出方案回测校准, 参数见 V22Config.EXEC）
+    ex = V22Config.EXEC
+    lines.append(f'### 执行模板（T+{ex["max_hold"]} 持有 · -{ex["stop"]:.0%} 保护止损）')
     lines.append(f'- 入场: 次日开盘限价买入；开盘价 > 前收×1.08 视为不可执行，放弃')
-    lines.append(f'- 兑现: 挂单价 = 成本×(1+{sp["target"]:.0%})，当日盘中触及即成交，挂单全程有效')
-    lines.append(f'- 止损: 收盘较成本 -{sp["stop"]:.0%} 当日收盘离场，不等次日')
-    lines.append(f'- 到期: T+{sp["max_hold"]} 未触发冲高且未止损，收盘清仓，不展期')
-    lines.append('- 依据: 2025H1 全量回测——close 持有范式各窗口超额为负，alpha 集中于'
-                 '日内冲高兑现（Top2 净超额+3.25%/胜率81%）；T3_RECLAIM 已屏蔽降级观察')
+    lines.append(f'- 止损: 收盘较成本 -{ex["stop"]:.0%} 当日收盘离场，不等次日')
+    lines.append(f'- 到期: T+{ex["max_hold"]} 收盘清仓，不展期；持有期内不挂冲高兑现单')
+    lines.append('- 依据: 2025H1 全量回测 7 种退出方案对比（Top2 n=27）——T+15 持有净超额+0.40%'
+                 ' 为唯一为正；+5% 冲高兑现全额净-1.24%、半仓混合净-0.45% 均跑输不采用；'
+                 '-8% 止损以毛均值-0.32% 为代价将单票中位收益从-3.78%改善至-1.45%并锁定尾部风险')
     lines.append('')
 
     # 【3B. FILTER POOL 过滤线观察池】双模式之二

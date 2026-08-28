@@ -308,18 +308,24 @@ def main():
         corrected_score = max(0, min(100, corrected_score))
 
         # 评级基于原始量化分（交叉截面排名，不受K因子影响）
-        # S级修复分硬门槛: 洗盘修复分<70 的"伪强势"（结构差但动量高）降为A级
-        if true_bt and pullback_confirm and raw_score >= 85:
-            if wr_score >= 70:
-                grade = 'S'
-                trade_decision = '极高胜率重仓买入'
-            else:
-                grade = 'A'
-                trade_decision = f'回踩VWAP确认加仓 ⚠️修复分{wr_score:.0f}<70,S→A降级'
-        elif true_bt and raw_score >= 75:
+        # ── 20260827 数据驱动重构（backtest_timing_grades.py 校准, 样本0723-0827）──
+        # 旧规则(raw>=85即S)被证伪: 量化分与未来胜率单调负相关,
+        #   raw>=85 桶 5日胜率37%/20日35.3%, 而甜区 raw[60,78) 20日胜率60%+
+        # 新S=中线胜率甜区: 真突破+回踩确认+raw[60,78)+洗盘修复分<=90
+        #   回测: n20=38, wr20=71.1% (对照旧S 33.0%/50.0%)
+        if true_bt and pullback_confirm and 60 <= raw_score < 78 and wr_score <= 90:
+            grade = 'S'
+            trade_decision = '极高胜率重仓买入(中线甜区)'
+        elif true_bt and pullback_confirm and 55 <= raw_score < 85:
             grade = 'A'
-            trade_decision = '回踩VWAP确认加仓'
-        elif vwap_bt and raw_score >= 60:
+            if wr_score > 90:
+                trade_decision = f'回踩VWAP确认加仓 ⚠️深洗盘{wr_score:.0f}>90'
+            else:
+                trade_decision = '回踩VWAP确认加仓'
+        elif true_bt and raw_score >= 55:
+            grade = 'A'
+            trade_decision = '放量突破VWAP关注(未回踩确认)'
+        elif vwap_bt and raw_score >= 55:
             grade = 'B'
             trade_decision = '关注-放量突破VWAP'
         elif raw_score >= 55:
@@ -426,6 +432,55 @@ def main():
             'ATR跟踪止盈价': round(trail_stop, 2) if trail_stop else None,
             '交易决策': trade_decision,
         })
+
+    # ============================================================
+    # 截面稀缺性治理：限量 + 主题去重（组合集中度控制）
+    # ------------------------------------------------------------
+    # 注: 回测(backtest_timing_grades)表明按 raw_score 挑 Top 本身
+    #   不提升胜率(胜率来自新评级的甜区定义)，此处仅作组合管理——
+    #   防止单日信号泛滥 + 同主题扎堆买成一篮子β。
+    #   S 级：全市场限量 Top 10，同主题最多 2 只
+    #   A 级：限量 Top 20（按结构增强分），同主题最多 3 只
+    #   超限者降级改写决策为 "候补-轻仓"，评分与数据保留不删除
+    # ============================================================
+    S_MAX, S_THEME_MAX = 10, 2
+    A_MAX, A_THEME_MAX = 20, 3
+
+    def _theme_of(r):
+        t = r.get('主题')
+        return t if isinstance(t, str) and t.strip() and t != 'nan' else '未分类'
+
+    _by_rank = sorted(results, key=lambda r: -r['量化择时分'])
+    s_kept, s_count_by_theme = 0, {}
+    for r in _by_rank:
+        if r['修正后胜率分级'] != 'S':
+            continue
+        th = _theme_of(r)
+        # 利好兑现风险股不占S级重仓名额（兑现后次日买入胜率显著偏低）
+        impact = r.get('兑现冲击过滤', '') == '⚠️ 是'
+        if impact or s_kept >= S_MAX or s_count_by_theme.get(th, 0) >= S_THEME_MAX:
+            r['修正后胜率分级'] = 'A'
+            tag = '兑现风险' if impact else f"限量{S_MAX}/主题≤{S_THEME_MAX}"
+            r['交易决策'] = f"S候补-轻仓({tag})"
+        else:
+            s_count_by_theme[th] = s_count_by_theme.get(th, 0) + 1
+            s_kept += 1
+
+    _by_struct = sorted(
+        [r for r in results if r['修正后胜率分级'] == 'A'],
+        key=lambda r: -r['结构增强分'])
+    a_kept, a_count_by_theme = 0, {}
+    for r in _by_struct:
+        th = _theme_of(r)
+        if a_kept >= A_MAX or a_count_by_theme.get(th, 0) >= A_THEME_MAX:
+            r['修正后胜率分级'] = 'B'
+            r['交易决策'] = '关注-放量突破VWAP(A候补-超限降级)'
+        else:
+            a_count_by_theme[th] = a_count_by_theme.get(th, 0) + 1
+            a_kept += 1
+    if s_kept or a_kept:
+        logger.info(f"稀缺性治理: S保留{s_kept}(限{S_MAX},主题≤{S_THEME_MAX}) "
+                    f"A保留{a_kept}(限{A_MAX},主题≤{A_THEME_MAX})，其余降级候补")
 
     # ─── 排序 + 保存 (次日操作可买入优先 → 评级 → 结构增强分) ───
     out_df = pd.DataFrame(results)

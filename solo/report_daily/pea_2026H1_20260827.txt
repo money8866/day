@@ -1,0 +1,48 @@
+================================================================
+PEA-Absorption 价格-事件吸收策略 V1.0 | 2026H1 | 20260827
+================================================================
+
+[1] 市场环境：recovery（乘数 0.95）
+    池规模 3557 | 有效候选 3557 | 入池组合 8
+
+[2] 组合候选（PROBE→TEST→CORE）
+    300519.SZ   PROBE α= 75.3 EES= 78.5 TS= 84.0 状态=NOT_ABSORBED     触发=T2_PULLBACK  仓位=5% | 中成药 -
+    688049.SH   PROBE α= 75.0 EES= 68.6 TS= 79.0 状态=NOT_ABSORBED     触发=T2_PULLBACK  仓位=5% | 半导体 半导体
+    300398.SZ   PROBE α= 74.3 EES= 71.6 TS= 79.0 状态=UNKNOWN          触发=T2_PULLBACK  仓位=5% | 化工原料 -
+    601231.SH   PROBE α= 73.9 EES= 67.1 TS= 79.0 状态=UNKNOWN          触发=T2_PULLBACK  仓位=5% | 元器件 -
+    603203.SH   PROBE α= 73.9 EES= 70.4 TS= 79.0 状态=UNKNOWN          触发=T2_PULLBACK  仓位=5% | 专用机械 -
+    002795.SZ   PROBE α= 73.1 EES= 77.8 TS= 84.0 状态=NOT_ABSORBED     触发=T2_PULLBACK  仓位=5% | 机械基件 -
+    300373.SZ   PROBE α= 72.4 EES= 67.7 TS= 84.0 状态=NOT_ABSORBED     触发=T2_PULLBACK  仓位=5% | 半导体 半导体
+    300910.SZ   PROBE α= 72.1 EES= 61.7 TS= 74.0 状态=NOT_ABSORBED     触发=T2_PULLBACK  仓位=5% | 化工原料 -
+
+[3] 评分分布
+    α     mean=  33.0 p50=  32.7 p90=  62.9 max=  80.5
+    EES   mean=  61.8 p50=  65.8 p90=  74.8 max=  82.9
+    TS    mean=  63.7 p50=  79.0 p90=  90.0 max= 100.0
+    CONF  mean=  85.0 p50=  85.0 p90=  85.0 max=  85.0
+
+[4] 吸收态 / 触发分布
+    吸收态 NOT_ABSORBED       2264
+    吸收态 UNKNOWN            685
+    吸收态 SECONDARY_CONFIRM  403
+    吸收态 PRICED_IN          205
+    触发   T2_PULLBACK        1898
+    触发   NO_TRIGGER         821
+    触发   T1_BREAKOUT        621
+    触发   T3_RECLAIM         217
+
+[5] WAIT / REJECT 主要原因
+    REJECT   703
+    原因 FQ=22 低于下限                               488
+    原因 PRICED_IN                                205
+    原因 FQ=18 低于下限                               10
+
+[6]
+执行模板（硬规则，不可绕过）：
+  ┌ 持有期：T+15 个交易日收盘离场（实证唯一净超额为正路径 close15）
+  ├ 止损  ：收盘价 < 买入价×0.92（-8% 收盘止损）→ 次日开盘离场
+  ├ 追高  ：次日开盘 > 前收×1.08 → 放弃该笔
+  ├ 禁入①：T3_RECLAIM 触发（实证 fwd20 -3.05% / 胜率 31% / n=77）
+  └ 禁入②：PRICED_IN 吸收态（价格已完全消化事件）
+
+风险提示：本策略为事件漂移范式，事件龄 >15 日 Decay ≥0.15 强度递减；基准锚点 = er20 close15 Top2 净超额 +0.40%。
