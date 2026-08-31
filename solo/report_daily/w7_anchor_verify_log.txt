@@ -1,0 +1,25 @@
+﻿
+===== 中际旭创 300308.SZ 天量事件日 20250508 | 天量成立=True 历史分位P100 =====
+事件日行情: close=96.49 vol=991735 换手=12.00%
+  20250604 RE_EXPANSION 收盘=97.30 PP=90 lock=81 sds=71 cq=84 回撤=7.9% 
+  20250605 SECOND_WAVE 收盘=102.88 PP=90 lock=84 sds=72 cq=84 回撤=7.9%   <== 首个SECOND_WAVE信号
+  20250606 RE_EXPANSION 收盘=103.45 PP=75 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250612 SECOND_WAVE 收盘=116.00 PP=90 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250618 SECOND_WAVE 收盘=125.06 PP=100 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250619 RE_EXPANSION 收盘=128.30 PP=90 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250627 SECOND_WAVE 收盘=138.40 PP=100 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250630 SECOND_WAVE 收盘=145.86 PP=100 lock=82 sds=68 cq=84 回撤=7.9% 
+  20250715 SECOND_WAVE 收盘=174.81 PP=100 lock=82 sds=68 cq=84 回撤=7.9% 
+首个SECOND_WAVE信号 20250605 PP=90 lock=84 | 买入价=102.88
+  信号后收益: 5日=12.75% 10日=24.71% 20日=38.28% 40日=111.52%
+
+===== 华正新材 603186.SH 天量事件日 20250812 | 天量成立=True 历史分位P100 =====
+事件日行情: close=36.47 vol=289158 换手=34.45%
+  20250813 EXTREME_CHURN 收盘=37.18 PP=95 lock=84 sds=69 cq=82 回撤=1.8% 
+  20250815 EXTREME_CHURN 收盘=38.48 PP=0 lock=81 sds=58 cq=84 回撤=3.7% 
+  20250818 EXTREME_CHURN 收盘=39.28 PP=0 lock=84 sds=60 cq=83 回撤=3.7% 
+  20250918 SECOND_WAVE 收盘=43.44 PP=90 lock=85 sds=68 cq=84 回撤=3.7%   <== 首个SECOND_WAVE信号
+  20251028 SECOND_WAVE 收盘=51.24 PP=100 lock=85 sds=68 cq=84 回撤=3.7% 
+  20251117 ABSORPTION 收盘=43.08 PP=90 lock=85 sds=68 cq=84 回撤=3.7% 
+首个SECOND_WAVE信号 20250918 PP=90 lock=85 | 买入价=43.44
+  信号后收益: 5日=-4.70% 10日=-6.68% 20日=7.04% 40日=-11.53%

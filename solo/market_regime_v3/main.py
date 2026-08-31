@@ -38,6 +38,7 @@ from market_regime_v3.engines.exposure_model import ExposureModel
 from market_regime_v3.engines.heat_engine import HeatEngine
 from market_regime_v3.engines.rally_pullback_engine import RallyPullbackEngine
 from market_regime_v3.engines.right_confirm_buy_engine import RightConfirmBuyEngine
+from market_regime_v3.engines.breakout_timing_engine import BreakoutTimingEngine, _to_dict as _bte_to_dict
 from market_regime_v3.engines.theme_beta import ThemeBetaEngine
 from market_regime_v3.engines.leader_quality import LeaderQualityEngine
 from market_regime_v3.engines.trading_style import TradingStyleEngine
@@ -516,7 +517,31 @@ class MarketRegimeV3:
                       f"启动{r.launch_score:.0f} 回踩{r.pullback_score:.0f} 确认{r.confirm_score:.0f} "
                       f"信号{r.confirm_count} 确认价{r.confirm_price:.2f} 止损{r.stop_loss:.2f}")
 
-        # ── V6.1 Layer: Pattern → Smart Money → EV → Risk Budget ──
+        # ── V9.0 BREAKOUT TIMING 二阶段突破择时（V8 S/A/B -> T+1/T+3）──
+        bte_results = []
+        bte_report_text = ''
+        if self.config.get('breakout_timing', {}).get('enabled', True) and rcb_results:
+            print(f"\n  [二阶段择时] BREAKOUT TIMING (V8 S/A/B -> T+1/T+3)...")
+            try:
+                bte_engine = BreakoutTimingEngine(self.config)
+                v8_signals = [_rcb_to_dict(r) for r in rcb_results if r.signal_level in ('S', 'A', 'B')]
+                bte_results = bte_engine.detect_batch(v8_signals, trade_date,
+                                                      market_env=market_env, theme_of=theme_of)
+                bte_report_text = bte_engine.render_report(bte_results, market_env)
+                _pb = [r for r in bte_results if r.state == 'PRIMARY_BUY']
+                _rt = [r for r in bte_results if r.state == 'PRIMARY_RETEST_BUY']
+                _w3 = [r for r in bte_results if r.state == 'T3_WATCH']
+                print(f"\n  ✅ BREAKOUT TIMING 完成: 输入{len(v8_signals)}只(S/A/B) | "
+                      f"PRIMARY_BUY {len(_pb)}只 | PRIMARY_RETEST {len(_rt)}只 | "
+                      f"T3_WATCH {len(_w3)}只 | 其他 {len(bte_results)-len(_pb)-len(_rt)-len(_w3)}只")
+                for r in _pb[:5]:
+                    print(f"    [PRIMARY_BUY] {r.name}({r.ts_code}) P={r.breakout_priority:.1f} "
+                          f"T1={r.t1_score:.0f} T3={r.t3_score:.0f} 窗口={r.breakout_window} "
+                          f"FBR={r.false_breakout_risk:.0f} 仓位{r.position_size}")
+            except Exception as e:
+                print(f"    ⚠️ BREAKOUT TIMING 执行失败: {e}")
+
+        # ── V6.1 Layer: Pattern -> Smart Money -> EV -> Risk Budget ──
         # ════════════════════════════════════════════════════════════
         pattern_result = None
         ev_result = None
@@ -925,6 +950,29 @@ class MarketRegimeV3:
                 print(f"  ✅ RIGHT CONFIRM BUY 信号JSON已导出: {rcb_file} ({len(rcb_results)}只)")
             except Exception as e:
                 print(f"  ⚠️ RIGHT CONFIRM BUY 信号JSON导出失败: {e}")
+
+        # ── V9.0 导出 BREAKOUT TIMING 二阶段择时 JSON/MD（供 AI 日报 / 独立跟踪使用）──
+        if bte_results:
+            try:
+                import json as _json
+                bte_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'report_daily')
+                os.makedirs(bte_dir, exist_ok=True)
+                bte_file = os.path.join(bte_dir, f"breakout_timing_{trade_date}.json")
+                with open(bte_file, 'w', encoding='utf-8') as f:
+                    _json.dump({
+                        "trade_date": trade_date,
+                        "market_score": round(market_score_result.score) if market_score_result else None,
+                        "regime": regime.primary if regime else None,
+                        "env_tier": (rcb_results[0].env_tier if rcb_results else None),
+                        "breakout_environment": BreakoutTimingEngine.env_class(market_env),
+                        "signals": [_bte_to_dict(r) for r in bte_results],
+                    }, f, ensure_ascii=False, indent=2, default=str)
+                bte_md = os.path.join(bte_dir, f"breakout_timing_{trade_date}.md")
+                with open(bte_md, 'w', encoding='utf-8') as f:
+                    f.write(bte_report_text)
+                print(f"  ✅ BREAKOUT TIMING 已导出: {bte_file} ({len(bte_results)}只)")
+            except Exception as e:
+                print(f"  ⚠️ BREAKOUT TIMING 导出失败: {e}")
 
         # 微信推送
         if self._push_enabled:

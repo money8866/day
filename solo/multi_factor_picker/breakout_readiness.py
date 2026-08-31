@@ -779,6 +779,7 @@ def compute_breakout_readiness(results, raw_data, mf_by_code, index_df,
 
         rows.append({
             '代码': ts_code,
+            '现价': round(c['close'], 2),
             'T1评分': round(t1, 1),
             'T3评分': round(t3, 1),
             '突破状态': state,
@@ -828,135 +829,43 @@ def compute_breakout_readiness(results, raw_data, mf_by_code, index_df,
 
 
 # ════════════════════════════════════════════════════════════
-# 报告输出
+# 报告输出 (最精简可买信号 — 全量明细见 breakout_readiness_*.csv)
 # ════════════════════════════════════════════════════════════
 
-def _stock_block(row, name, theme):
-    """单只股票报告块"""
-    confirm = (f"放量≥1.5×20日均量(当前{row['量比(当日/20日均量)']:.2f}) "
-               f"+ 收盘站上{row['关键突破价']:.2f} + 收于当日振幅上30%")
-    lines = [
-        f"  股票: {name} ({row.name})  主题: {theme}",
-        f"    T1 Score: {row['T1评分']}   T3 Score: {row['T3评分']}   "
-        f"Breakout Distance: {row['突破距离']}   Grade: {row['突破等级']}",
-        f"    关键突破价: {row['关键突破价']}   距离: {row['距离突破位%']}%   "
-        f"Volume Readiness: {row['T1_量能准备']}/20   RS: {row['T1_相对强度']}/10",
-        f"    False Breakout Risk: {row['假突破风险']:.0f}/100   "
-        f"事件风险: {row['事件风险级别']}{'(' + row['事件风险明细'] + ')' if row['事件风险明细'] else ''}",
-        f"    FQ: {row['FQ基本面分']}  基本面乘数: ×{row['基本面乘数']}  "
-        f"最终优先级: {row['最终交易优先级']} (技术{row['技术优先级']})",
-        f"    确认条件: {confirm}",
-        f"    失效价: {row['失效价']}   建议仓位: {row['建议仓位']}",
-    ]
-    return '\n'.join(lines)
+def _sig_line(code, row, results_map, dist_txt):
+    """单行信号: 代码 名称 T1 现价 触发(距离) 失效 仓位"""
+    m = results_map.get(code, {})
+    px = row.get('现价', '-')
+    return (f"  {code}  {m.get('名称', ''):<5} T1={row['T1评分']:>5} "
+            f"现={px:>7} 触发={row['关键突破价']:>7}({dist_txt})"
+            f" 失效={row['失效价']:>7} {row['建议仓位']}")
 
 
-def print_breakout_report(br, results_map, idx_close):
-    """打印 ★ T+1/T+3 BREAKOUT READINESS REPORT"""
+def print_breakout_report(br, results_map):
+    """最精简可买信号: 仅①今天可买 ②明日挂单, 每股一行"""
     if br is None or len(br) == 0:
-        print('\n★ T+1/T+3 BREAKOUT READINESS: 无有效数据')
+        print('\n★ 可买信号: 无')
         return
     regime = br.attrs.get('market_regime', '')
-    suit = br.attrs.get('market_suit', '')
     mkt_mult = br.attrs.get('market_mult', 1.0)
-    print(f'\n{"="*160}')
-    print(f'  ★ T+1 / T+3 BREAKOUT READINESS REPORT (突破准备度评分系统 V1.0)')
-    print(f'{"="*160}')
-    print(f'  市场状态 MARKET_REGIME: {regime}   市场适合: {suit}'
-          f'   (上证={idx_close}, 5日{br.attrs.get("idx_ret", {}).get(5, 0):+.1f}%, '
-          f'20日{br.attrs.get("idx_ret", {}).get(20, 0):+.1f}%)')
-    print(f'  最终排序: FINAL_TRADE_PRIORITY = 技术优先级 × FQ基本面乘数 × 市场乘数'
-          f'(×{mkt_mult:.2f}@{regime})'
-          f'   [FQ≥80→×1.05 | 65~79→×1.00 | 50~64→×0.95 | <50→×0.85]')
+    print(f'\n★ 可买信号 [{regime} ×{mkt_mult:.2f}]')
 
-    # ── S_TRIGGER | 未来1日 ──
-    s = br[br['突破等级'] == 'S_TRIGGER'].sort_values('最终交易优先级', ascending=False)
-    print(f'\n  {"─"*76}')
-    if len(s) == 0:
-        print('  【S_TRIGGER｜未来1日】')
-        print('  当前没有符合T+1高胜率突破条件的股票。')
-    else:
-        print(f'  【S_TRIGGER｜未来1日】({len(s)}只)')
-        for code, row in s.iterrows():
-            m = results_map.get(code, {})
-            print(_stock_block(row, m.get('名称', ''), _clean_theme(m.get('主题'))))
+    # ① 今天可买: 已放量突破站稳
+    buy = br[br['突破状态'] == 'PRIMARY_BUY'].sort_values('最终交易优先级', ascending=False)
+    print('① 今天可买:')
+    if len(buy) == 0:
+        print('  无')
+    for code, r in buy.iterrows():
+        print(_sig_line(code, r, results_map, '已站上'))
 
-    # ── A_NEAR | 未来1~3日 ──
-    a = br[br['突破等级'] == 'A_NEAR'].sort_values('最终交易优先级', ascending=False).head(10)
-    print(f'\n  {"─"*76}')
-    if len(a) == 0:
-        print('  【A_NEAR｜未来1~3日】无')
-    else:
-        print(f'  【A_NEAR｜未来1~3日】(前{len(a)}只)')
-        for code, row in a.iterrows():
-            m = results_map.get(code, {})
-            print(_stock_block(row, m.get('名称', ''), _clean_theme(m.get('主题'))))
-
-    # ── B_WATCH | 正在构建 ──
-    b = br[br['突破等级'] == 'B_WATCH'].sort_values('最终交易优先级', ascending=False).head(10)
-    print(f'\n  {"─"*76}')
-    if len(b) == 0:
-        print('  【B_WATCH｜正在构建】无')
-    else:
-        print(f'  【B_WATCH｜正在构建】(前{len(b)}只)')
-        for code, row in b.iterrows():
-            m = results_map.get(code, {})
-            print(_stock_block(row, m.get('名称', ''), _clean_theme(m.get('主题')))
-                  + f'\n    预计: {row["突破距离"]}')
-
-    # ── C_BASE 概览 ──
-    cb = br[br['突破等级'] == 'C_BASE']
-    if len(cb) > 0:
-        print(f'\n  【C_BASE｜平台构建中】{len(cb)}只 (D5+为主, 等待3~10日, 暂不建仓)')
-
-    # ── NO TRADE ──
-    print(f'\n  {"─"*76}')
-    print('  【NO TRADE｜明确禁止交易】')
-    any_nt = False
-    for st in ['EVENT_RISK', 'OVERHEATED', 'FAILED_STRUCTURE']:
-        sub = br[(br['突破状态'] == st) & (br['最终交易优先级'] >= br['最终交易优先级'].quantile(0.6))]
-        sub = sub.sort_values('最终交易优先级', ascending=False).head(8)
-        if len(sub) > 0:
-            any_nt = True
-            names = ', '.join(f"{results_map.get(c2, {}).get('名称', c2)}"
-                              f"(T1={r['T1评分']})" for c2, r in sub.iterrows())
-            print(f'    {st}: {names}')
-    if not any_nt:
-        print('    无 (高优先级候选中无事件/过热/结构破坏股)')
-
-    # ── 明日最可能突破 Top3 (PRIMARY_BUY/NEAR_TRIGGER/D0-D1, 按T1) ──
-    print(f'\n  {"─"*76}')
-    cand_t1 = br[(br['T1评分'] >= 85) &
-                 (~br['突破状态'].isin(['EVENT_RISK', 'OVERHEATED', 'FAILED_STRUCTURE',
-                                       'WAIT_PULLBACK']))]
-    cand_t1 = cand_t1.sort_values('T1评分', ascending=False).head(3)
-    if len(cand_t1) == 0:
-        print('  1) 明日最可能突破 Top3:')
-        print('     当前没有符合T+1高胜率突破条件的股票。')
-    else:
-        print('  1) 明日最可能突破 Top3:')
-        for i, (code, row) in enumerate(cand_t1.iterrows(), 1):
-            m = results_map.get(code, {})
-            print(f'     {i}. {m.get("名称", "")} ({code}) T1={row["T1评分"]} '
-                  f'T3={row["T3评分"]} 状态={row["突破状态"]} 距离={row["突破距离"]} '
-                  f'触发价={row["关键突破价"]} 失效价={row["失效价"]} 仓位={row["建议仓位"]}')
-
-    # ── 未来3日最可能突破 Top5 (按T3) ──
-    print(f'\n  2) 未来3日最可能突破 Top5:')
-    cand_t3 = br[(br['T3评分'] >= 80) &
-                 (~br['突破状态'].isin(['EVENT_RISK', 'OVERHEATED', 'FAILED_STRUCTURE']))]
-    cand_t3 = cand_t3.sort_values('T3评分', ascending=False).head(5)
-    if len(cand_t3) == 0:
-        print('     当前没有明确的T+3突破候选，继续等待。')
-    else:
-        for i, (code, row) in enumerate(cand_t3.iterrows(), 1):
-            m = results_map.get(code, {})
-            print(f'     {i}. {m.get("名称", "")} ({code}) T3={row["T3评分"]} '
-                  f'T1={row["T1评分"]} 状态={row["突破状态"]} 距离={row["突破距离"]} '
-                  f'平台质量={row["T3_平台质量"]}/25 触发价={row["关键突破价"]} '
-                  f'失效价={row["失效价"]} 仓位={row["建议仓位"]}')
-
-    # ── 状态分布 ──
-    print(f'\n  3) 突破状态分布: '
-          + ', '.join(f'{k}={v}' for k, v in br['突破状态'].value_counts().items()))
-    print(f'{"="*160}')
+    # ② 明日挂单: 盘中放量≥1.5×20日均量 + 站上触发价才买
+    bad = ['EVENT_RISK', 'OVERHEATED', 'FAILED_STRUCTURE', 'WAIT_PULLBACK']
+    pend_cond = (br['突破状态'].isin(['NEAR_TRIGGER'])
+                 | ((br['T1评分'] >= 85) & (~br['突破状态'].isin(bad)))) \
+                & (~br.index.isin(buy.index))
+    pend = br[pend_cond].sort_values('最终交易优先级', ascending=False).head(5)
+    print('② 明日挂单(放量过触发价才买):')
+    if len(pend) == 0:
+        print('  无')
+    for code, r in pend.iterrows():
+        print(_sig_line(code, r, results_map, f"{r['距离突破位%']:+.1f}%"))

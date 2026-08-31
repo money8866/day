@@ -166,6 +166,7 @@ def main():
     # ============================================================
     logger.info("Phase 1: 批量计算6大因子原始值...")
     raw_data = {}       # ts_code -> raw_data dict
+    fund_by_code = {}   # ts_code -> 基本面字段 (突破准备度FQ计算用)
     factor_rows = []    # 用于构建因子DataFrame
     stock_meta = []     # 股票元数据
 
@@ -194,6 +195,26 @@ def main():
             continue
 
         raw_data[ts_code] = rd
+        # 基本面字段 (FQ = 成长40+质量25+安全20+持续15, 缺失给中性档)
+        def _fnum(x):
+            try:
+                v = float(x)
+                return None if v != v else v
+            except (TypeError, ValueError):
+                return None
+        fund_by_code[ts_code] = {
+            '利润同比': _fnum(row.get('利润同比')),
+            '营收同比': _fnum(row.get('营收同比')),
+            'Q1利润同比': _fnum(row.get('Q1利润同比')),
+            '扣非利润同比': _fnum(row.get('扣非利润同比')),
+            '3年利润CAGR': _fnum(row.get('3年利润CAGR')),
+            'ROE': _fnum(row.get('ROE')),
+            '毛利率': _fnum(row.get('毛利率')),
+            '现金流/营收比': _fnum(row.get('现金流/营收比')),
+            '资产负债率%': _fnum(row.get('资产负债率%')),
+            '商誉占比%': _fnum(row.get('商誉占比%')),
+            'PEG': _fnum(row.get('PEG')),
+        }
         factor_rows.append({
             'ts_code': ts_code,
             **rd['factors'],
@@ -581,9 +602,9 @@ def main():
         logger.info("Phase 5: 计算 T+1/T+3 突破准备度...")
         index_df = fetcher.get_index_daily('000001.SH')
         br = compute_breakout_readiness(results, raw_data, mf_by_code,
-                                        index_df, forecast_vip_all)
-        print_breakout_report(br, {r['代码']: r for r in results},
-                              br.attrs.get('idx_close'))
+                                        index_df, forecast_vip_all,
+                                        fund_by_code=fund_by_code)
+        print_breakout_report(br, {r['代码']: r for r in results})
         br_out = br.reset_index()
         br_path = os.path.join(report_dir, f'breakout_readiness_{trade_date}.csv')
         br_out.to_csv(br_path, index=False, encoding='utf-8-sig')

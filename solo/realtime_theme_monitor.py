@@ -887,7 +887,10 @@ class RealtimeThemeMonitor:
         trade_date = self._get_last_trade_date()
         mv_file = os.path.join(cache_daily, f'market_{trade_date}.csv')
         if not os.path.exists(mv_file):
-            files = glob.glob(os.path.join(cache_daily, 'market_*.csv'))
+            # 仅匹配 market_YYYYMMDD.csv(排除 market_curve.csv 等无 ts_code 列的文件),
+            # 并按文件名日期取最近一日
+            files = [f for f in glob.glob(os.path.join(cache_daily, 'market_*.csv'))
+                     if os.path.basename(f).split('_')[-1].split('.')[0].isdigit()]
             if files:
                 mv_file = max(files, key=os.path.getmtime)
         if os.path.exists(mv_file):

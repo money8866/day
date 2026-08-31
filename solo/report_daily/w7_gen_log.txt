@@ -1,0 +1,7 @@
+﻿[w7] 日期=20260828 股池=2846 开始加载历史...
+[w7] 分析进度 500/2846 耗时=31.1s
+[w7] 分析进度 1000/2846 耗时=62.1s
+[w7] 分析进度 1500/2846 耗时=92.4s
+[w7] 分析进度 2000/2846 耗时=122.9s
+[w7] 分析进度 2500/2846 耗时=153.5s
+{"date": "20260828", "universe": 2846, "results": 1339, "output": "D:\\mystock\\solo\\report_daily\\w7_second_wave_20260828.md", "states": {"EXTREME_CHURN": 98, "ABSORPTION": 66, "DRYUP": 1, "BREAKOUT_CONFIRM": 1, "DISTRIBUTION": 143, "FAILED": 1030}, "buys": {"WAIT": 1338, "SECONDARY_BUY": 1}}

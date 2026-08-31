@@ -66,7 +66,6 @@ rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
 python solo\volume_surge_select.py
 
-
 echo =============================================
 python solo\tushare_quant.py
 echo.
@@ -88,9 +87,7 @@ echo.
 call push.bat
 
 
-rem echo 机构主线第一次回踩
-rem cd /d d:\mystock\solo\market_regime_v3
-rem python -u main.py --push
+
 
 
 echo =============================================

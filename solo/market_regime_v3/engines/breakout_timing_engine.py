@@ -145,6 +145,9 @@ class BreakoutTimingEngine:
         grade = str(v8_signal.get('signal_level', ''))
         if grade not in ('S', 'A', 'B'):
             return None
+        _name = str(v8_signal.get('name', '') or '')
+        if 'ST' in _name.upper() or '退' in _name:
+            return None
 
         market_env = market_env or {}
         td = trade_date
@@ -1107,7 +1110,8 @@ class BreakoutTimingEngine:
         lines.append('【明日最可能启动 TOP3】')
         lines.append('=' * 52)
         t1_cands = [r for r in results if r.t1_eligible and r.state in
-                    ('PRIMARY_BUY', 'PRIMARY_RETEST_BUY', 'NEAR_TRIGGER', 'T3_WATCH', 'WAIT_PULLBACK')]
+                    ('PRIMARY_BUY', 'PRIMARY_RETEST_BUY', 'NEAR_TRIGGER', 'T3_WATCH', 'WAIT_PULLBACK')
+                    and (r.distance_to_trigger or 0) <= 5.0]
         t1_cands.sort(key=lambda x: (-x.t1_score, -x.breakout_priority))
         if not [r for r in t1_cands if r.t1_score >= 85]:
             lines.append('当前V8候选中，没有符合T+1高胜率突破条件的股票，不强行交易。')
@@ -1124,7 +1128,8 @@ class BreakoutTimingEngine:
         lines.append('=' * 52)
         lines.append('【未来3日最可能突破 TOP5】')
         lines.append('=' * 52)
-        t3_top = [r for r in results if r.t3_score >= 65 and r.state not in ('AVOID', 'FALSE_BREAKOUT', 'FAILED_STRUCTURE')]
+        t3_top = [r for r in results if r.t3_score >= 65 and r.state not in
+                  ('AVOID', 'FALSE_BREAKOUT', 'FAILED_STRUCTURE', 'OVERHEATED')]
         t3_top.sort(key=lambda x: x.t3_score, reverse=True)
         if not [r for r in t3_top if r.t3_score >= 80]:
             lines.append('当前没有明确T+3突破候选，继续等待平台完成。')

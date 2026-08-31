@@ -79,10 +79,15 @@ _env_date = os.environ.get("ELD_TARGET_DATE", "").strip()
 trade_date = _env_date if _env_date else get_last_trade_date()
 logger.info("交易日: %s%s", trade_date, " (ELD_TARGET_DATE指定)" if _env_date else "")
 
-# ── 1. 获取业绩预告 ──
-logger.info("Step 1: 获取业绩预告...")
-forecasts = ds.get_forecast_all()
-logger.info("  获取到 %d 条业绩预告", len(forecasts))
+# ── 1. 获取事件池（ELD_EVENT_MODE: actual=正式中报超预期池(默认) / forecast=预告池） ──
+EVENT_MODE = os.environ.get("ELD_EVENT_MODE", "actual").strip().lower()
+if EVENT_MODE == "forecast":
+    logger.info("Step 1: 获取业绩预告 (ELD_EVENT_MODE=forecast)...")
+    forecasts = ds.get_forecast_all()
+else:
+    logger.info("Step 1: 获取正式中报超预期池 (默认 actual 模式)...")
+    forecasts = ds.get_actual_report_all()
+logger.info("  获取到 %d 条", len(forecasts))
 
 # ── 1b. 过滤预告利润增速 ──
 min_growth = cfg.event_filter.min_forecast_growth
@@ -91,7 +96,7 @@ forecasts = [fc for fc in forecasts
              if fc.p_change_min is not None and fc.p_change_max is not None
              and fc.p_change_max >= min_growth
              and (fc.p_change_min + fc.p_change_max) / 2 >= min_growth]
-logger.info("  Step 1b: 预告利润增速过滤 %d → %d (阈值≥%.0f%%)", before, len(forecasts), min_growth)
+logger.info("  Step 1b: 利润增速过滤 %d → %d (阈值≥%.0f%%)", before, len(forecasts), min_growth)
 
 # ── 2. 获取股票基本信息 ──
 logger.info("Step 2: 获取股票基本信息...")

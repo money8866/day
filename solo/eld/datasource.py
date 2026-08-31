@@ -89,6 +89,7 @@ class EldDataSource:
         self._daily_csv_data: Optional[dict[str, list[dict]]] = None  # daily_YYYYMMDD.csv → {ts_code: [records]}
         self._daily_csv_range: tuple[str, str] = ("", "")  # (min_date, max_date) 已加载范围
         self._forecast_cache: Optional[list[ForecastData]] = None  # get_forecast_all 内存缓存
+        self._actual_cache: Optional[list[ForecastData]] = None  # get_actual_report_all 内存缓存
 
     # ─── API 调用包装 ────────────────────────
 
@@ -399,6 +400,124 @@ class EldDataSource:
                 announce_date=str(row.get("ann_date", "")),
                 fiscal_quarter=ed,
                 summary=summary,
+            ))
+        return results
+
+    def get_actual_report_all(self) -> list[ForecastData]:
+        """actual 事件模式：正式中报披露超预期池（fina_indicator_vip 一次拉全）。
+
+        与 get_forecast_all 平行的事件源（actual 为默认事件模式，ELD_EVENT_MODE=forecast 可切回预告池）：
+          - 池子：正式中报净利同比 >= 30%（与预告口径一致），剔除北交所
+          - 超预期判定：无预告（披露即新信息）或 实际增速 >= 预告区间中值；
+            低于预告中值 = 兑现不足（预告吹了没做到），剔除
+          - 事件新鲜度：正式披露日距今 <= 30 自然日（约20个交易日，PEAD 有效窗口）
+          - 伪装为 ForecastData 复用下游全链路：
+            p_change_min/max = 实际净利同比（Step 1b 增速过滤自动生效），
+            announce_date = 正式披露日（买点窗口锚点自动正确：披露后1-2日
+            为 report_post 观察期 BUY 降级，3日后回踩买点正常输出），
+            type = "正式披露"（无预告原文，event_filter 仅按财务特征检测非经常性）
+        """
+        if self._actual_cache is not None:
+            return self._actual_cache
+
+        trade_date = get_last_trade_date()
+        period = self._FORECAST_PERIOD
+
+        # ── 1. 本地 parquet 缓存 ──
+        cache_key = f"actual_vip_{period}_{trade_date}"
+        df_cached = self._load_cache(cache_key, expire_hours=12)
+        if df_cached is not None and len(df_cached) > 0:
+            results = self._actual_df_to_forecast_list(df_cached)
+            if results:
+                logger.info("从本地缓存读取正式中报超预期池: %d 条", len(results))
+                self._actual_cache = results
+                return results
+
+        # ── 2. fina_indicator_vip API（单次调用拉全市场中报指标） ──
+        logger.info("从 fina_indicator_vip API 获取全量正式中报 (period=%s)...", period)
+        df = self._call_api(
+            "fina_indicator_vip",
+            period=period,
+            fields=(
+                "ts_code,end_date,ann_date,update_flag,"
+                "netprofit_yoy,or_yoy,roe"
+            ),
+        )
+        if df is None or df.empty:
+            logger.warning("fina_indicator_vip 未返回数据")
+            return []
+
+        df = df.dropna(subset=["ann_date"]).copy()
+        df["ann_date"] = df["ann_date"].astype(str)
+        # 每股取最新披露行（update_flag 越大越新，其次 ann_date 越大越新）
+        df["_flag"] = pd.to_numeric(df.get("update_flag"), errors="coerce").fillna(0)
+        df = df.sort_values(["ts_code", "ann_date", "_flag"]).groupby("ts_code").tail(1)
+
+        # 事件新鲜度：披露日距今 <= 30 自然日
+        cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+        df = df[df["ann_date"] >= cutoff]
+
+        # 增速门槛：净利同比 >= 30%
+        df["_yoy"] = pd.to_numeric(df.get("netprofit_yoy"), errors="coerce").fillna(0.0)
+        df = df[df["_yoy"] >= 30.0]
+
+        # 剔除北交所（与推送口径一致）
+        df = df[~df["ts_code"].str.endswith(".BJ")]
+
+        # ── 3. 超预期判定：对照预告区间中值 ──
+        fc_mid: dict[str, float] = {}
+        try:
+            fc_list = self.get_forecast_all()
+            fc_mid = {
+                f.ts_code: (f.p_change_min + f.p_change_max) / 2
+                for f in fc_list
+                if f.p_change_min is not None and f.p_change_max is not None
+            }
+        except Exception as exc:
+            logger.warning("读取预告对照失败，按无预告处理: %s", exc)
+
+        def _summary(row) -> str:
+            yoy = float(row["_yoy"])
+            mid = fc_mid.get(str(row["ts_code"]))
+            if mid is None:
+                return f"实际净利同比+{yoy:.0f}%（正式中报，无预告，披露即新信息）"
+            gap = yoy - mid
+            if gap >= 0:
+                return (
+                    f"实际净利同比+{yoy:.0f}%（正式中报）vs 预告中值+{mid:.0f}%，"
+                    f"超预期+{gap:.0f}pct"
+                )
+            return None  # 兑现不足：低于预告中值，剔除
+
+        df["_summary"] = df.apply(_summary, axis=1)
+        df = df[df["_summary"].notna()]
+        df["_summary"] = df["_summary"].astype(str)
+
+        n_before = len(df)
+        self._save_cache(cache_key, df)
+        results = self._actual_df_to_forecast_list(df)
+        self._actual_cache = results
+        logger.info(
+            "正式中报超预期池: %d 条（净利同比>=30%% 且披露<=30日；"
+            "剔除低于预告中值 %d 条）",
+            len(results), n_before - len(results),
+        )
+        return results
+
+    def _actual_df_to_forecast_list(self, df: pd.DataFrame) -> list[ForecastData]:
+        """将正式中报 DataFrame 转为 ForecastData 列表（actual 模式伪装）。"""
+        results: list[ForecastData] = []
+        for _, row in df.iterrows():
+            yoy = float(row.get("_yoy", 0.0) or 0.0)
+            results.append(ForecastData(
+                ts_code=str(row.get("ts_code", "")),
+                end_date=str(row.get("end_date", "")),
+                type="正式披露",
+                p_change_min=yoy,
+                p_change_max=yoy,
+                announce_date=str(row.get("ann_date", "")),
+                fiscal_quarter=str(row.get("end_date", "")),
+                summary=str(row.get("_summary", "")),
             ))
         return results
 

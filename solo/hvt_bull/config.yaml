@@ -1,0 +1,208 @@
+# HVT-BULL V1.0 配置
+# 历史天量换手牛股识别 + 二次启动预测引擎
+
+universe:
+  min_market_cap: 30.0          # 亿元
+  min_avg_amount_20: 3000.0     # 万元，20日均成交额
+  min_listed_days: 120          # 上市交易日数
+  exclude_st: true
+  exclude_bj: true              # 北交所
+  allow_star_growth: true       # 科创板/创业板纳入
+
+hvt:
+  lookback_250: 250             # 历史排名窗口
+  anchor_date: '20240801'       # 天量锚点口径：T0换手须为该日以来最高（空=退回250日滚动窗口口径）
+  anchor_min_hist: 60           # 锚点口径下 T0 之前至少需要的有效交易日数
+  percentile_120: 98            # 120日分位阈值(%)
+  ratio_20: 2.0                 # 当日换手 / 20日均换手
+  amount_ratio_20: 2.0          # 当日成交额 / 20日均成交额
+  rank_a: 1                     # HVT-A: 250日最高
+  rank_b: 2                     # HVT-B: 250日最高或第二高
+  pct_a: 99
+  pct_b: 98
+  ratio_a: 3.0
+  ratio_b: 2.0
+  ratio_c: 1.8
+  pct_c: 95
+  top_rank_cap: 2               # HVT-C: 250日排名前2（含A/B）之外不再放宽
+
+price_strength:
+  min_pct_chg: 3.0              # 天量日最低涨幅(%)
+  strong_pct_chg: 5.0
+  super_pct_chg: 7.0
+  min_close_pos: 0.70           # 收盘位置 (Close-Low)/(High-Low)
+  strong_close_pos: 0.80
+  super_close_pos: 0.85
+  min_body: 0.30                # 实体强度 (Close-Open)/(High-Low)
+
+trend:
+  lookback_ma20: 20
+  lookback_ma60: 60
+  lookback_ma120: 120
+  ma20_slope_days: 10
+  ma60_slope_days: 20
+  allow_platform_breakout: true # 平台突破豁免部分趋势条件
+
+gain_structure:
+  r20_ideal_min: 10.0           # 20日涨幅理想区间(%)
+  r20_ideal_max: 40.0
+  r60_ideal_min: 10.0           # 60日涨幅理想区间(%)
+  r60_ideal_max: 80.0
+  dist_high_120_min: 5.0        # 距120日高点(%)：太近=已高位，太远=离主升远
+  dist_high_120_max: 30.0
+
+chip_lock:
+  volume_5d_ratio: 0.60         # T+1~T+5 均量 <= T0量 × 0.60
+  strong_volume_5d_ratio: 0.50
+  min_low_vs_close: 0.93        # 最低价 >= T0_Close × 0.93
+  min_close_vs_close: 0.95      # 收盘 >= T0_Close × 0.95
+  strong_close_vs_close: 0.97
+  volume_3d_ratio: 0.60
+
+drawdown:
+  star5: 5.0
+  star4: 8.0
+  star3: 12.0
+  star2: 18.0
+  fail: 18.0                    # >18% 判 FAILED
+  atr_norm_denom: 2.5           # ATR标准化回撤分母（回撤/ATR14 ≤ 该值视为优秀）
+
+breakout:
+  confirm_ratio: 1.01           # Close > T0_High × 1.01
+  min_turnover_ratio: 1.3       # 突破日换手 >= 20日均换手 × 1.3
+  strong_turnover_ratio: 1.5
+  min_close_pos: 0.75
+
+exit:
+  structural_loss_days: 2       # 跌破T0_High且连续N日不能收复(放量) → EXIT
+  vol_down_ratio: 1.3           # 放量定义：量 >= 20日均量×1.3
+
+state_machine:
+  max_locking_days: 15          # LOCKING→LOCKED 最长等待
+  max_locked_days: 30           # LOCKED→(突破或FAILED) 最长跟踪
+  breakout_window: 120          # 二次突破检测窗口（交易日，捕获慢突破 T+35~120）
+  right_track_days: 120         # 右侧持有跟踪窗口上限（交易日，主升捕获）
+  primary_hold_days: 60         # PRIMARY_BUY/CONFIRMED 最短持有观察期
+
+sli_v2:
+  leader_filter: true           # 关联 sli_v2 细分龙头 Top5（标准接口），不在表中的股票直接过滤
+
+scoring:
+  weights:
+    hvt_exception: 15
+    price_strength: 15
+    trend_structure: 12
+    money_quality: 12
+    chip_lock: 15
+    drawdown_quality: 10
+    breakout_strength: 10
+    sector_resonance: 6
+    fundamental: 5
+
+grades:
+  super_bull: 90
+  bull: 85
+  watch: 78
+  observe: 70
+
+similarity:
+  # 案例特征向量权重（相似度模型）
+  weights:
+    turnover_rank: 8
+    turnover_ratio: 12
+    pct_chg: 10
+    close_pos: 10
+    ma20_slope: 8
+    ma60_slope: 5
+    r20: 8
+    r60: 8
+    dist_high: 8
+    volume_contraction: 12
+    post_drawdown: 11
+
+moneyflow:
+  enabled: true
+  # 资金流 parquet 缺失时按中性 50 处理，权重自动折半
+  net_mf_strength_cap: 5.0      # 主力净流入/成交额 >=5% 满分
+  parquet_dir: 'D:/mystock/solo/theme_alpha_v6/cache/parquet'
+
+backtest:
+  start: '20250101'
+  end: '20260828'
+  bench: '000300.SH'
+  horizons: [1, 3, 5, 10, 20]
+  max_dd_window: 20
+
+# ---- V3.5 Trade Execution 增量层（§0：只增不改；enabled=false 时输出与 V3.1 完全一致） ----
+trade_execution:
+  enabled: true
+  max_buy_candidates: 3        # §26：次日 BUY 候选 <= 3，EXECUTE=0~1
+  no_chase_atr: 1.2            # §18：NO_CHASE_LEVEL = 突破位 + N×ATR
+  zone_atr: 0.5                # BUY_ZONE 半宽（×ATR）
+  max_gap_atr: 3.0             # 收盘距突破位超过 N×ATR → 视为距关键位过远（§9）
+  ready_fe20: 70               # §5 READY_BUY 基础门（不机械使用，仅为基础条件）
+  ready_fe_mid: 70             # FE60/FE120 至少一个达标
+  ready_cont: 65
+  ready_extrisk: 60
+  initial_ratio: 0.4           # §20：首次建仓 = 目标仓位 × 30~50% 取中值
+  position:                    # §20 仓位分档（总上限受现有仓位模块约束）
+    a_plus: [8, 12]
+    a: [5, 8]
+    b: [3, 5]
+    c: [0, 3]
+  weights:
+    buyability:                # §11
+      breakout_readiness: 0.30
+      price_location: 0.20
+      pullback_quality: 0.15
+      volume_quality: 0.10
+      intraday_structure: 0.10
+      sector_confirmation: 0.05
+      market_regime: 0.05
+      risk_reward: 0.05
+    execution_score:           # §24
+      buyability: 0.40
+      fe_riskadj: 0.25
+      continuation: 0.15
+      price_rr: 0.10
+      lifecycle_fit: 0.05
+      sector_market: 0.05
+  thresholds:                  # §25 分类（硬风控可覆盖评分）
+    ready_buy: 85
+    buy_on_confirm: 75
+    wait_confirm: 65
+    watch: 50
+
+# ===== V3.0 右尾捕获引擎 =====
+v3:
+  enabled: true
+  # 双评分门控阈值
+  primary_entry: 70          # ENTRY_SCORE >= 70 才考虑 PRIMARY
+  # V3.2（§18消融证据）：PRIMARY 不再附加 expansion 硬门控——
+  #   trio&es>=70 组合 n=668 胜率63.6% P90 30.6 ≥20% 18.1%，
+  #   优于附加 expansion>=70 的 n=166 组（P90 26.2 / ≥20% 16.3%）。
+  #   扩张维度改由 T20_TAIL_SCORE 校准表排序体现。
+  rocket_expansion: 75       # T20_EXPANSION_SCORE >= 75 -> T20_ROCKET_WATCH（观察池；85 实际不可达）
+  rally_bonus_cap: 8
+  rally_r120_q40: 23.3
+  rally_r120_q20: 41.2
+  rally_r250_q40: 35.4
+  rally_r250_q20: 67.8
+  # T20_TAIL_SCORE 权重（V3§十一）
+  tail_weights:
+    p20: 0.30
+    p30: 0.25
+    p50: 0.20
+    expected: 0.15
+    p10: 0.10
+  # 校准表最小样本量（不足显示 SAMPLE_LOW）
+  calib_min_n: 30
+  # 历史校准表文件（由全量回测生成，daily 运行时加载）
+  calib_file: 'D:/mystock/solo/report_daily/hvt_bull_v3_calibration.json'
+  # 硬否决参数
+  min_amount_wan: 2000.0     # 天量日成交额下限（万元），低于即流动性否决
+  # 收盘位置/放量仅分级，不做绝对淘汰（V3§八/九）
+
+report:
+  top_n: 20
+  output_dir: 'D:/mystock/solo/report_daily'
