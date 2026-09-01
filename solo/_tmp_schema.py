@@ -1,0 +1,17 @@
+import sqlite3
+con = sqlite3.connect(r'D:\mystock\cache_daily\stock_data.db')
+cur = con.cursor()
+cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+print('TABLES:', [r[0] for r in cur.fetchall()])
+cur.execute('PRAGMA table_info(stk_factor_pro)')
+cols = [(r[1], r[2]) for r in cur.fetchall()]
+print('COLS(%d):' % len(cols), [c[0] for c in cols])
+cur.execute('SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT ts_code), COUNT(*) FROM stk_factor_pro')
+print('RANGE:', cur.fetchone())
+cur.execute('SELECT ts_code, COUNT(*) c FROM stk_factor_pro GROUP BY ts_code ORDER BY c LIMIT 3')
+print('MIN_HISTORY:', cur.fetchall())
+cur.execute('SELECT ts_code, COUNT(*) c FROM stk_factor_pro GROUP BY ts_code ORDER BY c DESC LIMIT 3')
+print('MAX_HISTORY:', cur.fetchall())
+cur.execute('PRAGMA table_info(fina_indicator_cache)')
+print('FINA_COLS:', [r[1] for r in cur.fetchall()])
+con.close()

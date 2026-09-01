@@ -988,6 +988,11 @@ def markdown(results, date):
     n_dist = sum(1 for x in results if x["type"] == "DISTRIBUTION")
     lines = [f"# W7 HVT-V3 三榜单（A/CORE · B/EXT · C/WATCH）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
+    cnt_state = {}
+    for x in results:
+        cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
+    n_broken = sum(cnt_state.get(s, 0) for s in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION"))
+    lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　（已突破类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 合计 {n_broken} 家）")
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     col_header = "| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
@@ -1033,6 +1038,17 @@ def markdown(results, date):
         lines.append(col_sep)
         for k, x in enumerate(mid_list[:15], 1):
             lines.append(row(x, k))
+    # 已突破标的完整名单（不受榜单前20截断影响，推送引用以此为准）
+    broken = [x for x in results if x["state"] in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")]
+    lines.append(f"\n## 已突破标的完整名单（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 共{len(broken)}只）\n")
+    if broken:
+        lines.append("| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
+        lines.append("| -- | -- | -- | --: | -- | --: | --: | --: | --: | -- |")
+        for k, x in enumerate(sorted(broken, key=lambda y: -y["score"]), 1):
+            lines.append(f"| {k} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} "
+                         f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
+    else:
+        lines.append("_（今日无已突破标的）_")
     # C榜 WATCH
     watch = [x for x in results if x["buy"] == "WATCH"]
     dist_watch = [x for x in watch if x["type"] == "DISTRIBUTION"]

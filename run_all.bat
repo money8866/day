@@ -60,7 +60,7 @@ rem python solo\scan_etf_alpha_v5.py
 echo [Step 5.3/7] 中报预增股池择时（回踩算法）
 
 echo =============================================
-python -X utf8 zhongbao_hunter.py --backfill
+python -X utf8 solo\zhongbao_hunter.py --backfill
 
 rem python d:\mystock\solo\multi_factor_picker\enhanced_timing_bull_all.py
 
