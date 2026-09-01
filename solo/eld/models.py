@@ -314,6 +314,10 @@ class EarningsBuyPointResult:
     report_date: str = ""                  # 正式报告披露日 YYYYMMDD（可空）
     report_stage: str = ""                 # report_pre/report_post/normal（无报告日时为空）
     days_to_report: int = 0                # 距披露日交易天数：>0=披露前N日(0=披露日当日)，<0=已过|N|日
+    # ── 挖坑洗盘豁免（V5：深挖坑+缩量企稳+机构洗盘时豁免MA20门控） ──
+    washout_exempt: bool = False           # 豁免是否触发
+    washout_reason: str = ""               # 豁免触发原因明细
+    washout_pit_low: float = 0.0           # 坑底低点（豁免触发时作为失效价）
     logic: list[str] = field(default_factory=list)
 
 
@@ -435,6 +439,10 @@ class FinalScoreResult:
             "next_day_buy_reason": self.earnings_buy_point_detail.next_day_buy_reason if self.earnings_buy_point_detail else "",
             "stock_pullback_score": round(self.earnings_buy_point_detail.stock_pullback_score, 0) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.stock_pullback_score > 0 else 0,
             "stock_pullback_reason": self.earnings_buy_point_detail.stock_pullback_reason if self.earnings_buy_point_detail else "",
+            # 挖坑洗盘豁免（V5）
+            "washout_exempt": self.earnings_buy_point_detail.washout_exempt if self.earnings_buy_point_detail else False,
+            "washout_reason": self.earnings_buy_point_detail.washout_reason if self.earnings_buy_point_detail else "",
+            "washout_pit_low": round(self.earnings_buy_point_detail.washout_pit_low, 2) if self.earnings_buy_point_detail and self.earnings_buy_point_detail.washout_pit_low > 0 else 0.0,
             # 最佳买点信号（V3）
             "buy_point_type": self.earnings_buy_point_detail.buy_point_type if self.earnings_buy_point_detail else "",
             "bias_pct": round(self.earnings_buy_point_detail.bias_pct, 1) if self.earnings_buy_point_detail else 0.0,

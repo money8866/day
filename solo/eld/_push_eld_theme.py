@@ -239,13 +239,24 @@ _good_points = [s for s in eld_stocks
 _pullback = [s for s in eld_stocks
              if float(s.get("stock_pullback_score", 0) or 0) >= 60
              and s['institution_state'] != '派发']
-_low_buy = {s['ts_code']: s for s in _good_points + _pullback}.values()
+# 挖坑洗盘豁免（V5）：豁免触发即纳入低吸买点池
+_washout = [s for s in eld_stocks
+            if str(s.get('washout_exempt', '')).lower() == 'true'
+            and s['institution_state'] != '派发']
+_low_buy = {s['ts_code']: s for s in _good_points + _pullback + _washout}.values()
 if _low_buy:
-    lines.append("**🏆低吸买点（质量≥80 或 回踩企稳≥60）**")
+    lines.append("**🏆低吸买点（质量≥80 或 回踩企稳≥60 或 挖坑豁免）**")
     if _market_weak_flag:
         lines.append("> 弱市（大盘<MA20）暂缓介入，等待大盘企稳后按此名单操作")
-    for s in sorted(_low_buy, key=lambda x: -max(float(x.get('buy_quality_score', 0) or 0),
-                                                float(x.get("stock_pullback_score", 0) or 0)))[:8]:
+    def _lb_key(s):
+        base = max(float(s.get('buy_quality_score', 0) or 0),
+                   float(s.get("stock_pullback_score", 0) or 0))
+        # 豁免BUY（坑底低吸信号）优先展示，避免被高分回踩股挤出展示区
+        if str(s.get('washout_exempt', '')).lower() == 'true' and s.get('earnings_buy_signal', '') == 'BUY':
+            base += 100
+        return base
+
+    for s in sorted(_low_buy, key=_lb_key, reverse=True)[:10]:
         inst = s["institution_state"]
         v2 = round(float(s['final_score_v2']))
         q = round(float(s.get('buy_quality_score', 0) or 0))
@@ -258,6 +269,9 @@ if _low_buy:
         stop_loss = float(s.get("stop_loss_price", 0))
         price_str = f" 参考价{ref_price:.2f} 止损{stop_loss:.2f}" if ref_price > 0 else ""
         qual = f"{bpt_cn}:{q}分" if q >= 80 else f"回踩:{pb}分"
+        if str(s.get('washout_exempt', '')).lower() == 'true':
+            _pit = float(s.get('washout_pit_low', 0) or 0)
+            qual = f"🕳️挖坑豁免:{q}分" + (f" 失效{_pit:.2f}" if _pit > 0 else "")
         lines.append(f" - {s['name']} {qual} V2:{v2} {inst} 乖离{bias:+.1f}%{price_str}")
     lines.append("")
 
@@ -323,8 +337,9 @@ with open(out_path, "w", encoding="utf-8") as f:
     f.write(msg)
 print(f"✅ 本地已保存: {out_path}")
 
-def main():
-    push()
+def main(no_push: bool = False):
+    if not no_push:
+        push()
 
 if __name__ == "__main__":
-    main()
+    main(no_push="--no-push" in sys.argv)

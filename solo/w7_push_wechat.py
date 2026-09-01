@@ -23,7 +23,7 @@ PUSHPLUS_TOKEN = os.getenv('PUSHPLUS')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions'
 
-MAX_REPORT_CHARS = 6000  # 喂给 DeepSeek 的报告截断长度（保留精华段）
+MAX_REPORT_CHARS = 16000  # 喂给 DeepSeek 的报告截断长度（保留精华段）
 
 
 def call_deepseek(prompt: str, system: str) -> str:
@@ -69,32 +69,42 @@ def find_latest_report(date_str=None) -> str:
 
 
 def summarize_for_ai(md_text: str) -> str:
-    """截取报告精华段喂给 DeepSeek（跳过 WATCH 长尾）"""
-    if len(md_text) <= MAX_REPORT_CHARS:
-        return md_text
-    # 保留开头（PRIMARY_BUY/T120_ROCKET/CONFIRMED 通常在前面），并裁剪 WATCH 段
-    head = md_text[:MAX_REPORT_CHARS]
-    # 若截断点在 WATCH 段中间，补充一句说明
-    return head + '\n\n>（报告过长，WATCH 长尾已截断，以上为精华段）'
+    """保留统计头部与全部榜单表格（含B榜价格位），只截掉冗长的行为解释段"""
+    keep = []
+    skip = False
+    for ln in md_text.splitlines():
+        if ln.startswith('#'):
+            skip = '行为解释' in ln
+        if not skip:
+            keep.append(ln)
+    text = '\n'.join(keep)
+    if len(text) <= MAX_REPORT_CHARS:
+        return text
+    return text[:MAX_REPORT_CHARS] + '\n\n>（报告过长已截断，以上为完整榜单段）'
 
 
 SYSTEM_PROMPT = (
     '你是A股短线交易执行助理。严格基于用户提供的量化报告数据输出，'
     '禁止编造任何数据、价格、新闻或消息面；股票名称与代码必须严格引用报告原文。'
     '\n\n重要规则：'
-    '\n- 报告中所有数字（T120/ENTRY/HVT/Acceptance/HVT_SIM/分数等）均为0-100的评分，'
-    '**不是股价**，绝对禁止把它们当作触发价/止损价/买入价输出；'
-    '\n- 报告未提供具体股价时，触发条件只能用形态描述（如"放量突破平台""PP10成立""缩量回踩XX不破"），'
-    '禁止写出任何具体价格数字；'
-    '\n- 若某标的无可执行买点，明确写"今日不买"，不得编造价位。'
+    '\n- 报告中 T120/ENTRY/HVT/吸收/生命/空间/加速/RS/基本面/DRisk/总分 等均为0-100评分，'
+    '**不是股价**，绝对禁止把它们当作价格输出；'
+    '\n- 榜单中的【现价】【触发价】【MA20】三列是真实股价（元）：触发价=事件日后10日平台高点，'
+    '可直接引用，但禁止自行计算、修改或四舍五入任何价格；'
+    '\n- 状态语义必须严格区分：SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION=已突破，'
+    '这类标的禁止写"等突破/等二次突破"，正确措辞="已突破：回踩触发价附近不破可低吸或持有，'
+    '收盘跌回触发价下方离场"；其余状态（ABSORPTION/DRYUP/EXTREME_CHURN等）=未突破，'
+    '措辞="等放量（量比≥1.2）突破触发价XX.XX再买"；'
+    '\n- 现价>触发价=已突破在上方，现价<触发价=尚未突破；巨量日（量比≥3）或单日涨幅>10%不追，只写回踩方案。'
     '\n\n输出要求：'
-    '\n1. 只输出一段精炼的操作指令文字（Markdown，含小标题但总长≤600字），可直接照着执行；'
-    '\n2. 结构固定：【今日结论】一句话 → 【可操作标的】逐只给出"状态+触发条件"'
-    '（触发条件用形态描述，不用价格）→【等待标的】简列 →【风险/纪律】一句话；'
-    '\n3. 未满足买点条件（如PP10未成立、未突破）的标的必须写成"等XX触发再买"，'
-    '不得写成可立即买入；涨停/巨量当日不追；'
-    '\n4. 无信号时明确写"今日零买入动作"；'
-    '\n5. 严禁模糊词（关注/观望/择机），全部换成明确动作或触发形态。'
+    '\n1. 只输出一段精炼的操作指令（Markdown，含小标题，总长≤600字），可直接照着执行；'
+    '\n2. 结构固定：【今日结论】一句话（必须与报告统计一致：已突破/待触发家数，'
+    '报告有确认或已突破标的时禁止写"无已完成买点信号"）→'
+    '【可操作标的】逐只"状态+触发价+量条件（量比≥1.2）+失效位（收盘跌回触发价下方；MA20为总防线）"→'
+    '【等待标的】简列（未突破票写"等放量突破触发价XX.XX"）→【风险/纪律】一句话；'
+    '\n3. 价格一律引用报告的现价/触发价/MA20，保留两位小数，禁止编造；'
+    '\n4. 仅当报告无任何已突破/确认标的时才写"今日零买入动作"；'
+    '\n5. 严禁模糊词（关注/观望/择机），全部换成明确动作或明确触发价。'
 )
 
 
@@ -141,8 +151,8 @@ def main():
     # 1. DeepSeek 精炼
     ai_text = call_deepseek(summarize_for_ai(md_text), SYSTEM_PROMPT)
     if not ai_text:
-        # DeepSeek 失败则退回简单摘要（前1200字符）
-        ai_text = md_text[:1200]
+        # DeepSeek 失败则退回榜单摘要（含B榜价格位，截掉行为解释）
+        ai_text = summarize_for_ai(md_text)[:1500]
 
     # 2. 组装推送内容（头部简表 + AI 指令）
     header = []

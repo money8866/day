@@ -144,6 +144,10 @@ class ReportGenerator:
                         lines.append(f"  - 公告前涨幅: {ebp.pre_announce_runup_pct:.1f}% {'⚠️利好兑现' if ebp.is_sell_on_news else '✅正常'}")
                     if ebp.next_day_buyable:
                         lines.append(f"  - **🎯明日可买**: {ebp.next_day_buy_reason}")
+                    if ebp.washout_exempt:
+                        lines.append(f"  - **🕳️挖坑洗盘豁免**: 触发 | 坑底低点: {ebp.washout_pit_low:.2f}（失效价）")
+                        if ebp.washout_reason:
+                            lines.append(f"    - {ebp.washout_reason}")
                 lines.append("")
 
                 # V2 各维度评分逻辑

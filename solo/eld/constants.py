@@ -178,6 +178,10 @@ CSV_COLUMNS: Final[list[str]] = [
     "report_date",
     "report_stage",
     "days_to_report",
+    # 挖坑洗盘豁免（V5：中文在线2026-08-31案例）
+    "washout_exempt",
+    "washout_reason",
+    "washout_pit_low",
 ]
 
 

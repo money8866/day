@@ -961,7 +961,12 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     explanation = (f"P{int(ep)}天量@{event_date}，{ext_txt}，状态{state}，类型{tp}；"
                    f"HVT-V3={score:.0f}（天量{dims['hvt']:.0f}/吸收{absorption:.0f}/生命{lifecycle_score(lc):.0f}/空间{fs:.0f}/加速{acc:.0f}/RS{dims['rs']:.0f}/基本面{dims['fina']:.0f}），"
                    f"派发风险{dist_risk:.0f}，ENTRY={entry:.0f}，{'今日PP10成立并重新放量' if pp_ok else '尚未出现合格PP10'}。")
+    latest_bar = df.iloc[last]
+    vol20 = safe_mean(df.vol.iloc[max(0, last - 19):last])
+    volr = finite(latest_bar.vol, 0.0) / vol20 if vol20 > 0 else 0.0
     return {"code": code, "name": name, "industry": industry or "未覆盖", "state": state,
+            "close": finite(latest_bar.close, 0.0), "pressure": pressure,
+            "ma20": finite(latest_bar.ma_bfq_20, 0.0), "volr": volr,
             "score": score, "base_score": base_score, "rank": rank, "type": tp,
             "level": lc["level"], "extension": lc["extension"], "extreme_extension": lc["extreme"],
             "t120": t120, "entry": entry, "entry_dims": entry_dims, "dims": dims, "v5_dims": v5_dims,
@@ -983,13 +988,16 @@ def markdown(results, date):
     n_dist = sum(1 for x in results if x["type"] == "DISTRIBUTION")
     lines = [f"# W7 HVT-V3 三榜单（A/CORE · B/EXT · C/WATCH）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
+    lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
-    col_header = "| # | 代码 | 名称 | 总分 | 类型 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
-    col_sep = "| -- | -- | -- | --: | -- | --: | --: | --: | --: | --: | --: | --: | --: | -- |"
+    col_header = "| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
+    col_sep = "| -- | -- | -- | --: | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |"
 
     def row(x, idx):
         v = x["v5_dims"]
-        return f"| {idx} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} | {v['天量']:.0f} | {v['吸收']:.0f} | {v['生命周期']:.0f} | {v['空间']:.0f} | {v['加速']:.0f} | {v['RS']:.0f} | {v['基本面']:.0f} | {x['dist_risk']:.0f} | {x['state']} |"
+        return (f"| {idx} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} "
+                f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} "
+                f"| {v['天量']:.0f} | {v['吸收']:.0f} | {v['生命周期']:.0f} | {v['空间']:.0f} | {v['加速']:.0f} | {v['RS']:.0f} | {v['基本面']:.0f} | {x['dist_risk']:.0f} | {x['state']} |")
 
     # TOP20 总榜（Rank=收益风险比）
     lines.append("## TOP20 总榜（按 Rank=收益风险比）\n")
@@ -1038,7 +1046,7 @@ def markdown(results, date):
         for x in sorted(watch_top, key=lambda x: -x["score"])[:10]:
             lines.append(f"| {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} | {x['state']} | {x['reason']} |")
     # 行为解释 + 四周期预期
-    top = results[:15]
+    top = results[:20]
     lines.append("\n## 行为解释与 T+10/20/60/120 预期\n")
     for x in top:
         h = x["horizons"]

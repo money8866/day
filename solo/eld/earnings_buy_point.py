@@ -84,6 +84,7 @@ def _check_next_day_buyable(
     institution_state: Optional[str],
     is_sell_on_news: bool,
     close_above_ma20: bool,
+    washout_exempt_result: Optional[dict] = None,
 ) -> tuple[bool, str]:
     """检查是否在回调中，且次日是更好的买入时机。
 
@@ -98,6 +99,10 @@ def _check_next_day_buyable(
     """
     if len(sorted_data) < 2:
         return False, "数据不足无法判断"
+
+    # ── 挖坑洗盘豁免（V5）：深挖坑+缩量企稳+机构洗盘时，MA20破位属挖坑末端而非支撑破坏 ──
+    if washout_exempt_result is not None:
+        return True, f"挖坑洗盘豁免触发，坑底低吸（{washout_exempt_result['reason']}）"
 
     today = sorted_data[-1]
     yesterday = sorted_data[-2]
@@ -315,6 +320,71 @@ def _detect_stock_level_pullback(
         "ma20_slope": round(ma20_slope, 2),
         "today_chg": round(today_chg, 2),
         "dist_ma20": round(dist_ma20, 2),
+    }
+
+
+def _detect_washout_dip_exemption(
+    sorted_data: list[DailyPriceData],
+    institution_state: Optional[str],
+    vol_ratio: float,
+    has_event: bool,
+    cfg: Any,
+) -> Optional[dict]:
+    """挖坑洗盘豁免检测（V5，中文在线2026-08-31案例提炼）。
+
+    模式：事件驱动（预告/中报）→ 深度挖坑（距30日高点回撤≥15%）→
+    连续2日缩量企稳（小阴小阳+量比≤1.0）→ 机构洗盘/吸筹。
+    此时跌破MA20属挖坑末端而非"支撑已破"：MA20门控不一票否决，
+    参考买入价=现价（坑底低吸），失效价=坑底低点。
+    复盘锚点：300364 8/28收盘22.73（破MA20 6.3%）→ 8/31涨停20cm。
+
+    Returns:
+        dict: {'retrace_pct','recent_high','pit_low','today_chg','prev_chg','reason'} 或 None
+    """
+    if not cfg.washout_exempt_enabled or not has_event or len(sorted_data) < 30:
+        return None
+    _safe_states = {InstitutionState.ACCUMULATION.value, InstitutionState.WASHING.value}
+    if institution_state not in _safe_states:
+        return None
+
+    today = sorted_data[-1]
+    yesterday = sorted_data[-2]
+
+    recent_high = max(d.high for d in sorted_data[-30:])
+    retrace = (recent_high - today.close) / recent_high * 100.0 if recent_high > 0 else 0.0
+    if retrace < cfg.washout_min_pullback_pct:
+        return None
+
+    today_chg = (today.close / yesterday.close - 1) * 100.0
+    prev_chg = (yesterday.close / sorted_data[-3].close - 1) * 100.0
+    if not (cfg.washout_day_chg_floor <= today_chg <= cfg.washout_day_chg_cap):
+        return None
+    if not (cfg.washout_day_chg_floor <= prev_chg <= cfg.washout_day_chg_cap):
+        return None
+    if vol_ratio > cfg.washout_max_vol_ratio:
+        return None
+
+    pit_low = min(d.low for d in sorted_data[-10:])
+    if today.close > pit_low * (1 + cfg.washout_pit_distance_pct / 100.0):
+        return None
+
+    if len(sorted_data) >= 21:
+        chg_20d = (today.close / sorted_data[-21].close - 1) * 100.0
+        if chg_20d < cfg.washout_max_drop_20d:
+            return None
+
+    reason = (
+        f"距30日高点{recent_high:.2f}回撤{retrace:.1f}%（挖坑），"
+        f"近2日企稳({prev_chg:+.1f}%/{today_chg:+.1f}%)量比{vol_ratio:.2f}，"
+        f"机构{institution_state}，坑底低点{pit_low:.2f}"
+    )
+    return {
+        "retrace_pct": round(retrace, 1),
+        "recent_high": round(recent_high, 2),
+        "pit_low": round(pit_low, 2),
+        "today_chg": round(today_chg, 2),
+        "prev_chg": round(prev_chg, 2),
+        "reason": reason,
     }
 
 
@@ -875,9 +945,24 @@ def detect_earnings_pullback(
 
     result.is_sell_on_news = is_sell_on_news
 
-    # ── 次日可买性评估（含乖离控制） ──
+    # ── 挖坑洗盘豁免检测（V5，中文在线2026-08-31案例提炼） ──
+    # 事件驱动+深挖坑+连续缩量企稳+机构洗盘 → MA20破位属挖坑末端而非支撑破坏
+    washout_exempt_result = _detect_washout_dip_exemption(
+        sorted_data, institution_state, vol_ratio,
+        has_event=bool(announce_date), cfg=cfg,
+    )
+    result.washout_exempt = washout_exempt_result is not None
+    if washout_exempt_result is not None:
+        result.washout_reason = washout_exempt_result["reason"]
+        result.washout_pit_low = washout_exempt_result["pit_low"]
+        all_logic.append(f"挖坑洗盘豁免: 触发 — {washout_exempt_result['reason']}")
+    else:
+        all_logic.append("挖坑洗盘豁免: 未触发")
+
+    # ── 次日可买性评估（含乖离控制；豁免触发时绕过MA20/Alpha门控） ──
     next_day_buyable, next_day_reason = _check_next_day_buyable(
         sorted_data, ma20, alpha, institution_state, is_sell_on_news, above_ma20,
+        washout_exempt_result=washout_exempt_result,
     )
     result.next_day_buyable = next_day_buyable
     result.next_day_buy_reason = next_day_reason
@@ -962,6 +1047,31 @@ def detect_earnings_pullback(
         )
         all_logic.append(f"参考买入价: {reference_buy_price:.2f}（{ref_desc}）")
         all_logic.append(f"止损价: {stop_loss_price:.2f}")
+    elif washout_exempt_result is not None:
+        # 挖坑洗盘豁免（V5）→ 坑底低吸，失效价=坑底低点（中文在线2026-08-31案例）
+        # 豁免检测含6重AND门（事件+深挖坑≥15%+连续2日企稳+量比≤1+坑底6%内+机构洗盘/吸筹），
+        # 质量分≥washout_buy_quality_threshold 才给BUY，优先级高于市场弱/报告阶段门控
+        if quality_score >= cfg.washout_buy_quality_threshold:
+            signal = EarningsBuySignal.BUY
+            stage = "BUY"
+            all_logic.append(
+                f"信号: BUY — 挖坑洗盘豁免触发，坑底低吸（质量{quality_score:.0f}"
+                f"≥{cfg.washout_buy_quality_threshold:.0f}，豁免MA20/大盘/报告阶段门控）"
+            )
+        else:
+            signal = EarningsBuySignal.WATCH
+            stage = "WATCH"
+            all_logic.append(
+                f"信号: WATCH — 挖坑洗盘豁免触发，但质量{quality_score:.0f}"
+                f"<{cfg.washout_buy_quality_threshold:.0f}，等坑底缩量企稳确认"
+            )
+        reference_buy_price = current_close
+        stop_loss_price = washout_exempt_result["pit_low"]
+        result.reference_buy_price = round(reference_buy_price, 2)
+        result.stop_loss_price = round(stop_loss_price, 2)
+        all_logic.append(f"参考买入价: {reference_buy_price:.2f}（今日收盘价，坑底低吸）")
+        all_logic.append(f"止损价: {stop_loss_price:.2f}（坑底低点，跌破即失效）")
+        all_logic.append(f"豁免详情: {washout_exempt_result['reason']}")
     elif market_weak:
         # 市场环境弱（大盘<MA20）→ BUY 整体降级 WATCH
         signal = EarningsBuySignal.WATCH

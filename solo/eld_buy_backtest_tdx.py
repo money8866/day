@@ -9,6 +9,9 @@ ELD 最佳买点算法 - TDX 历史回测
   1. 信号日收盘价作为信号触发价
   2. 统计 T+1/T+3/T+5/T+10 收益（信号日收盘买入，对应日收盘卖出）
   3. 分组统计: 买点类型 / 质量分段 / 乖离区间 / 量比区间 / 月度 / 是否业绩预增池
+  4. V5挖坑洗盘豁免分支: 技术面6重AND门向量化（距30日高点回撤≥15% + 连续2日
+     小阴小阳 + 量比≤1.0 + 收盘距10日坑底≤6% + 20日跌幅>-25%），事件窗口
+     （预增≥30%后5-20日）内质量≥75 → 豁免BUY；机构维度无数据，未知放行
 
 数据源:
   - 通达信 .day 文件 (C:/new_tdx/vipdoc/sh|sz/lday/*.day) - 日线OHLC
@@ -49,6 +52,14 @@ QUALITY_BUY = 80.0         # ≥80 BUY
 QUALITY_WATCH = 50.0       # ≥50 WATCH
 INST_UNKNOWN_SCORE = 6.0   # 回测无机构数据，给"未知"基准分
 
+# ── V5 挖坑洗盘豁免（washout_exempt）参数，与 eld/config.py 一致 ──
+WASHOUT_MIN_RETRACE = 15.0              # 距30日高点回撤≥15%（挖坑深度）
+WASHOUT_CHG_FLOOR, WASHOUT_CHG_CAP = -4.0, 3.0   # 连续2日小阴小阳区间
+WASHOUT_MAX_VOLR = 1.0                  # 量比≤1.0（缩量企稳）
+WASHOUT_PIT_DIST = 6.0                  # 收盘距10日坑底低点≤6%
+WASHOUT_MAX_DROP20 = -25.0              # 20日累计跌幅>-25%（排除崩塌式下跌）
+WASHOUT_QUALITY = 75.0                  # 豁免BUY质量门槛(washout_buy_quality_threshold)
+
 
 def compute_signals_df(df):
     """对单只股票计算买点信号, 返回信号行 DataFrame（纯向量化）"""
@@ -57,6 +68,7 @@ def compute_signals_df(df):
     df = df.copy()
     close = df['close'].values
     high = df['high'].values
+    low = df['low'].values
     vol = df['vol'].values
 
     ma5 = pd.Series(close).rolling(5).mean().values
@@ -80,6 +92,25 @@ def compute_signals_df(df):
     dea = dif.ewm(span=9, adjust=False).mean()
     macd_bar = (dif - dea) * 2
     macd_green_conv = ((macd_bar < 0) & (macd_bar.shift(1) > macd_bar)).values
+
+    # ── 挖坑洗盘豁免（V5）向量化：技术面5重门（事件窗+机构维度在下游叠加）──
+    #   生产版 _detect_washout_dip_exemption: 回撤≥15% + 连续2日[-4,3]% +
+    #   量比≤1.0 + 收盘距10日坑底≤6% + 20日跌幅>-25%
+    recent_high_30 = pd.Series(high).rolling(30).max().values
+    pit_low_10 = pd.Series(low).rolling(10).min().values
+    prev_chg = pd.Series(close).pct_change().shift(1).values * 100
+    chg_20d = (pd.Series(close) / pd.Series(close).shift(20) - 1).values * 100
+    with np.errstate(divide='ignore', invalid='ignore'):
+        retrace_30 = np.where(recent_high_30 > 0,
+                              (recent_high_30 - close) / recent_high_30 * 100, 0.0)
+    washout = (
+        (retrace_30 >= WASHOUT_MIN_RETRACE)
+        & (chg >= WASHOUT_CHG_FLOOR) & (chg <= WASHOUT_CHG_CAP)
+        & (prev_chg >= WASHOUT_CHG_FLOOR) & (prev_chg <= WASHOUT_CHG_CAP)
+        & (vol_ratio <= WASHOUT_MAX_VOLR)
+        & (close <= pit_low_10 * (1 + WASHOUT_PIT_DIST / 100.0))
+        & ~(chg_20d < WASHOUT_MAX_DROP20)
+    )
 
     # ── 买点类型（向量化） ──
     btype = np.where(bias > CHASE_BIAS, 'CHASE_HIGH',
@@ -105,9 +136,11 @@ def compute_signals_df(df):
     q += INST_UNKNOWN_SCORE
     q = np.minimum(100.0, np.round(q, 1))
 
-    # 有效行: 指标齐全 + 有明确买点类型 + 质量≥WATCH门槛
+    # 有效行: 指标齐全 + 有明确买点类型（挖坑豁免行可放宽UNKNOWN：深坑常低于MA20，
+    # 生产版豁免分支同样不要求买点类型命中） + 质量≥WATCH门槛
     valid = (~np.isnan(ma20)) & (~np.isnan(ma10)) & (~np.isnan(vol_ratio)) \
-        & (ma20 > 0) & (close > 0) & (btype != 'UNKNOWN') & (q >= QUALITY_WATCH)
+        & (ma20 > 0) & (close > 0) & (q >= QUALITY_WATCH) \
+        & ((btype != 'UNKNOWN') | washout)
 
     idxs = np.where(valid)[0]
     if len(idxs) == 0:
@@ -130,6 +163,8 @@ def compute_signals_df(df):
         'bias': np.round(bias[idxs], 2),
         'vol_ratio': np.round(vol_ratio[idxs], 2),
         'chg': np.round(chg[idxs], 2),
+        'washout': washout[idxs],
+        'washout_retrace': np.round(retrace_30[idxs], 1),
         't1': t1[idxs], 't3': t3[idxs], 't5': t5[idxs], 't10': t10[idxs],
     })
     return rows
@@ -281,16 +316,24 @@ def show_stats(df, forecast_map):
     print(f"  ELD 最佳买点算法 - 回测统计（信号日收盘买入）")
     print(f"{'#' * 88}")
 
+    # 布尔列归一化（SQLite读回为0/1）
+    if 'washout' in df.columns:
+        df['washout'] = df['washout'].astype(bool)
+    if 'in_eld_window' in df.columns:
+        df['in_eld_window'] = df['in_eld_window'].astype(bool)
+
     # 0. 总体
     _print_table("总体", [('全部信号', df)], None)
 
     # 1. 按买点类型
-    order = ['VCP_PULLBACK', 'MA20_BOUNCE', 'MA10_BOUNCE', 'BREAKOUT', 'TREND_FOLLOW', 'CHASE_HIGH']
+    order = ['VCP_PULLBACK', 'MA20_BOUNCE', 'MA10_BOUNCE', 'BREAKOUT',
+             'TREND_FOLLOW', 'CHASE_HIGH', 'UNKNOWN']
     type_groups = []
     for t in order:
         g = df[df['buy_type'] == t]
         if len(g) > 0:
-            type_groups.append((t, g))
+            label = 'UNKNOWN(挖坑放宽)' if t == 'UNKNOWN' else t
+            type_groups.append((label, g))
     _print_table("按买点类型", type_groups, None)
 
     # 2. 按质量分段
@@ -329,10 +372,15 @@ def show_stats(df, forecast_map):
     vg = sorted([(k, v) for k, v in vg], key=lambda x: -_fmt_stats(x[1])[2])
     _print_table("按量比区间 (按T+1均降序)", vg, None)
 
-    # 5. 信号分级（模拟V3决策）
+    # 5. 信号分级（模拟V3+V5决策：追高 → 挖坑豁免 → 正常BUY/WATCH）
     def signal_level(row):
         if row['buy_type'] == 'CHASE_HIGH' or row['bias'] > CHASE_BIAS:
             return '追高(WATCH)'
+        if row.get('washout', False) and row.get('in_eld_window', False):
+            # V5豁免分支：优先级高于质量80门（质量≥75即BUY，豁免大盘/报告阶段门控）
+            if row['quality'] >= WASHOUT_QUALITY:
+                return 'BUY (挖坑豁免≥75)'
+            return 'WATCH(豁免<75)'
         if row['quality'] >= QUALITY_BUY:
             return 'BUY (质量≥80)'
         return 'WATCH'
@@ -365,6 +413,31 @@ def show_stats(df, forecast_map):
             eld_sig['level'] = eld_sig.apply(signal_level, axis=1)
             esg = sorted(eld_sig.groupby('level'), key=lambda x: -_fmt_stats(x[1])[2])
             _print_table("ELD场景内 按信号分级", esg, None)
+
+            # 挖坑洗盘豁免（V5）分支验证：事件窗内豁免BUY=新增买入信号
+            # 对照组=同事件窗、同质量带[75,80)、非豁免、非追高（旧逻辑下也是WATCH），
+            # 两组对比可隔离"挖坑形态"在同等质量下的边际选股价值
+            if 'washout' in df.columns:
+                wo_groups = []
+                wo = df[df['washout']]
+                wo_eld = wo[wo['in_eld_window']]
+                wo_non = wo[~wo['in_eld_window']]
+                if len(wo_eld) > 0:
+                    wb = wo_eld[wo_eld['quality'] >= WASHOUT_QUALITY]
+                    ww = wo_eld[wo_eld['quality'] < WASHOUT_QUALITY]
+                    if len(wb) > 0:
+                        wo_groups.append(('豁免BUY(事件窗 质量≥75)', wb))
+                    if len(ww) > 0:
+                        wo_groups.append(('豁免WATCH(事件窗 质量<75)', ww))
+                if len(wo_non) > 0:
+                    wo_groups.append(('豁免形态 但非事件窗', wo_non))
+                ctrl = df[df['in_eld_window'] & ~df['washout']
+                          & (df['quality'] >= WASHOUT_QUALITY) & (df['quality'] < QUALITY_BUY)
+                          & (df['buy_type'] != 'CHASE_HIGH') & (df['bias'] <= CHASE_BIAS)]
+                if len(ctrl) > 0:
+                    wo_groups.append(('对照 事件窗质量75-80非豁免', ctrl))
+                if wo_groups:
+                    _print_table("挖坑豁免分支(V5): 豁免BUY=新增信号, 对照=同质量带非豁免", wo_groups, None)
 
     # 7. 月度
     dfm = df.copy()

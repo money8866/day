@@ -8354,8 +8354,10 @@ def run(target_date=None, simple_mode=False):
         except OSError as e:
             print(f"[W7 B榜] 读取失败: {e}")
             return ""
-        # 1) 解析 B 榜表格（## B榜 EXT-HVT 起，至下一 ## 标题止）
+        # 1) 解析 B 榜表格（## B榜 EXT-HVT 起，至下一 ## 标题止），按表头列名自适应
+        #    兼容旧13列（无价格列）与新18列（含 现价/触发价/MA20/量比）两种格式
         rows = []
+        col_idx = {}
         in_b = False
         for ln in lines:
             s = ln.strip()
@@ -8365,9 +8367,14 @@ def run(target_date=None, simple_mode=False):
             if in_b:
                 if s.startswith("## "):
                     break
-                if s.startswith("|") and "| --" not in s and "| #" not in s:
+                if s.startswith("|"):
                     cells = [c.strip() for c in s.strip("|").split("|")]
-                    if len(cells) >= 14 and cells[4] == "EXT":
+                    if s.startswith("| #"):
+                        col_idx = {name: i for i, name in enumerate(cells)}
+                        continue
+                    if not col_idx or "| --" in s:
+                        continue
+                    if len(cells) >= 14 and cells[col_idx.get("类型", 4)] == "EXT":
                         rows.append(cells)
         if not rows:
             print(f"[W7 B榜] {trade_date} 无 EXT 候选")
@@ -8396,7 +8403,11 @@ def run(target_date=None, simple_mode=False):
                     return k, v
             return None, ""
 
-        # 3) 独立报告 w7_b_list_{date}.md
+        # 3) 独立报告 w7_b_list_{date}.md（按列名取值，带价格列）
+        def _cv(cells, name):
+            return cells[col_idx[name]] if name in col_idx else ""
+
+        has_price = "现价" in col_idx and "触发价" in col_idx
         rep = [
             "# W7 B榜 EXT-HVT（高位强趋势延续/二次加速）",
             "",
@@ -8405,15 +8416,25 @@ def run(target_date=None, simple_mode=False):
             "> 回测背书（2024H1-2026H2 全样本，毛收益）：EXT 类 T+10 +0.0% / T+20 +0.0% / T+60 +6.0% / T+120 +15.4%；",
             "> 胜率 T+120 48.4%；右尾 ≥40%=23.0%、≥100%=8.2%；非WATCH可参与级 Top10 捕获=17.2%。",
             "> ⚠️ EXT 为高位强趋势延续/二次加速，P10 波动≈-35%，破位务必离场，仓位从轻。",
+            "> 价格口径：触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线。",
             "",
-            "## B榜排名（按 Rank 收益风险比）",
-            "",
-            "| # | 代码 | 名称 | 总分 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |",
-            "| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |",
         ]
-        for k, c in enumerate(rows, 1):
-            rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                k, c[1], c[2], c[3], c[5], c[6], c[7], c[8], c[9], c[10], c[11], c[12], c[13]))
+        if has_price:
+            rep.append("| # | 代码 | 名称 | 总分 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |")
+            rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |")
+            for k, c in enumerate(rows, 1):
+                rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                    k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "总分"), _cv(c, "现价"), _cv(c, "触发价"),
+                    _cv(c, "MA20"), _cv(c, "量比"), _cv(c, "HVT"), _cv(c, "吸收"), _cv(c, "生命"),
+                    _cv(c, "空间"), _cv(c, "加速"), _cv(c, "RS"), _cv(c, "基本面"), _cv(c, "DRisk"), _cv(c, "状态")))
+        else:
+            rep.append("| # | 代码 | 名称 | 总分 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |")
+            rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |")
+            for k, c in enumerate(rows, 1):
+                rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                    k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "总分"), _cv(c, "HVT"), _cv(c, "吸收"),
+                    _cv(c, "生命"), _cv(c, "空间"), _cv(c, "加速"), _cv(c, "RS"), _cv(c, "基本面"),
+                    _cv(c, "DRisk"), _cv(c, "状态")))
         for k, c in enumerate(rows, 1):
             e1, e2 = _find_expl(c[1], c[2])
             if e1:
@@ -8429,16 +8450,25 @@ def run(target_date=None, simple_mode=False):
         except OSError as e:
             print(f"⚠️ W7 B榜报告保存失败: {e}")
 
-        # 4) 组装 AI prompt 段文本
+        # 4) 组装 AI prompt 段文本（含价格四要素：现价/触发价/MA20/量比）
         p = [
             "【W7 B榜 EXT-HVT 高位强趋势延续/二次加速】",
             f"数据来源：HVT-V3 二波引擎（{trade_date}，共{len(rows)}只）| "
             "回测背书：EXT类T+120均值+15.4% 胜率48.4% ≥40%概率23.0% ≥100%概率8.2%；非WATCH可参与级Top10捕获17.2%",
         ]
+        if has_price:
+            p.append("价格口径：现价/触发价/MA20均为元，可直接引用禁止修改；触发价=事件日后10日平台高点，"
+                     "放量(量比≥1.2)突破触发价=买点触发；现价>触发价=已突破；已突破失效位=收盘跌回触发价下方；MA20=总防线。")
         for k, c in enumerate(rows, 1):
-            code, name = c[1], c[2]
-            p.append(f"{k}. {name}({code}) 总分{c[3]} | HVT{c[5]} 吸收{c[6]} 生命{c[7]} 空间{c[8]} "
-                     f"加速{c[9]} RS{c[10]} 基本面{c[11]} | DRisk{c[12]} | {c[13]}")
+            code, name = c[col_idx["代码"]], c[col_idx["名称"]]
+            line = f"{k}. {name}({code}) 总分{c[col_idx['总分']]}"
+            if has_price:
+                line += (f" | 现价{c[col_idx['现价']]} 触发价{c[col_idx['触发价']]} "
+                         f"MA20:{c[col_idx['MA20']]} 量比{c[col_idx['量比']]}")
+            line += (f" | HVT{c[col_idx['HVT']]} 吸收{c[col_idx['吸收']]} 生命{c[col_idx['生命']]} "
+                     f"空间{c[col_idx['空间']]} 加速{c[col_idx['加速']]} RS{c[col_idx['RS']]} "
+                     f"基本面{c[col_idx['基本面']]} | DRisk{c[col_idx['DRisk']]} | {c[col_idx['状态']]}")
+            p.append(line)
             e1, e2 = _find_expl(code, name)
             if e1:
                 p.append(f"   {e1.split('：', 1)[1] if '：' in e1 else e1}")
@@ -8718,8 +8748,11 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 
 8、**【W7 B榜 EXT-HVT 高位强趋势延续/二次加速】**（HVT-V3 二波引擎输出的高位强趋势延续/二次加速股，已按 Rank 收益风险比排序；回测 T+120 均值+15.4%、非WATCH可参与级 Top10 捕获17.2%，但 EXT 波动大，P10≈-35%）：
 {w7_b_text}
-（【数据边界】本段只分析上方 B 榜中列出的股票；若该段为空则提示"今日无 W7 B 榜信号"。该策略为高位延续型，严禁追高，必须结合 MA20/止损纪律，单只仓位不超过10%。）
-【输出要求-第8段】按总分从高到低逐只输出 B 榜前5，标注状态与 DRisk 派发风险，引用行为解释中的四周期预期；DRisk≥20 的必须重点提示派发风险；禁止给出超越引擎数据的买点/目标价，禁止将 EXT 高位股写成低吸标的。
+（【数据边界】本段只分析上方 B 榜中列出的股票；若该段为空则提示"今日无 W7 B 榜信号"。该策略为高位延续型，严禁追高，单只仓位不超过10%。）
+【输出要求-第8段】按总分从高到低逐只输出 B 榜前5，价格必须严格使用本段给出的【现价】【触发价】【MA20】【量比】并保留两位小数，禁止自行计算或编造任何价格（T120/HVT/吸收等均为评分不是股价）；
+状态语义严格区分：状态为 SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION 或现价>触发价 = 已突破，禁止写"等突破/等二次突破"，措辞="已突破：回踩触发价不破可低吸/持有，收盘跌回触发价下方离场，MA20为总防线"；
+其余状态 = 未突破，措辞="等放量（量比≥1.2）突破触发价XX.XX再买"；量比≥3的巨量日不追，只写回踩方案；
+DRisk≥20 半仓并重点提示派发风险，DRisk≥30 直接不做；禁止给出超越引擎数据的买点/目标价，禁止将已突破票写成等待触发。
 
 ------------------
 以上全局格式要求：

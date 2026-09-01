@@ -324,6 +324,18 @@ class EarningsBuyPointConfig:
     report_stage_downgrade: bool = True  # 总开关：抢跑/落地期整体降级 BUY
     report_stage_panic_ignore: bool = False  # 落地观察期内连涨追高(当日涨幅>10%)直接 IGNORE
 
+    # ── 挖坑洗盘豁免（V5，中文在线2026-08-31案例提炼：8/28挖坑末端→8/31涨停20cm） ──
+    # 事件驱动+深挖坑+连续缩量企稳+机构洗盘同时成立时，跌破MA20属挖坑末端而非"支撑已破"：
+    # MA20门控不一票否决，参考买入价=现价（坑底低吸），失效价=坑底低点
+    washout_exempt_enabled: bool = True        # 总开关
+    washout_min_pullback_pct: float = 15.0     # 距30日高点回撤≥15%（挖坑深度）
+    washout_max_vol_ratio: float = 1.0         # 缩量：量比≤1.0
+    washout_day_chg_floor: float = -4.0        # 近2日单日跌幅下限（排除仍在恐慌下跌）
+    washout_day_chg_cap: float = 3.0           # 近2日单日涨幅上限（排除追高）
+    washout_pit_distance_pct: float = 6.0      # 收盘距坑底低点≤6%（仍在坑内）
+    washout_max_drop_20d: float = -25.0        # 20日跌幅>-25%（排除单边崩塌股）
+    washout_buy_quality_threshold: float = 75.0  # 豁免分支BUY质量门槛（略低于常规80：结构证据抵分）
+
     # 买点质量评分权重（0-100）
     quality_bias_weight: float = 0.25     # 乖离合理度
     quality_pullback_weight: float = 0.25 # 回踩深度（贴近MA10/MA20）
