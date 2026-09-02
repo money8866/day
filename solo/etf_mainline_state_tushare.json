@@ -1,9 +1,10 @@
 {
-  "last_rebalance_date": "2026-08-07",
-  "holding_code": "516650",
-  "holding_name": "有色金属",
-  "buy_price": 1.932,
-  "score_at_buy": 50.67,
-  "momentum_at_buy": 13.85,
-  "rebalance_count": 4
+  "last_rebalance_date": "2026-09-02",
+  "holding_code": "515220",
+  "holding_name": "煤炭",
+  "buy_price": 1.303,
+  "score_at_buy": 78.75,
+  "momentum_at_buy": 10.99,
+  "rsi_at_buy": 62.96,
+  "rebalance_count": 5
 }

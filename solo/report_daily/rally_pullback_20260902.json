@@ -1,0 +1,39 @@
+{
+  "trade_date": "20260902",
+  "market_score": 44,
+  "regime": "Recovery",
+  "signals": [
+    {
+      "ts_code": "603011.SH",
+      "name": "合锻智能",
+      "theme": "",
+      "subtheme": "",
+      "dominant_theme": "",
+      "leader_score": 0,
+      "total_score": 62.47616759113035,
+      "rally_amplitude": 0.3409311348205624,
+      "rally_vol_expansion": 1.5180367900882064,
+      "rally_limit_up_count": 4,
+      "rally_max_consecutive_lu": 2,
+      "rally_high_date": "20260828",
+      "drawdown": 0.07052441229656417,
+      "pullback_days": "3",
+      "is_low_open_positive": true,
+      "candle_open_gap": 0.017455391776571096,
+      "candle_body_pct": 0.014607185155941612,
+      "subs": {
+        "vol_expansion": 9.476167591130356,
+        "limit_up": 16.249999999999996,
+        "pullback": 14.0,
+        "candle": 12.75,
+        "volume_confirm": 10.0
+      },
+      "ref_price": 25.7,
+      "stop_loss": 22.89,
+      "take_profit": 31.32,
+      "atr": 1.87,
+      "stock_type": "中性",
+      "suggestion": "伺机而动（大盘震荡回暖，等待明确信号再入场）"
+    }
+  ]
+}

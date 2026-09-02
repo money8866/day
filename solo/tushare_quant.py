@@ -8332,17 +8332,16 @@ def run(target_date=None, simple_mode=False):
         print("[V9二阶段择时] 已加载二阶段突破择时信号")
 
     # =========================
-    # W7 B榜 EXT-HVT（解析 w7 引擎报告，单独输出独立报告 + 纳入 AI prompt 第 9 段）
+    # W7 T20 TOP_PICK（解析 T20 右尾引擎报告，七分量最优组合信号；代替原 w7_second_wave B榜 EXT-HVT 输出）
     # =========================
-    def _load_w7_b_list(trade_date: str) -> str:
-        r"""读取 w7_second_wave_{date}.md，提取 B 榜 EXT-HVT 段 + 行为解释。
-        回测背书（2024H1-2026H2 全样本，毛收益）：
-          EXT 类 T+10 +0.0% / T+20 +0.0% / T+60 +6.0% / T+120 +15.4%，胜率 T+120 48.4%，
-          右尾 ≥40%=23.0% / ≥100%=8.2%；非WATCH可参与级 Top10 捕获=17.2%。
+    def _load_t20_top_pick(trade_date: str) -> str:
+        r"""读取 w7_t20_right_tail_{date}.md，提取【TOP_PICK】段（七分量最优组合信号）。
+        组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60
+          × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头。
         """
         cand = [
-            os.path.join(r"D:\mystock\solo\report_daily", f"w7_second_wave_{trade_date}.md"),
-            os.path.join(REPORT_DIR, f"w7_second_wave_{trade_date}.md"),
+            os.path.join(r"D:\mystock\solo\report_daily", f"w7_t20_right_tail_{trade_date}.md"),
+            os.path.join(REPORT_DIR, f"w7_t20_right_tail_{trade_date}.md"),
         ]
         files = [p for p in cand if os.path.exists(p)]
         if not files:
@@ -8352,16 +8351,15 @@ def run(target_date=None, simple_mode=False):
             with open(latest, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
         except OSError as e:
-            print(f"[W7 B榜] 读取失败: {e}")
+            print(f"[T20 TOP_PICK] 读取失败: {e}")
             return ""
-        # 1) 解析 B 榜表格（## B榜 EXT-HVT 起，至下一 ## 标题止），按表头列名自适应
-        #    兼容旧13列（无价格列）与新18列（含 现价/触发价/MA20/量比）两种格式
+        # 1) 解析 TOP_PICK 表格（## 【TOP_PICK】 起，至下一 ## 标题止），按表头列名自适应
         rows = []
         col_idx = {}
         in_b = False
         for ln in lines:
             s = ln.strip()
-            if s.startswith("## B榜 EXT-HVT"):
+            if s.startswith("## 【TOP_PICK】"):
                 in_b = True
                 continue
             if in_b:
@@ -8372,113 +8370,59 @@ def run(target_date=None, simple_mode=False):
                     if s.startswith("| #"):
                         col_idx = {name: i for i, name in enumerate(cells)}
                         continue
-                    if not col_idx or "| --" in s:
+                    if not col_idx or "| --" in s or "|---" in s:
                         continue
-                    if len(cells) >= 14 and cells[col_idx.get("类型", 4)] == "EXT":
+                    if len(cells) >= 12:
                         rows.append(cells)
         if not rows:
-            print(f"[W7 B榜] {trade_date} 无 EXT 候选")
+            print(f"[T20 TOP_PICK] {trade_date} 无 TOP_PICK 候选")
             return ""
-        # 2) 解析行为解释（仅 EXT 类型条目，含四周期预期）
-        expl = {}
-        cur = None
-        in_ex = False
-        for ln in lines:
-            s = ln.strip()
-            if s.startswith("## 行为解释"):
-                in_ex = True
-                continue
-            if in_ex:
-                if s.startswith("## "):
-                    break
-                if s.startswith("- **") and "[EXT/" in s:
-                    cur = s
-                    expl[cur] = ""
-                elif s.startswith("　T+10=") and cur is not None:
-                    expl[cur] = s
-
-        def _find_expl(code, name):
-            for k, v in expl.items():
-                if code in k and name in k:
-                    return k, v
-            return None, ""
-
-        # 3) 独立报告 w7_b_list_{date}.md（按列名取值，带价格列）
         def _cv(cells, name):
             return cells[col_idx[name]] if name in col_idx else ""
 
-        has_price = "现价" in col_idx and "触发价" in col_idx
+        # 2) 独立报告 t20_top_pick_{date}.md
+
         rep = [
-            "# W7 B榜 EXT-HVT（高位强趋势延续/二次加速）",
+            "# W7 T20 TOP_PICK（右尾最优七分量组合）",
             "",
-            f"交易日：{trade_date}　|　共{len(rows)}只　|　数据来源：HVT-V3 二波引擎",
+            f"交易日：{trade_date}　|　共{len(rows)}只　|　数据来源：W7 T20 Right-Tail 引擎",
             "",
-            "> 回测背书（2024H1-2026H2 全样本，毛收益）：EXT 类 T+10 +0.0% / T+20 +0.0% / T+60 +6.0% / T+120 +15.4%；",
-            "> 胜率 T+120 48.4%；右尾 ≥40%=23.0%、≥100%=8.2%；非WATCH可参与级 Top10 捕获=17.2%。",
-            "> ⚠️ EXT 为高位强趋势延续/二次加速，P10 波动≈-35%，破位务必离场，仓位从轻。",
-            "> 价格口径：触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线。",
+            "> 组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08（平台低点抬高） × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头（非龙头或无快照一律剔除）。",
+            "> 价格口径：现价/突破价/回踩区/失效位/目标位均为元，可直接引用禁止修改；买点=回踩区缩量企稳，或不破失效位放量确认；收盘跌破失效位=证伪离场；目标位=突破价+2.5ATR。",
             "",
         ]
-        if has_price:
-            rep.append("| # | 代码 | 名称 | 总分 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |")
-            rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |")
-            for k, c in enumerate(rows, 1):
-                rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                    k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "总分"), _cv(c, "现价"), _cv(c, "触发价"),
-                    _cv(c, "MA20"), _cv(c, "量比"), _cv(c, "HVT"), _cv(c, "吸收"), _cv(c, "生命"),
-                    _cv(c, "空间"), _cv(c, "加速"), _cv(c, "RS"), _cv(c, "基本面"), _cv(c, "DRisk"), _cv(c, "状态")))
-        else:
-            rep.append("| # | 代码 | 名称 | 总分 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |")
-            rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |")
-            for k, c in enumerate(rows, 1):
-                rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                    k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "总分"), _cv(c, "HVT"), _cv(c, "吸收"),
-                    _cv(c, "生命"), _cv(c, "空间"), _cv(c, "加速"), _cv(c, "RS"), _cv(c, "基本面"),
-                    _cv(c, "DRisk"), _cv(c, "状态")))
+        rep.append("| # | 代码 | 名称 | T20 | 结构 | Retest | RR | 现价 | 突破价 | 回踩区 | 失效位 | 目标位 | SLI龙头 |")
+        rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |")
         for k, c in enumerate(rows, 1):
-            e1, e2 = _find_expl(c[1], c[2])
-            if e1:
-                rep.append("")
-                rep.append(f"{k}. **{c[2]}（{c[1]}）**：{e1.split('：', 1)[1] if '：' in e1 else e1}")
-                if e2:
-                    rep.append(e2)
+            rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "T20"), _cv(c, "结构"), _cv(c, "Retest"),
+                _cv(c, "RR"), _cv(c, "现价"), _cv(c, "突破价"), _cv(c, "回踩区"), _cv(c, "失效位"), _cv(c, "目标位"), _cv(c, "SLI龙头")))
         try:
-            b_path = os.path.join(REPORT_DIR, f"w7_b_list_{trade_date}.md")
+            b_path = os.path.join(REPORT_DIR, f"t20_top_pick_{trade_date}.md")
             with open(b_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(rep) + "\n")
-            print(f"✅ W7 B榜独立报告已保存: {b_path}")
+            print(f"✅ T20 TOP_PICK 独立报告已保存: {b_path}")
         except OSError as e:
-            print(f"⚠️ W7 B榜报告保存失败: {e}")
+            print(f"⚠️ T20 TOP_PICK 报告保存失败: {e}")
 
-        # 4) 组装 AI prompt 段文本（含价格四要素：现价/触发价/MA20/量比）
+        # 3) 组装 AI prompt 段文本（含价格五要素：现价/突破价/回踩区/失效位/目标位）
         p = [
-            "【W7 B榜 EXT-HVT 高位强趋势延续/二次加速】",
-            f"数据来源：HVT-V3 二波引擎（{trade_date}，共{len(rows)}只）| "
-            "回测背书：EXT类T+120均值+15.4% 胜率48.4% ≥40%概率23.0% ≥100%概率8.2%；非WATCH可参与级Top10捕获17.2%",
+            "【W7 T20 TOP_PICK 七分量最优组合】",
+            f"数据来源：W7 T20 Right-Tail 引擎（{trade_date}，共{len(rows)}只）| "
+            "组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头",
         ]
-        if has_price:
-            p.append("价格口径：现价/触发价/MA20均为元，可直接引用禁止修改；触发价=事件日后10日平台高点，"
-                     "放量(量比≥1.2)突破触发价=买点触发；现价>触发价=已突破；已突破失效位=收盘跌回触发价下方；MA20=总防线。")
+        p.append("价格口径：现价/突破价/回踩区/失效位/目标位均为元，可直接引用禁止修改；"
+                 "买点=回踩区缩量企稳（量能萎缩至突破日一半以下更佳），或不破失效位放量确认；"
+                 "收盘跌破失效位=证伪离场；目标位=突破价+2.5ATR（RR≥2.08 已在引擎端验证）。")
         for k, c in enumerate(rows, 1):
-            code, name = c[col_idx["代码"]], c[col_idx["名称"]]
-            line = f"{k}. {name}({code}) 总分{c[col_idx['总分']]}"
-            if has_price:
-                line += (f" | 现价{c[col_idx['现价']]} 触发价{c[col_idx['触发价']]} "
-                         f"MA20:{c[col_idx['MA20']]} 量比{c[col_idx['量比']]}")
-            line += (f" | HVT{c[col_idx['HVT']]} 吸收{c[col_idx['吸收']]} 生命{c[col_idx['生命']]} "
-                     f"空间{c[col_idx['空间']]} 加速{c[col_idx['加速']]} RS{c[col_idx['RS']]} "
-                     f"基本面{c[col_idx['基本面']]} | DRisk{c[col_idx['DRisk']]} | {c[col_idx['状态']]}")
-            p.append(line)
-            e1, e2 = _find_expl(code, name)
-            if e1:
-                p.append(f"   {e1.split('：', 1)[1] if '：' in e1 else e1}")
-            if e2:
-                p.append(f"   {e2}")
+            p.append("{}. {}({}) T20:{} 结构:{} Retest:{} RR:{} SLI:{} | 现价{} 突破价{} 回踩区{} 失效位{} 目标位{}".format(
+                k, _cv(c, "名称"), _cv(c, "代码"), _cv(c, "T20"), _cv(c, "结构"), _cv(c, "Retest"),
+                _cv(c, "RR"), _cv(c, "SLI龙头"), _cv(c, "现价"), _cv(c, "突破价"), _cv(c, "回踩区"), _cv(c, "失效位"), _cv(c, "目标位")))
         return "\n".join(p)
 
-    w7_b_text = _load_w7_b_list(TRADE_DATE)
-    if w7_b_text:
-        print(f"[W7 B榜] 已加载 EXT-HVT B榜（{w7_b_text.count('总分')}只）")
+    t20_top_pick_text = _load_t20_top_pick(TRADE_DATE)
+    if t20_top_pick_text:
+        print(f"[T20 TOP_PICK] 已加载七分量最优组合（{t20_top_pick_text.count('RR:')}只）")
 
     # =========================
     # ELD 业绩预增买点 TOP3（读取 eld 每日评分报告 V2 前三，追加为报告最后一段）
@@ -8746,13 +8690,12 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 （【数据边界】本段只分析上方标记池中的股票。若显示"【V9二阶段突破择时池】"则按 V9 状态执行：PRIMARY_BUY/PRIMARY_RETEST_BUY 标明"可参与"并严格按最佳买点/回踩区、失效价和止损执行；NEAR_TRIGGER 仅轻仓试错；T3_WATCH/WAIT_PULLBACK 仅跟踪，禁止提前买入；未列出的等待确认股距触发>2%，暂不关注。若回退显示“【V8右侧确认池】”则按 V8 规则：S/A 可参与、B 等待确认。）
 【输出要求-第7段】按可参与级→临触发级→等待确认级顺序逐只输出，严格引用触发价/确认价、最佳买点/回踩区、失效价、止损价和建议仓位，不得新增或修改买卖结论；若无可参与级，明确提示"今日无 PRIMARY_BUY，不强行交易"。
 
-8、**【W7 B榜 EXT-HVT 高位强趋势延续/二次加速】**（HVT-V3 二波引擎输出的高位强趋势延续/二次加速股，已按 Rank 收益风险比排序；回测 T+120 均值+15.4%、非WATCH可参与级 Top10 捕获17.2%，但 EXT 波动大，P10≈-35%）：
-{w7_b_text}
-（【数据边界】本段只分析上方 B 榜中列出的股票；若该段为空则提示"今日无 W7 B 榜信号"。该策略为高位延续型，严禁追高，单只仓位不超过10%。）
-【输出要求-第8段】按总分从高到低逐只输出 B 榜前5，价格必须严格使用本段给出的【现价】【触发价】【MA20】【量比】并保留两位小数，禁止自行计算或编造任何价格（T120/HVT/吸收等均为评分不是股价）；
-状态语义严格区分：状态为 SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION 或现价>触发价 = 已突破，禁止写"等突破/等二次突破"，措辞="已突破：回踩触发价不破可低吸/持有，收盘跌回触发价下方离场，MA20为总防线"；
-其余状态 = 未突破，措辞="等放量（量比≥1.2）突破触发价XX.XX再买"；量比≥3的巨量日不追，只写回踩方案；
-DRisk≥20 半仓并重点提示派发风险，DRisk≥30 直接不做；禁止给出超越引擎数据的买点/目标价，禁止将已突破票写成等待触发。
+8、**【W7 T20 TOP_PICK 七分量最优组合】**（W7 T20 Right-Tail 引擎输出的右尾最优信号，七项条件全中才上榜：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头（引擎已硬过滤非龙头与无快照个股，宁缺毋滥）；T20 右尾视角=未来20日高涨幅概率最大，非T+1胜率）：
+{t20_top_pick_text}
+（【数据边界】本段只分析上方 TOP_PICK 表中列出的股票；若该段为空则提示"今日无 TOP_PICK 信号"。宁缺毋滥是本段核心纪律，禁止把普通 BUY 信号混入本段。）
+【输出要求-第8段】按 RR 从高到低逐只输出，价格必须严格使用本段给出的【现价】【突破价】【回踩区】【失效位】【目标位】并保留两位小数，禁止自行计算或编造任何价格（T20/结构/Retest/RR 均为评分或比值不是股价）；
+措辞统一="回踩区XX.XX-XX.XX缩量企稳可低吸（量能萎缩至突破日一半以下更佳），或不破失效位XX.XX放量确认可买；收盘跌破失效位=证伪无条件离场；目标位=XX.XX（突破价+2.5ATR）"；
+禁止给出超越引擎数据的买点/目标价，禁止把回踩区写成突破追买，禁止忽略失效位纪律；单只仓位不超过10%。
 
 ------------------
 以上全局格式要求：
@@ -8761,7 +8704,7 @@ DRisk≥20 半仓并重点提示派发风险，DRisk≥30 直接不做；禁止�
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 5 段 ELD 中报超预期买点 TOP3、第 8 段 W7 B榜）
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 5 段 ELD 中报超预期买点 TOP3、第 8 段 W7 T20 TOP_PICK）
 
 """
     if not simple_mode:

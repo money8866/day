@@ -110,5 +110,12 @@
    "sentiment": 17.479641693811075
   },
   "valid": true
+ },
+ "20260902": {
+  "scores": {
+   "breadth": 60.29,
+   "sentiment": 12.448630136986301
+  },
+  "valid": false
  }
 }
