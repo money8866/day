@@ -1,0 +1,9 @@
+﻿[w7] 日期=20260902 股池=2860 开始加载历史...
+[w7] 财务覆盖=5546 行业强度=100 行业景气=100
+[w7] SLI 龙头票池 1577 只，启用联动过滤
+[w7] 分析进度 500/2860 耗时=15.9s
+[w7] 分析进度 1000/2860 耗时=30.5s
+[w7] 分析进度 1500/2860 耗时=43.6s
+[w7] 分析进度 2000/2860 耗时=57.9s
+[w7] 分析进度 2500/2860 耗时=72.3s
+{"date": "20260902", "universe": 2860, "results": 222, "output": "D:\\mystock\\solo\\report_daily\\w7_second_wave_20260902.md", "states": {"EXTREME_CHURN": 60, "ABSORPTION": 82, "BREAKOUT_CONFIRM": 5, "DISTRIBUTION": 11, "FAILED": 64}, "buys": {"WATCH": 193, "CONFIRMED": 28, "T120_ROCKET": 1}, "types": {"DISTRIBUTION": 76, "CORE": 109, "MID": 21, "EXT": 16}}
