@@ -392,6 +392,27 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     if has_breakout and close < t0_high * 0.97 and getattr(ev, 'pb_verdict', 'NA') != 'GOOD':
         skip_reasons.append(f'收盘{close:.2f}明显跌回平台高点{t0_high:.2f}下方（突破失效）')
 
+    # ---- 连板过热冷却（§38：妖股接力风控；以决策日为端点，窗口自然衰减无状态） ----
+    bc = te_cfg.get('board_cooldown') or {}
+    bc_consec = _f(bc.get('max_consec_limit_up', 3))
+    bc_5d = _f(bc.get('max_limit_up_5d', 4))
+    consec_lu, lu_5d = 0, 0
+    try:
+        pct_seq = df['pct_chg'].to_numpy(dtype=float)
+        lim = 19.7 if str(ev.ts_code)[:3] in ('300', '301', '302', '688') else 9.7
+        lu = np.isfinite(pct_seq) & (pct_seq >= lim)
+        for j in range(len(lu) - 1, -1, -1):
+            if lu[j]:
+                consec_lu += 1
+            else:
+                break
+        lu_5d = int(lu[max(0, len(lu) - 5):].sum())
+    except Exception:
+        pass
+    if (bc_consec > 0 and consec_lu >= bc_consec) or (bc_5d > 0 and lu_5d >= bc_5d):
+        skip_reasons.append(f'连板过热冷却：连续涨停{consec_lu}天/近5日{lu_5d}板，'
+                            f'断板缩量企稳前不参与接力（§38）')
+
     th = te_cfg.get('thresholds') or {}
     t_ready, t_boc = _f(th.get('ready_buy', 85)), _f(th.get('buy_on_confirm', 75))
     t_wait, t_watch = _f(th.get('wait_confirm', 65)), _f(th.get('watch', 50))

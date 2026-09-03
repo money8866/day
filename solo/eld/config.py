@@ -363,7 +363,8 @@ class FinalScoreConfig:
     """ELD V2 最终评分权重
 
     V2 (6维度): 30/20/20/15/10/5 = 1.00
-    V1 (9维度): 25/20/15/10/10/5/5/5/5 = 1.00（v1_* 前缀）
+    V1 (6维度): 33.33/26.67/13.33/13.33/6.67/6.67 = 1.00（v1_* 前缀）
+    精简（2026-09 中报数据校验）：institution/freshness/similarity 移出 V1 评分
     """
     # ── V2 新权重（compute_els_v2 使用） ──
     event_quality_weight: float = 0.30     # 事件质量 30%
@@ -374,15 +375,15 @@ class FinalScoreConfig:
     etf_weight: float = 0.05               # ETF 5%
 
     # ── V1 权重（compute_els V1 使用） ──
-    v1_event_quality_weight: float = 0.25
-    v1_earnings_weight: float = 0.20
-    v1_institution_weight: float = 0.15
-    v1_chip_weight: float = 0.10
-    v1_trend_weight: float = 0.10
-    v1_industry_weight: float = 0.05
-    v1_freshness_weight: float = 0.05
-    v1_expectation_gap_weight: float = 0.05
-    v1_similarity_weight: float = 0.05
+    v1_event_quality_weight: float = 0.3333
+    v1_earnings_weight: float = 0.2667
+    v1_institution_weight: float = 0.0
+    v1_chip_weight: float = 0.1333
+    v1_trend_weight: float = 0.1333
+    v1_industry_weight: float = 0.0667
+    v1_freshness_weight: float = 0.0
+    v1_expectation_gap_weight: float = 0.0667
+    v1_similarity_weight: float = 0.0
 
 
 # ──────────────────────────────────────────────

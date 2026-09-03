@@ -167,6 +167,9 @@ trade_execution:
       price_rr: 0.10
       lifecycle_fit: 0.05
       sector_market: 0.05
+  board_cooldown:              # §38：连板过热冷却（妖股接力风控，硬风控优先于评分）
+    max_consec_limit_up: 3     # 截至决策日连续涨停 >= N 天 → 冷却（SKIP）
+    max_limit_up_5d: 4         # 近5日涨停 >= N 板（断板余温）→ 冷却，窗口自然衰减
   thresholds:                  # §25 分类（硬风控可覆盖评分）
     ready_buy: 85
     buy_on_confirm: 75

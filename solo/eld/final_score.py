@@ -126,19 +126,20 @@ class FinalScoreEngine:
         self,
         event_result: EventQualityResult,
         earnings_result: EarningsScoreResult,
-        institution_result: InstitutionScoreResult,
         chip_result: ChipScoreResult,
         trend_result: TrendScoreResult,
         industry_result: IndustryScoreResult,
-        freshness_result: FreshnessScoreResult,
         gap_result: ExpectationGapResult,
-        similarity_result: SimilarityResult,
     ) -> float:
         """
-        计算 ELS (Earnings Leader Score)
+        计算 ELS (Earnings Leader Score) — 精简版六维
 
-        ELS = event×25% + earnings×20% + institution×15% + chip×10%
-              + trend×10% + industry×5% + freshness×5% + expectation_gap×5% + similarity×5%
+        数据验证（2026-09 中报池 1132 只）：institution/freshness/similarity
+        区分度不足（freshness 与 V2 相关性≈0；similarity 引擎未注入恒 50；
+        institution V1 与 V2 相关性≈0.07），已移出 V1 评分。
+
+        ELS = event×33.33% + earnings×26.67% + chip×13.33%
+              + trend×13.33% + industry×6.67% + expectation_gap×6.67%
 
         Returns:
             0-100 的 ELS 分数
@@ -146,25 +147,19 @@ class FinalScoreEngine:
         scores = {
             DIM_EVENT_QUALITY: event_result.score,
             DIM_EARNINGS: earnings_result.score,
-            DIM_INSTITUTION: institution_result.score,
             DIM_CHIP: chip_result.score,
             DIM_TREND: trend_result.score,
             DIM_INDUSTRY: industry_result.score,
-            DIM_FRESHNESS: freshness_result.score,
             DIM_EXPECTATION_GAP: gap_result.score,
-            DIM_SIMILARITY: similarity_result.score,
         }
 
         weights = {
             DIM_EVENT_QUALITY: self.fc.v1_event_quality_weight,
             DIM_EARNINGS: self.fc.v1_earnings_weight,
-            DIM_INSTITUTION: self.fc.v1_institution_weight,
             DIM_CHIP: self.fc.v1_chip_weight,
             DIM_TREND: self.fc.v1_trend_weight,
             DIM_INDUSTRY: self.fc.v1_industry_weight,
-            DIM_FRESHNESS: self.fc.v1_freshness_weight,
             DIM_EXPECTATION_GAP: self.fc.v1_expectation_gap_weight,
-            DIM_SIMILARITY: self.fc.v1_similarity_weight,
         }
 
         total_weight = sum(weights.values())
@@ -173,16 +168,14 @@ class FinalScoreEngine:
             for k in weights:
                 weights[k] /= total_weight
 
-        els = sum(scores[d] * weights[d] for d in ALL_DIMENSIONS)
+        els = sum(scores[d] * weights[d] for d in weights)
         els = max(0.0, min(100.0, els))
 
         logger.debug(
-            "ELS=%.2f | event=%.1f earnings=%.1f inst=%.1f chip=%.1f "
-            "trend=%.1f ind=%.1f fresh=%.1f gap=%.1f sim=%.1f",
-            els, scores[DIM_EVENT_QUALITY], scores[DIM_EARNINGS],
-            scores[DIM_INSTITUTION], scores[DIM_CHIP], scores[DIM_TREND],
-            scores[DIM_INDUSTRY], scores[DIM_FRESHNESS],
-            scores[DIM_EXPECTATION_GAP], scores[DIM_SIMILARITY],
+            "ELS=%.2f | event=%.1f earnings=%.1f chip=%.1f "
+            "trend=%.1f ind=%.1f gap=%.1f",
+            els, event_result.score, earnings_result.score, chip_result.score,
+            trend_result.score, industry_result.score, gap_result.score,
         )
 
         return els
@@ -290,23 +283,21 @@ class FinalScoreEngine:
         els_v2 = max(0.0, min(100.0, els_v2))
 
         # ── 趋势Alpha兜底惩罚 ──
-        if trend_alpha > 0:
-            if trend_alpha < 45:
-                penalty = 0.5
-                logger.debug("趋势Alpha=%.1f<45, V2×%.1f", trend_alpha, penalty)
-            elif trend_alpha < 60:
-                penalty = 0.7
-                logger.debug("趋势Alpha=%.1f<60, V2×%.1f", trend_alpha, penalty)
-            else:
-                penalty = 1.0
-            els_v2 *= penalty
-            els_v2 = max(0.0, min(100.0, els_v2))
+        penalty = 1.0
+        if trend_alpha < 45:
+            penalty = 0.5
+            logger.debug("趋势Alpha=%.1f<45, V2×%.1f", trend_alpha, penalty)
+        elif trend_alpha < 60:
+            penalty = 0.7
+            logger.debug("趋势Alpha=%.1f<60, V2×%.1f", trend_alpha, penalty)
+        els_v2 *= penalty
+        els_v2 = max(0.0, min(100.0, els_v2))
 
         logger.debug(
             "ELS_V2=%.2f | event=%.1f gap=%.1f trend=%.1f inst=%.1f ind=%.1f etf=%.1f alpha=%.1f penalty=%.1f",
             els_v2, event_score, gap_v2_score, trend_score,
             inst_accum_score, industry_score, etf_score,
-            trend_alpha, penalty if trend_alpha > 0 else 1.0,
+            trend_alpha, penalty,
         )
 
         return els_v2
@@ -437,12 +428,30 @@ class FinalScoreEngine:
         result.freshness_score = fresh_r.score
         result.freshness_detail = fresh_r
 
-        # Stage 9: 预期差
+        # Stage 9: 预期差（V2 引擎统一计算一次；V1 结果由 V2 映射，避免同引擎重复调用）
+        if self._expectation_gap_v2_engine:
+            gap_v2_r = self._expectation_gap_v2_engine(stock.ts_code, data_source)
+        else:
+            from .expectation_gap import calc_expectation_gap
+            gap_v2_r = calc_expectation_gap(stock.ts_code, data_source)
+        result.expectation_gap_v2_score = gap_v2_r.score
+        result.expectation_gap_v2_detail = gap_v2_r
+
         if self._gap_scorer:
             gap_r = self._gap_scorer(stock.ts_code, data_source)
         else:
-            from .expectation_gap import score_expectation_gap
-            gap_r = score_expectation_gap(stock.ts_code, data_source)
+            gap_r = ExpectationGapResult(
+                score=gap_v2_r.score,
+                surprise_type=(
+                    "positive" if gap_v2_r.gap > 10
+                    else "neutral" if gap_v2_r.gap > -10
+                    else "negative"
+                ),
+                actual_pct=gap_v2_r.company_growth,
+                expected_pct=gap_v2_r.industry_growth,
+                gap_pct=round(gap_v2_r.gap, 2),
+                logic=gap_v2_r.logic,
+            )
         result.expectation_gap_score = gap_r.score
         result.expectation_gap_detail = gap_r
 
@@ -475,14 +484,7 @@ class FinalScoreEngine:
 
         # ── ELD V2 新增评分 ──
 
-        # Stage V2-1: 预期差V2
-        if self._expectation_gap_v2_engine:
-            gap_v2_r = self._expectation_gap_v2_engine(stock.ts_code, data_source)
-        else:
-            from .expectation_gap import calc_expectation_gap
-            gap_v2_r = calc_expectation_gap(stock.ts_code, data_source)
-        result.expectation_gap_v2_score = gap_v2_r.score
-        result.expectation_gap_v2_detail = gap_v2_r
+        # Stage V2-1: 预期差V2（已并入 Stage 9 统一计算，避免同引擎重复调用）
 
         # Stage V2-2: 机构吸筹检测
         if self._institution_accumulation_engine:
@@ -520,8 +522,7 @@ class FinalScoreEngine:
         result.report_stage = getattr(ebp_r, "report_stage", "") or ""
         result.days_to_report = getattr(ebp_r, "days_to_report", 0) or 0
         result.els = self.compute_els(
-            event_r, earn_r, inst_r, chip_r, trend_r,
-            ind_r, fresh_r, gap_r, sim_r,
+            event_r, earn_r, chip_r, trend_r, ind_r, gap_r,
         )
         result.final_score = self.apply_market_multiplier(result.els, market)
         result.recommendation = self.generate_recommendation(result.final_score, bp_r)

@@ -168,6 +168,17 @@ def _score_volume_price(
     return score, logic
 
 
+def _is_chip_missing(cyq_data: Optional[CyqData]) -> bool:
+    """判断筹码数据是否缺失或无效（如接口断供返回全零字段）。"""
+    if cyq_data is None:
+        return True
+    return (
+        cyq_data.avg_cost <= 0
+        and cyq_data.profit_ratio <= 0
+        and cyq_data.cost_concentration <= 0
+    )
+
+
 def _score_chip_change(
     cyq_data: Optional[CyqData],
     daily_data: list,
@@ -188,6 +199,8 @@ def _score_chip_change(
     logic: list[str] = []
     if cyq_data is None:
         return 50.0, 0.0, 0.0, 0.0, ["无筹码数据，筹码评分为中性"]
+    if _is_chip_missing(cyq_data):
+        return 50.0, 0.0, 0.0, 0.0, ["筹码数据无效(全零)，筹码评分为中性"]
 
     # 由于筹码数据只有最新值，我们用价格变化和量能来估算筹码趋势
     # 成本变化 = 当前价 / 平均成本
@@ -252,6 +265,7 @@ def _classify_state(
     volume_price_score: float,
     chip_score: float,
     cfg: InstitutionAccumulationConfig,
+    chip_missing: bool = False,
 ) -> tuple[InstitutionState, float, list[str]]:
     """分类机构状态。
 
@@ -260,12 +274,17 @@ def _classify_state(
         volume_price_score: 量价结构分。
         chip_score: 筹码变化分。
         cfg: 机构吸筹配置。
+        chip_missing: 筹码数据缺失（None 或全零），综合分按资金/量价(4:3)重归一。
 
     Returns:
         (状态枚举, 综合分, 逻辑说明列表)
     """
     logic: list[str] = []
-    total = fund_score * 0.40 + volume_price_score * 0.30 + chip_score * 0.30
+    if chip_missing:
+        total = (fund_score * 0.40 + volume_price_score * 0.30) / 0.70
+        logic.append("筹码数据缺失，综合分按资金/量价(4:3)重归一")
+    else:
+        total = fund_score * 0.40 + volume_price_score * 0.30 + chip_score * 0.30
 
     if total >= cfg.accelerate_score_threshold:
         state = InstitutionState.ACCELERATE
@@ -331,12 +350,14 @@ def calc_institution_accumulation(
     all_logic.extend(vp_logic)
 
     # 4. 筹码变化评分
+    chip_missing = _is_chip_missing(cyq)
     chip_score, concentration, cost_diff, profit_ratio, chip_logic = _score_chip_change(cyq, daily_data, cfg)
     all_logic.extend(chip_logic)
 
     # 5. 状态分类
     state, total_score, state_logic = _classify_state(
         fund_score, vol_price_score, chip_score, cfg,
+        chip_missing=chip_missing,
     )
     all_logic.extend(state_logic)
 

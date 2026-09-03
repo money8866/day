@@ -1,0 +1,9 @@
+﻿[t20] 日期=20260902 股池=2860 开始加载历史...
+[t20] 财务覆盖=5546 行业=100 市场环境=RECOVERY(normal)
+[t20] SLI_V2 快照=20260901 覆盖=4750 龙头=887
+[t20] 分析进度 500/2860 耗时=13.7s
+[t20] 分析进度 1000/2860 耗时=27.5s
+[t20] 分析进度 1500/2860 耗时=41.4s
+[t20] 分析进度 2000/2860 耗时=55.2s
+[t20] 分析进度 2500/2860 耗时=69.2s
+{"date": "20260902", "universe": 2860, "results": 2810, "output": "D:\\mystock\\solo\\report_daily\\w7_t20_right_tail_20260902.md", "regime": "RECOVERY", "gate_level": "normal", "layers": {"NO_TRADE": 1920, "WATCH_T20": 510, "CONFIRMED_NEXT": 33, "EXIT": 323, "EXTENDED_NO_CHASE": 17, "PRIMARY_BUY": 7}, "states": {"RETEST": 664, "FULL_PULLBACK": 551, "RETEST_SUCCESS": 151, "DRYUP": 430, "PLATFORM": 476, "FAIL": 323, "HVT": 28, "T20_RIGHT_TAIL": 30, "RE_EXPANSION": 78, "BREAKOUT": 66, "SECOND_WAVE": 9, "ABSORPTION": 4}, "sli": {"snapshot": "20260901", "leaders_in_results": 712, "blocked": []}, "top_picks": [{"code": "000933.SZ", "name": "神火股份", "t20": 83.0, "retest": 74.3, "rr": 2.08, "sli": "GROWTH_LEADER#4 87.0"}], "primary_buys": [{"code": "300855.SZ", "name": "图南股份", "type": "BREAKOUT_BUY", "t20": 77.3, "priority": 78.6, "action": "BUY"}, {"code": "002479.SZ", "name": "富春环保", "type": "BREAKOUT_BUY", "t20": 75.5, "priority": 77.3, "action": "BUY"}, {"code": "600814.SH", "name": "杭州解百", "type": "BREAKOUT_BUY", "t20": 77.0, "priority": 74.8, "action": "BUY"}, {"code": "605183.SH", "name": "确成股份", "type": "BREAKOUT_BUY", "t20": 76.7, "priority": 75.7, "action": "BUY"}, {"code": "000933.SZ", "name": "神火股份", "type": "HVT_RB_BUY", "t20": 83.0, "priority": 80.8, "action": "BUY"}, {"code": "603235.SH", "name": "天新药业", "type": "BREAKOUT_BUY", "t20": 79.9, "priority": 73.6, "action": "BUY"}, {"code": "601298.SH", "name": "青岛港", "type": "HVT_RB_BUY", "t20": 81.4, "priority": 74.5, "action": "BUY"}], "elapsed": 78.6}
