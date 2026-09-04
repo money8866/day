@@ -167,6 +167,22 @@ class HvtEvent:
     open_playbook: List[str] = field(default_factory=list)     # 次日四种开盘情况预案（§17）
     intraday_available: bool = False                           # 是否有分钟数据（False 时不得伪造 VWAP 确认）
 
+    # ---- V1.1 Execution Confirmation（确认层：TRIGGER≠BUY，五层 Gate 全过才 PRIMARY_BUY） ----
+    current_close: float = 0.0                                 # 决策日收盘价
+    trigger_touched: bool = False                              # 盘中触及 TRIGGER（High≥TRIGGER，≠确认）
+    trigger_confirmed: bool = False                            # 收盘确认（Close≥TRIGGER）
+    trigger_status: str = ''                                   # CONFIRMED/FAILED_CLOSE_CONFIRMATION/PENDING
+    breakout_ready: bool = False                               # 有效突破四条件（V1.1§4）
+    breakout_quality: str = ''                                 # GOOD/NEUTRAL/WEAK（WEAK 不得买）
+    retest_pass: str = ''                                      # PASS/NEAR/FAIL/NA（回踩确认，复用 pb_verdict）
+    lock_gate: str = ''                                        # PASS/FAIL（锁筹+观察天数硬门）
+    risk_gate: str = ''                                        # PASS/FAIL（原 Risk Gate）
+    score_gap: float = 0.0                                     # 75 - Execution Score（≥0）
+    confirmation_state: str = ''                               # PRIMARY_BUY/READY/WAIT/WATCH/INVALID
+    wait_reason: str = ''                                      # WAIT原因（token+当前值→需要值）
+    next_confirmation: str = ''                                # 下一步确认什么
+    upgrade_condition: str = ''                                # 升级为 PRIMARY_BUY 的条件公式
+
     def to_dict(self) -> dict:
         d = self.__dict__.copy()
         return d

@@ -787,6 +787,14 @@ def _render_te(result: dict, all_events) -> list:
             lines.append(f"- 确认等级：{getattr(e, 'confirmation_level', '') or '-'} | 盘中确认："
                          + ('可用（分钟数据）' if intra
                             else 'INTRADAY_CONFIRMATION_UNAVAILABLE（无分钟数据，以量价与收盘位替代 §37.11）'))
+            lines.append(f"- V1.1确认：CONFIRMATION_STATE={getattr(e, 'confirmation_state', '') or '-'} "
+                         f"| TRIGGER={getattr(e, 'trigger_status', '') or '-'} "
+                         f"| BREAKOUT_READY={'Y' if getattr(e, 'breakout_ready', False) else 'N'} "
+                         f"| QUALITY={getattr(e, 'breakout_quality', '') or '-'} "
+                         f"| RETEST={getattr(e, 'retest_pass', '') or '-'} "
+                         f"| LOCK={getattr(e, 'lock_gate', '') or '-'} "
+                         f"| RISK={getattr(e, 'risk_gate', '') or '-'} "
+                         f"| SCORE_GAP={_score(e, 'score_gap'):.1f}")
             for pl in (getattr(e, 'open_playbook', None) or []):
                 lines.append(f"- 开盘预案：{pl}")
             lines.append('')
@@ -845,14 +853,29 @@ def _render_te(result: dict, all_events) -> list:
                          f"{getattr(e, 'primary_horizon', '') or '-'}")
         lines.append('')
 
-    # ④ WAIT_CONFIRM（§8：HVT成立FE较高但确认不足/距关键位过远）
+    # ④ WAIT_CONFIRM（§8：HVT成立FE较高但确认不足/距关键位过远；V1.1：确认状态+升级条件）
     lines.append(f'### ④ WAIT_CONFIRM（需观察确认，{len(wc_pool)}只）')
     lines.append('')
     if wc_pool:
-        lines.append(head)
-        lines.append(sep)
+        conf_head = ('| 代码 | 名称 | CONFIRMATION | TRIGGER | BRK_READY | BRK_QUALITY | RETEST '
+                     '| LOCK | RISK | SCORE/GAP | 现价 | NEXT_CONFIRMATION |')
+        lines.append(conf_head)
+        lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|')
         for e in wc_pool[:10]:
-            lines.append(_row(e))
+            lk = 'PASS' if getattr(e, 'lock_gate', '') == 'PASS' else (getattr(e, 'lock_gate', '') or '-')
+            rg = 'PASS' if getattr(e, 'risk_gate', '') == 'PASS' else (getattr(e, 'risk_gate', '') or '-')
+            lines.append(f"| {e.ts_code} | {e.name} | {getattr(e, 'confirmation_state', '') or '-'} "
+                         f"| {getattr(e, 'trigger_status', '') or '-'} "
+                         f"| {'Y' if getattr(e, 'breakout_ready', False) else 'N'} "
+                         f"| {getattr(e, 'breakout_quality', '') or '-'} "
+                         f"| {getattr(e, 'retest_pass', '') or '-'} | {lk} | {rg} "
+                         f"| {_score(e, 'execution_score'):.1f}/{_score(e, 'score_gap'):.1f} "
+                         f"| {_score(e, 'current_close'):.2f} "
+                         f"| {getattr(e, 'next_confirmation', '') or '-'} |")
+        lines.append('')
+        for e in wc_pool[:10]:   # V1.1：WAIT 必须说明缺什么（当前值→需要值）+ 升级公式
+            lines.append(f"- **{e.name}（{e.ts_code}）** WAIT_REASON：{getattr(e, 'wait_reason', '') or '-'}")
+            lines.append(f"  UPGRADE_CONDITION：{getattr(e, 'upgrade_condition', '') or '-'}")
         lines.append('')
     else:
         lines.append('（无）')
@@ -871,6 +894,25 @@ def _render_te(result: dict, all_events) -> list:
     else:
         lines.append('（无）')
         lines.append('')
+
+    # V1.1 CONFIRMATION 总览（TRIGGER≠BUY：五层Gate全过才PRIMARY_BUY；候选≠READY，READY≠PRIMARY_BUY）
+    lines.append('### CONFIRMATION（V1.1 确认层总览）')
+    lines.append('')
+    pb_pool = [e for e in te_pool if getattr(e, 'confirmation_state', '') == 'PRIMARY_BUY']
+    if pb_pool:
+        lines.append('★ PRIMARY_BUY：' + '、'.join(
+            f"{e.name}（{e.ts_code}，TRIGGER={getattr(e, 'trigger_status', '') or '-'}，"
+            f"SCORE={_score(e, 'execution_score'):.1f}）" for e in pb_pool))
+    else:
+        lines.append('★ PRIMARY_BUY：当前没有符合 PRIMARY_BUY 条件的股票（五层Gate未全过，禁止把WAIT错判成BUY）')
+    ready_pool = [e for e in te_pool if getattr(e, 'confirmation_state', '') == 'READY']
+    lines.append('★ READY（差临门一脚，确认后可买）：'
+                 + ('、'.join(f"{e.name}（{getattr(e, 'trigger_status', '') or '-'}，"
+                              f"GAP={_score(e, 'score_gap'):.1f}）" for e in ready_pool[:6]) or '无'))
+    wait_pool = [e for e in te_pool if getattr(e, 'confirmation_state', '') == 'WAIT']
+    lines.append(f'★ WAIT（{len(wait_pool)}只，需继续确认）：'
+                 + ('、'.join(e.name for e in wait_pool[:6]) or '无'))
+    lines.append('')
 
     # WHY_NOT_BUY（§31：对FE很高但未BUY的股票必须说明原因）
     lines.append('### WHY_NOT_BUY（为何未进买入候选）')

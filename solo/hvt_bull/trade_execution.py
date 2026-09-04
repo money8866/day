@@ -32,12 +32,20 @@ TE_JSON_FIELDS = (
     'invalidation', 'no_chase_level', 'position_size', 'initial_position',
     'primary_horizon', 'stock_type', 'confirmation_level', 'execution_reason',
     'why_not_buy', 'open_playbook', 'intraday_available',
+    'current_close', 'trigger_touched', 'trigger_confirmed', 'trigger_status',
+    'breakout_ready', 'breakout_quality', 'retest_pass', 'lock_gate',
+    'risk_gate', 'score_gap', 'confirmation_state', 'wait_reason',
+    'next_confirmation', 'upgrade_condition',
 )
 
 _TE_FLOATS = ('buyability', 'execution_score', 'entry_trigger', 'buy_zone_low',
-              'buy_zone_high', 'invalidation', 'no_chase_level')
+              'buy_zone_high', 'invalidation', 'no_chase_level',
+              'current_close', 'score_gap')
 _TE_STRS = ('execution_state', 'next_day_action', 'position_size', 'initial_position',
-            'primary_horizon', 'stock_type', 'confirmation_level', 'execution_reason')
+            'primary_horizon', 'stock_type', 'confirmation_level', 'execution_reason',
+            'trigger_status', 'breakout_quality', 'retest_pass', 'lock_gate',
+            'risk_gate', 'confirmation_state', 'wait_reason',
+            'next_confirmation', 'upgrade_condition')
 
 
 def _f(v, default=0.0):
@@ -287,6 +295,63 @@ def _open_playbook(exec_state, action, p, te_cfg, intraday_ok):
         f"D 放量跌破{inv:.2f} → SKIP"]
 
 
+# ---- V1.1 确认层 Gate（TRIGGER≠BUY：五层 Gate 全过才允许 PRIMARY_BUY） ----
+
+def _trigger_confirmation(close, day_high, trigger):
+    """V1.1§2 Gate①：收盘确认 vs 盘中触及。冲高回落收盘<TRIGGER = FAILED_CLOSE_CONFIRMATION。"""
+    touched = day_high >= trigger
+    confirmed = close >= trigger
+    if confirmed:
+        status = 'CONFIRMED'
+    elif touched:
+        status = 'FAILED_CLOSE_CONFIRMATION'
+    else:
+        status = 'PENDING'
+    return touched, confirmed, status
+
+
+def _breakout_ready_gate(close, trigger, df):
+    """V1.1§4 Gate②：有效突破四条件（Close≥TRIGGER / Close>MA20 / MA20向上 / 当日量比≥1.20）。
+    数据缺失时按未确认处理（宁可漏掉，不可把 WAIT 错判成 BUY）。"""
+    ma20 = ma20_prev = vol_ratio = None
+    try:
+        c_arr = df['close'].to_numpy(dtype=float)
+        if len(c_arr) >= 20 and np.isfinite(c_arr[-20:]).all():
+            ma20 = float(c_arr[-20:].mean())
+        if len(c_arr) >= 23 and np.isfinite(c_arr[-23:]).all():
+            ma20_prev = float(c_arr[-23:-3].mean())
+    except Exception:
+        ma20 = ma20_prev = None
+    try:
+        v_arr = df['vol'].to_numpy(dtype=float)
+        if len(v_arr) >= 6:
+            v5 = float(np.nanmean(v_arr[-6:-1]))
+            if math.isfinite(v5) and v5 > 0 and math.isfinite(float(v_arr[-1])):
+                vol_ratio = float(v_arr[-1]) / v5
+    except Exception:
+        vol_ratio = None
+    ready = bool(close >= trigger
+                 and ma20 is not None and close > ma20
+                 and ma20_prev is not None and ma20 > ma20_prev
+                 and vol_ratio is not None and vol_ratio >= 1.20)
+    return ready, ma20, ma20_prev, vol_ratio
+
+
+def _breakout_quality(close, day_high, day_low, vol_ratio, confirmed):
+    """V1.1§5 Gate③：突破质量三档。WEAK（未确认/无量/长上影/收盘位低）不得 PRIMARY_BUY。"""
+    if not confirmed:
+        return 'WEAK'
+    rng = day_high - day_low
+    pos = (close - day_low) / rng if rng > 0 else 1.0
+    upper = (day_high - close) / rng if rng > 0 else 0.0
+    vr = vol_ratio if vol_ratio is not None else 0.0
+    if vr >= 1.3 and pos >= 0.70 and upper <= 0.15:
+        return 'GOOD'
+    if vr < 1.0 or pos < 0.50 or upper > 0.50:
+        return 'WEAK'
+    return 'NEUTRAL'
+
+
 def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     """Trade Execution 增量层主入口（只读，不修改 ev）。
 
@@ -299,7 +364,9 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
         dict：TE_JSON_FIELDS 全字段（buyability_parts/why_not_buy/open_playbook 为容器）
     """
     out = {k: (0.0 if k in _TE_FLOATS else '' if k in _TE_STRS else
-               False if k == 'intraday_available' else [] if k in ('why_not_buy', 'open_playbook') else {})
+               False if k in ('intraday_available', 'trigger_touched', 'trigger_confirmed',
+                              'breakout_ready') else
+               [] if k in ('why_not_buy', 'open_playbook') else {})
            for k in TE_JSON_FIELDS}
     if df is None or len(df) < 60 or ev is None:
         return out
@@ -495,6 +562,84 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
          'invalidation': invalidation, 'no_chase_level': no_chase_level,
          'position': tgt, 'initial': init}
 
+    # ---- V1.1 确认层：五层 Gate（TRIGGER≠BUY；只收紧不放松，不改变上方原决策） ----
+    try:
+        day_high = float(df['high'].iloc[-1])
+        day_low = float(df['low'].iloc[-1])
+    except Exception:
+        day_high, day_low = close, close
+    trig_touched, trig_confirmed, trig_status = _trigger_confirmation(close, day_high, trigger)
+    brk_ready, ma20, ma20_prev, vr_day = _breakout_ready_gate(close, trigger, df)
+    brk_quality = _breakout_quality(close, day_high, day_low, vr_day, trig_confirmed)
+    pbv = getattr(ev, 'pb_verdict', 'NA') or 'NA'
+    retest_pass = {'GOOD': 'PASS', 'NEAR': 'NEAR', 'POOR': 'FAIL'}.get(pbv, 'NA')
+    if ev.locked_chip and _f(ev.days_after) >= 3:
+        lock_gate = 'PASS'
+    else:
+        lg = []
+        if not ev.locked_chip:
+            lg.append(f"未完成缩量锁筹（5日量比{_f(ev.vol_5d_ratio, 1.0):.2f}）")
+        if _f(ev.days_after) < 3:
+            lg.append(f"天量后观察{_f(ev.days_after):.0f}日<3日")
+        lock_gate = 'FAIL: ' + '；'.join(lg)
+    risk_gate = ('FAIL: ' + '；'.join(skip_reasons)) if skip_reasons else 'PASS'
+    score_gap = round(max(0.0, t_boc - exec_score), 1)
+
+    gates_ok = (trig_confirmed and brk_ready and brk_quality != 'WEAK'
+                and exec_score >= t_boc and lock_gate == 'PASS' and risk_gate == 'PASS')
+    if state == 'SKIP':
+        conf_state = 'INVALID'
+    elif action in ('BUY', 'BUY_ON_CONFIRM') and gates_ok:
+        conf_state = 'PRIMARY_BUY'
+    elif exec_score >= t_boc and risk_gate == 'PASS' and lock_gate == 'PASS':
+        conf_state = 'READY'
+    else:
+        conf_state = 'WAIT'
+
+    gaps = []
+    if not trig_confirmed:
+        if trig_status == 'FAILED_CLOSE_CONFIRMATION':
+            gaps.append(f"TRIGGER_CONFIRMED=FAIL：盘中触及{trigger:.2f}但收盘{close:.2f}<TRIGGER"
+                        f"（冲高回落），需收盘≥{trigger:.2f}")
+        else:
+            gaps.append(f"TRIGGER_CONFIRMED=FAIL：收盘{close:.2f}<TRIGGER={trigger:.2f}，需收盘≥{trigger:.2f}")
+    if not brk_ready:
+        br = []
+        if not trig_confirmed:
+            br.append(f"Close≥{trigger:.2f}未满足")
+        if ma20 is not None and close <= ma20:
+            br.append(f"Close{close:.2f}≤MA20={ma20:.2f}（需>MA20）")
+        if ma20 is not None and ma20_prev is not None and ma20 <= ma20_prev:
+            br.append("MA20未向上（需MA20>3日前MA20）")
+        if vr_day is not None and vr_day < 1.20:
+            br.append(f"当日量比{vr_day:.2f}<1.20（需≥1.20）")
+        gaps.append(("BREAKOUT_READY=FAIL（" + '；'.join(br) + "）") if br else "BREAKOUT_READY=FAIL")
+    if brk_quality == 'WEAK':
+        gaps.append('BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）')
+    if exec_score < t_boc:
+        gaps.append(f"SCORE={exec_score:.1f}<{t_boc:.0f}（SCORE_GAP={score_gap:.1f}，需执行分≥{t_boc:.0f}）")
+    if lock_gate != 'PASS':
+        gaps.append('LOCK_GATE=' + lock_gate)
+    if risk_gate != 'PASS':
+        gaps.append('RISK_GATE=' + risk_gate)
+    wait_reason = '；'.join(gaps) if gaps else '五层Gate全过（无缺口）'
+
+    if conf_state == 'PRIMARY_BUY':
+        next_conf = '五层Gate已全过：按 NEXT_DAY_ACTION 执行（BUY 现价分批 / BUY_ON_CONFIRM 次日开盘确认）'
+        upgrade_cond = '已满足（PRIMARY_BUY）'
+    else:
+        if not trig_confirmed:
+            next_conf = (f"关注能否收于TRIGGER {trigger:.2f}上方"
+                         + ('（今日冲高回落，需防二次失败）' if trig_status == 'FAILED_CLOSE_CONFIRMATION' else ''))
+        elif not brk_ready or brk_quality == 'WEAK':
+            next_conf = f"关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥{trigger:.2f}"
+        elif lock_gate != 'PASS':
+            next_conf = '等待缩量锁筹完成且天量后观察满3日'
+        else:
+            next_conf = f"等待执行分修复至≥{t_boc:.0f}（当前{exec_score:.1f}）"
+        upgrade_cond = (f"收盘≥{trigger:.2f} AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK "
+                        f"AND 执行分≥{t_boc:.0f}（GAP={score_gap:.1f}）AND 锁筹/观察门PASS")
+
     out.update({
         'buyability': round(buyability, 1),
         'buyability_parts': {k: round(v, 1) for k, v in parts.items()},
@@ -515,5 +660,19 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
         'why_not_buy': why_not,
         'open_playbook': _open_playbook(state, action, p, te_cfg, intraday_ok) if state else [],
         'intraday_available': intraday_ok,
+        'current_close': round(close, 2),
+        'trigger_touched': trig_touched,
+        'trigger_confirmed': trig_confirmed,
+        'trigger_status': trig_status,
+        'breakout_ready': brk_ready,
+        'breakout_quality': brk_quality,
+        'retest_pass': retest_pass,
+        'lock_gate': lock_gate,
+        'risk_gate': risk_gate,
+        'score_gap': score_gap,
+        'confirmation_state': conf_state,
+        'wait_reason': wait_reason,
+        'next_confirmation': next_conf,
+        'upgrade_condition': upgrade_cond,
     })
     return out

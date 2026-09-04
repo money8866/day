@@ -129,13 +129,24 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 
 ### ④ WAIT_CONFIRM（需观察确认，5只）
 
-| 代码 | 名称 | 类型 | SCORE | BUYAB | HORIZON | ACTION | TRIGGER | BUY_ZONE | INVAL | NO_CHASE | 仓位 |
+| 代码 | 名称 | CONFIRMATION | TRIGGER | BRK_READY | BRK_QUALITY | RETEST | LOCK | RISK | SCORE/GAP | 现价 | NEXT_CONFIRMATION |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 688239.SH | 航宇科技 | NEW_TREND | 66.9 | 66.8 | T120 | WAIT | 51.49 | 50.98~52.91 | 48.43 | 54.90 | - |
-| 600869.SH | 远东股份 | NEW_TREND | 72.2 | 59.1 | T20 | WAIT | 21.65 | 21.44~22.39 | 19.35 | 23.43 | - |
-| 300911.SZ | 亿田智能 | NEW_TREND | 62.7 | 58.2 | T20 | WAIT | 30.41 | 30.11~31.60 | 26.00 | 33.26 | - |
-| 000938.SZ | 紫光股份 | RE_ACCELERATION | 72.0 | 61.5 | T60 | WAIT | 39.64 | 39.25~40.82 | 36.20 | 42.46 | - |
-| 000997.SZ | 新大陆 | NEW_TREND | 75.7 | 74.2 | T120 | WAIT | 20.90 | 20.69~21.25 | 19.93 | 21.73 | - |
+| 688239.SH | 航宇科技 | WAIT | CONFIRMED | Y | GOOD | NEAR | PASS | PASS | 66.9/8.1 | 54.22 | 等待执行分修复至≥75（当前66.9） |
+| 600869.SH | 远东股份 | WAIT | PENDING | N | WEAK | NA | FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日 | PASS | 72.2/2.8 | 21.05 | 关注能否收于TRIGGER 21.65上方 |
+| 300911.SZ | 亿田智能 | WAIT | CONFIRMED | N | NEUTRAL | NA | FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察2日<3日 | PASS | 62.7/12.3 | 32.52 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥30.41 |
+| 000938.SZ | 紫光股份 | WAIT | PENDING | N | WEAK | FAIL | FAIL: 未完成缩量锁筹（5日量比0.89） | PASS | 72.0/3.0 | 38.13 | 关注能否收于TRIGGER 39.64上方 |
+| 000997.SZ | 新大陆 | READY | CONFIRMED | N | WEAK | NEAR | PASS | PASS | 75.7/0.0 | 21.09 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥20.90 |
+
+- **航宇科技（688239.SH）** WAIT_REASON：SCORE=66.9<75（SCORE_GAP=8.1，需执行分≥75）
+  UPGRADE_CONDITION：收盘≥51.49 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=8.1）AND 锁筹/观察门PASS
+- **远东股份（600869.SH）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘21.05<TRIGGER=21.65，需收盘≥21.65；BREAKOUT_READY=FAIL（Close≥21.65未满足）；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=72.2<75（SCORE_GAP=2.8，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日
+  UPGRADE_CONDITION：收盘≥21.65 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=2.8）AND 锁筹/观察门PASS
+- **亿田智能（300911.SZ）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比1.06<1.20（需≥1.20））；SCORE=62.7<75（SCORE_GAP=12.3，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察2日<3日
+  UPGRADE_CONDITION：收盘≥30.41 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=12.3）AND 锁筹/观察门PASS
+- **紫光股份（000938.SZ）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘38.13<TRIGGER=39.64，需收盘≥39.64；BREAKOUT_READY=FAIL（Close≥39.64未满足；当日量比0.87<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=72.0<75（SCORE_GAP=3.0，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.89）
+  UPGRADE_CONDITION：收盘≥39.64 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=3.0）AND 锁筹/观察门PASS
+- **新大陆（000997.SZ）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比0.80<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）
+  UPGRADE_CONDITION：收盘≥20.90 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
 
 ### ⑤ SKIP（明日不买，17只）
 
@@ -144,13 +155,19 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 | 600613.SH | 神奇制药 | DISTRIBUTION | 51.2 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 300864.SZ | 南大环境 | DISTRIBUTION | 51.3 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
 | 603369.SH | 今世缘 | DISTRIBUTION | 53.3 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 605189.SH | 富春染织 | FAILED | 51.0 | 结构状态FAILED（硬风控覆盖）；硬否决：结构状态:FAILED |
+| 605189.SH | 富春染织 | FAILED | 52.4 | 结构状态FAILED（硬风控覆盖）；硬否决：结构状态:FAILED |
 | 600267.SH | 海正药业 | DISTRIBUTION | 50.7 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 300821.SZ | 东岳硅材 | FAILED | 51.0 | 结构状态FAILED（硬风控覆盖）；硬否决：结构状态:FAILED |
-| 603313.SH | 梦百合 | DISTRIBUTION | 51.0 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 603313.SH | 梦百合 | DISTRIBUTION | 50.7 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 600551.SH | 时代出版 | DISTRIBUTION | 52.6 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 600540.SH | 新赛股份 | DISTRIBUTION | 47.0 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION；连板过热冷却：连续涨停0天/近5日4板，断板缩量企稳前不参与接力（§38） |
+| 600540.SH | 新赛股份 | DISTRIBUTION | 46.7 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION；连板过热冷却：连续涨停0天/近5日4板，断板缩量企稳前不参与接力（§38） |
 | 605499.SH | 东鹏饮料 | FAILED | 48.7 | 结构状态FAILED（硬风控覆盖）；硬否决：结构状态:FAILED |
+
+### CONFIRMATION（V1.1 确认层总览）
+
+★ PRIMARY_BUY：当前没有符合 PRIMARY_BUY 条件的股票（五层Gate未全过，禁止把WAIT错判成BUY）
+★ READY（差临门一脚，确认后可买）：新大陆（CONFIRMED，GAP=0.0）
+★ WAIT（9只，需继续确认）：航宇科技、远东股份、深信服、康龙化成、太阳纸业、陆家嘴
 
 ### WHY_NOT_BUY（为何未进买入候选）
 
@@ -272,17 +289,17 @@ FINAL DECISION
 
 ### 【FAILED】富春染织（605189.SH）
 
-- V3双评分：ENTRY=67.0 | EXPANSION=66.5 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构17.7 量能17.8 回踩12.0 RS4.5 板块5.0 盈亏比10.0
+- V3双评分：ENTRY=68.3 | EXPANSION=66.5 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构17.7 量能17.8 回踩12.0 RS4.5 板块6.3 盈亏比10.0
 - EXPANSION分解：空间20.0 压缩11.5 动量6.0 RS加速6.0 量效1.0 吸收9.0 基本面10.0 催化3.0
-- FE未来扩张：FE=44 FE10=46 FE20=24 FE60=51 FE120=50 | Lifecycle=EARLY TrendGain=12% Continuation=48 ExtRisk=3 Type=NEW_TREND
-- FE分解：accel=35 base_expansion=45 continuation=48 dd20=0 dd60=0 fundamental=73 lifecycle=90 ma=20 overhead=1 platform=22 rs=38 space=20
+- FE未来扩张：FE=44 FE10=46 FE20=24 FE60=53 FE120=53 | Lifecycle=EARLY TrendGain=12% Continuation=48 ExtRisk=3 Type=NEW_TREND
+- FE分解：accel=35 base_expansion=46 continuation=48 dd20=0 dd60=0 fundamental=76 lifecycle=90 ma=20 overhead=1 platform=22 rs=38 space=20
 - 分级：收盘位置=A 放量=D RS5=6 RS10=24 RS20=2 RS加速度=+4
 - 天量日 20260810：涨幅6.5% 收盘位0.71 换手15.7% | 天量后回撤17.0% 量缩比0.52 锁筹=是
-- 板块：-（强度50） | 基本面：S（90） | 资金质量：45
+- 板块：消费（强度63） | 基本面：S（90） | 资金质量：45
 - 交易计划：入场=0.00 止损=15.45 目标1=0.00 目标2=0.00 建议仓位=-
 - ⛔ 硬否决：结构状态:FAILED
-- WAIT_REASON：等待突破T0_High；板块强度不足；回撤过大；结构状态:FAILED
+- WAIT_REASON：等待突破T0_High；回撤过大；结构状态:FAILED
 - 为什么它像中际旭创：同为历史级天量(量比2.1)、天量日价格强(涨6.5%/收盘位0.71)、相似度76.7；差异：回撤更深(17.0% vs 案例6.6%)，尚未二次突破
 
 ### 【DISTRIBUTION】海正药业（600267.SH）
@@ -317,17 +334,17 @@ FINAL DECISION
 
 ### 【DISTRIBUTION】梦百合（603313.SH）
 
-- V3双评分：ENTRY=77.3 | EXPANSION=63.0 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构14.6 量能20.0 回踩10.0 RS12.2 板块6.3 盈亏比14.2
+- V3双评分：ENTRY=76.0 | EXPANSION=63.0 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构14.6 量能20.0 回踩10.0 RS12.2 板块5.0 盈亏比14.2
 - EXPANSION分解：空间20.0 压缩11.0 动量11.0 RS加速10.0 量效1.0 吸收4.0 基本面3.0 催化3.0
-- FE未来扩张：FE=59 FE10=99 FE20=89 FE60=83 FE120=46 | Lifecycle=EARLY TrendGain=32% Continuation=64 ExtRisk=2 Type=DISTRIBUTION_RISK
-- FE分解：accel=80 base_expansion=58 continuation=64 dd20=0 dd60=0 fundamental=55 lifecycle=90 ma=50 overhead=1 platform=45 rs=63 space=37
+- FE未来扩张：FE=58 FE10=99 FE20=89 FE60=80 FE120=43 | Lifecycle=EARLY TrendGain=32% Continuation=64 ExtRisk=2 Type=DISTRIBUTION_RISK
+- FE分解：accel=80 base_expansion=58 continuation=64 dd20=0 dd60=0 fundamental=52 lifecycle=90 ma=50 overhead=1 platform=45 rs=63 space=37
 - 分级：收盘位置=A+ 放量=D RS5=93 RS10=81 RS20=76 RS加速度=+17
 - 天量日 20260714：涨幅7.5% 收盘位0.82 换手14.8% | 天量后回撤35.6% 量缩比0.57 锁筹=否
-- 板块：消费（强度63） | 基本面：C（40） | 资金质量：90
+- 板块：-（强度50） | 基本面：C（40） | 资金质量：90
 - 交易计划：入场=0.00 止损=7.70 目标1=0.00 目标2=0.00 建议仓位=-
 - ⛔ 硬否决：结构状态:DISTRIBUTION
-- WAIT_REASON：等待缩量锁筹；等待突破T0_High；回撤过大；基本面不足；结构状态:DISTRIBUTION
+- WAIT_REASON：等待缩量锁筹；等待突破T0_High；板块强度不足；回撤过大；基本面不足；结构状态:DISTRIBUTION
 - 为什么它像中际旭创：同为历史级天量(量比4.1)、天量日价格强(涨7.5%/收盘位0.82)、相似度67.0；差异：回撤更深(35.6% vs 案例6.6%)，尚未锁筹，尚未二次突破
 
 ### 【DISTRIBUTION】时代出版（600551.SH）
@@ -363,17 +380,17 @@ FINAL DECISION
 
 ### 【DISTRIBUTION】新赛股份（600540.SH）
 
-- V3双评分：ENTRY=70.3 | EXPANSION=60.8 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构16.0 量能20.0 回踩5.0 RS13.0 板块6.3 盈亏比10.0
+- V3双评分：ENTRY=69.0 | EXPANSION=60.8 | TAIL=14.5(已校准) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构16.0 量能20.0 回踩5.0 RS13.0 板块5.0 盈亏比10.0
 - EXPANSION分解：空间8.8 压缩9.0 动量11.0 RS加速8.0 量效5.0 吸收4.0 基本面10.0 催化3.0
-- FE未来扩张：FE=36 FE10=86 FE20=99 FE60=46 FE120=72 | Lifecycle=DEVELOPING TrendGain=78% Continuation=67 ExtRisk=53 Type=DISTRIBUTION_RISK
-- FE分解：accel=60 base_expansion=56 continuation=67 dd20=0 dd60=0 fundamental=77 lifecycle=85 ma=60 overhead=0 platform=45 rs=79 space=21
+- FE未来扩张：FE=36 FE10=86 FE20=99 FE60=43 FE120=70 | Lifecycle=DEVELOPING TrendGain=78% Continuation=67 ExtRisk=53 Type=DISTRIBUTION_RISK
+- FE分解：accel=60 base_expansion=55 continuation=67 dd20=0 dd60=0 fundamental=74 lifecycle=85 ma=60 overhead=0 platform=45 rs=79 space=21
 - 分级：收盘位置=A+ 放量=D RS5=100 RS10=100 RS20=100 RS加速度=+0
 - 天量日 20260902：涨幅10.0% 收盘位1.00 换手37.5% | 天量后回撤10.0% 量缩比1.00 锁筹=否
-- 板块：消费（强度63） | 基本面：S（90） | 资金质量：50
+- 板块：-（强度50） | 基本面：S（90） | 资金质量：50
 - 交易计划：入场=0.00 止损=6.30 目标1=0.00 目标2=0.00 建议仓位=-
 - ⛔ 硬否决：结构状态:DISTRIBUTION
-- WAIT_REASON：等待缩量锁筹；天量后观察不足3日；等待突破T0_High；回撤过大；结构状态:DISTRIBUTION
+- WAIT_REASON：等待缩量锁筹；天量后观察不足3日；等待突破T0_High；板块强度不足；回撤过大；结构状态:DISTRIBUTION
 - 为什么它像中际旭创：同为历史级天量(量比5.6)、天量日价格强(涨10.0%/收盘位1.00)、相似度75.1；差异：缩量不足(量缩比1.00 vs 案例0.48)，尚未锁筹，尚未二次突破
 
 ### 【FAILED】东鹏饮料（605499.SH）
