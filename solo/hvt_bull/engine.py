@@ -68,9 +68,11 @@ class HvtBullEngine:
     def detect_hvt(self, df: pd.DataFrame, idx: int):
         """判断 df 第 idx 行（T0）是否构成 HVT 事件。返回事件或 None。
 
-        天量定义（锚点口径）：T0 换手率 = anchor_date（默认 20230103）以来最高，
-        即 rank_anchor == 1；等级按 20 日量比分为 A/B/C。
-        anchor_date 为空时退回旧的 250 日滚动窗口排名口径。
+        天量口径 rank_mode（hvt 配置段）：
+          anchor  : T0 换手率 = anchor_date 以来最高（rank_anchor == 1），按 20 日量比分 A/B/C
+          rolling : 250 日滚动窗口排名口径（rank_a/b + pct120 分级，V1 遗留）
+          both    : 两者并集，anchor 优先定级；anchor 不通过时回退 rolling 判定
+        未配置 rank_mode 时向后兼容：anchor_date 非空 -> anchor，否则 -> rolling。
         """
         if idx < 30 or idx >= len(df):
             return None
@@ -104,22 +106,29 @@ class HvtBullEngine:
         ratio_c = float(self.hvt_cfg.get('ratio_c', 1.8))
 
         anchor = str(self.hvt_cfg.get('anchor_date', '') or '')
+        mode = str(self.hvt_cfg.get('rank_mode', '') or '').strip().lower()
+        if mode not in ('anchor', 'rolling', 'both'):
+            mode = 'anchor' if anchor else 'rolling'
+        if mode == 'anchor' and not anchor:
+            mode = 'rolling'
         rank_anchor = 0
-        if anchor:
+        grade = None
+        if mode in ('anchor', 'both'):
             dates = df['trade_date'].tolist()
             a0 = next((i for i, d in enumerate(dates) if str(d) >= anchor), None)
-            if a0 is None or a0 > idx:
+            anchor_ok = a0 is not None and a0 <= idx
+            if anchor_ok:
+                hist_a = turnover[a0:idx]
+                if len(hist_a) >= int(self.hvt_cfg.get('anchor_min_hist', 60)):
+                    rank_anchor = int(np.sum(hist_a >= turnover[idx])) + 1
+                    anchor_ok = rank_anchor == 1 and tratio >= ratio_c
+                else:
+                    anchor_ok = False
+            if anchor_ok:
+                grade = 'A' if tratio >= ratio_a else ('B' if tratio >= ratio_b else 'C')
+            elif mode == 'anchor':
                 return None
-            hist_a = turnover[a0:idx]
-            if len(hist_a) < int(self.hvt_cfg.get('anchor_min_hist', 60)):
-                return None
-            rank_anchor = int(np.sum(hist_a >= turnover[idx])) + 1
-            if rank_anchor != 1:
-                return None
-            if tratio < ratio_c:
-                return None
-            grade = 'A' if tratio >= ratio_a else ('B' if tratio >= ratio_b else 'C')
-        else:
+        if grade is None and mode in ('rolling', 'both'):
             rank_a = int(self.hvt_cfg.get('rank_a', 1))
             rank_b = int(self.hvt_cfg.get('rank_b', 2))
             pct_a = float(self.hvt_cfg.get('pct_a', 99))
@@ -133,6 +142,8 @@ class HvtBullEngine:
                 grade = 'C'
             else:
                 return None
+        if grade is None:
+            return None
 
         ev = HvtEvent(ts_code=str(df['ts_code'].iloc[0]),
                       t0_date=str(df['trade_date'].iloc[idx]),

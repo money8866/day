@@ -956,6 +956,30 @@ def _render_te(result: dict, all_events) -> list:
     lines.append('核心原则：只执行“未来扩张 + 当前执行条件”同时成立的股票；没有确认就不买，'
                  '不因为FE高而追涨，不因为过去涨幅大而机械剔除。')
     lines.append('')
+
+    # DIP_REBOUND_WATCH（校准衍生观察信号：40~50分，非买入信号，不进决策链）
+    dip_pool = [e for e in te_pool if 40.0 <= _score(e, 'execution_score') < 50.0]
+    lines.append('============================================================')
+    lines.append(f'DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，{len(dip_pool)}只）')
+    lines.append('============================================================')
+    lines.append('')
+    lines.append('定位：观察信号，非买入信号——不进 FINAL DECISION，不触发任何买入动作。')
+    lines.append('依据：38日校准（20260701~20260826，n=217）T5均值+1.67%/中位+1.17%/胜率57.6%（次日开盘买入口径）。')
+    lines.append('机制：该段99%为INVALID结构（DISTRIBUTION/FAILED，超跌），弱市动量失效、反转占优下的均值回归。')
+    lines.append('边界：高度依赖下跌regime（单边熊/牛市失效）；左尾-23%；T1≈0，收益靠5日慢磨。')
+    lines.append('用法：仅跟踪止跌企稳；月度重跑校准，若该桶T5转负则信号失效。')
+    lines.append('')
+    if dip_pool:
+        lines.append('| 代码 | 名称 | V3状态 | SCORE | 现价 | SKIP原因 |')
+        lines.append('|---|---|---|---|---|---|')
+        for e in dip_pool[:10]:
+            why = '；'.join(getattr(e, 'why_not_buy', None) or []) or '—'
+            lines.append(f"| {e.ts_code} | {e.name} | {e.state} | {_score(e, 'execution_score'):.1f} "
+                         f"| {_score(e, 'current_close'):.2f} | {why} |")
+        lines.append('')
+    else:
+        lines.append('（无）')
+        lines.append('')
     return lines
 
 

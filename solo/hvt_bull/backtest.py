@@ -455,9 +455,18 @@ def run_backtest(start: str = None, end: str = None, cfg: dict = None,
     codes = _universe_codes_period(loader, det_dates, cfg)
     print(f"[HVT-BT] 区间 {start}~{end}，检测日 {len(det_dates)} 个，股票 {len(codes)} 只")
 
-    anchor_date = str(cfg.get('hvt', {}).get('anchor_date', '') or '')
-    # 数据加载起点强制锚定天量锚点日（默认 20240801），不再按 550 天动态回退
-    hist_start = anchor_date or (pd.to_datetime(start) - pd.Timedelta(days=550)).strftime('%Y%m%d')
+    hvt_cfg_bt = cfg.get('hvt', {})
+    anchor_date = str(hvt_cfg_bt.get('anchor_date', '') or '')
+    bt_mode = str(hvt_cfg_bt.get('rank_mode', '') or '').strip().lower()
+    if bt_mode not in ('anchor', 'rolling', 'both'):
+        bt_mode = 'anchor' if anchor_date else 'rolling'
+    # 数据加载起点：anchor 口径锚定锚点日；rolling/both 需回退 550 天填满 250 日窗口（both 取两者更早者）
+    if bt_mode == 'anchor' and anchor_date:
+        hist_start = anchor_date
+    else:
+        hist_start = (pd.to_datetime(start) - pd.Timedelta(days=550)).strftime('%Y%m%d')
+        if bt_mode == 'both' and anchor_date:
+            hist_start = min(hist_start, anchor_date)
     fut_end = (pd.to_datetime(end) + pd.Timedelta(days=80)).strftime('%Y%m%d')
 
     cal_all = loader.trade_dates(hist_start, fut_end)
@@ -476,19 +485,44 @@ def run_backtest(start: str = None, end: str = None, cfg: dict = None,
         vols = df['vol'].to_numpy(dtype=float)
         turnovers = df['turnover_rate'].to_numpy(dtype=float)
         last_ev_idx = -10 ** 9
+        # 严格并集（rank_mode=both）：anchor 类(rank_anchor==1)与 rolling 类各自独立冷却，
+        # rolling 密集信号不再淹没低频 anchor 信号；anchor 类事件同时压制 rolling 链
+        # （波次去重：锚点新高已标记该波天量，同波 rolling-only 不重复计数）
+        strict_union = bt_mode == 'both'
+        last_anchor_idx = -10 ** 9
+        last_rolling_idx = -10 ** 9
 
         for idx in range(30, len(df)):
             if dates[idx] not in det_set:
                 continue
-            if idx - last_ev_idx < 10:  # 事件冷却：10 个交易日内不重复计数
-                continue
-            ev = engine.detect_hvt(df, idx)
-            if ev is None:
-                continue
+            if strict_union:
+                # 类别需检测结果判别，冷却判定移至 detect_hvt 之后
+                ev = engine.detect_hvt(df, idx)
+                if ev is None:
+                    continue
+                if ev.hvt_rank_anchor == 1:
+                    if idx - last_anchor_idx < 10:
+                        continue
+                else:
+                    if idx - last_rolling_idx < 10:
+                        continue
+            else:
+                if idx - last_ev_idx < 10:  # 事件冷却：10 个交易日内不重复计数
+                    continue
+                ev = engine.detect_hvt(df, idx)
+                if ev is None:
+                    continue
             engine.evaluate_event(df, ev)
             if not engine.price_strength_ok(ev) and not ev.platform_breakout:
                 continue
-            last_ev_idx = idx
+            if strict_union:
+                if ev.hvt_rank_anchor == 1:
+                    last_anchor_idx = idx
+                    last_rolling_idx = idx
+                else:
+                    last_rolling_idx = idx
+            else:
+                last_ev_idx = idx
 
             # 完整跟踪（结局判定：锁筹/突破/出货/失败）
             engine.update_tracking(df, ev, end_idx=len(df))

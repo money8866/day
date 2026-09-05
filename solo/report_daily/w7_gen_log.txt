@@ -1,7 +1,9 @@
-﻿[w7] 日期=20260828 股池=2846 开始加载历史...
-[w7] 分析进度 500/2846 耗时=31.1s
-[w7] 分析进度 1000/2846 耗时=62.1s
-[w7] 分析进度 1500/2846 耗时=92.4s
-[w7] 分析进度 2000/2846 耗时=122.9s
-[w7] 分析进度 2500/2846 耗时=153.5s
-{"date": "20260828", "universe": 2846, "results": 1339, "output": "D:\\mystock\\solo\\report_daily\\w7_second_wave_20260828.md", "states": {"EXTREME_CHURN": 98, "ABSORPTION": 66, "DRYUP": 1, "BREAKOUT_CONFIRM": 1, "DISTRIBUTION": 143, "FAILED": 1030}, "buys": {"WAIT": 1338, "SECONDARY_BUY": 1}}
+﻿[w7] 日期=20260904 股池=2846 开始加载历史...
+[w7] 财务覆盖=5546 行业强度=100 行业景气=100
+[w7] SLI 龙头票池 1577 只，启用联动过滤
+[w7] 分析进度 500/2846 耗时=15.5s
+[w7] 分析进度 1000/2846 耗时=30.0s
+[w7] 分析进度 1500/2846 耗时=42.7s
+[w7] 分析进度 2000/2846 耗时=57.2s
+[w7] 分析进度 2500/2846 耗时=72.0s
+{"date": "20260904", "universe": 2846, "results": 236, "output": "D:\\mystock\\solo\\report_daily\\w7_second_wave_20260904.md", "states": {"EXTREME_CHURN": 57, "ABSORPTION": 84, "DRYUP": 1, "RE_EXPANSION": 1, "BREAKOUT_CONFIRM": 2, "SECOND_WAVE": 3, "DISTRIBUTION": 20, "FAILED": 68}, "buys": {"WATCH": 203, "CONFIRMED": 29, "T120_ROCKET": 4}, "types": {"DISTRIBUTION": 88, "CORE": 112, "MID": 20, "EXT": 16}}

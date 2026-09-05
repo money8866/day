@@ -13,6 +13,7 @@ hvt:
   lookback_250: 250             # 历史排名窗口
   anchor_date: '20240801'       # 天量锚点口径：T0换手须为该日以来最高（空=退回250日滚动窗口口径）
   anchor_min_hist: 60           # 锚点口径下 T0 之前至少需要的有效交易日数
+  rank_mode: both               # 天量口径：anchor=锚点以来最高 | rolling=250日滚动窗口排名 | both=严格并集（两类各自独立冷却10日，anchor优先定级）
   percentile_120: 98            # 120日分位阈值(%)
   ratio_20: 2.0                 # 当日换手 / 20日均换手
   amount_ratio_20: 2.0          # 当日成交额 / 20日均成交额

@@ -22,12 +22,14 @@ _AI_SYSTEM_PROMPT = """你是资深A股量化操盘手，专注"历史天量+二
 - RIGHT_TAIL：右侧主升持有跟踪（HOLD持有/TRIMMING分批兑现/EXIT止盈离场）
 - FAILED/DISTRIBUTION/EXIT：跌破T0_High或回撤过大，风险回避名单
 - HVT_STRONG：天量当日强势，等待缩量锁筹再观察
+- DIP_REBOUND_WATCH：40~50分超跌反弹观察池（多为FAILED/DISTRIBUTION超跌结构），弱市均值回归观察信号，非买入信号、不进决策链
 
 请输出（200~500字，Markdown 列表，禁止首行缩进，适合手机阅读）：
 1. 一句话核心结论：今天 HVT 信号整体偏多还是偏空，机会与风险哪个占优
 2. 今日重点信号：列出 PRIMARY_BUY 与 突破回踩 GOOD 标的（必须带完整代码+名称），每只一句话说清逻辑
 3. 持有与风险：RIGHT_TAIL 持仓建议动作；FAILED/DISTRIBUTION/EXIT 报总数并点出最需警惕的2~3只
 4. 明日操作要点：观察什么、避免什么
+5. 超跌反弹观察池：DIP_REBOUND_WATCH 若存在则列出观察标的（代码+名称+落选原因），必须明确标注为"观察信号、非买入建议"
 
 规则：只使用报告中出现的数据，绝不编造；个股必须带完整代码（如 陆家嘴 600663.SH）；不要出现'报告原文'或'根据报告'这类话。"""
 
@@ -109,11 +111,11 @@ def send_to_wechat(text: str, trade_date: str) -> bool:
 
 
 def _fallback_summary(md_text: str, trade_date: str) -> str:
-    """AI 不可用时的降级摘要：头部统计 + A/E/F 关键区段 + 风险计数"""
+    """AI 不可用时的降级摘要：头部统计 + A/E/F 关键区段 + 风险计数 + 超跌反弹观察池"""
     import re
     lines = md_text.splitlines()
     head = []
-    sec = {'A': [], 'E': [], 'F': [], 'D': []}
+    sec = {'A': [], 'E': [], 'F': [], 'D': [], 'W': []}
     cur = None
     for ln in lines:
         if ln.startswith('# HVT-BULL') or ln.startswith('日期') or ln.startswith('股票池') \
@@ -125,10 +127,15 @@ def _fallback_summary(md_text: str, trade_date: str) -> str:
             cur = ln[3]
             sec[cur] = [ln]
             continue
+        if ln.startswith('DIP_REBOUND_WATCH'):
+            cur = 'W'
+            sec[cur] = [ln]
+            continue
         if ln.startswith('## '):
             cur = None
             continue
-        if cur in sec and (ln.startswith('|') or ln.strip() == ''):
+        if cur in sec and (ln.startswith('|') or ln.strip() == ''
+                           or (cur == 'W' and ln.startswith('定位：'))):
             if ln.strip():
                 sec[cur].append(ln)
     # 风险计数
@@ -139,6 +146,19 @@ def _fallback_summary(md_text: str, trade_date: str) -> str:
         rows = [r for r in sec.get(k, []) if r.startswith('|') and not r.startswith('|---')]
         if rows:
             out += ['', sec[k][0], '', rows[0]] + rows[1:]
+    w_sec = sec.get('W', [])
+    w_rows = [r for r in w_sec if r.startswith('|')
+              and not r.startswith('|---') and not r.startswith('| 代码')]
+    if w_sec:
+        out += ['', '## 超跌反弹观察池（观察信号，非买入建议）', '']
+        for r in w_sec:
+            if r.startswith('定位：'):
+                out.append(f"- {r}")
+                break
+        for r in w_rows[:10]:
+            cells = [c.strip() for c in r.strip('|').split('|')]
+            if len(cells) >= 6:
+                out.append(f"- {cells[0]} {cells[1]} [{cells[2]}] SCORE={cells[3]} 现价{cells[4]}（{cells[5]}）")
     out += ['', f'## 风险名单（{len(d_rows)} 只）']
     for r in d_rows[:10]:
         cells = [c.strip() for c in r.strip('|').split('|')]
