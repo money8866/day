@@ -118,11 +118,68 @@ def safe_mean(values, default=0.0):
     return float(np.mean(values)) if values else default
 
 
+# ─────────────────────────────────────────────
+# 数据源：窄表（W7 迁移，替代 stk_factor_pro 261 列宽表）
+#   行情(OHLCV/pct_chg/vol) = daily_cache(pro.daily)
+#   换手/市值             = daily_basic_cache
+#   复权因子              = adj_factor_cache
+# ma_bfq_* 不再读宽表：本地按前复权收盘(=close×adj/每股末因子)滚动计算，复现原口径。
+# ─────────────────────────────────────────────
+_BARS_SELECT = """SELECT d.ts_code, d.trade_date, d.open, d.high, d.low, d.close,
+       d.pct_chg, d.vol,
+       b.turnover_rate, b.turnover_rate_f, b.circ_mv,
+       a.adj_factor
+  FROM daily_cache AS d
+  LEFT JOIN daily_basic_cache AS b
+         ON b.ts_code = d.ts_code AND b.trade_date = d.trade_date
+  LEFT JOIN adj_factor_cache AS a
+         ON a.ts_code = d.ts_code AND a.trade_date = d.trade_date"""
+_MA_WINDOWS = ((10, "ma_bfq_10"), (20, "ma_bfq_20"), (60, "ma_bfq_60"), (120, "ma_bfq_120"))
+
+
+def _qfq_price(df):
+    """前复权收盘序列：close × adj_factor / 每股末个有效因子（锚定序列末端=引擎 end_date）。
+
+    与 stk_factor_pro 入库口径一致（入库日最新因子做整体缩放，不改变相对比值）。
+    adj_factor 全缺时退回原始 close，保证均线仍可用。
+    """
+    close = df["close"].astype(float)
+    if "adj_factor" not in df.columns or df["adj_factor"].isna().all():
+        return close
+    if "ts_code" not in df.columns:
+        adjf = df["adj_factor"].astype(float).ffill()
+        if adjf.isna().all() or not np.isfinite(adjf.iloc[-1]):
+            return close
+        return close * adjf / adjf.iloc[-1]
+    adjf = df.groupby("ts_code")["adj_factor"].ffill()
+    last = adjf.groupby(df["ts_code"]).transform("last")
+    has = last.notna() & adjf.notna()
+    price = close.copy()
+    price[has] = close[has] * adjf[has] / last[has]
+    return price
+
+
+def _fill_ma_columns(df, price=None):
+    """写入 ma_bfq_10/20/60/120（满窗滚动均线；组内需按 trade_date 升序）"""
+    df = df.copy()
+    if price is None:
+        price = _qfq_price(df)
+    grp = df["ts_code"] if "ts_code" in df.columns else None
+    if grp is None:
+        for w, col in _MA_WINDOWS:
+            df[col] = price.rolling(w, min_periods=w).mean()
+    else:
+        for w, col in _MA_WINDOWS:
+            df[col] = price.groupby(grp).transform(
+                lambda s: s.rolling(w, min_periods=w).mean())
+    return df
+
+
 def market_regime(conn, trade_date):
-    # 缓存库无指数数据（daily_cache 仅存个股），改用全市场等权日收益序列近似市场环境
+    # 缓存库无指数数据（窄表仅存个股），改用全市场等权日收益序列近似市场环境
     q = """
         SELECT trade_date, AVG(pct_chg) AS m
-        FROM stk_factor_pro
+        FROM daily_cache
         WHERE trade_date<=? AND pct_chg IS NOT NULL
         GROUP BY trade_date ORDER BY trade_date DESC LIMIT 65
     """
@@ -156,11 +213,11 @@ class CacheReader:
         return df.drop_duplicates("ts_code").set_index("ts_code")
 
     def latest_date(self):
-        row = self.conn.execute("SELECT MAX(trade_date) FROM stk_factor_pro").fetchone()
+        row = self.conn.execute("SELECT MAX(trade_date) FROM daily_cache").fetchone()
         return str(row[0]) if row and row[0] else ""
 
     def universe(self, trade_date):
-        df = pd.read_sql_query("SELECT ts_code, trade_date, circ_mv, total_mv FROM stk_factor_pro WHERE trade_date=?", self.conn, params=(trade_date,))
+        df = pd.read_sql_query("SELECT ts_code, trade_date, circ_mv, total_mv FROM daily_basic_cache WHERE trade_date=?", self.conn, params=(trade_date,))
         if df.empty:
             return df
         snapshot_path = os.path.join(self.cache_dir, "market_" + trade_date + ".csv")
@@ -187,24 +244,16 @@ class CacheReader:
         return df.drop_duplicates("ts_code")
 
     def bars_sql(self, ts_code, end_date):
-        """逐只查询全历史（仅用于锚点等少量代码）"""
-        available = {row[1] for row in self.conn.execute("PRAGMA table_info(stk_factor_pro)").fetchall()}
-        wanted = WANTED_COLS
-        selected = [col for col in wanted if col in available]
-        q = f"SELECT {','.join(selected)} FROM stk_factor_pro WHERE ts_code=? AND trade_date<=? ORDER BY trade_date"
+        """逐只查询全历史（仅用于锚点等少量代码）；ma_bfq_* 本地前复权滚动计算"""
+        q = (_BARS_SELECT + " WHERE d.ts_code=? AND d.trade_date<=? ORDER BY d.trade_date")
         df = pd.read_sql_query(q, self.conn, params=(ts_code, end_date))
         if df.empty:
             return df
-        for col in wanted:
-            if col not in df:
-                df[col] = np.nan
-        numeric = [x for x in wanted if x not in ("ts_code", "trade_date")]
+        df = _fill_ma_columns(df)
+        numeric = [c for c in df.columns if c not in ("ts_code", "trade_date")]
         for col in numeric:
             if not pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-        for window, col in ((10, "ma_bfq_10"), (20, "ma_bfq_20"), (60, "ma_bfq_60"), (120, "ma_bfq_120")):
-            if df[col].isna().all():
-                df[col] = df.close.rolling(window, min_periods=1).mean()
         return df.dropna(subset=["close", "high", "low", "vol"]).reset_index(drop=True)
 
     def bars(self, ts_code, end_date):
@@ -214,10 +263,11 @@ class CacheReader:
         return df[df.trade_date <= end_date].reset_index(drop=True)
 
     def load_all(self, end_date, codes=None, min_date=None, chunk=500, verbose=False):
-        """按代码分批 + 日期范围加载历史（IN 参数过多会导致 SQLite 编译极慢，chunk 保持 500）"""
-        available = {row[1] for row in self.conn.execute("PRAGMA table_info(stk_factor_pro)").fetchall()}
-        wanted = WANTED_COLS
-        selected = [col for col in wanted if col in available]
+        """按代码分批 + 日期范围加载历史（IN 参数过多会导致 SQLite 编译极慢，chunk 保持 500）
+
+        W7: 源为 daily_cache + daily_basic_cache + adj_factor_cache 窄表三表连接；
+        ma_bfq_* 加载后按每股前复权收盘本地滚动计算（不再读 stk_factor_pro 宽表）。
+        """
         if min_date is None:
             min_date = DATA_START
         parts = []
@@ -226,11 +276,12 @@ class CacheReader:
         for start in range(0, len(code_list), chunk):
             batch = code_list[start:start + chunk]
             if batch == [None]:
-                where, params = "trade_date>=? AND trade_date<=?", [min_date, end_date]
+                where, params = "d.trade_date>=? AND d.trade_date<=?", [min_date, end_date]
             else:
                 placeholders = ",".join(["?"] * len(batch))
-                where, params = f"trade_date>=? AND trade_date<=? AND ts_code IN ({placeholders})", [min_date, end_date] + batch
-            q = f"SELECT {','.join(selected)} FROM stk_factor_pro WHERE {where} ORDER BY trade_date"
+                where, params = (f"d.trade_date>=? AND d.trade_date<=? AND d.ts_code IN ({placeholders})",
+                                 [min_date, end_date] + batch)
+            q = f"{_BARS_SELECT} WHERE {where} ORDER BY d.trade_date"
             parts.append(pd.read_sql_query(q, self.conn, params=params))
             if verbose:
                 print(f"[load] {len(parts)}/{len(code_list)} 行数={len(parts[-1])} 耗时={time.time()-t0:.1f}s", flush=True)
@@ -238,17 +289,12 @@ class CacheReader:
             self.frames = {}
             return 0
         df = pd.concat(parts, ignore_index=True)
-        for col in wanted:
-            if col not in df:
-                df[col] = np.nan
-        numeric = [x for x in wanted if x not in ("ts_code", "trade_date")]
+        df = df.dropna(subset=["close", "high", "low", "vol"]).copy()
+        numeric = [c for c in df.columns if c not in ("ts_code", "trade_date")]
         for col in numeric:
             if not pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-        for window, col in ((10, "ma_bfq_10"), (20, "ma_bfq_20"), (60, "ma_bfq_60"), (120, "ma_bfq_120")):
-            if df[col].isna().all():
-                df[col] = df.groupby("ts_code")["close"].transform(lambda s: s.rolling(window, min_periods=1).mean())
-        df = df.dropna(subset=["close", "high", "low", "vol"]).copy()
+        df = _fill_ma_columns(df)
         frames = {}
         for code, group in df.groupby("ts_code", sort=False):
             frames[code] = group.reset_index(drop=True)
@@ -289,8 +335,8 @@ class CacheReader:
         if min_date is None:
             min_date = DATA_START
         cache_path = os.path.join(self.cache_dir, "market_curve.csv")
-        q_new = "SELECT trade_date, AVG(pct_chg) AS m FROM stk_factor_pro WHERE trade_date>? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
-        q_full = "SELECT trade_date, AVG(pct_chg) AS m FROM stk_factor_pro WHERE trade_date>=? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
+        q_new = "SELECT trade_date, AVG(pct_chg) AS m FROM daily_cache WHERE trade_date>? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
+        q_full = "SELECT trade_date, AVG(pct_chg) AS m FROM daily_cache WHERE trade_date>=? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
         cached = None
         if os.path.exists(cache_path):
             try:
