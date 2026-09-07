@@ -89,7 +89,7 @@ def _universe(loader: HvtDataLoader, trade_date: str, cfg: dict):
         if not np.isfinite(total_mv):
             continue
         mv_w = float(total_mv) / 10.0 if total_mv > 1e6 else float(total_mv)
-        # stk_factor_pro total_mv 单位：万元
+        # daily_basic_cache total_mv 单位：万元（与 stk_factor_pro 同口径）
         avg_amt_w = float(np.mean(amt_map.get(code, [np.nan]))) / 10.0 if code in amt_map else np.nan
         small_cap = mv_w < min_mv
         if small_cap and not (np.isfinite(avg_amt_w) and avg_amt_w > min_amt * 3):
@@ -444,10 +444,39 @@ def _render_md(result: dict, all_events, detail_events) -> str:
         except Exception:
             return default
 
-    # ========== A. PRIMARY_BUY ==========
+    # ========== 〇. 第一梯队重点解读（PRIMARY_BUY = 最高置信买点层级） ==========
     pb = [e for e in all_events if e.state == 'PRIMARY_BUY' and not e.hard_veto]
     # V3.1 §十五/§十六：PRIMARY_BUY 内部改按 FE 排序（A=FE≥70，B=FE中高；只排序，不改入选资格）
     pb = sorted(pb, key=lambda e: (-getattr(e, 'fe_score', 0.0), -getattr(e, 'entry_score', 0.0)))
+    lines.append('## ★ 第一梯队重点解读（今日最高置信买点层级）')
+    lines.append('')
+    lines.append('**什么是第一梯队**：当日全股票池中唯一同时满足四要素硬门槛且无硬否决的个股——①入场分 ENTRY≥70（天量日+缩量锁筹+二次突破的结构质量）× ②供给吸收≥12/15（天量后缩量锁筹、抛压被吸收）× ③突破日放量A/A+ × ④RS20≥70（相对强度强势）。')
+    lines.append('它是本报告最高置信的买点层级，数量天然稀少（宁缺毋滥）；梯队内 FE≥70 标记为 **A级**（四要素 × Future Expansion 双重确认，最高优先级），否则为 **B级**（结构达标、扩张确认稍弱，仓位从低）。')
+    lines.append('')
+    if pb:
+        names = '，'.join(f"**{e.name}（{e.ts_code}）**{'A级' if getattr(e, 'fe_score', 0.0) >= 70.0 else 'B级'}" for e in pb[:10])
+        lines.append(f"**今日第一梯队共{len(pb)}只**：{names}")
+        lines.append('')
+        for i, e in enumerate(pb[:10], 1):
+            ab = 'A' if getattr(e, 'fe_score', 0.0) >= 70.0 else 'B'
+            stop_pct = abs(e.stop_loss / e.entry - 1) * 100 if e.entry else 0.0
+            lines.append(
+                f"{i}. **{e.name}（{e.ts_code}）[{ab}级]**：ENTRY={e.entry_score:.0f} EXPANSION={e.expansion_score:.0f} "
+                f"TAIL={e.tail_score:.0f} FE={_f(getattr(e, 'fe_score', None))}｜供给吸收{_sub(e, '供给吸收'):.0f}/15、"
+                f"锁筹={'是' if e.locked_chip else '否'}、RS20={_f(e.rs20)}｜触发价{e.entry:.2f} 止损{e.stop_loss:.2f}"
+                f"（约-{stop_pct:.1f}%） 目标{e.target1:.2f} 建议仓位{_pos_suggest(e)}。"
+            )
+            lines.append(
+                f"   买入逻辑：天量日缩量锁筹后二次突破{e.signal_tier or 'T3'}（突破日距天量日{e.t0_to_breakout_days}个交易日），"
+                f"扩张空间{_sub(e, '扩张空间'):.0f}/20，距120日高点{e.dist_high_120:.1f}%；"
+                f"证伪纪律：放量跌破T0_High且2日不收复→结构性止损离场，收盘跌破止损价{e.stop_loss:.2f}→无条件离场。"
+            )
+        lines.append('')
+    else:
+        lines.append('**今日无第一梯队**：无个股同时满足四要素门槛（ENTRY≥70 × 供给吸收≥12 × 放量A/A+ × RS20≥70，无硬否决），本报告不强行产生买点；下一层级 T20_ROCKET_WATCH / BREAKOUT_READY 仍为跟踪观察池，不构成买点。')
+        lines.append('')
+
+    # ========== A. PRIMARY_BUY ==========
     if pb:
         lines.append('## A. ★★★ PRIMARY_BUY（ENTRY≥70 × 供给吸收≥12 × 放量A/A+ × RS20≥70，无硬否决；FE≥70标记为A）')
         lines.append('')

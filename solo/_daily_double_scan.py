@@ -8,7 +8,9 @@
   TIER2（基础基因，≈28-33%）：
     流通市值≤50亿 + 事件日换手≥8%
 用法：python _daily_double_scan.py [--asof 20260904] [--days 5] [--workers 8]
-  - 事件口径：V5 天量 = 前120日分位量能(vol)+换手(turnover_rate_f)双≥P99
+  - 事件口径：V5 天量 = 前250日分位量能(vol)+换手(turnover_rate_f)双≥P98
+  - 事件形态阀：①真跌停(收盘贴板下限)视为出货剔除；②当日换手须≥前20日均换手×1.5，
+    排除未经量能萎缩沉淀的持续高活跃假天量（与 _longdouble_bt 同口径）。
   - 入口：事件日收盘；扫描在收盘后跑，命中即列入观察名单
   - 池：SLI top5 细分龙头池（359 赛道×5）
 """
@@ -30,7 +32,7 @@ try:
 except Exception:
     send_pushplus = None
 
-POOL_P99 = 99.0
+POOL_P98 = 98.0  # 天量分位门槛：前250日量能+换手双≥第98分位
 CTX = 250  # 事件前上下文（保证 250 日高低点/连板等特征）
 
 _SUB = {}
@@ -43,6 +45,18 @@ def _limit_pct(code):
     if code.startswith("8") or code.startswith("4"):
         return 29.5
     return 9.5
+
+
+def _pass_shape(pct_i, trf_i, trf_20m, lim):
+    """事件形态阀：通过返回 True（与 _longdouble_bt 同口径）
+    ① 真跌停(收盘贴板下限，pct<=-lim)视为出货剔除；
+    ② 当日换手须≥前20日均换手×1.5，排除未经量能萎缩沉淀的持续高活跃假天量。
+    """
+    if pct_i <= -lim:              # 真跌停
+        return False
+    if trf_20m and trf_20m > 0 and trf_i < 1.5 * trf_20m:   # 无缩量沉淀段
+        return False
+    return True
 
 
 def _last_event_rec(code, df, asof):
@@ -68,15 +82,21 @@ def _last_event_rec(code, df, asof):
     c0 = closes[i]
     if not np.isfinite(c0) or c0 <= 0:
         return None
-    s = i - 120
+    s = i - 250
     p_t = float(np.mean(trf[s:i] <= trf[i]) * 100.0)
     p_v = float(np.mean(vols[s:i] <= vols[i]) * 100.0)
-    if min(p_t, p_v) < POOL_P99:    # 当日非天量 → 不触发
+    if min(p_t, p_v) < POOL_P98:    # 当日非天量 → 不触发
         return None
-    # 是否簇首：向前 20 日之内是否还有天量日（简化回溯）
+    if not _pass_shape(pct[i], trf[i], float(np.mean(trf[i - 20:i])) if i >= 20 else 0.0, lim):
+        return None  # 真跌停或未经量能萎缩沉淀 → 剔除
+    # 是否簇首：向前 20 日之内是否还有天量日（与事件同口径：须同时通过形态阀）
     first_of_cluster = True
     for j in range(i - 1, max(s, i - 20) - 1, -1):
-        if np.mean(trf[j - 120:j] <= trf[j]) * 100 >= POOL_P99 and np.mean(vols[j - 120:j] <= vols[j]) * 100 >= POOL_P99:
+        if j - 250 < 0:
+            break
+        p_tj = float(np.mean(trf[j - 250:j] <= trf[j]) * 100.0)
+        p_vj = float(np.mean(vols[j - 250:j] <= vols[j]) * 100.0)
+        if p_tj >= POOL_P98 and p_vj >= POOL_P98 and _pass_shape(pct[j], trf[j], float(np.mean(trf[j - 20:j])), lim):
             first_of_cluster = False
             break
     streak = 0
@@ -152,7 +172,7 @@ def build_push_md(df, asof):
         return None
     L = [f"**天量翻倍画像 · 盘后触发名单**", "",
          f"交易日 {asof}｜命中 {len(hit)} 只（TIER1={int((hit.tier=='TIER1_核心').sum())} / TIER2={int((hit.tier=='TIER2_基础').sum())}）",
-         "> 口径：V5天量(量+换手双≥P99)；历史D250翻倍率 整体19% / 核心画像≈38%；仅供研究观察。", ""]
+         "> 口径：V5天量(量+换手双≥P98)；历史D250翻倍率 整体18% / 核心画像≈31%；仅供研究观察。", ""]
     for tier in ("TIER1_核心", "TIER2_基础"):
         sub = hit[hit.tier == tier]
         if not len(sub):

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ CACHE_DIR = os.environ.get("MSTOCK_CACHE", r"D:\mystock\cache_daily")
 DB_PATH = os.path.join(CACHE_DIR, "stock_data.db")
 BASIC_PATH = os.path.join(CACHE_DIR, "stock_basic.csv")
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
+IGE_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ige", "output")
 MIN_CIRC_MV = 500_000.0  # 流通市值下限：50 亿元（Tushare 单位：万元）
 MIN_BARS = 250  # 最少 K 线：上市满一年才参与（次新股分位样本太少会失真）
 DATA_START = "20230103"  # 天量分位历史起点：以 20230103 为起点，此后上市以上市日为起点
@@ -46,6 +48,52 @@ def load_sli_codes(date):
     codes.discard("")
     print(f"[w7] SLI 龙头票池 {len(codes)} 只，启用联动过滤", flush=True)
     return codes
+
+
+def load_ige_adj(asof=""):
+    """加载行业增长弹性 IGE_ADJ 快照（ige/output/ige_full_{date}.csv，股票级）。
+    优先选与 asof 同日期的文件，无则回退最近快照。返回 (info, snap)；
+    info[code] = {ige_adj, ige_mix, sw_l1, sw_l3}，缺失股票不入表（主流程注入 None 排尾）。"""
+    if not os.path.isdir(IGE_OUT_DIR):
+        print("[w7] IGE 输出目录不存在，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    try:
+        files = sorted(f for f in os.listdir(IGE_OUT_DIR)
+                       if re.fullmatch(r"ige_full_\d{8}\.csv", f))
+    except OSError as exc:
+        print(f"[w7] IGE 目录读取失败: {exc}", flush=True)
+        return {}, ""
+    if not files:
+        print("[w7] 无 ige_full_*.csv 快照，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    target = f"ige_full_{asof}.csv" if asof else ""
+    chosen = target if target in files else files[-1]
+    snap = chosen[len("ige_full_"):-len(".csv")]
+    if target and chosen != target:
+        print(f"[w7] IGE 无 {asof} 同日快照，回退最近快照 {snap}", flush=True)
+    try:
+        df = pd.read_csv(os.path.join(IGE_OUT_DIR, chosen),
+                         encoding="utf-8-sig", dtype={"code": str})
+    except Exception as exc:
+        print(f"[w7] IGE 快照 {chosen} 读取失败: {exc}", flush=True)
+        return {}, ""
+    need = [c for c in ("code", "ige_adj", "ige_mix", "sw_l1", "sw_l3") if c in df.columns]
+    if "code" not in need or "ige_adj" not in need:
+        print(f"[w7] IGE 快照 {chosen} 缺必需列，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    info = {}
+    for rec in df[need].to_dict("records"):
+        code = str(rec.get("code") or "").strip()
+        if not code:
+            continue
+        info[code] = {
+            "ige_adj": finite(rec.get("ige_adj"), None),
+            "ige_mix": finite(rec.get("ige_mix"), None),
+            "sw_l1": "" if pd.isna(rec.get("sw_l1")) else str(rec["sw_l1"]),
+            "sw_l3": "" if pd.isna(rec.get("sw_l3")) else str(rec["sw_l3"]),
+        }
+    print(f"[w7] IGE_ADJ 快照={snap} 覆盖={len(info)}", flush=True)
+    return info, snap
 
 
 def clip(value, low=0.0, high=100.0):
@@ -982,6 +1030,13 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
 def markdown(results, date):
     # V5：HVT-V3 三榜单（A/CORE、B/EXT、C/WATCH）+ TOP20 总榜 + 行为解释含四周期预期
     results = sorted(results, key=lambda x: (-x["rank"], x["code"]))
+    ige_snap = next((str(r.get("ige_snap") or "") for r in results if r.get("ige_snap")), "")
+
+    def _ige_adj(r):
+        return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
+
+    def _ige_tag(r):
+        return f"{r['ige_adj']:.1f}" if isinstance(r.get("ige_adj"), (int, float)) else "-"
     n_core = sum(1 for x in results if x["type"] == "CORE")
     n_mid = sum(1 for x in results if x["type"] == "MID")
     n_ext = sum(1 for x in results if x["type"] == "EXT")
@@ -995,12 +1050,15 @@ def markdown(results, date):
     lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　（已突破类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 合计 {n_broken} 家）")
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
-    col_header = "| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
-    col_sep = "| -- | -- | -- | --: | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |"
+    if ige_snap:
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「已突破标的完整名单」（可操作输出）按 IGE_ADJ 高弹性行业优先（降序）重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
+        lines.append("")
+    col_header = "| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
+    col_sep = "| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |"
 
     def row(x, idx):
         v = x["v5_dims"]
-        return (f"| {idx} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} "
+        return (f"| {idx} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                 f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} "
                 f"| {v['天量']:.0f} | {v['吸收']:.0f} | {v['生命周期']:.0f} | {v['空间']:.0f} | {v['加速']:.0f} | {v['RS']:.0f} | {v['基本面']:.0f} | {x['dist_risk']:.0f} | {x['state']} |")
 
@@ -1038,14 +1096,14 @@ def markdown(results, date):
         lines.append(col_sep)
         for k, x in enumerate(mid_list[:15], 1):
             lines.append(row(x, k))
-    # 已突破标的完整名单（不受榜单前20截断影响，推送引用以此为准）
+    # 已突破标的完整名单（不受榜单前20截断影响，推送引用以此为准；按 IGE_ADJ 高弹性行业优先降序，同级按总分降序）
     broken = [x for x in results if x["state"] in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")]
     lines.append(f"\n## 已突破标的完整名单（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 共{len(broken)}只）\n")
     if broken:
-        lines.append("| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
-        lines.append("| -- | -- | -- | --: | -- | --: | --: | --: | --: | -- |")
-        for k, x in enumerate(sorted(broken, key=lambda y: -y["score"]), 1):
-            lines.append(f"| {k} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} "
+        lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
+        lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
+        for k, x in enumerate(sorted(broken, key=lambda y: (_ige_adj(y), y["score"]), reverse=True), 1):
+            lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
     else:
         lines.append("_（今日无已突破标的）_")
@@ -1057,10 +1115,10 @@ def markdown(results, date):
     watch_top = [x for x in watch if x["score"] >= 75]
     if watch_top:
         lines.append("\n其中 HVT-V3 总分≥75 的潜力票（带风险信号，等修复突破后重新确认）：")
-        lines.append("| 代码 | 名称 | 总分 | 类型 | 状态 | 关键原因 |")
-        lines.append("| -- | -- | --: | -- | -- | -- |")
+        lines.append("| 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 状态 | 关键原因 |")
+        lines.append("| -- | -- | --: | --: | -- | -- | -- |")
         for x in sorted(watch_top, key=lambda x: -x["score"])[:10]:
-            lines.append(f"| {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} | {x['state']} | {x['reason']} |")
+            lines.append(f"| {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} | {x['state']} | {x['reason']} |")
     # 行为解释 + 四周期预期
     top = results[:20]
     lines.append("\n## 行为解释与 T+10/20/60/120 预期\n")
@@ -1114,6 +1172,7 @@ def main():
     sector_growth = {ind: clip(50 + float(np.median(v)) * 1.1) for ind, v in fin_ind.items() if len(v) >= 3}
     print(f"[w7] 财务覆盖={nfina} 行业强度={len(sector_strength)} 行业景气={len(sector_growth)}", flush=True)
     sli_codes = load_sli_codes(date)  # V4.4：SLI 龙头票池联动过滤
+    ige_info, ige_snap = load_ige_adj(date)  # IGE_ADJ 行业增长弹性接入（高弹性行业候选优先）
     results = []
     rows = universe.to_dict("records")
     if args.limit:
@@ -1136,6 +1195,12 @@ def main():
         industry = str(row.get("industry") or (basic.get("industry", "") if hasattr(basic, "get") else ""))
         result = analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt, sector_strength=sector_strength, sector_growth=sector_growth)
         if result:
+            ig = ige_info.get(code)
+            result["ige_adj"] = ig["ige_adj"] if ig else None
+            result["ige_mix"] = ig["ige_mix"] if ig else None
+            result["ige_sw_l1"] = ig["sw_l1"] if ig else ""
+            result["ige_sw_l3"] = ig["sw_l3"] if ig else ""
+            result["ige_snap"] = ige_snap
             results.append(result)
     text = markdown(results, date)
     output = args.output or os.path.join(OUTPUT_DIR, f"w7_second_wave_{date}.md")
@@ -1151,10 +1216,14 @@ def main():
     type_counts = {}
     for x in results:
         type_counts[x["type"]] = type_counts.get(x["type"], 0) + 1
+    ige_vals = [x["ige_adj"] for x in results if isinstance(x.get("ige_adj"), (int, float))]
     stats = {
         "date": date, "universe": len(rows), "results": len(results),
         "output": output, "states": {k: v for k, v in state_counts.items() if v},
         "buys": buy_counts, "types": type_counts,
+        "ige": {"snapshot": ige_snap, "covered": len(ige_vals),
+                "adj_min": min(ige_vals) if ige_vals else None,
+                "adj_max": max(ige_vals) if ige_vals else None},
     }
     print(json.dumps(stats, ensure_ascii=False))
     reader.close()

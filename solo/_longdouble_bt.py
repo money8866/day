@@ -5,7 +5,9 @@
 口径：
   - 股票池：SLI V2 细分赛道 Top5（359 赛道，最新快照 20260901，1577 只）。注：池为当前快照，
     回看 2024-2025 事件存在前视（这些股现在仍是/已成为龙头），翻倍率偏乐观，特征方向仍有效。
-  - 天量事件：V5 口径——事件日前 120 日分位，量能(vol)+换手(turnover_rate_f) 双≥P99。
+  - 天量事件：V5 口径——事件日前 250 日分位，量能(vol)+换手(turnover_rate_f) 双≥P98。
+  - 事件形态阀：①真跌停(收盘贴近板幅下限)视为出货剔除；②当日换手须≥前20日均换手×1.5，
+    排除未经量能萎缩沉淀的持续高活跃假天量。
   - 买入成本：事件日收盘价。
   - 翻倍：事件日后 W=min(250, 可观察交易日) 内，盘中高点≥2× 或 收盘价≥2× 事件收盘。
   - 主结论池 D250：事件日距数据末 ≥250 根（事件日≈20240101~20250815，保证整段 250 日观察）。
@@ -26,7 +28,7 @@ from sli.reader import get_subsector_top5
 EV_MIN_DATE = "20240101"     # 事件最早日
 CTX_BARS = 250               # 事件前上下文根数（保证 250 日高低点/连板等特征）
 FWD_CAP = 250                # 最长前视交易日
-POOL_P99 = 99.0
+POOL_P98 = 98.0  # 天量分位门槛：前250日量能+换手双≥第98分位
 
 _MKT = None  # {date: 等权累计净额}
 _SUB = {}    # code -> subsector
@@ -38,6 +40,18 @@ def _limit_pct(code):
     if code.startswith("8") or code.startswith("4"):
         return 29.5
     return 9.5
+
+
+def _pass_shape(pct_i, trf_i, trf_20m, lim):
+    """事件形态阀：通过返回 True
+    ① 真跌停(收盘贴板下限，pct<=-lim)视为出货剔除；
+    ② 当日换手须≥前20日均换手×1.5，排除未经量能萎缩沉淀的持续高活跃假天量。
+    """
+    if pct_i <= -lim:              # 真跌停
+        return False
+    if trf_20m and trf_20m > 0 and trf_i < 1.5 * trf_20m:   # 无缩量沉淀段
+        return False
+    return True
 
 
 def load_market(reader):
@@ -61,16 +75,18 @@ def process_stock(code, df):
     if n < CTX_BARS + 80:
         return []
     lim = _limit_pct(code)
-    # 事件索引：前120日分位 双≥P99
+    # 事件索引：前250日分位 双≥P98 且通过形态阀（真跌停/无缩量沉淀剔除）
     ev_idx = []
     for i in range(CTX_BARS, n - 1):
         if dates[i] < EV_MIN_DATE:
             continue
-        s, e = i - 120, i
+        s, e = i - 250, i
         p_t = float(np.mean(trf[s:e] <= trf[i]) * 100.0)
         p_v = float(np.mean(vols[s:e] <= vols[i]) * 100.0)
-        if min(p_t, p_v) >= POOL_P99:
-            ev_idx.append(i)
+        if min(p_t, p_v) >= POOL_P98:
+            t20 = float(np.mean(trf[i - 20:i])) if i >= 20 else 0.0
+            if _pass_shape(pct[i], trf[i], t20, lim):
+                ev_idx.append(i)
     out = []
     last_ev = -10**9
     for i in ev_idx:
@@ -105,7 +121,7 @@ def process_stock(code, df):
                 return closes[i + h] / c0 - 1.0
             return np.nan
         # ── 事件特征（仅用 ≤i 数据）──
-        s = i - 120
+        s = i - 250
         p_t = float(np.mean(trf[s:i] <= trf[i]) * 100.0)
         p_v = float(np.mean(vols[s:i] <= vols[i]) * 100.0)
         # 连板（含当日涨停）

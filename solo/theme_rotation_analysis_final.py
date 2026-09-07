@@ -170,20 +170,25 @@ def analyze_market_emotion_simple():
         dt_count = 0
         broken_rate = 0
         try:
-            # 使用 limit_list_ths 接口获取涨停数据
-            limit_df = cached_limit_list_ths(trade_date=query_date, limit_type='涨停池')
+            # 使用官方 limit_list_d 接口获取涨停数据（U涨停/D跌停/Z炸板）
+            limit_df = cached_limit_list_d(trade_date=query_date, limit_type='U')
             if limit_df is not None and not limit_df.empty:
                 zt_count = len(limit_df)
-                # 使用 open_num 字段计算炸板率（开板次数>0的视为炸板）
-                if 'open_num' in limit_df.columns:
-                    broken_count = (limit_df['open_num'].fillna(0) > 0).sum()
-                    broken_rate = (broken_count / zt_count) * 100 if zt_count > 0 else 0
         except Exception as e:
             print(f"获取涨停数据失败: {e}")
 
+        # 炸板率按官方口径: 炸板数Z / (涨停U + 炸板Z)
         try:
-            # 使用 limit_list_ths 接口获取跌停数据
-            limit_df_d = cached_limit_list_ths(trade_date=query_date, limit_type='跌停池')
+            zb_df = cached_limit_list_d(trade_date=query_date, limit_type='Z')
+            if zb_df is not None and not zb_df.empty:
+                broken_count = len(zb_df)
+                broken_rate = (broken_count / (zt_count + broken_count)) * 100 if (zt_count + broken_count) > 0 else 0
+        except Exception as e:
+            print(f"获取炸板数据失败: {e}")
+
+        try:
+            # 使用官方 limit_list_d 接口获取跌停数据
+            limit_df_d = cached_limit_list_d(trade_date=query_date, limit_type='D')
             if limit_df_d is not None and not limit_df_d.empty:
                 dt_count = len(limit_df_d)
         except Exception as e:
@@ -542,19 +547,6 @@ def cached_daily_single(trade_date):
         cache_manager.set(func_name, df, trade_date=trade_date)
     return df
 
-def cached_limit_list_ths(trade_date, limit_type):
-    func_name = "limit_list_ths"
-    cached_data = cache_manager.get(func_name, trade_date=trade_date, limit_type=limit_type)
-    if cached_data is not None:
-        return cached_data
-    try:
-        df = pro.limit_list_ths(trade_date=trade_date, limit_type=limit_type)
-        if df is not None and not df.empty:
-            cache_manager.set(func_name, df, trade_date=trade_date, limit_type=limit_type)
-        return df
-    except Exception:
-        return pd.DataFrame()
-
 def cached_limit_step(trade_date):
     func_name = "limit_step"
     cached_data = cache_manager.get(func_name, trade_date=trade_date)
@@ -816,14 +808,18 @@ def get_limit_list_d(trade_date):
         print(f"获取涨停数据失败: {e}")
         return pd.DataFrame()
 
-def cached_limit_list_d(trade_date):
+def cached_limit_list_d(trade_date, limit_type='U'):
     func_name = "limit_list_d"
-    cached_data = cache_manager.get(func_name, trade_date=trade_date)
+    cached_data = cache_manager.get(func_name, trade_date=trade_date, limit_type=limit_type)
     if cached_data is not None:
         return cached_data
-    df = get_limit_list_d(trade_date)
-    if not df.empty:
-        cache_manager.set(func_name, df, trade_date=trade_date)
+    try:
+        df = pro.limit_list_d(trade_date=trade_date, limit_type=limit_type)
+    except Exception as e:
+        print(f"获取limit_list_d({limit_type})失败: {e}")
+        return pd.DataFrame()
+    if df is not None and not df.empty:
+        cache_manager.set(func_name, df, trade_date=trade_date, limit_type=limit_type)
     return df
 
 _stock_limit_cache = {}
@@ -2981,7 +2977,7 @@ def calculate_today_market_scores(theme_stocks_map, trade_date):
     zt_df = None
     
     try:
-        zt_df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+        zt_df = pro.limit_list_d(trade_date=trade_date, limit_type='U')
         if zt_df is not None and not zt_df.empty:
             zt_stocks = set(zt_df['ts_code'].tolist())
             print(f"今日涨停: {len(zt_stocks)} 家")
@@ -2989,7 +2985,7 @@ def calculate_today_market_scores(theme_stocks_map, trade_date):
         print(f"获取涨停数据失败: {e}")
     
     try:
-        dt_df = pro.limit_list_ths(trade_date=trade_date, limit_type='跌停池')
+        dt_df = pro.limit_list_d(trade_date=trade_date, limit_type='D')
         if dt_df is not None and not dt_df.empty:
             dt_stocks = set(dt_df['ts_code'].tolist())
             print(f"今日跌停: {len(dt_stocks)} 家")

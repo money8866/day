@@ -103,12 +103,12 @@ def money_quality(ts_code: str, trade_date: str, cfg: dict = None) -> float:
         return 50.0
     r = row.iloc[-1]
     net_mf = float(r.get('net_mf_amount') or 0.0)      # 万元
-    # 成交额换算：stk_factor_pro amount 单位千元 -> 万元
+    # 成交额换算：daily_cache amount 单位千元 -> 万元
     amt_w = 0.0
     try:
         import sqlite3
         with sqlite3.connect(r'D:\mystock\cache_daily\stock_data.db') as conn:
-            a = pd.read_sql("SELECT amount FROM stk_factor_pro WHERE ts_code=? AND trade_date=?",
+            a = pd.read_sql("SELECT amount FROM daily_cache WHERE ts_code=? AND trade_date=?",
                             conn, params=(ts_code, trade_date))
         if not a.empty:
             amt_w = float(a['amount'].iloc[0]) / 10.0

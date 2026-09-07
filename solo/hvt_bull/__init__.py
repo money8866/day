@@ -5,8 +5,7 @@
   天量换手(HVT) -> 价格强度 -> 趋势/涨幅结构 -> 缩量锁筹 -> 二次放量突破 -> PRIMARY_BUY
 
 数据源：
-  - stk_factor_pro (SQLite, 2025起全市场含 turnover_rate/amount/total_mv)
-  - daily_cache    (SQLite, 2021起全市场 OHLCV/amount)
+  - daily_cache + daily_basic_cache + adj_factor_cache (SQLite 普通日线三窄表 JOIN)
   - fin_ind_2026H1_full.parquet (基本面)
   - theme_stock_map (板块/主题共振)
   - moneyflow parquet (可选)

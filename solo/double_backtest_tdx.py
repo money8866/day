@@ -142,49 +142,37 @@ def main():
     q2 = pd.qcut(d250.turn_today.rank(method="first"), 4, labels=["T1低", "T2", "T3", "T4高"])
     L += ["", "**事件日换手分桶(TDX)**："] + [f"- {lab}: n={int((q2==lab).sum())}, 翻倍 {d250[q2==lab].dbl_h.mean()*100:.0f}%" for lab in ["T1低", "T2", "T3", "T4高"]]
 
-    # ── 今日候选精选 ──
+    # ── 今日候选精选（剔除"个股自身历史翻倍率"，只用当日可观测因子）──
     tr = pd.read_csv(TRIGGER_CSV)
     tr["code"] = tr["code"].astype(str).str.strip()
     tr["date"] = tr["date"].astype(str).str.strip()
-    tr = tr[tr.tier.notna()]
-    L += ["", "## 二、今日候选 × 个股自身历史画像事件回测（TDX 前视）", "",
-          "| 排名 | 名称 | 今日 | 历史天量(n) | 其中画像(n) | 画像翻倍率 | 画像均T+120 | 画像均T+250 | 精选 |", "|---|---|---|---|---|---|---|---|---|"]
-    hist = m[m["date"] < tr["date"].min()] if len(tr) else m
-    rank_rows = []
-    for r in tr.itertuples():
-        code = r.code
-        sub = hist[hist.code == code]
-        if len(sub):
-            smv = 10 ** (sub.log_mv - 4)
-            sub = sub.copy()
-            sub["_t1"] = (smv <= 30) & (sub.turn_today >= 8) & (sub.rel_hi250 < -0.10) & (sub.ma60_x < 0.10) & (sub.ma20_x < 0.15)
-            sub["_t2"] = (smv <= 50) & (sub.turn_today >= 8)
-            pic = sub[(sub._t1) | (sub._t2)]
-        else:
-            pic = sub.copy()
-        nh = len(sub)
-        npic = len(pic)
-        dblrate = pic.dbl_h.mean() if npic else np.nan
-        r120 = pic.r120.mean() if npic else np.nan
-        r250 = pic.r250.dropna().mean() if npic and pic.r250.notna().any() else np.nan
-        # 精选规则：画像样本≥2 且翻倍率≥25%；或 画像≥5 且翻倍率≥15%；无样本看簇首与结构
-        if npic >= 2 and dblrate >= 0.25:
-            tag = "保留★"
-        elif npic >= 5 and dblrate >= 0.15:
-            tag = "保留★"
-        elif npic == 0 and bool(r.first_of_cluster) and r.ma60_x < 0.10:
-            tag = "观察"
-        else:
-            tag = "待验证"
-        rank_rows.append((dblrate if np.isfinite(dblrate) else -1, r.code, r.name, r.tier, nh, npic, dblrate, r120, r250, tag))
-    rank_rows.sort(key=lambda x: (x[0], x[5]), reverse=True)
-    for i, (_, code, name, tier, nh, npic, dblrate, r120, r250, tag) in enumerate(rank_rows, 1):
-        ds = f"{dblrate*100:.0f}%" if np.isfinite(dblrate) else "-"
-        r1 = f"{r120:.0f}%" if np.isfinite(r120) else "-"
-        r2 = f"{r250:.0f}%" if np.isfinite(r250) else "-"
-        L.append(f"| {i} | {name} {code[:6]} | {tier} | {nh} | {npic} | {ds} | {r1} | {r2} | {tag} |")
-    L += ["", "> 精选规则：个股自身历史≥2次同类画像事件且翻倍率≥25%（或≥5次且≥15%）→保留；无历史样本但今日为簇首+结构未破位→观察；其余→待验证。",
-         "> 口径：翻倍=事件日后250日内盘中最高≥2×事件收盘(TDX)。历史画像事件含W<250的已结束事件。"]
+    tr = tr[tr.tier.notna()].copy()
+    for col in ("is_limitup", "is_yizi", "first_of_cluster"):
+        if col in tr.columns:
+            tr[col] = tr[col].astype(str).str.lower().isin(["true", "1"])
+    t_ord = {"TIER1_核心": 0, "TIER2_基础": 1}
+    tr["_to"] = tr.tier.map(t_ord)
+    # 排序：①分级(TIER1>TIER2) ②当日非涨停优先 ③距250日高回撤更深优先 ④换手更温和优先
+    tr = tr.sort_values(["_to", "is_limitup", "rel_hi250", "turn_today"],
+                        ascending=[True, True, True, True])
+    L += ["", "## 二、今日候选精选（剔除个股自身历史翻倍率因子）", "",
+          "> 排序仅依据：①今日画像分级(TIER1>TIER2) ②当日是否涨停(涨停后置) ③距250日高回撤深度 ④当日换手。不再使用个股历史翻倍战绩。", "",
+          "| 排名 | 名称 | 今日 | 流通(亿) | 换手% | 距250高% | MA60乖离% | 簇首 | 涨停 | 建议 |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+
+    def tag(r):
+        if r.tier == "TIER1_核心":
+            return "首选(等回踩低吸)" if r.is_limitup else "首选★"
+        if r.is_limitup:
+            return "记录(不追高)"
+        if r.rel_hi250 < -0.20 and 8 <= r.turn_today <= 25:
+            return "关注"
+        return "回看"
+
+    for i, r in enumerate(tr.itertuples(), 1):
+        L.append(f"| {i} | {r.name} {r.code[:6]} | {r.tier} | {r.mv_yi:.0f} | {r.turn_today:.1f} | "
+                 f"{r.rel_hi250*100:.0f}% | {r.ma60_x*100:.1f}% | {'是' if r.first_of_cluster else '-'} | "
+                 f"{'涨停' if r.is_limitup else '-'} | {tag(r)} |")
     with open(OUT_MD, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L))
     print("写出:", OUT_MD)

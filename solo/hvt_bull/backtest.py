@@ -8,7 +8,8 @@
   4) 对比三种买点：T0当日买入 vs 缩量锁筹后T+5买入 vs 二次突破日买入
 
 数据约束：
-  - 2025-01-01 起 stk_factor_pro 全市场覆盖（含 turnover_rate），主回测用该区间
+  - 主数据源为三张普通日线窄表（daily_cache / daily_basic_cache / adj_factor_cache）JOIN，
+    含 turnover_rate/amount/total_mv；2025 起为全市场覆盖，主回测用该区间
   - 事件去重：同一股票 10 个交易日内只保留一个事件（防止连续天量重复计数）
 """
 

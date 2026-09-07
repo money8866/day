@@ -116,12 +116,11 @@ def latest_date(asof: Optional[str] = None) -> Optional[str]:
     else:
         raise ValueError(f"asof 格式应为 YYYYMMDD 或 YYYY-MM-DD，收到：{asof!r}")
     db = _db_dates(asof)
-    if db:
-        return db[0]
-    for d in _csv_dates():
-        if d <= asof:
-            return d
-    return None
+    csv = [d for d in _csv_dates() if d <= asof]
+    candidates = db + csv
+    if not candidates:
+        return None
+    return max(candidates)
 
 
 def _meta(snapshot_date: str, asof: str, source: str, n_stocks: int) -> dict[str, Any]:

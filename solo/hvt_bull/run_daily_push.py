@@ -7,7 +7,6 @@
 """
 import os
 import sys
-import sqlite3
 import argparse
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,27 +14,34 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from hvt_bull.push import _load_env, push_daily_report
-from hvt_bull.data_loader import DB_PATH
 
 
 def _ensure_data(trade_date: str):
-    """stk_factor_pro 当日数据不足时自动补全（Tushare 批量+个股并发）"""
+    """三张普通日线缓存表（daily / daily_basic / adj_factor）当日数据不足时自动补全
+
+    与 data_loader 一致，改用窄表口径；各自缺失时调 stock_cache 的
+    daily_market / daily_basic_market / adj_factor_market（缓存优先+API 兜底回写）。
+    """
     import stock_cache as sc
-    try:
-        with sqlite3.connect(DB_PATH, timeout=60.0) as conn:
-            cnt = conn.execute(
-                'SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date=?',
-                (trade_date,)).fetchone()[0]
-    except Exception:
-        cnt = 0
-    if cnt >= 4000:
-        print(f'[RUN-PUSH] {trade_date} 数据已就绪（{cnt}条），无需补全')
-        return
-    print(f'[RUN-PUSH] {trade_date} 数据不足（{cnt}条），开始补全...')
-    try:
-        sc.supplement_missing_stocks(trade_date)
-    except Exception as e:
-        print(f'[RUN-PUSH] 数据补全异常: {e}')
+    min_cnt = sc.UDC_MARKET_MIN_COUNT
+    checks = {
+        'daily_cache':       (sc.get_daily_by_date_count,       sc.daily_market),
+        'daily_basic_cache': (sc.get_daily_basic_by_date_count, sc.daily_basic_market),
+        'adj_factor_cache':  (sc.get_adj_factor_by_date_count,  sc.adj_factor_market),
+    }
+    for name, (count_fn, fill_fn) in checks.items():
+        try:
+            cnt = count_fn(trade_date)
+        except Exception:
+            cnt = 0
+        if cnt >= min_cnt:
+            print(f'[RUN-PUSH] {name} {trade_date} 数据已就绪（{cnt}条），无需补全')
+            continue
+        print(f'[RUN-PUSH] {name} {trade_date} 数据不足（{cnt}条），开始补全...')
+        try:
+            fill_fn(trade_date)
+        except Exception as e:
+            print(f'[RUN-PUSH] {name} 数据补全异常: {e}')
 
 
 def main():

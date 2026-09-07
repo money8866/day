@@ -105,15 +105,15 @@ def _query_trade_cal(start_date=None, end_date=None):
     return pro.trade_cal(start_date=start_date, end_date=end_date)
 
 
-def _query_limit_list_ths(trade_date):
-    """通过DataFetcher查询同花顺涨停板（失败降级到pro直调）"""
+def _query_limit_up_pool(trade_date):
+    """通过DataFetcher查询官方涨停池（失败降级到pro直调）"""
     df = _get_df()
     if df is not None:
         try:
-            return df.get_limit_list_ths(trade_date=trade_date)
+            return df.get_limit_list_d(trade_date=trade_date, limit_type='U')
         except Exception:
             pass
-    return pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+    return pro.limit_list_d(trade_date=trade_date, limit_type='U')
 # === End DataFetcher 接入 ===
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -709,7 +709,7 @@ def backtest_strategy_v5(start_date, end_date, lookback_days=20):
         
         for trade_date in trading_days:
             try:
-                zt_df = _query_limit_list_ths(trade_date=trade_date)
+                zt_df = _query_limit_up_pool(trade_date=trade_date)
                 
                 if zt_df is None or zt_df.empty:
                     continue

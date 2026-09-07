@@ -3338,31 +3338,36 @@ def get_prev_day_theme_data():
     select_cols = ["theme", "trend_score", "sentiment_score", "ret_5", "ret_10", "ret_20", "up_ratio", "zt_count"]
     if "theme_state" in columns:
         select_cols.append("theme_state")
-    
+    # V4.1：携带前日 lifecycle（主升/升温 连续强态计数 days_strong 依赖此字段）
+    if "lifecycle" in columns:
+        select_cols.append("lifecycle")
+
     # 构建查询
     col_str = ", ".join(select_cols)
     cur.execute(f"SELECT {col_str} FROM theme_scores WHERE trade_date = ?", (prev_date,))
     rows = cur.fetchall()
-    
+
     prev_data = {}
     for row in rows:
-        theme = row[0]
-        theme_state = row[-1] if "theme_state" in columns else "弱势"
+        idx = {c: i for i, c in enumerate(select_cols)}
+        theme = row[idx["theme"]]
+        theme_state = row[idx["theme_state"]] if "theme_state" in idx else "弱势"
         prev_data[theme] = {
-            "trend_score": row[1],
-            "sentiment_score": row[2],
+            "trend_score": row[idx["trend_score"]],
+            "sentiment_score": row[idx["sentiment_score"]],
             "trend_detail": {
-                "avg_ret_5": row[3],
-                "avg_ret_10": row[4],
-                "avg_ret_20": row[5],
+                "avg_ret_5": row[idx["ret_5"]],
+                "avg_ret_10": row[idx["ret_10"]],
+                "avg_ret_20": row[idx["ret_20"]],
             },
             "sentiment_detail": {
-                "up_ratio": row[6],
-                "zt_count": row[7],
+                "up_ratio": row[idx["up_ratio"]],
+                "zt_count": row[idx["zt_count"]],
             },
             "theme_state": theme_state,
+            "lifecycle": row[idx["lifecycle"]] if "lifecycle" in idx else "",
         }
-    
+
     conn.close()
     return prev_data
 

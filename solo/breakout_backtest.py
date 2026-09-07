@@ -100,10 +100,16 @@ def run_backtest():
 
         try:
             # 获取历史数据（400天前到当前交易日，不获取未来数据避免API空返回）
+            # 仅需 close 计算前瞻收益 → 直接用日线缓存，避免整表拉取 stk_factor_pro
             start = (pd.Timestamp(trade_dates[0]) - pd.Timedelta(days=400)).strftime('%Y%m%d')
-            df = tq.cached_stk_factor_pro(ts_code, start, end_date)
+            df = tq.sc.cached_daily(ts_code, start, end_date)
             if df is None or df.empty:
                 continue
+            # 预热复权因子至回测终点，使 detect_breakout 逐日前复权锚定全部命中缓存（不逐日调API）
+            try:
+                tq.sc.cached_adj_factor(ts_code, start, end_date)
+            except Exception:
+                pass
 
             df['trade_date'] = df['trade_date'].astype(str)
             df = df.sort_values('trade_date').reset_index(drop=True)

@@ -1685,11 +1685,12 @@ class DataFetcher:
             cache_key, self.pro.limit_list_ths, trade_date=trade_date,
         )
 
-    def get_limit_list_d(self, trade_date: str) -> pd.DataFrame:
-        """涨停板（按日期缓存）"""
-        cache_key = f"limit_list_d_{trade_date}"
+    def get_limit_list_d(self, trade_date: str, limit_type: str = 'U') -> pd.DataFrame:
+        """官方涨跌停/炸板池（按日期+类型缓存，U涨停/D跌停/Z炸板）"""
+        cache_key = f"limit_list_d_{trade_date}_{limit_type}"
         return self._get_df_cached(
             cache_key, self.pro.limit_list_d, trade_date=trade_date,
+            limit_type=limit_type,
         )
 
     def get_limit_step(self, trade_date: str) -> pd.DataFrame:

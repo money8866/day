@@ -302,6 +302,7 @@ class SliRunner:
             paths["next_leader_v2"] = self.report.next_leader_v2_report(panel, date)
             paths["earnings_turn_v2"] = self.report.earnings_turn_report(panel, date)
             paths["radar_v2"] = self.report.radar(panel, date)
+            paths["growth_industry_top_v2"] = self.report.growth_industry_top(panel, date)
             reasons_v2 = build_reasons_v2(panel)
             paths["reasons_v2"] = self.report.reasons_v2(reasons_v2, date)
 

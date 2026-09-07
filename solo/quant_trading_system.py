@@ -301,9 +301,9 @@ class MarketRegimeJudge:
             total_count = up_count + down_count
             total_amount = float(daily_df["amount"].sum() / 100000) if daily_df is not None and not daily_df.empty else 0  # 千元→亿元
 
-            # 涨停数据
+            # 涨停数据（官方 limit_list_d: U涨停/D跌停/Z炸板）
             try:
-                zt_df = ma.pro.limit_list_ths(trade_date=trade_date, limit_type="涨停池")
+                zt_df = ma.pro.limit_list_d(trade_date=trade_date, limit_type='U')
                 zt_count = len(zt_df) if zt_df is not None else 0
             except:
                 zt_count = 0

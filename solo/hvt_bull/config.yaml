@@ -187,6 +187,11 @@ v3:
   #   优于附加 expansion>=70 的 n=166 组（P90 26.2 / ≥20% 16.3%）。
   #   扩张维度改由 T20_TAIL_SCORE 校准表排序体现。
   rocket_expansion: 75       # T20_EXPANSION_SCORE >= 75 -> T20_ROCKET_WATCH（观察池；85 实际不可达）
+  # V3.3 基本面质量门：PRIMARY_BUY 附加 fundamental_score >= 50（真实C档=40，利润
+  #   负增长不得进入买入池；案例 20260904 富临运业 es=87.4 trio 全过但 fund=40/C）。
+  #   无数据兜底 50/B 与无基本面数据(score<=0)不受影响，与 hard_veto
+  #   "仅当有真实基本面数据"口径一致；不满足者按 elif 链自然降级。
+  primary_min_fund_score: 50.0
   rally_bonus_cap: 8
   rally_r120_q40: 23.3
   rally_r120_q20: 41.2

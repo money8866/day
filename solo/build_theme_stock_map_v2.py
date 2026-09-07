@@ -204,13 +204,24 @@ THEME_INDUSTRY_EXCLUDE = {
     '煤炭': ['化学制品', '化学原料', '化工原料', '化工', '塑料'],
     '军工': ['软件服务', 'IT设备', '互联网', '出版业', '影视音像', '广告包装', '房地产', '银行', '保险'],
     '游戏': ['基建', '勘察', '交通工程', '建筑设计', '化工', '煤炭'],
+    '新能源车': ['钢加工'],
+    '工业金属': ['钢加工'],
+    '能源金属': ['钢加工'],
+    '战略与小金属': ['钢加工'],
 }
 
 # 主题-股票黑名单
 THEME_STOCK_BLACKLIST = {
     'AI算力': {'思源电气', '中国宝安', '诺德股份'},
-    '消费电子': {'禾盛新材', '慧谷新材'},
+    '消费电子': {'禾盛新材', '慧谷新材', '中瑞股份'},
     '创新药': {'利民股份', '富邦科技'},
+    '化工': {'山西焦化', '开滦股份', '云煤能源', '兖矿能源', '辉隆股份', '国投丰乐'},
+    '建筑装饰': {'博深股份', '金鹰重工', '铁科轨道'},
+    '电力': {'先导智能', '华阳股份', '理工光科', '华宝新能', '鑫宏业', '国网英大'},
+    '低空经济': {'永悦科技'},
+    '信创': {'国脉科技'},
+    '半导体': {'拉普拉斯'},
+    '机器人': {'三瑞智能'},
 }
 
 # 人工补漏映射：match_theme_stocks 未能覆盖的明确成份股（强制纳入对应主题）
@@ -552,6 +563,30 @@ def build_theme_stock_map_v2():
                 print(f"  [子主题映射] 已修正 {remap_count} 只股票的子主题→母主题归属")
     except Exception as e:
         print(f"  [警告] 子主题名映射失败: {e}")
+
+    # 4c.6 重映射后行业互斥复核
+    # 4a 过滤以 theme_stock_map 的键（含子主题名）为单位，子主题名不在
+    # THEME_INDUSTRY_EXCLUDE 中，漏网股票经 4c.5 重映射回母主题后"复活"
+    # （4d 的 meta 兜底还会从未过滤的 theme_stock_map 取回原始 via/score）。
+    # 此处以最终母主题名补跑同样的互斥过滤，豁免口径与 4a 一致。
+    _recheck_dropped = []
+    for code in list(stocks_output.keys()):
+        info = stocks_output[code]
+        industry = info.get('industry', '')
+        kept_themes = []
+        for theme_name in info.get('themes', []):
+            if theme_name in THEME_INDUSTRY_EXCLUDE:
+                meta = theme_stock_map.get(theme_name, {}).get(code, {})
+                via = meta.get('via', '')
+                if via not in ('leader_company', 'core_company') and any(
+                        ex in industry for ex in THEME_INDUSTRY_EXCLUDE[theme_name]):
+                    _recheck_dropped.append(f"{info['name']}({industry})@{theme_name}")
+                    continue
+            kept_themes.append(theme_name)
+        if kept_themes != info.get('themes', []):
+            info['themes'] = kept_themes
+    if _recheck_dropped:
+        print(f"  [重映射复核] 行业互斥补剔 {len(_recheck_dropped)} 条 -> {'; '.join(_recheck_dropped[:8])}{'...' if len(_recheck_dropped) > 8 else ''}")
 
     # 4d. 重建最终主题→股票
     # 优先从 themes_output_raw 取 meta（覆盖 manual_override 等人工补漏条目，

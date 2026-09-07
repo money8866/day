@@ -5,6 +5,7 @@
 import argparse
 import json
 import os
+import re
 import time
 
 import numpy as np
@@ -34,6 +35,7 @@ w7.WANTED_COLS = T20_COLS
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
 STATE_PATH = os.path.join(OUTPUT_DIR, "w7_t20_state.json")
+IGE_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ige", "output")
 
 ST_HVT = "HVT"
 ST_ABSORPTION = "ABSORPTION"
@@ -574,6 +576,52 @@ def load_sli_leader_map(asof=""):
     return info, meta
 
 
+def load_ige_adj(asof=""):
+    """加载行业增长弹性 IGE_ADJ 快照（ige/output/ige_full_{date}.csv，股票级）。
+    优先选与 asof 同日期的文件，无则回退最近快照。返回 (info, snap)；
+    info[code] = {ige_adj, ige_mix, sw_l1, sw_l3}，缺失股票不入表（主流程注入 None 排尾）。"""
+    if not os.path.isdir(IGE_OUT_DIR):
+        print("[t20] IGE 输出目录不存在，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    try:
+        files = sorted(f for f in os.listdir(IGE_OUT_DIR)
+                       if re.fullmatch(r"ige_full_\d{8}\.csv", f))
+    except OSError as exc:
+        print(f"[t20] IGE 目录读取失败: {exc}", flush=True)
+        return {}, ""
+    if not files:
+        print("[t20] 无 ige_full_*.csv 快照，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    target = f"ige_full_{asof}.csv" if asof else ""
+    chosen = target if target in files else files[-1]
+    snap = chosen[len("ige_full_"):-len(".csv")]
+    if target and chosen != target:
+        print(f"[t20] IGE 无 {asof} 同日快照，回退最近快照 {snap}", flush=True)
+    try:
+        df = pd.read_csv(os.path.join(IGE_OUT_DIR, chosen),
+                         encoding="utf-8-sig", dtype={"code": str})
+    except Exception as exc:
+        print(f"[t20] IGE 快照 {chosen} 读取失败: {exc}", flush=True)
+        return {}, ""
+    need = [c for c in ("code", "ige_adj", "ige_mix", "sw_l1", "sw_l3") if c in df.columns]
+    if "code" not in need or "ige_adj" not in need:
+        print(f"[t20] IGE 快照 {chosen} 缺必需列，跳过 IGE_ADJ 接入", flush=True)
+        return {}, ""
+    info = {}
+    for rec in df[need].to_dict("records"):
+        code = str(rec.get("code") or "").strip()
+        if not code:
+            continue
+        info[code] = {
+            "ige_adj": finite(rec.get("ige_adj"), None),
+            "ige_mix": finite(rec.get("ige_mix"), None),
+            "sw_l1": "" if pd.isna(rec.get("sw_l1")) else str(rec["sw_l1"]),
+            "sw_l3": "" if pd.isna(rec.get("sw_l3")) else str(rec["sw_l3"]),
+        }
+    print(f"[t20] IGE_ADJ 快照={snap} 覆盖={len(info)}", flush=True)
+    return info, snap
+
+
 def sli_fields(code, sli_info):
     """单股 SLI_V2 龙头字段：无快照或 leader_type_v2=NONE 视为非龙头（硬过滤 fail-closed）。"""
     si = (sli_info or {}).get(code)
@@ -933,6 +981,20 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     r1 = [r for r in results_sorted if r["layer"] == LAYER_R1]
     exits = [r for r in results_sorted if r["layer"] == LAYER_EXIT]
     no_trades = [r for r in results_sorted if r.get("ext_hard") == "no_trade"]
+    ige_snap = next((str(r.get("ige_snap") or "") for r in results if r.get("ige_snap")), "")
+
+    def _ige_adj(r):
+        return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
+
+    def _ige_tag(r):
+        return f"{r['ige_adj']:.1f}" if isinstance(r.get("ige_adj"), (int, float)) else "-"
+
+    # IGE_ADJ 高弹性行业优先：可操作候选（PRIMARY_BUY / TOP_PICK / CONFIRMED_NEXT / 决策树）按 (IGE_ADJ 降序, 原 T20 综合分降序)；
+    # 顶部【T20 RIGHT-TAIL TOP】排名表保留原 T20 综合分排序不动（仅加 IGE_ADJ 列标注）。
+    cand_sorted = sorted(results, key=lambda r: (_ige_adj(r), r["priority"]), reverse=True)
+    cand_primary = [r for r in cand_sorted if r["layer"] == LAYER_PRIMARY]
+    cand_nxt = [r for r in cand_sorted if r["layer"] == LAYER_NEXT]
+    cand_watch = [r for r in cand_sorted if r["layer"] == LAYER_WATCH]
     lines = []
     lines.append(f"# W7 T20 Right-Tail 引擎报告 {date}")
     lines.append("")
@@ -941,17 +1003,20 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     if gate_level == "harsh":
         lines.append("> 弱市门控生效：仅接受 HVT_RB_BUY（T20≥80）或极强 PULLBACK_BUY（T20≥85 且结构≥85），不因候选减少降低标准。")
         lines.append("")
+    if ige_snap:
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：高弹性行业候选优先——PRIMARY_BUY / TOP_PICK / CONFIRMED_NEXT / 决策树按 IGE_ADJ 降序排列；顶部 T20 RIGHT-TAIL TOP 表保留原 T20 综合分序并附 IGE_ADJ 标注。")
+        lines.append("")
     lines.append("## 【T20 RIGHT-TAIL TOP】")
     lines.append("")
-    lines.append("| 排名 | 代码 | 名称 | BUY_TYPE | Lifecycle | T20右尾分 | 结构分 | Retest | Extension | 操作 |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("| 排名 | 代码 | 名称 | BUY_TYPE | Lifecycle | IGE_ADJ | T20右尾分 | 结构分 | Retest | Extension | 操作 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     top = (primary + nxt + watch + extended)[:20]
     for n, r in enumerate(top, 1):
         rq = f"{r['retest_quality']:.0f}" if r["retest_quality"] is not None else "-"
-        lines.append(f"| {n} | {r['code']} | {r['name']} | {r['buy_type'] or '-'} | {r['lifecycle']} | {r['t20_score']:.0f} | {r['structure']:.0f} | {rq} | {r['ext_score']:.0f} | **{r['action']}** |")
+        lines.append(f"| {n} | {r['code']} | {r['name']} | {r['buy_type'] or '-'} | {r['lifecycle']} | {_ige_tag(r)} | {r['t20_score']:.0f} | {r['structure']:.0f} | {rq} | {r['ext_score']:.0f} | **{r['action']}** |")
     lines.append("")
-    picks = [r for r in results_sorted if r.get("top_pick")]
-    blocked = [r for r in results_sorted if r.get("sli_block")]
+    picks = [r for r in cand_sorted if r.get("top_pick")]  # 与 PRIMARY_BUY 一致，按 IGE_ADJ 高弹性优先
+    blocked = [r for r in cand_sorted if r.get("sli_block")]
     snap = str((sli_meta or {}).get("snapshot_date", "?"))
     lines.append("## 【TOP_PICK】")
     lines.append("")
@@ -959,12 +1024,12 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
         lines.append("> 最优组合信号（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08（平台低点抬高） × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头。")
         lines.append(f"> SLI_V2 龙头硬过滤（强关联 sli.classify.TYPE_PRIORITY_V2）：leader_type_v2 须为 {'/'.join(sorted(SLI_LEADER_TYPES))} 之一；快照={snap}，非龙头或无快照一律剔除（fail-closed）。")
         lines.append("")
-        lines.append("| # | 代码 | 名称 | T20 | 结构 | Retest | RR | 现价 | 突破价 | 回踩区 | 失效位 | 目标位 | SLI龙头 |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| # | 代码 | 名称 | IGE_ADJ | T20 | 结构 | Retest | RR | 现价 | 突破价 | 回踩区 | 失效位 | 目标位 | SLI龙头 |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for n, r in enumerate(picks, 1):
             rq = f"{r['retest_quality']:.0f}" if r["retest_quality"] is not None else "-"
             tgt = r["breakout_price"] + 2.5 * r["atr"] if r["breakout_price"] > 0 else r["close"] + 2.0 * r["atr"]
-            lines.append(f"| {n} | {r['code']} | {r['name']} | {r['t20_score']:.0f} | {r['structure']:.0f} | {rq} | {r['rr']:.2f} | {fmt_price(r['close'])} | {fmt_price(r['breakout_price'])} | [{fmt_price(r['zone_low'])}, {fmt_price(r['zone_high'])}] | {fmt_price(r['invalid'])} | {tgt:.2f} | {sli_tag(r)} |")
+            lines.append(f"| {n} | {r['code']} | {r['name']} | {_ige_tag(r)} | {r['t20_score']:.0f} | {r['structure']:.0f} | {rq} | {r['rr']:.2f} | {fmt_price(r['close'])} | {fmt_price(r['breakout_price'])} | [{fmt_price(r['zone_low'])}, {fmt_price(r['zone_high'])}] | {fmt_price(r['invalid'])} | {tgt:.2f} | {sli_tag(r)} |")
     elif blocked:
         lines.append("无（六分量达标候选均被 SLI_V2 龙头硬过滤剔除，宁缺毋滥）")
     else:
@@ -982,12 +1047,13 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     lines.append("")
     lines.append("> 入口硬过滤：仅 SLI_V2 细分龙头可进入 PRIMARY_BUY（leader_type_v2 须为六类龙头之一；非龙头或无快照一律 fail-closed 降级 CONFIRMED_NEXT，缺口标明 SLI 身份）。")
     lines.append("")
-    if primary:
-        for r in primary:
+    if cand_primary:
+        for r in cand_primary:
             ev = r["event"]
             ev_desc = f"HVT {ev['date']} 换手{ev['turnover']:.1f}% 量比20D {ev['vol_ratio20']:.1f}x" if ev else "无HVT事件"
             gm = "；GLOBAL_MARGIN_EXPANSION≈成立" if r["global_margin"] else ""
             lines.append(f"### {r['code']} {r['name']}（{r['industry']}）")
+            lines.append(f"- 行业弹性：IGE_ADJ **{_ige_tag(r)}**（申万 {r.get('ige_sw_l1') or '-'}·{r.get('ige_sw_l3') or '-'}）")
             lines.append(f"- BUY_TYPE：{r['buy_type']}｜Lifecycle：{r['lifecycle']}｜链路完成 {r['chain_steps']}/7{'｜⭐TOP_PICK（七分量全中）' if r.get('top_pick') else ''}")
             lines.append(f"- T20右尾分 {r['t20_score']}｜结构分 {r['structure']}｜突破质量 {r['breakout_quality']}｜Retest {r['retest_quality'] if r['retest_quality'] is not None else '-'}｜Extension {r['ext_score']}｜RR {r['rr']}")
             lines.append(f"- 关键位：突破价 {fmt_price(r['breakout_price'])}｜回踩区 [{fmt_price(r['zone_low'])}, {fmt_price(r['zone_high'])}]｜失效位 {fmt_price(r['invalid'])}｜MA20 {fmt_price(r['ma20'])}｜ATR {fmt_price(r['atr'])}")
@@ -999,9 +1065,9 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
         lines.append("")
     lines.append("## 【CONFIRMED_NEXT】")
     lines.append("")
-    if nxt:
-        for r in nxt:
-            lines.append(f"- {r['code']} {r['name']}｜{r['buy_type'] or '-'}｜{r['lifecycle']}｜T20 {r['t20_score']:.0f}/结构 {r['structure']:.0f}｜缺口：{r['missing'][0] if r['missing'] else '等待确认'}｜关键位 突破 {fmt_price(r['breakout_price'])}/回踩区 [{fmt_price(r['zone_low'])},{fmt_price(r['zone_high'])}]")
+    if cand_nxt:
+        for r in cand_nxt:
+            lines.append(f"- {r['code']} {r['name']}｜{r['buy_type'] or '-'}｜{r['lifecycle']}｜IGE_ADJ {_ige_tag(r)}｜T20 {r['t20_score']:.0f}/结构 {r['structure']:.0f}｜缺口：{r['missing'][0] if r['missing'] else '等待确认'}｜关键位 突破 {fmt_price(r['breakout_price'])}/回踩区 [{fmt_price(r['zone_low'])},{fmt_price(r['zone_high'])}]")
     else:
         lines.append("无（所有候选要么已满足 PRIMARY_BUY，要么缺口不唯一）")
     lines.append("")
@@ -1031,7 +1097,7 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     lines.append("")
     lines.append("## 【明日开盘决策树】")
     lines.append("")
-    tree_pool = (primary + nxt + [w for w in watch if w["action"] in (ACT_WAIT_BREAKOUT, ACT_WAIT_RETEST)])[:20]
+    tree_pool = (cand_primary + cand_nxt + [w for w in cand_watch if w["action"] in (ACT_WAIT_BREAKOUT, ACT_WAIT_RETEST)])[:20]
     if tree_pool:
         for r in tree_pool:
             if r["action"] == ACT_BUY:
@@ -1107,6 +1173,7 @@ def main():
     if args.limit:
         rows = rows[:args.limit]
     sli_info, sli_meta = load_sli_leader_map(date)
+    ige_info, ige_snap = load_ige_adj(date)
     t_start = time.time()
     for n, row in enumerate(rows):
         if n and n % 500 == 0:
@@ -1128,6 +1195,12 @@ def main():
                 print(f"[t20] {code} 分析失败: {exc}", flush=True)
             continue
         if r:
+            ig = ige_info.get(code)
+            r["ige_adj"] = ig["ige_adj"] if ig else None
+            r["ige_mix"] = ig["ige_mix"] if ig else None
+            r["ige_sw_l1"] = ig["sw_l1"] if ig else ""
+            r["ige_sw_l3"] = ig["sw_l3"] if ig else ""
+            r["ige_snap"] = ige_snap
             results.append(r)
     update_streaks(results, date)
     text = markdown(results, date, regime, gate_level, len(rows), sli_meta)
@@ -1144,10 +1217,14 @@ def main():
     buys = [r for r in results if r["layer"] == "PRIMARY_BUY"]
     picks = [r for r in results if r.get("top_pick")]
     sli_blocked = [r for r in results if r.get("sli_block")]
+    ige_covered = sum(1 for r in results if isinstance(r.get("ige_adj"), (int, float)))
     stats = {
         "date": date, "universe": len(rows), "results": len(results), "output": output,
         "regime": regime, "gate_level": gate_level,
         "layers": layer_counts, "states": {k: v for k, v in state_counts.items() if v},
+        "ige": {"snapshot": ige_snap, "covered": ige_covered,
+                "adj_min": min((r["ige_adj"] for r in results if isinstance(r.get("ige_adj"), (int, float))), default=None),
+                "adj_max": max((r["ige_adj"] for r in results if isinstance(r.get("ige_adj"), (int, float))), default=None)},
         "sli": {"snapshot": str((sli_meta or {}).get("snapshot_date", "")),
                 "leaders_in_results": sum(1 for r in results if r.get("sli_leader")),
                 "blocked": [{"code": r["code"], "name": r["name"], "leader_type": r["sli_leader_type"],
@@ -1155,7 +1232,9 @@ def main():
         "top_picks": [{"code": r["code"], "name": r["name"], "t20": r["t20_score"],
                        "retest": r["retest_quality"], "rr": r["rr"], "sli": sli_tag(r)} for r in picks],
         "primary_buys": [{"code": r["code"], "name": r["name"], "type": r["buy_type"],
-                          "t20": r["t20_score"], "priority": r["priority"], "action": r["action"]} for r in buys],
+                          "t20": r["t20_score"], "priority": r["priority"], "action": r["action"],
+                          "ige_adj": (float(r["ige_adj"]) if isinstance(r.get("ige_adj"), (int, float)) else None)}
+                         for r in buys],
         "elapsed": round(time.time() - t_start, 1),
     }
     print(json.dumps(stats, ensure_ascii=False))

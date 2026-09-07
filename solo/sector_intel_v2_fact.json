@@ -1,0 +1,130 @@
+{
+  "_doc": "V2.0 T60/T120 分析·基本面事实表(报告日快照)。LONG_SCORE 8因子中盈利趋势/行业景气/竞争格局/估值/产业长期逻辑的本地唯一依据。更新方式:由 AI/用户在报告日通过 Wind MCP 等外部源刷新后改 asof 并逐项覆盖,勿同时改 h1_vintage。缺项在引擎侧自动标 DATA_INSUFFICIENT。",
+  "asof": "20260904",
+  "valuation_vintage": "2026-09-04 申万板块估值(Wind 口径)",
+  "market": {
+    "asof": "20260904",
+    "state": "结构性退潮/弱势",
+    "target_position_pct": 25,
+    "risk": "中高",
+    "note": "本地无常驻指数/大盘资金文件,每报告日由 AI 刷新。",
+    "index": [
+      {"name": "上证指数", "ret_q3": -4.01, "ret_2026H1": 5.20},
+      {"name": "深证成指", "ret_q3": -16.59, "ret_2026H1": 20.24},
+      {"name": "创业板指", "ret_q3": -24.32, "ret_2026H1": 36.35},
+      {"name": "科创50", "ret_q3": -28.56, "ret_2026H1": 75.74}
+    ]
+  },
+  "themes": {
+    "黄金": {
+      "sw_sector": "有色金属·贵金属", "h1_vintage": "2026H1",
+      "pe": null, "pb": 4.56, "pb_note": "4月峰51.6已回落",
+      "h1_yoy_median": 62.0,
+      "h1_note": "中金+61.7/赤峰+56.5/山东+26.2/山金+51.4/招金+407.4/西部+315.7/四川+107.3/湖南+46 → 中位约62",
+      "sw_top_weights": ["中金黄金19.56%", "赤峰黄金18.87%", "山东黄金18.44%"],
+      "climate": "景气上行(金价高位+龙头量价齐升)", "climate_score": 90,
+      "competition": "高集中(前三权重近57%)", "comp_score": 80,
+      "valuation": "PB 4.56(高位回落中, 不便宜)", "val_score": 35,
+      "long_logic": "央行购金+美元信用弱化+避险长期逻辑", "long_logic_score": 90
+    },
+    "银行": {
+      "sw_sector": "银行", "h1_vintage": "2026H1",
+      "pe": 6.40, "pb": 0.52,
+      "h1_yoy_median": 8.5,
+      "h1_note": "招行+2.0/农行+4.9/工行+3.3/宁波+12.1/青岛+18.1/齐鲁+16.1/常熟+10.6/江苏+8.1; 兴业-4.7/民生-8.6 → 中位约8.5(大行转正、城商行高增)",
+      "sw_top_weights": ["招商银行14.67%", "兴业银行8.71%"],
+      "climate": "企稳修复(息差企稳+盈利普遍转正)", "climate_score": 75,
+      "competition": "高集中(招行为锚)", "comp_score": 90,
+      "valuation": "PB 0.52 破净·PE 6.4 低估值红利", "val_score": 90,
+      "long_logic": "红利防御资产长期配置逻辑", "long_logic_score": 85
+    },
+    "工业金属": {
+      "sw_sector": "有色金属·工业金属", "h1_vintage": "2026H1",
+      "pe": 13.95, "pb": 2.80,
+      "h1_yoy_median": 107.0,
+      "h1_note": "紫金+68.2/洛钼+86.3/中铝+67.9/西部矿业+123/云铝+177.6/江铜+106.8/神火+151 → 中位约107",
+      "sw_top_weights": ["紫金矿业33.36%", "洛阳钼业8.64%"],
+      "climate": "景气上行(铜铝价+盈利爆发)", "climate_score": 85,
+      "competition": "高集中(紫金为锚)", "comp_score": 80,
+      "valuation": "PB 2.80/PE 13.95 中性", "val_score": 55,
+      "long_logic": "全球资源重估+铜铝供给约束", "long_logic_score": 85
+    },
+    "煤炭": {
+      "sw_sector": "煤炭", "h1_vintage": "2026H1",
+      "pe": 18.75, "pb": 1.54,
+      "h1_yoy_median": 47.0,
+      "h1_note": "神华+4.1(转正)/陕煤+47.6/中煤+5.8/兖矿+47.8/山西焦煤+22/山煤+54 → 中位约47(盈利反转)",
+      "sw_top_weights": ["中国神华25.96%", "陕西煤业17.92%"],
+      "climate": "盈利反转企稳(龙头转正+高股息)", "climate_score": 70,
+      "competition": "高集中(神华/陕煤双龙头)", "comp_score": 80,
+      "valuation": "PB 1.54/PE 18.75 中性·高股息", "val_score": 65,
+      "long_logic": "红利底仓(能源转型长期约束存在)", "long_logic_score": 75
+    },
+    "证券": {
+      "sw_sector": "非银金融·证券", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 12.98, "pb": 1.17,
+      "h1_yoy_median": 30.0,
+      "h1_note": "仅2025H1口径; 市场成交活跃券商β弹性, 待刷新2026H1",
+      "sw_top_weights": [],
+      "climate": "β弹性(成交活跃放大,但内部分化)", "climate_score": 70,
+      "competition": "头部集中度中等", "comp_score": 60,
+      "valuation": "PB 1.17 历史低位区间", "val_score": 75,
+      "long_logic": "牛市周期β+并购重组主线", "long_logic_score": 60
+    },
+    "电力": {
+      "sw_sector": "公用事业·电力", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 21.71, "pb": 1.55,
+      "h1_yoy_median": 15.0,
+      "h1_note": "仅2025H1口径(量价平稳), 待刷新2026H1",
+      "sw_top_weights": [],
+      "climate": "量价平稳+核电/AI用电新逻辑", "climate_score": 65,
+      "competition": "区域格局稳定", "comp_score": 60,
+      "valuation": "PB 1.55/PE 21.7 合理", "val_score": 70,
+      "long_logic": "红利+AI用电+绿电转型", "long_logic_score": 80
+    },
+    "传媒": {
+      "sw_sector": "传媒", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 35.34, "pb": 2.63,
+      "h1_yoy_median": -10.0,
+      "h1_note": "2025H1分化: 光线+371.6/南方+50.7/中文传媒-56.8/山东出版-11.2 → 出版承压, 个股主题驱动",
+      "sw_top_weights": [],
+      "climate": "主题脉冲(影视局部复苏,出版基本面弱)", "climate_score": 40,
+      "competition": "低集中(出版/影视/营销碎片化)", "comp_score": 40,
+      "valuation": "PB 2.63/PE 35.3 偏高", "val_score": 35,
+      "long_logic": "长期成长逻辑弱(以题材脉冲为主)", "long_logic_score": 30
+    },
+    "游戏": {
+      "sw_sector": "传媒·游戏", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 23.30, "pb": 3.24,
+      "h1_yoy_median": -20.0,
+      "h1_note": "2025H1分化: 世纪华通+129.3/完美+384.5/游族+989; 昆仑-119.9/汤姆猫-141 → 爆款决定, 内部分化极大",
+      "sw_top_weights": [],
+      "climate": "爆款驱动分化(新游+出海结构景气)", "climate_score": 55,
+      "competition": "低集中(爆款逻辑难外推)", "comp_score": 35,
+      "valuation": "PB 3.24/PE 23.3 中高", "val_score": 45,
+      "long_logic": "供给周期+AI赋能主题为主", "long_logic_score": 35
+    },
+    "钢铁": {
+      "sw_sector": "钢铁", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 30.93, "pb": 1.00,
+      "h1_yoy_median": -25.0,
+      "h1_note": "行业盈利承压, PB破净但基本面弱",
+      "sw_top_weights": [],
+      "climate": "需求弱+盈利承压(仅超跌反弹)", "climate_score": 25,
+      "competition": "中低集中(普钢同质化)", "comp_score": 40,
+      "valuation": "PB 1.00 破净(价值陷阱风险)", "val_score": 55,
+      "long_logic": "供给侧约束逻辑弱化", "long_logic_score": 40
+    },
+    "地产链": {
+      "sw_sector": "房地产+建材", "h1_vintage": "2025H1(未刷新,不确定性源)",
+      "pe": 16.57, "pb": 0.78,
+      "h1_yoy_median": -30.0,
+      "h1_note": "销售弱+减值风险未出清",
+      "sw_top_weights": [],
+      "climate": "政策托底但基本面弱(反弹非反转)", "climate_score": 30,
+      "competition": "低集中", "comp_score": 30,
+      "valuation": "PB 0.78 破净(资产质量风险)", "val_score": 40,
+      "long_logic": "人口/库存长周期压制", "long_logic_score": 25
+    }
+  }
+}

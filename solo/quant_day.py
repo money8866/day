@@ -8009,24 +8009,24 @@ def get_limit_stats():
         except Exception as e:
             print(f"方法1失败: {e}")
 
-        # 如果以上方法都失败，使用ths接口作为备选（但不作为主要数据源）
+        # 如果以上方法都失败，使用 limit_list_d 官方接口作为备选（但不作为主要数据源）
         if not zt_codes and not dt_codes:
-            print("[备选] 使用ths接口...")
+            print("[备选] 使用limit_list_d接口...")
             try:
-                ths_zt = pro.limit_list_ths(trade_date=TRADE_DATE, limit_type='涨停池')
-                if ths_zt is not None and not ths_zt.empty:
-                    zt_codes = ths_zt['ts_code'].astype(str).tolist()
-                    print(f"涨停(ths备选): {len(zt_codes)}只")
+                d_zt = pro.limit_list_d(trade_date=TRADE_DATE, limit_type='U')
+                if d_zt is not None and not d_zt.empty:
+                    zt_codes = d_zt['ts_code'].astype(str).tolist()
+                    print(f"涨停(limit_list_d备选): {len(zt_codes)}只")
             except Exception as e:
-                print(f"ths涨停失败: {e}")
+                print(f"limit_list_d涨停失败: {e}")
 
             try:
-                ths_dt = pro.limit_list_ths(trade_date=TRADE_DATE, limit_type='跌停池')
-                if ths_dt is not None and not ths_dt.empty:
-                    dt_codes = ths_dt['ts_code'].astype(str).tolist()
-                    print(f"跌停(ths备选): {len(dt_codes)}只")
+                d_dt = pro.limit_list_d(trade_date=TRADE_DATE, limit_type='D')
+                if d_dt is not None and not d_dt.empty:
+                    dt_codes = d_dt['ts_code'].astype(str).tolist()
+                    print(f"跌停(limit_list_d备选): {len(dt_codes)}只")
             except Exception as e:
-                print(f"ths跌停失败: {e}")
+                print(f"limit_list_d跌停失败: {e}")
 
         return {
             "zt_count": len(zt_codes),

@@ -379,6 +379,65 @@ class SliReport:
         logger.info("产业龙头雷达已写入 %s（%d 赛道）", path, len(out))
         return path
 
+    def growth_industry_top(self, panel: pd.DataFrame, date: str,
+                            top: int = 30) -> str:
+        """成长型行业（细分赛道）TOP：赛道内 Growth 中位数 = 赛道整体成长强度，
+        同时给出该赛道的成长龙头与龙头强度，识别“高成长且强者更强”的赛道。"""
+        g = panel[pd.to_numeric(panel.get("growth_v2"), errors="coerce").notna()].copy()
+        if g.empty:
+            logger.info("无 Growth 数据，成长型行业TOP跳过")
+            return ""
+        g["growth_v2"] = pd.to_numeric(g["growth_v2"], errors="coerce")
+        g["sli_v2"] = pd.to_numeric(g["sli_v2"], errors="coerce")
+        # NEXT_LEADER 列统一为布尔（兼容内存 bool 与 CSV 回读字符串）
+        if "NEXT_LEADER" in g.columns:
+            g["NEXT_LEADER"] = (g["NEXT_LEADER"].fillna(False).astype(str)
+                                .str.strip().str.lower().isin(["true", "1", "yes", "t"]))
+        grp_key = g["l3_code"].astype(str) + "|" + g.get("subsector", "").fillna("").astype(str)
+        rows = []
+        for _, sub in g.groupby(grp_key):
+            sub = sub.sort_values("sli_v2", ascending=False)
+            gl = sub.loc[sub["growth_v2"].idxmax()]
+            if "NEXT_LEADER" in sub.columns:
+                nl = sub[sub["NEXT_LEADER"] == True]  # noqa: E712
+            else:
+                nl = sub.iloc[0:0]
+            d = {
+                "产业链": sub.iloc[0].get("chain", ""),
+                "三级行业": sub.iloc[0].get("l3_name", ""),
+                "细分赛道": sub.iloc[0].get("subsector", ""),
+                "公司数": int(len(sub)),
+                "成长强度_中位": round(float(sub["growth_v2"].median()), 1),
+                "成长龙头": str(gl.get("name", "")),
+                "成长龙头代码": str(gl.get("ts_code", "")),
+                "成长龙头分": round(float(gl["growth_v2"]), 1),
+                "成长龙头SLI_V2": round(float(gl["sli_v2"]), 1),
+                "赛道龙头SLI_V2": round(float(sub["sli_v2"].iloc[0]), 1),
+                "赛道SLI中位": round(float(sub["sli_v2"].median()), 1),
+                "下一代龙头数": int(len(nl)),
+                "下一代龙头": "、".join(str(x) for x in nl["name"].tolist()),
+            }
+            if "low_sample_sub" in sub.columns:
+                d["样本标记"] = "LOW_SAMPLE" if bool(
+                    sub["low_sample_sub"].fillna(False).any()) else ""
+            else:
+                d["样本标记"] = "LOW_SAMPLE" if len(sub) < 5 else ""
+            rows.append(d)
+        out = pd.DataFrame(rows)
+        if out.empty:
+            path = os.path.join(self.output_dir, f"sli_v2_growth_industry_top_{date}.csv")
+            out.to_csv(path, index=False, encoding="utf-8-sig")
+            return path
+        out["成长强度_中位"] = pd.to_numeric(out["成长强度_中位"], errors="coerce")
+        out = out.sort_values(["成长强度_中位"], ascending=False).reset_index(drop=True)
+        out.insert(0, "排名", np.arange(1, len(out) + 1))
+        if top:
+            out = out.head(top)
+        path = os.path.join(self.output_dir, f"sli_v2_growth_industry_top_{date}.csv")
+        out.to_csv(path, index=False, encoding="utf-8-sig")
+        logger.info("成长型行业TOP已写入 %s（%d 赛道）", path, len(out))
+        return path
+
     # ── V2 LEADER_REASON ──────────────────────────────
     def reasons_v2(self, reasons: pd.DataFrame, date: str) -> str:
         path = os.path.join(self.output_dir, f"sli_v2_leader_reasons_{date}.csv")

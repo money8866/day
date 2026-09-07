@@ -863,7 +863,10 @@ class HvtBullEngine:
         supply = (ev.exp_subs or {}).get('供给吸收', 0.0)
         vg = ev.volume_grade or ''
         rs_ok = np.isfinite(ev.rs20) and ev.rs20 >= 70.0
-        if es >= th_p and supply >= 12.0 and vg in ('A', 'A+') and rs_ok:
+        fund_floor = float(self.v3_cfg.get('primary_min_fund_score', 50.0))
+        fund_ok = (not np.isfinite(ev.fundamental_score) or ev.fundamental_score <= 0.0
+                   or ev.fundamental_score >= fund_floor)
+        if es >= th_p and supply >= 12.0 and vg in ('A', 'A+') and rs_ok and fund_ok:
             ev.state = 'PRIMARY_BUY'
         elif xs >= th_rocket:
             ev.state = 'T20_ROCKET_WATCH'

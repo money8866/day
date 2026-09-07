@@ -654,20 +654,20 @@ def get_market_overview(trade_date=None):
 
         time.sleep(0.3)
 
-        # 涨停池
-        zt_df = pro.limit_list_ths(trade_date=trade_date, limit_type="涨停池")
+        # 涨停池（官方 limit_list_d: U涨停/D跌停/Z炸板）
+        zt_df = pro.limit_list_d(trade_date=trade_date, limit_type='U')
         if zt_df is not None and not zt_df.empty:
             overview["zt_count"] = len(zt_df)
         time.sleep(0.15)
 
         # 跌停池
-        dt_df = pro.limit_list_ths(trade_date=trade_date, limit_type="跌停池")
+        dt_df = pro.limit_list_d(trade_date=trade_date, limit_type='D')
         if dt_df is not None and not dt_df.empty:
             overview["dt_count"] = len(dt_df)
         time.sleep(0.15)
 
         # 炸板池
-        zb_df = pro.limit_list_ths(trade_date=trade_date, limit_type="炸板池")
+        zb_df = pro.limit_list_d(trade_date=trade_date, limit_type='Z')
         if zb_df is not None and not zb_df.empty:
             overview["zb_count"] = len(zb_df)
         time.sleep(0.15)
@@ -1930,24 +1930,24 @@ def get_limit_up_down_stats(trade_date=None):
             except Exception as e:
                 print(f"[涨跌停] 获取炸板数据失败: {e}")
         
-        # 如果以上方法都失败，使用ths接口作为备选
+        # 如果以上方法都失败，使用limit_list_d官方接口作为备选
         if not zt_codes and not dt_codes:
-            print("[涨跌停] 使用ths接口备选...")
+            print("[涨跌停] 使用limit_list_d官方接口备选...")
             try:
-                ths_zt = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
-                if ths_zt is not None and not ths_zt.empty:
-                    zt_codes = ths_zt['ts_code'].astype(str).tolist()
-                    print(f"[涨跌停] 涨停(ths备选): {len(zt_codes)}只")
+                d_zt = pro.limit_list_d(trade_date=trade_date, limit_type='U')
+                if d_zt is not None and not d_zt.empty:
+                    zt_codes = d_zt['ts_code'].astype(str).tolist()
+                    print(f"[涨跌停] 涨停(limit_list_d备选): {len(zt_codes)}只")
             except Exception as e:
-                print(f"[涨跌停] ths涨停失败: {e}")
+                print(f"[涨跌停] limit_list_d涨停失败: {e}")
             
             try:
-                ths_dt = pro.limit_list_ths(trade_date=trade_date, limit_type='跌停池')
-                if ths_dt is not None and not ths_dt.empty:
-                    dt_codes = ths_dt['ts_code'].astype(str).tolist()
-                    print(f"[涨跌停] 跌停(ths备选): {len(dt_codes)}只")
+                d_dt = pro.limit_list_d(trade_date=trade_date, limit_type='D')
+                if d_dt is not None and not d_dt.empty:
+                    dt_codes = d_dt['ts_code'].astype(str).tolist()
+                    print(f"[涨跌停] 跌停(limit_list_d备选): {len(dt_codes)}只")
             except Exception as e:
-                print(f"[涨跌停] ths跌停失败: {e}")
+                print(f"[涨跌停] limit_list_d跌停失败: {e}")
     
     except Exception as e:
         print(f"[涨跌停] 获取失败: {e}")

@@ -74,25 +74,21 @@ def save_cache_csv(df, cache_file):
 
 @contextmanager
 def get_conn(max_retries=5, retry_delay=1.0):
-    for attempt in range(max_retries):
-        conn = sqlite3.connect(DB_PATH, timeout=10.0)
-        try:
-            yield conn
-            conn.commit()
-            return
-        except sqlite3.OperationalError as e:
-            if 'database is locked' in str(e) and attempt < max_retries - 1:
-                conn.close()
-                import time
-                time.sleep(retry_delay * (attempt + 1))
-                continue
-            conn.rollback()
-            raise
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+    # 单一连接 + 长 busy_timeout：让 SQLite 自身等待短暂写锁
+    # （@contextmanager 生成器在 with 体内被 throw 后不能再次 yield，原重试结构会触发 RuntimeError，已移除）
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    try:
+        conn.execute('PRAGMA busy_timeout = 30000')
+    except Exception:
+        pass
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _infer_sqlite_type(dtype, col_name):
@@ -307,6 +303,134 @@ def batch_insert_daily_cache(df_all):
 
 
 # =========================================================
+# adj_factor 复权因子缓存（UDC③：pro.adj_factor，独立轻量表）
+# 用于把不复权 daily_cache 折算为前复权 OHLC：qfq = raw × adj / 当日adj
+# =========================================================
+
+ADJ_FACTOR_TABLE = 'adj_factor_cache'
+
+
+def get_adj_factor_cache(ts_code, start_date=None, end_date=None):
+    """读取单股复权因子（升序），无数据返回 None"""
+    if not _table_exists(ADJ_FACTOR_TABLE):
+        return None
+    sql = f'SELECT ts_code, trade_date, adj_factor FROM {ADJ_FACTOR_TABLE} WHERE ts_code = ?'
+    params = [str(ts_code)]
+    if start_date:
+        sql += ' AND trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def get_adj_factor_range(ts_code):
+    """获取某股票复权因子缓存日期范围 (min_date, max_date)"""
+    if not _table_exists(ADJ_FACTOR_TABLE):
+        return (None, None)
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT MIN(trade_date), MAX(trade_date) FROM {ADJ_FACTOR_TABLE} WHERE ts_code = ?',
+            (str(ts_code),)
+        ).fetchone()
+    if row is None or row[0] is None:
+        return (None, None)
+    return (str(row[0]), str(row[1]))
+
+
+def batch_insert_adj_factor(df_all):
+    """批量插入/更新复权因子（INSERT OR REPLACE，仅 3 列）"""
+    if df_all is None or df_all.empty:
+        return 0
+    _ensure_adj_factor_table()
+    dfv = df_all[['ts_code', 'trade_date', 'adj_factor']].copy()
+    dfv['trade_date'] = dfv['trade_date'].astype(str)
+    values = [
+        [None if pd.isna(v) else v for v in row]
+        for row in dfv.values.tolist()
+    ]
+    with get_conn() as conn:
+        conn.executemany(
+            f'INSERT OR REPLACE INTO {ADJ_FACTOR_TABLE} (ts_code, trade_date, adj_factor) VALUES (?, ?, ?)',
+            values
+        )
+    return len(values)
+
+
+def has_adj_market_day(trade_date):
+    """该交易日是否已缓存过整市场复权因子（只读判断，避免重复整表拉取）"""
+    if not _table_exists(ADJ_FACTOR_TABLE):
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT COUNT(*) FROM {ADJ_FACTOR_TABLE} WHERE trade_date = ?',
+            (str(trade_date),)
+        ).fetchone()
+    return bool(row and row[0])
+
+
+def cached_adj_factor(ts_code, start_date, end_date, pro=None, silent=True):
+    """带缓存的 pro.adj_factor 单股复权因子（UDC③，缓存优先）
+
+    逻辑：先查缓存是否覆盖 [start, end]；缺最新目标日时先整市场按日补一次
+    （避免逐股拉取当日）；仍缺历史段再按 ts_code 拉取缺口。全部写回缓存。
+
+    Returns: 升序 DataFrame(ts_code/trade_date/adj_factor) 或 None
+    """
+    ts_code = str(ts_code)
+    start_date, end_date = str(start_date), str(end_date)
+
+    try:
+        cmin, cmax = get_adj_factor_range(ts_code)
+    except Exception:
+        cmin = cmax = None
+
+    def _read():
+        df = get_adj_factor_cache(ts_code, start_date, end_date)
+        return df.sort_values('trade_date').reset_index(drop=True) if df is not None else None
+
+    if cmin and cmax and cmin <= start_date and cmax >= end_date:
+        return _read()
+
+    _pro = pro or _get_pro()
+    # ① 目标日缺失 → 整市场按日补（用行数判断，只在该交易日首次缺失时拉取一次）
+    if not (cmin and cmax and cmax >= end_date):
+        try:
+            if not has_adj_market_day(end_date):
+                df_mkt = _pro.adj_factor(trade_date=end_date)
+                time.sleep(0.06)
+                if df_mkt is not None and not df_mkt.empty:
+                    batch_insert_adj_factor(df_mkt)
+                    try:
+                        cmin, cmax = get_adj_factor_range(ts_code)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    if cmin and cmax and cmin <= start_date and cmax >= end_date:
+        return _read()
+
+    # ② 历史段缺口 → 按单股增量拉取（cache 已覆盖前段时只补尾部）
+    fetch_start = start_date
+    if cmin and cmax:
+        if cmin <= start_date:
+            fetch_start = cmax
+    try:
+        df_new = _pro.adj_factor(ts_code=ts_code, start_date=fetch_start, end_date=end_date)
+        time.sleep(0.06)
+        if df_new is not None and not df_new.empty:
+            batch_insert_adj_factor(df_new)
+    except Exception:
+        pass
+    return _read()
+
+
+# =========================================================
 # 全市场单日查询（C 类：替代 pro.daily(trade_date=...)）
 # daily_cache 表的主键是 (ts_code, trade_date)，可直接按 trade_date 反查全市场
 # =========================================================
@@ -334,6 +458,7 @@ def get_daily_by_date_count(trade_date):
             (str(trade_date),)
         ).fetchone()
     return row[0] if row else 0
+
 
 
 def batch_insert_stk_factor_pro(df_all):
@@ -777,6 +902,394 @@ def daily_batch(codes, start_date, end_date, pro=None, auto_fill=True, api_batch
     out = pd.concat(cached_parts, ignore_index=True)
     out['trade_date'] = out['trade_date'].astype(str)
     return out.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+
+
+# =========================================================
+# daily_basic_cache 表：pro.daily_basic 窄表（7 列，替代 stk_factor_pro 市值/换手类列）
+# adj_factor_cache 表：pro.adj_factor 复权因子（前复权锚定计算用）
+# 二者与 daily_cache(11列) 共同构成新数据源，删除对 stk_factor_pro 宽表的读取依赖
+# =========================================================
+
+DAILY_BASIC_CACHE_TABLE = 'daily_basic_cache'
+ADJ_FACTOR_CACHE_TABLE = 'adj_factor_cache'
+
+DAILY_BASIC_BATCH_KEY = 'daily_basic_batch_date'
+ADJ_FACTOR_BATCH_KEY = 'adj_factor_batch_date'
+
+_DAILY_BASIC_COLS = [
+    'ts_code', 'trade_date', 'turnover_rate', 'turnover_rate_f',
+    'volume_ratio', 'total_mv', 'circ_mv',
+]
+
+_ADJ_FACTOR_COLS = ['ts_code', 'trade_date', 'adj_factor']
+
+
+def _ensure_daily_basic_table():
+    """确保 daily_basic_cache 表存在（窄表，PK ts_code+trade_date）"""
+    with get_conn() as conn:
+        conn.execute(f'''
+            CREATE TABLE IF NOT EXISTS "{DAILY_BASIC_CACHE_TABLE}" (
+                "ts_code" TEXT,
+                "trade_date" TEXT,
+                "turnover_rate" REAL,
+                "turnover_rate_f" REAL,
+                "volume_ratio" REAL,
+                "total_mv" REAL,
+                "circ_mv" REAL,
+                PRIMARY KEY ("ts_code", "trade_date")
+            )
+        ''')
+        # 兼容既有 6 列存量库（早期无 turnover_rate_f）：动态补列
+        _cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{DAILY_BASIC_CACHE_TABLE}")').fetchall()}
+        if 'turnover_rate_f' not in _cols:
+            conn.execute(f'ALTER TABLE "{DAILY_BASIC_CACHE_TABLE}" ADD COLUMN "turnover_rate_f" REAL')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_db_date" ON "{DAILY_BASIC_CACHE_TABLE}" ("trade_date")')
+
+
+def _ensure_adj_factor_table():
+    """确保 adj_factor_cache 表存在（PK ts_code+trade_date）"""
+    with get_conn() as conn:
+        conn.execute(f'''
+            CREATE TABLE IF NOT EXISTS "{ADJ_FACTOR_CACHE_TABLE}" (
+                "ts_code" TEXT,
+                "trade_date" TEXT,
+                "adj_factor" REAL,
+                PRIMARY KEY ("ts_code", "trade_date")
+            )
+        ''')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_af_date" ON "{ADJ_FACTOR_CACHE_TABLE}" ("trade_date")')
+
+
+def batch_insert_daily_basic(df_all):
+    """批量插入/更新 daily_basic_cache 数据（INSERT OR REPLACE）
+
+    Args:
+        df_all: DataFrame，含 ts_code/trade_date + 若干 daily_basic 字段
+
+    Returns:
+        插入/更新的行数
+    """
+    if df_all is None or df_all.empty:
+        return 0
+    _ensure_daily_basic_table()
+    cols = [c for c in _DAILY_BASIC_COLS if c in df_all.columns]
+    if 'ts_code' not in cols or 'trade_date' not in cols:
+        return 0
+    df_valid = df_all[cols].copy()
+    df_valid['trade_date'] = df_valid['trade_date'].astype(str)
+    placeholders = ','.join(['?'] * len(cols))
+    col_str = ','.join([f'"{c}"' for c in cols])
+    sql = f'INSERT OR REPLACE INTO {DAILY_BASIC_CACHE_TABLE} ({col_str}) VALUES ({placeholders})'
+    values = [
+        [None if pd.isna(v) else v for v in row]
+        for row in df_valid[cols].values.tolist()
+    ]
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+def batch_insert_adj_factor(df_all):
+    """批量插入/更新 adj_factor_cache 数据（INSERT OR REPLACE）
+
+    Args:
+        df_all: DataFrame，含 ts_code/trade_date/adj_factor
+
+    Returns:
+        插入/更新的行数
+    """
+    if df_all is None or df_all.empty:
+        return 0
+    _ensure_adj_factor_table()
+    cols = [c for c in _ADJ_FACTOR_COLS if c in df_all.columns]
+    if len(cols) != 3:
+        return 0
+    df_valid = df_all[cols].copy()
+    df_valid['trade_date'] = df_valid['trade_date'].astype(str)
+    placeholders = ','.join(['?'] * len(cols))
+    col_str = ','.join([f'"{c}"' for c in cols])
+    sql = f'INSERT OR REPLACE INTO {ADJ_FACTOR_CACHE_TABLE} ({col_str}) VALUES ({placeholders})'
+    values = [
+        [None if pd.isna(v) else v for v in row]
+        for row in df_valid[cols].values.tolist()
+    ]
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+def get_daily_basic(ts_code, start_date=None, end_date=None):
+    """读取单股 daily_basic 数据
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(DAILY_BASIC_CACHE_TABLE):
+        return None
+    sql = f'SELECT * FROM {DAILY_BASIC_CACHE_TABLE} WHERE ts_code = ?'
+    params = [ts_code]
+    if start_date:
+        sql += ' AND trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def get_adj_factor(ts_code, start_date=None, end_date=None):
+    """读取单股复权因子序列
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(ADJ_FACTOR_CACHE_TABLE):
+        return None
+    sql = f'SELECT * FROM {ADJ_FACTOR_CACHE_TABLE} WHERE ts_code = ?'
+    params = [ts_code]
+    if start_date:
+        sql += ' AND trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def get_daily_basic_range(ts_code):
+    """获取某股 daily_basic_cache 日期范围
+
+    Returns: (min_date, max_date) 或 (None, None)
+    """
+    if not _table_exists(DAILY_BASIC_CACHE_TABLE):
+        return None, None
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT MIN(trade_date), MAX(trade_date) FROM {DAILY_BASIC_CACHE_TABLE} WHERE ts_code = ?',
+            (ts_code,)
+        ).fetchone()
+    if row and row[0]:
+        return str(row[0]), str(row[1])
+    return None, None
+
+
+def get_daily_basic_by_date(trade_date):
+    """按交易日查询全市场 daily_basic（替代 pro.daily_basic(trade_date=...)）
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(DAILY_BASIC_CACHE_TABLE):
+        return None
+    with get_conn() as conn:
+        df = pd.read_sql_query(
+            f'SELECT * FROM {DAILY_BASIC_CACHE_TABLE} WHERE trade_date = ?',
+            conn, params=(str(trade_date),)
+        )
+    return df if not df.empty else None
+
+
+def get_daily_basic_by_date_count(trade_date):
+    """统计某交易日 daily_basic 全市场记录数"""
+    if not _table_exists(DAILY_BASIC_CACHE_TABLE):
+        return 0
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT COUNT(*) FROM {DAILY_BASIC_CACHE_TABLE} WHERE trade_date = ?',
+            (str(trade_date),)
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def get_adj_factor_by_date_count(trade_date):
+    """统计某交易日 adj_factor 全市场记录数"""
+    if not _table_exists(ADJ_FACTOR_CACHE_TABLE):
+        return 0
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT COUNT(*) FROM {ADJ_FACTOR_CACHE_TABLE} WHERE trade_date = ?',
+            (str(trade_date),)
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def get_daily_basic_batch_date():
+    """获取已按日批量缓存的 daily_basic 最新日期"""
+    return get_meta(DAILY_BASIC_BATCH_KEY, '')
+
+
+def set_daily_basic_batch_date(date_str):
+    """设置已按日批量缓存的 daily_basic 最新日期"""
+    set_meta(DAILY_BASIC_BATCH_KEY, date_str)
+
+
+def get_adj_factor_batch_date():
+    """获取已按日批量缓存的 adj_factor 最新日期"""
+    return get_meta(ADJ_FACTOR_BATCH_KEY, '')
+
+
+def set_adj_factor_batch_date(date_str):
+    """设置已按日批量缓存的 adj_factor 最新日期"""
+    set_meta(ADJ_FACTOR_BATCH_KEY, date_str)
+
+
+def daily_basic_market(trade_date, pro=None, auto_fill=True, min_rows=UDC_MARKET_MIN_COUNT, silent=True):
+    """UDC⑥ 全市场单日 daily_basic：缓存优先 + 完整性检查 + API 兜底回写
+
+    Args:
+        trade_date: 'YYYYMMDD' 字符串
+        pro/auto_fill/min_rows/silent: 同 daily_market()
+
+    Returns:
+        DataFrame（全市场当日 daily_basic）或 None（非交易日/无数据）
+    """
+    trade_date = str(trade_date)
+    # ① 缓存完整 -> 直接读
+    try:
+        cnt = get_daily_basic_by_date_count(trade_date)
+        if cnt >= min_rows:
+            df = get_daily_basic_by_date(trade_date)
+            if df is not None and not df.empty:
+                if not silent:
+                    print(f'[daily_basic] 命中全市场 {trade_date} ({len(df)} 行)')
+                return df
+        elif get_meta(f'db_market_empty_{trade_date}', '') == '1':
+            return get_daily_basic_by_date(trade_date) if cnt > 0 else None
+    except Exception as e:
+        if not silent:
+            print(f'[daily_basic] 读取失败 {trade_date}: {e}')
+
+    if not auto_fill:
+        try:
+            return get_daily_basic_by_date(trade_date)
+        except Exception:
+            return None
+    # ③ 拉全市场并写回
+    try:
+        _pro = pro or _get_pro()
+        df = _pro.daily_basic(trade_date=trade_date, fields=','.join(_DAILY_BASIC_COLS))
+        time.sleep(0.06)
+    except Exception as e:
+        if not silent:
+            print(f'[daily_basic] API 调用失败 {trade_date}: {e}')
+        try:
+            return get_daily_basic_by_date(trade_date)
+        except Exception:
+            return None
+    if df is None or df.empty:
+        try:
+            set_meta(f'db_market_empty_{trade_date}', '1')
+        except Exception:
+            pass
+        return None
+    try:
+        batch_insert_daily_basic(df)
+        set_daily_basic_batch_date(trade_date)
+        if not silent:
+            print(f'[daily_basic] 写回全市场 {trade_date} {len(df)} 行')
+    except Exception as e:
+        if not silent:
+            print(f'[daily_basic] 写回失败 {trade_date}: {e}')
+    return df
+
+
+def adj_factor_market(trade_date, pro=None, auto_fill=True, min_rows=UDC_MARKET_MIN_COUNT, silent=True):
+    """UDC⑦ 全市场单日复权因子：缓存优先 + 完整性检查 + API 兜底回写
+
+    Returns:
+        DataFrame（全市场当日 adj_factor）或 None（非交易日/无数据）
+    """
+    trade_date = str(trade_date)
+    try:
+        cnt = get_adj_factor_by_date_count(trade_date)
+        if cnt >= min_rows:
+            if not silent:
+                print(f'[adj_factor] 命中全市场 {trade_date} ({cnt} 行)')
+            return None  # 已完整，无需返回（引擎按股查询）
+        elif get_meta(f'af_market_empty_{trade_date}', '') == '1':
+            return None
+    except Exception as e:
+        if not silent:
+            print(f'[adj_factor] 读取失败 {trade_date}: {e}')
+
+    if not auto_fill:
+        return None
+    try:
+        _pro = pro or _get_pro()
+        df = _pro.adj_factor(trade_date=trade_date)
+        time.sleep(0.06)
+    except Exception as e:
+        if not silent:
+            print(f'[adj_factor] API 调用失败 {trade_date}: {e}')
+        return None
+    if df is None or df.empty:
+        try:
+            set_meta(f'af_market_empty_{trade_date}', '1')
+        except Exception:
+            pass
+        return None
+    try:
+        n = batch_insert_adj_factor(df)
+        set_adj_factor_batch_date(trade_date)
+        if not silent:
+            print(f'[adj_factor] 写回全市场 {trade_date} {n} 行')
+    except Exception as e:
+        if not silent:
+            print(f'[adj_factor] 写回失败 {trade_date}: {e}')
+    return df
+
+
+def seed_daily_basic_from_stk_factor(start_date='20230103', end_date='20260803', min_rows=UDC_MARKET_MIN_COUNT):
+    """一次性种子灌库：从 stk_factor_pro 宽表把历史日整表切片直接 SQL 拷贝进窄表。
+
+    已实证宽表 turnover_rate/volume_ratio/total_mv/circ_mv 与 pro.daily_basic 逐值同源；
+    仅对完整日（记录数>=min_rows）拷贝，避开 20260804 之后宽表不完整/需 API 实时补齐的区间。
+
+    Returns:
+        dict: {'daily_basic': 写入行数, 'adj_factor': 写入行数}
+    """
+    from datetime import datetime as _dt
+    _d0 = _dt.strptime(start_date, '%Y%m%d')
+    _d1 = _dt.strptime(end_date, '%Y%m%d')
+    if _d0 > _d1:
+        raise ValueError(f'start_date({start_date}) > end_date({end_date})')
+    if not _table_exists('stk_factor_pro'):
+        return {'daily_basic': 0, 'adj_factor': 0}
+    _ensure_daily_basic_table()
+    _ensure_adj_factor_table()
+    with get_conn() as conn:
+        # 完整日列表：记录数 >= min_rows
+        days = [r[0] for r in conn.execute(
+            f'SELECT trade_date FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ? '
+            f'GROUP BY trade_date HAVING COUNT(*) >= ? ORDER BY trade_date',
+            (start_date, end_date, min_rows)
+        ).fetchall()]
+    db_n = af_n = 0
+    n_day = len(days)
+    for k, d in enumerate(days, 1):
+        # 每个交易日一个短事务提交：避免巨型单事务占锁过长/失败整体回滚；中断重跑可续（REPLACE 幂等）
+        with get_conn() as conn:
+            db_n += conn.execute(
+                f'INSERT OR REPLACE INTO {DAILY_BASIC_CACHE_TABLE} '
+                f'(ts_code, trade_date, turnover_rate, turnover_rate_f, volume_ratio, total_mv, circ_mv) '
+                f'SELECT ts_code, trade_date, turnover_rate, turnover_rate_f, volume_ratio, total_mv, circ_mv '
+                f'FROM stk_factor_pro WHERE trade_date = ?',
+                (d,)
+            ).rowcount
+            af_n += conn.execute(
+                f'INSERT OR REPLACE INTO {ADJ_FACTOR_CACHE_TABLE} (ts_code, trade_date, adj_factor) '
+                f'SELECT ts_code, trade_date, adj_factor FROM stk_factor_pro '
+                f'WHERE trade_date = ? AND adj_factor IS NOT NULL',
+                (d,)
+            ).rowcount
+        if k % 50 == 0 or k == n_day:
+            print(f'[seed] {d} 进度 {k}/{n_day} 日，daily_basic 累计 {db_n:,} 行，adj_factor 累计 {af_n:,} 行', flush=True)
+    print(f'[seed_daily_basic_from_stk_factor] {start_date}~{end_date} 共 {n_day} 个完整日：'
+          f'daily_basic {db_n} 行，adj_factor {af_n} 行', flush=True)
+    return {'daily_basic': db_n, 'adj_factor': af_n}
 
 
 def cache_status(ts_code=None, trade_date=None):

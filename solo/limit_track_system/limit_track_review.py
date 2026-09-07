@@ -791,12 +791,12 @@ def get_limit_list_data(trade_date, force_refresh=False):
         try:
             _fetcher = _get_df()
             if _fetcher is not None:
-                df = _fetcher.get_limit_list_ths(trade_date=trade_date)
-                # DataFetcher未传limit_type，需本地过滤涨停池
+                df = _fetcher.get_limit_list_d(trade_date=trade_date, limit_type='U')
+                # 官方接口已按limit_type过滤，此处仅兜底
                 if df is not None and not df.empty and 'limit_type' in df.columns:
-                    df = df[df['limit_type'] == '涨停池']
+                    df = df[df['limit_type'] == 'U']
             else:
-                df = pro.limit_list_ths(trade_date=trade_date, limit_type='涨停池')
+                df = pro.limit_list_d(trade_date=trade_date, limit_type='U')
             # 统一列名：price->close, pct_chg->pct_change
             if df is not None and not df.empty:
                 rename_map = {}
