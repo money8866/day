@@ -255,7 +255,7 @@ class CrossSectionalRanking:
 
         def _load_one(code):
             try:
-                df = sc.cached_stk_factor_pro(code, start_date, trade_date, silent=True)
+                df = sc.cached_stk_factor_compat(code, start_date, trade_date, silent=True)
                 if df is not None and not df.empty:
                     df['ts_code'] = code
                     return df

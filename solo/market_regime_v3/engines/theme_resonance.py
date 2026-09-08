@@ -9,7 +9,6 @@
 import os
 import sys
 import json
-import sqlite3
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -26,7 +25,6 @@ from inst_pullback_v2.data.loader import DataLoader
 # ──────────────────────────────────────────────
 # 常量
 # ──────────────────────────────────────────────
-_STK_FACTOR_DB = sc.DB_PATH  # SQLite 数据库路径
 _THEME_CONFIG_PATH = r"D:\mystock\solo\theme_kg_v3\theme_kg_v3\config\theme_config.json"
 
 
@@ -134,76 +132,63 @@ class ThemeResonanceEngine:
         return len(all_stocks)
 
     # ──────────────────────────────────────────────
-    # SQL 批量查询
+    # 批量读取（新缓存窄表链路）
     # ──────────────────────────────────────────────
 
     def _batch_query_today_data(self, ts_codes: List[str], trade_date: str) -> pd.DataFrame:
-        """批量查询指定股票在 trade_date 的当日行情数据（含均线字段）"""
-        if not ts_codes or not os.path.exists(_STK_FACTOR_DB):
+        """批量读取指定股票在 trade_date 的当日行情数据（含均线字段）"""
+        if not ts_codes:
             return pd.DataFrame()
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            sql = f"""
-                SELECT ts_code, close_hfq, pct_chg, amount, ma_bfq_20, ma_bfq_60
-                FROM stk_factor_pro
-                WHERE trade_date = ? AND ts_code IN ({placeholders})
-            """
-            params = [trade_date] + ts_codes
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            for col in ['close_hfq', 'pct_chg', 'amount', 'ma_bfq_20', 'ma_bfq_60']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            return df
+            df = sc.fetch_market_by_date(
+                trade_date, ts_codes=ts_codes,
+                cols=('ts_code', 'close_hfq', 'pct_chg', 'amount', 'ma_bfq_20', 'ma_bfq_60'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        for col in ('close_hfq', 'pct_chg', 'amount', 'ma_bfq_20', 'ma_bfq_60'):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
 
     def _batch_query_hist_closes(self, ts_codes: List[str], start_date: str,
                                   end_date: str) -> pd.DataFrame:
-        """批量查询指定股票在日期范围内的历史收盘价"""
-        if not ts_codes or not os.path.exists(_STK_FACTOR_DB):
+        """批量读取指定股票在日期范围内的历史收盘价"""
+        if not ts_codes:
             return pd.DataFrame()
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            sql = f"""
-                SELECT ts_code, trade_date, close_hfq
-                FROM stk_factor_pro
-                WHERE trade_date BETWEEN ? AND ? AND ts_code IN ({placeholders})
-                ORDER BY ts_code, trade_date
-            """
-            params = [start_date, end_date] + ts_codes
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            if 'close_hfq' in df.columns:
-                df['close_hfq'] = pd.to_numeric(df['close_hfq'], errors='coerce')
-            return df
+            df = sc.fetch_hist_range(
+                start_date, end_date, ts_codes=ts_codes,
+                cols=('ts_code', 'trade_date', 'close_hfq'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        if 'close_hfq' in df.columns:
+            df['close_hfq'] = pd.to_numeric(df['close_hfq'], errors='coerce')
+        if {'ts_code', 'trade_date'} <= set(df.columns):
+            df = df.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+        return df
 
     def _batch_query_ma60_range(self, ts_codes: List[str], start_date: str,
                                  end_date: str) -> pd.DataFrame:
-        """批量查询指定股票在日期范围内的 MA60 值（用于趋势判断）"""
-        if not ts_codes or not os.path.exists(_STK_FACTOR_DB):
+        """批量读取指定股票在日期范围内的 MA60 值（用于趋势判断）"""
+        if not ts_codes:
             return pd.DataFrame()
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            sql = f"""
-                SELECT ts_code, trade_date, ma_bfq_60
-                FROM stk_factor_pro
-                WHERE trade_date BETWEEN ? AND ? AND ts_code IN ({placeholders})
-                ORDER BY ts_code, trade_date
-            """
-            params = [start_date, end_date] + ts_codes
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            if 'ma_bfq_60' in df.columns:
-                df['ma_bfq_60'] = pd.to_numeric(df['ma_bfq_60'], errors='coerce')
-            return df
+            df = sc.fetch_hist_range(
+                start_date, end_date, ts_codes=ts_codes,
+                cols=('ts_code', 'trade_date', 'ma_bfq_60'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        if 'ma_bfq_60' in df.columns:
+            df['ma_bfq_60'] = pd.to_numeric(df['ma_bfq_60'], errors='coerce')
+        if {'ts_code', 'trade_date'} <= set(df.columns):
+            df = df.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+        return df
 
     # ──────────────────────────────────────────────
     # 子因子计算

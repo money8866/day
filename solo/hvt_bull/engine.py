@@ -21,6 +21,7 @@ V3 核心原则：
 
 import numpy as np
 import pandas as pd
+from decimal import Decimal, ROUND_HALF_UP
 
 from .models import HvtEvent
 
@@ -42,6 +43,20 @@ def _dense(dates, i0, i1) -> bool:
         return (d1 - d0).days <= n * 1.9
     except Exception:
         return False
+
+
+def _limit_up_ratio(ts_code: str) -> str:
+    """板块涨停倍数（Decimal 乘数）：科创板/创业板 20cm，主板 10cm（ST/北交所入池前已排除）"""
+    return '1.2' if str(ts_code or '')[:3] in ('688', '689', '300', '301', '302') else '1.1'
+
+
+def _is_limit_up_close(close: float, pre_close: float, ts_code: str) -> bool:
+    """收盘涨停判定（交易所口径）：Close >= round(PreClose×(1+涨跌幅限制), 2)，四舍五入"""
+    if not (np.isfinite(close) and np.isfinite(pre_close)) or pre_close <= 0:
+        return False
+    lim = float((Decimal(str(pre_close)) * Decimal(_limit_up_ratio(ts_code)))
+                .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    return close >= lim - 1e-9
 
 
 class HvtBullEngine:
@@ -179,6 +194,16 @@ class HvtBullEngine:
         ev.t0_close_pos = (close[idx] - low[idx]) / rng if rng > 0 else 0.5
         ev.t0_body = (close[idx] - open_[idx]) / rng if rng > 0 else 0.0
 
+        # 涨停次日标记：T-1 收盘涨停（交易所口径），供 price_strength 豁免使用
+        ev.t0_prev_limit_up = False
+        if idx >= 1:
+            try:
+                pre_v = float(df['pre_close'].iloc[idx - 1])
+            except (TypeError, ValueError):
+                pre_v = float('nan')
+            ev.t0_prev_limit_up = _is_limit_up_close(float(close[idx - 1]), pre_v,
+                                                     str(df['ts_code'].iloc[0]))
+
         def _ma(n):
             if idx + 1 >= n and _dense(dates, idx + 1 - n, idx):
                 return float(np.nanmean(close[idx + 1 - n:idx + 1]))
@@ -233,9 +258,17 @@ class HvtBullEngine:
         return ev
 
     def price_strength_ok(self, ev: HvtEvent) -> bool:
-        """天量当天必须“价格强”（规格§4 + §5 平台突破豁免）"""
+        """天量当天必须“价格强”（规格§4 + §5 平台突破豁免）
+
+        涨停次日豁免：T-1 收盘涨停时，T0 放量分歧（滞涨/长上影）不构成否决，
+        仅保留底线 limit_next_day_min_pct_chg / limit_next_day_min_close_pos。
+        """
         min_pct = float(self.ps_cfg.get('min_pct_chg', 3.0))
         min_pos = float(self.ps_cfg.get('min_close_pos', 0.70))
+        if getattr(ev, 't0_prev_limit_up', False) \
+                and bool(self.ps_cfg.get('limit_next_day_exempt', False)):
+            min_pct = float(self.ps_cfg.get('limit_next_day_min_pct_chg', 0.0))
+            min_pos = float(self.ps_cfg.get('limit_next_day_min_close_pos', 0.30))
         ok_chg = ev.t0_pct_chg >= min_pct
         ok_pos = ev.t0_close_pos >= min_pos
         if not (ok_chg and ok_pos):

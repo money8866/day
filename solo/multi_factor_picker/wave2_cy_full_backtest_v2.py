@@ -2,13 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 双创板全量回测 v2：按形态 × 入场条件 交叉分组
-使用 stk_factor_pro 批量接口，速度提升50倍
+使用本地三表缓存派生数据（stock_cache），无需 API 拉取
 股票池：300/688/301 全量
 回测区间：2024-01-01 ~ 2026-06-20
 """
 import os, sys, time, json
 import numpy as np
+import pandas as pd
 import tushare as ts
+
+sys.path.insert(0, r'D:\mystock\solo')
+import stock_cache as sc
 
 for _l in open(r'D:\mystock\config\.env'):
     if _l.strip().startswith('TUSHARE_TOKEN='):
@@ -29,7 +33,7 @@ def log(msg):
 
 log('=' * 70)
 log("双创板全量回测 v2：形态 × 入场条件 交叉分组")
-log("接口：stk_factor_pro（批量，按日期批次）")
+log("数据源：本地三窄表缓存派生（逐股读取）")
 log('=' * 70)
 
 # ── 股票池 ────────────────────────────────────────
@@ -45,46 +49,28 @@ END   = '20260620'
 WAVE2_MIN   = 0.10
 WAVE2_WINDOW = 20
 
-# ── 按日期批次拉取 stk_factor_pro ─────────────────
-log("\n[Step2] 按日期批次拉取 stk_factor_pro...")
-trade_cal = pro.trade_cal(exchange='SSE', start_date=START, end_date=END, is_open='1')
-dates = trade_cal['cal_date'].tolist()
-log(f"  交易日数: {len(dates)}")
-
-# 每50个交易日一批
-BATCH = 50
+# ── 逐股读取本地三表缓存派生数据（原 stk_factor_pro 按日批量） ──
+log("\n[Step2] 逐股读取本地缓存（stock_cache 三表派生）...")
 all_data = []
-for i in range(0, len(dates), BATCH):
-    batch_dates = dates[i:i+BATCH]
-    date_str = f"{batch_dates[0]},{batch_dates[-1]}"
-    log(f"  批次 {i//BATCH+1}: {batch_dates[0]} ~ {batch_dates[-1]} ({len(batch_dates)}天)")
+_t0 = time.time()
+for _i, _code in enumerate(pool):
+    if (_i + 1) % 200 == 0:
+        _el = time.time() - _t0
+        _eta = _el / (_i + 1) * (len(pool) - _i - 1)
+        log(f"  进度 {_i+1}/{len(pool)}  耗时{_el:.0f}s  ETA{_eta:.0f}s")
     try:
-        df = pro.stk_factor_pro(trade_date=','.join(batch_dates), fields=[
-            'ts_code','trade_date',
-            'open','high','low','close','vol','amount',
-            'rsi_6','rsi_12','rsi_24',
-            'kdj_k','kdj_d','kdj_j',
-            'macd_dif','macd_dea','macd',
-            'boll_upper','boll_mid','boll_lower',
-            'ma_5','ma_10','ma_20','ma_60',
-            'ema_5','ema_10','ema_20','ema_60',
-            'atr','volume_ratio',
-            'rsi_bfq_6','rsi_bfq_12','rsi_bfq_24',
-            'rsi_qfq_6','rsi_qfq_12','rsi_qfq_24',
-        ])
-        time.sleep(0.3)
-        if df is not None and len(df) > 0:
-            all_data.append(df)
-            log(f"    获取 {len(df)} 行")
+        df = sc.cached_stk_factor_compat(_code, START, END, silent=True)
     except Exception as e:
-        log(f"    ERROR: {e}")
-        time.sleep(1)
+        log(f"  ERROR {_code}: {e}")
+        continue
+    if df is not None and len(df) > 0:
+        all_data.append(df)
 
 if not all_data:
     log("ERROR: 没有获取到任何数据")
     sys.exit(1)
 
-data = pd_concat(all_data)
+data = pd.concat(all_data, ignore_index=True)
 data['trade_date'] = data['trade_date'].astype(str)
 data = data.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
 log(f"\n  合并后总行数: {len(data)}")
@@ -146,11 +132,9 @@ for ts_code, gdf in grouped:
         ma20_ok = adj_low_idx >= 20 and adj_low_price > closes[adj_low_idx-20 : adj_low_idx+1].mean()
         ma60_ok = adj_low_idx >= 60 and adj_low_price > closes[adj_low_idx-60 : adj_low_idx+1].mean()
 
-        rsi_col = 'rsi_qfq_6' if 'rsi_qfq_6' in df.columns else 'rsi_6'
-        rsi = float(df.iloc[adj_low_idx][rsi_col]) if rsi_col in df.columns else 50.0
+        rsi = float(df.iloc[adj_low_idx]['rsi_qfq_6']) if 'rsi_qfq_6' in df.columns else 50.0
 
-        macd_col = 'macd' if 'macd' in df.columns else None
-        macd_val = float(df.iloc[adj_low_idx][macd_col]) if macd_col and macd_col in df.columns else 0
+        macd_val = float(df.iloc[adj_low_idx]['macd_qfq']) if 'macd_qfq' in df.columns else 0
 
         # 分类
         if pullback_pct < 0.15 and adj_days <= 15:

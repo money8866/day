@@ -16,6 +16,9 @@ import tushare as ts
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+sys.path.insert(0, r'D:\mystock\solo')
+import stock_cache as sc
+
 # 参数
 LIMIT_UP_MIN = 9.9
 ADJUST_MAX = 60  # 扩展到60天
@@ -67,7 +70,7 @@ for idx, code in enumerate(pool):
         print(f'进度 {idx+1}/{len(pool)}  耗时{elapsed:.0f}s  ETA{eta:.0f}s')
 
     try:
-        df = pro.stk_factor_pro(ts_code=code, start_date=START_DATE, end_date=END_DATE)
+        df = sc.cached_stk_factor_compat(code, START_DATE, END_DATE, pro=pro, silent=True)
         if df is None or len(df) < 60:
             continue
         df = df.sort_values('trade_date').reset_index(drop=True)

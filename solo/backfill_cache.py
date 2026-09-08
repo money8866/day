@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-全市场 stk_factor_pro 缓存补足工具
+全市场窄表三表链路缓存补足工具
 一次性扫描所有股票，逐只补充缺失的历史数据到 SQLite
 
 用法:
@@ -73,8 +73,8 @@ def calc_required_start():
 
 def show_status():
     """显示缓存状态"""
-    cached_stocks = sc.count_stk_factor_stocks()
-    cached_rows = sc.count_stk_factor_rows()
+    cached_stocks = sc.count_daily_stocks()
+    cached_rows = sc.count_daily_rows()
     total_list = get_stock_list()
     print(f"\n{'='*55}")
     print(f"  缓存状态")
@@ -110,7 +110,7 @@ def backfill(codes=None, start_date=None, resume=False):
         if code in progress:
             skip_count += 1
             continue
-        cached_min, cached_max = sc.get_stk_factor_range(code)
+        cached_min, cached_max = sc.get_daily_cache_range(code)
         if cached_min and cached_min <= start_date:
             progress.add(code)
             skip_count += 1
@@ -120,7 +120,7 @@ def backfill(codes=None, start_date=None, resume=False):
     pending = [c for c in codes if c not in progress]
     total = len(pending)
     print(f"\n{'='*55}")
-    print(f"  全市场 stk_factor_pro 缓存补足")
+    print(f"  全市场日线窄表缓存补足")
     print(f"  起始日期: {start_date} (约2年数据)")
     print(f"  已缓存完整: {skip_count} 只, 需要补充: {total} 只")
     print(f"{'='*55}\n")
@@ -142,16 +142,16 @@ def backfill(codes=None, start_date=None, resume=False):
         try:
             # 补一份默认日期范围的数据（同时检验缓存完整性）
             end_date = sc.get_effective_date()
-            df = sc.cached_stk_factor_pro(code, start_date, end_date)
+            df = sc.cached_stk_factor_compat(code, start_date, end_date)
             if df is not None and len(df) >= 60:
                 ok += 1
                 save_progress(code, progress)
-                cached_min, cached_max = sc.get_stk_factor_range(code)
+                cached_min, cached_max = sc.get_daily_cache_range(code)
                 print(f"  OK ({len(df)}行, {cached_min}~{cached_max})")
             else:
                 # 可能是次新股或停牌股，缓存几条算几条
                 rows = len(df) if df is not None else 0
-                cached_min, cached_max = sc.get_stk_factor_range(code)
+                cached_min, cached_max = sc.get_daily_cache_range(code)
                 print(f"  部分({rows}行, {cached_min}~{cached_max})")
                 save_progress(code, progress)
                 ok += 1
@@ -165,13 +165,13 @@ def backfill(codes=None, start_date=None, resume=False):
     print(f"\n{'='*55}")
     print(f"  完成！成功 {ok} 只, 失败 {fail} 只")
     print(f"  耗时 {total_time:.0f}s, 平均 {total_time/max(ok+fail,1):.1f}s/只")
-    cached_stocks = sc.count_stk_factor_stocks()
-    cached_rows = sc.count_stk_factor_rows()
+    cached_stocks = sc.count_daily_stocks()
+    cached_rows = sc.count_daily_rows()
     print(f"  SQLite 累计: {cached_stocks} 只, {cached_rows} 行")
     print(f"{'='*55}")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='全市场 stk_factor_pro 缓存补足工具')
+    parser = argparse.ArgumentParser(description='全市场日线窄表缓存补足工具')
     parser.add_argument('--start-date', help='起始日期 YYYYMMDD，默认自动计算约2年前')
     parser.add_argument('--resume', action='store_true', help='从断点续传')
     parser.add_argument('--status', action='store_true', help='只看缓存状态')

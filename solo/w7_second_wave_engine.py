@@ -126,8 +126,8 @@ def safe_mean(values, default=0.0):
 # ma_bfq_* 不再读宽表：本地按前复权收盘(=close×adj/每股末因子)滚动计算，复现原口径。
 # ─────────────────────────────────────────────
 _BARS_SELECT = """SELECT d.ts_code, d.trade_date, d.open, d.high, d.low, d.close,
-       d.pct_chg, d.vol,
-       b.turnover_rate, b.turnover_rate_f, b.circ_mv,
+       d.pct_chg, d.vol, d.amount,
+       b.turnover_rate, b.turnover_rate_f, b.volume_ratio, b.circ_mv,
        a.adj_factor
   FROM daily_cache AS d
   LEFT JOIN daily_basic_cache AS b
@@ -1249,7 +1249,7 @@ def main():
             result["ige_snap"] = ige_snap
             results.append(result)
     text = markdown(results, date)
-    output = args.output or os.path.join(OUTPUT_DIR, f"w7_second_wave_{date}.md")
+    output = os.path.abspath(args.output or os.path.join(OUTPUT_DIR, f"w7_second_wave_{date}.md"))
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "w", encoding="utf-8") as fh:
         fh.write(text)

@@ -154,9 +154,11 @@ class MarketRegimeV3:
         print("\n[2/6] 计算市场宽度...")
         breadth_result = self.breadth_engine.evaluate(trade_date)
         if breadth_result is None:
-            print("  ⚠️ 数据库无当日数据，自动调用Tushare缓存...")
+            print("  ⚠️ 数据库无当日数据，自动拉取全市场窄表缓存...")
             try:
-                sc.batch_cache_stk_factor_pro(trade_date)
+                sc.daily_market(trade_date)
+                sc.daily_basic_market(trade_date)
+                sc.adj_factor_market(trade_date)
             except Exception as e:
                 print(f"  ❌ 缓存失败: {e}")
                 return None
@@ -166,16 +168,18 @@ class MarketRegimeV3:
                 print("  ❌ 缓存后仍无数据，跳过")
                 return None
 
-        # 数据完整性检查：若当日数据量不足，按个股补全
+        # 数据完整性检查：若当日数据量不足，按日补全窄表
         if breadth_result is not None:
-            import sqlite3 as _sc
-            _conn = _sc.connect(sc.DB_PATH)
-            _cur = _conn.cursor()
-            _cur.execute('SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date=?', (trade_date,))
-            _row_count = _cur.fetchone()[0]
-            _conn.close()
+            _row_count = sc.get_daily_by_date_count(trade_date)
             if _row_count < 5000:
-                _supplemented = sc.supplement_missing_stocks(trade_date, target_count=5000)
+                try:
+                    sc.daily_market(trade_date)
+                    sc.daily_basic_market(trade_date)
+                    sc.adj_factor_market(trade_date)
+                    _supplemented = sc.get_daily_by_date_count(trade_date) - _row_count
+                except Exception as _e:
+                    print(f"  ⚠️ 补全失败: {_e}")
+                    _supplemented = 0
                 if _supplemented > 0:
                     print(f"  ✅ 补全完成，重新计算宽度...")
                     breadth_result = self.breadth_engine.evaluate(trade_date)
@@ -991,7 +995,7 @@ class MarketRegimeV3:
         try:
             import stock_cache as sc
             start = (pd.to_datetime(trade_date) - pd.Timedelta(days=120)).strftime('%Y%m%d')
-            return sc.cached_stk_factor_pro(ts_code, start, trade_date, silent=True)
+            return sc.cached_stk_factor_compat(ts_code, start, trade_date, silent=True)
         except Exception:
             return None
 

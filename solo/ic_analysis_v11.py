@@ -28,6 +28,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+import stock_cache as sc
+
 warnings.filterwarnings('ignore')
 
 # ========================= 配置 =========================
@@ -69,14 +71,14 @@ def _query_chunk(args):
     last = None
     for attempt in range(8):
         try:
-            con = sqlite3.connect(f'file:{DB_PATH}?mode=ro', uri=True, timeout=120)
-            try:
-                con.execute('PRAGMA busy_timeout=120000')
-                ph = ','.join('?' * len(dlist))
-                q = f"SELECT {cols} FROM stk_factor_pro WHERE trade_date IN ({ph})"
-                return pd.read_sql_query(q, con, params=list(dlist))
-            finally:
-                con.close()
+            parts = []
+            for d in dlist:
+                df_d = sc.fetch_market_by_date(str(d), cols=cols)
+                if not df_d.empty:
+                    parts.append(df_d)
+            if not parts:
+                return pd.DataFrame(columns=cols)
+            return pd.concat(parts, ignore_index=True)
         except Exception as e:
             last = e
             _t.sleep(6)
@@ -86,8 +88,8 @@ def _query_chunk(args):
 def load_panel(n_workers=8, use_cache=True):
     """并行读取行情面板，返回 (T x N) 矩阵字典。首次读取后落盘 parquet 缓存。"""
     print('[1/6] 读取行情面板（并行）...')
-    cols = ('ts_code,trade_date,open,high,low,close,close_qfq,open_qfq,'
-            'vol,amount,pct_chg,total_mv,turnover_rate,volume_ratio')
+    cols = ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'close_qfq', 'open_qfq',
+            'vol', 'amount', 'pct_chg', 'total_mv', 'turnover_rate', 'volume_ratio']
     cache_pq = os.path.join(OUT_DIR, f'panel_{START_DATE}_{END_DATE}.parquet')
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -96,12 +98,8 @@ def load_panel(n_workers=8, use_cache=True):
         print(f'    命中缓存 {cache_pq}: {len(df):,} 行')
         return _to_mats(df)
 
-    con = _connect_ro()
-    dlist = [r[0] for r in con.execute(
-        "SELECT DISTINCT trade_date FROM stk_factor_pro WHERE trade_date>=? AND trade_date<=? "
-        "ORDER BY trade_date", (START_DATE, END_DATE))]
-    dlist = [d for d in dlist if str(d) >= START_DATE]
-    con.close()
+    dlist = [d for d in sc.get_recent_trade_dates(n=1000, end_date=END_DATE)
+             if str(d) >= START_DATE]
     print(f'    目标 {len(dlist)} 个交易日, {n_workers} 线程')
 
     chunks = [(dlist[i::n_workers], cols) for i in range(n_workers) if dlist[i::n_workers]]

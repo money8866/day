@@ -9,6 +9,9 @@ import os, sys, time, json
 import tushare as ts
 import numpy as np
 
+sys.path.insert(0, r'D:\mystock\solo')
+from stock_cache import cached_stk_factor_compat
+
 for _l in open(r'D:\mystock\config\.env'):
     if _l.strip().startswith('TUSHARE_TOKEN='):
         TOKEN = _l.strip().split('=', 1)[1].strip().strip('"')
@@ -61,9 +64,8 @@ for i, ts_code in enumerate(pool):
         print(f"  进度: {i}/{len(pool)}")
     
     try:
-        # 获取 stk_factor_pro（含前复权价）
-        df = pro.stk_factor_pro(ts_code=ts_code, start_date=START, end_date=END)
-        time.sleep(0.06)
+        # 获取本地三表缓存派生数据（原 stk_factor_pro）
+        df = cached_stk_factor_compat(ts_code, START, END, silent=True)
         if df is None or len(df) < 60:
             continue
         

@@ -8,6 +8,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import stock_cache as sc
+
 DB = r'D:\mystock\cache_daily\stock_data.db'
 OUTPUT_DIR = r'D:\mystock\solo\trend_feature_output'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -37,25 +39,20 @@ SELECTED_CODES = [
 ]
 
 def get_data(ts_code: str) -> pd.DataFrame | None:
-    conn = sqlite3.connect(DB)
     try:
-        sql = """SELECT trade_date, open, high, low, close, pct_chg, vol, volume_ratio,
-                        ma_bfq_5, ma_bfq_10, ma_bfq_20, ma_bfq_60,
-                        rsi_bfq_6, rsi_bfq_12, macd_bfq_dif, macd_bfq_dea
-                 FROM stk_factor_pro 
-                 WHERE ts_code = ? 
-                 ORDER BY trade_date"""
-        df = pd.read_sql_query(sql, conn, params=(ts_code,))
-        conn.close()
-        if len(df) < 60:
+        df = sc.cached_stk_factor_compat(ts_code, '19900101',
+                                         datetime.now().strftime('%Y%m%d'), silent=True)
+        if df is not None:
+            df = df.rename(columns={'macd_dif_bfq': 'macd_bfq_dif',
+                                    'macd_dea_bfq': 'macd_bfq_dea'})
+        if df is None or len(df) < 60:
             return None
         # 计算衍生指标
         df['return_1d'] = df['close'].pct_change(1) * 100
         df['above_ma20_pct'] = (df['close'] - df['ma_bfq_20']) / df['ma_bfq_20'] * 100
         df['above_ma60_pct'] = (df['close'] - df['ma_bfq_60']) / df['ma_bfq_60'] * 100
         return df
-    except Exception as e:
-        conn.close()
+    except Exception:
         return None
 
 def check_signal(df, idx, min_score=50):

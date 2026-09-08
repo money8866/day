@@ -390,7 +390,7 @@ class InstitutionPullbackAlphaV2:
 
             candidates = []
             for code in codes:
-                df = sc.cached_stk_factor_pro(code, start, td, silent=True)
+                df = sc.cached_stk_factor_compat(code, start, td, silent=True)
                 if df is None or df.empty or len(df) < 120:
                     continue
                 close = df['close_hfq'].values if 'close_hfq' in df.columns else df['close'].values

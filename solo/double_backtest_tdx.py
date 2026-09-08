@@ -120,21 +120,36 @@ def main():
     n = len(d250)
     base = d250.dbl_h.mean()
     mv = 10 ** (d250.log_mv - 4)  # 亿元
-    t1 = (mv <= 30) & (d250.turn_today >= 8) & (d250.rel_hi250 < -0.10) & (d250.ma60_x < 0.10) & (d250.ma20_x < 0.15)
-    t2 = (mv <= 50) & (d250.turn_today >= 8)
+    t1 = (mv <= 30) & (d250.turn_today >= 8) & (d250.rel_hi250 <= -0.25) & (d250.ma60_x < 0.10) & (d250.ma20_x < 0.15)
+    t2 = (mv <= 50) & (d250.turn_today >= 8) & (d250.turn_20m >= 3)
     g_small = mv <= 30
     g_turn = d250.turn_today >= 8
     L = ["# 天量后长线翻倍 — TDX 框架日线交叉验证", "",
          f"事件：{len(m)} 个（TDX 可回放）｜D250 完整：{n} 个",
          f"整体翻倍率(TDX日线)：{base*100:.1f}%｜收盘口径翻倍：{d250.dbl_c.mean()*100:.1f}%",
          "> 旧(stk_factor)版：整体 19.3% / 收盘 17.2%｜TDX 独立日线重算与其一致即画像方向可信。", ""]
+    yr = d250.date.astype(str).str[:4]
+
+    def yrate(msk):
+        g = d250[msk]
+        yy = yr[msk]
+        r24, r25 = g[yy == "2024"].dbl_h.mean(), g[yy == "2025"].dbl_h.mean()
+        fmt = lambda v: f"{v*100:.1f}%" if pd.notna(v) else "-"
+        return fmt(r24), fmt(r25)
+
+    tier_rows = [
+        ("全体 D250", np.ones(n, bool), "基准"),
+        ("流通≤30亿", g_small, "旧32.8%"),
+        ("当日换手≥8%", g_turn, "旧24.6%"),
+        ("TIER1核心画像", t1, "旧≈38%"),
+        ("TIER2基础画像", t2, "旧≈28-33%"),
+    ]
     L += ["## 一、画像在 TDX 日线上的翻倍率", "",
-          "| 条件组 | n | TDX翻倍率 | 备注 |", "|---|---|---|---|",
-          f"| 全体 D250 | {n} | {base*100:.1f}% | 基准 |",
-          f"| 流通≤30亿 | {int(g_small.sum())} | {d250[g_small].dbl_h.mean()*100:.1f}% | 旧32.8% |",
-          f"| 当日换手≥8% | {int(g_turn.sum())} | {d250[g_turn].dbl_h.mean()*100:.1f}% | 旧24.6% |",
-          f"| TIER1核心画像 | {int(t1.sum())} | {d250[t1].dbl_h.mean()*100:.1f}% | 旧≈38% |",
-          f"| TIER2基础画像 | {int(t2.sum())} | {d250[t2].dbl_h.mean()*100:.1f}% | 旧≈28-33% |", ""]
+          "| 条件组 | n | TDX翻倍率 | 2024 | 2025 | 备注 |", "|---|---|---|---|---|---|"]
+    for lab, msk, note in tier_rows:
+        r24, r25 = yrate(msk)
+        L.append(f"| {lab} | {int(msk.sum())} | {d250[msk].dbl_h.mean()*100:.1f}% | {r24} | {r25} | {note} |")
+    L.append("")
 
     # 单调性抽查：市值分位
     q = pd.qcut(mv.rank(method="first"), 4, labels=["Q1小", "Q2", "Q3", "Q4大"])

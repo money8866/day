@@ -29,7 +29,7 @@ def precompute_regime_map(conn):
     """一次聚合全市场每日等权收益，构建 trade_date -> regime 映射（回测热点用，避免每次全表聚合）。"""
     q = """
         SELECT trade_date, AVG(pct_chg) AS m
-        FROM stk_factor_pro
+        FROM daily_cache
         WHERE pct_chg IS NOT NULL
         GROUP BY trade_date
     """

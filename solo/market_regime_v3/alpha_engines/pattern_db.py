@@ -576,7 +576,7 @@ def backfill_labels(trade_date: str, lookahead: int = 20):
         code = row['ts_code']
         rec_date = row['trade_date']
         try:
-            df = sc.cached_stk_factor_pro(code, rec_date, end_date, silent=True)
+            df = sc.cached_stk_factor_compat(code, rec_date, end_date, silent=True)
             if df is None or df.empty:
                 continue
 

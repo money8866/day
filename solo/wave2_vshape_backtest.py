@@ -163,7 +163,7 @@ def detect_signals_vectorized(df: pd.DataFrame) -> Tuple[np.ndarray, List[Dict]]
     L = df["low"].values
     VOL = df["vol"].values
     # tdx day 文件无 volume_ratio 字段, 用 当日量/前5日均量 近似
-    # 注意: wave2_pattern_scanner 中的 volume_ratio 来自 stk_factor_pro, 此处用近似值
+    # 注意: wave2_pattern_scanner 中的 volume_ratio 来自三窄表缓存派生, 此处用近似值
 
     # 预计算指标
     ma5 = _rolling_mean_np(C, 5)

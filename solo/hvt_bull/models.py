@@ -38,6 +38,7 @@ class HvtEvent:
     t0_high: float = 0.0
     t0_low: float = 0.0
     t0_mid: float = 0.0
+    t0_prev_limit_up: bool = False  # T-1 收盘涨停（涨停次日豁免依据）
 
     # 前期趋势
     ma20: float = 0.0

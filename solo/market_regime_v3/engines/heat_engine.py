@@ -8,7 +8,6 @@
 import os
 import sys
 import json
-import sqlite3
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -23,7 +22,6 @@ from inst_pullback_v2.data.indicators import atr, sma
 from market_regime_v3.engines import resolve_theme_stock_map_path
 
 # 常量
-_STK_FACTOR_DB = sc.DB_PATH
 CACHE_DIR = r"D:\mystock\cache_daily"
 
 
@@ -146,65 +144,44 @@ class HeatEngine:
     # ────────────────────────────────────────────────────────
 
     def _query_stk_factor_by_date(self, trade_date: str) -> pd.DataFrame:
-        """从 stk_factor_pro 表查询指定日期的全市场行情数据"""
-        if not os.path.exists(_STK_FACTOR_DB):
-            return pd.DataFrame()
+        """从新缓存（窄表三表链路）读取指定日期的全市场行情数据"""
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df = pd.read_sql_query(
-                "SELECT ts_code, pct_chg, amount, close_hfq, high, low "
-                "FROM stk_factor_pro WHERE trade_date = ?",
-                conn, params=(trade_date,)
-            )
-            conn.close()
-            if df is not None and not df.empty:
-                df['pct_chg'] = pd.to_numeric(df['pct_chg'], errors='coerce')
-                df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
-                df['close_hfq'] = pd.to_numeric(df['close_hfq'], errors='coerce')
-            return df
+            df = sc.fetch_market_by_date(
+                trade_date,
+                cols=('ts_code', 'pct_chg', 'amount', 'close_hfq', 'high', 'low'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        for col in ('pct_chg', 'amount', 'close_hfq'):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
 
     def _query_stk_factor_dates(self, start_date: str, end_date: str,
-                                fields: str = "trade_date, ts_code, pct_chg, amount, close_hfq, high, low") -> pd.DataFrame:
-        """从 stk_factor_pro 查询日期范围内的数据"""
-        if not os.path.exists(_STK_FACTOR_DB):
-            return pd.DataFrame()
+                                fields: str = "trade_date, amount") -> pd.DataFrame:
+        """从新缓存查询日期范围内的按日聚合数据（当前仅支持 amount 聚合场景）"""
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df = pd.read_sql_query(
-                f"SELECT {fields} FROM stk_factor_pro "
-                "WHERE trade_date >= ? AND trade_date <= ?",
-                conn, params=(start_date, end_date)
-            )
-            conn.close()
-            if df is not None and not df.empty:
-                for col in ['pct_chg', 'amount', 'close_hfq', 'high', 'low']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-            return df
+            if 'amount' in fields:
+                df = sc.fetch_market_amounts_by_date(start_date, end_date)
+                if df is not None and not df.empty:
+                    df['total_amount'] = pd.to_numeric(df['total_amount'], errors='coerce')
+                    df = df.rename(columns={'total_amount': 'amount'})
+                return df if df is not None else pd.DataFrame()
+            return pd.DataFrame()
         except Exception:
             return pd.DataFrame()
 
     def _get_trade_dates_before(self, trade_date: str, n: int) -> List[str]:
-        """获取 trade_date 之前的 n 个交易日（从 stk_factor_pro 的日期列表中取）"""
-        if not os.path.exists(_STK_FACTOR_DB):
-            return []
+        """获取 trade_date 之前的 n 个交易日（含当日，降序返回；须精确命中缓存日期列表）"""
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df = pd.read_sql_query(
-                "SELECT DISTINCT trade_date FROM stk_factor_pro ORDER BY trade_date DESC",
-                conn
-            )
-            conn.close()
-            if df is not None and not df.empty:
-                dates = df['trade_date'].astype(str).tolist()
-                if trade_date in dates:
-                    idx = dates.index(trade_date)
-                    return dates[:idx + 1][:n + 1]
-            return []
+            dates_asc = sc.get_recent_trade_dates(n=n + 1, end_date=trade_date)
         except Exception:
             return []
+        dates_asc = [str(d) for d in dates_asc]
+        if not dates_asc or dates_asc[-1] != trade_date:
+            return []
+        return sorted(dates_asc, reverse=True)
 
     # ────────────────────────────────────────────────────────
     # 1. 成交量热度 (Volume Heat)
@@ -323,18 +300,13 @@ class HeatEngine:
 
         # 取 20 天前的日期
         date_20d_ago = dates[min(19, len(dates) - 1)]
-        # 取该日期的收盘价
+        # 取该日期的收盘价（新缓存窄表链路）
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df_20d = pd.read_sql_query(
-                "SELECT ts_code, close_hfq FROM stk_factor_pro WHERE trade_date = ?",
-                conn, params=(date_20d_ago,)
-            )
-            conn.close()
+            df_20d = sc.fetch_market_by_date(date_20d_ago, cols=('ts_code', 'close_hfq'))
         except Exception:
             return 0.0
 
-        if df_20d.empty:
+        if df_20d is None or df_20d.empty:
             return 0.0
 
         df_20d['close_hfq'] = pd.to_numeric(df_20d['close_hfq'], errors='coerce')
@@ -450,22 +422,14 @@ class HeatEngine:
         date_20d = dates[min(19, len(dates) - 1)]
 
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            # 取今日收盘价
-            df_today = pd.read_sql_query(
-                "SELECT ts_code, close_hfq FROM stk_factor_pro WHERE trade_date = ?",
-                conn, params=(date_today,)
-            )
+            # 取今日收盘价（新缓存窄表链路）
+            df_today = sc.fetch_market_by_date(date_today, cols=('ts_code', 'close_hfq'))
             # 取 20 天前收盘价
-            df_20d = pd.read_sql_query(
-                "SELECT ts_code, close_hfq FROM stk_factor_pro WHERE trade_date = ?",
-                conn, params=(date_20d,)
-            )
-            conn.close()
+            df_20d = sc.fetch_market_by_date(date_20d, cols=('ts_code', 'close_hfq'))
         except Exception:
             return 50.0, "查询龙头数据失败"
 
-        if df_today.empty or df_20d.empty:
+        if df_today is None or df_today.empty or df_20d is None or df_20d.empty:
             return 50.0, "龙头数据不足"
 
         df_today['close_hfq'] = pd.to_numeric(df_today['close_hfq'], errors='coerce')

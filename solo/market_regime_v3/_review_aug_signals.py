@@ -4,17 +4,19 @@
 逻辑：
   1. 读取 report_daily/right_confirm_buy_202608*.json（V8）与 breakout_timing_202608*.json（V9）
   2. 每个信号作为一个事件：V8 S/A/B=买信号, C=观察; V9 PRIMARY_BUY/PRIMARY_RETEST_BUY/NEAR_TRIGGER=买信号, 其余=观察
-  3. 用 stk_factor_pro 缓存（close*adj_factor 复权空间）计算：
+  3. 用本地缓存三表链路 sc.fetch_hist_range（close*adj_factor 复权空间）计算：
      T+1开盘买入 → +3/+5/+10日收益、期末收益、MFE/MAE、止损/止盈命中
   4. qfq 锚点校验：V9 的 current_price 应≈信号日 raw close（qfq 锚定信号日）
 """
 import json
 import glob
 import os
-import sqlite3
+import sys
 import statistics as st
 
-DB = r"D:\mystock\cache_daily\stock_data.db"
+sys.path.insert(0, r"D:\mystock\solo")
+import stock_cache as sc
+
 REPORT_DIR = r"D:\mystock\solo\report_daily"
 END_DATE = "20260904"
 V8_BUY = {"S", "A", "B"}
@@ -58,15 +60,12 @@ def load_events():
 
 
 def query(code, start, end):
-    conn = sqlite3.connect(DB)
-    try:
-        cur = conn.execute(
-            "SELECT trade_date, open_qfq, high_qfq, low_qfq, close_qfq, adj_factor "
-            "FROM stk_factor_pro WHERE ts_code=? AND trade_date>=? AND trade_date<=? "
-            "ORDER BY trade_date", (code, start, end))
-        return cur.fetchall()
-    finally:
-        conn.close()
+    cols = ["open_qfq", "high_qfq", "low_qfq", "close_qfq", "adj_factor"]
+    df = sc.fetch_hist_range(start, end, ts_codes=[code], cols=cols)
+    if df is None or df.empty:
+        return []
+    df = df.sort_values("trade_date").reset_index(drop=True)
+    return [tuple(r) for r in df[["trade_date"] + cols].itertuples(index=False, name=None)]
 
 
 def eval_event(ev):

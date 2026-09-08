@@ -28,6 +28,7 @@ import pandas as pd
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stock_cache as sc
 from bear_trap_timing import (
     DB_PATH, CACHE_DIR, OUTPUT_DIR, _safe, _resolve_trade_date,
     PriceVolumeTrapDetector, BearTrapScorer,
@@ -50,14 +51,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def get_trading_dates(start_date: str = '20260101', end_date: str = None) -> List[str]:
     """获取交易日期列表"""
-    conn = sqlite3.connect(DB_PATH)
-    if end_date is None:
-        cursor = conn.execute("SELECT MAX(trade_date) FROM stk_factor_pro")
-        end_date = cursor.fetchone()[0]
-    sql = "SELECT DISTINCT trade_date FROM stk_factor_pro WHERE trade_date >= ? AND trade_date <= ? ORDER BY trade_date"
-    df = pd.read_sql(sql, conn, params=(start_date, end_date))
-    conn.close()
-    return df['trade_date'].tolist()
+    dates = sc.get_recent_trade_dates(n=100000, end_date=end_date)
+    return [d for d in dates if d >= start_date]
 
 
 def load_stock_pool() -> List[Dict]:
@@ -105,26 +100,9 @@ def load_all_daily_data(dates: List[str], pool_codes: List[str]) -> pd.DataFrame
             'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq',
             'atr_bfq', 'total_mv', 'circ_mv', 'pe_ttm', 'pb']
 
-    col_str = ', '.join(cols)
-    placeholders = ','.join(['?'] * len(ts_codes))
-
-    conn = sqlite3.connect(DB_PATH)
-    # 分批加载避免 SQL 过长
-    chunk_size = 200
-    chunks = []
-    for i in range(0, len(ts_codes), chunk_size):
-        chunk_codes = ts_codes[i:i + chunk_size]
-        chunk_ph = ','.join(['?'] * len(chunk_codes))
-        sql = f"SELECT {col_str} FROM stk_factor_pro WHERE ts_code IN ({chunk_ph}) AND trade_date >= ?"
-        params = chunk_codes + [dates[0]]
-        df_chunk = pd.read_sql(sql, conn, params=params)
-        if not df_chunk.empty:
-            chunks.append(df_chunk)
-    conn.close()
-
-    if not chunks:
+    df = sc.fetch_hist_range(dates[0], None, ts_codes=ts_codes, cols=cols)
+    if df.empty:
         return pd.DataFrame()
-    df = pd.concat(chunks, ignore_index=True)
     df = df.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
     return df
 

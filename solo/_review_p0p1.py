@@ -2,7 +2,7 @@
 """
 A/B 回测：验证 P1(平台紧凑度+上方阻力, 门控) 对"突破后假突破/盘整"的过滤效果；
 并检验 P0(大周期趋势硬门槛) 是否适合当前弱市环境。
-数据：D:\\mystock\\cache_daily\\stock_data.db  stk_factor_pro (qfq 前复权)
+数据：stock_cache 三窄表缓存派生（daily_cache+daily_basic_cache+adj_factor_cache，qfq 前复权）
 事件：2026-06-01 ~ 2026-08-07 间"创20日新高突破"事件(近似今日突破池)，T+1开盘买入持有20日
 口径声明：
   1) 近似池≠线上完整 strategy 全条件(无ST名单/主题共振)，仅用于衡量 P0/P1 因子的判别力
@@ -12,6 +12,8 @@ A/B 回测：验证 P1(平台紧凑度+上方阻力, 门控) 对"突破后假突
 import sqlite3
 import numpy as np
 import pandas as pd
+
+from stock_cache import cached_stk_factor_compat
 
 DB = r"D:\mystock\cache_daily\stock_data.db"
 START, END = "20250801", "20260904"
@@ -30,7 +32,7 @@ def limit_up_ratio(code):
 
 conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 codes = [r[0] for r in conn.execute(
-    "SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date >= ?", (EV_LO,))]
+    "SELECT DISTINCT ts_code FROM daily_cache WHERE trade_date >= ?", (EV_LO,))]
 codes = [c for c in codes if is_a(c)]
 print(f"股票池 {len(codes)} 只")
 
@@ -39,10 +41,9 @@ excluded_drift = 0
 dropped_short = 0
 
 for code in codes:
-    df = pd.read_sql(
-        "SELECT trade_date, open_qfq, high_qfq, low_qfq, close_qfq, vol, total_mv, adj_factor "
-        "FROM stk_factor_pro WHERE ts_code=? AND trade_date BETWEEN ? AND ? ORDER BY trade_date",
-        conn, params=[code, START, END])
+    df = cached_stk_factor_compat(code, START, END, silent=True)
+    if df is None or df.empty:
+        continue
     if len(df) < 200:
         continue
     C = df["close_qfq"].values.astype(float)
@@ -179,12 +180,9 @@ stat(~ev["p0_pass"], "P0剔除组(下行MA120/深回撤>45%)")
 print("注: 若剔除组反而更好 → 当前弱市超跌反弹是主要有效策略，P0 应在弱市关闭")
 
 print("\n===== 中文在线 0831 case（窗口外，仅验证剔除判定） =====")
-conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-zd = pd.read_sql(
-    "SELECT trade_date, open_qfq, high_qfq, low_qfq, close_qfq, vol, total_mv, adj_factor "
-    "FROM stk_factor_pro WHERE ts_code='300364.SZ' AND trade_date BETWEEN ? AND ? ORDER BY trade_date",
-    conn, params=[START, END])
-conn.close()
+zd = cached_stk_factor_compat('300364.SZ', START, END, silent=True)
+if zd is None or zd.empty:
+    raise SystemExit("300364.SZ 数据缺失")
 C = zd["close_qfq"].values.astype(float); H = zd["high_qfq"].values.astype(float)
 L = zd["low_qfq"].values.astype(float)
 i = int(np.where((zd["trade_date"].values == "20260831"))[0][0])

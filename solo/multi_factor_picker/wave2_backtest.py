@@ -2,12 +2,12 @@
 """
 二波行情调整形态量化回测
 研究：一波20%+拉升后，什么样的调整形态最可能产生第二波？
-数据源：Tushare stk_factor(技术因子) + daily_basic(量比/换手) + moneyflow(资金流)
+数据源：本地三窄表缓存派生(技术因子) + daily_basic(量比/换手) + moneyflow(资金流)
 回测区间：2024-01-01 ~ 2026-06-20
 样本：沪深300成分股
 """
 import os, sys, time, datetime, json, io
-sys.path.insert(0, r'D:\mystock')
+sys.path.insert(0, r'D:\mystock\solo')
 
 OUT_DIR = r'D:\mystock\solo\multi_factor_picker\output'
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -76,13 +76,11 @@ def _get_df():
 
 _dfetch = _get_df()
 
+import stock_cache as sc
+
 def _get_stk_factor_pro_range(ts_code, start, end):
-    """按股票+日期范围获取stk_factor_pro（DataFetcher仅有按trade_date的接口，这里用通用缓存+限频包裹范围查询）"""
-    if _dfetch is not None:
-        cache_key = f"stk_factor_pro_range_{_dfetch._safe_name(ts_code)}_{start}_{end}"
-        return _dfetch._get_df_cached(cache_key, _dfetch.pro.stk_factor_pro,
-                                       ts_code=ts_code, start_date=start, end_date=end)
-    return pro.stk_factor_pro(ts_code=ts_code, start_date=start, end_date=end)
+    """按股票+日期范围获取技术因子（窄表三表缓存转发，本地派生指标）"""
+    return sc.cached_stk_factor_compat(ts_code, start, end, silent=True)
 
 def _get_index_weight(index_code, start_date, end_date):
     """指数权重（DataFetcher未覆盖，用_retry_call包裹获得限频+重试）"""
@@ -144,7 +142,7 @@ time.sleep(0.1)
 print("[Step 3] 获取股票日线数据和技术因子...")
 
 def load_stock_data(ts_code, start=START_DATE, end=END_DATE):
-    """获取单只股票的日线+stk_factor+daily_basic"""
+    """获取单只股票的日线+三窄表派生因子+daily_basic"""
     try:
         # 日线
         if _dfetch is not None:

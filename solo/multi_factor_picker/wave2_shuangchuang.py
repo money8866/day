@@ -4,7 +4,7 @@
 对比分析双创板与主板（沪深300）的二波形态差异
 """
 import os, sys, time, datetime, json, io
-sys.path.insert(0, r'D:\mystock')
+sys.path.insert(0, r'D:\mystock\solo')
 
 OUT_DIR = r'D:\mystock\solo\multi_factor_picker\output'
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -72,13 +72,11 @@ def _get_df():
 
 _dfetch = _get_df()
 
+import stock_cache as sc
+
 def _get_stk_factor_pro_range(ts_code, start, end):
-    """按股票+日期范围获取stk_factor_pro（DataFetcher仅有按trade_date的接口，这里用通用缓存+限频包裹范围查询）"""
-    if _dfetch is not None:
-        cache_key = f"stk_factor_pro_range_{_dfetch._safe_name(ts_code)}_{start}_{end}"
-        return _dfetch._get_df_cached(cache_key, _dfetch.pro.stk_factor_pro,
-                                       ts_code=ts_code, start_date=start, end_date=end)
-    return pro.stk_factor_pro(ts_code=ts_code, start_date=start, end_date=end)
+    """按股票+日期范围获取技术因子（窄表三表缓存转发，本地派生指标）"""
+    return sc.cached_stk_factor_compat(ts_code, start, end, silent=True)
 
 # ═══════════════════════════════════════════════════════
 # 参数（与主回测一致）

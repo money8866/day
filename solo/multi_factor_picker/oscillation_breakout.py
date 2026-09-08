@@ -22,6 +22,9 @@ import tushare as ts
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+sys.path.insert(0, r'D:\mystock\solo')
+import stock_cache as sc
+
 # 参数（基于烽火通信案例）
 OSCILLATION_MIN = 0.30      # 震荡幅度>30%
 OSCILLATION_DAYS_MIN = 30   # 震荡周期>30天
@@ -58,7 +61,7 @@ for idx, code in enumerate(pool):
         print(f'进度 {idx+1}/{len(pool)}  找到{len(all_signals)}个信号  ETA{eta:.0f}s')
 
     try:
-        df = pro.stk_factor_pro(ts_code=code, start_date=START_DATE, end_date=END_DATE)
+        df = sc.cached_stk_factor_compat(code, START_DATE, END_DATE, pro=pro, silent=True)
         if df is None or len(df) < 150:
             continue
         df = df.sort_values('trade_date').reset_index(drop=True)

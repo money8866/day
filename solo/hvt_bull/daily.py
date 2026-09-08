@@ -357,11 +357,18 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         result['te_max_buy'] = int(te_cfg.get('max_buy_candidates', 3))
         # V3.6：BUY 池落盘用剔除前原始 top3 作 streak 递推源（回测模拟口径：R1/R2 只过滤当日显示，不回馈 streak）
         _raw, _kept, _dropped = _te_buy_pool_filter(events, result['te_max_buy'])
-        result['te_buy_pool'] = [{'ts_code': e.ts_code, 'name': e.name,
-                                  'reentry_streak': int(getattr(e, 'reentry_streak', 0) or 0),
-                                  'next_day_action': getattr(e, 'next_day_action', ''),
-                                  'te_decision_point': getattr(e, 'te_decision_point', '') or '',
-                                  'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1)}
+        # 附带跟踪富化字段（stock_pick_db: current_close 作收益基准, stop_loss/target1 供命中判定;
+        # streak 递推只读 ts_code, 新增字段不影响既有消费方）
+        _track_extra = ('current_close', 'stop_loss', 'target1', 'sector_name',
+                        'execution_reason', 'state', 't0_date', 'hvt_grade',
+                        'entry_trigger', 'buy_zone_low', 'buy_zone_high',
+                        'invalidation', 'position_size')
+        result['te_buy_pool'] = [dict({'ts_code': e.ts_code, 'name': e.name,
+                                       'reentry_streak': int(getattr(e, 'reentry_streak', 0) or 0),
+                                       'next_day_action': getattr(e, 'next_day_action', ''),
+                                       'te_decision_point': getattr(e, 'te_decision_point', '') or '',
+                                       'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1)},
+                                      **{k: getattr(e, k, None) for k in _track_extra})
                                  for e in _raw]
     with open(os.path.join(out_dir, f'hvt_bull_{trade_date}.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=str)

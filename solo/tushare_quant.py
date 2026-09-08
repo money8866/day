@@ -493,17 +493,13 @@ os.makedirs(MONEYFLOW_STOCK_DIR, exist_ok=True)
 # 缓存API调用（统一入口：sc.* 详见 stock_cache.py）
 # ═══════════════════════════════════════════════════════
 
-def batch_cache_stk_factor_pro(target_date):
-    """委托给 sc.batch_cache_stk_factor_pro"""
-    sc.batch_cache_stk_factor_pro(target_date)
-
 def get_list_date(ts_code):
     """委托给 sc.get_list_date"""
     return sc.get_list_date(ts_code)
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """委托给 sc.cached_stk_factor_pro"""
-    return sc.cached_stk_factor_pro(ts_code, start_date, end_date)
+    """委托给 sc.cached_stk_factor_compat"""
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date)
 
 # ═══════════════════════════════════════════════════════
 
@@ -517,7 +513,7 @@ DC_HOT_CACHE_DIR = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'dc_hot')
 
 
 def _add_daily_indicators(df):
-    """用日线缓存(daily_cache)本地计算技术指标列，替代 stk_factor_pro 的 *_bfq 指标
+    """用日线缓存(daily_cache)本地计算技术指标列，替代窄表三表链路的 *_bfq 指标
 
     覆盖 detect_breakout 使用到的全部因子：MA5/10/20/60/90/250、BOLL(20,2)、
     MACD(12,26,9)、KDJ(9,3,3) 的 J 值、RSI(6)、ATR(14)、量比。
@@ -641,7 +637,7 @@ def detect_breakout(ts_code, pro, trade_date=None):
         # 取约1年数据用于：60日高点、MA250、ATR分位、布林宽度收缩
         start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=400)).strftime('%Y%m%d')
         # 数据源改用 daily_cache 日线缓存（仅 OHLCV），所需技术指标由 _add_daily_indicators
-        # 本地计算，不再依赖 stk_factor_pro 的 *_bfq 指标字段
+        # 本地计算，不再依赖窄表三表链路的 *_bfq 指标字段
         df = sc.cached_daily(ts_code, start_date, end_date)
 
         if df is None or df.empty:
@@ -659,7 +655,7 @@ def detect_breakout(ts_code, pro, trade_date=None):
 
         # 前复权对齐：qfq = raw × adj_factor / 检测日adj_factor，使 MA/BOLL/MACD/KDJ/RSI/ATR
         # 与行情软件前复权口径一致（检测日当日价不变；adj 取 sc.cached_adj_factor 独立缓存，
-        # 不使用 stk_factor_pro 指标）。adj 缺失时退回不复权口径。
+        # 不使用窄表三表链路指标）。adj 缺失时退回不复权口径。
         try:
             adj_df = sc.cached_adj_factor(ts_code, start_date, end_date)
             if adj_df is not None and not adj_df.empty:
@@ -1752,7 +1748,7 @@ def _calc_pct_n(df, n=20):
 # ======================================================
 def batch_prefetch_hist_data(codes, start_date='20250101'):
     """
-    在主循环之前批量预取所有股票数据到本地缓存（V2: 统一用 SQLite stk_factor_pro）
+    在主循环之前批量预取所有股票数据到本地缓存（V2: 统一用窄表三表链路）
     使用 tushare 批量接口 pro.daily(ts_code="code1,code2,...")
     之后 get_hist_data() 将全部命中 SQLite 缓存，不再调API
     """
@@ -5625,6 +5621,17 @@ def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
         cond_break3 = C[-2] < highest_close and C[-1] >= highest_close and C[-1]/C[-2]<1.09
         cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.11
         result = (cond_break1 or cond_break3) and cond_near_ma5
+        # ===== 反包阳线质量门控：过滤 000026 式「非突破+不放量」的弱反包 =====
+        # 形态：昨日收阴/长上影回落(C[-2]<=C[-3])，今日+5%以上大阳收复 → cond_break1 反包通道。
+        # 反包要有效延续，必须「创新高」(H 突破反包前区间高点)且「真放量」
+        # (量超昨日且超前5日均量×1.1)。否则为套牢区内的缩量诱多反抽，
+        # 例：000026 0904 天量长上影(收19.75<前收)→0907 缩量反包+7%(量未超昨日、
+        #     未收复上影21.65/前高23.61)，次日0908 放量长阴 -6.4%。
+        if result and C[-2] <= C[-3] and C[-1] / C[-2] >= 1.05:
+            _prev_hi = float(H[-ztts - 1:-1].max()) if ztts >= 1 else float(H[-2])
+            _vol_ok = VOL[-1] > VOL[-2] and VOL[-1] > float(np.mean(VOL[-6:-1])) * 1.1
+            if H[-1] <= _prev_hi or not _vol_ok:
+                result = False
     elif is_chip_venture:
         # 双创做低吸：回踩MA20企稳 + 缩量 + 距涨停高点有空间
         dist_from_high = (highest_close - C[-1]) / highest_close
@@ -8448,15 +8455,7 @@ def run(target_date=None, simple_mode=False):
                         continue
                     if len(cells) >= 12:
                         rows.append(cells)
-        # 1.4) 强制 IGE_ADJ 高弹性优先：只要 TOP_PICK 表带 IGE_ADJ 列，就按其降序重排（高弹性行业龙头置顶），
-        #      兜底引擎行序差异，确保喂给大模型的第一只永远是行业弹性最高者（而非按 RR 之类指标）。
-        if rows and "IGE_ADJ" in col_idx:
-            def _ige_v(cells):
-                try:
-                    return float(cells[col_idx["IGE_ADJ"]].strip())
-                except (ValueError, IndexError, KeyError):
-                    return -1.0
-            rows.sort(key=_ige_v, reverse=True)
+        # 1.4) 保留引擎行序（引擎已按 SPACE 空间优选分→IGE_ADJ→T20综合分 排序），此处不再按 IGE_ADJ 二次重排。
         # 1.5) TOP_PICK（七分量全中）无达标 → 回退解析 PRIMARY_BUY 段（过 SLI_V2 龙头硬过滤的可买观察）
         def _fallback_primary_buy():
             """解析 ## 【PRIMARY_BUY】 下各 ### 小节（code 名称（行业）），逐只保留要点行。
@@ -8477,18 +8476,14 @@ def run(target_date=None, simple_mode=False):
                         items.append(cur)
                     elif cur is not None and s.startswith("- "):
                         cur[1].append(s[2:].strip().replace("**", ""))
-            # 1.5a) 与 TOP_PICK 同规：PRIMARY_BUY 小节按 IGE_ADJ 高弹性优先降序重排（行业弹性取自"- 行业弹性：IGE_ADJ xx.x"行）
-            def _ige_of(text):
-                m = re.search(r"IGE_ADJ\s*([\d.]+)", text)
-                return float(m.group(1)) if m else -1.0
-            items.sort(key=lambda it: _ige_of(" ".join(it[1])), reverse=True)
+            # 1.5a) 保留引擎小节序（SPACE 空间优选分降序），不再按 IGE_ADJ 二次重排。
             if not items:
                 print(f"[T20 PRIMARY_BUY] {trade_date} 无 PRIMARY_BUY 候选（TOP_PICK 亦空，W7 段今日无内容）")
                 return ""
             n = len(items)
             p = [
                 "【W7 T20 观察：PRIMARY_BUY 候选（{}只；TOP_PICK 七分量当日无全量达标，以下为通过 SLI_V2 龙头硬过滤的可买观察，供次日回踩择时参考）】".format(n),
-                f"数据来源：W7 T20 Right-Tail 引擎（{trade_date}）| 语义：链路≥4/7 × SLI_V2细分龙头 × Extension=0 | 排序：已按 IGE_ADJ 行业增长弹性高优先降序（高弹性行业龙头在前，展示时禁止重排）| 买点=回踩区缩量企稳，或不破失效位放量确认；收盘跌破失效位=证伪离场",
+                f"数据来源：W7 T20 Right-Tail 引擎（{trade_date}）| 语义：链路≥4/7 × SLI_V2细分龙头 × Extension=0 | 排序：SPACE 空间优选分降序（引擎已排好，展示禁止重排）| 买点=回踩区缩量企稳，或不破失效位放量确认；收盘跌破失效位=证伪离场",
             ]
             for k, (title, bl) in enumerate(items, 1):
                 parts = title.split(None, 1)

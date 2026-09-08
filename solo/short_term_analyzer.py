@@ -14,6 +14,7 @@ import pandas as pd
 
 # 添加主程序目录到路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import stock_cache as sc
 
 # 复用 tushare_quant.py 的配置和工具
 from tushare_quant import (
@@ -83,7 +84,7 @@ def calculate_short_term_win_score(ts_code, pro, trade_date=None, above_chips_pc
 
         # 2. 缓存缺失或过期则调用 stk_factor_pro 专业版接口
         if df is None or df.empty:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date='20250101')
+            df = sc.cached_stk_factor_compat(ts_code, '20250101', str(TRADE_DATE), silent=True)
             if df is not None and not df.empty:
                 df['trade_date'] = df['trade_date'].astype(str)
                 try:

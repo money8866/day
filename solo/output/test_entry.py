@@ -31,7 +31,7 @@ for ld in lr.top_leaders[:5]:
     theme = ld.get('theme', '')
     pb = pd_engine.detect(code, '20260724')
     if pb and pb.is_qualified:
-        df = sc.cached_stk_factor_pro(code, '20260326', '20260724', silent=True)
+        df = sc.cached_stk_factor_compat(code, '20260326', '20260724', silent=True)
         if df is not None and not df.empty:
             close_hfq = df['close_hfq'].values
             ma5 = df['ma_bfq_5'].values if 'ma_bfq_5' in df.columns else None

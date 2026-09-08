@@ -3,10 +3,12 @@
 import json
 import glob
 import os
-import sqlite3
+import sys
 import statistics as st
 
-DB = r"D:\mystock\cache_daily\stock_data.db"
+sys.path.insert(0, r"D:\mystock\solo")
+import stock_cache as sc
+
 REPORT_DIR = r"D:\mystock\solo\report_daily"
 END_DATE = "20260904"
 V8_BUY = {"S", "A", "B"}
@@ -36,14 +38,12 @@ def load_events():
 
 
 def query(code, start, end):
-    conn = sqlite3.connect(DB)
-    try:
-        return conn.execute(
-            "SELECT trade_date, high_qfq, low_qfq, close_qfq, adj_factor "
-            "FROM stk_factor_pro WHERE ts_code=? AND trade_date>=? AND trade_date<=? "
-            "ORDER BY trade_date", (code, start, end)).fetchall()
-    finally:
-        conn.close()
+    cols = ["high_qfq", "low_qfq", "close_qfq", "adj_factor"]
+    df = sc.fetch_hist_range(start, end, ts_codes=[code], cols=cols)
+    if df is None or df.empty:
+        return []
+    df = df.sort_values("trade_date").reset_index(drop=True)
+    return [tuple(r) for r in df[["trade_date"] + cols].itertuples(index=False, name=None)]
 
 
 def eval_event(ev):

@@ -19,6 +19,8 @@ import pandas as pd
 
 from .config import CACHE_DB_PATH, STOCK_BASIC_CSV, TDX_PATH
 
+import stock_cache as sc
+
 _COLS = ["trade_date", "open", "high", "low", "close", "pre_close", "pct_chg", "vol", "amount"]
 
 
@@ -125,18 +127,15 @@ def tdx_daily(ts_code: str) -> Optional[pd.DataFrame]:
 
 
 def load_total_mv_series(ts_code: str) -> Optional[dict]:
-    """该股全历史 {trade_date: total_mv(亿元)}（stk_factor_pro 实时市值，非复权影响市值不变）"""
+    """该股全历史 {trade_date: total_mv(亿元)}（实时市值，非复权影响市值不变）"""
     try:
-        with _conn() as conn:
-            df = pd.read_sql_query(
-                "SELECT trade_date, total_mv FROM stk_factor_pro WHERE ts_code=? ORDER BY trade_date",
-                conn, params=(ts_code,),
-            )
+        df = sc.fetch_hist_range(None, None, ts_codes=[ts_code], cols=('total_mv',))
     except Exception:
         return None
     if df.empty:
         return None
     df["trade_date"] = df["trade_date"].astype(str)
+    df = df.sort_values("trade_date")
     mv = pd.to_numeric(df["total_mv"], errors="coerce")
     return {d: float(v) / 10000.0 for d, v in zip(df["trade_date"], mv) if pd.notna(v)}
 

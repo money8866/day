@@ -337,6 +337,7 @@ def main():
             "买点确认": bp,
             "回踩确认": "✅ 是" if confirm else "否",
             "现价": round(price, 2),
+            "当日涨幅%": round((closes[-1] / closes[-2] - 1) * 100, 2) if len(closes) >= 2 else np.nan,
             "VWAP": round(vwap, 2) if vwap else np.nan,
             "MA20": round(ma20, 2) if ma20 else np.nan,
             "筹码峰顶": round(peak_high, 2) if peak_high else np.nan,
@@ -423,6 +424,30 @@ def main():
     _show(buy, "✅ 次日可买入（回踩中×分≥60，最优买点窗口）")
     _show(watch, "⚠️ 观察 / 等回踩（形态未确认，需触发）")
     _show(rest, "❌ 不买入 / 无形态")
+
+    # ── 接入选股策略池 stock_pick_db（幂等，失败不阻塞推送）──
+    # 只落可操作候选(✅次日可买入 + ⚠️观察/等回踩)；非标准字段自动进 indicators JSON 列
+    try:
+        from stock_pick_db import record_picks
+        cand = out[out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩", "⚠️ 观察"])]
+        if len(cand):
+            picks = []
+            for rank_no, (_, r) in enumerate(cand.iterrows(), start=1):
+                d = {k: (None if not isinstance(v, str) and pd.isna(v) else v)
+                     for k, v in r.items()}
+                d["rank_no"] = rank_no
+                d["reason"] = f"{d.get('形态阶段') or ''}·{d.get('主题状态') or ''}"
+                picks.append(d)
+            n_db = record_picks("zhongbao_egpt", "中报猎手×EGPT回踩择时", picks,
+                                pick_date=trade_date,
+                                field_map={"代码": "ts_code", "名称": "stock_name",
+                                           "现价": "close", "当日涨幅%": "pct_chg",
+                                           "次日操作": "signal", "买点确认": "action",
+                                           "回踩买点分": "score", "主题": "industry",
+                                           "ATR动态止损价": "stop_price"})
+            print(f"\n选股池落库: {n_db}/{len(picks)} 条 (strategy=zhongbao_egpt pick_date={trade_date})")
+    except Exception as e:
+        print(f"⚠️ 选股池落库失败(不影响推送): {e}")
 
     # 买点1 × 高热度(≥15%) 追高警示（回测: T+5胜率15.4%/均值-2.2% = 灾难）
     hot_bp = out[(out["买点确认"].astype(str).str.startswith("买点1", na=False))

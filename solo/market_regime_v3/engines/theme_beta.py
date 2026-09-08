@@ -129,52 +129,41 @@ class ThemeBetaEngine:
 
     def _batch_query_hist_prices(self, ts_codes: List[str], start_date: str,
                                   end_date: str) -> pd.DataFrame:
-        """批量查询指定股票在日期范围内的历史收盘价和成交额"""
-        if not ts_codes or not os.path.exists(sc.DB_PATH):
+        """批量读取指定股票在日期范围内的历史收盘价和成交额（新缓存窄表链路）"""
+        if not ts_codes:
             return pd.DataFrame()
         try:
-            import sqlite3
-            conn = sqlite3.connect(sc.DB_PATH)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            sql = f"""
-                SELECT ts_code, trade_date, close_hfq, amount
-                FROM stk_factor_pro
-                WHERE trade_date BETWEEN ? AND ? AND ts_code IN ({placeholders})
-                ORDER BY ts_code, trade_date
-            """
-            params = [start_date, end_date] + ts_codes
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            for col in ['close_hfq', 'amount']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            return df
+            df = sc.fetch_hist_range(
+                start_date, end_date, ts_codes=ts_codes,
+                cols=('ts_code', 'trade_date', 'close_hfq', 'amount'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        for col in ('close_hfq', 'amount'):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        if {'ts_code', 'trade_date'} <= set(df.columns):
+            df = df.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+        return df
 
     def _batch_query_date_prices(self, ts_codes: List[str],
                                   trade_date: str) -> pd.DataFrame:
-        """批量查询指定股票在 trade_date 的行情数据（含成交额）"""
-        if not ts_codes or not os.path.exists(sc.DB_PATH):
+        """批量读取指定股票在 trade_date 的行情数据（含成交额，新缓存窄表链路）"""
+        if not ts_codes:
             return pd.DataFrame()
         try:
-            import sqlite3
-            conn = sqlite3.connect(sc.DB_PATH)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            sql = f"""
-                SELECT ts_code, close_hfq, pct_chg, amount
-                FROM stk_factor_pro
-                WHERE trade_date = ? AND ts_code IN ({placeholders})
-            """
-            params = [trade_date] + ts_codes
-            df = pd.read_sql(sql, conn, params=params)
-            conn.close()
-            for col in ['close_hfq', 'pct_chg', 'amount']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-            return df
+            df = sc.fetch_market_by_date(
+                trade_date, ts_codes=ts_codes,
+                cols=('ts_code', 'close_hfq', 'pct_chg', 'amount'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        for col in ('close_hfq', 'pct_chg', 'amount'):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
 
     def _load_benchmark_data(self, benchmark: str, start_date: str,
                               end_date: str) -> Optional[pd.DataFrame]:

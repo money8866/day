@@ -16,18 +16,20 @@ REM python solo\build_theme_stock_map.py
 echo [Step 5.4/7] SLI 缓存增量 + IGE 行业弹性...
 echo =============================================
 for /f "delims=" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set TDATE=%%i
-python -X utf8 solo\sli\update_cache.py --date %TDATE%
+pushd solo
+python -X utf8 -m sli.update_cache --date %TDATE%
 if errorlevel 1 (
     echo [WARN] SLI 缓存增量更新失败，IGE 将沿用最近可用缓存
 ) else (
     echo [OK] 行情缓存已更新到最近交易日
 )
-python -X utf8 solo\ige\main.py --date %TDATE% --top 0 > solo\ige\output\ige_run_%TDATE%.log 2>&1
+python -X utf8 -m ige.main --date %TDATE% --top 0 > ige\output\ige_run_%TDATE%.log 2>&1
 if errorlevel 1 (
-    echo [WARN] IGE 运行失败，详见 solo\ige\output\ige_run_%TDATE%.log
+    echo [WARN] IGE 运行失败，详见 ige\output\ige_run_%TDATE%.log
 ) else (
     echo [OK] IGE 完成：ige_full_%TDATE%.csv
 )
+popd
 echo.
 
 
@@ -35,7 +37,7 @@ echo [Step 1/7] 主题趋势分 + 情绪分...
 echo =============================================
 python solo\build_theme_stock_map_v2.py
 python solo\theme_score_v2.py
-python d:\mystock\solo\multi_factor_picker\main.py
+rem python d:\mystock\solo\multi_factor_picker\main.py
 
 REM python solo\theme_trend_sentiment_score.py
 echo.

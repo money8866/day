@@ -23,6 +23,8 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import stock_cache as sc
+
 DB = r'D:\mystock\cache_daily\stock_data.db'
 OUTPUT_DIR = r'D:\mystock\solo\trend_feature_output'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -38,23 +40,18 @@ LOOKBACK_DAYS = 90             # 默认回溯天数
 
 def get_stock_data(ts_code: str) -> pd.DataFrame | None:
     """从数据库读取股票数据"""
-    conn = sqlite3.connect(DB)
     try:
-        df = pd.read_sql(
-            "SELECT trade_date, open, high, low, close, pct_chg, volume_ratio, "
-            "ma_bfq_20, ma_bfq_10, kdj_bfq, kdj_k_bfq, rsi_bfq_6, "
-            "ma_bfq_60, ma_bfq_30, ma_bfq_90 "
-            "FROM stk_factor_pro WHERE ts_code=? ORDER BY trade_date",
-            conn, params=(ts_code,)
-        )
+        cols = ('open', 'high', 'low', 'close', 'pct_chg', 'volume_ratio',
+                'ma_bfq_20', 'ma_bfq_10', 'kdj_bfq', 'kdj_k_bfq', 'rsi_bfq_6',
+                'ma_bfq_60', 'ma_bfq_30', 'ma_bfq_90')
+        df = sc.fetch_hist_range(None, None, ts_codes=[ts_code], cols=cols)
         if df.empty:
             return None
+        df = df.drop(columns=['ts_code'])
         df['trade_date'] = df['trade_date'].astype(str)
         return df
     except Exception as e:
         return None
-    finally:
-        conn.close()
 
 
 def detect_consolidation(df: pd.DataFrame, signal_idx: int) -> dict | None:

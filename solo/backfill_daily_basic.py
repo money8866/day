@@ -48,7 +48,7 @@ def get_trade_dates(pro, start, end):
 
 def is_complete(kind, d):
     if kind == 'daily_basic':
-        return sc.get_daily_basic_by_date_count(d) >= MIN_ROWS
+        return sc.get_daily_basic_valuation_count(d) >= MIN_ROWS
     return sc.get_adj_factor_by_date_count(d) >= MIN_ROWS
 
 

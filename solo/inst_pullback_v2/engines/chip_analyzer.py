@@ -1,12 +1,13 @@
 import os
 import sys
-import sqlite3
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import stock_cache as sc
 from data.indicators import ema, sma, slope
 from data.loader import DataLoader, load_config
 
@@ -255,7 +256,7 @@ class TrendHealth:
         last = df.iloc[-1]
         close = df['close_qfq']
 
-        # EMA对齐 — 使用 stk_factor_pro 预计算字段（前复权）
+        # EMA对齐 — 使用三窄表缓存派生的预计算字段（前复权）
         ema20_val = last.get('ema_qfq_20') or ema(close, 20).iloc[-1]
         ema60_val = last.get('ema_qfq_60') or ema(close, 60).iloc[-1]
         # EMA120 无预计算字段，保持自算
@@ -378,15 +379,12 @@ class RiskFilter:
             if '退' in name:
                 issues.append('退市风险')
 
-        db_path = r"D:\mystock\cache_daily\stock_data.db"
         df = None
         try:
-            conn = sqlite3.connect(db_path)
-            df = pd.read_sql_query(
-                "SELECT ts_code, trade_date, amount, pct_chg, pe_ttm, pb FROM stk_factor_pro WHERE ts_code = ? AND trade_date BETWEEN ? AND ? ORDER BY trade_date",
-                conn, params=(ts_code, str(start_date), str(td))
-            )
-            conn.close()
+            df = sc.fetch_hist_range(str(start_date), str(td), ts_codes=[ts_code],
+                                     cols=['ts_code', 'trade_date', 'amount', 'pct_chg', 'pe_ttm', 'pb'])
+            if df is not None and not df.empty:
+                df = df.sort_values(['ts_code', 'trade_date'])
         except Exception:
             pass
 

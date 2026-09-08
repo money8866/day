@@ -21,6 +21,8 @@ import tushare as ts
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+from stock_cache import cached_stk_factor_compat
+
 # 参数配置
 SURGE_MIN = 0.25          # 一波涨幅>=25%
 SURGE_DAYS_MIN = 7        # 一波最少天数
@@ -121,7 +123,7 @@ def calculate_score(row, prev_row=None):
 def scan_wave2(ts_code: str, debug: bool = False) -> list:
     """扫描二波行情信号"""
     try:
-        df = pro.stk_factor_pro(ts_code=ts_code, start_date=START_DATE, end_date=END_DATE)
+        df = cached_stk_factor_compat(ts_code, START_DATE, END_DATE, silent=True)
         if df is None or len(df) < 100:
             return []
         df = df.sort_values('trade_date').reset_index(drop=True)

@@ -6,7 +6,7 @@ IGE v1.2 核心个股技术面择时快照 v3（v3 分类口径：破MA20幅度+
     python -X utf8 _tech_timing.py --date 20260904     # 指定目标交易日
 候选池：ige/output 下最新 ige_full_<snap>.csv 中 t120_rocket_core 股票
   （优先取日期 ≤ 目标日的快照；快照即基本面分层池，行情窗口只影响技术指标）
-行情源：本地 SQLite stock_data.db（daily_cache 日线 + stk_factor_pro 量比/换手）
+行情源：本地 SQLite stock_data.db（daily_cache 日线 + daily_basic_cache 量比/换手）
 输出：ige/output/ige_v12_tech_timing_<target>.csv
 """
 import argparse
@@ -53,7 +53,7 @@ d = pd.read_sql(
     f"order by ts_code, trade_date", con, params=list(codes))
 f = pd.read_sql(
     f"select ts_code, trade_date, volume_ratio, turnover_rate "
-    f"from stk_factor_pro where ts_code in ({pl}) "
+    f"from daily_basic_cache where ts_code in ({pl}) "
     f"order by ts_code, trade_date", con, params=list(codes))
 con.close()
 

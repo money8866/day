@@ -77,7 +77,7 @@ meta_data = [
     ['\u56de\u6d4b\u533a\u95f4', '2024-01-01 ~ 2026-06-20'],
     ['\u6837\u672c\u8303\u56f4', '\u6caa\u6df1300\u6210\u5206\u80a1\uff08312\u53ea\uff09'],
     ['\u603b\u6848\u4f8b\u6570', f'{total_cases:,} \u4e2a\u62c9\u5347\u6848\u4f8b'],
-    ['\u6570\u636e\u6e90', 'Tushare\uff08stk_factor/daily_basic/moneyflow\uff09'],
+    ['\u6570\u636e\u6e90', 'Tushare\uff08\u4e09\u7a84\u8868\u7f13\u5b58\u6d3e\u751f/daily_basic/moneyflow\uff09'],
     ['\u751f\u6210\u65f6\u95f4', data['date']],
 ]
 for row in meta_data:

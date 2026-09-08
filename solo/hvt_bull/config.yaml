@@ -35,6 +35,11 @@ price_strength:
   strong_close_pos: 0.80
   super_close_pos: 0.85
   min_body: 0.30                # 实体强度 (Close-Open)/(High-Low)
+  # 涨停次日豁免：T-1 收盘涨停时，T0 放量分歧（滞涨/长上影派发形态）不构成价格强度否决；
+  # 仅保留底线：T0 不收跌 + 收盘位置不低于 limit_next_day_min_close_pos（防烂尾大阴）
+  limit_next_day_exempt: true
+  limit_next_day_min_pct_chg: 0.0
+  limit_next_day_min_close_pos: 0.30
 
 trend:
   lookback_ma20: 20

@@ -3,10 +3,10 @@
 天量后长线翻倍画像 · 每日盘后触发扫描
 =================================
 画像来自 report_daily/double_analysis.md（D250 完整观察 14797 事件的显著特征）：
-  TIER1（核心，翻倍率≈38%）：
-    流通市值≤30亿 + 事件日换手≥8% + 距250日高<-10%（回踩/中继）+ MA60乖离<10% + MA20乖离<15%
-  TIER2（基础基因，≈28-33%）：
-    流通市值≤50亿 + 事件日换手≥8%
+  TIER1（核心，翻倍率≈35.5%，2025年≈55.2%）：
+    流通市值≤30亿 + 事件日换手≥8% + 距250日高≤-25%（深回踩）+ MA60乖离<10% + MA20乖离<15%
+  TIER2（基础基因，≈24.0%）：
+    流通市值≤50亿 + 事件日换手≥8% + 活水阀（前20日常态换手≥3%）
 用法：python _daily_double_scan.py [--asof 20260904] [--days 5] [--workers 8]
   - 事件口径：V5 天量 = 前250日分位量能(vol)+换手(turnover_rate_f)双≥P98
   - 事件形态阀：①真跌停(收盘贴板下限)视为出货剔除；②当日换手须≥前20日均换手×1.5，
@@ -158,9 +158,9 @@ def tier(rec):
     if mv is None or not np.isfinite(mv) or not np.isfinite(t):
         return None
     g = [mv <= 30 and t >= 8]
-    if g[0] and rec["rel_hi250"] < -0.10 and rec["ma60_x"] < 0.10 and rec["ma20_x"] < 0.15:
+    if g[0] and rec["rel_hi250"] <= -0.25 and rec["ma60_x"] < 0.10 and rec["ma20_x"] < 0.15:
         return "TIER1_核心"
-    if mv <= 50 and t >= 8:
+    if mv <= 50 and t >= 8 and rec["turn_20m"] >= 3:
         return "TIER2_基础"
     return None
 
@@ -172,7 +172,7 @@ def build_push_md(df, asof):
         return None
     L = [f"**天量翻倍画像 · 盘后触发名单**", "",
          f"交易日 {asof}｜命中 {len(hit)} 只（TIER1={int((hit.tier=='TIER1_核心').sum())} / TIER2={int((hit.tier=='TIER2_基础').sum())}）",
-         "> 口径：V5天量(量+换手双≥P98)；历史D250翻倍率 整体18% / 核心画像≈31%；仅供研究观察。", ""]
+         "> 口径：V5天量(量+换手双≥P98)；历史D250翻倍率 整体18%(2025年27%) / 核心≈35%(2025年≈55%) / 基础≈27%；仅供研究观察。", ""]
     for tier in ("TIER1_核心", "TIER2_基础"):
         sub = hit[hit.tier == tier]
         if not len(sub):
@@ -202,7 +202,7 @@ def main():
     if args.asof:
         asof = args.asof
     else:
-        mx = probe.conn.execute("SELECT MAX(trade_date) FROM stk_factor_pro").fetchone()
+        mx = probe.conn.execute("SELECT MAX(trade_date) FROM daily_cache").fetchone()
         asof = str(mx[0])
         print(f"自动检测最新交易日 asof={asof}", flush=True)
     probe.close()

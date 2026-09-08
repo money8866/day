@@ -17,6 +17,8 @@ import tushare as ts
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
+from stock_cache import cached_stk_factor_compat
+
 # 参数
 START_DATE = '20240101'
 END_DATE = '20260620'
@@ -47,7 +49,7 @@ for idx, code in enumerate(pool):
         print(f'进度 {idx+1}/{len(pool)}  ETA{eta:.0f}s')
 
     try:
-        df = pro.stk_factor_pro(ts_code=code, start_date=START_DATE, end_date=END_DATE)
+        df = cached_stk_factor_compat(code, START_DATE, END_DATE, silent=True)
         if df is None or len(df) < 150:
             continue
         df = df.sort_values('trade_date').reset_index(drop=True)

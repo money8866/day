@@ -8,7 +8,7 @@ r"""
   盘后(16:00+):           py D:\mystock\solo\multi_factor_picker\wave2_daily.py --mode close
   定时任务: 独立bat调用
 
-数据：Tushare (stk_factor + daily_basic + moneyflow)
+数据：本地三窄表缓存派生 (技术因子 + daily_basic + moneyflow)
 建议扫描范围：用户自选股池 / 近期强势板块龙头 / 全市场（约3000只，耗时~15分钟）
 """
 import os, sys, time, json, datetime, io
@@ -141,44 +141,9 @@ def cached_daily(ts_code, start_date, end_date):
     return df.sort_values('trade_date').reset_index(drop=True)
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """缓存版 pro.stk_factor_pro()，直接含MA/RSI/MACD等计算值
-
-    注：DataFetcher.get_stk_factor_pro 仅支持单日横截面查询(trade_date+可选ts_code)，
-    不支持按股票+日期范围的时间序列查询，故此处保留独立CSV缓存作为降级方案，
-    并优先使用 DataFetcher 的 pro 实例（统一 token/速率）。
-    """
-    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None:
-        cached_dates = set(df_cache['trade_date'].values)
-        has_start = start_date in cached_dates
-        has_end = end_date in cached_dates
-        if has_start and has_end:
-            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-            subset = df_cache[mask].copy()
-            if not subset.empty:
-                return subset.sort_values('trade_date').reset_index(drop=True)
-
-    # 优先 DataFetcher 的 pro 实例，降级用全局 pro
-    df_inst = _get_df()
-    api_pro = df_inst.pro if df_inst is not None else pro
-    try:
-        df = api_pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    except Exception:
-        df = None
-    time.sleep(0.06)
-
-    if df is not None and not df.empty:
-        df['trade_date'] = df['trade_date'].astype(str)
-        if df_cache is not None:
-            # keep='last' 确保相同日期使用新数据（复权因子更新时）
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date', keep='last').sort_values('trade_date')
-            _save_cache(combined, cache_file)
-        else:
-            _save_cache(df, cache_file)
-        return df.sort_values('trade_date').reset_index(drop=True)
-    return df
+    """委托给 sc.cached_stk_factor_compat（窄表三表链路，直接含MA/RSI/MACD等计算值）"""
+    import stock_cache as sc
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date)
 
 def cached_daily_basic(ts_code, start_date, end_date):
     """缓存版 pro.daily_basic()，已接入 DataFetcher 统一缓存（保留包装供外部调用）"""
@@ -428,13 +393,13 @@ def scan_stock(ts_code, lookback=90):
         if daily is None or len(daily) < 40:
             return None
 
-        # 技术因子（缓存版，使用 stk_factor_pro，MA/RSI 等已计算好）
+        # 技术因子（缓存版，使用窄表三表链路，MA/RSI 等已计算好）
         factor = cached_stk_factor_pro(ts_code, start_date, end_date)
 
         # 基本面（缓存版）
         basic = cached_daily_basic(ts_code, start_date, end_date)
 
-        # 合并（stk_factor_pro 字段：使用 _qfq 前复权版本，避免除权日指标失真）
+        # 合并（窄表三表链路字段：使用 _qfq 前复权版本，避免除权日指标失真）
         df = daily.copy()
         if factor is not None and len(factor) > 0:
             factor_rename = {
@@ -468,7 +433,7 @@ def scan_stock(ts_code, lookback=90):
         if 'low_qfq' in df.columns:
             df['low'] = df['low_qfq']
 
-        # 已从 stk_factor_pro 获取MA值，无需手动 rolling 计算
+        # 已从窄表三表链路获取MA值，无需手动 rolling 计算
 
         # === 找最近一波20%+拉升 ===
         # 从倒数第ADJUST_MAX天开始向前找

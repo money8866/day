@@ -1,0 +1,136 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  开盘啦热榜 → 个股量价二次筛选引擎 V1.1
+  交易日 20260908   候选 60 只（59 个有价值题材×top4 去重）  生成于 2026-09-08 20:14
+  热度召回 → 硬门控 → STQ/VPQ/结构/延续 → Extension → 价格确认 → Entry/Risk → 决策（决策可被规则逐条解释）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  分层统计：送入 60 只 → 硬门控通过 34 只参与全维评分
+  淘汰原因：硬门控(破位/D级结构)=26
+
+══════ TOP 10（TradeRank 优先于 QualityRank）══════
+#  代码         名称          热榜  STQ  VPQ  T1  T3  结构         扩展     Entry   质排   交排  决策
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+1  300740.SZ  水羊股份        24   81   84  86  86  PULLBACK   LOW       78    1    1  CONDITIONAL_RETEST
+2  300364.SZ  中文在线        12   75   69  77  77  PULLBACK   MEDIUM    73    8    2  WAIT_RETEST
+3  301171.SZ  易点天下        13   80   72  76  76  PULLBACK   MEDIUM    61    4    3  WAIT_RETEST
+4  301183.SZ  东田微          7   73   69  73  73  PULLBACK   MEDIUM    61    9    4  WAIT_RETEST
+5  603186.SH  华正新材        22   79   57  66  58  PULLBACK   MEDIUM    60   12    5  WAIT_RETEST
+6  603123.SH  翠微股份        33   88   83  81  71  TREND_CONT HIGH      49    2    6  WAIT_HIGH_EXTENSION
+7  002041.SZ  登海种业         5   82   84  81  71  BREAKOUT   HIGH      52    3    7  WAIT_HIGH_EXTENSION
+
+══════ TOP 详细（价格完全分离：突破/回踩/支撑/止损）══════
+──────────────────────────────────────────────────────────────────────
+  水羊股份  300740.SZ
+  题材：复苏消费概念、新消费、医美（5个，主线题材0个）
+  HotRank：24   最强题材热度19926   题材核心：是   共振：多题材
+  STQ=81  VPQ=84(A)  T1=86  T3=86(A+延续)
+  结构=PULLBACK(S)  趋势=TREND_UP  量价状态=缩量回踩  扩展=LOW(危8)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=24.19  RETEST_ENTRY=21.93  SUPPORT=21.93  STOP=20.73  R/R=1.83
+  SignalCompleteness=100/100   QualityRank=1   TradeRank=1   Decision=CONDITIONAL_RETEST
+  解读：回踩标的质量好，但回踩/止跌未确认
+  等待：等价格进入 21.93 附近且缩量止跌
+──────────────────────────────────────────────────────────────────────
+  中文在线  300364.SZ
+  题材：AIGC应用、短剧产业、谷子经济概念（3个，主线题材0个）
+  HotRank：12   最强题材热度27288   题材核心：是   共振：多题材
+  STQ=75  VPQ=69(B)  T1=77  T3=77(A延续)
+  结构=PULLBACK(A)  趋势=TREND_UP  量价状态=缩量回踩  扩展=MEDIUM(危53)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=30.05  RETEST_ENTRY=25.93  SUPPORT=25.93  STOP=24.21  R/R=2.23
+  SignalCompleteness=90/100   QualityRank=8   TradeRank=2   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ69）
+  等待：等回踩：进入 25.93 附近缩量止跌
+──────────────────────────────────────────────────────────────────────
+  易点天下  301171.SZ
+  题材：短剧产业、新消费（2个，主线题材0个）
+  HotRank：13   最强题材热度27288   题材核心：是   共振：多题材
+  STQ=80  VPQ=72(B)  T1=76  T3=76(A延续)
+  结构=PULLBACK(A)  趋势=TREND_UP  量价状态=缩量回踩  扩展=MEDIUM(危52)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=41.55  RETEST_ENTRY=37.42  SUPPORT=37.42  STOP=34.61  R/R=1.16
+  SignalCompleteness=80/100   QualityRank=4   TradeRank=3   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ72、R/R1.2）
+  等待：等回踩：进入 37.42 附近缩量止跌
+──────────────────────────────────────────────────────────────────────
+  东田微  301183.SZ
+  题材：AI硬件（1个，主线题材0个）
+  HotRank：7   最强题材热度30637   题材核心：是   共振：单一
+  STQ=73  VPQ=69(B)  T1=73  T3=73(B延续)
+  结构=PULLBACK(S)  趋势=TREND_RECOVERY  量价状态=量能中性  扩展=MEDIUM(危53)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=270.22  RETEST_ENTRY=227.68  SUPPORT=227.68  STOP=209.88  R/R=1.29
+  SignalCompleteness=70/100   QualityRank=9   TradeRank=4   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（STQ73、VPQ69、T173、R/R1.3）
+  等待：等回踩：进入 227.68 附近缩量止跌
+──────────────────────────────────────────────────────────────────────
+  华正新材  603186.SH
+  题材：IC载板（1个，主线题材0个）
+  HotRank：22   最强题材热度20547   题材核心：是   共振：单一
+  STQ=79  VPQ=57(C)  T1=66  T3=58(C弱续)
+  结构=PULLBACK(S)  趋势=TREND_UP  量价状态=放量滞涨  扩展=MEDIUM(危62)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=203.71  RETEST_ENTRY=181.94  SUPPORT=181.94  STOP=167.07  R/R=3.00
+  SignalCompleteness=50/100   QualityRank=12   TradeRank=5   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ57、T166）
+  等待：等回踩：进入 181.94 附近缩量止跌
+──────────────────────────────────────────────────────────────────────
+  翠微股份  603123.SH
+  题材：离境退税概念（1个，主线题材0个）
+  HotRank：33   最强题材热度17058   题材核心：是   共振：单一
+  STQ=88  VPQ=83(A)  T1=81  T3=71(B延续)
+  结构=TREND_CONT(S)  趋势=TREND_UP  量价状态=高质量上涨  扩展=HIGH(危90)
+  PriceConfirmation=WAIT_CONTINUATION
+  BREAKOUT_TRIGGER=12.35  RETEST_ENTRY=11.16  SUPPORT=11.16  STOP=10.36  R/R=0.77
+  SignalCompleteness=70/100   QualityRank=2   TradeRank=6   Decision=WAIT_HIGH_EXTENSION
+  解读：强度存在但距MA20过远(危90)，禁止追高
+  等待：等回踩至 11.16~11.16 且缩量后再评估
+──────────────────────────────────────────────────────────────────────
+  登海种业  002041.SZ
+  题材：农业种植（1个，主线题材0个）
+  HotRank：5   最强题材热度34513   题材核心：是   共振：单一
+  STQ=82  VPQ=84(A)  T1=81  T3=71(B延续)
+  结构=BREAKOUT(S)  趋势=TREND_RECOVERY  量价状态=高质量上涨  扩展=HIGH(危88)
+  PriceConfirmation=WAIT_BREAKOUT
+  BREAKOUT_TRIGGER=12.02  RETEST_ENTRY=11.18  SUPPORT=11.18  STOP=10.19  R/R=0.79
+  SignalCompleteness=70/100   QualityRank=3   TradeRank=7   Decision=WAIT_HIGH_EXTENSION
+  解读：强度存在但距MA20过远(危88)，禁止追高
+  等待：等回踩至 11.18~11.18 且缩量后再评估
+
+══════ 最终执行清单 ══════
+【今日最值得买】PRIMARY BUY
+【回踩最值得买】PRIMARY/确认回踩 与 CONDITIONAL_RETEST
+  ◇ 水羊股份(300740.SZ) STQ81 回踩位≈21.93 支撑21.93 止损20.73
+      等价格进入 21.93 附近且缩量止跌
+【突破确认后可以买】WAIT_BREAKOUT 与 CONDITIONAL_BREAKOUT
+【强但不能追】WATCH_HIGH_EXTENSION / WAIT_HIGH_EXTENSION
+  × 翠微股份(603123.SH) STQ88 扩展HIGH(危90) WAIT_HIGH_EXTENSION | 强度存在但距MA20过远(危90)，禁止追高
+  × 登海种业(002041.SZ) STQ82 扩展HIGH(危88) WAIT_HIGH_EXTENSION | 强度存在但距MA20过远(危88)，禁止追高
+【弱结构】WATCH_WEAK_STRUCTURE / WATCH_LOW_STQ
+  × 冠捷科技(000727.SZ) STQ64 PULLBACK(S) WATCH_LOW_STQ | 短线质量不足(STQ64)
+  × 美锦能源(000723.SZ) STQ66 PULLBACK(S) WATCH_LOW_STQ | 短线质量不足(STQ66)
+  × 山西焦化(600740.SH) STQ69 PULLBACK(S) WATCH_LOW_STQ | 短线质量不足(STQ69)
+  × 华测检测(300012.SZ) STQ68 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+  × 大有能源(600403.SH) STQ57 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+  × 福蓉科技(603327.SH) STQ53 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+  × 纳芯微  (688052.SH) STQ53 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+  × 深南电路(002916.SZ) STQ67 PULLBACK(S) WATCH_LOW_STQ | 短线质量不足(STQ67)
+  × 冠农股份(600251.SH) STQ69 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+【禁止交易】AVOID
+  ✕ 居然智家(000785.SZ) STQ86 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 友阿股份(002277.SZ) STQ71 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 海普瑞(002399.SZ) STQ61 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 华大基因(300676.SZ) STQ58 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 片仔癀  (600436.SH) STQ60 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 爱美客(300896.SZ) STQ61 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 金达威(002626.SZ) STQ81 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 圣湘生物(688289.SH) STQ82 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 老凤祥  (600612.SH) STQ75 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 广东建工(002060.SZ) STQ65 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 雪峰科技(603227.SH) STQ62 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 富瀚微(300613.SZ) STQ59 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 龙旗科技(603341.SH) STQ56 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 芯朋微  (688508.SH) STQ57 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 西部黄金(601069.SH) STQ59 AVOID | 破位/趋势恶化，禁止交易
+
+口径：候选来自KPL有价值题材；原始价K线(未除权)；无 Confirmation 不 PRIMARY；扩展极高不追；Quality 找强股，Trade 定买什么。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

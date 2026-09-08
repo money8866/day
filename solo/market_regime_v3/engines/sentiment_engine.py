@@ -8,7 +8,6 @@
 
 import os
 import sys
-import sqlite3
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List, Tuple
@@ -29,7 +28,6 @@ from market_regime_v3.factor_registry import (
 # ──────────────────────────────────────────────
 # 常量
 # ──────────────────────────────────────────────
-_STK_FACTOR_DB = sc.DB_PATH  # SQLite 数据库路径
 
 
 @dataclass
@@ -150,25 +148,20 @@ class SentimentEngine:
     # ──────────────────────────────────────────
 
     def _query_stk_factor_by_date(self, trade_date: str) -> pd.DataFrame:
-        """从 stk_factor_pro 表查询指定日期的全市场行情数据
+        """从新缓存（窄表三表链路）读取指定日期的全市场行情数据
 
         返回包含 ts_code, pct_chg, amount 的 DataFrame
         """
-        if not os.path.exists(_STK_FACTOR_DB):
-            return pd.DataFrame()
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df = pd.read_sql_query(
-                "SELECT ts_code, pct_chg, amount FROM stk_factor_pro WHERE trade_date = ?",
-                conn, params=(trade_date,)
-            )
-            conn.close()
-            if df is not None and not df.empty:
-                df['pct_chg'] = pd.to_numeric(df['pct_chg'], errors='coerce')
-                df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
-            return df
+            df = sc.fetch_market_by_date(trade_date, cols=('ts_code', 'pct_chg', 'amount'))
         except Exception:
             return pd.DataFrame()
+        if df is None or df.empty:
+            return pd.DataFrame()
+        for col in ('pct_chg', 'amount'):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
 
     # ──────────────────────────────────────────
     # 子因子计算
@@ -317,7 +310,7 @@ class SentimentEngine:
     def _calc_amount_change(self, trade_date: str) -> float:
         """计算全市场成交额变化率
 
-        对 stk_factor_pro 按日期聚合，计算全市场总成交额。
+        对新缓存按日期聚合，计算全市场总成交额。
         变化率 = 5日均额 / 20日均额 - 1
         """
         try:
@@ -326,25 +319,12 @@ class SentimentEngine:
         except Exception:
             return 0.0
 
-        if not os.path.exists(_STK_FACTOR_DB):
-            return 0.0
-
         try:
-            conn = sqlite3.connect(_STK_FACTOR_DB)
-            df = pd.read_sql_query(
-                "SELECT trade_date, SUM(CAST(amount AS REAL)) as total_amount "
-                "FROM stk_factor_pro "
-                "WHERE trade_date >= ? AND trade_date <= ? "
-                "GROUP BY trade_date ORDER BY trade_date",
-                conn, params=(start_date, trade_date)
-            )
-            conn.close()
-
+            df = sc.fetch_market_amounts_by_date(start_date, trade_date)
             if df is None or df.empty:
                 return 0.0
 
-            df['total_amount'] = pd.to_numeric(df['total_amount'], errors='coerce')
-            amounts = df['total_amount'].dropna()
+            amounts = pd.to_numeric(df['total_amount'], errors='coerce').dropna()
 
             if len(amounts) < 5:
                 return 0.0

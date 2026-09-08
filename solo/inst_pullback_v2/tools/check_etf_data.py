@@ -1,23 +1,12 @@
-import sqlite3
 import sys
 sys.path.insert(0, r'D:\mystock\solo')
 import stock_cache as sc
 
-conn = sqlite3.connect(r'D:\mystock\cache_daily\stock_data.db')
-cur = conn.cursor()
-cur.execute("""
-    SELECT DISTINCT ts_code FROM stk_factor_pro 
-    WHERE ts_code LIKE '159%' OR ts_code LIKE '510%' 
-    OR ts_code LIKE '512%' OR ts_code LIKE '515%' 
-    OR ts_code LIKE '516%' OR ts_code LIKE '561%' 
-    OR ts_code LIKE '562%'
-    ORDER BY ts_code LIMIT 50
-""")
-rows = cur.fetchall()
+_prefixes = ('159', '510', '512', '515', '516', '561', '562')
+etf_codes = sorted(c for c in sc.get_all_cached_ts_codes() if c[:3] in _prefixes)[:50]
 print("ETF codes in DB:")
-for r in rows:
-    print(r[0])
-conn.close()
+for code in etf_codes:
+    print(code)
 
 print("\n--- Checking specific ETF codes ---")
 etf_map = {
@@ -31,7 +20,7 @@ etf_map = {
 }
 for code, suffix in etf_map.items():
     full = f"{code}.{suffix}"
-    df = sc.cached_stk_factor_pro(full, '20260624', '20260724', silent=True)
+    df = sc.cached_stk_factor_compat(full, '20260624', '20260724', silent=True)
     status = 'OK' if df is not None and not df.empty else 'FAIL'
     if df is not None and not df.empty:
         print(f"  {full}: {status} ({len(df)} rows, close={df['close'].iloc[-1]:.2f})")

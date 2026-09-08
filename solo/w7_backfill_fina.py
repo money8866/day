@@ -38,7 +38,7 @@ def ensure_table(conn):
 
 def universe_codes():
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date=(SELECT MAX(trade_date) FROM stk_factor_pro)").fetchall()
+    rows = conn.execute("SELECT DISTINCT ts_code FROM daily_cache WHERE trade_date=(SELECT MAX(trade_date) FROM daily_cache)").fetchall()
     conn.close()
     return [r[0] for r in rows]
 

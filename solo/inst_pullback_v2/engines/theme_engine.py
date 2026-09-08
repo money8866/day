@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import sqlite3
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
@@ -9,8 +8,10 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from data.indicators import ema, sma, slope, rsi, new_high_count, price_position
 from data.loader import DataLoader, load_config
+import stock_cache as sc
 
 THEME_CONFIG_PATH = r"D:\mystock\solo\theme_kg_v3\theme_kg_v3\config\theme_config.json"
 
@@ -142,22 +143,18 @@ class InstitutionThemeEngine:
     def _preload_bulk(self, ts_codes, start_date, end_date):
         if not ts_codes:
             return
-        db_path = r"D:\mystock\cache_daily\stock_data.db"
         try:
-            conn = sqlite3.connect(db_path)
-            placeholders = ','.join(['?'] * len(ts_codes))
-            query = f"""
-                SELECT ts_code, trade_date, close_hfq, close, amount, vol, high, low, pct_chg
-                FROM stk_factor_pro
-                WHERE ts_code IN ({placeholders})
-                AND trade_date BETWEEN ? AND ?
-                ORDER BY ts_code, trade_date
-            """
-            params = list(ts_codes) + [str(start_date), str(end_date)]
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
-            df['trade_date'] = df['trade_date'].astype(str)
-            self._bulk_cache = {code: group.reset_index(drop=True) for code, group in df.groupby('ts_code')}
+            cols = ['ts_code', 'trade_date', 'close_hfq', 'close',
+                    'amount', 'vol', 'high', 'low', 'pct_chg']
+            df = sc.fetch_hist_range(str(start_date), str(end_date),
+                                     ts_codes=list(ts_codes), cols=cols)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
+                df = df.sort_values(['ts_code', 'trade_date'])
+                self._bulk_cache = {code: group.reset_index(drop=True)
+                                    for code, group in df.groupby('ts_code')}
+            else:
+                self._bulk_cache = {}
         except Exception as e:
             print(f"  [ThemeEngine] bulk预加载失败: {e}")
             self._bulk_cache = {}

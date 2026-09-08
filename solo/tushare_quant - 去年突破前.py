@@ -117,29 +117,9 @@ def _save_cache(df, cache_file):
         pass
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """带缓存的 stk_factor_pro（与 wave2_pattern_scanner.py 共用缓存文件）"""
-    cache_file = os.path.join(CACHE_DIR, f"stk_pro_{ts_code}.csv")
-    df_cache = _read_cache(cache_file)
-    if df_cache is not None and not df_cache.empty:
-        cached_min = df_cache['trade_date'].min()
-        cached_max = df_cache['trade_date'].max()
-        # 缓存已覆盖请求范围 → 直接返回子集
-        if cached_min <= start_date and cached_max >= end_date:
-            mask = (df_cache['trade_date'] >= start_date) & (df_cache['trade_date'] <= end_date)
-            subset = df_cache[mask].copy()
-            if not subset.empty:
-                return subset.sort_values('trade_date').reset_index(drop=True)
-    df = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
-    time.sleep(0.06)
-    if df is not None and not df.empty:
-        df['trade_date'] = df['trade_date'].astype(str)
-        if df_cache is not None:
-            combined = pd.concat([df_cache, df]).drop_duplicates(subset='trade_date').sort_values('trade_date')
-            _save_cache(combined, cache_file)
-        else:
-            _save_cache(df, cache_file)
-        return df.sort_values('trade_date').reset_index(drop=True)
-    return df
+    """委托给 sc.cached_stk_factor_compat（窄表三表链路，自动补数）"""
+    import stock_cache as sc
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date)
 
 # =========================
 # 主题个股池路径
@@ -585,9 +565,9 @@ def calculate_short_term_win_score(ts_code, pro, above_chips_pct=-1, trade_date=
                 print(f"[缓存读取失败] {ts_code}: {e}")
                 df = None
 
-        # 2. 缓存缺失或过期则调用 stk_factor_pro 专业版接口
+        # 2. 缓存缺失或过期则从窄表三表链路读取（自动补数）
         if df is None or df.empty:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date='20250101')
+            df = cached_stk_factor_pro(ts_code, '20250101', TRADE_DATE)
             if df is not None and not df.empty:
                 df['trade_date'] = df['trade_date'].astype(str)
                 try:
@@ -1172,7 +1152,7 @@ def detect_breakout(ts_code, pro, trade_date=None):
         if os.path.exists(_cache_file):
             df = pd.read_csv(_cache_file)
         else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
+            df = cached_stk_factor_pro(ts_code, trade_date, TRADE_DATE)
             df.to_csv(_cache_file, index=False)
         
         df['trade_date'] = df['trade_date'].astype(str)
@@ -1300,7 +1280,7 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         if os.path.exists(_cache_file):
             df = pd.read_csv(_cache_file)
         else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
+            df = cached_stk_factor_pro(ts_code, trade_date, TRADE_DATE)
             df.to_csv(_cache_file, index=False)
         
         df['trade_date'] = df['trade_date'].astype(str)
@@ -1752,8 +1732,8 @@ def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min
             return result
         daily = daily.sort_values('trade_date').reset_index(drop=True)
 
-        # 技术因子（使用 stk_factor_pro，MA/RSI 等已计算好）
-        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        # 技术因子（窄表三表链路本地派生，MA/RSI 等已计算好）
+        factor = cached_stk_factor_pro(ts_code, start_date, end_date)
         time.sleep(0.06)
 
         # 合并（stk_factor_pro 字段带 _bfq 后缀，重命名为简洁名）

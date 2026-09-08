@@ -4061,7 +4061,20 @@
       "reentry_streak": 0,
       "next_day_action": "BUY",
       "te_decision_point": "PULLBACK_RE",
-      "execution_score": 75.7
+      "execution_score": 75.7,
+      "current_close": 153.83,
+      "stop_loss": 141.47,
+      "target1": 0.0,
+      "sector_name": "创新药",
+      "execution_reason": "高质量回踩（缩量比0.61、低点守T0_High、收复突破收盘），执行分76 ≥ 75，回踩买点优先于追涨",
+      "state": "HVT_STRONG",
+      "t0_date": "20260805",
+      "hvt_grade": "B",
+      "entry_trigger": 151.5,
+      "buy_zone_low": 149.98,
+      "buy_zone_high": 154.87,
+      "invalidation": 141.47,
+      "position_size": "A 5%~8%"
     },
     {
       "ts_code": "001965.SZ",
@@ -4069,7 +4082,20 @@
       "reentry_streak": 0,
       "next_day_action": "BUY_ON_CONFIRM",
       "te_decision_point": "PULLBACK_RE",
-      "execution_score": 74.9
+      "execution_score": 74.9,
+      "current_close": 9.8,
+      "stop_loss": 9.35,
+      "target1": 11.7,
+      "sector_name": "建筑装饰",
+      "execution_reason": "回踩结构GOOD但执行分75居中，需次日重新走强确认",
+      "state": "BREAKOUT_READY",
+      "t0_date": "20260825",
+      "hvt_grade": "C",
+      "entry_trigger": 9.85,
+      "buy_zone_low": 9.77,
+      "buy_zone_high": 9.93,
+      "invalidation": 9.35,
+      "position_size": "B 3%~5%"
     },
     {
       "ts_code": "300454.SZ",
@@ -4077,7 +4103,20 @@
       "reentry_streak": 1,
       "next_day_action": "BUY_ON_CONFIRM",
       "te_decision_point": "PULLBACK_RE",
-      "execution_score": 74.1
+      "execution_score": 74.1,
+      "current_close": 135.08,
+      "stop_loss": 102.8,
+      "target1": 0.0,
+      "sector_name": "信创",
+      "execution_reason": "回踩结构GOOD但执行分74居中，需次日重新走强确认",
+      "state": "HVT_STRONG",
+      "t0_date": "20260731",
+      "hvt_grade": "B",
+      "entry_trigger": 126.41,
+      "buy_zone_low": 125.15,
+      "buy_zone_high": 131.26,
+      "invalidation": 102.8,
+      "position_size": "B 3%~5%"
     }
   ]
 }

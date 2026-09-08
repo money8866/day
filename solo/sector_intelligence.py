@@ -18,6 +18,8 @@ import os, sys, re, json, glob, sqlite3
 import numpy as np
 import pandas as pd
 
+import stock_cache as sc
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB = r"D:\mystock\cache_daily\stock_data.db"
 CACHE = os.path.join(ROOT, "sli", "cache")
@@ -75,10 +77,7 @@ def load_basic():
     return dict(zip(b["ts_code"], b["name"]))
 
 def load_panel(codes):
-    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-    df = pd.read_sql(f"SELECT {','.join(FIELDS)} FROM stk_factor_pro "
-                     f"WHERE trade_date>=? AND trade_date<=?", conn, params=[START, END])
-    conn.close()
+    df = sc.fetch_hist_range(START, END, ts_codes=list(codes), cols=FIELDS)
     df = df[df["ts_code"].isin(codes)]
     for c in ["close_qfq", "amount", "total_mv", "pct_chg", "pe_ttm", "pb", "volume_ratio"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")

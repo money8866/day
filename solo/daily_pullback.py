@@ -11,7 +11,7 @@ stock_cache.py 的 tushare 缓存体系：
   2. 流通股本：pro.daily_basic 全市场一次拉取当日快照（float_share，万股），
      本地 py_float_share.json 按日期缓存，缺股回退最近一次快照。
      换手率(%) = vol(手) / float_share(万股)，与 Node 版"当前股本套全历史"一致。
-  3. 除权检测：候选股窄查询 stk_factor_pro 的 adj_factor，相邻因子相对变动
+  3. 除权检测：候选股经 stock_cache 窄表链路查 adj_factor，相邻因子相对变动
      > 0.5%（EXR_TOL）视为除权；因子覆盖不全时退回 Node 版 0.85 跳空启发式。
   4. 上证环境：pro.index_daily('000001.SH')，本地 py_index_000001SH.json
      增量缓存，计算 MA20 强弱分区。
@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+import stock_cache as sc
 from stock_cache import get_conn, _get_pro, load_stock_basic, get_effective_date
 
 HISTORY_START = '20210101'
@@ -164,10 +165,10 @@ def fetch_bars(conn, code):
 
 
 def fetch_adj_factors(conn, code):
-    return dict(conn.execute(
-        'SELECT trade_date, adj_factor FROM stk_factor_pro '
-        'WHERE ts_code=? AND trade_date>=? ORDER BY trade_date',
-        (code, HISTORY_START)).fetchall())
+    df = sc.fetch_hist_range(HISTORY_START, None, ts_codes=[code], cols=('adj_factor',))
+    if df.empty:
+        return {}
+    return dict(zip(df['trade_date'], df['adj_factor']))
 
 
 def r5n_trigger(bars, vd, n):

@@ -36,6 +36,8 @@ import numpy as np
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
+import stock_cache as sc
+
 DB_PATH = r'D:\mystock\cache_daily\stock_data.db'
 CACHE_DIR = r'D:\mystock\cache_daily'
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'report_daily')
@@ -83,13 +85,8 @@ def _resolve_trade_date(trade_date: str = None) -> str:
 def _get_trading_days(start: str, end: str) -> List[str]:
     """从SQLite获取交易日列表"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        sql = """SELECT DISTINCT trade_date FROM stk_factor_pro
-                 WHERE trade_date BETWEEN ? AND ?
-                 ORDER BY trade_date"""
-        df = pd.read_sql(sql, conn, params=(start, end))
-        conn.close()
-        return df['trade_date'].tolist()
+        dates = sc.get_recent_trade_dates(n=100000, end_date=end)
+        return [d for d in dates if start <= d <= end]
     except Exception as e:
         logger.error(f"获取交易日失败: {e}")
         return []
@@ -528,43 +525,31 @@ class PriceVolumeTrapDetector:
 
     def get_stk_factor_data(self, ts_code: str, trade_date: str = None,
                              lookback: int = 120) -> Optional[pd.DataFrame]:
-        """从SQLite获取stk_factor_pro数据（含完整技术指标），截止到指定交易日"""
+        """从SQLite获取个股因子数据（含完整技术指标），截止到指定交易日"""
         try:
-            conn = sqlite3.connect(DB_PATH)
-            if trade_date:
-                sql = """SELECT trade_date, open, high, low, close, pct_chg, vol, amount,
-                                volume_ratio, turnover_rate,
-                                ma_bfq_5, ma_bfq_10, ma_bfq_20, ma_bfq_60, ma_bfq_90,
-                                macd_dif_bfq, macd_dea_bfq, macd_bfq,
-                                rsi_bfq_6, rsi_bfq_12, rsi_bfq_24,
-                                kdj_k_bfq, kdj_d_bfq, kdj_bfq,
-                                boll_mid_bfq, boll_upper_bfq, boll_lower_bfq,
-                                atr_bfq, total_mv, circ_mv, pe_ttm, pb
-                         FROM stk_factor_pro
-                         WHERE ts_code=? AND trade_date<=?
-                         ORDER BY trade_date DESC LIMIT ?
-                      """
-                df = pd.read_sql(sql, conn, params=(ts_code, trade_date, lookback))
-            else:
-                sql = """SELECT trade_date, open, high, low, close, pct_chg, vol, amount,
-                                volume_ratio, turnover_rate,
-                                ma_bfq_5, ma_bfq_10, ma_bfq_20, ma_bfq_60, ma_bfq_90,
-                                macd_dif_bfq, macd_dea_bfq, macd_bfq,
-                                rsi_bfq_6, rsi_bfq_12, rsi_bfq_24,
-                                kdj_k_bfq, kdj_d_bfq, kdj_bfq,
-                                boll_mid_bfq, boll_upper_bfq, boll_lower_bfq,
-                                atr_bfq, total_mv, circ_mv, pe_ttm, pb
-                         FROM stk_factor_pro
-                         WHERE ts_code=? ORDER BY trade_date DESC LIMIT ?
-                      """
-                df = pd.read_sql(sql, conn, params=(ts_code, lookback))
-            conn.close()
+            cols = ('open', 'high', 'low', 'close', 'pct_chg', 'vol', 'amount',
+                    'volume_ratio', 'turnover_rate',
+                    'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_60', 'ma_bfq_90',
+                    'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
+                    'rsi_bfq_6', 'rsi_bfq_12', 'rsi_bfq_24',
+                    'kdj_k_bfq', 'kdj_d_bfq', 'kdj_bfq',
+                    'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq',
+                    'atr_bfq', 'total_mv', 'circ_mv', 'pe_ttm', 'pb')
+            end = trade_date
+            if not end:
+                recent = sc.get_recent_trade_dates(n=1)
+                if not recent:
+                    return None
+                end = recent[0]
+            cal = sc.get_recent_trade_dates(n=lookback * 2 + 20, end_date=end)
+            start = cal[0] if cal else None
+            df = sc.fetch_hist_range(start, end, ts_codes=[ts_code], cols=cols)
             if df.empty:
                 return None
-            df = df.sort_values('trade_date').reset_index(drop=True)
-            return df
+            df = df.sort_values('trade_date').tail(lookback).reset_index(drop=True)
+            return df.drop(columns=['ts_code'])
         except Exception as e:
-            logger.warning(f"读取stk_factor_pro {ts_code} 失败: {e}")
+            logger.warning(f"读取个股因子数据 {ts_code} 失败: {e}")
             return None
 
     def _calc_divergence_score(self, df: pd.DataFrame) -> float:
@@ -1189,12 +1174,8 @@ def load_stock_pool(pool_type: str = 'qualified') -> pd.DataFrame:
     # 全市场扫描：从SQLite加载所有股票
     logger.info(f"未找到股池文件，从SQLite加载全市场股票: {pool_type}")
     try:
-        conn = sqlite3.connect(DB_PATH)
-        sql = """SELECT DISTINCT ts_code FROM stk_factor_pro
-                 WHERE trade_date = (SELECT MAX(trade_date) FROM stk_factor_pro)
-              """
-        codes = pd.read_sql(sql, conn)['ts_code'].tolist()
-        conn.close()
+        latest = sc.get_recent_trade_dates(n=1)
+        codes = sc.fetch_market_by_date(latest[0])['ts_code'].tolist() if latest else []
         df = pd.DataFrame({'code': [c.split('.')[0] for c in codes],
                           'name': [''] * len(codes),
                           'theme': [''] * len(codes),

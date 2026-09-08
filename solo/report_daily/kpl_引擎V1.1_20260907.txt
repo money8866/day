@@ -1,0 +1,160 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  开盘啦热榜 → 个股量价二次筛选引擎 V1.1
+  交易日 20260907   候选 60 只（76 个有价值题材×top4 去重）  生成于 2026-09-08 09:15
+  热度召回 → 硬门控 → STQ/VPQ/结构/延续 → Extension → 价格确认 → Entry/Risk → 决策（决策可被规则逐条解释）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  分层统计：送入 60 只 → 硬门控通过 38 只参与全维评分
+  淘汰原因：硬门控(破位/D级结构)=22
+
+══════ TOP 10（TradeRank 优先于 QualityRank）══════
+#  代码         名称          热榜  STQ  VPQ  T1  T3  结构         扩展     Entry   质排   交排  决策
+────────────────────────────────────────────────────────────────────────────────────────────────────────────
+1  002292.SZ  奥飞娱乐        23   83   78  82  82  TREND_CONT MEDIUM    83    3    1  PRIMARY BUY
+2  600179.SH  安通控股         5   84   73  84  84  PULLBACK   LOW       92    2    2  WAIT_RETEST
+3  300085.SZ  银之杰         13   78   79  81  81  PULLBACK   LOW       95    5    3  WAIT_RETEST
+4  300740.SZ  水羊股份        19   82   65  82  82  PULLBACK   LOW       85    7    4  WAIT_RETEST
+5  300364.SZ  中文在线         4   75   83  81  81  PULLBACK   MEDIUM    81    6    5  WAIT_RETEST
+6  300634.SZ  彩讯股份        16   77   75  75  75  PULLBACK   LOW       92   11    6  WAIT_RETEST
+7  603565.SH  中谷物流        38   70   75  78  78  PULLBACK   LOW       85   14    7  WAIT_RETEST
+8  300182.SZ  捷成股份         1   72   81  74  74  PULLBACK   MEDIUM    85   13    8  WAIT_RETEST
+9  300130.SZ  新国都         11   76   79  78  78  PULLBACK   LOW       83    9    9  WAIT_RETEST
+10 600481.SH  双良节能        37   71   89  76  76  PULLBACK   LOW       80    8   10  WAIT_RETEST
+
+══════ TOP 详细（价格完全分离：突破/回踩/支撑/止损）══════
+──────────────────────────────────────────────────────────────────────
+  奥飞娱乐  002292.SZ
+  题材：新消费（1个，主线题材0个）
+  HotRank：23   最强题材热度22715   题材核心：是   共振：单一
+  STQ=83  VPQ=78(A)  T1=82  T3=82(A延续)
+  结构=TREND_CONT(S)  趋势=TREND_UP  量价状态=量能中性  扩展=MEDIUM(危50)
+  PriceConfirmation=CONFIRMED_CONT
+  BREAKOUT_TRIGGER=8.97  RETEST_ENTRY=8.57  SUPPORT=8.57  STOP=8.24  R/R=2.56
+  SignalCompleteness=100/100   QualityRank=3   TradeRank=1   Decision=PRIMARY BUY
+  解读：CONFIRMED_CONT确认，延续与买点俱佳
+──────────────────────────────────────────────────────────────────────
+  安通控股  600179.SH
+  题材：海峡两岸、西部陆海新通道、港口航运（4个，主线题材0个）
+  HotRank：5   最强题材热度27902   题材核心：是   共振：多题材
+  STQ=84  VPQ=73(B)  T1=84  T3=84(A延续)
+  结构=PULLBACK(S)  趋势=TREND_UP  量价状态=缩量回踩  扩展=LOW(危9)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=4.79  RETEST_ENTRY=4.60  SUPPORT=4.60  STOP=4.48  R/R=4.48
+  SignalCompleteness=90/100   QualityRank=2   TradeRank=2   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ73）
+──────────────────────────────────────────────────────────────────────
+  银之杰  300085.SZ
+  题材：数字货币概念、大模型概念（2个，主线题材0个）
+  HotRank：13   最强题材热度25255   题材核心：是   共振：多题材
+  STQ=78  VPQ=79(A)  T1=81  T3=81(A延续)
+  结构=PULLBACK(A)  趋势=TREND_UP  量价状态=缩量回踩  扩展=LOW(危9)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=34.23  RETEST_ENTRY=31.56  SUPPORT=31.56  STOP=29.95  R/R=5.47
+  SignalCompleteness=90/100   QualityRank=5   TradeRank=3   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（等待确认）
+──────────────────────────────────────────────────────────────────────
+  水羊股份  300740.SZ
+  题材：复苏消费概念、新消费、线上送礼物概念（4个，主线题材0个）
+  HotRank：19   最强题材热度22715   题材核心：是   共振：多题材
+  STQ=82  VPQ=65(B)  T1=82  T3=82(A延续)
+  结构=PULLBACK(S)  趋势=TREND_UP  量价状态=量能中性  扩展=LOW(危9)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=24.19  RETEST_ENTRY=22.47  SUPPORT=22.47  STOP=21.23  R/R=1.97
+  SignalCompleteness=90/100   QualityRank=7   TradeRank=4   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ65）
+──────────────────────────────────────────────────────────────────────
+  中文在线  300364.SZ
+  题材：短剧产业（1个，主线题材0个）
+  HotRank：4   最强题材热度29616   题材核心：是   共振：单一
+  STQ=75  VPQ=83(A)  T1=81  T3=81(A延续)
+  结构=PULLBACK(A)  趋势=TREND_UP  量价状态=量能中性  扩展=MEDIUM(危59)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=30.05  RETEST_ENTRY=26.40  SUPPORT=26.40  STOP=24.68  R/R=1.70
+  SignalCompleteness=100/100   QualityRank=6   TradeRank=5   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（等待确认）
+──────────────────────────────────────────────────────────────────────
+  彩讯股份  300634.SZ
+  题材：华为甄选与支付、大模型概念、甲骨文概念（3个，主线题材0个）
+  HotRank：16   最强题材热度25255   题材核心：是   共振：多题材
+  STQ=77  VPQ=75(B)  T1=75  T3=75(A延续)
+  结构=PULLBACK(S)  趋势=TREND_RECOVERY  量价状态=缩量回踩  扩展=LOW(危8)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=24.18  RETEST_ENTRY=20.08  SUPPORT=20.08  STOP=19.38  R/R=5.16
+  SignalCompleteness=90/100   QualityRank=11   TradeRank=6   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（VPQ75）
+──────────────────────────────────────────────────────────────────────
+  中谷物流  603565.SH
+  题材：港口航运、统一大市场（2个，主线题材0个）
+  HotRank：38   最强题材热度13977   题材核心：是   共振：多题材
+  STQ=70  VPQ=75(B)  T1=78  T3=78(A延续)
+  结构=PULLBACK(S)  趋势=TREND_WEAK  量价状态=缩量回踩  扩展=LOW(危8)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=13.77  RETEST_ENTRY=12.00  SUPPORT=12.00  STOP=11.35  R/R=1.68
+  SignalCompleteness=80/100   QualityRank=14   TradeRank=7   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（STQ70、VPQ75）
+──────────────────────────────────────────────────────────────────────
+  捷成股份  300182.SZ
+  题材：AIGC应用、短剧产业、大模型概念（3个，主线题材0个）
+  HotRank：1   最强题材热度32109   题材核心：是   共振：多题材
+  STQ=72  VPQ=81(A)  T1=74  T3=74(B延续)
+  结构=PULLBACK(A)  趋势=TREND_RECOVERY  量价状态=量能中性  扩展=MEDIUM(危51)
+  PriceConfirmation=CONFIRMED_RETEST
+  BREAKOUT_TRIGGER=5.60  RETEST_ENTRY=5.29  SUPPORT=5.29  STOP=5.06  R/R=2.70
+  SignalCompleteness=90/100   QualityRank=13   TradeRank=8   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（STQ72、T174）
+──────────────────────────────────────────────────────────────────────
+  新国都  300130.SZ
+  题材：数字货币概念、大金融、稳定币概念（4个，主线题材0个）
+  HotRank：11   最强题材热度25255   题材核心：是   共振：多题材
+  STQ=76  VPQ=79(A)  T1=78  T3=78(A延续)
+  结构=PULLBACK(A)  趋势=TREND_UP  量价状态=缩量回踩  扩展=LOW(危8)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=21.09  RETEST_ENTRY=19.29  SUPPORT=19.29  STOP=18.49  R/R=4.39
+  SignalCompleteness=100/100   QualityRank=9   TradeRank=9   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（等待确认）
+  等待：等回踩：进入 19.29 附近缩量止跌
+──────────────────────────────────────────────────────────────────────
+  双良节能  600481.SH
+  题材：液冷服务器、光伏辅材（2个，主线题材0个）
+  HotRank：37   最强题材热度14504   题材核心：是   共振：多题材
+  STQ=71  VPQ=89(A+)  T1=76  T3=76(A延续)
+  结构=PULLBACK(S)  趋势=TREND_WEAK  量价状态=高质量上涨  扩展=LOW(危8)
+  PriceConfirmation=WAIT_RETEST
+  BREAKOUT_TRIGGER=4.60  RETEST_ENTRY=4.30  SUPPORT=4.30  STOP=4.15  R/R=4.25
+  SignalCompleteness=90/100   QualityRank=8   TradeRank=10   Decision=WAIT_RETEST
+  解读：质量中上但条件未满（STQ71）
+  等待：等回踩：进入 4.30 附近缩量止跌
+
+══════ 最终执行清单 ══════
+【今日最值得买】PRIMARY BUY
+  ◆ 奥飞娱乐(002292.SZ) STQ83 VPQ78 T182 TREND_CONT | CONFIRMED_CONT确认，延续与买点俱佳
+【回踩最值得买】PRIMARY/确认回踩 与 CONDITIONAL_RETEST
+【突破确认后可以买】WAIT_BREAKOUT 与 CONDITIONAL_BREAKOUT
+【强但不能追】WATCH_HIGH_EXTENSION / WAIT_HIGH_EXTENSION
+  × 东百集团(600693.SH) STQ86 扩展EXTREME(危100) WATCH_HIGH_EXTENSION | 扩展极高(危100)但质量尚可，仅观察等消化
+  × 同飞股份(300990.SZ) STQ71 扩展HIGH(危88) WATCH_HIGH_EXTENSION | 强度存在但距MA20过远(危88)，禁止追高
+【弱结构】WATCH_WEAK_STRUCTURE / WATCH_LOW_STQ
+  × 五洋自控(300420.SZ) STQ65 PULLBACK(A) WATCH_LOW_STQ | 短线质量不足(STQ65)
+  × 海看股份(301262.SZ) STQ69 PULLBACK(A) WATCH_LOW_STQ | 短线质量不足(STQ69)
+  × 北大荒  (600598.SH) STQ65 PULLBACK(A) WATCH_LOW_STQ | 短线质量不足(STQ65)
+  × 慧博云通(301316.SZ) STQ67 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+  × 指南针(300803.SZ) STQ69 PULLBACK(A) WATCH_LOW_STQ | 短线质量不足(STQ69)
+  × 拉卡拉(300773.SZ) STQ69 BASE(C) WATCH_WEAK_STRUCTURE | 结构偏弱/高位扩张(BASE C级)，暂不进入交易候选
+【禁止交易】AVOID
+  ✕ 圣湘生物(688289.SH) STQ82 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 安德利  (605198.SH) STQ74 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 大悦城(000031.SZ) STQ71 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 芯源微  (688037.SH) STQ63 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 友阿股份(002277.SZ) STQ65 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 豫园股份(600655.SH) STQ68 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 胜蓝股份(300843.SZ) STQ64 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 老凤祥  (600612.SH) STQ59 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 深振业Ａ(000006.SZ) STQ57 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 片仔癀  (600436.SH) STQ60 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 爱美客(300896.SZ) STQ58 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 翰宇药业(300199.SZ) STQ64 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 江特电机(002176.SZ) STQ53 AVOID | 破位/趋势恶化，禁止交易
+  ✕ 康恩贝  (600572.SH) STQ59 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+  ✕ 海新能科(300072.SZ) STQ59 AVOID | 流动性不足（成交额/市值不达标），禁止交易
+
+口径：候选来自KPL有价值题材；原始价K线(未除权)；无 Confirmation 不 PRIMARY；扩展极高不追；Quality 找强股，Trade 定买什么。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

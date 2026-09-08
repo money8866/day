@@ -17,6 +17,9 @@ import numpy as np
 import tushare as ts
 from typing import Optional, Literal
 
+sys.path.insert(0, r'D:\mystock\solo')
+from stock_cache import cached_stk_factor_compat
+
 ts.set_token(os.environ['TUSHARE_TOKEN'])
 pro = ts.pro_api()
 
@@ -47,13 +50,12 @@ def load_gem_kc_pool() -> list:
 
 
 def get_price_data(ts_code: str) -> Optional[pd.DataFrame]:
-    """获取stk_factor_pro数据"""
+    """获取本地三表缓存派生数据（原 stk_factor_pro）"""
     try:
-        df = pro.stk_factor_pro(ts_code=ts_code, start_date=START_DATE, end_date=END_DATE)
+        df = cached_stk_factor_compat(ts_code, START_DATE, END_DATE, silent=True)
         if df is None or len(df) < 100:
             return None
         df = df.sort_values('trade_date').reset_index(drop=True)
-        time.sleep(0.12)
         return df
     except Exception:
         return None

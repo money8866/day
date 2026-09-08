@@ -1,14 +1,15 @@
 import os
 import sys
-import sqlite3
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from data.indicators import ema, sma, slope, atr, adx, rsi, macd, new_high_count, price_position
 from data.loader import DataLoader, load_config
+import stock_cache as sc
 
 
 @dataclass
@@ -142,17 +143,13 @@ class MarketStateEngine:
 
     def _calc_breadth_score(self, trade_date):
         start_date = (pd.to_datetime(trade_date) - pd.Timedelta(days=120)).strftime('%Y%m%d')
-        db_path = r"D:\mystock\cache_daily\stock_data.db"
         try:
-            conn = sqlite3.connect(db_path)
-            df = pd.read_sql_query(
-                "SELECT ts_code, trade_date, close_qfq, ma_qfq_20, ma_qfq_60 FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ? ORDER BY ts_code, trade_date",
-                conn, params=(str(start_date), str(trade_date))
-            )
-            conn.close()
+            df = sc.fetch_hist_range(str(start_date), str(trade_date),
+                                     cols=['ts_code', 'trade_date', 'close_qfq', 'ma_qfq_20', 'ma_qfq_60'])
             if df.empty:
                 return 0.5
             df['trade_date'] = df['trade_date'].astype(str)
+            df = df.sort_values(['ts_code', 'trade_date'])
             above_ma20 = 0
             above_ma60 = 0
             count = 0

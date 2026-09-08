@@ -3,7 +3,8 @@
 已突破股 · T+1 Trade Execution Gate V2.0
 对 W7 报告确认突破的股票逐股计算：
   BQS(突破质量分) / TRIG / BUY_ZONE / CONFIRM / INVALID / STOP / TARGET1/2 / ENTRY_MODE / T+1_ACTION
-数据源：D:\\mystock\\cache_daily\\stock_data.db (stk_factor_pro)
+数据源：D:\\mystock\\cache_daily\\stock_data.db（窄表链路：daily_cache + daily_basic_cache + adj_factor_cache；
+        MA10/20/60 与 W7 引擎同口径，按每股前复权收盘本地滚动计算，不再读 stk_factor_pro 宽表）
         + cache_daily/stock_basic.csv (行业映射与行业强度)
 输出：report_daily/w7_t1_gate_YYYYMMDD.md
 """
@@ -12,6 +13,11 @@ import sys
 import csv
 import sqlite3
 from datetime import datetime
+
+import numpy as np
+import pandas as pd
+
+import w7_second_wave_engine as w7
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -65,7 +71,7 @@ def load_industry_map(conn, break_day):
 
 def load_trade_dates(conn, break_day, need=25):
     rows = conn.execute(
-        "SELECT DISTINCT trade_date FROM stk_factor_pro WHERE trade_date<=? ORDER BY trade_date DESC LIMIT ?",
+        "SELECT DISTINCT trade_date FROM daily_cache WHERE trade_date<=? ORDER BY trade_date DESC LIMIT ?",
         (break_day, need),
     ).fetchall()
     return [str(r[0]) for r in rows][::-1]
@@ -77,9 +83,9 @@ def load_ret20_map(conn, dates):
         return {}
     d0, d1 = dates[0], dates[-1]
     ret = {}
-    for code, c in conn.execute("SELECT ts_code, close FROM stk_factor_pro WHERE trade_date=?", (d0,)):
+    for code, c in conn.execute("SELECT ts_code, close FROM daily_cache WHERE trade_date=?", (d0,)):
         ret[code] = [float(c)]
-    for code, c in conn.execute("SELECT ts_code, close FROM stk_factor_pro WHERE trade_date=?", (d1,)):
+    for code, c in conn.execute("SELECT ts_code, close FROM daily_cache WHERE trade_date=?", (d1,)):
         if code not in ret:
             continue
         base = ret[code][0]
@@ -91,23 +97,44 @@ def load_ret20_map(conn, dates):
 
 
 def load_bars(conn, ts_code, break_day, limit=60):
+    # W7 窄表链路：行情取 daily_cache、换手取 daily_basic_cache、复权取 adj_factor_cache；
+    # MA10/20/60 按每股前复权收盘本地滚动（与 w7 引擎 _fill_ma_columns 同口径）。
+    fetch = limit + 40  # 多取 40 根历史，保证 MA60 在回看点位(倒数第6根)满窗
     rows = conn.execute(
-        "SELECT trade_date, open, high, low, close, pct_chg, vol, turnover_rate,"
-        " ma_bfq_10, ma_bfq_20, ma_bfq_60 FROM stk_factor_pro"
-        " WHERE ts_code=? AND trade_date<=? ORDER BY trade_date DESC LIMIT ?",
-        (ts_code, break_day, limit),
+        "SELECT d.trade_date, d.open, d.high, d.low, d.close, d.pct_chg, d.vol,"
+        " b.turnover_rate, a.adj_factor"
+        " FROM daily_cache AS d"
+        " LEFT JOIN daily_basic_cache AS b"
+        "   ON b.ts_code = d.ts_code AND b.trade_date = d.trade_date"
+        " LEFT JOIN adj_factor_cache AS a"
+        "   ON a.ts_code = d.ts_code AND a.trade_date = d.trade_date"
+        " WHERE d.ts_code=? AND d.trade_date<=? ORDER BY d.trade_date DESC LIMIT ?",
+        (ts_code, break_day, fetch),
     ).fetchall()
     rows = rows[::-1]
+    if not rows:
+        return []
+    df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "pct_chg",
+                                     "vol", "turnover", "adj_factor"])
+    for col in ("open", "high", "low", "close", "pct_chg", "vol", "turnover", "adj_factor"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["pct_chg"] = df["pct_chg"].fillna(0.0)
+    price = w7._qfq_price(df)  # 前复权收盘（无复权因子时退回原始 close，与引擎一致）
+    for w in (10, 20, 60):
+        df[f"ma{w}"] = price.rolling(w, min_periods=w).mean()
+    df = df.tail(limit)
     bars = []
-    for r in rows:
+    for _, r in df.iterrows():
+        def _f(v):
+            v = float(v)
+            return v if np.isfinite(v) else None
         bars.append({
-            "date": str(r[0]), "open": float(r[1]), "high": float(r[2]), "low": float(r[3]),
-            "close": float(r[4]), "pct_chg": float(r[5]) if r[5] is not None else 0.0,
-            "vol": float(r[6]) if r[6] is not None else 0.0,
-            "turnover": float(r[7]) if r[7] is not None else 0.0,
-            "ma10": float(r[8]) if r[8] is not None else None,
-            "ma20": float(r[9]) if r[9] is not None else None,
-            "ma60": float(r[10]) if r[10] is not None else None,
+            "date": str(r["date"]), "open": float(r["open"]), "high": float(r["high"]),
+            "low": float(r["low"]), "close": float(r["close"]),
+            "pct_chg": float(r["pct_chg"]) if np.isfinite(r["pct_chg"]) else 0.0,
+            "vol": float(r["vol"]) if np.isfinite(r["vol"]) else 0.0,
+            "turnover": _f(r["turnover"]),
+            "ma10": _f(r["ma10"]), "ma20": _f(r["ma20"]), "ma60": _f(r["ma60"]),
         })
     return bars
 
@@ -317,7 +344,7 @@ def write_report(out_path, results, ind_src):
     L = []
     L.append(f"# 已突破股 · T+1 Trade Execution Gate V2.0（{T1_DAY} 盘前执行计划）\n")
     L.append(f"- 突破日：{BREAK_DAY}（W7 报告基准日）｜ T+1：{T1_DAY}")
-    L.append(f"- 数据源：stk_factor_pro（OHLC/量能/MA10·20·60）＋ 行业快照 {ind_src}｜ 行业强度口径与 W7 引擎一致（50+行业20日收益中位数×150）")
+    L.append(f"- 数据源：窄表链路 daily_cache＋daily_basic_cache＋adj_factor_cache（MA10/20/60 按每股前复权本地滚动，口径同 W7 引擎）＋ 行业快照 {ind_src}｜ 行业强度口径与 W7 引擎一致（50+行业20日收益中位数×150）")
     L.append(f"- 乖离代理：突破日收盘 vs TRIG（盘前口径）。**开盘后必须用开盘价重分档**：高开≤3%正常等回踩；3~5%不追第一波；>5% NO_CHASE；高开急拉禁止追买。")
     L.append(f"- 量价三档（T+1盘中/收盘复核）：Volume_T+1 < 0.8×突破日量=健康；0.8~1.2×=中性需更强承接；>1.2×且破 TRIG=NO_BUY（突破失败风险）。")
     L.append(f"- BQS 七维：突破幅度20＋量能质量20＋突破后承接20＋MA结构15＋行业强度10＋相对强度10＋整理质量5；分级 A≥85 / B 75-84 / C 65-74 / D<65。\n")

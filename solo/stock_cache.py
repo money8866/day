@@ -1,5 +1,6 @@
 import sqlite3
 import pandas as pd
+import numpy as np
 import os
 import time
 import datetime
@@ -24,25 +25,6 @@ def _get_pro():
             pass
         _pro = ts.pro_api()
     return _pro
-
-# ═══════════════════════════════════════════════════════
-# 缓存状态管理（替代 txt 文件+全局变量混乱局面）
-# ═══════════════════════════════════════════════════════
-
-# 批量下载日期（读/写 sc.meta 表）——替代 txt 文件和全局变量
-_STK_FACTOR_BATCH_STATUS_KEY = 'stk_factor_batch_date'
-
-def get_batch_date():
-    """获取已批量缓存的日期"""
-    return get_meta(_STK_FACTOR_BATCH_STATUS_KEY, '')
-
-def set_batch_date(date_str):
-    """设置已批量缓存的日期"""
-    set_meta(_STK_FACTOR_BATCH_STATUS_KEY, date_str)
-
-# 已补充缓存记录的集合（避免重复日志），进程内有效，不持久化
-_cache_supplement_completed = set()
-
 
 # ═══════════════════════════════════════════════════════
 # CSV 缓存 I/O
@@ -130,83 +112,8 @@ def _table_exists(table_name):
 
 
 # =========================================================
-# stk_factor_pro 表操作
-# =========================================================
-
-STK_FACTOR_TABLE = 'stk_factor_pro'
-
-
-def init_stk_factor_table(sample_df=None):
-    """初始化 stk_factor_pro 表"""
-    if _table_exists(STK_FACTOR_TABLE):
-        return
-    if sample_df is not None:
-        _ensure_table_from_df(sample_df, STK_FACTOR_TABLE)
-        _create_stk_factor_indexes()
-
-
-def _create_stk_factor_indexes():
-    """创建辅助索引"""
-    with get_conn() as conn:
-        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{STK_FACTOR_TABLE}_trade_date ON {STK_FACTOR_TABLE}(trade_date)")
-        conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{STK_FACTOR_TABLE}_total_mv ON {STK_FACTOR_TABLE}(total_mv)")
-
-
-def get_stk_factor_pro(ts_code, start_date, end_date):
-    """查询单股某日期范围的数据，返回 DataFrame（按 trade_date 升序）"""
-    if not _table_exists(STK_FACTOR_TABLE):
-        return None
-    with get_conn() as conn:
-        df = pd.read_sql_query(
-            f'SELECT * FROM {STK_FACTOR_TABLE} WHERE ts_code = ? AND trade_date BETWEEN ? AND ? ORDER BY trade_date',
-            conn, params=(ts_code, str(start_date), str(end_date))
-        )
-    if df.empty:
-        return None
-    return df.reset_index(drop=True)
-
-
-def get_stk_factor_range(ts_code):
-    """获取某股票的缓存日期范围 (min_date, max_date)，无数据返回 (None, None)"""
-    if not _table_exists(STK_FACTOR_TABLE):
-        return (None, None)
-    with get_conn() as conn:
-        row = conn.execute(
-            f'SELECT MIN(trade_date), MAX(trade_date) FROM {STK_FACTOR_TABLE} WHERE ts_code = ?',
-            (ts_code,)
-        ).fetchone()
-    if row is None or row[0] is None:
-        return (None, None)
-    return (str(row[0]), str(row[1]))
-
-
-def get_list_date_from_cache(ts_code):
-    """从缓存中获取上市日期（取最早交易日期）"""
-    if not _table_exists(STK_FACTOR_TABLE):
-        return None
-    with get_conn() as conn:
-        row = conn.execute(
-            f'SELECT MIN(trade_date) FROM {STK_FACTOR_TABLE} WHERE ts_code = ?',
-            (ts_code,)
-        ).fetchone()
-    return str(row[0]) if row and row[0] else None
-
-
-def get_last_adj_factor(ts_code):
-    """获取某股票最后一条记录的复权因子（用于除权检测）"""
-    if not _table_exists(STK_FACTOR_TABLE):
-        return None
-    with get_conn() as conn:
-        row = conn.execute(
-            f'SELECT adj_factor FROM {STK_FACTOR_TABLE} WHERE ts_code = ? ORDER BY trade_date DESC LIMIT 1',
-            (ts_code,)
-        ).fetchone()
-    return row[0] if row and row[0] is not None else None
-
-
-# =========================================================
 # daily_cache 表：专门存储 pro.daily 的 11 列基础行情数据
-# 与 stk_factor_pro 表（261列技术指标）隔离，避免 INSERT OR REPLACE 破坏技术指标
+# 技术指标不再落库，由 compute_factor_indicators 从窄表三表实时派生
 # =========================================================
 
 DAILY_CACHE_TABLE = 'daily_cache'
@@ -460,64 +367,21 @@ def get_daily_by_date_count(trade_date):
     return row[0] if row else 0
 
 
-
-def batch_insert_stk_factor_pro(df_all):
-    """批量插入/更新 stk_factor_pro 数据（INSERT OR REPLACE，keep='last' 语义）
-    
-    Args:
-        df_all: DataFrame，包含所有股票的数据
-    
-    Returns:
-        插入/更新的行数
-    """
-    if df_all is None or df_all.empty:
-        return 0
-    
-    # 确保表存在
-    if not _table_exists(STK_FACTOR_TABLE):
-        _ensure_table_from_df(df_all, STK_FACTOR_TABLE)
-        _create_stk_factor_indexes()
-    
-    cols = list(df_all.columns)
-    placeholders = ','.join(['?'] * len(cols))
-    col_str = ','.join([f'"{c}"' for c in cols])
-    sql = f'INSERT OR REPLACE INTO {STK_FACTOR_TABLE} ({col_str}) VALUES ({placeholders})'
-    
-    # 处理 NaN -> None，否则 SQLite 会报错
-    values = [
-        [None if pd.isna(v) else v for v in row]
-        for row in df_all[cols].values.tolist()
-    ]
-    
-    with get_conn() as conn:
-        conn.executemany(sql, values)
-    
-    return len(values)
-
-
-def delete_stk_factor_stock(ts_code):
-    """删除某只股票的全部 stk_factor_pro 数据（除权时触发）"""
-    if not _table_exists(STK_FACTOR_TABLE):
-        return
-    with get_conn() as conn:
-        conn.execute(f'DELETE FROM {STK_FACTOR_TABLE} WHERE ts_code = ?', (ts_code,))
-
-
-def count_stk_factor_stocks():
-    """统计缓存了多少只股票"""
-    if not _table_exists(STK_FACTOR_TABLE):
+def count_daily_stocks():
+    """统计 daily_cache 表中已缓存的股票数量"""
+    if not _table_exists(DAILY_CACHE_TABLE):
         return 0
     with get_conn() as conn:
-        row = conn.execute(f'SELECT COUNT(DISTINCT ts_code) FROM {STK_FACTOR_TABLE}').fetchone()
+        row = conn.execute(f'SELECT COUNT(DISTINCT ts_code) FROM {DAILY_CACHE_TABLE}').fetchone()
     return row[0] if row else 0
 
 
-def count_stk_factor_rows():
-    """统计总记录数"""
-    if not _table_exists(STK_FACTOR_TABLE):
+def count_daily_rows():
+    """统计 daily_cache 表的总行数"""
+    if not _table_exists(DAILY_CACHE_TABLE):
         return 0
     with get_conn() as conn:
-        row = conn.execute(f'SELECT COUNT(*) FROM {STK_FACTOR_TABLE}').fetchone()
+        row = conn.execute(f'SELECT COUNT(*) FROM {DAILY_CACHE_TABLE}').fetchone()
     return row[0] if row else 0
 
 
@@ -553,67 +417,6 @@ def set_meta(key, value):
             f'INSERT OR REPLACE INTO {META_TABLE} (key, value, updated_at) VALUES (?, ?, datetime("now"))',
             (str(key), str(value))
         )
-
-
-# =========================================================
-# CSV -> SQLite 迁移工具
-# =========================================================
-
-def migrate_csv_to_sqlite(csv_dir=None, pattern='stk_pro_*.csv', table_name=STK_FACTOR_TABLE, batch_size=50):
-    """将 CSV 缓存批量导入 SQLite
-    
-    Args:
-        csv_dir: CSV 文件目录，默认 CACHE_DIR
-        pattern: 文件匹配模式
-        table_name: 目标表名
-        batch_size: 多少只股票提交一次事务
-    
-    Returns:
-        (stock_count, total_rows)
-    """
-    import glob
-    
-    if csv_dir is None:
-        csv_dir = CACHE_DIR
-    
-    csv_files = glob.glob(os.path.join(csv_dir, pattern))
-    if not csv_files:
-        print(f'[迁移] 未找到匹配 {pattern} 的文件')
-        return (0, 0)
-    
-    print(f'[迁移] 找到 {len(csv_files)} 个 CSV 文件，开始导入...')
-    
-    total_stocks = 0
-    total_rows = 0
-    batch_dfs = []
-    
-    for i, csv_file in enumerate(csv_files):
-        try:
-            df = pd.read_csv(csv_file)
-            if df.empty:
-                continue
-            if 'trade_date' in df.columns:
-                df['trade_date'] = df['trade_date'].astype(str)
-            batch_dfs.append(df)
-            total_stocks += 1
-            total_rows += len(df)
-            
-            # 批量提交
-            if len(batch_dfs) >= batch_size:
-                combined = pd.concat(batch_dfs, ignore_index=True)
-                batch_insert_stk_factor_pro(combined)
-                batch_dfs = []
-                print(f'[迁移] 已处理 {total_stocks}/{len(csv_files)} 只股票，累计 {total_rows} 行...')
-        except Exception as e:
-            print(f'[迁移] 失败 {os.path.basename(csv_file)}: {e}')
-    
-    # 处理剩余
-    if batch_dfs:
-        combined = pd.concat(batch_dfs, ignore_index=True)
-        batch_insert_stk_factor_pro(combined)
-    
-    print(f'[迁移] 完成！共 {total_stocks} 只股票，{total_rows} 行数据')
-    return (total_stocks, total_rows)
 
 
 # ═══════════════════════════════════════════════════════
@@ -686,7 +489,7 @@ def cached_daily(ts_code, start_date, end_date, pro=None):
     """带缓存的 pro.daily() 调用（V4: 委托统一 API daily()，获得新鲜度检查能力）
 
     daily_cache 表仅存储 pro.daily 的 11 列基础行情数据（open/high/low/close/vol/amount 等），
-    与 stk_factor_pro 表（261列技术指标）隔离，INSERT OR REPLACE 不会破坏技术指标数据。
+    技术指标由 compute_factor_indicators 从窄表三表实时派生，不再落库。
     """
     return daily(ts_code, start_date, end_date, pro=pro, auto_fill=True, silent=True)
 
@@ -919,7 +722,11 @@ ADJ_FACTOR_BATCH_KEY = 'adj_factor_batch_date'
 _DAILY_BASIC_COLS = [
     'ts_code', 'trade_date', 'turnover_rate', 'turnover_rate_f',
     'volume_ratio', 'total_mv', 'circ_mv',
+    'pe', 'pe_ttm', 'pb', 'ps', 'dv_ttm', 'float_share', 'total_share',
 ]
+
+# 估值扩列（生产代码实际使用的 daily_basic 估值字段，逐列幂等补进存量表）
+_DAILY_BASIC_EXTRA_COLS = ['pe', 'pe_ttm', 'pb', 'ps', 'dv_ttm', 'float_share', 'total_share']
 
 _ADJ_FACTOR_COLS = ['ts_code', 'trade_date', 'adj_factor']
 
@@ -936,13 +743,21 @@ def _ensure_daily_basic_table():
                 "volume_ratio" REAL,
                 "total_mv" REAL,
                 "circ_mv" REAL,
+                "pe" REAL,
+                "pe_ttm" REAL,
+                "pb" REAL,
+                "ps" REAL,
+                "dv_ttm" REAL,
+                "float_share" REAL,
+                "total_share" REAL,
                 PRIMARY KEY ("ts_code", "trade_date")
             )
         ''')
-        # 兼容既有 6 列存量库（早期无 turnover_rate_f）：动态补列
+        # 兼容既有存量库：动态补列（早期 6 列 / 7 列 / 无估值列）
         _cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{DAILY_BASIC_CACHE_TABLE}")').fetchall()}
-        if 'turnover_rate_f' not in _cols:
-            conn.execute(f'ALTER TABLE "{DAILY_BASIC_CACHE_TABLE}" ADD COLUMN "turnover_rate_f" REAL')
+        for _c in ['turnover_rate_f'] + _DAILY_BASIC_EXTRA_COLS:
+            if _c not in _cols:
+                conn.execute(f'ALTER TABLE "{DAILY_BASIC_CACHE_TABLE}" ADD COLUMN "{_c}" REAL')
         conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_db_date" ON "{DAILY_BASIC_CACHE_TABLE}" ("trade_date")')
 
 
@@ -961,7 +776,7 @@ def _ensure_adj_factor_table():
 
 
 def batch_insert_daily_basic(df_all):
-    """批量插入/更新 daily_basic_cache 数据（INSERT OR REPLACE）
+    """批量插入/更新 daily_basic_cache 数据（UPSERT，只更新传入列，保留存量其他列）
 
     Args:
         df_all: DataFrame，含 ts_code/trade_date + 若干 daily_basic 字段
@@ -979,7 +794,14 @@ def batch_insert_daily_basic(df_all):
     df_valid['trade_date'] = df_valid['trade_date'].astype(str)
     placeholders = ','.join(['?'] * len(cols))
     col_str = ','.join([f'"{c}"' for c in cols])
-    sql = f'INSERT OR REPLACE INTO {DAILY_BASIC_CACHE_TABLE} ({col_str}) VALUES ({placeholders})'
+    update_cols = [c for c in cols if c not in ('ts_code', 'trade_date')]
+    if update_cols:
+        update_clause = ', '.join([f'"{c}"=excluded."{c}"' for c in update_cols])
+        sql = (f'INSERT INTO {DAILY_BASIC_CACHE_TABLE} ({col_str}) VALUES ({placeholders}) '
+               f'ON CONFLICT("ts_code", "trade_date") DO UPDATE SET {update_clause}')
+    else:
+        sql = (f'INSERT INTO {DAILY_BASIC_CACHE_TABLE} ({col_str}) VALUES ({placeholders}) '
+               f'ON CONFLICT("ts_code", "trade_date") DO NOTHING')
     values = [
         [None if pd.isna(v) else v for v in row]
         for row in df_valid[cols].values.tolist()
@@ -1104,6 +926,22 @@ def get_daily_basic_by_date_count(trade_date):
     return row[0] if row else 0
 
 
+def get_daily_basic_valuation_count(trade_date):
+    """统计某交易日 daily_basic 中估值列（pe/pe_ttm/pb）至少一项非空的记录数
+
+    完整性判断专用：行数达标但估值列全空 = 残缺数据（早期仅缓存换手/市值列），须重拉覆盖
+    """
+    if not _table_exists(DAILY_BASIC_CACHE_TABLE):
+        return 0
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT COUNT(*) FROM {DAILY_BASIC_CACHE_TABLE} '
+            f'WHERE trade_date = ? AND (pe IS NOT NULL OR pe_ttm IS NOT NULL OR pb IS NOT NULL)',
+            (str(trade_date),)
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def get_adj_factor_by_date_count(trade_date):
     """统计某交易日 adj_factor 全市场记录数"""
     if not _table_exists(ADJ_FACTOR_CACHE_TABLE):
@@ -1151,11 +989,15 @@ def daily_basic_market(trade_date, pro=None, auto_fill=True, min_rows=UDC_MARKET
     try:
         cnt = get_daily_basic_by_date_count(trade_date)
         if cnt >= min_rows:
-            df = get_daily_basic_by_date(trade_date)
-            if df is not None and not df.empty:
-                if not silent:
-                    print(f'[daily_basic] 命中全市场 {trade_date} ({len(df)} 行)')
-                return df
+            val_cnt = get_daily_basic_valuation_count(trade_date)
+            if val_cnt >= min_rows:
+                df = get_daily_basic_by_date(trade_date)
+                if df is not None and not df.empty:
+                    if not silent:
+                        print(f'[daily_basic] 命中全市场 {trade_date} ({len(df)} 行)')
+                    return df
+            elif not silent:
+                print(f'[daily_basic] {trade_date} 行数{cnt}达标但估值覆盖{val_cnt}不足，重拉覆盖')
         elif get_meta(f'db_market_empty_{trade_date}', '') == '1':
             return get_daily_basic_by_date(trade_date) if cnt > 0 else None
     except Exception as e:
@@ -1242,54 +1084,339 @@ def adj_factor_market(trade_date, pro=None, auto_fill=True, min_rows=UDC_MARKET_
     return df
 
 
-def seed_daily_basic_from_stk_factor(start_date='20230103', end_date='20260803', min_rows=UDC_MARKET_MIN_COUNT):
-    """一次性种子灌库：从 stk_factor_pro 宽表把历史日整表切片直接 SQL 拷贝进窄表。
+# =========================================================
+# 本地技术指标派生引擎（替代 stk_factor_pro 宽表的 261 列指标）
+# 输入：daily_cache + daily_basic_cache + adj_factor_cache 三表 JOIN 结果
+# 公式对齐 tushare 官方 stk_factor_pro：
+#   - ATR(14)/RSI(n)：Wilder 平滑 ewm(alpha=1/n)（_probe_formula_v5 已抽样验证 |diff|<0.001）
+#   - MACD(12,26,9)：dif=ema12-ema26, dea=ema9(dif), macd=2*(dif-dea)
+#   - updays：连续上涨天数按符号分段累计
+# =========================================================
 
-    已实证宽表 turnover_rate/volume_ratio/total_mv/circ_mv 与 pro.daily_basic 逐值同源；
-    仅对完整日（记录数>=min_rows）拷贝，避开 20260804 之后宽表不完整/需 API 实时补齐的区间。
+_MA_EMA_WINDOWS = (5, 10, 20, 30, 60, 90, 250)
+
+
+def _wilder_rsi(close, n):
+    """Wilder RSI：alpha=1/n 递归平滑；平均跌幅为 0 时取 100"""
+    delta = close.diff()
+    up = delta.clip(lower=0.0)
+    dn = (-delta).clip(lower=0.0)
+    up_avg = up.ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+    dn_avg = dn.ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+    rs = up_avg / dn_avg
+    out = 100.0 - 100.0 / (1.0 + rs)
+    return out.where(dn_avg > 0, 100.0)
+
+
+def _derive_single_stock(g):
+    """对单股（trade_date 升序）DataFrame 追加全部指标列，返回新 DataFrame
+
+    三口径：bfq=未复权 / qfq=前复权(raw×adj/末因子) / hfq=后复权(raw×adj)
+    新列统一收集到 dict，最后 pd.concat(axis=1) 一次性合并（避免逐列 insert 碎片化）
+    """
+    c = g['close'].astype(float)
+    h = g['high'].astype(float)
+    l = g['low'].astype(float)
+    o = g['open'].astype(float)
+    vol = g['vol'].astype(float) if 'vol' in g.columns else None
+    new_cols = {}
+
+    # ── 复权价：anchor=序列内最后一个有效复权因子（与 w7._qfq_price 口径一致）──
+    if 'adj_factor' in g.columns:
+        adj = pd.to_numeric(g['adj_factor'], errors='coerce')
+    else:
+        adj = pd.Series(np.nan, index=g.index)
+    anchor = adj.dropna().iloc[-1] if adj.notna().any() else np.nan
+    qf = (adj / anchor) if pd.notna(anchor) and anchor != 0 else pd.Series(np.nan, index=g.index)
+    for col, base in (('open', o), ('high', h), ('low', l), ('close', c)):
+        new_cols[col + '_qfq'] = base * qf
+        new_cols[col + '_hfq'] = base * adj
+
+    price_sets = {
+        'bfq': {'high': h, 'low': l, 'close': c},
+        'qfq': {'high': new_cols['high_qfq'], 'low': new_cols['low_qfq'], 'close': new_cols['close_qfq']},
+        'hfq': {'high': new_cols['high_hfq'], 'low': new_cols['low_hfq'], 'close': new_cols['close_hfq']},
+    }
+
+    for basis, P in price_sets.items():
+        pc = P['close']
+        ph = P['high']
+        pl = P['low']
+
+        # MA / EMA 全窗口
+        for w in _MA_EMA_WINDOWS:
+            new_cols[f'ma_{basis}_{w}'] = pc.rolling(w, min_periods=w).mean()
+            new_cols[f'ema_{basis}_{w}'] = pc.ewm(span=w, adjust=False).mean()
+
+        # MACD(12,26,9)
+        e12 = pc.ewm(span=12, adjust=False).mean()
+        e26 = pc.ewm(span=26, adjust=False).mean()
+        dif = e12 - e26
+        dea = dif.ewm(span=9, adjust=False).mean()
+        new_cols[f'macd_dif_{basis}'] = dif
+        new_cols[f'macd_dea_{basis}'] = dea
+        new_cols[f'macd_{basis}'] = (dif - dea) * 2.0
+
+        # KDJ(9,3,3)：RSV→SMA(3,1)→SMA(3,1)，J=3K-2D
+        hhv = ph.rolling(9, min_periods=9).max()
+        llv = pl.rolling(9, min_periods=9).min()
+        rng = hhv - llv
+        rsv = ((pc - llv) / rng * 100.0).where(rng > 0)
+        rsv = rsv.fillna(50.0)
+        k = rsv.ewm(alpha=1 / 3, adjust=False).mean()
+        d = k.ewm(alpha=1 / 3, adjust=False).mean()
+        new_cols[f'kdj_k_{basis}'] = k
+        new_cols[f'kdj_d_{basis}'] = d
+        new_cols[f'kdj_{basis}'] = 3.0 * k - 2.0 * d
+
+        # RSI(6/12/24) Wilder
+        for n in (6, 12, 24):
+            new_cols[f'rsi_{basis}_{n}'] = _wilder_rsi(pc, n)
+
+        # BOLL(20,2)：官方用总体标准差 ddof=0（反推验证 med≈3e-04，即输入价格精度极限）
+        mid = pc.rolling(20, min_periods=20).mean()
+        std20 = pc.rolling(20, min_periods=20).std(ddof=0)
+        new_cols[f'boll_mid_{basis}'] = mid
+        new_cols[f'boll_upper_{basis}'] = mid + 2.0 * std20
+        new_cols[f'boll_lower_{basis}'] = mid - 2.0 * std20
+
+        # ATR(14) Wilder
+        tr = pd.concat([ph - pl, (ph - pc.shift(1)).abs(), (pl - pc.shift(1)).abs()], axis=1).max(axis=1)
+        new_cols[f'atr_{basis}'] = tr.ewm(alpha=1 / 14, adjust=False, min_periods=1).mean()
+
+        # bias1/2/3：6/12/24 日乖离率
+        for tag, w in (('1', 6), ('2', 12), ('3', 24)):
+            maw = pc.rolling(w, min_periods=w).mean()
+            new_cols[f'bias{tag}_{basis}'] = (pc - maw) / maw * 100.0
+
+        # CCI(14)：Lambert 标准 MD=窗口内各点相对当前 SMA 的均值绝对偏差（与 stk_factor_pro 对齐）
+        tp = (ph + pl + pc) / 3.0
+        matp = tp.rolling(14, min_periods=14).mean()
+        md = tp.rolling(14, min_periods=14).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
+        new_cols[f'cci_{basis}'] = (tp - matp) / (0.015 * md)
+
+        # DMI(14,6)：TR/DM 用 14 日求和（通达信式），ADX=MA(DX,6)，ADXR=(ADX+ADX[6])/2
+        hd = ph - ph.shift(1)
+        ld = pl.shift(1) - pl
+        dmp = hd.where((hd > 0) & (hd > ld), 0.0)
+        dmm = ld.where((ld > 0) & (ld > hd), 0.0)
+        tr14 = tr.rolling(14, min_periods=14).sum()
+        pdi = dmp.rolling(14, min_periods=14).sum() / tr14 * 100.0
+        mdi = dmm.rolling(14, min_periods=14).sum() / tr14 * 100.0
+        new_cols[f'dmi_pdi_{basis}'] = pdi
+        new_cols[f'dmi_mdi_{basis}'] = mdi
+        dx = ((mdi - pdi).abs() / (mdi + pdi) * 100.0).replace([np.inf, -np.inf], np.nan)
+        adx = dx.rolling(6, min_periods=6).mean()
+        new_cols[f'dmi_adx_{basis}'] = adx
+        new_cols[f'dmi_adxr_{basis}'] = (adx + adx.shift(6)) / 2.0
+
+        # WR(9) / WR1(6)
+        for tag, w in (('', 9), ('1', 6)):
+            hh = ph.rolling(w, min_periods=w).max()
+            ll = pl.rolling(w, min_periods=w).min()
+            rng2 = hh - ll
+            new_cols[f'wr{tag}_{basis}'] = ((hh - pc) / rng2 * 100.0).where(rng2 > 0)
+
+        if vol is not None:
+            vol = vol.fillna(0.0)
+            # VR(26)：上涨量/下跌量比率（标准 TDX 公式；stk_factor_pro 的 VR 含未公开内部
+            # 修正、中位差异约 3~4，无法用标准变体复现，此处保持标准口径近似）
+            dc = pc.diff()
+            av = vol.where(dc > 0, 0.0).rolling(26, min_periods=26).sum()
+            bv = vol.where(dc < 0, 0.0).rolling(26, min_periods=26).sum()
+            cv = vol.where(dc == 0, 0.0).rolling(26, min_periods=26).sum()
+            denom = bv + cv / 2.0
+            new_cols[f'vr_{basis}'] = ((av + cv / 2.0) / denom * 100.0).where(denom > 0)
+            # PSY(12) + PSYMA(6)
+            psy = (dc > 0).astype(float).rolling(12, min_periods=12).mean() * 100.0
+            new_cols[f'psy_{basis}'] = psy
+            new_cols[f'psyma_{basis}'] = psy.rolling(6, min_periods=6).mean()
+            # MFI(14)：官方窗口为 14（反推验证 med≈3e-06）
+            tp_chg = tp.diff()
+            mf = tp * vol
+            pos = mf.where(tp_chg > 0, 0.0).rolling(14, min_periods=14).sum()
+            neg = mf.where(tp_chg < 0, 0.0).rolling(14, min_periods=14).sum()
+            new_cols[f'mfi_{basis}'] = (100.0 - 100.0 / (1.0 + pos / neg)).where(neg > 0, 100.0)
+            # OBV：能量潮（官方增量口径 = ±vol×1e-4，起点为缓存首日、绝对值与官方差常数）
+            new_cols[f'obv_{basis}'] = (np.sign(dc).fillna(0.0) * vol * 1e-4).cumsum()
+
+    # ── 连涨/连跌天数（pct_chg 判定，与 stk_factor_pro 口径一致；pct 缺失时退化用 close.diff）──
+    if 'pct_chg' in g.columns:
+        pct = pd.to_numeric(g['pct_chg'], errors='coerce')
+    else:
+        pct = c.diff() / c.shift(1) * 100.0
+    up = (pct > 0).astype(int)
+    new_cols['updays'] = up * (up.groupby((up.diff() != 0).cumsum()).cumcount() + 1)
+    dn = (pct < 0).astype(int)
+    new_cols['downdays'] = dn * (dn.groupby((dn.diff() != 0).cumsum()).cumcount() + 1)
+
+    return pd.concat([g, pd.DataFrame(new_cols, index=g.index)], axis=1)
+
+
+def compute_factor_indicators(df):
+    """在三表 JOIN 基础数据上本地派生技术指标列（替代 stk_factor_pro 宽表指标）
+
+    Args:
+        df: 含 ts_code/trade_date/open/high/low/close/vol/adj_factor(+daily_basic 列) 的
+            DataFrame，多股时按 (ts_code, trade_date) 任意序传入，内部自动分组计算
 
     Returns:
-        dict: {'daily_basic': 写入行数, 'adj_factor': 写入行数}
+        追加指标列后的 DataFrame（每股按 trade_date 升序）
     """
-    from datetime import datetime as _dt
-    _d0 = _dt.strptime(start_date, '%Y%m%d')
-    _d1 = _dt.strptime(end_date, '%Y%m%d')
-    if _d0 > _d1:
-        raise ValueError(f'start_date({start_date}) > end_date({end_date})')
-    if not _table_exists('stk_factor_pro'):
-        return {'daily_basic': 0, 'adj_factor': 0}
+    if df is None or df.empty or 'ts_code' not in df.columns or 'close' not in df.columns:
+        return df
+    df = df.copy()
+    if df['ts_code'].nunique() == 1:
+        df = df.sort_values('trade_date')
+        df = _derive_single_stock(df)
+        return df.reset_index(drop=True)
+    parts = []
+    for _, gg in df.groupby('ts_code', sort=False):
+        gg = gg.sort_values('trade_date')
+        gg = _derive_single_stock(gg)
+        parts.append(gg)
+    return pd.concat(parts, ignore_index=True)
+
+
+# =========================================================
+# 窄表三表兼容层（替代旧 stk_factor_pro 宽表读取）
+# daily_cache + daily_basic_cache + adj_factor_cache 三表 LEFT JOIN
+# -> compute_factor_indicators 本地派生指标（列名与旧宽表保持一致）
+# =========================================================
+
+_COMPAT_IND_CACHE = {}
+_COMPAT_IND_CACHE_CAP = 96
+_COMPAT_FETCH_ATTEMPTED = set()
+
+
+def _merge_three_tables(ts_code, start_date=None, end_date=None):
+    """三表 LEFT JOIN（daily_cache 为主表）读取单股行情+估值+复权因子"""
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return None
+    sql = f'''
+        SELECT d.*,
+               b.turnover_rate, b.turnover_rate_f, b.volume_ratio,
+               b.total_mv, b.circ_mv, b.pe, b.pe_ttm, b.pb, b.ps,
+               b.dv_ttm, b.float_share, b.total_share,
+               a.adj_factor
+        FROM {DAILY_CACHE_TABLE} d
+        LEFT JOIN {DAILY_BASIC_CACHE_TABLE} b
+               ON d.ts_code = b.ts_code AND d.trade_date = b.trade_date
+        LEFT JOIN {ADJ_FACTOR_CACHE_TABLE} a
+               ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
+        WHERE d.ts_code = ?
+    '''
+    params = [ts_code]
+    if start_date:
+        sql += ' AND d.trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND d.trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY d.trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def cached_stk_factor_compat(ts_code, start_date, end_date, pro=None, silent=False):
+    """窄表三表兼容层：以 daily_cache/daily_basic_cache/adj_factor_cache 为唯一数据源，
+    本地派生 stk_factor_pro 全部指标列，完全替代旧宽表读取
+
+    补数策略（与 cached_adj_factor 相同模式）：
+      ① 目标日缺失 → 整市场按日补（daily_market/daily_basic_market/adj_factor_market）
+      ② 历史段缺口 → 单股增量拉（pro.daily/pro.daily_basic/pro.adj_factor）
+    指标计算以该股缓存最早日期为起点（保证 EMA/Wilder 平滑收敛与 OBV 累计口径），
+    返回时切回请求区间；列名与旧宽表一致（ma_bfq_5/macd_dif_bfq/kdj_bfq/rsi_bfq_6...）。
+
+    Args:
+        silent: True 时抑制日志（保留参数以兼容旧调用方）
+    """
+    ts_code = str(ts_code)
+    start_date, end_date = str(start_date), str(end_date)
+    _ensure_daily_cache_table()
     _ensure_daily_basic_table()
     _ensure_adj_factor_table()
-    with get_conn() as conn:
-        # 完整日列表：记录数 >= min_rows
-        days = [r[0] for r in conn.execute(
-            f'SELECT trade_date FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ? '
-            f'GROUP BY trade_date HAVING COUNT(*) >= ? ORDER BY trade_date',
-            (start_date, end_date, min_rows)
-        ).fetchall()]
-    db_n = af_n = 0
-    n_day = len(days)
-    for k, d in enumerate(days, 1):
-        # 每个交易日一个短事务提交：避免巨型单事务占锁过长/失败整体回滚；中断重跑可续（REPLACE 幂等）
-        with get_conn() as conn:
-            db_n += conn.execute(
-                f'INSERT OR REPLACE INTO {DAILY_BASIC_CACHE_TABLE} '
-                f'(ts_code, trade_date, turnover_rate, turnover_rate_f, volume_ratio, total_mv, circ_mv) '
-                f'SELECT ts_code, trade_date, turnover_rate, turnover_rate_f, volume_ratio, total_mv, circ_mv '
-                f'FROM stk_factor_pro WHERE trade_date = ?',
-                (d,)
-            ).rowcount
-            af_n += conn.execute(
-                f'INSERT OR REPLACE INTO {ADJ_FACTOR_CACHE_TABLE} (ts_code, trade_date, adj_factor) '
-                f'SELECT ts_code, trade_date, adj_factor FROM stk_factor_pro '
-                f'WHERE trade_date = ? AND adj_factor IS NOT NULL',
-                (d,)
-            ).rowcount
-        if k % 50 == 0 or k == n_day:
-            print(f'[seed] {d} 进度 {k}/{n_day} 日，daily_basic 累计 {db_n:,} 行，adj_factor 累计 {af_n:,} 行', flush=True)
-    print(f'[seed_daily_basic_from_stk_factor] {start_date}~{end_date} 共 {n_day} 个完整日：'
-          f'daily_basic {db_n} 行，adj_factor {af_n} 行', flush=True)
-    return {'daily_basic': db_n, 'adj_factor': af_n}
+
+    list_date = get_list_date(ts_code)
+    required_min = str(list_date) if (list_date and str(list_date) > start_date) else start_date
+
+    def _ranges():
+        out = []
+        for getter in (get_daily_cache_range, get_daily_basic_range, get_adj_factor_range):
+            try:
+                out.append(getter(ts_code))
+            except Exception:
+                out.append((None, None))
+        return out
+
+    def _covered(rngs):
+        return all(mn is not None and mx is not None
+                   and mn <= required_min and mx >= end_date for mn, mx in rngs)
+
+    def _memo_key():
+        return (ts_code,) + tuple(r[1] or '' for r in _ranges())
+
+    def _slice_return(df_full):
+        mask = (df_full['trade_date'] >= start_date) & (df_full['trade_date'] <= end_date)
+        out = df_full.loc[mask]
+        return out.reset_index(drop=True) if not out.empty else None
+
+    def _compute_and_store():
+        df_full = _merge_three_tables(ts_code, end_date=end_date)
+        if df_full is None:
+            return None
+        df_full = compute_factor_indicators(df_full)
+        _COMPAT_IND_CACHE[_memo_key()] = df_full
+        if len(_COMPAT_IND_CACHE) > _COMPAT_IND_CACHE_CAP:
+            _COMPAT_IND_CACHE.pop(next(iter(_COMPAT_IND_CACHE)))
+        return _slice_return(df_full)
+
+    # ① 进程内指标缓存命中（数据版本 cmax 未变时免重算）
+    hit = _COMPAT_IND_CACHE.get(_memo_key())
+    if hit is not None and len(hit) and hit['trade_date'].iloc[-1] >= end_date:
+        return _slice_return(hit)
+
+    # ② 缓存已覆盖请求区间 → 直接读并派生
+    if _covered(_ranges()):
+        return _compute_and_store()
+
+    _pro = pro or _get_pro()
+
+    # ③ 目标日缺失 → 整市场按日补一次（内部自带完整性检查，命中时开销仅为 COUNT）
+    for fill in (daily_market, daily_basic_market, adj_factor_market):
+        try:
+            fill(end_date, pro=_pro, silent=True)
+        except Exception:
+            pass
+
+    if _covered(_ranges()):
+        return _compute_and_store()
+
+    # ④ 历史段缺口 → 单股增量拉（三表各自补各自缺口；同一缺口进程内只尝试一次）
+    if (ts_code, required_min, end_date) not in _COMPAT_FETCH_ATTEMPTED:
+        _COMPAT_FETCH_ATTEMPTED.add((ts_code, required_min, end_date))
+        for rng_getter, inserter, api_call in (
+            (get_daily_cache_range, batch_insert_daily_cache,
+             lambda a, b: _pro.daily(ts_code=ts_code, start_date=a, end_date=b, fields=_DAILY_CACHE_COLS)),
+            (get_daily_basic_range, batch_insert_daily_basic,
+             lambda a, b: _pro.daily_basic(ts_code=ts_code, start_date=a, end_date=b, fields=','.join(_DAILY_BASIC_COLS))),
+            (get_adj_factor_range, batch_insert_adj_factor,
+             lambda a, b: _pro.adj_factor(ts_code=ts_code, start_date=a, end_date=b)),
+        ):
+            try:
+                mn, mx = rng_getter(ts_code)
+                if mn and mx and mn <= required_min and mx >= end_date:
+                    continue
+                fetch_start = mx if (mn and mx and mn <= required_min) else required_min
+                df_new = api_call(fetch_start, end_date)
+                time.sleep(0.06)
+                if df_new is not None and not df_new.empty:
+                    inserter(df_new)
+            except Exception:
+                continue
+
+    return _compute_and_store()
 
 
 def cache_status(ts_code=None, trade_date=None):
@@ -1311,7 +1438,8 @@ def cache_status(ts_code=None, trade_date=None):
     if ts_code:
         info['ts_code'] = ts_code
         info['daily_cache_range'] = get_daily_cache_range(ts_code)
-        info['stk_factor_range'] = get_stk_factor_range(ts_code)
+        info['daily_basic_range'] = get_daily_basic_range(ts_code)
+        info['adj_factor_range'] = get_adj_factor_range(ts_code)
     if trade_date:
         info['trade_date'] = trade_date
         info['daily_cache_count'] = get_daily_by_date_count(trade_date)
@@ -1344,338 +1472,252 @@ def udc_stats():
     }
 
 
-# ── stk_factor_pro 共享字段列表（261个字段，tushare_quant 完备版）──
-_STK_FACTOR_FIELDS = [
-    "ts_code", "trade_date", "open", "open_hfq", "open_qfq",
-    "high", "high_hfq", "high_qfq", "low", "low_hfq", "low_qfq",
-    "close", "close_hfq", "close_qfq", "pre_close", "change", "pct_chg",
-    "vol", "amount", "turnover_rate", "turnover_rate_f", "volume_ratio",
-    "pe", "pe_ttm", "pb", "ps", "ps_ttm", "dv_ratio", "dv_ttm",
-    "total_share", "float_share", "free_share", "total_mv", "circ_mv", "adj_factor",
-    "asi_bfq", "asi_hfq", "asi_qfq", "asit_bfq", "asit_hfq", "asit_qfq",
-    "atr_bfq", "atr_hfq", "atr_qfq", "bbi_bfq", "bbi_hfq", "bbi_qfq",
-    "bias1_bfq", "bias1_hfq", "bias1_qfq",
-    "bias2_bfq", "bias2_hfq", "bias2_qfq",
-    "bias3_bfq", "bias3_hfq", "bias3_qfq",
-    "boll_lower_bfq", "boll_lower_hfq", "boll_lower_qfq",
-    "boll_mid_bfq", "boll_mid_hfq", "boll_mid_qfq",
-    "boll_upper_bfq", "boll_upper_hfq", "boll_upper_qfq",
-    "brar_ar_bfq", "brar_ar_hfq", "brar_ar_qfq",
-    "brar_br_bfq", "brar_br_hfq", "brar_br_qfq",
-    "cci_bfq", "cci_hfq", "cci_qfq", "cr_bfq", "cr_hfq", "cr_qfq",
-    "dfma_dif_bfq", "dfma_dif_hfq", "dfma_dif_qfq",
-    "dfma_difma_bfq", "dfma_difma_hfq", "dfma_difma_qfq",
-    "dmi_adx_bfq", "dmi_adx_hfq", "dmi_adx_qfq",
-    "dmi_adxr_bfq", "dmi_adxr_hfq", "dmi_adxr_qfq",
-    "dmi_mdi_bfq", "dmi_mdi_hfq", "dmi_mdi_qfq",
-    "dmi_pdi_bfq", "dmi_pdi_hfq", "dmi_pdi_qfq",
-    "downdays", "updays", "dpo_bfq", "dpo_hfq", "dpo_qfq",
-    "madpo_bfq", "madpo_hfq", "madpo_qfq",
-    "ema_bfq_10", "ema_bfq_20", "ema_bfq_250", "ema_bfq_30", "ema_bfq_5", "ema_bfq_60", "ema_bfq_90",
-    "ema_hfq_10", "ema_hfq_20", "ema_hfq_250", "ema_hfq_30", "ema_hfq_5", "ema_hfq_60", "ema_hfq_90",
-    "ema_qfq_10", "ema_qfq_20", "ema_qfq_250", "ema_qfq_30", "ema_qfq_5", "ema_qfq_60", "ema_qfq_90",
-    "emv_bfq", "emv_hfq", "emv_qfq", "maemv_bfq", "maemv_hfq", "maemv_qfq",
-    "expma_12_bfq", "expma_12_hfq", "expma_12_qfq",
-    "expma_50_bfq", "expma_50_hfq", "expma_50_qfq",
-    "kdj_bfq", "kdj_hfq", "kdj_qfq",
-    "kdj_d_bfq", "kdj_d_hfq", "kdj_d_qfq",
-    "kdj_k_bfq", "kdj_k_hfq", "kdj_k_qfq",
-    "ktn_down_bfq", "ktn_down_hfq", "ktn_down_qfq",
-    "ktn_mid_bfq", "ktn_mid_hfq", "ktn_mid_qfq",
-    "ktn_upper_bfq", "ktn_upper_hfq", "ktn_upper_qfq",
-    "lowdays", "topdays",
-    "ma_bfq_10", "ma_bfq_20", "ma_bfq_250", "ma_bfq_30", "ma_bfq_5", "ma_bfq_60", "ma_bfq_90",
-    "ma_hfq_10", "ma_hfq_20", "ma_hfq_250", "ma_hfq_30", "ma_hfq_5", "ma_hfq_60", "ma_hfq_90",
-    "ma_qfq_10", "ma_qfq_20", "ma_qfq_250", "ma_qfq_30", "ma_qfq_5", "ma_qfq_60", "ma_qfq_90",
-    "macd_bfq", "macd_hfq", "macd_qfq",
-    "macd_dea_bfq", "macd_dea_hfq", "macd_dea_qfq",
-    "macd_dif_bfq", "macd_dif_hfq", "macd_dif_qfq",
-    "mass_bfq", "mass_hfq", "mass_qfq",
-    "ma_mass_bfq", "ma_mass_hfq", "ma_mass_qfq",
-    "mfi_bfq", "mfi_hfq", "mfi_qfq",
-    "mtm_bfq", "mtm_hfq", "mtm_qfq",
-    "mtmma_bfq", "mtmma_hfq", "mtmma_qfq",
-    "obv_bfq", "obv_hfq", "obv_qfq",
-    "psy_bfq", "psy_hfq", "psy_qfq",
-    "psyma_bfq", "psyma_hfq", "psyma_qfq",
-    "roc_bfq", "roc_hfq", "roc_qfq",
-    "maroc_bfq", "maroc_hfq", "maroc_qfq",
-    "rsi_bfq_12", "rsi_bfq_24", "rsi_bfq_6",
-    "rsi_hfq_12", "rsi_hfq_24", "rsi_hfq_6",
-    "rsi_qfq_6", "rsi_qfq_12", "rsi_qfq_24",
-    "taq_down_bfq", "taq_down_hfq", "taq_down_qfq",
-    "taq_mid_bfq", "taq_mid_hfq", "taq_mid_qfq",
-    "taq_up_bfq", "taq_up_hfq", "taq_up_qfq",
-    "trix_bfq", "trix_hfq", "trix_qfq",
-    "trma_bfq", "trma_hfq", "trma_qfq",
-    "vr_bfq", "vr_hfq", "vr_qfq",
-    "wr_bfq", "wr_hfq", "wr_qfq",
-    "wr1_bfq", "wr1_hfq", "wr1_qfq",
-    "xsii_td1_bfq", "xsii_td1_hfq", "xsii_td1_qfq",
-    "xsii_td2_bfq", "xsii_td2_hfq", "xsii_td2_qfq",
-    "xsii_td3_bfq", "xsii_td3_hfq", "xsii_td3_qfq",
-    "xsii_td4_bfq", "xsii_td4_hfq", "xsii_td4_qfq"
-]
+def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
+    """兼容 wrapper（旧接口保留）：转发到窄表三表兼容层 cached_stk_factor_compat
 
-def batch_cache_stk_factor_pro(target_date):
-    """批量缓存指定日期全市场 stk_factor_pro 数据到 SQLite（字段列表：sc._STK_FACTOR_FIELDS）"""
-    pro = _get_pro()
-    batch_date = get_batch_date()
-    if batch_date == target_date:
-        return
-    
-    print(f"[批量缓存] 开始下载 {target_date} 全市场 stk_factor_pro 数据...")
-    try:
-        df_all = pro.stk_factor_pro(trade_date=target_date, fields=_STK_FACTOR_FIELDS)
-        if df_all is not None and not df_all.empty:
-            df_all['trade_date'] = df_all['trade_date'].astype(str)
-            
-            # 除权检测
-            adj_changed_count = 0
-            for code, group_df in df_all.groupby('ts_code'):
-                if 'adj_factor' not in group_df.columns:
-                    continue
-                new_adj = group_df['adj_factor'].iloc[-1]
-                old_adj = get_last_adj_factor(code)
-                if old_adj is not None and new_adj is not None and old_adj != 0 and new_adj != 0:
-                    adj_ratio = abs(new_adj - old_adj) / old_adj
-                    if adj_ratio >= 0.05:
-                        print(f"[除权检测] {code} 复权因子变化: {old_adj} -> {new_adj} ({adj_ratio*100:.2f}%)，删除旧缓存待全量更新")
-                        delete_stk_factor_stock(code)
-                        adj_changed_count += 1
-            
-            saved_count = batch_insert_stk_factor_pro(df_all)
-            set_batch_date(target_date)
-            if adj_changed_count > 0:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite，{adj_changed_count} 只除权待全量更新")
-            else:
-                print(f"[批量缓存] 完成：{saved_count} 行已写入 SQLite")
-        else:
-            print(f"[批量缓存] 警告：{target_date} 无数据返回")
-            set_batch_date(target_date)
-    except Exception as e:
-        print(f"[批量缓存] 失败: {e}")
-        import traceback; traceback.print_exc()
+    旧 stk_factor_pro 宽表已废弃，不再读写；本函数仅为存量调用方保留签名。
+    全部调用方迁移到 cached_stk_factor_compat 后可删除。
+    """
+    return cached_stk_factor_compat(ts_code, start_date, end_date, silent=silent)
 
 
-def supplement_missing_stocks(trade_date: str, target_count: int = 5000) -> int:
-    """补全当日缺失的 stk_factor_pro 数据（先重试批量，再并发按个股补全）
+# =========================================================
+# 窄表批量读取公共辅助（替代各下游对 stk_factor_pro 的直查 SQL）
+# 全市场/股票池级别的当日与区间读取，按需派生 close_hfq 与技术指标列
+# =========================================================
 
-    Args:
-        trade_date: 交易日 YYYYMMDD
-        target_count: 目标记录数，达到后停止补全
+_THREE_TABLE_COLS = frozenset((
+    'ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close',
+    'change', 'pct_chg', 'vol', 'amount',
+    'turnover_rate', 'turnover_rate_f', 'volume_ratio', 'total_mv', 'circ_mv',
+    'pe', 'pe_ttm', 'pb', 'ps', 'dv_ttm', 'float_share', 'total_share',
+    'adj_factor',
+))
+_DERIVED_PRICE_COLS = frozenset((
+    'close_hfq', 'open_hfq', 'high_hfq', 'low_hfq',
+    'close_qfq', 'open_qfq', 'high_qfq', 'low_qfq',
+))
+
+# 指标列 → 窗口化计算所需预热交易日数；表外递归/累计类指标按 250 近似
+_IND_WARMUP = {}
+for _w in _MA_EMA_WINDOWS:
+    for _b in ('bfq', 'qfq', 'hfq'):
+        _IND_WARMUP[f'ma_{_b}_{_w}'] = _w
+for _b in ('bfq', 'qfq', 'hfq'):
+    _IND_WARMUP.update({
+        f'boll_mid_{_b}': 20, f'boll_upper_{_b}': 20, f'boll_lower_{_b}': 20,
+        f'kdj_k_{_b}': 20, f'kdj_d_{_b}': 20, f'kdj_{_b}': 20,
+        f'wr_{_b}': 9, f'wr1_{_b}': 6,
+        f'bias1_{_b}': 6, f'bias2_{_b}': 12, f'bias3_{_b}': 24,
+        f'cci_{_b}': 30, f'psy_{_b}': 12, f'psyma_{_b}': 20,
+        f'vr_{_b}': 26, f'mfi_{_b}': 6, f'atr_{_b}': 40,
+    })
+del _w, _b
+
+
+def _indicator_warmup(cols):
+    """cols 中指标列所需的最大预热窗口（交易日）"""
+    w = 0
+    for c in cols or ():
+        if c in _THREE_TABLE_COLS or c in _DERIVED_PRICE_COLS:
+            continue
+        w = max(w, _IND_WARMUP.get(c, 250))
+    return w
+
+
+def _expand_trade_dates_before(anchor_date, n):
+    """取 daily_cache 中 <= anchor_date 的最近 n 个不同交易日中最早的一个（窗口化起点）"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            f'SELECT DISTINCT trade_date FROM {DAILY_CACHE_TABLE} '
+            f'WHERE trade_date <= ? ORDER BY trade_date DESC LIMIT ?',
+            (str(anchor_date), int(n))).fetchall()
+    return rows[-1][0] if rows else None
+
+
+def get_recent_trade_dates(n=250, end_date=None):
+    """取最近 n 个交易日（<= end_date，升序返回；无数据返回空列表）
+
+    替代旧 SELECT DISTINCT trade_date FROM stk_factor_pro 读取路径
+    """
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return []
+    sql = f'SELECT DISTINCT trade_date FROM {DAILY_CACHE_TABLE}'
+    params = []
+    if end_date:
+        sql += ' WHERE trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date DESC LIMIT ?'
+    params.append(int(n))
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return sorted(r[0] for r in rows)
+
+
+def fetch_market_amounts_by_date(start_date, end_date):
+    """按日聚合全市场总成交额（替代旧 stk_factor_pro GROUP BY trade_date 聚合读取）
 
     Returns:
-        补全的行数
+        DataFrame[trade_date, total_amount]（无数据时为空表）
     """
-    import sqlite3 as _sc, time as _time, concurrent.futures as _cf, threading as _th
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return pd.DataFrame()
+    with get_conn() as conn:
+        df = pd.read_sql_query(
+            f'SELECT trade_date, SUM(CAST(amount AS REAL)) AS total_amount '
+            f'FROM {DAILY_CACHE_TABLE} '
+            f'WHERE trade_date >= ? AND trade_date <= ? '
+            f'GROUP BY trade_date ORDER BY trade_date',
+            conn, params=(str(start_date), str(end_date)))
+    return df
 
-    def _count_today():
-        _c = _sc.connect(DB_PATH)
-        _r = _c.execute('SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date=?', (trade_date,)).fetchone()[0]
-        _c.close()
-        return _r
 
-    # ── Phase 1: 重试批量查询（1次调用，可能 Tushare 已计算完）──
-    print(f"  🔄 重试批量查询 {trade_date}...")
-    _pro = _get_pro()
-    try:
-        _df_retry = _pro.stk_factor_pro(trade_date=trade_date, fields=_STK_FACTOR_FIELDS)
-        _time.sleep(0.12)
-        if _df_retry is not None and not _df_retry.empty:
-            _df_retry['trade_date'] = _df_retry['trade_date'].astype(str)
-            batch_insert_stk_factor_pro(_df_retry)
-            _new_cnt = _count_today()
-            if _new_cnt >= target_count:
-                print(f"  ✅ 批量重试后数据已完整（{_new_cnt}条）")
-                return _new_cnt
-    except Exception:
-        pass
+def get_all_cached_ts_codes():
+    """全市场已缓存股票代码列表（替代旧 SELECT DISTINCT ts_code FROM stk_factor_pro）"""
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(f'SELECT DISTINCT ts_code FROM {DAILY_CACHE_TABLE}').fetchall()
+    return [r[0] for r in rows]
 
-    # ── Phase 2: 找上一完整交易日，确定缺失股票列表 ──
-    _conn = _sc.connect(DB_PATH)
-    _cur = _conn.cursor()
-    _cur.execute("""
-        SELECT trade_date, COUNT(*) as cnt
-        FROM stk_factor_pro
-        WHERE trade_date < ? AND trade_date >= ?
-        GROUP BY trade_date ORDER BY trade_date DESC LIMIT 5
-    """, (trade_date, str(int(trade_date) - 8)))
-    _prev_date = None
-    for _d, _c in _cur.fetchall():
-        if _c >= target_count:
-            _prev_date = _d
-            break
-    if _prev_date is None:
-        print(f"  ⚠️ 找不到上一个完整交易日，跳过补全")
-        _conn.close()
-        return 0
 
-    _cur.execute('SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date=?', (_prev_date,))
-    _all_codes = {r[0] for r in _cur.fetchall()}
-    _cur.execute('SELECT DISTINCT ts_code FROM stk_factor_pro WHERE trade_date=?', (trade_date,))
-    _today_codes = {r[0] for r in _cur.fetchall()}
-    _conn.close()
-
-    _missing = sorted(_all_codes - _today_codes)
-    if not _missing:
-        return 0
-
-    _need = min(len(_missing), max(0, target_count - _count_today()))
-    _to_supplement = _missing[:_need]
-    if not _to_supplement:
-        return 0
-
-    print(f"  ⏳ 并发补全 {len(_to_supplement)} 只缺失股票（5线程）...")
-
-    # ── Phase 3: 并发按个股补全 ──
-    _lock = _th.Lock()
-    _last_call = [0.0]  # 共享的最近API调用时间
-    _supplemented = [0]
-    _done = [0]
-
-    def _fetch_one(code):
-        nonlocal _lock, _last_call, _supplemented, _done
-        # 全局速率限制：确保间隔 >= 120ms
-        with _lock:
-            _elapsed = _time.time() - _last_call[0]
-            if _elapsed < 0.12:
-                _time.sleep(0.12 - _elapsed)
-            _pro_local = _get_pro()
-            try:
-                _df = _pro_local.stk_factor_pro(
-                    ts_code=code, start_date=trade_date, end_date=trade_date,
-                    fields=_STK_FACTOR_FIELDS
-                )
-            except Exception:
-                _time.sleep(0.5)
-                return None
-            finally:
-                _last_call[0] = _time.time()
-        if _df is not None and not _df.empty:
-            _df['trade_date'] = _df['trade_date'].astype(str)
-            return _df
+def _read_three_tables_range(ts_codes=None, start_date=None, end_date=None):
+    """窄表三表 LEFT JOIN 批量读取（全市场或指定股票池 × 可选日期区间）"""
+    if not _table_exists(DAILY_CACHE_TABLE):
         return None
+    sql = (
+        f'SELECT d.ts_code, d.trade_date, d.open, d.high, d.low, d.close, d.pre_close, '
+        f'd.change, d.pct_chg, d.vol, d.amount, '
+        f'b.turnover_rate, b.turnover_rate_f, b.volume_ratio, b.total_mv, b.circ_mv, '
+        f'b.pe, b.pe_ttm, b.pb, b.ps, b.dv_ttm, b.float_share, b.total_share, '
+        f'a.adj_factor '
+        f'FROM {DAILY_CACHE_TABLE} d '
+        f'LEFT JOIN {DAILY_BASIC_CACHE_TABLE} b '
+        f'ON d.ts_code = b.ts_code AND d.trade_date = b.trade_date '
+        f'LEFT JOIN {ADJ_FACTOR_CACHE_TABLE} a '
+        f'ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date'
+    )
+    conds, params = [], []
+    if start_date:
+        conds.append('d.trade_date >= ?')
+        params.append(str(start_date))
+    if end_date:
+        conds.append('d.trade_date <= ?')
+        params.append(str(end_date))
 
-    _batch = []
-    with _cf.ThreadPoolExecutor(max_workers=5) as _exec:
-        _futures = {_exec.submit(_fetch_one, code): code for code in _to_supplement}
-        for _future in _cf.as_completed(_futures):
-            _result = _future.result()
-            _done[0] += 1
-            if _result is not None:
-                _batch.append(_result)
-                _supplemented[0] += len(_result)
-            # 每200只批量写入一次
-            if len(_batch) >= 200 or (_done[0] % 100 == 0 and len(_batch) > 0):
-                _combined = pd.concat(_batch, ignore_index=True)
-                try:
-                    batch_insert_stk_factor_pro(_combined)
-                except Exception:
-                    pass
-                _batch = []
-                print(f"   进度: {_done[0]}/{len(_to_supplement)}（已补{_supplemented[0]}行）")
+    def _finalize(extra_conds):
+        all_conds = conds + list(extra_conds)
+        return sql + (' WHERE ' + ' AND '.join(all_conds) if all_conds else '')
 
-    if _batch:
-        _combined = pd.concat(_batch, ignore_index=True)
-        try:
-            batch_insert_stk_factor_pro(_combined)
-        except Exception:
-            pass
-        print(f"   进度: {_done[0]}/{len(_to_supplement)}（已补{_supplemented[0]}行）")
-
-    _final_cnt = _count_today()
-    if _supplemented[0] > 0:
-        print(f"  ✅ 补全完成：新增 {_supplemented[0]} 行（共 {_final_cnt} 条记录）")
-    else:
-        print(f"  ℹ️ 补全无新增数据（Tushare 尚未计算完成）")
-    return _supplemented[0]
-
-
-def cached_stk_factor_pro(ts_code, start_date, end_date, silent=False):
-    """带缓存的 stk_factor_pro（SQLite + 按需补充）
-    
-    逻辑：
-      1. 先检查 SQLite 缓存是否覆盖请求范围
-      2. 若覆盖则直接返回（不需要 batch，不需要补充）
-      3. 缓存不足时：先 batch 补最新日，再按需补充历史缺失
-    
-    Args:
-        silent: True 时抑制 "[缓存补充]" 日志（用于预加载等批量场景）
-    
-    返回按 trade_date 升序的 DataFrame，列与 _STK_FACTOR_FIELDS 一致。
-    """
-    pro = _get_pro()
-    global _cache_supplement_completed
-    
-    # ── 1. 确定所需最小日期 ──
-    list_date = get_list_date(ts_code)
-    required_min = list_date if (list_date and list_date > str(start_date)) else str(start_date)
-    
-    # ── 2. 先检查 SQLite 缓存（必须在 batch 之前，避免 batch 除权检测误删数据）──
-    cached_min, cached_max = get_stk_factor_range(ts_code)
-    if cached_min and cached_max:
-        if cached_min <= required_min and cached_max >= str(end_date):
-            df = get_stk_factor_pro(ts_code, start_date, end_date)
-            if df is not None and not df.empty:
-                return df.reset_index(drop=True)
-        # end_date 数据缺失时才需要调用 batch（批量缓存当天全市场）
-        if cached_max < str(end_date):
-            batch_cache_stk_factor_pro(end_date)
-    else:
-        # 完全无缓存，先确保批量数据
-        batch_cache_stk_factor_pro(end_date)
-    
-    # ── 3. 再次检查缓存（batch 可能已补充 end_date，也可能触发除权检测删了数据）──
-    cached_min, cached_max = get_stk_factor_range(ts_code)
-    if cached_min and cached_max:
-        if cached_min <= required_min and cached_max >= str(end_date):
-            df = get_stk_factor_pro(ts_code, start_date, end_date)
-            if df is not None and not df.empty:
-                return df.reset_index(drop=True)
-    
-    # ── 4. 确实缺失，补充 ──
-    # 计算实际需要补充的日期范围：只补充缺失的部分，不重复拉取已有数据
-    actual_start = str(start_date)
-    if cached_min and cached_max:
-        if cached_min <= str(start_date):
-            actual_start = str(cached_max)
-    
-    supplement_key = f"{ts_code}_{actual_start}_{end_date}"
-    if supplement_key in _cache_supplement_completed:
-        df = get_stk_factor_pro(ts_code, start_date, end_date)
-        if df is not None and not df.empty:
-            return df.reset_index(drop=True)
-        return None
-    
-    _cache_supplement_completed.add(supplement_key)
-    
-    try:
-        df_new = pro.stk_factor_pro(ts_code=ts_code, start_date=actual_start, end_date=end_date)
-        time.sleep(0.06)
-        if df_new is not None and not df_new.empty:
-            df_new['trade_date'] = df_new['trade_date'].astype(str)
-            df_new = df_new.sort_values('trade_date').reset_index(drop=True)
-            saved = batch_insert_stk_factor_pro(df_new)
-            if saved and saved > 0:
-                if not silent:
-                    print(f"[缓存补充] {ts_code} 成功: {saved} 行 {actual_start}~{end_date}")
-            mask = (df_new['trade_date'] >= str(start_date)) & (df_new['trade_date'] <= str(end_date))
-            result = df_new[mask].copy().sort_values('trade_date').reset_index(drop=True)
-            if not result.empty:
-                return result
+    frames = []
+    with get_conn() as conn:
+        if ts_codes:
+            codes = [str(c) for c in ts_codes]
+            for i in range(0, len(codes), 500):
+                chunk = codes[i:i + 500]
+                part = _finalize([f'd.ts_code IN ({",".join("?" * len(chunk))})'])
+                frames.append(pd.read_sql_query(part, conn, params=params + chunk))
         else:
-            if not silent:
-                print(f"[缓存补充] {ts_code} {actual_start}~{end_date} API 返回空数据")
-    except Exception as e:
-        if not silent:
-            print(f"[缓存补充] {ts_code} 失败: {e}")
-    
-    # 保底：从 SQLite 读
-    df = get_stk_factor_pro(ts_code, start_date, end_date)
-    if df is not None and not df.empty:
-        return df.reset_index(drop=True)
-    return None
+            frames.append(pd.read_sql_query(_finalize([]), conn, params=params))
+    frames = [f for f in frames if f is not None and not f.empty]
+    if not frames:
+        return None
+    return pd.concat(frames, ignore_index=True)
+
+
+def _derive_price_cols(df, want_cols):
+    """复权价格列快捷派生（向量计算，口径与 compute_factor_indicators 一致）
+
+    hfq = 原价 × adj_factor（逐行）；qfq = 原价 × adj_factor / 组内末个有效因子
+    """
+    if 'adj_factor' not in df.columns:
+        return df
+    adj = pd.to_numeric(df['adj_factor'], errors='coerce')
+    need_qfq = any(c.endswith('_qfq') for c in want_cols)
+    qf = None
+    if need_qfq and 'ts_code' in df.columns:
+        anchor = adj.groupby(df['ts_code']).transform('last')
+        qf = adj / anchor.where(anchor != 0)
+    base_map = {'open': 'open', 'high': 'high', 'low': 'low', 'close': 'close'}
+    for c in want_cols:
+        stem, _, suffix = c.rpartition('_')
+        base = base_map.get(stem)
+        if base is None or base not in df.columns:
+            continue
+        px = pd.to_numeric(df[base], errors='coerce')
+        if suffix == 'hfq':
+            df[c] = px * adj
+        elif suffix == 'qfq' and qf is not None:
+            df[c] = px * qf
+    return df
+
+
+def _post_derive_cols(df, cols):
+    """按需派生 close_hfq/技术指标列并裁剪输出列"""
+    want = [c for c in (cols or ())]
+    extra = [c for c in want if c not in _THREE_TABLE_COLS]
+    if extra:
+        if all(c in _DERIVED_PRICE_COLS for c in extra):
+            df = _derive_price_cols(df, extra)
+        else:
+            df = compute_factor_indicators(df)
+    if want:
+        keep = [c for c in ('ts_code', 'trade_date') if c in df.columns]
+        keep += [c for c in want if c in df.columns and c not in keep]
+        if keep:
+            df = df[keep]
+    return df
+
+
+def fetch_market_by_date(trade_date, ts_codes=None, cols=None):
+    """读取指定交易日全市场（或指定股票池）窄表数据，按需派生指标列
+
+    替代旧 stk_factor_pro 当日直查（SELECT ... WHERE trade_date = ?）。
+    cols 含技术指标列（ma_bfq_20/ma_bfq_250 等）时自动向前扩展预热窗口再裁回当日，
+    指标口径与全历史计算一致；cols 为 None 时返回全部基础列。
+
+    Returns:
+        DataFrame（无数据/表不存在时为空表）
+    """
+    trade_date = str(trade_date)
+    warmup = _indicator_warmup(cols)
+    if warmup:
+        ext_start = _expand_trade_dates_before(trade_date, warmup)
+        if ext_start is None:
+            return pd.DataFrame()
+        df = _read_three_tables_range(ts_codes, ext_start, trade_date)
+    else:
+        df = _read_three_tables_range(ts_codes, trade_date, trade_date)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = _post_derive_cols(df, cols)
+    if warmup:
+        df = df[df['trade_date'] == trade_date].reset_index(drop=True)
+    return df
+
+
+def fetch_hist_range(start_date, end_date, ts_codes=None, cols=None):
+    """读取历史区间窄表数据（全市场或指定股票池），按需派生指标列
+
+    替代旧 stk_factor_pro 区间直查（WHERE trade_date BETWEEN ...）。
+    cols 含技术指标列时自动把起点向前扩展预热窗口，计算后裁剪回请求区间，
+    保证区间内每日指标与全历史计算口径一致（ema/macd/rsi 等递归类为近似口径）。
+
+    Returns:
+        DataFrame（无数据/表不存在时为空表）
+    """
+    warmup = _indicator_warmup(cols)
+    ext_start = start_date
+    if warmup and start_date:
+        ext_start = _expand_trade_dates_before(start_date, warmup) or start_date
+    df = _read_three_tables_range(ts_codes, ext_start, end_date)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = _post_derive_cols(df, cols)
+    if warmup and start_date:
+        df = df[(df['trade_date'] >= str(start_date))
+                & (df['trade_date'] <= str(end_date))].reset_index(drop=True)
+    return df
 
 
 # ═══════════════════════════════════════════════════════
@@ -1769,10 +1811,9 @@ def cleanup_old_cache(keep_days=5):
 # ═══════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    print('=== stock_cache 自检 ===')
+    print('=== stock_cache 自检（窄表三表） ===')
     print(f'DB 路径: {DB_PATH}')
-    print(f'表存在: {_table_exists(STK_FACTOR_TABLE)}')
-    if _table_exists(STK_FACTOR_TABLE):
-        print(f'股票数: {count_stk_factor_stocks()}')
-        print(f'总行数: {count_stk_factor_rows()}')
+    print(f'daily_cache 表存在: {_table_exists(DAILY_CACHE_TABLE)}')
+    print(f'daily_basic_cache 表存在: {_table_exists(DAILY_BASIC_CACHE_TABLE)}')
+    print(f'adj_factor_cache 表存在: {_table_exists(ADJ_FACTOR_CACHE_TABLE)}')
     print('========================')

@@ -24,6 +24,8 @@ import threading
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
+import stock_cache as sc
+
 # =========================
 # Windows GBK 控制台输出修复:使用环境变量 PYTHONIOENCODING
 # (禁止 sys.stdout = io.TextIOWrapper, 会导致底层 buffer 被 GC 后 close, 引发 I/O on closed file)
@@ -823,35 +825,34 @@ class RealtimeThemeMonitor:
             print(f"⚠ SQLite数据库不存在: {db_path},技术因子未加载")
         else:
             try:
-                conn = sqlite3.connect(db_path, timeout=10.0)
+                factor_cols = ['ts_code', 'trade_date', 'close', 'atr_bfq',
+                               'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
+                               'kdj_bfq', 'kdj_k_bfq', 'kdj_d_bfq',
+                               'rsi_bfq_6', 'rsi_bfq_12', 'rsi_bfq_24',
+                               'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq', 'cci_bfq']
                 # 技术指标是前一个交易日收盘后运算的,并非当日实时
                 # 取最新交易日数据,但如果最新数据不完整(<1000只)则回退到次新
-                rows = conn.execute(
-                    'SELECT DISTINCT trade_date FROM stk_factor_pro ORDER BY trade_date DESC LIMIT 2'
-                ).fetchall()
-                if not rows:
-                    conn.close()
-                    print("⚠ SQLite中stk_factor_pro表为空,技术因子未加载")
+                dates = sc.get_recent_trade_dates(n=2)
+                if not dates:
+                    print("⚠ SQLite三窄表缓存为空,技术因子未加载")
                 else:
                     # 检查最新日期数据量,数据量足够时直接取最新(即为T-1)
-                    latest_count = conn.execute(
-                        'SELECT COUNT(*) FROM stk_factor_pro WHERE trade_date = ?', (rows[0][0],)
-                    ).fetchone()[0]
+                    latest_count = len(sc.fetch_market_by_date(str(dates[-1]), cols=factor_cols))
                     if latest_count > 1000:
-                        latest_date = str(rows[0][0])
-                    elif len(rows) >= 2:
-                        latest_date = str(rows[1][0])
-                        print(f"  最新日期{rows[0][0]}数据量仅{latest_count}只,回退到{latest_date}")
+                        latest_date = str(dates[-1])
+                    elif len(dates) >= 2:
+                        latest_date = str(dates[0])
+                        print(f"  最新日期{dates[-1]}数据量仅{latest_count}只,回退到{latest_date}")
                     else:
-                        latest_date = str(rows[0][0])
+                        latest_date = str(dates[-1])
                     # 查询最近2个交易日数据(用于KDJ金叉/死叉的前后对比)
-                    dates = [str(r[0]) for r in rows[:2]]
-                    placeholders = ','.join('?' * len(dates))
-                    df_all = pd.read_sql_query(
-                        f'SELECT * FROM stk_factor_pro WHERE trade_date IN ({placeholders}) ORDER BY ts_code, trade_date',
-                        conn, params=dates
-                    )
-                    conn.close()
+                    parts = []
+                    for d in dates:
+                        df_d = sc.fetch_market_by_date(str(d), cols=factor_cols)
+                        if not df_d.empty:
+                            parts.append(df_d)
+                    df_all = pd.concat(parts, ignore_index=True).sort_values(
+                        ['ts_code', 'trade_date']) if parts else pd.DataFrame()
 
                     if df_all.empty:
                         print(f"⚠ SQLite中{latest_date}无技术因子数据")
@@ -4265,7 +4266,7 @@ class RealtimeThemeMonitor:
 
     def _tail_technical_score(self, ts_code, q):
         """
-        技术形态加分 (10分,基于stk_factor缓存)
+        技术形态加分 (10分,基于三窄表缓存派生)
         利用KDJ/RSI技术指标识别技术面健康度
         
         这是胜率提升的核心因子:

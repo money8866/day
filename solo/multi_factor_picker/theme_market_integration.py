@@ -6,7 +6,7 @@
 2. ETF共振评分 (ETF Resonance) — 个股所属主题的ETF趋势强度
 3. 市场状态门控 (Market Gate) — 大盘环境对入场信号的调整
 
-数据源：复用 multi_factor_picker 现有的 stk_factor_pro parquet 缓存
+数据源：复用 multi_factor_picker 现有的三窄表缓存派生数据
 """
 
 import json, os, numpy as np, pandas as pd

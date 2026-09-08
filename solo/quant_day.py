@@ -105,17 +105,13 @@ os.makedirs(FUND_CACHE_DIR, exist_ok=True)
 # 缓存API调用（统一入口：sc.* 详见 stock_cache.py）
 # ═══════════════════════════════════════════════════════
 
-def batch_cache_stk_factor_pro(target_date):
-    """委托给 sc.batch_cache_stk_factor_pro"""
-    sc.batch_cache_stk_factor_pro(target_date)
-
 def get_list_date(ts_code):
     """委托给 sc.get_list_date"""
     return sc.get_list_date(ts_code)
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """委托给 sc.cached_stk_factor_pro"""
-    return sc.cached_stk_factor_pro(ts_code, start_date, end_date)
+    """委托给 sc.cached_stk_factor_compat（窄表三表链路，替代旧宽表）"""
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date, silent=True)
 
 # =========================
 # 主题个股池路径
@@ -1388,8 +1384,8 @@ def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min
             return result
         daily = daily.sort_values('trade_date').reset_index(drop=True)
 
-        # 技术因子（使用 stk_factor_pro，MA/RSI 等已计算好）
-        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        # 技术因子（窄表三表链路 cached_stk_factor_compat，MA/RSI 等已计算好）
+        factor = sc.cached_stk_factor_compat(ts_code, start_date, end_date, silent=True)
         time.sleep(0.06)
 
         # 合并（stk_factor_pro 字段带 _bfq 后缀，重命名为简洁名）

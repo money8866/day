@@ -30,22 +30,22 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import stock_cache as sc
+
 DB = r'D:\mystock\cache_daily\stock_data.db'
 OUTPUT_DIR = r'D:\mystock\solo\trend_feature_output'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def get_data(ts_code: str) -> pd.DataFrame | None:
-    conn = sqlite3.connect(DB)
     try:
-        sql = """SELECT trade_date, open, high, low, close, pct_chg, vol, volume_ratio,
-                        ma_bfq_5, ma_bfq_10, ma_bfq_20, ma_bfq_30, ma_bfq_60, ma_bfq_90,
-                        macd_dif_bfq, macd_dea_bfq, macd_bfq,
-                        rsi_bfq_6
-                 FROM stk_factor_pro WHERE ts_code=? ORDER BY trade_date"""
-        df = pd.read_sql(sql, conn, params=(ts_code,))
+        cols = ('open', 'high', 'low', 'close', 'pct_chg', 'vol', 'volume_ratio',
+                'ma_bfq_5', 'ma_bfq_10', 'ma_bfq_20', 'ma_bfq_30', 'ma_bfq_60', 'ma_bfq_90',
+                'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq', 'rsi_bfq_6')
+        df = sc.fetch_hist_range(None, None, ts_codes=[ts_code], cols=cols)
         if df.empty:
             return None
+        df = df.drop(columns=['ts_code'])
         df['trade_date'] = df['trade_date'].astype(str)
         df = df.fillna(0)
 
@@ -68,8 +68,6 @@ def get_data(ts_code: str) -> pd.DataFrame | None:
         return df
     except Exception as e:
         return None
-    finally:
-        conn.close()
 
 
 def detect_awave(df: pd.DataFrame, lookback: int = 120) -> dict | None:

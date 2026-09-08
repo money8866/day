@@ -113,7 +113,7 @@ class PullbackDetector:
     def _check_ma_up(self, df):
         if len(df) < 120:
             return False
-        # 使用 stk_factor_pro 的预计算字段（前复权）
+        # 使用三窄表缓存派生的预计算字段（前复权）
         ma60_series = df['ma_qfq_60'].dropna() if 'ma_qfq_60' in df.columns else pd.Series(df['close_qfq']).rolling(60).mean().dropna()
         # MA120 无预计算字段，保持rolling计算
         ma120 = pd.Series(df['close_qfq'].values).rolling(120).mean()

@@ -23,15 +23,15 @@ from w7_second_wave_engine import (
     safe_mean,
 )
 
+# 选股记录与跟踪库(幂等落库, 供 update_tracking 回填 T+N 表现)
+try:
+    from stock_pick_db import DB_PATH as PICK_DB_PATH, record_picks
+except Exception:
+    PICK_DB_PATH = None
+    record_picks = None
+
 from sli import reader as sli_reader
 from sli.classify import TYPE_PRIORITY_V2
-
-T20_COLS = w7.WANTED_COLS + [
-    "atr_bfq", "amount", "volume_ratio",
-    "ma_bfq_5", "ma_bfq_30", "ma_bfq_250",
-    "macd_bfq", "rsi_bfq_6", "updays",
-]
-w7.WANTED_COLS = T20_COLS
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
 STATE_PATH = os.path.join(OUTPUT_DIR, "w7_t20_state.json")
@@ -650,6 +650,58 @@ def sli_tag(r):
     return f"{r['sli_leader_type']}{rk} {sv}"
 
 
+def _derive_tech(df):
+    """本地派生宽表指标列（窄表源没有，W7 迁移替代）。
+
+    与 w7 引擎的 ma_bfq_* 同口径：基于每股前复权收盘(=close×adj/每股末因子)，
+    组内按 trade_date 升序，满窗计算。
+    - ma_bfq_5/30/250：qfq close 滚动均线（补齐 engine 未算的窗口）
+    - atr_bfq：qfq 价格的 ATR(14, Wilder)，用于幅度归一
+    - rsi_bfq_6：qfq close 的 RSI(6, Wilder)
+    - macd_bfq：qfq close 的 MACD 柱 2×(DIF−DEA)，12/26/9
+    - updays：连续上涨交易日数（pct_chg>0 计，否则清零）
+    幂等：列已存在则跳过。
+    """
+    need = [c for c in ("ma_bfq_5", "ma_bfq_30", "ma_bfq_250", "atr_bfq",
+                        "rsi_bfq_6", "macd_bfq", "updays") if c not in df.columns]
+    if not need:
+        return df
+    df = df.copy()
+    price = w7._qfq_price(df)  # 与 engine ma_bfq_* 同源的前复权收盘
+    for w, col in ((5, "ma_bfq_5"), (30, "ma_bfq_30"), (250, "ma_bfq_250")):
+        if col in need:
+            df[col] = price.rolling(w, min_periods=w).mean()
+    if "atr_bfq" in need:
+        cl = price
+        pc = cl.shift(1)
+        factor = price / df["close"].astype(float).replace(0, np.nan)
+        hq = df["high"].astype(float) * factor
+        lq = df["low"].astype(float) * factor
+        tr = pd.concat([(hq - lq).abs(), (hq - pc).abs(), (lq - pc).abs()], axis=1).max(axis=1)
+        df["atr_bfq"] = tr.ewm(alpha=1.0 / 14.0, adjust=False, min_periods=14).mean()
+    if "rsi_bfq_6" in need:
+        delta = price.diff()
+        up = delta.clip(lower=0.0)
+        dn = (-delta).clip(lower=0.0)
+        au = up.ewm(alpha=1.0 / 6.0, adjust=False, min_periods=6).mean()
+        ad = dn.ewm(alpha=1.0 / 6.0, adjust=False, min_periods=6).mean()
+        rs = au / ad.replace(0, np.nan)
+        rsi = 100.0 - 100.0 / (1.0 + rs)
+        df["rsi_bfq_6"] = rsi.where(ad > 0, 100.0).where(delta.notna(), np.nan)
+    if "macd_bfq" in need:
+        e12 = price.ewm(span=12, adjust=False).mean()
+        e26 = price.ewm(span=26, adjust=False).mean()
+        dif = e12 - e26
+        dea = dif.ewm(span=9, adjust=False).mean()
+        df["macd_bfq"] = 2.0 * (dif - dea)
+    if "updays" in need:
+        up = (pd.to_numeric(df["pct_chg"], errors="coerce") > 0).astype(int)
+        grp = up.ne(up.shift()).cumsum()
+        cnt = up.groupby(grp).cumsum()
+        df["updays"] = cnt.where(up == 1, 0)
+    return df
+
+
 def analyze_t20(code, name, industry, df, reader, mkt, sector_strength, sector_growth, regime, gate_level, date, sli_info=None):
     if df.empty or len(df) < 250:
         return None
@@ -719,6 +771,19 @@ def analyze_t20(code, name, industry, df, reader, mkt, sector_strength, sector_g
     target = breakout_price + TARGET_ATR * atr if breakout_price > 0 else (plat["high"] + TARGET_ATR * atr if plat else close + 2.0 * atr)
     entry = breakout_price if breakout_price > 0 else (plat["high"] if plat else close)
     rr = (target - entry) / max(entry - invalid, 0.02 * entry) if entry > invalid else 0.0
+
+    # 空间评分输入：上方最近压力 = 近60/120/250日前高中首个高于现价者（不含当日）
+    near_res = 0.0
+    res_win = 0
+    for win in (60, 120, 250):
+        if i >= win:
+            hw = float(df["high"].iloc[i - win:i].replace({np.nan: 0.0}).max())
+            if hw > close * 1.002:
+                near_res, res_win = hw, win
+                break
+    if near_res <= 0:
+        near_res = target  # 250日内无前高压制（创新高）→ 以引擎目标为第一参考压力
+        res_win = 0
 
     v20 = float(np.mean(df.vol.values[max(0, i - 19):i + 1]))
     vol_ratio = finite(row.vol) / v20 if v20 > 0 else 0.0
@@ -950,6 +1015,7 @@ def analyze_t20(code, name, industry, df, reader, mkt, sector_strength, sector_g
         "zone_high": round(zone_high, 2), "invalid": round(invalid, 2),
         "ma20": round(ma20, 2), "atr": round(atr, 2),
         "close": close, "pct_chg": finite(row.pct_chg),
+        "target": round(target, 2), "near_res": round(near_res, 2), "res_win": res_win,
         "platform": {"high": round(plat["high"], 2), "low": round(plat["low"], 2),
                      "days": plat["days"], "start": plat["start_date"],
                      "dryup": round(plat["dryup_ratio"], 2)} if plat else None,
@@ -989,9 +1055,27 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     def _ige_tag(r):
         return f"{r['ige_adj']:.1f}" if isinstance(r.get("ige_adj"), (int, float)) else "-"
 
-    # IGE_ADJ 高弹性行业优先：可操作候选（PRIMARY_BUY / TOP_PICK / CONFIRMED_NEXT / 决策树）按 (IGE_ADJ 降序, 原 T20 综合分降序)；
-    # 顶部【T20 RIGHT-TAIL TOP】排名表保留原 T20 综合分排序不动（仅加 IGE_ADJ 列标注）。
-    cand_sorted = sorted(results, key=lambda r: (_ige_adj(r), r["priority"]), reverse=True)
+    def _space_score(r):
+        """走势空间优选分 0-100：33% 上方弹性 + 33% 下方容错 + 34% 右侧完成度。"""
+        close = r["close"]
+        atr = r.get("atr") or 0.0
+        res = r.get("near_res") or 0.0
+        if res > close:
+            up_pct = (res / close - 1.0) * 100.0
+        else:
+            up_pct = (r.get("target", close * 1.06) / close - 1.0) * 100.0
+        s_up = clip(up_pct / 12.0 * 100.0)
+        d_atr = (close - r["zone_low"]) / atr if atr > 0 else 3.0
+        s_down = clip(100.0 - d_atr * 22.0)
+        base = {"T20_RIGHT_TAIL": 90.0, "RETEST_SUCCESS": 80.0, "RE_EXPANSION": 72.0,
+                "BREAKOUT": 68.0, "RETEST": 55.0, "HVT": 45.0, "ABSORPTION": 45.0,
+                "PLATFORM": 40.0, "DRYUP": 40.0, "FULL_PULLBACK": 40.0}.get(r["lifecycle"], 50.0)
+        s_stage = clip(base + (int(r.get("chain_steps", 0) or 0) - 5) * 4.0)
+        return round(0.33 * s_up + 0.33 * s_down + 0.34 * s_stage, 1)
+
+    # 空间优选分优先：可操作候选（PRIMARY_BUY / TOP_PICK / CONFIRMED_NEXT / 决策树）按
+    # (SPACE空间优选分, IGE_ADJ, 原 T20 综合分) 降序；顶部【T20 RIGHT-TAIL TOP】排名表保留原 T20 综合分排序不动。
+    cand_sorted = sorted(results, key=lambda r: (_space_score(r), _ige_adj(r), r["priority"]), reverse=True)
     cand_primary = [r for r in cand_sorted if r["layer"] == LAYER_PRIMARY]
     cand_nxt = [r for r in cand_sorted if r["layer"] == LAYER_NEXT]
     cand_watch = [r for r in cand_sorted if r["layer"] == LAYER_WATCH]
@@ -1004,7 +1088,7 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
         lines.append("> 弱市门控生效：仅接受 HVT_RB_BUY（T20≥80）或极强 PULLBACK_BUY（T20≥85 且结构≥85），不因候选减少降低标准。")
         lines.append("")
     if ige_snap:
-        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：高弹性行业候选优先——PRIMARY_BUY / TOP_PICK / CONFIRMED_NEXT / 决策树按 IGE_ADJ 降序排列；顶部 T20 RIGHT-TAIL TOP 表保留原 T20 综合分序并附 IGE_ADJ 标注。")
+        lines.append(f"> 候选排序 = 走势空间优选分 SPACE（上方弹性33%：距最近前高压力幅度 / 下方容错33%：现价距理想买点ATR / 右侧完成度34%：Lifecycle+链路）→ IGE_ADJ → T20综合分，降序；顶部 T20 RIGHT-TAIL TOP 表保留原 T20 综合分序并附 IGE_ADJ 标注（行业增长弹性，快照 {ige_snap}）。")
         lines.append("")
     lines.append("## 【T20 RIGHT-TAIL TOP】")
     lines.append("")
@@ -1015,7 +1099,7 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
         rq = f"{r['retest_quality']:.0f}" if r["retest_quality"] is not None else "-"
         lines.append(f"| {n} | {r['code']} | {r['name']} | {r['buy_type'] or '-'} | {r['lifecycle']} | {_ige_tag(r)} | {r['t20_score']:.0f} | {r['structure']:.0f} | {rq} | {r['ext_score']:.0f} | **{r['action']}** |")
     lines.append("")
-    picks = [r for r in cand_sorted if r.get("top_pick")]  # 与 PRIMARY_BUY 一致，按 IGE_ADJ 高弹性优先
+    picks = [r for r in cand_sorted if r.get("top_pick")]  # 与 PRIMARY_BUY 一致，按 SPACE 空间优选分优先
     blocked = [r for r in cand_sorted if r.get("sli_block")]
     snap = str((sli_meta or {}).get("snapshot_date", "?"))
     lines.append("## 【TOP_PICK】")
@@ -1130,6 +1214,38 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     return "\n".join(lines)
 
 
+def _track_picks(results):
+    """PRIMARY_BUY / CONFIRMED_NEXT 层转成 stock_pick_db 落库记录。
+
+    标准列直接映射: ts_code/stock_name/close/pct_chg/signal/action/score/rank_no/
+    industry/stop_price(失效位)/target_price(引擎目标价);
+    其余字段(lifecycle/buy_type/结构分/回踩区/MA20/IGE…) 自动进 indicators JSON 列。
+    """
+    layer_rank = {LAYER_PRIMARY: 0, LAYER_NEXT: 1}
+    rows = [r for r in results if r.get("layer") in layer_rank]
+    rows.sort(key=lambda r: (layer_rank.get(r.get("layer"), 9), -float(r.get("priority") or 0)))
+    out = []
+    for idx, r in enumerate(rows, 1):
+        out.append({
+            "ts_code": r["code"], "stock_name": r["name"], "industry": r.get("industry"),
+            "close": r.get("close"), "pct_chg": r.get("pct_chg"),
+            "signal": r.get("layer"), "action": r.get("action"),
+            "score": r.get("t20_score"), "rank_no": idx,
+            "stop_price": r.get("invalid"), "target_price": r.get("target"),
+            "lifecycle": r.get("lifecycle"), "buy_type": r.get("buy_type"),
+            "structure": r.get("structure"), "retest_quality": r.get("retest_quality"),
+            "breakout_quality": r.get("breakout_quality"), "rr": r.get("rr"),
+            "zone_low": r.get("zone_low"), "zone_high": r.get("zone_high"),
+            "breakout_price": r.get("breakout_price"), "ma20": r.get("ma20"),
+            "atr": r.get("atr"), "near_res": r.get("near_res"),
+            "chain_steps": r.get("chain_steps"), "priority": r.get("priority"),
+            "top_pick": bool(r.get("top_pick")), "event_date": r.get("event_date"),
+            "ige_adj": r.get("ige_adj"), "ige_mix": r.get("ige_mix"),
+            "sli_leader": bool(r.get("sli_leader")),
+        })
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default="")
@@ -1143,6 +1259,10 @@ def main():
     load_codes = list(universe["ts_code"].tolist()) if not universe.empty else []
     print(f"[t20] 日期={date} 股池={len(load_codes)} 开始加载历史...", flush=True)
     reader.load_all(date, codes=load_codes, verbose=args.verbose)
+    # W7 窄表链路：宽表技术列(atr/rsi/macd/updays/ma5/30/250) 本地派生补全
+    for _c, _f in reader.frames.items():
+        reader.frames[_c] = _derive_tech(_f)
+    print(f"[t20] 本地派生技术列完成 frames={len(reader.frames)}", flush=True)
     mdates, mvals = reader.market_curve(date)
     mkt = MarketCtx(mdates, mvals)
     nfina = reader.load_fina()
@@ -1208,6 +1328,18 @@ def main():
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "w", encoding="utf-8") as fh:
         fh.write(text)
+    # 接入 stock_pick_db 跟踪(幂等, 失败不阻塞报告): 每日 PRIMARY_BUY/CONFIRMED_NEXT 落库,
+    # 之后由 python stock_pick_db.py tracking 按失效位/目标价回填 T+N 表现与胜率
+    if record_picks is not None:
+        try:
+            if PICK_DB_PATH:
+                os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
+            db_rows = _track_picks(results)
+            db_n = record_picks("w7_t20", "W7 T20 右尾跟踪", db_rows, pick_date=date)
+            print(f"[t20] stock_pick_db 写入 {db_n}/{len(db_rows)} 条 "
+                  f"(strategy=w7_t20 pick_date={date})", flush=True)
+        except Exception as exc:
+            print(f"[t20] stock_pick_db 写入失败(不影响报告): {exc}", flush=True)
     layer_counts = {}
     for r in results:
         layer_counts[r["layer"]] = layer_counts.get(r["layer"], 0) + 1

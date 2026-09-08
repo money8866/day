@@ -53,6 +53,7 @@ from bull_scorer import BullStockData, BullScoreResult, BullScorer as _BullScore
 from bull_scorer_v2 import BullScorerV2, BullScoreV2Result  # v2 评分引擎
 from chain_mapping import identify_chain_with_cache, load_concept_cache
 from double_score import run_double_score, print_top
+import stock_cache as sc
 
 
 # 配置日志
@@ -1354,8 +1355,6 @@ def _july_dump_penalty(results: List[BullScoreV2Result]) -> List[BullScoreV2Resu
     if now.month < 6 or now.month > 8:
         return results
 
-    import sqlite3
-    DB = r'D:\mystock\cache_daily\stock_data.db'
     penalty_count = 0
     for r in results:
         ann_date = r.forecast_ann_date
@@ -1363,15 +1362,11 @@ def _july_dump_penalty(results: List[BullScoreV2Result]) -> List[BullScoreV2Resu
             continue
         open_price = None
         try:
-            conn = sqlite3.connect(DB)
-            cur = conn.execute(
-                "SELECT open FROM stk_factor_pro WHERE ts_code=? AND trade_date=?",
-                (r.ts_code, ann_date)
-            )
-            row = cur.fetchone()
-            conn.close()
-            if row and row[0] and row[0] > 0:
-                open_price = float(row[0])
+            df = sc.fetch_market_by_date(str(ann_date), ts_codes=[r.ts_code], cols=['open'])
+            if df is not None and not df.empty:
+                v = df['open'].iloc[0]
+                if v and float(v) > 0:
+                    open_price = float(v)
         except Exception:
             continue
         if open_price and open_price > 0 and r.close_price > 0 and r.close_price < open_price:

@@ -2,12 +2,12 @@
 """
 「猎尾」尾盘突袭战法 - TDX历史回测框架
 ================================================
-基于通达信本地.day文件 + SQLite(stk_factor_pro)技术指标
+基于通达信本地.day文件 + SQLite三窄表缓存派生技术指标
 默认以收盘价作为2:50信号触发价进行历史回测
 
 数据源:
   - 通达信 .day 文件 (C:/new_tdx/vipdoc/sh|sz/lday/*.day) - 日线OHLC
-  - SQLite stock_data.db stk_factor_pro表 - 技术指标(MACD/KDJ/RSI/BOLL)
+  - SQLite stock_data.db 三窄表缓存派生 - 技术指标(MACD/KDJ/RSI/BOLL)
   - theme_stock_map_latest.json - 主题成份股映射
 
 回测规则:
@@ -48,6 +48,7 @@ THEME_MAP_FILE = os.path.join(CACHE_DIR, 'theme_stock_map_latest.json')
 
 sys.path.insert(0, BASE_DIR)
 from tail_strategy import TailStrategy
+from stock_cache import cached_stk_factor_compat
 
 
 # ============================================================
@@ -350,12 +351,7 @@ class TailBacktester:
         print(f"  技术因子缓存: {len(self.factor_cache)}条")
 
     def _preload_factors(self):
-        """从SQLite预加载技术因子(回测区间内+前一日)"""
-        if not os.path.exists(STOCK_DB):
-            print(f"  ⚠ SQLite不存在: {STOCK_DB}")
-            return
-
-        conn = sqlite3.connect(STOCK_DB, timeout=10.0)
+        """从本地三表缓存派生预加载技术因子(回测区间内+前一日)"""
         # 字段重命名映射
         factor_rename = {
             'macd_dif_bfq': 'macd_dif', 'macd_dea_bfq': 'macd_dea', 'macd_bfq': 'macd',
@@ -370,20 +366,22 @@ class TailBacktester:
         start_dt = datetime.datetime.strptime(self.start_date, '%Y%m%d')
         extend_start = (start_dt - datetime.timedelta(days=10)).strftime('%Y%m%d')
 
-        df = pd.read_sql_query(
-            'SELECT ts_code, trade_date, close, total_mv, turnover_rate, '
-            'macd_dif_bfq, macd_dea_bfq, macd_bfq, '
-            'kdj_bfq, kdj_k_bfq, kdj_d_bfq, '
-            'rsi_bfq_6, rsi_bfq_12, rsi_bfq_24, '
-            'boll_mid_bfq, boll_upper_bfq, boll_lower_bfq, cci_bfq, atr_bfq '
-            'FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ?',
-            conn, params=(extend_start, self.end_date)
-        )
-        conn.close()
+        codes = sorted(getattr(self, 'stock_themes', {}).keys())
+        frames = []
+        for i, code in enumerate(codes):
+            if (i + 1) % 200 == 0:
+                print(f"    因子派生进度: {i+1}/{len(codes)}")
+            try:
+                df_one = cached_stk_factor_compat(code, extend_start, self.end_date, silent=True)
+            except Exception:
+                continue
+            if df_one is not None and len(df_one) > 0:
+                frames.append(df_one)
 
-        if df.empty:
+        if not frames:
             return
 
+        df = pd.concat(frames, ignore_index=True)
         df = df.rename(columns=factor_rename)
         df['trade_date'] = df['trade_date'].astype(str)
 

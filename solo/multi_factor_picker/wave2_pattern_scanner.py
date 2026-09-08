@@ -59,7 +59,7 @@ v2.1升级（2026-06-24）:
   11. 新高回踩形态加分（创新高后回踩企稳→+3）→ 经典买点
 
 核心升级(v2.0):
-  1. stk_factor_pro 单接口替代3接口（3倍提速）
+  1. 窄表三表链路单接口替代3接口（3倍提速）
   2. ATR动态止损替代固定百分比
   3. DMI趋势反转(PDI上穿MDI)作为二波确认
   4. 10维度共振评分替代单一RSI判断
@@ -120,10 +120,6 @@ import stock_cache as sc
 # 缓存API调用（所有缓存函数统一入口：sc.*）
 # ═══════════════════════════════════════════════════════
 
-def batch_cache_stk_factor_pro(target_date):
-    """委托给 sc.batch_cache_stk_factor_pro（统一入口）"""
-    sc.batch_cache_stk_factor_pro(target_date)
-
 def cached_daily(ts_code, start_date, end_date, pro=None):
     """委托给 sc.cached_daily（统一入口）"""
     return sc.cached_daily(ts_code, start_date, end_date, pro=pro)
@@ -134,8 +130,8 @@ def get_list_date(ts_code):
 
 
 def cached_stk_factor_pro(ts_code, start_date, end_date):
-    """委托给 sc.cached_stk_factor_pro（统一入口）"""
-    return sc.cached_stk_factor_pro(ts_code, start_date, end_date)
+    """委托给 sc.cached_stk_factor_compat（统一入口）"""
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date)
 
 def cached_daily_basic(ts_code, start_date, end_date):
     """委托给 sc（统一入口）"""
@@ -795,12 +791,12 @@ class WavePatternDetector:
                 return None
             df = df.sort_values('trade_date').reset_index(drop=True)
 
-            # 用 daily 补充今日数据（stk_factor_pro 有延迟）
+            # 用 daily 补充今日数据（窄表三表链路有延迟）
             df_daily = cached_daily(ts_code, trade_date, trade_date)
             if df_daily is not None and not df_daily.empty:
                 today_data = df_daily.iloc[-1]
                 today_str = str(today_data['trade_date'])
-                # 如果今日数据比stk_factor_pro最新数据更新，则用daily数据补充
+                # 如果今日数据比窄表三表链路最新数据更新，则用daily数据补充
                 if today_str > df['trade_date'].iloc[-1]:
                     new_row = {col: today_data.get(col, df.iloc[-1].get(col)) for col in df.columns}
                     new_row['trade_date'] = today_str
@@ -835,7 +831,7 @@ class WavePatternDetector:
             # ⚠️ 修复DataFrame碎片化警告：在修改前先复制一次
             df = df.copy()
 
-            # 在 stk_factor_pro 中已计算好MA/RSI/换手率等，直接取用
+            # 在窄表三表链路中已计算好MA/RSI/换手率等，直接取用
             # 只需补算pct_5d/10d/20d
             # ⚠️ 统一使用后复权（close_hfq）进行形态计算
             # 后复权价格序列天然连续，除权/分红不会产生跳空缺口
@@ -1049,7 +1045,7 @@ class WavePatternDetector:
             if len(df) < 60:
                 return None
 
-        # 计算MA120/MA250（stk_factor_pro无此字段）
+        # 计算MA120/MA250（窄表三表链路无此字段）
         df['ma120'] = df['close'].rolling(120, min_periods=60).mean()
         df['ma250'] = df['close'].rolling(250, min_periods=120).mean()
 
@@ -2009,7 +2005,7 @@ class WavePatternDetector:
         for code in ts_codes:
             if code.startswith(('8', '4')) or code.startswith('9'):
                 continue
-            cached_min, cached_max = sc.get_stk_factor_range(code)
+            cached_min, cached_max = sc.get_daily_cache_range(code)
             if not cached_min or cached_min > start:
                 preload_needed += 1
         if preload_needed > 0:
@@ -2018,12 +2014,12 @@ class WavePatternDetector:
             for code in ts_codes:
                 if code.startswith(('8', '4')) or code.startswith('9'):
                     continue
-                cached_min, cached_max = sc.get_stk_factor_range(code)
+                cached_min, cached_max = sc.get_daily_cache_range(code)
                 if not cached_min or cached_min > start:
                     preload_codes.append(code)
             loaded = [0]
             def _preload_one(code):
-                sc.cached_stk_factor_pro(code, start, trade_date, silent=True)
+                sc.cached_stk_factor_compat(code, start, trade_date, silent=True)
                 loaded[0] += 1
                 if loaded[0] % 100 == 0:
                     print(f"  缓存预加载 {loaded[0]}/{preload_needed}...")
@@ -2476,7 +2472,7 @@ def generate_pdf_report(all_results: list, total_scanned: int, csv_name: str = '
 # ═══════════════════════════════════════════════════════════════════
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='二波形态精选 v2.0 (stk_factor_pro多指标共振)')
+    parser = argparse.ArgumentParser(description='二波形态精选 v2.0 (窄表三表链路多指标共振)')
     parser.add_argument('--pattern', choices=['sideways', 'deep', 'volume', 'vshape', 'all'], default='all')
     parser.add_argument('--pool', choices=['hs300', 'gem_kc', 'hot', 'all'], default='test')
     parser.add_argument('--codes', nargs='*', default=[])

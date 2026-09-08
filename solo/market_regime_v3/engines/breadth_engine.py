@@ -2,12 +2,11 @@
 市场宽度引擎 - Breadth Engine
 
 衡量全市场参与度（赚钱效应）
-从SQLite全量查询stk_factor_pro表，计算各子因子并合成宽度分数
+从SQLite窄表三表链路（daily_cache/daily_basic_cache/adj_factor_cache，经 stock_cache 统一读取）计算各子因子并合成宽度分数
 """
 
 import os
 import sys
-import sqlite3
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -20,11 +19,11 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 sys.path.insert(0, _PROJECT_ROOT)
 sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'inst_pullback_v2'))
 
+import stock_cache as sc
+
 from data.indicators import sma
 from market_regime_v3.factor_registry import GLOBAL_REGISTRY, FactorCategory, FactorMeta, FactorResult
 
-# 数据库路径
-DB_PATH = r"D:\mystock\cache_daily\stock_data.db"
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
 
 
@@ -49,7 +48,7 @@ class BreadthResult:
 class BreadthEngine:
     """市场宽度引擎
 
-    从stk_factor_pro表全量查询当日所有股票数据，计算全市场宽度指标。
+    从新缓存（窄表三表链路）读取当日全市场数据，计算全市场宽度指标。
     包括：上涨/下跌比例、涨跌停家数、创新高比例、站上均线比例、成交额集中度、中位数涨幅。
     """
 
@@ -69,59 +68,58 @@ class BreadthEngine:
         }
 
     # ──────────────────────────────────────────────
-    # SQL 查询
+    # 数据读取（新缓存窄表链路）
     # ──────────────────────────────────────────────
 
-    def _get_conn(self) -> sqlite3.Connection:
-        """获取数据库连接"""
-        return sqlite3.connect(DB_PATH)
-
     def query_today_data(self, trade_date: str) -> Optional[pd.DataFrame]:
-        """查询当日全市场数据（含均线字段）"""
-        conn = self._get_conn()
+        """读取当日全市场数据（含均线字段，ma_bfq_120 取自 ma_bfq_250）
+
+        两段式：先读基础列完成采样，再对采样池派生指标列（等价且大幅减少计算量）
+        """
         try:
-            sql = """
-                SELECT ts_code, close_hfq, pct_chg, amount,
-                       ma_bfq_20, ma_bfq_60, ma_bfq_250 as ma_bfq_120
-                FROM stk_factor_pro
-                WHERE trade_date = ?
-            """
-            df = pd.read_sql(sql, conn, params=(trade_date,))
-            if df.empty:
-                return None
-            # 全市场采样
-            if len(df) > self.sample_size:
-                df = df.sample(n=self.sample_size, random_state=42)
-            return df
-        finally:
-            conn.close()
+            base = sc.fetch_market_by_date(trade_date, cols=('ts_code', 'pct_chg', 'amount'))
+        except Exception:
+            return None
+        if base is None or base.empty:
+            return None
+        if len(base) > self.sample_size:
+            sampled = base.sample(n=self.sample_size, random_state=42)['ts_code'].tolist()
+        else:
+            sampled = base['ts_code'].tolist()
+        try:
+            df = sc.fetch_market_by_date(
+                trade_date,
+                ts_codes=sampled,
+                cols=('ts_code', 'close_hfq', 'pct_chg', 'amount',
+                      'ma_bfq_20', 'ma_bfq_60', 'ma_bfq_250'))
+        except Exception:
+            return None
+        if df is None or df.empty:
+            return None
+        if 'ma_bfq_250' in df.columns:
+            df = df.rename(columns={'ma_bfq_250': 'ma_bfq_120'})
+        return df
 
     def query_hist_close(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """查询历史区间后复权收盘价（用于创新高计算）"""
-        conn = self._get_conn()
+        """读取历史区间后复权收盘价（用于创新高计算）"""
         try:
-            sql = """
-                SELECT ts_code, trade_date, close_hfq
-                FROM stk_factor_pro
-                WHERE trade_date BETWEEN ? AND ?
-                ORDER BY ts_code, trade_date
-            """
-            df = pd.read_sql(sql, conn, params=(start_date, end_date))
-            return df
-        finally:
-            conn.close()
+            df = sc.fetch_hist_range(start_date, end_date,
+                                     cols=('ts_code', 'trade_date', 'close_hfq'))
+        except Exception:
+            return None
+        if df is None:
+            return None
+        if not df.empty and {'ts_code', 'trade_date'} <= set(df.columns):
+            df = df.sort_values(['ts_code', 'trade_date']).reset_index(drop=True)
+        return df
 
     def query_stock_basic(self) -> Optional[pd.DataFrame]:
-        """从数据库获取股票基本信息（用于识别所属板块）"""
-        conn = self._get_conn()
+        """从缓存获取股票基本信息（用于识别所属板块）"""
         try:
-            sql = """
-                SELECT DISTINCT ts_code FROM stk_factor_pro
-            """
-            df = pd.read_sql(sql, conn)
-            return df
-        finally:
-            conn.close()
+            codes = sc.get_all_cached_ts_codes()
+        except Exception:
+            return None
+        return pd.DataFrame({'ts_code': list(codes)})
 
     # ──────────────────────────────────────────────
     # 板块识别

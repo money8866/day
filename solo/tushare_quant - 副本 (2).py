@@ -52,6 +52,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
+sys.path.insert(0, r'D:\mystock\solo')
+from stock_cache import cached_stk_factor_pro
+
 import tushare as ts
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sqlite3
@@ -539,9 +542,9 @@ def calculate_short_term_win_score(ts_code, pro, above_chips_pct=-1, trade_date=
                 print(f"[缓存读取失败] {ts_code}: {e}")
                 df = None
 
-        # 2. 缓存缺失或过期则调用 stk_factor_pro 专业版接口
+        # 2. 缓存缺失或过期则走本地三表缓存派生
         if df is None or df.empty:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date='20250101')
+            df = cached_stk_factor_pro(ts_code, '20250101', TRADE_DATE)
             if df is not None and not df.empty:
                 df['trade_date'] = df['trade_date'].astype(str)
                 try:
@@ -1126,7 +1129,7 @@ def detect_breakout(ts_code, pro, trade_date=None):
         if os.path.exists(_cache_file):
             df = pd.read_csv(_cache_file)
         else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
+            df = cached_stk_factor_pro(ts_code, trade_date, TRADE_DATE)
             df.to_csv(_cache_file, index=False)
         
         df['trade_date'] = df['trade_date'].astype(str)
@@ -1252,7 +1255,7 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         if os.path.exists(_cache_file):
             df = pd.read_csv(_cache_file)
         else:
-            df = pro.stk_factor_pro(ts_code=ts_code, start_date=trade_date, end_date=TRADE_DATE)
+            df = cached_stk_factor_pro(ts_code, trade_date, TRADE_DATE)
             df.to_csv(_cache_file, index=False)
         
         df['trade_date'] = df['trade_date'].astype(str)
@@ -1719,8 +1722,7 @@ def detect_wave2_pattern(ts_code, pro, trade_date=None, surge_days=20, surge_min
         daily = daily.sort_values('trade_date').reset_index(drop=True)
 
         # 技术因子（使用 stk_factor_pro，MA/RSI 等已计算好）
-        factor = pro.stk_factor_pro(ts_code=ts_code, start_date=start_date, end_date=end_date)
-        time.sleep(0.06)
+        factor = cached_stk_factor_pro(ts_code, start_date, end_date)
 
         # 合并（stk_factor_pro 字段带 _bfq 后缀，重命名为简洁名）
         df = daily.copy()

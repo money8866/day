@@ -145,7 +145,7 @@ class StrategyEngine:
         logger.info("[A层] 基础过滤通过: %d 只", len(candidates_a))
 
         # ── 2. C层：首次回踩检测（含主升浪动量校验，逐只并发分析）──
-        # 使用 stock_cache.cached_stk_factor_pro 加载个股历史数据，
+        # 使用 stock_cache.cached_stk_factor_compat 加载个股历史数据，
         # 确保 MA、涨幅、涨停计数等计算有足够的历史窗口
         results = self._pullback_scan(candidates_a, td, market_info)
         results.sort(key=lambda r: r.score, reverse=True)
@@ -265,7 +265,7 @@ class StrategyEngine:
         cfg_scoring = self.cfg.scoring
 
         # ── 1. 加载个股日线数据（通过 stock_cache 缓存，SQLite+API 自动补全）──
-        df = sc.cached_stk_factor_pro(ts_code, start_date, trade_date, silent=True)
+        df = sc.cached_stk_factor_compat(ts_code, start_date, trade_date, silent=True)
         if df is None or len(df) < 30:
             return None
 

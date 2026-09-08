@@ -5,7 +5,7 @@
 数据源:
   - 通达信 .day 日线 (C:/new_tdx/vipdoc/*/lday)      - OHLCV + pct_chg
   - 通达信 .lc5 5分钟线 (C:/new_tdx/vipdoc/*/fzline)  - 重建14:00/14:30分时锚点
-  - SQLite stock_data.db stk_factor_pro               - 换手率/总市值
+  - SQLite stock_data.db daily_basic_cache             - 换手率/总市值
   - theme_stock_map_latest.json                       - 主题成份股
 
 回测口径(与实时14:50扫描语义一致):
@@ -158,14 +158,14 @@ class ND2Backtester:
         print(f"    日线: {len(self.all_klines)}只 指数: {list(self.index_klines.keys())} ({time.time()-t0:.0f}s)")
 
     def load_factors(self):
-        """从 stk_factor_pro 预加载 换手率/总市值(回测区间)"""
+        """从 daily_basic_cache 预加载 换手率/总市值(回测区间)"""
         if not os.path.exists(FACTOR_DB):
             print('    ⚠ 因子库不存在')
             return
         conn = sqlite3.connect(FACTOR_DB, timeout=10.0)
         df = pd.read_sql_query(
             'SELECT ts_code, trade_date, total_mv, turnover_rate '
-            'FROM stk_factor_pro WHERE trade_date BETWEEN ? AND ?',
+            'FROM daily_basic_cache WHERE trade_date BETWEEN ? AND ?',
             conn, params=(self.start_date, self.end_date))
         conn.close()
         if df.empty:

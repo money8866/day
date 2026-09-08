@@ -8,7 +8,7 @@
   3. 回填 max_gain/max_drawdown (信号日到最新交易日的最大收益/回撤)
   4. 根据止损止盈规则回填 exit_date/exit_price/exit_reason/pnl, 更新status
 
-数据源: D:\\mystock\\cache_daily\\stock_data.db (stk_factor_pro表)
+数据源: D:\\mystock\\cache_daily\\stock_data.db (stock_cache 窄表三表)
 
 用法:
   python backfill_tail_tracker.py              # 回填所有pending信号
@@ -23,6 +23,8 @@ import argparse
 import datetime
 import pandas as pd
 
+import stock_cache as sc
+
 CACHE_DIR = r'D:\mystock\cache_daily'
 TRACKER_DB = os.path.join(CACHE_DIR, 'tail_signal_tracker.db')
 STOCK_DB = os.path.join(CACHE_DIR, 'stock_data.db')
@@ -34,32 +36,19 @@ def get_conn(db_path):
 
 def get_trading_dates_after(signal_date, count=15):
     """获取signal_date之后的交易日列表(从stock_data.db)"""
-    conn = get_conn(STOCK_DB)
-    try:
-        rows = conn.execute(
-            'SELECT DISTINCT trade_date FROM stk_factor_pro WHERE trade_date > ? ORDER BY trade_date ASC LIMIT ?',
-            (signal_date, count)
-        ).fetchall()
-    finally:
-        conn.close()
-    return [str(r[0]) for r in rows]
+    dates = sc.get_recent_trade_dates(n=100000)
+    return [d for d in dates if d > signal_date][:count]
 
 
 def get_stock_daily(ts_code, start_date, end_date):
-    """从stk_factor_pro表读取个股日线数据"""
-    conn = get_conn(STOCK_DB)
-    try:
-        df = pd.read_sql_query(
-            'SELECT trade_date, open, high, low, close, pre_close, pct_chg, vol '
-            'FROM stk_factor_pro WHERE ts_code = ? AND trade_date BETWEEN ? AND ? ORDER BY trade_date',
-            conn, params=(ts_code, start_date, end_date)
-        )
-    finally:
-        conn.close()
+    """读取个股日线数据"""
+    df = sc.fetch_hist_range(start_date, end_date, ts_codes=[ts_code],
+                             cols=('open', 'high', 'low', 'close', 'pre_close', 'pct_chg', 'vol'))
     if df.empty:
         return None
+    df = df.drop(columns=['ts_code'])
     df['trade_date'] = df['trade_date'].astype(str)
-    return df
+    return df.sort_values('trade_date').reset_index(drop=True)
 
 
 def compute_exit(signal_row, daily_df, holding_days=10):
