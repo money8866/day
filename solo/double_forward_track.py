@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-天量翻倍 · 样本外前向跟踪（P0）：冻结阈值台账 + 90/180日对账 + 样本外报告
+天量翻倍 · 样本外前向跟踪（v2）：冻结规则台账 + 90/180日对账 + 样本外报告
 ========================================================================
 背景：TIER 画像（TIER1≈35.5% / TIER2≈24.0%）来自样本内事件库
 （double_sli_pool_events.csv，D250 全观察），存在 R1/R2 过拟合风险。
 本脚本建立 append-only 样本外台账，自 20260611（画像冻结后）起登记实盘触发
-事件，按 P0 入场规则做可实现口径对账，与样本内基准对比，衰减>50% 亮红旗。
+事件，按 v2 入场规则做可实现口径对账，与样本内基准对比，衰减>50% 亮红旗。
 
-P0 入场规则（对账口径B，可实现收益）：
-  ① 事件日涨停/一字 → 顺延次日开盘价入场；否则事件日收盘入场
-  ② 止损线 = max(事件日最低价, 入场价×0.80)，先触即出；跳空低开按开盘价成交
+v2 入场规则（20260908 冻结；依据样本内网格 double_rule_grid_report.md /
+double_rule_grid_deep.md；对账口径B，可实现收益）：
+  ① 统一次日开盘价入场（E1_next，不再区分涨停/一字顺延）
+  ② 止损分层：TIER1 无价格止损（样本内含尾部在内全指标占优，最差-31.5%）；
+     TIER2 灾难止损 = 入场价×0.65（-35%），先触即出；跳空低开按开盘价成交
   ③ 入场满 250 交易日未触发 → 收盘强制出场
 对账口径A（与样本内可比）：事件日收盘持有，r90/r180/r250、收盘/盘中翻倍首达天数
 
-台账：report_daily/double_forward_ledger.csv（append-only，主键 code+date）
+台账：report_daily/double_forward_ledger_v2.csv（append-only，主键 code+date）
+v1 台账归档：report_daily/double_forward_ledger_v1.csv（首次运行自动改名归档）
 用法：
   python double_forward_track.py --backfill [N]   # 回放重建台账（可带最近N日，默认自20260611全部）
   python double_forward_track.py                  # 每日链路：登记 + 对账 + 报告
@@ -21,6 +24,8 @@ P0 入场规则（对账口径B，可实现收益）：
 
 冻结约定：TIER 阈值一律调用 _daily_double_scan.tier（本文件不复刻阈值）。
 画像一旦修订须新开台账并归档旧台账，禁止用样本外结果反调阈值。
+v2 规则参数仅取自样本内网格（date<20260611），样本外台账只用于诊断不参与调参；
+修订规则时同样新开台账并归档旧台账。
 """
 import argparse
 import os
@@ -39,7 +44,10 @@ from w7_second_wave_engine import CacheReader
 import bts.data as D
 
 RD = os.path.join(SOLO_DIR, "report_daily")
-LEDGER_CSV = os.path.join(RD, "double_forward_ledger.csv")
+RULE_VERSION = "v2"  # 20260908 冻结：E1_next + TIER1无止损 / TIER2灾难-35%
+LEDGER_LEGACY_CSV = os.path.join(RD, "double_forward_ledger.csv")  # v1 原始台账
+LEDGER_V1_CSV = os.path.join(RD, "double_forward_ledger_v1.csv")   # v1 归档
+LEDGER_CSV = os.path.join(RD, "double_forward_ledger_v2.csv")      # v2 活动台账
 TRIGGER_CSV = os.path.join(RD, "double_trigger.csv")
 REPORT_MD = os.path.join(RD, "double_forward_report.md")
 
@@ -47,6 +55,7 @@ BACKFILL_FROM = 20260611  # 画像冻结（double_analysis.md）后的样本外�
 BASE_T1, BASE_T2 = 0.355, 0.240  # 样本内基准（double_analysis.md，D250 全观察14797事件）
 TIER1, TIER2 = "TIER1_核心", "TIER2_基础"
 WINDOWS = (90, 180, 250)
+STOP_T2 = 0.65  # v2 TIER2 灾难止损：入场价×0.65（-35%）；TIER1 无价格止损
 
 REG_COLS = ["code", "name", "subsector", "date", "tier", "close", "pct", "mv_yi",
             "turn_today", "turn_20m", "vol_ratio", "p_vol", "p_turn", "rel_hi250",
@@ -92,6 +101,13 @@ def _load_ledger():
 def _save_ledger(led):
     led = led.reindex(columns=LEDGER_COLS)
     led.to_csv(LEDGER_CSV, index=False, encoding="utf-8-sig")
+
+
+def _archive_v1():
+    """v2 首次运行：v1 原始台账改名归档，活动台账切至 v2（幂等）"""
+    if os.path.exists(LEDGER_LEGACY_CSV):
+        os.replace(LEDGER_LEGACY_CSV, LEDGER_V1_CSV)
+        print(f"v1 台账已归档 → {LEDGER_V1_CSV}", flush=True)
 
 
 def _latest_day():
@@ -248,31 +264,31 @@ def _simulate(rec, o, h, l, c, arr, i0, n):
         return f
     f["days_since"] = n - 1 - i0
     f["r_now"] = round(float(c[-1] / c0 - 1), 4)
-    lu = bool(rec.get("is_limitup")) or bool(rec.get("is_yizi"))
-    if lu and i0 + 1 >= n:
-        f["status"] = "pending_entry"  # 涨停/一字且事件日即最新日，次日开盘再入场
+    if i0 + 1 >= n:  # 规则①统一次日开盘入场，事件日即最新日 → 待入场
+        f["status"] = "pending_entry"
         return f
-    if lu:
-        ei, entry = i0 + 1, float(o[i0 + 1])  # 规则①顺延次日开盘
-    else:
-        ei, entry = i0, c0
+    ei, entry = i0 + 1, float(o[i0 + 1])
     if not np.isfinite(entry) or entry <= 0:
         f["status"] = "pending_entry"
         return f
     f["entry_price"] = round(entry, 3)
     f["entry_date"] = str(arr[ei])
     f["entry_gap"] = round(float(entry / c0 - 1), 4)
-    stop = max(float(l[i0]), entry * 0.80)  # 规则②：跌破事件日最低 或 -20%，先触即出
-    f["stop_price"] = round(stop, 3)
+    if str(rec.get("tier", "")) == TIER1:  # 规则②：TIER1 无价格止损
+        stop = np.nan
+    else:  # TIER2 灾难止损 -35%
+        stop = entry * STOP_T2
+        f["stop_price"] = round(stop, 3)
 
     ex = None
     for j in range(ei + 1, n):
-        if np.isfinite(o[j]) and o[j] <= stop:
-            ex = (j, float(o[j]), "stop_gap")
-            break
-        if np.isfinite(l[j]) and l[j] <= stop:
-            ex = (j, stop, "stop_hit")
-            break
+        if np.isfinite(stop):
+            if np.isfinite(o[j]) and o[j] <= stop:
+                ex = (j, float(o[j]), "stop_gap")
+                break
+            if np.isfinite(l[j]) and l[j] <= stop:
+                ex = (j, stop, "stop_hit")
+                break
         if j - ei >= 250:  # 规则③强制出场
             ex = (j, float(c[j]), "force_250")
             break
@@ -395,9 +411,11 @@ def cmd_report(latest=None):
     latest = latest or _latest_day()
     L = []
     A = L.append
-    A("# 天量翻倍 · 样本外前向跟踪报告（P0）\n")
-    A(f"- 最新交易日：{latest} ｜ 台账：`double_forward_ledger.csv`（append-only，主键 code+date）")
+    A(f"# 天量翻倍 · 样本外前向跟踪报告（{RULE_VERSION}）\n")
+    A(f"- 最新交易日：{latest} ｜ 台账：`{os.path.basename(LEDGER_CSV)}`（append-only，主键 code+date）"
+      f"｜ v1 归档：`{os.path.basename(LEDGER_V1_CSV)}`")
     A(f"- TIER 阈值冻结于 `_daily_double_scan.tier`（画像出处 double_analysis.md），样本外起点 {BACKFILL_FROM}")
+    A(f"- {RULE_VERSION} 规则（20260908 冻结）：统一次日开盘入场；TIER1 无价格止损、TIER2 灾难止损 -35%；250 日强制出场")
     A(f"- 样本内基准（D250 全观察14797事件）：TIER1≈35.5%（2025年≈55.2%）、TIER2≈24.0%，口径=事件日后250日内收盘≥2×事件收盘")
     A(f"- 报告生成：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
 
@@ -415,12 +433,12 @@ def cmd_report(latest=None):
         A(f"| {ym} | {len(g)} | {int((g.tier == TIER1).sum())} | {int((g.tier == TIER2).sum())} |")
     A("")
 
-    A("## 2. P0 可实现口径（规则：涨停/一字顺延次日开盘；跌破事件日最低或-20%止损；250日强制）\n")
+    A(f"## 2. 可实现口径（{RULE_VERSION} 规则：统一次日开盘入场；TIER1 无价格止损、TIER2 -35% 灾难止损；250日强制）\n")
     st = led["status"].fillna("open").value_counts()
     A("| 状态 | 数量 | 说明 |")
     A("|---|---|---|")
     st_desc = {"stop_gap": "跳空低开触止损", "stop_hit": "盘中触止损", "force_250": "250日强制出场",
-               "open": "持有中", "pending_entry": "待入场（涨停顺延）", "no_data": "数据缺失"}
+               "open": "持有中", "pending_entry": "待入场（次日开盘）", "no_data": "数据缺失"}
     for k, v in st.items():
         A(f"| {k} | {v} | {st_desc.get(k, '')} |")
     A("")
@@ -439,8 +457,9 @@ def cmd_report(latest=None):
         A("| 日期 | 代码 | 名称 | 层 | 入场价 | 止损线 | 出场日 | 出场价 | 原因 | 净收益 | 最大浮盈 | 最大浮亏 |")
         A("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for _, r in exited.sort_values("net_ret").iterrows():
+            sp = r["stop_price"] if pd.notna(r["stop_price"]) else "-"
             A(f"| {r['date']} | {r['code']} | {r['name']} | {'T1' if r['tier'] == TIER1 else 'T2'} "
-              f"| {r['entry_price']} | {r['stop_price']} | {r['exit_date']} | {r['exit_price']} "
+              f"| {r['entry_price']} | {sp} | {r['exit_date']} | {r['exit_price']} "
               f"| {st_desc.get(r['status'], r['status'])} | {_pct(r['net_ret'])} "
               f"| {_pct(r['mfe_e'])} | {_pct(r['mae_e'])} |")
         A("")
@@ -514,7 +533,8 @@ def cmd_report(latest=None):
 # ---------------------------------------------------------------- 入口
 
 def main():
-    ap = argparse.ArgumentParser(description="天量翻倍样本外前向跟踪")
+    _archive_v1()
+    ap = argparse.ArgumentParser(description=f"天量翻倍样本外前向跟踪（{RULE_VERSION}）")
     ap.add_argument("--backfill", nargs="?", const=0, default=None, type=int,
                     help="回放重建台账（可带最近N日，默认自20260611全部）")
     ap.add_argument("--report", action="store_true", help="仅输出报告")

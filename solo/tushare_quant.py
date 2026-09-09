@@ -8587,9 +8587,53 @@ def run(target_date=None, simple_mode=False):
         out.extend(seg)
         return "\n".join(out).strip()
 
+    def _load_hvt_bull_te_buy_pool(trade_date: str) -> str:
+        r"""读取 hvt_bull_report_{date}.md，提取「① 次日买入候选」段（te_buy_pool 执行买点池）。
+        池定义：execution_state ∈ (READY_BUY, PULLBACK_BUY) 且 next_day_action ∈ (BUY, BUY_ON_CONFIRM)，
+        按执行分取 top≤3；短线执行口径（T+1 开盘入场），与第一梯队（结构质量口径）互补，两者无交集为常态。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"hvt_bull_report_{trade_date}.md"),
+            os.path.join(REPORT_DIR, f"hvt_bull_report_{trade_date}.md"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError as e:
+            print(f"[HVT 执行买点池] 读取失败: {e}")
+            return ""
+        seg = []
+        in_s = False
+        for ln in lines:
+            s = ln.strip()
+            if s.startswith("### ① 次日买入候选"):
+                in_s = True
+                continue
+            if in_s:
+                if s.startswith("### "):
+                    break
+                seg.append(ln)
+        if not seg:
+            print(f"[HVT 执行买点池] {trade_date} 报告缺少次日买入候选段（引擎版本过旧？）")
+            return ""
+        out = ["【HVT-BULL 执行买点池（te_buy_pool 次日买入候选，≤3只）】",
+               f"数据来源：{os.path.basename(latest)}（HVT-BULL te_buy_pool，可执行性优先：触发价/买区/失效位/开盘预案均为引擎原值）",
+               ""]
+        out.extend(seg)
+        return "\n".join(out).strip()
+
     hvt_first_echelon_text = _load_hvt_bull_first_echelon(TRADE_DATE)
     if hvt_first_echelon_text:
         print("[HVT 第一梯队] 已加载天量牛股 PRIMARY_BUY 层级")
+
+    hvt_te_buy_text = _load_hvt_bull_te_buy_pool(TRADE_DATE)
+    if hvt_te_buy_text:
+        _n_buy = sum(1 for _l in hvt_te_buy_text.splitlines() if _l[:2] == '| ' and _l[2:3].isdigit())
+        print(f"[HVT 执行买点池] 已加载 te_buy_pool 次日买入候选（{_n_buy}只）")
 
     # =========================
     # ETF操作提示（读取主线轮动汇总报告的精简版）
@@ -8680,6 +8724,11 @@ def run(target_date=None, simple_mode=False):
 {hvt_first_echelon_text}
 （【数据边界】本段只分析上方"【HVT-BULL 第一梯队】"标记中列出的股票；若显示"今日无第一梯队"，必须明确提示"今日无第一梯队，不强行交易"，禁止用其它股池股票填补。）
 【输出要求-第4段】按原列表顺序逐只输出：名称(代码)[A级/B级] + 一句话买入逻辑（锁筹+二次突破分层+扩张空间）+ 触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），最后附一句证伪纪律（放量跌破T0_High且2日不收复→结构性止损离场）；B级个股必须加注"扩张确认稍弱，仓位从低"。
+
+4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY 且 next_day_action=BUY/BUY_ON_CONFIRM，按执行分取 top≤3；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
+{hvt_te_buy_text}
+（【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日执行买点池为空，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(ACTION/确认等级) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；动作含 BUY_ON_CONFIRM 的个股必须加注"需盘中重新走强确认后再执行"；所有个股按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
 
 5、**【今日突破股池分析】**
 （综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
