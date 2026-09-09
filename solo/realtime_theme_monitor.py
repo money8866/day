@@ -171,6 +171,12 @@ class RealtimeThemeMonitor:
         self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
         self._init_tail_tracker()
 
+        # ── 尾盘「猎狐」T0天量确认信号 (W7 T0_CONFIRM 实时接入) ──
+        self.fox_run_date = ""        # 当日已扫描日期YYYYMMDD(跨日重置)
+        self._fox_done = False        # 当日是否已执行猎狐扫描
+        self.fox_state_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'fox_t0_state.json')  # code->T0事件日,防止同锚重复触发
+        self.fox_signals_cache = []   # 最近一次猎狐触发信号(便于日终复核)
+
         # ── 同花顺扶摇 MCP 补充数据 ──
         self.fuyao = FuyaoMCPClient()
         self.fuyao_data = {}                  # 缓存MCP数据
@@ -831,13 +837,46 @@ class RealtimeThemeMonitor:
                                'rsi_bfq_6', 'rsi_bfq_12', 'rsi_bfq_24',
                                'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq', 'cci_bfq']
                 # 技术指标是前一个交易日收盘后运算的,并非当日实时
-                # 取最新交易日数据,但如果最新数据不完整(<1000只)则回退到次新
+                # 优先读盘后快照表(factor_snapshot_cache): 前一天收盘后已按日全市场
+                # 预计算落库,启动直读零预热(秒级); 快照缺失/未定稿时才回退
+                # 全市场预热现算(约250交易日,分钟级)并把结果幂等落库供次日直读
                 dates = sc.get_recent_trade_dates(n=2)
                 if not dates:
                     print("⚠ SQLite三窄表缓存为空,技术因子未加载")
                 else:
                     # 检查最新日期数据量,数据量足够时直接取最新(即为T-1)
-                    latest_count = len(sc.fetch_market_by_date(str(dates[-1]), cols=factor_cols))
+                    df_all = pd.DataFrame()
+                    try:
+                        df_snap = sc.get_factor_snapshot(
+                            start_date=str(dates[0]), end_date=str(dates[-1]))
+                        counts = (df_snap['trade_date'].astype(str).value_counts().to_dict()
+                                  if not df_snap.empty else {})
+                    except Exception:
+                        df_snap, counts = pd.DataFrame(), {}
+                    # 快照需覆盖近2日(KDJ金叉/死叉需前后对比)且最新日>=1000只才算可用
+                    snap_ok = (not df_snap.empty
+                               and {str(dates[0]), str(dates[-1])} <= set(counts)
+                               and counts.get(str(dates[-1]), 0) > 1000)
+                    if snap_ok:
+                        df_all = df_snap
+                    else:
+                        if df_snap.empty:
+                            print("⏳ SQLite技术因子快照缺失,全市场预热计算(约250交易日)后自动落库...")
+                        # 回退现算(与旧逻辑口径一致): 最近2日各一次,完成后幂等落库
+                        parts = []
+                        for d in dates:
+                            df_d = sc.fetch_market_by_date(str(d), cols=factor_cols)
+                            if not df_d.empty:
+                                parts.append(df_d)
+                        df_all = pd.concat(parts, ignore_index=True).sort_values(
+                            ['ts_code', 'trade_date']) if parts else pd.DataFrame()
+                        try:
+                            sc.replace_factor_snapshot(df_all)
+                        except Exception as e2:
+                            print(f"⚠ 技术因子快照落库失败(不影响本次运行): {e2}")
+
+                    latest_count = (0 if df_all.empty else
+                                    int((df_all['trade_date'].astype(str) == str(dates[-1])).sum()))
                     if latest_count > 1000:
                         latest_date = str(dates[-1])
                     elif len(dates) >= 2:
@@ -845,14 +884,6 @@ class RealtimeThemeMonitor:
                         print(f"  最新日期{dates[-1]}数据量仅{latest_count}只,回退到{latest_date}")
                     else:
                         latest_date = str(dates[-1])
-                    # 查询最近2个交易日数据(用于KDJ金叉/死叉的前后对比)
-                    parts = []
-                    for d in dates:
-                        df_d = sc.fetch_market_by_date(str(d), cols=factor_cols)
-                        if not df_d.empty:
-                            parts.append(df_d)
-                    df_all = pd.concat(parts, ignore_index=True).sort_values(
-                        ['ts_code', 'trade_date']) if parts else pd.DataFrame()
 
                     if df_all.empty:
                         print(f"⚠ SQLite中{latest_date}无技术因子数据")
@@ -3406,6 +3437,19 @@ class RealtimeThemeMonitor:
                             print(f"⚠ V5 ND2扫描异常: {e}")
                         self.nd2_last_scan_time = time.time()
 
+                # ── 14:50后执行「猎狐」T0天量确认扫描(每交易日一次,实时价近似收盘) ──
+                if now.hour == 14 and now.minute >= 50 and not self._fox_done:
+                    self._fox_done = True
+                    self.fox_run_date = now.strftime('%Y%m%d')
+                    try:
+                        fox_signals = self.scan_fox_t0(now)
+                        if fox_signals:
+                            self.fox_signals_cache = fox_signals   # 记录本轮信号,便于日终复核
+                    except Exception as e:
+                        import traceback
+                        print(f"⚠ 猎狐扫描异常: {e}")
+                        traceback.print_exc()
+
                 time.sleep(60 - (datetime.now().second % 60))
 
         except KeyboardInterrupt:
@@ -5870,6 +5914,196 @@ class RealtimeThemeMonitor:
 
         signals.sort(key=lambda x: x['total_score'], reverse=True)
         return signals
+
+    # ════════════════════════════════════════════
+    # 「猎狐」尾盘 T0 天量确认买点信号 (W7 T0_CONFIRM 实时接入)
+    # ════════════════════════════════════════════
+
+    def _fox_stock_info(self, ts_code):
+        for thm, stocks in self.theme_stocks.items():
+            for code, name, _layer in stocks:
+                if code == ts_code:
+                    return (name or ts_code), thm
+        return ts_code, ''
+
+    def _fox_load_state(self):
+        try:
+            if os.path.exists(self.fox_state_path):
+                with open(self.fox_state_path, 'r', encoding='utf-8') as fh:
+                    return json.load(fh)
+        except Exception:
+            pass
+        return {}
+
+    def _fox_save_state(self, state):
+        try:
+            os.makedirs(os.path.dirname(self.fox_state_path), exist_ok=True)
+            with open(self.fox_state_path, 'w', encoding='utf-8') as fh:
+                json.dump(state, fh, ensure_ascii=False, indent=1)
+        except Exception as exc:
+            print(f"⚠ [猎狐] 状态保存失败: {exc}")
+
+    def scan_fox_t0(self, now):
+        """尾盘「猎狐」:以实时价近似当日收盘,对主题监控池重跑 W7 T0_CONFIRM 状态机。
+        同一 T0 锚只在「确认成立首日」触发一次(防止连续多日重复触发)。
+        触发后控制台展示 + 微信推送。返回: 新触发的猎狐信号列表"""
+        import numpy as np
+        import pandas as pd
+        import w7_second_wave_engine as w7
+
+        today = now.strftime('%Y%m%d')
+        live = {c: q for c, q in self.quotes.items()
+                if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
+        if not live:
+            print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
+            return []
+
+        reader = None
+        try:
+            reader = w7.CacheReader()
+            end_db = reader.latest_date()
+            if not end_db:
+                print("⚠ [猎狐] W7缓存库无数据,跳过")
+                return []
+            candidates = sorted(live.keys())
+            print(f"🕐 [猎狐] 加载主题池历史(截至{end_db}, {len(candidates)}只),可能耗时数十秒...", flush=True)
+            reader.load_all(end_db, codes=candidates, min_date=w7.DATA_START)
+            reader.load_fina()
+
+            # W7 锚点特征(中际旭创/华正新材,用于天量相似度,不影响状态判定)
+            anchors = {}
+            for label, (code, anchor_date) in w7.ANCHORS.items():
+                try:
+                    adf = reader.bars_sql(code, end_db)
+                    anchors[label] = w7.anchor_features(adf, anchor_date)
+                except Exception:
+                    anchors[label] = None
+            mkt = w7.MarketCtx(*reader.market_curve(end_db))
+
+            industry_map = {}
+            for c in candidates:
+                try:
+                    ind = reader.basic.loc[c].get('industry')
+                except Exception:
+                    ind = None
+                industry_map[c] = str(ind) if ind and str(ind) != 'nan' else ''
+            # 板块聚合(主题池近似;只影响评分维度,不影响 T0_CONFIRM 状态判定)
+            by_ind = {}
+            for code, f in reader.frames.items():
+                if len(f) < 21:
+                    continue
+                c0 = w7.finite(f.iloc[-21].close, 0.0)
+                c1 = w7.finite(f.iloc[-1].close, 0.0)
+                ind = industry_map.get(code, '')
+                if c0 <= 0 or not ind:
+                    continue
+                by_ind.setdefault(ind, []).append(c1 / c0 - 1.0)
+            sector_strength = {ind: w7.clip(50.0 + float(np.median(v)) * 150.0)
+                               for ind, v in by_ind.items() if len(v) >= 3}
+
+            fired_map = self._fox_load_state()
+            new_signals = []
+            stale = []   # 已触发过的同锚T0(重复,不推送)
+
+            for n, code in enumerate(candidates):
+                if n and n % 100 == 0:
+                    print(f"   猎狐进度 {n}/{len(candidates)}", flush=True)
+                q = live[code]
+                df0 = reader.bars(code, end_db)
+                if df0 is None or len(df0) < w7.MIN_BARS:
+                    continue
+                last_db = str(df0.iloc[-1].trade_date)
+                if last_db < today:
+                    prev = df0.iloc[-1]
+                    px = float(q.get('price') or 0.0)
+                    amt = float(q.get('amount') or 0.0)
+                    if px <= 0:
+                        continue
+                    vh = int(amt / px / 100) if amt > 0 else int((q.get('vol') or 0) / 100)
+                    # 以昨日收盘行为基底构造今日虚拟K线,保留完整schema(仅覆盖实时字段)
+                    row = dict(prev)
+                    row.update({'ts_code': code, 'trade_date': today,
+                                'open': float(q.get('open') or prev.open or px),
+                                'high': float(q.get('high') or prev.high or px),
+                                'low': float(q.get('low') or prev.low or px),
+                                'close': px,
+                                'pct_chg': float(q.get('pct_chg') or 0.0),
+                                'vol': vh, 'amount': amt})
+                    df = pd.concat([df0, pd.DataFrame([row])], ignore_index=True)
+                    df = w7._fill_ma_columns(df)
+                    for col in df.columns:
+                        if col not in ('ts_code', 'trade_date'):
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                    df = df.dropna(subset=['close', 'high', 'low', 'vol']).reset_index(drop=True)
+                else:
+                    df = df0
+                name, theme = self._fox_stock_info(code)
+                industry = industry_map.get(code, '')
+                try:
+                    sig = w7.analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt,
+                                     sector_strength=sector_strength, sector_growth={})
+                except Exception as exc:
+                    print(f"   ⚠ {code} analyze异常: {exc}")
+                    continue
+                if not sig or sig.get('state') != 'T0_CONFIRM' or sig.get('type') == 'DISTRIBUTION':
+                    continue
+                ev = str(sig.get('event_date') or '')
+                if fired_map.get(code) == ev:
+                    stale.append(code)
+                    continue
+                fired_map[code] = ev
+                # analyze() 返回不含 event_close,从K线中按事件日补取
+                try:
+                    _m = df['trade_date'].astype(str).values == ev
+                    sig['event_close'] = float(df['close'].values[_m][0]) if _m.any() else 0.0
+                except Exception:
+                    sig['event_close'] = 0.0
+                sig['theme'] = theme
+                sig['pct_chg_live'] = round(float(q.get('pct_chg') or 0.0), 2)
+                sig['trade_date'] = today
+                new_signals.append(sig)
+
+            self._fox_save_state(fired_map)
+            new_signals.sort(key=lambda s: -(s.get('score') or 0))
+
+            status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
+
+            # ── 控制台输出 ──
+            if new_signals:
+                print(f"\n{'=' * 100}")
+                print(f"🦊 「猎狐」T0天量确认买点信号 [{now.strftime('%H:%M:%S')}] 新触发{len(new_signals)}只 重复{len(stale)}只")
+                print(f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'T0日':<9} {'T0收盘':>7} {'今收':>7} {'涨幅':>6} {'评分':>4} {'级别':<5} {'压力位':>7}")
+                print(f"{'-' * 100}")
+                for i, s in enumerate(new_signals[:12], 1):
+                    print(f"{i:<3} {s['code']:<11} {s['name']:<9} {(s.get('theme') or '')[:9]:<10} {s['event_date']:<9} "
+                          f"{s.get('event_close', 0):>7.2f} {s['close']:>7.2f} {s.get('pct_chg_live', 0):>+5.1f}% "
+                          f"{s['score']:>4.0f} {status_cn.get(s['buy'], s['buy']):<5} {s.get('pressure', 0):>7.2f}")
+                print(f"{'=' * 100}\n")
+            else:
+                print(f"🦊 [猎狐] {now.strftime('%H:%M:%S')} 扫描完成:{len(candidates)}只主题股无新触发T0确认(重复{len(stale)}只)")
+
+            # ── 微信推送(仅新触发,单日一次) ──
+            if new_signals:
+                lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(实时价判定,收盘为准):"]
+                for s in new_signals[:5]:
+                    rel = (s.get('reason') or '').split('：')[-1]
+                    lines.append(f"● {s['name']}({s['code']}) [{s.get('theme', '')}] {status_cn.get(s['buy'], s['buy'])} 评分{s['score']:.0f}")
+                    lines.append(f"  T0={s['event_date']}收盘{s.get('event_close', 0):.2f} → 今收{s['close']:.2f}({s.get('pct_chg_live', 0):+.1f}%) 压力{s.get('pressure', 0):.2f}")
+                    lines.append(f"  {rel}")
+                content = "\n".join(lines)
+                self.send_wechat(f"🦊 猎狐·T0确认 {now.strftime('%m-%d %H:%M')}", content)
+            return new_signals
+        except Exception as exc:
+            print(f"⚠ [猎狐] 扫描异常: {exc}")
+            import traceback
+            traceback.print_exc()
+            return []
+        finally:
+            if reader is not None:
+                try:
+                    reader.close()
+                except Exception:
+                    pass
 
     def print_summary(self, results):
         """控制台输出摘要(含趋势评分+仓位建议+扶摇MCP数据)"""

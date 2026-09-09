@@ -23,7 +23,12 @@ MAIN_EVENT_PCT = 99.0  # 主事件门槛：量能+换手历史分位双≥P99 �
 MAX_EVENT_AGE = 60  # 近 60 天内出现过天量事件即入候选池
 WATCH_MIN_T120 = 60  # V4.3：WATCH 状态 T120 下限，低于此分值的低分兜底票不输出
 ANCHORS = {"中际旭创": ("300308.SZ", "20250508"), "华正新材": ("603186.SH", "20250812")}
-STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP", "RE_EXPANSION", "BREAKOUT_CONFIRM", "SECOND_WAVE", "DISTRIBUTION", "FAILED"]
+STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP", "RE_EXPANSION", "BREAKOUT_CONFIRM", "SECOND_WAVE", "T0_CONFIRM", "DISTRIBUTION", "FAILED"]
+# 20260909 用户口径「T0 确认买点」（我爱我家 8/19→8/27）：天量 T0 之后出现首根收盘回到
+# T0 收盘价之上的“重夺日”（8/25），随后连续 ≥2 根收盘站稳 T0 收盘价（8/26/8/27），
+# 确认日当日即视为有效买点（旁路 <5 根K线等待期与 major_risk 的早期误判）。仅限事件后
+# 早期窗口，且真实放量突破（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION）仍优先。
+T0_CONFIRM_MAX_BARS = 10
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
 
@@ -431,6 +436,42 @@ def extreme_event(df, i, window=None):
     return min(p_turn, p_vol) >= MAIN_EVENT_PCT, max(p_turn, p_vol)
 
 
+def extreme_cluster_anchor(df, candidates, merge_gap=2):
+    """天量事件簇归并 + 簇首 T0 锚定（20260909 用户口径：我爱我家 8/19 天量涨停为 T0，
+    8/20 量能更大但属同一事件延续 T1，不重锚——W7 原逻辑取 candidates[-1](最近一根)，
+    会把主事件错锚到 8/20(收阴在锚线下方)，导致后续确认链整体错位）。
+
+    规则：间隔 <= merge_gap 个交易日的极端量日归为同一事件簇；取最近一簇；
+    簇内优先选“最早的涨停/极强阳日”(首根放量强势日) 为 T0 锚，无强势日则沿用原逻辑(最近一根)。
+    返回 (event_idx, event_percentile)。
+    """
+    if not candidates:
+        return None
+    clusters, cur = [], [candidates[0]]
+    for c in candidates[1:]:
+        if c[0] - cur[-1][0] <= merge_gap:
+            cur.append(c)
+        else:
+            clusters.append(cur)
+            cur = [c]
+    clusters.append(cur)
+    last_cluster = clusters[-1]
+
+    def limit_like(i):
+        r = df.iloc[i]
+        if finite(r.close) <= finite(r.open):
+            return False
+        if finite(r.pct_chg) >= 9.0:  # 涨停/接近涨停
+            return True
+        high = finite(r.high)
+        return high > 0 and finite(r.close) >= high * 0.98 and finite(r.pct_chg) >= 3.0
+
+    for i, ep in last_cluster:
+        if limit_like(i):
+            return i, ep
+    return candidates[-1]  # 无强势首日，保留原口径不改变其它股行为
+
+
 def anchor_features(df, event_date):
     if df.empty or event_date not in set(df.trade_date.astype(str)):
         return None
@@ -515,6 +556,25 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     # V4.1：CQ/Acceptance/SDS 阈值不再判死（转由 T120_ALPHA 的 HVT 维度降分体现），
     # 重大风险只保留两类：持续抛压、跌破天量关键支撑未收复
     major_risk = persistent_sell or not support_ok
+    # 20260909 用户口径「T0 确认买点」：天量 T0 后首根收盘重回 event_close 之上的重夺日，
+    # 其后连续 ≥2 根收盘仍站稳 event_close → 确认日当日即有效买点（8/26/8/27 站稳 → 8/27 买入）。
+    # 收盘口径判定（盘中刺破不算，如 8/26 低 2.34<2.38 仍为确认日）；仅事件后早期窗口生效。
+    # 收紧（20260909 实测 41→2，剔除阴跌/平淡天量 T0）：① T0 须为强势大涨日（涨停/近最高收大阳，
+    # 与 extreme_cluster_anchor 的强势日口径同源）；② 必须“先回踩后重夺”（重夺日前至少 1 根收盘
+    # 低于 T0 收盘，K>=1），排除自 T0 起单边站上的连板加速股（那类归真实突破分支处理）。
+    t0_hold = False
+    if not persistent_sell and 3 <= len(post) <= T0_CONFIRM_MAX_BARS:
+        ev0 = df.iloc[event_idx]
+        strong_t0 = (finite(ev0.close) > finite(ev0.open)) and (
+            finite(ev0.pct_chg) >= 7.0 or
+            (finite(ev0.high) > 0 and finite(ev0.close) >= finite(ev0.high) * 0.98 and finite(ev0.pct_chg) >= 3.0))
+        cls = post.close.to_numpy(dtype=float)
+        evc = float(event_close)
+        ge = cls >= evc
+        if strong_t0 and ge.any():
+            k = int(np.argmax(ge))  # 首根重夺日（如 8/25）
+            if k >= 1 and len(post) - (k + 1) >= 2:  # 先回踩，重夺后仍需 ≥2 根站稳（8/26、8/27）
+                t0_hold = bool(cls[-1] >= evc and cls[-2] >= evc)
     latest = df.iloc[end]
     pressure = finite(df.high.iloc[max(event_idx + 1, end - 10):end].max(), latest.high)
     # V4.1 DISTRIBUTION 组合判定：巨量/长上影/收盘弱/破位 需同时出现多项，单因子只降分不淘汰
@@ -526,7 +586,7 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     pp, pp_ok = pp_score(df, end, base["lock"] >= 70 and base["sds"] >= 65)
     reexp = pp_ok and finite(latest.vol) >= vol20 * 0.9 and finite(latest.close) >= pressure * 0.995
     breakout = finite(latest.close) > pressure and finite(latest.vol) >= vol20 * 1.2 and pct_position(latest.open, latest.high, latest.low, latest.close) >= 70 and (latest.high - latest.close) / max(latest.high - latest.low, 0.01) < 0.35
-    if len(post) < 5:
+    if len(post) < 5 and not t0_hold:
         # V4.2 放宽：事件太新不判死，仅持续放量抛压标记观察；其余等待验证期
         state = "FAILED" if persistent_sell else "EXTREME_CHURN"
     elif breakout and len(post) >= 5 and (pp_ok or reexp) and base["lock"] >= 70:
@@ -534,6 +594,9 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     elif breakout or reexp:
         # V4.2 修复突破：重新放量突破压力位即算有效信号（优先于 FAILED/DISTRIBUTION）
         state = "BREAKOUT_CONFIRM" if breakout else "RE_EXPANSION"
+    elif t0_hold:
+        # 20260909：T0 天量锚定 + 重夺站稳≥2根 → 确认日当日有效买点（旁路等待期/派发误判）
+        state = "T0_CONFIRM"
     elif major_risk:
         state = "FAILED" if len(post) >= 8 else "DISTRIBUTION"
     elif distribution:
@@ -873,12 +936,14 @@ def hvt_type(state, lc, dist_risk):
     return "EXT"
 
 
-def horizon_phases(tp, lc, breakout):
+def horizon_phases(tp, lc, breakout, t0_confirm=False):
     """V5 四周期预期阶段文本（T+10/20/60/120）"""
     if tp == "DISTRIBUTION":
         return {"t10": "回避，观察派发确认", "t20": "回避", "t60": "回避", "t120": "回避"}
     lv = lc["level"]
-    if breakout:
+    if t0_confirm:
+        t10, t20 = "确认日买点：T0收盘价上方站稳≥2日", "回踩不破T0收盘价持有，收盘跌破离场"
+    elif breakout:
         t10, t20 = "突破放量确认", "趋势启动，回踩不破MA10持有"
     else:
         t10, t20 = "平台内蓄势，等放量突破", "突破进趋势，不破继续观察"
@@ -981,7 +1046,8 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
             candidates.append((i, ep))
     if not candidates:
         return None
-    event_idx, ep = candidates[-1]
+    # 20260909：天量簇归并，取簇内最早涨停/极强阳日为 T0 锚（8/19），而非最近极端日(8/20)
+    event_idx, ep = extreme_cluster_anchor(df, candidates)
     result = state_and_features(df, event_idx, ep)
     if not result:
         return None
@@ -1021,6 +1087,14 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     trend_confirmed = breakout or reexp or dims["trend"] >= 70
     if tp == "DISTRIBUTION":
         status = "WATCH"
+    elif state == "T0_CONFIRM":
+        # 20260909：确认日当日已是有效买点，按分数定级，不再被 WATCH 兜底吞掉
+        if score >= 85 and entry >= 80:
+            status = "PRIMARY_BUY"
+        elif score >= 80:
+            status = "T120_ROCKET"
+        else:
+            status = "CONFIRMED"
     elif score >= 85 and entry >= 80:
         status = "PRIMARY_BUY"
     elif score >= 80:
@@ -1038,6 +1112,9 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     v5_dims = {"天量": dims["hvt"], "吸收": absorption, "生命周期": lifecycle_score(lc), "空间": fs, "加速": acc, "RS": dims["rs"], "基本面": dims["fina"]}
     if tp == "DISTRIBUTION":
         reason = f"派发风险(dist={dist_risk:.0f})暂不参与：{core}；{ext_txt}"
+    elif state == "T0_CONFIRM":
+        reason = (f"T0天量确认买点（{event_date}锚，重夺T0收盘站稳≥2日，收盘未破"
+                  f"{base['event_close']:.2f}）：{core}；{ext_txt}；ENTRY={entry:.0f}")
     elif status == "PRIMARY_BUY":
         reason = f"HVT-V3高分+买点双高：{core}；{ext_txt}；ENTRY={entry:.0f}"
     elif status == "T120_ROCKET":
@@ -1070,7 +1147,7 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
             "event_date": event_date, "event_percentile": ep, "reexpansion": reexp, "breakout": breakout,
             "major_risk": major_risk, "hard_fail": major_risk, "reason": reason,
             "next": next_trigger(status, entry_dims, breakout, pp_ok), "explanation": explanation,
-            "horizons": horizon_phases(tp, lc, breakout)}
+            "horizons": horizon_phases(tp, lc, breakout, t0_confirm=(state == "T0_CONFIRM"))}
 
 
 def markdown(results, date):
@@ -1092,8 +1169,9 @@ def markdown(results, date):
     cnt_state = {}
     for x in results:
         cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
-    n_broken = sum(cnt_state.get(s, 0) for s in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION"))
-    lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　（已突破类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 合计 {n_broken} 家）")
+    n_broken = sum(cnt_state.get(s, 0) for s in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "T0_CONFIRM"))
+    lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　"
+                 f"（已突破/确认类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM 合计 {n_broken} 家，T0_CONFIRM=天量T0确认买点当日）")
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
@@ -1142,9 +1220,9 @@ def markdown(results, date):
         lines.append(col_sep)
         for k, x in enumerate(mid_list[:15], 1):
             lines.append(row(x, k))
-    # 已突破标的完整名单（不受榜单前20截断影响，推送引用以此为准；按 IGE_ADJ 高弹性行业优先降序，同级按总分降序）
-    broken = [x for x in results if x["state"] in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")]
-    lines.append(f"\n## 已突破标的完整名单（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 共{len(broken)}只）\n")
+    # 已突破/确认标的完整名单（不受榜单前20截断影响，推送引用以此为准；按 IGE_ADJ 高弹性行业优先降序，同级按总分降序）
+    broken = [x for x in results if x["state"] in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "T0_CONFIRM")]
+    lines.append(f"\n## 已突破/确认标的完整名单（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM 共{len(broken)}只）\n")
     if broken:
         lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
         lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")

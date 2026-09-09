@@ -7760,6 +7760,42 @@ def add_themes_to_stocks_no_filter(result_df):
     return result_df
 
 
+def _build_recent_factor_snapshots(days=2, silent=False):
+    """盘后预计算最近 days 个交易日的全市场技术因子快照(factor_snapshot_cache)
+
+    夜间全量跑批在批量预取(daily_cache 已补齐至 TRADE_DATE)之后调用:
+    把近两日全市场 MACD/KDJ/RSI/BOLL/ATR/CCI 技术因子按日落库,
+    次日 realtime_theme_monitor 启动直接 SELECT 快照(毫秒级)，
+    免去对全市场 ~250 交易日预热重算(实测单日约 7-8 分钟)。
+
+    幂等策略:
+      - 非最新交易日且已定稿(行数>阈值) → 跳过, 不重复耗算;
+      - 最新交易日 → 强制重建, 保证收盘定稿数据覆盖日内半成品。
+
+    Returns:
+        dict {trade_date: 落库行数}
+    """
+    t0 = time.time()
+    dates = [str(d) for d in sc.get_recent_trade_dates(n=days)]
+    if not dates:
+        print("[factor_snapshot] 无交易日缓存可构建, 跳过")
+        return {}
+    counts = sc.factor_snapshot_counts(str(dates[0]), str(dates[-1]))
+    out, built, skipped = {}, 0, 0
+    for d in dates:
+        # 最新交易日收盘定稿后必须强制重建; 其余日期已定稿则直接跳过
+        if d == dates[-1] or counts.get(d, 0) <= sc.FACTOR_SNAPSHOT_MIN_ROWS:
+            n = sc.build_factor_snapshot(d, silent=silent)
+            if n > 0:
+                out[d] = n
+                built += 1
+        else:
+            skipped += 1
+    print(f"[factor_snapshot] 盘后预计算完成: 构建 {built} 日 / 跳过(已定稿) {skipped} 日 "
+          f"| 覆盖 {dates} | 总耗时 {time.time()-t0:.0f}s")
+    return out
+
+
 # =========================
 # 主程序
 # =========================
@@ -7954,6 +7990,19 @@ def run(target_date=None, simple_mode=False):
         print(f"\n[批量预取] 共 {len(all_codes)} 只股票，开始下载历史数据...")
         batch_prefetch_hist_data(all_codes)
         print(f"[批量预取] 完成，后续循环将命中本地缓存\n")
+
+    # =============================================
+    # 盘后技术因子按日快照预计算(factor_snapshot_cache)
+    # 夜间跑批是全市场缓存构建入口: 批量预取已保证 daily_cache 补齐至
+    # TRADE_DATE, 在此把当日/近两日全市场技术因子落库, 供次日实时程序
+    # (realtime_theme_monitor)启动直读, 免去全市场约250交易日预热重算。
+    # simple 模式(调试快速场景)跳过缓存构建。
+    # =============================================
+    if not simple_mode:
+        try:
+            _build_recent_factor_snapshots(silent=False)
+        except Exception as _e:
+            print(f"⚠ 技术因子快照构建失败(不影响本次选股运行): {_e}")
 
     total = len(market)
 

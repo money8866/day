@@ -113,7 +113,8 @@ def _table_exists(table_name):
 
 # =========================================================
 # daily_cache 表：专门存储 pro.daily 的 11 列基础行情数据
-# 技术指标不再落库，由 compute_factor_indicators 从窄表三表实时派生
+# 技术指标按日全市场快照另行持久化在 factor_snapshot_cache(见下文),
+# 单股历史派生仍由 compute_factor_indicators 从窄表三表实时计算
 # =========================================================
 
 DAILY_CACHE_TABLE = 'daily_cache'
@@ -1718,6 +1719,147 @@ def fetch_hist_range(start_date, end_date, ts_codes=None, cols=None):
         df = df[(df['trade_date'] >= str(start_date))
                 & (df['trade_date'] <= str(end_date))].reset_index(drop=True)
     return df
+
+
+# ═══════════════════════════════════════════════════════
+# 技术因子按日快照（盘后预计算 + 持久化）
+# 技术指标(MACD/KDJ/RSI/BOLL/CCI)是前一交易日收盘定稿日线上的确定值，
+# 无需 monitor/回测每次启动都对全市场 ~250 交易日预热重算。
+# 盘后把最新交易日全市场因子落库，次日启动直接 SELECT 当日行（秒级）。
+# ═══════════════════════════════════════════════════════
+
+FACTOR_SNAPSHOT_TABLE = 'factor_snapshot_cache'
+
+# 与 realtime_theme_monitor.load_stock_factors_cache 的 factor_cols 对齐
+FACTOR_SNAPSHOT_COLS = (
+    'close', 'atr_bfq',
+    'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
+    'kdj_bfq', 'kdj_k_bfq', 'kdj_d_bfq',
+    'rsi_bfq_6', 'rsi_bfq_12', 'rsi_bfq_24',
+    'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq', 'cci_bfq',
+)
+
+# 单日全市场快照完整性阈值（低于该值视为当日三窄表尚未定稿/不完整）
+FACTOR_SNAPSHOT_MIN_ROWS = 1000
+
+
+def _ensure_factor_snapshot_table():
+    """确保 factor_snapshot_cache 表存在（按日全市场技术因子快照）"""
+    col_defs = ', '.join(f'"{c}" REAL' for c in FACTOR_SNAPSHOT_COLS)
+    with get_conn() as conn:
+        conn.execute(
+            f'CREATE TABLE IF NOT EXISTS "{FACTOR_SNAPSHOT_TABLE}" ('
+            f'"ts_code" TEXT, "trade_date" TEXT, {col_defs}, '
+            f'PRIMARY KEY ("ts_code", "trade_date"))')
+
+
+def replace_factor_snapshot(df):
+    """幂等写按日快照：先删 df 中出现的交易日旧行，再整批插入
+
+    Returns:
+        int 写入行数
+    """
+    if df is None or df.empty:
+        return 0
+    _ensure_factor_snapshot_table()
+    keep = ['ts_code', 'trade_date'] + \
+        [c for c in FACTOR_SNAPSHOT_COLS if c in df.columns]
+    df = df[keep].copy()
+    for c in keep[2:]:
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+    df = df.dropna(subset=['ts_code', 'trade_date'])
+    if df.empty:
+        return 0
+    dates = sorted(df['trade_date'].astype(str).unique())
+    rows = [tuple(r) for r in df.itertuples(index=False)]
+    with get_conn() as conn:
+        conn.executemany(
+            f'DELETE FROM "{FACTOR_SNAPSHOT_TABLE}" WHERE trade_date = ?',
+            [(d,) for d in dates])
+        placeholders = ', '.join('?' * len(keep))
+        conn.executemany(
+            f'INSERT OR REPLACE INTO "{FACTOR_SNAPSHOT_TABLE}" '
+            f'({", ".join(keep)}) VALUES ({placeholders})', rows)
+    return len(rows)
+
+
+def get_factor_snapshot(start_date=None, end_date=None, ts_codes=None):
+    """读取按日快照表（零预热、零现算）
+
+    Returns:
+        DataFrame[ts_code, trade_date, *FACTOR_SNAPSHOT_COLS]（表不存在/无数据时空表）
+    """
+    if not _table_exists(FACTOR_SNAPSHOT_TABLE):
+        return pd.DataFrame()
+    sql = f'SELECT * FROM "{FACTOR_SNAPSHOT_TABLE}"'
+    conds, params = [], []
+    if start_date:
+        conds.append('trade_date >= ?')
+        params.append(str(start_date))
+    if end_date:
+        conds.append('trade_date <= ?')
+        params.append(str(end_date))
+    if ts_codes:
+        codes = [str(c) for c in ts_codes]
+        conds.append(f'ts_code IN ({",".join("?" * len(codes))})')
+        params += codes
+    if conds:
+        sql += ' WHERE ' + ' AND '.join(conds)
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df
+
+
+def factor_snapshot_counts(start_date=None, end_date=None):
+    """按日统计快照表行数（{trade_date: count}），用于判断某日是否已定稿落库"""
+    if not _table_exists(FACTOR_SNAPSHOT_TABLE):
+        return {}
+    sql = f'SELECT trade_date, COUNT(*) AS cnt FROM "{FACTOR_SNAPSHOT_TABLE}"'
+    conds, params = [], []
+    if start_date:
+        conds.append('trade_date >= ?')
+        params.append(str(start_date))
+    if end_date:
+        conds.append('trade_date <= ?')
+        params.append(str(end_date))
+    if conds:
+        sql += ' WHERE ' + ' AND '.join(conds)
+    sql += ' GROUP BY trade_date'
+    with get_conn() as conn:
+        return {str(r[0]): int(r[1]) for r in conn.execute(sql, params)}
+
+
+def build_factor_snapshot(trade_date, cols=None, silent=True):
+    """盘后预计算单日全市场技术因子快照并落库（幂等，供次日启动直读）
+
+    当日三窄表数据不完整(< FACTOR_SNAPSHOT_MIN_ROWS 只)视为未定稿，跳过不落库，
+    避免把半成品因子固化。列口径与 fetch_market_by_date 完全一致。
+
+    Returns:
+        int 落库行数（0=当日数据未定稿/无数据）
+    """
+    trade_date = str(trade_date)
+    if not _table_exists(DAILY_CACHE_TABLE):
+        return 0
+    try:
+        cnt = get_daily_by_date_count(trade_date)
+    except Exception:
+        cnt = 0
+    if cnt < FACTOR_SNAPSHOT_MIN_ROWS:
+        if not silent:
+            print(f'[factor_snapshot] 跳过 {trade_date}: 日线仅 {cnt} 只(未定稿)')
+        return 0
+    want = ['ts_code', 'trade_date'] + [c for c in (cols or FACTOR_SNAPSHOT_COLS)
+                                        if c not in ('ts_code', 'trade_date')]
+    t0 = time.time()
+    df = fetch_market_by_date(trade_date, cols=want)
+    if df is None or df.empty:
+        return 0
+    n = replace_factor_snapshot(df)
+    if not silent:
+        print(f'[factor_snapshot] 已落库 {trade_date} 全市场 {n} 只'
+              f'(预热约{_indicator_warmup(want)}交易日, 耗时 {time.time()-t0:.0f}s)')
+    return n
 
 
 # ═══════════════════════════════════════════════════════
