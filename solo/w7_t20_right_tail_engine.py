@@ -1215,15 +1215,16 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
 
 
 def _track_picks(results):
-    """PRIMARY_BUY / CONFIRMED_NEXT 层转成 stock_pick_db 落库记录。
+    """当日可买信号(action=BUY, 即 PRIMARY_BUY 层)转成 stock_pick_db 落库记录。
 
+    V5.1 收口：仅落当日买点，CONFIRMED_NEXT 的 WAIT_CONFIRM/WAIT_RETEST/WAIT_BREAKOUT
+    属等待观察态，不再进跟踪表与飞书，避免与「W7 二波/突破当日买点」的可买口径混淆。
     标准列直接映射: ts_code/stock_name/close/pct_chg/signal/action/score/rank_no/
     industry/stop_price(失效位)/target_price(引擎目标价);
     其余字段(lifecycle/buy_type/结构分/回踩区/MA20/IGE…) 自动进 indicators JSON 列。
     """
-    layer_rank = {LAYER_PRIMARY: 0, LAYER_NEXT: 1}
-    rows = [r for r in results if r.get("layer") in layer_rank]
-    rows.sort(key=lambda r: (layer_rank.get(r.get("layer"), 9), -float(r.get("priority") or 0)))
+    rows = [r for r in results if r.get("action") == ACT_BUY]
+    rows.sort(key=lambda r: -float(r.get("priority") or 0))
     out = []
     for idx, r in enumerate(rows, 1):
         out.append({

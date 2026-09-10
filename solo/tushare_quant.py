@@ -8595,6 +8595,119 @@ def run(target_date=None, simple_mode=False):
         print(f"[T20 TOP_PICK] 已加载七分量最优组合（{t20_top_pick_text.count('RR:')}只）")
 
     # =========================
+    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」四态；
+    # 原 A/B/MID 全池铺开已由 W7 引擎 V5.1 收口，只同步当日可执行信号）
+    # =========================
+    def _load_w7_today_action(trade_date: str) -> str:
+        r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
+        四态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)。
+        JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
+        """
+        def _num(v):
+            try:
+                fv = float(v)
+                return fv
+            except (TypeError, ValueError):
+                return None
+
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"w7_today_action_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"w7_today_action_{trade_date}.json"),
+        ]
+        items = []
+        for p in cand:
+            if not os.path.exists(p):
+                continue
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                for s in d.get("signals") or []:
+                    items.append({
+                        "code": str(s.get("code") or ""),
+                        "name": str(s.get("name") or s.get("code") or "-"),
+                        "ige_adj": _num(s.get("ige_adj")),
+                        "score": _num(s.get("score")),
+                        "type": str(s.get("type") or "-"),
+                        "state_cn": str(s.get("state_cn") or s.get("state") or "-"),
+                        "close": _num(s.get("close")), "pressure": _num(s.get("pressure")),
+                        "ma20": _num(s.get("ma20")), "volr": _num(s.get("volr")),
+                    })
+                break
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                print(f"[W7今日可操作] JSON 加载失败: {e}")
+                items = []
+                break
+        if not items:
+            md_cand = [
+                os.path.join(r"D:\mystock\solo\report_daily", f"w7_second_wave_{trade_date}.md"),
+                os.path.join(REPORT_DIR, f"w7_second_wave_{trade_date}.md"),
+            ]
+            md_files = [p for p in md_cand if os.path.exists(p)]
+            if md_files:
+                try:
+                    with open(max(md_files, key=os.path.getmtime), "r", encoding="utf-8") as f:
+                        rows, col_idx, in_b = [], {}, False
+                        for ln in f.read().splitlines():
+                            s = ln.strip()
+                            if s.startswith("## 今日可操作榜"):
+                                in_b = True
+                                continue
+                            if in_b:
+                                if s.startswith("## "):
+                                    break
+                                if s.startswith("|"):
+                                    cells = [c.strip() for c in s.strip("|").split("|")]
+                                    if s.startswith("| #"):
+                                        col_idx = {name: i for i, name in enumerate(cells)}
+                                        continue
+                                    if not col_idx or "| --" in s or "|---" in s:
+                                        continue
+                                    rows.append(cells)
+                    _cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
+                           "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点"}
+
+                    def _cv(cells, name):
+                        return cells[col_idx[name]] if name in col_idx else ""
+
+                    for c in rows:
+                        state = _cv(c, "状态")
+                        items.append({
+                            "code": _cv(c, "代码"), "name": _cv(c, "名称"),
+                            "ige_adj": _num(_cv(c, "IGE_ADJ")), "score": _num(_cv(c, "总分")),
+                            "type": _cv(c, "类型"), "state_cn": _cn.get(state, state),
+                            "close": _num(_cv(c, "现价")), "pressure": _num(_cv(c, "触发价")),
+                            "ma20": _num(_cv(c, "MA20")), "volr": _num(_cv(c, "量比")),
+                        })
+                except OSError:
+                    pass
+        if not items:
+            return ""
+        # 1) 组装 AI prompt 段文本
+        def _f2(v):
+            return f"{v:.2f}" if isinstance(v, (int, float)) else "-"
+
+        p = [
+            "【W7 二波·今日可操作（当日买点，收盘后过滤口径）】",
+            f"数据来源：W7 HVT-V3 二波引擎（{trade_date}，共{len(items)}只）| "
+            "当日买点四态：SECOND_WAVE=二波买点 / BREAKOUT_CONFIRM=放量突破确认 / RE_EXPANSION=重新扩张 / T0_CONFIRM=T0天量确认买点 | "
+            "操作口径：现价>触发价=已突破在上方可回踩低吸或持有；量比≥1.2 放量突破触发价=买点触发；"
+            "量比≥3 巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线",
+            "候选已按 IGE_ADJ 行业增长弹性高优先降序（高弹性行业在前），最终输出须严格保持此顺序，禁止重排；每条必须显示 IGE_ADJ 数值。",
+        ]
+        for k, it in enumerate(items, 1):
+            ige_s = f"{it['ige_adj']:.1f}" if isinstance(it["ige_adj"], (int, float)) else "-"
+            volr_s = f"{it['volr']:.1f}" if isinstance(it["volr"], (int, float)) else "-"
+            score_s = f"{it['score']:.1f}" if isinstance(it["score"], (int, float)) else "-"
+            p.append("{}. {}({}) IGE_ADJ:{} | {} 类型:{} 总分:{} | 现价{} 触发价{} MA20{} 量比×{}".format(
+                k, it["name"], it["code"], ige_s, it["state_cn"], it["type"], score_s,
+                _f2(it["close"]), _f2(it["pressure"]), _f2(it["ma20"]), volr_s))
+        return "\n".join(p)
+
+    w7_today_action_text = _load_w7_today_action(TRADE_DATE)
+    if w7_today_action_text:
+        print(f"[W7今日可操作] 已加载二波当日买点（{w7_today_action_text.count('IGE_ADJ:')}只）")
+
+    # =========================
     # HVT-BULL 第一梯队（读取天量牛股日报「★ 第一梯队重点解读」段；PRIMARY_BUY 最高置信买点层级，与 hvt_bull/daily.py 同步）
     # =========================
     def _load_hvt_bull_first_echelon(trade_date: str) -> str:
@@ -8852,6 +8965,11 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 措辞统一="回踩区XX.XX-XX.XX缩量企稳可低吸（量能萎缩至突破日一半以下更佳），或不破失效位XX.XX放量确认可买；收盘跌破失效位=证伪无条件离场；目标位=XX.XX（突破价+2.5ATR）"；
 禁止给出超越引擎数据的买点/目标价，禁止把回踩区写成突破追买，禁止忽略失效位纪律；单只仓位不超过10%。
 
+8、**【W7 二波·今日可操作榜】**（W7 HVT-V3 引擎收盘后过滤输出，仅列"当日买点"四态：二波买点/放量突破确认/重新扩张/T0天量确认；每日过滤后通常个位数，宁缺毋滥；与第7段 T20 右尾视角互补，两者池子不同不是矛盾，禁止互相填充）：
+{w7_today_action_text}
+（【数据边界】本段只分析上方"【W7 二波·今日可操作（当日买点，收盘后过滤口径）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第7段 TOP_PICK、第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第8段】严格保持数据块先后顺序逐只输出：名称(代码) + 当日买点类型 + 总分 + IGE_ADJ + 现价/触发价/MA20/量比直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句操作口径（现价>触发价=已突破回踩不破可持有或低吸；量比≥1.2放量突破触发价=买点触发；量比≥3巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线）。禁止把第7段或 C池等待票混入本段充当买点；单只仓位不超过10%。
+
 ------------------
 以上全局格式要求：
 - **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
@@ -8859,7 +8977,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 7 段 W7 T20 TOP_PICK）
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 7 段 W7 T20 TOP_PICK、第 8 段 W7 二波·今日可操作榜）
 
 """
     if not simple_mode:

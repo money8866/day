@@ -27,7 +27,7 @@ BASE_TOKEN = 'FzqWbuzEGarcXUsBTAYc5l3bnUf'
 BASE_URL = 'https://ucnj0s2qu471.feishu.cn/base/' + BASE_TOKEN
 TBL_PICKS = 'tblZKY73Tzg2GSuA'
 TBL_DAILY = 'tblrhqifjoEdjuMA'
-BATCH_SIZE = 200
+BATCH_SIZE = 20
 RETRY_SNIPPETS = ('1254291', 'TooManyRequest', 'too many request', 'rate limit')
 
 PICK_KEY = [('选股日期', 'date'), ('策略', 'plain'), ('股票代码', 'plain')]

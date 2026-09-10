@@ -17,6 +17,11 @@
 
   回测结论(EGPT自带)：回踩中1-2日为最优买点窗口(次日上涨率68%，
   分≥70次日+2.65%)；回踩≥3日无次日alpha，仅观察。
+
+  v12 合并策略（egpt_track_review 复盘 20260909，与旧口径并行落库/推送）：
+    回踩中 + 主题热度5~15%(或无热度) + 当日涨幅<5% + 回踩缩量比<1.0 +
+    扣非增速≥50 → 复盘60笔/38只， T+5 +0.94% / 持有+1.66% / 止损+1.30%。
+    微信推送置顶🏆v12板块；stock_pick_db 落 strategy=zhongbao_egpt_v12。
 """
 import os
 import sys
@@ -198,18 +203,25 @@ def _push_table(lines, title, sub):
     lines.append("")
 
 
-def build_push_msg(out: pd.DataFrame, trade_date: str, pref, pref_watch, buy, watch, hot_bp) -> str:
+def build_push_msg(out: pd.DataFrame, trade_date: str, v12, pref, pref_watch, buy, watch, hot_bp) -> str:
     """构建中报猎手×EGPT 择时的微信推送消息（Markdown）"""
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = []
-    lines.append("# 中报猎手×EGPT 回踩择时")
+    lines.append("# 中报猎手×EGPT v12 回踩择时")
     lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
     lines.append("")
     lines.append("> 口径：中报业绩正 + EGPT回踩择时。回测最优组合")
     lines.append("> (白名单主题×甜区热度5~15%×扣非≥50%×突破确认) T+5胜率72%/+5.2%。")
     lines.append("")
+    lines.append("> 🏆 v12合并策略(回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50)：")
+    lines.append("> 复盘60笔/38只, T+5 +0.94% / 持有+1.66% / 止损+1.30%。")
+    lines.append("")
 
+    _push_table(lines, "🏆 v12合并策略·今日名单", v12)
+    if len(v12) == 0:
+        lines.append("> 🏆 v12: 今日无满足标的")
+        lines.append("")
     _push_table(lines, "🎯 主题优选·确认买点", pref)
     if len(pref_watch):
         lines.append(f"> 主题优选内 {len(pref_watch)} 只未突破→降级观察（回测T+20 -6.5%拖累组合，不追）")
@@ -407,6 +419,19 @@ def main():
             if th:
                 print(f"     主题: {th}  ETF近20日{_fmt(r.get('主题热度%'))}%")
 
+    # ── v12 合并策略(egpt_track_review 复盘最优): 回踩中+热度甜区/无+涨幅<5%+缩量比<1.0+扣非≥50 ──
+    def _num(col):
+        s = out.get(col)
+        return pd.to_numeric(s, errors="coerce") if s is not None else pd.Series(np.nan, index=out.index)
+
+    _heat = _num("主题热度%")
+    _pct = _num("当日涨幅%")
+    _shr = _num("回踩缩量比")
+    _dty = _num("扣非增速")
+    v12 = out[(out["形态阶段"] == "回踩中") & (((_heat >= 5) & (_heat < 15)) | _heat.isna())
+              & (_pct < 5) & (_shr < 1.0) & (_dty >= 50)].copy()
+    _show(v12, "🏆 v12合并策略（回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50）")
+
     # 🎯 主题优选: 白名单×甜区×扣非≥50 + 可操作信号。
     # 回测(20260819): 优选组内 未突破 T+20 -6.5% 拖累组合(买点1 T+20 +6.4%)→ 未突破降级观察
     pref_all = out[(out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩"]))
@@ -446,6 +471,22 @@ def main():
                                            "回踩买点分": "score", "主题": "industry",
                                            "ATR动态止损价": "stop_price"})
             print(f"\n选股池落库: {n_db}/{len(picks)} 条 (strategy=zhongbao_egpt pick_date={trade_date})")
+        if len(v12):
+            picks12 = []
+            for rank_no, (_, r) in enumerate(v12.iterrows(), start=1):
+                d = {k: (None if not isinstance(v, str) and pd.isna(v) else v)
+                     for k, v in r.items()}
+                d["rank_no"] = rank_no
+                d["reason"] = f"v12·{d.get('形态阶段') or ''}·{d.get('主题状态') or ''}"
+                picks12.append(d)
+            n_db12 = record_picks("zhongbao_egpt_v12", "中报猎手×EGPT v12合并策略", picks12,
+                                  pick_date=trade_date,
+                                  field_map={"代码": "ts_code", "名称": "stock_name",
+                                             "现价": "close", "当日涨幅%": "pct_chg",
+                                             "次日操作": "signal", "买点确认": "action",
+                                             "回踩买点分": "score", "主题": "industry",
+                                             "ATR动态止损价": "stop_price"})
+            print(f"v12策略落库: {n_db12}/{len(picks12)} 条 (strategy=zhongbao_egpt_v12 pick_date={trade_date})")
     except Exception as e:
         print(f"⚠️ 选股池落库失败(不影响推送): {e}")
 
@@ -465,13 +506,13 @@ def main():
     # ── 微信推送（--push）：复用 EGPT 推送的 PushPlus 通道，消息留档 ──
     if args.push:
         try:
-            msg = build_push_msg(out, trade_date, pref, pref_watch, buy, watch, hot_bp)
+            msg = build_push_msg(out, trade_date, v12, pref, pref_watch, buy, watch, hot_bp)
             push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送_{trade_date}.txt")
             with open(push_file, "w", encoding="utf-8") as f:
                 f.write(msg)
             print(f"\n推送消息已留档: {push_file}")
             print(msg[:400] + ("..." if len(msg) > 400 else ""))
-            ok = push_to_wechat(msg, title=f"中报猎手×EGPT 回踩择时 {trade_date}")
+            ok = push_to_wechat(msg, title=f"中报猎手×EGPT v12 回踩择时 {trade_date}")
             print(f"微信推送: {'成功' if ok else '失败'}")
         except Exception as e:
             print(f"⚠️ 推送失败: {e}")

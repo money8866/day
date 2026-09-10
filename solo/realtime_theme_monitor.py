@@ -155,14 +155,12 @@ class RealtimeThemeMonitor:
         self.theme_lifecycle_cache = {}    # theme_name -> (stage, score, detail)
         self.theme_forward_cache = {}      # theme_name -> t1_score (前瞻分)
 
-        # ── 中军弱转强:分时快照 ──
-        # ts_code -> {'morning_min_pct':, 'morning_avg_pct':, 'morning_min_price':, 'morning_amount':, 'afternoon_amount':, 'tail_amount':, 'morning_vol':, 'tail_vol':}
+        # ── 分时快照(猎尾突袭/V3评分等尾盘策略共用) ──
+        # ts_code -> {'morning_pct':, 'morning_low':, 'morning_amount':, 'morning_vol':, 'noon_pct':, 'noon_amount':, 'noon_vol':, 'tail_base_pct':, 'tail_base_amount':, 'tail_base_vol':, 'tail_base_price':}
         self.intraday_snapshots = {}
         self.snapshot_morning_done = False    # 10:30后采集早盘数据
         self.snapshot_noon_done = False       # 14:00后采集午盘数据
         self.snapshot_tail_done = False       # 14:30基准已采集
-        self.last_w2s_scan_time = 0           # 弱转强扫描冷却
-        self.w2s_debug_printed = False       # 弱转强首次扫描输出统计
         self.last_tail_entry_scan_time = 0   # 尾盘突袭扫描冷却
         self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
         self.last_market_action_alert = 0      # 大盘动作信号冷却
@@ -173,9 +171,12 @@ class RealtimeThemeMonitor:
 
         # ── 尾盘「猎狐」T0天量确认信号 (W7 T0_CONFIRM 实时接入) ──
         self.fox_run_date = ""        # 当日已扫描日期YYYYMMDD(跨日重置)
-        self._fox_done = False        # 当日是否已执行猎狐扫描
+        self._fox_done = False        # 当日是否已执行猎狐定稿扫描
         self.fox_state_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'fox_t0_state.json')  # code->T0事件日,防止同锚重复触发
         self.fox_signals_cache = []   # 最近一次猎狐触发信号(便于日终复核)
+        self.fox_ctx = None           # 盘中复用上下文(reader/锚点/板块强度),首个猎狐扫描构建,定稿后释放
+        self._fox_pre_pushed = {}     # code->已推预检的T0事件日(盘中预检同锚只推一次;14:50定稿独立推送)
+        self.fox_next_pre_time = 0.0  # 下次盘中预检时间戳(约10分钟节奏)
 
         # ── 同花顺扶摇 MCP 补充数据 ──
         self.fuyao = FuyaoMCPClient()
@@ -785,7 +786,7 @@ class RealtimeThemeMonitor:
 
         print(f"✅ 成分股K线加载完成: {total_loaded}/{len(all_codes)} 只")
 
-    # ── 加载换手率缓存(用于弱转强量价评分) ──
+    # ── 加载换手率缓存(尾盘评分/换手过滤共用) ──
     def load_turnover_cache(self):
         """从cache_daily加载当日换手率"""
         import os
@@ -802,7 +803,7 @@ class RealtimeThemeMonitor:
             if files:
                 cache_file = max(files, key=os.path.getmtime)
             else:
-                print("⚠ 换手率缓存文件不存在,弱转强换手率评分将跳过")
+                print("⚠ 换手率缓存文件不存在,换手率相关评分将跳过")
                 return
         try:
             df = pd.read_csv(cache_file)
@@ -1453,7 +1454,7 @@ class RealtimeThemeMonitor:
             # 触发后台获取全市场统计(仅在整点附近)
             if now_dt.minute == 0 or (hasattr(self, '_last_full_stats_request') and now_dt.minute != self._last_full_stats_request):
                 self._last_full_stats_request = now_dt.minute
-                self.fetch_full_market_stats_sina()
+                self.fetch_full_market_stats_realtime()
 
         # 获取昨日数据
         yesterday_data = self.get_yesterday_market_data()
@@ -2079,112 +2080,104 @@ class RealtimeThemeMonitor:
             else:
                 self.fuyao_data[key] = None
 
-    # ── 10.5 新浪全市场涨跌停统计(后台任务) ──
-    def fetch_full_market_stats_sina(self):
+    # ── 10.5 全市场涨跌停/涨跌家数统计(后台任务) ──
+    def fetch_full_market_stats_realtime(self):
         """
-        使用新浪市场总貌接口获取全市场涨跌停统计(约3秒)
+        获取全市场涨跌停/涨跌家数统计(后台线程,约1秒)
+
+        数据源(原新浪 newMarketsDataAll 接口已下线,返回 404):
+        1. 涨跌家数: 东方财富 push2 ulist 接口,取沪市(1.000001)+深市(0.399001),
+           f104=上涨家数 f105=下跌家数 f106=平盘家数
+        2. 涨停/跌停: 东方财富 push2ex 涨停池/跌停池的 tc 字段
+
         返回: {total, zt_count, dt_count, up_count, down_count, up_ratio, down_ratio}
+        注: 某一数据源失败时对应字段不写入,由调用方回退到主题池近似值
         """
         import threading
 
+        def _num(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
         def _fetch():
             try:
-                import requests
-                import time
-                import json
-                import re
-
                 headers = {
-                    "Referer": "https://finance.sina.com.cn/",
-                    "User-Agent": "Mozilla/5.0"
+                    "Referer": "https://quote.eastmoney.com/",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 }
 
-                # 新浪市场总貌接口
-                url = "http://vip.stock.finance.sina.com.cn/q/view/newMarketsDataAll.php"
-                
-                try:
-                    r = requests.get(url, headers=headers, timeout=10)
-                    text = r.text.strip()
-                    
-                    if text:
-                        # 解析JSON数据（格式: jsonData(...)）
-                        json_match = re.search(r'\((.*)\)', text)
-                        if json_match:
-                            market_data = json.loads(json_match.group(1))
-                            
-                            total = int(market_data.get('total', 0))
-                            up_count = int(market_data.get('up', 0))
-                            down_count = int(market_data.get('down', 0))
-                            zt_count = int(market_data.get('zt', 0))
-                            dt_count = int(market_data.get('dt', 0))
-                            
-                            if total > 0:
-                                up_ratio = round(up_count / total * 100, 1)
-                                down_ratio = round(down_count / total * 100, 1)
-                                
-                                self.full_market_stats = {
-                                    'total': total,
-                                    'zt_count': zt_count,
-                                    'dt_count': dt_count,
-                                    'up_count': up_count,
-                                    'down_count': down_count,
-                                    'up_ratio': up_ratio,
-                                    'down_ratio': down_ratio,
-                                    'updated': time.strftime('%Y-%m-%d %H:%M:%S')
-                                }
-                                print(f"📊 全市场统计更新: 涨停{zt_count} 跌停{dt_count} 上涨{up_ratio}% 下跌{down_ratio}%")
-                                
-                                # 保存缓存
-                                import os
-                                cache_file = os.path.join(CACHE_DIR, 'cache_daily', 'full_market_stats.json')
-                                try:
-                                    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-                                    with open(cache_file, 'w', encoding='utf-8') as f:
-                                        json.dump(self.full_market_stats, f, ensure_ascii=False)
-                                except:
-                                    pass
-                            else:
-                                print(f"⚠ 全市场统计获取失败: total=0")
-                        else:
-                            print(f"⚠ 全市场统计解析失败: 无法提取JSON")
-                    else:
-                        print(f"⚠ 全市场统计获取失败: 返回为空")
-                except Exception as e:
-                    print(f"⚠ 新浪市场总貌接口失败: {e}")
-                    
-                    # 备用方案: 使用东方财富涨跌停板接口
+                up_count = down_count = flat_count = 0
+                zt_count = dt_count = None
+                trade_date = datetime.now().strftime('%Y%m%d')
+
+                # ── 1. 全市场涨跌家数(沪市 + 深市 A 股) ──
+                # 东财有多个 push2 镜像,逐个尝试提高成功率
+                for host in ('push2', '82.push2', '92.push2'):
                     try:
-                        print("   尝试备用方案: 东方财富涨跌停接口...")
-                        zt_url = "http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23+f:8&fields=f12,f14,f2,f3"
-                        dt_url = "http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23+f:4&fields=f12,f14,f2,f3"
-                        
-                        zt_count = 0
-                        dt_count = 0
-                        
-                        r_zt = requests.get(zt_url, headers=headers, timeout=10)
-                        data_zt = r_zt.json()
-                        if data_zt.get('data') and data_zt['data'].get('total'):
-                            zt_count = int(data_zt['data']['total'])
-                        
-                        r_dt = requests.get(dt_url, headers=headers, timeout=10)
-                        data_dt = r_dt.json()
-                        if data_dt.get('data') and data_dt['data'].get('total'):
-                            dt_count = int(data_dt['data']['total'])
-                        
-                        if zt_count > 0 or dt_count > 0:
-                            self.full_market_stats = {
-                                'total': 0,
-                                'zt_count': zt_count,
-                                'dt_count': dt_count,
-                                'up_count': 0,
-                                'down_count': 0,
-                                'up_ratio': 0,
-                                'down_ratio': 0,
-                                'updated': time.strftime('%Y-%m-%d %H:%M:%S')
-                            }
-                            print(f"📊 全市场统计更新(备用): 涨停{zt_count} 跌停{dt_count}")
-                    except Exception as e2:
-                        print(f"⚠ 备用方案也失败: {e2}")
+                        url = (f"https://{host}.eastmoney.com/api/qt/ulist.np/get"
+                               "?fltt=2&invt=2&fields=f104,f105,f106,f12,f14"
+                               "&secids=1.000001,0.399001")
+                        diff = ((requests.get(url, headers=headers, timeout=10)
+                                 .json().get('data') or {}).get('diff')) or []
+                        up = sum(_num(it.get('f104')) for it in diff)
+                        down = sum(_num(it.get('f105')) for it in diff)
+                        flat = sum(_num(it.get('f106')) for it in diff)
+                        if up + down + flat > 0:
+                            up_count, down_count, flat_count = up, down, flat
+                            break
+                    except Exception:
+                        continue
+
+                # ── 2. 涨停/跌停家数(东财涨停池/跌停池) ──
+                for pool, sort_key in (('getTopicZTPool', 'fbt%3Aasc'),
+                                       ('getTopicDTPool', 'fund%3Aasc')):
+                    try:
+                        url = (f"https://push2ex.eastmoney.com/{pool}"
+                               f"?ut=7eea3edcaed734bea9cbfc24409ed989&dpt=wz.ztzt"
+                               f"&Pageindex=0&pagesize=1&sort={sort_key}&date={trade_date}")
+                        tc = _num(((requests.get(url, headers=headers, timeout=10)
+                                    .json().get('data') or {}).get('tc')))
+                        if pool == 'getTopicZTPool':
+                            zt_count = tc
+                        else:
+                            dt_count = tc
+                    except Exception:
+                        continue
+
+                total = up_count + down_count + flat_count
+                if total <= 0 and zt_count is None and dt_count is None:
+                    print("⚠ 全市场统计获取失败: 东财涨跌家数/涨跌停池均无数据")
+                    return
+
+                stats = {'updated': time.strftime('%Y-%m-%d %H:%M:%S')}
+                if total > 0:
+                    stats.update({
+                        'total': total,
+                        'up_count': up_count,
+                        'down_count': down_count,
+                        'up_ratio': round(up_count / total * 100, 1),
+                        'down_ratio': round(down_count / total * 100, 1),
+                    })
+                if zt_count is not None:
+                    stats['zt_count'] = zt_count
+                if dt_count is not None:
+                    stats['dt_count'] = dt_count
+                self.full_market_stats = stats
+
+                print(f"📊 全市场统计更新: 涨停{zt_count if zt_count is not None else '?'} "
+                      f"跌停{dt_count if dt_count is not None else '?'} "
+                      f"上涨{stats.get('up_ratio', '?')}% 下跌{stats.get('down_ratio', '?')}% (共{total}只)")
+
+                # 保存缓存
+                cache_file = os.path.join(CACHE_DIR, 'cache_daily', 'full_market_stats.json')
+                try:
+                    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(stats, f, ensure_ascii=False)
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"⚠ 全市场统计获取失败: {e}")
 
@@ -3171,7 +3164,7 @@ class RealtimeThemeMonitor:
         # 加载成分股K线数据(用于主题趋势/情绪分计算)
         self.load_component_klines()
 
-        # 加载换手率缓存(用于弱转强量价评分)
+        # 加载换手率缓存(用于尾盘评分/换手过滤)
         self.load_turnover_cache()
 
         # 加载技术因子+总市值缓存(用于尾盘突袭技术形态评分+市值过滤)
@@ -3255,7 +3248,7 @@ class RealtimeThemeMonitor:
                 # 补充新算法报告到 results(供 print_summary / push_alerts 使用)
                 results['sentiment_report'] = getattr(self, '_last_report', None)
 
-                # ── 中军弱转强:分时快照采集 ──
+                # ── 分时快照采集(尾盘多策略共用) ──
                 # 10:30采集早盘数据
                 if not self.snapshot_morning_done and now.hour == 10 and now.minute >= 30:
                     self.collect_intraday_snapshot('morning')
@@ -3279,7 +3272,7 @@ class RealtimeThemeMonitor:
                 # ── 每15分钟更新一次全市场统计(后台线程) ──
                 if cycle % 90 == 1:  # 60秒×90=5400秒=15分钟
                     print(f"⏳ 后台更新全市场统计...")
-                    self.fetch_full_market_stats_sina()
+                    self.fetch_full_market_stats_realtime()
 
                     # ── 每15分钟计算并输出主题综合分TOP10 ──
                     theme_scores = self.compute_theme_scores_realtime()
@@ -3338,48 +3331,6 @@ class RealtimeThemeMonitor:
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
 
-                # ── 14:30后每2分钟扫描中军弱转强 ──
-                if now.hour == 14 and now.minute >= 30:
-                    if time.time() - self.last_w2s_scan_time >= 120:  # 2分钟冷却
-                        w2s_signals = self.scan_middle_w2s()
-                        if w2s_signals:
-                            print(f"\n{'='*90}")
-                            print(f"🎯 中军弱转强扫描 [{now.strftime('%H:%M:%S')}] 共{len(w2s_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<12} {'总分':>4} {'形态':>4} {'量价':>4} {'共振':>4} {'信号':<6} {'涨幅':>6} {'关键特征'}")
-                            print(f"{'-'*90}")
-                            for i, s in enumerate(w2s_signals[:10], 1):
-                                emoji = {'强买入': '✅', '关注': '👀', '观望': '⏸'}.get(s['signal'], '')
-                                # 提取关键特征
-                                d = s.get('detail', {})
-                                feats = []
-                                if d.get('early_weak'): feats.append('早弱')
-                                if d.get('noon_stable'): feats.append('午稳')
-                                if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.1f}%")
-                                if d.get('above_vwap'): feats.append('破均')
-                                if d.get('tail_vol_surge'): feats.append('尾量增')
-                                if d.get('shrink_vol'): feats.append(f"缩量{d['shrink_vol']:.1f}")
-                                if d.get('leader_not_zt'): feats.append('龙头未停')
-                                feat_str = ' '.join(feats[:5]) if feats else '-'
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<12} {s['total_score']:>4} {s['pattern_score']:>4} {s['vol_score']:>4} {s['theme_score']:>4} {emoji:<6} {s['pct_chg']:>+5.1f}% {feat_str}")
-                            print(f"{'='*90}\n")
-
-                            # 推送强买入信号到微信
-                            strong_buys = [s for s in w2s_signals if s['signal'] == '强买入']
-                            if strong_buys and time.time() - self.last_w2s_scan_time >= 600:  # 10分钟推送冷却
-                                lines = []
-                                for s in strong_buys[:5]:
-                                    d = s.get('detail', {})
-                                    feats = []
-                                    if d.get('tail_rally'): feats.append(f"尾拉{d['tail_rally']:+.1f}%")
-                                    if d.get('tail_vol_surge'): feats.append('尾盘放量')
-                                    if d.get('leader_not_zt'): feats.append('龙头未涨停')
-                                    feat_str = ' '.join(feats) if feats else ''
-                                    lines.append(f"✅ {s['name']}({s['ts_code']}) 总分{s['total_score']} {s['theme']} 涨{s['pct_chg']:+.1f}% {feat_str}")
-                                content = f"🎯 中军弱转强信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                                self.send_wechat(f"🎯 弱转强 {now.strftime('%H:%M')}", content)
-
-                        self.last_w2s_scan_time = time.time()
-
                 # ── 14:50后每2分钟扫描「猎尾V4」中报池最佳回踩 ──
                 if now.hour == 14 and now.minute >= 50:
                     if time.time() - self.last_tail_entry_scan_time >= 120:
@@ -3437,7 +3388,18 @@ class RealtimeThemeMonitor:
                             print(f"⚠ V5 ND2扫描异常: {e}")
                         self.nd2_last_scan_time = time.time()
 
-                # ── 14:50后执行「猎狐」T0天量确认扫描(每交易日一次,实时价近似收盘) ──
+                # ── 13:30-14:40 每10分钟「猎狐」盘中预检(实时价近似收盘,尾盘回落可能作废,14:50定稿为准) ──
+                pre_win = ((now.hour == 13 and now.minute >= 30) or (now.hour == 14 and now.minute < 50))
+                if not self._fox_done and pre_win and time.time() - self.fox_next_pre_time >= 600:
+                    self.fox_next_pre_time = time.time()
+                    try:
+                        self.scan_fox_t0(now, pre=True)
+                    except Exception as e:
+                        import traceback
+                        print(f"⚠ 猎狐盘中预检异常: {e}")
+                        traceback.print_exc()
+
+                # ── 14:50后执行「猎狐」T0天量确认定稿扫描(每交易日一次,实时价近似收盘) ──
                 if now.hour == 14 and now.minute >= 50 and not self._fox_done:
                     self._fox_done = True
                     self.fox_run_date = now.strftime('%Y%m%d')
@@ -3445,9 +3407,10 @@ class RealtimeThemeMonitor:
                         fox_signals = self.scan_fox_t0(now)
                         if fox_signals:
                             self.fox_signals_cache = fox_signals   # 记录本轮信号,便于日终复核
+                        self._fox_close_ctx()   # 定稿完成,释放SQLite连接避免占用至收盘写库
                     except Exception as e:
                         import traceback
-                        print(f"⚠ 猎狐扫描异常: {e}")
+                        print(f"⚠ 猎狐定稿扫描异常: {e}")
                         traceback.print_exc()
 
                 time.sleep(60 - (datetime.now().second % 60))
@@ -3475,10 +3438,9 @@ class RealtimeThemeMonitor:
         return False
 
     # ════════════════════════════════════════════
-    # 中军弱转强尾盘买入算法
+    # 分时快照采集(尾盘多策略共用:猎尾突袭/V3评分)
     # ════════════════════════════════════════════
 
-    # ── 分时快照采集 ──
     def collect_intraday_snapshot(self, phase):
         """采集分时快照:phase='morning'(10:30) / 'noon'(14:00) / 'tail'(14:30后)"""
         for ts_code, q in self.quotes.items():
@@ -3508,327 +3470,6 @@ class RealtimeThemeMonitor:
                 snap['tail_base_amount'] = amount
                 snap['tail_base_vol'] = vol
                 snap['tail_base_price'] = price
-
-    # ── 硬过滤排除条件 ──
-    def _w2s_hard_filter(self, ts_code, theme_name, q):
-        """弱转强硬过滤:返回True=通过,False=排除"""
-        # 1. 仅中军
-        stocks = self.theme_stocks.get(theme_name, [])
-        layer = None
-        for code, name, ly in stocks:
-            if code == ts_code:
-                layer = ly
-                break
-        if layer != 'middle':
-            return False, '非中军'
-
-        # 2. 排除北交所
-        if ts_code.startswith(('8', '4', '92')):
-            return False, '北交所'
-
-        # 3. 放量破位:跌幅>3%且量比>1.5
-        pct = q.get('pct_chg', 0)
-        if pct < -3:
-            return False, '放量下跌'
-
-        # 4. 距MA20检查
-        kl = self.stock_klines.get(ts_code)
-        if kl is not None and len(kl) >= 20:
-            ma20 = kl['close'].iloc[-20:].mean()
-            price = q.get('price', 0)
-            if price > 0 and price < ma20 * 0.95:
-                return False, '跌破MA20'
-
-        # 5. 主题退潮检查
-        lc = self.theme_lifecycle_cache.get(theme_name)
-        if lc and lc[0] == '退潮期':
-            return False, '主题退潮'
-
-        return True, 'OK'
-
-    # ── 分时形态评分(40分) ──
-    def _w2s_pattern_score(self, ts_code, q):
-        """分时形态:早弱+午稳+尾拉+均线突破+不破低点"""
-        snap = self.intraday_snapshots.get(ts_code, {})
-        score = 0
-        detail = {}
-
-        morning_pct = snap.get('morning_pct', 0)
-        noon_pct = snap.get('noon_pct', 0)
-        current_pct = q.get('pct_chg', 0)
-        morning_low = snap.get('morning_low', 0)
-        current_low = q.get('low', 0)
-        tail_base_pct = snap.get('tail_base_pct', current_pct)
-        current_price = q.get('price', 0)
-
-        # 1. 早盘弱势(10分):早盘最低涨幅<-2%
-        if morning_pct < -2:
-            score += 10
-            detail['early_weak'] = True
-        elif morning_pct < 0:
-            score += 5
-            detail['early_weak'] = 'partial'
-
-        # 2. 午后企稳(8分):午后均价>早盘均价
-        if noon_pct > morning_pct and noon_pct > -1:
-            score += 8
-            detail['noon_stable'] = True
-
-        # 3. 尾盘拉升(12分):14:30后涨幅扩大>=1.5%
-        tail_rally = current_pct - tail_base_pct
-        if tail_rally >= 1.5:
-            score += 12
-            detail['tail_rally'] = round(tail_rally, 2)
-        elif tail_rally >= 0.8:
-            score += 7
-            detail['tail_rally'] = round(tail_rally, 2)
-
-        # 4. 分时均价突破(6分):用成交额/量估算均价
-        amount = q.get('amount', 0)
-        vol = q.get('vol', 0)
-        if vol > 0:
-            avg_price = amount / vol
-            if current_price > avg_price:
-                score += 6
-                detail['above_vwap'] = True
-
-        # 5. 不破早盘低点(4分)
-        if morning_low > 0 and current_low >= morning_low:
-            score += 4
-            detail['low_held'] = True
-
-        # 排除:全天阴跌尾盘拉(诱多陷阱)
-        if current_pct > 0 and morning_pct < -3 and noon_pct < morning_pct:
-            score = min(score, 15)
-            detail['trap_warning'] = '全天阴跌尾盘拉'
-
-        return min(score, 40), detail
-
-    # ── 量价配合评分(35分) ──
-    def _w2s_volume_score(self, ts_code, q):
-        """量价配合:尾盘量比放大+缩量回调+放量拉升+换手率"""
-        snap = self.intraday_snapshots.get(ts_code, {})
-        score = 0
-        detail = {}
-
-        tail_base_vol = snap.get('tail_base_vol', 0)
-        current_vol = q.get('vol', 0)
-        morning_vol = snap.get('morning_vol', 0)
-
-        # 1. 尾盘量能放大(12分):14:30后量能增量占早盘量的比例
-        if tail_base_vol > 0 and morning_vol > 0 and current_vol > tail_base_vol:
-            tail_increment = current_vol - tail_base_vol
-            # 尾盘增量 / 早盘总量(早盘约2小时,尾盘半小时)
-            # 合理预期:尾盘半小时增量是早盘2小时的15%-25%
-            tail_vol_ratio = tail_increment / morning_vol
-            if tail_vol_ratio > 0.25:
-                score += 12
-                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
-            elif tail_vol_ratio > 0.15:
-                score += 9
-                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
-            elif tail_vol_ratio > 0.08:
-                score += 5
-                detail['tail_vol_ratio'] = round(tail_vol_ratio, 2)
-
-        # 2. 缩量回调特征(10分):当日量<5日均量*0.9
-        kl = self.stock_klines.get(ts_code)
-        if kl is not None and len(kl) >= 5:
-            recent_5vol = kl['vol'].iloc[-5:].mean()
-            if recent_5vol > 0:
-                vol_ratio_5d = current_vol / recent_5vol
-                if vol_ratio_5d < 0.9:
-                    score += 10
-                    detail['shrink_vol'] = round(vol_ratio_5d, 2)
-                elif vol_ratio_5d < 1.0:
-                    score += 5
-                    detail['shrink_vol'] = round(vol_ratio_5d, 2)
-                elif vol_ratio_5d > 1.2:
-                    # 放量但未大涨(主力收集筹码),给部分分
-                    if q.get('pct_chg', 0) < 3:
-                        score += 4
-                        detail['vol_surge_low_pct'] = round(vol_ratio_5d, 2)
-
-        # 3. 尾盘放量拉升(8分):14:30后量>早盘量*10%(简化阈值)
-        if tail_base_vol > 0 and morning_vol > 0:
-            tail_total = current_vol - tail_base_vol
-            if tail_total > morning_vol * 0.15:
-                score += 8
-                detail['tail_vol_surge'] = True
-            elif tail_total > morning_vol * 0.08:
-                score += 4
-
-        # 4. 换手率合理(5分):3%-8%
-        turn_rate = self.turnover_cache.get(ts_code, 0)
-        if turn_rate == 0:
-            # 无换手率数据时,用成交额/流通市值估算(简化:给3分默认值)
-            score += 3
-            detail['turn_rate'] = 'unknown'
-        elif 3 <= turn_rate <= 8:
-            score += 5
-            detail['turn_rate'] = turn_rate
-        elif 2 <= turn_rate <= 12:
-            score += 3
-            detail['turn_rate'] = turn_rate
-        elif 1 <= turn_rate <= 15:
-            score += 1
-            detail['turn_rate'] = turn_rate
-
-        return min(score, 35), detail
-
-    # ── 主题共振评分(25分) ──
-    def _w2s_theme_score(self, ts_code, theme_name):
-        """主题共振:主题Alpha+龙头未涨停+板块联动"""
-        score = 0
-        detail = {}
-
-        # 1. 主题Alpha>=65(10分)
-        lc = self.theme_lifecycle_cache.get(theme_name)
-        if lc:
-            stage, lifecycle_score, lc_detail = lc
-            if lifecycle_score >= 75:
-                score += 10
-            elif lifecycle_score >= 65:
-                score += 7
-            elif lifecycle_score >= 50:
-                score += 4
-            detail['theme_lifecycle'] = f"{stage}({lifecycle_score})"
-
-        # 2. 龙头未涨停(8分):龙头有空间→中军有跟风空间
-        stocks = self.theme_stocks.get(theme_name, [])
-        leader_zt = False
-        for code, name, layer in stocks:
-            if layer != 'leader':
-                continue
-            q = self.quotes.get(code)
-            if q:
-                lp = q.get('pct_chg', 0)
-                zt_threshold = 19.5 if code.startswith(('300', '688')) else 9.5
-                if lp >= zt_threshold:
-                    leader_zt = True
-                    break
-        if not leader_zt:
-            score += 8
-            detail['leader_not_zt'] = True
-
-        # 3. 板块联动(7分):主题内上涨占比>60%
-        up_count = 0
-        total = 0
-        for code, name, layer in stocks:
-            q = self.quotes.get(code)
-            if q:
-                total += 1
-                if q.get('pct_chg', 0) > 0:
-                    up_count += 1
-        if total > 0:
-            up_ratio = up_count / total
-            if up_ratio > 0.6:
-                score += 7
-            elif up_ratio > 0.5:
-                score += 4
-            detail['theme_up_ratio'] = round(up_ratio, 2)
-
-        return min(score, 25), detail
-
-    # ── 中军弱转强主入口 ──
-    def scan_middle_w2s(self):
-        """
-        中军弱转强扫描(14:30后每分钟运行)
-        返回: 弱转强信号列表,按总分排序
-        """
-        now = datetime.now()
-        signals = []
-        # 首次扫描输出诊断统计
-        if not self.w2s_debug_printed:
-            debug_stats = {'total_middle': 0, 'no_quote': 0, 'hardfilter_fail': {}, 'score_dist': {'<55': 0, '55-64': 0, '65-74': 0, '>=75': 0}}
-            max_scores = []
-
-        # 遍历所有主题的中军股票
-        for theme_name, stocks in self.theme_stocks.items():
-            for ts_code, name, layer in stocks:
-                if layer != 'middle':
-                    continue
-
-                if not self.w2s_debug_printed:
-                    debug_stats['total_middle'] += 1
-
-                q = self.quotes.get(ts_code)
-                if not q:
-                    if not self.w2s_debug_printed:
-                        debug_stats['no_quote'] += 1
-                    continue
-
-                # 硬过滤
-                passed, reason = self._w2s_hard_filter(ts_code, theme_name, q)
-                if not passed:
-                    if not self.w2s_debug_printed:
-                        debug_stats['hardfilter_fail'][reason] = debug_stats['hardfilter_fail'].get(reason, 0) + 1
-                    continue
-
-                # 三维度评分
-                pattern_score, pattern_detail = self._w2s_pattern_score(ts_code, q)
-                vol_score, vol_detail = self._w2s_volume_score(ts_code, q)
-                theme_score, theme_detail = self._w2s_theme_score(ts_code, theme_name)
-
-                total_score = pattern_score + vol_score + theme_score
-
-                if not self.w2s_debug_printed:
-                    max_scores.append(total_score)
-                    if total_score < 55:
-                        debug_stats['score_dist']['<55'] += 1
-                    elif total_score < 65:
-                        debug_stats['score_dist']['55-64'] += 1
-                    elif total_score < 75:
-                        debug_stats['score_dist']['65-74'] += 1
-                    else:
-                        debug_stats['score_dist']['>=75'] += 1
-
-                if total_score < 55:
-                    continue
-
-                # 信号分级
-                if total_score >= 75:
-                    signal = '强买入'
-                elif total_score >= 65:
-                    signal = '关注'
-                else:
-                    signal = '观望'
-
-                signals.append({
-                    'ts_code': ts_code,
-                    'name': name,
-                    'theme': theme_name,
-                    'total_score': total_score,
-                    'pattern_score': pattern_score,
-                    'vol_score': vol_score,
-                    'theme_score': theme_score,
-                    'signal': signal,
-                    'pct_chg': q.get('pct_chg', 0),
-                    'price': q.get('price', 0),
-                    'detail': {**pattern_detail, **vol_detail, **theme_detail}
-                })
-
-        # 首次扫描输出诊断
-        if not self.w2s_debug_printed:
-            self.w2s_debug_printed = True
-            print(f"\n{'='*70}")
-            print(f"🔍 弱转强首次扫描诊断 [{now.strftime('%H:%M:%S')}]")
-            print(f"  中军总数: {debug_stats['total_middle']}")
-            print(f"  无行情: {debug_stats['no_quote']}")
-            print(f"  硬过滤拦截:")
-            for r, cnt in sorted(debug_stats['hardfilter_fail'].items(), key=lambda x: -x[1]):
-                print(f"    {r}: {cnt}只")
-            passed = debug_stats['total_middle'] - debug_stats['no_quote'] - sum(debug_stats['hardfilter_fail'].values())
-            print(f"  通过硬过滤: {passed}只")
-            print(f"  分数分布: {debug_stats['score_dist']}")
-            if max_scores:
-                print(f"  最高分: {max(max_scores)}  平均分: {sum(max_scores)/len(max_scores):.1f}")
-            print(f"  换手率缓存: {len(self.turnover_cache)}只")
-            print(f"  分时快照: {len(self.intraday_snapshots)}只")
-            print(f"{'='*70}\n")
-
-        signals.sort(key=lambda x: x['total_score'], reverse=True)
-        return signals
 
     # ════════════════════════════════════════════
     # 「猎尾」2:50尾盘突袭战法
@@ -5943,30 +5584,45 @@ class RealtimeThemeMonitor:
         except Exception as exc:
             print(f"⚠ [猎狐] 状态保存失败: {exc}")
 
-    def scan_fox_t0(self, now):
-        """尾盘「猎狐」:以实时价近似当日收盘,对主题监控池重跑 W7 T0_CONFIRM 状态机。
-        同一 T0 锚只在「确认成立首日」触发一次(防止连续多日重复触发)。
-        触发后控制台展示 + 微信推送。返回: 新触发的猎狐信号列表"""
+    def _fox_close_ctx(self):
+        """关闭并丢弃猎狐盘中复用上下文(异常/定稿后调用)"""
+        ctx = self.fox_ctx
+        self.fox_ctx = None
+        if ctx and ctx.get('reader') is not None:
+            try:
+                ctx['reader'].close()
+            except Exception:
+                pass
+
+    def _fox_ensure_ctx(self, now):
+        """构建/复用猎狐盘中上下文:同一缓存日期(end_db)全天复用。
+
+        reader 与 frames 只加载一次——单次全池历史 SQL 加载是扫描耗时的主要瓶颈;
+        天量 T0 锚点按 (code, len) 缓存在 ctx['anchor_map'],盘中各次预检直接复用。
+        返回 dict 或 None。"""
         import numpy as np
-        import pandas as pd
         import w7_second_wave_engine as w7
-
-        today = now.strftime('%Y%m%d')
-        live = {c: q for c, q in self.quotes.items()
-                if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
-        if not live:
-            print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
-            return []
-
+        if self.fox_ctx is not None:
+            return self.fox_ctx
+        ctx = {'reader': None, 'end_db': '', 'anchors': {}, 'mkt': None,
+               'industry_map': {}, 'sector_strength': {}, 'anchor_map': {},
+               'loaded_miss': set()}
         reader = None
         try:
             reader = w7.CacheReader()
             end_db = reader.latest_date()
             if not end_db:
                 print("⚠ [猎狐] W7缓存库无数据,跳过")
-                return []
+                reader.close()
+                return None
+            live = {c: q for c, q in self.quotes.items()
+                    if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
+            if not live:
+                print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
+                reader.close()
+                return None
             candidates = sorted(live.keys())
-            print(f"🕐 [猎狐] 加载主题池历史(截至{end_db}, {len(candidates)}只),可能耗时数十秒...", flush=True)
+            print(f"🕐 [猎狐] 首次加载主题池历史(截至{end_db}, {len(candidates)}只),耗时可能数十秒~数分钟,盘中仅此一次...", flush=True)
             reader.load_all(end_db, codes=candidates, min_date=w7.DATA_START)
             reader.load_fina()
 
@@ -6001,16 +5657,85 @@ class RealtimeThemeMonitor:
             sector_strength = {ind: w7.clip(50.0 + float(np.median(v)) * 150.0)
                                for ind, v in by_ind.items() if len(v) >= 3}
 
-            fired_map = self._fox_load_state()
-            new_signals = []
-            stale = []   # 已触发过的同锚T0(重复,不推送)
+            ctx.update({'reader': reader, 'end_db': end_db, 'anchors': anchors, 'mkt': mkt,
+                        'industry_map': industry_map, 'sector_strength': sector_strength})
+            self.fox_ctx = ctx
+            return ctx
+        except Exception as exc:
+            print(f"⚠ [猎狐] 上下文构建失败: {exc}")
+            import traceback
+            traceback.print_exc()
+            if reader is not None:
+                try:
+                    reader.close()
+                except Exception:
+                    pass
+            return None
 
+    def scan_fox_t0(self, now, pre=False):
+        """「猎狐」T0 天量确认买点。
+        pre=True  盘中预检(13:30起每10分钟):以实时价近似当日收盘重跑 W7 T0_CONFIRM 状态机,
+                 满足条件的股票当日首次触发即推送「盘中预检」(若尾盘回落可能作废,以14:50定稿为准),
+                 不写定稿状态、不进日终复核队列。
+        pre=False 尾盘定稿(14:50,每交易日一次):沿用 fired_map 防同锚重复触发,落定稿状态。
+        返回: 本轮新触发信号列表"""
+        import pandas as pd
+        import w7_second_wave_engine as w7
+
+        today = now.strftime('%Y%m%d')
+        ctx = self._fox_ensure_ctx(now)
+        if ctx is None:
+            return []
+        reader = ctx['reader']
+        end_db = ctx['end_db']
+        # 盘中缓存被 EOD 写库更新(end_db 翻日)时,重建一次上下文
+        if reader.latest_date() != end_db:
+            self._fox_close_ctx()
+            ctx = self._fox_ensure_ctx(now)
+            if ctx is None:
+                return []
+            reader = ctx['reader']
+            end_db = ctx['end_db']
+
+        live = {c: q for c, q in self.quotes.items()
+                if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
+        if not live:
+            print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
+            return []
+
+        anchors = ctx['anchors']
+        mkt = ctx['mkt']
+        industry_map = ctx['industry_map']
+        sector_strength = ctx['sector_strength']
+        anchor_map = ctx['anchor_map']
+        loaded_miss = ctx['loaded_miss']
+        candidates = sorted(live.keys())
+
+        fired_map = None if pre else self._fox_load_state()
+        pre_pushed = self._fox_pre_pushed if pre else None
+        new_signals = []
+        stale = []   # 已触发过的同锚T0(重复,不推送)
+
+        try:
             for n, code in enumerate(candidates):
-                if n and n % 100 == 0:
-                    print(f"   猎狐进度 {n}/{len(candidates)}", flush=True)
+                if n and n % 500 == 0:
+                    print(f"   [猎狐] 进度 {n}/{len(candidates)}", flush=True)
                 q = live[code]
                 df0 = reader.bars(code, end_db)
-                if df0 is None or len(df0) < w7.MIN_BARS:
+                if df0 is None or df0.empty:
+                    # 上下文构建后新入池股票,补一次单只历史加载
+                    if code not in loaded_miss:
+                        loaded_miss.add(code)
+                        try:
+                            f2 = reader.bars_sql(code, end_db)
+                            if f2 is not None and not f2.empty:
+                                reader.frames[code] = f2
+                                df0 = f2
+                        except Exception:
+                            pass
+                    if df0 is None or df0.empty or len(df0) < w7.MIN_BARS:
+                        continue
+                if len(df0) < w7.MIN_BARS:
                     continue
                 last_db = str(df0.iloc[-1].trade_date)
                 if last_db < today:
@@ -6037,21 +5762,37 @@ class RealtimeThemeMonitor:
                     df = df.dropna(subset=['close', 'high', 'low', 'vol']).reset_index(drop=True)
                 else:
                     df = df0
+                # T0 锚盘中固定(候选区间不含当日/昨日):同一 (code, len) 全天只扫一次极端事件
+                ak = (code, len(df))
+                ah = anchor_map.get(ak)
+                if ah is None:
+                    anchor = w7.find_event_anchor(df)
+                    ah = anchor if anchor else 'NONE'
+                    anchor_map[ak] = ah
                 name, theme = self._fox_stock_info(code)
                 industry = industry_map.get(code, '')
                 try:
-                    sig = w7.analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt,
-                                     sector_strength=sector_strength, sector_growth={})
+                    if ah != 'NONE':
+                        sig = w7.analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt,
+                                         sector_strength=sector_strength, sector_growth={}, event_hint=ah)
+                    else:
+                        sig = None
                 except Exception as exc:
                     print(f"   ⚠ {code} analyze异常: {exc}")
                     continue
                 if not sig or sig.get('state') != 'T0_CONFIRM' or sig.get('type') == 'DISTRIBUTION':
                     continue
                 ev = str(sig.get('event_date') or '')
-                if fired_map.get(code) == ev:
-                    stale.append(code)
-                    continue
-                fired_map[code] = ev
+                if pre:
+                    if pre_pushed.get(code) == ev:
+                        stale.append(code)
+                        continue
+                    pre_pushed[code] = ev
+                else:
+                    if fired_map.get(code) == ev:
+                        stale.append(code)
+                        continue
+                    fired_map[code] = ev
                 # analyze() 返回不含 event_close,从K线中按事件日补取
                 try:
                     _m = df['trade_date'].astype(str).values == ev
@@ -6063,15 +5804,21 @@ class RealtimeThemeMonitor:
                 sig['trade_date'] = today
                 new_signals.append(sig)
 
-            self._fox_save_state(fired_map)
+            if not pre:
+                self._fox_save_state(fired_map)
             new_signals.sort(key=lambda s: -(s.get('score') or 0))
 
             status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
+            mode_tag = '盘中预检' if pre else '定稿'
+            hhmmss = now.strftime('%H:%M:%S')
 
             # ── 控制台输出 ──
             if new_signals:
                 print(f"\n{'=' * 100}")
-                print(f"🦊 「猎狐」T0天量确认买点信号 [{now.strftime('%H:%M:%S')}] 新触发{len(new_signals)}只 重复{len(stale)}只")
+                if pre:
+                    print(f"🦊 「猎狐」T0确认·{mode_tag} [{hhmmss}] 盘中新增{len(new_signals)}只(实时价口径,尾盘回落可能作废,以14:50定稿为准) 已推{len(pre_pushed)}只")
+                else:
+                    print(f"🦊 「猎狐」T0天量确认买点·{mode_tag} [{hhmmss}] 新触发{len(new_signals)}只 重复{len(stale)}只")
                 print(f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'T0日':<9} {'T0收盘':>7} {'今收':>7} {'涨幅':>6} {'评分':>4} {'级别':<5} {'压力位':>7}")
                 print(f"{'-' * 100}")
                 for i, s in enumerate(new_signals[:12], 1):
@@ -6079,31 +5826,31 @@ class RealtimeThemeMonitor:
                           f"{s.get('event_close', 0):>7.2f} {s['close']:>7.2f} {s.get('pct_chg_live', 0):>+5.1f}% "
                           f"{s['score']:>4.0f} {status_cn.get(s['buy'], s['buy']):<5} {s.get('pressure', 0):>7.2f}")
                 print(f"{'=' * 100}\n")
+            elif pre:
+                print(f"🦊 [猎狐] {hhmmss} 盘中预检:{len(candidates)}只主题股暂无新触发T0确认(本日已推{len(pre_pushed)}只)")
             else:
-                print(f"🦊 [猎狐] {now.strftime('%H:%M:%S')} 扫描完成:{len(candidates)}只主题股无新触发T0确认(重复{len(stale)}只)")
+                print(f"🦊 [猎狐] {hhmmss} 定稿扫描完成:{len(candidates)}只主题股无新触发T0确认(重复{len(stale)}只)")
 
-            # ── 微信推送(仅新触发,单日一次) ──
+            # ── 微信推送 ──
             if new_signals:
-                lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(实时价判定,收盘为准):"]
+                if pre:
+                    lines = [f"盘中{len(new_signals)}只首现「T0天量确认买点」条件(实时价判定,尾盘回落可能作废;以14:50定稿为准):"]
+                else:
+                    lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(实时价判定,收盘为准):"]
                 for s in new_signals[:5]:
                     rel = (s.get('reason') or '').split('：')[-1]
                     lines.append(f"● {s['name']}({s['code']}) [{s.get('theme', '')}] {status_cn.get(s['buy'], s['buy'])} 评分{s['score']:.0f}")
                     lines.append(f"  T0={s['event_date']}收盘{s.get('event_close', 0):.2f} → 今收{s['close']:.2f}({s.get('pct_chg_live', 0):+.1f}%) 压力{s.get('pressure', 0):.2f}")
                     lines.append(f"  {rel}")
                 content = "\n".join(lines)
-                self.send_wechat(f"🦊 猎狐·T0确认 {now.strftime('%m-%d %H:%M')}", content)
+                self.send_wechat(f"🦊 猎狐·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
             return new_signals
         except Exception as exc:
             print(f"⚠ [猎狐] 扫描异常: {exc}")
             import traceback
             traceback.print_exc()
+            self._fox_close_ctx()   # 上下文可能不完整,关闭后下次重建
             return []
-        finally:
-            if reader is not None:
-                try:
-                    reader.close()
-                except Exception:
-                    pass
 
     def print_summary(self, results):
         """控制台输出摘要(含趋势评分+仓位建议+扶摇MCP数据)"""

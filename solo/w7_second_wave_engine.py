@@ -24,6 +24,8 @@ MAX_EVENT_AGE = 60  # 近 60 天内出现过天量事件即入候选池
 WATCH_MIN_T120 = 60  # V4.3：WATCH 状态 T120 下限，低于此分值的低分兜底票不输出
 ANCHORS = {"中际旭创": ("300308.SZ", "20250508"), "华正新材": ("603186.SH", "20250812")}
 STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP", "RE_EXPANSION", "BREAKOUT_CONFIRM", "SECOND_WAVE", "T0_CONFIRM", "DISTRIBUTION", "FAILED"]
+# V5.1：当日买点四态（同步下游 stock_pick_db / tushare 均只取这四态，与报告「今日可操作榜」口径一致）
+ACTION_BUY_STATES = ("SECOND_WAVE", "BREAKOUT_CONFIRM", "RE_EXPANSION", "T0_CONFIRM")
 # 20260909 用户口径「T0 确认买点」（我爱我家 8/19→8/27）：天量 T0 之后出现首根收盘回到
 # T0 收盘价之上的“重夺日”（8/25），随后连续 ≥2 根收盘站稳 T0 收盘价（8/26/8/27），
 # 确认日当日即视为有效买点（旁路 <5 根K线等待期与 major_risk 的早期误判）。仅限事件后
@@ -1036,7 +1038,12 @@ def next_trigger(status, entry_dims, breakout, pp_ok):
     return "观察吸收/趋势修复，暂不参与"
 
 
-def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_strength=None, sector_growth=None):
+def find_event_anchor(df):
+    """扫描最近事件窗口内的天量主事件并归并锚定 T0(等价 analyze 内的锚定逻辑)。
+
+    T0 锚只由历史数据决定(候选区间不含当日/昨日两根),盘中重复调用昂贵但单日结果固定,
+    供实时盘中预检「一次扫描、全天复用」。返回 (event_idx, event_percentile) 或 None。
+    """
     if len(df) < MIN_BARS:
         return None
     candidates = []
@@ -1047,7 +1054,21 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     if not candidates:
         return None
     # 20260909：天量簇归并，取簇内最早涨停/极强阳日为 T0 锚（8/19），而非最近极端日(8/20)
-    event_idx, ep = extreme_cluster_anchor(df, candidates)
+    return extreme_cluster_anchor(df, candidates)
+
+
+def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_strength=None, sector_growth=None,
+            event_hint=None):
+    if len(df) < MIN_BARS:
+        return None
+    if event_hint is not None:
+        # 盘中预检:同一交易日复用已缓存的 T0 锚,跳过昂贵的 60 日极端事件重扫
+        event_idx, ep = event_hint
+    else:
+        anchor = find_event_anchor(df)
+        if not anchor:
+            return None
+        event_idx, ep = anchor
     result = state_and_features(df, event_idx, ep)
     if not result:
         return None
@@ -1151,9 +1172,24 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
 
 
 def markdown(results, date):
+    # V5.1 过滤层：展示/推送不再铺开候选池，只收口到「当日买点」标的 + 高分等待池摘要
     # V5：HVT-V3 三榜单（A/CORE、B/EXT、C/WATCH）+ TOP20 总榜 + 行为解释含四周期预期
     results = sorted(results, key=lambda x: (-x["rank"], x["code"]))
     ige_snap = next((str(r.get("ige_snap") or "") for r in results if r.get("ige_snap")), "")
+
+    # 当日买点=已突破/确认四态（状态机在“当日有效放量突破触发价”当天即标为
+    # SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION，T0_CONFIRM=确认日当日买点）。
+    # 不再做 close>pressure&volr≥1.2 的宽松兜底——实测会把派发/失败/巨量追高票混入。
+    ACTION_STATES_5 = ACTION_BUY_STATES
+
+    def _today_action(x):
+        return x["state"] in ACTION_STATES_5
+
+    actionable = [x for x in results if _today_action(x)]
+    waiting = [x for x in results if not _today_action(x)]
+    n_action = len(actionable)
+    # 高分等待池阈值（C 池仅列总分≥75，避免整池铺开）
+    WAIT_TOP_SCORE = 75.0
 
     def _ige_adj(r):
         return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
@@ -1164,8 +1200,9 @@ def markdown(results, date):
     n_mid = sum(1 for x in results if x["type"] == "MID")
     n_ext = sum(1 for x in results if x["type"] == "EXT")
     n_dist = sum(1 for x in results if x["type"] == "DISTRIBUTION")
-    lines = [f"# W7 HVT-V3 三榜单（A/CORE · B/EXT · C/WATCH）\n\n交易日：{date}　|　候选总数：{len(results)}"]
+    lines = [f"# W7 HVT-V3 过滤后榜单（今日可操作 · C池等待）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
+    lines.append(f"今日可操作（当日买点）＝ {n_action} 只：二波/突破确认/重新扩张/T0天量确认；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
     cnt_state = {}
     for x in results:
         cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
@@ -1175,82 +1212,120 @@ def markdown(results, date):
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
-        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「已突破标的完整名单」（可操作输出）按 IGE_ADJ 高弹性行业优先（降序）重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 IGE_ADJ 高弹性行业优先（降序）重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
         lines.append("")
-    col_header = "| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | HVT | 吸收 | 生命 | 空间 | 加速 | RS | 基本面 | DRisk | 状态 |"
-    col_sep = "| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | -- |"
-
-    def row(x, idx):
-        v = x["v5_dims"]
-        return (f"| {idx} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
-                f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} "
-                f"| {v['天量']:.0f} | {v['吸收']:.0f} | {v['生命周期']:.0f} | {v['空间']:.0f} | {v['加速']:.0f} | {v['RS']:.0f} | {v['基本面']:.0f} | {x['dist_risk']:.0f} | {x['state']} |")
-
-    # TOP20 总榜（Rank=收益风险比）
-    lines.append("## TOP20 总榜（按 Rank=收益风险比）\n")
-    lines.append(col_header)
-    lines.append(col_sep)
-    for k, x in enumerate(results[:20], 1):
-        lines.append(row(x, k))
-    # A榜 CORE
-    core_list = [x for x in results if x["type"] == "CORE"]
-    lines.append(f"\n## A榜 CORE-HVT（低位/中位大资金吸收型，T+60/T+120 空间优先）　共{len(core_list)}只\n")
-    if core_list:
-        lines.append(col_header)
-        lines.append(col_sep)
-        for k, x in enumerate(core_list[:20], 1):
-            lines.append(row(x, k))
-    else:
-        lines.append("_（今日无 CORE-HVT 候选）_")
-    # B榜 EXT
-    ext_list = [x for x in results if x["type"] == "EXT"]
-    lines.append(f"\n## B榜 EXT-HVT（高位强趋势延续/二次加速，涨幅大不剔除）　共{len(ext_list)}只\n")
-    if ext_list:
-        lines.append(col_header)
-        lines.append(col_sep)
-        for k, x in enumerate(ext_list[:20], 1):
-            lines.append(row(x, k))
-    else:
-        lines.append("_（今日无 EXT-HVT 候选）_")
-    # MID 补充
-    mid_list = [x for x in results if x["type"] == "MID"]
-    if mid_list:
-        lines.append(f"\n## MID-HVT（趋势中段换手型）　共{len(mid_list)}只\n")
-        lines.append(col_header)
-        lines.append(col_sep)
-        for k, x in enumerate(mid_list[:15], 1):
-            lines.append(row(x, k))
-    # 已突破/确认标的完整名单（不受榜单前20截断影响，推送引用以此为准；按 IGE_ADJ 高弹性行业优先降序，同级按总分降序）
-    broken = [x for x in results if x["state"] in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "T0_CONFIRM")]
-    lines.append(f"\n## 已突破/确认标的完整名单（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM 共{len(broken)}只）\n")
-    if broken:
+    # 今日可操作榜（唯一逐只可执行榜；现价>触发价=已突破在上方）
+    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按 IGE_ADJ 高弹性降序/同级按总分降序）\n")
+    if actionable:
         lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
         lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
-        for k, x in enumerate(sorted(broken, key=lambda y: (_ige_adj(y), y["score"]), reverse=True), 1):
+        for k, x in enumerate(sorted(actionable, key=lambda y: (_ige_adj(y), y["score"]), reverse=True), 1):
             lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
+        lines.append("")
+        lines.append("操作口径：现价>触发价=已突破在上方，回踩触发价不破可低吸或持有；收盘跌回触发价下方离场；MA20=总防线。"
+                     "量比≥1.2=当日放量突破触发价=买点触发；量比≥3的巨量日不追，只等回踩。")
     else:
-        lines.append("_（今日无已突破标的）_")
-    # C榜 WATCH
-    watch = [x for x in results if x["buy"] == "WATCH"]
-    dist_watch = [x for x in watch if x["type"] == "DISTRIBUTION"]
-    lines.append(f"\n## C榜 WATCH（暂未突破/派发观察，等趋势确认）　共{len(watch)}只\n")
-    lines.append(f"其中 DISTRIBUTION（派发风险）{len(dist_watch)} 只、其余潜力不足 {len(watch) - len(dist_watch)} 只，不逐一列出。")
-    watch_top = [x for x in watch if x["score"] >= 75]
-    if watch_top:
-        lines.append("\n其中 HVT-V3 总分≥75 的潜力票（带风险信号，等修复突破后重新确认）：")
-        lines.append("| 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 状态 | 关键原因 |")
-        lines.append("| -- | -- | --: | --: | -- | -- | -- |")
-        for x in sorted(watch_top, key=lambda x: -x["score"])[:10]:
-            lines.append(f"| {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} | {x['state']} | {x['reason']} |")
-    # 行为解释 + 四周期预期
-    top = results[:20]
+        lines.append("_（今日无当日买点标的，空仓等待 C 池高分票放量突破）_")
+    # 池内形态分布（替代原 A/B/MID 大列表，只给分布不给明细）
+    act_by_type, wait_by_type = {}, {}
+    for x in actionable:
+        act_by_type[x["type"]] = act_by_type.get(x["type"], 0) + 1
+    for x in waiting:
+        wait_by_type[x["type"]] = wait_by_type.get(x["type"], 0) + 1
+    lines.append("\n形态分布（候选池覆盖口径，仅供了解，不逐列展示）：")
+    lines.append(f"- 今日买点：{'　'.join(f'{t}={c}' for t, c in sorted(act_by_type.items())) or '无'}")
+    lines.append(f"- 等待型：{'　'.join(f'{t}={c}' for t, c in sorted(wait_by_type.items()))}（CORE/MID/EXT 为原 A/B/MID 池等待票，DISTRIBUTION 不参与）")
+    # C池 高分等待突破（次日埋伏，触发价=突破触发位）
+    wait_top = [x for x in waiting if x["score"] >= WAIT_TOP_SCORE and x["type"] != "DISTRIBUTION"]
+    lines.append(f"\n## C池 高分等待突破（总分≥{WAIT_TOP_SCORE:.0f} 共{len(wait_top)}只 · 等量比≥1.2放量突破触发价再买 · 列表前12）\n")
+    if wait_top:
+        lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
+        lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
+        for k, x in enumerate(sorted(wait_top, key=lambda y: (-y["score"], y["code"]))[:12], 1):
+            lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
+                         f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
+        if len(wait_top) > 12:
+            lines.append(f"\n> 其余 {len(wait_top) - 12} 只已省略；盘中实时突破以实时监控为准。")
+        lines.append("\n高分等待重点说明（前6，供次日盯突破）：")
+        for x in sorted(wait_top, key=lambda y: (-y["score"], y["code"]))[:6]:
+            lines.append(f"- **{x['name']}({x['code']})** 总分{x['score']:.1f}｜{x['state']}｜{x['reason']}")
+    else:
+        lines.append("_（今日无总分≥75 的等待型）_")
+    # 派发风险摘要（仅列前6，规避）
+    dist_top = [x for x in waiting if x["type"] == "DISTRIBUTION"]
+    if dist_top:
+        lines.append("\n## 派发风险回避（DISTRIBUTION 不参与 · 仅列前6）\n")
+        for x in sorted(dist_top, key=lambda y: -y["score"])[:6]:
+            lines.append(f"- **{x['name']}({x['code']})** 总分{x['score']:.1f}｜{x['state']}｜{x['reason']}")
+    # 行为解释 + 四周期预期（只解释当日买点，等待票见上方 C 池说明，控制篇幅）
     lines.append("\n## 行为解释与 T+10/20/60/120 预期\n")
-    for x in top:
+    for x in actionable:
         h = x["horizons"]
         lines.append(f"- **{x['name']}({x['code']})** [{x['type']}/{x['level']}]：{x['explanation']}")
         lines.append(f"　T+10={h['t10']}　|　T+20={h['t20']}　|　T+60={h['t60']}　|　T+120={h['t120']}")
     return "\n".join(lines) + "\n"
+
+
+def sync_downstream(date, results, output):
+    """V5.1 同步：把过滤后的「今日可操作（当日买点）」信号写给下游。
+    1) 写 w7_today_action_{date}.json（report_daily）供 tushare_quant 汇总引用；
+    2) 落 stock_pick_db 跟踪表（strategy=w7_hvt），盘后由 stock_pick_db.py tracking 回填 T+N/胜率。
+    只同步当日买点四态（ACTION_BUY_STATES），等价报告「今日可操作榜」，不再把全候选池铺进跟踪表；
+    任一步失败都不阻塞报告输出。"""
+    def _ige(r):
+        return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
+
+    actionable = [x for x in results if x["state"] in ACTION_BUY_STATES]
+    actionable.sort(key=lambda y: (_ige(y), y["score"]), reverse=True)
+    act_cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
+              "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点"}
+    out_dir = os.path.dirname(os.path.abspath(output)) or OUTPUT_DIR
+    os.makedirs(out_dir, exist_ok=True)
+    signals = []
+    for x in actionable:
+        signals.append({
+            "code": x["code"], "name": x["name"], "industry": x.get("industry"),
+            "state": x["state"], "state_cn": act_cn.get(x["state"], x["state"]),
+            "type": x["type"], "level": x["level"], "score": round(float(x["score"]), 1),
+            "entry": round(float(x["entry"] or 0), 1), "action": x["buy"],
+            "close": x["close"], "pressure": x["pressure"], "ma20": x["ma20"], "volr": x["volr"],
+            "ige_adj": x.get("ige_adj"), "event_date": x.get("event_date"),
+            "reason": x.get("reason", ""), "t120": x.get("t120"),
+        })
+    try:
+        jpath = os.path.join(out_dir, f"w7_today_action_{date}.json")
+        with open(jpath, "w", encoding="utf-8") as fh:
+            json.dump({"trade_date": date, "count": len(signals), "signals": signals},
+                      fh, ensure_ascii=False)
+        print(f"[w7] 今日可操作 JSON 已写: {jpath} ({len(signals)}只)", flush=True)
+    except (OSError, TypeError) as exc:
+        print(f"[w7] 今日可操作 JSON 写入失败(不影响报告): {exc}", flush=True)
+    try:
+        from stock_pick_db import record_picks
+    except Exception:
+        record_picks = None
+    if record_picks is None or not signals:
+        return
+    try:
+        rows = []
+        for idx, x in enumerate(signals, 1):
+            # stop_price(失效位)=触发价仅在已突破(现价>触发价)时生效；
+            # 未突破的 T0/确认类不设止损价，避免止损高于现价导致跟踪立即 STOP_HIT
+            rows.append({
+                "ts_code": x["code"], "stock_name": x["name"], "industry": x.get("industry"),
+                "close": x["close"], "signal": x["state"], "action": f"{x['state_cn']}·{x['action']}",
+                "score": x["score"], "rank_no": idx,
+                "stop_price": x["pressure"] if (x["close"] and x["pressure"] and x["close"] > x["pressure"]) else None,
+                "reason": x["reason"],
+                "state": x["state"], "type": x["type"], "level": x["level"], "entry": x["entry"],
+                "volr": x["volr"], "ma20": x["ma20"], "event_date": x["event_date"],
+                "ige_adj": x["ige_adj"], "t120": x["t120"],
+            })
+        n = record_picks("w7_hvt", "W7 二波/突破当日买点", rows, pick_date=date)
+        print(f"[w7] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=w7_hvt pick_date={date})", flush=True)
+    except Exception as exc:
+        print(f"[w7] stock_pick_db 写入失败(不影响报告): {exc}", flush=True)
 
 
 def main():
@@ -1350,6 +1425,8 @@ def main():
                 "adj_max": max(ige_vals) if ige_vals else None},
     }
     print(json.dumps(stats, ensure_ascii=False))
+    if not args.limit:  # V5.1：完整跑批才同步下游（--limit 调试跑不污染跟踪表/JSON）
+        sync_downstream(date, results, output)
     reader.close()
 
 
