@@ -1429,6 +1429,7 @@ class RealtimeThemeMonitor:
         ts = report['trend_score']
         status = report['market_status']
         pos = report['position']
+        pos_range = report.get('position_range', '')
         index_results = report.get('index_results', [])
 
         # 获取全市场统计数据(优先使用)
