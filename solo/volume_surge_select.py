@@ -24,6 +24,12 @@ import numpy as np
 import pandas as pd
 import tushare as ts
 
+# 选股落库跟踪（失败不阻塞主流程）：仅当日可开仓信号进跟踪表，供 stock_pick_db.py tracking 回填 T+N
+try:
+    from stock_pick_db import record_picks as _PICK_RECORD
+except Exception:
+    _PICK_RECORD = None
+
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1279,6 +1285,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
 
         result = {
             '代码': ts_code, '名称': name,
+            'close': round(float(close_full[-1]), 2),
             '量能爆发评分': round(total_score, 1),
             '最大量比': round(max_vol_ratio, 2),
             '量比>2天数': vol_ratio_gt2,
@@ -1881,6 +1888,11 @@ def run(target_date=None, with_chip=True, simple=False):
               f"T1Risk={_v.get('T1Risk','-')} MACD={_v['MACD状态']}{' ⚠️死叉临界' if _v.get('死叉临界') else ''}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
+    if not simple:
+        try:
+            _track_picks(results, TRADE_DATE)
+        except Exception as e:
+            print(f"[VSW] stock_pick_db 写入失败(不影响报告): {e}", flush=True)
     return results
 
 
@@ -2094,6 +2106,39 @@ def _output_report(results, simple=False, market_tip=None):
         print(f"\n✅ 报告已保存: {out_path}")
     except Exception as e:
         print(f"⚠️ 报告保存失败: {e}")
+
+
+def _track_picks(results, trade_date):
+    """当日可开仓信号落库 stock_pick_db（口径与报告结论一致：
+    Eligible 且 Rating∈(S,A,B) 且非 ForbidTOP，取前 6 名）。
+    其余评级/择时/主题/距MA20 等字段自动进 indicators；失败不阻塞主流程。
+    """
+    if _PICK_RECORD is None or not results:
+        return
+    _buyable = [x for x in results[:6]
+                if x.get('Eligible') and x.get('Rating') in ('S', 'A', 'B') and not x.get('ForbidTOP')]
+    rows = []
+    for idx, s in enumerate(_buyable, 1):
+        _rating = s.get('Rating', 'C')
+        rows.append({
+            'ts_code': s.get('代码'), 'stock_name': s.get('名称'), 'close': s.get('close'),
+            'pct_chg': s.get('今日涨跌幅'),
+            'signal': s.get('_v2_label') or 'VSW_BUY',
+            'action': '可开仓' if _rating in ('S', 'A') else '可开仓·次日确认',
+            'score': s.get('FinalEntryScore'), 'rank_no': idx,
+            'reason': s.get('强买原因') or s.get('观察原因') or s.get('蓄势大涨原因') or '',
+            'FinalEntryScore': s.get('FinalEntryScore'), 'Rating': _rating,
+            'EntryTimingScore': s.get('EntryTimingScore'), 'EntryTimingGrade': s.get('EntryTimingGrade'),
+            'T1Risk': s.get('T1Risk'), '量能爆发评分': s.get('量能爆发评分'),
+            '距MA20': s.get('距MA20'), '5日涨幅': s.get('5日涨幅'),
+            '所属主题': s.get('所属主题'), '非一日游阶段': s.get('非一日游阶段'),
+            'ChipSuggestion': s.get('ChipSuggestion'),
+        })
+    if not rows:
+        print('[VSW] 今日无可开仓信号，stock_pick_db 无写入', flush=True)
+        return
+    n = _PICK_RECORD('vsw', 'VSW 量能爆发+宽幅震荡', rows, pick_date=trade_date)
+    print(f'[VSW] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=vsw pick_date={trade_date})', flush=True)
 
 
 def main():

@@ -190,6 +190,49 @@ def build_push_md(df, asof):
     return "\n".join(L)
 
 
+def _track_tier1(hit, asof):
+    """把当日 TIER1 核心命中落 stock_pick_db 跟踪表（幂等，失败不阻塞扫描/推送）。
+
+    只落 TIER1_核心；标准列映射 close/pct_chg/signal=tier/industry=细分赛道，
+    target_price=2×事件日收盘（翻倍口径，供后续命中判定），其余画像特征自动进 indicators JSON。
+    盘后由 python stock_pick_db.py tracking 回填 T+N 收益与翻倍命中情况。
+    """
+    rows = hit[hit.tier == "TIER1_核心"].copy()
+    if not len(rows):
+        return
+    rows = rows.sort_values("mv_yi", na_position="last")
+    picks = []
+    for idx, r in enumerate(rows.itertuples(), 1):
+        picks.append({
+            "ts_code": r.code, "stock_name": r.name, "industry": r.subsector,
+            "close": r.close, "pct_chg": r.pct,
+            "signal": r.tier, "action": "天量翻倍画像·核心观察",
+            "score": round(float(r.p_vol) + float(r.p_turn), 2),
+            "rank_no": idx, "target_price": round(float(r.close) * 2, 2),
+            "reason": (f"V5天量 量分位{r.p_vol:.1f}%/换手分位{r.p_turn:.1f}%(双≥P98)｜"
+                       f"流通{r.mv_yi:.0f}亿 换手{r.turn_today:.1f}%(常态{r.turn_20m:.1f}%)｜"
+                       f"距250日高{r.rel_hi250*100:.0f}% MA60乖离{r.ma60_x*100:+.1f}%"),
+            "subsector": r.subsector, "tier": r.tier,
+            "mv_yi": r.mv_yi, "turn_today": r.turn_today, "turn_20m": r.turn_20m,
+            "vol_ratio": r.vol_ratio, "p_vol": r.p_vol, "p_turn": r.p_turn,
+            "rel_hi250": r.rel_hi250, "ma20_x": r.ma20_x, "ma60_x": r.ma60_x,
+            "atr20pct": r.atr20pct, "ret20": r.ret20, "ret60": r.ret60,
+            "streak": r.streak, "is_limitup": bool(r.is_limitup),
+            "first_of_cluster": bool(r.first_of_cluster),
+        })
+    try:
+        from stock_pick_db import record_picks
+    except Exception as exc:
+        print(f"[double] stock_pick_db 导入失败(不影响扫描): {exc}", flush=True)
+        return
+    try:
+        n = record_picks("double_tier1", "天量翻倍画像·TIER1核心", picks, pick_date=asof)
+        print(f"[double] stock_pick_db 写入 {n}/{len(picks)} 条 "
+              f"(strategy=double_tier1 pick_date={asof})", flush=True)
+    except Exception as exc:
+        print(f"[double] stock_pick_db 写入失败(不影响扫描): {exc}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--asof", default="", help="留空=自动取库内最新交易日")
@@ -241,6 +284,8 @@ def main():
             "streak", "is_limitup", "first_of_cluster"]
     show = df[cols]
     print("\n" + show.to_string(index=False))
+
+    _track_tier1(hit, asof)
 
     if args.push and len(hit):
         md = build_push_md(df, asof)

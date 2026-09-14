@@ -7,6 +7,7 @@
   [3/5] EV 层:   复用 f120_space 样本库 + card_space 历史类比/路径模拟
   [4/5] 门控:    高可靠分级 A/B/剔除(EV>0, 入场溢价上限, setup 质量)
   [5/5] 输出:    output/f120_signal_{T}.csv + .md
+  [6/6] 落库:    当日信号写入 stock_pick_db(strategy=sli_f120), 供盘后 T+N 跟踪
 
 用法:
   python sli/f120_daily.py            # 刷新至最近交易日并出信号(幂等)
@@ -210,6 +211,67 @@ def write_report(sig: pd.DataFrame, mk: dict, samples: pd.DataFrame, T: str):
     return mdp
 
 
+PICK_STRATEGY_ID = "sli_f120"
+PICK_STRATEGY_NAME = "潜龙五维 F120 每日高可靠信号"
+
+
+def sync_pick_db(T: str) -> int:
+    """当日信号表落库 stock_pick_db(strategy=sli_f120), 幂等; 失败不阻塞信号输出.
+
+    口径: f120_signal_{T}.csv 整表落库, signal=门控分级(A/B/C), action=引擎裁决
+    (PRIMARY BUY / CONDITIONAL BUY); F120/EV/胜率/溢价等策略自有字段进 indicators,
+    后续由 `python stock_pick_db.py tracking` 基于 pick_date 回填 T+N 与胜率。
+    """
+    cpath = os.path.join(F.OUT, f"f120_signal_{T}.csv")
+    if not os.path.exists(cpath):
+        print(f"[db] 信号表不存在, 跳过落库: {cpath}")
+        return 0
+    sig = pd.read_csv(cpath, dtype={"ts_code": str})
+    if sig.empty:
+        print("[db] 当日无信号行, 跳过落库")
+        return 0
+    try:
+        from stock_pick_db import record_picks
+    except Exception as exc:
+        print(f"[db] stock_pick_db 不可用, 跳过落库: {exc}")
+        return 0
+
+    def _v(r, k):
+        v = r.get(k)
+        return None if v is None or pd.isna(v) else v
+
+    rows = []
+    for i, r in sig.iterrows():
+        rows.append({
+            "ts_code": str(r["ts_code"]),
+            "stock_name": str(_v(r, "name") or ""),
+            "close": _v(r, "cur"),
+            "signal": str(_v(r, "grade") or ""),
+            "action": str(_v(r, "verdict") or ""),
+            "score": _v(r, "F120"),
+            "rank_no": i + 1,
+            "industry": str(_v(r, "subsector") or ""),
+            "reason": str(_v(r, "reason") or ""),
+            "stop_price": _v(r, "stop"),
+            "target_price": _v(r, "target"),
+            "setup": _v(r, "setup"), "stage": _v(r, "stage"),
+            "ideal": _v(r, "ideal"), "zone_lo": _v(r, "zone_lo"), "zone_hi": _v(r, "zone_hi"),
+            "ceiling": _v(r, "ceiling"), "rr": _v(r, "rr"), "trigger": _v(r, "trigger"),
+            "ev": _v(r, "ev"), "ev_p10": _v(r, "ev_p10"), "ev_p90": _v(r, "ev_p90"),
+            "raw_win": _v(r, "raw_win"), "p_target": _v(r, "p_target"), "p_stop": _v(r, "p_stop"),
+            "exp_days": _v(r, "exp_days"), "entry_premium": _v(r, "entry_premium"),
+            "analog_n": _v(r, "analog_n"), "rule": _v(r, "rule"), "pos": _v(r, "pos"),
+        })
+    try:
+        n = record_picks(PICK_STRATEGY_ID, PICK_STRATEGY_NAME, rows, pick_date=T)
+        print(f"[db] stock_pick_db 写入 {n}/{len(rows)} 条 "
+              f"(strategy={PICK_STRATEGY_ID} pick_date={T})")
+        return n
+    except Exception as exc:
+        print(f"[db] stock_pick_db 写入失败(不影响信号输出): {exc}")
+        return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="F120 Daily 每日高可靠信号")
     ap.add_argument("--force", action="store_true", help="忽略当日已有信号, 强制重算")
@@ -224,6 +286,7 @@ def main():
     mpath = os.path.join(F.OUT, f"f120_signal_{T}.md")
     if not args.force and os.path.exists(cpath) and os.path.exists(mpath):
         print(f"[skip] {T} 信号已存在: {cpath} (--force 可重算)")
+        sync_pick_db(T)
         return
 
     print(f"[2/5] 引擎运行(市场日 {T}) ...")
@@ -241,6 +304,7 @@ def main():
         print(f"[4/5] 信号表(空): {cpath}")
 
     write_report(sig, mk, samples, T)
+    sync_pick_db(T)
     gA = sig[sig["grade"] == "A"] if len(sig) else sig
     if gA.empty:
         print("今日无 A 级信号(宁缺毋滥)")

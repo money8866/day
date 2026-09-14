@@ -1,10 +1,10 @@
 {
-  "last_rebalance_date": "2026-09-02",
-  "holding_code": "515220",
-  "holding_name": "煤炭",
-  "buy_price": 1.303,
-  "score_at_buy": 78.75,
-  "momentum_at_buy": 10.99,
-  "rsi_at_buy": 62.96,
-  "rebalance_count": 5
+  "last_rebalance_date": "2026-09-14",
+  "holding_code": "512800",
+  "holding_name": "银行",
+  "buy_price": 0.856,
+  "score_at_buy": 80.37,
+  "momentum_at_buy": 7.54,
+  "rsi_at_buy": 66.06,
+  "rebalance_count": 6
 }
