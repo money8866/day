@@ -3338,6 +3338,8 @@ class RealtimeThemeMonitor:
                         tail_signals = self.scan_tail_recovery_v3()
                         # 写入跟踪表(用于未来交易日盘后回填和胜率分析)
                         self._save_tail_recovery_signals_to_tracker(tail_signals)
+                        # 同步写入统一选股库(盘后 stock_pick_db.update_tracking 回填)
+                        self._save_tail_recovery_picks_to_pickdb(tail_signals)
                         if tail_signals:
                             # 控制台输出
                             print(f"\n{'='*110}")
@@ -3408,6 +3410,7 @@ class RealtimeThemeMonitor:
                         fox_signals = self.scan_fox_t0(now)
                         if fox_signals:
                             self.fox_signals_cache = fox_signals   # 记录本轮信号,便于日终复核
+                            self._save_fox_picks_to_pickdb(fox_signals)   # 写入统一选股库(盘后 stock_pick_db.update_tracking 回填)
                         self._fox_close_ctx()   # 定稿完成,释放SQLite连接避免占用至收盘写库
                     except Exception as e:
                         import traceback
@@ -4896,6 +4899,137 @@ class RealtimeThemeMonitor:
         except Exception as e:
             print(f"⚠ V4尾盘信号写入跟踪表失败: {e}")
 
+    def _save_fox_picks_to_pickdb(self, signals):
+        """
+        「猎狐」T0天量确认(定稿)信号写入统一选股库 stock_pick_db
+        (表 stock_pick, 盘后由 stock_pick_db.update_tracking() 回填 pick_tracking)
+
+        仅在 14:50 定稿通道调用(盘中预检不落库);候选池已限定主题池沪深标的。
+        收益基准 = 定稿时实时价近似的当日收盘。
+        """
+        if not signals:
+            return
+        try:
+            from stock_pick_db import record_picks
+            status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
+            pick_date = self._get_last_trade_date()
+            picks = []
+            for s in signals:
+                code = s.get('code', '')
+                if not code:
+                    continue
+                picks.append({
+                    'ts_code': code,
+                    'stock_name': s.get('name', ''),
+                    'close': s.get('close'),
+                    'pct_chg': s.get('pct_chg_live'),
+                    'signal': s.get('state', 'T0_CONFIRM'),
+                    'action': status_cn.get(s.get('buy'), s.get('buy', '')),
+                    'score': s.get('score'),
+                    'industry': s.get('industry', ''),
+                    'reason': s.get('reason', ''),
+                    'target_price': s.get('pressure') or None,
+                    # ── 策略自有字段(自动序列化进 indicators) ──
+                    'theme': s.get('theme', ''),
+                    'type': s.get('type', ''),
+                    'level': s.get('level', ''),
+                    'event_date': s.get('event_date', ''),
+                    'event_close': s.get('event_close'),
+                    'hvt': s.get('hvt'),
+                    'entry': s.get('entry'),
+                    'dist_risk': s.get('dist_risk'),
+                    'volr': s.get('volr'),
+                    'ma20': s.get('ma20'),
+                })
+            if not picks:
+                return
+            n = record_picks('fox_t0', '猎狐 T0 天量确认', picks, pick_date=pick_date)
+            print(f"[选股库·猎狐] 已写入{n}只T0确认信号 (strategy_id=fox_t0, pick_date={pick_date})")
+        except Exception as e:
+            print(f"⚠ 猎狐信号写入选股库失败: {e}")
+
+    def _pickdb_write(self, strategy_id, strategy_name, picks):
+        """通用: 尾盘策略选股结果写入统一选股库 stock_pick_db(盘后 update_tracking 回填跟踪)"""
+        if not picks:
+            return 0
+        try:
+            from stock_pick_db import record_picks
+            n = record_picks(strategy_id, strategy_name, picks, pick_date=self._get_last_trade_date())
+            if n:
+                print(f"[选股库] 已写入{n}只 {strategy_name} (strategy_id={strategy_id})")
+            return n
+        except Exception as e:
+            print(f"⚠ {strategy_name}写入选股库失败: {e}")
+            return 0
+
+    def _save_tail_recovery_picks_to_pickdb(self, signals):
+        """
+        「猎尾V4」中报池回踩信号写入统一选股库(与 tail_signal_tracker_v4 双写)
+        入表筛选: total_score >= 65 + 排除北交所
+        """
+        picks = []
+        for s in signals or []:
+            if s.get('total_score', 0) < 65:
+                continue
+            code = s.get('ts_code', '')
+            if not code or code.startswith(('9', '4')):
+                continue
+            d = s.get('detail', {}) or {}
+            picks.append({
+                'ts_code': code,
+                'stock_name': s.get('name', ''),
+                'close': s.get('price'),
+                'pct_chg': s.get('pct_chg'),
+                'signal': s.get('signal', ''),
+                'action': s.get('next_day_expectation', ''),
+                'score': s.get('total_score'),
+                'reason': s.get('next_day_expectation', ''),
+                'stop_price': d.get('stop_loss'),
+                # ── 策略自有字段(自动序列化进 indicators) ──
+                'theme': s.get('theme', ''),
+                'quant_score': s.get('quant_score'),
+                'realtime_score': s.get('realtime_score'),
+                'wash_score': s.get('wash_score'),
+                'confidence': s.get('confidence'),
+                'ret_pct': d.get('ret_pct'),
+                'rise_gap_vwap': d.get('rise_gap_vwap'),
+                'rise_gap_ma20': d.get('rise_gap_ma20'),
+                'upside_pct': d.get('upside_pct'),
+                'buy_point': d.get('buy_point', ''),
+                'tail_vol_label': d.get('tail_vol_label', ''),
+                'chip_conc': d.get('chip_conc'),
+            })
+        return self._pickdb_write('tail_v4_recovery', '猎尾V4 中报池回踩', picks)
+
+    def _save_nd2_picks_to_pickdb(self, signals):
+        """「猎尾V5」ND2次日Alpha精选信号写入统一选股库(与 nd2_snapshot.db 双写)"""
+        picks = []
+        for s in signals or []:
+            code = s.get('ts_code', '')
+            if not code:
+                continue
+            picks.append({
+                'ts_code': code,
+                'stock_name': s.get('name', ''),
+                'close': s.get('price'),
+                'pct_chg': s.get('pct_chg'),
+                'signal': s.get('pattern', ''),
+                'action': s.get('grade', ''),
+                'score': s.get('final_score'),
+                # ── 策略自有字段(自动序列化进 indicators) ──
+                'theme': s.get('theme', ''),
+                'nd2_potential': s.get('nd2_potential'),
+                'tail_flow': s.get('tail_flow'),
+                'pattern_quality': s.get('pattern_quality'),
+                'strong_gene': s.get('strong_gene'),
+                'risk_penalty': s.get('risk_penalty'),
+                'rank_score': s.get('rank_score'),
+                'p_up_2': s.get('p_up_2'),
+                'p_close_2': s.get('p_close_2'),
+                'p_dd_2': s.get('p_dd_2'),
+            })
+        return self._pickdb_write('tail_v5_nd2', '猎尾V5 ND2次日Alpha', picks)
+
     # ════════════════════════════════════════════
     # 猎尾V5: NEXT-DAY ALPHA ENGINE (ND2)
     # 14:50 扫描全主题池 -> 次日+2%概率引擎
@@ -5057,6 +5191,9 @@ class RealtimeThemeMonitor:
 
         # ── V5Selector 精选: 每日最多2只最佳信号 ──
         signals = V5Selector.select(all_signals, max_per_day=2)
+
+        # 同步写入统一选股库(盘后 stock_pick_db.update_tracking 回填)
+        self._save_nd2_picks_to_pickdb(signals)
 
         # 控制台报告(精选信号)
         if signals:

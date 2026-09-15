@@ -747,7 +747,8 @@ def get_chip_alpha_engine():
 _chip_alpha_engine = None
 
 
-def batch_chip_alpha(stocks, lookback_days=20):
+def batch_chip_alpha(stocks, lookback_days=20, end_date=None):
+    """end_date 必须传目标交易日：缺省时引擎会回退到运行当天，历史日期重算将引入前视数据"""
     engine = get_chip_alpha_engine()
     if engine is None:
         return {}
@@ -758,7 +759,7 @@ def batch_chip_alpha(stocks, lookback_days=20):
         if not ts_code:
             continue
         try:
-            r = engine.analyze(ts_code, lookback_days=lookback_days)
+            r = engine.analyze(ts_code, end_date=end_date, lookback_days=lookback_days)
             results[ts_code] = r
             if (i + 1) % 10 == 0:
                 print(f"[ChipAlpha] 批量计算 {i+1}/{total}")
@@ -1239,6 +1240,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         # 强买信号判定（形态参考：同等闸门回测强买全量44.8%不低于Top3，但"强买优先"排序负优化，不作买入排序依据）
         strong_buy = False
         strong_buy_reason = ''
+        # MACD 未确认（绿柱未翻红 / 死叉临界）不产生强买标记，与主路径 MACD 阀门同口径
+        macd_unconfirmed = (macd_status == '即将红柱（绿柱连续缩短）') or death_cross_risk
         if pos_ma20 < 0 and is_fresh_red:
             strong_buy = True
             strong_buy_reason = '回踩MA20下方+MACD刚红柱(形态)'
@@ -1248,7 +1251,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         elif retrace_type == '浅回调' and is_fresh_red and total_score >= 70:
             strong_buy = True
             strong_buy_reason = '浅回调+刚红柱+高评分(形态)'
-        elif 65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0:
+        elif (65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0
+              and not macd_unconfirmed):
             strong_buy = True
             strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(形态)'
         elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 0.9 and not death_cross_risk:
@@ -1732,6 +1736,16 @@ def _compute_entry_v2(s, env_mult=1.0, env_weak=False):
         s['_v2_label'] = 'BUY·需次日确认'
     else:
         s['_v2_label'] = 'WATCH'
+    # ===== MACD 阀门（20260915落地·宁可错过不可做错）=====
+    # 只有「红柱已确认」允许买入；方向未确认一律不可买、不进 TOP3 买点、不落库：
+    #   ①死叉临界：红柱缩至极小、1~2日内可能死叉（0914实测该组均 -1.95%/胜率20%，当日大盘涨占比56.3%）
+    #   ②即将红柱：绿柱未翻红，方向未确认（历史该分支 32.0%/-0.30%，四个 MACD 分支最差）
+    s['_macd_block'] = bool(s.get('死叉临界')) or s.get('MACD状态') == '即将红柱（绿柱连续缩短）'
+    s['MACD阀门'] = 'BLOCK' if s['_macd_block'] else 'PASS'
+    if s['_macd_block']:
+        s['Rating'] = 'C'
+        s['Eligible'] = False
+        s['_v2_label'] = 'WATCH'
     return s
 
 
@@ -1833,7 +1847,7 @@ def run(target_date=None, with_chip=True, simple=False):
     if with_chip and results:
         try:
             print(f"[ChipAlpha] 批量计算 {len(results)} 只...")
-            _chip_results = batch_chip_alpha(results, lookback_days=20)
+            _chip_results = batch_chip_alpha(results, lookback_days=20, end_date=TRADE_DATE)
             for s in results:
                 _code = s.get('代码', '')
                 _chip_r = _chip_results.get(_code)
@@ -1871,6 +1885,7 @@ def run(target_date=None, with_chip=True, simple=False):
                 s['_is_leader'] = _tn in _theme_ctx['leaders'] and _theme_ctx['leaders'].get(_tn) == s.get('名称', '')
                 _compute_entry_v2(s, env_mult=env_mult, env_weak=env_weak)
             results.sort(key=lambda x: (
+                x.get('_macd_block', False),   # MACD 阀门拦截者沉底（宁可错过不可做错）
                 -x['FinalEntryScore'],
                 -x['EntryTimingScore'],
                 {'Extreme': 9, 'High': 8, 'Medium': 5, 'Low': 0}.get(x['T1Risk'], 5),
@@ -1974,6 +1989,8 @@ def _output_report(results, simple=False, market_tip=None):
         if _fe is not None:
             lines.append(f"【TOP{i} {_medals}】{_vr['名称']}({_vr['代码']}) FinalEntryScore={_fe:.1f} 评级={_vr.get('Rating', 'C')}")
             _wk = '⚠高位接力' if _vr.get('ForbidTOP') else ''
+            if _vr.get('_macd_block'):
+                _wk = '⛔MACD阀门' + ((' ' + _wk) if _wk else '')
             _tag = f"{_vr.get('_v2_label', '')} {_wk}".strip()
             lines.append(f"  趋势={_vr.get('TrendScore', 0):.0f} | 开仓价值={_vr.get('EntryScore', 0):.0f} | "
                          f"EntryTiming={_vr.get('EntryTimingScore', 0):.0f}({_vr.get('EntryTimingGrade', 'C')}) | "
@@ -2017,7 +2034,7 @@ def _output_report(results, simple=False, market_tip=None):
             continue
         if _x.get('ForbidTOP'):
             _excluded.append((_x, '巨幅乖离+急速上涨（强制过滤）'))
-        elif _x.get('Rating') == 'C' and _x.get('量能爆发评分', 0) >= 85:
+        elif _x.get('Rating') == 'C' and (_x.get('量能爆发评分', 0) >= 85 or _x.get('_macd_block')):
             _reasons = []
             if _x.get('距MA20', 0) > 25:
                 _reasons.append(f"距MA20={_x['距MA20']:+.1f}%")
@@ -2027,9 +2044,11 @@ def _output_report(results, simple=False, market_tip=None):
                 _reasons.append('主题退潮/回避')
             if _x.get('T1Risk') == 'Extreme':
                 _reasons.append('T1GapRisk=Extreme')
-            # 死叉临界+低乖离+健康量价 = 方向待确认，应给机会；仅当位置高/筹码走弱/量能不足时才列入排除
-            if _x.get('死叉临界') and (_x.get('距MA20', 0) > 15 or _x.get('Risk_Score', 50) > 20 or _x.get('今日量比', 1) < 0.8):
-                _reasons.append('死叉临界')
+            # MACD 阀门（20260915·宁可错过不可做错）：方向未确认（死叉临界/绿柱未翻红）一律拦截
+            # 原「死叉临界+低乖离+健康量价给机会」的口径已废止（0914实测该组均-1.95%/胜率20%）
+            if _x.get('_macd_block'):
+                _why_macd = '死叉临界' if _x.get('死叉临界') else _x.get('MACD状态', '')
+                _reasons.append(f"MACD阀门拦截（{_why_macd}）")
             if _reasons:
                 _excluded.append((_x, '；'.join(_reasons)))
     if _excluded:
@@ -2058,6 +2077,10 @@ def _output_report(results, simple=False, market_tip=None):
         if _best:
             lines.append(f"最接近候选: {_best['名称']}({_best['代码']}) FinalEntryScore={_best.get('FinalEntryScore', '-')} 评级={_best.get('Rating', '')}（仍缺 主题共振/位置 等条件，仅观察）")
     lines.append("坚决避免：高位 + 高潮 + 巨大乖离 + 放量加速末端 + 预期一致性过强")
+    _mb = [x for x in results if x.get('_macd_block') and x.get('量能爆发评分', 0) >= 85]
+    if _mb:
+        lines.append(f"⛔ MACD阀门：拦截 {len(_mb)} 只高分票（{'、'.join(x['名称'] for x in _mb[:5])}）"
+                     f"——方向未确认（死叉临界/绿柱未翻红），宁可错过不可做错，不计入买点")
     lines.append("")
 
     lines.append("## 🔥 量能爆发·强买信号（形态参考，非买入排序依据）")
@@ -2076,13 +2099,14 @@ def _output_report(results, simple=False, market_tip=None):
     lines.append("")
 
     if vs_watch:
-        lines.append("## 👀 量能爆发·观察信号（MACD即将红柱，等待翻红确认）")
+        lines.append("## 👀 量能爆发·观察信号（MACD 未确认 · ⛔不可买，仅供跟踪）")
         for i, _vr in enumerate(vs_watch[:10], 1):
             lines.append(f"【观察{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
             lines.append(f"  {_vr['观察原因']}")
             _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
             lines.append(f"  {_t}")
             lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']}")
+            lines.append("  ⛔ 不可买：MACD 方向未确认（死叉临界/绿柱未翻红），须等红柱确认后重新评估")
             lines.append(_chip_v5_line(_vr))
         lines.append("")
 

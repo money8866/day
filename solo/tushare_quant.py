@@ -6622,10 +6622,12 @@ def get_chip_alpha_engine():
     return _chip_alpha_engine
 
 
-def batch_chip_alpha(stocks, lookback_days=20):
+def batch_chip_alpha(stocks, lookback_days=20, end_date=None):
     """
     批量计算筹码Alpha因子
     参数: stocks - list of dict，至少包含'代码'字段
+         end_date - 目标交易日 YYYYMMDD；缺省时引擎会回退到运行当天，
+                    历史日期重算会引入前视数据，调用方应显式传入
     返回: dict {ts_code: chip_result_dict}
     """
     engine = get_chip_alpha_engine()
@@ -6639,7 +6641,7 @@ def batch_chip_alpha(stocks, lookback_days=20):
         if not ts_code:
             continue
         try:
-            r = engine.analyze(ts_code, lookback_days=lookback_days)
+            r = engine.analyze(ts_code, end_date=end_date, lookback_days=lookback_days)
             results[ts_code] = r
             if (i + 1) % 10 == 0:
                 print(f"[ChipAlpha] 批量计算 {i+1}/{total}")
@@ -8237,7 +8239,7 @@ def run(target_date=None, simple_mode=False):
     # =========================
     if ranked_stocks:
         print(f"[ChipAlpha-突破股池] 批量计算 {len(ranked_stocks)} 只股票的筹码Alpha...")
-        _chip_results = batch_chip_alpha(ranked_stocks, lookback_days=20)
+        _chip_results = batch_chip_alpha(ranked_stocks, lookback_days=20, end_date=TRADE_DATE)
         for s in ranked_stocks:
             _code = s.get('代码', '')
             _chip_r = _chip_results.get(_code)
@@ -8600,7 +8602,7 @@ def run(target_date=None, simple_mode=False):
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        四态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)。
+        五态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)。
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
         def _num(v):
@@ -8664,7 +8666,8 @@ def run(target_date=None, simple_mode=False):
                                         continue
                                     rows.append(cells)
                     _cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
-                           "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点"}
+                           "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
+                           "BREAKOUT_RETEST": "放量突破后缩量回踩买点"}
 
                     def _cv(cells, name):
                         return cells[col_idx[name]] if name in col_idx else ""
@@ -8689,7 +8692,7 @@ def run(target_date=None, simple_mode=False):
         p = [
             "【W7 二波·今日可操作（当日买点，收盘后过滤口径）】",
             f"数据来源：W7 HVT-V3 二波引擎（{trade_date}，共{len(items)}只）| "
-            "当日买点四态：SECOND_WAVE=二波买点 / BREAKOUT_CONFIRM=放量突破确认 / RE_EXPANSION=重新扩张 / T0_CONFIRM=T0天量确认买点 | "
+            "当日买点五态：SECOND_WAVE=二波买点 / BREAKOUT_CONFIRM=放量突破确认 / RE_EXPANSION=重新扩张 / T0_CONFIRM=T0天量确认买点 / BREAKOUT_RETEST=放量突破后缩量回踩买点 | "
             "操作口径：现价>触发价=已突破在上方可回踩低吸或持有；量比≥1.2 放量突破触发价=买点触发；"
             "量比≥3 巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线",
             "候选已按 IGE_ADJ 行业增长弹性高优先降序（高弹性行业在前），最终输出须严格保持此顺序，禁止重排；每条必须显示 IGE_ADJ 数值。",

@@ -23,14 +23,26 @@ MAIN_EVENT_PCT = 99.0  # 主事件门槛：量能+换手历史分位双≥P99 �
 MAX_EVENT_AGE = 60  # 近 60 天内出现过天量事件即入候选池
 WATCH_MIN_T120 = 60  # V4.3：WATCH 状态 T120 下限，低于此分值的低分兜底票不输出
 ANCHORS = {"中际旭创": ("300308.SZ", "20250508"), "华正新材": ("603186.SH", "20250812")}
-STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP", "RE_EXPANSION", "BREAKOUT_CONFIRM", "SECOND_WAVE", "T0_CONFIRM", "DISTRIBUTION", "FAILED"]
-# V5.1：当日买点四态（同步下游 stock_pick_db / tushare 均只取这四态，与报告「今日可操作榜」口径一致）
-ACTION_BUY_STATES = ("SECOND_WAVE", "BREAKOUT_CONFIRM", "RE_EXPANSION", "T0_CONFIRM")
+STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP", "RE_EXPANSION", "BREAKOUT_CONFIRM", "SECOND_WAVE", "T0_CONFIRM", "BREAKOUT_RETEST", "DISTRIBUTION", "FAILED"]
+# V5.1：当日买点五态（同步下游 stock_pick_db / tushare 均只取这几态，与报告「今日可操作榜」口径一致）
+# 20260914 新增 BREAKOUT_RETEST：放量突破后缩量回踩买点（移远通信：8/14 天量T0 → 8/31 放量突破 → 9/9 起缩量回踩）
+ACTION_BUY_STATES = ("SECOND_WAVE", "BREAKOUT_CONFIRM", "RE_EXPANSION", "T0_CONFIRM", "BREAKOUT_RETEST")
 # 20260909 用户口径「T0 确认买点」（我爱我家 8/19→8/27）：天量 T0 之后出现首根收盘回到
 # T0 收盘价之上的“重夺日”（8/25），随后连续 ≥2 根收盘站稳 T0 收盘价（8/26/8/27），
 # 确认日当日即视为有效买点（旁路 <5 根K线等待期与 major_risk 的早期误判）。仅限事件后
 # 早期窗口，且真实放量突破（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION）仍优先。
 T0_CONFIRM_MAX_BARS = 10
+# 20260914 用户口径「天量T0 → 放量突破 → 缩量回踩买点」门槛（移远通信 603236.SH：
+# 8/14 天量T0(P99, 3.83×量) → 8/31 放量涨停突破日 → 9/3 起缩量、9/9 回踩至突破日收盘附近不破 = 买点）
+BREAKOUT_DAY_PCT = 5.0  # 放量突破日：强势阳线涨幅下限（涨停/大涨）
+BREAKOUT_DAY_VOLR = 1.3  # 放量突破日：量能 ≥1.3×前20日均量
+RETEST_VOL_RATIO = 0.8  # 缩量回踩：近3日均量 ≤ 突破日量 ×0.8
+RETEST_DRYUP = 0.95  # 真缩量：近3日均量 ≤ 突破前20日均量 ×0.95（突破日常为3~5倍量，仅对比突破日会虚松）
+RETEST_TOL = 1.005  # 回踩到位：回踩期收盘曾回到 突破日收盘 ×1.005 以内
+RETEST_MA20_K = 0.97  # 回踩不破：现价 ≥ MA20 ×0.97
+RETEST_MAX_AGE = 15  # 回踩结构新鲜度：放量突破日距当日 ≤15 根（更早的突破已非“回踩位附近”）
+RETEST_MAX_EXT = 1.10  # 不追高：现价 ≤ 突破日收盘 ×1.10（回踩位附近低吸；已拉开则转由突破/二波分支处理）
+RETEST_PULLBACK = 0.95  # 须真实回踩：突破日前最低 ≤ T0 收盘 ×0.95（排除 T0 后单边直上的加速股）
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
 
@@ -182,21 +194,38 @@ def _fill_ma_columns(df, price=None):
     return df
 
 
-def market_regime(conn, trade_date):
-    # 缓存库无指数数据（窄表仅存个股），改用全市场等权日收益序列近似市场环境
-    q = """
-        SELECT trade_date, AVG(pct_chg) AS m
-        FROM daily_cache
-        WHERE trade_date<=? AND pct_chg IS NOT NULL
-        GROUP BY trade_date ORDER BY trade_date DESC LIMIT 65
+MARKET_INDEX_CODE = "000001.SH"  # 市场环境基准指数（原用全市场等权日收益近似，现改用 index_daily_cache 真实指数）
+
+
+def market_index_series(conn, end_date, start_date=None):
+    """读取 index_daily_cache 基准指数收盘序列（升序）
+
+    Returns: (dates ndarray, close ndarray)；缓存缺失时返回空数组
     """
-    df = pd.read_sql_query(q, conn, params=(trade_date,)).sort_values("trade_date")
-    if len(df) < 25:
+    sql = ("SELECT trade_date, close FROM index_daily_cache WHERE ts_code=? AND trade_date<=?")
+    params = [MARKET_INDEX_CODE, str(end_date)]
+    if start_date:
+        sql += " AND trade_date>=?"
+        params.append(str(start_date))
+    sql += " ORDER BY trade_date"
+    try:
+        df = pd.read_sql_query(sql, conn, params=params)
+    except Exception:
+        df = pd.DataFrame()
+    if df.empty:
+        return np.array([], dtype=object), np.array([])
+    return (df.trade_date.astype(str).to_numpy(),
+            pd.to_numeric(df.close, errors="coerce").to_numpy(dtype=float))
+
+
+def market_regime(conn, trade_date):
+    """市场环境判断：基于 index_daily_cache 基准指数的 r20/r60（原实现为全市场等权日收益近似）"""
+    _dates, c = market_index_series(conn, trade_date)
+    if len(c) < 25:
         return "RANGE"
-    m = pd.to_numeric(df.m, errors="coerce").fillna(0.0) / 100.0
-    cum = (1.0 + m).cumprod()
-    r20 = cum.iloc[-1] / cum.iloc[-21] - 1.0
-    r60 = cum.iloc[-1] / cum.iloc[0] - 1.0
+    c = c[-65:]
+    r20 = c[-1] / c[-21] - 1.0
+    r60 = c[-1] / c[0] - 1.0
     if r20 > 0.06 and r60 > 0.03:
         return "BULL"
     if r20 > 0.02 or (r20 > -0.02 and r60 > 0):
@@ -338,45 +367,14 @@ class CacheReader:
         return now, prev
 
     def market_curve(self, end_date, min_date=None):
-        """全市场等权累计收益序列（RS 与市场环境基准）；按日均值 CSV 增量缓存，避免每次全表聚合"""
+        """市场环境基准曲线（RS 与市场环境判断）：改用 index_daily_cache 真实指数收盘，
+        归一化到起点=1.0，与原全市场等权累计收益曲线同量纲（原 CSV 增量缓存不再需要）"""
         if min_date is None:
             min_date = DATA_START
-        cache_path = os.path.join(self.cache_dir, "market_curve.csv")
-        q_new = "SELECT trade_date, AVG(pct_chg) AS m FROM daily_cache WHERE trade_date>? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
-        q_full = "SELECT trade_date, AVG(pct_chg) AS m FROM daily_cache WHERE trade_date>=? AND trade_date<=? AND pct_chg IS NOT NULL GROUP BY trade_date ORDER BY trade_date"
-        cached = None
-        if os.path.exists(cache_path):
-            try:
-                cached = pd.read_csv(cache_path, dtype={"trade_date": str})
-            except Exception:
-                cached = None
-        if cached is not None and len(cached):
-            last_cached = str(cached.trade_date.iloc[-1])
-            if last_cached >= end_date:
-                df = cached[cached.trade_date <= end_date].copy()
-            else:
-                new = pd.read_sql_query(q_new, self.conn, params=(last_cached, end_date))
-                if len(new):
-                    df = pd.concat([cached[["trade_date", "m"]], new], ignore_index=True)
-                    try:
-                        df.to_csv(cache_path, index=False)
-                    except Exception:
-                        pass
-                else:
-                    df = cached.copy()
-        else:
-            df = pd.read_sql_query(q_full, self.conn, params=(DATA_START, end_date))
-            try:
-                df.to_csv(cache_path, index=False)
-            except Exception:
-                pass
-        if df.empty:
-            return np.array([], dtype=object), np.array([])
-        if str(df.trade_date.iloc[0]) < min_date:
-            df = df[df.trade_date >= min_date]
-        m = pd.to_numeric(df.m, errors="coerce").fillna(0.0) / 100.0
-        dates = df.trade_date.astype(str).to_numpy()
-        return dates, (1.0 + m).cumprod().to_numpy()
+        dates, vals = market_index_series(self.conn, end_date, min_date)
+        if len(dates) == 0 or vals[0] <= 0:
+            return dates, vals
+        return dates, vals / vals[0]
 
     def close(self):
         self.conn.close()
@@ -444,7 +442,10 @@ def extreme_cluster_anchor(df, candidates, merge_gap=2):
     会把主事件错锚到 8/20(收阴在锚线下方)，导致后续确认链整体错位）。
 
     规则：间隔 <= merge_gap 个交易日的极端量日归为同一事件簇；取最近一簇；
-    簇内优先选“最早的涨停/极强阳日”(首根放量强势日) 为 T0 锚，无强势日则沿用原逻辑(最近一根)。
+    簇内优先选“最早的涨停/极强阳日”(首根放量强势日) 为 T0 锚；簇内无强势日时，
+    取**簇内量能最大的一天**为 T0（20260914 用户口径：移远通信 8/14 量 471246 为天量日 T0、
+    8/17 量 320575 属同簇次高，原回退 candidates[-1] 会错锚到 8/17 且后续 8/31 放量突破
+    与 9/9 缩量回踩整段漏判）。
     返回 (event_idx, event_percentile)。
     """
     if not candidates:
@@ -471,7 +472,8 @@ def extreme_cluster_anchor(df, candidates, merge_gap=2):
     for i, ep in last_cluster:
         if limit_like(i):
             return i, ep
-    return candidates[-1]  # 无强势首日，保留原口径不改变其它股行为
+    # 无强势首日：取簇内天量最大日（T0=天量日主事件），而非最近一根极端日
+    return max(last_cluster, key=lambda c: finite(df.iloc[c[0]].vol))
 
 
 def anchor_features(df, event_date):
@@ -535,6 +537,73 @@ def pp_score(df, i, locked, market_ok=True):
     return clip(score), True
 
 
+def breakout_day(df, i, ref_close):
+    """「放量突破日」判定（20260914 用户口径：移远通信 20260831 涨停 +9.99% / 量 232430=1.47×20日均量
+    / 收盘 61.64 站上 T0(8/14) 收盘 60.69 = 放量突破日；沿用原 pressure 口径会因事件后首波冲高
+    (8/18 高 62.77) 把压力位抬到 61.64 之上而漏判）。
+
+    条件：① 强势阳线（收阳且涨幅 ≥ BREAKOUT_DAY_PCT）；② 显著放量（量 ≥ BREAKOUT_DAY_VOLR×前20日均量）；
+    ③ 收盘创近 10 日收盘新高，或站上 ref_close（T0 收盘线）。
+    """
+    if i < 20:
+        return False
+    r = df.iloc[i]
+    if finite(r.close) <= finite(r.open) or finite(r.pct_chg) < BREAKOUT_DAY_PCT:
+        return False
+    vol20 = safe_mean(df.vol.iloc[i - 20:i])
+    if vol20 <= 0 or finite(r.vol) < vol20 * BREAKOUT_DAY_VOLR:
+        return False
+    prev_close_hi = finite(df.close.iloc[max(0, i - 10):i].max())
+    return finite(r.close) > prev_close_hi or finite(r.close) > finite(ref_close)
+
+
+def breakout_retest(df, event_idx, end, latest, ref_close):
+    """「放量突破 → 缩量回踩」买点识别（返回 (回踩成立, 突破日 index or -1)）。
+
+    原状态机在 T0 天量后若先深踩（移远通信 8/26 低 54.61 < T0 低 59.90×0.95）再放量突破，
+    因 recent_hold 恒 False → major_risk 一路 FAILED；且 pressure 被事件后首波冲高抬到
+    突破日收盘之上，breakout 也恒 False，整段漏判。
+
+    规则：在事件后（不含当日）找「放量突破日」B，若其后满足
+      ① 新鲜度：B 距当日 ≤ RETEST_MAX_AGE 根（更早的突破已非"回踩位附近"）；
+      ② 真实回踩：B 之前（T0 之后）最低 ≤ T0 收盘 ×RETEST_PULLBACK（排除 T0 后单边直上的加速股）；
+      ③ 不追高：现价 ≤ B 收盘 ×RETEST_MAX_EXT（已拉开则转由突破/二波分支处理）；
+      ④ 缩量：回踩期近 3 日均量 ≤ B 量 ×RETEST_VOL_RATIO，且 ≤ 突破前 20 日均量 ×RETEST_DRYUP（真缩量）；
+      ⑤ 回踩到位：回踩期收盘曾回到 B 收盘 ×RETEST_TOL 以内；
+      ⑥ 回踩不破：回踩期最低 ≥ B 低点 ×0.99；
+      ⑦ 守住防线：现价 ≥ MA20 ×RETEST_MA20_K。
+    则回踩期每个交易日均为有效买点（取最早满足结构的突破日，保证跨日稳定）。
+    """
+    for j in range(event_idx + 1, end):
+        if not breakout_day(df, j, ref_close):
+            continue
+        if end - j > RETEST_MAX_AGE:
+            continue
+        b = df.iloc[j]
+        pre = df.iloc[event_idx + 1:j]
+        if pre.empty or finite(pre.low.min()) > finite(ref_close) * RETEST_PULLBACK:
+            continue
+        if finite(latest.close) > finite(b.close, latest.close) * RETEST_MAX_EXT:
+            continue
+        seg = df.iloc[j + 1:end + 1]
+        if seg.empty:
+            continue
+        vol20_base = safe_mean(df.vol.iloc[max(0, j - 20):j])
+        retest_vol = safe_mean(seg.vol.iloc[-3:])
+        if retest_vol > finite(b.vol, 1) * RETEST_VOL_RATIO:
+            continue
+        if vol20_base > 0 and retest_vol > vol20_base * RETEST_DRYUP:
+            continue
+        if finite(seg.close.min()) > finite(b.close) * RETEST_TOL:
+            continue
+        if finite(seg.low.min()) < finite(b.low) * 0.99:
+            continue
+        if finite(latest.close) < finite(latest.ma_bfq_20, latest.close) * RETEST_MA20_K:
+            continue
+        return True, j
+    return False, -1
+
+
 def state_and_features(df, event_idx, event_percentile, end=None):
     end = len(df) - 1 if end is None else min(end, len(df) - 1)
     base = behavior_features(df, event_idx, event_percentile, end=end)
@@ -588,6 +657,16 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     pp, pp_ok = pp_score(df, end, base["lock"] >= 70 and base["sds"] >= 65)
     reexp = pp_ok and finite(latest.vol) >= vol20 * 0.9 and finite(latest.close) >= pressure * 0.995
     breakout = finite(latest.close) > pressure and finite(latest.vol) >= vol20 * 1.2 and pct_position(latest.open, latest.high, latest.low, latest.close) >= 70 and (latest.high - latest.close) / max(latest.high - latest.low, 0.01) < 0.35
+    # 20260914「放量突破日 / 放量突破后缩量回踩」买点（旁路 major_risk 的 T0 低点口径误判：
+    # T0 后先深踩再放量突破时，旧 recent_hold 恒 False + pressure 被首波冲高抬高，导致整段 FAILED）
+    breakout_now = breakout_day(df, end, event_close)
+    retest, retest_bar = (False, -1)
+    if not persistent_sell:
+        retest, retest_bar = breakout_retest(df, event_idx, end, latest, event_close)
+    base["breakout_now"] = breakout_now
+    base["retest_bar"] = retest_bar
+    base["retest_date"] = str(df.iloc[retest_bar].trade_date) if retest_bar >= 0 else ""
+    base["retest_close"] = finite(df.iloc[retest_bar].close) if retest_bar >= 0 else 0.0
     if len(post) < 5 and not t0_hold:
         # V4.2 放宽：事件太新不判死，仅持续放量抛压标记观察；其余等待验证期
         state = "FAILED" if persistent_sell else "EXTREME_CHURN"
@@ -599,6 +678,12 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     elif t0_hold:
         # 20260909：T0 天量锚定 + 重夺站稳≥2根 → 确认日当日有效买点（旁路等待期/派发误判）
         state = "T0_CONFIRM"
+    elif breakout_now:
+        # 20260914：放量突破日当日（强势阳线≥5% + 量≥1.3×20日均量 + 站上 T0 收盘线/近10日新高）
+        state = "BREAKOUT_CONFIRM"
+    elif retest:
+        # 20260914：放量突破后缩量回踩，回踩期每个交易日均为有效买点
+        state = "BREAKOUT_RETEST"
     elif major_risk:
         state = "FAILED" if len(post) >= 8 else "DISTRIBUTION"
     elif distribution:
@@ -612,6 +697,12 @@ def state_and_features(df, event_idx, event_percentile, end=None):
         state = "ABSORPTION"
     else:
         state = "EXTREME_CHURN"
+    if state == "BREAKOUT_RETEST" and retest_bar >= 0:
+        # 回踩买点：触发价改用放量突破日收盘（=回踩位，与其余状态「触发价=突破位」口径一致，
+        # 下游 trade_execution_engine 的 Buy Zone=Trigger±1.5%、retest_score 均据此判定）；
+        # 而非“事件后10日平台高点”（该高点常被 T0 后首波冲高抬高，与实际结构无关）。
+        # 失效位仍为放量突破日低点/MA20，见报告「操作口径」。
+        pressure = finite(df.iloc[retest_bar].close, pressure)
     return base, state, pp, pp_ok, reexp, breakout, major_risk, drawdown, pressure
 
 
@@ -938,13 +1029,15 @@ def hvt_type(state, lc, dist_risk):
     return "EXT"
 
 
-def horizon_phases(tp, lc, breakout, t0_confirm=False):
+def horizon_phases(tp, lc, breakout, t0_confirm=False, retest=False):
     """V5 四周期预期阶段文本（T+10/20/60/120）"""
     if tp == "DISTRIBUTION":
         return {"t10": "回避，观察派发确认", "t20": "回避", "t60": "回避", "t120": "回避"}
     lv = lc["level"]
     if t0_confirm:
         t10, t20 = "确认日买点：T0收盘价上方站稳≥2日", "回踩不破T0收盘价持有，收盘跌破离场"
+    elif retest:
+        t10, t20 = "回踩突破位（放量突破日收盘）缩量企稳即低吸", "跌破 MA20 或放量突破日低点离场"
     elif breakout:
         t10, t20 = "突破放量确认", "趋势启动，回踩不破MA10持有"
     else:
@@ -1104,7 +1197,7 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     event_low = finite(df.low.iloc[event_idx], 0.0)
     entry, entry_dims = entry_score_v2(df, last, pp, pp_ok, reexp, breakout, event_low, mkt)
     # V5 状态机：派发型不进 A/B 榜；A/B 榜按 HVT-V3 总分；C榜=WATCH 兜底
-    trend_state = state in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")
+    trend_state = state in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "BREAKOUT_RETEST")
     trend_confirmed = breakout or reexp or dims["trend"] >= 70
     if tp == "DISTRIBUTION":
         status = "WATCH"
@@ -1113,6 +1206,14 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
         if score >= 85 and entry >= 80:
             status = "PRIMARY_BUY"
         elif score >= 80:
+            status = "T120_ROCKET"
+        else:
+            status = "CONFIRMED"
+    elif state == "BREAKOUT_RETEST":
+        # 20260914：放量突破后缩量回踩，回踩确认日当日已是有效买点（同 T0_CONFIRM 口径按分数定级）
+        if score >= 85 and entry >= 80:
+            status = "PRIMARY_BUY"
+        elif score >= 78:
             status = "T120_ROCKET"
         else:
             status = "CONFIRMED"
@@ -1136,6 +1237,9 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     elif state == "T0_CONFIRM":
         reason = (f"T0天量确认买点（{event_date}锚，重夺T0收盘站稳≥2日，收盘未破"
                   f"{base['event_close']:.2f}）：{core}；{ext_txt}；ENTRY={entry:.0f}")
+    elif state == "BREAKOUT_RETEST":
+        reason = (f"放量突破后缩量回踩买点（{base.get('retest_date', '')}放量突破，回踩至其收盘"
+                  f"{base.get('retest_close', 0):.2f}附近缩量不破、守MA20）：{core}；{ext_txt}；ENTRY={entry:.0f}")
     elif status == "PRIMARY_BUY":
         reason = f"HVT-V3高分+买点双高：{core}；{ext_txt}；ENTRY={entry:.0f}"
     elif status == "T120_ROCKET":
@@ -1168,7 +1272,8 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
             "event_date": event_date, "event_percentile": ep, "reexpansion": reexp, "breakout": breakout,
             "major_risk": major_risk, "hard_fail": major_risk, "reason": reason,
             "next": next_trigger(status, entry_dims, breakout, pp_ok), "explanation": explanation,
-            "horizons": horizon_phases(tp, lc, breakout, t0_confirm=(state == "T0_CONFIRM"))}
+            "horizons": horizon_phases(tp, lc, breakout, t0_confirm=(state == "T0_CONFIRM"),
+                                       retest=(state == "BREAKOUT_RETEST"))}
 
 
 def markdown(results, date):
@@ -1177,8 +1282,9 @@ def markdown(results, date):
     results = sorted(results, key=lambda x: (-x["rank"], x["code"]))
     ige_snap = next((str(r.get("ige_snap") or "") for r in results if r.get("ige_snap")), "")
 
-    # 当日买点=已突破/确认四态（状态机在“当日有效放量突破触发价”当天即标为
-    # SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION，T0_CONFIRM=确认日当日买点）。
+    # 当日买点=已突破/确认五态（状态机在“当日有效放量突破触发价”当天即标为
+    # SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION，T0_CONFIRM=确认日当日买点，
+    # BREAKOUT_RETEST=放量突破后缩量回踩买点当日）。
     # 不再做 close>pressure&volr≥1.2 的宽松兜底——实测会把派发/失败/巨量追高票混入。
     ACTION_STATES_5 = ACTION_BUY_STATES
 
@@ -1202,14 +1308,15 @@ def markdown(results, date):
     n_dist = sum(1 for x in results if x["type"] == "DISTRIBUTION")
     lines = [f"# W7 HVT-V3 过滤后榜单（今日可操作 · C池等待）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
-    lines.append(f"今日可操作（当日买点）＝ {n_action} 只：二波/突破确认/重新扩张/T0天量确认；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
+    lines.append(f"今日可操作（当日买点）＝ {n_action} 只：二波/突破确认/重新扩张/T0天量确认/放量突破后缩量回踩；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
     cnt_state = {}
     for x in results:
         cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
-    n_broken = sum(cnt_state.get(s, 0) for s in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "T0_CONFIRM"))
+    n_broken = sum(cnt_state.get(s, 0) for s in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "T0_CONFIRM", "BREAKOUT_RETEST"))
     lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　"
-                 f"（已突破/确认类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM 合计 {n_broken} 家，T0_CONFIRM=天量T0确认买点当日）")
-    lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点，放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方；MA20=总防线；量比=当日量/前20日均量（不含当日）")
+                 f"（已突破/确认类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM/BREAKOUT_RETEST 合计 {n_broken} 家，"
+                 f"T0_CONFIRM=天量T0确认买点当日，BREAKOUT_RETEST=放量突破后缩量回踩买点当日）")
+    lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位），放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方（BREAKOUT_RETEST 例外：跌破 MA20 或放量突破日低点才算失效）；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
         lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 IGE_ADJ 高弹性行业优先（降序）重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
@@ -1224,7 +1331,8 @@ def markdown(results, date):
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
         lines.append("")
         lines.append("操作口径：现价>触发价=已突破在上方，回踩触发价不破可低吸或持有；收盘跌回触发价下方离场；MA20=总防线。"
-                     "量比≥1.2=当日放量突破触发价=买点触发；量比≥3的巨量日不追，只等回踩。")
+                     "量比≥1.2=当日放量突破触发价=买点触发；量比≥3的巨量日不追，只等回踩。"
+                     "BREAKOUT_RETEST=放量突破后缩量回踩买点：触发价=放量突破日收盘（回踩位），回踩该位缩量不破即低吸；跌破 MA20 或放量突破日低点即离场。")
     else:
         lines.append("_（今日无当日买点标的，空仓等待 C 池高分票放量突破）_")
     # 池内形态分布（替代原 A/B/MID 大列表，只给分布不给明细）
@@ -1279,7 +1387,8 @@ def sync_downstream(date, results, output):
     actionable = [x for x in results if x["state"] in ACTION_BUY_STATES]
     actionable.sort(key=lambda y: (_ige(y), y["score"]), reverse=True)
     act_cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
-              "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点"}
+              "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
+              "BREAKOUT_RETEST": "放量突破后缩量回踩买点"}
     out_dir = os.path.dirname(os.path.abspath(output)) or OUTPUT_DIR
     os.makedirs(out_dir, exist_ok=True)
     signals = []

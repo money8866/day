@@ -36,7 +36,7 @@ from theme_trend_sentiment_score import (
     get_daily_basic, per_stock_features,
     calc_trend_score, calc_sentiment_score,
     calc_theme_hot_score, get_theme_hot_score_percentile,
-    judge_hot_phase, calc_theme_state,
+    judge_hot_phase, is_hot_climax_phase, calc_theme_state,
     get_prev_day_theme_data, analyze_style_trend,
     get_dc_hot_multi_days,
     linear, sigmoid,
@@ -663,6 +663,9 @@ def run_v2_analysis(trade_date=None):
             'top5_stocks': top5_stocks,
             'hot_score': round(hot_score, 2), 'hot_percentile': hot_percentile,
             'hot_phase': hot_phase, 'hot_warning': hot_warning,
+            # 热度来源：hot_list(热榜) / zt_count_backup(无热榜日涨停数替代)，
+            # 替代模式下分位与历史热榜口径不可比，供过热判定降级使用
+            'hot_source': hot_detail.get('source', ''),
             'hot_detail': hot_detail,
             # ── V3 Rotation Engine 字段 ──
             'fund_score': fund_score, 'fund_detail': fund_detail,
@@ -988,7 +991,7 @@ def classify_v3_lifecycle(r):
     hot_phase = r.get('hot_phase', '')
 
     # 1. 高潮：情绪极致化（涨停密度极高 / 连板极高 / 热榜顶峰 / 涨停绝对数≥15）
-    if climax == 1 or (max_lb >= 3 and zt_ratio >= 0.025) or hot_phase == '高潮':
+    if climax == 1 or (max_lb >= 3 and zt_ratio >= 0.025) or is_hot_climax_phase(hot_phase):
         return '高潮'
     # 2. 退潮：趋势+情绪双弱 且 赚钱效应消失（上涨率<40%）
     if trend < 35 and emotion < 35 and up_ratio < 40:
@@ -1572,11 +1575,17 @@ def _load_market_directive(trade_date):
 # ═══════════════════════════════════════════════════════════
 STRONG_LC_V4 = {'主升', '升温'}
 def _hot_overheat_v4(r):
-    """热度过热拦截：热榜高位(≥85分位) 或 情绪-趋势双高潮 或 热榜相位于高潮"""
+    """热度过热拦截：热榜高位(≥85分位) 或 情绪-趋势双高潮 或 热榜相位于高潮
+
+    降级规则：无热榜日（hot_source=zt_count_backup）热度由涨停数替代，其得分与
+    历史热榜口径不可比，分位会被系统性推到高位 → 此时不参与过热判定，
+    仅保留"情绪-趋势双高潮 / 相位=高潮"两条，避免强势主题被误杀。
+    """
     hot_pct = float(r.get('hot_percentile', 50) or 50)
     climax = 1 if (float(r.get('trend_score', 0) or 0) >= 70
                    and float(r.get('sentiment_score', 0) or 0) >= 85) else 0
-    return (hot_pct >= 85) or (climax == 1) or (r.get('hot_phase') == '高潮')
+    is_proxy = str(r.get('hot_source', '') or '') == 'zt_count_backup'
+    return (hot_pct >= 85 and not is_proxy) or (climax == 1) or is_hot_climax_phase(r.get('hot_phase'))
 
 
 def calc_mainline_tier_v4(r, prev_lc=None, prev_state=None):
@@ -1620,6 +1629,7 @@ def calc_mainline_tier_v4(r, prev_lc=None, prev_state=None):
     r['gate_feat'] = json.dumps(
         {'lc': lc, 'trend': trend, 'comp': comp, 'mig': mig, 'zt': zt,
          'up': up_ratio, 'fund': fund_acc, 'hot_pct': r.get('hot_percentile', 50),
+         'hot_src': r.get('hot_source', ''),
          'prev_lc': prev_lc or '', 'days': days_strong, 'cap': round(max_amt, 1),
          'overheat': int(overheat)}, ensure_ascii=False)
 
@@ -2524,7 +2534,7 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
 
     # ── 3.5 重点主题深度分析（高潮=风险处置 / 启动=机会跟踪）──
     focus_climax = [r for r in results if str(r.get('lifecycle', '') or '') == '高潮'
-                    or str(r.get('hot_phase', '') or '') == '高潮']
+                    or is_hot_climax_phase(r.get('hot_phase'))]
     focus_start = [r for r in results if str(r.get('lifecycle', '') or '') == '启动']
     focus_climax.sort(key=lambda x: x.get('hot_score', 0) or 0, reverse=True)
     focus_start.sort(key=lambda x: x.get('final_trade_score', 0) or 0, reverse=True)
@@ -2550,7 +2560,7 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
             ev.append(f"热度60日分位{hot_pct:.0f}≥85")
         if trend >= 70 and sent >= 85:
             ev.append(f"趋势{trend:.0f}×情绪{sent:.0f}双高（情绪透支形态）")
-        if str(r.get('hot_phase', '') or '') == '高潮':
+        if is_hot_climax_phase(r.get('hot_phase')):
             ev.append("热榜阶段判定=高潮")
         return "；".join(ev) or "生命周期标记=高潮（热度分位未达85，按情绪相位判定）"
 

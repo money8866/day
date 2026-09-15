@@ -3,7 +3,8 @@
 PBP 市场过滤器 + 行业/主题共振（第十三、十四节）
 
 数据源（全部本地缓存，无网络依赖）：
-  1. TDX 指数 .day 文件：上证指数(sh000001)、沪深300(sh000300)、中证1000(sh000852)
+  1. SQLite index_daily_cache 指数日线：上证指数(000001.SH)、沪深300(000300.SH)、中证1000(000852.SH)
+     （缓存缺失时回退本地 TDX .day）
   2. SQLite daily_cache 全市场快照：涨跌比、成交额、涨停/跌停家数
 
 输出：
@@ -53,12 +54,42 @@ _INDEX_FILES = {
     "zz1000": "sh000852.day", # 中证1000（小盘代表，替代中证2000）
 }
 
+# 统一指数缓存 index_daily_cache 中的对应代码（新数据源）
+_INDEX_TS_CODES = {
+    "sh": "000001.SH",
+    "hs300": "000300.SH",
+    "zz1000": "000852.SH",
+}
+
 _idx_cache: dict = {}
+
+
+def _load_index_from_cache(ts_code: str) -> Optional[pd.DataFrame]:
+    """从 SQLite index_daily_cache 读取指数日线（统一指数缓存，替代 TDX .day）"""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(CACHE_DB_PATH, timeout=10.0)
+        df = pd.read_sql_query(
+            "SELECT trade_date, open, high, low, close FROM index_daily_cache "
+            "WHERE ts_code=? ORDER BY trade_date",
+            conn, params=(str(ts_code),),
+        )
+        conn.close()
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    df["trade_date"] = df["trade_date"].astype(str)
+    return df
 
 
 def _load_index(key: str) -> Optional[pd.DataFrame]:
     if key not in _idx_cache:
-        _idx_cache[key] = _parse_tdx_day(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", _INDEX_FILES[key]))
+        df = _load_index_from_cache(_INDEX_TS_CODES[key])
+        if df is None:
+            # 缓存缺失时回退本地 TDX .day（无网络依赖）
+            df = _parse_tdx_day(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", _INDEX_FILES[key]))
+        _idx_cache[key] = df
     return _idx_cache[key]
 
 

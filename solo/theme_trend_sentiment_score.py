@@ -629,6 +629,15 @@ def judge_hot_phase(hot_score, percentile, top10_count, top5_count, total_stocks
     return phase, warning
 
 
+def is_hot_climax_phase(phase):
+    """hot_phase 是否为「高潮」相位。
+
+    judge_hot_phase 的返回值带 emoji 前缀（如 '🔥 高潮'、'⚠️ 拥挤'），
+    直接用 == '高潮' 比较会恒为 False，故统一走包含判断。
+    """
+    return '高潮' in str(phase or '')
+
+
 def _strip_ii(name):
     """剥离东财/申万行业板块名的层级后缀(Ⅱ/Ⅲ)，用于跨层级匹配。
 

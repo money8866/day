@@ -213,7 +213,13 @@ def get_index_kline(ts_code="000300.SH", trade_date=None):
             print(f"[Index] 缓存数据格式异常，重新拉取")
     
     print(f"[Index] 拉取 {ts_code} 数据: {start_date} ~ {trade_date}")
-    df = pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
+    # 指数行情统一走 index_daily_cache（缓存优先，缺口自动增量补），失败再回落直连 API
+    try:
+        from stock_cache import cached_index_daily
+        df = cached_index_daily(ts_code, start_date, trade_date)
+    except Exception as e:
+        print(f"[Index] index_daily_cache 不可用({e})，回退直连")
+        df = pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=trade_date)
     if df is None or df.empty:
         # V2: 优先 daily_cache 表
         try:

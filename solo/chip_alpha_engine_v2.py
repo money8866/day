@@ -41,6 +41,9 @@ import numpy as np
 # 全局API调用锁（确保多线程环境下120ms最小间隔）
 _API_LOCK = threading.Lock()
 
+# end_date 缺省回退告警只打一次（避免批量调用时刷屏）
+_DEFAULT_END_DATE_WARNED = False
+
 
 # ============================================================
 # 工具函数
@@ -1256,6 +1259,11 @@ class ChipAlphaEngineV2:
         """完整筹码Alpha分析"""
         if end_date is None:
             end_date = datetime.now().strftime('%Y%m%d')
+            global _DEFAULT_END_DATE_WARNED
+            if not _DEFAULT_END_DATE_WARNED:
+                _DEFAULT_END_DATE_WARNED = True
+                print(f"[ChipAlphaV2] ⚠️ 调用方未传 end_date，已回退为运行当天 {end_date}；"
+                      f"历史交易日重算会引入目标日之后的数据（前视），请显式传入目标交易日", flush=True)
         end_date = str(end_date).replace('-', '')
 
         print(f"[ChipAlphaV2] 分析 {ts_code}，截止 {end_date}，回溯 {lookback_days} 天")

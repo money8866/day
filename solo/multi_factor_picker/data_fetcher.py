@@ -1541,6 +1541,19 @@ class DataFetcher:
             if cached is not None:
                 return cached
 
+        # 统一走 stock_cache.index_daily_cache（缓存优先，缺口自动增量补）
+        try:
+            df = sc.cached_index_daily(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                req = [c.strip() for c in fields.split(',')] if fields else None
+                if req:
+                    df = df[[c for c in req if c in df.columns]]
+                if self.cache_enabled:
+                    save_cache(df, self.cache_dir, cache_key)
+                return df
+        except Exception:
+            pass
+
         try:
             df = self._retry_call(
                 self.pro.index_daily,
@@ -1790,12 +1803,18 @@ class DataFetcher:
 
     def get_index_daily(self, ts_code: str, start_date: str = None,
                         end_date: str = None) -> pd.DataFrame:
-        """指数日线（按指数代码缓存）"""
+        """指数日线（统一走 stock_cache.index_daily_cache，本地 parquet 降为二级缓存）"""
         if end_date is None:
             end_date = datetime.now().strftime('%Y%m%d')
         if start_date is None:
             start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
         cache_key = f"index_daily_{self._safe_name(ts_code)}_{start_date}_{end_date}"
+        try:
+            df = sc.cached_index_daily(ts_code, start_date, end_date)
+            if df is not None and not df.empty:
+                return df
+        except Exception:
+            pass
         return self._get_df_cached(
             cache_key, self.pro.index_daily,
             ts_code=ts_code, start_date=start_date, end_date=end_date,

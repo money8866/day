@@ -206,8 +206,40 @@ def db_daily_by_date(trade_date: str) -> Optional[pd.DataFrame]:
     return df
 
 
+def _index_from_cache(ts_code: str) -> Optional[pd.DataFrame]:
+    """index_daily_cache 指数日线（统一指数缓存，替代 TDX .day）"""
+    try:
+        with _conn() as conn:
+            df = pd.read_sql_query(
+                "SELECT trade_date, open, high, low, close FROM index_daily_cache "
+                "WHERE ts_code=? ORDER BY trade_date",
+                conn, params=(str(ts_code),),
+            )
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    df["trade_date"] = df["trade_date"].astype(str)
+    return df
+
+
 def get_trade_dates(start_date: str, end_date: str) -> list:
-    """用上证指数 .day 构建交易日历（无网络依赖）"""
+    """交易日历：优先 index_daily_cache（统一指数缓存），区间早于缓存起点时回退 TDX .day"""
+    try:
+        with _conn() as conn:
+            rng = conn.execute(
+                "SELECT MIN(trade_date), MAX(trade_date) FROM index_daily_cache WHERE ts_code='000001.SH'"
+            ).fetchone()
+            if rng and rng[0] and str(rng[0]) <= str(start_date) and str(rng[1]) >= str(end_date):
+                dates = pd.read_sql_query(
+                    "SELECT DISTINCT trade_date FROM index_daily_cache WHERE trade_date>=? AND trade_date<=? ORDER BY trade_date",
+                    conn, params=(str(start_date), str(end_date)),
+                )["trade_date"].tolist()
+                if dates:
+                    return [str(d) for d in dates]
+    except Exception:
+        pass
+
     idx = parse_tdx_day_file(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", "sh999999.day"))
     if idx is None:
         idx = parse_tdx_day_file(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", "sh000001.day"))
@@ -234,9 +266,12 @@ def last_trade_date_on_or_before(date_str: str) -> Optional[str]:
 def market_regime(date_str: str) -> str:
     """市场状态（strong/neutral/weak/bear）：上证指数 MA20/MA60 位置 + 20日涨幅
 
+    数据源：index_daily_cache（统一指数缓存），缺失时回退 TDX .day。
     仅使用 <=date_str 的指数数据，无未来函数。
     """
-    idx = parse_tdx_day_file(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", "sh999999.day"))
+    idx = _index_from_cache("000001.SH")
+    if idx is None:
+        idx = parse_tdx_day_file(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", "sh999999.day"))
     if idx is None:
         idx = parse_tdx_day_file(os.path.join(TDX_PATH, "vipdoc", "sh", "lday", "sh000001.day"))
     if idx is None:

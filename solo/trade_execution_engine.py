@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from w7_second_wave_engine import CacheReader, CACHE_DIR, OUTPUT_DIR  # noqa: E402
 
 # ---------------------------------------------------------------- 常量（V3.0 规格可调）
-BROKEN_STATES = {"BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION"}   # 已突破类
+BROKEN_STATES = {"BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "BREAKOUT_RETEST"}   # 已突破类
 NO_CHASE_STATES = {"EXTREME_CHURN"}                                   # 默认禁止追涨
 BROKEN_AVOID_BELOW = 0.98        # 已突破标的收盘跌破触发价×0.98 → AVOID
 BUY_BAND_LO = 0.985              # Buy Zone 下沿 = Trigger×0.985（Trigger±1.5%）
@@ -51,7 +51,7 @@ DRISK_MAX_PRIMARY = 20.0         # PRIMARY BUY 硬门槛：DRisk≤20
 WEIGHTS = dict(eq=0.30, struct=0.20, retest=0.20, vol=0.15, risk=0.10, life=0.05)
 
 # ---------------- V3.1 门控与止损重建（源自全市场回测对照） ----------------
-P1_STATES = {"SECOND_WAVE", "DRYUP"}                  # G2 状态准入：P1 无条件可用
+P1_STATES = {"SECOND_WAVE", "DRYUP", "BREAKOUT_RETEST"}                  # G2 状态准入：P1 无条件可用
 P2_STATES = {"BREAKOUT_CONFIRM", "RE_EXPANSION", "ABSORPTION"}  # P2 需 Execution≥P2_EXEC_MIN
 P2_EXEC_MIN = 85.0                                    # G2 质量门槛
 VOLR_MAX = 2.2                                        # G3 量比上界（> 视为放量过热）
@@ -70,11 +70,31 @@ def clip(v, lo=0.0, hi=100.0):
         return lo
 
 
+_RE_BULLET = re.compile(
+    r"\*\*[^*]+?\((?P<code>\d{6}\.[A-Z]{2})\)\*\*.*?HVT-V3=(?P<hvt_total>[\d.]+)"
+    r"（天量(?P<hvt>[\d.]+)/吸收(?P<absorption>[\d.]+)/生命(?P<life>[\d.]+)/空间(?P<space>[\d.]+)/"
+    r"加速(?P<accel>[\d.]+)/RS(?P<rs>[\d.]+)/基本面(?P<fina>[\d.]+)）.*?派发风险(?P<drisk>[\d.]+)")
+
+
 def parse_md_pool(md_path):
-    """解析 W7 报告：18 列表格(TOP20/A/B/MID) → 完整候选；10/6 列表格 → 参考信息。返回 (cands, refs)。"""
+    """解析 W7 报告，返回 (cands, refs)。
+
+    V5.1 现行报告：榜单是 11 列表格（IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态），
+    不含 v5 维度；维度唯一来源是「行为解释与 T+10/20/60/120 预期」明细段
+    （HVT-V3=（天量/吸收/生命/空间/加速/RS/基本面），派发风险）。故先扫明细段建 dims 表，
+    再取同时具备明细的 11 列表格行入候选（即「今日可操作榜」），C池无明细自动排除。
+    兼容旧版 18 列(TOP20/A/B/MID) / 10 列(已突破) / 6 列(C榜) 表格。
+    """
     with open(md_path, encoding="utf-8") as f:
         lines = f.read().split("\n")
     cands, refs = {}, {}
+    dims = {}
+    for ln in lines:
+        m = _RE_BULLET.search(ln)
+        if m:
+            g = m.groupdict()
+            dims[g["code"]] = {k: float(g[k]) for k in
+                               ("hvt", "absorption", "life", "space", "accel", "rs", "fina", "drisk")}
     cur_section = ""
     for ln in lines:
         if ln.startswith("## "):
@@ -86,7 +106,19 @@ def parse_md_pool(md_path):
         if len(cells) < 3 or not cells[0].isdigit():
             continue  # 表头/分隔/说明行
         # 数据行：cells[0]=序号 cells[1]=代码 cells[2]=名称
-        if len(cells) == 18:
+        if len(cells) == 11:  # V5.1 现行榜（维度须自明细段补齐，无明细的 C 池行不入候选）
+            code = cells[1]
+            if code not in dims:
+                continue
+            try:
+                rec = dict(code=code, name=cells[2], score=float(cells[4]), type=cells[5],
+                           close=float(cells[6]), pressure=float(cells[7]), ma20=float(cells[8]),
+                           volr=float(cells[9].lstrip("×")), state=cells[10],
+                           section=cur_section.split("（")[0].split("　")[0], **dims[code])
+            except ValueError:
+                continue
+            cands[code] = rec
+        elif len(cells) == 18:
             code, name = cells[1], cells[2]
             try:
                 rec = dict(code=code, name=name, score=float(cells[3]), type=cells[4], close=float(cells[5]),
@@ -176,7 +208,7 @@ def classify(c, t):
     if c["type"] == "DISTRIBUTION":
         return "NA", 30.0, "AVOID", "DISTRIBUTION 派发类型不进执行"
 
-    # 1) 已突破类（BREAKOUT_CONFIRM / SECOND_WAVE / RE_EXPANSION）—— 突破后回踩是首选买点
+    # 1) 已突破类（BREAKOUT_CONFIRM / SECOND_WAVE / RE_EXPANSION / BREAKOUT_RETEST）—— 突破后回踩是首选买点
     if state in BROKEN_STATES:
         if close < pressure * BROKEN_AVOID_BELOW:
             return "BROKEN", 38.0, "AVOID", f"收盘 {close:.2f} 已跌破触发价 {pressure:.2f}，结构失效"
@@ -382,10 +414,11 @@ def market_regime_series(dates, vals):
 
 def v31_decision(c, t, regime=1, _cls=None):
     """V3.1 统一决策（单一事实源，回测与日更共用）。
-    = V3.0 classify 分层 + Execution Score，再施 V3.1 门控（只收紧不放松）：
+    = V3.0 classify 分层 + Execution Score，再施 V3.1 门控：
       G1 状态剔除：EXTREME_CHURN → WATCH（NO CHASE，需先缩量企稳+重新突破确认）
-      G2 状态×质量：SECOND_WAVE/DRYUP 无条件放行；BREAKOUT_CONFIRM/RE_EXPANSION/
-         ABSORPTION 需 Execution≥P2_EXEC_MIN；其余结构原 BUY → WAIT（不直接执行）
+      G2 状态×质量：SECOND_WAVE/DRYUP/BREAKOUT_RETEST 无条件放行（BREAKOUT_RETEST=回踩低吸首选买点，
+         不设 Exec 门槛）；BREAKOUT_CONFIRM/RE_EXPANSION/ABSORPTION 需 Execution≥P2_EXEC_MIN；
+         其余结构原 BUY → WAIT（不直接执行）
       G3 量比上界：volr>VOLR_MAX → WAIT（放量过热，追涨改等回踩）
       G4 市场环境：regime<REGIME_MIN（regime0）→ WAIT（环境风险，等企稳）
     止损重建（G5）：stop=预警线 max(0.97×Trigger, Trigger-2.2×ATR)；
@@ -495,7 +528,7 @@ def main():
               ["PRIMARY BUY", "CONDITIONAL BUY", "WAIT", "WATCH", "AVOID"]))
     gated_n = sum(1 for r in rows if r["gate"])
     L.append(f"V3.1 门控：{gated_n} 只被降级（G1 极端换手剔除 / G2 状态×质量 / G3 量比过热 / G4 环境风险）"
-             "；BUY 仅保留 P1 结构（SECOND_WAVE/DRYUP）或 P2 且 Exec≥85 且 volr≤2.2 的标的\n")
+             "；BUY 仅保留 P1 结构（SECOND_WAVE/DRYUP/BREAKOUT_RETEST 回踩低吸）或 P2 且 Exec≥85 且 volr≤2.2 的标的\n")
 
     # TOP EXECUTION（固定 8 列）：可行动层(PRIMARY→CONDITIONAL→WAIT)按 Execution 取前 5
     def _act_rank(a):
@@ -527,13 +560,13 @@ def main():
                  f"| {ext:+.1%} | ×{r['volr']:.1f} | {r['state']} | {r['entry']} | {r['retest']:.0f} "
                  f"| {r['stop_struct']:.2f} | {r['pos']:.0f}% | {r['action']} | {gate_tag} |")
 
-    # 每只 PRIMARY BUY 的完整交易指令（V3 第二十二节格式）
-    prim = [r for r in rows if r["action"] == "PRIMARY BUY"]
-    L.append("\n## 最终交易指令（PRIMARY BUY）\n")
+    # 每只 BUY（PRIMARY / CONDITIONAL）的完整交易指令（V3 第二十二节格式）
+    prim = [r for r in rows if r["action"] in ("PRIMARY BUY", "CONDITIONAL BUY")]
+    L.append("\n## 最终交易指令（BUY）\n")
     if prim:
         for r in prim:
             L.append(f"**【{r['name']} {r['code']}】**\n")
-            L.append(f"Action：PRIMARY BUY\n")
+            L.append(f"Action：{r['action']}\n")
             L.append(f"Trigger：{r['trigger']:.2f}")
             L.append(f"Buy Zone：{r['buy_lo']:.2f}–{r['buy_hi']:.2f}")
             L.append(f"Stop：{r['stop_struct']:.2f}（结构失效位；预警线 {r['stop']:.2f}）")

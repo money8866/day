@@ -178,7 +178,8 @@ STRONG_LC = ('主升', '升温')
 
 def _overheat(tr, se, hot_pct, hot_phase):
     climax = 1 if (tr >= 70 and se >= 85) else 0
-    return (hot_pct >= 85) or (climax == 1) or (str(hot_phase) == '高潮')
+    # hot_phase 带 emoji 前缀（如 '🔥 高潮'），与实盘 is_hot_climax_phase 同口径用包含判断
+    return (hot_pct >= 85) or (climax == 1) or ('高潮' in str(hot_phase or ''))
 
 
 def replica_gate(row, prev_lc, prev_state, P):

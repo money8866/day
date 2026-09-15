@@ -211,6 +211,231 @@ def batch_insert_daily_cache(df_all):
 
 
 # =========================================================
+# index_daily_cache 表：指数日线行情（pro.index_daily，11 列与 daily_cache 同构）
+# 指数统一入口，替代本地通达信 .day 文件解析与散落的 index_daily 直连调用
+# =========================================================
+
+INDEX_DAILY_CACHE_TABLE = 'index_daily_cache'
+
+_INDEX_DAILY_COLS = [
+    'ts_code', 'trade_date', 'open', 'high', 'low', 'close',
+    'pre_close', 'change', 'pct_chg', 'vol', 'amount'
+]
+
+# 项目实际使用的宽基指数全集
+# （来源：market_regime_v3/config.yaml、theme_engine/market_regime/data.py:INDEX_CODES、
+#   market_analysis.py V9 六指数、daily_timing/daily_pullback 基准等）
+INDEX_CODES = [
+    '000001.SH',    # 上证指数
+    '000300.SH',    # 沪深300
+    '000905.SH',    # 中证500
+    '000852.SH',    # 中证1000
+    '000688.SH',    # 科创50
+    '399001.SZ',    # 深证成指
+    '399006.SZ',    # 创业板指
+    '932000.CSI',   # 中证2000
+]
+
+INDEX_HISTORY_START = '20210104'    # 与 daily_cache 起点对齐，保证 250 日窗口可用
+
+
+def _ensure_index_daily_table():
+    """确保 index_daily_cache 表存在"""
+    with get_conn() as conn:
+        conn.execute(f'''
+            CREATE TABLE IF NOT EXISTS "{INDEX_DAILY_CACHE_TABLE}" (
+                "ts_code" TEXT,
+                "trade_date" TEXT,
+                "open" REAL,
+                "high" REAL,
+                "low" REAL,
+                "close" REAL,
+                "pre_close" REAL,
+                "change" REAL,
+                "pct_chg" REAL,
+                "vol" REAL,
+                "amount" REAL,
+                PRIMARY KEY ("ts_code", "trade_date")
+            )
+        ''')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_index_code_date" ON "{INDEX_DAILY_CACHE_TABLE}" ("ts_code", "trade_date")')
+        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_index_date" ON "{INDEX_DAILY_CACHE_TABLE}" ("trade_date")')
+
+
+def get_index_cache(ts_code, start_date=None, end_date=None):
+    """从 index_daily_cache 读取单指数日线（升序）
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(INDEX_DAILY_CACHE_TABLE):
+        return None
+    sql = f'SELECT * FROM {INDEX_DAILY_CACHE_TABLE} WHERE ts_code = ?'
+    params = [str(ts_code)]
+    if start_date:
+        sql += ' AND trade_date >= ?'
+        params.append(str(start_date))
+    if end_date:
+        sql += ' AND trade_date <= ?'
+        params.append(str(end_date))
+    sql += ' ORDER BY trade_date'
+    with get_conn() as conn:
+        df = pd.read_sql_query(sql, conn, params=params)
+    return df if not df.empty else None
+
+
+def get_index_cache_range(ts_code):
+    """获取 index_daily_cache 中某指数的日期范围
+
+    Returns: (min_date, max_date) 或 (None, None)
+    """
+    if not _table_exists(INDEX_DAILY_CACHE_TABLE):
+        return None, None
+    with get_conn() as conn:
+        row = conn.execute(
+            f'SELECT MIN(trade_date), MAX(trade_date) FROM {INDEX_DAILY_CACHE_TABLE} WHERE ts_code = ?',
+            (str(ts_code),)
+        ).fetchone()
+    if row and row[0]:
+        return str(row[0]), str(row[1])
+    return None, None
+
+
+def get_index_by_date(trade_date):
+    """按交易日查询全部指数行情（替代按日轮询 index_daily）
+
+    Returns: DataFrame 或 None
+    """
+    if not _table_exists(INDEX_DAILY_CACHE_TABLE):
+        return None
+    with get_conn() as conn:
+        df = pd.read_sql_query(
+            f'SELECT * FROM {INDEX_DAILY_CACHE_TABLE} WHERE trade_date = ?',
+            conn, params=(str(trade_date),)
+        )
+    return df if not df.empty else None
+
+
+def batch_insert_index_cache(df_all):
+    """批量写入指数日线缓存（INSERT OR REPLACE，仅保留 11 列）
+
+    Returns: 写入行数
+    """
+    if df_all is None or df_all.empty:
+        return 0
+    _ensure_index_daily_table()
+    cols = [c for c in _INDEX_DAILY_COLS if c in df_all.columns]
+    df_valid = df_all[cols].copy()
+    df_valid['trade_date'] = df_valid['trade_date'].astype(str)
+    placeholders = ','.join(['?'] * len(cols))
+    col_str = ','.join([f'"{c}"' for c in cols])
+    sql = f'INSERT OR REPLACE INTO {INDEX_DAILY_CACHE_TABLE} ({col_str}) VALUES ({placeholders})'
+    values = [
+        [None if pd.isna(v) else v for v in row]
+        for row in df_valid[cols].values.tolist()
+    ]
+    with get_conn() as conn:
+        conn.executemany(sql, values)
+    return len(values)
+
+
+def cached_index_daily(ts_code, start_date, end_date, pro=None, silent=True):
+    """带缓存的 pro.index_daily（指数行情统一入口，缓存优先 + 缺口增量补）
+
+    逻辑：缓存已覆盖 [start, end] 直接返回；缺尾部只补尾段；缺前段则按需拉取。
+    单指数一次可返回整段历史，无需像个股那样按日整市场补数。
+
+    Returns: 升序 DataFrame(11 列) 或 None
+    """
+    ts_code, start_date, end_date = str(ts_code), str(start_date), str(end_date)
+    mark = f'idx_empty_{ts_code}_{end_date}'
+
+    def _read():
+        df = get_index_cache(ts_code, start_date, end_date)
+        return df.sort_values('trade_date').reset_index(drop=True) if df is not None else None
+
+    cmin, cmax = get_index_cache_range(ts_code)
+    if cmin and cmax and cmin <= start_date and cmax >= end_date:
+        return _read()
+
+    # 缓存已确认该区间无数据（如指数停编/未上市），不再重复调用 API
+    if get_meta(mark, '') == '1' and not (cmin and cmax):
+        return _read()
+
+    fetch_start = start_date
+    if cmin and cmax and cmin <= start_date:
+        fetch_start = cmax      # 只补尾部缺口（含端点重叠，幂等）
+    elif cmin and cmax:
+        fetch_start = start_date
+
+    _pro = pro or _get_pro()
+    try:
+        df_new = _pro.index_daily(ts_code=ts_code, start_date=fetch_start, end_date=end_date)
+        time.sleep(0.06)
+        if df_new is not None and not df_new.empty:
+            df_new['trade_date'] = df_new['trade_date'].astype(str)
+            batch_insert_index_cache(df_new)
+        else:
+            set_meta(mark, '1')
+    except Exception:
+        if not silent:
+            raise
+    return _read()
+
+
+def backfill_index_daily(start_date=None, end_date=None, codes=None, silent=False):
+    """回填指数历史到 index_daily_cache（幂等，可重复执行，断点续跑）
+
+    单指数一次 API 拉整段；已有数据则从缓存末日起增量补。
+
+    Returns: dict {ts_code: 总行数}
+    """
+    _ensure_index_daily_table()
+    codes = list(codes) if codes else list(INDEX_CODES)
+    start_date = str(start_date or INDEX_HISTORY_START)
+    end_date = str(end_date or get_effective_date())
+    result = {}
+    pro = _get_pro()
+    for code in codes:
+        cmin, cmax = get_index_cache_range(code)
+        fetch_start = start_date
+        if cmin and cmax and cmin <= start_date:
+            fetch_start = cmax
+        try:
+            df = pro.index_daily(ts_code=code, start_date=fetch_start, end_date=end_date)
+            time.sleep(0.06)
+            n = batch_insert_index_cache(df)
+        except Exception as e:
+            if not silent:
+                print(f'[index_daily] {code} 拉取失败: {e}')
+            n = 0
+        total = get_index_cache_range(code)
+        cnt = 0
+        with get_conn() as conn:
+            cnt = conn.execute(
+                f'SELECT COUNT(*) FROM {INDEX_DAILY_CACHE_TABLE} WHERE ts_code = ?', (code,)
+            ).fetchone()[0]
+        result[code] = cnt
+        if not silent:
+            print(f'[index_daily] {code} 本次写入 {n} 行 | 区间 {total[0]}~{total[1]} | 累计 {cnt} 行')
+    return result
+
+
+def index_cache_status():
+    """指数缓存覆盖概览（诊断用）"""
+    if not _table_exists(INDEX_DAILY_CACHE_TABLE):
+        return {'exists': False}
+    with get_conn() as conn:
+        rows = conn.execute(
+            f'SELECT ts_code, MIN(trade_date), MAX(trade_date), COUNT(*) FROM {INDEX_DAILY_CACHE_TABLE} '
+            f'GROUP BY ts_code ORDER BY ts_code'
+        ).fetchall()
+    return {
+        'exists': True,
+        'codes': [{'ts_code': r[0], 'min': r[1], 'max': r[2], 'rows': r[3]} for r in rows],
+    }
+
+
+# =========================================================
 # adj_factor 复权因子缓存（UDC③：pro.adj_factor，独立轻量表）
 # 用于把不复权 daily_cache 折算为前复权 OHLC：qfq = raw × adj / 当日adj
 # =========================================================
@@ -1441,9 +1666,12 @@ def cache_status(ts_code=None, trade_date=None):
         info['daily_cache_range'] = get_daily_cache_range(ts_code)
         info['daily_basic_range'] = get_daily_basic_range(ts_code)
         info['adj_factor_range'] = get_adj_factor_range(ts_code)
+        info['index_daily_range'] = get_index_cache_range(ts_code)
     if trade_date:
         info['trade_date'] = trade_date
         info['daily_cache_count'] = get_daily_by_date_count(trade_date)
+        _idx_df = get_index_by_date(trade_date) if _table_exists(INDEX_DAILY_CACHE_TABLE) else None
+        info['index_daily_count'] = 0 if _idx_df is None else len(_idx_df)
     return info
 
 

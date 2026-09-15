@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool
 from w7_second_wave_engine import (CacheReader, state_and_features,
-                                   ANCHORS, anchor_features)
+                                   ANCHORS, anchor_features, market_index_series)
 
 LOOKBACK = 250  # 回测口径固定 250 日（与已完成回测一致；引擎主扫描已改为 700 日）
 
@@ -26,24 +26,16 @@ def _init_regime(regime_map):
 
 
 def precompute_regime_map(conn):
-    """一次聚合全市场每日等权收益，构建 trade_date -> regime 映射（回测热点用，避免每次全表聚合）。"""
-    q = """
-        SELECT trade_date, AVG(pct_chg) AS m
-        FROM daily_cache
-        WHERE pct_chg IS NOT NULL
-        GROUP BY trade_date
-    """
-    df = pd.read_sql_query(q, conn).sort_values("trade_date").reset_index(drop=True)
-    m = pd.to_numeric(df.m, errors="coerce").fillna(0.0) / 100.0
-    cum = (1.0 + m).cumprod()
-    dates = df.trade_date.astype(str).to_numpy()
+    """构建 trade_date -> regime 映射（回测热点用）：基于 index_daily_cache 基准指数 r20/r60，
+    原实现为全市场等权日收益聚合。"""
+    dates, c = market_index_series(conn, DATE_END)
     out = {}
-    for i in range(len(df)):
+    for i in range(len(dates)):
         if i < 24:
             out[dates[i]] = "RANGE"
             continue
-        r20 = cum.iloc[i] / cum.iloc[i - 20] - 1.0
-        r60 = cum.iloc[i] / cum.iloc[i - 59] - 1.0 if i >= 59 else r20
+        r20 = c[i] / c[i - 20] - 1.0
+        r60 = c[i] / c[i - 59] - 1.0 if i >= 59 else r20
         if r20 > 0.06 and r60 > 0.03:
             out[dates[i]] = "BULL"
         elif r20 > 0.02 or (r20 > -0.02 and r60 > 0):
