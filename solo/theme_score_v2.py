@@ -791,6 +791,18 @@ def run_v2_analysis(trade_date=None):
     # 乘数在报告归一化（_apply_gate_v41_alloc）之后应用，保证报告/决策表/落库三口径一致。
     apply_theme_gate_v11(results, TRADE_DATE_str)
 
+    # ── 前兆主题探测（爆发前 3~5 日）──
+    # 只新增观察池与子主题穿透，不改变 trade_action / position_pct（配仓仍由 V4.1 门禁决定）
+    print("  探测前兆主题与子主题...")
+    prev_stats = _load_prev_theme_stats(TRADE_DATE_str, days=5)
+    prec_list = detect_theme_precursors(results, theme_stock_map, subtheme_map, prev_stats)
+    _prec_pool = [p for p in prec_list if p['n_hits'] > 0]
+    print(f"  前兆主题 {len(_prec_pool)} 个 / 仅拥挤警告 {sum(1 for p in prec_list if not p['n_hits'])} 个")
+    for _p in _prec_pool:
+        _sub = _p['subthemes'][0]['name'] if _p['subthemes'] else '—'
+        print(f"    {'/'.join(_p['hits'])} {_p['theme']:<8} 涨停{_p['zt_count']}家(昨{_p['zt_prev']}) "
+              f"放量共振{_p['n_resonance']}家 首个子主题:{_sub}")
+
     # Trade 排序（交易优先级）
     results_trade_sorted = sorted(results, key=lambda x: x['final_trade_score'], reverse=True)
     for i, r in enumerate(results_trade_sorted, 1):
@@ -1522,9 +1534,45 @@ def save_to_sqlite_v2(results):
                  s['is_leader'], s['zt_flag'], s['zt_time'], s['zt_order']))
             top5_total += 1
 
+    # ── 前兆主题表（爆发前观察池 + 子主题穿透）──
+    # 口径与阈值见 detect_theme_precursors / PRECURSOR_CFG，经 backtest_theme_precursor.py 校准。
+    # 仅登记观察池，不参与配仓（theme_scores.position_pct 仍是 V4.1 门禁终判）。
+    cur.execute("""CREATE TABLE IF NOT EXISTS theme_precursor (
+        trade_date TEXT, theme TEXT, n_hits INTEGER, hits TEXT,
+        zt_count INTEGER, zt_prev INTEGER, n_resonance INTEGER,
+        p5_warn INTEGER DEFAULT 0, hot_gap REAL,
+        subthemes TEXT, resonance_stocks TEXT,
+        lifecycle TEXT, gate_tier TEXT, precursor_score REAL
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_tp_date ON theme_precursor(trade_date)")
+    cur.execute("DELETE FROM theme_precursor WHERE trade_date = ?", (TRADE_DATE_str,))
+    prec_total = 0
+    for r in results:
+        p = r.get('precursor')
+        if not p:
+            continue
+        # 子主题与代表股压成文本，便于 tushare_quant / HTML 喂料直接引用
+        sub_txt = "；".join(
+            f"{s['name']}(共振{s['n_res']}家/涨停{s['n_zt']}家/均涨{s['avg_chg']:+.1f}%)"
+            for s in p['subthemes'])
+        stock_txt = "、".join(
+            f"{s.get('name', '')}{float(s.get('pct_chg', 0) or 0):+.1f}%"
+            f"/量比{float(s.get('vol_ratio_5d', 0) or 0):.1f}"
+            for s in p['top_resonance'])
+        cur.execute("""INSERT INTO theme_precursor
+            (trade_date, theme, n_hits, hits, zt_count, zt_prev, n_resonance,
+             p5_warn, hot_gap, subthemes, resonance_stocks, lifecycle, gate_tier,
+             precursor_score)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (TRADE_DATE_str, p['theme'], p['n_hits'], "/".join(p['hits']),
+             p['zt_count'], p['zt_prev'], p['n_resonance'],
+             1 if p['p5_warn'] else 0, p['hot_gap'], sub_txt, stock_txt,
+             p['lifecycle'], p['gate_tier'], p['precursor_score']))
+        prec_total += 1
+
     conn.commit()
     conn.close()
-    print(f"[保存] SQLite: {OUTPUT_DB} ({len(results)} 条, top5强势股 {top5_total} 条)")
+    print(f"[保存] SQLite: {OUTPUT_DB} ({len(results)} 条, top5强势股 {top5_total} 条, 前兆主题 {prec_total} 条)")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2058,17 +2106,8 @@ def _load_subtheme_map_v2():
     return {}
 
 
-def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map, mf_map):
-    """主线细分穿透算法：定位最佳子主题 + 龙头/中军
-
-    Step1: 将主线成份股按子主题归属（核心公司名 > 行业 > 关键词）
-    Step2: 子主题得分 = 涨停集中度(涨停数*2+最高连板)*3 + 资金迁移(净流入万元/1e5)
-           → 锁定 TOP1 最佳子主题
-    Step3: 最佳子主题内选龙头（市值50~300亿、连板/涨停/领涨最优）
-           与中军（市值>500亿、日成交额最高）
-
-    Returns: dict 或 None
-    """
+def _resolve_subthemes(theme_name, subtheme_map):
+    """取主题对应的子主题配置；未命中则按名称双向包含模糊匹配，仍无则以主题名自兜底"""
     subs = subtheme_map.get(theme_name)
     if not subs:
         for k in subtheme_map:
@@ -2078,12 +2117,23 @@ def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map
     if not subs:
         # 兜底：无子主题配置时，用主题本身作为子主题（保证每条主线都有穿透输出）
         subs = {theme_name: {}}
+    return subs
+
+
+def _attribute_subthemes(theme_name, rows, theme_stock_map, subtheme_map):
+    """成份股 → 子主题 归属（前兆穿透与主线穿透共用）
+
+    匹配优先级：核心公司名(100) > 行业(40, 双向子串含"专用机械→机械/化工原料→化工") >
+                名称关键词(20)
+    未匹配股票不丢弃：纯兜底主题全归入主题本身，其余归入"未细分"桶
+    （否则涨停股被丢弃 → 涨停集中度/放量共振家数统计失真）
+
+    Returns: {子主题名: [个股row]}，保证非空
+    """
+    subs = _resolve_subthemes(theme_name, subtheme_map)
     # 无子主题配置的纯兜底（如小金属）：未匹配股票归入主题本身，而不是"未细分"
     fallback_only = not any(cfg for cfg in subs.values())
 
-    # ── Step1: 股票 → 子主题 归属 ──
-    # 匹配优先级：核心公司名(100) > 行业(40, 双向子串含"专用机械→机械/化工原料→化工") > 名称关键词(20)
-    # 未匹配股票不丢弃，归入"未细分"桶（否则涨停股被丢弃→涨停集中度统计失真）
     sub_stocks = defaultdict(list)
     theme_meta = theme_stock_map.get(theme_name, {})
     for row in rows:
@@ -2120,6 +2170,21 @@ def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map
         # 兜底2：全部成份股未匹配到任何子主题（如无子主题配置的主题），
         # 用主题本身作为子主题承载全部股票，保证穿透必有输出
         sub_stocks[theme_name] = list(rows)
+    return sub_stocks
+
+
+def analyze_mainline_penetration(theme_name, rows, theme_stock_map, subtheme_map, mf_map):
+    """主线细分穿透算法：定位最佳子主题 + 龙头/中军
+
+    Step1: 将主线成份股按子主题归属（核心公司名 > 行业 > 关键词）
+    Step2: 子主题得分 = 涨停集中度(涨停数*2+最高连板)*3 + 资金迁移(净流入万元/1e5)
+           → 锁定 TOP1 最佳子主题
+    Step3: 最佳子主题内选龙头（市值50~300亿、连板/涨停/领涨最优）
+           与中军（市值>500亿、日成交额最高）
+
+    Returns: dict 或 None
+    """
+    sub_stocks = _attribute_subthemes(theme_name, rows, theme_stock_map, subtheme_map)
 
     # ── Step2: 子主题得分 → TOP1 ──
     # 得分 = 涨停集中度(涨停数*2+最高连板)*3 + 资金净流入(万元/1e5，仅计净流入)
@@ -2213,6 +2278,205 @@ def _mainline_penetration_rows(r):
     return lines
 
 
+# ══════════════════════════════════════════════════════════════
+# 前兆主题探测（爆发前 3~5 日）+ 子主题穿透
+# ══════════════════════════════════════════════════════════════
+# 口径与阈值来自 backtest_theme_precursor.py（20260724~20260915，38 交易日 / 64 次主题爆发）：
+#   P3 涨停递增     当日涨停数 >= 3 且 > 前一交易日
+#                  窗口口径 lift 1.88；当日口径 P(爆发|信号) 39.5% vs 无信号 27.4%，lift 1.44
+#   P6 个股放量共振  主题内 量比(前5日均量)>=2.0 且 涨幅>=3.0% 的成份股 >= 3 家
+#                  窗口口径 lift 1.62；当日口径 P(爆发|信号) 42.9% vs 无信号 19.9%，lift 2.16
+#   P5 热度跳升     热度超前5日均值 >= 30（仅作拥挤警告）
+#                  信号后 5 日主题超额 -1.99%（t=-4.34），显著为负 → 不是买点
+# 已回测剔除（无区分度或反向，不纳入前兆体系）：
+#   P1 广度普涨(up_ratio>=70) lift 0.94 / P4 迁移分抬升(mig>=10) lift 0.97 /
+#   P7 龙头率先涨停 lift 0.80（反向）/ P2 资金流放大（fund_acc 历史覆盖不足，样本<20）
+PRECURSOR_CFG = {
+    'p3_zt': 3,       # P3 涨停递增：涨停家数下限
+    'p6_n': 3,        # P6 放量共振：最少家数
+    'p6_vr': 2.0,     # P6 放量共振：量比下限（前5日均量基准）
+    'p6_chg': 3.0,    # P6 放量共振：涨幅下限 %
+    'p5_hot': 30.0,   # P5 热度跳升：热度超前5日均值下限
+}
+# 前兆 → 爆发概率提升倍数（回测当日口径 lift），用于观察池排序加权
+PRECURSOR_LIFT = {'P6': 2.16, 'P3': 1.44}
+
+
+def _load_prev_theme_stats(trade_date, days=5):
+    """读 theme_scores.db 最近 days 个交易日（不含当日）
+
+    Returns: {theme: {'hot': [hot_score...], 'zt_prev': 上一交易日涨停数}}
+
+    注意：不能复用主题引擎的 get_prev_day_theme_data()——它读的是
+    cache_backbone_tushare/theme_trend_sentiment.db，该库日期稀疏
+    （实测仅 0805/0806/0807/0811 + 当日），取到的"前一日"可能是一个月前，
+    会让 P3「涨停递增」的同比基准彻底失真（实测全部退化为"昨0"）。
+    """
+    if not os.path.exists(OUTPUT_DB):
+        return {}
+    conn = sqlite3.connect(OUTPUT_DB)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT trade_date FROM theme_scores WHERE trade_date < ? "
+                    "ORDER BY trade_date DESC LIMIT ?", (str(trade_date), int(days)))
+        dts = [row[0] for row in cur.fetchall()]  # 降序，dts[0] = 上一交易日
+        if not dts:
+            return {}
+        ph = ",".join("?" * len(dts))
+        cur.execute(f"SELECT theme, trade_date, hot_score, zt_count FROM theme_scores "
+                    f"WHERE trade_date IN ({ph})", dts)
+        out = defaultdict(lambda: {'hot': [], 'zt_prev': 0})
+        for th, d, hs, zt in cur.fetchall():
+            out[th]['hot'].append(float(hs or 0))
+            if d == dts[0]:
+                out[th]['zt_prev'] = int(zt or 0)
+        return out
+    finally:
+        conn.close()
+
+
+def _prec_feat(s):
+    """个股是否满足 P6 放量共振：量比(前5日均量)>=2.0 且 涨幅>=3.0%"""
+    return (float(s.get('vol_ratio_5d', 0) or 0) >= PRECURSOR_CFG['p6_vr']
+            and float(s.get('pct_chg', 0) or 0) >= PRECURSOR_CFG['p6_chg'])
+
+
+def detect_theme_precursors(results, theme_stock_map, subtheme_map, prev_stats=None):
+    """探测"前兆主题"并穿透到驱动子主题，就地写入 r['precursor']
+
+    前兆（严格档，阈值均经回测）：
+      P3 涨停递增      当日涨停数 >= 3 且 > 前一交易日
+      P6 个股放量共振   量比(前5日均量)>=2.0 且涨幅>=3.0% 的成份股 >= 3 家
+      P5 热度跳升      热度超前5日均值 >= 30 —— 拥挤警告，信号后 5 日超额显著为负
+
+    不改变配仓（配仓仍由 V4.1 门禁决定）：前兆只用于收敛观察范围，
+    入场必须靠个股层真突破+真放量。
+
+    Returns: list[dict]，按 (命中前兆数, 放量共振家数) 降序；仅拥挤主题排在末尾
+    """
+    prev_stats = prev_stats or {}
+    out = []
+    for r in results:
+        rows = r.get('stock_rows', []) or []
+        if not rows:
+            continue
+        sd = r.get('sentiment_detail', {}) or {}
+        zt = int(sd.get('zt_count', 0) or 0)
+        st = prev_stats.get(r['theme']) or {}
+        zt_prev = int(st.get('zt_prev', 0) or 0)
+
+        reso = [s for s in rows if _prec_feat(s)]
+        hits = []
+        if zt >= PRECURSOR_CFG['p3_zt'] and zt > zt_prev:
+            hits.append('P3')
+        if len(reso) >= PRECURSOR_CFG['p6_n']:
+            hits.append('P6')
+
+        hs = st.get('hot') or []
+        hot_gap = (float(r.get('hot_score', 0) or 0) - float(np.mean(hs))) if hs else 0.0
+        p5_warn = bool(hs) and hot_gap >= PRECURSOR_CFG['p5_hot']
+        if not hits and not p5_warn:
+            continue  # 既无前兆也无拥挤警告，不进观察池
+
+        # ── 子主题穿透：复用 subtheme_map 归属，按"放量共振家数→涨停数→均涨幅"排序 ──
+        sub_stocks = _attribute_subthemes(r['theme'], rows, theme_stock_map, subtheme_map)
+        subs = []
+        for sub_name, srows in sub_stocks.items():
+            if sub_name == '未细分' and len(sub_stocks) > 1:
+                # 映射未覆盖的桶：仅当其中有放量共振/涨停个股时才展示
+                # （否则会出现"放量共振4家"但三个子主题全为0的误导性输出）
+                if not any(_prec_feat(s) or s.get('zt_flag', 0) == 1 for s in srows):
+                    continue
+            s_reso = [s for s in srows if _prec_feat(s)]
+            s_zt = sum(1 for s in srows if s.get('zt_flag', 0) == 1)
+            chgs = [float(s.get('pct_chg', 0) or 0) for s in srows]
+            subs.append({
+                'name': sub_name,
+                'n_res': len(s_reso),
+                'n_zt': s_zt,
+                'avg_chg': float(np.mean(chgs)) if chgs else 0.0,
+                'stocks': sorted(s_reso, key=lambda x: (float(x.get('vol_ratio_5d', 0) or 0),
+                                                        float(x.get('pct_chg', 0) or 0)),
+                                 reverse=True)[:3],
+            })
+        subs.sort(key=lambda x: (x['n_res'], x['n_zt'], x['avg_chg']), reverse=True)
+
+        top_reso = sorted(reso, key=lambda x: (float(x.get('vol_ratio_5d', 0) or 0),
+                                               float(x.get('pct_chg', 0) or 0)),
+                          reverse=True)[:3]
+
+        item = {
+            'theme': r['theme'],
+            'hits': hits,
+            'n_hits': len(hits),
+            'zt_count': zt,
+            'zt_prev': zt_prev,
+            'n_resonance': len(reso),
+            'p5_warn': p5_warn,
+            'hot_gap': round(hot_gap, 1),
+            'top_resonance': top_reso,
+            'subthemes': subs[:3],
+            'lifecycle': r.get('lifecycle', ''),
+            'gate_tier': r.get('gate_tier', 'NONE'),
+            # 观察池排序键 = 命中前兆的回测 lift 之和（P6 2.16 > P3 1.44）
+            'precursor_score': round(sum(PRECURSOR_LIFT.get(p, 1.0) for p in hits), 2),
+        }
+        r['precursor'] = item
+        out.append(item)
+
+    out.sort(key=lambda x: (x['n_hits'], x['n_resonance'], x['precursor_score']), reverse=True)
+    return out
+
+
+def _prec_stock_str(s):
+    """个股展示：名称 涨幅%(量比)"""
+    return (f"{s.get('name', '')} {float(s.get('pct_chg', 0) or 0):+.1f}%"
+            f"(量比{float(s.get('vol_ratio_5d', 0) or 0):.1f})")
+
+
+def _precursor_report_lines(prec_list):
+    """前兆主题与子主题的报告文本行（无段落缩进，移动端友好）"""
+    lines = []
+    lines.append("━" * 60)
+    lines.append("### ★ 前兆主题与子主题（爆发前 3~5 日观察池）")
+    lines.append("━" * 60)
+    lines.append("")
+    lines.append("说明：前兆口径经 38 交易日 / 64 次主题爆发回测校准（backtest_theme_precursor.py，严格档）")
+    lines.append("      P6 个股放量共振（量比≥2.0 且涨幅≥3% 的家数≥3）：未来5日爆发概率 42.9% vs 无信号 19.9%，lift 2.16")
+    lines.append("      P3 涨停递增（涨停≥3 家且超前一交易日）：未来5日爆发概率 39.5% vs 无信号 27.4%，lift 1.44")
+    lines.append("      ⚠ P5 热度跳升（热度超前5日均值30+）：信号后5日超额 -1.99%(t=-4.34)，是拥挤警告，不是买点")
+    lines.append("      前兆只用于收敛观察范围，不改变配仓；入场仍需个股层真突破+真放量，勿凭前兆直接买入")
+    lines.append("─" * 120)
+
+    pool = [p for p in prec_list if p['n_hits'] > 0]
+    warn = [p for p in prec_list if p['n_hits'] == 0 and p['p5_warn']]
+    if not pool and not warn:
+        lines.append("* 今日无主题出现前兆信号（P3/P6 均未触发），不产生前兆观察池")
+        lines.append("")
+        return lines
+
+    for p in pool:
+        warn_tag = "  ⚠拥挤警告" if p['p5_warn'] else ""
+        lines.append(f"* 【{'/'.join(p['hits'])}】{p['theme']}（生命周期 {p['lifecycle']}｜档位 {p['gate_tier']}）"
+                     f" 涨停{p['zt_count']}家(昨{p['zt_prev']})｜放量共振{p['n_resonance']}家"
+                     f"｜前兆分 {p['precursor_score']}{warn_tag}")
+        if p['p5_warn']:
+            lines.append(f"  - 热度超前5日均值 +{p['hot_gap']:.1f}，属拥挤区；前兆信号后5日超额为负，只做观察不追高")
+        for sub in p['subthemes']:
+            reps = "、".join(_prec_stock_str(s) for s in sub['stocks']) or "—"
+            lines.append(f"  - 子主题：{sub['name']}（放量共振{sub['n_res']}家/涨停{sub['n_zt']}家/"
+                         f"均涨{sub['avg_chg']:+.1f}%）代表：{reps}")
+        if not p['subthemes']:
+            reps = "、".join(_prec_stock_str(s) for s in p['top_resonance']) or "—"
+            lines.append(f"  - 放量共振代表股：{reps}")
+    if warn:
+        names = "、".join(f"{x['theme']}(+{x['hot_gap']:.0f})" for x in warn)
+        lines.append(f"* ⚠ 仅拥挤警告（无 P3/P6 前兆）：{names}")
+        lines.append("  - 热度跳升但缺放量共振/涨停递增配合，属情绪透支区，回避追高")
+    lines.append("")
+    return lines
+
+
 def _apply_gate_v41_alloc(l2, l1, l0, junk, ma):
     """V4.1 分级配仓归一化（报告输出层唯一配仓入口，替代已移除的 V4 _apply_rotation_v4）
 
@@ -2284,6 +2548,7 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
       0. 大盘择时指令（读取 market_analysis 报告）
       1. 第一部分：核心主线阵营（建议配仓 80%~90%）+ 主线细分穿透（最佳子主题/龙头/中军）
       2. 第二部分：潜在轮动与接力机会（建议配仓 0%~20%）
+      2.5 前兆主题与子主题（爆发前 3~5 日观察池，不参与配仓）
       3. 第三部分：杂毛/退潮与风险回避区（建议仓位 0%）
       3.5 重点主题深度分析（高潮=风险处置 / 启动=机会跟踪）
       4. 主线与轮动交易决策表（全量，含主线属性 / 胜率 / 转化概率）
@@ -2683,6 +2948,14 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         _v11_row(r, order, action='清仓回避', wr=None, pb=None)
     w()
 
+    # ── 2.5. 前兆主题与子主题（爆发前观察池）──
+    # 数据源为 detect_theme_precursors 写入的 r['precursor']，此处不改配仓，纯观察池展示
+    prec_list = sorted([r['precursor'] for r in results if r.get('precursor')],
+                       key=lambda x: (x['n_hits'], x['n_resonance'], x['precursor_score']),
+                       reverse=True)
+    for line in _precursor_report_lines(prec_list):
+        w(line)
+
     # ── 3. 机构配置策略建议 ──
     w("━" * 60)
     w("### 机构配置策略建议")
@@ -2859,6 +3132,12 @@ def per_stock_features_v2(df_one):
     vol_base = vol[max(0, last - 9) : last].mean() if last >= 10 else vol[max(0, last - 4) : last].mean()
     vol_ratio_today = vol[last] / vol_base if vol_base > 0 else 1.0
 
+    # 6b. 前兆探测用量比：当日量 / 前5日均量
+    #     与 backtest_theme_precursor.py 的 P6 个股放量共振同口径（严格档阈值 2.0），
+    #     基准更短故比 vol_ratio_today 更敏感，实盘与回测必须用同一字段避免口径分叉
+    vol_base_5 = vol[max(0, last - 5) : last].mean() if last >= 5 else vol_base
+    vol_ratio_5d = vol[last] / vol_base_5 if vol_base_5 > 0 else 1.0
+
     # 7. 20日收益动量
     ret_20_ret = safe_pct(close[last], close[last - 20]) if last - 20 >= 0 else ret_10
 
@@ -2937,6 +3216,7 @@ def per_stock_features_v2(df_one):
         "high_20_b": high_20_b,
         "low_20_b": low_20_b,
         "vol_ratio_today": vol_ratio_today,
+        "vol_ratio_5d": vol_ratio_5d,     # 前兆 P6 用：当日量/前5日均量
         "ret_20_mom": ret_20_ret,
         # ── V3 新增因子（A股实战）──
         "boom_flag": boom_flag,           # 炸板信号

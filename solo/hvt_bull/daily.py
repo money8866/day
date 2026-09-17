@@ -383,7 +383,8 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
 
 
 def _pos_suggest(e) -> str:
-    """仓位建议（V3 简化版：按 TAIL/ENTRY 双高分定档，遵守总仓位约束）"""
+    """仓位建议（V3 简化版：按 TAIL/ENTRY 双高分定档，遵守总仓位约束）
+    仅用于 TE 层未启用时的回退；TE 启用后统一走 _te_pos（§20 分档）"""
     if e.hard_veto:
         return '-'
     if e.tail_score >= 80 and e.entry_score >= 80:
@@ -391,6 +392,68 @@ def _pos_suggest(e) -> str:
     if e.tail_score >= 70 and e.entry_score >= 70:
         return '10%'
     return '5%'
+
+
+def _te_num(e, key, fallback=0.0) -> float:
+    """TE 层数值字段（缺失/非法/非正时回退 fallback）"""
+    try:
+        v = float(getattr(e, key, None))
+        return v if v > 0 else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _te_pos(e) -> str:
+    """仓位建议（统一 TE 口径 §20：A+ 8~12% / A 5~8% / B 3~5% / C 0~3%）；TE 未启用回退 _pos_suggest"""
+    pos = getattr(e, 'position_size', None)
+    return str(pos) if pos else _pos_suggest(e)
+
+
+def _te_stop_pct(e) -> float:
+    """止损距离%（TE 口径 invalidation/entry_trigger；缺失回退结构价 stop_loss/entry）"""
+    inv = _te_num(e, 'invalidation', getattr(e, 'stop_loss', 0.0) or 0.0)
+    trig = _te_num(e, 'entry_trigger', getattr(e, 'entry', 0.0) or 0.0)
+    return abs(inv / trig - 1) * 100 if trig else 0.0
+
+
+def _te_plan_text(e) -> str:
+    """★/A 表价位段（统一 TE 口径，§9/§18 追高上限、§20 仓位）：TE 未启用返回空串（调用方回退结构价）"""
+    st = getattr(e, 'execution_state', '') or ''
+    if not st:
+        return ''
+    act = getattr(e, 'next_day_action', '') or '-'
+    trig = _te_num(e, 'entry_trigger')
+    lo, hi = _te_num(e, 'buy_zone_low'), _te_num(e, 'buy_zone_high')
+    inv = _te_num(e, 'invalidation', getattr(e, 'stop_loss', 0.0) or 0.0)
+    ncl = _te_num(e, 'no_chase_level')
+    close = _te_num(e, 'current_close')
+    if st == 'SKIP':
+        why = '；'.join(getattr(e, 'why_not_buy', []) or []) or '硬风控覆盖'
+        return f"⛔ 执行状态=SKIP：{why}（不构成买点，仓位-）"
+    if st == 'NO_CHASE' or act == 'NO_CHASE':
+        head = f"现价{close:.2f}已超追高上限{ncl:.2f}" if close > 0 and ncl > 0 else f"已超追高上限{ncl:.2f}"
+        return (f"⚠️ 执行状态=NO_CHASE：{head}（突破位+1.2×ATR），今日不追高；"
+                f"等回踩买区{lo:.2f}~{hi:.2f}（触发价{trig:.2f}）再评估，仓位-")
+    if st == 'BREAKOUT_WAIT':
+        return (f"执行状态=BREAKOUT_WAIT：突破前不买，待放量突破{trig:.2f}后再买入；"
+                f"买区{lo:.2f}~{hi:.2f} 止损{inv:.2f} 建议仓位{_te_pos(e)}")
+    return (f"执行状态={st}/{act}：触发价{trig:.2f} 买区{lo:.2f}~{hi:.2f} 止损{inv:.2f}"
+            f"（约-{_te_stop_pct(e):.1f}%） 追高上限{ncl:.2f} 建议仓位{_te_pos(e)}")
+
+
+def _te_table_cells(e) -> tuple:
+    """A 表 TE 口径单元格：(状态, 触发价, 买区, 止损, 追高上限, 仓位)；SKIP 时价位一律置 '-'"""
+    st = getattr(e, 'execution_state', '') or '-'
+    if (getattr(e, 'next_day_action', '') or '') == 'NO_CHASE':
+        st = 'NO_CHASE'
+    if st == 'SKIP':
+        return (st, '-', '-', '-', '-', _te_pos(e))
+    return (st,
+            f"{_te_num(e, 'entry_trigger'):.2f}",
+            f"{_te_num(e, 'buy_zone_low'):.2f}~{_te_num(e, 'buy_zone_high'):.2f}",
+            f"{_te_num(e, 'invalidation', getattr(e, 'stop_loss', 0.0) or 0.0):.2f}",
+            f"{_te_num(e, 'no_chase_level'):.2f}",
+            _te_pos(e))
 
 
 def _v3_ten_questions(e) -> list:
@@ -413,7 +476,7 @@ def _v3_ten_questions(e) -> list:
     q.append(f"⑦ 盈利加速：基本面{e.fundamental_grade}（{e.fundamental_score:.0f}），资金质量{e.money_quality_score:.0f}。")
     q.append(f"⑧ 催化剂：无结构化事件数据源，标记 SAMPLE_LOW（不伪造催化）。")
     risks = e.hard_veto or []
-    stop_pct = abs(e.stop_loss / e.entry - 1) * 100 if e.entry else 0.0
+    stop_pct = _te_stop_pct(e)
     q.append(f"⑨ 最大失败风险：{'；'.join(risks) if risks else f'回踩失守T0_High（止损距离约{stop_pct:.1f}%）'}。")
     q.append(f"⑩ 证伪信号：放量跌破T0_High且2日不收复 → 结构止损离场；基本面恶化为C/资金质量跌破40 → 提前退出。")
     return q
@@ -466,17 +529,26 @@ def _render_md(result: dict, all_events, detail_events) -> str:
         lines.append('')
         for i, e in enumerate(pb[:10], 1):
             ab = 'A' if getattr(e, 'fe_score', 0.0) >= 70.0 else 'B'
-            stop_pct = abs(e.stop_loss / e.entry - 1) * 100 if e.entry else 0.0
+            # 统一 TE 口径：NO_CHASE/SKIP 输出风控提示而非买入计划（TE 未启用时回退结构价）
+            plan = _te_plan_text(e)
+            if not plan:
+                stop_pct = abs(e.stop_loss / e.entry - 1) * 100 if e.entry else 0.0
+                plan = (f"触发价{e.entry:.2f} 止损{e.stop_loss:.2f}（约-{stop_pct:.1f}%） "
+                        f"目标{e.target1:.2f} 建议仓位{_pos_suggest(e)}")
+            tradable = (not getattr(e, 'execution_state', '')
+                        or (getattr(e, 'execution_state', '') in ('READY_BUY', 'PULLBACK_BUY')
+                            and (getattr(e, 'next_day_action', '') or '') in ('BUY', 'BUY_ON_CONFIRM')))
             lines.append(
                 f"{i}. **{e.name}（{e.ts_code}）[{ab}级]**：ENTRY={e.entry_score:.0f} EXPANSION={e.expansion_score:.0f} "
                 f"TAIL={e.tail_score:.0f} FE={_f(getattr(e, 'fe_score', None))}｜供给吸收{_sub(e, '供给吸收'):.0f}/15、"
-                f"锁筹={'是' if e.locked_chip else '否'}、RS20={_f(e.rs20)}｜触发价{e.entry:.2f} 止损{e.stop_loss:.2f}"
-                f"（约-{stop_pct:.1f}%） 目标{e.target1:.2f} 建议仓位{_pos_suggest(e)}。"
+                f"锁筹={'是' if e.locked_chip else '否'}、RS20={_f(e.rs20)}｜{plan}。"
             )
             lines.append(
-                f"   买入逻辑：天量日缩量锁筹后二次突破{e.signal_tier or 'T3'}（突破日距天量日{e.t0_to_breakout_days}个交易日），"
+                f"   {'买入逻辑' if tradable else '结构逻辑（当前不可执行）'}：天量日缩量锁筹后二次突破{e.signal_tier or 'T3'}"
+                f"（突破日距天量日{e.t0_to_breakout_days}个交易日），"
                 f"扩张空间{_sub(e, '扩张空间'):.0f}/20，距120日高点{e.dist_high_120:.1f}%；"
-                f"证伪纪律：放量跌破T0_High且2日不收复→结构性止损离场，收盘跌破止损价{e.stop_loss:.2f}→无条件离场。"
+                f"证伪纪律：放量跌破T0_High且2日不收复→结构性止损离场，"
+                f"收盘跌破止损价{_te_num(e, 'invalidation', getattr(e, 'stop_loss', 0.0) or 0.0):.2f}→无条件离场。"
             )
         lines.append('')
     else:
@@ -485,16 +557,32 @@ def _render_md(result: dict, all_events, detail_events) -> str:
 
     # ========== A. PRIMARY_BUY ==========
     if pb:
+        te_on = bool(result.get('te_enabled'))
         lines.append('## A. ★★★ PRIMARY_BUY（ENTRY≥70 × 供给吸收≥12 × 放量A/A+ × RS20≥70，无硬否决；FE≥70标记为A）')
         lines.append('')
-        lines.append('| 排名 | 级 | 代码 | 名称 | ENTRY | EXPANSION | TAIL | FE | 分层 | 触发价 | 止损 | 目标 | 仓位 | 核心理由 |')
-        lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+        if te_on:
+            lines.append('| 排名 | 级 | 代码 | 名称 | ENTRY | EXPANSION | TAIL | FE | 分层 | 状态 | 触发价 | 买区 | 止损 | 追高上限 | 仓位 | 核心理由 |')
+            lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+        else:
+            lines.append('| 排名 | 级 | 代码 | 名称 | ENTRY | EXPANSION | TAIL | FE | 分层 | 触发价 | 止损 | 目标 | 仓位 | 核心理由 |')
+            lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
         for i, e in enumerate(pb[:10], 1):
             reason = f"锁筹+突破{e.signal_tier or 'T3'}，扩张{_sub(e, '扩张空间'):.0f}/20"
             ab = 'A' if getattr(e, 'fe_score', 0.0) >= 70.0 else 'B'
-            lines.append(f"| {i} | {ab} | {e.ts_code} | {e.name} | {e.entry_score:.0f} | {e.expansion_score:.0f} | {e.tail_score:.0f} | "
-                         f"{_f(getattr(e, 'fe_score', None))} | {e.signal_tier or 'T3'} | {e.entry:.2f} | {e.stop_loss:.2f} | {e.target1:.2f} | "
-                         f"{_pos_suggest(e)} | {reason} |")
+            if te_on:
+                st, trig, zone, inv, ncl, pos = _te_table_cells(e)
+                if st == 'NO_CHASE':
+                    reason = f"现价{_te_num(e, 'current_close'):.2f}超追高上限{ncl}，不追高，等回踩买区{zone}"
+                elif st == 'SKIP':
+                    why = '；'.join(getattr(e, 'why_not_buy', []) or []) or '硬风控覆盖'
+                    reason = f"硬风控不参与：{why[:48]}"
+                lines.append(f"| {i} | {ab} | {e.ts_code} | {e.name} | {e.entry_score:.0f} | {e.expansion_score:.0f} | {e.tail_score:.0f} | "
+                             f"{_f(getattr(e, 'fe_score', None))} | {e.signal_tier or 'T3'} | {st} | {trig} | {zone} | {inv} | {ncl} | "
+                             f"{pos} | {reason} |")
+            else:
+                lines.append(f"| {i} | {ab} | {e.ts_code} | {e.name} | {e.entry_score:.0f} | {e.expansion_score:.0f} | {e.tail_score:.0f} | "
+                             f"{_f(getattr(e, 'fe_score', None))} | {e.signal_tier or 'T3'} | {e.entry:.2f} | {e.stop_loss:.2f} | {e.target1:.2f} | "
+                             f"{_pos_suggest(e)} | {reason} |")
         lines.append('')
         lines.append('### 每只 PRIMARY 的“为什么可能成为大牛股”十问')
         lines.append('')
@@ -653,7 +741,14 @@ def _render_md(result: dict, all_events, detail_events) -> str:
                              f"低点{e.pb_low_close:.2f}@{e.pb_low_date} "
                              f"低点vsT0_High{e.pb_low_vs_t0high:+.1f}% 当前vs突破{e.pb_cur_vs_break:+.1f}%")
         lines.append(f"- 板块：{e.sector_name or '-'}（强度{_f(e.sector_strength)}） | 基本面：{e.fundamental_grade}（{_f(e.fundamental_score)}） | 资金质量：{_f(e.money_quality_score)}")
-        lines.append(f"- 交易计划：入场={e.entry:.2f} 止损={e.stop_loss:.2f} 目标1={e.target1:.2f} 目标2={e.target2:.2f} 建议仓位={_pos_suggest(e)}")
+        plan = _te_plan_text(e)
+        if plan:
+            lines.append(f"- 交易计划（TE 口径）：{plan}")
+            if e.entry > 0:
+                lines.append(f"- 结构锚定价（T0={e.t0_date}起算，不随现价重算，执行以上方TE价位为准）："
+                             f"入场={e.entry:.2f} 止损={e.stop_loss:.2f} 目标1={e.target1:.2f} 目标2={e.target2:.2f}")
+        else:
+            lines.append(f"- 交易计划：入场={e.entry:.2f} 止损={e.stop_loss:.2f} 目标1={e.target1:.2f} 目标2={e.target2:.2f} 建议仓位={_pos_suggest(e)}")
         if e.hard_veto:
             lines.append(f"- ⛔ 硬否决：{'；'.join(e.hard_veto)}")
         if e.wait_reasons:
@@ -942,9 +1037,19 @@ def _render_te(result: dict, all_events) -> list:
     else:
         lines.append('★ PRIMARY_BUY：当前没有符合 PRIMARY_BUY 条件的股票（五层Gate未全过，禁止把WAIT错判成BUY）')
     ready_pool = [e for e in te_pool if getattr(e, 'confirmation_state', '') == 'READY']
+
+    def _ready_tag(e):
+        """TE 层否决标注：V1.1 READY（TRIGGER 已确认）≠ 可买，避免与 TE 的 NO_CHASE/SKIP 互相矛盾"""
+        st = getattr(e, 'execution_state', '') or ''
+        if st == 'NO_CHASE' or (getattr(e, 'next_day_action', '') or '') == 'NO_CHASE':
+            return '，TE:NO_CHASE不追高'
+        if st == 'SKIP':
+            return '，TE:SKIP不买'
+        return ''
+
     lines.append('★ READY（差临门一脚，确认后可买）：'
                  + ('、'.join(f"{e.name}（{getattr(e, 'trigger_status', '') or '-'}，"
-                              f"GAP={_score(e, 'score_gap'):.1f}）" for e in ready_pool[:6]) or '无'))
+                              f"GAP={_score(e, 'score_gap'):.1f}{_ready_tag(e)}）" for e in ready_pool[:6]) or '无'))
     wait_pool = [e for e in te_pool if getattr(e, 'confirmation_state', '') == 'WAIT']
     lines.append(f'★ WAIT（{len(wait_pool)}只，需继续确认）：'
                  + ('、'.join(e.name for e in wait_pool[:6]) or '无'))

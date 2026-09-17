@@ -1,0 +1,961 @@
+{
+  "version": "2.0",
+  "name": "A股自建板块轮动体系",
+  "description": "以A股资金轮动和产业链逻辑为核心的Canonical Sector Master。东财三级行业、东财概念、Tushare行业及现有Theme仅作为原始映射来源，不直接作为最终板块。",
+  "design_principles": [
+    "固定核心产业板块，不随市场热点频繁增删",
+    "东财三级行业和概念仅作为raw source",
+    "一个股票允许属于多个sector，但必须记录membership_type和confidence",
+    "产业板块与风格因子严格分离",
+    "热门题材采用dynamic_theme，不污染核心sector",
+    "sector质量不得使用近期涨跌幅作为静态质量依据",
+    "优先保持板块长期稳定、可回测、可比较",
+    "核心目标是识别A股资金轮动，而不是复制东财板块体系"
+  ],
+
+  "rotation_groups": [
+    {
+      "id": "R01",
+      "name": "科技成长",
+      "description": "科技创新、数字经济、AI及电子信息产业",
+      "priority": 1,
+      "sector_ids": ["T01", "T02", "T03", "T04", "T05", "T06"]
+    },
+    {
+      "id": "R02",
+      "name": "先进制造",
+      "description": "新能源、高端装备、机器人、军工及汽车产业链",
+      "priority": 2,
+      "sector_ids": ["T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"]
+    },
+    {
+      "id": "R03",
+      "name": "资源周期",
+      "description": "资源品、能源、化工、钢铁及农业周期",
+      "priority": 3,
+      "sector_ids": ["T16", "T17", "T18", "T19", "T20", "T21", "T22"]
+    },
+    {
+      "id": "R04",
+      "name": "金融地产",
+      "description": "银行、非银金融、金融科技及房地产产业链",
+      "priority": 4,
+      "sector_ids": ["T23", "T24", "T25", "T26", "T27", "T28"]
+    },
+    {
+      "id": "R05",
+      "name": "大消费",
+      "description": "必选消费、可选消费、零售及消费服务",
+      "priority": 5,
+      "sector_ids": ["T29", "T30", "T31", "T32", "T33", "T34", "T35"]
+    },
+    {
+      "id": "R06",
+      "name": "医药医疗",
+      "description": "创新药、医疗器械、生物制品、CXO及医疗服务",
+      "priority": 6,
+      "sector_ids": ["T36", "T37", "T38", "T39", "T40", "T41", "T42"]
+    },
+    {
+      "id": "R07",
+      "name": "公用防御",
+      "description": "电力、公用事业、交通运输等稳定现金流产业",
+      "priority": 7,
+      "sector_ids": ["T43", "T44", "T45"]
+    },
+    {
+      "id": "R08",
+      "name": "政策基建",
+      "description": "建筑、建材、城市更新及基础设施",
+      "priority": 8,
+      "sector_ids": ["T46", "T47", "T48", "T49", "T50"]
+    }
+  ],
+
+  "sectors": [
+
+    {
+      "sector_id": "T01",
+      "sector_name": "半导体",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["芯片", "集成电路", "半导体产业链"],
+      "subsectors": ["芯片设计", "半导体制造", "封测", "半导体设备", "半导体材料", "功率半导体", "存储芯片"],
+      "eastmoney_industry_keywords": ["半导体", "集成电路", "电子元件"],
+      "eastmoney_concept_keywords": ["芯片", "国产芯片", "半导体", "先进封装", "存储芯片"],
+      "keywords": ["芯片", "晶圆", "封测", "光刻", "刻蚀", "薄膜", "硅片"],
+      "exclude_keywords": ["单纯消费电子整机"],
+      "thesis": "国产替代、AI算力需求、先进制程及半导体资本开支"
+    },
+
+    {
+      "sector_id": "T02",
+      "sector_name": "AI算力",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["算力产业链", "AI基础设施"],
+      "subsectors": ["AI服务器", "光模块", "CPO", "PCB", "液冷", "高速连接", "数据中心"],
+      "eastmoney_industry_keywords": ["通信设备", "电子元件", "计算机设备"],
+      "eastmoney_concept_keywords": ["AI算力", "算力", "CPO", "光模块", "液冷", "数据中心"],
+      "keywords": ["AI服务器", "GPU", "光模块", "CPO", "液冷", "高速铜连接", "PCB"],
+      "exclude_keywords": ["仅概念宣传且无产业链业务"],
+      "thesis": "AI基础设施资本开支、算力扩张及高速互联"
+    },
+
+    {
+      "sector_id": "T03",
+      "sector_name": "通信",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["通信设备", "通信产业链"],
+      "subsectors": ["通信设备", "光通信", "运营商", "卫星通信", "6G"],
+      "eastmoney_industry_keywords": ["通信设备", "通信服务"],
+      "eastmoney_concept_keywords": ["光通信", "卫星通信", "6G", "量子通信"],
+      "keywords": ["通信设备", "光纤", "光缆", "基站", "卫星通信"],
+      "exclude_keywords": [],
+      "thesis": "通信基础设施升级及新一代通信技术"
+    },
+
+    {
+      "sector_id": "T04",
+      "sector_name": "软件与信创",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["国产软件", "信创"],
+      "subsectors": ["基础软件", "操作系统", "数据库", "网络安全", "ERP", "行业软件"],
+      "eastmoney_industry_keywords": ["软件开发", "IT服务"],
+      "eastmoney_concept_keywords": ["国产软件", "信创", "网络安全", "数据库"],
+      "keywords": ["国产软件", "操作系统", "数据库", "信创", "网络安全"],
+      "exclude_keywords": ["纯硬件"],
+      "thesis": "国产替代、政企数字化及软件自主可控"
+    },
+
+    {
+      "sector_id": "T05",
+      "sector_name": "消费电子",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["消费电子产业链", "电子终端"],
+      "subsectors": ["手机", "XR", "AI终端", "精密结构件", "电子元件"],
+      "eastmoney_industry_keywords": ["消费电子", "电子元件"],
+      "eastmoney_concept_keywords": ["消费电子", "AI手机", "MR", "XR", "折叠屏"],
+      "keywords": ["手机", "XR", "MR", "折叠屏", "精密结构件"],
+      "exclude_keywords": [],
+      "thesis": "AI终端、智能硬件及消费电子创新周期"
+    },
+
+    {
+      "sector_id": "T06",
+      "sector_name": "AI应用",
+      "rotation_group": "R01",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["人工智能应用", "AI软件"],
+      "subsectors": ["AI Agent", "AI办公", "AI传媒", "AI医疗", "AI教育", "AI金融"],
+      "eastmoney_industry_keywords": ["软件开发", "传媒", "计算机应用"],
+      "eastmoney_concept_keywords": ["人工智能", "AI Agent", "大模型", "生成式AI"],
+      "keywords": ["大模型", "Agent", "生成式AI", "智能体"],
+      "exclude_keywords": ["仅蹭概念"],
+      "thesis": "AI从基础设施向应用层扩散"
+    },
+
+    {
+      "sector_id": "T07",
+      "sector_name": "新能源汽车",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["新能源车", "汽车电动化"],
+      "subsectors": ["整车", "智能驾驶", "汽车电子", "电驱", "热管理"],
+      "eastmoney_industry_keywords": ["乘用车", "商用车", "汽车零部件"],
+      "eastmoney_concept_keywords": ["新能源汽车", "智能驾驶", "汽车电子"],
+      "keywords": ["新能源车", "电动车", "智能驾驶", "汽车电子"],
+      "exclude_keywords": [],
+      "thesis": "汽车电动化、智能化及出口"
+    },
+
+    {
+      "sector_id": "T08",
+      "sector_name": "锂电产业链",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["锂电池", "动力电池"],
+      "subsectors": ["电池", "正极", "负极", "电解液", "隔膜", "锂资源", "设备"],
+      "eastmoney_industry_keywords": ["电池", "电池材料", "能源金属"],
+      "eastmoney_concept_keywords": ["锂电池", "固态电池", "动力电池"],
+      "keywords": ["锂电", "动力电池", "正极", "负极", "电解液", "隔膜"],
+      "exclude_keywords": [],
+      "thesis": "动力电池、储能及下一代电池技术"
+    },
+
+    {
+      "sector_id": "T09",
+      "sector_name": "光伏产业链",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["光伏", "太阳能产业链"],
+      "subsectors": ["硅料", "硅片", "电池片", "组件", "逆变器", "光伏设备"],
+      "eastmoney_industry_keywords": ["光伏设备", "电池", "能源金属"],
+      "eastmoney_concept_keywords": ["光伏", "TOPCon", "HJT", "钙钛矿"],
+      "keywords": ["光伏", "硅料", "硅片", "组件", "TOPCon", "HJT"],
+      "exclude_keywords": [],
+      "thesis": "光伏技术迭代、成本下降及海外需求"
+    },
+
+    {
+      "sector_id": "T10",
+      "sector_name": "风电产业链",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["风电", "海上风电", "风电设备"],
+      "subsectors": ["风电整机", "海上风电", "风电零部件", "叶片", "塔筒", "轴承", "海缆", "风电出口"],
+      "eastmoney_industry_keywords": ["风电设备", "电网设备"],
+      "eastmoney_concept_keywords": ["风电", "海上风电", "风电设备"],
+      "keywords": ["风电", "海上风电", "深远海", "风机", "叶片", "塔筒", "海缆"],
+      "exclude_keywords": ["仅新能源泛概念"],
+      "core_companies": ["金风科技", "明阳智能", "东方电缆", "中天科技", "天顺风能"],
+      "thesis": "风机大型化、海上风电、行业盈利修复及海外出口"
+    },
+
+    {
+      "sector_id": "T11",
+      "sector_name": "储能与电力设备",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["储能", "电力设备"],
+      "subsectors": ["储能系统", "PCS", "变压器", "输配电", "智能电网"],
+      "eastmoney_industry_keywords": ["电力设备", "电网设备"],
+      "eastmoney_concept_keywords": ["储能", "智能电网", "特高压"],
+      "keywords": ["储能", "PCS", "变压器", "输配电", "智能电网"],
+      "exclude_keywords": [],
+      "thesis": "新能源并网、电网投资及储能需求"
+    },
+
+    {
+      "sector_id": "T12",
+      "sector_name": "机器人与自动化",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["机器人", "工业自动化", "人形机器人"],
+      "subsectors": ["人形机器人", "工业机器人", "减速器", "伺服", "工控", "机器视觉"],
+      "eastmoney_industry_keywords": ["自动化设备", "专用设备"],
+      "eastmoney_concept_keywords": ["机器人", "人形机器人", "机器视觉"],
+      "keywords": ["机器人", "人形机器人", "减速器", "伺服", "工控"],
+      "exclude_keywords": ["仅概念蹭热点"],
+      "thesis": "制造业自动化、人形机器人及智能制造"
+    },
+
+    {
+      "sector_id": "T13",
+      "sector_name": "军工",
+      "rotation_group": "R02",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["国防军工", "军工产业链"],
+      "subsectors": ["航空", "航发", "军工电子", "舰船", "导弹", "军工材料"],
+      "eastmoney_industry_keywords": ["航空装备", "航天装备", "军工电子"],
+      "eastmoney_concept_keywords": ["军工", "航空发动机", "军工电子"],
+      "keywords": ["军工", "航发", "航空", "军舰", "军工电子"],
+      "exclude_keywords": [],
+      "thesis": "国防装备升级及订单周期"
+    },
+
+    {
+      "sector_id": "T14",
+      "sector_name": "高端装备",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["专用设备", "工业母机"],
+      "subsectors": ["工程机械", "机床", "工业母机", "专用设备", "高端制造"],
+      "eastmoney_industry_keywords": ["专用设备", "工程机械"],
+      "eastmoney_concept_keywords": ["工业母机", "高端装备", "数控机床"],
+      "keywords": ["机床", "工业母机", "工程机械", "高端装备"],
+      "exclude_keywords": [],
+      "thesis": "制造业升级、设备更新及国产替代"
+    },
+
+    {
+      "sector_id": "T15",
+      "sector_name": "汽车及零部件",
+      "rotation_group": "R02",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["汽车零部件", "汽车产业链"],
+      "subsectors": ["传统整车", "汽车零部件", "底盘", "车身", "内饰", "汽车电子"],
+      "eastmoney_industry_keywords": ["汽车零部件", "乘用车", "商用车"],
+      "eastmoney_concept_keywords": ["汽车零部件", "汽车电子", "智能汽车"],
+      "keywords": ["汽车零部件", "底盘", "内饰", "汽车电子"],
+      "exclude_keywords": [],
+      "thesis": "汽车产业升级、零部件国产替代及出口"
+    },
+
+    {
+      "sector_id": "T16",
+      "sector_name": "有色金属",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["有色", "有色资源"],
+      "subsectors": ["铜", "铝", "黄金", "稀土", "小金属", "锂资源"],
+      "eastmoney_industry_keywords": ["工业金属", "贵金属", "小金属", "能源金属"],
+      "eastmoney_concept_keywords": ["黄金", "铜", "铝", "稀土", "小金属"],
+      "keywords": ["铜", "铝", "黄金", "稀土", "小金属", "锂"],
+      "exclude_keywords": [],
+      "thesis": "商品价格、供给约束、资源安全及全球资本开支"
+    },
+
+    {
+      "sector_id": "T17",
+      "sector_name": "煤炭",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["煤炭开采", "煤电资源"],
+      "subsectors": ["动力煤", "焦煤", "焦炭", "煤化工"],
+      "eastmoney_industry_keywords": ["煤炭开采"],
+      "eastmoney_concept_keywords": ["煤炭", "煤化工", "焦煤"],
+      "keywords": ["煤炭", "动力煤", "焦煤", "焦炭"],
+      "exclude_keywords": [],
+      "thesis": "能源价格、供给约束及高股息"
+    },
+
+    {
+      "sector_id": "T18",
+      "sector_name": "石油石化",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["石油", "石化"],
+      "subsectors": ["石油开采", "炼化", "油服", "石化产品"],
+      "eastmoney_industry_keywords": ["石油开采", "炼化", "油服工程"],
+      "eastmoney_concept_keywords": ["石油", "页岩气", "油气"],
+      "keywords": ["原油", "石油", "炼化", "油服", "天然气"],
+      "exclude_keywords": [],
+      "thesis": "油价周期、能源安全及高股息"
+    },
+
+    {
+      "sector_id": "T19",
+      "sector_name": "钢铁",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["钢铁产业链"],
+      "subsectors": ["普钢", "特钢", "钢材加工"],
+      "eastmoney_industry_keywords": ["钢铁"],
+      "eastmoney_concept_keywords": ["特钢", "钢铁"],
+      "keywords": ["钢铁", "特钢", "钢材"],
+      "exclude_keywords": [],
+      "thesis": "地产基建需求、供给约束及周期修复"
+    },
+
+    {
+      "sector_id": "T20",
+      "sector_name": "基础化工",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["化工", "化工产业链"],
+      "subsectors": ["基础化学品", "农化", "化纤", "氟化工", "煤化工"],
+      "eastmoney_industry_keywords": ["基础化学", "化学原料", "化学制品"],
+      "eastmoney_concept_keywords": ["氟化工", "磷化工", "煤化工"],
+      "keywords": ["化工", "化肥", "农药", "氟化工", "磷化工"],
+      "exclude_keywords": [],
+      "thesis": "产品价格、供需格局及周期反转"
+    },
+
+    {
+      "sector_id": "T21",
+      "sector_name": "化工新材料",
+      "rotation_group": "R03",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["新材料", "先进化工材料"],
+      "subsectors": ["高性能材料", "电子化学品", "膜材料", "碳纤维", "高分子材料"],
+      "eastmoney_industry_keywords": ["化学制品", "非金属材料"],
+      "eastmoney_concept_keywords": ["新材料", "电子化学品", "碳纤维"],
+      "keywords": ["新材料", "电子化学品", "碳纤维", "高分子"],
+      "exclude_keywords": ["泛新材料概念"],
+      "thesis": "高端制造及国产替代带来的材料升级"
+    },
+
+    {
+      "sector_id": "T22",
+      "sector_name": "农业周期",
+      "rotation_group": "R03",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["农业", "农林牧渔"],
+      "subsectors": ["生猪", "种植", "饲料", "养殖", "农产品"],
+      "eastmoney_industry_keywords": ["种植业", "养殖业", "农产品加工", "饲料"],
+      "eastmoney_concept_keywords": ["猪肉", "养殖", "农业", "粮食"],
+      "keywords": ["生猪", "养殖", "饲料", "种植", "农产品"],
+      "exclude_keywords": [],
+      "thesis": "农产品价格及养殖周期"
+    },
+
+    {
+      "sector_id": "T23",
+      "sector_name": "银行",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["银行业", "银行股"],
+      "subsectors": ["国有大行", "股份行", "城商行", "农商行"],
+      "eastmoney_industry_keywords": ["银行"],
+      "eastmoney_concept_keywords": ["银行", "高股息银行"],
+      "keywords": ["银行", "商业银行", "城商行", "农商行"],
+      "exclude_keywords": [],
+      "thesis": "利率、信用周期、资产质量及红利"
+    },
+
+    {
+      "sector_id": "T24",
+      "sector_name": "券商",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["证券", "证券公司"],
+      "subsectors": ["综合券商", "财富管理", "投行业务"],
+      "eastmoney_industry_keywords": ["证券"],
+      "eastmoney_concept_keywords": ["券商", "证券"],
+      "keywords": ["券商", "证券", "财富管理"],
+      "exclude_keywords": [],
+      "thesis": "市场成交额、风险偏好及资本市场改革"
+    },
+
+    {
+      "sector_id": "T25",
+      "sector_name": "保险",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["保险业"],
+      "subsectors": ["寿险", "财险", "保险资管"],
+      "eastmoney_industry_keywords": ["保险"],
+      "eastmoney_concept_keywords": ["保险"],
+      "keywords": ["保险", "寿险", "财险"],
+      "exclude_keywords": [],
+      "thesis": "利率、权益市场及长期资金"
+    },
+
+    {
+      "sector_id": "T26",
+      "sector_name": "金融科技",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["金融IT", "金融科技"],
+      "subsectors": ["金融IT", "支付", "券商IT", "银行IT"],
+      "eastmoney_industry_keywords": ["软件开发", "IT服务"],
+      "eastmoney_concept_keywords": ["金融科技", "金融IT", "数字金融"],
+      "keywords": ["金融科技", "金融IT", "支付", "证券IT"],
+      "exclude_keywords": [],
+      "thesis": "资本市场改革、金融数字化及风险偏好"
+    },
+
+    {
+      "sector_id": "T27",
+      "sector_name": "房地产",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["地产", "房地产开发"],
+      "subsectors": ["房地产开发", "物业", "保障房"],
+      "eastmoney_industry_keywords": ["房地产开发", "房地产服务"],
+      "eastmoney_concept_keywords": ["房地产", "保障房", "房地产开发"],
+      "keywords": ["房地产", "地产", "保障房"],
+      "exclude_keywords": [],
+      "thesis": "地产政策、销售、融资及资产价格"
+    },
+
+    {
+      "sector_id": "T28",
+      "sector_name": "地产链",
+      "rotation_group": "R04",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["地产后周期", "地产产业链"],
+      "subsectors": ["家居", "建材", "装修", "厨电"],
+      "eastmoney_industry_keywords": ["家居用品", "装修装饰", "建筑材料"],
+      "eastmoney_concept_keywords": ["地产链", "家装", "家居"],
+      "keywords": ["家居", "装修", "建材", "厨电"],
+      "exclude_keywords": [],
+      "thesis": "地产政策传导至后周期消费及建筑材料"
+    },
+
+    {
+      "sector_id": "T29",
+      "sector_name": "食品饮料",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["食品", "饮料"],
+      "subsectors": ["白酒", "食品", "乳制品", "调味品", "饮料"],
+      "eastmoney_industry_keywords": ["白酒", "食品加工", "饮料制造"],
+      "eastmoney_concept_keywords": ["白酒", "食品", "乳业"],
+      "keywords": ["白酒", "食品", "乳制品", "调味品"],
+      "exclude_keywords": [],
+      "thesis": "消费复苏、盈利稳定及估值修复"
+    },
+
+    {
+      "sector_id": "T30",
+      "sector_name": "家电",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["家用电器", "白色家电"],
+      "subsectors": ["白电", "小家电", "厨电", "家电零部件"],
+      "eastmoney_industry_keywords": ["白色家电", "家电零部件", "小家电"],
+      "eastmoney_concept_keywords": ["家电", "白色家电"],
+      "keywords": ["家电", "空调", "冰箱", "洗衣机", "小家电"],
+      "exclude_keywords": [],
+      "thesis": "消费升级、出口及地产后周期"
+    },
+
+    {
+      "sector_id": "T31",
+      "sector_name": "消费零售",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["商贸零售", "零售"],
+      "subsectors": ["商超", "百货", "电商", "珠宝", "消费渠道"],
+      "eastmoney_industry_keywords": ["一般零售", "专业零售", "互联网电商"],
+      "eastmoney_concept_keywords": ["零售", "电商", "免税", "黄金珠宝"],
+      "keywords": ["零售", "电商", "百货", "珠宝", "免税"],
+      "exclude_keywords": [],
+      "thesis": "消费复苏、渠道变革及政策刺激"
+    },
+
+    {
+      "sector_id": "T32",
+      "sector_name": "纺织服饰",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["服装", "纺织"],
+      "subsectors": ["服装", "纺织", "鞋帽", "家纺"],
+      "eastmoney_industry_keywords": ["服装家纺", "纺织制造"],
+      "eastmoney_concept_keywords": ["纺织服饰", "服装"],
+      "keywords": ["服装", "纺织", "鞋", "家纺"],
+      "exclude_keywords": [],
+      "thesis": "消费复苏及出口"
+    },
+
+    {
+      "sector_id": "T33",
+      "sector_name": "美容护理",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["美护", "化妆品"],
+      "subsectors": ["化妆品", "医美消费", "个护用品"],
+      "eastmoney_industry_keywords": ["美容护理", "化妆品"],
+      "eastmoney_concept_keywords": ["医美", "化妆品", "护肤品"],
+      "keywords": ["化妆品", "医美消费", "护肤"],
+      "exclude_keywords": [],
+      "thesis": "消费升级及可选消费"
+    },
+
+    {
+      "sector_id": "T34",
+      "sector_name": "旅游酒店餐饮",
+      "rotation_group": "R05",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["旅游", "酒店餐饮"],
+      "subsectors": ["旅游", "酒店", "餐饮", "景区"],
+      "eastmoney_industry_keywords": ["旅游及景区", "酒店餐饮"],
+      "eastmoney_concept_keywords": ["旅游", "酒店", "餐饮"],
+      "keywords": ["旅游", "酒店", "餐饮", "景区"],
+      "exclude_keywords": [],
+      "thesis": "服务消费及出行恢复"
+    },
+
+    {
+      "sector_id": "T35",
+      "sector_name": "消费服务",
+      "rotation_group": "R05",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["服务消费", "生活服务"],
+      "subsectors": ["教育", "人力资源", "体育", "生活服务"],
+      "eastmoney_industry_keywords": ["教育", "社会服务"],
+      "eastmoney_concept_keywords": ["教育", "体育", "人力资源"],
+      "keywords": ["教育", "体育", "服务消费"],
+      "exclude_keywords": [],
+      "thesis": "服务消费升级"
+    },
+
+    {
+      "sector_id": "T36",
+      "sector_name": "创新药",
+      "rotation_group": "R06",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["创新药产业链", "化学制药"],
+      "subsectors": ["创新药", "生物药", "靶向药", "ADC", "GLP-1"],
+      "eastmoney_industry_keywords": ["化学制剂", "生物制品"],
+      "eastmoney_concept_keywords": ["创新药", "ADC", "GLP-1", "减肥药"],
+      "keywords": ["创新药", "ADC", "GLP-1", "生物药"],
+      "exclude_keywords": ["纯医药概念"],
+      "thesis": "创新药研发、出海及产业链估值修复"
+    },
+
+    {
+      "sector_id": "T37",
+      "sector_name": "医疗器械",
+      "rotation_group": "R06",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["医疗设备", "医疗耗材", "IVD"],
+      "subsectors": ["医疗设备", "高值耗材", "低值耗材", "IVD", "家用医疗"],
+      "eastmoney_industry_keywords": ["医疗器械"],
+      "eastmoney_concept_keywords": ["医疗器械", "体外诊断", "IVD", "医疗设备"],
+      "keywords": ["医疗器械", "医疗设备", "IVD", "耗材", "诊断"],
+      "exclude_keywords": ["仅医药流通"],
+      "thesis": "国产替代、设备更新、医疗需求及出口"
+    },
+
+    {
+      "sector_id": "T38",
+      "sector_name": "CXO",
+      "rotation_group": "R06",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["医药外包", "研发生产外包"],
+      "subsectors": ["CRO", "CDMO", "临床CRO"],
+      "eastmoney_industry_keywords": ["医疗服务"],
+      "eastmoney_concept_keywords": ["CRO", "CDMO", "医药外包"],
+      "keywords": ["CRO", "CDMO", "医药研发", "医药外包"],
+      "exclude_keywords": [],
+      "thesis": "全球医药研发外包及产能转移"
+    },
+
+    {
+      "sector_id": "T39",
+      "sector_name": "医疗服务",
+      "rotation_group": "R06",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["医疗服务", "医院服务"],
+      "subsectors": ["医院", "专科医疗", "体检", "医疗信息化"],
+      "eastmoney_industry_keywords": ["医疗服务"],
+      "eastmoney_concept_keywords": ["医疗服务", "民营医院", "医疗信息化"],
+      "keywords": ["医院", "医疗服务", "体检", "医疗信息化"],
+      "exclude_keywords": [],
+      "thesis": "医疗服务需求及连锁化"
+    },
+
+    {
+      "sector_id": "T40",
+      "sector_name": "中药",
+      "rotation_group": "R06",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["中药产业链", "中医药"],
+      "subsectors": ["中成药", "中药材", "中药饮片"],
+      "eastmoney_industry_keywords": ["中药"],
+      "eastmoney_concept_keywords": ["中药", "中医药"],
+      "keywords": ["中药", "中成药", "中医药"],
+      "exclude_keywords": [],
+      "thesis": "政策支持、消费医疗及估值修复"
+    },
+
+    {
+      "sector_id": "T41",
+      "sector_name": "医药商业",
+      "rotation_group": "R06",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["医药流通", "药房"],
+      "subsectors": ["医药流通", "零售药房", "医疗供应链"],
+      "eastmoney_industry_keywords": ["医药商业"],
+      "eastmoney_concept_keywords": ["医药流通", "药房"],
+      "keywords": ["医药流通", "药房", "医疗供应链"],
+      "exclude_keywords": [],
+      "thesis": "医药流通、零售药房及政策变化"
+    },
+
+    {
+      "sector_id": "T42",
+      "sector_name": "生物制品",
+      "rotation_group": "R06",
+      "sector_type": "STRUCTURAL",
+      "aliases": ["生物制药", "疫苗"],
+      "subsectors": ["疫苗", "血制品", "生物药"],
+      "eastmoney_industry_keywords": ["生物制品"],
+      "eastmoney_concept_keywords": ["疫苗", "血制品", "生物制品"],
+      "keywords": ["疫苗", "血制品", "生物制品"],
+      "exclude_keywords": [],
+      "thesis": "生物技术创新及产品周期"
+    },
+
+    {
+      "sector_id": "T43",
+      "sector_name": "电力",
+      "rotation_group": "R07",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["发电", "电力行业"],
+      "subsectors": ["水电", "火电", "核电", "绿电"],
+      "eastmoney_industry_keywords": ["电力"],
+      "eastmoney_concept_keywords": ["水电", "火电", "核电", "绿电"],
+      "keywords": ["水电", "火电", "核电", "绿电", "发电"],
+      "exclude_keywords": [],
+      "thesis": "电价、能源结构及高股息"
+    },
+
+    {
+      "sector_id": "T44",
+      "sector_name": "公用事业",
+      "rotation_group": "R07",
+      "sector_type": "DEFENSIVE",
+      "aliases": ["公用事业", "公共服务"],
+      "subsectors": ["燃气", "水务", "环保"],
+      "eastmoney_industry_keywords": ["燃气", "水务", "环境治理"],
+      "eastmoney_concept_keywords": ["燃气", "水务", "环保"],
+      "keywords": ["燃气", "水务", "环保"],
+      "exclude_keywords": [],
+      "thesis": "稳定现金流及防御属性"
+    },
+
+    {
+      "sector_id": "T45",
+      "sector_name": "交通运输",
+      "rotation_group": "R07",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["交运", "交通运输"],
+      "subsectors": ["港口", "航运", "公路", "铁路", "航空", "快递"],
+      "eastmoney_industry_keywords": ["港口", "航运", "铁路公路", "航空机场", "物流"],
+      "eastmoney_concept_keywords": ["航运", "港口", "物流", "快递"],
+      "keywords": ["港口", "航运", "公路", "铁路", "航空", "物流"],
+      "exclude_keywords": [],
+      "thesis": "全球贸易、物流周期及高股息"
+    },
+
+    {
+      "sector_id": "T46",
+      "sector_name": "建筑装饰",
+      "rotation_group": "R08",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["建筑", "建筑工程"],
+      "subsectors": ["建筑施工", "设计", "工程服务", "装修"],
+      "eastmoney_industry_keywords": ["建筑装饰", "工程咨询服务"],
+      "eastmoney_concept_keywords": ["建筑", "装配式建筑"],
+      "keywords": ["建筑", "工程", "施工", "设计", "装修"],
+      "exclude_keywords": [],
+      "thesis": "基建投资、城市更新及政策刺激"
+    },
+
+    {
+      "sector_id": "T47",
+      "sector_name": "建材",
+      "rotation_group": "R08",
+      "sector_type": "CORE_ROTATION",
+      "aliases": ["建筑材料", "建材产业链"],
+      "subsectors": ["水泥", "玻璃", "玻纤", "陶瓷", "防水"],
+      "eastmoney_industry_keywords": ["水泥", "玻璃玻纤", "装修建材"],
+      "eastmoney_concept_keywords": ["水泥", "玻纤", "建材"],
+      "keywords": ["水泥", "玻璃", "玻纤", "防水", "建材"],
+      "exclude_keywords": [],
+      "thesis": "地产基建需求及行业供给格局"
+    },
+
+    {
+      "sector_id": "T48",
+      "sector_name": "城市更新",
+      "rotation_group": "R08",
+      "sector_type": "POLICY",
+      "aliases": ["城市更新", "旧改", "城中村"],
+      "subsectors": ["地下管网", "老旧小区", "城中村", "电梯", "检测", "城市设计"],
+      "eastmoney_industry_keywords": ["建筑装饰", "工程咨询服务", "环保"],
+      "eastmoney_concept_keywords": ["城市更新", "地下管网", "城中村", "旧改"],
+      "keywords": ["城市更新", "地下管网", "城中村", "旧改", "电梯"],
+      "exclude_keywords": ["纯概念蹭政策"],
+      "thesis": "城市更新政策及固定资产投资"
+    },
+
+    {
+      "sector_id": "T49",
+      "sector_name": "基础设施",
+      "rotation_group": "R08",
+      "sector_type": "POLICY",
+      "aliases": ["基建", "基础设施建设"],
+      "subsectors": ["交通基建", "水利", "能源基建", "市政工程"],
+      "eastmoney_industry_keywords": ["基础建设", "工程建设"],
+      "eastmoney_concept_keywords": ["基建", "水利", "特高压"],
+      "keywords": ["基建", "水利", "市政", "基础设施"],
+      "exclude_keywords": [],
+      "thesis": "财政政策、基建投资及重大工程"
+    },
+
+    {
+      "sector_id": "T50",
+      "sector_name": "央国企基建",
+      "rotation_group": "R08",
+      "sector_type": "POLICY",
+      "aliases": ["央企基建", "国企改革基建"],
+      "subsectors": ["建筑央企", "能源央企", "交通央企", "水利央企"],
+      "eastmoney_industry_keywords": ["建筑装饰", "基础建设", "电力"],
+      "eastmoney_concept_keywords": ["央企改革", "国企改革", "中特估"],
+      "keywords": ["央企", "国企改革", "中特估", "基础设施"],
+      "exclude_keywords": ["非基建类单纯央企概念"],
+      "thesis": "央国企改革、资产重估及政策基建"
+    }
+  ],
+
+  "style_factors": [
+    {
+      "factor_id": "F01",
+      "name": "红利",
+      "type": "STYLE_FACTOR",
+      "description": "跨行业长期现金回报风格"
+    },
+    {
+      "factor_id": "F02",
+      "name": "高股息",
+      "type": "STYLE_FACTOR",
+      "description": "高股息率及稳定现金流"
+    },
+    {
+      "factor_id": "F03",
+      "name": "低波动",
+      "type": "STYLE_FACTOR",
+      "description": "低波动及防御"
+    },
+    {
+      "factor_id": "F04",
+      "name": "价值",
+      "type": "STYLE_FACTOR",
+      "description": "低估值、盈利稳定"
+    },
+    {
+      "factor_id": "F05",
+      "name": "成长",
+      "type": "STYLE_FACTOR",
+      "description": "收入、利润及产业成长"
+    },
+    {
+      "factor_id": "F06",
+      "name": "高景气",
+      "type": "STYLE_FACTOR",
+      "description": "行业景气及盈利扩张"
+    },
+    {
+      "factor_id": "F07",
+      "name": "业绩加速",
+      "type": "STYLE_FACTOR",
+      "description": "盈利增速边际改善"
+    },
+    {
+      "factor_id": "F08",
+      "name": "困境反转",
+      "type": "STYLE_FACTOR",
+      "description": "盈利和估值周期底部修复"
+    },
+    {
+      "factor_id": "F09",
+      "name": "出海",
+      "type": "STYLE_FACTOR",
+      "description": "海外收入及全球化扩张"
+    }
+  ],
+
+  "dynamic_theme_rules": {
+    "enabled": true,
+    "storage": "sector_dynamic_theme.json",
+    "principle": "动态题材不得直接新增核心sector",
+    "examples": [
+      "商业航天",
+      "低空经济",
+      "脑机接口",
+      "固态电池",
+      "人形机器人",
+      "CPO",
+      "AI Agent",
+      "风电出海",
+      "创新药出海"
+    ],
+    "lifecycle": [
+      "EMERGING",
+      "ACTIVE",
+      "EXPANSION",
+      "CLIMAX",
+      "DECLINING",
+      "INACTIVE"
+    ]
+  },
+
+  "membership_types": {
+    "CORE": {
+      "weight": 1.0,
+      "confidence_min": 0.95
+    },
+    "PRIMARY": {
+      "weight": 0.9,
+      "confidence_min": 0.85
+    },
+    "SECONDARY": {
+      "weight": 0.75,
+      "confidence_min": 0.70
+    },
+    "THEMATIC": {
+      "weight": 0.5,
+      "confidence_min": 0.55
+    },
+    "OBSERVATION": {
+      "weight": 0.3,
+      "confidence_min": 0.0
+    }
+  },
+
+  "mapping_priority": [
+    "EXISTING_CUSTOM_THEME",
+    "DIRECT_INDUSTRY",
+    "INDUSTRY_PLUS_CONCEPT",
+    "CORE_COMPANY",
+    "CONCEPT_PLUS_KEYWORD",
+    "CONCEPT_ONLY",
+    "KEYWORD"
+  ],
+
+  "mapping_confidence": {
+    "DIRECT_INDUSTRY": 1.0,
+    "INDUSTRY_PLUS_CONCEPT": 0.95,
+    "CORE_COMPANY": 0.9,
+    "CONCEPT_PLUS_KEYWORD": 0.8,
+    "CONCEPT_ONLY": 0.6,
+    "KEYWORD": 0.5
+  },
+
+  "tracking_tiers": {
+    "TIER_1_CORE": {
+      "min_valid_members": 15,
+      "min_purity": 0.70,
+      "min_stability": 0.70,
+      "usage": "每日正式SEOS及轮动监控"
+    },
+    "TIER_2_ROTATION": {
+      "min_valid_members": 10,
+      "min_purity": 0.60,
+      "min_stability": 0.60,
+      "usage": "轮动观察"
+    },
+    "TIER_3_OBSERVATION": {
+      "min_valid_members": 5,
+      "usage": "观察，不进入核心SEOS"
+    },
+    "RAW_ONLY": {
+      "min_valid_members": 0,
+      "usage": "仅作为原始概念/行业发现源"
+    }
+  },
+
+  "quality_weights": {
+    "industry_purity": 25,
+    "membership_stability": 20,
+    "coverage": 20,
+    "core_company_quality": 15,
+    "concept_coherence": 10,
+    "historical_data": 10
+  },
+
+  "quality_rules": {
+    "price_performance_excluded": true,
+    "future_information_excluded": true,
+    "dynamic_member_addition_by_price": false,
+    "manual_override_allowed": true,
+    "high_overlap_requires_review": true,
+    "weighted_jaccard_merge_threshold": 0.70
+  },
+
+  "data_sources": {
+    "primary": [
+      "Tushare stock_basic",
+      "Tushare daily",
+      "Tushare daily_basic",
+      "Tushare ths_index",
+      "Tushare ths_member",
+      "Tushare dc_concept",
+      "Tushare dc_concept_cons"
+    ],
+    "secondary": [
+      "existing theme_config.json",
+      "existing subtheme_map.json",
+      "existing theme.json"
+    ],
+    "raw_source_role": "discovery_and_mapping_only"
+  }
+}

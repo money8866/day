@@ -1,0 +1,4129 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-09-16 22:00:55",
+  "effective_date": "20260916",
+  "canonical_source": "sector_master.json",
+  "tiers": {
+    "TIER_1_CORE": [
+      {
+        "sector_id": "T01",
+        "sector_name": "半导体",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 1031,
+        "purity": 0.7712,
+        "industry_consistency": 0.8298,
+        "quality_score": 82.51,
+        "core_examples": [
+          "康强电子",
+          "北方华创",
+          "雅克科技",
+          "中晶科技",
+          "华亚智能",
+          "长川科技",
+          "江丰电子",
+          "阿石创"
+        ],
+        "primary_examples": [
+          "德明利",
+          "紫光国微",
+          "大港股份",
+          "通富微电",
+          "华天科技",
+          "大为股份",
+          "台基股份",
+          "航宇微"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "半导体",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "半导体材料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "半导体设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "半导体",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "半导体设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "半导体材料",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 83.07,
+          "breadth": 0.8008,
+          "weighted_breadth": 0.8244,
+          "core_layer": "CORE",
+          "core_breadth": 1.0,
+          "vs_market_5": 0.0335,
+          "volume_ratio_5": 1.192,
+          "top5_concentration": 0.0403,
+          "valid_member_count": 1029,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9986
+        }
+      },
+      {
+        "sector_id": "T03",
+        "sector_name": "通信",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 490,
+        "purity": 0.8706,
+        "industry_consistency": 0.9034,
+        "quality_score": 87.44,
+        "core_examples": [],
+        "primary_examples": [
+          "中兴通讯",
+          "特发信息",
+          "汇源通信",
+          "国安股份",
+          "中嘉博创",
+          "汇绿生态",
+          "东信和平",
+          "恒宝股份"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "通信服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信服务",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信线缆及配套",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "通信网络设备及器件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 78.53,
+          "breadth": 0.803,
+          "weighted_breadth": 0.7794,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.6609,
+          "vs_market_5": 0.0327,
+          "volume_ratio_5": 1.1381,
+          "top5_concentration": 0.0685,
+          "valid_member_count": 462,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T04",
+        "sector_name": "软件与信创",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 488,
+        "purity": 0.8483,
+        "industry_consistency": 0.9949,
+        "quality_score": 82.33,
+        "core_examples": [],
+        "primary_examples": [
+          "国新健康",
+          "南天信息",
+          "远光软件",
+          "石基信息",
+          "延华智能",
+          "天融信",
+          "科大讯飞",
+          "川大智胜"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "国产软件",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "ERP概念",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "信创",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "IT服务Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "软件开发",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "IT服务Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 64.54,
+          "breadth": 0.5852,
+          "weighted_breadth": 0.5526,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.3968,
+          "vs_market_5": -0.0026,
+          "volume_ratio_5": 1.1267,
+          "top5_concentration": 0.073,
+          "valid_member_count": 487,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9986
+        }
+      },
+      {
+        "sector_id": "T05",
+        "sector_name": "消费电子",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 635,
+        "purity": 0.884,
+        "industry_consistency": 1.0,
+        "quality_score": 90.0,
+        "core_examples": [],
+        "primary_examples": [
+          "深科技",
+          "亿道信息",
+          "国光电器",
+          "拓邦股份",
+          "歌尔股份",
+          "漫步者",
+          "卓翼科技",
+          "和而泰"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "消费电子",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "消费电子",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "品牌消费电子",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "消费电子零部件及组装",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "品牌消费电子",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "消费电子零部件及组装",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 80.66,
+          "breadth": 0.8386,
+          "weighted_breadth": 0.8415,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.8652,
+          "vs_market_5": 0.032,
+          "volume_ratio_5": 1.1585,
+          "top5_concentration": 0.0691,
+          "valid_member_count": 570,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9988
+        }
+      },
+      {
+        "sector_id": "T13",
+        "sector_name": "军工",
+        "rotation_group": "R02",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_1_CORE",
+        "member_count": 614,
+        "purity": 0.882,
+        "industry_consistency": 0.9916,
+        "quality_score": 88.81,
+        "core_examples": [
+          "航天发展",
+          "烽火电子",
+          "炼石航空",
+          "振华科技",
+          "航发控制",
+          "中航西飞",
+          "铖昌科技",
+          "海特高新"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "航天装备Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航空装备Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "军工电子Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航天装备Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航空装备Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航空装备Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 66.92,
+          "breadth": 0.6401,
+          "weighted_breadth": 0.6548,
+          "core_layer": "CORE",
+          "core_breadth": 0.7857,
+          "vs_market_5": 0.0038,
+          "volume_ratio_5": 1.0101,
+          "top5_concentration": 0.0416,
+          "valid_member_count": 614,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T14",
+        "sector_name": "高端装备",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 534,
+        "purity": 0.9148,
+        "industry_consistency": 0.9516,
+        "quality_score": 88.98,
+        "core_examples": [],
+        "primary_examples": [
+          "中联重科",
+          "徐工机械",
+          "柳工",
+          "山推股份",
+          "冀东装备",
+          "石化机械",
+          "拓山重工",
+          "和泰机电"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "专用设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "工程机械",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "工程机械器件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "工程机械整机",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "工程机械",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "专用设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 66.52,
+          "breadth": 0.5872,
+          "weighted_breadth": 0.5935,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.614,
+          "vs_market_5": -0.0018,
+          "volume_ratio_5": 1.115,
+          "top5_concentration": 0.0491,
+          "valid_member_count": 533,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9987
+        }
+      },
+      {
+        "sector_id": "T15",
+        "sector_name": "汽车及零部件",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 825,
+        "purity": 0.8811,
+        "industry_consistency": 0.9608,
+        "quality_score": 88.34,
+        "core_examples": [],
+        "primary_examples": [
+          "富奥股份",
+          "潍柴动力",
+          "万向钱潮",
+          "苏常柴A",
+          "威孚高科",
+          "贵州轮胎",
+          "青岛双星",
+          "襄阳轴承"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "汽车零部件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "汽车零部件",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他汽车零部件",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "汽车电子电气系统",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "汽车电子电气系统",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "其他汽车零部件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 67.08,
+          "breadth": 0.6337,
+          "weighted_breadth": 0.5916,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.437,
+          "vs_market_5": 0.0103,
+          "volume_ratio_5": 1.1282,
+          "top5_concentration": 0.0412,
+          "valid_member_count": 808,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9974
+        }
+      },
+      {
+        "sector_id": "T16",
+        "sector_name": "有色金属",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 274,
+        "purity": 0.8782,
+        "industry_consistency": 0.9602,
+        "quality_score": 86.58,
+        "core_examples": [
+          "招金黄金",
+          "焦作万方",
+          "铜陵有色",
+          "北方铜业",
+          "云铝股份",
+          "中国稀土",
+          "云南铜业",
+          "神火股份"
+        ],
+        "primary_examples": [
+          "中金岭南",
+          "兴业银锡",
+          "盛达资源",
+          "中钨高新",
+          "国城矿业",
+          "锌业股份",
+          "中色股份",
+          "锡业股份"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "工业金属",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "贵金属",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "小金属",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "铝",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "铜",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "黄金",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 66.32,
+          "breadth": 0.7106,
+          "weighted_breadth": 0.7466,
+          "core_layer": "CORE",
+          "core_breadth": 0.8852,
+          "vs_market_5": -0.0129,
+          "volume_ratio_5": 0.9722,
+          "top5_concentration": 0.0681,
+          "valid_member_count": 273,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9974
+        }
+      },
+      {
+        "sector_id": "T17",
+        "sector_name": "煤炭",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 171,
+        "purity": 0.8571,
+        "industry_consistency": 0.9873,
+        "quality_score": 85.22,
+        "core_examples": [
+          "甘肃能化",
+          "新大洲A",
+          "美锦能源",
+          "冀中能源",
+          "山西焦煤",
+          "电投能源",
+          "郑州煤电",
+          "兰花科创"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "煤炭开采",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "焦炭Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "动力煤",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "焦炭Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "焦煤",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "动力煤",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "HEALTHY",
+          "sector_health": 46.83,
+          "breadth": 0.3216,
+          "weighted_breadth": 0.262,
+          "core_layer": "CORE",
+          "core_breadth": -0.0303,
+          "vs_market_5": -0.0285,
+          "volume_ratio_5": 0.8372,
+          "top5_concentration": 0.1019,
+          "valid_member_count": 171,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T19",
+        "sector_name": "钢铁",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 46,
+        "purity": 0.9385,
+        "industry_consistency": 0.9325,
+        "quality_score": 86.07,
+        "core_examples": [
+          "中信特钢",
+          "太钢不锈",
+          "沙钢股份",
+          "久立特材",
+          "金洲管道",
+          "常宝股份",
+          "盛德鑫泰",
+          "西宁特钢"
+        ],
+        "primary_examples": [
+          "河钢股份",
+          "中南股份",
+          "本钢板材",
+          "新兴铸管",
+          "鞍钢股份",
+          "华菱钢铁",
+          "首钢股份",
+          "三钢闽光"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "普钢",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "特钢Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "特钢Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "特钢Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "特钢Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "普钢",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "HEALTHY",
+          "sector_health": 52.36,
+          "breadth": 0.3696,
+          "weighted_breadth": 0.2861,
+          "core_layer": "CORE",
+          "core_breadth": -0.1667,
+          "vs_market_5": -0.0201,
+          "volume_ratio_5": 0.9641,
+          "top5_concentration": 0.2073,
+          "valid_member_count": 46,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T22",
+        "sector_name": "农业周期",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 213,
+        "purity": 0.9116,
+        "industry_consistency": 0.9564,
+        "quality_score": 89.0,
+        "core_examples": [],
+        "primary_examples": [
+          "深粮控股",
+          "京基智农",
+          "京粮控股",
+          "正虹科技",
+          "国投丰乐",
+          "罗牛山",
+          "新希望",
+          "中粮科技"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "种植业",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "饲料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "农产品加工",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "养殖业",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "畜禽饲料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他种植业",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 39.01,
+          "breadth": 0.2441,
+          "weighted_breadth": 0.1963,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.0357,
+          "vs_market_5": -0.0641,
+          "volume_ratio_5": 0.6632,
+          "top5_concentration": 0.0885,
+          "valid_member_count": 213,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T23",
+        "sector_name": "银行",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 316,
+        "purity": 0.8776,
+        "industry_consistency": 1.0,
+        "quality_score": 88.67,
+        "core_examples": [
+          "兰州银行",
+          "宁波银行",
+          "江阴银行",
+          "张家港行",
+          "郑州银行",
+          "青岛银行",
+          "青农商行",
+          "苏州银行"
+        ],
+        "primary_examples": [
+          "平安银行",
+          "浦发银行",
+          "华夏银行",
+          "民生银行",
+          "招商银行",
+          "兴业银行",
+          "农业银行",
+          "交通银行"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "城商行Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "城商行Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "农商行Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "城商行Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "农商行Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "农商行Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 29.27,
+          "breadth": -0.7857,
+          "weighted_breadth": -0.7951,
+          "core_layer": "CORE",
+          "core_breadth": -0.9259,
+          "vs_market_5": 0.0122,
+          "volume_ratio_5": 0.9567,
+          "top5_concentration": 0.2694,
+          "valid_member_count": 42,
+          "anomaly_flags": "LOW_BREADTH;CORE_WEAK",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T24",
+        "sector_name": "券商",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 211,
+        "purity": 0.9075,
+        "industry_consistency": 1.0,
+        "quality_score": 90.0,
+        "core_examples": [
+          "申万宏源",
+          "东北证券",
+          "锦龙股份",
+          "国元证券",
+          "国海证券",
+          "广发证券",
+          "长江证券",
+          "山西证券"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "证券Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "证券Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "证券Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "证券Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "券商概念",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.97
+          },
+          {
+            "board_name": "参股券商",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.67
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 65.35,
+          "breadth": 0.7308,
+          "weighted_breadth": 0.7172,
+          "core_layer": "CORE",
+          "core_breadth": 0.7021,
+          "vs_market_5": -0.0099,
+          "volume_ratio_5": 0.9315,
+          "top5_concentration": 0.2423,
+          "valid_member_count": 52,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9618
+        }
+      },
+      {
+        "sector_id": "T27",
+        "sector_name": "房地产",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 194,
+        "purity": 0.9257,
+        "industry_consistency": 0.9223,
+        "quality_score": 87.73,
+        "core_examples": [],
+        "primary_examples": [
+          "万科A",
+          "深振业A",
+          "深物业A",
+          "深深房A",
+          "沙河股份",
+          "大悦城",
+          "华联控股",
+          "荣盛发展"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "房地产开发",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "房地产服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "房地产服务",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "房地产开发",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "房地产综合服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "产业地产",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 56.27,
+          "breadth": 0.5825,
+          "weighted_breadth": 0.5999,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.6408,
+          "vs_market_5": -0.0361,
+          "volume_ratio_5": 0.822,
+          "top5_concentration": 0.0779,
+          "valid_member_count": 194,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T28",
+        "sector_name": "地产链",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 334,
+        "purity": 0.8965,
+        "industry_consistency": 0.9708,
+        "quality_score": 89.42,
+        "core_examples": [
+          "宝鹰股份",
+          "金螳螂",
+          "海南发展",
+          "亚厦股份",
+          "广田集团",
+          "东易日盛",
+          "郑中设计",
+          "名雕股份"
+        ],
+        "primary_examples": [
+          "大亚圣象",
+          "双枪科技",
+          "华瓷股份",
+          "悍高集团",
+          "箭牌家居",
+          "慕思股份",
+          "富岭股份",
+          "马可波罗"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "家居用品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "装修装饰Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "装修装饰Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他家居用品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家居用品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他家居用品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 58.39,
+          "breadth": 0.4302,
+          "weighted_breadth": 0.4371,
+          "core_layer": "CORE",
+          "core_breadth": 0.8824,
+          "vs_market_5": -0.0121,
+          "volume_ratio_5": 0.9127,
+          "top5_concentration": 0.1665,
+          "valid_member_count": 86,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T29",
+        "sector_name": "食品饮料",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 256,
+        "purity": 0.7702,
+        "industry_consistency": 0.8288,
+        "quality_score": 82.35,
+        "core_examples": [
+          "泸州老窖",
+          "古井贡酒",
+          "酒鬼酒",
+          "五粮液",
+          "顺鑫农业",
+          "皇台酒业",
+          "洋河股份",
+          "天佑德酒"
+        ],
+        "primary_examples": [
+          "广弘控股",
+          "双汇发展",
+          "千味央厨",
+          "金字火腿",
+          "得利斯",
+          "三全食品",
+          "金达威",
+          "克明食品"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "食品加工",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "白酒Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "白酒Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "白酒Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "食品加工",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "白酒Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 40.36,
+          "breadth": 0.1149,
+          "weighted_breadth": 0.1179,
+          "core_layer": "CORE",
+          "core_breadth": -0.0526,
+          "vs_market_5": -0.0425,
+          "volume_ratio_5": 0.8066,
+          "top5_concentration": 0.0928,
+          "valid_member_count": 174,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T30",
+        "sector_name": "家电",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 189,
+        "purity": 0.8663,
+        "industry_consistency": 0.9245,
+        "quality_score": 85.44,
+        "core_examples": [
+          "长虹华意",
+          "联合精密",
+          "盾安环境",
+          "三花智控",
+          "禾盛新材",
+          "康盛股份",
+          "顺威股份",
+          "星帅尔"
+        ],
+        "primary_examples": [
+          "美的集团",
+          "长虹美菱",
+          "格力电器",
+          "海信家电",
+          "雪祺电气",
+          "利仁科技",
+          "倍轻松",
+          "飞科电器"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "白色家电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "小家电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家电零部件Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家电零部件Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家电零部件Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "白色家电",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 62.93,
+          "breadth": 0.5263,
+          "weighted_breadth": 0.48,
+          "core_layer": "CORE",
+          "core_breadth": 0.6552,
+          "vs_market_5": 0.0009,
+          "volume_ratio_5": 1.0209,
+          "top5_concentration": 0.1537,
+          "valid_member_count": 171,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T31",
+        "sector_name": "消费零售",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 772,
+        "purity": 0.857,
+        "industry_consistency": 0.9534,
+        "quality_score": 87.73,
+        "core_examples": [
+          "武商集团",
+          "供销大集",
+          "大连友谊",
+          "中兴商业",
+          "广百股份",
+          "友阿股份",
+          "天虹股份",
+          "徐家汇"
+        ],
+        "primary_examples": [
+          "全新好",
+          "农产品",
+          "深赛格",
+          "丽人丽妆",
+          "上海九百",
+          "合百集团",
+          "通程控股",
+          "中百集团"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "一般零售",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "互联网电商",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "百货",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "一般零售",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "互联网电商",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "百货",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 47.55,
+          "breadth": 0.3477,
+          "weighted_breadth": 0.3359,
+          "core_layer": "CORE",
+          "core_breadth": 0.05,
+          "vs_market_5": -0.0346,
+          "volume_ratio_5": 0.8518,
+          "top5_concentration": 0.0656,
+          "valid_member_count": 463,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9985
+        }
+      },
+      {
+        "sector_id": "T32",
+        "sector_name": "纺织服饰",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 109,
+        "purity": 0.9887,
+        "industry_consistency": 0.9863,
+        "quality_score": 98.22,
+        "core_examples": [
+          "罗莱生活",
+          "富安娜",
+          "梦洁股份",
+          "真爱美家",
+          "水星家纺",
+          "众望布艺"
+        ],
+        "primary_examples": [
+          "鲁泰A",
+          "华茂股份",
+          "欣龙控股",
+          "洪兴股份",
+          "泰慕士",
+          "福恩股份",
+          "古麒绒材",
+          "伟星股份"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "纺织制造",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "服装家纺",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "服装家纺",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家纺",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "纺织制造",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "家纺",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 61.93,
+          "breadth": 0.6055,
+          "weighted_breadth": 0.6039,
+          "core_layer": "CORE",
+          "core_breadth": 0.3333,
+          "vs_market_5": -0.0155,
+          "volume_ratio_5": 1.0096,
+          "top5_concentration": 0.1092,
+          "valid_member_count": 109,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T33",
+        "sector_name": "美容护理",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 159,
+        "purity": 0.8108,
+        "industry_consistency": 0.8743,
+        "quality_score": 84.47,
+        "core_examples": [],
+        "primary_examples": [
+          "依依股份",
+          "登康口腔",
+          "青岛金王",
+          "中顺洁柔",
+          "百亚股份",
+          "诺斯贝尔",
+          "延江股份",
+          "水羊股份"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "个护用品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化妆品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "个护用品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化妆品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化妆品制造及其他",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "品牌化妆品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.91,
+          "breadth": 0.5157,
+          "weighted_breadth": 0.5385,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.72,
+          "vs_market_5": -0.0179,
+          "volume_ratio_5": 1.0053,
+          "top5_concentration": 0.1314,
+          "valid_member_count": 159,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T34",
+        "sector_name": "旅游酒店餐饮",
+        "rotation_group": "R05",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 144,
+        "purity": 0.899,
+        "industry_consistency": 1.0,
+        "quality_score": 89.59,
+        "core_examples": [
+          "华天酒店",
+          "西安饮食",
+          "全聚德",
+          "君亭酒店",
+          "首旅酒店",
+          "锦江酒店",
+          "金陵饭店",
+          "同庆楼"
+        ],
+        "primary_examples": [
+          "张家界",
+          "岭南控股",
+          "天府文旅",
+          "凯撒旅业",
+          "峨眉山A",
+          "桂林旅游",
+          "丽江股份",
+          "云南旅游"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "酒店餐饮",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "旅游及景区",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "酒店",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "餐饮",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "餐饮",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "旅游及景区",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 43.72,
+          "breadth": 0.4336,
+          "weighted_breadth": 0.331,
+          "core_layer": "CORE",
+          "core_breadth": -0.75,
+          "vs_market_5": -0.0363,
+          "volume_ratio_5": 0.7997,
+          "top5_concentration": 0.1553,
+          "valid_member_count": 143,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 0.9951
+        }
+      },
+      {
+        "sector_id": "T35",
+        "sector_name": "消费服务",
+        "rotation_group": "R05",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_1_CORE",
+        "member_count": 338,
+        "purity": 0.8516,
+        "industry_consistency": 0.9807,
+        "quality_score": 88.13,
+        "core_examples": [
+          "力盛体育",
+          "中体产业"
+        ],
+        "primary_examples": [
+          "学大教育",
+          "国脉科技",
+          "中公教育",
+          "凯文教育",
+          "传智教育",
+          "世纪鼎利",
+          "天舟文化",
+          "科德教育"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "体育Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "教育",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "体育Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "培训教育",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "学历教育",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "体育Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.82,
+          "breadth": 0.5339,
+          "weighted_breadth": 0.5086,
+          "core_layer": "CORE",
+          "core_breadth": 1.0,
+          "vs_market_5": -0.009,
+          "volume_ratio_5": 0.9692,
+          "top5_concentration": 0.132,
+          "valid_member_count": 221,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T36",
+        "sector_name": "创新药",
+        "rotation_group": "R06",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 327,
+        "purity": 0.8969,
+        "industry_consistency": 0.951,
+        "quality_score": 89.77,
+        "core_examples": [
+          "丰原药业",
+          "丽珠集团",
+          "海南海药",
+          "东北制药",
+          "通化金马",
+          "北大医药",
+          "德展健康",
+          "石药景峰"
+        ],
+        "primary_examples": [
+          "普洛药业",
+          "新华制药",
+          "广济药业",
+          "中哲精化",
+          "海森药业",
+          "海翔药业",
+          "仙琚制药",
+          "永安药业"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "化学制药",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "生物制品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化学制剂",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化学制剂",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "生物制品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化学制药",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 57.46,
+          "breadth": 0.4128,
+          "weighted_breadth": 0.4162,
+          "core_layer": "CORE",
+          "core_breadth": 0.3981,
+          "vs_market_5": -0.0098,
+          "volume_ratio_5": 0.9228,
+          "top5_concentration": 0.0505,
+          "valid_member_count": 327,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T37",
+        "sector_name": "医疗器械",
+        "rotation_group": "R06",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 434,
+        "purity": 0.8969,
+        "industry_consistency": 0.9617,
+        "quality_score": 88.52,
+        "core_examples": [
+          "鱼跃医疗",
+          "蓝帆医疗",
+          "尚荣医疗",
+          "大博医疗",
+          "奥美医疗",
+          "乐普医疗",
+          "阳普医疗",
+          "福瑞医科"
+        ],
+        "primary_examples": [
+          "科华生物",
+          "达安基因",
+          "九安医疗",
+          "利德曼",
+          "九强生物",
+          "美康生物",
+          "迈克生物",
+          "万孚生物"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "医疗器械",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗耗材",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗器械",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗耗材",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 63.6,
+          "breadth": 0.5527,
+          "weighted_breadth": 0.5406,
+          "core_layer": "CORE",
+          "core_breadth": 0.4773,
+          "vs_market_5": -0.0027,
+          "volume_ratio_5": 1.0182,
+          "top5_concentration": 0.0498,
+          "valid_member_count": 427,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T39",
+        "sector_name": "医疗服务",
+        "rotation_group": "R06",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_1_CORE",
+        "member_count": 149,
+        "purity": 0.886,
+        "industry_consistency": 0.9143,
+        "quality_score": 86.95,
+        "core_examples": [
+          "国际医学",
+          "美年健康",
+          "澳洋健康",
+          "创新医疗",
+          "新里程",
+          "光正眼科",
+          "皓宸医疗",
+          "爱尔眼科"
+        ],
+        "primary_examples": [
+          "南华生物",
+          "贝瑞基因",
+          "凯莱英",
+          "睿智医药",
+          "迪安诊断",
+          "泰格医药",
+          "博腾股份",
+          "博济医药"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "医疗服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医院",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗服务",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医院",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他医疗服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "其他医疗服务",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 65.06,
+          "breadth": 0.5705,
+          "weighted_breadth": 0.6267,
+          "core_layer": "CORE",
+          "core_breadth": 0.5714,
+          "vs_market_5": -0.0067,
+          "volume_ratio_5": 0.9987,
+          "top5_concentration": 0.1089,
+          "valid_member_count": 149,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T40",
+        "sector_name": "中药",
+        "rotation_group": "R06",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 132,
+        "purity": 0.9437,
+        "industry_consistency": 1.0,
+        "quality_score": 90.0,
+        "core_examples": [
+          "东阿阿胶",
+          "云南白药",
+          "古汉医药",
+          "吉林敖东",
+          "仁和药业",
+          "华神科技",
+          "九芝堂",
+          "华润三九"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "中药Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "中药Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "中药Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "中药Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "中药概念",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.92
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 42.1,
+          "breadth": 0.0758,
+          "weighted_breadth": 0.0104,
+          "core_layer": "CORE",
+          "core_breadth": -0.1333,
+          "vs_market_5": -0.0246,
+          "volume_ratio_5": 0.816,
+          "top5_concentration": 0.1412,
+          "valid_member_count": 132,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T41",
+        "sector_name": "医药商业",
+        "rotation_group": "R06",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 32,
+        "purity": 0.9807,
+        "industry_consistency": 0.9603,
+        "quality_score": 98.76,
+        "core_examples": [
+          "国药一致",
+          "英特集团",
+          "浙江震元",
+          "重药控股",
+          "嘉事堂",
+          "瑞康医药",
+          "鹭燕医药",
+          "药易购"
+        ],
+        "primary_examples": [
+          "一心堂",
+          "漱玉平民",
+          "华人健康",
+          "第一医药",
+          "大参林",
+          "老百姓",
+          "益丰药房",
+          "健之佳"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "医药商业",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医药流通",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医药流通",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医药商业",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 43.64,
+          "breadth": 0.0625,
+          "weighted_breadth": 0.0749,
+          "core_layer": "CORE",
+          "core_breadth": 0.2174,
+          "vs_market_5": -0.0258,
+          "volume_ratio_5": 0.8474,
+          "top5_concentration": 0.2966,
+          "valid_member_count": 32,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T42",
+        "sector_name": "生物制品",
+        "rotation_group": "R06",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_1_CORE",
+        "member_count": 112,
+        "purity": 0.9151,
+        "industry_consistency": 0.9553,
+        "quality_score": 88.41,
+        "core_examples": [
+          "华兰生物",
+          "智飞生物",
+          "沃森生物",
+          "康泰生物",
+          "康华生物",
+          "华兰疫苗",
+          "辽宁成大",
+          "康希诺"
+        ],
+        "primary_examples": [
+          "派林生物",
+          "四环生物",
+          "万泽股份",
+          "长春高新",
+          "上海莱士",
+          "康弘药业",
+          "卫光生物",
+          "安科生物"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "生物制品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "疫苗",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "疫苗",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "生物制品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他生物制品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "其他生物制品",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "DETERIORATING",
+          "sector_health": 53.84,
+          "breadth": 0.2818,
+          "weighted_breadth": 0.3425,
+          "core_layer": "CORE",
+          "core_breadth": 0.5,
+          "vs_market_5": -0.0139,
+          "volume_ratio_5": 0.8467,
+          "top5_concentration": 0.1442,
+          "valid_member_count": 110,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T43",
+        "sector_name": "电力",
+        "rotation_group": "R07",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 866,
+        "purity": 0.8448,
+        "industry_consistency": 0.8929,
+        "quality_score": 87.17,
+        "core_examples": [],
+        "primary_examples": [
+          "深圳能源",
+          "深南电A",
+          "川能动力",
+          "珠海港",
+          "穗恒运A",
+          "绿发电力",
+          "粤电力A",
+          "皖能电力"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "电力",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "电力",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "火力发电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "风力发电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "核力发电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "其他能源发电",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.85,
+          "breadth": 0.4739,
+          "weighted_breadth": 0.4353,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.1351,
+          "vs_market_5": 0.0002,
+          "volume_ratio_5": 1.0369,
+          "top5_concentration": 0.0638,
+          "valid_member_count": 728,
+          "anomaly_flags": "",
+          "data_quality_score": 0.999
+        }
+      },
+      {
+        "sector_id": "T44",
+        "sector_name": "公用事业",
+        "rotation_group": "R07",
+        "sector_type": "DEFENSIVE",
+        "tier": "TIER_1_CORE",
+        "member_count": 129,
+        "purity": 0.9849,
+        "industry_consistency": 0.9625,
+        "quality_score": 98.93,
+        "core_examples": [
+          "胜利股份",
+          "德龙汇能",
+          "美能能源",
+          "胜通能源",
+          "升达林业",
+          "陕天然气",
+          "万憬能源",
+          "佛燃能源"
+        ],
+        "primary_examples": [
+          "中国天楹",
+          "华控赛格",
+          "中原环保",
+          "金圆股份",
+          "兴蓉环境",
+          "渤海股份",
+          "中山公用",
+          "京蓝科技"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "燃气Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "环境治理",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "燃气Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "水务及水治理",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "综合环境治理",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "综合环境治理",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 60.62,
+          "breadth": 0.5891,
+          "weighted_breadth": 0.5881,
+          "core_layer": "CORE",
+          "core_breadth": 0.5185,
+          "vs_market_5": -0.017,
+          "volume_ratio_5": 0.907,
+          "top5_concentration": 0.1213,
+          "valid_member_count": 129,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T45",
+        "sector_name": "交通运输",
+        "rotation_group": "R07",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 494,
+        "purity": 0.8978,
+        "industry_consistency": 0.9767,
+        "quality_score": 89.3,
+        "core_examples": [
+          "盐田港",
+          "凤凰航运",
+          "北部湾港",
+          "厦门港务",
+          "盛航股份",
+          "招商港口",
+          "南京港",
+          "韵达股份"
+        ],
+        "primary_examples": [
+          "深圳机场",
+          "中信海直",
+          "粤高速A",
+          "湖南投资",
+          "西部创业",
+          "远大控股",
+          "山西高速",
+          "东莞控股"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "物流",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "铁路公路",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航空机场",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "航运港口",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "快递",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "跨境物流",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 48.23,
+          "breadth": 0.2961,
+          "weighted_breadth": 0.2128,
+          "core_layer": "CORE",
+          "core_breadth": -0.4737,
+          "vs_market_5": -0.0173,
+          "volume_ratio_5": 0.986,
+          "top5_concentration": 0.0672,
+          "valid_member_count": 456,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T47",
+        "sector_name": "建材",
+        "rotation_group": "R08",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_1_CORE",
+        "member_count": 167,
+        "purity": 0.9148,
+        "industry_consistency": 0.9496,
+        "quality_score": 88.6,
+        "core_examples": [],
+        "primary_examples": [
+          "南玻A",
+          "方大集团",
+          "金隅冀东",
+          "海螺新材",
+          "上峰材料",
+          "北新建材",
+          "万年青",
+          "天山股份"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "水泥",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "玻璃玻纤",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "装修建材",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "水泥制造",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "水泥制品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "水泥制造",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 62.41,
+          "breadth": 0.4737,
+          "weighted_breadth": 0.4672,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.4559,
+          "vs_market_5": -0.0028,
+          "volume_ratio_5": 1.0648,
+          "top5_concentration": 0.1706,
+          "valid_member_count": 95,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T48",
+        "sector_name": "城市更新",
+        "rotation_group": "R08",
+        "sector_type": "POLICY",
+        "tier": "TIER_1_CORE",
+        "member_count": 495,
+        "purity": 0.7931,
+        "industry_consistency": 1.0,
+        "quality_score": 83.79,
+        "core_examples": [],
+        "primary_examples": [
+          "创元科技",
+          "神雾节能",
+          "法尔胜",
+          "盈峰环境",
+          "楚环科技",
+          "华宏科技",
+          "雪迪龙",
+          "龙源技术"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "环保设备Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "环保设备Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "环保设备Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "环保设备Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "工程咨询服务Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "工程咨询服务Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "HEALTHY",
+          "sector_health": 65.62,
+          "breadth": 0.6288,
+          "weighted_breadth": 0.6344,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.8462,
+          "vs_market_5": -0.0102,
+          "volume_ratio_5": 0.9922,
+          "top5_concentration": 0.0454,
+          "valid_member_count": 493,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9972
+        }
+      }
+    ],
+    "TIER_2_ROTATION": [
+      {
+        "sector_id": "T02",
+        "sector_name": "AI算力",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 1190,
+        "purity": 0.6841,
+        "industry_consistency": 0.8777,
+        "quality_score": 81.49,
+        "core_examples": [],
+        "primary_examples": [
+          "中国长城",
+          "浪潮信息",
+          "新大陆",
+          "魅视科技",
+          "智微智能",
+          "广电运通",
+          "奔图科技",
+          "证通电子"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "计算机设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他计算机设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他计算机设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "计算机设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "通信设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 74.81,
+          "breadth": 0.7194,
+          "weighted_breadth": 0.7197,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.7179,
+          "vs_market_5": 0.0241,
+          "volume_ratio_5": 1.1303,
+          "top5_concentration": 0.0531,
+          "valid_member_count": 816,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T08",
+        "sector_name": "锂电产业链",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 927,
+        "purity": 0.6515,
+        "industry_consistency": 0.9195,
+        "quality_score": 78.12,
+        "core_examples": [
+          "德赛电池",
+          "豪鹏科技",
+          "国轩高科",
+          "蔚蓝锂芯",
+          "科达利",
+          "亿纬锂能",
+          "欣旺达",
+          "鹏辉能源"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "锂电池",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "锂电池",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "能源金属",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "电池",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "电池化学品",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "蓄电池及其他电池",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 71.16,
+          "breadth": 0.7076,
+          "weighted_breadth": 0.7085,
+          "core_layer": "CORE",
+          "core_breadth": 0.6296,
+          "vs_market_5": 0.0089,
+          "volume_ratio_5": 1.1575,
+          "top5_concentration": 0.0372,
+          "valid_member_count": 790,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9982
+        }
+      },
+      {
+        "sector_id": "T09",
+        "sector_name": "光伏产业链",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 769,
+        "purity": 0.7317,
+        "industry_consistency": 0.9211,
+        "quality_score": 80.17,
+        "core_examples": [
+          "正泰电源",
+          "阳光电源",
+          "锦浪科技",
+          "上能电气",
+          "首航新能",
+          "德业股份",
+          "禾迈股份",
+          "昱能科技"
+        ],
+        "primary_examples": [
+          "国际实业",
+          "欧晶科技",
+          "横店东磁",
+          "苏州固锝",
+          "TCL中环",
+          "晶澳科技",
+          "协鑫集成",
+          "亚玛顿"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "光伏设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "逆变器",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "逆变器",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "光伏设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "光伏加工设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "光伏辅材",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 73.09,
+          "breadth": 0.6484,
+          "weighted_breadth": 0.6584,
+          "core_layer": "CORE",
+          "core_breadth": 1.0,
+          "vs_market_5": 0.0124,
+          "volume_ratio_5": 1.168,
+          "top5_concentration": 0.0469,
+          "valid_member_count": 768,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9991
+        }
+      },
+      {
+        "sector_id": "T12",
+        "sector_name": "机器人与自动化",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 1432,
+        "purity": 0.7017,
+        "industry_consistency": 0.9022,
+        "quality_score": 82.45,
+        "core_examples": [
+          "博实股份",
+          "埃斯顿",
+          "雷赛智能",
+          "机器人",
+          "三丰智能",
+          "拓斯达",
+          "信邦智能",
+          "迈赫股份"
+        ],
+        "primary_examples": [
+          "许继电气",
+          "东方电子",
+          "华工科技",
+          "欧克科技",
+          "宏英智能",
+          "信通电子",
+          "大族激光",
+          "金智科技"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "专用设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "自动化设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "电网自动化设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "机器人",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他自动化设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "机器人",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 68.57,
+          "breadth": 0.5993,
+          "weighted_breadth": 0.6124,
+          "core_layer": "CORE",
+          "core_breadth": 1.0,
+          "vs_market_5": 0.001,
+          "volume_ratio_5": 1.0785,
+          "top5_concentration": 0.0285,
+          "valid_member_count": 1420,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9985
+        }
+      },
+      {
+        "sector_id": "T20",
+        "sector_name": "基础化工",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 407,
+        "purity": 0.7155,
+        "industry_consistency": 0.831,
+        "quality_score": 77.35,
+        "core_examples": [
+          "永太科技",
+          "多氟多",
+          "中欣氟材",
+          "联创股份",
+          "巨化股份",
+          "昊华科技",
+          "巍华新材",
+          "三美股份"
+        ],
+        "primary_examples": [
+          "新金路",
+          "英力特",
+          "金浦钛业",
+          "博源化工",
+          "亚太实业",
+          "航锦科技",
+          "双环科技",
+          "华尔泰"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "化学原料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他化学原料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "氟化工",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "氟化工",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "其他化学原料",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "化学原料",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 61.53,
+          "breadth": 0.6069,
+          "weighted_breadth": 0.6003,
+          "core_layer": "CORE",
+          "core_breadth": 0.8,
+          "vs_market_5": -0.0184,
+          "volume_ratio_5": 0.9863,
+          "top5_concentration": 0.0504,
+          "valid_member_count": 407,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T21",
+        "sector_name": "化工新材料",
+        "rotation_group": "R03",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 557,
+        "purity": 0.7077,
+        "industry_consistency": 0.8817,
+        "quality_score": 78.5,
+        "core_examples": [
+          "国风新材",
+          "沃顿科技",
+          "佛塑科技",
+          "长江材料",
+          "平安电工",
+          "德冠新材",
+          "大东南",
+          "浙江众成"
+        ],
+        "primary_examples": [
+          "合金投资",
+          "安泰科技",
+          "图南股份",
+          "屹通新材",
+          "中洲特材",
+          "上大股份",
+          "鑫科材料",
+          "博威合金"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "非金属材料Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "膜材料",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "电子化学品Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "电子化学品Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "非金属材料Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "非金属材料Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 77.71,
+          "breadth": 0.7337,
+          "weighted_breadth": 0.7654,
+          "core_layer": "CORE",
+          "core_breadth": 0.9062,
+          "vs_market_5": 0.0145,
+          "volume_ratio_5": 1.2172,
+          "top5_concentration": 0.0927,
+          "valid_member_count": 338,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T46",
+        "sector_name": "建筑装饰",
+        "rotation_group": "R08",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 198,
+        "purity": 0.6893,
+        "industry_consistency": 1.0,
+        "quality_score": 76.45,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "工程咨询服务Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "工程咨询服务Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "装配式建筑",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "工程咨询服务Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "工程咨询服务Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "建筑节能",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.82
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.41,
+          "breadth": 0.6193,
+          "weighted_breadth": 0.6306,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": -0.0152,
+          "volume_ratio_5": 1.0663,
+          "top5_concentration": 0.0984,
+          "valid_member_count": 197,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9965
+        }
+      },
+      {
+        "sector_id": "T49",
+        "sector_name": "基础设施",
+        "rotation_group": "R08",
+        "sector_type": "POLICY",
+        "tier": "TIER_2_ROTATION",
+        "member_count": 391,
+        "purity": 0.673,
+        "industry_consistency": 0.8732,
+        "quality_score": 78.92,
+        "core_examples": [],
+        "primary_examples": [
+          "山东路桥",
+          "誉帆科技",
+          "广东建工",
+          "浙江交科",
+          "宏润建设",
+          "北新路桥",
+          "围海股份",
+          "成都路桥"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "基建市政工程",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "基建市政工程",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "基础建设",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "基础建设",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "工程建设",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "水利",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.75
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.08,
+          "breadth": 0.5674,
+          "weighted_breadth": 0.5519,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.2083,
+          "vs_market_5": -0.011,
+          "volume_ratio_5": 1.005,
+          "top5_concentration": 0.0712,
+          "valid_member_count": 282,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9951
+        }
+      }
+    ],
+    "TIER_3_OBSERVATION": [
+      {
+        "sector_id": "T06",
+        "sector_name": "AI应用",
+        "rotation_group": "R01",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 1236,
+        "purity": 0.3253,
+        "industry_consistency": 0.7,
+        "quality_score": 67.5,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "软件开发",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "软件开发",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "AI应用",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.77
+          },
+          {
+            "board_name": "AI应用",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.77
+          },
+          {
+            "board_name": "人工智能",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.75
+          },
+          {
+            "board_name": "人工智能",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.75
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 60.73,
+          "breadth": 0.5665,
+          "weighted_breadth": 0.5665,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": -0.006,
+          "volume_ratio_5": 1.0366,
+          "top5_concentration": 0.0292,
+          "valid_member_count": 1234,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9989
+        }
+      },
+      {
+        "sector_id": "T07",
+        "sector_name": "新能源汽车",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 1336,
+        "purity": 0.3565,
+        "industry_consistency": 0.7208,
+        "quality_score": 69.11,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "汽车零部件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "汽车零部件",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "新能源汽车",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.92
+          },
+          {
+            "board_name": "乘用车",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "电动乘用车",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "商用车",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 65.2,
+          "breadth": 0.6418,
+          "weighted_breadth": 0.6282,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": 0.0057,
+          "volume_ratio_5": 1.1085,
+          "top5_concentration": 0.0305,
+          "valid_member_count": 1178,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9988
+        }
+      },
+      {
+        "sector_id": "T10",
+        "sector_name": "风电产业链",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 561,
+        "purity": 0.4924,
+        "industry_consistency": 0.7603,
+        "quality_score": 83.57,
+        "core_examples": [
+          "和展能源",
+          "金风科技",
+          "大金重工",
+          "天顺风能",
+          "泰胜风能",
+          "通裕重工",
+          "金雷股份",
+          "天能重工"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "风电设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "风电整机",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "风电设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "风电零部件",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "风电零部件",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "风电整机",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 1.0
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 61.92,
+          "breadth": 0.5107,
+          "weighted_breadth": 0.4855,
+          "core_layer": "CORE",
+          "core_breadth": -0.125,
+          "vs_market_5": 0.0046,
+          "volume_ratio_5": 1.0255,
+          "top5_concentration": 0.0735,
+          "valid_member_count": 560,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 0.9988
+        }
+      },
+      {
+        "sector_id": "T11",
+        "sector_name": "储能与电力设备",
+        "rotation_group": "R02",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 1002,
+        "purity": 0.3319,
+        "industry_consistency": 0.6908,
+        "quality_score": 67.17,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "电网设备",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "智能电网",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "特高压",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "智能电网",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "电网设备",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "特高压",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 64.94,
+          "breadth": 0.6189,
+          "weighted_breadth": 0.6172,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": 0.006,
+          "volume_ratio_5": 1.1169,
+          "top5_concentration": 0.0454,
+          "valid_member_count": 997,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9979
+        }
+      },
+      {
+        "sector_id": "T18",
+        "sector_name": "石油石化",
+        "rotation_group": "R03",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 174,
+        "purity": 0.5016,
+        "industry_consistency": 0.6299,
+        "quality_score": 70.06,
+        "core_examples": [],
+        "primary_examples": [
+          "惠博普",
+          "仁智股份",
+          "贝肯能源",
+          "通源石油",
+          "潜能恒信",
+          "中油工程",
+          "海油工程",
+          "石化油服"
+        ],
+        "top_raw_boards": [
+          {
+            "board_name": "油服工程",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "油服工程",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "炼化及贸易",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "炼化及贸易",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "INDUSTRY_PRODUCT",
+            "confidence": 0.95
+          },
+          {
+            "board_name": "其他石化",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "油品石化贸易",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 54.74,
+          "breadth": 0.4444,
+          "weighted_breadth": 0.4641,
+          "core_layer": "PRIMARY",
+          "core_breadth": 0.6667,
+          "vs_market_5": -0.0283,
+          "volume_ratio_5": 0.8491,
+          "top5_concentration": 0.1707,
+          "valid_member_count": 99,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T25",
+        "sector_name": "保险",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 100,
+        "purity": 0.8643,
+        "industry_consistency": 1.0,
+        "quality_score": 90.0,
+        "core_examples": [
+          "中国平安",
+          "中国人保",
+          "新华保险",
+          "中国太保",
+          "中国人寿"
+        ],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "保险Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "保险Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "保险Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "保险Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "互联网保险",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.82
+          },
+          {
+            "board_name": "参股保险",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.67
+          }
+        ],
+        "state": {
+          "sector_state_base": "NEUTRAL",
+          "sector_health": 37.08,
+          "breadth": 0.05,
+          "weighted_breadth": -0.16,
+          "core_layer": "CORE",
+          "core_breadth": -1.0,
+          "vs_market_5": -0.0287,
+          "volume_ratio_5": 0.9156,
+          "top5_concentration": 0.5199,
+          "valid_member_count": 20,
+          "anomaly_flags": "CORE_WEAK",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T26",
+        "sector_name": "金融科技",
+        "rotation_group": "R04",
+        "sector_type": "CORE_ROTATION",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 327,
+        "purity": 0.5468,
+        "industry_consistency": 0.8183,
+        "quality_score": 73.0,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "IT服务Ⅱ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "软件开发",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "IT服务Ⅲ",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "IT服务Ⅲ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L3",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "软件开发",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "IT服务Ⅱ",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 56.58,
+          "breadth": 0.4313,
+          "weighted_breadth": 0.4241,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": -0.0067,
+          "volume_ratio_5": 0.9893,
+          "top5_concentration": 0.0937,
+          "valid_member_count": 313,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T38",
+        "sector_name": "CXO",
+        "rotation_group": "R06",
+        "sector_type": "STRUCTURAL",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 176,
+        "purity": 0.3518,
+        "industry_consistency": 0.6784,
+        "quality_score": 67.08,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "医疗服务",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "医疗服务",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "CRO概念",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "CRO",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "MicroLED",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.65
+          },
+          {
+            "board_name": "MicroLED概念",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.65
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 67.96,
+          "breadth": 0.75,
+          "weighted_breadth": 0.7409,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": 0.0078,
+          "volume_ratio_5": 1.0765,
+          "top5_concentration": 0.161,
+          "valid_member_count": 96,
+          "anomaly_flags": "",
+          "data_quality_score": 1.0
+        }
+      },
+      {
+        "sector_id": "T50",
+        "sector_name": "央国企基建",
+        "rotation_group": "R08",
+        "sector_type": "POLICY",
+        "tier": "TIER_3_OBSERVATION",
+        "member_count": 1445,
+        "purity": 0.3197,
+        "industry_consistency": 0.6811,
+        "quality_score": 67.05,
+        "core_examples": [],
+        "primary_examples": [],
+        "top_raw_boards": [
+          {
+            "board_name": "电力",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "电力",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 1.0
+          },
+          {
+            "board_name": "基础建设",
+            "source": "TUSHARE",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "基础建设",
+            "source": "EASTMONEY",
+            "board_type": "INDUSTRY_L2",
+            "mapping_method": "DIRECT_INDUSTRY",
+            "confidence": 0.9
+          },
+          {
+            "board_name": "国企改革",
+            "source": "TUSHARE",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.75
+          },
+          {
+            "board_name": "中特估",
+            "source": "EASTMONEY",
+            "board_type": "CONCEPT",
+            "mapping_method": "INDUSTRY_CONCEPT",
+            "confidence": 0.75
+          }
+        ],
+        "state": {
+          "sector_state_base": "WEAK",
+          "sector_health": 53.84,
+          "breadth": 0.3895,
+          "weighted_breadth": 0.3885,
+          "core_layer": "",
+          "core_breadth": NaN,
+          "vs_market_5": -0.0145,
+          "volume_ratio_5": 0.9512,
+          "top5_concentration": 0.0277,
+          "valid_member_count": 1425,
+          "anomaly_flags": "",
+          "data_quality_score": 0.9966
+        }
+      }
+    ],
+    "RAW_ONLY": []
+  },
+  "counts": {
+    "TIER_1_CORE": 33,
+    "TIER_2_ROTATION": 8,
+    "TIER_3_OBSERVATION": 9,
+    "RAW_ONLY": 0
+  },
+  "state_layer": {
+    "as_of": "20260916",
+    "source": "output/sector_state_today.json",
+    "note": "状态层为附带信息，不参与 Tier 分层。Tier 沿用 Step 2 规则（member_count/purity/industry_consistency），未按近期涨幅排名。"
+  }
+}

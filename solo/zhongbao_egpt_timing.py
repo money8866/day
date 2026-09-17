@@ -203,16 +203,13 @@ def _push_table(lines, title, sub):
     lines.append("")
 
 
-def build_push_msg(out: pd.DataFrame, trade_date: str, v12, pref, pref_watch, buy, watch, hot_bp) -> str:
-    """构建中报猎手×EGPT 择时的微信推送消息（Markdown）"""
+def build_push_msg(trade_date: str, v12) -> str:
+    """构建中报猎手×EGPT v12 择时的微信推送消息（Markdown，仅 v12 信号）"""
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = []
     lines.append("# 中报猎手×EGPT v12 回踩择时")
     lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
-    lines.append("")
-    lines.append("> 口径：中报业绩正 + EGPT回踩择时。回测最优组合")
-    lines.append("> (白名单主题×甜区热度5~15%×扣非≥50%×突破确认) T+5胜率72%/+5.2%。")
     lines.append("")
     lines.append("> 🏆 v12合并策略(回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50)：")
     lines.append("> 复盘60笔/38只, T+5 +0.94% / 持有+1.66% / 止损+1.30%。")
@@ -220,31 +217,11 @@ def build_push_msg(out: pd.DataFrame, trade_date: str, v12, pref, pref_watch, bu
 
     _push_table(lines, "🏆 v12合并策略·今日名单", v12)
     if len(v12) == 0:
-        lines.append("> 🏆 v12: 今日无满足标的")
-        lines.append("")
-    _push_table(lines, "🎯 主题优选·确认买点", pref)
-    if len(pref_watch):
-        lines.append(f"> 主题优选内 {len(pref_watch)} 只未突破→降级观察（回测T+20 -6.5%拖累组合，不追）")
-        lines.append("")
-    _push_table(lines, "✅ 次日可买入", buy)
-    _push_table(lines, "⚠️ 观察/等回踩（形态未确认需触发）", watch)
-    if len(hot_bp):
-        lines.append("## ⛔ 追高警示（买点1×高热度≥15%，回避）")
-        lines.append("")
-        lines.append("> 回测：买点1放量突破在甜区热度内 T+5 +5.2%/胜率72%；"
-                     "高热度(≥15%)时 T+5 胜率仅15%，追高=接盘。")
-        for _, r in hot_bp.iterrows():
-            name = f"{r['名称']}({str(r['代码']).replace('.SZ', '').replace('.SH', '')})"
-            lines.append(f"- {name} 主题:{r.get('主题状态', '')} 买点:{_push_bp_short(r.get('买点确认'))}")
-        lines.append("")
-
-    if len(pref) == 0 and len(pref_watch) == 0 and len(buy) == 0 and len(watch) == 0 and len(hot_bp) == 0:
-        lines.append("> 今日无信号：名单内无满足'业绩正+回踩形态+主题优选'的标的，空仓等待。")
+        lines.append("> 🏆 v12: 今日无满足标的，空仓等待。")
         lines.append("")
 
     lines.append("---")
-    lines.append("> **买入纪律**：次日开盘承接，不追涨停/高开；止损=现价-2×ATR14；")
-    lines.append("> 未突破仅观察不追；高热度(≥15%)回避；买点窗口=回踩1-2日。")
+    lines.append("> **买入纪律**：次日开盘承接，不追涨停/高开；止损=现价-2×ATR14；买点窗口=回踩1-2日。")
     lines.append("")
     return "\n".join(lines)
 
@@ -451,26 +428,9 @@ def main():
     _show(rest, "❌ 不买入 / 无形态")
 
     # ── 接入选股策略池 stock_pick_db（幂等，失败不阻塞推送）──
-    # 只落可操作候选(✅次日可买入 + ⚠️观察/等回踩)；非标准字段自动进 indicators JSON 列
+    # 中报猎手仅落 v12 信号（strategy=zhongbao_egpt_v12）；非标准字段自动进 indicators JSON 列
     try:
         from stock_pick_db import record_picks
-        cand = out[out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩", "⚠️ 观察"])]
-        if len(cand):
-            picks = []
-            for rank_no, (_, r) in enumerate(cand.iterrows(), start=1):
-                d = {k: (None if not isinstance(v, str) and pd.isna(v) else v)
-                     for k, v in r.items()}
-                d["rank_no"] = rank_no
-                d["reason"] = f"{d.get('形态阶段') or ''}·{d.get('主题状态') or ''}"
-                picks.append(d)
-            n_db = record_picks("zhongbao_egpt", "中报猎手×EGPT回踩择时", picks,
-                                pick_date=trade_date,
-                                field_map={"代码": "ts_code", "名称": "stock_name",
-                                           "现价": "close", "当日涨幅%": "pct_chg",
-                                           "次日操作": "signal", "买点确认": "action",
-                                           "回踩买点分": "score", "主题": "industry",
-                                           "ATR动态止损价": "stop_price"})
-            print(f"\n选股池落库: {n_db}/{len(picks)} 条 (strategy=zhongbao_egpt pick_date={trade_date})")
         if len(v12):
             picks12 = []
             for rank_no, (_, r) in enumerate(v12.iterrows(), start=1):
@@ -506,7 +466,7 @@ def main():
     # ── 微信推送（--push）：复用 EGPT 推送的 PushPlus 通道，消息留档 ──
     if args.push:
         try:
-            msg = build_push_msg(out, trade_date, v12, pref, pref_watch, buy, watch, hot_bp)
+            msg = build_push_msg(trade_date, v12)
             push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送_{trade_date}.txt")
             with open(push_file, "w", encoding="utf-8") as f:
                 f.write(msg)

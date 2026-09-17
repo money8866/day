@@ -5458,6 +5458,45 @@ def _get_theme_config(theme):
         return None
 
 
+def _apply_qfq(df, code):
+    """前复权对齐（以 df 最后一行为锚点），与 detect_breakout 口径保持一致。
+
+    背景：daily_cache 存的是不复权价，120/250 日窗口一旦跨越除权日，
+    MA120 / 120日高点会被除权前的价格抬高。例：301251 于 20260529 除权
+    （复权因子 1.0079→1.4119），不复权 120日高 77.77 属虚高价，前复权后
+    仅 55.53，导致 strategy() 的 cond5 与大周期 P0 门槛误判。
+    复权因子缺失或异常时原样返回，退回不复权旧行为。
+    """
+    try:
+        if df is None or df.empty or 'trade_date' not in df.columns:
+            return df
+        trade_dates = df['trade_date'].astype(str)
+        start_date, end_date = trade_dates.iloc[0], trade_dates.iloc[-1]
+        adj_df = sc.cached_adj_factor(code, start_date, end_date)
+        if adj_df is None or adj_df.empty:
+            return df
+        adj_df = adj_df.copy()
+        adj_df['trade_date'] = adj_df['trade_date'].astype(str)
+        ratio = trade_dates.map(adj_df.set_index('trade_date')['adj_factor'])
+        ratio = ratio.ffill().bfill()
+        if ratio.isna().any():
+            return df
+        anchor = float(ratio.iloc[-1])
+        if anchor <= 0:
+            return df
+        ratio = (ratio / anchor).values
+        # 窗口内无除权 → 无需缩放，直接返回原表（多数标的走这条快路径）
+        if float(ratio.max()) == 1.0 and float(ratio.min()) == 1.0:
+            return df
+        df = df.copy()
+        for col in ('open', 'high', 'low', 'close'):
+            if col in df.columns:
+                df[col] = (df[col].values * ratio).round(4)
+        return df
+    except Exception:
+        return df
+
+
 def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
     """优化版本：向量化计算 + 提前过滤 + 缓存复用
     p0_enabled: 大周期趋势硬门槛(MA120下行/120日深回撤>45%)开关，
@@ -5474,7 +5513,10 @@ def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
     # ST股票过滤（代码前缀判断，无需查询字典）
     if code.startswith('1') or code.startswith('2'):
         return False
-    
+
+    # ===== 前复权对齐（消除除权缺口对 120/250 日窗口的污染）=====
+    df = _apply_qfq(df, code)
+
     # 两个月涨幅过滤
     if len(df) >= 40:
         close_values = df['close'].values
@@ -5582,7 +5624,10 @@ def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
     # ===== TJ条件判断 =====
     ref_close = C[-ztts-1]
     cond2 = (ztts_close < ref_close).sum() == 0
-    cond3 = (ztts_close.max() / ztts_close.min()) < 1.3
+    # cond3 衡量「突破前整理的紧凑度」，刻意排除突破当日：
+    # 否则突破日自身的大阳线会撑大区间振幅而自我否决（例 301251 20260831 差 0.4% 被误杀）
+    ztts_close_prev = C[-ztts:-1]
+    cond3 = (ztts_close_prev.max() / ztts_close_prev.min()) < 1.3
     cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
     cond5 = H[-ztts:].max() >= H[-120:].max() * 0.8
     cond6 = ma22[-1] >= ma22[-2]
@@ -5633,13 +5678,23 @@ def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
             if H[-1] <= _prev_hi or not _vol_ok:
                 result = False
     elif is_chip_venture:
-        # 双创做低吸：回踩MA20企稳 + 缩量 + 距涨停高点有空间
+        # 双创通道A·低吸：回踩MA20企稳 + 缩量 + 距区间高点有空间
         dist_from_high = (highest_close - C[-1]) / highest_close
-        cond_pullback = 0.03 < dist_from_high < 0.15                      # 从涨停高点回落3%-15%
+        cond_pullback = 0.03 < dist_from_high < 0.15                      # 从区间高点回落3%-15%
         cond_ma_support = C[-1] >= ma20[-1] * 0.97 and C[-1] <= ma20[-1] * 1.15  # 在MA20附近
         cond_shrink_vol = VOL[-1] < vol_peak * 0.6 if vol_peak > 0 else True      # 缩量企稳
         cond_stable = abs(C[-1] / C[-2] - 1) < 0.04 and abs(C[-1] / C[-3] - 1) < 0.06  # 近2日波动温和
-        result = cond_pullback and cond_ma_support and cond_shrink_vol and cond_stable
+        pull_setup = cond_pullback and cond_ma_support and cond_shrink_vol and cond_stable
+
+        # 双创通道B·突破：长阳站上区间高点 + 量能放大 + 不远离MA5
+        # 原分支只覆盖低吸，长阳突破日因「现价高于区间高点」必然被 cond_pullback 否决
+        cond_break_up = C[-1] > highest_close and C[-1] / C[-2] >= 1.05 and C[-1] >= O[-1]
+        vol_base5 = float(np.mean(VOL[-6:-1])) if len(VOL) >= 6 else 0.0
+        cond_vol_expand = VOL[-1] >= vol_base5 * 1.3 if vol_base5 > 0 else True   # 量比≥1.3
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.15
+        break_setup = cond_break_up and cond_vol_expand and cond_near_ma5
+
+        result = pull_setup or break_setup
     else:
         # 其他（北交所等）使用原逻辑
         cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
@@ -8170,6 +8225,8 @@ def run(target_date=None, simple_mode=False):
             breakout_result = detect_breakout(s['代码'], pro)
             s['突破信号'] = breakout_result.get('signal', '')
             s['突破评分'] = breakout_result.get('breakout_score', 0)
+            # 突破类型（假突破/有效突破/即将突破/形态不具备），供突破池排名分门控使用
+            s['突破类型'] = breakout_result.get('breakout_type', '')
 
             # 二波形态检测+共振评分
             wave2_result = detect_wave2_reversal(s['代码'], pro)
@@ -8184,7 +8241,7 @@ def run(target_date=None, simple_mode=False):
                 get_hist_data(s['代码']), breakout_result, s.get('评分详情', {}))
             s['评分详情']['失败概率模型'] = '20日中线真突破风险模型'
         except Exception:
-            s['突破信号'] = ''; s['突破评分'] = 0
+            s['突破信号'] = ''; s['突破评分'] = 0; s['突破类型'] = ''
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
             s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
 
@@ -8249,10 +8306,62 @@ def run(target_date=None, simple_mode=False):
             s['ChipSuggestion'] = _sug
             s['ChipSuggestionReason'] = _reason
 
-    # 按整合评分从高到低排序
-    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('整合评分', 0))
+    # ====================================================================
+    # 突破池排名分 RankScore —— 排序口径统一
+    # 旧口径直接按「整合评分」排序，而 整合评分 = 基础裸分 × 主题层级系数 × 共振系数
+    # 再经软天花板压缩。共振系数会把分数压掉过半（例 300628 亿联网络
+    # 基础裸分 77.9 → 整合评分 18.7），导致「非突破形态 + 77% 失败概率」的票
+    # 占据第1名，真正「即将突破」的票排最后，与本池「突破」定位不符。
+    # 新口径：以未受系数污染的基础裸分（=原始整合评分）为主导，
+    # 叠加突破质量门控、20日失败概率与二波形态修正。
+    # ====================================================================
+    def _apply_pool_rank_score(_s):
+        _base = float(_s.get('原始整合评分', 0) or 0)
+        if _base <= 0:
+            _base = float(_s.get('整合评分', 0) or 0)
+        _adj = 0.0
+        _reasons = []
 
-    # 突破股池每日快照：保存全量候选(主题/整合评分/20日失败概率/排名/入选Top10)，
+        # 1) 突破质量门控：让排名与本池「突破」定位对齐
+        _btype = str(_s.get('突破类型', ''))
+        _bsc = float(_s.get('突破评分', 0) or 0)
+        if _btype == '假突破':
+            _adj -= 25; _reasons.append('假突破-25')
+        elif _btype == '有效突破' or _bsc >= 70:
+            _adj += 8; _reasons.append('有效突破+8')
+        elif _btype == '即将突破':
+            _adj += 4; _reasons.append('即将突破+4')
+        else:
+            _adj -= 12; _reasons.append('非突破形态-12')
+
+        # 2) 20日失败概率修正（基础裸分已剔除 risk_penalty，此处补回风险定价）
+        _fp = float(_s.get('失败概率', 50) or 50)
+        if _fp >= 75:
+            _adj -= 15; _reasons.append('失败率≥75%-15')
+        elif _fp >= 65:
+            _adj -= 8; _reasons.append('失败率≥65%-8')
+        elif _fp <= 45:
+            _adj += 5; _reasons.append('失败率≤45%+5')
+
+        # 3) 二波形态修正
+        _w2 = float(_s.get('二波评分', 0) or 0)
+        if _w2 >= 70:
+            _adj += 6; _reasons.append('二波≥70+6')
+        elif _w2 >= 50:
+            _adj += 3; _reasons.append('二波≥50+3')
+
+        _s['排名分'] = round(max(0.0, _base + _adj), 1)
+        _s['排名分_原始'] = round(_base, 1)
+        _s['排名分_修正'] = round(_adj, 1)
+        _s['排名分_明细'] = " ".join(_reasons)
+
+    for _s in ranked_stocks:
+        _apply_pool_rank_score(_s)
+
+    # 按突破池排名分从高到低排序
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('排名分', 0))
+
+    # 突破股池每日快照：保存全量候选(主题/排名分/整合评分/20日失败概率/排名/入选Top10)，
     # 供后续攒真实样本回测验证"预筛口径统一"后的排序效果
     try:
         _snap_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
@@ -8264,6 +8373,8 @@ def run(target_date=None, simple_mode=False):
                 '所属主题': _st.get('所属主题', ''),
                 '整合评分': _st.get('整合评分', 0),
                 '原始整合评分': _st.get('原始整合评分', 0),
+                '排名分': _st.get('排名分', 0),
+                '排名分_明细': _st.get('排名分_明细', ''),
                 '失败概率': _st.get('失败概率', 0),
                 '突破信号': _st.get('突破信号', ''),
                 '突破评分': _st.get('突破评分', 0),
@@ -8280,7 +8391,7 @@ def run(target_date=None, simple_mode=False):
 
     lines = []
     lines.append("")
-    lines.append("🔥 突破股池 (按整合评分排序)")
+    lines.append("🔥 突破股池 (按突破池排名分排序)")
     lines.append("")
     
     top_stocks = ranked_stocks[:10]
@@ -8293,6 +8404,7 @@ def run(target_date=None, simple_mode=False):
         _mom_score = s.get('ChipMomentum_Score', 50)
         _chip_str = f" 筹码={_chip_score:.0f}/CRE={_cre_score:.0f}/动量={_mom_score:.0f}"
         lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{_chip_str}")
+        lines.append(f"  排名分: {s.get('排名分', 0):.1f} (原始{s.get('排名分_原始', 0):.1f} 修正{s.get('排名分_修正', 0):+.1f}: {s.get('排名分_明细', '')})")
         lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
         _det = s.get('评分详情', {})
         if _det and isinstance(_det, dict):
@@ -8462,139 +8574,6 @@ def run(target_date=None, simple_mode=False):
     rally_pullback_v7_text = _load_rally_pullback_v7(TRADE_DATE)
     if rally_pullback_v7_text:
         print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
-
-    # =========================
-    # W7 T20 TOP_PICK（解析 T20 右尾引擎报告，七分量最优组合信号；代替原 w7_second_wave B榜 EXT-HVT 输出）
-    # =========================
-    def _load_t20_top_pick(trade_date: str) -> str:
-        r"""读取 w7_t20_right_tail_{date}.md，提取【TOP_PICK】段（七分量最优组合信号）。
-        组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60
-          × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头。
-        """
-        cand = [
-            os.path.join(r"D:\mystock\solo\report_daily", f"w7_t20_right_tail_{trade_date}.md"),
-            os.path.join(REPORT_DIR, f"w7_t20_right_tail_{trade_date}.md"),
-        ]
-        files = [p for p in cand if os.path.exists(p)]
-        if not files:
-            return ""
-        latest = max(files, key=os.path.getmtime)
-        try:
-            with open(latest, "r", encoding="utf-8") as f:
-                lines = f.read().splitlines()
-        except OSError as e:
-            print(f"[T20 TOP_PICK] 读取失败: {e}")
-            return ""
-        # 1) 解析 TOP_PICK 表格（## 【TOP_PICK】 起，至下一 ## 标题止），按表头列名自适应
-        rows = []
-        col_idx = {}
-        in_b = False
-        for ln in lines:
-            s = ln.strip()
-            if s.startswith("## 【TOP_PICK】"):
-                in_b = True
-                continue
-            if in_b:
-                if s.startswith("## "):
-                    break
-                if s.startswith("|"):
-                    cells = [c.strip() for c in s.strip("|").split("|")]
-                    if s.startswith("| #"):
-                        col_idx = {name: i for i, name in enumerate(cells)}
-                        continue
-                    if not col_idx or "| --" in s or "|---" in s:
-                        continue
-                    if len(cells) >= 12:
-                        rows.append(cells)
-        # 1.4) 保留引擎行序（引擎已按 SPACE 空间优选分→IGE_ADJ→T20综合分 排序），此处不再按 IGE_ADJ 二次重排。
-        # 1.5) TOP_PICK（七分量全中）无达标 → 回退解析 PRIMARY_BUY 段（过 SLI_V2 龙头硬过滤的可买观察）
-        def _fallback_primary_buy():
-            """解析 ## 【PRIMARY_BUY】 下各 ### 小节（code 名称（行业）），逐只保留要点行。
-            返回"【W7 T20 观察：PRIMARY_BUY 候选（n只）…】"文本；无候选则返回空串。"""
-            in_pb = False
-            items = []  # (标题行, 要点行列表)
-            cur = None
-            for ln in lines:
-                s = ln.strip()
-                if s.startswith("## 【PRIMARY_BUY】"):
-                    in_pb = True
-                    continue
-                if in_pb:
-                    if s.startswith("## "):  # 进入下一段，PRIMARY_BUY 小节采集结束
-                        break
-                    if s.startswith("### "):
-                        cur = (s[4:].strip(), [])
-                        items.append(cur)
-                    elif cur is not None and s.startswith("- "):
-                        cur[1].append(s[2:].strip().replace("**", ""))
-            # 1.5a) 保留引擎小节序（SPACE 空间优选分降序），不再按 IGE_ADJ 二次重排。
-            if not items:
-                print(f"[T20 PRIMARY_BUY] {trade_date} 无 PRIMARY_BUY 候选（TOP_PICK 亦空，W7 段今日无内容）")
-                return ""
-            n = len(items)
-            p = [
-                "【W7 T20 观察：PRIMARY_BUY 候选（{}只；TOP_PICK 七分量当日无全量达标，以下为通过 SLI_V2 龙头硬过滤的可买观察，供次日回踩择时参考）】".format(n),
-                f"数据来源：W7 T20 Right-Tail 引擎（{trade_date}）| 语义：链路≥4/7 × SLI_V2细分龙头 × Extension=0 | 排序：SPACE 空间优选分降序（引擎已排好，展示禁止重排）| 买点=回踩区缩量企稳，或不破失效位放量确认；收盘跌破失效位=证伪离场",
-            ]
-            for k, (title, bl) in enumerate(items, 1):
-                parts = title.split(None, 1)
-                code = parts[0] if parts else title
-                nm = (parts[1] if len(parts) > 1 else title).split("（")[0]
-                p.append("{}. {}({})｜{}".format(k, nm, code, "；".join(bl)))
-            return "\n".join(p)
-
-        if not rows:
-            fb = _fallback_primary_buy()
-            if fb:
-                print(f"[T20 PRIMARY_BUY] {trade_date} TOP_PICK 空，回退加载 PRIMARY_BUY 观察（{fb.count('｜')}只）")
-            return fb
-        def _cv(cells, name):
-            return cells[col_idx[name]] if name in col_idx else ""
-
-        # 2) 独立报告 t20_top_pick_{date}.md
-
-        rep = [
-            "# W7 T20 TOP_PICK（右尾最优七分量组合）",
-            "",
-            f"交易日：{trade_date}　|　共{len(rows)}只　|　数据来源：W7 T20 Right-Tail 引擎",
-            "",
-            "> 组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08（平台低点抬高） × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头（非龙头或无快照一律剔除）。",
-            "> 价格口径：现价/突破价/回踩区/失效位/目标位均为元，可直接引用禁止修改；买点=回踩区缩量企稳，或不破失效位放量确认；收盘跌破失效位=证伪离场；目标位=突破价+2.5ATR。",
-            "",
-        ]
-        rep.append("| # | 代码 | 名称 | IGE_ADJ | T20 | 结构 | Retest | RR | 现价 | 突破价 | 回踩区 | 失效位 | 目标位 | SLI龙头 |")
-        rep.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |")
-        for k, c in enumerate(rows, 1):
-            rep.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                k, _cv(c, "代码"), _cv(c, "名称"), _cv(c, "IGE_ADJ"), _cv(c, "T20"), _cv(c, "结构"), _cv(c, "Retest"),
-                _cv(c, "RR"), _cv(c, "现价"), _cv(c, "突破价"), _cv(c, "回踩区"), _cv(c, "失效位"), _cv(c, "目标位"), _cv(c, "SLI龙头")))
-        try:
-            b_path = os.path.join(REPORT_DIR, f"t20_top_pick_{trade_date}.md")
-            with open(b_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(rep) + "\n")
-            print(f"✅ T20 TOP_PICK 独立报告已保存: {b_path}")
-        except OSError as e:
-            print(f"⚠️ T20 TOP_PICK 报告保存失败: {e}")
-
-        # 3) 组装 AI prompt 段文本（含价格五要素：现价/突破价/回踩区/失效位/目标位）
-        p = [
-            "【W7 T20 TOP_PICK 七分量最优组合】",
-            f"数据来源：W7 T20 Right-Tail 引擎（{trade_date}，共{len(rows)}只）| "
-            "组合定义（七项全中）：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头",
-        ]
-        p.append("价格口径：现价/突破价/回踩区/失效位/目标位均为元，可直接引用禁止修改；"
-                 "买点=回踩区缩量企稳（量能萎缩至突破日一半以下更佳），或不破失效位放量确认；"
-                 "收盘跌破失效位=证伪离场；目标位=突破价+2.5ATR（RR≥2.08 已在引擎端验证）。")
-        p.append("候选已按 IGE_ADJ 行业增长弹性高优先降序（高弹性行业龙头在前），最终输出须严格保持此顺序，禁止按 RR 或其他指标重排；每条必须显示其 IGE_ADJ 数值。")
-        for k, c in enumerate(rows, 1):
-            p.append("{}. {}({}) IGE_ADJ:{} T20:{} 结构:{} Retest:{} RR:{} SLI:{} | 现价{} 突破价{} 回踩区{} 失效位{} 目标位{}".format(
-                k, _cv(c, "名称"), _cv(c, "代码"), _cv(c, "IGE_ADJ"), _cv(c, "T20"), _cv(c, "结构"), _cv(c, "Retest"),
-                _cv(c, "RR"), _cv(c, "SLI龙头"), _cv(c, "现价"), _cv(c, "突破价"), _cv(c, "回踩区"), _cv(c, "失效位"), _cv(c, "目标位")))
-        return "\n".join(p)
-
-    t20_top_pick_text = _load_t20_top_pick(TRADE_DATE)
-    if t20_top_pick_text:
-        print(f"[T20 TOP_PICK] 已加载七分量最优组合（{t20_top_pick_text.count('RR:')}只）")
 
     # =========================
     # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」四态；
@@ -8896,22 +8875,22 @@ def run(target_date=None, simple_mode=False):
 【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(ACTION/确认等级) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；动作含 BUY_ON_CONFIRM 的个股必须加注"需盘中重新走强确认后再执行"；所有个股按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
 
 5、**【今日突破股池分析】**
-（综合动量爆发力、资金行为、位置安全性、热度、基本面五个维度评分）
+（排名分 = 原始整合评分主导，叠加突破质量门控、20日失败概率与二波形态修正；排名分为相对排序分，可能大于100，仅用于排序，不是0-100制评分）
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
  - "📊 ETF操作提示"区及其下方的"ETF Alpha Ranking"、"TOP3 推荐买入"、"TOP10 排名"成份股
  - "📊 中线股池"区的B浪低点信号股
  - "🟢逢低买入"行下的个股
  如突破股池数据区为空，直接提示"今日无突破股池"，不要用其它股池的股票填补。
- 本段最多分析前10名，必须严格按整合评分从高到低排序，不得自行增减股票）：  
-**【重要】按整合评分从高到低排序分析前10名个股，每个股票内容力求精简：**    
+ 本段最多分析前10名，必须严格按数据块「排名分」从高到低排序（数据块已按排名分排好序，照原顺序输出即可），不得自行增减股票）：  
+**【重要】按数据块「排名分」从高到低排序分析前10名个股，每个股票内容力求精简：**    
 - **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
 【第1名】**股票名** (代码)
 【第2名】**股票名** (代码)
 【第3名】**股票名** (代码)
 依此往后
 - 对每只股票进行详细分析，包括：
-- 整合评分和失败概率
+- 排名分（含原始分与修正明细，直接引用数据块原文，禁止改写）、整合评分和失败概率
 - 止损 | 操作建议（引用上方数据区真实价位，数据不足则省略，禁止编造具体止损价）
 - 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
@@ -8939,7 +8918,7 @@ A直接过滤掉有基本面重大风险的个股：
 - 有重大诉讼风险
 - 有重大财务风险（如连续亏损、审计异常等）
 - 有其他重大利空消息
-B对于无重大风险的前30名个股，保持原有的综合评分排序，不要重新筛选和排序
+B对于无重大风险的前30名个股，保持原有的排名分顺序，不要重新筛选和排序
 C【最高优先级】所有技术面分析中的价格（MA均线价格、目标价、买点、止损位、支撑位、阻力位、现价、高点等）必须严格使用上方"【技术价位】"和"【参考位】"中提供的EXACT真实数据，禁止凭空编造任何价格数字或百分比！此项约束优先级高于其他所有分析要求。
 C-2【高点定义】技术分析中的"前高/压力位"必须严格基于"【参考位-长线】"中的120/250/全历史高点价格，不能基于当前价格或短线高点随意外推。
 C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画像中的文字描述（如"历史级大妖/龙头/市场关注"等）仅供参考，不具有任何权重，绝不能作为突破以下数字阈线的依据：
@@ -8961,17 +8940,10 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 （【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票；若该段落为空则提示"今日无V7严格拉升回调买点信号"。该策略不是当日全市场强势股清单。）
 【输出要求-第6段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
 
-7、**【W7 T20 TOP_PICK 七分量最优组合】**（W7 T20 Right-Tail 引擎输出的右尾最优信号，七项条件全中才上榜：HVT_RB_BUY × Lifecycle=RETEST_SUCCESS/T20_RIGHT_TAIL × Retest≥60 × 结构≥85 × Extension=0（无任何扩张痕迹） × RR≥2.08 × GLOBAL_MARGIN_EXPANSION × SLI_V2细分龙头（引擎已硬过滤非龙头与无快照个股，宁缺毋滥）；T20 右尾视角=未来20日高涨幅概率最大，非T+1胜率）：
-{t20_top_pick_text}
-（【数据边界】本段只分析上方 TOP_PICK 表中列出的股票；若该段为空则提示"今日无 TOP_PICK 信号"。宁缺毋滥是本段核心纪律，禁止把普通 BUY 信号混入本段。）
-【输出要求-第7段】候选已按 IGE_ADJ 行业增长弹性高弹性优先降序排列（高弹性行业龙头在前，呼应主线扩散预期）；最终输出必须严格保持上方数据给出的先后顺序逐只列出，禁止按 RR 或任何其他指标重新排序（RR 仅作为风险收益比说明，不是排序依据）；每条必须附带该股 IGE_ADJ 数值（如"IGE_ADJ 64.6"）以体现排序依据。价格必须严格使用本段给出的【现价】【突破价】【回踩区】【失效位】【目标位】并保留两位小数，禁止自行计算或编造任何价格（T20/结构/Retest/RR/IGE_ADJ 均为评分或比值不是股价）；
-措辞统一="回踩区XX.XX-XX.XX缩量企稳可低吸（量能萎缩至突破日一半以下更佳），或不破失效位XX.XX放量确认可买；收盘跌破失效位=证伪无条件离场；目标位=XX.XX（突破价+2.5ATR）"；
-禁止给出超越引擎数据的买点/目标价，禁止把回踩区写成突破追买，禁止忽略失效位纪律；单只仓位不超过10%。
-
-8、**【W7 二波·今日可操作榜】**（W7 HVT-V3 引擎收盘后过滤输出，仅列"当日买点"四态：二波买点/放量突破确认/重新扩张/T0天量确认；每日过滤后通常个位数，宁缺毋滥；与第7段 T20 右尾视角互补，两者池子不同不是矛盾，禁止互相填充）：
+7、**【W7 二波·今日可操作榜】**（W7 HVT-V3 引擎收盘后过滤输出，仅列"当日买点"五态：二波买点/放量突破确认/重新扩张/T0天量确认/放量突破后缩量回踩买点；每日过滤后通常个位数，宁缺毋滥）：
 {w7_today_action_text}
-（【数据边界】本段只分析上方"【W7 二波·今日可操作（当日买点，收盘后过滤口径）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第7段 TOP_PICK、第4段第一梯队或任何其它股池股票填补。）
-【输出要求-第8段】严格保持数据块先后顺序逐只输出：名称(代码) + 当日买点类型 + 总分 + IGE_ADJ + 现价/触发价/MA20/量比直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句操作口径（现价>触发价=已突破回踩不破可持有或低吸；量比≥1.2放量突破触发价=买点触发；量比≥3巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线）。禁止把第7段或 C池等待票混入本段充当买点；单只仓位不超过10%。
+（【数据边界】本段只分析上方"【W7 二波·今日可操作（当日买点，收盘后过滤口径）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第7段】严格保持数据块先后顺序逐只输出：名称(代码) + 当日买点类型 + 总分 + IGE_ADJ + 现价/触发价/MA20/量比直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句操作口径（现价>触发价=已突破回踩不破可持有或低吸；量比≥1.2放量突破触发价=买点触发；量比≥3巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线）。禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
 
 ------------------
 以上全局格式要求：
@@ -8980,7 +8952,7 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 7 段 W7 T20 TOP_PICK、第 8 段 W7 二波·今日可操作榜）
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 7 段 W7 二波·今日可操作榜）
 
 """
     if not simple_mode:

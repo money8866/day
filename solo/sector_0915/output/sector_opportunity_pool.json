@@ -1,0 +1,126 @@
+{
+  "version": "1.1",
+  "layer": "STEP4_SEOS",
+  "generated_at": "2026-09-16 22:02:36",
+  "trade_date": "20260916",
+  "canonical_source": "sector_master.json",
+  "config_source": "config/seos_config.json",
+  "not_a_buy_list": true,
+  "notice": "theme_opportunity_pool 只表示值得进一步研究的【主题】，不表示 BUY，不表示买入其中任何个股；个股层留到后续阶段。",
+  "priority_weights": {
+    "breadth_acceleration": 0.3,
+    "core_expansion": 0.25,
+    "rs_turn": 0.2,
+    "low_extension": 0.15,
+    "low_concentration": 0.1
+  },
+  "sort_rule": "priority_score DESC（= Breadth 加速度 + 核心扩散 + RS 转正 + 低 extension + 低集中度）",
+  "buckets": {
+    "EARLY_WATCH": [],
+    "EMERGING_WATCH": [
+      {
+        "sector_id": "T01",
+        "sector_name": "半导体",
+        "rotation_group": "R01",
+        "theme_health": 83.07,
+        "theme_health_delta_5": 43.0,
+        "seos_score": 78.4676,
+        "priority_score": 93.7699,
+        "theme_phase": "EMERGING",
+        "prev_phase": "DORMANT",
+        "phase_duration": 1,
+        "breadth": 0.8008,
+        "breadth_delta_5": 1.0214,
+        "breadth_acceleration": 1.0052,
+        "core_breadth": 1.0,
+        "core_breadth_delta_5": 1.451,
+        "core_pattern": "INSUFFICIENT_DATA",
+        "relative_strength": 0.0335,
+        "rs_turn_5": 0.037,
+        "volume_ratio_5": 1.192,
+        "amount_share_delta_5": 0.073,
+        "top5_concentration": 0.0403,
+        "extension_penalty": 0.0,
+        "startup_quality": "HEALTHY_EXPANSION",
+        "rotation_signal": "ROTATION_NEUTRAL",
+        "signal_flags": [
+          "BREADTH_EXPANDING",
+          "CORE_EXPANDING",
+          "RS_TURNING_UP",
+          "VOLUME_PARTICIPATION",
+          "AMOUNT_SHARE_EXPANDING",
+          "HEALTH_IMPROVING"
+        ],
+        "reason": [
+          "Breadth 扩张(5-10) 0.0286",
+          "Breadth 5D +1.02（扩散）",
+          "Core Breadth 5D +1.45（核心扩散）",
+          "RS turn 5D +0.037（转正）",
+          "主题成交额占比变化 5D +0.0730（提升）",
+          "量比 5D 1.192",
+          "Top5 集中度 0.0403（正常）",
+          "extension_penalty 0"
+        ],
+        "data_quality_score": 0.9986
+      }
+    ],
+    "CONFIRMING_WATCH": [],
+    "STRONG_CONTINUE": [],
+    "COOLING_WATCH": [],
+    "RISK_WATCH": [
+      {
+        "sector_id": "T42",
+        "sector_name": "生物制品",
+        "rotation_group": "R06",
+        "theme_health": 53.84,
+        "theme_health_delta_5": 20.16,
+        "seos_score": 52.2144,
+        "priority_score": 85.5401,
+        "theme_phase": "DETERIORATING",
+        "prev_phase": "DETERIORATING",
+        "phase_duration": 4,
+        "breadth": 0.2818,
+        "breadth_delta_5": 0.9091,
+        "breadth_acceleration": 0.8424,
+        "core_breadth": 0.5,
+        "core_breadth_delta_5": 1.0,
+        "core_pattern": "INSUFFICIENT_DATA",
+        "relative_strength": -0.0139,
+        "rs_turn_5": -0.0128,
+        "volume_ratio_5": 0.8467,
+        "amount_share_delta_5": -0.0034,
+        "top5_concentration": 0.1442,
+        "extension_penalty": 0.0,
+        "startup_quality": "NEUTRAL",
+        "rotation_signal": "ROTATION_NEUTRAL",
+        "signal_flags": [
+          "BREADTH_EXPANDING",
+          "CORE_EXPANDING",
+          "HEALTH_IMPROVING"
+        ],
+        "reason": [
+          "Breadth 扩张(5-10) -0.1518",
+          "Breadth 5D +0.91（扩散）",
+          "Core Breadth 5D +1.00（核心扩散）",
+          "RS turn 5D -0.013",
+          "主题成交额占比变化 5D -0.0034",
+          "量比 5D 0.8467",
+          "Top5 集中度 0.1442（正常）",
+          "extension_penalty 0"
+        ],
+        "data_quality_score": 1.0
+      }
+    ]
+  },
+  "bucket_counts": {
+    "EARLY_WATCH": 0,
+    "EMERGING_WATCH": 1,
+    "CONFIRMING_WATCH": 0,
+    "STRONG_CONTINUE": 0,
+    "COOLING_WATCH": 0,
+    "RISK_WATCH": 1
+  },
+  "excluded_phases": [
+    "DORMANT"
+  ]
+}

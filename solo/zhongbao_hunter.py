@@ -61,6 +61,7 @@ FIELDS = [
     "op_yoy", "ebt_yoy", "netprofit_yoy", "dt_netprofit_yoy", "ocf_yoy",
     "roe_yoy", "bps_yoy", "assets_yoy", "eqt_yoy", "tr_yoy", "or_yoy",
     "q_sales_yoy", "q_op_qoq", "equity_yoy",
+    "q_profit_yoy",
     "n_income", "revenue",
 ]
 
