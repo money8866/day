@@ -158,6 +158,20 @@ SIDEWAYS_PULLBACK_MAX = 0.10
 SIDEWAYS_ADJUST_MAX   = 15
 SIDEWAYS_VOL_MAX      = 0.80
 
+# 放量急洗（v4.0新增）
+#   场景: 一波拉升后 2-8 个交易日内放量快速回踩，回调浅、不破一波起始前低、不破MA20，
+#         随后最新一根放量长阳收复回调过半 → 二波启动点（入场日 = 启动日）。
+#   与"强势横盘"的缩量要求(量比<0.8)方向相反，故单独成一支路。
+#   样本: 601579.SH 会稽山 20260901
+#         0826 波峰 24.48 → 0831 回踩 22.09(回调9.8%/3天/调整期量比1.90)
+#         → 0901 +6.98% 放量长阳(量比2.04) → 0904 起连续涨停, 11个交易日 +46%
+SHAKEOUT_PULLBACK_MAX  = 0.15  # 回调幅度上限
+SHAKEOUT_ADJUST_MAX    = 8     # 调整天数上限（急洗：快跌快收）
+SHAKEOUT_VOL_MIN       = 1.30  # 调整期量比下限（放量洗盘）
+SHAKEOUT_RELAUNCH_GAIN = 0.03  # 启动日涨幅下限
+SHAKEOUT_RELAUNCH_VOL  = 1.50  # 启动日量能下限（÷一波基期均量）
+SHAKEOUT_RECOVER_MIN   = 0.50  # 启动日须收复回调幅度的比例
+
 # 深度回调 v1优化 (tdx_backtest_wave2_deep_pullback_v1验证, 922笔)
 #   回测区间: 20250101~20260703, 仅双创, 20日持有
 #   优化结果: 胜率70.9%/均收益10.89%/盈亏比2.0
@@ -959,8 +973,19 @@ class WavePatternDetector:
                 return (-3, '主板深度回调较弱(-3)')
         return (0, '')
 
+    # ── 核心辅助: 是否处于上升趋势（MA20向上 且 现价在MA20上方）──────
+    @staticmethod
+    def _is_uptrend(closes: np.ndarray, n: int) -> bool:
+        """MA20 上行 且 现价站上 MA20 → 上升趋势，用于区分「回踩」与「下跌反弹」"""
+        if n < 40:
+            return False
+        ma20_now  = closes[-20:].mean()
+        ma20_prev = closes[-40:-20].mean()
+        return bool(ma20_now > ma20_prev and closes[-1] > ma20_now)
+
     # ── 核心辅助: 找近期wave1候选高点 ────────────────────────────
-    def _find_recent_wave1(self, closes: np.ndarray, n: int, max_lookback: int = 150) -> list:
+    def _find_recent_wave1(self, closes: np.ndarray, n: int, max_lookback: int = 150,
+                           uptrend_exempt_prehigh: bool = False) -> list:
         candidates = []
         for lookback in range(3, min(max_lookback, n - SURGE_DAYS - 5)):
             end_idx = n - lookback
@@ -996,7 +1021,13 @@ class WavePatternDetector:
                 if len(pre_history) >= 20:
                     pre_high = pre_history.max()
                     if pre_high > closes[wave1_high_idx] * 1.15:
-                        continue
+                        # v3.7: 前方200日存在更高高点 → 默认过滤（防下跌趋势中的反弹被误判）
+                        # v4.0: 但「上升趋势中、前高下方的强势二波」不应被误杀
+                        #   （MA20向上 + 现价在MA20上方 → 属上升趋势，非下跌反弹）
+                        #   样本 601579.SH 会稽山 20260901：前高28.07(2025-09-04)高出波峰19%，
+                        #   但MA20向上且现价在MA20上方 → 豁免后命中，后续11个交易日+46%
+                        if not (uptrend_exempt_prehigh and self._is_uptrend(closes, n)):
+                            continue
 
                 candidates.append((wave1_high_idx, wave1_low_idx, surge_gain))
         # ── 合并同一波的相近高点，只保留最高点（v3.5）──
@@ -1055,7 +1086,8 @@ class WavePatternDetector:
         volumes = df['vol'].values
         n = len(df)
 
-        wave1_candidates = self._find_recent_wave1(closes, n, max_lookback=80)
+        wave1_candidates = self._find_recent_wave1(closes, n, max_lookback=80,
+                                                   uptrend_exempt_prehigh=True)
         for wave1_high_idx, _, surge_gain in wave1_candidates:
             wave1_high_price = highs[wave1_high_idx]
 
@@ -1095,19 +1127,29 @@ class WavePatternDetector:
             vol_base_start = max(0, wave1_high_idx - 60)
             base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
             vol_ratio = volumes[wave1_high_idx:wave1_high_idx+adjust_days+1].mean() / base_vol if base_vol > 0 else 1.0
-            
-            if is_standard_sideways:
-                if vol_ratio >= SIDEWAYS_VOL_MAX:
-                    continue
-            else:
-                if vol_ratio >= 3.0:
-                    continue
 
-            vol_base_start = max(0, wave1_high_idx - 60)
-            base_vol = volumes[vol_base_start:wave1_high_idx].mean() if wave1_high_idx > 0 else volumes.mean()
-            vol_ratio = volumes[wave1_high_idx:wave1_high_idx+adjust_days+1].mean() / base_vol if base_vol > 0 else 1.0
+            # ── v4.0 放量急洗支路 ──────────────────────────────
+            # 回调浅 + 调整快 + 放量洗净（不创前低已在下方统一校验），
+            # 且最新一根放量长阳收复回调过半 → 入场日修正为启动日
+            is_vol_shakeout = False
+            if (0.02 <= pullback_pct < SHAKEOUT_PULLBACK_MAX
+                    and adjust_days <= SHAKEOUT_ADJUST_MAX
+                    and vol_ratio >= SHAKEOUT_VOL_MIN
+                    and n - 1 > entry_idx and closes[n - 2] > 0
+                    and wave1_high_price > low_after_high):
+                _relaunch_gain = closes[n - 1] / closes[n - 2] - 1.0
+                _relaunch_vol  = volumes[n - 1] / base_vol if base_vol > 0 else 0.0
+                _recover = (closes[n - 1] - low_after_high) / (wave1_high_price - low_after_high)
+                if (_relaunch_gain >= SHAKEOUT_RELAUNCH_GAIN
+                        and _relaunch_vol >= SHAKEOUT_RELAUNCH_VOL
+                        and _recover >= SHAKEOUT_RECOVER_MIN):
+                    is_vol_shakeout = True
+                    entry_idx = n - 1
+                    adjust_days = entry_idx - wave1_high_idx
 
-            if is_standard_sideways:
+            if is_vol_shakeout:
+                pass  # 放量急洗：量比要求与横盘相反，不做缩量过滤
+            elif is_standard_sideways:
                 if vol_ratio >= SIDEWAYS_VOL_MAX:
                     continue
             else:
@@ -1118,7 +1160,8 @@ class WavePatternDetector:
             # 广合科技典型：一波涨到174.87后回调5.2%到165.78，之后震荡上涨到199.53
             # 20260624收186.85已突破174.87，此时入场不算追高
             temp_is_standard = is_standard_sideways
-            if low_pos >= 3 and low_pos <= SIDEWAYS_ADJUST_MAX and (low_pos + 10) < (n - wave1_high_idx):
+            if (not is_vol_shakeout and low_pos >= 3 and low_pos <= SIDEWAYS_ADJUST_MAX
+                    and (low_pos + 10) < (n - wave1_high_idx)):
                 after_pullback = closes[entry_idx:]
                 if len(after_pullback) >= 20:
                     # 震荡蓄力突破：波幅必须≥25%（v3.8），避免过低波幅的误标
@@ -1162,7 +1205,9 @@ class WavePatternDetector:
                         # 创新高后确实回踩了
                         new_high_pullback = True
 
-                    ma20_key = [k for k in ['ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
+                    # closes 为后复权价，MA 必须同口径取 ma_hfq_20（原取 ma_bfq_20，
+                    # 在 adj_factor≠1 的个股上会虚增乖离：601579 0901 虚增到 +31.6%）
+                    ma20_key = [k for k in ['ma_hfq_20', 'ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
                     if ma20_key:
                         ma20_val = df[ma20_key[0]].iloc[entry_idx]
                         if ma20_val > 0:
@@ -1205,7 +1250,9 @@ class WavePatternDetector:
             # HFQ后复权价格距MA20超过30%可能是除权导致的价格失真
             # 时代新材(20260624): 距MA20+800% → 除权股，跳过
             # 光华科技(20260624): 距MA20+240% → 除权股，跳过
-            ma20_key = [k for k in ['ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
+            # closes 为后复权价，MA 必须同口径取 ma_hfq_20（原取 ma_bfq_20，
+            # 在 adj_factor≠1 的个股上会虚增乖离：601579 0901 虚增到 +31.6%）
+            ma20_key = [k for k in ['ma_hfq_20', 'ma_bfq_20', 'ma20', 'ma_20'] if k in df.columns]
             if ma20_key:
                 ma20_val = df[ma20_key[0]].iloc[entry_idx]
                 if ma20_val > 0:
@@ -1218,7 +1265,11 @@ class WavePatternDetector:
             # 标准强势横盘：回调2-10% + 一波30-60%
             # MA20支撑模式：回调2-25% + 一波30-80%
             surge_pct = round(surge_gain * 100, 1)
-            if is_standard_sideways:
+            if is_vol_shakeout:
+                # 放量急洗：回调上限放宽到 SHAKEOUT_PULLBACK_MAX，一波涨幅沿用 v3.9 的 30% 下限
+                if not (0.02 <= pullback_pct < SHAKEOUT_PULLBACK_MAX and 30 <= surge_pct < 80):
+                    continue
+            elif is_standard_sideways:
                 if not (0.02 <= pullback_pct < 0.10 and 30 <= surge_pct < 60):
                     continue
             else:
@@ -1269,7 +1320,10 @@ class WavePatternDetector:
                 score_result['details'].append(f"{dmi_cross['desc']}(+{dmi_cross['pts']})")
 
             # ── 板块形态适配加分 ──
-            bonus_pts, bonus_desc = self._board_bonus(ts_code, '强势横盘')
+            # 放量急洗无板块回测依据 → 命中 _board_bonus 默认分支(0)，
+            # 避免被「双创强势横盘过滤(-100)」误杀
+            pattern_detail = '放量急洗' if is_vol_shakeout else '强势横盘'
+            bonus_pts, bonus_desc = self._board_bonus(ts_code, pattern_detail)
             if bonus_pts != 0:
                 score_result['total'] += bonus_pts
                 if bonus_desc:
@@ -1321,8 +1375,6 @@ class WavePatternDetector:
             confidence = '⭐⭐⭐⭐⭐' if (wave2_confirmed or dmi_confirmed) else '⭐⭐⭐⭐'
             if score_result['total'] >= 15:
                 confidence = '⭐⭐⭐⭐⭐' + '🔥' if score_result['total'] >= 20 else '⭐⭐⭐⭐⭐'
-
-            pattern_detail = '强势横盘'
 
             return {
                 'ts_code':         ts_code,

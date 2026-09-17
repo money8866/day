@@ -57,13 +57,18 @@ def _record_picks_to_db(trade_date: str, report: dict):
     按记录表标准列映射: close=current_close(跟踪收益基准), stop_price/target1
     供 STOP_HIT/TARGET_HIT 命中判定; 其余策略私有字段（reentry_streak/
     entry_trigger/buy_zone/invalidation…）自动进 indicators JSON 列。
+
+    落库口径 = te_buy_pool_kept（R1/R2 再入规则剔除后的当日显示池），
+    与报告「① 次日买入候选」一致；te_buy_pool（剔除前）仅作 streak 递推源、不落库。
     """
     if record_picks is None or not report:
         return
     try:
-        pool = report.get('te_buy_pool') or []
+        pool = report.get('te_buy_pool_kept')
+        if pool is None:
+            pool = report.get('te_buy_pool') or []
         if not pool:
-            print('[RUN-PUSH] te_buy_pool 为空，跳过选股落库')
+            print('[RUN-PUSH] te_buy_pool_kept 为空（当日无剔除后保留候选），跳过选股落库')
             return
         if PICK_DB_PATH:
             os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)

@@ -141,6 +141,14 @@ DIFFUSION_TYPES = ["LEADER_ONLY", "CORE_EXPANSION", "PRIMARY_EXPANSION",
                    "SECOND_LINE_EXPANSION", "FULL_BREADTH_EXPANSION",
                    "FAILED_DIFFUSION", "NO_DIFFUSION"]
 
+# P1-03：扩散形态（三级 breadth 变化量）与扩散阶段；与 diffusion_type（绝对水平口径）并存，不互相替代。
+DIFFUSION_PATTERNS = ["LEADER_ONLY", "CORE_EXPANSION", "SECOND_LINE_EMERGING",
+                      "FULL_BREADTH_EXPANSION", "FAILED_DIFFUSION", "NO_DIFFUSION"]
+DIFFUSION_STAGES = ["NO_DIFFUSION", "EARLY_DIFFUSION", "FULL_DIFFUSION", "FAILED_DIFFUSION"]
+
+# P1-05：跨主题污染分级
+POLLUTION_LEVELS = ["LOW", "MEDIUM", "HIGH"]
+
 POLLUTION_TYPES = ["CONCEPT_POLLUTION", "LOW_MEMBERSHIP_CONFIDENCE", "INDUSTRY_CONFLICT",
                    "CONCEPT_ONLY", "OVER_EXTENSION", "VOLUME_SPIKE", "THEME_EXITING",
                    "DATA_INVALID", "CROSS_THEME_CONFLICT"]
@@ -195,8 +203,12 @@ CANDIDATE_DAILY_COLS = [
     "high_20", "high_60", "high_120", "drawdown_20", "drawdown_60", "drawdown_120",
     "price_extension", "volume_extension", "trend_quality",
     "candidate_score", "candidate_status", "risk_flags", "candidate_reason", "data_quality",
-    "crowding_class", "diffusion_type", "theme_opportunity_score", "industry_role",
-    "industry_conflict", "primary_theme", "secondary_themes", "cross_theme_bonus",
+    "crowding_class", "diffusion_type", "diffusion_pattern", "diffusion_stage",
+    "theme_opportunity_score", "calibrated_opportunity_base", "calibration_status", "industry_role",
+    "industry_conflict", "primary_theme", "primary_theme_id", "secondary_themes",
+    "primary_theme_confidence", "theme_overlap_count", "candidate_theme_count",
+    "is_context_theme", "cross_theme_pollution_flag", "multi_theme_crowding_flag",
+    "cross_theme_bonus", "cross_theme_score_penalty",
     "price_extension_score", "volume_extension_score", "listed_days",
     "role_evidence", "industry",
 ]
@@ -206,10 +218,13 @@ POLLUTION_COLS = ["trade_date", "ts_code", "name", "sector_id", "sector_name",
 
 DIFFUSION_COLS = [
     "trade_date", "sector_id", "sector_name", "rotation_group", "theme_phase", "theme_seos",
-    "theme_health", "breadth", "breadth_delta_5", "core_breadth", "core_breadth_delta_5",
-    "primary_breadth", "primary_breadth_delta_3", "secondary_breadth", "secondary_breadth_delta_5",
+    "theme_health", "breadth", "breadth_delta_5", "core_breadth", "core_breadth_delta_3",
+    "core_breadth_delta_5", "primary_breadth", "primary_breadth_delta_3", "secondary_breadth",
+    "secondary_breadth_delta_3", "secondary_breadth_delta_5",
+    "core_breadth_slope", "primary_breadth_slope", "secondary_breadth_slope",
     "theme_ret_1", "theme_ret_5", "top5_concentration", "theme_opportunity_score",
-    "theme_bucket", "diffusion_type", "diffusion_score_theme", "candidate_count",
+    "theme_bucket", "diffusion_type", "diffusion_pattern", "diffusion_stage",
+    "diffusion_score_theme", "candidate_count",
 ]
 
 
@@ -419,9 +434,9 @@ def load_theme_panel() -> pd.DataFrame:
     """Step 3/4 主题日频面板（seos_daily）。"""
     cols = ["trade_date", "sector_id", "sector_name", "rotation_group", "theme_health",
             "seos_score", "theme_phase", "breadth", "breadth_delta_5", "core_breadth",
-            "core_breadth_delta_5", "primary_breadth", "primary_breadth_delta_3",
-            "secondary_breadth", "top5_concentration", "volume_ratio_5",
-            "relative_strength", "ew_ret_5", "ew_ret_10", "ew_ret_20",
+            "core_breadth_delta_3", "core_breadth_delta_5", "primary_breadth",
+            "primary_breadth_delta_3", "secondary_breadth", "top5_concentration",
+            "volume_ratio_5", "relative_strength", "ew_ret_5", "ew_ret_10", "ew_ret_20",
             "data_quality_score", "warmup_ready", "data_invalid"]
     df = _read_csv(IN_SEOS_DAILY, dtype=str)
     missing = [c for c in cols if c not in df.columns]
@@ -439,6 +454,12 @@ def load_theme_panel() -> pd.DataFrame:
     # secondary_breadth 无现成 delta 列，由本层在 <=D 序列上自算（需求 §十三 二线扩散）
     g = df.groupby("sector_id", sort=False)["secondary_breadth"]
     df["secondary_breadth_delta_5"] = df["secondary_breadth"] - g.shift(5)
+    # P1-03：补齐三级 breadth 的 3 日变化量与斜率，供 diffusion_pattern 区分「刚开始改善」与「已全面扩散」。
+    #   全部只用到 t 及 t 之前的面板值（shift 为正），PIT 可得。
+    df["secondary_breadth_delta_3"] = df["secondary_breadth"] - g.shift(3)
+    for _lyr in ("core", "primary", "secondary"):
+        df[f"{_lyr}_breadth_slope"] = pd.to_numeric(
+            df[f"{_lyr}_breadth_delta_3"], errors="coerce") / 3.0
     log.info("主题面板载入：%d 行 / %d 主题 / %s → %s", len(df), df["sector_id"].nunique(),
              df["trade_date"].min(), df["trade_date"].max())
     return df
@@ -625,6 +646,213 @@ def compute_fundamental_pit(panel_keys: pd.DataFrame, fina: pd.DataFrame) -> pd.
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# PIT 成员口径（P0-01 修复）：Step 5 内所有「成员 → 主题层」聚合的唯一入口
+#   禁止任何位置绕过本层直接用全表 membership 回填历史。
+# ────────────────────────────────────────────────────────────────────────────
+
+def pit_membership_mask(df: pd.DataFrame, dates) -> pd.Series:
+    """PIT 成员判定的唯一实现（需求 §三十）。
+
+    规则：is_static=true 视为整个回看窗口内恒定的正式定义；否则要求
+    effective_date <= D；若成员表含 membership_end_date，则额外要求 D < end。
+    """
+    if np.isscalar(dates):
+        d = pd.Series(str(dates), index=df.index)
+    else:
+        d = pd.Series(np.asarray(dates, dtype=object), index=df.index).astype(str)
+    ok = df["is_static"].fillna(False).astype(bool) | (df["effective_date"].astype(str) <= d)
+    if "membership_end_date" in df.columns:
+        end = df["membership_end_date"].astype(str).str.strip()
+        has_end = ~end.str.lower().isin(["", "nan", "none", "nat", "null"])
+        ok = ok & ((~has_end) | (d < end))
+    return ok
+
+
+def get_pit_membership(membership: pd.DataFrame, date) -> pd.DataFrame:
+    """按 as-of 日期 D 返回 PIT 成员快照（唯一 accessor，供测试与审计调用）。"""
+    return membership[pit_membership_mask(membership, str(date))].copy()
+
+
+def apply_pit_membership(pairs: pd.DataFrame, date_col: str = "trade_date") -> pd.DataFrame:
+    """对含日期列的成员对（ts_code × sector_id × D）应用 PIT 过滤（唯一实现）。"""
+    return pairs[pit_membership_mask(pairs, pairs[date_col])].copy()
+
+
+def test_theme_return_pit(panel: pd.DataFrame, stock_long: pd.DataFrame, membership: pd.DataFrame,
+                          theme: pd.DataFrame, sample_dates: int = 6) -> tuple:
+    """P0-01 自动测试：主题层等权收益聚合必须与个股层同口径（逐日 PIT）。
+
+    1) 泄漏测试：合成「非 static 且 effective_date > D」成员，验证 D 的成员快照排除它、
+       且在 effective_date 之后可见（证明过滤是 PIT 而非整体丢弃）；
+    2) 独立重算：抽样日期上 theme_member_valid 必须等于
+       「PIT 成员 ∩ 当日有 ret_5 值的股票」的独立计数。
+    """
+    msgs = []
+    # 1) 泄漏测试
+    if len(membership):
+        mb = membership.copy()
+        i = mb.index[0]
+        was_static = bool(mb.loc[i, "is_static"])
+        mb.loc[i, "is_static"] = False
+        mb.loc[i, "effective_date"] = "20991231"
+        key = (str(mb.loc[i, "ts_code"]), str(mb.loc[i, "sector_id"]))
+        snap_d = get_pit_membership(mb, "20250630")
+        in_d = key in set(zip(snap_d["ts_code"].astype(str), snap_d["sector_id"].astype(str)))
+        snap_f = get_pit_membership(mb, "20991231")
+        in_f = key in set(zip(snap_f["ts_code"].astype(str), snap_f["sector_id"].astype(str)))
+        leak_ok = (not in_d) and in_f
+        msgs.append(f"leakage: 未来成员进入 D={in_d} 到期后可见={in_f} 原is_static={was_static}")
+    else:
+        leak_ok = False
+        msgs.append("leakage: 空成员表")
+
+    # 2) 独立重算
+    if "theme_member_valid" not in theme.columns:
+        return (False, "主题层缺少 theme_member_valid；" + "；".join(msgs))
+    t = theme[["trade_date", "sector_id", "theme_member_valid"]].copy()
+    t["trade_date"] = t["trade_date"].astype(str)
+    ds = sorted(set(t["trade_date"]))
+    if len(ds) > sample_dates:
+        step = max(1, len(ds) // sample_dates)
+        ds = ds[::step][:sample_dates]
+    sf = stock_long[["trade_date", "ts_code", "ret_5"]].copy()
+    sf["trade_date"] = sf["trade_date"].astype(str)
+    bad, checked = 0, 0
+    for d in ds:
+        sfd = set(sf.loc[sf["trade_date"].eq(d) & sf["ret_5"].notna(), "ts_code"].astype(str))
+        p = get_pit_membership(membership, d)
+        p = p[p["ts_code"].astype(str).isin(sfd)]
+        cnt = p.groupby(p["sector_id"].astype(str), sort=False).size().to_dict()
+        for _, r in t[t["trade_date"].eq(d)].iterrows():
+            checked += 1
+            exp = int(cnt.get(str(r["sector_id"]), 0))
+            got = pd.to_numeric(r["theme_member_valid"], errors="coerce")
+            got = 0 if pd.isna(got) else int(got)
+            if exp != got:
+                bad += 1
+    msgs.append(f"独立重算不一致={bad}/{checked}")
+    return (bool(leak_ok and bad == 0 and checked > 0), "；".join(msgs))
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# P0-02 机会状态校准层（Opportunity Calibration，严格 PIT）
+#   Step 4 的 SEOS 保持不变（structural signal）；Step 5 新增本层，
+#   用 signal_date < D 的滚动历史统计各 phase 的相对 alpha，禁用「EMERGING 天然 85」。
+# ────────────────────────────────────────────────────────────────────────────
+
+def compute_opportunity_calibration(panel: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """按 (trade_date, theme_phase) 输出 PIT 机会校准结果。
+
+    口径（全部只用到 D 当日及之前的信息）：
+      fwd_h(s) = ew_ret_h(s+h)                     # 主题 s 之后 h 日的等权收益（面板自带滚动收益）
+      ex_h(s)  = fwd_h(s) - 当日全主题均值           # 横截面去均值 → 剥离市场 beta
+      alpha(D, p) = mean{ ex_h(s) : phase(s)=p, s+h+gap <= D, s >= D-lookback }
+
+    输出：calibration_alpha / calibration_sample_size / calibration_t_stat /
+          calibration_status / phase_quality_multiplier / calibrated_base_cap。
+    """
+    cc = cfg["theme_opportunity"]["opportunity_calibration"]
+    out_cols = ["trade_date", "theme_phase", "calibration_alpha", "calibration_sample_size",
+                "calibration_t_stat", "calibration_status", "phase_quality_multiplier",
+                "calibration_base_cap"]
+    if not cc.get("enabled", True):
+        d0 = panel[["trade_date", "theme_phase"]].drop_duplicates().copy()
+        d0["calibration_alpha"] = np.nan
+        d0["calibration_sample_size"] = 0
+        d0["calibration_t_stat"] = np.nan
+        d0["calibration_status"] = "CALIBRATION_DISABLED"
+        d0["phase_quality_multiplier"] = 1.0
+        d0["calibration_base_cap"] = 100.0
+        return d0[out_cols]
+
+    hz = [int(h) for h in cc["horizons"]]
+    lookback = int(cc["lookback_days"])
+    min_n = int(cc["min_sample_size"])
+    gap = int(cc.get("min_gap_days", 0))
+    buckets = [(float(b), float(m)) for b, m in cc["alpha_multiplier_buckets"]]
+
+    d = panel[["trade_date", "sector_id", "theme_phase"] + [f"ew_ret_{h}" for h in hz]].copy()
+    d["trade_date"] = d["trade_date"].astype(str)
+    d = d.sort_values(["sector_id", "trade_date"], kind="mergesort").reset_index(drop=True)
+    dates = sorted(d["trade_date"].unique())
+    pos = {dt: i for i, dt in enumerate(dates)}
+    d["_pos"] = d["trade_date"].map(pos)
+
+    recs = []
+    for h in hz:
+        fwd = d.groupby("sector_id", sort=False)[f"ew_ret_{h}"].shift(-h)   # t+h 日滚动 h 日收益 = t→t+h 前瞻
+        ex = fwd - fwd.groupby(d["trade_date"]).transform("mean")           # 同日横截面去均值
+        t = pd.DataFrame({"theme_phase": d["theme_phase"], "_pos": d["_pos"], "_ex": ex})
+        recs.append(t.dropna(subset=["_ex"]))
+    ob = pd.concat(recs, ignore_index=True) if recs else pd.DataFrame(columns=["theme_phase", "_pos", "_ex"])
+
+    rows = []
+    for dt in dates:
+        pD = pos[dt]
+        sel = ob[(ob["_pos"] + gap <= pD) & (ob["_pos"] >= pD - lookback)]
+        if not len(sel):
+            continue
+        for ph, g in sel.groupby("theme_phase", sort=False):
+            v = g["_ex"]
+            n = int(len(v))
+            a = float(v.mean())
+            sd = float(v.std(ddof=1)) if n > 1 else float("nan")
+            rows.append({"trade_date": dt, "theme_phase": ph, "calibration_alpha": a,
+                         "calibration_sample_size": n,
+                         "calibration_t_stat": (a / (sd / math.sqrt(n))) if (n > 1 and sd and sd > 0) else np.nan})
+    cal = pd.DataFrame(rows, columns=["trade_date", "theme_phase", "calibration_alpha",
+                                      "calibration_sample_size", "calibration_t_stat"])
+    base = panel[["trade_date", "theme_phase"]].drop_duplicates().copy()
+    base["trade_date"] = base["trade_date"].astype(str)
+    cal = base.merge(cal, on=["trade_date", "theme_phase"], how="left")
+
+    n = pd.to_numeric(cal["calibration_sample_size"], errors="coerce").fillna(0.0)
+    a = pd.to_numeric(cal["calibration_alpha"], errors="coerce")
+    insufficient = n < min_n
+    nonpos = (~insufficient) & (a <= 0.0)
+    cal["calibration_status"] = np.where(insufficient, "CALIBRATION_INSUFFICIENT",
+                                 np.where(nonpos, "CALIBRATION_NONPOSITIVE", "CALIBRATION_POSITIVE"))
+
+    def mult_of(x):
+        for ub, m in buckets:
+            if x <= ub:
+                return m
+        return buckets[-1][1]
+
+    m_insuff = float(cc["insufficient_multiplier"])
+    mult = [mult_of(v) if v == v else m_insuff for v in a]
+    cal["phase_quality_multiplier"] = np.where(insufficient, m_insuff, mult)
+    cal["calibration_base_cap"] = np.where(insufficient, float(cc["base_cap_insufficient"]),
+                                   np.where(nonpos, float(cc["base_cap_alpha_nonpositive"]), 100.0))
+    return cal[out_cols]
+
+
+def apply_opportunity_calibration(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """把 phase_base 校准为 calibrated_opportunity_base（P0-02）。"""
+    cc = cfg["theme_opportunity"]["opportunity_calibration"]
+    sup = cc["support_requirement"]
+    out = df.copy()
+    raw = pd.to_numeric(out["raw_opportunity_base"], errors="coerce")
+    mult = pd.to_numeric(out["phase_quality_multiplier"], errors="coerce").fillna(1.0)
+    cap = pd.to_numeric(out["calibration_base_cap"], errors="coerce").fillna(100.0)
+    base = np.minimum(raw * mult, cap)
+
+    # §六：CONFIRMING / STRONG 保留较高基础分的前提是 breadth / core breadth / RS / health 共同支持
+    c = sup["conditions"]
+    sup_cnt = ((pd.to_numeric(out["breadth_delta_5"], errors="coerce") >= c["breadth_delta_5_min"]).astype(int)
+               + (pd.to_numeric(out["core_breadth_delta_5"], errors="coerce") >= c["core_breadth_delta_5_min"]).astype(int)
+               + (pd.to_numeric(out["relative_strength"], errors="coerce") >= c["relative_strength_min"]).astype(int)
+               + (pd.to_numeric(out["theme_health"], errors="coerce") >= c["theme_health_min"]).astype(int))
+    gate = out["theme_phase"].isin(sup["phases"]) & (sup_cnt < int(sup["min_support_count"]))
+    base = np.where(gate, np.minimum(base, float(sup["base_cap_when_unsupported"])), base)
+
+    out["calibrated_opportunity_base"] = pd.Series(base, index=out.index).clip(0.0, 100.0)
+    out["calibration_support_count"] = sup_cnt
+    out["calibration_support_gate"] = gate
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 主题层：机会评分 / 主题收益 / 扩散类型（需求 §四、§十二、§十三、§二十九）
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -636,22 +864,31 @@ def compute_theme_layer(panel: pd.DataFrame, stock_long: pd.DataFrame,
     w = opp_cfg["weights"]
     ramps = opp_cfg["ramps"]
 
-    base = df["theme_phase"].map(opp_cfg["phase_base_scores"]).astype(float)
-    df["phase_base_score"] = base
-    df["theme_opportunity_score"] = (
-        w["phase_base"] * base
-        + w["seos"] * ramp(df["seos_score"], *ramps["seos_score"]).fillna(0.0)
-        + w["health"] * ramp(df["theme_health"], *ramps["theme_health"]).fillna(0.0)
-    ).clip(0.0, 100.0)
+    # P0-02：phase_base 不再直接进入评分，先命名 raw_opportunity_base，再经 PIT 机会校准层。
+    df["raw_opportunity_base"] = df["theme_phase"].map(opp_cfg["raw_phase_base_scores"]).astype(float)
+    cal = compute_opportunity_calibration(df, cfg)
+    df = df.merge(cal, on=["trade_date", "theme_phase"], how="left")
+    df = apply_opportunity_calibration(df, cfg)
+
+    def _opp(base_col):
+        return (w["phase_base"] * pd.to_numeric(base_col, errors="coerce")
+                + w["seos"] * ramp(df["seos_score"], *ramps["seos_score"]).fillna(0.0)
+                + w["health"] * ramp(df["theme_health"], *ramps["theme_health"]).fillna(0.0)).clip(0.0, 100.0)
+
+    df["raw_opportunity_score"] = _opp(df["raw_opportunity_base"])
+    df["theme_opportunity_score"] = _opp(df["calibrated_opportunity_base"])
     df["theme_bucket"] = df["theme_phase"].map(opp_cfg["phase_to_bucket"]).fillna("NONE")
     df["is_active_bucket"] = df["theme_bucket"].isin(opp_cfg["active_buckets"])
     df["is_risk_bucket"] = df["theme_bucket"].isin(opp_cfg["risk_buckets"])
 
     # 主题等权收益（PIT 成员 → 等权）：供个股相对主题强弱使用（需求 §十四）
+    # P0-01：与个股层同口径 —— 逐日 PIT 成员（唯一 accessor），禁止全表 membership 回填历史。
     sf = stock_long[["trade_date", "ts_code", "ret_1", "ret_3", "ret_5", "ret_10", "ret_20"]]
-    mm = membership[["ts_code", "sector_id", "membership_weight"]]
-    j = sf.merge(mm, on="ts_code", how="inner")
-    j = j[j["trade_date"].isin(set(df["trade_date"].unique()))]
+    panel_dates = pd.DataFrame({"trade_date": sorted(df["trade_date"].astype(str).unique())})
+    sf = sf[sf["trade_date"].astype(str).isin(set(panel_dates["trade_date"]))]
+    mm = membership[["ts_code", "sector_id", "membership_weight", "is_static", "effective_date"]]
+    j = apply_pit_membership(panel_dates.merge(mm, how="cross"))   # (D × 全量成员) → PIT 过滤
+    j = j.merge(sf, on=["trade_date", "ts_code"], how="inner")
     agg = j.groupby(["trade_date", "sector_id"], sort=False).agg(
         theme_ret_1=("ret_1", "mean"),
         theme_ret_3=("ret_3", "mean"),
@@ -690,6 +927,43 @@ def compute_theme_layer(panel: pd.DataFrame, stock_long: pd.DataFrame,
     dtype = dtype.mask(cond_failed, "FAILED_DIFFUSION")
     dtype = dtype.mask(df["theme_phase"].eq("DATA_INVALID") | (~df["warmup_ready"]), "NO_DIFFUSION")
     df["diffusion_type"] = dtype
+
+    # ────────────────────────────────────────────────────────────────────────
+    # P1-03：扩散形态 diffusion_pattern / diffusion_stage
+    #   与 diffusion_type（绝对水平口径）并存：本层表达「扩散阶梯」（谁在改善、改善到什么程度），
+    #   用于识别「第二梯队刚开始改善」（SECOND_LINE_EMERGING），避免扩散识别滞后。
+    #   全部输入均为 t 日及之前的面板值（delta 由 shift 正方向构造），PIT 可得。
+    # ────────────────────────────────────────────────────────────────────────
+    pr3 = cfg["diffusion_thresholds"]["pattern_rules"]
+    cd3 = pd.to_numeric(df["core_breadth_delta_3"], errors="coerce")
+    sd3 = pd.to_numeric(df["secondary_breadth_delta_3"], errors="coerce")
+    core_up = cd3 >= pr3["core_up_min"]
+    core_stable = (cd3 > pr3["core_stable_low"]) & (cd3 <= pr3["core_stable_high"])
+    core_strong = core_up | (pd.to_numeric(df["core_breadth_delta_5"], errors="coerce") >= pr3["core_up_min"])
+    prim_up = pd3 >= pr3["primary_up_min"]
+    prim_flat = pd3.abs() <= pr3["primary_flat_abs_max"]
+    sec_up = (sd3 >= pr3["secondary_up_min"]) & (sd5 >= pr3["secondary_up_min"])
+    sec_emerging = (sd3 >= pr3["emerging_delta_3_min"]) & (sd5 <= pr3["emerging_delta_5_max"])
+    prim_emerging = (pd3 >= pr3["emerging_delta_3_min"]) & (sd3 <= pr3["emerging_delta_5_max"])
+
+    p_full = core_up & prim_up & sec_up
+    p_failed = core_strong & (pd3 <= pr3["failed_primary_delta_3_max"]) \
+        & (sd5 <= pr3["failed_secondary_delta_5_max"])
+    # §十：第二梯队刚开始改善 = 上层已稳定 + 下层 delta_3 转正但 delta_5 尚未确认 → EARLY_DIFFUSION
+    p_emerging = (core_up | core_stable) & (sec_emerging | prim_emerging) & (~p_full)
+    p_core = core_up & prim_up
+    p_leader = core_up & prim_flat & (~sec_up)
+
+    dpat = pd.Series("NO_DIFFUSION", index=df.index, dtype=object)
+    dpat = dpat.mask(p_leader, "LEADER_ONLY")
+    dpat = dpat.mask(p_core, "CORE_EXPANSION")
+    dpat = dpat.mask(p_emerging, "SECOND_LINE_EMERGING")
+    dpat = dpat.mask(p_full, "FULL_BREADTH_EXPANSION")
+    dpat = dpat.mask(p_failed, "FAILED_DIFFUSION")
+    dpat = dpat.mask(df["theme_phase"].eq("DATA_INVALID") | (~df["warmup_ready"]), "NO_DIFFUSION")
+    df["diffusion_pattern"] = dpat
+    df["diffusion_stage"] = df["diffusion_pattern"].map(
+        cfg["diffusion_thresholds"]["pattern_stage_map"]).fillna("NO_DIFFUSION")
 
     # 主题层扩散强度（breadth 改善 + 核心改善 + 成交份额参与）
     r = cfg["diffusion_thresholds"]["ramps"]
@@ -1046,6 +1320,10 @@ def classify_candidate_type(df: pd.DataFrame, cfg: dict) -> pd.Series:
     out = pd.Series("THEME_WATCH", index=df.index, dtype=object)
 
     # THEME_PULLBACK（§十九）：强主题中的健康调整
+    # P1-04：必须经过 Theme Opportunity Gate，禁止「股票超跌/回撤/低于 MA20」直接进入 THEME_PULLBACK。
+    pgate = pr["theme_opportunity_gate"]
+    gate_bucket = df["is_active_bucket"].fillna(False) if pgate["require_active_bucket"] \
+        else pd.Series(True, index=df.index)
     cond_pullback = (
         df["theme_phase"].isin(pr["phases"])
         & df["membership_type"].isin(pr["membership"])
@@ -1055,11 +1333,17 @@ def classify_candidate_type(df: pd.DataFrame, cfg: dict) -> pd.Series:
         & (pd.to_numeric(df["volume_ratio_5"], errors="coerce") <= pr["volume_contraction"]["volume_ratio_5_max"])
         & (pd.to_numeric(df["rel_ret_20"], errors="coerce") >= pr["rel_strength_stable_min_rel_ret_20"])
         & (pd.to_numeric(df["fundamental_quality"], errors="coerce") >= pr["fundamental_min"])
+        & (pd.to_numeric(df["calibrated_opportunity_base"], errors="coerce")
+           >= _fv(pgate["min_calibrated_opportunity_base"]))
+        & df["calibration_status"].isin(pgate["accepted_calibration_status"])
+        & gate_bucket
     )
     cond_diffusion = df["is_theme_diffusion_stock"].fillna(False)
+    # P1-03：第二梯队「刚开始改善」（diffusion_pattern=SECOND_LINE_EMERGING）不再被漏判
     cond_second = (
         df["membership_type"].isin(sl["membership"])
-        & df["diffusion_type"].isin(sl["diffusion_types"])
+        & (df["diffusion_type"].isin(sl["diffusion_types"])
+           | df["diffusion_pattern"].isin(sl.get("diffusion_patterns", [])))
         & (pd.to_numeric(df["ret_5"], errors="coerce") >= sl["stock_ret_5_min"])
     )
     cond_leader = (
@@ -1093,31 +1377,83 @@ def classify_candidate_type(df: pd.DataFrame, cfg: dict) -> pd.Series:
 
 
 def compute_cross_theme(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    """需求 §二十七/§二十八：跨主题不重复计分，bonus ≤ 5 分；确定 primary_candidate_theme。"""
+    """需求 §二十七/§二十八 + P1-05：跨主题不重复计分；primary_theme 只由产业归属证据决定。
+
+    定序（需求 §十三）：成员层级 > membership_confidence > membership_weight > industry_role
+    > business_relevance > sector_id；明确禁止用近期收益 / 主题强度 / 主题热度做判定（旧实现
+    用 theme_opportunity_score + theme_diffusion_score 定主主题，属被禁止的「主题强度/热度」驱动）。
+
+    membership ≠ candidate_theme（需求 §十四/§十七）：只有前 max_active_candidate_themes 个主题
+    参与候选计分，其余登记为 context themes（封顶 WATCH），避免「同一股票 × N 主题」重复计分；
+    多主题 membership 本身一律保留，不因多主题删除真实产业关系。
+    """
     ct = cfg["cross_theme_bonus"]
+    sel = ct["primary_theme_selection"]
+    lvl_rank = {t: i for i, t in enumerate(sel["level_order"])}
+    n_levels = len(lvl_rank)
+    role_scores = cfg["industry_role"]["role_scores"]
+    biz_rank = sel["business_relevance_rank"]
+    n_max = int(ct["max_active_candidate_themes"])
+    pol = ct["pollution_levels"]
+
     out = df.copy()
-    # 每只股票当日按 (membership_quality + theme_opportunity + role + diffusion) 选主主题
-    key = (pd.to_numeric(out["membership_quality"], errors="coerce").fillna(0.0) * 0.4
-           + pd.to_numeric(out["theme_opportunity_score"], errors="coerce").fillna(0.0) * 0.3
-           + out["theme_role"].map(cfg["industry_role"]["role_scores"]).astype(float).fillna(0.0) * 0.2
-           + pd.to_numeric(out["theme_diffusion_score"], errors="coerce").fillna(0.0) * 0.1)
-    out["_primary_key"] = key
+    out["_lvl"] = out["membership_type"].map(lvl_rank).fillna(n_levels).astype(float)
+    out["_conf"] = pd.to_numeric(out["membership_confidence"], errors="coerce").fillna(-1.0)
+    out["_wt"] = pd.to_numeric(out["membership_weight"], errors="coerce").fillna(-1.0)
+    out["_role"] = out["theme_role"].map(role_scores).astype(float).fillna(-1.0)
+    out["_biz"] = out["role_evidence"].map(biz_rank).fillna(-1.0)
+    out = out.sort_values(
+        ["trade_date", "ts_code", "_lvl", "_conf", "_wt", "_role", "_biz", "sector_id"],
+        ascending=[True, True, True, False, False, False, False, True], kind="mergesort")
     grp = out.groupby(["trade_date", "ts_code"], sort=False)
-    out["_rank_in_stock"] = grp["_primary_key"].rank(method="first", ascending=False)
-    out["primary_theme"] = np.where(out["_rank_in_stock"] == 1, out["sector_id"], None)
-    out["primary_theme"] = grp["primary_theme"].transform(lambda s: s.ffill().bfill())
-    sec = out[out["_rank_in_stock"] > 1].groupby(["trade_date", "ts_code"], sort=False)["sector_id"] \
-        .apply(lambda s: "|".join(sorted(set(s.astype(str)))))
+    out["theme_rank_in_stock"] = (grp.cumcount() + 1).astype(int)
+    out["candidate_theme_count"] = grp["sector_id"].transform("size").astype(int)
+    out["is_context_theme"] = out["theme_rank_in_stock"] > n_max
+    out["primary_theme_id"] = grp["sector_id"].transform("first").astype(str)
+    out["primary_theme_confidence"] = pd.to_numeric(
+        grp["membership_confidence"].transform("first"), errors="coerce").fillna(0.0)
+
+    def _join(sub: pd.DataFrame) -> pd.Series:
+        if not len(sub):
+            return pd.Series(dtype=object)
+        return sub.groupby(["trade_date", "ts_code"], sort=False)["sector_id"] \
+            .apply(lambda s: "|".join(sorted(set(s.astype(str)))))
+
+    sec = _join(out[(out["theme_rank_in_stock"] > 1) & (~out["is_context_theme"])])
+    ctx = _join(out[out["is_context_theme"]])
+    # merge 会按当前（已排序）行序重发 RangeIndex；必须还原为排序前的原索引，
+    # 否则调用方用「调用前构造的 Series × 调用后列」时会按标签错位（candidate_score 被置换）。
+    _row_index = out.index
     out = out.merge(sec.rename("secondary_themes").reset_index(),
                     on=["trade_date", "ts_code"], how="left")
+    out = out.merge(ctx.rename("context_theme_ids").reset_index(),
+                    on=["trade_date", "ts_code"], how="left")
+    out.index = _row_index
     out["secondary_themes"] = out["secondary_themes"].fillna("").astype(object)
+    out["context_theme_ids"] = out["context_theme_ids"].fillna("").astype(object)
     n_sec = pd.Series([0 if not s else len(str(s).split("|")) for s in out["secondary_themes"]],
                       index=out.index, dtype="int64")
     counted = n_sec.clip(upper=int(ct["max_counted_secondary"])).astype(float)
     out["cross_theme_bonus"] = (counted * _fv(ct["per_active_secondary_theme"])).clip(
         0.0, _fv(ct["max_points"]))
-    out["cross_theme_bonus"] = np.where(out["_rank_in_stock"] == 1, out["cross_theme_bonus"], 0.0)
-    return out.drop(columns=["_primary_key"])
+    out["cross_theme_bonus"] = np.where(out["theme_rank_in_stock"] == 1, out["cross_theme_bonus"], 0.0)
+    out["primary_theme"] = out["primary_theme_id"]
+
+    # P1-05：污染分级（需求 §十六）= 「报告」+「执行约束」双职责
+    overlap = pd.to_numeric(out["theme_overlap_count"], errors="coerce").fillna(1.0)
+    pconf = pd.to_numeric(out["primary_theme_confidence"], errors="coerce").fillna(0.0)
+    flag = pd.Series("LOW", index=out.index, dtype=object)
+    flag = flag.mask(overlap >= _fv(pol["MEDIUM"]["theme_count_min"]), "MEDIUM")
+    flag = flag.mask((overlap >= _fv(pol["HIGH"]["theme_count_min"]))
+                     | (pconf < _fv(pol["HIGH"]["primary_confidence_below"])), "HIGH")
+    out["cross_theme_pollution_flag"] = flag
+    # §十五：重复计分惩罚只在「同一股票同时进入 > max_active_candidate_themes 个主题的候选计分」时触发，
+    #   不按 membership 主题总数惩罚 —— membership ≠ candidate_theme，多主题真实产业关系一律保留（§十七）。
+    crowd = out["candidate_theme_count"] > n_max
+    out["cross_theme_score_penalty"] = np.where(
+        crowd, _fv(ct["multi_theme_crowding"]["score_penalty"]), 0.0)
+    out["multi_theme_crowding_flag"] = np.where(crowd, str(ct["multi_theme_crowding"]["flag"]), "")
+    return out.sort_index(kind="mergesort")
 
 
 def build_risk_flags(df: pd.DataFrame, cfg: dict) -> pd.Series:
@@ -1209,6 +1545,17 @@ def assign_status(df: pd.DataFrame, cfg: dict, pollution: pd.DataFrame) -> pd.Se
         & (~df["trend_broken"].fillna(True))
     )
     out = out.mask(out.eq("CANDIDATE") & (~cond_ok), "WATCH")
+    # P1-05：跨主题污染分级升级为执行约束（需求 §十六），不再只出现在报告里
+    plv = cfg["cross_theme_bonus"]["pollution_levels"]
+    pconf = pd.to_numeric(df["primary_theme_confidence"], errors="coerce")
+    out = out.mask(out.eq("CANDIDATE") & df["cross_theme_pollution_flag"].eq("HIGH"),
+                   str(plv["HIGH"]["max_status"]))
+    out = out.mask(out.eq("CANDIDATE") & df["cross_theme_pollution_flag"].eq("MEDIUM")
+                   & (pconf < _fv(plv["MEDIUM"]["min_primary_confidence"])),
+                   str(plv["MEDIUM"]["max_status"]))
+    # 需求 §十四/§十七：超出 max_active_candidate_themes 的主题只作 context，不参与候选计分
+    out = out.mask(out.eq("CANDIDATE") & df["is_context_theme"].fillna(False),
+                   str(cfg["cross_theme_bonus"]["context_theme_policy"]["max_status"]))
     # EXCLUDE 规则
     out = out.mask(df["theme_phase"].eq("EXITING"), "EXCLUDE")
     out = out.mask(pd.to_numeric(df["data_quality"], errors="coerce") < 100.0 * cfg["data_rules"]["data_quality_invalid_threshold"], "EXCLUDE")
@@ -1345,9 +1692,8 @@ def build_pipeline(cfg: dict, meta: dict, membership: pd.DataFrame, panel: pd.Da
     # 成员 × 有效主题日
     pairs = mb.merge(elig[["trade_date", "sector_id"]], on="sector_id", how="inner")
     pairs = pairs[pairs["trade_date"].isin(elig_dates)]
-    # point-in-time 成员过滤（需求 §三十）
-    pit_ok = pairs["is_static"] | (pairs["effective_date"] <= pairs["trade_date"])
-    pairs = pairs[pit_ok].copy()
+    # point-in-time 成员过滤（需求 §三十）：与 compute_theme_layer 共用唯一 accessor（P0-01）
+    pairs = apply_pit_membership(pairs)
     log.info("成员×主题日展开：%d 行", len(pairs))
 
     # 合并个股结构 + 财务
@@ -1358,7 +1704,9 @@ def build_pipeline(cfg: dict, meta: dict, membership: pd.DataFrame, panel: pd.Da
              "core_breadth_delta_5", "primary_breadth_delta_3", "secondary_breadth_delta_5",
              "top5_concentration", "theme_ret_1", "theme_ret_3", "theme_ret_5", "theme_ret_10",
              "theme_ret_20", "theme_opportunity_score", "theme_bucket", "is_active_bucket",
-             "is_risk_bucket", "diffusion_type", "diffusion_score_theme", "full_breadth_extra"]
+             "is_risk_bucket", "diffusion_type", "diffusion_pattern", "diffusion_stage",
+             "diffusion_score_theme", "full_breadth_extra",
+             "calibrated_opportunity_base", "calibration_status"]
     df = df.merge(theme[tcols], on=["trade_date", "sector_id"], how="left", suffixes=("", "_th"))
     # 合并后同名列只保留主题侧真值（Step 3/4 面板为准），避免静默取到成员表副本
     for _c in list(df.columns):
@@ -1419,10 +1767,14 @@ def build_pipeline(cfg: dict, meta: dict, membership: pd.DataFrame, panel: pd.Da
         + cw["data_quality"] * pd.to_numeric(df["data_quality"], errors="coerce").fillna(0.0)
     )
     df["raw_candidate_score"] = raw.clip(0.0, 100.0)
+    # P1-05：跨主题污染分级口径 = 股票 PIT 成员表主题总数（需求 §十二 口径：1-3 LOW / 4-5 MEDIUM / >=6 HIGH）
+    theme_cnt_map = membership.groupby("ts_code")["sector_id"].nunique().to_dict()
+    df["theme_overlap_count"] = df["ts_code"].map(theme_cnt_map).fillna(0).astype(int)
     df = compute_cross_theme(df, cfg)
     df["candidate_score"] = (raw
                              - pd.to_numeric(df["extension_penalty"], errors="coerce").fillna(0.0)
                              + pd.to_numeric(df["cross_theme_bonus"], errors="coerce").fillna(0.0)
+                             - pd.to_numeric(df["cross_theme_score_penalty"], errors="coerce").fillna(0.0)
                              ).clip(0.0, 100.0)
     # 行业冲突降级（需求 §二十.3）
     cap = _fv(cfg["industry_role"]["conflict_check"]["conflict_score_cap"])
@@ -1484,7 +1836,9 @@ def _fmt_df(df: pd.DataFrame, cols: list) -> pd.DataFrame:
                  "theme_phase", "membership_type", "theme_role", "candidate_type",
                  "candidate_status", "risk_flags", "candidate_reason", "price_extension",
                  "volume_extension", "crowding_class", "diffusion_type", "industry",
-                 "primary_theme", "secondary_themes", "data_quality_label", "role_evidence"):
+                 "primary_theme", "secondary_themes", "data_quality_label", "role_evidence",
+                 "diffusion_pattern", "diffusion_stage", "calibration_status", "primary_theme_id",
+                 "cross_theme_pollution_flag", "multi_theme_crowding_flag"):
             continue
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
@@ -1597,7 +1951,7 @@ def write_outputs(df: pd.DataFrame, theme: pd.DataFrame, pollution: pd.DataFrame
     tdd = td.reindex(columns=[c for c in DIFFUSION_COLS if c in td.columns]).copy()
     for c in tdd.columns:
         if c not in ("trade_date", "sector_id", "sector_name", "rotation_group", "theme_phase",
-                     "theme_bucket", "diffusion_type"):
+                     "theme_bucket", "diffusion_type", "diffusion_pattern", "diffusion_stage"):
             tdd[c] = pd.to_numeric(tdd[c], errors="coerce").round(6)
     tdd = tdd.sort_values(["trade_date", "sector_id"], kind="mergesort").reset_index(drop=True)
     write_merge_csv(tdd, OUT_DIFFUSION, key_cols=("trade_date", "sector_id"))
@@ -1904,7 +2258,7 @@ def run_validation(panel: pd.DataFrame, df: pd.DataFrame, theme: pd.DataFrame, p
                    pollution: pd.DataFrame, meta: dict, membership: pd.DataFrame,
                    master_raw: dict, cfg: dict, trade_date: str,
                    stock_basic: pd.DataFrame = None, requested_date: str = "",
-                   date_note: str = "") -> pd.DataFrame:
+                   date_note: str = "", stock_long: pd.DataFrame = None) -> pd.DataFrame:
     checks = []
 
     def add(name, ok, detail=""):
@@ -1935,6 +2289,10 @@ def run_validation(panel: pd.DataFrame, df: pd.DataFrame, theme: pd.DataFrame, p
     # 7 成员 PIT
     pit_bad = df[(~df["is_static"]) & (df["effective_date"] > df["trade_date"])]
     add("CHECK_MEMBERSHIP_PIT", len(pit_bad) == 0, f"effective_date>trade_date 行数={len(pit_bad)}")
+    # 7b 主题层 PIT 口径（P0-01 自动测试：test_theme_return_pit）
+    if stock_long is not None:
+        pit_theme_ok, pit_theme_detail = test_theme_return_pit(panel, stock_long, membership, theme)
+        add("CHECK_THEME_RETURN_PIT", pit_theme_ok, pit_theme_detail)
     # 8 状态枚举
     bad_status = sorted(set(df["candidate_status"].unique()) - set(CANDIDATE_STATUSES))
     add("CHECK_STATUS_ENUM", not bad_status, f"非法状态={bad_status}")
@@ -1947,6 +2305,22 @@ def run_validation(panel: pd.DataFrame, df: pd.DataFrame, theme: pd.DataFrame, p
     # 11 扩散类型枚举
     bad_diff = sorted(set(theme["diffusion_type"].unique()) - set(DIFFUSION_TYPES))
     add("CHECK_DIFFUSION_TYPE_ENUM", not bad_diff, f"非法扩散类型={bad_diff}")
+    # 11b P1-03：扩散形态 / 扩散阶段枚举
+    bad_pat = sorted(set(theme["diffusion_pattern"].unique()) - set(DIFFUSION_PATTERNS))
+    bad_stg = sorted(set(theme["diffusion_stage"].unique()) - set(DIFFUSION_STAGES))
+    add("CHECK_DIFFUSION_PATTERN_ENUM", (not bad_pat) and (not bad_stg),
+        f"非法形态={bad_pat} 非法阶段={bad_stg}")
+    # 11c P1-05：跨主题污染分级枚举 + 「报告→执行约束」落盘校验（需求 §十六）
+    plv2 = cfg["cross_theme_bonus"]["pollution_levels"]
+    bad_pol = sorted(set(df["cross_theme_pollution_flag"].unique()) - set(POLLUTION_LEVELS))
+    _pc = pd.to_numeric(df["primary_theme_confidence"], errors="coerce")
+    leak = df["candidate_status"].eq("CANDIDATE") & (
+        df["cross_theme_pollution_flag"].eq("HIGH")
+        | df["is_context_theme"].fillna(False)
+        | (df["cross_theme_pollution_flag"].eq("MEDIUM")
+           & (_pc < _fv(plv2["MEDIUM"]["min_primary_confidence"]))))
+    add("CHECK_POLLUTION_ENFORCED", (not bad_pol) and int(leak.sum()) == 0,
+        f"非法分级={bad_pol} 污染行泄漏进 CANDIDATE={int(leak.sum())}")
     # 12 分数范围
     s = pd.to_numeric(df["candidate_score"], errors="coerce")
     add("CHECK_SCORE_RANGE", bool(s.dropna().between(0, 100).all()),
@@ -2190,7 +2564,7 @@ def main() -> int:
     if args.validate:
         val = run_validation(panel, df, theme, pool, pollution, meta, membership,
                              master_raw, cfg, trade_date, stock_basic,
-                             requested_date, date_note)
+                             requested_date, date_note, stock_long=stock_long)
         n_pass = int((val["status"] == "PASS").sum())
         log.info("验证：%d/%d 通过", n_pass, len(val))
         os.makedirs(OUTPUT_DIR, exist_ok=True)

@@ -51,7 +51,7 @@ DRISK_MAX_PRIMARY = 20.0         # PRIMARY BUY 硬门槛：DRisk≤20
 WEIGHTS = dict(eq=0.30, struct=0.20, retest=0.20, vol=0.15, risk=0.10, life=0.05)
 
 # ---------------- V3.1 门控与止损重建（源自全市场回测对照） ----------------
-P1_STATES = {"SECOND_WAVE", "DRYUP", "BREAKOUT_RETEST"}                  # G2 状态准入：P1 无条件可用
+P1_STATES = {"SECOND_WAVE", "DRYUP", "BREAKOUT_RETEST", "T0_CONFIRM"}  # G2 状态准入：P1 无条件可用
 P2_STATES = {"BREAKOUT_CONFIRM", "RE_EXPANSION", "ABSORPTION"}  # P2 需 Execution≥P2_EXEC_MIN
 P2_EXEC_MIN = 85.0                                    # G2 质量门槛
 VOLR_MAX = 2.2                                        # G3 量比上界（> 视为放量过热）
@@ -528,7 +528,7 @@ def main():
               ["PRIMARY BUY", "CONDITIONAL BUY", "WAIT", "WATCH", "AVOID"]))
     gated_n = sum(1 for r in rows if r["gate"])
     L.append(f"V3.1 门控：{gated_n} 只被降级（G1 极端换手剔除 / G2 状态×质量 / G3 量比过热 / G4 环境风险）"
-             "；BUY 仅保留 P1 结构（SECOND_WAVE/DRYUP/BREAKOUT_RETEST 回踩低吸）或 P2 且 Exec≥85 且 volr≤2.2 的标的\n")
+             "；BUY 仅保留 P1 结构（SECOND_WAVE/DRYUP/BREAKOUT_RETEST 回踩低吸、T0_CONFIRM 天量确认）或 P2 且 Exec≥85 且 volr≤2.2 的标的\n")
 
     # TOP EXECUTION（固定 8 列）：可行动层(PRIMARY→CONDITIONAL→WAIT)按 Execution 取前 5
     def _act_rank(a):

@@ -1,0 +1,619 @@
+{
+  "meta": {
+    "audit": "A股主题量化系统 Step 1-5 全链路质量审计（只读）",
+    "audit_date": "2026-09-17",
+    "audit_mode": "READ ONLY / AUDIT ONLY / NO CODE MODIFICATION / NO STEP 6",
+    "workspace": "d:\\mystock\\solo\\sector_0915",
+    "term_mapping": {
+      "规格 theme_master.json": "项目 sector_master.json",
+      "规格 theme_membership.csv": "项目 data/sector_membership.csv",
+      "规格 theme_id / theme_name": "项目 sector_id / sector_name",
+      "规格 theme_phase": "项目 theme_phase（同名字段）",
+      "规格 SEOS": "项目 SEOS（同名字段）"
+    }
+  },
+
+  "layers": [
+    {
+      "step": "Step 1",
+      "name": "主题真源定义",
+      "artifact": "sector_master.json",
+      "producer": "(人工维护 / 无脚本)",
+      "designed_dependencies": [
+        "人工维护的 50 个主题定义（T01-T50）",
+        "rotation_groups R01-R08 分组",
+        "membership_types 五级分类",
+        "mapping_priority / mapping_confidence 映射优先级规则"
+      ],
+      "actual_dependencies": [
+        "无外部依赖，本身即真源"
+      ],
+      "architecture_violations": [
+        {
+          "id": "AV-01",
+          "severity": "P1",
+          "issue": "字段命名与规格不一致",
+          "evidence": "sector_master.json 中每个 sector 仅有 11 个字段：sector_id/sector_name/rotation_group/sector_type/aliases/subsectors/eastmoney_industry_keywords/eastmoney_concept_keywords/keywords/exclude_keywords/thesis。规格要求的 theme_id/theme_name/core_industries/core_products/description 均不存在；core_companies 仅 T10 存在（L203-216）。",
+          "impact": "无 core_companies 结构化数据支撑，Step 2 的 core_company_coverage 只能退化为关键词匹配"
+        },
+        {
+          "id": "AV-02",
+          "severity": "P1",
+          "issue": "mapping_priority / mapping_confidence 定义与实现不同构",
+          "evidence": "master 定义 mapping_priority / mapping_confidence，但 sector_mapping_build.py 使用 6 值 mapping_method（DIRECT_INDUSTRY/INDUSTRY_PRODUCT/INDUSTRY_CONCEPT/CONCEPT/KEYWORD/UNMAPPED，L913-920），mapping_confidence 未参与实际打分",
+          "impact": "配置中声明的映射优先级规则为死配置（DECLARED-BUT-UNUSED）"
+        },
+        {
+          "id": "AV-03",
+          "severity": "P1",
+          "issue": "exclude_keywords 39/50 为空数组，且非空者亦可能失效",
+          "evidence": "50 项 exclude_keywords 中 39 项为 []；sector_mapping_build.py L1138 存在 len(ek) <= 6 门槛，使 master 中 4/11 条排除规则永久不可达",
+          "impact": "主题边界缺乏负向约束，助长主题污染"
+        },
+        {
+          "id": "AV-04",
+          "severity": "P2",
+          "issue": "主题边界重叠",
+          "evidence": "T07 ind_kw [\"乘用车\",\"商用车\",\"汽车零部件\"]（L168）与 T15 ind_kw [\"汽车零部件\",\"乘用车\",\"商用车\"]（L281）近乎完全重复；T02/T03 共用『通信设备』；T04/T06 共用『软件开发』；T38/T39 共用『医疗服务』；T36/T42 共用『生物制品/生物药』；T10/T11 共用『电网设备』",
+          "impact": "共用申万二级行业名的股票只能被判定为 SECONDARY，无法进入 CORE，核心成员认定受抑制"
+        }
+      ]
+    },
+
+    {
+      "step": "Step 2",
+      "name": "主题映射 / 成员构建",
+      "artifact": "data/sector_membership.csv (23908 行) + output/sector_mapping_review.csv + output/sector_membership_review.csv + output/sector_pollution.csv",
+      "producer": "sector_mapping_build.py (2488 行)",
+      "designed_dependencies": [
+        "sector_master.json（唯一真源）",
+        "申万行业分类（SW L1/L2/L3）",
+        "东财概念板块（eastmoney_concept_keywords）",
+        "东财行业板块（eastmoney_industry_keywords）"
+      ],
+      "actual_dependencies": [
+        "sector_master.json ✓",
+        "申万行业分类 ✓（sw_industry_all_*.parquet）",
+        "东财概念/行业板块 ✓（dc_boards_*.parquet / dc_members_*.parquet）",
+        "同花顺 THS 概念 ✗（未在设计声明中，但 L788 load_ths() / L829-832 concat 实际加载并合并）"
+      ],
+      "architecture_violations": [
+        {
+          "id": "AV-05",
+          "severity": "P1",
+          "issue": "文档-实现不一致：THS 概念实际参与映射但被声明为未采用",
+          "evidence": "sector_mapping_build.py L788 load_ths()、L829-832 concat 合并 THS 概念；但同文件 L2181-2184 与 output/sector_mapping_audit.md 正文声称『未采用同花顺概念数据』",
+          "impact": "数据来源真实性存疑，审计与文档不可信"
+        },
+        {
+          "id": "AV-06",
+          "severity": "P1",
+          "issue": "membership 为单份静态快照，无 as-of 版本序列",
+          "evidence": "sector_membership.csv 全部 23908 行 effective_date=20260916、is_static=true；仅申万行业归属做了 PIT（in_date/out_date），index_member_all(is_new=\"Y\") 取最新一期归属（L618）",
+          "impact": "历史日的『当日成员』由当期名单回推，存在成员口径的未来信息渗透风险（规格 §八/§二十八）"
+        },
+        {
+          "id": "AV-07",
+          "severity": "P1",
+          "issue": "污染检测只报告不回写",
+          "evidence": "detect_pollution()（L1655-1700）产出 7 类污染标签（KEYWORD_POLLUTION/CONCEPT_POLLUTION/INDUSTRY_CONFLICT/MULTI_THEME_POLLUTION/NON_CORE_CONCEPT/LOW_CONFIDENCE/DYNAMIC_ONLY），仅写 CSV，未回写修正 membership",
+          "impact": "污染在 Step 2 被识别却未被治理，向下游传导（Step 5 才以 pollution action=EXCLUDE 间接拦截）"
+        },
+        {
+          "id": "AV-08",
+          "severity": "P2",
+          "issue": "legacy 文件仅报告不读取",
+          "evidence": "LEGACY_FILES = [\"theme_config.json\",\"subtheme_map.json\",\"theme.json\"]（L106）；扫描根 d:\\mystock\\solo，os.walk 深度≤3，仅收集路径不读内容（L416-424）。实际命中 6 个：theme.json / theme_config.json / bak0615\\theme.json / multi_factor_picker\\cache\\theme.json / theme_kg_v3\\...\\subtheme_map.json / theme_kg_v3\\...\\theme_config.json",
+          "impact": "legacy_config_used=false 恒成立；但上级目录确实存在同名旧配置，构成长期风险面"
+        }
+      ]
+    },
+
+    {
+      "step": "Step 3",
+      "name": "主题质量 / 状态构建",
+      "artifact": "data/sector_state_history.csv + output/sector_quality_daily.csv + output/sector_state_today.json",
+      "producer": "sector_state_build.py (1451 行)",
+      "designed_dependencies": [
+        "data/sector_membership.csv",
+        "行情库 D:\\mystock\\cache_daily\\stock_data.db（daily_cache / daily_basic_cache / adj_factor_cache / index_daily_cache）"
+      ],
+      "actual_dependencies": [
+        "data/sector_membership.csv ✓（--membership-mode 默认 snapshot，L757/L1379-1380）",
+        "stock_data.db 六表 ✓",
+        "沪深300 指数（index_daily_cache）✓"
+      ],
+      "weights_check": {
+        "spec_section": "§九 / §十五",
+        "required": {"breadth": 0.25, "weighted_breadth": 0.20, "relative_strength": 0.15, "volume_structure": 0.15, "core_primary": 0.15, "consistency": 0.10},
+        "actual_HEALTH_WEIGHTS": {"breadth": 0.25, "weighted_breadth": 0.20, "relative_strength": 0.15, "volume_structure": 0.15, "core_primary": 0.15, "consistency": 0.10},
+        "verdict": "PASS（逐项一致，硬编码于 L113-120）",
+        "return_weight_share": {
+          "spec_limit": 0.30,
+          "actual": 0.28,
+          "formula": "relative_strength(0.15)*1.0 + core_primary(0.15)*core_rs(0.2) + consistency(0.10)*1.0",
+          "verdict": "PASS (0.28 <= 0.30)"
+        },
+        "notes": [
+          "relative_strength 实为 5 日超额收益 vs_market_5（L447），非纯涨幅",
+          "20 日涨幅 / 涨停家数 / 热度 / 新闻均未进入 health",
+          "breadth = 当日涨跌家数差占比（L400-404）"
+        ]
+      },
+      "architecture_violations": [
+        {
+          "id": "AV-09",
+          "severity": "P2",
+          "issue": "hysteresis 实现与规格描述不同（属于实现层差异，非违规）",
+          "evidence": "Step 3 用『连续 2 日确认』streak_len >= 2（L654-679）；Step 4 用双阈值 + confirm_days=2。两者机制不同但均实现防抖。",
+          "impact": "sector_state_base 事实近似冻结，实测每主题平均切换 12.92 次"
+        },
+        {
+          "id": "AV-10",
+          "severity": "P3",
+          "issue": "LOW_COVERAGE 不阻断信号",
+          "evidence": "LOW_COVERAGE 只封杀 STRONG，不排除其它状态",
+          "impact": "低覆盖主题可能以 HEALTHY/NEUTRAL 形式进入下游"
+        }
+      ],
+      "future_leakage_check": {
+        "shift_negative_calls": 0,
+        "pct_change_calls": 0,
+        "cumsum_calls": 0,
+        "self_test": "物理截断重算比对（L1006-1080，LOOKAHEAD_WINDOW=30），比对列不含 sector_state_base",
+        "verdict": "PASS"
+      }
+    },
+
+    {
+      "step": "Step 4",
+      "name": "SEOS 主题机会评分",
+      "artifact": "data/sector_seos_daily.csv (4550 行 / 50 主题 / 91 日 / 84 列) + output/seos_today.json + output/sector_opportunity_pool.json",
+      "producer": "sector_seos_build.py (1893 行)",
+      "designed_dependencies": [
+        "data/sector_state_history.csv / output/sector_quality_daily.csv",
+        "data/sector_membership.csv",
+        "行情库"
+      ],
+      "actual_dependencies": [
+        "data/sector_state_history.csv ✓",
+        "data/sector_membership.csv ✓",
+        "stock_data.db ✓"
+      ],
+      "weights_check": {
+        "spec_section": "§十三",
+        "required": {"breadth_expansion": 0.25, "core_breadth": 0.20, "relative_strength": 0.15, "volume_participation": 0.15, "amount_share": 0.10, "health_momentum": 0.10, "consistency": 0.05},
+        "actual_score_weights": {"breadth_expansion": 0.25, "core_breadth": 0.20, "relative_strength": 0.15, "volume_participation": 0.15, "amount_share": 0.10, "health_momentum": 0.10, "consistency": 0.05},
+        "verdict": "PASS（逐项一致，config/seos_config.json L6-14）",
+        "extension_penalty": {
+          "exists": true,
+          "mechanism": "乘性扣减 seos_score = seos_raw * (1 - min(extension_penalty, max_deduction=0.45))（L463-475）",
+          "inner_weights": {"ew_ret_5": 0.40, "ew_ret_10": 0.25, "ew_ret_20": 0.15, "top5_concentration": 0.20},
+          "usage": "累计涨幅只用于抑制 EARLY（extension_penalty < 0.35 才是 EARLY 准入门槛，L651），不用于加分",
+          "verdict": "PASS"
+        }
+      },
+      "architecture_violations": [
+        {
+          "id": "AV-11",
+          "severity": "P1",
+          "issue": "core_pattern 无法识别『第二梯队刚开始改善』",
+          "evidence": "core_pattern（L1004-1018）仅使用 secondary_breadth 绝对水平，特征层不存在 secondary_breadth_delta_* 列；L1009 的 sdc 为死变量",
+          "impact": "规格 §二十一 要求的 SECOND_LINE_EXPANSION 识别能力缺失"
+        },
+        {
+          "id": "AV-12",
+          "severity": "P2",
+          "issue": "startup_quality 枚举与规格不一致",
+          "evidence": "实际 6 值：HEALTHY_EXPANSION / VOLUME_SPIKE / NARROW_LEADERSHIP / FAILED_EXPANSION / NEUTRAL / INSUFFICIENT_DATA；规格列举的 WEAK_EXPANSION / PRICE_ONLY / NO_EXPANSION 不存在",
+          "impact": "下游按规格枚举取值将全部落空"
+        },
+        {
+          "id": "AV-13",
+          "severity": "P3",
+          "issue": "phase_thresholds.dormant 定义但未引用",
+          "evidence": "config 定义 dormant=35，代码全文未引用",
+          "impact": "死配置"
+        },
+        {
+          "id": "AV-14",
+          "severity": "P2",
+          "issue": "EMERGING 阶段信号为负 alpha",
+          "evidence": "output/seos_backtest.md：EMERGING T+3 均值 -1.31%、胜率 36.5%、随机分位 1.4%；T+5 -0.87% / 34.6% / 26.0%。CONFIRMING 仅 7 个信号（样本不足）",
+          "impact": "Step 4 输出的 EMERGING 机会状态不可用，直接污染 Step 5 的 theme_opportunity_score"
+        }
+      ],
+      "future_leakage_check": {
+        "shift_negative_calls": 1,
+        "shift_negative_location": "L1139 g2[\"nav\"].shift(-h) —— 仅回测内部，fwd_* 列未写入任何正式文件",
+        "self_tests": ["CHECK_NO_LOOKAHEAD_SEOS", "CHECK_NO_LOOKAHEAD_PHASE", "CHECK_NO_LOOKAHEAD_ROTATION"],
+        "self_test_result": "全部 PASS，偏差 0.000e+00",
+        "rotation_window": "[t-19, t-10] 纯历史（L601-603）",
+        "verdict": "PASS"
+      }
+    },
+
+    {
+      "step": "Step 5",
+      "name": "SEOS → 个股候选池",
+      "artifact": "data/sector_stock_candidate_daily.csv (166366 行 / 60 列 / 87.2MB) + output/sector_stock_candidate_pool.json + output/sector_stock_candidate_top.json",
+      "producer": "sector_stock_candidate_build.py (2241 行)",
+      "designed_dependencies": [
+        "data/sector_state_history.csv",
+        "data/sector_seos_daily.csv",
+        "output/sector_seos_today.json",
+        "output/sector_opportunity_pool.json",
+        "data/sector_membership.csv",
+        "行情库"
+      ],
+      "actual_dependencies": [
+        "data/sector_state_history.csv ✗ 声明于 L106 但全文无引用",
+        "data/sector_seos_daily.csv ✓（主题机会完全由本文件重算）",
+        "output/sector_seos_today.json ✗ 声明于 L107 但全文无引用",
+        "output/sector_opportunity_pool.json ✗ 声明于 L108 但全文无引用",
+        "data/sector_membership.csv ✓",
+        "stock_data.db ✓"
+      ],
+      "weights_check": {
+        "spec_section": "§十九",
+        "required": {"theme_opportunity": 0.20, "membership_quality": 0.20, "industry_role": 0.15, "fundamental_quality": 0.15, "relative_theme_strength": 0.10, "structure_quality": 0.10, "diffusion_signal": 0.05, "data_quality": 0.05},
+        "actual_candidate_weights": {"theme_opportunity": 0.20, "membership_quality": 0.20, "industry_role": 0.15, "fundamental_quality": 0.15, "relative_theme_strength": 0.10, "structure_quality": 0.10, "diffusion_signal": 0.05, "data_quality": 0.05},
+        "verdict": "PASS（逐项一致，config/sector_stock_candidate_config.json L50-60）",
+        "cross_theme_bonus": {"spec_limit": 5.0, "actual_max": 5.0, "verdict": "PASS", "distribution": {"0.0": 133486, "2.5": 22417, "5.0": 10463}}
+      },
+      "processing_order": {
+        "spec_requirement": "先主题后个股，禁止先按涨幅筛股",
+        "actual": "L1338 compute_theme_layer -> L1340-1341 elig（theme_phase NOT IN [DORMANT, DATA_INVALID] & warmup_ready & ~data_invalid）-> L1346 pairs 展开 -> L1354 merge stock_long -> 评分",
+        "verdict": "PASS（theme-first）"
+      },
+      "architecture_violations": [
+        {
+          "id": "AV-15",
+          "severity": "P0",
+          "issue": "主题等权收益聚合缺 PIT 过滤，与个股层口径不一致",
+          "evidence": "L651-663 用全表 membership（含未来成员）聚合主题等权收益；而 L1346-1350 的个股展开做了 PIT 过滤",
+          "impact": "同一脚本内两套成员口径，主题层特征可能含未来成员信息 → 未来函数风险（规格 §二十七/§二十八）"
+        },
+        {
+          "id": "AV-16",
+          "severity": "P1",
+          "issue": "THEME_PULLBACK 判定链无主题机会门槛",
+          "evidence": "L1048-1058：phases {EMERGING,CONFIRMING,STRONG} + membership {CORE,PRIMARY} + dist_ma60>=-0.06 + dist_ma120>=-0.10 + drawdown_20∈[-0.30,-0.06] + volume_ratio_5<=0.95 + rel_ret_20>=-0.04 + fundamental>=40；无主题机会/宽度门槛，且 fundamental_min 40 < candidate 45",
+          "impact": "若上游 phase 滞后（防抖 + phase_duration p50=17 日），转弱主题的股票仍会被判 PULLBACK → 回测显示 THEME_PULLBACK T+20 超额 -0.0331（最差组）"
+        },
+        {
+          "id": "AV-17",
+          "severity": "P1",
+          "issue": "大量配置键定义但未接线（死配置）",
+          "evidence": "structure_quality.precheck_min（45.0 从未被读取，实际用 status_thresholds.candidate_structure_min）、status_thresholds.conflict_role_cap、watch_crowding_max、theme_opportunity.strong_phase_policy.candidate_max_crowding、crowding_thresholds.early_theme_core、pullback_rules.volume_contraction.turnover_ratio_5_vs_20_max、status_thresholds.exclude_status_rules 等",
+          "impact": "配置与实现漂移，调参无效（改配置不改行为）"
+        },
+        {
+          "id": "AV-18",
+          "severity": "P2",
+          "issue": "无懒计算，全量预计算",
+          "evidence": "compute_stock_features（L2169）对全部股票 × 全部日预计算",
+          "impact": "性能开销；不影响正确性"
+        },
+        {
+          "id": "AV-19",
+          "severity": "P3",
+          "issue": "PE/PB 算出即弃",
+          "evidence": "PE/PB 取自 daily_basic_cache 同日快照，不进任何评分与输出",
+          "impact": "估值维度完全缺失（规格未强制要求，但削弱候选质量）"
+        }
+      ],
+      "future_leakage_check": {
+        "shift_negative_calls": 1,
+        "shift_negative_location": "L595 out[f\"_fwd_ret_{h}\"] = adj.shift(-h)/adj - 1.0 —— 仅回测专用，被列裁剪阻断",
+        "pit_fundamental": "按 announcement_date（ann_date）做 merge_asof(direction=\"backward\")（L607-624），CHECK_NO_FUTURE_FUNDAMENTAL（L1931-1934）通过；未使用 report_period",
+        "verdict": "PASS（除 AV-15 的主题层聚合例外）"
+      }
+    }
+  ],
+
+  "cross_layer_data_flow": [
+    {"from": "sector_master.json", "to": "sector_mapping_build.py", "type": "读取", "status": "OK"},
+    {"from": "sector_mapping_build.py", "to": "data/sector_membership.csv", "type": "写出", "status": "OK"},
+    {"from": "data/sector_membership.csv", "to": "sector_state_build.py", "type": "读取（snapshot 模式）", "status": "OK（无 as-of 序列）"},
+    {"from": "sector_state_build.py", "to": "data/sector_state_history.csv", "type": "写出", "status": "OK"},
+    {"from": "data/sector_state_history.csv", "to": "sector_seos_build.py", "type": "读取", "status": "OK"},
+    {"from": "sector_seos_build.py", "to": "data/sector_seos_daily.csv", "type": "写出", "status": "OK"},
+    {"from": "data/sector_seos_daily.csv", "to": "sector_stock_candidate_build.py", "type": "读取", "status": "OK"},
+    {"from": "output/sector_seos_today.json", "to": "sector_stock_candidate_build.py", "type": "声明但未引用", "status": "DEAD DECLARATION"},
+    {"from": "output/sector_opportunity_pool.json", "to": "sector_stock_candidate_build.py", "type": "声明但未引用", "status": "DEAD DECLARATION"},
+    {"from": "data/sector_state_history.csv", "to": "sector_stock_candidate_build.py", "type": "声明但未引用", "status": "DEAD DECLARATION"}
+  ],
+
+  "feature_dependency_map": {
+    "note": "规格 §三十七：检查 Theme Health / SEOS / Candidate Score 是否重复消费同一原始变量（double/triple counting）",
+    "raw_variables": {
+      "ew_ret_5 / 5日涨幅": {
+        "used_in_theme_health": "relative_strength（权重 0.15，vs_market_5）",
+        "used_in_seos": "extension_penalty 内层权重 0.40（仅抑制，不加分）",
+        "used_in_candidate": "extension_penalty 内层 ret_5（ramp [0.08,0.22]）+ extreme_rules 硬门槛 ret_5>=0.25 + risk_flags",
+        "double_counting": "同一 5 日涨幅在四层被消费 4 次；但在 Step3/4 已改为『超额收益』与『抑制项』语义，方向正确"
+      },
+      "breadth / 广度": {
+        "used_in_theme_health": "breadth（0.25）+ weighted_breadth（0.20）+ core_primary 内层 core_breadth（0.15*0.5）",
+        "used_in_seos": "breadth_expansion（0.25）+ core_breadth（0.20）",
+        "used_in_candidate": "theme_opportunity_score（0.20，经 seos/health 传导）+ theme_diffusion_score（0.05）",
+        "double_counting": "breadth 是最高频被复用变量：Theme Health 内 0.45+ 权重、SEOS 内 0.45 权重、Candidate 内 0.25 权重均直接或间接来自同一家数统计口径。属『同一原始变量跨层放大』，非层内重复计算。"
+      },
+      "volume_ratio_5 / 成交": {
+        "used_in_theme_health": "volume_structure（0.15）",
+        "used_in_seos": "volume_participation（0.15）+ amount_share（0.10）",
+        "used_in_candidate": "structure_quality 内 volume_health（ramp [0.5803,1.3303]，结构层权重 0.25）+ extreme_rules 硬门槛 volume_ratio_5>=3.5"
+      },
+      "distance_ma20": {
+        "used_in_candidate": "structure_quality.ramps.dist_ma20（权重 0.30）+ extreme_rules dist_ma20>=0.30 + THEME_PULLBACK 判定",
+        "double_counting": "层内被消费 2 次（打分 + 硬门槛），方向互补（打分低分 + 直接排除）"
+      },
+      "theme_phase": {
+        "used_in_candidate": "theme_opportunity_score.phase_base（0.5 内层）+ elig 过滤 + candidate_type 判定 + THEME_PULLBACK + risk_bucket",
+        "double_counting": "层内被消费 4+ 次，属结构性复用"
+      }
+    },
+    "intra_layer_repetition_verdict": "未发现同一层内对同一原始变量做两次等向加分（即不存在层内 double counting）；跨层复用为设计选择，但 breadth 类变量的跨层累积权重偏高，是潜在过拟合面"
+  },
+
+  "legacy_scan": {
+    "declared_blacklist": ["theme_config.json", "subtheme_map.json", "theme.json"],
+    "scan_root": "d:\\mystock\\solo",
+    "scan_depth": "<=3",
+    "scan_mode": "仅收集路径，不读取内容",
+    "files_found": [
+      "theme.json",
+      "theme_config.json",
+      "bak0615\\theme.json",
+      "multi_factor_picker\\cache\\theme.json",
+      "theme_kg_v3\\theme_kg_v3\\config\\subtheme_map.json",
+      "theme_kg_v3\\theme_kg_v3\\config\\theme_config.json"
+    ],
+    "legacy_config_used_all_layers": false,
+    "verdict": "NO LEGACY CONTAMINATION（读取层面），但上级目录存在同名文件，构成残余风险"
+  },
+
+  "quant_evidence": {
+    "data_integrity": {
+      "membership_rows": 23908,
+      "membership_sectors": 50,
+      "membership_stocks": 4995,
+      "effective_date_unique": ["20260916"],
+      "is_static_all_true": true,
+      "mapping_method_share_pct": {"INDUSTRY_CONCEPT": 76.88, "DIRECT_INDUSTRY": 19.34, "INDUSTRY_PRODUCT": 3.36, "CONCEPT": 0.31, "KEYWORD": 0.10},
+      "UNMAPPED_share_pct": 0.0,
+      "membership_type_dist": {"THEMATIC": 19558, "PRIMARY": 2481, "CORE": 979, "SECONDARY": 890, "OBSERVATION": 0},
+      "confidence_lt_0.70_pct": 11.8,
+      "seos_rows": 4550, "seos_days": 91, "seos_range": "20260512~20260916",
+      "candidate_rows": 166366, "candidate_sectors": 40, "candidate_days": 77, "candidate_range": "20260522~20260916",
+      "candidate_status_dist": {"EXCLUDE": 129283, "WATCH": 30542, "CANDIDATE": 6541},
+      "trading_day_gap": 0,
+      "verdict": "PASS（无缺日、无 UNMAPPED、无 OBSERVATION 残留）"
+    },
+
+    "correlation_diagnostics": {
+      "method": "横截面 Spearman（按 trade_date），取日中位数",
+      "seos_score_vs": {
+        "ew_ret_5": 0.573, "ew_ret_10": 0.111, "ew_ret_20": 0.023,
+        "breadth": 0.549, "breadth_delta_5": 0.637,
+        "core_breadth": 0.575, "core_breadth_delta_5": 0.639,
+        "volume_ratio_5": 0.690, "amount_share_delta_5": 0.625,
+        "theme_health": 0.764
+      },
+      "theme_health_vs": {"ew_ret_5": 0.740, "breadth": 0.914, "breadth_delta_5": 0.614},
+      "momentum_collapse_test": {
+        "spec_section": "§三十三",
+        "non_rs_weight_sum": 0.85,
+        "verdict": "NOT TRIGGERED —— seos_score 与广度类变量的相关（0.637/0.639/0.690）高于与 5 日涨幅的相关（0.573），且与 20 日涨幅相关仅 0.023"
+      },
+      "candidate_score_vs": {
+        "ret_5": 0.296, "ret_20": 0.178, "ret_1": 0.184,
+        "relative_theme_strength": 0.287, "fundamental_quality": 0.351,
+        "structure_quality_precheck": 0.342, "theme_opportunity_score": 0.269,
+        "theme_diffusion_score": 0.431, "extension_penalty": 0.073, "distance_ma20": 0.296
+      },
+      "diagnosis": "candidate_score 与短期涨幅相关仅 0.296（弱），与基本面/结构分发散相关（0.35/0.34），说明分数由多维驱动而非单一动量。没有动量主导迹象。"
+    },
+
+    "anti_momentum_test": {
+      "spec_section": "§二十",
+      "sample_A": {"definition": "强主题(EMERGING/CONFIRMING/STRONG) + ret_5>=30% + dist_ma20>=30%", "n": 221, "score_mean": 44.38, "score_median": 41.47, "candidate_pct": 0.0, "extension_penalty_mean": 19.85, "structure_precheck_mean": 92.3},
+      "sample_B": {"definition": "强主题 + CORE + ret_5 2~8% + dist_ma20 0~10% + 量比 1~2", "n": 681, "score_mean": 76.72, "score_median": 77.05, "candidate_pct": 49.9, "extension_penalty_mean": 1.06, "structure_precheck_mean": 73.2},
+      "delta_A_minus_B": -32.34,
+      "extreme_ret5_ge_25pct": {"n": 2983, "candidate": 0, "candidate_pct": 0.0, "exclude": 2982},
+      "extreme_distma20_ge_30pct": {"n": 1132, "candidate": 0, "candidate_pct": 0.0, "exclude": 1132},
+      "candidate_with_extreme_extension_count": 0,
+      "verdict": "PASS —— NO OBVIOUS MOMENTUM CHASING。系统性惩罚极端动量（A 比 B 低 32 分），且极端样本 100% 被排除。",
+      "observation": "Sample A 的 structure_quality_precheck 均分（92.3）反而高于 Sample B（73.2），说明 structure_quality 本身对极端延伸不做惩罚；拦截完全依赖 extension_penalty 与 extreme_rules。这是单点依赖风险（若 extension_penalty 权重被调低，防线即失效）。"
+    },
+
+    "late_fake_startup_test": {
+      "spec_section": "§十四",
+      "sample": "theme_phase ∈ {EARLY, EMERGING}，n=352",
+      "conditions_hit": {
+        "5D>=15% 且 20D>=25%": {"n": 0, "pct": 0.0},
+        "top5_concentration>=0.60": {"n": 0, "pct": 0.0},
+        "core_breadth_delta_5 <= 0": {"n": 169, "pct": 48.0},
+        "all_three": {"n": 0, "pct": 0.0}
+      },
+      "startup_quality_dist": {"FAILED_EXPANSION": 151, "NEUTRAL": 111, "HEALTHY_EXPANSION": 84, "VOLUME_SPIKE": 6},
+      "verdict": "PASS —— 无晚期伪启动被误判为 EARLY/EMERGING",
+      "note": "48% 的 EARLY/EMERGING 核心广度 5 日未改善，属『广度尚未扩散』的正常早期态，未被误判为伪启动。startup_quality 中 FAILED_EXPANSION 占 43% 说明 Step 4 已能识别一部分扩张失败样本。"
+    },
+
+    "cross_theme_pollution": {
+      "spec_section": "§十 / §三十六",
+      "stock_theme_count_dist": {"1": 320, "2": 673, "3": 880, "4": 742, "5": 663, "6": 562, "7": 386, "8": 297, "9": 202, "10": 116, "11": 60, "12": 52, "13": 15, "14": 11, "15": 4, "16": 8, "17": 2, "18": 2},
+      "ge2_pct": 93.6, "ge3_pct": 80.1, "ge4_pct": 62.5, "ge5_pct": 47.6, "ge6_pct": 34.4,
+      "worst_cases": [
+        {"ts_code": "000725.SZ", "name": "京东方A", "n_themes": 18},
+        {"ts_code": "000988.SZ", "name": "华工科技", "n_themes": 18},
+        {"ts_code": "600869.SH", "name": "远东股份", "n_themes": 17},
+        {"ts_code": "600736.SH", "name": "苏州高新", "n_themes": 17}
+      ],
+      "core_identity_cross_theme": {"ge2_CORE_stocks": 0, "ge3_CORE_stocks": 0},
+      "verdict": "WARN —— 严重跨主题重叠（93.6% 的股票归属 >=2 主题，34.4% >=6 主题），但 CORE 身份互斥保持完好（0 只股票拥有 2 个以上 CORE），跨主题 bonus 上限 5 分已封顶。",
+      "mitigation_in_place": ["primary_theme 行才保留 cross_theme_bonus（L1114-1119）", "cross_theme_bonus 上限 5.0", "MULTI_THEME_POLLUTION 标签在 Step 2 被识别"]
+    },
+
+    "chain_closure": {
+      "spec_section": "§三十五",
+      "themes_with_candidates": 39,
+      "themes_total": 50,
+      "per_theme_per_day_candidate_count": {"mean": 18.58, "median": 16, "p90": 37, "max": 79},
+      "zero_candidate_but_opportunity_themes": [{"sector_id": "T48", "sector_name": "城市更新", "opportunity_days": 4}],
+      "top_candidate_themes": {"T36": 994, "T23": 502, "T45": 485, "T16": 363, "T15": 328},
+      "verdict": "WARN —— 链路闭环良好（39/50 主题产出候选），但 T48 有 4 个机会日却 0 候选，需定位原因。日均 18.58 个候选/主题偏高，候选池区分度可能不足。"
+    },
+
+    "anomaly_summary": {
+      "spec_section": "§三十六",
+      "output": "output/theme_step1_5_anomaly.csv",
+      "counts": {
+        "STRONG_NO_CORE_CANDIDATE": 6,
+        "STRONG_BUT_ZERO_CANDIDATE": 2,
+        "SEOS_HIGH_COREBREADTH_LOW": 1,
+        "STRONG_BUT_CORE_WEAK": 1
+      },
+      "not_triggered": ["SEOS_HIGH_BREADTH_LOW", "EARLY_BUT_20D_ALREADY_HIGH", "DORMANT_BUT_HAS_CANDIDATE"],
+      "examples": [
+        {"trade_date": "20260702", "sector_id": "T35", "sector_name": "消费服务", "rule": "SEOS_HIGH_COREBREADTH_LOW"},
+        {"trade_date": "20260706", "sector_id": "T44", "sector_name": "公用事业", "rule": "STRONG_BUT_CORE_WEAK"},
+        {"trade_date": "20260703", "sector_id": "T18", "sector_name": "石油石化", "rule": "STRONG_BUT_ZERO_CANDIDATE"},
+        {"trade_date": "20260703", "sector_id": "T34", "sector_name": "旅游酒店餐饮", "rule": "STRONG_NO_CORE_CANDIDATE"}
+      ]
+    },
+
+    "threshold_sensitivity": {
+      "spec_section": "§三十二",
+      "seos_phase_early_threshold": {
+        "baseline": 1135,
+        "minus_10pct": {"threshold": 49.5, "count": 1707, "change_pct": 50.4},
+        "minus_5pct": {"threshold": 52.2, "count": 1394, "change_pct": 22.8},
+        "plus_5pct": {"threshold": 57.8, "count": 903, "change_pct": -20.4},
+        "plus_10pct": {"threshold": 60.5, "count": 710, "change_pct": -37.4},
+        "near_threshold_density": {"pm5pct": 10.79, "pm10pct": 21.91},
+        "verdict": "WARN —— ±10% 阈值扰动导致信号数量变化 37%~50%，属敏感但未到『结果全变』。PARAMETER FRAGILITY 轻度触发。"
+      },
+      "candidate_status_thresholds": {
+        "reproduction_accuracy_pct": 100.0,
+        "baseline": {"CANDIDATE": 6541, "WATCH": 30541, "EXCLUDE": 129284},
+        "cand_min_perturbation": {
+          "minus_10pct": {"candidate": 6642, "delta": 101, "state_change_pct": 0.06},
+          "plus_10pct": {"candidate": 5569, "delta": -972, "state_change_pct": 0.58}
+        },
+        "watch_min_perturbation": {"plus_10pct": {"state_change_pct": 0.31}},
+        "verdict": "PASS —— 状态改变 ≤0.58%，阈值稳健"
+      },
+      "extension_max_penalty_perturbation": {
+        "baseline_points": 25.0,
+        "minus_30pct": {"candidate_delta": 30, "state_change_pct": 0.03},
+        "plus_30pct": {"candidate_delta": -53, "state_change_pct": 0.06},
+        "verdict": "PASS —— 不敏感"
+      }
+    },
+
+    "score_interpretability": {
+      "spec_section": "§三十七",
+      "candidate_score_vs_component_spearman": {
+        "theme_opportunity_score": 0.403, "fundamental_quality": 0.332,
+        "relative_theme_strength": 0.269, "structure_quality_precheck": 0.359,
+        "theme_diffusion_score": 0.408, "data_quality": 0.444,
+        "extension_penalty": 0.063, "cross_theme_bonus": 0.356
+      },
+      "observations": [
+        "data_quality（权重 0.05）与总分的相关（0.444）高于 theme_opportunity_score（权重 0.20，相关 0.403），存在『小权重高相关』的异常，说明总分中混入了数据质量的分层效应",
+        "extension_penalty 与总分相关仅 0.063，说明惩罚项只作用于少数样本（p50=0，p90=5.0，max=28.01），作用面窄",
+        "cross_theme_bonus 与总分相关 0.356，与权重（最多 +5 分）不匹配，提示 bonus 与其它高分量项共线",
+        "extension_penalty 实测 max=28.01 > config 上限 25.0，说明存在 config 之外的额外扣减来源（full_breadth 额外延伸）"
+      ]
+    },
+
+    "candidate_type_status_crosstab": {
+      "THEME_CORE": {"CANDIDATE": 5903, "EXCLUDE": 2258, "WATCH": 1718},
+      "THEME_DIFFUSION": {"CANDIDATE": 322, "EXCLUDE": 479, "WATCH": 1465},
+      "THEME_PULLBACK": {"CANDIDATE": 316, "EXCLUDE": 9, "WATCH": 145},
+      "THEME_RELATIVE_STRENGTH": {"CANDIDATE": 0, "EXCLUDE": 10661, "WATCH": 3069},
+      "THEME_SECOND_LINE": {"CANDIDATE": 0, "EXCLUDE": 107, "WATCH": 896},
+      "THEME_WATCH": {"CANDIDATE": 0, "EXCLUDE": 115769, "WATCH": 23249},
+      "verdict": "WARN —— THEME_RELATIVE_STRENGTH 与 THEME_SECOND_LINE 永远无法成为 CANDIDATE（0 行），类型枚举与状态机存在层级失配；THEME_SECOND_LINE 中 ext_pen 中位=5.00，说明该类样本普遍带延伸惩罚"
+    },
+
+    "data_quality_and_validity": {
+      "candidate_data_quality": {"min": 4.1, "p10": 60.1, "p50": 83.2},
+      "risk_flags_nonempty_pct": 82.8,
+      "top_risk_flags": ["LOW_BREADTH_SUPPORT|WEAK_CORE_SUPPORT", "FUNDAMENTAL_WEAK", "LOW_BREADTH_SUPPORT|WEAK_CORE_SUPPORT|THEME_COOLING", "DATA_INCOMPLETE", "THEME_COOLING"],
+      "seos_DATA_INVALID_rows": 0,
+      "seos_warmup_not_ready_pct": 18.7,
+      "theme_phase_vs_phase_raw_mismatch_pct": 18.9,
+      "theme_phase_dist": {"DORMANT": 4050, "EARLY": 195, "EMERGING": 157, "DETERIORATING": 100, "COOLING": 20, "CONFIRMING": 18, "EXITING": 6, "STRONG": 4},
+      "phase_raw_dist": {"DORMANT": 3929, "EARLY": 289, "EMERGING": 189, "STRONG": 73, "CONFIRMING": 70},
+      "sector_state_base_dist": {"NEUTRAL": 1752, "WEAK": 1333, "HEALTHY": 890, "DETERIORATING": 563, "STRONG": 12},
+      "findings": [
+        "STRONG 阶段样本极少（theme_phase=4 / phase_raw=73），CONFIRMING 仅 18 行 → 高阶阶段统计不可靠",
+        "DORMANT 占 89%（4050/4550），相位分布极度失衡，实际可用机会样本仅约 500 个主题日",
+        "theme_phase 与 phase_raw 差异 18.9%，其中 STRONG 由 73 降到 4、CONFIRMING 由 70 降到 18 → 防抖对高阶阶段的抑制极强",
+        "LOW_BREADTH_SUPPORT / WEAK_CORE_SUPPORT 组合风险标签占比最高，与跨主题污染互为表里"
+      ]
+    },
+
+    "hysteresis_effect": {
+      "theme_phase_switches_per_theme": {"mean": 5.0, "median": 6, "max": 14, "pct_of_samples": 5.5},
+      "phase_raw_switches_per_theme": {"mean": 21.2, "median": 24, "max": 35, "pct_of_samples": 23.3},
+      "reduction_pct": 76.6,
+      "phase_duration": {"p50": 17, "p90": 54, "max": 91},
+      "sector_state_base_switches_per_theme_mean": 12.92,
+      "verdict": "PASS —— 防抖把切换频率降低 76.6%，机制有效",
+      "side_effect": "phase_duration p50=17 日，配合只在连续 2 日确认后写入，导致相位滞后，是 THEME_PULLBACK 误判（AV-16）的成因之一"
+    },
+
+    "backtest_credibility": {
+      "spec_section": "§二十九 / §三十 / §三十一",
+      "step4_seos_backtest": {
+        "baseline": {"T+3": {"mean": -0.0036, "win_rate": 0.439}, "T+20": {"mean": -0.014, "win_rate": 0.453}},
+        "ROTATION_IN": {"T+10": {"mean": 0.0189, "win_rate": 0.583, "random_pct": 100.0}, "T+20": {"mean": 0.0135, "win_rate": 0.577, "random_pct": 100.0}},
+        "EMERGING": {"T+3": {"mean": -0.0131, "win_rate": 0.365, "random_pct": 1.4}, "T+5": {"mean": -0.0087, "win_rate": 0.346, "random_pct": 26.0}},
+        "EARLY": {"T+3": {"mean": 0.0, "win_rate": 0.58, "random_pct": 86.4}, "T+10": {"mean": -0.0169, "win_rate": 0.136}, "T+20": {"mean": 0.0047, "win_rate": 0.966}},
+        "CONFIRMING_signals": 7
+      },
+      "step5_candidate_backtest": {
+        "THEME_DIFFUSION": {"T+20": {"mean": 0.0322, "win_rate": 0.653, "excess": 0.0425}, "T+10": {"mean": 0.0236, "win_rate": 0.642, "excess": 0.0484}},
+        "THEME_CORE": {"T+20": {"mean": 0.0027, "win_rate": 0.529, "excess": 0.013}, "T+3": {"mean": -0.0037, "win_rate": 0.412}},
+        "THEME_PULLBACK": {"T+20": {"mean": -0.0434, "excess": -0.0331}, "T+10": {"mean": -0.0261}},
+        "THEME_SECOND_LINE": {"T+3": {"mean": -0.0162, "win_rate": 0.38}},
+        "ALL_THEME_MEMBERS": {"T+20": {"mean": -0.0103, "win_rate": 0.512}},
+        "RANDOM_MEMBERS": {"T+20": {"mean": -0.0085, "win_rate": 0.515}},
+        "positive_excess_groups": "12 / 16"
+      },
+      "limitations": [
+        "样本区间仅 77 个交易日（20260522~20260916），单一市场环境",
+        "未按年份 / 牛熊 / 行业轮动阶段分段检验（§三十一 未满足）",
+        "CONFIRMING 仅 7 个信号，禁止据此下结论",
+        "两组回测均声明『不因回测结果调整参数』，参数未做样本外验证"
+      ],
+      "verdict": "WARN —— 局部有效（ROTATION_IN / THEME_DIFFUSION 显著为正），但存在系统性负 alpha 组（EMERGING / THEME_PULLBACK / THEME_SECOND_LINE）与样本量不足问题"
+    }
+  },
+
+  "gate_ratings": {
+    "G0_ARCHITECTURE": "WARN",
+    "G1_DATA_INTEGRITY": "PASS",
+    "G2_THEME_SEMANTICS": "WARN",
+    "G3_POINT_IN_TIME": "WARN",
+    "G4_THEME_STATE": "WARN",
+    "G5_SEOS": "WARN",
+    "G6_THEME_TO_STOCK": "WARN",
+    "G7_BACKTEST": "WARN",
+    "G8_ROBUSTNESS": "PASS"
+  },
+
+  "final_status": "CONDITIONAL_READY",
+
+  "four_yes_no_questions": {
+    "NO_LEGACY_CONTAMINATION": "YES",
+    "NO_FUTURE_LEAKAGE": "YES（含一处例外：Step 5 主题层等权收益聚合缺 PIT 过滤，AV-15/见 issue_list P0-01）",
+    "NO_SERIOUS_THEME_POLLUTION": "NO（93.6% 股票归属 >=2 主题，34.4% >=6 主题）",
+    "NO_OBVIOUS_MOMENTUM_CHASING": "YES"
+  }
+}

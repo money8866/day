@@ -1075,11 +1075,14 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
         #   深度回调: 20日持有最优（胜率70.9%/均收益10.89%）
         #   放量回调: 5日持有最优（胜率64.5%/均收益5.34%/盈亏比2.21）
         #   强势横盘: 5-10日持有（低吸短线）
+        #   放量急洗: 尚无回测样本（v4.0 新增支路），按"启动日跟随"处理，
+        #             持有到启动后量能衰竭为止，不预设固定止盈
         _pattern_hold_sell = {
             'V型急跌':   {'hold_days': 5,  'sell_signal': '5日内收益>0可卖出，放量突破MA20可持有到10日，量比回升>0.8则出场'},
             '深度回调':   {'hold_days': 20, 'sell_signal': '20日内收益>10%分批止盈，站上所有均线中线持有，缩量滞涨卖出'},
             '放量回调':   {'hold_days': 5,  'sell_signal': '5日内量比再次放大可继续持有，缩量滞涨即卖出，跌破入场价-5%止损'},
             '强势横盘':   {'hold_days': 8,  'sell_signal': '跌破MA20或放量滞涨即卖出，5日不破MA20可持有到10日'},
+            '放量急洗':   {'hold_days': 10, 'sell_signal': '启动后放量长阳续攻可持有，跌破启动日最低价或缩量滞涨即卖出'},
         }
         _hs = _pattern_hold_sell.get(pattern, {'hold_days': 5, 'sell_signal': '动态止损，按ATR跟踪'})
         result["hold_days"] = _hs['hold_days']
@@ -3712,89 +3715,141 @@ def _get_stock_moneyflow_features(ts_code):
     return result
 
 
-def calc_20d_breakout_failure_risk(df, breakout_result, details=None):
-    """面向次日买入、持有20个交易日的突破失败风险评分（10~90，越低越好）。"""
+# ==========================================================================
+# T+5 突破有效性风险模型（全市场校准）
+# --------------------------------------------------------------------------
+# 核心口径（连续2日守位 = 突破有效）：
+#   关键位 ref = 决策日「前20日最高价」（不含当日）
+#   防守位 lvl = ref × (1 − 1.5%)
+#   决策日 D0 收盘后打分 → 次日开盘买入 → 检验窗口 D0+1 ~ D0+5（T+5）
+#   突破有效 = 窗口内出现「连续 2 个交易日收盘 ≥ 防守位」且此后维持至窗口末
+#
+# 模型 = 位置状态机（7 态互斥）+ 量能 / 波动 / MA20偏离 校准修正（逻辑回归）
+#   校准样本：1,440 只 × 2022-01 起全市场，179,258 条（含除权异常日过滤）
+#   加权 AUC = 0.663；十分位验证（预测概率 D1→D10 对应的 T+5 收益 / T+5 最大不利）
+#     D1 29% → +6.89% / −1.61%     D10 72% → −0.72% / −8.79%（单调）
+#   输出 = 「突破被证伪 或 T+5 内最大不利回撤 ≥8%」的校准概率（10~90，越低越好）
+# --------------------------------------------------------------------------
+T5_DEFENSE_BUFFER = 0.015    # 防守位缓冲：关键位下方 1.5%
+T5_LOOKBACK = 11             # 位置状态回看窗口（含决策日）
+_T5_INTERCEPT = -0.0485      # 参考组 = C1_有效突破初段（48.8%）
+_T5_CELL_COEF = {
+    'C1_有效突破初段': 0.000,
+    'C2_有效突破已延伸': 0.044,
+    'C3_突破未确认': 0.221,
+    'C4_贴位未突破': -1.209,
+    'C5_中距未突破': -1.094,
+    'C6_远距未突破': -0.929,
+    'C7_突破后失守': -0.974,
+}
+# (下限, 上限, 系数)，区间为 (lo, hi]；首档为参考组（系数 0）
+_T5_VR_BINS = [(0.0, 0.7, 0.0), (0.7, 0.9, 0.0), (0.9, 1.2, -0.016),
+               (1.2, 1.8, -0.128), (1.8, 3.0, -0.256), (3.0, 99.0, -0.153)]
+_T5_ATR_BINS = [(0.0, 1.5, 0.0), (1.5, 2.5, 0.184), (2.5, 4.0, 0.478),
+                (4.0, 6.0, 0.793), (6.0, 99.0, 1.027)]
+_T5_MA20_BINS = [(-99.0, -5.0, 0.0), (-5.0, 0.0, -0.096), (0.0, 5.0, -0.008),
+                 (5.0, 10.0, -0.074), (10.0, 20.0, -0.150), (20.0, 999.0, 0.103)]
+
+
+def _t5_bin_coef(value, bins):
+    """按 (lo, hi] 分档取校准系数；落入参考档或区间外返回 0"""
+    for lo, hi, coef in bins:
+        if lo < value <= hi:
+            return coef
+    return 0.0
+
+
+def calc_t5_breakout_failure_risk(df, details=None):
+    """T+5 突破有效性风险（10~90，越低越好）。
+
+    以「突破后连续 2 个交易日守住关键位 = 突破有效」为核心分档，叠加量能、
+    波动率与 MA20 偏离的校准修正，输出「突破被证伪 或 T+5 内最大不利回撤
+    ≥8%」的校准概率（%）。
+    """
     details = details if isinstance(details, dict) else {}
-    risk = 50.0
-    reasons = []
-    b = breakout_result or {}
-    score = float(b.get('breakout_score', 0) or 0)
-    is_false = bool(b.get('is_false_breakout', False))
-    is_valid = bool(b.get('is_valid_breakout', False))
-    distance = float(b.get('distance_to_resistance', 0) or 0)
-    volume_ratio = float(b.get('volume_ratio', 1) or 1)
-    vol_5_to_20 = float(b.get('vol_5_to_20', 1) or 1)
-    atr_pctile = float(b.get('atr_percentile', 0.5) or 0.5)
-    ma20_slope = float(b.get('ma20_slope', 0) or 0)
+    if df is None or len(df) < 60 or not {'high', 'low', 'close', 'vol'}.issubset(df.columns):
+        details['T5风险模型'] = '数据不足，取中性值'
+        return 50.0
 
-    # 突破质量：20日持有期首先要求突破成立，而不是只看综合动量。
-    if is_false:
-        risk += 25; reasons.append('假突破')
-    elif is_valid and score >= 80:
-        risk -= 10
-    elif is_valid:
-        risk -= 6
-    elif score >= 65:
-        risk += 4
+    high = df['high'].astype(float)
+    low = df['low'].astype(float)
+    close = df['close'].astype(float)
+    vol = df['vol'].astype(float)
+
+    piv = high.rolling(20).max().shift(1)          # 每日「前20日最高价」
+    ref = float(piv.iloc[-1])
+    if not np.isfinite(ref) or ref <= 0 or float(close.iloc[-1]) <= 0:
+        details['T5风险模型'] = '关键位缺失，取中性值'
+        return 50.0
+    lvl = ref * (1 - T5_DEFENSE_BUFFER)
+    dist_now = (float(close.iloc[-1]) / ref - 1) * 100
+
+    # 位置状态机：state = 连续守住防守位天数；rbrk = 回看窗口内是否曾站上关键位
+    tail_close = close.iloc[-T5_LOOKBACK:].tolist()
+    tail_piv = piv.iloc[-T5_LOOKBACK:].tolist()
+    state = 0
+    for c_ in reversed(tail_close):
+        if c_ < lvl:
+            break
+        state += 1
+    rbrk = 0
+    for c_, p_ in zip(reversed(tail_close), reversed(tail_piv)):
+        if np.isfinite(p_) and p_ > 0 and c_ >= p_:
+            rbrk = 1
+            break
+    hold_txt = f'≥{state}日' if state >= T5_LOOKBACK else f'{state}日'
+
+    if state >= 2:
+        if dist_now > 6:
+            cell, cell_txt = 'C2_有效突破已延伸', '有效突破·已延伸'
+        else:
+            cell, cell_txt = 'C1_有效突破初段', '有效突破·初段'
+        cell_txt += f'（已连续守位{hold_txt}）'
+    elif state == 1:
+        cell, cell_txt = 'C3_突破未确认', '突破未确认（仅守位1日，未达连续2日）'
+    elif rbrk == 1:
+        cell, cell_txt = 'C7_突破后失守', '突破后失守（关键位得而复失）'
+    elif dist_now > -4:
+        cell, cell_txt = 'C4_贴位未突破', '贴关键位未突破（突破前夜）'
+    elif dist_now > -8:
+        cell, cell_txt = 'C5_中距未突破', '距关键位-4~-8%未突破'
     else:
-        risk += 12; reasons.append('突破确认不足')
+        cell, cell_txt = 'C6_远距未突破', '远距关键位未突破（形态未成）'
 
-    # 次日买入的追价风险：突破过深通常降低盈亏比。
-    if distance > 6:
-        risk += 12; reasons.append('远离阻力')
-    elif distance > 3:
-        risk += 6; reasons.append('突破偏深')
-    elif -2 <= distance <= 3:
-        risk -= 3
-    elif distance < -4:
-        risk += 8; reasons.append('尚未站上阻力')
+    # 量比（当日量 / 前20日均量）
+    vma20 = vol.iloc[-21:-1].mean()
+    vr = float(vol.iloc[-1] / vma20) if vma20 > 0 else 1.0
+    # ATR14 占股价比
+    pc = close.shift(1)
+    tr = np.maximum(high - low, np.maximum((high - pc).abs(), (low - pc).abs()))
+    atr14 = tr.iloc[-14:].mean()
+    atr_pct = float(atr14 / close.iloc[-1] * 100) if np.isfinite(atr14) else 2.0
+    # 距 MA20
+    ma20 = close.rolling(20).mean().iloc[-1]
+    dist_ma20 = float((close.iloc[-1] / ma20 - 1) * 100) if np.isfinite(ma20) and ma20 > 0 else 0.0
 
-    # 量价质量：适度放量最好，极端爆量按情绪透支处理。
-    if volume_ratio < 0.9:
-        risk += 10; reasons.append('缩量突破')
-    elif 1.2 <= volume_ratio <= 2.5:
-        risk -= 5
-    elif volume_ratio > 3.5:
-        risk += 6; reasons.append('极端爆量')
-    if vol_5_to_20 < 0.8:
-        risk += 5
-    elif 1.1 <= vol_5_to_20 <= 1.8:
-        risk -= 3
+    z = (_T5_INTERCEPT + _T5_CELL_COEF[cell]
+         + _t5_bin_coef(vr, _T5_VR_BINS)
+         + _t5_bin_coef(atr_pct, _T5_ATR_BINS)
+         + _t5_bin_coef(dist_ma20, _T5_MA20_BINS))
+    risk = min(90.0, max(10.0, 1 / (1 + np.exp(-z)) * 100))
 
-    if ma20_slope > 1.0:
-        risk -= 5
-    elif ma20_slope > 0:
-        risk -= 2
-    elif ma20_slope < -1.0:
-        risk += 8; reasons.append('MA20下行')
-    if atr_pctile < 0.3:
-        risk -= 4
-    elif atr_pctile > 0.8:
-        risk += 6; reasons.append('波动率高')
+    reasons = [cell_txt]
+    if vr >= 1.2:
+        reasons.append(f'量比{vr:.2f}')
+    elif vr < 0.9:
+        reasons.append(f'缩量(量比{vr:.2f})')
+    if atr_pct >= 4.0:
+        reasons.append(f'高波动(ATR{atr_pct:.1f}%)')
+    if dist_ma20 > 20:
+        reasons.append(f'远离MA20(+{dist_ma20:.1f}%)')
+    elif dist_ma20 < -5:
+        reasons.append(f'跌破MA20({dist_ma20:.1f}%)')
 
-    if isinstance(df, pd.DataFrame) and len(df) >= 20 and 'close' in df.columns:
-        close = float(df['close'].iloc[-1])
-        ma20 = float(df['close'].tail(20).mean())
-        if ma20 > 0:
-            dist_ma20 = (close / ma20 - 1) * 100
-            if dist_ma20 > 15:
-                risk += 10; reasons.append('远离MA20')
-            elif dist_ma20 > 8:
-                risk += 4
-            elif 0 <= dist_ma20 <= 5:
-                risk -= 3
-            elif dist_ma20 < -3:
-                risk += 8; reasons.append('跌破MA20')
-        ret20 = (close / float(df['close'].iloc[-20]) - 1) * 100 if float(df['close'].iloc[-20]) > 0 else 0
-        if ret20 > 35:
-            risk += 8; reasons.append('20日涨幅透支')
-        elif ret20 > 20:
-            risk += 3
-
-    risk = min(90.0, max(10.0, risk))
-    details['20日风险模型'] = '突破质量+追价+量价+波动+MA20+20日涨幅'
-    details['20日风险修正理由'] = '、'.join(reasons[:5]) if reasons else '结构正常'
-    return round(risk, 1)
+    details['T5风险模型'] = 'T+5突破有效性风险模型（位置状态机+量能/波动/MA20校准）'
+    details['T5风险状态'] = f'{cell}（距关键位{dist_now:+.2f}%，守位{hold_txt}）'
+    details['T5风险修正理由'] = '、'.join(reasons[:5])
+    return round(float(risk), 1)
 
 
 # ==========================================================================
@@ -4436,7 +4491,10 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             momentum_score * W['momentum'] +
             turnover_score * W['turnover']
         )
-        synergy_bonus = (synergy_coeff - 0.8) * 12
+        # 2026-09 调整：共振加分倍数 12 → 24。
+        # 主题强度只有这一条通路直接进入基础裸分（=突破池排名分的主导项），
+        # 原倍数下最大仅 +8.4，相对换手率单项(权重 .24 → 最大 24 分)明显偏弱。
+        synergy_bonus = (synergy_coeff - 0.8) * 24
         base_raw = base_score + synergy_bonus - penalty + leader_bonus + recognition_bonus
 
         # 动量只保留小幅排序作用，不能覆盖突破质量和追高风险。
@@ -4537,13 +4595,24 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
             tier_cap = 97.0  # 无数据不限制
 
         # ── V11: 软天花板（S型压缩到 5~tier_cap，高分段拉开差异）──
-        # soft_cap(x) = tier_cap - (tier_cap * 0.31) / (1 + exp(0.14 * (x - 80)))
+        # soft_cap(x) = tier_cap - (tier_cap * 0.31) / (1 + exp(0.14 * (x - x0)))
+        #
+        # 2026-09 修复：阈值处不连续。原实现把曲线中心固定在 x=80，而分段阈值是
+        # 70，两者不对齐 —— x 刚越过 70 时曲线值并不等于 70：
+        #   非主线 tier_cap=78：70.0 → 70.0 分，70.1 → 58.7 分（反向掉 11.3 分）
+        #   主线   tier_cap=97：70.0 → 70.0 分，70.1 → 72.9 分（跳升 2.9 分）
+        # 导致 70 附近的整合评分不可比。现按 tier_cap 反解曲线中心 x0，
+        # 使 soft_cap(70) 恒等于 70，越过阈值后单调上升：
+        #   x0 = 70 - ln( compress_range / (tier_cap - 70) - 1 ) / 0.14
+        # 曲线族、压缩幅度(31%)、上限 tier_cap 均不变，仅整体水平平移。
         final_score = after_theme
         if final_score > 70:
             import math
             # S型压缩，上限为 tier_cap；压缩量 = tier_cap × 0.31（约30%的压缩空间）
             compress_range = tier_cap * 0.31
-            final_score = tier_cap - compress_range / (1.0 + math.exp(0.14 * (final_score - 80.0)))
+            _so_k = 0.14
+            _so_x0 = 70.0 - math.log(compress_range / (tier_cap - 70.0) - 1.0) / _so_k
+            final_score = tier_cap - compress_range / (1.0 + math.exp(_so_k * (final_score - _so_x0)))
         final_score = max(5.0, min(tier_cap, final_score))
 
         # ──────────────────────────────────────────────
@@ -8215,7 +8284,7 @@ def run(target_date=None, simple_mode=False):
             print(f"[突破评分] {ts_code} {name} 失败: {e}")
             continue
     
-    # 突破 + 二波信号（先于主题去重：让"每主题保留3只"与展示/风控统一使用同一20日风险模型口径）
+    # 突破 + 二波信号（先于主题去重：让"每主题保留3只"与展示/风控统一使用同一T+5风险模型口径）
     for s in ranked_stocks:
         try:
             current_price = s.get('现价', 0)
@@ -8227,6 +8296,8 @@ def run(target_date=None, simple_mode=False):
             s['突破评分'] = breakout_result.get('breakout_score', 0)
             # 突破类型（假突破/有效突破/即将突破/形态不具备），供突破池排名分门控使用
             s['突破类型'] = breakout_result.get('breakout_type', '')
+            # 距阻力位百分比（负数=尚在阻力位下方），供排名分判断"突破前夜"
+            s['距阻力_pct'] = breakout_result.get('distance_to_resistance', 0)
 
             # 二波形态检测+共振评分
             wave2_result = detect_wave2_reversal(s['代码'], pro)
@@ -8236,16 +8307,16 @@ def run(target_date=None, simple_mode=False):
             s['入场价'] = wave2_result.get('entry_price', 0)
             s['止损价'] = wave2_result.get('stop_loss', 0)
             s['目标价'] = wave2_result.get('target', 0)
-            # 面向次日买入、持有20日的专用失败风险模型（统一口径）
-            s['失败概率'] = calc_20d_breakout_failure_risk(
-                get_hist_data(s['代码']), breakout_result, s.get('评分详情', {}))
-            s['评分详情']['失败概率模型'] = '20日中线真突破风险模型'
+            # T+5 突破有效性风险模型（连续2日守位 = 突破有效，统一口径）
+            s['失败概率'] = calc_t5_breakout_failure_risk(
+                get_hist_data(s['代码']), s.get('评分详情', {}))
+            s['评分详情']['失败概率模型'] = 'T+5突破有效性风险模型（连续2日守位口径）'
         except Exception:
-            s['突破信号'] = ''; s['突破评分'] = 0; s['突破类型'] = ''
+            s['突破信号'] = ''; s['突破评分'] = 0; s['突破类型'] = ''; s['距阻力_pct'] = 0
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
             s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
 
-    # 每个主题只保留失败概率最低的3只（口径=上面的20日风险模型，与展示一致）
+    # 每个主题只保留失败概率最低的3只（口径=上面的T+5风险模型，与展示一致）
     theme_groups = {}
     for s in ranked_stocks:
         theme = s['所属主题']
@@ -8307,13 +8378,21 @@ def run(target_date=None, simple_mode=False):
             s['ChipSuggestionReason'] = _reason
 
     # ====================================================================
-    # 突破池排名分 RankScore —— 排序口径统一
+    # 突破池排名分 RankScore —— 排序口径统一（v2 修正版）
     # 旧口径直接按「整合评分」排序，而 整合评分 = 基础裸分 × 主题层级系数 × 共振系数
     # 再经软天花板压缩。共振系数会把分数压掉过半（例 300628 亿联网络
     # 基础裸分 77.9 → 整合评分 18.7），导致「非突破形态 + 77% 失败概率」的票
     # 占据第1名，真正「即将突破」的票排最后，与本池「突破」定位不符。
     # 新口径：以未受系数污染的基础裸分（=原始整合评分）为主导，
-    # 叠加突破质量门控、20日失败概率与二波形态修正。
+    # 叠加突破质量门控与 T+5 失败概率修正。
+    #
+    # v2 修正（回测归因驱动，样本 601579.SH 会稽山 20260901）：
+    #   旧版把「有效突破 +8」当作奖励，等于系统性偏袒"已突破/已充分定价"的高位票，
+    #   而 0901 当日处于「二波启动、尚未突破」状态的会稽山被一刀切判为
+    #   "非突破形态 -12" 压到池尾 —— 实际该股此后 11 个交易日 +46%。
+    #   故本版把"是否已延伸"纳入门控：已突破的降权，贴阻力位待突破的升权。
+    #   原「二波形态修正」项因阈值(≥50/+3、≥70/+6)与 detect_wave2_reversal
+    #   实际分数尺度(7~40)不匹配、历史快照 92 个样本命中数恒为 0，已移除。
     # ====================================================================
     def _apply_pool_rank_score(_s):
         _base = float(_s.get('原始整合评分', 0) or 0)
@@ -8322,33 +8401,31 @@ def run(target_date=None, simple_mode=False):
         _adj = 0.0
         _reasons = []
 
-        # 1) 突破质量门控：让排名与本池「突破」定位对齐
+        # 1) 突破质量门控：让排名与本池「突破」定位对齐，
+        #    并用「距阻力位距离」区分"突破前夜"与"远离阻力/已延伸"
         _btype = str(_s.get('突破类型', ''))
         _bsc = float(_s.get('突破评分', 0) or 0)
+        _dist = float(_s.get('距阻力_pct', 0) or 0)   # 负数=尚在阻力位下方
         if _btype == '假突破':
             _adj -= 25; _reasons.append('假突破-25')
         elif _btype == '有效突破' or _bsc >= 70:
-            _adj += 8; _reasons.append('有效突破+8')
+            # 已突破=已定价，不奖励（甚至小幅降权，避免追高已延伸票）
+            _adj -= 5; _reasons.append('已突破(已延伸)-5')
         elif _btype == '即将突破':
-            _adj += 4; _reasons.append('即将突破+4')
+            _adj += 6; _reasons.append('即将突破+6')
+        elif abs(_dist) < 8:
+            # 形态未成但紧贴阻力位 → 突破前夜，优先关注
+            _adj += 6; _reasons.append('贴阻力位(突破前夜)+6')
         else:
-            _adj -= 12; _reasons.append('非突破形态-12')
+            # 形态未成且远离阻力位 → 既非突破也非临突破，降权
+            _adj -= 5; _reasons.append('远离阻力位-5')
 
-        # 2) 20日失败概率修正（基础裸分已剔除 risk_penalty，此处补回风险定价）
+        # 2) T+5 失败概率修正（基础裸分已剔除 risk_penalty，此处补回风险定价）
         _fp = float(_s.get('失败概率', 50) or 50)
-        if _fp >= 75:
-            _adj -= 15; _reasons.append('失败率≥75%-15')
-        elif _fp >= 65:
-            _adj -= 8; _reasons.append('失败率≥65%-8')
+        if _fp >= 65:
+            _adj -= 8; _reasons.append('T+5失败率≥65%-8')
         elif _fp <= 45:
-            _adj += 5; _reasons.append('失败率≤45%+5')
-
-        # 3) 二波形态修正
-        _w2 = float(_s.get('二波评分', 0) or 0)
-        if _w2 >= 70:
-            _adj += 6; _reasons.append('二波≥70+6')
-        elif _w2 >= 50:
-            _adj += 3; _reasons.append('二波≥50+3')
+            _adj += 5; _reasons.append('T+5失败率≤45%+5')
 
         _s['排名分'] = round(max(0.0, _base + _adj), 1)
         _s['排名分_原始'] = round(_base, 1)
@@ -8361,7 +8438,7 @@ def run(target_date=None, simple_mode=False):
     # 按突破池排名分从高到低排序
     ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('排名分', 0))
 
-    # 突破股池每日快照：保存全量候选(主题/排名分/整合评分/20日失败概率/排名/入选Top10)，
+    # 突破股池每日快照：保存全量候选(主题/排名分/整合评分/T+5失败概率/排名/入选Top10)，
     # 供后续攒真实样本回测验证"预筛口径统一"后的排序效果
     try:
         _snap_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
@@ -8376,6 +8453,8 @@ def run(target_date=None, simple_mode=False):
                 '排名分': _st.get('排名分', 0),
                 '排名分_明细': _st.get('排名分_明细', ''),
                 '失败概率': _st.get('失败概率', 0),
+                '突破类型': _st.get('突破类型', ''),
+                '距阻力_pct': _st.get('距阻力_pct', 0),
                 '突破信号': _st.get('突破信号', ''),
                 '突破评分': _st.get('突破评分', 0),
                 '二波信号': _st.get('二波信号', ''),
@@ -8405,7 +8484,7 @@ def run(target_date=None, simple_mode=False):
         _chip_str = f" 筹码={_chip_score:.0f}/CRE={_cre_score:.0f}/动量={_mom_score:.0f}"
         lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{_chip_str}")
         lines.append(f"  排名分: {s.get('排名分', 0):.1f} (原始{s.get('排名分_原始', 0):.1f} 修正{s.get('排名分_修正', 0):+.1f}: {s.get('排名分_明细', '')})")
-        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率: {s['失败概率']:.1f}%")
+        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率(T+5): {s['失败概率']:.1f}% | T+5状态: {s.get('评分详情', {}).get('T5风险状态', '')}")
         _det = s.get('评分详情', {})
         if _det and isinstance(_det, dict):
             _mom = _det.get('动量爆发力', 0)
@@ -8734,7 +8813,8 @@ def run(target_date=None, simple_mode=False):
     def _load_hvt_bull_te_buy_pool(trade_date: str) -> str:
         r"""读取 hvt_bull_report_{date}.md，提取「① 次日买入候选」段（te_buy_pool 执行买点池）。
         池定义：execution_state ∈ (READY_BUY, PULLBACK_BUY) 且 next_day_action ∈ (BUY, BUY_ON_CONFIRM)，
-        按执行分取 top≤3；短线执行口径（T+1 开盘入场），与第一梯队（结构质量口径）互补，两者无交集为常态。
+        按执行分取 top≤3、并经 R1/R2 再入规则剔除；本函数只保留 next_day_action=BUY
+        （无需再确认、次日可直接执行），BUY_ON_CONFIRM（需盘中重新走强确认）不进 AI 段。
         """
         cand = [
             os.path.join(r"D:\mystock\solo\report_daily", f"hvt_bull_report_{trade_date}.md"),
@@ -8764,10 +8844,39 @@ def run(target_date=None, simple_mode=False):
         if not seg:
             print(f"[HVT 执行买点池] {trade_date} 报告缺少次日买入候选段（引擎版本过旧？）")
             return ""
-        out = ["【HVT-BULL 执行买点池（te_buy_pool 次日买入候选，≤3只）】",
-               f"数据来源：{os.path.basename(latest)}（HVT-BULL te_buy_pool，可执行性优先：触发价/买区/失效位/开盘预案均为引擎原值）",
+
+        # 只留 ACTION=BUY：表格按 ACTION 列过滤，明细块按块内是否含 BUY_ON_CONFIRM 过滤
+        kept, i, n_seg = [], 0, len(seg)
+        n_buy = 0
+        while i < n_seg:
+            ln = seg[i]
+            s = ln.strip()
+            if s.startswith("**【"):
+                blk = [ln]
+                i += 1
+                while i < n_seg and not seg[i].strip().startswith("**【"):
+                    blk.append(seg[i])
+                    i += 1
+                if "BUY_ON_CONFIRM" not in "\n".join(blk):
+                    kept.extend(blk)
+                    n_buy += 1
+                continue
+            if s.startswith("|"):
+                cells = [c.strip() for c in ln.split("|")]
+                if len(cells) > 7 and cells[1] and not cells[1].startswith("-") and cells[1] != "代码":
+                    if cells[7] != "BUY":
+                        i += 1
+                        continue
+            kept.append(ln)
+            i += 1
+
+        out = ["【HVT-BULL 执行买点池（te_buy_pool 次日买入候选·仅 ACTION=BUY 可直接执行）】",
+               f"数据来源：{os.path.basename(latest)}（HVT-BULL te_buy_pool 已剔除 R1/R2 低胜率形态；"
+               f"本段只含 next_day_action=BUY，BUY_ON_CONFIRM 需盘中确认、已排除）",
                ""]
-        out.extend(seg)
+        if n_buy == 0:
+            kept.append("（今日次日买入候选中无可直接执行（ACTION=BUY）的标的：其余为 BUY_ON_CONFIRM 需盘中确认，或已剔除；不强行交易）")
+        out.extend(kept)
         return "\n".join(out).strip()
 
     hvt_first_echelon_text = _load_hvt_bull_first_echelon(TRADE_DATE)
@@ -8777,7 +8886,7 @@ def run(target_date=None, simple_mode=False):
     hvt_te_buy_text = _load_hvt_bull_te_buy_pool(TRADE_DATE)
     if hvt_te_buy_text:
         _n_buy = sum(1 for _l in hvt_te_buy_text.splitlines() if _l[:2] == '| ' and _l[2:3].isdigit())
-        print(f"[HVT 执行买点池] 已加载 te_buy_pool 次日买入候选（{_n_buy}只）")
+        print(f"[HVT 执行买点池] 已加载 te_buy_pool 可直接执行（ACTION=BUY）候选（{_n_buy}只；BUY_ON_CONFIRM 已排除）")
 
     # =========================
     # ETF操作提示（读取主线轮动汇总报告的精简版）
@@ -8869,13 +8978,18 @@ def run(target_date=None, simple_mode=False):
 （【数据边界】本段只分析上方"【HVT-BULL 第一梯队】"标记中列出的股票；若显示"今日无第一梯队"，必须明确提示"今日无第一梯队，不强行交易"，禁止用其它股池股票填补。）
 【输出要求-第4段】按原列表顺序逐只输出：名称(代码)[A级/B级] + 一句话买入逻辑（锁筹+二次突破分层+扩张空间）+ 触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），最后附一句证伪纪律（放量跌破T0_High且2日不收复→结构性止损离场）；B级个股必须加注"扩张确认稍弱，仓位从低"。
 
-4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY 且 next_day_action=BUY/BUY_ON_CONFIRM，按执行分取 top≤3；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
+4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY，按执行分取 top≤3、已剔除 R1/R2 低胜率形态；**本段只含 next_day_action=BUY——无需再确认、次日可直接执行**，BUY_ON_CONFIRM 已排除；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
 {hvt_te_buy_text}
-（【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日执行买点池为空，不强行交易"，禁止用其它股池股票填补。）
-【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(ACTION/确认等级) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；动作含 BUY_ON_CONFIRM 的个股必须加注"需盘中重新走强确认后再执行"；所有个股按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
+（【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日无可直接执行的买点，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(BUY) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；这些均为可直接执行的信号，但仍须按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
 
 5、**【今日突破股池分析】**
-（排名分 = 原始整合评分主导，叠加突破质量门控、20日失败概率与二波形态修正；排名分为相对排序分，可能大于100，仅用于排序，不是0-100制评分）
+（排名分 = 原始整合评分主导，叠加突破质量门控与T+5失败概率修正；排名分为相对排序分，可能大于100，仅用于排序，不是0-100制评分。
+ 修正口径说明：已突破(有效突破)=已定价不奖励并小幅降权；即将突破 与「贴阻力位(突破前夜)」升权；远离阻力位降权；假突破重罚。
+ 失败概率(T+5) = T+5突破有效性风险模型的校准概率，口径为「突破后连续2个交易日守住关键位（前20日最高价下方1.5%）= 突破有效」，
+ 由位置状态（有效突破初段/已延伸/突破未确认/贴位未突破/中距未突破/远距未突破/突破后失守）叠加量比、波动率与距MA20偏离校准得出；
+ 数值越低越好（<45%为低风险，≥65%为高风险）。数据块的「T+5状态」即该股当前所处位置状态，须与失败概率一起解读。
+ 因此排名分高≠已上涨，而是"更靠近可介入的突破前夜"，请勿按涨跌幅高低重新解读排序。）
 （【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
  严禁从以下任何其它数据区读取股票进入本段分析：
  - "📊 ETF操作提示"区及其下方的"ETF Alpha Ranking"、"TOP3 推荐买入"、"TOP10 排名"成份股
@@ -8890,7 +9004,7 @@ def run(target_date=None, simple_mode=False):
 【第3名】**股票名** (代码)
 依此往后
 - 对每只股票进行详细分析，包括：
-- 排名分（含原始分与修正明细，直接引用数据块原文，禁止改写）、整合评分和失败概率
+- 排名分（含原始分与修正明细，直接引用数据块原文，禁止改写）、整合评分、失败概率(T+5)与T+5状态（均直接引用数据块原文，禁止改写）
 - 止损 | 操作建议（引用上方数据区真实价位，数据不足则省略，禁止编造具体止损价）
 - 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
 - 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列

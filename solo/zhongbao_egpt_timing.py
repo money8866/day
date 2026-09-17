@@ -139,6 +139,58 @@ def find_latest_zhongbao_csv() -> str:
     return os.path.join(REPORT_DIR, files[0])
 
 
+SLI_MODES = {
+    "ind_no1": "每申万三级行业第一",
+    "sub_no1": "每细分赛道第一",
+    "absolute": "绝对龙头",
+}
+
+
+def load_sli_leader_pool(mode: str = "ind_no1", asof=None):
+    """加载 SLI 行业细分龙头池（sli.leaderboard_v2 最新快照，经 sli.reader 官方接口自动回退）
+
+    口径 SLI_MODES: ind_no1=每L3行业第一(ind_rank_v2==1) / sub_no1=每细分赛道第一(sub_rank==1) / absolute=绝对龙头
+    返回 (标准化DataFrame, 快照元信息dict)；列兼容 v12: ts_code/name/dt_netprofit_yoy/市值(亿)/来源
+    """
+    from sli.reader import get_panel
+
+    panel = get_panel(asof)
+    if panel is None or panel.empty:
+        raise RuntimeError("SLI 面板为空，请先运行 python -m sli.update_monthly 生成快照")
+    meta = dict(panel.attrs.get("_sli_meta", {}))
+
+    if mode == "ind_no1":
+        pool = panel[panel["ind_rank_v2"].eq(1)].copy()
+    elif mode == "sub_no1":
+        pool = panel[panel["sub_rank"].eq(1)].copy()
+    elif mode == "absolute":
+        _b = panel["is_ABSOLUTE_LEADER"].astype(str).str.strip().str.lower()
+        pool = panel[_b.isin(["1", "1.0", "true", "yes", "y"])].copy()
+    else:
+        raise ValueError(f"未知 SLI 龙头口径: {mode}")
+    if pool.empty:
+        raise RuntimeError(f"SLI 口径[{SLI_MODES.get(mode, mode)}] 过滤后为空")
+
+    out = pd.DataFrame()
+    out["ts_code"] = pool["ts_code"].astype(str).str.strip()
+    out["name"] = pool["name"].fillna("").astype(str)
+    if "total_mv" in pool.columns:
+        out["市值(亿)"] = (pd.to_numeric(pool["total_mv"], errors="coerce") / 1e4).round(1)
+    if "sli_v2" in pool.columns:
+        out["SLI龙头分"] = pd.to_numeric(pool["sli_v2"], errors="coerce").round(1)
+    if "subsector" in pool.columns:
+        out["细分赛道"] = pool["subsector"]
+    if "l3_name" in pool.columns:
+        out["行业(L3)"] = pool["l3_name"]
+    if "leader_type_v2" in pool.columns:
+        out["龙头类型"] = pool["leader_type_v2"]
+    for c in ["or_yoy", "netprofit_yoy", "dt_netprofit_yoy"]:
+        if c in pool.columns:
+            out[c] = pd.to_numeric(pool[c], errors="coerce").round(2)
+    out["来源"] = "SLI龙头"
+    return out.reset_index(drop=True), meta
+
+
 def buy_point_type(daily: pd.DataFrame, vwap: float, peak_high: float,
                    peak_low: float, price: float, ma20: float,
                    vols: np.ndarray, closes: np.ndarray) -> tuple:
@@ -208,7 +260,7 @@ def build_push_msg(trade_date: str, v12) -> str:
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = []
-    lines.append("# 中报猎手×EGPT v12 回踩择时")
+    lines.append("# EGPT v12 回踩择时")
     lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
     lines.append("")
     lines.append("> 🏆 v12合并策略(回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50)：")
@@ -229,27 +281,50 @@ def build_push_msg(trade_date: str, v12) -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None, help="择时数据截止日 YYYYMMDD（默认最近交易日）")
-    ap.add_argument("--csv", default=None, help="中报猎手CSV路径（默认最新）")
+    ap.add_argument("--csv", default=None, help="手动指定输入CSV路径（默认：SLI行业细分龙头池）")
+    ap.add_argument("--source", default="sli", choices=list(SLI_MODES) + ["hunt"],
+                    help="默认输入源: sli=SLI行业细分龙头池(默认) / hunt=中报猎手CSV")
+    ap.add_argument("--sli_mode", default="ind_no1", choices=list(SLI_MODES),
+                    help="SLI龙头口径: ind_no1=每行业第一 / sub_no1=每细分赛道第一 / absolute=绝对龙头")
     ap.add_argument("--push", action="store_true", help="运行后推送结果到微信(PushPlus)")
     args = ap.parse_args()
 
     trade_date = args.date or th.get_last_trade_date()
-    csv_path = args.csv or find_latest_zhongbao_csv()
-    if csv_path is None or not os.path.exists(csv_path):
-        print(f"[错误] 未找到中报猎手CSV: {csv_path}")
+    src, pool_meta = None, None
+    if args.csv:
+        csv_path = args.csv
+        if not os.path.exists(csv_path):
+            print(f"[错误] 输入CSV不存在: {csv_path}")
+            return
+        src = pd.read_csv(csv_path, encoding="utf-8-sig")
+        src_label, title = os.path.basename(csv_path), "中报猎手 × EGPT v12 回踩择时"
+    elif args.source == "hunt":
+        csv_path = find_latest_zhongbao_csv()
+        if csv_path is None or not os.path.exists(csv_path):
+            print(f"[错误] 未找到中报猎手CSV: {csv_path}")
+            return
+        src = pd.read_csv(csv_path, encoding="utf-8-sig")
+        src_label, title = os.path.basename(csv_path), "中报猎手 × EGPT v12 回踩择时"
+    else:
+        try:
+            src, pool_meta = load_sli_leader_pool(args.sli_mode)
+        except Exception as e:
+            print(f"[错误] SLI 龙头池加载失败: {e}")
+            return
+        src_label = (f"SLI[{SLI_MODES[args.sli_mode]}] 快照{pool_meta.get('snapshot_date', '?')}"
+                     f"（{pool_meta.get('age_days', '?')}天前, 面板{pool_meta.get('n_stocks', '?')}只）")
+        title = "SLI行业细分龙头 × EGPT v12 回踩择时"
+
+    if "ts_code" not in src.columns:
+        print("[错误] 输入缺少 ts_code 列")
         return
 
     print("━" * 70)
-    print("  中报猎手 × EGPT 回踩择时")
-    print(f"  中报名单: {os.path.basename(csv_path)}")
+    print(f"  {title}")
+    print(f"  输入池: {src_label}")
     print(f"  择时截止: {trade_date}")
     print("━" * 70)
-
-    src = pd.read_csv(csv_path, encoding="utf-8-sig")
-    if "ts_code" not in src.columns:
-        print("[错误] CSV 缺少 ts_code 列")
-        return
-    print(f"  中报猎手标的: {len(src)} 只")
+    print(f"  标的数: {len(src)} 只")
 
     config = load_config()
     fetcher = DataFetcher(get_token(config), config)
@@ -337,9 +412,9 @@ def main():
         })
 
     out = pd.DataFrame(rows)
-    # 合并中报业绩（中报猎手CSV列名映射为展示列）
-    merge_cols = [c for c in ["翻倍潜力分", "市值(亿)", "来源"] if c in src.columns]
-    yoy_map = {"tr_yoy": "营收增速", "netprofit_yoy": "净利增速", "dt_netprofit_yoy": "扣非增速"}
+    # 合并业绩/来源（中报猎手CSV列名映射为展示列；SLI池列名已对齐）
+    merge_cols = [c for c in ["翻倍潜力分", "市值(亿)", "来源", "SLI龙头分", "细分赛道", "行业(L3)", "龙头类型"] if c in src.columns]
+    yoy_map = {"tr_yoy": "营收增速", "or_yoy": "营收增速", "netprofit_yoy": "净利增速", "dt_netprofit_yoy": "扣非增速"}
     yoy_cols = [c for c in yoy_map if c in src.columns]
     if merge_cols or yoy_cols:
         rename = {"ts_code": "代码", **{c: yoy_map[c] for c in yoy_cols}}
@@ -380,6 +455,8 @@ def main():
         for _, r in sub.iterrows():
             pb = _fmt(r.get("回踩买点分"))
             pot = _fmt(r.get("翻倍潜力分"))
+            if pot == "--":
+                pot = _fmt(r.get("SLI龙头分"))
             npg = r.get("净利增速")
             npg_s = f"净利{npg:+.0f}%" if isinstance(npg, (int, float)) and not (isinstance(npg, float) and np.isnan(npg)) else ""
             dty = r.get("扣非增速")

@@ -43,6 +43,15 @@ RETEST_MA20_K = 0.97  # 回踩不破：现价 ≥ MA20 ×0.97
 RETEST_MAX_AGE = 15  # 回踩结构新鲜度：放量突破日距当日 ≤15 根（更早的突破已非“回踩位附近”）
 RETEST_MAX_EXT = 1.10  # 不追高：现价 ≤ 突破日收盘 ×1.10（回踩位附近低吸；已拉开则转由突破/二波分支处理）
 RETEST_PULLBACK = 0.95  # 须真实回踩：突破日前最低 ≤ T0 收盘 ×0.95（排除 T0 后单边直上的加速股）
+# V5.2 质量过滤（依据 20260825~20260917 全量跟踪 317 条 w7_hvt 样本分层验证）：
+#   ① state∈{BREAKOUT_CONFIRM, SECOND_WAVE, RE_EXPANSION}：n=108 均值 -2.40%
+#      （BREAKOUT_CONFIRM -1.74%/胜率37.2%、SECOND_WAVE -5.50%/13.3%、RE_EXPANSION -3.83%/0%）
+#   ② type=CORE（涨幅<80%，等价 level L1/L2）：n=124 均值 -2.13% 胜率 32.3%
+#   ③ 选股日量比 >1.43（放量追高）：n=79 均值 -2.86% 胜率 30.4%；反向 <0.66 缩量 n=80 均值 +5.18%/胜率 63.7%
+# 三条同时生效后 317→141 条（44%），均值 +0.81%→+4.66%，胜率 45.4%→61.0%，止损率 37.9%→27.7%；
+# 按 9 个选股日逐一复核：8 个批次改善、1 个持平（0915 +3.75%→+3.56%），无一批次劣化。
+W7_EXCLUDE_STATES = ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")
+W7_VOLR_MAX = 1.43  # 选股日量比上限（超过=放量追高）
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
 
@@ -1276,6 +1285,19 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
                                        retest=(state == "BREAKOUT_RETEST"))}
 
 
+def w7_quality_gate(x):
+    """V5.2 质量过滤：判断当日买点标的是否进入「今日可操作榜」与跟踪表。
+    返回 (是否通过, 未通过原因)。仅对 ACTION_BUY_STATES 内的标的做二次筛选，
+    三条依据见文件头 W7_EXCLUDE_STATES / W7_VOLR_MAX 注释（样本内均值由负转正）。"""
+    if x.get("state") in W7_EXCLUDE_STATES:
+        return False, f"状态{x['state']}历史弱（样本均值-2.40%）"
+    if x.get("type") == "CORE":
+        return False, f"CORE低位型（涨幅{x.get('extension', 0) * 100:.0f}%<80%，样本均值-2.13%/胜率32.3%）"
+    if finite(x.get("volr"), 0.0) > W7_VOLR_MAX:
+        return False, f"选股日放量×{x['volr']:.1f}>{W7_VOLR_MAX:g}（追高，样本均值-2.86%）"
+    return True, ""
+
+
 def markdown(results, date):
     # V5.1 过滤层：展示/推送不再铺开候选池，只收口到「当日买点」标的 + 高分等待池摘要
     # V5：HVT-V3 三榜单（A/CORE、B/EXT、C/WATCH）+ TOP20 总榜 + 行为解释含四周期预期
@@ -1291,9 +1313,14 @@ def markdown(results, date):
     def _today_action(x):
         return x["state"] in ACTION_STATES_5
 
-    actionable = [x for x in results if _today_action(x)]
+    # V5.2 质量过滤：当日买点先过 w7_quality_gate，未通过者降级为「过滤观察」（仅展示、不进跟踪表）
+    _buy_signal = [x for x in results if _today_action(x)]
+    _gate = {id(x): w7_quality_gate(x) for x in _buy_signal}
+    actionable = [x for x in _buy_signal if _gate[id(x)][0]]
+    gated_out = [(x, _gate[id(x)][1]) for x in _buy_signal if not _gate[id(x)][0]]
     waiting = [x for x in results if not _today_action(x)]
     n_action = len(actionable)
+    n_gated = len(gated_out)
     # 高分等待池阈值（C 池仅列总分≥75，避免整池铺开）
     WAIT_TOP_SCORE = 75.0
 
@@ -1309,6 +1336,9 @@ def markdown(results, date):
     lines = [f"# W7 HVT-V3 过滤后榜单（今日可操作 · C池等待）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
     lines.append(f"今日可操作（当日买点）＝ {n_action} 只：二波/突破确认/重新扩张/T0天量确认/放量突破后缩量回踩；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
+    lines.append(f"V5.2 质量过滤：当日买点原始 {len(_buy_signal)} 只 → 通过 {n_action} 只、过滤 {n_gated} 只"
+                 f"（剔除 BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION、CORE低位型涨幅<80%、选股日量比>{W7_VOLR_MAX:g}的追高票；"
+                 f"样本内 317→141 条，均值 +0.81%→+4.66%，胜率 45.4%→61.0%）。被过滤标的见文末「过滤观察」。")
     cnt_state = {}
     for x in results:
         cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
@@ -1372,6 +1402,16 @@ def markdown(results, date):
         h = x["horizons"]
         lines.append(f"- **{x['name']}({x['code']})** [{x['type']}/{x['level']}]：{x['explanation']}")
         lines.append(f"　T+10={h['t10']}　|　T+20={h['t20']}　|　T+60={h['t60']}　|　T+120={h['t120']}")
+    # V5.2 过滤观察：当日买点被质量过滤拦下的标的（不进「今日可操作榜」、不落跟踪表）
+    if gated_out:
+        lines.append(f"\n## 过滤观察（当日买点被拦下 {n_gated} 只 · 不可买入、不进跟踪表）\n")
+        lines.append("| # | 代码 | 名称 | 总分 | 类型 | 现价 | 触发价 | 量比 | 状态 | 过滤原因 |")
+        lines.append("| -- | -- | -- | --: | -- | --: | --: | --: | -- | -- |")
+        for k, (x, why) in enumerate(sorted(gated_out, key=lambda t: -t[0]["score"])[:10], 1):
+            lines.append(f"| {k} | {x['code']} | {x['name']} | {x['score']:.1f} | {x['type']} "
+                         f"| {x['close']:.2f} | {x['pressure']:.2f} | ×{x['volr']:.1f} | {x['state']} | {why} |")
+        if n_gated > 10:
+            lines.append(f"\n> 其余 {n_gated - 10} 只已省略。")
     return "\n".join(lines) + "\n"
 
 
@@ -1379,13 +1419,19 @@ def sync_downstream(date, results, output):
     """V5.1 同步：把过滤后的「今日可操作（当日买点）」信号写给下游。
     1) 写 w7_today_action_{date}.json（report_daily）供 tushare_quant 汇总引用；
     2) 落 stock_pick_db 跟踪表（strategy=w7_hvt），盘后由 stock_pick_db.py tracking 回填 T+N/胜率。
-    只同步当日买点四态（ACTION_BUY_STATES），等价报告「今日可操作榜」，不再把全候选池铺进跟踪表；
+    只同步当日买点五态（ACTION_BUY_STATES）中通过 V5.2 质量过滤（w7_quality_gate）的标的，
+    等价报告「今日可操作榜」，不再把全候选池铺进跟踪表；
     任一步失败都不阻塞报告输出。"""
     def _ige(r):
         return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
 
     actionable = [x for x in results if x["state"] in ACTION_BUY_STATES]
+    # V5.2 质量过滤：与报告「今日可操作榜」同口径，被拦下的标的既不落跟踪表也不进下游 JSON
+    n_before = len(actionable)
+    actionable = [x for x in actionable if w7_quality_gate(x)[0]]
     actionable.sort(key=lambda y: (_ige(y), y["score"]), reverse=True)
+    if n_before != len(actionable):
+        print(f"[w7] V5.2 质量过滤: {n_before} → {len(actionable)} 只（拦下 {n_before - len(actionable)} 只）", flush=True)
     act_cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
               "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
               "BREAKOUT_RETEST": "放量突破后缩量回踩买点"}

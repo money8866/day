@@ -38,6 +38,22 @@ FIN_IND_H1 = os.path.join(CACHE_DIR, 'fin_ind_2026H1_full.parquet')
 FIN_IND_Q1 = os.path.join(CACHE_DIR, 'fin_ind_2026Q1_full.parquet')
 PERIOD = '20260630'
 
+# ── Q2 持续性分（bull 池）常量 ──
+PERSIST_Q1_FIN = os.path.join(CACHE_DIR, 'persist_q1_fin.parquet')
+PERSIST_Q1_INC = os.path.join(CACHE_DIR, 'persist_q1_income.parquet')
+PERSIST_H1_INC = os.path.join(CACHE_DIR, 'persist_h1_income.parquet')
+PERSIST_CFG = {
+    'q2_abs_min': 0.1,      # A门槛: Q2单季净利下限(亿)
+    'q2_yoy_min': 30.0,     # A门槛: Q2单季同比下限(%)
+    'spread_veto': -30.0,   # C否决: 营收增速-净利增速 阈值(pp)
+    'gm_chg_veto': 0.0,     # C否决: 毛利率变化(H1-Q1) 阈值(pp)
+    'dt_div_veto': 50.0,    # C否决: 净利增速-扣非增速 阈值(pp)
+    'w_q2': 0.7,            # B主排序: Q2同比权重
+    'w_q1': 0.3,            # B主排序: Q1同比权重(副确认)
+    'bonus_qoq': 5.0,       # D加分: Q2/Q1环比>0
+    'bonus_accel': 5.0,     # D加分: Q2-Q1加速>0
+}
+
 FIELDS = [
     "ts_code", "ann_date", "end_date", "eps", "dt_eps", "total_revenue_ps",
     "revenue_ps", "capital_rese_ps", "surplus_rese_ps", "undist_profit_ps",
@@ -510,6 +526,137 @@ def score_potential(r: dict) -> float:
     return round(total, 1)
 
 
+# ── Q2 持续性分（四层结构 → bull 池） ─────────────────────────
+def _vip_batch(pro, api, cache_path, refresh=False, **kw):
+    """VIP 批量接口拉取，带 parquet 缓存"""
+    if not refresh and os.path.exists(cache_path):
+        try:
+            df = pd.read_parquet(cache_path)
+            if len(df) > 0:
+                return df
+        except Exception:
+            pass
+    for attempt in range(3):
+        try:
+            df = getattr(pro, api)(**kw)
+            if df is not None and len(df) > 0:
+                df.to_parquet(cache_path, index=False)
+                return df
+        except Exception as e:
+            print(f'  [警告] {api} 拉取失败({attempt + 1}/3): {str(e)[:80]}')
+            time.sleep(2)
+    return None
+
+
+def load_persist_data(refresh=False) -> pd.DataFrame:
+    """持续性分批量数据：
+    Q1单季同比+Q1毛利率 (fina_indicator_vip 20260331)、
+    Q1/H1 净利绝对值 (income_vip 20260331/20260630)
+    返回含 ts_code,q1_yoy,gm_q1,ni_q1,ni_h1 的 DataFrame"""
+    pro = _get_pro()
+    q1_fin = _vip_batch(pro, 'fina_indicator_vip', PERSIST_Q1_FIN, refresh,
+                        period='20260331',
+                        fields='ts_code,ann_date,end_date,q_profit_yoy,grossprofit_margin')
+    q1_inc = _vip_batch(pro, 'income_vip', PERSIST_Q1_INC, refresh,
+                        period='20260331', fields='ts_code,end_date,n_income')
+    h1_inc = _vip_batch(pro, 'income_vip', PERSIST_H1_INC, refresh,
+                        period='20260630', fields='ts_code,end_date,n_income')
+
+    out = None
+    if q1_fin is not None:
+        t = q1_fin.drop_duplicates('ts_code', keep='last')[
+            ['ts_code', 'q_profit_yoy', 'grossprofit_margin']]
+        out = t.rename(columns={'q_profit_yoy': 'q1_yoy', 'grossprofit_margin': 'gm_q1'})
+    for src, col in ((q1_inc, 'ni_q1'), (h1_inc, 'ni_h1')):
+        if src is None:
+            continue
+        t = src.drop_duplicates('ts_code', keep='last')[
+            ['ts_code', 'n_income']].rename(columns={'n_income': col})
+        out = t if out is None else out.merge(t, on='ts_code', how='outer')
+    if out is None:
+        out = pd.DataFrame(columns=['ts_code'])
+    for c in ('q1_yoy', 'gm_q1', 'ni_q1', 'ni_h1'):
+        if c not in out.columns:
+            out[c] = np.nan
+    return out
+
+
+def build_bull_pool(data: pd.DataFrame, refresh=False) -> pd.DataFrame:
+    """Q2 持续性四层结构（历史三期验证: Q2单季同比 IC+0.40 vs Q3单季同比）:
+    A 门槛: Q2单季净利>=0.1亿 且 Q2单季同比>=30%
+    B 主排序: Q2同比(70%) + Q1同比(30% 副确认, 缺失按中性)
+    C 否决: 营收-净利增速差<=-30 / 毛利率下滑 / 扣非背离(净利-扣非>50pp)
+    D 加分: Q2环比>0 +5, 加速>0 +5（基准90分制封顶100）"""
+    cfg = PERSIST_CFG
+    pdata = load_persist_data(refresh)
+    if len(pdata) == 0:
+        print('  [警告] 持续性批量数据拉取失败，跳过 bull 池')
+        return None
+
+    df = data.copy()
+    for c in ('tr_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', '毛利率(%)'):
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+    h1q = pd.read_parquet(FIN_IND_H1, columns=['ts_code', 'q_profit_yoy'])
+    h1q = h1q.drop_duplicates('ts_code', keep='last')
+    df = df.merge(h1q, on='ts_code', how='left').merge(pdata, on='ts_code', how='left')
+
+    # 特征
+    df['q2_yoy'] = df['q_profit_yoy']
+    df['q1_abs'] = df['ni_q1'] / 1e8
+    df['h1_abs'] = df['ni_h1'] / 1e8
+    df['q2_abs'] = df['h1_abs'] - df['q1_abs']
+    df['qoq'] = np.where(df['q1_abs'] > 0, (df['q2_abs'] / df['q1_abs'] - 1) * 100.0, np.nan)
+    df['accel'] = df['q2_yoy'] - df['q1_yoy']
+    df['spread'] = df['tr_yoy'] - df['netprofit_yoy']
+    df['gm_chg'] = df['毛利率(%)'] - df['gm_q1']
+    df['dt_div'] = df['netprofit_yoy'] - df['dt_netprofit_yoy']
+
+    # A 门槛
+    gate = (df['q2_abs'] >= cfg['q2_abs_min']) & (df['q2_yoy'] >= cfg['q2_yoy_min'])
+    # C 否决（缺失不否决）
+    v_spread = df['spread'] <= cfg['spread_veto']
+    v_gm = df['gm_chg'] < cfg['gm_chg_veto']
+    v_dt = df['dt_div'] > cfg['dt_div_veto']
+    df['veto'] = np.select([v_spread, v_gm, v_dt],
+                           ['营收-净利差', '毛利率下滑', '扣非背离'], default='')
+    elig = gate & (df['veto'] == '')
+
+    # B 主排序（在门槛内排名）+ D 加分
+    r2 = df.loc[elig, 'q2_yoy'].rank(pct=True)
+    r1 = df.loc[elig, 'q1_yoy'].rank(pct=True).reindex(df.index).fillna(0.5)
+    base = pd.Series(0.0, index=df.index)
+    base.loc[r2.index] = 90.0 * (cfg['w_q2'] * r2 + cfg['w_q1'] * r1.loc[r2.index])
+    bonus = cfg['bonus_qoq'] * (df['qoq'] > 0) + cfg['bonus_accel'] * (df['accel'] > 0)
+    df['持续性分'] = (base + bonus).round(1)
+    df.loc[~elig, '持续性分'] = np.nan
+
+    # 漏斗
+    g = df[gate]
+    bull = df[elig].sort_values('持续性分', ascending=False).reset_index(drop=True)
+    print(f"  数据覆盖(全池{len(df)}): Q1同比 {int(df['q1_yoy'].notna().sum())} | "
+          f"Q1净利 {int(df['ni_q1'].notna().sum())} | H1净利 {int(df['ni_h1'].notna().sum())}")
+    print(f"  A 门槛(Q2同比>={cfg['q2_yoy_min']:.0f}% 且 Q2净利>={cfg['q2_abs_min']}亿): {len(g)} 只")
+    if len(g):
+        print(f"  C 否决: 营收-净利差 {int((g['veto'] == '营收-净利差').sum())} | "
+              f"毛利率下滑 {int((g['veto'] == '毛利率下滑').sum())} | "
+              f"扣非背离 {int((g['veto'] == '扣非背离').sum())} → 剩余 {len(bull)} 只")
+    if len(bull):
+        print(f"  D 加分: 环比>0 {int((bull['qoq'] > 0).sum())} | 加速>0 {int((bull['accel'] > 0).sum())}")
+    if len(bull) == 0:
+        return None
+
+    out = bull[['name', 'ts_code', '持续性分', 'q2_yoy', 'q1_yoy', 'accel', 'qoq', 'q2_abs',
+                'spread', 'gm_chg', 'netprofit_yoy', 'dt_netprofit_yoy', 'tr_yoy',
+                'n_income(亿)', '市值(亿)', 'pe_ttm']].copy()
+    out = out.rename(columns={
+        'q2_yoy': 'Q2同比(%)', 'q1_yoy': 'Q1同比(%)', 'accel': '加速(pp)',
+        'qoq': 'Q2环比(%)', 'q2_abs': 'Q2净利(亿)', 'spread': '营收-净利差(pp)',
+        'gm_chg': '毛利率变化(pp)', 'netprofit_yoy': '净利yoy(%)',
+        'dt_netprofit_yoy': '扣非yoy(%)', 'tr_yoy': '营收yoy(%)', 'n_income(亿)': '中报净利(亿)',
+    }).round(1)
+    return out
+
+
 # ── 主流程 ────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -519,6 +666,7 @@ def main():
     ap.add_argument("--backfill", action="store_true", help="先增量拉取最新中报公告，再执行猎手筛选")
     ap.add_argument("--q1", action="store_true", help="回填 Q1 数据（fin_ind_2026Q1_full.parquet）")
     ap.add_argument("--limit", type=int, default=0, help="回填时只扫前 N 只（调试用）")
+    ap.add_argument("--bull_only", action="store_true", help="只生成 Q2 持续性 bull 池后退出（跳过技术面）")
     args = ap.parse_args()
 
     # ── 可选：先回填最新中报 ──
@@ -581,6 +729,25 @@ def main():
         print("  [错误] 无中报/快报数据")
         return
     data = pd.DataFrame(rows)
+
+    # ── Phase 3.5: Q2 持续性 bull 池（四层结构，独立于 Phase 3 的 H1 累计口径门槛） ──
+    print("\n[Phase 3.5] Q2 持续性四层结构 → bull 池...")
+    bull = build_bull_pool(data)
+    if bull is not None:
+        bull_path = os.path.join(OUTPUT_DIR, f"zhongbao_bull_{trade_date}.csv")
+        bull.to_csv(bull_path, index=False, encoding="utf-8-sig")
+        print(f"  → bull 池 {len(bull)} 只, CSV已保存: {bull_path}")
+        head = bull.head(min(args.top, len(bull)))
+        for i, r in head.iterrows():
+            q2 = f"{r['Q2同比(%)']:+.0f}%" if pd.notna(r.get("Q2同比(%)")) else "--"
+            q1 = f"{r['Q1同比(%)']:+.0f}%" if pd.notna(r.get("Q1同比(%)")) else "--"
+            q2n = f"{r['Q2净利(亿)']:.2f}亿" if pd.notna(r.get("Q2净利(亿)")) else "--"
+            print(f"  {i+1:>2}. {r['name']}({r['ts_code']}) 持续性{r['持续性分']:.1f} | "
+                  f"Q2同比{q2} Q1同比{q1} Q2净利{q2n} | 市值{r['市值(亿)']:.0f}亿")
+    else:
+        print("  → bull 池为空")
+    if args.bull_only:
+        return
 
     # ── Phase 3: 硬过滤（增速达标 + 非微基数） ──
     def _g(r):

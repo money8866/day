@@ -370,6 +370,15 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
                                        'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1)},
                                       **{k: getattr(e, k, None) for k in _track_extra})
                                  for e in _raw]
+        # 落库/跟踪口径 = 当日显示池（R1/R2 剔除后），避免把引擎当日明确剔除的标的计入胜率统计；
+        # te_buy_pool（剔除前 top3）继续保留，仅作次日 reentry_streak 递推源
+        result['te_buy_pool_kept'] = [dict({'ts_code': e.ts_code, 'name': e.name,
+                                            'reentry_streak': int(getattr(e, 'reentry_streak', 0) or 0),
+                                            'next_day_action': getattr(e, 'next_day_action', ''),
+                                            'te_decision_point': getattr(e, 'te_decision_point', '') or '',
+                                            'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1)},
+                                           **{k: getattr(e, k, None) for k in _track_extra})
+                                      for e in _kept]
     with open(os.path.join(out_dir, f'hvt_bull_{trade_date}.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=str)
 
@@ -430,8 +439,11 @@ def _te_plan_text(e) -> str:
     if st == 'SKIP':
         why = '；'.join(getattr(e, 'why_not_buy', []) or []) or '硬风控覆盖'
         return f"⛔ 执行状态=SKIP：{why}（不构成买点，仓位-）"
-    if st == 'NO_CHASE' or act == 'NO_CHASE':
+    if st == 'NO_CHASE' or act in ('NO_CHASE', 'WAIT_PULLBACK'):
         head = f"现价{close:.2f}已超追高上限{ncl:.2f}" if close > 0 and ncl > 0 else f"已超追高上限{ncl:.2f}"
+        if act == 'WAIT_PULLBACK':
+            return (f"⚠️ 执行状态=NO_CHASE/WAIT_PULLBACK：{head}（突破位+1.2×ATR），今日不追高；"
+                    f"执行分与基础门已达标，等回踩买区{lo:.2f}~{hi:.2f}（触发价{trig:.2f}）缩量企稳再评估，仓位-")
         return (f"⚠️ 执行状态=NO_CHASE：{head}（突破位+1.2×ATR），今日不追高；"
                 f"等回踩买区{lo:.2f}~{hi:.2f}（触发价{trig:.2f}）再评估，仓位-")
     if st == 'BREAKOUT_WAIT':
@@ -444,7 +456,10 @@ def _te_plan_text(e) -> str:
 def _te_table_cells(e) -> tuple:
     """A 表 TE 口径单元格：(状态, 触发价, 买区, 止损, 追高上限, 仓位)；SKIP 时价位一律置 '-'"""
     st = getattr(e, 'execution_state', '') or '-'
-    if (getattr(e, 'next_day_action', '') or '') == 'NO_CHASE':
+    act = getattr(e, 'next_day_action', '') or ''
+    if act == 'WAIT_PULLBACK':
+        st = 'WAIT_PULLBACK'
+    elif act == 'NO_CHASE':
         st = 'NO_CHASE'
     if st == 'SKIP':
         return (st, '-', '-', '-', '-', _te_pos(e))
@@ -571,7 +586,10 @@ def _render_md(result: dict, all_events, detail_events) -> str:
             ab = 'A' if getattr(e, 'fe_score', 0.0) >= 70.0 else 'B'
             if te_on:
                 st, trig, zone, inv, ncl, pos = _te_table_cells(e)
-                if st == 'NO_CHASE':
+                if st == 'WAIT_PULLBACK':
+                    reason = (f"现价{_te_num(e, 'current_close'):.2f}超追高上限{ncl}，不追高；"
+                              f"执行分{_te_num(e, 'execution_score'):.0f}已达标，等回踩买区{zone}")
+                elif st == 'NO_CHASE':
                     reason = f"现价{_te_num(e, 'current_close'):.2f}超追高上限{ncl}，不追高，等回踩买区{zone}"
                 elif st == 'SKIP':
                     why = '；'.join(getattr(e, 'why_not_buy', []) or []) or '硬风控覆盖'
@@ -961,7 +979,8 @@ def _render_te(result: dict, all_events) -> list:
         lines.append('')
 
     # ③ NO CHASE（§9/§18：高开过大/偏离过远/急拉爆量，FE再高也不追）
-    lines.append(f'### ③ NO CHASE（高FE但不追，{len(nc_pool)}只）')
+    nc_dg = [e for e in nc_pool if (getattr(e, 'next_day_action', '') or '') == 'WAIT_PULLBACK']
+    lines.append(f'### ③ NO CHASE（高FE但不追，{len(nc_pool)}只；其中 WAIT_PULLBACK 高分观察 {len(nc_dg)}只）')
     lines.append('')
     if nc_pool:
         lines.append(head)
@@ -969,6 +988,13 @@ def _render_te(result: dict, all_events) -> list:
         for e in nc_pool[:10]:
             lines.append(_row(e))
         lines.append('')
+        if nc_dg:
+            lines.append('**WAIT_PULLBACK（PRIMARY+基础门全过且执行分≥75，仅价格透支 → 降级观察，仍不下单）**：')
+            for e in nc_dg[:6]:
+                lines.append(f"- {e.name}（{e.ts_code}）SCORE={_score(e, 'execution_score'):.1f} "
+                             f"现价{_score(e, 'current_close'):.2f} 追高上限{_score(e, 'no_chase_level'):.2f} "
+                             f"等回踩买区{_score(e, 'buy_zone_low'):.2f}~{_score(e, 'buy_zone_high'):.2f}")
+            lines.append('')
     else:
         lines.append('（无）')
         lines.append('')
@@ -1041,7 +1067,10 @@ def _render_te(result: dict, all_events) -> list:
     def _ready_tag(e):
         """TE 层否决标注：V1.1 READY（TRIGGER 已确认）≠ 可买，避免与 TE 的 NO_CHASE/SKIP 互相矛盾"""
         st = getattr(e, 'execution_state', '') or ''
-        if st == 'NO_CHASE' or (getattr(e, 'next_day_action', '') or '') == 'NO_CHASE':
+        act = getattr(e, 'next_day_action', '') or ''
+        if act == 'WAIT_PULLBACK':
+            return '，TE:NO_CHASE→WAIT_PULLBACK（高分等回踩，不可买）'
+        if st == 'NO_CHASE' or act == 'NO_CHASE':
             return '，TE:NO_CHASE不追高'
         if st == 'SKIP':
             return '，TE:SKIP不买'
@@ -1068,7 +1097,11 @@ def _render_te(result: dict, all_events) -> list:
     lines.append('')
 
     # FINAL DECISION（§26/§30：EXECUTE=0~1，NONE 合法）
-    execute = buy_pool[0] if buy_pool and _score(buy_pool[0], 'execution_score') >= 85.0 else None
+    # EXECUTE 必须同时满足：执行分≥85 且 next_day_action=BUY（需确认的 BUY_ON_CONFIRM 不得标为可直接执行）
+    _top = buy_pool[0] if buy_pool else None
+    execute = (_top if _top is not None
+               and _score(_top, 'execution_score') >= 85.0
+               and getattr(_top, 'next_day_action', '') == 'BUY' else None)
     confirm_buys = [e for e in buy_pool if e is not execute]
     lines.append('============================================================')
     lines.append('FINAL DECISION')
@@ -1081,16 +1114,28 @@ def _render_te(result: dict, all_events) -> list:
                      f"买入区{_score(e, 'buy_zone_low'):.2f}~{_score(e, 'buy_zone_high'):.2f} "
                      f"止损{_score(e, 'invalidation'):.2f} 追高上限{_score(e, 'no_chase_level'):.2f} "
                      f"| {e.position_size}")
+    elif _top is not None and _score(_top, 'execution_score') >= 85.0:
+        lines.append(f"★ 明日第一买入：NONE（最高分候选{_top.name} SCORE={_score(_top, 'execution_score'):.1f} "
+                     f"为 BUY_ON_CONFIRM，需盘中重新走强确认，不可直接执行）")
     else:
         lines.append('★ 明日第一买入：NONE（无SCORE≥85的候选；没有确认就不买）')
     if te_dropped:
         lines.append('★ 再入规则剔除（R1/R2，不进买入池）：'
                      + '、'.join(f"{e.name}({int(getattr(e, 'reentry_streak', 0) or 0)}连入)" for e, _ in te_dropped[:3]))
     if confirm_buys:
-        lines.append('★ 确认后买入（BUY_ON_CONFIRM）：'
-                     + '、'.join(f"{e.name}({_score(e, 'execution_score'):.1f})" for e in confirm_buys))
+        # 按真实 next_day_action 分组渲染，避免把可直接执行的 BUY 误标为 BUY_ON_CONFIRM
+        _dir_buys = [e for e in confirm_buys if getattr(e, 'next_day_action', '') == 'BUY']
+        _cfm_buys = [e for e in confirm_buys if getattr(e, 'next_day_action', '') == 'BUY_ON_CONFIRM']
+        if _dir_buys:
+            lines.append('★ 可直接执行（BUY）：'
+                         + '、'.join(f"{e.name}({_score(e, 'execution_score'):.1f})" for e in _dir_buys))
+        if _cfm_buys:
+            lines.append('★ 需确认后买入（BUY_ON_CONFIRM）：'
+                         + '、'.join(f"{e.name}({_score(e, 'execution_score'):.1f})" for e in _cfm_buys))
     lines.append('★ 突破后才买：' + ('、'.join(f"{e.name}({_score(e, 'entry_trigger'):.2f})" for e in bw_pool[:3]) or '无'))
     lines.append('★ 高FE但不追：' + ('、'.join(e.name for e in nc_pool[:3]) or '无'))
+    lines.append('★ 高分等回踩（WAIT_PULLBACK，不可买）：'
+                 + ('、'.join(f"{e.name}({_score(e, 'execution_score'):.0f})" for e in nc_dg[:3]) or '无'))
     lines.append('★ 明日不买：' + ('、'.join(e.name for e in sk_pool[:5]) or '无'))
     lines.append('★ 如果全部没有确认：NO TRADE')
     lines.append('')

@@ -220,7 +220,7 @@ _LIFECYCLE_FIT = {('EARLY', 'T120'): 85.0, ('EARLY', 'T60'): 78.0,
 
 def _position(exec_state, action, score, te_cfg):
     """§20：A+ 8~12% / A 5~8% / B 3~5% / C 0~3%；首次建仓 = 目标×initial_ratio，分批确认。"""
-    if exec_state == 'SKIP' or action in ('NO_CHASE', 'WAIT', 'WATCH', 'SKIP'):
+    if exec_state == 'SKIP' or action in ('NO_CHASE', 'WAIT_PULLBACK', 'WAIT', 'WATCH', 'SKIP'):
         return '-', '-'
     pos = te_cfg.get('position') or {}
     init_r = _f(te_cfg.get('initial_ratio', 0.4), 0.4)
@@ -277,6 +277,12 @@ def _open_playbook(exec_state, action, p, te_cfg, intraday_ok):
             f"B 直接放量上攻 → 不追高，越过{ncl:.2f}放弃当日",
             f"C 低开放量跌破{inv:.2f}不收复 → 回踩失败，SKIP",
             f"D 横盘缩量 → 等重新走强确认{vwap_note}"]
+    if exec_state == 'NO_CHASE' and action == 'WAIT_PULLBACK':
+        return [
+            f"A 任何高开：不追（NO_CHASE_LEVEL={ncl:.2f}，§9 绝对禁止追涨）",
+            f"B 回落至买区 {zl:.2f}~{zh:.2f} 且缩量企稳 → 重新评估（基础门与执行分已达标，仅价格透支）",
+            f"C 低开放量跌破{inv:.2f} → SKIP",
+            f"D 缩量横盘 → 继续 WAIT_PULLBACK，等回踩不追"]
     if exec_state == 'NO_CHASE':
         return [
             f"A 任何高开：不追（NO_CHASE_LEVEL={ncl:.2f}，§9 绝对禁止追涨）",
@@ -484,6 +490,13 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     t_ready, t_boc = _f(th.get('ready_buy', 85)), _f(th.get('buy_on_confirm', 75))
     t_wait, t_watch = _f(th.get('wait_confirm', 65)), _f(th.get('watch', 50))
 
+    # §5：READY_BUY 基础门 + PRIMARY 门（提前计算，NO_CHASE 降级判定需复用，口径与下方一致）
+    ready_base = (fe20 >= _f(te_cfg.get('ready_fe20', 70))
+                  and (fe60 >= _f(te_cfg.get('ready_fe_mid', 70)) or fe120 >= _f(te_cfg.get('ready_fe_mid', 70)))
+                  and cont >= _f(te_cfg.get('ready_cont', 65))
+                  and ext < _f(te_cfg.get('ready_extrisk', 60)))
+    is_primary = ev.state == 'PRIMARY_BUY' and not ev.hard_veto
+
     state, action, why_not, reason = '', '', [], ''
     if skip_reasons:
         state, action = 'SKIP', 'SKIP'
@@ -491,10 +504,19 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
         reason = '硬风控覆盖：' + '；'.join(skip_reasons)
     elif has_breakout and close > no_chase_level:
         # §9/§18：即使 FE 极高，越过合理扩展位也不追
-        state, action = 'NO_CHASE', 'NO_CHASE'
         why_not = [f"收盘{close:.2f}已超追高上限{no_chase_level:.2f}（突破位+{te_cfg.get('no_chase_atr', 1.2):g}×ATR）",
                    f"FE20={fe20:.0f} 再高也不改变追涨的风险收益比（§18）"]
-        reason = f"价格透支：收盘超 NO_CHASE_LEVEL {no_chase_level:.2f}，等待回踩而非追高"
+        if is_primary and ready_base and exec_score >= t_boc:
+            # 质地与基础门全过、仅价格透支 → 降级为等回踩（不下单、进观察位，为后续积累样本）
+            state, action = 'NO_CHASE', 'WAIT_PULLBACK'
+            why_not.append(f"基础门与执行分{exec_score:.0f}≥{t_boc:.0f}（BUY_ON_CONFIRM 门槛）均达标，仅价格透支 → "
+                           f"降级 WAIT_PULLBACK，等回踩买区{zone_low:.2f}~{zone_high:.2f}再评估（不改变下单）")
+            reason = (f"价格透支但质地达标：收盘超 NO_CHASE_LEVEL {no_chase_level:.2f}，"
+                      f"降级 WAIT_PULLBACK（等回踩），当日与次日高价区间均不追")
+        else:
+            state, action = 'NO_CHASE', 'NO_CHASE'
+            reason = f"价格透支：收盘超 NO_CHASE_LEVEL {no_chase_level:.2f}，等待回踩而非追高"
+
     elif not has_breakout and ev.state in ('HVT_STRONG', 'LOCKING', 'LOCKED', 'BREAKOUT_READY', 'WATCH'):
         # §6：ENTRY/FE 高 ≠ 买点，LOCKED 未突破 → 突破触发制
         state, action = 'BREAKOUT_WAIT', 'WAIT'
@@ -517,11 +539,6 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
             reason = f"回踩结构好但综合证据弱（执行分{exec_score:.0f}），继续观察"
     else:
         # §5：READY_BUY 基础门（不机械使用）+ 分数门
-        ready_base = (fe20 >= _f(te_cfg.get('ready_fe20', 70))
-                      and (fe60 >= _f(te_cfg.get('ready_fe_mid', 70)) or fe120 >= _f(te_cfg.get('ready_fe_mid', 70)))
-                      and cont >= _f(te_cfg.get('ready_cont', 65))
-                      and ext < _f(te_cfg.get('ready_extrisk', 60)))
-        is_primary = ev.state == 'PRIMARY_BUY' and not ev.hard_veto
         in_zone = close <= no_chase_level
         if is_primary and ready_base and in_zone and exec_score >= t_ready:
             state, action = 'READY_BUY', 'BUY'
