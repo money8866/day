@@ -1,6 +1,6 @@
 {
   "pool_type": "STRUCTURE_POOL_NOT_BUY_POOL",
-  "trade_date": "20260916",
+  "trade_date": "20260917",
   "notice": "结构池仅表示结构状态，不代表买入建议；执行判断属于 Step 7。",
   "pool_name": "REBREAKOUT_POOL",
   "classes": [

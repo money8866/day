@@ -1,12 +1,24 @@
 {
   "pool_type": "STRUCTURE_POOL_NOT_BUY_POOL",
-  "trade_date": "20260916",
+  "trade_date": "20260917",
   "notice": "结构池仅表示结构状态，不代表买入建议；执行判断属于 Step 7。",
   "pool_name": "RETEST_POOL",
   "states": [
     "RETEST_PENDING",
     "RETEST_SUCCESS"
   ],
-  "stocks": [],
-  "count": 0
+  "stocks": [
+    "001288.SZ",
+    "002011.SZ",
+    "002708.SZ",
+    "300473.SZ",
+    "300865.SZ",
+    "301021.SZ",
+    "601038.SH",
+    "603012.SH",
+    "603657.SH",
+    "688029.SH",
+    "688170.SH"
+  ],
+  "count": 11
 }

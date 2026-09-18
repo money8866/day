@@ -656,6 +656,10 @@ def run_v2_analysis(trade_date=None):
             'trend_score': t_score, 'sentiment_score': s_score,
             'composite_score': composite,
             'trend_detail': t_detail, 'sentiment_detail': s_detail,
+            # 主题级近5日动量：门禁 L2/L1 的「衰减反弹不确认」硬条件依赖它。
+            # 必须在此显式落到顶层，否则 calc_mainline_tier_v4 读 r['ret_5'] 恒为 0
+            # → L2/L1 数学上不可达（历史 BUG：gate_feat.ret5 全量为 0）
+            'ret_5': round(float(t_detail.get('avg_ret_5', 0) or 0), 2),
             'leader_name': leader_name, 'leader_code': leader_code,
             'leader_score': round(leader_scores[0][1], 1) if leader_scores else 0,
             'core_name': core_name, 'core_code': core_code,
@@ -735,6 +739,11 @@ def run_v2_analysis(trade_date=None):
     print("  计算 V3 生命周期与交易得分...")
     # 主线细分穿透：加载子主题映射（仅主线执行）
     subtheme_map = _load_subtheme_map_v2()
+    # 上一交易日 / 近5日主题序列：直读本库（主题引擎的 prev 库日期稀疏且无 lifecycle，
+    # 会让 days_strong 恒为 1、L2/L1 永不触发，见 _load_prev_theme_rows 注释）
+    prev_rows, hist_rows = _load_prev_theme_rows(TRADE_DATE_str, days=5)
+    if not prev_rows:
+        print("  ⚠ 未取到上一交易日主题行：days_strong / 资金状态判定退化为单日口径")
     for r in results:
         lifecycle = classify_v3_lifecycle(r)
         r['lifecycle'] = lifecycle
@@ -773,13 +782,27 @@ def run_v2_analysis(trade_date=None):
         r.update(act)
         # A股主线类型分级 V1.0（MainlineType / MainlineQuality / TradingStyle）
         r.update(calc_mainline_type_v3(r, etf_kline_map))
-        # V4.1 三级主线门禁（替代 V4 二元 _is_mainline；prev 生命周期依赖 get_prev_day_theme_data）
-        _prev_r = prev_theme_data.get(r['theme']) or {}
+        # 资金状态：撤离 / 高位分歧 / 分歧转一致 / 一致加速（只用日频可持久化序列，可审计）
+        r['capital_state'] = classify_capital_state(r, prev_rows.get(r['theme']))
+        # V4.1 五级主线门禁（L2 确认 / L1 试探 / R 修复跟踪 / L0 启动候选 / NONE 回避）
+        _prev_r = prev_rows.get(r['theme']) or {}
         r['gate_tier'] = calc_mainline_tier_v4(
             r,
             prev_lc=str(_prev_r.get('lifecycle', '') or ''),
-            prev_state=str(_prev_r.get('theme_state', '') or ''))
-        # 主线细分穿透：仅对 L2 确认主线执行（最佳子主题 / 龙头 / 中军）
+            prev_state=str(_prev_r.get('theme_state', '') or ''),
+            hist_rows=hist_rows.get(r['theme']))
+
+    # 确认主线天然稀缺：L2 每日最多 GATE_L2_MAX_PER_DAY 个，超额降为 L1（试探档轻仓），
+    # 避免普涨日"批量确认主线"稀释信号（实测 0805 有 4 个主题同时满足 L2 判据）
+    _l2_hits = sorted([x for x in results if x['gate_tier'] == 'L2'],
+                      key=lambda x: -float(x.get('composite_score', 0) or 0))
+    for _x in results:
+        _x['gate_demoted'] = False
+    for _x in _l2_hits[GATE_L2_MAX_PER_DAY:]:
+        _x['gate_tier'] = 'L1'
+        _x['gate_demoted'] = True
+    # 主线细分穿透：仅对最终 L2 确认主线执行（最佳子主题 / 龙头 / 中军）
+    for r in results:
         if r['gate_tier'] == 'L2':
             pen = analyze_mainline_penetration(
                 r['theme'], r.get('stock_rows', []), theme_stock_map, subtheme_map, mf_map)
@@ -789,12 +812,24 @@ def run_v2_analysis(trade_date=None):
     # V1.1 主题轮动决策引擎：ThemeGate / PositionMultiplier / StockOverride
     # 主题决定风险预算与交易权限，个股决定最终执行；不改变 Trade Execution 核心计算，
     # 乘数在报告归一化（_apply_gate_v41_alloc）之后应用，保证报告/决策表/落库三口径一致。
+    _tier_dist = {}
+    for r in results:
+        _t = str(r.get('gate_tier', 'NONE'))
+        _tier_dist[_t] = _tier_dist.get(_t, 0) + 1
+    _cap_dist = {}
+    for r in results:
+        _c = str((r.get('capital_state') or {}).get('state', '') or '')
+        if _c and _c != '常态':
+            _cap_dist[_c] = _cap_dist.get(_c, 0) + 1
+    print(f"[V4.1] 门禁分档: {_tier_dist} | 资金状态异常: {_cap_dist or '无'}")
     apply_theme_gate_v11(results, TRADE_DATE_str)
 
     # ── 前兆主题探测（爆发前 3~5 日）──
     # 只新增观察池与子主题穿透，不改变 trade_action / position_pct（配仓仍由 V4.1 门禁决定）
     print("  探测前兆主题与子主题...")
-    prev_stats = _load_prev_theme_stats(TRADE_DATE_str, days=5)
+    prev_stats = {th: {'hot': [float(x.get('hot_score') or 0) for x in rows],
+                       'zt_prev': int((prev_rows.get(th) or {}).get('zt_count') or 0)}
+                  for th, rows in hist_rows.items()}
     prec_list = detect_theme_precursors(results, theme_stock_map, subtheme_map, prev_stats)
     _prec_pool = [p for p in prec_list if p['n_hits'] > 0]
     print(f"  前兆主题 {len(_prec_pool)} 个 / 仅拥挤警告 {sum(1 for p in prec_list if not p['n_hits'])} 个")
@@ -1003,8 +1038,20 @@ def classify_v3_lifecycle(r):
     hot_phase = r.get('hot_phase', '')
 
     # 1. 高潮：情绪极致化（涨停密度极高 / 连板极高 / 热榜顶峰 / 涨停绝对数≥15）
-    if climax == 1 or (max_lb >= 3 and zt_ratio >= 0.025) or is_hot_climax_phase(hot_phase):
-        return '高潮'
+    #    ⚠ 以上只是"情绪极致"的必要条件。涨停潮爆发首日涨停数必然高，若直接判高潮，
+    #    会把一致加速日误杀成见顶（实测 0916 半导体 涨停22家·上涨占比97.9%·
+    #    主力资金强度100 → 判高潮 → 门禁 NONE → 强制清仓回避，前一日还是 L0 观察）。
+    #    故必须叠加退潮确认：主力净流出 / 封板率<60% / 广度崩塌，才判高潮。
+    #    注：sd['zt_ratio'] 为百分数（如 11.0），非 0.11，原 `>= 0.025` 恒真属量纲错误。
+    climax_signal = (climax == 1 or (max_lb >= 3 and zt_ratio >= 2.5)
+                     or is_hot_climax_phase(hot_phase))
+    if climax_signal:
+        seal = float(sd.get('board_seal_rate', 1.0) or 1.0)
+        net_ratio = float((r.get('fund_detail', {}) or {}).get('fund_net_ratio', 0) or 0)
+        if net_ratio < 0 or seal < 0.60 or up_ratio < 50:
+            return '高潮'
+        # 涨停潮但资金未撤、封板健康 → 一致加速，按强度落主升/升温（不进见顶处置）
+        return '主升' if (trend >= 55 and emotion >= 50) else '升温'
     # 2. 退潮：趋势+情绪双弱 且 赚钱效应消失（上涨率<40%）
     if trend < 35 and emotion < 35 and up_ratio < 40:
         return '退潮'
@@ -1025,6 +1072,77 @@ def classify_v3_lifecycle(r):
         return '分歧'
     # 8. 兜底：三弱 → 退潮
     return '退潮'
+
+
+# ══════════════════════════════════════════════════════════════
+# 资金状态判定：区分「真退潮（资金撤离）」与「高位分歧（洗盘待修复）」
+# 原体系里两者都只剩 gate_tier=NONE → 一律清仓回避，无法跟踪分歧转一致。
+# 只用日频可持久化字段（涨停数 / 上涨占比 / 主力资金强度）做判定：
+# 可回测、可审计、不依赖当日才有的盘中量。
+# ══════════════════════════════════════════════════════════════
+CAPITAL_STATES = ('一致加速', '分歧转一致', '高位分歧', '资金撤离', '常态')
+
+
+def classify_capital_state(r, prev_row):
+    """判定主题资金状态 → dict（就地供门禁/报告使用，不参与评分）
+
+    一致加速  涨停实质性增加(≥2家) + 成规模(≥5家) + 主力资金强(≥60) + 广度扩散(≥65) → 主升延续
+    分歧转一致 前日弱势(分歧/退潮/高潮) + 昨日广度确实弱(≤55%) + 今日涨停实质性增加(≥2家)
+             + 今日广度≥60% + 资金由弱转强(前日<40 → 今日≥40) → 右侧买点
+    高位分歧  前日成规模涨停(≥5) + 今日涨停回落 + 资金未撤(≥40) + 广度未崩(≥45) → 观察，等修复
+    资金撤离  资金弱(<30) + 广度崩塌(<45) + 涨停回落 → 真退潮，清仓
+    常态      其余（含无前一日数据）
+
+    ⚠ 阈值收紧原因：原判据「d_zt>0 且 fund>=40 且 up>=55」在全市场普涨反包日会批量命中
+      （实测 0916 普涨日 15/32 主题被判"分歧转一致"，等于把"稀缺右侧买点"退化为噪声）。
+      收紧为：涨停需有实质增量(≥2家)、昨日广度确实弱(≤55%)、资金需由弱转强，
+      使"分歧转一致"回归"主题独立走强的拐点"。
+
+    Returns: dict{state, delta_zt, fund_now, fund_prev, up_now, up_prev, lc_prev, evidence}
+    """
+    sd = r.get('sentiment_detail', {}) or {}
+    zt = int(sd.get('zt_count', 0) or 0)
+    up = float(sd.get('up_ratio', 0) or 0)
+    fund = float(r.get('fund_acc', 0) or 0)
+    prev = prev_row or {}
+    zt_prev = int(prev.get('zt_count', 0) or 0)
+    up_prev = float(prev.get('up_ratio', 0) or 0)
+    fund_prev = float(prev.get('fund_acc', 0) or 0)
+    lc_prev = str(prev.get('lifecycle', '') or '')
+    d_zt = zt - zt_prev
+
+    if not prev_row:
+        state = '常态'
+    elif fund < 30 and up < 45 and d_zt < 0 and zt_prev >= 3:
+        state = '资金撤离'
+    elif (lc_prev in ('分歧', '退潮', '高潮') and d_zt >= 2 and up_prev <= 55
+          and up >= 60 and fund >= 40 and fund_prev < 40):
+        state = '分歧转一致'
+    elif zt_prev >= 5 and d_zt < 0 and fund >= 40 and up >= 45:
+        state = '高位分歧'
+    elif d_zt >= 2 and zt >= 5 and fund >= 60 and up >= 65:
+        state = '一致加速'
+    else:
+        state = '常态'
+
+    return {
+        'state': state,
+        'delta_zt': d_zt,
+        'zt_now': zt, 'zt_prev': zt_prev,
+        'fund_now': round(fund, 1), 'fund_prev': round(fund_prev, 1),
+        'up_now': round(up, 1), 'up_prev': round(up_prev, 1),
+        'lc_prev': lc_prev,
+        'evidence': (f"涨停{zt_prev}→{zt}({d_zt:+d})；主力资金强度{fund_prev:.0f}→{fund:.0f}；"
+                     f"上涨占比{up_prev:.0f}%→{up:.0f}%" if prev_row
+                     else "无上一交易日数据（单日口径）"),
+    }
+
+
+def _capital_state_cn(r):
+    """资金状态展示：'高位分歧' + 证据（无异常时不输出常态噪声）"""
+    cs = r.get('capital_state') or {}
+    st = str(cs.get('state', '') or '')
+    return f"{st}（{cs.get('evidence', '')}）" if st else ''
 
 
 # 生命周期阶段加减分（Base Trade Score 的 Stage 项）
@@ -1636,16 +1754,49 @@ def _hot_overheat_v4(r):
     return (hot_pct >= 85 and not is_proxy) or (climax == 1) or is_hot_climax_phase(r.get('hot_phase'))
 
 
-def calc_mainline_tier_v4(r, prev_lc=None, prev_state=None):
-    """V4.1 分级主线判定，返回 tier ∈ {'L2','L1','L0','NONE'}
+# ── V4.1 门禁口径（唯一真源：calc_mainline_tier_v4 与 _gate_gap_v41 共用同一组常量）──
+GATE_L2_COMP, GATE_L2_TREND = 68.0, 68.0        # L2 标准确认：质量 + 趋势 双门槛
+GATE_L2_ALT = (75.0, 65.0, 75.0)                 # L2 趋势极强通道：(趋势, 综合, 宽度)
+GATE_L2_UP, GATE_L2_FUND, GATE_L2_DAYS = 60.0, 50.0, 2
+GATE_L1_DAYS, GATE_L1_MIG, GATE_L1_UP = 1, 8.0, 55.0
+GATE_L1_TREND_MIN, GATE_L1_COMP_MIN = 50.0, 50.0   # 试探档趋势/质量底线（剔除"涨停多但趋势没起来"的一日游）
+GATE_CAPACITY_MIN = 8.0                          # 梯队最大个股成交额（亿）
+GATE_EUPHORIC_UP, GATE_EUPHORIC_ZT = 95.0, 15    # 情绪透支：广度极致 / 涨停潮 → 禁 L2，降 R 等次日确认
+GATE_L2_MAX_PER_DAY = 2                          # 确认主线天然稀缺：每日最多 2 个
 
-    结构确认四件套（L1/L2 共用）：
-      * 持续性 days_strong>=阈值（前一日+当日连续处于 主升/升温/分歧转一致 强态）
+
+def _is_strong_day(row):
+    """单日「强态」原子判据 —— 持续性窗口计数的组成单位
+
+    强态 = 生命周期已标主升/升温，或 当日量价三维同时成立（综合≥60 且 趋势≥60
+    且 广度≥65）且近5日动量为正。后一条是为了在 lifecycle 缺失/抖动时仍能识别
+    实质强势日（历史库 0727~0902 无 lifecycle 字段，仅靠标签会让持续性恒为 0）。
+    """
+    row = row or {}
+    if str(row.get('lifecycle') or '') in ('主升', '升温'):
+        return True
+    return (float(row.get('composite_score') or 0) >= 60
+            and float(row.get('trend_score') or 0) >= 60
+            and float(row.get('up_ratio') or 0) >= 65
+            and float(row.get('ret_5') or 0) > 0)
+
+
+def calc_mainline_tier_v4(r, prev_lc=None, prev_state=None, hist_rows=None):
+    """V4.1 分级主线判定，返回 tier ∈ {'L2','L1','R','L0','NONE'}
+
+    结构确认（L1/L2 共用）：
+      * 持续性 days_strong>=阈值 —— 近 5 日窗口内「强态」天数（含今日），非"逐日连续"
       * 强度：涨停>=4 或 趋势>=70（量或价至少一维成型）
       * 宽度：题材内上涨占比 up_ratio
       * 容量：当日梯队最大个股成交额 >=8亿（能容纳大资金）
-    L2 额外要求：主升 + 综合/趋势双75 + 主力净流入强度 fund_acc>=40。
-    L1 额外要求：升温/分歧转一致 + 迁移>=8 + 宽度>=55。
+    L2 确认主线：近5日动量 ret_5>0 + 强度确认（综合/趋势双68，或趋势75+综合65+宽度75）
+        + 持续性>=2 + 结构确认 + 非情绪透支 + 非过热。
+        （原为"lifecycle=='主升' 且 双75"。两处均不可达：① 双75 在真实分布下不存在
+          —— 0903 以来"主升"主题综合分峰值仅 71.6；② 硬绑 lifecycle 标签，导致历史
+          强共振日（趋势 80+、广度 90+、近5日正收益）因该库无 lifecycle 字段而永不入选。）
+    L1 试探档：升温/分歧的加速初期，弱转强第 1 日起可试探；另有趋势/质量底线防一日游。
+    R  修复跟踪档（0%观察，不配仓）：资金状态为 高位分歧/分歧转一致/一致加速 且强度未散，
+        用于跟踪"下一次分歧转一致"。
     L0 仅登记：启动/升温/分歧 + (涨停>=2 或 强广度首日) + 迁移>0（过热不登记）。
     """
     sd = r.get('sentiment_detail', {}) or {}
@@ -1657,38 +1808,72 @@ def calc_mainline_tier_v4(r, prev_lc=None, prev_state=None):
     zt = int(sd.get('zt_count', 0) or 0)
     up_ratio = float(sd.get('up_ratio', 0) or 0)
     fund_acc = float(r.get('fund_acc', 0) or 0)
+    # 兜底：主题行未显式带 ret_5 时回落到趋势明细的 avg_ret_5，避免该硬条件静默恒为 0
+    ret_5 = float(r.get('ret_5', 0) or 0)
+    if r.get('ret_5') is None:
+        ret_5 = float((r.get('trend_detail') or {}).get('avg_ret_5', 0) or 0)
     target = str(r.get('target_state', '') or '')
     top5 = r.get('top5_stocks') or []
     max_amt = max((float(s.get('amount', 0) or 0) for s in top5), default=0.0)
 
-    # 持续性：连续处于强态天数（前一日强 -> 至少第 2 日才可 L1/L2）
-    _strong_state = lambda s: any(k in str(s) for k in ('主升', '升温'))
-    strong_today = (lc in STRONG_LC_V4) or ('分歧转一致' in target and lc == '分歧')
-    strong_prev = _strong_state(prev_lc) or _strong_state(prev_state)
-    days_strong = int(strong_today) + int(strong_prev)
+    # 持续性：近 5 日窗口内强态天数（含今日）——不用"标签逐日连续"
+    # 原实现 days_strong = 今日强 + 昨日强（值域 0/1/2），依赖 lifecycle 标签逐日连续，
+    # 而实测「主升」仅占 1.1%（15/1306）且从不连续（0903~0917 共 15 条主升，无一与前日相连）
+    # → days_strong 恒 ≤1（全量分布 {0:1202, 1:38, ≥2:0}）→ L2/L1 数学上不可达。
+    # 改为窗口计数后，单日标签抖动不再打断持续性链条。
+    strong_hist = sum(1 for x in (hist_rows or []) if _is_strong_day(x))
+    strong_today = _is_strong_day({'lifecycle': lc, 'composite_score': comp,
+                                   'trend_score': trend, 'up_ratio': up_ratio,
+                                   'ret_5': ret_5})
+    days_strong = int(strong_today) + strong_hist
 
     overheat = _hot_overheat_v4(r)
-    capacity = max_amt >= 8.0
-    q_base = (zt >= 4 or trend >= 70) and capacity and not overheat
+    capacity = max_amt >= GATE_CAPACITY_MIN
+    # 结构确认分两档：L2 满配要求更强（量或价成型到高阶），L1 试探档放宽一档，
+    # 避免"涨停/趋势都不差、只是没到满配线"的主题直接掉进杂毛区
+    struct_l2 = (zt >= 4 or trend >= 70) and capacity and not overheat
+    struct_l1 = (zt >= 3 or trend >= 60) and capacity and not overheat
+    # 情绪透支：广度极致或涨停潮 → 当日是情绪脉冲顶点。仅禁 L2 满配（转 R 等次日确认），
+    # 不拦 L1 试探（试探档本就是小仓位试错，见"分歧转一致"当日即可试探的设计）
+    euphoric = (up_ratio >= GATE_EUPHORIC_UP) or (zt >= GATE_EUPHORIC_ZT)
+    _alt_trend, _alt_comp, _alt_up = GATE_L2_ALT
+    l2_confirm = ((comp >= GATE_L2_COMP and trend >= GATE_L2_TREND)
+                  or (trend >= _alt_trend and comp >= _alt_comp and up_ratio >= _alt_up))
 
     # 门禁输入特征（回测校准 / 可审计）
+    cap_state = str((r.get('capital_state') or {}).get('state', '') or '')
     r['days_strong'] = days_strong
     r['gate_cap_amt'] = round(max_amt, 1)
     r['gate_feat'] = json.dumps(
         {'lc': lc, 'trend': trend, 'comp': comp, 'mig': mig, 'zt': zt,
          'up': up_ratio, 'fund': fund_acc, 'hot_pct': r.get('hot_percentile', 50),
-         'hot_src': r.get('hot_source', ''),
-         'prev_lc': prev_lc or '', 'days': days_strong, 'cap': round(max_amt, 1),
-         'overheat': int(overheat)}, ensure_ascii=False)
+         'hot_src': r.get('hot_source', ''), 'ret5': ret_5,
+         'prev_lc': prev_lc or '', 'days': days_strong, 'days_hist': strong_hist,
+         'cap': round(max_amt, 1), 'overheat': int(overheat), 'euphoric': int(euphoric),
+         'l2_confirm': int(l2_confirm), 'cap_state': cap_state}, ensure_ascii=False)
 
-    # L2 确认主线：主升（第2日+）+ 强度双75 + 资金/宽度确认
-    if (lc == '主升' and comp >= 75 and trend >= 75
-            and days_strong >= 2 and q_base and up_ratio >= 55 and fund_acc >= 40):
+    # L2 确认主线：近5日动量为正 + 强度确认 + 持续性 + 结构/宽度/资金确认 + 非情绪透支
+    if (ret_5 > 0 and l2_confirm and days_strong >= GATE_L2_DAYS and struct_l2
+            and up_ratio >= GATE_L2_UP and fund_acc >= GATE_L2_FUND
+            and not euphoric and lc not in ('高潮', '退潮')):
         return 'L2'
-    # L1 准主线（试探档）：升温/分歧转一致 的加速初期，弱转强第2日
-    if (lc in ('升温', '分歧') and ('分歧转一致' in target or lc == '升温')
-            and q_base and days_strong >= 2 and mig >= 8 and up_ratio >= 55):
+    # L1 准主线（试探档）：升温/分歧/主升 的加速初期，弱转强首日起可试探。
+    # 同样要求近5日动量为正 —— 这条把"已涨完、近5日转负的衰减型反弹"挡在试探之外
+    # （实测 0907 有 6 个主题被判"主升"，但 ret_5 全为负 -0.1~-4.8，次日全线走弱）。
+    if ((lc in ('升温', '主升') or (lc == '分歧' and '分歧转一致' in target))
+            and ret_5 > 0 and trend >= GATE_L1_TREND_MIN and comp >= GATE_L1_COMP_MIN
+            and struct_l1 and days_strong >= GATE_L1_DAYS and mig >= GATE_L1_MIG
+            and up_ratio >= GATE_L1_UP):
         return 'L1'
+    # R 修复跟踪档（0%观察，不配仓）：用于跟踪"下一次分歧转一致"。
+    # 三类进 R：① 资金状态异常（高位分歧/分歧转一致/一致加速，即"只是分歧不是撤离"）；
+    # ② 当日或前日为「主升」但未达 L1/L2（前一天的强势品种不许直接掉进杂毛区）；
+    # ③ 强度未散（涨停≥2 或 趋势≥50）。前提：cap_state 不是「资金撤离」。
+    if (cap_state != '资金撤离'
+            and (cap_state in ('高位分歧', '分歧转一致', '一致加速')
+                 or lc == '主升' or prev_lc == '主升')
+            and (zt >= 2 or trend >= 50)):
+        return 'R'
     # L0 启动候选（仅登记观察，0仓）：涨停>=2，或首日强广度（up_ratio>=70 且 趋势/情绪达标，
     # 与升温判定同口径）——避免"无涨停但广度扩散"的首次升温/启动主题直接落入 NONE 回避区
     if (lc in ('启动', '升温', '分歧') and not overheat and mig > 0
@@ -1770,47 +1955,61 @@ def _gate_gap_v41(r):
     zt = int(f.get('zt', 0) or 0)
     up = float(f.get('up', 0) or 0)
     fund = float(f.get('fund', 0) or 0)
+    ret5 = float(f.get('ret5', 0) or 0)
     days = int(f.get('days', 0) or 0)
     cap = float(f.get('cap', 0) or 0)
     overheat = int(f.get('overheat', 0) or 0)
+    euphoric = int(f.get('euphoric', 0) or 0)
     target = str(r.get('target_state', '') or '')
+    _alt_trend, _alt_comp, _alt_up = GATE_L2_ALT
 
     gaps = []
     l1_items = []
-    if not (lc in ('升温', '分歧') and ('分歧转一致' in target or lc == '升温')):
-        l1_items.append(f"生命周期{lc or '—'}∉升温/分歧转一致")
-    if not (zt >= 4 or trend >= 70):
-        l1_items.append(f"强度不足(涨停{zt}<4且趋势{trend:.0f}<70)")
-    if cap < 8.0:
-        l1_items.append(f"容量{cap:.1f}亿<8亿")
+    if not (lc in ('升温', '主升') or (lc == '分歧' and '分歧转一致' in target)):
+        l1_items.append(f"生命周期{lc or '—'}∉升温/主升/分歧转一致")
+    if ret5 <= 0:
+        l1_items.append(f"近5日动量{ret5:+.1f}%≤0")
+    if trend < GATE_L1_TREND_MIN:
+        l1_items.append(f"趋势{trend:.0f}<{GATE_L1_TREND_MIN:.0f}")
+    if comp < GATE_L1_COMP_MIN:
+        l1_items.append(f"综合{comp:.0f}<{GATE_L1_COMP_MIN:.0f}")
+    if not (zt >= 3 or trend >= 60):
+        l1_items.append(f"强度不足(涨停{zt}<3且趋势{trend:.0f}<60)")
+    if cap < GATE_CAPACITY_MIN:
+        l1_items.append(f"容量{cap:.1f}亿<{GATE_CAPACITY_MIN:.0f}亿")
     if overheat:
         l1_items.append("热度过热")
-    if days < 2:
-        l1_items.append(f"持续性{days}/2日")
-    if mig < 8:
-        l1_items.append(f"迁移{mig:.1f}<8")
-    if up < 55:
-        l1_items.append(f"宽度{up:.0f}%<55%")
+    if mig < GATE_L1_MIG:
+        l1_items.append(f"迁移{mig:.1f}<{GATE_L1_MIG:.0f}")
+    if up < GATE_L1_UP:
+        l1_items.append(f"宽度{up:.0f}%<{GATE_L1_UP:.0f}%")
     if l1_items:
         gaps.append("距L1: " + "、".join(l1_items))
 
     l2_items = []
-    if lc != '主升':
-        l2_items.append(f"生命周期{lc or '—'}≠主升")
-    if comp < 75:
-        l2_items.append(f"综合{comp:.0f}<75")
-    if trend < 75:
-        l2_items.append(f"趋势{trend:.0f}<75")
-    if fund < 40:
-        l2_items.append(f"主力强度{fund:.0f}<40")
-    if cap < 8.0:
-        l2_items.append(f"容量{cap:.1f}亿<8亿")
+    if ret5 <= 0:
+        l2_items.append(f"近5日动量{ret5:+.1f}%≤0（衰减反弹不确认）")
+    if not ((comp >= GATE_L2_COMP and trend >= GATE_L2_TREND)
+            or (trend >= _alt_trend and comp >= _alt_comp and up >= _alt_up)):
+        l2_items.append(f"强度未确认(未达综合{GATE_L2_COMP:.0f}+趋势{GATE_L2_TREND:.0f}，"
+                        f"也未达趋势{_alt_trend:.0f}+综合{_alt_comp:.0f}+宽度{_alt_up:.0f}；"
+                        f"现值 综合{comp:.0f}/趋势{trend:.0f}/宽度{up:.0f})")
+    if days < GATE_L2_DAYS:
+        l2_items.append(f"持续性{days}/{GATE_L2_DAYS}日")
+    if not (zt >= 4 or trend >= 70):
+        l2_items.append(f"强度不足(涨停{zt}<4且趋势{trend:.0f}<70)")
+    if cap < GATE_CAPACITY_MIN:
+        l2_items.append(f"容量{cap:.1f}亿<{GATE_CAPACITY_MIN:.0f}亿")
     if overheat:
         l2_items.append("热度过热")
-    if up < 55:
-        l2_items.append(f"宽度{up:.0f}%<55%")
-    if days < 2:
-        l2_items.append(f"持续性{days}/2日")
+    if euphoric:
+        l2_items.append("情绪透支(广度≥95%或涨停≥15家→转R等次日确认)")
+    if up < GATE_L2_UP:
+        l2_items.append(f"宽度{up:.0f}%<{GATE_L2_UP:.0f}%")
+    if fund < GATE_L2_FUND:
+        l2_items.append(f"主力强度{fund:.0f}<{GATE_L2_FUND:.0f}")
+    if lc in ('高潮', '退潮'):
+        l2_items.append(f"生命周期{lc}禁入")
     if l2_items:
         gaps.append("距L2: " + "、".join(l2_items))
     return gaps
@@ -1829,6 +2028,20 @@ def _junk_reeval_cond(r):
     if lc == '启动' or '启动' in ts:
         return "涨停≥5 + 梯队最大成交额≥8亿"
     return "趋势站回20日线 + 涨停≥3 + 迁移>10"
+
+
+def _repair_trigger(r):
+    """R 修复跟踪档的「转一致」确认条件（按资金状态给出次日可观察信号）"""
+    cs = r.get('capital_state') or {}
+    st = str(cs.get('state', '') or '')
+    zt_prev = int(cs.get('zt_prev', 0) or 0)
+    if st == '高位分歧':
+        return f"涨停数回升至≥{max(5, zt_prev)}家 + 龙头封板 + 主力资金转正（三者同时满足才升 L1）"
+    if st == '分歧转一致':
+        return "次日涨停数不减少 + 封板率≥80% → 可直接升 L1 试探"
+    if st == '一致加速':
+        return "趋势/广度不回落 + 炸板率<40% 连续2日 → 升 L1；断板即离场"
+    return "涨停≥5 + 梯队最大成交额≥8亿"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2302,18 +2515,27 @@ PRECURSOR_CFG = {
 PRECURSOR_LIFT = {'P6': 2.16, 'P3': 1.44}
 
 
-def _load_prev_theme_stats(trade_date, days=5):
-    """读 theme_scores.db 最近 days 个交易日（不含当日）
+_PREV_ROW_COLS = ('lifecycle', 'theme_state', 'zt_count', 'up_ratio', 'hot_score', 'fund_acc',
+                  'composite_score', 'trend_score', 'sentiment_score', 'target_state',
+                  'migration_score', 'gate_tier', 'ret_5')
 
-    Returns: {theme: {'hot': [hot_score...], 'zt_prev': 上一交易日涨停数}}
 
-    注意：不能复用主题引擎的 get_prev_day_theme_data()——它读的是
-    cache_backbone_tushare/theme_trend_sentiment.db，该库日期稀疏
-    （实测仅 0805/0806/0807/0811 + 当日），取到的"前一日"可能是一个月前，
-    会让 P3「涨停递增」的同比基准彻底失真（实测全部退化为"昨0"）。
+def _load_prev_theme_rows(trade_date, days=5):
+    """读 theme_scores.db 最近 days 个交易日（不含当日）的主题行
+
+    Returns: (prev_rows, hist_rows)
+      prev_rows: {theme: 上一交易日行 dict}
+      hist_rows: {theme: [近 days 日行 dict]}（含 trade_date，按查询顺序）
+
+    必须直读本库，不能用主题引擎的 get_prev_day_theme_data()：它读
+    cache_backbone_tushare/theme_trend_sentiment.db，该库
+      (a) 日期稀疏（实测最新为 0805/0806/0807/0811 + 当日），"前一日"会落到一个月前；
+      (b) 无 lifecycle 字段 → prev_lc 恒为空串 → strong_prev 恒 False →
+          days_strong 上限 1，而 L2/L1 硬要求 ≥2 → 实测 40 个交易日 L2/L1 命中 0 次。
+    取到错误"前一日"的后果：P3 涨停递增全部退化为"昨0"、持续性/资金撤离判定失真。
     """
     if not os.path.exists(OUTPUT_DB):
-        return {}
+        return {}, {}
     conn = sqlite3.connect(OUTPUT_DB)
     try:
         cur = conn.cursor()
@@ -2321,16 +2543,18 @@ def _load_prev_theme_stats(trade_date, days=5):
                     "ORDER BY trade_date DESC LIMIT ?", (str(trade_date), int(days)))
         dts = [row[0] for row in cur.fetchall()]  # 降序，dts[0] = 上一交易日
         if not dts:
-            return {}
+            return {}, {}
         ph = ",".join("?" * len(dts))
-        cur.execute(f"SELECT theme, trade_date, hot_score, zt_count FROM theme_scores "
+        cur.execute(f"SELECT theme, trade_date, {', '.join(_PREV_ROW_COLS)} FROM theme_scores "
                     f"WHERE trade_date IN ({ph})", dts)
-        out = defaultdict(lambda: {'hot': [], 'zt_prev': 0})
-        for th, d, hs, zt in cur.fetchall():
-            out[th]['hot'].append(float(hs or 0))
-            if d == dts[0]:
-                out[th]['zt_prev'] = int(zt or 0)
-        return out
+        keys = ('theme', 'trade_date') + _PREV_ROW_COLS
+        prev_rows, hist_rows = {}, defaultdict(list)
+        for row in cur.fetchall():
+            d = dict(zip(keys, row))
+            hist_rows[d['theme']].append(d)
+            if d['trade_date'] == dts[0]:
+                prev_rows[d['theme']] = d
+        return prev_rows, hist_rows
     finally:
         conn.close()
 
@@ -2477,7 +2701,7 @@ def _precursor_report_lines(prec_list):
     return lines
 
 
-def _apply_gate_v41_alloc(l2, l1, l0, junk, ma):
+def _apply_gate_v41_alloc(l2, l1, r_rep, l0, junk, ma):
     """V4.1 分级配仓归一化（报告输出层唯一配仓入口，替代已移除的 V4 _apply_rotation_v4）
 
     分级：
@@ -2485,6 +2709,7 @@ def _apply_gate_v41_alloc(l2, l1, l0, junk, ma):
         龙头/中军 4:6 穿透（与原 V4 主线一致）
       * L1 准主线试探档 → 试探总池 = 满配池 × 1/3，按 final_trade_score 比例分配；
         大盘 mainline_only（只做主线）时清零，动作改观望
+      * R 修复跟踪档 → 0%（仅跟踪分歧转一致，不承担隔夜风险）
       * L0 启动候选 → 0%（仅登记观察）
       * junk(NONE) → 0% 清仓回避
 
@@ -2539,6 +2764,15 @@ def _apply_gate_v41_alloc(l2, l1, l0, junk, ma):
         if '建仓' in str(r.get('trade_action', '')) or '加仓' in str(r.get('trade_action', '')):
             r['trade_action'] = '空仓观望 / 启动候选跟踪'
 
+    # ── R 修复跟踪档：0% 观察（等分歧转一致，不承担隔夜风险）──
+    for r in r_rep:
+        r['position_pct'] = 0.0
+        r['position_label'] = '观察(0%)'
+        r['allocated_position'] = 0.0
+        r['leader_target_pos'] = 0.0
+        r['core_target_pos'] = 0.0
+        r['trade_action'] = '修复跟踪（0%观察·等分歧转一致）'
+
 
 
 def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_kline_map=None):
@@ -2547,9 +2781,9 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     结构：
       0. 大盘择时指令（读取 market_analysis 报告）
       1. 第一部分：核心主线阵营（建议配仓 80%~90%）+ 主线细分穿透（最佳子主题/龙头/中军）
-      2. 第二部分：潜在轮动与接力机会（建议配仓 0%~20%）
+      2. 第二部分：潜在轮动与接力机会（L1 试探≤1/3池 / R 修复跟踪0% / L0 观察0%）
       2.5 前兆主题与子主题（爆发前 3~5 日观察池，不参与配仓）
-      3. 第三部分：杂毛/退潮与风险回避区（建议仓位 0%）
+      3. 第三部分：杂毛/退潮与风险回避区（资金撤离型，建议仓位 0%）
       3.5 重点主题深度分析（高潮=风险处置 / 启动=机会跟踪）
       4. 主线与轮动交易决策表（全量，含主线属性 / 胜率 / 转化概率）
       5. 机构配置策略建议（整体仓位 / 核心风险）
@@ -2617,14 +2851,16 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         w(f"* 市场状态（统一口径）：{regime_action or regime_dir}（当日唯一状态口径，下文各部分均以此为准）")
     w()
 
-    # ── V4.1 四级分桶：L2 确认主线 / L1 准主线试探档 / L0 启动候选 / NONE 杂毛回避 ──
-    l2, l1, l0, junk = [], [], [], []
+    # ── V4.1 五级分桶：L2 确认主线 / L1 准主线试探档 / R 修复跟踪档 / L0 启动候选 / NONE 杂毛回避 ──
+    l2, l1, r_rep, l0, junk = [], [], [], [], []
     for r in results:
         tier = str(r.get('gate_tier', 'NONE') or 'NONE')
         if tier == 'L2':
             l2.append(r)
         elif tier == 'L1':
             l1.append(r)
+        elif tier == 'R':
+            r_rep.append(r)
         elif tier == 'L0':
             l0.append(r)
         else:
@@ -2632,13 +2868,17 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
 
     l2.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
     l1.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
+    # R 档排序：分歧转一致（右侧已确认）> 一致加速 > 高位分歧；同状态按综合分
+    _R_ORDER = {'分歧转一致': 0, '一致加速': 1, '高位分歧': 2}
+    r_rep.sort(key=lambda x: (_R_ORDER.get(str((x.get('capital_state') or {}).get('state', '')), 9),
+                              -float(x.get('composite_score', 0) or 0)))
     l0.sort(key=lambda x: x.get('final_trade_score', 0), reverse=True)
     junk.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
     mainlines = l2  # 决策表/穿透沿用"mainlines"名（L2 确认主线）
-    rotations = l1 + l0  # 决策表轮动区 = 试探档 + 观察档
+    rotations = l1 + r_rep + l0  # 决策表轮动区 = 试探档 + 修复跟踪档 + 观察档
 
-    # ── V4.1 分级仓位归一化（L2 满配 / L1 试探≤1/3池 / L0 观察0% / junk 回避）──
-    _apply_gate_v41_alloc(l2, l1, l0, junk, ma)
+    # ── V4.1 分级仓位归一化（L2 满配 / L1 试探≤1/3池 / R·L0 观察0% / junk 回避）──
+    _apply_gate_v41_alloc(l2, l1, r_rep, l0, junk, ma)
 
     # ── V1.1 PositionMultiplier 应用：FinalPosition = StrategyPosition × PositionMultiplier ──
     # 主题层只降不升（乘数≤1.0）；不覆盖 Trade Execution 的 WAIT/AVOID 终判（只会乘得更低或为0）。
@@ -2680,7 +2920,33 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
     w("### 第一部分：核心主线阵营（L2 确认主线 · V4.1 满配，合计≤大盘目标仓位）")
     w("━" * 60)
     if not l2:
-        w("* 今日无 L2 确认主线（主升+双75+持续性≥2日+宽度+容量+资金未同时满足），空仓或等待确认")
+        w("* 今日无 L2 确认主线（需同时满足：近5日动量为正 + 强度确认(综合/趋势双68 或 趋势75+综合65+宽度75)")
+        w("  + 持续性≥2日(近5日窗口强态计数) + 宽度≥60% + 主力强度≥50 + 容量≥8亿 + 非过热 + 非情绪透支），")
+        w("  空仓或等待确认。注意：情绪透支日（广度≥95% 或 涨停≥15家）一律不在当日确认，")
+        w("  转第二部分 R 档跟踪，等次日不破再介入——不在情绪顶点满配。")
+        # 距 L2 最近候选：把"主线为什么不出现"变成可操作信息（差几项 / 卡在哪一条），
+        # 而不是只给一句"今日无 L2"——避免把"接近确认"误读为"没有机会"。
+        _near = []
+        for r in results:
+            if str(r.get('gate_tier')) == 'L2':
+                continue
+            if str((r.get('capital_state') or {}).get('state', '')) == '资金撤离':
+                continue
+            _g2 = next((g for g in _gate_gap_v41(r) if g.startswith('距L2: ')), None)
+            if not _g2:
+                continue
+            _near.append((_g2.count('、') + 1, -float(r.get('composite_score', 0) or 0), r, _g2))
+        if _near:
+            _near.sort(key=lambda x: (x[0], x[1]))
+            w()
+            w("  ── 距 L2 最近候选（按未满足项数升序，最多 3 个）──")
+            for _n, _negc, r, _g2 in _near[:3]:
+                _lc = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+                w(f"  · {r['theme']} [{_lc}] 综合{r.get('composite_score', 0):.0f} "
+                  f"趋势{r.get('trend_score', 0):.0f} 持续{str(r.get('days_strong', 0))}日 "
+                  f"→ 还差 {_n} 项")
+                w(f"      {_g2}")
+            w("  注：以上为「差一点就能确认」的主题，按第二/三部分对应档位处置（不因接近 L2 而提前满配）。")
         w()
     for r in l2:
         theme = r['theme']
@@ -2713,9 +2979,9 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
                 w()
         w()
 
-    # ── 2. 第二部分：L1 准主线试探档 + L0 启动候选观察档 ──
+    # ── 2. 第二部分：L1 准主线试探档 + R 修复跟踪档 + L0 启动候选观察档 ──
     w("━" * 60)
-    w("### 第二部分：潜在轮动与接力机会（L1 试探≤1/3池 / L0 观察0% · Rotation）")
+    w("### 第二部分：潜在轮动与接力机会（L1 试探≤1/3池 / R·L0 观察0% · Rotation）")
     w("━" * 60)
     if not rotations:
         w("* 今日无潜在轮动机会")
@@ -2742,6 +3008,42 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
             if _gaps:
                 w(f"    升档差距：{'；'.join(_gaps)}")
             w(f"    交易动作：{action}")
+        w()
+    if r_rep:
+        w("── 修复跟踪档（R · 0%观察不配仓，等「分歧转一致」确认）──")
+        w("   说明：本档不是「资金撤离」（真退潮，应清仓），而是资金未撤、结构未破的高位分歧/前日强势")
+        w("         品种，只登记不介入；等下列确认条件成立才升 L1 试探，避免在分歧洗盘中被反复收割。")
+        w("         入档三类：① 资金状态异常（高位分歧/分歧转一致/一致加速）；② 当日或前日「主升」")
+        w("         但未达试探线；③ 强度未散（涨停≥2 或 趋势≥50）。前提：非「资金撤离」。")
+        for r in r_rep:
+            theme = r['theme']
+            lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
+            sd = r.get('sentiment_detail', {}) or {}
+            zt = sd.get('zt_count', 0)
+            mig = r.get('migration_score', 0)
+            cs = r.get('capital_state') or {}
+            try:
+                _f = json.loads(r.get('gate_feat', '{}') or '{}')
+            except Exception:
+                _f = {}
+            _lc, _plc = str(_f.get('lc', '') or ''), str(_f.get('prev_lc', '') or '')
+            _st = str(cs.get('state', '') or '')
+            if _st in ('高位分歧', '分歧转一致', '一致加速'):
+                _why = f"资金未撤（{_st}），结构未破"
+            elif _lc == '主升' or _plc == '主升':
+                _why = f"前日/当日主升（{_plc or '—'}→{_lc or '—'}）未达试探线，洗盘观察"
+            else:
+                _why = "强度未散（涨停≥2 或 趋势≥50）"
+            w(f"▸ {theme} [{lc_disp}] {r.get('mainline_type', '')} 质量{r.get('mainline_quality', 0):.0f} | "
+              f"趋势{r.get('trend_score', 0):.0f} 综合{r.get('composite_score', 0):.0f} 涨停{zt} 迁移{mig:.1f}")
+            w(f"    入档原因：{_why}")
+            w(f"    资金状态：{cs.get('state', '—')}（{cs.get('evidence', '')}）")
+            w(f"    转一致触发：{_repair_trigger(r)} | 建议仓位 {r.get('position_label', '0%')}")
+            _gaps = _gate_gap_v41(r)
+            if _gaps:
+                w(f"    升档差距：{'；'.join(_gaps)}")
+            w("    失效边界：主力资金转负 或 涨停归零 或 上涨占比<45% → 移出观察池（按退潮/资金撤离处理）")
+            w(f"    交易动作：{r.get('trade_action', '')}")
         w()
     if l0:
         w("── 启动候选观察档（L0 · 仅登记跟踪，0仓等待转 L1）──")
@@ -2780,12 +3082,16 @@ def save_to_text_report_v2(results, kg_v3_cfg, en_to_cn, market_ret_10=0.0, etf_
         dist_str = "、".join(f"{k}{v}" for k, v in sorted(lc_dist.items(), key=lambda x: -x[1]))
         w(f"* 生命周期分布（全{len(results)}主题）：{dist_str}")
         w(f"* 共 {len(junk)} 只未达主线交易标准，回避原因：强度不足 / 轮动过快 / 无持续性 / 过热")
+        w("  注：判定为「高位分歧/一致加速」（资金未撤离）的主题已上移至第二部分 R 档跟踪，")
+        w("      留在本区的以「资金撤离」型为主——真退潮，不加仓不抄底。")
         w("重点回避：")
         for r in junk[:3]:
             theme = r['theme']
             lc_disp = LC_DISPLAY.get(r.get('lifecycle', ''), r.get('lifecycle', ''))
             comp = r.get('composite_score', 0)
-            w(f"  ✕ {theme} [{lc_disp}] 综合{comp:.0f} → 【坚决回避/清仓】")
+            _st = str((r.get('capital_state') or {}).get('state', '') or '')
+            _tag = f"｜{_st}" if _st and _st != '常态' else ''
+            w(f"  ✕ {theme} [{lc_disp}] 综合{comp:.0f}{_tag} → 【坚决回避/清仓】")
         if len(junk) > 3:
             rest = "、".join(r['theme'] for r in junk[3:8])
             w(f"  … 其余 {len(junk) - 3} 只同类回避（{rest}…）")

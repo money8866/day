@@ -88,6 +88,36 @@ def _record_picks_to_db(trade_date: str, report: dict):
         print(f'[RUN-PUSH] stock_pick_db 写入失败(不影响推送): {e}')
 
 
+def _record_first_echelon_to_db(trade_date: str, report: dict):
+    """第一梯队（PRIMARY_BUY 结构层）独立落库，strategy_id='hvt_bull_fe'
+
+    与 hvt_bull_te（执行买点池：明天能否下单）互补——本池跟踪"结构是否成立"，
+    含 NO_CHASE / WAIT_CONFIRM 等当日不可执行但结构达标的标的，两者无交集为常态。
+    """
+    if record_picks is None or not report:
+        return
+    try:
+        pool = report.get('first_echelon_pool') or []
+        if not pool:
+            print('[RUN-PUSH] first_echelon_pool 为空（当日无第一梯队），跳过落库')
+            return
+        if PICK_DB_PATH:
+            os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
+        rows = [dict(it, rank_no=i + 1) for i, it in enumerate(pool)]
+        n = record_picks('hvt_bull_fe', 'HVT-BULL 第一梯队(结构层)', rows, pick_date=trade_date,
+                         field_map={'next_day_action': 'action',
+                                    'te_decision_point': 'signal',
+                                    'execution_score': 'score',
+                                    'current_close': 'close',
+                                    'stop_loss': 'stop_price',
+                                    'target1': 'target_price',
+                                    'sector_name': 'industry'})
+        print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
+              f'(strategy=hvt_bull_fe pick_date={trade_date})')
+    except Exception as e:
+        print(f'[RUN-PUSH] hvt_bull_fe 写入失败(不影响推送): {e}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--date', default=None)
@@ -100,6 +130,7 @@ def main():
     from hvt_bull.daily import run_daily
     report = run_daily(trade_date=trade_date)
     _record_picks_to_db(trade_date, report)
+    _record_first_echelon_to_db(trade_date, report)
     push_daily_report(trade_date=trade_date)
 
 

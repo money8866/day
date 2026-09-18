@@ -2,7 +2,7 @@
 """TE + T20_ROCKET 多源候选 → 个股量价二次筛选与最高胜率交易排序 V1.0
 
 输入: report_daily/hvt_bull_{date}.json
-  - te_buy_pool                    → SOURCE = TE_BUY
+  - te_buy_pool_kept               → SOURCE = TE_BUY（R1/R2 剔除后的当日显示池；旧版 JSON 回退 te_buy_pool）
   - events 前20 中 state=T20_ROCKET_WATCH → SOURCE = T20_ROCKET
   - 同码同日出现 → SOURCE = BOTH
 
@@ -59,9 +59,15 @@ def _clip(v, lo, hi):
 # ---------------------------------------------------------------- 候选构建
 
 def build_candidates(report: dict) -> list:
-    """从报告 JSON 抽取 TE_BUY + T20_ROCKET 两类候选，同码合并为 BOTH。"""
+    """从报告 JSON 抽取 TE_BUY + T20_ROCKET 两类候选，同码合并为 BOTH。
+    TE_BUY 取 te_buy_pool_kept（R1/R2 再入规则剔除后的当日显示池，与报告①段/落库口径一致，
+    避免把引擎当日否定买入的标的纳入二次筛选）；旧版 JSON 无该字段时回退 te_buy_pool。
+    """
     cands = {}
-    for p in (report.get('te_buy_pool') or []):
+    _te_pool = report.get('te_buy_pool_kept')
+    if _te_pool is None:
+        _te_pool = report.get('te_buy_pool') or []
+    for p in _te_pool:
         code = p.get('ts_code')
         if not code:
             continue
@@ -260,7 +266,7 @@ def estimate_t1_t3(feat: dict, state: str):
 # ---------------------------------------------------------------- 执行层
 
 def _exec_te(te: dict, feat: dict):
-    """TE_BUY 源执行层：使用 te_buy_pool 的触发/买区/止损/目标重新验证。"""
+    """TE_BUY 源执行层：使用 te_buy_pool_kept 的触发/买区/止损/目标重新验证。"""
     close = _f(feat['close'])
     trig = _f(te.get('entry_trigger'))
     zl, zh = _f(te.get('buy_zone_low')), _f(te.get('buy_zone_high'))

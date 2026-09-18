@@ -1,0 +1,392 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "A股主题量化日报 20260917：板块健康度 48.4，结构合格 12 只"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "A股主题量化日报"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "20260917 · 板块层 + 个股层"
+    },
+    "template": "blue",
+    "icon": {
+      "tag": "standard_icon",
+      "token": "wiki-bitable_colorful"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "整体降温"
+        },
+        "color": "blue"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "非交易建议"
+        },
+        "color": "neutral"
+      }
+    ]
+  },
+  "body": {
+    "direction": "vertical",
+    "padding": "12px 12px 20px 12px",
+    "elements": [
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "horizontal_spacing": "8px",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>48.4</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>板块健康度</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>45.9%</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>上涨占比</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>1/1</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>轮入/轮出</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>12</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>结构合格</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "blue-50",
+            "padding": "12px",
+            "vertical_spacing": "4px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "**板块层 20260917**\n- **轮入**：T39 医疗服务（R06）\n- **轮出**：T24 券商（R04）\n- 其余 48 个中性，**属同步波动日，无强轮动信号**\n- **温度**：健康度 48.4（-11.4）· 上涨占比 45.9% · 整体降温\n- **背离**：成交额 TOP10 中 4 个健康度大幅回落，**价格走弱、资金未撤离**\n- **结构**：合格 12 只 · 候选域 1347 只",
+                "text_size": "normal"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 8,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "g",
+            "display_name": "轮动组",
+            "data_type": "text"
+          },
+          {
+            "name": "h",
+            "display_name": "健康度",
+            "data_type": "number",
+            "format": {
+              "precision": 1
+            }
+          },
+          {
+            "name": "sd",
+            "display_name": "SEOSΔ5",
+            "data_type": "number",
+            "format": {
+              "precision": 1
+            }
+          },
+          {
+            "name": "st",
+            "display_name": "状态",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "g": "R01 科技成长",
+            "h": 48.6,
+            "sd": 28.5,
+            "st": "转好"
+          },
+          {
+            "g": "R02 先进制造",
+            "h": 48.0,
+            "sd": 22.0,
+            "st": "中性"
+          },
+          {
+            "g": "R03 资源周期",
+            "h": 37.4,
+            "sd": 4.1,
+            "st": "中性"
+          },
+          {
+            "g": "R04 金融地产",
+            "h": 40.4,
+            "sd": -2.5,
+            "st": "转弱"
+          },
+          {
+            "g": "R05 大消费",
+            "h": 55.2,
+            "sd": 19.5,
+            "st": "中性"
+          },
+          {
+            "g": "R06 医药医疗",
+            "h": 63.9,
+            "sd": 21.9,
+            "st": "转好"
+          },
+          {
+            "g": "R07 公用防御",
+            "h": 42.1,
+            "sd": -9.7,
+            "st": "转弱"
+          },
+          {
+            "g": "R08 政策基建",
+            "h": 46.8,
+            "sd": 3.6,
+            "st": "中性"
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 8,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "c",
+            "display_name": "名称",
+            "data_type": "text"
+          },
+          {
+            "name": "t",
+            "display_name": "主主题",
+            "data_type": "text"
+          },
+          {
+            "name": "q",
+            "display_name": "质量",
+            "data_type": "number",
+            "format": {
+              "precision": 1
+            }
+          },
+          {
+            "name": "s",
+            "display_name": "天量换手 · 突破",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "c": "688395.SH 正弦电气",
+            "t": "T12 机器人与自动化",
+            "q": 83.5,
+            "s": "调整 · 未突破"
+          },
+          {
+            "c": "688002.SH 睿创微纳",
+            "t": "T01 半导体",
+            "q": 79.5,
+            "s": "锁定 · 待突破"
+          },
+          {
+            "c": "002516.SZ 旷达科技",
+            "t": "T15 汽车及零部件",
+            "q": 78.5,
+            "s": "锁定 · 待突破"
+          },
+          {
+            "c": "001268.SZ 联合精密",
+            "t": "T30 家电",
+            "q": 76.5,
+            "s": "调整 · 未突破"
+          },
+          {
+            "c": "688536.SH 思瑞浦",
+            "t": "T01 半导体",
+            "q": 76.5,
+            "s": "调整 · 待突破"
+          },
+          {
+            "c": "300563.SZ 神宇股份",
+            "t": "T03 通信",
+            "q": 76.0,
+            "s": "调整 · 未突破"
+          },
+          {
+            "c": "600104.SH 上汽集团",
+            "t": "T15 汽车及零部件",
+            "q": 76.0,
+            "s": "调整 · 未突破"
+          },
+          {
+            "c": "688601.SH 力芯微",
+            "t": "T01 半导体",
+            "q": 75.0,
+            "s": "锁定 · 未突破"
+          }
+        ]
+      },
+      {
+        "tag": "collapsible_panel",
+        "expanded": false,
+        "header": {
+          "title": {
+            "tag": "plain_text",
+            "content": "主题候选池 · 轮动依据 · 声明"
+          }
+        },
+        "border": {
+          "color": "grey",
+          "corner_radius": "8px"
+        },
+        "padding": "8px 12px 8px 12px",
+        "vertical_spacing": "4px",
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "**优先主题 11 个**（名称 · 机会分）\n- T15 汽车及零部件 · 70.8\n- T05 消费电子 · 68.3\n- T37 医疗器械 · 65.2\n- T32 纺织服饰 · 64.3\n- T42 生物制品 · 64.1\n- T12 机器人与自动化 · 62.6\n- T01 半导体 · 59.1\n- T30 家电 · 59.0\n- T02 AI算力 · 58.6\n- T03 通信 · 58.3\n- T14 高端装备 · 56.8",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**轮入 · T39 医疗服务**（R06）\n- 参照窗广度 0.3960（偏弱）\n- 广度Δ5 1.2282 · 核心广度Δ5 0.7857 · 相对强度拐点Δ5 0.0274（同步改善）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**轮出 · T24 券商**（R04）\n- 参照窗广度 -0.9038（偏强）\n- 广度Δ5 -1.6857 · 核心广度Δ5 -1.6936 · 相对强度拐点Δ5 -0.0214（转弱）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**量价背离明细**\n- 半导体：占比 48.10%（Δ5 +7.31%）· 健康度 48.3（Δ1 -34.8）\n- AI算力：占比 39.27%（Δ5 +4.58%）· 健康度 47.6（Δ1 -27.2）\n- 通信：占比 28.85%（Δ5 +3.95%）· 健康度 46.5（Δ1 -32.1）\n- 消费电子：占比 21.91%（Δ5 +2.24%）· 健康度 54.3（Δ1 -26.3）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**结构池计数**（均为结构池，非买入池）\n- 结构池 305 · 天量换手池 5\n- 再突破池 0 · 回踩确认池 11",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>数据：板块层 20260917 · 个股层 20260917 · 成员快照 仅静态快照</font>\n<font color='grey'>声明：仅描述板块状态与个股结构资格，不构成 BUY / NO TRADE / 仓位 / 止损 / 目标价；结构池均为结构池而非买入池；执行层（第 7 步）未实现。</font>",
+            "text_size": "notation"
+          }
+        ]
+      }
+    ]
+  }
+}

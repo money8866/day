@@ -1,6 +1,6 @@
 # Step 6 — Stock Structure / HVT Qualification Layer 审计报告
 
-- 生成时间：2026-09-17 21:00:22
+- 生成时间：2026-09-17 21:21:13
 - 结构基准日：20260916
 - legacy_config_used = false
 - adapter 模式：REUSE_DEFINITION_TRANSCRIBE_VECTORIZED
@@ -153,7 +153,7 @@
 | QUALIFIED | 387 | 1.08% |
 
 - QUALIFIED 行数：387
-- 基准日 20260916 行数：178（结构池：HVT 0，Rebreakout 0，Retest 0）
+- 基准日 20260916 行数：178（结构池：HVT 2，Rebreakout 0，Retest 0）
 
 reason 示例（结构化事实，不含任何主观判断词）：
 

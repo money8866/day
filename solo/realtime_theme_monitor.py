@@ -102,6 +102,13 @@ SINA_INDEX_CODES = {
     "沪深300": "sh000300",
     "中证2000": "sz399303",     # 新浪无932000,用国证2000替代
 }
+# ── 「猎狐」T0_CONFIRM 缩量/放量分档阈值 ──
+# volr = 确认日量 ÷ 前20日均量（沿用引擎 analyze 的同口径字段 sig['volr']，不另算）
+# 依据 fox_t0_backtest.py 全历史回放（2022-01~2026-09，n=3034，基准=确认日收盘价）：
+#   volr <  0.8 → 缩量确认「买点池」 n=295   fwd20 +0.30%/45%  fwd60 +1.77%/43%  赔率1.34（唯一正期望档）
+#   volr ≥  0.8 → 放量确认「观察池」 n=2739  fwd20 -0.71%/39%  fwd60 -1.71%/36%  赔率1.07（追高型）
+# 放量确认往往是主升已在确认日前走完（如 9/16 福龙马 volr=3.7），故仅降级标注、不剔除。
+FOX_T0_DRY_VOLR = 0.8
 
 
 class RealtimeThemeMonitor:
@@ -646,14 +653,19 @@ class RealtimeThemeMonitor:
         for name, df in self.index_klines.items():
             print(f"   ✅ {name}({INDEX_CODES[name]}): {len(df)} 根K线,最新收盘={df['close'].iloc[-1]:.2f}")
 
-    def _get_last_trade_date(self):
-        """返回最近一个交易日 YYYYMMDD"""
+    def _get_last_trade_date(self, include_today=False):
+        """
+        返回交易日 YYYYMMDD
+
+        include_today=False(默认): 15:00 收盘前只认"上一交易日",供昨收/基准/因子等已收盘数据调用
+        include_today=True: 把"当日"纳入候选,供盘中/尾盘信号落库调用(尾盘信号属于当日)
+        """
         from datetime import datetime
         now = datetime.now()
-        if now.hour < 15:
-            q = (now - timedelta(days=1)).strftime('%Y%m%d')
-        else:
+        if include_today or now.hour >= 15:
             q = now.strftime('%Y%m%d')
+        else:
+            q = (now - timedelta(days=1)).strftime('%Y%m%d')
         # 根据缓存文件存在性回退
         for offset in range(7):
             cand = (datetime.strptime(q, '%Y%m%d') - timedelta(days=offset)).strftime('%Y%m%d')
@@ -4287,7 +4299,7 @@ class RealtimeThemeMonitor:
             import sqlite3 as _sqlite3
             import json as _json
             now = datetime.now()
-            signal_date = self._get_last_trade_date()
+            signal_date = self._get_last_trade_date(include_today=True)   # 尾盘信号属于当日
             signal_time = now.strftime('%H:%M:%S')
 
             # ── 筛选条件 1~4 ──
@@ -4378,7 +4390,7 @@ class RealtimeThemeMonitor:
             import sqlite3 as _sqlite3
             import json as _json
             now = datetime.now()
-            signal_date = self._get_last_trade_date()
+            signal_date = self._get_last_trade_date(include_today=True)   # 尾盘信号属于当日
             signal_time = now.strftime('%H:%M:%S')
 
             conn = _sqlite3.connect(self.tail_tracker_db, timeout=10.0)
@@ -4820,7 +4832,7 @@ class RealtimeThemeMonitor:
         try:
             import json as _json
             now = datetime.now()
-            signal_date = self._get_last_trade_date()
+            signal_date = self._get_last_trade_date(include_today=True)   # 尾盘信号属于当日
             signal_time = now.strftime('%H:%M:%S')
 
             conn = sqlite3.connect(self.tail_tracker_db, timeout=10.0)
@@ -4912,7 +4924,7 @@ class RealtimeThemeMonitor:
         try:
             from stock_pick_db import record_picks
             status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
-            pick_date = self._get_last_trade_date()
+            pick_date = self._get_last_trade_date(include_today=True)   # 14:50定稿信号属于当日
             picks = []
             for s in signals:
                 code = s.get('code', '')
@@ -4939,6 +4951,7 @@ class RealtimeThemeMonitor:
                     'entry': s.get('entry'),
                     'dist_risk': s.get('dist_risk'),
                     'volr': s.get('volr'),
+                    'tier': s.get('tier', ''),
                     'ma20': s.get('ma20'),
                 })
             if not picks:
@@ -4954,7 +4967,9 @@ class RealtimeThemeMonitor:
             return 0
         try:
             from stock_pick_db import record_picks
-            n = record_picks(strategy_id, strategy_name, picks, pick_date=self._get_last_trade_date())
+            # 尾盘信号属于当日,需 include_today=True(默认口径会退回上一交易日)
+            n = record_picks(strategy_id, strategy_name, picks,
+                             pick_date=self._get_last_trade_date(include_today=True))
             if n:
                 print(f"[选股库] 已写入{n}只 {strategy_name} (strategy_id={strategy_id})")
             return n
@@ -5178,7 +5193,7 @@ class RealtimeThemeMonitor:
         """V5扫描入口: 控制台报告 + 快照保存 + 微信推送
         精选层(V5Selector): 每日最多推送2只最佳信号, 非主升浪日自动空仓"""
         all_signals = self.scan_nd2_alpha()
-        signal_date = self._get_last_trade_date()
+        signal_date = self._get_last_trade_date(include_today=True)   # 快照为当日信号,标签=次日收益
 
         # 保存快照(全量>=60分, 供标签回填学习)
         if all_signals:
@@ -5940,11 +5955,16 @@ class RealtimeThemeMonitor:
                 sig['theme'] = theme
                 sig['pct_chg_live'] = round(float(q.get('pct_chg') or 0.0), 2)
                 sig['trade_date'] = today
+                # 缩量/放量确认分档（阈值口径见 FOX_T0_DRY_VOLR 注释）
+                # 盘中预检的量是不完整累计量,volr 系统性偏低,不做分档(以 14:50 定稿为准)
+                vr = sig.get('volr') or 0.0
+                sig['tier'] = '' if pre else ('买点池' if vr < FOX_T0_DRY_VOLR else '观察池')
                 new_signals.append(sig)
 
             if not pre:
                 self._fox_save_state(fired_map)
-            new_signals.sort(key=lambda s: -(s.get('score') or 0))
+            # 缩量确认「买点池」优先展示,同档内按评分降序
+            new_signals.sort(key=lambda s: (0 if s.get('tier') == '买点池' else 1, -(s.get('score') or 0)))
 
             status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
             mode_tag = '盘中预检' if pre else '定稿'
@@ -5956,14 +5976,17 @@ class RealtimeThemeMonitor:
                 if pre:
                     print(f"🦊 「猎狐」T0确认·{mode_tag} [{hhmmss}] 盘中新增{len(new_signals)}只(实时价口径,尾盘回落可能作废,以14:50定稿为准) 已推{len(pre_pushed)}只")
                 else:
-                    print(f"🦊 「猎狐」T0天量确认买点·{mode_tag} [{hhmmss}] 新触发{len(new_signals)}只 重复{len(stale)}只")
-                print(f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'T0日':<9} {'T0收盘':>7} {'今收':>7} {'涨幅':>6} {'评分':>4} {'级别':<5} {'压力位':>7}")
-                print(f"{'-' * 100}")
+                    n_dry = sum(1 for s in new_signals if s.get('tier') == '买点池')
+                    print(f"🦊 「猎狐」T0天量确认买点·{mode_tag} [{hhmmss}] 新触发{len(new_signals)}只 重复{len(stale)}只"
+                          f" | 买点池(缩量确认){n_dry}只 观察池(放量确认){len(new_signals) - n_dry}只")
+                print(f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'T0日':<9} {'T0收盘':>7} {'今收':>7} {'涨幅':>6} {'评分':>4} {'量比':>5} {'分档':<6} {'级别':<5} {'压力位':>7}")
+                print(f"{'-' * 118}")
                 for i, s in enumerate(new_signals[:12], 1):
                     print(f"{i:<3} {s['code']:<11} {s['name']:<9} {(s.get('theme') or '')[:9]:<10} {s['event_date']:<9} "
                           f"{s.get('event_close', 0):>7.2f} {s['close']:>7.2f} {s.get('pct_chg_live', 0):>+5.1f}% "
-                          f"{s['score']:>4.0f} {status_cn.get(s['buy'], s['buy']):<5} {s.get('pressure', 0):>7.2f}")
-                print(f"{'=' * 100}\n")
+                          f"{s['score']:>4.0f} {s.get('volr', 0):>5.1f} {(s.get('tier') or '-'):<6} "
+                          f"{status_cn.get(s['buy'], s['buy']):<5} {s.get('pressure', 0):>7.2f}")
+                print(f"{'=' * 118}\n")
             elif pre:
                 print(f"🦊 [猎狐] {hhmmss} 盘中预检:{len(candidates)}只主题股暂无新触发T0确认(本日已推{len(pre_pushed)}只)")
             else:
@@ -5974,12 +5997,16 @@ class RealtimeThemeMonitor:
                 if pre:
                     lines = [f"盘中{len(new_signals)}只首现「T0天量确认买点」条件(实时价判定,尾盘回落可能作废;以14:50定稿为准):"]
                 else:
-                    lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(实时价判定,收盘为准):"]
+                    n_dry = sum(1 for s in new_signals if s.get('tier') == '买点池')
+                    lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(买点池{n_dry}只/观察池{len(new_signals) - n_dry}只):"]
                 for s in new_signals[:5]:
                     rel = (s.get('reason') or '').split('：')[-1]
-                    lines.append(f"● {s['name']}({s['code']}) [{s.get('theme', '')}] {status_cn.get(s['buy'], s['buy'])} 评分{s['score']:.0f}")
-                    lines.append(f"  T0={s['event_date']}收盘{s.get('event_close', 0):.2f} → 今收{s['close']:.2f}({s.get('pct_chg_live', 0):+.1f}%) 压力{s.get('pressure', 0):.2f}")
+                    tag = f"[{s['tier']}]" if s.get('tier') else ''
+                    lines.append(f"● {tag}{s['name']}({s['code']}) [{s.get('theme', '')}] {status_cn.get(s['buy'], s['buy'])} 评分{s['score']:.0f}")
+                    lines.append(f"  T0={s['event_date']}收盘{s.get('event_close', 0):.2f} → 今收{s['close']:.2f}({s.get('pct_chg_live', 0):+.1f}%) 量比×{s.get('volr', 0):.1f} 压力{s.get('pressure', 0):.2f}")
                     lines.append(f"  {rel}")
+                if not pre:
+                    lines.append(f"-- 买点池=缩量确认(量比<{FOX_T0_DRY_VOLR:g},回测fwd60+1.77%/胜率43%);观察池=放量确认(追高型,fwd60-1.71%/胜率36%)")
                 content = "\n".join(lines)
                 self.send_wechat(f"🦊 猎狐·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
             return new_signals

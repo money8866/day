@@ -232,11 +232,18 @@ def _push_bp_short(bp) -> str:
     return "未突破"
 
 
-def _push_table(lines, title, sub):
-    """推送 Markdown 表格（股票/买点/回踩分/回踩天数/净利/扣非/主题/现价/止损）"""
+def _push_table(lines, title, sub, limit=None):
+    """推送 Markdown 表格（股票/买点/回踩分/回踩天数/净利/扣非/主题/现价/止损）
+
+    limit: 行数上限（PushPlus 实际单条长度校验远严于宣称值，超长会整体推送失败），
+           超出时只取前 limit 行并提示完整名单见CSV。
+    """
     if len(sub) == 0:
         return
-    lines.append(f"## {title}（{len(sub)} 只）")
+    total = len(sub)
+    if limit and total > limit:
+        sub = sub.head(limit)
+    lines.append(f"## {title}（{total} 只）")
     lines.append("")
     lines.append("| 股票 | 买点 | 回踩分 | 回踩日 | 净利 | 扣非 | 主题状态 | 现价 | 止损 |")
     lines.append("|------|:---:|:---:|:---:|:---:|:---:|------|:---:|:---:|")
@@ -252,24 +259,64 @@ def _push_table(lines, title, sub):
             f"| {_push_cell(r, '回踩天数', '{:.0f}')} | {npg_s} | {dty_s} | {th_s} "
             f"| {_push_cell(r, '现价', '{:.2f}')} | {_push_cell(r, 'ATR动态止损价', '{:.2f}')} |"
         )
+    if total > len(sub):
+        lines.append(f"> 仅列前 {len(sub)} 只，其余 {total - len(sub)} 只见当日CSV。")
     lines.append("")
 
 
-def build_push_msg(trade_date: str, v12) -> str:
-    """构建中报猎手×EGPT v12 择时的微信推送消息（Markdown，仅 v12 信号）"""
+def build_push_msg(trade_date: str, v12, pref, buy, watch, hot_bp) -> str:
+    """构建中报猎手×EGPT 择时的微信推送消息（Markdown）
+
+    板块顺序: 🏆v12合并策略 → 🎯主题优选 → ✅次日可买入 → ⚠️观察/等回踩
+              → ⛔买点1×高热度追高警示 → 买入纪律
+    """
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = []
-    lines.append("# EGPT v12 回踩择时")
+    lines.append("# 中报猎手 × EGPT 回踩择时")
     lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
     lines.append("")
     lines.append("> 🏆 v12合并策略(回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50)：")
     lines.append("> 复盘60笔/38只, T+5 +0.94% / 持有+1.66% / 止损+1.30%。")
     lines.append("")
 
-    _push_table(lines, "🏆 v12合并策略·今日名单", v12)
+    _push_table(lines, "🏆 v12合并策略·今日名单", v12, limit=10)
     if len(v12) == 0:
         lines.append("> 🏆 v12: 今日无满足标的，空仓等待。")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+
+    _push_table(lines, "🎯 主题优选（白名单×甜区5~15%×扣非≥50%×突破确认）", pref, limit=10)
+    if len(pref) == 0:
+        lines.append("> 🎯 主题优选: 今日无满足标的。")
+        lines.append("")
+
+    _push_table(lines, "✅ 次日可买入（回踩中×分≥60，最优买点窗口）", buy, limit=10)
+    if len(buy) == 0:
+        lines.append("> ✅ 次日可买入: 今日无信号，宁缺毋滥。")
+        lines.append("")
+
+    _push_table(lines, "⚠️ 观察 / 等回踩（形态未确认，需触发）", watch, limit=12)
+    if len(watch) == 0:
+        lines.append("> ⚠️ 观察/等回踩: 今日无。")
+        lines.append("")
+
+    if len(hot_bp):
+        lines.append("---")
+        lines.append("")
+        lines.append("## ⛔ 买点1×高热度追高警示（回避）")
+        lines.append("")
+        lines.append("> 回测: 买点1(放量突破)×主题高热度(ETF20日≥15%) T+5胜率仅15.4%/均值-2.2%，追高回避。")
+        lines.append("")
+        lines.append("| 股票 | 主题状态 | 现价 |")
+        lines.append("|------|------|:---:|")
+        for _, r in hot_bp.head(6).iterrows():
+            name = f"{r['名称']}({str(r['代码']).replace('.SZ', '').replace('.SH', '')})"
+            lines.append(f"| {name} | {r.get('主题状态', '')} | {_push_cell(r, '现价', '{:.2f}')} |")
+        if len(hot_bp) > 6:
+            lines.append(f"> 仅列前 6 只，共 {len(hot_bp)} 只见当日CSV。")
         lines.append("")
 
     lines.append("---")
@@ -281,9 +328,9 @@ def build_push_msg(trade_date: str, v12) -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=None, help="择时数据截止日 YYYYMMDD（默认最近交易日）")
-    ap.add_argument("--csv", default=None, help="手动指定输入CSV路径（默认：SLI行业细分龙头池）")
-    ap.add_argument("--source", default="sli", choices=list(SLI_MODES) + ["hunt"],
-                    help="默认输入源: sli=SLI行业细分龙头池(默认) / hunt=中报猎手CSV")
+    ap.add_argument("--csv", default=None, help="手动指定输入CSV路径（默认：最新中报猎手名单 zhongbao_hunt_*.csv）")
+    ap.add_argument("--source", default="hunt", choices=list(SLI_MODES) + ["hunt"],
+                    help="默认输入源: hunt=最新中报猎手CSV(默认) / sli=SLI行业细分龙头池")
     ap.add_argument("--sli_mode", default="ind_no1", choices=list(SLI_MODES),
                     help="SLI龙头口径: ind_no1=每行业第一 / sub_no1=每细分赛道第一 / absolute=绝对龙头")
     ap.add_argument("--push", action="store_true", help="运行后推送结果到微信(PushPlus)")
@@ -543,16 +590,21 @@ def main():
     # ── 微信推送（--push）：复用 EGPT 推送的 PushPlus 通道，消息留档 ──
     if args.push:
         try:
-            msg = build_push_msg(trade_date, v12)
+            msg = build_push_msg(trade_date, v12, pref, buy, watch, hot_bp)
             push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送_{trade_date}.txt")
             with open(push_file, "w", encoding="utf-8") as f:
                 f.write(msg)
             print(f"\n推送消息已留档: {push_file}")
             print(msg[:400] + ("..." if len(msg) > 400 else ""))
-            ok = push_to_wechat(msg, title=f"中报猎手×EGPT v12 回踩择时 {trade_date}")
-            print(f"微信推送: {'成功' if ok else '失败'}")
+            ok = push_to_wechat(msg, title=f"中报猎手×EGPT 回踩择时 {trade_date}")
+            if ok:
+                print(f"✅ 微信推送成功 (标题: 中报猎手×EGPT 回踩择时 {trade_date})")
+            else:
+                print("❌ 微信推送失败：PushPlus 未返回成功。"
+                      f"请检查 PUSHPLUS 环境变量/Token 是否有效，消息已留档: {push_file}")
         except Exception as e:
-            print(f"⚠️ 推送失败: {e}")
+            print(f"❌ 微信推送失败(异常): {type(e).__name__}: {e}")
+            print("   请检查 PUSHPLUS 环境变量与网络连通性（https://www.pushplus.plus/send）")
 
 
 if __name__ == "__main__":

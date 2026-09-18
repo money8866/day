@@ -379,6 +379,24 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
                                             'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1)},
                                            **{k: getattr(e, k, None) for k in _track_extra})
                                       for e in _kept]
+        # 第一梯队（PRIMARY_BUY 结构层）独立落库源：与报告「★ 第一梯队重点解读」同源池，
+        # 供 stock_pick_db strategy_id=hvt_bull_fe 跟踪；与 te 执行池互补
+        # （本池看"结构是否成立"，te 池看"明天能否下单"，两池无交集为常态）
+        # 排序与报告保持一致（FE 降序，FE 相同按 ENTRY 降序），确保 DB rank_no 与报告顺序对齐
+        _fe_pool = [e for e in events if e.state == 'PRIMARY_BUY' and not e.hard_veto]
+        _fe_pool = sorted(_fe_pool, key=lambda e: (-getattr(e, 'fe_score', 0.0),
+                                                   -getattr(e, 'entry_score', 0.0)))
+        result['first_echelon_pool'] = [
+            dict({'ts_code': e.ts_code, 'name': e.name,
+                  'next_day_action': getattr(e, 'next_day_action', ''),
+                  'execution_state': getattr(e, 'execution_state', '') or '',
+                  'te_decision_point': getattr(e, 'te_decision_point', '') or '',
+                  'execution_score': round(float(getattr(e, 'execution_score', 0.0) or 0.0), 1),
+                  'entry_score': round(float(getattr(e, 'entry_score', 0.0) or 0.0), 1),
+                  'expansion_score': round(float(getattr(e, 'expansion_score', 0.0) or 0.0), 1),
+                  'fe_score': round(float(getattr(e, 'fe_score', 0.0) or 0.0), 1)},
+                 **{k: getattr(e, k, None) for k in _track_extra})
+            for e in _fe_pool]
     with open(os.path.join(out_dir, f'hvt_bull_{trade_date}.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=str)
 

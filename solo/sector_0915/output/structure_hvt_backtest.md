@@ -105,3 +105,27 @@
 | 0-60 | T+20 | 20316 | 0.47% | 1.28% | 54.19% |
 
 > 分层区间只用于观察，不得事后选择最有效区间作为正式阈值。
+
+## 4. Robustness（§五十）
+
+- 抽样 300 只股票；观察对象 HVT_POOL(HVT_LOCKING,HVT_REBREAKOUT)，持有期 T+20；最小样本量 20
+- 基准池均收益 -18.85%（n=8）；全候选基准均收益 -1.39%（n=2601）
+- 判定：轻微扰动后池均收益方向反转 → OVERFIT_RISK = NONE（方向反转 0 / 12）
+
+| perturbation | path | n_base | n_pert | mean_base | mean_pert | diff | sign_flip | status |
+|---|---|---|---|---|---|---|---|---|
+| structure_threshold_-5 | qualification.qualified_structure_quality_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| structure_threshold_+5 | qualification.qualified_structure_quality_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| conditional_threshold_-5 | qualification.conditional_structure_quality_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| conditional_threshold_+5 | qualification.conditional_structure_quality_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| hvt_volume_-10pct | hvt.prefilter_tratio_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| hvt_volume_+10pct | hvt.prefilter_tratio_min | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| consolidation_window_-3 | consolidation.max_days | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| consolidation_window_+3 | consolidation.max_days | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| breakout_window_-3 | breakout.lookback_days | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| breakout_window_+3 | breakout.lookback_days | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| extension_threshold_-5pct | extension.dist_ma20_ref | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+| extension_threshold_+5pct | extension.dist_ma20_ref | 8 | 8 | -18.85% | -18.85% | 0.00% | NO | STABLE |
+
+- 方向反转项：0 / 12
+- **OVERFIT_RISK = NONE**

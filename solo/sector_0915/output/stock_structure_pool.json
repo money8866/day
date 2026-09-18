@@ -1,6 +1,6 @@
 {
   "pool_type": "STRUCTURE_POOL_NOT_BUY_POOL",
-  "trade_date": "20260916",
+  "trade_date": "20260917",
   "notice": "结构池仅表示结构状态，不代表买入建议；执行判断属于 Step 7。",
   "pool_name": "STRUCTURE_POOL",
   "qualifications": [
@@ -9,12 +9,42 @@
   ],
   "stocks": [
     {
+      "ts_code": "688395.SH",
+      "name": "正弦电气",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
       "ts_code": "688002.SH",
       "name": "睿创微纳",
       "structure_state": "LOCKING",
       "structure_class": "HVT_LOCKING",
       "structure_quality": 79.5,
       "hvt_state": "HVT_LOCKING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "002516.SZ",
+      "name": "旷达科技",
+      "structure_state": "LOCKING",
+      "structure_class": "HVT_LOCKING",
+      "structure_quality": 78.5,
+      "hvt_state": "HVT_LOCKING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "001268.SZ",
+      "name": "联合精密",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_ADJUSTING",
       "extension_risk": "LOW",
       "qualification": "QUALIFIED"
     },
@@ -29,8 +59,48 @@
       "qualification": "QUALIFIED"
     },
     {
+      "ts_code": "300563.SZ",
+      "name": "神宇股份",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "600104.SH",
+      "name": "上汽集团",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
       "ts_code": "688601.SH",
       "name": "力芯微",
+      "structure_state": "LOCKING",
+      "structure_class": "HVT_LOCKING",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_LOCKING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "002832.SZ",
+      "name": "比音勒芬",
+      "structure_state": "BREAKOUT_READY",
+      "structure_class": "BREAKOUT_READY",
+      "structure_quality": 74.66830369519583,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "301086.SZ",
+      "name": "鸿富瀚",
       "structure_state": "LOCKING",
       "structure_class": "HVT_LOCKING",
       "structure_quality": 74.0,
@@ -39,8 +109,178 @@
       "qualification": "QUALIFIED"
     },
     {
+      "ts_code": "688678.SH",
+      "name": "福立旺",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "301234.SZ",
+      "name": "五洲医疗",
+      "structure_state": "LOCKING",
+      "structure_class": "HVT_LOCKING",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_LOCKING",
+      "extension_risk": "LOW",
+      "qualification": "QUALIFIED"
+    },
+    {
+      "ts_code": "600177.SH",
+      "name": "雅戈尔",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 86.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603055.SH",
+      "name": "台华新材",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 85.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002363.SZ",
+      "name": "隆基机械",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002394.SZ",
+      "name": "联发股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002676.SZ",
+      "name": "顺威股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002813.SZ",
+      "name": "路畅科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300032.SZ",
+      "name": "金龙机电",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300281.SZ",
+      "name": "金明精机",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300787.SZ",
+      "name": "海能实业",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300988.SZ",
+      "name": "津荣天宇",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301119.SZ",
+      "name": "正强股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301285.SZ",
+      "name": "鸿日达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603803.SH",
+      "name": "瑞斯康达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688215.SH",
+      "name": "瑞晟智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
       "ts_code": "688252.SH",
       "name": "天德钰",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 83.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000581.SZ",
+      "name": "威孚高科",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
       "structure_quality": 82.5,
@@ -49,11 +289,481 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "301629.SZ",
-      "name": "矽电股份",
+      "ts_code": "000801.SZ",
+      "name": "四川九洲",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002098.SZ",
+      "name": "浔兴股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300611.SZ",
+      "name": "美力科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300845.SZ",
+      "name": "捷安高科",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "601599.SH",
+      "name": "浙文影业",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603088.SH",
+      "name": "宁波精达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603172.SH",
+      "name": "万丰股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603855.SH",
+      "name": "华荣股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "605003.SH",
+      "name": "众望布艺",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688330.SH",
+      "name": "宏力达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 82.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000333.SZ",
+      "name": "美的集团",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 80.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002590.SZ",
+      "name": "万安科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 80.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300969.SZ",
+      "name": "恒帅股份",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
       "structure_quality": 79.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300249.SZ",
+      "name": "依米康",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 78.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002337.SZ",
+      "name": "赛象科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002551.SZ",
+      "name": "尚荣医疗",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300160.SZ",
+      "name": "秀强股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300213.SZ",
+      "name": "佳讯飞鸿",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300275.SZ",
+      "name": "梅安森",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300521.SZ",
+      "name": "爱司凯",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300549.SZ",
+      "name": "优德精密",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300560.SZ",
+      "name": "中富通",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300597.SZ",
+      "name": "吉大通信",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300645.SZ",
+      "name": "正元智慧",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300691.SZ",
+      "name": "联合光电",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300793.SZ",
+      "name": "佳禾智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301135.SZ",
+      "name": "瑞德智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301181.SZ",
+      "name": "标榜股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301578.SZ",
+      "name": "辰奕智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600232.SH",
+      "name": "金鹰股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600493.SH",
+      "name": "凤竹纺织",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600527.SH",
+      "name": "江南高纤",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603273.SH",
+      "name": "天元智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603768.SH",
+      "name": "常青股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 77.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603980.SH",
+      "name": "吉华集团",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 77.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001285.SZ",
+      "name": "瑞立科密",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002022.SZ",
+      "name": "科华生物",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002042.SZ",
+      "name": "华孚时尚",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002073.SZ",
+      "name": "软控股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002523.SZ",
+      "name": "天桥起重",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002530.SZ",
+      "name": "金财互联",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002536.SZ",
+      "name": "飞龙股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002583.SZ",
+      "name": "海能达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002690.SZ",
+      "name": "美亚光电",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002722.SZ",
+      "name": "物产金轮",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300128.SZ",
+      "name": "锦富技术",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300375.SZ",
+      "name": "鹏翎股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300428.SZ",
+      "name": "立中集团",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
@@ -63,7 +773,517 @@
       "name": "赛微电子",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
-      "structure_quality": 77.5,
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300457.SZ",
+      "name": "赢合科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300479.SZ",
+      "name": "神思电子",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300509.SZ",
+      "name": "新美星",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300551.SZ",
+      "name": "古鳌科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300698.SZ",
+      "name": "万马科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300710.SZ",
+      "name": "万隆光电",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300833.SZ",
+      "name": "浩洋股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301088.SZ",
+      "name": "戎美股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301105.SZ",
+      "name": "鸿铭股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301173.SZ",
+      "name": "毓恬冠佳",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301202.SZ",
+      "name": "朗威股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301598.SZ",
+      "name": "博科测试",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600178.SH",
+      "name": "东安动力",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600218.SH",
+      "name": "全柴动力",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600444.SH",
+      "name": "国机通用",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600523.SH",
+      "name": "贵航股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603356.SH",
+      "name": "华菱精工",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603586.SH",
+      "name": "金麒麟",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "605180.SH",
+      "name": "华生科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688455.SH",
+      "name": "科捷智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 76.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001360.SZ",
+      "name": "南矿集团",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001380.SZ",
+      "name": "华纬科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002194.SZ",
+      "name": "武汉凡谷",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002265.SZ",
+      "name": "建设工业",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002296.SZ",
+      "name": "辉煌科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002564.SZ",
+      "name": "天沃科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002835.SZ",
+      "name": "同为股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002925.SZ",
+      "name": "盈趣科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "003016.SZ",
+      "name": "欣贺股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300504.SZ",
+      "name": "天邑股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300512.SZ",
+      "name": "中亚股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300757.SZ",
+      "name": "罗博特科",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300998.SZ",
+      "name": "宁波方正",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301056.SZ",
+      "name": "森赫股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301252.SZ",
+      "name": "同星科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301279.SZ",
+      "name": "金道科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301320.SZ",
+      "name": "豪江智能",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301330.SZ",
+      "name": "熵基科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301380.SZ",
+      "name": "挖金客",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301529.SZ",
+      "name": "福赛科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301680.SZ",
+      "name": "固德电材",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600081.SH",
+      "name": "东风科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600742.SH",
+      "name": "富维股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600776.SH",
+      "name": "东方通信",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603205.SH",
+      "name": "健尔康",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603355.SH",
+      "name": "莱克电气",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603583.SH",
+      "name": "捷昌驱动",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603917.SH",
+      "name": "合力科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603926.SH",
+      "name": "铁流股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "605277.SH",
+      "name": "新亚电子",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688061.SH",
+      "name": "灿瑞科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
@@ -71,6 +1291,26 @@
     {
       "ts_code": "688167.SH",
       "name": "炬光科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688559.SH",
+      "name": "海目星",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 76.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688656.SH",
+      "name": "浩欧博",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 76.0,
@@ -99,8 +1339,258 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688061.SH",
-      "name": "灿瑞科技",
+      "ts_code": "002339.SZ",
+      "name": "积成电子",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002779.SZ",
+      "name": "中坚科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300095.SZ",
+      "name": "华伍股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301585.SZ",
+      "name": "蓝宇股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301589.SZ",
+      "name": "诺瓦星云",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 75.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002045.SZ",
+      "name": "国光电器",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 74.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002660.SZ",
+      "name": "茂硕电源",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 74.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688426.SH",
+      "name": "康为世纪",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 74.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001319.SZ",
+      "name": "铭科精技",
+      "structure_state": "ADJUSTING",
+      "structure_class": "HVT_ADJUSTING",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002870.SZ",
+      "name": "香山股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300394.SZ",
+      "name": "天孚通信",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300499.SZ",
+      "name": "高澜股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300548.SZ",
+      "name": "长芯博创",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300570.SZ",
+      "name": "太辰光",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300843.SZ",
+      "name": "胜蓝股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301067.SZ",
+      "name": "显盈科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301138.SZ",
+      "name": "华研精机",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301312.SZ",
+      "name": "智立方",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301550.SZ",
+      "name": "斯菱智驱",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600690.SH",
+      "name": "海尔智家",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "601869.SH",
+      "name": "长飞光纤",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603083.SH",
+      "name": "剑桥科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603236.SH",
+      "name": "移远通信",
+      "structure_state": "HVT",
+      "structure_class": "HVT_EVENT",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_EVENT",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603578.SH",
+      "name": "三星新材",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688205.SH",
+      "name": "德科立",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 74.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688313.SH",
+      "name": "仕佳光子",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 74.0,
@@ -119,11 +1609,131 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "300672.SZ",
-      "name": "国科微",
+      "ts_code": "688668.SH",
+      "name": "鼎通科技",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
-      "structure_quality": 73.36422828538029,
+      "structure_quality": 73.56927126627876,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301348.SZ",
+      "name": "蓝箭电子",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 73.45277226787567,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002005.SZ",
+      "name": "德豪润达",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 73.44821872410938,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300171.SZ",
+      "name": "东富龙",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 73.19213527333403,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000726.SZ",
+      "name": "鲁泰A",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001234.SZ",
+      "name": "泰慕士",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002510.SZ",
+      "name": "天汽模",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300279.SZ",
+      "name": "和晶科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300950.SZ",
+      "name": "德固特",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600626.SH",
+      "name": "申达股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "601279.SH",
+      "name": "英利汽车",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603982.SH",
+      "name": "泉峰汽车",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 73.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301179.SZ",
+      "name": "泽宇智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 72.90306578033533,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
@@ -131,6 +1741,46 @@
     {
       "ts_code": "300327.SZ",
       "name": "中颖电子",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301123.SZ",
+      "name": "奕东电子",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301280.SZ",
+      "name": "珠城科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301389.SZ",
+      "name": "隆扬电子",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603608.SH",
+      "name": "天创时尚",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 71.5,
@@ -149,21 +1799,91 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688230.SH",
-      "name": "芯导科技",
+      "ts_code": "000070.SZ",
+      "name": "特发信息",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
-      "structure_quality": 71.5,
+      "structure_quality": 71.0,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688279.SH",
-      "name": "峰岹科技",
+      "ts_code": "000572.SZ",
+      "name": "海马汽车",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
-      "structure_quality": 71.5,
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600609.SH",
+      "name": "金杯汽车",
+      "structure_state": "HVT",
+      "structure_class": "HVT_EVENT",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_EVENT",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603042.SH",
+      "name": "华脉科技",
+      "structure_state": "HVT",
+      "structure_class": "HVT_EVENT",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_EVENT",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603266.SH",
+      "name": "天龙股份",
+      "structure_state": "HVT",
+      "structure_class": "HVT_EVENT",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_EVENT",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603558.SH",
+      "name": "健盛集团",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688292.SH",
+      "name": "浩瀚深度",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 71.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300921.SZ",
+      "name": "南凌科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301161.SZ",
+      "name": "唯万密封",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.5,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
@@ -173,14 +1893,384 @@
       "name": "汇顶科技",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603286.SH",
+      "name": "日盈电子",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "605088.SH",
+      "name": "冠盛股份",
+      "structure_state": "HVT",
+      "structure_class": "HVT_EVENT",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_EVENT",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688230.SH",
+      "name": "芯导科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000839.SZ",
+      "name": "国安股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000850.SZ",
+      "name": "华茂股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000856.SZ",
+      "name": "冀东装备",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002239.SZ",
+      "name": "奥特佳",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300099.SZ",
+      "name": "尤洛卡",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300220.SZ",
+      "name": "金运激光",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300368.SZ",
+      "name": "汇金股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300513.SZ",
+      "name": "恒实科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300677.SZ",
+      "name": "英科医疗",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300877.SZ",
+      "name": "金春股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300884.SZ",
+      "name": "狄耐克",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301539.SZ",
+      "name": "宏鑫科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600148.SH",
+      "name": "长春一东",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600336.SH",
+      "name": "澳柯玛",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600501.SH",
+      "name": "航天晨光",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600579.SH",
+      "name": "中化装备",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "601566.SH",
+      "name": "九牧王",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603391.SH",
+      "name": "力聚热能",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603677.SH",
+      "name": "奇精机械",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603908.SH",
+      "name": "牧高笛",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688067.SH",
+      "name": "爱威科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688329.SH",
+      "name": "艾隆科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 70.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603656.SH",
+      "name": "泰禾智能",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 69.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002837.SZ",
+      "name": "英维克",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
       "structure_quality": 69.5,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688785.SH",
-      "name": "恒运昌",
+      "ts_code": "002897.SZ",
+      "name": "意华股份",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300049.SZ",
+      "name": "福瑞医科",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301087.SZ",
+      "name": "可孚医疗",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301128.SZ",
+      "name": "强瑞技术",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301606.SZ",
+      "name": "绿联科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301626.SZ",
+      "name": "苏州天脉",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301629.SZ",
+      "name": "矽电股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688048.SH",
+      "name": "长光华芯",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688248.SH",
+      "name": "南网科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688383.SH",
+      "name": "新益昌",
+      "structure_state": "ADJUSTING",
+      "structure_class": "HVT_ADJUSTING",
+      "structure_quality": 69.5,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688605.SH",
+      "name": "先锋精科",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 69.5,
@@ -199,18 +2289,368 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "301348.SZ",
-      "name": "蓝箭电子",
+      "ts_code": "000816.SZ",
+      "name": "智慧农业",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
-      "structure_quality": 67.34968350679215,
+      "structure_quality": 69.0,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "300661.SZ",
-      "name": "圣邦股份",
+      "ts_code": "000852.SZ",
+      "name": "石化机械",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002104.SZ",
+      "name": "恒宝股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002190.SZ",
+      "name": "成飞集成",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002209.SZ",
+      "name": "达意隆",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002369.SZ",
+      "name": "卓翼科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002703.SZ",
+      "name": "浙江世宝",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300103.SZ",
+      "name": "达刚控股",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300107.SZ",
+      "name": "建新股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300155.SZ",
+      "name": "安居宝",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300256.SZ",
+      "name": "星星科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300760.SZ",
+      "name": "迈瑞医疗",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300798.SZ",
+      "name": "锦鸡股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300941.SZ",
+      "name": "创识科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600262.SH",
+      "name": "北方股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603081.SH",
+      "name": "大丰实业",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 69.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002204.SZ",
+      "name": "大连重工",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 68.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002780.SZ",
+      "name": "三夫户外",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301398.SZ",
+      "name": "星源卓镁",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 68.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688575.SH",
+      "name": "亚辉龙",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688581.SH",
+      "name": "安杰思",
+      "structure_state": "BREAKOUT_READY",
+      "structure_class": "BREAKOUT_READY",
+      "structure_quality": 68.45244074116351,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002454.SZ",
+      "name": "松芝股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002960.SZ",
+      "name": "青鸟智控",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301318.SZ",
+      "name": "维海德",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600560.SH",
+      "name": "金自天正",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688080.SH",
+      "name": "映翰通",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 68.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300918.SZ",
+      "name": "南山智尚",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 67.84366704588551,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002241.SZ",
+      "name": "歌尔股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 67.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600960.SH",
+      "name": "渤海汽车",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 67.12779156327541,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002355.SZ",
+      "name": "兴民智通",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 67.06239703459634,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002021.SZ",
+      "name": "中捷资源",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 67.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300183.SZ",
+      "name": "东软载波",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 67.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301007.SZ",
+      "name": "德迈仕",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 67.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "601956.SH",
+      "name": "东贝集团",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 67.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688060.SH",
+      "name": "云涌科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 67.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300784.SZ",
+      "name": "利安科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.95659561970473,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "000625.SZ",
+      "name": "长安汽车",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
       "structure_quality": 66.75,
@@ -219,8 +2659,8 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688325.SH",
-      "name": "赛微微电",
+      "ts_code": "000678.SZ",
+      "name": "襄阳轴承",
       "structure_state": "BASE",
       "structure_class": "STRUCTURE_BASE",
       "structure_quality": 66.75,
@@ -229,8 +2669,78 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688332.SH",
-      "name": "中科蓝讯",
+      "ts_code": "002139.SZ",
+      "name": "拓邦股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002223.SZ",
+      "name": "鱼跃医疗",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002792.SZ",
+      "name": "通宇通讯",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300620.SZ",
+      "name": "光库科技",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301165.SZ",
+      "name": "锐捷网络",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301199.SZ",
+      "name": "迈赫股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301446.SZ",
+      "name": "福事特",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.75,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002017.SZ",
+      "name": "东信和平",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 66.5,
@@ -239,15 +2749,315 @@
       "qualification": "CONDITIONAL"
     },
     {
-      "ts_code": "688419.SH",
-      "name": "耐科装备",
+      "ts_code": "002278.SZ",
+      "name": "神开股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002537.SZ",
+      "name": "海联金汇",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002553.SZ",
+      "name": "南方精工",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002681.SZ",
+      "name": "奋达科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002730.SZ",
+      "name": "电光科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300588.SZ",
+      "name": "熙菱信息",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300689.SZ",
+      "name": "澄天伟业",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300756.SZ",
+      "name": "金马游乐",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301066.SZ",
+      "name": "万事利",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301205.SZ",
+      "name": "联特科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600105.SH",
+      "name": "永鼎股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603158.SH",
+      "name": "腾龙股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688279.SH",
+      "name": "峰岹科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688785.SH",
+      "name": "恒运昌",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603666.SH",
+      "name": "亿嘉和",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.40832593507544,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603701.SH",
+      "name": "德宏股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.3235712110446,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688416.SH",
+      "name": "恒烁股份",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.05486466715438,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "600582.SH",
+      "name": "天地科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 66.00000000000006,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002382.SZ",
+      "name": "蓝帆医疗",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300471.SZ",
+      "name": "厚普股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 66.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001239.SZ",
+      "name": "永达股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 65.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002662.SZ",
+      "name": "峰璟股份",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 65.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300648.SZ",
+      "name": "星云股份",
       "structure_state": "WATCH",
       "structure_class": "WATCH",
       "structure_quality": 65.5,
       "hvt_state": "HVT_NONE",
       "extension_risk": "LOW",
       "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "301607.SZ",
+      "name": "富特科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 65.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "688595.SH",
+      "name": "芯海科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 65.5,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300619.SZ",
+      "name": "金银河",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 65.29291154071466,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "002101.SZ",
+      "name": "广东鸿图",
+      "structure_state": "BASE",
+      "structure_class": "STRUCTURE_BASE",
+      "structure_quality": 65.07146532502428,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "001223.SZ",
+      "name": "欧克科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 65.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "300913.SZ",
+      "name": "兆龙互连",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 65.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603421.SH",
+      "name": "鼎信通讯",
+      "structure_state": "ADJUSTING",
+      "structure_class": "PULLBACK_HEALTHY",
+      "structure_quality": 65.0,
+      "hvt_state": "HVT_ADJUSTING",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
+    },
+    {
+      "ts_code": "603626.SH",
+      "name": "科森科技",
+      "structure_state": "WATCH",
+      "structure_class": "WATCH",
+      "structure_quality": 65.0,
+      "hvt_state": "HVT_NONE",
+      "extension_risk": "LOW",
+      "qualification": "CONDITIONAL"
     }
   ],
-  "count": 24
+  "count": 305
 }
