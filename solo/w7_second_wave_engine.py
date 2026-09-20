@@ -43,15 +43,18 @@ RETEST_MA20_K = 0.97  # 回踩不破：现价 ≥ MA20 ×0.97
 RETEST_MAX_AGE = 15  # 回踩结构新鲜度：放量突破日距当日 ≤15 根（更早的突破已非“回踩位附近”）
 RETEST_MAX_EXT = 1.10  # 不追高：现价 ≤ 突破日收盘 ×1.10（回踩位附近低吸；已拉开则转由突破/二波分支处理）
 RETEST_PULLBACK = 0.95  # 须真实回踩：突破日前最低 ≤ T0 收盘 ×0.95（排除 T0 后单边直上的加速股）
-# V5.2 质量过滤（依据 20260825~20260917 全量跟踪 317 条 w7_hvt 样本分层验证）：
-#   ① state∈{BREAKOUT_CONFIRM, SECOND_WAVE, RE_EXPANSION}：n=108 均值 -2.40%
-#      （BREAKOUT_CONFIRM -1.74%/胜率37.2%、SECOND_WAVE -5.50%/13.3%、RE_EXPANSION -3.83%/0%）
-#   ② type=CORE（涨幅<80%，等价 level L1/L2）：n=124 均值 -2.13% 胜率 32.3%
-#   ③ 选股日量比 >1.43（放量追高）：n=79 均值 -2.86% 胜率 30.4%；反向 <0.66 缩量 n=80 均值 +5.18%/胜率 63.7%
-# 三条同时生效后 317→141 条（44%），均值 +0.81%→+4.66%，胜率 45.4%→61.0%，止损率 37.9%→27.7%；
-# 按 9 个选股日逐一复核：8 个批次改善、1 个持平（0915 +3.75%→+3.56%），无一批次劣化。
+# V5.2 质量过滤（20260919 按跟踪库 stock_pick_db 内 360 条 w7_hvt 样本重新复核，T+3 口径）：
+#   ① state∈{BREAKOUT_CONFIRM, SECOND_WAVE, RE_EXPANSION}：库内 +1.26%/-0.29%/-0.53%，
+#      与旧注释的 -1.74%/-5.50%/-3.83% 不符（旧验证样本含 0831~0908 等未落库交易日）；
+#      且限定量比后本条零增量（放量突破类状态量比天然≥1），保留作防御。
+#   ② type=CORE（涨幅<80%，等价 level L1/L2）：排除后 T+3 +2.23%→+2.78%（205→147 条），有效。
+#   ③ 选股日量比分档 T+3：<0.66 +3.36%/胜72%(n=81)｜0.66~1.0 +1.31%/54%(n=99)
+#      ｜1.0~1.43 -0.13%/35%(n=62)｜>1.43 +0.74%/52%(n=80)；最差档是 1.0~1.43 而非 >1.43，
+#      故阈值由 1.43 收到 0.66，只保留缩量低吸。
+# 三条同时生效后 360→60 条（17%，均 5 条/日），T+3 +1.41%→+4.36%、胜率 54%→79%，
+# 5日 +0.76%→+1.87%，止损率 39%→24%。代价：可操作榜变短（0827 仅 1 只、0828 2 只）。
 W7_EXCLUDE_STATES = ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")
-W7_VOLR_MAX = 1.43  # 选股日量比上限（超过=放量追高）
+W7_VOLR_MAX = 0.66  # 选股日量比上限（只留缩量低吸；1.0~1.43 档实测最差）
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
 
@@ -1288,13 +1291,13 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
 def w7_quality_gate(x):
     """V5.2 质量过滤：判断当日买点标的是否进入「今日可操作榜」与跟踪表。
     返回 (是否通过, 未通过原因)。仅对 ACTION_BUY_STATES 内的标的做二次筛选，
-    三条依据见文件头 W7_EXCLUDE_STATES / W7_VOLR_MAX 注释（样本内均值由负转正）。"""
+    三条依据见文件头 W7_EXCLUDE_STATES / W7_VOLR_MAX 注释（20260919 按跟踪库复核定阈值）。"""
     if x.get("state") in W7_EXCLUDE_STATES:
-        return False, f"状态{x['state']}历史弱（样本均值-2.40%）"
+        return False, f"状态{x['state']}历史弱（库内 T+3 -0.29%~+1.26%）"
     if x.get("type") == "CORE":
-        return False, f"CORE低位型（涨幅{x.get('extension', 0) * 100:.0f}%<80%，样本均值-2.13%/胜率32.3%）"
+        return False, f"CORE低位型（涨幅{x.get('extension', 0) * 100:.0f}%<80%，排除后 T+3 +2.23%→+2.78%）"
     if finite(x.get("volr"), 0.0) > W7_VOLR_MAX:
-        return False, f"选股日放量×{x['volr']:.1f}>{W7_VOLR_MAX:g}（追高，样本均值-2.86%）"
+        return False, f"选股日量比×{x['volr']:.1f}>{W7_VOLR_MAX:g}（非缩量低吸，1.0~1.43档 T+3 -0.13%/胜率35%）"
     return True, ""
 
 
@@ -1337,8 +1340,8 @@ def markdown(results, date):
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进 A/B 榜）")
     lines.append(f"今日可操作（当日买点）＝ {n_action} 只：二波/突破确认/重新扩张/T0天量确认/放量突破后缩量回踩；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
     lines.append(f"V5.2 质量过滤：当日买点原始 {len(_buy_signal)} 只 → 通过 {n_action} 只、过滤 {n_gated} 只"
-                 f"（剔除 BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION、CORE低位型涨幅<80%、选股日量比>{W7_VOLR_MAX:g}的追高票；"
-                 f"样本内 317→141 条，均值 +0.81%→+4.66%，胜率 45.4%→61.0%）。被过滤标的见文末「过滤观察」。")
+                 f"（剔除 BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION、CORE低位型涨幅<80%、选股日量比>{W7_VOLR_MAX:g}的非缩量票；"
+                 f"库内 360 条回测：360→60 条，T+3 均值 +1.41%→+4.36%、胜率 54%→79%，止损率 39%→24%）。被过滤标的见文末「过滤观察」。")
     cnt_state = {}
     for x in results:
         cnt_state[x["state"]] = cnt_state.get(x["state"], 0) + 1
@@ -1349,14 +1352,14 @@ def markdown(results, date):
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位），放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方（BREAKOUT_RETEST 例外：跌破 MA20 或放量突破日低点才算失效）；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
-        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 IGE_ADJ 高弹性行业优先（降序）重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 选股日量比升序（缩量优先）、同级按 IGE_ADJ 降序重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
         lines.append("")
     # 今日可操作榜（唯一逐只可执行榜；现价>触发价=已突破在上方）
-    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按 IGE_ADJ 高弹性降序/同级按总分降序）\n")
+    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按选股日量比升序(缩量优先)/同级按 IGE_ADJ 降序）\n")
     if actionable:
         lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
         lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
-        for k, x in enumerate(sorted(actionable, key=lambda y: (_ige_adj(y), y["score"]), reverse=True), 1):
+        for k, x in enumerate(sorted(actionable, key=lambda y: (finite(y.get("volr"), 0.0), -_ige_adj(y))), 1):
             lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
         lines.append("")
@@ -1429,7 +1432,7 @@ def sync_downstream(date, results, output):
     # V5.2 质量过滤：与报告「今日可操作榜」同口径，被拦下的标的既不落跟踪表也不进下游 JSON
     n_before = len(actionable)
     actionable = [x for x in actionable if w7_quality_gate(x)[0]]
-    actionable.sort(key=lambda y: (_ige(y), y["score"]), reverse=True)
+    actionable.sort(key=lambda y: (finite(y.get("volr"), 0.0), -_ige(y)))
     if n_before != len(actionable):
         print(f"[w7] V5.2 质量过滤: {n_before} → {len(actionable)} 只（拦下 {n_before - len(actionable)} 只）", flush=True)
     act_cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",

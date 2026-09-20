@@ -110,6 +110,56 @@ SINA_INDEX_CODES = {
 # 放量确认往往是主升已在确认日前走完（如 9/16 福龙马 volr=3.7），故仅降级标注、不剔除。
 FOX_T0_DRY_VOLR = 0.8
 
+# ── 全市场成交量预测：日内累计成交额占比曲线 ──
+# A股两市成交额日内呈 U 型分布(早盘抢筹、午后清淡、尾盘放量)。
+# 键 = 开盘后已交易分钟数(跳过 11:30~13:00 午休, 全天 240 分钟), 值 = 该时点累计成交额占全天比例。
+# 开盘 0 分钟取 2%(集合竞价已成交部分)。用法: 预测全天成交额 = 当前累计成交额 ÷ 插值占比。
+MARKET_AMOUNT_PROGRESS = (
+    (0, 0.020), (15, 0.090), (30, 0.190), (45, 0.260), (60, 0.330),
+    (75, 0.380), (90, 0.450), (105, 0.505), (120, 0.550),
+    (135, 0.605), (150, 0.655), (165, 0.700), (180, 0.750),
+    (195, 0.805), (210, 0.860), (225, 0.930), (240, 1.000),
+)
+# 预测全天成交额 ÷ 基准成交额 的分档阈值(降序匹配)
+MARKET_AMOUNT_LEVELS = (
+    (1.25, '显著放量'),
+    (1.10, '温和放量'),
+    (0.90, '量能持平'),
+    (0.75, '缩量'),
+    (0.00, '显著缩量'),
+)
+# 基准取近 N 个交易日均值(不含当日, 避免用盘中不完整值当基准)
+MARKET_AMOUNT_BASE_DAYS = 5
+# 开盘不足该分钟数时曲线斜率过大、外推不可靠, 不出预测
+MARKET_AMOUNT_MIN_MINUTES = 5
+# 量能因子参与评分/仓位时要求的最小已交易分钟数(比展示更严格, 避免早盘外推误差扰动分数)
+MARKET_AMOUNT_MIN_MINUTES_SCORE = 30
+
+
+def elapsed_trade_minutes(now):
+    """当日开盘后已完成的交易分钟数(0~240), 午休 11:30~13:00 不计入"""
+    m = now.hour * 60 + now.minute + now.second / 60.0
+    if m <= 9 * 60 + 30:
+        return 0.0
+    if m <= 11 * 60 + 30:
+        return m - (9 * 60 + 30)
+    if m <= 13 * 60:
+        return 120.0
+    if m <= 15 * 60:
+        return 120.0 + (m - 13 * 60)
+    return 240.0
+
+
+def intraday_amount_progress(minutes):
+    """按 U 型经验曲线线性插值出该时点的累计成交额占比(0~1)"""
+    pts = MARKET_AMOUNT_PROGRESS
+    if minutes <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if minutes <= x1:
+            return y1 if x1 == x0 else y0 + (y1 - y0) * (minutes - x0) / (x1 - x0)
+    return pts[-1][1]
+
 
 class RealtimeThemeMonitor:
     def __init__(self):
@@ -121,6 +171,8 @@ class RealtimeThemeMonitor:
         self.quotes = {}            # ts_code -> {price, pct_chg, amount, vol}
         self.prev_quotes = {}       # 上一分钟快照
         self.index_quotes_cache = {}  # 三大指数实时行情 name -> {pct_chg,...}
+        self.market_amount_cache = {}      # 当日两市累计成交额 {'amount': 元, 'updated': 时间戳}
+        self._amount_baseline_cache = {}   # 近N日成交额基准缓存(每日算一次)
 
         # ── 主题数据 ──
         self.theme_stocks = {}      # theme_name -> [(ts_code, name, layer)]
@@ -1417,6 +1469,8 @@ class RealtimeThemeMonitor:
             'position_range': pos_range,
             # 赚钱效应惩罚信息(若有): {reason, original_pos, zt_count, dt_count, up_ratio, down_ratio}
             'penalty_info': getattr(self, '_last_penalty_info', None),
+            # 量能修正信息(若有): {ratio, level, adj, reason, pred_yi}
+            'volume_adjust': getattr(self, '_volume_adj_info', None),
         }
         self._last_report = report
         return report
@@ -1516,6 +1570,38 @@ class RealtimeThemeMonitor:
         if penalty_info:
             penalty_line = f"\n⚠️ 空仓警示: {penalty_info['reason']} (原建议{penalty_info['original_pos']}%→{pos}%)"
 
+        # 全市场成交量预测因子(展示 + 量价配合定性判定)
+        # 盘中成交量呈 U 型分布, 用累计额 ÷ 时点占比外推全天, 再与近5日均量比大小
+        # 注:该因子的数值修正部分见 calculate_total_market_score 的"量能修正", 此处仅展示
+        vol_line = ""
+        try:
+            amt = self.predict_market_amount()
+        except Exception:
+            amt = None
+        if amt:
+            level = amt['level']
+            if level in ('显著放量', '温和放量'):
+                quant = '量能配合上涨, 多头承接积极' if up_ratio >= 50 else '放量下跌, 抛压偏重'
+            elif level in ('缩量', '显著缩量'):
+                quant = '缩量上涨, 量价背离' if up_ratio >= 50 else '缩量下跌, 观望情绪浓'
+            else:
+                quant = '量能与近期基本相当'
+            ratio_txt = ""
+            if amt['ratio'] is not None:
+                ratio_txt = f" 较{amt['base_days']}日均量{amt['ratio'] - 1:+.0%}"
+            vol_line = (
+                f"\n💰 成交量: 累计{amt['cum_yi']:.0f}亿 → 预测全天{amt['pred_yi']:.0f}亿"
+                f"{ratio_txt} 【{level}】"
+                f"\n   量价: {quant}"
+            )
+
+        # 量能修正信息:实际参与评分/仓位的那部分(见 calculate_total_market_score)
+        vol_adj_line = ""
+        vol_adj = report.get('volume_adjust')
+        if vol_adj:
+            vol_adj_line = (f"\n📐 量能修正: {vol_adj['reason']}(量比{vol_adj['ratio']:.2f})"
+                            f" 评分{vol_adj['adj']:+d}")
+
         # 1) 过热/强势信号
         if ts >= 85 and up_ratio > 70:
             msg = f"🔥🔥【{status}】趋势总评分{ts:.0f} 建议仓位{pos}%\n"
@@ -1558,6 +1644,14 @@ class RealtimeThemeMonitor:
             msg += yesterday_summary
             msg += penalty_line
             alerts.append({'type': 'market_neutral', 'msg': msg})
+
+        # 成交量因子统一附加到各档预警
+        if vol_line:
+            for a in alerts:
+                a['msg'] += vol_line
+        if vol_adj_line:
+            for a in alerts:
+                a['msg'] += vol_adj_line
 
         if alerts:
             self.last_market_alert = now_ts                   
@@ -2130,15 +2224,28 @@ class RealtimeThemeMonitor:
                 for host in ('push2', '82.push2', '92.push2'):
                     try:
                         url = (f"https://{host}.eastmoney.com/api/qt/ulist.np/get"
-                               "?fltt=2&invt=2&fields=f104,f105,f106,f12,f14"
+                               "?fltt=2&invt=2&fields=f104,f105,f106,f12,f14,f6"
                                "&secids=1.000001,0.399001")
                         diff = ((requests.get(url, headers=headers, timeout=10)
                                  .json().get('data') or {}).get('diff')) or []
                         up = sum(_num(it.get('f104')) for it in diff)
                         down = sum(_num(it.get('f105')) for it in diff)
                         flat = sum(_num(it.get('f106')) for it in diff)
+                        # f6 = 成交额(元), 沪市 + 深市 = 当日两市累计成交额
+                        # 顺带刷新成交量预测的输入(零额外请求), 供情绪预警使用
+                        amount = 0.0
+                        for it in diff:
+                            try:
+                                amount += float(it.get('f6'))
+                            except (TypeError, ValueError):
+                                continue
                         if up + down + flat > 0:
                             up_count, down_count, flat_count = up, down, flat
+                            if amount > 0:
+                                self.market_amount_cache = {
+                                    'amount': amount,
+                                    'updated': time.time(),
+                                }
                             break
                     except Exception:
                         continue
@@ -2216,6 +2323,113 @@ class RealtimeThemeMonitor:
                 self.full_market_stats = None
 
         return None
+
+    # ── 10.7 全市场成交量预测(情绪预警因子) ──
+    def fetch_market_amount_realtime(self):
+        """取当日沪深两市累计成交额(元), 失败返回 None
+
+        数据源: 东财 push2 ulist 的 f6 字段(成交额, 单位元)
+          1.000001 上证指数 → 沪市成交额, 0.399001 深证成指 → 深市成交额
+        两者相加即两市累计成交额, 与 daily_cache 全市场汇总口径一致(实测偏差<1%)
+        """
+        headers = {
+            "Referer": "https://quote.eastmoney.com/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
+        for host in ('push2', '82.push2', '92.push2'):
+            try:
+                url = (f"https://{host}.eastmoney.com/api/qt/ulist.np/get"
+                       "?fltt=2&invt=2&fields=f12,f14,f6"
+                       "&secids=1.000001,0.399001")
+                diff = ((requests.get(url, headers=headers, timeout=8)
+                         .json().get('data') or {}).get('diff')) or []
+                amt = 0.0
+                for it in diff:
+                    try:
+                        amt += float(it.get('f6'))
+                    except (TypeError, ValueError):
+                        continue
+                if amt > 0:
+                    self.market_amount_cache = {'amount': amt, 'updated': time.time()}
+                    return amt
+            except Exception:
+                continue
+        return None
+
+    def get_market_amount_baseline(self):
+        """近 N 个交易日全市场成交额基准(亿元), 排除当日
+
+        数据源: daily_cache(Tushare daily)按交易日汇总 amount, 单位千元 → 亿元(÷1e5)。
+        当日盘中行是"累计额"而非全天额, 不可作基准, 故用 trade_date < today 排除。
+        返回 (近N日均值, [各日值(亿元)] 按日期升序); 失败返回 (None, [])
+        """
+        today = datetime.now().strftime('%Y%m%d')
+        cached = getattr(self, '_amount_baseline_cache', None)
+        if cached and cached.get('date') == today:
+            return cached['base'], cached['detail']
+        base, detail = None, []
+        try:
+            conn = sqlite3.connect(sc.DB_PATH, timeout=10)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT trade_date, SUM(amount) FROM daily_cache "
+                "WHERE trade_date < ? GROUP BY trade_date "
+                "ORDER BY trade_date DESC LIMIT ?",
+                (today, MARKET_AMOUNT_BASE_DAYS))
+            rows = cur.fetchall()
+            conn.close()
+            vals = [float(r[1]) / 1e5 for r in rows if r[1]]
+            if vals:
+                base = sum(vals) / len(vals)
+                detail = list(reversed(vals))
+        except Exception:
+            pass
+        self._amount_baseline_cache = {'date': today, 'base': base, 'detail': detail}
+        return base, detail
+
+    def predict_market_amount(self, allow_fetch=True):
+        """按日内 U 型曲线预测当日全市场成交额
+
+        全天预测 = 快照累计成交额 ÷ 该快照时刻的累计占比(见 MARKET_AMOUNT_PROGRESS)。
+        进度必须与累计额取自同一快照时刻, 否则外推会失真。
+        allow_fetch=False 表示只用缓存(供主循环评分路径调用, 绝不发起网络请求阻塞主循环)。
+        返回 {'cum_yi','progress','pred_yi','base_yi','ratio','level','base_days','minutes'},
+        金额单位亿元; 开盘不足 MARKET_AMOUNT_MIN_MINUTES 分钟或数据缺失时返回 None。
+        """
+        cum = getattr(self, 'market_amount_cache', None)
+        # 后台统计线程(每15分钟)已顺带刷新; 超过20分钟未更新才同步补拉一次兜底
+        if allow_fetch and (not cum or (time.time() - cum.get('updated', 0)) > 1200):
+            if self.fetch_market_amount_realtime():
+                cum = self.market_amount_cache
+        if not cum or not cum.get('amount'):
+            return None
+
+        snap_dt = datetime.fromtimestamp(cum.get('updated', time.time()))
+        if snap_dt.date() != datetime.now().date():
+            return None   # 快照是往日残留(跨日/周末), 不作数
+        minutes = elapsed_trade_minutes(snap_dt)
+        if minutes < MARKET_AMOUNT_MIN_MINUTES:
+            return None
+        progress = 1.0 if minutes >= 240 else intraday_amount_progress(minutes)
+
+        cum_yi = cum['amount'] / 1e8
+        pred_yi = cum_yi / progress if progress > 0 else cum_yi
+
+        base_yi, detail = self.get_market_amount_baseline()
+        ratio = (pred_yi / base_yi) if base_yi else None
+        level = ''
+        if ratio is not None:
+            level = next((n for thr, n in MARKET_AMOUNT_LEVELS if ratio >= thr), '')
+        return {
+            'cum_yi': cum_yi,
+            'progress': progress,
+            'pred_yi': pred_yi,
+            'base_yi': base_yi,
+            'ratio': ratio,
+            'level': level,
+            'base_days': len(detail),
+            'minutes': minutes,
+        }
 
     # ── 11. 趋势评分算法(来自market_analysis.py calc_trend_score) ──
     def calc_trend_score(self, index_name, up_count=0, total_count=0):
@@ -2410,6 +2624,7 @@ class RealtimeThemeMonitor:
         
         优化:引入昨日基准+平滑过渡,避免盘中分数剧烈波动
         """
+        self._volume_adj_info = None
         # ── 0. 获取昨日基准分数(用于平滑过渡) ──
         yesterday_data = self.get_yesterday_market_data()
         yesterday_trend_score = yesterday_data.get('trend_score') if yesterday_data else None
@@ -2483,10 +2698,41 @@ class RealtimeThemeMonitor:
         elif theme_trend > 85:
             trend_score_raw += 5
         
-        # 量能加分:检查今日成交量是否接近60日最大值(简化版:用指数实时成交量)
-        # 注:实时量能难以获取60日对比,暂用上涨比例替代判断
-        if up_ratio >= 70:
-            trend_score_raw += 5  # 大面积上涨视为量能放大
+        # 量能修正:用当日全市场成交额预测(见 predict_market_amount)替代原"上涨比例"假量能
+        # 历史标定(1378个交易日, 2021-01~2026-09):
+        #   放量≥1.2 在上涨方向次日胜率58.6%(基准55.4%); 缩量上涨(量价背离)次日胜率仅48.3%
+        #   且中位转负; 中间地带0.95~1.20无区分度 —— 故只对极端区加减分, 常态不加不减。
+        # 只读缓存不发起网络请求, 且要求已交易≥30分钟(早盘U型曲线外推误差大)。
+        vol_adj_info = None
+        try:
+            amt_pred = self.predict_market_amount(allow_fetch=False)
+        except Exception:
+            amt_pred = None
+        if amt_pred and amt_pred.get('ratio') is not None \
+                and amt_pred.get('minutes', 0) >= MARKET_AMOUNT_MIN_MINUTES_SCORE:
+            vol_ratio = amt_pred['ratio']
+            if vol_ratio >= 1.40:
+                vol_adj, vol_reason = 6, '显著放量'
+            elif vol_ratio >= 1.20:
+                vol_adj, vol_reason = 5, '放量'
+            elif vol_ratio >= 1.05:
+                vol_adj, vol_reason = 2, '温和放量'
+            elif vol_ratio >= 0.90:
+                vol_adj, vol_reason = 0, ''
+            elif up_ratio >= 50:
+                vol_adj, vol_reason = -5, '缩量上涨·量价背离'
+            else:
+                vol_adj, vol_reason = -3, '缩量'
+            if vol_adj:
+                trend_score_raw += vol_adj
+                vol_adj_info = {
+                    'ratio': round(vol_ratio, 3),
+                    'level': amt_pred.get('level', ''),
+                    'adj': vol_adj,
+                    'reason': vol_reason,
+                    'pred_yi': amt_pred.get('pred_yi'),
+                }
+        self._volume_adj_info = vol_adj_info
         
         # 赚钱效应修正:涨停/跌停比反映市场真实强弱,弥补指数权重不足
         zt_count = overview.get('zt_count', 0) if overview else 0

@@ -710,7 +710,7 @@
   },
   "000572.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000572.SZ_20260917",
    "event_date": "20260917"
@@ -756,6 +756,13 @@
    "r1": true,
    "event_key": "",
    "event_date": ""
+  },
+  "000595.SZ": {
+   "prev_streak": 0,
+   "streak": 0,
+   "r1": false,
+   "event_key": "000595.SZ_20260806",
+   "event_date": "20260806"
   },
   "000596.SZ": {
    "prev_streak": 0,
@@ -883,6 +890,13 @@
    "event_key": "000651.SZ_20260429",
    "event_date": "20260429"
   },
+  "000656.SZ": {
+   "prev_streak": 0,
+   "streak": 0,
+   "r1": false,
+   "event_key": "000656.SZ_20260708",
+   "event_date": "20260708"
+  },
   "000657.SZ": {
    "prev_streak": 0,
    "streak": 0,
@@ -1008,6 +1022,13 @@
    "r1": false,
    "event_key": "000709.SZ_20260430",
    "event_date": "20260430"
+  },
+  "000711.SZ": {
+   "prev_streak": 0,
+   "streak": 1,
+   "r1": false,
+   "event_key": "",
+   "event_date": ""
   },
   "000712.SZ": {
    "prev_streak": 11,
@@ -1585,7 +1606,7 @@
   },
   "000920.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000920.SZ_20260918",
    "event_date": "20260918"
@@ -1851,7 +1872,7 @@
   },
   "000993.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "000993.SZ_20260917",
    "event_date": "20260917"
@@ -2425,8 +2446,8 @@
   },
   "002068.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "002068.SZ_20260917",
    "event_date": "20260917"
   },
@@ -2677,8 +2698,8 @@
   },
   "002134.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002134.SZ_20260918",
    "event_date": "20260918"
   },
@@ -3006,7 +3027,7 @@
   },
   "002212.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "002212.SZ_20260917",
    "event_date": "20260917"
@@ -3017,6 +3038,13 @@
    "r1": true,
    "event_key": "",
    "event_date": ""
+  },
+  "002214.SZ": {
+   "prev_streak": 0,
+   "streak": 0,
+   "r1": false,
+   "event_key": "002214.SZ_20260807",
+   "event_date": "20260807"
   },
   "002215.SZ": {
    "prev_streak": 4,
@@ -3090,7 +3118,7 @@
   },
   "002232.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002232.SZ_20260917",
    "event_date": "20260917"
@@ -4147,7 +4175,7 @@
   },
   "002487.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002487.SZ_20260917",
    "event_date": "20260917"
@@ -4294,7 +4322,7 @@
   },
   "002531.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002531.SZ_20260917",
    "event_date": "20260917"
@@ -4448,7 +4476,7 @@
   },
   "002577.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002577.SZ_20260918",
    "event_date": "20260918"
@@ -4859,6 +4887,13 @@
    "event_key": "",
    "event_date": ""
   },
+  "002713.SZ": {
+   "prev_streak": 0,
+   "streak": 1,
+   "r1": false,
+   "event_key": "",
+   "event_date": ""
+  },
   "002714.SZ": {
    "prev_streak": 0,
    "streak": 0,
@@ -4981,13 +5016,6 @@
   "002757.SZ": {
    "prev_streak": 1,
    "streak": 2,
-   "r1": false,
-   "event_key": "",
-   "event_date": ""
-  },
-  "002759.SZ": {
-   "prev_streak": 0,
-   "streak": 1,
    "r1": false,
    "event_key": "",
    "event_date": ""
@@ -5351,8 +5379,8 @@
   },
   "002913.SZ": {
    "prev_streak": 8,
-   "streak": 0,
-   "r1": false,
+   "streak": 9,
+   "r1": true,
    "event_key": "002913.SZ_20260918",
    "event_date": "20260918"
   },
@@ -5512,7 +5540,7 @@
   },
   "002956.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002956.SZ_20260917",
    "event_date": "20260917"
@@ -6111,13 +6139,6 @@
    "r1": true,
    "event_key": "300085.SZ_20260625",
    "event_date": "20260625"
-  },
-  "300087.SZ": {
-   "prev_streak": 0,
-   "streak": 1,
-   "r1": false,
-   "event_key": "300087.SZ_20260901",
-   "event_date": "20260901"
   },
   "300088.SZ": {
    "prev_streak": 1,
@@ -7955,8 +7976,8 @@
   },
   "300741.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "300741.SZ_20260918",
    "event_date": "20260918"
   },
@@ -9754,8 +9775,8 @@
   },
   "600059.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "600059.SH_20260918",
    "event_date": "20260918"
   },
@@ -9845,7 +9866,7 @@
   },
   "600088.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600088.SH_20260917",
    "event_date": "20260917"
@@ -11355,6 +11376,13 @@
    "event_key": "600522.SH_20260421",
    "event_date": "20260421"
   },
+  "600525.SH": {
+   "prev_streak": 0,
+   "streak": 1,
+   "r1": false,
+   "event_key": "600525.SH_20260826",
+   "event_date": "20260826"
+  },
   "600528.SH": {
    "prev_streak": 4,
    "streak": 5,
@@ -11616,7 +11644,7 @@
   },
   "600593.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600593.SH_20260918",
    "event_date": "20260918"
@@ -11693,7 +11721,7 @@
   },
   "600606.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600606.SH_20260918",
    "event_date": "20260918"
@@ -12687,8 +12715,8 @@
   },
   "600880.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "600880.SH_20260917",
    "event_date": "20260917"
   },
@@ -12876,7 +12904,7 @@
   },
   "600929.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600929.SH_20260917",
    "event_date": "20260917"
@@ -13597,8 +13625,8 @@
   },
   "601218.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "601218.SH_20260918",
    "event_date": "20260918"
   },
@@ -15541,6 +15569,13 @@
    "event_key": "603386.SH_20260916",
    "event_date": "20260916"
   },
+  "603389.SH": {
+   "prev_streak": 0,
+   "streak": 1,
+   "r1": false,
+   "event_key": "603389.SH_20260729",
+   "event_date": "20260729"
+  },
   "603392.SH": {
    "prev_streak": 11,
    "streak": 12,
@@ -15729,6 +15764,13 @@
    "r1": true,
    "event_key": "603568.SH_20260608",
    "event_date": "20260608"
+  },
+  "603580.SH": {
+   "prev_streak": 0,
+   "streak": 1,
+   "r1": false,
+   "event_key": "603580.SH_20260729",
+   "event_date": "20260729"
   },
   "603583.SH": {
    "prev_streak": 9,
@@ -16579,7 +16621,7 @@
   },
   "605058.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "605058.SH_20260918",
    "event_date": "20260918"
@@ -16894,8 +16936,8 @@
   },
   "605577.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "605577.SH_20260917",
    "event_date": "20260917"
   },
@@ -17937,7 +17979,7 @@
   },
   "688261.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688261.SH_20260918",
    "event_date": "20260918"

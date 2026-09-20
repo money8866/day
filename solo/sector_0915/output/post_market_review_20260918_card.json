@@ -1,0 +1,417 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "盘后复盘 20260918：高波动（中性环境），BUY 4 / 未交易 1343"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "A股盘后复盘（Step 8）"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "20260918 · 复盘 signal 20260917"
+    },
+    "template": "blue",
+    "icon": {
+      "tag": "standard_icon",
+      "token": "wiki-bitable_colorful"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "复盘就绪"
+        },
+        "color": "green"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "READ ONLY"
+        },
+        "color": "neutral"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "非交易建议"
+        },
+        "color": "neutral"
+      }
+    ]
+  },
+  "body": {
+    "direction": "vertical",
+    "padding": "12px 12px 20px 12px",
+    "elements": [
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "horizontal_spacing": "8px",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>高波动</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>市场结构</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>82/1</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>涨停/跌停</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>4/1343</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>BUY/未交易</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>30</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>观察池</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "blue-50",
+            "padding": "12px",
+            "vertical_spacing": "4px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "**盘后复盘 20260918**（复盘 signal 20260917 · 中性环境）\n- 市场：高波动（中性环境）；breadth 0.76，较前一日改善 29.86%；涨停 82 / 跌停 1；成交额 20929 亿。\n- 主线：T36 创新药、T38 CXO、T35 消费服务；强化：T36 创新药（breadth/health 改善）、T42 生物制品（breadth/health 改善）；退潮：无\n- 昨日信号：侯选 1410 / 结构合格 317 / 执行合格 110；Step7：BUY 4 / 未交易 1343\n- 昨日 BUY：1 触发、0 走强、0 跌破 Stop、3 未成交；未交易中潜在漏掉 331\n- 复盘：执行层增量价值 中性（BUY 减结构合格 T+1 = 0.10%）；过滤增量价值 低；无实质性模型错误；待独立验证的模型改动候选 2 项（长期指标 §五十二）；明日保留 30 个条件观察对象（WATCH ≠ BUY）\n- **环境切换**：偏弱→中性\n- **赚钱效应**：赚钱效应中性 · 成交额 20929 亿（20 日均量比 1.09）",
+                "text_size": "normal"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 4,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "s",
+            "display_name": "昨日 BUY",
+            "data_type": "text"
+          },
+          {
+            "name": "r",
+            "display_name": "结果",
+            "data_type": "text"
+          },
+          {
+            "name": "mae",
+            "display_name": "MAE(T+1)",
+            "data_type": "text"
+          },
+          {
+            "name": "mfe",
+            "display_name": "MFE(T+1)",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "s": "300183.SZ 东软载波",
+            "r": "未进入 Entry 区间",
+            "mae": "-9.85%",
+            "mfe": "-7.26%"
+          },
+          {
+            "s": "300563.SZ 神宇股份",
+            "r": "未进入 Entry 区间",
+            "mae": "-14.95%",
+            "mfe": "-9.70%"
+          },
+          {
+            "s": "600104.SH 上汽集团",
+            "r": "未进入 Entry 区间",
+            "mae": "-8.08%",
+            "mfe": "-6.58%"
+          },
+          {
+            "s": "688395.SH 正弦电气",
+            "r": "已触发、表现平淡",
+            "mae": "-3.79%",
+            "mfe": "-1.10%"
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 8,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "s",
+            "display_name": "明日观察",
+            "data_type": "text"
+          },
+          {
+            "name": "t",
+            "display_name": "主题/阶段",
+            "data_type": "text"
+          },
+          {
+            "name": "w",
+            "display_name": "类型",
+            "data_type": "text"
+          },
+          {
+            "name": "p",
+            "display_name": "触发参考",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "s": "002516.SZ 旷达科技",
+            "t": "T15/发酵",
+            "w": "HVT 锁仓观察",
+            "p": "6.25"
+          },
+          {
+            "s": "301086.SZ 鸿富瀚",
+            "t": "T05/发酵",
+            "w": "HVT 锁仓观察",
+            "p": "166.58"
+          },
+          {
+            "s": "301234.SZ 五洲医疗",
+            "t": "T37/早期",
+            "w": "HVT 锁仓观察",
+            "p": "115.00"
+          },
+          {
+            "s": "688002.SH 睿创微纳",
+            "t": "T01/发酵",
+            "w": "HVT 锁仓观察",
+            "p": "189.91"
+          },
+          {
+            "s": "688601.SH 力芯微",
+            "t": "T01/发酵",
+            "w": "HVT 锁仓观察",
+            "p": "65.50"
+          },
+          {
+            "s": "001288.SZ 运机集团",
+            "t": "T14/早期",
+            "w": "再突破观察",
+            "p": "31.08"
+          },
+          {
+            "s": "300411.SZ 金盾股份",
+            "t": "T14/早期",
+            "w": "再突破观察",
+            "p": "9.17"
+          },
+          {
+            "s": "301122.SZ 采纳股份",
+            "t": "T37/早期",
+            "w": "再突破观察",
+            "p": "48.49"
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "<font color='grey'>观察池共 30 个；basis 20260917。WATCH ≠ BUY。观察对象只有在下一交易日由 Step 7 重新确认后才可能产生 BUY（§四十二）。</font>",
+        "text_size": "notation"
+      },
+      {
+        "tag": "collapsible_panel",
+        "expanded": false,
+        "header": {
+          "title": {
+            "tag": "plain_text",
+            "content": "层层过滤 · Regime · 长期指标 · 未交易 · 校验 · 声明"
+          }
+        },
+        "border": {
+          "color": "grey",
+          "corner_radius": "8px"
+        },
+        "padding": "8px 12px 8px 12px",
+        "vertical_spacing": "4px",
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "**层层过滤表现（§三十 / §三十一）**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**层 ｜ N ｜ T+1 胜率 ｜ T+1 均值%**\n- 候选 ｜ 1410 ｜ 0.8014 ｜ 1.89\n- 结构合格 ｜ 317 ｜ 0.694 ｜ 1.35\n- 执行合格 ｜ 110 ｜ 0.8091 ｜ 1.83\n- BUY ｜ 4 ｜ 0.75 ｜ 1.44\n- 未交易 ｜ 1343 ｜ 0.8049 ｜ 1.9",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "- 执行层增量价值：**中性**（BUY 减结构合格 T+1 = 0.10%）\n- 过滤增量价值：**低**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**Regime 分层（§三十三，累计 78 个交易日）**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**Regime ｜ N ｜ BUY ｜ T+1 均值%**\n- 强势 ｜ 0 ｜  ｜ \n- 健康 ｜ 7500 ｜  ｜ \n- 中性 ｜ 20334 ｜  ｜ \n- 偏弱 ｜ 2260 ｜  ｜ \n- 风险规避 ｜ 7163 ｜  ｜ ",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>Step 7 历史未产出的档位如实为 0：STRONG（不强造）</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "**长期过滤增量价值（§五十二，累计 78 个交易日 20260522~20260917）**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**指标 ｜ N(A/B) ｜ T+5 差 ｜ 判定**\n- 候选过滤 ｜ 38452/134895 ｜ 0.31% ｜ 无显著增量\n- 结构过滤 ｜ 7542/17001 ｜ -0.31% ｜ 无显著增量\n- 执行过滤 ｜ 39/7503 ｜ 0.37% ｜ 无显著增量\n- HVT 增量 ｜ 1689/35568 ｜ -0.27% ｜ 无显著增量\n- Retest 增量 ｜ 148/30478 ｜ -2.89% ｜ 负向\n- Extension 过滤 ｜ 37092/165 ｜ -0.26% ｜ 无显著增量\n- 市场 Regime 过滤 ｜ 27834/9423 ｜ -2.18% ｜ 负向",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>模型改动候选 2 项（Retest 增量、市场 Regime 过滤）：仅排队待独立验证，Step 8 不改模型（§三十七 / §三十九）。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "**未交易复盘（§二十五 / §二十六）**\n- 分类：结构未通过 1326；盈亏比不足 5；未归类 12\n- 结果：潜在漏掉 331；正确规避 242；中性（未决） 691；值得继续观察 79\n- 潜在漏掉占比：24.65%（不等于策略失败，§二十六）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**潜在漏掉示例（T+1）**\n- 688292.SH 浩瀚深度：20.02%（结构未通过）\n- 300836.SZ 佰奥智能：19.42%（结构未通过）\n- 688261.SH 东微半导：15.16%（结构未通过）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**错误诊断（§二十七 / §二十九）**：无实质性模型错误",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**校验（§四十九）**\n- [通过] 前视校验\n- [通过] 上游依赖\n- [通过] BUY 复盘完整性\n- [通过] 未交易复盘完整性\n- [通过] HVT 复盘完整性\n- [通过] 上游状态一致性\n- [通过] 主题复盘完整性\n- [警告] Regime 档位覆盖\n- [通过] 报告语言\n- [通过] 报告结构",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>已知局限：T+3, T+5, T+10, T+20 结果尚未发生，如实留空（不以前视数据填充）；regime 档位未覆盖：强势（如实缺档，§三十三）</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>状态：复盘就绪\nREAD ONLY：不修改 Step 1-7 任何落盘结果，不重新选股，不产生 BUY。WATCH ≠ BUY：观察对象须在下一交易日由 Step 7 重新确认后才可能产生 BUY（§四十二）。\n价格口径：后复权（close×adj_factor）。</font>",
+            "text_size": "notation"
+          }
+        ]
+      }
+    ]
+  }
+}

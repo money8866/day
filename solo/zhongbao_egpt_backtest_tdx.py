@@ -48,6 +48,9 @@ from zhongbao_egpt_timing import buy_point_type  # noqa: E402
 
 WINDOW_DAYS = 60          # 中报披露后扫描窗口(交易日)
 MIN_YEAR = '2023'         # 回测起始中报年
+# 全形态采集范围：回踩结构三阶段（含"⚠️观察"组），供 --funnel 分层验证门槛有效性。
+# 洗盘缩量/延续上涨/首阳后破位无回踩结构，不入库。
+SHAPE_STAGES = ('首阳确认', '回踩中', '回踩完成')
 THEME_MAP_FILE = os.path.join(BASE_DIR, 'report_daily', 'theme_stock_map_latest_v2.json')
 THEME_CFG_FILE = os.path.join(BASE_DIR, 'theme_config.json')
 
@@ -190,6 +193,21 @@ def _future_returns(df, idx):
     return out
 
 
+def _future_returns_nextopen(df, idx):
+    """次日开盘买入（真实可执行口径）→ T+1/3/5/10/20 收益"""
+    closes = df['close'].values
+    opens = df['open'].values
+    n = len(closes)
+    if idx + 1 >= n or opens[idx + 1] <= 0:
+        return {}
+    e0 = opens[idx + 1]
+    out = {}
+    for h, col in ((1, 'o1'), (3, 'o3'), (5, 'o5'), (10, 'o10'), (20, 'o20')):
+        j = idx + h
+        out[col] = closes[j] / e0 - 1 if j < n else np.nan
+    return out
+
+
 def run_backtest(start_date, end_date):
     pool = load_zhongbao_pool()
     total_codes = len(set(c for y in pool for c in pool[y]))
@@ -200,7 +218,7 @@ def run_backtest(start_date, end_date):
     start_dt = datetime.datetime.strptime(start_date, '%Y%m%d')
     ext_start = (start_dt - datetime.timedelta(days=200)).strftime('%Y%m%d')
 
-    base_rows, sig_rows = [], []
+    base_rows, sig_rows, shape_rows = [], [], []
     t0 = time.time()
     codes = sorted(set(c for y in pool for c in pool[y]))
 
@@ -239,7 +257,9 @@ def run_backtest(start_date, end_date):
                                   'dty': info['dty'], 'ny': info['ny'],
                                   **ret})
 
-            # ── EGPT 择时: 披露后 WINDOW_DAYS 内逐日快照, 取"✅次日可买入" ──
+            # ── EGPT 择时: 披露后 WINDOW_DAYS 内逐日快照 ──
+            # sig_rows  : decision=="✅ 次日可买入"（原有口径, --status/--grid/--buypt 依赖）
+            # shape_rows: 回踩结构全形态（含"⚠️观察"组），供 --funnel 验证精选门槛
             last_idx = min(a_idx + WINDOW_DAYS, n - 1)
             for k in range(a_idx, last_idx + 1):
                 if k < 20:
@@ -249,7 +269,10 @@ def run_backtest(start_date, end_date):
                     shape = analyze_shape(sub)
                 except Exception:
                     shape = None
-                if not shape or shape.get('decision') != '✅ 次日可买入':
+                if not shape:
+                    continue
+                is_sig = shape.get('decision') == '✅ 次日可买入'
+                if not is_sig and shape.get('stage') not in SHAPE_STAGES:
                     continue
                 # ── 买点字段: 买点类型/VWAP/筹码峰/ATR止损/次日开盘/信号后21日路径 ──
                 vwap = _calc_vwap(sub, 20)
@@ -261,13 +284,40 @@ def run_backtest(start_date, end_date):
                                              vols_all[:k + 1], closes_all[:k + 1])
                 atr_stop = round(price_v - 2.0 * atr, 3) if atr and atr > 0 else None
                 nxt_open = float(opens_all[k + 1]) if k + 1 < n else None
+                ret = _future_returns(df, k)
+                ret_o = _future_returns_nextopen(df, k)
+
+                shape_rows.append({
+                    'ts_code': ts_code, 'year': year,
+                    'ann_date': ann, 'sig_date': dates[k],
+                    'stage': shape.get('stage', ''),
+                    'decision': shape.get('decision', ''),
+                    'pullback_score': shape.get('pullback_score'),
+                    'pullback_days': shape.get('pullback_days'),
+                    'pullback_shrink': shape.get('pullback_shrink'),
+                    'max_dd10': shape.get('max_dd10'),
+                    'first_yang_pct': shape.get('first_yang_pct'),
+                    'first_yang_vr': shape.get('first_yang_vr'),
+                    'dty': info['dty'], 'ny': info['ny'],
+                    'price': round(price_v, 3),
+                    'vwap': round(vwap, 3) if vwap else None,
+                    'vwap_gap': round(price_v / vwap - 1, 4) if vwap else None,
+                    'ma20': round(ma20_v, 3) if ma20_v else None,
+                    'ma20_gap': round(price_v / ma20_v - 1, 4) if ma20_v else None,
+                    'buy_point': bp, 'buy_confirm': int(bool(confirm)),
+                    'atr_stop': atr_stop,
+                    'next_open': nxt_open,
+                    **ret, **ret_o,
+                })
+                if not is_sig:
+                    continue
+
                 path_json = json.dumps({
                     'closes': [round(float(x), 3) for x in closes_all[k:k + 21]],
                     'lows': [round(float(x), 3) for x in lows_all[k:k + 21]],
                     'opens': [round(float(x), 3) for x in opens_all[k:k + 21]],
                     'dates': dates[k:k + 21],
                 })
-                ret = _future_returns(df, k)
                 sig_rows.append({
                     'ts_code': ts_code, 'year': year,
                     'ann_date': ann, 'sig_date': dates[k],
@@ -280,39 +330,43 @@ def run_backtest(start_date, end_date):
                     'vwap': round(vwap, 3) if vwap else None,
                     'peak_high': round(peak_high, 3) if peak_high else None,
                     'atr_stop': atr_stop, 'next_open': nxt_open, 'path': path_json,
-                    **ret})
+                    **ret
+                })
 
         if (i + 1) % 500 == 0:
-            print(f"  进度: {i+1}/{total_codes} 基线{len(base_rows)} 信号{len(sig_rows)} | {time.time()-t0:.0f}s")
+            print(f"  进度: {i+1}/{total_codes} 基线{len(base_rows)} 信号{len(sig_rows)} "
+                  f"形态{len(shape_rows)} | {time.time()-t0:.0f}s")
 
     # ── 入库 ──
     conn = sqlite3.connect(BT_DB, timeout=10.0)
     pd.DataFrame(base_rows).to_sql('base', conn, if_exists='replace', index=False)
     pd.DataFrame(sig_rows).to_sql('egpt_sig', conn, if_exists='replace', index=False)
+    pd.DataFrame(shape_rows).to_sql('egpt_shape', conn, if_exists='replace', index=False)
     conn.commit()
     conn.close()
-    print(f"\n基线 {len(base_rows)} 笔, EGPT 信号 {len(sig_rows)} 笔 → {BT_DB} | 总耗时 {time.time()-t0:.0f}s")
+    print(f"\n基线 {len(base_rows)} 笔, EGPT 信号 {len(sig_rows)} 笔, "
+          f"全形态 {len(shape_rows)} 笔 → {BT_DB} | 总耗时 {time.time()-t0:.0f}s")
     return base_rows, sig_rows
 
 
 # ════════════════════════════════════════════════════════════════
 # 统计展示
 # ════════════════════════════════════════════════════════════════
-def _fmt(df):
+def _fmt(df, pre='t'):
     if df is None or len(df) == 0:
         return None
     n = len(df)
-    w1 = (df['t1'] > 0).mean() * 100
-    m1 = df['t1'].mean() * 100
-    m3 = df['t3'].mean() * 100
-    m5 = df['t5'].mean() * 100
-    w5 = (df['t5'] > 0).mean() * 100
-    m10 = df['t10'].mean() * 100
-    m20 = df['t20'].mean() * 100
+    w1 = (df[pre + '1'] > 0).mean() * 100
+    m1 = df[pre + '1'].mean() * 100
+    m3 = df[pre + '3'].mean() * 100
+    m5 = df[pre + '5'].mean() * 100
+    w5 = (df[pre + '5'] > 0).mean() * 100
+    m10 = df[pre + '10'].mean() * 100
+    m20 = df[pre + '20'].mean() * 100
     return n, w1, m1, m3, m5, w5, m10, m20
 
 
-def _table(title, groups):
+def _table(title, groups, pre='t'):
     print(f"\n{'═' * 96}")
     print(f"  {title}")
     print(f"{'═' * 96}")
@@ -320,7 +374,7 @@ def _table(title, groups):
     print(hdr)
     print('  ' + '─' * 94)
     for key, g in groups:
-        s = _fmt(g)
+        s = _fmt(g, pre)
         if s is None:
             continue
         n, w1, m1, m3, m5, w5, m10, m20 = s
@@ -591,6 +645,181 @@ def buy_point_opt():
             print(f"  {scope_name}·{label:<12} {len(arr):>5} {arr.mean()*100:>+7.2f}% {win:>8.1f}% {worst:>+8.2f}% {big:>8.1f}%")
 
 
+def funnel_verify():
+    """观察组精选漏斗分层验证（L1去噪 / L2卡买点 / L3卡追高 / L4卡主题）
+
+    在"回踩结构全形态"(egpt_shape)样本上, 逐层施加门槛, 对比各层剩余样本的
+    T+1胜率与 T+1/T+3/T+5/T+10/T+20 均值, 检验门槛是否真的提升期望收益。
+    若门槛有效, 再把精选层写进线上推送分栏 + stock_pick_db 单独 strategy。
+    """
+    if not os.path.exists(BT_DB):
+        print(f"回测库不存在: {BT_DB}")
+        return
+    conn = sqlite3.connect(BT_DB)
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if 'egpt_shape' not in tables:
+        print("[错误] 库中无 egpt_shape 表，请先重跑回测重建(全量重算，约数分钟)")
+        conn.close()
+        return
+    shape = pd.read_sql_query('SELECT * FROM egpt_shape', conn)
+    sig = pd.read_sql_query('SELECT * FROM egpt_sig', conn) if 'egpt_sig' in tables else None
+    conn.close()
+
+    print("\n[加载主题热度] ...")
+    stock2theme, theme2etf, etf_series = load_theme_heat_map()
+    shape = enrich_theme_heat(shape, stock2theme, theme2etf, etf_series)
+
+    WHITELIST = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+                 "机器人", "游戏", "建筑装饰", "传媒", "能源金属", "商业航天"}
+
+    print(f"\n{'#' * 96}")
+    print(f"  观察组精选漏斗分层验证（全形态样本 {len(shape)} 笔）")
+    print(f"  L1去噪(回踩天数>0) → L2卡买点(买点1/2) → L3卡追高(乖离VWAP≤8%) → L4卡主题(白名单)")
+    print(f"{'#' * 96}")
+
+    # ── 0. 样本构成 ──
+    _table("0. 全形态样本构成（按决策）", [
+        (d, shape[shape['decision'] == d]) for d in sorted(shape['decision'].dropna().unique())
+    ])
+
+    # ── 1. 漏斗逐层 ──
+    L1 = shape[shape['pullback_days'].fillna(0) > 0]
+    L2 = L1[L1['buy_point'].astype(str) != '未突破']
+    L3 = L2[L2['vwap_gap'].notna() & (L2['vwap_gap'] <= 0.08)]
+    L4 = L3[L3['theme'].isin(WHITELIST)]
+
+    _table("1. 漏斗逐层收紧", [
+        ('全形态样本(未过滤)', shape),
+        ('L1 去噪(回踩天数>0)', L1),
+        ('L2 卡买点(买点1/2)', L2),
+        ('L3 卡追高(乖离VWAP≤8%)', L3),
+        ('L4 卡主题(白名单)', L4),
+    ])
+
+    # ── 2. 现有口径 vs 观察组 vs 精选 ──
+    obs = shape[shape['decision'] == '⚠️ 观察']
+    _table("2. 现有口径 vs 观察组 vs 精选层", [
+        ('EGPT信号(✅次日可买入·现口径)', sig if sig is not None else shape.iloc[0:0]),
+        ('观察组(⚠️ 观察·形态未确认)', obs),
+        ('观察组 → L1~L4 精选', L4[L4['decision'] == '⚠️ 观察']),
+        ('全形态 → L1~L4 精选', L4),
+    ])
+
+    # ── 3. 各层门槛增益（对比全形态基准） ──
+    base_f = _fmt(shape)
+    print(f"\n{'═' * 96}")
+    print("  3. 门槛增益（相对全形态基准，正=门槛有效）")
+    print(f"{'═' * 96}")
+    print(f"  {'层级':<26} {'信号':>6} {'T+1增益':>9} {'T+5增益':>9} {'T+20增益':>9}")
+    print('  ' + '─' * 94)
+    for name, g in (('L1 去噪', L1), ('L2 卡买点', L2), ('L3 卡追高', L3), ('L4 卡主题', L4)):
+        s = _fmt(g)
+        if s is None or base_f is None:
+            continue
+        print(f"  {name:<26} {s[0]:>6} {s[2]-base_f[2]:>+8.2f}% {s[4]-base_f[4]:>+8.2f}% "
+              f"{s[7]-base_f[7]:>+8.2f}%")
+
+    # ── 4. L2 买点类型分层（去噪后） ──
+    _table("4. 买点类型分层（L1 去噪后）", [
+        ('买点2(缩量回踩VWAP确认)', L1[L1['buy_point'] == '买点2(缩量回踩VWAP确认)']),
+        ('买点1(放量突破VWAP+筹码峰)', L1[L1['buy_point'] == '买点1(放量突破VWAP+筹码峰)']),
+        ('未突破', L1[L1['buy_point'] == '未突破']),
+    ])
+
+    # ── 5. L3 追高阈值敏感性（L2 基础上扫描乖离VWAP上限） ──
+    _table("5. L3 追高阈值敏感性（L2 基础上扫描乖离VWAP上限）", [
+        ('≤3%', L2[L2['vwap_gap'] <= 0.03]),
+        ('≤5%', L2[L2['vwap_gap'] <= 0.05]),
+        ('≤8%', L2[L2['vwap_gap'] <= 0.08]),
+        ('≤10%', L2[L2['vwap_gap'] <= 0.10]),
+        ('≤15%', L2[L2['vwap_gap'] <= 0.15]),
+        ('不限(无阈值)', L2[L2['vwap_gap'].notna()]),
+    ])
+
+    # ── 6. L4 主题增益（L3 基础上，白名单 vs 非白名单） ──
+    _table("6. L4 主题增益（L3 基础上）", [
+        ('L3 全主题', L3),
+        ('L3 × 白名单', L3[L3['theme'].isin(WHITELIST)]),
+        ('L3 × 非白名单', L3[~L3['theme'].isin(WHITELIST)]),
+        ('L3 × 无主题数据', L3[L3['theme'].isna()]),
+    ])
+
+    # ── 7. L4 主题明细（L3 内 ≥3 笔，按 T+3 均降序） ──
+    thg = sorted([(k, v) for k, v in L3.groupby('theme') if len(v) >= 3],
+                 key=lambda x: -_fmt(x[1])[3])
+    _table("7. L4 主题明细（L3 内 ≥3 笔，按 T+3 均降序）", thg)
+
+    # ── 8. 精选层 按年度稳定性 ──
+    if len(L4):
+        _table("8. 精选层(L4) 按年度", [(y, L4[L4['year'] == y]) for y in sorted(L4['year'].unique())])
+
+    # ── 9. 修正漏斗（按实测重排门槛） ──
+    # 实测: L1(去噪)/L2(卡买点) 增益为负 → 删除; L3(卡追高) 方向对但阈值应严;
+    #       L4(卡主题) 有效但人工白名单含拖累项 → 换实证白名单。
+    # 注意: 实证白名单由本样本统计得到, 属样本内优选, 需按年度复核稳定性。
+    EMPIRICAL_WL = {"新能源车", "信创", "节能环保", "机器人", "电力"}
+
+    def _gap(df, th):
+        return df[df['vwap_gap'].notna() & (df['vwap_gap'] <= th)]
+
+    f3 = _gap(shape, 0.03)
+    f5 = _gap(shape, 0.05)
+    _table("9. 修正漏斗 vs 原漏斗（去噪/卡买点为负增益，已删）", [
+        ('全形态基准(未过滤)', shape),
+        ('原漏斗 L1~L4(去噪+卡买点+8%+人工白名单)', L4),
+        ('修正: 乖离VWAP≤3%', f3),
+        ('修正: 乖离VWAP≤5%', f5),
+        ('修正: 乖离≤3% × 实证白名单', f3[f3['theme'].isin(EMPIRICAL_WL)]),
+        ('修正: 乖离≤5% × 实证白名单', f5[f5['theme'].isin(EMPIRICAL_WL)]),
+        ('修正: 乖离≤3% × 首阳确认', f3[f3['stage'] == '首阳确认']),
+        ('修正: 乖离≤3% × 回踩中', f3[f3['stage'] == '回踩中']),
+    ])
+
+    best_fix = f3[f3['theme'].isin(EMPIRICAL_WL)]
+    if len(best_fix):
+        _table("10. 修正漏斗(乖离≤3%×实证白名单) 按年度", [
+            (y, best_fix[best_fix['year'] == y]) for y in sorted(best_fix['year'].unique())
+        ])
+
+    # ── 11. 可执行性检验: 信号日收盘买入 vs 次日开盘买入 ──
+    # 首阳确认当天形态需收盘后才能判定, 真实下单在次日开盘, 故必须复核 T+1 缺口被吃掉多少。
+    if 'o1' in shape.columns:
+        _table("11. 可执行性: 次日开盘买入(真实口径)", [
+            ('全形态基准', shape),
+            ('首阳确认', shape[shape['stage'] == '首阳确认']),
+            ('回踩中', shape[shape['stage'] == '回踩中']),
+            ('乖离VWAP≤3%', f3),
+            ('乖离≤3% × 首阳确认', f3[f3['stage'] == '首阳确认']),
+            ('乖离≤3% × 实证白名单', f3[f3['theme'].isin(EMPIRICAL_WL)]),
+        ], pre='o')
+        _table("12. 对照: 同组·信号日收盘买入", [
+            ('全形态基准', shape),
+            ('首阳确认', shape[shape['stage'] == '首阳确认']),
+            ('回踩中', shape[shape['stage'] == '回踩中']),
+            ('乖离VWAP≤3%', f3),
+            ('乖离≤3% × 首阳确认', f3[f3['stage'] == '首阳确认']),
+            ('乖离≤3% × 实证白名单', f3[f3['theme'].isin(EMPIRICAL_WL)]),
+        ], pre='t')
+
+    # ── 13. 年度稳定性: 候选门槛在可执行口径(次日开盘)下逐年表现 ──
+    if 'o1' in shape.columns:
+        cand = [('乖离VWAP≤3%', f3), ('乖离≤3% × 首阳确认', f3[f3['stage'] == '首阳确认'])]
+        for cname, cdf in cand:
+            _table(f"13. 年度稳定性(次日开盘口径): {cname}", [
+                (y, cdf[cdf['year'] == y]) for y in sorted(cdf['year'].unique())
+            ] + [('— 全样本 —', cdf)], pre='o')
+
+    # 导出精选明细
+    out = os.path.join(CACHE_DIR, 'zhongbao_egpt_funnel_detail.csv')
+    L4.to_csv(out, index=False, encoding='utf-8-sig')
+    print(f"\n  原漏斗(L4)明细已导出: {out}（{len(L4)} 笔）")
+    out2 = os.path.join(CACHE_DIR, 'zhongbao_egpt_funnel_fixed.csv')
+    best_fix.to_csv(out2, index=False, encoding='utf-8-sig')
+    print(f"  修正漏斗明细已导出: {out2}（{len(best_fix)} 笔）")
+    print("  注意: 门槛alpha高度依赖行情(2024独大, 2025全线走平/为负)，落地前需按年度复核(表13)。")
+
+
 def main():
     parser = argparse.ArgumentParser(description='中报猎手×EGPT回踩 TDX回测')
     parser.add_argument('--start', default='20230101')
@@ -599,8 +828,12 @@ def main():
     parser.add_argument('--heat', action='store_true', help='查看统计并补算主题热度')
     parser.add_argument('--grid', action='store_true', help='T+5胜率网格搜索')
     parser.add_argument('--buypt', action='store_true', help='买点优化分析(买点类型×买入时点×止损)')
+    parser.add_argument('--funnel', action='store_true', help='观察组精选漏斗分层验证(L1去噪/L2卡买点/L3卡追高/L4卡主题)')
     args = parser.parse_args()
 
+    if args.funnel:
+        funnel_verify()
+        return
     if args.buypt:
         buy_point_opt()
         return

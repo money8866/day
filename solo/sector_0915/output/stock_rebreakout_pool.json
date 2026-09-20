@@ -1,11 +1,17 @@
 {
   "pool_type": "STRUCTURE_POOL_NOT_BUY_POOL",
-  "trade_date": "20260917",
+  "trade_date": "20260918",
   "notice": "结构池仅表示结构状态，不代表买入建议；执行判断属于 Step 7。",
   "pool_name": "REBREAKOUT_POOL",
   "classes": [
     "REBREAKOUT_CONFIRMED"
   ],
-  "stocks": [],
-  "count": 0
+  "stocks": [
+    "301122.SZ",
+    "603012.SH",
+    "688131.SH",
+    "688209.SH",
+    "688536.SH"
+  ],
+  "count": 5
 }

@@ -1,0 +1,286 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "盘后解读 20260918：中性环境（常规参与），BUY 4 / 观察池 30"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "A股盘后解读 · 环境情绪与仓位建议"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "20260918 · 复盘 signal 20260917"
+    },
+    "template": "turquoise",
+    "icon": {
+      "tag": "standard_icon",
+      "token": "wiki-bitable_colorful"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "常规参与"
+        },
+        "color": "blue"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "复盘就绪"
+        },
+        "color": "green"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "WATCH ≠ BUY"
+        },
+        "color": "neutral"
+      }
+    ]
+  },
+  "body": {
+    "direction": "vertical",
+    "padding": "12px 12px 20px 12px",
+    "elements": [
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "blue-50",
+            "padding": "12px",
+            "vertical_spacing": "4px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "**一句话结论**：环境由「偏弱」上移到「中性」，广度 0.46 → 0.76、成交额 +13.96%，属**普涨型情绪修复**，但赚钱效应仍为**中性**，强度尚未确认。\n**仓位方向**：常规参与、不追高、以每只标的自身止损为硬约束（本链路不输出仓位金额）。\n**信号**：昨日 4 只 BUY 中 1 只已触发、3 只未到位；下一交易日的重点在观察池的条件确认，**不是追买**。",
+                "text_size": "normal"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "**一、环境情绪：广度驱动的修复性普涨，强度尚未确认**\n\n市场状态判定为 **中性**（NEUTRAL），较前一交易日由「偏弱」上移一档。切换依据：广度 0.4639 → 0.7625；成交额变化 +13.96%；涨停 82 / 跌停 1；上证 +0.94%（§六）。\n\n- **广度**：上涨 4234 / 下跌 1152 / 平盘 167，广度 0.76（较前一日 +29.86 个百分点）\n- **情绪强度**：涨停 82 / 跌停 1，最高连板 4；成交额 20929 亿元，为 20 日均量的 1.09 倍\n- **指数**：上证 +0.94%、沪深300 +1.06%、中证1000 +1.84%、中证2000 +1.77%，小盘弹性更强\n- **结构标签**：高波动、全面普涨；赚钱效应 **中性**\n- **个股分化**：高开低收 1252 家 vs 低开高收 734 家 —— 盘中冲高回落压力不轻，是「不追高」的直接依据\n- **主线**：T36 创新药、T38 CXO、T35 消费服务；当日强化 7 个、轮入 1 个、退潮 0 个，另有 10 个主题被标记为「启动失败」——扩散持续性尚未确认",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**二、仓位建议：方向为「常规参与」，不给金额**\n\n当前执行模式为 **NORMAL（常规）**，由市场状态「中性」机械映射得到（config/execution_config.json::market_regime.execution_mode_by_regime）。\n\n**口径声明**：本链路只标记持仓状态，不做资金管理、不做组合优化、**不输出仓位金额**（config/execution_config.json::position.note）。因此本节只给方向与纪律，不给百分比、不给金额。\n\n- **方向**：可常规参与，但**不追高**；当日广度虽大幅修复、赚钱效应仍中性，属「确认后再跟」而非「抢开局」的环境\n- **风险边界**：每一笔以该标的自身 stop 价为硬约束，单笔风险自担，不因环境转暖而放大单票风险\n- **环境联动**：市场状态若回落至「偏弱」，执行模式自动降为 DEFENSIVE（防守）；进入「风险规避」则降为 WAIT（观望）——阈值机械映射，不做临场调节\n- **不做总评分、不排序打分**（§五十）；不因追求成交而下调门槛（§四十-9）",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**三、下一交易日可买入信号分析**\n\n**口径**：Step 7 在 20260918 无快照，观察池 basis 回退至 **20260917**；本地数据目录无交易日历，无法把「明后天」换算为具体日期，下文统一表述为「下一交易日」。价位为原始价（RAW），收益统计为后复权。",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**A. 昨日已判 BUY（signal 20260917）——4 只，执行等级全部为「有条件买入」，无一升级为「首选买入」**\n",
+        "text_size": "normal"
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 8px 0px",
+        "page_size": 4,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "s",
+            "display_name": "标的",
+            "data_type": "text"
+          },
+          {
+            "name": "z",
+            "display_name": "入场区间",
+            "data_type": "text"
+          },
+          {
+            "name": "sl",
+            "display_name": "止损/目标",
+            "data_type": "text"
+          },
+          {
+            "name": "rr",
+            "display_name": "RR",
+            "data_type": "text"
+          },
+          {
+            "name": "r",
+            "display_name": "昨日结果",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "s": "300183.SZ 东软载波",
+            "z": "11.79~11.98",
+            "sl": "10.04/18.28",
+            "rr": "3.26",
+            "r": "未进入 Entry 区间"
+          },
+          {
+            "s": "300563.SZ 神宇股份",
+            "z": "29.98~30.84",
+            "sl": "21.95/51.16",
+            "rr": "2.28",
+            "r": "未进入 Entry 区间"
+          },
+          {
+            "s": "600104.SH 上汽集团",
+            "z": "11.89~12.01",
+            "sl": "10.24/18.87",
+            "rr": "3.88",
+            "r": "未进入 Entry 区间"
+          },
+          {
+            "s": "688395.SH 正弦电气",
+            "z": "24.13~24.51",
+            "sl": "21.53/33.14",
+            "rr": "2.89",
+            "r": "已触发、表现平淡"
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "- 东软载波（300183.SZ）：昨日低 10.80 / 高 11.11 / 收 10.91，未进入 Entry 区间；止损 10.04、目标 18.28、盈亏比 3.26\n- 神宇股份（300563.SZ）：昨日低 26.23 / 高 27.85 / 收 27.02，未进入 Entry 区间；止损 21.95、目标 51.16、盈亏比 2.28\n- 上汽集团（600104.SH）：昨日低 11.04 / 高 11.22 / 收 11.10，未进入 Entry 区间；止损 10.24、目标 18.87、盈亏比 3.88\n- 正弦电气（688395.SH）：昨日低 23.58 / 高 24.24 / 收 24.06，**已进入 Entry 区间**；止损 21.53、目标 33.14、盈亏比 2.89\n\n读法：未成交的标的属「价格没到位」，不等于「信号失效」；已触发的标的按自身止损管理。",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**B. 观察池（basis 20260917）——共 30 个，全部不是买点**\n\n按 §四十二，观察对象只有在**下一交易日由 Step 7 重新确认**后才可能产生 BUY。其中结构仍成立的 19 个按类型分组，括号内为失效价（收盘跌破即作废）：\n\n- **HVT 锁仓（5）**：002516.SZ 旷达科技 6.25~6.34（收盘跌破 5.29 作废）；301086.SZ 鸿富瀚 166.58~172.49（收盘跌破 135.19 作废）；301234.SZ 五洲医疗 115.00~118.76（收盘跌破 92.94 作废）；688002.SH 睿创微纳 189.91~193.84（收盘跌破 168.18 作废）；688601.SH 力芯微 65.50~67.32（收盘跌破 52.18 作废）\n- **再突破（3）**：301122.SZ 采纳股份 48.49~49.83（收盘跌破 41.02 作废）；603012.SH 创力集团 10.88~11.10（收盘跌破 8.60 作废）；688209.SH 英集芯 38.29~39.56（收盘跌破 29.89 作废）\n- **回踩确认（1）**：601038.SH 一拖股份 15.10~15.34（收盘跌破 13.86 作废）\n- **回踩（9）**：001268.SZ 联合精密 26.99~27.69（收盘跌破 22.89 作废）；002897.SZ 意华股份 76.36~78.49（收盘跌破 54.67 作废）；300183.SZ 东软载波 11.79~11.98（收盘跌破 10.04 作废）；300563.SZ 神宇股份 29.98~30.84（收盘跌破 21.95 作废）；300913.SZ 兆龙互连 47.47~48.69（收盘跌破 33.33 作废）；600104.SH 上汽集团 11.89~12.01（收盘跌破 10.24 作废）；603421.SH 鼎信通讯 8.02~8.23（收盘跌破 5.61 作废）；688395.SH 正弦电气 24.13~24.51（收盘跌破 21.53 作废）；688678.SH 福立旺 23.70~24.38（收盘跌破 18.92 作废）\n- **突破（1）**：002011.SZ 盾安环境 14.45~14.71（收盘跌破 10.27 作废）\n\n<font color='grey'>另 11 个为 HVT_FAILED / 突破失败结构，已列为排除观察；按 §二十七，失败结构不得自动恢复。</font>",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**四、五类观察对象如何跟进操作（WATCH ≠ BUY）**\n\n观察类型只决定**下一交易日用哪条规则重新确认、失效时看哪条价格线**，本身不含买点。判据来自 config/post_market_review_config.json::watch_pool，派生与失效口径来自 config/execution_config.json::entry_state。\n",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "**类型 ｜ 判据（源状态） ｜ 可转买点的条件 ｜ 失效线**\n- HVT 锁仓 ｜ hvt_state=HVT_LOCKING ｜ 不派生入场态，须等突破或回踩推进 ｜ 收盘跌破止损价\n- 再突破 ｜ breakout_state=REBREAKOUT_CONFIRMED ｜ → REBREAKOUT_ENTRY（首选路径之一） ｜ 收盘跌破触发价\n- 回踩确认 ｜ retest_state=RETEST_PENDING ｜ 推进到 RETEST_SUCCESS → RETEST_ENTRY ｜ 收盘跌破触发价\n- 回踩 ｜ structure_class=PULLBACK_HEALTHY ｜ → PULLBACK_ENTRY（豁免 HVT 成熟度门） ｜ 收盘跌破支撑 ×0.97（不看触发价）\n- 突破 ｜ breakout_state=READY / CONFIRMED ｜ READY→待确认；CONFIRMED→BREAKOUT_ENTRY ｜ 收盘跌破触发价",
+        "text_size": "notation"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**跟进动作按入场态分档**（派生后仍须过盈亏比 ≥ 1.5 与执行分门槛）：\n\n- **首选买入 / 有条件买入**：已进 Entry 区间的按自身止损执行；未进区间的只挂条件，**不得上移 entry_high**（防追高）\n- **回踩（PULLBACK_ENTRY）**：盯支撑位 ×0.97，跌破即 SUPPORT_BROKEN；该路径豁免 HVT 成熟度门，且**不看触发价**\n- **再突破 / 突破 / 回踩确认入场态**：盯收盘是否站上触发价，跌破即 TRIGGER_BROKEN\n- **待确认（WAIT_CONFIRMATION）**：只观察，等 Step 6 把源状态推进后才可能入场\n- **失败 / 过度延伸 / 无入场态**：记录失效，不恢复、不补仓（§二十七）",
+        "text_size": "normal"
+      },
+      {
+        "tag": "markdown",
+        "content": "\n**以「再突破」为例**：\n\n它比首次突破多一层确认（`breakout_state=REBREAKOUT_CONFIRMED`），执行分构成中入场质量 95 分，高于突破（80）、低于回踩确认（100），是突破类里唯一可评为「首选买入」的路径；但层级上**回踩确认优先于再突破**（precedence 中 RETEST_ENTRY 先于 REBREAKOUT_ENTRY）。\n\n- 当前 6 只再突破观察中，3 只结构仍在、入场态已成立：采纳股份（301122.SZ，REBREAKOUT_ENTRY，触发价 48.49，盈亏比 0.61）；创力集团（603012.SH，RETEST_ENTRY，触发价 10.88，盈亏比 0.35）；英集芯（688209.SH，REBREAKOUT_ENTRY，触发价 38.29，盈亏比 0.52）\n- 但这 3 只收盘价已跌破触发价（TRIGGER_BROKEN），盈亏比 0.35~0.61 低于 1.5，属「结构在、价位不在」——跟进动作是**等价格回到 Entry 区间、并让盈亏比回到 ≥1.5**，不是买入\n- 另 3 只结构已为 HVT_FAILED / 突破失败，按 §二十七 失败结构不得自动恢复，**不作为恢复候选**",
+        "text_size": "normal"
+      },
+      {
+        "tag": "collapsible_panel",
+        "expanded": false,
+        "header": {
+          "title": {
+            "tag": "plain_text",
+            "content": "数据依据 · 未交易复盘 · 校验 · 声明"
+          }
+        },
+        "border": {
+          "color": "grey",
+          "corner_radius": "8px"
+        },
+        "padding": "8px 12px 8px 12px",
+        "vertical_spacing": "4px",
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "**同档位历史参照（§三十三，累计 78 个交易日 20260522~20260917）**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**Regime ｜ N ｜ BUY ｜ T+1 胜率 ｜ T+1 均值% ｜ T+5 均值% ｜ T+20 均值%**\n- 强势 ｜ 0 ｜ 0 ｜  ｜  ｜  ｜ \n- 健康 ｜ 7500 ｜ 13 ｜ 0.4849 ｜ 0.27 ｜ 0.81 ｜ 1.60\n- 中性 ｜ 20334 ｜ 21 ｜ 0.4647 ｜ -0.19 ｜ -1.89 ｜ -1.51\n- 偏弱 ｜ 2260 ｜ 5 ｜ 0.4042 ｜ 0.15 ｜ 1.50 ｜ 0.44\n- 风险规避 ｜ 7163 ｜ 0 ｜ 0.4565 ｜ -0.13 ｜ 0.93 ｜ -0.49",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>当前所处「中性」档历史 n=20334，T+1 胜率 0.4647、T+1 均值 -0.19%、T+5 -1.89%、T+20 -1.51%；仅「健康」档历史 T+5 / T+20 为正（0.81% / 1.60%）。即当前档位在本地样本内**尚无统计优势**。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>Step 7 历史未产出的档位如实为 0：强势（STRONG）（缺档原因见 execution_config.json::market_regime.strong_share_min_note，不为凑覆盖率下调阈值，§三十三）</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "**观察池各类型下一交易日实测（signal 20260917，§十七）**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**类型 ｜ N ｜ 胜率 ｜ T+1 均值**\n- HVT 锁仓 ｜ 5 ｜ 100.0% ｜ +2.82%\n- 再突破 ｜ 6 ｜ 66.7% ｜ +0.83%\n- 回踩确认 ｜ 1 ｜ 0.0% ｜ +0.00%\n- 回踩 ｜ 9 ｜ 77.8% ｜ +1.53%\n- 突破 ｜ 9 ｜ 88.9% ｜ +2.48%",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>该表为本次观察池的实测结果，n 介于 1~9、单一日期、单一环境档，且当日本身是广度 0.76 的普涨，不构成类型优劣结论（§四十四 / §五十）。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "**未交易复盘（§二十五 / §二十六）**\n- 规模：1343 条；分类：结构未通过 1326；盈亏比不足 5；未归类 12\n- 结果：潜在漏掉 331；正确规避 242；中性（未决） 691；值得继续观察 79\n- 潜在漏掉占比：24.65%（不等于策略失败；未交易多数为结构未通过，§二十六）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "- 执行层增量价值：**中性**（BUY 减结构合格 T+1 = 0.10%）\n- 过滤增量价值：**低**",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>待独立验证的模型改动候选 2 项：Retest 增量（P1）、市场 Regime 过滤（P1）。仅排队待验证，Step 8 不改模型（§三十七 / §三十九）。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "**错误诊断（§二十七 / §二十九）**：无实质性模型错误",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**校验（§四十九）**：通过 9 / 警告 1 / 问题 0\n- [通过] 前视校验\n- [通过] 上游依赖\n- [通过] BUY 复盘完整性\n- [通过] 未交易复盘完整性\n- [通过] HVT 复盘完整性\n- [通过] 上游状态一致性\n- [通过] 主题复盘完整性\n- [警告] Regime 档位覆盖\n- [通过] 报告语言\n- [通过] 报告结构",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>已知局限：T+3, T+5, T+10, T+20 结果尚未发生，如实留空（不以前视数据填充）；regime 档位未覆盖：强势（如实缺档，§三十三）</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>状态：复盘就绪\nREAD ONLY：不修改 Step 1-7 任何落盘结果，不重新选股，不产生 BUY。WATCH ≠ BUY：观察对象须在下一交易日由 Step 7 重新确认后才可能产生 BUY（§四十二）。\n价格口径：后复权（close×adj_factor）。</font>",
+            "text_size": "notation"
+          }
+        ]
+      }
+    ]
+  }
+}

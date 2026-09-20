@@ -59,6 +59,18 @@ HEAT_SWEET = (0.05, 0.15)     # 主题热度甜区: ETF近20日涨幅 5%~15%
 HEAT_HOT = 0.15               # ≥15% 视为追高风险区
 DTY_MIN = 50                  # 扣非增速≥50% 才可入选"主题优选"
 
+# ── 精选层门槛（zhongbao_egpt_backtest_tdx.py --funnel 验证 20260819） ──
+# 验证结论: 原漏斗 L1(剔除回踩天数=0) / L2(只留买点1/2) 均为负增益、方向相反, 已弃用;
+#   全形态 8769 笔上唯一单调有效的门槛是"乖离VWAP"(3%>5%>8%>不限), 主题白名单亦有效。
+# 次日开盘(真实可执行)口径: 乖离≤3%×实证白名单 1197笔, T+5均+2.20%/胜率52.7%
+#   （基准 8769笔 T+5均+0.98%/胜率46.9%）; 逐年 T+5: 2023 +0.74% / 2024 +6.82% / 2025 +0.39%。
+# 注意: alpha 集中于 2024 反弹性行情, 弱市(如2025)仅走平, 属行情弹性品种而非稳定策略。
+VWAP_GAP_MAX = 0.03           # 精选: 现价对 VWAP20 乖离上限（>3% 视为追高）
+PICK_STAGES = ("首阳确认", "回踩中", "回踩完成")   # 有回踩结构的三个阶段
+# 实证白名单: 按 --funnel 主题明细筛出(样本≥20 且 T+1胜率≥50% 且 T+5均>0)；
+# 原 12 主题白名单中的 半导体(T+5 -1.27%)/创新药(-0.28%)/AI算力(-0.35%)/军工(-1.10%) 为拖累项。
+EMPIRICAL_WHITELIST = {"新能源车", "信创", "节能环保", "机器人", "电力"}
+
 STAGE_ORDER = {"回踩中": 0, "回踩完成": 1, "首阳确认": 2, "洗盘缩量": 3,
                "延续上涨": 4, "首阳后破位": 5}
 OP_ORDER = {"✅ 次日可买入": 0, "⚠️ 次日观察等回踩": 1, "⚠️ 观察": 2,
@@ -232,17 +244,11 @@ def _push_bp_short(bp) -> str:
     return "未突破"
 
 
-def _push_table(lines, title, sub, limit=None):
-    """推送 Markdown 表格（股票/买点/回踩分/回踩天数/净利/扣非/主题/现价/止损）
-
-    limit: 行数上限（PushPlus 实际单条长度校验远严于宣称值，超长会整体推送失败），
-           超出时只取前 limit 行并提示完整名单见CSV。
-    """
+def _push_table(lines, title, sub):
+    """推送 Markdown 表格（股票/买点/回踩分/回踩天数/净利/扣非/主题/现价/止损）"""
     if len(sub) == 0:
         return
     total = len(sub)
-    if limit and total > limit:
-        sub = sub.head(limit)
     lines.append(f"## {title}（{total} 只）")
     lines.append("")
     lines.append("| 股票 | 买点 | 回踩分 | 回踩日 | 净利 | 扣非 | 主题状态 | 现价 | 止损 |")
@@ -259,69 +265,29 @@ def _push_table(lines, title, sub, limit=None):
             f"| {_push_cell(r, '回踩天数', '{:.0f}')} | {npg_s} | {dty_s} | {th_s} "
             f"| {_push_cell(r, '现价', '{:.2f}')} | {_push_cell(r, 'ATR动态止损价', '{:.2f}')} |"
         )
-    if total > len(sub):
-        lines.append(f"> 仅列前 {len(sub)} 只，其余 {total - len(sub)} 只见当日CSV。")
     lines.append("")
 
 
-def build_push_msg(trade_date: str, v12, pref, buy, watch, hot_bp) -> str:
-    """构建中报猎手×EGPT 择时的微信推送消息（Markdown）
+def build_push_msg(trade_date: str, buy, pool_label: str = "中报猎手") -> str:
+    """构建 EGPT 回踩择时的微信推送消息（Markdown）
 
-    板块顺序: 🏆v12合并策略 → 🎯主题优选 → ✅次日可买入 → ⚠️观察/等回踩
-              → ⛔买点1×高热度追高警示 → 买入纪律
+    仅保留「✅ 次日可买入」中买点未突破的信号（回踩中 × 回踩买点分≥60 × 未突破），
+    其余板块一律不推送。pool_label 用于区分输入池（中报猎手 / SLI龙头）。
     """
     from datetime import datetime
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = []
-    lines.append("# 中报猎手 × EGPT 回踩择时")
+    lines.append(f"# {pool_label} × EGPT 回踩择时")
     lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
     lines.append("")
-    lines.append("> 🏆 v12合并策略(回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50)：")
-    lines.append("> 复盘60笔/38只, T+5 +0.94% / 持有+1.66% / 止损+1.30%。")
+    lines.append("> 仅推送「✅ 次日可买入」且买点未突破：回踩中 × 回踩买点分≥60。")
+    lines.append("> 全样本回测: 未突破 T+1胜50.5%/T+20 +3.31%，优于买点1(+2.82%)/买点2(+1.43%)。")
+    lines.append("> 买点1/买点2、其余形态(首阳确认/回踩完成/洗盘缩量)及主题优选、v12、精选等板块不在本推送内，详见当日CSV。")
     lines.append("")
-
-    _push_table(lines, "🏆 v12合并策略·今日名单", v12, limit=10)
-    if len(v12) == 0:
-        lines.append("> 🏆 v12: 今日无满足标的，空仓等待。")
-        lines.append("")
-
-    lines.append("---")
-    lines.append("")
-
-    _push_table(lines, "🎯 主题优选（白名单×甜区5~15%×扣非≥50%×突破确认）", pref, limit=10)
-    if len(pref) == 0:
-        lines.append("> 🎯 主题优选: 今日无满足标的。")
-        lines.append("")
-
-    _push_table(lines, "✅ 次日可买入（回踩中×分≥60，最优买点窗口）", buy, limit=10)
+    _push_table(lines, "✅ 次日可买入 × 未突破（回踩中×分≥60）", buy)
     if len(buy) == 0:
-        lines.append("> ✅ 次日可买入: 今日无信号，宁缺毋滥。")
+        lines.append("> ✅ 次日可买入×未突破: 今日无信号，宁缺毋滥。")
         lines.append("")
-
-    _push_table(lines, "⚠️ 观察 / 等回踩（形态未确认，需触发）", watch, limit=12)
-    if len(watch) == 0:
-        lines.append("> ⚠️ 观察/等回踩: 今日无。")
-        lines.append("")
-
-    if len(hot_bp):
-        lines.append("---")
-        lines.append("")
-        lines.append("## ⛔ 买点1×高热度追高警示（回避）")
-        lines.append("")
-        lines.append("> 回测: 买点1(放量突破)×主题高热度(ETF20日≥15%) T+5胜率仅15.4%/均值-2.2%，追高回避。")
-        lines.append("")
-        lines.append("| 股票 | 主题状态 | 现价 |")
-        lines.append("|------|------|:---:|")
-        for _, r in hot_bp.head(6).iterrows():
-            name = f"{r['名称']}({str(r['代码']).replace('.SZ', '').replace('.SH', '')})"
-            lines.append(f"| {name} | {r.get('主题状态', '')} | {_push_cell(r, '现价', '{:.2f}')} |")
-        if len(hot_bp) > 6:
-            lines.append(f"> 仅列前 6 只，共 {len(hot_bp)} 只见当日CSV。")
-        lines.append("")
-
-    lines.append("---")
-    lines.append("> **买入纪律**：次日开盘承接，不追涨停/高开；止损=现价-2×ATR14；买点窗口=回踩1-2日。")
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -338,6 +304,8 @@ def main():
 
     trade_date = args.date or th.get_last_trade_date()
     src, pool_meta = None, None
+    # 池标识：区分 CSV/推送留档文件名与跟踪库 strategy（hunt 保持原名，SLI 加 _sli 后缀）
+    pool_tag, pool_label = "", "中报猎手"
     if args.csv:
         csv_path = args.csv
         if not os.path.exists(csv_path):
@@ -361,6 +329,7 @@ def main():
         src_label = (f"SLI[{SLI_MODES[args.sli_mode]}] 快照{pool_meta.get('snapshot_date', '?')}"
                      f"（{pool_meta.get('age_days', '?')}天前, 面板{pool_meta.get('n_stocks', '?')}只）")
         title = "SLI行业细分龙头 × EGPT v12 回踩择时"
+        pool_tag, pool_label = "_sli", "SLI龙头"
 
     if "ts_code" not in src.columns:
         print("[错误] 输入缺少 ts_code 列")
@@ -450,6 +419,7 @@ def main():
             "现价": round(price, 2),
             "当日涨幅%": round((closes[-1] / closes[-2] - 1) * 100, 2) if len(closes) >= 2 else np.nan,
             "VWAP": round(vwap, 2) if vwap else np.nan,
+            "乖离VWAP%": round((price / vwap - 1) * 100, 2) if vwap and vwap > 0 else np.nan,
             "MA20": round(ma20, 2) if ma20 else np.nan,
             "筹码峰顶": round(peak_high, 2) if peak_high else np.nan,
             "ATR动态止损价": dynamic_stop,
@@ -478,7 +448,7 @@ def main():
     out = out.sort_values(["_op", "_tp", "_st", "回踩买点分"], ascending=[True, True, True, False], na_position="last")
     out = out.drop(columns=["_op", "_st", "_tp"]).reset_index(drop=True)
 
-    csv_out = os.path.join(REPORT_DIR, f"zhongbao_egpt_timing_{trade_date}.csv")
+    csv_out = os.path.join(REPORT_DIR, f"zhongbao_egpt_timing{pool_tag}_{trade_date}.csv")
     out.to_csv(csv_out, index=False, encoding="utf-8-sig")
     print(f"\n完整CSV已保存: {csv_out}")
 
@@ -515,8 +485,8 @@ def main():
             print(f"  {r['名称']}({r['代码']}) {npg_s} {dty_s} | 潜力{pot} 回踩{pb} | 阶段{r['形态阶段']} "
                   f"回踩{pd_}日 首阳{py} 止损{sl}")
             print(f"     买点:{r['买点确认']} 回踩确认:{r['回踩确认']} 现价{_fmt(r.get('现价'), '{:.2f}')} "
-                  f"VWAP{_fmt(r.get('VWAP'), '{:.2f}')} MA20{_fmt(r.get('MA20'), '{:.2f}')} "
-                  f"筹码峰{_fmt(r.get('筹码峰顶'), '{:.2f}')}")
+                  f"VWAP{_fmt(r.get('VWAP'), '{:.2f}')} 乖离{_fmt(r.get('乖离VWAP%'), '{:+.2f}')}% "
+                  f"MA20{_fmt(r.get('MA20'), '{:.2f}')} 筹码峰{_fmt(r.get('筹码峰顶'), '{:.2f}')}")
             if th:
                 print(f"     主题: {th}  ETF近20日{_fmt(r.get('主题热度%'))}%")
 
@@ -529,6 +499,17 @@ def main():
     _pct = _num("当日涨幅%")
     _shr = _num("回踩缩量比")
     _dty = _num("扣非增速")
+
+    # ── 🎯精选层（--funnel 回测验证）: 乖离VWAP≤3% × 实证白名单 ──
+    # 全形态 8769 笔验证: 只有"乖离VWAP"是单调有效门槛(3%>5%>8%>不限);
+    # 主题用实证白名单(原12主题白名单含半导体/创新药/AI算力/军工等拖累项)。
+    # 不设 L1(去噪)/L2(卡买点)——回测证明二者为负增益。
+    _gap = _num("乖离VWAP%")
+    pick = out[(out["形态阶段"].isin(PICK_STAGES))
+               & (_gap <= VWAP_GAP_MAX * 100)
+               & (out["主题"].isin(EMPIRICAL_WHITELIST))].copy()
+    _show(pick, f"🎯精选层（乖离VWAP≤{VWAP_GAP_MAX * 100:.0f}%×实证白名单·回测T+5跨年为正）")
+
     v12 = out[(out["形态阶段"] == "回踩中") & (((_heat >= 5) & (_heat < 15)) | _heat.isna())
               & (_pct < 5) & (_shr < 1.0) & (_dty >= 50)].copy()
     _show(v12, "🏆 v12合并策略（回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50）")
@@ -543,11 +524,15 @@ def main():
     if len(pref_watch):
         _show(pref_watch, "主题优选内未突破→降级观察(回测T+20 -6.5%)")
 
-    buy = out[out["次日操作"] == "✅ 次日可买入"]
+    # 推送口径(20260919调整): 「✅次日可买入」内只保留买点未突破。
+    # 依据 --funnel 全形态 8769 笔: 未突破 T+1胜50.5%/T+5 +1.55%/T+20 +3.31%，
+    # 优于买点1(T+20 +2.82%)/买点2(T+20 +1.43%)；主题优选组合内(41笔)结论相反，此处按全样本口径取未突破。
+    buy = out[(out["次日操作"] == "✅ 次日可买入")
+              & (out["买点确认"].astype(str) == "未突破")]
     watch = out[out["次日操作"].isin(["⚠️ 次日观察等回踩", "⚠️ 观察"])]
     rest = out[~out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩", "⚠️ 观察"])]
 
-    _show(buy, "✅ 次日可买入（回踩中×分≥60，最优买点窗口）")
+    _show(buy, "✅ 次日可买入×未突破（回踩中×分≥60，全样本T+20最优）")
     _show(watch, "⚠️ 观察 / 等回踩（形态未确认，需触发）")
     _show(rest, "❌ 不买入 / 无形态")
 
@@ -563,14 +548,14 @@ def main():
                 d["rank_no"] = rank_no
                 d["reason"] = f"v12·{d.get('形态阶段') or ''}·{d.get('主题状态') or ''}"
                 picks12.append(d)
-            n_db12 = record_picks("zhongbao_egpt_v12", "中报猎手×EGPT v12合并策略", picks12,
+            n_db12 = record_picks(f"zhongbao_egpt_v12{pool_tag}", f"{pool_label}×EGPT v12合并策略", picks12,
                                   pick_date=trade_date,
                                   field_map={"代码": "ts_code", "名称": "stock_name",
                                              "现价": "close", "当日涨幅%": "pct_chg",
                                              "次日操作": "signal", "买点确认": "action",
                                              "回踩买点分": "score", "主题": "industry",
                                              "ATR动态止损价": "stop_price"})
-            print(f"v12策略落库: {n_db12}/{len(picks12)} 条 (strategy=zhongbao_egpt_v12 pick_date={trade_date})")
+            print(f"v12策略落库: {n_db12}/{len(picks12)} 条 (strategy=zhongbao_egpt_v12{pool_tag} pick_date={trade_date})")
     except Exception as e:
         print(f"⚠️ 选股池落库失败(不影响推送): {e}")
 
@@ -584,21 +569,23 @@ def main():
             print(f"     {r['名称']}({r['代码']}) 主题:{r['主题状态']}")
 
     print("\n" + "─" * 70)
-    print("  提示(买点优化回测20260819)：主题优选内买点1(放量突破) T+5 +5.2%/胜率72% 是核心alpha；")
-    print("  次日开盘承接与收盘买入等价(胜率更高)；未突破仅观察不追；高热度(≥15%)回避；止损=现价-2×ATR。")
+    print(f"  🎯精选层门槛(--funnel 验证20260819)：乖离VWAP≤{VWAP_GAP_MAX*100:.0f}% × 实证白名单 → {len(pick)} 只；"
+          "原漏斗 L1(去噪)/L2(卡买点) 经回测为负增益，已弃用。")
+    print("  提示(推送口径20260919)：全样本8769笔回测中 未突破 T+1胜50.5%/T+20 +3.31%，优于买点1(+2.82%)/买点2(+1.43%)，")
+    print("  故推送只留「✅次日可买入×未突破」；跟踪库(v12)口径不变；高热度(≥15%)回避；止损=现价-2×ATR。")
 
     # ── 微信推送（--push）：复用 EGPT 推送的 PushPlus 通道，消息留档 ──
     if args.push:
         try:
-            msg = build_push_msg(trade_date, v12, pref, buy, watch, hot_bp)
-            push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送_{trade_date}.txt")
+            msg = build_push_msg(trade_date, buy, pool_label=pool_label)
+            push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送{pool_tag}_{trade_date}.txt")
             with open(push_file, "w", encoding="utf-8") as f:
                 f.write(msg)
             print(f"\n推送消息已留档: {push_file}")
             print(msg[:400] + ("..." if len(msg) > 400 else ""))
-            ok = push_to_wechat(msg, title=f"中报猎手×EGPT 回踩择时 {trade_date}")
+            ok = push_to_wechat(msg, title=f"{pool_label}×EGPT 回踩择时 {trade_date}")
             if ok:
-                print(f"✅ 微信推送成功 (标题: 中报猎手×EGPT 回踩择时 {trade_date})")
+                print(f"✅ 微信推送成功 (标题: {pool_label}×EGPT 回踩择时 {trade_date})")
             else:
                 print("❌ 微信推送失败：PushPlus 未返回成功。"
                       f"请检查 PUSHPLUS 环境变量/Token 是否有效，消息已留档: {push_file}")

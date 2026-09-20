@@ -1381,10 +1381,15 @@ def hvt_evolution(f: dict, cfg: dict, det: dict, events_meta: dict,
             lvl = active["breakout_level"]
             since = j - b
             active.setdefault("brk_vols", []).append(float(vol[j])) if since > 0 else None
-            seg_low = float(low[b + 1:j + 1].min()) if j > b else np.inf
+            # 突破当日（j == b）尚无回踩 bar，seg_low 记为 NaN（哨兵），
+            # 既不算 HOLD 也不算 BREAK，避免当日即被误判为 RETEST_FAILED。
+            seg_low = float(low[b + 1:j + 1].min()) if j > b else np.nan
             retest_depth = (lvl - seg_low) / lvl if lvl > 0 and np.isfinite(seg_low) else np.nan
             touched = bool(np.isfinite(seg_low) and seg_low <= lvl * (1.0 + near_pct))
-            retest_hold = "HOLD" if (np.isfinite(seg_low) and seg_low >= lvl * (1.0 - break_pct)) else "BREAK"
+            if not np.isfinite(seg_low):
+                retest_hold = ""
+            else:
+                retest_hold = "HOLD" if seg_low >= lvl * (1.0 - break_pct) else "BREAK"
             if active["brk_vols"]:
                 retest_vr = (sum(active["brk_vols"]) / len(active["brk_vols"])) / t_vol \
                     if t_vol > 0 else np.nan
@@ -1411,9 +1416,11 @@ def hvt_evolution(f: dict, cfg: dict, det: dict, events_meta: dict,
             state, stage = "HVT_FAILED", "HVT_FAILED"
             active["dead"] = True
         elif retest_state in ("RETEST_PENDING", "RETEST_SUCCESS"):
-            state, stage = "HVT_RETEST", "HVT_REBREAKOUT"
+            # 突破后回踩确认进行中：归并回 HVT_ADJUSTING（Step 7 只认 5 态），
+            # 细分语义由 stage / breakout_state / retest_state 承载。
+            state, stage = "HVT_ADJUSTING", "HVT_REACCUMULATION"
         elif active["breakout_idx"] is not None:
-            state, stage = "HVT_REBREAKOUT", "HVT_REBREAKOUT"
+            state, stage = "HVT_ADJUSTING", "HVT_REBREAKOUT"
         elif locked:
             active["reached_locking"] = True
             state, stage = "HVT_LOCKING", "HVT_REACCUMULATION"
@@ -1429,6 +1436,10 @@ def hvt_evolution(f: dict, cfg: dict, det: dict, events_meta: dict,
             state = "HVT_ADJUSTING"
         if active["dead"]:
             state, stage = "HVT_FAILED", "HVT_FAILED"
+            # §二十七：dead 是本周期粘性失败标记，回踩状态不得再报成功，
+            # 避免落盘出现「HVT_FAILED × RETEST_SUCCESS / RETEST_PENDING」自相矛盾。
+            if retest_state in ("RETEST_SUCCESS", "RETEST_PENDING"):
+                retest_state, retest_quality = "RETEST_FAILED", "POOR"
         active["state"], active["stage"] = state, stage
         active["last"] = {
             "days_after": days_after, "adjustment_status": adj_class,

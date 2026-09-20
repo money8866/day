@@ -849,21 +849,28 @@ def run_v2_analysis(trade_date=None):
     # ─── 7. 保存结果 ───
     print("\n[6/6] 保存结果...")
 
-    # 文本报告（V3 规范）—— 内部执行 V4.1 分级归一化（_apply_gate_v41_alloc 会就地改写
-    # trade_action/position_label/position_pct：L2 满配 / L1 试探≤1/3池 / L0 观察0% /
-    # NONE 强制"清仓回避(0%)"，保证报告、决策表与落库三口径一致）。
-    save_to_text_report_v2(results, kg_v3_cfg, en_to_cn,
-                           market_ret_10=market_ret_10, etf_kline_map=etf_kline_map)
+    # V2.1 回填模式（--v21-backfill）：只补 V2.1 历史序列，V2 既有 CSV/txt/DB 一律保持原样，
+    # 避免重跑管线污染 V2 基线与历史归档（A/B Test 的前提是 V2 侧零改动）。
+    _save_v2 = not V21_BACKFILL_MODE
+    if not _save_v2:
+        print("  [V2.1 回填] 跳过 V2 产物落盘（保留既有 CSV/txt/DB）")
 
-    # CSV —— 必须在文本报告之后写：txt 报告内部完成 V4.1 分级归一化 + V1.1 乘数 +
-    # NONE 清仓回写（就地改写 trade_action/position_pct/position_label），
-    # CSV 与之共用同一 results，三端口径才能一致（否则 CSV 残留 V3 裸建议）。
-    save_to_csv_v2(results)
+    if _save_v2:
+        # 文本报告（V3 规范）—— 内部执行 V4.1 分级归一化（_apply_gate_v41_alloc 会就地改写
+        # trade_action/position_label/position_pct：L2 满配 / L1 试探≤1/3池 / L0 观察0% /
+        # NONE 强制"清仓回避(0%)"，保证报告、决策表与落库三口径一致）。
+        save_to_text_report_v2(results, kg_v3_cfg, en_to_cn,
+                               market_ret_10=market_ret_10, etf_kline_map=etf_kline_map)
 
-    # SQLite —— 必须在文本报告之后落库，保证 DB 存的是 V4 终判、与报告完全一致；
-    # 若先于 txt 落库，DB 只会留下 V3 单主题裸建议（如"逢低分批加仓10-15%"），
-    # 与报告"无主线/观察0%"矛盾，导致下游（tushare_quant 主题喂料）口径失真。
-    save_to_sqlite_v2(results)
+        # CSV —— 必须在文本报告之后写：txt 报告内部完成 V4.1 分级归一化 + V1.1 乘数 +
+        # NONE 清仓回写（就地改写 trade_action/position_pct/position_label），
+        # CSV 与之共用同一 results，三端口径才能一致（否则 CSV 残留 V3 裸建议）。
+        save_to_csv_v2(results)
+
+        # SQLite —— 必须在文本报告之后落库，保证 DB 存的是 V4 终判、与报告完全一致；
+        # 若先于 txt 落库，DB 只会留下 V3 单主题裸建议（如"逢低分批加仓10-15%"），
+        # 与报告"无主线/观察0%"矛盾，导致下游（tushare_quant 主题喂料）口径失真。
+        save_to_sqlite_v2(results)
 
     # 打印排名
     print(f"\n{'='*100}")
@@ -883,6 +890,18 @@ def run_v2_analysis(trade_date=None):
         print(f"{r['rank']:<4} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} {r['composite_score']:<6.1f} {zt:<4} {mig:<6.1f} {state:<10} {pos_str:<10} {action:<20}")
 
     print(f"\n完成! 共 {len(results)} 个主题评分")
+
+    # ─── 8. V2.1 附加层（只读 results；不改动 V2 的 txt/CSV/SQLite 产物）───
+    # 强度用于发现 / 状态用于判断阶段 / 确认用于判断是否真形成趋势 / 持续性用于验证是否一天行情 /
+    # 交易许可用于执行 / ChaseRisk 决定怎么进（而不是只决定买不买）。
+    # 附加层异常一律不得影响 V2 主链路，故此处单独兜底。
+    try:
+        run_v21_layer(results, TRADE_DATE_str, idx_df=idx_df, market_ret_10=market_ret_10)
+    except Exception as _e21:
+        import traceback
+        print(f"[V2.1] 附加层执行异常（V2 输出不受影响）: {_e21}")
+        traceback.print_exc()
+
     return results
 
 
@@ -4328,10 +4347,753 @@ def calc_phase_migration(r, market_ret_10, idx_df, prev_data=None, age_days=1):
     }
 
 
+# ═══════════════════════════════════════════════════════════
+# V2.1 主题状态识别 + 持续性确认 + 交易许可引擎（附加层）
+#
+# 核心原则：强度用于发现 / 状态用于判断阶段 / 确认用于判断是否真形成趋势 /
+#           持续性用于验证是否一天行情 / 交易许可用于执行 / ChaseRisk 决定怎么进
+# 禁止映射：高综合分≠主线；高迁移≠强趋势；高情绪≠可买入
+#
+# 定位：只读 V2 的 results，产出独立文件与独立表，不改动 V2 的 CSV/txt/SQLite 表，
+#       供 A/B Test 与下游选股/执行层调用（本层不参与配仓）。
+# ═══════════════════════════════════════════════════════════
+
+V21_STATES = ('WEAK', 'RECOVERY', 'EARLY_FLOW', 'STARTING', 'STRONG_TREND',
+              'ACCELERATION', 'OSCILLATION', 'DIVERGENCE', 'EXHAUSTION', 'RETREAT')
+# 「改善阶梯序」：仅用于判定状态转换方向（UPGRADE/DOWNGRADE），不是健康度排序
+V21_STATE_LADDER = ('RETREAT', 'WEAK', 'EXHAUSTION', 'DIVERGENCE', 'RECOVERY',
+                    'OSCILLATION', 'EARLY_FLOW', 'STARTING', 'STRONG_TREND', 'ACCELERATION')
+V21_STATE_CN = {
+    'WEAK': '弱势', 'RECOVERY': '修复', 'EARLY_FLOW': '资金先行', 'STARTING': '启动确认',
+    'STRONG_TREND': '强趋势', 'ACCELERATION': '加速', 'OSCILLATION': '震荡未确认',
+    'DIVERGENCE': '资金价格背离', 'EXHAUSTION': '情绪透支', 'RETREAT': '退潮',
+}
+V21_PERMISSIONS = ('NO_TRADE', 'WATCH', 'CONDITIONAL', 'TRADEABLE')
+V21_FLOW_CAP = 40.0                                   # migration_score 实测值域≈[0,40]
+V21_PERM_TH = {'conf': 65.0, 'breadth': 60.0, 'lead': 60.0, 'pers': 55.0}
+V21_CHASE_LIMIT = 75.0                                # ≥75 → 只可回踩买
+V21_HIST_DAYS = 25                                    # 历史窗口（覆盖 D20 + 状态转换 D5）
+V21_TABLE = 'theme_v21_daily'
+V21_BACKFILL_MODE = False                             # True：只产 V2.1 历史，不写任何 V2 产物
+
+
+def _v21_lin(x, lo, hi):
+    """x 从 lo→hi 线性映射到 0→1（超出裁剪），V2.1 内部唯一归一化工具"""
+    x = float(x or 0)
+    if hi == lo:
+        return 0.0
+    return max(0.0, min(1.0, (x - lo) / (hi - lo)))
+
+
+def _v21_clamp(x, lo=0.0, hi=100.0):
+    return max(lo, min(hi, float(x or 0)))
+
+
+def _v21_flow(mig):
+    """Migration → Flow 0~100。migration_score = confidence*100（实测∈[0,40]）线性拉满。"""
+    return round(_v21_clamp(float(mig or 0) / V21_FLOW_CAP * 100.0), 1)
+
+
+def _v21_theme_ret1(r):
+    """主题当日收益（%）= 成分股等权 pct_chg 均值 —— 回测/持续性/跑赢市场的唯一收益口径"""
+    rows = r.get('stock_rows') or []
+    if not rows:
+        return 0.0
+    return round(float(np.mean([float(x.get('pct_chg', 0) or 0) for x in rows])), 4)
+
+
+def calc_breadth_v21(rows, market_ret_1=0.0):
+    """Breadth 主题内部广度 0~100
+    上涨20% + 强势(≥5%)15% + 跑赢市场15% + MA20上方15% + MA60上方15% + 20日新高10% + 涨停10%
+    关键：不再只数涨停数 —— 「10只涨停+100只下跌」与「5只涨停+80%上涨」必须区分开。
+    """
+    n = len(rows)
+    if n == 0:
+        return 0.0, {}
+    def ratio(f):
+        return sum(1 for x in rows if f(x)) / n
+    up = ratio(lambda x: float(x.get('pct_chg', 0) or 0) > 0)
+    strong = ratio(lambda x: float(x.get('pct_chg', 0) or 0) >= 5.0)
+    rs = ratio(lambda x: float(x.get('pct_chg', 0) or 0) > float(market_ret_1 or 0))
+    ma20 = ratio(lambda x: int(x.get('above_ma20_flag', 0) or 0) == 1)
+    ma60 = ratio(lambda x: float(x.get('ma60_b', 0) or 0) > 0)
+    nh = ratio(lambda x: int(x.get('new_high_flag', 0) or 0) == 1)
+    zt = ratio(lambda x: int(x.get('zt_flag', 0) or 0) == 1)
+    score = 100.0 * (0.20 * up + 0.15 * strong + 0.15 * rs + 0.15 * ma20 + 0.15 * ma60
+                     + 0.10 * nh + 0.10 * zt)
+    return round(_v21_clamp(score), 1), {
+        'b_up': round(up * 100, 1), 'b_strong': round(strong * 100, 1),
+        'b_rs': round(rs * 100, 1), 'b_ma20': round(ma20 * 100, 1),
+        'b_ma60': round(ma60 * 100, 1), 'b_newhigh': round(nh * 100, 1),
+        'b_zt': round(zt * 100, 1),
+    }
+
+
+def _v21_stock_strength(s):
+    """个股强度（与 V3 龙头评分同式，保证「龙头」定义与既有体系一致）"""
+    lb = float(s.get('lb_height', 0) or 0)
+    pct = abs(float(s.get('pct_chg', 0) or 0))
+    amt = float(s.get('amount_latest', 0) or 0)
+    p = float(s.get('purity', 0) or 0)
+    return 0.4 * min(lb * 20, 100) + 0.3 * min(pct * 5, 100) + 0.2 * min(amt * 2, 100) + 0.1 * min(p * 20, 100)
+
+
+def calc_leadership_v21(rows, theme_avg_ret5=0.0):
+    """Leadership 龙头质量 0~100 + SingleLeaderRisk(HIGH/MEDIUM/LOW)
+    LeaderCount梯队20 + LeaderStrength25 + LeaderTrend20 + LeaderBreadth20 + LeaderConsistency15
+
+    SingleLeaderRisk：主题是否靠单一龙头撑起来。HIGH 时禁止据此认定主线（见 _v21_mainline_candidate）。
+    """
+    n = len(rows)
+    if n == 0:
+        return 0.0, {}, 'HIGH'
+    ranked = sorted(rows, key=_v21_stock_strength, reverse=True)
+    leader = ranked[0]
+    # 龙头梯队：优先连板 → 涨停 → 强度前3
+    pool = [x for x in rows if float(x.get('lb_height', 0) or 0) >= 2]
+    if not pool:
+        pool = [x for x in rows if int(x.get('zt_flag', 0) or 0) == 1]
+    if not pool:
+        pool = ranked[:3]
+    leader_count = len(pool)
+    # LeaderStrength：龙头强度 + 连板高度
+    ls = _v21_stock_strength(leader)
+    s_strength = 100.0 * (0.7 * min(ls / 80.0, 1.0) + 0.3 * min(float(leader.get('lb_height', 0) or 0) / 3.0, 1.0))
+    # LeaderTrend：龙头是否站稳关键均线 / 突破
+    s_trend = (40.0 if float(leader.get('ma5_b', 0) or 0) > 0 else 0.0) \
+        + (30.0 if float(leader.get('ma20_b', 0) or 0) > 0 else 0.0) \
+        + (30.0 if int(leader.get('new_high_flag', 0) or 0) == 1 else 0.0)
+    # LeaderBreadth：强势前列的跟随度（强度前10中上涨比例）
+    top10 = ranked[:min(10, n)]
+    s_breadth = 100.0 * sum(1 for x in top10 if float(x.get('pct_chg', 0) or 0) > 0) / max(1, len(top10))
+    # LeaderConsistency：龙头持续强于主题平均 / 连板延续 / 成交额确认
+    s_consist = (50.0 if float(leader.get('ret_5', 0) or 0) > float(theme_avg_ret5 or 0) else 0.0) \
+        + (30.0 if float(leader.get('lb_height', 0) or 0) >= 2 else 0.0) \
+        + (20.0 if float(leader.get('amount_latest', 0) or 0) >= 8.0 else 0.0)
+    s_count = 100.0 * min(leader_count / 4.0, 1.0)
+    score = 0.20 * s_count + 0.25 * s_strength + 0.20 * s_trend + 0.20 * s_breadth + 0.15 * s_consist
+    # ── SingleLeaderRisk：单一龙头依赖度 ──
+    amt_total = sum(float(x.get('amount_latest', 0) or 0) for x in rows) or 1e-9
+    amt_share = float(leader.get('amount_latest', 0) or 0) / amt_total
+    pcts = sorted(float(x.get('pct_chg', 0) or 0) for x in rows)
+    median_pct = pcts[len(pcts) // 2] if pcts else 0.0
+    up_ratio = 100.0 * sum(1 for x in rows if float(x.get('pct_chg', 0) or 0) > 0) / n
+    zt_count = sum(1 for x in rows if int(x.get('zt_flag', 0) or 0) == 1)
+    lead_pct = float(leader.get('pct_chg', 0) or 0)
+    if (amt_share >= 0.50 and leader_count <= 1) \
+            or (up_ratio < 45 and lead_pct - median_pct >= 9.0) \
+            or (zt_count <= 1 and up_ratio < 45):
+        risk = 'HIGH'
+    elif amt_share >= 0.35 or (leader_count <= 2 and up_ratio < 55) or (up_ratio < 50 and lead_pct - median_pct >= 6.0):
+        risk = 'MEDIUM'
+    else:
+        risk = 'LOW'
+    detail = {
+        'lead_name': leader.get('name', ''), 'lead_count': leader_count,
+        'lead_lb': float(leader.get('lb_height', 0) or 0), 'lead_pct': round(lead_pct, 2),
+        'lead_amt_share': round(amt_share, 3), 'lead_pool_ratio': round(leader_count / n * 100, 1),
+        'lead_up_ratio': round(up_ratio, 1), 'lead_median_pct': round(median_pct, 2),
+        's_lead_count': round(s_count, 1), 's_lead_strength': round(s_strength, 1),
+        's_lead_trend': round(s_trend, 1), 's_lead_breadth': round(s_breadth, 1),
+        's_lead_consist': round(s_consist, 1),
+    }
+    return round(_v21_clamp(score), 1), detail, risk
+
+
+def calc_persistence_v21(series):
+    """Persistence 持续性 0~100 —— 不是简单平均，必须看形态
+    基础：D3 35% + D5 30% + D10 20% + D20 15%（各窗口为强度均值）
+    修正：+ 持续强化(8) / + 连续跑赢市场(≤6) / - 脉冲型(48→75→51 判脉冲,15)
+          - 断崖式下降(单日≤-20,12) / - 波动惩罚(≤10)
+    窗口不足（历史天数<5）时按 n/5 收缩，避免首日虚高。
+
+    series: [{'strength':.., 'ret_1':.., 'mkt_ret_1':..}, ...] 升序，含今日
+    """
+    s = [float(x.get('strength') or 0) for x in series]
+    n = len(s)
+    if n == 0:
+        return 0.0, {'pers_days': 0, 'pers_d3': 0, 'pers_d5': 0, 'pers_d10': 0, 'pers_d20': 0,
+                     'pers_shape': 'NO_DATA', 'pers_bonus': 0.0, 'pers_penalty': 0.0, 'pers_beat': 0}
+    def wmean(k):
+        seg = s[-k:]
+        return sum(seg) / len(seg)
+    d3, d5, d10, d20 = wmean(3), wmean(5), wmean(10), wmean(20)
+    base = 0.35 * d3 + 0.30 * d5 + 0.20 * d10 + 0.15 * d20
+    shape, bonus, penalty = 'FLAT', 0.0, 0.0
+    beat = 0
+    seg5 = s[-5:] if n >= 5 else s
+    if n >= 3:
+        diffs = [seg5[i + 1] - seg5[i] for i in range(len(seg5) - 1)]
+        max_drop = min(diffs) if diffs else 0.0
+        slope = (seg5[-1] - seg5[0]) / max(1, len(seg5) - 1)
+        up_days = sum(1 for d in diffs if d > 0) / max(1, len(diffs))
+        if up_days >= 0.6 and slope > 0 and max_drop > -10:
+            shape, bonus = 'STRENGTHENING', bonus + 8.0
+        if n >= 10:
+            seg10 = s[-10:]
+            i_max = max(range(len(seg10)), key=lambda i: seg10[i])
+            if seg10[i_max] - s[-1] >= 15.0 and i_max <= len(seg10) - 3:
+                shape, penalty = 'PULSE', penalty + 15.0
+        if max_drop <= -20.0:
+            shape, penalty = 'CLIFF', penalty + 12.0
+        if n >= 2:
+            penalty += min(10.0, float(np.std(seg5)) * 0.5)
+    m = min(5, n)
+    for i in range(1, m + 1):
+        rr = series[-i].get('ret_1')
+        mm = series[-i].get('mkt_ret_1')
+        if rr is not None and mm is not None and float(rr) > float(mm):
+            beat += 1
+    bonus += min(6.0, beat * 1.5)
+    score = base + bonus - penalty
+    if n < 5:
+        score *= max(0.5, n / 5.0)
+    detail = {'pers_days': n, 'pers_d3': round(d3, 1), 'pers_d5': round(d5, 1),
+              'pers_d10': round(d10, 1), 'pers_d20': round(d20, 1), 'pers_shape': shape,
+              'pers_bonus': round(bonus, 1), 'pers_penalty': round(penalty, 1), 'pers_beat': beat}
+    return round(_v21_clamp(score), 1), detail
+
+
+def calc_chase_risk_v21(f):
+    """ChaseRisk 追高风险 0~100
+    Emotion25 + 当日涨幅20 + 距MA20乖离15 + 20日位置15 + 涨停集中度15 + 情绪-广度背离10
+    ≥75 → 即使 TradePermission 允许，也只能 BUY_MODE=PULLBACK_ONLY（与「巨量日不追，只等回踩」一致）。
+    """
+    s_emo = _v21_lin(f.get('emotion'), 55, 90) * 100
+    s_r1 = _v21_lin(f.get('ret_1'), 2, 9) * 100
+    s_ma = _v21_lin(f.get('ma20_b'), 5, 20) * 100
+    s_pos = _v21_lin(f.get('pos_in_20'), 0.6, 1.0) * 100
+    up = float(f.get('up_ratio') or 0)
+    s_conc = _v21_lin(f.get('zt_count'), 5, 20) * 100 * (1.0 - min(up / 100.0, 1.0))
+    s_div = _v21_lin(float(f.get('emotion') or 0) - up, 15, 40) * 100
+    risk = (0.25 * s_emo + 0.20 * s_r1 + 0.15 * s_ma + 0.15 * s_pos
+            + 0.15 * s_conc + 0.10 * s_div)
+    return round(_v21_clamp(risk), 1), {
+        'c_emotion': round(s_emo, 1), 'c_ret1': round(s_r1, 1), 'c_ma20': round(s_ma, 1),
+        'c_pos': round(s_pos, 1), 'c_concentration': round(s_conc, 1), 'c_divergence': round(s_div, 1),
+    }
+
+
+def classify_state_v21(f):
+    """V2.1 状态机（10 态）—— 自上而下先命中先返回，顺序即优先级
+
+    1 RETREAT      趋势/情绪/广度/持续性四低 → 退潮
+    2 EXHAUSTION   情绪高 + 广度或持续性走弱 + 趋势钝化 + 涨停潮 → 情绪透支（禁追高）
+    3 DIVERGENCE   高迁移 + 低趋势 + 高情绪 + 广度差(<45) → 资金与价格背离（危险）
+    4 WEAK         趋势<40 且 情绪<50 且 广度<45 且 确认<45
+    5 ACCELERATION 趋势70+广度65+龙头65+确认65 且 (D3>D5 或 趋势加速>0) 且 (涨停扩张 或 广度扩张)
+    6 STRONG_TREND 趋势65+广度60+龙头60+确认60+持续性55（禁止 趋势<50 判强趋势）
+    7 OSCILLATION  综合≥60 但确认<60 —— 高强度低确认（解决"综合分高但没形成趋势"）
+    8 STARTING     趋势45+广度50+情绪55+迁移10+确认50
+    9 OSCILLATION  趋势高但持续性弱、广度不一致
+   10 EARLY_FLOW   低趋势 + 高迁移 + 高情绪 + 广度≥45（资金先行，尚未确认主线）
+   11 RECOVERY     弱势/退潮/透支后趋势与广度同步改善
+   12 WEAK         兜底
+    """
+    trend = float(f.get('trend') or 0)
+    emo = float(f.get('emotion') or 0)
+    comp = float(f.get('composite') or 0)
+    brd = float(f.get('breadth') or 0)
+    lead = float(f.get('leadership') or 0)
+    pers = float(f.get('persistence') or 0)
+    conf = float(f.get('confirmation') or 0)
+    mig = float(f.get('migration') or 0)
+    up = float(f.get('up_ratio') or 0)
+    zt = int(f.get('zt_count') or 0)
+    d_brd = float(f.get('d_breadth') or 0)
+    d_trend = float(f.get('d_trend') or 0)
+    d_pers = float(f.get('d_persistence') or 0)
+    d3, d5 = float(f.get('pers_d3') or 0), float(f.get('pers_d5') or 0)
+    prev_state = str(f.get('prev_state') or '')
+
+    if trend < 45 and emo < 45 and brd < 40 and pers < 45:
+        return 'RETREAT'
+    if (emo >= 70 and (d_brd < 0 or up < 55) and (d_pers < 0 or pers < 50)
+            and d_trend <= 0 and (zt >= 8 or comp >= 60)):
+        return 'EXHAUSTION'
+    if mig >= 25 and trend < 50 and emo >= 65 and brd < 45:
+        return 'DIVERGENCE'
+    if trend < 40 and emo < 50 and brd < 45 and conf < 45:
+        return 'WEAK'
+    if (trend >= 70 and brd >= 65 and lead >= 65 and conf >= 65
+            and (d3 > d5 or d_trend > 0)
+            and (bool(f.get('zt_expansion')) or bool(f.get('breadth_expansion')))):
+        return 'ACCELERATION'
+    if trend >= 65 and brd >= 60 and lead >= 60 and conf >= 60 and pers >= 55 and trend >= 50:
+        return 'STRONG_TREND'
+    if comp >= 60 and conf < 60:
+        return 'OSCILLATION'
+    if trend >= 45 and brd >= 50 and emo >= 55 and mig >= 10 and conf >= 50:
+        return 'STARTING'
+    if trend >= 55 and pers < 50 and abs(d_brd) <= 3.0 and conf < 60:
+        return 'OSCILLATION'
+    if trend < 50 and mig >= 20 and emo >= 60 and brd >= 45:
+        return 'EARLY_FLOW'
+    if (prev_state in ('WEAK', 'RETREAT', 'EXHAUSTION') and d_trend > 0 and d_brd > 0 and trend >= 40) \
+            or (d_trend > 3 and d_brd > 3 and trend >= 40):
+        return 'RECOVERY'
+    return 'WEAK'
+
+
+def _v21_mainline_candidate(f):
+    """主线候选（YES/CANDIDATE/NO）—— MAINLINE_CANDIDATE=YES 仍不代表可买（可买看 TradePermission）
+
+    YES 门槛取规格第十三节「CORE_MAINLINE 进入主线交易池」的硬条件（确认70/持续60/广度65/龙头65），
+    目的是让「主线」极难伪造：高迁移、高情绪、高涨停数都不能单独把主题送进 YES。
+    """
+    comp = float(f.get('composite') or 0)
+    conf = float(f.get('confirmation') or 0)
+    brd = float(f.get('breadth') or 0)
+    lead = float(f.get('leadership') or 0)
+    pers = float(f.get('persistence') or 0)
+    if (comp >= 65 and conf >= 70 and pers >= 60 and brd >= 65 and lead >= 65
+            and f.get('single_leader_risk') != 'HIGH'
+            and f.get('state') not in ('EXHAUSTION', 'DIVERGENCE', 'RETREAT')):
+        return 'YES'
+    if comp >= 55 and conf >= 50 and brd >= 50:
+        return 'CANDIDATE'
+    return 'NO'
+
+
+def _v21_quadrant(f):
+    """强度—确认度二维四象限（比单纯排名更有交易价值）
+
+    I   CORE_MAINLINE          强度≥60 且 确认≥60
+    II  HOT_BUT_UNCONFIRMED    强度≥60 但 确认<60
+    III EARLY_FLOW             强度 40~60（有基础但未强）+ 迁移≥20（资金先行），退潮/透支不列此象限
+    IV  WEAK                   其余
+    """
+    comp = float(f.get('composite') or 0)
+    conf = float(f.get('confirmation') or 0)
+    mig = float(f.get('migration') or 0)
+    state = f.get('state')
+    if comp >= 60 and conf >= 60:
+        return 'CORE_MAINLINE'
+    if comp >= 60:
+        return 'HOT_BUT_UNCONFIRMED'
+    if 40.0 <= comp < 60.0 and mig >= 20 and state not in ('RETREAT', 'EXHAUSTION'):
+        return 'EARLY_FLOW'
+    return 'WEAK'
+
+
+def _v21_permission(f):
+    """TradePermission 四级：NO_TRADE / WATCH / CONDITIONAL / TRADEABLE
+
+    规格第八/九节：
+      只有 Confirmation≥65 且 Breadth≥60 且 Leadership≥60 且 Persistence≥55，且未触发
+      Exhaustion/Divergence/SingleLeaderRisk=HIGH 时，才允许 CONDITIONAL；全部确认才 TRADEABLE。
+      其余一律不得上调 —— 尤其禁止「Migration 高」或「Composite 高」单独换来交易许可（PASS1/PASS5）。
+    ChaseRisk≥75 → 降级为 CONDITIONAL 且 BUY_MODE=PULLBACK_ONLY（不追高，只等回踩）。
+    """
+    th = V21_PERM_TH
+    state = f.get('state')
+    conf = float(f.get('confirmation') or 0)
+    hard = (conf >= th['conf']
+            and float(f.get('breadth') or 0) >= th['breadth']
+            and float(f.get('leadership') or 0) >= th['lead'])
+    pers_ok = float(f.get('persistence') or 0) >= th['pers']
+    slr_high = f.get('single_leader_risk') == 'HIGH'
+    # 硬阻断：退潮 / 情绪透支 —— 强度再高也不给交易许可
+    if state in ('RETREAT', 'EXHAUSTION'):
+        return 'NO_TRADE'
+    if hard and pers_ok and not slr_high and state != 'DIVERGENCE':
+        return 'CONDITIONAL' if float(f.get('chase_risk') or 0) >= V21_CHASE_LIMIT else 'TRADEABLE'
+    # 未达完整确认：最多给观察资格
+    if state == 'DIVERGENCE':
+        return 'WATCH'
+    if slr_high:
+        return 'WATCH'
+    if f.get('quadrant') in ('EARLY_FLOW', 'HOT_BUT_UNCONFIRMED'):
+        return 'WATCH'
+    if state in ('EARLY_FLOW', 'RECOVERY', 'STARTING', 'STRONG_TREND', 'ACCELERATION') or conf >= 55:
+        return 'WATCH'
+    return 'NO_TRADE'
+
+
+def _v21_action(f):
+    """统一动作语言（禁止模糊表达）：NO_TRADE/WATCH/CONDITIONAL/TRADEABLE + PULLBACK_ONLY/AVOID_CHASING"""
+    perm = f['trade_permission']
+    chase = float(f.get('chase_risk') or 0)
+    avoid = chase >= V21_CHASE_LIMIT
+    if perm == 'TRADEABLE':
+        buy_mode = 'PULLBACK_ONLY' if avoid else 'MARKET_BUY'
+        action = ('可交易，但仅限回踩买（不追高）' if avoid else '可交易（趋势/广度/龙头/持续性共同确认）')
+    elif perm == 'CONDITIONAL':
+        buy_mode = 'PULLBACK_ONLY'
+        action = '条件交易：等分歧转一致 / 放量突破 / 龙头确认 / 回踩不破'
+        if avoid:
+            action += '（追高风险高，只可回踩）'
+    elif perm == 'WATCH':
+        buy_mode = 'NO_BUY'
+        action = '只观察，不追，等待确认'
+    else:
+        buy_mode = 'NO_BUY'
+        action = '不交易（确认不足）'
+    return perm, buy_mode, action, ('AVOID_CHASING' if avoid else '')
+
+
+def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
+    """单主题 V2.1 全字段计算（附加层核心）
+
+    r:    V2 主题结果（只读，不修改 V2 既有键）
+    hist: 该主题历史 V2.1 行（升序，来自 theme_v21_daily，不含今日）
+    """
+    hist = hist or []
+    sd = r.get('sentiment_detail', {}) or {}
+    td = r.get('trend_detail', {}) or {}
+    rows = r.get('stock_rows') or []
+    zt_count = int(sd.get('zt_count', 0) or 0)
+    up_ratio = float(sd.get('up_ratio', 0) or 0)
+    ret_1 = _v21_theme_ret1(r)
+    ma20_b = float(np.mean([float(x.get('ma20_b', 0) or 0) for x in rows])) if rows else 0.0
+    pos_in_20 = float(np.mean([float(x.get('pos_in_20', 0) or 0) for x in rows])) if rows else 0.0
+
+    breadth, b_detail = calc_breadth_v21(rows, mkt_ret_1)
+    leadership, l_detail, slr = calc_leadership_v21(
+        rows, float(td.get('avg_ret_5', 0) or 0))
+    strength = float(r.get('composite_score', 0) or 0)
+    flow = _v21_flow(r.get('migration_score', 0))
+
+    # ── 序列（升序，含今日）：强度 + 主题收益 + 市场收益，用于持续性/跑赢市场 ──
+    series = [{'strength': h.get('strength'), 'ret_1': h.get('ret_1'), 'mkt_ret_1': h.get('mkt_ret_1')}
+              for h in hist if h.get('strength') is not None]
+    series.append({'strength': strength, 'ret_1': ret_1, 'mkt_ret_1': mkt_ret_1})
+    persistence, p_detail = calc_persistence_v21(series)
+
+    prev = hist[-1] if hist else {}
+    prev_state = str(prev.get('state') or '')
+    d_breadth = breadth - float(prev.get('breadth') or 0) if prev else 0.0
+    d_trend = float(r.get('trend_score', 0) or 0) - float(prev.get('trend') or 0) if prev else 0.0
+    d_pers = persistence - float(prev.get('persistence') or 0) if prev else 0.0
+    d_emotion = float(r.get('sentiment_score', 0) or 0) - float(prev.get('emotion') or 0) if prev else 0.0
+    d_migration = float(r.get('migration_score', 0) or 0) - float(prev.get('migration') or 0) if prev else 0.0
+
+    # ── Confirmation 25%Trend + 20%Breadth + 20%Leadership + 20%Persistence + 15%Flow ──
+    confirmation = (0.25 * float(r.get('trend_score', 0) or 0) + 0.20 * breadth
+                    + 0.20 * leadership + 0.20 * persistence + 0.15 * flow)
+    # ── MainlineConfirmation 20/20/20/20 + Migration10 + Emotion10（禁止情绪或涨停数单独决定）──
+    mainline_conf = (0.20 * float(r.get('trend_score', 0) or 0) + 0.20 * breadth
+                     + 0.20 * leadership + 0.20 * persistence + 0.10 * flow
+                     + 0.10 * float(r.get('sentiment_score', 0) or 0))
+
+    f = {
+        'trend': float(r.get('trend_score', 0) or 0), 'emotion': float(r.get('sentiment_score', 0) or 0),
+        'composite': strength, 'strength': strength, 'migration': float(r.get('migration_score', 0) or 0),
+        'breadth': breadth, 'leadership': leadership, 'persistence': persistence,
+        'confirmation': round(_v21_clamp(confirmation), 1),
+        'mainline_conf': round(_v21_clamp(mainline_conf), 1), 'flow': flow,
+        'limitup': zt_count, 'up_ratio': up_ratio, 'zt_count': zt_count,
+        'ret_1': ret_1, 'mkt_ret_1': mkt_ret_1, 'ma20_b': ma20_b, 'pos_in_20': pos_in_20,
+        'd_breadth': d_breadth, 'd_trend': d_trend, 'd_persistence': d_pers,
+        'prev_state': prev_state, 'single_leader_risk': slr,
+        'zt_expansion': zt_count > int(prev.get('limitup') or 0) if prev else False,
+        'breadth_expansion': d_breadth > 0,
+    }
+    f['confirmation'] = round(_v21_clamp(confirmation), 1)
+    f.update(p_detail)
+    chase, c_detail = calc_chase_risk_v21(f)
+    f['chase_risk'] = chase
+    state = classify_state_v21(f)
+    f['state'] = state
+    f['quadrant'] = _v21_quadrant(f)
+    f['mainline_candidate'] = _v21_mainline_candidate(f)
+    perm, buy_mode, action, avoid = _v21_action(
+        {**f, 'trade_permission': _v21_permission(f)})
+    f['trade_permission'], f['buy_mode'], f['action'], f['chase_flag'] = perm, buy_mode, action, avoid
+
+    # ── 状态转换检测（D-1 / D-3 / D-5）──
+    d3_state = str(hist[-3].get('state') or '') if len(hist) >= 3 else ''
+    d5_state = str(hist[-5].get('state') or '') if len(hist) >= 5 else ''
+    if not prev_state:
+        change = 'NEW'
+    else:
+        i0 = V21_STATE_LADDER.index(prev_state) if prev_state in V21_STATE_LADDER else 1
+        i1 = V21_STATE_LADDER.index(state) if state in V21_STATE_LADDER else 1
+        change = 'UPGRADE' if i1 > i0 else ('DOWNGRADE' if i1 < i0 else 'FLAT')
+    reason = (f"Migration {d_migration:+.1f}, Emotion {d_emotion:+.1f}, "
+              f"Breadth {d_breadth:+.1f}, Trend {d_trend:+.1f}")
+    flags = json.dumps({**b_detail, **l_detail, **c_detail, 'chase_flag': avoid},
+                       ensure_ascii=False)
+
+    return {
+        'trade_date': TRADE_DATE_str, 'theme': r.get('theme', ''), 'rank': r.get('rank', 0),
+        'trend': round(f['trend'], 1), 'emotion': round(f['emotion'], 1),
+        'composite': round(strength, 1), 'strength': round(strength, 1),
+        'strength_v3': round(float(r.get('strength_score', 0) or 0), 1),
+        'limitup': zt_count, 'migration': round(f['migration'], 1),
+        'breadth': breadth, 'leadership': leadership, 'persistence': persistence,
+        'confirmation': f['confirmation'], 'mainline_conf': f['mainline_conf'], 'flow': flow,
+        'state': state, 'state_d3': d3_state, 'state_d5': d5_state, 'prev_state': prev_state,
+        'state_change': change, 'change_reason': reason, 'quadrant': f['quadrant'],
+        'mainline_candidate': f['mainline_candidate'], 'chase_risk': chase,
+        'trade_permission': perm, 'buy_mode': buy_mode, 'action': action,
+        'single_leader_risk': slr, 'ret_1': ret_1, 'mkt_ret_1': round(float(mkt_ret_1 or 0), 4),
+        'pers_shape': p_detail['pers_shape'], 'flags': flags,
+        # 透传诊断（不进表，仅 JSON/MD 用）
+        '_b': b_detail, '_l': l_detail, '_c': c_detail, '_p': p_detail,
+    }
+
+
+# ─────────── V2.1 持久化 / 输出 ───────────
+
+V21_COLS = ('trade_date', 'theme', 'rank', 'trend', 'emotion', 'composite', 'strength',
+            'strength_v3', 'limitup', 'migration', 'breadth', 'leadership', 'persistence',
+            'confirmation', 'mainline_conf', 'flow', 'state', 'state_d3', 'state_d5',
+            'prev_state', 'state_change', 'change_reason', 'quadrant', 'mainline_candidate',
+            'chase_risk', 'trade_permission', 'buy_mode', 'action', 'single_leader_risk',
+            'ret_1', 'mkt_ret_1', 'pers_shape', 'flags')
+
+
+def _v21_ensure_table(conn):
+    conn.execute(f"""CREATE TABLE IF NOT EXISTS {V21_TABLE} (
+        trade_date TEXT, theme TEXT, rank INTEGER, trend REAL, emotion REAL,
+        composite REAL, strength REAL, strength_v3 REAL, limitup INTEGER, migration REAL,
+        breadth REAL, leadership REAL, persistence REAL, confirmation REAL,
+        mainline_conf REAL, flow REAL, state TEXT, state_d3 TEXT, state_d5 TEXT,
+        prev_state TEXT, state_change TEXT, change_reason TEXT, quadrant TEXT,
+        mainline_candidate TEXT, chase_risk REAL, trade_permission TEXT, buy_mode TEXT,
+        action TEXT, single_leader_risk TEXT, ret_1 REAL, mkt_ret_1 REAL,
+        pers_shape TEXT, flags TEXT, PRIMARY KEY (trade_date, theme))""")
+    conn.execute(f"CREATE INDEX IF NOT EXISTS idx_v21_date ON {V21_TABLE}(trade_date)")
+
+
+def save_v21_sqlite(rows, trade_date_str, mkt_ret_1=0.0):
+    """V2.1 落库（独立表 theme_v21_daily，与 V2 的 theme_scores 互不影响）"""
+    conn = sqlite3.connect(OUTPUT_DB)
+    try:
+        _v21_ensure_table(conn)
+        conn.execute(f"DELETE FROM {V21_TABLE} WHERE trade_date = ?", (str(trade_date_str),))
+        ph = ",".join("?" * len(V21_COLS))
+        conn.executemany(
+            f"INSERT INTO {V21_TABLE} ({', '.join(V21_COLS)}) VALUES ({ph})",
+            [tuple(x.get(c) for c in V21_COLS) for x in rows])
+        conn.commit()
+        print(f"[保存] SQLite {V21_TABLE}: {trade_date_str} {len(rows)} 条")
+    finally:
+        conn.close()
+
+
+def _load_v21_history(trade_date, days=V21_HIST_DAYS):
+    """读 V2.1 历史（截至 trade_date 前，最近 days 个交易日），返回 {theme: [升序行]}"""
+    if not os.path.exists(OUTPUT_DB):
+        return {}
+    conn = sqlite3.connect(OUTPUT_DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        _v21_ensure_table(conn)
+        dts = [r[0] for r in conn.execute(
+            f"SELECT DISTINCT trade_date FROM {V21_TABLE} WHERE trade_date < ? "
+            f"ORDER BY trade_date DESC LIMIT ?", (str(trade_date), int(days))).fetchall()]
+        if not dts:
+            return {}
+        ph = ",".join("?" * len(dts))
+        out = defaultdict(list)
+        for row in conn.execute(
+                f"SELECT * FROM {V21_TABLE} WHERE trade_date IN ({ph}) ORDER BY trade_date ASC", dts):
+            out[row['theme']].append(dict(row))
+        return out
+    finally:
+        conn.close()
+
+
+def save_v21_outputs(rows, trade_date_str):
+    """V2.1 输出：theme_v21_CSV/JSON/MD + theme_v2_CSV 别名（A/B 配对用）"""
+    flat = [{k: v for k, v in x.items() if not k.startswith('_')} for x in rows]
+    p_csv = os.path.join(REPORT_DIR, f"theme_v21_{trade_date_str}.csv")
+    pd.DataFrame(flat).to_csv(p_csv, index=False, encoding="utf-8-sig")
+    p_json = os.path.join(REPORT_DIR, f"theme_v21_{trade_date_str}.json")
+    with open(p_json, 'w', encoding='utf-8') as f:
+        json.dump(rows, f, ensure_ascii=False, indent=1)
+    p_md = os.path.join(REPORT_DIR, f"theme_v21_{trade_date_str}.md")
+    with open(p_md, 'w', encoding='utf-8') as f:
+        f.write(_v21_report_md(rows, trade_date_str))
+    # V2 原始排名表别名（内容 = V2 既有 CSV，不重算，仅供 A/B 配对读取）
+    src = os.path.join(REPORT_DIR, f"theme_scores_v2_{trade_date_str}.csv")
+    if os.path.exists(src):
+        with open(src, 'rb') as fi, open(os.path.join(REPORT_DIR, f"theme_v2_{trade_date_str}.csv"), 'wb') as fo:
+            fo.write(fi.read())
+    print(f"[保存] V2.1: {os.path.basename(p_csv)} / {os.path.basename(p_json)} / {os.path.basename(p_md)}")
+
+
+def _v21_pick(rows, key, limit=None):
+    out = sorted([x for x in rows if x['quadrant'] == key], key=lambda x: -x['strength'])
+    return out[:limit] if limit else out
+
+
+def _v21_line(x):
+    return (f"  · {x['theme']} [Strength {x['strength']:.1f} | Confirmation {x['confirmation']:.1f} | "
+            f"{x['state']} | Mainline {x['mainline_candidate']} | Trade {x['trade_permission']}"
+            f"{' / ' + x['buy_mode'] if x['buy_mode'] != 'NO_BUY' else ''}] "
+            f"广度{x['breadth']:.0f} 龙头{x['leadership']:.0f} 持续{x['persistence']:.0f} "
+            f"迁移{x['migration']:.0f} 追高{x['chase_risk']:.0f}")
+
+
+def _v21_report_md(rows, trade_date_str):
+    """V2.1 盘后报告：四层结论 + 状态转换 + 全字段排名表"""
+    L = []
+    W = L.append
+    sep = "━" * 60
+    W(f"{sep}")
+    W(f"# 主题量化分析 V2.1（状态识别 / 持续性确认 / 交易许可）- {trade_date_str}")
+    W(f"{sep}")
+    W(f"* 核心：强度用于发现，确认用于判断，持续性用于验证，交易许可用于执行，追高风险决定怎么进")
+    W(f"* 禁止映射：高综合分≠主线；高迁移≠强趋势；高情绪≠可买入")
+    dist = {}
+    for x in rows:
+        dist[x['state']] = dist.get(x['state'], 0) + 1
+    W(f"* 状态分布（{len(rows)} 主题）：" + "、".join(
+        f"{k}{v}" for k, v in sorted(dist.items(), key=lambda z: -z[1])))
+    chg = [x for x in rows if x['state_change'] in ('UPGRADE', 'DOWNGRADE')]
+    W(f"* 状态转换：{len(chg)} 个主题发生方向变化（UPGRADE/DOWNGRADE），详见第 6 节")
+    W("")
+
+    W("## 1. 当前主线（CORE_MAINLINE：强度≥60 且 确认≥60，最多 3 个）")
+    W("  注意：进入本象限只代表「强 + 确认相对高」= 主线候选，不等于可交易；可否交易一律看 Trade 列。")
+    core = _v21_pick(rows, 'CORE_MAINLINE', 3)
+    if not core:
+        W("  无。今日没有主题同时具备高强度与高确认（这正是必须空仓或等待的原因）。")
+    for x in core:
+        W(_v21_line(x))
+        W(f"      Action: {x['action']}")
+    W("")
+
+    W("## 2. 高强度但未确认（HOT_BUT_UNCONFIRMED：强度≥60 且 确认<60）")
+    W("  重点跟踪：强主题 → 分歧 → 再确认（等确认上来才是机会）")
+    hot = _v21_pick(rows, 'HOT_BUT_UNCONFIRMED')
+    if not hot:
+        W("  无。")
+    for x in hot:
+        W(_v21_line(x))
+    W("")
+
+    W("## 3. 资金提前流入（EARLY_FLOW：强度 40~60 且 迁移≥20，退潮/透支不计入）")
+    W("  重点跟踪：Migration↑ → Breadth↑ → Trend↑；连续 2~3 日确认才升级")
+    ef = _v21_pick(rows, 'EARLY_FLOW')
+    if not ef:
+        W("  无（今日无主题达到「资金先行」门槛：迁移≥20）。")
+    for x in ef:
+        W(_v21_line(x))
+    W("")
+
+    W("## 4. 退潮 / 风险主题（EXHAUSTION / RETREAT / DIVERGENCE，用于降低暴露）")
+    risk = [x for x in rows if x['state'] in ('EXHAUSTION', 'RETREAT', 'DIVERGENCE')]
+    risk.sort(key=lambda x: -x['chase_risk'])
+    if not risk:
+        W("  无。")
+    for x in risk:
+        W(_v21_line(x))
+    W("")
+
+    W("## 5. 主题排名（Strength 与 Confirmation 共同解释，不只看 Composite）")
+    W("  | # | 主题 | Strength | Confirmation | State | Mainline | Trade | 追高 | Action |")
+    W("  |---|------|---------:|-------------:|-------|----------|-------|-----:|--------|")
+    for i, x in enumerate(sorted(rows, key=lambda z: -z['strength']), 1):
+        W(f"  | {i} | {x['theme']} | {x['strength']:.1f} | {x['confirmation']:.1f} | "
+          f"{x['state']} | {x['mainline_candidate']} | {x['trade_permission']} | "
+          f"{x['chase_risk']:.0f} | {x['action']} |")
+    W("")
+
+    W("## 6. 状态转换明细（D-1 / D-3 / D-5）")
+    if not chg:
+        W("  今日无状态方向变化。")
+    for x in sorted(chg, key=lambda z: z['state_change']):
+        W(f"  · {x['theme']}：{x['prev_state'] or '—'} → {x['state']}（{x['state_change']}）")
+        W(f"      原因：{x['change_reason']}；D-3 {x['state_d3'] or '—'} / D-5 {x['state_d5'] or '—'}")
+    W("")
+    W("注：V2.1 为附加层，不改变 V2 原有输出与配仓；V2/V2.1 双跑便于 A/B Test。")
+    return "\n".join(L) + "\n"
+
+
+def _print_v21_layers(rows, trade_date_str):
+    print(f"\n{'='*100}")
+    print(f"主题量化分析 V2.1 - {trade_date_str}")
+    print(f"{'='*100}")
+    dist = {}
+    for x in rows:
+        dist[x['state']] = dist.get(x['state'], 0) + 1
+    print(f"状态分布: {dist}")
+    for name, key, lim in (("CORE_MAINLINE", 'CORE_MAINLINE', 3),
+                           ("HOT_BUT_UNCONFIRMED", 'HOT_BUT_UNCONFIRMED', None),
+                           ("EARLY_FLOW", 'EARLY_FLOW', None)):
+        sel = _v21_pick(rows, key, lim)
+        print(f"{name} ({len(sel)}): " + ("; ".join(
+            f"{x['theme']} S{x['strength']:.0f}/C{x['confirmation']:.0f}/{x['state']}/{x['trade_permission']}"
+            for x in sel) if sel else "无"))
+    risk = [x for x in rows if x['state'] in ('EXHAUSTION', 'RETREAT', 'DIVERGENCE')]
+    print("退潮/风险: " + ("; ".join(f"{x['theme']}({x['state']})" for x in risk) if risk else "无"))
+
+
+def run_v21_layer(results, trade_date_str=None, idx_df=None, market_ret_10=0.0):
+    """V2.1 主入口：读 V2 results → 计算 → 落库 → 输出（不改动 V2 任何产物）"""
+    trade_date_str = str(trade_date_str or TRADE_DATE_str)
+    mkt_daily = {}
+    if idx_df is not None and not idx_df.empty:
+        _idx = idx_df.sort_values('trade_date')
+        _dt = _idx['trade_date'].astype(str).values
+        _cl = _idx['close'].astype(float).values
+        for i in range(1, len(_cl)):
+            mkt_daily[_dt[i]] = (_cl[i] / _cl[i - 1] - 1.0) * 100.0 if _cl[i - 1] else 0.0
+    mkt_ret_1 = float(mkt_daily.get(trade_date_str, 0.0))
+    hist_map = _load_v21_history(trade_date_str, V21_HIST_DAYS)
+    rows = []
+    for r in results:
+        if not r.get('stock_rows'):
+            continue
+        v = calc_v21_theme(r, hist_map.get(r['theme']), mkt_ret_1, market_ret_10)
+        r['v21'] = v
+        rows.append(v)
+    rows.sort(key=lambda x: -float(x['strength']))
+    for i, v in enumerate(rows, 1):
+        v['rank'] = i
+    save_v21_sqlite(rows, trade_date_str, mkt_ret_1)
+    if not V21_BACKFILL_MODE:
+        save_v21_outputs(rows, trade_date_str)
+        _print_v21_layers(rows, trade_date_str)
+    return rows
+
+
+def v21_backfill(days=60):
+    """按时间顺序回填最近 N 个交易日的 V2.1 历史（只写 theme_v21_daily，不动 V2 产物）
+
+    用途：Persistence D10/D20、状态转换、60 日回测必须的历史序列。
+    """
+    global V21_BACKFILL_MODE
+    from stock_cache import get_recent_trade_dates
+    dates = sorted(str(d) for d in get_recent_trade_dates(n=int(days)))
+    print(f"[V2.1 回填] 目标 {len(dates)} 个交易日: {dates[0]} ~ {dates[-1]}")
+    V21_BACKFILL_MODE = True
+    ok, fail = 0, []
+    _t0 = time.time()
+    try:
+        for i, d in enumerate(dates, 1):
+            _td = time.time()
+            print(f"\n{'#'*60}\n[V2.1 回填] {i}/{len(dates)} {d}\n{'#'*60}")
+            try:
+                run_v2_analysis(d)
+                ok += 1
+            except Exception as e:
+                fail.append((d, str(e)))
+                print(f"[V2.1 回填] {d} 失败: {e}")
+            print(f"[V2.1 回填] {d} 用时 {time.time() - _td:.1f}s，累计 {(time.time() - _t0)/60:.1f}min")
+    finally:
+        V21_BACKFILL_MODE = False
+    print(f"\n[V2.1 回填] 完成 {ok}/{len(dates)}，失败 {len(fail)}")
+    for d, e in fail:
+        print(f"   失败 {d}: {e}")
+    return ok, fail
+
+
 # ─────────── CLI ───────────
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2 and sys.argv[1] in ('--v21-backfill', '--backfill'):
+        v21_backfill(int(sys.argv[2]))
+    elif len(sys.argv) > 2 and sys.argv[1] == '--no-v21':
+        _orig = run_v21_layer
+        globals()['run_v21_layer'] = lambda *a, **k: None
+        run_v2_analysis(sys.argv[2])
+        globals()['run_v21_layer'] = _orig
+    elif len(sys.argv) > 1:
         run_v2_analysis(sys.argv[1])
     else:
         run_v2_analysis()

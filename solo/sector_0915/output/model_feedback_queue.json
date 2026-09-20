@@ -1,0 +1,84 @@
+{
+  "trade_date": 20260918,
+  "read_only": true,
+  "note": "Feedback != 自动修改模型。进入 MODEL_CHANGE_CANDIDATE 必须同时满足 sample_size >= 20、dates >= 5、regimes >= 2（§三十七 / §三十八 / §三十九）。",
+  "issues": [
+    {
+      "layer": "STEP5",
+      "type": "CANDIDATE_FILTER",
+      "observation": "候选过滤增量价值：接受(WATCH/CANDIDATE) T+1 -0.07% / T+5 -0.57% vs 排除(EXCLUDE) T+1 0.03% / T+5 -0.88%；差 -0.10% / 0.31%（样本 38452 vs 135147，78 个交易日，regime 4 档）",
+      "sample_size": 38452,
+      "dates": 78,
+      "regimes": "HEALTHY|NEUTRAL|RISK_OFF|WEAK",
+      "priority": "P2",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP6",
+      "type": "STRUCTURE_FILTER",
+      "observation": "结构过滤增量价值：结构合格 T+1 -0.14% / T+5 -0.85% vs REJECTED T+1 -0.06% / T+5 -0.54%；差 -0.08% / -0.31%（样本 7543 vs 17002，78 个交易日，regime 4 档）",
+      "sample_size": 7543,
+      "dates": 78,
+      "regimes": "HEALTHY|NEUTRAL|RISK_OFF|WEAK",
+      "priority": "P2",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP7",
+      "type": "EXECUTION_FILTER",
+      "observation": "执行层增量价值（Step7 是否优于 Step6）：BUY T+1 -0.39% / T+5 -0.48% vs 结构合格但未 BUY T+1 -0.14% / T+5 -0.85%；差 -0.25% / 0.37%（样本 39 vs 7504，22 个交易日，regime 3 档）",
+      "sample_size": 39,
+      "dates": 22,
+      "regimes": "HEALTHY|NEUTRAL|WEAK",
+      "priority": "P2",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP6",
+      "type": "HVT_INCREMENTAL",
+      "observation": "HVT 增量价值：HVT 活跃 T+1 -0.24% / T+5 -0.82% vs HVT_FAILED/HVT_NONE T+1 -0.05% / T+5 -0.55%；差 -0.18% / -0.27%（样本 1689 vs 35570，76 个交易日，regime 4 档）",
+      "sample_size": 1689,
+      "dates": 76,
+      "regimes": "HEALTHY|NEUTRAL|RISK_OFF|WEAK",
+      "priority": "P2",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP6",
+      "type": "RETEST_INCREMENTAL",
+      "observation": "Retest 增量价值：RETEST_SUCCESS T+1 -0.95% / T+5 -3.45% vs NO_RETEST T+1 -0.07% / T+5 -0.56%；差 -0.89% / -2.89%（样本 148 vs 30480，51 个交易日，regime 4 档）",
+      "sample_size": 148,
+      "dates": 51,
+      "regimes": "HEALTHY|NEUTRAL|RISK_OFF|WEAK",
+      "priority": "P1",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP7",
+      "type": "EXTENSION_FILTER",
+      "observation": "Extension 过滤增量价值（过滤掉的是否更差）：extension_risk=LOW T+1 -0.06% / T+5 -0.56% vs extension_risk=MEDIUM/EXTREME T+1 -0.42% / T+5 -0.30%；差 0.36% / -0.26%（样本 37094 vs 165，78 个交易日，regime 4 档）",
+      "sample_size": 37094,
+      "dates": 78,
+      "regimes": "HEALTHY|NEUTRAL|RISK_OFF|WEAK",
+      "priority": "P2",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    },
+    {
+      "layer": "STEP7",
+      "type": "MARKET_REGIME_FILTER",
+      "observation": "市场 Regime 过滤增量价值：execution_mode=NORMAL T+1 -0.06% / T+5 -1.12% vs execution_mode=WAIT/DEFENSIVE T+1 -0.06% / T+5 1.06%；差 -0.00% / -2.18%（样本 27836 vs 9423，48 个交易日，regime 2 档）",
+      "sample_size": 27836,
+      "dates": 48,
+      "regimes": "HEALTHY|NEUTRAL",
+      "priority": "P1",
+      "requires_validation": true,
+      "known_at": "KNOWN_AT_REVIEW"
+    }
+  ]
+}

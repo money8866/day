@@ -1,6 +1,6 @@
 {
   "pool_type": "STRUCTURE_POOL_NOT_BUY_POOL",
-  "trade_date": "20260917",
+  "trade_date": "20260918",
   "notice": "结构池仅表示结构状态，不代表买入建议；执行判断属于 Step 7。",
   "pool_name": "HVT_POOL",
   "states": [
@@ -11,8 +11,10 @@
     "002516.SZ",
     "301086.SZ",
     "301234.SZ",
+    "301552.SZ",
+    "603997.SH",
     "688002.SH",
     "688601.SH"
   ],
-  "count": 5
+  "count": 7
 }

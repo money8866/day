@@ -1,7 +1,7 @@
 # Sector Mapping Audit Report
 
-- 生成时间：2026-09-16 22:00:53
-- 数据基准日 effective_date：20260916
+- 生成时间：2026-09-20 12:36:19
+- 数据基准日 effective_date：20260918
 - Canonical 真源：`sector_master.json`（version=2.0，只读）
 - 术语对齐：需求文本的 `theme_*` 对应本项目的 `sector_*`
 - 旧配置（theme_config.json / subtheme_map.json / theme.json）：**仅报告存在性，未读取**
@@ -14,14 +14,14 @@
 | 申万 L1 分类 | D:\mystock\solo\sli\cache\classify_SW2021_L1.parquet |
 | 申万 L2 分类 | D:\mystock\solo\sli\cache\classify_SW2021_L2.parquet |
 | 申万 L3 分类 | D:\mystock\solo\sli\cache\classify_SW2021_L3.parquet |
-| 申万成分快照（本地，仅覆盖部分 L3） | D:\mystock\solo\sli\cache\members_20260907.parquet |
+| 申万成分快照（本地，仅覆盖部分 L3） | D:\mystock\solo\sli\cache\members_20260827.parquet |
 | 申万行业归属全量表 | D:\mystock\solo\sector_0915\cache\sw_industry_all_*.parquet（index_member_all，股票维度 L1/L2/L3 全量） |
 | stock_basic | D:\mystock\solo\sli\cache\stock_basic.parquet |
-| trade_cal | D:\mystock\solo\sli\cache\trade_cal_20240101_20260916.parquet |
+| trade_cal | D:\mystock\solo\sli\cache\trade_cal_20240101_20260918.parquet |
 | 同花顺概念清单 | D:\mystock\cache_daily\parquet\ths_concepts_list.parquet |
 | 同花顺概念成分 | D:\mystock\cache_daily\parquet\ths_concepts_members.parquet |
-| 东财板块缓存 | D:\mystock\solo\sector_0915\cache\dc_boards_20260915.parquet |
-| 东财成分缓存 | D:\mystock\solo\sector_0915\cache\dc_members_20260915.parquet |
+| 东财板块缓存 | D:\mystock\solo\sector_0915\cache\dc_boards_20260916.parquet |
+| 东财成分缓存 | D:\mystock\solo\sector_0915\cache\dc_members_20260916.parquet |
 
 旧配置文件发现：['theme.json', 'theme_config.json', 'bak0615\\theme.json', 'multi_factor_picker\\cache\\theme.json', 'theme_kg_v3\\theme_kg_v3\\config\\subtheme_map.json', 'theme_kg_v3\\theme_kg_v3\\config\\theme_config.json']
 
@@ -93,14 +93,14 @@ mapping rows（含多对多） = 1881
 ## 4. Membership
 
 ```
-Stocks       = 4995
-Memberships  = 23908
-CORE         = 979
-PRIMARY      = 2481
+Stocks       = 5000
+Memberships  = 23929
+CORE         = 981
+PRIMARY      = 2485
 SECONDARY    = 890
-THEMATIC     = 19558
+THEMATIC     = 19573
 OBSERVATION  = 0
-覆盖Raw股票池比例 = 99.6%（分子=有任一 Sector 归属的股票，分母=过滤后的 Raw Member 股票池 5015）
+覆盖Raw股票池比例 = 99.6%（分子=有任一 Sector 归属的股票，分母=过滤后的 Raw Member 股票池 5020）
 ```
 
 ## 5. Quality
@@ -122,58 +122,58 @@ RAW_ONLY           = 0
 | T40 | 中药 | TIER_1_CORE | 132 | 60 | 0.944 | 1.000 | 90.0 |
 | T19 | 钢铁 | TIER_1_CORE | 46 | 34 | 0.939 | 0.932 | 86.1 |
 | T27 | 房地产 | TIER_1_CORE | 194 | 103 | 0.926 | 0.922 | 87.7 |
-| T42 | 生物制品 | TIER_1_CORE | 112 | 53 | 0.915 | 0.955 | 88.4 |
+| T42 | 生物制品 | TIER_1_CORE | 113 | 54 | 0.916 | 0.956 | 88.4 |
 | T47 | 建材 | TIER_1_CORE | 167 | 69 | 0.915 | 0.950 | 88.6 |
-| T14 | 高端装备 | TIER_1_CORE | 534 | 218 | 0.915 | 0.952 | 89.0 |
+| T14 | 高端装备 | TIER_1_CORE | 536 | 219 | 0.915 | 0.951 | 89.0 |
 | T22 | 农业周期 | TIER_1_CORE | 213 | 86 | 0.912 | 0.956 | 89.0 |
 | T24 | 券商 | TIER_1_CORE | 211 | 50 | 0.907 | 1.000 | 90.0 |
 | T34 | 旅游酒店餐饮 | TIER_1_CORE | 144 | 32 | 0.899 | 1.000 | 89.6 |
 | T45 | 交通运输 | TIER_1_CORE | 494 | 123 | 0.898 | 0.977 | 89.3 |
-| T36 | 创新药 | TIER_1_CORE | 327 | 169 | 0.897 | 0.951 | 89.8 |
+| T36 | 创新药 | TIER_1_CORE | 329 | 170 | 0.897 | 0.951 | 89.8 |
 | T37 | 医疗器械 | TIER_1_CORE | 434 | 131 | 0.897 | 0.962 | 88.5 |
 | T28 | 地产链 | TIER_1_CORE | 334 | 86 | 0.896 | 0.971 | 89.4 |
 | T39 | 医疗服务 | TIER_1_CORE | 149 | 52 | 0.886 | 0.914 | 87.0 |
 | T05 | 消费电子 | TIER_1_CORE | 635 | 89 | 0.884 | 1.000 | 90.0 |
-| T13 | 军工 | TIER_1_CORE | 614 | 122 | 0.882 | 0.992 | 88.8 |
-| T15 | 汽车及零部件 | TIER_1_CORE | 825 | 261 | 0.881 | 0.961 | 88.3 |
+| T13 | 军工 | TIER_1_CORE | 615 | 122 | 0.882 | 0.992 | 88.8 |
+| T15 | 汽车及零部件 | TIER_1_CORE | 827 | 262 | 0.881 | 0.961 | 88.3 |
 | T16 | 有色金属 | TIER_1_CORE | 274 | 107 | 0.878 | 0.960 | 86.6 |
 | T23 | 银行 | TIER_1_CORE | 316 | 42 | 0.878 | 1.000 | 88.7 |
-| T03 | 通信 | TIER_1_CORE | 490 | 117 | 0.871 | 0.903 | 87.4 |
+| T03 | 通信 | TIER_1_CORE | 491 | 117 | 0.871 | 0.903 | 87.4 |
 | T30 | 家电 | TIER_1_CORE | 189 | 90 | 0.866 | 0.924 | 85.4 |
 | T25 | 保险 | TIER_3_OBSERVATION | 100 | 5 | 0.864 | 1.000 | 90.0 |
-| T17 | 煤炭 | TIER_1_CORE | 171 | 42 | 0.857 | 0.987 | 85.2 |
-| T31 | 消费零售 | TIER_1_CORE | 772 | 89 | 0.857 | 0.953 | 87.7 |
+| T31 | 消费零售 | TIER_1_CORE | 771 | 89 | 0.857 | 0.953 | 87.7 |
+| T17 | 煤炭 | TIER_1_CORE | 172 | 42 | 0.857 | 0.987 | 85.2 |
 | T35 | 消费服务 | TIER_1_CORE | 338 | 29 | 0.852 | 0.981 | 88.1 |
 | T04 | 软件与信创 | TIER_1_CORE | 488 | 239 | 0.848 | 0.995 | 82.3 |
-| T43 | 电力 | TIER_1_CORE | 866 | 113 | 0.845 | 0.893 | 87.2 |
+| T43 | 电力 | TIER_1_CORE | 867 | 113 | 0.845 | 0.893 | 87.2 |
 | T33 | 美容护理 | TIER_1_CORE | 159 | 29 | 0.811 | 0.874 | 84.5 |
 | T48 | 城市更新 | TIER_1_CORE | 495 | 52 | 0.793 | 1.000 | 83.8 |
-| T01 | 半导体 | TIER_1_CORE | 1031 | 241 | 0.771 | 0.830 | 82.5 |
+| T01 | 半导体 | TIER_1_CORE | 1032 | 242 | 0.772 | 0.831 | 82.5 |
 | T29 | 食品饮料 | TIER_1_CORE | 256 | 124 | 0.770 | 0.829 | 82.3 |
 | T09 | 光伏产业链 | TIER_2_ROTATION | 769 | 172 | 0.732 | 0.921 | 80.2 |
 | T20 | 基础化工 | TIER_2_ROTATION | 407 | 299 | 0.716 | 0.831 | 77.3 |
 | T21 | 化工新材料 | TIER_2_ROTATION | 557 | 265 | 0.708 | 0.882 | 78.5 |
-| T12 | 机器人与自动化 | TIER_2_ROTATION | 1432 | 229 | 0.702 | 0.902 | 82.5 |
-| T46 | 建筑装饰 | TIER_2_ROTATION | 198 | 39 | 0.689 | 1.000 | 76.5 |
-| T02 | AI算力 | TIER_2_ROTATION | 1190 | 159 | 0.684 | 0.878 | 81.5 |
+| T12 | 机器人与自动化 | TIER_2_ROTATION | 1435 | 230 | 0.701 | 0.902 | 82.4 |
+| T46 | 建筑装饰 | TIER_2_ROTATION | 197 | 39 | 0.689 | 1.000 | 76.5 |
+| T02 | AI算力 | TIER_2_ROTATION | 1191 | 159 | 0.684 | 0.878 | 81.5 |
 | T49 | 基础设施 | TIER_2_ROTATION | 391 | 38 | 0.673 | 0.873 | 78.9 |
 | T08 | 锂电产业链 | TIER_2_ROTATION | 927 | 104 | 0.651 | 0.919 | 78.1 |
 | T26 | 金融科技 | TIER_3_OBSERVATION | 327 | 219 | 0.547 | 0.818 | 73.0 |
 | T18 | 石油石化 | TIER_3_OBSERVATION | 174 | 46 | 0.502 | 0.630 | 70.1 |
-| T10 | 风电产业链 | TIER_3_OBSERVATION | 561 | 159 | 0.492 | 0.760 | 83.6 |
-| T07 | 新能源汽车 | TIER_3_OBSERVATION | 1336 | 172 | 0.356 | 0.721 | 69.1 |
+| T10 | 风电产业链 | TIER_3_OBSERVATION | 562 | 160 | 0.496 | 0.762 | 83.6 |
+| T07 | 新能源汽车 | TIER_3_OBSERVATION | 1338 | 173 | 0.356 | 0.721 | 69.1 |
 | T38 | CXO | TIER_3_OBSERVATION | 176 | 51 | 0.352 | 0.678 | 67.1 |
-| T11 | 储能与电力设备 | TIER_3_OBSERVATION | 1002 | 130 | 0.332 | 0.691 | 67.2 |
+| T11 | 储能与电力设备 | TIER_3_OBSERVATION | 1003 | 130 | 0.332 | 0.691 | 67.2 |
 | T06 | AI应用 | TIER_3_OBSERVATION | 1236 | 126 | 0.325 | 0.700 | 67.5 |
-| T50 | 央国企基建 | TIER_3_OBSERVATION | 1445 | 148 | 0.320 | 0.681 | 67.0 |
+| T50 | 央国企基建 | TIER_3_OBSERVATION | 1448 | 148 | 0.320 | 0.681 | 67.0 |
 
 ## 6. Pollution
 
 ```
-DYNAMIC_ONLY           = 123
+DYNAMIC_ONLY           = 125
 CONCEPT_POLLUTION      = 1
 INDUSTRY_CONFLICT      = 1
-总计 = 125
+总计 = 127
 ```
 
 ## 7. Overlap（Weighted Jaccard Top 20）
@@ -181,37 +181,37 @@ INDUSTRY_CONFLICT      = 1
 | A | B | jaccard | weighted_jaccard | containment | class | note |
 |---|---|---|---|---|---|---|
 | T04 软件与信创 | T26 金融科技 | 0.518 | 0.415 | 0.850 | CROSS_THEME |  |
-| T07 新能源汽车 | T15 汽车及零部件 | 0.418 | 0.397 | 0.772 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
-| T09 光伏产业链 | T11 储能与电力设备 | 0.345 | 0.329 | 0.590 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
-| T07 新能源汽车 | T12 机器人与自动化 | 0.343 | 0.316 | 0.529 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
+| T07 新能源汽车 | T15 汽车及零部件 | 0.419 | 0.398 | 0.773 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
+| T09 光伏产业链 | T11 储能与电力设备 | 0.344 | 0.329 | 0.590 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
+| T07 新能源汽车 | T12 机器人与自动化 | 0.344 | 0.316 | 0.530 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
 | T07 新能源汽车 | T11 储能与电力设备 | 0.314 | 0.304 | 0.557 | CROSS_THEME | 同一rotation_group内重叠，属正常轮动关联 |
-| T10 风电产业链 | T11 储能与电力设备 | 0.313 | 0.290 | 0.665 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T10 风电产业链 | T11 储能与电力设备 | 0.313 | 0.290 | 0.664 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
 | T04 软件与信创 | T06 AI应用 | 0.306 | 0.274 | 0.828 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
 | T08 锂电产业链 | T09 光伏产业链 | 0.284 | 0.269 | 0.488 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T08 锂电产业链 | T11 储能与电力设备 | 0.281 | 0.268 | 0.456 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T10 风电产业链 | T43 电力 | 0.312 | 0.267 | 0.604 | KEEP_SEPARATE |  |
-| T01 半导体 | T02 AI算力 | 0.293 | 0.260 | 0.488 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T02 AI算力 | T11 储能与电力设备 | 0.264 | 0.255 | 0.457 | KEEP_SEPARATE |  |
+| T08 锂电产业链 | T11 储能与电力设备 | 0.281 | 0.267 | 0.456 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T10 风电产业链 | T43 电力 | 0.311 | 0.266 | 0.603 | KEEP_SEPARATE |  |
+| T01 半导体 | T02 AI算力 | 0.292 | 0.260 | 0.487 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T02 AI算力 | T11 储能与电力设备 | 0.265 | 0.255 | 0.458 | KEEP_SEPARATE |  |
 | T11 储能与电力设备 | T43 电力 | 0.269 | 0.254 | 0.457 | KEEP_SEPARATE |  |
 | T07 新能源汽车 | T08 锂电产业链 | 0.267 | 0.249 | 0.515 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T02 AI算力 | T03 通信 | 0.276 | 0.248 | 0.741 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T02 AI算力 | T06 AI应用 | 0.253 | 0.244 | 0.411 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T02 AI算力 | T12 机器人与自动化 | 0.265 | 0.243 | 0.462 | KEEP_SEPARATE |  |
-| T12 机器人与自动化 | T15 汽车及零部件 | 0.277 | 0.235 | 0.594 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
-| T02 AI算力 | T07 新能源汽车 | 0.245 | 0.231 | 0.418 | KEEP_SEPARATE |  |
+| T02 AI算力 | T03 通信 | 0.275 | 0.247 | 0.739 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T02 AI算力 | T06 AI应用 | 0.252 | 0.244 | 0.411 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T02 AI算力 | T12 机器人与自动化 | 0.266 | 0.243 | 0.463 | KEEP_SEPARATE |  |
+| T12 机器人与自动化 | T15 汽车及零部件 | 0.278 | 0.235 | 0.595 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
+| T02 AI算力 | T07 新能源汽车 | 0.245 | 0.232 | 0.418 | KEEP_SEPARATE |  |
 | T07 新能源汽车 | T09 光伏产业链 | 0.247 | 0.231 | 0.542 | KEEP_SEPARATE | 同一rotation_group内重叠，属正常轮动关联 |
 
 ## 8. Review（最需要人工检查的 50 条 Mapping）
 
 | raw_board | source | type | best_sector | conf | method | members | action |
 |---|---|---|---|---|---|---|---|
-| 融资融券 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 3523 | UNMAPPED |
+| 融资融券 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 3529 | UNMAPPED |
 | 融资融券 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 3518 | UNMAPPED |
 | 深股通 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 1881 | UNMAPPED |
 | 深股通 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1879 | UNMAPPED |
 | 沪股通 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 1643 | UNMAPPED |
 | 沪股通 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1643 | UNMAPPED |
-| 创业板综 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1360 | UNMAPPED |
+| 创业板综 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1362 | UNMAPPED |
 | 富时罗素 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1246 | UNMAPPED |
 | 专精特新 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1056 | UNMAPPED |
 | 标准普尔 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 1021 | UNMAPPED |
@@ -219,12 +219,12 @@ INDUSTRY_CONFLICT      = 1
 | 专精特新 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 1006 | UNMAPPED |
 | 小盘股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 995 | UNMAPPED |
 | 华为概念 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 948 | UNMAPPED |
-| 破增发价股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 803 | UNMAPPED |
+| 破增发价股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 791 | UNMAPPED |
 | QFII重仓 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 775 | UNMAPPED |
 | 一带一路 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 729 | UNMAPPED |
 | DeepSeek概念 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 721 | UNMAPPED |
 | 华为概念 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 712 | UNMAPPED |
-| 破发股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 685 | UNMAPPED |
+| 破发股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 665 | UNMAPPED |
 | 比亚迪概念 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 641 | UNMAPPED |
 | 西部大开发 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 566 | UNMAPPED |
 | MSCI中国 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 563 | UNMAPPED |
@@ -243,9 +243,9 @@ INDUSTRY_CONFLICT      = 1
 | 创投 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 445 | UNMAPPED |
 | 股权转让(并购重组) | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 437 | UNMAPPED |
 | 无人机 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 436 | UNMAPPED |
-| 破净股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 430 | UNMAPPED |
 | 物联网 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 428 | UNMAPPED |
 | 5G | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 426 | UNMAPPED |
+| 破净股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 420 | UNMAPPED |
 | 工业互联网 | TUSHARE | CONCEPT |  | 0.00 | UNMAPPED | 411 | UNMAPPED |
 | 微盘股 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 400 | UNMAPPED |
 | 长江三角 | EASTMONEY | CONCEPT |  | 0.00 | UNMAPPED | 390 | UNMAPPED |
@@ -260,8 +260,8 @@ INDUSTRY_CONFLICT      = 1
 
 ### T01 半导体（CORE_ROTATION / R01）
 
-- member_count = 1031
-- purity = 0.771；industry_consistency = 0.830；tier = TIER_1_CORE；质量分 = 82.5
+- member_count = 1032
+- purity = 0.772；industry_consistency = 0.831；tier = TIER_1_CORE；质量分 = 82.5
 - CORE examples = ['康强电子', '北方华创', '雅克科技', '中晶科技', '华亚智能', '长川科技', '江丰电子', '阿石创', '富乐德', '联动科技']
 - PRIMARY examples = ['德明利', '紫光国微', '大港股份', '通富微电', '华天科技', '大为股份', '台基股份', '航宇微', '国民技术', '君正股份']
 - Top raw boards = ['半导体[TUSHARE|DIRECT_INDUSTRY|1.00]', '半导体材料[TUSHARE|INDUSTRY_PRODUCT|1.00]', '半导体设备[TUSHARE|INDUSTRY_PRODUCT|1.00]', '半导体[EASTMONEY|DIRECT_INDUSTRY|1.00]', '半导体设备[EASTMONEY|INDUSTRY_PRODUCT|1.00]', '半导体材料[EASTMONEY|INDUSTRY_PRODUCT|1.00]', '集成电路封测[TUSHARE|INDUSTRY_CONCEPT|0.95]', '模拟芯片设计[EASTMONEY|INDUSTRY_CONCEPT|0.95]']
@@ -270,17 +270,17 @@ INDUSTRY_CONFLICT      = 1
 
 ### T02 AI算力（CORE_ROTATION / R01）
 
-- member_count = 1190
+- member_count = 1191
 - purity = 0.684；industry_consistency = 0.878；tier = TIER_2_ROTATION；质量分 = 81.5
 - CORE examples = （无）
 - PRIMARY examples = ['中国长城', '浪潮信息', '新大陆', '魅视科技', '智微智能', '广电运通', '奔图科技', '证通电子', '大华股份', '电科网安']
 - Top raw boards = ['计算机设备[TUSHARE|DIRECT_INDUSTRY|1.00]', '通信设备[TUSHARE|DIRECT_INDUSTRY|1.00]', '其他计算机设备[TUSHARE|INDUSTRY_PRODUCT|1.00]', '其他计算机设备[EASTMONEY|INDUSTRY_PRODUCT|1.00]', '计算机设备[EASTMONEY|DIRECT_INDUSTRY|1.00]', '通信设备[EASTMONEY|DIRECT_INDUSTRY|1.00]', '铜缆高速连接[TUSHARE|INDUSTRY_CONCEPT|0.80]', '算力概念[EASTMONEY|INDUSTRY_CONCEPT|0.75]']
 - mapping confidence 均值 = 0.797，最高 = 1.000
-- pollution = {'DYNAMIC_ONLY': 72}
+- pollution = {'DYNAMIC_ONLY': 73}
 
 ### T03 通信（CORE_ROTATION / R01）
 
-- member_count = 490
+- member_count = 491
 - purity = 0.871；industry_consistency = 0.903；tier = TIER_1_CORE；质量分 = 87.4
 - CORE examples = （无）
 - PRIMARY examples = ['中兴通讯', '特发信息', '汇源通信', '国安股份', '中嘉博创', '汇绿生态', '东信和平', '恒宝股份', '三维通信', '梦网科技']
@@ -290,7 +290,7 @@ INDUSTRY_CONFLICT      = 1
 
 ### T07 新能源汽车（CORE_ROTATION / R02）
 
-- member_count = 1336
+- member_count = 1338
 - purity = 0.356；industry_consistency = 0.721；tier = TIER_3_OBSERVATION；质量分 = 69.1
 - CORE examples = （无）
 - PRIMARY examples = （无）
@@ -310,8 +310,8 @@ INDUSTRY_CONFLICT      = 1
 
 ### T10 风电产业链（CORE_ROTATION / R02）
 
-- member_count = 561
-- purity = 0.492；industry_consistency = 0.760；tier = TIER_3_OBSERVATION；质量分 = 83.6
+- member_count = 562
+- purity = 0.496；industry_consistency = 0.762；tier = TIER_3_OBSERVATION；质量分 = 83.6
 - CORE examples = ['和展能源', '金风科技', '大金重工', '天顺风能', '泰胜风能', '通裕重工', '金雷股份', '天能重工', '双一科技', '运达股份']
 - PRIMARY examples = （无）
 - Top raw boards = ['风电设备[TUSHARE|DIRECT_INDUSTRY|1.00]', '风电整机[TUSHARE|INDUSTRY_PRODUCT|1.00]', '风电设备[EASTMONEY|DIRECT_INDUSTRY|1.00]', '风电零部件[TUSHARE|INDUSTRY_PRODUCT|1.00]', '风电零部件[EASTMONEY|INDUSTRY_PRODUCT|1.00]', '风电整机[EASTMONEY|INDUSTRY_PRODUCT|1.00]', '电网设备[TUSHARE|DIRECT_INDUSTRY|0.90]', '电网设备[EASTMONEY|DIRECT_INDUSTRY|0.90]']
@@ -350,7 +350,7 @@ INDUSTRY_CONFLICT      = 1
 
 ### T36 创新药（CORE_ROTATION / R06）
 
-- member_count = 327
+- member_count = 329
 - purity = 0.897；industry_consistency = 0.951；tier = TIER_1_CORE；质量分 = 89.8
 - CORE examples = ['丰原药业', '丽珠集团', '海南海药', '东北制药', '通化金马', '北大医药', '德展健康', '石药景峰', '华特达因', '金陵药业']
 - PRIMARY examples = ['普洛药业', '新华制药', '广济药业', '中哲精化', '海森药业', '海翔药业', '仙琚制药', '永安药业', '黄山胶囊', '尔康制药']
@@ -370,7 +370,7 @@ INDUSTRY_CONFLICT      = 1
 
 ### T43 电力（CORE_ROTATION / R07）
 
-- member_count = 866
+- member_count = 867
 - purity = 0.845；industry_consistency = 0.893；tier = TIER_1_CORE；质量分 = 87.2
 - CORE examples = （无）
 - PRIMARY examples = ['深圳能源', '深南电A', '川能动力', '珠海港', '穗恒运A', '绿发电力', '粤电力A', '皖能电力', '太阳能', '新能股份']
@@ -380,7 +380,7 @@ INDUSTRY_CONFLICT      = 1
 
 ### T50 央国企基建（POLICY / R08）
 
-- member_count = 1445
+- member_count = 1448
 - purity = 0.320；industry_consistency = 0.681；tier = TIER_3_OBSERVATION；质量分 = 67.0
 - CORE examples = （无）
 - PRIMARY examples = （无）
@@ -399,7 +399,7 @@ INDUSTRY_CONFLICT      = 1
 | CHECK 04 | PASS | (ts_code, sector_id, effective_date) 重复行数=0 |
 | CHECK 05 | PASS | confidence 缺失数=0 |
 | CHECK 06 | PASS | membership_type 缺失=0，非法取值=无 |
-| CHECK 07 | PASS | 未来 effective_date 行数=0（构建日期=20260916） |
+| CHECK 07 | PASS | 未来 effective_date 行数=0（构建日期=20260920） |
 | CHECK 08 | PASS | membership/mapping 生成链路未使用任何价格/涨停/热度字段（命中列：无） |
 | CHECK 09 | PASS | 旧配置仅报告存在性，未读取：['theme.json', 'theme_config.json', 'bak0615\\theme.json', 'multi_factor_picker\\cache\\theme.json', 'theme_kg_v3\\theme_kg_v3\\config\\subtheme_map.json', 'theme_kg_v3\\theme_kg_v3\\config\\theme_config.json'] |
 | CHECK 10 | PASS | 可映射 Raw Board=1839，UNMAPPED=1013（55.1%）。UNMAPPED 主因：板块名称与本体系关键词/行业/概念无实质交集，按需求§三十七不降低阈值硬塞，保留为 UNMAPPED/OBSERVATION/REVIEW。 |
