@@ -1,7 +1,7 @@
 # SEOS 审计报告（第四步）
 
-- 生成时间：2026-09-16 09:39:16
-- 数据截止：20260915
+- 生成时间：2026-09-20 14:03:56
+- 数据截止：20260918
 - 配置：config/seos_config.json v1.1
 - 主题定义唯一来源：sector_master.json v2.0（= 需求文档的 theme_master.json）
 
@@ -41,10 +41,10 @@ sector_master.json  →  theme_mapping  →  theme_membership
 ## 3. 输入契约与覆盖率
 
 - 输入：sector_daily_stats.csv / sector_breadth.csv / sector_strength.csv / sector_volume.csv / sector_state_history.csv / sector_quality_daily.csv / sector_state_today.json（Step 3 产出）
-- 面板：4500 行 = 50 主题 × 90 交易日（20260512 ~ 20260915）
+- 面板：4650 行 = 50 主题 × 93 交易日（20260512 ~ 20260918）
 - data_quality_score 覆盖率 100.00%；DATA_INVALID 行 0
-- refresh 覆盖：增量重算 50 行（20260915）
-- membership_as_of：20260915；membership_conf_min：0.7
+- refresh 覆盖：增量重算 50 行（20260918）
+- membership_as_of：20260918；membership_conf_min：0.7
 - 基准：{'primary': '000300.SH', 'primary_name': '沪深300', 'secondary': '000852.SH', 'secondary_name': '中证1000'}
 
 ## 4. SEOS 特征与权重
@@ -67,32 +67,32 @@ sector_master.json  →  theme_mapping  →  theme_membership
 
 | 阶段 | 末日数量 | 窗口内出现次数 |
 | --- | --- | --- |
-| DORMANT | 49 | 4002 |
-| EARLY | 0 | 195 |
-| EMERGING | 0 | 156 |
-| CONFIRMING | 0 | 18 |
-| STRONG | 0 | 4 |
-| COOLING | 0 | 20 |
-| DETERIORATING | 1 | 99 |
+| DORMANT | 33 | 4121 |
+| EARLY | 1 | 191 |
+| EMERGING | 7 | 169 |
+| CONFIRMING | 6 | 28 |
+| STRONG | 3 | 9 |
+| COOLING | 0 | 24 |
+| DETERIORATING | 0 | 102 |
 | EXITING | 0 | 6 |
 | DATA_INVALID | 0 | 0 |
 
-- 窗口内状态转换 248 次
+- 窗口内状态转换 283 次
 
 | 转换 | 次数 |
 | --- | --- |
-| EARLY->DORMANT | 50 |
-| EMERGING->EARLY | 44 |
-| DORMANT->EMERGING | 39 |
-| DORMANT->EARLY | 36 |
-| DETERIORATING->DORMANT | 18 |
-| EARLY->DETERIORATING | 16 |
-| EARLY->EMERGING | 9 |
-| CONFIRMING->COOLING | 5 |
-| EMERGING->CONFIRMING | 4 |
+| DORMANT->EMERGING | 49 |
+| EARLY->DORMANT | 48 |
+| EMERGING->EARLY | 45 |
+| DORMANT->EARLY | 43 |
+| DETERIORATING->DORMANT | 19 |
+| EARLY->DETERIORATING | 17 |
+| EARLY->CONFIRMING | 11 |
+| EARLY->EMERGING | 10 |
+| EMERGING->STRONG | 6 |
+| CONFIRMING->COOLING | 6 |
+| COOLING->DORMANT | 5 |
 | COOLING->DETERIORATING | 4 |
-| EARLY->EXITING | 3 |
-| EXITING->DORMANT | 3 |
 
 Hysteresis：进入用 phase_thresholds（EARLY 55 / EMERGING 65 / CONFIRMING 72 / STRONG 75），退出（降级）用 phase_exit_thresholds（EARLY 48 / EMERGING 58 / CONFIRMING 65 / STRONG 70）；梯级升级需目标级连续 2 日高于当前级、降级需 SEOS 连续 2 日跌破退出阈值；覆盖态（COOLING / DETERIORATING / EXITING）需连续 2 日条件成立才进入，需连续同日数解除才退出；DETERIORATING / EXITING 仅允许从已启动状态（EARLY/EMERGING/CONFIRMING/STRONG/COOLING）进入。
 
@@ -100,53 +100,53 @@ Hysteresis：进入用 phase_thresholds（EARLY 55 / EMERGING 65 / CONFIRMING 72
 
 | Flag | 窗口内次数 | 末日数量 |
 | --- | --- | --- |
-| BREADTH_EXPANDING | 1337 | 0 |
-| CORE_EXPANDING | 1235 | 3 |
-| RS_TURNING_UP | 1977 | 2 |
-| VOLUME_PARTICIPATION | 1307 | 1 |
-| AMOUNT_SHARE_EXPANDING | 2042 | 20 |
-| HEALTH_IMPROVING | 2017 | 1 |
+| BREADTH_EXPANDING | 1470 | 50 |
+| CORE_EXPANDING | 1339 | 43 |
+| RS_TURNING_UP | 2074 | 46 |
+| VOLUME_PARTICIPATION | 1357 | 40 |
+| AMOUNT_SHARE_EXPANDING | 2117 | 28 |
+| HEALTH_IMPROVING | 2147 | 49 |
 | EXTENSION_HIGH | 6 | 0 |
-| CONCENTRATION_HIGH | 18 | 0 |
-| CORE_WEAK | 1392 | 38 |
+| CONCENTRATION_HIGH | 19 | 1 |
+| CORE_WEAK | 1406 | 0 |
 | BREADTH_DIVERGENCE | 439 | 0 |
-| RS_DIVERGENCE | 640 | 1 |
-| VOLUME_DIVERGENCE | 131 | 1 |
-| FAILED_EXPANSION | 1049 | 1 |
+| RS_DIVERGENCE | 642 | 0 |
+| VOLUME_DIVERGENCE | 130 | 0 |
+| FAILED_EXPANSION | 1061 | 0 |
 
 ## 7. startup_quality 结构类型
 
 | 结构类型 | 窗口内 | 末日 |
 | --- | --- | --- |
-| FAILED_EXPANSION | 908 | 1 |
-| HEALTHY_EXPANSION | 578 | 0 |
-| INSUFFICIENT_DATA | 845 | 7 |
+| FAILED_EXPANSION | 918 | 0 |
+| HEALTHY_EXPANSION | 643 | 35 |
+| INSUFFICIENT_DATA | 866 | 7 |
 | NARROW_LEADERSHIP | 7 | 0 |
-| NEUTRAL | 2135 | 42 |
+| NEUTRAL | 2189 | 8 |
 | VOLUME_SPIKE | 27 | 0 |
 
 | 核心扩散形态（core_pattern） | 窗口内 | 末日 |
 | --- | --- | --- |
-| A_HEALTHY_DIFFUSION | 303 | 0 |
-| B_EDGE_DRIVEN | 176 | 1 |
-| C_EARLY_CORE_ONLY | 231 | 1 |
-| D_MIXED | 650 | 14 |
-| INSUFFICIENT_DATA | 3140 | 34 |
+| A_HEALTHY_DIFFUSION | 331 | 13 |
+| B_EDGE_DRIVEN | 179 | 0 |
+| C_EARLY_CORE_ONLY | 240 | 3 |
+| D_MIXED | 658 | 0 |
+| INSUFFICIENT_DATA | 3242 | 34 |
 
 ## 8. Divergence 与 Rotation
 
 | 背离类型 | 窗口内 | 末日 |
 | --- | --- | --- |
 | PRICE_BREADTH_DIVERGENCE | 439 | 0 |
-| PRICE_CORE_DIVERGENCE | 684 | 1 |
-| RS_BREADTH_DIVERGENCE | 640 | 1 |
-| VOLUME_BREADTH_DIVERGENCE | 131 | 1 |
+| PRICE_CORE_DIVERGENCE | 685 | 0 |
+| RS_BREADTH_DIVERGENCE | 642 | 0 |
+| VOLUME_BREADTH_DIVERGENCE | 130 | 0 |
 
 | rotation_signal | 窗口内 | 末日 |
 | --- | --- | --- |
-| ROTATION_IN | 185 | 0 |
-| ROTATION_OUT | 67 | 3 |
-| ROTATION_NEUTRAL | 4248 | 47 |
+| ROTATION_IN | 193 | 6 |
+| ROTATION_OUT | 68 | 0 |
+| ROTATION_NEUTRAL | 4389 | 44 |
 
 > ROTATION_IN / ROTATION_OUT 只描述【已观测到】的结构变化，不预测未来轮动。
 
@@ -154,14 +154,14 @@ Hysteresis：进入用 phase_thresholds（EARLY 55 / EMERGING 65 / CONFIRMING 72
 
 | Group | 名称 | 主题数 | Breadth | Health | SEOS | SEOS 5D变化 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R01 | 科技成长 | 6 | -0.4111 | 35.21 | 41.1771 | -8.3705 | WEAKENING |
-| R02 | 先进制造 | 9 | -0.5002 | 32.9322 | 40.6302 | -9.8668 | WEAKENING |
-| R03 | 资源周期 | 7 | -0.5452 | 26.95 | 27.5592 | -26.7688 | WEAKENING |
-| R04 | 金融地产 | 6 | -0.808 | 20.4483 | 22.4978 | -14.9887 | WEAKENING |
-| R05 | 大消费 | 7 | -0.7341 | 16.84 | 18.6264 | -33.1461 | WEAKENING |
-| R06 | 医药医疗 | 7 | -0.7934 | 18.8229 | 23.8383 | -37.4127 | WEAKENING |
-| R07 | 公用防御 | 3 | -0.6842 | 25.19 | 25.6878 | -28.4612 | WEAKENING |
-| R08 | 政策基建 | 5 | -0.7172 | 24.598 | 28.1927 | -23.776 | WEAKENING |
+| R01 | 科技成长 | 6 | 0.6821 | 80.03 | 79.352 | 42.9872 | STRONG |
+| R02 | 先进制造 | 9 | 0.6261 | 74.66 | 74.6483 | 36.2474 | STRONG |
+| R03 | 资源周期 | 7 | 0.4384 | 61.8029 | 59.3535 | 27.0895 | IMPROVING |
+| R04 | 金融地产 | 6 | 0.5444 | 67.495 | 61.7294 | 42.9686 | IMPROVING |
+| R05 | 大消费 | 7 | 0.4619 | 67.7057 | 72.4251 | 52.7955 | STRONG |
+| R06 | 医药医疗 | 7 | 0.5327 | 76.7986 | 80.1748 | 55.943 | STRONG |
+| R07 | 公用防御 | 3 | 0.4583 | 62.9767 | 63.2121 | 32.4868 | IMPROVING |
+| R08 | 政策基建 | 5 | 0.4402 | 64.586 | 63.9998 | 29.0332 | IMPROVING |
 
 ## 10. 验证结果
 
@@ -170,14 +170,14 @@ Hysteresis：进入用 phase_thresholds（EARLY 55 / EMERGING 65 / CONFIRMING 72
 | CHECK_MASTER_SOURCE | PASS | sector_master.json v2.0 / 50 主题；SEOS 输出 50 个主题，全部合法 |
 | CHECK_LEGACY_ISOLATION | PASS | 本次运行读取 8 个文件，未包含任何 legacy 配置；磁盘上仍存在 legacy 文件（仅作参考，未被读取）：['D:\\mystock\\solo\\theme.json', 'D:\\mystock\\solo\\theme_config.json', 'D:\\mystock\\solo\\bak0615\\theme.json', 'D:\\mystock\\solo\\multi_factor_picker\\cache\\theme.json', 'D:\\mystock\\solo\\theme_kg_v3\\theme_kg_v3\\config\\subtheme_map.json', 'D:\\mystock\\solo\\theme_kg_v3\\theme_kg_v3\\config\\theme_config.json'] |
 | CHECK_THEME_ID_VALID | PASS | 主题 id 覆盖 50/50，空值 0 个；缺失：无 |
-| CHECK_MEMBERSHIP_NO_LEAK | PASS | membership effective_date 最大 2026-09-15，超出面板末日 0 行；membership_as_of=20260915（<= 面板末日：True）；SEOS 不重建归属，直接沿用 Step 3 快照 |
-| CHECK_NO_LOOKAHEAD_SEOS | PASS | 比对 8 个截断日 × 30 列 / 11704 个数值，最大偏差 0.000e+00 |
+| CHECK_MEMBERSHIP_NO_LEAK | PASS | membership effective_date 最大 2026-09-18，超出面板末日 0 行；membership_as_of=20260918（<= 面板末日：True）；SEOS 不重建归属，直接沿用 Step 3 快照 |
+| CHECK_NO_LOOKAHEAD_SEOS | PASS | 比对 8 个截断日 × 30 列 / 11648 个数值，最大偏差 0.000e+00 |
 | CHECK_NO_LOOKAHEAD_PHASE | PASS | 比对 8 个截断日 × 7 列 / 2800 个数值，最大偏差 0.000e+00 |
 | CHECK_NO_LOOKAHEAD_ROTATION | PASS | 比对 8 个截断日 × 3 列 / 1200 个数值，最大偏差 0.000e+00 |
-| CHECK_INDICATOR_TRACEABLE | PASS | 评分独立复算最大偏差 0.000e+00；输出列缺失 0 个[]；有效行分项缺失 0 行 |
-| CHECK_NO_PHASE_JUMP | PASS | 状态转换 248 次，非法跳变 0 次（全部落在白名单转移集合内） |
-| CHECK_HYSTERESIS | PASS | 降级必须低于退出阈值：违约 0 次；3 日内回转（抖动）26/248 = 10.5%（上限 25%） |
-| CHECK_MISSING_DATA_HANDLED | PASS | 滑动窗口未就绪 845 行（breadth_delta_5,core_breadth_delta_5,rs_turn_5 缺值），全部落于 DORMANT/DATA_INVALID；越界 0 行；未就绪行的分项按 neutral_fill_score 中性填充，不产生启动信号 |
+| CHECK_INDICATOR_TRACEABLE | PASS | 评分独立复算最大偏差 0.000e+00；输出列缺失 0 个[]；component_coverage 复算偏差 0.000e+00；有效行含缺失分项 1038 行（按可用权重归一化，记录在 seos_data_status）；无法解释的评分缺失 0 行 |
+| CHECK_NO_PHASE_JUMP | PASS | 状态转换 283 次，非法跳变 0 次（全部落在白名单转移集合内） |
+| CHECK_HYSTERESIS | PASS | 降级必须低于退出阈值：违约 0 次；3 日内回转（抖动）25/283 = 8.8%（上限 25%） |
+| CHECK_MISSING_DATA_HANDLED | PASS | 滑动窗口未就绪 866 行（breadth_delta_5,core_breadth_delta_5,rs_turn_5 缺值），全部落于 DORMANT/DATA_INVALID；越界 0 行；未就绪行的分项按可用子项归一化（缺失子项不伪装中性，见 seos_data_status / component_coverage），且不产生启动信号 |
 | CHECK_DATA_INVALID_PROPAGATION | PASS | 真实数据 DATA_INVALID 行 0；注入 dq<0.6 后末日 50 个主题全部为 DATA_INVALID 且 seos_score 为空：True；flags 全部置 False：True |
 
 - 合计 12/12 项通过。

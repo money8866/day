@@ -1,0 +1,65 @@
+{
+  "total_score": 40,
+  "verdict": "Refine",
+  "dimensions": [
+    {
+      "name": "Sample Size",
+      "score": 0,
+      "max_score": 20
+    },
+    {
+      "name": "Expectancy",
+      "score": 20,
+      "max_score": 20
+    },
+    {
+      "name": "Risk Management",
+      "score": 20,
+      "max_score": 20
+    },
+    {
+      "name": "Robustness",
+      "score": 0,
+      "max_score": 20
+    },
+    {
+      "name": "Execution Realism",
+      "score": 0,
+      "max_score": 20
+    }
+  ],
+  "red_flags": [
+    {
+      "id": "small_sample",
+      "severity": "high",
+      "message": "Only 18 trades — minimum 30 required for statistical confidence."
+    },
+    {
+      "id": "no_slippage_test",
+      "severity": "high",
+      "message": "Slippage/friction not tested — results may not survive real-world execution."
+    },
+    {
+      "id": "over_optimized",
+      "severity": "medium",
+      "message": "10 parameters suggests over-optimization / curve-fitting risk."
+    },
+    {
+      "id": "short_test_period",
+      "severity": "medium",
+      "message": "Only 2 years tested — may miss regime changes (minimum 5 recommended)."
+    }
+  ],
+  "profit_factor": 27.907532157906402,
+  "expectancy": 19.41217,
+  "inputs": {
+    "total_trades": 18,
+    "win_rate": 83.3,
+    "avg_win_pct": 24.17,
+    "avg_loss_pct": 4.32,
+    "max_drawdown_pct": 20.0,
+    "years_tested": 2,
+    "num_parameters": 10,
+    "slippage_tested": false
+  }
+}

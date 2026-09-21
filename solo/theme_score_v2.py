@@ -4372,6 +4372,7 @@ V21_PERMISSIONS = ('NO_TRADE', 'WATCH', 'CONDITIONAL', 'TRADEABLE')
 V21_FLOW_CAP = 40.0                                   # migration_score 实测值域≈[0,40]
 V21_PERM_TH = {'conf': 65.0, 'breadth': 60.0, 'lead': 60.0, 'pers': 55.0}
 V21_CHASE_LIMIT = 75.0                                # ≥75 → 只可回踩买
+V21_EARLY_BREADTH_DELTA = 3.0                         # EARLY_FLOW「广度实质改善」门槛（0~100 分制下的可观测增量）
 V21_HIST_DAYS = 25                                    # 历史窗口（覆盖 D20 + 状态转换 D5）
 V21_TABLE = 'theme_v21_daily'
 V21_BACKFILL_MODE = False                             # True：只产 V2.1 历史，不写任何 V2 产物
@@ -4558,14 +4559,21 @@ def calc_chase_risk_v21(f):
     """ChaseRisk 追高风险 0~100
     Emotion25 + 当日涨幅20 + 距MA20乖离15 + 20日位置15 + 涨停集中度15 + 情绪-广度背离10
     ≥75 → 即使 TradePermission 允许，也只能 BUY_MODE=PULLBACK_ONLY（与「巨量日不追，只等回踩」一致）。
+
+    各分项 lo/hi 按 A 股主题日度实测分位标定：原区间（emotion 55~90 / 涨幅 2~9 / MA20乖离 5~20 /
+    20日位置 0.6~1.0 / 背离 15~40）全部设在理论极值上，实测 1920 样本最高仅 61.2，阈值 75 永不可达；
+    标定后同一窗口最高 84.4，75 成为真正可触发的「巨量日」警戒线。
     """
-    s_emo = _v21_lin(f.get('emotion'), 55, 90) * 100
-    s_r1 = _v21_lin(f.get('ret_1'), 2, 9) * 100
-    s_ma = _v21_lin(f.get('ma20_b'), 5, 20) * 100
-    s_pos = _v21_lin(f.get('pos_in_20'), 0.6, 1.0) * 100
+    s_emo = _v21_lin(f.get('emotion'), 55, 85) * 100
+    s_r1 = _v21_lin(f.get('ret_1'), 1.5, 6.0) * 100
+    s_ma = _v21_lin(f.get('ma20_b'), 3, 12) * 100
+    s_pos = _v21_lin(f.get('pos_in_20'), 0.5, 0.98) * 100
     up = float(f.get('up_ratio') or 0)
-    s_conc = _v21_lin(f.get('zt_count'), 5, 20) * 100 * (1.0 - min(up / 100.0, 1.0))
-    s_div = _v21_lin(float(f.get('emotion') or 0) - up, 15, 40) * 100
+    # 涨停集中度 = 涨停家数 / 上涨家数（原式 zt_count×(1-up_ratio) 自我抵消恒≈0：涨停多必然上涨家数多）
+    up_cnt = up / 100.0 * float(f.get('n_stocks') or 0)
+    s_conc = _v21_lin((float(f.get('zt_count') or 0) / up_cnt) if up_cnt > 0 else 0.0,
+                      0.08, 0.35) * 100
+    s_div = _v21_lin(float(f.get('emotion') or 0) - up, 5, 30) * 100
     risk = (0.25 * s_emo + 0.20 * s_r1 + 0.15 * s_ma + 0.15 * s_pos
             + 0.15 * s_conc + 0.10 * s_div)
     return round(_v21_clamp(risk), 1), {
@@ -4579,16 +4587,21 @@ def classify_state_v21(f):
 
     1 RETREAT      趋势/情绪/广度/持续性四低 → 退潮
     2 EXHAUSTION   情绪高 + 广度或持续性走弱 + 趋势钝化 + 涨停潮 → 情绪透支（禁追高）
-    3 DIVERGENCE   高迁移 + 低趋势 + 高情绪 + 广度差(<45) → 资金与价格背离（危险）
-    4 WEAK         趋势<40 且 情绪<50 且 广度<45 且 确认<45
-    5 ACCELERATION 趋势70+广度65+龙头65+确认65 且 (D3>D5 或 趋势加速>0) 且 (涨停扩张 或 广度扩张)
-    6 STRONG_TREND 趋势65+广度60+龙头60+确认60+持续性55（禁止 趋势<50 判强趋势）
-    7 OSCILLATION  综合≥60 但确认<60 —— 高强度低确认（解决"综合分高但没形成趋势"）
-    8 STARTING     趋势45+广度50+情绪55+迁移10+确认50
-    9 OSCILLATION  趋势高但持续性弱、广度不一致
-   10 EARLY_FLOW   低趋势 + 高迁移 + 高情绪 + 广度≥45（资金先行，尚未确认主线）
+    3 WEAK         趋势<40 且 情绪<50 且 广度<45 且 确认<45
+    4 ACCELERATION 趋势70+广度65+龙头65+确认65 且 (D3>D5 或 趋势加速>0) 且 (涨停扩张 或 广度扩张)
+    5 STRONG_TREND 趋势65+广度60+龙头60+确认60+持续性55（禁止 趋势<50 判强趋势）
+    6 EARLY_FLOW   低趋势(<50) + 高迁移(≥20) + 高情绪(≥60) + 广度【已达标或实质改善】→ 资金先行（机会）
+    7 DIVERGENCE  同签名但广度弱(<45)且未实质改善 → 资金与价格背离（风险）
+    8 OSCILLATION  综合≥60 但确认<60 —— 高强度低确认（解决"综合分高但没形成趋势"）
+    9 STARTING     趋势45+广度50+情绪55+迁移10+确认50
+   10 OSCILLATION  趋势高但持续性弱、广度不一致
    11 RECOVERY     弱势/退潮/透支后趋势与广度同步改善
    12 WEAK         兜底
+
+    注：EARLY_FLOW 与 DIVERGENCE 是同一「高迁移+低趋势」签名的两个出口（规格 7.7 明示二者并列），
+    区分依据是广度方向 —— 广度已在合理水平或实质改善（≥V21_EARLY_BREADTH_DELTA）= 资金先行；
+    广度弱且未改善 = 背离风险。EARLY_FLOW 必须先于 OSCILLATION 判定，否则高情绪样本会被
+    「综合≥60 但确认<60」整批吞掉，导致该状态不可达（实测 1920 样本仅 1 条）。
     """
     trend = float(f.get('trend') or 0)
     emo = float(f.get('emotion') or 0)
@@ -4611,8 +4624,6 @@ def classify_state_v21(f):
     if (emo >= 70 and (d_brd < 0 or up < 55) and (d_pers < 0 or pers < 50)
             and d_trend <= 0 and (zt >= 8 or comp >= 60)):
         return 'EXHAUSTION'
-    if mig >= 25 and trend < 50 and emo >= 65 and brd < 45:
-        return 'DIVERGENCE'
     if trend < 40 and emo < 50 and brd < 45 and conf < 45:
         return 'WEAK'
     if (trend >= 70 and brd >= 65 and lead >= 65 and conf >= 65
@@ -4621,14 +4632,19 @@ def classify_state_v21(f):
         return 'ACCELERATION'
     if trend >= 65 and brd >= 60 and lead >= 60 and conf >= 60 and pers >= 55 and trend >= 50:
         return 'STRONG_TREND'
+    # 资金先行（机会版）：情绪/资金已起 + 趋势未确认 + 广度已达标或实质改善
+    if (trend < 50 and mig >= 20 and emo >= 60
+            and (brd >= 45 or d_brd >= V21_EARLY_BREADTH_DELTA)):
+        return 'EARLY_FLOW'
+    # 资金价格背离（风险版）：同签名但广度弱且未实质改善
+    if mig >= 25 and trend < 50 and emo >= 65 and brd < 45:
+        return 'DIVERGENCE'
     if comp >= 60 and conf < 60:
         return 'OSCILLATION'
     if trend >= 45 and brd >= 50 and emo >= 55 and mig >= 10 and conf >= 50:
         return 'STARTING'
     if trend >= 55 and pers < 50 and abs(d_brd) <= 3.0 and conf < 60:
         return 'OSCILLATION'
-    if trend < 50 and mig >= 20 and emo >= 60 and brd >= 45:
-        return 'EARLY_FLOW'
     if (prev_state in ('WEAK', 'RETREAT', 'EXHAUSTION') and d_trend > 0 and d_brd > 0 and trend >= 40) \
             or (d_trend > 3 and d_brd > 3 and trend >= 40):
         return 'RECOVERY'
@@ -4784,6 +4800,7 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         'mainline_conf': round(_v21_clamp(mainline_conf), 1), 'flow': flow,
         'limitup': zt_count, 'up_ratio': up_ratio, 'zt_count': zt_count,
         'ret_1': ret_1, 'mkt_ret_1': mkt_ret_1, 'ma20_b': ma20_b, 'pos_in_20': pos_in_20,
+        'n_stocks': len(rows),
         'd_breadth': d_breadth, 'd_trend': d_trend, 'd_persistence': d_pers,
         'prev_state': prev_state, 'single_leader_risk': slr,
         'zt_expansion': zt_count > int(prev.get('limitup') or 0) if prev else False,

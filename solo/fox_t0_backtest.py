@@ -27,6 +27,7 @@ from w7_second_wave_engine import (CacheReader, state_and_features, anchor_featu
                                    lifecycle, hvt_future_space, hvt_acceleration, hvt_platform,
                                    hvt_distribution_risk, hvt_v3_score, rank_score_v5,
                                    hvt_type, MIN_BARS, MAX_EVENT_AGE, T0_CONFIRM_MAX_BARS, DATA_START)
+from t0_confirm_v21 import compute_t0_v21, BUCKET_ORDER   # 【增量模块】天量T0确认 V2.1(只读回放数据)
 
 DATE_END = "20260917"       # 回放终点（DB 最新交易日）
 EVENT_MIN_DATE = "20210101"  # 事件起点
@@ -169,6 +170,16 @@ def scan_batch(codes_names):
 
             t0_vol20 = safe_mean(vols[max(0, ai - 20):ai])
             cf_vol20 = safe_mean(vols[max(0, j - 20):j])
+            # ── 【增量模块】天量T0确认 V2.1：以信号日 j 为「当前日」重跑本模块状态机 ──
+            # 只读 df/base/pressure/dims(其他模块既有数据)，只产出 T0_* 字段；不影响上方任何口径
+            cur_volr_j = finite(vols[j]) / cf_vol20 if cf_vol20 > 0 else 0.0
+            try:
+                t21 = compute_t0_v21(df.iloc[:j + 1], ai,
+                                     sig={'volr': cur_volr_j, 'pressure': pressure, 'dims': dims},
+                                     base=base)
+            except Exception as exc:
+                logf.write(f"{code}@{j} T0V21异常 {exc}\n")
+                t21 = {}
             samples.append({
                 "code": code, "name": name,
                 "event_date": ev_date, "signal_date": str(df.iloc[j].trade_date),
@@ -182,7 +193,21 @@ def scan_batch(codes_names):
                 "fina_d": round(dims["fina"], 1), "rs_d": round(dims["rs"], 1),
                 "t120": round(t120, 1), "entry": round(entry, 1),
                 "t0_volr": round(finite(vols[ai]) / t0_vol20, 2) if t0_vol20 > 0 else np.nan,
-                "cf_volr": round(finite(vols[j]) / cf_vol20, 2) if cf_vol20 > 0 else np.nan,
+                "cf_volr": round(cur_volr_j, 2),
+                # ── 【增量模块】天量T0确认 V2.1（T0_ 前缀，独立列，不改动上方既有列） ──
+                "T0_FINAL": t21.get("T0_FINAL", ""),
+                "T0_STATE": t21.get("T0_STATE", ""),
+                "T0_STAGE": t21.get("T0_STAGE", ""),
+                "T0_VOLUME_STATE": t21.get("T0_VOLUME_STATE", ""),
+                "T0_PULLBACK_STATE": t21.get("T0_PULLBACK_STATE", ""),
+                "T0_PRESSURE_STATE": t21.get("T0_PRESSURE_STATE", ""),
+                "T0_ENTRY_STATE": t21.get("T0_ENTRY_STATE", ""),
+                "T0_NO_CHASE": t21.get("T0_NO_CHASE"),
+                "T0_OVEREXTENSION": t21.get("T0_OVEREXTENSION"),
+                "T0_CONFIRM_SCORE": t21.get("T0_CONFIRM_SCORE"),
+                "T0_EXEC_SCORE": t21.get("T0_EXEC_SCORE"),
+                "T0_PULLBACK": t21.get("T0_PULLBACK"),
+                "T0_PRESSURE_GAP": t21.get("T0_PRESSURE_GAP"),
                 "fwd1": fwd(j + 1), "fwd3": fwd(j + 3), "fwd5": fwd(j + 5),
                 "fwd10": fwd(j + 10), "fwd20": fwd(j + 20), "fwd60": fwd(j + 60),
                 "mfe20": mfe(j + 20), "mae20": mae(j + 20),
@@ -285,7 +310,60 @@ def main():
     for lo, hi in ((0, 0.8), (0.8, 1.2), (1.2, 2.0), (2.0, 99)):
         block(S[(S.cf_volr >= lo) & (S.cf_volr < hi)], f"cf_volr∈[{lo},{hi})")
 
+    # ── 【增量模块】天量T0确认 V2.1 增量回测（§19）；不改变上方任何既有统计 ──
+    report_v21(S)
+
     print(f"\n[foxt0] 总耗时={time.time()-t0:.0f}s")
+
+
+def report_v21(S):
+    """【增量模块】天量T0确认 V2.1 增量回测（§19）
+
+    只统计本模块自有的 5 分类 / 量能分流 / L阶段 / 压力空间 / 回撤 / 双评分分档，
+    不据此调整其他策略模块的任何阈值、权重、排序与池子。
+    """
+    if "T0_FINAL" not in S.columns or not S["T0_FINAL"].astype(str).str.startswith("T0_").any():
+        print("\n[T0V21] 明细无 T0_* 列，跳过增量回测")
+        return
+    print("\n" + "═" * 96)
+    print("【增量模块】天量T0确认 V2.1 增量回测（基准=信号日收盘，毛收益；与其他模块口径无关）")
+    print("═" * 96)
+    for b in BUCKET_ORDER:
+        block(S[S["T0_FINAL"] == b], f"T0_FINAL={b}")
+
+    print("\n" + "─" * 96 + "\n§6 缩量确认 vs 放量确认\n" + "─" * 96)
+    block(S[S["T0_VOLUME_STATE"] == "SHRINK_CONFIRM"], "缩量确认 SHRINK_CONFIRM（有资格进买点候选）")
+    block(S[S["T0_VOLUME_STATE"] == "EXPANSION_CONFIRM"], "放量确认 EXPANSION_CONFIRM（只进等待/观察）")
+
+    print("\n" + "─" * 96 + "\n§7 追高阶段 L0/L1 vs L2/L3 vs L4/L5\n" + "─" * 96)
+    for label, cond in (("L0/L1", S["T0_STAGE"].isin(["L0", "L1"])),
+                        ("L2", S["T0_STAGE"] == "L2"),
+                        ("L3", S["T0_STAGE"] == "L3"),
+                        ("L4/L5", S["T0_STAGE"].isin(["L4", "L5"]))):
+        block(S[cond], f"T0_STAGE={label}")
+
+    print("\n" + "─" * 96 + "\n§8 压力空间 >8% vs 3~8% vs <3%\n" + "─" * 96)
+    g = pd.to_numeric(S["T0_PRESSURE_GAP"], errors="coerce")
+    block(S[g > 8], "PRESSURE_GAP>8%（SPACE_OK）")
+    block(S[(g >= 3) & (g <= 8)], "PRESSURE_GAP 3~8%（SPACE_LIMITED）")
+    block(S[g < 3], "PRESSURE_GAP<3%（PRESSURE_NEAR / 已突破）")
+
+    print("\n" + "─" * 96 + "\n§9 回撤分档 + 缩量/放量交叉\n" + "─" * 96)
+    p = pd.to_numeric(S["T0_PULLBACK"], errors="coerce")
+    block(S[(p >= 1) & (p < 3)], "回撤 1~3%")
+    block(S[(p >= 3) & (p <= 5)], "回撤 3~5%")
+    block(S[(S["T0_VOLUME_STATE"] == "SHRINK_CONFIRM") & (p <= 3)], "缩量确认 且 回撤≤3%（本模块最优结构）")
+    block(S[(S["T0_PULLBACK_STATE"] == "WEAK_PULLBACK") | (S["T0_PULLBACK_STATE"] == "DISTRIBUTION_RISK")],
+          "弱回撤/派发风险（应回避）")
+
+    print("\n" + "─" * 96 + "\n§10 双评分分档：T0_CONFIRM_SCORE vs T0_EXEC_SCORE\n" + "─" * 96)
+    c = pd.to_numeric(S["T0_CONFIRM_SCORE"], errors="coerce")
+    for lo, hi in ((0, 60), (60, 75), (75, 90), (90, 101)):
+        block(S[(c >= lo) & (c < hi)], f"T0_CONFIRM_SCORE∈[{lo},{hi})")
+    e = pd.to_numeric(S["T0_EXEC_SCORE"], errors="coerce")
+    for lo, hi in ((0, 50), (50, 60), (60, 70), (70, 101)):
+        block(S[(e >= lo) & (e < hi)], f"T0_EXEC_SCORE∈[{lo},{hi})")
+    print("\n注：本模块只输出 T0_* 字段与自身 5 分类；以上结论不用于调整其他策略模块的阈值/权重/排序/池子。")
 
 
 if __name__ == "__main__":

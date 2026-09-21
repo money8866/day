@@ -114,11 +114,16 @@ FOX_T0_DRY_VOLR = 0.8
 # A股两市成交额日内呈 U 型分布(早盘抢筹、午后清淡、尾盘放量)。
 # 键 = 开盘后已交易分钟数(跳过 11:30~13:00 午休, 全天 240 分钟), 值 = 该时点累计成交额占全天比例。
 # 开盘 0 分钟取 2%(集合竞价已成交部分)。用法: 预测全天成交额 = 当前累计成交额 ÷ 插值占比。
+# 实测校准: 22个交易日(2026-08-21~09-21)沪深两市5分钟K线累计成交额占比均值,
+#   沪(sh000001)与深(sz399001)日内形态几乎一致(均值绝对差 0.0064 < 0.7%), 故合并为同一曲线。
+#   旧表在 0~180 分钟段系统性偏低(如 15min 实测 0.221 vs 旧 0.090, 低 2.45 倍),
+#   导致早盘外推全天成交额严重高估(9/21 13:00 预测 3.09万亿, 实际 2.03万亿, 高估 +52%)。
 MARKET_AMOUNT_PROGRESS = (
-    (0, 0.020), (15, 0.090), (30, 0.190), (45, 0.260), (60, 0.330),
-    (75, 0.380), (90, 0.450), (105, 0.505), (120, 0.550),
-    (135, 0.605), (150, 0.655), (165, 0.700), (180, 0.750),
-    (195, 0.805), (210, 0.860), (225, 0.930), (240, 1.000),
+    (0, 0.020), (5, 0.108), (10, 0.171), (15, 0.221), (20, 0.263),
+    (30, 0.335), (45, 0.417), (60, 0.479), (75, 0.535),
+    (90, 0.578), (105, 0.614), (120, 0.648),
+    (135, 0.697), (150, 0.738), (165, 0.776), (180, 0.811),
+    (195, 0.847), (210, 0.883), (225, 0.930), (240, 1.000),
 )
 # 预测全天成交额 ÷ 基准成交额 的分档阈值(降序匹配)
 MARKET_AMOUNT_LEVELS = (
@@ -2250,6 +2255,13 @@ class RealtimeThemeMonitor:
                     except Exception:
                         continue
 
+                # 东财 push2 被拒时上面拿不到成交额, 用新浪兜底刷新, 避免快照冻结导致外推失真
+                _mc = self.market_amount_cache
+                if not _mc or (time.time() - _mc.get('updated', 0)) > 900:
+                    _amt = self._fetch_market_amount_sina()
+                    if _amt:
+                        self.market_amount_cache = {'amount': _amt, 'updated': time.time()}
+
                 # ── 2. 涨停/跌停家数(东财涨停池/跌停池) ──
                 for pool, sort_key in (('getTopicZTPool', 'fbt%3Aasc'),
                                        ('getTopicDTPool', 'fund%3Aasc')):
@@ -2325,13 +2337,8 @@ class RealtimeThemeMonitor:
         return None
 
     # ── 10.7 全市场成交量预测(情绪预警因子) ──
-    def fetch_market_amount_realtime(self):
-        """取当日沪深两市累计成交额(元), 失败返回 None
-
-        数据源: 东财 push2 ulist 的 f6 字段(成交额, 单位元)
-          1.000001 上证指数 → 沪市成交额, 0.399001 深证成指 → 深市成交额
-        两者相加即两市累计成交额, 与 daily_cache 全市场汇总口径一致(实测偏差<1%)
-        """
+    def _fetch_market_amount_eastmoney(self):
+        """东财 push2 ulist 的 f6 字段(成交额, 单位元), 失败返回 None"""
         headers = {
             "Referer": "https://quote.eastmoney.com/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -2350,10 +2357,52 @@ class RealtimeThemeMonitor:
                     except (TypeError, ValueError):
                         continue
                 if amt > 0:
-                    self.market_amount_cache = {'amount': amt, 'updated': time.time()}
                     return amt
             except Exception:
                 continue
+        return None
+
+    def _fetch_market_amount_sina(self):
+        """新浪即时行情兜底: 上证指数[9]=沪市成交额, 深证成指[9]=深市成交额(单位元)
+
+        东财 push2 易被拒(RemoteDisconnected), 曾导致 market_amount_cache 盘中长时间冻结、
+        展示用陈旧快照外推(9/21 13:00 仍用 10:31 的快照)。新浪接口稳定, 作第二数据源。
+        """
+        headers = {
+            "Referer": "https://finance.sina.com.cn",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
+        try:
+            resp = requests.get("https://hq.sinajs.cn/list=sh000001,sz399001",
+                                headers=headers, timeout=8)
+            resp.encoding = 'gbk'
+            amt = 0.0
+            for line in resp.text.splitlines():
+                if '="' not in line:
+                    continue
+                parts = line.split('="', 1)[1].rstrip('";').split(',')
+                if len(parts) > 9:
+                    try:
+                        amt += float(parts[9])
+                    except (TypeError, ValueError):
+                        continue
+            if amt > 0:
+                return amt
+        except Exception:
+            pass
+        return None
+
+    def fetch_market_amount_realtime(self):
+        """取当日沪深两市累计成交额(元), 失败返回 None
+
+        主源 东财 push2 ulist(1.000001 沪市 + 0.399001 深市, 与 daily_cache 全市场汇总口径一致,
+        实测偏差<1%); 主源被拒时回退新浪 hq.sinajs.cn 同口径字段, 避免快照冻结。
+        成功写 self.market_amount_cache = {'amount', 'updated'}。
+        """
+        amt = self._fetch_market_amount_eastmoney() or self._fetch_market_amount_sina()
+        if amt and amt > 0:
+            self.market_amount_cache = {'amount': amt, 'updated': time.time()}
+            return amt
         return None
 
     def get_market_amount_baseline(self):
@@ -2699,9 +2748,13 @@ class RealtimeThemeMonitor:
             trend_score_raw += 5
         
         # 量能修正:用当日全市场成交额预测(见 predict_market_amount)替代原"上涨比例"假量能
-        # 历史标定(1378个交易日, 2021-01~2026-09):
-        #   放量≥1.2 在上涨方向次日胜率58.6%(基准55.4%); 缩量上涨(量价背离)次日胜率仅48.3%
-        #   且中位转负; 中间地带0.95~1.20无区分度 —— 故只对极端区加减分, 常态不加不减。
+        # 历史标定(1380个交易日, 2021-01~2026-09, 基准=前5日均量, 基准率 P(次日市场上涨)=55.7%):
+        #   ratio>=1.40 → 超额+25.6pp(n=16)   >=1.20 → +2.8pp(n=89)   >=1.15 → +4.5pp(n=158)
+        #   1.05~1.15   → -2.3pp(n=253, 无区分度) —— 故 +2 档阈值由 1.05 上移至 1.15
+        #   缩量<0.85 且 up_ratio>=50 → 胜率47.9%/中位-0.05%(n=48), 唯一负期望档, 判 -5
+        #   缩量<0.85 且 up_ratio< 50 → +0.7pp(n=55) 中性, 不再扣分(原 -3 档取消)
+        #   0.85~0.90 段反为 +4.6pp(n=171) —— 故缩量阈值由 0.90 收紧至 0.85
+        # 放量的超额在当日涨/跌两侧均存在(>=1.20: +2.9pp / +2.2pp), 故放量档无条件加分。
         # 只读缓存不发起网络请求, 且要求已交易≥30分钟(早盘U型曲线外推误差大)。
         vol_adj_info = None
         try:
@@ -2715,14 +2768,12 @@ class RealtimeThemeMonitor:
                 vol_adj, vol_reason = 6, '显著放量'
             elif vol_ratio >= 1.20:
                 vol_adj, vol_reason = 5, '放量'
-            elif vol_ratio >= 1.05:
+            elif vol_ratio >= 1.15:
                 vol_adj, vol_reason = 2, '温和放量'
-            elif vol_ratio >= 0.90:
-                vol_adj, vol_reason = 0, ''
-            elif up_ratio >= 50:
+            elif vol_ratio < 0.85 and up_ratio >= 50:
                 vol_adj, vol_reason = -5, '缩量上涨·量价背离'
             else:
-                vol_adj, vol_reason = -3, '缩量'
+                vol_adj, vol_reason = 0, ''
             if vol_adj:
                 trend_score_raw += vol_adj
                 vol_adj_info = {
@@ -5199,6 +5250,22 @@ class RealtimeThemeMonitor:
                     'volr': s.get('volr'),
                     'tier': s.get('tier', ''),
                     'ma20': s.get('ma20'),
+                    # ── 【增量模块】天量T0确认 V2.1(T0_ 前缀,独立字段,不覆盖既有字段) ──
+                    'T0_FINAL': s.get('T0_FINAL', ''),
+                    'T0_STATE': s.get('T0_STATE', ''),
+                    'T0_STAGE': s.get('T0_STAGE', ''),
+                    'T0_VOLUME_STATE': s.get('T0_VOLUME_STATE', ''),
+                    'T0_PULLBACK_STATE': s.get('T0_PULLBACK_STATE', ''),
+                    'T0_PRESSURE_STATE': s.get('T0_PRESSURE_STATE', ''),
+                    'T0_ENTRY_STATE': s.get('T0_ENTRY_STATE', ''),
+                    'T0_NO_CHASE': s.get('T0_NO_CHASE'),
+                    'T0_OVEREXTENSION': s.get('T0_OVEREXTENSION'),
+                    'T0_CONFIRM_SCORE': s.get('T0_CONFIRM_SCORE'),
+                    'T0_EXEC_SCORE': s.get('T0_EXEC_SCORE'),
+                    'T0_VOL_RATIO': s.get('T0_VOL_RATIO'),
+                    'T0_CUR_VOLR': s.get('T0_CUR_VOLR'),
+                    'T0_PULLBACK': s.get('T0_PULLBACK'),
+                    'T0_ENTRY_MID': s.get('T0_ENTRY_MID'),
                 })
             if not picks:
                 return
@@ -6080,6 +6147,7 @@ class RealtimeThemeMonitor:
         返回: 本轮新触发信号列表"""
         import pandas as pd
         import w7_second_wave_engine as w7
+        import t0_confirm_v21 as t0v21   # 【增量模块】天量T0确认 V2.1(只写 T0_* 字段)
 
         today = now.strftime('%Y%m%d')
         ctx = self._fox_ensure_ctx(now)
@@ -6205,6 +6273,16 @@ class RealtimeThemeMonitor:
                 # 盘中预检的量是不完整累计量,volr 系统性偏低,不做分档(以 14:50 定稿为准)
                 vr = sig.get('volr') or 0.0
                 sig['tier'] = '' if pre else ('买点池' if vr < FOX_T0_DRY_VOLR else '观察池')
+                # ── 【增量模块】天量T0确认 V2.1 ──
+                # 只读 df/sig(其他模块既有数据),只新增 T0_* 字段;不覆盖、不改动上方任何字段、
+                # 分档(tier)、池子与结论。输出自己的 5 分类:T0_BUY_CANDIDATE / T0_WAIT_PULLBACK /
+                # T0_WATCH / T0_NO_CHASE / T0_INVALID(详见 t0_confirm_v21 模块头)。
+                try:
+                    _t0_idx = int(ah[0]) if isinstance(ah, (tuple, list)) and ah else -1
+                    if _t0_idx >= 0:
+                        sig.update(t0v21.compute_t0_v21(df, _t0_idx, sig=sig, pre=pre))
+                except Exception as exc:
+                    print(f"   ⚠ {code} T0-V2.1计算异常: {exc}")
                 new_signals.append(sig)
 
             if not pre:
@@ -6255,6 +6333,18 @@ class RealtimeThemeMonitor:
                     lines.append(f"-- 买点池=缩量确认(量比<{FOX_T0_DRY_VOLR:g},回测fwd60+1.77%/胜率43%);观察池=放量确认(追高型,fwd60-1.71%/胜率36%)")
                 content = "\n".join(lines)
                 self.send_wechat(f"🦊 猎狐·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
+
+            # ── 【增量模块】天量T0实时确认 V2.1:独立输出,只报本模块自己的 5 分类 ──
+            # 与其他模块结论冲突时(如 HVT=BUY 而 T0=NO_CHASE)保留原结论、并行输出,合并交给原总决策层
+            try:
+                t0_signals = [s for s in new_signals if s.get('T0_V21')]
+                if t0_signals:
+                    print(t0v21.format_console_block(t0_signals, ts=hhmmss, pre=pre))
+                    self.send_wechat(
+                        f"🦊 天量T0实时确认V2.1·{mode_tag} {now.strftime('%m-%d %H:%M')}",
+                        "\n".join(t0v21.format_wechat_lines(t0_signals, pre=pre)))
+            except Exception as exc:
+                print(f"⚠ [T0-V2.1] 输出异常: {exc}")
             return new_signals
         except Exception as exc:
             print(f"⚠ [猎狐] 扫描异常: {exc}")

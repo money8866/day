@@ -197,11 +197,29 @@ class SliReport:
         return cur.fetchone() is not None
 
     @staticmethod
+    def _sync_columns(conn: sqlite3.Connection, table: str, df: pd.DataFrame) -> None:
+        """表已存在但面板新增列（如 roic_adv）时自动 ALTER TABLE 补列。
+
+        SQLite 表结构在首次 to_sql 时固定，后续 panel 新增因子会导致
+        append 报 "table ... has no column named ..."，此处自动扩展结构。
+        """
+        cur = conn.execute(f'PRAGMA table_info("{table}")')
+        existing = {r[1] for r in cur.fetchall()}
+        missing = [c for c in df.columns if c not in existing]
+        for c in missing:
+            col_type = "REAL" if pd.api.types.is_numeric_dtype(df[c]) else "TEXT"
+            safe = str(c).replace('"', '""')
+            conn.execute(f'ALTER TABLE "{table}" ADD COLUMN "{safe}" {col_type}')
+        if missing:
+            logger.info("SQLite 表 %s 自动新增列：%s", table, missing)
+
+    @staticmethod
     def _replace_date(conn: sqlite3.Connection, table: str, df: pd.DataFrame,
                       date: str) -> None:
         """按 trade_date 覆盖当日快照，保留其他日期的历史快照。"""
         if SliReport._table_exists(conn, table):
             conn.execute(f"DELETE FROM {table} WHERE trade_date=?", (date,))
+            SliReport._sync_columns(conn, table, df)
         df.to_sql(table, conn, if_exists="append", index=False)
 
     def to_sqlite(self, panel: pd.DataFrame, quality: dict[str, Any], date: str) -> None:

@@ -1,0 +1,1307 @@
+{
+  "meta": {
+    "report": "Step 4 + Step 8 修复审计",
+    "review_date": "20260918",
+    "step4_last_date": "20260918",
+    "step8_theme_date": "20260917",
+    "generated_at": "2026-09-20 14:07:39",
+    "scope": "只修复 Step 4 数据完整性/字段语义 与 Step 8 展示/解释；不修改权重、不进入 Step 6",
+    "task_constraints": [
+      "SEOS_WEIGHTS_FROZEN=true",
+      "禁止 fillna(50) 伪装中性",
+      "禁止按主题名人工调整",
+      "Current Strength 仅诊断层",
+      "Step 8 不输出 BUY/推荐/目标价/仓位"
+    ]
+  },
+  "tests": {
+    "TEST_VOLUME_COVERAGE": {
+      "status": "PASS",
+      "metrics": {
+        "prefix": {
+          "n_themes": 50,
+          "missing": 0,
+          "valid": 50,
+          "n_unique": 1,
+          "exact_50_hits": 50,
+          "most_common_value_share": 1.0,
+          "p05": 50.0,
+          "median": 50.0,
+          "p95": 50.0,
+          "min": 50.0,
+          "max": 50.0
+        },
+        "current": {
+          "n_themes": 50,
+          "missing": 0,
+          "valid": 50,
+          "n_unique": 46,
+          "exact_50_hits": 0,
+          "most_common_value_share": 0.1,
+          "p05": 24.073,
+          "median": 69.34,
+          "p95": 100.0,
+          "min": 14.143,
+          "max": 100.0,
+          "volume_data_status": {
+            "VALID": 50
+          },
+          "seos_volume_participation_missing_count_sum": 0
+        },
+        "upstream_sector_volume": {
+          "prefix": {
+            "n": 50,
+            "volume_ratio_1_nan": 50,
+            "volume_ratio_3_nan": 50,
+            "volume_ratio_5_nan": 50,
+            "volume_data_status": "FIELD_ABSENT",
+            "valid_member_ratio_min": null
+          },
+          "current": {
+            "n": 50,
+            "volume_ratio_1_nan": 0,
+            "volume_ratio_3_nan": 0,
+            "volume_ratio_5_nan": 0,
+            "volume_data_status": {
+              "VALID": 50
+            },
+            "valid_member_ratio_min": 0.9455
+          }
+        }
+      },
+      "conclusion": "修复后 50 个主题 volume_participation 全部有值、去重值 46 个、无固定 50 fallback；修复前 50 个主题全部等于 50.0（唯一值 1 个）"
+    },
+    "TEST_AMOUNT_SHARE_DELTA_3": {
+      "status": "PASS",
+      "metrics": {
+        "amount_share_component_weights": {
+          "amount_share_delta_5": 0.5,
+          "amount_share_delta_10": 0.3,
+          "amount_share_delta_3": 0.2
+        },
+        "weight_sum": 1.0,
+        "independent_recompute_rows": 4500,
+        "max_abs_deviation": 1e-06,
+        "rows_over_tolerance": 0,
+        "step8_rows_with_value": "50/50",
+        "step8_vs_step4_mismatch": 0,
+        "strength_weights_definition": "综合强度 theme_strength_score 降序（seos_score 0.35、core_breadth 0.2、breadth 0.15、relative_strength 0.15、amount_share_delta_3 0.15）；仅作内部排序，报告必须分三层展示"
+      },
+      "conclusion": "amount_share_delta_3 可由 theme_amount_share 独立重算（最大偏差 0.00000100，超差 0 行）；Step 8 主题行透传 50/50；组件权重 {\"amount_share_delta_5\": 0.5, \"amount_share_delta_10\": 0.3, \"amount_share_delta_3\": 0.2}（合计 1.0，未被改动）"
+    },
+    "TEST_CORE_BREADTH_SEMANTIC": {
+      "status": "PASS",
+      "metrics": {
+        "core_breadth_status_domain": [
+          "CORE",
+          "CORE_NO_VALID_MEMBER",
+          "NO_CORE_MEMBER",
+          "PRIMARY_FALLBACK"
+        ],
+        "core_breadth_status_counts": {
+          "CORE": 29,
+          "PRIMARY_FALLBACK": 14,
+          "NO_CORE_MEMBER": 7
+        },
+        "illegal_status": [],
+        "no_core_member_themes": [
+          {
+            "sector_id": "T06",
+            "name": "AI应用",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T07",
+            "name": "新能源汽车",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T11",
+            "name": "储能与电力设备",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T26",
+            "name": "金融科技",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T38",
+            "name": "CXO",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T46",
+            "name": "建筑装饰",
+            "core_member_count": 0
+          },
+          {
+            "sector_id": "T50",
+            "name": "央国企基建",
+            "core_member_count": 0
+          }
+        ],
+        "no_core_member_with_core_breadth_value": 0,
+        "level_equals_delta3_rows": 1,
+        "delta3_recompute_rows": 3870,
+        "delta3_max_deviation": 1e-06,
+        "delta3_rows_over_tolerance": 0,
+        "step4_vs_step3_breadth_max_deviation": 4.736842106056738e-07
+      },
+      "conclusion": "core_breadth（水平，上游 sector_breadth 同源）与 core_breadth_delta_N（变化量）已分离：delta_3 独立重算最大偏差 0.00000100；NO_CORE_MEMBER 7 个主题的 core_breadth 如实为空（泄漏写入 0 行）"
+    },
+    "TEST_FIELD_LABEL_CONSISTENCY": {
+      "status": "PASS",
+      "metrics": {
+        "scanned": [
+          {
+            "target": "data/sector_seos_daily.csv",
+            "n_fields": 112
+          },
+          {
+            "target": "data/sector_signal_flags.csv",
+            "n_fields": 19
+          },
+          {
+            "target": "output/post_market_review_20260918.json :: theme.rows",
+            "n_fields": 70
+          }
+        ],
+        "legacy_hits": [],
+        "step8_required_missing": [],
+        "seos_score_equals_health_delta1_rows": 0,
+        "markdown_legacy_tokens": [],
+        "markdown_bare_rank_column": false,
+        "step4_today_missing_declaration": []
+      },
+      "conclusion": "CSV / JSON / Markdown 三层字段名与实际含义一致：无 seos_change / amount_share_change 等歧义字段，Step 8 主题行不再存在裸 rank；seos_score 不再等于 theme_health_delta_1；output/sector_seos_today.json 已带 seos_weights_frozen 声明"
+    },
+    "TEST_SEOS_RECONCILIATION": {
+      "status": "PASS",
+      "metrics": {
+        "rows_checked": 4650,
+        "score_weights": {
+          "breadth_expansion": 0.25,
+          "core_breadth": 0.2,
+          "relative_strength": 0.15,
+          "volume_participation": 0.15,
+          "amount_share": 0.1,
+          "health_momentum": 0.1,
+          "consistency": 0.05
+        },
+        "weight_sum": 1.0,
+        "design_weights_match": {
+          "breadth_expansion": true,
+          "core_breadth": true,
+          "relative_strength": true,
+          "volume_participation": true,
+          "amount_share": true,
+          "health_momentum": true,
+          "consistency": true
+        },
+        "max_deduction": 0.45,
+        "max_deviation_seos_raw": 7.5e-07,
+        "rows_over_tolerance_seos_raw": 0,
+        "max_deviation_seos_score": 4.442e-05,
+        "rows_over_tolerance_seos_score": 0,
+        "component_coverage_inconsistent_rows": 0
+      },
+      "conclusion": "SEOS = Σ(wᵢ × seosᵢ) × (1 − min(penalty, 0.45)) 在浮点容差内成立：seos_raw 最大偏差 0.00000075，seos_score 最大偏差 0.00004442（4650 行）"
+    },
+    "TEST_STEP8_SEMANTIC": {
+      "status": "PASS",
+      "metrics": {
+        "layer_a_header": "### A. 今日主题表现（排序：current_strength DESC）",
+        "layer_b_header": "### B. 主题结构变化（排序：SEOS DESC）",
+        "layer_c_present": true,
+        "a_table_current_strength_desc": true,
+        "b_table_seos_desc": true,
+        "all_rows_current_strength_desc": true,
+        "all_rows_seos_desc": true,
+        "layer_a_top5": [
+          "T36",
+          "T38",
+          "T15",
+          "T42",
+          "T22"
+        ],
+        "layer_b_top5": [
+          "T38",
+          "T05",
+          "T15",
+          "T39",
+          "T33"
+        ],
+        "top5_overlap": [
+          "T15",
+          "T38"
+        ],
+        "layer_a_top1_seos_rank": 8.0,
+        "layer_a_is_not_seos_order": true,
+        "rows_missing_diagnostic_only_flag": [],
+        "illegal_interpretation": [],
+        "interpretation_counts": {
+          "STRUCTURAL_CURRENT_RESONANCE": 18,
+          "CURRENT_STRONG_MATURE": 0,
+          "EARLY_STRUCTURAL_CHANGE": 4,
+          "DIVERGENCE": 10,
+          "WEAKENING": 7,
+          "DORMANT": 11,
+          "UNDETERMINED": 0
+        },
+        "buy_words_in_theme_section": [],
+        "early_structural_change_count": 4,
+        "disclaimer_present": true
+      },
+      "conclusion": "A 层按 current_strength DESC（首行为 T36，其 seos_rank=8.0，说明当日表现排序 ≠ SEOS 排序）；B 层按 SEOS DESC；C 层按 theme_interpretation 分组；全部 50 行标注 diagnostic_only=true；主题展示区无 BUY 类措辞"
+    }
+  },
+  "weights": {
+    "status": "PASS",
+    "metrics": {
+      "declared_weights": {
+        "breadth_expansion": 0.25,
+        "core_breadth": 0.2,
+        "relative_strength": 0.15,
+        "volume_participation": 0.15,
+        "amount_share": 0.1,
+        "health_momentum": 0.1,
+        "consistency": 0.05
+      },
+      "config_weights": {
+        "breadth_expansion": 0.25,
+        "core_breadth": 0.2,
+        "relative_strength": 0.15,
+        "volume_participation": 0.15,
+        "amount_share": 0.1,
+        "health_momentum": 0.1,
+        "consistency": 0.05
+      },
+      "weight_equals_design": {
+        "breadth_expansion": true,
+        "core_breadth": true,
+        "relative_strength": true,
+        "volume_participation": true,
+        "amount_share": true,
+        "health_momentum": true,
+        "consistency": true
+      },
+      "weight_implementation_mismatch": false,
+      "frozen_declaration": {
+        "sector_seos_build.py::SEOS_WEIGHTS_FROZEN": true,
+        "output/sector_seos_today.json::seos_weights_frozen": true
+      },
+      "forbidden_pattern_hits": {
+        "theme_named_adjust": [],
+        "seos_multiplicative": [],
+        "seos_additive": [],
+        "seos_plus_current_strength": [],
+        "neutral_fill_literal": []
+      }
+    },
+    "conclusion": "SEOS_WEIGHTS_FROZEN 声明存在（代码 + output/sector_seos_today.json）；7 项权重与设计值逐一相等；未发现按主题名强行调整 / seos *= / seos += / fillna(50) 等模式"
+  },
+  "focus_table": [
+    {
+      "focus": "汽车",
+      "sector_id": "T15",
+      "sector_name": "汽车及零部件",
+      "seos_score": 69.336137,
+      "seos_rank": 3.0,
+      "theme_health": 61.25,
+      "phase": "DORMANT→EMERGING",
+      "current_strength": 72.804,
+      "current_strength_rank": 3,
+      "breadth": 0.07275,
+      "core_breadth": 0.573222,
+      "relative_strength": 0.026691,
+      "volume_participation": 68.815254,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.012203,
+      "amount_share_delta_5": 0.024243,
+      "amount_share_delta_10": 0.036304,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "机器人",
+      "sector_id": "T12",
+      "sector_name": "机器人与自动化",
+      "seos_score": 64.845123,
+      "seos_rank": 9.0,
+      "theme_health": 54.5,
+      "phase": "DORMANT→EARLY",
+      "current_strength": 69.7811,
+      "current_strength_rank": 6,
+      "breadth": -0.010534,
+      "core_breadth": 0.333333,
+      "relative_strength": 0.016627,
+      "volume_participation": 65.899316,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.001909,
+      "amount_share_delta_5": 0.011989,
+      "amount_share_delta_10": 0.000408,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "创新药",
+      "sector_id": "T36",
+      "sector_name": "创新药",
+      "seos_score": 64.895148,
+      "seos_rank": 8.0,
+      "theme_health": 70.28,
+      "phase": "DORMANT→DORMANT",
+      "current_strength": 74.9184,
+      "current_strength_rank": 1,
+      "breadth": 0.525836,
+      "core_breadth": 0.586538,
+      "relative_strength": 0.020584,
+      "volume_participation": 65.003467,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": -0.004253,
+      "amount_share_delta_5": -0.002626,
+      "amount_share_delta_10": -0.002971,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "医疗器械",
+      "sector_id": "T37",
+      "sector_name": "医疗器械",
+      "seos_score": 65.731029,
+      "seos_rank": 6.0,
+      "theme_health": 62.33,
+      "phase": "DORMANT→EMERGING",
+      "current_strength": 60.8217,
+      "current_strength_rank": 17,
+      "breadth": 0.236534,
+      "core_breadth": 0.204545,
+      "relative_strength": 0.016522,
+      "volume_participation": 70.146733,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.00107,
+      "amount_share_delta_5": 0.004102,
+      "amount_share_delta_10": 0.004461,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "光伏",
+      "sector_id": "T09",
+      "sector_name": "光伏产业链",
+      "seos_score": 49.525289,
+      "seos_rank": 32.0,
+      "theme_health": 40.36,
+      "phase": "DORMANT→DORMANT",
+      "current_strength": 34.1979,
+      "current_strength_rank": 39,
+      "breadth": -0.319896,
+      "core_breadth": -1.0,
+      "relative_strength": 0.015581,
+      "volume_participation": 60.20068,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.007351,
+      "amount_share_delta_5": 0.018113,
+      "amount_share_delta_10": 0.02612,
+      "interpretation": "WEAKENING"
+    },
+    {
+      "focus": "AI算力",
+      "sector_id": "T02",
+      "sector_name": "AI算力",
+      "seos_score": 64.013558,
+      "seos_rank": 12.0,
+      "theme_health": 49.19,
+      "phase": "DORMANT→EARLY",
+      "current_strength": 47.2885,
+      "current_strength_rank": 28,
+      "breadth": -0.249694,
+      "core_breadth": -0.179487,
+      "relative_strength": 0.02873,
+      "volume_participation": 73.403042,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.033544,
+      "amount_share_delta_5": 0.045671,
+      "amount_share_delta_10": 0.064818,
+      "interpretation": "EARLY_STRUCTURAL_CHANGE"
+    },
+    {
+      "focus": "医疗服务",
+      "sector_id": "T39",
+      "sector_name": "医疗服务",
+      "seos_score": 68.487615,
+      "seos_rank": 4.0,
+      "theme_health": 68.35,
+      "phase": "DORMANT→DORMANT",
+      "current_strength": 59.0659,
+      "current_strength_rank": 18,
+      "breadth": 0.395973,
+      "core_breadth": -0.071429,
+      "relative_strength": 0.020562,
+      "volume_participation": 98.87791,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.00328,
+      "amount_share_delta_5": 0.005651,
+      "amount_share_delta_10": 0.006382,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "美容护理",
+      "sector_id": "T33",
+      "sector_name": "美容护理",
+      "seos_score": 68.246829,
+      "seos_rank": 5.0,
+      "theme_health": 64.69,
+      "phase": "DORMANT→DORMANT",
+      "current_strength": 67.5385,
+      "current_strength_rank": 7,
+      "breadth": 0.402516,
+      "core_breadth": 0.44,
+      "relative_strength": 0.005204,
+      "volume_participation": 88.376341,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.003656,
+      "amount_share_delta_5": 0.001782,
+      "amount_share_delta_10": 0.003806,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    },
+    {
+      "focus": "通信",
+      "sector_id": "T03",
+      "sector_name": "通信",
+      "seos_score": 64.673501,
+      "seos_rank": 10.0,
+      "theme_health": 48.21,
+      "phase": "DORMANT→EARLY",
+      "current_strength": 41.0263,
+      "current_strength_rank": 35,
+      "breadth": -0.365011,
+      "core_breadth": -0.304348,
+      "relative_strength": 0.035651,
+      "volume_participation": 74.370005,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.022812,
+      "amount_share_delta_5": 0.038622,
+      "amount_share_delta_10": 0.067017,
+      "interpretation": "EARLY_STRUCTURAL_CHANGE"
+    },
+    {
+      "focus": "消费电子",
+      "sector_id": "T05",
+      "sector_name": "消费电子",
+      "seos_score": 69.965312,
+      "seos_rank": 2.0,
+      "theme_health": 55.49,
+      "phase": "DORMANT→EMERGING",
+      "current_strength": 52.4234,
+      "current_strength_rank": 24,
+      "breadth": -0.207018,
+      "core_breadth": 0.11236,
+      "relative_strength": 0.042595,
+      "volume_participation": 69.403383,
+      "volume_data_status": "VALID",
+      "amount_share_delta_3": 0.005306,
+      "amount_share_delta_5": 0.02244,
+      "amount_share_delta_10": 0.023558,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+    }
+  ],
+  "key_facts": {
+    "median_seos_score": 54.191171,
+    "median_current_strength": 49.30545,
+    "汽车": {
+      "seos_score": 69.336137,
+      "seos_rank": 3.0,
+      "seos_above_median": true,
+      "verdict": "SEOS 仍高于中位 → 结构变化信号确实强；未按主题名做任何人工加权，也未要求其退出第一"
+    },
+    "AI算力": {
+      "current_strength": 47.2885,
+      "current_strength_rank": 28,
+      "seos_score": 64.013558,
+      "interpretation": "EARLY_STRUCTURAL_CHANGE",
+      "current_above_median": false,
+      "verdict": "Current Strength 未高于中位（rank 28）→ 当日并未走强，结构变化信号与当日强弱分离；SEOS 高于中位，说明当日强弱与结构变化不是同一问题"
+    },
+    "创新药": {
+      "seos_score": 64.895148,
+      "seos_above_median": true,
+      "current_strength": 74.9184,
+      "current_below_median": false,
+      "interpretation": "STRUCTURAL_CURRENT_RESONANCE",
+      "verdict": "SEOS 高于中位，当日强度不低于中位 → 归为 STRUCTURAL_CURRENT_RESONANCE；本次不满足 EARLY_STRUCTURAL_CHANGE 的三项前提（SEOS 高 + 当日强度相对低 + EARLY/EMERGING），故未使用该标签"
+    }
+  },
+  "step5_regression": {
+    "status": "PASS",
+    "metrics": {
+      "before": {
+        "effective_theme_days": [
+          527,
+          40,
+          79
+        ],
+        "expanded_rows": 181885,
+        "tier_rows": [
+          51583,
+          181885
+        ],
+        "score_p": [
+          61.4,
+          67.7,
+          73.0,
+          91.7
+        ],
+        "status": {
+          "EXCLUDE": 141686,
+          "WATCH": 34117,
+          "CANDIDATE": 6082
+        },
+        "complete": {
+          "requested": "20260918",
+          "effective": "20260918",
+          "evaluated": 181885,
+          "pool": 4964,
+          "pollution": 29784
+        }
+      },
+      "after": {
+        "effective_theme_days": [
+          529,
+          42,
+          78
+        ],
+        "expanded_rows": 184064,
+        "tier_rows": [
+          51806,
+          184064
+        ],
+        "score_p": [
+          61.3,
+          67.7,
+          73.1,
+          91.9
+        ],
+        "status": {
+          "EXCLUDE": 144018,
+          "WATCH": 34050,
+          "CANDIDATE": 5996
+        },
+        "complete": {
+          "requested": "20260918",
+          "effective": "20260918",
+          "evaluated": 184064,
+          "pool": 4919,
+          "pollution": 30468
+        }
+      },
+      "source": {
+        "before": "logs/run_step5_20260918.log（修复前 Step 4）",
+        "after": "logs/regr_step5_20260918.log（修复后 Step 4，--no-write 复算，不覆写落盘）"
+      },
+      "delta": {
+        "CANDIDATE": -86,
+        "WATCH": -67,
+        "EXCLUDE": 2332,
+        "pool_pct": -0.907,
+        "candidate_pct": -1.414,
+        "evaluated_pct": 1.198
+      },
+      "before_snapshot_20260918": {
+        "source": "data/sector_stock_candidate_daily.csv @ trade_date=20260918（修复前口径，未重跑）",
+        "rows": 8301,
+        "stocks": 3580,
+        "status": {
+          "EXCLUDE": 6554,
+          "WATCH": 1394,
+          "CANDIDATE": 353
+        },
+        "candidate_type": {
+          "THEME_CORE": 242,
+          "THEME_DIFFUSION": 75,
+          "THEME_PULLBACK": 36
+        }
+      }
+    },
+    "conclusion": "修复后 Step 5 候选池 4964→4919（-0.907%）、CANDIDATE 6082→5996（-1.414%）、评估行 181885→184064（1.198%）；候选评分分位数基本持平（p50 61.4→61.3 / p90 73.0→73.1）；无候选爆炸"
+  },
+  "validation": {
+    "step3": [
+      {
+        "check": "A_SECTOR_ID",
+        "level": "PASS",
+        "detail": "非 master 声明的 sector_id：无（master sectors=50，输出涉及 50 个）"
+      },
+      {
+        "check": "B_MEMBERSHIP_UNIQUE",
+        "level": "PASS",
+        "detail": "(ts_code, sector_id, effective_date) 重复行数=0"
+      },
+      {
+        "check": "C_EFFECTIVE_DATE",
+        "level": "PASS",
+        "detail": "effective_date > 基准日(20260918) 行数=0；strict 模式按 effective_date<=D 过滤；snapshot 模式按静态定义回放并在输出中标注 STATIC_SNAPSHOT"
+      },
+      {
+        "check": "D_TRADE_DATE",
+        "level": "PASS",
+        "detail": "输出日期 93 个，全部来自交易日序列；非法日期无"
+      },
+      {
+        "check": "E_NO_LOOKAHEAD",
+        "level": "PASS",
+        "detail": "对 2 个中间日期（20260625, 20260807）把行情面板物理截断到当日为止（各保留 30 个交易日，D+1 及以后数据不参与计算），重算后共比对 100 个 (日期 × Sector) 组合的 ew_ret_5/ew_ret_20/breadth/weighted_breadth/volume_ratio_5/sector_amount_share/sector_health，与完整回放完全一致，未发现使用 D+1 及以后数据的路径"
+      },
+      {
+        "check": "F_PRICE_INDEPENDENCE",
+        "level": "PASS",
+        "detail": "membership 列未包含任何价格/涨停/热度字段（命中：无）；本阶段只读 membership，不增删任何成员"
+      },
+      {
+        "check": "G_CONCENTRATION",
+        "level": "PASS",
+        "detail": "top5_concentration>0.7 行数=1，已标记 HIGH_CONCENTRATION 行数=1，集中度缺失=0"
+      },
+      {
+        "check": "H_CORE_NOT_WEAK_STRONG",
+        "level": "PASS",
+        "detail": "STRONG 且 core_breadth<0.5 行数=0"
+      }
+    ],
+    "step4": [
+      {
+        "check": "CHECK_MASTER_SOURCE",
+        "level": "PASS",
+        "detail": "sector_master.json v2.0 / 50 主题；SEOS 输出 50 个主题，全部合法"
+      },
+      {
+        "check": "CHECK_LEGACY_ISOLATION",
+        "level": "PASS",
+        "detail": "本次运行读取 8 个文件，未包含任何 legacy 配置；磁盘上仍存在 legacy 文件（仅作参考，未被读取）：['D:\\\\mystock\\\\solo\\\\theme.json', 'D:\\\\mystock\\\\solo\\\\theme_config.json', 'D:\\\\mystock\\\\solo\\\\bak0615\\\\theme.json', 'D:\\\\mystock\\\\solo\\\\multi_factor_picker\\\\cache\\\\theme.json', 'D:\\\\mystock\\\\solo\\\\theme_kg_v3\\\\theme_kg_v3\\\\config\\\\subtheme_map.json', 'D:\\\\mystock\\\\solo\\\\theme_kg_v3\\\\theme_kg_v3\\\\config\\\\theme_config.json']"
+      },
+      {
+        "check": "CHECK_THEME_ID_VALID",
+        "level": "PASS",
+        "detail": "主题 id 覆盖 50/50，空值 0 个；缺失：无"
+      },
+      {
+        "check": "CHECK_MEMBERSHIP_NO_LEAK",
+        "level": "PASS",
+        "detail": "membership effective_date 最大 2026-09-18，超出面板末日 0 行；membership_as_of=20260918（<= 面板末日：True）；SEOS 不重建归属，直接沿用 Step 3 快照"
+      },
+      {
+        "check": "CHECK_NO_LOOKAHEAD_SEOS",
+        "level": "PASS",
+        "detail": "比对 8 个截断日 × 30 列 / 11648 个数值，最大偏差 0.000e+00"
+      },
+      {
+        "check": "CHECK_NO_LOOKAHEAD_PHASE",
+        "level": "PASS",
+        "detail": "比对 8 个截断日 × 7 列 / 2800 个数值，最大偏差 0.000e+00"
+      },
+      {
+        "check": "CHECK_NO_LOOKAHEAD_ROTATION",
+        "level": "PASS",
+        "detail": "比对 8 个截断日 × 3 列 / 1200 个数值，最大偏差 0.000e+00"
+      },
+      {
+        "check": "CHECK_INDICATOR_TRACEABLE",
+        "level": "PASS",
+        "detail": "评分独立复算最大偏差 0.000e+00；输出列缺失 0 个[]；component_coverage 复算偏差 0.000e+00；有效行含缺失分项 1038 行（按可用权重归一化，记录在 seos_data_status）；无法解释的评分缺失 0 行"
+      },
+      {
+        "check": "CHECK_NO_PHASE_JUMP",
+        "level": "PASS",
+        "detail": "状态转换 283 次，非法跳变 0 次（全部落在白名单转移集合内）"
+      },
+      {
+        "check": "CHECK_HYSTERESIS",
+        "level": "PASS",
+        "detail": "降级必须低于退出阈值：违约 0 次；3 日内回转（抖动）25/283 = 8.8%（上限 25%）"
+      },
+      {
+        "check": "CHECK_MISSING_DATA_HANDLED",
+        "level": "PASS",
+        "detail": "滑动窗口未就绪 866 行（breadth_delta_5,core_breadth_delta_5,rs_turn_5 缺值），全部落于 DORMANT/DATA_INVALID；越界 0 行；未就绪行的分项按可用子项归一化（缺失子项不伪装中性，见 seos_data_status / component_coverage），且不产生启动信号"
+      },
+      {
+        "check": "CHECK_DATA_INVALID_PROPAGATION",
+        "level": "PASS",
+        "detail": "真实数据 DATA_INVALID 行 0；注入 dq<0.6 后末日 50 个主题全部为 DATA_INVALID 且 seos_score 为空：True；flags 全部置 False：True"
+      }
+    ],
+    "step5": [
+      {
+        "check": "CHECK_CONFIG_LOADED",
+        "level": "PASS",
+        "detail": "version=1.6"
+      },
+      {
+        "check": "CHECK_THEME_IN_MASTER",
+        "level": "PASS",
+        "detail": "未知主题=[]"
+      },
+      {
+        "check": "CHECK_MEMBERSHIP_SOURCE",
+        "level": "PASS",
+        "detail": "所有候选均来自 data/sector_membership.csv"
+      },
+      {
+        "check": "CHECK_LEGACY_ISOLATION",
+        "level": "PASS",
+        "detail": "legacy 读取=[]"
+      },
+      {
+        "check": "CHECK_NO_FUTURE_PRICE",
+        "level": "PASS",
+        "detail": "前向列=[]"
+      },
+      {
+        "check": "CHECK_NO_FUTURE_FUNDAMENTAL",
+        "level": "PASS",
+        "detail": "ann_date>trade_date 行数=0"
+      },
+      {
+        "check": "CHECK_MEMBERSHIP_PIT",
+        "level": "PASS",
+        "detail": "effective_date>trade_date 行数=0"
+      },
+      {
+        "check": "CHECK_THEME_RETURN_PIT",
+        "level": "PASS",
+        "detail": "leakage: 未来成员进入 D=False 到期后可见=True 原is_static=True；独立重算不一致=0/300"
+      },
+      {
+        "check": "CHECK_STATUS_ENUM",
+        "level": "PASS",
+        "detail": "非法状态=[]"
+      },
+      {
+        "check": "CHECK_CANDIDATE_TYPE_ENUM",
+        "level": "PASS",
+        "detail": "非法类型=[]"
+      },
+      {
+        "check": "CHECK_ROLE_ENUM",
+        "level": "PASS",
+        "detail": "非法角色=[]"
+      },
+      {
+        "check": "CHECK_DIFFUSION_TYPE_ENUM",
+        "level": "PASS",
+        "detail": "非法扩散类型=[]"
+      },
+      {
+        "check": "CHECK_DIFFUSION_PATTERN_ENUM",
+        "level": "PASS",
+        "detail": "非法形态=[] 非法阶段=[]"
+      },
+      {
+        "check": "CHECK_POLLUTION_ENFORCED",
+        "level": "PASS",
+        "detail": "非法分级=[] 污染行泄漏进 CANDIDATE=0"
+      },
+      {
+        "check": "CHECK_SCORE_RANGE",
+        "level": "PASS",
+        "detail": "min=12.560 max=91.901"
+      },
+      {
+        "check": "CHECK_UNIVERSE_FILTER",
+        "level": "PASS",
+        "detail": "ST 入选=0"
+      },
+      {
+        "check": "CHECK_NO_DUPLICATE",
+        "level": "PASS",
+        "detail": "重复行=0"
+      },
+      {
+        "check": "CHECK_SELECTION_LIMITS",
+        "level": "PASS",
+        "detail": "单主题最多=12 单类型最多=5"
+      },
+      {
+        "check": "CHECK_POLLUTION_LOGGED",
+        "level": "PASS",
+        "detail": "污染类型=['CONCEPT_POLLUTION', 'DATA_INVALID', 'INDUSTRY_CONFLICT', 'OVER_EXTENSION', 'THEME_EXITING', 'VOLUME_SPIKE']"
+      },
+      {
+        "check": "CHECK_EXTENSION_NOT_TOP1",
+        "level": "PASS",
+        "detail": "违规主题日=0"
+      },
+      {
+        "check": "CHECK_DIFFUSION_IDENTIFIABLE",
+        "level": "PASS",
+        "detail": "强主题扩散类型=['CORE_EXPANSION', 'FAILED_DIFFUSION', 'FULL_BREADTH_EXPANSION', 'NO_DIFFUSION', 'PRIMARY_EXPANSION', 'SECOND_LINE_EXPANSION']"
+      },
+      {
+        "check": "CHECK_INPUT_COVERAGE",
+        "level": "PASS",
+        "detail": "ret_5 覆盖=0.997 基本面覆盖=1.000"
+      },
+      {
+        "check": "CHECK_NO_TRADING_TERMS",
+        "level": "PASS",
+        "detail": "候选内容层命中禁用词=[]；not_a_buy_list=True"
+      },
+      {
+        "check": "CHECK_NO_DORMANT_CANDIDATE",
+        "level": "PASS",
+        "detail": "DORMANT/INVALID 入选=0"
+      },
+      {
+        "check": "CHECK_CROSS_THEME_BONUS_CAP",
+        "level": "PASS",
+        "detail": "越界行=0 cap=5.0"
+      },
+      {
+        "check": "CHECK_ROLE_NOT_BY_RETURN",
+        "level": "PASS",
+        "detail": "CORE_LEADER 非 CORE_COMPANY 来源=0"
+      },
+      {
+        "check": "CHECK_STEP5_STOP_NOTICE",
+        "level": "PASS",
+        "detail": "审计报告缺失声明=[]"
+      }
+    ],
+    "step8": [
+      {
+        "check": "FUTURE_LEAKAGE",
+        "level": "PASS",
+        "detail": "feature 日期均 <= 对应 base date（theme 20260917 / candidate 20260917 <= signal 20260917 < review 20260918）；未来收益仅作 outcome"
+      },
+      {
+        "check": "STEP_DEPENDENCY",
+        "level": "PASS",
+        "detail": "Step5 / Step6 / Step7 落盘文件与当日子集均存在，未绕过"
+      },
+      {
+        "check": "BUY_REVIEW",
+        "level": "PASS",
+        "detail": "4 只 BUY 均具备 trigger / entry / stop / target / RR"
+      },
+      {
+        "check": "NO_TRADE_REVIEW",
+        "level": "PASS",
+        "detail": "1343 条 NO TRADE 均带 no_trade_reason"
+      },
+      {
+        "check": "HVT_REVIEW",
+        "level": "PASS",
+        "detail": "1347 行结构记录的 hvt_state 全部存在且落在声明域内"
+      },
+      {
+        "check": "UPSTREAM_STATE_CONFLICT",
+        "level": "PASS",
+        "detail": "1347 行结构记录中 hvt_state 与 retest_state 无自相矛盾（§二十七）"
+      },
+      {
+        "check": "THEME_REVIEW",
+        "level": "PASS",
+        "detail": "20260917 全部主题均来自 theme_master（50 个），无未知主题"
+      },
+      {
+        "check": "THEME_SEMANTICS",
+        "level": "PASS",
+        "detail": "50 行主题：A/B/C 三层齐备；seos 家族字段显式命名；amount_share_delta_3 有值 50/50；current_strength 全部标注 diagnostic_only（诊断层，不进入 SEOS / phase / Step 5）"
+      },
+      {
+        "check": "REGIME_TIER_COVERAGE",
+        "level": "WARNING",
+        "detail": "声明 5 档，Step 7 历史（20260522~20260917）实际产出 4 档 健康、中性、风险规避、偏弱；未覆盖 强势（对应代码 STRONG）—— 如实缺档，不臆断、不为凑覆盖率下调阈值（阈值与成因见 config/execution_config.json::market_regime）"
+      },
+      {
+        "check": "REPORT_LANGUAGE",
+        "level": "PASS",
+        "detail": "报告未使用禁用夸张词（§四十四）"
+      },
+      {
+        "check": "REPORT_SECTIONS",
+        "level": "PASS",
+        "detail": "正文核心章节 8 节（要求 5-8）"
+      }
+    ],
+    "cross_checks": {
+      "NO FUTURE LEAKAGE": {
+        "checks": [
+          {
+            "check": "E_NO_LOOKAHEAD",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_LOOKAHEAD_SEOS",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_LOOKAHEAD_PHASE",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_LOOKAHEAD_ROTATION",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_FUTURE_PRICE",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_FUTURE_FUNDAMENTAL",
+            "level": "PASS"
+          },
+          {
+            "check": "FUTURE_LEAKAGE",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      },
+      "NO LEGACY CONTAMINATION": {
+        "checks": [
+          {
+            "check": "CHECK_LEGACY_ISOLATION",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      },
+      "PIT MEMBERSHIP": {
+        "checks": [
+          {
+            "check": "CHECK_MEMBERSHIP_PIT",
+            "level": "PASS"
+          },
+          {
+            "check": "B_MEMBERSHIP_UNIQUE",
+            "level": "PASS"
+          },
+          {
+            "check": "C_EFFECTIVE_DATE",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      },
+      "PIT THEME RETURN": {
+        "checks": [
+          {
+            "check": "CHECK_THEME_RETURN_PIT",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      },
+      "NO MOMENTUM CHASING": {
+        "checks": [
+          {
+            "check": "CHECK_EXTENSION_NOT_TOP1",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_ROLE_NOT_BY_RETURN",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_DORMANT_CANDIDATE",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_NO_TRADING_TERMS",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      },
+      "POLLUTION ENFORCEMENT": {
+        "checks": [
+          {
+            "check": "CHECK_POLLUTION_ENFORCED",
+            "level": "PASS"
+          },
+          {
+            "check": "CHECK_POLLUTION_LOGGED",
+            "level": "PASS"
+          }
+        ],
+        "status": "PASS"
+      }
+    },
+    "counts": {
+      "step3_pass": 8,
+      "step3_n": 8,
+      "step4_pass": 12,
+      "step4_n": 12,
+      "step5_pass": 27,
+      "step5_n": 27,
+      "step8_pass": 10,
+      "step8_warn": 1,
+      "step8_n": 11
+    }
+  },
+  "top15": {
+    "theme_date": "20260917",
+    "top15": [
+      {
+        "sector_id": "T38",
+        "sector_name": "CXO",
+        "seos_before": 61.613704,
+        "seos_rank_before": null,
+        "seos_after": 72.953855,
+        "seos_rank_after": 1.0,
+        "delta": 11.340151000000006,
+        "health": 73.25,
+        "current_strength": 74.2261,
+        "current_strength_rank": 2,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T05",
+        "sector_name": "消费电子",
+        "seos_before": 66.048472,
+        "seos_rank_before": null,
+        "seos_after": 69.965312,
+        "seos_rank_after": 2.0,
+        "delta": 3.9168399999999934,
+        "health": 55.49,
+        "current_strength": 52.4234,
+        "current_strength_rank": 24,
+        "phase": "DORMANT→EMERGING",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T15",
+        "sector_name": "汽车及零部件",
+        "seos_before": 66.372925,
+        "seos_rank_before": null,
+        "seos_after": 69.336137,
+        "seos_rank_after": 3.0,
+        "delta": 2.9632119999999986,
+        "health": 61.25,
+        "current_strength": 72.804,
+        "current_strength_rank": 3,
+        "phase": "DORMANT→EMERGING",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T39",
+        "sector_name": "医疗服务",
+        "seos_before": 60.670002,
+        "seos_rank_before": null,
+        "seos_after": 68.487615,
+        "seos_rank_after": 4.0,
+        "delta": 7.817613000000009,
+        "health": 68.35,
+        "current_strength": 59.0659,
+        "current_strength_rank": 18,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T33",
+        "sector_name": "美容护理",
+        "seos_before": 60.874796,
+        "seos_rank_before": null,
+        "seos_after": 68.246829,
+        "seos_rank_after": 5.0,
+        "delta": 7.372033000000002,
+        "health": 64.69,
+        "current_strength": 67.5385,
+        "current_strength_rank": 7,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T37",
+        "sector_name": "医疗器械",
+        "seos_before": 61.736384,
+        "seos_rank_before": null,
+        "seos_after": 65.731029,
+        "seos_rank_after": 6.0,
+        "delta": 3.9946450000000056,
+        "health": 62.33,
+        "current_strength": 60.8217,
+        "current_strength_rank": 17,
+        "phase": "DORMANT→EMERGING",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T35",
+        "sector_name": "消费服务",
+        "seos_before": 59.800213,
+        "seos_rank_before": null,
+        "seos_after": 65.130428,
+        "seos_rank_after": 7.0,
+        "delta": 5.3302149999999955,
+        "health": 56.97,
+        "current_strength": 61.848,
+        "current_strength_rank": 15,
+        "phase": "DORMANT→EMERGING",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T36",
+        "sector_name": "创新药",
+        "seos_before": 62.223189,
+        "seos_rank_before": null,
+        "seos_after": 64.895148,
+        "seos_rank_after": 8.0,
+        "delta": 2.671959000000008,
+        "health": 70.28,
+        "current_strength": 74.9184,
+        "current_strength_rank": 1,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T12",
+        "sector_name": "机器人与自动化",
+        "seos_before": 62.047377,
+        "seos_rank_before": null,
+        "seos_after": 64.845123,
+        "seos_rank_after": 9.0,
+        "delta": 2.7977460000000036,
+        "health": 54.5,
+        "current_strength": 69.7811,
+        "current_strength_rank": 6,
+        "phase": "DORMANT→EARLY",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T03",
+        "sector_name": "通信",
+        "seos_before": 60.464023,
+        "seos_rank_before": null,
+        "seos_after": 64.673501,
+        "seos_rank_after": 10.0,
+        "delta": 4.209478000000004,
+        "health": 48.21,
+        "current_strength": 41.0263,
+        "current_strength_rank": 35,
+        "phase": "DORMANT→EARLY",
+        "interpretation": "EARLY_STRUCTURAL_CHANGE"
+      },
+      {
+        "sector_id": "T32",
+        "sector_name": "纺织服饰",
+        "seos_before": 60.860846,
+        "seos_rank_before": null,
+        "seos_after": 64.217752,
+        "seos_rank_after": 11.0,
+        "delta": 3.356906000000002,
+        "health": 61.14,
+        "current_strength": 64.3031,
+        "current_strength_rank": 10,
+        "phase": "DORMANT→EARLY",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T02",
+        "sector_name": "AI算力",
+        "seos_before": 60.24107,
+        "seos_rank_before": null,
+        "seos_after": 64.013558,
+        "seos_rank_after": 12.0,
+        "delta": 3.7724880000000027,
+        "health": 49.19,
+        "current_strength": 47.2885,
+        "current_strength_rank": 28,
+        "phase": "DORMANT→EARLY",
+        "interpretation": "EARLY_STRUCTURAL_CHANGE"
+      },
+      {
+        "sector_id": "T07",
+        "sector_name": "新能源汽车",
+        "seos_before": 57.767451,
+        "seos_rank_before": null,
+        "seos_after": 62.715924,
+        "seos_rank_after": 13.0,
+        "delta": 4.948473,
+        "health": 53.35,
+        "current_strength": 62.9727,
+        "current_strength_rank": 11,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      },
+      {
+        "sector_id": "T01",
+        "sector_name": "半导体",
+        "seos_before": 58.13352,
+        "seos_rank_before": null,
+        "seos_after": 61.233384,
+        "seos_rank_after": 14.0,
+        "delta": 3.0998640000000037,
+        "health": 48.59,
+        "current_strength": 41.8806,
+        "current_strength_rank": 34,
+        "phase": "EMERGING→EMERGING",
+        "interpretation": "EARLY_STRUCTURAL_CHANGE"
+      },
+      {
+        "sector_id": "T28",
+        "sector_name": "地产链",
+        "seos_before": 56.720897,
+        "seos_rank_before": null,
+        "seos_after": 60.353107,
+        "seos_rank_after": 15.0,
+        "delta": 3.6322100000000006,
+        "health": 57.84,
+        "current_strength": 62.3725,
+        "current_strength_rank": 14,
+        "phase": "DORMANT→DORMANT",
+        "interpretation": "STRUCTURAL_CURRENT_RESONANCE"
+      }
+    ],
+    "all_theme_delta": {
+      "n": 50,
+      "n_changed": 50,
+      "min": -6.3034,
+      "median": 2.1864,
+      "max": 11.3402
+    }
+  },
+  "residual_risks": [
+    {
+      "id": "R1",
+      "level": "SCOPE",
+      "text": "Step 6 / Step 7 / HVT / Execution 未随 Step 4 修复重跑（§二十六 禁止修改、§三十二 不进入 Step 6）。Step 5 的修复后复算以 --no-write 方式执行，落盘 data/sector_stock_candidate_daily.csv 仍为修复前口径；Step 8 报告中的结构池 / BUY / NO TRADE 片段因此来自修复前 Step 5→7 的落盘结果。"
+    },
+    {
+      "id": "R2",
+      "level": "DATA_COVERAGE",
+      "text": "7 个主题当期无 CORE 成员（core_breadth_status=NO_CORE_MEMBER），core_breadth 分项缺失，component_coverage<1 并标记 SEOS_DATA_PARTIAL。这是上游成员结构事实，非计算缺陷，未以 0/50 伪装。"
+    },
+    {
+      "id": "R3",
+      "level": "DATA_COVERAGE",
+      "text": "volume_participation 依赖 Step 3 回放窗口长度（REPLAY_MIN_DAYS=21）。若以更短的 --date 窗口重跑 Step 3，仍可能复现 volume_ratio_* 缺值。当前 20260918 落盘为 VALID 50/50。"
+    },
+    {
+      "id": "R4",
+      "level": "OUTCOME",
+      "text": "T+3 / T+5 / T+10 / T+20 尚未发生，Step 8 如实留空，不以前视数据填充。"
+    },
+    {
+      "id": "R5",
+      "level": "PRE_EXISTING",
+      "text": "Step 8 REGIME_TIER_COVERAGE = WARNING（强势档在 Step 7 历史中未产出），与本次修复无关，未调整阈值。"
+    },
+    {
+      "id": "R6",
+      "level": "SEMANTIC",
+      "text": "theme_interpretation 是解释标签，不是交易评分；EARLY_STRUCTURAL_CHANGE 只表示「结构变化值得继续观察」，报告已在 §2 末尾显式声明，仍存在被读者误读为 BUY 的可能（§十九）。"
+    }
+  ],
+  "final_status_criteria": {
+    "Volume 数据链": "PASS",
+    "Amount Share delta_3": "PASS",
+    "Core Breadth": "PASS",
+    "Field Semantic": "PASS",
+    "SEOS Reconciliation": "PASS",
+    "SEOS 权重未改": "PASS",
+    "Step 8 Semantic": "PASS",
+    "Step 5 Regression": "PASS",
+    "Future Leakage": "PASS",
+    "Legacy Isolation": "PASS"
+  },
+  "final_status": "SEOS_FIX_PASS"
+}

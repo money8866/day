@@ -64,6 +64,20 @@ OUT = CFG["output"]
 
 LEVEL_PASS, LEVEL_WARN, LEVEL_FAIL = "PASS", "WARNING", "ISSUE"
 
+# §十八 theme_interpretation 分类域（顺序即报告展示顺序）；这是解释标签，不是交易评分
+INTERPRETATION_ORDER = ["STRUCTURAL_CURRENT_RESONANCE", "CURRENT_STRONG_MATURE",
+                        "EARLY_STRUCTURAL_CHANGE", "DIVERGENCE", "WEAKENING", "DORMANT",
+                        "UNDETERMINED"]
+INTERPRETATION_CN = {
+    "STRUCTURAL_CURRENT_RESONANCE": "结构改善与当日表现共振",
+    "CURRENT_STRONG_MATURE": "当日强势、结构改善速度趋缓",
+    "EARLY_STRUCTURAL_CHANGE": "结构提前改善（仅表示值得继续观察）",
+    "DIVERGENCE": "结构与当日表现背离",
+    "WEAKENING": "结构转弱",
+    "DORMANT": "沉寂 / 无明确变化",
+    "UNDETERMINED": "数据不足，不做解释",
+}
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # 0. 通用工具
@@ -360,13 +374,18 @@ class Ctx:
             "core_breadth_delta_1", "core_breadth_delta_3", "core_breadth_delta_5",
             "primary_breadth", "primary_breadth_delta_3", "secondary_breadth",
             "secondary_breadth_delta_3", "relative_strength", "relative_strength_delta_3",
-            "volume_ratio_1", "volume_ratio_3", "theme_amount_share", "amount_share_delta_3",
-            "seos_score", "core_pattern", "theme_phase", "prev_phase", "phase_transition",
-            "phase_duration", "startup_quality", "rotation_signal", "signal_reason",
-            "data_quality_score"])
+            "volume_ratio_1", "volume_ratio_3", "volume_ratio_5", "theme_amount_share",
+            "amount_share_delta_3", "seos_score", "core_pattern", "theme_phase", "prev_phase",
+            "phase_transition", "phase_duration", "startup_quality", "rotation_signal",
+            "signal_reason", "data_quality_score",
+            # §十四 / §十五：SEOS 家族与数据完整性字段显式读取（seos_change 已废弃，不再有歧义命名）
+            "seos_raw", "seos_delta_1", "seos_delta_3", "seos_rank", "seos_data_status",
+            "component_coverage", "component_missing_count", "core_breadth_status",
+            "core_member_count", "volume_data_status", "volume_chain_status",
+            "seos_volume_participation", "seos_core_breadth"])
         self.sds = read_csv_cols(INP["sector_daily_stats"], [
             "trade_date", "sector_id", "breadth", "core_breadth", "primary_breadth",
-            "sector_amount_share", "data_quality_score"])
+            "ew_ret_1", "sector_amount_share", "data_quality_score"])
         self.rot = read_csv_cols(INP["sector_rotation"], [
             "trade_date", "sector_id", "sector_name", "rotation_signal", "rotation_reason",
             "ref_breadth_delta", "breadth_delta_5", "core_breadth_delta_5", "rs_turn_5",
@@ -691,7 +710,101 @@ def theme_strength(row) -> float:
     return round(parts / wsum, 6) if wsum > 0 else np.nan
 
 
-def build_theme(ctx: Ctx, theme_date: int, signal_date: int, val: list) -> dict:
+def safe_median(values) -> float:
+    s = pd.Series([fnum(v, np.nan) for v in values], dtype="float64").dropna()
+    return float(s.median()) if len(s) else np.nan
+
+
+def pct_ramp_bounds(values, lo_p: float, hi_p: float):
+    """横截面分位斜坡边界（用于当日成交占比这类无固定量纲的字段）。"""
+    s = sorted(v for v in (fnum(x, np.nan) for x in values) if np.isfinite(v))
+    if len(s) < 2:
+        return np.nan, np.nan
+    lo = s[min(len(s) - 1, int(lo_p * (len(s) - 1)))]
+    hi = s[min(len(s) - 1, int(hi_p * (len(s) - 1)))]
+    return float(lo), float(hi)
+
+
+def bench_index_ret(store: BarStore, trade_date: int) -> float:
+    """基准指数在 trade_date 的当日收益（小数）。"""
+    key = MKT["benchmark_index"]
+    v = fnum((store.index_at(trade_date).get(key) or {}).get("pct_chg"), np.nan)
+    return float(v) / 100.0 if np.isfinite(v) else np.nan
+
+
+def current_strength_diagnostic(rows, bench_ret) -> dict:
+    """§二十四 CURRENT_STRENGTH_DIAGNOSTIC（diagnostic_only=true）。
+
+    子项全部取自 Step 3 / Step 4 在 theme_date 的已落盘当日字段；复盘层只读、不重算成员级
+    行情，也不写入任何上游文件。Current Strength 不进入 SEOS 计算 / Step 4 phase transition
+    / Step 5 candidate score（§二十四）。
+      cur_ret          <- sector_daily_stats.ew_ret_1（当日成员等权收益）
+      cur_breadth      <- 当日 breadth
+      cur_core         <- 当日 core_breadth
+      cur_amount_share <- 当日 sector_amount_share（横截面分位斜坡）
+      cur_rs           <- 当日 ew_ret_1 - 基准指数当日收益
+    缺子项时按可用权重归一化；全部缺失记 NaN，不以中性值伪装。
+    """
+    cw = THEME["current_strength"]
+    w, rp = cw["weights"], cw["ramps"]
+    lo_p, hi_p = cw["amount_share_percentile"]
+    amt_lo, amt_hi = pct_ramp_bounds([r.get("sector_amount_share_today") for r in rows], lo_p, hi_p)
+    bounds = {"cur_ret": rp["cur_ret"], "cur_breadth": rp["cur_breadth"],
+              "cur_core": rp["cur_core"], "cur_amount_share": [amt_lo, amt_hi],
+              "cur_rs": rp["cur_rs"]}
+    b = fnum(bench_ret, np.nan)
+    out = {}
+    for r in rows:
+        ew1 = fnum(r.get("ew_ret_1_today"), np.nan)
+        vals = {
+            "cur_ret": ew1,
+            "cur_breadth": fnum(r.get("breadth"), np.nan),
+            "cur_core": fnum(r.get("core_breadth"), np.nan),
+            "cur_amount_share": fnum(r.get("sector_amount_share_today"), np.nan),
+            "cur_rs": (ew1 - b) if (np.isfinite(ew1) and np.isfinite(b)) else np.nan,
+        }
+        num, den, used = 0.0, 0.0, []
+        for k, wk in w.items():
+            v = norm01(vals[k], *bounds[k])
+            if np.isfinite(fnum(v, np.nan)):
+                num += float(wk) * float(v)
+                den += float(wk)
+                used.append(k)
+        out[jstr(r.get("sector_id"))] = {
+            "current_strength": round(num / den * 100.0, 4) if den > 0 else np.nan,
+            "current_strength_coverage": round(den, 4),
+            "current_strength_subitems_used": used,
+            "cur_ret_1": vals["cur_ret"], "cur_rs": vals["cur_rs"],
+            "cur_breadth": vals["cur_breadth"], "cur_core": vals["cur_core"],
+            "cur_amount_share": vals["cur_amount_share"],
+        }
+    return out
+
+
+def interpret_theme(seos, cur, med_seos, med_cur, phase, seos_delta_3) -> str:
+    """§十八 theme_interpretation：结构性解释分类，不是新的交易评分（§十九 不衍生 BUY 语义）。"""
+    ic = THEME["interpretation"]
+    if not (np.isfinite(fnum(seos, np.nan)) and np.isfinite(fnum(cur, np.nan))
+            and np.isfinite(fnum(med_seos, np.nan)) and np.isfinite(fnum(med_cur, np.nan))):
+        return "UNDETERMINED"
+    s_hi = float(seos) >= float(med_seos)
+    c_hi = float(cur) >= float(med_cur)
+    d3 = fnum(seos_delta_3, np.nan)
+    dropping = bool(np.isfinite(d3) and d3 <= -abs(float(ic["seos_drop_threshold_3d"])))
+    if s_hi and c_hi:
+        return "STRUCTURAL_CURRENT_RESONANCE"
+    if c_hi and not s_hi:
+        if dropping:
+            return "DIVERGENCE"
+        return "CURRENT_STRONG_MATURE" if phase in ic["mature_phases"] else "DIVERGENCE"
+    if s_hi and not c_hi:
+        return "EARLY_STRUCTURAL_CHANGE" if phase in ic["early_phases"] else "DIVERGENCE"
+    if phase in ic["weak_phases"] or dropping:
+        return "WEAKENING"
+    return "DORMANT"
+
+
+def build_theme(ctx: Ctx, store: BarStore, theme_date: int, signal_date: int, val: list) -> dict:
     if not len(ctx.seos):
         val.append({"level": LEVEL_FAIL, "code": "THEME_DATA", "message": "sector_seos_daily 为空"})
         return {"theme_date": theme_date, "rows": [], "summary": {}, "data_status": LEVEL_FAIL}
@@ -717,6 +830,16 @@ def build_theme(ctx: Ctx, theme_date: int, signal_date: int, val: list) -> dict:
         for c in ("theme_bucket", "diffusion_type", "diffusion_pattern", "diffusion_stage",
                   "candidate_count"):
             d[c] = ""
+    # 当日盘面字段（Step 3 sector_daily_stats）→ 供 Current Strength 诊断层使用（§二十四）
+    sd = ctx.sds[ctx.sds["trade_date"] == theme_date] if len(ctx.sds) else pd.DataFrame()
+    if len(sd):
+        d = d.merge(sd[["sector_id", "ew_ret_1", "sector_amount_share"]].rename(
+            columns={"ew_ret_1": "ew_ret_1_today",
+                     "sector_amount_share": "sector_amount_share_today"}),
+            on="sector_id", how="left")
+    else:
+        for c in ("ew_ret_1_today", "sector_amount_share_today"):
+            d[c] = np.nan
     rows = []
     unknown = []
     for _, r in d.iterrows():
@@ -755,23 +878,45 @@ def build_theme(ctx: Ctx, theme_date: int, signal_date: int, val: list) -> dict:
             "phase_transition": jstr(r.get("phase_transition")),
             "phase_duration": int(fnum(r.get("phase_duration"), 0)),
             "theme_health": fnum(r.get("theme_health")),
-            "health_change": fnum(r.get("theme_health_delta_1")),
+            "theme_health_delta_1": fnum(r.get("theme_health_delta_1")),
+            "theme_health_delta_3": fnum(r.get("theme_health_delta_3")),
+            # §十四 / §十五：SEOS 家族字段显式命名。
+            # 原 "seos_change" 被赋成 theme_health_delta_1（语义错标），已移除，不再保留别名。
             "seos_score": fnum(r.get("seos_score")),
-            "seos_change": fnum(r.get("theme_health_delta_1")),
+            "seos_raw": fnum(r.get("seos_raw")),
+            "seos_delta_1": fnum(r.get("seos_delta_1")),
+            "seos_delta_3": fnum(r.get("seos_delta_3")),
+            "seos_rank": fnum(r.get("seos_rank")),
+            "seos_data_status": jstr(r.get("seos_data_status")),
+            "component_coverage": fnum(r.get("component_coverage")),
+            "component_missing_count": int(fnum(r.get("component_missing_count"), 0)),
             "breadth": fnum(r.get("breadth")),
-            "breadth_change": fnum(r.get("breadth_delta_1")),
+            "breadth_delta_1": fnum(r.get("breadth_delta_1")),
+            "breadth_delta_3": fnum(r.get("breadth_delta_3")),
             "core_breadth": fnum(r.get("core_breadth")),
-            "core_breadth_change": fnum(r.get("core_breadth_delta_1")),
+            "core_breadth_delta_1": fnum(r.get("core_breadth_delta_1")),
+            "core_breadth_delta_3": fnum(r.get("core_breadth_delta_3")),
+            "core_breadth_status": jstr(r.get("core_breadth_status")),
+            "core_member_count": int(fnum(r.get("core_member_count"), 0)),
+            "seos_core_breadth_score": fnum(r.get("seos_core_breadth")),
             "primary_breadth": fnum(r.get("primary_breadth")),
-            "primary_breadth_change": fnum(r.get("primary_breadth_delta_3")),
+            "primary_breadth_delta_3": fnum(r.get("primary_breadth_delta_3")),
             "secondary_breadth": fnum(r.get("secondary_breadth")),
-            "secondary_breadth_change": fnum(r.get("secondary_breadth_delta_3")),
+            "secondary_breadth_delta_3": fnum(r.get("secondary_breadth_delta_3")),
             "relative_strength": fnum(r.get("relative_strength")),
-            "relative_strength_change": fnum(r.get("relative_strength_delta_3")),
+            "relative_strength_delta_3": fnum(r.get("relative_strength_delta_3")),
             "amount_share": fnum(r.get("theme_amount_share")),
-            "amount_share_change": fnum(r.get("amount_share_delta_3")),
+            # 键名与 strength_weights / Step 4 上游字段一致，theme_strength 不再静默丢弃 15% 权重
+            "amount_share_delta_3": fnum(r.get("amount_share_delta_3")),
             "volume_ratio_1": fnum(r.get("volume_ratio_1")),
-            "volume_participation_change": fnum(r.get("volume_ratio_3")),
+            "volume_ratio_3": fnum(r.get("volume_ratio_3")),
+            "volume_ratio_5": fnum(r.get("volume_ratio_5")),
+            "volume_participation_score": fnum(r.get("seos_volume_participation")),
+            "volume_data_status": jstr(r.get("volume_data_status")),
+            "volume_chain_status": jstr(r.get("volume_chain_status")),
+            # 当日盘面（Step 3），供 Current Strength 诊断层（§二十四）
+            "ew_ret_1_today": fnum(r.get("ew_ret_1_today")),
+            "sector_amount_share_today": fnum(r.get("sector_amount_share_today")),
             "core_pattern": jstr(r.get("core_pattern")),
             "startup_quality": jstr(r.get("startup_quality")),
             "startup_outcome": startup_outcome,
@@ -787,11 +932,38 @@ def build_theme(ctx: Ctx, theme_date: int, signal_date: int, val: list) -> dict:
             "known_at": "KNOWN_AT_SIGNAL",
             "data_quality": fnum(r.get("data_quality_score")),
         })
+    bench = bench_index_ret(store, theme_date)
+    cs = current_strength_diagnostic(rows, bench)
     for r in rows:
+        c = cs.get(r["sector_id"], {})
+        r["current_strength"] = fnum(c.get("current_strength"), np.nan)
+        r["current_strength_coverage"] = fnum(c.get("current_strength_coverage"), 0.0)
+        r["current_strength_subitems_used"] = "|".join(c.get("current_strength_subitems_used") or [])
+        r["current_strength_diagnostic_only"] = True
+        r["cur_ret_1"] = fnum(c.get("cur_ret_1"), np.nan)
+        r["cur_rs"] = fnum(c.get("cur_rs"), np.nan)
+        r["bench_index_ret_1"] = fnum(bench, np.nan)
         r["theme_strength_score"] = theme_strength(r)
+    # §十六 / §十七：三层结构。
+    #   A 今日主题表现 -> current_strength DESC（current_strength_rank）
+    #   B 主题结构变化 -> SEOS DESC（seos_rank，来自 Step 4）
+    #   C 主题状态     -> theme_interpretation（由 Theme Health + Phase + Current Strength + SEOS 综合）
+    # 综合强度排序保留为 theme_strength_rank（结构 + 当日），报告不再把它当作唯一"主题排名"。
     rows.sort(key=lambda x: fnum(x.get("theme_strength_score"), -1), reverse=True)
     for i, r in enumerate(rows, 1):
-        r["rank"] = i
+        r["theme_strength_rank"] = i
+    for i, r in enumerate(sorted(rows, key=lambda x: -fnum(x.get("current_strength"), -1)), 1):
+        r["current_strength_rank"] = i
+    med_seos = safe_median([r.get("seos_score") for r in rows])
+    med_cs = safe_median([r.get("current_strength") for r in rows])
+    for r in rows:
+        r["theme_interpretation"] = interpret_theme(
+            r.get("seos_score"), r.get("current_strength"), med_seos, med_cs,
+            jstr(r.get("theme_phase_after")), r.get("seos_delta_3"))
+    interp_count = {k: 0 for k in INTERPRETATION_ORDER}
+    for r in rows:
+        k = r["theme_interpretation"]
+        interp_count[k] = interp_count.get(k, 0) + 1
     summary = {
         "n_themes": len(rows),
         "strong_continuing": sum(1 for r in rows if "STRONG_CONTINUING" in r["theme_group"]),
@@ -802,6 +974,23 @@ def build_theme(ctx: Ctx, theme_date: int, signal_date: int, val: list) -> dict:
         "failed_startup": sum(1 for r in rows if "FAILED_STARTUP" in r["theme_group"]),
         "strong_or_rotation_in": sum(1 for r in rows if ("STRONG_CONTINUING" in r["theme_group"]
                                                          or "ROTATION_IN" in r["theme_group"])),
+        # §十七 / §十八：三层展示与综合解释的口径自证（供审计与 validation 复核）
+        "layer_a_sort": "current_strength DESC（诊断层，diagnostic_only=true）",
+        "layer_b_sort": "SEOS DESC（seos_rank 来自 Step 4，不重算）",
+        "layer_c_basis": "theme_interpretation = Theme Health + Phase + Current Strength + SEOS 综合",
+        "theme_interpretation_count": interp_count,
+        "theme_interpretation_order": INTERPRETATION_ORDER,
+        "median_seos_score": round(med_seos, 6) if np.isfinite(fnum(med_seos, np.nan)) else None,
+        "median_current_strength": round(med_cs, 6) if np.isfinite(fnum(med_cs, np.nan)) else None,
+        "current_strength_weights": THEME["current_strength"]["weights"],
+        "current_strength_diagnostic_only": True,
+        "current_strength_source": ("sector_daily_stats(ew_ret_1/breadth/core_breadth/"
+                                    "sector_amount_share) + 基准指数当日收益 @ theme_date"),
+        "theme_strength_rank_definition": ("综合强度 theme_strength_score 降序（"
+                                           + "、".join(f"{k} {v}" for k, v
+                                                      in THEME["strength_weights"].items())
+                                           + "）；仅作内部排序，报告必须分三层展示"),
+        "not_a_trading_score": True,
     }
     status = LEVEL_PASS
     if unknown:
@@ -1958,17 +2147,25 @@ def _summary_blocks(art: dict, review_date: int, signal_date: int) -> dict:
     m, th = art["market"], art["theme"]
     ex, w = art["execution"], art["watch"]
     buys = ex.get("buy") or []
-    top = [r for r in (th.get("rows") or [])][:REP["max_themes"]]
-    strongest = [f"{r['sector_id']} {r['sector_name']}" for r in top[:3]]
+    all_rows = th.get("rows") or []
+    # §十六 / §十七：摘要分别给出「今日盘面最强」（A 层）与「结构改善最强」（B 层），
+    # 不再用单一排名暗示"主题强弱 = 某一列"。
+    top_cur = sorted(all_rows, key=lambda x: -fnum(x.get("current_strength"), -1))[:3]
+    strongest = [f"{r['sector_id']} {r['sector_name']}" for r in top_cur]
+    top_seos = sorted(all_rows, key=lambda x: -fnum(x.get("seos_score"), -1))[:3]
+    structural = [f"{r['sector_id']} {r['sector_name']}" for r in top_seos]
     improving = [f"{r['sector_id']} {r['sector_name']}（breadth/health 改善）"
-                 for r in top if "IMPROVING" in jstr(r.get("theme_group"))][:3]
+                 for r in all_rows if "IMPROVING" in jstr(r.get("theme_group"))][:3]
     cooling = [f"{r['sector_id']} {r['sector_name']}"
-               for r in (th.get("rows") or []) if "COOLING" in jstr(r.get("theme_group"))
+               for r in all_rows if "COOLING" in jstr(r.get("theme_group"))
                or "DETERIORATING" in jstr(r.get("theme_group"))][:3]
     nt = ex.get("no_trade_summary") or {}
     return {
         "MARKET": "市场：" + market_one_liner(m),
-        "THEME": ("主线：" + ("、".join(strongest) if strongest else "无") +
+        "THEME": ("今日盘面最强（current_strength，诊断层）："
+                  + ("、".join(strongest) if strongest else "无") +
+                  "；结构改善最强（SEOS）："
+                  + ("、".join(structural) if structural else "无") +
                   "；强化：" + ("、".join(improving) if improving else "无") +
                   "；退潮：" + ("、".join(cooling) if cooling else "无")),
         "SIGNAL": (f"昨日信号：侯选 {len(art['candidate'].get('rows') or [])} / "
@@ -2033,21 +2230,81 @@ def render_report_md(art: dict, review_date: int, signal_date: int,
              f"缺档（如实为 0）{jstr(m.get('regime_missing_values')) or '无'}")
     L.append("")
 
-    # 2 主题
-    L.append(f"## 2. 主题（最多 {REP['max_themes']} 个）")
+    # 2 主题（§十六 / §十七：拆成 A/B/C 三层，禁止用单一排名暗示"主题强弱"）
+    thr = th.get("rows") or []
+    cap_t = REP["max_themes"]
+    L.append(f"## 2. 主题（每层最多 {cap_t} 个）")
     L.append("")
-    L.append("| 主题 | Phase（前→后） | SEOS | Health | Breadth | Core Breadth | Amount Share | 今日变化 | 分组 |")
-    L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
-    for r in (th.get("rows") or [])[:REP["max_themes"]]:
-        L.append(f"| {r['sector_id']} {r['sector_name']} | {r['theme_phase_before']}→{r['theme_phase_after']} "
-                 f"| {_n(r['seos_score'])} | {_n(r['theme_health'])} | {_n(r['breadth'], 3)} "
-                 f"| {_n(r['core_breadth'], 3)} | {_n(r['amount_share'], 4)} "
-                 f"| health {_n(r['health_change'], 3)} / breadth {_n(r['breadth_change'], 3)} "
-                 f"| {r['theme_group'] or '-'} |")
-    if not (th.get("rows") or []):
-        L.append("| - | - | - | - | - | - | - | - | - |")
+    L.append("> 三层语义分离：A 回答「今天市场实际交易最强的是什么」（当日盘面）；"
+             "B 回答「最近发生了最大的结构改善/恶化的是什么」（结构变化）；"
+             "C 由 Theme Health + Phase + Current Strength + SEOS 综合给出状态解释。"
+             "Current Strength 是**诊断层**（diagnostic_only=true），不进入 SEOS / "
+             "Step 4 phase transition / Step 5 candidate score。")
     L.append("")
-    rot_rows = [r for r in (th.get("rows") or [])
+
+    # A. 今日主题表现（current_strength DESC）
+    L.append("### A. 今日主题表现（排序：current_strength DESC）")
+    L.append("")
+    L.append("| # | 主题 | current_strength | 当日等权收益 | 相对基准 | Breadth | Core Breadth | 成交占比 | Phase（前→后） | 覆盖子项 |")
+    L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for r in sorted(thr, key=lambda x: -fnum(x.get("current_strength"), -1))[:cap_t]:
+        L.append(f"| {_n(r.get('current_strength_rank'), 0)} | {r['sector_id']} {r['sector_name']} "
+                 f"| {_n(r.get('current_strength'), 2)} | {_pct(r.get('cur_ret_1'))} "
+                 f"| {_pct(r.get('cur_rs'))} | {_n(r.get('breadth'), 3)} "
+                 f"| {_n(r.get('core_breadth'), 3)} | {_n(r.get('sector_amount_share_today'), 4)} "
+                 f"| {r['theme_phase_before']}→{r['theme_phase_after']} "
+                 f"| {jstr(r.get('current_strength_subitems_used')) or '-'} |")
+    if not thr:
+        L.append("| - | - | - | - | - | - | - | - | - | - |")
+    L.append("")
+
+    # B. 主题结构变化（SEOS DESC）
+    L.append("### B. 主题结构变化（排序：SEOS DESC）")
+    L.append("")
+    L.append("| # | 主题 | SEOS | seos_delta_1 | seos_delta_3 | seos_rank | coverage | 数据状态 | Core Breadth 状态 | 量能状态 |")
+    L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for r in sorted(thr, key=lambda x: -fnum(x.get("seos_score"), -1))[:cap_t]:
+        L.append(f"| {_n(r.get('seos_rank'), 0)} | {r['sector_id']} {r['sector_name']} "
+                 f"| {_n(r.get('seos_score'), 2)} | {_n(r.get('seos_delta_1'), 2)} "
+                 f"| {_n(r.get('seos_delta_3'), 2)} | {_n(r.get('seos_rank'), 0)} "
+                 f"| {_n(r.get('component_coverage'), 2)} | {jstr(r.get('seos_data_status')) or '-'} "
+                 f"| {jstr(r.get('core_breadth_status')) or '-'} "
+                 f"| {jstr(r.get('volume_data_status')) or '-'} |")
+    if not thr:
+        L.append("| - | - | - | - | - | - | - | - | - | - |")
+    L.append("")
+    L.append("- 说明：`coverage` = 可用 SEOS 分项权重占比（缺失分项不伪装中性；"
+             "`coverage<1` 表示 `SEOS_DATA_PARTIAL`）；"
+             "`Core Breadth 状态 = NO_CORE_MEMBER` 表示该主题当期无 CORE 成员，"
+             "`core_breadth` 如实为空而不是 0/50。")
+    L.append("")
+
+    # C. 主题状态（Theme Health + Phase + Current Strength + SEOS 综合解释）
+    L.append("### C. 主题状态（Theme Health + Phase + Current Strength + SEOS 综合；不按 SEOS 单列排序）")
+    L.append("")
+    for key in INTERPRETATION_ORDER:
+        grp = [r for r in thr if jstr(r.get("theme_interpretation")) == key]
+        if not grp:
+            continue
+        grp.sort(key=lambda x: (-fnum(x.get("theme_health"), -1), -fnum(x.get("seos_score"), -1)))
+        L.append(f"**{key}**（{INTERPRETATION_CN.get(key, '')}）— {len(grp)} 个")
+        L.append("")
+        L.append("| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |")
+        L.append("| --- | --- | --- | --- | --- | --- | --- |")
+        for r in grp[:cap_t]:
+            L.append(f"| {r['sector_id']} {r['sector_name']} "
+                     f"| {r['theme_phase_before']}→{r['theme_phase_after']} "
+                     f"| {_n(r.get('theme_health'), 2)} | {_n(r.get('theme_health_delta_1'), 3)} "
+                     f"| {_n(r.get('seos_score'), 2)} | {_n(r.get('current_strength'), 2)} "
+                     f"| {r['theme_group'] or '-'} |")
+        L.append("")
+    if not thr:
+        L.append("- 无主题层数据。")
+        L.append("")
+    L.append("> `EARLY_STRUCTURAL_CHANGE` 只表示「结构变化值得继续观察」，"
+             "本节为 Post-Market Review 的解释层，不构成任何交易指令。")
+    L.append("")
+    rot_rows = [r for r in thr
                 if jstr(r.get("rotation_signal")) in ("ROTATION_IN", "ROTATION_OUT")]
     L.append(f"### 主题轮动（最多展示 {REP['max_rotation_items']} 个）")
     L.append("")
@@ -2383,6 +2640,54 @@ def validate(art: dict, store: BarStore, ctx: Ctx, review_date: int, signal_date
         add("THEME_REVIEW", LEVEL_PASS,
             f"{theme_date} 全部主题均来自 theme_master（{len(ctx.theme_ids)} 个），无未知主题")
 
+    # 6b. THEME SEMANTICS（§十四 / §十五 / §十六 / §十七 / §十八：字段语义与三层展示）
+    trows = art["theme"].get("rows") or []
+    legacy_keys = [k for k in ("seos_change", "amount_share_change",
+                               "volume_participation_change", "health_change",
+                               "breadth_change", "core_breadth_change", "rank")
+                   if trows and any(k in r for r in trows)]
+    required_keys = ["seos_score", "seos_raw", "seos_delta_1", "seos_delta_3", "seos_rank",
+                     "amount_share_delta_3", "theme_health_delta_1", "breadth_delta_1",
+                     "core_breadth_delta_1", "core_breadth_status", "volume_data_status",
+                     "component_coverage", "seos_data_status", "current_strength",
+                     "current_strength_rank", "theme_strength_rank", "theme_interpretation"]
+    miss_keys = [k for k in required_keys if trows and not any(k in r for r in trows)]
+    bad_interp = sorted({jstr(r.get("theme_interpretation")) for r in trows
+                         if jstr(r.get("theme_interpretation")) not in INTERPRETATION_ORDER})
+    amt_vals = [fnum(r.get("amount_share_delta_3"), np.nan) for r in trows]
+    amt_all_none = bool(trows) and all(not np.isfinite(v) for v in amt_vals)
+    cs_not_diag = [jstr(r.get("sector_id")) for r in trows
+                   if r.get("current_strength_diagnostic_only") is not True]
+    layers_ok = all(f"### {x}" in (art.get("_report_md") or "")
+                    for x in ("A. 今日主题表现", "B. 主题结构变化", "C. 主题状态"))
+    problems = []
+    if legacy_keys:
+        problems.append(f"仍存在废弃/歧义字段名 {legacy_keys}")
+    if miss_keys:
+        problems.append(f"缺少显式字段 {miss_keys}")
+    if bad_interp:
+        problems.append(f"theme_interpretation 域外取值 {bad_interp}")
+    if amt_all_none:
+        problems.append("amount_share_delta_3 全为空（P0-02 未修复）")
+    if cs_not_diag:
+        problems.append(f"current_strength 未标记 diagnostic_only：{cs_not_diag[:5]}")
+    if not layers_ok:
+        problems.append("报告缺少 A/B/C 三层主题结构")
+    if problems:
+        add("THEME_SEMANTICS", LEVEL_FAIL, "；".join(problems))
+    else:
+        add("THEME_SEMANTICS", LEVEL_PASS,
+            f"{len(trows)} 行主题：A/B/C 三层齐备；seos 家族字段显式命名；"
+            f"amount_share_delta_3 有值 {sum(1 for v in amt_vals if np.isfinite(v))}/{len(trows)}；"
+            f"current_strength 全部标注 diagnostic_only（诊断层，不进入 SEOS / phase / Step 5）")
+
+    # 6c. THEME INTERPRETATION 不得衍生交易语义（§十九）
+    interp_bad = [r["sector_id"] for r in trows
+                  if jstr(r.get("theme_interpretation")) == "EARLY_STRUCTURAL_CHANGE"]
+    if interp_bad:
+        limitations.append(f"EARLY_STRUCTURAL_CHANGE {len(interp_bad)} 个主题：仅表示"
+                           f"「结构变化值得继续观察」，不得解读为 BUY（§十九）")
+
     # 附：Regime 档位覆盖（§三十三：声明 5 档，实际未产出的档位如实标注）
     rstrat = art.get("regime_strat") or {}
     declared = list(MKT["regime_values"])
@@ -2494,7 +2799,7 @@ def build_all(store: BarStore, ctx: Ctx, review_date: int, signal_date: int, val
     regime_map = regime_by_date(ctx)
     theme_date = latest_date(ctx.seos, signal_date)
     cand_date = latest_date(ctx.cand, signal_date)
-    theme = build_theme(ctx, theme_date, signal_date, val)
+    theme = build_theme(ctx, store, theme_date, signal_date, val)
     market = build_market(store, ctx, review_date, signal_date, regime_map,
                           theme.get("summary") or {}, val)
     structure = build_structure_layer(store, ctx, signal_date, horizons, val)

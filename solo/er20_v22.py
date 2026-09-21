@@ -139,19 +139,12 @@ class V22Config:
     T3_RECLAIM_BLOCK = True
     NEXT5 = {
         'limit': 2,
+        'second_gap': 12.0,   # 头名与次名分差 > 该值则 Top2 收缩为只取头名
         'alpha': 0.35,
         'ees': 0.25,
         'ts': 0.20,
         'conf': 0.10,
         'risk': 0.10,
-    }
-    FUSION = {
-        'er20': 0.50,
-        'egpt_quality': 0.25,
-        'egpt_pullback': 0.15,
-        'execution': 0.10,
-        'min_score': 70.0,
-        'second_gap': 12.0,
     }
     # ── 组合控制（规格十） ──
     PORTFOLIO = {
@@ -608,34 +601,6 @@ def next5_score_v22(row):
     return round(max(0.0, min(100.0, score)), 1)
 
 
-def _load_egpt_fusion(scan_date):
-    path = os.path.join(REPORT_DIR, f'zhongbao_egpt_timing_{scan_date}.csv')
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    try:
-        egpt = pd.read_csv(path, encoding='utf-8-sig')
-    except Exception:
-        return pd.DataFrame()
-    if '代码' not in egpt.columns:
-        return pd.DataFrame()
-    egpt = egpt.copy()
-    egpt['ts_code'] = egpt['代码'].astype(str).str.strip()
-    egpt['ts_code'] = egpt['ts_code'].apply(
-        lambda x: x if '.' in x else f'{x[:6]}.SH' if x.startswith(('5', '6', '9')) else f'{x[:6]}.SZ')
-    return egpt.drop_duplicates('ts_code', keep='first')
-
-
-def _fusion_score_v22(row):
-    cfg = V22Config.FUSION
-    er20 = float(row.get('next5_score', 0.0) or 0.0)
-    egpt_quality = float(row.get('egpt_quality_score', 50.0) or 50.0)
-    egpt_pullback = float(row.get('egpt_pullback_score', 50.0) or 50.0)
-    execution = float(row.get('execution_score', 75.0) or 75.0)
-    score = (cfg['er20'] * er20 + cfg['egpt_quality'] * egpt_quality
-             + cfg['egpt_pullback'] * egpt_pullback + cfg['execution'] * execution)
-    return round(max(0.0, min(100.0, score)), 1)
-
-
 # ============================================================
 # 模块6：Grade V2.2（规格九门槛）
 # ============================================================
@@ -937,42 +902,8 @@ def scan_v22(scan_date='20260820'):
     df['alpha'] = df['alpha'].clip(0, 100)
     df['next5_score'] = df.apply(next5_score_v22, axis=1)
 
-    egpt = _load_egpt_fusion(scan_date)
-    if egpt.empty:
-        df['egpt_covered'] = 0
-        df['egpt_quality_score'] = 50.0
-        df['egpt_pullback_score'] = 50.0
-        df['egpt_buy_point'] = ''
-        df['egpt_theme_status'] = ''
-        df['egpt_decision'] = ''
-        df['execution_score'] = 75.0
-        df['fusion_gate'] = 1
-    else:
-        egpt_cols = [c for c in ['ts_code', '翻倍潜力分', '回踩买点分', '买点确认',
-                                 '主题状态', '次日操作', '主题热度%'] if c in egpt.columns]
-        df = df.merge(egpt[egpt_cols], on='ts_code', how='left')
-        covered = df['翻倍潜力分'].notna() | df['回踩买点分'].notna()
-        df['egpt_covered'] = covered.astype(int)
-        df['egpt_quality_score'] = pd.to_numeric(df.get('翻倍潜力分'), errors='coerce').fillna(50.0).clip(0, 100)
-        df['egpt_pullback_score'] = pd.to_numeric(df.get('回踩买点分'), errors='coerce').fillna(50.0).clip(0, 100)
-        df['egpt_buy_point'] = df.get('买点确认', '').fillna('').astype(str)
-        df['egpt_theme_status'] = df.get('主题状态', '').fillna('').astype(str)
-        df['egpt_decision'] = df.get('次日操作', '').fillna('').astype(str)
-        heat = pd.to_numeric(df.get('主题热度%'), errors='coerce').fillna(0.0)
-        df['execution_score'] = 75.0
-        df.loc[df['egpt_buy_point'].str.contains('买点2', na=False), 'execution_score'] += 12.0
-        df.loc[df['egpt_buy_point'].str.contains('买点1', na=False), 'execution_score'] += 5.0
-        df.loc[df['egpt_buy_point'].eq('未突破'), 'execution_score'] -= 8.0
-        df.loc[heat.between(5.0, 15.0), 'execution_score'] += 5.0
-        df.loc[heat.ge(15.0), 'execution_score'] -= 10.0
-        df['execution_score'] = df['execution_score'].clip(0, 100)
-        df['fusion_gate'] = 1
-        df.loc[df['egpt_decision'].str.startswith('❌'), 'fusion_gate'] = 0
-        df.loc[df['egpt_buy_point'].str.startswith('买点1') & heat.ge(15.0), 'fusion_gate'] = 0
-
-    df['fusion_score'] = df.apply(_fusion_score_v22, axis=1)
-    df.loc[df['egpt_covered'] == 0, 'fusion_score'] = df.loc[df['egpt_covered'] == 0, 'next5_score']
-    df['fusion_score'] = df['fusion_score'].clip(0, 100).round(1)
+    # 融合层已下线：fusion_score 直接取 next5_score，保持历史列语义不变
+    df['fusion_score'] = df['next5_score'].clip(0, 100).round(1)
     df['next5_rank'] = df['next5_score'].rank(method='first', ascending=False).astype(int)
 
     # ── D_FALSE_SIGNAL 退出主排名（P0-2 延续） ──
@@ -1031,8 +962,6 @@ def scan_v22(scan_date='20260820'):
 def save_sqlite_v22(df, scan_date):
     cols = ['ts_code', 'name', 'ann_date', 'gap', 'event_age', 'strategy', 'cls_reason',
             'raw', 'norm', 'er20_base', 'alpha', 'next5_score', 'fusion_score', 'next5_rank',
-            'egpt_covered', 'egpt_quality_score', 'egpt_pullback_score', 'egpt_buy_point',
-            'egpt_theme_status', 'egpt_decision', 'execution_score', 'fusion_gate',
             'fq', 'rqs', 'gap_s', 'ars', 'pqs', 'trend', 'volume', 'tqs',
             'risk_v2', 'rel_risk', 'overheat', 'conf', 'theme_adj', 'theme',
             'cfcs', 'cf_label', 'cf_adj', 'cf_reason',
@@ -1182,7 +1111,7 @@ def build_report_v22(df, scan_date, regime, market_mult):
                 bp = f"{r['ttype']} {r['ts']:.0f}分" if r['ttype'] != 'NO_TRIGGER' else r['tdesc']
                 lines.append(f"- **{r['name']}** ({r['ts_code'][:6]}) | Alpha={r['alpha']:.1f} | "
                              f"ER20次日分={r['next5_score']:.1f} | EES={r['ees']:.0f} | "
-                             f"买点={bp} | EGPT诊断={r.get('egpt_buy_point', '') or '未覆盖'} | 仓位={pos:.0%}")
+                             f"买点={bp} | 仓位={pos:.0%}")
     # 执行模板（V2.2 落地, 2025H1 全量 7 退出方案回测校准, 参数见 V22Config.EXEC）
     ex = V22Config.EXEC
     lines.append(f'### 执行模板（T+{ex["max_hold"]} 持有 · -{ex["stop"]:.0%} 保护止损）')

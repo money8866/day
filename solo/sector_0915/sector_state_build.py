@@ -101,6 +101,12 @@ MAX_HORIZON = 20
 HORIZONS = (1, 3, 5, 10, 20)
 LOOKAHEAD_WINDOW = 30          # 未来函数检验的面板截断窗口（>= 21，覆盖 20 日回看）
 
+# 滚动特征最大回看期：sector_amount_share_change_20d 需 shift(20)，
+# volume_ratio_5 需 shift(1).rolling(5)。--date 模式下的回放窗口必须 >= MAX_LOOKBACK+1，
+# 否则这些列会结构性全为 NaN（Step 4 的 volume_participation 会退化为统一填充值）。
+MAX_LOOKBACK = 20
+REPLAY_MIN_DAYS = MAX_LOOKBACK + 1
+
 MEMBERSHIP_CONF_MIN = 0.70     # 正式统计成员口径（不限 membership_type）
 MIN_VALID_MEMBERS = 5          # 低于此值 -> DATA_INVALID
 DQ_INVALID_THRESHOLD = 0.60    # 数据质量低于此值 -> DATA_INVALID
@@ -409,7 +415,9 @@ def sector_metrics(date, mem, code_pos, ret, amt_row, tov_row, market_amount, be
 
     # 分层广度（需求 §十四）：CORE / PRIMARY / SECONDARY
     layer = {}
+    declared = {}
     for t in ("CORE", "PRIMARY", "SECONDARY"):
+        declared[t] = int((tps == t).sum())
         mk = (tps == t) & valid
         cnt = int(mk.sum())
         if cnt == 0:
@@ -431,6 +439,16 @@ def sector_metrics(date, mem, code_pos, ret, amt_row, tov_row, market_amount, be
     core_up_ratio = layer[core_layer]["up_ratio"] if core_layer else float("nan")
     core_n = layer[core_layer]["n"] if core_layer else 0
     core_amount = layer[core_layer]["amount"] if core_layer else 0.0
+    # core_breadth_status：显式区分「真实没有 CORE 成员」与「有 CORE 但当日无有效行情」，
+    # core_breadth 缺失时保持 NaN（严禁伪装成 0 / 50）。
+    if layer["CORE"]["n"] > 0:
+        core_breadth_status = "CORE"
+    elif layer["PRIMARY"]["n"] > 0:
+        core_breadth_status = "PRIMARY_FALLBACK"
+    elif declared["CORE"] > 0:
+        core_breadth_status = "CORE_NO_VALID_MEMBER"
+    else:
+        core_breadth_status = "NO_CORE_MEMBER"
 
     # 收益（需求 §九：等权 + 成员权重加权 + 中位数交叉验证）
     ew1, mw1 = nan_mean(r1), nan_wmean(r1, ws)
@@ -493,6 +511,7 @@ def sector_metrics(date, mem, code_pos, ret, amt_row, tov_row, market_amount, be
         "up_ratio": up_ratio, "down_ratio": down_ratio, "breadth": breadth,
         "weighted_up_ratio": w_up, "weighted_down_ratio": w_down, "weighted_breadth": w_breadth,
         "core_layer": core_layer, "core_valid_count": core_n,
+        "core_member_count": declared["CORE"], "core_breadth_status": core_breadth_status,
         "core_up_ratio": core_up_ratio, "core_breadth": core_breadth, "core_amount": core_amount,
         "primary_valid_count": layer["PRIMARY"]["n"], "primary_up_ratio": layer["PRIMARY"]["up_ratio"],
         "primary_breadth": layer["PRIMARY"]["breadth"], "primary_amount": layer["PRIMARY"]["amount"],
@@ -515,6 +534,9 @@ def sector_metrics(date, mem, code_pos, ret, amt_row, tov_row, market_amount, be
         "positive_contribution_ratio": pcr,
         "missing_price_count": missing_price, "missing_amount_count": missing_amount,
         "stale_member_count": stale, "data_quality_score": round(dq, 4),
+        # 成交额口径的成员覆盖率（缺失=非正常值，与价格缺失分开统计），
+        # 供 Step 4 判断 volume_participation 是「真实中性」还是「数据缺失」。
+        "volume_valid_member_ratio": round(1.0 - sdiv(missing_amount, n_member, 0.0), 4),
     }
 
 
@@ -530,6 +552,16 @@ def core_breadth_score_series(gg: pd.DataFrame) -> pd.DataFrame:
     for k in (1, 3, 5):
         past = base.shift(1).rolling(k, min_periods=k).mean()
         gg[f"volume_ratio_{k}"] = [sdiv(a, bb, float("nan")) for a, bb in zip(base.values, past.values)]
+    # volume_data_status：量能链派生字段的可得性（不是"好/坏"评价）。
+    # VALID   = volume_ratio_5 与 sector_amount_share_change_5d 均有值
+    # PARTIAL = 仅其一有值
+    # MISSING = 两者都无值（回放窗口过短 / 成员成交额全缺）
+    st = []
+    for vr5, sh5 in zip(gg["volume_ratio_5"].values, gg["sector_amount_share_change_5d"].values):
+        ok = int(np.isfinite(float(vr5)) if vr5 is not None else 0) + \
+             int(np.isfinite(float(sh5)) if sh5 is not None else 0)
+        st.append("VALID" if ok == 2 else ("PARTIAL" if ok == 1 else "MISSING"))
+    gg["volume_data_status"] = st
     return gg
 
 
@@ -816,7 +848,8 @@ BREADTH_COLS = [
     "member_count", "valid_member_count", "valid_ratio",
     "up_count", "down_count", "flat_count", "up_ratio", "down_ratio", "breadth",
     "weighted_up_ratio", "weighted_down_ratio", "weighted_breadth",
-    "core_layer", "core_valid_count", "core_up_ratio", "core_breadth",
+    "core_layer", "core_valid_count", "core_member_count", "core_breadth_status",
+    "core_up_ratio", "core_breadth",
     "primary_valid_count", "primary_up_ratio", "primary_breadth",
     "secondary_valid_count", "secondary_up_ratio", "secondary_breadth",
     "breadth_change_5d", "core_breadth_change_5d", "anomaly_flags",
@@ -839,6 +872,7 @@ VOLUME_COLS = [
     "sector_amount", "market_amount", "sector_amount_share",
     "sector_amount_share_change_5d", "sector_amount_share_change_20d",
     "avg_member_amount", "volume_ratio_1", "volume_ratio_3", "volume_ratio_5",
+    "volume_data_status", "volume_valid_member_ratio",
     "sector_turnover_rate_wavg",
 ]
 STATE_HISTORY_COLS = [
@@ -890,6 +924,9 @@ def emit_state_today(daily: pd.DataFrame, meta: dict) -> dict:
             "member_count": int(r["member_count"]), "valid_member_count": int(r["valid_member_count"]),
             "breadth": r4(r["breadth"]), "weighted_breadth": r4(r["weighted_breadth"]),
             "core_layer": r.get("core_layer", ""), "core_breadth": r4(r["core_breadth"]),
+            "core_breadth_status": r.get("core_breadth_status", ""),
+            "core_member_count": int(r.get("core_member_count", 0) or 0),
+            "core_valid_count": int(r.get("core_valid_count", 0) or 0),
             "primary_breadth": r4(r["primary_breadth"]),
             "ew_ret_1": r4(r["ew_ret_1"]), "ew_ret_5": r4(r["ew_ret_5"]),
             "mw_ret_5": r4(r["mw_ret_5"]), "ew_ret_20": r4(r["ew_ret_20"]),
@@ -897,6 +934,8 @@ def emit_state_today(daily: pd.DataFrame, meta: dict) -> dict:
             "sector_amount_share": r4(r["sector_amount_share"]),
             "sector_amount_share_change_5d": r4(r["sector_amount_share_change_5d"]),
             "volume_ratio_5": r4(r["volume_ratio_5"]),
+            "volume_data_status": r.get("volume_data_status", ""),
+            "volume_valid_member_ratio": r4(r.get("volume_valid_member_ratio")),
             "ret_dispersion_5": r4(r["ret_dispersion_5"]),
             "top5_concentration": r4(r["top5_concentration"]),
             "top10_concentration": r4(r["top10_concentration"]),
@@ -1412,14 +1451,25 @@ def main():
         return 0 if (val["status"] == "PASS").all() else 1
 
     base_date = args.date or max(mdf["effective_date"].astype(str).max(), "")
-    history_days = 1 if args.date else max(1, args.history_days)
+    # --date 只限定「写出哪一天」，不缩短「计算窗口」：滚动特征（volume_ratio_N /
+    # sector_amount_share_change_20d / *_change_5d）依赖回放窗口长度，窗口过短会
+    # 结构性全为 NaN，并沿 Step 4 退化为 volume_participation 的统一填充值。
+    history_days = max(REPLAY_MIN_DAYS, max(1, args.history_days))
 
     daily, meta = run_state_layer(mdf, quality, base_date, history_days,
                                   args.membership_mode, args.no_fetch)
     log.info("Sector 统计行数=%d，覆盖 %d 个交易日 / %d 个 Sector",
              len(daily), daily["trade_date"].nunique(), daily["sector_id"].nunique())
 
-    emit(daily, quality)
+    # --date：回放窗口只用于滚动特征计算，写出时仅落基准日一行，避免用被截断的
+    # 窗口整体覆盖历史行（那样会把窗口首部的 *_change_20d / volume_ratio_5 写坏）。
+    if args.date:
+        write_daily = daily[daily["trade_date"].astype(str) == str(base_date)].copy()
+        if not len(write_daily):
+            write_daily = daily
+    else:
+        write_daily = daily
+    emit(write_daily, quality)
     today_obj = emit_state_today(daily, meta)
     emit_tracking_pool(daily, quality)
 

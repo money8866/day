@@ -213,55 +213,177 @@ def check_v2_intact():
     return ok, '；'.join(det)
 
 
-def acceptance(rows):
-    """PASS1~PASS8 数据驱动验收（逐条验证规格硬约束，而非“代码跑通”）"""
+def _synth(**kw):
+    """合成特征向量：默认取「弱势中性」基线，逐项覆盖以构造边界场景"""
+    f = {'trend': 30.0, 'emotion': 50.0, 'composite': 50.0, 'strength': 50.0,
+         'migration': 0.0, 'breadth': 40.0, 'leadership': 60.0, 'persistence': 40.0,
+         'confirmation': 40.0, 'flow': 0.0, 'limitup': 0, 'zt_count': 0, 'up_ratio': 50.0,
+         'ret_1': 0.0, 'mkt_ret_1': 0.0, 'ma20_b': 0.0, 'pos_in_20': 0.5, 'n_stocks': 50,
+         'd_breadth': 0.0, 'd_trend': 0.0, 'd_persistence': 0.0, 'prev_state': '',
+         'single_leader_risk': 'LOW', 'zt_expansion': False, 'breadth_expansion': False,
+         'pers_d3': 40.0, 'pers_d5': 40.0}
+    f.update(kw)
+    return f
+
+
+def rule_checks():
+    """规则级验证：把合成特征喂给 V2.1 的真实函数，检验「规则本身」是否成立。
+
+    样本级统计会被行情格局与样本量卡住（如 ACCELERATION 仅 5 条、ChaseRisk≥75 仅 1 条），
+    名义 PASS 但实质空洞；规格第二十节要求的是逐条验证规则，故必须补充本组确定性单测。
+    返回 [(rid, 名称, ok, 明细)]
+    """
+    try:
+        import theme_score_v2 as ts2
+    except Exception as e:              # 导入失败不应让回测整体崩掉
+        return [('R0', '规则级单测', False, f'导入 theme_score_v2 失败，规则级验证不可用：{e}')]
+
+    def perm_of(f):
+        g = dict(f)
+        g['state'] = ts2.classify_state_v21(g)
+        g['quadrant'] = ts2._v21_quadrant(g)
+        g['mainline_candidate'] = ts2._v21_mainline_candidate(g)
+        g['trade_permission'] = ts2._v21_permission(g)
+        return ts2._v21_action(g)
+
     out = []
 
-    def add(pid, name, ok, detail):
-        out.append((pid, name, 'PASS' if ok else 'FAIL', detail))
+    # R1（PASS1）高迁移 + 低趋势 → 绝不允许判为 STRONG_TREND / ACCELERATION
+    f = _synth(migration=35.0, trend=42.0, emotion=80.0, breadth=38.0, up_ratio=40.0,
+               composite=78.0, confirmation=72.0, leadership=80.0, persistence=50.0,
+               limitup=18, zt_count=18, zt_expansion=True, d_breadth=6.0, d_trend=4.0,
+               pers_d3=70.0, pers_d5=60.0)
+    s = ts2.classify_state_v21(f)
+    out.append(('R1', '高Migration+低Trend 不得判 STRONG_TREND/ACCELERATION',
+                s not in ('STRONG_TREND', 'ACCELERATION'), f'合成特征 → state={s}'))
+
+    # R2（PASS2）高综合 + 低确认 → 必须落到 OSCILLATION / HOT_BUT_UNCONFIRMED 出口
+    f = _synth(composite=75.0, confirmation=55.0, trend=50.0, emotion=62.0, breadth=45.0,
+               migration=8.0, leadership=70.0, persistence=45.0, up_ratio=60.0)
+    s = ts2.classify_state_v21(f)
+    q = ts2._v21_quadrant({**f, 'state': s})
+    out.append(('R2', '高强度+低确认 必须有 OSCILLATION/HOT_BUT_UNCONFIRMED 出口',
+                s not in ('STRONG_TREND', 'ACCELERATION') and (s == 'OSCILLATION'
+                                                               or q == 'HOT_BUT_UNCONFIRMED'),
+                f'合成特征 → state={s} quadrant={q}'))
+
+    # R3（PASS3）低趋势+高迁移+高情绪：广度改善 → EARLY_FLOW；广度恶化 → 不得判 EARLY_FLOW
+    f_ok = _synth(trend=42.0, emotion=68.0, migration=30.0, breadth=38.0, d_breadth=8.0,
+                  composite=55.0, confirmation=45.0)
+    f_bad = _synth(trend=42.0, emotion=68.0, migration=30.0, breadth=38.0, d_breadth=-6.0,
+                   composite=55.0, confirmation=45.0)
+    s_ok, s_bad = ts2.classify_state_v21(f_ok), ts2.classify_state_v21(f_bad)
+    out.append(('R3', '低Trend+高Migration+高Emotion 可识别 EARLY_FLOW（广度恶化不得误判）',
+                s_ok == 'EARLY_FLOW' and s_bad != 'EARLY_FLOW',
+                f'广度改善 → {s_ok}；广度恶化 → {s_bad}'))
+
+    # R4（PASS4）ACCELERATION 必须四因子同时满足，涨停潮不能单独触发
+    f_zt = _synth(trend=52.0, breadth=45.0, leadership=50.0, confirmation=45.0,
+                  limitup=25, zt_count=25, zt_expansion=True, emotion=72.0, composite=70.0,
+                  d_breadth=5.0, d_persistence=2.0, up_ratio=60.0)
+    f_full = _synth(trend=72.0, breadth=68.0, leadership=70.0, confirmation=68.0,
+                    persistence=60.0, pers_d3=70.0, pers_d5=64.0, d_trend=4.0, d_breadth=6.0,
+                    zt_expansion=True, limitup=18, zt_count=18, emotion=75.0, composite=80.0,
+                    prev_state='STARTING', up_ratio=60.0)
+    s_zt, s_full = ts2.classify_state_v21(f_zt), ts2.classify_state_v21(f_full)
+    out.append(('R4', 'ACCELERATION 需 趋势/广度/龙头/确认 同时满足（涨停潮不可单独触发）',
+                s_zt != 'ACCELERATION' and s_full == 'ACCELERATION',
+                f'仅涨停潮 → {s_zt}；四因子齐备 → {s_full}'))
+
+    # R5（PASS5）TradePermission 不得由 Composite / Migration 单独决定
+    p_a, b_a, _, _ = perm_of(_synth(composite=85.0, migration=40.0, emotion=75.0,
+                                    confirmation=60.0, trend=45.0, breadth=50.0,
+                                    leadership=60.0, persistence=40.0, up_ratio=60.0))
+    p_b, b_b, _, _ = perm_of(_synth(composite=85.0, migration=40.0, emotion=75.0,
+                                    confirmation=64.0, trend=45.0, breadth=55.0,
+                                    leadership=62.0, persistence=42.0, up_ratio=60.0))
+    out.append(('R5', 'TradePermission 不得由 Composite/Migration 单独决定',
+                p_a in ('NO_TRADE', 'WATCH') and p_b in ('NO_TRADE', 'WATCH'),
+                f'composite=85/migration=40/conf=60 → {p_a}；conf=64 → {p_b}'))
+
+    # R6（PASS6）ChaseRisk≥75 时，即使许可=TRADEABLE 也只能 PULLBACK_ONLY
+    f = _synth(emotion=90.0, ret_1=8.0, ma20_b=15.0, pos_in_20=1.0, up_ratio=60.0,
+               n_stocks=50, zt_count=10, limitup=10)
+    cr, _d = ts2.calc_chase_risk_v21(f)
+    _p, bm, _a, _av = ts2._v21_action({**f, 'trade_permission': 'TRADEABLE',
+                                       'chase_risk': cr})
+    out.append(('R6', 'ChaseRisk≥75 → BUY_MODE 必须 PULLBACK_ONLY（禁止 MARKET_BUY）',
+                cr >= 75.0 and bm == 'PULLBACK_ONLY',
+                f'合成特征 ChaseRisk={cr} → BUY_MODE={bm}'))
+
+    return out
+
+
+def acceptance(rows):
+    """PASS1~PASS8 验收（逐条验证规格硬约束，而非“代码跑通”）
+
+    PASS1~PASS6 = 样本级统计（真实分布）AND 规则级单测（合成边界），两者同时成立才算 PASS，
+    避免「样本里恰好没有反例」造成的名义通过。
+    """
+    out = []
+    rules = {r[0]: (r[2], r[3]) for r in rule_checks()}
+
+    NAMES = {
+        'PASS1': '高Migration+低Trend 不得直接判强趋势/加速',
+        'PASS2': '高强度+低确认 → OSCILLATION / HOT_BUT_UNCONFIRMED',
+        'PASS3': '低Trend+高Migration+高Emotion 可识别 EARLY_FLOW',
+        'PASS4': 'ACCELERATION 需 趋势/广度/龙头/确认 同时满足',
+        'PASS5': 'TradePermission 不得由 Composite 单独决定',
+        'PASS6': 'ChaseRisk≥75 → 只可回踩买（PULLBACK_ONLY）',
+        'PASS7': '状态连续性：WEAK→…→RETREAT 链条可识别且方向自洽',
+        'PASS8': 'V2 原始输出保持不变（A/B 同源）',
+    }
+
+    def add(pid, ok, detail):
+        out.append((pid, NAMES[pid], 'PASS' if ok else 'FAIL', detail))
+
+    def merge(pid, rid, data_ok, data_detail):
+        r_ok, r_detail = rules.get(rid, (False, '规则级单测缺失'))
+        add(pid, data_ok and r_ok, f"样本级：{data_detail} ｜ 规则级：{r_detail}")
 
     # PASS1 高 Migration + 低 Trend 不得自动变成强趋势
     v1 = [r for r in rows if float(r['migration']) >= 25 and float(r['trend']) < 50
           and r['state'] in ('STRONG_TREND', 'ACCELERATION')]
-    add('PASS1', '高Migration+低Trend 不得直接判强趋势/加速', not v1,
-        f"违例 {len(v1)} 条" + (f"（首个 {v1[0]['theme']}@{v1[0]['trade_date']}）" if v1 else ""))
+    merge('PASS1', 'R1', not v1,
+          f"违例 {len(v1)} 条" + (f"（首个 {v1[0]['theme']}@{v1[0]['trade_date']}）" if v1 else ""))
 
     # PASS2 高 Composite + 低 Confirmation 必须有 OSCILLATION / HOT_BUT_UNCONFIRMED 出口
     hi_lo = [r for r in rows if float(r['composite']) >= 60 and float(r['confirmation']) < 60]
     bad2 = [r for r in hi_lo if r['state'] in ('STRONG_TREND', 'ACCELERATION')]
     osc = sum(1 for r in hi_lo if r['state'] == 'OSCILLATION')
     hot = sum(1 for r in hi_lo if r['quadrant'] == 'HOT_BUT_UNCONFIRMED')
-    add('PASS2', '高强度+低确认 → OSCILLATION / HOT_BUT_UNCONFIRMED',
-        (not bad2) and (osc + hot > 0),
-        f"样本 {len(hi_lo)}：OSCILLATION {osc} / HOT_BUT_UNCONFIRMED {hot} / 误判为强趋势 {len(bad2)}")
+    merge('PASS2', 'R2', (not bad2) and (osc + hot > 0),
+          f"样本 {len(hi_lo)}：OSCILLATION {osc} / HOT_BUT_UNCONFIRMED {hot} / 误判为强趋势 {len(bad2)}")
 
     # PASS3 低 Trend + 高 Migration + 高 Emotion 必须能识别 EARLY_FLOW
     ef = [r for r in rows if r['state'] == 'EARLY_FLOW']
     ef_c = [r for r in ef if float(r['trend']) < 50 and float(r['migration']) >= 20
             and float(r['emotion']) >= 60]
-    add('PASS3', '低Trend+高Migration+高Emotion 可识别 EARLY_FLOW', len(ef_c) > 0,
-        f"EARLY_FLOW {len(ef)} 条，其中同时满足低趋势+高迁移+高情绪 {len(ef_c)} 条")
+    merge('PASS3', 'R3', len(ef_c) >= 5,
+          f"EARLY_FLOW {len(ef)} 条，其中同时满足低趋势+高迁移+高情绪 {len(ef_c)} 条"
+          f"（门槛：≥5 条方具统计意义）")
 
     # PASS4 ACCELERATION 必须多因子同时确认，不能只依赖涨停数
     acc = [r for r in rows if r['state'] == 'ACCELERATION']
     bad4 = [r for r in acc if not (float(r['trend']) >= 70 and float(r['breadth']) >= 65
                                    and float(r['leadership']) >= 65 and float(r['confirmation']) >= 65)]
     low_zt = sum(1 for r in acc if int(r['limitup'] or 0) < 5)
-    add('PASS4', 'ACCELERATION 需 趋势/广度/龙头/确认 同时满足', not bad4,
-        f"ACCELERATION {len(acc)} 条，缺项违例 {len(bad4)} 条，其中涨停<5家 {low_zt} 条（非涨停数驱动）")
+    merge('PASS4', 'R4', not bad4,
+          f"ACCELERATION {len(acc)} 条，缺项违例 {len(bad4)} 条，其中涨停<5家 {low_zt} 条（非涨停数驱动）")
 
     # PASS5 TradePermission 不得由 Composite 单独决定
     bad5 = [r for r in rows if float(r['composite']) >= 65 and float(r['confirmation']) < 65
             and r['trade_permission'] in ('TRADEABLE', 'CONDITIONAL')]
-    add('PASS5', 'TradePermission 不得由 Composite 单独决定', not bad5,
-        f"高综合分(≥65)但确认<65 却仍授予交易许可：{len(bad5)} 条")
+    merge('PASS5', 'R5', not bad5,
+          f"高综合分(≥65)但确认<65 却仍授予交易许可：{len(bad5)} 条")
 
     # PASS6 ChaseRisk≥75 必须 PULLBACK_ONLY，绝不 MARKET_BUY
     risky = [r for r in rows if float(r['chase_risk']) >= 75]
     bad6 = [r for r in risky if r['buy_mode'] == 'MARKET_BUY']
-    add('PASS6', 'ChaseRisk≥75 → 只可回踩买（PULLBACK_ONLY）', not bad6,
-        f"追高风险≥75 {len(risky)} 条，其中 MARKET_BUY {len(bad6)} 条"
-        + (f"（其中 {sum(1 for r in risky if r['buy_mode'] == 'PULLBACK_ONLY')} 条已降为回踩）" if risky else ""))
+    merge('PASS6', 'R6', not bad6,
+          f"追高风险≥75 {len(risky)} 条，其中 MARKET_BUY {len(bad6)} 条"
+          + (f"（已降为回踩 {sum(1 for r in risky if r['buy_mode'] == 'PULLBACK_ONLY')} 条）" if risky
+             else "（本窗口无 ≥75 触发，改由规则级单测验证机制）"))
 
     # PASS7 状态连续性：链条可达 + 转换方向标注自洽
     seen = set(r['state'] for r in rows)
@@ -274,13 +396,12 @@ def acceptance(rows):
             continue
         if (r['state_change'] == 'UPGRADE') != (i1 > i0):
             bad7.append(r)
-    add('PASS7', '状态连续性：WEAK→…→RETREAT 链条可识别且方向自洽',
-        (not miss) and (not bad7),
+    add('PASS7', (not miss) and (not bad7),
         f"观测到 {len(seen)}/10 个状态，链条缺失 {miss or '无'}；转换样本 {len(trs)} 条，方向矛盾 {len(bad7)} 条")
 
     # PASS8 V2 兼容：V2 原始结果保持不变
     ok8, det8 = check_v2_intact()
-    add('PASS8', 'V2 原始输出保持不变（A/B 同源）', ok8, det8)
+    add('PASS8', ok8, det8)
 
     return out
 
@@ -431,7 +552,15 @@ def main(days=None):
     W("")
 
     W(sep)
-    W("【PASS/FAIL 验收表（规格第二十节，逐条数据驱动验证）】")
+    W("【规则级单测（合成边界特征 → 直接调用 V2.1 真实函数，与样本量无关）】")
+    W(sep)
+    for rid, name, ok, detail in rule_checks():
+        W(f"  {rid}  [{'PASS' if ok else 'FAIL'}] {name}")
+        W(f"        {detail}")
+    W("")
+
+    W(sep)
+    W("【PASS/FAIL 验收表（规格第二十节；PASS1~6 = 样本级 AND 规则级）】")
     W(sep)
     res = acceptance(rows)
     for pid, name, verdict, detail in res:

@@ -606,7 +606,7 @@ def build_narrative_card(a: dict, date: str) -> dict:
     th = (a.get("theme") or {}).get("summary") or {}
     if th:
         rows_th = sorted((a.get("theme") or {}).get("rows") or [],
-                         key=lambda r: r.get("rank") or 999)[:3]
+                         key=lambda r: r.get("theme_strength_rank") or 999)[:3]
         lead = "、".join(f"{r.get('sector_id')} {r.get('sector_name')}" for r in rows_th)
         env.append(f"- **主线**：{lead}；当日强化 {th.get('improving', 0)} 个、轮入 "
                    f"{th.get('rotation_in', 0)} 个、退潮 {th.get('cooling', 0)} 个，"

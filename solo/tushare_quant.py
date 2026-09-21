@@ -212,8 +212,7 @@ def _load_er20_top2(trade_date=None):
             rel_risk,
             overheat,
             entry_date,
-            entry_price_model,
-            egpt_buy_point
+            entry_price_model
         FROM er20_v22_scores
         WHERE scan_date = ?
           AND CAST(next_day_signal AS INTEGER) = 1

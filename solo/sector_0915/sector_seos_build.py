@@ -149,6 +149,23 @@ IMPROVING_DIMS = [
     "volume_ratio_delta_5", "amount_share_delta_5", "theme_health_delta_5",
 ]
 
+# ────────────────────────────────────────────────────────────────────────────
+# 权重冻结声明（数据完整性修复 §二十三）
+# ---------------------------------------------------------------------------
+# SEOS 的 7 个分项权重（score_weights）与分项内部子项权重（component_weights）
+# 一律来自 config/seos_config.json。本次修复【不调整任何权重】：
+# 历史某日排名与主观盘面不一致，不构成修改权重的理由（§二十一 / §二十二）。
+# 本常量只是"权重未被修改"的显式标记，供审计与验证引用。
+# ────────────────────────────────────────────────────────────────────────────
+SEOS_WEIGHTS_FROZEN = True
+
+# 数据完整性状态（修复 §五 / §七）：区分「真实中性」与「数据缺失」。
+# VALID   = 数据齐备
+# PARTIAL = 部分子项缺失（按可用权重归一化，不以 neutral_fill_score 伪装）
+# MISSING = 全部子项缺失（分项记为 NaN，绝不伪装成 50）
+VOLUME_DATA_STATUS = ("VALID", "PARTIAL", "MISSING")
+SEOS_DATA_STATUS = ("VALID", "PARTIAL", "MISSING")
+
 # 全程序打开过的文件（用于 legacy 隔离验证）
 READ_FILES: list = []
 
@@ -313,11 +330,13 @@ def build_panel() -> pd.DataFrame:
     key = ["trade_date", "sector_id"]
 
     b_cols = ["core_layer", "core_valid_count", "primary_valid_count",
-              "secondary_valid_count", "breadth_change_5d", "core_breadth_change_5d"]
+              "secondary_valid_count", "breadth_change_5d", "core_breadth_change_5d",
+              "core_breadth_status", "core_member_count"]
     s_cols = ["relative_strength_5", "relative_strength_10", "relative_strength_20",
               "bench_ret_5", "ew_median_ret_5", "core_ew_ret_5", "core_vs_market_5"]
     v_cols = ["market_amount", "avg_member_amount", "sector_amount_share_change_5d",
-              "sector_amount_share_change_20d", "sector_turnover_rate_wavg"]
+              "sector_amount_share_change_20d", "sector_turnover_rate_wavg",
+              "volume_data_status", "volume_valid_member_ratio"]
     h_cols = ["prev_state", "current_state", "state_raw", "state_changed",
               "state_duration", "state_reason"]
     q_cols = ["tier", "sector_purity", "sector_quality_score"]
@@ -328,6 +347,11 @@ def build_panel() -> pd.DataFrame:
     df = df.merge(volume[key + v_cols], on=key, how="left", validate="one_to_one")
     df = df.merge(hist[key + h_cols], on=key, how="left", validate="one_to_one")
     df = df.merge(quality[key + q_cols], on=key, how="left", validate="one_to_one")
+
+    # Step 3 的 volume_data_status 描述的是量能链输入是否可得；Step 4 会按本层
+    # 分项子项（volume_ratio_5_excess / volume_ratio_delta_5）重新判定并写入
+    # volume_data_status。为避免同名覆盖造成语义混淆，输入侧改名为 volume_chain_status。
+    df = df.rename(columns={"volume_data_status": "volume_chain_status"})
 
     # Step 3 的横截面成交额占比与 volume 表一致（交叉校验，不新建口径）
     if "sector_amount_share" in volume.columns:
@@ -415,6 +439,13 @@ def compute_features(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     # §十：成交量结构
     df["volume_ratio_5_excess"] = df["volume_ratio_5"] - 1.0
 
+    # 修复 §五：量能参与分项的数据完整性状态。两个子项互为独立证据：
+    # 全有 -> VALID；仅其一 -> PARTIAL（按可用子项归一化）；全无 -> MISSING（分项记 NaN）。
+    ok_ex = df["volume_ratio_5_excess"].notna()
+    ok_dl = df["volume_ratio_delta_5"].notna()
+    df["volume_data_status"] = np.where(ok_ex & ok_dl, "VALID",
+                                        np.where(ok_ex | ok_dl, "PARTIAL", "MISSING"))
+
     # §十一：Theme Health Momentum
     df["health_slope_5"] = df["theme_health_delta_5"] / 5.0
     df["health_slope_10"] = df["theme_health_delta_10"] / 10.0
@@ -436,29 +467,63 @@ def compute_features(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 # ────────────────────────────────────────────────────────────────────────────
 
 def compute_scores(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """SEOS 分项与总分。
+
+    修复 §五 / §七：子项缺值不再用 neutral_fill_score 伪装成"真实中性"。
+    真实中性 = 特征本身落在斜坡中点（ramp 自然给出 50），而不是"算不出来"。
+    因此：
+      * 有可用子项 -> 按【可用子项权重】重新归一化（缺项不贡献 0 分，避免人工惩罚主题）；
+      * 子项全缺 -> 该分项记 NaN（不写 50）；
+      * 全部分项缺失 -> seos_raw / seos_score 记 NaN，并以 component_coverage 下降表达
+        "置信度降低"，而不是调低分数。
+    权重一律来自 config/seos_config.json，未做任何调整（SEOS_WEIGHTS_FROZEN）。
+    """
     df = df.copy()
-    neutral = float(cfg["data_rules"]["neutral_fill_score"])
     ramps = cfg["ramps"]
 
+    comp_valid_cnt: dict = {}
     for comp in SEOS_COMPONENTS:
         cw = cfg["component_weights"][comp]
         tot = pd.Series(0.0, index=df.index)
-        wsum = 0.0
+        wsum = pd.Series(0.0, index=df.index)
+        valid_n = pd.Series(0, index=df.index)
         for key, w in cw.items():
             if key in ramps and isinstance(ramps[key], list) and len(ramps[key]) == 2:
                 v = ramp_series(df[key], float(ramps[key][0]), float(ramps[key][1]))
-                v = v.fillna(neutral)
             elif key in ("rs_fresh_cross", "improving_dim_ratio"):
                 # 无量纲比率/事件，直接映射到 0~100
                 v = pd.to_numeric(df[key], errors="coerce").astype(float) * 100.0
-                v = v.fillna(neutral)
             else:
                 raise KeyError(f"ramps 中缺少 {comp} 的子项 {key} 的斜坡配置")
-            tot = tot + w * v
-            wsum += w
-        df[f"seos_{comp}"] = tot / wsum if wsum > 0 else neutral
+            ok = v.notna()
+            tot = tot + w * v.fillna(0.0)
+            wsum = wsum + w * ok.astype(float)
+            valid_n = valid_n + ok.astype(int)
+        df[f"seos_{comp}"] = tot.div(wsum.where(wsum > 0))
+        df[f"seos_{comp}_valid_count"] = valid_n.astype(int)
+        df[f"seos_{comp}_missing_count"] = (len(cw) - valid_n).astype(int)
+        comp_valid_cnt[comp] = int(len(cw))
 
-    df["seos_raw"] = sum(float(cfg["score_weights"][c]) * df[f"seos_{c}"] for c in SEOS_COMPONENTS)
+    # 顶层：仅对可用的分项做权重归一化；coverage = 可用分项权重占比（权重和 = 1）
+    num = pd.Series(0.0, index=df.index)
+    den = pd.Series(0.0, index=df.index)
+    for comp in SEOS_COMPONENTS:
+        w = float(cfg["score_weights"][comp])
+        v = df[f"seos_{comp}"]
+        ok = v.notna()
+        num = num + w * v.fillna(0.0)
+        den = den + w * ok.astype(float)
+    df["seos_raw"] = num.div(den.where(den > 0))
+
+    df["component_valid_count"] = sum(
+        df[f"seos_{c}"].notna().astype(int) for c in SEOS_COMPONENTS)
+    df["component_missing_count"] = len(SEOS_COMPONENTS) - df["component_valid_count"]
+    df["component_coverage"] = den
+    df["subitem_valid_count"] = sum(df[f"seos_{c}_valid_count"] for c in SEOS_COMPONENTS)
+    df["subitem_missing_count"] = sum(comp_valid_cnt.values()) - df["subitem_valid_count"]
+    df["seos_data_status"] = np.where(
+        df["component_coverage"] >= 0.9999, "VALID",
+        np.where(df["component_coverage"] > 0.0, "PARTIAL", "MISSING"))
 
     # §十五 / §三十八：extension_penalty，乘性扣减
     ep = cfg["extension_penalty"]
@@ -483,6 +548,16 @@ def compute_scores(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
     # DATA_INVALID 正确传播：不产出评分
     df.loc[df["data_invalid"], "seos_score"] = np.nan
+
+    # 修复 §十四 / §十五：SEOS 变化量与排名使用唯一、显式命名的字段，
+    # 不与 theme_health_delta_1（健康度变化）混用。
+    #   seos_delta_N = 该主题 SEOS 相对 N 个交易日前的变化（只回看）
+    #   seos_rank    = 同一交易日内 SEOS DESC 的截面排名（1 = 最高；缺值不参与排名）
+    grp = df.groupby("sector_id", sort=False)["seos_score"]
+    df["seos_delta_1"] = df["seos_score"] - grp.shift(1)
+    df["seos_delta_3"] = df["seos_score"] - grp.shift(3)
+    df["seos_rank"] = df.groupby("trade_date", sort=False)["seos_score"].rank(
+        ascending=False, method="min")
     return df
 
 
@@ -951,17 +1026,29 @@ SEOS_DAILY_COLS = [
     "breadth_expansion_3", "breadth_expansion_5", "breadth_expansion_10", "breadth_acceleration",
     "weighted_breadth", "weighted_breadth_delta_1", "weighted_breadth_delta_3", "weighted_breadth_delta_5",
     "core_breadth", "core_breadth_delta_1", "core_breadth_delta_3", "core_breadth_delta_5",
-    "core_lead_breadth", "core_layer", "primary_breadth", "primary_breadth_delta_3", "secondary_breadth",
+    "core_lead_breadth", "core_layer", "core_breadth_status", "core_member_count",
+    "primary_breadth", "primary_breadth_delta_3", "secondary_breadth",
     "relative_strength", "relative_strength_delta_3", "relative_strength_delta_5",
     "relative_strength_delta_10", "rs_turn_3", "rs_turn_5", "rs_turn_10", "rs_fresh_cross",
     "volume_ratio_1", "volume_ratio_3", "volume_ratio_5", "volume_ratio_delta_3", "volume_ratio_delta_5",
+    "volume_chain_status", "volume_data_status", "volume_valid_member_ratio",
     "theme_amount_share", "amount_share_delta_3", "amount_share_delta_5", "amount_share_delta_10",
     "ret_dispersion_5", "top5_concentration", "top10_concentration", "positive_contribution_ratio",
     "improving_dims", "improving_dim_ratio",
     "ew_ret_5", "ew_ret_10", "ew_ret_20",
     "seos_breadth_expansion", "seos_core_breadth", "seos_relative_strength",
     "seos_volume_participation", "seos_amount_share", "seos_health_momentum", "seos_consistency",
-    "seos_raw", "extension_penalty", "seos_score",
+    "seos_breadth_expansion_valid_count", "seos_core_breadth_valid_count",
+    "seos_relative_strength_valid_count", "seos_volume_participation_valid_count",
+    "seos_amount_share_valid_count", "seos_health_momentum_valid_count",
+    "seos_consistency_valid_count",
+    "seos_breadth_expansion_missing_count", "seos_core_breadth_missing_count",
+    "seos_relative_strength_missing_count", "seos_volume_participation_missing_count",
+    "seos_amount_share_missing_count", "seos_health_momentum_missing_count",
+    "seos_consistency_missing_count",
+    "component_valid_count", "component_missing_count", "component_coverage",
+    "subitem_valid_count", "subitem_missing_count", "seos_data_status",
+    "seos_raw", "extension_penalty", "seos_score", "seos_delta_1", "seos_delta_3", "seos_rank",
     "core_pattern", "theme_phase", "phase_raw", "phase_transition", "prev_phase",
     "phase_changed", "phase_change_date", "phase_duration",
     "startup_quality", "rotation_signal", "signal_reason",
@@ -1274,17 +1361,31 @@ def build_today_json(df: pd.DataFrame, groups: pd.DataFrame, trade_date: str,
             "theme_health": r4(r.theme_health),
             "theme_health_delta_5": r4(r.theme_health_delta_5),
             "seos_score": r4(r.seos_score),
+            "seos_rank": r4(r.seos_rank),
+            "seos_delta_1": r4(r.seos_delta_1),
+            "seos_delta_3": r4(r.seos_delta_3),
+            "seos_raw": r4(r.seos_raw),
+            "seos_data_status": r.seos_data_status,
+            "component_coverage": r4(r.component_coverage),
+            "component_missing_count": int(r.component_missing_count),
             "breadth": r4(r.breadth),
             "breadth_delta_5": r4(r.breadth_delta_5),
             "breadth_expansion_5": r4(r.breadth_expansion_5),
             "breadth_acceleration": r4(r.breadth_acceleration),
             "core_breadth": r4(r.core_breadth),
+            "core_breadth_status": r.core_breadth_status,
+            "core_member_count": int(r.core_member_count),
             "core_breadth_delta_5": r4(r.core_breadth_delta_5),
             "core_pattern": r.core_pattern,
             "relative_strength": r4(r.relative_strength),
             "rs_turn_5": r4(r.rs_turn_5),
             "volume_ratio_5": r4(r.volume_ratio_5),
+            "volume_data_status": r.volume_data_status,
+            "volume_chain_status": r.volume_chain_status,
+            "volume_participation_score": r4(r.seos_volume_participation),
+            "amount_share_delta_3": r4(r.amount_share_delta_3),
             "amount_share_delta_5": r4(r.amount_share_delta_5),
+            "amount_share_delta_10": r4(r.amount_share_delta_10),
             "top5_concentration": r4(r.top5_concentration),
             "extension_penalty": r4(r.extension_penalty),
             "theme_phase": r.theme_phase,
@@ -1342,6 +1443,22 @@ def build_today_json(df: pd.DataFrame, groups: pd.DataFrame, trade_date: str,
         },
         "benchmark": state_today.get("benchmark"),
         "not_a_buy_list": True,
+        # 权重未修改的显式声明（修复 §二十三）：权重完全来自 config_source，
+        # 本次数据完整性修复未调整任何 score_weights / component_weights。
+        "seos_weights_frozen": SEOS_WEIGHTS_FROZEN,
+        "score_weights": cfg["score_weights"],
+        "component_weights": cfg["component_weights"],
+        "data_integrity": {
+            "volume_data_status": {k: int((today["volume_data_status"] == k).sum())
+                                   for k in VOLUME_DATA_STATUS},
+            "seos_data_status": {k: int((today["seos_data_status"] == k).sum())
+                                 for k in SEOS_DATA_STATUS},
+            "core_breadth_status": {k: int((today["core_breadth_status"] == k).sum())
+                                    for k in ("CORE", "PRIMARY_FALLBACK",
+                                              "CORE_NO_VALID_MEMBER", "NO_CORE_MEMBER")},
+            "note": ("缺失 ≠ 中性：分项子项缺失时按可用权重归一化并记录 coverage，"
+                     "不写入 neutral_fill_score=" + str(cfg["data_rules"]["neutral_fill_score"])),
+        },
         "notice": ("本文件只描述【主题】层的状态与结构变化，不输出个股、不构成 BUY / NO TRADE、"
                    "不含仓位与买卖点。SEOS ≠ 追涨分。"),
         "phase_counts": phase_counts,
@@ -1492,18 +1609,28 @@ def run_validation(panel: pd.DataFrame, df: pd.DataFrame, groups: pd.DataFrame, 
     add("CHECK_NO_LOOKAHEAD_ROTATION", ok, detail)
 
     # 8) 指标可回溯（评分 = 权重×分项 的独立复算 + 特征列齐备）
+    #    修复后口径：分项缺值不伪装中性，顶层按【可用分项权重】归一化；
+    #    因此独立复算必须显式重建 num/den，并交叉校验 component_coverage。
     w = cfg["score_weights"]
-    recon = sum(float(w[c]) * df[f"seos_{c}"] for c in SEOS_COMPONENTS)
+    comp_mat = df[[f"seos_{c}" for c in SEOS_COMPONENTS]]
+    recon_num = sum(float(w[c]) * df[f"seos_{c}"].fillna(0.0) for c in SEOS_COMPONENTS)
+    recon_den = sum(float(w[c]) * df[f"seos_{c}"].notna().astype(float) for c in SEOS_COMPONENTS)
+    recon = recon_num.div(recon_den.where(recon_den > 0))
     max_ded = float(cfg["extension_penalty"]["max_deduction"])
     expect = recon * (1.0 - np.minimum(df["extension_penalty"], max_ded))
     valid = df["seos_score"].notna()
     dev = float((df.loc[valid, "seos_score"] - expect[valid]).abs().max()) if valid.any() else 0.0
     missing_cols = [c for c in SEOS_DAILY_COLS if c not in df.columns]
-    nan_components = int((valid & df[[f"seos_{c}" for c in SEOS_COMPONENTS]].isna().any(axis=1)).sum())
+    nan_components = int((valid & comp_mat.isna().any(axis=1)).sum())
+    cov_dev = float((df["component_coverage"] - recon_den).abs().max())
+    # 评分缺失必须能由"全部分项缺失"或"DATA_INVALID"解释，不允许无理由为空
+    unexp = int((~valid & ~df["data_invalid"] & (recon_den > 0)).sum())
     add("CHECK_INDICATOR_TRACEABLE",
-        dev <= 1e-9 and not missing_cols and nan_components == 0,
+        dev <= 1e-9 and not missing_cols and cov_dev <= 1e-9 and unexp == 0,
         f"评分独立复算最大偏差 {dev:.3e}；输出列缺失 {len(missing_cols)} 个{missing_cols}；"
-        f"有效行分项缺失 {nan_components} 行")
+        f"component_coverage 复算偏差 {cov_dev:.3e}；"
+        f"有效行含缺失分项 {nan_components} 行（按可用权重归一化，记录在 seos_data_status）；"
+        f"无法解释的评分缺失 {unexp} 行")
 
     # 9) 状态转换无异常跳变
     chg = df[df["phase_changed"]]
@@ -1558,7 +1685,8 @@ def run_validation(panel: pd.DataFrame, df: pd.DataFrame, groups: pd.DataFrame, 
     add("CHECK_MISSING_DATA_HANDLED",
         bad_warm == 0,
         f"滑动窗口未就绪 {warm_scope} 行（{','.join(req)} 缺值），全部落于 DORMANT/DATA_INVALID；"
-        f"越界 {bad_warm} 行；未就绪行的分项按 neutral_fill_score 中性填充，不产生启动信号")
+        f"越界 {bad_warm} 行；未就绪行的分项按可用子项归一化（缺失子项不伪装中性，"
+        f"见 seos_data_status / component_coverage），且不产生启动信号")
 
     # 12) DATA_INVALID 正确传播（合成注入）
     last = df["trade_date"].max()
@@ -1785,6 +1913,8 @@ def write_outputs(df: pd.DataFrame, groups: pd.DataFrame, cfg: dict, trade_date:
         log.warning("SEOS_DAILY_COLS 缺失列（已跳过）：%s", missing)
     for c in daily.columns:
         if c not in ("trade_date", "sector_id", "sector_name", "rotation_group", "core_layer",
+                     "core_breadth_status", "volume_chain_status", "volume_data_status",
+                     "seos_data_status",
                      "core_pattern", "theme_phase", "phase_raw", "phase_transition", "prev_phase",
                      "phase_change_date", "startup_quality", "rotation_signal", "signal_reason",
                      "sector_state_base"):

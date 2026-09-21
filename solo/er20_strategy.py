@@ -572,7 +572,7 @@ def market_theme_score(code, stock2theme):
     th = stock2theme.get(code, [])
     if not th:
         return 50.0
-    # 主题白名单(EGPT 同款) 加分
+    # 主题白名单 加分
     whitelist = {'智能驾驶', '信创', '新能源车', '消费电子', '半导体', '创新药',
                  '机器人', '游戏', '建筑装饰', '传媒', '能源金属', '商业航天'}
     hit = set(th) & whitelist

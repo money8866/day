@@ -6,7 +6,7 @@
 
 ## 核心摘要
 - **MARKET** — 市场：高波动（健康环境）；breadth 0.76，较前一日改善 29.86%；涨停 82 / 跌停 1；成交额 20929 亿。
-- **THEME** — 主线：T36 创新药、T38 CXO、T35 消费服务；强化：T36 创新药（breadth/health 改善）、T42 生物制品（breadth/health 改善）；退潮：无
+- **THEME** — 今日盘面最强（current_strength，诊断层）：T36 创新药、T38 CXO、T15 汽车及零部件；结构改善最强（SEOS）：T38 CXO、T05 消费电子、T15 汽车及零部件；强化：T36 创新药（breadth/health 改善）、T42 生物制品（breadth/health 改善）、T40 中药（breadth/health 改善）；退潮：无
 - **SIGNAL** — 昨日信号：侯选 1410 / 结构合格 317 / 执行合格 110；Step7：BUY 4 / 未交易 1343
 - **TRADE** — 昨日 BUY：1 触发、0 走强、0 跌破 Stop、3 未成交；未交易中潜在漏掉 331
 - **FEEDBACK** — 复盘：执行层增量价值 中性（BUY 减结构合格 T+1 = 0.10%）；过滤增量价值 低；无实质性模型错误；待独立验证的模型改动候选 2 项（长期指标 §五十二）；明日保留 30 个条件观察对象（WATCH ≠ BUY）
@@ -29,22 +29,91 @@
 Regime 变化依据：breadth 0.4639→0.7625；成交额变化 13.96%；涨停 82 / 跌停 1；指数结构 SSE 0.94%（依据 breadth / volume / amount / limit-up-down / index structure，§六）
 Regime 覆盖：已观测 HEALTHY|NEUTRAL|RISK_OFF|WEAK；缺档（如实为 0）STRONG
 
-## 2. 主题（最多 5 个）
+## 2. 主题（每层最多 5 个）
 
-| 主题 | Phase（前→后） | SEOS | Health | Breadth | Core Breadth | Amount Share | 今日变化 | 分组 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T36 创新药 | DORMANT→DORMANT | 62.22 | 69.03 | 0.526 | 0.583 | 0.0405 | health 11.570 / breadth 0.113 | IMPROVING|FAILED_STARTUP |
-| T38 CXO | DORMANT→DORMANT | 61.61 | 69.80 | 0.542 | - | 0.0222 | health 1.840 / breadth -0.208 | - |
-| T35 消费服务 | DORMANT→DORMANT | 59.80 | 56.06 | 0.136 | 1.000 | 0.0314 | health -4.760 / breadth -0.398 | - |
-| T15 汽车及零部件 | DORMANT→EMERGING | 66.37 | 59.96 | 0.070 | 0.571 | 0.2494 | health -7.120 / breadth -0.563 | - |
-| T42 生物制品 | DETERIORATING→EARLY | 57.18 | 67.92 | 0.536 | 0.583 | 0.0107 | health 14.080 / breadth 0.255 | IMPROVING|FAILED_STARTUP |
+> 三层语义分离：A 回答「今天市场实际交易最强的是什么」（当日盘面）；B 回答「最近发生了最大的结构改善/恶化的是什么」（结构变化）；C 由 Theme Health + Phase + Current Strength + SEOS 综合给出状态解释。Current Strength 是**诊断层**（diagnostic_only=true），不进入 SEOS / Step 4 phase transition / Step 5 candidate score。
+
+### A. 今日主题表现（排序：current_strength DESC）
+
+| # | 主题 | current_strength | 当日等权收益 | 相对基准 | Breadth | Core Breadth | 成交占比 | Phase（前→后） | 覆盖子项 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | T36 创新药 | 74.92 | 1.02% | 1.43% | 0.526 | 0.587 | 0.0413 | DORMANT→DORMANT | cur_ret|cur_breadth|cur_core|cur_amount_share|cur_rs |
+| 2 | T38 CXO | 74.23 | 1.70% | 2.11% | 0.542 | - | 0.0222 | DORMANT→DORMANT | cur_ret|cur_breadth|cur_amount_share|cur_rs |
+| 3 | T15 汽车及零部件 | 72.80 | 0.45% | 0.86% | 0.073 | 0.573 | 0.2499 | DORMANT→EMERGING | cur_ret|cur_breadth|cur_core|cur_amount_share|cur_rs |
+| 4 | T42 生物制品 | 72.56 | 0.94% | 1.35% | 0.541 | 0.583 | 0.0113 | DETERIORATING→EARLY | cur_ret|cur_breadth|cur_core|cur_amount_share|cur_rs |
+| 5 | T22 农业周期 | 70.73 | 0.96% | 1.37% | 0.357 | 0.512 | 0.0265 | DORMANT→DORMANT | cur_ret|cur_breadth|cur_core|cur_amount_share|cur_rs |
+
+### B. 主题结构变化（排序：SEOS DESC）
+
+| # | 主题 | SEOS | seos_delta_1 | seos_delta_3 | seos_rank | coverage | 数据状态 | Core Breadth 状态 | 量能状态 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | T38 CXO | 72.95 | 11.84 | -0.44 | 1 | 0.80 | PARTIAL | NO_CORE_MEMBER | VALID |
+| 2 | T05 消费电子 | 69.97 | -9.25 | 27.93 | 2 | 1.00 | VALID | PRIMARY_FALLBACK | VALID |
+| 3 | T15 汽车及零部件 | 69.34 | -3.98 | 23.42 | 3 | 1.00 | VALID | PRIMARY_FALLBACK | VALID |
+| 4 | T39 医疗服务 | 68.49 | 7.30 | 0.15 | 4 | 1.00 | VALID | CORE | VALID |
+| 5 | T33 美容护理 | 68.25 | 10.26 | 24.45 | 5 | 1.00 | VALID | PRIMARY_FALLBACK | VALID |
+
+- 说明：`coverage` = 可用 SEOS 分项权重占比（缺失分项不伪装中性；`coverage<1` 表示 `SEOS_DATA_PARTIAL`）；`Core Breadth 状态 = NO_CORE_MEMBER` 表示该主题当期无 CORE 成员，`core_breadth` 如实为空而不是 0/50。
+
+### C. 主题状态（Theme Health + Phase + Current Strength + SEOS 综合；不按 SEOS 单列排序）
+
+**STRUCTURAL_CURRENT_RESONANCE**（结构改善与当日表现共振）— 18 个
+
+| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T38 CXO | DORMANT→DORMANT | 73.25 | 5.290 | 72.95 | 74.23 | - |
+| T36 创新药 | DORMANT→DORMANT | 70.28 | 12.460 | 64.90 | 74.92 | IMPROVING|FAILED_STARTUP |
+| T42 生物制品 | DETERIORATING→EARLY | 68.73 | 13.890 | 60.03 | 72.56 | IMPROVING|FAILED_STARTUP |
+| T39 医疗服务 | DORMANT→DORMANT | 68.35 | 3.290 | 68.49 | 59.07 | ROTATION_IN|FAILED_STARTUP |
+| T33 美容护理 | DORMANT→DORMANT | 64.69 | 3.780 | 68.25 | 67.54 | - |
+
+**EARLY_STRUCTURAL_CHANGE**（结构提前改善（仅表示值得继续观察））— 4 个
+
+| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T02 AI算力 | DORMANT→EARLY | 49.19 | -25.530 | 64.01 | 47.29 | - |
+| T01 半导体 | EMERGING→EMERGING | 48.59 | -34.470 | 61.23 | 41.88 | - |
+| T03 通信 | DORMANT→EARLY | 48.21 | -29.810 | 64.67 | 41.03 | - |
+| T04 软件与信创 | DORMANT→EARLY | 44.46 | -20.080 | 58.17 | 39.93 | - |
+
+**DIVERGENCE**（结构与当日表现背离）— 10 个
+
+| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T41 医药商业 | DORMANT→DORMANT | 58.19 | 14.550 | 52.58 | 58.44 | IMPROVING|FAILED_STARTUP |
+| T45 交通运输 | DORMANT→DORMANT | 53.37 | 5.140 | 49.62 | 60.97 | - |
+| T27 房地产 | DORMANT→DORMANT | 52.78 | -3.490 | 48.37 | 65.69 | - |
+| T31 消费零售 | DORMANT→DORMANT | 51.74 | 4.220 | 50.04 | 66.07 | - |
+| T34 旅游酒店餐饮 | DORMANT→DORMANT | 51.13 | 7.410 | 49.29 | 57.76 | - |
+
+**WEAKENING**（结构转弱）— 7 个
+
+| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T09 光伏产业链 | DORMANT→DORMANT | 40.36 | -32.730 | 49.53 | 34.20 | - |
+| T43 电力 | DORMANT→DORMANT | 37.62 | -23.230 | 34.12 | 31.57 | - |
+| T44 公用事业 | DORMANT→DORMANT | 34.69 | -25.930 | 28.33 | 24.52 | - |
+| T23 银行 | DORMANT→DORMANT | 33.06 | 3.790 | 13.79 | 22.72 | IMPROVING|FAILED_STARTUP |
+| T25 保险 | DORMANT→DORMANT | 30.76 | -6.320 | 18.50 | 28.93 | FAILED_STARTUP |
+
+**DORMANT**（沉寂 / 无明确变化）— 11 个
+
+| 主题 | Phase（前→后） | Health | Health Δ1 | SEOS | current_strength | 分组 |
+| --- | --- | --- | --- | --- | --- | --- |
+| T47 建材 | DORMANT→DORMANT | 51.44 | -10.970 | 54.01 | 45.83 | - |
+| T46 建筑装饰 | DORMANT→DORMANT | 49.58 | -10.680 | 43.61 | 49.14 | - |
+| T48 城市更新 | DORMANT→DORMANT | 47.50 | -18.120 | 51.40 | 48.32 | - |
+| T49 基础设施 | DORMANT→DORMANT | 46.53 | -13.550 | 50.67 | 43.99 | - |
+| T29 食品饮料 | DORMANT→DORMANT | 44.92 | 4.560 | 38.23 | 44.15 | IMPROVING |
+
+> `EARLY_STRUCTURAL_CHANGE` 只表示「结构变化值得继续观察」，本节为 Post-Market Review 的解释层，不构成任何交易指令。
 
 ### 主题轮动（最多展示 5 个）
 
 - T39 医疗服务：ROTATION_IN（参照窗 Breadth -0.1872 偏弱，近5日 Breadth 1.2282、Core 0.7857、RS turn 0.0274 同步改善）
 - T24 券商：ROTATION_OUT（参照窗 Breadth 0.2382 偏强，近3日 Breadth -0.6129、Core -0.6336、RS turn -0.0214 转弱）
 
-扩散复盘：T36 NO_DIFFUSION→FULL_BREADTH；T38 NO_DIFFUSION→FAILED_DIFFUSION；T35 EARLY_DIFFUSION→HEALTHY_EXPANSION；T15 NO_DIFFUSION→FULL_BREADTH；T42 NO_DIFFUSION→CORE_ONLY
+扩散复盘：T38 NO_DIFFUSION→FAILED_DIFFUSION；T15 NO_DIFFUSION→FULL_BREADTH；T35 EARLY_DIFFUSION→HEALTHY_EXPANSION；T36 NO_DIFFUSION→FULL_BREADTH；T33 NO_DIFFUSION→CORE_ONLY
 
 ## 3. 今日结构池（最多 12 只）
 
@@ -121,18 +190,18 @@ Regime 覆盖：已观测 HEALTHY|NEUTRAL|RISK_OFF|WEAK；缺档（如实为 0�
 
 | Phase | Structure | N | BUY | T+5 Mean | T+20 Mean |
 | --- | --- | --- | --- | --- | --- |
-| CONFIRMING | ADJUSTING | 8 | 0 | 2.79% | -1.86% |
-| CONFIRMING | BASE | 76 | 0 | 2.52% | 6.71% |
+| CONFIRMING | ADJUSTING | 8 | 0 | 1.88% | -5.25% |
+| CONFIRMING | BASE | 122 | 0 | 1.27% | 5.19% |
 | CONFIRMING | BREAKOUT | 4 | 0 | 33.80% | 12.78% |
 | CONFIRMING | BREAKOUT_READY | 4 | 0 | 0.17% | -1.09% |
-| CONFIRMING | FAILED | 480 | 0 | 2.96% | 5.99% |
-| CONFIRMING | HVT | 6 | 0 | 4.29% | -1.97% |
-| CONFIRMING | LOCKING | 4 | 0 | 10.11% | 5.14% |
-| CONFIRMING | RETEST | 4 | 0 | -4.89% | -0.99% |
-| CONFIRMING | WATCH | 430 | 0 | 2.13% | 4.94% |
-| COOLING | ADJUSTING | 13 | 0 | 2.74% | 2.03% |
-| COOLING | BASE | 49 | 0 | 2.31% | 5.24% |
+| CONFIRMING | FAILED | 608 | 0 | 1.62% | 4.38% |
+| CONFIRMING | HVT | 5 | 0 | 5.30% | -0.99% |
+| CONFIRMING | LOCKING | 8 | 0 | 7.29% | 3.93% |
+| CONFIRMING | WATCH | 699 | 0 | 0.33% | 2.87% |
+| COOLING | ADJUSTING | 15 | 0 | 1.93% | 1.76% |
+| COOLING | BASE | 86 | 0 | 1.67% | 4.46% |
 | COOLING | BREAKOUT_READY | 8 | 0 | -2.33% | -1.00% |
+| COOLING | FAILED | 417 | 0 | 2.06% | 4.08% |
 
 ### 主题 Phase × Structure Class（§三十五，累计 78 个交易日 20260522~20260917）
 
@@ -140,16 +209,16 @@ Regime 覆盖：已观测 HEALTHY|NEUTRAL|RISK_OFF|WEAK；缺档（如实为 0�
 | --- | --- | --- | --- | --- | --- |
 | CONFIRMING | BREAKOUT_CONFIRMED | 4 | 0 | 33.80% | 12.78% |
 | CONFIRMING | BREAKOUT_READY | 4 | 0 | 0.17% | -1.09% |
-| CONFIRMING | FAILED | 480 | 0 | 2.96% | 5.99% |
-| CONFIRMING | HVT_ADJUSTING | 3 | 0 | 5.92% | -1.72% |
-| CONFIRMING | HVT_EVENT | 6 | 0 | 4.29% | -1.97% |
-| CONFIRMING | HVT_LOCKING | 4 | 0 | 10.11% | 5.14% |
-| CONFIRMING | PULLBACK_HEALTHY | 5 | 0 | 0.91% | -1.94% |
-| CONFIRMING | RETEST_SUCCESS | 4 | 0 | -4.89% | -0.99% |
-| CONFIRMING | STRUCTURE_BASE | 76 | 0 | 2.52% | 6.71% |
-| CONFIRMING | WATCH | 430 | 0 | 2.13% | 4.94% |
+| CONFIRMING | FAILED | 608 | 0 | 1.62% | 4.38% |
+| CONFIRMING | HVT_EVENT | 5 | 0 | 5.30% | -0.99% |
+| CONFIRMING | HVT_LOCKING | 8 | 0 | 7.29% | 3.93% |
+| CONFIRMING | PULLBACK_HEALTHY | 6 | 0 | 0.65% | -6.24% |
+| CONFIRMING | STRUCTURE_BASE | 122 | 0 | 1.27% | 5.19% |
+| CONFIRMING | WATCH | 699 | 0 | 0.33% | 2.87% |
 | COOLING | BREAKOUT_READY | 8 | 0 | -2.33% | -1.00% |
-| COOLING | FAILED | 262 | 0 | 2.67% | 3.96% |
+| COOLING | FAILED | 417 | 0 | 2.06% | 4.08% |
+| COOLING | HVT_ADJUSTING | 6 | 0 | -4.55% | -12.01% |
+| COOLING | HVT_EVENT | 3 | 0 | -12.22% | -20.65% |
 
 ## 6. 模型错误（最多 5 条 P0/P1）
 
@@ -162,18 +231,18 @@ Regime 覆盖：已观测 HEALTHY|NEUTRAL|RISK_OFF|WEAK；缺档（如实为 0�
 
 | 股票 | 主题/Phase | watch_type | Watch（触发参考） | Condition | Invalid | extension_risk |
 | --- | --- | --- | --- | --- | --- | --- |
-| 002516.SZ 旷达科技 | T15/CONFIRMING | HVT_LOCKING | 触发参考 6.25（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 6.25~6.34；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 5.34 | LOW |
-| 301086.SZ 鸿富瀚 | T05/CONFIRMING | HVT_LOCKING | 触发参考 168.49（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 168.49~174.49；entry_state=NO_ENTRY 需重新确认 | 收盘跌破 135.10 | LOW |
-| 301234.SZ 五洲医疗 | T37/CONFIRMING | HVT_LOCKING | 触发参考 115.00（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 115.00~118.64；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 93.06 | LOW |
-| 301552.SZ 科力装备 | T15/CONFIRMING | HVT_LOCKING | 触发参考 27.66（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 27.66~28.15；entry_state=NO_ENTRY 需重新确认 | 收盘跌破 22.77 | LOW |
-| 603997.SH 继峰股份 | T15/CONFIRMING | HVT_LOCKING | 触发参考 12.60（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 12.60~12.79；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 11.16 | LOW |
+| 002516.SZ 旷达科技 | T15/STRONG | HVT_LOCKING | 触发参考 6.25（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 6.25~6.34；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 5.34 | LOW |
+| 301086.SZ 鸿富瀚 | T05/STRONG | HVT_LOCKING | 触发参考 168.49（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 168.49~174.49；entry_state=NO_ENTRY 需重新确认 | 收盘跌破 135.10 | LOW |
+| 301234.SZ 五洲医疗 | T37/STRONG | HVT_LOCKING | 触发参考 115.00（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 115.00~118.64；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 93.06 | LOW |
+| 301552.SZ 科力装备 | T15/STRONG | HVT_LOCKING | 触发参考 27.66（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 27.66~28.15；entry_state=NO_ENTRY 需重新确认 | 收盘跌破 22.77 | LOW |
+| 603997.SH 继峰股份 | T15/STRONG | HVT_LOCKING | 触发参考 12.60（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 12.60~12.79；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 11.16 | LOW |
 | 688002.SH 睿创微纳 | T01/EMERGING | HVT_LOCKING | 触发参考 189.39（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 189.39~193.26；entry_state=WAIT_CONFIRMATION 需重新确认 | 收盘跌破 167.77 | LOW |
 | 688601.SH 力芯微 | T01/EMERGING | HVT_LOCKING | 触发参考 65.50（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 65.50~67.30；entry_state=NO_ENTRY 需重新确认 | 收盘跌破 52.20 | LOW |
-| 001288.SZ 运机集团 | T14/CONFIRMING | REBREAKOUT | 触发参考 31.08（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 31.08~31.76；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 26.96 | LOW |
-| 300411.SZ 金盾股份 | T14/CONFIRMING | REBREAKOUT | 触发参考 9.17（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 9.17~9.35；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 8.15 | LOW |
-| 301122.SZ 采纳股份 | T37/CONFIRMING | REBREAKOUT | 触发参考 50.30（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 50.30~51.65；entry_state=REBREAKOUT_ENTRY 需重新确认 | 收盘跌破 41.01 | LOW |
-| 603012.SH 创力集团 | T14/CONFIRMING | REBREAKOUT | 触发参考 10.88（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 10.88~11.10；entry_state=RETEST_ENTRY 需重新确认 | 收盘跌破 8.60 | LOW |
-| 603338.SH 浙江鼎力 | T14/CONFIRMING | REBREAKOUT | 触发参考 61.39（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 61.39~62.47；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 52.57 | LOW |
+| 001288.SZ 运机集团 | T14/EMERGING | REBREAKOUT | 触发参考 31.08（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 31.08~31.76；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 26.96 | LOW |
+| 300411.SZ 金盾股份 | T14/EMERGING | REBREAKOUT | 触发参考 9.17（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 9.17~9.35；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 8.15 | LOW |
+| 301122.SZ 采纳股份 | T37/STRONG | REBREAKOUT | 触发参考 50.30（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 50.30~51.65；entry_state=REBREAKOUT_ENTRY 需重新确认 | 收盘跌破 41.01 | LOW |
+| 603012.SH 创力集团 | T14/EMERGING | REBREAKOUT | 触发参考 10.88（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 10.88~11.10；entry_state=RETEST_ENTRY 需重新确认 | 收盘跌破 8.60 | LOW |
+| 603338.SH 浙江鼎力 | T14/EMERGING | REBREAKOUT | 触发参考 61.39（须由 Step 7 下一交易日重新确认，Step 8 不产生 BUY） | Entry 区间 61.39~62.47；entry_state=FAILED_NO_ENTRY 需重新确认 | 收盘跌破 52.57 | LOW |
 
 ## 附录：Validation（§四十九）
 
@@ -185,10 +254,11 @@ Regime 覆盖：已观测 HEALTHY|NEUTRAL|RISK_OFF|WEAK；缺档（如实为 0�
 - [PASS] HVT_REVIEW：1347 行结构记录的 hvt_state 全部存在且落在声明域内
 - [PASS] UPSTREAM_STATE_CONFLICT：1347 行结构记录中 hvt_state 与 retest_state 无自相矛盾（§二十七）
 - [PASS] THEME_REVIEW：20260917 全部主题均来自 theme_master（50 个），无未知主题
+- [PASS] THEME_SEMANTICS：50 行主题：A/B/C 三层齐备；seos 家族字段显式命名；amount_share_delta_3 有值 50/50；current_strength 全部标注 diagnostic_only（诊断层，不进入 SEOS / phase / Step 5）
 - [WARNING] REGIME_TIER_COVERAGE：声明 5 档，Step 7 历史（20260522~20260917）实际产出 4 档 健康、中性、风险规避、偏弱；未覆盖 强势（对应代码 STRONG）—— 如实缺档，不臆断、不为凑覆盖率下调阈值（阈值与成因见 config/execution_config.json::market_regime）
 - [PASS] REPORT_LANGUAGE：报告未使用禁用夸张词（§四十四）
 - [PASS] REPORT_SECTIONS：正文核心章节 8 节（要求 5-8）
-- LIMITATION：T+3, T+5, T+10, T+20 结果尚未发生，如实留空（不以前视数据填充）；regime 档位未覆盖：强势（如实缺档，§三十三）
+- LIMITATION：EARLY_STRUCTURAL_CHANGE 4 个主题：仅表示「结构变化值得继续观察」，不得解读为 BUY（§十九）；T+3, T+5, T+10, T+20 结果尚未发生，如实留空（不以前视数据填充）；regime 档位未覆盖：强势（如实缺档，§三十三）
 
 ---
 

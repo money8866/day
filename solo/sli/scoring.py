@@ -231,7 +231,7 @@ def build_panel(uni: pd.DataFrame, price: pd.DataFrame, dbasic: pd.DataFrame,
     panel["rd_score"] = pct_rank_industry(panel, "l3_code", "rd_intensity")
 
     # ── 盈利优势（相对行业中位数） ──
-    for col in ("grossprofit_margin", "roe", "netprofit_margin", "ocf_to_profit"):
+    for col in ("grossprofit_margin", "roe", "roic", "netprofit_margin", "ocf_to_profit"):
         panel[f"{col}_adv"] = panel[col] - industry_median(panel, "l3_code", col)
     panel["gm_adv_score"] = panel["grossprofit_margin_adv"].apply(lambda v: _pl(v, _ADV_PTS))
     panel["roe_adv_score"] = panel["roe_adv"].apply(lambda v: _pl(v, _ADV_PTS))

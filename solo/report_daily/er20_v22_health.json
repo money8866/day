@@ -9,11 +9,11 @@
     "C2_quality_decline": {
       "streak": 0,
       "threshold": 2,
-      "drop_pp_vs_baseline": 0.53,
+      "drop_pp_vs_baseline": -2.37,
       "hit": false
     },
     "C3_spread_negative": {
-      "last_spread": 34.46,
+      "last_spread": 33.97,
       "floor": 6.0,
       "hit": false
     }
@@ -104,6 +104,21 @@
       "buy_codes": [
         "天桥起重",
         "中策橡胶"
+      ]
+    },
+    {
+      "scan_date": "20260901",
+      "n_total": 2527,
+      "n_eligible": 1257,
+      "n_filter_pass": 724,
+      "pass_rate": 0.287,
+      "n_buy": 2,
+      "elig_fusion_mean": 50.93,
+      "head_fusion_mean": 84.9,
+      "head_pool_spread": 33.97,
+      "buy_codes": [
+        "新北洋",
+        "康恩贝"
       ]
     }
   ]

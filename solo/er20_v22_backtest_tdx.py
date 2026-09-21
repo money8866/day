@@ -427,54 +427,6 @@ def score_one(r, daily, ann_idx, s_idx, scan_date, bench, industry_atr, market_m
     return row
 
 
-def egpt_proxy_scores(row):
-    """用扫描日前已知的中报增速和技术结构重建 EGPT 质量/回踩分。"""
-    def num(value, default=0.0):
-        try:
-            value = float(value)
-            return default if not np.isfinite(value) else value
-        except Exception:
-            return default
-
-    netprofit = num(row.get('netprofit_yoy'), 0.0)
-    dt = num(row.get('dt_netprofit_yoy'), netprofit)
-    quality = 50.0
-    quality += min(25.0, max(-25.0, netprofit / 10.0))
-    quality += min(20.0, max(-20.0, dt / 10.0))
-    if num(row.get('cf_adj'), 0.0) > 0:
-        quality += 5.0
-    elif num(row.get('cf_adj'), 0.0) < -3:
-        quality -= 8.0
-
-    pullback = 0.45 * num(row.get('pqs'), 50.0)
-    pullback += 0.25 * num(row.get('volume'), 50.0)
-    pullback += 0.20 * num(row.get('trend'), 50.0)
-    pullback += 0.10 * num(row.get('ees'), 50.0)
-    if row.get('ttype') == 'T2_PULLBACK':
-        pullback += 8.0
-    elif row.get('ttype') == 'T3_RECLAIM':
-        pullback += 5.0
-    elif row.get('ttype') == 'T1_BREAKOUT':
-        pullback -= 8.0
-    return round(max(0.0, min(100.0, quality)), 1), round(max(0.0, min(100.0, pullback)), 1)
-
-
-def fusion_score_v22(row):
-    quality, pullback = egpt_proxy_scores(row)
-    er20 = float(row.get('next5_score', 0.0) or 0.0)
-    execution = 75.0
-    if row.get('ttype') == 'T2_PULLBACK':
-        execution += 12.0
-    elif row.get('ttype') == 'T3_RECLAIM':
-        execution += 6.0
-    elif row.get('ttype') == 'T1_BREAKOUT':
-        execution -= 15.0
-    risk = float(row.get('rel_risk', 100.0) or 100.0)
-    execution -= max(0.0, risk - 35.0) * 0.35
-    score = 0.50 * er20 + 0.25 * quality + 0.15 * pullback + 0.10 * execution
-    return round(max(0.0, min(100.0, score)), 1), quality, pullback, int(row.get('ttype') in ('T2_PULLBACK', 'T3_RECLAIM'))
-
-
 COST = {
     'order_size': 2_000_000,
     'commission': 0.00025,
@@ -774,7 +726,7 @@ def holding_grid(bt2, vname, rank_col, eligible):
     rows = []
     if eligible.empty:
         return rows
-    gap = V22Config.FUSION['second_gap']
+    gap = V22Config.NEXT5['second_gap']
     for n in GRID_TOPN:
         sigcol = f'topN{n}_signal'
         bt2[sigcol] = 0
@@ -982,10 +934,8 @@ def main():
                    - bt['eq_penalty'].fillna(0.0)).round(1).clip(0, 100)
     bt['next5_score'] = bt.apply(next5_score_v22, axis=1)
     september_significance(bt)
-    fusion_values = bt.apply(fusion_score_v22, axis=1, result_type='expand')
-    fusion_values.columns = ['fusion_score', 'egpt_quality_score', 'egpt_pullback_score', 'fusion_gate']
-    bt = pd.concat([bt, fusion_values], axis=1)
-    bt['fusion_rank'] = bt.groupby('scan_date')['fusion_score'].rank(method='first', ascending=False).astype(int)
+    # 融合层已下线：fusion_score 直接取 next5_score，保持历史列语义不变
+    bt['fusion_score'] = bt['next5_score']
     bt['next5_rank'] = bt.groupby('scan_date')['next5_score'].rank(method='first', ascending=False).astype(int)
     bt['rank_eligible'] = bt['strategy'] != 'D_FALSE_SIGNAL'
 
@@ -1016,8 +966,6 @@ def main():
         'combo_inst': {'t1_cap': True, 'gate': {'test_alpha': 80.0, 'test_ees': 72.0,
                                                 'test_ts': 72.0, 'probe_alpha': 72.0},
                        'alpha_col': 'alpha_inst'},
-        'fusion': {'t1_cap': True, 'gate': {'test_alpha': 80.0, 'test_ees': 72.0,
-                                            'test_ts': 72.0, 'probe_alpha': 72.0}},
     }
     for vname, vcfg in VARIANTS.items():
         grades, reasons = [], []
@@ -1031,14 +979,10 @@ def main():
         bt2['next5_signal'] = 0
         buy_mask = bt2['grade'].isin(['CORE_BUY', 'TEST_BUY', 'PROBE_BUY'])
         eligible = bt2[buy_mask & bt2['rank_eligible']]
-        if vname == 'fusion':
-            eligible = eligible[(eligible['fusion_gate'] == 1) & (eligible['fusion_score'] >= V22Config.FUSION['min_score'])]
-            rank_col = 'fusion_score'
-        else:
-            rank_col = 'next5_score'
+        rank_col = 'next5_score'
         for scan_date, grp in eligible.groupby('scan_date'):
             keep = grp.sort_values(rank_col, ascending=False).head(V22Config.NEXT5['limit']).index
-            if len(keep) >= 2 and float(grp.loc[keep[0], rank_col]) - float(grp.loc[keep[1], rank_col]) > V22Config.FUSION['second_gap']:
+            if len(keep) >= 2 and float(grp.loc[keep[0], rank_col]) - float(grp.loc[keep[1], rank_col]) > V22Config.NEXT5['second_gap']:
                 keep = keep[:1]
             bt2.loc[keep, 'next5_signal'] = 1
         csv = os.path.join(REPORT_DIR, f'er20_v22_backtest_{args.season}_{vname}.csv')
