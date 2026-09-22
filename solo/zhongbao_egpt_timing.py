@@ -1,0 +1,575 @@
+# -*- coding: utf-8 -*-
+"""
+中报猎手 × EGPT 回踩择时
+=====================================================
+对中报猎手(zhongbao_hunt_*.csv)选出的翻倍潜力股，叠加 EGPT
+(Earnings Growth Pullback Timing) 回踩择时算法：
+
+  EGPT 回踩形态（pullback_buy.analyze_shape）：
+    洗盘(近10日回撤≥8%) → 放量首阳(涨幅≥3%+量比≥1.5) →
+    缩量回踩不破实体(1-2日为最优买点窗口) → 回踩买点分(0-100)
+    次日操作：✅次日可买入(回踩中&分≥60) / ⚠️次日观察等回踩(首阳)
+              / ⚠️观察(回踩中低分) / ❌仅观察不买入(回踩完成)
+
+  买点确认（EGPT enhanced 规则）：
+    买点2(缩量回踩VWAP确认) > 买点1(放量突破VWAP+筹码峰) > 未突破
+    ATR动态止损 = 现价 - 2×ATR14
+
+  回测结论(EGPT自带)：回踩中1-2日为最优买点窗口(次日上涨率68%，
+  分≥70次日+2.65%)；回踩≥3日无次日alpha，仅观察。
+
+  v12 合并策略（egpt_track_review 复盘 20260909）：
+    回踩中 + 主题热度5~15%(或无热度) + 当日涨幅<5% + 回踩缩量比<1.0 +
+    扣非增速≥50 → 复盘60笔/38只， T+5 +0.94% / 持有+1.66% / 止损+1.30%。
+    控制台展示🏆v12板块；推送仅发「✅次日可买入×未突破」；不写跟踪库。
+"""
+import os
+import sys
+import argparse
+
+import numpy as np
+import pandas as pd
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, "multi_factor_picker"))
+sys.path.insert(0, os.path.join(BASE_DIR, "multi_factor_picker", ".."))
+
+from data_fetcher import DataFetcher
+from enhanced_timing_analysis import _calc_vwap, _calc_atr, _calc_chip_concentration_peak
+from pullback_buy import analyze_shape
+
+from multi_factor_picker.main import load_config, get_token
+import treasure_hunter as th
+
+# 复用 EGPT 每日推送的 PushPlus 发送能力（消息大小自动降级）
+from multi_factor_picker.push_washout_recovery import push_to_wechat  # noqa: E402
+
+REPORT_DIR = os.path.join(BASE_DIR, "report_daily")
+
+# ── 主题热度配置（回测结论 20260818 + 网格搜索） ──
+# 高热度(ETF20日≥10%)追高是负期望；网格搜索 T+5 胜率最高组合:
+#   主题热度 5~15%(已启动未过热) + 主题白名单 + 扣非增速≥50%
+#   → T+5 胜率 64.3% / T+5 +3.13% (42笔, 2023-2026四中报季)
+THEME_MAP_FILE = os.path.join(REPORT_DIR, "theme_stock_map_latest_v2.json")
+THEME_CFG_FILE = os.path.join(BASE_DIR, "theme_config.json")
+THEME_WHITELIST = {"智能驾驶", "信创", "新能源车", "消费电子", "半导体", "创新药",
+                   "机器人", "游戏", "建筑装饰", "传媒", "能源金属", "商业航天"}
+HEAT_SWEET = (0.05, 0.15)     # 主题热度甜区: ETF近20日涨幅 5%~15%
+HEAT_HOT = 0.15               # ≥15% 视为追高风险区
+DTY_MIN = 50                  # 扣非增速≥50% 才可入选"主题优选"
+
+# ── 精选层门槛（zhongbao_egpt_backtest_tdx.py --funnel 验证 20260819） ──
+# 验证结论: 原漏斗 L1(剔除回踩天数=0) / L2(只留买点1/2) 均为负增益、方向相反, 已弃用;
+#   全形态 8769 笔上唯一单调有效的门槛是"乖离VWAP"(3%>5%>8%>不限), 主题白名单亦有效。
+# 次日开盘(真实可执行)口径: 乖离≤3%×实证白名单 1197笔, T+5均+2.20%/胜率52.7%
+#   （基准 8769笔 T+5均+0.98%/胜率46.9%）; 逐年 T+5: 2023 +0.74% / 2024 +6.82% / 2025 +0.39%。
+# 注意: alpha 集中于 2024 反弹性行情, 弱市(如2025)仅走平, 属行情弹性品种而非稳定策略。
+VWAP_GAP_MAX = 0.03           # 精选: 现价对 VWAP20 乖离上限（>3% 视为追高）
+PICK_STAGES = ("首阳确认", "回踩中", "回踩完成")   # 有回踩结构的三个阶段
+# 实证白名单: 按 --funnel 主题明细筛出(样本≥20 且 T+1胜率≥50% 且 T+5均>0)；
+# 原 12 主题白名单中的 半导体(T+5 -1.27%)/创新药(-0.28%)/AI算力(-0.35%)/军工(-1.10%) 为拖累项。
+EMPIRICAL_WHITELIST = {"新能源车", "信创", "节能环保", "机器人", "电力"}
+
+STAGE_ORDER = {"回踩中": 0, "回踩完成": 1, "首阳确认": 2, "洗盘缩量": 3,
+               "延续上涨": 4, "首阳后破位": 5}
+OP_ORDER = {"✅ 次日可买入": 0, "⚠️ 次日观察等回踩": 1, "⚠️ 观察": 2,
+            "❌ 仅观察不买入": 3, "❌ 等待首阳": 4}
+
+
+# ════════════════════════════════════════════════════════════════
+# 主题热度（复用回测脚本逻辑, ETF近20日涨幅=主题热度, 无前视）
+# ════════════════════════════════════════════════════════════════
+def load_theme_heat_map():
+    """返回 (stock2theme, theme2etf, etf_series)"""
+    import json
+    from tail_backtest_tdx import parse_tdx_day_file as _pt, ts_code_to_tdx_file as _tt
+    stock2theme, theme2etf, etf_series = {}, {}, {}
+    try:
+        with open(THEME_MAP_FILE, encoding='utf-8') as f:
+            tm = json.load(f)
+        for name, members in tm.get('themes', {}).items():
+            for m in members:
+                code = m.get('code', '')
+                if code:
+                    stock2theme.setdefault(code, []).append(name)
+    except Exception as e:
+        print(f"[警告] 主题映射加载失败: {e}")
+    try:
+        with open(THEME_CFG_FILE, encoding='utf-8') as f:
+            cfg = json.load(f)
+        for _, v in cfg.items():
+            name = v.get('name_cn', '')
+            if name and v.get('main_etf'):
+                theme2etf[name] = v['main_etf']
+    except Exception as e:
+        print(f"[警告] theme_config 加载失败: {e}")
+    for etf in set(theme2etf.values()):
+        f = _tt(etf)
+        df = _pt(f) if f and os.path.exists(f) else None
+        if df is not None and len(df) > 200:
+            etf_series[etf] = pd.Series(df['close'].values, index=df['trade_date'].values)
+    print(f"  主题热度: 映射{len(stock2theme)}只 | ETF {len(etf_series)}只")
+    return stock2theme, theme2etf, etf_series
+
+
+def theme_heat_at(theme, date, theme2etf, etf_series):
+    etf = theme2etf.get(theme)
+    if not etf or etf not in etf_series:
+        return None
+    s = etf_series[etf]
+    pos = s.index.searchsorted(date, side='right') - 1
+    if pos < 20:
+        return None
+    c0, c20 = float(s.iloc[pos]), float(s.iloc[pos - 20])
+    return c0 / c20 - 1.0 if c20 > 0 else None
+
+
+def theme_status(theme, heat, dty=None):
+    """主题状态: 主题优选(白名单+甜区5~15%+扣非≥50%) > 白名单 > 高热度(追高) > 冷门/无数据"""
+    if not theme:
+        return "冷门(无主题)"
+    if heat is None or (isinstance(heat, float) and np.isnan(heat)):
+        return f"{theme}(无热度数据)"
+    if theme in THEME_WHITELIST and HEAT_SWEET[0] <= heat <= HEAT_SWEET[1]:
+        if dty is not None and dty >= DTY_MIN:
+            return f"{theme}(优选)"
+        return f"{theme}(白名单)"
+    if theme in THEME_WHITELIST:
+        return f"{theme}(白名单)"
+    if heat >= HEAT_HOT:
+        return f"{theme}(高热度⚠️)"
+    return f"{theme}(热度{heat * 100:.0f}%)"
+
+
+def find_latest_zhongbao_csv() -> str:
+    files = [f for f in os.listdir(REPORT_DIR)
+             if f.startswith("zhongbao_hunt_") and f.endswith(".csv")]
+    if not files:
+        return None
+    files.sort(reverse=True)
+    return os.path.join(REPORT_DIR, files[0])
+
+
+SLI_MODES = {
+    "ind_no1": "每申万三级行业第一",
+    "sub_no1": "每细分赛道第一",
+    "absolute": "绝对龙头",
+}
+
+
+def load_sli_leader_pool(mode: str = "ind_no1", asof=None):
+    """加载 SLI 行业细分龙头池（sli.leaderboard_v2 最新快照，经 sli.reader 官方接口自动回退）
+
+    口径 SLI_MODES: ind_no1=每L3行业第一(ind_rank_v2==1) / sub_no1=每细分赛道第一(sub_rank==1) / absolute=绝对龙头
+    返回 (标准化DataFrame, 快照元信息dict)；列兼容 v12: ts_code/name/dt_netprofit_yoy/市值(亿)/来源
+    """
+    from sli.reader import get_panel
+
+    panel = get_panel(asof)
+    if panel is None or panel.empty:
+        raise RuntimeError("SLI 面板为空，请先运行 python -m sli.update_monthly 生成快照")
+    meta = dict(panel.attrs.get("_sli_meta", {}))
+
+    if mode == "ind_no1":
+        pool = panel[panel["ind_rank_v2"].eq(1)].copy()
+    elif mode == "sub_no1":
+        pool = panel[panel["sub_rank"].eq(1)].copy()
+    elif mode == "absolute":
+        _b = panel["is_ABSOLUTE_LEADER"].astype(str).str.strip().str.lower()
+        pool = panel[_b.isin(["1", "1.0", "true", "yes", "y"])].copy()
+    else:
+        raise ValueError(f"未知 SLI 龙头口径: {mode}")
+    if pool.empty:
+        raise RuntimeError(f"SLI 口径[{SLI_MODES.get(mode, mode)}] 过滤后为空")
+
+    out = pd.DataFrame()
+    out["ts_code"] = pool["ts_code"].astype(str).str.strip()
+    out["name"] = pool["name"].fillna("").astype(str)
+    if "total_mv" in pool.columns:
+        out["市值(亿)"] = (pd.to_numeric(pool["total_mv"], errors="coerce") / 1e4).round(1)
+    if "sli_v2" in pool.columns:
+        out["SLI龙头分"] = pd.to_numeric(pool["sli_v2"], errors="coerce").round(1)
+    if "subsector" in pool.columns:
+        out["细分赛道"] = pool["subsector"]
+    if "l3_name" in pool.columns:
+        out["行业(L3)"] = pool["l3_name"]
+    if "leader_type_v2" in pool.columns:
+        out["龙头类型"] = pool["leader_type_v2"]
+    for c in ["or_yoy", "netprofit_yoy", "dt_netprofit_yoy"]:
+        if c in pool.columns:
+            out[c] = pd.to_numeric(pool[c], errors="coerce").round(2)
+    out["来源"] = "SLI龙头"
+    return out.reset_index(drop=True), meta
+
+
+def buy_point_type(daily: pd.DataFrame, vwap: float, peak_high: float,
+                   peak_low: float, price: float, ma20: float,
+                   vols: np.ndarray, closes: np.ndarray) -> tuple:
+    """EGPT 买点确认：买点2(回踩VWAP确认) > 买点1(放量突破) > 未突破"""
+    vwap_bt = vwap is not None and price > vwap
+    chip_bt = peak_low is not None and peak_high is not None and price > peak_high
+    confirm = False
+    if vwap_bt and chip_bt and ma20:
+        above_ma20 = price > ma20
+        vol_ratio = float(np.mean(vols[-5:])) / float(np.mean(vols[-20:])) if float(np.mean(vols[-20:])) > 0 else 99
+        has_dipped = any(closes[-i] <= vwap * 1.02 for i in range(1, min(11, len(closes) + 1)))
+        if above_ma20 and vol_ratio < 1.2 and has_dipped:
+            confirm = True
+    if vwap_bt and chip_bt and confirm:
+        return "买点2(缩量回踩VWAP确认)", True
+    if vwap_bt and chip_bt:
+        return "买点1(放量突破VWAP+筹码峰)", False
+    return "未突破", False
+
+
+def _push_cell(r, key, fmt="{:.1f}"):
+    v = r.get(key)
+    if v is None or (isinstance(v, float) and np.isnan(v)) or v == "":
+        return "--"
+    if isinstance(v, str):
+        return v
+    try:
+        return fmt.format(float(v))
+    except Exception:
+        return str(v)
+
+
+def _push_bp_short(bp) -> str:
+    s = str(bp)
+    if "买点2" in s:
+        return "买点2"
+    if "买点1" in s:
+        return "买点1"
+    return "未突破"
+
+
+def _push_table(lines, title, sub):
+    """推送 Markdown 表格（股票/买点/回踩分/回踩天数/净利/扣非/主题/现价/止损）"""
+    if len(sub) == 0:
+        return
+    total = len(sub)
+    lines.append(f"## {title}（{total} 只）")
+    lines.append("")
+    lines.append("| 股票 | 买点 | 回踩分 | 回踩日 | 净利 | 扣非 | 主题状态 | 现价 | 止损 |")
+    lines.append("|------|:---:|:---:|:---:|:---:|:---:|------|:---:|:---:|")
+    for _, r in sub.iterrows():
+        name = f"{r['名称']}({str(r['代码']).replace('.SZ', '').replace('.SH', '')})"
+        npg = r.get("净利增速")
+        npg_s = f"{npg:+.0f}%" if isinstance(npg, (int, float)) and not (isinstance(npg, float) and np.isnan(npg)) else "--"
+        dty = r.get("扣非增速")
+        dty_s = f"{dty:+.0f}%" if isinstance(dty, (int, float)) and not (isinstance(dty, float) and np.isnan(dty)) else "--"
+        th_s = str(r.get("主题状态", ""))
+        lines.append(
+            f"| {name} | {_push_bp_short(r.get('买点确认'))} | {_push_cell(r, '回踩买点分', '{:.0f}')} "
+            f"| {_push_cell(r, '回踩天数', '{:.0f}')} | {npg_s} | {dty_s} | {th_s} "
+            f"| {_push_cell(r, '现价', '{:.2f}')} | {_push_cell(r, 'ATR动态止损价', '{:.2f}')} |"
+        )
+    lines.append("")
+
+
+def build_push_msg(trade_date: str, buy, pool_label: str = "中报猎手") -> str:
+    """构建 EGPT 回踩择时的微信推送消息（Markdown）
+
+    仅保留「✅ 次日可买入」中买点未突破的信号（回踩中 × 回踩买点分≥60 × 未突破），
+    其余板块一律不推送。pool_label 用于区分输入池（中报猎手 / SLI龙头）。
+    """
+    from datetime import datetime
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines = []
+    lines.append(f"# {pool_label} × EGPT 回踩择时")
+    lines.append(f"报告日期: {trade_date} | 推送时间: {now}")
+    lines.append("")
+    lines.append("> 仅推送「✅ 次日可买入」且买点未突破：回踩中 × 回踩买点分≥60。")
+    lines.append("> 全样本回测: 未突破 T+1胜50.5%/T+20 +3.31%，优于买点1(+2.82%)/买点2(+1.43%)。")
+    lines.append("> 买点1/买点2、其余形态(首阳确认/回踩完成/洗盘缩量)及主题优选、v12、精选等板块不在本推送内，详见当日CSV。")
+    lines.append("")
+    _push_table(lines, "✅ 次日可买入 × 未突破（回踩中×分≥60）", buy)
+    if len(buy) == 0:
+        lines.append("> ✅ 次日可买入×未突破: 今日无信号，宁缺毋滥。")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--date", default=None, help="择时数据截止日 YYYYMMDD（默认最近交易日）")
+    ap.add_argument("--csv", default=None, help="手动指定输入CSV路径（默认：最新中报猎手名单 zhongbao_hunt_*.csv）")
+    ap.add_argument("--source", default="hunt", choices=list(SLI_MODES) + ["hunt"],
+                    help="默认输入源: hunt=最新中报猎手CSV(默认) / sli=SLI行业细分龙头池")
+    ap.add_argument("--sli_mode", default="ind_no1", choices=list(SLI_MODES),
+                    help="SLI龙头口径: ind_no1=每行业第一 / sub_no1=每细分赛道第一 / absolute=绝对龙头")
+    ap.add_argument("--push", action="store_true", help="运行后推送结果到微信(PushPlus)")
+    args = ap.parse_args()
+
+    trade_date = args.date or th.get_last_trade_date()
+    src, pool_meta = None, None
+    # 池标识：区分 CSV/推送留档文件名与跟踪库 strategy（hunt 保持原名，SLI 加 _sli 后缀）
+    pool_tag, pool_label = "", "中报猎手"
+    if args.csv:
+        csv_path = args.csv
+        if not os.path.exists(csv_path):
+            print(f"[错误] 输入CSV不存在: {csv_path}")
+            return
+        src = pd.read_csv(csv_path, encoding="utf-8-sig")
+        src_label, title = os.path.basename(csv_path), "中报猎手 × EGPT v12 回踩择时"
+    elif args.source == "hunt":
+        csv_path = find_latest_zhongbao_csv()
+        if csv_path is None or not os.path.exists(csv_path):
+            print(f"[错误] 未找到中报猎手CSV: {csv_path}")
+            return
+        src = pd.read_csv(csv_path, encoding="utf-8-sig")
+        src_label, title = os.path.basename(csv_path), "中报猎手 × EGPT v12 回踩择时"
+    else:
+        try:
+            src, pool_meta = load_sli_leader_pool(args.sli_mode)
+        except Exception as e:
+            print(f"[错误] SLI 龙头池加载失败: {e}")
+            return
+        src_label = (f"SLI[{SLI_MODES[args.sli_mode]}] 快照{pool_meta.get('snapshot_date', '?')}"
+                     f"（{pool_meta.get('age_days', '?')}天前, 面板{pool_meta.get('n_stocks', '?')}只）")
+        title = "SLI行业细分龙头 × EGPT v12 回踩择时"
+        pool_tag, pool_label = "_sli", "SLI龙头"
+
+    if "ts_code" not in src.columns:
+        print("[错误] 输入缺少 ts_code 列")
+        return
+
+    print("━" * 70)
+    print(f"  {title}")
+    print(f"  输入池: {src_label}")
+    print(f"  择时截止: {trade_date}")
+    print("━" * 70)
+    print(f"  标的数: {len(src)} 只")
+
+    config = load_config()
+    fetcher = DataFetcher(get_token(config), config)
+    start_date = (pd.Timestamp(trade_date) - pd.Timedelta(days=220)).strftime("%Y%m%d")
+
+    # 主题热度映射
+    print("  [加载主题热度]")
+    stock2theme, theme2etf, etf_series = load_theme_heat_map()
+
+    rows = []
+    for i, (_, r) in enumerate(src.iterrows()):
+        code = str(r["ts_code"]).strip()
+        name = str(r.get("name", ""))
+        if (i + 1) % 10 == 0 or i == 0:
+            print(f"  [{i+1}/{len(src)}] {name}({code})")
+
+        try:
+            daily = fetcher.get_daily_by_code(code, start_date=start_date, end_date=trade_date)
+        except Exception:
+            daily = None
+        if daily is None or len(daily) < 30:
+            rows.append({"代码": code, "名称": name, "形态阶段": "无形态", "次日操作": "--",
+                         "回踩买点分": np.nan, "回踩天数": 0,
+                         "主题": "", "主题热度%": np.nan, "主题状态": "冷门(无主题)"})
+            continue
+
+        daily = daily.sort_values("trade_date").reset_index(drop=True)
+        closes = daily["close"].astype(float).values
+        vols = daily["vol"].astype(float).values
+        price = float(closes[-1])
+        ma20 = float(np.mean(closes[-20:])) if len(closes) >= 20 else None
+        vwap = _calc_vwap(daily, 20)
+        atr = _calc_atr(daily, 14)
+        peak_low, peak_high, peak_ratio = _calc_chip_concentration_peak(daily, 60)
+
+        shape = analyze_shape(daily) or {}
+        bp, confirm = buy_point_type(daily, vwap, peak_high, peak_low, price, ma20, vols, closes)
+        dynamic_stop = round(price - 2.0 * atr, 2) if atr and atr > 0 else np.nan
+
+        # 主题热度: 取股票所属主题中热度最高者
+        themes = stock2theme.get(code, [])
+        theme, heat = "", np.nan
+        if themes:
+            best_t, best_h = None, None
+            for t in themes:
+                h = theme_heat_at(t, trade_date, theme2etf, etf_series)
+                if best_h is None or (h is not None and h > best_h):
+                    best_h, best_t = h, t
+            theme, heat = (best_t or ""), (best_h if best_h is not None else np.nan)
+
+        # 扣非增速（主题优选门槛: ≥50%）— 中报猎手CSV列名 dt_netprofit_yoy
+        dty_raw = r.get("dt_netprofit_yoy")
+        if dty_raw is None:
+            dty_raw = r.get("扣非增速")
+        dty = None
+        try:
+            if dty_raw is not None and str(dty_raw) not in ("", "nan"):
+                dty = float(dty_raw)
+        except Exception:
+            dty = None
+
+        rows.append({
+            "代码": code,
+            "名称": name,
+            "形态阶段": shape.get("stage", "无形态"),
+            "次日操作": shape.get("decision", "--"),
+            "回踩买点分": shape.get("pullback_score", np.nan),
+            "首阳日期": shape.get("first_yang_date", ""),
+            "首阳涨幅%": shape.get("first_yang_pct", ""),
+            "首阳量比": shape.get("first_yang_vr", ""),
+            "回踩天数": shape.get("pullback_days", 0),
+            "回踩缩量比": shape.get("pullback_shrink", ""),
+            "近10日最大回撤%": shape.get("max_dd10", ""),
+            "买点确认": bp,
+            "回踩确认": "✅ 是" if confirm else "否",
+            "现价": round(price, 2),
+            "当日涨幅%": round((closes[-1] / closes[-2] - 1) * 100, 2) if len(closes) >= 2 else np.nan,
+            "VWAP": round(vwap, 2) if vwap else np.nan,
+            "乖离VWAP%": round((price / vwap - 1) * 100, 2) if vwap and vwap > 0 else np.nan,
+            "MA20": round(ma20, 2) if ma20 else np.nan,
+            "筹码峰顶": round(peak_high, 2) if peak_high else np.nan,
+            "ATR动态止损价": dynamic_stop,
+            "主题": theme,
+            "主题热度%": round(heat * 100, 1) if isinstance(heat, float) and not np.isnan(heat) else np.nan,
+            "主题状态": theme_status(theme, heat, dty),
+        })
+
+    out = pd.DataFrame(rows)
+    # 合并业绩/来源（中报猎手CSV列名映射为展示列；SLI池列名已对齐）
+    merge_cols = [c for c in ["翻倍潜力分", "市值(亿)", "来源", "SLI龙头分", "细分赛道", "行业(L3)", "龙头类型"] if c in src.columns]
+    yoy_map = {"tr_yoy": "营收增速", "or_yoy": "营收增速", "netprofit_yoy": "净利增速", "dt_netprofit_yoy": "扣非增速"}
+    yoy_cols = [c for c in yoy_map if c in src.columns]
+    if merge_cols or yoy_cols:
+        rename = {"ts_code": "代码", **{c: yoy_map[c] for c in yoy_cols}}
+        out = out.merge(src[["ts_code"] + merge_cols + yoy_cols].rename(columns=rename),
+                        on="代码", how="left")
+        out["翻倍潜力分"] = pd.to_numeric(out.get("翻倍潜力分"), errors="coerce")
+        out["回踩买点分"] = pd.to_numeric(out.get("回踩买点分"), errors="coerce")
+
+    # 排序：次日可买入 → 观察等回踩 → 观察 → 等待首阳 → 无形态；组内按回踩买点分
+    out["_op"] = out["次日操作"].map(OP_ORDER).fillna(9)
+    out["_st"] = out["形态阶段"].map(STAGE_ORDER).fillna(9)
+    # 主题优选(白名单+甜区) 优先于 白名单 优先于 其他
+    out["_tp"] = out["主题状态"].apply(lambda s: 0 if s.endswith("(优选)") else (1 if "白名单" in s else 2))
+    out = out.sort_values(["_op", "_tp", "_st", "回踩买点分"], ascending=[True, True, True, False], na_position="last")
+    out = out.drop(columns=["_op", "_st", "_tp"]).reset_index(drop=True)
+
+    csv_out = os.path.join(REPORT_DIR, f"zhongbao_egpt_timing{pool_tag}_{trade_date}.csv")
+    out.to_csv(csv_out, index=False, encoding="utf-8-sig")
+    print(f"\n完整CSV已保存: {csv_out}")
+
+    def _fmt(v, fmt="{:.1f}"):
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return "--"
+        if isinstance(v, str) and v == "":
+            return "--"
+        try:
+            return fmt.format(float(v))
+        except Exception:
+            return str(v)
+
+    def _show(sub, title):
+        if len(sub) == 0:
+            print(f"\n{title}: 无")
+            return
+        print("\n" + "━" * 70)
+        print(f"  {title} ({len(sub)} 只)")
+        print("━" * 70)
+        for _, r in sub.iterrows():
+            pb = _fmt(r.get("回踩买点分"))
+            pot = _fmt(r.get("翻倍潜力分"))
+            if pot == "--":
+                pot = _fmt(r.get("SLI龙头分"))
+            npg = r.get("净利增速")
+            npg_s = f"净利{npg:+.0f}%" if isinstance(npg, (int, float)) and not (isinstance(npg, float) and np.isnan(npg)) else ""
+            dty = r.get("扣非增速")
+            dty_s = f"扣非{dty:+.0f}%" if isinstance(dty, (int, float)) and not (isinstance(dty, float) and np.isnan(dty)) else ""
+            py = r.get("首阳日期", "")
+            pd_ = r.get("回踩天数", 0)
+            sl = _fmt(r.get("ATR动态止损价"), "{:.2f}")
+            th = r.get("主题状态", "")
+            print(f"  {r['名称']}({r['代码']}) {npg_s} {dty_s} | 潜力{pot} 回踩{pb} | 阶段{r['形态阶段']} "
+                  f"回踩{pd_}日 首阳{py} 止损{sl}")
+            print(f"     买点:{r['买点确认']} 回踩确认:{r['回踩确认']} 现价{_fmt(r.get('现价'), '{:.2f}')} "
+                  f"VWAP{_fmt(r.get('VWAP'), '{:.2f}')} 乖离{_fmt(r.get('乖离VWAP%'), '{:+.2f}')}% "
+                  f"MA20{_fmt(r.get('MA20'), '{:.2f}')} 筹码峰{_fmt(r.get('筹码峰顶'), '{:.2f}')}")
+            if th:
+                print(f"     主题: {th}  ETF近20日{_fmt(r.get('主题热度%'))}%")
+
+    # ── v12 合并策略(egpt_track_review 复盘最优): 回踩中+热度甜区/无+涨幅<5%+缩量比<1.0+扣非≥50 ──
+    def _num(col):
+        s = out.get(col)
+        return pd.to_numeric(s, errors="coerce") if s is not None else pd.Series(np.nan, index=out.index)
+
+    _heat = _num("主题热度%")
+    _pct = _num("当日涨幅%")
+    _shr = _num("回踩缩量比")
+    _dty = _num("扣非增速")
+
+    # ── 🎯精选层（--funnel 回测验证）: 乖离VWAP≤3% × 实证白名单 ──
+    # 全形态 8769 笔验证: 只有"乖离VWAP"是单调有效门槛(3%>5%>8%>不限);
+    # 主题用实证白名单(原12主题白名单含半导体/创新药/AI算力/军工等拖累项)。
+    # 不设 L1(去噪)/L2(卡买点)——回测证明二者为负增益。
+    _gap = _num("乖离VWAP%")
+    pick = out[(out["形态阶段"].isin(PICK_STAGES))
+               & (_gap <= VWAP_GAP_MAX * 100)
+               & (out["主题"].isin(EMPIRICAL_WHITELIST))].copy()
+    _show(pick, f"🎯精选层（乖离VWAP≤{VWAP_GAP_MAX * 100:.0f}%×实证白名单·回测T+5跨年为正）")
+
+    v12 = out[(out["形态阶段"] == "回踩中") & (((_heat >= 5) & (_heat < 15)) | _heat.isna())
+              & (_pct < 5) & (_shr < 1.0) & (_dty >= 50)].copy()
+    _show(v12, "🏆 v12合并策略（回踩中×热度甜区/无×涨幅<5%×缩量比<1.0×扣非≥50）")
+
+    # 🎯 主题优选: 白名单×甜区×扣非≥50 + 可操作信号。
+    # 回测(20260819): 优选组内 未突破 T+20 -6.5% 拖累组合(买点1 T+20 +6.4%)→ 未突破降级观察
+    pref_all = out[(out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩"]))
+                   & (out["主题状态"].str.endswith("(优选)", na=False))]
+    pref = pref_all[pref_all["买点确认"].astype(str) != "未突破"]
+    pref_watch = pref_all[pref_all["买点确认"].astype(str) == "未突破"]
+    _show(pref, "🎯 主题优选（白名单×甜区×扣非≥50×突破确认）")
+    if len(pref_watch):
+        _show(pref_watch, "主题优选内未突破→降级观察(回测T+20 -6.5%)")
+
+    # 推送口径(20260919调整): 「✅次日可买入」内只保留买点未突破。
+    # 依据 --funnel 全形态 8769 笔: 未突破 T+1胜50.5%/T+5 +1.55%/T+20 +3.31%，
+    # 优于买点1(T+20 +2.82%)/买点2(T+20 +1.43%)；主题优选组合内(41笔)结论相反，此处按全样本口径取未突破。
+    buy = out[(out["次日操作"] == "✅ 次日可买入")
+              & (out["买点确认"].astype(str) == "未突破")]
+    watch = out[out["次日操作"].isin(["⚠️ 次日观察等回踩", "⚠️ 观察"])]
+    rest = out[~out["次日操作"].isin(["✅ 次日可买入", "⚠️ 次日观察等回踩", "⚠️ 观察"])]
+
+    _show(buy, "✅ 次日可买入×未突破（回踩中×分≥60，全样本T+20最优）")
+    _show(watch, "⚠️ 观察 / 等回踩（形态未确认，需触发）")
+    _show(rest, "❌ 不买入 / 无形态")
+
+    # 买点1 × 高热度(≥15%) 追高警示（回测: T+5胜率15.4%/均值-2.2% = 灾难）
+    hot_bp = out[(out["买点确认"].astype(str).str.startswith("买点1", na=False))
+                 & (out["主题状态"].astype(str).str.contains("高热度", na=False))]
+    if len(hot_bp):
+        print("\n" + "─" * 70)
+        print(f"  ⚠️ 买点1(放量突破)×高热度(ETF20日≥15%) {len(hot_bp)} 只 = 追高风险，回测T+5胜率仅15%，回避")
+        for _, r in hot_bp.iterrows():
+            print(f"     {r['名称']}({r['代码']}) 主题:{r['主题状态']}")
+
+    print("\n" + "─" * 70)
+    print(f"  🎯精选层门槛(--funnel 验证20260819)：乖离VWAP≤{VWAP_GAP_MAX*100:.0f}% × 实证白名单 → {len(pick)} 只；"
+          "原漏斗 L1(去噪)/L2(卡买点) 经回测为负增益，已弃用。")
+    print("  提示(推送口径20260919)：全样本8769笔回测中 未突破 T+1胜50.5%/T+20 +3.31%，优于买点1(+2.82%)/买点2(+1.43%)，")
+    print("  故推送只留「✅次日可买入×未突破」；不写跟踪库；高热度(≥15%)回避；止损=现价-2×ATR。")
+
+    # ── 微信推送（--push）：复用 EGPT 推送的 PushPlus 通道，消息留档 ──
+    if args.push:
+        try:
+            msg = build_push_msg(trade_date, buy, pool_label=pool_label)
+            push_file = os.path.join(REPORT_DIR, f"zhongbao_egpt_推送{pool_tag}_{trade_date}.txt")
+            with open(push_file, "w", encoding="utf-8") as f:
+                f.write(msg)
+            print(f"\n推送消息已留档: {push_file}")
+            print(msg[:400] + ("..." if len(msg) > 400 else ""))
+            ok = push_to_wechat(msg, title=f"{pool_label}×EGPT 回踩择时 {trade_date}")
+            if ok:
+                print(f"✅ 微信推送成功 (标题: {pool_label}×EGPT 回踩择时 {trade_date})")
+            else:
+                print("❌ 微信推送失败：PushPlus 未返回成功。"
+                      f"请检查 PUSHPLUS 环境变量/Token 是否有效，消息已留档: {push_file}")
+        except Exception as e:
+            print(f"❌ 微信推送失败(异常): {type(e).__name__}: {e}")
+            print("   请检查 PUSHPLUS 环境变量与网络连通性（https://www.pushplus.plus/send）")
+
+
+if __name__ == "__main__":
+    main()

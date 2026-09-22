@@ -211,7 +211,7 @@ print(panel["lifecycle"].value_counts().to_dict())
 
 show = ["name", "l3_name", "subsector", "sli_v2", "product_position",
         "product_purity", "growth_v2", "leader_type_v2", "dominance",
-        "NEXT_LEADER", "LEADER_CHALLENGER", "LEADER_EARNINGS_TURN", "SUPER_LEADER"]
+        "NEXT_LEADER_V2", "LEADER_CHALLENGER", "LEADER_EARNINGS_TURN", "SUPER_LEADER"]
 print("\n=== 面板（按 sli_v2）===")
 print(panel.sort_values("sli_v2", ascending=False)[show].round(1).to_string(index=False))
 

@@ -67,7 +67,7 @@ LEADER_V2_COLS = [
     ("Market", "market_v2"), ("Trend", "trend_v2"),
     ("赛道排名", "sub_rank"), ("行业排名", "ind_rank_v2"),
     ("龙头类型", "leader_type_v2"), ("Dominance", "dominance"),
-    ("生命周期", "lifecycle"), ("NEXT", "NEXT_LEADER"),
+    ("生命周期", "lifecycle"), ("NEXT", "NEXT_LEADER_V2"),
     ("CHALLENGER", "LEADER_CHALLENGER"), ("拐点", "LEADER_EARNINGS_TURN"),
     ("SUPER", "SUPER_LEADER"),
 ]
@@ -83,9 +83,12 @@ SUBSECTOR_TOP_COLS = [
 NEXT_V2_COLS = [
     ("排名", "rank"), ("代码", "ts_code"), ("名称", "name"),
     ("三级行业", "l3_name"), ("细分赛道", "subsector"),
+    ("行业景气档", "ind_boom_tier"), ("行业景气分", "ind_boom"),
+    ("中长线潜力分", "mid_long_score"),
     ("SLI_V2", "sli_v2"), ("Growth", "growth_v2"),
     ("Product", "product_position"), ("Market", "market_v2"),
-    ("Challenger", "challenger_score"), ("SLI_V2提升", "sli_v2_delta"),
+    ("确认项", "next_confirm_count"), ("PE_TTM", "pe_ttm"),
+    ("总市值", "total_mv"), ("SLI_V2提升", "sli_v2_delta"),
     ("龙头类型", "leader_type_v2"), ("生命周期", "lifecycle"),
 ]
 
@@ -330,16 +333,14 @@ class SliReport:
         return path
 
     def next_leader_v2_report(self, panel: pd.DataFrame, date: str,
-                              top: Optional[int] = 30) -> str:
-        """输出3：下一代龙头 Top30（NEXT_LEADER=TRUE，按 ChallengerScore+Growth+SLI增速排序）。"""
-        p = panel[panel["NEXT_LEADER"] == True].copy()  # noqa: E712
+                              top: Optional[int] = None) -> str:
+        """输出3：中长线潜力池（NEXT_LEADER_V2=TRUE，按 mid_long_score 降序）。"""
+        p = panel[panel["NEXT_LEADER_V2"] == True].copy()  # noqa: E712
         if p.empty:
             p = panel.loc[[], [c for _, c in NEXT_V2_COLS if c in panel.columns]]
         else:
             p["sli_v2_delta"] = p["sli_v2_T"] - p["sli_v2_T60"]
-            p["_key"] = (p["challenger_score"].fillna(0)
-                         + p["growth_v2"].fillna(0)
-                         + p["sli_v2_delta"].clip(0))
+            p["_key"] = pd.to_numeric(p["mid_long_score"], errors="coerce").fillna(0.0)
             p = p.sort_values("_key", ascending=False).reset_index(drop=True)
             p.insert(0, "rank", np.arange(1, len(p) + 1))
             if top:
@@ -347,12 +348,12 @@ class SliReport:
         out = _pick(p, NEXT_V2_COLS)
         path = os.path.join(self.output_dir, f"sli_v2_next_leader_{date}.csv")
         out.to_csv(path, index=False, encoding="utf-8-sig")
-        logger.info("下一代龙头Top30已写入 %s（%d 行）", path, len(out))
+        logger.info("中长线潜力池已写入 %s（%d 行）", path, len(out))
         return path
 
     def earnings_turn_report(self, panel: pd.DataFrame, date: str,
-                             top: Optional[int] = 30) -> str:
-        """输出4：龙头+业绩拐点 Top30（SLI_V2≥80 且拐点）。"""
+                             top: Optional[int] = None) -> str:
+        """输出4：龙头+业绩拐点（SLI_V2≥80 且拐点）。"""
         p = panel[panel["LEADER_EARNINGS_TURN"] == True].copy()  # noqa: E712
         if p.empty:
             p = panel.loc[[], [c for _, c in TURN_V2_COLS if c in panel.columns]]
@@ -387,7 +388,7 @@ class SliReport:
                              ("成长龙头", "is_GROWTH_LEADER"),
                              ("盈利龙头", "is_PROFIT_LEADER"),
                              ("挑战者", "is_CHALLENGER"),
-                             ("下一代龙头", "NEXT_LEADER")):
+                             ("下一代龙头", "NEXT_LEADER_V2")):
                 m = g[g.get(col, False) == True]  # noqa: E712
                 d[typ] = str(m.iloc[0].get("name", "")) if len(m) else ""
             rows.append(d)
@@ -407,17 +408,17 @@ class SliReport:
             return ""
         g["growth_v2"] = pd.to_numeric(g["growth_v2"], errors="coerce")
         g["sli_v2"] = pd.to_numeric(g["sli_v2"], errors="coerce")
-        # NEXT_LEADER 列统一为布尔（兼容内存 bool 与 CSV 回读字符串）
-        if "NEXT_LEADER" in g.columns:
-            g["NEXT_LEADER"] = (g["NEXT_LEADER"].fillna(False).astype(str)
-                                .str.strip().str.lower().isin(["true", "1", "yes", "t"]))
+        # NEXT_LEADER_V2（中长线潜力池）列统一为布尔（兼容内存 bool 与 CSV 回读字符串）
+        if "NEXT_LEADER_V2" in g.columns:
+            g["NEXT_LEADER_V2"] = (g["NEXT_LEADER_V2"].fillna(False).astype(str)
+                                   .str.strip().str.lower().isin(["true", "1", "yes", "t"]))
         grp_key = g["l3_code"].astype(str) + "|" + g.get("subsector", "").fillna("").astype(str)
         rows = []
         for _, sub in g.groupby(grp_key):
             sub = sub.sort_values("sli_v2", ascending=False)
             gl = sub.loc[sub["growth_v2"].idxmax()]
-            if "NEXT_LEADER" in sub.columns:
-                nl = sub[sub["NEXT_LEADER"] == True]  # noqa: E712
+            if "NEXT_LEADER_V2" in sub.columns:
+                nl = sub[sub["NEXT_LEADER_V2"] == True]  # noqa: E712
             else:
                 nl = sub.iloc[0:0]
             d = {

@@ -159,7 +159,15 @@ TRADE_ALPHA_W = {
 
 # 特殊标签
 SPECIAL_TAGS = ["LEADER_NO_TRADE", "LEADER_EARNINGS_TURN",
-                "LEADER_BREAKOUT", "NEXT_LEADER"]
+                "LEADER_BREAKOUT", "NEXT_LEADER", "NEXT_LEADER_V2"]
+
+# ══ 池命名（项目内唯一，供下游策略统一引用）══════════════
+# 中长线潜力池（全池，无 mid_long_score 额外门槛）：
+#   产出 classify.next_leader_v2 → 面板布尔列 NEXT_LEADER_V2
+#   读取 sli.reader.get_next_leaders()
+# 与 V1 special_tags 的 NEXT_LEADER（SLI 65~85 的「下一代龙头」）区分开——
+# 两者曾共用同名列，下游无法判断读到的是哪套口径。
+POOL_MIDLONG_V2 = "NEXT_LEADER_V2"
 
 # ══════════════════════════════════════════════════════
 # SLI V2 龙头分类阈值
@@ -176,9 +184,42 @@ CLS_V2 = {
     "emerging": {"sli": 65, "growth": 85, "market": 80,
                  "sli60_delta": 5.0},
     "next_leader": {
-        "sli": 65, "growth": 85, "product": 70, "market": 75,
-        "sli60_delta": 5.0,
-        "confirm_min": 2,       # 利润加速/产品收入增长/份额提升/产能扩张 至少满足2项
+        # 硬门槛仅3项（细分地位/成长/SLI），按行业景气档位阶梯化：
+        # 高景气行业放宽细分龙头门槛，低景气行业收紧。
+        # 原 market/sli60_delta 硬门槛已降级为打分项（见 score_w）——market_v2
+        # 在 SLI_V2 里权重仅 5%，作为硬门槛却一票否决掉 2/3 候选，逻辑不自洽。
+        "boom_tiers": {
+            "高": {"sli": 58, "growth": 72, "product": 52},
+            "中": {"sli": 65, "growth": 80, "product": 70},
+            "低": {"sli": 72, "growth": 85, "product": 82},
+        },
+        # ind_boom 分档切点：行业横截面【分位】而非分数，保证三档各约占 1/3
+        "boom_cuts": (0.3333, 0.6667),
+        # ind_boom 权重：行业主力成长 / 行业主力利润加速 / 价格相对强度
+        # 三个分项均按「市值加权」度量行业主力，避免尾部小市值公司稀释景气判定
+        "boom_w": {"growth": 0.50, "accel": 0.30, "rs": 0.20},
+        # 动量门槛（替代原 85 分数上界）：要求 SLI_V2 当期相对 60 日前未明显
+        # 回落。原上界「SLI_V2>85 即剔除」把产业地位最强、盈利质量最高的一批
+        # （紫金矿业/卫星化学/石药创新等）系统性剔除，与「中长线有潜力上涨」
+        # 目标方向相反——真正该问的是「还在不在变强」，而非「分数是否太高」。
+        "sli_drop_tol": 2.0,
+        # 打分项权重（合计 1.0）：mid_long_score 用于池内排序与入选阈值
+        "score_w": {
+            "sli": 0.20,          # 产业地位（中长线根基，避免唯便宜/唯成长）
+            "market": 0.15,       # 赛道内相对强度
+            "sli60_delta": 0.15,  # SLI_V2 60日改善幅度
+            "confirm": 0.15,      # 增长确认项数（利润加速/产品增长/份额提升）
+            "valuation": 0.20,    # 三级行业内 pe_ttm 分位（越便宜越高分）
+            "size": 0.15,         # 市值规模（流动性 / 抗经营波动）
+        },
+        "size_full_mv": 100.0,  # 市值达标线（亿元）：达到即满分，不奖励巨型股
+        # mid_long_score 入选阈值。经 sli.backtest 20230630~20260921（40 期点）
+        # 校准：池相对全市场等权超额 20日+0.3% / 60日+2.0% / 120日+3.6% /
+        # 250日+5.3%（t=2.0），相对沪深300 250日+17.5%（t=4.7），超额随持有期
+        # 拉长而扩大；阈值 55~82 的差异在噪声内，70 在 250 日口径最优。
+        "score_min": 70.0,
+        "confirm_min": 1,     # 增长确认项数下限（纯0项说明成长故事无支撑）
+        "val_neutral": 50.0,  # 估值分位不可用（亏损/缺失）时的中性分
     },
     "super_leader": {"sli": 85, "growth": 70, "ind_rs60": 0.0,
                      "accel": 0.0},   # 高龙头质量 × 高行业景气 × 利润加速
@@ -210,6 +251,8 @@ BACKTEST_PERIODS = [
 BACKTEST_YEARS = [2023, 2024, 2025, 2026]
 BACKTEST_HORIZONS = [20, 60, 120, 250]
 BACKTEST_BENCH = {"hs300": "000300.SH", "csi1000": "000852.SH"}
+# 中长线潜力池入选阈值校准网格（score_min 候选值）
+BACKTEST_NL_SCORE_GRID = [55, 60, 65, 70, 72, 75, 78, 80, 82]
 
 # 市场范围
 INCLUDE_BJ = False   # 龙头池剔除北交所（下游交易系统不交易北交所）

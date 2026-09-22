@@ -140,6 +140,18 @@ MARKET_AMOUNT_MIN_MINUTES = 5
 # 量能因子参与评分/仓位时要求的最小已交易分钟数(比展示更严格, 避免早盘外推误差扰动分数)
 MARKET_AMOUNT_MIN_MINUTES_SCORE = 30
 
+# SLI 中长线潜力池(NEXT_LEADER_V2): 盘中涨幅首次达到该值即预警
+# (尾盘扫描只认回踩, 盘中拉起会被当追高剔除, 需提前告知)
+# 池子口径 sli.reader.get_next_leaders(), 即 config.POOL_MIDLONG_V2 全池, 约200只
+# (按 mid_long_score 降序); 预警侧不再叠加分数门槛, 与池定义保持一致。
+SLI_LAUNCH_PCT = 3.0
+# 池子行情全量刷新间隔(秒): 池子不在主题池内, 需自行补拉; 全池约200只仍只1个HTTP请求, 可每分钟跑
+SLI_POOL_QUOTE_REFRESH_SEC = 60
+# 启动预警推送冷却(秒): 汇总后限流, 冷却期内触发累积到下一次汇总
+SLI_LAUNCH_PUSH_COOLDOWN = 600
+# 单条汇总最多列出只数(其余只报数量)
+SLI_LAUNCH_TOP_N = 10
+
 
 def elapsed_trade_minutes(now):
     """当日开盘后已完成的交易分钟数(0~240), 午休 11:30~13:00 不计入"""
@@ -178,6 +190,10 @@ class RealtimeThemeMonitor:
         self.index_quotes_cache = {}  # 三大指数实时行情 name -> {pct_chg,...}
         self.market_amount_cache = {}      # 当日两市累计成交额 {'amount': 元, 'updated': 时间戳}
         self._amount_baseline_cache = {}   # 近N日成交额基准缓存(每日算一次)
+
+        # ── 交易日历缓存(供 _get_last_trade_date 使用,按自然日刷新) ──
+        self._trade_cal_days = None        # set(trade_date) 或 None(日历不可用)
+        self._trade_cal_anchor = None      # 缓存所对应的自然日
 
         # ── 主题数据 ──
         self.theme_stocks = {}      # theme_name -> [(ts_code, name, layer)]
@@ -229,6 +245,13 @@ class RealtimeThemeMonitor:
         self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
         self.last_market_action_alert = 0      # 大盘动作信号冷却
         self._market_action_triggered = {}     # 防重复: {条件名: 触发时间}
+        # SLI 中长线潜力池盘中启动预警: 池子/行情独立于 self.quotes(避免污染市场广度与涨跌停统计)
+        self._sli_pool_cache = None            # (当日, 池子DataFrame, 快照meta)
+        self.sli_pool_quotes = {}              # ts_code -> quote(池子专用行情)
+        self._sli_pool_quote_time = 0          # 池子行情上次全量刷新时间
+        self._sli_launched = {}                # ts_code -> 首次触发时间(当日去重), '_date' 记日期
+        self._sli_launch_pending = []          # 冷却期内累积的触发, 下次汇总一并推送
+        self._sli_launch_push_time = 0         # 上次汇总推送时间(冷却用)
         # 尾盘信号跟踪表(用于未来交易日盘后回填和胜率分析)
         self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
         self._init_tail_tracker()
@@ -552,15 +575,7 @@ class RealtimeThemeMonitor:
             print("⚠ Tushare不可用,无法获取收盘价")
             return
 
-        from datetime import datetime as dt
-        now = dt.now()
-
-        if now.hour < 15:
-            query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
-        else:
-            query_date = now.strftime('%Y%m%d')
-
-        trade_date = self._get_last_trade_date()  # 使用独立函数,避免依赖Tushare
+        trade_date = self._get_last_trade_date()  # 交易日历口径:15:00 前=上一交易日
 
         cache_file = os.path.join(CACHE_DIR, f"ref_prices_{trade_date}.pkl")
 
@@ -644,7 +659,7 @@ class RealtimeThemeMonitor:
         import pickle
         from datetime import datetime as dt_dt
 
-        # 直接从 Tushare 交易日历获取最近交易日,不再依赖缓存文件存在性
+        # 交易日历口径取最近交易日(15:00 前=上一交易日),不再依赖 index_kline pkl 文件是否存在
         trade_date = self._get_last_trade_date()
         self.index_klines = {}   # name -> DataFrame(cols: close, vol, high, low, pct_chg)
 
@@ -710,27 +725,51 @@ class RealtimeThemeMonitor:
         for name, df in self.index_klines.items():
             print(f"   ✅ {name}({INDEX_CODES[name]}): {len(df)} 根K线,最新收盘={df['close'].iloc[-1]:.2f}")
 
+    def _load_trade_cal(self):
+        """加载交易日历(进程内按自然日缓存一份,避免重复请求 Tushare);获取失败返回 None"""
+        today = datetime.now().strftime('%Y%m%d')
+        if self._trade_cal_days is not None and self._trade_cal_anchor == today:
+            return self._trade_cal_days
+
+        days = None
+        if TS_AVAILABLE and pro is not None and os.getenv('TUSHARE_TOKEN'):
+            try:
+                start = (datetime.now() - timedelta(days=90)).strftime('%Y%m%d')
+                end = (datetime.now() + timedelta(days=10)).strftime('%Y%m%d')
+                cal_df = pro.trade_cal(
+                    exchange='SSE', start_date=start, end_date=end,
+                    is_open='1', fields='cal_date,is_open'
+                )
+                if cal_df is not None and not cal_df.empty:
+                    days = set(str(d) for d in cal_df['cal_date'])
+            except Exception as e:
+                print(f"⚠ Tushare trade_cal 获取失败, 回退自然日推算: {e}")
+
+        self._trade_cal_days = days
+        self._trade_cal_anchor = today
+        return days
+
     def _get_last_trade_date(self, include_today=False):
         """
         返回交易日 YYYYMMDD
 
+        日期取 Tushare trade_cal 交易日历(避免周末/节假日指向非交易日),日历不可用时退化为自然日推算。
         include_today=False(默认): 15:00 收盘前只认"上一交易日",供昨收/基准/因子等已收盘数据调用
         include_today=True: 把"当日"纳入候选,供盘中/尾盘信号落库调用(尾盘信号属于当日)
         """
-        from datetime import datetime
         now = datetime.now()
         if include_today or now.hour >= 15:
             q = now.strftime('%Y%m%d')
         else:
             q = (now - timedelta(days=1)).strftime('%Y%m%d')
-        # 根据缓存文件存在性回退
-        for offset in range(7):
+
+        days = self._load_trade_cal()
+        if not days:
+            return q
+        for offset in range(15):
             cand = (datetime.strptime(q, '%Y%m%d') - timedelta(days=offset)).strftime('%Y%m%d')
-            for ts_code in INDEX_CODES.values():
-                p = os.path.join(CACHE_DIR, f"index_kline_{ts_code}_{cand}.pkl")
-                if os.path.exists(p):
-                    return cand
-        # 默认用最新 query_date
+            if cand in days:
+                return cand
         return q
 
     def _fetch_ref_prices_from_sina(self, codes):
@@ -3641,7 +3680,16 @@ class RealtimeThemeMonitor:
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
 
-                # ── 14:50后每2分钟扫描「猎尾V4」中报池最佳回踩 ──
+                # ── SLI下一代龙头池盘中启动预警(涨幅>=3%) → 推送 ──
+                try:
+                    launch_alerts = self.check_sli_launch_alerts(now)
+                except Exception as e:
+                    launch_alerts = []
+                    print(f"  ⚠ SLI启动预警异常: {e}")
+                if launch_alerts:
+                    self.push_alerts(launch_alerts, now)
+
+                # ── 14:50后每2分钟扫描「猎尾V4」SLI中长线潜力池最佳回踩 ──
                 if now.hour == 14 and now.minute >= 50:
                     if time.time() - self.last_tail_entry_scan_time >= 120:
                         tail_signals = self.scan_tail_recovery_v3()
@@ -3652,17 +3700,17 @@ class RealtimeThemeMonitor:
                         if tail_signals:
                             # 控制台输出
                             print(f"\n{'='*110}")
-                            print(f"🎯 「猎尾V4」中报池回踩信号 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'主题':<10} {'总分':>4} {'量化':>5} {'二次':>4} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
+                            print(f"🎯 「猎尾V4」SLI中长线潜力池回踩信号 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'赛道':<10} {'总分':>4} {'潜力':>5} {'二次':>4} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
                             print(f"{'-'*110}")
                             for i, s in enumerate(tail_signals[:10], 1):
                                 d = s.get('detail', {})
                                 emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
                                 vol_label = str(d.get('tail_vol_label', '-'))
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>4} {d.get('quant_score', 0):>5.1f} {d.get('realtime_score', 0):>4} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>4} {d.get('mid_long_score', 0):>5.1f} {d.get('realtime_score', 0):>4} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
                             print(f"{'='*110}\n")
 
-                            # 推送信号到微信: 中报池回踩形态≥65分推送
+                            # 推送信号到微信: SLI池回踩形态≥65分推送
                             buy_signals = [s for s in tail_signals if s.get('total_score', 0) >= 65]
                             if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
                                 lines = []
@@ -3673,10 +3721,11 @@ class RealtimeThemeMonitor:
                                     if d.get('rise_gap_vwap', 0) < 0: feats.append(f"贴VWAP{d['rise_gap_vwap']:+.1f}%")
                                     vol_label = str(d.get('tail_vol_label', ''))
                                     if vol_label.startswith('缩量'): feats.append(f"尾盘{vol_label}")
-                                    if d.get('chip_conc', 0) > 50: feats.append(f"筹码{d['chip_conc']:.0f}%")
+                                    if d.get('sector_rank') == 1: feats.append('赛道龙头')
                                     feat_str = ' '.join(feats) if feats else ''
-                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} 量化{d.get('quant_score', 0):.1f}/二次{d.get('realtime_score', 0)} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{d.get('buy_point', '')}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
-                                content = f"🎯 「猎尾V4」中报池回踩买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
+                                    rank_tag = f"赛道#{d['sector_rank']}" if d.get('sector_rank') else ''
+                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} 潜力{d.get('mid_long_score', 0):.1f}/二次{d.get('realtime_score', 0)} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{rank_tag}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
+                                content = f"🎯 「猎尾V4」SLI中长线潜力池回踩买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
                                 self.send_wechat(f"🎯 猎尾V4回踩 {now.strftime('%H:%M')}", content)
 
                         self.last_tail_entry_scan_time = time.time()
@@ -4797,14 +4846,11 @@ class RealtimeThemeMonitor:
     # 猎尾V4: 中报优质股池最佳回踩 (学习 push_washout_recovery.py)
     # ════════════════════════════════════════════
 
-    def _fetch_recovery_quotes(self, ts_codes):
-        """按需补拉指定股票实时行情(新浪),合并进 self.quotes (中报池不在主题池内的股票用)"""
-        need = [c for c in ts_codes if c not in self.quotes or not self.quotes.get(c)]
-        if not need:
-            return {}
+    def _fetch_sina_quotes(self, codes, batch_size=80):
+        """批量拉取新浪实时行情, 返回 {ts_code: quote}; 不写入任何状态(调用方决定并入哪里)"""
         quote_map = {}
-        for offset in range(0, len(need), 80):
-            batch = need[offset:offset + 80]
+        for offset in range(0, len(codes), batch_size):
+            batch = codes[offset:offset + batch_size]
             sina_list = []
             for code in batch:
                 if code.endswith('.SH'):
@@ -4858,69 +4904,244 @@ class RealtimeThemeMonitor:
                     except (IndexError, ValueError):
                         continue
             except Exception as e:
-                print(f"  ⚠ 中报池补拉行情失败: {e}")
-        if quote_map:
-            self.quotes.update(quote_map)
+                print(f"  ⚠ 批量补拉行情失败: {e}")
         return quote_map
+
+    def _refresh_sli_pool_quotes(self, pool, force=False):
+        """
+        刷新 SLI 池专用实时行情(启动预警与「猎尾V4」尾盘回踩共用)
+
+        写入 self.sli_pool_quotes 而非 self.quotes —— 池成员多为非主题池股票, 混入主行情
+        会污染市场广度/涨跌停/市场情绪统计。按 SLI_POOL_QUOTE_REFRESH_SEC 限频。
+        """
+        if not force and time.time() - self._sli_pool_quote_time < SLI_POOL_QUOTE_REFRESH_SEC:
+            return
+        fetched = self._fetch_sina_quotes(list(pool['ts_code']), batch_size=180)
+        if fetched:
+            self.sli_pool_quotes.update(fetched)
+        self._sli_pool_quote_time = time.time()
+
+    def _load_sli_pool(self):
+        """
+        加载 SLI 中长线潜力池(NEXT_LEADER_V2, 盘中启动预警与「猎尾V4」尾盘回踩共用)
+
+        口径: sli.reader.get_next_leaders —— 全池(config.POOL_MIDLONG_V2)一次取回,
+        由景气档位下的 SLI_V2/Growth/Product 三硬门槛 + SLI_V2 60日动量门槛 +
+        mid_long_score≥score_min 决定, 按 mid_long_score 降序; 约200只
+        (每日随快照更新, 非固定池)。预警侧不再按分数收口, 与池定义保持一致。
+        结果按当日缓存(快照盘后重算, 日内不变)。
+        返回 (pool_df, meta); 无快照或加载失败返回 (None, {})
+        """
+        today = datetime.now().strftime('%Y%m%d')
+        if self._sli_pool_cache and self._sli_pool_cache[0] == today:
+            return self._sli_pool_cache[1], self._sli_pool_cache[2]
+        try:
+            from sli.reader import get_next_leaders
+            panel = get_next_leaders(asof=today, top=None)
+        except Exception as e:
+            print(f"  ⚠ SLI 中长线潜力池加载失败, 跳过: {e}")
+            return None, {}
+        cols = [c for c in ('ts_code', 'name', 'subsector', 'l3_name', 'rank',
+                            'mid_long_score', 'sli_v2', 'sub_rank',
+                            'leader_type_v2') if c in panel.columns]
+        pool = panel[cols].copy()
+        pool['ts_code'] = pool['ts_code'].astype(str).str.strip()
+        pool = pool[pool['ts_code'] != '']
+        # rank 是池内排名(按中长线潜力分, 1=综合最强), 与赛道内 sub_rank 区分开
+        pool = pool.rename(columns={'rank': 'nl_rank'})
+        meta = dict(panel.attrs.get('_sli_meta', {}) or {})
+        self._sli_pool_cache = (today, pool, meta)
+        age = meta.get('age_days')
+        warn = f" ⚠快照已{age}天未更新" if isinstance(age, int) and age > 5 else ''
+        print(f"  [SLI] 中长线潜力池 {len(pool)}只(NEXT_LEADER_V2 全池)"
+              f" 快照{meta.get('snapshot_date', '?')}{warn}")
+        return pool, meta
+
+    def check_sli_launch_alerts(self, now):
+        """
+        SLI 中长线潜力池「盘中启动预警」
+
+        池成员盘中直接拉起时, 尾盘回踩扫描(scan_tail_recovery_v3)只会把它当追高剔除,
+        盯盘者全程无感知; 故盘中涨幅首次达到 SLI_LAUNCH_PCT(3%) 即记录并汇总推送。
+        池子取 NEXT_LEADER_V2 全池(约200只, 不再按 mid_long_score 收口),
+        单看3%日均40只量级, 由汇总+冷却+每只每日一次控制推送频率。
+
+        池子行情单独维护在 self.sli_pool_quotes(不并入 self.quotes, 避免污染市场广度/涨跌停
+        统计), 每 SLI_POOL_QUOTE_REFRESH_SEC 全量刷新一次; 主题池内的成员直接用主循环的实时
+        行情(更新鲜)。冷却期内触发累积到下一次汇总; 每只股票每交易日只报一次。
+
+        返回 alerts 列表({type:'sli_launch', msg})
+        """
+        if now.hour >= 15 or (now.hour == 9 and now.minute < 35):
+            return []
+
+        today = now.strftime('%Y%m%d')
+        if self._sli_launched.get('_date') != today:   # 跨日: 重置去重与汇总缓冲
+            self._sli_launched = {'_date': today}
+            self._sli_launch_pending = []
+            self._sli_launch_push_time = 0
+
+        pool, _meta = self._load_sli_pool()
+        if pool is None or pool.empty:
+            return []
+
+        self._refresh_sli_pool_quotes(pool)
+
+        last_trade_date = self._get_last_trade_date()
+
+        def _num(v):
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return 0.0
+            return 0.0 if f != f else f     # NaN 归零
+
+        for _, row in pool.iterrows():
+            ts_code = row['ts_code']
+            if ts_code in self._sli_launched:
+                continue
+            q = self.quotes.get(ts_code) or self.sli_pool_quotes.get(ts_code)
+            if not q or q.get('price', 0) <= 0:
+                continue
+            pct = float(q.get('pct_chg') or 0)
+            if pct < SLI_LAUNCH_PCT:
+                continue
+            self._sli_launched[ts_code] = now.strftime('%H:%M')
+
+            sub_rank = _num(row.get('sub_rank'))
+            nl_rank = _num(row.get('nl_rank'))
+            ltype = str(row.get('leader_type_v2') or '').strip()
+            self._sli_launch_pending.append({
+                'name': str(row.get('name', '')).strip(),
+                'ts_code': ts_code,
+                'pct': pct,
+                'time': now.strftime('%H:%M'),
+                'sector': str(row.get('subsector') or row.get('l3_name') or '').strip(),
+                'rank': f"·赛道第{int(sub_rank)}" if sub_rank > 0 else '',
+                'nl_rank': f" 下一代#{int(nl_rank)}" if nl_rank > 0 else '',
+                'sli': _num(row.get('sli_v2')),
+                'ltype': f" {ltype}" if ltype and ltype != 'NONE' else '',
+            })
+
+        if not self._sli_launch_pending:
+            return []
+        if time.time() - self._sli_launch_push_time < SLI_LAUNCH_PUSH_COOLDOWN:
+            return []      # 冷却中: 本轮触发留在缓冲里, 下次汇总一并推送
+
+        hits = sorted(self._sli_launch_pending, key=lambda x: -x['pct'])
+        self._sli_launch_pending = []
+        self._sli_launch_push_time = time.time()
+
+        # 组装文案(乖离只算展示的前N只, 控制日线缓存查询量)
+        out_lines = []
+        for h in hits[:SLI_LAUNCH_TOP_N]:
+            q = self.quotes.get(h['ts_code']) or self.sli_pool_quotes.get(h['ts_code']) or {}
+            price = float(q.get('price') or 0)
+            bl = self._pullback_baselines(h['ts_code'], last_trade_date) or {}
+            ma20 = bl.get('ma20') or 0
+            ma20_gap = (price / ma20 - 1) * 100 if ma20 > 0 else 0
+            ma_txt = '破位MA20' if ma20_gap < -3 else f"乖离MA20{ma20_gap:+.1f}%"
+            out_lines.append(
+                f"🚀 {h['name']}({h['ts_code']}) +{h['pct']:.1f}% [{h['time']}] "
+                f"{h['sector']}{h['rank']}{h['nl_rank']} SLI{h['sli']:.0f}{h['ltype']} {ma_txt}"
+            )
+        rest = len(hits) - SLI_LAUNCH_TOP_N
+        if rest > 0:
+            others = '、'.join(f"{h['name']}+{h['pct']:.1f}%" for h in hits[SLI_LAUNCH_TOP_N:])
+            out_lines.append(f"…另有{rest}只: {others}")
+        return [{'type': 'sli_launch',
+                 'msg': (f"🚀 SLI下一代龙头启动预警 [{now.strftime('%H:%M')}] "
+                         f"新增{len(hits)}只\n" + '\n'.join(out_lines))}]
+
+    def _pullback_baselines(self, ts_code, end_date, n=20):
+        """
+        从 daily_cache 重算回踩基准: 昨收(end_date当日收盘) / MA20 / 20日VWAP / ATR14
+
+        口径与 enhanced_timing_bull_all 报告一致(已逐只比对, 与报告 MA20/VWAP 完全吻合):
+            MA20 = 近20个交易日收盘均价
+            VWAP = Σamount*1000 / Σvol*100  (amount千元, vol手)
+            ATR14 = 近14根TR均值, TR=max(高-低, |高-昨收|, |低-昨收|)
+                    (同 enhanced_timing_analysis._calc_atr 口径)
+        报告与实时行情均不可靠时, 提供与最新交易日对齐的当日基准。
+        返回 {'prev_close','ma20','vwap','atr'} 或 None(数据不足)
+        """
+        try:
+            from stock_cache import get_daily_cache
+            start = (datetime.strptime(str(end_date), '%Y%m%d')
+                     - timedelta(days=45)).strftime('%Y%m%d')
+            df = get_daily_cache(ts_code, start, str(end_date))
+            if df is None or len(df) < n:
+                return None
+            d = df.tail(n)
+            if d['close'].isna().any():
+                return None
+            vwap = 0.0
+            if d['vol'].sum() > 0:
+                vwap = float(d['amount'].sum() * 1000 / (d['vol'].sum() * 100))
+            # ATR14: 需14根TR, 每根用前一日收盘, 故至少15根K线
+            atr = 0.0
+            d14 = df.tail(14)
+            off = len(df) - len(d14)
+            if off >= 1:
+                trs = []
+                for k in range(len(d14)):
+                    j = off + k
+                    hi = float(df.iloc[j]['high'])
+                    lo = float(df.iloc[j]['low'])
+                    pc = float(df.iloc[j - 1]['close'])
+                    trs.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+                if trs:
+                    atr = sum(trs) / len(trs)
+            return {
+                'prev_close': float(df.iloc[-1]['close']),
+                'ma20': float(d['close'].mean()),
+                'vwap': vwap,
+                'atr': atr,
+            }
+        except Exception:
+            return None
 
     def scan_tail_recovery_v3(self):
         """
-        「猎尾V4」中报优质股池最佳回踩 — 学习 push_washout_recovery.py 的精选逻辑
+        「猎尾V4」SLI 中长线潜力池最佳回踩 — 学习 push_washout_recovery.py 的精选逻辑
 
-        股票池: report_daily/enhanced_timing_bull_all_*.csv (前一交易日收盘后生成)
-        精选条件(沿用 push_washout_recovery.py):
-            修正后胜率分级 in [S,A] + 洗盘修复分>=80 + 兑现冲击过滤✅ + 回踩确认✅
+        股票池: SLI NEXT_LEADER_V2 中长线潜力池(见 _load_sli_pool, 约200只; 由景气档位下的
+                SLI_V2/Growth/Product 三硬门槛 + SLI_V2 60日动量门槛 + mid_long_score 决定)
+        基准口径: ①回踩幅度=现价/昨收(实时行情last_close→ref_prices→daily_cache);
+                  ②MA20、③VWAP、ATR14 一律由 daily_cache 按最新交易日重算(见 _pullback_baselines)
         14:50 实时二次确认(找"最佳回踩"):
             ① 今日回踩幅度   (30分): 相对昨收小回调-3%~0%满分(回踩到位), 追高大幅扣分
             ② 现价乖离MA20   (25分): 回踩区(0~+8%)满分, 破位MA20直接剔除
             ③ 现价乖离VWAP   (15分): 越贴近主力成本区(20日VWAP)越"回踩到位"
             ④ 尾盘量能       (15分): 缩量回踩确认(14:30尾盘增量<=0.15)满分
-            ⑤ 至止盈位空间   (10分): 5%~20%满分, 空间不足剔除
-            ⑥ 买点类型       ( 5分): 买点2(缩量回踩VWAP确认)优先
-        综合分 = 前日量化择时分*0.55 + 实时二次确认*0.45
+            ⑤ 至止盈位空间   (10分): 止盈=现价+3*ATR14, 空间=3*ATR/现价, 5%~20%满分
+            ⑥ SLI 赛道地位   ( 5分): 赛道内 sub_rank 越靠前越优(1=赛道最强)
+        综合分 = SLI中长线潜力分(mid_long_score)*0.55 + 实时二次确认*0.45
+        止损 = 现价-2*ATR14;  止盈 = 现价+3*ATR14
         信号: >=80强买入 >=70买入观察 >=65关注(推送线65)
+
+        注: 落库沿用 V4 表列名, 其中 quant_score=mid_long_score、wash_score=sli_v2
         """
-        import re as _re
-        import pandas as pd
-
-        report_dir = os.path.join(BASE_DIR, 'report_daily')
-        files = [f for f in os.listdir(report_dir)
-                 if f.startswith('enhanced_timing_bull_all_') and f.endswith('.csv')]
-        if not files:
-            print('⚠ 「猎尾V4」未找到 enhanced_timing_bull_all 报告,跳过中报池回踩扫描')
+        pool, meta = self._load_sli_pool()
+        if pool is None:
+            print('⚠ 「猎尾V4」SLI 中长线潜力池不可用(无快照或加载失败), 跳过回踩扫描')
             return []
-        files.sort(reverse=True)
-        report_path = os.path.join(report_dir, files[0])
-        _m = _re.search(r'enhanced_timing_bull_all_(\d{8})\.csv', files[0])
-        report_date = _m.group(1) if _m else '未知'
-
-        df = pd.read_csv(report_path, encoding='utf-8-sig')
-        for c in ('洗盘修复分', '量化择时分', '修正后评分', '结构增强分',
-                  '现价', 'VWAP', 'MA20', '筹码峰顶', '筹码集中度%',
-                  'ATR动态止损价', 'ATR跟踪止盈价'):
-            if c in df.columns:
-                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
-
-        # ── 1. 精选: S/A + 修复>=80 + 无冲击 + 回踩确认 (沿用push逻辑) ──
-        elite = df[
-            df['修正后胜率分级'].isin(['S', 'A']) &
-            (df['洗盘修复分'] >= 80) &
-            df['兑现冲击过滤'].astype(str).str.contains('✅', na=False) &
-            df['回踩确认'].astype(str).str.contains('✅', na=False)
-        ].copy()
-        if elite.empty:
-            print('⚠ 「猎尾V4」中报池精选(S/A+修复>=80+回踩确认)为空,无信号')
+        if pool.empty:
+            print('⚠ 「猎尾V4」SLI 中长线潜力池为空, 无信号')
             return []
+        snapshot_date = str(meta.get('snapshot_date') or '') or '-'
+        age = meta.get('age_days')
+        if isinstance(age, int) and age > 5:
+            print(f"⚠ 「猎尾V4」SLI 快照 {snapshot_date} 已 {age} 天未更新, 池子可能滞后")
 
-        # ── 2. 补拉不在主题池内的精选股实时行情 ──
-        missing = [str(r['代码']).strip() for _, r in elite.iterrows()
-                   if str(r['代码']).strip() not in self.quotes]
-        if missing:
-            fetched = self._fetch_recovery_quotes(missing)
-            if fetched:
-                print(f"  ✅ 补拉中报池行情: {len(fetched)}只 (不在主题池)")
+        last_trade_date = self._get_last_trade_date()
 
-        # ── 3. 逐只 14:50 实时二次确认 ──
+        # ── 补拉池内行情 ──
+        # 池成员多为非主题池股票, 走池专用行情 self.sli_pool_quotes(不并入 self.quotes,
+        # 避免污染市场广度/涨跌停统计); 主题池内成员优先用主循环行情(更新鲜)
+        self._refresh_sli_pool_quotes(pool)
+
+        # ── 2. 逐只 14:50 实时二次确认 ──
         now = datetime.now()
         index_q = self.quotes.get('000001.SH')
         index_pct = index_q.get('pct_chg', None) if index_q else None
@@ -4928,37 +5149,58 @@ class RealtimeThemeMonitor:
         signals = []
         rejects = {}          # 诊断: 二次确认拦截原因分布
         no_quote_codes = []
-        for _, r in elite.iterrows():
-            ts_code = str(r['代码']).strip()
-            name = str(r['名称']).strip()
-            theme = str(r.get('主题', '')).strip() if pd.notna(r.get('主题')) else ''
-            quant = float(r['量化择时分'])
-            wash = float(r['洗盘修复分'])
-            vwap = float(r['VWAP'])
-            ma20 = float(r['MA20'])
-            chip_peak = float(r['筹码峰顶'])
-            chip_conc = float(r['筹码集中度%'])
-            buy_point = str(r.get('推荐买点类型', '')) if pd.notna(r.get('推荐买点类型')) else ''
-            stop_loss = float(r['ATR动态止损价'])
-            target = float(r['ATR跟踪止盈价'])
-            market_status = str(r.get('大盘状态', '')) if pd.notna(r.get('大盘状态')) else ''
+        stale_prev_codes = []  # 诊断: 实时/ref_prices/daily_cache 均取不到昨收的股票
+        for _, r in pool.iterrows():
+            ts_code = str(r['ts_code']).strip()
+            name = str(r.get('name', '')).strip()
+            theme = str(r.get('subsector') or r.get('l3_name') or '').strip()
+            mid_long = float(r.get('mid_long_score') or 0)   # 中长线潜力分(池内排序依据)
+            sli_v2 = float(r.get('sli_v2') or 0)             # SLI_V2 强度(替代原"洗盘修复分")
+            sub_rank = float(r.get('sub_rank') or 0)         # 赛道内排名(1=赛道最强)
+            nl_rank = float(r.get('nl_rank') or 0)           # 池内排名(1=综合最强)
+            ltype = str(r.get('leader_type_v2') or '').strip()
+            if ltype.upper() == 'NONE':
+                ltype = ''
 
-            q = self.quotes.get(ts_code)
+            q = self.quotes.get(ts_code) or self.sli_pool_quotes.get(ts_code)
             if not q or q.get('price', 0) <= 0:
                 no_quote_codes.append(ts_code)
                 continue
             price = q.get('price', 0)
             pct = q.get('pct_chg', 0)
 
+            # 基准(MA20/VWAP/ATR14)统一按最新交易日从日线缓存重算, 池子快照滞后也不会错位
+            bl = self._pullback_baselines(ts_code, last_trade_date)
+            if not bl:
+                rejects.setdefault('无日线基准(MA20/VWAP/ATR)', []).append(ts_code)
+                continue
+            ma20 = bl['ma20']
+            vwap = bl['vwap']
+            atr = bl['atr']
+
+            # 昨收基准: ①实时行情自带 last_close(权威) → ②ref_prices(Tushare昨收) → ③daily_cache
+            prev_close = float(q.get('last_close') or 0)
+            if prev_close <= 0:
+                prev_close = float(self.ref_prices.get(ts_code, {}).get('close') or 0)
+            if prev_close <= 0:
+                prev_close = bl['prev_close']
+            if prev_close <= 0:
+                stale_prev_codes.append(ts_code)
+                continue
+
+            # 止损/止盈按重算 ATR14 以现价锚定(口径同 enhanced_timing_bull_all: -2ATR / +3ATR)
+            stop_loss = price - 2.0 * atr
+            target = price + 3.0 * atr
             rise_vwap = (price / vwap - 1) * 100 if vwap > 0 else 0
             ma20_gap = (price / ma20 - 1) * 100 if ma20 > 0 else 0
             upside = (target / price - 1) * 100 if price > 0 and target > 0 else 0
-            prev_close = float(r['现价'])            # 昨收=CSV现价(生成日收盘)
             ret_pct = (price / prev_close - 1) * 100 if prev_close > 0 else 0  # 今日相对昨收回踩幅度
 
-            # ── 硬性实时条件: 回踩未破位 + 不追高 + 空间足够 ──
+            # ── 硬性实时条件: 基准齐全 + 回踩未破位 + 不追高 + 空间足够 ──
             reject = None
-            if ma20_gap < -3:
+            if atr <= 0:
+                reject = '无ATR(日线不足)'
+            elif ma20_gap < -3:
                 reject = f'破位MA20({ma20_gap:+.1f}%)'
             elif rise_vwap < -3:
                 reject = f'跌破成本区({rise_vwap:+.1f}%)'
@@ -5033,39 +5275,41 @@ class RealtimeThemeMonitor:
                 s_room = 8
             else:
                 s_room = 3
-            # ⑥ 买点类型(5): 买点2(缩量回踩VWAP确认)优先
-            if '买点2' in buy_point:
-                s_buy = 5
-            elif '买点1' in buy_point:
-                s_buy = 3
+            # ⑥ SLI 赛道地位(5): 赛道内 sub_rank 越靠前越优(1=赛道最强)
+            if 0 < sub_rank <= 1:
+                s_slot = 5
+            elif 0 < sub_rank <= 3:
+                s_slot = 4
+            elif 0 < sub_rank <= 5:
+                s_slot = 3
             else:
-                s_buy = 2
+                s_slot = 2
 
-            rt_score = s_ret + s_ma20 + s_vwap + s_vol + s_room + s_buy
+            rt_score = s_ret + s_ma20 + s_vwap + s_vol + s_room + s_slot
             weak_market = False
             if index_pct is not None and index_pct <= -1.5:
                 rt_score -= 8
                 weak_market = True
             rt_score = max(0, min(100, rt_score))
 
-            # ── 综合分: 前日量化 55% + 实时二次确认 45% ──
-            total = int(round(quant * 0.55 + rt_score * 0.45))
+            # ── 综合分: SLI中长线潜力分 55% + 实时二次确认 45% ──
+            total = int(round(mid_long * 0.55 + rt_score * 0.45))
             if total >= 80:
                 signal = '强买入'
             elif total >= 70:
                 signal = '买入观察'
             else:
                 signal = '关注'
-            confidence = int(round(wash * 0.5 + rt_score * 0.5))
+            confidence = int(round(sli_v2 * 0.5 + rt_score * 0.5))
 
             signals.append({
                 'ts_code': ts_code,
                 'name': name,
                 'theme': theme,
                 'total_score': total,
-                'quant_score': round(quant, 1),
+                'quant_score': round(mid_long, 1),   # = mid_long_score(沿用V4列名)
                 'realtime_score': rt_score,
-                'wash_score': wash,
+                'wash_score': round(sli_v2, 1),      # = sli_v2(沿用V4列名)
                 'theme_score': 0, 'capital_score': 0, 'role_score': 0,
                 'technical_score': 0, 'timing_score': 0, 'risk_penalty': 0,
                 'gap_score': 0,
@@ -5077,26 +5321,30 @@ class RealtimeThemeMonitor:
                 'pct_chg': pct,
                 'price': price,
                 'detail': {
-                    'quant_score': round(quant, 1),
+                    'mid_long_score': round(mid_long, 1),
+                    'sli_v2': round(sli_v2, 1),
+                    'quant_score': round(mid_long, 1),   # = mid_long_score(沿用V4列名)
                     'realtime_score': rt_score,
-                    'wash_score': wash,
+                    'wash_score': round(sli_v2, 1),      # = sli_v2(沿用V4列名)
                     'ret_pct': round(ret_pct, 2),
                     'rise_gap_vwap': round(rise_vwap, 2),
                     'rise_gap_ma20': round(ma20_gap, 2),
                     'upside_pct': round(upside, 1),
-                    'buy_point': buy_point,
+                    'atr': round(atr, 3),
+                    'atr_pct': round(atr / price * 100, 2) if price > 0 else 0,
+                    'sector_rank': int(sub_rank) if sub_rank > 0 else 0,
+                    'pool_rank': int(nl_rank) if nl_rank > 0 else 0,
+                    'leader_type': ltype,
                     'tail_vol_label': vol_label,
-                    'chip_peak': chip_peak,
-                    'chip_conc': chip_conc,
-                    'stop_loss': stop_loss,
-                    'take_profit': target,
-                    'market_status': market_status,
+                    'stop_loss': round(stop_loss, 2),
+                    'take_profit': round(target, 2),
                     'index_pct': index_pct,
-                    'report_date': report_date,
+                    'snapshot_date': snapshot_date,
                     'weak_market': weak_market,
                 },
-                'explain': (f'中报优质股池{report_date} 评级{signal} 洗盘修复{wash:.0f}分 今日回踩{ret_pct:+.1f}% '
-                            f'乖离VWAP{rise_vwap:+.1f}% MA20{ma20_gap:+.1f}% 至止盈{upside:+.1f}% [{buy_point}]'),
+                'explain': (f'SLI中长线潜力池{snapshot_date} 潜力{mid_long:.0f}分 SLI_V2 {sli_v2:.0f} '
+                            f'赛道#{int(sub_rank) if sub_rank > 0 else "-"}{(" " + ltype) if ltype else ""} {signal} '
+                            f'今日回踩{ret_pct:+.1f}% 乖离VWAP{rise_vwap:+.1f}% MA20{ma20_gap:+.1f}% 至止盈{upside:+.1f}%'),
             })
 
         # 诊断输出(首次)
@@ -5104,10 +5352,12 @@ class RealtimeThemeMonitor:
             self.tail_entry_debug_printed = True
             passed = len(signals)
             print(f"\n{'='*70}")
-            print(f"🔍 「猎尾V4」中报池回踩扫描诊断 [{now.strftime('%H:%M:%S')}] 报告:{report_date}")
-            print(f"  精选池: {len(elite)}只 (S/A+修复>=80+兑现过滤+回踩确认)")
+            print(f"🔍 「猎尾V4」SLI中长线潜力池回踩扫描诊断 [{now.strftime('%H:%M:%S')}] 快照:{snapshot_date}")
+            print(f"  池子: {len(pool)}只 (NEXT_LEADER_V2 中长线潜力池)")
             if no_quote_codes:
                 print(f"  无实时行情: {len(no_quote_codes)}只 {no_quote_codes[:5]}")
+            if stale_prev_codes:
+                print(f"  ⚠无昨收基准: {len(stale_prev_codes)}只 {stale_prev_codes[:5]}")
             print(f"  二次确认拦截:")
             for r2, codes in sorted(rejects.items(), key=lambda x: -len(x[1])):
                 print(f"    {r2}: {len(codes)}只 {codes[:5]}")
@@ -5121,8 +5371,9 @@ class RealtimeThemeMonitor:
 
     def _save_tail_recovery_signals_to_tracker(self, signals):
         """
-        「猎尾V4」中报池回踩信号写入跟踪表 tail_signal_tracker_v4
+        「猎尾V4」SLI中长线潜力池回踩信号写入跟踪表 tail_signal_tracker_v4
         入表筛选: total_score >= 65 + 排除北交所
+        (表列沿用V4: quant_score=mid_long_score, wash_score=sli_v2)
         """
         if not signals:
             return
@@ -5292,7 +5543,7 @@ class RealtimeThemeMonitor:
 
     def _save_tail_recovery_picks_to_pickdb(self, signals):
         """
-        「猎尾V4」中报池回踩信号写入统一选股库(与 tail_signal_tracker_v4 双写)
+        「猎尾V4」SLI中长线潜力池回踩信号写入统一选股库(与 tail_signal_tracker_v4 双写)
         入表筛选: total_score >= 65 + 排除北交所
         """
         picks = []
@@ -5315,19 +5566,20 @@ class RealtimeThemeMonitor:
                 'stop_price': d.get('stop_loss'),
                 # ── 策略自有字段(自动序列化进 indicators) ──
                 'theme': s.get('theme', ''),
-                'quant_score': s.get('quant_score'),
+                'mid_long_score': d.get('mid_long_score'),
+                'sli_v2': d.get('sli_v2'),
                 'realtime_score': s.get('realtime_score'),
-                'wash_score': s.get('wash_score'),
                 'confidence': s.get('confidence'),
                 'ret_pct': d.get('ret_pct'),
                 'rise_gap_vwap': d.get('rise_gap_vwap'),
                 'rise_gap_ma20': d.get('rise_gap_ma20'),
                 'upside_pct': d.get('upside_pct'),
-                'buy_point': d.get('buy_point', ''),
+                'atr_pct': d.get('atr_pct'),
+                'sector_rank': d.get('sector_rank'),
+                'leader_type': d.get('leader_type', ''),
                 'tail_vol_label': d.get('tail_vol_label', ''),
-                'chip_conc': d.get('chip_conc'),
             })
-        return self._pickdb_write('tail_v4_recovery', '猎尾V4 中报池回踩', picks)
+        return self._pickdb_write('tail_v4_recovery', '猎尾V4 SLI中长线潜力池回踩', picks)
 
     def _save_nd2_picks_to_pickdb(self, signals):
         """「猎尾V5」ND2次日Alpha精选信号写入统一选股库(与 nd2_snapshot.db 双写)"""
@@ -6431,6 +6683,11 @@ class RealtimeThemeMonitor:
             prefix = '🟢 加仓' if a['type'] == 'market_action_add' else '🔴 减仓'
             title = f"{prefix}信号 {ts}"
             self.send_wechat(title, a['msg'])
+
+        # ── SLI下一代龙头池盘中启动预警 (msgs 已含标题与明细) ──
+        launch_msgs = [a['msg'] for a in alerts if a['type'] == 'sli_launch']
+        if launch_msgs:
+            self.send_wechat(f"🚀 SLI下一代龙头启动预警 {ts}", '\n'.join(launch_msgs))
 
         # ── 控制台输出 ──
         print(f"\n📱 [{ts}] 推送:")

@@ -33,7 +33,8 @@ SLI V2 固定读取接口
     sli_v2, industry_score, product_position, profit_quality, growth_v2,
     purity_v2, moat_v2, market_v2, trend_v2, product_purity,
     sub_rank, ind_rank_v2, leader_type_v2, dominance, lifecycle,
-    NEXT_LEADER, LEADER_CHALLENGER, EARNINGS_TURN, LEADER_EARNINGS_TURN,
+    NEXT_LEADER_V2（中长线潜力池，项目内唯一命名）、NEXT_LEADER（V1 下一代龙头）,
+    LEADER_CHALLENGER, EARNINGS_TURN, LEADER_EARNINGS_TURN,
     SUPER_LEADER, challenger_score, sli_v2_T, sli_v2_T60,
     sli（V1）, ind_rank, leader_type（V1）
 """
@@ -50,7 +51,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from .config import DB_PATH, OUTPUT_DIR
+from .config import DB_PATH, OUTPUT_DIR, POOL_MIDLONG_V2
 
 logger = logging.getLogger("sli.reader")
 
@@ -60,10 +61,12 @@ SCHEMA_V2 = [
     "sli_v2", "industry_score", "product_position", "profit_quality",
     "growth_v2", "purity_v2", "moat_v2", "market_v2", "trend_v2",
     "product_purity", "sub_rank", "ind_rank_v2", "leader_type_v2",
-    "dominance", "lifecycle", "NEXT_LEADER", "LEADER_CHALLENGER",
+    "dominance", "lifecycle", "NEXT_LEADER_V2", "NEXT_LEADER",
+    "LEADER_CHALLENGER",
     "EARNINGS_TURN", "LEADER_EARNINGS_TURN", "SUPER_LEADER",
     "challenger_score", "sli_v2_T", "sli_v2_T60", "sli", "ind_rank",
-    "leader_type",
+    "leader_type", "ind_boom", "ind_boom_tier", "next_confirm_count",
+    "mid_long_score",
 ]
 
 
@@ -181,7 +184,24 @@ def get_panel(asof: Optional[str] = None) -> pd.DataFrame:
             raise FileNotFoundError(f"快照 {snapshot} 数据缺失（SQLite 与 CSV 均不可读）")
         source = "csv"
     df.attrs["_sli_meta"] = _meta(snapshot, asof, source, int(len(df)))
+    _normalize_pool_col(df)
     return df
+
+
+def _normalize_pool_col(df: pd.DataFrame) -> None:
+    """就地归一化中长线潜力池列（POOL_MIDLONG_V2）为布尔。
+
+    SQLite 由 ALTER TABLE 补出的列按 REAL 存回 1.0/0.0，CSV 回读为
+    'True'/'False' 字符串，内存中为 bool，此处统一，使下游只按一个列名、
+    一个类型消费。列缺失时不做任何补列 —— 早于该列的快照里 NEXT_LEADER
+    是 V1 的「下一代龙头」（另有一套口径），不可当作池标记使用。
+    """
+    if POOL_MIDLONG_V2 not in df.columns:
+        return
+    s = df[POOL_MIDLONG_V2]
+    df[POOL_MIDLONG_V2] = (
+        (pd.to_numeric(s, errors="coerce") == 1)
+        | s.astype(str).str.strip().str.lower().isin(["true", "yes", "t"]))
 
 
 def _sort_v2(panel: pd.DataFrame, top: Optional[int] = None) -> pd.DataFrame:
@@ -216,17 +236,31 @@ def get_subsector_top5(asof: Optional[str] = None, top: int = 5,
     return p
 
 
-def get_next_leaders(asof: Optional[str] = None, top: Optional[int] = 30) -> pd.DataFrame:
-    """输出3：下一代龙头（NEXT_LEADER=TRUE，按 ChallengerScore+Growth+SLI提升排序）。"""
+def get_next_leaders(asof: Optional[str] = None, top: Optional[int] = None) -> pd.DataFrame:
+    """输出3：中长线潜力池（全池，NEXT_LEADER_V2=TRUE，按 mid_long_score 降序）。
+
+    池名 POOL_MIDLONG_V2（见 config），全池不做额外分数收口；调用方若只要高分段，
+    自行按 mid_long_score 过滤，避免池口径分裂到多处。
+    mid_long_score 由产业地位、赛道内相对强度、SLI_V2 60日改善、增长确认项数、
+    行业内估值分位（越便宜越高分）、市值规模六项加权合成，见 classify.next_leader_v2。
+    快照早于该池列引入时直接报错（其 NEXT_LEADER 列是 V1 口径，不可代用）。
+    """
     panel = get_panel(asof)
-    p = panel[panel["NEXT_LEADER"].fillna(False) == True].copy()  # noqa: E712
+    # 早于池列引入的快照：列可能被 ALTER TABLE 补出但整列 NULL（mid_long_score
+    # 亦全空），此时报错而非静默返回空池 —— 避免把「没算过」读成「池为空」。
+    if (POOL_MIDLONG_V2 not in panel.columns
+            or "mid_long_score" not in panel.columns
+            or panel["mid_long_score"].isna().all()):
+        raise KeyError(
+            f"快照 {panel.attrs['_sli_meta']['snapshot_date']} 未计算中长线潜力池"
+            f"（{POOL_MIDLONG_V2}），请先重算："
+            f"python -X utf8 -m sli.update_monthly --force")
+    p = panel[panel[POOL_MIDLONG_V2].fillna(False) == True].copy()  # noqa: E712
     if p.empty:
         out = p
     else:
         p["sli_v2_delta"] = p["sli_v2_T"] - p["sli_v2_T60"]
-        p["_key"] = (p["challenger_score"].fillna(0)
-                     + p["growth_v2"].fillna(0)
-                     + p["sli_v2_delta"].clip(0))
+        p["_key"] = pd.to_numeric(p["mid_long_score"], errors="coerce").fillna(0.0)
         out = p.sort_values("_key", ascending=False).drop(
             columns=["rank"], errors="ignore").reset_index(drop=True)
         out.insert(0, "rank", np.arange(1, len(out) + 1))
@@ -236,7 +270,7 @@ def get_next_leaders(asof: Optional[str] = None, top: Optional[int] = 30) -> pd.
     return out
 
 
-def get_earnings_turn(asof: Optional[str] = None, top: Optional[int] = 30) -> pd.DataFrame:
+def get_earnings_turn(asof: Optional[str] = None, top: Optional[int] = None) -> pd.DataFrame:
     """输出4：龙头+业绩拐点（LEADER_EARNINGS_TURN=TRUE，SLI_V2≥80 且拐点）。"""
     panel = get_panel(asof)
     p = panel[panel["LEADER_EARNINGS_TURN"].fillna(False) == True].copy()  # noqa: E712
@@ -272,7 +306,7 @@ def get_radar(asof: Optional[str] = None) -> pd.DataFrame:
                          ("成长龙头", "is_GROWTH_LEADER"),
                          ("盈利龙头", "is_PROFIT_LEADER"),
                          ("挑战者", "is_CHALLENGER"),
-                         ("下一代龙头", "NEXT_LEADER")):
+                         ("下一代龙头", "NEXT_LEADER_V2")):
             m = g[g.get(col, pd.Series(False, index=g.index)).fillna(False) == True]  # noqa: E712
             d[typ] = str(m.iloc[0].get("name", "")) if len(m) else ""
         rows.append(d)

@@ -6,6 +6,7 @@ SLI 分类层
 - 龙头生命周期：T vs T-20/T-60/T-120 → EMERGING→ASCENDING→CONFIRMED→ACCELERATING→MATURE→DECLINING→REPLACED
 - 龙头加速器：LEADER_ACCELERATION / NEXT_LEADER
 - 四种特殊标签：LEADER_NO_TRADE / LEADER_EARNINGS_TURN / LEADER_BREAKOUT / NEXT_LEADER
+- 中长线潜力池（V2 全池）：NEXT_LEADER_V2（= config.POOL_MIDLONG_V2）
 """
 from __future__ import annotations
 
@@ -14,7 +15,9 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .config import CHALLENGER_THRESHOLD, CHALLENGER_W, CLS, CLS_V2, DOMINANCE_BANDS, DOMINANCE_W, LEADER_GAP_BANDS
+from .config import (CHALLENGER_THRESHOLD, CHALLENGER_W, CLS, CLS_V2,
+                     DOMINANCE_BANDS, DOMINANCE_W, LEADER_GAP_BANDS,
+                     POOL_MIDLONG_V2)
 
 logger = logging.getLogger("sli.classify")
 
@@ -499,15 +502,84 @@ def challenger_score(panel: pd.DataFrame) -> pd.DataFrame:
     return panel
 
 
-def next_leader_v2(panel: pd.DataFrame) -> pd.DataFrame:
-    """下一代龙头。
+def industry_boom(panel: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
+    """行业景气分 ind_boom（0~100）与三档标签 ind_boom_tier。
 
-    SLI_V2≥65 + Growth≥85 + ProductPosition≥70 + Market≥75 + SLI60提升≥5，
-    且「利润加速 / 产品收入增长 / 市场份额提升(产品增速>营收增速) / 产能扩张(无数据)
-    」中至少满足 2 项 → NEXT_LEADER=TRUE
+    ind_boom = 50%行业主力成长(growth_v2) + 30%行业主力利润加速(accel_bonus)
+               + 20%行业价格相对强度（行业内 ret60 − 全市场 ret60），
+    三项各自取行业横截面百分位后加权，再按三分位切成 高/中/低 三档。
+
+    三个分项一律按「市值加权」度量行业主力，而非等权中位数：等权会被行业内
+    尾部小市值公司（多为自身经营困境，与行业景气无关）稀释，把「头部景气、
+    尾部出清」的分化型行业（如工业母机、消费电子）误判为低景气。
+
+    注意：不能用 rs60 构造行业景气——rs60 是「相对本行业」的超额收益，
+    行业内中位数结构性恒为 0（浮点 ~1e-15），原 ind_med_rs60 实现因此失效。
+    """
+    cfg = cfg or CLS_V2["next_leader"]
+    w = cfg["boom_w"]
+    l3 = panel["l3_code"]
+
+    growth = pd.to_numeric(panel.get("growth_v2"), errors="coerce")
+    accel = pd.to_numeric(panel.get("accel_bonus"), errors="coerce").fillna(0.0)
+    ret60 = pd.to_numeric(panel.get("ret60"), errors="coerce")
+    # 行业主力权重：总市值；缺失时回落到行业中位市值，再整体缺失则退化为等权
+    wt = pd.to_numeric(panel.get("total_mv"), errors="coerce")
+    wt = wt.fillna(wt.groupby(l3).transform("median"))
+    if wt.isna().all():
+        wt = pd.Series(1.0, index=panel.index)
+
+    def _ind_wavg(s: pd.Series) -> pd.Series:
+        """按 l3_code 分组的市值加权均值（仅计有效样本）。"""
+        num = (s * wt).groupby(l3).sum(min_count=1)
+        den = wt.where(s.notna()).groupby(l3).sum(min_count=1)
+        return num / den
+
+    ind = pd.DataFrame({
+        "g": _ind_wavg(growth),      # 行业主力成长
+        "a": _ind_wavg(accel),       # 行业主力利润加速强度（0/5/10 的加权均值）
+        "r": _ind_wavg(ret60),       # 行业主力价格强度
+    })
+    mkt_ret60 = float((ret60 * wt).sum() / wt.where(ret60.notna()).sum())
+    ind["r"] = ind["r"] - mkt_ret60
+
+    ind = ind.dropna(how="all")
+    ind["ind_boom"] = (w["growth"] * ind["g"].rank(pct=True) * 100
+                       + w["accel"] * ind["a"].rank(pct=True) * 100
+                       + w["rs"] * ind["r"].rank(pct=True) * 100)
+    # 按行业横截面分位切档（而非按分数）：ind_boom 是三项百分位的加权和，
+    # 数值向 50 集中，固定分数切点会让「中」档吞掉过半行业，三档失衡。
+    c1, c2 = cfg["boom_cuts"]
+    ind["ind_boom_tier"] = pd.cut(ind["ind_boom"].rank(pct=True),
+                                  [0.0, c1, c2, 1.0],
+                                  labels=["低", "中", "高"]).astype(str)
+    return panel.join(ind[["ind_boom", "ind_boom_tier"]], on="l3_code")
+
+
+def next_leader_v2(panel: pd.DataFrame) -> pd.DataFrame:
+    """下一代龙头 / 中长线潜力池（三硬门槛 + 动量门槛 + 打分排序）。
+
+    本函数按「未来中长线有潜力上涨」的目标设计，与旧版三处关键差异：
+
+    1. 去掉 SLI_V2 分数上界。原「SLI_V2>85 即剔除」会系统性剔掉产业地位
+       最强、盈利质量最高的一批（当期 12 只，含紫金矿业/卫星化学/石药创新），
+       与收益目标方向相反。改用动量条件「SLI_V2 相对 60 日前未明显回落」
+       表达「仍在变强」，而不是「分数不能太高」。
+    2. 硬门槛由 7 个减到 3 个（行业景气档位的 SLI / Growth / Product）。
+       原 market_v2 在 SLI_V2 中仅占 5% 权重，作为硬门槛却一票否决掉 2/3
+       候选；与 sli60_delta、confirm 一并降级为打分项。
+    3. 新增估值与规模维度，合成 mid_long_score 用于排序与入选阈值。
+       原条件完全没有赔率维度，会选出大量已被充分定价的高估值标的。
+
+    入选：三硬门槛 & 动量 & confirm≥下限 & mid_long_score≥score_min。
+    结果写入面板唯一列 NEXT_LEADER_V2（config.POOL_MIDLONG_V2），与 V1
+    special_tags 的 NEXT_LEADER 区分；门槛掩码另存 next_gate 供阈值校准复用。
     """
     panel = panel.copy()
     nl = CLS_V2["next_leader"]
+    if "ind_boom_tier" not in panel.columns:
+        panel = industry_boom(panel, nl)
+
     rev_growth = pd.to_numeric(panel.get("or_yoy"), errors="coerce")
     prod_growth = pd.to_numeric(panel.get("prod_rev_growth"), errors="coerce")
 
@@ -518,19 +590,63 @@ def next_leader_v2(panel: pd.DataFrame) -> pd.DataFrame:
                          (rev_growth >= 15).astype(int))
     # ③ 市场份额提升：产品增速 > 营收增速（仅产品数据可观测）
     share_up = (prod_ok & (prod_growth > rev_growth)).astype(int)
-    confirm = accel + prod_incr + share_up
+    confirm = pd.Series(accel + prod_incr + share_up, index=panel.index)
     panel["next_confirm_count"] = confirm
 
-    sli_delta = np.nan
+    sli_delta = pd.Series(np.nan, index=panel.index)
     if "sli_v2_T" in panel.columns and "sli_v2_T60" in panel.columns:
         sli_delta = panel["sli_v2_T"] - panel["sli_v2_T60"]
-    panel["NEXT_LEADER"] = (
-        (panel["sli_v2"] >= nl["sli"])
-        & (panel["growth_v2"] >= nl["growth"])
-        & (panel["product_position"] >= nl["product"])
-        & (panel["market_v2"] >= nl["market"])
-        & (sli_delta >= nl["sli60_delta"])
-        & (confirm >= nl["confirm_min"]))
+
+    tiers = nl["boom_tiers"]
+    tier = panel["ind_boom_tier"].astype(str)
+    tier = tier.where(tier.isin(tiers), "中")   # 缺失/异常回落中档
+
+    def th(key: str) -> pd.Series:
+        return tier.map({t: v[key] for t, v in tiers.items()})
+
+    # ── 硬门槛：景气档位下的细分龙头地位 + 成长 + 增长确认 ──
+    gate = ((panel["sli_v2"] >= th("sli"))
+            & (panel["growth_v2"] >= th("growth"))
+            & (panel["product_position"] >= th("product"))
+            & (confirm >= nl["confirm_min"]))
+    # ── 动量门槛：替代原分数上界，允许「已很强但仍在变强」 ──
+    gate = gate & (sli_delta >= -nl["sli_drop_tol"])
+
+    # ── 打分项（统一到 0~100 后加权）──
+    w = nl["score_w"]
+
+    def _pct(s) -> pd.Series:
+        """全池横截面百分位（0~100），缺失保持缺失。"""
+        return pd.to_numeric(s, errors="coerce").rank(pct=True) * 100.0
+
+    # 产业地位：中长线根基，单靠「便宜 + 成长」会选出已被充分定价的弱地位标的
+    sli_s = _pct(panel.get("sli_v2")).fillna(50.0)
+    market_s = pd.to_numeric(panel.get("market_v2"), errors="coerce").fillna(50.0)
+    delta_s = _pct(sli_delta).fillna(50.0)
+    confirm_s = (confirm / 3.0) * 100.0
+
+    # 估值：三级行业内 pe_ttm 分位反向（越便宜分越高）。亏损/缺失（pe≤0）
+    # 无法判断贵贱，给中性分，避免把亏损股误当「便宜」加分。
+    pe = pd.to_numeric(panel.get("pe_ttm"), errors="coerce")
+    pe = pe.where(pe > 0)
+    val_s = (1.0 - pe.groupby(panel["l3_code"]).rank(pct=True)) * 100.0
+    val_s = val_s.fillna(nl["val_neutral"])
+
+    # 规模：只奖励「足够大」（流动性/抗波动），达线即满分，不再奖励巨型股
+    # total_mv 单位为万元，配置以亿元表述
+    mv = pd.to_numeric(panel.get("total_mv"), errors="coerce") / 1e4
+    size_s = (np.minimum(mv / nl["size_full_mv"], 1.0) * 100.0).fillna(50.0)
+
+    panel["mid_long_score"] = (w["sli"] * sli_s
+                               + w["market"] * market_s
+                               + w["sli60_delta"] * delta_s
+                               + w["confirm"] * confirm_s
+                               + w["valuation"] * val_s
+                               + w["size"] * size_s)
+    # 分档门槛与分数阈值分开留存：回测校准 score_min 时可直接复用门槛掩码
+    panel["next_gate"] = gate
+    # 全池标记：项目内唯一命名 POOL_MIDLONG_V2（见 config），下游统一按此列消费
+    panel[POOL_MIDLONG_V2] = gate & (panel["mid_long_score"] >= nl["score_min"])
     return panel
 
 

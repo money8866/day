@@ -5,6 +5,8 @@ SLI 回测引擎 backtest.py
 1. 龙头稳定性：Top1 持续期 / Top3 重合率 / 龙头替换速度
 2. 龙头超额收益：细分赛道龙头组合 vs 赛道成分等权 vs 沪深300 vs 中证1000
    持有期 20 / 60 / 120 / 250 交易日（后复权收益）
+3. 中长线潜力池（NEXT_LEADER_V2）校准：score_min 网格 × 持有期 的超额收益曲线
+4. 分数分桶检验：mid_long_score 分桶超额/胜率 + 每期秩相关 IC（是否「越高越好」）
 
 用法：
   python -m sli.backtest --prepare               # 拉取/补齐 2022-01 ~ 2026-06 历史数据
@@ -30,16 +32,17 @@ import numpy as np
 import pandas as pd
 
 from .cache import SliCache
-from .config import (BACKTEST_BENCH, BACKTEST_HORIZONS, BACKTEST_PERIODS,
-                     CACHE_DIR, FILTER_ST, INCLUDE_BJ, LOOKBACK_TRADING_DAYS,
-                     LOG_DIR, MAINBZ_PERIODS, OUTPUT_DIR)
+from .classify import next_leader_v2
+from .config import (BACKTEST_BENCH, BACKTEST_HORIZONS, BACKTEST_NL_SCORE_GRID,
+                     BACKTEST_PERIODS, CACHE_DIR, FILTER_ST, INCLUDE_BJ,
+                     LOOKBACK_TRADING_DAYS, LOG_DIR, MAINBZ_PERIODS, OUTPUT_DIR)
 from .datasource import DataSource
 from .features import (PriceFeatures, annual_moat, build_universe,
                        compute_purity, financial_snapshot,
                        growth_acceleration, prev_period_snapshot)
 from .scoring import build_panel, build_panel_v2
 from .subsector import load_subsector_map, product_rev_growth, subsector_match
-from .utils import load_token, setup_logging, trade_dates_from_cal
+from .utils import load_token, setup_logging, shift_trade_date, trade_dates_from_cal
 
 logger = logging.getLogger("sli.backtest")
 
@@ -51,6 +54,22 @@ FIN_START = "20220101"      # 财务最早报告期（BACKTEST_PERIODS 已含）
 
 def _dstr(x) -> str:
     return str(x).replace("-", "").replace("/", "")[:8]
+
+
+def _fut_rets_at(close_adj: pd.DataFrame, close_idx: dict[str, int],
+                 dates: list[str], d: str, codes: list[str],
+                 h: int) -> pd.Series:
+    """期点 d 起 h 个交易日的后复权收益(%)，按 ts_code 返回；无效则返回空 Series。"""
+    i = close_idx.get(d)
+    if i is None or i + h >= len(dates) or not codes:
+        return pd.Series(dtype=float)
+    d_f = dates[i + h]
+    c0 = close_adj.loc[d, codes].astype(float)
+    c1 = close_adj.loc[d_f, codes].astype(float)
+    valid = c0.notna() & c1.notna() & (c0 > 0)
+    if not valid.any():
+        return pd.Series(dtype=float)
+    return (c1[valid] / c0[valid] - 1.0) * 100.0
 
 
 def _month_end_dates(trade_dates: list[str], start: str, end: str) -> list[str]:
@@ -263,26 +282,44 @@ class SliBacktest:
                  len(period_dates), period_dates[0], period_dates[-1])
 
         snapshots: list[pd.DataFrame] = []
-        for d in period_dates:
-            uni = build_universe(classify_l3, members, basic, d)
+
+        def _panel_at(d: str) -> Optional[pd.DataFrame]:
+            """构建 d 时点的 V2 面板（防未来：财务按 ann_date<=d 过滤）。"""
+            uni_d = build_universe(classify_l3, members, basic, d)
             if FILTER_ST:
-                uni = uni[~uni["is_st"]].reset_index(drop=True)
-            price_at = pf.eval_at(d)
-            if price_at.empty:
+                uni_d = uni_d[~uni_d["is_st"]].reset_index(drop=True)
+            price_d = pf.eval_at(d)
+            if price_d.empty:
+                return None
+            snap_d = financial_snapshot(fina, income, balance, d)
+            snap_d = snap_d.merge(prev_period_snapshot(fina, d), on="ts_code", how="left")
+            accel_d = growth_acceleration(fina, d)
+            p = build_panel(uni_d, price_d, dbasic_at(d), snap_d, accel_d, purity, moat)
+            return build_panel_v2(p, subsector_df, prod_growth)
+
+        for d in period_dates:
+            panel = _panel_at(d)
+            if panel is None:
                 log.warning("期点 %s 行情为空，跳过", d)
                 continue
-            snap = financial_snapshot(fina, income, balance, d)
-            prev = prev_period_snapshot(fina, d)
-            accel = growth_acceleration(fina, d)
-            snap = snap.merge(prev, on="ts_code", how="left")
-            panel = build_panel(uni, price_at, dbasic_at(d), snap, accel, purity, moat)
-            panel = build_panel_v2(panel, subsector_df, prod_growth)
+            # 动量门槛需要 SLI_V2 相对 60 日前的变化，与月度口径保持一致
+            panel["sli_v2_T"] = panel.get("sli_v2", np.nan)
+            d60 = shift_trade_date(dates, d, 60)
+            p60 = _panel_at(d60) if d60 and d60 != d else None
+            if p60 is not None and "sli_v2" in p60.columns:
+                panel = panel.merge(
+                    p60[["ts_code", "sli_v2"]].rename(columns={"sli_v2": "sli_v2_T60"}),
+                    on="ts_code", how="left")
+            else:
+                panel["sli_v2_T60"] = np.nan
+            panel = next_leader_v2(panel)   # 中长线潜力池门槛/打分（供校准）
             panel["period"] = d
             snapshots.append(panel)
-            log.info("  期点 %s：面板 %d 只 / %d 赛道，龙头 Top1 %d 个",
+            log.info("  期点 %s：面板 %d 只 / %d 赛道，龙头 Top1 %d 个 / 潜力池门槛内 %d 只",
                      d, len(panel),
                      panel["subsector"].nunique() if "subsector" in panel else 0,
-                     int((panel["product_rank"] == 1).sum()))
+                     int((panel["product_rank"] == 1).sum()),
+                     int(panel["next_gate"].sum()))
         if not snapshots:
             raise RuntimeError("无有效期点面板")
 
@@ -367,11 +404,180 @@ class SliBacktest:
         log.info("[回测] 计算龙头稳定性...")
         stability = self._stability(leaders, top3)
 
+        # ── 中长线潜力池校准 ──
+        log.info("[回测] 校准中长线潜力池（score_min 网格）...")
+        nl_calib = self._calibrate_next_leader(snapshots, dates, close_adj,
+                                               period_dates, unis, index)
+
+        # ── 分数分桶检验（是否越高越好） ──
+        log.info("[回测] 检验 mid_long_score 分桶单调性与 IC...")
+        nl_buckets, nl_ic = self._score_monotonicity(snapshots, dates, close_adj,
+                                                     period_dates, unis, index)
+
         # ── 输出 ──
-        paths = self._emit(leaders, top3, excess, stability, start, end, unis)
+        paths = self._emit(leaders, top3, excess, stability, start, end, unis,
+                           nl_calib, nl_buckets, nl_ic)
         log.info("═══ 回测完成 ═══")
         return {"paths": paths, "n_periods": len(period_dates),
                 "n_leaders": len(leaders), "excess_rows": len(excess)}
+
+    # ── 中长线潜力池校准 ──────────────────────────────
+
+    def _calibrate_next_leader(self, snapshots, dates, close_adj, period_dates,
+                               unis, index) -> pd.DataFrame:
+        """按 score_min 网格评估中长线潜力池未来收益，用于校准入选阈值。
+
+        mid_long_score 与 score_min 相互独立：门槛掩码 next_gate 已随面板留存，
+        故一次面板构建即可评估整条阈值曲线，无需按阈值重复回测。
+        """
+        close_idx = {d: i for i, d in enumerate(dates)}
+
+        def _fut_ret(d: str, codes: list[str], h: int) -> float:
+            i = close_idx.get(d)
+            if i is None or i + h >= len(dates) or not codes:
+                return float("nan")
+            d_f = dates[i + h]
+            c0 = close_adj.loc[d, codes].astype(float)
+            c1 = close_adj.loc[d_f, codes].astype(float)
+            valid = c0.notna() & c1.notna() & (c0 > 0)
+            if not valid.any():
+                return float("nan")
+            return float((c1[valid] / c0[valid] - 1.0).mean() * 100.0)
+
+        idx_series: dict[str, pd.Series] = {}
+        for name, idxdf in index.items():
+            if idxdf is None or idxdf.empty:
+                continue
+            idx_series[name] = (idxdf.assign(trade_date=idxdf["trade_date"].astype(str))
+                                .sort_values("trade_date")
+                                .set_index("trade_date")["close"].astype(float))
+
+        def _idx_ret(name: str, d: str, h: int) -> float:
+            s = idx_series.get(name)
+            i = close_idx.get(d)
+            if s is None or i is None or i + h >= len(dates):
+                return float("nan")
+            d_f = dates[i + h]
+            if d not in s.index or d_f not in s.index:
+                return float("nan")
+            b0, b1 = float(s.loc[d]), float(s.loc[d_f])
+            return (b1 / b0 - 1.0) * 100.0 if b0 > 0 else float("nan")
+
+        panels = {p["period"].iloc[0]: p for p in snapshots}
+        rows: list[dict[str, Any]] = []
+        for d in period_dates:
+            pan = panels.get(d)
+            if pan is None:
+                continue
+            cand = pan[pan["next_gate"].fillna(False).astype(bool)]
+            uni_codes = unis[d]["ts_code"].dropna().unique().tolist()
+            for th in BACKTEST_NL_SCORE_GRID:
+                codes = (cand.loc[pd.to_numeric(cand["mid_long_score"], errors="coerce") >= th,
+                                  "ts_code"].dropna().unique().tolist())
+                for h in BACKTEST_HORIZONS:
+                    r = _fut_ret(d, codes, h)
+                    r_uni = _fut_ret(d, uni_codes, h)
+                    row: dict[str, Any] = {
+                        "period": d, "score_min": th, "horizon": h,
+                        "n_pool": len(codes),
+                        "pool_ret": r, "universe_ret": r_uni,
+                        "excess_vs_universe": (r - r_uni) if pd.notna(r) and pd.notna(r_uni) else np.nan,
+                    }
+                    for name in idx_series:
+                        rb = _idx_ret(name, d, h)
+                        row[f"excess_vs_{name}"] = (r - rb) if pd.notna(r) and pd.notna(rb) else np.nan
+                    rows.append(row)
+        return pd.DataFrame(rows)
+
+    # ── 分数分桶检验（"分数越高越好"？） ────────────────
+
+    # mid_long_score(≈50~95) 分桶边界：下含上不含
+    SCORE_BUCKETS: list[tuple[float, float, str]] = [
+        (0.0, 60.0, "<60"), (60.0, 65.0, "60-65"), (65.0, 70.0, "65-70"),
+        (70.0, 75.0, "70-75"), (75.0, 80.0, "75-80"), (80.0, 85.0, "80-85"),
+        (85.0, 1e9, ">=85"),
+    ]
+
+    def _score_monotonicity(self, snapshots, dates, close_adj, period_dates,
+                            unis, index) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """检验 mid_long_score 是否「越高越好」：分桶收益 + 每期秩相关 IC。
+
+        与 score_min 网格校准同口径（月末期点、后复权、等权、先按期点求桶均值
+        再跨期点求均值/胜率）。两个 scope：
+          gate_pool —— 通过三硬门槛+动量门槛的候选(含 score<score_min 者，用于检验入选阈值)
+          universe  —— 全市场(用于检验分数自身的横截面选股能力)
+        """
+        close_idx = {d: i for i, d in enumerate(dates)}
+        idx_series: dict[str, pd.Series] = {}
+        for name, idxdf in index.items():
+            if idxdf is None or idxdf.empty:
+                continue
+            idx_series[name] = (idxdf.assign(trade_date=idxdf["trade_date"].astype(str))
+                                .sort_values("trade_date")
+                                .set_index("trade_date")["close"].astype(float))
+
+        def _idx_ret(name: str, d: str, h: int) -> float:
+            s = idx_series.get(name)
+            i = close_idx.get(d)
+            if s is None or i is None or i + h >= len(dates):
+                return float("nan")
+            d_f = dates[i + h]
+            if d not in s.index or d_f not in s.index:
+                return float("nan")
+            b0, b1 = float(s.loc[d]), float(s.loc[d_f])
+            return (b1 / b0 - 1.0) * 100.0 if b0 > 0 else float("nan")
+
+        panels = {p["period"].iloc[0]: p for p in snapshots}
+        rows: list[dict[str, Any]] = []
+        ic_rows: list[dict[str, Any]] = []
+        for d in period_dates:
+            pan = panels.get(d)
+            if pan is None or "mid_long_score" not in pan.columns:
+                continue
+            uni_codes = unis[d]["ts_code"].dropna().unique().tolist()
+            if "next_gate" in pan.columns:
+                gate = pan["next_gate"].fillna(False).astype(bool)
+            else:
+                gate = pd.Series(True, index=pan.index)
+            scopes = {"gate_pool": pan[gate], "universe": pan}
+            for scope, sub in scopes.items():
+                s = pd.DataFrame({
+                    "ts_code": sub["ts_code"].astype(str),
+                    "score": pd.to_numeric(sub["mid_long_score"], errors="coerce"),
+                }).dropna().drop_duplicates("ts_code")
+                if s.empty:
+                    continue
+                for h in BACKTEST_HORIZONS:
+                    rr = _fut_rets_at(close_adj, close_idx, dates, d,
+                                      s["ts_code"].tolist(), h)
+                    if rr.empty:
+                        continue
+                    m = s.set_index("ts_code").join(rr.rename("ret")).dropna()
+                    if m.empty:
+                        continue
+                    r_uni_s = _fut_rets_at(close_adj, close_idx, dates, d, uni_codes, h)
+                    r_uni = float(r_uni_s.mean()) if not r_uni_s.empty else float("nan")
+                    bench = {name: _idx_ret(name, d, h) for name in idx_series}
+                    if len(m) >= 30:
+                        ic_rows.append({
+                            "period": d, "scope": scope, "horizon": h, "n": len(m),
+                            "ic": float(m["score"].corr(m["ret"], method="spearman")),
+                        })
+                    for lo, hi, label in self.SCORE_BUCKETS:
+                        g = m[(m["score"] >= lo) & (m["score"] < hi)]
+                        if g.empty:
+                            continue
+                        r_b = float(g["ret"].mean())
+                        row: dict[str, Any] = {
+                            "period": d, "scope": scope, "bucket": label,
+                            "lo": lo, "horizon": h, "n_stocks": len(g),
+                            "ret": r_b, "universe_ret": r_uni,
+                            "excess_vs_universe": (r_b - r_uni) if pd.notna(r_uni) else np.nan,
+                        }
+                        for name, rb in bench.items():
+                            row[f"excess_vs_{name}"] = (r_b - rb) if pd.notna(rb) else np.nan
+                        rows.append(row)
+        return pd.DataFrame(rows), pd.DataFrame(ic_rows)
 
     # ── 稳定性分析 ────────────────────────────────────
 
@@ -437,7 +643,9 @@ class SliBacktest:
 
     # ── 输出 ──────────────────────────────────────────
 
-    def _emit(self, leaders, top3, excess, stability, start, end, unis) -> dict[str, str]:
+    def _emit(self, leaders, top3, excess, stability, start, end, unis,
+              nl_calib: pd.DataFrame, nl_buckets: pd.DataFrame,
+              nl_ic: pd.DataFrame) -> dict[str, str]:
         tag = f"{_dstr(start)}_{_dstr(end)}"
         paths: dict[str, str] = {}
 
@@ -449,6 +657,18 @@ class SliBacktest:
         excess.to_csv(ep, index=False, encoding="utf-8-sig")
         paths["excess"] = ep
 
+        np_ = os.path.join(OUTPUT_DIR, f"sli_backtest_nl_calib_{tag}.csv")
+        nl_calib.to_csv(np_, index=False, encoding="utf-8-sig")
+        paths["nl_calib"] = np_
+
+        bp = os.path.join(OUTPUT_DIR, f"sli_backtest_nl_buckets_{tag}.csv")
+        nl_buckets.to_csv(bp, index=False, encoding="utf-8-sig")
+        paths["nl_buckets"] = bp
+
+        ip = os.path.join(OUTPUT_DIR, f"sli_backtest_nl_ic_{tag}.csv")
+        nl_ic.to_csv(ip, index=False, encoding="utf-8-sig")
+        paths["nl_ic"] = ip
+
         # 稳定性 CSV
         sp = os.path.join(OUTPUT_DIR, f"sli_backtest_stability_{tag}.csv")
         if stability:
@@ -459,12 +679,15 @@ class SliBacktest:
 
         # 汇总报告（超额收益 × 年份 × 持有期）
         rep = os.path.join(OUTPUT_DIR, f"sli_backtest_report_{tag}.md")
-        self._write_report(rep, excess, stability, start, end)
+        self._write_report(rep, excess, stability, start, end, nl_calib,
+                           nl_buckets, nl_ic)
         paths["report"] = rep
         return paths
 
     def _write_report(self, path: str, excess: pd.DataFrame,
-                      stability: dict[str, Any], start: str, end: str) -> None:
+                      stability: dict[str, Any], start: str, end: str,
+                      nl_calib: pd.DataFrame, nl_buckets: pd.DataFrame,
+                      nl_ic: pd.DataFrame) -> None:
         lines: list[str] = []
         lines.append("# SLI V2 回测报告（滚动验证）\n")
         lines.append(f"- 回测区间：{start} ~ {end}（月末期点）")
@@ -525,8 +748,79 @@ class SliBacktest:
                          f"{exx:+.2f}% | {win:.0f}% |")
         lines.append("")
 
+        # 中长线潜力池校准
+        lines.append("## 四、中长线潜力池校准（score_min 网格）")
+        if nl_calib is None or nl_calib.empty:
+            lines.append("无有效样本。")
+        else:
+            lines.append("")
+            lines.append("| score_min | 池均只数 | 20日超额 | 60日超额 | 120日超额 | 250日超额 | 60日胜率 |")
+            lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
+            for th, g in nl_calib.groupby("score_min"):
+                cells = [f"{th:.0f}", f"{g['n_pool'].mean():.0f}"]
+                for h in BACKTEST_HORIZONS:
+                    sub = g[g["horizon"] == h]["excess_vs_universe"]
+                    cells.append(f"{sub.mean():+.2f}%" if sub.notna().any() else "—")
+                sub60 = g[g["horizon"] == 60]["excess_vs_universe"]
+                win = (sub60 > 0).mean() * 100.0 if sub60.notna().any() else np.nan
+                cells.append(f"{win:.0f}%" if pd.notna(win) else "—")
+                lines.append("| " + " | ".join(cells) + " |")
+            lines.append("")
+            lines.append(f"- 超额基准：全市场等权（含沪深300/中证1000 明细见 "
+                         f"sli_backtest_nl_calib_*.csv）")
+            lines.append(f"- 期点数：{nl_calib['period'].nunique()}，"
+                         f"区间 {nl_calib['period'].min()} ~ {nl_calib['period'].max()}")
+        lines.append("")
+
+        # 分数分桶检验（是否越高越好）
+        lines.append("## 五、分数分桶检验（mid_long_score 是否越高越好）")
+        if nl_buckets is None or nl_buckets.empty:
+            lines.append("无有效样本。")
+        else:
+            for scope, title in (("gate_pool", "门槛池内（next_gate，含 score<score_min 者）"),
+                                 ("universe", "全市场（检验分数自身选股能力）")):
+                sub = nl_buckets[nl_buckets["scope"] == scope]
+                if sub.empty:
+                    continue
+                lines.append("")
+                lines.append(f"**{title}**")
+                lines.append("")
+                lines.append("| 分桶 | 均只数 | 20日超额 | 60日超额 | 120日超额 | 250日超额 | 60日胜率 |")
+                lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
+                for _lo, _hi, b in self.SCORE_BUCKETS:
+                    g = sub[sub["bucket"] == b]
+                    if g.empty:
+                        continue
+                    cells = [b, f"{g['n_stocks'].mean():.0f}"]
+                    for h in BACKTEST_HORIZONS:
+                        s = g[g["horizon"] == h]["excess_vs_universe"]
+                        cells.append(f"{s.mean():+.2f}%" if s.notna().any() else "—")
+                    s60 = g[g["horizon"] == 60]["excess_vs_universe"].dropna()
+                    cells.append(f"{(s60 > 0).mean() * 100:.0f}%" if len(s60) else "—")
+                    lines.append("| " + " | ".join(cells) + " |")
+            if nl_ic is not None and not nl_ic.empty:
+                lines.append("")
+                lines.append("- 秩相关 IC（分数 vs 未来收益，按期点计算后取均值）：")
+                lines.append("")
+                lines.append("| 口径 | 持有期 | 期点数 | 平均IC | IC标准差 | ICIR | IC>0比例 |")
+                lines.append("|:--:|:--:|:--:|:--:|:--:|:--:|:--:|")
+                for scope in ("gate_pool", "universe"):
+                    g0 = nl_ic[nl_ic["scope"] == scope]
+                    for h in BACKTEST_HORIZONS:
+                        g = g0[g0["horizon"] == h]
+                        if g.empty or g["ic"].notna().sum() == 0:
+                            continue
+                        m, sd = g["ic"].mean(), g["ic"].std()
+                        ir = m / sd if pd.notna(sd) and sd > 0 else np.nan
+                        pos = (g["ic"] > 0).mean() * 100.0
+                        lines.append(f"| {scope} | {h}日 | {len(g)} | {m:+.3f} | {sd:.3f} | "
+                                     f"{ir:+.2f} | {pos:.0f}% |")
+            lines.append("")
+            lines.append("- 超额基准：全市场等权；桶内等权、跨期点平均，未计交易成本")
+        lines.append("")
+
         # 结论
-        lines.append("## 四、结论")
+        lines.append("## 六、结论")
         h60 = excess[excess["horizon"] == 60]
         if not h60.empty and h60["excess_vs_industry"].notna().any():
             avg = h60["excess_vs_industry"].mean()
