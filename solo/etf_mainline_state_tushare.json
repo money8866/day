@@ -1,10 +1,10 @@
 {
-  "last_rebalance_date": "2026-09-14",
-  "holding_code": "512800",
-  "holding_name": "银行",
-  "buy_price": 0.856,
-  "score_at_buy": 80.37,
-  "momentum_at_buy": 7.54,
-  "rsi_at_buy": 66.06,
-  "rebalance_count": 6
+  "last_rebalance_date": "2026-09-22",
+  "holding_code": "515880",
+  "holding_name": "通信",
+  "buy_price": 0.707,
+  "score_at_buy": 100.0,
+  "momentum_at_buy": 9.1,
+  "rsi_at_buy": 69.03,
+  "rebalance_count": 7
 }

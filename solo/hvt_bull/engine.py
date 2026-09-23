@@ -611,8 +611,10 @@ class HvtBullEngine:
             s4 += min(2.0, ev.rs_accel / 50.0 * 2.0)
         s4 = min(15.0, max(0.0, s4))
 
-        # ⑤ 板块 10
-        s5 = 0.0 if ev.sector_strength == 0 else min(10.0, ev.sector_strength / 10.0)
+        # ⑤ 板块 10（口径与 TE §11 的 sector_confirmation 一致：缺失/未知 → 中性 50，
+        #    不得因缺失给满分或零分。原式 min(10.0, nan/10.0) 会把 NaN 算成满分 10.0）
+        _st = ev.sector_strength
+        s5 = 5.0 if _st is None or not np.isfinite(_st) or _st <= 0 else min(10.0, _st / 10.0)
 
         # ⑥ 风险收益比 15：止损距离 + 上方空间 + ATR
         s6 = 5.0

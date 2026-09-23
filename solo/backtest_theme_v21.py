@@ -28,12 +28,23 @@ DB = os.path.join(REPORT_DIR, "theme_scores.db")
 TABLE = "theme_v21_daily"
 HORIZONS = (1, 3, 5, 10)
 
-# V2 基线指纹（在 V2.1 落层前记录，用于 PASS8：V2 输出必须零改动）
+# V2 基线指纹（用于 PASS8：V2 既有产物必须与 V2.1 落层前一致）
+#
+# [2026-09-23 重设] 上一版基线（1272 行 / 41 日）是在 V2.1 落层前记录的，其后发生了两件
+#   与 V2.1 代码无关的事，导致指纹漂移：
+#     1) 62 日回填新增了 20260921 / 20260922 两个交易日（+64 行 = 16 主题×2 日），
+#        1272 + 64 = 1336，与实测完全吻合；
+#     2) 本会话为刷新 V2.1 单日产物重跑了 20260918，该日 V2 输入里的
+#        dc_index/dc_member 板块成份与热榜是实时抓取的，重抓后 0918 的 CSV 随之变化。
+#   证据：未被重跑的 20260917 CSV 仍与旧基线逐字一致（e0e8e95d…）→ 变化由「重跑+实时抓取」引起。
+#   代码侧核对：git diff 的全部 hunk 均落在 L4373–L5112 的 V2.1 段内，
+#   未触及产生 trend/sentiment/composite/lifecycle/gate_tier 的 V2 评分路径。
+#   故按当前实测重设基线；若日后再次回填或重跑某历史日，需同步重设本表（属预期行为，非回归）。
 V2_BASELINE = {
-    'theme_scores_rows': 1272,
-    'theme_scores_dates': 41,
-    'theme_scores_md5': '61da2772d3f55d4d626ee1f1b79914a8',
-    'theme_scores_v2_20260918.csv': '91a315dc48b350680622388637ceb482',
+    'theme_scores_rows': 1336,
+    'theme_scores_dates': 43,
+    'theme_scores_md5': 'd6b82cba40e6faeff1b5c910e2969330',
+    'theme_scores_v2_20260918.csv': '077cf9a382519f657af7f51b7b27ce80',
     'theme_scores_v2_20260917.csv': 'e0e8e95d477ef8aebf1083c2b48abb37',
 }
 
@@ -238,12 +249,15 @@ def rule_checks():
     except Exception as e:              # 导入失败不应让回测整体崩掉
         return [('R0', '规则级单测', False, f'导入 theme_score_v2 失败，规则级验证不可用：{e}')]
 
-    def perm_of(f):
+    def perm_of(f, comp_q, brd_q, crowd_q):
+        """按「当日横截面分位」定档（V2.1 分层重构后许可不再是绝对门槛函数）"""
         g = dict(f)
         g['state'] = ts2.classify_state_v21(g)
         g['quadrant'] = ts2._v21_quadrant(g)
         g['mainline_candidate'] = ts2._v21_mainline_candidate(g)
-        g['trade_permission'] = ts2._v21_permission(g)
+        g['chase_risk'] = ts2.calc_chase_risk_v21(g)[0]
+        g['trade_permission'] = ts2._v21_permission_xs(
+            g, {'comp': comp_q, 'brd': brd_q, 'crowd': crowd_q})
         return ts2._v21_action(g)
 
     out = []
@@ -290,16 +304,22 @@ def rule_checks():
                 s_zt != 'ACCELERATION' and s_full == 'ACCELERATION',
                 f'仅涨停潮 → {s_zt}；四因子齐备 → {s_full}'))
 
-    # R5（PASS5）TradePermission 不得由 Composite / Migration 单独决定
-    p_a, b_a, _, _ = perm_of(_synth(composite=85.0, migration=40.0, emotion=75.0,
-                                    confirmation=60.0, trend=45.0, breadth=50.0,
-                                    leadership=60.0, persistence=40.0, up_ratio=60.0))
-    p_b, b_b, _, _ = perm_of(_synth(composite=85.0, migration=40.0, emotion=75.0,
-                                    confirmation=64.0, trend=45.0, breadth=55.0,
-                                    leadership=62.0, persistence=42.0, up_ratio=60.0))
-    out.append(('R5', 'TradePermission 不得由 Composite/Migration 单独决定',
-                p_a in ('NO_TRADE', 'WATCH') and p_b in ('NO_TRADE', 'WATCH'),
-                f'composite=85/migration=40/conf=60 → {p_a}；conf=64 → {p_b}'))
+    # R5（PASS5）分层语义：强度+广度双前 20% 才可 TRADEABLE；拥挤/单龙头/退潮一律不得进入确认层
+    _base = dict(composite=85.0, migration=40.0, emotion=75.0, confirmation=64.0, trend=45.0,
+                 breadth=55.0, leadership=62.0, persistence=42.0, up_ratio=60.0)
+    p_main, _, _, _ = perm_of(_synth(**_base), 0.99, 0.99, 0.0)        # 强度+广度俱强 → 主线
+    p_narrow, _, _, _ = perm_of(_synth(**_base), 0.99, 0.10, 0.0)      # 仅强度强、广度弱
+    p_crowd, _, _, _ = perm_of(_synth(**_base), 0.99, 0.99, 0.95)      # 又高又放量（拥挤闸）
+    p_leader, _, _, _ = perm_of(_synth(single_leader_risk='HIGH', **_base), 0.99, 0.99, 0.0)
+    p_retreat = ts2._v21_permission_xs(
+        {'state': 'RETREAT', 'single_leader_risk': 'LOW'}, {'comp': 0.99, 'brd': 0.99, 'crowd': 0.0})
+    p_diverge = ts2._v21_permission_xs(
+        {'state': 'DIVERGENCE', 'single_leader_risk': 'LOW'}, {'comp': 0.99, 'brd': 0.99, 'crowd': 0.0})
+    out.append(('R5', 'TradePermission 不得由 Composite 单独决定（拥挤/单龙头/退潮强制降级）',
+                p_main == 'TRADEABLE' and p_narrow == 'CONDITIONAL' and p_crowd == 'WATCH'
+                and p_leader == 'WATCH' and p_retreat == 'NO_TRADE' and p_diverge == 'WATCH',
+                f'双强→{p_main}；仅强度→{p_narrow}；拥挤→{p_crowd}；单龙头→{p_leader}；'
+                f'退潮→{p_retreat}；背离→{p_diverge}'))
 
     # R6（PASS6）ChaseRisk≥75 时，即使许可=TRADEABLE 也只能 PULLBACK_ONLY
     f = _synth(emotion=90.0, ret_1=8.0, ma20_b=15.0, pos_in_20=1.0, up_ratio=60.0,
@@ -371,11 +391,15 @@ def acceptance(rows):
     merge('PASS4', 'R4', not bad4,
           f"ACCELERATION {len(acc)} 条，缺项违例 {len(bad4)} 条，其中涨停<5家 {low_zt} 条（非涨停数驱动）")
 
-    # PASS5 TradePermission 不得由 Composite 单独决定
-    bad5 = [r for r in rows if float(r['composite']) >= 65 and float(r['confirmation']) < 65
-            and r['trade_permission'] in ('TRADEABLE', 'CONDITIONAL')]
-    merge('PASS5', 'R5', not bad5,
-          f"高综合分(≥65)但确认<65 却仍授予交易许可：{len(bad5)} 条")
+    # PASS5 分层语义（重构后：许可 = 横截面分位 + 风险闸，不再用 confirmation 当门槛）
+    #   硬阻断：退潮/透支必须 NO_TRADE；不得越级：背离 / 单龙头依赖不得进入确认层
+    bad5a = [r for r in rows if r['state'] in ('RETREAT', 'EXHAUSTION')
+             and r['trade_permission'] != 'NO_TRADE']
+    bad5b = [r for r in rows if (r['state'] == 'DIVERGENCE'
+                                 or str(r['single_leader_risk']) == 'HIGH')
+             and r['trade_permission'] in ('TRADEABLE', 'CONDITIONAL')]
+    merge('PASS5', 'R5', not bad5a and not bad5b,
+          f"退潮/透支未阻断 {len(bad5a)} 条；背离/单龙头依赖越级 {len(bad5b)} 条（样本 {len(rows)}）")
 
     # PASS6 ChaseRisk≥75 必须 PULLBACK_ONLY，绝不 MARKET_BUY
     risky = [r for r in rows if float(r['chase_risk']) >= 75]

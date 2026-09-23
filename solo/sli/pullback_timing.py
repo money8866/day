@@ -76,11 +76,18 @@ mom60 +0.269），而位置高 → 未来差（池内 120 日区间位置 Q1 未
      池内信号在时间上高度聚集，闸门剥离掉「逆风期的同向回撤」。
 
 卖出 / 风控（阈值由回测的 MAE 与分持有期收益反推）：
-     H1 止损   收盘跌破 20 日最低价（回踩低点）→ 无条件离场
-     H2 止盈   累计 +8% / +12% 分批减仓
-     H3 时间   持有 20 个交易日强制离场（做短）
-     实测 MAE 约 −10.5%（浅回踩+缩量口径），故单笔风险预算按 −10% 设，
-     止损位取 20 日最低价，二者取其高。
+    H1 止损   收盘跌破 20 日最低价（回踩低点）→ 无条件离场
+    H2 止盈   累计 +8% / +12% 分批减仓
+    H3 时间   持有 20 个交易日强制离场（做短）
+    止损位保持「结构位」（20 日最低价）不收紧 —— 实测（565 笔事件逐日实际退出回测）：
+      硬把止损收到 −10% / −15%，止损率升到 41% / 26%，20 日日均收益由 3.17%
+      掉到 2.25% / 2.77%（这类高波动回踩票的正常噪声就在 −10% ~ −15%）；
+      而入场时结构止损距离越宽、未来收益反而越高（0~6% +0.38% → 20%+ +6.27%），
+      故「过滤止损距离过宽的标的」同样会砍掉最好的样本。
+    极端回撤改由**仓位**消化，规则是风险预算折算：
+      建议仓位 = risk_budget(1% 账户) ÷ 该股止损距离，上限 max_position(20%)
+      止损距离 −39% 的标的自动只给约 2.5% 仓位 —— 账户级单笔最大回撤被钉在
+      风险预算上，而策略正期望完整保留。扫描输出直接给 stop_dist_pct / position_pct。
 
 防未来函数：
   · 池成员按期点快照，交易日只可见「≤ 当日」的最近一期；
@@ -171,6 +178,10 @@ CFG: dict[str, Any] = {
 
     # ── ⑥ 市场环境闸门 ──
     "gate_ma": 20,
+
+    # ── 卖出 / 风控（止损位取结构位，风险预算靠仓位折算，不收紧止损位）──
+    "risk_budget": 0.01,     # 单笔风险预算：止损打掉时允许损失的账户比例
+    "max_position": 0.20,    # 单票仓位上限
 }
 
 # 消融变体：控制 趋势 / 回踩 / 量价 / 闸门 / 缩量触发 五层是否启用
@@ -822,13 +833,19 @@ def scan(asof: Optional[str] = None, cfg: Optional[dict[str, Any]] = None) -> pd
         if c not in want.index:
             continue
         r = want.loc[c]
+        close = f_now["C"][c].iloc[-1]
+        stop = f_now["ll20"][c].iloc[-1]
+        # 单笔风险 = (入场价 − 止损价) / 入场价；仓位 = 风险预算 / 单笔风险。
+        # 止损位保持结构位（20 日最低价）不动，极端止损距离靠仓位折算消化，
+        # 而不是收紧止损位 —— 后者会把 41% 的交易在噪声里打掉（见模块 docstring）。
+        stop_dist = max(cfg["pull_dd_min"], 1.0 - stop / close)
         rows.append({
             "signal_date": d, "ts_code": c,
             "name": r.get("name", ""), "l3_name": r.get("l3_name", ""),
             "subsector": r.get("subsector", ""),
             "mid_long_score": r.get("mid_long_score", np.nan),
-            "close": f_now["C"][c].iloc[-1],
-            "dist_hh20_pct": (f_now["C"][c].iloc[-1] / f_now["hh20"][c].iloc[-1] - 1.0) * 100,
+            "close": close,
+            "dist_hh20_pct": (close / f_now["hh20"][c].iloc[-1] - 1.0) * 100,
             "days_since_high": f_now["days_since_hh20"][c].iloc[-1],
             "leg_gain_60d_pct": (f_now["hh60"][c].iloc[-1] / f_now["ll60"][c].iloc[-1] - 1.0) * 100,
             "vol3_vs_ma20": (f_now["v3"][c].iloc[-1] / f_now["vma20"][c].iloc[-1]),
@@ -836,8 +853,10 @@ def scan(asof: Optional[str] = None, cfg: Optional[dict[str, Any]] = None) -> pd
             "vp_ok": bool(layers["vp"][c]), "trigger": bool(layers["trigger"][c]),
             "mkt_gate": gate_now,
             "buy": bool(sig[c]) and gate_now,
-            "stop_loss": f_now["ll20"][c].iloc[-1],
-            "target_8pct": f_now["C"][c].iloc[-1] * 1.08,
+            "stop_loss": stop,
+            "stop_dist_pct": -stop_dist * 100,
+            "position_pct": min(cfg["max_position"], cfg["risk_budget"] / stop_dist) * 100,
+            "target_8pct": close * 1.08,
         })
     out = pd.DataFrame(rows)
     out = out.sort_values(["buy", "vph"], ascending=[False, False]).reset_index(drop=True)
@@ -915,8 +934,10 @@ def sync_pick_db(out: pd.DataFrame, d: str) -> int:
             "reason": "六层全满足" if is_buy else ("+".join(why) or "形态就绪"),
             "stop_price": float(r["stop_loss"]) / k,
             "target_price": float(r["target_8pct"]) / k,
+            "position_pct": float(r["position_pct"]),
             "signal_date": d,
             "close_adj": float(r["close"]), "adj_factor": k,
+            "stop_dist_pct": r["stop_dist_pct"],
             "dist_hh20_pct": r["dist_hh20_pct"],
             "days_since_high": r["days_since_high"],
             "leg_gain_60d_pct": r["leg_gain_60d_pct"],
@@ -1029,8 +1050,11 @@ def main() -> None:
             if len(b):
                 cols = ["ts_code", "name", "l3_name", "mid_long_score", "close",
                         "dist_hh20_pct", "leg_gain_60d_pct",
-                        "vol3_vs_ma20", "vph", "stop_loss", "target_8pct"]
+                        "vol3_vs_ma20", "vph", "stop_loss", "stop_dist_pct",
+                        "position_pct", "target_8pct"]
                 print(b[cols].to_string(index=False))
+                print(f"  position_pct = 单笔风险预算 {CFG['risk_budget']:.1%} ÷ 该股止损距离，"
+                      f"上限 {CFG['max_position']:.0%}；止损距离越远仓位越小。")
             near = out[(~out["buy"]) & out["trend"] & out["pull"] & out["vp_ok"]]
             print(f"\n形态已就绪、仅缺缩量触发（次日盯）：{len(near)} 只")
             if len(near):

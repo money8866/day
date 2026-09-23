@@ -102,13 +102,13 @@ SINA_INDEX_CODES = {
     "沪深300": "sh000300",
     "中证2000": "sz399303",     # 新浪无932000,用国证2000替代
 }
-# ── 「猎狐」T0_CONFIRM 缩量/放量分档阈值 ──
-# volr = 确认日量 ÷ 前20日均量（沿用引擎 analyze 的同口径字段 sig['volr']，不另算）
-# 依据 fox_t0_backtest.py 全历史回放（2022-01~2026-09，n=3034，基准=确认日收盘价）：
-#   volr <  0.8 → 缩量确认「买点池」 n=295   fwd20 +0.30%/45%  fwd60 +1.77%/43%  赔率1.34（唯一正期望档）
-#   volr ≥  0.8 → 放量确认「观察池」 n=2739  fwd20 -0.71%/39%  fwd60 -1.71%/36%  赔率1.07（追高型）
-# 放量确认往往是主升已在确认日前走完（如 9/16 福龙马 volr=3.7），故仅降级标注、不剔除。
-FOX_T0_DRY_VOLR = 0.8
+# ── 「猎狐V4」形态参数（缩量回调 → 第一根放量中阳线 3%~5% + 长下影加分）──
+# 全部阈值/评分由 fox_v4_backtest.py 全历史回放（2021-01~2026-09，全市场 2779 只）标定，
+# 见 fox_v4.DEFAULT_PARAMS 内逐条注释；线上直接复用该模块，此处不再重复定义。
+# 回放口径（基准=信号日收盘价，复权收益）：
+#   n=9392  fwd5 +1.12%/48%  fwd20 +2.74%/51%  fwd60 +6.56%/52%（mfe20 +12.9% / mae20 -8.2%）
+#   评分分档（≥72 核心买点 / ≥60 买点池 / 其余观察池）单调：
+#     核心买点 n=3812 fwd20 +3.13%  |  买点池 n=3521 +2.68%  |  观察池 n=2059 +2.12%
 
 # ── 全市场成交量预测：日内累计成交额占比曲线 ──
 # A股两市成交额日内呈 U 型分布(早盘抢筹、午后清淡、尾盘放量)。
@@ -256,13 +256,13 @@ class RealtimeThemeMonitor:
         self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
         self._init_tail_tracker()
 
-        # ── 尾盘「猎狐」T0天量确认信号 (W7 T0_CONFIRM 实时接入) ──
+        # ── 尾盘「猎狐V4」缩量回调→首根放量中阳 信号 (fox_v4 形态引擎) ──
         self.fox_run_date = ""        # 当日已扫描日期YYYYMMDD(跨日重置)
         self._fox_done = False        # 当日是否已执行猎狐定稿扫描
-        self.fox_state_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'fox_t0_state.json')  # code->T0事件日,防止同锚重复触发
+        self.fox_state_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'fox_v4_state.json')  # code->信号日,防止重复触发
         self.fox_signals_cache = []   # 最近一次猎狐触发信号(便于日终复核)
-        self.fox_ctx = None           # 盘中复用上下文(reader/锚点/板块强度),首个猎狐扫描构建,定稿后释放
-        self._fox_pre_pushed = {}     # code->已推预检的T0事件日(盘中预检同锚只推一次;14:50定稿独立推送)
+        self.fox_ctx = None           # 盘中复用上下文(reader/主题池),首个猎狐扫描构建,定稿后释放
+        self._fox_pre_pushed = {}     # code->已推预检的信号日(盘中预检同日只推一次;14:50定稿独立推送)
         self.fox_next_pre_time = 0.0  # 下次盘中预检时间戳(约10分钟节奏)
 
         # ── 同花顺扶摇 MCP 补充数据 ──
@@ -726,13 +726,18 @@ class RealtimeThemeMonitor:
             print(f"   ✅ {name}({INDEX_CODES[name]}): {len(df)} 根K线,最新收盘={df['close'].iloc[-1]:.2f}")
 
     def _load_trade_cal(self):
-        """加载交易日历(进程内按自然日缓存一份,避免重复请求 Tushare);获取失败返回 None"""
+        """加载交易日历(进程内按自然日缓存一份,避免重复请求 Tushare);获取失败返回 None
+
+        注意: 不再以 TUSHARE_TOKEN 环境变量做前置判断。pro 由 tushare 自带 token 配置初始化,
+        环境变量缺失时接口依然可用;此前的环境变量闸门会让日历"静默"失效并静默退化为自然日,
+        导致非交易日(周末)被当成交易日写进 tail_signal_tracker_v4 / nd2_snapshot。
+        """
         today = datetime.now().strftime('%Y%m%d')
-        if self._trade_cal_days is not None and self._trade_cal_anchor == today:
+        if self._trade_cal_anchor == today:
             return self._trade_cal_days
 
         days = None
-        if TS_AVAILABLE and pro is not None and os.getenv('TUSHARE_TOKEN'):
+        if TS_AVAILABLE and pro is not None:
             try:
                 start = (datetime.now() - timedelta(days=90)).strftime('%Y%m%d')
                 end = (datetime.now() + timedelta(days=10)).strftime('%Y%m%d')
@@ -744,6 +749,9 @@ class RealtimeThemeMonitor:
                     days = set(str(d) for d in cal_df['cal_date'])
             except Exception as e:
                 print(f"⚠ Tushare trade_cal 获取失败, 回退自然日推算: {e}")
+        if not days:
+            print(f"⚠ 交易日历不可用(TS_AVAILABLE={TS_AVAILABLE}, pro={pro is not None}), "
+                  f"回退自然日推算(自动跳过周末)")
 
         self._trade_cal_days = days
         self._trade_cal_anchor = today
@@ -764,12 +772,18 @@ class RealtimeThemeMonitor:
             q = (now - timedelta(days=1)).strftime('%Y%m%d')
 
         days = self._load_trade_cal()
-        if not days:
-            return q
-        for offset in range(15):
-            cand = (datetime.strptime(q, '%Y%m%d') - timedelta(days=offset)).strftime('%Y%m%d')
-            if cand in days:
-                return cand
+        if days:
+            for offset in range(15):
+                cand = (datetime.strptime(q, '%Y%m%d') - timedelta(days=offset)).strftime('%Y%m%d')
+                if cand in days:
+                    return cand
+        # 日历不可用(或窗口内无交易日)时退化自然日推算, 至少跳过周末,
+        # 避免周六/周日被当作交易日写进跟踪表/快照库
+        cand = datetime.strptime(q, '%Y%m%d')
+        for _ in range(7):
+            if cand.weekday() < 5:
+                return cand.strftime('%Y%m%d')
+            cand -= timedelta(days=1)
         return q
 
     def _fetch_ref_prices_from_sina(self, codes):
@@ -1998,8 +2012,10 @@ class RealtimeThemeMonitor:
 
         try:
             # 1. 优先通过 Tushare trade_cal 接口获取上一个交易日(最权威)
+            #    注: 不以 TUSHARE_TOKEN 环境变量做前置判断(与 _load_trade_cal 同因),
+            #    环境变量缺失时接口依然可用, 加闸门只会静默降级到本地库兜底
             yesterday_str = None
-            if TS_AVAILABLE and pro is not None and os.getenv('TUSHARE_TOKEN'):
+            if TS_AVAILABLE and pro is not None:
                 try:
                     today = datetime.date.today()
                     end_date = today.strftime('%Y%m%d')
@@ -2022,7 +2038,7 @@ class RealtimeThemeMonitor:
                 except Exception as e:
                     print(f"⚠ Tushare trade_cal 获取上一个交易日失败: {e}")
             else:
-                print(f"[get_yesterday_market_data] Tushare 不可用 (TS_AVAILABLE={TS_AVAILABLE}, pro={pro is not None}, token={'已设置' if os.getenv('TUSHARE_TOKEN') else '未设置'}), 走本地数据库兜底")
+                print(f"[get_yesterday_market_data] Tushare 不可用 (TS_AVAILABLE={TS_AVAILABLE}, pro={pro is not None}), 走本地数据库兜底")
 
             # 2. 兜底:从本地数据库 MAX(trade_date) 获取
             if not yesterday_str:
@@ -3701,13 +3717,13 @@ class RealtimeThemeMonitor:
                             # 控制台输出
                             print(f"\n{'='*110}")
                             print(f"🎯 「猎尾V4」SLI中长线潜力池回踩信号 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'赛道':<10} {'总分':>4} {'潜力':>5} {'二次':>4} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
+                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'赛道':<10} {'择时分':>5} {'潜力':>5} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
                             print(f"{'-'*110}")
                             for i, s in enumerate(tail_signals[:10], 1):
                                 d = s.get('detail', {})
                                 emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
                                 vol_label = str(d.get('tail_vol_label', '-'))
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>4} {d.get('mid_long_score', 0):>5.1f} {d.get('realtime_score', 0):>4} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
+                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>5} {d.get('mid_long_score', 0):>5.1f} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
                             print(f"{'='*110}\n")
 
                             # 推送信号到微信: SLI池回踩形态≥65分推送
@@ -3724,7 +3740,7 @@ class RealtimeThemeMonitor:
                                     if d.get('sector_rank') == 1: feats.append('赛道龙头')
                                     feat_str = ' '.join(feats) if feats else ''
                                     rank_tag = f"赛道#{d['sector_rank']}" if d.get('sector_rank') else ''
-                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 总分{s['total_score']} 潜力{d.get('mid_long_score', 0):.1f}/二次{d.get('realtime_score', 0)} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{rank_tag}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
+                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 择时{s['total_score']} 潜力{d.get('mid_long_score', 0):.1f} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{rank_tag}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
                                 content = f"🎯 「猎尾V4」SLI中长线潜力池回踩买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
                                 self.send_wechat(f"🎯 猎尾V4回踩 {now.strftime('%H:%M')}", content)
 
@@ -3749,23 +3765,23 @@ class RealtimeThemeMonitor:
                             print(f"⚠ V5 ND2扫描异常: {e}")
                         self.nd2_last_scan_time = time.time()
 
-                # ── 13:30-14:40 每10分钟「猎狐」盘中预检(实时价近似收盘,尾盘回落可能作废,14:50定稿为准) ──
+                # ── 13:30-14:40 每10分钟「猎狐V4」盘中预检(实时价近似收盘,尾盘回落可能作废,14:50定稿为准) ──
                 pre_win = ((now.hour == 13 and now.minute >= 30) or (now.hour == 14 and now.minute < 50))
                 if not self._fox_done and pre_win and time.time() - self.fox_next_pre_time >= 600:
                     self.fox_next_pre_time = time.time()
                     try:
-                        self.scan_fox_t0(now, pre=True)
+                        self.scan_fox_v4(now, pre=True)
                     except Exception as e:
                         import traceback
                         print(f"⚠ 猎狐盘中预检异常: {e}")
                         traceback.print_exc()
 
-                # ── 14:50后执行「猎狐」T0天量确认定稿扫描(每交易日一次,实时价近似收盘) ──
+                # ── 14:50后执行「猎狐V4」定稿扫描(每交易日一次,实时价近似收盘) ──
                 if now.hour == 14 and now.minute >= 50 and not self._fox_done:
                     self._fox_done = True
                     self.fox_run_date = now.strftime('%Y%m%d')
                     try:
-                        fox_signals = self.scan_fox_t0(now)
+                        fox_signals = self.scan_fox_v4(now)
                         if fox_signals:
                             self.fox_signals_cache = fox_signals   # 记录本轮信号,便于日终复核
                             self._save_fox_picks_to_pickdb(fox_signals)   # 写入统一选股库(盘后 stock_pick_db.update_tracking 回填)
@@ -5116,7 +5132,11 @@ class RealtimeThemeMonitor:
             ④ 尾盘量能       (15分): 缩量回踩确认(14:30尾盘增量<=0.15)满分
             ⑤ 至止盈位空间   (10分): 止盈=现价+3*ATR14, 空间=3*ATR/现价, 5%~20%满分
             ⑥ SLI 赛道地位   ( 5分): 赛道内 sub_rank 越靠前越优(1=赛道最强)
-        综合分 = SLI中长线潜力分(mid_long_score)*0.55 + 实时二次确认*0.45
+        综合分 = 实时二次确认分(rt_score, 0~100)
+                (mid_long_score / sli_v2 只作入池门槛与展示, 不参与打分 —— 依据
+                 sli.backtest 分桶检验 2023-06~2026-09 四十期点: 池内 mid_long_score
+                 与未来收益秩相关 IC≈0(20日+0.000/60日-0.001/120日+0.011),
+                 分桶超额无单调性, 故池内按分数排序无 alpha)
         止损 = 现价-2*ATR14;  止盈 = 现价+3*ATR14
         信号: >=80强买入 >=70买入观察 >=65关注(推送线65)
 
@@ -5292,8 +5312,10 @@ class RealtimeThemeMonitor:
                 weak_market = True
             rt_score = max(0, min(100, rt_score))
 
-            # ── 综合分: SLI中长线潜力分 55% + 实时二次确认 45% ──
-            total = int(round(mid_long * 0.55 + rt_score * 0.45))
+            # ── 综合分: 分数只做门槛 ──
+            # 池内 mid_long_score 无横截面排序能力(回测 IC≈0), 总分全交给回踩择时分;
+            # mid_long_score/sli_v2 仅作入池门槛与展示(池内已保证 mid_long_score>=score_min)
+            total = int(round(rt_score))
             if total >= 80:
                 signal = '强买入'
             elif total >= 70:
@@ -5373,7 +5395,7 @@ class RealtimeThemeMonitor:
         """
         「猎尾V4」SLI中长线潜力池回踩信号写入跟踪表 tail_signal_tracker_v4
         入表筛选: total_score >= 65 + 排除北交所
-        (表列沿用V4: quant_score=mid_long_score, wash_score=sli_v2)
+        (表列沿用V4: total_score=实时二次确认分, quant_score=mid_long_score, wash_score=sli_v2)
         """
         if not signals:
             return
@@ -5461,7 +5483,7 @@ class RealtimeThemeMonitor:
 
     def _save_fox_picks_to_pickdb(self, signals):
         """
-        「猎狐」T0天量确认(定稿)信号写入统一选股库 stock_pick_db
+        「猎狐V4」缩量回调→首根放量中阳(定稿)信号写入统一选股库 stock_pick_db
         (表 stock_pick, 盘后由 stock_pick_db.update_tracking() 回填 pick_tracking)
 
         仅在 14:50 定稿通道调用(盘中预检不落库);候选池已限定主题池沪深标的。
@@ -5471,7 +5493,6 @@ class RealtimeThemeMonitor:
             return
         try:
             from stock_pick_db import record_picks
-            status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
             pick_date = self._get_last_trade_date(include_today=True)   # 14:50定稿信号属于当日
             picks = []
             for s in signals:
@@ -5482,48 +5503,35 @@ class RealtimeThemeMonitor:
                     'ts_code': code,
                     'stock_name': s.get('name', ''),
                     'close': s.get('close'),
-                    'pct_chg': s.get('pct_chg_live'),
-                    'signal': s.get('state', 'T0_CONFIRM'),
-                    'action': status_cn.get(s.get('buy'), s.get('buy', '')),
+                    'pct_chg': s.get('pct_chg'),
+                    'signal': 'FOX_V4',
+                    'action': s.get('tier', ''),
                     'score': s.get('score'),
                     'industry': s.get('industry', ''),
                     'reason': s.get('reason', ''),
-                    'target_price': s.get('pressure') or None,
+                    'target_price': s.get('tp1') or None,
                     # ── 策略自有字段(自动序列化进 indicators) ──
                     'theme': s.get('theme', ''),
-                    'type': s.get('type', ''),
-                    'level': s.get('level', ''),
-                    'event_date': s.get('event_date', ''),
-                    'event_close': s.get('event_close'),
-                    'hvt': s.get('hvt'),
-                    'entry': s.get('entry'),
-                    'dist_risk': s.get('dist_risk'),
-                    'volr': s.get('volr'),
                     'tier': s.get('tier', ''),
+                    'volr': s.get('volr'),
+                    'pb_depth': s.get('pb_depth'),
+                    'shrink': s.get('shrink'),
+                    'shadow': s.get('shadow'),
                     'ma20': s.get('ma20'),
-                    # ── 【增量模块】天量T0确认 V2.1(T0_ 前缀,独立字段,不覆盖既有字段) ──
-                    'T0_FINAL': s.get('T0_FINAL', ''),
-                    'T0_STATE': s.get('T0_STATE', ''),
-                    'T0_STAGE': s.get('T0_STAGE', ''),
-                    'T0_VOLUME_STATE': s.get('T0_VOLUME_STATE', ''),
-                    'T0_PULLBACK_STATE': s.get('T0_PULLBACK_STATE', ''),
-                    'T0_PRESSURE_STATE': s.get('T0_PRESSURE_STATE', ''),
-                    'T0_ENTRY_STATE': s.get('T0_ENTRY_STATE', ''),
-                    'T0_NO_CHASE': s.get('T0_NO_CHASE'),
-                    'T0_OVEREXTENSION': s.get('T0_OVEREXTENSION'),
-                    'T0_CONFIRM_SCORE': s.get('T0_CONFIRM_SCORE'),
-                    'T0_EXEC_SCORE': s.get('T0_EXEC_SCORE'),
-                    'T0_VOL_RATIO': s.get('T0_VOL_RATIO'),
-                    'T0_CUR_VOLR': s.get('T0_CUR_VOLR'),
-                    'T0_PULLBACK': s.get('T0_PULLBACK'),
-                    'T0_ENTRY_MID': s.get('T0_ENTRY_MID'),
+                    'ma20_ratio': s.get('ma20_ratio'),
+                    'gap': s.get('gap'),
+                    'stop': s.get('stop'),
+                    'tp1': s.get('tp1'),
+                    'tp2': s.get('tp2'),
+                    'peak_date': s.get('peak_date'),
+                    'peak_close': s.get('peak_close'),
                 })
             if not picks:
                 return
-            n = record_picks('fox_t0', '猎狐 T0 天量确认', picks, pick_date=pick_date)
-            print(f"[选股库·猎狐] 已写入{n}只T0确认信号 (strategy_id=fox_t0, pick_date={pick_date})")
+            n = record_picks('fox_v4', '猎狐V4 缩量回调首根放量中阳', picks, pick_date=pick_date)
+            print(f"[选股库·猎狐V4] 已写入{n}只形态信号 (strategy_id=fox_v4, pick_date={pick_date})")
         except Exception as e:
-            print(f"⚠ 猎狐信号写入选股库失败: {e}")
+            print(f"⚠ 猎狐V4信号写入选股库失败: {e}")
 
     def _pickdb_write(self, strategy_id, strategy_name, picks):
         """通用: 尾盘策略选股结果写入统一选股库 stock_pick_db(盘后 update_tracking 回填跟踪)"""
@@ -6275,7 +6283,7 @@ class RealtimeThemeMonitor:
         return signals
 
     # ════════════════════════════════════════════
-    # 「猎狐」尾盘 T0 天量确认买点信号 (W7 T0_CONFIRM 实时接入)
+    # 「猎狐V4」缩量回调 → 首根放量中阳线 信号 (fox_v4 形态引擎)
     # ════════════════════════════════════════════
 
     def _fox_stock_info(self, ts_code):
@@ -6313,74 +6321,37 @@ class RealtimeThemeMonitor:
                 pass
 
     def _fox_ensure_ctx(self, now):
-        """构建/复用猎狐盘中上下文:同一缓存日期(end_db)全天复用。
+        """构建/复用猎狐V4 盘中上下文:同一缓存日期(end_db)全天复用。
 
-        reader 与 frames 只加载一次——单次全池历史 SQL 加载是扫描耗时的主要瓶颈;
-        天量 T0 锚点按 (code, len) 缓存在 ctx['anchor_map'],盘中各次预检直接复用。
+        reader 只加载一次——单次全池历史 SQL 加载是扫描耗时的主要瓶颈。
+        形态判定(fox_v4)只需近 90 根 K 线,无锚点/板块强度/相似度等外部依赖。
         返回 dict 或 None。"""
-        import numpy as np
         import w7_second_wave_engine as w7
         if self.fox_ctx is not None:
             return self.fox_ctx
-        ctx = {'reader': None, 'end_db': '', 'anchors': {}, 'mkt': None,
-               'industry_map': {}, 'sector_strength': {}, 'anchor_map': {},
-               'loaded_miss': set()}
+        ctx = {'reader': None, 'end_db': '', 'loaded_miss': set()}
         reader = None
         try:
             reader = w7.CacheReader()
             end_db = reader.latest_date()
             if not end_db:
-                print("⚠ [猎狐] W7缓存库无数据,跳过")
+                print("⚠ [猎狐V4] W7缓存库无数据,跳过")
                 reader.close()
                 return None
             live = {c: q for c, q in self.quotes.items()
                     if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
             if not live:
-                print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
+                print(f"⚠ [猎狐V4] {now.strftime('%H:%M:%S')} 无实时行情,跳过扫描")
                 reader.close()
                 return None
             candidates = sorted(live.keys())
-            print(f"🕐 [猎狐] 首次加载主题池历史(截至{end_db}, {len(candidates)}只),耗时可能数十秒~数分钟,盘中仅此一次...", flush=True)
+            print(f"🕐 [猎狐V4] 首次加载主题池历史(截至{end_db}, {len(candidates)}只),耗时可能数十秒~数分钟,盘中仅此一次...", flush=True)
             reader.load_all(end_db, codes=candidates, min_date=w7.DATA_START)
-            reader.load_fina()
-
-            # W7 锚点特征(中际旭创/华正新材,用于天量相似度,不影响状态判定)
-            anchors = {}
-            for label, (code, anchor_date) in w7.ANCHORS.items():
-                try:
-                    adf = reader.bars_sql(code, end_db)
-                    anchors[label] = w7.anchor_features(adf, anchor_date)
-                except Exception:
-                    anchors[label] = None
-            mkt = w7.MarketCtx(*reader.market_curve(end_db))
-
-            industry_map = {}
-            for c in candidates:
-                try:
-                    ind = reader.basic.loc[c].get('industry')
-                except Exception:
-                    ind = None
-                industry_map[c] = str(ind) if ind and str(ind) != 'nan' else ''
-            # 板块聚合(主题池近似;只影响评分维度,不影响 T0_CONFIRM 状态判定)
-            by_ind = {}
-            for code, f in reader.frames.items():
-                if len(f) < 21:
-                    continue
-                c0 = w7.finite(f.iloc[-21].close, 0.0)
-                c1 = w7.finite(f.iloc[-1].close, 0.0)
-                ind = industry_map.get(code, '')
-                if c0 <= 0 or not ind:
-                    continue
-                by_ind.setdefault(ind, []).append(c1 / c0 - 1.0)
-            sector_strength = {ind: w7.clip(50.0 + float(np.median(v)) * 150.0)
-                               for ind, v in by_ind.items() if len(v) >= 3}
-
-            ctx.update({'reader': reader, 'end_db': end_db, 'anchors': anchors, 'mkt': mkt,
-                        'industry_map': industry_map, 'sector_strength': sector_strength})
+            ctx.update({'reader': reader, 'end_db': end_db})
             self.fox_ctx = ctx
             return ctx
         except Exception as exc:
-            print(f"⚠ [猎狐] 上下文构建失败: {exc}")
+            print(f"⚠ [猎狐V4] 上下文构建失败: {exc}")
             import traceback
             traceback.print_exc()
             if reader is not None:
@@ -6390,17 +6361,20 @@ class RealtimeThemeMonitor:
                     pass
             return None
 
-    def scan_fox_t0(self, now, pre=False):
-        """「猎狐」T0 天量确认买点。
-        pre=True  盘中预检(13:30起每10分钟):以实时价近似当日收盘重跑 W7 T0_CONFIRM 状态机,
-                 满足条件的股票当日首次触发即推送「盘中预检」(若尾盘回落可能作废,以14:50定稿为准),
-                 不写定稿状态、不进日终复核队列。
-        pre=False 尾盘定稿(14:50,每交易日一次):沿用 fired_map 防同锚重复触发,落定稿状态。
+    def scan_fox_v4(self, now, pre=False):
+        """「猎狐V4」缩量回调 → 首根放量中阳线(3%~5%),长下影加分。
+
+        形态与阈值统一定义在 fox_v4(见 fox_v4.DEFAULT_PARAMS 内逐条回放注释)。
+        pre=True  盘中预检(13:30起每10分钟):以实时价虚拟当日K线近似收盘做形态判定,
+                 当日首次满足即推送(尾盘回落可能作废,以 14:50 定稿为准);不写定稿状态。
+        pre=False 尾盘定稿(14:50,每交易日一次):按信号日防重复,落定稿状态。
         返回: 本轮新触发信号列表"""
         import pandas as pd
         import w7_second_wave_engine as w7
-        import t0_confirm_v21 as t0v21   # 【增量模块】天量T0确认 V2.1(只写 T0_* 字段)
+        import fox_v4
 
+        fp = fox_v4.DEFAULT_PARAMS
+        need_bars = max(int(w7.MIN_BARS), int(fp['min_bars']))
         today = now.strftime('%Y%m%d')
         ctx = self._fox_ensure_ctx(now)
         if ctx is None:
@@ -6419,21 +6393,16 @@ class RealtimeThemeMonitor:
         live = {c: q for c, q in self.quotes.items()
                 if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
         if not live:
-            print(f"⚠ [猎狐] {now.strftime('%H:%M:%S')} 无实时行情,跳过T0确认扫描")
+            print(f"⚠ [猎狐V4] {now.strftime('%H:%M:%S')} 无实时行情,跳过扫描")
             return []
 
-        anchors = ctx['anchors']
-        mkt = ctx['mkt']
-        industry_map = ctx['industry_map']
-        sector_strength = ctx['sector_strength']
-        anchor_map = ctx['anchor_map']
         loaded_miss = ctx['loaded_miss']
         candidates = sorted(live.keys())
 
         fired_map = None if pre else self._fox_load_state()
         pre_pushed = self._fox_pre_pushed if pre else None
         new_signals = []
-        stale = []   # 已触发过的同锚T0(重复,不推送)
+        stale = []   # 同日已推送过的信号(重复,不推送)
 
         try:
             for n, code in enumerate(candidates):
@@ -6452,9 +6421,9 @@ class RealtimeThemeMonitor:
                                 df0 = f2
                         except Exception:
                             pass
-                    if df0 is None or df0.empty or len(df0) < w7.MIN_BARS:
+                    if df0 is None or df0.empty or len(df0) < need_bars:
                         continue
-                if len(df0) < w7.MIN_BARS:
+                if len(df0) < need_bars:
                     continue
                 last_db = str(df0.iloc[-1].trade_date)
                 if last_db < today:
@@ -6474,132 +6443,63 @@ class RealtimeThemeMonitor:
                                 'pct_chg': float(q.get('pct_chg') or 0.0),
                                 'vol': vh, 'amount': amt})
                     df = pd.concat([df0, pd.DataFrame([row])], ignore_index=True)
-                    df = w7._fill_ma_columns(df)
                     for col in df.columns:
                         if col not in ('ts_code', 'trade_date'):
                             df[col] = pd.to_numeric(df[col], errors='coerce')
                     df = df.dropna(subset=['close', 'high', 'low', 'vol']).reset_index(drop=True)
                 else:
                     df = df0
-                # T0 锚盘中固定(候选区间不含当日/昨日):同一 (code, len) 全天只扫一次极端事件
-                ak = (code, len(df))
-                ah = anchor_map.get(ak)
-                if ah is None:
-                    anchor = w7.find_event_anchor(df)
-                    ah = anchor if anchor else 'NONE'
-                    anchor_map[ak] = ah
-                name, theme = self._fox_stock_info(code)
-                industry = industry_map.get(code, '')
-                try:
-                    if ah != 'NONE':
-                        sig = w7.analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt,
-                                         sector_strength=sector_strength, sector_growth={}, event_hint=ah)
-                    else:
-                        sig = None
-                except Exception as exc:
-                    print(f"   ⚠ {code} analyze异常: {exc}")
+                # 形态判定:只判末根K线是否满足「缩量回调→首根放量中阳」
+                sig = fox_v4.compute_fox_v4(df, fp)
+                if not sig:
                     continue
-                if not sig or sig.get('state') != 'T0_CONFIRM' or sig.get('type') == 'DISTRIBUTION':
-                    continue
-                ev = str(sig.get('event_date') or '')
+                sd = str(sig.get('signal_date') or today)
                 if pre:
-                    if pre_pushed.get(code) == ev:
+                    if pre_pushed.get(code) == sd:
                         stale.append(code)
                         continue
-                    pre_pushed[code] = ev
+                    pre_pushed[code] = sd
                 else:
-                    if fired_map.get(code) == ev:
+                    if fired_map.get(code) == sd:
                         stale.append(code)
                         continue
-                    fired_map[code] = ev
-                # analyze() 返回不含 event_close,从K线中按事件日补取
-                try:
-                    _m = df['trade_date'].astype(str).values == ev
-                    sig['event_close'] = float(df['close'].values[_m][0]) if _m.any() else 0.0
-                except Exception:
-                    sig['event_close'] = 0.0
+                    fired_map[code] = sd
+                name, theme = self._fox_stock_info(code)
+                sig['name'] = name or sig.get('name') or code
                 sig['theme'] = theme
-                sig['pct_chg_live'] = round(float(q.get('pct_chg') or 0.0), 2)
                 sig['trade_date'] = today
-                # 缩量/放量确认分档（阈值口径见 FOX_T0_DRY_VOLR 注释）
-                # 盘中预检的量是不完整累计量,volr 系统性偏低,不做分档(以 14:50 定稿为准)
-                vr = sig.get('volr') or 0.0
-                sig['tier'] = '' if pre else ('买点池' if vr < FOX_T0_DRY_VOLR else '观察池')
-                # ── 【增量模块】天量T0确认 V2.1 ──
-                # 只读 df/sig(其他模块既有数据),只新增 T0_* 字段;不覆盖、不改动上方任何字段、
-                # 分档(tier)、池子与结论。输出自己的 5 分类:T0_BUY_CANDIDATE / T0_WAIT_PULLBACK /
-                # T0_WATCH / T0_NO_CHASE / T0_INVALID(详见 t0_confirm_v21 模块头)。
-                try:
-                    _t0_idx = int(ah[0]) if isinstance(ah, (tuple, list)) and ah else -1
-                    if _t0_idx >= 0:
-                        sig.update(t0v21.compute_t0_v21(df, _t0_idx, sig=sig, pre=pre))
-                except Exception as exc:
-                    print(f"   ⚠ {code} T0-V2.1计算异常: {exc}")
                 new_signals.append(sig)
 
             if not pre:
                 self._fox_save_state(fired_map)
-            # 缩量确认「买点池」优先展示,同档内按评分降序
-            new_signals.sort(key=lambda s: (0 if s.get('tier') == '买点池' else 1, -(s.get('score') or 0)))
+            # 核心买点 > 买点池 > 观察池,同档内按评分降序
+            _rank = {'核心买点': 0, '买点池': 1, '观察池': 2}
+            new_signals.sort(key=lambda s: (_rank.get(s.get('tier'), 3), -(s.get('score') or 0)))
 
-            status_cn = {'PRIMARY_BUY': '强买', 'T120_ROCKET': '火箭', 'CONFIRMED': '确认', 'WATCH': '观察'}
             mode_tag = '盘中预检' if pre else '定稿'
             hhmmss = now.strftime('%H:%M:%S')
 
             # ── 控制台输出 ──
             if new_signals:
-                print(f"\n{'=' * 100}")
-                if pre:
-                    print(f"🦊 「猎狐」T0确认·{mode_tag} [{hhmmss}] 盘中新增{len(new_signals)}只(实时价口径,尾盘回落可能作废,以14:50定稿为准) 已推{len(pre_pushed)}只")
-                else:
-                    n_dry = sum(1 for s in new_signals if s.get('tier') == '买点池')
-                    print(f"🦊 「猎狐」T0天量确认买点·{mode_tag} [{hhmmss}] 新触发{len(new_signals)}只 重复{len(stale)}只"
-                          f" | 买点池(缩量确认){n_dry}只 观察池(放量确认){len(new_signals) - n_dry}只")
-                print(f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'T0日':<9} {'T0收盘':>7} {'今收':>7} {'涨幅':>6} {'评分':>4} {'量比':>5} {'分档':<6} {'级别':<5} {'压力位':>7}")
-                print(f"{'-' * 118}")
-                for i, s in enumerate(new_signals[:12], 1):
-                    print(f"{i:<3} {s['code']:<11} {s['name']:<9} {(s.get('theme') or '')[:9]:<10} {s['event_date']:<9} "
-                          f"{s.get('event_close', 0):>7.2f} {s['close']:>7.2f} {s.get('pct_chg_live', 0):>+5.1f}% "
-                          f"{s['score']:>4.0f} {s.get('volr', 0):>5.1f} {(s.get('tier') or '-'):<6} "
-                          f"{status_cn.get(s['buy'], s['buy']):<5} {s.get('pressure', 0):>7.2f}")
-                print(f"{'=' * 118}\n")
+                n_core = sum(1 for s in new_signals if s.get('tier') == '核心买点')
+                n_pool = sum(1 for s in new_signals if s.get('tier') == '买点池')
+                print(f"\n🦊 [猎狐V4] {hhmmss} {mode_tag}: 命中{len(new_signals)}只"
+                      f"(核心{n_core}/买点{n_pool}/观察{len(new_signals) - n_core - n_pool})"
+                      + (f" 本日盘中已推{len(pre_pushed)}只" if pre else f" 重复{len(stale)}只"))
+                print(fox_v4.format_console(new_signals, ts=hhmmss, pre=pre))
             elif pre:
-                print(f"🦊 [猎狐] {hhmmss} 盘中预检:{len(candidates)}只主题股暂无新触发T0确认(本日已推{len(pre_pushed)}只)")
+                print(f"🦊 [猎狐V4] {hhmmss} 盘中预检:{len(candidates)}只主题股暂无新形态(本日已推{len(pre_pushed)}只)")
             else:
-                print(f"🦊 [猎狐] {hhmmss} 定稿扫描完成:{len(candidates)}只主题股无新触发T0确认(重复{len(stale)}只)")
+                print(f"🦊 [猎狐V4] {hhmmss} 定稿扫描完成:{len(candidates)}只主题股无新形态(重复{len(stale)}只)")
 
             # ── 微信推送 ──
             if new_signals:
-                if pre:
-                    lines = [f"盘中{len(new_signals)}只首现「T0天量确认买点」条件(实时价判定,尾盘回落可能作废;以14:50定稿为准):"]
-                else:
-                    n_dry = sum(1 for s in new_signals if s.get('tier') == '买点池')
-                    lines = [f"共{len(new_signals)}只触发「天量T0确认买点」(买点池{n_dry}只/观察池{len(new_signals) - n_dry}只):"]
-                for s in new_signals[:5]:
-                    rel = (s.get('reason') or '').split('：')[-1]
-                    tag = f"[{s['tier']}]" if s.get('tier') else ''
-                    lines.append(f"● {tag}{s['name']}({s['code']}) [{s.get('theme', '')}] {status_cn.get(s['buy'], s['buy'])} 评分{s['score']:.0f}")
-                    lines.append(f"  T0={s['event_date']}收盘{s.get('event_close', 0):.2f} → 今收{s['close']:.2f}({s.get('pct_chg_live', 0):+.1f}%) 量比×{s.get('volr', 0):.1f} 压力{s.get('pressure', 0):.2f}")
-                    lines.append(f"  {rel}")
-                if not pre:
-                    lines.append(f"-- 买点池=缩量确认(量比<{FOX_T0_DRY_VOLR:g},回测fwd60+1.77%/胜率43%);观察池=放量确认(追高型,fwd60-1.71%/胜率36%)")
-                content = "\n".join(lines)
-                self.send_wechat(f"🦊 猎狐·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
+                content = "\n".join(fox_v4.format_wechat_lines(new_signals, pre=pre))
+                self.send_wechat(f"🦊 猎狐V4·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
 
-            # ── 【增量模块】天量T0实时确认 V2.1:独立输出,只报本模块自己的 5 分类 ──
-            # 与其他模块结论冲突时(如 HVT=BUY 而 T0=NO_CHASE)保留原结论、并行输出,合并交给原总决策层
-            try:
-                t0_signals = [s for s in new_signals if s.get('T0_V21')]
-                if t0_signals:
-                    print(t0v21.format_console_block(t0_signals, ts=hhmmss, pre=pre))
-                    self.send_wechat(
-                        f"🦊 天量T0实时确认V2.1·{mode_tag} {now.strftime('%m-%d %H:%M')}",
-                        "\n".join(t0v21.format_wechat_lines(t0_signals, pre=pre)))
-            except Exception as exc:
-                print(f"⚠ [T0-V2.1] 输出异常: {exc}")
             return new_signals
         except Exception as exc:
-            print(f"⚠ [猎狐] 扫描异常: {exc}")
+            print(f"⚠ [猎狐V4] 扫描异常: {exc}")
             import traceback
             traceback.print_exc()
             self._fox_close_ctx()   # 上下文可能不完整,关闭后下次重建

@@ -87,8 +87,8 @@
 |---|---|---|---|---|---|---|---|
 | 1 | 002636.SZ | 金安国纪 | 84 | 83 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收9 |
 | 2 | 688628.SH | 优利德 | 83 | 82 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收7 |
-| 3 | 300985.SZ | 致远新能 | 78 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收4 |
-| 4 | 002436.SZ | 兴森科技 | 78 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收14 |
+| 3 | 002436.SZ | 兴森科技 | 78 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收14 |
+| 4 | 300985.SZ | 致远新能 | 78 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收4 |
 | 5 | 603661.SH | 恒林股份 | 78 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收8 |
 | 6 | 601319.SH | 中国人保 | 77 | 14 | T20_ROCKET_WATCH | 收盘位置 | 扩张空间20，供给吸收15 |
 | 7 | 300795.SZ | 米奥会展 | 76 | 14 | T20_ROCKET_WATCH | 入场确认(ENTRY<70) | 扩张空间20，供给吸收6 |
@@ -99,7 +99,7 @@
 
 | 代码 | 名称 | HVT | ENTRY | EXPANSION | 主要阻碍 |
 |---|---|---|---|---|---|
-| 002011.SZ | 盾安环境 | 0 | 80 | 48 | 扩张分不足(<70) |
+| 002011.SZ | 盾安环境 | 0 | 78 | 48 | 扩张分不足(<70) |
 | 002003.SZ | 伟星股份 | 0 | 72 | 46 | 扩张分不足(<70) |
 | 002142.SZ | 宁波银行 | 0 | 68 | 43 | 扩张分不足(<70) |
 | 601988.SH | 中国银行 | 0 | 73 | 40 | 扩张分不足(<70) |
@@ -225,12 +225,12 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 
 | 代码 | 名称 | 类型 | SCORE | BUYAB | HORIZON | ACTION | TRIGGER | BUY_ZONE | INVAL | NO_CHASE | 仓位 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 300171.SZ | 东富龙 | RE_ACCELERATION | 79.4 | 77.8 | T20 | BUY | 15.64 | 15.49~15.95 | 14.26 | 16.38 | A 5%~8% |
-| 600663.SH | 陆家嘴 | NEW_TREND | 77.5 | 75.9 | T60 | BUY | 8.82 | 8.73~8.98 | 7.98 | 9.21 | A 5%~8% |
-| 601882.SH | 海天精工 | NEW_TREND | 74.3 | 72.9 | T120 | BUY_ON_CONFIRM | 22.98 | 22.75~23.44 | 22.15 | 24.08 | B 3%~5% |
+| 300171.SZ | 东富龙 | RE_ACCELERATION | 80.7 | 81.1 | T20 | BUY | 15.64 | 15.49~15.95 | 14.26 | 16.38 | A 5%~8% |
+| 600663.SH | 陆家嘴 | NEW_TREND | 78.8 | 79.0 | T60 | BUY | 8.82 | 8.73~8.98 | 7.98 | 9.21 | A 5%~8% |
+| 601882.SH | 海天精工 | NEW_TREND | 75.2 | 75.1 | T120 | BUY | 22.98 | 22.75~23.44 | 22.15 | 24.08 | A 5%~8% |
 
-**【明日第一优先】东富龙（300171.SZ）** PULLBACK_BUY / BUY SCORE=79.4 BUYABILITY=77.8
-- 执行理由：高质量回踩（缩量比0.73、低点守T0_High、收复突破收盘），执行分79 ≥ 75，回踩买点优先于追涨
+**【明日第一优先】东富龙（300171.SZ）** PULLBACK_BUY / BUY SCORE=80.7 BUYABILITY=81.1
+- 执行理由：高质量回踩（缩量比0.73、低点守T0_High、收复突破收盘），执行分81 ≥ 75，回踩买点优先于追涨
 - 确认等级：NEED_RECLAIM_CONFIRM | 盘中确认：INTRADAY_CONFIRMATION_UNAVAILABLE（无分钟数据，以量价与收盘位替代 §37.11）
 - V1.1确认：CONFIRMATION_STATE=WAIT | TRIGGER=CONFIRMED | BREAKOUT_READY=N | QUALITY=WEAK | RETEST=PASS | LOCK=FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察2日<3日 | RISK=PASS | SCORE_GAP=0.0
 - 开盘预案：A 正常高开[-1%,+3%]：不破14.26且量价健康 → 分批执行，首次2.0%~3.2%（分批确认后加仓）（无分钟数据：VWAP确认不可用，以量价与收盘位替代 §37.11）
@@ -238,8 +238,8 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 - 开盘预案：C 低开：缩量下探不破14.26并重新走强 → PULLBACK_BUY
 - 开盘预案：D 低开放量跌破14.26且无法收复 → 撤销（SKIP）
 
-**【明日第2优先】陆家嘴（600663.SH）** PULLBACK_BUY / BUY SCORE=77.5 BUYABILITY=75.9
-- 执行理由：高质量回踩（缩量比0.47、低点守T0_High、收复突破收盘），执行分78 ≥ 75，回踩买点优先于追涨
+**【明日第2优先】陆家嘴（600663.SH）** PULLBACK_BUY / BUY SCORE=78.8 BUYABILITY=79.0
+- 执行理由：高质量回踩（缩量比0.47、低点守T0_High、收复突破收盘），执行分79 ≥ 75，回踩买点优先于追涨
 - 确认等级：NEED_RECLAIM_CONFIRM | 盘中确认：INTRADAY_CONFIRMATION_UNAVAILABLE（无分钟数据，以量价与收盘位替代 §37.11）
 - V1.1确认：CONFIRMATION_STATE=READY | TRIGGER=CONFIRMED | BREAKOUT_READY=N | QUALITY=WEAK | RETEST=PASS | LOCK=PASS | RISK=PASS | SCORE_GAP=0.0
 - 开盘预案：A 正常高开[-1%,+3%]：不破7.98且量价健康 → 分批执行，首次2.0%~3.2%（分批确认后加仓）（无分钟数据：VWAP确认不可用，以量价与收盘位替代 §37.11）
@@ -247,11 +247,11 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 - 开盘预案：C 低开：缩量下探不破7.98并重新走强 → PULLBACK_BUY
 - 开盘预案：D 低开放量跌破7.98且无法收复 → 撤销（SKIP）
 
-**【明日第3优先】海天精工（601882.SH）** PULLBACK_BUY / BUY_ON_CONFIRM SCORE=74.3 BUYABILITY=72.9
-- 执行理由：回踩结构GOOD但执行分74居中，需次日重新走强确认
+**【明日第3优先】海天精工（601882.SH）** PULLBACK_BUY / BUY SCORE=75.2 BUYABILITY=75.1
+- 执行理由：高质量回踩（缩量比0.72、低点守T0_High、收复突破收盘），执行分75 ≥ 75，回踩买点优先于追涨
 - 确认等级：NEED_RECLAIM_CONFIRM | 盘中确认：INTRADAY_CONFIRMATION_UNAVAILABLE（无分钟数据，以量价与收盘位替代 §37.11）
-- V1.1确认：CONFIRMATION_STATE=WAIT | TRIGGER=CONFIRMED | BREAKOUT_READY=N | QUALITY=WEAK | RETEST=PASS | LOCK=PASS | RISK=PASS | SCORE_GAP=0.7
-- 开盘预案：A 正常高开[-1%,+3%]：不破22.15且量价健康 → 分批执行，首次1.2%~2.0%（分批确认后加仓）（无分钟数据：VWAP确认不可用，以量价与收盘位替代 §37.11）
+- V1.1确认：CONFIRMATION_STATE=READY | TRIGGER=CONFIRMED | BREAKOUT_READY=N | QUALITY=WEAK | RETEST=PASS | LOCK=PASS | RISK=PASS | SCORE_GAP=0.0
+- 开盘预案：A 正常高开[-1%,+3%]：不破22.15且量价健康 → 分批执行，首次2.0%~3.2%（分批确认后加仓）（无分钟数据：VWAP确认不可用，以量价与收盘位替代 §37.11）
 - 开盘预案：B 高开>+5%：默认不追，等回踩 22.75~23.44 缩量企稳再接
 - 开盘预案：C 低开：缩量下探不破22.15并重新走强 → PULLBACK_BUY
 - 开盘预案：D 低开放量跌破22.15且无法收复 → 撤销（SKIP）
@@ -262,97 +262,97 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 
 | 代码 | 名称 | 类型 | SCORE | BUYAB | HORIZON | ACTION | TRIGGER | BUY_ZONE | INVAL | NO_CHASE | 仓位 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 300473.SZ | 德尔股份 | RE_ACCELERATION | 72.9 | 58.1 | T20 | WAIT | 35.29 | 34.94~36.05 | 30.44 | 37.11 | - |
-| 300788.SZ | 中信出版 | RE_ACCELERATION | 71.0 | 54.8 | T20 | WAIT | 37.03 | 36.66~38.35 | 32.50 | 40.21 | - |
-| 600018.SH | 上港集团 | NEW_TREND | 65.5 | 57.5 | T60 | WAIT | 5.64 | 5.59~5.69 | 5.24 | 5.75 | - |
-| 300909.SZ | 汇创达 | RE_ACCELERATION | 71.4 | 56.0 | T20 | WAIT | 68.00 | 67.32~69.55 | 60.00 | 71.71 | - |
-| 601579.SH | 会稽山 | EXTENDED_CONTINUATION | 71.2 | 54.8 | T20 | WAIT | 39.72 | 39.33~40.93 | 36.10 | 42.61 | - |
-| 600059.SH | 古越龙山 | NEW_TREND | 64.9 | 54.8 | T120 | WAIT | 11.59 | 11.48~11.89 | 10.55 | 12.31 | - |
-| 603658.SH | 安图生物 | NEW_TREND | 61.0 | 55.0 | T60 | WAIT | 36.07 | 35.71~36.53 | 32.30 | 37.17 | - |
-| 002244.SZ | 滨江集团 | NEW_TREND | 54.2 | 54.0 | T60 | WAIT | 8.94 | 8.85~9.11 | 7.96 | 9.36 | - |
-| 601155.SH | 新城控股 | NEW_TREND | 65.2 | 58.8 | T60 | WAIT | 13.08 | 12.95~13.34 | 11.68 | 13.72 | - |
-| 600606.SH | 绿地控股 | NEW_TREND | 64.9 | 54.8 | T60 | WAIT | 1.62 | 1.60~1.65 | 1.41 | 1.69 | - |
+| 300473.SZ | 德尔股份 | RE_ACCELERATION | 73.3 | 59.2 | T20 | WAIT | 35.29 | 34.94~36.05 | 30.44 | 37.11 | - |
+| 300788.SZ | 中信出版 | RE_ACCELERATION | 71.2 | 55.2 | T20 | WAIT | 37.03 | 36.66~38.35 | 32.50 | 40.21 | - |
+| 600018.SH | 上港集团 | NEW_TREND | 65.9 | 58.5 | T60 | WAIT | 5.64 | 5.59~5.69 | 5.24 | 5.75 | - |
+| 300909.SZ | 汇创达 | RE_ACCELERATION | 71.6 | 56.6 | T20 | WAIT | 68.00 | 67.32~69.55 | 60.00 | 71.71 | - |
+| 601579.SH | 会稽山 | EXTENDED_CONTINUATION | 71.2 | 54.5 | T20 | WAIT | 39.72 | 39.33~40.93 | 36.10 | 42.61 | - |
+| 600059.SH | 古越龙山 | NEW_TREND | 64.1 | 54.5 | T120 | WAIT | 11.59 | 11.48~11.89 | 10.55 | 12.31 | - |
+| 603658.SH | 安图生物 | NEW_TREND | 61.2 | 55.6 | T60 | WAIT | 36.07 | 35.71~36.53 | 32.30 | 37.17 | - |
+| 002244.SZ | 滨江集团 | NEW_TREND | 54.5 | 54.6 | T60 | WAIT | 8.94 | 8.85~9.11 | 7.96 | 9.36 | - |
+| 601155.SH | 新城控股 | NEW_TREND | 65.7 | 59.8 | T60 | WAIT | 13.08 | 12.95~13.34 | 11.68 | 13.72 | - |
+| 600606.SH | 绿地控股 | NEW_TREND | 65.0 | 55.2 | T60 | WAIT | 1.62 | 1.60~1.65 | 1.41 | 1.69 | - |
 
 ### ③ NO CHASE（高FE但不追，19只；其中 WAIT_PULLBACK 高分观察 0只）
 
 | 代码 | 名称 | 类型 | SCORE | BUYAB | HORIZON | ACTION | TRIGGER | BUY_ZONE | INVAL | NO_CHASE | 仓位 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 002011.SZ | 盾安环境 | RE_ACCELERATION | 76.5 | 66.0 | T20 | NO_CHASE | 13.43 | 13.30~13.65 | 12.52 | 13.96 | - |
-| 002724.SZ | 海洋王 | RE_ACCELERATION | 72.3 | 61.8 | T20 | NO_CHASE | 6.87 | 6.80~7.09 | 6.36 | 7.40 | - |
-| 603270.SH | 金帝股份 | RE_ACCELERATION | 73.5 | 65.8 | T20 | NO_CHASE | 32.09 | 31.77~32.96 | 28.20 | 34.18 | - |
-| 601086.SH | 国芳集团 | EXTENDED_CONTINUATION | 71.1 | 60.6 | T20 | NO_CHASE | 16.22 | 16.06~16.99 | 13.93 | 18.08 | - |
-| 688536.SH | 思瑞浦 | RE_ACCELERATION | 74.9 | 61.2 | T20 | NO_CHASE | 318.15 | 314.97~327.32 | 286.00 | 340.15 | - |
-| 688690.SH | 纳微科技 | RE_ACCELERATION | 71.1 | 56.5 | T20 | NO_CHASE | 42.29 | 41.87~43.55 | 36.51 | 45.31 | - |
-| 300454.SZ | 深信服 | RE_ACCELERATION | 74.5 | 70.7 | T20 | NO_CHASE | 126.41 | 125.15~131.26 | 102.80 | 138.06 | - |
-| 603151.SH | 邦基科技 | RE_ACCELERATION | 73.8 | 61.5 | T20 | NO_CHASE | 14.93 | 14.78~15.21 | 14.00 | 15.61 | - |
-| 301234.SZ | 五洲医疗 | RE_ACCELERATION | 68.3 | 58.5 | T20 | NO_CHASE | 97.62 | 96.64~101.91 | 81.21 | 107.91 | - |
-| 002436.SZ | 兴森科技 | RE_ACCELERATION | 70.9 | 60.5 | T20 | NO_CHASE | 40.83 | 40.43~42.11 | 38.50 | 43.90 | - |
+| 002011.SZ | 盾安环境 | RE_ACCELERATION | 76.9 | 67.0 | T20 | NO_CHASE | 13.43 | 13.30~13.65 | 12.52 | 13.96 | - |
+| 002724.SZ | 海洋王 | RE_ACCELERATION | 72.5 | 62.3 | T20 | NO_CHASE | 6.87 | 6.80~7.09 | 6.36 | 7.40 | - |
+| 603270.SH | 金帝股份 | RE_ACCELERATION | 74.2 | 67.7 | T20 | NO_CHASE | 32.09 | 31.77~32.96 | 28.20 | 34.18 | - |
+| 601086.SH | 国芳集团 | EXTENDED_CONTINUATION | 71.5 | 61.7 | T20 | NO_CHASE | 16.22 | 16.06~16.99 | 13.93 | 18.08 | - |
+| 688536.SH | 思瑞浦 | RE_ACCELERATION | 75.2 | 62.2 | T20 | NO_CHASE | 318.15 | 314.97~327.32 | 286.00 | 340.15 | - |
+| 688690.SH | 纳微科技 | RE_ACCELERATION | 71.3 | 57.0 | T20 | NO_CHASE | 42.29 | 41.87~43.55 | 36.51 | 45.31 | - |
+| 300454.SZ | 深信服 | RE_ACCELERATION | 75.3 | 72.7 | T20 | NO_CHASE | 126.41 | 125.15~131.26 | 102.80 | 138.06 | - |
+| 603151.SH | 邦基科技 | RE_ACCELERATION | 74.2 | 62.4 | T20 | NO_CHASE | 14.93 | 14.78~15.21 | 14.00 | 15.61 | - |
+| 301234.SZ | 五洲医疗 | RE_ACCELERATION | 68.5 | 59.1 | T20 | NO_CHASE | 97.62 | 96.64~101.91 | 81.21 | 107.91 | - |
+| 002436.SZ | 兴森科技 | RE_ACCELERATION | 71.2 | 61.4 | T20 | NO_CHASE | 40.83 | 40.43~42.11 | 38.50 | 43.90 | - |
 
 ### EXTENDED CONTINUATION（过去大涨但未来条件未恶化，不机械剔除，6只）
 
 - 会稽山（601579.SH）TrendGain=172% BREAKOUT_WAIT SCORE=71.2 T20
-- 国芳集团（601086.SH）TrendGain=185% NO_CHASE SCORE=71.1 T20
-- 睿创微纳（688002.SH）TrendGain=693% BREAKOUT_WAIT SCORE=76.7 T20
-- 中石科技（300684.SZ）TrendGain=171% WAIT_CONFIRM SCORE=77.2 T20
-- 采纳股份（301122.SZ）TrendGain=158% NO_CHASE SCORE=70.2 T20
-- 金禄电子（301282.SZ）TrendGain=172% NO_CHASE SCORE=73.3 T20
+- 国芳集团（601086.SH）TrendGain=185% NO_CHASE SCORE=71.5 T20
+- 睿创微纳（688002.SH）TrendGain=693% BREAKOUT_WAIT SCORE=77.5 T20
+- 中石科技（300684.SZ）TrendGain=171% WAIT_CONFIRM SCORE=78.2 T20
+- 采纳股份（301122.SZ）TrendGain=158% NO_CHASE SCORE=70.3 T20
+- 金禄电子（301282.SZ）TrendGain=172% NO_CHASE SCORE=73.8 T20
 
 ### ④ WAIT_CONFIRM（需观察确认，31只）
 
 | 代码 | 名称 | CONFIRMATION | TRIGGER | BRK_READY | BRK_QUALITY | RETEST | LOCK | RISK | SCORE/GAP | 现价 | NEXT_CONFIRMATION |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 002636.SZ | 金安国纪 | WAIT | CONFIRMED | N | NEUTRAL | NA | FAIL: 未完成缩量锁筹（5日量比0.64） | PASS | 77.3/0.0 | 85.58 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥84.84 |
-| 688628.SH | 优利德 | WAIT | PENDING | N | WEAK | NA | FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日 | PASS | 72.5/2.5 | 95.37 | 关注能否收于TRIGGER 98.33上方 |
-| 688209.SH | 英集芯 | WAIT | CONFIRMED | N | WEAK | NEAR | FAIL: 未完成缩量锁筹（5日量比0.76） | PASS | 77.4/0.0 | 36.07 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥34.84 |
-| 002746.SZ | 仙坛股份 | WAIT | PENDING | N | WEAK | FAIL | FAIL: 未完成缩量锁筹（5日量比0.54） | PASS | 66.9/8.1 | 6.44 | 关注能否收于TRIGGER 6.69上方 |
-| 002142.SZ | 宁波银行 | READY | CONFIRMED | N | WEAK | NEAR | PASS | PASS | 75.5/0.0 | 34.72 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥34.58 |
-| 600792.SH | 云煤能源 | WAIT | CONFIRMED | N | NEUTRAL | NA | FAIL: 未完成缩量锁筹（5日量比0.78） | PASS | 74.2/0.8 | 5.75 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥5.48 |
-| 601988.SH | 中国银行 | READY | CONFIRMED | N | NEUTRAL | NEAR | PASS | PASS | 76.6/0.0 | 6.65 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥6.59 |
-| 600335.SH | 国机汽车 | WAIT | PENDING | N | WEAK | FAIL | PASS | PASS | 63.7/11.3 | 5.17 | 关注能否收于TRIGGER 5.27上方 |
-| 600869.SH | 远东股份 | WAIT | CONFIRMED | N | WEAK | FAIL | FAIL: 未完成缩量锁筹（5日量比0.88） | PASS | 75.0/0.0 | 22.03 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥21.65 |
-| 002585.SZ | 双星新材 | WAIT | CONFIRMED | Y | WEAK | NEAR | FAIL: 未完成缩量锁筹（5日量比0.57） | PASS | 73.6/1.4 | 11.90 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥11.54 |
+| 002636.SZ | 金安国纪 | WAIT | CONFIRMED | N | NEUTRAL | NA | FAIL: 未完成缩量锁筹（5日量比0.64） | PASS | 78.5/0.0 | 85.58 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥84.84 |
+| 688628.SH | 优利德 | WAIT | PENDING | N | WEAK | NA | FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日 | PASS | 73.0/2.0 | 95.37 | 关注能否收于TRIGGER 98.33上方 |
+| 688209.SH | 英集芯 | WAIT | CONFIRMED | N | WEAK | NEAR | FAIL: 未完成缩量锁筹（5日量比0.76） | PASS | 78.3/0.0 | 36.07 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥34.84 |
+| 002746.SZ | 仙坛股份 | WAIT | PENDING | N | WEAK | FAIL | FAIL: 未完成缩量锁筹（5日量比0.54） | PASS | 67.6/7.4 | 6.44 | 关注能否收于TRIGGER 6.69上方 |
+| 002142.SZ | 宁波银行 | READY | CONFIRMED | N | WEAK | NEAR | PASS | PASS | 76.5/0.0 | 34.72 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥34.58 |
+| 600792.SH | 云煤能源 | WAIT | CONFIRMED | N | NEUTRAL | NA | FAIL: 未完成缩量锁筹（5日量比0.78） | PASS | 75.2/0.0 | 5.75 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥5.48 |
+| 601988.SH | 中国银行 | READY | CONFIRMED | N | NEUTRAL | NEAR | PASS | PASS | 77.7/0.0 | 6.65 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥6.59 |
+| 600335.SH | 国机汽车 | WAIT | PENDING | N | WEAK | FAIL | PASS | PASS | 64.0/11.0 | 5.17 | 关注能否收于TRIGGER 5.27上方 |
+| 600869.SH | 远东股份 | WAIT | CONFIRMED | N | WEAK | FAIL | FAIL: 未完成缩量锁筹（5日量比0.88） | PASS | 76.3/0.0 | 22.03 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥21.65 |
+| 002585.SZ | 双星新材 | WAIT | CONFIRMED | Y | WEAK | NEAR | FAIL: 未完成缩量锁筹（5日量比0.57） | PASS | 74.6/0.4 | 11.90 | 关注量能与收盘位：当日量比≥1.20、Close>MA20且MA20向上、收盘≥11.54 |
 
 - **金安国纪（002636.SZ）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比1.19<1.20（需≥1.20））；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.64）
   UPGRADE_CONDITION：收盘≥84.84 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
-- **优利德（688628.SH）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘95.37<TRIGGER=98.33，需收盘≥98.33；BREAKOUT_READY=FAIL（Close≥98.33未满足）；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=72.5<75（SCORE_GAP=2.5，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日
-  UPGRADE_CONDITION：收盘≥98.33 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=2.5）AND 锁筹/观察门PASS
+- **优利德（688628.SH）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘95.37<TRIGGER=98.33，需收盘≥98.33；BREAKOUT_READY=FAIL（Close≥98.33未满足）；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=73.0<75（SCORE_GAP=2.0，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比1.00）；天量后观察0日<3日
+  UPGRADE_CONDITION：收盘≥98.33 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=2.0）AND 锁筹/观察门PASS
 - **英集芯（688209.SH）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比0.71<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.76）
   UPGRADE_CONDITION：收盘≥34.84 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
-- **仙坛股份（002746.SZ）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘6.44<TRIGGER=6.69，需收盘≥6.69；BREAKOUT_READY=FAIL（Close≥6.69未满足；Close6.44≤MA20=6.57（需>MA20）；当日量比1.11<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=66.9<75（SCORE_GAP=8.1，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.54）
-  UPGRADE_CONDITION：收盘≥6.69 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=8.1）AND 锁筹/观察门PASS
+- **仙坛股份（002746.SZ）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘6.44<TRIGGER=6.69，需收盘≥6.69；BREAKOUT_READY=FAIL（Close≥6.69未满足；Close6.44≤MA20=6.57（需>MA20）；当日量比1.11<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=67.6<75（SCORE_GAP=7.4，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.54）
+  UPGRADE_CONDITION：收盘≥6.69 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=7.4）AND 锁筹/观察门PASS
 - **宁波银行（002142.SZ）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比0.67<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）
   UPGRADE_CONDITION：收盘≥34.58 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
-- **云煤能源（600792.SH）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比1.12<1.20（需≥1.20））；SCORE=74.2<75（SCORE_GAP=0.8，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.78）
-  UPGRADE_CONDITION：收盘≥5.48 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.8）AND 锁筹/观察门PASS
+- **云煤能源（600792.SH）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比1.12<1.20（需≥1.20））；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.78）
+  UPGRADE_CONDITION：收盘≥5.48 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
 - **中国银行（601988.SH）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比1.07<1.20（需≥1.20））
   UPGRADE_CONDITION：收盘≥6.59 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
-- **国机汽车（600335.SH）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘5.17<TRIGGER=5.27，需收盘≥5.27；BREAKOUT_READY=FAIL（Close≥5.27未满足；Close5.17≤MA20=5.20（需>MA20）；当日量比0.82<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=63.7<75（SCORE_GAP=11.3，需执行分≥75）
-  UPGRADE_CONDITION：收盘≥5.27 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=11.3）AND 锁筹/观察门PASS
+- **国机汽车（600335.SH）** WAIT_REASON：TRIGGER_CONFIRMED=FAIL：收盘5.17<TRIGGER=5.27，需收盘≥5.27；BREAKOUT_READY=FAIL（Close≥5.27未满足；Close5.17≤MA20=5.20（需>MA20）；当日量比0.82<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=64.0<75（SCORE_GAP=11.0，需执行分≥75）
+  UPGRADE_CONDITION：收盘≥5.27 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=11.0）AND 锁筹/观察门PASS
 - **远东股份（600869.SH）** WAIT_REASON：BREAKOUT_READY=FAIL（当日量比0.91<1.20（需≥1.20））；BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.88）
   UPGRADE_CONDITION：收盘≥21.65 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.0）AND 锁筹/观察门PASS
-- **双星新材（002585.SZ）** WAIT_REASON：BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=73.6<75（SCORE_GAP=1.4，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.57）
-  UPGRADE_CONDITION：收盘≥11.54 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=1.4）AND 锁筹/观察门PASS
+- **双星新材（002585.SZ）** WAIT_REASON：BREAKOUT_QUALITY=WEAK（需当日量比≥1.3、收盘位≥0.70且无长上影）；SCORE=74.6<75（SCORE_GAP=0.4，需执行分≥75）；LOCK_GATE=FAIL: 未完成缩量锁筹（5日量比0.57）
+  UPGRADE_CONDITION：收盘≥11.54 AND 当日量比≥1.20 AND Close>MA20向上 AND 突破质量≠WEAK AND 执行分≥75（GAP=0.4）AND 锁筹/观察门PASS
 
 ### ⑤ SKIP（明日不买，174只）
 
 | 代码 | 名称 | V3状态 | SCORE | 原因 |
 |---|---|---|---|---|
-| 603039.SH | 泛微网络 | DISTRIBUTION | 43.8 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 000019.SZ | 深粮控股 | DISTRIBUTION | 45.3 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 001872.SZ | 招商港口 | DISTRIBUTION | 47.4 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
+| 603039.SH | 泛微网络 | DISTRIBUTION | 43.6 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 000019.SZ | 深粮控股 | DISTRIBUTION | 44.9 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 001872.SZ | 招商港口 | DISTRIBUTION | 47.1 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
 | 000921.SZ | 海信家电 | DISTRIBUTION | 44.7 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 002958.SZ | 青农商行 | HVT_STRONG | 55.5 | 收盘2.93明显跌回平台高点3.03下方（突破失效） |
+| 002958.SZ | 青农商行 | HVT_STRONG | 56.2 | 收盘2.93明显跌回平台高点3.03下方（突破失效） |
 | 003013.SZ | 地铁设计 | EXIT | 57.6 | 结构状态EXIT（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:EXIT |
-| 002059.SZ | 云南旅游 | FAILED | 51.1 | 结构状态FAILED（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:FAILED |
-| 601811.SH | 新华文轩 | HVT_STRONG | 70.5 | 连板过热冷却：连续涨停3天/近5日3板，断板缩量企稳前不参与接力（§38） |
-| 300628.SZ | 亿联网络 | DISTRIBUTION | 57.4 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 002059.SZ | 云南旅游 | FAILED | 50.8 | 结构状态FAILED（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:FAILED |
+| 601811.SH | 新华文轩 | HVT_STRONG | 70.7 | 连板过热冷却：连续涨停3天/近5日3板，断板缩量企稳前不参与接力（§38） |
+| 300628.SZ | 亿联网络 | DISTRIBUTION | 57.7 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 002003.SZ | 伟星股份 | BREAKOUT_READY | 64.6 | 收盘11.29明显跌回平台高点11.96下方（突破失效） |
 
 ### CONFIRMATION（V1.1 确认层总览）
 
 ★ PRIMARY_BUY：当前没有符合 PRIMARY_BUY 条件的股票（五层Gate未全过，禁止把WAIT错判成BUY）
-★ READY（差临门一脚，确认后可买）：盾安环境（CONFIRMED，GAP=0.0，TE:NO_CHASE不追高）、宁波银行（CONFIRMED，GAP=0.0）、中国银行（CONFIRMED，GAP=0.0）、睿创微纳（FAILED_CLOSE_CONFIRMATION，GAP=0.0）、中红医疗（CONFIRMED，GAP=0.0，TE:NO_CHASE不追高）、陆家嘴（CONFIRMED，GAP=0.0）
-★ WAIT（83只，需继续确认）：金安国纪、优利德、德尔股份、海洋王、中信出版、上港集团
+★ READY（差临门一脚，确认后可买）：盾安环境（CONFIRMED，GAP=0.0，TE:NO_CHASE不追高）、宁波银行（CONFIRMED，GAP=0.0）、中国银行（CONFIRMED，GAP=0.0）、思瑞浦（CONFIRMED，GAP=0.0，TE:NO_CHASE不追高）、睿创微纳（FAILED_CLOSE_CONFIRMATION，GAP=0.0）、中红医疗（CONFIRMED，GAP=0.0，TE:NO_CHASE不追高）
+★ WAIT（81只，需继续确认）：金安国纪、优利德、德尔股份、海洋王、中信出版、上港集团
 
 ### WHY_NOT_BUY（为何未进买入候选）
 
@@ -360,12 +360,12 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 - **中信出版（300788.SZ）** FE=42 ExtRisk=42 → 尚未完成平台突破（HVT天量日20260918后锁筹观察中）；等待放量突破 37.03（量≥1.3x、收盘位≥0.75）后才允许买入
 - **上港集团（600018.SH）** FE=61 ExtRisk=2 → 尚未完成平台突破（HVT天量日20260901后锁筹观察中）；等待放量突破 5.64（量≥1.3x、收盘位≥0.75）后才允许买入
 - **汇创达（300909.SZ）** FE=71 ExtRisk=22 → 尚未完成平台突破（HVT天量日20260921后锁筹观察中）；等待放量突破 68.00（量≥1.3x、收盘位≥0.75）后才允许买入
-- **会稽山（601579.SH）** FE=54 ExtRisk=70 → 尚未完成平台突破（HVT天量日20260922后锁筹观察中）；等待放量突破 39.72（量≥1.3x、收盘位≥0.75）后才允许买入
+- **会稽山（601579.SH）** FE=53 ExtRisk=70 → 尚未完成平台突破（HVT天量日20260922后锁筹观察中）；等待放量突破 39.72（量≥1.3x、收盘位≥0.75）后才允许买入
 - **古越龙山（600059.SH）** FE=48 ExtRisk=35 → 尚未完成平台突破（HVT天量日20260921后锁筹观察中）；等待放量突破 11.59（量≥1.3x、收盘位≥0.75）后才允许买入
 - **安图生物（603658.SH）** FE=49 ExtRisk=26 → 尚未完成平台突破（HVT天量日20260922后锁筹观察中）；等待放量突破 36.07（量≥1.3x、收盘位≥0.75）后才允许买入
 - **滨江集团（002244.SZ）** FE=43 ExtRisk=3 → 尚未完成平台突破（HVT天量日20260921后锁筹观察中）；等待放量突破 8.94（量≥1.3x、收盘位≥0.75）后才允许买入
-- **盾安环境（002011.SZ）** FE=63 ExtRisk=54 → 收盘14.76已超追高上限13.96（突破位+1.2×ATR）；FE20=99 再高也不改变追涨的风险收益比（§18）
-- **海洋王（002724.SZ）** FE=57 ExtRisk=15 → 收盘7.56已超追高上限7.40（突破位+1.2×ATR）；FE20=93 再高也不改变追涨的风险收益比（§18）
+- **盾安环境（002011.SZ）** FE=62 ExtRisk=54 → 收盘14.76已超追高上限13.96（突破位+1.2×ATR）；FE20=99 再高也不改变追涨的风险收益比（§18）
+- **海洋王（002724.SZ）** FE=56 ExtRisk=15 → 收盘7.56已超追高上限7.40（突破位+1.2×ATR）；FE20=93 再高也不改变追涨的风险收益比（§18）
 - **金帝股份（603270.SH）** FE=76 ExtRisk=23 → 收盘36.88已超追高上限34.18（突破位+1.2×ATR）；FE20=98 再高也不改变追涨的风险收益比（§18）
 - **国芳集团（601086.SH）** FE=54 ExtRisk=63 → 收盘18.16已超追高上限18.08（突破位+1.2×ATR）；FE20=94 再高也不改变追涨的风险收益比（§18）
 - **思瑞浦（688536.SH）** FE=80 ExtRisk=22 → 收盘355.71已超追高上限340.15（突破位+1.2×ATR）；FE20=92 再高也不改变追涨的风险收益比（§18）
@@ -375,9 +375,9 @@ NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）
 - **金安国纪（002636.SZ）** FE=61 ExtRisk=16 → 未过PRIMARY门（state=T20_ROCKET_WATCH）
 - **优利德（688628.SH）** FE=67 ExtRisk=24 → 未过PRIMARY门（state=T20_ROCKET_WATCH）；执行分73不足75
 - **英集芯（688209.SH）** FE=60 ExtRisk=28 → 未过PRIMARY门（state=HVT_STRONG）
-- **仙坛股份（002746.SZ）** FE=62 ExtRisk=2 → 未过PRIMARY门（state=HVT_STRONG）；FE20=45<70；执行分67不足75
+- **仙坛股份（002746.SZ）** FE=62 ExtRisk=2 → 未过PRIMARY门（state=HVT_STRONG）；FE20=45<70；执行分68不足75
 - **宁波银行（002142.SZ）** FE=67 ExtRisk=2 → 未过PRIMARY门（state=BREAKOUT_READY）
-- **云煤能源（600792.SH）** FE=58 ExtRisk=41 → 未过PRIMARY门（state=HVT_STRONG）；FE60=66/FE120=67均不足；执行分74不足75
+- **云煤能源（600792.SH）** FE=58 ExtRisk=41 → 未过PRIMARY门（state=HVT_STRONG）；FE60=66/FE120=67均不足
 - **中国银行（601988.SH）** FE=81 ExtRisk=9 → 未过PRIMARY门（state=BREAKOUT_READY）
 - **国机汽车（600335.SH）** FE=54 ExtRisk=2 → 未过PRIMARY门（state=BREAKOUT_READY）；FE20=24<70；Continuation=63不足；执行分64不足75
 
@@ -386,8 +386,7 @@ FINAL DECISION
 ============================================================
 
 ★ 明日第一买入：NONE（无SCORE≥85的候选；没有确认就不买）
-★ 可直接执行（BUY）：东富龙(79.4)、陆家嘴(77.5)
-★ 需确认后买入（BUY_ON_CONFIRM）：海天精工(74.3)
+★ 可直接执行（BUY）：东富龙(80.7)、陆家嘴(78.8)、海天精工(75.2)
 ★ 突破后才买：德尔股份(35.29)、中信出版(37.03)、上港集团(5.64)
 ★ 高FE但不追：盾安环境、海洋王、金帝股份
 ★ 高分等回踩（WAIT_PULLBACK，不可买）：无
@@ -397,7 +396,7 @@ FINAL DECISION
 核心原则：只执行“未来扩张 + 当前执行条件”同时成立的股票；没有确认就不买，不因为FE高而追涨，不因为过去涨幅大而机械剔除。
 
 ============================================================
-DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
+DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，91只）
 ============================================================
 
 定位：观察信号，非买入信号——不进 FINAL DECISION，不触发任何买入动作。
@@ -408,14 +407,14 @@ DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
 
 | 代码 | 名称 | V3状态 | SCORE | 现价 | SKIP原因 |
 |---|---|---|---|---|---|
-| 603039.SH | 泛微网络 | DISTRIBUTION | 43.8 | 39.70 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 000019.SZ | 深粮控股 | DISTRIBUTION | 45.3 | 6.98 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 001872.SZ | 招商港口 | DISTRIBUTION | 47.4 | 22.91 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
+| 603039.SH | 泛微网络 | DISTRIBUTION | 43.6 | 39.70 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 000019.SZ | 深粮控股 | DISTRIBUTION | 44.9 | 6.98 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 001872.SZ | 招商港口 | DISTRIBUTION | 47.1 | 22.91 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
 | 000921.SZ | 海信家电 | DISTRIBUTION | 44.7 | 26.70 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 002068.SZ | 黑猫股份 | DISTRIBUTION | 49.5 | 10.35 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION；巨量长上影收盘弱(派发风险) |
-| 300841.SZ | 康华生物 | DISTRIBUTION | 47.7 | 54.46 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 002068.SZ | 黑猫股份 | DISTRIBUTION | 49.3 | 10.35 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION；巨量长上影收盘弱(派发风险) |
+| 300841.SZ | 康华生物 | DISTRIBUTION | 47.6 | 54.46 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 300792.SZ | 壹网壹创 | DISTRIBUTION | 45.4 | 25.86 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
-| 600161.SH | 天坛生物 | DISTRIBUTION | 49.3 | 12.46 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
+| 600161.SH | 天坛生物 | DISTRIBUTION | 49.9 | 12.46 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 000807.SZ | 云铝股份 | DISTRIBUTION | 46.1 | 26.95 | 结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION |
 | 300973.SZ | 立高食品 | DISTRIBUTION | 45.2 | 25.80 | 结构状态DISTRIBUTION（硬风控覆盖）；假突破（突破失败）；硬否决：假突破/结构止损；结构状态:DISTRIBUTION |
 
@@ -481,34 +480,34 @@ DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
 
 ### 【DISTRIBUTION】深粮控股（000019.SZ）
 
-- V3双评分：ENTRY=71.6 | EXPANSION=49.8 | TAIL=53.1(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构16.0 量能19.7 回踩10.0 RS9.4 板块6.3 盈亏比10.2
+- V3双评分：ENTRY=70.3 | EXPANSION=49.8 | TAIL=52.9(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构16.0 量能19.7 回踩10.0 RS9.4 板块5.0 盈亏比10.2
 - EXPANSION分解：空间18.3 压缩6.5 动量11.0 RS加速3.0 量效1.0 吸收4.0 基本面3.0 催化3.0
-- FE未来扩张：FE=50 FE10=67 FE20=67 FE60=81 FE120=69 | Lifecycle=EARLY TrendGain=26% Continuation=56 ExtRisk=4 Type=DISTRIBUTION_RISK
-- FE分解：accel=60 base_expansion=52 continuation=56 dd20=0 dd60=0 fundamental=47 lifecycle=90 ma=50 overhead=1 platform=45 rs=45 space=34
+- FE未来扩张：FE=50 FE10=67 FE20=67 FE60=78 FE120=66 | Lifecycle=EARLY TrendGain=26% Continuation=56 ExtRisk=4 Type=DISTRIBUTION_RISK
+- FE分解：accel=60 base_expansion=52 continuation=56 dd20=0 dd60=0 fundamental=44 lifecycle=90 ma=50 overhead=1 platform=45 rs=45 space=34
 - 分级：收盘位置=A+ 放量=D RS5=49 RS10=5 RS20=69 RS加速度=-20
 - 天量日 20260909：涨幅10.0% 收盘位1.00 换手17.0% | 天量后回撤20.6% 量缩比0.59 锁筹=否
-- 板块：消费（强度63） | 基本面：C（40） | 资金质量：50
+- 板块：-（强度50） | 基本面：C（40） | 资金质量：50
 - 交易计划（TE 口径）：⛔ 执行状态=SKIP：结构状态DISTRIBUTION（硬风控覆盖）；硬否决：结构状态:DISTRIBUTION（不构成买点，仓位-）
 - ⛔ 硬否决：结构状态:DISTRIBUTION
-- WAIT_REASON：等待缩量锁筹；等待突破T0_High；回撤过大；基本面不足；结构状态:DISTRIBUTION
+- WAIT_REASON：等待缩量锁筹；等待突破T0_High；板块强度不足；回撤过大；基本面不足；结构状态:DISTRIBUTION
 - 为什么它像中际旭创：同为历史级天量(量比2.1)、天量日价格强(涨10.0%/收盘位1.00)、相似度71.8；差异：回撤更深(20.6% vs 案例6.6%)，尚未锁筹，尚未二次突破
 
 ### 【BREAKOUT_READY】盾安环境（002011.SZ）
 
-- V3双评分：ENTRY=79.5 | EXPANSION=48.3 | TAIL=53.0(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构21.8 量能13.5 回踩15.0 RS12.7 板块6.3 盈亏比10.2
+- V3双评分：ENTRY=78.2 | EXPANSION=48.3 | TAIL=52.8(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构21.8 量能13.5 回踩15.0 RS12.7 板块5.0 盈亏比10.2
 - EXPANSION分解：空间4.3 压缩5.0 动量11.0 RS加速5.0 量效3.0 吸收14.0 基本面3.0 催化3.0
-- FE未来扩张：FE=63 FE10=85 FE20=99 FE60=66 FE120=68 | Lifecycle=DEVELOPING TrendGain=52% Continuation=80 ExtRisk=54 Type=RE_ACCELERATION
-- FE分解：accel=60 base_expansion=74 continuation=80 dd20=0 dd60=0 fundamental=47 lifecycle=85 ma=80 overhead=0 platform=82 rs=72 space=80
+- FE未来扩张：FE=62 FE10=85 FE20=99 FE60=64 FE120=65 | Lifecycle=DEVELOPING TrendGain=52% Continuation=80 ExtRisk=54 Type=RE_ACCELERATION
+- FE分解：accel=60 base_expansion=73 continuation=80 dd20=0 dd60=0 fundamental=44 lifecycle=85 ma=80 overhead=0 platform=82 rs=72 space=80
 - 分级：收盘位置=A 放量=B RS5=93 RS10=98 RS20=99 RS加速度=-6
 - 天量日 20260910：涨幅5.5% 收盘位0.79 换手11.8% | 天量后回撤1.7% 量缩比0.57 锁筹=是
 - 二次突破：20260916 放量1.4x 收盘位0.72 幅度2.7% 距T0=4日 假突破=否
 - 突破回踩：判定NEAR 缩量比0.82 低点13.53@20260917 低点vsT0_High+1.7% 当前vs突破+8.1%
-- 板块：消费（强度63） | 基本面：C（40） | 资金质量：50
+- 板块：-（强度50） | 基本面：C（40） | 资金质量：50
 - 交易计划（TE 口径）：⚠️ 执行状态=NO_CHASE：现价14.76已超追高上限13.96（突破位+1.2×ATR），今日不追高；等回踩买区13.30~13.65（触发价13.43）再评估，仓位-
 - 结构锚定价（T0=20260910起算，不随现价重算，执行以上方TE价位为准）：入场=13.43 止损=12.52 目标1=15.96 目标2=17.96
-- WAIT_REASON：突破日特征未达T1/T2归因分层（放量倍数/突破幅度/距T0天数）；基本面不足
+- WAIT_REASON：突破日特征未达T1/T2归因分层（放量倍数/突破幅度/距T0天数）；板块强度不足；基本面不足
 - 为什么它像中际旭创：同为历史级天量(量比5.5)、天量日价格强(涨5.5%/收盘位0.79)、相似度86.1
 
 ### 【DISTRIBUTION】招商港口（001872.SZ）
@@ -526,22 +525,6 @@ DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
 - WAIT_REASON：等待突破T0_High；板块强度不足；结构状态:DISTRIBUTION
 - 为什么它像中际旭创：同为阶段级天量(量比3.2)、天量日价格强(涨5.4%/收盘位0.83)、相似度87.9；差异：尚未二次突破
 
-### 【HVT_STRONG】海洋王（002724.SZ）
-
-- V3双评分：ENTRY=67.3 | EXPANSION=49.4 | TAIL=52.1(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构13.2 量能10.8 回踩11.0 RS12.3 板块6.3 盈亏比13.7
-- EXPANSION分解：空间9.4 压缩5.0 动量11.0 RS加速8.0 量效1.0 吸收9.0 基本面3.0 催化3.0
-- FE未来扩张：FE=57 FE10=76 FE20=93 FE60=66 FE120=68 | Lifecycle=DEVELOPING TrendGain=62% Continuation=81 ExtRisk=15 Type=RE_ACCELERATION
-- FE分解：accel=80 base_expansion=56 continuation=81 dd20=0 dd60=0 fundamental=47 lifecycle=85 ma=80 overhead=0 platform=20 rs=84 space=26
-- 分级：收盘位置=D 放量=B RS5=93 RS10=79 RS20=87 RS加速度=+6
-- 天量日 20260825：涨幅5.0% 收盘位0.80 换手7.6% | 天量后回撤1.5% 量缩比0.72 锁筹=否
-- 二次突破：20260828 放量1.2x 收盘位0.29 幅度1.9% 距T0=3日 假突破=否
-- 突破回踩：判定NEAR 缩量比0.71 低点6.50@20260916 低点vsT0_High-4.4% 当前vs突破+9.1%
-- 板块：消费（强度63） | 基本面：C（40） | 资金质量：50
-- 交易计划（TE 口径）：⚠️ 执行状态=NO_CHASE：现价7.56已超追高上限7.40（突破位+1.2×ATR），今日不追高；等回踩买区6.80~7.09（触发价6.87）再评估，仓位-
-- WAIT_REASON：等待缩量锁筹；突破日特征未达T1/T2归因分层（放量倍数/突破幅度/距T0天数）；基本面不足
-- 为什么它像海天精工：同为阶段级天量(量比1.8)、天量日价格强(涨5.0%/收盘位0.80)、相似度72.7；差异：尚未锁筹
-
 ### 【DISTRIBUTION】海信家电（000921.SZ）
 
 - V3双评分：ENTRY=67.1 | EXPANSION=49.3 | TAIL=52.0(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
@@ -556,6 +539,22 @@ DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
 - ⛔ 硬否决：结构状态:DISTRIBUTION
 - WAIT_REASON：等待缩量锁筹；等待突破T0_High；板块强度不足；回撤过大；基本面不足；结构状态:DISTRIBUTION
 - 为什么它像中际旭创：同为阶段级天量(量比3.1)、天量日价格强(涨3.4%/收盘位0.79)、相似度80.7；差异：尚未锁筹，尚未二次突破
+
+### 【HVT_STRONG】海洋王（002724.SZ）
+
+- V3双评分：ENTRY=66.0 | EXPANSION=49.4 | TAIL=51.9(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构13.2 量能10.8 回踩11.0 RS12.3 板块5.0 盈亏比13.7
+- EXPANSION分解：空间9.4 压缩5.0 动量11.0 RS加速8.0 量效1.0 吸收9.0 基本面3.0 催化3.0
+- FE未来扩张：FE=56 FE10=76 FE20=93 FE60=64 FE120=65 | Lifecycle=DEVELOPING TrendGain=62% Continuation=81 ExtRisk=15 Type=RE_ACCELERATION
+- FE分解：accel=80 base_expansion=56 continuation=81 dd20=0 dd60=0 fundamental=44 lifecycle=85 ma=80 overhead=0 platform=20 rs=84 space=26
+- 分级：收盘位置=D 放量=B RS5=93 RS10=79 RS20=87 RS加速度=+6
+- 天量日 20260825：涨幅5.0% 收盘位0.80 换手7.6% | 天量后回撤1.5% 量缩比0.72 锁筹=否
+- 二次突破：20260828 放量1.2x 收盘位0.29 幅度1.9% 距T0=3日 假突破=否
+- 突破回踩：判定NEAR 缩量比0.71 低点6.50@20260916 低点vsT0_High-4.4% 当前vs突破+9.1%
+- 板块：-（强度50） | 基本面：C（40） | 资金质量：50
+- 交易计划（TE 口径）：⚠️ 执行状态=NO_CHASE：现价7.56已超追高上限7.40（突破位+1.2×ATR），今日不追高；等回踩买区6.80~7.09（触发价6.87）再评估，仓位-
+- WAIT_REASON：等待缩量锁筹；突破日特征未达T1/T2归因分层（放量倍数/突破幅度/距T0天数）；板块强度不足；基本面不足
+- 为什么它像海天精工：同为阶段级天量(量比1.8)、天量日价格强(涨5.0%/收盘位0.80)、相似度72.7；差异：尚未锁筹
 
 ### 【HVT_STRONG】中信出版（300788.SZ）
 
@@ -712,14 +711,14 @@ DIP_REBOUND_WATCH（超跌反弹观察池 40~50分，92只）
 
 ### 【HVT_STRONG】会稽山（601579.SH）
 
-- V3双评分：ENTRY=63.4 | EXPANSION=46.0 | TAIL=48.6(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
-- ENTRY分解：价格结构11.4 量能13.9 回踩8.0 RS13.0 板块6.3 盈亏比10.8
+- V3双评分：ENTRY=62.1 | EXPANSION=46.0 | TAIL=48.4(SAMPLE_LOW) | HVT分=0.0 | 分层=T3
+- ENTRY分解：价格结构11.4 量能13.9 回踩8.0 RS13.0 板块5.0 盈亏比10.8
 - EXPANSION分解：空间4.0 压缩5.0 动量11.0 RS加速5.0 量效1.0 吸收7.0 基本面6.0 催化3.0
-- FE未来扩张：FE=54 FE10=90 FE20=99 FE60=70 FE120=70 | Lifecycle=MATURE TrendGain=172% Continuation=77 ExtRisk=70 Type=RE_ACCELERATION
-- FE分解：accel=60 base_expansion=70 continuation=77 dd20=0 dd60=0 fundamental=62 lifecycle=75 ma=100 overhead=0 platform=45 rs=75 space=80
+- FE未来扩张：FE=53 FE10=90 FE20=99 FE60=67 FE120=67 | Lifecycle=MATURE TrendGain=172% Continuation=77 ExtRisk=70 Type=RE_ACCELERATION
+- FE分解：accel=60 base_expansion=70 continuation=77 dd20=0 dd60=0 fundamental=59 lifecycle=75 ma=100 overhead=0 platform=45 rs=75 space=80
 - 分级：收盘位置=D 放量=D RS5=100 RS10=100 RS20=100 RS加速度=-0
 - 天量日 20260922：涨幅3.7% 收盘位0.42 换手10.1% | 天量后回撤0.0% 量缩比1.00 锁筹=否
-- 板块：消费（强度63） | 基本面：A（65） | 资金质量：50
+- 板块：-（强度50） | 基本面：A（65） | 资金质量：50
 - 交易计划（TE 口径）：执行状态=BREAKOUT_WAIT：突破前不买，待放量突破39.72后再买入；买区39.33~40.93 止损36.10 建议仓位-
-- WAIT_REASON：等待缩量锁筹；天量后观察不足3日；等待突破T0_High
+- WAIT_REASON：等待缩量锁筹；天量后观察不足3日；等待突破T0_High；板块强度不足
 - 为什么它像中际旭创：同为历史级天量(量比1.9)、天量日价格强(涨3.7%/收盘位0.42)、相似度50.4；差异：缩量不足(量缩比1.00 vs 案例0.48)，尚未锁筹，尚未二次突破

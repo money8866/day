@@ -1,0 +1,379 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "T+3 二筛 20260922：结构性轮动，可执行 3 / 有条件 5 / 候选 47"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "T+3 综合实盘二筛"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "20260922 · 47 只 / 9 策略"
+    },
+    "template": "blue",
+    "icon": {
+      "tag": "standard_icon",
+      "token": "wiki-bitable_colorful"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "可执行 3"
+        },
+        "color": "green"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "非交易建议"
+        },
+        "color": "neutral"
+      }
+    ]
+  },
+  "body": {
+    "direction": "vertical",
+    "padding": "12px 12px 20px 12px",
+    "elements": [
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "horizontal_spacing": "8px",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>结构性轮动</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>市场状态</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>43.9%</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>上涨占比</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>3/5</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>可执行/有条件</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "grey-50",
+            "padding": "12px 6px",
+            "vertical_spacing": "2px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "## <font color='blue'>47</font>",
+                "text_size": "normal",
+                "text_align": "center"
+              },
+              {
+                "tag": "markdown",
+                "content": "<font color='grey'>候选票数</font>",
+                "text_size": "notation",
+                "text_align": "center"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "column_set",
+        "flex_mode": "none",
+        "margin": "0px 0px 12px 0px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "weighted",
+            "weight": 1,
+            "background_style": "blue-50",
+            "padding": "12px",
+            "vertical_spacing": "4px",
+            "elements": [
+              {
+                "tag": "markdown",
+                "content": "**T+3 二筛 20260922**（2026-09-23 13:53:04）\n- **市场**：结构性轮动（6.5/10）· 广度 2374/3030（总 5554）\n- **指数 5 日**：上证指数 +2.3% · 沪深300 +2.1% · 创业板指 +4.7% · 科创50 +7.3% · 中证1000 +4.3%\n- **分级**：可执行 3（上限 3）· 有条件 5（上限 5）· 等待 30 · 规避 9\n- **强势板块**：软件服务（7.8%）、化学制药（2.8%）、半导体（2.2%）、影视音像（1.5%）\n- **资讯层**：已接入 东方财富 公告 + deepseek(deepseek-chat)",
+                "text_size": "normal"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 3,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "s",
+            "display_name": "可执行",
+            "data_type": "text"
+          },
+          {
+            "name": "q",
+            "display_name": "分数",
+            "data_type": "number",
+            "format": {
+              "precision": 1
+            }
+          },
+          {
+            "name": "z",
+            "display_name": "买区",
+            "data_type": "text"
+          },
+          {
+            "name": "sl",
+            "display_name": "止损/目标",
+            "data_type": "text"
+          },
+          {
+            "name": "rr",
+            "display_name": "RR",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "s": "603259.SH 药明康德",
+            "q": 89.7,
+            "z": "166.17~170.37",
+            "sl": "162.81/177.02",
+            "rr": "1.77"
+          },
+          {
+            "s": "002292.SZ 奥飞娱乐",
+            "q": 88.2,
+            "z": "9.04~9.27",
+            "sl": "8.86/9.81",
+            "rr": "2.41"
+          },
+          {
+            "s": "002832.SZ 比音勒芬",
+            "q": 85.0,
+            "z": "25.39~26.03",
+            "sl": "24.88/27.70",
+            "rr": "2.59"
+          }
+        ]
+      },
+      {
+        "tag": "table",
+        "margin": "0px 0px 12px 0px",
+        "page_size": 5,
+        "row_height": "low",
+        "header_style": {
+          "text_size": "notation",
+          "background_style": "grey",
+          "bold": true,
+          "lines": 1
+        },
+        "columns": [
+          {
+            "name": "s",
+            "display_name": "有条件",
+            "data_type": "text"
+          },
+          {
+            "name": "q",
+            "display_name": "分数",
+            "data_type": "number",
+            "format": {
+              "precision": 1
+            }
+          },
+          {
+            "name": "z",
+            "display_name": "买区",
+            "data_type": "text"
+          },
+          {
+            "name": "rr",
+            "display_name": "RR",
+            "data_type": "text"
+          },
+          {
+            "name": "tag",
+            "display_name": "资讯",
+            "data_type": "text"
+          }
+        ],
+        "rows": [
+          {
+            "s": "688239.SH 航宇科技",
+            "q": 84.6,
+            "z": "56.91~58.34",
+            "rr": "2.41",
+            "tag": "例行"
+          },
+          {
+            "s": "601882.SH 海天精工",
+            "q": 84.6,
+            "z": "23.17~23.75",
+            "rr": "1.96",
+            "tag": "例行"
+          },
+          {
+            "s": "300277.SZ 汽轮科技",
+            "q": 82.3,
+            "z": "13.06~13.39",
+            "rr": "2.42",
+            "tag": "减持"
+          },
+          {
+            "s": "688231.SH 隆达股份",
+            "q": 81.2,
+            "z": "34.42~35.29",
+            "rr": "2.41",
+            "tag": "例行"
+          },
+          {
+            "s": "300171.SZ 东富龙",
+            "q": 80.3,
+            "z": "15.65~16.05",
+            "rr": "2.42",
+            "tag": "例行"
+          }
+        ]
+      },
+      {
+        "tag": "collapsible_panel",
+        "expanded": false,
+        "header": {
+          "title": {
+            "tag": "plain_text",
+            "content": "资讯核验 · 公告明细 · 规避原因 · 口径声明"
+          }
+        },
+        "border": {
+          "color": "grey",
+          "corner_radius": "8px"
+        },
+        "padding": "8px 12px 8px 12px",
+        "vertical_spacing": "4px",
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "**资讯/公告风险标签**\n- 002292.SZ 奥飞娱乐（今日可执行）：回购　公告含回购股份进展，属利好类\n- 002832.SZ 比音勒芬（今日可执行）：增持　公司董事增持公司股份计划实施完成\n- 688209.SH 英集芯（规避）：回购　公司以集中竞价方式回购股份并披露进展\n- 300277.SZ 汽轮科技（有条件买入）：减持　高管减持计划期限届满，其余为分红、股东会等例行公告\n- 301608.SZ 博实结（等待）：减持　有减持计划届满公告，其余为调研及利润分配\n- 600150.SH 中国船舶（规避）：重大合同、诉讼　子公司签重大合同，另有火灾事故及仲裁结果公告\n- 300049.SZ 福瑞医科（等待）：减持　公告含实际控制人减持股份预披露，属风险类\n- 002848.SZ 高斯贝尔（等待）：定增　主要为定增问询回复及保荐材料，无重大利好利空\n- 603986.SH 兆易创新（等待）：回购、股权激励　回购进展及股权激励行权，另有H股例行公告\n- 002960.SZ 青鸟智控（等待）：回购　回购比例达3%及多次回购进展公告\n- 688758.SH 赛分科技（等待）：回购　披露回购进展，同时5%以上股东权益变动至5%以下\n- 300067.SZ 安诺其（等待）：股权激励　授予2026年限制性股票激励计划并调整相关事项\n- 300736.SZ 百邦科技（等待）：定增　公告均为向特定对象发行股票相关文件及问询函回复\n- 002902.SZ 铭普光磁（等待）：股权激励　公告含股权激励调整及首次授予，属利好类\n- 300464.SZ 星徽股份（等待）：诉讼　多份诉讼及诉讼进展公告，另有股票交易异常波动\n- 301282.SZ 金禄电子（等待）：减持　股东减持计划期限届满实施完毕，其余为调研担保等例行公告",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**公告明细（可执行档）**\n- 药明康德（资讯 5.0/10）：公告为H股公告及董事会决议，属例行中性\n  - 20260922 药明康德:第四届董事会第六次会议决议公告\n  - 20260918 药明康德:H股公告\n- 奥飞娱乐（资讯 6.5/10）：公告含回购股份进展，属利好类\n  - 20260915 奥飞娱乐:2026年9月15日投资者关系活动记录表\n  - 20260903 奥飞娱乐:关于回购股份的进展公告\n- 比音勒芬（资讯 7.0/10）：公司董事增持公司股份计划实施完成\n  - 20260915 比音勒芬:2026年9月15日投资者关系活动记录表\n  - 20260915 比音勒芬:关于公司董事增持公司股份计划实施完成的公告\n- 航宇科技（资讯 5.0/10）：公告为担保、督导、半年报等例行事项\n  - 20260918 航宇科技:航宇科技关于为子公司提供担保及变更抵押物的公告\n  - 20260916 航宇科技:中信证券股份有限公司关于贵州航宇科技发展股份有限公司2026年半年度持续督导跟踪报告\n- 海天精工（资讯 5.0/10）：公告为半年报及业绩说明会通知，属例行中性\n  - 20260915 海天精工:宁波海天精工股份有限公司关于召开2026年半年度业绩说明会的公告\n  - 20260829 海天精工:宁波海天精工股份有限公司2026年半年度报告\n- 汽轮科技（资讯 5.0/10）：高管减持计划期限届满，其余为分红、股东会等例行公告\n  - 20260918 300277汽轮科技投资者关系管理信息20260918\n  - 20260918 汽轮科技:中信证券股份有限公司关于浙江杭汽轮动力科技集团股份有限公司2026年半年度跟踪报告\n- 隆达股份（资讯 5.0/10）：半年报及募集资金、关联交易等例行公告\n  - 20260826 隆达股份:2026年半年度报告\n  - 20260826 隆达股份:独立董事专门会议决议\n- 东富龙（资讯 5.0/10）：公告为业绩说明会、权益分派等例行事项\n  - 20260916 东富龙:300171东富龙2026年上海辖区上市公司集体接待日暨中报业绩说明会20260916\n  - 20260910 东富龙:关于参加2026年上海辖区上市公司集体接待日暨中报业绩说明会活动的公告",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**规避原因**\n- 688209.SH 英集芯（83.5 分）：命中硬性否决 §19-F\n- 600150.SH 中国船舶（79.7 分）：命中硬性否决 §19-F\n- 603328.SH 依顿电子（75.6 分）：命中硬性否决 §15、§19-F\n- 300300.SZ 海峡创新（72.8 分）：命中硬性否决 §15\n- 002181.SZ 粤传媒（70.3 分）：命中硬性否决 §15\n- 002560.SZ 通达股份（69.7 分）：命中硬性否决 §15\n- 600663.SH 陆家嘴（64.2 分）：命中硬性否决 §19-B\n- 600073.SH 光明肉业（57.6 分）：机械评分 57.6 低于 WAIT 门槛 60.0",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "**资讯层待补**：0 只（无）",
+            "text_size": "normal"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>资讯/公告层已接入：公告取自东方财富公告接口（真实披露，近 45 天），由 deepseek(deepseek-chat) 按给定材料打分；模型被禁止编造未提供的资讯或事件。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>资讯层覆盖：模型已打分 47 只 / 无近期公告 0 只 / 缺失 0 只；后两类均按中性 5.0 分计入。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>任一环节失败（无 key、公告接口异常、超时、返回非 JSON）自动回落 DATA_MISSING + 中性分，不阻塞主流程。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>机械层满分 90（市场10+板块10+趋势15+量价15+买点20+基本10+风控10），资讯 10 分为模型分/中性占位。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>原策略 score/action 仅作展示，未参与 T+3 评分，本程序不写任何数据库。</font>",
+            "text_size": "notation"
+          },
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>T+3 目标价来自策略 target_price 或 ATR 推算，非投资建议。</font>",
+            "text_size": "notation"
+          }
+        ]
+      }
+    ]
+  }
+}

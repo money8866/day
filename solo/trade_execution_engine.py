@@ -100,6 +100,8 @@ def parse_md_pool(md_path):
         if ln.startswith("## "):
             cur_section = ln.strip("# ").strip()
             continue
+        if cur_section.startswith("过滤观察"):
+            continue  # V5.2「质量过滤拦下」清单：口径上不参与执行，且 10 列结构与旧「已突破名单」冲突
         if not ln.startswith("| "):
             continue
         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
@@ -131,10 +133,13 @@ def parse_md_pool(md_path):
                 continue
             cands[code] = rec  # 后出现覆盖前（B/MID 与 TOP20 重复时用明细榜字段一致）
         elif len(cells) == 10:  # 已突破名单（无 v5 dims）
-            refs.setdefault("broken_list", []).append(
-                dict(code=cells[1], name=cells[2], score=float(cells[3]), type=cells[4],
-                     close=float(cells[5]), pressure=float(cells[6]), ma20=float(cells[7]),
-                     volr=float(cells[8].lstrip("×")), state=cells[9]))
+            try:
+                rec = dict(code=cells[1], name=cells[2], score=float(cells[3]), type=cells[4],
+                           close=float(cells[5]), pressure=float(cells[6]), ma20=float(cells[7]),
+                           volr=float(cells[8].lstrip("×")), state=cells[9])
+            except ValueError:
+                continue  # 列结构不符（如其它 10 列表格）直接跳过，不让格式漂移打断整轮执行
+            refs.setdefault("broken_list", []).append(rec)
         elif len(cells) == 6:   # C榜 潜力票（参考）
             refs.setdefault("watch_potential", []).append(
                 dict(code=cells[1], name=cells[2], score=float(cells[3]), type=cells[4],

@@ -420,7 +420,9 @@ def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
         sub_buy['_bb'] = pd.to_numeric(sub_buy['buyability'], errors='coerce').fillna(-1.0)
         top_idx = (sub_buy.sort_values(['decision_date', '_es', '_bb'], ascending=[True, False, False])
                    .groupby('decision_date').head(max_buy).index)
-        top_mask = df_ev.index.isin(top_idx)
+        # 与 else 分支保持同为 Series（按 df_ev.index 对齐），下方 L481 需按索引标签取用；
+        # index.isin() 返回的是裸 ndarray，直接用 .loc 会 AttributeError
+        top_mask = pd.Series(df_ev.index.isin(top_idx), index=df_ev.index)
     else:
         top_mask = pd.Series(False, index=df_ev.index)
 

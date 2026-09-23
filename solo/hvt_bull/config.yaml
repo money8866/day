@@ -158,11 +158,15 @@ trade_execution:
     c: [0, 3]
   weights:
     buyability:                # §11
-      breakout_readiness: 0.30
-      price_location: 0.20
+      # 20260923 调整：intraday_structure 无分钟数据恒为中性 50（§37.11/12 不伪造），
+      # 其 0.10 权重原封不动地占位会同时起到"压低上限"和"压缩区分度"的作用，
+      # 故按 0.30:0.20:0.10 比例分摊给 breakout_readiness/price_location/volume_quality。
+      # 该分量仍写入 buyability_parts 供诊断，只是不再参与加权。
+      breakout_readiness: 0.35
+      price_location: 0.2333
       pullback_quality: 0.15
-      volume_quality: 0.10
-      intraday_structure: 0.10
+      volume_quality: 0.1167
+      intraday_structure: 0.0
       sector_confirmation: 0.05
       market_regime: 0.05
       risk_reward: 0.05

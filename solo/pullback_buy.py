@@ -31,12 +31,14 @@
   - 药康生物基准案例全程命中：08-05 回踩中63.1 → 08-06 62.5 → 08-07 20cm涨停
 
 用法：
-  【已合并】本文件已并入 enhanced_timing_bull_all.py（每日由 run_washout_push.bat 自动调度），
-           日常不需要单独运行；本 main() 仅保留为形态调试/回测入口。
+  【已合并】analyze_shape 由 multi_factor_picker/enhanced_timing_bull_all.py 导入调用，
+           但该脚本当前已在 run_all.bat 中被注释停用（输入 bull_stocks_all.csv 亦已停止更新），
+           故 report_daily/enhanced_timing_bull_all_YYYYMMDD.csv 不再日产，最新截至 20260904；
+           本 main() 仅保留为形态调试/回测入口。
   python pullback_buy.py --date 20260806 --input report_daily/double_score_full.csv
 输出：
   report_daily/pullback_buy_YYYYMMDD.csv（形态匹配股票 + 评分 + V15/TAE 参考列）
-  （正式流程的输出为 report_daily/enhanced_timing_bull_all_YYYYMMDD.csv 中的 形态阶段/次日操作/回踩买点分 列）
+  （被停用前的正式流程输出为 report_daily/enhanced_timing_bull_all_YYYYMMDD.csv 中的 形态阶段/次日操作/回踩买点分 列）
 """
 import argparse
 import os

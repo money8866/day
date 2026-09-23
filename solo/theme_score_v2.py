@@ -4370,8 +4370,25 @@ V21_STATE_CN = {
 }
 V21_PERMISSIONS = ('NO_TRADE', 'WATCH', 'CONDITIONAL', 'TRADEABLE')
 V21_FLOW_CAP = 40.0                                   # migration_score 实测值域≈[0,40]
-V21_PERM_TH = {'conf': 65.0, 'breadth': 60.0, 'lead': 60.0, 'pers': 55.0}
-V21_CHASE_LIMIT = 75.0                                # ≥75 → 只可回踩买
+
+# ── V2.1 分层：已移除四维 AND 门槛（2026-09 架构纠偏）──
+# 实证依据（11 轮扫描，样本 20250508~20260922 / 339 交易日 / 32 主题）：
+#   · 四维（confirmation/breadth/leadership/persistence）在本窗口是**反向**因子：
+#     十分档 D9 在 7 个维度中 6 个最差；旧 TRADEABLE 再剥主题固定效应后 T+5 −2.33%（p=0.0168★）。
+#   · 旧门槛把「候选 / 确认 / 核心主线」压在同一套四维 AND 里，而四维（顺势拥挤）与低吸条件
+#     方向相反，AND 求交集趋近空集 —— 62 日仅 1 例 TRADEABLE。这是样本归零的结构性原因，
+#     调阈值无法解决（调松则反向 alpha 渗入，调紧则归零）。
+#   · 状态机同病：STRONG_TREND 62 日仅 4 条、ACCELERATION 仅 6 条，故主线层不得依赖它们。
+#   · 唯一跨 regime 方向一致的维度是**拥挤度回避**：当日横截面（距20日前高位置 + 量能 5/20日）
+#     前 20% 的主题未来跑输，5 个 regime 段中 4 段为负、3 段显著，无任何段显著为正。
+# 结论：分层改为「当日横截面分位」定档（跨 regime 自可比、样本量天然有保证），
+#       四维退出许可逻辑（仅保留为描述性字段），拥挤度作为唯一风险闸。
+V21_MAINLINE_TOP = 0.20      # 核心主线：强度与广度当日横截面双前 20%
+V21_COND_TOP = 0.50          # 条件确认：强度当日横截面前 50%
+V21_CROWD_TOP = 0.20         # 拥挤闸：拥挤度当日横截面前 20% → 不得进入确认层与主线层
+V21_BLOCK_STATES = ('RETREAT', 'EXHAUSTION')          # 硬阻断：不参与交易
+V21_WATCH_ONLY_STATES = ('DIVERGENCE',)               # 仅观察
+V21_CHASE_LIMIT = 75.0                                # ≥75 → 只可回踩买（只改 buy_mode，不再降许可层级）
 V21_EARLY_BREADTH_DELTA = 3.0                         # EARLY_FLOW「广度实质改善」门槛（0~100 分制下的可观测增量）
 V21_HIST_DAYS = 25                                    # 历史窗口（覆盖 D20 + 状态转换 D5）
 V21_TABLE = 'theme_v21_daily'
@@ -4692,38 +4709,62 @@ def _v21_quadrant(f):
     return 'WEAK'
 
 
-def _v21_permission(f):
-    """TradePermission 四级：NO_TRADE / WATCH / CONDITIONAL / TRADEABLE
+def _v21_permission_xs(f, pct):
+    """TradePermission 三层定档 —— 横截面分位口径（不再使用四维 AND 绝对门槛）
 
-    规格第八/九节：
-      只有 Confirmation≥65 且 Breadth≥60 且 Leadership≥60 且 Persistence≥55，且未触发
-      Exhaustion/Divergence/SingleLeaderRisk=HIGH 时，才允许 CONDITIONAL；全部确认才 TRADEABLE。
-      其余一律不得上调 —— 尤其禁止「Migration 高」或「Composite 高」单独换来交易许可（PASS1/PASS5）。
-    ChaseRisk≥75 → 降级为 CONDITIONAL 且 BUY_MODE=PULLBACK_ONLY（不追高，只等回踩）。
+    pct：该主题在当日全部主题中的分位（0~1，越大越高）
+         comp 强度(composite) / brd 广度(breadth) / crowd 拥挤度(距前高位置 + 量能)
+
+    分层语义（每层独立可达，不再互相嵌套成空集）：
+      NO_TRADE     退潮 / 情绪透支 —— 强度再高也不参与
+      WATCH        入池观察（默认层，也是拥挤档的降落层）
+      CONDITIONAL  条件确认：强度前 50% + 未背离 + 非单龙头依赖 + 非拥挤
+      TRADEABLE    核心主线：强度与广度双双前 20% + 非背离 + 非单龙头依赖 + 非拥挤
+
+    注意：TRADEABLE 只表示「当日最值得聚焦」，不代表已证实正超额 —— 顺势与反转因子
+         在本样本内符号随 regime 翻转（详见 backtest_theme_v21 逐段结论）。
     """
-    th = V21_PERM_TH
-    state = f.get('state')
-    conf = float(f.get('confirmation') or 0)
-    hard = (conf >= th['conf']
-            and float(f.get('breadth') or 0) >= th['breadth']
-            and float(f.get('leadership') or 0) >= th['lead'])
-    pers_ok = float(f.get('persistence') or 0) >= th['pers']
-    slr_high = f.get('single_leader_risk') == 'HIGH'
-    # 硬阻断：退潮 / 情绪透支 —— 强度再高也不给交易许可
-    if state in ('RETREAT', 'EXHAUSTION'):
+    state = str(f.get('state') or '')
+    if state in V21_BLOCK_STATES:
         return 'NO_TRADE'
-    if hard and pers_ok and not slr_high and state != 'DIVERGENCE':
-        return 'CONDITIONAL' if float(f.get('chase_risk') or 0) >= V21_CHASE_LIMIT else 'TRADEABLE'
-    # 未达完整确认：最多给观察资格
-    if state == 'DIVERGENCE':
-        return 'WATCH'
-    if slr_high:
-        return 'WATCH'
-    if f.get('quadrant') in ('EARLY_FLOW', 'HOT_BUT_UNCONFIRMED'):
-        return 'WATCH'
-    if state in ('EARLY_FLOW', 'RECOVERY', 'STARTING', 'STRONG_TREND', 'ACCELERATION') or conf >= 55:
-        return 'WATCH'
-    return 'NO_TRADE'
+    crowded = float(pct.get('crowd') or 0) >= 1.0 - V21_CROWD_TOP
+    blocked = crowded or f.get('single_leader_risk') == 'HIGH' or state in V21_WATCH_ONLY_STATES
+    comp = float(pct.get('comp') or 0)
+    brd = float(pct.get('brd') or 0)
+    if not blocked and comp >= 1.0 - V21_MAINLINE_TOP and brd >= 1.0 - V21_MAINLINE_TOP:
+        return 'TRADEABLE'
+    if not blocked and comp >= 1.0 - V21_COND_TOP:
+        return 'CONDITIONAL'
+    return 'WATCH'
+
+
+def _v21_assign_layers(rows):
+    """当日横截面分层 —— 必须在当日全部主题算完后调用（单主题看不到自己的分位）
+
+    拥挤度 = 距20日前高位置 与 量能(5日/20日) 的当日横截面秩均值，
+    直接回答「这个主题是不是又高又放量」。这是全部扫描中唯一跨 regime 方向一致的维度，
+    因此作为唯一风险闸；四维仅作描述性字段，不参与许可判定。
+    """
+    n = len(rows)
+    if n == 0:
+        return rows
+
+    def pct_rank(key):
+        order = sorted(range(n), key=lambda i: float(rows[i].get(key) or 0))
+        return {i: (p / (n - 1) if n > 1 else 0.0) for p, i in enumerate(order)}
+
+    c_rank = pct_rank('composite')
+    b_rank = pct_rank('breadth')
+    p_rank = pct_rank('pos20')
+    v_rank = pct_rank('vol_ratio')
+    for i, r in enumerate(rows):
+        r['trade_permission'] = _v21_permission_xs(r, {
+            'comp': c_rank[i], 'brd': b_rank[i],
+            'crowd': 0.5 * (p_rank[i] + v_rank[i]),
+        })
+        _, buy_mode, action, _ = _v21_action(r)
+        r['buy_mode'], r['action'] = buy_mode, action
+    return rows
 
 
 def _v21_action(f):
@@ -4763,6 +4804,9 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
     ret_1 = _v21_theme_ret1(r)
     ma20_b = float(np.mean([float(x.get('ma20_b', 0) or 0) for x in rows])) if rows else 0.0
     pos_in_20 = float(np.mean([float(x.get('pos_in_20', 0) or 0) for x in rows])) if rows else 0.0
+    # 拥挤度原料（当日横截面分层用，不进表）：距20日前高位置 + 量能(5日/20日)
+    pos20 = pos_in_20 * 100.0
+    vol_ratio = float(np.mean([float(x.get('vol_ratio', 1.0) or 1.0) for x in rows])) if rows else 1.0
 
     breadth, b_detail = calc_breadth_v21(rows, mkt_ret_1)
     leadership, l_detail, slr = calc_leadership_v21(
@@ -4814,9 +4858,9 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
     f['state'] = state
     f['quadrant'] = _v21_quadrant(f)
     f['mainline_candidate'] = _v21_mainline_candidate(f)
-    perm, buy_mode, action, avoid = _v21_action(
-        {**f, 'trade_permission': _v21_permission(f)})
-    f['trade_permission'], f['buy_mode'], f['action'], f['chase_flag'] = perm, buy_mode, action, avoid
+    # trade_permission / buy_mode / action 依赖当日横截面分位（单主题看不到全局），
+    # 统一由 run_v21_layer → _v21_assign_layers 赋值；此处只算 ChaseRisk 供 flags 记录。
+    avoid = chase >= V21_CHASE_LIMIT
 
     # ── 状态转换检测（D-1 / D-3 / D-5）──
     d3_state = str(hist[-3].get('state') or '') if len(hist) >= 3 else ''
@@ -4843,9 +4887,12 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         'state': state, 'state_d3': d3_state, 'state_d5': d5_state, 'prev_state': prev_state,
         'state_change': change, 'change_reason': reason, 'quadrant': f['quadrant'],
         'mainline_candidate': f['mainline_candidate'], 'chase_risk': chase,
-        'trade_permission': perm, 'buy_mode': buy_mode, 'action': action,
+        # 占位：由 _v21_assign_layers 按当日横截面分位覆写
+        'trade_permission': 'WATCH', 'buy_mode': 'NO_BUY', 'action': '待当日横截面定档',
         'single_leader_risk': slr, 'ret_1': ret_1, 'mkt_ret_1': round(float(mkt_ret_1 or 0), 4),
         'pers_shape': p_detail['pers_shape'], 'flags': flags,
+        # 拥挤度原料（不进表，仅当日横截面分层用）
+        'pos20': round(pos20, 1), 'vol_ratio': round(vol_ratio, 3),
         # 透传诊断（不进表，仅 JSON/MD 用）
         '_b': b_detail, '_l': l_detail, '_c': c_detail, '_p': p_detail,
     }
@@ -5062,6 +5109,8 @@ def run_v21_layer(results, trade_date_str=None, idx_df=None, market_ret_10=0.0):
     rows.sort(key=lambda x: -float(x['strength']))
     for i, v in enumerate(rows, 1):
         v['rank'] = i
+    # 当日横截面分层：许可层级 / buy_mode / action 必须看到全部主题才可定
+    _v21_assign_layers(rows)
     save_v21_sqlite(rows, trade_date_str, mkt_ret_1)
     if not V21_BACKFILL_MODE:
         save_v21_outputs(rows, trade_date_str)

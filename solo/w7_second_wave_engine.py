@@ -1301,6 +1301,18 @@ def w7_quality_gate(x):
     return True, ""
 
 
+def v52_sort_key(x):
+    """V5.2 可操作榜排序键（20260923 起）：按「生命周期 + 空间」降序，同级按选股日量比升序、IGE_ADJ 降序。
+    原排序为量比升序：量比经 V5.2 门槛（≤0.66）收窄后组内已无区分度，排序实际退化为无意义抖动；
+    而这两项是 20260922 跟踪库复核中与后续收益正相关的维度（生命周期 pearson +0.50、空间 +0.39），
+    0826 批次组内按生命周期切分：<45 均 +1.3% / ≥45 均 +26.7%。
+    报告「今日可操作榜」与 stock_pick_db 落库共用此键，保证展示序与 rank_no 同口径。"""
+    v5 = x.get("v5_dims") or {}
+    lead = finite(v5.get("生命周期"), 0.0) + finite(v5.get("空间"), 0.0)
+    ige = x.get("ige_adj") if isinstance(x.get("ige_adj"), (int, float)) else -1.0
+    return (-lead, finite(x.get("volr"), 0.0), -ige)
+
+
 def markdown(results, date):
     # V5.1 过滤层：展示/推送不再铺开候选池，只收口到「当日买点」标的 + 高分等待池摘要
     # V5：HVT-V3 三榜单（A/CORE、B/EXT、C/WATCH）+ TOP20 总榜 + 行为解释含四周期预期
@@ -1327,9 +1339,6 @@ def markdown(results, date):
     # 高分等待池阈值（C 池仅列总分≥75，避免整池铺开）
     WAIT_TOP_SCORE = 75.0
 
-    def _ige_adj(r):
-        return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
-
     def _ige_tag(r):
         return f"{r['ige_adj']:.1f}" if isinstance(r.get("ige_adj"), (int, float)) else "-"
     n_core = sum(1 for x in results if x["type"] == "CORE")
@@ -1352,14 +1361,14 @@ def markdown(results, date):
     lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位），放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方（BREAKOUT_RETEST 例外：跌破 MA20 或放量突破日低点才算失效）；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
-        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 选股日量比升序（缩量优先）、同级按 IGE_ADJ 降序重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 生命周期+空间 降序（20260923 起，替换原量比升序）、同级按选股日量比升序与 IGE_ADJ 降序重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
         lines.append("")
     # 今日可操作榜（唯一逐只可执行榜；现价>触发价=已突破在上方）
-    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按选股日量比升序(缩量优先)/同级按 IGE_ADJ 降序）\n")
+    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按生命周期+空间降序/同级按选股日量比升序与 IGE_ADJ 降序）\n")
     if actionable:
         lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
         lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
-        for k, x in enumerate(sorted(actionable, key=lambda y: (finite(y.get("volr"), 0.0), -_ige_adj(y))), 1):
+        for k, x in enumerate(sorted(actionable, key=v52_sort_key), 1):
             lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
         lines.append("")
@@ -1425,14 +1434,11 @@ def sync_downstream(date, results, output):
     只同步当日买点五态（ACTION_BUY_STATES）中通过 V5.2 质量过滤（w7_quality_gate）的标的，
     等价报告「今日可操作榜」，不再把全候选池铺进跟踪表；
     任一步失败都不阻塞报告输出。"""
-    def _ige(r):
-        return r.get("ige_adj") if isinstance(r.get("ige_adj"), (int, float)) else -1.0
-
     actionable = [x for x in results if x["state"] in ACTION_BUY_STATES]
     # V5.2 质量过滤：与报告「今日可操作榜」同口径，被拦下的标的既不落跟踪表也不进下游 JSON
     n_before = len(actionable)
     actionable = [x for x in actionable if w7_quality_gate(x)[0]]
-    actionable.sort(key=lambda y: (finite(y.get("volr"), 0.0), -_ige(y)))
+    actionable.sort(key=v52_sort_key)
     if n_before != len(actionable):
         print(f"[w7] V5.2 质量过滤: {n_before} → {len(actionable)} 只（拦下 {n_before - len(actionable)} 只）", flush=True)
     act_cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",

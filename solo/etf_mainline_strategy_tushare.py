@@ -1,9 +1,11 @@
 """
 ETF主线轮动策略 - Tushare版 (收盘后运行)
-策略: 动量轮动与趋势跟踪组合算法 (最强中线主线)
-  选品: RSI + 20日/60日/120日复合动量, 排名Top2~3且站上20日均线
+策略: 单一动量轮动 + 趋势跟踪 (最强中线主线)
+  换仓因子: 20日动量截面排名 (单一因子, 不做多因子加权)
+  选品: 直接取动量排名第1名
   趋势: EMA(12)/EMA(50)双均线金叉 + MACD零轴上方二次金叉
-  离场: 动量排名跌出Top20% 或 跌破30日离场线(MA30)
+  离场: 动量排名跌出Top30% 或 跌破30日离场线(MA30)
+  周期: 固定30个交易日调仓 + 动态退出(持仓满5天保护)
 ETF池: 37只行业ETF (全验证)
 数据源: Tushare API
 
@@ -14,6 +16,19 @@ ETF池: 37只行业ETF (全验证)
 """
 from dotenv import load_dotenv
 import os, datetime, pandas as pd, numpy as np, json, time, argparse
+
+# 阻止 tushare 写入主目录 ~/tk.csv(沙箱不允许), 重定向到项目安全目录
+_orig_expanduser = os.path.expanduser
+_TK_SAFE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache_tushare")
+os.makedirs(_TK_SAFE_DIR, exist_ok=True)
+
+def _safe_expanduser(path):
+    if 'tk.csv' in path:
+        return os.path.join(_TK_SAFE_DIR, 'tk.csv')
+    return _orig_expanduser(path)
+
+os.path.expanduser = _safe_expanduser
+
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", ".env"))
 TS_TOKEN = os.getenv("TUSHARE_TOKEN")
 import tushare as ts
@@ -23,9 +38,9 @@ pro = ts.pro_api(TS_TOKEN)
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), "etf_mainline_state_tushare.json")
 MOM_PERIOD = 20
-REBAL_DAYS = 60
+REBAL_DAYS = 30
 TOP_N = 1
-DYNAMIC_EXIT_TOP_PCT = 0.20 # 动态退出: 动量排名跌出Top20%则触发调仓
+DYNAMIC_EXIT_TOP_PCT = 0.30 # 动态退出: 动量排名跌出Top30%则触发调仓
 MIN_HOLD_DAYS = 5           # 动态退出保护: 最少持仓5个交易日才允许动态退出
 
 # ──────────────────────────────────────────
@@ -203,22 +218,19 @@ def classify_market_state(benchmark_df, mom_period=20):
 
 def calculate_multi_factor_score(df, benchmark_df, mom_period=20):
     """
-    动量轮动 + 趋势跟踪组合评分（简化版）
+    单一动量轮动 + 趋势跟踪（简化版）
     ============================================
     核心逻辑（行业ETF中线主线）：
-      选品: 复合动量(20日/60日/120日加权) + RSI + 20日均线上方
+      换仓因子: 20日动量 (单一因子)
       趋势: EMA(12)/EMA(50) 双均线金叉 + MACD零轴上方(二次金叉)
       离场: 30日离场线(MA30)标记，供卖出判定
 
     因子:
-      1. 复合动量 mom_weighted (20日0.5 + 60日0.3 + 120日0.2) → 截面排名(调用处)
-      2. 动量加速度 mom_accel = 20日 - 60日
-      3. RSI(14) 强度
-      4. 趋势确认 trend_quality: EMA多头/金叉 + MACD零轴上 + 20日均线上方
-      5. 风险调整 risk_adj (回撤惩罚)
-      6. 相对强弱 rel_strength (对沪深300)
+      1. 20日动量 momentum = pct_change(20) → 截面排名(调用处, 单一换仓因子)
+      2. 趋势确认 trend_quality: EMA多头/金叉 + MACD零轴上 + 20日均线上方
+      其余字段(mom_weighted/mom_accel/rsi/risk_adj/rel_strength)仅作展示, 不参与换仓
 
-    注: 截面动量排名分(mom_cross_score)由调用处统一计算后注入
+    注: 截面动量排名分由调用处统一计算后注入
     """
     min_len = max(mom_period, 60) + 5
     if len(df) < min_len:
@@ -1101,11 +1113,11 @@ def main(trade_date=None, backtest_mode=False):
         print(f"  ETF主线轮动策略 Tushare版 (回溯模式)")
         print(f"  回溯日期: {TRADE_DATE}")
     else:
-        print(f"  ETF主线轮动策略 Tushare版 (多因子动量评分)")
+        print(f"  ETF主线轮动策略 Tushare版 (单一动量轮动)")
     print("=" * 60)
 
-    result_message += f"  ETF主线轮动策略(多因子动量评分 A股优化版)\n"
-    result_message += f"  因子权重: 动态调节(根据市场状态自适应)\n\n"
+    result_message += f"  ETF主线轮动策略(单一动量轮动)\n"
+    result_message += f"  换仓因子: 20日动量 (单一因子)\n\n"
 
     codes_ts = {}
     for name, code in ETF_POOL.items():
@@ -1191,23 +1203,11 @@ def main(trade_date=None, backtest_mode=False):
     print(f"  数据截止: {max_date.strftime('%Y-%m-%d')} (距今{gap}天)")
 
     # === 市场状态分类 ===
-    market_state, state_desc = classify_market_state(benchmark_df, MOM_PERIOD)
+    _, state_desc = classify_market_state(benchmark_df, MOM_PERIOD)
     print(f"  市场状态: {state_desc}")
 
-    # 根据市场状态选择权重矩阵 (简化版: 动量轮动+趋势跟踪)
-    # trending(趋势): 复合动量为主, 趋势确认为辅
-    # oscillating(震荡): 动量+加速度+RSI 均衡
-    # declining(下跌): 风险+相对优先, 偏防御
-    WEIGHT_MATRIX = {
-        'trending':   {'mom_cross': 0.40, 'accel': 0.10, 'rsi': 0.10, 'vol': 0.10, 'risk': 0.10, 'rel': 0.05, 'trend': 0.15, 'shrink': 0.00},
-        'oscillating':{'mom_cross': 0.25, 'accel': 0.20, 'rsi': 0.15, 'vol': 0.10, 'risk': 0.10, 'rel': 0.05, 'trend': 0.15, 'shrink': 0.00},
-        'declining':  {'mom_cross': 0.25, 'accel': 0.05, 'rsi': 0.10, 'vol': 0.05, 'risk': 0.25, 'rel': 0.15, 'trend': 0.15, 'shrink': 0.00},
-    }
-    w = WEIGHT_MATRIX.get(market_state, WEIGHT_MATRIX['oscillating'])
-    weight_desc = (f"复合动量{w['mom_cross']:.0%}+加速度{w['accel']:.0%}+RSI{w['rsi']:.0%}+量价{w['vol']:.0%}+"
-                   f"风险{w['risk']:.0%}+相对{w['rel']:.0%}+趋势{w['trend']:.0%}")
-    result_message += f"  市场状态: {state_desc}\n"
-    result_message += f"  当前权重: {weight_desc}\n\n"
+    # 换仓唯一因子: 20日动量 (单一因子)
+    result_message += f"  市场状态: {state_desc}\n\n"
 
     code_to_name = {v: k for k, v in ETF_POOL.items()}
 
@@ -1243,63 +1243,31 @@ def main(trade_date=None, backtest_mode=False):
             **factors
         })
 
-    # === 截面动量排名 (mom_weighted 升序排名 → 百分位0-100) ===
-    # 第1名(最强)=100分, 最后一名≈0分
-    valid = [r for r in rankings if r.get('mom_weighted') is not None]
+    # === 单一动量因子: 20日动量截面排名 (第1名=100分, 最后≈0分) ===
+    valid = [r for r in rankings if r.get('momentum') is not None]
     n_total = len(valid)
     if n_total > 1:
-        # 按mom_weighted升序排序, 计算每个ETF的百分位
-        sorted_by_mom = sorted(valid, key=lambda x: x['mom_weighted'])
+        sorted_by_mom = sorted(valid, key=lambda x: x['momentum'])
         for i, r in enumerate(sorted_by_mom):
-            # 百分位排名: 第1名(最强)取最大值
-            rank_pct = (i / (n_total - 1)) * 100  # 0~100
-            r['mom_cross_score'] = round(rank_pct, 2)
-
-    # === 截面加速度排名 (mom_accel 升序 → 百分位0-100) ===
-    # 修复: 原绝对映射(50+mom_accel*10)在普跌市中 mom_5d-mom_20d 大面积为正且封顶100,
-    # 导致 18/35 只ETF加速度同分、完全失去区分度, 下跌ETF借机排第一。
-    # 改为截面百分位后, 加速度只在池内比较, 消除饱和失真。
-    valid_accel = [r for r in rankings if r.get('mom_accel') is not None]
-    n_accel = len(valid_accel)
-    if n_accel > 1:
-        sorted_by_accel = sorted(valid_accel, key=lambda x: x['mom_accel'])
-        for i, r in enumerate(sorted_by_accel):
-            rank_pct = (i / (n_accel - 1)) * 100
-            r['accel_score'] = round(rank_pct, 2)
-
-    # === 计算综合分 (动态权重 · 市场状态调节器) ===
-    for r in rankings:
-        mom_cross = r.get('mom_cross_score') if r.get('mom_cross_score') is not None else 50
-        total = (
-            mom_cross * w['mom_cross'] +
-            r['accel_score'] * w['accel'] +
-            r.get('rsi_score', 50) * w['rsi'] +
-            r['vol_score'] * w['vol'] +
-            r['risk_adj'] * w['risk'] +
-            r['rel_strength'] * w['rel'] +
-            r['trend_quality'] * w['trend']
-        )
-        r['total_score'] = round(total, 2)
-
+            r['total_score'] = round((i / (n_total - 1)) * 100, 2)
+    else:
+        for r in valid:
+            r['total_score'] = 50.0
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
-    print(f"\n  --- 多因子综合评分 TOP 10 [{state_desc}] ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'综合分':>6} {'复合动量':>6} {'加速度':>6} {'RSI':>5} {'量价':>6} {'风险':>6} {'相对':>6} {'趋势':>6} {'规模提示'}")
-    print(f"  {'-'*105}")
+    print(f"\n  --- 动量排名 TOP 10 [{state_desc}] ---")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'动量分':>6} {'20日动量':>9} {'规模提示'}")
+    print(f"  {'-'*60}")
 
     for i, r in enumerate(rankings[:10]):
         sig = r.get('share_signal', '')
-        mc = r.get('mom_cross_score')
-        mc_str = f"{mc:>6.1f}" if mc is not None else "   N/A"
-        print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} "
-              f"{mc_str} {r['accel_score']:>6.1f} {r.get('rsi', 50):>5.1f} {r['vol_score']:>6.1f} {r['risk_adj']:>6.1f} "
-              f"{r['rel_strength']:>6.1f} {r['trend_quality']:>6.1f}  {sig}")
+        print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} {r['momentum']:>8.2f}%  {sig}")
 
-    result_message += f"  ---多因子评分 TOP 5 [{state_desc}] ---\n"
+    result_message += f"  ---动量排名 TOP 5 [{state_desc}] ---\n"
     for i, r in enumerate(rankings[:5]):
         sig = r.get('share_signal', '')
         sig_text = f" [{sig}]" if sig else ""
-        result_message += f"  {i+1}. {r['name']}({r['code']}) 综合分:{r['total_score']:.1f} 动量:{r['momentum']:+.2f}%{sig_text}\n"
+        result_message += f"  {i+1}. {r['name']}({r['code']}) 20日动量:{r['momentum']:+.2f}%{sig_text}\n"
 
     def count_trade_days(start_str, end_date):
         ref = all_data.get("512880")
@@ -1344,7 +1312,7 @@ def main(trade_date=None, backtest_mode=False):
             need_rebalance = True
             rebalance_reason = f"固定周期到期({days_since}>={REBAL_DAYS}天)"
 
-        # === 调仓触发条件2/3: 动态退出 (动量排名跌出Top20% 或 跌破MA30离场线; 持仓满5天保护) ===
+        # === 调仓触发条件2/3: 动态退出 (动量排名跌出Top30% 或 跌破MA30离场线; 持仓满5天保护) ===
         elif days_since >= MIN_HOLD_DAYS:
             top_pct_n = max(1, int(len(rankings) * DYNAMIC_EXIT_TOP_PCT))
             hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
@@ -1368,14 +1336,8 @@ def main(trade_date=None, backtest_mode=False):
                 result_message += f"\n[保护期] 触发离场信号但持仓{days_since}天<{MIN_HOLD_DAYS}天, 暂不调仓\n"
 
     if need_rebalance:
-        # === 选品: 排名Top 2~3 且站上20日均线(优先), 全部跌破则取第一名兜底 ===
-        target = None
-        for r in rankings[:min(3, len(rankings))]:
-            if r.get('above_ma20', True):
-                target = r
-                break
-        if target is None:
-            target = rankings[0]
+        # === 选品: 直接取20日动量最高的标的(单一动量因子, 不做MA20硬过滤) ===
+        target = rankings[0]
         print(f"\n  {'='*40}")
         result_message += f"{'='*40}\n"
 
@@ -1385,8 +1347,8 @@ def main(trade_date=None, backtest_mode=False):
         print(f"  目标: {target['name']} ({target['code']})")
         result_message += f"目标 {target['name']} ({target['code']})\n"
 
-        print(f"  综合评分: {target['total_score']:.1f}")
-        result_message += f"综合评分 {target['total_score']:.1f}\n"
+        print(f"  动量分: {target['total_score']:.1f}")
+        result_message += f"动量分 {target['total_score']:.1f}\n"
 
         trend_flags = []
         if target.get('ema_bull'): trend_flags.append("EMA多头")

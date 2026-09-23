@@ -33,6 +33,8 @@ import yaml
 
 _FIN_ASOF = None
 _THEME_CACHE = {}
+_THEME_DIR = r'D:\mystock\cache_daily'
+_THEME_SNAP_DATES = None
 
 
 def _safe_float(value, default=np.nan):
@@ -76,10 +78,31 @@ def _fundamental_asof(ts_code: str, trade_date: str) -> tuple:
     return 40.0, 'C', True
 
 
+def _theme_snapshot_dates() -> list:
+    """已落盘的逐日主题快照日期（升序）。快照库自 2026-06-29 起才有。"""
+    global _THEME_SNAP_DATES
+    if _THEME_SNAP_DATES is None:
+        try:
+            _THEME_SNAP_DATES = sorted(
+                f[len('theme_stock_map_v2_'):-len('.json')]
+                for f in os.listdir(_THEME_DIR)
+                if f.startswith('theme_stock_map_v2_') and f.endswith('.json'))
+        except OSError:
+            _THEME_SNAP_DATES = []
+    return _THEME_SNAP_DATES
+
+
 def _sector_asof(ts_code: str, trade_date: str) -> tuple:
+    """板块强度 as-of 决策日：优先当日快照，缺失则回退"最近一个不晚于决策日的"快照。
+
+    绝不回退到更新的快照（§37.13 无未来函数）。快照库仅覆盖 2026-06-29 起，
+    该区间之前的样本一律返回 NaN（调用方按缺失处理），不再退回中性 50 掩盖差异。
+    """
     if trade_date not in _THEME_CACHE:
-        path = rf'D:\mystock\cache_daily\theme_stock_map_v2_{trade_date}.json'
-        _THEME_CACHE[trade_date] = hvt_context.load_theme_map(trade_date) if os.path.exists(path) else {}
+        snaps = _theme_snapshot_dates()
+        snap = trade_date if trade_date in snaps else max(
+            (d for d in snaps if d <= trade_date), default=None)
+        _THEME_CACHE[trade_date] = hvt_context.load_theme_map(snap) if snap else {}
     theme_map = _THEME_CACHE[trade_date]
     if not theme_map:
         return np.nan, '', False
@@ -314,6 +337,8 @@ def _v3_analysis(df_ev: pd.DataFrame, cfg: dict, cal: list, cal_idx: dict,
             if sub.empty:
                 continue
             st = _tail_stat(sub)
+            if not st.get('n'):     # 行非空但 r_break_20 全 NaN（无突破事件）→ 跳过该档
+                continue
             bands.append({
                 'lo': lo, 'hi': None if hi >= 101 else hi, 'n': st['n'],
                 'p10': st['ge10'], 'p20': st['ge20'], 'p30': st['ge30'],
@@ -576,6 +601,10 @@ def run_backtest(start: str = None, end: str = None, cfg: dict = None,
                 # 使 locked/回撤/state 均为决策时信息，避免把突破后的失败结局泄漏进评分。
                 if fwd['breakout_realtime']:
                     ev_dt = copy.copy(ev)
+                    # 板块强度 as-of 突破日（与上面的 breakout_sector_strength 同值，
+                    # 保证评分用的板块项与报告列口径一致；缺失时按中性 50，见 engine s5）
+                    ev_dt.sector_strength = float(sector_score) if np.isfinite(sector_score) else 50.0
+                    ev_dt.sector_name = sector_name
                     engine.update_tracking(df, ev_dt, end_idx=b_idx + 1)
                     rsm = _rs_map(loader, ev.breakout_date, cal_all, cal_idx_all)
                     if rsm:

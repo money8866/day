@@ -428,7 +428,7 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     s_loc = _price_location(close, trigger, atr, stock_type, cont)
     s_pbk = _pullback_quality(ev)
     s_vol = _volume_quality(ev, has_breakout, df)
-    s_int = 50.0                                    # INTRADAY_CONFIRMATION_UNAVAILABLE
+    s_int = 50.0            # INTRADAY_CONFIRMATION_UNAVAILABLE（权重 0，仅入 parts 供诊断）
     sec_s = _clamp(_f(ev.sector_strength, 50.0), 0.0, 100.0) if ev.sector_strength else 50.0
     rs20 = _f(ev.rs20, np.nan)
     s_mkt = (80.0 if rs20 >= 70 else 60.0 if rs20 >= 50 else 40.0) if math.isfinite(rs20) else 60.0
@@ -438,7 +438,7 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
              'market_regime': s_mkt, 'risk_reward': s_rr}
     buyability = _clamp(sum(_f(w.get(k, dflt)) * v for k, v, dflt in
                             zip(parts.keys(), parts.values(),
-                                (0.30, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05, 0.05))))
+                                (0.35, 0.2333, 0.15, 0.1167, 0.0, 0.05, 0.05, 0.05))))
 
     # ---- EXECUTION_SCORE（§24） ----
     we = (te_cfg.get('weights') or {}).get('execution_score') or {}
