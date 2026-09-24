@@ -193,7 +193,7 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         if not uni:
             return {'trade_date': trade_date, 'events': []}
 
-    theme_map = ctx.load_theme_map(trade_date)
+    stock_themes = ctx.load_stock_themes(trade_date)
     v3_enabled = bool(cfg.get('v3', {}).get('enabled', True))
     # V3.5 Trade Execution 增量层开关（依赖 V3.0 评分与 FE 字段；关闭时输出与 V3.1 完全一致）
     te_cfg = cfg.get('trade_execution') or {}
@@ -256,7 +256,7 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
             if ev.fundamental_score == 0.0:
                 ev.fundamental_score = 50.0
                 ev.fundamental_grade = 'B'
-            ev.sector_strength, ev.sector_name = ctx.sector_resonance(code, theme_map, trade_date)
+            ev.sector_strength, ev.sector_name = ctx.sector_resonance(code, stock_themes, trade_date)
             ev.money_quality_score = ctx.money_quality(code, ev.t0_date, cfg)
             if v3_enabled:
                 # ---- V3.0：双评分（ENTRY / T20_EXPANSION）+ 硬否决 + 双轴分类 ----

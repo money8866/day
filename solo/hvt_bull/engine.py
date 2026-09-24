@@ -1124,7 +1124,7 @@ class HvtBullEngine:
             reasons.append('假突破/结构止损，等待重新站上T0_High')
         if ev.breakout_date and not ev.false_breakout and ev.signal_tier == 'T3':
             reasons.append('突破日特征未达T1/T2归因分层（放量倍数/突破幅度/距T0天数）')
-        if ev.sector_strength and ev.sector_strength < 60:
+        if ev.sector_strength and ev.sector_strength < 30:
             reasons.append('板块强度不足')
         if ev.money_quality_score < 40:
             reasons.append('资金承接不足')

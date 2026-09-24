@@ -18,7 +18,7 @@
      决策输入全部截断至决策日：update_tracking(end_idx=d+1)、expansion_score(asof_idx=d)、
      compute_future_expansion/compute_trade_execution 传 df.iloc[:d+1]（两者内部消费 iloc[-1]）
   2) RS 图按决策日全市场截面计算（rs5/10/20/60/120，复用 daily._build_rs_maps 口径）
-  3) 上下文字段 as-of：基本面 ann_date<=决策日、板块 theme_map(决策日)、资金流(t0日)
+  3) 上下文字段 as-of：基本面 ann_date<=决策日、板块 主题景气度/映射(<=决策日快照)、资金流(t0日)
   4) 前瞻收益/MFE/MAE 严格使用决策日之后数据；基准 ActualEntry = T+1 开盘
   5) 无分钟数据 → intraday_available 恒 False（INTRADAY_CONFIRMATION_UNAVAILABLE），不伪造 VWAP 确认
 """
@@ -494,6 +494,10 @@ def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
     _bucket = pd.Series(np.where(_streak_num == 0, 'first',
                                  np.where(_streak_num == 1, 're1', 're2plus')),
                         index=df_ev.index)
+    # buy_mask 建于排序前（L417-425）；此处 df_ev 已按 ts_code/decision_date 重排，
+    # 显式按索引标签对齐，消除 pandas 的隐式 reindex 告警（语义不变）
+    buy_mask = buy_mask.reindex(df_ev.index) if isinstance(buy_mask, pd.Series) else \
+        pd.Series(buy_mask, index=df_ev.index)
     buy_by_streak = {b: _pool_stats(df_ev[(_bucket == b) & buy_mask], TE_HORIZONS)
                      for b in ('first', 're1', 're2plus')}
 

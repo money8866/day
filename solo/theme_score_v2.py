@@ -4359,14 +4359,16 @@ def calc_phase_migration(r, market_ret_10, idx_df, prev_data=None, age_days=1):
 # ═══════════════════════════════════════════════════════════
 
 V21_STATES = ('WEAK', 'RECOVERY', 'EARLY_FLOW', 'STARTING', 'STRONG_TREND',
-              'ACCELERATION', 'OSCILLATION', 'DIVERGENCE', 'EXHAUSTION', 'RETREAT')
+              'ACCELERATION', 'COOLING', 'OSCILLATION', 'DIVERGENCE', 'EXHAUSTION', 'RETREAT')
 # 「改善阶梯序」：仅用于判定状态转换方向（UPGRADE/DOWNGRADE），不是健康度排序
 V21_STATE_LADDER = ('RETREAT', 'WEAK', 'EXHAUSTION', 'DIVERGENCE', 'RECOVERY',
-                    'OSCILLATION', 'EARLY_FLOW', 'STARTING', 'STRONG_TREND', 'ACCELERATION')
+                    'COOLING', 'OSCILLATION', 'EARLY_FLOW', 'STARTING', 'STRONG_TREND',
+                    'ACCELERATION')
 V21_STATE_CN = {
     'WEAK': '弱势', 'RECOVERY': '修复', 'EARLY_FLOW': '资金先行', 'STARTING': '启动确认',
-    'STRONG_TREND': '强趋势', 'ACCELERATION': '加速', 'OSCILLATION': '震荡未确认',
-    'DIVERGENCE': '资金价格背离', 'EXHAUSTION': '情绪透支', 'RETREAT': '退潮',
+    'STRONG_TREND': '强趋势', 'ACCELERATION': '加速', 'COOLING': '强势降温',
+    'OSCILLATION': '震荡未确认', 'DIVERGENCE': '资金价格背离', 'EXHAUSTION': '情绪透支',
+    'RETREAT': '退潮',
 }
 V21_PERMISSIONS = ('NO_TRADE', 'WATCH', 'CONDITIONAL', 'TRADEABLE')
 V21_FLOW_CAP = 40.0                                   # migration_score 实测值域≈[0,40]
@@ -4386,10 +4388,48 @@ V21_FLOW_CAP = 40.0                                   # migration_score 实测�
 V21_MAINLINE_TOP = 0.20      # 核心主线：强度与广度当日横截面双前 20%
 V21_COND_TOP = 0.50          # 条件确认：强度当日横截面前 50%
 V21_CROWD_TOP = 0.20         # 拥挤闸：拥挤度当日横截面前 20% → 不得进入确认层与主线层
-V21_BLOCK_STATES = ('RETREAT', 'EXHAUSTION')          # 硬阻断：不参与交易
-V21_WATCH_ONLY_STATES = ('DIVERGENCE',)               # 仅观察
+
+# ── V2.1.1 §11-13：状态与许可的一致性硬规则 ──
+# 许可层级仍按当日横截面分位定档（跨 regime 自可比），但**叠加状态白/黑名单**：
+#   §13 H2  EXHAUSTION 情绪透支 → 硬阻断 NO_TRADE
+#   §13 H1  RETREAT 退潮 → 最高 WATCH（≠TRADEABLE）
+#   §13 H3  COOLING 强势降温 → 默认最高 WATCH（确认/广度/龙头三维同向修复才解除）
+#   §13 H4  EARLY_FLOW 资金先行 → 默认最高 WATCH（不得仅凭 Acceleration 直接 TRADEABLE）
+#   §11     TRADEABLE 只允许出现在「已确认态」STARTING / STRONG_TREND / ACCELERATION
+V21_NO_TRADE_STATES = ('EXHAUSTION',)
+V21_WATCH_ONLY_STATES = ('RETREAT', 'DIVERGENCE', 'EARLY_FLOW')
+V21_COOLING_STATE = 'COOLING'
+V21_TRADEABLE_STATES = ('STARTING', 'STRONG_TREND', 'ACCELERATION')
+V21_MAINLINE_MIN_CONF = 55.0                          # §13 H5：Mainline=NO 且确认不足 → 不得 TRADEABLE
 V21_CHASE_LIMIT = 75.0                                # ≥75 → 只可回踩买（只改 buy_mode，不再降许可层级）
 V21_EARLY_BREADTH_DELTA = 3.0                         # EARLY_FLOW「广度实质改善」门槛（0~100 分制下的可观测增量）
+V21_EARLY_PERS_MAX = 45.0                             # §7「Persistence 尚低」上限（与 §10.1 的 45 对齐）
+
+# ── V2.1.1 §2/§3：AccelerationScore（回答「最近是不是突然变强」，与 Persistence 互补）──
+V21_ACCEL_SPAN = 12.0                                 # 单维 Δ 的线性映射跨度：−12 → 0 分，+12 → 100 分
+V21_ACCEL_W = (('d_strength_d1', 0.30), ('d_strength_d3', 0.20), ('d_confirmation_d1', 0.20),
+               ('d_breadth_d1', 0.15), ('d_leadership_d1', 0.10), ('d_flow_d1', 0.05))
+# 分级阈值（§3）：由 63 日 × 32 主题实测分布标定 —— HIGH≈P88、MED≈P70、FLAT≈P42
+V21_ACCEL_HIGH = 70.0
+V21_ACCEL_MED = 55.0
+V21_ACCEL_FLAT = 40.0                                 # < 40 记 ACCELERATION_NEGATIVE
+
+# ── V2.1.1 §4 COOLING / §5 RETREAT 结构条件 ──
+V21_COOLING_PAST_STRENGTH = 55.0                      # 过去 5~10 日强度水平（D5/D10 均值取高者）
+V21_COOLING_FLOOR = 40.0                              # 当前强度不得跌破弱势区
+V21_COOLING_CONF_FLOOR = 40.0                         # 确认尚未结构性破坏
+V21_COOLING_RECOVER_DIMS = 3                          # §13 H3：确认/广度/龙头三维同时改善才解除锁定
+V21_RETREAT_MIN_SIGNALS = 2                           # §5：至少 2 个结构恶化信号才允许 RETREAT
+V21_RETREAT_DELTA = 3.0                               # 单维「明显下降」幅度（0~100 分制）
+V21_RETREAT_CONF_DELTA = 5.0                          # 确认维度量纲较窄，门槛单列
+
+# ── V2.1.1 §16：排名辅助尺度（仅用于排序，不写回 Composite / StrengthScore）──
+V21_RANK_W = (0.35, 0.30, 0.20, 0.15)                 # Strength / Confirmation / Acceleration / Persistence
+
+# ── V2.1.1 §9：一级主题子链拆散检查（只告警，严禁据此改映射文件）──
+V21_MAPPING_STRONG = 55.0                             # 子主题「同步走强」门槛（Strength 0~100）
+V21_MAPPING_MIN_SUBS = 2                              # 同日 ≥N 个强子主题以独立一级主题出现才告警
+
 V21_HIST_DAYS = 25                                    # 历史窗口（覆盖 D20 + 状态转换 D5）
 V21_TABLE = 'theme_v21_daily'
 V21_BACKFILL_MODE = False                             # True：只产 V2.1 历史，不写任何 V2 产物
@@ -4599,21 +4639,77 @@ def calc_chase_risk_v21(f):
     }
 
 
-def classify_state_v21(f):
-    """V2.1 状态机（10 态）—— 自上而下先命中先返回，顺序即优先级
+def _v21_accel_level(score):
+    """Acceleration 分级（§3）：HIGH / MEDIUM / FLAT / NEGATIVE"""
+    s = float(score or 0)
+    if s < V21_ACCEL_FLAT:
+        return 'ACCELERATION_NEGATIVE'
+    if s >= V21_ACCEL_HIGH:
+        return 'ACCELERATION_HIGH'
+    if s >= V21_ACCEL_MED:
+        return 'ACCELERATION_MEDIUM'
+    return 'ACCELERATION_FLAT'
 
-    1 RETREAT      趋势/情绪/广度/持续性四低 → 退潮
+
+def calc_acceleration_v21(f, hist):
+    """AccelerationScore 0~100（§2.2）—— 回答「最近是不是突然变强」，与 Persistence 互补
+
+    Persistence 回答「已经强了多久」，Acceleration 回答「最近是不是正在快速变强」。
+
+      Accel = 0.30·Strength_D1 + 0.20·Strength_D3 + 0.20·Confirmation_D1
+            + 0.15·Breadth_D1  + 0.10·Leadership_D1 + 0.05·Flow_D1
+
+    六个 Δ 先按 ±V21_ACCEL_SPAN 做稳健线性截尾（避免单日极端值支配结果），再加权 ×100。
+    50 分 = 净持平；>50 变强、<50 变弱。**禁止用「当日涨幅」替代**（§2.2：当日涨幅 ≠ 主题加速度）。
+
+    f:    今日该主题的 V2.1 特征字典（需含 strength/confirmation/breadth/leadership/flow）
+    hist: 该主题历史 V2.1 行（升序，不含今日）
+    """
+    hist = hist or []
+
+    def _d(key, back):
+        if len(hist) < back:
+            return 0.0
+        return float(f.get(key) or 0) - float(hist[-back].get(key) or 0)
+
+    vals = {'d_strength_d1': _d('strength', 1), 'd_strength_d3': _d('strength', 3),
+            'd_confirmation_d1': _d('confirmation', 1), 'd_breadth_d1': _d('breadth', 1),
+            'd_leadership_d1': _d('leadership', 1), 'd_flow_d1': _d('flow', 1)}
+    acc = sum(w * _v21_lin(vals[k], -V21_ACCEL_SPAN, V21_ACCEL_SPAN) for k, w in V21_ACCEL_W)
+    return round(_v21_clamp(acc * 100.0), 1), {k: round(v, 2) for k, v in vals.items()}
+
+
+def classify_state_v21(f):
+    """V2.1.1 状态机（11 态）—— 自上而下先命中先返回，顺序即优先级
+
+    V2.1.1 相对 V2.1 的四项改动：
+      · §4  COOLING   过去 5~10 日强度较高 + 当前未跌破弱势区 + 确认未破坏 + Acceleration<0
+                      → 「强主题短期降温」不得直接判 RETREAT。必须排在 RETREAT 之前。
+      · §5  RETREAT   除原有「四低」外，必须再有 ≥V21_RETREAT_MIN_SIGNALS 个结构恶化信号
+                      且 Acceleration=NEGATIVE。禁止「Strength 下降 → RETREAT」。
+      · §7  EARLY_FLOW / STARTING 增加提前识别通道：Persistence 尚低但 Acceleration HIGH
+                      且广度/龙头同步改善 → EARLY_FLOW；Acceleration HIGH + 确认≥50 + 广度≥50
+                      → STARTING。解决「新启动主题被 Persistence 压低」。
+      · §17 One-Day Spike 惩罚：Acceleration HIGH 但广度/龙头/确认三项全无改善 → 不得升 STARTING
+      · §18 扩散要求：单龙头依赖（single_leader_risk=HIGH）不得判 STARTING
+    保留不变：ACCLERATION 四因子（另加 §3 加速度必须为正）、STRONG_TREND、DIVERGENCE、
+              OSCILLATION 两条出口、RECOVERY、WEAK 兜底。
+
+    1 COOLING      强势降温（强主题回落，非退潮）
     2 EXHAUSTION   情绪高 + 广度或持续性走弱 + 趋势钝化 + 涨停潮 → 情绪透支（禁追高）
-    3 WEAK         趋势<40 且 情绪<50 且 广度<45 且 确认<45
-    4 ACCELERATION 趋势70+广度65+龙头65+确认65 且 (D3>D5 或 趋势加速>0) 且 (涨停扩张 或 广度扩张)
-    5 STRONG_TREND 趋势65+广度60+龙头60+确认60+持续性55（禁止 趋势<50 判强趋势）
-    6 EARLY_FLOW   低趋势(<50) + 高迁移(≥20) + 高情绪(≥60) + 广度【已达标或实质改善】→ 资金先行（机会）
-    7 DIVERGENCE  同签名但广度弱(<45)且未实质改善 → 资金与价格背离（风险）
-    8 OSCILLATION  综合≥60 但确认<60 —— 高强度低确认（解决"综合分高但没形成趋势"）
-    9 STARTING     趋势45+广度50+情绪55+迁移10+确认50
-   10 OSCILLATION  趋势高但持续性弱、广度不一致
-   11 RECOVERY     弱势/退潮/透支后趋势与广度同步改善
-   12 WEAK         兜底
+    3 RETREAT      趋势/情绪/广度/持续性四低 + ≥2 维结构恶化 + 加速度负 → 退潮
+    4 WEAK         趋势<40 且 情绪<50 且 广度<45 且 确认<45
+    5 ACCELERATION 趋势70+广度65+龙头65+确认65 且 (D3>D5 或 趋势加速>0) 且 (涨停扩张 或 广度扩张) 且 Acceleration HIGH
+    6 STRONG_TREND 趋势65+广度60+龙头60+确认60+持续性55（禁止 趋势<50 判强趋势）
+    7 EARLY_FLOW   ① 低趋势(<50) + 高迁移(≥20) + 高情绪(≥60) + 广度【已达标或实质改善】
+                   ② §7 提前通道：Acceleration HIGH + 持续性尚低 + 广度与龙头同步改善
+    8 DIVERGENCE   同签名但广度弱(<45)且未实质改善 → 资金与价格背离（风险）
+    9 STARTING     §7 提前通道：Acceleration HIGH + 确认≥50 + 广度≥50（须过 §17/§18 约束）
+   10 OSCILLATION  综合≥60 但确认<60 —— 高强度低确认（解决"综合分高但没形成趋势"）
+   11 STARTING     原通道：趋势45+广度50+情绪55+迁移10+确认50（须非单龙头依赖）
+   12 OSCILLATION  趋势高但持续性弱、广度不一致
+   13 RECOVERY     弱势/退潮/透支后趋势与广度同步改善
+   14 WEAK         兜底
 
     注：EARLY_FLOW 与 DIVERGENCE 是同一「高迁移+低趋势」签名的两个出口（规格 7.7 明示二者并列），
     区分依据是广度方向 —— 广度已在合理水平或实质改善（≥V21_EARLY_BREADTH_DELTA）= 资金先行；
@@ -4633,19 +4729,43 @@ def classify_state_v21(f):
     d_brd = float(f.get('d_breadth') or 0)
     d_trend = float(f.get('d_trend') or 0)
     d_pers = float(f.get('d_persistence') or 0)
+    d_lead = float(f.get('d_leadership') or 0)
+    d_conf = float(f.get('d_confirmation') or 0)
+    d_flow = float(f.get('d_flow') or 0)
+    # 缺失 Acceleration 时按「持平」处理，避免调用方漏传导致 RETREAT/COOLING 静默失效
+    accel = float(f.get('acceleration') if f.get('acceleration') is not None else 50.0)
     d3, d5 = float(f.get('pers_d3') or 0), float(f.get('pers_d5') or 0)
     prev_state = str(f.get('prev_state') or '')
 
-    if trend < 45 and emo < 45 and brd < 40 and pers < 45:
-        return 'RETREAT'
+    accel_neg = accel < V21_ACCEL_FLAT
+    accel_high = accel >= V21_ACCEL_HIGH
+    # §5 RETREAT 结构条件：广度/龙头/趋势/确认/资金 中至少 N 维「明显下降」
+    n_worsen = sum(1 for x in (d_brd <= -V21_RETREAT_DELTA, d_lead <= -V21_RETREAT_DELTA,
+                              d_trend <= -V21_RETREAT_DELTA, d_conf <= -V21_RETREAT_CONF_DELTA,
+                              d_flow <= -V21_RETREAT_DELTA) if x)
+    # §17 单日异动惩罚：仅加速度高而三项结构全无改善 → 不得按加速度升级
+    spike_only = accel_high and d_brd <= 0 and d_lead <= 0 and d_conf <= 0
+    # §18 扩散要求：单龙头依赖不得判 STARTING
+    leader_only = str(f.get('single_leader_risk') or '') == 'HIGH'
+
+    # 1 COOLING（§4）—— 必须排在 RETREAT 之前，防止「强主题降温」被误判退潮
+    past_hi = max(float(f.get('pers_d5') or 0), float(f.get('pers_d10') or 0))
+    if (past_hi >= V21_COOLING_PAST_STRENGTH and comp >= V21_COOLING_FLOOR
+            and conf >= V21_COOLING_CONF_FLOOR and accel < 50.0):
+        return V21_COOLING_STATE
     if (emo >= 70 and (d_brd < 0 or up < 55) and (d_pers < 0 or pers < 50)
             and d_trend <= 0 and (zt >= 8 or comp >= 60)):
         return 'EXHAUSTION'
+    # 2 RETREAT（§5 收紧：四低 + ≥2 维结构恶化 + 加速度负）
+    if (trend < 45 and emo < 45 and brd < 40 and pers < 45
+            and n_worsen >= V21_RETREAT_MIN_SIGNALS and accel_neg):
+        return 'RETREAT'
     if trend < 40 and emo < 50 and brd < 45 and conf < 45:
         return 'WEAK'
     if (trend >= 70 and brd >= 65 and lead >= 65 and conf >= 65
             and (d3 > d5 or d_trend > 0)
-            and (bool(f.get('zt_expansion')) or bool(f.get('breadth_expansion')))):
+            and (bool(f.get('zt_expansion')) or bool(f.get('breadth_expansion')))
+            and accel_high):
         return 'ACCELERATION'
     if trend >= 65 and brd >= 60 and lead >= 60 and conf >= 60 and pers >= 55 and trend >= 50:
         return 'STRONG_TREND'
@@ -4653,12 +4773,19 @@ def classify_state_v21(f):
     if (trend < 50 and mig >= 20 and emo >= 60
             and (brd >= 45 or d_brd >= V21_EARLY_BREADTH_DELTA)):
         return 'EARLY_FLOW'
+    # §7 提前通道：持续性尚低但加速度高 + 广度与龙头同步改善 → 新启动可被提前发现
+    if (accel_high and not spike_only and pers < V21_EARLY_PERS_MAX
+            and d_brd > 0 and d_lead > 0 and brd >= 40):
+        return 'EARLY_FLOW'
     # 资金价格背离（风险版）：同签名但广度弱且未实质改善
     if mig >= 25 and trend < 50 and emo >= 65 and brd < 45:
         return 'DIVERGENCE'
+    # §7 提前通道：加速度高 + 确认与广度已过关 → 启动确认（受 §17/§18 约束）
+    if accel_high and conf >= 50 and brd >= 50 and not spike_only and not leader_only:
+        return 'STARTING'
     if comp >= 60 and conf < 60:
         return 'OSCILLATION'
-    if trend >= 45 and brd >= 50 and emo >= 55 and mig >= 10 and conf >= 50:
+    if trend >= 45 and brd >= 50 and emo >= 55 and mig >= 10 and conf >= 50 and not leader_only:
         return 'STARTING'
     if trend >= 55 and pers < 50 and abs(d_brd) <= 3.0 and conf < 60:
         return 'OSCILLATION'
@@ -4673,17 +4800,25 @@ def _v21_mainline_candidate(f):
 
     YES 门槛取规格第十三节「CORE_MAINLINE 进入主线交易池」的硬条件（确认70/持续60/广度65/龙头65），
     目的是让「主线」极难伪造：高迁移、高情绪、高涨停数都不能单独把主题送进 YES。
+
+    V2.1.1 §10.1：CANDIDATE 门槛由「55/50/50」上调为「60/55/50 + 下列 5 项至少满足 2 项」，
+    用于早期发现而不是放宽 —— MAINLINE_CANDIDATE ≠ CORE_MAINLINE，也 ≠ TRADEABLE。
     """
     comp = float(f.get('composite') or 0)
     conf = float(f.get('confirmation') or 0)
     brd = float(f.get('breadth') or 0)
     lead = float(f.get('leadership') or 0)
     pers = float(f.get('persistence') or 0)
+    trend = float(f.get('trend') or 0)
+    mig = float(f.get('migration') or 0)
+    accel = float(f.get('acceleration') or 0)
     if (comp >= 65 and conf >= 70 and pers >= 60 and brd >= 65 and lead >= 65
             and f.get('single_leader_risk') != 'HIGH'
             and f.get('state') not in ('EXHAUSTION', 'DIVERGENCE', 'RETREAT')):
         return 'YES'
-    if comp >= 55 and conf >= 50 and brd >= 50:
+    support = sum(1 for x in (lead >= 55, pers >= 45, accel >= V21_ACCEL_MED,
+                              trend >= 60, mig >= 15) if x)
+    if comp >= 60 and conf >= 55 and brd >= 50 and support >= 2:
         return 'CANDIDATE'
     return 'NO'
 
@@ -4710,28 +4845,45 @@ def _v21_quadrant(f):
 
 
 def _v21_permission_xs(f, pct):
-    """TradePermission 三层定档 —— 横截面分位口径（不再使用四维 AND 绝对门槛）
+    """TradePermission 三层定档 —— 横截面分位口径 + V2.1.1 状态一致性硬规则
 
     pct：该主题在当日全部主题中的分位（0~1，越大越高）
          comp 强度(composite) / brd 广度(breadth) / crowd 拥挤度(距前高位置 + 量能)
 
     分层语义（每层独立可达，不再互相嵌套成空集）：
-      NO_TRADE     退潮 / 情绪透支 —— 强度再高也不参与
-      WATCH        入池观察（默认层，也是拥挤档的降落层）
-      CONDITIONAL  条件确认：强度前 50% + 未背离 + 非单龙头依赖 + 非拥挤
-      TRADEABLE    核心主线：强度与广度双双前 20% + 非背离 + 非单龙头依赖 + 非拥挤
+      NO_TRADE     情绪透支（EXHAUSTION）—— §13 H2 硬阻断，强度再高也不参与
+      WATCH        入池观察（默认层）：退潮 / 背离 / 资金先行 / 强势降温 / 拥挤档的降落层
+      CONDITIONAL  条件确认：强度前 50% + 未背离 + 非单龙头依赖 + 非拥挤（§12）
+      TRADEABLE    核心主线：状态∈已确认态 + 强度与广度双双前 20% + 未背离 + 非单龙头 + 非拥挤（§11）
+
+    V2.1.1 相对 V2.1 的差异（全部来自 §11/§13 硬规则，分位口径本身不变）：
+      · RETREAT 由「硬阻断 NO_TRADE」改为「最高 WATCH」；EXHAUSTION 仍硬阻断（§13 H1/H2）
+      · COOLING 默认最高 WATCH，仅当确认/广度/龙头三维同时改善才解锁（§13 H3）
+      · EARLY_FLOW 最高 WATCH，不得仅凭 Acceleration 直接 TRADEABLE（§13 H4）
+      · TRADEABLE 仅在 STARTING / STRONG_TREND / ACCELERATION 三种确认态下成立（§11）
+      · Mainline=NO 且确认不足 → 不得 TRADEABLE（§13 H5）
 
     注意：TRADEABLE 只表示「当日最值得聚焦」，不代表已证实正超额 —— 顺势与反转因子
          在本样本内符号随 regime 翻转（详见 backtest_theme_v21 逐段结论）。
     """
     state = str(f.get('state') or '')
-    if state in V21_BLOCK_STATES:
+    conf = float(f.get('confirmation') or 0)
+    if state in V21_NO_TRADE_STATES:                      # §13 H2
         return 'NO_TRADE'
     crowded = float(pct.get('crowd') or 0) >= 1.0 - V21_CROWD_TOP
-    blocked = crowded or f.get('single_leader_risk') == 'HIGH' or state in V21_WATCH_ONLY_STATES
+    # §13 H3：COOLING 需「确认 + 广度 + 龙头」三维同时改善才解除 WATCH 锁定
+    cool_recover = (sum(1 for x in (float(f.get('d_confirmation') or 0) > 0,
+                                    float(f.get('d_breadth') or 0) > 0,
+                                    float(f.get('d_leadership') or 0) > 0) if x)
+                    >= V21_COOLING_RECOVER_DIMS)
+    watch_only = state in V21_WATCH_ONLY_STATES or (state == V21_COOLING_STATE and not cool_recover)
+    blocked = crowded or f.get('single_leader_risk') == 'HIGH' or watch_only
     comp = float(pct.get('comp') or 0)
     brd = float(pct.get('brd') or 0)
-    if not blocked and comp >= 1.0 - V21_MAINLINE_TOP and brd >= 1.0 - V21_MAINLINE_TOP:
+    # §13 H5：主线=NO 且确认不足 → 不得 TRADEABLE
+    confirm_ok = not (f.get('mainline_candidate') == 'NO' and conf < V21_MAINLINE_MIN_CONF)
+    if (not blocked and state in V21_TRADEABLE_STATES and confirm_ok
+            and comp >= 1.0 - V21_MAINLINE_TOP and brd >= 1.0 - V21_MAINLINE_TOP):
         return 'TRADEABLE'
     if not blocked and comp >= 1.0 - V21_COND_TOP:
         return 'CONDITIONAL'
@@ -4827,6 +4979,9 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
     d_pers = persistence - float(prev.get('persistence') or 0) if prev else 0.0
     d_emotion = float(r.get('sentiment_score', 0) or 0) - float(prev.get('emotion') or 0) if prev else 0.0
     d_migration = float(r.get('migration_score', 0) or 0) - float(prev.get('migration') or 0) if prev else 0.0
+    # V2.1.1 §2.2 新增的 Δ 原料（Acceleration / COOLING / RETREAT 结构条件共用）
+    d_leadership = leadership - float(prev.get('leadership') or 0) if prev else 0.0
+    d_flow = flow - float(prev.get('flow') or 0) if prev else 0.0
 
     # ── Confirmation 25%Trend + 20%Breadth + 20%Leadership + 20%Persistence + 15%Flow ──
     confirmation = (0.25 * float(r.get('trend_score', 0) or 0) + 0.20 * breadth
@@ -4846,12 +5001,21 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         'ret_1': ret_1, 'mkt_ret_1': mkt_ret_1, 'ma20_b': ma20_b, 'pos_in_20': pos_in_20,
         'n_stocks': len(rows),
         'd_breadth': d_breadth, 'd_trend': d_trend, 'd_persistence': d_pers,
+        'd_leadership': d_leadership, 'd_flow': d_flow,
         'prev_state': prev_state, 'single_leader_risk': slr,
         'zt_expansion': zt_count > int(prev.get('limitup') or 0) if prev else False,
         'breadth_expansion': d_breadth > 0,
     }
     f['confirmation'] = round(_v21_clamp(confirmation), 1)
+    f['d_confirmation'] = f['confirmation'] - float(prev.get('confirmation') or 0) if prev else 0.0
     f.update(p_detail)
+    # ── V2.1.1 §2/§3 AccelerationScore（COOLING / RETREAT / 提前启动 三条规则都依赖它）──
+    accel, a_detail = calc_acceleration_v21(f, hist)
+    f['acceleration'] = accel
+    f['acceleration_level'] = _v21_accel_level(accel)
+    # ── V2.1.1 §16 排名辅助尺度（仅用于排序，不写回 Composite / StrengthScore）──
+    f['rank_score'] = round(V21_RANK_W[0] * strength + V21_RANK_W[1] * f['confirmation']
+                            + V21_RANK_W[2] * accel + V21_RANK_W[3] * persistence, 2)
     chase, c_detail = calc_chase_risk_v21(f)
     f['chase_risk'] = chase
     state = classify_state_v21(f)
@@ -4872,8 +5036,9 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         i1 = V21_STATE_LADDER.index(state) if state in V21_STATE_LADDER else 1
         change = 'UPGRADE' if i1 > i0 else ('DOWNGRADE' if i1 < i0 else 'FLAT')
     reason = (f"Migration {d_migration:+.1f}, Emotion {d_emotion:+.1f}, "
-              f"Breadth {d_breadth:+.1f}, Trend {d_trend:+.1f}")
-    flags = json.dumps({**b_detail, **l_detail, **c_detail, 'chase_flag': avoid},
+              f"Breadth {d_breadth:+.1f}, Trend {d_trend:+.1f}, "
+              f"Accel {accel:.0f}({f['acceleration_level'].replace('ACCELERATION_', '')})")
+    flags = json.dumps({**b_detail, **l_detail, **c_detail, **a_detail, 'chase_flag': avoid},
                        ensure_ascii=False)
 
     return {
@@ -4883,6 +5048,8 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         'strength_v3': round(float(r.get('strength_score', 0) or 0), 1),
         'limitup': zt_count, 'migration': round(f['migration'], 1),
         'breadth': breadth, 'leadership': leadership, 'persistence': persistence,
+        'acceleration': accel, 'acceleration_level': f['acceleration_level'],
+        'rank_score': f['rank_score'],
         'confirmation': f['confirmation'], 'mainline_conf': f['mainline_conf'], 'flow': flow,
         'state': state, 'state_d3': d3_state, 'state_d5': d5_state, 'prev_state': prev_state,
         'state_change': change, 'change_reason': reason, 'quadrant': f['quadrant'],
@@ -4894,14 +5061,17 @@ def calc_v21_theme(r, hist=None, mkt_ret_1=0.0, market_ret_10=0.0):
         # 拥挤度原料（不进表，仅当日横截面分层用）
         'pos20': round(pos20, 1), 'vol_ratio': round(vol_ratio, 3),
         # 透传诊断（不进表，仅 JSON/MD 用）
-        '_b': b_detail, '_l': l_detail, '_c': c_detail, '_p': p_detail,
+        '_b': b_detail, '_l': l_detail, '_c': c_detail, '_p': p_detail, '_a': a_detail,
     }
 
 
 # ─────────── V2.1 持久化 / 输出 ───────────
 
-V21_COLS = ('trade_date', 'theme', 'rank', 'trend', 'emotion', 'composite', 'strength',
-            'strength_v3', 'limitup', 'migration', 'breadth', 'leadership', 'persistence',
+V2_1_1_NEW_COLS = (('rank_score', 'REAL'), ('acceleration', 'REAL'),
+                   ('acceleration_level', 'TEXT'))
+V21_COLS = ('trade_date', 'theme', 'rank', 'rank_score', 'trend', 'emotion', 'composite',
+            'strength', 'strength_v3', 'limitup', 'migration', 'breadth', 'leadership',
+            'persistence', 'acceleration', 'acceleration_level',
             'confirmation', 'mainline_conf', 'flow', 'state', 'state_d3', 'state_d5',
             'prev_state', 'state_change', 'change_reason', 'quadrant', 'mainline_candidate',
             'chase_risk', 'trade_permission', 'buy_mode', 'action', 'single_leader_risk',
@@ -4910,15 +5080,23 @@ V21_COLS = ('trade_date', 'theme', 'rank', 'trend', 'emotion', 'composite', 'str
 
 def _v21_ensure_table(conn):
     conn.execute(f"""CREATE TABLE IF NOT EXISTS {V21_TABLE} (
-        trade_date TEXT, theme TEXT, rank INTEGER, trend REAL, emotion REAL,
+        trade_date TEXT, theme TEXT, rank INTEGER, rank_score REAL,
+        trend REAL, emotion REAL,
         composite REAL, strength REAL, strength_v3 REAL, limitup INTEGER, migration REAL,
-        breadth REAL, leadership REAL, persistence REAL, confirmation REAL,
+        breadth REAL, leadership REAL, persistence REAL, acceleration REAL,
+        acceleration_level TEXT, confirmation REAL,
         mainline_conf REAL, flow REAL, state TEXT, state_d3 TEXT, state_d5 TEXT,
         prev_state TEXT, state_change TEXT, change_reason TEXT, quadrant TEXT,
         mainline_candidate TEXT, chase_risk REAL, trade_permission TEXT, buy_mode TEXT,
         action TEXT, single_leader_risk TEXT, ret_1 REAL, mkt_ret_1 REAL,
         pers_shape TEXT, flags TEXT, PRIMARY KEY (trade_date, theme))""")
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_v21_date ON {V21_TABLE}(trade_date)")
+    # V2.1.1 扩列：已存在的旧表用 ALTER 补齐（不重建、不丢历史）
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({V21_TABLE})").fetchall()}
+    for col, typ in V2_1_1_NEW_COLS:
+        if col not in have:
+            conn.execute(f"ALTER TABLE {V21_TABLE} ADD COLUMN {col} {typ}")
+            print(f"[迁移] {V21_TABLE} 新增列 {col} ({typ})")
 
 
 def save_v21_sqlite(rows, trade_date_str, mkt_ret_1=0.0):
@@ -4979,13 +5157,107 @@ def save_v21_outputs(rows, trade_date_str):
     print(f"[保存] V2.1: {os.path.basename(p_csv)} / {os.path.basename(p_json)} / {os.path.basename(p_md)}")
 
 
+_V21_SUBMAP_CACHE = {'map': None, 'loaded': False}
+
+
+def _v21_subtheme_map():
+    """subtheme_map.json 进程内只读一次（§9 检查用）"""
+    if not _V21_SUBMAP_CACHE['loaded']:
+        _V21_SUBMAP_CACHE['loaded'] = True
+        try:
+            _V21_SUBMAP_CACHE['map'] = _load_subtheme_map_v2() or {}
+        except Exception:
+            _V21_SUBMAP_CACHE['map'] = {}
+    return _V21_SUBMAP_CACHE['map']
+
+
+def _v21_mapping_warnings(rows):
+    """§9 一级主题子链拆散检查 —— 只输出 THEME_MAPPING_WARNING，绝不修改映射文件
+
+    判定：某母主题自身未作为一级主题出现，但其 ≥V21_MAPPING_MIN_SUBS 个子主题名当日
+    以「独立一级主题」身份出现且同步走强 → 同一产业链被拆散，母主题 Strength 会被系统性低估。
+    """
+    smap = _v21_subtheme_map()
+    if not smap or not rows:
+        return []
+    name_set = {str(x.get('theme') or '') for x in rows}
+    strong = {str(x.get('theme') or ''): float(x.get('strength') or 0)
+              for x in rows if str(x.get('state') or '') not in ('WEAK', 'RETREAT', 'EXHAUSTION')}
+    warns = []
+    for parent, subs in smap.items():
+        if not isinstance(subs, dict) or parent in name_set:
+            continue
+        hit = [s for s in subs
+               if s != parent and s in name_set and float(strong.get(s) or 0) >= V21_MAPPING_STRONG]
+        if len(hit) >= V21_MAPPING_MIN_SUBS:
+            warns.append(f"{parent} 疑似被拆散为独立一级主题：{'、'.join(hit)}"
+                         f"（母主题未入榜，Strength 可能被低估 → 请人工复核 theme_config/subtheme_map）")
+    return warns
+
+
 def _v21_pick(rows, key, limit=None):
-    out = sorted([x for x in rows if x['quadrant'] == key], key=lambda x: -x['strength'])
+    out = sorted([x for x in rows if x['quadrant'] == key], key=lambda x: -x['rank_score'])
     return out[:limit] if limit else out
+
+
+def _v21_reason(x):
+    """§20 一句话判读：为什么排名靠前/靠后（Strength/Confirmation/Acceleration/State 四维共同解释）"""
+    s = float(x.get('strength') or 0)
+    c = float(x.get('confirmation') or 0)
+    a = float(x.get('acceleration') or 0)
+    p = float(x.get('persistence') or 0)
+    st = str(x.get('state') or '')
+    high = lambda v: '高' if v >= 65 else ('中高' if v >= 55 else ('中' if v >= 45 else '低'))
+
+    base = {
+        'ACCELERATION': f"Strength{high(s)} + Confirmation{high(c)} + Acceleration{high(a)} → 强趋势加速候选。",
+        'STRONG_TREND': f"Strength{high(s)} + Confirmation{high(c)} 同步高位、Persistence{high(p)} → 强趋势延续。",
+        'STARTING': f"Acceleration{high(a)} + Confirmation{high(c)} + 广度达标 → 启动确认（仍不可追高）。",
+        'EARLY_FLOW': f"Strength{high(s)} 但 Confirmation{high(c)} 未跟上、Acceleration{high(a)} → 新启动/早期资金流入，不能直接判主线。",
+        'COOLING': f"过去 5~10 日强势、当前 Strength{high(s)} 未跌破弱势区，Acceleration{high(a)} 转负但结构未破坏 → 强势降温，非退潮。",
+        'RETREAT': f"Strength{high(s)} + Confirmation{high(c)} + Breadth 同步恶化且 Acceleration{high(a)} → 退潮，禁止交易。",
+        'EXHAUSTION': "情绪透支（涨停潮 + 广度/持续性走弱）→ 禁止追高。",
+        'DIVERGENCE': f"局部龙头强、但 Breadth/Confirmation 不足 → 资金与价格背离，不认定为主线。",
+        'OSCILLATION': f"Strength{high(s)} 尚可但 Confirmation{high(c)} 未跟上 → 震荡分歧，需再确认。",
+        'RECOVERY': "弱势之后趋势与广度同步改善 → Recovery，观察能否转 Starting。",
+        'WEAK': f"Strength{high(s)} + Confirmation{high(c)} 双低 → 弱势，无交易价值。",
+    }.get(st, f"State={st}，Strength{high(s)}/Confirmation{high(c)}/Persistence{high(p)}。")
+
+    tail = []
+    if str(x.get('single_leader_risk') or '') == 'HIGH':
+        tail.append('单龙头驱动，扩散不足')
+    if float(x.get('chase_risk') or 0) >= V21_CHASE_LIMIT:
+        tail.append('追高风险≥75，只可回踩')
+    if x.get('mainline_candidate') == 'CANDIDATE':
+        tail.append('已列 MAINLINE_CANDIDATE（≠核心主线、≠可交易）')
+    return base + ('（' + '；'.join(tail) + '）' if tail else '')
+
+
+def _v21_diagnostic(rows, map_warns):
+    """§21 运行后自动诊断（11 项计数）"""
+    cnt = lambda st: sum(1 for x in rows if x.get('state') == st)
+    perm = lambda pm: sum(1 for x in rows if x.get('trade_permission') == pm)
+    ml = lambda v: sum(1 for x in rows if x.get('mainline_candidate') == v)
+    return [
+        ('EARLY_FLOW 数量', cnt('EARLY_FLOW')),
+        ('STARTING 数量', cnt('STARTING')),
+        ('STRONG_TREND 数量', cnt('STRONG_TREND')),
+        ('COOLING 数量', cnt(V21_COOLING_STATE)),
+        ('RETREAT 数量', cnt('RETREAT')),
+        ('TRADEABLE 数量', perm('TRADEABLE')),
+        ('CONDITIONAL 数量', perm('CONDITIONAL')),
+        ('MAINLINE_CANDIDATE 数量', ml('CANDIDATE')),
+        ('CORE_MAINLINE 数量', ml('YES')),
+        (f'ChaseRisk ≥{V21_CHASE_LIMIT:.0f} 数量',
+         sum(1 for x in rows if float(x.get('chase_risk') or 0) >= V21_CHASE_LIMIT)),
+        ('Theme Mapping Warning 数量', len(map_warns)),
+    ]
 
 
 def _v21_line(x):
     return (f"  · {x['theme']} [Strength {x['strength']:.1f} | Confirmation {x['confirmation']:.1f} | "
+            f"Persistence {x['persistence']:.1f} | Accel {x['acceleration']:.1f} "
+            f"({x['acceleration_level'].replace('ACCELERATION_', '')}) | "
             f"{x['state']} | Mainline {x['mainline_candidate']} | Trade {x['trade_permission']}"
             f"{' / ' + x['buy_mode'] if x['buy_mode'] != 'NO_BUY' else ''}] "
             f"广度{x['breadth']:.0f} 龙头{x['leadership']:.0f} 持续{x['persistence']:.0f} "
@@ -4993,22 +5265,31 @@ def _v21_line(x):
 
 
 def _v21_report_md(rows, trade_date_str):
-    """V2.1 盘后报告：四层结论 + 状态转换 + 全字段排名表"""
+    """V2.1.1 盘后报告：六维结论（Strength/Conf/Acceleration/Persistence/State/Trade）+ 状态转换 + 全字段排名表"""
     L = []
     W = L.append
+    map_warns = _v21_mapping_warnings(rows)
     sep = "━" * 60
     W(f"{sep}")
-    W(f"# 主题量化分析 V2.1（状态识别 / 持续性确认 / 交易许可）- {trade_date_str}")
+    W(f"# 主题量化分析 V2.1.1（强度 / 确认 / 加速度 / 持续性 / 状态 / 交易许可）- {trade_date_str}")
     W(f"{sep}")
-    W(f"* 核心：强度用于发现，确认用于判断，持续性用于验证，交易许可用于执行，追高风险决定怎么进")
-    W(f"* 禁止映射：高综合分≠主线；高迁移≠强趋势；高情绪≠可买入")
+    W(f"* 核心：强度用于发现，加速度用于发现「正在启动」，确认用于判断，持续性用于验证，状态用于定阶段，"
+      f"市场环境×追高风险决定能不能进")
+    W(f"* 禁止映射：高综合分≠主线；单日涨幅高≠主线；Persistence 低≠弱；Persistence 高但近期转弱≠退潮；高情绪≠可买入")
     dist = {}
     for x in rows:
         dist[x['state']] = dist.get(x['state'], 0) + 1
     W(f"* 状态分布（{len(rows)} 主题）：" + "、".join(
         f"{k}{v}" for k, v in sorted(dist.items(), key=lambda z: -z[1])))
+    adist = {}
+    for x in rows:
+        lv = str(x.get('acceleration_level') or '').replace('ACCELERATION_', '') or '—'
+        adist[lv] = adist.get(lv, 0) + 1
+    W(f"* 加速度分布：" + "、".join(f"{k}{v}" for k, v in sorted(adist.items(), key=lambda z: -z[1])))
     chg = [x for x in rows if x['state_change'] in ('UPGRADE', 'DOWNGRADE')]
-    W(f"* 状态转换：{len(chg)} 个主题发生方向变化（UPGRADE/DOWNGRADE），详见第 6 节")
+    W(f"* 状态转换：{len(chg)} 个主题发生方向变化（UPGRADE/DOWNGRADE），详见第 8 节")
+    for w in map_warns:
+        W(f"* ⚠ THEME_MAPPING_WARNING：{w}")
     W("")
 
     W("## 1. 当前主线（CORE_MAINLINE：强度≥60 且 确认≥60，最多 3 个）")
@@ -5106,7 +5387,8 @@ def run_v21_layer(results, trade_date_str=None, idx_df=None, market_ret_10=0.0):
         v = calc_v21_theme(r, hist_map.get(r['theme']), mkt_ret_1, market_ret_10)
         r['v21'] = v
         rows.append(v)
-    rows.sort(key=lambda x: -float(x['strength']))
+    # V2.1.1 §16：排名不再用 Composite 单键，改用 RankScore（S/C/A/P 加权）
+    rows.sort(key=lambda x: -float(x['rank_score']))
     for i, v in enumerate(rows, 1):
         v['rank'] = i
     # 当日横截面分层：许可层级 / buy_mode / action 必须看到全部主题才可定

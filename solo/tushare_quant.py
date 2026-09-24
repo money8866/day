@@ -308,6 +308,43 @@ def _load_v2_theme_scores(trade_date):
         return None
 
 
+# 主题热度 V2.3 内存缓存（{trade_date: {theme: row}}），避免逐股重复读盘
+_THEME_HEAT_CACHE = {}
+
+
+def _load_theme_heat(trade_date):
+    """加载 主题热度 V2.3 结果（report_daily/theme_heat_v23_{date}.json）。
+
+    主题强度的唯一来源：strength = TODAY Heat 与 WEEK Heat 的均值。
+    V2.3 结果缺失或读取失败返回 {}，由调用方回退 V2/V8。
+    """
+    key = str(trade_date or '')
+    if key in _THEME_HEAT_CACHE:
+        return _THEME_HEAT_CACHE[key]
+    heat = {}
+    try:
+        import theme_heat_v22 as theme_heat
+        heat = theme_heat.load_heat(key) or {}
+    except Exception as e:
+        print(f"[主题热度V2.3] 读取失败: {e}")
+    if heat:
+        print(f"[主题热度V2.3] 已加载 {len(heat)} 个主题 (日期 {key})")
+    else:
+        print(f"[主题热度V2.3] 无 {key} 结果，主题强度回退 V2/V8")
+    _THEME_HEAT_CACHE[key] = heat
+    return heat
+
+
+def _v2_strength(v):
+    """V2 trend_score → 主题热度 V2.3 的同一强度尺度（V2.3 缺失时的回退统一口径）"""
+    try:
+        import theme_heat_v22 as theme_heat
+        s = theme_heat.v2_to_heat(v)
+        return float(s) if s is not None else float(v or 0)
+    except Exception:
+        return float(v or 0)
+
+
 def _load_v6_result(expected_date=None):
     """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
     优先尝试 V8 CSV (theme_alpha_v6_result_v8_{date}.csv)，
@@ -3453,15 +3490,15 @@ def calc_tli_score(theme, top_n=10, days=60):
     核心逻辑：衡量主题在最近N天内的持续活跃程度
     高生命力 = 主题持续出现在市场前排，资金关注度高
 
-    数据源：Theme Score V2 引擎（theme_scores_v2_{date}.csv）
-    优先使用当日 V2 结果（综合分/生命周期/交易动作/迁移分/置信度），
-    并扫描最近若干交易日 V2 CSV 计算持续性；V2 不可用时回退 V8，
+    数据源：主题热度 V2.3（theme_heat_v23_{date}.json，Heat 即主题强度，
+    取 TODAY 与 WEEK 的均值）；V2.3 结果缺失时回退 Theme Score V2 引擎
+    （综合分/生命周期/交易动作/迁移分/置信度），V2 也不可用时回退 V8，
     不回退到无日期后缀的旧 V6 文件。
 
     参数：
         theme: 主题名称
-        top_n: 前排定义（默认前10名）
-        days: 统计天数（默认60天，用于扫描历史 V2 CSV 的窗口）
+        top_n: 前排定义（默认前10名，仅 V2/V8 回退分支使用）
+        days: 统计天数（默认60天，仅 V2/V8 回退分支使用）
 
     返回：0-100 的主题生命力评分
     """
@@ -3469,7 +3506,18 @@ def calc_tli_score(theme, top_n=10, days=60):
         if not theme:
             return 50, {"错误": "主题为空"}
 
-        # ===== 优先：Theme Score V2 引擎 =====
+        # ===== 优先：主题热度 V2.3（Heat 即主题强度，TODAY+WEEK 综合）=====
+        rec = _load_theme_heat(TRADE_DATE).get(theme)
+        if rec and rec.get('strength') is not None:
+            return round(float(rec['strength']), 1), {
+                "主题热度": round(float(rec['strength']), 1),
+                "TODAY": rec['today_heat'], "TODAY排名": rec['today_rank'],
+                "WEEK": rec['week_heat'], "WEEK排名": rec['week_rank'],
+                "MONTH": rec['month_heat'], "MONTH排名": rec['month_rank'],
+                "标记": rec['flags'], "样本数": rec['n'],
+            }
+
+        # ===== 回退：Theme Score V2 引擎 =====
         v2_records = _load_v2_theme_scores(TRADE_DATE)
         if v2_records:
             theme_rec = None
@@ -4273,11 +4321,12 @@ def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, them
         elif theme_sentiment_score < 30:
             hot_score -= 8
 
-        if theme_trend_score < 30:
+        # 阈值按 主题热度 V2.3 强度分布重标定（分位对齐，见 theme_heat_v22.V2_TO_HEAT_ANCHORS）
+        if theme_trend_score < 40:
             hot_score -= 12
-        elif theme_trend_score < 40:
+        elif theme_trend_score < 54:
             hot_score -= 5
-        elif theme_trend_score > 70:
+        elif theme_trend_score > 85:
             hot_score += 5
         hot_score = min(100, max(0, hot_score))
 
@@ -5068,10 +5117,11 @@ def calc_fundamental_score_v3(ts_code, theme_name='', theme_trend_score=0, theme
 
         # ── PART A: 热榜+主题信号 (30%) ──
         trend_str = 50
-        if theme_trend_score >= 80: trend_str = 95
-        elif theme_trend_score >= 65: trend_str = 80
-        elif theme_trend_score >= 45: trend_str = 65
-        elif theme_trend_score >= 30: trend_str = 45
+        # 阈值按 主题热度 V2.3 强度分布重标定（分位对齐，见 theme_heat_v22.V2_TO_HEAT_ANCHORS）
+        if theme_trend_score >= 94: trend_str = 95
+        elif theme_trend_score >= 81: trend_str = 80
+        elif theme_trend_score >= 62: trend_str = 65
+        elif theme_trend_score >= 40: trend_str = 45
         else: trend_str = 25
 
         concent = 50
@@ -7463,13 +7513,21 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     keep_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') != 'junk'}
     keep_themes = set(keep_themes_info.keys())
 
+    # 主题强度统一改用 主题热度 V2.3（TODAY+WEEK 综合 Heat）；V2.3 缺失时把 V2 趋势分折算到同一尺度
+    theme_heat = _load_theme_heat(TRADE_DATE)
+
+    def _theme_strength(t, fallback):
+        s = theme_heat.get(t, {}).get('strength')
+        return float(s) if s is not None else _v2_strength(fallback)
+
     print(f"\n[主题过滤] 主线+轮动 -> 保留 {len(keep_themes)} 个主题:")
     for t, info in sorted(
             keep_themes_info.items(),
             key=lambda x: (0 if x[1].get('kind') == 'mainline' else 1,
                            -x[1].get('composite_score', 0))):
         print(f"  [{info.get('kind', ''):<8}] {t:<16} stage={info.get('stage', ''):<4} "
-              f"趋势{info.get('trend_score', 0):<5.1f} 涨停{info.get('zt_count', 0)}")
+              f"强度{_theme_strength(t, float(info.get('trend_score', 0) or 0)):<5.1f} "
+              f"涨停{info.get('zt_count', 0)}")
     if junk_themes_info:
         print(f"  回避区主题 {len(junk_themes_info)} 个: {', '.join(sorted(junk_themes_info))}")
     print()
@@ -7539,7 +7597,7 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
             # 从V6结果注入字段
             vi = keep_themes_info.get(found_theme, {})
             theme_stages.append(vi.get("stage", ""))
-            theme_trends.append(vi.get("trend_score", 0))
+            theme_trends.append(_theme_strength(found_theme, float(vi.get("trend_score", 0) or 0)))
             theme_capitals.append(vi.get("capital_score", 0))
             theme_sentiments.append(vi.get("sentiment_score", 0))
             theme_continuations.append(vi.get("continuation_score", 0))
@@ -7573,7 +7631,7 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
                 match_scores.append(0)
                 secondary_themes_list.append('')
                 theme_stages.append(jv.get("stage", ""))
-                theme_trends.append(jv.get("trend_score", 0))
+                theme_trends.append(_theme_strength(junk_hit, float(jv.get("trend_score", 0) or 0)))
                 theme_capitals.append(jv.get("capital_score", 0))
                 theme_sentiments.append(jv.get("sentiment_score", 0))
                 theme_continuations.append(jv.get("continuation_score", 0))
@@ -7800,7 +7858,22 @@ def add_themes_to_stocks_no_filter(result_df):
                         }
     except Exception as e:
         print(f"[添加主题] 读取主题评分失败: {e}")
-    
+
+    # 主题强度统一改用 主题热度 V2.3（TODAY+WEEK 综合 Heat）；
+    #    V2/V8 仅保留其独有的交易态字段（theme_state / lifecycle / 龙头等），
+    #    未被 V2.3 覆盖的主题把 V2/V8 趋势分折算到同一尺度
+    theme_heat = _load_theme_heat(TRADE_DATE)
+    for tname, st in theme_state_map.items():
+        s = theme_heat.get(tname, {}).get('strength')
+        st['trend_score'] = float(s) if s is not None else _v2_strength(st.get('trend_score', 0))
+    if theme_heat and not keep_themes:          # V2/V8 均不可用：主题范围改由 V2.3 提供
+        keep_themes = sorted(theme_heat)
+        theme_state_map = {t: {'theme_state': '', 'trend_score': r['strength'],
+                               'sentiment_score': 0, 'composite_score': 0,
+                               'forward_alpha': 0, 'forward_signal': '', 'alpha_gate': '',
+                               'cycle_phase': '', 'confirmed_days': 0, 'leader_sequence': ''}
+                           for t, r in theme_heat.items() if r['strength'] is not None}
+
     if not keep_themes:
         print("[添加主题] 无主题数据，仅返回原始DataFrame")
         return result_df
@@ -8896,15 +8969,8 @@ def run(target_date=None, simple_mode=False):
         if os.path.exists(summary_path):
             with open(summary_path, 'r', encoding='utf-8') as f:
                 full = f.read().strip()
-            # 截取最简版：只取TOP5 + 持仓 + 执行清单前面的部分
-            lines = full.split('\n')
-            simple_lines = []
-            for line in lines:
-                if 'TOP5' in line or '综合分' in line or '持仓' in line or '收益' in line or '调仓' in line or '执行清单' in line:
-                    simple_lines.append(line)
-                elif '【一、' in line or '【二、' in line or '【三、' in line or '【四、' in line:
-                    simple_lines.append(line)
-            etf_tips_text = '\n'.join(simple_lines[:30]) if simple_lines else full[:1000]
+            # 摘要文件本身即精简版（TOP5动量+持仓），直接全文引用，避免关键词筛行漏掉动量明细
+            etf_tips_text = full if len(full) <= 2000 else full[:2000]
             print(f"[ETF提示] 汇总报告缩略: {summary_path}")
         else:
             etf_tips_text = ""
@@ -8969,8 +9035,9 @@ def run(target_date=None, simple_mode=False):
 {etf_tips_text}
 输出要求：
 - 当前持仓（名称、代码、收益、下次调仓）
-- 操作建议的1、2、3(代码和名称、动量)
+- 操作建议：如数据中有调仓/买入候选则输出1、2、3（代码和名称、动量）；若数据中仅有持仓信息（未到调仓日），明确说明"距下次调仓还有N个交易日，无需操作"，并列出TOP5动量排名
 - 如果建议中有与主线主题一致的ETF，说明共振确认
+- 禁止输出"数据不足"：上方数据区即为全部真实ETF数据，动量排名/持仓信息一字不差引用
 
 4、**【中长线股票池】**（HVT-BULL 引擎当日最高置信买点层级·天量牛股：历史天量+缩量锁筹+二次突破+RS20≥70 四要素同时满足且无硬否决；FE≥70 为A级=四要素×Future Expansion双重确认，B级=结构达标但扩张确认稍弱；宁缺毋滥，数量稀少为常态）：
 {hvt_first_echelon_text}
@@ -9090,13 +9157,16 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
         # 保存最终报告
         final_report = report
 
-        # 兜底修复：AI 偶发漏写 ETF 段（误写"数据不足"），用真实数据替换
-        if etf_tips_text and "今日无ETF操作建议数据" in final_report:
-            print("[兜底] AI漏写ETF段，用源数据替换")
-            final_report = final_report.replace(
-                "数据不足，今日无ETF操作建议数据。",
-                f"**操作建议**：\n{etf_tips_text}"
-            )
+        # 兜底修复：AI 偶发漏写/谎报 ETF 段（各种"数据不足"变体），定位整段并用真实数据替换
+        if etf_tips_text:
+            _m_etf = re.search(r"(#+\s*3、\s*\**【ETF操作建议】\**[\s\S]*?)(?=\n-{3,}|\n#+\s*4、|\Z)", final_report)
+            if _m_etf:
+                _etf_sec = _m_etf.group(1)
+                _etf_bad = any(k in _etf_sec for k in ("数据不足", "无ETF操作建议数据", "未提供ETF"))
+                if _etf_bad and "20日动量" not in _etf_sec:
+                    print("[兜底] AI漏写ETF动量数据，用源数据整段替换")
+                    _etf_head = _etf_sec.split('\n', 1)[0]
+                    final_report = final_report[:_m_etf.start()] + f"{_etf_head}\n\n{etf_tips_text}\n\n" + final_report[_m_etf.end():]
 
         # 先发送微信（即使报告保存失败也要发送）
         send_wechat(

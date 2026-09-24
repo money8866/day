@@ -102,11 +102,11 @@ def _sector_asof(ts_code: str, trade_date: str) -> tuple:
         snaps = _theme_snapshot_dates()
         snap = trade_date if trade_date in snaps else max(
             (d for d in snaps if d <= trade_date), default=None)
-        _THEME_CACHE[trade_date] = hvt_context.load_theme_map(snap) if snap else {}
-    theme_map = _THEME_CACHE[trade_date]
-    if not theme_map:
+        _THEME_CACHE[trade_date] = hvt_context.load_stock_themes(snap) if snap else {}
+    stock_themes = _THEME_CACHE[trade_date]
+    if not stock_themes:
         return np.nan, '', False
-    strength, name = hvt_context.sector_resonance(ts_code, theme_map, trade_date)
+    strength, name = hvt_context.sector_resonance(ts_code, stock_themes, trade_date)
     return float(strength), name, True
 
 

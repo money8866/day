@@ -219,18 +219,23 @@ _LIFECYCLE_FIT = {('EARLY', 'T120'): 85.0, ('EARLY', 'T60'): 78.0,
 
 
 def _position(exec_state, action, score, te_cfg):
-    """§20：A+ 8~12% / A 5~8% / B 3~5% / C 0~3%；首次建仓 = 目标×initial_ratio，分批确认。"""
+    """§20：A+ 8~12% / A 5~8% / B 3~5% / C 0~3%；首次建仓 = 目标×initial_ratio，分批确认。
+
+    分档阈值统一读 te_cfg.thresholds（§25），与 next_day_action 判定同源，
+    避免调阈值后出现"动作按新阈值、仓位档按旧阈值"的错配。
+    """
     if exec_state == 'SKIP' or action in ('NO_CHASE', 'WAIT_PULLBACK', 'WAIT', 'WATCH', 'SKIP'):
         return '-', '-'
     pos = te_cfg.get('position') or {}
+    th = te_cfg.get('thresholds') or {}
     init_r = _f(te_cfg.get('initial_ratio', 0.4), 0.4)
-    if score >= 85 and exec_state == 'READY_BUY' and action == 'BUY':
+    if score >= _f(th.get('ready_buy', 85)) and exec_state == 'READY_BUY' and action == 'BUY':
         band, g = pos.get('a_plus', [8, 12]), 'A+'
-    elif score >= 75:
+    elif score >= _f(th.get('buy_on_confirm', 75)):
         band, g = pos.get('a', [5, 8]), 'A'
-    elif score >= 65:
+    elif score >= _f(th.get('wait_confirm', 65)):
         band, g = pos.get('b', [3, 5]), 'B'
-    elif score >= 50:
+    elif score >= _f(th.get('watch', 50)):
         band, g = pos.get('c', [0, 3]), 'C'
     else:
         return '-', '-'
