@@ -55,6 +55,24 @@ RETEST_PULLBACK = 0.95  # 须真实回踩：突破日前最低 ≤ T0 收盘 ×0
 # 5日 +0.76%→+1.87%，止损率 39%→24%。代价：可操作榜变短（0827 仅 1 只、0828 2 只）。
 W7_EXCLUDE_STATES = ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION")
 W7_VOLR_MAX = 0.66  # 选股日量比上限（只留缩量低吸；1.0~1.43 档实测最差）
+# V5.3（20260925）按跟踪库 w7_hvt 69 条有跟踪样本复核（口径=选股日收盘成本、昨日收盘市值、等权）：
+# ① score 降级为纯展示。原按 score 定 A/B/C 级，但控制批次后 ≥60 分在三个批次内全部劣于 <60 分
+#    （A批 8月底 +9.20% vs +16.28%；B批 9月中 +1.54% vs +7.49%；C批 9月下 -2.30% vs -0.70%，
+#     C 批 ≥60 分 8 条胜率 0%），无正向区分度，不再参与定级与排序。
+# ② 定级/排序改用实测单调的三因子：
+#    type=MID：+13.64%/胜率74.1%（n=27） vs EXT +5.06%/61.9%（n=42）
+#    ige_adj≥75：75-85 档 +21.93%/胜率93.3%（n=15）；60-75 档 +11.81%/85.7%（n=7）；<60 档 +5.18%/64.1%
+#    volr<0.60：0.4-0.6 档 +10.71%/69.1%（n=42） vs 0.6-0.8 档 +4.56%/60.0%（n=25）
+#    （MID 与时间变量有部分混淆——批次间 type 构成不均衡，故按「排序加权+分层」落地，不做硬过滤）
+W7_IGE_STRONG = 75.0
+W7_VOLR_STRONG = 0.60
+# 失效位口径修订（20260925）：原 stop_price=触发价，距现价中位仅 2.73%、平均 3.11%；22 条带止损
+# 记录中 17 条触发、其中 10 条事后仍收正（一博科技 +33.1%/宏昌电子 +24.9%/双星新材 +15.8%/
+# 高能环境 +10.6% 均被 2~3% 插针洗出）。改为「结构失效位 + 百分比上下限」：结构位取
+# 触发价 / MA20 / 放量突破日低点中最宽者，再强制距现价 ∈[5%,8%]——<5% 的插针区不触发，
+# >8% 的结构位收敛到 8% 以控单笔风险。
+W7_STOP_MIN_PCT = 0.05
+W7_STOP_MAX_PCT = 0.08
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
 
@@ -64,6 +82,51 @@ def finite(value, default=0.0):
         return value if np.isfinite(value) else default
     except (TypeError, ValueError):
         return default
+
+
+def w7_priority(x):
+    """V5.3 因子优先级（0~3 命中数）。依据见文件头 W7_IGE_STRONG / W7_VOLR_STRONG 注释。
+    score 已降级为纯展示（控制批次后无正向区分度），定级与排序均以本函数为准。"""
+    hits = 0
+    if x.get("type") == "MID":
+        hits += 1
+    ige = x.get("ige_adj")
+    if isinstance(ige, (int, float)) and ige >= W7_IGE_STRONG:
+        hits += 1
+    if finite(x.get("volr"), 9.9) < W7_VOLR_STRONG:
+        hits += 1
+    return hits
+
+
+def w7_assign_status(state, tp, ige_adj, volr, fallback="WATCH"):
+    """V5.3 定级（20260925）：原 score≥85/≥80/≥70 阈值已废止——控制批次后 ≥60 分在 A/B/C 三批次内
+    均劣于 <60 分（最新批次 0918~0923 高分胜率 0%），无正向区分度。买点态改按实测单调的三因子
+    命中数分 A/B/C 级（w7_priority）；派发态恒 WATCH；非买点态沿用调用方兜底结论 fallback。"""
+    if tp == "DISTRIBUTION":
+        return "WATCH"
+    if state not in ACTION_BUY_STATES:
+        return fallback
+    hits = w7_priority({"type": tp, "ige_adj": ige_adj, "volr": volr})
+    if hits >= 3:
+        return "PRIMARY_BUY"
+    if hits == 2:
+        return "T120_ROCKET"
+    if hits == 1:
+        return "CONFIRMED"
+    return "WATCH"
+
+
+def w7_stop_price(close, pressure, ma20, retest_low=None):
+    """V5.3 失效位：结构位（触发价/MA20/放量突破日低点）取最宽者，再 clamp 到距现价 [5%,8%]。
+    现价无效时返回 None（下游不设止损）。"""
+    close = finite(close, 0.0)
+    if close <= 0:
+        return None
+    cands = [v for v in (finite(pressure, 0.0), finite(ma20, 0.0), finite(retest_low, 0.0))
+             if 0 < v < close]
+    struct = min(cands) if cands else close
+    return round(min(max(struct, close * (1 - W7_STOP_MAX_PCT)),
+                     close * (1 - W7_STOP_MIN_PCT)), 3)
 
 
 def load_sli_codes(date):
@@ -1163,7 +1226,7 @@ def find_event_anchor(df):
 
 
 def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_strength=None, sector_growth=None,
-            event_hint=None):
+            event_hint=None, ige_adj=None):
     if len(df) < MIN_BARS:
         return None
     if event_hint is not None:
@@ -1208,37 +1271,24 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     tp = hvt_type(state, lc, dist_risk)
     event_low = finite(df.low.iloc[event_idx], 0.0)
     entry, entry_dims = entry_score_v2(df, last, pp, pp_ok, reexp, breakout, event_low, mkt)
-    # V5 状态机：派发型不进 A/B 榜；A/B 榜按 HVT-V3 总分；C榜=WATCH 兜底
-    trend_state = state in ("BREAKOUT_CONFIRM", "SECOND_WAVE", "RE_EXPANSION", "BREAKOUT_RETEST")
-    trend_confirmed = breakout or reexp or dims["trend"] >= 70
-    if tp == "DISTRIBUTION":
-        status = "WATCH"
-    elif state == "T0_CONFIRM":
-        # 20260909：确认日当日已是有效买点，按分数定级，不再被 WATCH 兜底吞掉
-        if score >= 85 and entry >= 80:
-            status = "PRIMARY_BUY"
-        elif score >= 80:
-            status = "T120_ROCKET"
-        else:
-            status = "CONFIRMED"
-    elif state == "BREAKOUT_RETEST":
-        # 20260914：放量突破后缩量回踩，回踩确认日当日已是有效买点（同 T0_CONFIRM 口径按分数定级）
-        if score >= 85 and entry >= 80:
-            status = "PRIMARY_BUY"
-        elif score >= 78:
-            status = "T120_ROCKET"
-        else:
-            status = "CONFIRMED"
-    elif score >= 85 and entry >= 80:
-        status = "PRIMARY_BUY"
-    elif score >= 80:
-        status = "T120_ROCKET"
-    elif score >= 70 and (trend_confirmed or tp in ("MID", "EXT")):
-        status = "CONFIRMED"
-    else:
-        status = "WATCH"
-    # V5：C榜(WATCH) 低分兜底票不输出
-    if status == "WATCH" and base_score < WATCH_MIN_SCORE:
+    # V5.3 定级（20260925）：score 降级为纯展示。跟踪库复核显示控制批次后 ≥60 分在 A/B/C 三批次内
+    # 均劣于 <60 分、最新批次（0918~0923）高分胜率 0%，无正向区分度，故 A/B/C 定级改用实测单调的
+    # 三因子（type=MID / ige_adj≥75 / volr<0.60，见 w7_priority），由 w7_assign_status 统一给出；
+    # 非买点态沿用趋势/类型判据作为兜底（原 score>=70 分支的等价替代）。
+    # 注意：定级只改报告 A/B/C 榜归属、reason/next 文案与落库 action 标签，
+    # 选股口径仍只看 state + w7_quality_gate。
+    latest_bar = df.iloc[last]
+    vol20 = safe_mean(df.vol.iloc[max(0, last - 19):last])
+    volr = finite(latest_bar.vol, 0.0) / vol20 if vol20 > 0 else 0.0
+    fallback = "CONFIRMED" if (breakout or reexp or dims["trend"] >= 70 or tp in ("MID", "EXT")) else "WATCH"
+    status = w7_assign_status(state, tp, ige_adj, volr, fallback)
+    # V5：C榜低分兜底票不输出。判据沿用「旧 score 定级下的 WATCH」定义（与 V5.3 三因子定级解耦），
+    # 逐条复刻改版前的剔除条件：派发态，或非买点态且趋势/类型兜底为 WATCH，或买点态 score<70。
+    # 不能简化为 `tp=="DISTRIBUTION" or score<70`——那会把非买点态的低分 MID/EXT 一并剔除，收缩候选池。
+    legacy_watch = ((tp == "DISTRIBUTION")
+                    or (state not in ACTION_BUY_STATES and fallback == "WATCH")
+                    or (state in ACTION_BUY_STATES and score < 70.0))
+    if legacy_watch and base_score < WATCH_MIN_SCORE:
         return None
     event_date = str(df.iloc[event_idx].trade_date)
     core = f"Ac{base['acceptance']:.0f}/CQ{base['cq']:.0f}/SIM{hvt:.0f}/回撤{drawdown * 100:.0f}%"
@@ -1253,14 +1303,14 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
         reason = (f"放量突破后缩量回踩买点（{base.get('retest_date', '')}放量突破，回踩至其收盘"
                   f"{base.get('retest_close', 0):.2f}附近缩量不破、守MA20）：{core}；{ext_txt}；ENTRY={entry:.0f}")
     elif status == "PRIMARY_BUY":
-        reason = f"HVT-V3高分+买点双高：{core}；{ext_txt}；ENTRY={entry:.0f}"
+        reason = f"三因子全中（MID/IGE_ADJ≥{W7_IGE_STRONG:g}/量比<{W7_VOLR_STRONG:g}）且有买点：{core}；{ext_txt}；ENTRY={entry:.0f}"
     elif status == "T120_ROCKET":
         blk = min(entry_dims.items(), key=lambda kv: kv[1])
         short = f"{ENTRY_KEYS.get(blk[0], blk[0])}{blk[1]:.0f}"
-        reason = f"潜力高待买点：{core}；{ext_txt}；ENTRY短板={short}"
+        reason = f"三因子中 2/3 且有买点：{core}；{ext_txt}；ENTRY短板={short}"
     elif status == "CONFIRMED":
         wk = min(v5_dims, key=v5_dims.get)
-        reason = f"趋势确认潜力中上：{core}；{ext_txt}；弱维={wk}={v5_dims[wk]:.0f}"
+        reason = f"定级C（因子命中≤1/3 或趋势/类型兜底）：{core}；{ext_txt}；弱维={wk}={v5_dims[wk]:.0f}"
     elif status == "WATCH" and (major_risk or state in ("FAILED", "DISTRIBUTION")):
         reason = f"重大风险（抛压/破位）暂不参与：{core}；{ext_txt}"
     else:
@@ -1269,9 +1319,8 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     explanation = (f"P{int(ep)}天量@{event_date}，{ext_txt}，状态{state}，类型{tp}；"
                    f"HVT-V3={score:.0f}（天量{dims['hvt']:.0f}/吸收{absorption:.0f}/生命{lifecycle_score(lc):.0f}/空间{fs:.0f}/加速{acc:.0f}/RS{dims['rs']:.0f}/基本面{dims['fina']:.0f}），"
                    f"派发风险{dist_risk:.0f}，ENTRY={entry:.0f}，{'今日PP10成立并重新放量' if pp_ok else '尚未出现合格PP10'}。")
-    latest_bar = df.iloc[last]
-    vol20 = safe_mean(df.vol.iloc[max(0, last - 19):last])
-    volr = finite(latest_bar.vol, 0.0) / vol20 if vol20 > 0 else 0.0
+    rb = int(base.get("retest_bar", -1))
+    retest_low = finite(df.iloc[rb].low, 0.0) if rb >= 0 else None  # V5.3：失效位候选之一
     return {"code": code, "name": name, "industry": industry or "未覆盖", "state": state,
             "close": finite(latest_bar.close, 0.0), "pressure": pressure,
             "ma20": finite(latest_bar.ma_bfq_20, 0.0), "volr": volr,
@@ -1282,6 +1331,7 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
             "cq": base["cq"], "acceptance": base["acceptance"], "sds": base["sds"], "lock": base["lock"], "pp": pp,
             "hvt": hvt, "sim_zjxc": sim_a, "sim_hzxc": sim_b, "buy": status, "grade": grade(t120),
             "event_date": event_date, "event_percentile": ep, "reexpansion": reexp, "breakout": breakout,
+            "retest_low": retest_low,
             "major_risk": major_risk, "hard_fail": major_risk, "reason": reason,
             "next": next_trigger(status, entry_dims, breakout, pp_ok), "explanation": explanation,
             "horizons": horizon_phases(tp, lc, breakout, t0_confirm=(state == "T0_CONFIRM"),
@@ -1302,15 +1352,17 @@ def w7_quality_gate(x):
 
 
 def v52_sort_key(x):
-    """V5.2 可操作榜排序键（20260923 起）：按「生命周期 + 空间」降序，同级按选股日量比升序、IGE_ADJ 降序。
-    原排序为量比升序：量比经 V5.2 门槛（≤0.66）收窄后组内已无区分度，排序实际退化为无意义抖动；
-    而这两项是 20260922 跟踪库复核中与后续收益正相关的维度（生命周期 pearson +0.50、空间 +0.39），
-    0826 批次组内按生命周期切分：<45 均 +1.3% / ≥45 均 +26.7%。
-    报告「今日可操作榜」与 stock_pick_db 落库共用此键，保证展示序与 rank_no 同口径。"""
-    v5 = x.get("v5_dims") or {}
-    lead = finite(v5.get("生命周期"), 0.0) + finite(v5.get("空间"), 0.0)
+    """V5.3 可操作榜排序键（20260925 起）：因子优先级降序 → 「生命周期 + 空间」降序 →
+    选股日量比升序 → IGE_ADJ 降序。报告「今日可操作榜」与 stock_pick_db 落库共用此键，
+    保证展示序与 rank_no 同口径。
+    历史：原键（20260923 起）为「生命周期+空间 → 量比 → IGE_ADJ」，不含优先级；
+    该二项在 20260922 复核中与后续收益正相关（生命周期 pearson +0.50、空间 +0.39）。
+    本次在其上叠加 W7_IGE_STRONG / W7_VOLR_STRONG 注释所述三因子命中数（w7_priority），
+    score 退出排序（控制批次后无正向区分度）。"""
+    lead = (finite((x.get("v5_dims") or {}).get("生命周期"), 0.0)
+            + finite((x.get("v5_dims") or {}).get("空间"), 0.0))
     ige = x.get("ige_adj") if isinstance(x.get("ige_adj"), (int, float)) else -1.0
-    return (-lead, finite(x.get("volr"), 0.0), -ige)
+    return (-w7_priority(x), -lead, finite(x.get("volr"), 0.0), -ige)
 
 
 def markdown(results, date):
@@ -1358,23 +1410,32 @@ def markdown(results, date):
     lines.append(f"状态分布：{'　'.join(f'{s}={c}' for s, c in sorted(cnt_state.items()))}　"
                  f"（已突破/确认类=BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/T0_CONFIRM/BREAKOUT_RETEST 合计 {n_broken} 家，"
                  f"T0_CONFIRM=天量T0确认买点当日，BREAKOUT_RETEST=放量突破后缩量回踩买点当日）")
-    lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位），放量(量比≥1.2)突破触发价=买点触发；已突破标的失效位=收盘跌回触发价下方（BREAKOUT_RETEST 例外：跌破 MA20 或放量突破日低点才算失效）；MA20=总防线；量比=当日量/前20日均量（不含当日）")
+    lines.append("价格口径：现价/触发价/MA20均为元；触发价=事件日后10日平台高点（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位），放量(量比≥1.2)突破触发价=买点触发；失效位(止损)见下「失效位（V5.3 修订）」；MA20=总防线；量比=当日量/前20日均量（不含当日）")
     lines.append("")
     if ige_snap:
-        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 生命周期+空间 降序（20260923 起，替换原量比升序）、同级按选股日量比升序与 IGE_ADJ 降序重排，其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
+        lines.append(f"> 行业增长弹性 IGE_ADJ（申万三级行业，快照 {ige_snap}）：全部榜单已附 IGE_ADJ 列；「今日可操作榜」（可操作输出）按 因子优先级（{W7_IGE_STRONG:g} 为 IGE 命中线）降序、同级按 生命周期+空间 降序、再按选股日量比升序与 IGE_ADJ 降序重排（20260925 起，替换原「生命周期+空间」首序）；其余榜单保留 HVT-V3 总分/Rank 原序仅加列标注。")
         lines.append("")
     # 今日可操作榜（唯一逐只可执行榜；现价>触发价=已突破在上方）
-    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按生命周期+空间降序/同级按选股日量比升序与 IGE_ADJ 降序）\n")
+    lines.append(f"\n## 今日可操作榜（当日买点 共{n_action}只 · 按因子优先级降序/同级按生命周期+空间降序、选股日量比升序与 IGE_ADJ 降序）\n")
     if actionable:
-        lines.append("| # | 代码 | 名称 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
-        lines.append("| -- | -- | -- | --: | --: | -- | --: | --: | --: | --: | -- |")
+        lines.append("| # | 代码 | 名称 | 优先 | IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态 |")
+        lines.append("| -- | -- | -- | --: | --: | --: | -- | --: | --: | --: | --: | -- |")
         for k, x in enumerate(sorted(actionable, key=v52_sort_key), 1):
-            lines.append(f"| {k} | {x['code']} | {x['name']} | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
+            lines.append(f"| {k} | {x['code']} | {x['name']} | {w7_priority(x)}/3 | {_ige_tag(x)} | {x['score']:.1f} | {x['type']} "
                          f"| {x['close']:.2f} | {x['pressure']:.2f} | {x['ma20']:.2f} | ×{x['volr']:.1f} | {x['state']} |")
+        lines.append("")
+        lines.append(f"优先=V5.3 因子命中数（0~3）：type=MID（+13.6%/胜74% vs EXT +5.1%/62%，n=27）"
+                     f"｜IGE_ADJ≥{W7_IGE_STRONG:g}（75-85 档 +21.9%/胜93%，n=15）"
+                     f"｜量比<{W7_VOLR_STRONG:g}（0.4-0.6 档 +10.7%/胜69% vs 0.6-0.8 档 +4.6%/60%，n=42）。"
+                     "「总分」（HVT-V3）已降级为纯展示：控制批次后 ≥60 分在 A/B/C 三批次内均劣于 <60 分、"
+                     "最新批次（0918~0923）高分胜率 0%，无正向区分度，已退出定级与排序，仅供追溯。")
         lines.append("")
         lines.append("操作口径：现价>触发价=已突破在上方，回踩触发价不破可低吸或持有；收盘跌回触发价下方离场；MA20=总防线。"
                      "量比≥1.2=当日放量突破触发价=买点触发；量比≥3的巨量日不追，只等回踩。"
-                     "BREAKOUT_RETEST=放量突破后缩量回踩买点：触发价=放量突破日收盘（回踩位），回踩该位缩量不破即低吸；跌破 MA20 或放量突破日低点即离场。")
+                     "BREAKOUT_RETEST=放量突破后缩量回踩买点：触发价=放量突破日收盘（回踩位），回踩该位缩量不破即低吸。")
+        lines.append(f"失效位（V5.3 修订）：结构位取 触发价/MA20/放量突破日低点 中最宽者，再限定距现价 "
+                     f"{W7_STOP_MIN_PCT * 100:.0f}%~{W7_STOP_MAX_PCT * 100:.0f}%——原口径直接取触发价，"
+                     f"距现价中位仅 2.7%，22 条带止损记录中 17 条被 2~3% 插针打掉、其中 10 条事后仍收正。")
     else:
         lines.append("_（今日无当日买点标的，空仓等待 C 池高分票放量突破）_")
     # 池内形态分布（替代原 A/B/MID 大列表，只给分布不给明细）
@@ -1454,6 +1515,7 @@ def sync_downstream(date, results, output):
             "type": x["type"], "level": x["level"], "score": round(float(x["score"]), 1),
             "entry": round(float(x["entry"] or 0), 1), "action": x["buy"],
             "close": x["close"], "pressure": x["pressure"], "ma20": x["ma20"], "volr": x["volr"],
+            "retest_low": x.get("retest_low"), "priority": w7_priority(x),
             "ige_adj": x.get("ige_adj"), "event_date": x.get("event_date"),
             "reason": x.get("reason", ""), "t120": x.get("t120"),
         })
@@ -1474,13 +1536,14 @@ def sync_downstream(date, results, output):
     try:
         rows = []
         for idx, x in enumerate(signals, 1):
-            # stop_price(失效位)=触发价仅在已突破(现价>触发价)时生效；
-            # 未突破的 T0/确认类不设止损价，避免止损高于现价导致跟踪立即 STOP_HIT
+            # stop_price(失效位) V5.3 修订：结构位(触发价/MA20/放量突破日低点)取最宽者 + clamp 距现价[5%,8%]。
+            # 原口径直接取触发价，仅在已突破时生效且距现价中位仅 2.7%，导致 2~3% 插针即触发 STOP_HIT。
+            # 新口径恒低于现价 ≥5%，无需再区分是否已突破。
             rows.append({
                 "ts_code": x["code"], "stock_name": x["name"], "industry": x.get("industry"),
                 "close": x["close"], "signal": x["state"], "action": f"{x['state_cn']}·{x['action']}",
                 "score": x["score"], "rank_no": idx,
-                "stop_price": x["pressure"] if (x["close"] and x["pressure"] and x["close"] > x["pressure"]) else None,
+                "stop_price": w7_stop_price(x["close"], x["pressure"], x["ma20"], x.get("retest_low")),
                 "reason": x["reason"],
                 "state": x["state"], "type": x["type"], "level": x["level"], "entry": x["entry"],
                 "volr": x["volr"], "ma20": x["ma20"], "event_date": x["event_date"],
@@ -1556,9 +1619,11 @@ def main():
             continue
         df = reader.bars(code, date)
         industry = str(row.get("industry") or (basic.get("industry", "") if hasattr(basic, "get") else ""))
-        result = analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt, sector_strength=sector_strength, sector_growth=sector_growth)
+        ig = ige_info.get(code)  # V5.3：IGE_ADJ 需在 analyze 内参与定级，故先取快照再分析
+        result = analyze(code, name, industry, df, anchors, reader=reader, mkt=mkt,
+                         sector_strength=sector_strength, sector_growth=sector_growth,
+                         ige_adj=ig["ige_adj"] if ig else None)
         if result:
-            ig = ige_info.get(code)
             result["ige_adj"] = ig["ige_adj"] if ig else None
             result["ige_mix"] = ig["ige_mix"] if ig else None
             result["ige_sw_l1"] = ig["sw_l1"] if ig else ""

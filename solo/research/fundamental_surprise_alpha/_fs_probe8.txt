@@ -1,0 +1,76 @@
+============================================================
+1) daily_cache 结构
+   列: ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']
+   样本(000001.SZ 最新3行):
+    ('000001.SZ', '20260924', 11.35, 11.47, 11.29, 11.3, 11.35, -0.05, -0.4405, 1043818.72, 1186736.8957)
+    ('000001.SZ', '20260923', 11.68, 11.71, 11.55, 11.6, 11.71, -0.11, -0.9394, 906725.65, 1052015.09248)
+    ('000001.SZ', '20260922', 11.7, 11.75, 11.62, 11.71, 11.73, -0.02, -0.1705, 759457.32, 887703.11658)
+
+2) index_daily_cache 内容(按行数)
+      ts_code     n        mn        mx
+0   000300.SH  1633  20200102  20260924
+1   000001.SH  1390  20210104  20260924
+2   000688.SH  1390  20210104  20260924
+3   000852.SH  1390  20210104  20260924
+4   399006.SZ  1390  20210104  20260924
+5  932000.CSI  1390  20210104  20260924
+6   000905.SH  1382  20210104  20260914
+7   399001.SZ  1382  20210104  20260914
+
+3) cache_daily 下 .db 文件
+   40.29MB  D:\mystock\cache_daily\eld_buy_backtest_tdx.db
+   0.01MB  D:\mystock\cache_daily\hot_sector.db
+   198.94MB  D:\mystock\cache_daily\kpl.db
+   0.67MB  D:\mystock\cache_daily\leader_history_v3.db
+   0.00MB  D:\mystock\cache_daily\market_analysis.db
+   1.60MB  D:\mystock\cache_daily\nd2_snapshot.db
+   0.08MB  D:\mystock\cache_daily\pattern_data.db
+   0.46MB  D:\mystock\cache_daily\rib_cache.db
+   0.00MB  D:\mystock\cache_daily\stk_factor_pro.db
+   22369.81MB  D:\mystock\cache_daily\stock_data.db
+   2.53MB  D:\mystock\cache_daily\tail_backtest_tdx.db
+   0.52MB  D:\mystock\cache_daily\tail_signal_tracker.db
+   0.00MB  D:\mystock\cache_daily\theme_scores_v2.db
+   0.02MB  D:\mystock\cache_daily\verification_v2.db
+   3.52MB  D:\mystock\cache_daily\zhongbao_egpt_backtest_tdx.db
+
+4) 是否存在日线 parquet（检查更长历史）
+   daily*.parquet -> 2 个, 例: ['daily_basic_20260720.parquet', 'daily_basic_20260826.parquet']
+   daily*.parquet -> 59480 个, 例: ['daily_000004.SZ_20251121_20260828.parquet', 'daily_000008.SZ_20200101_20261231.parquet', 'daily_000008.SZ_20251027_20260803.parquet', 'daily_000008.SZ_20251028_20260804.parquet']
+   *daily*.parquet -> 45174 个, 例: ['daily_basic_20260720.parquet', 'daily_basic_20260826.parquet', 'treasure_daily_000006_SZ_20260101_20260730.parquet', 'treasure_daily_000006_SZ_20260102_20260731.parquet']
+   *daily*.parquet -> 59601 个, 例: ['daily_000004.SZ_20251121_20260828.parquet', 'daily_000008.SZ_20200101_20261231.parquet', 'daily_000008.SZ_20251027_20260803.parquet', 'daily_000008.SZ_20251028_20260804.parquet']
+
+5) treasure_fin_ind 结构
+   文件数: 4509
+   样本文件: treasure_fin_ind_000006_SZ.parquet shape= (100, 108)
+   列(108): ['ts_code', 'ann_date', 'end_date', 'eps', 'dt_eps', 'total_revenue_ps', 'revenue_ps', 'capital_rese_ps', 'surplus_rese_ps', 'undist_profit_ps', 'extra_item', 'profit_dedt', 'gross_margin', 'current_ratio', 'quick_ratio', 'cash_ratio', 'ar_turn', 'ca_turn', 'fa_turn', 'assets_turn', 'op_income', 'ebit', 'ebitda', 'fcff', 'fcfe', 'current_exint', 'noncurrent_exint', 'interestdebt', 'netdebt', 'tangible_asset', 'working_capital', 'networking_capital', 'invest_capital', 'retained_earnings', 'diluted2_eps', 'bps', 'ocfps', 'retainedps', 'cfps', 'ebit_ps', 'fcff_ps', 'fcfe_ps', 'netprofit_margin', 'grossprofit_margin', 'cogs_of_sales', 'expense_of_sales', 'profit_to_gr', 'saleexp_to_gr', 'adminexp_of_gr', 'finaexp_of_gr', 'impai_ttm', 'gc_of_gr', 'op_of_gr', 'ebit_of_gr', 'roe', 'roe_waa', 'roe_dt', 'roa', 'npta', 'roic', 'roe_yearly', 'roa2_yearly', 'debt_to_assets', 'assets_to_eqt', 'dp_assets_to_eqt', 'ca_to_assets', 'nca_to_assets', 'tbassets_to_totalassets', 'int_to_talcap', 'eqt_to_talcapital', 'currentdebt_to_debt', 'longdeb_to_debt', 'ocf_to_shortdebt', 'debt_to_eqt', 'eqt_to_debt', 'eqt_to_interestdebt', 'tangibleasset_to_debt', 'tangasset_to_intdebt', 'tangibleasset_to_netdebt', 'ocf_to_debt', 'turn_days', 'roa_yearly', 'roa_dp', 'fixed_assets', 'profit_to_op', 'q_saleexp_to_gr', 'q_gc_to_gr', 'q_roe', 'q_dt_roe', 'q_npta', 'q_ocf_to_sales', 'basic_eps_yoy', 'dt_eps_yoy', 'cfps_yoy', 'op_yoy', 'ebt_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', 'ocf_yoy', 'roe_yoy', 'bps_yoy', 'assets_yoy', 'eqt_yoy', 'tr_yoy', 'or_yoy', 'q_sales_yoy', 'q_op_qoq', 'equity_yoy']
+   ann_date 空值率: 0.0000
+   end_date 分布(top6):
+end_date
+20250630    2
+20230331    2
+20221231    2
+20220930    2
+20220630    2
+20220331    2
+
+6) 行业分类
+   sw_industry_map.json type=dict len=1316
+   sample: [('001309.SZ', '电子'), ('002049.SZ', '电子'), ('002156.SZ', '电子'), ('002185.SZ', '电子')]
+   industry/sw_industry_map.csv shape= (3000, 11) cols= ['l1_code', 'l1_name', 'l2_code', 'l2_name', 'l3_code', 'l3_name', 'ts_code', 'name', 'in_date', 'out_date', 'is_new']
+     l1_code l1_name    l2_code l2_name    l3_code l3_name    ts_code  name   in_date out_date is_new
+0  801880.SI      汽车  801881.SI  摩托车及其他  858811.SI  其他运输设备  600679.SH  上海凤凰  19931008      NaN      Y
+1  801180.SI     房地产  801181.SI   房地产开发  851811.SI    住宅开发  600683.SH  京投发展  19931025      NaN      Y
+2  801740.SI    国防军工  801744.SI   航海装备Ⅱ  850935.SI   航海装备Ⅲ  600685.SH  中船防务  19931028      NaN      Y
+
+7) stock_basic
+   D:\mystock\cache_daily\stock_basic.csv shape=(5530, 4) cols=['ts_code', 'name', 'industry', 'list_date']
+     ts_code  name industry list_date
+0  000001.SZ  平安银行       银行  19910403
+1  000002.SZ   万科A     全国地产  19910129
+2  000004.SZ   国华退      NaN  19901201
+
+8) forecast 预告覆盖
+   forecast 文件数: 430
+   cols= ['ts_code', 'ann_date', 'end_date', 'type', 'p_change_min', 'p_change_max', 'net_profit_min', 'net_profit_max', 'last_parent_net']
+   总行数=14055  ann_date 范围 19990122 ~ 20260721

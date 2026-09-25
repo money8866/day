@@ -1,0 +1,102 @@
+﻿======================================================================
+cache_daily\parquet 子目录普查
+======================================================================
+文件总数: 201914
+
+按「前缀|期次格式」分组:
+   daily|period8|ncode=0              文件=55286  股票=0     期次=20240101..20260924(220)
+   moneyflow|period8|ncode=1          文件=30869  股票=1576  期次=20260525..20260904(49)
+   cyq|period8|ncode=1                文件=29066  股票=1572  期次=20260803..20260904(23)
+   moneyflow|period8|ncode=0          文件=21280  股票=0     期次=20240101..20260908(163)
+   fina|period8|ncode=1               文件=18193  股票=2859  期次=20250630..20260930(6)
+   stk|period8|ncode=0                文件=6288   股票=0     期次=20240101..20260819(19)
+   income|period8|ncode=1             文件=5238   股票=2763  期次=20260630..20260930(2)
+   balance|year4|ncode=0              文件=4927   股票=0     期次=2023..2024(2)
+   report|other|ncode=0               文件=4927   股票=0     期次=-
+   cashflow|year4|ncode=0             文件=4926   股票=0     期次=2023..2023(1)
+   income|year4|ncode=0               文件=4926   股票=0     期次=2023..2023(1)
+   mainbz|other|ncode=0               文件=4926   股票=0     期次=-
+   daily|period8|ncode=1              文件=4194   股票=1011  期次=20200101..20261231(16)
+   holdernumber|other|ncode=0         文件=1679   股票=0     期次=-
+   mainbz|period8|ncode=0             文件=1679   股票=0     期次=20251231..20251231(1)
+   share|other|ncode=0                文件=1674   股票=0     期次=-
+   pledge|other|ncode=0               文件=1505   股票=0     期次=-
+   trade|period8|ncode=0              文件=140    股票=0     期次=20200101..20260924(124)
+   fund|period8|ncode=0               文件=53     股票=0     期次=20260525..20260811(12)
+   index|period8|ncode=0              文件=41     股票=0     期次=20240101..20260904(69)
+   index|period8|ncode=1              文件=27     股票=1     期次=20251116..20260904(47)
+   forecast|period8|ncode=0           文件=25     股票=0     期次=20260630..20260904(25)
+   limit|period8|ncode=0              文件=12     股票=0     期次=20260803..20260811(6)
+   fund|other|ncode=0                 文件=8      股票=0     期次=-
+   hk|other|ncode=0                   文件=8      股票=0     期次=-
+   actual|period8|ncode=0             文件=6      股票=0     期次=20260630..20260904(7)
+   ths|other|ncode=0                  文件=2      股票=0     期次=-
+   balance|other|ncode=0              文件=1      股票=0     期次=-
+   chip|other|ncode=0                 文件=1      股票=0     期次=-
+   express|period8|ncode=0            文件=1      股票=0     期次=20260630..20260630(1)
+
+======================================================================
+fina_indicator_*.parquet 结构样例
+======================================================================
+命中 18193 个
+  fina_indicator_000002.SZ_20260630.parquet  shape=(100, 9)
+    列: ['ts_code', 'end_date', 'ann_date', 'roe', 'roic', 'gross_margin', 'debt_to_assets', 'profit_dedt', 'eps']
+    end_date: ['20120930', '20121231', '20130331', '20130630', '20130930', '20131231', '20140331', '20140630', '20140930', '20141231', '20150331', '20150630', '20150930', '20151231', '20160331', '20160630', '20160930', '20161231', '20170331', '20170630', '20170930', '20171231', '20180331', '20180630', '20180930', '20181231', '20190331', '20190630', '20190930', '20191231']
+    ann_date: ['20121024', '20130228', '20130423', '20130807', '20131030', '20140307', '20140429', '20140818', '20141027', '20150331', '20150427', '20150817', '20151028', '20160314', '20160428', '20160822', '20161028', '20170327', '20170428', '20170825', '20171027', '20180327', '20180426', '20180821', '20181026', '20190326', '20190430', '20190821', '20191025', '20200318']
+  fina_indicator_q_300933.SZ_20260630.parquet  shape=(51, 8)
+    列: ['ts_code', 'end_date', 'roe', 'roic', 'gross_margin', 'debt_to_assets', 'profit_dedt', 'eps']
+    end_date: ['20161231', '20171231', '20181231', '20190630', '20191231', '20200331', '20200630', '20200930', '20201231', '20210331', '20210630', '20210930', '20211231', '20220331', '20220630', '20220930', '20221231', '20230331', '20230630', '20230930', '20231231', '20240331', '20240630', '20240930', '20241231', '20250331', '20250630', '20250930', '20251231', '20260331']
+  fina_indicator_yoy_920957.BJ_20260630.parquet  shape=(37, 4)
+    列: ['ts_code', 'end_date', 'or_yoy', 'q_profit_yoy']
+    end_date: ['20131231', '20141231', '20150630', '20151231', '20160630', '20161231', '20170630', '20171231', '20180630', '20181231', '20190630', '20191231', '20200630', '20200930', '20201231', '20210331', '20210630', '20210930', '20211231', '20220331', '20220630', '20220930', '20221231', '20230331', '20230630', '20230930', '20231231', '20240331', '20240630', '20240930']
+
+======================================================================
+cashflow / income / balance / express 样例
+======================================================================
+--- cashflow_*.parquet 命中 4926
+   cashflow_000001_SZ_2023.parquet shape=(100, 9)
+   列: ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'n_cashflow_act', 'n_cashflow_inv_act', 'n_cash_flows_fnc_act', 'c_pay_acq_const_fiolta']
+   head:
+     ts_code  ann_date f_ann_date  end_date report_type  n_cashflow_act  n_cashflow_inv_act  n_cash_flows_fnc_act  c_pay_acq_const_fiolta
+0  000001.SZ  20260815   20260815  20260630           1    2.150120e+11       -7.049500e+10         -1.960120e+11            6.660000e+08
+1  000001.SZ  20260425   20260425  20260331           1    3.780200e+10       -5.351700e+10         -3.563400e+10            1.720000e+08
+2  000001.SZ  20260321   20260321  20251231           1    3.158580e+11       -7.903600e+10         -1.492360e+11            2.893000e+09
+3  000001.SZ  20251025   20251025  20250930           1    7.178300e+10       -1.324500e+10         -8.058100e+10            1.288000e+09
+--- income_*.parquet 命中 10164
+   income_000001_SZ_2023.parquet shape=(129, 18)
+   列: ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'comp_type', 'end_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+   head:
+     ts_code  ann_date f_ann_date  end_date report_type comp_type end_type  basic_eps  diluted_eps  total_revenue       revenue      n_income  n_income_attr_p rd_exp  total_profit    total_cogs  operate_profit      oper_exp
+0  000001.SZ  20260815   20260815  20260630           1         2        2       1.24         1.24   7.061700e+10  7.061700e+10  2.569600e+10     2.569600e+10   None  3.079500e+10  3.978900e+10    3.082800e+10  3.978900e+10
+1  000001.SZ  20260815   20260815  20260630           1         2        2       1.24         1.24   7.061700e+10  7.061700e+10  2.569600e+10     2.569600e+10   None  3.079500e+10  3.978900e+10    3.082800e+10  1.985600e+10
+2  000001.SZ  20260425   20260425  20260331           1         2        1       0.67         0.67   3.527700e+10  3.527700e+10  1.452300e+10     1.452300e+10   None  1.739900e+10  1.788800e+10    1.738900e+10  1.788800e+10
+3  000001.SZ  20260321   20260321  20251231           1         2        4       2.07         2.07   1.314420e+11  1.314420e+11  4.263300e+10     4.263300e+10   None  5.115900e+10  8.003400e+10    5.140800e+10  8.003400e+10
+--- balance_*.parquet 命中 4928
+   balance_601872_SH.parquet shape=(100, 12)
+   列: ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'total_assets', 'inventories', 'fix_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'goodwill', 'accounts_receiv']
+   head:
+     ts_code  ann_date f_ann_date  end_date report_type  total_assets   inventories    fix_assets  total_hldr_eqy_exc_min_int  total_hldr_eqy_inc_min_int     goodwill  accounts_receiv
+0  601872.SH  20260425   20260425  20260331           1  8.526425e+10  1.390100e+09           NaN                4.506124e+10                4.582134e+10  41812360.42     1.565419e+09
+1  601872.SH  20260327   20260327  20251231           1  8.205488e+10  1.311465e+09  4.217869e+10                4.300562e+10                4.375479e+10  42647867.38     1.385342e+09
+2  601872.SH  20251030   20251030  20250930           1  7.796039e+10  1.299565e+09           NaN                4.077626e+10                4.152490e+10  43151477.25     1.102846e+09
+3  601872.SH  20250828   20250828  20250630           1  7.788034e+10  1.341706e+09  3.966544e+10                4.046093e+10                4.119991e+10  43485194.62     1.553465e+09
+--- express*.parquet 命中 1
+   express_vip_20260630.parquet shape=(62, 12)
+   列: ['ts_code', 'ann_date', 'end_date', 'revenue', 'operate_profit', 'total_profit', 'n_income', 'total_assets', 'diluted_eps', 'yoy_net_profit', 'yoy_eps', 'perf_summary']
+   head:
+     ts_code  ann_date  end_date       revenue  operate_profit  total_profit      n_income  total_assets  diluted_eps  yoy_net_profit  yoy_eps perf_summary
+0  601231.SH  20260710  20260630  2.733637e+10    9.387045e+08  9.391770e+08  8.220958e+08  4.094124e+10       0.3500    6.380485e+08      NaN         None
+1  603122.SH  20260711  20260630  3.387301e+08             NaN           NaN           NaN           NaN          NaN             NaN      NaN         None
+2  000028.SZ  20260818  20260630  3.626636e+10    8.344304e+08  8.273849e+08  6.062036e+08  4.817051e+10       0.9900    6.659073e+08    -9.17         None
+3  000156.SZ  20260728  20260630  4.240319e+09    2.074855e+08  2.152114e+08  2.101661e+08  2.891438e+10       0.1134    2.539868e+08   -17.29         None
+--- balancesheet*.parquet 命中 0
+--- forecast*.parquet 命中 25
+   forecast_vip_20260630.parquet shape=(1913, 11)
+   列: ['ts_code', 'ann_date', 'end_date', 'type', 'p_change_min', 'p_change_max', 'net_profit_min', 'net_profit_max', 'last_parent_net', 'summary', 'update_flag']
+   head:
+     ts_code  ann_date  end_date type  p_change_min  p_change_max  net_profit_min  net_profit_max  last_parent_net                                                                                  summary update_flag
+0  A15222.SH  20260824  20260630   续亏      -34.7379      -22.4890       -550000.0       -500000.0              NaN                                                                    预计:净利润-550000--500000           0
+1  A22363.SH  20260821  20260630   续亏      -46.8800      -20.1800        -13100.0        -10700.0              NaN                                                                      预计:净利润-13100--10700           0
+2  600187.SH  20260819  20260630   扭亏      114.4651      117.1943           265.0           315.0         -1832.00                                                  预计2026年1-6月归属于上市公司股东的净利润盈利:265万元至315万元。           1
+3  688208.SH  20260818  20260630   略减      -11.5400       -6.3400         42500.0         45000.0         48046.62  预计2026年1-6月归属于上市公司股东的净利润盈利:42,500万元至45,000万元,同比上年下降:6.34%至11.54%,同比上年降低3,047万元至5,547万元。           0
+DONE

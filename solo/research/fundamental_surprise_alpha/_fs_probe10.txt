@@ -1,0 +1,73 @@
+income.top: 430 个 例=['income_000049_SZ.parquet', 'income_000060_SZ.parquet', 'income_000062_SZ.parquet']
+income.parquet: 10164 个 例=['income_000001_SZ_2023.parquet', 'income_000002.SZ_20260630.parquet', 'income_000002.SZ_20260930.parquet']
+
+
+balance.top: 430 个 例=['balance_000049_SZ.parquet', 'balance_000060_SZ.parquet', 'balance_000062_SZ.parquet']
+balance.parquet: 4928 个 例=['balance_601872_SH.parquet', 'balance_v14_000001_SZ_2023.parquet', 'balance_v14_000002_SZ_2023.parquet']
+
+cashflow.parquet: 4926 个 例=['cashflow_000001_SZ_2023.parquet', 'cashflow_000002_SZ_2023.parquet', 'cashflow_000006_SZ_2023.parquet']
+
+--- income_000001_SZ_2023.parquet  shape=(129, 18)
+    cols(18): ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'comp_type', 'end_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+    end_date 期数=114  重复期数=15  最大重复=2
+    ann_date: n_null=0  range=19950310~20260815
+    f_ann_date: n_null=0  range=19950310~20260815
+    report_type: n_null=0  range=1~1
+    comp_type: n_null=0  range=2~2
+
+--- income_000049_SZ.parquet  shape=(128, 16)
+    cols(16): ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+    end_date 期数=113  重复期数=15  最大重复=2
+    ann_date: n_null=0  range=19950316~20260423
+    f_ann_date: n_null=0  range=19950316~20260423
+    report_type: n_null=0  range=1~1
+
+--- balance_601872_SH.parquet  shape=(100, 12)
+    cols(12): ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'total_assets', 'inventories', 'fix_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'goodwill', 'accounts_receiv']
+    end_date 期数=70  重复期数=30  最大重复=2
+    ann_date: n_null=0  range=20090414~20260425
+    f_ann_date: n_null=0  range=20090414~20260425
+    report_type: n_null=0  range=1~1
+
+--- balance_000049_SZ.parquet  shape=(100, 12)
+    cols(12): ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'total_assets', 'inventories', 'fix_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'goodwill', 'intan_assets']
+    end_date 期数=69  重复期数=31  最大重复=2
+    ann_date: n_null=0  range=20090428~20260423
+    f_ann_date: n_null=0  range=20090428~20260423
+    report_type: n_null=0  range=1~1
+
+--- cashflow_000001_SZ_2023.parquet  shape=(100, 9)
+    cols(9): ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'n_cashflow_act', 'n_cashflow_inv_act', 'n_cash_flows_fnc_act', 'c_pay_acq_const_fiolta']
+    end_date 期数=72  重复期数=28  最大重复=2
+    ann_date: n_null=0  range=20081024~20260815
+    f_ann_date: n_null=0  range=20081024~20260815
+    report_type: n_null=0  range=1~1
+
+==================================================
+重述检查 000001.SZ
+  income_000001_SZ_2023.parquet -> shape=(129, 18)
+     end=20260630 多版本:
+   end_date  ann_date f_ann_date
+0  20260630  20260815   20260815
+1  20260630  20260815   20260815
+     end=20230331 多版本:
+    end_date  ann_date f_ann_date
+14  20230331  20230425   20230425
+15  20230331  20230425   20230425
+     end=20221231 多版本:
+    end_date  ann_date f_ann_date
+16  20221231  20230309   20230309
+17  20221231  20230309   20230309
+  cashflow_000001_SZ_2023.parquet -> shape=(100, 9)
+     end=20241231 多版本:
+   end_date  ann_date f_ann_date
+6  20241231  20250315   20250315
+7  20241231  20250315   20250315
+     end=20240630 多版本:
+    end_date  ann_date f_ann_date
+9   20240630  20240816   20240816
+10  20240630  20240816   20240816
+     end=20231231 多版本:
+    end_date  ann_date f_ann_date
+12  20231231  20240315   20240315
+13  20231231  20240315   20240315

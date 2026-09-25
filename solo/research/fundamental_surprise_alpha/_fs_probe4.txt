@@ -1,0 +1,81 @@
+======================================================================
+cache_daily 顶层文件类型普查
+======================================================================
+顶层文件数: 73994
+按扩展名: {'.parquet': 61379, '.csv': 11891, '.json': 519, '.md': 86, '.txt': 73, '.db': 15, '.pkl': 14, '.xlsx': 6, '.py': 6, '.sqlite': 1, '.bak': 1, '.db-shm': 1, '.db-wal': 1, '.png': 1}
+按前缀(前40):
+   treasure_zbin              5501
+   treasure_fin_ind           4509
+   treasure_namechg           4422
+   fin_ind                    434
+   audit                      430
+   balance                    430
+   forecast                   430
+   income                     430
+   stock                      318
+   treasure_daily_00216       114
+   treasure_daily_30019       114
+   treasure_daily_30069       114
+   treasure_daily_00229       112
+   treasure_daily_30060       112
+   treasure_daily_30023       110
+   treasure_daily_30049       109
+   treasure_daily_30065       109
+   treasure_daily_30121       109
+   treasure_daily_00239       107
+   treasure_daily_00264       107
+   treasure_daily_00254       106
+   treasure_daily_30068       106
+   treasure_daily_60059       106
+   treasure_daily_60303       106
+   treasure_daily_68816       106
+   treasure_daily_00237       105
+   treasure_daily_30000       105
+   treasure_daily_00224       104
+   treasure_daily_30048       104
+   treasure_daily_00238       103
+   treasure_daily_30004       103
+   treasure_daily_30007       102
+   treasure_daily_30042       102
+   treasure_daily_68823       102
+   treasure_daily_00209       101
+   treasure_daily_00245       101
+   treasure_daily_00256       101
+   treasure_daily_30081       101
+   treasure_daily_30109       101
+   treasure_daily_30132       101
+
+======================================================================
+含财报语义的逐股文件样例
+======================================================================
+  forecast_*.parquet         命中 455 个  例: D:\mystock\cache_daily\forecast_000049_SZ.parquet
+  express_*.parquet          命中 1 个  例: D:\mystock\cache_daily\parquet\express_vip_20260630.parquet
+  fina_*.parquet             命中 18193 个  例: D:\mystock\cache_daily\parquet\fina_indicator_000002.SZ_20260630.parquet
+  income_*.parquet           命中 10594 个  例: D:\mystock\cache_daily\income_000049_SZ.parquet
+  balance*.parquet           命中 5358 个  例: D:\mystock\cache_daily\balance_000049_SZ.parquet
+  cashflow*.parquet          命中 4926 个  例: D:\mystock\cache_daily\parquet\cashflow_000001_SZ_2023.parquet
+  disclosure*.parquet        命中 0 个  例: -
+  *_fina*                    命中 0 个  例: -
+  audit_*.json               命中 430 个  例: D:\mystock\cache_daily\audit_000049_SZ.json
+
+======================================================================
+forecast_000049_SZ.parquet 结构
+======================================================================
+shape: (49, 9)
+列: ['ts_code', 'ann_date', 'end_date', 'type', 'p_change_min', 'p_change_max', 'net_profit_min', 'net_profit_max', 'last_parent_net']
+     ts_code  ann_date  end_date type  p_change_min  p_change_max  net_profit_min  net_profit_max  last_parent_net
+0  000049.SZ  20260714  20260630   预增        101.96        125.54         19700.0         22000.0          9754.53
+1  000049.SZ  20230715  20230630   略减        -46.33        -39.83         16500.0         18500.0         30700.00
+2  000049.SZ  20230715  20230630   略减        -46.33        -39.83         16500.0         18500.0         30700.00
+3  000049.SZ  20220715  20220630   略增          5.98         17.13         28500.0         31500.0         26900.00
+4  000049.SZ  20220114  20211231   略增         11.99         19.46         75000.0         80000.0         67000.00
+5  000049.SZ  20210714  20210630   预增         43.87         58.26         25000.0         27500.0         17400.00
+6  000049.SZ  20210409  20210331   预增        164.49        189.88         12500.0         13700.0          4726.16
+7  000049.SZ  20210122  20201231   略增         25.45         37.40         63000.0         69000.0         50200.00
+8  000049.SZ  20200714  20200630   续盈         -5.00          5.00         16200.0         17900.0         17000.00
+9  000049.SZ  20200116  20191231   略增         17.10         29.56         47000.0         52000.0         40100.00
+
+audit_000049_SZ.json 结构
+======================================================================
+类型: dict
+{'audit_opinion': '标准无保留意见'}

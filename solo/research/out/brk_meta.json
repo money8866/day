@@ -1,0 +1,453 @@
+{
+ "pool": {
+  "N": [
+   10,
+   20,
+   40,
+   60
+  ],
+  "q": 0.1,
+  "liq_min": 50000.0,
+  "n_rows": 902657,
+  "n_dates": 1390,
+  "n_stocks": 5143,
+  "rows_per_day": 649.3935251798562,
+  "universe_rows": 4272292,
+  "pool_frac_of_universe": 0.21128167269465664
+ },
+ "window": {
+  "d0": 20210104,
+  "d1": 20260924
+ },
+ "features": [
+  {
+   "name": "Distance_to_R10",
+   "family": "price_position"
+  },
+  {
+   "name": "Distance_to_R15",
+   "family": "price_position"
+  },
+  {
+   "name": "Distance_to_R20",
+   "family": "price_position"
+  },
+  {
+   "name": "Distance_to_R30",
+   "family": "price_position"
+  },
+  {
+   "name": "Distance_to_R40",
+   "family": "price_position"
+  },
+  {
+   "name": "Distance_to_R60",
+   "family": "price_position"
+  },
+  {
+   "name": "Close_Position_20",
+   "family": "price_position"
+  },
+  {
+   "name": "Close_Position_40",
+   "family": "price_position"
+  },
+  {
+   "name": "Close_Position_60",
+   "family": "price_position"
+  },
+  {
+   "name": "Pos_52W_high",
+   "family": "price_position"
+  },
+  {
+   "name": "Pos_250D_range",
+   "family": "price_position"
+  },
+  {
+   "name": "Dist_to_20D_Low",
+   "family": "price_position"
+  },
+  {
+   "name": "Ret_1",
+   "family": "trend"
+  },
+  {
+   "name": "Ret_3",
+   "family": "trend"
+  },
+  {
+   "name": "Ret_5",
+   "family": "trend"
+  },
+  {
+   "name": "Ret_10",
+   "family": "trend"
+  },
+  {
+   "name": "Ret_20",
+   "family": "trend"
+  },
+  {
+   "name": "Ret_60",
+   "family": "trend"
+  },
+  {
+   "name": "Close_vs_MA5",
+   "family": "trend"
+  },
+  {
+   "name": "MA5_slope",
+   "family": "trend"
+  },
+  {
+   "name": "Close_vs_MA10",
+   "family": "trend"
+  },
+  {
+   "name": "MA10_slope",
+   "family": "trend"
+  },
+  {
+   "name": "Close_vs_MA20",
+   "family": "trend"
+  },
+  {
+   "name": "MA20_slope",
+   "family": "trend"
+  },
+  {
+   "name": "Close_vs_MA60",
+   "family": "trend"
+  },
+  {
+   "name": "MA60_slope",
+   "family": "trend"
+  },
+  {
+   "name": "Trend_Consistency_20",
+   "family": "trend"
+  },
+  {
+   "name": "Trend_Acceleration",
+   "family": "trend"
+  },
+  {
+   "name": "MA_Align",
+   "family": "trend"
+  },
+  {
+   "name": "ATR5_pct",
+   "family": "volatility"
+  },
+  {
+   "name": "ATR10_pct",
+   "family": "volatility"
+  },
+  {
+   "name": "ATR20_pct",
+   "family": "volatility"
+  },
+  {
+   "name": "ATR_ratio_5_20",
+   "family": "volatility"
+  },
+  {
+   "name": "ATR_ratio_10_60",
+   "family": "volatility"
+  },
+  {
+   "name": "STD5",
+   "family": "volatility"
+  },
+  {
+   "name": "STD10",
+   "family": "volatility"
+  },
+  {
+   "name": "STD20",
+   "family": "volatility"
+  },
+  {
+   "name": "STD_ratio_5_20",
+   "family": "volatility"
+  },
+  {
+   "name": "Range_20_pct",
+   "family": "volatility"
+  },
+  {
+   "name": "Vol_over_MA5",
+   "family": "volume"
+  },
+  {
+   "name": "Vol_over_MA10",
+   "family": "volume"
+  },
+  {
+   "name": "Vol_over_MA20",
+   "family": "volume"
+  },
+  {
+   "name": "Vol_over_MA60",
+   "family": "volume"
+  },
+  {
+   "name": "VR1",
+   "family": "volume"
+  },
+  {
+   "name": "VR3",
+   "family": "volume"
+  },
+  {
+   "name": "VR5",
+   "family": "volume"
+  },
+  {
+   "name": "VR10",
+   "family": "volume"
+  },
+  {
+   "name": "Volume_Slope",
+   "family": "volume"
+  },
+  {
+   "name": "Volume_Acceleration",
+   "family": "volume"
+  },
+  {
+   "name": "Volume_Concentration",
+   "family": "volume"
+  },
+  {
+   "name": "Volume_Stability",
+   "family": "volume"
+  },
+  {
+   "name": "Volume_Shock",
+   "family": "volume"
+  },
+  {
+   "name": "PriceVolumeEff_5",
+   "family": "volume"
+  },
+  {
+   "name": "PriceVolumeEff_20",
+   "family": "volume"
+  },
+  {
+   "name": "Vol_UpDown_Ratio_20",
+   "family": "volume"
+  },
+  {
+   "name": "Turnover_1",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_3",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_5",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_10",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_20",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_vs_MA20",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_Slope",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_Acceleration",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_Stability",
+   "family": "turnover"
+  },
+  {
+   "name": "Turnover_Shock",
+   "family": "turnover"
+  },
+  {
+   "name": "DB_VolumeRatio",
+   "family": "turnover"
+  },
+  {
+   "name": "LogMV",
+   "family": "size"
+  },
+  {
+   "name": "LogCircMV",
+   "family": "size"
+  },
+  {
+   "name": "LogAmount",
+   "family": "size"
+  },
+  {
+   "name": "Turnover_per_MV",
+   "family": "turnover"
+  },
+  {
+   "name": "K_Body",
+   "family": "candle"
+  },
+  {
+   "name": "K_UpperShadow",
+   "family": "candle"
+  },
+  {
+   "name": "K_LowerShadow",
+   "family": "candle"
+  },
+  {
+   "name": "K_ClosePos",
+   "family": "candle"
+  },
+  {
+   "name": "K_Gap",
+   "family": "candle"
+  },
+  {
+   "name": "K_GapFreq20",
+   "family": "candle"
+  },
+  {
+   "name": "K_PosCandleRatio20",
+   "family": "candle"
+  },
+  {
+   "name": "K_NegCandleRatio20",
+   "family": "candle"
+  },
+  {
+   "name": "K_LargeBodyFreq20",
+   "family": "candle"
+  },
+  {
+   "name": "K_LargeUpShadowFreq20",
+   "family": "candle"
+  },
+  {
+   "name": "K_LargeLoShadowFreq20",
+   "family": "candle"
+  },
+  {
+   "name": "K_BodyAbs20",
+   "family": "candle"
+  },
+  {
+   "name": "Efficiency_5",
+   "family": "efficiency"
+  },
+  {
+   "name": "Efficiency_10",
+   "family": "efficiency"
+  },
+  {
+   "name": "Efficiency_20",
+   "family": "efficiency"
+  },
+  {
+   "name": "TrendEfficiency_20",
+   "family": "efficiency"
+  },
+  {
+   "name": "PriceNoise_20",
+   "family": "efficiency"
+  },
+  {
+   "name": "Efficiency_5_over_20",
+   "family": "efficiency"
+  },
+  {
+   "name": "DirectionalConsistency_20",
+   "family": "efficiency"
+  },
+  {
+   "name": "Market_Return_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Industry_Return_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RelativeStrength_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RS_Ratio_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Industry_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Market_diff_5",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Market_Return_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Industry_Return_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RelativeStrength_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RS_Ratio_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Industry_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Market_diff_10",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Market_Return_20",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Industry_Return_20",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RelativeStrength_20",
+   "family": "relative_strength"
+  },
+  {
+   "name": "RS_Ratio_20",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Industry_20",
+   "family": "relative_strength"
+  },
+  {
+   "name": "Stock_vs_Market_diff_20",
+   "family": "relative_strength"
+  }
+ ],
+ "n_features": 107
+}

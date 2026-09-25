@@ -13,6 +13,7 @@ import os
 import sys
 import json
 import copy
+import glob
 import numpy as np
 import pandas as pd
 
@@ -170,6 +171,40 @@ def _load_leader_codes(trade_date: str, cfg: dict):
     return set(df['ts_code'].astype(str).str.strip())
 
 
+def _load_ige_map(trade_date: str, cfg: dict) -> dict:
+    """加载 IGE 行业景气因子 {ts_code: ige_adj}（排序用，不做过滤）。
+
+    仅作为 execution_score.industry_ige 的输入（见 trade_execution.py §24）；
+    返回 {} 表示未启用 / 无任何产出 / 加载失败 —— 该分量届时按中性 50 参与，池子不收缩。
+    ige_adj 是三级行业级指标（同三级行业成分股同值），即"行业景气"倾斜而非个股因子。
+    数据源：ige/output/ige_full_{date}.csv，由 IGE 每日盘后（21:00）产出，
+    晚于本模块 19:15 定时 → 采用 as-of 回退：取不晚于决策日的最近一期（实际为 T-1），
+    绝不使用晚于决策日的数据（§37.13 无未来函数）。
+    """
+    d = cfg.get('ige_factor', {})
+    if not d.get('enabled', False):
+        return {}
+    snaps = []
+    for p in glob.glob(os.path.join(BASE_DIR, 'ige', 'output', 'ige_full_*.csv')):
+        day = os.path.basename(p)[len('ige_full_'):-len('.csv')]
+        if day <= trade_date:
+            snaps.append((day, p))
+    if not snaps:
+        print(f'[HVT-BULL] 警告: 无可用 IGE 产出（as-of {trade_date}），行业景气分量按中性 50')
+        return {}
+    asof, path = max(snaps)
+    tag = '' if asof == trade_date else f' STALE_IGE(回退到 {asof})'
+    try:
+        df = pd.read_csv(path, encoding='utf-8-sig', usecols=['code', 'ige_adj'])
+    except Exception as e:
+        print(f'[HVT-BULL] 警告: IGE 数据加载失败 {e}，行业景气分量按中性 50')
+        return {}
+    v = pd.to_numeric(df['ige_adj'], errors='coerce')
+    m = {str(c).strip(): float(x) for c, x in zip(df['code'], v) if pd.notna(x)}
+    print(f'[HVT-BULL] IGE 行业景气因子: {os.path.basename(path)}{tag}，覆盖 {len(m)} 只')
+    return m
+
+
 def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> dict:
     """每日扫描主入口。返回结果 dict 并落盘 JSON/MD。"""
     if cfg is None:
@@ -192,6 +227,9 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         print(f"[HVT-BULL] sli_v2 龙头过滤: 股票池 {len(uni)}只")
         if not uni:
             return {'trade_date': trade_date, 'events': []}
+
+    # IGE 行业景气因子（仅参与 execution_score 排序，不做池子过滤）
+    ige_map = _load_ige_map(trade_date, cfg)
 
     stock_themes = ctx.load_stock_themes(trade_date)
     v3_enabled = bool(cfg.get('v3', {}).get('enabled', True))
@@ -302,6 +340,8 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
             ev.similarity_score = similarity(ev, cfg)
             ev.wait_reasons = engine.wait_reasons(ev)
             engine.build_trade_plan(ev)
+            # IGE 行业景气（三级行业 ige_adj，缺失为 None → TE 内按中性 50）
+            ev.ige_adj = ige_map.get(code)
             if te_enabled:
                 # V3.5 Trade Execution 增量层（只读叠加：不改V3.0状态/评分/否决与候选池）
                 try:

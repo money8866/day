@@ -1,0 +1,47 @@
+{
+  "panel_start": 20210104,
+  "panel_end": 20260924,
+  "n_first_board": 33401,
+  "n_core_tf": 13269,
+  "N_WIN": 46,
+  "W_OBS": 15,
+  "pivot_R": 1,
+  "min_gap": 2,
+  "k_cand": 6,
+  "brk_search": 10,
+  "horizons": [
+    1,
+    3,
+    5,
+    10,
+    20
+  ],
+  "buffers": [
+    0.0,
+    0.005,
+    0.01,
+    0.02
+  ],
+  "core_dd": 0.25,
+  "cost": 0.003,
+  "slip": 0.001,
+  "comm": 0.00025,
+  "stamp": 0.0005,
+  "defaults": {
+    "price_tol": 0.01,
+    "vol_tol": 0.1,
+    "vol_decay_thr": 0.8,
+    "prog_min": 0.01,
+    "ma_conv": 0.05,
+    "max_dd": 0.1,
+    "gap6": 6
+  },
+  "defs": [
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6"
+  ]
+}

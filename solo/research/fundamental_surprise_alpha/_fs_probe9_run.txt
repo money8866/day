@@ -1,0 +1,35 @@
+﻿parquet/ 下 daily_* 文件数: 57611
+  非法命名: 53417  股票数: 1011
+  start_date 分布(top10): [('20200101', 900), ('20251027', 900), ('20251028', 900), ('20251029', 900), ('20260715', 150), ('20260716', 150), ('20260717', 150), ('20260714', 141), ('20251124', 2), ('20251121', 1)]
+  end_date 分布(top10): [('20260804', 1200), ('20260805', 1050), ('20260803', 1041), ('20261231', 900), ('20260831', 2), ('20260828', 1)]
+  start_date 最早10个: ['20200101', '20251027', '20251028', '20251029', '20251121', '20251124', '20260714', '20260715', '20260716', '20260717']
+
+抽样读取:
+  daily_code_000948_SZ_20250101_20260731.parquet       shape=(382, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20250102~20260731
+  daily_code_600572_SH_20260131_20260908.parquet       shape=(146, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260202~20260908
+  daily_code_688617_SH_20260205_20260824.parquet       shape=(132, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260205~20260824
+  daily_code_688218_SH_20260121_20260809.parquet       shape=(132, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260121~20260807
+  daily_code_605118_SH_20260121_20260809.parquet       shape=(132, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260121~20260807
+  daily_688213.SH_20251027_20260803.parquet            shape=(188, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20251027~20260803
+  daily_code_002520_SZ_20260118_20260826.parquet       shape=(147, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260119~20260826
+  daily_code_000790_SZ_20260205_20260824.parquet       shape=(132, 11)    cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']  td=20260205~20260824
+
+起始日为 20200101 的文件:
+  数量: 900
+  例 daily_000008.SZ_20200101_20261231.parquet shape=(1592, 11)
+  cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']
+  trade_date 20200102 ~ 20260805
+     ts_code trade_date  open  high   low  close  pre_close  change  pct_chg        vol       amount
+0  000008.SZ   20260805  2.44  2.45  2.41   2.42       2.44   -0.02  -0.8197  287508.00  69786.57300
+1  000008.SZ   20260804  2.47  2.51  2.42   2.44       2.44    0.00   0.0000  353952.41  86745.55204
+        ts_code trade_date  open  high   low  close  pre_close  change  pct_chg        vol      amount
+1590  000008.SZ   20200103  3.72  3.75  3.70   3.75       3.71    0.04   1.0782  310728.28  115673.790
+1591  000008.SZ   20200102  3.66  3.71  3.64   3.71       3.63    0.08   2.2039  377467.90  139208.169
+
+daily_basic_* 文件数: 1869
+  例: ['daily_basic_20260629.parquet', 'daily_basic_20260630.parquet', 'daily_basic_20260701.parquet']
+  shape=(5510, 10) cols=['ts_code', 'trade_date', 'close', 'total_mv', 'circ_mv', 'turnover_rate', 'volume_ratio', 'pe', 'pe_ttm', 'pb']
+  trade_date 20260629 ~ 20260629
+
+treasure_daily_* 文件数: 0
+DONE

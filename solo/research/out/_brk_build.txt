@@ -1,0 +1,52 @@
+﻿== 读取 panel ==
+  panel (7102222, 17)
+  交易日 1390 20210104 20260924
+  行业数 110   ST/退市股 227
+  Universe 4272292  日均 3074
+  压力位建立完成
+  Candidate Pool 902657  日均 649  占U 21.1%
+  读取 daily_basic ...
+  daily_basic 命中率 68.1%
+  前瞻收益 ...
+  组装 107 特征 ...
+已写 brk_cand.parquet (902657, 146)
+
+=== 家族分布 ===
+  relative_strength  18
+  trend              17
+  volume             16
+  price_position     12
+  turnover           12
+  candle             12
+  volatility         10
+  efficiency         7
+  size               3
+
+=== 缺失率 top15 ===
+  Turnover_Shock             0.281
+  Turnover_Acceleration      0.276
+  Turnover_20                0.275
+  Turnover_vs_MA20           0.275
+  Turnover_Slope             0.275
+  Turnover_10                0.272
+  Turnover_Stability         0.272
+  Turnover_5                 0.271
+  Turnover_3                 0.270
+  DB_VolumeRatio             0.270
+  Turnover_1                 0.270
+  LogMV                      0.270
+  LogCircMV                  0.270
+  Turnover_per_MV            0.270
+  Industry_Return_5          0.019
+
+=== 前瞻收益（原始，未扣成本）===
+  T+1  n=901451 mean=0.1552% med=0.0000% win=49.3%
+  T+3  n=898894 mean=0.2552% med=-0.2864% win=46.8%
+  T+5  n=896342 mean=0.3538% med=-0.4258% win=46.3%
+  T+10 n=890618 mean=0.5120% med=-0.7075% win=45.7%
+
+=== Regime 分布(候选行)===
+Regime
+BEAR      364858
+BULL      333584
+NORMAL    204215

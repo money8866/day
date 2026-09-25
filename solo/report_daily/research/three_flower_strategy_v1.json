@@ -1,0 +1,107 @@
+{
+  "strategy_name": "ThreeFlower_Conditional_V1",
+  "status": "CONDITIONAL",
+  "base_research": "ThreeFlower V1.0 / 首板涨停后三花聚顶量价结构研究",
+  "verdict_one_line": "三花结构（价格不降+量递减）本身具备相对首板基准的正超额且跨年稳健；但「三花+二次突破」无 Alpha。结论为条件有效：结构有效、突破无效，且优势集中在低换手/小市值/弱势或熊市环境。",
+  "event": {
+    "type": "FIRST_LIMIT_UP",
+    "lookback_no_limit_up": 20,
+    "limit_up_recognition": "按板块分别判定（主板10% / 创业板·科创板20% / 北交所30% / ST主板5%），并对首板质量按一字板、炸板、量比等分级"
+  },
+  "structure": {
+    "observation_window": "T+0 ~ T+15（W_OBS=15 交易日）",
+    "flower_definition": "摆动低点（半径 R=1）作为「花」，最少 3 花；结构选择与定义筛选分离，以确认日最早的三元组为准（SEL_RULE=earliest）",
+    "family": "H1（价格重心不下降 + 成交量递减）",
+    "volume_decay": "V2<=V1*(1+10%) 且 V3<=V2*(1+10%)；稳健区间 volume_tolerance 0%~20%",
+    "price_progression": "P2>=P1*(1-1%) 且 P3>=P2*(1-1%)；稳健区间 price_tolerance 0%~3%",
+    "max_drawdown": "结构内回撤 CORE_DD<=25%（H1 不额外约束；额外收紧至 8%~12% 无稳健增益）",
+    "ma_convergence": "H1 不使用均线收敛条件（实测 MA 收敛无增量贡献，仅 H4/H5/H6 使用）",
+    "no_lookahead": "花在 d 日成立、d+3 日方可确认（c3=f3+R）；所有条件仅用 offset<=确认日 的数据"
+  },
+  "entry": {
+    "type": "CONFIRM_CLOSE",
+    "primary": "三花确认日收盘买入（Entry A）",
+    "alternative": "三花确认日次日开盘买入（Entry B，超额与 A 等价）",
+    "breakout_buffer": "不建议——突破类买点（buffer 0/0.5%/1%/2%）全期超额均 <= 0，且 buffer 越大越差",
+    "volume_confirmation": "不建议放量确认——突破 VR>=1.2 显著为负；仅 VR<1.2 缩量突破在 T+10 有 +0.97% 但 Walk-Forward 仅 33% 一致"
+  },
+  "filters": {
+    "turnover": "优先 Low 换手（T+10 +3.60pp）；回避 High 换手（+0.12pp，失败率 55.3%）",
+    "market_cap": "优先 Small（+1.27pp），Mid 最弱（+0.17pp）；注意市值分层仅覆盖 2023 起",
+    "regime": "bear（+3.14pp, n=184）与 weak（+1.22pp）最优；strong（+1.10pp）中性偏差；neutral 最弱（+0.61pp）",
+    "first_board_quality": "优先 Strong（+2.04pp）；Weak 需回避（失败率 52.8%）",
+    "board": "主板为主（+1.07pp, n=1574）；创业板 +1.28pp 但样本 130；科创板 +6.60pp 仅 n=34 不足采信；北交所样本 2 只得出"
+  },
+  "risk": {
+    "structure_failure": "结构内跌破确认日实体或首板收盘（min_close_vs_t0 < -6%）",
+    "max_hold": "T+20（超额在 T+10~T+20 见顶，T+20 之后未测）",
+    "failure_base_rate": "49.9%（H1 + 确认日收盘，T+10 口径）",
+    "worst_patterns": [
+      "高换手 + 确认过早（59.4%）",
+      "高换手前 1/3 分位（55.3%）",
+      "高换手 + 花数<=3（54.2%）"
+    ]
+  },
+  "expected_horizon": [
+    "T+3",
+    "T+5",
+    "T+10",
+    "T+20"
+  ],
+  "performance": {
+    "H1_all": {
+      "n": 1738,
+      "adv5": 0.00556,
+      "adv10": 0.011,
+      "adv20": 0.0152,
+      "med10": 0.0006,
+      "win10": 0.5,
+      "pf10": 1.28,
+      "t10": 5.7
+    },
+    "H1_yearly_adv10": {
+      "2021": 0.0143,
+      "2022": 0.0246,
+      "2023": 0.0118,
+      "2024": 0.0047,
+      "2025": 0.0053,
+      "2026": 0.0172
+    },
+    "H1_oos_2026": {
+      "n": 227,
+      "adv10": 0.01723,
+      "adv20": 0.01443
+    },
+    "benchmark_BM1_first_board": {
+      "med10": -0.0131,
+      "med20": -0.0208,
+      "win10": 0.44
+    },
+    "walk_forward_ok_rate": 1.0
+  },
+  "validation": {
+    "train": "2021-01-04 ~ 2023-12-31（H1 adv10 +1.43%/+2.46%/+1.18%）",
+    "validation": "2024-01-01 ~ 2025-12-31（H1 adv10 +0.47%/+0.53%）",
+    "oos": "2026-01-01 ~ 2026-09-24（H1 adv10 +1.72%，adv20 +1.44%，n=227）",
+    "robustness": "price_tolerance 0~3% / volume_tolerance 0~20% / 观测窗口 10~15 日均保持正超额；突破 buffer 与突破 VR 维度单调恶化为负",
+    "walk_forward": "H1 一致率 100%（2024/2025/2026 三次逐年滚动全部 OK）；H4 33%；H5/H6 0%"
+  },
+  "hvt_orthogonality": {
+    "same_day_overlap": "0.0%（0/552，HVT 窗口内三花确认日命中）",
+    "near3_overlap": "0.7%（4/552）",
+    "same_first_board_overlap": "10.1%（56/552，随机基准 0.23%）",
+    "conclusion": "三花确认时点与 HVT 触发时点完全不同日（重合 0%）→ 在时序上正交；仅首板层面有部分重合。重合样本（n=56）无额外收益（T+10 差 +0.01%，T+20 差 -2.73%）。"
+  },
+  "failure_conditions": [
+    "三花确认日换手率处于市场前 1/3 分位（失败率 55.3%，lift 1.11）",
+    "确认日过早（<=T+8，失败率 51.9%，中位 T+20 -1.16%）",
+    "花数 <=3（失败率 51.6%）",
+    "首板质量 Weak（失败率 52.8%，中位 T+10 -0.45%）",
+    "介入方式选择「突破买入」（C 组失败率 56.3%，且突破量能越大失败率越高）",
+    "结构内跌破首板收盘 -6% 以上且未收复"
+  ],
+  "integration": {
+    "auto_trade_integration": false,
+    "note": "本阶段仅产出科研结论与因子定义，是否接入实盘由用户决定；未修改 HVT/DLG/F120/主题/突破/实盘任何模块。"
+  }
+}

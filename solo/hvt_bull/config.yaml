@@ -93,6 +93,12 @@ state_machine:
 sli_v2:
   leader_filter: true           # 关联 sli_v2 细分龙头 Top5（标准接口），不在表中的股票直接过滤
 
+ige_factor:
+  enabled: true                 # IGE 行业景气（三级行业 ige_adj）：仅作为排序因子参与
+                                # execution_score.industry_ige，不做股票池过滤（20260925 用户改口径）
+                                # 取数：ige/output/ige_full_{date}.csv；无当日文件按 as-of 回退到最近一期
+                                # （实为 T-1，§37.13 无未来函数）；完全无数据 → 该分量按中性 50 参与
+
 scoring:
   weights:
     hvt_exception: 15
@@ -171,12 +177,16 @@ trade_execution:
       market_regime: 0.05
       risk_reward: 0.05
     execution_score:           # §24
-      buyability: 0.40
+      # 20260925：新增 industry_ige（IGE 行业景气）0.05，权重自 buyability 匀出
+      # （0.40→0.35），sector_market（theme_heat 板块热度）保持 0.05 不动；
+      # 缺失数据时该分量按中性 50 参与，故阈值口径（§25）无需调整。
+      buyability: 0.35
       fe_riskadj: 0.25
       continuation: 0.15
       price_rr: 0.10
       lifecycle_fit: 0.05
       sector_market: 0.05
+      industry_ige: 0.05
   board_cooldown:              # §38：连板过热冷却（妖股接力风控，硬风控优先于评分）
     max_consec_limit_up: 3     # 截至决策日连续涨停 >= N 天 → 冷却（SKIP）
     max_limit_up_5d: 4         # 近5日涨停 >= N 板（断板余温）→ 冷却，窗口自然衰减

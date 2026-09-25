@@ -1,0 +1,50 @@
+﻿python : D:\mystock\solo\research\_pfb_feat.py:62: RuntimeWarning: Mean of empty slice
+At line:1 char:5
++ & { python -u _pfb_feat.py 2>&1 | Out-File -FilePath out\_pfb_feat.tx ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\mystock\solo... of empty slice:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  F['cp_mean12'] = np.nanmean(np.stack([c(cp, 1), c(cp, 2)], 1), axis=1)
+D:\mystock\solo\research\_pfb_feat.py:87: RuntimeWarning: Mean of empty slice
+  F['vr_mean12'] = np.nanmean(np.stack([c(vr, 1), c(vr, 2)], 1), axis=1)
+D:\mystock\solo\research\_pfb_feat.py:93: RuntimeWarning: Mean of empty slice
+  F['vo_vov0_mean12'] = np.nanmean(np.stack([c(vov0, 1), c(vov0, 2)], 1), axis=1)
+D:\mystock\solo\research\_pfb_feat.py:102: RuntimeWarning: Mean of empty slice
+  F['to_ma3_2'] = ratio(c(to_rate, 2), np.nanmean(np.stack([c(to_rate, 0), c(to_rate, 1), c(to_rate, 2)]), 0))
+D:\mystock\solo\research\_pfb_feat.py:147: RuntimeWarning: invalid value encountered in divide
+  F['t0_body'] = (C0 - O0) / R0
+D:\mystock\solo\research\_pfb_feat.py:148: RuntimeWarning: invalid value encountered in divide
+  F['t0_upper'] = (H0 - np.maximum(O0, C0)) / R0
+D:\mystock\solo\research\_pfb_feat.py:149: RuntimeWarning: invalid value encountered in divide
+  F['t0_lower'] = (np.minimum(O0, C0) - L0) / R0
+D:\mystock\solo\research\_pfb_feat.py:177: RuntimeWarning: All-NaN slice encountered
+  return np.nanmin(lows, 1) / e - 1, np.nanmax(highs, 1) / e - 1
+已写 out/pfb_feat.parquet (33401, 141)
+特征列 99
+可用样本: clean&n60&can_buy&fwd5 = 30637 / 33401
+period
+TRAIN    13736
+VALID    12488
+OOS       4413
+regime
+NORMAL    14986
+RANGE      7566
+BULL       5727
+BEAR       2358
+
+=== fwd 描述（可用样本）===
+               fwd3          fwd5         fwd10       fwd3_e1       fwd5_e1
+count  30637.000000  30637.000000  30543.000000  30637.000000  30637.000000
+mean      -0.000572     -0.001826      0.000060     -0.001450     -0.004618
+std        0.078933      0.100204      0.138188      0.085392      0.105068
+min       -0.339181     -0.486292     -0.622951     -0.370370     -0.462639
+25%       -0.043547     -0.057278     -0.077449     -0.047836     -0.063492
+50%       -0.007377     -0.010309     -0.013778     -0.008438     -0.012987
+75%        0.032774      0.041162      0.054054      0.036325      0.039980
+max        0.984371      1.508410      2.789127      1.198571      1.325714
+
+=== T0 锚点参照（同样本）===
+t0_fwd3     0.000000
+t0_fwd5    -0.006494
+t0_fwd10   -0.012289

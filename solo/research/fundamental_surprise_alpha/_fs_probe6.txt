@@ -1,0 +1,540 @@
+======================================================================
+1) 各表 trade_date 范围
+======================================================================
+  daily_cache              min=20210104 max=20260924 日期数=1390
+  index_daily_cache        min=20200102 max=20260924 日期数=1633
+  daily_basic_cache        min=20230103 max=20260924 日期数=905
+  stk_factor_pro           min=19901226 max=20260916 日期数=8665
+  adj_factor_cache         min=20230103 max=20260924 日期数=905
+  factor_snapshot_cache    min=20260907 max=20260924 日期数=14
+
+stk_factor_pro 列:
+   ts_code TEXT
+   trade_date TEXT
+   open REAL
+   open_hfq REAL
+   open_qfq REAL
+   high REAL
+   high_hfq REAL
+   high_qfq REAL
+   low REAL
+   low_hfq REAL
+   low_qfq REAL
+   close REAL
+   close_hfq REAL
+   close_qfq REAL
+   pre_close REAL
+   change REAL
+   pct_chg REAL
+   vol REAL
+   amount REAL
+   turnover_rate REAL
+   turnover_rate_f REAL
+   volume_ratio REAL
+   pe REAL
+   pe_ttm REAL
+   pb REAL
+   ps REAL
+   ps_ttm REAL
+   dv_ratio REAL
+   dv_ttm REAL
+   total_share REAL
+   float_share REAL
+   free_share REAL
+   total_mv REAL
+   circ_mv REAL
+   adj_factor REAL
+   asi_bfq REAL
+   asi_hfq REAL
+   asi_qfq REAL
+   asit_bfq REAL
+   asit_hfq REAL
+   asit_qfq REAL
+   atr_bfq REAL
+   atr_hfq REAL
+   atr_qfq REAL
+   bbi_bfq REAL
+   bbi_hfq REAL
+   bbi_qfq REAL
+   bias1_bfq REAL
+   bias1_hfq REAL
+   bias1_qfq REAL
+   bias2_bfq REAL
+   bias2_hfq REAL
+   bias2_qfq REAL
+   bias3_bfq REAL
+   bias3_hfq REAL
+   bias3_qfq REAL
+   boll_lower_bfq REAL
+   boll_lower_hfq REAL
+   boll_lower_qfq REAL
+   boll_mid_bfq REAL
+   boll_mid_hfq REAL
+   boll_mid_qfq REAL
+   boll_upper_bfq REAL
+   boll_upper_hfq REAL
+   boll_upper_qfq REAL
+   brar_ar_bfq REAL
+   brar_ar_hfq REAL
+   brar_ar_qfq REAL
+   brar_br_bfq REAL
+   brar_br_hfq REAL
+   brar_br_qfq REAL
+   cci_bfq REAL
+   cci_hfq REAL
+   cci_qfq REAL
+   cr_bfq REAL
+   cr_hfq REAL
+   cr_qfq REAL
+   dfma_dif_bfq REAL
+   dfma_dif_hfq REAL
+   dfma_dif_qfq REAL
+   dfma_difma_bfq REAL
+   dfma_difma_hfq REAL
+   dfma_difma_qfq REAL
+   dmi_adx_bfq REAL
+   dmi_adx_hfq REAL
+   dmi_adx_qfq REAL
+   dmi_adxr_bfq REAL
+   dmi_adxr_hfq REAL
+   dmi_adxr_qfq REAL
+   dmi_mdi_bfq REAL
+   dmi_mdi_hfq REAL
+   dmi_mdi_qfq REAL
+   dmi_pdi_bfq REAL
+   dmi_pdi_hfq REAL
+   dmi_pdi_qfq REAL
+   downdays REAL
+   updays REAL
+   dpo_bfq REAL
+   dpo_hfq REAL
+   dpo_qfq REAL
+   madpo_bfq REAL
+   madpo_hfq REAL
+   madpo_qfq REAL
+   ema_bfq_10 REAL
+   ema_bfq_20 REAL
+   ema_bfq_250 REAL
+   ema_bfq_30 REAL
+   ema_bfq_5 REAL
+   ema_bfq_60 REAL
+   ema_bfq_90 REAL
+   ema_hfq_10 REAL
+   ema_hfq_20 REAL
+   ema_hfq_250 REAL
+   ema_hfq_30 REAL
+   ema_hfq_5 REAL
+   ema_hfq_60 REAL
+   ema_hfq_90 REAL
+   ema_qfq_10 REAL
+   ema_qfq_20 REAL
+   ema_qfq_250 REAL
+   ema_qfq_30 REAL
+   ema_qfq_5 REAL
+   ema_qfq_60 REAL
+   ema_qfq_90 REAL
+   emv_bfq REAL
+   emv_hfq REAL
+   emv_qfq REAL
+   maemv_bfq REAL
+   maemv_hfq REAL
+   maemv_qfq REAL
+   expma_12_bfq REAL
+   expma_12_hfq REAL
+   expma_12_qfq REAL
+   expma_50_bfq REAL
+   expma_50_hfq REAL
+   expma_50_qfq REAL
+   kdj_bfq REAL
+   kdj_hfq REAL
+   kdj_qfq REAL
+   kdj_d_bfq REAL
+   kdj_d_hfq REAL
+   kdj_d_qfq REAL
+   kdj_k_bfq REAL
+   kdj_k_hfq REAL
+   kdj_k_qfq REAL
+   ktn_down_bfq REAL
+   ktn_down_hfq REAL
+   ktn_down_qfq REAL
+   ktn_mid_bfq REAL
+   ktn_mid_hfq REAL
+   ktn_mid_qfq REAL
+   ktn_upper_bfq REAL
+   ktn_upper_hfq REAL
+   ktn_upper_qfq REAL
+   lowdays REAL
+   topdays REAL
+   ma_bfq_10 REAL
+   ma_bfq_20 REAL
+   ma_bfq_250 REAL
+   ma_bfq_30 REAL
+   ma_bfq_5 REAL
+   ma_bfq_60 REAL
+   ma_bfq_90 REAL
+   ma_hfq_10 REAL
+   ma_hfq_20 REAL
+   ma_hfq_250 REAL
+   ma_hfq_30 REAL
+   ma_hfq_5 REAL
+   ma_hfq_60 REAL
+   ma_hfq_90 REAL
+   ma_qfq_10 REAL
+   ma_qfq_20 REAL
+   ma_qfq_250 REAL
+   ma_qfq_30 REAL
+   ma_qfq_5 REAL
+   ma_qfq_60 REAL
+   ma_qfq_90 REAL
+   macd_bfq REAL
+   macd_hfq REAL
+   macd_qfq REAL
+   macd_dea_bfq REAL
+   macd_dea_hfq REAL
+   macd_dea_qfq REAL
+   macd_dif_bfq REAL
+   macd_dif_hfq REAL
+   macd_dif_qfq REAL
+   mass_bfq REAL
+   mass_hfq REAL
+   mass_qfq REAL
+   ma_mass_bfq REAL
+   ma_mass_hfq REAL
+   ma_mass_qfq REAL
+   mfi_bfq REAL
+   mfi_hfq REAL
+   mfi_qfq REAL
+   mtm_bfq REAL
+   mtm_hfq REAL
+   mtm_qfq REAL
+   mtmma_bfq REAL
+   mtmma_hfq REAL
+   mtmma_qfq REAL
+   obv_bfq REAL
+   obv_hfq REAL
+   obv_qfq REAL
+   psy_bfq REAL
+   psy_hfq REAL
+   psy_qfq REAL
+   psyma_bfq REAL
+   psyma_hfq REAL
+   psyma_qfq REAL
+   roc_bfq REAL
+   roc_hfq REAL
+   roc_qfq REAL
+   maroc_bfq REAL
+   maroc_hfq REAL
+   maroc_qfq REAL
+   rsi_bfq_12 REAL
+   rsi_bfq_24 REAL
+   rsi_bfq_6 REAL
+   rsi_hfq_12 REAL
+   rsi_hfq_24 REAL
+   rsi_hfq_6 REAL
+   rsi_qfq_12 REAL
+   rsi_qfq_24 REAL
+   rsi_qfq_6 REAL
+   taq_down_bfq REAL
+   taq_down_hfq REAL
+   taq_down_qfq REAL
+   taq_mid_bfq REAL
+   taq_mid_hfq REAL
+   taq_mid_qfq REAL
+   taq_up_bfq REAL
+   taq_up_hfq REAL
+   taq_up_qfq REAL
+   trix_bfq REAL
+   trix_hfq REAL
+   trix_qfq REAL
+   trma_bfq REAL
+   trma_hfq REAL
+   trma_qfq REAL
+   vr_bfq REAL
+   vr_hfq REAL
+   vr_qfq REAL
+   wr_bfq REAL
+   wr_hfq REAL
+   wr_qfq REAL
+   wr1_bfq REAL
+   wr1_hfq REAL
+   wr1_qfq REAL
+   xsii_td1_bfq REAL
+   xsii_td1_hfq REAL
+   xsii_td1_qfq REAL
+   xsii_td2_bfq REAL
+   xsii_td2_hfq REAL
+   xsii_td2_qfq REAL
+   xsii_td3_bfq REAL
+   xsii_td3_hfq REAL
+   xsii_td3_qfq REAL
+   xsii_td4_bfq REAL
+   xsii_td4_hfq REAL
+   xsii_td4_qfq REAL
+
+======================================================================
+2) 行业分类来源搜索
+======================================================================
+       38.9 KB  D:\mystock\cache_daily\sw_industry_map.json
+      313.9 KB  D:\mystock\cache_daily\industry\sw_industry_map.csv
+      313.9 KB  D:\mystock\cache_daily\industry\sw_industry_map.csv
+       38.9 KB  D:\mystock\cache_daily\sw_industry_map.json
+    10376.5 KB  D:\mystock\cache_daily\theme_stock_map_20260622.json
+    10481.2 KB  D:\mystock\cache_daily\theme_stock_map_20260623.json
+    10377.9 KB  D:\mystock\cache_daily\theme_stock_map_20260624.json
+    10425.1 KB  D:\mystock\cache_daily\theme_stock_map_20260625.json
+    10427.3 KB  D:\mystock\cache_daily\theme_stock_map_20260626.json
+    10434.6 KB  D:\mystock\cache_daily\theme_stock_map_20260629.json
+     4512.8 KB  D:\mystock\cache_daily\theme_stock_map_20260703.json
+     4720.4 KB  D:\mystock\cache_daily\theme_stock_map_20260706.json
+     2525.3 KB  D:\mystock\cache_daily\theme_stock_map_20260709.json
+     2488.7 KB  D:\mystock\cache_daily\theme_stock_map_20260713.json
+     2559.3 KB  D:\mystock\cache_daily\theme_stock_map_20260716.json
+     6459.1 KB  D:\mystock\cache_daily\theme_stock_map_20260717.json
+     6543.6 KB  D:\mystock\cache_daily\theme_stock_map_20260721.json
+     6519.2 KB  D:\mystock\cache_daily\theme_stock_map_20260722.json
+     6532.7 KB  D:\mystock\cache_daily\theme_stock_map_20260730.json
+     7344.6 KB  D:\mystock\cache_daily\theme_stock_map_20260803.json
+     5389.1 KB  D:\mystock\cache_daily\theme_stock_map_latest.json
+     7344.6 KB  D:\mystock\cache_daily\theme_stock_map_latest_v1.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260629.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260630.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260701.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260702.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260703.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260706.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260707.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260708.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260709.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260710.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260713.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260714.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260715.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260716.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260717.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260720.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260721.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260722.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260723.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260724.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260727.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260728.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260729.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260730.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260731.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260803.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260804.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260805.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260806.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260807.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260810.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260811.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260812.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260813.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260814.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260817.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260818.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260819.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260820.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260821.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260824.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260825.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260826.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260827.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260828.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260831.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260901.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260902.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260903.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260904.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260907.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260908.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260909.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260910.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260911.json
+     5375.0 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260918.json
+     5381.8 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260921.json
+     5396.4 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260922.json
+     5344.3 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260923.json
+     5389.1 KB  D:\mystock\cache_daily\theme_stock_map_v2_20260924.json
+       38.9 KB  D:\mystock\cache_daily\sw_industry_map.json
+        0.9 KB  D:\mystock\cache_daily\_check_swgame.py
+      375.0 KB  D:\mystock\solo\cache_backbone_tushare\cache_sw_industry.pkl
+      168.8 KB  D:\mystock\solo\sector_0915\cache\sw_industry_all_20260915.parquet
+      168.8 KB  D:\mystock\solo\sector_0915\cache\sw_industry_all_20260916.parquet
+      169.0 KB  D:\mystock\solo\sector_0915\cache\sw_industry_all_20260918.parquet
+        3.4 KB  D:\mystock\solo\theme_kg_v3\theme_kg_v3\data\sw_industry_mapping.json
+      174.6 KB  D:\mystock\solo\ige\output\ige_industry_20260901.csv
+      212.8 KB  D:\mystock\solo\ige\output\ige_industry_20260904.csv
+      212.8 KB  D:\mystock\solo\ige\output\ige_industry_20260907.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260908.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260909.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260910.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260911.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260914.csv
+      212.8 KB  D:\mystock\solo\ige\output\ige_industry_20260915.csv
+      212.5 KB  D:\mystock\solo\ige\output\ige_industry_20260916.csv
+      212.8 KB  D:\mystock\solo\ige\output\ige_industry_20260917.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260918.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260921.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260922.csv
+      212.8 KB  D:\mystock\solo\ige\output\ige_industry_20260923.csv
+      212.7 KB  D:\mystock\solo\ige\output\ige_industry_20260924.csv
+        6.6 KB  D:\mystock\solo\ige\output\ige_quality_industry_20260901.csv
+        1.4 KB  D:\mystock\solo\research\out\tf_layers_industry.csv
+       61.2 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260825.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260826.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260827.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260828.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260901.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260904.csv
+       61.4 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260907.csv
+       61.2 KB  D:\mystock\solo\sli\output\sli_industry_top3_20260921.csv
+        1.6 KB  D:\mystock\solo\sli\output\sli_industry_钛白粉_20260828.csv
+        2.1 KB  D:\mystock\solo\sli\output\sli_industry_钛白粉_reasons_20260828.csv
+        3.3 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260825.csv
+        3.3 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260826.csv
+        3.2 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260827.csv
+        3.2 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260904.csv
+        3.2 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260907.csv
+        3.9 KB  D:\mystock\solo\sli\output\sli_v2_growth_industry_top_20260921.csv
+        6.6 KB  D:\mystock\solo\stock_basic_industry_alias.json
+        2.8 KB  D:\mystock\solo\sli\config\industry_chain.json
+        4.9 KB  D:\mystock\solo\sli\config\industry_knowledge.json
+        3.4 KB  D:\mystock\solo\theme_kg_v3\theme_kg_v3\data\sw_industry_mapping.json
+       32.7 KB  D:\mystock\solo\sli\classify.py
+        5.0 KB  D:\mystock\solo\sli\cache\classify_SW2021_L1.parquet
+        7.7 KB  D:\mystock\solo\sli\cache\classify_SW2021_L2.parquet
+       13.4 KB  D:\mystock\solo\sli\cache\classify_SW2021_L3.parquet
+       14.5 KB  D:\mystock\solo\theme_forecast\reclassify_regime.py
+     5389.1 KB  D:\mystock\solo\report_daily\theme_stock_map_latest_v2.json
+      496.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260724.csv
+      496.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260727.csv
+      496.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260728.csv
+      497.2 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260729.csv
+      497.1 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260730.csv
+      658.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260731.csv
+      679.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260803.csv
+      684.0 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260804.csv
+      683.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260805.csv
+      661.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260806.csv
+      676.7 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260807.csv
+      677.1 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260810.csv
+      676.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260811.csv
+      677.3 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260812.csv
+      676.7 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260813.csv
+      676.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260814.csv
+      655.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260817.csv
+      656.5 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260818.csv
+      656.0 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260819.csv
+      657.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260820.csv
+      656.2 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260821.csv
+      656.4 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260824.csv
+      658.0 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260825.csv
+      657.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260826.csv
+      649.1 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260827.csv
+      647.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260828.csv
+      648.7 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260831.csv
+      649.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260901.csv
+      649.5 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260902.csv
+      649.5 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260903.csv
+      642.4 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260904.csv
+      643.0 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260907.csv
+      641.5 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260908.csv
+      642.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260909.csv
+      642.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260910.csv
+      642.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260911.csv
+      643.9 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260914.csv
+      643.3 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260915.csv
+      643.4 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260916.csv
+      643.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260917.csv
+      642.4 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260918.csv
+      643.8 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260921.csv
+      644.1 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260922.csv
+      643.3 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260923.csv
+      643.6 KB  D:\mystock\solo\report_daily\theme_stock_map_v2_20260924.csv
+        0.2 KB  D:\mystock\solo\bak0615\check_stock_industry.py
+        3.4 KB  D:\mystock\solo\theme_kg_v3\theme_kg_v3\data\sw_industry_mapping.json
+        3.2 KB  D:\mystock\solo\py_daily_switch_check.txt
+        1.1 KB  D:\mystock\solo\_chk_sw.py
+        0.5 KB  D:\mystock\solo\bak0615\get_sw_industries.py
+      375.0 KB  D:\mystock\solo\cache_backbone_tushare\cache_sw_industry.pkl
+      379.5 KB  D:\mystock\solo\report_daily\vol_surge_swing_backtest.csv
+       10.6 KB  D:\mystock\solo\report_daily\research\three_flower_v2_vr_threshold_sweep.csv
+      169.2 KB  D:\mystock\solo\sector_0915\cache\_probe_sw_member_all.parquet
+        5.0 KB  D:\mystock\solo\sli\cache\classify_SW2021_L1.parquet
+        7.7 KB  D:\mystock\solo\sli\cache\classify_SW2021_L2.parquet
+       13.4 KB  D:\mystock\solo\sli\cache\classify_SW2021_L3.parquet
+（对照：theme 相关 map 文件）
+  D:\mystock\solo\report_daily\theme_stock_map_latest_v2.json
+
+======================================================================
+3) fina_indicator 家族与逐股财报文件覆盖
+======================================================================
+  parquet/ fina_indicator_*.parquet         文件=18193  股票=2859 
+  parquet/ fina_indicator_q_*.parquet       文件=7440   股票=1576 
+  parquet/ fina_indicator_yoy_*.parquet     文件=5238   股票=2763 
+  parquet/ income_*.parquet                 文件=10164  股票=2763 
+  parquet/ balance_*.parquet                文件=4928   股票=0    
+  parquet/ cashflow_*.parquet               文件=4926   股票=0    
+  parquet/ forecast_*.parquet               文件=25     股票=0    
+  顶层       income_*.parquet                 文件=430    股票=0    
+  顶层       balance_*.parquet                文件=430    股票=0    
+  顶层       forecast_*.parquet               文件=430    股票=0    
+
+======================================================================
+4) 扣非/营收/现金流 是否含 ann_date 及历史长度（抽 5 只）
+======================================================================
+--- 000001.SZ
+    fina_indicator_000001.SZ_*.parquet         无
+    fina_indicator_q_000001.SZ_*.parquet       无
+    income_000001_SZ_2023.parquet              rows=129   ann=True 19941231~20260630(114期)
+    balance_000001_SZ*.parquet                 无
+    cashflow_000001_SZ_2023.parquet            rows=100   ann=True 20080930~20260630(72期)
+--- 600519.SH
+    fina_indicator_600519.SH_20260630.parquet  rows=100   ann=True 20121231~20260630(55期)
+    fina_indicator_q_600519.SH_*.parquet       无
+    income_600519_SH_2023.parquet              rows=119   ann=True 19981231~20260630(103期)
+    balance_600519_SH*.parquet                 无
+    cashflow_600519_SH_2023.parquet            rows=98    ann=True 20051231~20260630(83期)
+--- 300750.SZ
+    fina_indicator_300750.SZ_*.parquet         无
+    fina_indicator_q_300750.SZ_*.parquet       无
+    income_300750_SZ_2023.parquet              rows=55    ann=True 20141231~20260630(43期)
+    balance_300750_SZ*.parquet                 无
+    cashflow_300750_SZ_2023.parquet            rows=58    ann=True 20141231~20260630(41期)
+--- 688981.SH
+    fina_indicator_688981.SH_20260630.parquet  rows=100   ann=True 20121231~20260630(55期)
+    fina_indicator_q_688981.SH_20250930.parque rows=100   ann=False 20120331~20250930(55期)
+    income_688981_SH_2023.parquet              rows=129   ann=True 20011231~20260630(90期)
+    balance_688981_SH*.parquet                 无
+    cashflow_688981_SH_2023.parquet            rows=92    ann=True 20051231~20260630(79期)
+--- 002594.SZ
+    fina_indicator_002594.SZ_20260630.parquet  rows=100   ann=True 20120930~20260630(56期)
+    fina_indicator_q_002594.SZ_*.parquet       无
+    income_002594_SZ_2023.parquet              rows=87    ann=True 20021231~20260630(73期)
+    balance_002594_SZ*.parquet                 无
+    cashflow_002594_SZ_2023.parquet            rows=90    ann=True 20021231~20260630(73期)
+
+======================================================================
+5) treasure_fin_ind / treasure_zbin 样例
+======================================================================
+  treasure_fin_ind_000006_SZ.parquet shape=(100, 108)
+   列: ['ts_code', 'ann_date', 'end_date', 'eps', 'dt_eps', 'total_revenue_ps', 'revenue_ps', 'capital_rese_ps', 'surplus_rese_ps', 'undist_profit_ps', 'extra_item', 'profit_dedt', 'gross_margin', 'current_ratio', 'quick_ratio', 'cash_ratio', 'ar_turn', 'ca_turn', 'fa_turn', 'assets_turn', 'op_income', 'ebit', 'ebitda', 'fcff', 'fcfe', 'current_exint', 'noncurrent_exint', 'interestdebt', 'netdebt', 'tangible_asset', 'working_capital', 'networking_capital', 'invest_capital', 'retained_earnings', 'diluted2_eps', 'bps', 'ocfps', 'retainedps', 'cfps', 'ebit_ps', 'fcff_ps', 'fcfe_ps', 'netprofit_margin', 'grossprofit_margin', 'cogs_of_sales', 'expense_of_sales', 'profit_to_gr', 'saleexp_to_gr', 'adminexp_of_gr', 'finaexp_of_gr', 'impai_ttm', 'gc_of_gr', 'op_of_gr', 'ebit_of_gr', 'roe', 'roe_waa', 'roe_dt', 'roa', 'npta', 'roic', 'roe_yearly', 'roa2_yearly', 'debt_to_assets', 'assets_to_eqt', 'dp_assets_to_eqt', 'ca_to_assets', 'nca_to_assets', 'tbassets_to_totalassets', 'int_to_talcap', 'eqt_to_talcapital', 'currentdebt_to_debt', 'longdeb_to_debt', 'ocf_to_shortdebt', 'debt_to_eqt', 'eqt_to_debt', 'eqt_to_interestdebt', 'tangibleasset_to_debt', 'tangasset_to_intdebt', 'tangibleasset_to_netdebt', 'ocf_to_debt', 'turn_days', 'roa_yearly', 'roa_dp', 'fixed_assets', 'profit_to_op', 'q_saleexp_to_gr', 'q_gc_to_gr', 'q_roe', 'q_dt_roe', 'q_npta', 'q_ocf_to_sales', 'basic_eps_yoy', 'dt_eps_yoy', 'cfps_yoy', 'op_yoy', 'ebt_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', 'ocf_yoy', 'roe_yoy', 'bps_yoy', 'assets_yoy', 'eqt_yoy', 'tr_yoy', 'or_yoy', 'q_sales_yoy', 'q_op_qoq', 'equity_yoy']
+   head:
+     ts_code  ann_date  end_date     eps  dt_eps  total_revenue_ps  revenue_ps  capital_rese_ps  surplus_rese_ps  undist_profit_ps   extra_item  profit_dedt  gross_margin  current_ratio  quick_ratio  cash_ratio  ar_turn  ca_turn  fa_turn  assets_turn    op_income          ebit       ebitda          fcff          fcfe  current_exint  noncurrent_exint  interestdebt       netdebt  tangible_asset  working_capital  networking_capital  invest_capital  retained_earnings  diluted2_eps     bps   ocfps  retainedps    cfps  ebit_ps  fcff_ps  fcfe_ps  netprofit_margin  grossprofit_margin  cogs_of_sales  expense_of_sales  profit_to_gr  saleexp_to_gr  adminexp_of_gr  finaexp_of_gr  impai_ttm  gc_of_gr  op_of_gr  ebit_of_gr     roe  roe_waa  roe_dt     roa    npta    roic  roe_yearly  roa2_yearly  debt_to_assets  assets_to_eqt  dp_assets_to_eqt  ca_to_assets  nca_to_assets  tbassets_to_totalassets  int_to_talcap  eqt_to_talcapital  currentdebt_to_debt  longdeb_to_debt  ocf_to_shortdebt  debt_to_eqt  eqt_to_debt  eqt_to_interestdebt  tangibleasset_to_debt  tangasset_to_intdebt  tangibleasset_to_netdebt  ocf_to_debt  turn_days  roa_yearly  roa_dp  fixed_assets  profit_to_op  q_saleexp_to_gr  q_gc_to_gr   q_roe  q_dt_roe  q_npta  q_ocf_to_sales  basic_eps_yoy  dt_eps_yoy    cfps_yoy    op_yoy   ebt_yoy  netprofit_yoy  dt_netprofit_yoy     ocf_yoy   roe_yoy  bps_yoy  assets_yoy  eqt_yoy   tr_yoy   or_yoy  q_sales_yoy  q_op_qoq  equity_yoy
+0  000006.SZ  20260430  20260331  0.0056  0.0056            0.3890      0.3890           0.3588           1.6135            1.0048    596223.96   6931220.37  8.201243e+07         1.7570       0.4850      0.3877  13.4950   0.0364   8.5599       0.0324  13804880.50  4.909677e+07          NaN  1.682025e+08  1.713025e+08   5.241799e+09       25659924.40  4.655169e+09  2.040616e+09    4.950468e+09     6.158972e+09        6.334376e+09    1.081446e+10       3.534729e+09        0.0056  3.9771  0.1284      2.6183  0.0995   0.0364   0.1246   0.1269            2.6152             15.6154        84.3846           17.7513        2.6152         4.4697          6.6895         6.5921    -5.7969   97.3715    2.7134      9.3481  0.1403     0.14  0.1292  0.3025  0.0846  0.4282      0.5612       1.2100         61.7005         2.6110            3.0249       88.8878        11.1122                  30.7828        43.0458            49.6469              81.9933          18.0067            0.0213       1.6110       0.5411               1.1534                 0.4989                1.0634                    2.4260       0.0175  2144.4363      0.3384  0.0464  1.201790e+09        2.7746           4.4697     97.3715  0.1403    0.1292  0.0846         32.9936       129.1667    129.1667  10600.0000  156.1976  162.4743       129.0231            124.77  10233.3950  129.0707   0.1410     -1.8024   0.1404 -67.5412 -67.5412     -67.5412  178.5380     -0.1635
+1  000006.SZ  20260403  20251231 -0.0313 -0.0313            1.9393      1.9393           0.3588           1.6135            0.9992  11159174.09 -53416674.59  4.999444e+08         1.8134       0.4814      0.3852  63.9300   0.1753  42.8445       0.1558  -3174239.56  1.514769e+08  224404208.0 -9.788789e+08 -1.423324e+09   5.549598e+09       25659924.40  4.666279e+09  2.129318e+09    4.939987e+09     6.546124e+09        6.431819e+09    1.080183e+10       3.527202e+09       -0.0313  3.9715  0.1400      2.6128 -0.2343   0.1122  -0.7251  -1.0543           -1.3439             19.0963        80.9037           16.5002       -1.3439         3.6002          7.5133         5.3866    -5.2929  100.1212    0.1962      5.7859 -0.7851    -0.79 -0.9924  0.9015 -0.2094 -4.5230     -0.7851       0.9015         62.5358         2.6692            3.1215       89.1132        10.8868                  30.1640        43.1990            49.6353              78.5822          21.4178            0.0235       1.6692       0.5235               1.1490                 0.4823                1.0587                    2.3200       0.0185  1833.0424     -0.2094 -0.2515  1.210956e+09        0.4164           6.3255    105.4903 -0.6555   -0.7640 -0.2601        -75.4824        97.3059     97.3059    -83.0488  100.3011  100.6310        97.3056             96.60    -83.0434   97.2844  -0.7820     -4.9326  -0.7820 -56.8337 -56.8337     -66.5774 -121.4908     -0.7820
+2  000006.SZ  20251030  20250930 -0.0052 -0.0052            1.6329      1.6329           0.3588           1.6135            1.0253   5322047.26 -12319131.60  4.086025e+08         1.7797       0.5018      0.3966  47.7525   0.1436  36.3079       0.1278  19530550.93  1.284461e+08          NaN -2.148417e+08 -6.128388e+08   6.365058e+09       25834499.89  4.699109e+09  1.877066e+09    4.984150e+09     6.756300e+09        6.151657e+09    1.087842e+10       3.562462e+09       -0.0052  3.9976  0.3713      2.6389 -0.0602   0.0951  -0.1591  -0.4540            0.3890             18.5352        81.4648           13.0735        0.3890         3.0890          5.3154         4.6691    -5.8292   99.1140    1.0561      5.8266 -0.1296    -0.13 -0.2281  0.7447  0.0497  0.3923     -0.1728       0.9929         64.2180         2.7947            3.1939       89.2991        10.7009                  28.8613        43.1966            49.6100              78.1338          21.8662            0.0578       1.7947       0.4866               1.1485                 0.4494                1.0607                    2.6553       0.0452  1647.9900      0.0663 -0.0406  1.279842e+09        1.1740           4.7631     73.9822  1.1926    1.1801  0.4859        -70.2534        98.6591     98.6591    364.1250  103.7311  104.1535        98.6635             97.65    363.9743   98.4030  -0.1299      0.2466  -0.1295 -54.3363 -54.3363     -79.7761  335.9000    -16.3109
+  treasure_zbin_000001_SZ.parquet shape=(2, 5)
+   列: ['ts_code', 'end_date', 'revenue', 'n_income_attr_p', 'total_profit']
+   head:
+     ts_code  end_date       revenue  n_income_attr_p  total_profit
+0  000001.SZ  20260630  7.061700e+10     2.569600e+10  3.079500e+10
+1  000001.SZ  20260630  7.061700e+10     2.569600e+10  3.079500e+10
+  treasure_namechg_000006_SZ.parquet shape=(3, 6)
+   列: ['ts_code', 'name', 'start_date', 'end_date', 'ann_date', 'change_reason']
+   head:
+     ts_code  name start_date  end_date  ann_date change_reason
+0  000006.SZ  深振业A   20061009       NaN  20060928            其他
+1  000006.SZ  G深振业   20060112  20061008  20060111            其他
+2  000006.SZ  深振业A   19920427  20060111  19920427            其他

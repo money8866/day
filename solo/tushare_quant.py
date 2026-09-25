@@ -3959,6 +3959,35 @@ def build_pool_turnover_pct(codes):
     return len(POOL_TURNOVER_PCT)
 
 
+# 突破股池 IGE 行业弹性硬过滤门槛（三级行业级 ige_adj，同三级行业成分股同值）
+# 口径沿用 hvt_bull/daily.py 的 ige_filter.min_ige_adj=75：全市场约 11% 股票、
+# 约 9.7% 三级行业通过，等价于「只在景气行业里选股」。
+IGE_ADJ_MIN = 75.0
+
+
+def build_ige_adj_map(trade_date):
+    """加载 ige_adj 行业弹性因子映射 {ts_code: ige_adj}。
+
+    数据源：ige/output/ige_full_{date}.csv（IGE 模块每日盘后产出，晚于本模块定时任务）。
+    无当日产出 / 加载失败时返回 {} 并由调用端跳过过滤（fail-soft，与 hvt_bull 一致）。
+    """
+    path = os.path.join(BASE_DIR, 'ige', 'output', f'ige_full_{trade_date}.csv')
+    if not os.path.exists(path):
+        print(f"[突破股池] 警告: 无当日 IGE 产出 ige_full_{trade_date}.csv，跳过 ige_adj 过滤")
+        return {}
+    try:
+        _df = pd.read_csv(path, encoding='utf-8-sig', usecols=['code', 'ige_adj'])
+    except Exception as e:
+        print(f"[突破股池] 警告: ige_adj 加载失败 {e}，跳过 ige_adj 过滤")
+        return {}
+    _vals = pd.to_numeric(_df['ige_adj'], errors='coerce')
+    _map = {}
+    for _c, _v in zip(_df['code'].astype(str).str.strip(), _vals):
+        if pd.notna(_v):
+            _map[_c] = float(_v)
+    return _map
+
+
 def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0,
                              mainline_type='', mainline_quality=0, extra_mult=1.0):
     """
@@ -8433,6 +8462,31 @@ def run(target_date=None, simple_mode=False):
     if before_strong_filter != after_strong_filter:
         reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
         print(f"[强势股池优化] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
+
+    # ====================================================================
+    # IGE 行业弹性硬过滤：三级行业 ige_adj < IGE_ADJ_MIN 的股票直接剔除
+    # ige_adj 是三级行业级指标（同行业成分股同值），该过滤等价于
+    # 「只在高景气行业里选股」；无 IGE 覆盖的股票一并剔除（与 hvt_bull 口径一致）。
+    # 取不到当日 IGE 产出则整体跳过（fail-soft）。
+    # ====================================================================
+    ige_adj_map = build_ige_adj_map(TRADE_DATE)
+    if ige_adj_map:
+        before_ige = len(ranked_stocks)
+        _cut_low = 0
+        _cut_miss = 0
+        _ige_pass = []
+        for s in ranked_stocks:
+            _v = ige_adj_map.get(str(s.get('代码', '')).strip())
+            if _v is None:
+                _cut_miss += 1
+                continue
+            if _v < IGE_ADJ_MIN:
+                _cut_low += 1
+                continue
+            _ige_pass.append(s)
+        ranked_stocks = _ige_pass
+        print(f"[突破股池] IGE 硬过滤(ige_adj≥{IGE_ADJ_MIN:.0f}): {before_ige} -> {len(ranked_stocks)} 只"
+              f" (低弹性剔除{_cut_low}只 / 无IGE覆盖剔除{_cut_miss}只)")
 
     # =========================
     # Chip Alpha 注入（突破股池）

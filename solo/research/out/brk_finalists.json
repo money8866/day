@@ -1,0 +1,42 @@
+[
+ {
+  "feature": "ATR5_pct",
+  "horizon": 3
+ },
+ {
+  "feature": "ATR10_pct",
+  "horizon": 3
+ },
+ {
+  "feature": "Turnover_1",
+  "horizon": 3
+ },
+ {
+  "feature": "K_BodyAbs20",
+  "horizon": 3
+ },
+ {
+  "feature": "Turnover_3",
+  "horizon": 3
+ },
+ {
+  "feature": "K_LargeBodyFreq20",
+  "horizon": 3
+ },
+ {
+  "feature": "Dist_to_20D_Low",
+  "horizon": 3
+ },
+ {
+  "feature": "Volume_Shock",
+  "horizon": 3
+ },
+ {
+  "feature": "Close_vs_MA60",
+  "horizon": 5
+ },
+ {
+  "feature": "Close_Position_60",
+  "horizon": 5
+ }
+]

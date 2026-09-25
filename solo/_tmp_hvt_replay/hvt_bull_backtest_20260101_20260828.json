@@ -1,0 +1,662 @@
+{
+  "start": "20260101",
+  "end": "20260828",
+  "n_events": 150,
+  "stats": {
+    "all": {
+      "n": 150,
+      "r1_win": 37.2,
+      "r1_avg": -1.14,
+      "r1_median": -1.89,
+      "r3_win": 29.7,
+      "r3_avg": -2.96,
+      "r3_median": -3.6,
+      "r5_win": 24.8,
+      "r5_avg": -5.01,
+      "r5_median": -5.41,
+      "r10_win": 28.2,
+      "r10_avg": -6.1,
+      "r10_median": -7.21,
+      "r20_win": 25.4,
+      "r20_avg": -8.05,
+      "r20_median": -9.39,
+      "max_gain_avg": 6.94,
+      "max_dd_avg": -15.09,
+      "post_dd_avg": 18.76
+    },
+    "price_strong": {
+      "n": 105,
+      "r1_win": 33.3,
+      "r1_avg": -1.64,
+      "r1_median": -2.24,
+      "r3_win": 29.4,
+      "r3_avg": -3.42,
+      "r3_median": -3.83,
+      "r5_win": 19.6,
+      "r5_avg": -5.84,
+      "r5_median": -6.69,
+      "r10_win": 22.0,
+      "r10_avg": -7.35,
+      "r10_median": -8.86,
+      "r20_win": 24.0,
+      "r20_avg": -8.08,
+      "r20_median": -9.99,
+      "max_gain_avg": 6.42,
+      "max_dd_avg": -15.8,
+      "post_dd_avg": 19.64
+    },
+    "locked": {
+      "n": 18,
+      "r1_win": 33.3,
+      "r1_avg": -0.47,
+      "r1_median": -1.52,
+      "r3_win": 16.7,
+      "r3_avg": -0.47,
+      "r3_median": -1.35,
+      "r5_win": 44.4,
+      "r5_avg": 0.7,
+      "r5_median": -0.09,
+      "r10_win": 23.5,
+      "r10_avg": -3.35,
+      "r10_median": -1.88,
+      "r20_win": 18.8,
+      "r20_avg": -7.81,
+      "r20_median": -3.91,
+      "max_gain_avg": 3.69,
+      "max_dd_avg": -10.37,
+      "post_dd_avg": 14.04
+    },
+    "locked_breakout": {
+      "n": 6,
+      "r1_win": 33.3,
+      "r1_avg": -0.73,
+      "r1_median": -1.55,
+      "r3_win": 33.3,
+      "r3_avg": -0.5,
+      "r3_median": -1.05,
+      "r5_win": 83.3,
+      "r5_avg": 2.22,
+      "r5_median": 1.81,
+      "r10_win": 60.0,
+      "r10_avg": 2.05,
+      "r10_median": 0.11,
+      "r20_win": 50.0,
+      "r20_avg": 0.79,
+      "r20_median": 0.76,
+      "max_gain_avg": 6.23,
+      "max_dd_avg": -4.29,
+      "post_dd_avg": 7.54
+    },
+    "locked_only": {
+      "n": 10,
+      "r1_win": 30.0,
+      "r1_avg": -0.74,
+      "r1_median": -1.52,
+      "r3_win": 0.0,
+      "r3_avg": -2.36,
+      "r3_median": -1.41,
+      "r5_win": 20.0,
+      "r5_avg": -1.29,
+      "r5_median": -1.43,
+      "r10_win": 10.0,
+      "r10_avg": -5.41,
+      "r10_median": -2.34,
+      "r20_win": 10.0,
+      "r20_avg": -9.71,
+      "r20_median": -5.04,
+      "max_gain_avg": 0.97,
+      "max_dd_avg": -11.83,
+      "post_dd_avg": 15.56
+    },
+    "grade_A": {
+      "n": 25,
+      "r1_win": 39.1,
+      "r1_avg": -0.86,
+      "r1_median": -2.23,
+      "r3_win": 39.1,
+      "r3_avg": -3.51,
+      "r3_median": -4.16,
+      "r5_win": 30.4,
+      "r5_avg": -4.29,
+      "r5_median": -5.41,
+      "r10_win": 47.8,
+      "r10_avg": -1.08,
+      "r10_median": -0.64,
+      "r20_win": 26.1,
+      "r20_avg": -7.46,
+      "r20_median": -8.27,
+      "max_gain_avg": 10.44,
+      "max_dd_avg": -13.24,
+      "post_dd_avg": 16.05
+    },
+    "grade_B": {
+      "n": 34,
+      "r1_win": 41.2,
+      "r1_avg": -1.13,
+      "r1_median": -1.91,
+      "r3_win": 38.2,
+      "r3_avg": -1.0,
+      "r3_median": -1.87,
+      "r5_win": 26.5,
+      "r5_avg": -3.86,
+      "r5_median": -3.75,
+      "r10_win": 27.3,
+      "r10_avg": -7.22,
+      "r10_median": -7.65,
+      "r20_win": 29.0,
+      "r20_avg": -8.86,
+      "r20_median": -7.75,
+      "max_gain_avg": 6.93,
+      "max_dd_avg": -16.0,
+      "post_dd_avg": 22.76
+    },
+    "grade_C": {
+      "n": 91,
+      "r1_win": 35.2,
+      "r1_avg": -1.21,
+      "r1_median": -1.69,
+      "r3_win": 23.9,
+      "r3_avg": -3.58,
+      "r3_median": -3.68,
+      "r5_win": 22.7,
+      "r5_avg": -5.64,
+      "r5_median": -6.19,
+      "r10_win": 23.3,
+      "r10_avg": -7.01,
+      "r10_median": -7.24,
+      "r20_win": 23.8,
+      "r20_avg": -7.92,
+      "r20_median": -9.75,
+      "max_gain_avg": 6.03,
+      "max_dd_avg": -15.22,
+      "post_dd_avg": 18.01
+    },
+    "state_dist": {
+      "FAILED": 84,
+      "DISTRIBUTION": 55,
+      "HVT_DETECTED": 5,
+      "HVT_STRONG": 4,
+      "BREAKOUT_READY": 2
+    },
+    "buy_points": {
+      "t0_buy": {
+        "n": 150,
+        "r1_win": 37.2,
+        "r1_avg": -1.14,
+        "r1_median": -1.89,
+        "r3_win": 29.7,
+        "r3_avg": -2.96,
+        "r3_median": -3.6,
+        "r5_win": 24.8,
+        "r5_avg": -5.01,
+        "r5_median": -5.41,
+        "r10_win": 28.2,
+        "r10_avg": -6.1,
+        "r10_median": -7.21,
+        "r20_win": 25.4,
+        "r20_avg": -8.05,
+        "r20_median": -9.39,
+        "max_gain_avg": 6.94,
+        "max_dd_avg": -15.09,
+        "post_dd_avg": 18.76
+      },
+      "t5_buy_all": {
+        "n": 138,
+        "win": 36.2,
+        "avg": -3.07,
+        "median": -5.09,
+        "pf": 0.98
+      },
+      "t5_buy_locked": {
+        "n": 16,
+        "win": 25.0,
+        "avg": -8.22,
+        "median": -4.08,
+        "pf": 0.23
+      },
+      "r_break_10": {
+        "n": 33,
+        "win": 42.4,
+        "avg": -0.7,
+        "median": -3.54,
+        "pf": 1.17
+      },
+      "r_break_20": {
+        "n": 29,
+        "win": 44.8,
+        "avg": 1.11,
+        "median": -2.24,
+        "pf": 1.46
+      }
+    },
+    "breakout_attribution": {
+      "n": 6,
+      "groups": {
+        "放量倍数": {
+          "低": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.38,
+            "r_break_5_median": -2.38,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.69,
+            "r_break_10_median": -1.69,
+            "r_break_20_win": 0.0,
+            "r_break_20_avg": -15.02,
+            "r_break_20_median": -15.02,
+            "breakout_max_dd_avg": -11.11
+          },
+          "中": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.87,
+            "r_break_5_median": -2.87,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -17.19,
+            "r_break_10_median": -17.19,
+            "r_break_20_win": 0.0,
+            "r_break_20_avg": -11.89,
+            "r_break_20_median": -11.89,
+            "breakout_max_dd_avg": -10.89
+          },
+          "高": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -1.85,
+            "r_break_5_median": -1.85,
+            "r_break_10_win": 50.0,
+            "r_break_10_avg": 3.76,
+            "r_break_10_median": 3.76,
+            "r_break_10_pf": 6.19,
+            "r_break_20_win": 100.0,
+            "r_break_20_avg": 7.36,
+            "r_break_20_median": 7.36,
+            "breakout_max_dd_avg": -3.05
+          }
+        },
+        "突破幅度": {
+          "低": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -1.52,
+            "r_break_5_median": -1.52,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.45,
+            "r_break_10_median": -1.45,
+            "r_break_20_win": 100.0,
+            "r_break_20_avg": 0.43,
+            "r_break_20_median": 0.43,
+            "breakout_max_dd_avg": -2.81
+          },
+          "中": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.38,
+            "r_break_5_median": -2.38,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.69,
+            "r_break_10_median": -1.69,
+            "r_break_20_win": 0.0,
+            "r_break_20_avg": -15.02,
+            "r_break_20_median": -15.02,
+            "breakout_max_dd_avg": -11.11
+          },
+          "高": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.53,
+            "r_break_5_median": -2.53,
+            "r_break_10_win": 50.0,
+            "r_break_10_avg": -4.11,
+            "r_break_10_median": -4.11,
+            "r_break_10_pf": 0.52,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": 1.2,
+            "r_break_20_median": 1.2,
+            "r_break_20_pf": 1.2,
+            "breakout_max_dd_avg": -11.12
+          }
+        },
+        "距T0间隔": {
+          "低": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -1.52,
+            "r_break_5_median": -1.52,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.45,
+            "r_break_10_median": -1.45,
+            "r_break_20_win": 100.0,
+            "r_break_20_avg": 0.43,
+            "r_break_20_median": 0.43,
+            "breakout_max_dd_avg": -2.81
+          },
+          "中": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.28,
+            "r_break_5_median": -2.28,
+            "r_break_10_win": 50.0,
+            "r_break_10_avg": 3.64,
+            "r_break_10_median": 3.64,
+            "r_break_10_pf": 5.32,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": -0.37,
+            "r_break_20_median": -0.37,
+            "r_break_20_pf": 0.95,
+            "breakout_max_dd_avg": -11.15
+          },
+          "高": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.87,
+            "r_break_5_median": -2.87,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -17.19,
+            "r_break_10_median": -17.19,
+            "r_break_20_win": 0.0,
+            "r_break_20_avg": -11.89,
+            "r_break_20_median": -11.89,
+            "breakout_max_dd_avg": -11.08
+          }
+        },
+        "板块强度": {
+          "低": {
+            "n": 0
+          },
+          "中": {
+            "n": 1,
+            "breakout_max_dd_avg": -1.72
+          },
+          "高": {
+            "n": 1,
+            "breakout_max_dd_avg": -2.1
+          },
+          "缺失": {
+            "n": 4,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.24,
+            "r_break_5_median": -2.28,
+            "r_break_10_win": 25.0,
+            "r_break_10_avg": -2.84,
+            "r_break_10_median": -1.57,
+            "r_break_10_pf": 1.32,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": -3.05,
+            "r_break_20_median": -5.73,
+            "r_break_20_pf": 0.55,
+            "breakout_max_dd_avg": -11.57
+          }
+        },
+        "业绩预期": {
+          "低": {
+            "n": 0
+          },
+          "中": {
+            "n": 0
+          },
+          "高": {
+            "n": 1,
+            "breakout_max_dd_avg": -2.1
+          },
+          "缺失": {
+            "n": 5,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.24,
+            "r_break_5_median": -2.28,
+            "r_break_10_win": 25.0,
+            "r_break_10_avg": -2.84,
+            "r_break_10_median": -1.57,
+            "r_break_10_pf": 1.32,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": -3.05,
+            "r_break_20_median": -5.73,
+            "r_break_20_pf": 0.55,
+            "breakout_max_dd_avg": -9.6
+          }
+        },
+        "实时共振": {
+          "中共振": {
+            "n": 1,
+            "breakout_max_dd_avg": -2.1
+          },
+          "缺失": {
+            "n": 5,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.24,
+            "r_break_5_median": -2.28,
+            "r_break_10_win": 25.0,
+            "r_break_10_avg": -2.84,
+            "r_break_10_median": -1.57,
+            "r_break_10_pf": 1.32,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": -3.05,
+            "r_break_20_median": -5.73,
+            "r_break_20_pf": 0.55,
+            "breakout_max_dd_avg": -9.6
+          }
+        },
+        "首次回踩守住": {
+          "False": {
+            "n": 1,
+            "breakout_max_dd_avg": -2.1
+          },
+          "True": {
+            "n": 5,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.24,
+            "r_break_5_median": -2.28,
+            "r_break_10_win": 25.0,
+            "r_break_10_avg": -2.84,
+            "r_break_10_median": -1.57,
+            "r_break_10_pf": 1.32,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": -3.05,
+            "r_break_20_median": -5.73,
+            "r_break_20_pf": 0.55,
+            "breakout_max_dd_avg": -9.6
+          }
+        },
+        "回踩深度": {
+          "浅": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -1.52,
+            "r_break_5_median": -1.52,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.45,
+            "r_break_10_median": -1.45,
+            "r_break_20_win": 100.0,
+            "r_break_20_avg": 0.43,
+            "r_break_20_median": 0.43,
+            "breakout_max_dd_avg": -2.81
+          },
+          "中": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.53,
+            "r_break_5_median": -2.53,
+            "r_break_10_win": 50.0,
+            "r_break_10_avg": -4.11,
+            "r_break_10_median": -4.11,
+            "r_break_10_pf": 0.52,
+            "r_break_20_win": 50.0,
+            "r_break_20_avg": 1.2,
+            "r_break_20_median": 1.2,
+            "r_break_20_pf": 1.2,
+            "breakout_max_dd_avg": -11.12
+          },
+          "深": {
+            "n": 2,
+            "r_break_5_win": 0.0,
+            "r_break_5_avg": -2.38,
+            "r_break_5_median": -2.38,
+            "r_break_10_win": 0.0,
+            "r_break_10_avg": -1.69,
+            "r_break_10_median": -1.69,
+            "r_break_20_win": 0.0,
+            "r_break_20_avg": -15.02,
+            "r_break_20_median": -15.02,
+            "breakout_max_dd_avg": -11.11
+          }
+        }
+      },
+      "candidate_high_win": [],
+      "coverage": {
+        "sector_known": 2,
+        "fundamental_known": 1
+      }
+    },
+    "v3": {
+      "base": {
+        "n": 4,
+        "mean": -3.05,
+        "median": -5.73,
+        "p75": 3.9,
+        "p90": 10.13,
+        "max": 14.29,
+        "ge10": 25.0,
+        "ge20": 0.0,
+        "ge30": 0.0,
+        "ge50": 0.0,
+        "win": 50.0,
+        "top10_avg": 14.29,
+        "top5_avg": 14.29
+      },
+      "group_BREAKOUT_READY": {
+        "n": 1,
+        "mean": 14.29,
+        "median": 14.29,
+        "p75": 14.29,
+        "p90": 14.29,
+        "max": 14.29,
+        "ge10": 100.0,
+        "ge20": 0.0,
+        "ge30": 0.0,
+        "ge50": 0.0,
+        "win": 100.0,
+        "top10_avg": 14.29,
+        "top5_avg": 14.29
+      },
+      "calibration": {
+        "bands": [
+          {
+            "lo": 0,
+            "hi": 50,
+            "n": 1,
+            "p10": 0.0,
+            "p20": 0.0,
+            "p30": 0.0,
+            "p50": 0.0,
+            "mean": -15.02,
+            "median": -15.02,
+            "p90": -15.02,
+            "top10_avg": -15.02,
+            "top5_avg": -15.02
+          },
+          {
+            "lo": 50,
+            "hi": 60,
+            "n": 2,
+            "p10": 50.0,
+            "p20": 0.0,
+            "p30": 0.0,
+            "p50": 0.0,
+            "mean": 7.36,
+            "median": 7.36,
+            "p90": 12.9,
+            "top10_avg": 14.29,
+            "top5_avg": 14.29
+          },
+          {
+            "lo": 60,
+            "hi": 70,
+            "n": 1,
+            "p10": 0.0,
+            "p20": 0.0,
+            "p30": 0.0,
+            "p50": 0.0,
+            "mean": -11.89,
+            "median": -11.89,
+            "p90": -11.89,
+            "top10_avg": -11.89,
+            "top5_avg": -11.89
+          }
+        ]
+      },
+      "ablation": {
+        "close_pos_AplusA": {
+          "n": 2,
+          "mean": -13.46,
+          "median": -13.46,
+          "p75": -12.67,
+          "p90": -12.2,
+          "max": -11.89,
+          "ge10": 0.0,
+          "ge20": 0.0,
+          "ge30": 0.0,
+          "ge50": 0.0,
+          "win": 0.0,
+          "top10_avg": -11.89,
+          "top5_avg": -11.89
+        },
+        "volume_AplusA": {
+          "n": 1,
+          "mean": 0.43,
+          "median": 0.43,
+          "p75": 0.43,
+          "p90": 0.43,
+          "max": 0.43,
+          "ge10": 0.0,
+          "ge20": 0.0,
+          "ge30": 0.0,
+          "ge50": 0.0,
+          "win": 100.0,
+          "top10_avg": 0.43,
+          "top5_avg": 0.43
+        },
+        "rs20_ge70": {
+          "n": 3,
+          "mean": -4.21,
+          "median": -11.89,
+          "p75": 1.2,
+          "p90": 9.05,
+          "max": 14.29,
+          "ge10": 33.3,
+          "ge20": 0.0,
+          "ge30": 0.0,
+          "ge50": 0.0,
+          "win": 33.3,
+          "top10_avg": 14.29,
+          "top5_avg": 14.29
+        },
+        "compression_ge10": {
+          "n": 0
+        },
+        "supply_abs_ge12": {
+          "n": 4,
+          "mean": -3.05,
+          "median": -5.73,
+          "p75": 3.9,
+          "p90": 10.13,
+          "max": 14.29,
+          "ge10": 25.0,
+          "ge20": 0.0,
+          "ge30": 0.0,
+          "ge50": 0.0,
+          "win": 50.0,
+          "top10_avg": 14.29,
+          "top5_avg": 14.29
+        },
+        "fundamental_known": {
+          "n": 0
+        }
+      },
+      "capture": {
+        "n": 4,
+        "top10_capture_pct": 25.0,
+        "top5_capture_pct": 25.0
+      }
+    }
+  }
+}

@@ -27,7 +27,7 @@ from hvt_bull.future_expansion import _atr14
 
 # 关闭增量层时需从 JSON 中过滤的全部新增字段（与 models.py V3.5 字段一一对应）
 TE_JSON_FIELDS = (
-    'buyability', 'buyability_parts', 'execution_score', 'execution_state',
+    'buyability', 'buyability_parts', 'industry_ige_score', 'execution_score', 'execution_state',
     'next_day_action', 'entry_trigger', 'buy_zone_low', 'buy_zone_high',
     'invalidation', 'no_chase_level', 'position_size', 'initial_position',
     'primary_horizon', 'stock_type', 'confirmation_level', 'execution_reason',
@@ -438,6 +438,8 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     rs20 = _f(ev.rs20, np.nan)
     s_mkt = (80.0 if rs20 >= 70 else 60.0 if rs20 >= 50 else 40.0) if math.isfinite(rs20) else 60.0
     s_rr = _risk_reward(ev)
+    # IGE 行业景气（§24 industry_ige，排序因子、非过滤）：三级行业 ige_adj 0~100，缺失中性 50
+    s_ige = _clamp(_f(getattr(ev, 'ige_adj', None), 50.0), 0.0, 100.0)
     parts = {'breakout_readiness': s_brk, 'price_location': s_loc, 'pullback_quality': s_pbk,
              'volume_quality': s_vol, 'intraday_structure': s_int, 'sector_confirmation': sec_s,
              'market_regime': s_mkt, 'risk_reward': s_rr}
@@ -456,7 +458,8 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
                   + _f(we.get('continuation', 0.15)) * cont
                   + _f(we.get('price_rr', 0.10)) * 0.5 * (s_loc + s_rr)
                   + _f(we.get('lifecycle_fit', 0.05)) * lifec_fit
-                  + _f(we.get('sector_market', 0.05)) * max(sec_s, s_mkt))
+                  + _f(we.get('sector_market', 0.05)) * max(sec_s, s_mkt)
+                  + _f(we.get('industry_ige', 0.05)) * s_ige)
     exec_score = _clamp(exec_score)
 
     # ---- SKIP 硬覆盖（§10/§25：硬风控优先于任何评分） ----
@@ -665,6 +668,7 @@ def compute_trade_execution(df, ev, te_cfg, confirm_ratio=1.01):
     out.update({
         'buyability': round(buyability, 1),
         'buyability_parts': {k: round(v, 1) for k, v in parts.items()},
+        'industry_ige_score': round(s_ige, 1),
         'execution_score': round(exec_score, 1),
         'execution_state': state,
         'next_day_action': action,

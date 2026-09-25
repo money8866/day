@@ -1,0 +1,62 @@
+﻿=== panel.parquet schema ===
+35 cols
+['ts_code', 'trade_date', 'seq', 'board', 'open', 'high', 'low', 'close', 'pre_close', 'pct_chg', 'vol', 'amount', 'adjf', 'a_open', 'a_high', 'a_low', 'a_close', 'limit_price', 'limit_pct', 'is_limit_up', 'touch_limit', 'broken_limit', 'one_word', 'opened_board', 'is_limit_up_5', 'ma5', 'ma10', 'ma20', 'ma60', 'vol_ma5', 'vol_ma20', 'vr20', 'ret20_prev', 'prev_lim20', 'prev_ret5']
+rows 7102222
+
+=== first_board_events ===
+33401 events
+['ts_code', 'name', 'industry', 'list_date', 'trade_date', 'board', 'is_bse', 'open', 'high', 'low', 'close', 'pre_close', 'pct_chg', 'vol', 'amount', 'a_close', 'limit_price', 'limit_pct', 'one_word', 'opened_board', 'amplitude', 'body', 'upper_shadow', 'lower_shadow', 't0_vr20', 't0_vs_ma20', 't0_vs_ma60', 't0_amount', 't0_ret20prev', 't0_ret5prev', 't0_quality', 'ma5', 'ma10', 'ma20', 'ma60', 'vol_ma20']
+20210406 20260924
+board
+MAIN    26767
+GEM      4854
+STAR     1360
+BSE       420
+
+=== tr_mats keys ===
+C0 (33401,) float32
+H0 (33401,) float32
+L0 (33401,) float32
+O0 (33401,) float32
+PC0 (33401,) float32
+V0 (33401,) float32
+ama10 (33401, 26) float32
+ama20 (33401, 26) float32
+ama5 (33401, 26) float32
+ama60 (33401, 26) float32
+amt (33401, 26) float32
+cl (33401, 26) float32
+cp (33401, 26) float32
+dayret (33401, 26) float32
+dd (33401, 26) float32
+ddl (33401, 26) float32
+ddrun (33401, 26) float32
+dma10 (33401, 26) float32
+dma20 (33401, 26) float32
+dma5 (33401, 26) float32
+dma60 (33401, 26) float32
+dt (33401, 26) int64
+dvol (33401, 26) float32
+gap (33401, 26) float32
+hi (33401, 26) float32
+idxc (33401, 26) float32
+idxret (33401, 26) float32
+isl (33401, 26) float32
+lim (33401, 26) float32
+lo (33401, 26) float32
+ma5slope (33401, 26) float32
+op (33401, 26) float32
+ow (33401, 26) float32
+ret (33401, 26) float32
+rs (33401, 26) float32
+runmax (33401, 26) float32
+to_cmv (33401, 26) float32
+to_mv (33401, 26) float32
+to_rate (33401, 26) float32
+uvol (33401, 26) float32
+vma20 (33401, 26) float32
+vma5 (33401, 26) float32
+vo (33401, 26) float32
+vov0 (33401, 26) float32
+vov5 (33401, 26) float32
+vr (33401, 26) float32

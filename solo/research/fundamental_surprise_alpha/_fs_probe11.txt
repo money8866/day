@@ -1,0 +1,41 @@
+1) treasure_namechg 结构
+   文件数: 4422
+   shape=(3, 6) cols=['ts_code', 'name', 'start_date', 'end_date', 'ann_date', 'change_reason']
+     ts_code  name start_date  end_date  ann_date change_reason
+0  000006.SZ  深振业A   20061009       NaN  20060928            其他
+1  000006.SZ  G深振业   20060112  20061008  20060111            其他
+2  000006.SZ  深振业A   19920427  20060111  19920427            其他
+   第二文件 shape=(13, 6)
+     ts_code   name start_date  end_date  ann_date change_reason
+0  000007.SZ    全新好   20240702       NaN  20240701         撤销*ST
+1  000007.SZ  *ST全新   20230505  20240701  20230429           *ST
+2  000007.SZ    全新好   20220701  20230504  20220630         撤销*ST
+3  000007.SZ  *ST全新   20210430  20220630  20210429           *ST
+4  000007.SZ    全新好   20160217  20210429  20160119            其他
+5  000007.SZ   零七股份   20120504  20160216  20120503          撤销ST
+
+2) 三表列并集（抽样 400 文件）
+   --- income: 10594 文件
+       命名模式: {'plain': 10594}
+       列并集(18): ['ann_date', 'basic_eps', 'comp_type', 'diluted_eps', 'end_date', 'end_type', 'f_ann_date', 'n_income', 'n_income_attr_p', 'oper_exp', 'operate_profit', 'rd_exp', 'report_type', 'revenue', 'total_cogs', 'total_profit', 'total_revenue', 'ts_code']
+   --- balance: 5358 文件
+       命名模式: {'plain': 431, 'v14_': 4927}
+       列并集(13): ['accounts_receiv', 'ann_date', 'end_date', 'f_ann_date', 'fix_assets', 'goodwill', 'intan_assets', 'inventories', 'report_type', 'total_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'ts_code']
+   --- cashflow: 4926 文件
+       命名模式: {'plain': 4926}
+       列并集(9): ['ann_date', 'c_pay_acq_const_fiolta', 'end_date', 'f_ann_date', 'n_cash_flows_fnc_act', 'n_cashflow_act', 'n_cashflow_inv_act', 'report_type', 'ts_code']
+
+3) 关键字段是否可用
+   money_cap                   
+   total_liab                  
+   contract_liab               
+   notes_receiv                
+   st_borr                     
+   lt_borr                     
+   total_cur_liab              
+   total_hldr_eqy_exc_min_int  
+   accounts_receiv             
+   inventories                 
+   goodwill                    
+   fix_assets                  
+   intan_assets                

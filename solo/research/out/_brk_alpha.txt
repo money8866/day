@@ -1,0 +1,406 @@
+﻿读取 brk_cand ...
+rows=902657 days=1330 feats=107
+common valid rows = 890618 (98.7%)
+rank_day 自检: PASS
+B1_AllCandidates
+  [1/112] Distance_to_R10
+  [2/112] Distance_to_R15
+  [3/112] Distance_to_R20
+  [4/112] Distance_to_R30
+  [5/112] Distance_to_R40
+  [6/112] Distance_to_R60
+  [7/112] Close_Position_20
+  [8/112] Close_Position_40
+  [9/112] Close_Position_60
+  [10/112] Pos_52W_high
+  [11/112] Pos_250D_range
+  [12/112] Dist_to_20D_Low
+  [13/112] Ret_1
+  [14/112] Ret_3
+  [15/112] Ret_5
+  [16/112] Ret_10
+  [17/112] Ret_20
+  [18/112] Ret_60
+  [19/112] Close_vs_MA5
+  [20/112] MA5_slope
+  [21/112] Close_vs_MA10
+  [22/112] MA10_slope
+  [23/112] Close_vs_MA20
+  [24/112] MA20_slope
+  [25/112] Close_vs_MA60
+  [26/112] MA60_slope
+  [27/112] Trend_Consistency_20
+  [28/112] Trend_Acceleration
+  [29/112] MA_Align
+  [30/112] ATR5_pct
+  [31/112] ATR10_pct
+  [32/112] ATR20_pct
+  [33/112] ATR_ratio_5_20
+  [34/112] ATR_ratio_10_60
+  [35/112] STD5
+  [36/112] STD10
+  [37/112] STD20
+  [38/112] STD_ratio_5_20
+  [39/112] Range_20_pct
+  [40/112] Vol_over_MA5
+  [41/112] Vol_over_MA10
+  [42/112] Vol_over_MA20
+  [43/112] Vol_over_MA60
+  [44/112] VR1
+  [45/112] VR3
+  [46/112] VR5
+  [47/112] VR10
+  [48/112] Volume_Slope
+  [49/112] Volume_Acceleration
+  [50/112] Volume_Concentration
+  [51/112] Volume_Stability
+  [52/112] Volume_Shock
+  [53/112] PriceVolumeEff_5
+  [54/112] PriceVolumeEff_20
+  [55/112] Vol_UpDown_Ratio_20
+  [56/112] Turnover_1
+  [57/112] Turnover_3
+  [58/112] Turnover_5
+  [59/112] Turnover_10
+  [60/112] Turnover_20
+  [61/112] Turnover_vs_MA20
+  [62/112] Turnover_Slope
+  [63/112] Turnover_Acceleration
+  [64/112] Turnover_Stability
+  [65/112] Turnover_Shock
+  [66/112] DB_VolumeRatio
+  [67/112] LogMV
+  [68/112] LogCircMV
+  [69/112] LogAmount
+  [70/112] Turnover_per_MV
+  [71/112] K_Body
+  [72/112] K_UpperShadow
+  [73/112] K_LowerShadow
+  [74/112] K_ClosePos
+  [75/112] K_Gap
+  [76/112] K_GapFreq20
+  [77/112] K_PosCandleRatio20
+  [78/112] K_NegCandleRatio20
+  [79/112] K_LargeBodyFreq20
+  [80/112] K_LargeUpShadowFreq20
+  [81/112] K_LargeLoShadowFreq20
+  [82/112] K_BodyAbs20
+  [83/112] Efficiency_5
+  [84/112] Efficiency_10
+  [85/112] Efficiency_20
+  [86/112] TrendEfficiency_20
+  [87/112] PriceNoise_20
+  [88/112] Efficiency_5_over_20
+  [89/112] DirectionalConsistency_20
+  [90/112] Market_Return_5
+  [91/112] Industry_Return_5
+  [92/112] RelativeStrength_5
+  [93/112] RS_Ratio_5
+  [94/112] Stock_vs_Industry_5
+  [95/112] Stock_vs_Market_diff_5
+  [96/112] Market_Return_10
+  [97/112] Industry_Return_10
+  [98/112] RelativeStrength_10
+  [99/112] RS_Ratio_10
+  [100/112] Stock_vs_Industry_10
+  [101/112] Stock_vs_Market_diff_10
+  [102/112] Market_Return_20
+  [103/112] Industry_Return_20
+  [104/112] RelativeStrength_20
+  [105/112] RS_Ratio_20
+  [106/112] Stock_vs_Industry_20
+  [107/112] Stock_vs_Market_diff_20
+  [108/112] B2_RandomOrder
+  [109/112] B3_Momentum_Ret20
+  [110/112] B4_DistToResistance
+  [111/112] B5_Volume_VR20
+  [112/112] B6_SimpleBreakoutFlag
+汇总 ...
+已写 brk_daily.parquet (601160, 22)  brk_stat.parquet (3164, 31)
+
+=== B1 全体候选 日均收益（未扣成本）===
+ horizon period  mean_ret  spread10_med  n_days
+       1    ALL  0.001642      0.002256    1329
+       1  TRAIN  0.001596      0.002119     667
+       1  VALID  0.002251      0.003210     485
+       1    OOS  0.000147      0.000671     177
+       1   BULL  0.002139      0.002531     444
+       1 NORMAL  0.001523      0.001793     300
+       1   BEAR  0.001326      0.002653     585
+       3    ALL  0.002703      0.002213    1327
+       3  TRAIN  0.001892      0.002388     667
+       3  VALID  0.004813      0.004086     485
+       3    OOS -0.000058     -0.001623     175
+       3   BULL  0.004528      0.002452     444
+       3 NORMAL  0.001196      0.000391     300
+       3   BEAR  0.002088      0.002912     583
+       5    ALL  0.003826      0.003402    1325
+       5  TRAIN  0.002091      0.003026     667
+       5  VALID  0.007522      0.004971     485
+       5    OOS  0.000157      0.000114     173
+       5   BULL  0.005020      0.002420     444
+       5 NORMAL  0.000766      0.001188     300
+       5   BEAR  0.004494      0.004118     581
+      10    ALL  0.005795      0.004289    1320
+      10  TRAIN  0.002311      0.003566     667
+      10  VALID  0.012996      0.008487     485
+      10    OOS -0.001162     -0.003059     168
+      10   BULL  0.004925      0.002424     444
+      10 NORMAL -0.000775     -0.000197     300
+      10   BEAR  0.009888      0.008741     576
+
+=== H=3 |IC| 排名（ALL）===
+              feature         family   ic_mean      icir   ic_pos  spread10  spread20      auc  rank_sep   std_gap
+             ATR5_pct     volatility -0.061915 -0.355841 0.333333 -0.000511 -0.000415 0.448105 -0.051254 -0.189283
+            ATR10_pct     volatility -0.059824 -0.316686 0.359848 -0.000568 -0.000538 0.450984 -0.048990 -0.179507
+           Turnover_1       turnover -0.057246 -0.344293 0.362011 -0.000936 -0.000369 0.454998 -0.044867 -0.188094
+          K_BodyAbs20         candle -0.056864 -0.296024 0.383333 -0.000998 -0.000781 0.453903 -0.046347 -0.171406
+           Turnover_3       turnover -0.055965 -0.328563 0.372483 -0.000831 -0.000423 0.456540 -0.043362 -0.183678
+      Turnover_per_MV       turnover -0.055882 -0.336834 0.360894 -0.000882 -0.000251 0.456151 -0.043774 -0.185809
+       Turnover_Shock       turnover -0.055635 -0.479567 0.289954 -0.002536 -0.002103 0.451156 -0.048853 -0.161131
+                STD10     volatility -0.055449 -0.331476 0.364394 -0.000837 -0.000599 0.454352 -0.045782 -0.167048
+                STD20     volatility -0.054413 -0.291551 0.387121 -0.000992 -0.000787 0.455732 -0.044403 -0.163801
+           Turnover_5       turnover -0.053890 -0.309309 0.379619 -0.000577 -0.000290 0.458555 -0.041494 -0.174607
+    K_LargeBodyFreq20         candle -0.053548 -0.299185 0.375758 -0.002052 -0.001260 0.456980 -0.043413 -0.161885
+            ATR20_pct     volatility -0.053118 -0.265739 0.388636 -0.000171 -0.000319 0.456851 -0.043191 -0.155003
+                 STD5     volatility -0.051549 -0.359763 0.337121 -0.001215 -0.000633 0.456657 -0.043051 -0.164642
+          Turnover_10       turnover -0.050709 -0.280455 0.391695 -0.000383 -0.000369 0.461820 -0.038498 -0.156677
+      Dist_to_20D_Low price_position -0.048940 -0.339363 0.362879 -0.000722 -0.000161 0.460609 -0.039551 -0.147243
+         Volume_Shock         volume -0.047730 -0.405931 0.319697 -0.002051 -0.001612 0.457632 -0.042555 -0.137208
+        Close_vs_MA60          trend -0.047486 -0.245907 0.411364 -0.002590 -0.001465 0.461884 -0.039341 -0.154104
+K_LargeUpShadowFreq20         candle -0.046998 -0.284598 0.382576 -0.000735  0.000049 0.462370 -0.037561 -0.144172
+    Close_Position_60 price_position -0.046968 -0.259914 0.398485 -0.001262 -0.000962 0.461978 -0.038905 -0.140563
+    Close_Position_40 price_position -0.044649 -0.284329 0.388636 -0.000684 -0.000413 0.464095 -0.036677 -0.132641
+             MA_Align          trend -0.044101 -0.280323 0.394697  0.000640 -0.000115 0.467399 -0.032851 -0.131536
+      ATR_ratio_10_60     volatility -0.042767 -0.258339 0.387121 -0.002247 -0.001224 0.464161 -0.035840 -0.140922
+          K_GapFreq20         candle -0.042582 -0.243545 0.398485 -0.000750 -0.000295 0.466164 -0.033891 -0.124687
+        Vol_over_MA60         volume -0.042362 -0.371519 0.344697 -0.001816 -0.001191 0.461992 -0.037557 -0.138992
+            LogAmount           size -0.041819 -0.280130 0.381061 -0.001401 -0.001461 0.465103 -0.035608 -0.115157
+
+=== H=3 spread10 排名（ALL）===
+              feature            family   ic_mean  top10_ret  bot10_ret  spread10  spread20  wr_top10      auc
+   Turnover_Stability          turnover  0.020982   0.003545   0.001616  0.001928  0.001515  0.475238 0.514987
+   Industry_Return_10 relative_strength  0.018001   0.003492   0.001737  0.001661  0.001436  0.479404 0.514424
+     Volume_Stability            volume  0.016985   0.003255   0.001832  0.001423  0.001024  0.477069 0.512129
+   TrendEfficiency_20        efficiency  0.012364   0.006856   0.001674  0.001078  0.001483  0.488966 0.509072
+        Efficiency_20        efficiency  0.019475   0.002801   0.001835  0.000966  0.000491  0.473523 0.514043
+             MA_Align             trend -0.044101   0.000834   0.002298  0.000640 -0.000115  0.442813 0.467399
+                K_Gap            candle  0.013103   0.002424   0.001888  0.000536  0.000336  0.463183 0.511456
+          Turnover_20          turnover -0.039127   0.002582   0.002135  0.000447  0.000499  0.458396 0.471699
+        K_UpperShadow            candle -0.005635   0.002335   0.001367  0.000386  0.000248  0.466312 0.495676
+Turnover_Acceleration          turnover  0.003473   0.002582   0.002207  0.000375  0.000346  0.460179 0.501819
+       B2_RandomOrder          baseline  0.000711   0.002559   0.002220  0.000340  0.000016  0.470449 0.501228
+   Industry_Return_20 relative_strength  0.009691   0.002631   0.002229  0.000263  0.000842  0.473159 0.508233
+    Industry_Return_5 relative_strength -0.000256   0.002443   0.002203  0.000239 -0.000232  0.469226 0.500220
+   K_NegCandleRatio20            candle  0.024667   0.002021   0.001805  0.000216  0.000332  0.468140 0.520080
+  B4_DistToResistance          baseline -0.007168   0.002769   0.002701  0.000067 -0.000022  0.464348 0.494201
+      Distance_to_R10    price_position  0.026328   0.002267   0.002274 -0.000007  0.000526  0.474577 0.521311
+      Distance_to_R20    price_position  0.007168   0.002710   0.002776 -0.000066  0.000021  0.477557 0.505799
+  Volume_Acceleration            volume  0.001772   0.002358   0.002451 -0.000093 -0.000046  0.461376 0.500753
+            MA5_slope             trend -0.009407   0.001900   0.002021 -0.000121  0.000375  0.451074 0.490891
+  RelativeStrength_10 relative_strength -0.015039   0.002026   0.002158 -0.000131  0.000629  0.453036 0.486831
+
+=== H=3 AUC 偏离 0.5 排名（ALL）===
+              feature         family   ic_mean      auc  rank_sep   std_gap  spread10
+             ATR5_pct     volatility -0.061915 0.448105 -0.051254 -0.189283 -0.000511
+            ATR10_pct     volatility -0.059824 0.450984 -0.048990 -0.179507 -0.000568
+       Turnover_Shock       turnover -0.055635 0.451156 -0.048853 -0.161131 -0.002536
+          K_BodyAbs20         candle -0.056864 0.453903 -0.046347 -0.171406 -0.000998
+                STD10     volatility -0.055449 0.454352 -0.045782 -0.167048 -0.000837
+           Turnover_1       turnover -0.057246 0.454998 -0.044867 -0.188094 -0.000936
+                STD20     volatility -0.054413 0.455732 -0.044403 -0.163801 -0.000992
+      Turnover_per_MV       turnover -0.055882 0.456151 -0.043774 -0.185809 -0.000882
+           Turnover_3       turnover -0.055965 0.456540 -0.043362 -0.183678 -0.000831
+                 STD5     volatility -0.051549 0.456657 -0.043051 -0.164642 -0.001215
+            ATR20_pct     volatility -0.053118 0.456851 -0.043191 -0.155003 -0.000171
+    K_LargeBodyFreq20         candle -0.053548 0.456980 -0.043413 -0.161885 -0.002052
+         Volume_Shock         volume -0.047730 0.457632 -0.042555 -0.137208 -0.002051
+           Turnover_5       turnover -0.053890 0.458555 -0.041494 -0.174607 -0.000577
+      Dist_to_20D_Low price_position -0.048940 0.460609 -0.039551 -0.147243 -0.000722
+          Turnover_10       turnover -0.050709 0.461820 -0.038498 -0.156677 -0.000383
+        Close_vs_MA60          trend -0.047486 0.461884 -0.039341 -0.154104 -0.002590
+    Close_Position_60 price_position -0.046968 0.461978 -0.038905 -0.140563 -0.001262
+        Vol_over_MA60         volume -0.042362 0.461992 -0.037557 -0.138992 -0.001816
+K_LargeUpShadowFreq20         candle -0.046998 0.462370 -0.037561 -0.144172 -0.000735
+
+=== H=3 spread10 排名（TRAIN）===
+              feature            family   ic_mean  spread10  spread20      auc  rank_sep
+K_LargeLoShadowFreq20            candle -0.034412  0.010222 -0.000149 0.471603 -0.028277
+   Industry_Return_10 relative_strength  0.030772  0.004099  0.003448 0.524332  0.024677
+          Turnover_20          turnover -0.016560  0.003977  0.003376 0.487994 -0.012021
+   Industry_Return_20 relative_strength  0.026085  0.003339  0.003250 0.520435  0.021207
+           Turnover_5          turnover -0.035361  0.001978  0.001451 0.471327 -0.027973
+          Turnover_10          turnover -0.029820  0.001933  0.002005 0.476434 -0.023163
+   TrendEfficiency_20        efficiency  0.012886  0.001876  0.001432 0.509535  0.009601
+    Industry_Return_5 relative_strength  0.003687  0.001503  0.000323 0.502367  0.002439
+      Turnover_per_MV          turnover -0.040145  0.001311  0.001317 0.466600 -0.032436
+           Turnover_1          turnover -0.042249  0.001271  0.001106 0.464911 -0.034098
+        PriceNoise_20        efficiency -0.010639  0.001018  0.001339 0.492040 -0.007988
+           Turnover_3          turnover -0.040017  0.000729  0.001223 0.467515 -0.031732
+ Efficiency_5_over_20        efficiency -0.000988  0.000717  0.000671 0.499490 -0.000528
+             ATR5_pct        volatility -0.048531  0.000529  0.000564 0.457043 -0.041719
+     Volume_Stability            volume  0.005355  0.000374 -0.000061 0.502527  0.002804
+
+=== H=3 spread10 排名（VALID）===
+              feature     family   ic_mean  spread10  spread20      auc  rank_sep
+K_LargeLoShadowFreq20     candle -0.043437  0.007736  0.001703 0.469547 -0.030573
+K_LargeUpShadowFreq20     candle -0.050925  0.004318  0.001064 0.461260 -0.039195
+        Efficiency_20 efficiency  0.025146  0.002768  0.002003 0.517049  0.017308
+   Turnover_Stability   turnover  0.028819  0.002717  0.002061 0.520708  0.020832
+     Volume_Stability     volume  0.028934  0.002692  0.002085 0.520908  0.021011
+  B4_DistToResistance   baseline -0.005506  0.001195  0.000667 0.496084 -0.003184
+             MA_Align      trend -0.050803  0.001116 -0.001157 0.462690 -0.037471
+            ATR20_pct volatility -0.057028  0.000944  0.000341 0.455552 -0.044587
+   TrendEfficiency_20 efficiency  0.000512  0.000834  0.000720 0.499674 -0.000433
+                K_Gap     candle  0.017753  0.000776  0.000420 0.515529  0.015640
+         Efficiency_5 efficiency  0.010518  0.000764  0.000464 0.508922  0.008738
+         Range_20_pct volatility -0.042399  0.000705  0.000455 0.466490 -0.033326
+        K_UpperShadow     candle -0.005389  0.000695  0.000533 0.495558 -0.004457
+        Efficiency_10 efficiency  0.019794  0.000656  0.000320 0.514616  0.014745
+   K_NegCandleRatio20     candle  0.032062  0.000545  0.000729 0.524711  0.025127
+
+=== H=3 spread10 排名（OOS）===
+                feature            family   ic_mean  spread10  spread20      auc  rank_sep
+          Close_vs_MA10             trend  0.044502  0.008398  0.007899 0.532287  0.034512
+        Distance_to_R10    price_position  0.058846  0.007875  0.005993 0.546608  0.047938
+              MA5_slope             trend  0.030416  0.007387  0.005851 0.520698  0.021893
+                 Ret_10             trend  0.019027  0.006990  0.005768 0.511388  0.012608
+    RelativeStrength_10 relative_strength  0.019027  0.006990  0.005768 0.511388  0.012608
+            RS_Ratio_10 relative_strength  0.019027  0.006990  0.005768 0.511388  0.012608
+Stock_vs_Market_diff_10 relative_strength  0.019027  0.006990  0.005768 0.511388  0.012608
+           Close_vs_MA5             trend  0.038111  0.006778  0.005142 0.528539  0.030611
+                  Ret_3             trend  0.037913  0.006529  0.005679 0.528037  0.029951
+             RS_Ratio_5 relative_strength  0.028821  0.005986  0.004236 0.521062  0.021799
+                  Ret_5             trend  0.028821  0.005986  0.004236 0.521062  0.021799
+     RelativeStrength_5 relative_strength  0.028821  0.005986  0.004236 0.521062  0.021799
+ Stock_vs_Market_diff_5 relative_strength  0.028821  0.005986  0.004236 0.521062  0.021799
+          Close_vs_MA20             trend -0.003310  0.005789  0.003842 0.495586 -0.005322
+       PriceVolumeEff_5            volume  0.024732  0.005680  0.004156 0.517980  0.018093
+
+=== H=5 |IC| 排名（ALL）===
+              feature         family   ic_mean      icir   ic_pos  spread10  spread20      auc  rank_sep   std_gap
+            ATR10_pct     volatility -0.072041 -0.396282 0.340909 -0.002978 -0.002083 0.440124 -0.059466 -0.223248
+             ATR5_pct     volatility -0.071335 -0.420704 0.335606 -0.002356 -0.001660 0.439511 -0.059773 -0.222598
+          K_BodyAbs20         candle -0.068760 -0.372666 0.351515 -0.003294 -0.002553 0.443589 -0.056498 -0.212866
+           Turnover_1       turnover -0.067255 -0.430908 0.332961 -0.003687 -0.002222 0.445577 -0.054274 -0.232388
+           Turnover_3       turnover -0.067107 -0.419755 0.329978 -0.003389 -0.002422 0.446075 -0.053743 -0.228250
+                STD20     volatility -0.066807 -0.373945 0.347727 -0.003342 -0.002500 0.445034 -0.054930 -0.205693
+                STD10     volatility -0.066373 -0.412178 0.335606 -0.003113 -0.002327 0.444324 -0.055530 -0.204850
+           Turnover_5       turnover -0.065902 -0.405152 0.339306 -0.003334 -0.002247 0.447505 -0.052455 -0.220804
+            ATR20_pct     volatility -0.065616 -0.342425 0.368182 -0.002460 -0.001808 0.446554 -0.053252 -0.194914
+      Turnover_per_MV       turnover -0.065459 -0.420995 0.339665 -0.003746 -0.001960 0.447108 -0.052833 -0.228497
+    K_LargeBodyFreq20         candle -0.065210 -0.380514 0.338636 -0.005261 -0.003152 0.446870 -0.053417 -0.202113
+          Turnover_10       turnover -0.062735 -0.374529 0.340067 -0.003053 -0.002046 0.450731 -0.049331 -0.203995
+        Close_vs_MA60          trend -0.061517 -0.336347 0.375758 -0.005960 -0.003887 0.449490 -0.052162 -0.207287
+    Close_Position_60 price_position -0.060194 -0.352513 0.362879 -0.004107 -0.002901 0.450460 -0.050480 -0.186573
+       Turnover_Shock       turnover -0.059931 -0.506137 0.281963 -0.004246 -0.003394 0.446140 -0.053714 -0.177622
+K_LargeUpShadowFreq20         candle -0.058862 -0.374425 0.350000 -0.003413 -0.001626 0.452713 -0.047052 -0.183158
+                 STD5     volatility -0.058667 -0.413057 0.323485 -0.003086 -0.002014 0.449577 -0.050023 -0.191316
+      Dist_to_20D_Low price_position -0.057378 -0.406680 0.343182 -0.003332 -0.001782 0.452020 -0.047808 -0.189925
+    Close_Position_40 price_position -0.056576 -0.375983 0.362121 -0.003187 -0.002201 0.453175 -0.047337 -0.174944
+          K_GapFreq20         candle -0.055845 -0.336518 0.358333 -0.003458 -0.002344 0.454247 -0.045668 -0.170083
+             MA_Align          trend -0.053952 -0.358071 0.367424 -0.000059 -0.000744 0.459343 -0.040779 -0.164002
+            LogAmount           size -0.053628 -0.360235 0.340909 -0.003945 -0.003585 0.454040 -0.046624 -0.153873
+         Volume_Shock         volume -0.053059 -0.448284 0.312879 -0.003727 -0.003032 0.451932 -0.048118 -0.155893
+               Ret_60          trend -0.052149 -0.280775 0.389394 -0.004992 -0.003668 0.456896 -0.044550 -0.168996
+      ATR_ratio_10_60     volatility -0.051903 -0.323018 0.358333 -0.004545 -0.002811 0.455265 -0.044392 -0.177665
+
+=== H=5 spread10 排名（ALL）===
+              feature            family   ic_mean  top10_ret  bot10_ret  spread10  spread20  wr_top10      auc
+   Turnover_Stability          turnover  0.024326   0.005667   0.001962  0.003705  0.002759  0.477237 0.518842
+     Volume_Stability            volume  0.020417   0.005114   0.002032  0.003081  0.002113  0.479281 0.515987
+   Industry_Return_10 relative_strength  0.022677   0.005079   0.001931  0.002955  0.002535  0.477939 0.517663
+                K_Gap            candle  0.019040   0.003455   0.001606  0.001849  0.001242  0.459252 0.516505
+   K_NegCandleRatio20            candle  0.033110   0.003321   0.001505  0.001816  0.001578  0.468754 0.527443
+        Efficiency_20        efficiency  0.024884   0.004028   0.002298  0.001730  0.001319  0.475426 0.517073
+      Distance_to_R10    price_position  0.034228   0.003036   0.002175  0.000861  0.001347  0.474720 0.528207
+   TrendEfficiency_20        efficiency  0.013115   0.008990   0.002514  0.000845  0.002114  0.486111 0.508638
+Turnover_Acceleration          turnover  0.009235   0.003595   0.002888  0.000706  0.000741  0.456809 0.506677
+      Distance_to_R15    price_position  0.024078   0.003644   0.002942  0.000702  0.001156  0.478934 0.519395
+      Distance_to_R20    price_position  0.011688   0.003809   0.003308  0.000502  0.000710  0.479772 0.508840
+        K_UpperShadow            candle -0.007921   0.003252   0.001821  0.000447  0.000048  0.460077 0.493282
+       B2_RandomOrder          baseline  0.001359   0.003734   0.003344  0.000391 -0.000072  0.465931 0.500905
+  Volume_Acceleration            volume  0.009511   0.003201   0.002841  0.000360  0.000606  0.459066 0.506784
+   Industry_Return_20 relative_strength  0.009100   0.003746   0.003658  0.000225  0.000790  0.470758 0.508436
+    Industry_Return_5 relative_strength  0.005411   0.003172   0.002859  0.000195  0.000023  0.466927 0.504475
+            MA5_slope             trend -0.006922   0.002020   0.001863  0.000157  0.000707  0.445830 0.492388
+             MA_Align             trend -0.053952  -0.000159   0.001980 -0.000059 -0.000744  0.430850 0.459343
+        Vol_over_MA10            volume -0.004115   0.002089   0.002437 -0.000348 -0.000265  0.452776 0.493367
+   Trend_Acceleration             trend  0.016894   0.001528   0.001977 -0.000449  0.000354  0.450881 0.513486
+
+=== H=5 AUC 偏离 0.5 排名（ALL）===
+              feature         family   ic_mean      auc  rank_sep   std_gap  spread10
+             ATR5_pct     volatility -0.071335 0.439511 -0.059773 -0.222598 -0.002356
+            ATR10_pct     volatility -0.072041 0.440124 -0.059466 -0.223248 -0.002978
+          K_BodyAbs20         candle -0.068760 0.443589 -0.056498 -0.212866 -0.003294
+                STD10     volatility -0.066373 0.444324 -0.055530 -0.204850 -0.003113
+                STD20     volatility -0.066807 0.445034 -0.054930 -0.205693 -0.003342
+           Turnover_1       turnover -0.067255 0.445577 -0.054274 -0.232388 -0.003687
+           Turnover_3       turnover -0.067107 0.446075 -0.053743 -0.228250 -0.003389
+       Turnover_Shock       turnover -0.059931 0.446140 -0.053714 -0.177622 -0.004246
+            ATR20_pct     volatility -0.065616 0.446554 -0.053252 -0.194914 -0.002460
+    K_LargeBodyFreq20         candle -0.065210 0.446870 -0.053417 -0.202113 -0.005261
+      Turnover_per_MV       turnover -0.065459 0.447108 -0.052833 -0.228497 -0.003746
+           Turnover_5       turnover -0.065902 0.447505 -0.052455 -0.220804 -0.003334
+        Close_vs_MA60          trend -0.061517 0.449490 -0.052162 -0.207287 -0.005960
+                 STD5     volatility -0.058667 0.449577 -0.050023 -0.191316 -0.003086
+    Close_Position_60 price_position -0.060194 0.450460 -0.050480 -0.186573 -0.004107
+          Turnover_10       turnover -0.062735 0.450731 -0.049331 -0.203995 -0.003053
+         Volume_Shock         volume -0.053059 0.451932 -0.048118 -0.155893 -0.003727
+      Dist_to_20D_Low price_position -0.057378 0.452020 -0.047808 -0.189925 -0.003332
+K_LargeUpShadowFreq20         candle -0.058862 0.452713 -0.047052 -0.183158 -0.003413
+    Close_Position_40 price_position -0.056576 0.453175 -0.047337 -0.174944 -0.003187
+
+=== H=5 spread10 排名（TRAIN）===
+              feature            family   ic_mean  spread10  spread20      auc  rank_sep
+K_LargeLoShadowFreq20            candle -0.044865  0.016416 -0.001893 0.463717 -0.035937
+   Industry_Return_10 relative_strength  0.038415  0.006514  0.005528 0.529855  0.030387
+   TrendEfficiency_20        efficiency  0.014603  0.005735  0.002576 0.510092  0.010020
+   Industry_Return_20 relative_strength  0.025854  0.004225  0.004000 0.521104  0.021868
+          Turnover_20          turnover -0.024352  0.004036  0.003552 0.482167 -0.017353
+                K_Gap            candle  0.015774  0.001785  0.001442 0.514417  0.014312
+        PriceNoise_20        efficiency -0.013741  0.001632  0.001628 0.492437 -0.007997
+          Turnover_10          turnover -0.039302  0.001276  0.001681 0.469275 -0.029811
+   K_NegCandleRatio20            candle  0.025455  0.001177  0.000679 0.521034  0.020963
+    Industry_Return_5 relative_strength  0.009536  0.001152  0.000579 0.507279  0.007138
+     Volume_Stability            volume  0.005075  0.001125  0.000172 0.503942  0.004104
+           Turnover_5          turnover -0.045862  0.001053  0.000477 0.463559 -0.035401
+ Efficiency_5_over_20        efficiency -0.004411  0.000812  0.000647 0.499182 -0.001104
+       B2_RandomOrder          baseline  0.002413  0.000328 -0.000058 0.501424  0.001507
+      Distance_to_R20    price_position  0.011496  0.000247  0.000548 0.509702  0.009549
+
+=== H=5 spread10 排名（VALID）===
+              feature     family   ic_mean  spread10  spread20      auc  rank_sep
+K_LargeLoShadowFreq20     candle -0.052476  0.011876  0.003365 0.461679 -0.038465
+     Volume_Stability     volume  0.037614  0.005706  0.004252 0.528772  0.028664
+   Turnover_Stability   turnover  0.037680  0.005702  0.004215 0.528722  0.028607
+        Efficiency_20 efficiency  0.033454  0.004921  0.003840 0.524820  0.024909
+K_LargeUpShadowFreq20     candle -0.064306  0.004701 -0.000379 0.450737 -0.049826
+   K_NegCandleRatio20     candle  0.042955  0.002872  0.002701 0.536004  0.036496
+                K_Gap     candle  0.023835  0.001958  0.001199 0.520156  0.020365
+             MA_Align      trend -0.059193  0.001747 -0.001426 0.454958 -0.045118
+        K_UpperShadow     candle -0.005318  0.001426  0.000752 0.494572 -0.005159
+        Efficiency_10 efficiency  0.023852  0.001116  0.000875 0.519529  0.019734
+  B4_DistToResistance   baseline -0.008781  0.001110  0.000465 0.494843 -0.004500
+Turnover_Acceleration   turnover  0.014562  0.000955  0.001219 0.509923  0.010075
+  Volume_Acceleration     volume  0.014863  0.000948  0.001216 0.510139  0.010299
+       B2_RandomOrder   baseline -0.000012  0.000896  0.000082 0.499947 -0.000023
+            LogCircMV       size  0.010034  0.000454 -0.000105 0.504541  0.005757
+
+=== H=5 spread10 排名（OOS）===
+                feature            family  ic_mean  spread10  spread20      auc  rank_sep
+          Close_vs_MA10             trend 0.044118  0.011463  0.010418 0.532370  0.034179
+        Distance_to_R10    price_position 0.054989  0.010085  0.007577 0.543813  0.044468
+              MA5_slope             trend 0.025667  0.009879  0.008347 0.516095  0.017884
+                  Ret_5             trend 0.037620  0.009659  0.007575 0.526557  0.027832
+ Stock_vs_Market_diff_5 relative_strength 0.037620  0.009659  0.007575 0.526557  0.027832
+             RS_Ratio_5 relative_strength 0.037620  0.009659  0.007575 0.526557  0.027832
+     RelativeStrength_5 relative_strength 0.037620  0.009659  0.007575 0.526557  0.027832
+       PriceVolumeEff_5            volume 0.032791  0.009413  0.007279 0.523721  0.024147
+     Trend_Acceleration             trend 0.047070  0.008041  0.006467 0.533690  0.035724
+           Close_vs_MA5             trend 0.039614  0.007806  0.006514 0.531255  0.032052
+                  Ret_3             trend 0.035100  0.007608  0.005963 0.527889  0.028462
+                 Ret_10             trend 0.005713  0.007285  0.006152 0.502117  0.002924
+            RS_Ratio_10 relative_strength 0.005713  0.007285  0.006152 0.502118  0.002924
+Stock_vs_Market_diff_10 relative_strength 0.005713  0.007285  0.006152 0.502117  0.002924
+    RelativeStrength_10 relative_strength 0.005713  0.007285  0.006152 0.502117  0.002924
