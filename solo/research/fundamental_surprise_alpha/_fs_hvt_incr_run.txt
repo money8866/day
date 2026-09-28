@@ -1,0 +1,50 @@
+﻿
+PRE-REGISTERED INCREMENTALITY RULES（跑之前写死，禁止事后修改）
+  样本：report_daily/te_backtest_events_20250101_20260828.csv（2025-01-02~2026-09-23）
+  收益：er10 / er20（decision_date 次日开盘买入）；胜率 = er20 > 0
+  I1 正交性：因子分位 vs execution_score 的**逐日 Spearman 中位 |rho| ≤ 0.30
+  I2 双分层：execution_score 上三分位内，因子上三分位 − 因子下三分位 的 er20 差
+             ≥ +0.50%，且 2025 与 2026 两段同号
+  I3 目标池：next_day_action ∈ {BUY, BUY_ON_CONFIRM} 内，按因子上三分位过滤后
+             的 er20 均值 ≥ 过滤前，且子样本 ≥ 100
+  I4 容量  ：挂载成功率 ≥ 60%，且 I3 过滤后平均每日仍有 ≥ 3 只
+  I1~I4 全过 → 值得作为执行分的一个分量（另行确认后再动生产）
+  任一不过 → 归档，不改任何生产文件
+
+======================================================================
+S0 载入事件表与面板
+  er20 中位绝对值=9.6600 → 单位系数 0.01（百分数）
+  事件 59240 行 / 420 决策日 / 4460 只 / 20250102~20260923
+  panel 121315 行 / 4905 只 / ann_date 20180403~20260831
+  rev_acc 挂载成功率 0.9761
+  np_qoq 挂载成功率 0.9759
+  mv80 子集 29284 行 (49.43%)
+
+I1 正交性：因子分位 vs execution_score 的逐日 Spearman
+  rev_acc  全池 rho=0.0055 (n日=419) | mv80 rho=0.0039 (n日=409) → PASS
+  np_qoq   全池 rho=0.0333 (n日=419) | mv80 rho=0.0544 (n日=409) → PASS
+
+I2 双分层：execution_score 上三分位内，因子上/下三分位的 er20 差
+feature pool  n_hi  n_lo     hi     lo   delta
+rev_acc   全池  6760  6570 0.0132 0.0319 -0.0187
+rev_acc mv80  3224  2786 0.0212 0.0058  0.0154
+ np_qoq   全池  6763  6083 0.0216 0.0088  0.0128
+ np_qoq mv80  3561  2350 0.0133 0.0168 -0.0035
+  rev_acc  2025=-0.0314 2026=+0.0112 同号=False 增量≥0.5%=False → FAIL
+  np_qoq   2025=+0.0064 2026=+0.0268 同号=True 增量≥0.5%=True → PASS
+
+I3 目标池（BUY ∪ BUY_ON_CONFIRM）内按因子上三分位过滤
+  目标池 7402 行 / 414 决策日
+feature pool  n_base  n_kept   base   kept   delta  win_base  win_kept  kept_per_day
+rev_acc   全池    7242    2439 0.0204 0.0205  0.0001    0.5101    0.5351        6.6800
+rev_acc mv80    3825    1232 0.0139 0.0156  0.0017    0.4936    0.5081        3.4500
+ np_qoq   全池    7242    2438 0.0204 0.0228  0.0025    0.5101    0.5398        6.6800
+ np_qoq mv80    3825    1331 0.0139 0.0132 -0.0006    0.4936    0.5207        3.6900
+
+======================================================================
+闸门判定汇总
+  rev_acc  I1[True] I2[False] I3[True] I4[挂载0.98 每日3.45→True]  → FAIL
+  np_qoq   I1[True] I2[True] I3[False] I4[挂载0.98 每日3.69→True]  → FAIL
+
+  已写出 out/hvt_incr_I2.csv / out/hvt_incr_I3.csv
+DONE

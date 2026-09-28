@@ -1,0 +1,224 @@
+{
+  "hypothesis_id": "TL-01",
+  "title": "Trend Lifecycle Alpha",
+  "module": "research/trend_lifecycle",
+  "generated": "2026-09-26",
+  "independence": {
+    "standalone_hypothesis": true,
+    "inherits_prior_fail_stop_results": false,
+    "imports_other_strategies": false,
+    "point_in_time_only": true,
+    "notes": "§0/§56：独立 Hypothesis；不继承任何既有 FAIL/STOP 结论作为正向先验；状态只用 Prediction Date 之前的信息定义；方向仅 TRAIN 期冻结。"
+  },
+  "universe": {
+    "calendar_days": 2120,
+    "calendar_span": "20180102-20260924",
+    "raw_codes": 5816,
+    "valid_cells": 8635211,
+    "panel_cells": 11583680,
+    "exclude": [
+      ".BJ",
+      "ST",
+      "*ST",
+      "listing_days<120"
+    ],
+    "benchmarks": [
+      "PROXY_allA_equalweight",
+      "HS300",
+      "SW_L1_industry(32)"
+    ],
+    "regime_definition": "PROXY 200MA + 60d momentum -> BEAR/NORMAL/BULL",
+    "regime_days": {
+      "BEAR": 618,
+      "NORMAL": 467,
+      "BULL": 1035
+    }
+  },
+  "phases": {
+    "TRAIN": "2018-2022",
+    "VALID": "2023-2024",
+    "OOS": "2025",
+    "LIVE-LIKE": "2026"
+  },
+  "state_models": {
+    "A_rule": {
+      "states": 11,
+      "prereg_thresholds": true,
+      "share_S0": 0.36114,
+      "share_S7": 0.28426,
+      "note": "S3/S4/S5/S8 avg_dur≈1.00 日，状态近似逐日重判"
+    },
+    "B_cluster": {
+      "algo": "KMeans/GMM",
+      "k_tested": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "k_primary": 6,
+      "sil": 0.21156,
+      "train_ic": 0.0741,
+      "oos_ic": 0.1062,
+      "fit_scope": "TRAIN 2018-2022 only",
+      "fit_n": 300000
+    },
+    "C_markov": {
+      "c1_p1_diag": {
+        "S0": 0.909,
+        "S1": 0.771,
+        "S2": 0.622,
+        "S3": 0.296,
+        "S4": 0.489,
+        "S5": 0.647,
+        "S6": 0.567,
+        "S7": 0.879,
+        "S8": 0.48,
+        "S9": 0.606,
+        "S10": 0.723
+      },
+      "c1_k20_diag": {
+        "S0": 0.4598,
+        "S1": 0.0445,
+        "S2": 0.0743,
+        "S3": 0.0128,
+        "S4": 0.0293,
+        "S5": 0.0846,
+        "S6": 0.1093,
+        "S7": 0.3435,
+        "S8": 0.0388,
+        "S9": 0.0172,
+        "S10": 0.0353
+      },
+      "c2_p1_diag": {
+        "C0": 0.883,
+        "C1": 0.84,
+        "C2": 0.791,
+        "C3": 0.889,
+        "C4": 0.76,
+        "C5": 0.827
+      }
+    }
+  },
+  "primary_signal": {
+    "name": "SIG_TRANS",
+    "horizon": 20,
+    "fit": "TRAIN 2018-2022 only, frozen before OOS",
+    "cell_expectations": {
+      "S0>S1": 0.0161,
+      "S1>S2": 0.0247,
+      "S2>S3": 0.0068,
+      "S3>S4": -0.0084,
+      "S4>S5": -0.0074,
+      "S5>S6": 0.0097,
+      "S6>S7": 0.014,
+      "S7>S8": 0.0011,
+      "S7>S9": -0.0183,
+      "S8>S3": 0.0051,
+      "S8>S4": -0.0036
+    },
+    "ic20": {
+      "ALL": 0.0697,
+      "TRAIN": 0.0669,
+      "VALID": 0.0704,
+      "OOS": 0.0704,
+      "LIVE-LIKE": 0.0862
+    },
+    "icir20_oos": 0.7342,
+    "ic_t20_oos": 3.5649,
+    "auc20": {
+      "ALL": 0.46971,
+      "OOS": 0.45472
+    },
+    "prec10_oos": 0.08399
+  },
+  "gates": {
+    "OOS": {
+      "pass": true,
+      "level": "IC",
+      "evidence": "IC20 OOS 0.0704, ICIR 0.7342, t 3.56"
+    },
+    "DISCRIMINATION": {
+      "pass": false,
+      "evidence": "AUC20 OOS 0.45472 < auc_min 0.52; prec10 8.40% < 10%"
+    },
+    "WALK_FORWARD": {
+      "pass": true,
+      "level": "IC",
+      "evidence": "6/6 测试年 IC>0 (0.0215 ~ 0.0739); AUC 6/6 <0.50"
+    },
+    "PARAMETER_STABILITY": {
+      "pass": true,
+      "evidence": "ma×trend & rs×dd 两网格 SMOOTH, 同号 1.00, 粗糙度 0.01/0.02"
+    },
+    "REGIME_STABILITY": {
+      "pass": true,
+      "evidence": "T+20 IC BEAR 0.0872 / NORMAL 0.0369 / BULL 0.0725"
+    },
+    "YEAR_STABILITY": {
+      "pass": true,
+      "evidence": "T+20 IC 九年全正 (9/9)"
+    },
+    "NULL_MODEL": {
+      "pass": true,
+      "evidence": "N3 置换 |z| 2.29-2.78, p=0.0010, BH-FDR 全拒绝"
+    },
+    "MOMENTUM_CONTROL": {
+      "pass": false,
+      "evidence": "全控制后 TRAIN IC -0.0048, OOS 0.0133; Fama-MacBeth VALID t 0.176"
+    },
+    "COST": {
+      "pass": false,
+      "evidence": "30bp: TRAIN -2.84% / VALID -0.62% / OOS -13.46% / LIVE-LIKE -7.86%"
+    },
+    "TAIL": {
+      "pass": false,
+      "flag": "EXTREME_TAIL_DEPENDENT",
+      "evidence": "Top5% 贡献 128.59%; 剔 top5% 后 TRAIN 16.31% -> -3.53%"
+    },
+    "TRADING_ALPHA": {
+      "pass": false,
+      "evidence": "十分位无单调 (Top-全样本 -0.07%), AUC<0.5"
+    }
+  },
+  "stop_rules_triggered": [
+    "Momentum 控制后 Alpha 消失",
+    "AUC ≈ 0.5 (LOW_DISCRIMINATION, §28)",
+    "Cost After Alpha ≈ 0 (§38 30bp)"
+  ],
+  "final_status": "CONDITIONAL",
+  "final_status_label": "CONDITIONAL — STRUCTURAL SIGNAL WITHOUT TRADING PROOF",
+  "live_authorization": false,
+  "next_stage_allowed": false,
+  "next_stage_note": "本研究 V1 不产生任何实盘交易授权；TL-02 Trend Transition Trading 未开启。",
+  "deliverables": [
+    "tl01_feature_daily.parquet",
+    "tl01_state_daily.parquet",
+    "tl01_transition.csv",
+    "tl01_state_stats.csv",
+    "tl01_transition_stats.csv",
+    "tl01_mfe_mae.csv",
+    "tl01_age_effect.csv",
+    "tl01_ic.csv",
+    "tl01_auc.csv",
+    "tl01_regime.csv",
+    "tl01_year.csv",
+    "tl01_parameter_grid.csv",
+    "tl01_null_model.csv",
+    "tl01_permutation.csv",
+    "tl01_oos.csv",
+    "tl01_walkforward.csv",
+    "tl01_cost.csv",
+    "tl01_portfolio.csv",
+    "tl01_report.md",
+    "tl01_registry.json"
+  ],
+  "known_issues": [
+    "A1 tl_grid state_prev 自检不一致 5,368/11,583,680 (0.046%)：口径差异，对 IC 无影响",
+    "A2 Model A 多数状态 avg_dur≈1 日，Duration Effect 不可用，改用 TrendAge",
+    "A3 S7>S9 仅 452 例 / S7>S10 仅 4 例，Q6 无法建立统计结论",
+    "A4 SIG_TRANS IC(0.0704) 与 AUC(0.4547) 符号相反：正 IC 由左尾规避驱动",
+    "A5 age_cut / grid_summary 行复用通用列名，需按 §9/§19 映射还原"
+  ]
+}

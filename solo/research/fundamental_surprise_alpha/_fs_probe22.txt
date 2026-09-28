@@ -1,0 +1,33 @@
+﻿== spread.csv  1020 行
+   columns: ['feature', 'category', 'anchor', 'variant', 'horizon', 'n_coh', 'grp_top10', 'grp_bot10', 'grp_top20', 'grp_bot20', 'grp_mid', 'spr10', 'spr10_t', 'spr20', 'spr20_t', 'net0', 'net10', 'net20', 'net30', 'net50']
+   anchor   {'E3': 356, 'E2': 348, 'E1': 316}
+   variant  {'raw': 510, 'resid_all': 510}
+   horizon  {5: 510, 20: 510}
+   E1&H5 行数 158, 唯一 feature 79, variant {'raw': 79, 'resid_all': 79}
+
+== disc.csv  1020 行
+   columns: ['feature', 'category', 'anchor', 'variant', 'horizon', 'auc', 'eff', 'stdgap', 'ranksep', 'prec', 'n_pair']
+   anchor   {'E3': 356, 'E2': 348, 'E1': 316}
+   variant  {'raw': 510, 'resid_all': 510}
+   horizon  {5: 510, 20: 510}
+   E1&H5 行数 158, 唯一 feature 79, variant {'raw': 79, 'resid_all': 79}
+
+== ic_full.csv  14280 行
+   columns: ['feature', 'category', 'anchor', 'variant', 'horizon', 'period', 'n_coh', 'ic_mean', 'ic_med', 'ic_std', 'icir', 'pos']
+   anchor   {'E3': 4984, 'E2': 4872, 'E1': 4424}
+   variant  {'raw': 4080, 'resid_mom': 2040, 'resid_val': 2040, 'resid_siz': 2040, 'resid_ind': 2040, 'resid_all': 2040}
+   horizon  {5: 6120, 20: 6120, 10: 1020, 60: 1020}
+   period   {'ALL': 3570, 'TRAIN': 3570, 'VALID': 3570, 'OOS': 3570}
+   E1&H5 行数 1896, 唯一 feature 79, variant {'raw': 316, 'resid_mom': 316, 'resid_val': 316, 'resid_siz': 316, 'resid_ind': 316, 'resid_all': 316}
+
+== baseline.csv  36 行
+   columns: ['anchor', 'baseline', 'horizon', 'ic_mean', 'icir', 'spr10', 'spr20', 'auc', 'prec', 'abs_ret', 'abs_ret_t', 'n', 'ic_train', 'ic_valid', 'ic_oos']
+   anchor   {'E1': 18, 'E3': 18}
+   horizon  {5: 12, 10: 12, 20: 12}
+
+== quadrant.csv  576 行
+   columns: ['fund', 'react', 'anchor', 'horizon', 'period', 'group', 'n', 'mean_exret']
+   anchor   {'E1': 192, 'E2': 192, 'E3': 192}
+   horizon  {5: 192, 10: 192, 20: 192}
+   period   {'ALL': 144, 'TRAIN': 144, 'VALID': 144, 'OOS': 144}
+

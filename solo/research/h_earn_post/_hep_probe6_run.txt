@@ -1,0 +1,23 @@
+﻿subset (14201, 253) cohorts 40
+mkt (5816, 2120)
+de 4738 n_grp 29 sizes [17, 15, 10, 61, 201]
+R1 (30, 4738) finite frac 0.9989447024060785
+R2 (30, 4738) finite frac 0.9972773322076826
+orig finite frac 0.9989447024060785
+R1==orig for all seeds? False
+R1 seed means [0.00734 0.00734 0.00734 0.00734 0.00734]
+multiset preserved: True
+  null_id    kind entry     factor horizon   metric    actual  null_mean  null_std  null_p95     delta         z      p_ge  seeds
+0      N1  RANDOM   E20  SIG_RESID    T+20  mean_ic  0.053580  -0.001980  0.037286  0.056422  0.055560  1.490083  0.066667     30
+1      N1  RANDOM   E20  SIG_RESID    T+20     tb20  0.023470  -0.000342  0.012911  0.014448  0.023812  1.844284  0.033333     30
+2      N1  RANDOM   E20  SIG_RESID    T+20    top20  0.002237  -0.012958  0.007777 -0.002337  0.015195  1.953831  0.000000     30
+  null_id    kind entry     factor horizon   metric    actual  null_mean  null_std  null_p95     delta         z      p_ge  seeds
+0      N2  RANDOM   E20  SIG_RESID    T+20  mean_ic  0.053580   0.022800  0.026111  0.057312  0.030780  1.178829  0.133333     30
+1      N2  RANDOM   E20  SIG_RESID    T+20     tb20  0.023470   0.014096  0.011119  0.028013  0.009374  0.843077  0.200000     30
+2      N2  RANDOM   E20  SIG_RESID    T+20    top20  0.002237   0.007978  0.010058  0.023940 -0.005741 -0.570838  0.666667     30
+  E20 反事实匹配完成，累计 3 行
+  entry horizon         variant                            match_vars  n_treated  n_control  fallback_rate  treated_mean  control_mean  raw_diff  matched_diff  matched_std    t_stat  net_30bp
+0   E20    T+20       UNMATCHED  CTRL_SIZE|CTRL_LIQ|CTRL_MOM|CTRL_VAL       1422       1398       0.000000      0.015391       0.00238  0.013011           NaN          NaN       NaN       NaN
+1   E20    T+20  MATCHED_COHORT  CTRL_SIZE|CTRL_LIQ|CTRL_MOM|CTRL_VAL       1422       1398       0.000000      0.015391       0.00238  0.013011      0.016057     0.178888  3.384720  0.004057
+2   E20    T+20     MATCHED_IND  CTRL_SIZE|CTRL_LIQ|CTRL_MOM|CTRL_VAL       1422       1398       0.219409      0.015391       0.00238  0.013011      0.023523     0.164731  5.384831  0.011523
+SMOKE OK

@@ -1,0 +1,52 @@
+﻿ic_full 行数 14280
+列 ['feature', 'category', 'anchor', 'variant', 'horizon', 'period', 'n_coh', 'ic_mean', 'ic_med', 'ic_std', 'icir', 'pos']
+anchors {'E3': 4984, 'E2': 4872, 'E1': 4424}
+variants {'raw': 4080, 'resid_mom': 2040, 'resid_val': 2040, 'resid_siz': 2040, 'resid_ind': 2040, 'resid_all': 2040}
+
+[E1 H5 ALL] variant -> 非 NaN ic_mean 个数 / 总数
+{'raw': (np.int64(79), 79), 'resid_all': (np.int64(79), 79), 'resid_ind': (np.int64(79), 79), 'resid_mom': (np.int64(79), 79), 'resid_siz': (np.int64(79), 79), 'resid_val': (np.int64(79), 79)}
+
+[Raw Top12]
+      feature   ic_mean      icir  n_coh
+      rev_acc  0.066122  0.415577    546
+       np_qoq  0.064155  0.398466    555
+       np_acc  0.053404  0.286891    544
+       dp_acc  0.051961  0.281688    513
+       dp_qoq  0.050184  0.304251    534
+turnover_rate -0.042808 -0.196390    557
+      rev_qoq  0.038900  0.224685    556
+      S2h4_np  0.038494  0.212681    500
+           bp  0.031534  0.138191    557
+           sp  0.030575  0.141958    557
+      S2h8_np  0.030190  0.163720    480
+       mom_20 -0.028847 -0.128725    557
+
+[Top6 特征的中性化对比] (raw / mom / val / siz / ind / all)
+rev_acc          {'raw': 0.0661, 'resid_mom': 0.057, 'resid_val': 0.0651, 'resid_siz': 0.0554, 'resid_ind': 0.0447, 'resid_all': 0.0321}
+np_qoq           {'raw': 0.0642, 'resid_mom': 0.0439, 'resid_val': 0.0547, 'resid_siz': 0.0574, 'resid_ind': 0.036, 'resid_all': 0.0407}
+np_acc           {'raw': 0.0534, 'resid_mom': 0.0528, 'resid_val': 0.055, 'resid_siz': 0.0472, 'resid_ind': 0.0448, 'resid_all': 0.0392}
+dp_acc           {'raw': 0.052, 'resid_mom': 0.025, 'resid_val': 0.0288, 'resid_siz': 0.0238, 'resid_ind': 0.0271, 'resid_all': 0.0218}
+dp_qoq           {'raw': 0.0502, 'resid_mom': 0.0151, 'resid_val': 0.023, 'resid_siz': 0.0277, 'resid_ind': 0.0148, 'resid_all': 0.0147}
+turnover_rate    {'raw': -0.0428, 'resid_mom': -0.0377, 'resid_val': -0.0388, 'resid_siz': -0.0007, 'resid_ind': -0.0226, 'resid_all': -0.0018}
+
+[spread/disc/baseline/quadrant 行数]
+  spread.csv             1020
+  disc.csv               1020
+  baseline.csv           36
+  quadrant.csv           576
+  audit_dataset.csv      28
+  audit_feature.csv      103
+
+[§33 audit_dataset]
+                  0         1          2           3         4                   5                   6                                         7                               8                            9                            10                        11                               12               13                   14                  15                16                17                                                                                       18                19                                                                                                               20                                                              21                     22                  23                   24           25          26                   27
+Unnamed: 0  n_events  n_stocks  n_cohorts  dup_ts_end  dup_rate      ann_agree_rate  ann_multi_src_rate                 announce_time_granularity  announce_to_entry_delay_median  announce_to_entry_delay_p01  announce_to_entry_delay_p99  announce_on_weekend_rate  k1_strictly_after_announce_rate  gap_days_median  asof_lag1_leak_rows  asof_ttm_leak_rows  asof_masked_rows  asof_masked_cols                                                                                asof_note  restatement_rate                                                                                                 restatement_note                                               survivorship_note      target_missing_T5  target_missing_T20   target_missing_T60  ind_missing  mv_missing           pe_missing
+value         136194      4905        866           0       0.0  0.9999118903916472                 1.0  ann_date（日粒度，无时分）；假设信息最早于 ann_date 收盘后公开                             1.0                          1.0                          6.0        0.1927764806085437                              1.0             39.0                   48                  48                48                43  §5 前视检查：滞后一期/滚动四期的报告若 ann_date 严格晚于当期 ann_date，则其派生值当期未知，已置 NaN；同日披露（年报+一季报同日）属同时公开，不掩码               NaN  三表 parquet 同 end_date 重复行 ann_date 相同，无重述版本历史，无法还原"当时可得版本"；已改为仅用首次公告日 ann_date 锚定，不使用后续修正值（f_ann_date 已用于一致性校验）  样本含已退市/已 ST 个股（按 as-of 名称剔除事件日当时为 ST/退市者），不存在"只保留存活至今个股"的幸存者偏差  0.0010866851696844208   0.017379620247588  0.03776965211389635          0.0         0.0  0.17491959998237808
+
+[§24 baseline E1 H5]
+anchor             baseline  horizon   ic_mean      icir     spr10     spr20      auc     prec  abs_ret  abs_ret_t        n  ic_train  ic_valid    ic_oos
+    E1        B1_ALL_EVENTS        5       NaN       NaN       NaN       NaN      NaN      NaN 0.011959  60.368521 136046.0       NaN       NaN       NaN
+    E1          B2_MOMENTUM        5 -0.028847 -0.128725 -0.002142 -0.000576 0.448112 0.197384      NaN        NaN      NaN -0.008144 -0.098218 -0.018790
+    E1             B3_VALUE        5  0.031534  0.138191 -0.000184  0.001072 0.546017 0.141845      NaN        NaN      NaN  0.039709  0.043412 -0.058426
+    E1   B4_EARNINGS_GROWTH        5 -0.000563 -0.002989 -0.001061 -0.001756 0.491653 0.171937      NaN        NaN      NaN  0.001849 -0.018690  0.024830
+    E1    B5_PRICE_REACTION        5  0.014517  0.088086  0.005129  0.001992 0.515391 0.182235      NaN        NaN      NaN  0.012333  0.018558  0.021296
+    E1 B6_GROWTH_x_REACTION        5  0.006154  0.036076  0.003133  0.001480 0.499509 0.186315      NaN        NaN      NaN  0.001826  0.006181  0.038336

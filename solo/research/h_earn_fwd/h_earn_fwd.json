@@ -1,0 +1,587 @@
+{
+  "hypothesis_id": "H-EARN-FWD",
+  "version": "V1.0",
+  "created": "2026-09-26",
+  "final_status": "PASS (FORECAST SKILL CONFIRMED, PRICE ALPHA NOT YET TESTED)",
+  "pit_gates_pass": true,
+  "all_gates_pass": true,
+  "n_gates_failed": 0,
+  "live_trading_authorization": false,
+  "prereg": {
+    "hypothesis_id": "H-EARN-FWD",
+    "created": "2026-09-26",
+    "version": "V1.0",
+    "prediction_offsets": [
+      60,
+      30,
+      20
+    ],
+    "offset_neighborhood": [
+      45,
+      10
+    ],
+    "primary_offset": 30,
+    "anchor_rule": "actual f_ann_date of target report (hindsight anchor; features strictly PIT). Robustness: prior-year-same-quarter anchor as parameter neighborhood.",
+    "target_a": "model_surprise_pct",
+    "target_b": "positive_surprise",
+    "target_c": "strong_surprise",
+    "strong_q": 0.75,
+    "surprise_denom_floor": 0.2,
+    "winsor": [
+      0.01,
+      0.99
+    ],
+    "expect_seasonal": "NP[t-4] * (1 + median(last 4 yoy))",
+    "expect_momentum": "NP[t-4] * (1 + last yoy)",
+    "aux_expected": [
+      "IMPLIED_CONS_FY",
+      "GUIDE_MIDPOINT"
+    ],
+    "consensus_note": "analyst consensus is FY-annual only (report_rc); single-quarter consensus UNAVAILABLE -> IMPLIED_CONS_FY constructed from PIT FY consensus minus published H1 actual with seasonal split; clearly labeled, never mixed into main target.",
+    "min_broker_reports": 2,
+    "hist_windows": [
+      4,
+      8,
+      12
+    ],
+    "hist_window_default": 8,
+    "burnin_anchor_years": [
+      2018
+    ],
+    "phases": [
+      [
+        "TRAIN",
+        2019,
+        2022
+      ],
+      [
+        "VALID",
+        2023,
+        2024
+      ],
+      [
+        "OOS",
+        2025,
+        2025
+      ],
+      [
+        "LIVE-LIKE",
+        2026,
+        2026
+      ]
+    ],
+    "walkforward": [
+      [
+        "W1",
+        2019,
+        2020,
+        2021
+      ],
+      [
+        "W2",
+        2020,
+        2021,
+        2022
+      ],
+      [
+        "W3",
+        2021,
+        2022,
+        2023
+      ],
+      [
+        "W4",
+        2022,
+        2023,
+        2024
+      ],
+      [
+        "W5",
+        2023,
+        2024,
+        2025
+      ],
+      [
+        "W6",
+        2024,
+        2025,
+        2026
+      ]
+    ],
+    "reg_models": [
+      "RIDGE",
+      "GBM"
+    ],
+    "cls_models": [
+      "LOGIT",
+      "GBM_CLS",
+      "RF"
+    ],
+    "reg_gbm": {
+      "n_estimators": 300,
+      "max_depth": 3,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 40,
+      "subsample": 0.8
+    },
+    "ridge_alpha": 10.0,
+    "min_xs": 20,
+    "ic_min_n": 15,
+    "nw_lag_by_offset": {
+      "60": 5,
+      "45": 4,
+      "30": 3,
+      "20": 2,
+      "10": 1
+    },
+    "group_buckets": [
+      0.05,
+      0.1,
+      0.2
+    ],
+    "seed": 20260926,
+    "target_reports": "2018Q4 .. 2026Q2 (anchor year 2019..2026)",
+    "st_kept": true,
+    "delisted_kept": true
+  },
+  "gates": [
+    {
+      "gate": "G1",
+      "criterion": "PIT: last visible report public at P",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G2",
+      "criterion": "PIT: lag-k values gated by own announcement",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G3",
+      "criterion": "PIT: guidance public at P",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G4",
+      "criterion": "PIT: market snapshot fresh (<=10 trading days)",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=163",
+      "pass": true
+    },
+    {
+      "gate": "G5",
+      "criterion": "PIT: unique (code, target, offset) key",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G6",
+      "criterion": "PIT: TARGET report announced strictly after P",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G7",
+      "criterion": "PIT: target actual not in design matrix",
+      "provenance": "spec-pit",
+      "evidence": "n_violation=0",
+      "pass": true
+    },
+    {
+      "gate": "G8",
+      "criterion": "labelled target share >= 0.50",
+      "provenance": "recon",
+      "evidence": "share=0.872",
+      "pass": true
+    },
+    {
+      "gate": "G9",
+      "criterion": "headline cohorts >= 5 (t-stat defined)",
+      "provenance": "recon",
+      "evidence": "n_cohorts=16",
+      "pass": true
+    },
+    {
+      "gate": "G10",
+      "criterion": "headline rank IC >= 0.05 at primary offset",
+      "provenance": "recon",
+      "evidence": "ic=0.3315",
+      "pass": true
+    },
+    {
+      "gate": "G11",
+      "criterion": "headline rank IC t-stat >= 2.0",
+      "provenance": "recon",
+      "evidence": "ic_t=42.75",
+      "pass": true
+    },
+    {
+      "gate": "G12",
+      "criterion": "share of cohorts with positive IC >= 0.60",
+      "provenance": "recon",
+      "evidence": "pos_share=0.938",
+      "pass": true
+    },
+    {
+      "gate": "G13",
+      "criterion": "beats random ranking: N1 z >= 2.0",
+      "provenance": "recon",
+      "evidence": "z=28.50",
+      "pass": true
+    },
+    {
+      "gate": "G14",
+      "criterion": "beats naive momentum rule N5",
+      "provenance": "recon",
+      "evidence": "model=0.3315 rule=0.1384",
+      "pass": true
+    },
+    {
+      "gate": "G15",
+      "criterion": "label-shuffle control N7 |IC| <= 0.05",
+      "provenance": "recon",
+      "evidence": "|IC|=0.0160",
+      "pass": true
+    },
+    {
+      "gate": "G16",
+      "criterion": "strong-surprise AUC >= 0.60",
+      "provenance": "recon",
+      "evidence": "auc=0.7447",
+      "pass": true
+    },
+    {
+      "gate": "G17",
+      "criterion": "top/bottom decile ordering monotone (> 0)",
+      "provenance": "recon",
+      "evidence": "mono=0.920",
+      "pass": true
+    },
+    {
+      "gate": "G18",
+      "criterion": "every anchor year TRAINFIX IC > 0.05",
+      "provenance": "recon",
+      "evidence": "min_year_ic=0.2964 (3 years)",
+      "pass": true
+    },
+    {
+      "gate": "G19",
+      "criterion": "every walk-forward window IC > 0.05",
+      "provenance": "recon",
+      "evidence": "min_wf_ic=0.1677 (6 windows)",
+      "pass": true
+    },
+    {
+      "gate": "G20",
+      "criterion": "company block adds beyond nowcast+market",
+      "provenance": "recon",
+      "evidence": "B_all=0.3326 > B_nc_mkt=0.1723",
+      "pass": true
+    }
+  ],
+  "headline": {
+    "model": "GBM",
+    "target": "model_surprise_pct",
+    "offset": 30,
+    "scheme": "TRAINFIX",
+    "rank_ic": 0.3315,
+    "ic_t": 42.75,
+    "icir": 3.2865,
+    "ic_pos_share": 0.9375,
+    "n_cohorts": 16,
+    "monotonicity": 0.9197,
+    "strong_surprise_auc": 0.7447
+  },
+  "nulls": {
+    "N1_random_rank_z": 28.5,
+    "N5_momentum_rule_ic": 0.1384,
+    "N7_label_shuffle_ic": 0.016
+  },
+  "leakage_audit": [
+    {
+      "gate": "L1",
+      "n_evaluated": 425142,
+      "n_violation": 0,
+      "pass": 1
+    },
+    {
+      "gate": "L2",
+      "n_evaluated": 13361280,
+      "n_violation": 0,
+      "pass": 1
+    },
+    {
+      "gate": "L3",
+      "n_evaluated": 37851,
+      "n_violation": 0,
+      "pass": 1
+    },
+    {
+      "gate": "L4",
+      "n_evaluated": 394297,
+      "n_violation": 163,
+      "pass": 1
+    },
+    {
+      "gate": "L5",
+      "n_evaluated": 432744,
+      "n_violation": 0,
+      "pass": 1
+    },
+    {
+      "gate": "L6",
+      "n_evaluated": 432744,
+      "n_violation": 0,
+      "pass": 1
+    },
+    {
+      "gate": "L7",
+      "n_evaluated": 50,
+      "n_violation": 0,
+      "pass": 1
+    }
+  ],
+  "coverage_ledger": [
+    {
+      "field": "L_np_sq",
+      "coverage": 0.918,
+      "non_null": 397243,
+      "n_unique": 102241
+    },
+    {
+      "field": "np_yoy",
+      "coverage": 0.8827,
+      "non_null": 381963,
+      "n_unique": 98163
+    },
+    {
+      "field": "np_yoy_med8",
+      "coverage": 0.894,
+      "non_null": 386872,
+      "n_unique": 71417
+    },
+    {
+      "field": "rev_yoy",
+      "coverage": 0.8818,
+      "non_null": 381599,
+      "n_unique": 98073
+    },
+    {
+      "field": "gm_trend",
+      "coverage": 0.5103,
+      "non_null": 220848,
+      "n_unique": 55965
+    },
+    {
+      "field": "ocf_np",
+      "coverage": 0.972,
+      "non_null": 420623,
+      "n_unique": 103925
+    },
+    {
+      "field": "accrual_ar",
+      "coverage": 0.8258,
+      "non_null": 357363,
+      "n_unique": 92678
+    },
+    {
+      "field": "ret20",
+      "coverage": 0.9054,
+      "non_null": 391821,
+      "n_unique": 257606
+    },
+    {
+      "field": "ret60",
+      "coverage": 0.8944,
+      "non_null": 387032,
+      "n_unique": 288082
+    },
+    {
+      "field": "vol20",
+      "coverage": 0.9084,
+      "non_null": 393089,
+      "n_unique": 341005
+    },
+    {
+      "field": "turnover_rate",
+      "coverage": 0.9108,
+      "non_null": 394134,
+      "n_unique": 89603
+    },
+    {
+      "field": "pe_ttm",
+      "coverage": 0.742,
+      "non_null": 321090,
+      "n_unique": 239543
+    },
+    {
+      "field": "pb",
+      "coverage": 0.907,
+      "non_null": 392511,
+      "n_unique": 85898
+    },
+    {
+      "field": "total_mv",
+      "coverage": 0.9108,
+      "non_null": 394134,
+      "n_unique": 322115
+    },
+    {
+      "field": "mkt_ret20",
+      "coverage": 1.0,
+      "non_null": 432744,
+      "n_unique": 1845
+    },
+    {
+      "field": "ind_ret20",
+      "coverage": 0.5226,
+      "non_null": 226144,
+      "n_unique": 25340
+    },
+    {
+      "field": "ind_np_yoy_med",
+      "coverage": 0.5225,
+      "non_null": 226108,
+      "n_unique": 3538
+    },
+    {
+      "field": "ind_n_ann",
+      "coverage": 0.5225,
+      "non_null": 226108,
+      "n_unique": 235
+    },
+    {
+      "field": "guide_mid",
+      "coverage": 0.0875,
+      "non_null": 37851,
+      "n_unique": 3256
+    },
+    {
+      "field": "guide_to_mv",
+      "coverage": 0.0208,
+      "non_null": 8980,
+      "n_unique": 8949
+    },
+    {
+      "field": "listed_days",
+      "coverage": 0.349,
+      "non_null": 151047,
+      "n_unique": 2843
+    },
+    {
+      "field": "sw_l1",
+      "coverage": 1.0,
+      "non_null": 432744,
+      "n_unique": 32
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "events.parquet",
+      "present": 1,
+      "bytes": 3920759
+    },
+    {
+      "file": "quarterly_versions.parquet",
+      "present": 1,
+      "bytes": 30929904
+    },
+    {
+      "file": "features_company.parquet",
+      "present": 1,
+      "bytes": 147636180
+    },
+    {
+      "file": "targets.parquet",
+      "present": 1,
+      "bytes": 31313284
+    },
+    {
+      "file": "predictions_company.parquet",
+      "present": 1,
+      "bytes": 48229139
+    },
+    {
+      "file": "predictions_company_skill.parquet",
+      "present": 1,
+      "bytes": 11256
+    },
+    {
+      "file": "predictions_layers.parquet",
+      "present": 1,
+      "bytes": 30610820
+    },
+    {
+      "file": "predictions_layers_skill.parquet",
+      "present": 1,
+      "bytes": 10069
+    },
+    {
+      "file": "eval_skill.parquet",
+      "present": 1,
+      "bytes": 37335
+    },
+    {
+      "file": "eval_null.parquet",
+      "present": 1,
+      "bytes": 11635
+    },
+    {
+      "file": "eval_factor_ic.parquet",
+      "present": 1,
+      "bytes": 8662
+    },
+    {
+      "file": "eval_incremental.parquet",
+      "present": 1,
+      "bytes": 6098
+    },
+    {
+      "file": "eval_target_robust.parquet",
+      "present": 1,
+      "bytes": 5953
+    },
+    {
+      "file": "eval_regime.parquet",
+      "present": 1,
+      "bytes": 21180
+    },
+    {
+      "file": "eval_param_stability.parquet",
+      "present": 1,
+      "bytes": 6576
+    },
+    {
+      "file": "eval_phase.parquet",
+      "present": 1,
+      "bytes": 12857
+    },
+    {
+      "file": "leakage_audit.csv",
+      "present": 1,
+      "bytes": 981
+    },
+    {
+      "file": "coverage_ledger.csv",
+      "present": 1,
+      "bytes": 676
+    }
+  ],
+  "labels_visible_target_quarter": "2018Q4 .. 2026Q2 (anchor year 2019..2026)",
+  "caveats": [
+    "single-quarter analyst consensus UNAVAILABLE -> MODEL_SURPRISE main line; conclusions are vs a preregistered expectation, not vs market consensus",
+    "skill is sensitive to the expectation benchmark (IC 0.33 -> 0.19 under the momentum benchmark)",
+    "high IC partly structural: earnings yoy autocorrelation + the sparse but sharp pre-announcement guidance (2% coverage)",
+    "industry nowcast alone is near-zero (IC ~0.03); SW-L1 map covers only 3000 names, 47.7% rows UNKNOWN",
+    "offset neighbourhood (P45,P10) NOT_BUILT -- declared, not estimated",
+    "no live trading authorization in V1; price alpha is a separate, not-yet-registered study"
+  ],
+  "generated_at": "2026-09-26 22:49:44"
+}

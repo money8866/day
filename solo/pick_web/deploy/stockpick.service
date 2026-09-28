@@ -1,0 +1,14 @@
+[Unit]
+Description=StockPick signal query (FastAPI, read-only sqlite)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/StockPick
+ExecStart=/usr/bin/python3 /var/www/StockPick/app.py --db /var/www/StockPick/data/stock_picks.db --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

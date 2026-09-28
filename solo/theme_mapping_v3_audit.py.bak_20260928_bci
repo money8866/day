@@ -1,0 +1,826 @@
+# -*- coding: utf-8 -*-
+"""主题成份股 Mapping V3 审计（CORE / CHAIN / UNCERTAIN / EXCLUDE）
+
+唯一任务：验证每个主题的成份股是否合理，建立跨主题一致的成员纳入标准，
+防止错误 Mapping 扭曲 Today / Week / Month Heat。
+
+严格约束（不违反）：
+  * 不修改 Heat 公式、不重算 Heat、不动 Reliability / Percentile / P50/P75 / 排名参数
+  * 不写回生产映射（build_theme_stock_map_v2.py 的产物不动）
+  * 不人为修正 Heat
+
+数据源（全部只读）：
+   report_daily/theme_pregate_pool_{D}.csv             原池（4a.45 后 / 4a.47 前，即「原N」）
+   report_daily/theme_stock_map_v2_{D}.csv            生产映射（当前保留）
+  report_daily/theme_segment_dropped_{D}.csv         环节门槛剔除名单
+  report_daily/theme_pollution_dropped_{D}.csv       污染过滤剔除名单
+  report_daily/theme_mapping_hc_v1_{D}_members.csv   HC V1.0 判定（对照）
+  cache_daily/stock_company_mainbiz.json             主营文本
+  theme_kg_v3/theme_kg_v3/config/theme_config.json   环节清单 / 关键词 / 人工名单
+  report_daily/theme_heat_v24_{D}.json               当前 Heat（仅展示，不重算）
+
+  原池口径：使用 --dry-run 产出的 theme_pregate_pool（脚本内 4a.46 快照），
+  与用户规格引用的 AI算力316 / 智能驾驶104 / 军工464 / 电力376 / 消费669 完全一致。
+  生产映射 theme_stock_map_v2 另作「当前保留」对照，不作为原池。
+
+产物：
+  report_daily/theme_mapping_v3_{D}.csv              全量审计库（12 字段 + 扩展）
+  report_daily/theme_mapping_v3_{D}_table1.csv       TABLE 1 Mapping Quality
+  report_daily/theme_mapping_v3_{D}_table2.csv       TABLE 2 异常主题
+  report_daily/theme_mapping_v3_{D}_table3.csv       TABLE 3 人工审核清单
+  report_daily/theme_mapping_v3_{D}_table4.csv       TABLE 4 对 Heat 的潜在影响
+  report_daily/theme_mapping_v3_{D}_samples.csv      随机抽样（每主题每类 ≤20）
+  report_daily/theme_mapping_v3_members_{D}.csv      正式成员池（CORE+CHAIN，交接给 V2.4 Heat）
+  report_daily/theme_mapping_v3_{D}_summary.json     汇总指标
+"""
+
+import csv
+import json
+import os
+import random
+import sys
+from collections import Counter, defaultdict
+
+BASE = r'd:\mystock\solo'
+RD = os.path.join(BASE, 'report_daily')
+CACHE = r'd:\mystock\cache_daily'
+CFG_PATH = os.path.join(BASE, 'theme_kg_v3', 'theme_kg_v3', 'config', 'theme_config.json')
+
+TRADE_DATE = os.environ.get('THEME_V3_DATE', '20260924')
+SAMPLE_N = 20
+RANDOM_SEED = 20260927
+
+# ---------------------------------------------------------------- 文本可用性
+TEXT_BOILERPLATE = (
+    '投资兴办实业', '以上同类商品', '凭许可证', '依法须经批准', '法律法规',
+    '国家有专项规定', '佣金代理', '自有房屋租赁', '企业管理咨询',
+)
+TEXT_STATUS_CN = {'EMPTY': '缺失', 'TOOSHORT': '过短', 'BOILERPLATE': '经营范围样板'}
+
+
+def text_status(txt):
+    """EMPTY / TOOSHORT / BOILERPLATE / ''（可用）"""
+    t = (txt or '').strip()
+    if not t:
+        return 'EMPTY'
+    if len(t) < 12:
+        return 'TOOSHORT'
+    if any(b in t for b in TEXT_BOILERPLATE):
+        return 'BOILERPLATE'
+    return ''
+
+
+# ---------------------------------------------------------------- 环节分层
+# CORE = 主题本体环节（明确属于主题）；CHAIN = 主题产业链关键环节
+SEG_TIER = {
+    'AI_COMPUTE': {
+        'AI芯片/GPU': 'CORE',
+        '服务器/AI服务器': 'CORE',
+        '光模块/光通信': 'CORE',
+        'IDC/数据中心': 'CORE',
+        '算力租赁/云服务': 'CORE',
+        'HBM/存储': 'CORE',
+        '高速互联/铜缆': 'CHAIN',
+        '交换机/网络设备': 'CHAIN',
+        'PCB/覆铜板': 'CHAIN',
+        '液冷/散热': 'CHAIN',
+        '服务器电源': 'CHAIN',
+    },
+    'SMART_DRIVING': {
+        '域控制器/智驾芯片': 'CORE',
+        '自动驾驶/自动驾驶运营': 'CORE',
+        # 20260927 修正：车联网口径过泛（微型连接器/公交调度/物联网模组被并入本体），降为 CHAIN
+        '车联网/V2X': 'CHAIN',
+        '线控底盘/线控制动/线控转向': 'CHAIN',
+        '激光雷达/毫米波雷达/车载摄像头': 'CHAIN',
+        '智能座舱': 'CHAIN',
+        '高精定位/高精地图': 'CHAIN',
+        '汽车电子（智驾相关）': 'CHAIN',
+    },
+    'DEFENSE': {
+        '航空整机/航空发动机': 'CORE',
+        '航天/导弹': 'CORE',
+        '船舶/舰船': 'CORE',
+        '兵器/地面装备': 'CORE',
+        '无人机': 'CORE',
+        '军工电子': 'CHAIN',
+        '军工材料': 'CHAIN',
+        '军工信息化': 'CHAIN',
+        '军工配套（通用）': 'CHAIN',
+    },
+    'ELECTRIC_POWER': {
+        '火力发电': 'CORE',
+        '水力发电': 'CORE',
+        '核电': 'CORE',
+        '风力发电': 'CORE',
+        '光伏发电': 'CORE',
+        '电网运营/输配售电': 'CORE',
+        '发电运营': 'CORE',
+        '电力交易/综合能源服务': 'CHAIN',
+        '储能运营': 'CHAIN',
+        '电网设备': 'CHAIN',
+    },
+    'XINCHUANG': {
+        '国产操作系统': 'CORE',
+        '国产数据库': 'CORE',
+        '中间件': 'CORE',
+        '办公软件': 'CORE',
+        '国产CPU/GPU': 'CORE',
+        'EDA/工业软件': 'CORE',
+        '信创云': 'CORE',
+        '信息安全': 'CHAIN',
+        '国产整机/系统集成': 'CHAIN',
+    },
+    'CONSUMPTION': {
+        '白酒': 'CORE',
+        '食品': 'CORE',
+        '饮料': 'CORE',
+        '家用电器': 'CORE',
+        '商贸零售': 'CHAIN',
+        '社会服务': 'CHAIN',
+        '纺织服饰': 'CHAIN',
+        '农林牧渔（消费品）': 'CHAIN',
+        '家居与文娱用品': 'CHAIN',
+    },
+    # 20260927 补环节门槛（宽主题收权）：商业航天原用 dc_industry_board 灌入
+    #   国防军工/航空装备整板块，44 只中真商业航天不足 10 只，MappingQuality 45.5% BAD。
+    'COMMERCIAL_SPACE': {
+        '运载火箭/火箭发动机': 'CORE',
+        '卫星制造': 'CORE',
+        '卫星运营/卫星互联网': 'CORE',
+        '航天测控/地面设备': 'CHAIN',
+        '卫星应用/导航遥感': 'CHAIN',
+        '宇航配套/星载部件': 'CHAIN',
+    },
+}
+
+# 宽口径补充证据（规格 §五「重点检查被剔除成员是否实际属于产业链」）：
+# 命中 → CHAIN，置信度 LOW，人工动作 REVIEW。仅用于补救环节关键词覆盖面不足。
+SEG_SUPPLEMENT = {
+    'AI_COMPUTE': [
+        '连接器', '连接器件', '通讯连接器', '通信连接器', '高速线缆', '数据电缆',
+        '磁性元件', '磁性元器件', '电源模块', '电源系统', '服务器电源',
+        '光模块', '光器件', '光电子', '存储设备', '机柜', '散热', '导热',
+        # 20260927 补充：环节关键词覆盖不足，误剔网络设备/PCB/光纤光缆类成员
+        '网络通讯', '网络通信', '企业级网络', '数据通信', '网络交换', '光通信',
+        '光电线缆', '高速铜缆', '铜连接', '背板', '印制电路', '覆铜板', 'HDI',
+        '载板', '液冷', '温控', '冷却',
+    ],
+    'SMART_DRIVING': [
+        '摄像头', '镜头', '雷达', '域控', '线控', '车机', '辅助驾驶', '车载',
+        '车规', '传感器', '控制器', '网关', '线束', '抬头显示', '中控', '导航',
+        '定位', '感知',
+        # 20260927 补充：汽车电子/智能座舱/感知层业务词
+        '智能网联', '车路协同', '激光雷达', '毫米波', '超声波', '摄像头模组',
+        '光学镜头', '座舱', 'ADAS', '车载显示', '车载摄像头', '汽车电子',
+    ],
+    'DEFENSE': [
+        '雷达', '光电', '红外', '微波', '元器件', '结构件', '发动机', '传感器',
+        '集成电路', '微电子', '电容器', '连接器', '惯导', '制导', '测控',
+        '钛合金', '高温合金', '碳纤维', '复合材料', '锻件',
+        # 20260927 补充：军工通信/军工材料/特种装备业务词（修复 海格通信/中航重机/
+        # 七一二/捷强装备 等被环节关键词漏判的产业链成员）
+        '军事', '军民', '防御装备', '核化生', '锻铸', '液压', '环控', '无线电',
+        '通信终端', '导航设备', '引信', '火工', '弹药', '夜视', '头盔',
+        '电能源', '兵工', '防务',
+        # 20260927 第二轮补充：军工通信/声纳/特殊应用（修复 烽火电子/中科海讯/新劲刚）
+        '通信装备', '声纳', '声呐', '射频', '特殊应用',
+    ],
+}
+
+# ------------------------------------------------- 环节词表白名单 / 黑名单
+# 20260927 修正第 4 项：报告表5 要求「环节词表按『直连主题本体』重建白名单与黑名单」。
+# 黑名单 = 下列泛化词：虽写在环节 keywords 里，但语义过泛，无法单独证明「直连主题本体」
+#   （通用电子元件 / 通用材料 / 通用设备 / 通用行业词 / 通用经营词）。
+#   命中黑名单词不再构成强证据（不得单独定 CORE/CHAIN），改计入弱证据通道，
+#   与「公司简称命中 / 经营层业务词 / 环节行业归属」同权，需两条独立弱证据互证才升 CHAIN。
+# 依据（20260924 抽样验证残余误纳 29 例）：
+#   AI算力 闪存(消费级移动存储) / 数据中心(IT 运维·系统集成) / 云平台(物联网模组) /
+#          PCB(EMS 代工的 PCBA 子串) / 网络设备(基站设备)
+#   智能驾驶 智慧交通(公交调度) / 制动·转向(车灯) / 车联网(微型连接器) / 车身电子(通用车身电器)
+#   军工 航天(煤化工设备) / 航空航天·航空(密封件) / 连接器·元器件·集成电路·复合材料·
+#        结构件·导航定位·特种(通用电子、通用材料与通用配套)
+#   电力 光伏发电·太阳能发电(光伏电池组件制造 ≠ 电力运营)
+#   消费 开关(传媒) / 照明(B2B 特殊环境照明) / 贸易(金属矿 B2B) / 饲料(水产饲料·上游投入品)
+# 白名单（补充词）：配置环节词覆盖不足、导致真实产业链成员被漏判时的人工补充词，
+# 20260927 起直接维护在 theme_config.json 的 segments[*].keywords（唯一定义源）。
+# 注：黑名单（SEG_KW_GENERIC）只在规则引擎内生效、不写回 theme_config.json；
+#     20260927 起生产侧 build_theme_stock_map_v2.py 环节门槛直接 import 本模块 classify，
+#     两侧口径同源（此前「生产侧口径保持独立」的做法已取消）。
+SEG_KW_GENERIC = {
+    'AI_COMPUTE': {
+        'HBM/存储': ['闪存', '固态硬盘', '存储设备', '存储器'],
+        'IDC/数据中心': ['数据中心'],
+        '算力租赁/云服务': ['云平台', '云计算'],
+        '交换机/网络设备': ['网络设备'],
+        'PCB/覆铜板': ['PCB'],
+    },
+    'SMART_DRIVING': {
+        '自动驾驶/自动驾驶运营': ['智慧交通'],
+        '线控底盘/线控制动/线控转向': ['制动', '转向', '底盘', '悬架', '驻车'],
+        '车联网/V2X': ['车联网'],
+        '汽车电子（智驾相关）': ['车身电子'],
+    },
+    'DEFENSE': {
+        '航空整机/航空发动机': ['航空航天', '航空'],
+        # 「卫星」补入：中海达(300177.SZ)主营为高精度卫星导航定位(GNSS)，
+        # 民用测绘为主，不足以定为本体 CORE → 降入弱证据通道
+        '航天/导弹': ['航天', '卫星'],
+        '军工电子': ['连接器', '元器件', '集成电路', '电容器', '电容', '滤波器',
+                     '嵌入式', '传感器', '微电子', '芯片', '陶瓷', '光电', '微波', '红外'],
+        '军工材料': ['复合材料', '结构件'],
+        '军工信息化': ['导航定位'],
+        '军工配套（通用）': ['特种'],
+    },
+    'ELECTRIC_POWER': {
+        '光伏发电': ['光伏发电', '太阳能发电'],
+        # 「发电」补入：爱旭股份(600732.SH)主营「光伏发电核心产品的研发和制造」，
+        # 属光伏电池/组件制造（上游设备）而非电力运营 → 降入弱证据通道
+        # 20260927 电力收权（报告表5 MINOR_RULE_FIX）：发电运营在 SEG_TIER 中为 CORE，
+        #   而其 keywords 含「电力/电站/机组/装机/热力」等泛化词 —— 任何主营提到「电力」
+        #   的电气设备/电力信息化/监控仪表公司被直接判本体。实测电力 CORE Precision
+        #   47.8%（38 条 final 中 10 条误纳入，其中 3 例为主营命中「电力」）。
+        #   降级后这些词仅进「宽口径产业链证据」通道，需第二条独立证据才成 CHAIN。
+        '发电运营': ['发电', '电力', '电站', '机组', '装机', '热力'],
+        # 「风电」同上：振宏股份(920200.BJ)主营「锻造风电主轴…锻件」，
+        #   属零部件制造而非风力发电运营 → 降入弱证据通道
+        '风力发电': ['风电'],
+    },
+    'CONSUMPTION': {
+        # 「电器」补入：博瑞传播(600880.SH)主营含「高低压电器开关制造」，
+        # 属传媒+工业电器，非消费品 → 降入弱证据通道
+        '家用电器': ['开关', '照明', '电器'],
+        '商贸零售': ['贸易'],
+        '农林牧渔（消费品）': ['饲料'],
+    },
+    'COMMERCIAL_SPACE': {
+        # 「卫星」黑名单化：四川九洲(000801.SZ)主营「卫星电视接收系统」、
+        #   流金科技(920021.BJ)「卫星电视直播信号落地入网」—— 家用/传媒卫星电视
+        #   与商业航天（火箭/卫星制造发射/运营）无关，泛化词「卫星」不得单独定级。
+        '卫星制造': ['卫星'],
+    },
+}
+
+# 环节词表白名单（补充）原先在此处维护（SEG_KW_EXTRA）。20260927 口径同步：
+# 该补充词已直接写入 theme_config.json 的 segments[*].keywords（唯一定义源），
+# 审计侧与生产侧（build_theme_stock_map_v2.py 环节门槛）均直接读配置，不再各自维护。
+# 20260927 写入配置的补充词：
+#   消费·家居与文娱用品 ← 钢琴/码克/办公椅/沙发/按摩椅（海伦钢琴 300329.SZ、
+#     恒林股份 603661.SH）；消费·食品 ← 膳食营养/保健食品/营养补充剂（汤臣倍健 300146.SZ）
+#   AI算力·算力租赁/云服务 ← 智算业务
+
+# 保守兜底行业白名单（补充）：主营无主题业务证据时，行业口径仍属主题范围的判断。
+# 用途单一：仅在第 6 步「保守兜底」把 EXCLUDE 收窄为 UNCERTAIN，绝不参与正向纳入
+#   （生产侧 build_theme_stock_map_v2.py 的 E3「行业命中」用的是 sw/cx_industry_match，
+#     若直接改 theme_config.json 会放宽正向纳入，故此处只在审计引擎内收窄误杀）。
+# 依据（20260927 修正）：
+#   消费 海伦钢琴「文教休闲」/ 恒林股份「家居用品」→ 报告 §六·消费「过严」
+#   军工 邦彦技术「通信设备」→ 报告 §八·3「2 例明确误剔（铂力特、邦彦技术）」
+THEME_IND_EXTRA = {
+    'CONSUMPTION': ['文教休闲', '家居用品'],
+    'DEFENSE': ['通信设备'],
+}
+
+_GENERIC_WORDS = {w for _m in SEG_KW_GENERIC.values() for _ws in _m.values() for w in _ws}
+# 黑名单词同步从宽口径补充证据中移除，避免同一泛化语义被重复计为两条独立弱证据
+SEG_SUPPLEMENT = {k: [w for w in v if w not in _GENERIC_WORDS]
+                  for k, v in SEG_SUPPLEMENT.items()}
+
+# 环节行业豁免后仍需「经营层面证据」的主题（规格 §五-4：只用电不能算电力成员）
+# 20260927 修正：「光伏」「能源」属设备/制造/泛新能源语境（横店东磁·太阳能光伏/新能源动力
+# 电池、华民股份·光伏新能源、时创能源），不构成电力运营证据 → 移除，改由电力环节强关键词判定。
+POWER_BIZ_WORDS = (
+    '电力', '发电', '电网', '输变电', '变电', '配电', '供电', '售电', '变电所',
+    '变压器', '互感器', '电抗器', '电缆', '开关柜', '断路器', '继电保护',
+    '电工', '电气', '电表', '用电信息', '机组', '电站', '储能', '特高压',
+    '电能', '电源', '装机', '绿电', '热电', '火电', '水电', '风电', '核电',
+    '热力',
+)
+
+def _biz_words(theme_key):
+    """弱证据通道「经营层业务词」的词表。
+
+    电力用电力经营层词（发电/输配电/电网…）；其余主题用宽口径产业链词。
+    修正依据：环节行业豁免必须叠加经营层证据，单一弱证据不得定级。
+    """
+    if theme_key == 'ELECTRIC_POWER':
+        return POWER_BIZ_WORDS
+    return tuple(SEG_SUPPLEMENT.get(theme_key, ()))
+
+
+# 通道口径：行业 / 概念整包倒入（非人工确认）
+BASKET_VIA = {
+    'dc_industry_board', 'dc_industry', 'stock_basic_industry',
+    'stock_basic_industry_alias', 'sw_industry', 'sw_industry_board',
+    'concept_fallback', 'ths_concept', 'concept_only', 'concept_as_industry',
+}
+CURATED_VIA = {'leader_company', 'core_company', 'manual_override'}
+
+
+def read_csv(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, 'r', encoding='utf-8-sig', newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def write_csv(path, fieldnames, rows):
+    with open(path, 'w', encoding='utf-8-sig', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    print(f'  -> {os.path.basename(path)}（{len(rows)} 行）')
+
+
+def R(cls, ev_type, evidence, conf, action, reason):
+    return {
+        'classification': cls, 'evidence_type': ev_type, 'evidence': evidence,
+        'confidence': conf, 'manual_action': action, 'reason': reason,
+    }
+
+
+def match_industry(segs, industry):
+    """P3：成员行业命中环节的窄口径 industries 白名单"""
+    if not industry:
+        return ''
+    for seg in segs:
+        if industry in (seg.get('industries') or []):
+            return seg.get('name', '')
+    return ''
+
+
+def match_theme_industry(cfg, industry, theme_key=''):
+    """股票行业是否落在主题的行业口径内（配置 sw/cx_industry_match，双向子串匹配）。
+
+    用于保守兜底分支：行业仍属主题范围 → UNCERTAIN（证据不足，不得误杀）；
+    行业明显不属主题范围 → EXCLUDE（明确反证）。
+    THEME_IND_EXTRA 为审计侧补充（20260927），仅在此兜底处生效，不参与正向纳入。
+    """
+    if not industry:
+        return False
+    for key in ('sw_industry_match', 'cx_industry_match'):
+        for kw in ((cfg.get(key) or []) + THEME_IND_EXTRA.get(theme_key, [])):
+            if kw and (kw in industry or industry in kw):
+                return True
+    return False
+
+
+def classify(theme_key, cfg, code, name, via, industry, mainbiz):
+    leaders = set(cfg.get('leaders') or []) | set(cfg.get('core_stocks') or [])
+    segs = cfg.get('segments') or []
+    tier_map = SEG_TIER.get(theme_key, {})
+    tstat = text_status(mainbiz)
+
+    # 1) 正向证据：环节关键词（优先主题） / 主题关键词（其余主题）
+    #    hits = 强证据（直连本体/产业链的专用词）
+    #    generic_hits = 泛化词（黑名单，见 SEG_KW_GENERIC）→ 只能进弱证据通道
+    hits, name_hits, generic_hits = [], [], []
+    if segs:
+        gen_map = SEG_KW_GENERIC.get(theme_key, {})
+        for seg in segs:
+            sname = seg.get('name', '')
+            tier = tier_map.get(sname, 'CHAIN')
+            gen = set(gen_map.get(sname) or [])
+            kws = list(seg.get('keywords') or [])
+            for kw in kws:
+                if not kw:
+                    continue
+                if mainbiz and kw in mainbiz:
+                    (generic_hits if kw in gen else hits).append((kw, tier, sname))
+                elif name and kw in name:
+                    name_hits.append((kw, tier, sname))
+    else:
+        for kw in (cfg.get('core_keywords') or []):
+            if kw and mainbiz and kw in mainbiz:
+                hits.append((kw, 'CORE', '核心关键词'))
+        for key in ('product_keywords', 'keywords', 'industry_chains'):
+            for kw in (cfg.get(key) or []):
+                if kw and mainbiz and kw in mainbiz:
+                    hits.append((kw, 'CHAIN', f'{key}'))
+        for kw in (cfg.get('brand_keywords') or []):
+            if kw and name and kw in name:
+                name_hits.append((kw, 'CHAIN', 'brand_keywords'))
+
+    # 2) 配置人工名单：只定义优先级（成员资格），层级按主营环节证据校正
+    #    （20260927 修正：原直接产出 CORE 会绕过环节分层，使 PCB 等产业链环节被标为本体）
+    if code in leaders:
+        tier, ev = 'CORE', '配置人工名单（leaders / core_stocks）'
+        if hits:
+            best = max(hits, key=lambda x: len(x[0]))
+            tier, ev = best[1], f'人工名单 + 主营命中环节「{best[2]}」关键词：{best[0]}'
+        return R(tier, '其他', ev, 'HIGH', 'KEEP', '人工名单定优先级，层级按主营环节证据校正')
+
+    # 强证据：环节/主题关键词命中（最长命中定级，越具体越优先，避免泛词升级为 CORE）
+    if hits:
+        best = max(hits, key=lambda x: len(x[0]))
+        return R(best[1], '主营' if segs else ('核心产品' if 'product' in best[2] else '主营'),
+                 f'主营命中环节「{best[2]}」关键词：{best[0]}', 'HIGH', 'KEEP',
+                 '主营文本明确指向该环节')
+
+    # 3) 数据缺口（规格 §二 C：主营文本缺失 → UNCERTAIN，不得直接判 BAD）
+    if tstat:
+        p3 = match_industry(segs, industry)
+        if p3:
+            return R('UNCERTAIN', '环节行业',
+                     f'行业「{industry}」属环节「{p3}」；主营文本{ TEXT_STATUS_CN[tstat] }',
+                     'LOW', 'REVIEW', '文本缺口，行业口径仅供参考（不判 BAD / 不入 Heat）')
+        return R('UNCERTAIN', '主营', f'主营文本{ TEXT_STATUS_CN[tstat] }，无可用业务描述',
+                 'LOW', 'REVIEW', '数据缺口，保留待补录（不判 BAD）')
+
+    # 4) 弱证据通道（20260927 修正）：公司简称命中 / 宽口径产业链证据 / 环节行业归属
+    #    —— 一律不得单独定级。
+    #    按「证据通道」计数（同一通道多个词只算一条，避免同一泛化语义被重复计数）：
+    #    单一通道 → UNCERTAIN；两条及以上**独立**通道互证 → CHAIN。
+    #    「独立」口径（20260927 第二轮修正，规格 §表5-1「需第二条独立证据」）：
+    #      经营层业务词 与 泛化环节词 同属「宽口径产业链证据」这一证据族，
+    #      二者不得互为第二条独立证据（否则同一 PCB/光伏语义被重复计数两次）。
+    #    依据：军工宽口径产业链词无证据即入链（12/20）、电力环节行业豁免过宽、
+    #          AI算力/消费简称命中误纳（亿能电力等）、光弘科技 PCB 双计。
+    weak = {}
+    if name_hits:
+        nb = max(name_hits, key=lambda x: len(x[0]))
+        weak['公司简称命中'] = f'「{nb[2]}」关键词：{nb[0]}'
+    wide = []
+    bw = [w for w in _biz_words(theme_key) if w in mainbiz]
+    if bw:
+        wide.append(max(bw, key=len))
+    if generic_hits:
+        wide.append(max(generic_hits, key=lambda x: len(x[0]))[0])
+    if wide:
+        weak['宽口径产业链证据'] = f'产业链：{max(wide, key=len)}'
+    p3 = match_industry(segs, industry)
+    if p3:
+        weak['环节行业归属'] = f'「{industry}」属环节「{p3}」'
+    has_ind = '环节行业归属' in weak
+    if len(weak) >= 2:
+        best = max(weak.items(), key=lambda kv: len(kv[1]))
+        return R('CHAIN', '环节行业' if has_ind else '弱证据交叉',
+                 f'弱证据交叉印证（{"、".join(weak)}）：{best[1]}',
+                 'MEDIUM', 'REVIEW', '两条独立弱证据互证，暂列 CHAIN 待人工确认')
+    if len(weak) == 1:
+        k, v = next(iter(weak.items()))
+        return R('UNCERTAIN', '环节行业' if has_ind else '弱证据',
+                 f'仅单一弱证据（{k}）：{v}', 'LOW', 'REVIEW',
+                 f'弱证据通道「{k}」不得单独定级，需第二条独立证据')
+
+    # 5) 明确反证：exclude_keywords
+    neg = [w for w in (cfg.get('exclude_keywords') or []) if w and mainbiz and w in mainbiz]
+    if neg:
+        return R('EXCLUDE', '主营', f'主营明确为排除项：{neg[0]}', 'HIGH', 'EXCLUDE',
+                 'exclude_keywords 构成明确反证')
+
+    # 6) 保守兜底（20260927 修正）：主营无主题业务证据时不得直接 EXCLUDE，按行业归属判定。
+    #    依据：消费 7 例真实成分股（膳食营养/家电零部件/家居/服饰/文教/自行车）与电力
+    #          1 例（白云电器·输配电设备）被「dc_industry_board」整包一刀切误判 EXCLUDE。
+    if via in BASKET_VIA:
+        if match_theme_industry(cfg, industry, theme_key):
+            return R('UNCERTAIN', '其他',
+                     f'仅经「{via}」行业「{industry}」纳入，主营无主题业务证据',
+                     'LOW', 'REVIEW',
+                     '保守兜底：行业口径仍属主题范围，证据不足转待复核（不判排除）')
+        return R('EXCLUDE', '其他',
+                 f'仅经「{via}」纳入，行业「{industry}」不在主题行业范围，主营无主题业务证据',
+                 'MEDIUM', 'REVIEW', '行业与主营均无主题归属证据')
+    if via in CURATED_VIA:
+        return R('UNCERTAIN', '其他', f'人工名单来源「{via}」但主营无主题证据',
+                 'MEDIUM', 'REVIEW', '来源可信但证据不足')
+    return R('UNCERTAIN', '其他', f'经「{via}」纳入，主营无明确主题证据', 'LOW', 'REVIEW',
+             '证据不足，需人工复核')
+
+
+def main():
+    print('=' * 68)
+    print(f'主题成份股 Mapping V3 审计　交易日 {TRADE_DATE}')
+    print('=' * 68)
+
+    with open(CFG_PATH, 'r', encoding='utf-8') as f:
+        cfg_all = json.load(f)
+    with open(os.path.join(CACHE, 'stock_company_mainbiz.json'), 'r', encoding='utf-8') as f:
+        mainbiz_map = json.load(f)
+
+    key_by_cn, cfg_by_cn = {}, {}
+    for k, v in cfg_all.items():
+        if k.startswith('_'):
+            continue
+        cn = v.get('name_cn', k)
+        key_by_cn[cn] = k
+        cfg_by_cn[cn] = v
+    print(f'  主题配置: {len(cfg_by_cn)} 个　主营文本: {len(mainbiz_map)} 只')
+
+    pool = read_csv(os.path.join(RD, f'theme_pregate_pool_{TRADE_DATE}.csv'))
+    prod = read_csv(os.path.join(RD, f'theme_stock_map_v2_{TRADE_DATE}.csv'))
+    dropped_seg = read_csv(os.path.join(RD, f'theme_segment_dropped_{TRADE_DATE}.csv'))
+    dropped_pol = read_csv(os.path.join(RD, f'theme_pollution_dropped_{TRADE_DATE}.csv'))
+    hc_rows = read_csv(os.path.join(RD, f'theme_mapping_hc_v1_{TRADE_DATE}_members.csv'))
+    with open(os.path.join(RD, f'theme_heat_v24_{TRADE_DATE}.json'), 'r', encoding='utf-8') as f:
+        heat_rows = json.load(f)
+
+    seg_drop_set = {(r['theme'], r['code']) for r in dropped_seg}
+    pol_drop_set = {(r['theme'], r['code']) for r in dropped_pol}
+    prod_set = {(r['主题'], r['股票代码']) for r in prod}  # 仅用于对照（gated 主题该文件为旧产物）
+    hc_map = {(r['theme'], r['code']): r.get('cls', '') for r in hc_rows}
+    heat_map = {r['theme']: r for r in heat_rows}
+    print(f'  原池(门槛前) {len(pool)} 条　生产映射 {len(prod)} 条　'
+          f'环节门槛剔除 {len(seg_drop_set)} 条　污染过滤剔除 {len(pol_drop_set)} 条　'
+          f'HC 判定 {len(hc_rows)} 条')
+
+    # 上一交易日快照（用于识别「新增成员」）
+    prev_path = os.path.join(RD, f'theme_stock_map_v2_20260923.csv')
+    prev_set = {(r['主题'], r['股票代码']) for r in read_csv(prev_path)} if os.path.exists(prev_path) else set()
+
+    theme_order, audit = [], []
+    for r in pool:
+        theme = r.get('theme', '').strip()
+        code = r.get('code', '').strip()
+        if not theme or not code:
+            continue
+        theme_key = key_by_cn.get(theme, '')
+        cfg = cfg_by_cn.get(theme, {})
+        name = r.get('name', '').strip()
+        via = r.get('via', '').strip()
+        industry = r.get('industry', '').strip()
+        mainbiz = (mainbiz_map.get(code) or r.get('mainbiz') or '').strip()
+        if theme not in theme_order:
+            theme_order.append(theme)
+
+        res = classify(theme_key, cfg, code, name, via, industry, mainbiz)
+        # 当前口径：4a.47 环节门槛 / 4a.6 污染过滤 已显式剔除的，分别标记；
+        # 其余为「通过全部门槛、应进入正式映射」的成员。
+        # （注：磁盘 theme_stock_map_v2 对 6 个 segment_gate 主题仍是 4a.47 之前的旧产物，
+        #   故不以该文件判定「生产保留」，改以门槛后口径为准。）
+        if (theme, code) in seg_drop_set:
+            gate = '环节门槛剔除'
+        elif (theme, code) in pol_drop_set:
+            gate = '污染过滤剔除'
+        else:
+            gate = '映射保留'
+        audit.append({
+            'theme': theme,
+            'ts_code': code,
+            'name': name,
+            'mapping_old': hc_map.get((theme, code), 'NA'),
+            'mapping_new': res['classification'],
+            'classification': res['classification'],
+            'evidence_type': res['evidence_type'],
+            'evidence': res['evidence'],
+            'confidence': res['confidence'],
+            'manual_action': res['manual_action'],
+            'reason': res['reason'],
+            'gate_status': gate,
+            'is_new_member': 'Y' if (theme, code) not in prev_set else '',
+            'via': via,
+            'industry': industry,
+            'mainbiz': mainbiz[:200],
+        })
+    print(f'  审计条目: {len(audit)}')
+
+    # ------------------------------------------------ TABLE 1
+    by_theme = defaultdict(list)
+    for a in audit:
+        by_theme[a['theme']].append(a)
+
+    t1, metrics = [], {}
+    for theme in theme_order:
+        rows = by_theme[theme]
+        n0 = len(rows)
+        c = Counter(a['classification'] for a in rows)
+        core, chain = c['CORE'], c['CHAIN']
+        unc, exc = c['UNCERTAIN'], c['EXCLUDE']
+        final = core + chain
+        h = heat_map.get(theme, {})
+        _inds = set()
+        for _s in (cfg_by_cn.get(theme, {}).get('segments') or []):
+            _inds |= {i for i in (_s.get('industries') or []) if i}
+        n_ind_member = sum(1 for a in rows if a['industry'] in _inds) if _inds else 0
+        n_exc_prod = sum(1 for a in rows
+                         if a['classification'] == 'EXCLUDE' and a['gate_status'] == '映射保留')
+        t1.append({
+            '主题': theme, '原N': n0, 'CORE': core, 'CHAIN': chain,
+            'UNCERTAIN': unc, 'EXCLUDE': exc, '最终N(CORE+CHAIN)': final,
+            '保留率%': round(final * 100.0 / n0, 1) if n0 else 0,
+            '剔除率%': round(exc * 100.0 / n0, 1) if n0 else 0,
+            'CHAIN占比%': round(chain * 100.0 / final, 1) if final else 0,
+            'UNCERTAIN占比%': round(unc * 100.0 / n0, 1) if n0 else 0,
+            'Today Heat': h.get('today_heat', ''), 'Week Heat': h.get('week_heat', ''),
+            'Month Heat': h.get('month_heat', ''),
+        })
+        metrics[theme] = {
+            'n0': n0, 'core': core, 'chain': chain, 'uncertain': unc, 'exclude': exc,
+            'final': final,
+            'keep_ratio': round(final * 100.0 / n0, 1) if n0 else 0,
+            'exclude_ratio': round(exc * 100.0 / n0, 1) if n0 else 0,
+            'chain_ratio': round(chain * 100.0 / final, 1) if final else 0,
+            'uncertain_ratio': round(unc * 100.0 / n0, 1) if n0 else 0,
+            'industry_gate': sum(1 for a in rows if a['evidence_type'] == '环节行业'),
+            'seg_industry_members': n_ind_member,
+            'exclude_in_prod': n_exc_prod,
+            'today_heat': h.get('today_heat', ''), 'week_heat': h.get('week_heat', ''),
+            'month_heat': h.get('month_heat', ''), 'today_rank': h.get('today_rank', ''),
+        }
+
+    # ------------------------------------------------ TABLE 2 异常主题
+    t2 = []
+    gate_themes = {k for k, v in cfg_all.items() if not k.startswith('_') and v.get('segment_gate')}
+    SUGGEST = {
+        '过度剔除/明显污染': '核对被剔名单：区分「主营明确属其他领域」（真剔除）与「仅行业口径纳入」（应保留待复核）',
+        '剔除偏高': '抽查被剔名单，确认剔除依据是否为主营文本缺关键词（若属证据不足应转 UNCERTAIN）',
+        'N 极端下降': '成员池缩减过大，须确认不是关键词覆盖面不足所致；建议补环节业务词后再收口',
+        'UNCERTAIN 占比过高': 'UNCERTAIN 不进 Heat；须补录主营文本或人工判定后再定档',
+        '产业链环节占比过高': '正式 Heat 纳入 CHAIN 后需确认 CHAIN 判定质量（置信度多为 MEDIUM/LOW，需人工确认）',
+        '环节行业豁免过宽': '逐项核对环节行业豁免成员，须有明确经营层证据；仅「用电/泛公用事业」不得计入',
+        '跨主题规则不一致': '该主题未启用环节清单门槛，与已启用主题判定口径不一致，建议纳入统一门槛',
+        '生产映射含审计判 EXCLUDE 成员': '生产映射中残留行业口径纳入的成员，建议从正式成员池移除或转 UNCERTAIN 待复核',
+    }
+    for theme in theme_order:
+        m = metrics[theme]
+        has_gate = key_by_cn.get(theme, '') in gate_themes
+        issues = []
+        if m['exclude_ratio'] >= 60:
+            issues.append(('过度剔除/明显污染', f"剔除率 {m['exclude_ratio']}%（{m['exclude']}/{m['n0']}）", 'HIGH'))
+        elif m['exclude_ratio'] >= 45:
+            issues.append(('剔除偏高', f"剔除率 {m['exclude_ratio']}%（{m['exclude']}/{m['n0']}）", 'MEDIUM'))
+        if m['n0'] and m['keep_ratio'] <= 35:
+            issues.append(('N 极端下降', f"最终N {m['final']}/{m['n0']}（保留率 {m['keep_ratio']}%）", 'HIGH'))
+        if m['uncertain_ratio'] >= 25:
+            issues.append(('UNCERTAIN 占比过高', f"UNCERTAIN {m['uncertain']}/{m['n0']}（{m['uncertain_ratio']}%）", 'MEDIUM'))
+        if m['final'] and m['chain_ratio'] >= 70:
+            issues.append(('产业链环节占比过高', f"CHAIN/最终N = {m['chain_ratio']}%", 'MEDIUM'))
+        if m['seg_industry_members'] >= 20:
+            issues.append(('环节行业豁免过宽',
+                           f"环节行业豁免 {m['seg_industry_members']} 条"
+                           f"（审计判定需经营层证据的 {m['industry_gate']} 条）", 'HIGH'))
+        if m['exclude_in_prod'] >= 10:
+            issues.append(('生产映射含审计判 EXCLUDE 成员',
+                           f"当前生产映射保留 {m['exclude_in_prod']} 条审计判 EXCLUDE 的成员", 'HIGH'))
+        if not has_gate and m['n0'] >= 100 and m['exclude_ratio'] < 25:
+            issues.append(('跨主题规则不一致', '该主题未启用环节清单门槛，剔除率显著低于已启用主题', 'MEDIUM'))
+        for q, ev, sev in issues:
+            t2.append({'主题': theme, '问题': q, '证据': ev, '严重程度': sev,
+                       '建议': SUGGEST.get(q, '')})
+
+    # ------------------------------------------------ TABLE 3 人工审核清单
+    t3 = []
+    for a in audit:
+        risky = (a['classification'] == 'UNCERTAIN'
+                 or (a['classification'] == 'CHAIN' and a['confidence'] != 'HIGH')
+                 or (a['classification'] == 'EXCLUDE' and a['manual_action'] == 'REVIEW'))
+        if not risky:
+            continue
+        t3.append({
+            '主题': a['theme'], '代码': a['ts_code'], '名称': a['name'],
+            '分类': a['classification'], '证据类型': a['evidence_type'],
+            '证据': a['evidence'], '置信度': a['confidence'],
+            '人工动作': a['manual_action'], '原因': a['reason'],
+            '原映射(HC)': a['mapping_old'], '门槛状态': a['gate_status'],
+        })
+
+    # ------------------------------------------------ TABLE 4
+    t4 = []
+    for theme in theme_order:
+        m = metrics[theme]
+        delta = m['final'] - m['n0']
+        t4.append({
+            '主题': theme, '原N': m['n0'], '新N(CORE+CHAIN)': m['final'], '变化': delta,
+            '变化幅度%': round(delta * 100.0 / m['n0'], 1) if m['n0'] else 0,
+            'Today Heat变化': '待重算', 'Week Heat变化': '待重算', 'Month Heat变化': '待重算',
+            '是否可能影响排名': ('可能（变动≥20%）' if m['n0'] and abs(delta) * 100.0 / m['n0'] >= 20
+                            else ('轻微（变动5%~20%）' if abs(delta) * 100.0 / m['n0'] >= 5 else '基本无影响')),
+            '当前Today Heat': m['today_heat'], '当前Today排名': m['today_rank'],
+        })
+
+    # ------------------------------------------------ 随机抽样
+    rnd = random.Random(RANDOM_SEED)
+    samples = []
+    for theme in theme_order:
+        rows = by_theme[theme]
+        for cls in ('CORE', 'CHAIN', 'UNCERTAIN', 'EXCLUDE'):
+            grp = [a for a in rows if a['classification'] == cls]
+            rnd.shuffle(grp)
+            for a in grp[:SAMPLE_N]:
+                samples.append({
+                    '主题': theme, '代码': a['ts_code'], '名称': a['name'], '分类': cls,
+                    '证据': a['evidence'], '置信度': a['confidence'],
+                    '人工动作': a['manual_action'], '主营文本': a['mainbiz'],
+                })
+
+    # ------------------------------------------------ 电力「环节行业豁免」全量诊断（规格 §五-4）
+    # 规格：逐项检查环节行业豁免成员；「只是用电」绝不能算电力主题成员。
+    _pw_inds = set()
+    for _seg in (cfg_by_cn.get('电力', {}).get('segments') or []):
+        _pw_inds |= {i for i in (_seg.get('industries') or []) if i}
+    pw_audit = []
+    for a in by_theme.get('电力', []):
+        if a['industry'] not in _pw_inds:
+            continue
+        mb_full = mainbiz_map.get(a['ts_code'], '') or ''
+        biz_hit = [w for w in POWER_BIZ_WORDS if w in mb_full]
+        pw_audit.append({
+            '主题': '电力', '代码': a['ts_code'], '名称': a['name'], '原分类': a['classification'],
+            '证据类型': a['evidence_type'], '置信度': a['confidence'],
+            '人工动作': a['manual_action'], '行业': a['industry'],
+            '电力经营词': '|'.join(biz_hit),
+            '主营文本': mb_full[:160], '门槛状态': a['gate_status'],
+        })
+
+    # ------------------------------------------------ 写文件
+    print('\n[输出]')
+    audit_fields = ['theme', 'ts_code', 'name', 'mapping_old', 'mapping_new', 'classification',
+                    'evidence_type', 'evidence', 'confidence', 'manual_action', 'reason',
+                    'gate_status', 'is_new_member', 'via', 'industry', 'mainbiz']
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}.csv'), audit_fields, audit)
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_table1.csv'),
+              list(t1[0].keys()), t1)
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_table2.csv'),
+              ['主题', '问题', '证据', '严重程度', '建议'], t2)
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_table3.csv'),
+              list(t3[0].keys()) if t3 else ['主题'], t3)
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_table4.csv'),
+              list(t4[0].keys()), t4)
+    write_csv(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_samples.csv'),
+              list(samples[0].keys()) if samples else ['主题'], samples)
+    if pw_audit:
+        write_csv(os.path.join(RD, f'theme_mapping_v3_power_industry_gate_{TRADE_DATE}.csv'),
+                  list(pw_audit[0].keys()), pw_audit)
+
+    members = [{'theme': a['theme'], 'ts_code': a['ts_code'], 'name': a['name'],
+                'classification': a['classification'], 'confidence': a['confidence']}
+               for a in audit if a['classification'] in ('CORE', 'CHAIN')]
+    write_csv(os.path.join(RD, f'theme_mapping_v3_members_{TRADE_DATE}.csv'),
+              ['theme', 'ts_code', 'name', 'classification', 'confidence'], members)
+
+    with open(os.path.join(RD, f'theme_mapping_v3_{TRADE_DATE}_summary.json'), 'w',
+              encoding='utf-8') as f:
+        json.dump({'trade_date': TRADE_DATE, 'metrics': metrics,
+                   'table2': t2}, f, ensure_ascii=False, indent=2)
+    print(f'  -> theme_mapping_v3_{TRADE_DATE}_summary.json')
+
+    # ------------------------------------------------ 控制台摘要
+    print('\n' + '=' * 68)
+    print('TABLE 1  Mapping Quality')
+    print('=' * 68)
+    hdr = f"{'主题':<10}{'原N':>5}{'CORE':>6}{'CHAIN':>6}{'UNCT':>6}{'EXCL':>6}{'最终N':>7}{'保留%':>7}{'剔%':>7}{'CHAIN%':>8}{'UNCT%':>7}"
+    print(hdr)
+    for r in t1:
+        print(f"{r['主题']:<10}{r['原N']:>5}{r['CORE']:>6}{r['CHAIN']:>6}{r['UNCERTAIN']:>6}"
+              f"{r['EXCLUDE']:>6}{r['最终N(CORE+CHAIN)']:>7}{r['保留率%']:>7}{r['剔除率%']:>7}"
+              f"{r['CHAIN占比%']:>8}{r['UNCERTAIN占比%']:>7}")
+
+    print('\nTABLE 2  异常主题')
+    for r in t2:
+        print(f"  [{r['严重程度']:<6}] {r['主题']:<10}{r['问题']:<18}{r['证据']}")
+
+    print('\n重点主题明细')
+    for theme in ('AI算力', '智能驾驶', '军工', '电力', '消费'):
+        m = metrics.get(theme)
+        if not m:
+            continue
+        rows = by_theme[theme]
+        c = Counter(a['classification'] for a in rows)
+        ev = Counter(a['evidence_type'] for a in rows if a['classification'] in ('CHAIN', 'EXCLUDE'))
+        drop = sum(1 for a in rows if a['gate_status'] == '环节门槛剔除')
+        print(f"  {theme}: 原N={m['n0']} 环节门槛剔除={drop} | CORE={c['CORE']} CHAIN={c['CHAIN']} "
+              f"UNCERTAIN={c['UNCERTAIN']} EXCLUDE={c['EXCLUDE']} | 环节行业豁免={m['industry_gate']}")
+        print(f"      CHAIN/EXCLUDE 证据类型分布: {dict(ev)}")
+        exc_rows = [a for a in rows if a['classification'] == 'EXCLUDE']
+        print(f"      EXCLUDE={len(exc_rows)} 证据类型={dict(Counter(a['evidence_type'] for a in exc_rows))} "
+              f"门槛状态={dict(Counter(a['gate_status'] for a in exc_rows))} "
+              f"通道={dict(Counter(a['via'] for a in exc_rows).most_common(5))}")
+        for a in exc_rows[:8]:
+            print(f"        [EXCL·{a['evidence_type']}] {a['ts_code']} {a['name']}"
+                  f"（{a['industry']}/{a['via']}）{a['mainbiz'][:46]}")
+
+    print(f"\n  电力·环节行业豁免（行业∈环节窄口径行业）全量 {len(pw_audit)} 条　"
+          f"行业分布: {dict(Counter(a['行业'] for a in pw_audit))}")
+    pw_cls = Counter(a['原分类'] for a in pw_audit)
+    pw_nobiz = [a for a in pw_audit if not a['电力经营词']]
+    print(f"      判定分布: {dict(pw_cls)}　其中无电力经营词（仅行业口径）{len(pw_nobiz)} 条")
+    for a in pw_nobiz[:40]:
+        print(f"      [仅行业口径] {a['代码']} {a['名称']}（{a['行业']}）"
+              f"{a['原分类']}/{a['人工动作']} {a['主营文本'][:52]}")
+    if len(pw_nobiz) > 40:
+        print(f"      ... 其余 {len(pw_nobiz) - 40} 条见 power_industry_gate csv")
+
+    print(f"\n  人工审核清单（TABLE 3）: {len(t3)} 条")
+    for theme in ('AI算力', '智能驾驶', '军工', '电力', '消费'):
+        rows = [a for a in by_theme.get(theme, [])
+                if a['classification'] == 'UNCERTAIN'
+                or (a['classification'] == 'CHAIN' and a['confidence'] != 'HIGH')
+                or (a['classification'] == 'EXCLUDE' and a['manual_action'] == 'REVIEW')]
+        cc = Counter(a['classification'] for a in rows)
+        print(f"    {theme}: {len(rows)} 条 {dict(cc)}")
+
+    g_exc_prod = [a for a in audit if a['classification'] == 'EXCLUDE' and a['gate_status'] == '映射保留']
+    g_exc_gate = [a for a in audit if a['classification'] == 'EXCLUDE' and a['gate_status'] == '环节门槛剔除']
+    g_rescue = [a for a in audit if a['gate_status'] == '环节门槛剔除'
+                and a['classification'] in ('CORE', 'CHAIN')]
+    print(f"\n  全局：审计判 EXCLUDE 且仍保留在生产映射 {len(g_exc_prod)} 条"
+          f"（{dict(Counter(a['theme'] for a in g_exc_prod))}）")
+    print(f"  全局：审计判 EXCLUDE 且被环节门槛剔除 {len(g_exc_gate)} 条")
+    print(f"  全局：被环节门槛剔除但审计判 CORE/CHAIN（疑似过度剔除）{len(g_rescue)} 条"
+          f"（{dict(Counter(a['theme'] for a in g_rescue))}）")
+
+    print('\n完成。')
+
+
+if __name__ == '__main__':
+    main()

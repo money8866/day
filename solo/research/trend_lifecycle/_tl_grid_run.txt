@@ -1,0 +1,32 @@
+==============================================================================
+TL-01 §33 参数扰动 / §34 参数网格平滑性
+  面板 2120 x 5464  有效 8635211  特征列 26  载入 0s
+  baseline 自检：重算状态与交付状态不一致 0 / 11583680 -> PASS
+  baseline 自检：重算 state_prev 与交付 state_prev 不一致 5368 / 11583680 -> FAIL
+  baseline  TRAIN_IC=+0.0669  OOS_IC=+0.0704 (ICIR 0.734, n=243)
+    ma_win         18     TRAIN +0.0674  OOS +0.0710  (1s)
+    ma_win         20     TRAIN +0.0669  OOS +0.0704  (3s)
+    ma_win         22     TRAIN +0.0656  OOS +0.0691  (3s)
+    trend_win      18     TRAIN +0.0667  OOS +0.0710  (3s)
+    trend_win      20     TRAIN +0.0669  OOS +0.0704  (3s)
+    trend_win      25     TRAIN +0.0671  OOS +0.0720  (3s)
+    rs_win         18     TRAIN +0.0668  OOS +0.0704  (3s)
+    rs_win         20     TRAIN +0.0669  OOS +0.0704  (3s)
+    rs_win         25     TRAIN +0.0668  OOS +0.0703  (3s)
+    dd_mild        0.05   TRAIN +0.0669  OOS +0.0704  (3s)
+    dd_mild        0.075  TRAIN +0.0728  OOS +0.0766  (3s)
+    dd_mild        0.1    TRAIN +0.0732  OOS +0.0764  (3s)
+  §34 网格 ma_x_trend：OOS IC 范围 [+0.0691, +0.0724]  同号比例 1.00  粗糙度 0.01  孤立高点=False -> SMOOTH
+    +0.071  +0.071  +0.072
+    +0.071  +0.070  +0.072
+    +0.070  +0.069  +0.071
+  §34 网格 rs_x_dd：OOS IC 范围 [+0.0703, +0.0766]  同号比例 1.00  粗糙度 0.02  孤立高点=False -> SMOOTH
+    +0.070  +0.077  +0.077
+    +0.070  +0.077  +0.076
+    +0.070  +0.076  +0.076
+  §33 Age 分界扰动（趋势年龄 年轻 vs 年长，T+20 平均收益）
+    Age 分界 15   E[fwd20|young]=+1.133%  E[fwd20|old]=+0.280%  差=+0.853%  OOS IC(年龄)=-AGE vs fwd20 +0.0223 (ICIR 0.170)
+    Age 分界 20   E[fwd20|young]=+1.127%  E[fwd20|old]=+0.132%  差=+0.996%  OOS IC(年龄)=-AGE vs fwd20 +0.0223 (ICIR 0.170)
+    Age 分界 30   E[fwd20|young]=+1.121%  E[fwd20|old]=-0.276%  差=+1.397%  OOS IC(年龄)=-AGE vs fwd20 +0.0223 (ICIR 0.170)
+  已写 tl01_parameter_grid.csv
+完成  93s

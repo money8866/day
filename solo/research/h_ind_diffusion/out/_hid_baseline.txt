@@ -1,0 +1,68 @@
+==============================================================================
+H-IND-DIFFUSION-01  P4 基准统计（STEP10-12）  hash=e8c92f5eb9a56c88 derived=9837bbf708cda6ff  2026-09-27 13:53:16
+──────────────────────────────────────────────────────────────────────────────
+  面板 5816 股 × 2120 日；分期 {'TRAIN': 1215, 'VALID': 484, 'OOS': 243, 'LIVE-LIKE': 178}
+  Regime {'BEAR': 861, 'NORMAL': 449, 'BULL': 810}
+  暴露范围 SCOPE = 8706862 股票日（占 valid 0.9936）
+  行业分组：31 个 L1 行业
+──────────────────────────────────────────────────────────────────────────────
+[STEP10-A] 单变量 IC（Rank / Pearson）× horizon × phase
+  [SAVE] ic_results.csv rows=285（224.2s）
+    exposure             h=3  IC=-0.0300 t_NW=-7.01 pos=0.40
+    exposure             h=5  IC=-0.0374 t_NW=-7.35 pos=0.36
+    exposure             h=10 IC=-0.0438 t_NW=-7.34 pos=0.36
+    expo_rs              h=3  IC=-0.0343 t_NW=-8.24 pos=0.38
+    expo_rs              h=5  IC=-0.0431 t_NW=-8.59 pos=0.34
+    expo_rs              h=10 IC=-0.0517 t_NW=-8.16 pos=0.32
+    ind_diffusion_score  h=3  IC=-0.0001 t_NW=-0.02 pos=0.50
+    ind_diffusion_score  h=5  IC=+0.0006 t_NW=+0.12 pos=0.51
+    ind_diffusion_score  h=10 IC=+0.0031 t_NW=+0.67 pos=0.52
+    ind_mom_20           h=3  IC=-0.0119 t_NW=-2.39 pos=0.48
+    ind_mom_20           h=5  IC=-0.0156 t_NW=-2.50 pos=0.46
+    ind_mom_20           h=10 IC=-0.0210 t_NW=-2.62 pos=0.45
+    ret_20               h=3  IC=-0.0376 t_NW=-7.07 pos=0.41
+    ret_20               h=5  IC=-0.0475 t_NW=-7.39 pos=0.37
+    ret_20               h=10 IC=-0.0582 t_NW=-7.23 pos=0.35
+──────────────────────────────────────────────────────────────────────────────
+[STEP10-B] AUC / Prec@10 / Recall@10（§30）
+  [SAVE] auc_results.csv rows=330（240.1s）
+    exposure gt_ind_median h=3  AUC=0.4855 Prec@10=0.4665 Rec@10=0.0937
+    exposure gt_ind_median h=5  AUC=0.4820 Prec@10=0.4574 Rec@10=0.0918
+    exposure gt_ind_median h=10 AUC=0.4785 Prec@10=0.4484 Rec@10=0.0900
+──────────────────────────────────────────────────────────────────────────────
+[STEP10-C] 分位组合（ALL / WITHIN_IND；nq=5 全信号，nq=10 核心集）
+  [SAVE] quantile_results.csv rows=540（637.6s）
+    exposure         h=3  Q1..Q5=[0.0022 0.0023 0.0023 0.0021 0.0012] Q5-Q1=-0.0009 mono=-0.600
+    exposure         h=5  Q1..Q5=[0.0034 0.0037 0.0037 0.0030 0.0011] Q5-Q1=-0.0024 mono=-0.700
+    exposure         h=10 Q1..Q5=[0.0058 0.0067 0.0065 0.0051 0.0014] Q5-Q1=-0.0045 mono=-0.700
+    ind_mom_20       h=3  Q1..Q5=[0.0016 0.0018 0.0020 0.0024 0.0023] Q5-Q1=+0.0007 mono=0.900
+    ind_mom_20       h=5  Q1..Q5=[0.0024 0.0025 0.0032 0.0034 0.0029] Q5-Q1=+0.0004 mono=0.700
+    ind_mom_20       h=10 Q1..Q5=[0.0045 0.0049 0.0050 0.0060 0.0040] Q5-Q1=-0.0005 mono=0.000
+──────────────────────────────────────────────────────────────────────────────
+[STEP11-12] M0-M3 阶梯（§22）+ Fama-MacBeth（§32）+ 市场层控制（§24）
+  [SAVE] model_ladder.csv rows=420
+  [SAVE] fama_macbeth.csv rows=210（707.4s）
+    [ALL] h=3  M3.diffusion beta=+0.00061 t=+2.67 | M2.breadth beta=+0.00041 t=+1.22
+    [ALL] h=5  M3.diffusion beta=+0.00101 t=+3.13 | M2.breadth beta=+0.00057 t=+1.06
+    [ALL] h=10 M3.diffusion beta=+0.00178 t=+3.71 | M2.breadth beta=+0.00101 t=+1.11
+    [WITHIN_IND] h=3  M3.diffusion beta=+0.00047 t=+2.28 | M2.breadth beta=+0.00070 t=+1.33
+    [WITHIN_IND] h=5  M3.diffusion beta=+0.00083 t=+2.75 | M2.breadth beta=+0.00096 t=+1.74
+    [WITHIN_IND] h=10 M3.diffusion beta=+0.00146 t=+3.18 | M2.breadth beta=+0.00159 t=+1.20
+──────────────────────────────────────────────────────────────────────────────
+[STEP12] 组合基准 B1-B4 + DIFF（行业 Top3 × 行业内 Top20%）
+  候选集 CAND = 8662189 股票日（占 valid 0.9885）
+  [SAVE] baseline_results.csv rows=120；_strat_p4.npz（11.8s）
+    B1       h=5 ALL mean=+0.00298 ann=+72.40% t_NW=+2.05 hold=4221.5
+    B2       h=5 ALL mean=+0.00261 ann=+63.31% t_NW=+1.61 hold=424.8
+    B3       h=5 ALL mean=+0.00033 ann=+7.95% t_NW=+0.22 hold=844.7
+    B4       h=5 ALL mean=-0.00204 ann=-49.55% t_NW=-1.02 hold=85.4
+    DIFF     h=5 ALL mean=+0.00008 ann=+1.91% t_NW=+0.05 hold=72.4
+    DIFF-B4  h=5 ALL mean=+0.00212 ann=+51.46% t_NW=+1.65 hold=nan
+==============================================================================
+[PRELIM] 预声明口径取值（G4/G5/G20；最终判定在 P7，需结合 Null/OOS/Cost/Tail）
+  G4  M2.ind_breadth h5 ALL beta=+0.00057 t=+1.06 | OOS beta=+0.00326 t=+2.53
+  G5  M3.diffusion   h5 ALL beta=+0.00101 t=+3.13 | OOS beta=+0.00019 t=+0.32
+  G20 DIFF-B4        h5 ALL +0.00212 t=+1.65 | OOS +0.00300 t=+0.89
+  [SAVE] _meta_p4.json
+==============================================================================
+DONE  P4  （总耗时 1821.4s）

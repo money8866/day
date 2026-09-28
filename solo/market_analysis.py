@@ -1243,10 +1243,13 @@ def save_result(results, position, reason, style_allocations=None, overview=None
 # ================
 # 读取TOP3主题趋势分
 # ================
-# 主题热度 V2.3 的 TOP3 均值 → 旧主题趋势分口径 的稳健线性折算。
-# 样本：14 个交易日（20260724~20260923）。旧口径 TOP3 均值 中位 59.9 / IQR 12.5；
-# V2.3 TOP3 均值 中位 84.9 / IQR 6.8。直接替换会让 ThemeTrend 抬高约 30 分
-# （TrendScore 各占 50% → 抬高约 15 分），使 market_status 仓位档整体上移，故按分布对齐折算。
+# 主题热度 TOP3 均值 → 旧主题趋势分口径 的稳健线性折算。
+# 样本：14 个交易日（20260724~20260923），锚点按 V2.3 口径的 TOP3 强度分布拟合。
+# 旧口径 TOP3 均值 中位 59.9 / IQR 12.5；V2.3 TOP3 均值 中位 84.9 / IQR 6.8。直接替换会让
+# ThemeTrend 抬高约 30 分（TrendScore 各占 50% → 抬高约 15 分），使 market_status 仓位档整体
+# 上移，故按分布对齐折算。
+# ⚠ 注意（20260927 下游统一切 V2.4）：本组锚点仍为 V2.3 分布拟合值。V2.4 的 Heat 合成口径与
+#   成员分母均已变化，待 V2.4 历史累积后需按同样方法重拟合，否则折算存在系统性偏移。
 V23_TOP3_MEDIAN, V23_TOP3_IQR = 84.9, 6.8
 LEGACY_TOP3_MEDIAN, LEGACY_TOP3_IQR = 59.9, 12.5
 
@@ -1263,7 +1266,7 @@ def get_top3_theme_scores(trade_date=None):
     """
     从主题系统生成的结果中读取 TOP3 主题强度
     数据源优先级：
-      1) 主题热度 V2.3：report_daily/theme_heat_v23_{date}.json
+      1) 主题热度 V2.4：report_daily/theme_heat_v24_{date}.json
          （TOP3 = TODAY+WEEK 综合 Heat，即主题强度唯一来源）
       2) report_daily/theme_scores.db      （theme_score_v2 每日产出，旧源兜底）
       3) cache_backbone_tushare/theme_trend_sentiment.db （旧引擎兜底）
@@ -1273,7 +1276,7 @@ def get_top3_theme_scores(trade_date=None):
     if trade_date is None:
         trade_date = TRADE_DATE
 
-    # 优先：主题热度 V2.3 的 TOP3（TODAY+WEEK 综合强度）
+    # 优先：主题热度 V2.4 的 TOP3（TODAY+WEEK 综合强度）
     try:
         if BASE_DIR not in sys.path:
             sys.path.insert(0, BASE_DIR)
@@ -1281,13 +1284,13 @@ def get_top3_theme_scores(trade_date=None):
         top = theme_heat.top_heat(3, trade_date)
         if top:
             scores = _v23_top3_to_legacy([s for _, s in top])
-            print(f"[Theme] 从主题热度V2.3读取 {trade_date} TOP3: "
+            print(f"[Theme] 从主题热度V2.4读取 {trade_date} TOP3: "
                   + "、".join(f"{t}{s:.1f}" for t, s in top)
                   + f" → 折算旧口径 {[round(x, 1) for x in scores]}")
             return scores
-        print(f"[Theme] 主题热度V2.3 无 {trade_date} 结果，回退旧主题库")
+        print(f"[Theme] 主题热度V2.4 无 {trade_date} 结果，回退旧主题库")
     except Exception as e:
-        print(f"[Theme] 主题热度V2.3 读取失败: {e}，回退旧主题库")
+        print(f"[Theme] 主题热度V2.4 读取失败: {e}，回退旧主题库")
 
     # 兜底1：theme_score_v2 产出的最新主题库（report_daily/theme_scores.db）
     v2_db = os.path.join(BASE_DIR, "report_daily", "theme_scores.db")

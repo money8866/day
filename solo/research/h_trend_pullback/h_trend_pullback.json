@@ -1,0 +1,1254 @@
+{
+  "prereg": {
+    "hypothesis_id": "H-TREND-PULLBACK-01",
+    "title": "Strong Trend -> First Pullback -> Re-acceleration",
+    "version": "1.0",
+    "note": "所有取值在跑数之前冻结；试验中不得修改",
+    "phases": {
+      "TRAIN": [
+        2018,
+        2022
+      ],
+      "VALID": [
+        2023,
+        2024
+      ],
+      "OOS": [
+        2025,
+        2025
+      ],
+      "LIVE-LIKE": [
+        2026,
+        2026
+      ]
+    },
+    "year_report": [
+      2021,
+      2022,
+      2023,
+      2024,
+      2025,
+      2026
+    ],
+    "min_listing_days": 60,
+    "exclude_st": true,
+    "exclude_delist": true,
+    "exclude_suspend": true,
+    "exclude_bj": true,
+    "require_ma60": true,
+    "ma_fast": 20,
+    "ma_slow": 60,
+    "slope_win": 20,
+    "t1": "close > ma20 > ma60",
+    "t2": "slope20 > 0 AND slope60 >= 0",
+    "t3": "ret20 > 0",
+    "trend_require": [
+      "T1",
+      "T2"
+    ],
+    "t3_aux": true,
+    "peak_win": 20,
+    "pb_min_days": 2,
+    "pb_min_depth": 0.01,
+    "pb_max_days": 40,
+    "depth_bands": [
+      0.01,
+      0.02,
+      0.03,
+      0.05,
+      0.08,
+      0.1
+    ],
+    "first_per_leg": true,
+    "reacc_def": "close > pullback_start_price",
+    "reacc_max_days": 20,
+    "reacc_aux": "break_previous_high",
+    "entry_offset": 1,
+    "e1_name": "Pullback Observation Entry",
+    "e2_name": "Re-acceleration Entry",
+    "horizons": [
+      1,
+      3,
+      5,
+      10,
+      20
+    ],
+    "primary_horizons": [
+      3,
+      5,
+      10
+    ],
+    "mom_ctrl": [
+      "mom20",
+      "mom60"
+    ],
+    "ind_level": "SW_L1",
+    "ind_unknown": "REPORT_SEPARATELY",
+    "baselines": [
+      "B1_AllStocks",
+      "B2_StrongTrend",
+      "B3_TrendRandomPullback",
+      "B4_MomentumMatched",
+      "B5_IndustryMomentumMatched"
+    ],
+    "core_counterfactual": "B3_TrendRandomPullback",
+    "match_keys": [
+      "mom20",
+      "total_mv",
+      "ind_l1",
+      "rv_20"
+    ],
+    "null_models": [
+      "N1_RandomStock",
+      "N2_RandomDate",
+      "N3_RandomPullback",
+      "N4_MomentumMatched",
+      "N5_IndustryMomentumMatched",
+      "N6_ShuffledPullbackQuality"
+    ],
+    "regime_def": "HS300 vs MA200 & 60D momentum",
+    "regime": [
+      "BEAR",
+      "NORMAL",
+      "BULL"
+    ],
+    "grid_depth": [
+      0.02,
+      0.03,
+      0.05,
+      0.08
+    ],
+    "grid_duration": [
+      2,
+      3,
+      5,
+      8
+    ],
+    "grid_mom_fast": [
+      18,
+      20,
+      22
+    ],
+    "grid_mom_slow": [
+      55,
+      60,
+      65
+    ],
+    "cost_bps": [
+      0,
+      10,
+      20,
+      30,
+      50
+    ],
+    "cost_focus_bps": 30,
+    "tail_pcts": [
+      0.01,
+      0.05,
+      0.1
+    ],
+    "fdr_alpha": 0.05,
+    "fdr_families": [
+      "horizon",
+      "feature",
+      "quantile",
+      "window",
+      "model"
+    ],
+    "seed": 20260926,
+    "n_sim": 1000,
+    "n_perm": 1000,
+    "momentum_threshold": 0.0,
+    "ic_min": 0.02,
+    "auc_min": 0.52,
+    "prec10_min": 0.1,
+    "monotonic_required": true,
+    "wf_pos_frac": 0.5,
+    "year_pos_frac": 0.6,
+    "regime_flip_max": 1,
+    "tail_leave_pct": 0.05,
+    "perm_alpha": 0.05,
+    "cost_require_positive": true,
+    "n_min_signals": 100,
+    "lethal_gates": [
+      "G1",
+      "G4",
+      "G6",
+      "G7",
+      "G8",
+      "G14",
+      "G18"
+    ],
+    "trading_authorization": "NO"
+  },
+  "prereg_hash": "0bc32b7a7d98becf",
+  "created": "2026-09-27",
+  "generated_at": "2026-09-27 11:06:48",
+  "final_status": "FAIL",
+  "status_basis": "致命 Gate G14 FAIL（§52：致命 Gate 任一失败即不得进入策略层）；事件层价格 Alpha 不成立——E1 h=5 毛均值 +0.0021，低于 B1 全市场基线 +0.0030；动量控制 adj_alpha +0.0000、行业控制 adj_alpha +0.0005（P3 判据「> 0 且 t > 0」两条均 FAIL）；盈亏平衡单边成本仅 10.4 bps（往返 20.8 bps），@30 bps 净收益 -0.0039；Leave-Top5% 后均值 -0.0096。非致命失败：G12/G13。已评估 7 项，另有 11 项未评估（规格未落盘，不得臆造）。",
+  "lethal_gates": [
+    "G1",
+    "G4",
+    "G6",
+    "G7",
+    "G8",
+    "G14",
+    "G18"
+  ],
+  "lethal_gate_failed": [
+    "G14"
+  ],
+  "lethal_gates_not_evaluated": [
+    "G1",
+    "G4",
+    "G6",
+    "G7",
+    "G18"
+  ],
+  "lethal_requirement_satisfied": false,
+  "n_gates_evaluated": 7,
+  "n_gates_failed": 3,
+  "trading_authorization": "NO",
+  "data_scope": {
+    "n_trade_days": 2120,
+    "date_start": "20180102",
+    "date_end": "20260924",
+    "n_codes": 5816,
+    "n_industry_l1": 31,
+    "trend_days": 1510230,
+    "e1_events": 61896,
+    "e2_events": 30496,
+    "phases": {
+      "TRAIN": [
+        2018,
+        2022
+      ],
+      "VALID": [
+        2023,
+        2024
+      ],
+      "OOS": [
+        2025,
+        2025
+      ],
+      "LIVE-LIKE": [
+        2026,
+        2026
+      ]
+    },
+    "universe": {
+      "univ_pass": [
+        "8758304",
+        "71.03"
+      ],
+      "univ_st": [
+        "186185",
+        "1.51"
+      ],
+      "univ_susp": [
+        "308055",
+        "2.50"
+      ],
+      "univ_new": [
+        "2120703",
+        "17.20"
+      ],
+      "univ_bj": [
+        "746240",
+        "6.05"
+      ],
+      "univ_na": [
+        "210433",
+        "1.71"
+      ]
+    },
+    "descriptive": {
+      "trend_leg": 191899,
+      "episode": 141390,
+      "in_ep_share": 30.64,
+      "depth_at_sig": [
+        "0.0541",
+        "0.0793",
+        "0.1173"
+      ],
+      "depth_final": [
+        "0.0687",
+        "0.1178",
+        "0.2061"
+      ],
+      "resolved": 0.72,
+      "reacc1": 0.642,
+      "reacc2": 0.493,
+      "entry_ok": 0.9986,
+      "regime_days": "801"
+    }
+  },
+  "gates": [
+    {
+      "gate": "G8",
+      "layer": "P4/§40",
+      "lethal": true,
+      "criterion": "Walk-Forward 多数窗口为正（阈值 >0.50）",
+      "evidence": "value=+1.0000",
+      "verdict": "PASS"
+    },
+    {
+      "gate": "G9",
+      "layer": "P4/§41",
+      "lethal": false,
+      "criterion": "跨年份为正比例 >=0.60",
+      "evidence": "value=+1.0000",
+      "verdict": "PASS"
+    },
+    {
+      "gate": "G10",
+      "layer": "P4/§42",
+      "lethal": false,
+      "criterion": "Regime 方向翻转 <=1",
+      "evidence": "value=+0.0000",
+      "verdict": "PASS"
+    },
+    {
+      "gate": "G12",
+      "layer": "P4/§39",
+      "lethal": false,
+      "criterion": "OOS |IC|>=0.02 & AUC>=0.52 & Prec10>=0.10 & 单调",
+      "evidence": "value=+0.1072",
+      "verdict": "FAIL"
+    },
+    {
+      "gate": "G14",
+      "layer": "P5/§44",
+      "lethal": true,
+      "criterion": "E1 h=5 净收益 @30bps > 0",
+      "evidence": "value=-0.0039",
+      "verdict": "FAIL"
+    },
+    {
+      "gate": "G13",
+      "layer": "P5/§46",
+      "lethal": false,
+      "criterion": "E1 h=5 Leave-Top5% 均值 > 0",
+      "evidence": "value=-0.0096",
+      "verdict": "FAIL"
+    },
+    {
+      "gate": "G15",
+      "layer": "P5/§49",
+      "lethal": false,
+      "criterion": "s_m1 IC 置换单侧 p < 0.05",
+      "evidence": "value=+0.0010",
+      "verdict": "PASS"
+    }
+  ],
+  "gates_not_evaluated": [
+    "G1",
+    "G2",
+    "G3",
+    "G4",
+    "G5",
+    "G6",
+    "G7",
+    "G11",
+    "G16",
+    "G17",
+    "G18"
+  ],
+  "counterfactual_checks": [
+    {
+      "section": "§26",
+      "check": "momentum control",
+      "criterion": "momentum-adjusted alpha > 0 且 t > 0",
+      "adj_alpha": 9.525921651853377e-06,
+      "t_nw": -1.0637354479153844,
+      "verdict": "FAIL"
+    },
+    {
+      "section": "§27",
+      "check": "industry control",
+      "criterion": "momentum-adjusted alpha > 0 且 t > 0",
+      "adj_alpha": 0.0004995570355082,
+      "t_nw": -0.9757884138729964,
+      "verdict": "FAIL"
+    },
+    {
+      "section": "§29",
+      "check": "random-pullback null",
+      "criterion": "real > null (one-sided p < 0.05)",
+      "real_mean": 0.0020848330356615,
+      "null_mean": -0.0030657896673033,
+      "p_real_ge_null": 0.0009990009990009,
+      "verdict": "PASS"
+    }
+  ],
+  "headline": {
+    "model": "M1_PB",
+    "target": "exe_5 (次日开盘进场, h=5)",
+    "fit": "TRAIN(2018-2022) pooled OLS",
+    "n_obs": 461315,
+    "ic": 0.1113915445228553,
+    "ic_t": 11.832021882140218,
+    "auc_top10": 0.4098995944437132,
+    "prec10": 0.0573882476627683,
+    "monotonicity": 1.0,
+    "q_spread": 0.0126064224168658,
+    "e1_event_mean_h5": 0.0020848330356615,
+    "b1_allstock_mean_h5": 0.0030465592452225,
+    "b2_strongtrend_mean_h5": 0.0018636926700052
+  },
+  "model": {
+    "phases": {
+      "TRAIN": {
+        "n_day": 1015,
+        "ic": 0.1032792208913542,
+        "ic_t": 9.340298327442808,
+        "auc": 0.4185757698029529,
+        "prec10": 0.061704195971797
+      },
+      "VALID": {
+        "n_day": 462,
+        "ic": 0.152467647147283,
+        "ic_t": 6.8967128274392735,
+        "auc": 0.398628154586991,
+        "prec10": 0.0571880375248847
+      },
+      "OOS": {
+        "n_day": 241,
+        "ic": 0.1070960865982756,
+        "ic_t": 5.53558230003675,
+        "auc": 0.398597681242551,
+        "prec10": 0.0438656006149909
+      },
+      "LIVE-LIKE": {
+        "n_day": 159,
+        "ic": 0.0503352830971429,
+        "ic_t": 1.3367080677504235,
+        "auc": 0.4043954957371564,
+        "prec10": 0.0509150872134132
+      }
+    },
+    "horizons": {
+      "h5": {
+        "ic": 0.1113915445228553,
+        "ic_t": 11.832021882140218,
+        "auc": 0.4098995944437132,
+        "prec10": 0.0573882476627683,
+        "mono": 1.0
+      },
+      "h3": {
+        "ic": 0.0845587071273209,
+        "ic_t": 11.640452193956746,
+        "auc": 0.3919059809182276,
+        "prec10": 0.0506061735806735,
+        "mono": 0.8909090909090909
+      },
+      "h10": {
+        "ic": 0.1371219228235009,
+        "ic_t": 11.270320993085251,
+        "auc": 0.4334633422545925,
+        "prec10": 0.0673774659877814,
+        "mono": 1.0
+      }
+    },
+    "walk_forward": [
+      {
+        "year": 2021,
+        "ic": 0.0911817162616533,
+        "ic_t": 4.540430463066272,
+        "auc": 0.4244210051455077
+      },
+      {
+        "year": 2022,
+        "ic": 0.1257696136000619,
+        "ic_t": 6.4449091054217496,
+        "auc": 0.4131832756728959
+      },
+      {
+        "year": 2023,
+        "ic": 0.160811461824265,
+        "ic_t": 5.793419058555561,
+        "auc": 0.3947164970271553
+      },
+      {
+        "year": 2024,
+        "ic": 0.1447067812416889,
+        "ic_t": 4.10457745526922,
+        "auc": 0.3979169520616269
+      },
+      {
+        "year": 2025,
+        "ic": 0.1055259365445399,
+        "ic_t": 5.499290864163802,
+        "auc": 0.3910430619338824
+      },
+      {
+        "year": 2026,
+        "ic": 0.0450232406042467,
+        "ic_t": 1.1057028782245797,
+        "auc": 0.3988969321760401
+      }
+    ],
+    "wf_positive_share": 1.0,
+    "year": [
+      {
+        "year": 2021,
+        "ic": 0.0911817162616533,
+        "ic_t": 4.540430463066272
+      },
+      {
+        "year": 2022,
+        "ic": 0.1257696136000619,
+        "ic_t": 6.4449091054217496
+      },
+      {
+        "year": 2023,
+        "ic": 0.160811461824265,
+        "ic_t": 5.793419058555561
+      },
+      {
+        "year": 2024,
+        "ic": 0.1447067812416889,
+        "ic_t": 4.10457745526922
+      },
+      {
+        "year": 2025,
+        "ic": 0.1055259365445399,
+        "ic_t": 5.499290864163802
+      },
+      {
+        "year": 2026,
+        "ic": 0.0450232406042467,
+        "ic_t": 1.1057028782245797
+      }
+    ],
+    "regime": [
+      {
+        "regime": "BEAR",
+        "ic": 0.1450249293552787,
+        "ic_t": 8.276831155325466
+      },
+      {
+        "regime": "NORMAL",
+        "ic": 0.1120060146948373,
+        "ic_t": 6.700571854660859
+      },
+      {
+        "regime": "BULL",
+        "ic": 0.0856851429489955,
+        "ic_t": 4.797276407846226
+      }
+    ],
+    "sign_stable_features": 5,
+    "n_features": 18
+  },
+  "param_grid": [
+    {
+      "param": "pb_min_depth",
+      "value": 0.01,
+      "status": "OK",
+      "n_event": 61673,
+      "mean": 0.0020848330358343,
+      "t_nw": -0.0763705259437899,
+      "note": "预注册基准"
+    },
+    {
+      "param": "pb_min_depth",
+      "value": 0.02,
+      "status": "OK",
+      "n_event": 61516,
+      "mean": 0.0020808369146733,
+      "t_nw": -0.0732037938580916,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_depth",
+      "value": 0.03,
+      "status": "OK",
+      "n_event": 60612,
+      "mean": 0.0021010461827396,
+      "t_nw": -0.0540121095868495,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_depth",
+      "value": 0.05,
+      "status": "OK",
+      "n_event": 55436,
+      "mean": 0.0021018759956785,
+      "t_nw": -0.2286991821505891,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_depth",
+      "value": 0.08,
+      "status": "OK",
+      "n_event": 42203,
+      "mean": 0.0021066027451085,
+      "t_nw": -0.5578511842040929,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_days",
+      "value": 2.0,
+      "status": "OK",
+      "n_event": 61673,
+      "mean": 0.0020848330358343,
+      "t_nw": -0.0763705259437899,
+      "note": "预注册基准"
+    },
+    {
+      "param": "pb_min_days",
+      "value": 3.0,
+      "status": "OK",
+      "n_event": 50520,
+      "mean": 0.003026133803622,
+      "t_nw": 0.1446773190111315,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_days",
+      "value": 5.0,
+      "status": "OK",
+      "n_event": 32171,
+      "mean": 0.0033991368535706,
+      "t_nw": 0.2550551001251062,
+      "note": "一次扰动"
+    },
+    {
+      "param": "pb_min_days",
+      "value": 8.0,
+      "status": "OK",
+      "n_event": 14347,
+      "mean": -0.0020868698767076,
+      "t_nw": -0.8715320634246748,
+      "note": "一次扰动"
+    },
+    {
+      "param": "ma_fast",
+      "value": 18.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    },
+    {
+      "param": "ma_fast",
+      "value": 20.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    },
+    {
+      "param": "ma_fast",
+      "value": 22.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    },
+    {
+      "param": "ma_slow",
+      "value": 55.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    },
+    {
+      "param": "ma_slow",
+      "value": 60.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    },
+    {
+      "param": "ma_slow",
+      "value": 65.0,
+      "status": "NOT_RUN_NEEDS_RERUN",
+      "n_event": null,
+      "mean": null,
+      "t_nw": null,
+      "note": "需重跑 hp_panel + hp_events（MA 窗口改变趋势定义），本脚本不重复实现"
+    }
+  ],
+  "costs": {
+    "E1": [
+      {
+        "horizon": 3,
+        "bps": 0.0,
+        "n": 61723,
+        "gross_mean": 0.0004892199375289,
+        "net_mean": 0.0004892199375289,
+        "winrate": 0.4519709022568572,
+        "t_nw": 0.1013458242727387
+      },
+      {
+        "horizon": 3,
+        "bps": 10.0,
+        "n": 61723,
+        "gross_mean": 0.0004892199375289,
+        "net_mean": -0.001510780062471,
+        "winrate": 0.4385075255577337,
+        "t_nw": -1.6867415955311829
+      },
+      {
+        "horizon": 3,
+        "bps": 20.0,
+        "n": 61723,
+        "gross_mean": 0.0004892199375289,
+        "net_mean": -0.003510780062471,
+        "winrate": 0.4206697665375954,
+        "t_nw": -3.474829015335104
+      },
+      {
+        "horizon": 3,
+        "bps": 30.0,
+        "n": 61723,
+        "gross_mean": 0.0004892199375289,
+        "net_mean": -0.005510780062471,
+        "winrate": 0.4022325551253179,
+        "t_nw": -5.262916435139022
+      },
+      {
+        "horizon": 3,
+        "bps": 50.0,
+        "n": 61723,
+        "gross_mean": 0.0004892199375289,
+        "net_mean": -0.009510780062471,
+        "winrate": 0.3677559418693193,
+        "t_nw": -8.839091274746862
+      },
+      {
+        "horizon": 5,
+        "bps": 0.0,
+        "n": 61673,
+        "gross_mean": 0.0020848330356615,
+        "net_mean": 0.0020848330356615,
+        "winrate": 0.4554991649506267,
+        "t_nw": -0.076370539685613
+      },
+      {
+        "horizon": 5,
+        "bps": 10.0,
+        "n": 61673,
+        "gross_mean": 0.0020848330356615,
+        "net_mean": 8.48330356615468e-05,
+        "winrate": 0.444862419535291,
+        "t_nw": -1.1857415576558057
+      },
+      {
+        "horizon": 5,
+        "bps": 20.0,
+        "n": 61673,
+        "gross_mean": 0.0020848330356615,
+        "net_mean": -0.0019151669643384,
+        "winrate": 0.4300585345288862,
+        "t_nw": -2.295112575625998
+      },
+      {
+        "horizon": 5,
+        "bps": 30.0,
+        "n": 61673,
+        "gross_mean": 0.0020848330356615,
+        "net_mean": -0.0039151669643384,
+        "winrate": 0.4164707408428323,
+        "t_nw": -3.404483593596189
+      },
+      {
+        "horizon": 5,
+        "bps": 50.0,
+        "n": 61673,
+        "gross_mean": 0.0020848330356615,
+        "net_mean": -0.0079151669643384,
+        "winrate": 0.3889870770029024,
+        "t_nw": -5.623225629536573
+      },
+      {
+        "horizon": 10,
+        "bps": 0.0,
+        "n": 61514,
+        "gross_mean": 0.0010243437014048,
+        "net_mean": 0.0010243437014048,
+        "winrate": 0.444906850473063,
+        "t_nw": -0.6077643313740946
+      },
+      {
+        "horizon": 10,
+        "bps": 10.0,
+        "n": 61514,
+        "gross_mean": 0.0010243437014048,
+        "net_mean": -0.0009756562985951,
+        "winrate": 0.4377214942939819,
+        "t_nw": -1.1667518502691
+      },
+      {
+        "horizon": 10,
+        "bps": 20.0,
+        "n": 61514,
+        "gross_mean": 0.0010243437014048,
+        "net_mean": -0.0029756562985951,
+        "winrate": 0.4283090028286244,
+        "t_nw": -1.725739369164105
+      },
+      {
+        "horizon": 10,
+        "bps": 30.0,
+        "n": 61514,
+        "gross_mean": 0.0010243437014048,
+        "net_mean": -0.0049756562985951,
+        "winrate": 0.4185226127385635,
+        "t_nw": -2.28472688805911
+      },
+      {
+        "horizon": 10,
+        "bps": 50.0,
+        "n": 61514,
+        "gross_mean": 0.0010243437014048,
+        "net_mean": -0.0089756562985951,
+        "winrate": 0.3988035244009493,
+        "t_nw": -3.402701925849119
+      }
+    ],
+    "E1_breakeven_bps_oneside": 10.4241651783075,
+    "E1_breakeven_bps_roundtrip": 20.848330356615,
+    "E2": [
+      {
+        "horizon": 3,
+        "bps": 0.0,
+        "n": 30401,
+        "gross_mean": -0.0004401231807426,
+        "net_mean": -0.0004401231807426,
+        "winrate": 0.4402157823755797,
+        "t_nw": -1.0563114208804196
+      },
+      {
+        "horizon": 3,
+        "bps": 10.0,
+        "n": 30401,
+        "gross_mean": -0.0004401231807426,
+        "net_mean": -0.0024401231807426,
+        "winrate": 0.4288016841551265,
+        "t_nw": -2.480330472183217
+      },
+      {
+        "horizon": 3,
+        "bps": 20.0,
+        "n": 30401,
+        "gross_mean": -0.0004401231807426,
+        "net_mean": -0.0044401231807426,
+        "winrate": 0.4134403473569948,
+        "t_nw": -3.9043495234860153
+      },
+      {
+        "horizon": 3,
+        "bps": 30.0,
+        "n": 30401,
+        "gross_mean": -0.0004401231807426,
+        "net_mean": -0.0064401231807426,
+        "winrate": 0.3978816486299792,
+        "t_nw": -5.328368574788809
+      },
+      {
+        "horizon": 3,
+        "bps": 50.0,
+        "n": 30401,
+        "gross_mean": -0.0004401231807426,
+        "net_mean": -0.0104401231807426,
+        "winrate": 0.3681786783329496,
+        "t_nw": -8.1764066773944
+      },
+      {
+        "horizon": 5,
+        "bps": 0.0,
+        "n": 30355,
+        "gross_mean": -0.0018119562157683,
+        "net_mean": -0.0018119562157683,
+        "winrate": 0.4312304397957502,
+        "t_nw": -1.7974722487917705
+      },
+      {
+        "horizon": 5,
+        "bps": 10.0,
+        "n": 30355,
+        "gross_mean": -0.0018119562157683,
+        "net_mean": -0.0038119562157683,
+        "winrate": 0.4203920276725416,
+        "t_nw": -2.675474298099609
+      },
+      {
+        "horizon": 5,
+        "bps": 20.0,
+        "n": 30355,
+        "gross_mean": -0.0018119562157683,
+        "net_mean": -0.0058119562157683,
+        "winrate": 0.4080052709603031,
+        "t_nw": -3.553476347407447
+      },
+      {
+        "horizon": 5,
+        "bps": 30.0,
+        "n": 30355,
+        "gross_mean": -0.0018119562157683,
+        "net_mean": -0.0078119562157683,
+        "winrate": 0.3953220227310163,
+        "t_nw": -4.431478396715285
+      },
+      {
+        "horizon": 5,
+        "bps": 50.0,
+        "n": 30355,
+        "gross_mean": -0.0018119562157683,
+        "net_mean": -0.0118119562157683,
+        "winrate": 0.3710097183330588,
+        "t_nw": -6.18748249533096
+      },
+      {
+        "horizon": 10,
+        "bps": 0.0,
+        "n": 30318,
+        "gross_mean": -0.001733959774364,
+        "net_mean": -0.001733959774364,
+        "winrate": 0.4309980869450491,
+        "t_nw": -1.679079398371792
+      },
+      {
+        "horizon": 10,
+        "bps": 10.0,
+        "n": 30318,
+        "gross_mean": -0.001733959774364,
+        "net_mean": -0.003733959774364,
+        "winrate": 0.4245662642654528,
+        "t_nw": -2.1919967241439653
+      },
+      {
+        "horizon": 10,
+        "bps": 20.0,
+        "n": 30318,
+        "gross_mean": -0.001733959774364,
+        "net_mean": -0.005733959774364,
+        "winrate": 0.4154957451019196,
+        "t_nw": -2.704914049916139
+      },
+      {
+        "horizon": 10,
+        "bps": 30.0,
+        "n": 30318,
+        "gross_mean": -0.001733959774364,
+        "net_mean": -0.007733959774364,
+        "winrate": 0.4061283725839435,
+        "t_nw": -3.217831375688312
+      },
+      {
+        "horizon": 10,
+        "bps": 50.0,
+        "n": 30318,
+        "gross_mean": -0.001733959774364,
+        "net_mean": -0.011733959774364,
+        "winrate": 0.3885810409657629,
+        "t_nw": -4.243666027232657
+      }
+    ],
+    "E2_breakeven_bps_oneside": -9.0597810788415,
+    "E2_breakeven_bps_roundtrip": -18.119562157683
+  },
+  "tail": {
+    "E1": {
+      "leave_top1%": -0.0017067601519684,
+      "leave_top5%": -0.0096396169544892,
+      "leave_top10%": -0.0163928358469695
+    },
+    "E2": {
+      "leave_top1%": -0.0064236881649052,
+      "leave_top5%": -0.0161043675849021,
+      "leave_top10%": -0.0240194203624645
+    },
+    "s_m1_TOP10": {
+      "leave_top1%": 0.002641401736886,
+      "leave_top5%": -0.0023095801689734,
+      "leave_top10%": -0.0065652276951111
+    }
+  },
+  "nulls": [
+    {
+      "null": "N1_RandomStock",
+      "n_unit": 61673,
+      "unit": "stock-day",
+      "real_mean": 0.0020848330356615,
+      "null_mean": 0.0030644523074295,
+      "null_sd": 0.0002746700011005,
+      "p_real_ge_null": 0.999000999000999,
+      "p_two": 0.0039960039960039
+    },
+    {
+      "null": "N2_RandomDate",
+      "n_unit": 61673,
+      "unit": "event",
+      "real_mean": 0.0020848330356615,
+      "null_mean": 0.0014471290744456,
+      "null_sd": 0.0003391604665532,
+      "p_real_ge_null": 0.0349650349650349,
+      "p_two": 0.0699300699300699
+    },
+    {
+      "null": "N3_RandomPullback",
+      "n_unit": 61836,
+      "unit": "leg",
+      "real_mean": 0.0020848330356615,
+      "null_mean": -0.0030655642620162,
+      "null_sd": 0.0003031193859164,
+      "p_real_ge_null": 0.0009990009990009,
+      "p_two": 0.0019980019980019
+    },
+    {
+      "null": "N4_MomentumMatched",
+      "n_unit": 61673,
+      "unit": "event",
+      "real_mean": 0.0020848330356615,
+      "null_mean": 0.0020658945131348,
+      "null_sd": 0.0003221074514422,
+      "p_real_ge_null": 0.4925074925074925,
+      "p_two": 0.985014985014985,
+      "adj_alpha": 9.525921651853377e-06
+    },
+    {
+      "null": "N5_IndustryMomentumMatched",
+      "n_unit": 61365,
+      "unit": "event",
+      "real_mean": 0.0020801109776662,
+      "null_mean": 0.001577053634875,
+      "null_sd": 0.0003329251297617,
+      "p_real_ge_null": 0.0599400599400599,
+      "p_two": 0.1198801198801198,
+      "adj_alpha": 0.0004995570355082
+    },
+    {
+      "null": "N6_ShuffledPullbackQuality",
+      "n_unit": 461315,
+      "unit": "score-day",
+      "real_mean": 0.1113915445228553,
+      "null_mean": 1.3600092717364404e-05,
+      "null_sd": 0.0021036135950771,
+      "p_real_ge_null": 0.0009990009990009,
+      "p_two": 0.0019980019980019
+    }
+  ],
+  "permutation": [
+    {
+      "score": "s_m1",
+      "stat": "IC",
+      "obs": 0.1113915445228553,
+      "null_mean": 1.3600092717364404e-05,
+      "null_sd": 0.0021036135950771,
+      "p_hi": 0.0009990009990009,
+      "n_perm": 1000,
+      "p_two": 0.0019980019980019
+    },
+    {
+      "score": "s_m1",
+      "stat": "AUC_top10",
+      "obs": 0.4098995944437132,
+      "null_mean": 0.5000424250190688,
+      "null_sd": 0.0019282191255589,
+      "p_hi": 1.0,
+      "n_perm": 1000,
+      "p_two": 1.0
+    },
+    {
+      "score": "s_m2",
+      "stat": "IC",
+      "obs": 0.1171854804625906,
+      "null_mean": 3.417567938082326e-05,
+      "null_sd": 0.0021839901931184,
+      "p_hi": 0.0009990009990009,
+      "n_perm": 1000,
+      "p_two": 0.0019980019980019
+    },
+    {
+      "score": "s_m2",
+      "stat": "AUC_top10",
+      "obs": 0.4084508868006756,
+      "null_mean": 0.5001332078011858,
+      "null_sd": 0.0018960835051374,
+      "p_hi": 1.0,
+      "n_perm": 1000,
+      "p_two": 1.0
+    }
+  ],
+  "fdr": {
+    "horizon": {
+      "n_tests": 6,
+      "n_raw_p_lt_05": 0,
+      "n_reject_family": 0,
+      "n_reject_pooled": 0
+    },
+    "feature": {
+      "n_tests": 160,
+      "n_raw_p_lt_05": 92,
+      "n_reject_family": 90,
+      "n_reject_pooled": 90
+    },
+    "model": {
+      "n_tests": 5,
+      "n_raw_p_lt_05": 5,
+      "n_reject_family": 5,
+      "n_reject_pooled": 5
+    },
+    "window": {
+      "n_tests": 15,
+      "n_raw_p_lt_05": 13,
+      "n_reject_family": 13,
+      "n_reject_pooled": 13
+    },
+    "quantile": {
+      "n_tests": 6,
+      "n_raw_p_lt_05": 6,
+      "n_reject_family": 6,
+      "n_reject_pooled": 6
+    },
+    "pooled": {
+      "n_tests": 192,
+      "n_raw_p_lt_05": 116,
+      "n_reject_pooled": 114
+    }
+  },
+  "artifacts": [
+    {
+      "file": "hp_trenddays.parquet",
+      "bytes": 285964254
+    },
+    {
+      "file": "hp_events.parquet",
+      "bytes": 20603586
+    },
+    {
+      "file": "hp_events_e2.parquet",
+      "bytes": 5692512
+    },
+    {
+      "file": "hp_model_score.parquet",
+      "bytes": 5508672
+    },
+    {
+      "file": "hp_prereg.json",
+      "bytes": 3185
+    },
+    {
+      "file": "out/hp_costs_event.csv",
+      "bytes": 5139
+    },
+    {
+      "file": "out/hp_costs_fdr.csv",
+      "bytes": 26886
+    },
+    {
+      "file": "out/hp_costs_gates.csv",
+      "bytes": 256
+    },
+    {
+      "file": "out/hp_costs_null.csv",
+      "bytes": 1423
+    },
+    {
+      "file": "out/hp_costs_perm.csv",
+      "bytes": 666
+    },
+    {
+      "file": "out/hp_costs_quantile.csv",
+      "bytes": 489
+    },
+    {
+      "file": "out/hp_costs_score.csv",
+      "bytes": 5379
+    },
+    {
+      "file": "out/hp_costs_tail.csv",
+      "bytes": 1585
+    },
+    {
+      "file": "out/hp_costs_tail_desc.csv",
+      "bytes": 842
+    },
+    {
+      "file": "out/hp_gates_baseline.csv",
+      "bytes": 154
+    },
+    {
+      "file": "out/hp_gates_match.csv",
+      "bytes": 821
+    },
+    {
+      "file": "out/hp_gates_neutral_ic.csv",
+      "bytes": 5732
+    },
+    {
+      "file": "out/hp_gates_null.csv",
+      "bytes": 537
+    },
+    {
+      "file": "out/hp_model_coef.csv",
+      "bytes": 5339
+    },
+    {
+      "file": "out/hp_model_eval.csv",
+      "bytes": 3114
+    },
+    {
+      "file": "out/hp_model_gates.csv",
+      "bytes": 249
+    },
+    {
+      "file": "out/hp_model_grid.csv",
+      "bytes": 2185
+    },
+    {
+      "file": "out/hp_model_regime.csv",
+      "bytes": 167
+    },
+    {
+      "file": "out/hp_model_wf.csv",
+      "bytes": 526
+    },
+    {
+      "file": "out/hp_model_year.csv",
+      "bytes": 428
+    },
+    {
+      "file": "out/hp_single_bands.csv",
+      "bytes": 2353
+    },
+    {
+      "file": "out/hp_single_bucket.csv",
+      "bytes": 26840
+    },
+    {
+      "file": "out/hp_single_events.csv",
+      "bytes": 3235
+    },
+    {
+      "file": "out/hp_single_ic.csv",
+      "bytes": 54716
+    }
+  ],
+  "unavailable": [
+    "hp_model_eval.csv 含重复行块 5 行（已按主键去重呈现，源文件未改）",
+    "hp_model_grid.csv 含重复行块 1 行（已按主键去重呈现，源文件未改）"
+  ],
+  "caveats": [
+    "规格缺口：用户提交的 63 节规格（§0–§63）未落盘，§51/§52 的 G1–G18 权威定义不可得；本报告 Gate 表只呈现管线实际评估的门控，其余编号标 NOT_EVALUATED，最终状态可能随规格补齐而重判。",
+    "致命 Gate G14（成本，focus=30bps）FAIL → 最终状态不可能为 PASS，且不得通过改阈值救援（§52/§55）。",
+    "G12（OOS 区分度）与 G13（尾部依赖）亦 FAIL。",
+    "G4/G18 与 momentum-adjusted alpha 相关（见 hp_common.py 注释）；§26/§27 两条结果大概率对应，但编号映射未经规格确认，故未回填为 Gate 判定。",
+    "成本口径：往返 = 单边 bp × 2；未建模冲击成本、涨跌停不可成交与资金占用。",
+    "分数选择层为逐日 top10% 等权，未建模重叠持仓资金占用，仅作量级参考。",
+    "§43 参数邻域中 ma_fast / ma_slow 标 NOT_RUN_NEEDS_RERUN（需重跑 P1/P1c），已如实标注。",
+    "t 统计量为 Newey-West（lag=19）；事件层与日度序列口径不同，可异号。",
+    "TRADING_AUTHORIZATION = NO；任何 PASS 亦只代表科研层验证，不代表实盘授权。"
+  ]
+}

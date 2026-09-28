@@ -1,0 +1,17 @@
+﻿  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+================================================================
+4) §32 参数网格
+    mom=5 done
+    mom=10 done
+    mom=20 done
+    mom=60 done
+    hist=4 done
+    hist=8 done
+    hist=12 done
+    react=1(E1) done
+    react=3(E3) done
+    react=5(E5) done
+    ind=SW1 done
+    ind=SW2 done
+parameter_grid 行数 = 118
+DONE

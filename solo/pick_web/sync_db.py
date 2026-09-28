@@ -1,0 +1,223 @@
+# -*- coding: utf-8 -*-
+"""把本地 stock_picks.db 同步到云服务器（供 pick_web/app.py 只读查询）。
+
+为什么不能直接 scp 主库：本地库是 WAL 模式，已提交的数据可能还在
+stock_picks.db-wal 里，单独拷主库会拷到一个偏旧的快照。所以这里先用
+SQLite 的 backup API 生成「一致性快照」，校验通过后再上传。
+
+上传用「先传 .tmp 再原子 mv」两步：服务器上的 app.py 每次请求都会新开
+连接读库，替换文件后自动生效、无需重启；而直接覆盖目标文件时，若恰好
+有请求落在写入中途，会读到损坏的库。
+
+只读取本地库、只往服务器写一个数据文件，不改动任何选股脚本。
+
+用法：
+    python sync_db.py --check          # 只测连通性，不上传
+    python sync_db.py --dry-run        # 只生成并校验快照，不上传
+    python sync_db.py                  # 快照 + 上传 + 原子替换
+    python sync_db.py --local-db <path> --remote-dir /opt/stockweb/data
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import tempfile
+from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(BASE_DIR, "sync_config.json")
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+LOG_PATH = os.path.join(LOG_DIR, "sync.log")
+DEFAULT_LOCAL_DB = os.path.join(os.path.dirname(BASE_DIR), "picks_db", "stock_picks.db")
+
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
+            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
+
+
+def log(msg: str) -> None:
+    line = "[%s] %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg)
+    print(line, flush=True)
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass
+
+
+def load_config(args) -> dict:
+    cfg = {
+        "host": "", "port": 22, "user": "", "remote_dir": "/opt/stockweb/data",
+        "remote_name": "stock_picks.db", "identity_file": "",
+        "strict_host_key": False, "local_db": DEFAULT_LOCAL_DB,
+    }
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, encoding="utf-8") as fh:
+            cfg.update(json.load(fh))
+    if args.local_db:
+        cfg["local_db"] = args.local_db
+    if args.remote_dir:
+        cfg["remote_dir"] = args.remote_dir
+    return cfg
+
+
+def ssh_base(cfg: dict) -> list:
+    cmd = ["ssh"] + SSH_OPTS
+    if cfg.get("strict_host_key"):
+        cmd += ["-o", "StrictHostKeyChecking=yes"]
+    else:
+        cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+    if cfg.get("identity_file"):
+        cmd += ["-i", cfg["identity_file"]]
+    cmd += ["-p", str(cfg.get("port", 22))]
+    return cmd
+
+
+def scp_base(cfg: dict) -> list:
+    cmd = ["scp"] + SSH_OPTS
+    if cfg.get("strict_host_key"):
+        cmd += ["-o", "StrictHostKeyChecking=yes"]
+    else:
+        cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+    if cfg.get("identity_file"):
+        cmd += ["-i", cfg["identity_file"]]
+    cmd += ["-P", str(cfg.get("port", 22))]      # scp 用大写 -P
+    return cmd
+
+
+def target(cfg: dict) -> str:
+    return "%s@%s" % (cfg["user"], cfg["host"])
+
+
+def run(cmd: list, timeout: int = 120) -> tuple[int, str]:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except FileNotFoundError:
+        return 127, "找不到 %s（Windows 需启用「OpenSSH 客户端」）" % cmd[0]
+    except subprocess.TimeoutExpired:
+        return 124, "命令超时（%ss）" % timeout
+    return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
+
+
+def make_snapshot(src_db: str, dst: str) -> dict:
+    """用 SQLite backup API 生成一致性快照，并校验。"""
+    if not os.path.exists(src_db):
+        raise SystemExit("找不到本地库：%s" % src_db)
+    src = sqlite3.connect(src_db, timeout=30)
+    try:
+        dst_con = sqlite3.connect(dst)
+        try:
+            with dst_con:
+                src.backup(dst_con)          # WAL 下也能拿到完整数据
+        finally:
+            dst_con.close()
+    finally:
+        src.close()
+
+    con = sqlite3.connect(dst)
+    try:
+        ok = con.execute("pragma integrity_check").fetchone()[0]
+        if ok != "ok":
+            raise SystemExit("快照完整性校验失败：%s" % ok)
+        pick = con.execute("select count(*) from stock_pick").fetchone()[0]
+        track = con.execute("select count(*) from pick_tracking").fetchone()[0]
+        span = con.execute("select min(pick_date), max(pick_date) from stock_pick").fetchone()
+    finally:
+        con.close()
+    return {"pick_rows": pick, "track_rows": track,
+            "date_min": span[0], "date_max": span[1],
+            "size_mb": round(os.path.getsize(dst) / 1048576, 3)}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="同步 stock_picks.db 到云服务器（WAL 安全）")
+    ap.add_argument("--local-db", default=None, help="本地库路径（覆盖配置）")
+    ap.add_argument("--remote-dir", default=None, help="服务器目录（覆盖配置）")
+    ap.add_argument("--config", default=None, help="配置文件路径")
+    ap.add_argument("--check", action="store_true", help="只测 SSH 连通性")
+    ap.add_argument("--dry-run", action="store_true", help="只生成并校验快照，不上传")
+    ap.add_argument("--keep", action="store_true", help="保留快照文件供排查")
+    args = ap.parse_args(argv)
+
+    global CONFIG_PATH
+    if args.config:
+        CONFIG_PATH = args.config
+    cfg = load_config(args)
+
+    if not cfg.get("host") or not cfg.get("user"):
+        if args.check:
+            log("未配置服务器（%s 里的 host/user 为空），无法检查连通性。" % CONFIG_PATH)
+            return 1
+        if not args.dry_run:
+            log("未配置服务器（%s 里的 host/user 为空），跳过同步。" % CONFIG_PATH)
+            return 0                                   # 不阻塞主流程
+        log("未配置服务器，仅执行本地快照校验（--dry-run）。")
+
+    remote_dir = cfg["remote_dir"].rstrip("/")
+    remote_name = cfg["remote_name"]
+    remote_final = "%s/%s" % (remote_dir, remote_name)
+    remote_tmp = "%s/.%s.tmp" % (remote_dir, remote_name)
+
+    conn = "%s:%s" % (target(cfg), remote_dir)
+    log("目标 %s  目录 %s" % (conn, remote_dir))
+
+    if args.check:
+        rc, out = run(ssh_base(cfg) + [target(cfg), "echo __OK__ && pwd"])
+        if rc != 0:
+            log("连通性检查失败（exit %s）：%s" % (rc, out[:400]))
+            return 1
+        log("连通性正常：%s" % out.replace("__OK__", "").strip())
+        rc, out = run(ssh_base(cfg) + [target(cfg), "mkdir -p '%s' && ls -la '%s'" % (remote_dir, remote_final)])
+        log("远端目录状态（exit %s）：%s" % (rc, out[:400] or "（文件尚不存在）"))
+        return 0 if rc == 0 else 1
+
+    tmp = tempfile.NamedTemporaryFile(prefix="stock_picks_", suffix=".db", delete=False)
+    tmp.close()
+    try:
+        log("生成本地快照（backup API，WAL 安全）…")
+        info = make_snapshot(cfg["local_db"], tmp.name)
+        log("快照 OK：%.3f MB  信号 %d 条  跟踪 %d 条  %s~%s"
+            % (info["size_mb"], info["pick_rows"], info["track_rows"],
+               info["date_min"], info["date_max"]))
+
+        if args.dry_run:
+            log("--dry-run：未上传。快照保留在 %s" % tmp.name)
+            args.keep = True
+            return 0
+
+        rc, out = run(ssh_base(cfg) + [target(cfg), "mkdir -p '%s'" % remote_dir])
+        if rc != 0:
+            log("远端目录创建失败（exit %s）：%s" % (rc, out[:400]))
+            return 1
+
+        log("上传到 %s …" % remote_tmp)
+        rc, out = run(scp_base(cfg) + [tmp.name, "%s:%s" % (target(cfg), remote_tmp)])
+        if rc != 0:
+            log("上传失败（exit %s）：%s" % (rc, out[:400]))
+            return 1
+        log("上传完成，原子替换为 %s" % remote_final)
+        rc, out = run(ssh_base(cfg) + [target(cfg), "mv -f '%s' '%s'" % (remote_tmp, remote_final)])
+        if rc != 0:
+            log("远端替换失败（exit %s）：%s" % (rc, out[:400]))
+            return 1
+
+        rc, out = run(ssh_base(cfg) + [target(cfg),
+                                       "ls -l '%s'" % remote_final])
+        log("服务器已就绪：%s" % (out.split()[-1] if out else remote_final))
+        log("同步完成。服务端读新连接即生效，无需重启 app.py。")
+        return 0
+    finally:
+        if os.path.exists(tmp.name):
+            if args.keep:
+                log("快照保留在 %s" % tmp.name)
+            else:
+                os.unlink(tmp.name)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

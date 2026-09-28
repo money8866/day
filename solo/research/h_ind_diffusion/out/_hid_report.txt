@@ -1,0 +1,67 @@
+==============================================================================
+H-IND-DIFFUSION-01  P7 Gate 判定 / 最终报告（STEP23-24；§46 §50-§57）
+  hash=e8c92f5eb9a56c88 derived=9837bbf708cda6ff  2026-09-27 21:13:59
+──────────────────────────────────────────────────────────────────────────────
+  面板 5816 股 × 2120 日；行业 31（L1）
+  [G1/G2] valid=8762946（meta 8762946）UNKNOWN=56084（0.0064）coverage=0.993600（meta 0.993600）
+  [G1] 阶段 hash 一致性：OK
+──────────────────────────────────────────────────────────────────────────────
+[STEP22] §46 先重算分位价差日序列（6 个 STOCK 信号，与 P4 交叉校验）
+    [CHECK-Q] exposure     重算 Q5-Q1=-0.002372 | P4=-0.002372 | diff=-4.34e-17 | t=-2.97
+    [CHECK-Q] expo_ind     重算 Q5-Q1=+0.000291 | P4=+0.000291 | diff=4.99e-17 | t=+0.43
+    [CHECK-Q] expo_rs      重算 Q5-Q1=-0.003146 | P4=-0.003146 | diff=-9.84e-17 | t=-3.75
+    [CHECK-Q] rs_20        重算 Q5-Q1=-0.003361 | P4=-0.003361 | diff=-1.82e-17 | t=-4.02
+    [CHECK-Q] ret_20       重算 Q5-Q1=-0.003133 | P4=-0.003133 | diff=-5.77e-17 | t=-2.93
+    [CHECK-Q] ret_5        重算 Q5-Q1=-0.001986 | P4=-0.001986 | diff=-2.04e-17 | t=-2.57
+  [DONE] 分位价差重算（8.7s）
+──────────────────────────────────────────────────────────────────────────────
+[STEP22/§46] BH-FDR（alpha=0.05）：601 项检验，族内显著 72，合并池显著 76
+    baseline         n=120   raw_p<.05 16   族内显著 5    合并池显著 7
+    cost             n=15    raw_p<.05 7    族内显著 4    合并池显著 3
+    discrimination   n=24    raw_p<.05 12   族内显著 12   合并池显著 12
+    fama_macbeth     n=84    raw_p<.05 12   族内显著 5    合并池显著 6
+    feature          n=19    raw_p<.05 6    族内显著 6    合并池显著 5
+    horizon          n=60    raw_p<.05 22   族内显著 21   合并池显著 18
+    model            n=24    raw_p<.05 10   族内显著 9    合并池显著 8
+    null             n=104   raw_p<.05 12   族内显著 0    合并池显著 6
+    oos              n=16    raw_p<.05 7    族内显著 5    合并池显著 5
+    permutation      n=84    raw_p<.05 4    族内显著 0    合并池显著 2
+    quantile         n=12    raw_p<.05 6    族内显著 5    合并池显著 4
+    regime           n=3     raw_p<.05 1    族内显著 0    合并池显著 0
+    tail             n=4     raw_p<.05 2    族内显著 0    合并池显著 0
+    walkforward      n=6     raw_p<.05 0    族内显著 0    合并池显著 0
+    window           n=20    raw_p<.05 5    族内显著 0    合并池显著 0
+    year             n=6     raw_p<.05 0    族内显著 0    合并池显著 0
+──────────────────────────────────────────────────────────────────────────────
+[STEP23] §50 Gate G1-G20 判定
+    G1   PIT / Data Integrity         PASS    LETHAL
+    G2   Industry Mapping             PASS    
+    G3   Tradability                  PASS    
+    G4   Momentum Control             PASS    LETHAL
+    G5   Industry Momentum Control    PASS    LETHAL
+    G6   Market Control               PASS    
+    G7   Random Industry-Date Null    FAIL    
+    G8   Momentum-Matched Null        FAIL    LETHAL
+    G9   OOS                          FAIL    LETHAL
+    G13  OOS Discrimination           FAIL    LETHAL
+    G10  Walk Forward                 FAIL    
+    G11  Cross-Year                   PASS    
+    G12  Regime                       PASS    
+    G14  Parameter Stability          PASS    
+    G15  Tail Stability               FAIL    
+    G16  Cost                         PASS    LETHAL
+    G17  Permutation                  FAIL    
+    G18  Multiple Testing             FAIL    
+    G19  Economic Significance        FAIL    
+    G20  Incremental Alpha            PASS    LETHAL
+  [GATE 汇总] PASS 11/20；致命 FAIL/NOT_RUN：['G8', 'G9', 'G13']
+──────────────────────────────────────────────────────────────────────────────
+  [STEP24] §52 未满足项：['G9', 'G10', 'G13', 'G15', 'G17', 'G18']
+  [STEP24] §53 CONDITIONAL 触发条件（预注册失败风险预测检验）=False -> 不触发
+  [STEP24] 最终判定：FAIL — NO ROBUST INCREMENTAL INDUSTRY DIFFUSION ALPHA FOUND
+  [STEP24] §51/§61 TRADING_AUTHORIZATION = NO（致命未通过：['G8', 'G9', 'G13']）
+  [STEP24] §56 处置 = ARCHIVE（不得污染现有生产策略）
+  [SAVE] h_ind_diffusion.json
+  [SAVE] report.md（12014 字）
+==============================================================================
+DONE  P7（总耗时 9.2s）  判定=FAIL  授权=NO

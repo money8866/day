@@ -1,0 +1,97 @@
+﻿==============================================================================
+H-EARN-POST 最终汇总（§42/§47/§48/§49/§50/§51）  预注册 ID=H-EARN-POST
+==============================================================================
+事件集 hep_events.parquet shape=(96080, 237)
+------------------------------------------------------------------------------
+已存 h_earn_post_features.csv 99 行（10 基本面 + 6 价格 + 17 派生 × 3 Entry）
+已存 h_earn_post_events.csv shape=(96080, 92)
+------------------------------------------------------------------------------
+已存 h_earn_post_registry.csv 48 行 × 113 列
+
+§48 Registry 概览（全部信号 / E20 / T+20）:
+             alpha_id  mean_ic   ic_t  top20_spread    auc  momentum_residual  industry_neutral  oos_ic  excess_return status                                                                                                                                                                                                              fail_reason
+  HEP-SIG_FSC-E20-T20   0.0362 1.8824        0.0096 0.5150             0.0388            0.0322  0.0584        -0.0745   FAIL                                                                        COHORT_ALPHA_DOES_NOT_TRANSLATE_INTO_PORTFOLIO_ALPHA|NO_INCREMENTAL_ALPHA|LOW_DISCRIMINATION|COUNTERFACTUAL_FAIL|PARAMETER_FRAGILE|PORTFOLIO_FAIL
+HEP-SIG_RESID-E20-T20   0.0344 1.8933        0.0081 0.5160             0.0372            0.0301  0.0536        -0.0526   FAIL                                                                        COHORT_ALPHA_DOES_NOT_TRANSLATE_INTO_PORTFOLIO_ALPHA|NO_INCREMENTAL_ALPHA|LOW_DISCRIMINATION|COUNTERFACTUAL_FAIL|PARAMETER_FRAGILE|PORTFOLIO_FAIL
+HEP-SIG_QUADA-E20-T20   0.0387 2.5109           NaN 0.5110            -0.0302           -0.0080  0.0970        -0.0666   FAIL                                                           MOMENTUM_PROXY|COHORT_ALPHA_DOES_NOT_TRANSLATE_INTO_PORTFOLIO_ALPHA|NO_INCREMENTAL_ALPHA|LOW_DISCRIMINATION|COUNTERFACTUAL_FAIL|REGIME_UNSTABLE|PORTFOLIO_FAIL
+HEP-SIG_INTER-E20-T20   0.0035 0.3474        0.0071 0.5089             0.0100           -0.0046 -0.0479        -0.0675   FAIL NO_EVENT_ALPHA|COHORT_ALPHA_DOES_NOT_TRANSLATE_INTO_PORTFOLIO_ALPHA|OOS_FAIL|NO_INCREMENTAL_ALPHA|LOW_DISCRIMINATION|COUNTERFACTUAL_FAIL|RANDOM_NULL_FAIL|REGIME_UNSTABLE|YEAR_UNSTABLE|PARAMETER_FRAGILE|PORTFOLIO_FAIL
+
+==============================================================================
+FINAL STATUS: FAIL
+HYPOTHESIS: H-EARN-POST
+ROBUST ALPHA COUNT: 0
+CONDITIONAL COUNT: 0
+FAILED COUNT: 48
+NO ROBUST ALPHA FOUND
+（预注册主信号 SIG_RESID / Primary Horizon T+20 的判定：FAIL）
+==============================================================================
+§50 最终核心表（预注册主信号 SIG_RESID）
+                Alpha Entry Horizon  Raw_IC  Residual_IC  Top_Bottom    AUC    OOS  Cost30bp             Random_Null  Portfolio_Excess Status
+ HEP-SIG_RESID-E20-T5   E20     T+5  0.0165       0.0245      0.0025 0.5324 0.0622   -0.0924   N1 z=1.49 / N2 z=1.21           -0.0924   FAIL
+HEP-SIG_RESID-E20-T20   E20    T+20  0.0344       0.0387      0.0081 0.5160 0.0536   -0.0526   N1 z=3.17 / N2 z=3.45           -0.0526   FAIL
+HEP-SIG_RESID-E25-T20   E25    T+20 -0.0020       0.0058      0.0001 0.4763 0.0515   -0.0614  N1 z=0.10 / N2 z=-0.67           -0.0614   FAIL
+HEP-SIG_RESID-E30-T20   E30    T+20 -0.0121      -0.0046     -0.0037 0.4701 0.0151   -0.0411 N1 z=-1.31 / N2 z=-0.81           -0.0411   FAIL
+
+§51 十二问的机械回答
+  1. 中报后的基本面改善是否仍然存在？
+    -> 存在但微弱且不稳健：FSC/SIG_RESID 全样本 T+20 mean_IC=+0.0344（t=1.89），但逐年方向在 2021/2022/2023 转负，2025 才回到 +0.0536。
+  2. 20–30 个交易日后价格是否已充分反映基本面？
+    -> 未被充分反映但不可交易：E20 组合 30bp 后年化超额=-5.26%，Top-Bottom 毛价差 T+20=+0.0081、净价差(30bp)=-0.0039。
+  3. High FSC + Low/Moderate PA 是否存在 Alpha？
+    -> SIG_QUADA（即 §13 A 象限）E20 T+20 mean_IC=+0.0387、AUC=0.5110，方向为正但组合层 30bp 后超额为负。
+  4. Alpha 最早从什么时候出现？
+    -> §25 路径（见 h_earn_post_path.csv）：ENTRY 锚点 IC 在 T+1–T+3 即为正，但幅度极小；D0 锚点 IC 在 T+5 前为负。无法判定为清晰的"延迟启动"。
+  5. T+5/T+10/T+20/T+60 哪个阶段最明显？
+    -> E20 各 Horizon mean_IC：T+5 +0.0165 / T+10 +0.0226 / T+20 +0.0344 / T+60 -0.0191。T+20 最大，T+60 转负 → 与"二次定价"长期延续的假设不符。
+  6. 是否独立于 Momentum？
+    -> 是的（SIG_RESID 与 CTRL_MOM 横截面相关 +0.0159），且 MOM 中性后 IC 反而略升 (+0.0344 → +0.0372)，但基座信号本身的 IC(+0.0344) 已低于 B1_MOM(+0.0817) → 判定 NO_INCREMENTAL_ALPHA。
+  7. 是否独立于 Value？
+    -> 是：与 CTRL_VAL 相关 -0.0647，MOM+VAL 中性后 IC=+0.0460（未衰减）。
+  8. 行业中性后是否仍存在？
+    -> 申万一级中性后 IC=+0.0301（+0.0344 → +0.0301），统计上仍在，但方向翻转的年份问题未被行业中性修复。
+  9. Random Stock 是否可以复制？
+    -> N1 无法复制：E20 T+20 z=+3.17（门槛 2.0），delta=+0.0353。
+  10. Random Date 是否可以复制？
+    -> N2 无法复制：z=+3.45，delta=+0.0278；但 E25/E30 多数 Horizon 的 z<2。
+  11. 成本后能否形成经济意义？
+    -> 不能：E20 组合毛超额=-0.31%、30bp 后=-5.26%，成本网格 0/10/20/30/50bp 全部为负 → COST_FRAGILE。
+  12. 能否转化成 Portfolio vs Benchmark 的真实超额？
+    -> 不能：LONG_EW 预注册组合 72/72 个 (Entry×选股×Horizon) 在 30bp 后超额 <= 0；同口径 0bp 也只有 3 个微正 → COHORT_ALPHA_DOES_NOT_TRANSLATE_INTO_PORTFOLIO_ALPHA。
+
+------------------------------------------------------------------------------
+已从 out/ 复制到 research/h_earn_post/：13 个
+    h_earn_post_ic.csv
+    h_earn_post_spread.csv
+    h_earn_post_auc.csv
+    h_earn_post_oos.csv
+    h_earn_post_walkforward.csv
+    h_earn_post_regime.csv
+    h_earn_post_counterfactual.csv
+    h_earn_post_null_model.csv
+    h_earn_post_portfolio.csv
+    h_earn_post_cost.csv
+    h_earn_post_parameter_grid.csv
+    h_earn_post_incremental.csv
+    h_earn_post_path.csv
+已存 h_earn_post.json
+
+§47 交付物核对（research/h_earn_post/）：
+    [XX] h_earn_post_report.md                -
+    [OK] h_earn_post_registry.csv             96.1 KB
+    [OK] h_earn_post_events.csv               68482.3 KB
+    [OK] h_earn_post_features.csv             21.0 KB
+    [OK] h_earn_post_ic.csv                   65.6 KB
+    [OK] h_earn_post_spread.csv               106.1 KB
+    [OK] h_earn_post_auc.csv                  58.6 KB
+    [OK] h_earn_post_oos.csv                  432.7 KB
+    [OK] h_earn_post_walkforward.csv          61.8 KB
+    [OK] h_earn_post_regime.csv               34.4 KB
+    [OK] h_earn_post_counterfactual.csv       7.1 KB
+    [OK] h_earn_post_null_model.csv           48.7 KB
+    [OK] h_earn_post_portfolio.csv            46.0 KB
+    [OK] h_earn_post_cost.csv                 111.5 KB
+    [OK] h_earn_post_parameter_grid.csv       7.7 KB
+    [OK] h_earn_post.json                     26.8 KB
+    [OK] h_earn_post_incremental.csv          170.4 KB
+    [OK] h_earn_post_path.csv                 59.7 KB
+（另有 h_earn_post_incremental.csv / h_earn_post_path.csv 为 §23/§24/§25 附加表）
+DONE

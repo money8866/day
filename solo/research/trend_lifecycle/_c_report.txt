@@ -1,0 +1,3 @@
+﻿WROTE D:\mystock\solo\research\trend_lifecycle\tl01_report.md
+WROTE D:\mystock\solo\research\trend_lifecycle\tl01_registry.json
+report lines = 531

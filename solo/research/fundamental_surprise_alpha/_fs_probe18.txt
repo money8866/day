@@ -1,0 +1,12 @@
+排列后 k 是否乱序: True
+无控制 min_n=10: NaN 占比 = 0.0000 (期望 0)
+与手工 cohort 去均值 rank 的最大差 = 0.000000
+有控制 min_n=10: NaN 占比 = 0.0000 (期望 0)
+  与 x 的 cohort 内相关 = 0.9583 (期望≈0)
+行业 FE: NaN 占比 = 0.0000
+新增单行 cohort 是否被剔除: True
+asof 掩码: {'asof_lag1_leak_rows': 0, 'asof_ttm_leak_rows': 0, 'asof_masked_rows': 0, 'asof_masked_cols': 1}
+  期望仅 A/20231231(np_qoq) 被掩（上一期 ann=20231030? 不，lag1=20230930 ann=20231030 < 20240410 → 不掩）
+  np_qoq 掩码情况: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+  np_yoy 未被掩: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+真前视用例: {'asof_lag1_leak_rows': 1, 'asof_ttm_leak_rows': 0, 'asof_masked_rows': 1, 'asof_masked_cols': 1} -> np_qoq=[0.1, nan] (期望 [0.1, nan])

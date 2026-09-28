@@ -1,0 +1,114 @@
+================================================================
+0) 载入面板
+  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+  E5 视角可交易比例 0.9990
+  面板 136194 行 / 866 cohort
+================================================================
+1) §26 入场锚点（同一静态基本面特征 × 不同可交易锚点）
+    探针特征 36 个
+    E1 done
+    E2 done
+    E3 done
+    E5 done
+================================================================
+2) §28 OOS 门槛 / §29 Walk Forward / §30 Regime
+  WF 2016 行 / Regime 1008 行
+  OOS 表 1020 行（三期同向占比 0.3461）
+================================================================
+3) §31 Counterfactual 匹配（日期×行业×市值×流动性×动量×估值）
+    rev_yoy done
+    rev_qoq done
+    rev_acc done
+    rev_cagr3 done
+    np_yoy done
+    np_qoq done
+    np_acc done
+    dp_yoy done
+    dp_qoq done
+    dp_acc done
+    ocf_yoy done
+    ocf_acc done
+    ocf_to_np done
+    ocf_to_rev done
+    ocf_margin done
+    ocf_margin_chg done
+    gpm done
+    gpm_chg done
+    npm done
+    npm_chg done
+    roe done
+    roe_chg done
+    roic done
+    roic_chg done
+    total_assets_g done
+    inventories_g done
+    accounts_receiv_g done
+    debt_g done
+    goodwill_g done
+    fix_assets_g done
+    ar_vs_rev done
+    ar_vs_rev_chg done
+    inv_vs_rev done
+    inv_vs_rev_chg done
+    debt_vs_rev done
+    debt_vs_rev_chg done
+    capex_g done
+    S1_rev done
+    S1_np done
+    S1_dp done
+    S1_ocf done
+    S2_rev done
+    S2_np done
+    S2_dp done
+    S2_ocf done
+    S3_rev done
+    S3_np done
+    S4_np_vs_rev done
+    S4_dp_vs_rev done
+    S5_np_vs_ocf done
+    mom_5 done
+    mom_10 done
+    mom_20 done
+    mom_60 done
+    ep_ttm done
+    bp done
+    sp done
+    dv_ttm done
+    ln_mv done
+    turnover_rate done
+    ind_rs done
+    S1h4_np done
+    S1h8_np done
+    S1h12_np done
+    S2h4_np done
+    S2h8_np done
+    S2h12_np done
+    S1h4_rev done
+    S1h8_rev done
+    S1h12_rev done
+    S2h4_rev done
+    S2h8_rev done
+    S2h12_rev done
+    S6_g_margin done
+    S6_g_cash done
+    S6_g_roe done
+    S6_g_indrs done
+    S6_g_np_acc done
+    Gap done
+================================================================
+4) §32 参数网格
+    探针特征 36 个
+    mom=5 done
+    mom=10 done
+    mom=20 done
+    mom=60 done
+    hist=4 done
+    hist=8 done
+    hist=12 done
+    react=1(E1) done
+    react=3(E3) done
+    react=5(E5) done
+    ind=SW1 done
+    ind=SW2 done
+================================================================
+稳健性检验完成

@@ -1,0 +1,22 @@
+﻿  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+ind_l1 dtype=str nunique=134 nan=0
+   astype(str) 后 -1 个数 = 0 ; 样例 = <ArrowStringArray>
+['银行', '银行', '银行', '银行', '银行']
+Length: 5, dtype: str
+ind_l2 dtype=str nunique=129 nan=56083
+   astype(str) 后 -1 个数 = 56083 ; 样例 = <ArrowStringArray>
+['股份制银行Ⅱ', '股份制银行Ⅱ', '股份制银行Ⅱ', '股份制银行Ⅱ', '股份制银行Ⅱ']
+Length: 5, dtype: str
+python : Traceback (most recent call last):
+At line:1 char:5
++ & { python -u _fs_probe20.py 2>&1 | Out-File -FilePath _fs_probe20.tx ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\_fs_probe20.py", line 22, in <module>
+    R = E.neutralize(df, ['S1_np'], [], min_n=8, ind_col='ind_l2')
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py", line 276, in neutralize
+    den = np.maximum(np.bincount(gi, minlength=ng), 1).astype(float)
+                     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ValueError: 'list' argument must have no negative elements

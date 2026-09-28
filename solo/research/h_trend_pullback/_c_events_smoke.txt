@@ -1,0 +1,34 @@
+﻿==============================================================================
+H-TREND-PULLBACK-01  P1c 趋势日面板 + 首次回撤事件  2026-09-27 09:02:49
+   [SMOKE] --limit 300
+   行业指数 32 个（成分>=5 才计入）
+   HS300 可得: True（其余基准 UNAVAILABLE，如实标注，不做替代）
+──────────────────────────────────────────────────────────────────────────────
+扫描完成：trend leg 11049，Run 17582，Episode 8273，E1 候选（每 leg 首个合格）4112
+趋势日面板 85522 行（宽 67 列）；E1 4112 条；E2 1883 条
+   强趋势日内属于回撤 Episode 的比例 30.78%；is_pb=1 3539 行
+   depth_at_sig  p25 0.0534 / p50 0.0804 / p75 0.1219
+   depth_final   p25 0.0707 / p50 0.1267 / p75 0.2120
+   ep_days       p25 2.0 / p50 2.0 / p75 2.0
+   resolved 0.675  reacc1 0.594（收复 close[h]）  reacc2 0.458（突破 Peak）
+   entry_ok 0.9995（次日不可交易 = 停牌或末日）
+   E1 exe_1  mean +0.0006  median -0.0011  n 4110
+   E1 exe_3  mean +0.0004  median -0.0052  n 4104
+   E1 exe_5  mean +0.0023  median -0.0059  n 4103
+   E1 exe_10  mean +0.0010  median -0.0101  n 4081
+   E1 exe_20  mean +0.0027  median -0.0173  n 4063
+   E2 exe_1  mean -0.0013  median -0.0026  n 1878
+   E2 exe_3  mean -0.0002  median -0.0075  n 1876
+   E2 exe_5  mean -0.0035  median -0.0116  n 1874
+   E2 exe_10  mean -0.0076  median -0.0173  n 1873
+   E2 exe_20  mean -0.0132  median -0.0304  n 1859
+──────────────────────────────────────────────────────────────────────────────
+   by phase:
+     TRAIN      E1   2278  reacc1 0.593  reacc2 0.471
+     VALID      E1   1000  reacc1 0.587  reacc2 0.417
+     OOS        E1    581  reacc1 0.635  reacc2 0.496
+     LIVE-LIKE  E1    253  reacc1 0.538  reacc2 0.419
+落盘: hp_trenddays.parquet / hp_events.parquet / hp_events_e2.parquet
+==============================================================================
+P1c 完成 4s
+DONE

@@ -1,0 +1,7 @@
+﻿report.md           -> D:\mystock\solo\research\h_trend_pullback\report.md
+h_trend_pullback.json -> D:\mystock\solo\research\h_trend_pullback\h_trend_pullback.json
+final_status=FAIL  gates_evaluated=7  failed=3  lethal_failed=['G14']  lethal_not_evaluated=['G1', 'G4', 'G6', 'G7', 'G18']
+UNAVAILABLE(2):
+  - hp_model_eval.csv 含重复行块 5 行（已按主键去重呈现，源文件未改）
+  - hp_model_grid.csv 含重复行块 1 行（已按主键去重呈现，源文件未改）
+DONE

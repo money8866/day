@@ -1,0 +1,47 @@
+﻿======================================================================
+1) 表清单
+    ['adj_factor_cache', 'cache_meta', 'daily_basic_cache', 'daily_cache', 'factor_snapshot_cache', 'fina_indicator_cache', 'index_daily_cache', 'stk_factor_pro']
+======================================================================
+2) 主要表覆盖
+   adj_factor_cache           rows=4881974    20230103 ~ 20260924
+   cache_meta                 rows=7          cols=['key', 'value', 'updated_at']
+   daily_basic_cache          rows=4846072    20230103 ~ 20260924
+   daily_cache                rows=7102222    20210104 ~ 20260924
+   factor_snapshot_cache      rows=77721      20260907 ~ 20260924
+   fina_indicator_cache       rows=76773      cols=['ts_code', 'ann_date', 'end_date', 'grossprofit_margin', 'netprofit_yoy', 'or_yoy', 'netprofit_2yoy', 'ocf_to_or', 'ocf_yoy', 'roe', 'debt_to_assets']
+   index_daily_cache          rows=11347      20200102 ~ 20260924
+   stk_factor_pro             rows=4896190    19901226 ~ 20260916
+======================================================================
+3) 行业映射
+    sw_industry_map.csv 313920
+   sw_industry_map cols=['l1_code', 'l1_name', 'l2_code', 'l2_name', 'l3_code', 'l3_name', 'ts_code', 'name', 'in_date', 'out_date', 'is_new'] rows=3000
+     l1_code l1_name    l2_code l2_name    l3_code l3_name    ts_code  name   in_date out_date is_new
+0  801880.SI      汽车  801881.SI  摩托车及其他  858811.SI  其他运输设备  600679.SH  上海凤凰  19931008      NaN      Y
+1  801180.SI     房地产  801181.SI   房地产开发  851811.SI    住宅开发  600683.SH  京投发展  19931025      NaN      Y
+2  801740.SI    国防军工  801744.SI   航海装备Ⅱ  850935.SI   航海装备Ⅲ  600685.SH  中船防务  19931028      NaN      Y
+======================================================================
+4) 指数文件（000300 / 000852 / 932000）
+   index_daily_000300*        32 个
+      例 index_daily_000300_SH_20260131_20260819.parquet rows=132 20260202 ~ 20260819
+   index_daily_000852*        0 个
+   index_daily_932000*        0 个
+   index_daily_000905*        0 个
+======================================================================
+5) income / balance / cashflow / fin_ind 文件命名 + 2026中报全量计数
+   income             文件=10594
+       列 = ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+       0630 年份(前600文件) = {'1994': 1, '1995': 104, '1996': 131, '1997': 199, '1998': 202, '1999': 244, '2000': 275, '2001': 279, '2002': 296, '2003': 308, '2004': 287, '2005': 308, '2006': 336, '2007': 348, '2008': 355, '2009': 393, '2010': 427, '2011': 439, '2012': 444, '2013': 448, '2014': 471, '2015': 486, '2016': 526, '2017': 539, '2018': 631, '2019': 860, '2020': 1124, '2021': 582, '2022': 604, '2023': 856, '2024': 617, '2025': 730, '2026': 211}
+   balance            文件=5358
+       列 = ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'total_assets', 'inventories', 'fix_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'goodwill', 'intan_assets']
+       0630 年份(前600文件) = {'2007': 2, '2008': 23, '2009': 332, '2010': 820, '2011': 434, '2012': 874, '2013': 881, '2014': 459, '2015': 477, '2016': 983, '2017': 1018, '2018': 1038, '2019': 540, '2020': 1124, '2021': 568, '2022': 590, '2023': 1177, '2024': 603, '2025': 624, '2026': 321}
+   cashflow           文件=4926
+       列 = ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'n_cashflow_act', 'n_cashflow_inv_act', 'n_cash_flows_fnc_act', 'c_pay_acq_const_fiolta']
+       0630 年份(前600文件) = {'2005': 2, '2006': 432, '2007': 471, '2008': 477, '2009': 483, '2010': 488, '2011': 490, '2012': 491, '2013': 493, '2014': 496, '2015': 500, '2016': 506, '2017': 506, '2018': 559, '2019': 750, '2020': 1023, '2021': 523, '2022': 652, '2023': 740, '2024': 775, '2025': 927, '2026': 1043}
+   treasure_fin_ind   文件=4509
+       列 = ['ts_code', 'ann_date', 'end_date', 'eps', 'dt_eps', 'total_revenue_ps', 'revenue_ps', 'capital_rese_ps', 'surplus_rese_ps', 'undist_profit_ps', 'extra_item', 'profit_dedt', 'gross_margin', 'current_ratio', 'quick_ratio', 'cash_ratio', 'ar_turn', 'ca_turn', 'fa_turn', 'assets_turn', 'op_income', 'ebit', 'ebitda', 'fcff', 'fcfe', 'current_exint', 'noncurrent_exint', 'interestdebt', 'netdebt', 'tangible_asset', 'working_capital', 'networking_capital', 'invest_capital', 'retained_earnings', 'diluted2_eps', 'bps', 'ocfps', 'retainedps', 'cfps', 'ebit_ps', 'fcff_ps', 'fcfe_ps', 'netprofit_margin', 'grossprofit_margin', 'cogs_of_sales', 'expense_of_sales', 'profit_to_gr', 'saleexp_to_gr', 'adminexp_of_gr', 'finaexp_of_gr', 'impai_ttm', 'gc_of_gr', 'op_of_gr', 'ebit_of_gr', 'roe', 'roe_waa', 'roe_dt', 'roa', 'npta', 'roic', 'roe_yearly', 'roa2_yearly', 'debt_to_assets', 'assets_to_eqt', 'dp_assets_to_eqt', 'ca_to_assets', 'nca_to_assets', 'tbassets_to_totalassets', 'int_to_talcap', 'eqt_to_talcapital', 'currentdebt_to_debt', 'longdeb_to_debt', 'ocf_to_shortdebt', 'debt_to_eqt', 'eqt_to_debt', 'eqt_to_interestdebt', 'tangibleasset_to_debt', 'tangasset_to_intdebt', 'tangibleasset_to_netdebt', 'ocf_to_debt', 'turn_days', 'roa_yearly', 'roa_dp', 'fixed_assets', 'profit_to_op', 'q_saleexp_to_gr', 'q_gc_to_gr', 'q_roe', 'q_dt_roe', 'q_npta', 'q_ocf_to_sales', 'basic_eps_yoy', 'dt_eps_yoy', 'cfps_yoy', 'op_yoy', 'ebt_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', 'ocf_yoy', 'roe_yoy', 'bps_yoy', 'assets_yoy', 'eqt_yoy', 'tr_yoy', 'or_yoy', 'q_sales_yoy', 'q_op_qoq', 'equity_yoy']
+       0630 年份(前600文件) = {'2010': 1, '2011': 5, '2012': 303, '2013': 1010, '2014': 1021, '2015': 1029, '2016': 1035, '2017': 1042, '2018': 1028, '2019': 1027, '2020': 1060, '2021': 1128, '2022': 1162, '2023': 678, '2024': 624, '2025': 704, '2026': 19}
+======================================================================
+6) stock_basic
+   rows=5530 cols=['ts_code', 'name', 'industry', 'list_date']
+======================================================================
+DONE

@@ -1,0 +1,576 @@
+{
+  "hypothesis_id": "H-IND-DIFFUSION-01",
+  "title": "Industry Strength Diffusion -> Stock Continuation",
+  "version": "1.0",
+  "built_at": "2026-09-27 21:14:08",
+  "prereg_hash": "e8c92f5eb9a56c88",
+  "derived_hash": "9837bbf708cda6ff",
+  "spec_ref": "research/h_ind_diffusion/SPEC.md",
+  "research_question": "在已经知道行业 Momentum 与股票 Momentum 的情况下，行业内「强度从少数股票向多数股票扩散」是否包含新的、可事前识别、可跨期重复、成本后存在经济意义的信息？",
+  "data": {
+    "n_codes": 5816,
+    "n_cal": 2120,
+    "n_l1": 31,
+    "n_l2": 131,
+    "date_start": "20180102",
+    "date_end": "20260924",
+    "rows_valid": 8762946,
+    "excluded_count": {
+      "PASS": 8762946,
+      "ST": 188066,
+      "SUSPEND": 48522,
+      "NEW": 1988598,
+      "BJ": 746240,
+      "NO_DATA": 385889,
+      "ENDED": 209659
+    },
+    "coverage_l1": 0.9935998692677097,
+    "coverage_recomputed": 0.9935998692677097,
+    "unknown_l1_count": 56084,
+    "industry_source": "sw_member_all.csv",
+    "phases": {
+      "TRAIN": 1215,
+      "VALID": 484,
+      "OOS": 243,
+      "LIVE-LIKE": 178
+    }
+  },
+  "key_numbers": {
+    "ic_exposure_h5_ALL": [
+      -0.0373774322823405,
+      -7.345129823669531
+    ],
+    "ic_exposure_h5_OOS": [
+      -0.0576155410642348,
+      -5.962306129987727
+    ],
+    "q5_q1_exposure_h5_ALL": -0.002371627590362643,
+    "ic_ind_diffusion_score_h5_ALL": [
+      0.000557588006482,
+      0.1249595908507432
+    ],
+    "ic_ind_dchg_5_h5_ALL": [
+      0.0053385605823515,
+      1.1171784315702946
+    ],
+    "ic_ind_up_20_h5_ALL": [
+      -0.0115136835480748,
+      -1.9588116917646812
+    ],
+    "ic_ind_mom_20_h5_ALL": [
+      -0.015557953114434,
+      -2.499420203648339
+    ],
+    "m2_ind_breadth_h5_ALL": [
+      0.0005660627742425,
+      1.0619364387983812
+    ],
+    "m3_diffusion_h5_ALL": [
+      0.0010086818253752,
+      3.131157672324091
+    ],
+    "m3_diffusion_h5_OOS": [
+      0.0001877673431187,
+      0.3212757009141057
+    ],
+    "fm_diffusion_h5_ALL": [
+      0.0008180673879155,
+      3.122350819369575
+    ],
+    "diff_minus_b4_h5_ALL": [
+      0.0021178163386671,
+      1.645079323069238
+    ],
+    "diff_minus_b4_h5_OOS": [
+      0.0030035859514498,
+      0.893662996662026
+    ],
+    "cost30_net_mean": 6.583795075319728e-05
+  },
+  "gates": [
+    {
+      "gate": "G1",
+      "name": "PIT / Data Integrity",
+      "lethal": true,
+      "criterion": "无未来函数：全部 rolling min_periods=w，特征时点 <= 决策日，面板与 meta 一致；违规检出数 = 0",
+      "verdict": "PASS",
+      "evidence": "阶段 hash 一致=True；valid 重算=8762946 vs meta=8762946；coverage 重算=0.993600 vs meta=0.993600",
+      "source": "_meta*.json + panel 重算"
+    },
+    {
+      "gate": "G2",
+      "name": "Industry Mapping",
+      "lethal": false,
+      "criterion": "SW L1 PIT 覆盖率 >= 0.90（in_date/out_date 生效），UNKNOWN 计数如实披露（不删除样本）",
+      "verdict": "PASS",
+      "evidence": "SW L1 PIT 覆盖率=0.993600（门槛 0.90）；UNKNOWN=56084（未删除样本，如实披露）",
+      "source": "_meta.json + 面板重算"
+    },
+    {
+      "gate": "G3",
+      "name": "Tradability",
+      "lethal": false,
+      "criterion": "T+1 开盘可成交率 >= 0.95（非停牌、非涨跌停封死）",
+      "verdict": "PASS",
+      "evidence": "DIFF 入选样本 T+1 可成交率=0.9944（门槛 0.95）",
+      "source": "_meta_p6.json"
+    },
+    {
+      "gate": "G4",
+      "name": "Momentum Control",
+      "lethal": true,
+      "criterion": "控制 Stock Momentum 后 Breadth 增量 alpha > 0 且 t_NW > 0（M2 - M1）",
+      "verdict": "PASS",
+      "evidence": "M2 ind_breadth：ALL beta=+0.0006 t=+1.0619；OOS beta=+0.0033 t=+2.5278（ALL 需 beta>0 且 t>0，OOS 需同号）",
+      "source": "model_ladder.csv"
+    },
+    {
+      "gate": "G5",
+      "name": "Industry Momentum Control",
+      "lethal": true,
+      "criterion": "控制 Industry Momentum 后 Diffusion 增量 alpha > 0 且 t_NW > 0（M3 - M2）",
+      "verdict": "PASS",
+      "evidence": "M3 diffusion：ALL beta=+0.0010 t=+3.1312；OOS beta=+0.0002 t=+0.3213",
+      "source": "model_ladder.csv"
+    },
+    {
+      "gate": "G6",
+      "name": "Market Control",
+      "lethal": false,
+      "criterion": "控制 Market Return / Market Breadth / Market Momentum 后 Diffusion beta > 0 且 t_NW > 0",
+      "verdict": "PASS",
+      "evidence": "FM diffusion（含 §24 市场层残差化）：ALL beta=+0.0008 t=+3.1224（n=2046）；OOS beta=+0.0005 t=+0.8878",
+      "source": "fama_macbeth.csv"
+    },
+    {
+      "gate": "G7",
+      "name": "Random Industry-Date Null",
+      "lethal": false,
+      "criterion": "观测 alpha > N1(Random Industry-Date) null 且单侧 p < perm_alpha",
+      "verdict": "FAIL",
+      "evidence": "N1 随机行业-日期：obs=+0.00033 null=+0.00050 p=0.6843 z=-0.46",
+      "source": "null_models.csv"
+    },
+    {
+      "gate": "G8",
+      "name": "Momentum-Matched Null",
+      "lethal": true,
+      "criterion": "观测 alpha > N3/N4(Momentum-Matched) null 且单侧 p < perm_alpha",
+      "verdict": "FAIL",
+      "evidence": "N3 动量匹配：obs=-0.00004 null=+0.00041 p=0.9890 | N4 行业动量匹配：obs=+0.00033 null=-0.00044 p=0.0060",
+      "source": "null_models.csv"
+    },
+    {
+      "gate": "G9",
+      "name": "OOS",
+      "lethal": true,
+      "criterion": "OOS 期 IC > 0 且 t_NW > 0（分位价差 Q5-Q1 > 0 一致）",
+      "verdict": "FAIL",
+      "evidence": "OOS exposure ALL：IC=-0.05762 t=-5.96 Q5-Q1=-0.00275（n=243）",
+      "source": "oos_results.csv"
+    },
+    {
+      "gate": "G13",
+      "name": "OOS Discrimination",
+      "lethal": true,
+      "criterion": "OOS |IC| >= ic_min 且 AUC >= auc_min 且 Prec@10 >= prec10_min 且分位单调",
+      "verdict": "FAIL",
+      "evidence": "OOS |IC|=+0.05762（≥0.02）AUC=+0.4762（≥0.52）Prec@10=+0.4504（≥0.10）mono_rho=-1.00（>0）方向无关上限 AUC'=+0.5238",
+      "source": "oos_results.csv（原始方向，§59 禁止反向择优）"
+    },
+    {
+      "gate": "G10",
+      "name": "Walk Forward",
+      "lethal": false,
+      "criterion": ">= 6 windows，正窗口比例 > wf_pos_frac（严格多数）",
+      "verdict": "FAIL",
+      "evidence": "OOS 增量与 IC 双正窗口 0/6 = +0.00（阈值 > 0.50）",
+      "source": "walkforward.csv"
+    },
+    {
+      "gate": "G11",
+      "name": "Cross-Year",
+      "lethal": false,
+      "criterion": "正年份比例 >= year_pos_frac 且单一年份贡献占比 <= year_max_share",
+      "verdict": "PASS",
+      "evidence": "正年份 4/6 = +0.67（阈值 0.60）；最大单年贡献占比 +0.36（上限 0.50）",
+      "source": "year_results.csv"
+    },
+    {
+      "gate": "G12",
+      "name": "Regime",
+      "lethal": false,
+      "criterion": "BULL/NORMAL/BEAR 三分组符号翻转次数 <= regime_flip_max（禁止只选有效 regime）",
+      "verdict": "PASS",
+      "evidence": "BEAR/NORMAL/BULL 增量符号翻转 1 次（上限 1）；明细 [['BEAR', 0.0031076179311612115, 1.5024470160605097], ['NORMAL', 0.004823324119334097, 2.070261523123942], ['BULL', -0.00034359952159501635, -0.16891356548729955]]",
+      "source": "regime_results.csv"
+    },
+    {
+      "gate": "G14",
+      "name": "Parameter Stability",
+      "lethal": false,
+      "criterion": "参数面非单点峰值：邻域内同号比例 >= param_same_sign_frac，否则 PARAMETER_FRAGILE",
+      "verdict": "PASS",
+      "evidence": "主参数面 12 格中增量为正 8 格 = +0.67（阈值 0.60）",
+      "source": "parameter_surface.csv"
+    },
+    {
+      "gate": "G15",
+      "name": "Tail Stability",
+      "lethal": false,
+      "criterion": "Leave-Top5% 后 alpha 仍 > 0，否则 EXTREME_TAIL_DEPENDENT",
+      "verdict": "FAIL",
+      "evidence": "Leave-Top5% 后 DIFF-B4 日均增量 = -0.00122（t=-0.96）",
+      "source": "tail_analysis.csv"
+    },
+    {
+      "gate": "G16",
+      "name": "Cost",
+      "lethal": true,
+      "criterion": "30bp 往返成本后 Net Alpha > 0，否则 COST_FAIL",
+      "verdict": "PASS",
+      "evidence": "30bp 往返后 DIFF-B4：gross=+0.00067 换手/日=0.2006 净日均=+0.00007 净年化=+1.60% t=+0.21",
+      "source": "cost_analysis.csv"
+    },
+    {
+      "gate": "G17",
+      "name": "Permutation",
+      "lethal": false,
+      "criterion": "Diffusion 信号置换检验单侧 p < perm_alpha（n_perm 次）",
+      "verdict": "FAIL",
+      "evidence": "§45 置换（n_perm=1000）IC_exposure h5 ALL：obs=-0.03761 null=+0.00000 p=1.0000 z=-107.95",
+      "source": "permutation.csv"
+    },
+    {
+      "gate": "G18",
+      "name": "Multiple Testing",
+      "lethal": false,
+      "criterion": "关键检验经 BH-FDR(alpha=fdr_alpha) 后仍显著（族内 + 合并池）",
+      "verdict": "FAIL",
+      "evidence": "关键检验 K1-K7 经 BH-FDR 后族内/合并池同时显著：3/7 项满足；明细 {'model|M3.diffusion|ALL|h5|ALL': ('p=0.000871', True, True), 'fama_macbeth|diffusion|ALL|h5|ALL': ('p=0.000897', True, True), 'baseline|DIFF-B4|h5|ALL': ('p=0.1', False, False), 'oos|signal_ALL|h5|OOS': ('p=2.49e-09', True, True), 'permutation|IC_exposure|h5|ALL': ('p=1', False, False), 'null|N3_MomentumMatched|DIFF_return|h5|ALL': ('p=0.989', False, False), 'null|N4_IndustryMomentumMatched|IS_DIFF_return|h5|ALL': ('p=0.00599', False, True)}",
+      "source": "fdr_results.csv"
+    },
+    {
+      "gate": "G19",
+      "name": "Economic Significance",
+      "lethal": false,
+      "criterion": "净收益幅度 >= econ_min_net（预注册最低经济意义门槛），非仅统计显著",
+      "verdict": "FAIL",
+      "evidence": "30bp 后净日均增量 +0.00007 vs 预注册门槛 0.0020",
+      "source": "cost_analysis.csv"
+    },
+    {
+      "gate": "G20",
+      "name": "Incremental Alpha",
+      "lethal": true,
+      "criterion": "Diffusion 策略相对 B4(Industry Mom + Stock Mom) 增量 alpha > 0 且 t_NW > 0（§44）",
+      "verdict": "PASS",
+      "evidence": "§44 DIFF−B4：ALL 日均=+0.00212 t=+1.65；OOS 日均=+0.00300 t=+0.89（ALL 需 >0 且 t>0，OOS 需同号）",
+      "source": "baseline_results.csv"
+    }
+  ],
+  "gate_pass_count": 11,
+  "lethal_failed": [
+    "G8",
+    "G9",
+    "G13"
+  ],
+  "critical_unmet_52": [
+    "G9",
+    "G10",
+    "G13",
+    "G15",
+    "G17",
+    "G18"
+  ],
+  "fdr": {
+    "n_tests": 601,
+    "reject_within": 72,
+    "reject_pooled": 76,
+    "by_family": {
+      "baseline": {
+        "n": 120,
+        "raw_p_lt_05": 16,
+        "reject_within": 5,
+        "reject_pooled": 7
+      },
+      "cost": {
+        "n": 15,
+        "raw_p_lt_05": 7,
+        "reject_within": 4,
+        "reject_pooled": 3
+      },
+      "discrimination": {
+        "n": 24,
+        "raw_p_lt_05": 12,
+        "reject_within": 12,
+        "reject_pooled": 12
+      },
+      "fama_macbeth": {
+        "n": 84,
+        "raw_p_lt_05": 12,
+        "reject_within": 5,
+        "reject_pooled": 6
+      },
+      "feature": {
+        "n": 19,
+        "raw_p_lt_05": 6,
+        "reject_within": 6,
+        "reject_pooled": 5
+      },
+      "horizon": {
+        "n": 60,
+        "raw_p_lt_05": 22,
+        "reject_within": 21,
+        "reject_pooled": 18
+      },
+      "model": {
+        "n": 24,
+        "raw_p_lt_05": 10,
+        "reject_within": 9,
+        "reject_pooled": 8
+      },
+      "null": {
+        "n": 104,
+        "raw_p_lt_05": 12,
+        "reject_within": 0,
+        "reject_pooled": 6
+      },
+      "oos": {
+        "n": 16,
+        "raw_p_lt_05": 7,
+        "reject_within": 5,
+        "reject_pooled": 5
+      },
+      "permutation": {
+        "n": 84,
+        "raw_p_lt_05": 4,
+        "reject_within": 0,
+        "reject_pooled": 2
+      },
+      "quantile": {
+        "n": 12,
+        "raw_p_lt_05": 6,
+        "reject_within": 5,
+        "reject_pooled": 4
+      },
+      "regime": {
+        "n": 3,
+        "raw_p_lt_05": 1,
+        "reject_within": 0,
+        "reject_pooled": 0
+      },
+      "tail": {
+        "n": 4,
+        "raw_p_lt_05": 2,
+        "reject_within": 0,
+        "reject_pooled": 0
+      },
+      "walkforward": {
+        "n": 6,
+        "raw_p_lt_05": 0,
+        "reject_within": 0,
+        "reject_pooled": 0
+      },
+      "window": {
+        "n": 20,
+        "raw_p_lt_05": 5,
+        "reject_within": 0,
+        "reject_pooled": 0
+      },
+      "year": {
+        "n": 6,
+        "raw_p_lt_05": 0,
+        "reject_within": 0,
+        "reject_pooled": 0
+      }
+    },
+    "key_tests": {
+      "model|M3.diffusion|ALL|h5|ALL": {
+        "raw_p": 0.0008705932516602392,
+        "reject_within": true,
+        "reject_pooled": true
+      },
+      "fama_macbeth|diffusion|ALL|h5|ALL": {
+        "raw_p": 0.0008970650304725864,
+        "reject_within": true,
+        "reject_pooled": true
+      },
+      "baseline|DIFF-B4|h5|ALL": {
+        "raw_p": 0.09995345401345586,
+        "reject_within": false,
+        "reject_pooled": false
+      },
+      "oos|signal_ALL|h5|OOS": {
+        "raw_p": 2.4870264494463907e-09,
+        "reject_within": true,
+        "reject_pooled": true
+      },
+      "permutation|IC_exposure|h5|ALL": {
+        "raw_p": 1.0,
+        "reject_within": false,
+        "reject_pooled": false
+      },
+      "null|N3_MomentumMatched|DIFF_return|h5|ALL": {
+        "raw_p": 0.989010989010989,
+        "reject_within": false,
+        "reject_pooled": false
+      },
+      "null|N4_IndustryMomentumMatched|IS_DIFF_return|h5|ALL": {
+        "raw_p": 0.0059940059940059,
+        "reject_within": false,
+        "reject_pooled": true
+      }
+    }
+  },
+  "failure_analysis": [
+    {
+      "code": "F4",
+      "name": "Market Regime Reversal",
+      "n_failed": 4502,
+      "pct_of_failures": 0.0557834087107366,
+      "bucket_fail_rate": 0.6731459330143541
+    },
+    {
+      "code": "F1",
+      "name": "Industry Momentum Reversal",
+      "n_failed": 12740,
+      "pct_of_failures": 0.1578588687194102,
+      "bucket_fail_rate": 0.7440719542109566
+    },
+    {
+      "code": "F2",
+      "name": "Breadth Fake Expansion",
+      "n_failed": 26272,
+      "pct_of_failures": 0.3255312558081903,
+      "bucket_fail_rate": 0.6347273561885434
+    },
+    {
+      "code": "F6",
+      "name": "Narrow Leadership",
+      "n_failed": 12809,
+      "pct_of_failures": 0.1587138343349234,
+      "bucket_fail_rate": 0.5149967835316822
+    },
+    {
+      "code": "F3",
+      "name": "Leader Collapse",
+      "n_failed": 8396,
+      "pct_of_failures": 0.1040332073601387,
+      "bucket_fail_rate": 0.6756800257524546
+    },
+    {
+      "code": "F7",
+      "name": "Stock-specific Shock",
+      "n_failed": 258,
+      "pct_of_failures": 0.0031968279536583,
+      "bucket_fail_rate": 0.7166666666666667
+    },
+    {
+      "code": "F8",
+      "name": "Liquidity Failure",
+      "n_failed": 1178,
+      "pct_of_failures": 0.0145963694938355,
+      "bucket_fail_rate": 0.337439129189344
+    },
+    {
+      "code": "F5",
+      "name": "Industry Rotation",
+      "n_failed": 534,
+      "pct_of_failures": 0.0066166904157115,
+      "bucket_fail_rate": 0.3858381502890173
+    },
+    {
+      "code": "F0",
+      "name": "Other/Unclassified",
+      "n_failed": 14016,
+      "pct_of_failures": 0.1736695372033951,
+      "bucket_fail_rate": 0.3497267759562841
+    },
+    {
+      "code": "TOTAL",
+      "name": "ALL selected samples",
+      "n_failed": 80705,
+      "pct_of_failures": 1.0,
+      "bucket_fail_rate": 0.5460013124868921
+    }
+  ],
+  "provenance_fix_log": [
+    {
+      "when": "P5 首跑之后、P6 之前",
+      "file": "hid_null.py",
+      "item": "Acc 零分布累积的 NaN 污染",
+      "detail": "原实现以 sum += null_vals 累积置换零分布，使某日整条为 NaN 的置换向量（如面板末尾各 horizon 前向收益整体缺失的日子）永久污染该子样本全部 1000 个置换位，导致 N1/N4 在 ALL/TRAIN/LIVE-LIKE 上 n_perm=0、null 与 p 均为 NaN；据此判定 G7/G8 会以 NaN 伪装 FAIL。已改为「逐位置有限值计数」累积（sum 仅累加有限值、fin 记有限次数），并在同一冻结口径下重跑 P5。",
+      "scope": "仅影响 null_models.csv 的 N1/N4 行；N2/N3/N5 与 permutation.csv 的全部置换值在原实现下 n_perm 已为 1000（无 NaN 位置），重跑后已逐值核对完全一致。特征定义、样本、方向、阈值、Gate 判据均未改动（§54：非事后救援）。"
+    }
+  ],
+  "answers_55": [
+    {
+      "question": "Q1 行业 Breadth 是否预测未来行业收益？",
+      "answer": "否（弱/反向）。Breadth20 水平（ind_up_20）h5 IC=-0.01151（t=-1.96）；行业动量 ind_mom_20 IC=-0.01556（t=-2.50）。"
+    },
+    {
+      "question": "Q2 Breadth Change 是否比 Breadth Level 更有信息？",
+      "answer": "方向上「是」，但幅度不显著。BreadthChange5（ind_dchg_5）IC=+0.00534（t=+1.12）> Breadth20 水平 IC=-0.01151（t=-1.96）；15 个 IND 信号中 |t| 最大者仍 < 3。"
+    },
+    {
+      "question": "Q3 行业 Momentum 是否已经解释 Breadth？",
+      "answer": "是（大部分）。模型阶梯：M2 加入 ind_breadth 后 beta=+0.000566（t=+1.06，h5 ALL），相对 M1（ind_mom t=+1.98）增量 t 不足 2；M3 加入 diffusion 后 ind_breadth 被吸收。"
+    },
+    {
+      "question": "Q4 Leader Breadth 是否提供增量信息？",
+      "answer": "无显著增量。ind_lb_020（LeaderBreadth20%）h5 IC=+0.00138（t=+0.32）；DiffusionGap（LB20−Breadth5）IC=+0.00347（t=+1.08）。"
+    },
+    {
+      "question": "Q5 Narrow Leadership 与 Broad Diffusion 是否存在差异？",
+      "answer": "存在方向差异但不显著。§27 四象限：A（动量↑扩散↑）均值=-0.00003，B（动量↑未扩散）均值=+0.00941，A−B=+0.00167（t=+0.20）。"
+    },
+    {
+      "question": "Q6 Diffusion 是否能预测行业内部股票？",
+      "answer": "否（原始方向显著为负）。股票层 exposure：ALL IC=-0.03738（t=-7.35），行业内部口径 IC 见 oos_results。"
+    },
+    {
+      "question": "Q7 控制 Stock Momentum 后是否仍然有效？",
+      "answer": "G4 判定 PASS。M2 的 ind_breadth 相对 M1 增量 beta=+0.000566（t=+1.06，h5 ALL）。"
+    },
+    {
+      "question": "Q8 控制 Industry Momentum 后是否仍然有效？",
+      "answer": "行业层 G5=PASS（M3 diffusion beta=+0.001009，t=+3.13，h5 ALL）；但股票层暴露 OOS 不显著（t=-5.96），组合层 DIFF−B4 OOS t=+1.65。"
+    },
+    {
+      "question": "Q9 控制 Market Momentum 后是否仍然有效？",
+      "answer": "G6=PASS。FM diffusion（§24 市场层残差化后）ALL beta=+0.000818，t=+3.12。"
+    },
+    {
+      "question": "Q10 Random Industry-Date 是否能够复制？",
+      "answer": "G7=FAIL。N1：obs=+0.00033 null=+0.00050 p=0.6843。"
+    },
+    {
+      "question": "Q11 Momentum-Matched Null 是否能够复制？",
+      "answer": "G8=FAIL。N3 p=0.9890；N4 p=0.0060（单侧，方向为「观测 > null」）。"
+    },
+    {
+      "question": "Q12 OOS 是否有效？",
+      "answer": "G9=FAIL / G13=FAIL。OOS exposure ALL：IC=-0.05762（t=-5.96），Q5−Q1=-0.00275，AUC=+0.4762，Prec@10=+0.4504。"
+    },
+    {
+      "question": "Q13 是否跨年份、跨 Regime 稳定？",
+      "answer": "G11=PASS / G12=PASS。正年份比例 +0.67；Regime 符号翻转 1 次。"
+    },
+    {
+      "question": "Q14 30bp 成本后是否仍有经济意义？",
+      "answer": "G16=PASS / G19=FAIL。30bp 净日均增量=+0.00007（净年化 +1.60%），门槛 0.0020。"
+    },
+    {
+      "question": "Q15 Industry Diffusion 是否最终形成独立于既有 20D Momentum 的 Incremental Alpha？",
+      "answer": "否。G20=PASS（ALL 日均=+0.00212 t=+1.65；OOS 日均=+0.00300 t=+0.89）；且股票层暴露方向与假设相反，组合层增量未显著。"
+    }
+  ],
+  "decision": "FAIL",
+  "decision_text": "FAIL — NO ROBUST INCREMENTAL INDUSTRY DIFFUSION ALPHA FOUND",
+  "conditional_triggered": false,
+  "trading_authorization": "NO",
+  "disposition_56": "ARCHIVE",
+  "next_study_allowed": null,
+  "elapsed_sec": 9.1
+}

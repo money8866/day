@@ -1,0 +1,3843 @@
+{
+  "meta": {
+    "spec": "AI算力五主题成分池与主题排名引擎优化 Prompt V2.0",
+    "trade_date": "20260924",
+    "generated_from": "人工核验产业事实（tushare 主营 + 定期报告 + 公开资料）",
+    "n_themes": 5,
+    "n_themes_total": 36,
+    "n_records": 87,
+    "theme_name_mapping": {
+      "CPO": "CPO/光通信",
+      "液冷": "液冷/温控",
+      "AI服务器": "AI服务器/算力设备",
+      "算力运营": "算力运营",
+      "AI应用": "AI应用"
+    },
+    "theme_key_map": {
+      "CPO": "CPO",
+      "液冷": "LIQUID_COOLING",
+      "AI服务器": "AI_SERVER",
+      "算力运营": "COMPUTING_OPERATION",
+      "AI应用": "AI_APPLICATION"
+    },
+    "tier_rule": "CORE 80~100（且 A≥12 且 B≥12）/ EXTENSION 60~79 / RELATED 40~59 / REMOVE <40 或 B=0",
+    "ambiguous_rule": "最高主题分 − 次高主题分 < 8 → AMBIGUOUS（不强行归属，仅计入最高分主题）"
+  },
+  "themes": {
+    "CPO": {
+      "theme": "CPO",
+      "theme_cn": "CPO/光通信",
+      "theme_key": "CPO",
+      "core_n": 15,
+      "extension_n": 2,
+      "related_n": 4,
+      "member_n": 17,
+      "membership_quality": 0.9588,
+      "sample_reliability": 1.0,
+      "sample_flag": "NORMAL",
+      "cores": [
+        "000988.SZ",
+        "002281.SZ",
+        "300308.SZ",
+        "300394.SZ",
+        "300502.SZ",
+        "300548.SZ",
+        "300570.SZ",
+        "300620.SZ",
+        "301205.SZ",
+        "688195.SH",
+        "688205.SH",
+        "688313.SH",
+        "688498.SH",
+        "688807.SH",
+        "920045.BJ"
+      ],
+      "extensions": [
+        "600498.SH",
+        "688048.SH"
+      ],
+      "relateds": [
+        "600487.SH",
+        "600522.SH",
+        "601869.SH",
+        "688400.SH"
+      ]
+    },
+    "液冷": {
+      "theme": "液冷",
+      "theme_cn": "液冷/温控",
+      "theme_key": "LIQUID_COOLING",
+      "core_n": 7,
+      "extension_n": 3,
+      "related_n": 6,
+      "member_n": 10,
+      "membership_quality": 0.895,
+      "sample_reliability": 0.8367,
+      "sample_flag": "NORMAL",
+      "cores": [
+        "002335.SZ",
+        "002837.SZ",
+        "300499.SZ",
+        "300990.SZ",
+        "301018.SZ",
+        "603912.SH",
+        "920808.BJ"
+      ],
+      "extensions": [
+        "002536.SZ",
+        "300249.SZ",
+        "300602.SZ"
+      ],
+      "relateds": [
+        "002937.SZ",
+        "300647.SZ",
+        "300684.SZ",
+        "301489.SZ",
+        "301626.SZ",
+        "603124.SH"
+      ]
+    },
+    "AI服务器": {
+      "theme": "AI服务器",
+      "theme_cn": "AI服务器/算力设备",
+      "theme_key": "AI_SERVER",
+      "core_n": 7,
+      "extension_n": 2,
+      "related_n": 1,
+      "member_n": 9,
+      "membership_quality": 0.9222,
+      "sample_reliability": 0.8367,
+      "sample_flag": "NORMAL",
+      "cores": [
+        "000034.SZ",
+        "000938.SZ",
+        "000977.SZ",
+        "002261.SZ",
+        "601138.SH",
+        "603019.SH",
+        "603296.SH"
+      ],
+      "extensions": [
+        "000066.SZ",
+        "301202.SZ"
+      ],
+      "relateds": [
+        "300474.SZ"
+      ]
+    },
+    "算力运营": {
+      "theme": "算力运营",
+      "theme_cn": "算力运营",
+      "theme_key": "COMPUTING_OPERATION",
+      "core_n": 8,
+      "extension_n": 7,
+      "related_n": 8,
+      "member_n": 15,
+      "membership_quality": 0.8367,
+      "sample_reliability": 0.8944,
+      "sample_flag": "NORMAL",
+      "cores": [
+        "001339.SZ",
+        "002229.SZ",
+        "300442.SZ",
+        "300846.SZ",
+        "600797.SH",
+        "603220.SH",
+        "688158.SH",
+        "920493.BJ"
+      ],
+      "extensions": [
+        "002929.SZ",
+        "300383.SZ",
+        "300738.SZ",
+        "600602.SH",
+        "600845.SH",
+        "603881.SH",
+        "603887.SH"
+      ],
+      "relateds": [
+        "000815.SZ",
+        "002757.SZ",
+        "300017.SZ",
+        "300895.SZ",
+        "301085.SZ",
+        "600186.SH",
+        "600589.SH",
+        "688227.SH"
+      ]
+    },
+    "AI应用": {
+      "theme": "AI应用",
+      "theme_cn": "AI应用",
+      "theme_key": "AI_APPLICATION",
+      "core_n": 13,
+      "extension_n": 3,
+      "related_n": 1,
+      "member_n": 16,
+      "membership_quality": 0.9344,
+      "sample_reliability": 1.0,
+      "sample_flag": "NORMAL",
+      "cores": [
+        "002230.SZ",
+        "002362.SZ",
+        "300033.SZ",
+        "300229.SZ",
+        "300418.SZ",
+        "300624.SZ",
+        "601360.SH",
+        "688088.SH",
+        "688111.SH",
+        "688207.SH",
+        "688327.SH",
+        "688343.SH",
+        "688615.SH"
+      ],
+      "extensions": [
+        "300559.SZ",
+        "300766.SZ",
+        "603859.SH"
+      ],
+      "relateds": [
+        "300451.SZ"
+      ]
+    }
+  },
+  "records": [
+    {
+      "ts_code": "000034.SZ",
+      "name": "神州数码",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 81,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "数云服务及软件、自有品牌产品（神州鲲泰）、IT 分销及增值服务",
+      "ai_relevance": "自有品牌「神州鲲泰」AI 服务器（基于昇腾/鲲鹏）直接供货算力项目",
+      "revenue_basis": "自有品牌产品已形成收入；AI 服务器为增长业务，分销仍占主体",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 81,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "000066.SZ",
+      "name": "中国长城",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 65,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "电子计算机硬件、软件系统及网络系统（自主可控整机/服务器）",
+      "ai_relevance": "自主可控服务器整机（擎天），AI 服务器为产品线之一",
+      "revenue_basis": "服务器与整机已形成主营收入，AI 服务器占比低",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 65,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "000815.SZ",
+      "name": "美利云",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 51,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "中高档文化用纸生产销售；互联网数据中心业务",
+      "ai_relevance": "传统 IDC 业务，向 AI 智算方向扩张（占比小）",
+      "revenue_basis": "造纸为主营，IDC 业务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 51,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "000938.SZ",
+      "name": "紫光股份",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "信息电子及相关产业（新华三：服务器/网络设备）",
+      "ai_relevance": "AI 服务器整机与网络设备，AI 算力基础设施核心硬件",
+      "revenue_basis": "服务器等 IT 基础设施已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "000977.SZ",
+      "name": "浪潮信息",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "计算机软硬件及信息产品开发、生产、销售与系统集成",
+      "ai_relevance": "AI 服务器整机龙头，直接提供 GPU/AI 训练推理服务器",
+      "revenue_basis": "AI 服务器已规模出货并形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "000988.SZ",
+      "name": "华工科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "激光器/激光加工设备、光器件与光通信模块、光学元器件等",
+      "ai_relevance": "光通信模块业务对接 AI 数据中心互联；为多元业务之一",
+      "revenue_basis": "光通信模块业务已形成收入，占公司整体比重中等",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "001339.SZ",
+      "name": "智微智能",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [
+        "AI服务器/算力设备"
+      ],
+      "secondary_theme_key": [
+        "AI服务器"
+      ],
+      "tier": "CORE",
+      "theme_membership_score": 88,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "电子设备产品研发生产销售；控股子公司腾云智算运营智算中心",
+      "ai_relevance": "自有/控股子公司运营智算中心，并拟建「智算中心建设及运营」项目",
+      "revenue_basis": "2026H1 智算业务收入 10.30 亿(+245.51%)；拟采购服务器 ≤40 亿、定增 28.7 亿投智算中心建设及运营",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 88,
+          "tier": "CORE"
+        },
+        {
+          "theme": "AI服务器",
+          "score": 67,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002229.SZ",
+      "name": "鸿博股份",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 86,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "票证印刷等传统业务；子公司英博数科开展智算中心建设与算力租赁",
+      "ai_relevance": "自建智算中心并向客户提供 GPU 算力租赁（AI 算力服务收入）",
+      "revenue_basis": "英博数科智算与算力租赁已形成业务收入；传统印刷仍占主体",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002230.SZ",
+      "name": "科大讯飞",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "语音支撑软件、行业应用产品/系统、信息工程与运维服务",
+      "ai_relevance": "大模型（星火）+ AI 应用，AI 应用层龙头",
+      "revenue_basis": "AI 相关软件与行业应用已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002261.SZ",
+      "name": "拓维信息",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 90,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "A",
+      "business_basis": "软件与信息技术服务；国产自主品牌（兆瀚）服务器及 PC",
+      "ai_relevance": "兆瀚品牌基于「鲲鹏+昇腾」全栈智能计算产品（RH220T-C 高性能服务器 / 推理服务器 / DeepSeek 一体机）",
+      "revenue_basis": "2026 中报国产自主品牌服务器及 PC 收入 1.90 亿，占主营 14.49%",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 90,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002281.SZ",
+      "name": "光迅科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光通信领域光电子器件的研究、开发、制造与技术服务",
+      "ai_relevance": "AI 数据中心光互联器件（光模块+光芯片）国内龙头",
+      "revenue_basis": "光电子器件已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "002335.SZ",
+      "name": "科华数据",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [
+        "算力运营"
+      ],
+      "secondary_theme_key": [
+        "算力运营"
+      ],
+      "tier": "CORE",
+      "theme_membership_score": 96,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "电力电子（UPS）+ 数据中心 + 新能源；自建 MW 级液冷测试平台",
+      "ai_relevance": "与互联网大厂联合研发液冷 CDU（入围 1.2MW 短名单并批量交付）、WiseMDC 液冷 POD",
+      "revenue_basis": "2026H1 数据中心行业收入 15.91 亿(+13.81%)；液冷 CDU/POD 已批量交付",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 96,
+          "tier": "CORE"
+        },
+        {
+          "theme": "算力运营",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002362.SZ",
+      "name": "汉王科技",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 80,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "以模式识别为核心的智能交互软硬件产品、行业应用、技术授权及平台服务",
+      "ai_relevance": "模式识别/OCR 等 AI 应用",
+      "revenue_basis": "智能交互软硬件与行业应用已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 80,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002536.SZ",
+      "name": "飞龙股份",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 77,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "汽车热管理（机械水泵/排气歧管/涡壳）为核心，非车端热管理部件含液冷泵系列（覆盖 6W–80kW：μ<200W/S 200W–2kW/M 2kW–10kW/L >10kW），应用于节点冷却(LAAC)、模块化侧挂式(Side Car)、机架内(In Rack)及行级(In Row) CDU 液冷泵",
+      "ai_relevance": "子公司安徽航逸科技专攻 IDC 液冷泵，已进入服务器液冷/AI 数据中心液冷供应链；22kW 大型 IDC 液冷泵已获客户验证并进入批量交付阶段",
+      "revenue_basis": "2026H1 液冷泵订单：μ/S/M 平台终端客户订单超 5 万台、L 平台近万台；客户及建立联系超 80 家、在推项目 130+；公司披露液冷业务营收占整体营收比例仍较低（预计全年非车热管理占新能源热管理营收 >30%、占总营收 >5%）",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 77,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002757.SZ",
+      "name": "南兴股份",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 51,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "板式家具生产线成套设备；子公司唯一网络 IDC/云计算",
+      "ai_relevance": "传统 IDC 与云服务，向 AI 智算方向扩张",
+      "revenue_basis": "家具设备为主营，IDC/云业务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 51,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002837.SZ",
+      "name": "英维克",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "精密温控节能设备的研发、生产、销售",
+      "ai_relevance": "数据中心液冷全链条（冷板/浸没/CDU），AI 高功耗散热直接受益",
+      "revenue_basis": "数据中心温控与液冷产品已形成规模收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002929.SZ",
+      "name": "润建股份",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 76,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "通信网络建设服务、通信网络维护及优化服务（含算力运维/智算）",
+      "ai_relevance": "算力网络运维与智算中心运营业务，提供算力相关服务",
+      "revenue_basis": "通信网络服务已形成主营收入；算力业务持续投入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 76,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "002937.SZ",
+      "name": "兴瑞科技",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 47,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "精密注塑/冲压与自动化组装（连接器/屏蔽罩/散热片等精密零部件）",
+      "ai_relevance": "精密散热结构件，可用于服务器结构散热，非核心",
+      "revenue_basis": "精密电子零部件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 47,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300017.SZ",
+      "name": "网宿科技",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 59,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "CDN 与 IDC 互联网业务平台综合服务（含边缘计算）",
+      "ai_relevance": "CDN/边缘节点与 IDC 资源，可向边缘算力方向延伸",
+      "revenue_basis": "CDN 与 IDC 服务已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 59,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300033.SZ",
+      "name": "同花顺",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 90,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "金融资讯、数据分析和软件系统服务",
+      "ai_relevance": "金融 AI 应用（智能投研/问财等），AI+金融",
+      "revenue_basis": "金融资讯与软件服务已形成主营收入；AI 功能持续落地",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 90,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300229.SZ",
+      "name": "拓尔思",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 86,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "以非结构化信息处理为核心的软件研发、销售与技术服务（企业搜索/内容管理/文本挖掘）",
+      "ai_relevance": "NLP + 大模型应用，AI 软件与平台层",
+      "revenue_basis": "非结构化信息处理软件与在线服务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300249.SZ",
+      "name": "依米康",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 78,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "信息数据（数据中心基础设施/精密温控）、医疗健康、环保治理",
+      "ai_relevance": "数据中心精密温控与液冷产品，AI 高功率机柜散热配套",
+      "revenue_basis": "数据中心基础设施与温控产品已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 78,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300308.SZ",
+      "name": "中际旭创",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光模块研发与制造，全球高速光模块龙头",
+      "ai_relevance": "AI 集群高速互联直接需求，800G/1.6T 为核心产品",
+      "revenue_basis": "800G/1.6T 高速光模块已规模出货并形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300383.SZ",
+      "name": "光环新网",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 76,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "宽带接入服务、IDC 及其增值服务及其他互联网综合服务（含云计算）",
+      "ai_relevance": "运营数据中心并向云计算/AI 算力服务升级",
+      "revenue_basis": "IDC 及增值服务已形成主营收入；算力服务为延伸",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 76,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300394.SZ",
+      "name": "天孚通信",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光无源器件的研发设计与高精密制造",
+      "ai_relevance": "CPO/光引擎核心无源器件配套，AI 光互联关键环节",
+      "revenue_basis": "光器件已批量供货并形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300418.SZ",
+      "name": "昆仑万维",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 96,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "综合性互联网增值服务",
+      "ai_relevance": "自研大模型（天工）与生成式 AI 应用",
+      "revenue_basis": "互联网增值服务已形成收入；AI 应用处于放量阶段",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 96,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300442.SZ",
+      "name": "润泽科技",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "数据中心/智算中心建设与运营",
+      "ai_relevance": "自建自营智算中心，向客户提供算力服务并形成算力收入",
+      "revenue_basis": "数据中心与智算业务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300451.SZ",
+      "name": "创业慧康",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 57,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "医疗卫生行业信息化建设（应用软件与系统集成）",
+      "ai_relevance": "医疗信息化 + AI 医疗应用，主题纯度中等",
+      "revenue_basis": "医疗信息化软件与系统集成已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 57,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300474.SZ",
+      "name": "景嘉微",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 53,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "高可靠军用电子产品的研发、生产和销售（含 GPU 芯片与板卡）",
+      "ai_relevance": "GPU 芯片/板卡可用于计算设备，AI 服务器关联为潜在增量",
+      "revenue_basis": "GPU 产品已形成收入，主力为军用/信创市场",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 53,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300499.SZ",
+      "name": "高澜股份",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 96,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "大功率电力电子装置用纯水冷却设备及控制系统；高功率密度装置热管理",
+      "ai_relevance": "数据中心液冷（CDU 0.5~1.1MW），AI 算力散热需求释放",
+      "revenue_basis": "2026H1 高功率密度装置热管理收入 2.10 亿(+53.41%，占比 42.57%)，在手订单 16.28 亿",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 96,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300502.SZ",
+      "name": "新易盛",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "专业从事光模块的研发及制造",
+      "ai_relevance": "AI 数据中心高速光模块核心供应商，800G/1.6T 放量",
+      "revenue_basis": "高速光模块已批量出货形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300548.SZ",
+      "name": "长芯博创",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光通信领域集成光电子器件的研发、生产和销售",
+      "ai_relevance": "高速光模块/光器件，AI 数据中心互联受益",
+      "revenue_basis": "集成光电子器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300559.SZ",
+      "name": "佳发教育",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 76,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "教育考试信息化产品研发、生产、销售及相关服务",
+      "ai_relevance": "AI+教育 应用（智慧教育/考试信息化）",
+      "revenue_basis": "教育考试信息化产品与服务已形成收入；AI 为产品能力之一",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 76,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300570.SZ",
+      "name": "太辰光",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 86,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光器件的研发、生产和销售",
+      "ai_relevance": "光连接器件（MPO 等），AI 数据中心高密度互联受益",
+      "revenue_basis": "光器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300602.SZ",
+      "name": "飞荣达",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 68,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "电磁屏蔽材料及器件、导热材料及器件的研发、设计、生产与销售",
+      "ai_relevance": "导热材料/散热器件，供应服务器与数据中心热管理环节",
+      "revenue_basis": "导热材料与器件已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 68,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300620.SZ",
+      "name": "光库科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 85,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "光纤器件的设计、研发、生产、销售及服务（含铌酸锂调制器）",
+      "ai_relevance": "薄膜铌酸锂调制器面向 800G/1.6T 高速光互联",
+      "revenue_basis": "光纤器件已形成收入；高速光互联产品仍在放量阶段",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 85,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300624.SZ",
+      "name": "万兴科技",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 86,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "消费类软件研发、销售及技术支持服务",
+      "ai_relevance": "AI 内容生成（视频/图片编辑）应用",
+      "revenue_basis": "消费类软件已形成主营收入；AI 功能持续上线",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300647.SZ",
+      "name": "超频三",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 47,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "电子产品新型散热器件的研发、生产和销售",
+      "ai_relevance": "散热器件，以消费电子/PC 为主，AI 数据中心关联有限",
+      "revenue_basis": "散热器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 47,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300684.SZ",
+      "name": "中石科技",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 53,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "导热材料、EMI 屏蔽材料、电源滤波器",
+      "ai_relevance": "导热界面材料（TIM）可用于服务器/算力设备散热，非核心方向",
+      "revenue_basis": "导热材料已形成主营收入，主力下游为消费电子",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 53,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300738.SZ",
+      "name": "奥飞数据",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 76,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "提供 IDC 及互联网综合服务",
+      "ai_relevance": "运营数据中心并布局智算中心/算力服务",
+      "revenue_basis": "IDC 服务已形成主营收入；智算业务处于扩张阶段",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 76,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300766.SZ",
+      "name": "每日互动",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 63,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "面向移动应用开发者的技术服务、移动互联网营销服务及数据服务",
+      "ai_relevance": "数据智能与 AI 应用（数据要素+行业大模型方向）",
+      "revenue_basis": "数据服务与营销服务已形成主营收入；AI 应用占比较低",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 63,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300846.SZ",
+      "name": "首都在线",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 96,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "高性能 IDC 服务及云服务等信息技术服务",
+      "ai_relevance": "IDC+云服务，提供 GPU 云/算力租赁服务",
+      "revenue_basis": "IDC 与云服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 96,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "300895.SZ",
+      "name": "铜牛信息",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 57,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "互联网数据中心服务、云服务、互联网接入及系统集成",
+      "ai_relevance": "传统 IDC 与云服务，向 AI 智算方向扩张",
+      "revenue_basis": "IDC 与云服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 57,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300990.SZ",
+      "name": "同飞股份",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "工业制冷设备的研发、生产和销售",
+      "ai_relevance": "已推出冷板式+浸没式液冷全套方案（CDU/Manifold/预制化管路/TANK）",
+      "revenue_basis": "液冷解决方案已落地并形成收入；客户含科华数据/中兴通讯等",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "301018.SZ",
+      "name": "申菱环境",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "专用性空调/空气环境调节设备，面向数据服务产业环境提供人工环境调控整体方案",
+      "ai_relevance": "数据中心温控与液冷方案，服务 AI 服务器/智算中心散热",
+      "revenue_basis": "数据服务产业环境产品已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "301085.SZ",
+      "name": "亚康股份",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 49,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "为大中型互联网公司和云厂商提供 IT 设备销售及运维服务",
+      "ai_relevance": "IT 设备销售与运维服务商，为算力运营提供配套而非自身运营",
+      "revenue_basis": "IT 设备销售与运维已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 49,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "301202.SZ",
+      "name": "朗威股份",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [
+        "液冷/温控"
+      ],
+      "secondary_theme_key": [
+        "液冷"
+      ],
+      "tier": "EXTENSION",
+      "theme_membership_score": 78,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "服务器机柜、冷热通道、微模块、T-block 机架等数据中心机柜及综合布线产品",
+      "ai_relevance": "AI 服务器机柜/微模块直接配套，属主题定义内的「AI服务器机柜」",
+      "revenue_basis": "2026H1 数据中心机柜收入 3.66 亿(+60.54%)",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 78,
+          "tier": "EXTENSION"
+        },
+        {
+          "theme": "液冷",
+          "score": 69,
+          "tier": "EXTENSION"
+        },
+        {
+          "theme": "算力运营",
+          "score": 15,
+          "tier": "REMOVE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "301205.SZ",
+      "name": "联特科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光通信收发模块的研发、生产和销售",
+      "ai_relevance": "高速光模块直接对接 AI 集群互联需求",
+      "revenue_basis": "光收发模块已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "301489.SZ",
+      "name": "思泉新材",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 53,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "热管理材料、磁性材料、纳米防护材料",
+      "ai_relevance": "热管理材料可用于服务器散热，主题纯度低",
+      "revenue_basis": "热管理材料已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 53,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "301626.SZ",
+      "name": "苏州天脉",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 57,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "导热散热材料及元器件的研发、生产及销售",
+      "ai_relevance": "导热散热材料与器件，可用于通信/服务器散热",
+      "revenue_basis": "导热散热材料已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 57,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "600186.SH",
+      "name": "莲花控股",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 51,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "味精/调味品等食品业务；莲花科创开展算力业务",
+      "ai_relevance": "布局智算/算力租赁业务，提供算力服务",
+      "revenue_basis": "食品为主营，算力业务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 51,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "600487.SH",
+      "name": "亨通光电",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 55,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "光纤光缆的生产与销售（含海洋通信/电力）",
+      "ai_relevance": "光纤光缆与光通信系统，受益数据中心互联需求",
+      "revenue_basis": "光纤光缆及通信系统已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 55,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600498.SH",
+      "name": "烽火通信",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 74,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光通信传输设备、光纤光缆研发生产销售及技术服务（含光通信系统设备核心芯片）",
+      "ai_relevance": "光传输设备与光模块业务，AI 数据中心互联为增量市场",
+      "revenue_basis": "光通信传输设备与光纤光缆已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 74,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600522.SH",
+      "name": "中天科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 55,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "光纤、光缆生产、销售与服务",
+      "ai_relevance": "光纤光缆供应，间接受益 AI 数据中心互联",
+      "revenue_basis": "光纤光缆已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 55,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600589.SH",
+      "name": "大位科技",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 57,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "通信网络服务、IDC 综合服务及定制化互联网数据中心解决方案",
+      "ai_relevance": "传统 IDC 服务商，向 AI 智算方向扩张",
+      "revenue_basis": "IDC 综合服务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 57,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600602.SH",
+      "name": "云赛智联",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 68,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "系统集成及信息服务（上海国资，含 IDC/云计算）",
+      "ai_relevance": "IDC 与云计算服务，具备算力运营基础",
+      "revenue_basis": "系统集成与信息服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 68,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "600797.SH",
+      "name": "浙大网新",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 90,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "智算云服务、政府数智化、基建数智化、产业数智化四大领域",
+      "ai_relevance": "智算云服务为四大主营领域之一，运营算力资源并提供服务",
+      "revenue_basis": "智算云服务已列入主营并形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 90,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "600845.SH",
+      "name": "宝信软件",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 72,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "计算机、自动化、网络通讯系统及软硬件产品研发集成；宝之云 IDC",
+      "ai_relevance": "宝之云数据中心运营并向算力服务延伸；工业软件仍为主要业务",
+      "revenue_basis": "宝之云 IDC 与工业软件均已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 72,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "601138.SH",
+      "name": "工业富联",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "电子设备产品设计研发制造与销售，工业互联网智能制造服务",
+      "ai_relevance": "AI 服务器 ODM/OEM 代工核心厂商，AI 算力硬件直接受益",
+      "revenue_basis": "云计算/AI 服务器代工已形成规模收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "601360.SH",
+      "name": "三六零",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 80,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "互联网安全技术与产品、互联网广告及增值服务、智能硬件",
+      "ai_relevance": "自研大模型（360 智脑）与 AI 搜索/AI 安全应用",
+      "revenue_basis": "互联网安全与广告增值服务已形成规模收入；AI 应用持续推进",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 80,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "601869.SH",
+      "name": "长飞光纤",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 55,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "光纤预制棒、光纤及光缆供应",
+      "ai_relevance": "数据中心间（DCI）光互联用光纤，间接受益 AI 算力扩张",
+      "revenue_basis": "光纤光缆已形成规模主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 55,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "603019.SH",
+      "name": "中科曙光",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "研究开发生产高性能计算机、通用服务器及存储产品，并提供软件开发与系统集成",
+      "ai_relevance": "高性能计算/AI 服务器整机与算力基础设施设备",
+      "revenue_basis": "高性能计算机与服务器已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603124.SH",
+      "name": "江南新材",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 47,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "铜基新材料（铜球/氧化铜粉/高精密铜基散热片）",
+      "ai_relevance": "铜基散热片为散热器件原材料，间接受益",
+      "revenue_basis": "铜基新材料已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 47,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "603220.SH",
+      "name": "中贝通信",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "5G 新基建业务、智算业务、智慧城市及其他",
+      "ai_relevance": "自建智算中心并对外提供 GPU 算力租赁服务",
+      "revenue_basis": "智算业务已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603296.SH",
+      "name": "华勤技术",
+      "primary_theme": "AI服务器/算力设备",
+      "primary_theme_key": "AI服务器",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "智能硬件产品的研发设计、生产制造和运营服务（含数据中心业务）",
+      "ai_relevance": "头部 CSP 的核心 AI 服务器供应商；数据中心业务中 AI 服务器占比 >70%",
+      "revenue_basis": "2025 年数据中心业务收入超 400 亿（AI 服务器占比 >70%）；2026H1 数据业务约 200 亿",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI服务器",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "603859.SH",
+      "name": "能科科技",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 77,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "AI 产品与服务、云产品与服务、软件系统与服务、工业工程与工业电气产品与服务",
+      "ai_relevance": "工业 AI 产品与服务（智能制造/工业软件），AI+工业",
+      "revenue_basis": "AI 与软件服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 77,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "603881.SH",
+      "name": "数据港",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 62,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "IDC 业务、IDC 解决方案业务、云服务销售业务三大类",
+      "ai_relevance": "批发型数据中心运营并延伸云服务销售，向 AI 算力承载升级",
+      "revenue_basis": "IDC 与云服务销售已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 62,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603887.SH",
+      "name": "城地香江",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 63,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "地基与基础工程；数据中心（IDC）建设与运营",
+      "ai_relevance": "传统 IDC 运营并向智算方向扩张",
+      "revenue_basis": "数据中心业务已形成收入，工程业务仍占相当比重",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 63,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "603912.SH",
+      "name": "佳力图",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "数据机房等精密环境控制技术研发，节能控温设备及相关技术服务",
+      "ai_relevance": "数据机房精密温控与液冷配套，服务高功率数据中心散热",
+      "revenue_basis": "机房精密控温设备已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688048.SH",
+      "name": "长光华芯",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "EXTENSION",
+      "theme_membership_score": 65,
+      "sub_scores": {
+        "A_business_relevance": 18,
+        "B_business_evidence": 22,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "半导体激光芯片、器件及模块等激光行业核心元器件",
+      "ai_relevance": "高功率激光芯片/器件，光通信为其目标市场之一",
+      "revenue_basis": "激光芯片与器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 65,
+          "tier": "EXTENSION"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688088.SH",
+      "name": "虹软科技",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "视觉人工智能技术研发与应用，为手机/汽车/IoT 提供视觉 AI 解决方案",
+      "ai_relevance": "视觉 AI 算法与大模型应用，AI 应用层核心",
+      "revenue_basis": "视觉 AI 解决方案已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688111.SH",
+      "name": "金山办公",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 100,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 20,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "WPS Office 办公软件产品及服务的设计研发与销售推广",
+      "ai_relevance": "AI 办公（WPS AI），生成式 AI 在办公场景的商业化",
+      "revenue_basis": "办公软件订阅已形成规模收入；AI 功能商业化推进",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 100,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688158.SH",
+      "name": "优刻得",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 96,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "云计算服务平台（IaaS/PaaS + 大数据与人工智能产品）",
+      "ai_relevance": "公有云/GPU 云算力服务，直接对外提供算力资源",
+      "revenue_basis": "云计算与算力服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 96,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688195.SH",
+      "name": "腾景科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 12,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "精密光学元件、光纤器件的研发、生产和销售",
+      "ai_relevance": "CPO/光模块用精密光学元件与光器件配套",
+      "revenue_basis": "精密光学元件与光纤器件已形成收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688205.SH",
+      "name": "德科立",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光电子器件的研发、生产和销售（光放大器/光模块）",
+      "ai_relevance": "AI 长距/骨干光互联器件供应",
+      "revenue_basis": "光电子器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "688207.SH",
+      "name": "格灵深瞳",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "计算机视觉技术研发与应用，提供城市管理/金融/零售等领域 AI 产品与解决方案",
+      "ai_relevance": "计算机视觉 AI 产品与解决方案，AI 应用层",
+      "revenue_basis": "AI 产品与解决方案已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688227.SH",
+      "name": "品高股份",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 51,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 8,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "云计算及行业信息化服务",
+      "ai_relevance": "云计算平台与行业信息化，具备向算力服务延伸能力",
+      "revenue_basis": "云计算及信息化服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 51,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "688313.SH",
+      "name": "仕佳光子",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "覆盖光芯片及器件、室内光缆、线缆材料三大板块",
+      "ai_relevance": "光芯片（DFB 等）与光器件，处于 AI 光互联上游",
+      "revenue_basis": "光芯片及器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "688327.SH",
+      "name": "云从科技",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 90,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "人工智能算法研究及应用，提供人机协同操作系统和人工智能解决方案",
+      "ai_relevance": "AI 算法与行业解决方案，AI 应用层（人机协同平台）",
+      "revenue_basis": "AI 软件与解决方案已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 90,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688343.SH",
+      "name": "云天励飞",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 82,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "以人工智能算法、芯片技术为核心，提供算法软件、芯片及解决方案",
+      "ai_relevance": "AI 算法软件 + 自研 AI 芯片，面向行业 AI 应用交付",
+      "revenue_basis": "算法软件与解决方案已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 82,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688400.SH",
+      "name": "凌云光",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "RELATED",
+      "theme_membership_score": 47,
+      "sub_scores": {
+        "A_business_relevance": 12,
+        "B_business_evidence": 18,
+        "C_ai_relevance": 4,
+        "D_theme_elasticity": 7,
+        "E_sustainability": 6
+      },
+      "evidence_level": "B",
+      "business_basis": "机器视觉及光通信业务，现战略聚焦机器视觉",
+      "ai_relevance": "光通信业务为存量板块，与 AI 光互联关联有限",
+      "revenue_basis": "光通信存量业务形成收入，AI 关联度低（战略已聚焦机器视觉）",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 47,
+          "tier": "RELATED"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688498.SH",
+      "name": "源杰科技",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光芯片的研发、设计、生产与销售（DFB/EML 激光器芯片）",
+      "ai_relevance": "AI 光模块上游光芯片，受益高速光模块放量",
+      "revenue_basis": "光芯片已形成主营收入，高速率产品持续导入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688615.SH",
+      "name": "合合信息",
+      "primary_theme": "AI应用",
+      "primary_theme_key": "AI应用",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 84,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 8
+      },
+      "evidence_level": "B",
+      "business_basis": "智能文字识别与商业大数据技术，为 C 端与 B 端提供数字化智能化产品与服务",
+      "ai_relevance": "OCR/文档 AI 与大模型应用，AI+办公/商业",
+      "revenue_basis": "智能文字识别与商业大数据服务已形成规模收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "AI应用",
+          "score": 84,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "688807.SH",
+      "name": "优迅股份",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 92,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "B",
+      "business_basis": "光通信前端收发电芯片的研发、设计与销售",
+      "ai_relevance": "光模块核心电芯片（TIA/Driver/LDD），AI 光互联上游关键环节",
+      "revenue_basis": "光通信电芯片已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 92,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "920045.BJ",
+      "name": "蘅东光",
+      "primary_theme": "CPO/光通信",
+      "primary_theme_key": "CPO",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 86,
+      "sub_scores": {
+        "A_business_relevance": 24,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 16,
+        "D_theme_elasticity": 11,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "光通信领域无源光器件产品的研发、制造与销售",
+      "ai_relevance": "光无源器件，AI 光互联的配套环节",
+      "revenue_basis": "无源光器件已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "CPO",
+          "score": 86,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "920493.BJ",
+      "name": "并行科技",
+      "primary_theme": "算力运营",
+      "primary_theme_key": "算力运营",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "超算云服务及超算相关生态业务",
+      "ai_relevance": "以超算云/算力网络形式向客户提供算力服务并收费",
+      "revenue_basis": "超算云服务已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "算力运营",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": false,
+      "mapping_action": "ADD"
+    },
+    {
+      "ts_code": "920808.BJ",
+      "name": "曙光数创",
+      "primary_theme": "液冷/温控",
+      "primary_theme_key": "液冷",
+      "secondary_theme": [],
+      "secondary_theme_key": [],
+      "tier": "CORE",
+      "theme_membership_score": 98,
+      "sub_scores": {
+        "A_business_relevance": 30,
+        "B_business_evidence": 25,
+        "C_ai_relevance": 18,
+        "D_theme_elasticity": 15,
+        "E_sustainability": 10
+      },
+      "evidence_level": "A",
+      "business_basis": "浸没相变液冷/冷板液冷数据中心基础设施产品及模块化数据中心产品",
+      "ai_relevance": "数据中心液冷基础设施专业化厂商，直接解决 AI 服务器高功耗散热",
+      "revenue_basis": "液冷数据中心基础设施产品已形成主营收入",
+      "tier_note": "",
+      "is_ambiguous": false,
+      "candidates": [
+        {
+          "theme": "液冷",
+          "score": 98,
+          "tier": "CORE"
+        }
+      ],
+      "old_ai_compute_theme": true,
+      "mapping_action": "RETAIN"
+    }
+  ],
+  "ambiguous": [],
+  "old81_migration": [
+    {
+      "ts_code": "000063.SZ",
+      "name": "中兴通讯",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "000070.SZ",
+      "name": "特发信息",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "000586.SZ",
+      "name": "汇源通信",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "000725.SZ",
+      "name": "京东方A",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "000815.SZ",
+      "name": "美利云",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "算力运营/RELATED",
+      "v2_score": 51,
+      "v2_tier": "RELATED",
+      "evidence": "造纸为主营，IDC 业务已形成收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "000938.SZ",
+      "name": "紫光股份",
+      "old_ai_compute": "RETAIN→AI服务器",
+      "v2_theme": "AI服务器/CORE",
+      "v2_score": 98,
+      "v2_tier": "CORE",
+      "evidence": "服务器等 IT 基础设施已形成规模主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "000977.SZ",
+      "name": "浪潮信息",
+      "old_ai_compute": "RETAIN→AI服务器",
+      "v2_theme": "AI服务器/CORE",
+      "v2_score": 100,
+      "v2_tier": "CORE",
+      "evidence": "AI 服务器已规模出货并形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "002148.SZ",
+      "name": "北纬科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002212.SZ",
+      "name": "天融信",
+      "old_ai_compute": "RECLASSIFY→低空经济",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002281.SZ",
+      "name": "光迅科技",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 98,
+      "v2_tier": "CORE",
+      "evidence": "光电子器件已形成规模主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "002436.SZ",
+      "name": "兴森科技",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002491.SZ",
+      "name": "通鼎互联",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002575.SZ",
+      "name": "群兴玩具",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002815.SZ",
+      "name": "崇达技术",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "002938.SZ",
+      "name": "鹏鼎控股",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300017.SZ",
+      "name": "网宿科技",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "算力运营/RELATED",
+      "v2_score": 59,
+      "v2_tier": "RELATED",
+      "evidence": "CDN 与 IDC 服务已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300053.SZ",
+      "name": "航宇微",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300098.SZ",
+      "name": "高新兴",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300292.SZ",
+      "name": "吴通控股",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300308.SZ",
+      "name": "中际旭创",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 100,
+      "v2_tier": "CORE",
+      "evidence": "800G/1.6T 高速光模块已规模出货并形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300383.SZ",
+      "name": "光环新网",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/EXTENSION",
+      "v2_score": 76,
+      "v2_tier": "EXTENSION",
+      "evidence": "IDC 及增值服务已形成主营收入；算力服务为延伸",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300394.SZ",
+      "name": "天孚通信",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 98,
+      "v2_tier": "CORE",
+      "evidence": "光器件已批量供货并形成收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300442.SZ",
+      "name": "润泽科技",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/CORE",
+      "v2_score": 100,
+      "v2_tier": "CORE",
+      "evidence": "数据中心与智算业务已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300476.SZ",
+      "name": "胜宏科技",
+      "old_ai_compute": "RECLASSIFY→机器人",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300502.SZ",
+      "name": "新易盛",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 100,
+      "v2_tier": "CORE",
+      "evidence": "高速光模块已批量出货形成收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300548.SZ",
+      "name": "长芯博创",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 92,
+      "v2_tier": "CORE",
+      "evidence": "集成光电子器件已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300570.SZ",
+      "name": "太辰光",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 86,
+      "v2_tier": "CORE",
+      "evidence": "光器件已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300578.SZ",
+      "name": "会畅科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300602.SZ",
+      "name": "飞荣达",
+      "old_ai_compute": "RECLASSIFY→机器人+消费电子",
+      "v2_theme": "液冷/EXTENSION",
+      "v2_score": 68,
+      "v2_tier": "EXTENSION",
+      "evidence": "导热材料与器件已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300609.SZ",
+      "name": "汇纳科技",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300684.SZ",
+      "name": "中石科技",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "液冷/RELATED",
+      "v2_score": 53,
+      "v2_tier": "RELATED",
+      "evidence": "导热材料已形成主营收入，主力下游为消费电子",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300698.SZ",
+      "name": "万马科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300736.SZ",
+      "name": "百邦科技",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300738.SZ",
+      "name": "奥飞数据",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/EXTENSION",
+      "v2_score": 76,
+      "v2_tier": "EXTENSION",
+      "evidence": "IDC 服务已形成主营收入；智算业务处于扩张阶段",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "300739.SZ",
+      "name": "明阳电路",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300814.SZ",
+      "name": "中富电路",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "300895.SZ",
+      "name": "铜牛信息",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "算力运营/RELATED",
+      "v2_score": 57,
+      "v2_tier": "RELATED",
+      "evidence": "IDC 与云服务已形成主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "300964.SZ",
+      "name": "本川智能",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301041.SZ",
+      "name": "金百泽",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301132.SZ",
+      "name": "满坤科技",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301176.SZ",
+      "name": "逸豪新材",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301202.SZ",
+      "name": "朗威股份",
+      "old_ai_compute": "RETAIN→液冷",
+      "v2_theme": "AI服务器/EXTENSION",
+      "v2_score": 78,
+      "v2_tier": "EXTENSION",
+      "evidence": "2026H1 数据中心机柜收入 3.66 亿(+60.54%)",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "301205.SZ",
+      "name": "联特科技",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 92,
+      "v2_tier": "CORE",
+      "evidence": "光收发模块已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "301248.SZ",
+      "name": "杰创智能",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301251.SZ",
+      "name": "威尔高",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301282.SZ",
+      "name": "金禄电子",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301314.SZ",
+      "name": "科瑞思",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301366.SZ",
+      "name": "一博科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301419.SZ",
+      "name": "阿莱德",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "301489.SZ",
+      "name": "思泉新材",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "液冷/RELATED",
+      "v2_score": 53,
+      "v2_tier": "RELATED",
+      "evidence": "热管理材料已形成主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "301666.SZ",
+      "name": "大普微",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "600100.SH",
+      "name": "同方股份",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "600487.SH",
+      "name": "亨通光电",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "CPO/RELATED",
+      "v2_score": 55,
+      "v2_tier": "RELATED",
+      "evidence": "光纤光缆及通信系统已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600498.SH",
+      "name": "烽火通信",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "CPO/EXTENSION",
+      "v2_score": 74,
+      "v2_tier": "EXTENSION",
+      "evidence": "光通信传输设备与光纤光缆已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600522.SH",
+      "name": "中天科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "CPO/RELATED",
+      "v2_score": 55,
+      "v2_tier": "RELATED",
+      "evidence": "光纤光缆已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600589.SH",
+      "name": "大位科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "算力运营/RELATED",
+      "v2_score": 57,
+      "v2_tier": "RELATED",
+      "evidence": "IDC 综合服务已形成收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "600797.SH",
+      "name": "浙大网新",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/CORE",
+      "v2_score": 90,
+      "v2_tier": "CORE",
+      "evidence": "智算云服务已列入主营并形成收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "601869.SH",
+      "name": "长飞光纤",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "CPO/RELATED",
+      "v2_score": 55,
+      "v2_tier": "RELATED",
+      "evidence": "光纤光缆已形成规模主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "603019.SH",
+      "name": "中科曙光",
+      "old_ai_compute": "RETAIN→AI服务器",
+      "v2_theme": "AI服务器/CORE",
+      "v2_score": 100,
+      "v2_tier": "CORE",
+      "evidence": "高性能计算机与服务器已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603220.SH",
+      "name": "中贝通信",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/CORE",
+      "v2_score": 98,
+      "v2_tier": "CORE",
+      "evidence": "智算业务已形成收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603228.SH",
+      "name": "景旺电子",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "603328.SH",
+      "name": "依顿电子",
+      "old_ai_compute": "RECLASSIFY→消费电子",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "603803.SH",
+      "name": "瑞斯康达",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "603881.SH",
+      "name": "数据港",
+      "old_ai_compute": "RETAIN→算力运营",
+      "v2_theme": "算力运营/EXTENSION",
+      "v2_score": 62,
+      "v2_tier": "EXTENSION",
+      "evidence": "IDC 与云服务销售已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "603920.SH",
+      "name": "世运电路",
+      "old_ai_compute": "RECLASSIFY→机器人",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "603936.SH",
+      "name": "博敏电子",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688041.SH",
+      "name": "海光信息",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688143.SH",
+      "name": "长盈通",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688205.SH",
+      "name": "德科立",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 92,
+      "v2_tier": "CORE",
+      "evidence": "光电子器件已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "688227.SH",
+      "name": "品高股份",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "算力运营/RELATED",
+      "v2_score": 51,
+      "v2_tier": "RELATED",
+      "evidence": "云计算及信息化服务已形成主营收入",
+      "mapping_action": "RECLASSIFY"
+    },
+    {
+      "ts_code": "688256.SH",
+      "name": "寒武纪",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688313.SH",
+      "name": "仕佳光子",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 92,
+      "v2_tier": "CORE",
+      "evidence": "光芯片及器件已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "688635.SH",
+      "name": "长进光子",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688795.SH",
+      "name": "摩尔线程",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "688802.SH",
+      "name": "沐曦股份",
+      "old_ai_compute": "RECLASSIFY→半导体",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "920036.BJ",
+      "name": "觅睿科技",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "920045.BJ",
+      "name": "蘅东光",
+      "old_ai_compute": "RETAIN→CPO",
+      "v2_theme": "CPO/CORE",
+      "v2_score": 86,
+      "v2_tier": "CORE",
+      "evidence": "无源光器件已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "920060.BJ",
+      "name": "万源通",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "920790.BJ",
+      "name": "联迪信息",
+      "old_ai_compute": "RECLASSIFY→信创",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    },
+    {
+      "ts_code": "920808.BJ",
+      "name": "曙光数创",
+      "old_ai_compute": "RETAIN→液冷",
+      "v2_theme": "液冷/CORE",
+      "v2_score": 98,
+      "v2_tier": "CORE",
+      "evidence": "液冷数据中心基础设施产品已形成主营收入",
+      "mapping_action": "RETAIN"
+    },
+    {
+      "ts_code": "920821.BJ",
+      "name": "则成电子",
+      "old_ai_compute": "REMOVE",
+      "v2_theme": "REMOVE",
+      "v2_score": null,
+      "v2_tier": "REMOVE",
+      "evidence": "本次 V2.0 未纳入五主题",
+      "mapping_action": "REMOVE"
+    }
+  ],
+  "pollution_check": {
+    "cross_pollution": 0,
+    "primary_theme_conflict": 0,
+    "concept_contamination": 0,
+    "device_to_operation_contamination": 0,
+    "IDC_to_operation_contamination": 0
+  }
+}

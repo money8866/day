@@ -1,0 +1,92 @@
+﻿--- rev_acc (idx 77) ---
+   ic_mean                    0.0661223926263709
+   icir                       0.4155768828604078
+   train_ic                   0.0735763062053264
+   validation_ic              0.0544873532145162
+   oos_ic                     0.0394393542596232
+   ic_mean_T20                0.0560060452051066
+   top10_spread               0.0100622438342816
+   top20_spread               0.0096335660997712
+   top10_t                    6.558441067606094
+   net_return_30bp            0.0070622438342816
+   gross_return               0.0100622438342816
+   auc                        0.5422070658065642
+   effect_size                0.0861910660066519
+   momentum_residual_alpha    0.0570065405480814
+   value_residual_alpha       0.0650707449570065
+   industry_neutral_alpha     0.0446893743760598
+   all_neutral_alpha          0.0321202518832485
+   counterfactual             0.0034136142029206
+   counterfactual_t           3.324140069693748
+   regime_stability           STABLE
+   wf_same_sign               1.0
+   wf_n_window                6
+   parameter_stability        STABLE
+   gate_pass_n                18
+   status                     PASS
+   fail_reason                nan
+   gates: {'G1_data_real': True, 'G2_announce_time': True, 'G3_no_lookahead': True, 'G4_tradable': True, 'G5_train': True, 'G6_valid': True, 'G7_oos': True, 'G8_rank_ic': True, 'G9_topbottom': True, 'G10_discrimination': True, 'G11_vs_momentum': True, 'G12_vs_value': True, 'G13_counterfactual': True, 'G14_param_stable': True, 'G15_regime_stable': True, 'G16_cost': True, 'G17_not_single_quarter': True, 'G18_not_single_industry': True}
+--- np_qoq (idx 78) ---
+   ic_mean                    0.0641549516316527
+   icir                       0.3984658448114078
+   train_ic                   0.0692540292799671
+   validation_ic              0.0453934653330209
+   oos_ic                     0.0708740434142259
+   ic_mean_T20                0.0316985449678989
+   top10_spread               0.0066327071763609
+   top20_spread               0.0080591786271345
+   top10_t                    4.056645282390158
+   net_return_30bp            0.0036327071763609
+   gross_return               0.0066327071763609
+   auc                        0.5406093969660029
+   effect_size                0.0447054010798352
+   momentum_residual_alpha    0.0439438410476489
+   value_residual_alpha       0.0546570362747235
+   industry_neutral_alpha     0.0359922315875566
+   all_neutral_alpha          0.0406644397808112
+   counterfactual             0.0023467342572572
+   counterfactual_t           2.545837297442905
+   regime_stability           STABLE
+   wf_same_sign               0.6666666666666666
+   wf_n_window                6
+   parameter_stability        STABLE
+   gate_pass_n                18
+   status                     PASS
+   fail_reason                nan
+   gates: {'G1_data_real': True, 'G2_announce_time': True, 'G3_no_lookahead': True, 'G4_tradable': True, 'G5_train': True, 'G6_valid': True, 'G7_oos': True, 'G8_rank_ic': True, 'G9_topbottom': True, 'G10_discrimination': True, 'G11_vs_momentum': True, 'G12_vs_value': True, 'G13_counterfactual': True, 'G14_param_stable': True, 'G15_regime_stable': True, 'G16_cost': True, 'G17_not_single_quarter': True, 'G18_not_single_industry': True}
+--- np_acc (idx 0) ---
+   ic_mean                    0.0534040144044942
+   icir                       0.2868909591178025
+   train_ic                   0.0618773479245129
+   validation_ic              0.0289157125614605
+   oos_ic                     0.0503445259520077
+   ic_mean_T20                0.0387194923171714
+   top10_spread               0.0068702137557519
+   top20_spread               0.0089400180870983
+   top10_t                    4.071907164448273
+   net_return_30bp            0.0038702137557519
+   gross_return               0.0068702137557519
+   auc                        0.5486892104541374
+   effect_size                -0.0041559597362153
+   momentum_residual_alpha    0.0527672791651555
+   value_residual_alpha       0.0549887966841775
+   industry_neutral_alpha     0.0447623169027266
+   all_neutral_alpha          0.03919029660011
+   counterfactual             0.0042876716879237
+   counterfactual_t           4.407612813511636
+   regime_stability           PARTIAL
+   wf_same_sign               0.5
+   wf_n_window                6
+   parameter_stability        STABLE
+   gate_pass_n                16
+   status                     CONDITIONAL
+   fail_reason                G8_rank_ic;G15_regime_stable
+   gates: {'G1_data_real': True, 'G2_announce_time': True, 'G3_no_lookahead': True, 'G4_tradable': True, 'G5_train': True, 'G6_valid': True, 'G7_oos': True, 'G8_rank_ic': False, 'G9_topbottom': True, 'G10_discrimination': True, 'G11_vs_momentum': True, 'G12_vs_value': True, 'G13_counterfactual': True, 'G14_param_stable': True, 'G15_regime_stable': False, 'G16_cost': True, 'G17_not_single_quarter': True, 'G18_not_single_industry': True}
+
+registry 内 ic_mean 与 train_ic 是否一致（前 5 行）:
+feature   ic_mean  train_ic  validation_ic    oos_ic
+ np_acc  0.053404  0.061877       0.028916  0.050345
+rev_qoq  0.038900  0.040258       0.022754  0.067319
+ dp_acc  0.051961  0.056396       0.052293  0.017195
+  ln_mv -0.023897 -0.020123      -0.019439 -0.062976
+ dp_qoq  0.050184  0.053589       0.036661  0.056968

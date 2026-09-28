@@ -1,0 +1,34 @@
+﻿registry 行数 79
+列:
+['alpha_id', 'feature', 'formula', 'announcement_rule', 'entry_rule', 'horizon', 'train_ic', 'validation_ic', 'oos_ic', 'ic_mean', 'icir', 'ic_std', 'ic_med', 'ic_pos_ratio', 'n_cohort', 'ic_mean_T20', 'icir_T20', 'top10_spread', 'top20_spread', 'top10_t', 'net_return_10bp', 'net_return_20bp', 'net_return_30bp', 'net_return_50bp', 'gross_return', 'auc', 'effect_size', 'std_gap', 'rank_separation', 'precision_at_10', 'momentum_residual_alpha', 'value_residual_alpha', 'industry_neutral_alpha', 'all_neutral_alpha', 'counterfactual', 'counterfactual_t', 'regime_ic', 'regime_stability', 'wf_same_sign', 'wf_n_window', 'wf_ic_train', 'wf_ic_oos', 'parameter_stability', 'mom_window_ic', 'G1_data_real', 'G2_announce_time', 'G3_no_lookahead', 'G4_tradable', 'G5_train', 'G6_valid', 'G7_oos', 'G8_rank_ic', 'G9_topbottom', 'G10_discrimination', 'G11_vs_momentum', 'G12_vs_value', 'G13_counterfactual', 'G14_param_stable', 'G15_regime_stable', 'G16_cost', 'G17_not_single_quarter', 'G18_not_single_industry', 'gate_pass_n', 'status', 'fail_reason']
+
+status 分布: {'FAIL': 74, 'CONDITIONAL': 3, 'PASS': 2}
+
+前 20 行（按文件顺序）:
+          alpha_id         feature  horizon  train_ic  validation_ic    oos_ic      icir  momentum_residual_alpha      status
+         FS_np_acc          np_acc        5  0.061877       0.028916  0.050345  0.286891                 0.052767 CONDITIONAL
+        FS_rev_qoq         rev_qoq        5  0.040258       0.022754  0.067319  0.224685                 0.037501 CONDITIONAL
+         FS_dp_acc          dp_acc        5  0.056396       0.052293  0.017195  0.281688                 0.025027 CONDITIONAL
+          FS_ln_mv           ln_mv        5 -0.020123      -0.019439 -0.062976 -0.102753                -0.019952        FAIL
+         FS_dp_qoq          dp_qoq        5  0.053589       0.036661  0.056968  0.304251                 0.015149        FAIL
+       FS_S2h4_rev        S2h4_rev        5  0.035293       0.013695  0.020649  0.160470                 0.025771        FAIL
+           FS_roic            roic        5 -0.003528      -0.018471 -0.056023 -0.055583                -0.020886        FAIL
+            FS_npm             npm        5 -0.020188      -0.019488 -0.044544 -0.123676                -0.023546        FAIL
+        FS_npm_chg         npm_chg        5 -0.031419      -0.028999  0.016326 -0.148103                -0.021983        FAIL
+        FS_S2h4_np         S2h4_np        5  0.042722       0.016835  0.062683  0.212681                 0.027887        FAIL
+             FS_bp              bp        5  0.039709       0.043412 -0.058426  0.138191                 0.028876        FAIL
+            FS_roe             roe        5 -0.000362      -0.010109 -0.026781 -0.024424                -0.005196        FAIL
+         FS_mom_20          mom_20        5 -0.008144      -0.098218 -0.018790 -0.128725                -0.002981        FAIL
+  FS_turnover_rate   turnover_rate        5 -0.033239      -0.107115  0.038972 -0.196390                -0.037677        FAIL
+       FS_S2h8_rev        S2h8_rev        5  0.022069      -0.001451  0.061624  0.112824                 0.018187        FAIL
+       FS_S1h4_rev        S1h4_rev        5  0.032009      -0.009262  0.006782  0.109273                 0.023788        FAIL
+         FS_S2_rev          S2_rev        5  0.014378      -0.002527  0.072199  0.088378                 0.024734        FAIL
+    FS_S6_g_np_acc     S6_g_np_acc        5  0.008787       0.028450  0.021722  0.085727                 0.018820        FAIL
+        FS_S1h4_np         S1h4_np        5  0.029937       0.008477  0.024064  0.134917                 0.021719        FAIL
+FS_debt_vs_rev_chg debt_vs_rev_chg        5  0.021949       0.029771 -0.021018  0.112855                 0.023710        FAIL
+
+head(15) 特征: ['np_acc', 'rev_qoq', 'dp_acc', 'ln_mv', 'dp_qoq', 'S2h4_rev', 'roic', 'npm', 'npm_chg', 'S2h4_np', 'bp', 'roe', 'mom_20', 'turnover_rate', 'S2h8_rev']
+
+rev_acc 在 registry 中的位置: [77]
+
+np_qoq 在 registry 中的位置: [78]

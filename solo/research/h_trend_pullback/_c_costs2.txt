@@ -1,0 +1,100 @@
+﻿==============================================================================
+H-TREND-PULLBACK-01  P5 成本 / 尾部 / Null / 置换 / 多重检验  2026-09-27 10:50:30
+成本口径：往返 = 单边 bp × 2（open[k+1] 买 / close[k+H] 卖，各一次）；focus = 30bps
+随机化：seed=20260926  n_sim=1000  n_perm=1000  perm_alpha=0.050  tail_leave=0.05
+声明：本脚本只覆盖 §44 / §46 / §48 / §49 / §50；G 编号权威定义以用户提交规格 §51/§52 为准。
+   trenddays 1510230 / E1 61896 / E2 30496 / score 461315
+   SAMPLE（分数可得）461315 行，覆盖 2036 个交易日
+──────────────────────────────────────────────────────────────────────────────
+§44 成本敏感性（G14：focus = 30bps 后仍须具经济意义）
+   E1 h=5  n=61673  gross +0.0021  ->  盈亏平衡成本 10.4bps（往返）
+        0bps  net +0.0021  median -0.0056  win 0.455  t -0.08
+       10bps  net +0.0001  median -0.0076  win 0.445  t -1.19
+       20bps  net -0.0019  median -0.0096  win 0.430  t -2.30
+       30bps  net -0.0039  median -0.0116  win 0.416  t -3.40
+       50bps  net -0.0079  median -0.0156  win 0.389  t -5.62
+   E2 h=5  n=30355  gross -0.0018  ->  盈亏平衡成本 -9.1bps（往返）
+        0bps  net -0.0018  median -0.0103  win 0.431  t -1.80
+       10bps  net -0.0038  median -0.0123  win 0.420  t -2.68
+       20bps  net -0.0058  median -0.0143  win 0.408  t -3.55
+       30bps  net -0.0078  median -0.0163  win 0.395  t -4.43
+       50bps  net -0.0118  median -0.0203  win 0.371  t -6.19
+   分数选择层（SAMPLE 内逐日 top10% 等权；未建模重叠持仓资金占用，仅量级参考）
+     s_m1 h=5    0bps  sel_net +0.0051  超额(净) +0.0041  t +3.64
+     s_m1 h=5   10bps  sel_net +0.0031  超额(净) +0.0021  t +1.88
+     s_m1 h=5   20bps  sel_net +0.0011  超额(净) +0.0001  t +0.13
+     s_m1 h=5   30bps  sel_net -0.0009  超额(净) -0.0019  t -1.62
+     s_m1 h=5   50bps  sel_net -0.0049  超额(净) -0.0059  t -5.13
+     s_m2 h=5    0bps  sel_net +0.0052  超额(净) +0.0037  t +3.07
+     s_m2 h=5   10bps  sel_net +0.0032  超额(净) +0.0017  t +1.40
+     s_m2 h=5   20bps  sel_net +0.0012  超额(净) -0.0003  t -0.26
+     s_m2 h=5   30bps  sel_net -0.0008  超额(净) -0.0023  t -1.93
+     s_m2 h=5   50bps  sel_net -0.0048  超额(净) -0.0063  t -5.26
+──────────────────────────────────────────────────────────────────────────────
+§46 尾部依赖与右尾贡献（G13：Leave-Top5% 后 alpha 不得转负）
+   E1         n= 61673  gross +0.0021  median -0.0056  |  右尾贡献 top1% 1.81 / top5% 5.39 / top10% 8.08（占总额）  半数总额需 116 笔
+     leave-top1   %  n_left= 61056  mean -0.0017  median -0.0063  win 0.450
+     leave-top5   %  n_left= 58589  mean -0.0096  median -0.0088  win 0.427
+     leave-top10  %  n_left= 55505  mean -0.0164  median -0.0122  win 0.395
+   E2         n= 30355  gross -0.0018  median -0.0103  |  右尾贡献 top1% -2.51 / top5% -7.44 / top10% -10.93（占总额）  半数总额需 -1 笔
+     leave-top1   %  n_left= 30051  mean -0.0064  median -0.0110  win 0.425
+     leave-top5   %  n_left= 28837  mean -0.0161  median -0.0141  win 0.401
+     leave-top10  %  n_left= 27319  mean -0.0240  median -0.0178  win 0.368
+   s_m1_TOP10 n= 47032  gross +0.0051  median +0.0009  |  右尾贡献 top1% 0.49 / top5% 1.43 / top10% 2.16（占总额）  半数总额需 487 笔
+     leave-top1   %  n_left= 46561  mean +0.0026  median +0.0000  win 0.499
+     leave-top5   %  n_left= 44680  mean -0.0023  median -0.0015  win 0.478
+     leave-top10  %  n_left= 42328  mean -0.0066  median -0.0037  win 0.449
+   s_m2_TOP10 n= 47032  gross +0.0052  median +0.0010  |  右尾贡献 top1% 0.49 / top5% 1.41 / top10% 2.12（占总额）  半数总额需 487 笔
+     leave-top1   %  n_left= 46561  mean +0.0027  median +0.0000  win 0.500
+     leave-top5   %  n_left= 44680  mean -0.0022  median -0.0013  win 0.479
+     leave-top10  %  n_left= 42328  mean -0.0064  median -0.0035  win 0.450
+──────────────────────────────────────────────────────────────────────────────
+§48 Null 模型 N1 - N6（n_sim=1000，seed=20260926；p 单侧/双侧全报）
+   真实 E1 参照：h=5 mean +0.0021  n=61673
+   N1_RandomStock  池=8712158 全有效域均值 +0.0030  Null mean +0.0031 (sd 0.0003)
+      经验 p：真实>=Null 0.9990 ；双侧 0.0040
+   N2_RandomDate  可用事件=61673  Null mean +0.0014 (sd 0.0003)  p(真实>=Null) 0.0350
+   N3_RandomPullback  leg=61836  Null mean -0.0031 (sd 0.0003)  p(真实>=Null) 0.0010
+   [N4_MomentumMatched] n=61673  adj_alpha +0.0000  t -1.06  (E1 0.0021 - matched 0.0021)
+   N4_MomentumMatched         matched_mean +0.0021  adj_alpha +0.0000  p(真实>=Null) 0.4925
+   [N5_IndustryMomentumMatched] n=61365  adj_alpha +0.0005  t -0.98  (E1 0.0021 - matched 0.0016)
+   N5_IndustryMomentumMatched matched_mean +0.0016  adj_alpha +0.0005  p(真实>=Null) 0.0599
+──────────────────────────────────────────────────────────────────────────────
+§49 置换检验：分数 s_m1 日内随机置换（n_perm=1000）；N6 为同一估计量，共用本次模拟
+   [s_m1] 观测（日等权）IC +0.1114  AUC 0.4099  （应与 P4 TRAIN_FIT 一致）
+   [s_m2] 观测（日等权）IC +0.1172  AUC 0.4085  （应与 P4 TRAIN_FIT 一致）
+   [s_m1] IC  观测 +0.1114  Null +0.0000 (sd 0.0021)  单侧 p 0.0010  双侧 0.0020
+   [s_m1] AUC 观测 0.4099  Null 0.5000 (sd 0.0019)  单侧 p 1.0000
+   [s_m2] IC  观测 +0.1172  Null +0.0000 (sd 0.0022)  单侧 p 0.0010  双侧 0.0020
+   [s_m2] AUC 观测 0.4085  Null 0.5001 (sd 0.0019)  单侧 p 1.0000
+   N6_ShuffledPullbackQuality：观测 IC +0.1114  Null +0.0000  p 0.0010（与上行同一次模拟）
+──────────────────────────────────────────────────────────────────────────────
+§50 quantile 家族：日内十分位首尾档价差（模型分数 × 视界）
+     s_m1 h=3   日=2017  spread +0.0058  t +3.99
+     s_m1 h=5   日=2017  spread +0.0124  t +5.20
+     s_m1 h=10  日=2012  spread +0.0215  t +4.98
+     s_m2 h=3   日=2017  spread +0.0067  t +4.43
+     s_m2 h=5   日=2017  spread +0.0139  t +5.51
+     s_m2 h=10  日=2012  spread +0.0236  t +5.05
+──────────────────────────────────────────────────────────────────────────────
+§50 多重检验（BH-FDR，alpha=0.05；families = ('horizon', 'feature', 'quantile', 'window', 'model')）
+   horizon   检验   6 条  原始 p<0.05 的   0 条  BH 通过   0 条
+   feature   检验 160 条  原始 p<0.05 的  92 条  BH 通过  90 条
+   quantile  检验   6 条  原始 p<0.05 的   6 条  BH 通过   6 条
+   window    检验  15 条  原始 p<0.05 的  13 条  BH 通过  13 条
+   model     检验   5 条  原始 p<0.05 的   5 条  BH 通过   5 条
+   合并（pooled）192 条检验，BH 通过 114 条
+──────────────────────────────────────────────────────────────────────────────
+Gate 判定（P5 覆盖 G13 / G14 / G15；阈值取 PREREG 冻结值，不得事后调整）
+   G14 成本（E1 h=5 @30bps）        : net -0.0039（gross +0.0021）  -> FAIL
+   G13 尾部（E1 h=5 Leave-Top5%）: mean -0.0096  -> FAIL
+   G15 置换（s_m1 IC 单侧 p）        : p 0.0010（阈值 <0.05）  -> PASS
+   附：E2 @30bps net -0.0078 ；s_m1 选择层 @30bps 净超额 -0.0019
+   致命 Gate 属本层者为 G14；G14=FAIL
+   TRADING_AUTHORIZATION = NO
+──────────────────────────────────────────────────────────────────────────────
+落盘: out/hp_costs_event.csv / _score.csv / _tail.csv / _tail_desc.csv / _null.csv /
+      _perm.csv / _quantile.csv / _fdr.csv / _gates.csv
+P5 完成 320s
+==============================================================================
+DONE

@@ -1,0 +1,41 @@
+﻿panel D:\mystock\solo\research\fundamental_surprise_alpha\data\panel.parquet 行=136194 列=214
+
+  k/date       ['f_ann_date', 'end_date', 'ann_date', 'k1', 'cal_date_k1']
+  entry_px     ['entry_px_E1', 'entry_px_E2', 'entry_px_E3', 'entry_px_E5']
+  ret_         ['ret_E1_T5', 'ret_E2_T5', 'ret_E3_T5', 'ret_E5_T5', 'ret_E1_T10', 'ret_E2_T10', 'ret_E3_T10', 'ret_E5_T10', 'ret_E1_T20', 'ret_E2_T20', 'ret_E3_T20', 'ret_E5_T20', 'ret_E1_T60', 'ret_E2_T60', 'ret_E3_T60', 'ret_E5_T60']
+  ex_          ['ex_E1_T5', 'ex_E2_T5', 'ex_E3_T5', 'ex_E5_T5', 'ex_E1_T10', 'ex_E2_T10', 'ex_E3_T10', 'ex_E5_T10', 'ex_E1_T20', 'ex_E2_T20', 'ex_E3_T20', 'ex_E5_T20', 'ex_E1_T60', 'ex_E2_T60', 'ex_E3_T60', 'ex_E5_T60']
+  price/react  ['Gap', 'Ret_R1', 'Intra_R1', 'Pos_R1', 'VolR_R1', 'Cum_R3', 'Cum_R5', 'RS_R1', 'RS_Cum3']
+  liq/size     ['turnover_rate', 'volume_ratio', 'total_mv', 'circ_mv']
+  ind          ['ind_l1']
+  target feat  ['rev_acc', 'np_qoq', 'np_acc', 'rev_qoq', 'dp_acc', 'mom_20', 'mom_5', 'mom_60', 'ln_mv']
+
+全部列名:
+  ts_code, ann_inc, f_ann_date, end_date, report_type_x, revenue, total_revenue, n_income, n_income_attr_p, total_cogs, operate_profit, rd_exp, ann_bal, report_type_y, total_assets, inventories, goodwill, fix_assets, intan_assets, total_hldr_eqy_exc_min_int, accounts_receiv, ann_cf, report_type, n_cashflow_act, c_pay_acq_const_fiolta, n_cash_flows_fnc_act, n_cashflow_inv_act, ann_fi, roe, grossprofit_margin, netprofit_margin, roic, eps, op_yoy, netprofit_yoy, tr_yoy, or_yoy, profit_dedt, roe_dt, debt_to_assets, ebitda, netdebt, ocfps, bps, assets_yoy, eqt_yoy, dt_netprofit_yoy, q_roe, q_dt_roe, q_npta, q_ocf_to_sales, ann_date, ann_src_n, ann_agree, gap_days, plausible, quarter, fyear, rev_cum, rev_q, rev_ttm, npa_q, npa_ttm, ocf_q, ocf_ttm, dp_q, dp_ttm, rev_yoy, rev_qoq, np_yoy, np_qoq, ocf_yoy, dp_yoy, dp_qoq, rev_acc, np_acc, ocf_acc, dp_acc, rev_cagr3, gpm2, npm2, roe2, ocf_to_np, ocf_to_rev, npm, gpm, ocf_margin, npm_chg, npm_acc, gpm_chg, gpm_acc, roe_chg, roe_acc, roic_chg, roic_acc, ocf_margin_chg, ocf_margin_acc, debt, total_assets_g, inventories_g, accounts_receiv_g, debt_g, total_hldr_eqy_exc_min_int_g, goodwill_g, fix_assets_g, ar_vs_rev, inv_vs_rev, debt_vs_rev, ar_vs_rev_chg, inv_vs_rev_chg, debt_vs_rev_chg, capex_g, S1_rev, S1_np, S1_dp, S1_ocf, S2_rev, S2_np, S2_dp, S2_ocf, S4_np_vs_rev, S4_dp_vs_rev, S5_np_vs_ocf, k1, k0, cal_date_k1, delay_days, mom_5, mom_10, mom_20, mom_60, close_t0, preclose_t0, vol_t0, amount_t0, turnover_rate, volume_ratio, pe, pe_ttm, pb, ps, ps_ttm, dv_ratio, dv_ttm, total_mv, circ_mv, Gap, Ret_R1, Intra_R1, Pos_R1, VolR_R1, Cum_R3, Cum_R5, RS_R1, RS_Gap, RS_Cum3, entry_px_E1, entry_px_E2, entry_px_E3, entry_px_E5, ret_E1_T5, idxret_E1_T5, ex_E1_T5, ret_E2_T5, idxret_E2_T5, ex_E2_T5, ret_E3_T5, idxret_E3_T5, ex_E3_T5, ret_E5_T5, idxret_E5_T5, ex_E5_T5, ret_E1_T10, idxret_E1_T10, ex_E1_T10, ret_E2_T10, idxret_E2_T10, ex_E2_T10, ret_E3_T10, idxret_E3_T10, ex_E3_T10, ret_E5_T10, idxret_E5_T10, ex_E5_T10, ret_E1_T20, idxret_E1_T20, ex_E1_T20, ret_E2_T20, idxret_E2_T20, ex_E2_T20, ret_E3_T20, idxret_E3_T20, ex_E3_T20, ret_E5_T20, idxret_E5_T20, ex_E5_T20, ret_E1_T60, idxret_E1_T60, ex_E1_T60, ret_E2_T60, idxret_E2_T60, ex_E2_T60, ret_E3_T60, idxret_E3_T60, ex_E3_T60, ret_E5_T60, idxret_E5_T60, ex_E5_T60, name_at_ev, ind_l1, period, year, S3_rev, S3_np
+
+  k              MISSING
+  k1             notna=1.0000
+  ann_date       notna=1.0000
+  entry_px_E1    notna=1.0000
+  entry_px_E2    notna=1.0000
+  ex_E1_T5       notna=0.9989
+  ex_E1_T20      notna=0.9826
+  ex_E2_T5       notna=0.9989
+  ret_E1_T5      notna=0.9989
+  ret_E2_T5      notna=0.9989
+  Gap            notna=1.0000
+  turnover_rate  notna=1.0000
+  total_mv       notna=1.0000
+  rev_acc        notna=0.9591
+  np_qoq         notna=0.9901
+  ind_l1         notna=1.0000
+
+calendar 列=['trade_date', 'd', 'idx'] 行=2120
+  trade_date          d  idx
+0   20180102 2018-01-02    0
+1   20180103 2018-01-03    1
+2   20180104 2018-01-04    2
+     trade_date          d   idx
+2117   20260922 2026-09-22  2117
+2118   20260923 2026-09-23  2118
+2119   20260924 2026-09-24  2119
+DONE

@@ -1,0 +1,660 @@
+﻿================================================================
+0) 载入面板
+  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+  面板 136194 行 / 4905 只 / 866 个公告日 cohort
+  分期: {'TRAIN': 84494, 'VALID': 37254, 'OOS': 14446}
+  静态特征 61 / 二阶组合 21 / 历史窗口变体 12
+  锚点 E1 可见特征 79 个（含反应变量 ['Gap']）
+  锚点 E2 可见特征 87 个（含反应变量 ['Gap', 'Ret_R1', 'Intra_R1', 'Pos_R1', 'VolR_R1', 'RS_R1']）
+  锚点 E3 可见特征 89 个（含反应变量 ['Gap', 'Ret_R1', 'Intra_R1', 'Pos_R1', 'VolR_R1', 'RS_R1', 'Cum_R3', 'RS_Cum3']）
+================================================================
+1) §33 数据质量审计
+  审计键值: {'n_events': 136194, 'n_stocks': 4905, 'n_cohorts': 866, 'dup_rate': 0.0, 'restatement_rate': nan}
+================================================================
+2) §21 横截面 Rank IC（三锚点 × 中性化）
+  锚点 E1 完成（raw + 5 中性化）
+  锚点 E2 完成（raw + 5 中性化）
+  锚点 E3 完成（raw + 5 中性化）
+  IC 结果 14280 行
+================================================================
+3) §22 Top-Bottom / §23 Winner-Loser 判别
+python : D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountere
+d in divide
+At line:1 char:5
++ & { python -u fs_run_core.py 2>&1 | Out-File -FilePath _fs_run_core_r ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\mystock\solo...tered in divide:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\_core\_methods.py:49: RuntimeWarning: in
+valid value encountered in reduce
+  return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\_core\_methods.py:49: RuntimeWarning: in
+valid value encountered in reduce
+  return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\_core\_methods.py:49: RuntimeWarning: in
+valid value encountered in reduce
+  return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\_core\_methods.py:49: RuntimeWarning: in
+valid value encountered in reduce
+  return umr_sum(a, axis, dtype, out, keepdims, initial, where)
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+  锚点 E1 完成
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+  锚点 E2 完成
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py:454: RuntimeWarning: invalid value encountered in divi
+de
+  xzz = (xz - m) / s
+  锚点 E3 完成
+================================================================
+4) §24 基准对照
+================================================================
+5) §25 Fundamental × PriceReaction 四象限
+================================================================
+核心检验完成
+DONE

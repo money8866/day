@@ -1,0 +1,10 @@
+﻿['anchor', 'feature', 'horizon', 'regime', 'n', 'ic_mean', 'icir', 'pos']
+1008
+2
+anchor feature  horizon regime   n   ic_mean      icir      pos
+    E1 rev_yoy        5   BULL 280  0.019811  0.044693 0.525000
+    E1 rev_yoy        5 NORMAL 188 -0.015280 -0.038672 0.430851
+    E1 rev_yoy        5   BEAR 299 -0.022625 -0.060480 0.454849
+    E1 rev_qoq        5   BULL 284  0.059362  0.139929 0.612676
+    E1 rev_qoq        5 NORMAL 189  0.011403  0.029952 0.555556
+    E1 rev_qoq        5   BEAR 303  0.009603  0.024739 0.607261

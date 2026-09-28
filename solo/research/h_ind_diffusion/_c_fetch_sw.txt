@@ -1,0 +1,4 @@
+﻿[FETCH] 当前成员 5914 行 / 5914 代码
+[FETCH] 历史变更 2006 行 / 1646 代码（out_date 有效 2006）
+[SAVE] D:\mystock\solo\research\h_ind_diffusion\data\sw_member_all.csv  合计 7920 行 / 5914 代码；L1 类 31，L2 类 131
+       区间缺失：in_date 0 空 / out_date 5914 空

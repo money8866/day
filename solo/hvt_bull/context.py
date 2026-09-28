@@ -2,7 +2,7 @@
 """HVT-BULL 基本面与板块共振模块
 
 - 基本面：fin_ind_2026H1_full.parquet -> FUNDAMENTAL_SCORE 0~100（S/A/B/C）
-- 板块：theme_stock_map_v2_*.json（个股->主题）+ report_daily/theme_heat_v23_*.json
+- 板块：theme_stock_map_v2_*.json（个股->主题）+ report_daily/theme_heat_v24_*.json
         -> SECTOR_STRENGTH 0~100（主题热度 today_heat，缺数据中性50）
 - 资金质量：moneyflow parquet（缺失时中性50，评分权重内自动降级）
 """
@@ -17,7 +17,7 @@ _BASE = r'D:\mystock\solo'
 _FIN_IND = r'D:\mystock\cache_daily\fin_ind_2026H1_full.parquet'
 _THEME_MAP = os.path.join(_BASE, 'report_daily', 'theme_stock_map_latest_v2.json')
 _HEAT_DIR = os.path.join(_BASE, 'report_daily')
-_HEAT_PREFIX = 'theme_heat_v23_'
+_HEAT_PREFIX = 'theme_heat_v24_'
 _MF_DIR = os.path.join(_BASE, 'theme_alpha_v6', 'cache', 'parquet')
 
 _FIN_IND_CACHE = {'df': None, 'loaded': False}
@@ -90,11 +90,12 @@ def load_stock_themes(trade_date: str = None) -> dict:
 
 
 def _load_theme_heat() -> dict:
-    """读 report_daily/theme_heat_v23_*.json，转成 {trade_date: {theme: today_heat}}。
+    """读 report_daily/theme_heat_v24_*.json，转成 {trade_date: {theme: today_heat}}。
 
-    today_heat（V2.3§10）= 0.6·rank(Price) + 0.3·rank(Breadth) + 0.1·rank(Activity)，
-    三个分量都是横截面 Percentile Rank，故 today_heat 本身即 0~100 分位口径
-    （32 主题实测中位≈41.5），与全链路「50≈中性」约定同量纲，无需再做分位变换。
+    today_heat（V2.4§十八）= 50%·HeatRaw + 50%·ReliabilityAdjustedHeat，0~100 分位口径，
+    与全链路「50≈中性」约定同量纲，无需再做分位变换。
+    V2.4 的 Breadth / UpRatio 只在 CORE+NORMAL 成员上计算（WEAK 成员不稀释扩散度），
+    V2.4 结果缺失时本函数返回空字典，调用方按中性 50 处理。
     旧源 theme_v21_daily.strength_v3 是绝对合成值（中位仅 33.9），已弃用。
     """
     if not _HEAT_CACHE['loaded']:
@@ -103,6 +104,10 @@ def _load_theme_heat() -> dict:
         pat = os.path.join(_HEAT_DIR, f'{_HEAT_PREFIX}*.json')
         for p in sorted(glob.glob(pat)):
             d = os.path.basename(p)[len(_HEAT_PREFIX):-len('.json')]
+            # 同前缀还有 theme_heat_v24_hc_*.json（人工复核层）。必须只认纯 8 位日期：
+            # 否则 "hc_20260924" 会混进日期键，在 trade_date=None 时被 max() 选为最新一期。
+            if not (len(d) == 8 and d.isdigit()):
+                continue
             try:
                 with open(p, encoding='utf-8') as f:
                     raw = json.load(f)
@@ -143,7 +148,7 @@ def _theme_strength_asof(theme: str, trade_date: str = None) -> float:
 def sector_resonance(ts_code: str, stock_themes: dict, trade_date: str = None) -> tuple:
     """返回 (sector_strength 0~100, sector_name)。无主题归属/无热度数据时 (50, '')。
 
-    强度口径：theme_heat_v23 的主题热度 today_heat（as-of 决策日），多主题取最强。
+    强度口径：theme_heat_v24 的主题热度 today_heat（as-of 决策日），多主题取最强。
     旧版用「命中主题数」造强度（55+8n，恒 63~79），与主题实际强弱无关，已废弃。
     """
     themes = (stock_themes or {}).get(ts_code) or []

@@ -1,0 +1,27 @@
+﻿§38 缺失字段: 无（28/28 全在）
+§38 附加字段: ['ic_mean', 'ic_std', 'ic_med', 'ic_pos_ratio', 'n_cohort', 'ic_mean_T20', 'icir_T20', 'top10_t', 'rank_separation', 'precision_at_10', 'all_neutral_alpha', 'counterfactual_t', 'regime_ic', 'wf_same_sign', 'wf_n_window', 'wf_ic_train', 'wf_ic_oos', 'mom_window_ic', 'G1_data_real', 'G2_announce_time', 'G3_no_lookahead', 'G4_tradable', 'G5_train', 'G6_valid', 'G7_oos', 'G8_rank_ic', 'G9_topbottom', 'G10_discrimination', 'G11_vs_momentum', 'G12_vs_value', 'G13_counterfactual', 'G14_param_stable', 'G15_regime_stable', 'G16_cost', 'G17_not_single_quarter', 'G18_not_single_industry', 'gate_pass_n']
+§23 附加指标: ['rank_separation', 'precision_at_10']
+
+  fundamental_surprise_alpha_report.md                 OK 23.0KB
+  fundamental_surprise_alpha_registry.csv              OK 97.5KB
+  fundamental_surprise_alpha_oos.csv                   OK 79.2KB
+  fundamental_surprise_alpha_ic.csv                    OK 575.4KB
+  fundamental_surprise_alpha_walkforward.csv           OK 64.6KB
+  fundamental_surprise_alpha_regime.csv                OK 38.0KB
+  fundamental_surprise_alpha_counterfactual.csv        OK 8.6KB
+  fundamental_surprise_alpha_parameter_grid.csv        OK 26.6KB
+  fundamental_surprise_alpha.json                      OK 22.5KB
+
+FINAL STATUS: PASS
+
+ROBUST ALPHA COUNT: 2
+CONDITIONAL COUNT: 3
+FAILED COUNT: 74
+
+registry 行数 79 | status: {'FAIL': 74, 'CONDITIONAL': 3, 'PASS': 2}
+PASS 行:
+feature  ic_mean parameter_stability regime_stability  counterfactual
+rev_acc 0.066122              STABLE           STABLE        0.003414
+ np_qoq 0.064155              STABLE           STABLE        0.002347
+
+parameter_grid 行数 478 | params: ['fund_history', 'industry_level', 'momentum_window', 'price_reaction_window']

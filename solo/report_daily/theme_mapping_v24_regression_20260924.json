@@ -1,0 +1,398 @@
+{
+  "trade_date": "20260924",
+  "mode": "FIXED_TRUTH_SET",
+  "baseline": {
+    "AI算力": {
+      "n_sample": 80,
+      "n_core": 20,
+      "n_final": 40,
+      "n_excl": 20,
+      "false_inclusion": 9,
+      "false_exclusion": 1,
+      "fi_rate": 22.5,
+      "fe_rate": 5.0,
+      "core_precision": 65.0,
+      "final_precision": 77.5,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 13,
+          "TRUE_CHAIN": 3,
+          "TRUE_UNC": 4,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 15,
+          "TRUE_UNC": 4,
+          "TRUE_EXCL": 1
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 18,
+          "TRUE_EXCL": 0
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 1,
+          "TRUE_UNC": 4,
+          "TRUE_EXCL": 15
+        }
+      }
+    },
+    "智能驾驶": {
+      "n_sample": 60,
+      "n_core": 16,
+      "n_final": 28,
+      "n_excl": 20,
+      "false_inclusion": 10,
+      "false_exclusion": 0,
+      "fi_rate": 35.7,
+      "fe_rate": 0.0,
+      "core_precision": 62.5,
+      "final_precision": 64.3,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 10,
+          "TRUE_CHAIN": 2,
+          "TRUE_UNC": 4,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 6,
+          "TRUE_UNC": 5,
+          "TRUE_EXCL": 1
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 10,
+          "TRUE_EXCL": 2
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 3,
+          "TRUE_EXCL": 17
+        }
+      }
+    },
+    "军工": {
+      "n_sample": 79,
+      "n_core": 20,
+      "n_final": 40,
+      "n_excl": 20,
+      "false_inclusion": 15,
+      "false_exclusion": 2,
+      "fi_rate": 37.5,
+      "fe_rate": 10.0,
+      "core_precision": 65.0,
+      "final_precision": 62.5,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 13,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 1,
+          "TRUE_EXCL": 1
+        },
+        "CHAIN": {
+          "TRUE_CORE": 1,
+          "TRUE_CHAIN": 6,
+          "TRUE_UNC": 12,
+          "TRUE_EXCL": 1
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 19,
+          "TRUE_EXCL": 0
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 2,
+          "TRUE_UNC": 5,
+          "TRUE_EXCL": 13
+        }
+      }
+    },
+    "电力": {
+      "n_sample": 80,
+      "n_core": 20,
+      "n_final": 40,
+      "n_excl": 20,
+      "false_inclusion": 9,
+      "false_exclusion": 1,
+      "fi_rate": 22.5,
+      "fe_rate": 5.0,
+      "core_precision": 60.0,
+      "final_precision": 77.5,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 12,
+          "TRUE_CHAIN": 7,
+          "TRUE_UNC": 0,
+          "TRUE_EXCL": 1
+        },
+        "CHAIN": {
+          "TRUE_CORE": 1,
+          "TRUE_CHAIN": 11,
+          "TRUE_UNC": 3,
+          "TRUE_EXCL": 5
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 3,
+          "TRUE_UNC": 15,
+          "TRUE_EXCL": 0
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 1,
+          "TRUE_UNC": 6,
+          "TRUE_EXCL": 13
+        }
+      }
+    },
+    "消费": {
+      "n_sample": 79,
+      "n_core": 20,
+      "n_final": 40,
+      "n_excl": 20,
+      "false_inclusion": 5,
+      "false_exclusion": 7,
+      "fi_rate": 12.5,
+      "fe_rate": 35.0,
+      "core_precision": 85.0,
+      "final_precision": 87.5,
+      "diag": "TOO_STRICT",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 17,
+          "TRUE_CHAIN": 1,
+          "TRUE_UNC": 0,
+          "TRUE_EXCL": 2
+        },
+        "CHAIN": {
+          "TRUE_CORE": 3,
+          "TRUE_CHAIN": 14,
+          "TRUE_UNC": 2,
+          "TRUE_EXCL": 1
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 19,
+          "TRUE_EXCL": 0
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 3,
+          "TRUE_EXCL": 10
+        }
+      }
+    }
+  },
+  "current": {
+    "AI算力": {
+      "n_sample": 80,
+      "n_core": 18,
+      "n_final": 32,
+      "n_excl": 24,
+      "false_inclusion": 4,
+      "false_exclusion": 0,
+      "fi_rate": 12.5,
+      "fe_rate": 0.0,
+      "core_precision": 72.2,
+      "final_precision": 87.5,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 13,
+          "TRUE_CHAIN": 3,
+          "TRUE_UNC": 2,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 12,
+          "TRUE_UNC": 2,
+          "TRUE_EXCL": 0
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 4,
+          "TRUE_UNC": 17,
+          "TRUE_EXCL": 1
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 9,
+          "TRUE_EXCL": 15
+        }
+      }
+    },
+    "智能驾驶": {
+      "n_sample": 60,
+      "n_core": 8,
+      "n_final": 17,
+      "n_excl": 21,
+      "false_inclusion": 2,
+      "false_exclusion": 0,
+      "fi_rate": 11.8,
+      "fe_rate": 0.0,
+      "core_precision": 75.0,
+      "final_precision": 88.2,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 6,
+          "TRUE_CHAIN": 1,
+          "TRUE_UNC": 1,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 3,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 1,
+          "TRUE_EXCL": 0
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 1,
+          "TRUE_CHAIN": 2,
+          "TRUE_UNC": 11,
+          "TRUE_EXCL": 8
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 9,
+          "TRUE_EXCL": 12
+        }
+      }
+    },
+    "军工": {
+      "n_sample": 79,
+      "n_core": 16,
+      "n_final": 23,
+      "n_excl": 11,
+      "false_inclusion": 0,
+      "false_exclusion": 0,
+      "fi_rate": 0.0,
+      "fe_rate": 0.0,
+      "core_precision": 68.8,
+      "final_precision": 100.0,
+      "diag": "BALANCED",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 11,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 0,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 0,
+          "TRUE_EXCL": 0
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 1,
+          "TRUE_CHAIN": 3,
+          "TRUE_UNC": 32,
+          "TRUE_EXCL": 9
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 5,
+          "TRUE_EXCL": 6
+        }
+      }
+    },
+    "电力": {
+      "n_sample": 80,
+      "n_core": 18,
+      "n_final": 37,
+      "n_excl": 12,
+      "false_inclusion": 9,
+      "false_exclusion": 0,
+      "fi_rate": 24.3,
+      "fe_rate": 0.0,
+      "core_precision": 61.1,
+      "final_precision": 75.7,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 11,
+          "TRUE_CHAIN": 6,
+          "TRUE_UNC": 1,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 11,
+          "TRUE_UNC": 7,
+          "TRUE_EXCL": 1
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 4,
+          "TRUE_CHAIN": 5,
+          "TRUE_UNC": 10,
+          "TRUE_EXCL": 12
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 6,
+          "TRUE_EXCL": 6
+        }
+      }
+    },
+    "消费": {
+      "n_sample": 79,
+      "n_core": 19,
+      "n_final": 42,
+      "n_excl": 14,
+      "false_inclusion": 5,
+      "false_exclusion": 0,
+      "fi_rate": 11.9,
+      "fe_rate": 0.0,
+      "core_precision": 84.2,
+      "final_precision": 88.1,
+      "diag": "TOO_BROAD",
+      "matrix": {
+        "CORE": {
+          "TRUE_CORE": 16,
+          "TRUE_CHAIN": 1,
+          "TRUE_UNC": 2,
+          "TRUE_EXCL": 0
+        },
+        "CHAIN": {
+          "TRUE_CORE": 4,
+          "TRUE_CHAIN": 16,
+          "TRUE_UNC": 3,
+          "TRUE_EXCL": 0
+        },
+        "UNCERTAIN": {
+          "TRUE_CORE": 2,
+          "TRUE_CHAIN": 3,
+          "TRUE_UNC": 14,
+          "TRUE_EXCL": 4
+        },
+        "EXCLUDE": {
+          "TRUE_CORE": 0,
+          "TRUE_CHAIN": 0,
+          "TRUE_UNC": 5,
+          "TRUE_EXCL": 9
+        }
+      }
+    }
+  }
+}

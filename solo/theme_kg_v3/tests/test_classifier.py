@@ -33,7 +33,7 @@ class TestKeywordEngine(unittest.TestCase):
         """引擎能正确加载主题配置."""
         self.assertIsNotNone(self.engine.theme_config)
         self.assertGreater(len(self.engine.theme_codes), 0)
-        self.assertIn("AI_COMPUTE", self.engine.theme_codes)
+        self.assertIn("CPO", self.engine.theme_codes)
         self.assertIn("SEMICONDUCTOR", self.engine.theme_codes)
 
     def test_inverted_index_built(self):
@@ -49,10 +49,10 @@ class TestKeywordEngine(unittest.TestCase):
         """quick_match 返回非空结果."""
         results = self.engine.quick_match("光模块 800G AI数据中心")
         self.assertGreater(len(results), 0)
-        # AI算力应该匹配
-        ai_scores = [r for r in results if r.theme_code == "AI_COMPUTE"]
-        self.assertGreater(len(ai_scores), 0, "AI算力应匹配光模块关键词")
-        self.assertGreater(ai_scores[0].score, 0, "AI算力匹配分应大于0")
+        # CPO 应该匹配
+        cpo_scores = [r for r in results if r.theme_code == "CPO"]
+        self.assertGreater(len(cpo_scores), 0, "CPO 应匹配光模块关键词")
+        self.assertGreater(cpo_scores[0].score, 0, "CPO 匹配分应大于0")
 
     def test_exclude_keywords_filtering(self):
         """排除关键词正确返回."""
@@ -69,16 +69,16 @@ class TestKeywordEngine(unittest.TestCase):
     def test_match_by_concepts(self):
         """概念匹配返回正确主题."""
         results = self.engine.match_by_concepts(["CPO", "光模块", "算力"])
-        ai_codes = [r for r in results if r.theme_code == "AI_COMPUTE"]
-        self.assertGreater(len(ai_codes), 0)
-        self.assertGreater(ai_codes[0].score, 0)
+        cpo_codes = [r for r in results if r.theme_code == "CPO"]
+        self.assertGreater(len(cpo_codes), 0)
+        self.assertGreater(cpo_codes[0].score, 0)
 
     def test_match_by_business_description(self):
         """业务描述匹配."""
-        desc = "公司主要生产高密度PCB，用于服务器和数据中心"
+        desc = "公司主要生产800G高速光模块，用于AI数据中心"
         results = self.engine.match_by_business_description(desc)
-        pcb_themes = [r for r in results if r.theme_code == "AI_COMPUTE"]
-        self.assertGreater(len(pcb_themes), 0, "PCB业务描述应匹配AI算力")
+        cpo_themes = [r for r in results if r.theme_code == "CPO"]
+        self.assertGreater(len(cpo_themes), 0, "光模块业务描述应匹配CPO")
 
     def test_keyword_tfidf(self):
         """TF-IDF 计算能正常执行."""
@@ -133,13 +133,13 @@ class TestConfidenceScorer(unittest.TestCase):
             "eastmoney_concepts": ["CPO", "光模块", "数据中心", "算力"],
             "ths_concepts": ["CPO", "光通信", "算力"],
         }
-        score = self.scorer._score_concept_match("AI_COMPUTE", stock_data)
+        score = self.scorer._score_concept_match("CPO", stock_data)
         self.assertGreater(score, 30)
 
     def test_score_product_match(self):
         """产品匹配评分."""
         stock_data = {"products": ["800G光模块", "1.6T光模块"]}
-        score = self.scorer._score_product("AI_COMPUTE", stock_data)
+        score = self.scorer._score_product("CPO", stock_data)
         self.assertGreater(score, 50)
 
     def test_score_business_description(self):
@@ -147,7 +147,7 @@ class TestConfidenceScorer(unittest.TestCase):
         stock_data = {
             "business_description": "公司专注于光模块的研发和生产，产品用于AI数据中心"
         }
-        score = self.scorer._score_business_description("AI_COMPUTE", stock_data)
+        score = self.scorer._score_business_description("CPO", stock_data)
         self.assertGreater(score, 5)
 
     def test_score_no_match(self):
@@ -158,7 +158,7 @@ class TestConfidenceScorer(unittest.TestCase):
             "eastmoney_concepts": ["白酒", "消费"],
             "products": ["飞天茅台"],
         }
-        score_ai = self.scorer._score_etf_correlation("AI_COMPUTE", stock_data)
+        score_ai = self.scorer._score_etf_correlation("SEMICONDUCTOR", stock_data)
         self.assertLessEqual(score_ai, 30)
 
     def test_full_scoring_pipeline(self):
@@ -195,25 +195,25 @@ class TestThemeClassifier(unittest.TestCase):
         self.assertIsNotNone(self.classifier.keyword_engine)
 
     def test_classify_shenghong(self):
-        """胜宏科技PCB业务 - 可能在AI算力、半导体或消费电子之间."""
+        """胜宏科技PCB业务 - 可能在半导体或消费电子之间."""
         stock = [s for s in self.sample_stocks if s["stock_code"] == "300476.SZ"]
         if not stock:
             self.skipTest("示例数据中缺少胜宏科技")
         result = self.classifier.classify(stock[0])
         self.assertEqual(result.stock_code, "300476.SZ")
         # PCB 跨越多主题，应落在合理主题中
-        valid_themes = ["AI_COMPUTE", "SEMICONDUCTOR", "CONSUMER_ELECTRONICS"]
+        valid_themes = ["SEMICONDUCTOR", "CONSUMER_ELECTRONICS"]
         self.assertIn(result.primary_theme_code, valid_themes)
         self.assertGreater(result.confidence, 20)
 
     def test_classify_xinyisheng(self):
-        """新易盛应归类为AI算力."""
+        """新易盛应归类为CPO."""
         stock = [s for s in self.sample_stocks if s["stock_code"] == "300502.SZ"]
         if not stock:
             self.skipTest("示例数据中缺少新易盛")
         result = self.classifier.classify(stock[0])
         self.assertEqual(result.stock_code, "300502.SZ")
-        self.assertEqual(result.primary_theme_code, "AI_COMPUTE")
+        self.assertEqual(result.primary_theme_code, "CPO")
 
     def test_classify_beifanghuachuang(self):
         """北方华创应归类为半导体."""

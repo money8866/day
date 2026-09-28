@@ -1,0 +1,7 @@
+================================================================
+载入全部检验结果
+  主锚点 E1：IC 行 4424 / spread 316 / disc 316
+  参与裁定的特征数: 79
+  G1-G4 审计判定: {'G1_data_real': True, 'G2_announce_time': True, 'G3_no_lookahead': True, 'G4_tradable': True}
+FINAL STATUS: PASS  PASS=2 COND=3 FAIL=74
+已生成报告与 registry

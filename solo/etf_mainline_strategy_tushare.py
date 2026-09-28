@@ -44,6 +44,18 @@ DYNAMIC_EXIT_TOP_PCT = 0.30 # 动态退出: 动量排名跌出Top30%则触发调
 MIN_HOLD_DAYS = 5           # 动态退出保护: 最少持仓5个交易日才允许动态退出
 
 # ──────────────────────────────────────────
+# IGE 行业景气择时（ige_adj，来自 ige/output/ige_full_*.csv 的三级行业景气分）
+# 口径: ETF级景气 = 成分股 ige_adj 的权重加权平均（成分股权重缺失则等权）
+# 注: IGE 仅有 20260901 起的快照, 历史回测期无数据 -> 届时自动退化为纯动量(fail-soft)
+# ──────────────────────────────────────────
+IGE_ENABLED = True          # 总开关; False 则完全退回方案A(单一20日动量)
+IGE_WEIGHT_IN_SCORE = 0.20  # 景气分在选品打分中的权重(动量分占 1-该值); 实测与动量近正交, 可按实盘调
+IGE_ENTRY_MIN = 50.0        # 入场底线: 候选 ige_adj 低于此值则顺延到下一位达标候选
+IGE_EXIT_MIN = 40.0         # 离场线: 持仓 ige_adj 低于此值则提前触发调仓
+IGE_NEUTRAL = 50.0          # 景气数据缺失时的中性分(fail-soft, 不阻断)
+IGE_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ige", "output")
+
+# ──────────────────────────────────────────
 # 缓存配置（复用 cache_daily 目录）
 # ──────────────────────────────────────────
 CACHE_DIR = r"D:\mystock\cache_daily"
@@ -482,6 +494,73 @@ def get_etf_constituents(ts_code, trade_date):
     except Exception as e:
         print(f"  [WARN] 获取{ts_code}成份股失败: {e}")
         return []
+
+
+def load_ige_map(trade_date):
+    """
+    读取 IGE 行业景气快照，返回 {ts_code: ige_adj}。
+    as-of 回退: 取不晚于 trade_date 的最近一期快照（无则返回 {}，fail-soft 不阻断）。
+    """
+    if not IGE_ENABLED or not os.path.isdir(IGE_OUTPUT_DIR):
+        return {}
+    try:
+        cands = sorted(
+            f for f in os.listdir(IGE_OUTPUT_DIR)
+            if f.startswith("ige_full_") and f.endswith(".csv")
+        )
+    except Exception:
+        return {}
+
+    # as-of: 文件名内嵌日期，取 <= trade_date 的最后一期
+    hit = None
+    for f in cands:
+        d = f[len("ige_full_"):-len(".csv")]
+        if d.isdigit() and d <= str(trade_date):
+            hit = f
+    if hit is None:
+        print("  [IGE] 无可用景气快照(as-of), 本次退化为纯动量")
+        return {}
+
+    snap_date = hit[len("ige_full_"):-len(".csv")]
+    if snap_date != str(trade_date):
+        print(f"  [IGE] STALE_IGE: 使用 {snap_date} 快照 (决策日 {trade_date})")
+    try:
+        df = pd.read_csv(os.path.join(IGE_OUTPUT_DIR, hit), usecols=["code", "ige_adj"])
+    except Exception as e:
+        print(f"  [WARN] IGE 快照读取失败: {e}")
+        return {}
+
+    df = df.dropna(subset=["ige_adj"])
+    return dict(zip(df["code"].astype(str), df["ige_adj"].astype(float)))
+
+
+def calc_etf_ige(ts_code, trade_date, ige_map):
+    """
+    ETF 级行业景气 = 成分股 ige_adj 的加权平均（成分股权重缺失/为0则等权）。
+    无成分股或无任一成分股景气数据 -> None（调用方按中性分处理）。
+    """
+    if not ige_map:
+        return None
+    cons = get_etf_constituents(ts_code, trade_date)
+    if not cons:
+        return None
+
+    vals, wts = [], []
+    for c in cons:
+        code = c.get("con_code") if isinstance(c, dict) else c
+        wt = float(c.get("weight") or 0) if isinstance(c, dict) else 0
+        v = ige_map.get(str(code))
+        if v is None:
+            continue
+        vals.append(v)
+        wts.append(wt if wt > 0 else 1.0)
+
+    if not vals:
+        return None
+    wsum = sum(wts)
+    if wsum <= 0:
+        return float(np.mean(vals))
+    return float(sum(v * w for v, w in zip(vals, wts)) / wsum)
 
 
 def get_sw_industry(ts_code):
@@ -1113,11 +1192,16 @@ def main(trade_date=None, backtest_mode=False):
         print(f"  ETF主线轮动策略 Tushare版 (回溯模式)")
         print(f"  回溯日期: {TRADE_DATE}")
     else:
-        print(f"  ETF主线轮动策略 Tushare版 (单一动量轮动)")
+        print(f"  ETF主线轮动策略 Tushare版 ({'动量+行业景气' if IGE_ENABLED else '单一动量轮动'})")
     print("=" * 60)
 
-    result_message += f"  ETF主线轮动策略(单一动量轮动)\n"
-    result_message += f"  换仓因子: 20日动量 (单一因子)\n\n"
+    if IGE_ENABLED:
+        result_message += f"  ETF主线轮动策略(动量+行业景气)\n"
+        result_message += f"  换仓因子: 20日动量 {1-IGE_WEIGHT_IN_SCORE:.0%} + 行业景气 {IGE_WEIGHT_IN_SCORE:.0%}\n"
+        result_message += f"  景气门槛: 入场>={IGE_ENTRY_MIN:.0f} 离场<{IGE_EXIT_MIN:.0f}\n\n"
+    else:
+        result_message += f"  ETF主线轮动策略(单一动量轮动)\n"
+        result_message += f"  换仓因子: 20日动量 (单一因子)\n\n"
 
     codes_ts = {}
     for name, code in ETF_POOL.items():
@@ -1211,6 +1295,10 @@ def main(trade_date=None, backtest_mode=False):
 
     code_to_name = {v: k for k, v in ETF_POOL.items()}
 
+    # === IGE 行业景气: 加载快照 + 逐 ETF 聚合成分股景气 ===
+    ige_map = load_ige_map(TRADE_DATE) if IGE_ENABLED else {}
+    ige_avail = 0
+
     rankings = []
     for code, df in all_data.items():
         bm_for_etf = benchmark_df if benchmark_df is not None else None
@@ -1221,6 +1309,11 @@ def main(trade_date=None, backtest_mode=False):
         latest = df["close"].iloc[-1]
         prev = df["close"].iloc[-2] if len(df) >= 2 else latest
         day_chg = (latest - prev) / prev * 100
+
+        # === IGE 行业景气 (ETF级) ===
+        etf_ige = calc_etf_ige(codes_ts.get(code, code), TRADE_DATE, ige_map)
+        if etf_ige is not None:
+            ige_avail += 1
 
         # === 份额规模提示 ===
         share_signal = ""
@@ -1240,34 +1333,60 @@ def main(trade_date=None, backtest_mode=False):
             "close": latest,
             "day_chg": round(day_chg, 2),
             "share_signal": share_signal,
+            "ige_adj": etf_ige,
             **factors
         })
 
-    # === 单一动量因子: 20日动量截面排名 (第1名=100分, 最后≈0分) ===
+    # === 选品打分: 20日动量截面排名(+ IGE 行业景气分倾斜) ===
     valid = [r for r in rankings if r.get('momentum') is not None]
     n_total = len(valid)
     if n_total > 1:
         sorted_by_mom = sorted(valid, key=lambda x: x['momentum'])
         for i, r in enumerate(sorted_by_mom):
-            r['total_score'] = round((i / (n_total - 1)) * 100, 2)
+            r['momentum_score'] = round((i / (n_total - 1)) * 100, 2)
     else:
         for r in valid:
-            r['total_score'] = 50.0
+            r['momentum_score'] = 50.0
+
+    # IGE 景气分: 池内截面排名(0~100); 单只缺失记中性分, 全池皆缺则退化为纯动量(即方案A行为)
+    ige_rows = [r for r in valid if r.get('ige_adj') is not None]
+    use_ige = IGE_ENABLED and len(ige_rows) > 1
+    if use_ige:
+        n_ige = len(ige_rows)
+        for i, r in enumerate(sorted(ige_rows, key=lambda x: x['ige_adj'])):
+            r['ige_score'] = round((i / (n_ige - 1)) * 100, 2)
+        w_ige = IGE_WEIGHT_IN_SCORE
+        for r in valid:
+            s_ige = r['ige_score'] if r.get('ige_score') is not None else IGE_NEUTRAL
+            r['total_score'] = round(r['momentum_score'] * (1 - w_ige) + s_ige * w_ige, 2)
+        print(f"  [IGE] 景气分已参与选品打分: 覆盖 {len(ige_rows)}/{n_total} 只, 权重 {w_ige:.0%}")
+        print(f"  [IGE] 入场底线 ige_adj>={IGE_ENTRY_MIN:.0f}, 离场线 ige_adj<{IGE_EXIT_MIN:.0f}")
+        result_message += f"  选品打分: 20日动量 {1-w_ige:.0%} + 行业景气 {w_ige:.0%} (IGE覆盖{len(ige_rows)}/{n_total})\n\n"
+    else:
+        for r in valid:
+            r['ige_score'] = None
+            r['total_score'] = r['momentum_score']
+        if IGE_ENABLED:
+            print(f"  [IGE] 景气数据不足(仅{len(ige_rows)}只), 退化为纯20日动量(方案A)")
+            result_message += f"  选品打分: 纯20日动量(景气数据不足)\n\n"
     rankings.sort(key=lambda x: x['total_score'], reverse=True)
 
-    print(f"\n  --- 动量排名 TOP 10 [{state_desc}] ---")
-    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'动量分':>6} {'20日动量':>9} {'规模提示'}")
-    print(f"  {'-'*60}")
+    print(f"\n  --- 选品排名 TOP 10 [{state_desc}] ---")
+    print(f"  {'序号':>2} {'名称':<8} {'代码':<8} {'总分':>6} {'动量分':>6} {'20日动量':>9} {'景气':>6}")
+    print(f"  {'-'*70}")
 
     for i, r in enumerate(rankings[:10]):
         sig = r.get('share_signal', '')
-        print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} {r['momentum']:>8.2f}%  {sig}")
+        ige_txt = f"{r['ige_adj']:>6.1f}" if r.get('ige_adj') is not None else "     -"
+        print(f"  {i+1:>2}. {r['name']:<8} {r['code']:<8} {r['total_score']:>6.1f} "
+              f"{r.get('momentum_score', 0):>6.1f} {r['momentum']:>8.2f}% {ige_txt}  {sig}")
 
-    result_message += f"  ---动量排名 TOP 5 [{state_desc}] ---\n"
+    result_message += f"  ---选品排名 TOP 5 [{state_desc}] ---\n"
     for i, r in enumerate(rankings[:5]):
         sig = r.get('share_signal', '')
         sig_text = f" [{sig}]" if sig else ""
-        result_message += f"  {i+1}. {r['name']}({r['code']}) 20日动量:{r['momentum']:+.2f}%{sig_text}\n"
+        ige_txt = f" 景气:{r['ige_adj']:.1f}" if r.get('ige_adj') is not None else " 景气:-"
+        result_message += f"  {i+1}. {r['name']}({r['code']}) 动量:{r['momentum']:+.2f}%{ige_txt}{sig_text}\n"
 
     def count_trade_days(start_str, end_date):
         ref = all_data.get("512880")
@@ -1312,18 +1431,22 @@ def main(trade_date=None, backtest_mode=False):
             need_rebalance = True
             rebalance_reason = f"固定周期到期({days_since}>={REBAL_DAYS}天)"
 
-        # === 调仓触发条件2/3: 动态退出 (动量排名跌出Top30% 或 跌破MA30离场线; 持仓满5天保护) ===
+        # === 调仓触发条件2/3/4: 动态退出 (总分排名跌出Top30% / 跌破MA30离场线 / 行业景气跌破离场线; 持仓满5天保护) ===
         elif days_since >= MIN_HOLD_DAYS:
             top_pct_n = max(1, int(len(rankings) * DYNAMIC_EXIT_TOP_PCT))
             hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
             hold_factors = next((r for r in rankings if r['code'] == hc), None)
             below_ma30 = bool(hold_factors is None or not hold_factors.get('above_ma30', True))
+            hold_ige = hold_factors.get('ige_adj') if hold_factors else None
             if hold_rank > top_pct_n:
                 need_rebalance = True
-                rebalance_reason = f"动量排名跌出Top{top_pct_n}(当前第{hold_rank}/{len(rankings)}名, 持仓{days_since}天)"
+                rebalance_reason = f"排名跌出Top{top_pct_n}(当前第{hold_rank}/{len(rankings)}名, 持仓{days_since}天)"
             elif below_ma30:
                 need_rebalance = True
                 rebalance_reason = f"跌破30日离场线(MA30, 持仓{days_since}天)"
+            elif use_ige and hold_ige is not None and hold_ige < IGE_EXIT_MIN:
+                need_rebalance = True
+                rebalance_reason = f"行业景气跌破离场线(ige_adj {hold_ige:.1f}<{IGE_EXIT_MIN:.0f}, 持仓{days_since}天)"
 
         # === 提示: 持仓不满5天但已触发离场信号 ===
         elif days_since < MIN_HOLD_DAYS:
@@ -1331,13 +1454,26 @@ def main(trade_date=None, backtest_mode=False):
             hold_rank = next((i+1 for i, r in enumerate(rankings) if r['code'] == hc), len(rankings))
             hold_factors = next((r for r in rankings if r['code'] == hc), None)
             below_ma30 = bool(hold_factors is None or not hold_factors.get('above_ma30', True))
-            if hold_rank > top_pct_n or below_ma30:
-                print(f"  [提示] 动量排名第{hold_rank}名(跌出Top{top_pct_n})或跌破MA30, 但持仓仅{days_since}天<{MIN_HOLD_DAYS}天保护期, 暂不调仓")
+            hold_ige = hold_factors.get('ige_adj') if hold_factors else None
+            ige_break = use_ige and hold_ige is not None and hold_ige < IGE_EXIT_MIN
+            if hold_rank > top_pct_n or below_ma30 or ige_break:
+                print(f"  [提示] 排名第{hold_rank}名(跌出Top{top_pct_n})/跌破MA30/景气跌破离场线, 但持仓仅{days_since}天<{MIN_HOLD_DAYS}天保护期, 暂不调仓")
                 result_message += f"\n[保护期] 触发离场信号但持仓{days_since}天<{MIN_HOLD_DAYS}天, 暂不调仓\n"
 
     if need_rebalance:
-        # === 选品: 直接取20日动量最高的标的(单一动量因子, 不做MA20硬过滤) ===
+        # === 选品: 取综合分最高的标的; 若其行业景气低于入场底线, 顺延到下一位达标候选 ===
         target = rankings[0]
+        if use_ige and target.get('ige_adj') is not None and target['ige_adj'] < IGE_ENTRY_MIN:
+            alt = next((r for r in rankings
+                        if r.get('ige_adj') is not None and r['ige_adj'] >= IGE_ENTRY_MIN), None)
+            if alt is not None:
+                print(f"  [IGE] 首选 {target['name']} 景气 {target['ige_adj']:.1f} < {IGE_ENTRY_MIN:.0f}, 顺延至 {alt['name']}({alt['ige_adj']:.1f})")
+                result_message += f"[IGE] 首选{target['name']}景气{target['ige_adj']:.1f}<{IGE_ENTRY_MIN:.0f}, 顺延至{alt['name']}\n"
+                target = alt
+            else:
+                print(f"  [IGE] 全池无景气达标候选, 仍按综合分第1名 {target['name']} 建仓")
+                result_message += f"[IGE] 全池无达标候选, 按综合分第1名建仓\n"
+
         print(f"\n  {'='*40}")
         result_message += f"{'='*40}\n"
 
@@ -1347,8 +1483,9 @@ def main(trade_date=None, backtest_mode=False):
         print(f"  目标: {target['name']} ({target['code']})")
         result_message += f"目标 {target['name']} ({target['code']})\n"
 
-        print(f"  动量分: {target['total_score']:.1f}")
-        result_message += f"动量分 {target['total_score']:.1f}\n"
+        ige_buy_txt = f"{target['ige_adj']:.1f}" if target.get('ige_adj') is not None else "-"
+        print(f"  总分: {target['total_score']:.1f} (动量分 {target.get('momentum_score', 0):.1f}) | 行业景气: {ige_buy_txt}")
+        result_message += f"总分 {target['total_score']:.1f} 动量分 {target.get('momentum_score', 0):.1f} 行业景气 {ige_buy_txt}\n"
 
         trend_flags = []
         if target.get('ema_bull'): trend_flags.append("EMA多头")
@@ -1379,6 +1516,7 @@ def main(trade_date=None, backtest_mode=False):
             "score_at_buy": target['total_score'],
             "momentum_at_buy": target['momentum'],
             "rsi_at_buy": target.get('rsi', 50),
+            "ige_at_buy": target.get('ige_adj'),
             "rebalance_count": (state.get("rebalance_count", 0) + 1) if state else 1,
         }
         if not backtest_mode:

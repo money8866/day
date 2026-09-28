@@ -151,7 +151,13 @@ def convert_new_config_to_old(new_config, stock_basic_df):
 
 # 主题→主营业务验证关键词
 THEME_MAINBIZ_KEYWORDS = {
-    'AI算力': ['算力', '数据中心', '服务器', '云计算', 'IDC', '光模块', '芯片', '散热', '液冷', '电源', '机柜', '带宽', 'ICT', 'ICT基础设施', '信息通信', '网络设备', '交换机', '路由器', '网络基础设施', 'IT基础设施', '数据中心建设', '机房', '布线', '光纤通信', '铜连接', 'AEC', 'DAC', '高速互联', '系统集成', '信息技术服务', '数据服务'],
+    # 20260928 AI算力「拆旧建新」：原 AI算力 拆为 CPO / 液冷 / AI服务器 / AI应用 四个独立一级主题
+    'CPO': ['光模块', 'CPO', '共封装光学', '光电共封装', '硅光', '硅光子', '光芯片', '光器件', '光收发', '光引擎', '高速光互联', '光互联', '光电子器件'],
+    '液冷': ['液冷', '冷板', '浸没式', '浸没相变', 'CDU', '冷量分配', '液冷板', '液冷管路', '快接头', '数据中心温控', '机房精密空调', '精密温控', '数据中心散热', '冷却系统', '温控设备'],
+    'AI服务器': ['AI服务器', 'GPU服务器', '训练服务器', '推理服务器', '服务器', '高性能计算机', '服务器整机', '整机柜', '超算', '服务器ODM', '服务器OEM', '智算一体机', '算力整机'],
+    'AI应用': ['人工智能', 'AI应用', 'AI软件', 'AI Agent', '智能体', '大模型', 'AIGC', 'AI办公', 'AI医疗', 'AI教育', 'AI营销', 'AI客服', '机器视觉', '计算机视觉', '语音识别', '自然语言处理', '模式识别', '智能交互', '办公软件', '医疗信息化', '教育信息化', '金融资讯'],
+    # 20260928 新增第 5 个一级主题：算力运营（自持算力资源 + 对客提供算力服务）
+    '算力运营': ['算力租赁', 'GPU算力租赁', '智能算力租赁', '算力出租', '智算中心', '智能计算中心', '智算集群', '算力集群', 'AI算力中心', 'GPU云', 'AI云', '算力云', '云算力', '智算云', '算力服务', '算力运营', '算力调度', '算力网络', '算力交易', '算力平台', '算力资源服务', '超算云'],
     '半导体': ['芯片', '半导体', '集成电路', '晶圆', '代工', '封测', '封装', '测试', '设备', '材料'],
     '机器人': ['机器人', '减速器', '丝杠', '电机', '传感器', '执行器', '关节', '驱动器', '控制器', '伺服', '精密减速', '滚珠丝杠', '行星滚柱', '空心杯电机', '无框电机', '力矩电机', '灵巧手', '线性执行器', '旋转执行器', '运动控制', '机电'],
     '创新药': ['创新药', '新药', '原研', '生物药', 'ADC', 'CXO', 'CRO', 'CDMO', '抗体', '双抗', '细胞治疗', '基因', '疫苗', '重组蛋白'],
@@ -199,7 +205,12 @@ THEME_INDUSTRY_WHITELIST = {
 
 # 主题-行业互斥规则
 THEME_INDUSTRY_EXCLUDE = {
-    'AI算力': ['煤炭开采', '造纸', '钢加工', '化学原料'],
+    # 20260928 AI算力拆旧建新：原 AI算力 的粗行业互斥沿用至四个新主题
+    'CPO': ['煤炭开采', '造纸', '钢加工', '化学原料'],
+    '液冷': ['煤炭开采', '造纸', '钢加工', '化学原料'],
+    'AI服务器': ['煤炭开采', '造纸', '钢加工', '化学原料'],
+    'AI应用': ['煤炭开采', '造纸', '钢加工', '化学原料'],
+    '算力运营': ['煤炭开采', '造纸', '钢加工', '化学原料'],
     '黄金': ['铜', '铅锌', '钢铁'],
     '煤炭': ['化学制品', '化学原料', '化工原料', '化工', '塑料'],
     '军工': ['软件服务', 'IT设备', '互联网', '出版业', '影视音像', '广告包装', '房地产', '银行', '保险'],
@@ -212,7 +223,6 @@ THEME_INDUSTRY_EXCLUDE = {
 
 # 主题-股票黑名单
 THEME_STOCK_BLACKLIST = {
-    'AI算力': {'思源电气', '中国宝安', '诺德股份'},
     '消费电子': {'禾盛新材', '慧谷新材', '中瑞股份'},
     '创新药': {'利民股份', '富邦科技'},
     '化工': {'山西焦化', '开滦股份', '云煤能源', '兖矿能源', '辉隆股份', '国投丰乐'},
@@ -222,6 +232,20 @@ THEME_STOCK_BLACKLIST = {
     '信创': {'国脉科技'},
     '半导体': {'拉普拉斯'},
     '机器人': {'三瑞智能'},
+    # 20260928 脑机接口收权：国际医学(综合医院+百货零售)/盈康生命(肿瘤医院) 仅因
+    #   「医药生物」东财行业板整包灌入，主营文本过短(<12字)触发 X3 保留豁免而未被
+    #   环节门槛剔除，实为泛医疗、无任何脑机接口业务证据 → 明确排除。
+    '脑机接口': {'国际医学', '盈康生命'},
+    # 20260928 AI算力拆旧建新：四新主题（CPO/液冷/AI服务器）同样存在"东财板块整包 +
+    #   主营文本过短触发 X3 豁免"的漏网，均经用户裁定应判 UNCERTAIN/EXCLUDE，不得
+    #   留在四主题成员池内（判定依据见 81 只原 AI算力成员逐只重审表）。
+    'CPO': {'北纬科技', '科瑞思', '京东方A', '会畅科技'},
+    '液冷': {'亨通光电'},
+    'AI服务器': {'润泽科技', '杰创智能', '中兴通讯', '联迪信息'},
+    # 20260928 算力运营：禁止「设备/零部件供应商」误入（供服务器/液冷/电源/机柜
+    #   ≠ 自持算力运营）。下列公司主营分别为 UPS 电源、液冷设备、机柜微模块、
+    #   IT 设备销售运维、精密锻件、PCB、酒类，均无算力服务收入证据。
+    '算力运营': {'科华数据', '曙光数创', '朗威股份', '亚康股份', '恒润股份', '广合科技', '群兴玩具'},
 }
 
 # 人工补漏映射：match_theme_stocks 未能覆盖的明确成份股（强制纳入对应主题）
@@ -244,11 +268,81 @@ THEME_MAINBIZ_REQUIRED = {
     '量子计算': ['量子'],
 }
 
+# 成分股污染过滤（源头治理，20260924 定版）
+# 背景：sw_industry_match 常写一级行业（AI算力=电子/通信/计算机），
+# dc_industry_board 因此把整个行业板块灌进主题，制造「行业代替主题」的假广度
+# （20260924 全库 POLLUTION 1175/4481 = 26.2%）。
+# 只剔除 POLLUTION 类成员，保留 WEAK（无主营文本的数据缺口 / 行业属主题特征行业），
+# 判定复用 theme_heat_v24_hc.hc_classify，与热度层、HC 层保持同一口径。
+#
+# 但 HC 的「特征行业」只由 CORE 成员行业分布（≥15%）定义，异质主题天然覆盖不全，
+# 会把真成员误判为污染（军工 CORE 集中航空/电子 → 运输设备/专用机械/元器件 全落网；
+# 消费 CORE 分散 → 白酒/食品/软饮料 进不了门槛），直接删会造成军工-68%、消费-74%。
+# 故删除前做「主题自有证据」豁免（见 4a.6），其中行业类豁免的判据是：
+#   成员所属的申万行业板 ∈ 主题声明的 sw/cx_industry_match，且该板体量 ≤ BOARD_NARROW_MAX
+# ——「板≈主题」（食品饮料130/国防军工141/轻工制造170/半导体187）时行业灌入合法；
+# 「板⊃主题」（电子522/机械设备629/医药生物512/基础化工457/汽车334）时仍需主营证据。
+POLLUTION_FILTER_ENABLED = True
+BOARD_NARROW_MAX = 250          # 申万行业板体量上限：≤ 视为「板≈主题」
+# 人工复核白名单：确认属于该主题、但被规则误判 POLLUTION 的成员（主题名 → {code}）
+POLLUTION_KEEP = {}
+# 试运行：只出污染审计清单 + 剔除统计，不写任何映射文件（python build_theme_stock_map_v2.py --dry-run）
+POLLUTION_DRY_RUN = '--dry-run' in sys.argv
+
+# 环节清单门槛（主题定义重构，20260927）
+# theme_config.json 中带 "segment_gate": true 的主题（消费/AI算力/智能驾驶/军工/信创/电力）
+# 改为「环节清单」定义：成员主营文本必须命中该主题 "segments" 里至少一个环节关键词。
+# 背景：sw_industry_match 常写一级行业（AI算力=电子/通信/计算机、消费=7 个行业、
+# 智能驾驶=汽车/电子、军工=国防军工/机械设备/电子、信创=计算机/电子/软件服务/IT设备、
+# 电力=运营+设备），dc_industry_board 因此把整个行业板块灌进主题（HC V1.0 实测：
+# dc_industry_board 占 85.0% 成员对、贡献 97.3% 的 BAD）。环节清单即「先定允许纳入的
+# 环节，再按主营逐只判定」，取代「行业口径」。
+SEGMENT_GATE_ENABLED = True
+
+# 硬排除否决（20260927）：对所有主题（含未启用环节门槛的宽主题）执行一步否决 ——
+# 审计规则引擎判定 EXCLUDE 且 evidence_type='主营'（即命中 theme_config.json 的
+# exclude_keywords，配置写明的明确反证）者，从映射中剔除。
+# 背景：26 个未启用门槛的主题 segments 为空，不受 4a.47 约束，实测有 47 条硬排除残留
+#   仍在生产映射（创新药·原料药 30、节能环保 4、高端材料 3、医疗器械 3、地产链 2…）。
+# 边界：只做「否决」，不新增/升级任何成员，不影响正向纳入口径；对已开门槛的 6 个
+#   优先主题零影响（其 EXCLUDE 残留本为 0）。
+HARD_EXCLUDE_VETO_ENABLED = True
+
+# 主营文本「不可用」启发式（20260927 精修）：经营范围样板 / 过短 / 缺失
+# 这类文本即使命中不了环节关键词，也属数据缺口而非业务不符，按 HC V1.0 §十三保留待补录。
+SEG_TEXT_BOILERPLATE = (
+    '投资兴办实业', '以上同类商品', '凭许可证', '依法须经批准', '法律法规',
+    '国家有专项规定', '佣金代理', '自有房屋租赁', '企业管理咨询',
+)
+
+
+def seg_text_unusable(txt):
+    t = (txt or '').strip()
+    if not t:
+        return 'EMPTY'
+    if len(t) < 12:
+        return 'TOOSHORT'
+    if any(b in t for b in SEG_TEXT_BOILERPLATE):
+        return 'BOILERPLATE'
+    return ''
+
 # 主题互斥对
 THEME_MUTEX_PAIRS = [
-    ('AI算力', '游戏'),
-    ('AI算力', '消费'),
-    ('半导体', 'AI算力'),
+    # 20260928 AI算力拆旧建新：四个新一级主题之间互斥，
+    #   禁止同一股票复制进入多个新主题（避免重复计数）。
+    ('CPO', '液冷'),
+    ('CPO', 'AI服务器'),
+    ('CPO', 'AI应用'),
+    ('液冷', 'AI服务器'),
+    ('液冷', 'AI应用'),
+    ('AI服务器', 'AI应用'),
+    # 20260928 新增「算力运营」与其余四个新主题两两互斥（设备制造 ≠ 算力运营）
+    ('CPO', '算力运营'),
+    ('液冷', '算力运营'),
+    ('AI服务器', '算力运营'),
+    ('AI应用', '算力运营'),
+    # 光芯片与半导体口径重叠，避免同一标的在两个主题重复计数
+    ('半导体', 'CPO'),
     ('机器人', '新能源车'),
     ('军工', '低空经济'),
     ('军工', '商业航天'),
@@ -298,14 +392,19 @@ def build_theme_stock_map_v2():
         print(f"  主营业务数据: {len(stock_mainbiz)} 只")
 
     # 精确概念板块成员索引（概念名 -> {code,...}）：主营必要词过滤的豁免依据
+    # 行业板成员索引（申万层级板名 -> {code,...}）：污染过滤的「板≈主题」豁免依据
     dc_concept_members_exact = {}
+    dc_industry_members_exact = {}
     if dc_df is not None and not dc_df.empty:
         for _, _r in dc_df.iterrows():
             try:
-                if not bool(_r.get('is_industry', False)):
-                    _b = str(_r['concept_name']).strip()
-                    if _b:
-                        dc_concept_members_exact.setdefault(_b, set()).add(_r['con_code'])
+                _b = str(_r['concept_name']).strip()
+                if not _b:
+                    continue
+                if bool(_r.get('is_industry', False)):
+                    dc_industry_members_exact.setdefault(_b, set()).add(_r['con_code'])
+                else:
+                    dc_concept_members_exact.setdefault(_b, set()).add(_r['con_code'])
             except Exception:
                 continue
 
@@ -461,6 +560,158 @@ def build_theme_stock_map_v2():
                 print(f"  [主营必要词] {_theme}: 剔除 {len(_dropped)} 只 -> {'; '.join(_dropped[:8])}{'...' if len(_dropped) > 8 else ''}")
             themes_output_raw[_theme] = _kept
 
+    # 4a.46 门槛前成员池快照（仅 --dry-run，供 Mapping V3 审计核对「原N」用）
+    # 不写任何生产映射文件；正式运行完全不受影响。
+    if POLLUTION_DRY_RUN:
+        _pre_path = os.path.join(OUTPUT_DIR, f'theme_pregate_pool_{TRADE_DATE}.csv')
+        with open(_pre_path, 'w', encoding='utf-8-sig', newline='') as f:
+            _w = csv.writer(f)
+            _w.writerow(['theme', 'code', 'name', 'via', 'industry', 'irs_score', 'mainbiz'])
+            _n_pre = 0
+            for _t, _sl in themes_output_raw.items():
+                for _s in _sl:
+                    _w.writerow([_t, _s['code'], _s['name'], _s.get('via', ''),
+                                 _s.get('industry', ''), _s.get('irs_score', 0),
+                                 (stock_mainbiz.get(_s['code'], '') or '')[:200]])
+                    _n_pre += 1
+        print(f"  [dry-run] 门槛前成员池（4a.45 后 / 4a.47 前）-> {_pre_path}（{_n_pre} 条）")
+
+    # 4a.47 环节清单门槛（主题定义重构，20260927）
+    # 只作用于 theme_config.json 中声明 "segment_gate": true 的 6 个优先主题。
+    # 20260927 口径同步（报告表 5「MINOR_RULE_FIX」落地）：
+    #   保留/剔除判定改为复用 Mapping V3 审计规则引擎 theme_mapping_v3_audit.classify，
+    #   生产侧与审计侧同源，不再各自维护环节词表（消除口径分叉）。
+    #   相较旧实现（P1/P2/P3 任一命中即保留）的变化：
+    #     · 黑名单 SEG_KW_GENERIC 泛化词（数据中心/PCB/航天/发电/电器…）不再单独构成强证据
+    #     · 公司简称命中 / 宽口径产业链证据 / 环节行业归属 三者均降为「弱证据」，
+    #       需两条**独立**弱证据互证才保留 —— 环节行业不再单独构成成员资格
+    #       （修复 电力环节行业豁免过宽、智能驾驶车联网口径过泛、军工宽口径词无证据入链）
+    #     · 白名单补充词已写入 theme_config.json 的 segments[*].keywords
+    #       （消费 家居与文娱/食品、AI算力 算力租赁 → 修复 海伦钢琴/恒林股份/汤臣倍健 误剔）
+    #     · 保守兜底：主营无主题业务证据时按行业口径落 UNCERTAIN（生产侧同样不保留）
+    #   保留的生产侧策略（有意与审计口径不同，勿误改）：
+    #     X1 配置人工名单（leaders / core_stocks，按代码）
+    #     X2 名单类来源（leader_company / core_company / manual_override）
+    #     X3 主营文本缺失/过短/经营范围样板 —— 数据缺口，按 HC V1.0 §十三保留待补录
+    if SEGMENT_GATE_ENABLED:
+        import theme_mapping_v3_audit as _maud
+        _seg_by_cn = {}
+        for _k, _c in new_cfg.items():
+            if _k.startswith('_') or not _c.get('segment_gate'):
+                continue
+            if _c.get('segments'):
+                _seg_by_cn[_c.get('name_cn', _k)] = (_k, _c)
+        if _seg_by_cn:
+            _force_via_seg = ('leader_company', 'core_company', 'manual_override')
+            _seg_audit, _seg_before, _seg_after = [], 0, 0
+            _seg_x3, _seg_weak = 0, 0
+            for _theme, (_key, _cfg) in _seg_by_cn.items():
+                if _theme not in themes_output_raw:
+                    continue
+                _named = set(_cfg.get('leaders') or []) | set(_cfg.get('core_stocks') or [])
+                _slist = themes_output_raw[_theme]
+                _seg_before += len(_slist)
+                _kept, _no_text, _by_weak = [], 0, 0
+                for s in _slist:
+                    _code, _name, _via = s['code'], s['name'], s.get('via', '')
+                    if _code in _named or _via in _force_via_seg:   # X1/X2
+                        _kept.append(s)
+                        continue
+                    _mb = stock_mainbiz.get(_code, '')
+                    if seg_text_unusable(_mb):                      # X3 数据缺口：保留，不判
+                        _kept.append(s)
+                        _no_text += 1
+                        continue
+                    _ind = s.get('industry') or ''
+                    _res = _maud.classify(_key, _cfg, _code, _name, _via, _ind, _mb)
+                    if _res['classification'] in ('CORE', 'CHAIN'):
+                        _kept.append(s)
+                        if _res['evidence_type'] in ('弱证据', '弱证据交叉', '环节行业'):
+                            _by_weak += 1
+                        continue
+                    _seg_audit.append({'theme': _theme, 'code': _code, 'name': _name,
+                                       'industry': _ind, 'via': _via,
+                                       'irs_score': s.get('irs_score', 0),
+                                       'mainbiz': _mb[:120],
+                                       'why': f"{_res['classification']}|"
+                                              f"{_res['evidence_type']}|{_res['evidence']}"})
+                _seg_after += len(_kept)
+                _seg_x3 += _no_text
+                _seg_weak += _by_weak
+                if len(_kept) != len(_slist):
+                    print(f"  [环节清单] {_theme}: 剔除 {len(_slist)-len(_kept)}/{len(_slist)}"
+                          f" → 保留 {len(_kept)}（弱证据互证 {_by_weak} / 文本不可用豁免 {_no_text}）")
+                themes_output_raw[_theme] = _kept
+            print(f"  [环节清单] {len(_seg_by_cn)} 个门槛主题合计剔除 {_seg_before-_seg_after}/{_seg_before} 条，"
+                  f"保留 {_seg_after}（弱证据互证 {_seg_weak}、文本不可用豁免 {_seg_x3}）")
+            if _seg_audit:
+                _seg_path = os.path.join(OUTPUT_DIR, f'theme_segment_dropped_{TRADE_DATE}.csv')
+                with open(_seg_path, 'w', encoding='utf-8-sig', newline='') as f:
+                    _seg_w = csv.DictWriter(f, fieldnames=['theme', 'code', 'name', 'industry',
+                                                           'via', 'irs_score', 'mainbiz', 'why'])
+                    _seg_w.writeheader()
+                    _seg_w.writerows(_seg_audit)
+                print(f"  [环节清单] 审计清单 -> {_seg_path}")
+
+    # 4a.48 硬排除否决（20260927 全局口径统一）
+    # 4a.47 只作用于 6 个声明 segment_gate 的主题；26 个未启用门槛的主题 segments 为空，
+    # 完全不经过环节审查，实测 47 条「配置写明的排除项」成员仍留在生产映射
+    # （创新药·原料药 30、节能环保 4、高端材料 3、医疗器械 3、地产链 2…）。
+    # 此处对所有声明了 exclude_keywords 的主题做一步否决：审计引擎判 EXCLUDE 且
+    # evidence_type='主营' 者剔除；其余 UNCERTAIN 与兜底类 EXCLUDE（行业+主营双无证据）
+    # 一律不动 —— 后者需先做该主题的人工抽样验证，避免未验证误杀。
+    # 豁免口径与 4a.47 完全一致：X1 配置人工名单 / X2 名单类来源 / X3 文本不可用。
+    if HARD_EXCLUDE_VETO_ENABLED:
+        import theme_mapping_v3_audit as _maud_v
+        _veto_cfg = {}
+        for _k, _c in new_cfg.items():
+            if _k.startswith('_') or not (_c.get('exclude_keywords') or []):
+                continue
+            _veto_cfg[_c.get('name_cn', _k)] = (_k, _c)
+        if _veto_cfg:
+            _veto_via = ('leader_company', 'core_company', 'manual_override')
+            _veto_out, _veto_before, _veto_after = [], 0, 0
+            for _theme, (_key, _cfg) in _veto_cfg.items():
+                if _theme not in themes_output_raw:
+                    continue
+                _named = set(_cfg.get('leaders') or []) | set(_cfg.get('core_stocks') or [])
+                _slist = themes_output_raw[_theme]
+                _veto_before += len(_slist)
+                _kept = []
+                for s in _slist:
+                    _code, _name, _via = s['code'], s['name'], s.get('via', '')
+                    if _code in _named or _via in _veto_via:        # X1/X2
+                        _kept.append(s)
+                        continue
+                    _mb = stock_mainbiz.get(_code, '')
+                    if seg_text_unusable(_mb):                      # X3 数据缺口：保留，不判
+                        _kept.append(s)
+                        continue
+                    _ind = s.get('industry') or ''
+                    _res = _maud_v.classify(_key, _cfg, _code, _name, _via, _ind, _mb)
+                    if _res['classification'] == 'EXCLUDE' and _res['evidence_type'] == '主营':
+                        _veto_out.append({'theme': _theme, 'code': _code, 'name': _name,
+                                          'industry': _ind, 'via': _via,
+                                          'irs_score': s.get('irs_score', 0),
+                                          'mainbiz': _mb[:120],
+                                          'why': f"{_res['evidence_type']}|{_res['evidence']}"})
+                        continue
+                    _kept.append(s)
+                themes_output_raw[_theme] = _kept
+                _veto_after += len(_kept)
+                if len(_kept) != len(_slist):
+                    print(f"  [硬排除否决] {_theme}: 剔除 {len(_slist)-len(_kept)}/{len(_slist)}"
+                          f" → 保留 {len(_kept)}")
+            print(f"  [硬排除否决] 声明排除词的主题合计剔除 {_veto_before-_veto_after}/{_veto_before} 条")
+            if _veto_out:
+                _veto_path = os.path.join(OUTPUT_DIR, f'theme_hard_exclude_dropped_{TRADE_DATE}.csv')
+                with open(_veto_path, 'w', encoding='utf-8-sig', newline='') as f:
+                    _vw = csv.DictWriter(f, fieldnames=['theme', 'code', 'name', 'industry',
+                                                        'via', 'irs_score', 'mainbiz', 'why'])
+                    _vw.writeheader()
+                    _vw.writerows(_veto_out)
+                print(f"  [硬排除否决] 审计清单 -> {_veto_path}")
+
     # 4a.5 人工补漏映射：match_theme_stocks 未能覆盖的明确成份股强制纳入对应主题
     if THEME_STOCK_OVERRIDES:
         _override_name_ind = {}
@@ -486,6 +737,98 @@ def build_theme_stock_map_v2():
                 })
                 total_refs_raw += 1
                 print(f"  [补漏] {theme_name} + {code} {nm} (manual_override)")
+
+    # 4a.6 成分股污染过滤（§源头治理，判定函数复用 V2.4-HC）
+    # 判定复用 theme_heat_v24_hc.hc_classify：POLLUTION = 命中排除词 /
+    # 仅概念标签来源 / 无正面主营证据且行业不属于该主题「特征行业」。
+    # 注意：本处比 hc_classify 多一层 E1~E6 豁免，故滤镜后的成员池仍可能被
+    # HC 层判为 POLLUTION（HC 的 purity 不含豁免）——两者口径有意不同，勿误改。
+    #
+    # 但「特征行业」只由 CORE 成员行业分布（占比≥15%）定义，异质主题天然覆盖
+    # 不全——军工 CORE 集中在航空/电子，运输设备(内蒙一机)、专用机械(长城军工)、
+    # 元器件(景嘉微) 全部落网；消费 CORE 分散，白酒/食品/软饮料 都进不了门槛。
+    # 这类多为词表缺口而非污染，直接删会造成军工-68%、消费-74% 的破坏。
+    # 故删除前先做「主题自有证据」豁免，成员只要在主题自身通道留下正面痕迹即保留：
+    #   E1 配置人工名单命中（leaders / core_stocks，按代码）
+    #   E2 名单类来源（leader_company / core_company / manual_override）
+    #   E3 行业命中主题声明（industry_chains / sw_industry_match / cx_industry_match）
+    #   E4 该主题精确概念板块成员（东财概念名与配置 concept 完全一致）
+    #   E5 主营文本命中 THEME_MAINBIZ_KEYWORDS（32 主题业务词表，此前未启用）
+    if POLLUTION_FILTER_ENABLED:
+        import theme_heat_v22 as _th
+        import theme_heat_v24_hc as _hcmod
+        _cfg_by_cn = _th.load_theme_config_v3()
+        _NAME_VIA = ('leader_company', 'core_company', 'manual_override')
+        _audit, _n_before, _n_after, _n_exempt = [], 0, 0, 0
+        for _theme in list(themes_output_raw):
+            _cfg = _cfg_by_cn.get(_theme)
+            if _cfg is None:                       # 子主题名等无配置 → 不判污染
+                continue
+            _slist = themes_output_raw[_theme]
+            _n_before += len(_slist)
+            _lay = {s['code']: {'layer': _th.classify_member(
+                s['code'], s.get('via', ''), stock_mainbiz.get(s['code'], ''), _cfg)[0]}
+                for s in _slist}
+            _char_ind = _hcmod.characteristic_industries(
+                _lay, {s['code']: {'industry': s.get('industry') or ''} for s in _slist})
+            # 豁免集
+            _named = set(_cfg.get('leaders') or []) | set(_cfg.get('core_stocks') or [])
+            _ind_ok = (set(_cfg.get('industry_chains') or [])
+                       | set(_cfg.get('sw_industry_match') or [])
+                       | set(_cfg.get('cx_industry_match') or []))
+            _mb_kw = THEME_MAINBIZ_KEYWORDS.get(_theme) or []
+            _cpt_boards = [b.strip() for b in
+                           (old_format_themes.get(_theme, {}).get('concept') or [])]
+            # E6：声明行业里体量 ≤ BOARD_NARROW_MAX 的「板≈主题」成员（行业灌入合法）
+            _narrow_members = set()
+            for _b in (set(_cfg.get('sw_industry_match') or [])
+                       | set(_cfg.get('cx_industry_match') or [])):
+                _bm = dc_industry_members_exact.get(_b)
+                if _bm and len(_bm) <= BOARD_NARROW_MAX:
+                    _narrow_members |= _bm
+            _keep_codes = POLLUTION_KEEP.get(_theme, set())
+            _kept = []
+            for s in _slist:
+                _code = s['code']
+                _mb = stock_mainbiz.get(_code, '')
+                if (_code in _keep_codes or _code in _named
+                        or s.get('via', '') in _NAME_VIA
+                        or (s.get('industry') and s['industry'] in _ind_ok)
+                        or _code in _narrow_members
+                        or (_mb_kw and _mb and any(w in _mb for w in _mb_kw))
+                        or any(_code in dc_concept_members_exact.get(b, set())
+                               for b in _cpt_boards)):
+                    _kept.append(s)
+                    _n_exempt += 1
+                    continue
+                _cls, _why = _hcmod.hc_classify(
+                    _code, s.get('via', ''), _mb, _cfg,
+                    s.get('industry') or '', _char_ind)
+                if _cls == 'POLLUTION':
+                    _audit.append({'theme': _theme, 'code': _code, 'name': s['name'],
+                                   'industry': s.get('industry') or '',
+                                   'via': s.get('via', ''),
+                                   'irs_score': s.get('irs_score', 0), 'why': _why})
+                else:
+                    _kept.append(s)
+            if len(_kept) != len(_slist):
+                print(f"  [污染过滤] {_theme}: 剔除 {len(_slist)-len(_kept)}/{len(_slist)}"
+                      f" → 保留 {len(_kept)}")
+            themes_output_raw[_theme] = _kept
+            _n_after += len(_kept)
+        print(f"  [污染过滤] 合计剔除 {_n_before-_n_after}/{_n_before} 条，"
+              f"保留 {_n_after}（豁免 {_n_exempt} 条主题自有证据，保留 WEAK，仅剔 POLLUTION）")
+        if _audit:
+            _audit_path = os.path.join(OUTPUT_DIR, f'theme_pollution_dropped_{TRADE_DATE}.csv')
+            with open(_audit_path, 'w', encoding='utf-8-sig', newline='') as f:
+                _w = csv.DictWriter(f, fieldnames=['theme', 'code', 'name', 'industry',
+                                                   'via', 'irs_score', 'why'])
+                _w.writeheader()
+                _w.writerows(_audit)
+            print(f"  [污染过滤] 审计清单 -> {_audit_path}")
+        if POLLUTION_DRY_RUN:
+            print(f"\n[试运行] 未写入任何映射文件（去掉 --dry-run 正式生效）")
+            return None
 
     # 4b. 股票→主题映射 + 去重
     stocks_output_raw = {}
@@ -536,19 +879,29 @@ def build_theme_stock_map_v2():
     # 导致后续子主题匹配时找不到 parent_subtheme_index["人形机器人"]。
     # 这里将子主题名映射回母主题名（如"人形机器人"→"机器人"）。
     # 修复三花智控（人形机器人核心公司）未被纳入机器人主题的问题。
+    # 20260928 AI算力「拆旧建新」：母主题键以 "_" 开头（_UNCERTAIN）的子主题
+    # 表示"无法归入任一正式主题"，直接丢弃该主题名，既不映射到任何母主题，
+    # 也不作为独立主题名残留（否则会以"PCB高速互连"等名义进入排名 universe）。
     try:
         _subtheme_cfg = load_subtheme_map()
         if _subtheme_cfg:
             sub_to_parent = {}
+            sub_drop = set()
             for parent, subthemes in _subtheme_cfg.items():
                 for sub_name in subthemes.keys():
-                    sub_to_parent[sub_name] = parent
+                    if parent.startswith('_'):
+                        sub_drop.add(sub_name)
+                    else:
+                        sub_to_parent[sub_name] = parent
             remap_count = 0
             for code in list(stocks_output.keys()):
                 themes = stocks_output[code].get('themes', [])
                 new_themes = []
                 changed = False
                 for t in themes:
+                    if t in sub_drop:
+                        changed = True
+                        continue
                     if t in sub_to_parent:
                         parent = sub_to_parent[t]
                         if parent not in new_themes:
@@ -613,7 +966,12 @@ def build_theme_stock_map_v2():
             })
 
     for theme_name in themes_output:
-        themes_output[theme_name].sort(key=lambda x: -x.get('irs_score', x.get('score', 0)))
+        # 20260927 确定性 tie-break：原排序键只有分数，而同分并列在 300 截断线上
+        # 由 set 迭代顺序（dc_industry_board_members 为 set，受 PYTHONHASHSEED 随机化）
+        # 决定，导致同代码两次运行约 80 条边界成员漂移（实测消费 50 / 新能源车 18 /
+        # 化工 12 / 机器人 3）。加入 ts_code 作稳定次序后结果可复现，规则本身不变。
+        themes_output[theme_name].sort(
+            key=lambda x: (-x.get('irs_score', x.get('score', 0)), x['code']))
         themes_output[theme_name] = themes_output[theme_name][:MAX_STOCKS_PER_THEME]
 
     # 5. 输出 CSV

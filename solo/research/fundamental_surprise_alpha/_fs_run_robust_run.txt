@@ -1,0 +1,136 @@
+﻿================================================================
+0) 载入面板
+  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+  E5 视角可交易比例 0.9990
+  面板 136194 行 / 866 cohort
+================================================================
+1) §26 入场锚点（同一静态基本面特征 × 不同可交易锚点）
+    E1 done
+    E2 done
+    E3 done
+    E5 done
+================================================================
+2) §28 OOS 门槛 / §29 Walk Forward / §30 Regime
+  WF 2016 行 / Regime 1008 行
+  OOS 表 1020 行（三期同向占比 0.3461）
+================================================================
+3) §31 Counterfactual 匹配（日期×行业×市值×流动性×动量×估值）
+    rev_yoy done
+    rev_qoq done
+    rev_acc done
+    rev_cagr3 done
+    np_yoy done
+    np_qoq done
+    np_acc done
+    dp_yoy done
+    dp_qoq done
+    dp_acc done
+    ocf_yoy done
+    ocf_acc done
+    ocf_to_np done
+    ocf_to_rev done
+    ocf_margin done
+    ocf_margin_chg done
+    gpm done
+    gpm_chg done
+    npm done
+    npm_chg done
+    roe done
+    roe_chg done
+    roic done
+    roic_chg done
+    total_assets_g done
+    inventories_g done
+    accounts_receiv_g done
+    debt_g done
+    goodwill_g done
+    fix_assets_g done
+    ar_vs_rev done
+    ar_vs_rev_chg done
+    inv_vs_rev done
+    inv_vs_rev_chg done
+    debt_vs_rev done
+    debt_vs_rev_chg done
+    capex_g done
+    S1_rev done
+    S1_np done
+    S1_dp done
+    S1_ocf done
+    S2_rev done
+    S2_np done
+    S2_dp done
+    S2_ocf done
+    S3_rev done
+    S3_np done
+    S4_np_vs_rev done
+    S4_dp_vs_rev done
+    S5_np_vs_ocf done
+    mom_5 done
+    mom_10 done
+    mom_20 done
+    mom_60 done
+    ep_ttm done
+    bp done
+    sp done
+    dv_ttm done
+    ln_mv done
+    turnover_rate done
+    ind_rs done
+    S1h4_np done
+    S1h8_np done
+    S1h12_np done
+    S2h4_np done
+    S2h8_np done
+    S2h12_np done
+    S1h4_rev done
+    S1h8_rev done
+    S1h12_rev done
+    S2h4_rev done
+    S2h8_rev done
+    S2h12_rev done
+    S6_g_margin done
+    S6_g_cash done
+    S6_g_roe done
+    S6_g_indrs done
+    S6_g_np_acc done
+    Gap done
+================================================================
+4) §32 参数网格
+python : Traceback (most recent call last):
+At line:1 char:5
++ & { python -u fs_run_robust.py 2>&1 | Out-File -FilePath _fs_run_robu ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\indexes\base.py", line 364
+1, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 168, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 197, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7668, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7676, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'period'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 299, in <module>
+    main()
+    ~~~~^^
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 243, in main
+    add_pg('momentum_window', w, R)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 232, in add_pg
+    st = ic_of(res, probe, yc)
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 89, in ic_of
+    per = df.drop_duplicates('k').set_index('k')['period'].to_dict()
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\frame.py", line 4378, in _
+_getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\indexes\base.py", line 364
+8, in get_loc
+    raise KeyError(key) from err
+KeyError: 'period'

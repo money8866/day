@@ -1,0 +1,15 @@
+﻿== calendar.parquet (2120, 3) 0.0 MB
+  cols: ['trade_date', 'd', 'idx']
+  dates: 20180102 ~ 20260924
+== price_panel.parquet (9785065, 15) 545.7 MB
+  cols: ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'vol', 'amount', 'qf', 'qfq_open', 'qfq_high', 'qfq_low', 'qfq_close', 'qfq_pre_close']
+  dates: 20180102 ~ 20260924
+  codes: 5816
+== basic_panel.parquet (9729120, 17) 383.9 MB
+  cols: ['ts_code', 'trade_date', 'close', 'turnover_rate', 'volume_ratio', 'pe', 'pe_ttm', 'pb', 'ps', 'ps_ttm', 'dv_ratio', 'dv_ttm', 'total_mv', 'circ_mv', 'total_share', 'float_share', 'free_share']
+  dates: 20180102 ~ 20260924
+  codes: 5895
+== index_panel.parquet (2141, 9) 0.1 MB
+  cols: ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'vol', 'amount']
+  dates: 20171201 ~ 20260924
+  codes: 1

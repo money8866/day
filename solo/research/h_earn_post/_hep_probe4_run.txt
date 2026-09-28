@@ -1,0 +1,39 @@
+﻿======================================================================
+income  文件=10594
+  抽样文件=40  列数(并集)=18
+======================================================================
+balance  文件=5358
+  抽样文件=40  列数(并集)=13
+    [有] accounts_receiv              出现于 36/40
+    [有] inventories                  出现于 40/40
+    [有] goodwill                     出现于 40/40
+    [有] total_assets                 出现于 40/40
+    [有] total_hldr_eqy_exc_min_int   出现于 40/40
+    [无] ['notes_receiv', 'money_cap', 'accounts_receiv_bill', 'ocf_to_sales', 'ocf_to_or', 'profit_dedt', 'roe', 'roe_dt', 'grossprofit_margin', 'netprofit_margin', 'debt_to_assets', 'ocfps', 'tr_yoy', 'or_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', 'assets_yoy', 'q_roe', 'q_dt_roe', 'q_npta', 'q_ocf_to_sales', 'ocf_yoy']
+    全部列 = ['accounts_receiv', 'ann_date', 'end_date', 'f_ann_date', 'fix_assets', 'goodwill', 'intan_assets', 'inventories', 'report_type', 'total_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'ts_code']
+======================================================================
+cashflow  文件=4926
+  抽样文件=40  列数(并集)=9
+    [无] ['accounts_receiv', 'notes_receiv', 'money_cap', 'inventories', 'goodwill', 'total_assets', 'total_hldr_eqy_exc_min_int', 'accounts_receiv_bill', 'ocf_to_sales', 'ocf_to_or', 'profit_dedt', 'roe', 'roe_dt', 'grossprofit_margin', 'netprofit_margin', 'debt_to_assets', 'ocfps', 'tr_yoy', 'or_yoy', 'netprofit_yoy', 'dt_netprofit_yoy', 'assets_yoy', 'q_roe', 'q_dt_roe', 'q_npta', 'q_ocf_to_sales', 'ocf_yoy']
+    全部列 = ['ann_date', 'c_pay_acq_const_fiolta', 'end_date', 'f_ann_date', 'n_cash_flows_fnc_act', 'n_cashflow_act', 'n_cashflow_inv_act', 'report_type', 'ts_code']
+======================================================================
+treasure_fin_ind  文件=4509
+  抽样文件=40  列数(并集)=108
+    [有] profit_dedt                  出现于 40/40
+    [有] roe                          出现于 40/40
+    [有] roe_dt                       出现于 40/40
+    [有] grossprofit_margin           出现于 40/40
+    [有] netprofit_margin             出现于 40/40
+    [有] debt_to_assets               出现于 40/40
+    [有] ocfps                        出现于 40/40
+    [有] tr_yoy                       出现于 40/40
+    [有] or_yoy                       出现于 40/40
+    [有] netprofit_yoy                出现于 40/40
+    [有] dt_netprofit_yoy             出现于 40/40
+    [有] assets_yoy                   出现于 40/40
+    [有] q_roe                        出现于 40/40
+    [有] q_dt_roe                     出现于 40/40
+    [有] q_npta                       出现于 40/40
+    [有] q_ocf_to_sales               出现于 40/40
+    [有] ocf_yoy                      出现于 40/40
+    [无] ['accounts_receiv', 'notes_receiv', 'money_cap', 'inventories', 'goodwill', 'total_assets', 'total_hldr_eqy_exc_min_int', 'accounts_receiv_bill', 'ocf_to_sales', 'ocf_to_or']

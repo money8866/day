@@ -1,0 +1,160 @@
+﻿======================================================================
+1) 事件表结构
+  行数 59240  列 ['ts_code', 'name', 'signal_date', 'decision_date', 'decision_lag', 'decision_point', 'v3_state', 'signal_tier', 'fundamental_score', 'fe_score', 'continuation_score', 'buyability', 'execution_score', 'execution_state', 'next_day_action', 'stock_type', 'confirmation_level', 'position_size', 'r1', 'r5', 'r10', 'r20', 'er10', 'er20', 'er60']
+  decision_date: 20250102 ~ 20260923  唯一日 420
+  ts_code 唯一 4460
+
+2) 缺失率
+  ts_code                str      notna=0.0000
+  name                   str      notna=0.0000
+  signal_date            int64    notna=1.0000
+  decision_date          int64    notna=1.0000
+  decision_lag           int64    notna=1.0000
+  decision_point         str      notna=0.0000
+  v3_state               str      notna=0.0000
+  signal_tier            str      notna=0.0000
+  fundamental_score      float64  notna=1.0000
+  fe_score               float64  notna=1.0000
+  continuation_score     float64  notna=1.0000
+  buyability             float64  notna=1.0000
+  execution_score        float64  notna=1.0000
+  execution_state        str      notna=0.0000
+  next_day_action        str      notna=0.0000
+  stock_type             str      notna=0.0000
+  confirmation_level     str      notna=0.0000
+  position_size          str      notna=0.0000
+  r1                     float64  notna=0.9994
+  r5                     float64  notna=0.9977
+  r10                    float64  notna=0.9956
+  r20                    float64  notna=0.9890
+  er10                   float64  notna=0.9956
+  er20                   float64  notna=0.9890
+  er60                   float64  notna=0.9590
+
+3) 决策分类分布
+  [decision_point]
+    decision_point
+    PULLBACK_RE    38809
+    BREAKOUT       10372
+    T0              5600
+    PULLBACK        4459
+  [v3_state]
+    v3_state
+    HVT_STRONG          41719
+    PRIMARY_BUY          6261
+    BREAKOUT_READY       4598
+    WATCH                3523
+    DISTRIBUTION         1933
+    T20_ROCKET_WATCH      877
+    EVENT_SPIKE           323
+    FAILED                  6
+  [execution_state]
+    execution_state
+    NO_CHASE         33823
+    PULLBACK_BUY      7629
+    WAIT_CONFIRM      6932
+    SKIP              6553
+    BREAKOUT_WAIT     4283
+    READY_BUY           20
+  [next_day_action]
+    next_day_action
+    NO_CHASE          33350
+    WAIT              11462
+    SKIP               6553
+    BUY                3721
+    BUY_ON_CONFIRM     3681
+    WAIT_PULLBACK       473
+  [signal_tier]
+    signal_tier
+    T3    45771
+    T1    13010
+    T2      459
+  [stock_type]
+    stock_type
+    RE_ACCELERATION          26205
+    NEW_TREND                24550
+    EXTENDED_CONTINUATION     5609
+    LATE_STAGE                2876
+
+4) execution_score 分布（决策日）
+  n=59240  min=43.80 p10=62.80 p50=71.80 p90=78.50 max=90.30
+  按 decision_date 每日事件数：中位 129.5  p90 253.1  max 414
+
+5) decision_lag 分布（signal→decision）
+  count    59240.000000
+  mean        17.222350
+  std         12.571456
+  min          0.000000
+  50%         16.000000
+  90%         35.000000
+  99%         40.000000
+  max         40.000000
+
+6) 与本研究面板的可拼接性
+  panel 事件 136194 行 / ts_code 4905 / ann_date 20180403 ~ 20260831
+  te 代码 4460  panel 代码 4905  交集 4382  仅te 78
+python : Traceback (most recent call last):
+At line:1 char:5
++ & { python -u _fs_probe35.py 2>&1 | Out-File -FilePath _fs_probe35_ru ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arrays\arrow\array.py", li
+ne 944, in _cmp_method
+    result = pc_func(self._pa_array, self._box_pa(other))
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pyarrow\compute.py", line 254, in wrap
+per
+    return func.call(args, None, memory_pool)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pyarrow/_compute.pyx", line 399, in pyarrow._compute.Function.call
+  File "pyarrow/error.pxi", line 155, in pyarrow.lib.pyarrow_internal_check_status
+  File "pyarrow/error.pxi", line 92, in pyarrow.lib.check_status
+    raise convert_status(status)
+pyarrow.lib.ArrowNotImplementedError: Function 'less_equal' has no kernel matching input types (large_string, int64)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arrays\arrow\array.py", li
+ne 951, in _cmp_method
+    result[valid] = op(np_array[valid], other)
+                    ~~^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<=' not supported between instances of 'str' and 'int'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\_fs_probe35.py", line 72, in <module>
+    sub = p[(p['ann_date'] <= hi)]
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\ops\common.py", line 85, i
+n new_method
+    return method(self, other)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arraylike.py", line 54, in
+ __le__
+    return self._cmp_method(other, operator.le)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\series.py", line 6735, in 
+_cmp_method
+    res_values = ops.comparison_op(lvalues, rvalues, op)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\ops\array_ops.py", line 34
+1, in comparison_op
+    res_values = op(lvalues, rvalues)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\ops\common.py", line 85, i
+n new_method
+    return method(self, other)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arraylike.py", line 54, in
+ __le__
+    return self._cmp_method(other, operator.le)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arrays\string_arrow.py", l
+ine 588, in _cmp_method
+    result = super()._cmp_method(other, op)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\arrays\arrow\array.py", li
+ne 953, in _cmp_method
+    result = ops.invalid_comparison(self, other, op)
+  File "C:\Users\kongx\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\ops\invalid.py", line 55, 
+in invalid_comparison
+    raise TypeError(f"Invalid comparison between dtype={left.dtype} and {typ}")
+TypeError: Invalid comparison between dtype=str and int64

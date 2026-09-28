@@ -1,0 +1,47 @@
+==============================================================================
+TL-01 §38/§39/§43–§46 组合模拟（T+1 开盘买入，非重叠 21 日换仓）
+  EXE_20（T+1 开盘 -> T+21 收盘）mean=+0.0117  p50=-0.0033  样本=8506811
+  SIG_TRANS 就绪（TRAIN 拟合）0s
+  信号可用日 1980 / 2120   建仓 cohort 95 个
+  有效 cohort 95  0s
+  §41 可执行性检验（IC：收盘口径 fwd_20 vs T+1 开盘可成交口径 exe_20）
+    TRAIN      close-entry IC=+0.0669 (icir +0.631)   open-entry IC=+0.0641 (icir +0.602)
+    VALID      close-entry IC=+0.0704 (icir +0.699)   open-entry IC=+0.0665 (icir +0.653)
+    OOS        close-entry IC=+0.0704 (icir +0.734)   open-entry IC=+0.0664 (icir +0.680)
+    LIVE-LIKE  close-entry IC=+0.0862 (icir +0.450)   open-entry IC=+0.0858 (icir +0.448)
+------------------------------------------------------------------------------
+  §38 成本敏感（单边 bp；每次换仓 100% 卖 + 100% 买，成本 = 2 x bp）
+    TRAIN  P10_all    0bp ann=16.3%/ex=4.9%  10bp ann=13.7%/ex=2.3%  20bp ann=11.1%/ex=-0.3%  30bp ann=8.6%/ex=-2.8%  50bp ann=3.7%/ex=-7.7%
+    TRAIN  P20_all    0bp ann=14.7%/ex=3.3%  10bp ann=12.1%/ex=0.7%  20bp ann=9.5%/ex=-1.9%  30bp ann=7.0%/ex=-4.4%  50bp ann=2.2%/ex=-9.2%
+    TRAIN  P30_all    0bp ann=15.5%/ex=4.1%  10bp ann=12.9%/ex=1.5%  20bp ann=10.3%/ex=-1.1%  30bp ann=7.8%/ex=-3.6%  50bp ann=3.0%/ex=-8.4%
+    VALID  P10_all    0bp ann=7.6%/ex=6.6%  10bp ann=5.1%/ex=4.1%  20bp ann=2.7%/ex=1.7%  30bp ann=0.4%/ex=-0.6%  50bp ann=-4.2%/ex=-5.2%
+    VALID  P20_all    0bp ann=4.4%/ex=3.4%  10bp ann=2.0%/ex=1.0%  20bp ann=-0.3%/ex=-1.3%  30bp ann=-2.6%/ex=-3.6%  50bp ann=-7.1%/ex=-8.0%
+    VALID  P30_all    0bp ann=4.1%/ex=3.1%  10bp ann=1.7%/ex=0.7%  20bp ann=-0.6%/ex=-1.6%  30bp ann=-2.9%/ex=-3.9%  50bp ann=-7.3%/ex=-8.3%
+    OOS    P10_all    0bp ann=52.1%/ex=-3.6%  10bp ann=48.7%/ex=-6.9%  20bp ann=45.4%/ex=-10.2%  30bp ann=42.2%/ex=-13.5%  50bp ann=36.0%/ex=-19.7%
+    OOS    P20_all    0bp ann=58.1%/ex=2.4%  10bp ann=54.6%/ex=-1.1%  20bp ann=51.2%/ex=-4.5%  30bp ann=47.9%/ex=-7.8%  50bp ann=41.4%/ex=-14.3%
+    OOS    P30_all    0bp ann=58.9%/ex=3.2%  10bp ann=55.4%/ex=-0.3%  20bp ann=52.0%/ex=-3.7%  30bp ann=48.6%/ex=-7.1%  50bp ann=42.1%/ex=-13.6%
+    LIVE-LIKE P10_all    0bp ann=-9.9%/ex=-1.7%  10bp ann=-12.0%/ex=-3.8%  20bp ann=-14.1%/ex=-5.9%  30bp ann=-16.1%/ex=-7.9%  50bp ann=-19.9%/ex=-11.7%
+    LIVE-LIKE P20_all    0bp ann=-10.0%/ex=-1.8%  10bp ann=-12.1%/ex=-3.9%  20bp ann=-14.1%/ex=-5.9%  30bp ann=-16.1%/ex=-7.9%  50bp ann=-20.0%/ex=-11.8%
+    LIVE-LIKE P30_all    0bp ann=-9.8%/ex=-1.6%  10bp ann=-11.9%/ex=-3.7%  20bp ann=-14.0%/ex=-5.8%  30bp ann=-16.0%/ex=-7.8%  50bp ann=-19.8%/ex=-11.6%
+------------------------------------------------------------------------------
+  §45 右尾贡献 / §46 删除超级赢家（P10_all，全部 cohort 内个股）
+    TRAIN      leaveout_top1% 剩余 ann=8.9%  (原始 ann=16.3%)
+    TRAIN      leaveout_top5% 剩余 ann=-3.5%  (原始 ann=16.3%)
+    VALID      leaveout_top1% 剩余 ann=2.0%  (原始 ann=7.6%)
+    VALID      leaveout_top5% 剩余 ann=-8.5%  (原始 ann=7.6%)
+    OOS        leaveout_top1% 剩余 ann=42.2%  (原始 ann=52.1%)
+    OOS        leaveout_top5% 剩余 ann=26.1%  (原始 ann=52.1%)
+    LIVE-LIKE  leaveout_top1% 剩余 ann=-16.2%  (原始 ann=-9.9%)
+    LIVE-LIKE  leaveout_top5% 剩余 ann=-27.2%  (原始 ann=-9.9%)
+    Top1%   个股收益占总收益比 = +44.0%
+    Top5%   个股收益占总收益比 = +128.6%
+    Top10%  个股收益占总收益比 = +193.9%
+  已写 tl01_portfolio.csv
+  已写 tl01_cost.csv
+  P10_all 分期（扣 30bp）:
+    TRAIN      ann=8.6%  bench=11.4%  excess=-2.8%  sharpe=0.46  maxdd=-18.2%  winrate=0.53  cohorts=53
+    VALID      ann=0.4%  bench=1.0%  excess=-0.6%  sharpe=0.14  maxdd=-24.0%  winrate=0.35  cohorts=23
+    OOS        ann=42.2%  bench=55.7%  excess=-13.5%  sharpe=3.08  maxdd=-3.3%  winrate=0.82  cohorts=11
+    LIVE-LIKE  ann=-16.1%  bench=-8.2%  excess=-7.9%  sharpe=-0.82  maxdd=-19.7%  winrate=0.25  cohorts=8
+  信号覆盖率：可用日占比 93.4%   持仓覆盖率 89.6%
+完成  3s

@@ -1,0 +1,48 @@
+﻿=== hp_costs_event.csv | rows 30
+   cols: ['tag', 'horizon', 'bps', 'cost_rt', 'n', 'gross_mean', 'gross_t_nw', 'mean', 'median', 'winrate', 't_nw', 'p_two']
+=== hp_costs_fdr.csv | rows 192
+   cols: ['family', 'test', 'stat', 't_now', 'p_raw', 'p_two', 'q_bh', 'reject', 'q_bh_pooled', 'reject_pooled']
+=== hp_costs_gates.csv | rows 3
+   cols: ['gate', 'layer', 'lethal', 'criterion', 'value', 'verdict']
+=== hp_costs_null.csv | rows 6
+   cols: ['null', 'h', 'n_unit', 'unit', 'real_mean', 'null_mean', 'null_sd', 'null_p05', 'null_p95', 'p_real_ge_null', 'p_real_le_null', 'p_two', 'matched_mean', 'adj_alpha']
+=== hp_costs_perm.csv | rows 4
+   cols: ['score', 'stat', 'obs', 'null_mean', 'null_sd', 'null_p05', 'null_p95', 'p_hi', 'p_lo', 'p_two', 'n_perm']
+=== hp_costs_quantile.csv | rows 6
+   cols: ['score', 'horizon', 'n_day', 'q_spread', 't_nw', 'p_two']
+=== hp_costs_score.csv | rows 30
+   cols: ['score', 'horizon', 'bps', 'cost_rt', 'n_trade', 'n_day', 'sel_mean_gross', 'sel_mean_net', 'daily_t_nw', 'alpha_gross', 'alpha_net', 'alpha_t_nw', 'alpha_p_two']
+=== hp_costs_tail.csv | rows 12
+   cols: ['tag', 'horizon', 'tail_pct', 'n_removed', 'n_left', 'leave_mean', 'leave_median', 'leave_winrate', 'removed_sum', 'removed_sum_share']
+=== hp_costs_tail_desc.csv | rows 4
+   cols: ['tag', 'horizon', 'n', 'gross_mean', 'gross_median', 'gross_sum', 'pos_sum', 'n_for_half_sum', 'sum_share_top1', 'sum_share_top5', 'sum_share_top10', 'pos_share_top5']
+=== hp_gates_baseline.csv | rows 3
+   cols: ['baseline', 'h', 'n', 'mean']
+=== hp_gates_match.csv | rows 6
+   cols: ['tag', 'h', 'n', 'n_day', 'adj_alpha', 't_nw', 'e1_mean', 'matched_mean', 'mode']
+=== hp_gates_neutral_ic.csv | rows 90
+   cols: ['mode', 'feature', 'horizon', 'ic_neutral', 't_nw', 'n_day', 'h']
+=== hp_gates_null.csv | rows 3
+   cols: ['h', 'n_leg', 'real_mean', 'null_mean', 'null_sd', 'null_p05', 'null_p95', 'p_real_ge_null', 'p_real_le_null']
+=== hp_model_coef.csv | rows 40
+   cols: ['model', 'feature', 'beta_full', 'beta_TRAIN', 'beta_VALID', 'beta_OOS', 'beta_LIVE-LIKE', 'sign_consistency', 'sign_stable']
+=== hp_model_eval.csv | rows 26
+   cols: ['tag', 'model', 'horizon', 'phase', 'n_obs', 'n_day', 'ic', 'ic_t', 'auc', 'prec10', 'mono_rho', 'q_spread']
+=== hp_model_gates.csv | rows 4
+   cols: ['gate', 'desc', 'value', 'verdict']
+=== hp_model_grid.csv | rows 16
+   cols: ['n_event', 'n_day', 'mean', 'median', 'winrate', 't_nw', 'param', 'value', 'status', 'note']
+=== hp_model_regime.csv | rows 3
+   cols: ['regime', 'n_day', 'ic', 'ic_t']
+=== hp_model_wf.csv | rows 6
+   cols: ['test_year', 'n_train', 'n_test', 'n_day', 'ic', 'ic_t', 'auc']
+=== hp_model_year.csv | rows 6
+   cols: ['year', 'n_day', 'ic', 'ic_t', 'auc']
+=== hp_single_bands.csv | rows 33
+   cols: ['anchor', 'kind', 'band', 'horizon', 'n', 'mean', 'median']
+=== hp_single_bucket.csv | rows 400
+   cols: ['group', 'feature', 'horizon', 'bucket', 'mean', 'se', 'nday']
+=== hp_single_events.csv | rows 30
+   cols: ['anchor', 'horizon', 'phase', 'n_event', 'n_day', 'mean', 'median', 'winrate', 't_nw']
+=== hp_single_ic.csv | rows 120
+   cols: ['group', 'feature', 'horizon', 'n_obs', 'ic_all', 'auc_all', 'mono_rho', 'mono_slope', 'q_spread', 'ic_TRAIN', 'ic_t_TRAIN', 'ic_n_TRAIN', 'auc_TRAIN', 'auc_t_TRAIN', 'ic_VALID', 'ic_t_VALID', 'ic_n_VALID', 'auc_VALID', 'auc_t_VALID', 'ic_OOS', 'ic_t_OOS', 'ic_n_OOS', 'auc_OOS', 'auc_t_OOS', 'ic_LIVE-LIKE', 'ic_t_LIVE-LIKE', 'ic_n_LIVE-LIKE', 'auc_LIVE-LIKE', 'auc_t_LIVE-LIKE']

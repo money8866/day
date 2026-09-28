@@ -1,0 +1,54 @@
+﻿parameter_grid 行数 478
+
+param × value 计数:
+param                  value
+fund_history           12        8
+                       4         8
+                       8         8
+industry_level         SW1      72
+                       SW2      72
+momentum_window        10       72
+                       20       72
+                       5        72
+                       60       72
+price_reaction_window  1         6
+                       3         8
+                       5         8
+
+各 param 覆盖的特征数:
+param
+fund_history             12
+industry_level           36
+momentum_window          36
+price_reaction_window     4
+
+audit_dataset 列: ['Unnamed: 0', 'value']
+                     Unnamed: 0                                                                                                           value
+                       n_events                                                                                                          136194
+                       n_stocks                                                                                                            4905
+                      n_cohorts                                                                                                             866
+                     dup_ts_end                                                                                                               0
+                       dup_rate                                                                                                             0.0
+                 ann_agree_rate                                                                                              0.9999118903916472
+             ann_multi_src_rate                                                                                                             1.0
+      announce_time_granularity                                                                        ann_date（日粒度，无时分）；假设信息最早于 ann_date 收盘后公开
+ announce_to_entry_delay_median                                                                                                             1.0
+    announce_to_entry_delay_p01                                                                                                             1.0
+    announce_to_entry_delay_p99                                                                                                             6.0
+       announce_on_weekend_rate                                                                                              0.1927764806085437
+k1_strictly_after_announce_rate                                                                                                             1.0
+                gap_days_median                                                                                                            39.0
+            asof_lag1_leak_rows                                                                                                              48
+             asof_ttm_leak_rows                                                                                                              48
+               asof_masked_rows                                                                                                              48
+               asof_masked_cols                                                                                                              43
+                      asof_note                         §5 前视检查：滞后一期/滚动四期的报告若 ann_date 严格晚于当期 ann_date，则其派生值当期未知，已置 NaN；同日披露（年报+一季报同日）属同时公开，不掩码
+               restatement_rate                                                                                                             NaN
+               restatement_note 三表 parquet 同 end_date 重复行 ann_date 相同，无重述版本历史，无法还原"当时可得版本"；已改为仅用首次公告日 ann_date 锚定，不使用后续修正值（f_ann_date 已用于一致性校验）
+              survivorship_note                                                  样本含已退市/已 ST 个股（按 as-of 名称剔除事件日当时为 ST/退市者），不存在"只保留存活至今个股"的幸存者偏差
+              target_missing_T5                                                                                           0.0010866851696844208
+             target_missing_T20                                                                                               0.017379620247588
+             target_missing_T60                                                                                             0.03776965211389635
+                    ind_missing                                                                                                             0.0
+                     mv_missing                                                                                                             0.0
+                     pe_missing                                                                                             0.17491959998237808

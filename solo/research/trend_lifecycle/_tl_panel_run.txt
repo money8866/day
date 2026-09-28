@@ -1,0 +1,29 @@
+﻿==============================================================================
+TL-01 面板化  ->  D:\mystock\solo\research\trend_lifecycle\data\panel
+  NCODE=5464  NCAL=2120  (30s)
+  块 0/18 累计 538046 行  34s
+  块 5/18 累计 3156508 行  44s
+  块 10/18 累计 5334240 行  55s
+  块 15/18 累计 7924095 行  96s
+  块 18/18 累计 8635211 行  109s
+  面板列数 = 67  (int 10 / f32 57)
+  行业类别 = 32
+==============================================================================
+面板化完成  109s
+python : Traceback (most recent call last):
+At line:1 char:5
++ & { python -u tl_panel.py 2>&1 | Out-File -FilePath _tl_panel_run.txt ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "D:\mystock\solo\research\trend_lifecycle\tl_panel.py", line 159, in <module>
+    main()
+    ~~~~^^
+  File "D:\mystock\solo\research\trend_lifecycle\tl_panel.py", line 154, in main
+    log.save()
+    ~~~~~~~~^^
+  File "D:\mystock\solo\research\trend_lifecycle\tl_common.py", line 154, in save
+    with open(self.fp, 'w', encoding='utf-8') as f:
+         ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 'D:\\mystock\\solo\\research\\trend_lifecycle\\_tl_panel_run.txt'

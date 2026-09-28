@@ -178,6 +178,22 @@ def intraday_amount_progress(minutes):
     return pts[-1][1]
 
 
+def limit_threshold_pct(ts_code):
+    """涨跌停判定阈值(%, 正数): 主板 9.5 / 创业板·科创板 19.5 / 北交所 29.5
+
+    各板块涨跌停幅度为 10 / 20 / 30, 统一留 0.5 个点容差以吸收涨跌停价的
+    四舍五入(如 1.45 元股票跌停价 1.31, 实际跌幅仅 -9.66%)。
+    主题映射表(theme_stock_map_latest.json)不含 ST/*ST 股, 故不做 5% 特殊处理;
+    若后续纳入 ST, 需在此按名称前缀补判。
+    """
+    code = str(ts_code).split('.')[0]
+    if str(ts_code).endswith('.BJ'):
+        return 29.5
+    if code.startswith(('300', '301', '688', '689')):
+        return 19.5
+    return 9.5
+
+
 class RealtimeThemeMonitor:
     def __init__(self):
         self.api = None
@@ -2173,8 +2189,9 @@ class RealtimeThemeMonitor:
             pct = q.get('pct_chg', 0)
             if pct > 0: up += 1
             elif pct < 0: down += 1
-            if pct >= 9.5: zt += 1
-            elif pct <= -9.5: dt += 1
+            _lt = limit_threshold_pct(ts_code)
+            if pct >= _lt: zt += 1
+            elif pct <= -_lt: dt += 1
         return {
             'total': total,
             'up': up,
@@ -3327,9 +3344,10 @@ class RealtimeThemeMonitor:
                 elif pct < 0:
                     total_down += 1
 
-                if pct >= 9.5:
+                _lt = limit_threshold_pct(ts_code)
+                if pct >= _lt:
                     total_zt += 1
-                elif pct <= -9.5:
+                elif pct <= -_lt:
                     total_dt += 1
 
                 theme_vol += q.get('amount', 0)

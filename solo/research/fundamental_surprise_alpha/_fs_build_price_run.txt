@@ -2,3 +2,24 @@
 1) 日线面板
   [fetch] daily 2018 rows=824535 days=243 95.7s
   [fetch] daily 2019 rows=894177 days=244 100.3s
+  [fetch] daily 2020 rows=964131 days=243 100.3s
+  扩展段 daily: 2682843 行  20180102 ~ 20201231
+  本地段 daily: 7102222 行  20210104 ~ 20260924
+  合并去重: 9785065 行  股票 5816  交易日 2120
+  已存 data/price_panel.parquet cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'vol', 'amount', 'qf', 'qfq_open', 'qfq_high', 'qfq_low', 'qfq_close', 'qfq_pre_close']
+  交易日历: 2120 天  20180102 ~ 20260924
+============================================================
+2) 估值面板 daily_basic
+  [fetch] basic 2018 rows=817637 days=243 171.4s
+  [fetch] basic 2019 rows=885332 days=244 114.5s
+  [fetch] basic 2020 rows=946540 days=243 117.7s
+  [fetch] basic 2021 rows=1062121 days=243 120.8s
+  [fetch] basic 2022 rows=1171418 days=242 123.0s
+  本地段 daily_basic: 4846072 行 cols=['ts_code', 'trade_date', 'turnover_rate', 'volume_ratio', 'pe', 'pe_ttm', 'pb', 'ps', 'dv_ttm', 'total_mv', 'circ_mv', 'total_share', 'float_share']
+  合并估值: 9729120 行  20180102 ~ 20260924  cols=['ts_code', 'trade_date', 'close', 'turnover_rate', 'volume_ratio', 'pe', 'pe_ttm', 'pb', 'ps', 'ps_ttm', 'dv_ratio', 'dv_ttm', 'total_mv', 'circ_mv', 'total_share', 'float_share', 'free_share']
+============================================================
+3) 指数面板
+  本地 000300.SH: 1633 行 20200102 ~ 20260924
+  API 补齐 000300.SH: 509 行
+  指数: 2141 行 20171201 ~ 20260924
+DONE

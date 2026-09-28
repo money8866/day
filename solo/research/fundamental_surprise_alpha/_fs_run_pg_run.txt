@@ -1,0 +1,31 @@
+﻿  §5 as-of 掩码: {'asof_lag1_leak_rows': 48, 'asof_ttm_leak_rows': 48, 'asof_masked_rows': 48, 'asof_masked_cols': 43}
+================================================================
+4) §32 参数网格
+    mom=5 done
+    mom=10 done
+    mom=20 done
+    mom=60 done
+    hist=4 done
+    hist=8 done
+    hist=12 done
+    react=1(E1) done
+    react=3(E3) done
+    react=5(E5) done
+    ind=SW1 done
+python : Traceback (most recent call last):
+At line:1 char:5
++ & { python -u _fs_run_pg.py 2>&1 | Out-File -FilePath _fs_run_pg_run. ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\_fs_run_pg.py", line 12, in <module>
+    pg = run_param_grid(df)
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 298, in run_param_grid
+    R = nframe(df, probe, [], 8, indc=colname)
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_run_robust.py", line 79, in nframe
+    R = E.neutralize(df, cols, ctrls, min_n=min_n, ind_col=indc)
+  File "D:\mystock\solo\research\fundamental_surprise_alpha\fs_engine.py", line 276, in neutralize
+    den = np.maximum(np.bincount(gi, minlength=ng), 1).astype(float)
+                     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ValueError: 'list' argument must have no negative elements

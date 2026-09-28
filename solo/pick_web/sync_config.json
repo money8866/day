@@ -1,0 +1,11 @@
+{
+  "_comment": "填好 host 与 user 后，post_close_run.bat 末尾会自动同步；留空则自动跳过，不影响主流程。",
+  "host": "115.159.221.46",
+  "port": 22,
+  "user": "root",
+  "remote_dir": "/var/www/StockPick/data",
+  "remote_name": "stock_picks.db",
+  "identity_file": "C:/Users/kongx/.ssh/id_rsa",
+  "strict_host_key": false,
+  "local_db": "d:/mystock/solo/picks_db/stock_picks.db"
+}

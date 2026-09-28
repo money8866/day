@@ -1,0 +1,132 @@
+﻿==============================================================================
+H-TREND-PULLBACK-01  P3 反事实与门控  2026-09-27 09:49:45
+口径：入场锚定 E1（Pullback Observation Entry），主视界 h=5（次日开盘进场 exe_h）
+声明：本脚本按 §26 / §27 / §29 产出证据；G 编号的权威定义以用户提交规格 §51/§52 为准，
+      本脚本只对「动量控制 / 行业控制 / 随机回撤 Null」三项给出 PASS / FAIL 判定。
+   trenddays 1510230 行 / E1 71811
+──────────────────────────────────────────────────────────────────────────────
+D) 基线对照（h=5）
+   B1_AllStocks      n=  8712158  mean +0.0030
+   B2_StrongTrend    n=  1504012  mean +0.0019
+   E1_Signal         n=    71636  mean +0.0026
+──────────────────────────────────────────────────────────────────────────────
+A) §26 动量控制：同日最近邻匹配（keys=('mom20', 'mom60')），反事实池 = 同日强趋势日且非 E1
+   [B4_MomentumMatched] n=71698  日=2008  adj_alpha +0.0001  t -1.77  (E1 0.0011 - matched 0.0010)
+   [B4_MomentumMatched] n=71636  日=2006  adj_alpha +0.0002  t -1.54  (E1 0.0026 - matched 0.0024)
+   [B4_MomentumMatched] n=71415  日=2001  adj_alpha -0.0000  t -2.05  (E1 0.0016 - matched 0.0016)
+   动量中性化增量 IC（偏相关；控制 rank(mom20) rank(mom60)）：
+     depth        h=3   IC_partial -0.0338  t -5.88  (nd=1881)
+     speed        h=3   IC_partial -0.0278  t -6.53  (nd=1881)
+     ep_days      h=3   IC_partial +0.0052  t +1.38  (nd=1881)
+     since_high   h=3   IC_partial +0.0055  t +1.48  (nd=1881)
+     since_pb     h=3   IC_partial +0.0052  t +1.38  (nd=1881)
+     cl_ma20      h=3   IC_partial -0.0070  t -1.89  (nd=1881)
+     lo_ma20      h=3   IC_partial +0.0096  t +2.36  (nd=1881)
+     vol_ratio    h=3   IC_partial -0.0322  t -6.73  (nd=1881)
+     to_ratio     h=3   IC_partial -0.0329  t -6.85  (nd=1881)
+     atr_ratio    h=3   IC_partial -0.0177  t -3.76  (nd=1881)
+     rv_ratio     h=3   IC_partial -0.0084  t -1.94  (nd=1881)
+     dn_vol_ratio h=3   IC_partial +0.0070  t +1.66  (nd=1668)
+     dn_day_ratio h=3   IC_partial -0.0005  t -0.16  (nd=1881)
+     rs_pb_mkt    h=3   IC_partial +0.0260  t +5.30  (nd=1881)
+     rs_pb_ind    h=3   IC_partial +0.0252  t +5.28  (nd=1881)
+     depth        h=5   IC_partial -0.0490  t -7.16  (nd=1877)
+     speed        h=5   IC_partial -0.0384  t -7.34  (nd=1877)
+     ep_days      h=5   IC_partial +0.0041  t +0.96  (nd=1877)
+     since_high   h=5   IC_partial +0.0045  t +1.04  (nd=1877)
+     since_pb     h=5   IC_partial +0.0041  t +0.96  (nd=1877)
+     cl_ma20      h=5   IC_partial -0.0104  t -2.23  (nd=1877)
+     lo_ma20      h=5   IC_partial +0.0106  t +2.32  (nd=1877)
+     vol_ratio    h=5   IC_partial -0.0426  t -7.45  (nd=1877)
+     to_ratio     h=5   IC_partial -0.0433  t -7.57  (nd=1877)
+     atr_ratio    h=5   IC_partial -0.0223  t -4.13  (nd=1877)
+     rv_ratio     h=5   IC_partial -0.0120  t -2.46  (nd=1877)
+     dn_vol_ratio h=5   IC_partial +0.0102  t +2.08  (nd=1666)
+     dn_day_ratio h=5   IC_partial +0.0009  t +0.26  (nd=1877)
+     rs_pb_mkt    h=5   IC_partial +0.0332  t +5.99  (nd=1877)
+     rs_pb_ind    h=5   IC_partial +0.0319  t +5.82  (nd=1877)
+     depth        h=10  IC_partial -0.0641  t -7.78  (nd=1874)
+     speed        h=10  IC_partial -0.0546  t -8.55  (nd=1874)
+     ep_days      h=10  IC_partial +0.0095  t +1.98  (nd=1874)
+     since_high   h=10  IC_partial +0.0100  t +2.08  (nd=1874)
+     since_pb     h=10  IC_partial +0.0095  t +1.98  (nd=1874)
+     cl_ma20      h=10  IC_partial -0.0184  t -3.61  (nd=1874)
+     lo_ma20      h=10  IC_partial +0.0080  t +1.62  (nd=1874)
+     vol_ratio    h=10  IC_partial -0.0546  t -7.73  (nd=1874)
+     to_ratio     h=10  IC_partial -0.0553  t -7.77  (nd=1874)
+     atr_ratio    h=10  IC_partial -0.0276  t -4.07  (nd=1874)
+     rv_ratio     h=10  IC_partial -0.0205  t -3.47  (nd=1874)
+     dn_vol_ratio h=10  IC_partial +0.0142  t +2.73  (nd=1662)
+     dn_day_ratio h=10  IC_partial -0.0035  t -0.94  (nd=1874)
+     rs_pb_mkt    h=10  IC_partial +0.0415  t +6.86  (nd=1874)
+     rs_pb_ind    h=10  IC_partial +0.0401  t +6.52  (nd=1874)
+──────────────────────────────────────────────────────────────────────────────
+B) §27 行业控制
+   B5_IndustryMomentumMatched：同日同 SW_L1 内最近邻（keys=('mom20', 'total_mv', 'rv_20')）
+   [B5_IndustryMomentumMatched] n=71250  日=2005  adj_alpha -0.0000  t -1.05  (E1 0.0011 - matched 0.0011)
+   [B5_IndustryMomentumMatched] n=71188  日=2003  adj_alpha +0.0005  t -1.09  (E1 0.0026 - matched 0.0022)
+   [B5_IndustryMomentumMatched] n=70967  日=1997  adj_alpha +0.0005  t -1.05  (E1 0.0016 - matched 0.0011)
+   行业中性化增量 IC（日内分行业内去均值）：
+     depth        h=3   IC_indneut +0.0912  t +7.75  (nd=1881)
+     speed        h=3   IC_indneut +0.0993  t +8.68  (nd=1881)
+     ep_days      h=3   IC_indneut +0.1581  t +14.05  (nd=1881)
+     since_high   h=3   IC_indneut +0.1585  t +14.07  (nd=1881)
+     since_pb     h=3   IC_indneut +0.1581  t +14.05  (nd=1881)
+     cl_ma20      h=3   IC_indneut +0.0987  t +7.77  (nd=1881)
+     lo_ma20      h=3   IC_indneut +0.1143  t +9.11  (nd=1881)
+     vol_ratio    h=3   IC_indneut +0.1130  t +10.64  (nd=1881)
+     to_ratio     h=3   IC_indneut +0.1130  t +10.63  (nd=1881)
+     atr_ratio    h=3   IC_indneut +0.1157  t +10.54  (nd=1881)
+     rv_ratio     h=3   IC_indneut +0.1379  t +12.98  (nd=1881)
+     dn_vol_ratio h=3   IC_indneut +0.2261  t +18.65  (nd=1668)
+     dn_day_ratio h=3   IC_indneut +0.1544  t +13.01  (nd=1881)
+     rs_pb_mkt    h=3   IC_indneut +0.1867  t +15.15  (nd=1881)
+     rs_pb_ind    h=3   IC_indneut +0.1887  t +15.19  (nd=1881)
+     depth        h=5   IC_indneut +0.0724  t +5.93  (nd=1877)
+     speed        h=5   IC_indneut +0.0857  t +7.42  (nd=1877)
+     ep_days      h=5   IC_indneut +0.1570  t +13.73  (nd=1877)
+     since_high   h=5   IC_indneut +0.1574  t +13.77  (nd=1877)
+     since_pb     h=5   IC_indneut +0.1570  t +13.73  (nd=1877)
+     cl_ma20      h=5   IC_indneut +0.0848  t +6.53  (nd=1877)
+     lo_ma20      h=5   IC_indneut +0.1050  t +8.31  (nd=1877)
+     vol_ratio    h=5   IC_indneut +0.1039  t +9.89  (nd=1877)
+     to_ratio     h=5   IC_indneut +0.1037  t +9.88  (nd=1877)
+     atr_ratio    h=5   IC_indneut +0.1067  t +9.49  (nd=1877)
+     rv_ratio     h=5   IC_indneut +0.1335  t +12.57  (nd=1877)
+     dn_vol_ratio h=5   IC_indneut +0.2302  t +18.70  (nd=1666)
+     dn_day_ratio h=5   IC_indneut +0.1564  t +13.07  (nd=1877)
+     rs_pb_mkt    h=5   IC_indneut +0.1962  t +15.52  (nd=1877)
+     rs_pb_ind    h=5   IC_indneut +0.1978  t +15.51  (nd=1877)
+     depth        h=10  IC_indneut +0.0543  t +4.14  (nd=1874)
+     speed        h=10  IC_indneut +0.0701  t +5.75  (nd=1874)
+     ep_days      h=10  IC_indneut +0.1579  t +13.34  (nd=1874)
+     since_high   h=10  IC_indneut +0.1585  t +13.41  (nd=1874)
+     since_pb     h=10  IC_indneut +0.1579  t +13.34  (nd=1874)
+     cl_ma20      h=10  IC_indneut +0.0705  t +5.15  (nd=1874)
+     lo_ma20      h=10  IC_indneut +0.0952  t +7.16  (nd=1874)
+     vol_ratio    h=10  IC_indneut +0.0947  t +8.71  (nd=1874)
+     to_ratio     h=10  IC_indneut +0.0947  t +8.72  (nd=1874)
+     atr_ratio    h=10  IC_indneut +0.0983  t +8.19  (nd=1874)
+     rv_ratio     h=10  IC_indneut +0.1254  t +11.24  (nd=1874)
+     dn_vol_ratio h=10  IC_indneut +0.2335  t +18.62  (nd=1662)
+     dn_day_ratio h=10  IC_indneut +0.1570  t +13.13  (nd=1874)
+     rs_pb_mkt    h=10  IC_indneut +0.2067  t +15.87  (nd=1874)
+     rs_pb_ind    h=10  IC_indneut +0.2085  t +15.91  (nd=1874)
+──────────────────────────────────────────────────────────────────────────────
+C) §29 随机回撤 Null（B3_TrendRandomPullback，n_sim=1000，seed=20260926）
+   [B3_TrendRandomPullback h=3] leg=85  真实 E1 mean +0.0011   Null mean +0.0005 (sd 0.0063, p05 -0.0097, p95 +0.0111)
+      经验 p：真实>=Null 0.4525 ；真实<=Null 0.5485
+   [B3_TrendRandomPullback h=5] leg=85  真实 E1 mean +0.0026   Null mean +0.0002 (sd 0.0083, p05 -0.0127, p95 +0.0148)
+      经验 p：真实>=Null 0.3746 ；真实<=Null 0.6264
+   [B3_TrendRandomPullback h=10] leg=85  真实 E1 mean +0.0016   Null mean +0.0004 (sd 0.0115, p05 -0.0173, p95 +0.0195)
+      经验 p：真实>=Null 0.4426 ；真实<=Null 0.5584
+──────────────────────────────────────────────────────────────────────────────
+E) 门控判定（仅覆盖 §26 / §27 / §29；阈值取 PREREG 冻结值，不得事后调整）
+   §26 动量控制  : adj_alpha +0.0002  t -1.54  -> FAIL
+   §27 行业控制  : adj_alpha +0.0005  t -1.09  -> FAIL
+   §29 随机回撤Null: real +0.0026 vs null +0.0002  单侧 p 0.3746  -> FAIL
+──────────────────────────────────────────────────────────────────────────────
+落盘: out/hp_gates_match.csv / hp_gates_neutral_ic.csv / hp_gates_null.csv / hp_gates_baseline.csv
+P3 完成 223s
+==============================================================================
+DONE

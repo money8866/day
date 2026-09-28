@@ -1,0 +1,65 @@
+﻿==============================================================================
+TL-01 §25–§32 预测力与稳定性
+  有效样本 8635211 / 11583680
+  分期天数：TRAIN=1096  VALID=484  OOS=243  LIVE-LIKE=178
+  Regime 天数：BEAR=579 NORMAL=395 BULL=1023
+  SIG_TRANS 映射（仅 TRAIN 2018-2022 拟合）：
+    S0->S1  E[fwd20]=0.0161
+    S1->S2  E[fwd20]=0.0247
+    S2->S3  E[fwd20]=0.0068
+    S3->S4  E[fwd20]=-0.0084
+    S4->S5  E[fwd20]=-0.0074
+    S5->S6  E[fwd20]=0.0097
+    S6->S7  E[fwd20]=0.0140
+    S7->S8  E[fwd20]=0.0011
+    S7->S9  E[fwd20]=-0.0183
+    S8->S3  E[fwd20]=0.0051
+    S8->S4  E[fwd20]=-0.0036
+    SIG_TS         完成  19.0s   IC20=-0.0573  ICIR=-0.385  AUC20=0.5229
+    SIG_TV         完成  24.3s   IC20=-0.0210  ICIR=-0.185  AUC20=0.5044
+    SIG_TA         完成  26.0s   IC20=-0.0083  ICIR=-0.080  AUC20=0.5031
+    SIG_REACC      完成  19.8s   IC20=-0.0143  ICIR=-0.133  AUC20=0.5018
+    SIG_AGE        完成  21.3s   IC20=0.0479  ICIR=0.362  AUC20=0.4627
+    SIG_TRANS      完成  22.6s   IC20=0.0697  ICIR=0.618  AUC20=0.4697
+    SIG_TRANS_CORE 完成  20.1s   IC20=-0.0038  ICIR=-0.139  AUC20=0.5007
+    B1_MOM20       完成  23.6s   IC20=-0.0729  ICIR=-0.508  AUC20=0.5278
+    B2_MOM60       完成  25.7s   IC20=-0.0714  ICIR=-0.456  AUC20=0.5423
+    B3_MA20        完成  25.2s   IC20=-0.0636  ICIR=-0.462  AUC20=0.5237
+    B4_MA60        完成  25.7s   IC20=-0.0840  ICIR=-0.533  AUC20=0.5372
+    B5_RS20        完成  25.0s   IC20=-0.0729  ICIR=-0.508  AUC20=0.5278
+    B6_POS60       完成  23.1s   IC20=-0.0548  ICIR=-0.379  AUC20=0.5454
+------------------------------------------------------------------------------
+1) §27 横截面 IC / ICIR（分期）
+  已写 tl01_ic.csv（520 行）
+------------------------------------------------------------------------------
+2) §28 Winner/Loser 判别力（AUC / Precision / EffectSize）
+  已写 tl01_auc.csv
+------------------------------------------------------------------------------
+3) §29 时间稳定性（Year / Quarter / Month）
+python : D:\mystock\solo\research\trend_lifecycle\tl_alpha.py:325: RuntimeWarning: Mean of empty slice
+At line:1 char:5
++ & { python -u tl_alpha.py 2>&1 | Out-File -FilePath _c_alpha.txt -Enc ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\mystock\solo... of empty slice:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  v = np.nanmean(b['ic'][idx])
+  已写 tl01_year.csv
+------------------------------------------------------------------------------
+4) §30 Regime 稳定性（独立市场定义：PROXY 200MA + 60日动量）
+  已写 tl01_regime.csv
+------------------------------------------------------------------------------
+5) §31 OOS 分阶段汇总
+  已写 tl01_oos.csv
+------------------------------------------------------------------------------
+6) §32 Walk Forward（训练期独立拟合 SIG_TRANS，测试年评估）
+    W1  train 2018-2020  test 2021  test_IC=0.0608  ICIR=0.855  AUC=0.4760
+    W2  train 2019-2021  test 2022  test_IC=0.0601  ICIR=0.595  AUC=0.4816
+    W3  train 2020-2022  test 2023  test_IC=0.0563  ICIR=0.496  AUC=0.4799
+    W4  train 2021-2023  test 2024  test_IC=0.0215  ICIR=0.222  AUC=0.4834
+    W5  train 2022-2024  test 2025  test_IC=0.0653  ICIR=0.731  AUC=0.4594
+    W6  train 2023-2025  test 2026  test_IC=0.0739  ICIR=0.375  AUC=0.4459
+  已写 tl01_walkforward.csv
+------------------------------------------------------------------------------
+完成  340s
+DONE

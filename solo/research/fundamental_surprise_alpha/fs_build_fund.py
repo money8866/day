@@ -201,11 +201,25 @@ def main():
 
     # ---------- 5) 盈利质量 ----------
     log('5) 盈利质量 / 资产负债表')
+    # §9/§10 自算补齐：fina_indicator 仅覆盖 4509 只，用利润表/资产负债表自算兜底
+    tv = pd.to_numeric(base['total_revenue'], errors='coerce')
+    tc = pd.to_numeric(base['total_cogs'], errors='coerce')
+    base['gpm2'] = (tv - tc) / tv.replace(0, np.nan)
+    base['npm2'] = pd.to_numeric(base['n_income_attr_p'], errors='coerce') / tv.replace(0, np.nan)
+    eq = pd.to_numeric(base['total_hldr_eqy_exc_min_int'], errors='coerce')
+    eq_avg = (eq + eq.groupby(base['ts_code']).shift(4)) / 2.0
+    base['roe2'] = base['npa_ttm'] / eq_avg.replace(0, np.nan)
     base['ocf_to_np'] = base['ocf_ttm'] / base['npa_ttm'].abs().replace(0, np.nan)
     base['ocf_to_rev'] = base['ocf_ttm'] / base['rev_ttm'].replace(0, np.nan)
     base['npm'] = base['npa_ttm'] / base['rev_ttm'].replace(0, np.nan)
-    base['gpm'] = base['grossprofit_margin']
+    base['gpm'] = pd.to_numeric(base['grossprofit_margin'], errors='coerce')
+    base['gpm'] = base['gpm'].fillna(base['gpm2'] * 100.0)
+    base['npm'] = base['npm'].fillna(base['npm2'])
+    base['roe'] = pd.to_numeric(base['roe'], errors='coerce')
+    base['roe'] = base['roe'].fillna(base['roe2'] * 100.0)
     base['ocf_margin'] = base['ocf_ttm'] / base['rev_ttm'].replace(0, np.nan)
+    log('  补齐后覆盖: gpm=%.4f npm=%.4f roe=%.4f' % (
+        base['gpm'].isna().mean(), base['npm'].isna().mean(), base['roe'].isna().mean()))
     for c, src in (('npm', 'npm'), ('gpm', 'gpm'), ('roe', 'roe'), ('roic', 'roic'),
                    ('ocf_margin', 'ocf_margin')):
         lag4 = base[src].groupby(base['ts_code']).shift(4)

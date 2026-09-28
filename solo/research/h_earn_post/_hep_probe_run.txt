@@ -1,0 +1,66 @@
+﻿======================================================================
+1) parquet 文件族计数（只看前 30）
+   treasure                 59641
+   daily                    59482
+   moneyflow                52149
+   cyq                      29066
+   fina                     18193
+   income                   10594
+   stk                      6288
+   balance                  5358
+   report                   4927
+   cashflow                 4926
+   holdernumber             1679
+   mainbz                   1679
+   share                    1674
+   pledge                   1505
+   forecast                 455
+   fin                      437
+   trade                    141
+   index                    68
+   fund                     53
+   limit                    12
+   actual                   6
+   persist                  3
+   stock                    2
+   ts                       2
+   ths                      2
+   edb                      1
+   mid                      1
+   northbound               1
+   express                  1
+   north                    1
+======================================================================
+2) 目录清单
+   D:\mystock\cache_daily 子目录=['announcement', 'business_analysis', 'chain_analysis', 'concept', 'concept_analysis', 'dragon_tiger', 'eld_csv', 'etf_alpha_ranking', 'etf_backtest_hist', 'etf_cons', 'etf_fund', 'etf_moneyflow', 'etf_share', 'flow_analysis', 'industry', 'moneyflow_stock', 'parquet', 'research_analysis', 'theme_map', '_snapshot_cache']
+   D:\mystock\cache_daily CSV=['000001.SH.csv', '000001.SZ.csv', '000001_SH.csv', '000020.SZ.csv', '000021.SZ.csv', '000026.SZ.csv', '000027.SZ.csv', '000028.SZ.csv', '000030.SZ.csv', '000034.SZ.csv', '000037.SZ.csv', '000039.SZ.csv', '000045.SZ.csv', '000049.SZ.csv', '000050.SZ.csv', '000059.SZ.csv', '000060.SZ.csv', '000062.SZ.csv', '000063.SZ.csv', '000063_SZ_daily.csv', '000066.SZ.csv', '000070.SZ.csv', '000088.SZ.csv', '000089.SZ.csv', '000096.SZ.csv', '000099.SZ.csv', '000100.SZ.csv', '000153.SZ.csv', '000155.SZ.csv', '000158.SZ.csv']
+   D:\mystock\cache_daily\parquet 子目录=[]
+   D:\mystock\cache_daily\parquet CSV=[]
+======================================================================
+3) 目录/行业/指数/日历文件
+   cache_daily\industry*        ->   1 个  例: industry
+   parquet\index*               ->  68 个  例: index_daily_000001_SH_20240101_20260620.parquet
+   cache_daily\trade_cal*       ->   2 个  例: trade_cal.pkl
+   cache_daily\stock_basic*     ->   2 个  例: stock_basic.csv
+   cache_daily\daily_basic*     -> 905 个  例: daily_basic_000009.SZ.csv
+   cache_daily\treasure_namechg* -> 4422 个  例: treasure_namechg_000006_SZ.parquet
+   cache_daily\income*          -> 430 个  例: income_000049_SZ.parquet
+   parquet\cashflow*            -> 4926 个  例: cashflow_000001_SZ_2023.parquet
+======================================================================
+4) 日历
+   交易日 2120  20180102 ~ 20260924
+   2026 年交易日数 = 178
+======================================================================
+5) 2026 中报（end_date=20260630）覆盖探测
+   income 文件数 = 10594
+   前 400 个 income 文件: 行=34706  20260630 行=7
+   中报(0630) 年份分布 = {'1994': 1, '1995': 22, '1996': 41, '1997': 64, '1998': 73, '1999': 98, '2000': 114, '2001': 115, '2002': 132, '2003': 138, '2004': 133, '2005': 144, '2006': 163, '2007': 175, '2008': 182, '2009': 223, '2010': 253, '2011': 268, '2012': 271, '2013': 278, '2014': 301, '2015': 314, '2016': 350, '2017': 361, '2018': 423, '2019': 560, '2020': 748, '2021': 388, '2022': 397, '2023': 562, '2024': 412, '2025': 487, '2026': 7}
+   income 列 = ['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+======================================================================
+6) 指数（沪深300）
+   index_daily -> 68 例: ['index_daily_000001_SH_20240101_20260620.parquet', 'index_daily_000001_SH_20250828_20260828.parquet', 'index_daily_000001_SH_20250829_20260829.parquet', 'index_daily_000001_SH_20250831_20260831.parquet', 'index_daily_000001_SH_20250901_20260901.parquet']
+   index_dailybasic -> 0 例: []
+   index_panel: shape=(2141, 9) cols=['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'vol', 'amount']
+   date range 20171201 ~ 20260924
+======================================================================
+DONE

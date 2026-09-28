@@ -308,15 +308,15 @@ def _load_v2_theme_scores(trade_date):
         return None
 
 
-# 主题热度 V2.3 内存缓存（{trade_date: {theme: row}}），避免逐股重复读盘
+# 主题热度 V2.4 内存缓存（{trade_date: {theme: row}}），避免逐股重复读盘
 _THEME_HEAT_CACHE = {}
 
 
 def _load_theme_heat(trade_date):
-    """加载 主题热度 V2.3 结果（report_daily/theme_heat_v23_{date}.json）。
+    """加载 主题热度 V2.4 结果（report_daily/theme_heat_v24_{date}.json）。
 
     主题强度的唯一来源：strength = TODAY Heat 与 WEEK Heat 的均值。
-    V2.3 结果缺失或读取失败返回 {}，由调用方回退 V2/V8。
+    V2.4 结果缺失或读取失败返回 {}，由调用方回退 V2/V8。
     """
     key = str(trade_date or '')
     if key in _THEME_HEAT_CACHE:
@@ -326,17 +326,17 @@ def _load_theme_heat(trade_date):
         import theme_heat_v22 as theme_heat
         heat = theme_heat.load_heat(key) or {}
     except Exception as e:
-        print(f"[主题热度V2.3] 读取失败: {e}")
+        print(f"[主题热度V2.4] 读取失败: {e}")
     if heat:
-        print(f"[主题热度V2.3] 已加载 {len(heat)} 个主题 (日期 {key})")
+        print(f"[主题热度V2.4] 已加载 {len(heat)} 个主题 (日期 {key})")
     else:
-        print(f"[主题热度V2.3] 无 {key} 结果，主题强度回退 V2/V8")
+        print(f"[主题热度V2.4] 无 {key} 结果，主题强度回退 V2/V8")
     _THEME_HEAT_CACHE[key] = heat
     return heat
 
 
 def _v2_strength(v):
-    """V2 trend_score → 主题热度 V2.3 的同一强度尺度（V2.3 缺失时的回退统一口径）"""
+    """V2 trend_score → 主题热度 V2.4 的同一强度尺度（V2.4 缺失时的回退统一口径）"""
     try:
         import theme_heat_v22 as theme_heat
         s = theme_heat.v2_to_heat(v)
@@ -3490,8 +3490,8 @@ def calc_tli_score(theme, top_n=10, days=60):
     核心逻辑：衡量主题在最近N天内的持续活跃程度
     高生命力 = 主题持续出现在市场前排，资金关注度高
 
-    数据源：主题热度 V2.3（theme_heat_v23_{date}.json，Heat 即主题强度，
-    取 TODAY 与 WEEK 的均值）；V2.3 结果缺失时回退 Theme Score V2 引擎
+    数据源：主题热度 V2.4（theme_heat_v24_{date}.json，Heat 即主题强度，
+    取 TODAY 与 WEEK 的均值）；V2.4 结果缺失时回退 Theme Score V2 引擎
     （综合分/生命周期/交易动作/迁移分/置信度），V2 也不可用时回退 V8，
     不回退到无日期后缀的旧 V6 文件。
 

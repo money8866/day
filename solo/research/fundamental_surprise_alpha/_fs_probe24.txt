@@ -1,0 +1,22 @@
+﻿entry_anchor 行数 288
+anchors {'E1': 72, 'E2': 72, 'E3': 72, 'E5': 72}
+features 36
+
+头部候选覆盖:
+  rev_acc    anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+  np_qoq     anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+  np_acc     anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+  dp_acc     anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+  dp_qoq     anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+  rev_qoq    anchors=['E1', 'E2', 'E3', 'E5'] horizons=[5, 20]
+
+rev_acc 全锚点明细:
+anchor  horizon feature  ic_mean     icir  n_coh  ic_train  ic_valid    ic_oos
+    E1        5 rev_acc 0.066122 0.415577    546  0.073576  0.054487  0.039439
+    E1       20 rev_acc 0.056006 0.321214    543  0.057192  0.057378  0.043302
+    E2        5 rev_acc 0.044412 0.283868    546  0.048068  0.050762  0.002480
+    E2       20 rev_acc 0.037430 0.214380    543  0.035032  0.049597  0.025142
+    E3        5 rev_acc 0.013184 0.075648    546  0.009828  0.025677  0.007846
+    E3       20 rev_acc 0.024078 0.134554    540  0.022104  0.030533  0.022922
+    E5        5 rev_acc 0.008877 0.052572    546  0.013517  0.003738 -0.012760
+    E5       20 rev_acc 0.019125 0.113666    538  0.020400  0.012006  0.028090
