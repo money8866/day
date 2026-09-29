@@ -24,6 +24,8 @@ import threading
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
+import pandas as pd
+
 import stock_cache as sc
 
 # =========================
@@ -194,6 +196,68 @@ def limit_threshold_pct(ts_code):
     return 9.5
 
 
+# ── 技术指标就地派生(替代 factor_snapshot_cache) ──
+# 公式严格对齐 stock_cache._derive_single_stock 的 bfq 分支(即盘后快照口径):
+#   KDJ(9,3,3) / RSI(6,12) Wilder / ATR(14) Wilder
+# stock_klines 的历史长度由 load_component_klines(days=400, 约260交易日)保证,
+# 使 Wilder 递归达到收敛态; 实测(499 只样本, 与快照落库真值逐股对比):
+#   _tail_technical_score 给分 100% 一致; _tail_volatility_penalty 给分 100% 一致。
+FACTOR_MIN_BARS = 20  # 少于此根数不派生(与 _tail_volatility_penalty 的 20 日振幅需求一致)
+
+
+def derive_indicators_from_klines(kl):
+    """从个股日线(bfq, trade_date 升序)就地派生 KDJ/RSI/ATR
+
+    返回末 2 根的 DataFrame（保留前一根供 KDJ 金叉/死叉的前后对比），
+    列名与旧 factor_snapshot_cache 读取后重命名的口径完全一致，
+    使 _tail_technical_score / _tail_volatility_penalty 无需改动。
+
+    Args:
+        kl: DataFrame[close, high, low, ...]（升序，至少 FACTOR_MIN_BARS 行）
+
+    Returns:
+        DataFrame[close, atr_bfq, kdj_k, kdj_d, kdj_j, rsi_6, rsi_12] 或 None
+    """
+    if kl is None or len(kl) < FACTOR_MIN_BARS:
+        return None
+    try:
+        c = kl['close'].astype(float)
+        h = kl['high'].astype(float)
+        low = kl['low'].astype(float)
+    except Exception:
+        return None
+
+    # KDJ(9,3,3)：RSV→SMA(3,1)→SMA(3,1)，J=3K-2D
+    hhv = h.rolling(9, min_periods=9).max()
+    llv = low.rolling(9, min_periods=9).min()
+    rng = hhv - llv
+    rsv = ((c - llv) / rng * 100.0).where(rng > 0).fillna(50.0)
+    k = rsv.ewm(alpha=1 / 3, adjust=False).mean()
+    d = k.ewm(alpha=1 / 3, adjust=False).mean()
+
+    # RSI Wilder：alpha=1/n；平均跌幅为 0 时取 100
+    def _rsi(n):
+        delta = c.diff()
+        up = delta.clip(lower=0.0)
+        dn = (-delta).clip(lower=0.0)
+        up_avg = up.ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+        dn_avg = dn.ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+        rs = up_avg / dn_avg
+        return (100.0 - 100.0 / (1.0 + rs)).where(dn_avg > 0, 100.0)
+
+    # ATR(14) Wilder
+    tr = pd.concat([h - low, (h - c.shift(1)).abs(), (low - c.shift(1)).abs()],
+                   axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / 14, adjust=False, min_periods=1).mean()
+
+    out = pd.DataFrame({
+        'close': c, 'atr_bfq': atr,
+        'kdj_k': k, 'kdj_d': d, 'kdj_j': 3.0 * k - 2.0 * d,
+        'rsi_6': _rsi(6), 'rsi_12': _rsi(12),
+    })
+    return out.iloc[-2:].reset_index(drop=True)
+
+
 class RealtimeThemeMonitor:
     def __init__(self):
         self.api = None
@@ -230,8 +294,8 @@ class RealtimeThemeMonitor:
         # ── 成分股历史K线(用于主题趋势/情绪分计算) ──
         self.stock_klines = {}      # ts_code -> DataFrame (trade_date, close, high, low, vol, pct_chg)
 
-        # ── 个股技术因子缓存(从cache_daily/stk_factor_*.csv加载,含MACD/KDJ/RSI/BOLL) ──
-        self.stock_factors = {}     # ts_code -> DataFrame (含技术指标)
+        # ── 个股技术因子缓存(KDJ/RSI/ATR, 由 stock_klines 就地派生) ──
+        self.stock_factors = {}     # ts_code -> DataFrame (KDJ/RSI/ATR, 由 stock_klines 就地派生)
         self.stock_mv = {}          # ts_code -> total_mv (总市值,单位万元)
 
         # ── 冷却控制(避免重复推送) ──
@@ -257,7 +321,6 @@ class RealtimeThemeMonitor:
         self.snapshot_morning_done = False    # 10:30后采集早盘数据
         self.snapshot_noon_done = False       # 14:00后采集午盘数据
         self.snapshot_tail_done = False       # 14:30基准已采集
-        self.last_tail_entry_scan_time = 0   # 尾盘突袭扫描冷却
         self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
         self.last_market_action_alert = 0      # 大盘动作信号冷却
         self._market_action_triggered = {}     # 防重复: {条件名: 触发时间}
@@ -746,7 +809,7 @@ class RealtimeThemeMonitor:
 
         注意: 不再以 TUSHARE_TOKEN 环境变量做前置判断。pro 由 tushare 自带 token 配置初始化,
         环境变量缺失时接口依然可用;此前的环境变量闸门会让日历"静默"失效并静默退化为自然日,
-        导致非交易日(周末)被当成交易日写进 tail_signal_tracker_v4 / nd2_snapshot。
+        导致非交易日(周末)被当成交易日写进 tail_signal_tracker / nd2_snapshot。
         """
         today = datetime.now().strftime('%Y%m%d')
         if self._trade_cal_anchor == today:
@@ -856,9 +919,16 @@ class RealtimeThemeMonitor:
                 print(f"   ⚠ 新浪行情获取失败: {e}")
                 continue
 
-    # ── 成分股K线加载(用于主题趋势/情绪分计算) ──
-    def load_component_klines(self, days=65):
-        """加载所有成分股的历史K线数据用于趋势/情绪分计算"""
+    # ── 成分股K线加载(用于主题趋势/情绪分计算 + 技术指标派生) ──
+    def load_component_klines(self, days=400):
+        """加载所有成分股的历史K线数据用于趋势/情绪分计算
+
+        days 取 400 个自然日(约 260 个交易日), 是为了让 load_stock_factors_cache
+        的 KDJ/RSI/ATR 达到 Wilder 递归的收敛态 —— ATR(14) 的 alpha=1/14 衰减最慢,
+        窗口过短会残留初始化偏差(实测 44 根窗 ATR 相对偏差中位 1.1%、最大 11%)。
+        下游各评分函数一律取 .iloc[-N:] / .tail(N) 尾部窗口, 故加长历史不改变其口径;
+        实测加载耗时与窗口长度无关(3462 只逐只查询, 65 天与 400 天均约 35 秒)。
+        """
         if not TS_AVAILABLE or not THEME_SCORE_AVAILABLE:
             print("⚠ Tushare或主题评分模块不可用,跳过K线加载")
             return
@@ -952,107 +1022,33 @@ class RealtimeThemeMonitor:
 
     def load_stock_factors_cache(self):
         """
-        从SQLite(stock_data.db)加载最新交易日技术指标(MACD/KDJ/RSI/BOLL/CCI)
-        以及从market_*.csv加载总市值
+        派生个股技术指标(KDJ/RSI/ATR) + 加载总市值
+
+        技术指标不再读盘后快照表(factor_snapshot_cache), 改为就地从已加载的
+        stock_klines(成分股 daily_cache 近 400 自然日) 派生 —— 公式、列名与该表
+        口径完全一致(见 derive_indicators_from_klines), 故下游评分逻辑无需改动。
+        这样免去了每日盘后对全市场做约250交易日预热的跑批开销。
+        总市值仍从 market_*.csv 加载。
         """
         import os
         import glob
-        import sqlite3
         import pandas as pd
 
         cache_daily = os.path.join(BASE_DIR, '..', 'cache_daily')
         if not os.path.isdir(cache_daily):
             cache_daily = r'D:\mystock\cache_daily'
 
-        # ── 1. 从SQLite加载技术因子(替代旧的stk_factor_*.csv) ──
-        db_path = os.path.join(cache_daily, 'stock_data.db')
-        if not os.path.exists(db_path):
-            print(f"⚠ SQLite数据库不存在: {db_path},技术因子未加载")
+        # ── 1. 从成分股K线就地派生技术因子(供尾盘技术形态/波动率扣分) ──
+        self.stock_factors = {}
+        for code, kl in self.stock_klines.items():
+            ind = derive_indicators_from_klines(kl)
+            if ind is not None:
+                self.stock_factors[code] = ind
+        if self.stock_factors:
+            print(f"[缓存] 技术因子已派生: {len(self.stock_factors)} 只 "
+                  f"(KDJ/RSI/ATR 就地计算, 源 stock_klines)")
         else:
-            try:
-                factor_cols = ['ts_code', 'trade_date', 'close', 'atr_bfq',
-                               'macd_dif_bfq', 'macd_dea_bfq', 'macd_bfq',
-                               'kdj_bfq', 'kdj_k_bfq', 'kdj_d_bfq',
-                               'rsi_bfq_6', 'rsi_bfq_12', 'rsi_bfq_24',
-                               'boll_mid_bfq', 'boll_upper_bfq', 'boll_lower_bfq', 'cci_bfq']
-                # 技术指标是前一个交易日收盘后运算的,并非当日实时
-                # 优先读盘后快照表(factor_snapshot_cache): 前一天收盘后已按日全市场
-                # 预计算落库,启动直读零预热(秒级); 快照缺失/未定稿时才回退
-                # 全市场预热现算(约250交易日,分钟级)并把结果幂等落库供次日直读
-                dates = sc.get_recent_trade_dates(n=2)
-                if not dates:
-                    print("⚠ SQLite三窄表缓存为空,技术因子未加载")
-                else:
-                    # 检查最新日期数据量,数据量足够时直接取最新(即为T-1)
-                    df_all = pd.DataFrame()
-                    try:
-                        df_snap = sc.get_factor_snapshot(
-                            start_date=str(dates[0]), end_date=str(dates[-1]))
-                        counts = (df_snap['trade_date'].astype(str).value_counts().to_dict()
-                                  if not df_snap.empty else {})
-                    except Exception:
-                        df_snap, counts = pd.DataFrame(), {}
-                    # 快照需覆盖近2日(KDJ金叉/死叉需前后对比)且最新日>=1000只才算可用
-                    snap_ok = (not df_snap.empty
-                               and {str(dates[0]), str(dates[-1])} <= set(counts)
-                               and counts.get(str(dates[-1]), 0) > 1000)
-                    if snap_ok:
-                        df_all = df_snap
-                    else:
-                        if df_snap.empty:
-                            print("⏳ SQLite技术因子快照缺失,全市场预热计算(约250交易日)后自动落库...")
-                        # 回退现算(与旧逻辑口径一致): 最近2日各一次,完成后幂等落库
-                        parts = []
-                        for d in dates:
-                            df_d = sc.fetch_market_by_date(str(d), cols=factor_cols)
-                            if not df_d.empty:
-                                parts.append(df_d)
-                        df_all = pd.concat(parts, ignore_index=True).sort_values(
-                            ['ts_code', 'trade_date']) if parts else pd.DataFrame()
-                        try:
-                            sc.replace_factor_snapshot(df_all)
-                        except Exception as e2:
-                            print(f"⚠ 技术因子快照落库失败(不影响本次运行): {e2}")
-
-                    latest_count = (0 if df_all.empty else
-                                    int((df_all['trade_date'].astype(str) == str(dates[-1])).sum()))
-                    if latest_count > 1000:
-                        latest_date = str(dates[-1])
-                    elif len(dates) >= 2:
-                        latest_date = str(dates[0])
-                        print(f"  最新日期{dates[-1]}数据量仅{latest_count}只,回退到{latest_date}")
-                    else:
-                        latest_date = str(dates[-1])
-
-                    if df_all.empty:
-                        print(f"⚠ SQLite中{latest_date}无技术因子数据")
-                    else:
-                        # 重命名字段 (_bfq后缀 -> 简洁名,与_tail_technical_score对齐)
-                        factor_rename = {
-                            'macd_dif_bfq': 'macd_dif',
-                            'macd_dea_bfq': 'macd_dea',
-                            'macd_bfq': 'macd',
-                            'kdj_bfq': 'kdj_j',
-                            'kdj_k_bfq': 'kdj_k',
-                            'kdj_d_bfq': 'kdj_d',
-                            'rsi_bfq_6': 'rsi_6',
-                            'rsi_bfq_12': 'rsi_12',
-                            'rsi_bfq_24': 'rsi_24',
-                            'boll_mid_bfq': 'boll_mid',
-                            'boll_upper_bfq': 'boll_upper',
-                            'boll_lower_bfq': 'boll_lower',
-                            'cci_bfq': 'cci',
-                        }
-                        valid_rename = {k: v for k, v in factor_rename.items() if k in df_all.columns}
-                        df_all = df_all.rename(columns=valid_rename)
-
-                        # 按ts_code分组存储
-                        for code, group_df in df_all.groupby('ts_code'):
-                            self.stock_factors[code] = group_df.sort_values('trade_date').reset_index(drop=True)
-
-                        print(f"[缓存] 技术因子已加载: {len(self.stock_factors)} 只 (SQLite {latest_date})")
-            except Exception as e:
-                print(f"⚠ SQLite技术因子加载失败: {e}")
+            print("⚠ stock_klines 为空, 技术因子未派生(尾盘技术形态分按缺省降级)")
 
         # ── 2. 加载总市值 ──
         trade_date = self._get_last_trade_date()
@@ -2948,6 +2944,34 @@ class RealtimeThemeMonitor:
         else:
             market_status, pos_range, pos = "主跌段", "0~10%", 5
 
+        # ── 量价背离降档(20260929新增) ──
+        # 显著缩量上涨(量比<0.85 且 上涨占比>=50)是唯一的负期望量价形态
+        # (历史标定 fwd胜率47.9%/中位-0.05%, n=48)。原实现仅扣5分, 不足以对冲
+        # "中证2000趋势分高位(权重0.40) + TOP3主题平均涨幅×6(权重0.6)"带来的虚高,
+        # 会出现全天显著缩量却给出40%仓位的情况
+        # (20260929: 全天预测成交额-27%~-29%, 11:26起40%, 13:00后因+15上限恒定40%)。
+        # 故在阈值分档后再降一级, 使仓位建议与实际承接力度匹配。只下减不上加。
+        # 注意: 本降档仅实时盯盘脚本生效, market_analysis.py 未同步(属有意为之, 非漏改)。
+        if vol_adj_info and vol_adj_info.get('reason') == '缩量上涨·量价背离':
+            _pos_ladder = (
+                ("主升浪", "80~100%", 90),
+                ("强趋势", "60~80%", 70),
+                ("趋势良好", "50~70%", 60),
+                ("震荡", "30~50%", 40),
+                ("弱势", "20~30%", 25),
+                ("退潮", "10~20%", 15),
+                ("主跌段", "0~10%", 5),
+            )
+            _names = [x[0] for x in _pos_ladder]
+            if market_status in _names:
+                _i = _names.index(market_status)
+                if _i + 1 < len(_pos_ladder):
+                    _orig = f"{market_status}{pos}%"
+                    market_status, pos_range, pos = _pos_ladder[_i + 1]
+                    print(f"[量价背离降档] {vol_adj_info.get('level', '')}"
+                          f"(量比{vol_adj_info.get('ratio', '?')}, 上涨占比>={up_ratio:.0f}%) "
+                          f"原{_orig} → 降至{market_status}{pos}%")
+
         # ── 赚钱效应惩罚(顶级私募视角:不只是看趋势分,还要看实际赚钱效应) ──
         # 解决"测强不测涨"问题:趋势分可能仍偏高,但跌停潮+恐慌性抛售时必须空仓
         # 惩罚只下减不上加,且仅在弱势环境下生效(强势环境不惩罚)
@@ -3550,7 +3574,7 @@ class RealtimeThemeMonitor:
         # 加载换手率缓存(用于尾盘评分/换手过滤)
         self.load_turnover_cache()
 
-        # 加载技术因子+总市值缓存(用于尾盘突袭技术形态评分+市值过滤)
+        # 派生技术因子(KDJ/RSI/ATR, 用于尾盘突袭技术形态评分) + 加载总市值
         self.load_stock_factors_cache()
 
         # ── 连接 ──
@@ -3722,47 +3746,6 @@ class RealtimeThemeMonitor:
                     print(f"  ⚠ SLI启动预警异常: {e}")
                 if launch_alerts:
                     self.push_alerts(launch_alerts, now)
-
-                # ── 14:50后每2分钟扫描「猎尾V4」SLI中长线潜力池最佳回踩 ──
-                if now.hour == 14 and now.minute >= 50:
-                    if time.time() - self.last_tail_entry_scan_time >= 120:
-                        tail_signals = self.scan_tail_recovery_v3()
-                        # 写入跟踪表(用于未来交易日盘后回填和胜率分析)
-                        self._save_tail_recovery_signals_to_tracker(tail_signals)
-                        # 同步写入统一选股库(盘后 stock_pick_db.update_tracking 回填)
-                        self._save_tail_recovery_picks_to_pickdb(tail_signals)
-                        if tail_signals:
-                            # 控制台输出
-                            print(f"\n{'='*110}")
-                            print(f"🎯 「猎尾V4」SLI中长线潜力池回踩信号 [{now.strftime('%H:%M:%S')}] 共{len(tail_signals)}只候选")
-                            print(f"{'排名':<4} {'代码':<12} {'名称':<10} {'赛道':<10} {'择时分':>5} {'潜力':>5} {'回踩%':>7} {'乖MA20':>7} {'空间':>6} {'尾量':<9} {'涨幅':>6} {'信号'}")
-                            print(f"{'-'*110}")
-                            for i, s in enumerate(tail_signals[:10], 1):
-                                d = s.get('detail', {})
-                                emoji = {'强买入': '✅', '买入观察': '🟢', '关注': '👀'}.get(s['signal'], '')
-                                vol_label = str(d.get('tail_vol_label', '-'))
-                                print(f"{i:<4} {s['ts_code']:<12} {s['name']:<10} {s['theme']:<10} {s['total_score']:>5} {d.get('mid_long_score', 0):>5.1f} {d.get('ret_pct', 0):>+6.1f}% {d.get('rise_gap_ma20', 0):>+6.1f}% {d.get('upside_pct', 0):>+5.1f}% {vol_label:<9} {s['pct_chg']:>+5.1f}% {s['signal']}{emoji}")
-                            print(f"{'='*110}\n")
-
-                            # 推送信号到微信: SLI池回踩形态≥65分推送
-                            buy_signals = [s for s in tail_signals if s.get('total_score', 0) >= 65]
-                            if buy_signals and time.time() - self.last_tail_entry_scan_time >= 600:
-                                lines = []
-                                for s in buy_signals[:5]:
-                                    d = s.get('detail', {})
-                                    feats = []
-                                    if d.get('weak_market'): feats.append('⚠弱市')
-                                    if d.get('rise_gap_vwap', 0) < 0: feats.append(f"贴VWAP{d['rise_gap_vwap']:+.1f}%")
-                                    vol_label = str(d.get('tail_vol_label', ''))
-                                    if vol_label.startswith('缩量'): feats.append(f"尾盘{vol_label}")
-                                    if d.get('sector_rank') == 1: feats.append('赛道龙头')
-                                    feat_str = ' '.join(feats) if feats else ''
-                                    rank_tag = f"赛道#{d['sector_rank']}" if d.get('sector_rank') else ''
-                                    lines.append(f"{s['signal']} {s['name']}({s['ts_code']}) 择时{s['total_score']} 潜力{d.get('mid_long_score', 0):.1f} 乖离VWAP{d.get('rise_gap_vwap', 0):+.1f}% MA20{d.get('rise_gap_ma20', 0):+.1f}% 空间{d.get('upside_pct', 0):+.1f}% [{rank_tag}] 涨{s['pct_chg']:+.1f}% 止损{d.get('stop_loss', 0):.2f} {feat_str}")
-                                content = f"🎯 「猎尾V4」SLI中长线潜力池回踩买入信号 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                                self.send_wechat(f"🎯 猎尾V4回踩 {now.strftime('%H:%M')}", content)
-
-                        self.last_tail_entry_scan_time = time.time()
 
                 # ── 14:50后每3分钟扫描「猎尾V5」ND2次日Alpha ──
                 if now.hour == 14 and now.minute >= 50:
@@ -4877,7 +4860,7 @@ class RealtimeThemeMonitor:
             print(f"⚠ V3尾盘信号写入跟踪表失败: {e}")
 
     # ════════════════════════════════════════════
-    # 猎尾V4: 中报优质股池最佳回踩 (学习 push_washout_recovery.py)
+    # SLI 中长线潜力池: 池专用行情 + 盘中启动预警
     # ════════════════════════════════════════════
 
     def _fetch_sina_quotes(self, codes, batch_size=80):
@@ -4943,7 +4926,7 @@ class RealtimeThemeMonitor:
 
     def _refresh_sli_pool_quotes(self, pool, force=False):
         """
-        刷新 SLI 池专用实时行情(启动预警与「猎尾V4」尾盘回踩共用)
+        刷新 SLI 池专用实时行情(供盘中启动预警使用)
 
         写入 self.sli_pool_quotes 而非 self.quotes —— 池成员多为非主题池股票, 混入主行情
         会污染市场广度/涨跌停/市场情绪统计。按 SLI_POOL_QUOTE_REFRESH_SEC 限频。
@@ -4957,7 +4940,7 @@ class RealtimeThemeMonitor:
 
     def _load_sli_pool(self):
         """
-        加载 SLI 中长线潜力池(NEXT_LEADER_V2, 盘中启动预警与「猎尾V4」尾盘回踩共用)
+        加载 SLI 中长线潜力池(NEXT_LEADER_V2, 供盘中启动预警使用)
 
         口径: sli.reader.get_next_leaders —— 全池(config.POOL_MIDLONG_V2)一次取回,
         由景气档位下的 SLI_V2/Growth/Product 三硬门槛 + SLI_V2 60日动量门槛 +
@@ -4995,8 +4978,8 @@ class RealtimeThemeMonitor:
         """
         SLI 中长线潜力池「盘中启动预警」
 
-        池成员盘中直接拉起时, 尾盘回踩扫描(scan_tail_recovery_v3)只会把它当追高剔除,
-        盯盘者全程无感知; 故盘中涨幅首次达到 SLI_LAUNCH_PCT(3%) 即记录并汇总推送。
+        池成员盘中直接拉起时, 盯盘者若无专门预警会全程无感知;
+        故盘中涨幅首次达到 SLI_LAUNCH_PCT(3%) 即记录并汇总推送。
         池子取 NEXT_LEADER_V2 全池(约200只, 不再按 mid_long_score 收口),
         单看3%日均40只量级, 由汇总+冷却+每只每日一次控制推送频率。
 
@@ -5135,370 +5118,6 @@ class RealtimeThemeMonitor:
         except Exception:
             return None
 
-    def scan_tail_recovery_v3(self):
-        """
-        「猎尾V4」SLI 中长线潜力池最佳回踩 — 学习 push_washout_recovery.py 的精选逻辑
-
-        股票池: SLI NEXT_LEADER_V2 中长线潜力池(见 _load_sli_pool, 约200只; 由景气档位下的
-                SLI_V2/Growth/Product 三硬门槛 + SLI_V2 60日动量门槛 + mid_long_score 决定)
-        基准口径: ①回踩幅度=现价/昨收(实时行情last_close→ref_prices→daily_cache);
-                  ②MA20、③VWAP、ATR14 一律由 daily_cache 按最新交易日重算(见 _pullback_baselines)
-        14:50 实时二次确认(找"最佳回踩"):
-            ① 今日回踩幅度   (30分): 相对昨收小回调-3%~0%满分(回踩到位), 追高大幅扣分
-            ② 现价乖离MA20   (25分): 回踩区(0~+8%)满分, 破位MA20直接剔除
-            ③ 现价乖离VWAP   (15分): 越贴近主力成本区(20日VWAP)越"回踩到位"
-            ④ 尾盘量能       (15分): 缩量回踩确认(14:30尾盘增量<=0.15)满分
-            ⑤ 至止盈位空间   (10分): 止盈=现价+3*ATR14, 空间=3*ATR/现价, 5%~20%满分
-            ⑥ SLI 赛道地位   ( 5分): 赛道内 sub_rank 越靠前越优(1=赛道最强)
-        综合分 = 实时二次确认分(rt_score, 0~100)
-                (mid_long_score / sli_v2 只作入池门槛与展示, 不参与打分 —— 依据
-                 sli.backtest 分桶检验 2023-06~2026-09 四十期点: 池内 mid_long_score
-                 与未来收益秩相关 IC≈0(20日+0.000/60日-0.001/120日+0.011),
-                 分桶超额无单调性, 故池内按分数排序无 alpha)
-        止损 = 现价-2*ATR14;  止盈 = 现价+3*ATR14
-        信号: >=80强买入 >=70买入观察 >=65关注(推送线65)
-
-        注: 落库沿用 V4 表列名, 其中 quant_score=mid_long_score、wash_score=sli_v2
-        """
-        pool, meta = self._load_sli_pool()
-        if pool is None:
-            print('⚠ 「猎尾V4」SLI 中长线潜力池不可用(无快照或加载失败), 跳过回踩扫描')
-            return []
-        if pool.empty:
-            print('⚠ 「猎尾V4」SLI 中长线潜力池为空, 无信号')
-            return []
-        snapshot_date = str(meta.get('snapshot_date') or '') or '-'
-        age = meta.get('age_days')
-        if isinstance(age, int) and age > 5:
-            print(f"⚠ 「猎尾V4」SLI 快照 {snapshot_date} 已 {age} 天未更新, 池子可能滞后")
-
-        last_trade_date = self._get_last_trade_date()
-
-        # ── 补拉池内行情 ──
-        # 池成员多为非主题池股票, 走池专用行情 self.sli_pool_quotes(不并入 self.quotes,
-        # 避免污染市场广度/涨跌停统计); 主题池内成员优先用主循环行情(更新鲜)
-        self._refresh_sli_pool_quotes(pool)
-
-        # ── 2. 逐只 14:50 实时二次确认 ──
-        now = datetime.now()
-        index_q = self.quotes.get('000001.SH')
-        index_pct = index_q.get('pct_chg', None) if index_q else None
-
-        signals = []
-        rejects = {}          # 诊断: 二次确认拦截原因分布
-        no_quote_codes = []
-        stale_prev_codes = []  # 诊断: 实时/ref_prices/daily_cache 均取不到昨收的股票
-        for _, r in pool.iterrows():
-            ts_code = str(r['ts_code']).strip()
-            name = str(r.get('name', '')).strip()
-            theme = str(r.get('subsector') or r.get('l3_name') or '').strip()
-            mid_long = float(r.get('mid_long_score') or 0)   # 中长线潜力分(池内排序依据)
-            sli_v2 = float(r.get('sli_v2') or 0)             # SLI_V2 强度(替代原"洗盘修复分")
-            sub_rank = float(r.get('sub_rank') or 0)         # 赛道内排名(1=赛道最强)
-            nl_rank = float(r.get('nl_rank') or 0)           # 池内排名(1=综合最强)
-            ltype = str(r.get('leader_type_v2') or '').strip()
-            if ltype.upper() == 'NONE':
-                ltype = ''
-
-            q = self.quotes.get(ts_code) or self.sli_pool_quotes.get(ts_code)
-            if not q or q.get('price', 0) <= 0:
-                no_quote_codes.append(ts_code)
-                continue
-            price = q.get('price', 0)
-            pct = q.get('pct_chg', 0)
-
-            # 基准(MA20/VWAP/ATR14)统一按最新交易日从日线缓存重算, 池子快照滞后也不会错位
-            bl = self._pullback_baselines(ts_code, last_trade_date)
-            if not bl:
-                rejects.setdefault('无日线基准(MA20/VWAP/ATR)', []).append(ts_code)
-                continue
-            ma20 = bl['ma20']
-            vwap = bl['vwap']
-            atr = bl['atr']
-
-            # 昨收基准: ①实时行情自带 last_close(权威) → ②ref_prices(Tushare昨收) → ③daily_cache
-            prev_close = float(q.get('last_close') or 0)
-            if prev_close <= 0:
-                prev_close = float(self.ref_prices.get(ts_code, {}).get('close') or 0)
-            if prev_close <= 0:
-                prev_close = bl['prev_close']
-            if prev_close <= 0:
-                stale_prev_codes.append(ts_code)
-                continue
-
-            # 止损/止盈按重算 ATR14 以现价锚定(口径同 enhanced_timing_bull_all: -2ATR / +3ATR)
-            stop_loss = price - 2.0 * atr
-            target = price + 3.0 * atr
-            rise_vwap = (price / vwap - 1) * 100 if vwap > 0 else 0
-            ma20_gap = (price / ma20 - 1) * 100 if ma20 > 0 else 0
-            upside = (target / price - 1) * 100 if price > 0 and target > 0 else 0
-            ret_pct = (price / prev_close - 1) * 100 if prev_close > 0 else 0  # 今日相对昨收回踩幅度
-
-            # ── 硬性实时条件: 基准齐全 + 回踩未破位 + 不追高 + 空间足够 ──
-            reject = None
-            if atr <= 0:
-                reject = '无ATR(日线不足)'
-            elif ma20_gap < -3:
-                reject = f'破位MA20({ma20_gap:+.1f}%)'
-            elif rise_vwap < -3:
-                reject = f'跌破成本区({rise_vwap:+.1f}%)'
-            elif ret_pct < -4:
-                reject = f'今日回踩过深({ret_pct:.1f}%)'
-            elif ret_pct > 7:
-                reject = f'今日追高({ret_pct:+.1f}%)'
-            elif upside < 2:
-                reject = f'止盈空间不足({upside:+.1f}%)'
-            if reject:
-                rejects.setdefault(reject, []).append(ts_code)
-                continue
-
-            # ── 二次确认评分(0-100) ──
-            # ① 今日回踩幅度(30): 最佳回踩=相对昨收小回调/企稳(-3%~+2%), 追高大幅扣分
-            if -3 <= ret_pct <= 0:
-                s_ret = 30
-            elif 0 < ret_pct <= 2:
-                s_ret = 26
-            elif 2 < ret_pct <= 5:
-                s_ret = 16
-            elif -4 <= ret_pct < -3:
-                s_ret = 14
-            elif ret_pct > 5:
-                s_ret = 6
-            else:
-                s_ret = 4
-            # ② 乖离MA20(25): 回踩区(0~+8%)满分, 深贴/远离均扣分
-            if 0 <= ma20_gap < 8:
-                s_ma20 = 25
-            elif -3 <= ma20_gap < 0:
-                s_ma20 = 18
-            elif 8 <= ma20_gap < 12:
-                s_ma20 = 16
-            elif 12 <= ma20_gap < 18:
-                s_ma20 = 10
-            else:
-                s_ma20 = 6
-            # ③ 乖离VWAP(15): 越贴近主力成本区(20日VWAP)越"回踩到位"
-            if 0 <= rise_vwap < 8:
-                s_vwap = 15
-            elif 8 <= rise_vwap < 15:
-                s_vwap = 12
-            elif 15 <= rise_vwap < 25:
-                s_vwap = 8
-            elif rise_vwap < 0:
-                s_vwap = 10
-            else:  # >=25
-                s_vwap = 5
-            # ④ 尾盘量能(15): 缩量回踩确认
-            snap = self.intraday_snapshots.get(ts_code, {})
-            noon_vol = snap.get('noon_vol', 0) or 0
-            tail_base_vol = snap.get('tail_base_vol', 0) or 0
-            if noon_vol > 0 and tail_base_vol >= noon_vol:
-                tail_add = (tail_base_vol - noon_vol) / noon_vol  # 14:00→14:30半小时增量占比
-                if tail_add <= 0.15:
-                    s_vol = 15; vol_label = f'缩量{tail_add:.2f}'
-                elif tail_add <= 0.25:
-                    s_vol = 11; vol_label = f'温和{tail_add:.2f}'
-                elif tail_add <= 0.40:
-                    s_vol = 8; vol_label = f'微放{tail_add:.2f}'
-                else:
-                    s_vol = 4; vol_label = f'放量{tail_add:.2f}'
-            else:
-                s_vol = 8; vol_label = '无快照'
-            # ⑤ 至止盈空间(10)
-            if 5 <= upside <= 20:
-                s_room = 10
-            elif 2 <= upside < 5:
-                s_room = 6
-            elif upside > 20:
-                s_room = 8
-            else:
-                s_room = 3
-            # ⑥ SLI 赛道地位(5): 赛道内 sub_rank 越靠前越优(1=赛道最强)
-            if 0 < sub_rank <= 1:
-                s_slot = 5
-            elif 0 < sub_rank <= 3:
-                s_slot = 4
-            elif 0 < sub_rank <= 5:
-                s_slot = 3
-            else:
-                s_slot = 2
-
-            rt_score = s_ret + s_ma20 + s_vwap + s_vol + s_room + s_slot
-            weak_market = False
-            if index_pct is not None and index_pct <= -1.5:
-                rt_score -= 8
-                weak_market = True
-            rt_score = max(0, min(100, rt_score))
-
-            # ── 综合分: 分数只做门槛 ──
-            # 池内 mid_long_score 无横截面排序能力(回测 IC≈0), 总分全交给回踩择时分;
-            # mid_long_score/sli_v2 仅作入池门槛与展示(池内已保证 mid_long_score>=score_min)
-            total = int(round(rt_score))
-            if total >= 80:
-                signal = '强买入'
-            elif total >= 70:
-                signal = '买入观察'
-            else:
-                signal = '关注'
-            confidence = int(round(sli_v2 * 0.5 + rt_score * 0.5))
-
-            signals.append({
-                'ts_code': ts_code,
-                'name': name,
-                'theme': theme,
-                'total_score': total,
-                'quant_score': round(mid_long, 1),   # = mid_long_score(沿用V4列名)
-                'realtime_score': rt_score,
-                'wash_score': round(sli_v2, 1),      # = sli_v2(沿用V4列名)
-                'theme_score': 0, 'capital_score': 0, 'role_score': 0,
-                'technical_score': 0, 'timing_score': 0, 'risk_penalty': 0,
-                'gap_score': 0,
-                'signal': signal,
-                'role': 'recovery',
-                'buy_type': 'PULLBACK_GAP',
-                'confidence': confidence,
-                'next_day_expectation': f'回踩{ret_pct:+.1f}% 乖离VWAP{rise_vwap:+.1f}% 空间{upside:+.1f}% 止损{stop_loss:.2f}',
-                'pct_chg': pct,
-                'price': price,
-                'detail': {
-                    'mid_long_score': round(mid_long, 1),
-                    'sli_v2': round(sli_v2, 1),
-                    'quant_score': round(mid_long, 1),   # = mid_long_score(沿用V4列名)
-                    'realtime_score': rt_score,
-                    'wash_score': round(sli_v2, 1),      # = sli_v2(沿用V4列名)
-                    'ret_pct': round(ret_pct, 2),
-                    'rise_gap_vwap': round(rise_vwap, 2),
-                    'rise_gap_ma20': round(ma20_gap, 2),
-                    'upside_pct': round(upside, 1),
-                    'atr': round(atr, 3),
-                    'atr_pct': round(atr / price * 100, 2) if price > 0 else 0,
-                    'sector_rank': int(sub_rank) if sub_rank > 0 else 0,
-                    'pool_rank': int(nl_rank) if nl_rank > 0 else 0,
-                    'leader_type': ltype,
-                    'tail_vol_label': vol_label,
-                    'stop_loss': round(stop_loss, 2),
-                    'take_profit': round(target, 2),
-                    'index_pct': index_pct,
-                    'snapshot_date': snapshot_date,
-                    'weak_market': weak_market,
-                },
-                'explain': (f'SLI中长线潜力池{snapshot_date} 潜力{mid_long:.0f}分 SLI_V2 {sli_v2:.0f} '
-                            f'赛道#{int(sub_rank) if sub_rank > 0 else "-"}{(" " + ltype) if ltype else ""} {signal} '
-                            f'今日回踩{ret_pct:+.1f}% 乖离VWAP{rise_vwap:+.1f}% MA20{ma20_gap:+.1f}% 至止盈{upside:+.1f}%'),
-            })
-
-        # 诊断输出(首次)
-        if not self.tail_entry_debug_printed:
-            self.tail_entry_debug_printed = True
-            passed = len(signals)
-            print(f"\n{'='*70}")
-            print(f"🔍 「猎尾V4」SLI中长线潜力池回踩扫描诊断 [{now.strftime('%H:%M:%S')}] 快照:{snapshot_date}")
-            print(f"  池子: {len(pool)}只 (NEXT_LEADER_V2 中长线潜力池)")
-            if no_quote_codes:
-                print(f"  无实时行情: {len(no_quote_codes)}只 {no_quote_codes[:5]}")
-            if stale_prev_codes:
-                print(f"  ⚠无昨收基准: {len(stale_prev_codes)}只 {stale_prev_codes[:5]}")
-            print(f"  二次确认拦截:")
-            for r2, codes in sorted(rejects.items(), key=lambda x: -len(x[1])):
-                print(f"    {r2}: {len(codes)}只 {codes[:5]}")
-            print(f"  通过二次确认: {passed}只")
-            if passed:
-                print(f"  总分范围: {min(s['total_score'] for s in signals)}~{max(s['total_score'] for s in signals)}")
-            print(f"{'='*70}\n")
-
-        signals.sort(key=lambda x: x['total_score'], reverse=True)
-        return signals
-
-    def _save_tail_recovery_signals_to_tracker(self, signals):
-        """
-        「猎尾V4」SLI中长线潜力池回踩信号写入跟踪表 tail_signal_tracker_v4
-        入表筛选: total_score >= 65 + 排除北交所
-        (表列沿用V4: total_score=实时二次确认分, quant_score=mid_long_score, wash_score=sli_v2)
-        """
-        if not signals:
-            return
-        try:
-            import json as _json
-            now = datetime.now()
-            signal_date = self._get_last_trade_date(include_today=True)   # 尾盘信号属于当日
-            signal_time = now.strftime('%H:%M:%S')
-
-            conn = sqlite3.connect(self.tail_tracker_db, timeout=10.0)
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS tail_signal_tracker_v4 (
-                    signal_date   TEXT NOT NULL,
-                    signal_time   TEXT,
-                    ts_code       TEXT NOT NULL,
-                    name          TEXT,
-                    theme         TEXT,
-                    signal        TEXT,
-                    total_score   INTEGER,
-                    quant_score   REAL,
-                    realtime_score INTEGER,
-                    wash_score    REAL,
-                    confidence    INTEGER,
-                    next_day_expectation TEXT,
-                    pct_chg       REAL,
-                    price         REAL,
-                    detail_json   TEXT,
-                    next_open     REAL,
-                    next_close    REAL,
-                    next_pct_chg  REAL,
-                    next_high     REAL,
-                    next_low      REAL,
-                    next_5d_pct   REAL,
-                    next_10d_pct  REAL,
-                    max_gain      REAL,
-                    max_drawdown  REAL,
-                    exit_date     TEXT,
-                    exit_price    REAL,
-                    exit_reason   TEXT,
-                    pnl           REAL,
-                    status        TEXT DEFAULT 'pending',
-                    note          TEXT,
-                    updated_at    TEXT,
-                    PRIMARY KEY (signal_date, ts_code)
-                )
-            ''')
-            candidates = []
-            for s in signals:
-                if s.get('total_score', 0) < 65:
-                    continue
-                code = s.get('ts_code', '')
-                if code.startswith(('9', '4')):
-                    continue
-                candidates.append(s)
-            if not candidates:
-                print(f"[跟踪V4] 无信号满足筛选条件(>=65+排北交所)")
-                conn.close()
-                return
-            for s in candidates:
-                conn.execute('''
-                    INSERT OR REPLACE INTO tail_signal_tracker_v4 (
-                        signal_date, signal_time, ts_code, name, theme, signal,
-                        total_score, quant_score, realtime_score, wash_score, confidence,
-                        next_day_expectation, pct_chg, price, detail_json,
-                        next_open, next_close, next_pct_chg, next_high, next_low,
-                        next_5d_pct, next_10d_pct, max_gain, max_drawdown,
-                        exit_date, exit_price, exit_reason, pnl, status, note, updated_at
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                        NULL, NULL, NULL, NULL, 'pending', NULL, ?
-                    )
-                ''', (
-                    signal_date, signal_time, s['ts_code'], s.get('name', ''), s.get('theme', ''), s['signal'],
-                    s['total_score'], s.get('quant_score', 0), s.get('realtime_score', 0), s.get('wash_score', 0), s.get('confidence', 0),
-                    s.get('next_day_expectation', ''), s.get('pct_chg', 0), s.get('price', 0),
-                    _json.dumps(s.get('detail', {}), ensure_ascii=False),
-                    signal_time,
-                ))
-            conn.commit()
-            conn.close()
-            print(f"[跟踪V4] 已写入{len(candidates)}只信号到跟踪表V4 (>=65+排北交所, signal_date={signal_date})")
-        except Exception as e:
-            print(f"⚠ V4尾盘信号写入跟踪表失败: {e}")
-
     def _save_fox_picks_to_pickdb(self, signals):
         """
         「猎狐V4」缩量回调→首根放量中阳(定稿)信号写入统一选股库 stock_pick_db
@@ -5566,46 +5185,6 @@ class RealtimeThemeMonitor:
         except Exception as e:
             print(f"⚠ {strategy_name}写入选股库失败: {e}")
             return 0
-
-    def _save_tail_recovery_picks_to_pickdb(self, signals):
-        """
-        「猎尾V4」SLI中长线潜力池回踩信号写入统一选股库(与 tail_signal_tracker_v4 双写)
-        入表筛选: total_score >= 65 + 排除北交所
-        """
-        picks = []
-        for s in signals or []:
-            if s.get('total_score', 0) < 65:
-                continue
-            code = s.get('ts_code', '')
-            if not code or code.startswith(('9', '4')):
-                continue
-            d = s.get('detail', {}) or {}
-            picks.append({
-                'ts_code': code,
-                'stock_name': s.get('name', ''),
-                'close': s.get('price'),
-                'pct_chg': s.get('pct_chg'),
-                'signal': s.get('signal', ''),
-                'action': s.get('next_day_expectation', ''),
-                'score': s.get('total_score'),
-                'reason': s.get('next_day_expectation', ''),
-                'stop_price': d.get('stop_loss'),
-                # ── 策略自有字段(自动序列化进 indicators) ──
-                'theme': s.get('theme', ''),
-                'mid_long_score': d.get('mid_long_score'),
-                'sli_v2': d.get('sli_v2'),
-                'realtime_score': s.get('realtime_score'),
-                'confidence': s.get('confidence'),
-                'ret_pct': d.get('ret_pct'),
-                'rise_gap_vwap': d.get('rise_gap_vwap'),
-                'rise_gap_ma20': d.get('rise_gap_ma20'),
-                'upside_pct': d.get('upside_pct'),
-                'atr_pct': d.get('atr_pct'),
-                'sector_rank': d.get('sector_rank'),
-                'leader_type': d.get('leader_type', ''),
-                'tail_vol_label': d.get('tail_vol_label', ''),
-            })
-        return self._pickdb_write('tail_v4_recovery', '猎尾V4 SLI中长线潜力池回踩', picks)
 
     def _save_nd2_picks_to_pickdb(self, signals):
         """「猎尾V5」ND2次日Alpha精选信号写入统一选股库(与 nd2_snapshot.db 双写)"""

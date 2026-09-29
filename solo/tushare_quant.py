@@ -7364,160 +7364,90 @@ def _load_mainline_rotation_themes(trade_date):
 
 
 # =========================
-# 报告第2段"主题分析"喂料：从 theme_scores.db 组装结构化数据块
-# （替代把整份 theme_analysis_v2 文本原样塞给 LLM 的做法，避免
-#   文本/DB 口径打架导致 AI 误判与编造主题、个股、分数）
+# 报告第2段"主题分析"喂料：从 主题热度 V2.4 组装结构化数据块
+# （20260928 改用 theme_heat_v24：原 theme_scores.db 口径在 0928 出现
+#   36 个主题全部"清仓回避"、主线候选为空，与实际热度严重背离）
 # =========================
 def _build_theme_advice_feed(trade_date):
-    """从 theme_scores.db 组装【今日主题分析情况】结构化喂料
+    """组装【今日主题分析情况】结构化喂料：本日 / 本周 / 本月 三个窗口的热度 Top5 主题
 
-    数据块分三档（以引擎落库的 trade_action / position_label 为准）：
-      ◆ 进攻主线候选 = 动作含"加仓/建仓/持有/底仓"的主题（按综合分降序）
-      ◆ 观察/轮动区   = 动作含"观望"的主题
-      ◆ 回避/风险区   = 其余（清仓/离场/回避）
-    进攻/观察档主题附当日涨停梯队（theme_top_stocks top3~5：
-    连板高度/封板时间/领涨标记），供 AI 直接引用。
-    无 DB 数据时返回 ""（由调用方回退到旧 txt 方案）。
+    数据源 = 主题热度 V2.4（report_daily/theme_heat_v24_{date}.json），
+    统一经 theme_heat_v22.load_heat() 读取（消费端唯一入口）。
+    热度为 0~100 分位制（越高越热）：
+      本日 = 当日热度 / 本周 = 近5个交易日 / 本月 = 近20个交易日。
+    纯热度口径，不含个股与涨停梯队。
+    无 V2.4 结果时返回 ""（由调用方回退 theme_analysis_v2 文本）。
     """
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "report_daily", "theme_scores.db")
-    if not os.path.exists(db_path):
-        print(f"[实盘建议] 未找到主题评分DB: {db_path}")
+    heat = _load_theme_heat(trade_date)
+    if not heat:
+        print(f"[实盘建议] 无 {trade_date} 主题热度V2.4结果，主题喂料跳过")
         return ""
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        srows = cur.execute(
-            "SELECT * FROM theme_scores WHERE trade_date=? ORDER BY composite_score DESC",
-            (trade_date,)).fetchall()
-        trows = {}
+
+    def _top5(key):
+        rows = [v for v in heat.values() if v.get(key) is not None]
+        rows.sort(key=lambda v: -float(v[key]))
+        return rows[:5]
+
+    def _fstr(v, key):
         try:
-            for r in cur.execute(
-                    "SELECT * FROM theme_top_stocks WHERE trade_date=? ORDER BY theme, rank_top",
-                    (trade_date,)).fetchall():
-                trows.setdefault(r["theme"], []).append(r)
-        except Exception:
-            pass
-        conn.close()
-    except Exception as e:
-        print(f"[实盘建议] 读取 theme_scores.db 失败: {e}")
-        return ""
-    if not srows:
-        return ""
+            return f"{float(v.get(key)):.1f}"
+        except (TypeError, ValueError):
+            return '-'
 
-    def _dir_symbol(d):
-        d = str(d or '').strip()
-        sym = {'upward': '↑', 'downward': '↓'}.get(d, '→')
-        cn = {'upward': '向上', 'downward': '向下', 'sideways': '横盘'}.get(d, '横盘')
-        return f"{sym}({cn})"
+    def _istr(v, key):
+        try:
+            return str(int(v.get(key)))
+        except (TypeError, ValueError):
+            return '-'
 
-    def _stock_ladder(theme, limit=5):
-        st = trows.get(theme, [])[:limit]
-        if not st:
-            return ""
-        parts = []
-        for s in st:
-            name = str(s["name"] or "").strip()
-            code = str(s["ts_code"] or "").strip()
-            pct = float(s["pct_chg"] or 0)
-            lb = int(s["lb_height"] or 0)
-            zt_flag = int(s["zt_flag"] or 0)
-            is_leader = int(s["is_leader"] or 0)
-            zt_time = str(s["zt_time"] or "").strip()
-            amt = float(s["amount"] or 0)  # amount_latest, 单位:亿元
-            seg = f"{name}{code} {pct:+.2f}%"
-            if zt_flag:
-                seg += f" 涨停" + (f"{lb}连板" if lb > 1 else "")
-                if zt_time:
-                    # zt_time 在 theme_score_v2 落库时已是 HH:MM:SS
-                    seg += f" {zt_time}封"
-            else:
-                seg += f" {lb}连板" if lb > 1 else ""
-            seg += f" 成交{amt:.1f}亿"  # 供 AI 判定容量中军
-            if is_leader:
-                seg += " [领涨]"
-            parts.append(seg)
-        return " | ".join(parts)
+    def _rkey(heat_key):
+        """today_heat -> today_rank"""
+        return heat_key[:-5] + '_rank'
 
-    main_cand, watch, avoid = [], [], []
-    for r in srows:
-        action = str(r["trade_action"] or "")
-        if any(k in action for k in ("加仓", "建仓", "持有", "底仓")):
-            main_cand.append(r)
-        elif "观望" in action:
-            watch.append(r)
-        else:
-            avoid.append(r)
+    # (本窗口键, 标题, [(交叉引用窗口键, 简称), ...])
+    windows = (('today_heat', '本日', (('week_heat', '周'), ('month_heat', '月'))),
+               ('week_heat', '本周', (('today_heat', '本日'), ('month_heat', '月'))),
+               ('month_heat', '本月', (('today_heat', '本日'), ('week_heat', '周'))))
 
-    def _theme_line(r):
-        name = str(r["theme"] or "").strip()
-        comp = float(r["composite_score"] or 0)
-        trend = float(r["trend_score"] or 0)
-        senti = float(r["sentiment_score"] or 0)
-        zt = int(r["zt_count"] or 0)
-        state = str(r["theme_state"] or "").strip()
-        mig = float(r["migration_score"] or 0)
-        dirc = str(r["migration_direction"] or "").strip()
-        pos = str(r["position_label"] or "").strip()
-        act = str(r["trade_action"] or "").strip()
-        leader = str(r["leader_name"] or "").strip()
-        hot = float(r["hot_score"] or 0)
-        parts = [f"综合{comp:.1f}(趋势{trend:.1f}/情绪{senti:.1f})",
-                 f"涨停{zt}", f"状态:{state}", f"热度{hot:.0f}",
-                 f"迁移{mig:.1f}{_dir_symbol(dirc)}"]
-        if pos:
-            parts.append(f"仓位:{pos}")
-        if leader:
-            parts.append(f"引擎龙头:{leader}")
-        line = f"{name} | " + " | ".join(parts)
-        if act:
-            line += f"\n    动作:{act}"
-        return line
-
-    feed = [f"【主题分析结构化数据 · {trade_date} · theme_scores.db 自动组装，禁止改动数值】"]
-    feed.append("◆ 进攻主线候选（引擎动作可交易，按综合分降序）")
-    if main_cand:
-        for i, r in enumerate(main_cand[:4], 1):
-            feed.append(f"#{i} {_theme_line(r)}")
-            ladder = _stock_ladder(str(r["theme"]).strip())
-            if ladder:
-                feed.append(f"    涨停梯队: {ladder}")
-    else:
-        feed.append("  （无）")
-        feed.append("  >>> 引擎今日判定：无符合主线判定逻辑的核心主线（严格只做主线，"
-                    "整体仓位0%起步，建议空仓或极轻仓等待确认，下列观察/轮动区仅为候补，不可当作已确认主线加仓）")
-    feed.append("◆ 观察/轮动区（动作:空仓观望，按综合分降序）")
-    if watch:
-        for r in watch[:6]:
-            feed.append(f"# {_theme_line(r)}")
-            ladder = _stock_ladder(str(r["theme"]).strip(), 3)
-            if ladder:
-                feed.append(f"    涨停梯队: {ladder}")
-    else:
-        feed.append("  （无）")
-    feed.append("◆ 回避/风险区（动作:清仓离场/回避，按综合分降序）")
-    if avoid:
-        names = " / ".join(str(r["theme"]).strip() for r in avoid[:15])
-        extra = " 等" if len(avoid) > 15 else ""
-        feed.append(f"  {names}{extra}（共{len(avoid)}个，均不建议参与）")
-    else:
-        feed.append("  （无）")
-    feed.append("◆ 主题数据说明：涨停梯队取自 theme_top_stocks（当日top5强势股，含连板/封板时间/[领涨]标记），"
-                "仅此处的个股可在报告中引用；龙头/中军角色必须从[领涨]与非领涨梯队股中判定。")
+    feed = [f"【主题分析结构化数据 · {trade_date} · 主题热度V2.4(theme_heat_v24) 自动组装，禁止改动数值】",
+            "热度口径：0~100 分位制（越高越热）；本日=当日 / 本周=近5交易日 / 本月=近20交易日。"]
+    for key, title, others in windows:
+        feed.append(f"◆ {title}热度 Top5（{key}）")
+        rows = _top5(key)
+        if not rows:
+            feed.append("  （无）")
+            continue
+        for i, v in enumerate(rows, 1):
+            line = (f"#{i} {str(v.get('theme') or '').strip()}"
+                    f" | 热度{_fstr(v, key)}(排名{_istr(v, _rkey(key))})")
+            for ok, ow in others:
+                line += f" | {ow}热度{_fstr(v, ok)}(排名{_istr(v, _rkey(ok))})"
+            if key == 'today_heat':
+                line += f" | 广度{_fstr(v, 'up_ratio')}% | 样本{_istr(v, 'n')}只"
+                _fl = str(v.get('flags') or '').strip()
+                if _fl:
+                    line += f" | 标记:{_fl}"
+            feed.append(line)
+    feed.append("◆ 数据说明：本段只允许引用上述三组 Top5 中的主题名与数值，数据块里没有的主题一律不得出现；"
+                "本数据块不含个股，禁止编造领涨龙头/容量中军等个股。")
     return "\n".join(feed)
 
 
 def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     """
-    主题筛选 / 共振评分 - 使用 theme_analysis_v2 报告（主线+轮动主题）
+    主题筛选 / 共振评分
 
-    加载 report_daily/theme_analysis_v2_{date}.txt，提取"核心主线阵营(▶)"与
-    "潜在轮动与接力机会(▸)"全部主题作为过滤范围，然后匹配股票并注入评分字段。
+    突破股池(mode='resonance')：主题范围来自 主题热度 V2.4 结果
+    （report_daily/theme_heat_v24_{date}.json）的 本日Top10 ∪ 本周Top10 ∪ 本月Top10，
+    theme_analysis_v2 报告仅用于补充主题元数据（阶段/情绪/主线类型/质量分），
+    且不再对 heat 命中的主题做回避否决；V2.4 缺失时回退「主线+轮动」口径。
+
+    跟踪池(mode='filter')：沿用 report_daily/theme_analysis_v2_{date}.txt 的
+    "核心主线阵营(▶)"与"潜在轮动与接力机会(▸)"作为过滤范围，回避区(✕)否决。
 
     参数：
         result_df: 待过滤的股票DataFrame
-        top_n: 保留（兼容旧签名；主线+轮动为主题范围，不截断）
+        top_n: 保留（兼容旧签名；主题范围为固定集合，不截断）
         mode: 'filter'=二元过滤（淘汰不匹配股票，用于跟踪池）
               'resonance'=共振评分（保留全部股票，注入共振系数，用于突破股池）
 
@@ -7528,37 +7458,63 @@ def filter_by_top_themes(result_df, top_n=15, mode='filter'):
     if result_df.empty:
         return result_df
 
-    # ===== 1. 加载主线+轮动主题（读取 theme_analysis_v2 报告）=====
+    # ===== 1. 主题范围 =====
+    # 突破股池(mode='resonance')：范围改用 主题热度 V2.4 的
+    #   本日Top10 ∪ 本周Top10 ∪ 本月Top10（去重）；theme_analysis_v2 报告只用来
+    #   补充主题元数据（阶段/情绪/主线类型/质量分），不再决定范围，也不再对
+    #   heat 命中的主题做回避否决。V2.4 缺失时回退原「主线+轮动」口径（fail-soft）。
+    # 跟踪池(mode='filter')：沿用 theme_analysis_v2 主线+轮动 + 回避区否决。
     theme_report_data = _load_mainline_rotation_themes(TRADE_DATE)
-    if not theme_report_data:
-        print(f"[主题过滤] 主题评分报告不可用，跳过过滤")
-        # 确保至少有所属主题列
-        if '所属主题' not in result_df.columns:
-            result_df['所属主题'] = ''
-        return result_df
 
-    # 主线+轮动全部作为过滤范围；回避区(✕)主题单独处理，命中时标注"(回避)"
-    junk_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') == 'junk'}
-    keep_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') != 'junk'}
-    keep_themes = set(keep_themes_info.keys())
-
-    # 主题强度统一改用 主题热度 V2.3（TODAY+WEEK 综合 Heat）；V2.3 缺失时把 V2 趋势分折算到同一尺度
+    # 主题强度统一改用 主题热度 V2.4（TODAY+WEEK 综合 Heat）；缺失时把 V2 趋势分折算到同一尺度
     theme_heat = _load_theme_heat(TRADE_DATE)
+    heat_mode = (mode == 'resonance' and bool(theme_heat))
+
+    if heat_mode:
+        keep_themes = set()
+        for _win in ('today_heat', 'week_heat', 'month_heat'):
+            _ranked = [t for t, v in theme_heat.items() if v.get(_win) is not None]
+            _ranked.sort(key=lambda t: -float(theme_heat[t][_win]))
+            keep_themes.update(_ranked[:10])
+        # heat 口径下取消回避否决：报告判「回避」的主题只要进了热度Top10 仍参与匹配
+        junk_themes_info = {}
+        keep_themes_info = {t: theme_report_data.get(t, {}) for t in keep_themes}
+    else:
+        if not theme_report_data:
+            print(f"[主题过滤] 主题评分报告不可用，跳过过滤")
+            # 确保至少有所属主题列
+            if '所属主题' not in result_df.columns:
+                result_df['所属主题'] = ''
+            return result_df
+        # 主线+轮动全部作为过滤范围；回避区(✕)主题单独处理，命中时标注"(回避)"
+        junk_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') == 'junk'}
+        keep_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') != 'junk'}
+        keep_themes = set(keep_themes_info.keys())
 
     def _theme_strength(t, fallback):
         s = theme_heat.get(t, {}).get('strength')
         return float(s) if s is not None else _v2_strength(fallback)
 
-    print(f"\n[主题过滤] 主线+轮动 -> 保留 {len(keep_themes)} 个主题:")
-    for t, info in sorted(
-            keep_themes_info.items(),
-            key=lambda x: (0 if x[1].get('kind') == 'mainline' else 1,
-                           -x[1].get('composite_score', 0))):
-        print(f"  [{info.get('kind', ''):<8}] {t:<16} stage={info.get('stage', ''):<4} "
-              f"强度{_theme_strength(t, float(info.get('trend_score', 0) or 0)):<5.1f} "
-              f"涨停{info.get('zt_count', 0)}")
-    if junk_themes_info:
-        print(f"  回避区主题 {len(junk_themes_info)} 个: {', '.join(sorted(junk_themes_info))}")
+    if heat_mode:
+        print(f"\n[主题过滤] 热度V2.4 Top10并集(本日/本周/本月) -> 保留 {len(keep_themes)} 个主题:")
+        for t in sorted(keep_themes, key=lambda x: -(theme_heat.get(x, {}).get('strength') or 0.0)):
+            hv = theme_heat.get(t, {})
+            _rk = lambda k: ('-' if hv.get(k) is None else str(int(hv[k])))
+            print(f"  {t:<16} 排名 本{_rk('today_rank'):>3}/周{_rk('week_rank'):>3}/月{_rk('month_rank'):>3}"
+                  f"  强度{_theme_strength(t, 0.0):<5.1f}"
+                  f"  热度 本{(hv.get('today_heat') or 0):.1f}"
+                  f"/周{(hv.get('week_heat') or 0):.1f}/月{(hv.get('month_heat') or 0):.1f}")
+    else:
+        print(f"\n[主题过滤] 主线+轮动 -> 保留 {len(keep_themes)} 个主题:")
+        for t, info in sorted(
+                keep_themes_info.items(),
+                key=lambda x: (0 if x[1].get('kind') == 'mainline' else 1,
+                               -x[1].get('composite_score', 0))):
+            print(f"  [{info.get('kind', ''):<8}] {t:<16} stage={info.get('stage', ''):<4} "
+                  f"强度{_theme_strength(t, float(info.get('trend_score', 0) or 0)):<5.1f} "
+                  f"涨停{info.get('zt_count', 0)}")
+        if junk_themes_info:
+            print(f"  回避区主题 {len(junk_themes_info)} 个: {', '.join(sorted(junk_themes_info))}")
     print()
 
     # ===== 2. 加载主题配置（只保留有效主题）=====
@@ -7987,42 +7943,6 @@ def add_themes_to_stocks_no_filter(result_df):
     return result_df
 
 
-def _build_recent_factor_snapshots(days=2, silent=False):
-    """盘后预计算最近 days 个交易日的全市场技术因子快照(factor_snapshot_cache)
-
-    夜间全量跑批在批量预取(daily_cache 已补齐至 TRADE_DATE)之后调用:
-    把近两日全市场 MACD/KDJ/RSI/BOLL/ATR/CCI 技术因子按日落库,
-    次日 realtime_theme_monitor 启动直接 SELECT 快照(毫秒级)，
-    免去对全市场 ~250 交易日预热重算(实测单日约 7-8 分钟)。
-
-    幂等策略:
-      - 非最新交易日且已定稿(行数>阈值) → 跳过, 不重复耗算;
-      - 最新交易日 → 强制重建, 保证收盘定稿数据覆盖日内半成品。
-
-    Returns:
-        dict {trade_date: 落库行数}
-    """
-    t0 = time.time()
-    dates = [str(d) for d in sc.get_recent_trade_dates(n=days)]
-    if not dates:
-        print("[factor_snapshot] 无交易日缓存可构建, 跳过")
-        return {}
-    counts = sc.factor_snapshot_counts(str(dates[0]), str(dates[-1]))
-    out, built, skipped = {}, 0, 0
-    for d in dates:
-        # 最新交易日收盘定稿后必须强制重建; 其余日期已定稿则直接跳过
-        if d == dates[-1] or counts.get(d, 0) <= sc.FACTOR_SNAPSHOT_MIN_ROWS:
-            n = sc.build_factor_snapshot(d, silent=silent)
-            if n > 0:
-                out[d] = n
-                built += 1
-        else:
-            skipped += 1
-    print(f"[factor_snapshot] 盘后预计算完成: 构建 {built} 日 / 跳过(已定稿) {skipped} 日 "
-          f"| 覆盖 {dates} | 总耗时 {time.time()-t0:.0f}s")
-    return out
-
-
 # =========================
 # 主程序
 # =========================
@@ -8218,18 +8138,10 @@ def run(target_date=None, simple_mode=False):
         batch_prefetch_hist_data(all_codes)
         print(f"[批量预取] 完成，后续循环将命中本地缓存\n")
 
-    # =============================================
-    # 盘后技术因子按日快照预计算(factor_snapshot_cache)
-    # 夜间跑批是全市场缓存构建入口: 批量预取已保证 daily_cache 补齐至
-    # TRADE_DATE, 在此把当日/近两日全市场技术因子落库, 供次日实时程序
-    # (realtime_theme_monitor)启动直读, 免去全市场约250交易日预热重算。
-    # simple 模式(调试快速场景)跳过缓存构建。
-    # =============================================
-    if not simple_mode:
-        try:
-            _build_recent_factor_snapshots(silent=False)
-        except Exception as _e:
-            print(f"⚠ 技术因子快照构建失败(不影响本次选股运行): {_e}")
+    # 注: 原「盘后技术因子按日快照预计算(factor_snapshot_cache)」已移除。
+    # realtime_theme_monitor 的 KDJ/RSI/ATR 改为从自身已加载的 stock_klines
+    # 就地派生(公式与该快照表口径一致)，不再需要每日对全市场做约250交易日
+    # 预热的跑批(实测单次约 700s)。
 
     total = len(market)
 
@@ -8417,6 +8329,36 @@ def run(target_date=None, simple_mode=False):
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
             s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
 
+    # ====================================================================
+    # IGE 行业弹性硬过滤：三级行业 ige_adj < IGE_ADJ_MIN 的股票直接剔除
+    # ige_adj 是三级行业级指标（同行业成分股同值），该过滤等价于
+    # 「只在高景气行业里选股」；无 IGE 覆盖的股票一并剔除（与 hvt_bull 口径一致）。
+    # 取不到当日 IGE 产出则整体跳过（fail-soft）。
+    #
+    # 2026-09-28 位置调整：原先放在「每主题保留失败概率最低3只」之后，导致每个
+    # 主题先按失败概率挑出3只、再被 IGE 砍掉，主题没有第二次挑选机会；小池子
+    # （0928 仅4只）叠加 23.1% 的历史留存率会被整体清零。现前移到 top3 之前，
+    # 语义变为「先在高景气行业里选股，再按失败概率取每主题3只」。
+    # ====================================================================
+    ige_adj_map = build_ige_adj_map(TRADE_DATE)
+    if ige_adj_map:
+        before_ige = len(ranked_stocks)
+        _cut_low = 0
+        _cut_miss = 0
+        _ige_pass = []
+        for s in ranked_stocks:
+            _v = ige_adj_map.get(str(s.get('代码', '')).strip())
+            if _v is None:
+                _cut_miss += 1
+                continue
+            if _v < IGE_ADJ_MIN:
+                _cut_low += 1
+                continue
+            _ige_pass.append(s)
+        ranked_stocks = _ige_pass
+        print(f"[突破股池] IGE 硬过滤(ige_adj≥{IGE_ADJ_MIN:.0f}): {before_ige} -> {len(ranked_stocks)} 只"
+              f" (低弹性剔除{_cut_low}只 / 无IGE覆盖剔除{_cut_miss}只)")
+
     # 每个主题只保留失败概率最低的3只（口径=上面的T+5风险模型，与展示一致）
     theme_groups = {}
     for s in ranked_stocks:
@@ -8462,31 +8404,6 @@ def run(target_date=None, simple_mode=False):
     if before_strong_filter != after_strong_filter:
         reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
         print(f"[强势股池优化] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
-
-    # ====================================================================
-    # IGE 行业弹性硬过滤：三级行业 ige_adj < IGE_ADJ_MIN 的股票直接剔除
-    # ige_adj 是三级行业级指标（同行业成分股同值），该过滤等价于
-    # 「只在高景气行业里选股」；无 IGE 覆盖的股票一并剔除（与 hvt_bull 口径一致）。
-    # 取不到当日 IGE 产出则整体跳过（fail-soft）。
-    # ====================================================================
-    ige_adj_map = build_ige_adj_map(TRADE_DATE)
-    if ige_adj_map:
-        before_ige = len(ranked_stocks)
-        _cut_low = 0
-        _cut_miss = 0
-        _ige_pass = []
-        for s in ranked_stocks:
-            _v = ige_adj_map.get(str(s.get('代码', '')).strip())
-            if _v is None:
-                _cut_miss += 1
-                continue
-            if _v < IGE_ADJ_MIN:
-                _cut_low += 1
-                continue
-            _ige_pass.append(s)
-        ranked_stocks = _ige_pass
-        print(f"[突破股池] IGE 硬过滤(ige_adj≥{IGE_ADJ_MIN:.0f}): {before_ige} -> {len(ranked_stocks)} 只"
-              f" (低弹性剔除{_cut_low}只 / 无IGE覆盖剔除{_cut_miss}只)")
 
     # =========================
     # Chip Alpha 注入（突破股池）
@@ -8594,6 +8511,56 @@ def run(target_date=None, simple_mode=False):
     except Exception as _e:
         print(f"[突破股池] 快照保存失败: {_e}")
 
+    # 突破股池 Top10 落库 stock_pick_db：供 stock_pick_db.py tracking 回填 T+N 收益、
+    # 统计该池真实胜率（口径=最终排名分排序后的前10，与报告展示一致）。
+    # 失败不阻塞主流程；除标准列外的字段自动序列化进 indicators。
+    try:
+        _top10 = ranked_stocks[:10]
+        if not _top10:
+            print("[突破股池] 池内无标的，stock_pick_db 无写入")
+        else:
+            from stock_pick_db import record_picks as _pick_record
+            _rows = []
+            for _rk, _st in enumerate(_top10, 1):
+                _sig = (_st.get('突破信号') or _st.get('二波信号') or _st.get('突破类型') or 'BREAKOUT_POOL')
+                _rows.append({
+                    'ts_code': _st.get('代码', ''),
+                    'stock_name': _st.get('名称', ''),
+                    'close': _st.get('现价'),
+                    'pct_chg': _st.get('涨跌幅'),
+                    'signal': _sig,
+                    'action': _st.get('ChipSuggestion') or '观察',
+                    'score': _st.get('排名分', 0),
+                    'rank_no': _rk,
+                    'industry': _st.get('所属主题', ''),
+                    'reason': _st.get('排名分_明细', ''),
+                    'stop_price': _st.get('止损价'),
+                    'target_price': _st.get('目标价'),
+                    '整合评分': _st.get('整合评分', 0),
+                    '原始整合评分': _st.get('原始整合评分', 0),
+                    '排名分_原始': _st.get('排名分_原始', 0),
+                    '排名分_修正': _st.get('排名分_修正', 0),
+                    '失败概率': _st.get('失败概率', 0),
+                    '突破类型': _st.get('突破类型', ''),
+                    '突破信号': _st.get('突破信号', ''),
+                    '突破评分': _st.get('突破评分', 0),
+                    '二波信号': _st.get('二波信号', ''),
+                    '二波评分': _st.get('二波评分', 0),
+                    '距阻力_pct': _st.get('距阻力_pct', 0),
+                    '共振系数': _st.get('共振系数', 0),
+                    '主题趋势分': _st.get('主题趋势分', 0),
+                    '主题情绪分': _st.get('主题情绪分', 0),
+                    'ChipSuggestion': _st.get('ChipSuggestion', ''),
+                    'ChipTrendScore': _st.get('ChipTrendScore', 50),
+                    'CRE_Score': _st.get('CRE_Score', 50),
+                    'ChipMomentum_Score': _st.get('ChipMomentum_Score', 50),
+                    '入选Top10': True,
+                })
+            _n = _pick_record('breakout_pool', '突破股池', _rows, pick_date=TRADE_DATE)
+            print(f"[突破股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
+    except Exception as _e:
+        print(f"[突破股池] stock_pick_db 落库失败: {_e}")
+
     lines = []
     lines.append("")
     lines.append("🔥 突破股池 (按突破池排名分排序)")
@@ -8680,14 +8647,14 @@ def run(target_date=None, simple_mode=False):
 
     # =========================
     # 实盘交易建议（主题分析第2段喂料）
-    # 优先：theme_scores.db 结构化组装（theme_score_v2 当日产出）
+    # 优先：主题热度 V2.4 结构化组装（theme_heat_v24 当日产出，本日/本周/本月 Top5）
     # 兜底：theme_analysis_v2 报告文本
     # =========================
     trade_advice_text = ""
     try:
         trade_advice_text = _build_theme_advice_feed(TRADE_DATE)
         if trade_advice_text:
-            print(f"[实盘建议] 主题喂料(theme_scores.db结构化): {len(trade_advice_text)}字")
+            print(f"[实盘建议] 主题喂料(热度V2.4结构化): {len(trade_advice_text)}字")
     except Exception as e:
         print(f"[实盘建议] 结构化喂料失败: {e}")
         trade_advice_text = ""
@@ -9069,21 +9036,14 @@ def run(target_date=None, simple_mode=False):
 ** 策略：XXXX
 * 最终：XXXXXX
 2、**主题分析**
-【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式。所有主题名/个股/代码/分数/连板数/封板时间/仓位必须一字不差引用上方"【今日主题分析情况】"数据块，本段允许出现的股票只限各主题"涨停梯队"中列出的个股；数据块里没有的个股一律不得出现】
-**主线（从数据块"◆ 进攻主线候选"按综合分取前3，格式见下。若该档为"（无）"：禁止输出"主线1/主线2"及领涨龙头/容量中军等角色块，必须改按如下两条输出）**
-** 引擎判定：无符合主线判定逻辑的核心主线（引用数据块"引擎今日判定"原文），仓位0%起步，建议空仓或极轻仓等待确认
-** 观察候选（数据块"◆ 观察/轮动区"主题，动作仓位引用原文，多为"空仓观望/观察(0%)"，禁止称其为"主线"）：{{主题名}}（综合{{xx}}，涨停{{x}}家，迁移{{x.x}}{{→/↑/↓含中文方向}}，仓位{{position_label}}，引擎龙头:{{xx}}）
-** 主线1：{{主题名}}（{{状态}}，综合{{xx}}，涨停{{x}}家，迁移{{x.x}}{{→/↑/↓含中文方向，如15.8→横盘}}）
- **最佳子主题**：{{主题名}}（数据块未再细分，直接输出主题本身；推荐理由引用数据块真实数值：综合分/涨停家数/迁移方向/梯队连板高度，禁止编造"资金净流入"等数字）
- **【领涨龙头】标的**：{{涨停梯队中标注[领涨]的个股，格式:名称(代码)}}（{{连板高度/封板时间}}）
-  - 匹配动作：跟随主题引擎动作【{{trade_action}}】（引用数据块原文，禁止改写）
-  - 建议仓位：按数据块"仓位:{{position_label}}"输出，禁止编造其它百分比
- **【容量中军】标的**：{{涨停梯队中除[领涨]外"成交x.x亿"数值最大的一只，格式:名称(代码)}}（成交{{x.x}}亿，引用数据块真实数值，禁止编造）
-  - 匹配动作：回踩5日/10日线分批低吸（仓位同主线1上限，不超过主题仓位）
- 如梯队不足两只则缺省该角色；如无[领涨]标记则只写"关注标的"；中军判定必须逐只比较梯队股的"成交x.x亿"取最大者，数据块无成交额时不得强行判定。
-** 主线2/主线3：按同样规则，无则省略该条
-** 轮动主题：{{数据块"◆ 观察/轮动区"列出的主题名，只列名称}}
-** 避免杂毛：{{数据块"◆ 回避/风险区"列出的主题名（最多10个，只列名称）}}
+【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式。所有主题名/热度/排名/广度/样本数必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现】
+** 本日最强主题（取数据块"◆ 本日热度 Top5"前3，逐条一行）：{{主题名}}（热度{{xx.x}}，本日排名{{x}}，广度{{xx.x}}%，样本{{x}}只，标记:{{xxx}}）
+** 本周最强主题（取数据块"◆ 本周热度 Top5"前3）：{{主题名}}（周热度{{xx.x}}，周排名{{x}}，本日热度{{xx.x}}(排名{{x}})）
+** 本月最强主题（取数据块"◆ 本月热度 Top5"前3）：{{主题名}}（月热度{{xx.x}}，月排名{{x}}，本日热度{{xx.x}}(排名{{x}})）
+** 三窗口共振：{{同时出现在本日/本周/本月三组 Top5 中的主题名，只列名称；无则写"无"}}
+** 周期切换提示：{{逐条引用数据块真实排名——本日排名靠前而月排名靠后=新热点起步；月排名靠前而本日排名靠后=老热点降温；最多3条，禁止编造}}
+** 回避/降温：{{本周或本月 Top5 中、但本日热度排名>10 的主题名，只列名称；无则写"无"}}
+（缺值处理：数据块中该主题无"标记:xxx"则省略该项；某档显示"（无）"则写"无"，不得用其它主题填补。）
 
 3、**【ETF操作建议】**
 {etf_tips_text}

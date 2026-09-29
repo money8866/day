@@ -26,6 +26,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +34,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "sync_config.json")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "sync.log")
 DEFAULT_LOCAL_DB = os.path.join(os.path.dirname(BASE_DIR), "picks_db", "stock_picks.db")
+DEFAULT_REPORTS_SRC = r"d:\mystock\report_daily"
 
 SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
@@ -54,6 +56,7 @@ def load_config(args) -> dict:
         "host": "", "port": 22, "user": "", "remote_dir": "/opt/stockweb/data",
         "remote_name": "stock_picks.db", "identity_file": "",
         "strict_host_key": False, "local_db": DEFAULT_LOCAL_DB,
+        "reports_src": DEFAULT_REPORTS_SRC, "reports_remote_dir": "",
     }
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, encoding="utf-8") as fh:
@@ -62,6 +65,8 @@ def load_config(args) -> dict:
         cfg["local_db"] = args.local_db
     if args.remote_dir:
         cfg["remote_dir"] = args.remote_dir
+    if getattr(args, "reports_src", None):
+        cfg["reports_src"] = args.reports_src
     return cfg
 
 
@@ -93,15 +98,96 @@ def target(cfg: dict) -> str:
     return "%s@%s" % (cfg["user"], cfg["host"])
 
 
-def run(cmd: list, timeout: int = 120) -> tuple[int, str]:
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout)
-    except FileNotFoundError:
-        return 127, "找不到 %s（Windows 需启用「OpenSSH 客户端」）" % cmd[0]
-    except subprocess.TimeoutExpired:
-        return 124, "命令超时（%ss）" % timeout
-    return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
+def run(cmd: list, timeout: int = 120, cwd: str | None = None,
+        retries: int = 3) -> tuple[int, str]:
+    """执行 ssh/scp。服务器 sshd 的 MaxStartups 会丢弃短时间内的密集新连接，
+    这类报错是瞬时的，统一退避重试，避免把「报告没同步上」误当成成功。"""
+    transient = ("connection closed", "connection reset", "maxstartups",
+                 "broken pipe", "kex_exchange_identification",
+                 "connection timed out", "connection refused")
+    last = (1, "")
+    for attempt in range(retries):
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd,
+                               encoding="utf-8", errors="replace", timeout=timeout)
+        except FileNotFoundError:
+            return 127, "找不到 %s（Windows 需启用「OpenSSH 客户端」）" % cmd[0]
+        except subprocess.TimeoutExpired:
+            last = (124, "命令超时（%ss）" % timeout)
+        else:
+            out = ((p.stdout or "") + (p.stderr or "")).strip()
+            if p.returncode == 0 or not any(k in out.lower() for k in transient):
+                return p.returncode, out
+            last = (p.returncode, out)
+        if attempt < retries - 1:
+            time.sleep(2 * (attempt + 1))
+    return last
+
+
+REPORT_PREFIX = "Final_Self_"
+REPORT_SUFFIX = ".html"
+REPORT_BATCH = 60
+
+
+def local_reports(src_dir: str) -> list[str]:
+    """本地复盘报告文件名（Final_Self_<8位日期>.html）。"""
+    if not src_dir or not os.path.isdir(src_dir):
+        return []
+    out = []
+    for name in os.listdir(src_dir):
+        if not (name.startswith(REPORT_PREFIX) and name.endswith(REPORT_SUFFIX)):
+            continue
+        date = name[len(REPORT_PREFIX):-len(REPORT_SUFFIX)]
+        if len(date) == 8 and date.isdigit():
+            out.append(name)
+    return sorted(out)
+
+
+def sync_reports(cfg: dict, remote_dir: str) -> bool:
+    """把本地复盘报告 HTML 增量同步到服务器（供网页第三个 tab 展示）。"""
+    src = cfg.get("reports_src") or ""
+    files = local_reports(src)
+    if not src or not os.path.isdir(src):
+        log("报告目录不存在，跳过报告同步：%s" % (src or "(未配置)"))
+        return True
+    if not files:
+        log("本地无复盘报告，跳过报告同步：%s" % src)
+        return True
+
+    rdir = cfg.get("reports_remote_dir") or \
+        os.path.dirname(remote_dir.rstrip("/")) + "/reports"
+    tgt = target(cfg)
+    ssh, scp = ssh_base(cfg), scp_base(cfg)
+
+    rc, out = run(ssh + [tgt, "mkdir -p '%s' && cd '%s' && ls -l" % (rdir, rdir)])
+    if rc != 0:
+        log("报告目录创建失败（exit %s）：%s" % (rc, out[:300]))
+        return False
+
+    # 同一次连接里顺带取回远端已有文件大小，只传新增/变更的
+    sizes = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[4].isdigit():
+            sizes[parts[-1]] = int(parts[4])
+
+    todo = [f for f in files
+            if sizes.get(f) != os.path.getsize(os.path.join(src, f))]
+    log("复盘报告：本地 %d 期，远端 %d 期，待上传 %d 期" % (len(files), len(sizes), len(todo)))
+
+    if todo:
+        for i in range(0, len(todo), REPORT_BATCH):
+            batch = todo[i:i + REPORT_BATCH]
+            rc, out = run(scp + batch + ["%s:%s/" % (tgt, rdir)], timeout=600, cwd=src)
+            if rc != 0:
+                log("报告上传失败（exit %s）：%s" % (rc, out[:300]))
+                return False
+        rc, out = run(ssh + [tgt, "ls '%s' | wc -l" % rdir])
+        log("报告上传完成，远端现有 %s 期（%s）"
+            % ((out or "?").strip().splitlines()[-1] if out else "?", rdir))
+    else:
+        log("报告已是最新，无需上传。")
+    return True
 
 
 def make_snapshot(src_db: str, dst: str) -> dict:
@@ -120,7 +206,11 @@ def make_snapshot(src_db: str, dst: str) -> dict:
         src.close()
 
     con = sqlite3.connect(dst)
+    con.isolation_level = None            # 自动提交，否则 journal_mode 切不动
     try:
+        # 快照转回滚日志模式：服务端只读打开时不再生成 -wal/-shm，
+        # 否则每次 mv 覆盖主库都会留下陈旧 WAL，有读到脏数据的风险。
+        con.execute("pragma journal_mode=delete")
         ok = con.execute("pragma integrity_check").fetchone()[0]
         if ok != "ok":
             raise SystemExit("快照完整性校验失败：%s" % ok)
@@ -142,6 +232,8 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true", help="只测 SSH 连通性")
     ap.add_argument("--dry-run", action="store_true", help="只生成并校验快照，不上传")
     ap.add_argument("--keep", action="store_true", help="保留快照文件供排查")
+    ap.add_argument("--reports-src", default=None, help="本地复盘报告目录（覆盖配置）")
+    ap.add_argument("--no-reports", action="store_true", help="跳过复盘报告同步")
     args = ap.parse_args(argv)
 
     global CONFIG_PATH
@@ -201,15 +293,22 @@ def main(argv=None) -> int:
             log("上传失败（exit %s）：%s" % (rc, out[:400]))
             return 1
         log("上传完成，原子替换为 %s" % remote_final)
-        rc, out = run(ssh_base(cfg) + [target(cfg), "mv -f '%s' '%s'" % (remote_tmp, remote_final)])
+        rc, out = run(ssh_base(cfg) + [target(cfg),
+                     "mv -f '%s' '%s' && ls -l '%s'"
+                     % (remote_tmp, remote_final, remote_final)])
         if rc != 0:
             log("远端替换失败（exit %s）：%s" % (rc, out[:400]))
             return 1
-
-        rc, out = run(ssh_base(cfg) + [target(cfg),
-                                       "ls -l '%s'" % remote_final])
         log("服务器已就绪：%s" % (out.split()[-1] if out else remote_final))
-        log("同步完成。服务端读新连接即生效，无需重启 app.py。")
+
+        # 复盘报告（tushare_quant.py 每日生成的 Final_Self_<date>.html）
+        if args.no_reports:
+            log("--no-reports：跳过复盘报告同步。")
+            log("同步完成。服务端读新连接即生效，无需重启 app.py。")
+        elif sync_reports(cfg, remote_dir):
+            log("同步完成。服务端读新连接即生效，无需重启 app.py。")
+        else:
+            log("[WARN] 选股库已同步，但复盘报告未同步成功，网页「复盘报告」页签可能缺最新一期。")
         return 0
     finally:
         if os.path.exists(tmp.name):

@@ -7,5 +7,7 @@
   "remote_name": "stock_picks.db",
   "identity_file": "C:/Users/kongx/.ssh/id_rsa",
   "strict_host_key": false,
-  "local_db": "d:/mystock/solo/picks_db/stock_picks.db"
+  "local_db": "d:/mystock/solo/picks_db/stock_picks.db",
+  "reports_src": "d:/mystock/report_daily",
+  "reports_remote_dir": "/var/www/StockPick/reports"
 }

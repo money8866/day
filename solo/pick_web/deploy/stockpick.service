@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/var/www/StockPick
-ExecStart=/usr/bin/python3 /var/www/StockPick/app.py --db /var/www/StockPick/data/stock_picks.db --host 127.0.0.1 --port 8001
+ExecStart=/usr/bin/python3 /var/www/StockPick/app.py --db /var/www/StockPick/data/stock_picks.db --reports /var/www/StockPick/reports --host 127.0.0.1 --port 8001
 Restart=always
 RestartSec=5
 

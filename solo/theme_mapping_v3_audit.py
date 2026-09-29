@@ -135,7 +135,16 @@ SEG_TIER = {
         '发电运营': 'CORE',
         '电力交易/综合能源服务': 'CHAIN',
         '储能运营': 'CHAIN',
-        '电网设备': 'CHAIN',
+    },
+    # 20260929 电力拆分（用户裁定）：原 ELECTRIC_POWER 的「电网设备」环节独立成
+    #   POWER_EQUIPMENT（电力设备）一级主题，环节分层按「设备本体 / 配套」重定。
+    'POWER_EQUIPMENT': {
+        '输变电一次设备': 'CORE',
+        '电网二次设备/自动化': 'CORE',
+        '电工仪器仪表': 'CORE',
+        '电线电缆': 'CHAIN',
+        '电力电子': 'CHAIN',
+        '发电设备': 'CHAIN',
     },
     'XINCHUANG': {
         '国产操作系统': 'CORE',
@@ -281,7 +290,22 @@ SEG_KW_GENERIC = {
         '发电运营': ['发电', '电力', '电站', '机组', '装机', '热力'],
         # 「风电」同上：振宏股份(920200.BJ)主营「锻造风电主轴…锻件」，
         #   属零部件制造而非风力发电运营 → 降入弱证据通道
-        '风力发电': ['风电'],
+        '风力发电': ['风电', '风力发电', '海上风电', '风电场', '风电运营'],
+        # 20260929 电力拆分新增：「电网/输电/变电/配电/供电/售电」为设备与运营共用词，
+        #   设备制造（国电南瑞·变电配电、电缆/开关厂）同样会写 → 一律降入弱证据通道，
+        #   运营侧成员资格改由「环节行业归属（火电/水电/新型电力…）」提供第二条独立证据。
+        '电网运营/输配售电': ['电网', '输电', '变电', '配电', '供电', '售电', '电网运营',
+                              '电力供应', '电力销售', '供电业务', '配售电', '电力业务', '电力营销'],
+    },
+    # 20260929 电力拆分（用户裁定）：电力设备（输变电一次/二次设备、电线电缆、电工仪表、
+    #   电力电子、发电设备）。泛化词仅进弱证据通道，需第二条独立弱证据才成 CHAIN。
+    'POWER_EQUIPMENT': {
+        # 「铸件/法兰/塔筒」为通用金属加工语，非风电设备专有（通裕重工·锻件等）
+        '发电设备': ['铸件', '法兰', '塔筒'],
+        # 「低压电器/高压开关/成套设备」为通用电器语，需第二条独立证据
+        '输变电一次设备': ['低压电器', '高压开关', '成套设备'],
+        # 「变电站」既是二次设备产物也是运营设施 → 弱证据
+        '电网二次设备/自动化': ['变电站'],
     },
     'CONSUMPTION': {
         # 「电器」补入：博瑞传播(600880.SH)主营含「高低压电器开关制造」，
@@ -337,21 +361,36 @@ SEG_SUPPLEMENT = {k: [w for w in v if w not in _GENERIC_WORDS]
 # 20260927 修正：「光伏」「能源」属设备/制造/泛新能源语境（横店东磁·太阳能光伏/新能源动力
 # 电池、华民股份·光伏新能源、时创能源），不构成电力运营证据 → 移除，改由电力环节强关键词判定。
 POWER_BIZ_WORDS = (
-    '电力', '发电', '电网', '输变电', '变电', '配电', '供电', '售电', '变电所',
-    '变压器', '互感器', '电抗器', '电缆', '开关柜', '断路器', '继电保护',
-    '电工', '电气', '电表', '用电信息', '机组', '电站', '储能', '特高压',
+    '电力', '发电', '电网', '供电', '售电', '变电所', '机组', '电站', '储能',
     '电能', '电源', '装机', '绿电', '热电', '火电', '水电', '风电', '核电',
-    '热力',
+    '热力', '电力生产', '电网运营', '新能源发电', '综合能源',
+)
+
+# 20260929 电力拆分：设备侧经营层业务词（与 POWER_BIZ_WORDS 互斥定义，避免设备制造
+#   借运营词拿到第二条弱证据）。原 POWER_BIZ_WORDS 中的设备词（输变电/变压器/电缆/
+#   开关柜/断路器/继电保护/电工/电气/电表/用电信息/特高压）全部迁到此处。
+POWER_EQUIP_BIZ_WORDS = (
+    '输变电', '变电', '配电', '变压器', '互感器', '电抗器', '电缆', '线缆', '海缆',
+    '开关柜', '断路器', '开关设备', '成套设备', '继电保护', '电工', '电气', '电表',
+    '电能表', '用电信息', '特高压', '智能电网', '配电网', '电力电子', '换流阀',
+    '逆变器', '绝缘子', '避雷器', '风电整机', '风电零部件', '光伏组件', '光伏设备',
+    '电力设备', '输配电',
+    # 20260929 拆分补正：行业口径为「电气设备」等粗粒度名的设备股，其主营文本常只写
+    #   「电力/电气设备/风机/光伏/电源/开关/锅炉/铁塔/监测」等泛层词，若不补则
+    #   掉出（实测 54 只原电力成员掉出，补后恢复 47/54）。
+    '电力', '电气设备', '风机', '风电', '光伏', '电源', '开关', '锅炉', '铁塔', '监测',
 )
 
 def _biz_words(theme_key):
     """弱证据通道「经营层业务词」的词表。
 
-    电力用电力经营层词（发电/输配电/电网…）；其余主题用宽口径产业链词。
+    电力运营/电力设备用各自的经营层词；其余主题用宽口径产业链词。
     修正依据：环节行业豁免必须叠加经营层证据，单一弱证据不得定级。
     """
     if theme_key == 'ELECTRIC_POWER':
         return POWER_BIZ_WORDS
+    if theme_key == 'POWER_EQUIPMENT':
+        return POWER_EQUIP_BIZ_WORDS
     return tuple(SEG_SUPPLEMENT.get(theme_key, ()))
 
 
@@ -752,22 +791,28 @@ def main():
 
     # ------------------------------------------------ 电力「环节行业豁免」全量诊断（规格 §五-4）
     # 规格：逐项检查环节行业豁免成员；「只是用电」绝不能算电力主题成员。
-    _pw_inds = set()
-    for _seg in (cfg_by_cn.get('电力', {}).get('segments') or []):
-        _pw_inds |= {i for i in (_seg.get('industries') or []) if i}
+    # 20260929 电力拆分：原单主题「电力」已拆为「电力运营」（键 ELECTRIC_POWER，原键改名）
+    #   +「电力设备」（键 POWER_EQUIPMENT，新增），本诊断段对两个主题分别执行，避免拆分后
+    #   仍按旧中文名 '电力' 取值而静默空跑。
     pw_audit = []
-    for a in by_theme.get('电力', []):
-        if a['industry'] not in _pw_inds:
-            continue
-        mb_full = mainbiz_map.get(a['ts_code'], '') or ''
-        biz_hit = [w for w in POWER_BIZ_WORDS if w in mb_full]
-        pw_audit.append({
-            '主题': '电力', '代码': a['ts_code'], '名称': a['name'], '原分类': a['classification'],
-            '证据类型': a['evidence_type'], '置信度': a['confidence'],
-            '人工动作': a['manual_action'], '行业': a['industry'],
-            '电力经营词': '|'.join(biz_hit),
-            '主营文本': mb_full[:160], '门槛状态': a['gate_status'],
-        })
+    for _pw_cn in ('电力运营', '电力设备'):
+        _pw_key = key_by_cn.get(_pw_cn, _pw_cn)
+        _pw_inds = set()
+        for _seg in (cfg_by_cn.get(_pw_cn, {}).get('segments') or []):
+            _pw_inds |= {i for i in (_seg.get('industries') or []) if i}
+        _biz = _biz_words(_pw_key)
+        for a in by_theme.get(_pw_cn, []):
+            if a['industry'] not in _pw_inds:
+                continue
+            mb_full = mainbiz_map.get(a['ts_code'], '') or ''
+            biz_hit = [w for w in _biz if w in mb_full]
+            pw_audit.append({
+                '主题': _pw_cn, '代码': a['ts_code'], '名称': a['name'], '原分类': a['classification'],
+                '证据类型': a['evidence_type'], '置信度': a['confidence'],
+                '人工动作': a['manual_action'], '行业': a['industry'],
+                '电力经营词': '|'.join(biz_hit),
+                '主营文本': mb_full[:160], '门槛状态': a['gate_status'],
+            })
 
     # ------------------------------------------------ 写文件
     print('\n[输出]')
@@ -817,7 +862,8 @@ def main():
         print(f"  [{r['严重程度']:<6}] {r['主题']:<10}{r['问题']:<18}{r['证据']}")
 
     print('\n重点主题明细')
-    for theme in ('CPO', '液冷', 'AI服务器', 'AI应用', '智能驾驶', '军工', '电力', '消费'):
+    for theme in ('CPO', '液冷', 'AI服务器', 'AI应用', '智能驾驶', '军工',
+                  '电力运营', '电力设备', '消费'):
         m = metrics.get(theme)
         if not m:
             continue
@@ -836,7 +882,7 @@ def main():
             print(f"        [EXCL·{a['evidence_type']}] {a['ts_code']} {a['name']}"
                   f"（{a['industry']}/{a['via']}）{a['mainbiz'][:46]}")
 
-    print(f"\n  电力·环节行业豁免（行业∈环节窄口径行业）全量 {len(pw_audit)} 条　"
+    print(f"\n  电力运营+电力设备·环节行业豁免（行业∈环节窄口径行业）全量 {len(pw_audit)} 条　"
           f"行业分布: {dict(Counter(a['行业'] for a in pw_audit))}")
     pw_cls = Counter(a['原分类'] for a in pw_audit)
     pw_nobiz = [a for a in pw_audit if not a['电力经营词']]
@@ -848,7 +894,8 @@ def main():
         print(f"      ... 其余 {len(pw_nobiz) - 40} 条见 power_industry_gate csv")
 
     print(f"\n  人工审核清单（TABLE 3）: {len(t3)} 条")
-    for theme in ('CPO', '液冷', 'AI服务器', 'AI应用', '智能驾驶', '军工', '电力', '消费'):
+    for theme in ('CPO', '液冷', 'AI服务器', 'AI应用', '智能驾驶', '军工',
+                  '电力运营', '电力设备', '消费'):
         rows = [a for a in by_theme.get(theme, [])
                 if a['classification'] == 'UNCERTAIN'
                 or (a['classification'] == 'CHAIN' and a['confidence'] != 'HIGH')

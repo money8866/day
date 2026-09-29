@@ -26,6 +26,7 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = os.path.join(os.path.dirname(BASE_DIR), "picks_db", "stock_picks.db")
+DEFAULT_REPORTS = os.path.join(BASE_DIR, "reports")   # 复盘报告目录（Final_Self_<date>.html）
 
 MAX_ROWS = 2000          # 单次返回上限，防呆
 MIN_SAMPLE = 10          # 统计样本不足的提示线
@@ -251,11 +252,55 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# 复盘报告（tushare_quant.py 每日生成的 Final_Self_<date>.html）
+# ══════════════════════════════════════════════════════════════════════
+REPORT_PREFIX = "Final_Self_"
+REPORT_SUFFIX = ".html"
+
+
+def list_reports(report_dir: str) -> list[dict]:
+    """列出已有复盘报告，按交易日倒序。"""
+    if not os.path.isdir(report_dir):
+        return []
+    out = []
+    for name in os.listdir(report_dir):
+        if not (name.startswith(REPORT_PREFIX) and name.endswith(REPORT_SUFFIX)):
+            continue
+        date = name[len(REPORT_PREFIX):-len(REPORT_SUFFIX)]
+        if not (len(date) == 8 and date.isdigit()):
+            continue
+        st = os.stat(os.path.join(report_dir, name))
+        out.append({
+            "date": date,
+            "size_kb": round(st.st_size / 1024, 1),
+            "mtime": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        })
+    out.sort(key=lambda r: r["date"], reverse=True)
+    return out
+
+
+def read_report(report_dir: str, date: str | None) -> str | None:
+    """读取某交易日报告 HTML；date 为空取最新一期；不存在返回 None。"""
+    if not date:
+        items = list_reports(report_dir)
+        if not items:
+            return None
+        date = items[0]["date"]
+    if not (len(date) == 8 and date.isdigit()):     # 纯日期校验，防目录穿越
+        return None
+    path = os.path.join(report_dir, "%s%s%s" % (REPORT_PREFIX, date, REPORT_SUFFIX))
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Web 层
 # ══════════════════════════════════════════════════════════════════════
-def build_app(db_path: str):
+def build_app(db_path: str, report_dir: str = DEFAULT_REPORTS):
     from fastapi import FastAPI, HTTPException, Query
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
     app = FastAPI(title="选股信号查询", docs_url="/api/docs", redoc_url=None)
 
@@ -292,9 +337,28 @@ def build_app(db_path: str):
     def api_stats(days: int | None = Query(None, ge=1, le=250)):
         return fetch_stats(db_path, days)
 
+    @app.get("/api/reports")
+    def api_reports():
+        return {"reports": list_reports(report_dir)}
+
+    @app.get("/api/report")
+    def api_report(date: str | None = Query(None)):
+        date = (date or "").strip() or None
+        html = read_report(report_dir, date)
+        if html is None:
+            return HTMLResponse(
+                "<!DOCTYPE html><html lang='zh-CN'><meta charset='UTF-8'>"
+                "<body style='font-family:-apple-system,\"Microsoft YaHei\",sans-serif;"
+                "padding:48px;color:#7a8496;background:#f5f7fa'>"
+                "<h3 style='color:#1f2430'>暂无复盘报告</h3>"
+                "<p>%s</p></body></html>"
+                % ("该交易日（%s）未生成报告。" % date if date else "报告目录为空。"),
+                status_code=404)
+        return HTMLResponse(html)
+
     @app.get("/api/health")
     def api_health():
-        return JSONResponse({"ok": True, "db": db_path})
+        return JSONResponse({"ok": True, "db": db_path, "reports": len(list_reports(report_dir))})
 
     return app
 
@@ -302,6 +366,7 @@ def build_app(db_path: str):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="选股信号查询服务（只读 stock_picks.db）")
     ap.add_argument("--db", default=DEFAULT_DB, help="stock_picks.db 路径")
+    ap.add_argument("--reports", default=DEFAULT_REPORTS, help="复盘报告目录（Final_Self_<date>.html）")
     ap.add_argument("--host", default="127.0.0.1", help="监听地址（云服务器用 0.0.0.0）")
     ap.add_argument("--port", type=int, default=8765, help="监听端口")
     ap.add_argument("--reload", action="store_true", help="开发模式自动重载")
@@ -313,11 +378,14 @@ def main(argv=None) -> int:
     print("[db] %s  %.2f MB  信号 %d 条  %s~%s  跟踪 %d 条"
           % (args.db, info["db_size_mb"], info["pick_rows"],
              info["date_min"], info["date_max"], info["track_rows"]))
+    rpts = list_reports(args.reports)
+    print("[report] %s  %d 期%s" % (args.reports, len(rpts),
+                                    "  最新 " + rpts[0]["date"] if rpts else "（暂无）"))
     print("[web] http://%s:%d  （API 文档 http://%s:%d/api/docs）"
           % (args.host, args.port, args.host, args.port))
 
     import uvicorn
-    uvicorn.run(build_app(args.db), host=args.host, port=args.port,
+    uvicorn.run(build_app(args.db, args.reports), host=args.host, port=args.port,
                 reload=args.reload, log_level="info")
     return 0
 

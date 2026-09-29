@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
-title Post-close pipeline: backfill -^> T+3 screen -^> feishu -^> db sync
-rem Post-close pipeline: tracking backfill, T+3 execution screen, feishu push, db sync.
+title Post-close pipeline: backfill -^> db sync -^> T+3 screen -^> feishu
+rem Post-close pipeline: tracking backfill, db sync to cloud, T+3 execution screen, feishu push.
 rem Usage: post_close_run.bat [--date YYYYMMDD] [--live] [--print] [--no-push] [--no-sync]
 rem Remaining args are passed through to t3_screen_build.py and t3_report_push.py.
 rem --no-push skips the feishu push step.
@@ -34,7 +34,21 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo   [2/3] T+3 execution screen
+echo   [2/4] Sync stock_picks.db to cloud server
+echo ============================================================
+if "%SYNC%"=="0" (
+    echo [SKIP] --no-sync
+) else (
+    python pick_web\sync_db.py
+    if errorlevel 1 (
+        echo.
+        echo [WARN] db sync failed, local report is unaffected
+    )
+)
+
+echo.
+echo ============================================================
+echo   [3/4] T+3 execution screen
 echo ============================================================
 python t3_screen\t3_screen_build.py %ARGS%
 if errorlevel 1 (
@@ -46,7 +60,7 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo   [3/4] Push report to Feishu
+echo   [4/4] Push report to Feishu
 echo ============================================================
 if "%PUSH%"=="0" (
     echo [SKIP] --no-push
@@ -55,20 +69,6 @@ if "%PUSH%"=="0" (
     if errorlevel 1 (
         echo.
         echo [WARN] feishu push failed, report file is still available locally
-    )
-)
-
-echo.
-echo ============================================================
-echo   [4/4] Sync stock_picks.db to cloud server
-echo ============================================================
-if "%SYNC%"=="0" (
-    echo [SKIP] --no-sync
-) else (
-    python pick_web\sync_db.py
-    if errorlevel 1 (
-        echo.
-        echo [WARN] db sync failed, local report is unaffected
     )
 )
 
