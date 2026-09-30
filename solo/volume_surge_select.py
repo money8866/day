@@ -1213,6 +1213,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         close_latest = float(close_arr[-1])
         ma20_latest = pd.Series(close_arr).rolling(20).mean().values[-1]
         pos_ma20 = (close_latest / ma20_latest - 1) * 100 if not np.isnan(ma20_latest) and ma20_latest > 0 else 0
+        ma30_latest = pd.Series(close_arr).rolling(30).mean().values[-1]
+        pos_ma30 = (close_latest / ma30_latest - 1) * 100 if not np.isnan(ma30_latest) and ma30_latest > 0 else 0
 
         # ===== V2.0 次日新开仓模型输入（扩展字段，20260821） =====
         _ma5 = pd.Series(close_arr).rolling(5).mean().values[-1]
@@ -1271,11 +1273,13 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         else:
             ma20_trend = 'down'
 
-        # ===== 下蹲买点（20260927落地）=====
-        # 语义：量能爆发/宽幅震荡结构已成立，但当日缩量回踩、贴 MA20 不破位、均线多头未坏
+        # ===== 下蹲买点（20260927落地；20260930 位置门槛放宽）=====
+        # 语义：量能爆发/宽幅震荡结构已成立，但当日缩量回踩、不破 30日均线、均线多头未坏
         #       → 提前于突破日给出低吸买点（用户要求：下蹲时即发信号，而非等突破后再追）
         # 标定回测（2025-01-01~2026-09-24, 事件池=本函数基础硬过滤, T+1开盘买/T+5收盘, 盘中-7%止损, 含0.25%成本）：
-        #   下蹲买点 n=616 胜率46.6% 均+0.69% 止损率29.5% | 2025 48.2%/+0.67% | 2026 42.4%/+0.75%
+        #   旧口径（距MA20 0~5%）n=616 胜率46.6% 均+0.69% 止损率29.5% | 2025 48.2%/+0.67% | 2026 42.4%/+0.75%
+        #   20260930 用户要求「放宽到30日均线之上」：下限由 距MA20>=0 放宽为 距MA30>=0，
+        #   上限仍为 距MA20<=5%（不追高不变）→ 新口径未重标定，允许「MA30 之上、MA20 之下」的回踩形态
         _hh20 = float(np.max(high_arr[-20:])) if len(high_arr) >= 20 else 0.0
         dist_hh20 = (close_latest / _hh20 - 1) * 100 if _hh20 > 0 else 0.0
         squat_buy = False
@@ -1286,12 +1290,14 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
                 and today_vol_ratio <= 1.2
                 and today_pct <= 1.0
                 and pos_ma5 <= 1.0
-                and 0.0 <= pos_ma20 <= 5.0
+                and pos_ma30 >= 0
+                and pos_ma20 <= 5.0
                 and -12.0 <= dist_hh20 <= -4.0):
             squat_buy = True
             squat_grade = '优选'
             squat_reason = (f'下蹲买点（缩量回踩MA5 量比={today_vol_ratio:.2f}，'
-                            f'MA5>MA10>MA20，距MA20={pos_ma20:+.1f}%，距20日高={dist_hh20:+.1f}%）')
+                            f'MA5>MA10>MA20，距MA20={pos_ma20:+.1f}%，距MA30={pos_ma30:+.1f}%，'
+                            f'距20日高={dist_hh20:+.1f}%）')
 
         # ===== 下蹲提示字段（20260927，仅提示展示，不参与筛选/排序）=====
         # 起量台阶：量能抬升后 5日均量未回落到起量前水平 → 资金未走（见 _vol_step_days 标定）
@@ -1378,6 +1384,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '死叉临界': death_cross_risk,
             '回撤类型': retrace_type,
             '距MA20': round(pos_ma20, 1),
+            '距MA30': round(pos_ma30, 1),
             '距MA5': round(pos_ma5, 1),
             '距MA10': round(pos_ma10, 1),
             '距20日高': round(dist_hh20, 1),
@@ -2111,9 +2118,9 @@ def _output_report(results, simple=False, market_tip=None):
 
     # 🌱 下蹲买点（20260927新增：缩量回踩不破位 → 提前于突破日给低吸买点）
     if vs_squat:
-        lines.append("## 🌱 下蹲买点（缩量回踩不破位 · 提前于突破日发信号）")
+        lines.append("## 🌱 下蹲买点（缩量回踩不破30日均线 · 提前于突破日发信号）")
         lines.append("【筛选条件】基础量能爆发/宽幅震荡结构成立 + 当日缩量(量比≤1.2) + MA5>MA10>MA20 "
-                     "+ 距MA20 0~5% + 距20日高 -4~-12%")
+                     "+ 站上MA30(距MA30≥0%) 且 距MA20≤5% + 距20日高 -4~-12%")
         lines.append("【排序口径】本段不复用 FinalEntryScore（下蹲段内 FES 仅筹码分/高开风险参与，不描述下蹲形态）；"
                      "按 量能爆发评分↑ → 距MA5↓ → 60日涨幅↓ 排序，即「未过热 + 回踩更深 + 前期未透支」优先")
         lines.append("【提示项】起量台阶 / 量能形态为展示字段，不参与筛选与排序。"
@@ -2123,7 +2130,7 @@ def _output_report(results, simple=False, market_tip=None):
                      "（台阶内 2025 45.5% / 2026 36.2%，2026 胜率增益已归零，仅均值与止损率仍占优）")
         for i, _vr in enumerate(vs_squat[:10], 1):
             lines.append(f"【下蹲{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} "
-                         f"等级={_vr.get('下蹲等级', '')} 距MA20={_vr['距MA20']:+.1f}%")
+                         f"等级={_vr.get('下蹲等级', '')} 距MA20={_vr['距MA20']:+.1f}% 距MA30={_vr.get('距MA30', 0):+.1f}%")
             lines.append(f"  {_vr.get('下蹲原因', '')}")
             _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (
                 f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
@@ -2149,7 +2156,8 @@ def _output_report(results, simple=False, market_tip=None):
         _n_sq_step = sum(1 for x in vs_squat if x.get('起量台阶天数'))
         lines.append(f"【台阶提示】本批 n={_n_sq}：起量台阶内 {_n_sq_step} 只 / 台阶外 {_n_sq - _n_sq_step} 只"
                      f" | 历史(下蹲 n=453)：台阶内 43.2%/+1.55%，台阶外 38.7%/+0.38%（仅提示，不筛选）")
-        lines.append("【回测参考】2025-01~2026-09 下蹲买点 n=616：胜率46.6% / 均+0.69% / 止损率29.5%")
+        lines.append("【回测参考】2025-01~2026-09 下蹲买点(旧口径:距MA20 0~5%) n=616：胜率46.6% / 均+0.69% / 止损率29.5%"
+                     "（当前已放宽为「站上MA30」，该口径未重标定）")
         lines.append("")
 
     # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
@@ -2204,7 +2212,7 @@ def _output_report(results, simple=False, market_tip=None):
     _sq_opt = [x for x in vs_squat if x.get('下蹲等级') == '优选'][:2]
     if _sq_opt:
         lines.append("🌱 下蹲买点（优选）：" + "、".join(f"{x['名称']}({x['代码']})" for x in _sq_opt)
-                     + " → 缩量回踩不破位，提前于突破日，详见下方「下蹲买点」段")
+                     + " → 缩量回踩不破30日均线，提前于突破日，详见下方「下蹲买点」段")
     lines.append("")
 
     lines.append("## 🔥 量能爆发·强买信号（形态参考，非买入排序依据）")

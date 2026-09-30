@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """HVT-BULL 每日盘后定时任务入口（每工作日 17:00）
 
-数据补全 → 全市场扫描 → 选股落库(stock_pick_db) → AI 自然语言复盘 → 微信推送。
+数据补全 → 全市场扫描 → 选股落库(stock_pick_db) → AI 自然语言复盘 → 邮件推送。
 由 Windows 任务计划程序调用，也可手动运行：
     python hvt_bull/run_daily_push.py [--date 20260830]
 """

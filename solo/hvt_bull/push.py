@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""HVT-BULL AI 自然语言复盘 + 微信推送
+"""HVT-BULL AI 自然语言复盘 + 邮件推送
 
 流程：读 report_daily/hvt_bull_report_{date}.md
      → DeepSeek 生成自然语言复盘（移动端友好）
-     → Server酱 推送微信
+     → Agent Mail CLI 邮件推送（HTML 正文 22px）
      → 落盘 report_daily/hvt_bull_ai_{date}.md
 """
 import os
+import subprocess
 import sys
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -88,26 +89,116 @@ def summarize_with_deepseek(md_text: str, trade_date: str) -> str:
         return ''
 
 
-def send_to_wechat(text: str, trade_date: str) -> bool:
-    """Server酱 推送微信（SendKey 或旧 SCKEY 兼容）"""
-    import requests
-    send_key = os.getenv('SERVERCHAN_SENDKEY', os.getenv('WECHAT_SCKEY'))
-    if not send_key:
-        print('[HVT-PUSH] 未配置 Server酱 SendKey，跳过微信推送')
+# ---- 邮件推送（Agent Mail CLI；20260925 起替代 Server酱微信推送，微信通道已移除） ----
+MAIL_CLI = r'C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd'
+MAIL_TO = 'stock1975@qq.com'
+
+# 邮件 HTML 样式（移动端优先：22px 大字、卡片式、宽表可横向滑动）
+_MAIL_CSS = """
+* { box-sizing: border-box; }
+body { margin:0; padding:0; background:#eef2f7; -webkit-text-size-adjust:100%;
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+       font-size:22px; line-height:1.8; color:#1f2937; }
+.wrap { padding:14px; }
+.hd { background:#1677ff; border-radius:14px; padding:18px 16px; margin-bottom:14px; color:#fff; }
+.hd .t { font-size:26px; font-weight:700; line-height:1.45; }
+.hd .s { font-size:18px; opacity:.92; margin-top:6px; }
+.card { background:#fff; border-radius:14px; padding:18px 16px 8px; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+.ft { text-align:center; color:#94a3b8; font-size:17px; line-height:1.7; padding:14px 8px 4px; }
+h1,h2,h3,h4 { margin:22px 0 12px; line-height:1.45; font-weight:700; color:#0f172a; }
+h1 { font-size:26px; padding-bottom:10px; border-bottom:3px solid #1677ff; }
+h2 { font-size:24px; padding-left:12px; border-left:7px solid #1677ff; }
+h3 { font-size:22px; color:#334155; }
+h4 { font-size:22px; color:#475569; }
+p { margin:0 0 14px; }
+strong { color:#c2410c; }
+a { color:#1677ff; text-decoration:none; border-bottom:1px solid #bfdbfe; word-break:break-all; }
+ul,ol { margin:0 0 14px; padding-left:1.35em; }
+li { margin:7px 0; }
+hr { border:0; border-top:1px dashed #cbd5e1; margin:22px 0; }
+blockquote { margin:0 0 14px; padding:10px 14px; background:#f8fafc; border-left:6px solid #93c5fd;
+             border-radius:0 8px 8px 0; color:#475569; }
+code { background:#f1f5f9; color:#be123c; border-radius:6px; padding:2px 7px; font-size:21px; word-break:break-all; }
+pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:14px; font-size:20px; line-height:1.6; overflow-x:auto; }
+pre code { background:none; color:inherit; padding:0; font-size:20px; }
+.tbl { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 0 16px;
+       border:1px solid #e2e8f0; border-radius:10px; }
+table { border-collapse:collapse; width:100%; font-size:22px; }
+th { background:#1677ff; color:#fff; font-weight:600; text-align:left; padding:11px 10px;
+     border-right:1px solid #4d94ff; white-space:nowrap; }
+th:last-child { border-right:0; }
+td { padding:11px 10px; border-top:1px solid #e8eef5; white-space:nowrap; }
+tbody tr:nth-child(even) { background:#f8fafc; }
+"""
+
+
+def _md_to_email_html(md_text: str, title: str, subtitle: str = '') -> str:
+    """markdown → 邮件 HTML 正文：卡片式排版、正文 22px、移动端优先。
+
+    - 字号写死在 CSS 里，避免客户端剥离样式后回退成小字（老花阅读）
+    - 宽表套滚动容器（.tbl），手机端可左右滑动，不压缩列宽
+    - 不依赖外部 CSS/图片，QQ 邮箱等客户端直接渲染
+    """
+    import re
+    import markdown2
+    from datetime import datetime
+    body = markdown2.markdown(
+        md_text,
+        extras=['tables', 'fenced-code-blocks', 'strike', 'task_list']
+    )
+    # 每个表格套一层可横向滚动容器
+    body = re.sub(r'<table>', '<div class="tbl"><table>', body).replace('</table>', '</table></div>')
+    sub = f'<div class="s">{subtitle}</div>' if subtitle else ''
+    gen_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+    return (
+        '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<title>{title}</title>\n<style>{_MAIL_CSS}</style>\n</head>\n<body>\n'
+        '<div class="wrap">\n'
+        f'<div class="hd"><div class="t">{title}</div>{sub}</div>\n'
+        f'<div class="card">\n{body}\n</div>\n'
+        f'<div class="ft">生成时间 {gen_time}<br>本邮件由 HVT-BULL 量化系统自动推送，仅供参考，不构成投资建议</div>\n'
+        '</div>\n</body>\n</html>'
+    )
+
+
+def send_email(text: str, trade_date: str) -> bool:
+    """Agent Mail CLI 发送复盘邮件（HTML 正文 22px）到 MAIL_TO。
+
+    CLI 的 --body-file 必须落在当前工作目录内且 ≤1MB，故正文先写 cwd 下的临时
+    html 文件，发送成功即删除（失败则留存并打印路径）。任何异常只打日志不抛出。
+    """
+    if not os.path.exists(MAIL_CLI):
+        print(f'[HVT-PUSH] 未找到 Agent Mail CLI: {MAIL_CLI}，跳过邮件推送')
         return False
+
+    subject = f'{trade_date} HVT-BULL 天量牛股复盘'
+    body_path = os.path.join(os.getcwd(), f'_hvt_mail_{trade_date}.html')
     try:
-        url = f'https://sctapi.ftqq.com/{send_key}.send'
-        title = f'{trade_date} HVT-BULL 天量牛股复盘'
-        resp = requests.post(url, data={'title': title, 'desp': text}, timeout=30)
-        resp.raise_for_status()
-        result = resp.json()
-        if result.get('code') == 0:
-            print('[HVT-PUSH] 微信推送成功')
+        html = _md_to_email_html(text, subject, '历史天量 + 二次突破 · AI 复盘')
+        raw = html.encode('utf-8')
+        if len(raw) > 1000 * 1024:
+            html = raw[:1000 * 1024].decode('utf-8', 'ignore') + '<p>（正文超过 1MB，已截断）</p>'
+        with open(body_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+    except Exception as e:
+        print(f'[HVT-PUSH] 邮件正文写入失败: {e}')
+        return False
+
+    cmd = [MAIL_CLI, 'message', '+send', '--to', MAIL_TO, '--subject', subject,
+           '--body-file', os.path.basename(body_path), '--body-format', 'html', '--confirmed']
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
+                           errors='ignore', timeout=180)
+        if r.returncode == 0 and '"ok": true' in (r.stdout or ''):
+            print(f'[HVT-PUSH] 邮件推送成功: {MAIL_TO}')
+            os.remove(body_path)
             return True
-        print(f"[HVT-PUSH] 微信推送失败: {result.get('message', '未知错误')}")
+        detail = ((r.stdout or '') + (r.stderr or '')).strip().replace('\n', ' ')[:300]
+        print(f'[HVT-PUSH] 邮件推送失败: rc={r.returncode} {detail}（正文留存: {body_path}）')
         return False
     except Exception as e:
-        print(f'[HVT-PUSH] 微信推送失败: {e}')
+        print(f'[HVT-PUSH] 邮件推送异常: {e}')
         return False
 
 
@@ -169,7 +260,7 @@ def _fallback_summary(md_text: str, trade_date: str) -> str:
 
 
 def push_daily_report(trade_date: str = None) -> str:
-    """读报告 → AI总结 → 微信推送 → 落盘。返回最终推送文本。"""
+    """读报告 → AI总结 → 邮件推送 → 落盘。返回最终推送文本。"""
     _load_env()
     from datetime import datetime
     if trade_date is None:
@@ -185,7 +276,7 @@ def push_daily_report(trade_date: str = None) -> str:
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f'hvt_bull_ai_{trade_date}.md'), 'w', encoding='utf-8') as f:
         f.write(text)
-    send_to_wechat(text, trade_date)
+    send_email(text, trade_date)
     return text
 
 

@@ -3,6 +3,7 @@
 import io
 import json
 import re
+import subprocess
 import urllib.parse
 import os
 import struct
@@ -1787,138 +1788,219 @@ def _calc_pct_n(df, n=20):
 # ======================================================
 def batch_prefetch_hist_data(codes, start_date='20250101'):
     """
-    在主循环之前批量预取所有股票数据到本地缓存（V2: 统一用窄表三表链路）
-    使用 tushare 批量接口 pro.daily(ts_code="code1,code2,...")
-    之后 get_hist_data() 将全部命中 SQLite 缓存，不再调API
+    在主循环之前批量预取所有股票数据到本地缓存（V3: 逐日拉全市场）
+
+    V2 用 pro.daily(ts_code="c1,c2,...") 每批 20 只拉长区间，20 只 × 约 430 个
+    交易日 ≈ 8600 行，超过该接口单次 6000 行上限后被静默截断，于是下面又逐只重下
+    （实测 5.8s/只、4992 只约 7.7 小时）。
+
+    V3 改为按交易日拉全市场 pro.daily(trade_date=YYYYMMDD)：先按 daily_cache 现有
+    日期范围算出真正缺哪些交易日（日常运行通常只缺最近 1~2 天，首次全量才约 430 天，
+    新股按其上市日截断，不补上市前的交易日），再逐日拉取；若某日返回行数触及单次
+    上限，再按代码前缀分段重拉兜底。之后 get_hist_data() 将全部命中 SQLite 缓存，
+    不再调 API
     """
     if not codes:
         return
 
-    from stock_cache import get_daily_cache_range, batch_insert_daily_cache
+    from bisect import bisect_left, bisect_right
+    from stock_cache import (batch_insert_daily_cache, get_conn,
+                             get_daily_cache_range, DAILY_CACHE_TABLE)
 
-    # 入参 codes 已由上游 get_daily_kline 判定为缺失（daily_cache 表里没有 max_date>=TRADE_DATE），
-    # 这里再校验一次是为了防止并发其他流程刚写入；正常情况下 cached 数为 0 是预期。
-    cached = []
-    missing = []
-    for ts_code in codes:
+    code_set = set(codes)
+
+    # 上市日：把补数下界抬到 max(区间起点, 上市日)，避免把新股判成"缺整段历史"
+    def _merge_list_dates(dates, df):
+        if df is None or 'list_date' not in getattr(df, 'columns', []):
+            return
+        for _c, _ld in zip(df['ts_code'].astype(str), df['list_date']):
+            _s = str(_ld).strip().split('.')[0]
+            if len(_s) == 8 and _s.isdigit():
+                dates[_c] = _s
+
+    list_dates = {}
+    try:
+        from stock_cache import load_stock_basic
+        _merge_list_dates(list_dates, load_stock_basic())
+    except Exception:
+        pass
+
+    # 本地 stock_basic.csv 会滞后（缺最近上市的新股）→ 用一次（带缓存）的列表接口补齐缺口，
+    # 仍取不到上市日的代码按保守口径（补全区间）处理，宁可多拉不漏。
+    if code_set - set(list_dates):
         try:
-            _, max_date = get_daily_cache_range(ts_code)
-            if max_date is not None and str(max_date) >= TRADE_DATE:
-                cached.append(ts_code)
-                continue
-        except Exception:
-            pass
-        missing.append(ts_code)
+            _df_sb = _get_df()
+            if _df_sb is not None:
+                _merge_list_dates(list_dates, _df_sb.get_stock_list('L'))
+            elif pro is not None:
+                _merge_list_dates(list_dates, pro.stock_basic(
+                    exchange='', list_status='L', fields='ts_code,list_date'))
+        except Exception as e:
+            print(f"  批量预取: 上市日补齐失败({e})，未取到上市日的代码按保守口径处理")
 
-    print(f"  批量预取: 传入 {len(codes)} 只(上游已判定缺失), 二次校验 {len(cached)} 已存在/ {len(missing)} 仍需下载")
+    # 仍取不到上市日的（通常 0~2 只，多为当日新上市，上面的列表缓存还没收录）：逐只补一次。
+    # 否则单只未知代码会把整段区间判成"缺历史"，每次运行都白白重拉 400+ 个交易日。
+    _unknown = sorted(c for c in code_set if c not in list_dates)
+    if 0 < len(_unknown) <= 20:
+        _df_p = _get_df()
+        _p = _df_p.pro if (_df_p is not None and getattr(_df_p, 'pro', None) is not None) else pro
+        for _c in _unknown:
+            try:
+                if _df_p is not None:
+                    _r = _df_p._retry_call(_p.stock_basic, ts_code=_c,
+                                           fields='ts_code,list_date')
+                else:
+                    _r = _p.stock_basic(ts_code=_c, fields='ts_code,list_date')
+                _merge_list_dates(list_dates, _r)
+            except Exception:
+                pass
+    elif len(_unknown) > 20:
+        print(f"  批量预取: {len(_unknown)} 只未取到上市日，按保守口径补齐整段区间")
 
-    if not missing:
+    # 交易日历（只跑真实交易日，避免对非交易日空转请求）
+    cal = _df_trade_cal(start_date=start_date, end_date=TRADE_DATE)
+    if cal is None or cal.empty:
+        print(f"  批量预取: 交易日历为空({start_date}~{TRADE_DATE})，跳过")
+        return
+    if 'is_open' in cal.columns:
+        cal = cal[cal['is_open'].astype(str) == '1']
+    days = sorted({str(d) for d in cal['cal_date'].astype(str)})
+    if not days:
+        print(f"  批量预取: {start_date}~{TRADE_DATE} 无交易日，跳过")
         return
 
-    # 分批下载，每批最多20只（避免单次返回行数限制导致数据不全）
-    batch_size = 20
-    batch_downloaded = set()
-    for i in range(0, len(missing), batch_size):
-        batch = missing[i:i + batch_size]
+    # 一次读全表日期范围（强制走 idx_daily_code_date，避免 GROUP BY 全表扫描 12s+），
+    # 据此只补真正缺的交易日：日常运行通常只缺最近 1~2 天，而不是每次都重拉全区间。
+    rng = {}
+    try:
+        with get_conn() as conn:
+            for r in conn.execute(
+                    f'SELECT ts_code, MIN(trade_date), MAX(trade_date) '
+                    f'FROM {DAILY_CACHE_TABLE} INDEXED BY idx_daily_code_date '
+                    f'GROUP BY ts_code').fetchall():
+                rng[str(r[0])] = (str(r[1]) if r[1] is not None else None,
+                                  str(r[2]) if r[2] is not None else None)
+    except Exception as e:
+        # 索引名变更等异常 → 降级为逐只查询（走主键索引，同样很快），
+        # 绝不能把"查不到范围"当成"缺全区间"，否则会退化成全量重拉。
+        print(f"  批量预取: 范围查询失败({e})，降级为逐只查询")
+        for c in code_set:
+            try:
+                mn, mx = get_daily_cache_range(c)
+            except Exception:
+                mn, mx = None, None
+            rng[c] = (str(mn) if mn is not None else None,
+                      str(mx) if mx is not None else None)
+
+    need_days = set()
+    n_hist = 0
+    n_recent = 0
+    for c in code_set:
+        mn, mx = rng.get(c, (None, None))
+        # 该股上市日之前不存在行情：把补数下界抬到 max(区间起点, 上市日)。
+        # 否则新股（其缓存最早日 mn 就等于上市日）会被判成"缺整段历史"，
+        # 一次就触发整段区间的重拉（实测 238 只 → 423 个交易日 × 4s ≈ 半小时）。
+        _ld = list_dates.get(c)
+        lo = _ld if (_ld and _ld > days[0]) else days[0]
+        if mn is None:
+            need_days.update(days[bisect_left(days, lo):])
+            n_hist += 1
+            continue
+        if mn > lo:
+            need_days.update(days[bisect_left(days, lo):bisect_left(days, mn)])   # 缺历史段
+            n_hist += 1
+        if mx is None or mx < TRADE_DATE:
+            need_days.update(days if mx is None else days[bisect_right(days, mx):])   # 缺最近段
+            n_recent += 1
+
+    if not need_days:
+        print(f"  批量预取: {len(codes)} 只均已含 {start_date}~{TRADE_DATE} 数据，跳过")
+        return
+
+    todo = [d for d in days if d in need_days]
+    print(f"  批量预取: 传入 {len(codes)} 只（缺历史 {n_hist} / 缺最近 {n_recent}），"
+          f"需补 {len(todo)}/{len(days)} 个交易日，逐日拉全市场")
+
+    total_rows = 0
+    empty_days = []
+    failed_days = []
+    for i, day in enumerate(todo, 1):
         try:
-            ts_list = ",".join(batch)
-            df = pro.daily(
-                ts_code=ts_list,
-                start_date=start_date,
-                end_date=TRADE_DATE
-            )
-
-            if df is not None and not df.empty:
-                df['trade_date'] = df['trade_date'].astype(str)
-                # 批量写入 SQLite daily_cache（INSERT OR REPLACE，安全：仅 11 列）
-                try:
-                    batch_insert_daily_cache(df)
-                except Exception:
-                    pass
-                for ts_code in batch:
-                    if ts_code in df['ts_code'].values:
-                        batch_downloaded.add(ts_code)
-
-                downloaded_count = df['ts_code'].nunique()
-                print(f"  批次 {i//batch_size + 1}: 成功下载 {downloaded_count}/{len(batch)} 只")
-            else:
-                print(f"  批次 {i//batch_size + 1}: 下载返回空")
-
-            time.sleep(0.15)
-
+            df = _fetch_daily_all_by_date(day, code_set)
         except Exception as e:
-            print(f"  批次 {i//batch_size + 1} 下载失败: {e}")
-            # 单批失败则逐只重试
-            for ts_code in batch:
-                try:
-                    single_df = _df_daily_by_code(
-                        ts_code,
-                        start_date=start_date,
-                        end_date=TRADE_DATE
-                    )
-                    if single_df is not None and not single_df.empty:
-                        single_df['trade_date'] = single_df['trade_date'].astype(str)
-                        try:
-                            batch_insert_daily_cache(single_df)
-                        except Exception:
-                            pass
-                        batch_downloaded.add(ts_code)
-                    time.sleep(0.15)
-                except:
-                    pass
+            failed_days.append(day)
+            print(f"    交易日 {day} 拉取失败: {e}")
+            continue
 
-    # =============================================
-    # 回填全量数据：批量接口有行数上限，返回的数据
-    # 可能只有最近几十行，需要单独下载补全历史（V2: 改用 SQLite 检查）
-    # =============================================
-    print(f"  回填全量数据: 检查 {len(batch_downloaded)} 只批量下载的股票...")
-    backfill_count = 0
-    for ts_code in batch_downloaded:
+        if df is None or df.empty:
+            empty_days.append(day)
+            continue
+
+        # 尊重入参范围：只写上游要求补齐的股票
+        df = df[df['ts_code'].isin(code_set)]
+        if df.empty:
+            continue
+
+        df = df.copy()
+        df['trade_date'] = df['trade_date'].astype(str)
         try:
-            min_date, max_date = get_daily_cache_range(ts_code)
-            if min_date is None:
-                continue
-
-            # 检查缓存是否包含从 start_date 开始的数据
-            start_date_to_check = start_date
-            if pro is not None:
-                try:
-                    cal = _df_trade_cal(start_date=start_date, end_date=start_date)
-                    if cal.empty or cal.iloc[0]['is_open'] != 1:
-                        end_cal = (datetime.strptime(start_date, '%Y%m%d') + timedelta(days=30)).strftime('%Y%m%d')
-                        cal = _df_trade_cal(start_date=start_date, end_date=end_cal)
-                        cal = cal[cal['is_open'] == 1]
-                        first_trade_after_start = cal[cal['cal_date'] >= start_date]['cal_date'].min()
-                        if first_trade_after_start:
-                            start_date_to_check = str(first_trade_after_start)
-                except:
-                    pass
-
-            if str(min_date) <= start_date_to_check:
-                continue  # 已有全量数据，跳过
-
-            # 缺失历史数据，单独下载补全
-            single_df = _df_daily_by_code(
-                ts_code,
-                start_date=start_date,
-                end_date=TRADE_DATE
-            )
-            if single_df is not None and not single_df.empty:
-                single_df = single_df.sort_values('trade_date')
-                single_df['trade_date'] = single_df['trade_date'].astype(str)
-                # 写入 SQLite daily_cache（INSERT OR REPLACE 自动去重）
-                try:
-                    batch_insert_daily_cache(single_df)
-                except Exception:
-                    pass
-                backfill_count += 1
-
-            time.sleep(0.12)
+            total_rows += batch_insert_daily_cache(df)
         except Exception as e:
-            print(f"    回填失败 {ts_code}: {e}")
+            failed_days.append(day)
+            print(f"    交易日 {day} 入库失败: {e}")
+            continue
 
-    if backfill_count > 0:
-        print(f"  回填完成: {backfill_count} 只股票已补全历史数据至 {start_date}")
+        if i % 20 == 0 or i == len(todo):
+            print(f"    [{i}/{len(todo)}] {day}  累计写入 {total_rows} 行")
+
+    done_days = len(todo) - len(empty_days) - len(failed_days)
+    print(f"  批量预取完成: {done_days}/{len(todo)} 个交易日, 共写入 {total_rows} 行")
+    if empty_days:
+        print(f"    无数据交易日 {len(empty_days)} 个（当日无行情返回）")
+    if failed_days:
+        print(f"    失败交易日 {len(failed_days)} 个: {', '.join(failed_days[:10])}")
+
+
+# tushare daily 单次返回上限 6000 行，留安全裕度后按此判定是否被截断
+_DAILY_MAX_ROWS = 5900
+# 分段重拉用的代码前缀（沪主板/科创/深主板/创业板/北交所）
+_CODE_PREFIXES = ('60', '68', '00', '30', '8', '4', '9')
+
+
+def _fetch_daily_all_by_date(trade_date, code_set):
+    """按交易日拉全市场日线；返回行数触及接口单次上限时，按代码前缀分段重拉兜底
+
+    超上限时接口是"静默截断"（返回前 N 行、不报错），会造成部分股票历史缺口
+    且表面看起来成功，因此必须显式检测并兜底。
+    """
+    df = _call_daily_api(trade_date=trade_date)
+    if df is None or df.empty or len(df) < _DAILY_MAX_ROWS:
+        return df
+
+    parts = []
+    for pfx in _CODE_PREFIXES:
+        sub_codes = [c for c in code_set if c.startswith(pfx)]
+        if not sub_codes:
+            continue
+        sub_df = _call_daily_api(trade_date=trade_date, ts_code=",".join(sub_codes))
+        if sub_df is not None and not sub_df.empty:
+            parts.append(sub_df)
+    if not parts:
+        return df
+    return pd.concat(parts, ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date'])
+
+
+def _call_daily_api(trade_date, ts_code=None):
+    """pro.daily 调用（优先复用 DataFetcher 的限频/重试，未启用则直连）"""
+    kw = {'trade_date': trade_date}
+    if ts_code is not None:
+        kw['ts_code'] = ts_code
+    _df = _get_df()
+    if _df is not None and getattr(_df, 'pro', None) is not None:
+        return _df._retry_call(_df.pro.daily, **kw)
+    if pro is None:
+        return None
+    return pro.daily(**kw)
     
 
 # =========================
@@ -6165,6 +6247,233 @@ def send_pushplus(msg, token):
         print(f"⚠️ PushPlus 请求异常: {e}")
 
 
+# ---- Agent Mail CLI 邮件推送（20260925 起替代 Server酱/PushPlus 微信推送） ----
+AGENT_MAIL_CLI = r"C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd"
+AGENT_MAIL_TO = "stock1975@qq.com"
+
+
+# ---- 邮件 HTML 样式（移动端优先：22px 大字、卡片式、宽表可横向滑动） ----
+# 说明：与下面的 _EMAIL_INLINE 保持一致；<style> 仅作渐进增强，
+#       部分客户端会剥离 <head><style>，所以关键元素一律另加内联 style。
+_MAIL_CSS = """
+* { box-sizing: border-box; }
+body { margin:0; padding:0; background:#eef2f7; -webkit-text-size-adjust:100%;
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+       font-size:22px; line-height:1.8; color:#1f2937; }
+.wrap { padding:14px; }
+.hd { background:#1677ff; border-radius:14px; padding:18px 16px; margin-bottom:14px; color:#fff; }
+.hd .t { font-size:26px; font-weight:700; line-height:1.45; }
+.hd .s { font-size:18px; opacity:.92; margin-top:6px; }
+.card { background:#fff; border-radius:14px; padding:18px 16px 8px; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+.ft { text-align:center; color:#94a3b8; font-size:17px; line-height:1.7; padding:14px 8px 4px; }
+h1 { font-size:27px; padding-bottom:12px; border-bottom:3px solid #1677ff; }
+h2 { font-size:25px; color:#fff; background:#1677ff; padding:11px 14px; border-radius:10px; }
+h2 strong { color:#fff; }
+h3 { color:#0b4aa2; }
+.st { font-size:22px; font-weight:700; color:#0b4aa2; background:#eaf3ff;
+      border-left:6px solid #1677ff; border-radius:0 8px 8px 0; padding:7px 0 7px 12px; }
+strong { color:#c2410c; }
+a { color:#1677ff; text-decoration:none; border-bottom:1px solid #bfdbfe; word-break:break-all; }
+hr { border:0; border-top:1px dashed #cbd5e1; margin:22px 0; }
+blockquote { margin:0 0 14px; padding:10px 14px; background:#f8fafc; border-left:6px solid #93c5fd;
+             border-radius:0 8px 8px 0; color:#475569; }
+code { background:#f1f5f9; color:#be123c; border-radius:6px; padding:2px 7px; font-size:21px; word-break:break-all; }
+pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:14px; font-size:20px; line-height:1.6; overflow-x:auto; }
+pre code { background:none; color:inherit; padding:0; font-size:20px; }
+.tbl { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 0 16px;
+       border:1px solid #e2e8f0; border-radius:10px; }
+table { border-collapse:collapse; width:100%; font-size:20px; }
+th { background:#1677ff; color:#fff; font-weight:600; text-align:left; padding:10px; white-space:nowrap; }
+td { padding:10px; border-top:1px solid #e8eef5; word-break:break-word; }
+tbody tr:nth-child(even) { background:#f8fafc; }
+"""
+
+# 元素级内联样式：与 _MAIL_CSS 同源，防止客户端剥离 <head><style> 后样式全丢
+_EMAIL_INLINE = {
+    "h1": "font-size:27px;font-weight:700;color:#0f172a;line-height:1.4;margin:18px 0 16px;"
+          "padding:0 0 12px;border-bottom:3px solid #1677ff;",
+    "h2": "font-size:25px;font-weight:700;color:#ffffff;line-height:1.5;margin:26px 0 14px;"
+          "padding:11px 14px;background:#1677ff;border-radius:10px;",
+    "h3": "font-size:22px;font-weight:700;color:#0b4aa2;line-height:1.5;margin:22px 0 10px;",
+    "h4": "font-size:22px;font-weight:700;color:#475569;line-height:1.5;margin:20px 0 10px;",
+    "p": "margin:0 0 14px;font-size:22px;line-height:1.8;color:#1f2937;word-break:break-word;",
+    "ul": "margin:0 0 16px;padding-left:1.3em;font-size:22px;line-height:1.8;color:#1f2937;",
+    "ol": "margin:0 0 16px;padding-left:1.5em;font-size:22px;line-height:1.8;color:#1f2937;",
+    "li": "margin:8px 0;font-size:22px;line-height:1.8;color:#1f2937;word-break:break-word;",
+    "strong": "color:#c2410c;font-weight:700;",
+    "a": "color:#1677ff;text-decoration:none;border-bottom:1px solid #bfdbfe;word-break:break-all;",
+    "hr": "border:0;border-top:1px dashed #cbd5e1;margin:22px 0;",
+    "blockquote": "margin:0 0 16px;padding:10px 14px;background:#f8fafc;border-left:6px solid #93c5fd;"
+                  "border-radius:0 8px 8px 0;color:#475569;",
+    "code": "background:#f1f5f9;color:#be123c;border-radius:6px;padding:2px 7px;"
+            "font-size:21px;word-break:break-all;",
+    "pre": "background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;"
+           "font-size:20px;line-height:1.6;overflow-x:auto;",
+    "table": "border-collapse:collapse;width:100%;font-size:20px;line-height:1.6;",
+    "th": "background:#1677ff;color:#ffffff;font-weight:600;text-align:left;padding:10px;"
+          "border-right:1px solid #4d94ff;white-space:nowrap;font-size:20px;",
+    "td": "padding:10px;border-top:1px solid #e8eef5;font-size:20px;line-height:1.6;word-break:break-word;",
+}
+_TBL_WRAP_STYLE = ("overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 16px;"
+                   "border:1px solid #e2e8f0;border-radius:10px;")
+_ST_DIV_STYLE = ("class=\"st\" style=\"font-size:22px;font-weight:700;color:#0b4aa2;background:#eaf3ff;"
+                 "border-left:6px solid #1677ff;border-radius:0 8px 8px 0;padding:7px 0 7px 12px;"
+                 "line-height:1.5;margin:20px 0 10px;word-break:break-word;\"")
+
+# AI 输出的两类 markdown 缺陷（会导致手机端出现字面符号/斜体碎片）
+_PSEUDO_HEADING_RE = re.compile(r"^\*\*[ \u3000]+([^*\n]+?)[ \u3000]*$", re.M)
+_INNER_UNDERSCORE_RE = re.compile(r"(?<=\w)_(?=\w)")
+
+
+def _prep_email_markdown(md):
+    """修正 AI 复盘 markdown 的两类渲染缺陷（不改内容，只保证能被 HTML 正确表达）：
+
+    1. 行首伪标题 `** 小节名`（只有开星号没有闭合）：markdown 不识别，会原样显示
+       `**`；且它后面紧跟的 `* ` 列表会被当成同段落续行，列表符号也原样露出。
+       这里转成独立小标题块并在前后补空行，使后续 `* ` 正常成列表。
+    2. 词内下划线（LOW_BREADTH / T0_High / RE_ACCELERATION 等）会被 markdown 当成
+       强调语法，渲染成 LOW<em>BREADTH 之类的斜体碎片；转义为实体 &#95; 保原样。
+    """
+    md = md.replace("\r\n", "\n").replace("\r", "\n")
+
+    def _to_st(m):
+        return '\n\n<div %s>%s</div>\n\n' % (_ST_DIV_STYLE, m.group(1).strip())
+
+    md = _PSEUDO_HEADING_RE.sub(_to_st, md)
+    return _INNER_UNDERSCORE_RE.sub("&#95;", md)
+
+
+def _add_inline_style(html, tag, style):
+    """给指定标签注入内联 style；已有 style 属性则合并（保留原值，追加新值）。"""
+    pat = re.compile(r"<%s(?=[\s>/])([^>]*)>" % re.escape(tag), re.I)
+
+    def _rep(m):
+        attrs = m.group(1) or ""
+        slash = ""
+        if attrs.rstrip().endswith("/"):
+            attrs, slash = attrs.rstrip()[:-1], " /"
+        sm = re.search(r'style\s*=\s*"([^"]*)"', attrs, re.I) or \
+             re.search(r"style\s*=\s*'([^']*)'", attrs, re.I)
+        if sm:
+            merged = sm.group(1).rstrip().rstrip(";")
+            new = attrs[:sm.start(1)] + (merged + ";" if merged else "") + style + attrs[sm.end(1):]
+        else:
+            new = attrs + ' style="%s"' % style
+        return "<%s%s%s>" % (tag, new, slash)
+
+    return pat.sub(_rep, html)
+
+
+def _inline_email_styles(html):
+    """把邮件样式内联到各元素：部分客户端剥离 <head><style>，只认内联 style。"""
+    stashed = []
+
+    def _stash(m):
+        stashed.append(m.group(0))
+        return "\x00PRE%d\x00" % (len(stashed) - 1)
+
+    # <pre> 块先摘出，避免内部 <code> 被套上「行内代码」底色
+    html = re.sub(r"<pre>.*?</pre>", _stash, html, flags=re.S)
+    for tag in ("h1", "h2", "h3", "h4", "p", "ul", "ol", "li", "strong",
+                "a", "hr", "blockquote", "code", "table", "th", "td"):
+        html = _add_inline_style(html, tag, _EMAIL_INLINE[tag])
+
+    def _restore(m):
+        block = _add_inline_style(stashed[int(m.group(1))], "pre", _EMAIL_INLINE["pre"])
+        return _add_inline_style(block, "code", "background:none;color:inherit;padding:0;font-size:20px;")
+
+    html = re.sub(r"\x00PRE(\d+)\x00", _restore, html)
+
+    # 章节标题为蓝底白字，内部 <strong>（如 "1、**大盘分析**"）需跟随白字而非橙色
+    return re.sub(r"<h[1-4][^>]*>.*?</h[1-4]>",
+                  lambda m: m.group(0).replace("color:#c2410c", "color:inherit"),
+                  html, flags=re.S | re.I)
+
+
+def _wrap_email_tables(html):
+    """给每个 <table> 套一层可横向滚动容器：手机端宽表左右滑动看，不挤压列宽、不撑破版心。"""
+    return (html.replace("<table>", '<div style="%s"><table>' % _TBL_WRAP_STYLE)
+                .replace("</table>", "</table></div>"))
+
+
+def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
+    """把复盘 markdown 转成邮件 HTML 正文：卡片式排版、正文 22px、移动端优先。
+
+    - 先做 markdown 预处理（伪标题 / 词内下划线），再转 HTML
+    - 元素样式全部内联，客户端剥离 <style> 也不掉版；<style> 仅作渐进增强
+    - 宽表套滚动容器，手机端可左右滑动，不压缩列宽
+    - 不依赖外部 CSS/图片，QQ 邮箱等客户端直接渲染
+    """
+    body = markdown2.markdown(
+        _prep_email_markdown(markdown_text),
+        extras=["tables", "fenced-code-blocks", "strike", "task_list"]
+    )
+    body = _inline_email_styles(_wrap_email_tables(body))
+    sub = f'<div class="s" style="font-size:18px;opacity:.92;margin-top:6px;">{subtitle}</div>' if subtitle else ""
+    gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return (
+        '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{title}</title>\n<style>{_MAIL_CSS}</style>\n</head>\n"
+        '<body style="margin:0;padding:0;background:#eef2f7;-webkit-text-size-adjust:100%;'
+        'font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',Arial,sans-serif;'
+        'font-size:22px;line-height:1.8;color:#1f2937;">\n'
+        '<div class="wrap" style="padding:14px;">\n'
+        '<div class="hd" style="background:#1677ff;border-radius:14px;padding:18px 16px;'
+        'margin-bottom:14px;color:#ffffff;">\n'
+        f'<div class="t" style="font-size:26px;font-weight:700;line-height:1.45;color:#ffffff;">{title}</div>\n'
+        f"{sub}\n</div>\n"
+        '<div class="card" style="background:#ffffff;border-radius:14px;padding:18px 16px 8px;'
+        'box-shadow:0 1px 4px rgba(15,23,42,.08);">\n'
+        f"{body}\n</div>\n"
+        '<div class="ft" style="text-align:center;color:#94a3b8;font-size:17px;line-height:1.7;'
+        f'padding:14px 8px 4px;">生成时间 {gen_time}<br>本邮件由量化系统自动推送，仅供参考，不构成投资建议</div>\n'
+        "</div>\n</body>\n</html>"
+    )
+
+
+def send_agent_mail(msg, to_addr=AGENT_MAIL_TO, subject=None):
+    """通过 Agent Mail CLI 发送复盘邮件（替代微信推送），正文为 HTML 格式。
+
+    发件账号 kongxiangpu1955@agent.qq.com（OAuth 已登录，额度 50 封/日、10 次/分钟）。
+    入参 msg 是 markdown 文本，这里先转成 22px 字号的 HTML 正文再发送。
+    CLI 的 --body-file 只接受「相对当前工作目录」的路径且上限 1MB，故正文先落到
+    REPORT_DIR 下的临时 html 文件，发送成功后删除。
+    """
+    subject = subject or f"每日复盘 - {TRADE_DATE}"
+    if not os.path.exists(AGENT_MAIL_CLI):
+        print(f"⚠️ 未找到 Agent Mail CLI: {AGENT_MAIL_CLI}，跳过邮件推送")
+        return
+
+    # CLI 强制 --body-file 必须落在当前工作目录内（含 ..\ 的路径会被拒绝），
+    # 所以临时正文写到 cwd 根下，用相对文件名传参，发送成功后删除。
+    body_path = os.path.join(os.getcwd(), f"_mail_body_{TRADE_DATE}.html")
+    try:
+        html = markdown_to_email_html(msg, title=subject, subtitle="A股每日复盘 · 自动推送")
+        raw = html.encode("utf-8")
+        if len(raw) > 1000 * 1024:
+            html = raw[:1000 * 1024].decode("utf-8", "ignore") + "<p>（正文超过 1MB，已截断）</p>"
+        with open(body_path, "w", encoding="utf-8") as f:
+            f.write(html)
+    except Exception as e:
+        print(f"⚠️ 邮件正文写入失败: {e}")
+        return
+
+    cmd = [AGENT_MAIL_CLI, "message", "+send", "--to", to_addr, "--subject", subject,
+           "--body-file", os.path.basename(body_path), "--body-format", "html", "--confirmed"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="ignore", timeout=180)
+        if r.returncode == 0 and '"ok": true' in (r.stdout or ""):
+            print(f"✅ Agent Mail 已发送: {to_addr}")
+            os.remove(body_path)
+        else:
+            detail = ((r.stdout or "") + (r.stderr or "")).strip().replace("\n", " ")[:300]
+            print(f"⚠️ Agent Mail 发送失败: rc={r.returncode} {detail}（正文留存: {body_path}）")
+    except Exception as e:
+        print(f"⚠️ Agent Mail 调用异常: {e}")
+
+
 def markdown_to_html_report(
         markdown_text,
         output_file="stock_report.html",
@@ -9182,13 +9491,8 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
                     _etf_head = _etf_sec.split('\n', 1)[0]
                     final_report = final_report[:_m_etf.start()] + f"{_etf_head}\n\n{etf_tips_text}\n\n" + final_report[_m_etf.end():]
 
-        # 先发送微信（即使报告保存失败也要发送）
-        send_wechat(
-            final_report,
-            os.getenv("WECHAT_SCKEY")
-        )
-        # PushPlus 推送（支持markdown，增强阅读体验）
-        send_pushplus(final_report, os.getenv("PUSHPLUS"))
+        # 先发送邮件（即使报告保存失败也要发送）
+        send_agent_mail(final_report)
 
         # 保存报告（带异常处理）
         try:

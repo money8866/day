@@ -1,10 +1,11 @@
 {
-  "last_rebalance_date": "2026-09-22",
-  "holding_code": "515880",
-  "holding_name": "通信",
-  "buy_price": 0.707,
-  "score_at_buy": 100.0,
-  "momentum_at_buy": 9.1,
-  "rsi_at_buy": 69.03,
-  "rebalance_count": 7
+  "last_rebalance_date": "2026-09-30",
+  "holding_code": "159992",
+  "holding_name": "创新药",
+  "buy_price": 0.872,
+  "score_at_buy": 94.12,
+  "momentum_at_buy": 2.71,
+  "rsi_at_buy": 59.56,
+  "ige_at_buy": 62.673322160873745,
+  "rebalance_count": 8
 }

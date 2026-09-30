@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-W7 T20 右尾引擎 · 微信推送
+W7 T20 右尾引擎 · 邮件推送
 =========================================
 1. 读取最新 w7_t20_right_tail_YYYYMMDD.md 报告
 2. 提取【TOP_PICK】与【PRIMARY_BUY】(按报告 SPACE 空间优选分顺序, 不做二次重排)
-3. 调 DeepSeek 精炼为可执行操作指令 → PushPlus 推送到微信
+3. 调 DeepSeek 精炼为可执行操作指令 → 通过 Agent Mail CLI 发送邮件
+   （20260929 起替代 PushPlus 微信推送，微信通道已移除）
 
 用法:
   python w7_t20_push_wechat.py                # 自动找最新报告
   python w7_t20_push_wechat.py --date 20260907
 """
-import os, sys, re, glob
+import os, sys, re, glob, subprocess
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
@@ -21,10 +22,13 @@ if sys_path not in sys.path:
 load_dotenv('d:/mystock/config/.env')
 
 REPORT_DIR = os.path.join(sys_path, 'report_daily')
-PUSHPLUS_TOKEN = os.getenv('PUSHPLUS')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions'
 MAX_REPORT_CHARS = 16000
+
+# ---- 邮件推送（Agent Mail CLI；与 hvt_bull/push.py、tushare_quant.send_agent_mail 同一通道） ----
+MAIL_CLI = r'C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd'
+MAIL_TO = 'stock1975@qq.com'
 
 
 def call_deepseek(prompt, system):
@@ -117,24 +121,118 @@ SYSTEM_PROMPT = (
 )
 
 
-def push_to_wechat(msg, title):
-    if not PUSHPLUS_TOKEN:
-        print('错误: 未设置 PUSHPLUS 环境变量')
+def _md_to_email_html(md_text, title):
+    """markdown → 手机友好邮件 HTML。
+
+    22px 老花字号 + 卡片式排版 + 响应式宽度（max-width 680，适配手机）。
+    <style> 与关键标签内联样式双保险（部分邮件客户端会剥离 <style>）。
+    """
+    import markdown2
+    import html as _html
+
+    text = md_text.lstrip('\ufeff').lstrip()
+    if text.startswith('# '):                      # 首行 H1 与邮件头重复，去掉
+        text = text.split('\n', 1)[1] if '\n' in text else ''
+    text = re.sub(r'(?m)^(?=\d+\.\s)', '\n', text)  # 「1. xxx」紧跟段落会被吞成普通文本，补空行还原有序列表
+    body = markdown2.markdown(
+        text,
+        extras=['tables', 'fenced-code-blocks', 'strike', 'task_list', 'code-friendly']
+    )
+    # markdown2 输出的标签不带属性，可安全地补内联样式
+    inline = {
+        '<h1>': '<h1 style="font-size:25px;line-height:1.45;color:#0b4fd6;margin:0 0 10px;">',
+        '<h2>': '<h2 style="font-size:23px;line-height:1.5;color:#0b4fd6;margin:22px 0 10px;padding-left:10px;border-left:6px solid #1677ff;">',
+        '<h3>': '<h3 style="font-size:22px;line-height:1.5;color:#334155;margin:16px 0 8px;">',
+        '<p>': '<p style="font-size:22px;line-height:1.8;color:#1f2937;margin:10px 0;">',
+        '<ol>': '<ol style="font-size:22px;line-height:1.8;color:#1f2937;margin:10px 0;padding-left:30px;">',
+        '<ul>': '<ul style="font-size:22px;line-height:1.8;color:#1f2937;margin:10px 0;padding-left:24px;">',
+        '<li>': '<li style="font-size:22px;line-height:1.8;margin:0 0 10px;">',
+        '<blockquote>': '<blockquote style="margin:12px 0;padding:10px 12px;background:#f1f5f9;border-left:4px solid #94a3b8;color:#475569;font-size:20px;">',
+        '<hr>': '<hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0;">',
+        '<strong>': '<strong style="color:#0b4fd6;">',
+        '<em>': '<em style="font-style:normal;color:#94a3b8;font-size:19px;">',
+        '<table>': '<table style="border-collapse:collapse;width:100%;font-size:20px;">',
+        '<th>': '<th style="background:#1677ff;color:#fff;padding:10px;border:1px solid #b9c6d6;">',
+        '<td>': '<td style="padding:10px;border:1px solid #b9c6d6;">',
+    }
+    for k, v in inline.items():
+        body = body.replace(k, v)
+    body = body.replace('｜', '<br>')   # 全角竖线竖排，避免手机端长行折行错乱
+    head = _html.escape(title)
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{head}</title>
+<style>
+body {{ margin: 0; padding: 0; background: #eef2f7; -webkit-text-size-adjust: 100%; }}
+.wrap {{ max-width: 680px; margin: 0 auto; padding: 14px 12px 24px; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", Arial; }}
+.hero {{ background: #1677ff; background: linear-gradient(135deg, #1677ff 0%, #0b4fd6 100%); border-radius: 14px; padding: 16px 18px; }}
+.hero .t {{ font-size: 24px; font-weight: 700; line-height: 1.5; color: #ffffff; }}
+.hero .s {{ font-size: 17px; color: #dbeafe; margin-top: 6px; }}
+.card {{ background: #ffffff; border-radius: 14px; padding: 14px 16px; margin-top: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.08); }}
+h1 {{ font-size: 25px; color: #0b4fd6; margin: 0 0 10px; }}
+h2 {{ font-size: 23px; color: #0b4fd6; margin: 22px 0 10px; padding-left: 10px; border-left: 6px solid #1677ff; }}
+h3 {{ font-size: 22px; color: #334155; margin: 16px 0 8px; }}
+p, li, td, th, div {{ font-size: 22px; line-height: 1.8; color: #1f2937; }}
+strong {{ color: #0b4fd6; }}
+table {{ border-collapse: collapse; width: 100%; font-size: 20px; }}
+th {{ background: #1677ff; color: #fff; padding: 10px; border: 1px solid #b9c6d6; }}
+td {{ padding: 10px; border: 1px solid #b9c6d6; }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-size:22px;line-height:1.8;color:#1f2937;">
+<div class="wrap" style="max-width:680px;margin:0 auto;padding:14px 12px 24px;">
+<div class="hero" style="background:#1677ff;border-radius:14px;padding:16px 18px;">
+<div class="t" style="font-size:24px;font-weight:700;line-height:1.5;color:#ffffff;">{head}</div>
+<div class="s" style="font-size:17px;color:#dbeafe;margin-top:6px;">盘后自动推送</div>
+</div>
+<div class="card" style="background:#ffffff;border-radius:14px;padding:14px 16px;margin-top:14px;">
+{body}
+</div>
+</div>
+</body>
+</html>"""
+
+
+def send_email(msg, subject, tag='W7-T20-PUSH'):
+    """Agent Mail CLI 发送操作指令邮件（HTML 正文 22px）到 MAIL_TO。
+
+    CLI 的 --body-file 必须落在当前工作目录内且 ≤1MB，故正文先写 cwd 下的临时
+    html 文件，发送成功即删除（失败则留存并打印路径）。任何异常只打日志不抛出。
+    """
+    if not os.path.exists(MAIL_CLI):
+        print(f'[{tag}] 未找到 Agent Mail CLI: {MAIL_CLI}，跳过邮件推送')
         return False
-    content = msg if len(msg) <= 9000 else msg[:8900] + '\n>（内容超长已截断）'
+
+    safe = re.sub(r'[^0-9A-Za-z]+', '_', subject).strip('_') or 'w7t20'
+    body_path = os.path.join(os.getcwd(), f'_w7_t20_mail_{safe}.html')
     try:
-        resp = requests.post('https://www.pushplus.plus/send', json={
-            'token': PUSHPLUS_TOKEN, 'title': title,
-            'content': content, 'template': 'markdown',
-        }, timeout=30)
-        result = resp.json()
-        if result.get('code') == 200:
-            print(f'推送成功: {result.get("msg", "")}')
+        html = _md_to_email_html(msg, subject)
+        raw = html.encode('utf-8')
+        if len(raw) > 1000 * 1024:
+            html = raw[:1000 * 1024].decode('utf-8', 'ignore') + '<p>（正文超过 1MB，已截断）</p>'
+        with open(body_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+    except Exception as e:
+        print(f'[{tag}] 邮件正文写入失败: {e}')
+        return False
+
+    cmd = [MAIL_CLI, 'message', '+send', '--to', MAIL_TO, '--subject', subject,
+           '--body-file', os.path.basename(body_path), '--body-format', 'html', '--confirmed']
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
+                           errors='ignore', timeout=180)
+        if r.returncode == 0 and '"ok": true' in (r.stdout or ''):
+            print(f'✅ 邮件推送成功: {MAIL_TO}')
+            os.remove(body_path)
             return True
-        print(f'推送失败: code={result.get("code")} msg={result.get("msg")} data={result.get("data", "")}')
+        detail = ((r.stdout or '') + (r.stderr or '')).strip().replace('\n', ' ')[:300]
+        print(f'⚠️ 邮件推送失败: rc={r.returncode} {detail}（正文留存: {body_path}）')
         return False
     except Exception as e:
-        print(f'推送异常: {e}')
+        print(f'⚠️ 邮件推送异常: {e}')
         return False
 
 
@@ -182,8 +280,8 @@ def main():
     with open(save_path, 'w', encoding='utf-8') as f:
         f.write(msg)
     print(f'指令已保存: {save_path}')
-    success = push_to_wechat(msg, title=f'W7 T20 右尾操作指令 {trade_date}')
-    print('微信推送完成' if success else '微信推送失败')
+    success = send_email(msg, subject=f'W7 T20 右尾操作指令 {trade_date}')
+    print('邮件推送完成' if success else '邮件推送失败')
 
 
 if __name__ == '__main__':
