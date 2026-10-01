@@ -309,6 +309,122 @@ def _te_decision_record(engine, loader, cfg, te_cfg, calib, code, df, ev,
     return rec
 
 
+def _streak_bucket(df_ev: pd.DataFrame) -> pd.Series:
+    """reentry_streak → 分层桶：first(首日入池)/re1(连续第2日)/re2plus(连续第3日及以后)。"""
+    n = pd.to_numeric(df_ev['reentry_streak'], errors='coerce').fillna(0)
+    return pd.Series(np.where(n == 0, 'first', np.where(n == 1, 're1', 're2plus')),
+                     index=df_ev.index)
+
+
+def _cand_top_mask(df_ev: pd.DataFrame, buy_mask: pd.Series, max_buy: int) -> pd.Series:
+    """每日 cand 的 Top-max_buy 掩码，cand 口径与 daily._te_buy_pool_filter 返回的 cand 完全一致。
+
+    cand 定义：next_day_action ∈ BUY_ACTIONS 且 execution_state ∈ (READY_BUY, PULLBACK_BUY)，
+    再按 (execution_score, buyability) 降序取每个 decision_date 的前 max_buy 只。
+    该掩码同时是「回测 streak 递推源」与「R1/R2 审计样本源」，两处必须同源（否则口径漂移）。
+    """
+    cand_mask = buy_mask & df_ev['execution_state'].fillna('').astype(str) \
+        .isin(('READY_BUY', 'PULLBACK_BUY'))
+    sub = df_ev.loc[cand_mask].copy()
+    if sub.empty:
+        return pd.Series(False, index=df_ev.index)
+    sub['_es'] = pd.to_numeric(sub['execution_score'], errors='coerce').fillna(-1.0)
+    sub['_bb'] = pd.to_numeric(sub['buyability'], errors='coerce').fillna(-1.0)
+    idx = (sub.sort_values(['decision_date', '_es', '_bb'], ascending=[True, False, False])
+           .groupby('decision_date').head(max_buy).index)
+    return pd.Series(df_ev.index.isin(idx), index=df_ev.index)
+
+
+def _compute_streak(df_ev: pd.DataFrame, pool_mask: pd.Series, det_dates) -> pd.Series:
+    """按 pool_mask 递推 reentry_streak：连续处于每日池中的决策日数（首次入池=0，中断归零）。
+
+    与 daily 从昨日报告 JSON 读取 buy_pool 判定的 count 语义一致：同一 (股票, 决策日) 在池中
+    则取「前一交易日同股票」的值 +1，否则置 0。返回按 df_ev 索引标签对齐的 Series。
+    """
+    all_dts = sorted(det_dates)
+    prev_dt = {all_dts[i]: all_dts[i - 1] for i in range(1, len(all_dts))}
+    d = df_ev.sort_values(['ts_code', 'decision_date'])
+    by_key, vals = {}, []
+    for r in d.itertuples():
+        if bool(pool_mask.loc[r.Index]):
+            p = prev_dt.get(r.decision_date)
+            by_key[(r.ts_code, r.decision_date)] = by_key.get((r.ts_code, p), -1) + 1
+        else:
+            by_key[(r.ts_code, r.decision_date)] = 0
+        vals.append(by_key[(r.ts_code, r.decision_date)])
+    return pd.Series(vals, index=d.index)
+
+
+def _reentry_buy_audit(df_ev: pd.DataFrame, max_buy: int,
+                       bucket: pd.Series, cand_top: pd.Series) -> dict:
+    """V3.6 再入规则（R1/R2）可复核化：按 daily._te_buy_pool_filter 的 cand 口径重建样本并统计。
+
+    背景：daily._te_buy_pool_filter 的注释声称「R1 回测 pf 0.48~0.61 / R2 回测 pf 0.76」，
+    但该结论此前只存在于注释里——回测脚本原先只把 buy_by_streak 打印到控制台、不落盘，
+    也从未按 (streak, decision_point, next_day_action) 三元组交叉，导致规则无法复核。
+    本函数重建与 _te_buy_pool_filter 完全一致的样本口径，使 R1/R2 可复现、可复核。
+    口径：next_day_action ∈ BUY_ACTIONS 且 execution_state ∈ (READY_BUY, PULLBACK_BUY)，
+          先按 (execution_score, buyability) 取每个 decision_date 的 Top-max_buy，再在桶内统计。
+          样本源 cand_top 由调用方经 _cand_top_mask 生成（与 streak 递推源同源，避免口径漂移）。
+    说明：只做统计与落盘，不改变任何信号或状态。
+    """
+    _dpc = df_ev['decision_point'].fillna('').astype(str)
+    _actc = df_ev['next_day_action'].fillna('').astype(str)
+    _streak_c = pd.to_numeric(df_ev['reentry_streak'], errors='coerce').fillna(0)
+
+    drop_r1 = cand_top & (_streak_c >= 1) & (_actc == 'BUY_ON_CONFIRM')
+    drop_r2 = cand_top & (~drop_r1) & (_streak_c == 0) & (_dpc == 'PULLBACK_RE') \
+        & (_actc == 'BUY_ON_CONFIRM')
+    keep_msk = cand_top & (~drop_r1) & (~drop_r2)
+
+    _tri = df_ev.loc[cand_top].copy()
+    if not _tri.empty:
+        _tri['_bucket'] = bucket.reindex(_tri.index)
+        _tri['_dp'] = _dpc.reindex(_tri.index)
+        _tri['_act'] = _actc.reindex(_tri.index)
+        triple = {f'{b}|{d or "-"}|{a or "-"}': _pool_stats(sub, TE_HORIZONS)
+                  for (b, d, a), sub in _tri.groupby(['_bucket', '_dp', '_act'], dropna=False)}
+    else:
+        triple = {}
+
+    def _er20_brief(p: dict) -> dict:
+        e = (p or {}).get('er20') or {}
+        return {'n': (p or {}).get('n', 0), 'win': e.get('win'),
+                'avg': e.get('avg'), 'pf': e.get('pf')}
+
+    _rule_pools = {
+        'cand_top': _pool_stats(df_ev[cand_top], TE_HORIZONS),
+        'kept': _pool_stats(df_ev[keep_msk], TE_HORIZONS),
+        'dropped_r1': _pool_stats(df_ev[drop_r1], TE_HORIZONS),
+        'dropped_r2': _pool_stats(df_ev[drop_r2], TE_HORIZONS),
+    }
+    return {
+        'definition': ('样本 = 与 daily._te_buy_pool_filter 的 cand 同口径：'
+                       'next_day_action ∈ BUY_ACTIONS 且 execution_state ∈ (READY_BUY, PULLBACK_BUY)，'
+                       '先按 (execution_score, buyability) 取每个 decision_date 的 Top-max_buy（不补位）'),
+        'rule_r1': 'reentry_streak >= 1 且 next_day_action == BUY_ON_CONFIRM → 剔除',
+        'rule_r2': ('reentry_streak == 0 且 decision_point == PULLBACK_RE 且 '
+                    'next_day_action == BUY_ON_CONFIRM → 剔除（R1 优先判定）'),
+        'max_buy': int(max_buy),
+        'n_cand_top': int(cand_top.sum()),
+        'pools': _rule_pools,
+        'rule_check_er20': {k: _er20_brief(v) for k, v in _rule_pools.items()},
+        'triple': dict(sorted(triple.items())),
+        'triple_key': 'reentry_bucket|decision_point|next_day_action',
+    }
+
+
+def _print_reentry_audit(audit: dict) -> None:
+    print(f"[TE-BT] V3.6 再入规则复核（cand_top n={audit.get('n_cand_top')}，er20 = 盈均/亏均）：")
+    for kn, p in audit.get('rule_check_er20', {}).items():
+        print(f"  {kn:<12} n={p['n']:<5} win={p['win']}% avg={p['avg']}% pf={p['pf']}")
+    print(f"[TE-BT] 三元组分组（{audit.get('triple_key')}）：")
+    for kt, p in audit.get('triple', {}).items():
+        er20 = p.get('er20') or {}
+        print(f"  {kt:<40} n={p.get('n', 0):<5} er20win={er20.get('win')}% "
+              f"er20avg={er20.get('avg')}% pf={er20.get('pf')}")
+
+
 def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
                     sample_step: int = 1, max_events: int = None, out_dir: str = None) -> dict:
     """Trade Execution 历史回测主入口。"""
@@ -471,35 +587,27 @@ def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
     buy_by_dp = {s: _pool_stats(df_ev[(dp == s) & buy_mask], TE_HORIZONS)
                  for s in ('BREAKOUT', 'PULLBACK', 'PULLBACK_RE', 'T0') if s in dp_set}
 
-    # reentry_streak：连续处于每日 Top-3 BUY 池的决策日数（与实盘 daily 从昨日报告 JSON
-    # 读取 buy_pool 判定再入的口径一致：同一事件在相邻检测日均为 BUY 池成员则 +1，
-    # 中断（非 BUY / 被挤出 Top-3 / 超 40 日决策窗）即归零重置）
+    # reentry_streak：连续处于每日 cand 池的决策日数（cand 口径 = daily._te_buy_pool_filter 的
+    # cand，即 READY_BUY/PULLBACK_BUY 且 action ∈ BUY_ACTIONS 的 Top-max_buy），与实盘 daily
+    # 从昨日报告 JSON 读取 buy_pool 判定再入的口径一致：同一事件在相邻检测日均为池成员则 +1，
+    # 中断（非 BUY / 被挤出 Top-max_buy / 超 40 日决策窗）即归零重置。
+    # 注：递推源必须是 cand_top 而非仅按 buy_mask 取的 Top-N，否则与 daily 候选定义漂移。
     all_dts = sorted(det_dates)
-    prev_dt = {all_dts[i]: all_dts[i - 1] for i in range(1, len(all_dts))}
+    cand_top = _cand_top_mask(df_ev, buy_mask, max_buy)
+    _streak = _compute_streak(df_ev, cand_top, all_dts)
     df_ev = df_ev.sort_values(['ts_code', 'decision_date'])
-    _streak_by_key = {}
-    _streaks = []
-    for _r in df_ev.itertuples():
-        _in_top = bool(top_mask.loc[_r.Index])
-        if _in_top:
-            _p = prev_dt.get(_r.decision_date)
-            # 首次入池 = 0（与 daily 从昨日 JSON 判定的 count 语义一致：昨日不在池 → 0）
-            _streak_by_key[(_r.ts_code, _r.decision_date)] = \
-                _streak_by_key.get((_r.ts_code, _p), -1) + 1
-        else:
-            _streak_by_key[(_r.ts_code, _r.decision_date)] = 0
-        _streaks.append(_streak_by_key[(_r.ts_code, _r.decision_date)])
-    df_ev['reentry_streak'] = _streaks
-    _streak_num = pd.to_numeric(df_ev['reentry_streak'], errors='coerce').fillna(0)
-    _bucket = pd.Series(np.where(_streak_num == 0, 'first',
-                                 np.where(_streak_num == 1, 're1', 're2plus')),
-                        index=df_ev.index)
+    df_ev['reentry_streak'] = _streak.reindex(df_ev.index)
+    _bucket = _streak_bucket(df_ev)
     # buy_mask 建于排序前（L417-425）；此处 df_ev 已按 ts_code/decision_date 重排，
     # 显式按索引标签对齐，消除 pandas 的隐式 reindex 告警（语义不变）
     buy_mask = buy_mask.reindex(df_ev.index) if isinstance(buy_mask, pd.Series) else \
         pd.Series(buy_mask, index=df_ev.index)
+    cand_top = cand_top.reindex(df_ev.index)
     buy_by_streak = {b: _pool_stats(df_ev[(_bucket == b) & buy_mask], TE_HORIZONS)
                      for b in ('first', 're1', 're2plus')}
+
+    # V3.6 再入规则（R1/R2）复核：口径实现见 _reentry_buy_audit（与 daily._te_buy_pool_filter 一致）
+    reentry_audit = _reentry_buy_audit(df_ev, max_buy, _bucket, cand_top)
 
     out = {
         'start': start, 'end': end, 'sample_step': sample_step,
@@ -522,6 +630,8 @@ def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
         'decision_point_dist': {k2: int(v) for k2, v in dp.value_counts().items()},
         'by_decision_point': by_dp,
         'buy_pool_by_decision_point': buy_by_dp,
+        'buy_pool_by_streak': buy_by_streak,
+        'reentry_rule_audit': reentry_audit,
     }
     with open(os.path.join(out_dir, f'te_backtest_{tag}_summary.json'), 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=2, default=str)
@@ -547,7 +657,100 @@ def run_te_backtest(start: str = None, end: str = None, cfg: dict = None,
         er20 = p.get('er20') or {}
         print(f"  buy@streak={bn:<8} n={p.get('n', 0):<5} r20win={p.get('r20_win')}% "
               f"r20avg={p.get('r20_avg')}% er20win={er20.get('win')}% pf={er20.get('pf')}")
+    _print_reentry_audit(reentry_audit)
     print(f"  proof({proof_label}): {json.dumps(proof, ensure_ascii=False)}")
+    return out
+
+
+def _is_numeric_col(c: str) -> bool:
+    """是否为收益/评分数值列（用于 CSV 重放时强制数值化；'-' 占位会让整列退化为 object）。"""
+    for pre in ('er', 'mfe', 'mae', 'r'):
+        if c.startswith(pre) and c[len(pre):].isdigit():
+            return True
+    return c in ('max_gain', 'max_dd', 'execution_score', 'buyability', 'reentry_streak')
+
+
+def run_from_csv(csv_path: str = None, out_dir: str = None, cfg: dict = None,
+                 max_buy: int = None, tag: str = None) -> dict:
+    """从已落盘的 te_backtest_events_{tag}.csv 重放 V3.6 再入规则审计（不重跑价格循环）。
+
+    CSV 已含 reentry_streak / decision_point / next_day_action / execution_state /
+    execution_score / buyability 与全部收益列，故可在秒级重建 reentry_rule_audit 与
+    buy_pool_by_streak，并写回 te_backtest_{tag}_summary.json（复用 run_te_backtest 的同一
+    审计函数 _reentry_buy_audit，两处口径严格一致）。
+    """
+    if cfg is None:
+        cfg = _load_config()
+    te_cfg = cfg.get('trade_execution') or {}
+    if max_buy is None:
+        max_buy = int(te_cfg.get('max_buy_candidates', 3))
+    out_dir = out_dir or cfg.get('report', {}).get('output_dir',
+                                                   os.path.join(BASE_DIR, 'report_daily'))
+    csv_path = csv_path or os.path.join(out_dir, 'te_backtest_events_20250101_20260828.csv')
+    if not os.path.exists(csv_path):
+        print(f'[TE-BT] 找不到重放输入：{csv_path}')
+        return {}
+    if tag is None:
+        base = os.path.basename(csv_path)
+        pre, suf = 'te_backtest_events_', '.csv'
+        tag = base[len(pre):-len(suf)] if base.startswith(pre) and base.endswith(suf) else 'replay'
+
+    # keep_default_na=False：保留字面量 'NA'/'N/A' 占位字符串（pb_verdict/retest_pass 等）。
+    # 否则 pandas 会把它们解析成 NaN，回写时变成空单元格，造成不可逆的数据损坏。
+    df_ev = pd.read_csv(csv_path, low_memory=False, keep_default_na=False,
+                        dtype={'ts_code': str, 'name': str,
+                               'signal_date': str, 'decision_date': str})
+    if 'reentry_streak' not in df_ev.columns:
+        print('[TE-BT] CSV 缺 reentry_streak 列，无法重放（请先跑一次完整回测生成该列）')
+        return {}
+    # CSV 中的 '-' 占位会让整列退化为 object；收益/评分列统一强制数值化，保证统计口径与回测一致
+    for c in df_ev.columns:
+        if _is_numeric_col(c):
+            df_ev[c] = pd.to_numeric(df_ev[c], errors='coerce')
+
+    act = df_ev['next_day_action'].fillna('').astype(str)
+    buy_mask = act.isin(BUY_ACTIONS)
+    # 用与实盘 cand 一致的口径重建 cand_top 与 reentry_streak（不信任 CSV 里旧口径的 streak 列）：
+    # 交易日历取 CSV 决策日区间，与回测 det_dates（step=1）一致，保证 prev_trade_date 映射相同。
+    det_dates = HvtDataLoader().trade_dates(str(df_ev['decision_date'].min()),
+                                            str(df_ev['decision_date'].max()))
+    cand_top = _cand_top_mask(df_ev, buy_mask, max_buy)
+    _new_streak = _compute_streak(df_ev, cand_top, det_dates).reindex(df_ev.index)
+    n_stale = int((pd.to_numeric(df_ev['reentry_streak'], errors='coerce').fillna(0)
+                   != _new_streak).sum())
+    df_ev['reentry_streak'] = _new_streak
+    bucket = _streak_bucket(df_ev)
+    reentry_audit = _reentry_buy_audit(df_ev, max_buy, bucket, cand_top)
+    buy_by_streak = {b: _pool_stats(df_ev[(bucket == b) & buy_mask], TE_HORIZONS)
+                     for b in ('first', 're1', 're2plus')}
+
+    summary_path = os.path.join(out_dir, f'te_backtest_{tag}_summary.json')
+    out = {}
+    if os.path.exists(summary_path):
+        with open(summary_path, encoding='utf-8') as f:
+            out = json.load(f)
+    out['buy_pool_by_streak'] = buy_by_streak
+    out['reentry_rule_audit'] = reentry_audit
+    out['reentry_audit_source'] = f'replay:{os.path.basename(csv_path)}'
+    out['reentry_streak_definition'] = ('连续处于每日 cand 池（execution_state ∈ '
+                                        'READY_BUY/PULLBACK_BUY 且 action ∈ BUY_ACTIONS 的 '
+                                        'Top-max_buy）的决策日数，与 daily._te_buy_pool_filter '
+                                        '的 cand 同源；重放时按此口径重算，不采用 CSV 旧列')
+    out['reentry_streak_rebuilt'] = n_stale
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        json.dump(out, f, ensure_ascii=False, indent=2, default=str)
+    if n_stale:  # 同步修正 CSV 的 streak 列，避免台账里留着旧口径的陈旧值
+        df_ev.to_csv(csv_path, index=False, encoding='utf-8-sig')
+
+    print(f'[TE-BT] CSV 重放：{os.path.basename(csv_path)} → 事件 {len(df_ev)}，'
+          f'BUY候选 {int(buy_mask.sum())}，streak 重算修正 {n_stale} 行，'
+          f'写回 {os.path.basename(summary_path)}')
+    for bn in ('first', 're1', 're2plus'):
+        p = buy_by_streak.get(bn) or {}
+        er20 = p.get('er20') or {}
+        print(f"  buy@streak={bn:<8} n={p.get('n', 0):<5} r20win={p.get('r20_win')}% "
+              f"r20avg={p.get('r20_avg')}% er20win={er20.get('win')}% pf={er20.get('pf')}")
+    _print_reentry_audit(reentry_audit)
     return out
 
 
@@ -559,6 +762,15 @@ if __name__ == '__main__':
     ap.add_argument('--step', type=int, default=1)
     ap.add_argument('--max-events', type=int, default=None)
     ap.add_argument('--out-dir', default=None)
+    ap.add_argument('--max-buy', type=int, default=None)
+    ap.add_argument('--from-csv', nargs='?', const='', default=None,
+                    help='重放模式：读取已落盘的 te_backtest_events_{tag}.csv 重建再入规则审计'
+                         '（可跟 CSV 路径，省略则用 out-dir 下的默认文件）')
+    ap.add_argument('--tag', default=None, help='重放模式写回的 summary tag')
     args = ap.parse_args()
-    run_te_backtest(start=args.start, end=args.end, sample_step=args.step,
-                    max_events=args.max_events, out_dir=args.out_dir)
+    if args.from_csv is not None:
+        run_from_csv(csv_path=(args.from_csv or None), out_dir=args.out_dir,
+                     max_buy=args.max_buy, tag=args.tag)
+    else:
+        run_te_backtest(start=args.start, end=args.end, sample_step=args.step,
+                        max_events=args.max_events, out_dir=args.out_dir)

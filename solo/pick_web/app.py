@@ -177,6 +177,8 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
                sum(case when t.ret_5d > 0 then 1 else 0 end)         as w5,
                count(t.ret_5d)                                       as n5,
                avg(t.ret_5d)                                         as a5,
+               count(t.ret_20d)                                      as n20,
+               avg(t.ret_20d)                                        as a20,
                sum(case when t.status = 'TARGET_HIT' then 1 else 0 end) as hit_target,
                sum(case when t.status = 'STOP_HIT'   then 1 else 0 end) as hit_stop,
                sum(case when t.status = 'EXPIRED'    then 1 else 0 end) as expired,
@@ -197,8 +199,8 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
 
     out = []
     agg = {"n": 0, "w1": 0, "s1": 0.0, "n3": 0, "w3": 0, "s3": 0.0,
-           "n5": 0, "w5": 0, "s5": 0.0, "hit_target": 0, "hit_stop": 0,
-           "active": 0, "expired": 0}
+           "n5": 0, "w5": 0, "s5": 0.0, "n20": 0, "s20": 0.0,
+           "hit_target": 0, "hit_stop": 0, "active": 0, "expired": 0}
     for r in rows:
         n = r["n"]
         agg["n"] += n
@@ -210,6 +212,8 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
         agg["n5"] += r["n5"]
         agg["w5"] += r["w5"] or 0
         agg["s5"] += (r["a5"] or 0.0) * r["n5"]
+        agg["n20"] += r["n20"]
+        agg["s20"] += (r["a20"] or 0.0) * r["n20"]
         for k in ("hit_target", "hit_stop", "active", "expired"):
             agg[k] += r[k] or 0
         item = {
@@ -220,6 +224,7 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
             "w1": pct(r["w1"], n), "a1": avg(r["a1"]),
             "n3": r["n3"], "w3": pct(r["w3"], r["n3"]), "a3": avg(r["a3"]),
             "n5": r["n5"], "w5": pct(r["w5"], r["n5"]), "a5": avg(r["a5"]),
+            "n20": r["n20"], "a20": avg(r["a20"]),
             "hit_target": r["hit_target"], "hit_stop": r["hit_stop"],
             "expired": r["expired"], "active": r["active"],
             "avg_max_gain": avg(r["avg_max_gain"]),
@@ -231,6 +236,7 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
     tot_n = sum(x["n"] for x in out)
     tot_n3 = sum(x["n3"] for x in out)
     tot_n5 = sum(x["n5"] for x in out)
+    tot_n20 = sum(x["n20"] for x in out)
     overall = {
         "n": tot_n,
         "w1": pct(agg["w1"], agg["n"]),
@@ -241,6 +247,8 @@ def fetch_stats(db_path: str, days: int | None) -> dict:
         "n5": tot_n5,
         "w5": pct(agg["w5"], agg["n5"]),
         "a5": avg(agg["s5"] / agg["n5"]) if agg["n5"] else None,
+        "n20": tot_n20,
+        "a20": avg(agg["s20"] / agg["n20"]) if agg["n20"] else None,
         "hit_target": agg["hit_target"],
         "hit_stop": agg["hit_stop"],
         "active": agg["active"],

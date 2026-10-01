@@ -1,0 +1,100 @@
+﻿[    0.0s] H-W7-RANK-01  (parent: H-ALPHA-SOURCE-01)  -- arms + lattice + null
+[    0.5s] grid loaded from cache  S=5816 N=2120
+[    1.3s] eligibility cells 0.6445  (S=5816 N=2120)
+[    1.5s] regime sessions {'BULL': 511, 'RANGE': 1076, 'BEAR': 533}
+[    1.5s] ------------------------------------------------------------------------------
+[    2.5s] W7 ledger 193497 rows -> actionable 5882
+[    2.6s]   W7 raw actionable on panel: 5882 rows / 441 decision days
+[    4.8s] HVT ledger 59240 rows -> actionable 7402
+[    4.9s]   HVT raw actionable on panel: 7397 rows / 413 decision days
+[    4.9s] W7  actionable/day  mean 13.34  median 9  max 73
+[    4.9s] HVT actionable/day  mean 17.91  median 16  max 58
+[    4.9s] ------------------------------------------------------------------------------
+[    4.9s] W7 arms
+[    5.0s]   arm W7 BASE                  n=3460  days=427
+[    5.1s]   arm W7 RANKED  n=3 ('exec', 'eq') n=1039  days=436
+[    5.2s]   arm W7 COMPLEMENT            n=2980  days=358
+[    5.2s] ------------------------------------------------------------------------------
+[    5.2s] HVT positive control (its own Top-3 already exists)
+[    5.4s]   arm HVT BASE                 n=2371  days=389
+[    5.5s]   arm HVT RANKED (own Top-3)   n= 644  days=365
+[    5.7s]   arm HVT COMPLEMENT           n=2070  days=368
+[    5.7s] ------------------------------------------------------------------------------
+[    5.7s] ARMS
+[    5.7s]   W7 BASE          n= 3460  T+10 mean +0.0078  net30 +0.0048  win 0.468  pf 1.26
+[    5.7s]   W7 RANKED        n= 1039  T+10 mean +0.0077  net30 +0.0047  win 0.475  pf 1.26
+[    5.7s]   W7 COMPLEMENT    n= 2980  T+10 mean +0.0088  net30 +0.0058  win 0.476  pf 1.30
+[    5.7s]   HVT BASE         n= 2371  T+10 mean +0.0148  net30 +0.0118  win 0.495  pf 1.43
+[    5.7s]   HVT RANKED       n=  644  T+10 mean +0.0219  net30 +0.0189  win 0.523  pf 1.55
+[    5.7s]   HVT COMPLEMENT   n= 2070  T+10 mean +0.0130  net30 +0.0100  win 0.485  pf 1.39
+[    5.7s] ------------------------------------------------------------------------------
+[    5.7s] Headline (W7):  RANKED vs BASE / vs COMPLEMENT
+[    5.7s]   RANKED - BASE        T+10 -0.0001 [-0.0057,+0.0059] p 0.938  net30 -0.0031
+[    5.7s]   RANKED - COMPLEMENT  T+10 -0.0011 [-0.0076,+0.0063] p 0.728  net30 -0.0041
+[    5.7s] ------------------------------------------------------------------------------
+[    5.7s] Headline (HVT control):  RANKED vs BASE / vs COMPLEMENT
+[    5.7s]   RANKED - BASE        T+10 +0.0071 [-0.0011,+0.0158] p 0.092  net30 +0.0041
+[    5.7s]   RANKED - COMPLEMENT  T+10 +0.0089 [-0.0011,+0.0197] p 0.096  net30 +0.0059
+[    5.7s] ------------------------------------------------------------------------------
+[    5.7s] LATTICE: N x key, W7, ranked vs BASE (all reported, none selected)
+[    7.3s]   best 3 by T+10 delta (reported for completeness ONLY -- not selected):
+[    7.3s]     n=1  drisk_asc+exec  T+10 +0.0033  net30 +0.0003  n_arm 397
+[    7.3s]     n=2  score           T+10 +0.0018  net30 -0.0012  n_arm 659
+[    7.3s]     n=5  exec+eq         T+10 +0.0006  net30 -0.0024  n_arm 1527
+[    7.3s]   primary config n=3 exec+eq  T+10 -0.0001  net30 -0.0031  n_arm 1039
+[    7.3s] ------------------------------------------------------------------------------
+[    7.3s] RANDOM-N null (same days, same N, order destroyed)
+[   16.2s]     N=1 draw 250/1000
+[   25.3s]     N=1 draw 500/1000
+[   33.0s]     N=1 draw 750/1000
+[   41.2s]     N=1 draw 1000/1000
+[   41.3s]   N=1   obs T+10 +0.0064  null mean +0.0084 [+0.0006,+0.0176]  excess -0.0020  p 0.683
+[   52.0s]     N=2 draw 250/1000
+[   62.7s]     N=2 draw 500/1000
+[   74.5s]     N=2 draw 750/1000
+[   85.2s]     N=2 draw 1000/1000
+[   85.3s]   N=2   obs T+10 +0.0064  null mean +0.0084 [+0.0031,+0.0135]  excess -0.0021  p 0.776
+[  100.1s]     N=3 draw 250/1000
+[  112.9s]     N=3 draw 500/1000
+[  125.1s]     N=3 draw 750/1000
+[  138.6s]     N=3 draw 1000/1000
+[  138.6s]   N=3   obs T+10 +0.0077  null mean +0.0081 [+0.0042,+0.0123]  excess -0.0004  p 0.560
+[  154.1s]     N=5 draw 250/1000
+[  169.6s]     N=5 draw 500/1000
+[  183.2s]     N=5 draw 750/1000
+[  199.6s]     N=5 draw 1000/1000
+[  199.7s]   N=5   obs T+10 +0.0083  null mean +0.0082 [+0.0051,+0.0113]  excess +0.0001  p 0.469
+[  220.6s]     N=10 draw 250/1000
+[  242.1s]     N=10 draw 500/1000
+[  263.6s]     N=10 draw 750/1000
+[  283.1s]     N=10 draw 1000/1000
+[  283.2s]   N=10  obs T+10 +0.0073  null mean +0.0076 [+0.0057,+0.0096]  excess -0.0003  p 0.606
+[  283.2s] ------------------------------------------------------------------------------
+[  283.2s] HVT control null (same decision days, 3 random names of 16)
+[  307.7s]     HVT N=3 draw 250/1000
+[  326.1s]     HVT N=3 draw 500/1000
+[  343.8s]     HVT N=3 draw 750/1000
+[  361.1s]     HVT N=3 draw 1000/1000
+[  361.1s]   HVT obs T+10 +0.0219  null mean +0.0136 [+0.0073,+0.0199]  excess +0.0083  p 0.005
+[  361.1s] ------------------------------------------------------------------------------
+[  361.1s] OOS by year (primary config) and per-system split
+[  361.2s]   RANKED-BASE        2024  n= 302/1257  delta +0.0023  net30 -0.0007  p 0.672
+[  361.2s]   RANKED-BASE        2025  n= 495/1589  delta -0.0012  net30 -0.0042  p 0.852
+[  361.2s]   RANKED-BASE        2026  n= 242/ 614  delta -0.0038  net30 -0.0068  p 0.658
+[  361.2s]   RANKED-COMPLEMENT  2024  n= 302/1100  delta +0.0015  net30 -0.0015  p 0.838
+[  361.2s]   RANKED-COMPLEMENT  2025  n= 495/1398  delta -0.0013  net30 -0.0043  p 0.874
+[  361.2s]   RANKED-COMPLEMENT  2026  n= 242/ 482  delta -0.0077  net30 -0.0107  p 0.438
+[  361.2s] ------------------------------------------------------------------------------
+[  361.2s] Regime split (entry session, T+10)
+[  361.3s]   RANKED-BASE        BULL   n= 479/2085  delta -0.0002  p 0.976
+[  361.3s]   RANKED-BASE        RANGE  n= 488/1234  delta -0.0049  p 0.406
+[  361.3s]   RANKED-BASE        BEAR   n=  72/ 141  delta +0.0139  p 0.108
+[  361.3s]   RANKED-COMPLEMENT  BULL   n= 479/1900  delta -0.0010  p 0.870
+[  361.3s]   RANKED-COMPLEMENT  RANGE  n= 488/ 994  delta -0.0076  p 0.312
+[  361.3s]   RANKED-COMPLEMENT  BEAR   n=  72/  86  delta +0.0171  p 0.216
+[  361.3s] ------------------------------------------------------------------------------
+[  361.3s] Tail (leave-top-k%) on the paired subset, T+10
+[  361.3s]   RANKED-BASE        n=1022 full +0.0077  leave5% -0.0067  leave10% -0.0152
+[  361.3s]   RANKED-COMPLEMENT  n= 535 full +0.0143  leave5% +0.0009  leave10% -0.0063
+[  361.3s] ------------------------------------------------------------------------------
+[  361.3s] done

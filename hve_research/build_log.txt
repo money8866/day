@@ -1,0 +1,78 @@
+D:\mystock\hve_research\01_build_panel.py:6: SyntaxWarning: "\m" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\m"? A raw string is also an option.
+  数据源: D:\mystock\cache_daily\stock_data.db
+reading daily_cache (sequential)...
+   daily_cache +400000 (tot 400000)
+   daily_cache +400000 (tot 800000)
+   daily_cache +400000 (tot 1200000)
+   daily_cache +400000 (tot 1600000)
+   daily_cache +400000 (tot 2000000)
+   daily_cache +400000 (tot 2400000)
+   daily_cache +400000 (tot 2800000)
+   daily_cache +400000 ERR 301583.SZ operands could not be broadcast together with shapes (0,) (57,) 
+ERR 301677.SZ operands could not be broadcast together with shapes (0,) (29,) 
+ERR 301686.SZ operands could not be broadcast together with shapes (0,) (3,) 
+ERR 301689.SZ operands could not be broadcast together with shapes (0,) (9,) 
+ERR 301699.SZ operands could not be broadcast together with shapes (0,) (11,) 
+ERR 301707.SZ operands could not be broadcast together with shapes (0,) (17,) 
+ERR 301717.SZ operands could not be broadcast together with shapes (0,) (13,) 
+  batch 3000
+ERR 600247.SH operands could not be broadcast together with shapes (0,) (7,) 
+ERR 600317.SH operands could not be broadcast together with shapes (0,) (9,) 
+ERR 600978.SH operands could not be broadcast together with shapes (0,) (3,) 
+ERR 601091.SH operands could not be broadcast together with shapes (0,) (9,) 
+  batch 4000
+ERR 603448.SH operands could not be broadcast together with shapes (0,) (15,) 
+ERR 603468.SH operands could not be broadcast together with shapes (0,) (19,) 
+0930
+  computed 1000
+  computed 2000
+  computed 3000
+  computed 4000
+  computed 5000
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+D:\mystock\hve_research\01_build_panel.py:115: RuntimeWarning: invalid value encountered in divide
+  out[w - 1:] = (cs[w - 1:] - np.concatenate([[0.0], cs[:n - w + 1 - 1]])) / \
+panel rows 7119601
+panel saved (7119601, 62)
+market saved (1393, 33)

@@ -1,0 +1,157 @@
+{
+  "trade_date": "20260930",
+  "generated_at": "2026-09-30 21:29:02",
+  "sources": {
+    "hve": {
+      "path": "hve_daily_20260930.json",
+      "exists": true
+    },
+    "hvt": {
+      "path": "hvt_bull_20260930.json",
+      "exists": true
+    },
+    "w7": {
+      "path": "w7_today_action_20260930.json",
+      "exists": true
+    }
+  },
+  "hve": {
+    "HVE_BULL": 8,
+    "HVE_2ND": 4,
+    "HVE_WATCH": 573,
+    "signal_set": 12,
+    "universe": 4099,
+    "market_regime": "MARKET_RISK"
+  },
+  "hvt": {
+    "te_buy_pool": 2,
+    "first_echelon_pool": 4,
+    "signal_set": 6
+  },
+  "w7": {
+    "signals": 0
+  },
+  "overlap": {
+    "HVE_BULL∩HVT": {
+      "count": 0,
+      "ratio_of_a": 0.0,
+      "ratio_of_b": 0.0,
+      "codes": []
+    },
+    "HVE_2ND∩HVT": {
+      "count": 0,
+      "ratio_of_a": 0.0,
+      "ratio_of_b": 0.0,
+      "codes": []
+    },
+    "HVE_BULL∩W7": {
+      "count": 0,
+      "ratio_of_a": 0.0,
+      "ratio_of_b": null,
+      "codes": []
+    },
+    "HVE_2ND∩W7": {
+      "count": 0,
+      "ratio_of_a": 0.0,
+      "ratio_of_b": null,
+      "codes": []
+    }
+  },
+  "cases": {
+    "case1_hvt_signal_hve_absent": {
+      "count": 6,
+      "truncated": false,
+      "codes": [
+        {
+          "ts_code": "300911.SZ",
+          "name": "亿田智能"
+        },
+        {
+          "ts_code": "600150.SH",
+          "name": "中国船舶"
+        },
+        {
+          "ts_code": "603997.SH",
+          "name": "继峰股份"
+        },
+        {
+          "ts_code": "688001.SH",
+          "name": "华兴源创"
+        },
+        {
+          "ts_code": "688139.SH",
+          "name": "海尔生物"
+        },
+        {
+          "ts_code": "688239.SH",
+          "name": "航宇科技"
+        }
+      ]
+    },
+    "case2_w7_signal_hve_absent": {
+      "count": 0,
+      "truncated": false,
+      "codes": []
+    },
+    "case3_hve_signal_others_absent": {
+      "count": 12,
+      "truncated": false,
+      "codes": [
+        {
+          "ts_code": "000031.SZ",
+          "name": "大悦城"
+        },
+        {
+          "ts_code": "002755.SZ",
+          "name": "奥赛康"
+        },
+        {
+          "ts_code": "002791.SZ",
+          "name": "坚朗五金"
+        },
+        {
+          "ts_code": "002866.SZ",
+          "name": "传艺科技"
+        },
+        {
+          "ts_code": "300804.SZ",
+          "name": "广康生化"
+        },
+        {
+          "ts_code": "600011.SH",
+          "name": "华能国际"
+        },
+        {
+          "ts_code": "600380.SH",
+          "name": "健康元"
+        },
+        {
+          "ts_code": "600638.SH",
+          "name": "新黄浦"
+        },
+        {
+          "ts_code": "603606.SH",
+          "name": "东方电缆"
+        },
+        {
+          "ts_code": "603669.SH",
+          "name": "灵康药业"
+        },
+        {
+          "ts_code": "605100.SH",
+          "name": "华丰股份"
+        },
+        {
+          "ts_code": "605366.SH",
+          "name": "宏柏新材"
+        }
+      ]
+    },
+    "case4_hve_and_others": {
+      "count": 0,
+      "truncated": false,
+      "codes": []
+    }
+  },
+  "note": "HVE 侧信号=HVE_BULL∪HVE_2ND（HVE_WATCH 为观察态，仅计数）；HVT 侧=te_buy_pool∪first_echelon_pool；W7 侧=signals[]；三者信号层级不同，ratio 已双向给出；缺文件按 exists=false 处理"
+}

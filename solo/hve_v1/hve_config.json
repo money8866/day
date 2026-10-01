@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "status": "V1_INITIAL_HYPOTHESIS",
+    "note": "全部数值均为 V1 初始假设（V1_INITIAL_HYPOTHESIS），不是 OPTIMAL_PARAMETER。任务书 §41/§54：禁止为提高历史胜率而调整参数。",
+    "spec": "HVE V1 开发任务（54 节）",
+    "params_status": "V1_INITIAL_HYPOTHESIS"
+  },
+
+  "vr20_min": 2.0,
+  "return_min": 0.02,
+  "clv_min": 0.65,
+
+  "bull_max_drawdown": 0.08,
+  "second_max_drawdown": 0.10,
+
+  "structure_atr_k": 1.0,
+  "atr_window": 20,
+
+  "volume_decay_max": 0.60,
+  "volume_decay_window": 5,
+  "min_digest_days": 3,
+
+  "reexpansion_volume_ratio": 1.20,
+  "breakout_volume_ratio": 1.20,
+  "breakout_lookback_high_days": 3,
+
+  "fail_cooldown_days": 10,
+
+  "cluster_gap_days": 5,
+  "cluster_anchor": "first",
+  "post_hve_window": 20,
+
+  "_branch_rule": {
+    "value": "volume_decay_5d <= volume_decay_max ? 2ND_PATH : BULL_PATH",
+    "status": "V1_INITIAL_HYPOTHESIS",
+    "note": "任务书 §12/§16 只给出两条路径的定性描述，未给出互斥判据。此处以 §18 的 Volume Contraction 作为分径判据：HVE 后 5 日均量 <= 60% 即认为进入消化路径（DIGESTION→HVE_2ND），否则走强势保持路径（HVE_BULL_WATCH→HVE_BULL）。该判据只用 HVE 后 T+1..T+5 的量，PIT 安全，且在 t>=HVE+5 之后才可用。"
+  },
+
+  "universe": {
+    "min_market_cap": 30.0,
+    "min_avg_amount_20": 3000.0,
+    "min_listed_days": 120,
+    "exclude_st": true,
+    "exclude_bj": true
+  },
+
+  "market": {
+    "index": "000300.SH",
+    "ma_fast": 20,
+    "ma_slow": 60,
+    "breadth_ok_min": 0.45,
+    "breadth_risk_max": 0.30,
+    "use_breadth": true
+  },
+
+  "backtest": {
+    "horizons": [3, 5, 10, 20],
+    "cost_bp": [0, 10, 20, 30, 50],
+    "primary_cost_bp": 30,
+    "tail_flags": [0.05, 0.10],
+    "wf": {
+      "is": [2022, 2023],
+      "valid": [2024, 2024],
+      "oos": [2025, 2026],
+      "_note": "任务书 §40 预留 train/validation/OOS 接口。研究层 PREREG 原为 (2019-2022)/(2023-2024)/(2025-2026)，但 stock_data.db 的 daily_cache 起于 20210104、可用信号区间约 2022Q1 起，故此处按实际可得区间重划。"
+    }
+  }
+}

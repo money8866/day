@@ -1,0 +1,25 @@
+﻿[    0.6s] grid loaded from cache  S=5816 N=2120
+[    1.8s] indicators loaded from cache  11 ind / 11 px
+[    1.9s] primary events 112014  (t0+1 close is on average +108.72% from the MA20)
+[    3.4s] L1_TREND           confirmed 111258 / 112014  (99.33%)  median wait 1 sessions
+[    3.4s] L2_TREND_UP        confirmed 107955 / 112014  (96.38%)  median wait 1 sessions
+[    3.4s] L3_STRENGTH_CLOSE  confirmed  81647 / 112014  (72.89%)  median wait 2 sessions
+[    3.4s] L4_STRENGTH_HIGH   confirmed  75789 / 112014  (67.66%)  median wait 3 sessions
+[    3.4s] L5_NO_DAMAGE       confirmed  70702 / 112014  (63.12%)  median wait 3 sessions
+[    3.5s] L6_REEXPANSION     confirmed   8109 / 112014  (7.24%)  median wait 3 sessions
+[    3.5s] T_CLOSE_GT_MA20          alone  111258 / 112014
+[    3.5s] T_MA20_SLOPE_UP          alone  109128 / 112014
+[    3.5s] S_CLOSE_GT_HVE_CLOSE     alone   84063 / 112014
+[    3.5s] S_CLOSE_GT_HVE_HIGH      alone   77656 / 112014
+[    3.5s] N_NO_STRUCTURAL_DAMAGE   alone  110204 / 112014
+[    3.5s] R_REEXPANSION            alone   21961 / 112014
+[    5.8s] T_CLOSE_GT_MA20          alone h10 mean -0.0166
+[    6.1s] T_MA20_SLOPE_UP          alone h10 mean -0.0147
+[    6.4s] S_CLOSE_GT_HVE_CLOSE     alone h10 mean -0.0116
+[    6.8s] S_CLOSE_GT_HVE_HIGH      alone h10 mean -0.0115
+[    7.2s] N_NO_STRUCTURAL_DAMAGE   alone h10 mean -0.0166
+[    7.5s] R_REEXPANSION            alone h10 mean -0.0029
+[    7.5s] modulator dist_hi20              buckets [5418, 19989, 55816, 26130]
+[    7.5s] modulator maxdd_from_HVE_close   buckets [663, 6304, 24875, 76113]
+[    7.8s] rows written 75 ; sections ['CONDITION', 'LADDER', 'MODULATOR', 'REFERENCE', 'RIGHT_TAIL']
+EXIT=0

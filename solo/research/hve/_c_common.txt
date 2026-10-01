@@ -1,0 +1,19 @@
+﻿[    0.0s] PREREG HVE-Research-V1 vV1.0
+[    5.5s] price panel 9785065 rows -> S=5816 N=2120 (5.5s)
+[   15.7s] scattered OHLCV (15.6s)
+[   86.7s] namechange files 4422  ST cells 0.0153  delist cells 0.0000
+[   93.6s] terminal-print audit: 242/5816 codes stop >60d early (ST cells 0.0153 from namechange, delist cells 0.0000)
+[  102.4s] grid built & cached (102.4s)
+[  102.5s] S=5816 N=2120 20180102..20260924
+[  129.3s] ratio indicators done (26.8s)
+[  243.7s] percentile indicators done (141.1s)
+[  253.2s] eligibility cells 0.6662
+[  253.9s]   VR20      median 0.623  p90 2.518  p99 7.556
+[  254.6s]   AMT_MA20  median 0.513  p90 2.728  p99 8.961
+[  255.2s]   AMT_PCT   median 0.540  p90 0.932  p99 0.996
+[  255.7s]   TURN_PCT  median 0.504  p90 0.916  p99 0.996
+[  255.8s] raw VR20>=2 events 1162384
+[  256.4s] after cluster(gap=5) events 297988
+[  265.4s] path ret10 median -0.0129  mfe 0.1504  mae -0.1468
+[  265.5s] perf {'win_rate': 0.4337, 'mean': -0.0011, 'median': -0.0129, 'mean_win': 0.0963, 'mean_loss': -0.0757, 'pf': 0.9738, 'expectancy': -0.0011, 'std': 0.1254, 't': np.float64(-4.87), 'p05': -0.1672, 'p95': 0.203, 'tail_share': 0.4166}
+[  265.5s] selftest OK

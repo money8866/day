@@ -24,7 +24,8 @@ import numpy as np
 import pandas as pd
 import tushare as ts
 
-# 选股落库跟踪（失败不阻塞主流程）：仅当日可开仓信号进跟踪表，供 stock_pick_db.py tracking 回填 T+N
+# 选股落库跟踪（失败不阻塞主流程）：仅当日「下蹲买点」进跟踪表，供 stock_pick_db.py tracking 回填 T+N
+# （20260930 收敛：TOP3/观察/强买 等其余信号不再落库，仅保留在报告里）
 try:
     from stock_pick_db import record_picks as _PICK_RECORD
 except Exception:
@@ -227,11 +228,14 @@ INDEX_CODES_3 = ["000001.SH", "000300.SH", "399006.SZ"]
 INDEX_NAMES_3 = {"000001.SH": "上证", "000300.SH": "沪深300", "399006.SZ": "创业板"}
 MOM_GATE_THRESHOLD = 3.0
 
-# 起量台阶识别参数（20260927，_vol_step_days；仅提示不筛选，参数敏感度已检验不脆弱）
+# 起量台阶识别参数（20260927，_vol_step_days；20260930 起兼作「缩量比」的基准选择，参数敏感度已检验不脆弱）
 VOL_STEP_RATIO_JUMP = 1.5    # 起量判据：5日均量 / 前5日均量
 VOL_STEP_VOL20_MIN = 2.0     # 起量判据：当日量 / 20日均量
 VOL_STEP_MIN = 1.2           # 台阶维持：起量后每日 5日均量 >= 起量前一日 5日均量 × 本值
-VOL_STEP_MAX_D = 15          # 起量日到今日的最大允许交易日跨度
+VOL_STEP_MAX_D = 15          # T0 到今日的最大允许交易日跨度
+VOL_T0_MIN_PCT = 5.0         # T0 标志日：第一根放量阳线当日涨幅下限（20260930 用户要求）
+VOL_SHRINK_MIN_STEP = 0.50   # 缩量比下限：下蹲日量 / T0 日量（20260930 用户要求 0.35→0.55→0.50）
+VOL_T0_PREM_MIN = 5.0        # 止损空间下限：下蹲日收盘价相对 T0 开盘价（止损位）的溢价%（20261001 用户要求 B 方案）
 
 
 def _mom_env(avg):
@@ -994,19 +998,20 @@ def _detect_wave_surge_ready(df):
         return False, 0.0, 0.0, 0.0
 
 
-def _vol_step_days(vol_arr, close_arr):
-    """起量台阶识别（20260927，仅提示不筛选）。
+def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr):
+    """起量台阶识别（20260927；20260930 起 T0 须为「涨幅>5% 的放量阳线」，并作为缩量比的基准）。
 
-    语义（用户口径）：某日起量（5日均量较前5日均量跳升 >=1.5 倍，且当日量>=20日均量2倍），
-    此后每日 5日均量始终 >= 起量前一日 5日均量的 1.2 倍 → 量能台阶维持、资金未走。
-    返回 (距起量日天数 d, 相对起量日收盘涨幅小数)；无台阶返回 None。
+    语义（用户口径，20260930）：某日起量（5日均量较前5日均量跳升 >=1.5 倍，且当日量 >=20日均量2倍，
+    且当日为放量阳线、涨幅 >VOL_T0_MIN_PCT），此后每日 5日均量始终 >= 起量前一日 5日均量的 1.2 倍
+    → 量能台阶维持、资金未走。该日即 T0 标志日。
+    返回 (距 T0 天数 d, 相对 T0 收盘涨幅小数, T0 当日涨幅小数, T0 开盘价)；无合格 T0 返回 None。
 
-    标定（事件池 = 本函数基础硬过滤，T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）：
-      下蹲子集 n=453 基准 40.6%/+0.88%/止损33.1%
-      台阶内 n=192 → 43.2%/+1.55%/止损28.1%（2025 45.5% / 2026 36.2%）
-      全事件池 n=26267 基准 35.1%：台阶内外无差异（35.5~36.3%）→ 只在下蹲分支有意义
-    注意：台阶内「起量后价格是否已透支」是分水岭（px<+5% 39.2% vs px>=+5% 30.6%），
-          本函数一并返回 px 供报告展示。
+    标定（下蹲事件池 n=383，T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）：
+      T0 = 量能台阶起点、不限涨幅：n=164 42.1%/-0.15%/止损37.2%
+      T0 再加「涨幅>5% 且阳线」  ：n=89  51.7%/+0.57%/止损32.6%
+        （阈值敏感度：>3% 46.8% / >4% 48.5% / >5% 51.7% / >6% 48.4% / >7% 49.1% → 5% 最优）
+      无合格 T0 者            ：n=294 35.4%/-0.94%/止损39.1%
+      有量能台阶但 T0<=5% 者   ：n=75  30.7%/-1.01%/止损42.7%（最差，进一步支持 5% 阈值）
     """
     n = len(vol_arr)
     if n < 40:
@@ -1026,7 +1031,14 @@ def _vol_step_days(vol_arr, close_arr):
         seg = ma5[i:k + 1] / ma5[i - 1]
         if np.isnan(seg).any() or seg.min() < VOL_STEP_MIN:
             continue
-        return k - i, float(close_arr[k] / close_arr[i] - 1)
+        # T0 标志日：放量阳线且涨幅达标（20260930 用户要求）
+        if pre_close_arr[i] <= 0 or close_arr[i] <= open_arr[i]:
+            continue
+        _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
+        if _t0_pct <= VOL_T0_MIN_PCT:
+            continue
+        return (k - i, float(close_arr[k] / close_arr[i] - 1), float(_t0_pct),
+                float(open_arr[i]))
     return None
 
 
@@ -1040,6 +1052,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         if len(recent) < 60:
             return None
         vol_arr = recent['vol'].values.astype(float)
+        open_arr = recent['open'].values.astype(float)
         high_arr = recent['high'].values.astype(float)
         low_arr = recent['low'].values.astype(float)
         close_arr = recent['close'].values.astype(float)
@@ -1134,13 +1147,35 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         if _vol_vs_base < 1.1:
             return None
 
-        # 近期均量 vs 高点5日均量
-        _peak_vol_start = max(0, _peak_vol_idx - 5)
-        _peak_vol_end = min(len(_vol200), _peak_vol_idx + 6)
-        _peak_5d_vol = float(np.mean(_vol200[_peak_vol_start:_peak_vol_end])) if _peak_vol_end > _peak_vol_start else _recent_vol
-        _peak_5d_vol = max(_peak_5d_vol, 1)
-        _vol_vs_peak = _recent_vol / _peak_5d_vol
-        if _vol_vs_peak < 0.5:
+        # 起量台阶 / T0 标志日（用户口径 20260930：近期第一根「放量阳线、涨幅>5%」的起量日）
+        _step = _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr)
+        if _step is None:
+            return None
+
+        # 缩量比：下蹲日量 / T0 日量（量能缩小过快则剔除）
+        # 基准锚点（用户指定）：海峡创新 300300.SZ T0=0904 量 1,563,037 → 0923 下蹲日量
+        #   880,260 = 0.563，属健康回踩（次日 +19.98%）；光电股份 600184.SH 0914 起量但当日仅
+        #   +3.00% 不达 5% → 无合格 T0 剔除（量能连缩 6 天，后续 -4.00%/-7.15%）。
+        # 标定（下蹲事件池 n=383，T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）：
+        #   无合格 T0 n=294 仅 35.4%/-0.94%/止损39.1% → 硬过滤剔除（见 _vol_step_days 标定）
+        #   合格 T0 n=89：缩量比 >=0.35 → n=64 56.2%/+1.28%/止损29.7%
+        #                 <0.35  → n=25 40.0%/-1.27%/止损40.0%
+        #                 >=0.45 → n=45 62.2%/+2.58%/止损24.4%（阈值可再收紧，暂守 0.35）
+        # 20260930 用户要求阈值 0.35→0.55→0.50（现行算法全量重标定，T0 合格事件池 2025-10~2026-09 n=99，
+        #   T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）：
+        #   缩量比下限 >=0.35 n=72 51.4%/+0.90%/止损30.6%
+        #              >=0.40 n=59 52.5%/+1.43%/止损28.8%
+        #              >=0.45 n=50 58.0%/+2.38%/止损26.0%
+        #              >=0.50 n=37 62.2%/+3.71%/止损21.6%  ← 现行门槛（样本更足且胜率优于 0.55 档）
+        #              >=0.55 n=22 59.1%/+4.30%/止损22.7%
+        #              >=0.60 n=15 53.3%/+3.41%/止损20.0%
+        #   区间分档：[0.35,0.45) n=22 36.4%/-2.46% · [0.45,0.50) n=13 46.2%/-1.43%
+        #             [0.50,0.55) n=15 66.7%/+2.85% · [0.55,∞) n=22 59.1%/+4.30%
+        #   备注：0.50 恰在弱档 [0.45,0.50) 之上切一刀，兼顾样本量与胜率
+        _shrink_base = float(vol_arr[len(vol_arr) - 1 - _step[0]])
+        _vol_shrink = float(vol_arr[-1]) / max(_shrink_base, 1)
+        vol_shrink_ratio = round(_vol_shrink, 2)
+        if _vol_shrink < VOL_SHRINK_MIN_STEP:
             return None
 
         # ABC结构计算（仅用于回撤类型分类，不做长周期波浪硬过滤）
@@ -1282,6 +1317,16 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         #   上限仍为 距MA20<=5%（不追高不变）→ 新口径未重标定，允许「MA30 之上、MA20 之下」的回踩形态
         _hh20 = float(np.max(high_arr[-20:])) if len(high_arr) >= 20 else 0.0
         dist_hh20 = (close_latest / _hh20 - 1) * 100 if _hh20 > 0 else 0.0
+        # 止损空间门槛（20261001 用户要求 B 方案：坚持 T0 开盘价止损，则要求止损位距买点足够远）
+        # 标定（下蹲事件池 n=34，缩量比≥0.50，2025-11~2026-09，T+1开盘买/T+5收盘/含0.25%成本）：
+        #   溢价 = 下蹲日收盘 / T0开盘价 - 1
+        #     [0,5)   n=12  T0止损口径 25.0%/+2.61%（-7%口径 83.3%/+7.45%）← 止损位贴买入价，回踩即出场
+        #     [5,8)   n= 1  100.0%/+28.80%      [8,12)  n= 9  77.8%/+1.40%
+        #     [12,18) n= 7   57.1%/+3.83%       [18,∞)  n= 4  50.0%/+3.56%
+        #   加门槛后 n=22：T0止损口径胜率 50.0%→63.6%、均值 +3.34%→+3.75%
+        #   （9月剔除新安股份 600596.SH，溢价 +3.5%，T0止损口径 -4.10%）
+        t0_open = round(float(_step[3]), 2)
+        prem_t0 = (close_latest / t0_open - 1) * 100 if t0_open > 0 else 0.0
         squat_buy = False
         squat_grade = ''
         squat_reason = ''
@@ -1292,18 +1337,21 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
                 and pos_ma5 <= 1.0
                 and pos_ma30 >= 0
                 and pos_ma20 <= 5.0
-                and -12.0 <= dist_hh20 <= -4.0):
+                and -12.0 <= dist_hh20 <= -4.0
+                and prem_t0 >= VOL_T0_PREM_MIN):
             squat_buy = True
             squat_grade = '优选'
             squat_reason = (f'下蹲买点（缩量回踩MA5 量比={today_vol_ratio:.2f}，'
                             f'MA5>MA10>MA20，距MA20={pos_ma20:+.1f}%，距MA30={pos_ma30:+.1f}%，'
-                            f'距20日高={dist_hh20:+.1f}%）')
+                            f'距20日高={dist_hh20:+.1f}%，距T0开盘={prem_t0:+.1f}%）')
 
         # ===== 下蹲提示字段（20260927，仅提示展示，不参与筛选/排序）=====
-        # 起量台阶：量能抬升后 5日均量未回落到起量前水平 → 资金未走（见 _vol_step_days 标定）
-        _step = _vol_step_days(vol_arr, close_arr)
-        vol_step_days = _step[0] if _step else 0
-        vol_step_px = round(_step[1] * 100, 1) if _step else 0.0
+        # T0 标志日：量能抬升后 5日均量未回落到起量前水平 → 资金未走（见 _vol_step_days 标定）
+        # （_step 已在上方近端缩量检查处计算，且此处必为合格 T0）
+        vol_step_days = _step[0]
+        vol_step_px = round(_step[1] * 100, 1)
+        t0_pct = round(_step[2], 1)
+        # t0_open（T0 标志日开盘价，止损位）与 prem_t0 已在上方「止损空间门槛」处计算
         # 量能形态：连续缩量天数 / 5日量能变化率 / 近3日与10日量能比
         _shrink_streak = 0
         for _k in range(len(vol_arr) - 1, 0, -1):
@@ -1407,6 +1455,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '下蹲原因': squat_reason,
             '起量台阶天数': vol_step_days,
             '起量台阶涨幅': vol_step_px,
+            'T0涨幅': t0_pct,
+            'T0开盘价': t0_open,
+            '止损位': t0_open,   # 止损位 = T0 标志日开盘价（20260930）
+            '缩量比': vol_shrink_ratio,
             '连续缩量天数': _shrink_streak,
             '5日量能变化': round(_dvol5, 1),
             '近3日量能比': round(_v3v10, 2),
@@ -2120,14 +2172,21 @@ def _output_report(results, simple=False, market_tip=None):
     if vs_squat:
         lines.append("## 🌱 下蹲买点（缩量回踩不破30日均线 · 提前于突破日发信号）")
         lines.append("【筛选条件】基础量能爆发/宽幅震荡结构成立 + 当日缩量(量比≤1.2) + MA5>MA10>MA20 "
-                     "+ 站上MA30(距MA30≥0%) 且 距MA20≤5% + 距20日高 -4~-12%")
+                     "+ 站上MA30(距MA30≥0%) 且 距MA20≤5% + 距20日高 -4~-12% "
+                     "+ 止损空间(下蹲日收盘距T0开盘价≥5%，20261001新增)")
         lines.append("【排序口径】本段不复用 FinalEntryScore（下蹲段内 FES 仅筹码分/高开风险参与，不描述下蹲形态）；"
                      "按 量能爆发评分↑ → 距MA5↓ → 60日涨幅↓ 排序，即「未过热 + 回踩更深 + 前期未透支」优先")
-        lines.append("【提示项】起量台阶 / 量能形态为展示字段，不参与筛选与排序。"
-                     "起量台阶 = 量能抬升后 5日均量始终未回落到起量前水平（资金未走）")
-        lines.append("  历史分组（下蹲 n=453，T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）："
-                     "台阶内 n=192 43.2%/+1.55%/止损28.1% · 台阶外 n=261 38.7%/+0.38%/止损36.8%"
-                     "（台阶内 2025 45.5% / 2026 36.2%，2026 胜率增益已归零，仅均值与止损率仍占优）")
+        lines.append("【提示项】T0 标志日 / 起量台阶 / 量能形态为展示字段；「缩量比」「距T0开盘」为筛选字段。"
+                     "缩量比 = 下蹲日量 / T0日量，阈值 0.50（20260930 由 0.35→0.55→0.50）；"
+                     "「止损位」= T0 标志日开盘价，要求距下蹲日收盘≥5%（20261001 新增）")
+        lines.append("  T0 标志日 = 近期第一根「放量阳线」：5日均量较前5日均量跳升≥1.5倍、当日量≥20日均量2倍、"
+                     "当日为阳线且涨幅>5%，且此后台阶维持到今日（量能未走）；无合格 T0 者直接剔除")
+        lines.append("  基准锚点（用户指定）：海峡创新 0904 起量日量 1,563,037 → 0923 下蹲日量 880,260 "
+                     "= 0.56 保留（次日 +19.98%）；光电股份 0914 起量日涨幅仅 +3.00% 不达 5% → 无合格 T0 剔除"
+                     "（量能连缩 6 天，后续 -4.0%/-7.2%）")
+        lines.append("  历史分组（现行算法全量重标定，T0 合格事件池 2025-10~2026-09 n=99，T+1开盘买/T+5收盘/盘中-7%止损/含0.25%成本）："
+                     "阈值≥0.50 全体 n=37 62.2%/+3.71%/止损21.6%；缩量比分档 [0.35,0.45) n=22 36.4%/-2.46% · "
+                     "[0.45,0.50) n=13 46.2%/-1.43% · [0.50,0.55) n=15 66.7%/+2.85% · ≥0.55 n=22 59.1%/+4.30%")
         for i, _vr in enumerate(vs_squat[:10], 1):
             lines.append(f"【下蹲{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} "
                          f"等级={_vr.get('下蹲等级', '')} 距MA20={_vr['距MA20']:+.1f}% 距MA30={_vr.get('距MA30', 0):+.1f}%")
@@ -2138,26 +2197,39 @@ def _output_report(results, simple=False, market_tip=None):
             _macd_tag = (_vr['MACD状态'] or '未确认') + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
             lines.append(f"  MACD={_macd_tag} | 量比={_vr['今日量比']} | 距MA5={_vr.get('距MA5', 0):+.1f}% "
                          f"| 距20日高={_vr.get('距20日高', 0):+.1f}% | 60日涨幅={_vr.get('60日涨幅', 0):+.1f}%")
-            _step_tag = (f"起量台阶=d{_vr['起量台阶天数']} 相对起量日{_vr['起量台阶涨幅']:+.1f}%"
-                         if _vr.get('起量台阶天数') else "起量台阶=无")
-            lines.append(f"  {_step_tag} | 量能形态=连续缩量{_vr.get('连续缩量天数', 0)}天 / "
+            _step_tag = (f"T0=d{_vr['起量台阶天数']}(涨{_vr.get('T0涨幅', 0):+.1f}%) "
+                         f"相对T0{_vr['起量台阶涨幅']:+.1f}%")
+            lines.append(f"  {_step_tag} | 缩量比={_vr.get('缩量比', 0):.2f} "
+                         f"| 量能形态=连续缩量{_vr.get('连续缩量天数', 0)}天 / "
                          f"5日量能{_vr.get('5日量能变化', 0):+.1f}% / 近3日=10日的{_vr.get('近3日量能比', 1) * 100:.0f}%")
+            _stop_px = _vr.get('止损位')
+            if _stop_px:
+                _stop_dist = (_stop_px / _vr.get('close', 0) - 1) * 100 if _vr.get('close') else 0.0
+                lines.append(f"  止损位={_stop_px:.2f}（T0开盘价，距今收{_stop_dist:+.1f}%）")
             if _vr.get('FinalEntryScore') is not None:
                 lines.append(f"  FinalEntryScore={_vr.get('FinalEntryScore')} 评级={_vr.get('Rating', 'C')}")
             lines.append(_chip_v5_line(_vr))
-        lines.append("【执行】T+1 开盘买入 · 持有 T+5 · 盘中 -7% 止损；下蹲买点为缩量回踩低吸结构，可直接建仓")
+        lines.append("【执行】T+1 开盘买入 · 持有 T+5 · 止损位 = T0 标志日开盘价（跌破即出，20260930 用户指定）；"
+                     "下蹲买点为缩量回踩低吸结构，可直接建仓")
+        lines.append("  止损口径说明（20261001 新增止损空间门槛）：T0 开盘价止损比 -7% 更紧，全体样本上属负优化；"
+                     "但止损位刻意贴近买入价（下蹲日收盘距T0开盘 <5%）时最差——该档 T0 止损口径仅 25.0%/+2.61%"
+                     "（-7% 口径反而 83.3%/+7.45%，即回踩不破位本是好形态，被贴身的 T0 止损提前打掉）"
+                     "→ 故要求 下蹲日收盘 ≥ T0开盘价×1.05")
+        lines.append("  门槛后标定（下蹲事件池 2025-11~2026-09 n=22，T+1开盘买/T+5收盘/含0.25%成本）："
+                     "T0止损口径 63.6%/+3.75%（门槛前 n=34 为 50.0%/+3.34%）；"
+                     "-7%口径 54.5%/+1.93%（门槛前 n=34 为 64.7%/+3.67%）→ 该门槛仅服务 T0 开盘价止损口径")
         _n_sq = len(vs_squat)
         _n_sq_lo = sum(1 for x in vs_squat if x.get('量能爆发评分', 0) < 85)
         _sq_tier = (f"【分档提示】本批 n={_n_sq}：评分<85 档 {_n_sq_lo} 只 / ≥85 档 {_n_sq - _n_sq_lo} 只"
-                    f" | 历史分组(下蹲 n=453)：<85 档 56.1%/+2.72%，≥85 档 38.4%/+0.62%")
+                    f" | 历史分组(现行算法阈值≥0.50 n=37)：<85 档 n=6 100.0%/+8.74%，≥85 档 n=31 54.8%/+2.74%"
+                    f"（<85 档样本过小，仅作方向参考）")
         if _n_sq_lo == 0:
             _sq_tier += " → 全批落在弱档，建议降仓或优先其他段"
         lines.append(_sq_tier)
-        _n_sq_step = sum(1 for x in vs_squat if x.get('起量台阶天数'))
-        lines.append(f"【台阶提示】本批 n={_n_sq}：起量台阶内 {_n_sq_step} 只 / 台阶外 {_n_sq - _n_sq_step} 只"
-                     f" | 历史(下蹲 n=453)：台阶内 43.2%/+1.55%，台阶外 38.7%/+0.38%（仅提示，不筛选）")
-        lines.append("【回测参考】2025-01~2026-09 下蹲买点(旧口径:距MA20 0~5%) n=616：胜率46.6% / 均+0.69% / 止损率29.5%"
-                     "（当前已放宽为「站上MA30」，该口径未重标定）")
+        lines.append(f"【T0/缩量提示】本批 n={_n_sq}：均具备合格 T0 标志日（放量阳线涨幅>5%）、"
+                     f"缩量比≥0.50（20260930 由 0.35→0.55→0.50）、且 下蹲日收盘距 T0 开盘价≥5%（20261001 新增）")
+        lines.append("【回测参考】现行算法下蹲买点(站上MA30 + T0涨>5% + 缩量比≥0.50 + 距T0开盘≥5%) "
+                     "2025-11~2026-09 n=22：T0开盘价止损口径 胜率63.6% / 均+3.75%（-7%口径 54.5% / +1.93%）")
         lines.append("")
 
     # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
@@ -2264,10 +2336,10 @@ def _output_report(results, simple=False, market_tip=None):
 
 
 def _track_picks(results, trade_date):
-    """当日可开仓信号落库 stock_pick_db：
-    ①Eligible 且 Rating∈(S,A,B) 且非 ForbidTOP，取前 6 名；
-    ②下蹲买点（20260927新增，与评级解耦：下蹲日 FES 常被死叉惩罚压低，但信号本身有独立回测支撑）。
-    其余评级/择时/主题/距MA20 等字段自动进 indicators；失败不阻塞主流程。
+    """当日信号落库 stock_pick_db（20260930 收敛）：
+    只保留下蹲买点（与评级解耦：下蹲日 FES 常被死叉惩罚压低，但信号本身有独立回测支撑）；
+    原先「Eligible 且 Rating∈(S,A,B)」的 TOP6 已不再落库，仅留在报告里。
+    其余评级/择时/主题/距MA 等字段自动进 indicators；失败不阻塞主流程。
     """
     if _PICK_RECORD is None or not results:
         return
@@ -2281,6 +2353,7 @@ def _track_picks(results, trade_date):
             'action': action,
             'score': s.get('FinalEntryScore'), 'rank_no': idx,
             'reason': s.get('下蹲原因') or s.get('强买原因') or s.get('观察原因') or s.get('蓄势大涨原因') or '',
+            'stop_price': s.get('止损位'),   # 止损位 = T0 标志日开盘价（20260930）
             'FinalEntryScore': s.get('FinalEntryScore'), 'Rating': _rating,
             'EntryTimingScore': s.get('EntryTimingScore'), 'EntryTimingGrade': s.get('EntryTimingGrade'),
             'T1Risk': s.get('T1Risk'), '量能爆发评分': s.get('量能爆发评分'),
@@ -2289,25 +2362,15 @@ def _track_picks(results, trade_date):
             'ChipSuggestion': s.get('ChipSuggestion'),
         }
 
-    _buyable = [x for x in results[:6]
-                if x.get('Eligible') and x.get('Rating') in ('S', 'A', 'B') and not x.get('ForbidTOP')]
     rows = []
-    for idx, s in enumerate(_buyable, 1):
-        rows.append(_mk(s, idx, s.get('_v2_label') or 'VSW_BUY',
-                        '可开仓' if s.get('Rating') in ('S', 'A') else '可开仓·次日确认'))
-
-    _seen = {r['ts_code'] for r in rows}
     for s in sorted([x for x in results if x.get('下蹲信号')], key=_squat_rank_key):
-        if s.get('代码') in _seen:
-            continue
         _opt = (s.get('下蹲等级') == '优选')
         rows.append(_mk(s, len(rows) + 1,
                         'VSW_下蹲·优选' if _opt else 'VSW_下蹲·待确认',
                         '可开仓·下蹲买点' if _opt else '可开仓·下蹲待确认(半仓)'))
-        _seen.add(s.get('代码'))
 
     if not rows:
-        print('[VSW] 今日无可开仓信号，stock_pick_db 无写入', flush=True)
+        print('[VSW] 今日无下蹲信号，stock_pick_db 无写入', flush=True)
         return
     n = _PICK_RECORD('vsw', 'VSW 量能爆发+宽幅震荡', rows, pick_date=trade_date)
     print(f'[VSW] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=vsw pick_date={trade_date})', flush=True)

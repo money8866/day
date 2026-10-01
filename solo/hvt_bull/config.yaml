@@ -92,6 +92,10 @@ state_machine:
 
 sli_v2:
   leader_filter: true           # 关联 sli_v2 细分龙头 Top5（标准接口），不在表中的股票直接过滤
+  theme_expand:                 # 20261001：热点主题扩池 —— V2.4 热点主题全部成员并入准入池
+    enabled: true               #   （与龙头池取并集，解决"非龙头但属强势主题"漏选，如诺唯赞/创新药）
+    window: month               #   热度窗口：today | week | month（theme_heat_v24_*）
+    heat_min: 80.0              #   热度阈值（0~100 分位口径，<=阈值不纳入）
 
 ige_factor:
   enabled: true                 # IGE 行业景气（三级行业 ige_adj）：仅作为排序因子参与
@@ -233,4 +237,9 @@ v3:
 
 report:
   top_n: 20
+  # 20261001 展示上限放宽：②③④⑤ 每节 10->20、EXTENDED 8->16，
+  # 并新增「热点主题新增跟踪」独立成节（不占上述上限）
+  te_section_cap: 20
+  te_extended_cap: 16
+  theme_watch_cap: 20
   output_dir: 'D:/mystock/solo/report_daily'

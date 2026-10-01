@@ -46,7 +46,10 @@ LOOSE = {
     "vol_win": 5,
     "volr_min": 1.0,
     "volr_max": 0.0,
+    "vol20_base": 20,
+    "vol20r_max": 0.0,
     "ma20_ratio_max": 0.0,
+    "tr_short_max": 0.0,
     "first_lookback": 10,
 }
 
@@ -54,7 +57,8 @@ LOOSE = {
 SPEC = dict(LOOSE)
 SPEC.update({"signal_max": 5.0, "gap_max": 1.5, "pb_min": 5.0, "pb_max": 20.0,
              "shrink_min": 0.4, "shrink_max": 1.0,
-             "volr_min": 1.5, "volr_max": 3.0, "ma20_ratio_max": 1.05})
+             "volr_min": 1.5, "volr_max": 3.0, "vol20r_max": 1.5, "ma20_ratio_max": 1.05,
+             "tr_short_max": 2.0})
 
 _IDX = None
 
@@ -189,8 +193,12 @@ def apply_params(S, p):
         q = q[q.fox_shrink >= p["shrink_min"]]
     if float(p.get("volr_max") or 0.0) > 0:
         q = q[q.fox_volr <= p["volr_max"]]
+    if float(p.get("vol20r_max") or 0.0) > 0:
+        q = q[q.fox_vol20r <= p["vol20r_max"]]
     if float(p.get("ma20_ratio_max") or 0.0) > 0:
         q = q[q.fox_ma20_ratio <= p["ma20_ratio_max"]]
+    if float(p.get("tr_short_max") or 0.0) > 0:
+        q = q[~((q.fox_sl120_60 < 0) & (q.fox_sl60_20 > float(p["tr_short_max"])))]
     if p.get("first_lookback"):
         q = q[q.fox_prior_cnt <= 0]
     return q
@@ -277,7 +285,7 @@ def main():
     print(f"[foxv4] 明细已保存 {CSV_PATH}")
 
     print("\n" + "═" * 110)
-    print("一、标定口径 V4.1：3%~5% 中阳 · 回调5~20% · 缩量0.4~1.0 · 放量1.5~3.0× · 跳空≤1.5% · 收盘/MA20≤1.05 · 第一根")
+    print("一、标定口径 V4.1：3%~5% 中阳 · 回调5~20% · 缩量0.4~1.0 · 放量1.5~3.0× · 跳空≤1.5% · 收盘/MA20≤1.05 · 第一根 · 趋势(MA120近60日↓ + MA60近20日>2%)剔除")
     print("═" * 110)
     Q = apply_params(S, SPEC)
     block(Q, "口径内全样本")
@@ -300,6 +308,7 @@ def main():
         ("去掉「爆量>3×」约束", {"volr_max": 0.0}),
         ("跳空上限放到 3%", {"gap_max": 3.0}),
         ("去掉「收盘/MA20≤1.05」", {"ma20_ratio_max": 0.0}),
+        ("去掉「趋势斜率」约束", {"tr_short_max": 0.0}),
         ("去掉「第一根」约束", {"first_lookback": 0}),
     ):
         p = dict(base)

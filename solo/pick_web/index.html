@@ -62,6 +62,12 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
 .st-ACTIVE{background:#eef3fb;color:var(--brand)}
 .st-TARGET_HIT{background:#fdecea;color:var(--up)}
 .st-STOP_HIT{background:#e8f6f0;color:var(--down)}
+/* W7 三状态执行分层徽章（读取 indicators.w7_status，仅展示，本页不做再计算） */
+.w7{display:inline-block;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600;white-space:nowrap}
+.w7-EXECUTION{background:#fdecea;color:var(--up)}
+.w7-EXECUTION_WAIT_VOLUME{background:var(--warnbg);color:var(--warn)}
+.w7-TRIGGER_WATCH{background:#eef3fb;color:var(--brand)}
+.w7-PULLBACK_WATCH{background:#eef0f4;color:var(--dim)}
 .st-EXPIRED{background:#f0f0f2;color:#6b7280}
 .exp{cursor:pointer;color:var(--brand);font-size:12px;user-select:none;
   background:none;border:none;padding:0;font-family:inherit}
@@ -114,7 +120,7 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
     <div class="card"><div class="scroll"><table id="tbl">
       <thead><tr>
         <th class="sticky">日期 / 标的</th>
-        <th>策略</th><th>信号</th><th>现价</th><th>分数</th><th>涨跌</th>
+        <th>策略</th><th>信号</th><th>执行状态</th><th>现价</th><th>分数</th><th>涨跌</th>
         <th class="c-hide">止损</th><th class="c-hide">目标</th>
         <th>R1d</th><th class="c-hide">R3d</th><th class="c-hide">R5d</th><th class="c-hide">最大回撤</th><th>跟踪</th><th></th>
       </tr></thead>
@@ -133,15 +139,15 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
       </select>
     </div>
     <div id="stat-warn"></div>
-    <div class="card"><div class="scroll"><table id="stbl" style="min-width:900px">
+    <div class="card"><div class="scroll"><table id="stbl" style="min-width:980px">
       <thead><tr>
         <th class="sticky">策略</th><th>样本</th><th>1日胜率</th><th>1日均值</th>
-        <th>3日胜率</th><th>3日均值</th><th>5日胜率</th><th>5日均值</th>
+        <th>3日胜率</th><th>3日均值</th><th>5日胜率</th><th>5日均值</th><th>20日均值</th>
         <th>达标</th><th>止损</th><th>跟踪中</th><th>已到期</th>
       </tr></thead>
       <tbody id="stbody"></tbody>
     </table></div></div>
-    <div class="note">胜率主口径为 <b>ret_1d &gt; 0</b>（全量样本可用）；3日/5日胜率随回填推进样本逐步增加，已标注样本数。达标/止损为跟踪状态统计。未以「最大浮盈」作为胜率口径，避免最大值期望偏差。<br>
+    <div class="note">胜率主口径为 <b>ret_1d &gt; 0</b>（全量样本可用）；3日/5日胜率随回填推进样本逐步增加，已标注样本数；<b>20日均值</b>需回填满 20 个交易日才有值，覆盖样本最少。达标/止损为跟踪状态统计。未以「最大浮盈」作为胜率口径，避免最大值期望偏差。<br>
       <b>注意样本不可比</b>：3日/5日胜率只覆盖已回填满对应天数的较早批次，与全量样本不是同一批票，不能直接横向比较「拿得越久越好」。当前全量 1 日胜率 34.0%，而「有 3 日样本」那一批（n=142）自身的 1 日胜率是 56.3%——差异主要来自批次构成，而非持有期长短。</div>
   </div>
 
@@ -165,6 +171,11 @@ const pct = v => (v === null || v === undefined) ? '<span class="mute">—</span
 const stripPct = v => (v === null || v === undefined) ? '—'
       : (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
 const ST = {ACTIVE: '跟踪中', TARGET_HIT: '达标', STOP_HIT: '止损', EXPIRED: '已到期'};
+// W7 三状态执行分层：状态只由「距触发价 + 结构是否失效 + 量能」决定，执行状态优先于分数
+const W7ST = {EXECUTION: '执行', EXECUTION_WAIT_VOLUME: '待量能', TRIGGER_WATCH: '待触发', PULLBACK_WATCH: '待回踩', INVALID: '已失效'};
+const indOf = r => { try { return JSON.parse(r.indicators || '{}') || {}; } catch (e) { return {}; } };
+const w7Badge = ind => { const s = ind && ind.w7_status; if (!s) return '<span class="mute">—</span>';
+  return '<span class="w7 w7-' + s + '">' + (W7ST[s] || s) + '</span>'; };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 // 同花顺个股页：库中代码形如 688152.SH，URL 只取 6 位数字
 const thsUrl = c => 'https://stockpage.10jqka.com.cn/' + String(c || '').split('.')[0] + '/';
@@ -220,7 +231,7 @@ function sortKeyOf(rows) {
 }
 
 async function loadList() {
-  $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">查询中…</td></tr>';
+  $('#tbody').innerHTML = '<tr><td colspan="15" class="empty">查询中…</td></tr>';
   const p = new URLSearchParams();
   if (state.date) p.set('date', state.date);
   if (state.strategy) p.set('strategy', state.strategy);
@@ -244,17 +255,18 @@ async function loadList() {
   $('#foot').textContent = '查询时间 ' + new Date().toLocaleString('zh-CN');
 
   if (!ROWS.length) {
-    $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">该条件下无落库信号</td></tr>';
+    $('#tbody').innerHTML = '<tr><td colspan="15" class="empty">该条件下无落库信号</td></tr>';
     return;
   }
   $('#tbody').innerHTML = ROWS.map((r, i) => {
-    const st = r.track_status || '';
+    const st = r.track_status || '', ind = indOf(r);
     return '<tr data-i="' + i + '">' +
       '<td class="sticky"><span class="code">' + esc(r.pick_date) + '</span><br>' +
         '<a class="scode" href="' + thsUrl(r.ts_code) + '" target="_blank" rel="noopener">' + esc(r.ts_code) + '</a> ' +
         '<a class="name" href="' + thsUrl(r.ts_code) + '" target="_blank" rel="noopener">' + esc(r.stock_name) + '</a></td>' +
       '<td><span class="strat">' + esc(r.strategy_name) + '</span></td>' +
       '<td class="sig' + (r.pct_chg < 0 ? ' sell' : '') + '">' + esc(r.signal || '—') + '</td>' +
+      '<td>' + w7Badge(ind) + '</td>' +
       '<td class="num">' + fmt(r.close, 2) + '</td>' +
       '<td class="num score">' + fmt(r.score, 1) + '</td>' +
       '<td class="num">' + pct(r.pct_chg) + '</td>' +
@@ -271,9 +283,15 @@ async function loadList() {
 }
 
 function detailRow(r) {
-  const kv = [];
+  const kv = [], ind = indOf(r);
   kv.push('<div class="kv"><b>买卖位</b>：现价 ' + fmt(r.close, 2) +
     '　止损 ' + fmt(r.stop_price, 2) + '　目标 ' + fmt(r.target_price, 2) + '</div>');
+  if (ind.w7_status) {
+    kv.push('<div class="kv"><b>执行状态</b>：' + w7Badge(ind) + '　' + esc(ind.w7_status) +
+      (ind.distance_to_trigger == null ? '' : '　距触发 ' + (Number(ind.distance_to_trigger) * 100).toFixed(2) + '%') +
+      (ind.w7_fail_line == null ? '' : '　结构防线 ' + Number(ind.w7_fail_line).toFixed(2) +
+        (ind.w7_fail_name ? '（' + esc(ind.w7_fail_name) + '）' : '')) + '</div>');
+  }
   if (r.action) kv.push('<div class="kv"><b>买入依据</b>：' + esc(r.action) + '</div>');
   if (r.reason && r.reason !== r.action) kv.push('<div class="kv"><b>落库理由</b>：' + esc(r.reason) + '</div>');
   if (r.industry) kv.push('<div class="kv"><b>行业</b>：' + esc(r.industry) + '</div>');
@@ -294,7 +312,7 @@ function detailRow(r) {
       '　回填于 ' + esc(r.track_updated || '—') + '</div>');
   }
   if (!kv.length) kv.push('<div class="kv mute">无更多明细</div>');
-  return '<tr class="det"><td colspan="14">' + kv.join('') + '</td></tr>';
+  return '<tr class="det"><td colspan="15">' + kv.join('') + '</td></tr>';
 }
 
 document.addEventListener('click', e => {
@@ -312,11 +330,11 @@ function wrCell(w, n) {
 }
 
 async function loadStat() {
-  $('#stbody').innerHTML = '<tr><td colspan="12" class="empty">统计中…</td></tr>';
+  $('#stbody').innerHTML = '<tr><td colspan="13" class="empty">统计中…</td></tr>';
   const days = $('#scope').value;
   const d = await jget('api/stats' + (days ? '?days=' + days : ''));
   const o = d.overall;
-  if (!d.rows.length) { $('#stbody').innerHTML = '<tr><td colspan="12" class="empty">暂无跟踪样本</td></tr>'; return; }
+  if (!d.rows.length) { $('#stbody').innerHTML = '<tr><td colspan="13" class="empty">暂无跟踪样本</td></tr>'; return; }
 
   const short = d.rows.filter(r => !r.sample_ok);
   $('#stat-warn').innerHTML = short.length
@@ -330,6 +348,7 @@ async function loadStat() {
     '<td>' + wrCell(r.w1, r.n) + '</td><td class="num">' + pct(r.a1) + '</td>' +
     '<td>' + wrCell(r.w3, r.n3) + '</td><td class="num">' + pct(r.a3) + '</td>' +
     '<td>' + wrCell(r.w5, r.n5) + '</td><td class="num">' + pct(r.a5) + '</td>' +
+    '<td class="num">' + pct(r.a20) + '</td>' +
     '<td class="num up">' + (r.hit_target || 0) + '</td>' +
     '<td class="num down">' + (r.hit_stop || 0) + '</td>' +
     '<td class="num">' + (r.active || 0) + '</td>' +
@@ -404,7 +423,7 @@ $('#ropen').addEventListener('click', () => {
 
 boot().catch(err => {
   $('#meta').textContent = '加载失败：' + err.message;
-  $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">接口异常，请确认 app.py 服务已启动</td></tr>';
+  $('#tbody').innerHTML = '<tr><td colspan="15" class="empty">接口异常，请确认 app.py 服务已启动</td></tr>';
 });
 </script>
 </body>

@@ -6250,6 +6250,7 @@ def send_pushplus(msg, token):
 # ---- Agent Mail CLI 邮件推送（20260925 起替代 Server酱/PushPlus 微信推送） ----
 AGENT_MAIL_CLI = r"C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd"
 AGENT_MAIL_TO = "stock1975@qq.com"
+_MAIL_ATT_MAX_BYTES = 20 * 1024 * 1024   # 单附件上限 20MB（agently-cli +me 的 max_attachment_size_bytes）
 
 
 # ---- 邮件 HTML 样式（移动端优先：22px 大字、卡片式、宽表可横向滑动） ----
@@ -6432,13 +6433,151 @@ def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
     )
 
 
+# ---- 邮件附件 PDF（reportlab，中文字体，A4 纵向） ----
+_PDF_FONT_CACHE = {}
+
+
+def _pdf_cjk_font():
+    """注册并缓存中文字体；全部缺失时回退 Helvetica（中文会显示为方框）。"""
+    if _PDF_FONT_CACHE:
+        return _PDF_FONT_CACHE["name"]
+    name = "Helvetica"
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        for path, fn in ((r"C:\Windows\Fonts\msyh.ttc", "MSYaHei"),
+                         (r"C:\Windows\Fonts\simhei.ttf", "SimHei"),
+                         (r"C:\Windows\Fonts\simsun.ttc", "SimSun")):
+            if os.path.exists(path):
+                try:
+                    pdfmetrics.registerFont(TTFont(fn, path))
+                    name = fn
+                    break
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"⚠️ 中文字体注册失败: {e}")
+    _PDF_FONT_CACHE["name"] = name
+    return name
+
+
+def _pdf_inline(text):
+    """行内标记：先转义 XML 实体，再恢复 **粗体** 与 `代码`。"""
+    t = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    return re.sub(r"`(.+?)`", r"\1", t)
+
+
+def markdown_to_email_pdf(markdown_text, pdf_path, title="每日复盘"):
+    """把复盘 markdown 渲染成 PDF 附件：A4 纵向、中文字体、支持标题/列表/表格。
+
+    与邮件正文同源（同一份最终报告 markdown）。字体缺失或 reportlab 异常时抛给
+    调用方，由 send_agent_mail fail-soft 处理，不影响正文发送。
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, HRFlowable)
+
+    font = _pdf_cjk_font()
+    theme = colors.HexColor("#1677ff")
+    st = {
+        "h1": ParagraphStyle("h1", fontName=font, fontSize=18, leading=26,
+                             textColor=theme, spaceAfter=8),
+        "h2": ParagraphStyle("h2", fontName=font, fontSize=14, leading=21, textColor=colors.white,
+                             backColor=theme, borderPadding=(5, 6, 5, 6),
+                             spaceBefore=14, spaceAfter=8),
+        "h3": ParagraphStyle("h3", fontName=font, fontSize=11.5, leading=18,
+                             textColor=colors.HexColor("#0b4aa2"), spaceBefore=9, spaceAfter=4),
+        "body": ParagraphStyle("body", fontName=font, fontSize=10.5, leading=17, spaceAfter=3),
+        "bullet": ParagraphStyle("bullet", fontName=font, fontSize=10.5, leading=17,
+                                 leftIndent=14, bulletIndent=4, spaceAfter=2),
+        "cell": ParagraphStyle("cell", fontName=font, fontSize=8, leading=11),
+        "cellh": ParagraphStyle("cellh", fontName=font, fontSize=8, leading=11, textColor=colors.white),
+    }
+
+    md = markdown_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = md.split("\n")
+    avail = A4[0] - 3.2 * cm
+    story, i = [], 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+
+        if s.startswith("|"):                       # ── 表格块 ──
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                block.append(lines[i].strip())
+                i += 1
+            rows = [r for r in block if not re.fullmatch(r"\|[\s\-:|]+\|", r)]
+            grid = [[c.strip() for c in r.strip("|").split("|")] for r in rows]
+            if not grid:
+                continue
+            ncol = max(len(r) for r in grid)
+            grid = [r + [""] * (ncol - len(r)) for r in grid]
+            weights = [max(3, max(len(re.sub(r"[*`]", "", r[j])) for r in grid))
+                       for j in range(ncol)]
+            total = sum(weights)
+            widths = [max(0.9 * cm, avail * w / total) for w in weights]
+            k = avail / sum(widths)
+            widths = [w * k for w in widths]
+            data = [[Paragraph(_pdf_inline(c), st["cellh"] if ri == 0 else st["cell"])
+                     for c in row] for ri, row in enumerate(grid)]
+            tbl = Table(data, colWidths=widths, repeatRows=1)
+            ts = [("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B8C4D0")),
+                  ("BACKGROUND", (0, 0), (-1, 0), theme),
+                  ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                  ("TOPPADDING", (0, 0), (-1, -1), 3),
+                  ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                  ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                  ("RIGHTPADDING", (0, 0), (-1, -1), 3)]
+            for ri in range(1, len(grid)):
+                if ri % 2 == 0:
+                    ts.append(("BACKGROUND", (0, ri), (-1, ri), colors.HexColor("#F2F6FA")))
+            tbl.setStyle(TableStyle(ts))
+            story += [Spacer(1, 3), tbl, Spacer(1, 6)]
+            continue
+
+        if re.fullmatch(r"[═─=]{3,}", s):           # ── 分隔线 ──
+            story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#8FA6BC")))
+            i += 1
+            continue
+
+        ph = re.match(r"^\*\*[ \u3000]+(.+)$", s)   # AI 的伪标题 "** 小节名"
+        if s.startswith("###"):
+            story.append(Paragraph(_pdf_inline(s[3:].strip()), st["h3"]))
+        elif s.startswith("##"):
+            story.append(Paragraph(_pdf_inline(s[2:].strip()), st["h2"]))
+        elif s.startswith("#"):
+            story.append(Paragraph(_pdf_inline(s[1:].strip()), st["h1"]))
+        elif ph:
+            story.append(Paragraph(_pdf_inline(ph.group(1).strip()), st["h3"]))
+        elif re.match(r"^[-*]\s+", s):
+            story.append(Paragraph(_pdf_inline(re.sub(r"^[-*]\s+", "", s)),
+                                   st["bullet"], bulletText="•"))
+        else:
+            story.append(Paragraph(_pdf_inline(s), st["body"]))
+        i += 1
+
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4,
+                            leftMargin=1.6 * cm, rightMargin=1.6 * cm,
+                            topMargin=1.4 * cm, bottomMargin=1.4 * cm,
+                            title=title, author="量化系统自动生成")
+    doc.build(story)
+    return pdf_path
+
+
 def send_agent_mail(msg, to_addr=AGENT_MAIL_TO, subject=None):
-    """通过 Agent Mail CLI 发送复盘邮件（替代微信推送），正文为 HTML 格式。
+    """通过 Agent Mail CLI 发送复盘邮件（替代微信推送），正文为 HTML 格式，另附 PDF 附件。
 
     发件账号 kongxiangpu1955@agent.qq.com（OAuth 已登录，额度 50 封/日、10 次/分钟）。
-    入参 msg 是 markdown 文本，这里先转成 22px 字号的 HTML 正文再发送。
-    CLI 的 --body-file 只接受「相对当前工作目录」的路径且上限 1MB，故正文先落到
-    REPORT_DIR 下的临时 html 文件，发送成功后删除。
+    入参 msg 是 markdown 文本，这里先转成 22px 字号的 HTML 正文，再渲染同源 PDF 作附件。
+    CLI 的 --body-file / --attachment 只接受「相对当前工作目录」的路径且上限分别为
+    1MB / 20MB，故正文与附件先落到 cwd 下的临时文件，发送成功后删除。
     """
     subject = subject or f"每日复盘 - {TRADE_DATE}"
     if not os.path.exists(AGENT_MAIL_CLI):
@@ -6459,19 +6598,62 @@ def send_agent_mail(msg, to_addr=AGENT_MAIL_TO, subject=None):
         print(f"⚠️ 邮件正文写入失败: {e}")
         return
 
+    # 附件 PDF：与正文同源（同一份最终报告 markdown）。生成失败不影响正文发送。
+    att_path = os.path.join(os.getcwd(), f"_mail_att_{TRADE_DATE}.pdf")
+    att_name = ""
+    try:
+        markdown_to_email_pdf(msg, att_path, title=subject)
+        att_size = os.path.getsize(att_path)
+        if att_size > _MAIL_ATT_MAX_BYTES:
+            print(f"⚠️ 附件 {att_size / 1048576:.1f}MB 超过 {_MAIL_ATT_MAX_BYTES // 1048576}MB 上限，放弃挂载")
+            os.remove(att_path)
+        else:
+            att_name = os.path.basename(att_path)
+            print(f"📎 邮件附件已生成: {att_name}（{att_size / 1024:.0f}KB）")
+    except Exception as e:
+        print(f"⚠️ 邮件附件 PDF 生成失败: {e}")
+        att_name = ""
+
     cmd = [AGENT_MAIL_CLI, "message", "+send", "--to", to_addr, "--subject", subject,
            "--body-file", os.path.basename(body_path), "--body-format", "html", "--confirmed"]
+    if att_name:
+        cmd += ["--attachment", att_name]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="ignore", timeout=180)
         if r.returncode == 0 and '"ok": true' in (r.stdout or ""):
-            print(f"✅ Agent Mail 已发送: {to_addr}")
+            print(f"✅ Agent Mail 已发送: {to_addr}" + (f"（含附件 {att_name}）" if att_name else ""))
             os.remove(body_path)
+            if att_name and os.path.exists(att_path):
+                os.remove(att_path)
         else:
             detail = ((r.stdout or "") + (r.stderr or "")).strip().replace("\n", " ")[:300]
             print(f"⚠️ Agent Mail 发送失败: rc={r.returncode} {detail}（正文留存: {body_path}）")
     except Exception as e:
         print(f"⚠️ Agent Mail 调用异常: {e}")
+
+
+def upload_report_html():
+    """把当日复盘报告 HTML 增量同步到云服务器（网页「复盘报告」页签展示）。
+
+    复用 pick_web/sync_db.py 的 --reports-only 通道，只传 Final_Self_<date>.html，
+    不动选股库（库由 post_close_run.bat 单独同步）。失败只告警，不影响主流程。
+    """
+    script = os.path.join(BASE_DIR, "pick_web", "sync_db.py")
+    if not os.path.exists(script):
+        print(f"⚠️ 未找到报告同步脚本，跳过上传: {script}")
+        return
+    try:
+        r = subprocess.run([sys.executable, script, "--reports-only"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="ignore", timeout=600, cwd=BASE_DIR)
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        for line in out.splitlines()[-6:]:
+            print(line)
+        print("✅ 报告 HTML 已同步到服务器" if r.returncode == 0
+              else f"⚠️ 报告上传失败: rc={r.returncode}")
+    except Exception as e:
+        print(f"⚠️ 报告上传异常: {e}")
 
 
 def markdown_to_html_report(
@@ -8941,8 +9123,8 @@ def run(target_date=None, simple_mode=False):
             lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
         lines.append("")
     
-    hot_money_open_text = "\n".join(lines)
-    print(hot_money_open_text)
+    # 突破池明细仅在控制台输出供排查（报告与 AI prompt 已不再包含"今日突破股池分析"段）
+    print("\n".join(lines))
     
     icpm_top10_list = []
     for s in ranked_stocks[:20]:
@@ -9057,12 +9239,12 @@ def run(target_date=None, simple_mode=False):
         print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
 
     # =========================
-    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」四态；
+    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」六态；
     # 原 A/B/MID 全池铺开已由 W7 引擎 V5.1 收口，只同步当日可执行信号）
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        五态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)。
+        六态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)。
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
         def _num(v):
@@ -9090,9 +9272,14 @@ def run(target_date=None, simple_mode=False):
                         "ige_adj": _num(s.get("ige_adj")),
                         "score": _num(s.get("score")),
                         "type": str(s.get("type") or "-"),
+                        "state": str(s.get("state") or ""),
                         "state_cn": str(s.get("state_cn") or s.get("state") or "-"),
                         "close": _num(s.get("close")), "pressure": _num(s.get("pressure")),
                         "ma20": _num(s.get("ma20")), "volr": _num(s.get("volr")),
+                        # MIDLINE_HOLD（W7-不破中位）专属：长阳半分位=低吸防线；其余状态为 None
+                        "mid_line": _num(s.get("mid_line")),
+                        # BREAKOUT_RETEST（放量突破后缩量回踩）专属：放量突破日低点=回踩平台防线
+                        "retest_low": _num(s.get("retest_low")),
                     })
                 break
             except (json.JSONDecodeError, OSError, ValueError) as e:
@@ -9127,7 +9314,8 @@ def run(target_date=None, simple_mode=False):
                                     rows.append(cells)
                     _cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
                            "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
-                           "BREAKOUT_RETEST": "放量突破后缩量回踩买点"}
+                           "BREAKOUT_RETEST": "放量突破后缩量回踩买点",
+                           "MIDLINE_HOLD": "W7-不破中位"}
 
                     def _cv(cells, name):
                         return cells[col_idx[name]] if name in col_idx else ""
@@ -9137,38 +9325,210 @@ def run(target_date=None, simple_mode=False):
                         items.append({
                             "code": _cv(c, "代码"), "name": _cv(c, "名称"),
                             "ige_adj": _num(_cv(c, "IGE_ADJ")), "score": _num(_cv(c, "总分")),
-                            "type": _cv(c, "类型"), "state_cn": _cn.get(state, state),
+                            "type": _cv(c, "类型"), "state": state, "state_cn": _cn.get(state, state),
                             "close": _num(_cv(c, "现价")), "pressure": _num(_cv(c, "触发价")),
                             "ma20": _num(_cv(c, "MA20")), "volr": _num(_cv(c, "量比")),
+                            # md 表格无「半分位/回踩低点」列：回退路径取不到，如实留空
+                            "mid_line": None, "retest_low": None,
                         })
                 except OSError:
                     pass
         if not items:
             return ""
-        # 1) 组装 AI prompt 段文本
+        # =====================================================================
+        # 输出层三状态执行分层 V1.0（只做展示与状态分类）
+        # 不改候选池生成 / 评分公式 / IGE_ADJ / CORE·MID 定义 / 触发价 / MA20 /
+        # 量比口径 / 回测逻辑；原有 W7 候选全部保留，只改最终展示与状态标签。
+        # 状态只由「实际交易距离 + 触发条件 + 结构是否失效」决定，与总分无关；
+        # 排序一律「执行状态 > 综合评分」。原有量能阀门（放量突破需量比≥1.2）不可绕过。
+        # =====================================================================
+        NEAR_PCT = 0.03        # 距触发价 ≤3% 视为「接近触发」
+        MA20_BREAK_TOL = 0.03  # 收盘低于 MA20 达 3% 才算「明确跌破总防线」
+        VOLR_MIN = 1.2         # 原策略量能阀门：放量突破触发价需量比≥1.2（禁止下调）
+        VOLR_HUGE = 3.0        # 原口径：量比≥3 的巨量日不追高，只等回踩
+
         def _f2(v):
             return f"{v:.2f}" if isinstance(v, (int, float)) else "-"
 
+        def _f1(v):
+            return f"{v:.1f}" if isinstance(v, (int, float)) else "-"
+
+        def _struct_line(it):
+            """该票的结构防线（失效位）与名称：MIDLINE_HOLD=长阳半分位；
+            BREAKOUT_RETEST=放量突破日低点；其余=MA20 总防线。"""
+            st = it["state"]
+            if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0:
+                return it["mid_line"], "长阳半分位"
+            if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0:
+                return it["retest_low"], "放量突破日低点"
+            if isinstance(it.get("ma20"), (int, float)) and it["ma20"] > 0:
+                return it["ma20"], "MA20总防线"
+            return None, ""
+
+        def _classify(it):
+            """返回 (W7_STATUS, invalid_reason, d, def_buffer, line, line_nm)。d=距触发价比例。
+            口径与 W7 引擎 w7_exec_status 完全一致（20261001 裁定）：
+            · 失效位按各形态自身口径，MIDLINE_HOLD/回踩低点严格跌破，MA20 总防线留 MA20_BREAK_TOL 容差；
+            · 状态一律按「距触发价」纯距离分档，BREAKOUT_RETEST 现价低于触发价不因「在买点区」升级。"""
+            close, trig, st = it["close"], it["pressure"], it["state"]
+            line, line_nm = _struct_line(it)
+            ma20 = it.get("ma20")
+            dbuf = None
+            if isinstance(close, (int, float)) and close > 0 and isinstance(line, (int, float)) and line > 0:
+                dbuf = (close - line) / line
+            # INVALID：结构失效 —— 移出「今日执行状态」主体，不参与排名
+            if isinstance(close, (int, float)) and close > 0:
+                if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0 and close < it["mid_line"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破长阳半分位 {it['mid_line']:.2f}（结构失效）",
+                            None, dbuf, line, line_nm)
+                if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0 and close < it["retest_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破放量突破日低点 {it['retest_low']:.2f}（突破后跌回关键平台）",
+                            None, dbuf, line, line_nm)
+                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST 已按自身失效位判定
+                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST") \
+                        and isinstance(ma20, (int, float)) and ma20 > 0 and close < ma20 * (1 - MA20_BREAK_TOL):
+                    return ("INVALID", f"收盘 {close:.2f} 明确跌破 MA20 总防线 {ma20:.2f}（低于 {MA20_BREAK_TOL * 100:.0f}% 以上）",
+                            None, dbuf, line, line_nm)
+            if not isinstance(trig, (int, float)) or trig <= 0 or not isinstance(close, (int, float)):
+                return "PULLBACK_WATCH", "", None, dbuf, line, line_nm
+            d = (trig - close) / trig
+            volr = it.get("volr")
+            # EXECUTION：已站上触发价（纯距离口径；量能阀门统一执行，量比<1.2 或缺失=量能未确认）
+            if close >= trig:
+                if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
+                    return "EXECUTION_WAIT_VOLUME", "", d, dbuf, line, line_nm
+                return "EXECUTION", "", d, dbuf, line, line_nm
+            if 0 <= d <= NEAR_PCT:
+                return "TRIGGER_WATCH", "", d, dbuf, line, line_nm
+            return "PULLBACK_WATCH", "", d, dbuf, line, line_nm
+
+        rows, invalid_rows = [], []
+        for it in items:
+            status, reason, d, dbuf, line, line_nm = _classify(it)
+            rec = {"it": it, "status": status, "reason": reason, "d": d,
+                   "def_buffer": dbuf, "line": line, "line_nm": line_nm}
+            (invalid_rows if status == "INVALID" else rows).append(rec)
+
+        # 排序优先级：W7_STATUS → 距离触发位 → 量能/结构完整度 → IGE_ADJ → W7总分
+        _ORD = {"EXECUTION": 0, "EXECUTION_WAIT_VOLUME": 1, "TRIGGER_WATCH": 2, "PULLBACK_WATCH": 3}
+
+        def _sort_key(r):
+            so = _ORD[r["status"]]
+            it = r["it"]
+            ige = it["ige_adj"] if isinstance(it["ige_adj"], (int, float)) else -1e9
+            sc = it["score"] if isinstance(it["score"], (int, float)) else -1e9
+            volr = it["volr"] if isinstance(it["volr"], (int, float)) else -1e9
+            d = r["d"] if isinstance(r["d"], (int, float)) else 9.9
+            dbuf = r["def_buffer"] if isinstance(r["def_buffer"], (int, float)) else -1e9
+            if so <= 1:   # EXECUTION：量能确认程度优先；其次距触发价越近越不追高
+                return (so, -volr, abs(d), -ige, -sc)
+            if so == 2:   # TRIGGER_WATCH：距触发价最近优先，其次量能越接近阀门越好
+                return (so, d, -volr, -ige, -sc)
+            return (so, -dbuf, d, -ige, -sc)   # PULLBACK_WATCH：结构完整度优先
+
+        rows.sort(key=_sort_key)
+
+        exec_rows = [r for r in rows if r["status"] in ("EXECUTION", "EXECUTION_WAIT_VOLUME")]
+        trig_rows = [r for r in rows if r["status"] == "TRIGGER_WATCH"]
+        pull_rows = [r for r in rows if r["status"] == "PULLBACK_WATCH"]
+        n_exec = len(exec_rows)
+        n_wait = len([r for r in exec_rows if r["status"] == "EXECUTION_WAIT_VOLUME"])
+
+        def _struct_txt(r):
+            line, nm = r["line"], r["line_nm"]
+            if not isinstance(line, (int, float)):
+                return "结构防线（数据缺失，禁止自行估算）"
+            return "{}{}".format(_f2(line), f"（{nm}）" if nm else "")
+
+        def _price_line(it):
+            return "现价{}｜触发价{}｜MA20 {}｜量比{}｜IGE_ADJ {}｜W7总分{}".format(
+                _f2(it["close"]), _f2(it["pressure"]), _f2(it["ma20"]),
+                _f1(it["volr"]), _f1(it["ige_adj"]), _f1(it["score"]))
+
+        def _vol_short(it):
+            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）"""
+            volr = it["volr"]
+            if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
+                return "量能未确认"
+            if volr >= VOLR_HUGE:
+                return "量能已确认（但≥3倍巨量，别追高，等回踩）"
+            return "量能已确认"
+
         p = [
-            "【W7 二波·今日可操作（当日买点，收盘后过滤口径）】",
-            f"数据来源：W7 HVT-V3 二波引擎（{trade_date}，共{len(items)}只）| "
-            "当日买点五态：SECOND_WAVE=二波买点 / BREAKOUT_CONFIRM=放量突破确认 / RE_EXPANSION=重新扩张 / T0_CONFIRM=T0天量确认买点 / BREAKOUT_RETEST=放量突破后缩量回踩买点 | "
-            "操作口径：现价>触发价=已突破在上方可回踩低吸或持有；量比≥1.2 放量突破触发价=买点触发；"
-            "量比≥3 巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线",
-            "候选已按 IGE_ADJ 行业增长弹性高优先降序（高弹性行业在前），最终输出须严格保持此顺序，禁止重排；每条必须显示 IGE_ADJ 数值。",
+            "【W7 二波·今日执行状态（三状态分层 V1.0）】",
+            "候选{}只（其中结构失效{}只已移出）。状态只由「距触发价 + 结构是否失效 + 量能」决定，与总分无关；"
+            "执行状态优先于总分。".format(len(items), len(invalid_rows)),
+            "口径：EXECUTION=现价≥触发价且结构未坏；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
+            "禁止写成“已确认买入/立即买入”）；TRIGGER_WATCH=距触发≤3%；PULLBACK_WATCH=距触发>3%（需等待回踩/重新确认）。",
+            "规则：放量突破需量比≥1.2（不可绕过）；量比≥3 的巨量日不追高、只等回踩；"
+            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
+                MA20_BREAK_TOL * 100),
+            "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，末位 IGE_ADJ / W7总分）。",
+            "",
+            "【W7状态汇总】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
+                n_exec, n_exec - n_wait, n_wait, len(trig_rows), len(pull_rows)),
+            "今日真正进入执行区：{}只　今日等待触发：{}只　今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
+                n_exec, len(trig_rows), len(pull_rows), len(items)),
         ]
-        for k, it in enumerate(items, 1):
-            ige_s = f"{it['ige_adj']:.1f}" if isinstance(it["ige_adj"], (int, float)) else "-"
-            volr_s = f"{it['volr']:.1f}" if isinstance(it["volr"], (int, float)) else "-"
-            score_s = f"{it['score']:.1f}" if isinstance(it["score"], (int, float)) else "-"
-            p.append("{}. {}({}) IGE_ADJ:{} | {} 类型:{} 总分:{} | 现价{} 触发价{} MA20{} 量比×{}".format(
-                k, it["name"], it["code"], ige_s, it["state_cn"], it["type"], score_s,
-                _f2(it["close"]), _f2(it["pressure"]), _f2(it["ma20"]), volr_s))
+        if n_exec == 0:
+            p.append("今日 W7 无 EXECUTION 标的。结论：不强行交易。")
+
+        if exec_rows:
+            p += ["", "【EXECUTION｜已进入执行区】", ""]
+            for k, r in enumerate(exec_rows, 1):
+                it, status = r["it"], r["status"]
+                if status == "EXECUTION_WAIT_VOLUME":
+                    how = "做法：已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"
+                else:
+                    how = "做法：可按计划买入，单只不超过10%"
+                p.append("{}. **{}({})**（{}｜EXECUTION｜{}）".format(
+                    k, it["name"], it["code"], it["type"], _vol_short(it)))
+                p.append(_price_line(it))
+                p.append(how)
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if trig_rows:
+            p += ["", "【TRIGGER_WATCH｜等待触发】", ""]
+            for k, r in enumerate(trig_rows, 1):
+                it = r["it"]
+                p.append("{}. **{}({})**（{}｜等待触发｜距触发{:.2f}%）".format(
+                    k, it["name"], it["code"], it["type"], r["d"] * 100))
+                p.append(_price_line(it))
+                p.append("条件：放量站上{}（量比≥{:.1f}）才算触发".format(_f2(it["pressure"]), VOLR_MIN))
+                if it["state"] == "MIDLINE_HOLD":
+                    p.append("说明：W7-不破中位属于没突破的低吸形态，现价低于触发价是正常的")
+                else:
+                    p.append("现状：还没触发，不追价")
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if pull_rows:
+            p += ["", "【PULLBACK_WATCH｜等待回踩/重新确认】", ""]
+            for k, r in enumerate(pull_rows, 1):
+                it = r["it"]
+                p.append("{}. **{}({})**（{}｜等待回踩确认｜距触发{:.2f}%）".format(
+                    k, it["name"], it["code"], it["type"], r["d"] * 100))
+                p.append(_price_line(it))
+                p.append("现状：还在回踩、没重新站上关键位，先观察不动手")
+                p.append("条件：放量站上{}（量比≥{:.1f}）再考虑".format(_f2(it["pressure"]), VOLR_MIN))
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if invalid_rows:
+            p += ["", "【已失效｜不参与排名】"]
+            for r in invalid_rows:
+                it = r["it"]
+                p.append("- {}({})：{}".format(it["name"], it["code"], r["reason"] or "跌破结构防线"))
         return "\n".join(p)
 
     w7_today_action_text = _load_w7_today_action(TRADE_DATE)
     if w7_today_action_text:
-        print(f"[W7今日可操作] 已加载二波当日买点（{w7_today_action_text.count('IGE_ADJ:')}只）")
+        print(f"[W7今日执行状态] 已加载二波当日买点（{w7_today_action_text.count('｜W7总分')}只）"
+              f" | " + " / ".join(
+                  ln.strip() for ln in w7_today_action_text.splitlines()
+                  if ln.startswith(("EXECUTION：", "TRIGGER_WATCH：", "PULLBACK_WATCH："))
+              ))
 
     # =========================
     # HVT-BULL 第一梯队（读取天量牛股日报「★ 第一梯队重点解读」段；PRIMARY_BUY 最高置信买点层级，与 hvt_bull/daily.py 同步）
@@ -9324,10 +9684,6 @@ def run(target_date=None, simple_mode=False):
 **【今日主题分析情况】**
 {trade_advice_text}
 
-**【今日突破股池】**
-{hot_money_open_text}
-**【今日突破股池到此为止】**
-
 
 请分析并输出内容：
 开头以“这是大盘和个股推送微信消息”开头
@@ -9365,97 +9721,41 @@ def run(target_date=None, simple_mode=False):
 4、**【中长线股票池】**（HVT-BULL 引擎当日最高置信买点层级·天量牛股：历史天量+缩量锁筹+二次突破+RS20≥70 四要素同时满足且无硬否决；FE≥70 为A级=四要素×Future Expansion双重确认，B级=结构达标但扩张确认稍弱；宁缺毋滥，数量稀少为常态）：
 {hvt_first_echelon_text}
 （【数据边界】本段只分析上方"【HVT-BULL 第一梯队】"标记中列出的股票；若显示"今日无第一梯队"，必须明确提示"今日无第一梯队，不强行交易"，禁止用其它股池股票填补。）
-【输出要求-第4段】按原列表顺序逐只输出：名称(代码)[A级/B级] + 一句话买入逻辑（锁筹+二次突破分层+扩张空间）+ 触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），最后附一句证伪纪律（放量跌破T0_High且2日不收复→结构性止损离场）；B级个股必须加注"扩张确认稍弱，仓位从低"。
+【输出要求-第4段】按原列表顺序逐只输出，每只控制在一屏内。**必须用散户看得懂的普通话讲，不许堆砌行业黑话/英文缩略语**（如"锁筹""二次突破分层""扩张空间""FE""RS20"等一律不许直接出现；确实非用不可时，必须紧跟括号用一句大白话解释）。每只股票固定三行：
+① 名称(代码)[A级/B级]
+② **为什么值得看**：一句大白话讲清主力在干什么、现在处在什么阶段（例："前期放历史巨量拉升，之后一路缩量横盘不跌，说明筹码被拿住了、没人急着跑"、"刚放量冲破前期高点，属于二次启动第一天"），禁止只罗列术语
+③ **怎么买卖**：触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），并翻译成动作——"跌到X.XX元就认错走人"、"到X.XX元先落袋一部分"
+最后整段末尾附一句白话纪律：**放量跌破前期高点(T0_High)、两天都收不回来，就别扛了，直接止损离场**；B级个股必须加注"信号偏弱，仓位从低"。
 
 4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY，按执行分取 top≤3、已剔除 R1/R2 低胜率形态；**本段只含 next_day_action=BUY——无需再确认、次日可直接执行**，BUY_ON_CONFIRM 已排除；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
 {hvt_te_buy_text}
 （【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日无可直接执行的买点，不强行交易"，禁止用其它股池股票填补。）
 【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(BUY) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；这些均为可直接执行的信号，但仍须按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
 
-5、**【今日突破股池分析】**
-（排名分 = 原始整合评分主导，叠加突破质量门控与T+5失败概率修正；排名分为相对排序分，可能大于100，仅用于排序，不是0-100制评分。
- 修正口径说明：已突破(有效突破)=已定价不奖励并小幅降权；即将突破 与「贴阻力位(突破前夜)」升权；远离阻力位降权；假突破重罚。
- 失败概率(T+5) = T+5突破有效性风险模型的校准概率，口径为「突破后连续2个交易日守住关键位（前20日最高价下方1.5%）= 突破有效」，
- 由位置状态（有效突破初段/已延伸/突破未确认/贴位未突破/中距未突破/远距未突破/突破后失守）叠加量比、波动率与距MA20偏离校准得出；
- 数值越低越好（<45%为低风险，≥65%为高风险）。数据块的「T+5状态」即该股当前所处位置状态，须与失败概率一起解读。
- 因此排名分高≠已上涨，而是"更靠近可介入的突破前夜"，请勿按涨跌幅高低重新解读排序。）
-（【最高优先级约束-严格数据边界】本段落只取"**【今日突破股池】**"和"**【今日突破股池到此为止】**"两个标记之间的数据中股票。
- 严禁从以下任何其它数据区读取股票进入本段分析：
- - "📊 ETF操作提示"区及其下方的"ETF Alpha Ranking"、"TOP3 推荐买入"、"TOP10 排名"成份股
- - "📊 中线股池"区的B浪低点信号股
- - "🟢逢低买入"行下的个股
- 如突破股池数据区为空，直接提示"今日无突破股池"，不要用其它股池的股票填补。
- 本段最多分析前10名，必须严格按数据块「排名分」从高到低排序（数据块已按排名分排好序，照原顺序输出即可），不得自行增减股票）：  
-**【重要】按数据块「排名分」从高到低排序分析前10名个股，每个股票内容力求精简：**    
-- **【必须】严格用以下格式和要求显示，不要自行添加任何内容，力求精简：**
-【第1名】**股票名** (代码)
-【第2名】**股票名** (代码)
-【第3名】**股票名** (代码)
-依此往后
-- 对每只股票进行详细分析，包括：
-- 排名分（含原始分与修正明细，直接引用数据块原文，禁止改写）、整合评分、失败概率(T+5)与T+5状态（均直接引用数据块原文，禁止改写）
-- 止损 | 操作建议（引用上方数据区真实价位，数据不足则省略，禁止编造具体止损价）
-- 基本面因子摘要（利润增速/ROE/半年度预告/大宗交易）
-- 所属主题和该主题的状态，以及非一日游阶段（含连续确认天数）和龙头序列
-主题地位：【必须】直接输出规则判定结果，格式如下：
-"主题与地位: 所属主题为XXX（情绪+趋势共振/情绪主线/趋势主线/轮动主题/非主线·质量XX）"
-例如："主题与地位: 所属主题为小金属（情绪+趋势共振·质量83）"
-例如："主题与地位: 所属主题为创新药（情绪+趋势共振·质量89）"
-例如："主题与地位: 所属主题为工业金属（趋势主线·质量74）"
-例如："主题与地位: 所属主题为新能源车（趋势主线·质量58）"
-【YRI缺失-禁止补注】如个股上方数据未提供该股YRI（无"YRI: 总分XX"行），则"主题与地位"句到此为止，严禁补写"YRI未提供""YRI数据未提供""无法判定角色""无法判定"等任何说明文字，也不得编造YRI分数或强行判定龙头/中军角色。
-- 基本面Alpha评分（0-100分，越高越好）及中长线解读：
-【评分标准】
-- 80+分：强烈买入（中线目标收益20%+），核心持仓可长期持有
-- 70-79分：买入（中线目标收益15%+），优质标的中长线持有
-- 50-59分：中性（中线收益5-10%），收息/观望为主
-- <40分：减仓/卖出，长线回避
-【输出格式】Alpha评分=X分，信号=XXX | 中线建议：XXX | 长线建议：XXX
-- <span style="color:red;">【重要提醒】如果主题情绪分持续多天走高，且趋势分也持续走高，说明主题有风险，<span style="color:red;">**突出建议勿追高！**</span></span>
-- 如遇个股重大基本面风险，请在分析中标注"【警告】有重大风险"，但仍保留在列表中并说明理由。技术性风险无须提示和输出。
-其它要求：
-A直接过滤掉有基本面重大风险的个股：
-- 近三个月内有定增预案
-- 有大额减持公告
-- 未来半年有大额解禁压力
-- 有重大诉讼风险
-- 有重大财务风险（如连续亏损、审计异常等）
-- 有其他重大利空消息
-B对于无重大风险的前30名个股，保持原有的排名分顺序，不要重新筛选和排序
-C【最高优先级】所有技术面分析中的价格（MA均线价格、目标价、买点、止损位、支撑位、阻力位、现价、高点等）必须严格使用上方"【技术价位】"和"【参考位】"中提供的EXACT真实数据，禁止凭空编造任何价格数字或百分比！此项约束优先级高于其他所有分析要求。
-C-2【高点定义】技术分析中的"前高/压力位"必须严格基于"【参考位-长线】"中的120/250/全历史高点价格，不能基于当前价格或短线高点随意外推。
-C-3【主题地位判断】必须严格按照以下数字规则判断，YRI画像中的文字描述（如"历史级大妖/龙头/市场关注"等）仅供参考，不具有任何权重，绝不能作为突破以下数字阈线的依据：
-- 龙头：YRI历史总分≥70 且 日均成交额≥5亿 且 最大连板≥3板（三者必须同时满足，缺一不可；核心是有历史连板基因，才是真正的主题龙头）
-- 中军：YRI历史总分≥55 且 日均成交额≥5亿 且 最大连板≤2板（满足此三条的是稳定中军，即使YRI标签写了"龙头/历史大妖"也是中军）
-- 补涨弹性：总分30-55，或 成交额<5亿，或 最大连板<2板（满足任一即定为此类）
-- 后排跟风：总分<30 或 成交额<5000万
-- 【绝对禁止】无论YRI画像如何描述，只要最大连板<3板，绝不能认定为龙头；最大连板≥3板但成交额<5亿，也绝不能认定为龙头
-- 【输出格式】主题地位：XXX（如：龙头/中军/补涨弹性/后排跟风），必须严格输出这四个分类之一
-- 【YRI缺失处理】若上方个股数据中无"YRI: 总分XX"行（未提供YRI数据），则该股不得判定为"龙头/中军"，主题地位按"补涨弹性"或"后排跟风"输出（结合成交额/连板描述），且**严禁**输出"YRI未提供""无法判定角色"等任何注解文字
-- 【非一日游信息】如个股数据中包含"非一日游:XXX(连续X天)"和"龙头:XXX→XXX→XXX"字段，请结合这些信息判断主题的可持续性：
-* 连续≥3天的"中期延续"主题更有持续性，龙头切换代表资金在板块内轮动挖掘
-* 连续1-2天的"启动确认"主题需观察是否持续；首次进入确认线往往是最佳买点
-D【价格错误检测】分析完成后，请核对：如果某只股票上方标注"现价=XXX元 MA20=YYY元"，而你的分析中写成了不同的价格数字，则你的分析错误，请立即修正。
-E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"暴跌"等无依据的形容词。每只股票的"今日涨幅"在"整合评分精选量化股票池"区块中已明确标注为精确数值（如"今日涨幅: 5.32%"），必须直接引用该数值。严禁在未引用真实数据的情况下编造涨跌描述。
-
-6、**【V7 严格拉升回调买点】**（仅适用于主板大市值、20日内放量且至少两涨停、回撤后当日低开阳线承接的窄形态策略）：
+5、**【V7 严格拉升回调买点】**（仅适用于主板大市值、20日内放量且至少两涨停、回撤后当日低开阳线承接的窄形态策略）：
 {rally_pullback_v7_text}
 （【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票；若该段落为空则提示"今日无V7严格拉升回调买点信号"。该策略不是当日全市场强势股清单。）
-【输出要求-第6段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
+【输出要求-第5段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
 
-7、**【W7 二波·今日可操作榜】**（W7 HVT-V3 引擎收盘后过滤输出，仅列"当日买点"五态：二波买点/放量突破确认/重新扩张/T0天量确认/放量突破后缩量回踩买点；每日过滤后通常个位数，宁缺毋滥）：
+6、**【W7 二波·今日执行状态】**（W7 HVT-V3 引擎收盘后输出。已按「实际交易距离 + 触发条件 + 结构是否失效」做**输出层三状态分层**：EXECUTION=已进入执行区 / EXECUTION_WAIT_VOLUME=已进入价格执行区但量能未确认 / TRIGGER_WATCH=距触发≤3%只差一个放量确认 / PULLBACK_WATCH=仍需等待回踩或重新确认。此分层只改展示与状态标签，不改选股、不改评分、不改量能口径；结构失效的候选已移出操作榜）：
 {w7_today_action_text}
-（【数据边界】本段只分析上方"【W7 二波·今日可操作（当日买点，收盘后过滤口径）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
-【输出要求-第7段】严格保持数据块先后顺序逐只输出：名称(代码) + 当日买点类型 + 总分 + IGE_ADJ + 现价/触发价/MA20/量比直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句操作口径（现价>触发价=已突破回踩不破可持有或低吸；量比≥1.2放量突破触发价=买点触发；量比≥3巨量日不追只等回踩；收盘跌破触发价=失效无条件离场；MA20=总防线）。禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
+（【数据边界】本段只分析上方"【W7 二波·今日执行状态（输出层三状态分层 V1.0）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第6段】严格照抄数据块给出的状态分类与全部数值（状态、现价、触发价、距触发%、MA20、量比、IGE_ADJ、W7总分、结构防线一律不得改动、重算或四舍五入错位），并遵守：
+① 报告最开头（在"1、大盘分析"之前）先单独输出【W7 状态汇总】小节，逐行给出：EXECUTION 只数、TRIGGER_WATCH 只数、PULLBACK_WATCH 只数、今日真正进入执行区只数、今日等待触发只数、今日等待回踩/确认只数，并注明"真正可以执行的股票 ≠ W7 候选总数"；
+② 正文按【EXECUTION｜已进入执行区】→【TRIGGER_WATCH｜等待触发】→【PULLBACK_WATCH｜等待回踩/重新确认】三段输出，段内顺序严格照数据块，禁止跨段重排；
+③ 格式极简、面向散户：**每只股票独立成块，固定 4 行，个股之间空一行**——①加粗"序号. 名称(代码)（类型｜状态）"；②一行价格数据（现价/触发价/MA20/量比/IGE_ADJ，照抄数据块）；③一句大白话做法或条件（EXECUTION 写"可按计划买入，单只不超过10%"；EXECUTION_WAIT_VOLUME 写"已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"；TRIGGER_WATCH 写"还没触发，不追价，放量站上XXX才算触发"；PULLBACK_WATCH 写"还在回踩，先观察不动手"）；④"防线：收盘跌破XXX 就出局"。价格保留两位小数，不堆术语、不加多余解释；
+④ 执行状态优先于总分：禁止因为 W7 总分高就把 PULLBACK_WATCH / TRIGGER_WATCH 写成"已进入执行区"；禁止因为 IGE_ADJ 高就升级状态；禁止把已经跌回关键位的票仍标为 EXECUTION；
+⑤ 量能阀门不可绕过：量比<1.2 一律按数据块标为"量能未确认（EXECUTION_WAIT_VOLUME）"，禁止写成"已确认买入""立即买入"，禁止下调量比阈值；
+⑥ 若 EXECUTION（含量能未确认）为 0，必须明确写出"今日 W7 无 EXECUTION 标的。结论：不强行交易。"，禁止人为制造买入信号；
+⑦ 数据块末尾如给出【已失效｜不参与排名】，照抄该行，不得给它排名；禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
 
 ------------------
 以上全局格式要求：
-- **Top10个股分析中，每只股票单独分段，用【股票名+代码】作为小标题，<span style="color:red;">加黑加粗显示</span>**
 - 股票分析另起一行，分点说明
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 7 段 W7 二波·今日可操作榜）
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态及其【W7 状态汇总】）
 
 """
     if not simple_mode:
@@ -9512,6 +9812,10 @@ E【禁止编造当日涨跌】绝对禁止说某股票"涨停"、"大涨"、"�
                                     )
         except Exception as e:
             print(f"⚠️ HTML报告生成失败: {e}")
+
+        # 报告 HTML 生成后自动同步到服务器（供网页「复盘报告」页签展示）
+        if os.path.exists(os.path.join(REPORT_DIR, f"Final_Self_{TRADE_DATE}.html")):
+            upload_report_html()
     else:
         print(f"\n{'='*60}")
         print(f"[简易模式] 跳过AI分析和微信发送")

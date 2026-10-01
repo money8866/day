@@ -1,0 +1,16 @@
+﻿[    0.9s] grid loaded from cache  S=5816 N=2120
+[    3.2s] indicators loaded from cache  11 ind / 11 px
+[    3.4s] primary events 112014  (20190111 .. 20260924)
+[    5.9s] section 8 path table built (15 columns)
+[   10.7s] section 9 states: {np.str_('A_BULL_CONTINUATION'): 4476, np.str_('B_DIGESTION'): 12336, np.str_('C_RE_EXPANSION'): 21405, np.str_('D_FAIL'): 73797}
+[   10.7s] unclassified (inherited) days: 12836 over 6720840 event-days = 0.1910%
+[   10.7s] events whose FIRST post-event session was unassigned: 90
+[   22.3s] section 11 grid stored: 48 settings x 112014 events
+[   22.5s] section 10 groups (reference setting): {np.str_('G_CONTRACT_REEXPAND'): 11296, np.str_('G_OTHER'): 86650, np.str_('G_SUSTAINED_HIGH_VOLUME'): 11301, np.str_('G_VOLUME_UP_DECLINE'): 2767}
+[   22.5s] section 10 groups (any setting): {np.str_('G_CONTRACT_REEXPAND'): 21404, np.str_('G_OTHER'): 87692, np.str_('G_SUSTAINED_HIGH_VOLUME'): 151, np.str_('G_VOLUME_UP_DECLINE'): 2767}
+[   23.9s] path event table 112014 x 137 -> hve_path_events.parquet
+[   27.3s] causal K=5: {np.str_('A_BULL_CONTINUATION'): 68601, np.str_('B_DIGESTION'): 19950, np.str_('C_RE_EXPANSION'): 4265, np.str_('D_FAIL'): 19198} | contracted 96204
+[   29.2s] causal K=10: {np.str_('A_BULL_CONTINUATION'): 58136, np.str_('B_DIGESTION'): 15464, np.str_('C_RE_EXPANSION'): 5509, np.str_('D_FAIL'): 32905} | contracted 107064
+[   32.0s] causal K=20: {np.str_('A_BULL_CONTINUATION'): 32263, np.str_('B_DIGESTION'): 23540, np.str_('C_RE_EXPANSION'): 7439, np.str_('D_FAIL'): 48772} | contracted 110319
+[   32.1s] rows written 95 ; sections ['CAUSAL_CT', 'CAUSAL_STATE', 'CONTRACTION', 'GROUP', 'GROUP_ANYCT', 'HORIZON', 'REFERENCE', 'STATE']
+EXIT=0

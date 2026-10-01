@@ -8,9 +8,12 @@
   ① 回调：近 pb_days 日内最高价（不含当日）→ 昨收 的回落幅度 ∈ [pb_min, pb_max]，默认 3%~15%
   ② 缩量：近 shrink_win 日均量 ÷ 前 shrink_base 日均量 ≤ shrink_max，默认 5日/20日 ≤ 0.8
   ③ 放量：当日量 ÷ 前 vol_win 日均量 ≥ volr_min，默认 ×5日 ≥ 1.5（首根放量）
+  ③b量能不过大：当日量 ÷ 前 vol20_base 日均量 ≤ vol20r_max，默认 ≤1.5（防爆量派发）
   ④ 中阳：涨幅 ∈ [signal_min, signal_max]（默认 3%~5%）、收>开、有振幅（非一字）
   ⑤ 长下影：min(开,收) − 最低，相对昨收 的占比；≥1% 起加分、≥2% 更强（非硬条件）
   ⑥ 第一根：回调窗口内不得存在更早的中阳线（first_lookback）
+  ⑦ 剔除一路下跌途中的反弹：中期均线(MA120)近 tr_long_win 日仍下行 且 短期均线(MA60)
+     近 tr_short_win 日已明显抬升（> tr_short_max%），即下跌途中的反弹已走完 → 剔除
 
 评分 0~100（各子项甜区均由「口径内全样本」分档实测标定，详见 score_row）：
   放量 30（1.5~2.0× 最优，2.0~3.0× 递减） + 长下影 25（单调递增，1.5% 起满分）
@@ -40,9 +43,20 @@ DEFAULT_PARAMS = {
     "vol_win": 5,
     "volr_min": 1.5,        # 1.5~2.0 档 fwd20 +2.85% 最优；降到 1.2 掉到 +2.38%
     "volr_max": 3.0,        # 去掉该上限后 fwd20 由 +2.74% 降到 +2.66%（爆量派发）
+    # ── ③b 量能不过大（当日量能相对中期均量不能过大）──
+    "vol20_base": 20,       # 中期量能基准窗口（当日量 ÷ 前 N 日均量）
+    "vol20r_max": 1.5,      # 上限 1.5：>1.5 档 f60 仅 +5.71%（1.2~1.5 档 +7.92%），当日爆量多为派发
     # ── ⑤ 长下影（加分项，非硬门槛；评分单调递增，1.5% 起满分）──
     # ── ⑥ 第一根 ──
     "first_lookback": 10,   # 窗口内不得有更早中阳；0 = 关闭该条件
+    # ── ⑦ 剔除「一路下跌途中的反弹已走完」──
+    "tr_ma_long": 120,      # 中期均线（半年线）
+    "tr_ma_short": 60,      # 短期均线
+    "tr_long_win": 60,      # 中期均线斜率窗口（日）
+    "tr_short_win": 20,     # 短期均线斜率窗口（日）
+    "tr_short_max": 2.0,    # 短期均线斜率上限 %：MA120 仍下行 + MA60 20日斜率>2% → 剔除
+                            # （实测斜率 2% 以上档 f20 -1.65%/37% f60 -2.51%/36%，
+                            #   保留组 f20 +3.07%/52% f60 +7.65%/53%；0 = 关闭该条件）
     # ── 位置 / 其他 ──
     "ma20_ratio_max": 1.05,  # 去掉该上限后 fwd20 +2.72%（略降）；>1.03 档 fwd20 仅 +1.73%
     "min_bars": 60,
@@ -54,7 +68,8 @@ DEFAULT_PARAMS = {
 
 # 回测落盘时保留的特征列（供离线参数网格重筛，无需重跑扫描）
 FEATURE_COLS = [
-    "fox_pct", "fox_gap", "fox_pb", "fox_shrink", "fox_volr", "fox_shadow",
+    "fox_pct", "fox_gap", "fox_pb", "fox_shrink", "fox_volr", "fox_vol20r", "fox_shadow",
+    "fox_sl120_60", "fox_sl60_20",
     "fox_pos", "fox_ma20_ratio", "fox_prior_cnt", "fox_sig",
 ]
 
@@ -117,6 +132,13 @@ def build_features(df, params=None):
     v_ref = vol.shift(1).rolling(int(p["vol_win"]), min_periods=int(p["vol_win"])).mean()
     out["fox_volr"] = vol / v_ref.replace(0.0, np.nan)
 
+    # ③b 量能不过大：当日量 ÷ 前 vol20_base 日均量
+    # 基准窗口前移 vol_win 日, 避开回调期缩量对基准的稀释(与 fox_shrink 的 20 日基准同源;
+    # 当 vol_win == shrink_win 时恒有 fox_vol20r == fox_volr × fox_shrink)
+    v_base20 = vol.shift(1 + int(p["vol_win"])).rolling(
+        int(p["vol20_base"]), min_periods=int(p["vol20_base"])).mean()
+    out["fox_vol20r"] = vol / v_base20.replace(0.0, np.nan)
+
     # ⑤ 长下影：min(开,收) − 最低，相对昨收
     body_low = np.minimum(open_, close)
     out["fox_shadow"] = ((body_low - low) / close.shift(1).replace(0.0, np.nan)) * 100.0
@@ -130,6 +152,12 @@ def build_features(df, params=None):
     ma20 = adjc.rolling(20, min_periods=20).mean()
     out["fox_ma20"] = ma20
     out["fox_ma20_ratio"] = close / (ma20 / adj).replace(0.0, np.nan)
+
+    # ⑦ 趋势斜率：中期均线(MA120)近 tr_long_win 日 / 短期均线(MA60)近 tr_short_win 日
+    ma_s = adjc.rolling(int(p["tr_ma_short"]), min_periods=int(p["tr_ma_short"])).mean()
+    ma_l = adjc.rolling(int(p["tr_ma_long"]), min_periods=int(p["tr_ma_long"])).mean()
+    out["fox_sl120_60"] = (ma_l / ma_l.shift(int(p["tr_long_win"])).replace(0.0, np.nan) - 1.0) * 100.0
+    out["fox_sl60_20"] = (ma_s / ma_s.shift(int(p["tr_short_win"])).replace(0.0, np.nan) - 1.0) * 100.0
 
     # ⑥ 第一根：窗口内不得存在更早的中阳
     lb = int(p["first_lookback"])
@@ -152,8 +180,13 @@ def build_features(df, params=None):
         sig &= (out["fox_shrink"] >= float(p["shrink_min"]))
     if float(p.get("volr_max") or 0.0) > 0:
         sig &= (out["fox_volr"] <= float(p["volr_max"]))
+    if float(p.get("vol20r_max") or 0.0) > 0:
+        sig &= (out["fox_vol20r"] <= float(p["vol20r_max"]))
     if float(p.get("ma20_ratio_max") or 0.0) > 0:
         sig &= (out["fox_ma20_ratio"] <= float(p["ma20_ratio_max"]))
+    if float(p.get("tr_short_max") or 0.0) > 0:
+        bad_trend = (out["fox_sl120_60"] < 0) & (out["fox_sl60_20"] > float(p["tr_short_max"]))
+        sig &= ~bad_trend.fillna(False)
     if lb > 0:
         sig &= (out["fox_prior_cnt"] <= 0)
     if p.get("require_ma20"):
@@ -235,8 +268,11 @@ def _row_signal(feat, j, p):
     pb = float(r.get("fox_pb") or 0.0)
     shrink = float(r.get("fox_shrink") or 0.0)
     volr = float(r.get("fox_volr") or 0.0)
+    vol20r = float(r.get("fox_vol20r") or 0.0)
     shadow = float(r.get("fox_shadow") or 0.0)
     gap = float(r.get("fox_gap") or 0.0)
+    sl120_60 = float(r.get("fox_sl120_60") or 0.0)
+    sl60_20 = float(r.get("fox_sl60_20") or 0.0)
     sc = score_row(r, p)
 
     # 峰位（回调窗口内最高价所在日）
@@ -258,6 +294,7 @@ def _row_signal(feat, j, p):
         "close": round(close, 2),
         "pct_chg": round(pct, 2),
         "volr": round(volr, 2),
+        "vol20r": round(vol20r, 2),
         "pb_depth": round(pb, 2),
         "shrink": round(shrink, 3),
         "shadow": round(shadow, 2),
@@ -265,6 +302,8 @@ def _row_signal(feat, j, p):
         "ma20": round(float(r.get("fox_ma20") or 0.0), 2),
         "ma20_ratio": round(float(r.get("fox_ma20_ratio") or 0.0), 3),
         "gap": round(gap, 2),
+        "sl120_60": round(sl120_60, 1),
+        "sl60_20": round(sl60_20, 1),
         "prior_cnt": int(r.get("fox_prior_cnt") or 0),
         "peak_date": peak_date,
         "peak_close": peak_close,
@@ -274,7 +313,8 @@ def _row_signal(feat, j, p):
         "tp1": round(close * 1.05, 2),
         "tp2": round(close * 1.10, 2),
         "reason": (f"缩量回调{pb:.1f}%(量能×{shrink:.2f}) → 首根放量中阳{pct:+.1f}%"
-                   f"(量×{volr:.2f}) 下影{shadow:.1f}% 收盘/MA20={float(r.get('fox_ma20_ratio') or 0.0):.2f}"),
+                   f"(量×{volr:.2f},中量×{vol20r:.2f}) 下影{shadow:.1f}% 收盘/MA20={float(r.get('fox_ma20_ratio') or 0.0):.2f}"
+                   f" 趋势[MA120近60日{sl120_60:+.1f}%/MA60近20日{sl60_20:+.1f}%]"),
     }
 
 
@@ -300,11 +340,13 @@ def scan_fox_v4(df, params=None, signal_only=True):
 def compute_fox_v4(df, params=None):
     """对 df 最后一根 K 线做形态判定（线上实时用）；命中返回 dict，否则 None。
 
-    只需最近约 90 根 K 线即可完成判定（窗口 10 + 缩量基准 25 + MA20 20）。
+    只需最近约 185 根 K 线即可完成判定（窗口 10 + 缩量基准 25 + MA20 20 + 趋势 MA120+60）。
     """
     p = merged(params)
     need = max(int(p["min_bars"]), int(p["pb_days"]) + int(p["shrink_base"])
-               + int(p["shrink_win"]) + 25)
+               + int(p["shrink_win"]) + 25,
+               int(p.get("tr_ma_long") or 0) + int(p.get("tr_long_win") or 0) + 5,
+               int(p.get("tr_ma_short") or 0) + int(p.get("tr_short_win") or 0) + 5)
     if df is None or len(df) < int(p["min_bars"]):
         return None
     feat = build_features(df.tail(need).reset_index(drop=True), p)
@@ -317,7 +359,7 @@ def compute_fox_v4(df, params=None):
 # 输出格式（与控制台/微信解耦，供 scan_fox_v4_live 直接调用）
 # ─────────────────────────────────────────────
 HEADER = (f"{'排名':<3} {'代码':<11} {'名称':<9} {'主题':<10} {'今收':>7} {'涨幅':>6} "
-          f"{'量比':>5} {'回调':>6} {'缩量':>5} {'下影':>5} {'评分':>5} {'分档':<6} "
+          f"{'量比':>5} {'中量':>5} {'回调':>6} {'缩量':>5} {'下影':>5} {'评分':>5} {'分档':<6} "
           f"{'止损':>7} {'目标1':>7}")
 
 
@@ -325,17 +367,18 @@ def format_console(signals, ts="", pre=False):
     if not signals:
         return ""
     tag = "盘中预检" if pre else "定稿"
-    lines = ["", "=" * 118,
+    lines = ["", "=" * 124,
              f"🦊 「猎狐V4」缩量回调→首根放量中阳·{tag} [{ts}] 命中{len(signals)}只"
              + ("（实时价近似收盘，尾盘回落可能作废，以 14:50 定稿为准）" if pre else ""),
-             HEADER, "-" * 118]
+             HEADER, "-" * 124]
     for i, s in enumerate(signals[:15], 1):
         lines.append(
             f"{i:<3} {s['code']:<11} {s['name'][:8]:<9} {(s.get('theme') or '')[:9]:<10} "
             f"{s['close']:>7.2f} {s['pct_chg']:>+5.1f}% {s['volr']:>5.2f} "
+            f"{s.get('vol20r', 0.0):>5.2f} "
             f"{s['pb_depth']:>5.1f}% {s['shrink']:>5.2f} {s['shadow']:>4.1f}% "
             f"{s['score']:>5.1f} {s['tier']:<6} {s['stop']:>7.2f} {s['tp1']:>7.2f}")
-    lines.append("=" * 118)
+    lines.append("=" * 124)
     return "\n".join(lines)
 
 
@@ -348,6 +391,7 @@ def format_wechat_lines(signals, pre=False):
     for s in signals[:5]:
         out.append(f"● [{s['tier']}]{s['name']}({s['code']}) [{s.get('theme', '')}] 评分{s['score']:.0f}")
         out.append(f"  今收{s['close']:.2f}({s['pct_chg']:+.1f}%) 量×{s['volr']:.2f} "
-                   f"回调{s['pb_depth']:.1f}% 缩量×{s['shrink']:.2f} 下影{s['shadow']:.1f}%")
+                   f"中量×{s.get('vol20r', 0.0):.2f} 回调{s['pb_depth']:.1f}% "
+                   f"缩量×{s['shrink']:.2f} 下影{s['shadow']:.1f}%")
         out.append(f"  止损{s['stop']:.2f} 目标1 {s['tp1']:.2f} 目标2 {s['tp2']:.2f}")
     return out

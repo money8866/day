@@ -102,6 +102,8 @@ AUDIT_SAMPLE = 5                                 # §三十二 每个审计主�
 # §三十三 历史污染股：只报告 + 只提示人工确认，绝不自动改写配置
 AUDIT_STOCKS = {'600186.SH': '莲花控股', '002851.SZ': '麦格米特',
                 '300033.SZ': '同花顺', '300059.SZ': '东方财富'}
+# 已人工裁定但核验未完成（保留在主题内、层级不变），审计行附提示，避免被读成「已确认」
+PENDING_REVIEW = {('002851.SZ', '汽车'): '待核验（人工裁定 20260930：暂时保留，电控占比未核）'}
 
 # ── §3/§19/§20/§21 V2.0 成员池与排名引擎（AI 五主题四级成员体系）──
 N_CORE_MIN = 3                   # §3  CORE ≥ 3 → 允许进入主题排名（取代旧「N ≥ 5」硬门槛）
@@ -1069,6 +1071,9 @@ def build_report(trade_date, theme_members, scored, universe, missing_themes,
                 mb = ('主营命中 ' + ev[0]) if ev else '主营文本未见主题关键词'
             conflict = v['layer'] in ('CORE', 'NORMAL') and mb == '主营文本未见主题关键词'
             adv = '建议人工确认（人工名单与主营证据不一致）' if conflict else mapping_advice(v)
+            note = PENDING_REVIEW.get((code, t))
+            if note:
+                adv = f'{adv}｜{note}'
             L.append(f'  {name} {code}｜{t}｜{v["layer"]}｜{v["why"]}｜{mb}｜{adv}')
     L.append('')
 

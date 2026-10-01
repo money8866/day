@@ -1,0 +1,22 @@
+﻿[    0.6s] grid loaded from cache  S=5816 N=2120
+[    2.7s] indicators loaded from cache  11 ind / 11 px
+[    3.2s] primary events 112014  (breakout search window 60 sessions)
+[   12.6s] W1_DIGESTION     reached 104594 / 112014  (93.38%)
+[   12.6s] W2_CONTRACTION   reached  81941 / 112014  (73.15%)
+[   12.6s] W3_STRUCTURE     reached  46344 / 112014  (41.37%)
+[   12.6s] contraction at the pre-registered setting (MA5_over_MA20<=0.6 for 3): 88454 events
+[   12.6s] B20      breakout  14706 / 112014  (13.13%)  median wait 39
+[   12.7s] B40      breakout  10312 / 112014  (9.21%)  median wait 38
+[   12.7s] B_HVE    breakout   9835 / 112014  (8.78%)  median wait 37
+[   12.8s] B_LOCAL  breakout  21145 / 112014  (18.88%)  median wait 36
+[   14.7s] B20      breakout-day h10 mean -0.0018
+[   15.1s] B40      breakout-day h10 mean -0.0031
+[   15.4s] B_HVE    breakout-day h10 mean -0.0030
+[   15.8s] B_LOCAL  breakout-day h10 mean +0.0004
+[   16.0s] 04 rows written 36 ; sections ['BREAKOUT_DEF', 'CHAIN', 'REFERENCE']
+[   18.7s] B20      pullback found  11710 / 14706  (79.63%)
+[   20.9s] B40      pullback found   8006 / 10312  (77.64%)
+[   23.0s] B_HVE    pullback found   7609 / 9835  (77.37%)
+[   25.0s] B_LOCAL  pullback found  16948 / 21145  (80.15%)
+[   25.1s] 05 rows written 96 ; sections ['ENTRY']
+EXIT=0

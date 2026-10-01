@@ -1,0 +1,329 @@
+{
+ "research_id": "H-TAIL-MIDBAR-01",
+ "version": "1.0",
+ "generated_at": "2026-10-01 08:58:08",
+ "spec_sha256": "396329014C3233DC7BB31AA0B981CD577E140ED31D57E880AC3D56695BB4914D",
+ "data_mode": "DAILY_PROXY (no minute data in cache)",
+ "declaration": "本研究验证的是「收盘中阳线 → 次日收益」，而不是严格意义上的「尾盘惯性」。日线数据无法还原 14:30–14:57 的真实尾盘时点，本项目**不做**这种伪装。",
+ "primary_arm": {
+  "definition": "First(10) & MApresent & V5, thr=3%",
+  "entry": "close[t]",
+  "exit": "close[t+1]",
+  "n": 49052,
+  "mean_gross": 0.002918168936420846,
+  "mean_net30": -8.183106357915578e-05,
+  "median_net30": -0.004579374074935913,
+  "win_rate_net30": 0.4177811302291446,
+  "pf30": 0.9933841915580557,
+  "std": 0.03562708132951773,
+  "p10": -0.03242437839508057,
+  "p25": -0.016954973340034485,
+  "p75": 0.015772908926010132,
+  "p90": 0.042509734630584745,
+  "max": 0.200750470161438,
+  "min": -0.20000004768371582,
+  "boot_mean": -8.183106357915578e-05,
+  "boot_lo": -0.0024678102489903565,
+  "boot_hi": 0.0034497442089258343,
+  "boot_p_le0": 0.572
+ },
+ "primary_arm_second_execution": {
+  "entry": "open[t+1]",
+  "exit": "close[t+1]",
+  "n": 49052,
+  "mean_net30": -0.0020713424921713465,
+  "win_rate_net30": 0.41894316235831364,
+  "pf30": 0.8298110309026765
+ },
+ "costs_bp": [
+  0,
+  10,
+  20,
+  30,
+  50
+ ],
+ "primary_cost_bp": 30,
+ "net30_ladder_primary": {
+  "net_0bp": 0.002918168936420846,
+  "net_10bp": 0.001918168936420845,
+  "net_20bp": 0.0009181689364208443,
+  "net_30bp": -8.183106357915578e-05,
+  "net_50bp": -0.0020818310635791555
+ },
+ "tail": {
+  "full_net30": -8.183106357915578e-05,
+  "leave_top_1pct_net30": -0.0016483409559851173,
+  "leave_top_5pct_net30": -0.00557290490346573,
+  "leave_top_10pct_net30": -0.008721214985629834,
+  "top1_contribution": 0.11602078910966801,
+  "top5_contribution": 0.3937564094783348,
+  "TAIL_DEPENDENT_gross": true,
+  "TAIL_DEPENDENT_net30": false
+ },
+ "oos": {
+  "IS_2022_2024_net30": 0.000648297572824215,
+  "VALID_2025_net30": 0.0004991898461430824,
+  "OOS_2026_net30": -0.0037273512282016644,
+  "RAW_OOS_2026_net30": -0.002968141409064629,
+  "yearly_net30": {
+   "2022": -0.0022292660241086206,
+   "2023": -0.0013600834615626824,
+   "2024": 0.004929868441826965,
+   "2025": 0.0004991898461430824,
+   "2026": -0.0037273512282016644
+  },
+  "walk_forward": [
+   {
+    "fold": "train_2022_2023__test_2024",
+    "n_test": 10484,
+    "net30_test": 0.004929868441826965,
+    "boot_lo": -0.004842092541744006,
+    "boot_hi": 0.01762313265536573
+   },
+   {
+    "fold": "train_2022_2024__test_2025",
+    "n_test": 12293,
+    "net30_test": 0.0004991898461430824,
+    "boot_lo": -0.0006409594781815655,
+    "boot_hi": 0.0015296884547023938
+   },
+   {
+    "fold": "train_2022_2025__test_2026",
+    "n_test": 7766,
+    "net30_test": -0.0037273512282016644,
+    "boot_lo": -0.005901545116291549,
+    "boot_hi": -0.002089327922339443
+   }
+  ]
+ },
+ "incremental_alpha": {
+  "raw_mean_net30": 0.0007680659882301172,
+  "first_event_vs_raw": {
+   "obs": -0.0010713509562201135,
+   "lo": -0.0032500757472648362,
+   "hi": 0.0005535877694911377,
+   "verdict": "UNPROVEN"
+  },
+  "ma_vs_first": {
+   "obs": 0.00042565281879911683,
+   "lo": -0.0013555882025780219,
+   "hi": 0.002273304813794048,
+   "verdict": "UNPROVEN"
+  },
+  "volume_vs_first": {
+   "obs": 0.0005622066959293018,
+   "lo": -0.00010538937149858326,
+   "hi": 0.0012123881583572646,
+   "verdict": "UNPROVEN"
+  },
+  "full_vs_first_ma": {
+   "obs": -0.00020419891438827636,
+   "lo": -0.000530261482453791,
+   "hi": 6.814627509295718e-05,
+   "verdict": "UNPROVEN"
+  }
+ },
+ "threshold_axis": {
+  "spearman_raw": 1.0,
+  "spearman_full_stack": 1.0,
+  "tag": "MONOTONIC",
+  "primary_threshold": 0.03
+ },
+ "null_models": [
+  {
+   "family": "N1_STOCK_DAY",
+   "obs": 0.002918168936420846,
+   "null_mean": 0.0021446589974220844,
+   "null_lo": 0.0019116332958219572,
+   "null_hi": 0.0023732590896543117,
+   "excess": 0.0007735099389987615,
+   "p_one_sided": 0.0,
+   "resolution": 1.0,
+   "adopted": true
+  },
+  {
+   "family": "N2_STOCK_RANDOM_DAY",
+   "obs": 0.002918168936420846,
+   "null_mean": 0.00047897154310612677,
+   "null_lo": 0.00019825627241516487,
+   "null_hi": 0.0007472693978343158,
+   "excess": 0.002439197393314719,
+   "p_one_sided": 0.0,
+   "resolution": 1.0,
+   "adopted": true
+  },
+  {
+   "family": "N3_STOCK_STATE_DAY",
+   "obs": 0.002918168936420846,
+   "null_mean": 0.0014365882593556306,
+   "null_lo": 0.0011058108473662287,
+   "null_hi": 0.001760850494611077,
+   "excess": 0.0014815806770652152,
+   "p_one_sided": 0.0,
+   "resolution": 0.8291562843756366,
+   "adopted": false
+  },
+  {
+   "family": "N4_RANDOM_UP_BAR",
+   "obs": 0.002918168936420846,
+   "null_mean": 0.002235514762927778,
+   "null_lo": 0.001917695748852566,
+   "null_hi": 0.002569894155021757,
+   "excess": 0.000682654173493068,
+   "p_one_sided": 0.0,
+   "resolution": 1.0,
+   "adopted": true
+  }
+ ],
+ "overlap": {
+  "n_events": 49090,
+  "adjacent_rate": 0.0,
+  "rate_le5": 0.0,
+  "rate_le20": 0.020266983286747305,
+  "n_eff": 40898.61342113302
+ },
+ "parameter_grid": {
+  "n_cells": 450,
+  "n_cells_valid": 450,
+  "positive_ratio": 0.8733333333333333,
+  "axis_monotonicity": {
+   "thr": 1.0,
+   "first_w": 1.0,
+   "vr": 0.0,
+   "ma": 0.0
+  },
+  "primary_neighbourhood_positive_ratio": 0.76,
+  "primary_neighbourhood_cells": 25,
+  "argmax_cell": {
+   "thr": 7,
+   "first_w": 20,
+   "vr": 3.0,
+   "ma": "M3",
+   "net30": 0.016057989373713548,
+   "n": 12475
+  },
+  "primary_net30": -8.183106357915578e-05,
+  "primary_percentile_in_grid": 0.12222222222222222,
+  "primary_in_grid": false,
+  "parameter_stable": true,
+  "parameter_fragile": false
+ },
+ "regime": {
+  "ALL": {
+   "days": 1147,
+   "n": 49052,
+   "net30": -8.183106357915578e-05
+  },
+  "BULL": {
+   "days": 277,
+   "n": 13739,
+   "net30": 0.0019802456605607062
+  },
+  "RANGE": {
+   "days": 563,
+   "n": 24155,
+   "net30": -0.0005871200814204706
+  },
+  "BEAR": {
+   "days": 307,
+   "n": 11158,
+   "net30": -0.0015270377213135711
+  }
+ },
+ "bias_audit": [
+  {
+   "check": "1_look_ahead",
+   "verdict": "PASS",
+   "value": "none"
+  },
+  {
+   "check": "2_selection_bias",
+   "verdict": "PASS",
+   "value": "grid argmax = thr=7%/w=20/vr=3.0/ma=M3"
+  },
+  {
+   "check": "3_survivorship_bias",
+   "verdict": "FLAG",
+   "value": "n_codes_gone=242, of which 183 carry a PRIMARY-arm event"
+  },
+  {
+   "check": "4_execution_bias",
+   "verdict": "PASS",
+   "value": "max |stored r - close[t+1]/close[t]-1| = 5.96e-08"
+  },
+  {
+   "check": "5_overlapping_sample",
+   "verdict": "PASS",
+   "value": "n=49090, adjacent_rate=0.0000, rate<=5d=0.0000, rate<=20d=0.0203, n_eff=40898.6"
+  },
+  {
+   "check": "6_future_information",
+   "verdict": "PASS",
+   "value": "backward N=148531 vs forward N=150713"
+  },
+  {
+   "check": "7_parameter_leakage",
+   "verdict": "PASS",
+   "value": "spec_sha256=396329014C3233DC, spec_mtime=1790815252, log_mtime=1790816277, primary_percentile=0.122"
+  },
+  {
+   "check": "8_randomization_leakage",
+   "verdict": "FLAG",
+   "value": "pool-out rate=0.17084, null_std min=0.000120"
+  }
+ ],
+ "gates": {
+  "G1": false,
+  "G10": true,
+  "G11": true,
+  "G12": false,
+  "G2": false,
+  "G3": false,
+  "G4": false,
+  "G5": false,
+  "G6": false,
+  "G7": true,
+  "G8": true,
+  "G9": true
+ },
+ "gate_detail": {
+  "G1": "Primary Arm mean Net30 = -0.008%",
+  "G2": "Primary Arm PF30 = 0.993",
+  "G3": "monthly-cluster 95% CI (net30) = [-0.247%, 0.345%], p(<=0) = 0.5720",
+  "G4": "OOS(2026) Net30 = -0.373%",
+  "G5": "years with Net30 > 0 = 2 of 5 (2022:-0.223%, 2023:-0.136%, 2024:0.493%, 2025:0.050%, 2026:-0.373%)",
+  "G6": "Leave Top 5% Net30 = -0.557%",
+  "G7": "MA structures with Net30 > 0 = 3 of 4 (M1:0.022%, M2:0.045%, M3:0.036%, M4:-0.010%)",
+  "G8": "Volume gates with Net30 > 0 = 5 of 5 (V1:0.033%, V2:0.075%, V3:0.072%, V4:0.062%, V5:0.026%)",
+  "G9": "pre-registered neighbourhood (thr=3%, window=10) positive_ratio = 0.760 over 25 cells; overall grid positive_ratio = 0.873",
+  "G10": "null families adopted (resolution >= 0.99) = 3 of 4; adopted families with obs > null 97.5% = 3",
+  "G11": "bias audit: 6 PASS / 2 FLAG / 0 FAIL (3_survivorship_bias, 8_randomization_leakage)",
+  "G12": "regimes with Net30 > 0 = 1 of 3 (BULL:0.198%, RANGE:-0.059%, BEAR:-0.153%)"
+ },
+ "gates_all_pass": false,
+ "provisional_alpha": false,
+ "overall_verdict": "FAIL → ARCHIVE",
+ "trading_authorization": "NO",
+ "meta": {
+  "S": 5816,
+  "N": 1187,
+  "c0": 933,
+  "s0": 40,
+  "window": [
+   "20211108",
+   "20260924"
+  ],
+  "panel_range": [
+   "20180102",
+   "20260924"
+  ],
+  "minutes_data_available": false,
+  "minute_scan": "cache_daily/*min*, *5m*, *15m*, *60m*, *1min* -> 0 hits",
+  "spec_sha256": "396329014C3233DC7BB31AA0B981CD577E140ED31D57E880AC3D56695BB4914D",
+  "n_eligible_cells_window": 5381548,
+  "n_raw_events_e0": 409695,
+  "n_primary_events": 49090,
+  "universe": "hve_common.eligibility(g) & board != 'BSE'",
+  "run_finished_at": "2026-10-01 08:58:03"
+ }
+}

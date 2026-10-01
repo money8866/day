@@ -3,7 +3,7 @@
 W7 二波引擎 · 每日邮件推送
 =========================================
 1. 读取最新 w7_second_wave_YYYYMMDD.md 报告
-2. 调 DeepSeek 把报告精炼为可直接执行的操作指令（一段文字）
+2. 调 DeepSeek 把报告精炼为可直接执行的操作指令（一段文字），并附报告「热点主题新增跟踪」节
 3. 通过 Agent Mail CLI 发送邮件（20260929 起替代 PushPlus 微信推送，微信通道已移除）
 
 用法:
@@ -72,7 +72,7 @@ def find_latest_report(date_str=None) -> str:
 
 
 def summarize_for_ai(md_text: str) -> str:
-    """保留统计头部与全部榜单表格（含B榜价格位），只截掉冗长的行为解释段"""
+    """保留统计头部、执行状态三段与各榜单表格，只截掉冗长的行为解释段"""
     keep = []
     skip = False
     for ln in md_text.splitlines():
@@ -86,40 +86,64 @@ def summarize_for_ai(md_text: str) -> str:
     return text[:MAX_REPORT_CHARS] + '\n\n>（报告过长已截断，以上为完整榜单段）'
 
 
+def _theme_watch_section(md_text: str):
+    """抽取报告的「热点主题新增跟踪」节（## 热点主题新增跟踪…）整节，返回行列表。
+
+    该节列出经 V2.4 热点主题扩池纳入的非龙头候选，是报告独立新增的一节；
+    邮件 AI 指令按「今日可操作榜/C池」组织，会漏掉它，故原样接进邮件正文。
+    """
+    out, hit = [], False
+    for ln in md_text.splitlines():
+        if ln.startswith('## '):
+            if '热点主题新增跟踪' in ln:
+                hit, out = True, [ln]
+                continue
+            if hit:
+                break
+        if hit:
+            out.append(ln)
+    while out and not out[-1].strip():   # 去尾部空行，保留段内空行（表格前需空行）
+        out.pop()
+    return out if len(out) > 1 else []
+
+
 SYSTEM_PROMPT = (
     '你是A股短线交易执行助理。严格基于用户提供的量化报告数据输出，'
     '禁止编造任何数据、价格、新闻或消息面；股票名称与代码必须严格引用报告原文。'
     '\n\n重要规则：'
     '\n- 报告中 T120/ENTRY/HVT/吸收/生命/空间/加速/RS/基本面/DRisk/总分 等均为0-100评分，'
     '**不是股价**，绝对禁止把它们当作价格输出；'
-    '\n- 榜单中的【现价】【触发价】【MA20】三列是真实股价（元）：触发价=事件日后10日平台高点'
-    '（BREAKOUT_RETEST 回踩买点=放量突破日收盘，即回踩位），'
+    '\n- 报告中的【现价】【触发价】【MA20】是真实股价（元）：触发价=原策略买点触发位'
+    '（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位；MIDLINE_HOLD 不破中位=放量长阳日最高价），'
     '可直接引用，但禁止自行计算、修改或四舍五入任何价格；'
-    '\n- 状态语义必须严格区分：SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION/BREAKOUT_RETEST=已突破，'
-    '这类标的禁止写"等突破/等二次突破"，正确措辞="已突破：回踩触发价附近不破可低吸或持有，'
-    '收盘跌回触发价下方离场"（BREAKOUT_RETEST 例外：以跌破 MA20 或放量突破日低点为离场，'
-    '回踩至触发价下方属形态内正常，写"等缩量企稳不破触发价"）；其余状态（ABSORPTION/DRYUP/EXTREME_CHURN等）=未突破，'
-    '措辞="等放量（量比≥1.2）突破触发价XX.XX再买"；'
-    '\n- 现价>触发价=已突破在上方，现价<触发价=尚未突破；巨量日（量比≥3）或单日涨幅>10%不追，只写回踩方案。'
+    '\n- **执行状态优先于 W7 总分**：报告「W7 二波·今日执行状态」已把标的分为三档，'
+    '必须严格照抄报告给出的状态，禁止因总分高就把 TRIGGER_WATCH/PULLBACK_WATCH 写成可立即买入：'
+    '\n  · EXECUTION＝已站上触发价且量比≥1.2、结构未破坏，可按原仓位规则执行；'
+    '\n  · EXECUTION_WAIT_VOLUME＝已站上触发价但量比未达 1.2，'
+    '**禁止写成"可买入/已确认买入"**，只能写"已进入价格执行区，待量能确认"；'
+    '\n  · TRIGGER_WATCH＝现价仍低于触发价（距触发 ≤3%），只能写"等放量站上触发价XX.XX（量比≥1.2）"，'
+    '**禁止写成已突破或可买入**；'
+    '\n  · PULLBACK_WATCH＝距触发位 >3%，仍在回踩/未突破，只能写"观察，等重新站上关键位并满足量能"；'
+    '\n- 量能阀门恒为量比≥1.2，任何情况下禁止放宽或省略；报告标的的形态状态'
+    '（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/BREAKOUT_RETEST=已突破；MIDLINE_HOLD=未突破缩量回踩；'
+    '其余=未突破）只用于补充措辞，不得用来改变上述执行状态；'
+    '\n- 巨量日（量比≥3）或单日涨幅>10%不追，只写回踩方案。'
     '\n\n输出要求：'
     '\n1. 只输出一段精炼的操作指令（Markdown，含小标题，总长≤1200字），可直接照着执行；'
-    '\n2. 结构固定：【今日结论】一句话（必须与报告统计一致：已突破/待触发家数，'
-    '报告有确认或已突破标的时禁止写"无已完成买点信号"）→'
-    '【可操作标的】报告"今日可操作榜"中每只标的都必须逐只单独成行，'
-    '禁止用"统一规则+合并价格列表"的省略写法；'
-    '按报告名单顺序从1开始连续编号，每行格式：'
-    '"序号. 代码 名称｜状态：XX｜操作：回踩触发价XX.XX不破可低吸或持有（量比≥1.2确认），'
-    '收盘跌回触发价XX.XX下方离场，MA20 XX.XX为总防线"；'
-    '状态词映射：SECOND_WAVE=二波、BREAKOUT_CONFIRM=突破确认、RE_EXPANSION=重新扩张、T0_CONFIRM=T0天量确认、'
-    'BREAKOUT_RETEST=放量突破后缩量回踩；'
-    '量比≥3的巨量日在该行末尾追加"｜巨量日不追，只等回踩"→'
-    '【等待标的】简列（报告"C池 高分等待突破"名单逐只一句"等放量突破触发价XX.XX"，只列前5）→【风险/纪律】一句话；'
-    '\n3. 价格一律引用报告的现价/触发价/MA20，保留两位小数，禁止编造；'
-    '\n4. 仅当报告无任何已突破/确认标的时才写"今日零买入动作"；'
+    '\n2. 结构固定：【今日结论】一句话（必须与报告「W7状态汇总」完全一致：'
+    'EXECUTION 几只、TRIGGER_WATCH 几只、PULLBACK_WATCH 几只；'
+    '**报告写"今日 W7 无 EXECUTION 标的/不强行交易"时，必须照写，禁止改写成有买点**）→'
+    '【可执行（EXECUTION）】报告中 EXECUTION 与 EXECUTION_WAIT_VOLUME 标的逐只单独成行，'
+    '按报告顺序从1开始连续编号，禁止用"统一规则+合并价格列表"的省略写法；每行格式：'
+    '"序号. 代码 名称｜状态：EXECUTION（或 EXECUTION_WAIT_VOLUME）｜现价XX.XX、触发价XX.XX，'
+    '收盘跌回触发价XX.XX下方离场，失效位XX.XX"；'
+    'EXECUTION_WAIT_VOLUME 的操作必须写"待量比≥1.2确认后再执行"；无 EXECUTION 时该节写"无"→'
+    '【等待触发（TRIGGER_WATCH）】逐只一句"放量站上触发价XX.XX（量比≥1.2）才触发，不追价"→'
+    '【等待回踩（PULLBACK_WATCH）】逐只一句"距触发XX.XX%，观察，等重新站上关键位"→'
+    '【风险/纪律】一句话；'
+    '\n3. 价格一律引用报告的现价/触发价/MA20 与失效位，保留两位小数，禁止编造；'
+    '\n4. 仅当报告无任何 EXECUTION 标的时才写"今日零执行动作"；'
     '\n5. 严禁模糊词（关注/观望/择机），全部换成明确动作或明确触发价。'
-    '\n6. 输出格式示例（仅示意格式，标的与价格以报告为准，勿照抄）：'
-    '"1. 600415 小商品城｜状态：二波｜操作：回踩12.75不破可低吸或持有（量比≥1.2确认），'
-    '收盘跌回12.75下方离场，MA20 12.21为总防线"。'
 )
 
 
@@ -260,12 +284,16 @@ def main():
         # DeepSeek 失败则退回榜单摘要（含B榜价格位，截掉行为解释）
         ai_text = summarize_for_ai(md_text)[:1500]
 
-    # 2. 组装推送内容（头部简表 + AI 指令）
+    # 2. 组装推送内容（头部简表 + AI 指令 + 热点主题新增跟踪节）
     header = []
     header.append(f'# W7 二波引擎 · {trade_date} 操作指令')
     header.append('')
     header.append(ai_text)
     header.append('')
+    tw = _theme_watch_section(md_text)
+    if tw:
+        header += tw
+        header.append('')
     header.append('---')
     header.append(f'*W7 Second Wave V4.2 · {datetime.now().strftime("%Y-%m-%d %H:%M")} 自动推送*')
     msg = '\n'.join(header)

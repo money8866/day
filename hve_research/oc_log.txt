@@ -1,0 +1,16 @@
+loaded 5.5 (7119601, 62)
+D:\mystock\hve_research\hve_lib.py:89: RuntimeWarning: All-NaN slice encountered
+  res[f'mfe_{h}'][s:e] = np.nanmax(wH, axis=1) / c - 1.0
+D:\mystock\hve_research\hve_lib.py:90: RuntimeWarning: All-NaN slice encountered
+  res[f'mae_{h}'][s:e] = np.nanmin(wL, axis=1) / c - 1.0
+D:\mystock\hve_research\hve_lib.py:91: RuntimeWarning: All-NaN slice encountered
+  res[f'maxret_{h}'][s:e] = np.nanmax(wC, axis=1) / c - 1.0
+D:\mystock\hve_research\hve_lib.py:92: RuntimeWarning: All-NaN slice encountered
+  res[f'minret_{h}'][s:e] = np.nanmin(wC, axis=1) / c - 1.0
+D:\mystock\hve_research\hve_lib.py:93: RuntimeWarning: Mean of empty slice
+  res[f'volr_{h}'][s:e] = np.nanmean(wV, axis=1) / np.where(vv > 0, vv, np.nan)
+outcomes 92.8 (7119601, 50)
+   row     ret_1     mfe_1     mae_1  maxret_1  minret_1  open_ret_1    volr_1     ret_3     mfe_3     mae_3  maxret_3  minret_3  open_ret_3    volr_3     ret_5     mfe_5     mae_5  maxret_5  minret_5  open_ret_5    volr_5    ret_10    mfe_10    mae_10  maxret_10  minret_10  open_ret_10   volr_10    ret_20    mfe_20    mae_20  maxret_20  minret_20  open_ret_20   volr_20    ret_40    mfe_40    mae_40  maxret_40  minret_40  open_ret_40   volr_40    ret_60    mfe_60    mae_60  maxret_60  minret_60  open_ret_60   volr_60
+0    0 -0.023118 -0.006451 -0.043011 -0.023118 -0.023118   -0.012500  1.171878  0.069893  0.074194 -0.043011  0.069893 -0.023118    0.081522  1.145375  0.095698  0.109677 -0.043011  0.095698 -0.023118    0.107608  1.071461  0.220428  0.224729 -0.043011   0.220428  -0.023118     0.233693  1.057243  0.319890  0.343546 -0.043011   0.319890  -0.023118     0.334237  0.895826  0.161291  0.360751 -0.043011   0.341396  -0.023118     0.173913  0.907364  0.165593  0.360751 -0.043011   0.341396  -0.023118     0.178262  0.790654
+1    1  0.076500  0.076500 -0.009356  0.076500  0.076500    0.081858  1.062367  0.092459  0.106218 -0.009356  0.095212  0.076500    0.097897  0.862840  0.155750  0.155750 -0.009356  0.155750  0.076500    0.161503  0.855763  0.229497  0.257015 -0.009356   0.249310   0.076500     0.235617  0.870374  0.281231  0.375342 -0.009356   0.351126   0.076500     0.287608  0.780765  0.147496  0.392953 -0.009356   0.373140   0.076500     0.153208  0.767976  0.190975  0.392953 -0.009356   0.373140   0.076500     0.196903  0.662760
+2    2  0.017382  0.021472 -0.016872  0.017382  0.017382    0.019467  0.818724  0.041921  0.055214 -0.016872  0.041921  0.014825    0.044057  0.787295  0.058281  0.074129 -0.016872  0.073618  0.014825    0.060450  0.713964  0.148770  0.174333 -0.016872   0.160529   0.014825     0.151125  0.785471  0.275560  0.287318 -0.016872   0.275560   0.014825     0.278174  0.734628  0.042945  0.293965 -0.016872   0.275560   0.014825     0.045082  0.712741  0.102250  0.293965 -0.016872   0.275560   0.014825     0.104509  0.610484

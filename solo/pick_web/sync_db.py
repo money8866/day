@@ -234,6 +234,8 @@ def main(argv=None) -> int:
     ap.add_argument("--keep", action="store_true", help="保留快照文件供排查")
     ap.add_argument("--reports-src", default=None, help="本地复盘报告目录（覆盖配置）")
     ap.add_argument("--no-reports", action="store_true", help="跳过复盘报告同步")
+    ap.add_argument("--reports-only", action="store_true",
+                    help="只同步复盘报告 HTML，不传数据库（供 tushare_quant.py 报告生成后调用）")
     args = ap.parse_args(argv)
 
     global CONFIG_PATH
@@ -257,6 +259,11 @@ def main(argv=None) -> int:
 
     conn = "%s:%s" % (target(cfg), remote_dir)
     log("目标 %s  目录 %s" % (conn, remote_dir))
+
+    if args.reports_only:
+        ok = sync_reports(cfg, remote_dir)
+        log("报告同步完成。" if ok else "[WARN] 报告同步未成功，请检查上方日志。")
+        return 0 if ok else 1
 
     if args.check:
         rc, out = run(ssh_base(cfg) + [target(cfg), "echo __OK__ && pwd"])

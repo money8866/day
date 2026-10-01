@@ -1,0 +1,303 @@
+{
+ "hypothesis_id": "H-RBP-01",
+ "verdict": "FAIL",
+ "gates": [
+  {
+   "gate": "Gate 1",
+   "requirement": "a stable POSITIVE difference vs the null model exists",
+   "verdict": "FAIL",
+   "evidence": "D-A -0.0067 [-0.0109,-0.0025]; C-B -0.0064; B-A -0.0041 -- all negative"
+  },
+  {
+   "gate": "Gate 2",
+   "requirement": "the edge survives 30bp of cost",
+   "verdict": "FAIL",
+   "evidence": "Net30@T+10 D -0.0012  C -0.0051  B +0.0014  A +0.0055"
+  },
+  {
+   "gate": "Gate 3",
+   "requirement": "the edge survives out of sample",
+   "verdict": "FAIL",
+   "evidence": "walk-forward test folds positive 2/4, mean +0.0068 vs frozen random-day null +0.0047"
+  },
+  {
+   "gate": "Gate 4",
+   "requirement": "several years / market phases support it",
+   "verdict": "FAIL",
+   "evidence": "Group D positive years 3/8"
+  },
+  {
+   "gate": "Gate 5",
+   "requirement": "not driven by the extreme right tail",
+   "verdict": "PASS",
+   "evidence": "full -0.0012, drop top 1% -0.0073, drop top 5% -0.0187 -- the raw mean is already non-positive, so removing winners cannot be what creates the result; property holds but the check is vacuous"
+  },
+  {
+   "gate": "Gate 6",
+   "requirement": "a reasonable, stable parameter region exists",
+   "verdict": "PASS",
+   "evidence": "67.6% of the 108 grid cells are positive; marginal in the threshold is monotone; best cell +0.0081 but the random-day null already pays +0.0055"
+  },
+  {
+   "gate": "Gate 7",
+   "requirement": "no selection bias",
+   "verdict": "PASS",
+   "evidence": "10 / 10 audit items PASS"
+  },
+  {
+   "gate": "Gate 8",
+   "requirement": "no look-ahead",
+   "verdict": "PASS",
+   "evidence": "independent re-computation reproduces 100%% of the Group D entries; all conditions read t or earlier"
+  },
+  {
+   "gate": "Gate 9",
+   "requirement": "C adds clear information over B (retracement alpha)",
+   "verdict": "FAIL",
+   "evidence": "C-B -0.0064 [-0.0097,-0.0031] p=0.000 -- retracement entry is WORSE than a random entry after the same event"
+  },
+  {
+   "gate": "Gate 10",
+   "requirement": "D adds clear information over C (re-strength alpha)",
+   "verdict": "PASS",
+   "evidence": "D-C +0.0038 [+0.0010,+0.0066] p=0.006 -- the only positive increment found, but it lands the arm at +0.0018, still below the random-day null"
+  }
+ ],
+ "n_gate_fail": 5,
+ "n_events_all": 146710,
+ "n_events_studied": 135877,
+ "arms": {
+  "A_RANDOM": {
+   "n": 135057,
+   "mean_T3": 0.0028170253363301,
+   "mean_T5": 0.0042375197154052,
+   "mean_T10": 0.0084679643922319,
+   "mean_T20": 0.0168238315532327,
+   "win_rate_T10": 0.4949095567056872,
+   "pf30_T10": 1.162965147423862,
+   "net30_T10": 0.0054679643922319
+  },
+  "B_HVE_RANDOM": {
+   "n": 135428,
+   "mean_T3": 0.0017881857217035,
+   "mean_T5": 0.0026795012937035,
+   "mean_T10": 0.0043602450570069,
+   "mean_T20": 0.0083409762289205,
+   "win_rate_T10": 0.472819505567534,
+   "pf30_T10": 1.0371017780789722,
+   "net30_T10": 0.0013602450570069
+  },
+  "C_BAND_R1": {
+   "n": 115539,
+   "mean_T3": -0.0048443217911551,
+   "mean_T5": -0.0043339367468301,
+   "mean_T10": -0.0020532816511202,
+   "mean_T20": 0.0022178787956999,
+   "win_rate_T10": 0.4421710418127212,
+   "pf30_T10": 0.8747969525057034,
+   "net30_T10": -0.0050532816511202
+  },
+  "C_BAND_R2": {
+   "n": 126514,
+   "mean_T3": -0.0041178170778912,
+   "mean_T5": -0.003416045232504,
+   "mean_T10": -0.0008752947170131,
+   "mean_T20": 0.0018922182127284,
+   "win_rate_T10": 0.4454526771740676,
+   "pf30_T10": 0.9048391300775676,
+   "net30_T10": -0.0038752947170131
+  },
+  "C_BAND_R3": {
+   "n": 130096,
+   "mean_T3": -0.0006487419037145,
+   "mean_T5": 0.0004101932521079,
+   "mean_T10": 0.0031631741614164,
+   "mean_T20": 0.0071651179233781,
+   "win_rate_T10": 0.4604984011806666,
+   "pf30_T10": 1.0041075963489927,
+   "net30_T10": 0.0001631741614164
+  },
+  "C_BAND_R4": {
+   "n": 120568,
+   "mean_T3": 0.0026051220752741,
+   "mean_T5": 0.0046078801113786,
+   "mean_T10": 0.0078096565003292,
+   "mean_T20": 0.0128777082473231,
+   "win_rate_T10": 0.4771912945391812,
+   "pf30_T10": 1.1266362718212235,
+   "net30_T10": 0.0048096565003292
+  },
+  "C_ALL_3PCT": {
+   "n": 135530,
+   "mean_T3": -0.0111430617478997,
+   "mean_T5": -0.0108980694883203,
+   "mean_T10": -0.0081232455889931,
+   "mean_T20": -0.0019576237009653,
+   "win_rate_T10": 0.4187191027816719,
+   "pf30_T10": 0.7463727237824942,
+   "net30_T10": -0.0111232455889931
+  },
+  "CF2_RAND_AFTER_RETR": {
+   "n": 135147,
+   "mean_T3": 0.0007636504918107,
+   "mean_T5": 0.0008151674750974,
+   "mean_T10": 0.0011602224795497,
+   "mean_T20": 0.0032558439582243,
+   "win_rate_T10": 0.4574574352371862,
+   "pf30_T10": 0.9519169263808503,
+   "net30_T10": -0.0018397775204502
+  },
+  "D_PRIMARY": {
+   "n": 93746,
+   "mean_T3": -0.0009605105391793,
+   "mean_T5": -0.0010006472980665,
+   "mean_T10": 0.0017589399333587,
+   "mean_T20": 0.006413780643633,
+   "win_rate_T10": 0.4491924988799522,
+   "pf30_T10": 0.9691916624705486,
+   "net30_T10": -0.0012410600666412
+  },
+  "D_STRUCT_S1": {
+   "n": 103534,
+   "mean_T3": -0.0006806573539297,
+   "mean_T5": -0.0007378035636303,
+   "mean_T10": 0.0017889709382307,
+   "mean_T20": 0.006252093242428,
+   "win_rate_T10": 0.4505379875210076,
+   "pf30_T10": 0.9697907130071208,
+   "net30_T10": -0.0012110290617692
+  },
+  "D_STRUCT_S2": {
+   "n": 101786,
+   "mean_T3": 0.0002234209774645,
+   "mean_T5": 0.0001329446813263,
+   "mean_T10": 0.0030115852617349,
+   "mean_T20": 0.0086037824161635,
+   "win_rate_T10": 0.4572436287898139,
+   "pf30_T10": 1.000295877290036,
+   "net30_T10": 1.1585261734975427e-05
+  },
+  "D_STRUCT_S4": {
+   "n": 110594,
+   "mean_T3": 0.0004065886452653,
+   "mean_T5": 0.0002889773627955,
+   "mean_T10": 0.0029875979319685,
+   "mean_T20": 0.0084204577935075,
+   "win_rate_T10": 0.4580537823028374,
+   "pf30_T10": 0.999683358180901,
+   "net30_T10": -1.2402068031412171e-05
+  },
+  "D_RS1": {
+   "n": 94646,
+   "mean_T3": -0.0010261343017115,
+   "mean_T5": -0.0013219735258641,
+   "mean_T10": 0.0019426048339832,
+   "mean_T20": 0.0055557607592308,
+   "win_rate_T10": 0.4500665638273144,
+   "pf30_T10": 0.9736173926678818,
+   "net30_T10": -0.0010573951660167
+  },
+  "D_RS3": {
+   "n": 95179,
+   "mean_T3": -0.0042927700299783,
+   "mean_T5": -0.0039467444857876,
+   "mean_T10": -0.0013191139616467,
+   "mean_T20": 0.0018858959926707,
+   "win_rate_T10": 0.4410531734941531,
+   "pf30_T10": 0.895261259097996,
+   "net30_T10": -0.0043191139616467
+  },
+  "D_VOLCONF": {
+   "n": 92411,
+   "mean_T3": -0.0006711588680359,
+   "mean_T5": -0.0006794886059589,
+   "mean_T10": 0.0019072275439913,
+   "mean_T20": 0.0065848034726266,
+   "win_rate_T10": 0.450400926296653,
+   "pf30_T10": 0.9730972961015482,
+   "net30_T10": -0.0010927724560086
+  },
+  "D_SIGNAL_STRUCT": {
+   "n": 95840,
+   "mean_T3": -0.0009869564369585,
+   "mean_T5": -0.0012781091111139,
+   "mean_T10": 0.0009450823328846,
+   "mean_T20": 0.0040223874892095,
+   "win_rate_T10": 0.4436978297161936,
+   "pf30_T10": 0.9510459073214156,
+   "net30_T10": -0.0020549176671153
+  }
+ },
+ "incremental_T10": {
+  "B_minus_A": {
+   "diff": -0.0041077193352249,
+   "lo": -0.0068919840116491,
+   "hi": -0.001417750543524,
+   "p": 0.004
+  },
+  "C_minus_B": {
+   "diff": -0.0064135267081272,
+   "lo": -0.0096580275262293,
+   "hi": -0.0030937256945282,
+   "p": 0.0
+  },
+  "D_minus_C": {
+   "diff": 0.003812221584479,
+   "lo": 0.0009714124957956,
+   "hi": 0.0065725126546541,
+   "p": 0.006
+  },
+  "D_minus_A": {
+   "diff": -0.0067090244588731,
+   "lo": -0.0109084281750002,
+   "hi": -0.0024827541003962,
+   "p": 0.002
+  },
+  "C_minus_A": {
+   "diff": -0.0105212460433522,
+   "lo": -0.0147047216484882,
+   "hi": -0.0066031726977167,
+   "p": 0.0
+  },
+  "CF2_minus_C": {
+   "diff": 0.00321350413067,
+   "lo": -0.0003798701891089,
+   "hi": 0.0066419940172423,
+   "p": 0.074
+  }
+ },
+ "null3_D_T10": {
+  "obs": 0.0017230603843927,
+  "null": 0.0372255228454642,
+  "excess": -0.035502462999676
+ },
+ "parameter_grid": {
+  "n_cells": 108,
+  "share_positive": 0.6759259259259259,
+  "best_net30": 0.008078182905385624,
+  "verdict": "PLATFORM"
+ },
+ "walk_forward": {
+  "folds": 4,
+  "test_mean": 0.006789171722369701,
+  "test_positive_folds": 2,
+  "null_mean": 0.0046650809108541485
+ },
+ "audit": {
+  "items": 10,
+  "fail": 0,
+  "recompute_match": 1.0
+ },
+ "number_of_tests": 1080,
+ "costs_bp": [
+  0,
+  10,
+  20,
+  30,
+  50
+ ],
+ "primary_cost_bp": 30,
+ "trading_authorization": "NO",
+ "decision": "ARCHIVE_H_RBP_01",
+ "next_step": "open a new Hypothesis ID; do not tune H-RBP-01 further"
+}

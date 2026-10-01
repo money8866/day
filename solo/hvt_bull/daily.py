@@ -171,6 +171,32 @@ def _load_leader_codes(trade_date: str, cfg: dict):
     return set(df['ts_code'].astype(str).str.strip())
 
 
+def _load_allow_codes(trade_date: str, cfg: dict, leader_codes):
+    """选股池准入集合 = sli_v2 龙头 Top5 ∪ 热点主题(V2.4)成员；None 表示不过滤。
+
+    theme_expand 关闭 / 热点数据缺失时等价于原龙头过滤；leader_codes 为 None
+    （龙头过滤未启用或加载失败）时返回 None，保持"不过滤"的原行为。
+    """
+    if leader_codes is None:
+        return None
+    allow = set(leader_codes)
+    d = cfg.get('sli_v2', {}).get('theme_expand') or {}
+    if not d.get('enabled', False):
+        return allow
+    win = str(d.get('window', 'month'))
+    hmin = float(d.get('heat_min', 80.0))
+    try:
+        from theme_hot_pool import hot_theme_codes
+        hot = hot_theme_codes(trade_date, window=win, heat_min=hmin)
+    except Exception as e:
+        print(f'[HVT-BULL] 警告: 热点主题扩池失败 {e}，仅用龙头池')
+        return allow
+    if hot:
+        print(f"[HVT-BULL] 热点主题扩池: +{len(hot - allow)}只非龙头（{win}热度>={hmin:g}）")
+        allow |= hot
+    return allow or None
+
+
 def _load_ige_map(trade_date: str, cfg: dict) -> dict:
     """加载 IGE 行业景气因子 {ts_code: ige_adj}（排序用，不做过滤）。
 
@@ -220,11 +246,13 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     if not uni:
         return {'trade_date': trade_date, 'events': []}
 
-    # sli_v2 细分龙头关联过滤：不在龙头 Top5 表中的股票直接过滤
+    # 选股池准入：sli_v2 细分龙头 Top5 ∪ 热点主题(V2.4)全部成员
     leader_codes = _load_leader_codes(trade_date, cfg)
-    if leader_codes is not None:
-        uni = [u for u in uni if u['ts_code'] in leader_codes]
-        print(f"[HVT-BULL] sli_v2 龙头过滤: 股票池 {len(uni)}只")
+    allow_codes = _load_allow_codes(trade_date, cfg, leader_codes)
+    if allow_codes is not None:
+        n_uni = len(uni)
+        uni = [u for u in uni if u['ts_code'] in allow_codes]
+        print(f"[HVT-BULL] 选股池准入过滤: {n_uni} -> {len(uni)}只")
         if not uni:
             return {'trade_date': trade_date, 'events': []}
 
@@ -232,6 +260,22 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     ige_map = _load_ige_map(trade_date, cfg)
 
     stock_themes = ctx.load_stock_themes(trade_date)
+    # 热点主题扩池新增跟踪元数据（供报告独立成节：列出"因 V2.4 热点主题扩池而纳入、
+    # 且不在 sli 龙头 Top5"的标的 + 来源主题/热度）；扩池未启用/未生效时为 None
+    theme_meta = None
+    _te_exp = cfg.get('sli_v2', {}).get('theme_expand') or {}
+    if leader_codes is not None and allow_codes is not None and _te_exp.get('enabled', False):
+        _win = str(_te_exp.get('window', 'month'))
+        _hmin = float(_te_exp.get('heat_min', 80.0))
+        _added = set(allow_codes) - set(leader_codes)
+        try:
+            from theme_hot_pool import hot_theme_heat
+            _heat = hot_theme_heat(trade_date, window=_win, heat_min=_hmin) or {}
+        except Exception as e:
+            print(f'[HVT-BULL] 警告: 热点主题热度加载失败 {e}，新增跟踪节仅列代码')
+            _heat = {}
+        theme_meta = {'codes': _added, 'heat': _heat, 'stock_themes': stock_themes,
+                      'window': _win, 'heat_min': _hmin}
     v3_enabled = bool(cfg.get('v3', {}).get('enabled', True))
     # V3.5 Trade Execution 增量层开关（依赖 V3.0 评分与 FE 字段；关闭时输出与 V3.1 完全一致）
     te_cfg = cfg.get('trade_execution') or {}
@@ -249,8 +293,8 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         cal_pos = cal_all.index(trade_date)
     win_start_date = cal_all[max(60, cal_pos - lookback_days)]
 
-    # V3.6 再入 streak 基准：读取昨日报告的 BUY 池（te_buy_pool，与回测 buy_daily_top
-    # 口径一致——连续处于每日 BUY 池的决策日数，首次入池=0、连续入池+1、中断归零）
+    # V3.6 再入 streak 基准：读取昨日报告的 BUY 池（te_buy_pool，与回测 _cand_top_mask 口径一致
+    # ——连续处于每日 cand 池的决策日数，首次入池=0、连续入池+1、中断归零）
     out_dir = cfg.get('report', {}).get('output_dir', os.path.join(BASE_DIR, 'report_daily'))
     os.makedirs(out_dir, exist_ok=True)
     prev_pool = {}
@@ -370,7 +414,14 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     else:
         events.sort(key=lambda e: e.score, reverse=True)
     top_n = top_n or int(cfg.get('report', {}).get('top_n', 20))
-    out_dir = cfg.get('report', {}).get('output_dir', os.path.join(BASE_DIR, 'report_daily'))
+    _rep = cfg.get('report', {}) or {}
+    # 20261001 展示上限放宽：②③④⑤ 每节 / EXTENDED / 热点主题新增跟踪 各自可配
+    caps = {
+        'section': int(_rep.get('te_section_cap', 20)),
+        'extended': int(_rep.get('te_extended_cap', 16)),
+        'theme_watch': int(_rep.get('theme_watch_cap', 20)),
+    }
+    out_dir = _rep.get('output_dir', os.path.join(BASE_DIR, 'report_daily'))
     os.makedirs(out_dir, exist_ok=True)
 
     # V3.5：关闭 Trade Execution 时过滤全部新增字段，保证 JSON 与 V3.1 完全一致（§37.8）
@@ -391,7 +442,10 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         'calib_loaded': bool(calib),
         'events': events_json,
         'all_states': pd.Series([e.state for e in events]).value_counts().to_dict() if events else {},
+        'caps': caps,
     }
+    if theme_meta is not None:
+        result['theme_expand_codes'] = sorted(theme_meta['codes'])
     if te_enabled:
         result['te_enabled'] = True
         result['te_max_buy'] = int(te_cfg.get('max_buy_candidates', 3))
@@ -440,7 +494,7 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     with open(os.path.join(out_dir, f'hvt_bull_{trade_date}.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=str)
 
-    md = _render_md(result, events, events[:top_n])
+    md = _render_md(result, events, events[:top_n], theme_meta)
     with open(os.path.join(out_dir, f'hvt_bull_report_{trade_date}.md'), 'w', encoding='utf-8') as f:
         f.write(md)
 
@@ -555,7 +609,7 @@ def _v3_ten_questions(e) -> list:
     return q
 
 
-def _render_md(result: dict, all_events, detail_events) -> str:
+def _render_md(result: dict, all_events, detail_events, theme_meta=None) -> str:
     """渲染日报：A/B/C/D 分类表基于全部事件，明细段取 top_n（detail_events）"""
     lines = ['# HVT-BULL V3.1 DAILY REPORT（T+20 右尾捕获 × Future Expansion）', '']
     lines.append(f"日期：{result['trade_date']}")
@@ -779,6 +833,9 @@ def _render_md(result: dict, all_events, detail_events) -> str:
     if result.get('te_enabled'):
         lines.extend(_render_te(result, all_events))
 
+    # ========== H2. 热点主题新增跟踪（V2.4 热点主题扩池纳入，独立成节） ==========
+    lines.extend(_render_theme_watch(result, all_events, theme_meta))
+
     # ========== 全部事件明细（含 V3 双评分分解） ==========
     lines.append('## 全部事件明细（按 TAIL > EXPANSION > ENTRY > HVT分 排序）')
     lines.append('')
@@ -834,6 +891,55 @@ def _render_md(result: dict, all_events, detail_events) -> str:
             lines.append(f"- 为什么它像{why[0]}：{why[1]}")
         lines.append('')
     return '\n'.join(lines)
+
+
+def _render_theme_watch(result: dict, all_events, theme_meta) -> list:
+    """热点主题新增跟踪（独立成节）。
+
+    列出「因 V2.4 热点主题扩池而纳入选股池」（不在 sli_v2 细分龙头 Top5）且当期
+    产生 HVT 事件的标的，每只注明来源热点主题与热度，用于跟踪主题共振型非龙头机会。
+    扩池未启用/未生效（theme_meta 为 None）时不输出本节。
+    """
+    if not theme_meta:
+        return []
+    codes = theme_meta.get('codes') or set()
+    heat = theme_meta.get('heat') or {}
+    st_map = theme_meta.get('stock_themes') or {}
+    win = str(theme_meta.get('window', 'month'))
+    hmin = float(theme_meta.get('heat_min', 80.0))
+    win_cn = {'today': '日', 'week': '周', 'month': '月'}.get(win, win)
+    cap = int((result.get('caps') or {}).get('theme_watch', 20))
+
+    hits = [e for e in all_events if e.ts_code in codes]
+    # 有执行状态的优先，其次按 FE 降序
+    hits.sort(key=lambda e: (0 if getattr(e, 'execution_state', '') else 1,
+                             -float(getattr(e, 'fe_score', 0.0) or 0.0)))
+
+    lines = [f'## HOT_THEME_WATCH 热点主题新增跟踪（V2.4 {win_cn}热度≥{hmin:g} 扩池纳入，{len(hits)}只）', '']
+    if not hits:
+        lines.append('（无——当期无"非龙头热点主题成员"产生 HVT 事件）')
+        lines.append('')
+        return lines
+    lines.append('说明：以下标的经「V2.4 热点主题扩池」纳入选股池（不在 sli_v2 细分龙头 Top5），'
+                 '属主题共振型机会；本节独立列示，不占用上述各节展示上限。')
+    lines.append('')
+    lines.append('| 代码 | 名称 | 来源热点主题(热度) | HVT状态 | 执行状态 | ENTRY | FE | 触发价 | 买区 |')
+    lines.append('|---|---|---|---|---|---|---|---|---|')
+    for e in hits[:cap]:
+        ths = [(t, float(heat.get(t, 0.0))) for t in (st_map.get(e.ts_code) or []) if t in heat]
+        ths.sort(key=lambda x: -x[1])
+        th_str = '、'.join(f"{t}({h:.0f})" for t, h in ths) or '-'
+        trig = _te_num(e, 'entry_trigger', getattr(e, 'entry', 0.0) or 0.0)
+        lo, hi = _te_num(e, 'buy_zone_low'), _te_num(e, 'buy_zone_high')
+        fe = float(getattr(e, 'fe_score', 0.0) or 0.0)
+        lines.append(f"| {e.ts_code} | {e.name} | {th_str} | {e.state} "
+                     f"| {getattr(e, 'execution_state', '') or '-'} | {e.entry_score:.0f} "
+                     f"| {fe:.0f} | {trig:.2f} | {lo:.2f}~{hi:.2f} |")
+    lines.append('')
+    if len(hits) > cap:
+        lines.append(f'（仅显示前{cap}只，共{len(hits)}只；完整名单见 JSON 字段 theme_expand_codes）')
+        lines.append('')
+    return lines
 
 
 def _why_like_case(e):
@@ -907,9 +1013,13 @@ def _te_decision_point(engine, df, ev, b_idx: int, last_idx: int) -> str:
 def _te_buy_pool_filter(te_pool: list, max_buy: int):
     """V3.6 BUY 池规则（与回测 R1+R2 模拟口径严格一致：先按 SCORE 取 top，再池内剔除，不补位）。
 
-    R1：streak>=1（连续第2+日入池）且今日仅 BUY_ON_CONFIRM → 剔除（回测 pf 0.48~0.61）。
-    R2：streak==0（首日入池）且今日为 PULLBACK_RE（非首个回踩 GOOD 日）→ 剔除（回测 pf 0.76）。
-    保留 first/PULLBACK/BUY(pf1.61)、first/PULLBACK/BOC(pf1.47)、re2plus/PULLBACK_RE/BUY(pf1.55)。
+    口径依据：te_backtest.py 的 reentry_rule_audit（全样本 1209 个 cand_top，er20 盈亏比，
+    复现命令 `python hvt_bull/te_backtest.py --from-csv`）：
+      R1 目标桶 streak>=1 且 BUY_ON_CONFIRM：n=65、er20 pf 1.27（保留池 1.49）→ 剔弱有效。
+      R2 目标桶 streak==0 且 PULLBACK_RE 且 BUY_ON_CONFIRM：n=5、er20 pf 0.49 → 明确弱势桶。
+      （旧 R2 不限定 BUY_ON_CONFIRM，会连带剔除 first/PULLBACK_RE/BUY（n=91、pf 1.22，
+        整体并不弱），属过度触发，故收窄为只剔 BUY_ON_CONFIRM。）
+      对照保留桶：first/PULLBACK/BUY pf1.54、first/PULLBACK/BOC pf1.93、re2plus/PULLBACK_RE/BUY pf1.57。
     返回 (cand, kept, dropped)：cand=剔除前原始 top3（streak 递推源，与回测模拟口径一致）、
     kept=当日显示池、dropped=[(事件, 理由), ...]。
     """
@@ -926,9 +1036,9 @@ def _te_buy_pool_filter(te_pool: list, max_buy: int):
         dp = getattr(e, 'te_decision_point', '') or ''
         act = getattr(e, 'next_day_action', '')
         if streak >= 1 and act == 'BUY_ON_CONFIRM':
-            dropped.append((e, f'R1 再入确认买：连续第{streak + 1}日入池且今日仅BUY_ON_CONFIRM（回测pf 0.48~0.61）'))
-        elif streak == 0 and dp == 'PULLBACK_RE':
-            dropped.append((e, 'R2 首入再入日：首日入池但今日为非首个回踩GOOD日（回测pf 0.76）'))
+            dropped.append((e, f'R1 再入确认买：连续第{streak + 1}日入池且今日仅BUY_ON_CONFIRM（回测pf 1.27）'))
+        elif streak == 0 and dp == 'PULLBACK_RE' and act == 'BUY_ON_CONFIRM':
+            dropped.append((e, 'R2 首入再入日：首日入池、非首个回踩GOOD日且今日仅BUY_ON_CONFIRM（回测pf 0.49）'))
         else:
             kept.append(e)
     return cand, kept, dropped
@@ -942,6 +1052,10 @@ def _render_te(result: dict, all_events) -> list:
     """
     max_buy = int(result.get('te_max_buy', 3))
     te_pool = [e for e in all_events if getattr(e, 'execution_state', '')]
+    # 展示上限（20261001 放宽：section 10->20、extended 8->16，可由 config.report 覆盖）
+    _caps = result.get('caps') or {}
+    cap = int(_caps.get('section', 20))
+    ext_cap = int(_caps.get('extended', 16))
     lines = ['============================================================',
              'NEXT-DAY TRADE EXECUTION（V3.5 次日执行决策层）',
              '============================================================', '']
@@ -1029,7 +1143,7 @@ def _render_te(result: dict, all_events) -> list:
     if bw_pool:
         lines.append(head)
         lines.append(sep)
-        for e in bw_pool[:10]:
+        for e in bw_pool[:cap]:
             lines.append(_row(e))
         lines.append('')
     else:
@@ -1043,12 +1157,12 @@ def _render_te(result: dict, all_events) -> list:
     if nc_pool:
         lines.append(head)
         lines.append(sep)
-        for e in nc_pool[:10]:
+        for e in nc_pool[:cap]:
             lines.append(_row(e))
         lines.append('')
         if nc_dg:
             lines.append('**WAIT_PULLBACK（PRIMARY+基础门全过且执行分≥75，仅价格透支 → 降级观察，仍不下单）**：')
-            for e in nc_dg[:6]:
+            for e in nc_dg[:cap]:
                 lines.append(f"- {e.name}（{e.ts_code}）SCORE={_score(e, 'execution_score'):.1f} "
                              f"现价{_score(e, 'current_close'):.2f} 追高上限{_score(e, 'no_chase_level'):.2f} "
                              f"等回踩买区{_score(e, 'buy_zone_low'):.2f}~{_score(e, 'buy_zone_high'):.2f}")
@@ -1062,7 +1176,7 @@ def _render_te(result: dict, all_events) -> list:
     if ext_pool:
         lines.append(f'### EXTENDED CONTINUATION（过去大涨但未来条件未恶化，不机械剔除，{len(ext_pool)}只）')
         lines.append('')
-        for e in ext_pool[:8]:
+        for e in ext_pool[:ext_cap]:
             lines.append(f"- {e.name}（{e.ts_code}）TrendGain={_score(e, 'trend_gain'):.0f}% "
                          f"{e.execution_state} SCORE={_score(e, 'execution_score'):.1f} "
                          f"{getattr(e, 'primary_horizon', '') or '-'}")
@@ -1076,7 +1190,7 @@ def _render_te(result: dict, all_events) -> list:
                      '| LOCK | RISK | SCORE/GAP | 现价 | NEXT_CONFIRMATION |')
         lines.append(conf_head)
         lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|')
-        for e in wc_pool[:10]:
+        for e in wc_pool[:cap]:
             lk = 'PASS' if getattr(e, 'lock_gate', '') == 'PASS' else (getattr(e, 'lock_gate', '') or '-')
             rg = 'PASS' if getattr(e, 'risk_gate', '') == 'PASS' else (getattr(e, 'risk_gate', '') or '-')
             lines.append(f"| {e.ts_code} | {e.name} | {getattr(e, 'confirmation_state', '') or '-'} "
@@ -1088,7 +1202,7 @@ def _render_te(result: dict, all_events) -> list:
                          f"| {_score(e, 'current_close'):.2f} "
                          f"| {getattr(e, 'next_confirmation', '') or '-'} |")
         lines.append('')
-        for e in wc_pool[:10]:   # V1.1：WAIT 必须说明缺什么（当前值→需要值）+ 升级公式
+        for e in wc_pool[:cap]:   # V1.1：WAIT 必须说明缺什么（当前值→需要值）+ 升级公式
             lines.append(f"- **{e.name}（{e.ts_code}）** WAIT_REASON：{getattr(e, 'wait_reason', '') or '-'}")
             lines.append(f"  UPGRADE_CONDITION：{getattr(e, 'upgrade_condition', '') or '-'}")
         lines.append('')
@@ -1102,7 +1216,7 @@ def _render_te(result: dict, all_events) -> list:
     if sk_pool:
         lines.append('| 代码 | 名称 | V3状态 | SCORE | 原因 |')
         lines.append('|---|---|---|---|---|')
-        for e in sk_pool[:10]:
+        for e in sk_pool[:cap]:
             why = '；'.join(getattr(e, 'why_not_buy', None) or []) or '—'
             lines.append(f"| {e.ts_code} | {e.name} | {e.state} | {_score(e, 'execution_score'):.1f} | {why} |")
         lines.append('')
@@ -1145,10 +1259,10 @@ def _render_te(result: dict, all_events) -> list:
     # WHY_NOT_BUY（§31：对FE很高但未BUY的股票必须说明原因）
     lines.append('### WHY_NOT_BUY（为何未进买入候选）')
     lines.append('')
-    for e, why in te_dropped[:8]:
+    for e, why in te_dropped[:cap]:
         lines.append(f"- **{e.name}（{e.ts_code}）** STREAK={int(getattr(e, 'reentry_streak', 0) or 0)} "
                      f"DP={getattr(e, 'te_decision_point', '') or '-'} → {why}")
-    for e in bw_pool[:8] + nc_pool[:8] + wc_pool[:8]:
+    for e in bw_pool[:cap] + nc_pool[:cap] + wc_pool[:cap]:
         why = '；'.join(getattr(e, 'why_not_buy', None) or []) or '（无明确输出）'
         lines.append(f"- **{e.name}（{e.ts_code}）** FE={_score(e, 'fe_score'):.0f} "
                      f"ExtRisk={_score(e, 'extension_risk'):.0f} → {why}")
@@ -1216,7 +1330,7 @@ def _render_te(result: dict, all_events) -> list:
     if dip_pool:
         lines.append('| 代码 | 名称 | V3状态 | SCORE | 现价 | SKIP原因 |')
         lines.append('|---|---|---|---|---|---|')
-        for e in dip_pool[:10]:
+        for e in dip_pool[:cap]:
             why = '；'.join(getattr(e, 'why_not_buy', None) or []) or '—'
             lines.append(f"| {e.ts_code} | {e.name} | {e.state} | {_score(e, 'execution_score'):.1f} "
                          f"| {_score(e, 'current_close'):.2f} | {why} |")

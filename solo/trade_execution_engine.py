@@ -79,10 +79,11 @@ _RE_BULLET = re.compile(
 def parse_md_pool(md_path):
     """解析 W7 报告，返回 (cands, refs)。
 
-    V5.1 现行报告：榜单是 11 列表格（IGE_ADJ | 总分 | 类型 | 现价 | 触发价 | MA20 | 量比 | 状态），
-    不含 v5 维度；维度唯一来源是「行为解释与 T+10/20/60/120 预期」明细段
-    （HVT-V3=（天量/吸收/生命/空间/加速/RS/基本面），派发风险）。故先扫明细段建 dims 表，
-    再取同时具备明细的 11 列表格行入候选（即「今日可操作榜」），C池无明细自动排除。
+    现行报告：榜单表格不含 v5 维度；维度唯一来源是「行为解释与 T+10/20/60/120 预期」明细段
+    （HVT-V3=（天量/吸收/生命/空间/加速/RS/基本面），派发风险），该明细段恰好逐只覆盖「今日可操作榜」。
+    故先扫明细段建 dims 表，再取同时具备明细的表格行入候选（即「今日可操作榜」），C池无明细自动排除。
+    - 12 列 = V5.3「今日可操作榜」（20260925 起加「优先」列）：序号|代码|名称|优先|IGE_ADJ|总分|类型|现价|触发价|MA20|量比|状态；
+    - 11 列 = 「C池 高分等待突破」（无「优先」列）：序号|代码|名称|IGE_ADJ|总分|类型|现价|触发价|MA20|量比|状态。
     兼容旧版 18 列(TOP20/A/B/MID) / 10 列(已突破) / 6 列(C榜) 表格。
     """
     with open(md_path, encoding="utf-8") as f:
@@ -108,7 +109,19 @@ def parse_md_pool(md_path):
         if len(cells) < 3 or not cells[0].isdigit():
             continue  # 表头/分隔/说明行
         # 数据行：cells[0]=序号 cells[1]=代码 cells[2]=名称
-        if len(cells) == 11:  # V5.1 现行榜（维度须自明细段补齐，无明细的 C 池行不入候选）
+        if len(cells) == 12:  # V5.3 现行「今日可操作榜」（含「优先」列，维度须自明细段补齐）
+            code = cells[1]
+            if code not in dims:
+                continue
+            try:
+                rec = dict(code=code, name=cells[2], score=float(cells[5]), type=cells[6],
+                           close=float(cells[7]), pressure=float(cells[8]), ma20=float(cells[9]),
+                           volr=float(cells[10].lstrip("×")), state=cells[11],
+                           section=cur_section.split("（")[0].split("　")[0], **dims[code])
+            except ValueError:
+                continue
+            cands[code] = rec
+        elif len(cells) == 11:  # 「C池 高分等待突破」（无「优先」列；无明细的 C 池行不入候选）
             code = cells[1]
             if code not in dims:
                 continue
