@@ -573,6 +573,11 @@ def _te_table_cells(e) -> tuple:
         st = 'WAIT_PULLBACK'
     elif act == 'NO_CHASE':
         st = 'NO_CHASE'
+    elif act == 'BUY_ON_CONFIRM':
+        # 20261001：READY_BUY/PULLBACK_BUY + BUY_ON_CONFIRM 当日不可直接执行，
+        # 状态列须带出 action，否则下游（邮件决策表）会把「确认后买」误标为「可买」
+        # （与 TE/FE 落库口径一致：只把 next_day_action=BUY 视为可直接执行）
+        st = f'{st}/BUY_ON_CONFIRM'
     if st == 'SKIP':
         return (st, '-', '-', '-', '-', _te_pos(e))
     return (st,

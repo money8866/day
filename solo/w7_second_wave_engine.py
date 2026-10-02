@@ -19,7 +19,7 @@ IGE_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ige", "o
 MIN_CIRC_MV = 500_000.0  # 流通市值下限：50 亿元（Tushare 单位：万元）
 MIN_BARS = 250  # 最少 K 线：上市满一年才参与（次新股分位样本太少会失真）
 DATA_START = "20230103"  # 天量分位历史起点：以 20230103 为起点，此后上市以上市日为起点
-MAIN_EVENT_PCT = 99.0  # 主事件门槛：量能+换手历史分位双≥P99 才算天量主事件（原 OR≥P98 命中面过大，V4.3 收紧为 AND≥P99）
+MAIN_EVENT_PCT = 99.0  # 主事件门槛：量能+成交额历史分位双≥P99 才算天量主事件（20261001 由「换手率」改为「成交金额」；原 OR≥P98 命中面过大，V4.3 收紧为 AND≥P99）
 MAX_EVENT_AGE = 60  # 近 60 天内出现过天量事件即入候选池
 WATCH_MIN_T120 = 60  # V4.3：WATCH 状态 T120 下限，低于此分值的低分兜底票不输出
 ANCHORS = {"中际旭创": ("300308.SZ", "20250508"), "华正新材": ("603186.SH", "20250812")}
@@ -633,26 +633,45 @@ def trend_features(df, i):
     return {"trend": trend, "rs": clip(50 + ret20 * 500), "ma20_slope": slope20, "ma60_slope": slope60, "position": position}
 
 
+def limit_down_pct(ts_code):
+    """板块跌停幅度（%）：科创板/创业板 20cm，主板 10cm（与 HVT `_limit_up_ratio` 同源）"""
+    return 20.0 if str(ts_code or "")[:3] in ("688", "689", "300", "301", "302") else 10.0
+
+
 def extreme_event(df, i, window=None):
-    # window=None：V5 主口径——事件日前 120 日分位（HVT-V3 规格：成交量≥120日99%分位；量能+换手双≥P99）
+    # window=None：V5 主口径——事件日前 120 日分位（HVT-V3 规格：成交量≥120日99%分位；量能+成交额双≥P99）
     # window=250：锚点口径——事件日前 250 日分位（与锚点识别时的历史口径一致）
-    # 20260930 用户口径：天量标志日必须为阳线（收盘>开盘），巨量大阴线不计入极端换手事件。
+    # 20261001 用户口径（两项变更）：
+    #   ① 天量判定不再比换手率，改比成交金额：换手率维度整维替换为 amount（成交额），
+    #      仍保留 vol（成交量）维度；两维历史分位双 ≥ P99。
+    #   ② 天量标志日前一日涨幅 > 10% 时，当日方向豁免（不再要求收阳）；
+    #      豁免只免方向、保留「不烂尾」底线：T0 不跌停 且 收盘位置 ≥ 0.30（防巨量大阴线）。
+    #   原口径（20260930）：须收阳（close>open），巨量大阴线不计入极端换手事件。
     #   案例：300458 全志科技 7/30 巨量 -19.93% 阴线原被锚为 T0（锚点 P99@20260730），
-    #   加本条后 7/30 被剔除，最近一簇回退到 7/22 放量长阳（+11.14%，量能更大）。
+    #   加「须收阳」后 7/30 被剔除，最近一簇回退到 7/22 放量长阳（+11.14%，量能更大）。
     window = 120 if window is None else window
     start = i - window
     if start < 0 or i - start < min(window, MIN_BARS):
         return False, 0.0
-    if finite(df.iloc[i].close) <= finite(df.iloc[i].open):
+    row = df.iloc[i]
+    prev_pct = finite(df.iloc[i - 1].pct_chg) if i >= 1 else 0.0
+    if prev_pct > 10.0:
+        # 方向豁免：仅保留「不跌停 + 收盘位置≥0.30」
+        if finite(row.pct_chg) <= -(limit_down_pct(row.get("ts_code")) - 0.5):
+            return False, 0.0
+        span = finite(row.high) - finite(row.low)
+        if span > 0 and (finite(row.close) - finite(row.low)) / span < 0.30:
+            return False, 0.0
+    elif finite(row.close) <= finite(row.open):
         return False, 0.0
-    tr = finite(df.iloc[i].turnover_rate_f, finite(df.iloc[i].turnover_rate))
-    vol = finite(df.iloc[i].vol)
-    turns = pd.to_numeric(df.turnover_rate_f.iloc[start:i], errors="coerce").fillna(0).values
+    amt = finite(row.amount)
+    vol = finite(row.vol)
+    amts = pd.to_numeric(df.amount.iloc[start:i], errors="coerce").fillna(0).values
     vols = pd.to_numeric(df.vol.iloc[start:i], errors="coerce").fillna(0).values
-    p_turn = percentile_rank(turns, tr)
+    p_amt = percentile_rank(amts, amt)
     p_vol = percentile_rank(vols, vol)
     # V4.3→V5：OR≥P98 命中面过大 → AND≥P99；窗口由全历史改为 120 日（规格口径）
-    return min(p_turn, p_vol) >= MAIN_EVENT_PCT, max(p_turn, p_vol)
+    return min(p_amt, p_vol) >= MAIN_EVENT_PCT, max(p_amt, p_vol)
 
 
 def extreme_cluster_anchor(df, candidates, merge_gap=2):

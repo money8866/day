@@ -1,0 +1,62 @@
+﻿{
+  "ok": true,
+  "data": {
+    "data": [
+      {
+        "created_at": "2026-10-01T14:01:23Z",
+        "dir": {
+          "dir_id": 3,
+          "dir_name": "sent"
+        },
+        "from": {
+          "email": "kongxiangpu9703@agent.qq.com",
+          "name": "kongxiangpu9703"
+        },
+        "has_attachments": false,
+        "is_read": true,
+        "message_id": "msg_LYLsp6RACXZM-ZiKBcXVDuWlE34pBqEZM27n_a9cATR91g",
+        "snippet": "📅 明日行程提醒（2026-10-02 周五） 共 1 项安排    18:00 聚餐     生成时间 2026-10-01 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
+        "subject": "📅 明日行程提醒 10-02 周五",
+        "to": [
+          {
+            "email": "stock1975@qq.com",
+            "name": "stock1975"
+          }
+        ]
+      },
+      {
+        "created_at": "2026-09-30T15:24:41Z",
+        "dir": {
+          "dir_id": 3,
+          "dir_name": "sent"
+        },
+        "from": {
+          "email": "kongxiangpu9703@agent.qq.com",
+          "name": "kongxiangpu9703"
+        },
+        "has_attachments": false,
+        "is_read": true,
+        "message_id": "msg_Joh5Qm2TIWMxCn2zHeeQnUXGcmf9jxmPzGj9dhKueies5Q",
+        "snippet": "链路测试 23:26     此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
+        "subject": "agenda push link test",
+        "to": [
+          {
+            "email": "stock1975@qq.com",
+            "name": "stock1975"
+          }
+        ]
+      }
+    ],
+    "pagination": {
+      "has_more": true,
+      "next_cursor": "CAEQAg"
+    }
+  }
+}
+agently-cli.cmd : tip: agently-cli message +read --id msg_LYLsp6RACXZM-ZiKBcXVDuWlE34pBqEZM27n_a9cATR91g
+所在位置 行:445 字符: 59
++ ... ing]::UTF8; & "C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd" me ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (tip: agently-cl...ZM27n_a9cATR91g:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

@@ -30,3 +30,6 @@
   - 新建 `_push_agenda_mail.py`（查日程 → 渲染 HTML → Agent Mail CLI 发送），自动化 prompt 已同步更新。
   - 实测链路通：邮件「📅 明日行程提醒 10-01 周四」已进 sent（created_at 2026-09-30T15:23:20Z）。
   - 期间 CLI token 过期，执行过一次 `auth login` 并完成授权。
+- 2026-10-01 22:01：查询 2026-10-02（周五）日程，命中 1 项（18:00 聚餐），邮件推送成功。
+  exit 0；sent 目录复核确认 subject「📅 明日行程提醒 10-02 周五」created_at 2026-10-01T14:01:23Z。
+  token 仍有效（未触发 auth login）。执行方式沿用 PowerShell + 编码三件套 + Out-File utf8 重定向。

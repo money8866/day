@@ -1,0 +1,3488 @@
+{
+  "generated_at": "2026-10-02T13:27:20.802740+08:00",
+  "trade_date": "2026-09-30",
+  "source": "finchx intraday panorama (tonghuashun.concept / eastmoney / aigupiao)",
+  "params": {
+    "workers": 8,
+    "top": 30
+  },
+  "warnings": [
+    "概念快照缺失 13/361 个"
+  ],
+  "concept_count": 348,
+  "concepts": [
+    {
+      "name": "重组蛋白",
+      "code": "308822",
+      "change_rate": 0.0378,
+      "index_level": 851.771,
+      "amount": 28545631000.0,
+      "net_money_flow": 2017000000.0,
+      "rise_count": 60,
+      "fall_count": 4,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "细胞免疫治疗",
+      "code": "301543",
+      "change_rate": 0.0345,
+      "index_level": 1273.78,
+      "amount": 35179749000.0,
+      "net_money_flow": 2838000000.0,
+      "rise_count": 61,
+      "fall_count": 2,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "猴痘概念",
+      "code": "308941",
+      "change_rate": 0.0296,
+      "index_level": 930.699,
+      "amount": 25448608000.0,
+      "net_money_flow": 1656000000.0,
+      "rise_count": 65,
+      "fall_count": 9,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "生物疫苗",
+      "code": "300106",
+      "change_rate": 0.0295,
+      "index_level": 1698.521,
+      "amount": 19270127000.0,
+      "net_money_flow": 1608000000.0,
+      "rise_count": 60,
+      "fall_count": 1,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "减肥药",
+      "code": "309081",
+      "change_rate": 0.0259,
+      "index_level": 1457.992,
+      "amount": 34368688000.0,
+      "net_money_flow": 2906000000.0,
+      "rise_count": 61,
+      "fall_count": 6,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "禽流感",
+      "code": "300075",
+      "change_rate": 0.0258,
+      "index_level": 2152.186,
+      "amount": 3231613800.0,
+      "net_money_flow": 342000000.0,
+      "rise_count": 21,
+      "fall_count": 0,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "幽门螺杆菌概念",
+      "code": "308818",
+      "change_rate": 0.0248,
+      "index_level": 1057.58,
+      "amount": 14212870000.0,
+      "net_money_flow": 793000000.0,
+      "rise_count": 62,
+      "fall_count": 11,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "创新药",
+      "code": "308014",
+      "change_rate": 0.0246,
+      "index_level": 1309.734,
+      "amount": 97216222000.0,
+      "net_money_flow": 7848000000.0,
+      "rise_count": 250,
+      "fall_count": 21,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "肝炎概念",
+      "code": "308915",
+      "change_rate": 0.0244,
+      "index_level": 1152.032,
+      "amount": 37621860000.0,
+      "net_money_flow": 3113000000.0,
+      "rise_count": 124,
+      "fall_count": 12,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "辅助生殖",
+      "code": "308708",
+      "change_rate": 0.0243,
+      "index_level": 1278.855,
+      "amount": 25808201000.0,
+      "net_money_flow": 2314000000.0,
+      "rise_count": 62,
+      "fall_count": 11,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "芬太尼",
+      "code": "308438",
+      "change_rate": 0.0211,
+      "index_level": 2150.612,
+      "amount": 1384854700.0,
+      "net_money_flow": 80000000.0,
+      "rise_count": 7,
+      "fall_count": 1,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "青蒿素",
+      "code": "301794",
+      "change_rate": 0.021,
+      "index_level": 2006.523,
+      "amount": 4565758900.0,
+      "net_money_flow": 543000000.0,
+      "rise_count": 11,
+      "fall_count": 0,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "流感",
+      "code": "300038",
+      "change_rate": 0.0209,
+      "index_level": 1494.846,
+      "amount": 41047763000.0,
+      "net_money_flow": 2815000000.0,
+      "rise_count": 138,
+      "fall_count": 20,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "白酒概念",
+      "code": "301496",
+      "change_rate": 0.0207,
+      "index_level": 6163.337,
+      "amount": 17971675000.0,
+      "net_money_flow": 1016000000.0,
+      "rise_count": 39,
+      "fall_count": 6,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "玉米",
+      "code": "301572",
+      "change_rate": 0.0207,
+      "index_level": 2525.664,
+      "amount": 9883527100.0,
+      "net_money_flow": 723000000.0,
+      "rise_count": 29,
+      "fall_count": 4,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "粮食概念",
+      "code": "308956",
+      "change_rate": 0.0206,
+      "index_level": 894.061,
+      "amount": 13130951000.0,
+      "net_money_flow": 383000000.0,
+      "rise_count": 39,
+      "fall_count": 7,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "仿制药一致性评价",
+      "code": "308572",
+      "change_rate": 0.0197,
+      "index_level": 1669.003,
+      "amount": 41076487000.0,
+      "net_money_flow": 3359000000.0,
+      "rise_count": 126,
+      "fall_count": 13,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "阿尔茨海默概念",
+      "code": "308614",
+      "change_rate": 0.0195,
+      "index_level": 1316.574,
+      "amount": 13981957000.0,
+      "net_money_flow": 998000000.0,
+      "rise_count": 38,
+      "fall_count": 6,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "乳业",
+      "code": "300983",
+      "change_rate": 0.0192,
+      "index_level": 2016.787,
+      "amount": 6967155000.0,
+      "net_money_flow": 132000000.0,
+      "rise_count": 33,
+      "fall_count": 2,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "基因测序",
+      "code": "301146",
+      "change_rate": 0.019,
+      "index_level": 2110.828,
+      "amount": 21905533000.0,
+      "net_money_flow": 661000000.0,
+      "rise_count": 57,
+      "fall_count": 12,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "染料",
+      "code": "301292",
+      "change_rate": 0.019,
+      "index_level": 1562.866,
+      "amount": 7513617100.0,
+      "net_money_flow": -426000000.0,
+      "rise_count": 27,
+      "fall_count": 11,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "代糖概念",
+      "code": "308696",
+      "change_rate": 0.0187,
+      "index_level": 921.369,
+      "amount": 3790870500.0,
+      "net_money_flow": 193000000.0,
+      "rise_count": 20,
+      "fall_count": 5,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "合成生物",
+      "code": "309129",
+      "change_rate": 0.0183,
+      "index_level": 1608.496,
+      "amount": 51078247000.0,
+      "net_money_flow": 1713000000.0,
+      "rise_count": 130,
+      "fall_count": 38,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "草甘膦",
+      "code": "300157",
+      "change_rate": 0.018,
+      "index_level": 1424.35,
+      "amount": 2357841400.0,
+      "net_money_flow": 40000000.0,
+      "rise_count": 19,
+      "fall_count": 0,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "啤酒概念",
+      "code": "301497",
+      "change_rate": 0.0174,
+      "index_level": 1452.465,
+      "amount": 4315117300.0,
+      "net_money_flow": 370000000.0,
+      "rise_count": 22,
+      "fall_count": 7,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "医药电商",
+      "code": "301565",
+      "change_rate": 0.0159,
+      "index_level": 1010.382,
+      "amount": 38285071000.0,
+      "net_money_flow": 3184000000.0,
+      "rise_count": 155,
+      "fall_count": 26,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "大豆",
+      "code": "301123",
+      "change_rate": 0.0157,
+      "index_level": 1648.872,
+      "amount": 1600465500.0,
+      "net_money_flow": 151000000.0,
+      "rise_count": 12,
+      "fall_count": 2,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "超级品牌",
+      "code": "306750",
+      "change_rate": 0.0148,
+      "index_level": 1433.787,
+      "amount": 29681112000.0,
+      "net_money_flow": 2577000000.0,
+      "rise_count": 45,
+      "fall_count": 4,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "农业种植",
+      "code": "308016",
+      "change_rate": 0.0148,
+      "index_level": 2419.505,
+      "amount": 14977938000.0,
+      "net_money_flow": 609000000.0,
+      "rise_count": 76,
+      "fall_count": 16,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    },
+    {
+      "name": "毛发医疗",
+      "code": "308893",
+      "change_rate": 0.0146,
+      "index_level": 1133.219,
+      "amount": 6059514000.0,
+      "net_money_flow": 376000000.0,
+      "rise_count": 22,
+      "fall_count": 5,
+      "source_timestamp": "2026-09-30T15:00:00+08:00"
+    }
+  ],
+  "sentiment": {
+    "marketTemperature": "46",
+    "totalTurnover": "1440000000000.00",
+    "forecastedTurnover": null,
+    "turnoverChangeAmount": "28800000000",
+    "blastBreakRatio": "0.2",
+    "previousLimitUpBreakChangeRatio": "-0.0311",
+    "stopTradingCount": 11,
+    "oneLimitUpCount": 40,
+    "twoLimitUpCount": 6,
+    "threeLimitUpCount": 4,
+    "highLimitUpCount": 2,
+    "twoLimitUpPromotionRatio": "0.13",
+    "threeLimitUpPromotionRatio": "0.57",
+    "highLimitUpPromotionRatio": "0.5",
+    "previousLimitUpThemeChangeRatio": "0.0129",
+    "previousConsecutiveLimitUpThemeChangeRatio": "0.0425"
+  },
+  "breadth": {
+    "tradeDate": "2026-09-30",
+    "advancing": 2470,
+    "declining": 2747,
+    "unchanged": 147,
+    "total": 5364,
+    "limitUpCount": 52,
+    "limitDownCount": 9,
+    "upOver10PercentCount": 20,
+    "downOver10PercentCount": 7,
+    "distribution": [
+      {
+        "bucket": "limit_down",
+        "count": 9
+      },
+      {
+        "bucket": "down_over_10_percent",
+        "count": 7
+      },
+      {
+        "bucket": "down_8_to_9_percent",
+        "count": 8
+      },
+      {
+        "bucket": "down_7_to_8_percent",
+        "count": 15
+      },
+      {
+        "bucket": "down_6_to_7_percent",
+        "count": 24
+      },
+      {
+        "bucket": "down_5_to_6_percent",
+        "count": 58
+      },
+      {
+        "bucket": "down_4_to_5_percent",
+        "count": 140
+      },
+      {
+        "bucket": "down_3_to_4_percent",
+        "count": 242
+      },
+      {
+        "bucket": "down_2_to_3_percent",
+        "count": 456
+      },
+      {
+        "bucket": "down_1_to_2_percent",
+        "count": 782
+      },
+      {
+        "bucket": "down_0_to_1_percent",
+        "count": 1006
+      },
+      {
+        "bucket": "unchanged",
+        "count": 147
+      },
+      {
+        "bucket": "up_0_to_1_percent",
+        "count": 1060
+      },
+      {
+        "bucket": "up_1_to_2_percent",
+        "count": 758
+      },
+      {
+        "bucket": "up_2_to_3_percent",
+        "count": 293
+      },
+      {
+        "bucket": "up_3_to_4_percent",
+        "count": 143
+      },
+      {
+        "bucket": "up_4_to_5_percent",
+        "count": 75
+      },
+      {
+        "bucket": "up_5_to_6_percent",
+        "count": 30
+      },
+      {
+        "bucket": "up_6_to_7_percent",
+        "count": 19
+      },
+      {
+        "bucket": "up_7_to_8_percent",
+        "count": 13
+      },
+      {
+        "bucket": "up_8_to_9_percent",
+        "count": 7
+      },
+      {
+        "bucket": "up_over_10_percent",
+        "count": 20
+      },
+      {
+        "bucket": "limit_up",
+        "count": 52
+      }
+    ]
+  },
+  "limit_up": [
+    {
+      "instrumentId": {
+        "code": "002058",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "紫竹高科",
+      "price": "20.2",
+      "changeRate": "0.100217866897583",
+      "amount": "51136320",
+      "floatMarketCapitalization": "2895989806.4",
+      "marketCapitalization": "2897656306.4",
+      "turnoverRate": "0.017657631635665894",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:25:00",
+      "limitUpQueueAmount": "69384959",
+      "limitUpBreakCount": 0,
+      "industry": "电池",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002242",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "九阳股份",
+      "price": "12.5",
+      "changeRate": "0.10035211563110352",
+      "amount": "436662832",
+      "floatMarketCapitalization": "9522070312.5",
+      "marketCapitalization": "9537712600.0",
+      "turnoverRate": "0.04589446067810059",
+      "consecutiveLimitUpDays": 3,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:49:30",
+      "limitUpQueueAmount": "164830000",
+      "limitUpBreakCount": 1,
+      "industry": "小家电",
+      "limitUpStats": {
+        "lookbackDays": 3,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600241",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "时代万恒",
+      "price": "9.72",
+      "changeRate": "0.09954751014709473",
+      "amount": "74661264",
+      "floatMarketCapitalization": "2860616557.8",
+      "marketCapitalization": "2860616528.6400005",
+      "turnoverRate": "0.02609971046447754",
+      "consecutiveLimitUpDays": 3,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:25:00",
+      "limitUpQueueAmount": "141936300",
+      "limitUpBreakCount": 0,
+      "industry": "电池",
+      "limitUpStats": {
+        "lookbackDays": 3,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600825",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "新华传媒",
+      "price": "10.35",
+      "changeRate": "0.09989372253417969",
+      "amount": "144750256",
+      "floatMarketCapitalization": "10814589247.5",
+      "marketCapitalization": "10814589309.6",
+      "turnoverRate": "0.013384720087051392",
+      "consecutiveLimitUpDays": 7,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:25:00",
+      "limitUpQueueAmount": "1988381638",
+      "limitUpBreakCount": 0,
+      "industry": "出版",
+      "limitUpStats": {
+        "lookbackDays": 7,
+        "limitUpCount": 7
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605303",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "园林股份",
+      "price": "28.66",
+      "changeRate": "0.10019193649291993",
+      "amount": "4940984",
+      "floatMarketCapitalization": "4621064113.28",
+      "marketCapitalization": "4621064113.28",
+      "turnoverRate": "0.0010692308098077774",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:25:00",
+      "limitUpQueueAmount": "174751484",
+      "limitUpBreakCount": 0,
+      "industry": "基础建设",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605388",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "均瑶健康",
+      "price": "7.39",
+      "changeRate": "0.09970237731933594",
+      "amount": "84984113",
+      "floatMarketCapitalization": "4437576760.0",
+      "marketCapitalization": "4437576760.0",
+      "turnoverRate": "0.019151017665863038",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "09:25:00",
+      "lastLimitUpTime": "09:25:00",
+      "limitUpQueueAmount": "77280333",
+      "limitUpBreakCount": 0,
+      "industry": "饮料乳品",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "001206",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "依依股份",
+      "price": "18.62",
+      "changeRate": "0.09982279777526856",
+      "amount": "86373023",
+      "floatMarketCapitalization": "1989816207.96",
+      "marketCapitalization": "3442722704.96",
+      "turnoverRate": "0.04346381664276123",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:30:00",
+      "lastLimitUpTime": "09:30:00",
+      "limitUpQueueAmount": "24210319",
+      "limitUpBreakCount": 0,
+      "industry": "个护用品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002866",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "传艺科技",
+      "price": "16.9",
+      "changeRate": "0.10026041030883789",
+      "amount": "577077488",
+      "floatMarketCapitalization": "3105694308.6",
+      "marketCapitalization": "4892926126.4",
+      "turnoverRate": "0.18652318954467775",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "09:30:06",
+      "lastLimitUpTime": "09:39:54",
+      "limitUpQueueAmount": "34927230",
+      "limitUpBreakCount": 2,
+      "industry": "消费电子",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "601118",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "海南橡胶",
+      "price": "6.37",
+      "changeRate": "0.10017271041870118",
+      "amount": "401066384",
+      "floatMarketCapitalization": "27259955066.89",
+      "marketCapitalization": "27259955035.04",
+      "turnoverRate": "0.014745324850082398",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:30:08",
+      "lastLimitUpTime": "09:30:08",
+      "limitUpQueueAmount": "79271465",
+      "limitUpBreakCount": 0,
+      "industry": "种植业",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605577",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "龙版传媒",
+      "price": "16.28",
+      "changeRate": "0.1",
+      "amount": "165526362",
+      "floatMarketCapitalization": "7235555564.6",
+      "marketCapitalization": "7235555613.440001",
+      "turnoverRate": "0.023121225833892824",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:30:12",
+      "lastLimitUpTime": "09:30:12",
+      "limitUpQueueAmount": "159267240",
+      "limitUpBreakCount": 0,
+      "industry": "出版",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600059",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "古越龙山",
+      "price": "12.27",
+      "changeRate": "0.10044842720031739",
+      "amount": "1093331568",
+      "floatMarketCapitalization": "11184625407.51",
+      "marketCapitalization": "11184625444.32",
+      "turnoverRate": "0.0987020206451416",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:31:14",
+      "lastLimitUpTime": "10:18:53",
+      "limitUpQueueAmount": "64352456",
+      "limitUpBreakCount": 4,
+      "industry": "非白酒",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "301190",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "善水科技",
+      "price": "35.93",
+      "changeRate": "0.2000667953491211",
+      "amount": "510373312",
+      "floatMarketCapitalization": "6534014220.0",
+      "marketCapitalization": "7711889445.0",
+      "turnoverRate": "0.07954790115356445",
+      "consecutiveLimitUpDays": 3,
+      "firstLimitUpTime": "09:31:15",
+      "lastLimitUpTime": "09:31:24",
+      "limitUpQueueAmount": "106419018",
+      "limitUpBreakCount": 1,
+      "industry": "化学原料",
+      "limitUpStats": {
+        "lookbackDays": 3,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002388",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "新亚制程",
+      "price": "9.1",
+      "changeRate": "0.10036275863647461",
+      "amount": "320868352",
+      "floatMarketCapitalization": "4606633804.5",
+      "marketCapitalization": "4609461438.4",
+      "turnoverRate": "0.07049755573272705",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:31:36",
+      "lastLimitUpTime": "09:32:51",
+      "limitUpQueueAmount": "63476868",
+      "limitUpBreakCount": 1,
+      "industry": "其他电子",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000011",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "深物业A",
+      "price": "12.24",
+      "changeRate": "0.0997304630279541",
+      "amount": "971267920",
+      "floatMarketCapitalization": "6444060646.32",
+      "marketCapitalization": "7294784037.12",
+      "turnoverRate": "0.17071428298950197",
+      "consecutiveLimitUpDays": 3,
+      "firstLimitUpTime": "09:31:45",
+      "lastLimitUpTime": "13:11:24",
+      "limitUpQueueAmount": "40166967",
+      "limitUpBreakCount": 2,
+      "industry": "房地产开",
+      "limitUpStats": {
+        "lookbackDays": 3,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603188",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "亚邦股份",
+      "price": "5.4",
+      "changeRate": "0.09979633331298829",
+      "amount": "171759296",
+      "floatMarketCapitalization": "3078918000.0",
+      "marketCapitalization": "3078918000.0",
+      "turnoverRate": "0.057642107009887699",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "09:32:06",
+      "lastLimitUpTime": "09:32:06",
+      "limitUpQueueAmount": "26412480",
+      "limitUpBreakCount": 0,
+      "industry": "化学制品",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600356",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "恒丰纸业",
+      "price": "11.46",
+      "changeRate": "0.09980806350708008",
+      "amount": "173476365",
+      "floatMarketCapitalization": "3423461591.88",
+      "marketCapitalization": "3776488427.5200006",
+      "turnoverRate": "0.05147555828094482",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:32:23",
+      "lastLimitUpTime": "09:32:23",
+      "limitUpQueueAmount": "57930701",
+      "limitUpBreakCount": 0,
+      "industry": "造纸",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002316",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "亚联发展",
+      "price": "4.95",
+      "changeRate": "0.1",
+      "amount": "145182371",
+      "floatMarketCapitalization": "1686638250.0",
+      "marketCapitalization": "1945944000.0",
+      "turnoverRate": "0.08703655242919922",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:33:03",
+      "lastLimitUpTime": "09:33:03",
+      "limitUpQueueAmount": "40009860",
+      "limitUpBreakCount": 0,
+      "industry": "综合Ⅱ",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000710",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "贝瑞基因",
+      "price": "10.87",
+      "changeRate": "0.10020242691040039",
+      "amount": "268548896",
+      "floatMarketCapitalization": "3647182381.4599997",
+      "marketCapitalization": "3842778400.64",
+      "turnoverRate": "0.07521285057067871",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:33:06",
+      "lastLimitUpTime": "09:33:06",
+      "limitUpQueueAmount": "135318456",
+      "limitUpBreakCount": 0,
+      "industry": "医疗服务",
+      "limitUpStats": {
+        "lookbackDays": 4,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603948",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "建业股份",
+      "price": "21.36",
+      "changeRate": "0.09989701271057129",
+      "amount": "42141574",
+      "floatMarketCapitalization": "3470768607.12",
+      "marketCapitalization": "3470768607.12",
+      "turnoverRate": "0.012316519021987916",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:33:33",
+      "lastLimitUpTime": "09:33:33",
+      "limitUpQueueAmount": "23284514",
+      "limitUpBreakCount": 0,
+      "industry": "化学制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600072",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "中船科技",
+      "price": "9.7",
+      "changeRate": "0.09977324485778809",
+      "amount": "424853136",
+      "floatMarketCapitalization": "10508371965.199999",
+      "marketCapitalization": "14556302206.4",
+      "turnoverRate": "0.040919671058654789",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:36:33",
+      "lastLimitUpTime": "09:36:33",
+      "limitUpQueueAmount": "33820020",
+      "limitUpBreakCount": 0,
+      "industry": "风电设备",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "688185",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "康希诺",
+      "price": "102.64",
+      "changeRate": "0.20004676818847658",
+      "amount": "1065144352",
+      "floatMarketCapitalization": "11739234558.64",
+      "marketCapitalization": "25356575734.64",
+      "turnoverRate": "0.09321914672851563",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:38:00",
+      "lastLimitUpTime": "09:43:24",
+      "limitUpQueueAmount": "181976717",
+      "limitUpBreakCount": 1,
+      "industry": "生物制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600081",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "东风科技",
+      "price": "11.89",
+      "changeRate": "0.0999074935913086",
+      "amount": "195515214",
+      "floatMarketCapitalization": "6575481161.3",
+      "marketCapitalization": "6575481232.64",
+      "turnoverRate": "0.030031533241271974",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:38:15",
+      "lastLimitUpTime": "09:50:17",
+      "limitUpQueueAmount": "32680616",
+      "limitUpBreakCount": 1,
+      "industry": "汽车零部",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605011",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "杭州热电",
+      "price": "19.21",
+      "changeRate": "0.10022909164428711",
+      "amount": "231188954",
+      "floatMarketCapitalization": "7685921000.0",
+      "marketCapitalization": "7685921000.0",
+      "turnoverRate": "0.030565237998962404",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:40:36",
+      "lastLimitUpTime": "13:15:24",
+      "limitUpQueueAmount": "36707947",
+      "limitUpBreakCount": 2,
+      "industry": "电力",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603928",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "兴业股份",
+      "price": "13.07",
+      "changeRate": "0.10016834259033204",
+      "amount": "131911733",
+      "floatMarketCapitalization": "4453001280.0",
+      "marketCapitalization": "4453001280.0",
+      "turnoverRate": "0.030060503482818605",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:41:00",
+      "lastLimitUpTime": "09:41:30",
+      "limitUpQueueAmount": "52047680",
+      "limitUpBreakCount": 1,
+      "industry": "塑料",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000692",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "惠天热电",
+      "price": "4.59",
+      "changeRate": "0.10071942329406739",
+      "amount": "170711391",
+      "floatMarketCapitalization": "2445703359.84",
+      "marketCapitalization": "2445703359.84",
+      "turnoverRate": "0.07079366207122803",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:42:27",
+      "lastLimitUpTime": "10:32:21",
+      "limitUpQueueAmount": "38930557",
+      "limitUpBreakCount": 4,
+      "industry": "电力",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603538",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "美诺华",
+      "price": "28.59",
+      "changeRate": "0.100038480758667",
+      "amount": "1324164480",
+      "floatMarketCapitalization": "9632541399.09",
+      "marketCapitalization": "9718547009.28",
+      "turnoverRate": "0.14113715171813965",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:48:35",
+      "lastLimitUpTime": "09:48:35",
+      "limitUpQueueAmount": "187204060",
+      "limitUpBreakCount": 0,
+      "industry": "化学制药",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603739",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "蔚蓝生物",
+      "price": "14.04",
+      "changeRate": "0.10031347274780274",
+      "amount": "127913740",
+      "floatMarketCapitalization": "3552525278.64",
+      "marketCapitalization": "3552525278.64",
+      "turnoverRate": "0.03642637014389038",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:48:57",
+      "lastLimitUpTime": "09:48:57",
+      "limitUpQueueAmount": "17764812",
+      "limitUpBreakCount": 0,
+      "industry": "化学制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002962",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "五方光电",
+      "price": "16.17",
+      "changeRate": "0.1",
+      "amount": "557837360",
+      "floatMarketCapitalization": "3383018354.1000006",
+      "marketCapitalization": "4716228871.200001",
+      "turnoverRate": "0.1705689811706543",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:49:21",
+      "lastLimitUpTime": "10:20:24",
+      "limitUpQueueAmount": "51090473",
+      "limitUpBreakCount": 1,
+      "industry": "光学光电",
+      "limitUpStats": {
+        "lookbackDays": 3,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603590",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "康辰药业",
+      "price": "32.11",
+      "changeRate": "0.10003425598144532",
+      "amount": "193482072",
+      "floatMarketCapitalization": "5105396142.47",
+      "marketCapitalization": "5178876666.47",
+      "turnoverRate": "0.0385661244392395",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:55:33",
+      "lastLimitUpTime": "09:55:33",
+      "limitUpQueueAmount": "19000450",
+      "limitUpBreakCount": 0,
+      "industry": "生物制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "688806",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "泰诺麦博-U",
+      "price": "30.67",
+      "changeRate": "0.19992176055908204",
+      "amount": "350550256",
+      "floatMarketCapitalization": "1564956992.2",
+      "marketCapitalization": "14124951708.640002",
+      "turnoverRate": "0.23591079711914064",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "09:57:53",
+      "lastLimitUpTime": "09:57:53",
+      "limitUpQueueAmount": "35585204",
+      "limitUpBreakCount": 0,
+      "industry": "生物制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605288",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "凯迪股份",
+      "price": "71.83",
+      "changeRate": "0.1",
+      "amount": "208051963",
+      "floatMarketCapitalization": "7059343002.91",
+      "marketCapitalization": "7087647183.43",
+      "turnoverRate": "0.03004589796066284",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:00:28",
+      "lastLimitUpTime": "10:12:13",
+      "limitUpQueueAmount": "26416200",
+      "limitUpBreakCount": 1,
+      "industry": "自动化设",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600592",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "龙溪股份",
+      "price": "16.2",
+      "changeRate": "0.09979633331298829",
+      "amount": "297115600",
+      "floatMarketCapitalization": "6472767850.2",
+      "marketCapitalization": "6472767801.599999",
+      "turnoverRate": "0.04719627380371094",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:00:44",
+      "lastLimitUpTime": "10:00:44",
+      "limitUpQueueAmount": "64484683",
+      "limitUpBreakCount": 0,
+      "industry": "通用设备",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002164",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "宁波东力",
+      "price": "13.26",
+      "changeRate": "0.10041494369506836",
+      "amount": "648830912",
+      "floatMarketCapitalization": "6361818396.18",
+      "marketCapitalization": "7056623208.96",
+      "turnoverRate": "0.10411203384399414",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:01:12",
+      "lastLimitUpTime": "10:49:57",
+      "limitUpQueueAmount": "60687307",
+      "limitUpBreakCount": 1,
+      "industry": "通用设备",
+      "limitUpStats": {
+        "lookbackDays": 4,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000678",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "襄阳轴承",
+      "price": "12.89",
+      "changeRate": "0.09982934951782227",
+      "amount": "1074985696",
+      "floatMarketCapitalization": "5924396063.33",
+      "marketCapitalization": "5924395998.88",
+      "turnoverRate": "0.19650896072387697",
+      "consecutiveLimitUpDays": 4,
+      "firstLimitUpTime": "10:03:00",
+      "lastLimitUpTime": "10:03:00",
+      "limitUpQueueAmount": "67104051",
+      "limitUpBreakCount": 0,
+      "industry": "汽车零部",
+      "limitUpStats": {
+        "lookbackDays": 4,
+        "limitUpCount": 4
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002226",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "江南化工",
+      "price": "5.34",
+      "changeRate": "0.10103093147277832",
+      "amount": "411668720",
+      "floatMarketCapitalization": "14145223134.6",
+      "marketCapitalization": "14145248008.32",
+      "turnoverRate": "0.02960158348083496",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:05:48",
+      "lastLimitUpTime": "10:39:30",
+      "limitUpQueueAmount": "62458028",
+      "limitUpBreakCount": 2,
+      "industry": "化学制品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002454",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "松芝股份",
+      "price": "5.61",
+      "changeRate": "0.1",
+      "amount": "121091923",
+      "floatMarketCapitalization": "4921955019.96",
+      "marketCapitalization": "4931603344.8",
+      "turnoverRate": "0.02518289804458618",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:07:21",
+      "lastLimitUpTime": "10:07:21",
+      "limitUpQueueAmount": "34133321",
+      "limitUpBreakCount": 0,
+      "industry": "汽车零部",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603200",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "上海洗霸",
+      "price": "44.74",
+      "changeRate": "0.10007376670837403",
+      "amount": "1063767248",
+      "floatMarketCapitalization": "7850979808.22",
+      "marketCapitalization": "7850979808.22",
+      "turnoverRate": "0.13873533248901368",
+      "consecutiveLimitUpDays": 2,
+      "firstLimitUpTime": "10:11:16",
+      "lastLimitUpTime": "10:37:55",
+      "limitUpQueueAmount": "48320229",
+      "limitUpBreakCount": 2,
+      "industry": "环境治理",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 2
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603906",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "龙蟠科技",
+      "price": "19.04",
+      "changeRate": "0.09994222640991211",
+      "amount": "687707888",
+      "floatMarketCapitalization": "10719453417.119999",
+      "marketCapitalization": "15062770652.16",
+      "turnoverRate": "0.06570748805999756",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:11:23",
+      "lastLimitUpTime": "10:17:20",
+      "limitUpQueueAmount": "41772465",
+      "limitUpBreakCount": 2,
+      "industry": "电池",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "300893",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "松原安全",
+      "price": "15.13",
+      "changeRate": "0.19984140396118165",
+      "amount": "323471632",
+      "floatMarketCapitalization": "3808115755.7200005",
+      "marketCapitalization": "7171031019.360001",
+      "turnoverRate": "0.08948458671569825",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:14:42",
+      "lastLimitUpTime": "10:50:30",
+      "limitUpQueueAmount": "23202445",
+      "limitUpBreakCount": 1,
+      "industry": "汽车零部",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "605287",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "德才股份",
+      "price": "37.39",
+      "changeRate": "0.10002942085266114",
+      "amount": "279963776",
+      "floatMarketCapitalization": "5234600000.0",
+      "marketCapitalization": "5234600000.0",
+      "turnoverRate": "0.05474971294403076",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:20:00",
+      "lastLimitUpTime": "11:15:30",
+      "limitUpQueueAmount": "35008257",
+      "limitUpBreakCount": 3,
+      "industry": "装修装饰",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000504",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "南华生物",
+      "price": "12.42",
+      "changeRate": "0.10008857727050782",
+      "amount": "860444304",
+      "floatMarketCapitalization": "4087700183.16",
+      "marketCapitalization": "4098886951.68",
+      "turnoverRate": "0.2251202964782715",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:22:42",
+      "lastLimitUpTime": "10:22:42",
+      "limitUpQueueAmount": "61630536",
+      "limitUpBreakCount": 0,
+      "industry": "医疗服务",
+      "limitUpStats": {
+        "lookbackDays": 9,
+        "limitUpCount": 5
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002755",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "奥赛康",
+      "price": "13.55",
+      "changeRate": "0.09983766555786133",
+      "amount": "248447517",
+      "floatMarketCapitalization": "12576453854.800002",
+      "marketCapitalization": "12576572769.6",
+      "turnoverRate": "0.02030956506729126",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:23:57",
+      "lastLimitUpTime": "10:23:57",
+      "limitUpQueueAmount": "14917195",
+      "limitUpBreakCount": 0,
+      "industry": "化学制药",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603127",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "昭衍新药",
+      "price": "49.3",
+      "changeRate": "0.09995537757873536",
+      "amount": "2647331808",
+      "floatMarketCapitalization": "30946434000.199998",
+      "marketCapitalization": "36942867443.2",
+      "turnoverRate": "0.08825923919677735",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "10:49:10",
+      "lastLimitUpTime": "11:25:25",
+      "limitUpQueueAmount": "221548382",
+      "limitUpBreakCount": 1,
+      "industry": "医疗服务",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002188",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "中天服务",
+      "price": "6.4",
+      "changeRate": "0.09965636253356934",
+      "amount": "144707999",
+      "floatMarketCapitalization": "1647123244.8000003",
+      "marketCapitalization": "2093464780.8000003",
+      "turnoverRate": "0.09132975578308106",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "11:09:00",
+      "lastLimitUpTime": "11:09:00",
+      "limitUpQueueAmount": "23670400",
+      "limitUpBreakCount": 0,
+      "industry": "房地产服",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600663",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "陆家嘴",
+      "price": "10.11",
+      "changeRate": "0.10010881423950196",
+      "amount": "350853696",
+      "floatMarketCapitalization": "39776962734.689998",
+      "marketCapitalization": "50905403543.04",
+      "turnoverRate": "0.009280795454978943",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "11:13:29",
+      "lastLimitUpTime": "11:13:29",
+      "limitUpQueueAmount": "65383695",
+      "limitUpBreakCount": 0,
+      "industry": "房地产开",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002419",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "天虹股份",
+      "price": "5.09",
+      "changeRate": "0.09935205459594727",
+      "amount": "255385489",
+      "floatMarketCapitalization": "5808910057.73",
+      "marketCapitalization": "5808995971.84",
+      "turnoverRate": "0.04506371974945068",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:08:06",
+      "lastLimitUpTime": "13:08:06",
+      "limitUpQueueAmount": "25165555",
+      "limitUpBreakCount": 0,
+      "industry": "一般零售",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "001318",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "阳光乳业",
+      "price": "13.04",
+      "changeRate": "0.10042194366455079",
+      "amount": "125868065",
+      "floatMarketCapitalization": "3685886399.9999997",
+      "marketCapitalization": "3685886399.9999997",
+      "turnoverRate": "0.035268521308898927",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:20:24",
+      "lastLimitUpTime": "13:20:24",
+      "limitUpQueueAmount": "62272520",
+      "limitUpBreakCount": 0,
+      "industry": "饮料乳品",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002041",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "登海种业",
+      "price": "10.23",
+      "changeRate": "0.1",
+      "amount": "339688416",
+      "floatMarketCapitalization": "9002400000.0",
+      "marketCapitalization": "9002400000.0",
+      "turnoverRate": "0.039202637672424318",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:28:33",
+      "lastLimitUpTime": "13:28:33",
+      "limitUpQueueAmount": "30225558",
+      "limitUpBreakCount": 0,
+      "industry": "种植业",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603185",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "弘元绿能",
+      "price": "15.15",
+      "changeRate": "0.100217866897583",
+      "amount": "245142444",
+      "floatMarketCapitalization": "10287186360.300002",
+      "marketCapitalization": "10348613520.0",
+      "turnoverRate": "0.024759910106658937",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:38:19",
+      "lastLimitUpTime": "13:38:19",
+      "limitUpQueueAmount": "32962718",
+      "limitUpBreakCount": 0,
+      "industry": "光伏设备",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603919",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "金徽酒",
+      "price": "17.4",
+      "changeRate": "0.09987358093261719",
+      "amount": "215843262",
+      "floatMarketCapitalization": "8826323947.8",
+      "marketCapitalization": "8826324000.0",
+      "turnoverRate": "0.02514328956604004",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:38:53",
+      "lastLimitUpTime": "13:38:53",
+      "limitUpQueueAmount": "18473580",
+      "limitUpBreakCount": 0,
+      "industry": "白酒Ⅱ",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "001266",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "宏英智能",
+      "price": "39.96",
+      "changeRate": "0.09991743087768555",
+      "amount": "309229664",
+      "floatMarketCapitalization": "2323579974.12",
+      "marketCapitalization": "4141920413.52",
+      "turnoverRate": "0.1379068660736084",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "13:59:45",
+      "lastLimitUpTime": "13:59:45",
+      "limitUpQueueAmount": "38363198",
+      "limitUpBreakCount": 0,
+      "industry": "自动化设",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600131",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "国网信通",
+      "price": "15.39",
+      "changeRate": "0.10007147789001465",
+      "amount": "401873344",
+      "floatMarketCapitalization": "18404980243.11",
+      "marketCapitalization": "18421609368.96",
+      "turnoverRate": "0.02250856876373291",
+      "consecutiveLimitUpDays": 1,
+      "firstLimitUpTime": "14:08:49",
+      "lastLimitUpTime": "14:08:49",
+      "limitUpQueueAmount": "26475540",
+      "limitUpBreakCount": 0,
+      "industry": "IT服务Ⅱ",
+      "limitUpStats": {
+        "lookbackDays": 1,
+        "limitUpCount": 1
+      }
+    }
+  ],
+  "ladder": {
+    "7": [
+      {
+        "instrumentId": {
+          "code": "600825",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "新华传媒",
+        "price": "10.35",
+        "changeRate": "0.09989372253417969",
+        "amount": "144750256",
+        "floatMarketCapitalization": "10814589247.5",
+        "marketCapitalization": "10814589309.6",
+        "turnoverRate": "0.013384720087051392",
+        "consecutiveLimitUpDays": 7,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:25:00",
+        "limitUpQueueAmount": "1988381638",
+        "limitUpBreakCount": 0,
+        "industry": "出版",
+        "limitUpStats": {
+          "lookbackDays": 7,
+          "limitUpCount": 7
+        }
+      }
+    ],
+    "4": [
+      {
+        "instrumentId": {
+          "code": "000678",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "襄阳轴承",
+        "price": "12.89",
+        "changeRate": "0.09982934951782227",
+        "amount": "1074985696",
+        "floatMarketCapitalization": "5924396063.33",
+        "marketCapitalization": "5924395998.88",
+        "turnoverRate": "0.19650896072387697",
+        "consecutiveLimitUpDays": 4,
+        "firstLimitUpTime": "10:03:00",
+        "lastLimitUpTime": "10:03:00",
+        "limitUpQueueAmount": "67104051",
+        "limitUpBreakCount": 0,
+        "industry": "汽车零部",
+        "limitUpStats": {
+          "lookbackDays": 4,
+          "limitUpCount": 4
+        }
+      }
+    ],
+    "3": [
+      {
+        "instrumentId": {
+          "code": "002242",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "九阳股份",
+        "price": "12.5",
+        "changeRate": "0.10035211563110352",
+        "amount": "436662832",
+        "floatMarketCapitalization": "9522070312.5",
+        "marketCapitalization": "9537712600.0",
+        "turnoverRate": "0.04589446067810059",
+        "consecutiveLimitUpDays": 3,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:49:30",
+        "limitUpQueueAmount": "164830000",
+        "limitUpBreakCount": 1,
+        "industry": "小家电",
+        "limitUpStats": {
+          "lookbackDays": 3,
+          "limitUpCount": 3
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600241",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "时代万恒",
+        "price": "9.72",
+        "changeRate": "0.09954751014709473",
+        "amount": "74661264",
+        "floatMarketCapitalization": "2860616557.8",
+        "marketCapitalization": "2860616528.6400005",
+        "turnoverRate": "0.02609971046447754",
+        "consecutiveLimitUpDays": 3,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:25:00",
+        "limitUpQueueAmount": "141936300",
+        "limitUpBreakCount": 0,
+        "industry": "电池",
+        "limitUpStats": {
+          "lookbackDays": 3,
+          "limitUpCount": 3
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "301190",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "善水科技",
+        "price": "35.93",
+        "changeRate": "0.2000667953491211",
+        "amount": "510373312",
+        "floatMarketCapitalization": "6534014220.0",
+        "marketCapitalization": "7711889445.0",
+        "turnoverRate": "0.07954790115356445",
+        "consecutiveLimitUpDays": 3,
+        "firstLimitUpTime": "09:31:15",
+        "lastLimitUpTime": "09:31:24",
+        "limitUpQueueAmount": "106419018",
+        "limitUpBreakCount": 1,
+        "industry": "化学原料",
+        "limitUpStats": {
+          "lookbackDays": 3,
+          "limitUpCount": 3
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "000011",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "深物业A",
+        "price": "12.24",
+        "changeRate": "0.0997304630279541",
+        "amount": "971267920",
+        "floatMarketCapitalization": "6444060646.32",
+        "marketCapitalization": "7294784037.12",
+        "turnoverRate": "0.17071428298950197",
+        "consecutiveLimitUpDays": 3,
+        "firstLimitUpTime": "09:31:45",
+        "lastLimitUpTime": "13:11:24",
+        "limitUpQueueAmount": "40166967",
+        "limitUpBreakCount": 2,
+        "industry": "房地产开",
+        "limitUpStats": {
+          "lookbackDays": 3,
+          "limitUpCount": 3
+        }
+      }
+    ],
+    "2": [
+      {
+        "instrumentId": {
+          "code": "002058",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "紫竹高科",
+        "price": "20.2",
+        "changeRate": "0.100217866897583",
+        "amount": "51136320",
+        "floatMarketCapitalization": "2895989806.4",
+        "marketCapitalization": "2897656306.4",
+        "turnoverRate": "0.017657631635665894",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:25:00",
+        "limitUpQueueAmount": "69384959",
+        "limitUpBreakCount": 0,
+        "industry": "电池",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605303",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "园林股份",
+        "price": "28.66",
+        "changeRate": "0.10019193649291993",
+        "amount": "4940984",
+        "floatMarketCapitalization": "4621064113.28",
+        "marketCapitalization": "4621064113.28",
+        "turnoverRate": "0.0010692308098077774",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:25:00",
+        "limitUpQueueAmount": "174751484",
+        "limitUpBreakCount": 0,
+        "industry": "基础建设",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605388",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "均瑶健康",
+        "price": "7.39",
+        "changeRate": "0.09970237731933594",
+        "amount": "84984113",
+        "floatMarketCapitalization": "4437576760.0",
+        "marketCapitalization": "4437576760.0",
+        "turnoverRate": "0.019151017665863038",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "09:25:00",
+        "lastLimitUpTime": "09:25:00",
+        "limitUpQueueAmount": "77280333",
+        "limitUpBreakCount": 0,
+        "industry": "饮料乳品",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002866",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "传艺科技",
+        "price": "16.9",
+        "changeRate": "0.10026041030883789",
+        "amount": "577077488",
+        "floatMarketCapitalization": "3105694308.6",
+        "marketCapitalization": "4892926126.4",
+        "turnoverRate": "0.18652318954467775",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "09:30:06",
+        "lastLimitUpTime": "09:39:54",
+        "limitUpQueueAmount": "34927230",
+        "limitUpBreakCount": 2,
+        "industry": "消费电子",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603188",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "亚邦股份",
+        "price": "5.4",
+        "changeRate": "0.09979633331298829",
+        "amount": "171759296",
+        "floatMarketCapitalization": "3078918000.0",
+        "marketCapitalization": "3078918000.0",
+        "turnoverRate": "0.057642107009887699",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "09:32:06",
+        "lastLimitUpTime": "09:32:06",
+        "limitUpQueueAmount": "26412480",
+        "limitUpBreakCount": 0,
+        "industry": "化学制品",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603200",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "上海洗霸",
+        "price": "44.74",
+        "changeRate": "0.10007376670837403",
+        "amount": "1063767248",
+        "floatMarketCapitalization": "7850979808.22",
+        "marketCapitalization": "7850979808.22",
+        "turnoverRate": "0.13873533248901368",
+        "consecutiveLimitUpDays": 2,
+        "firstLimitUpTime": "10:11:16",
+        "lastLimitUpTime": "10:37:55",
+        "limitUpQueueAmount": "48320229",
+        "limitUpBreakCount": 2,
+        "industry": "环境治理",
+        "limitUpStats": {
+          "lookbackDays": 2,
+          "limitUpCount": 2
+        }
+      }
+    ],
+    "1": [
+      {
+        "instrumentId": {
+          "code": "001206",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "依依股份",
+        "price": "18.62",
+        "changeRate": "0.09982279777526856",
+        "amount": "86373023",
+        "floatMarketCapitalization": "1989816207.96",
+        "marketCapitalization": "3442722704.96",
+        "turnoverRate": "0.04346381664276123",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:30:00",
+        "lastLimitUpTime": "09:30:00",
+        "limitUpQueueAmount": "24210319",
+        "limitUpBreakCount": 0,
+        "industry": "个护用品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "601118",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "海南橡胶",
+        "price": "6.37",
+        "changeRate": "0.10017271041870118",
+        "amount": "401066384",
+        "floatMarketCapitalization": "27259955066.89",
+        "marketCapitalization": "27259955035.04",
+        "turnoverRate": "0.014745324850082398",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:30:08",
+        "lastLimitUpTime": "09:30:08",
+        "limitUpQueueAmount": "79271465",
+        "limitUpBreakCount": 0,
+        "industry": "种植业",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605577",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "龙版传媒",
+        "price": "16.28",
+        "changeRate": "0.1",
+        "amount": "165526362",
+        "floatMarketCapitalization": "7235555564.6",
+        "marketCapitalization": "7235555613.440001",
+        "turnoverRate": "0.023121225833892824",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:30:12",
+        "lastLimitUpTime": "09:30:12",
+        "limitUpQueueAmount": "159267240",
+        "limitUpBreakCount": 0,
+        "industry": "出版",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600059",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "古越龙山",
+        "price": "12.27",
+        "changeRate": "0.10044842720031739",
+        "amount": "1093331568",
+        "floatMarketCapitalization": "11184625407.51",
+        "marketCapitalization": "11184625444.32",
+        "turnoverRate": "0.0987020206451416",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:31:14",
+        "lastLimitUpTime": "10:18:53",
+        "limitUpQueueAmount": "64352456",
+        "limitUpBreakCount": 4,
+        "industry": "非白酒",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002388",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "新亚制程",
+        "price": "9.1",
+        "changeRate": "0.10036275863647461",
+        "amount": "320868352",
+        "floatMarketCapitalization": "4606633804.5",
+        "marketCapitalization": "4609461438.4",
+        "turnoverRate": "0.07049755573272705",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:31:36",
+        "lastLimitUpTime": "09:32:51",
+        "limitUpQueueAmount": "63476868",
+        "limitUpBreakCount": 1,
+        "industry": "其他电子",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600356",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "恒丰纸业",
+        "price": "11.46",
+        "changeRate": "0.09980806350708008",
+        "amount": "173476365",
+        "floatMarketCapitalization": "3423461591.88",
+        "marketCapitalization": "3776488427.5200006",
+        "turnoverRate": "0.05147555828094482",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:32:23",
+        "lastLimitUpTime": "09:32:23",
+        "limitUpQueueAmount": "57930701",
+        "limitUpBreakCount": 0,
+        "industry": "造纸",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002316",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "亚联发展",
+        "price": "4.95",
+        "changeRate": "0.1",
+        "amount": "145182371",
+        "floatMarketCapitalization": "1686638250.0",
+        "marketCapitalization": "1945944000.0",
+        "turnoverRate": "0.08703655242919922",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:33:03",
+        "lastLimitUpTime": "09:33:03",
+        "limitUpQueueAmount": "40009860",
+        "limitUpBreakCount": 0,
+        "industry": "综合Ⅱ",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "000710",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "贝瑞基因",
+        "price": "10.87",
+        "changeRate": "0.10020242691040039",
+        "amount": "268548896",
+        "floatMarketCapitalization": "3647182381.4599997",
+        "marketCapitalization": "3842778400.64",
+        "turnoverRate": "0.07521285057067871",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:33:06",
+        "lastLimitUpTime": "09:33:06",
+        "limitUpQueueAmount": "135318456",
+        "limitUpBreakCount": 0,
+        "industry": "医疗服务",
+        "limitUpStats": {
+          "lookbackDays": 4,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603948",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "建业股份",
+        "price": "21.36",
+        "changeRate": "0.09989701271057129",
+        "amount": "42141574",
+        "floatMarketCapitalization": "3470768607.12",
+        "marketCapitalization": "3470768607.12",
+        "turnoverRate": "0.012316519021987916",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:33:33",
+        "lastLimitUpTime": "09:33:33",
+        "limitUpQueueAmount": "23284514",
+        "limitUpBreakCount": 0,
+        "industry": "化学制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600072",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "中船科技",
+        "price": "9.7",
+        "changeRate": "0.09977324485778809",
+        "amount": "424853136",
+        "floatMarketCapitalization": "10508371965.199999",
+        "marketCapitalization": "14556302206.4",
+        "turnoverRate": "0.040919671058654789",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:36:33",
+        "lastLimitUpTime": "09:36:33",
+        "limitUpQueueAmount": "33820020",
+        "limitUpBreakCount": 0,
+        "industry": "风电设备",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "688185",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "康希诺",
+        "price": "102.64",
+        "changeRate": "0.20004676818847658",
+        "amount": "1065144352",
+        "floatMarketCapitalization": "11739234558.64",
+        "marketCapitalization": "25356575734.64",
+        "turnoverRate": "0.09321914672851563",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:38:00",
+        "lastLimitUpTime": "09:43:24",
+        "limitUpQueueAmount": "181976717",
+        "limitUpBreakCount": 1,
+        "industry": "生物制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600081",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "东风科技",
+        "price": "11.89",
+        "changeRate": "0.0999074935913086",
+        "amount": "195515214",
+        "floatMarketCapitalization": "6575481161.3",
+        "marketCapitalization": "6575481232.64",
+        "turnoverRate": "0.030031533241271974",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:38:15",
+        "lastLimitUpTime": "09:50:17",
+        "limitUpQueueAmount": "32680616",
+        "limitUpBreakCount": 1,
+        "industry": "汽车零部",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605011",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "杭州热电",
+        "price": "19.21",
+        "changeRate": "0.10022909164428711",
+        "amount": "231188954",
+        "floatMarketCapitalization": "7685921000.0",
+        "marketCapitalization": "7685921000.0",
+        "turnoverRate": "0.030565237998962404",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:40:36",
+        "lastLimitUpTime": "13:15:24",
+        "limitUpQueueAmount": "36707947",
+        "limitUpBreakCount": 2,
+        "industry": "电力",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603928",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "兴业股份",
+        "price": "13.07",
+        "changeRate": "0.10016834259033204",
+        "amount": "131911733",
+        "floatMarketCapitalization": "4453001280.0",
+        "marketCapitalization": "4453001280.0",
+        "turnoverRate": "0.030060503482818605",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:41:00",
+        "lastLimitUpTime": "09:41:30",
+        "limitUpQueueAmount": "52047680",
+        "limitUpBreakCount": 1,
+        "industry": "塑料",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "000692",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "惠天热电",
+        "price": "4.59",
+        "changeRate": "0.10071942329406739",
+        "amount": "170711391",
+        "floatMarketCapitalization": "2445703359.84",
+        "marketCapitalization": "2445703359.84",
+        "turnoverRate": "0.07079366207122803",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:42:27",
+        "lastLimitUpTime": "10:32:21",
+        "limitUpQueueAmount": "38930557",
+        "limitUpBreakCount": 4,
+        "industry": "电力",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603538",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "美诺华",
+        "price": "28.59",
+        "changeRate": "0.100038480758667",
+        "amount": "1324164480",
+        "floatMarketCapitalization": "9632541399.09",
+        "marketCapitalization": "9718547009.28",
+        "turnoverRate": "0.14113715171813965",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:48:35",
+        "lastLimitUpTime": "09:48:35",
+        "limitUpQueueAmount": "187204060",
+        "limitUpBreakCount": 0,
+        "industry": "化学制药",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603739",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "蔚蓝生物",
+        "price": "14.04",
+        "changeRate": "0.10031347274780274",
+        "amount": "127913740",
+        "floatMarketCapitalization": "3552525278.64",
+        "marketCapitalization": "3552525278.64",
+        "turnoverRate": "0.03642637014389038",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:48:57",
+        "lastLimitUpTime": "09:48:57",
+        "limitUpQueueAmount": "17764812",
+        "limitUpBreakCount": 0,
+        "industry": "化学制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002962",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "五方光电",
+        "price": "16.17",
+        "changeRate": "0.1",
+        "amount": "557837360",
+        "floatMarketCapitalization": "3383018354.1000006",
+        "marketCapitalization": "4716228871.200001",
+        "turnoverRate": "0.1705689811706543",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:49:21",
+        "lastLimitUpTime": "10:20:24",
+        "limitUpQueueAmount": "51090473",
+        "limitUpBreakCount": 1,
+        "industry": "光学光电",
+        "limitUpStats": {
+          "lookbackDays": 3,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603590",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "康辰药业",
+        "price": "32.11",
+        "changeRate": "0.10003425598144532",
+        "amount": "193482072",
+        "floatMarketCapitalization": "5105396142.47",
+        "marketCapitalization": "5178876666.47",
+        "turnoverRate": "0.0385661244392395",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:55:33",
+        "lastLimitUpTime": "09:55:33",
+        "limitUpQueueAmount": "19000450",
+        "limitUpBreakCount": 0,
+        "industry": "生物制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "688806",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "泰诺麦博-U",
+        "price": "30.67",
+        "changeRate": "0.19992176055908204",
+        "amount": "350550256",
+        "floatMarketCapitalization": "1564956992.2",
+        "marketCapitalization": "14124951708.640002",
+        "turnoverRate": "0.23591079711914064",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "09:57:53",
+        "lastLimitUpTime": "09:57:53",
+        "limitUpQueueAmount": "35585204",
+        "limitUpBreakCount": 0,
+        "industry": "生物制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605288",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "凯迪股份",
+        "price": "71.83",
+        "changeRate": "0.1",
+        "amount": "208051963",
+        "floatMarketCapitalization": "7059343002.91",
+        "marketCapitalization": "7087647183.43",
+        "turnoverRate": "0.03004589796066284",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:00:28",
+        "lastLimitUpTime": "10:12:13",
+        "limitUpQueueAmount": "26416200",
+        "limitUpBreakCount": 1,
+        "industry": "自动化设",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600592",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "龙溪股份",
+        "price": "16.2",
+        "changeRate": "0.09979633331298829",
+        "amount": "297115600",
+        "floatMarketCapitalization": "6472767850.2",
+        "marketCapitalization": "6472767801.599999",
+        "turnoverRate": "0.04719627380371094",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:00:44",
+        "lastLimitUpTime": "10:00:44",
+        "limitUpQueueAmount": "64484683",
+        "limitUpBreakCount": 0,
+        "industry": "通用设备",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002164",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "宁波东力",
+        "price": "13.26",
+        "changeRate": "0.10041494369506836",
+        "amount": "648830912",
+        "floatMarketCapitalization": "6361818396.18",
+        "marketCapitalization": "7056623208.96",
+        "turnoverRate": "0.10411203384399414",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:01:12",
+        "lastLimitUpTime": "10:49:57",
+        "limitUpQueueAmount": "60687307",
+        "limitUpBreakCount": 1,
+        "industry": "通用设备",
+        "limitUpStats": {
+          "lookbackDays": 4,
+          "limitUpCount": 2
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002226",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "江南化工",
+        "price": "5.34",
+        "changeRate": "0.10103093147277832",
+        "amount": "411668720",
+        "floatMarketCapitalization": "14145223134.6",
+        "marketCapitalization": "14145248008.32",
+        "turnoverRate": "0.02960158348083496",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:05:48",
+        "lastLimitUpTime": "10:39:30",
+        "limitUpQueueAmount": "62458028",
+        "limitUpBreakCount": 2,
+        "industry": "化学制品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002454",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "松芝股份",
+        "price": "5.61",
+        "changeRate": "0.1",
+        "amount": "121091923",
+        "floatMarketCapitalization": "4921955019.96",
+        "marketCapitalization": "4931603344.8",
+        "turnoverRate": "0.02518289804458618",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:07:21",
+        "lastLimitUpTime": "10:07:21",
+        "limitUpQueueAmount": "34133321",
+        "limitUpBreakCount": 0,
+        "industry": "汽车零部",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603906",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "龙蟠科技",
+        "price": "19.04",
+        "changeRate": "0.09994222640991211",
+        "amount": "687707888",
+        "floatMarketCapitalization": "10719453417.119999",
+        "marketCapitalization": "15062770652.16",
+        "turnoverRate": "0.06570748805999756",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:11:23",
+        "lastLimitUpTime": "10:17:20",
+        "limitUpQueueAmount": "41772465",
+        "limitUpBreakCount": 2,
+        "industry": "电池",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "300893",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "松原安全",
+        "price": "15.13",
+        "changeRate": "0.19984140396118165",
+        "amount": "323471632",
+        "floatMarketCapitalization": "3808115755.7200005",
+        "marketCapitalization": "7171031019.360001",
+        "turnoverRate": "0.08948458671569825",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:14:42",
+        "lastLimitUpTime": "10:50:30",
+        "limitUpQueueAmount": "23202445",
+        "limitUpBreakCount": 1,
+        "industry": "汽车零部",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "605287",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "德才股份",
+        "price": "37.39",
+        "changeRate": "0.10002942085266114",
+        "amount": "279963776",
+        "floatMarketCapitalization": "5234600000.0",
+        "marketCapitalization": "5234600000.0",
+        "turnoverRate": "0.05474971294403076",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:20:00",
+        "lastLimitUpTime": "11:15:30",
+        "limitUpQueueAmount": "35008257",
+        "limitUpBreakCount": 3,
+        "industry": "装修装饰",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "000504",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "南华生物",
+        "price": "12.42",
+        "changeRate": "0.10008857727050782",
+        "amount": "860444304",
+        "floatMarketCapitalization": "4087700183.16",
+        "marketCapitalization": "4098886951.68",
+        "turnoverRate": "0.2251202964782715",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:22:42",
+        "lastLimitUpTime": "10:22:42",
+        "limitUpQueueAmount": "61630536",
+        "limitUpBreakCount": 0,
+        "industry": "医疗服务",
+        "limitUpStats": {
+          "lookbackDays": 9,
+          "limitUpCount": 5
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002755",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "奥赛康",
+        "price": "13.55",
+        "changeRate": "0.09983766555786133",
+        "amount": "248447517",
+        "floatMarketCapitalization": "12576453854.800002",
+        "marketCapitalization": "12576572769.6",
+        "turnoverRate": "0.02030956506729126",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:23:57",
+        "lastLimitUpTime": "10:23:57",
+        "limitUpQueueAmount": "14917195",
+        "limitUpBreakCount": 0,
+        "industry": "化学制药",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603127",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "昭衍新药",
+        "price": "49.3",
+        "changeRate": "0.09995537757873536",
+        "amount": "2647331808",
+        "floatMarketCapitalization": "30946434000.199998",
+        "marketCapitalization": "36942867443.2",
+        "turnoverRate": "0.08825923919677735",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "10:49:10",
+        "lastLimitUpTime": "11:25:25",
+        "limitUpQueueAmount": "221548382",
+        "limitUpBreakCount": 1,
+        "industry": "医疗服务",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002188",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "中天服务",
+        "price": "6.4",
+        "changeRate": "0.09965636253356934",
+        "amount": "144707999",
+        "floatMarketCapitalization": "1647123244.8000003",
+        "marketCapitalization": "2093464780.8000003",
+        "turnoverRate": "0.09132975578308106",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "11:09:00",
+        "lastLimitUpTime": "11:09:00",
+        "limitUpQueueAmount": "23670400",
+        "limitUpBreakCount": 0,
+        "industry": "房地产服",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600663",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "陆家嘴",
+        "price": "10.11",
+        "changeRate": "0.10010881423950196",
+        "amount": "350853696",
+        "floatMarketCapitalization": "39776962734.689998",
+        "marketCapitalization": "50905403543.04",
+        "turnoverRate": "0.009280795454978943",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "11:13:29",
+        "lastLimitUpTime": "11:13:29",
+        "limitUpQueueAmount": "65383695",
+        "limitUpBreakCount": 0,
+        "industry": "房地产开",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002419",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "天虹股份",
+        "price": "5.09",
+        "changeRate": "0.09935205459594727",
+        "amount": "255385489",
+        "floatMarketCapitalization": "5808910057.73",
+        "marketCapitalization": "5808995971.84",
+        "turnoverRate": "0.04506371974945068",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:08:06",
+        "lastLimitUpTime": "13:08:06",
+        "limitUpQueueAmount": "25165555",
+        "limitUpBreakCount": 0,
+        "industry": "一般零售",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "001318",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "阳光乳业",
+        "price": "13.04",
+        "changeRate": "0.10042194366455079",
+        "amount": "125868065",
+        "floatMarketCapitalization": "3685886399.9999997",
+        "marketCapitalization": "3685886399.9999997",
+        "turnoverRate": "0.035268521308898927",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:20:24",
+        "lastLimitUpTime": "13:20:24",
+        "limitUpQueueAmount": "62272520",
+        "limitUpBreakCount": 0,
+        "industry": "饮料乳品",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "002041",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "登海种业",
+        "price": "10.23",
+        "changeRate": "0.1",
+        "amount": "339688416",
+        "floatMarketCapitalization": "9002400000.0",
+        "marketCapitalization": "9002400000.0",
+        "turnoverRate": "0.039202637672424318",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:28:33",
+        "lastLimitUpTime": "13:28:33",
+        "limitUpQueueAmount": "30225558",
+        "limitUpBreakCount": 0,
+        "industry": "种植业",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603185",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "弘元绿能",
+        "price": "15.15",
+        "changeRate": "0.100217866897583",
+        "amount": "245142444",
+        "floatMarketCapitalization": "10287186360.300002",
+        "marketCapitalization": "10348613520.0",
+        "turnoverRate": "0.024759910106658937",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:38:19",
+        "lastLimitUpTime": "13:38:19",
+        "limitUpQueueAmount": "32962718",
+        "limitUpBreakCount": 0,
+        "industry": "光伏设备",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "603919",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "金徽酒",
+        "price": "17.4",
+        "changeRate": "0.09987358093261719",
+        "amount": "215843262",
+        "floatMarketCapitalization": "8826323947.8",
+        "marketCapitalization": "8826324000.0",
+        "turnoverRate": "0.02514328956604004",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:38:53",
+        "lastLimitUpTime": "13:38:53",
+        "limitUpQueueAmount": "18473580",
+        "limitUpBreakCount": 0,
+        "industry": "白酒Ⅱ",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "001266",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "szse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "宏英智能",
+        "price": "39.96",
+        "changeRate": "0.09991743087768555",
+        "amount": "309229664",
+        "floatMarketCapitalization": "2323579974.12",
+        "marketCapitalization": "4141920413.52",
+        "turnoverRate": "0.1379068660736084",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "13:59:45",
+        "lastLimitUpTime": "13:59:45",
+        "limitUpQueueAmount": "38363198",
+        "limitUpBreakCount": 0,
+        "industry": "自动化设",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      },
+      {
+        "instrumentId": {
+          "code": "600131",
+          "market": "cn_a",
+          "kind": "equity",
+          "exchange": "sse"
+        },
+        "tradeDate": "2026-09-30",
+        "name": "国网信通",
+        "price": "15.39",
+        "changeRate": "0.10007147789001465",
+        "amount": "401873344",
+        "floatMarketCapitalization": "18404980243.11",
+        "marketCapitalization": "18421609368.96",
+        "turnoverRate": "0.02250856876373291",
+        "consecutiveLimitUpDays": 1,
+        "firstLimitUpTime": "14:08:49",
+        "lastLimitUpTime": "14:08:49",
+        "limitUpQueueAmount": "26475540",
+        "limitUpBreakCount": 0,
+        "industry": "IT服务Ⅱ",
+        "limitUpStats": {
+          "lookbackDays": 1,
+          "limitUpCount": 1
+        }
+      }
+    ]
+  },
+  "broken": [
+    {
+      "instrumentId": {
+        "code": "002262",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "恩华药业",
+      "price": "22.73",
+      "limitUpPrice": "23.65",
+      "changeRate": "0.05720930099487305",
+      "amount": "670320320",
+      "floatMarketCapitalization": "20088235412.65",
+      "marketCapitalization": "23024840467.52",
+      "turnoverRate": "0.032964255809783937",
+      "amplitude": "0.05581395149230957",
+      "firstLimitUpTime": "09:25:00",
+      "limitUpBreakCount": 1,
+      "industry": "化学制药",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002799",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "环球印务",
+      "price": "7.32",
+      "limitUpPrice": "8.31",
+      "changeRate": "-0.030463576316833498",
+      "amount": "428972752",
+      "floatMarketCapitalization": "2342662056.0",
+      "marketCapitalization": "2342692800.0",
+      "turnoverRate": "0.1742947006225586",
+      "amplitude": "0.15761590003967286",
+      "firstLimitUpTime": "09:25:00",
+      "limitUpBreakCount": 1,
+      "industry": "包装印刷",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603400",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "华之杰",
+      "price": "53",
+      "limitUpPrice": "60.14",
+      "changeRate": "-0.03054691791534424",
+      "amount": "603957408",
+      "floatMarketCapitalization": "1920193975.0",
+      "marketCapitalization": "6880993975.0",
+      "turnoverRate": "0.29357025146484376",
+      "amplitude": "0.13974757194519043",
+      "firstLimitUpTime": "09:25:02",
+      "limitUpBreakCount": 1,
+      "industry": "通用设备",
+      "limitUpStats": {
+        "lookbackDays": 2,
+        "limitUpCount": 1
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600719",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "大连热电",
+      "price": "8.72",
+      "limitUpPrice": "9",
+      "changeRate": "0.06601467132568359",
+      "amount": "585548800",
+      "floatMarketCapitalization": "3528108512.0000007",
+      "marketCapitalization": "3528108512.0000007",
+      "turnoverRate": "0.1649753189086914",
+      "amplitude": "0.1039119815826416",
+      "firstLimitUpTime": "09:39:41",
+      "limitUpBreakCount": 4,
+      "industry": "电力",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002513",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "蓝丰生化",
+      "price": "5.86",
+      "limitUpPrice": "6.02",
+      "changeRate": "0.07129798889160156",
+      "amount": "282455552",
+      "floatMarketCapitalization": "1729175843.72",
+      "marketCapitalization": "2200980746.2400004",
+      "turnoverRate": "0.1629624366760254",
+      "amplitude": "0.09689213752746582",
+      "firstLimitUpTime": "09:43:42",
+      "limitUpBreakCount": 3,
+      "industry": "农化制品",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002273",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "水晶光电",
+      "price": "24.4",
+      "limitUpPrice": "25.86",
+      "changeRate": "0.0378562331199646",
+      "amount": "2182442720",
+      "floatMarketCapitalization": "33332385598.8",
+      "marketCapitalization": "33931426265.6",
+      "turnoverRate": "0.06399158000946045",
+      "amplitude": "0.0867715835571289",
+      "firstLimitUpTime": "09:51:45",
+      "limitUpBreakCount": 1,
+      "industry": "光学光电",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603396",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "金辰股份",
+      "price": "33.5",
+      "limitUpPrice": "38.81",
+      "changeRate": "-0.05045351505279541",
+      "amount": "1171989600",
+      "floatMarketCapitalization": "4640670513.0",
+      "marketCapitalization": "4640670513.0",
+      "turnoverRate": "0.23569185256958009",
+      "amplitude": "0.15334467887878418",
+      "firstLimitUpTime": "09:53:26",
+      "limitUpBreakCount": 1,
+      "industry": "光伏设备",
+      "limitUpStats": {
+        "lookbackDays": 5,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "603982",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "泉峰汽车",
+      "price": "6.77",
+      "limitUpPrice": "7.13",
+      "changeRate": "0.04475308418273926",
+      "amount": "237141341",
+      "floatMarketCapitalization": "2298777519.96",
+      "marketCapitalization": "2471923275.8399999",
+      "turnoverRate": "0.10080479621887207",
+      "amplitude": "0.11265432357788086",
+      "firstLimitUpTime": "10:08:43",
+      "limitUpBreakCount": 2,
+      "industry": "汽车零部",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "600418",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "江淮汽车",
+      "price": "27.47",
+      "limitUpPrice": "28.64",
+      "changeRate": "0.05491551399230957",
+      "amount": "7492598016",
+      "floatMarketCapitalization": "61922275016.649997",
+      "marketCapitalization": "61922274934.24",
+      "turnoverRate": "0.12188248634338379",
+      "amplitude": "0.14132104873657227",
+      "firstLimitUpTime": "10:11:34",
+      "limitUpBreakCount": 1,
+      "industry": "商用车",
+      "limitUpStats": {
+        "lookbackDays": 6,
+        "limitUpCount": 3
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "688265",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "sse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "南模生物",
+      "price": "64.98",
+      "limitUpPrice": "65.05",
+      "changeRate": "0.19867183685302736",
+      "amount": "412269920",
+      "floatMarketCapitalization": "5066069074.740001",
+      "marketCapitalization": "5066069074.740001",
+      "turnoverRate": "0.08608298301696778",
+      "amplitude": "0.2038369369506836",
+      "firstLimitUpTime": "10:45:29",
+      "limitUpBreakCount": 1,
+      "industry": "医疗服务",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "002043",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "兔 宝 宝",
+      "price": "12.02",
+      "limitUpPrice": "12.51",
+      "changeRate": "0.05716798305511475",
+      "amount": "458635712",
+      "floatMarketCapitalization": "9689388975.44",
+      "marketCapitalization": "9973648849.6",
+      "turnoverRate": "0.047455878257751469",
+      "amplitude": "0.1442392349243164",
+      "firstLimitUpTime": "13:38:03",
+      "limitUpBreakCount": 3,
+      "industry": "装修建材",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    },
+    {
+      "instrumentId": {
+        "code": "000668",
+        "market": "cn_a",
+        "kind": "equity",
+        "exchange": "szse"
+      },
+      "tradeDate": "2026-09-30",
+      "name": "荣丰控股",
+      "price": "18.69",
+      "limitUpPrice": "18.7",
+      "changeRate": "0.09941176414489746",
+      "amount": "145724173",
+      "floatMarketCapitalization": "2744474924.1000006",
+      "marketCapitalization": "2808930734.61",
+      "turnoverRate": "0.05649410247802734",
+      "amplitude": "0.12352941513061524",
+      "firstLimitUpTime": "14:50:15",
+      "limitUpBreakCount": 1,
+      "industry": "房地产开",
+      "limitUpStats": {
+        "lookbackDays": 0,
+        "limitUpCount": 0
+      }
+    }
+  ]
+}

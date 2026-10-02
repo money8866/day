@@ -346,6 +346,34 @@ def _v2_strength(v):
         return float(v or 0)
 
 
+# 主题热度 V2.5.1 演变结果内存缓存（{trade_date: {theme: row}}）
+_THEME_EVO_CACHE = {}
+
+
+def _load_theme_evolution(trade_date):
+    """加载 主题热度 V2.5.1 主题雷达（report_daily/theme_heat_v25_{date}.json）。
+
+    消费端唯一入口 = theme_heat_v22.load_evolution()；返回 {主题: 状态类字段}，
+    含 state / marginal / radar / status / evidence / confirm_* / invalid_* / outlook_*。
+    缺失或读取失败返回 {}，由调用方回退 V2.4 三窗口 Top5。
+    """
+    key = str(trade_date or '')
+    if key in _THEME_EVO_CACHE:
+        return _THEME_EVO_CACHE[key]
+    evo = {}
+    try:
+        import theme_heat_v22 as theme_heat
+        evo = theme_heat.load_evolution(key) or {}
+    except Exception as e:
+        print(f"[主题热度V2.5] 读取失败: {e}")
+    if evo:
+        print(f"[主题热度V2.5] 已加载 {len(evo)} 个主题状态 (日期 {key})")
+    else:
+        print(f"[主题热度V2.5] 无 {key} 结果，主题喂料回退 V2.4")
+    _THEME_EVO_CACHE[key] = evo
+    return evo
+
+
 def _load_v6_result(expected_date=None):
     """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
     优先尝试 V8 CSV (theme_alpha_v6_result_v8_{date}.csv)，
@@ -7855,12 +7883,124 @@ def _load_mainline_rotation_themes(trade_date):
 
 
 # =========================
-# 报告第2段"主题分析"喂料：从 主题热度 V2.4 组装结构化数据块
-# （20260928 改用 theme_heat_v24：原 theme_scores.db 口径在 0928 出现
-#   36 个主题全部"清仓回避"、主线候选为空，与实际热度严重背离）
+# 报告第2段"主题分析"喂料
+# 主口径：主题热度 V2.5.1 主题雷达（theme_heat_v25：状态+边际+人话+确认/失效条件）
+# 回退口径：主题热度 V2.4 三窗口 Top5（theme_heat_v24）
+# （20260928 起弃用 theme_scores.db：该口径在 0928 出现 36 个主题全部"清仓回避"、
+#   主线候选为空，与实际热度严重背离）
 # =========================
 def _build_theme_advice_feed(trade_date):
-    """组装【今日主题分析情况】结构化喂料：本日 / 本周 / 本月 三个窗口的热度 Top5 主题
+    """组装【今日主题分析情况】结构化喂料 —— 主题热度 V2.5.1 主题雷达
+
+    数据源 = report_daily/theme_heat_v25_{date}.json，经 _load_theme_evolution() 读取。
+    只描述「主题热度正在往哪里移动」，不含个股、不含买卖建议：
+      · ◆ 主题雷达   —— 状态｜边际状态｜主题｜人话，按状态分组、组内按 Heat 降序
+      · ◆ 重点解读   —— 非降温状态的 Heat 头部主题：当前状态 + 支持证据 +
+                        确认条件/失效条件（短期约5日、中期约20日严格分开）
+      · ◆ 正在降温   —— 只列名字，不展开
+      · ◆ 一句话市场总结（§二十）
+    V2.5 结果缺失时回退 V2.4 三窗口 Top5（_build_theme_feed_v24）。
+    """
+    evo = _load_theme_evolution(trade_date)
+    if not evo:
+        return _build_theme_feed_v24(trade_date)
+    try:
+        import theme_heat_v22 as ev
+        order, info = list(ev.STATE_ORDER), ev.STATE_INFO
+        minfo = ev.MARGINAL_INFO
+        summary = ev.evolution_summary(evo)
+    except Exception as e:
+        print(f"[实盘建议] V2.5 主题雷达组装失败，回退 V2.4: {e}")
+        return _build_theme_feed_v24(trade_date)
+
+    rows = [r for r in evo.values() if r.get('theme')]
+    rows.sort(key=lambda r: (order.index(r['state']) if r.get('state') in order else 99,
+                             -(r.get('heat') or 0.0)))
+
+    def _f(x, d=1):
+        try:
+            return f"{float(x):.{d}f}"
+        except (TypeError, ValueError):
+            return '-'
+
+    def _i(x):
+        try:
+            return str(int(x))
+        except (TypeError, ValueError):
+            return '-'
+
+    def _flags(r):
+        fl = r.get('flags') or []
+        return f"｜标记:{'/'.join(str(x) for x in fl)}" if fl else ''
+
+    feed = [f"【主题分析结构化数据 · {trade_date} · 主题热度V2.5.1主题雷达(theme_heat_v25) 自动组装，禁止改动数值】",
+            "状态 = 基于最近5/10/20日热度变化、排名迁移、内部扩散与持续性判定的七种生命周期："
+            + "/".join(f"{info[s][1]}{info[s][0]}" for s in order) + "。",
+            "边际状态 = 只看最近5日方向、与层级无关："
+            + "/".join(f"{minfo[k][1]}{minfo[k][0]}" for k in
+                       ('IMPROVING', 'FLAT', 'DETERIORATING')) + "。",
+            "本段只描述「主题热度正在往哪里移动」，不预测涨跌幅与收益率，也不构成买卖建议。"]
+
+    # ◆ 主题雷达（状态 ｜ 边际状态 ｜ 主题 ｜ 人话）
+    feed.append("")
+    feed.append("◆ 主题雷达（状态｜边际｜主题（人话））")
+    for s in order:
+        sel = [r for r in rows if r.get('state') == s]
+        if not sel:
+            continue
+        cells = "｜".join(
+            f"{r['theme']}（{(minfo.get(r.get('marginal')) or ('', ''))[0] or '-'}·{r.get('radar') or '-'}）"
+            for r in sel)
+        feed.append(f"{info[s][1]} {info[s][0]}（{len(sel)}个）：{cells}")
+
+    # ◆ 重点主题解读（非降温状态各取 Heat 头部，合计不超过 8 个）
+    cap = {'LEADING': 3, 'ACCELERATING': 2, 'RELAUNCH': 2, 'REBOUND': 2,
+           'EMERGING': 2, 'PEAKING': 2}
+    det = []
+    for s in order:
+        det += [r for r in rows if r.get('state') == s][:cap.get(s, 0)]
+    if det:
+        feed.append("")
+        feed.append("◆ 重点主题解读（当前状态 / 支持证据 / 确认条件 / 失效条件）")
+        for r in det[:8]:
+            feed.append(f"▸ {r['theme']}｜{info[r['state']][1]}{info[r['state']][0]}"
+                        f"｜边际{(minfo.get(r.get('marginal')) or ('', ''))[0] or '-'}"
+                        f"｜Heat {_f(r.get('heat'))}｜HM5 {_f(r.get('hm5'))}"
+                        f"｜ACC {_f(r.get('acc'))}"
+                        f"｜Rank 今{_i(r.get('rank_today'))}/20日前{_i(r.get('rank_20d'))}"
+                        f"｜近20日TOP10 {_i(r.get('top10_count_20d'))}天"
+                        f"{_flags(r)}")
+            if r.get('status'):
+                feed.append(f"    当前状态：{r['status']}")
+            if r.get('evidence'):
+                feed.append(f"    {r['evidence']}")
+            for key, lab in (('confirm_short', '确认条件（短期）'),
+                             ('invalid_short', '失效条件（短期）'),
+                             ('confirm_long', '确认条件（中期）'),
+                             ('invalid_long', '失效条件（中期）')):
+                if r.get(key):
+                    feed.append(f"    {lab}：{r[key]}")
+
+    # ◆ 正在降温（只列名，不展开）
+    cool = [r for r in rows if r.get('state') == 'COOLING']
+    if cool:
+        feed.append("")
+        feed.append("◆ 正在降温（只列名，不展开）：" + "、".join(r['theme'] for r in cool))
+
+    # ◆ 一句话市场总结（§二十）
+    if summary:
+        feed.append("")
+        feed.append("◆ 一句话市场总结")
+        feed.append(summary)
+
+    feed.append("")
+    feed.append("◆ 数据说明：本段只允许引用上述主题名与数值，数据块里没有的主题一律不得出现；"
+                "本数据块不含个股，禁止编造领涨龙头/容量中军等个股，也禁止改写状态标签。")
+    return "\n".join(feed)
+
+
+def _build_theme_feed_v24(trade_date):
+    """【回退口径】组装 V2.4 三窗口热度 Top5 结构化喂料：本日 / 本周 / 本月
 
     数据源 = 主题热度 V2.4（report_daily/theme_heat_v24_{date}.json），
     统一经 theme_heat_v22.load_heat() 读取（消费端唯一入口）。
@@ -9138,14 +9278,15 @@ def run(target_date=None, simple_mode=False):
 
     # =========================
     # 实盘交易建议（主题分析第2段喂料）
-    # 优先：主题热度 V2.4 结构化组装（theme_heat_v24 当日产出，本日/本周/本月 Top5）
+    # 优先：主题热度 V2.5.1 主题雷达（theme_heat_v25 当日产出，状态+边际+确认/失效条件）
+    #       内部回退：主题热度 V2.4 三窗口 Top5（theme_heat_v24）
     # 兜底：theme_analysis_v2 报告文本
     # =========================
     trade_advice_text = ""
     try:
         trade_advice_text = _build_theme_advice_feed(TRADE_DATE)
         if trade_advice_text:
-            print(f"[实盘建议] 主题喂料(热度V2.4结构化): {len(trade_advice_text)}字")
+            print(f"[实盘建议] 主题喂料(热度V2.5主题雷达): {len(trade_advice_text)}字")
     except Exception as e:
         print(f"[实盘建议] 结构化喂料失败: {e}")
         trade_advice_text = ""
@@ -9465,9 +9606,9 @@ def run(target_date=None, simple_mode=False):
                 MA20_BREAK_TOL * 100),
             "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，末位 IGE_ADJ / W7总分）。",
             "",
-            "【W7状态汇总】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
+            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
                 n_exec, n_exec - n_wait, n_wait, len(trig_rows), len(pull_rows)),
-            "今日真正进入执行区：{}只　今日等待触发：{}只　今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
+            "速览-今日真正进入执行区：{}只　速览-今日等待触发：{}只　速览-今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
                 n_exec, len(trig_rows), len(pull_rows), len(items)),
         ]
         if n_exec == 0:
@@ -9701,14 +9842,14 @@ def run(target_date=None, simple_mode=False):
 ** 策略：XXXX
 * 最终：XXXXXX
 2、**主题分析**
-【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式。所有主题名/热度/排名/广度/样本数必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现】
-** 本日最强主题（取数据块"◆ 本日热度 Top5"前3，逐条一行）：{{主题名}}（热度{{xx.x}}，本日排名{{x}}，广度{{xx.x}}%，样本{{x}}只，标记:{{xxx}}）
-** 本周最强主题（取数据块"◆ 本周热度 Top5"前3）：{{主题名}}（周热度{{xx.x}}，周排名{{x}}，本日热度{{xx.x}}(排名{{x}})）
-** 本月最强主题（取数据块"◆ 本月热度 Top5"前3）：{{主题名}}（月热度{{xx.x}}，月排名{{x}}，本日热度{{xx.x}}(排名{{x}})）
-** 三窗口共振：{{同时出现在本日/本周/本月三组 Top5 中的主题名，只列名称；无则写"无"}}
-** 周期切换提示：{{逐条引用数据块真实排名——本日排名靠前而月排名靠后=新热点起步；月排名靠前而本日排名靠后=老热点降温；最多3条，禁止编造}}
-** 回避/降温：{{本周或本月 Top5 中、但本日热度排名>10 的主题名，只列名称；无则写"无"}}
-（缺值处理：数据块中该主题无"标记:xxx"则省略该项；某档显示"（无）"则写"无"，不得用其它主题填补。）
+【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式。所有主题名/状态/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
+** 主线（照抄"◆ 主题雷达"的 🔥当前主线 整行，逐条一行）：{{主题名}}（{{边际}}·{{人话}}）
+** 升温梯队（照抄"◆ 主题雷达"分组，按 🚀加速升温 / 🔄真正再启动 / ↩️反弹 / 🌱新出现 各一行，**只写「主题名（边际·人话）」，不要写 Heat/HM5/ACC/Rank 等任何数字**）：🚀加速升温：{{主题名（边际·人话）}}；🔄真正再启动：{{…}}；↩️反弹：{{…}}；🌱新出现：{{…}}（某类为空写"无"）
+** 高位钝化：{{⚠️高位钝化主题名；无则写"无"}}
+** 正在降温：{{照抄"◆ 正在降温"整行，只列名，不展开}}
+** 看什么（从"◆ 重点主题解读"里挑 1–2 只最重要的主题，各一句话）：{{主题名}}：支持证据…；确认看…；失效看…（照抄数据块原文，禁止改写）
+** 一句话市场总结：{{照抄"◆ 一句话市场总结"整行}}
+（缺值处理：某行显示"（无）"或数据块无该行则写"无"，不得用其它主题填补；状态与数值一律不得改写或重算。仅当数据块标题为 V2.4 三窗口（theme_heat_v24）时，才改按"◆ 本日/本周/本月热度 Top5"逐组引用。）
 
 3、**【ETF操作建议】**
 {etf_tips_text}
@@ -9741,7 +9882,7 @@ def run(target_date=None, simple_mode=False):
 {w7_today_action_text}
 （【数据边界】本段只分析上方"【W7 二波·今日执行状态（输出层三状态分层 V1.0）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
 【输出要求-第6段】严格照抄数据块给出的状态分类与全部数值（状态、现价、触发价、距触发%、MA20、量比、IGE_ADJ、W7总分、结构防线一律不得改动、重算或四舍五入错位），并遵守：
-① 报告最开头（在"1、大盘分析"之前）先单独输出【W7 状态汇总】小节，逐行给出：EXECUTION 只数、TRIGGER_WATCH 只数、PULLBACK_WATCH 只数、今日真正进入执行区只数、今日等待触发只数、今日等待回踩/确认只数，并注明"真正可以执行的股票 ≠ W7 候选总数"；
+① 禁止在报告开头（"1、大盘分析"之前）单独输出【W7 状态汇总】小节，也不得把数据块里的"速览"行（EXECUTION 只数 / 今日真正进入执行区 等）搬到报告开头；本段只按下方 EXECUTION / TRIGGER_WATCH / PULLBACK_WATCH 三段输出，不另设汇总小节；
 ② 正文按【EXECUTION｜已进入执行区】→【TRIGGER_WATCH｜等待触发】→【PULLBACK_WATCH｜等待回踩/重新确认】三段输出，段内顺序严格照数据块，禁止跨段重排；
 ③ 格式极简、面向散户：**每只股票独立成块，固定 4 行，个股之间空一行**——①加粗"序号. 名称(代码)（类型｜状态）"；②一行价格数据（现价/触发价/MA20/量比/IGE_ADJ，照抄数据块）；③一句大白话做法或条件（EXECUTION 写"可按计划买入，单只不超过10%"；EXECUTION_WAIT_VOLUME 写"已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"；TRIGGER_WATCH 写"还没触发，不追价，放量站上XXX才算触发"；PULLBACK_WATCH 写"还在回踩，先观察不动手"）；④"防线：收盘跌破XXX 就出局"。价格保留两位小数，不堆术语、不加多余解释；
 ④ 执行状态优先于总分：禁止因为 W7 总分高就把 PULLBACK_WATCH / TRIGGER_WATCH 写成"已进入执行区"；禁止因为 IGE_ADJ 高就升级状态；禁止把已经跌回关键位的票仍标为 EXECUTION；
@@ -9755,7 +9896,7 @@ def run(target_date=None, simple_mode=False):
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态及其【W7 状态汇总】）
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态）；**报告开头禁止输出【W7 状态汇总】小节**
 
 """
     if not simple_mode:

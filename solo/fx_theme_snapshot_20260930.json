@@ -1,0 +1,2538 @@
+{
+  "generated_at": "2026-10-02T13:16:54.724812+08:00",
+  "trade_date": "2026-09-30",
+  "source": "finchx / tonghuashun.hotlist",
+  "params": {
+    "sector_limit": 100,
+    "stock_limit": 100,
+    "topic_limit": 10
+  },
+  "warnings": [],
+  "leaders": [
+    {
+      "code": "605058",
+      "name": "澳弘电子",
+      "tier": "龙头",
+      "theme": "PCB概念",
+      "theme_strength": "中",
+      "board": 8,
+      "popularity_tag": "13天8板",
+      "dual_board": false,
+      "change_pct": -0.1,
+      "leader_score": 174
+    },
+    {
+      "code": "605058",
+      "name": "澳弘电子",
+      "tier": "龙头",
+      "theme": "共封装光学(CPO)",
+      "theme_strength": "弱",
+      "board": 8,
+      "popularity_tag": "13天8板",
+      "dual_board": false,
+      "change_pct": -0.1,
+      "leader_score": 170
+    },
+    {
+      "code": "601811",
+      "name": "新华文轩",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 6,
+      "popularity_tag": "8天6板",
+      "dual_board": false,
+      "change_pct": 0.036819,
+      "leader_score": 120
+    },
+    {
+      "code": "001216",
+      "name": "华瓷股份",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 6,
+      "popularity_tag": "11天6板",
+      "dual_board": false,
+      "change_pct": -0.100034,
+      "leader_score": 120
+    },
+    {
+      "code": "603230",
+      "name": "内蒙新华",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 6,
+      "popularity_tag": "10天6板",
+      "dual_board": false,
+      "change_pct": -0.084912,
+      "leader_score": 120
+    },
+    {
+      "code": "000504",
+      "name": "南华生物",
+      "tier": "龙头",
+      "theme": "CRO概念",
+      "theme_strength": "强",
+      "board": 5,
+      "popularity_tag": "9天5板",
+      "dual_board": false,
+      "change_pct": 0.100089,
+      "leader_score": 120
+    },
+    {
+      "code": "000504",
+      "name": "南华生物",
+      "tier": "龙头",
+      "theme": "细胞免疫治疗",
+      "theme_strength": "中",
+      "board": 5,
+      "popularity_tag": "9天5板",
+      "dual_board": false,
+      "change_pct": 0.100089,
+      "leader_score": 114
+    },
+    {
+      "code": "000678",
+      "name": "襄阳轴承",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 4,
+      "popularity_tag": "4天4板",
+      "dual_board": false,
+      "change_pct": 0.099829,
+      "leader_score": 80
+    },
+    {
+      "code": "603949",
+      "name": "雪龙集团",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 4,
+      "popularity_tag": "5天4板",
+      "dual_board": false,
+      "change_pct": -0.099756,
+      "leader_score": 80
+    },
+    {
+      "code": "301190",
+      "name": "善水科技",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "dual_board": true,
+      "change_pct": 0.200067,
+      "leader_score": 68
+    },
+    {
+      "code": "600418",
+      "name": "江淮汽车",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "6天3板",
+      "dual_board": false,
+      "change_pct": 0.054916,
+      "leader_score": 60
+    },
+    {
+      "code": "002242",
+      "name": "九阳股份",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "dual_board": false,
+      "change_pct": 0.100352,
+      "leader_score": 60
+    },
+    {
+      "code": "000011",
+      "name": "深物业A",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "dual_board": false,
+      "change_pct": 0.09973,
+      "leader_score": 60
+    },
+    {
+      "code": "600241",
+      "name": "时代万恒",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "dual_board": false,
+      "change_pct": 0.099548,
+      "leader_score": 60
+    },
+    {
+      "code": "600802",
+      "name": "福建水泥",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 3,
+      "popularity_tag": "5天3板",
+      "dual_board": false,
+      "change_pct": 0.043228,
+      "leader_score": 60
+    },
+    {
+      "code": "002058",
+      "name": "紫竹高科",
+      "tier": "龙头",
+      "theme": "新能源汽车",
+      "theme_strength": "强",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "dual_board": false,
+      "change_pct": 0.100218,
+      "leader_score": 70
+    },
+    {
+      "code": "601218",
+      "name": "吉鑫科技",
+      "tier": "龙头",
+      "theme": "风电",
+      "theme_strength": "强",
+      "board": 2,
+      "popularity_tag": "4天2板",
+      "dual_board": false,
+      "change_pct": -0.008157,
+      "leader_score": 66
+    },
+    {
+      "code": "603200",
+      "name": "上海洗霸",
+      "tier": "龙头",
+      "theme": "固态电池",
+      "theme_strength": "强",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "dual_board": false,
+      "change_pct": 0.100074,
+      "leader_score": 60
+    },
+    {
+      "code": "605388",
+      "name": "均瑶健康",
+      "tier": "龙头",
+      "theme": "白酒概念",
+      "theme_strength": "强",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "dual_board": false,
+      "change_pct": 0.099702,
+      "leader_score": 58
+    },
+    {
+      "code": "603188",
+      "name": "亚邦股份",
+      "tier": "龙头",
+      "theme": "染料",
+      "theme_strength": "中",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "dual_board": false,
+      "change_pct": 0.099796,
+      "leader_score": 54
+    },
+    {
+      "code": "002866",
+      "name": "传艺科技",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "dual_board": false,
+      "change_pct": 0.10026,
+      "leader_score": 40
+    },
+    {
+      "code": "002962",
+      "name": "五方光电",
+      "tier": "龙头",
+      "theme": "未归类",
+      "theme_strength": "-",
+      "board": 2,
+      "popularity_tag": "3天2板",
+      "dual_board": false,
+      "change_pct": 0.1,
+      "leader_score": 40
+    },
+    {
+      "code": "002388",
+      "name": "新亚制程",
+      "tier": "首板",
+      "theme": "新能源汽车",
+      "theme_strength": "强",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.100363,
+      "leader_score": 48
+    },
+    {
+      "code": "603127",
+      "name": "昭衍新药",
+      "tier": "首板",
+      "theme": "CRO概念",
+      "theme_strength": "强",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.099955,
+      "leader_score": 38
+    },
+    {
+      "code": "603538",
+      "name": "美诺华",
+      "tier": "首板",
+      "theme": "CRO概念",
+      "theme_strength": "强",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.100038,
+      "leader_score": 36
+    },
+    {
+      "code": "002164",
+      "name": "宁波东力",
+      "tier": "首板",
+      "theme": "人形机器人",
+      "theme_strength": "强",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.100415,
+      "leader_score": 36
+    },
+    {
+      "code": "600059",
+      "name": "古越龙山",
+      "tier": "首板",
+      "theme": "白酒概念",
+      "theme_strength": "强",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.100448,
+      "leader_score": 36
+    },
+    {
+      "code": "000823",
+      "name": "超声电子",
+      "tier": "首板",
+      "theme": "PCB概念",
+      "theme_strength": "中",
+      "board": 1,
+      "popularity_tag": "2天1板",
+      "dual_board": false,
+      "change_pct": -0.045902,
+      "leader_score": 32
+    },
+    {
+      "code": "600059",
+      "name": "古越龙山",
+      "tier": "首板",
+      "theme": "超级品牌",
+      "theme_strength": "中",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.100448,
+      "leader_score": 32
+    },
+    {
+      "code": "603127",
+      "name": "昭衍新药",
+      "tier": "首板",
+      "theme": "细胞免疫治疗",
+      "theme_strength": "中",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "dual_board": false,
+      "change_pct": 0.099955,
+      "leader_score": 32
+    },
+    {
+      "code": "000823",
+      "name": "超声电子",
+      "tier": "首板",
+      "theme": "共封装光学(CPO)",
+      "theme_strength": "弱",
+      "board": 1,
+      "popularity_tag": "2天1板",
+      "dual_board": false,
+      "change_pct": -0.045902,
+      "leader_score": 28
+    },
+    {
+      "code": "300450",
+      "name": "先导智能",
+      "tier": "中军",
+      "theme": "固态电池",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": true,
+      "change_pct": 0.034953,
+      "leader_score": 26
+    },
+    {
+      "code": "002487",
+      "name": "大金重工",
+      "tier": "中军",
+      "theme": "风电",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.078267,
+      "leader_score": 24
+    },
+    {
+      "code": "002531",
+      "name": "天顺风能",
+      "tier": "中军",
+      "theme": "风电",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.044503,
+      "leader_score": 22
+    },
+    {
+      "code": "301080",
+      "name": "百普赛斯",
+      "tier": "中军",
+      "theme": "重组蛋白",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": true,
+      "change_pct": 0.146911,
+      "leader_score": 20
+    },
+    {
+      "code": "603259",
+      "name": "药明康德",
+      "tier": "中军",
+      "theme": "创新药",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.041578,
+      "leader_score": 18
+    },
+    {
+      "code": "301047",
+      "name": "义翘神州",
+      "tier": "中军",
+      "theme": "重组蛋白",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": true,
+      "change_pct": 0.10987,
+      "leader_score": 18
+    },
+    {
+      "code": "688137",
+      "name": "近岸蛋白",
+      "tier": "中军",
+      "theme": "细胞免疫治疗",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": true,
+      "change_pct": 0.134701,
+      "leader_score": 18
+    },
+    {
+      "code": "600664",
+      "name": "哈药股份",
+      "tier": "中军",
+      "theme": "创新药",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.036415,
+      "leader_score": 16
+    },
+    {
+      "code": "600127",
+      "name": "金健米业",
+      "tier": "中军",
+      "theme": "粮食概念",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": -0.016467,
+      "leader_score": 16
+    },
+    {
+      "code": "600276",
+      "name": "恒瑞医药",
+      "tier": "中军",
+      "theme": "创新药",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.034634,
+      "leader_score": 14
+    },
+    {
+      "code": "300308",
+      "name": "中际旭创",
+      "tier": "中军",
+      "theme": "共封装光学(CPO)",
+      "theme_strength": "弱",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": true,
+      "change_pct": -0.005621,
+      "leader_score": 14
+    },
+    {
+      "code": "002202",
+      "name": "金风科技",
+      "tier": "中军",
+      "theme": "商业航天",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.007607,
+      "leader_score": 14
+    },
+    {
+      "code": "002050",
+      "name": "三花智控",
+      "tier": "中军",
+      "theme": "人形机器人",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.005066,
+      "leader_score": 14
+    },
+    {
+      "code": "600519",
+      "name": "贵州茅台",
+      "tier": "中军",
+      "theme": "白酒概念",
+      "theme_strength": "强",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.018647,
+      "leader_score": 14
+    },
+    {
+      "code": "603986",
+      "name": "兆易创新",
+      "tier": "中军",
+      "theme": "存储芯片",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": -0.03719,
+      "leader_score": 12
+    },
+    {
+      "code": "002119",
+      "name": "康强电子",
+      "tier": "中军",
+      "theme": "存储芯片",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": -0.087372,
+      "leader_score": 10
+    },
+    {
+      "code": "600176",
+      "name": "中国巨石",
+      "tier": "中军",
+      "theme": "PCB概念",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": -0.007055,
+      "leader_score": 10
+    },
+    {
+      "code": "600519",
+      "name": "贵州茅台",
+      "tier": "中军",
+      "theme": "超级品牌",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.018647,
+      "leader_score": 10
+    },
+    {
+      "code": "601899",
+      "name": "紫金矿业",
+      "tier": "中军",
+      "theme": "黄金概念",
+      "theme_strength": "弱",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.011202,
+      "leader_score": 10
+    },
+    {
+      "code": "002185",
+      "name": "华天科技",
+      "tier": "中军",
+      "theme": "存储芯片",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": -0.032902,
+      "leader_score": 8
+    },
+    {
+      "code": "002594",
+      "name": "比亚迪",
+      "tier": "中军",
+      "theme": "超级品牌",
+      "theme_strength": "中",
+      "board": 0,
+      "popularity_tag": null,
+      "dual_board": false,
+      "change_pct": 0.015728,
+      "leader_score": 8
+    }
+  ],
+  "themes": [
+    {
+      "rank": 1,
+      "name": "创新药",
+      "code": "886015",
+      "heat": 12390.0,
+      "change_pct": 0.024644,
+      "rank_change": 0,
+      "limitup_count": 4,
+      "tag": "4家涨停",
+      "hot_tag": "连续132天上榜",
+      "freq": 132,
+      "freq_kind": "连续",
+      "etf_symbol": "589120",
+      "etf_name": "科创创新药ETF",
+      "etf_change_pct": 0.032807,
+      "stocks": [
+        {
+          "code": "603259",
+          "name": "药明康德",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.041578,
+          "heat": 2098794.0,
+          "rank": 11,
+          "rank_change": 2,
+          "leader_score": 18
+        },
+        {
+          "code": "600664",
+          "name": "哈药股份",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.036415,
+          "heat": 1811318.0,
+          "rank": 15,
+          "rank_change": 0,
+          "leader_score": 16
+        },
+        {
+          "code": "600276",
+          "name": "恒瑞医药",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.034634,
+          "heat": 1512901.0,
+          "rank": 19,
+          "rank_change": 2,
+          "leader_score": 14
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 2,
+      "name": "固态电池",
+      "code": "886032",
+      "heat": 4949.0,
+      "change_pct": -0.00138,
+      "rank_change": 0,
+      "limitup_count": 5,
+      "tag": "5家涨停",
+      "hot_tag": "5天3次上榜",
+      "freq": 3,
+      "freq_kind": "频次",
+      "etf_symbol": "159071",
+      "etf_name": "储能电池ETF",
+      "etf_change_pct": 0.003958,
+      "stocks": [
+        {
+          "code": "603200",
+          "name": "上海洗霸",
+          "tier": "龙头",
+          "board": 2,
+          "popularity_tag": "2天2板",
+          "dual_board": false,
+          "change_pct": 0.100074,
+          "heat": 1360139.0,
+          "rank": 25,
+          "rank_change": 0,
+          "leader_score": 60
+        },
+        {
+          "code": "300450",
+          "name": "先导智能",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.034953,
+          "heat": 1113854.0,
+          "rank": 38,
+          "rank_change": 1,
+          "leader_score": 26
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 1
+    },
+    {
+      "rank": 3,
+      "name": "CRO概念",
+      "code": "885927",
+      "heat": 4673.5,
+      "change_pct": 0.034054,
+      "rank_change": 0,
+      "limitup_count": 5,
+      "tag": "5家涨停",
+      "hot_tag": "10天9次上榜",
+      "freq": 9,
+      "freq_kind": "频次",
+      "etf_symbol": "159859",
+      "etf_name": "生物医药ETF",
+      "etf_change_pct": 0.037975,
+      "stocks": [
+        {
+          "code": "000504",
+          "name": "南华生物",
+          "tier": "龙头",
+          "board": 5,
+          "popularity_tag": "9天5板",
+          "dual_board": false,
+          "change_pct": 0.100089,
+          "heat": 1264754.0,
+          "rank": 31,
+          "rank_change": -3,
+          "leader_score": 120
+        },
+        {
+          "code": "603127",
+          "name": "昭衍新药",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.099955,
+          "heat": 1265067.0,
+          "rank": 30,
+          "rank_change": 0,
+          "leader_score": 38
+        },
+        {
+          "code": "603538",
+          "name": "美诺华",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.100038,
+          "heat": 1196508.0,
+          "rank": 35,
+          "rank_change": -3,
+          "leader_score": 36
+        },
+        {
+          "code": "603259",
+          "name": "药明康德",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.041578,
+          "heat": 2098794.0,
+          "rank": 11,
+          "rank_change": 2,
+          "leader_score": 14
+        },
+        {
+          "code": "688137",
+          "name": "近岸蛋白",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.134701,
+          "heat": 1509578.0,
+          "rank": 20,
+          "rank_change": -2,
+          "leader_score": 20
+        },
+        {
+          "code": "600721",
+          "name": "百花医药",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.012355,
+          "heat": 861296.0,
+          "rank": 59,
+          "rank_change": -1,
+          "leader_score": 12
+        },
+        {
+          "code": "301047",
+          "name": "义翘神州",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.10987,
+          "heat": 749231.0,
+          "rank": 77,
+          "rank_change": -2,
+          "leader_score": 20
+        },
+        {
+          "code": "002821",
+          "name": "凯莱英",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.053037,
+          "heat": 633434.0,
+          "rank": 99,
+          "rank_change": 3,
+          "leader_score": 12
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 2
+    },
+    {
+      "rank": 4,
+      "name": "重组蛋白",
+      "code": "885955",
+      "heat": 3432.0,
+      "change_pct": 0.037781,
+      "rank_change": 0,
+      "limitup_count": 1,
+      "tag": "1家涨停",
+      "hot_tag": "首次上榜",
+      "freq": 0,
+      "freq_kind": "",
+      "etf_symbol": "159859",
+      "etf_name": "生物医药ETF",
+      "etf_change_pct": 0.037975,
+      "stocks": [
+        {
+          "code": "301080",
+          "name": "百普赛斯",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.146911,
+          "heat": 1014579.0,
+          "rank": 44,
+          "rank_change": 0,
+          "leader_score": 20
+        },
+        {
+          "code": "301047",
+          "name": "义翘神州",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.10987,
+          "heat": 749231.0,
+          "rank": 77,
+          "rank_change": -2,
+          "leader_score": 18
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 2
+    },
+    {
+      "rank": 5,
+      "name": "共封装光学(CPO)",
+      "code": "886033",
+      "heat": 3129.0,
+      "change_pct": -0.020515,
+      "rank_change": 0,
+      "limitup_count": 0,
+      "tag": null,
+      "hot_tag": "连续302天上榜",
+      "freq": 302,
+      "freq_kind": "连续",
+      "etf_symbol": "159363",
+      "etf_name": "创业板人工智能ETF",
+      "etf_change_pct": -0.008453,
+      "stocks": [
+        {
+          "code": "605058",
+          "name": "澳弘电子",
+          "tier": "龙头",
+          "board": 8,
+          "popularity_tag": "13天8板",
+          "dual_board": false,
+          "change_pct": -0.1,
+          "heat": 825389.0,
+          "rank": 63,
+          "rank_change": -1,
+          "leader_score": 170
+        },
+        {
+          "code": "000823",
+          "name": "超声电子",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "2天1板",
+          "dual_board": false,
+          "change_pct": -0.045902,
+          "heat": 762589.0,
+          "rank": 76,
+          "rank_change": -2,
+          "leader_score": 28
+        },
+        {
+          "code": "300308",
+          "name": "中际旭创",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": -0.005621,
+          "heat": 3566924.0,
+          "rank": 5,
+          "rank_change": 1,
+          "leader_score": 14
+        },
+        {
+          "code": "600487",
+          "name": "亨通光电",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.039398,
+          "heat": 1473885.0,
+          "rank": 22,
+          "rank_change": 0,
+          "leader_score": 4
+        },
+        {
+          "code": "603083",
+          "name": "剑桥科技",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.021631,
+          "heat": 1279016.0,
+          "rank": 29,
+          "rank_change": 13,
+          "leader_score": 2
+        },
+        {
+          "code": "002384",
+          "name": "东山精密",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.022253,
+          "heat": 809939.0,
+          "rank": 65,
+          "rank_change": 5,
+          "leader_score": 2
+        },
+        {
+          "code": "300476",
+          "name": "胜宏科技",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": -0.029803,
+          "heat": 726878.0,
+          "rank": 82,
+          "rank_change": 12,
+          "leader_score": 10
+        },
+        {
+          "code": "300502",
+          "name": "新易盛",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": -0.009951,
+          "heat": 703649.0,
+          "rank": 87,
+          "rank_change": 1,
+          "leader_score": 10
+        }
+      ],
+      "strength": "弱",
+      "dual_board_count": 3
+    },
+    {
+      "rank": 6,
+      "name": "存储芯片",
+      "code": "886042",
+      "heat": 2634.5,
+      "change_pct": -0.027279,
+      "rank_change": 0,
+      "limitup_count": 1,
+      "tag": "1家涨停",
+      "hot_tag": "连续255天上榜",
+      "freq": 255,
+      "freq_kind": "连续",
+      "etf_symbol": "159801",
+      "etf_name": "芯片ETF",
+      "etf_change_pct": -0.030556,
+      "stocks": [
+        {
+          "code": "603986",
+          "name": "兆易创新",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.03719,
+          "heat": 1684558.0,
+          "rank": 17,
+          "rank_change": 2,
+          "leader_score": 12
+        },
+        {
+          "code": "002119",
+          "name": "康强电子",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.087372,
+          "heat": 797521.0,
+          "rank": 68,
+          "rank_change": 0,
+          "leader_score": 10
+        },
+        {
+          "code": "002185",
+          "name": "华天科技",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.032902,
+          "heat": 796522.0,
+          "rank": 69,
+          "rank_change": -3,
+          "leader_score": 8
+        },
+        {
+          "code": "688008",
+          "name": "澜起科技",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": -0.048401,
+          "heat": 736721.0,
+          "rank": 78,
+          "rank_change": 15,
+          "leader_score": 14
+        },
+        {
+          "code": "600667",
+          "name": "太极实业",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.036769,
+          "heat": 709969.0,
+          "rank": 86,
+          "rank_change": -2,
+          "leader_score": 4
+        },
+        {
+          "code": "600641",
+          "name": "先导基电",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.003897,
+          "heat": 692402.0,
+          "rank": 89,
+          "rank_change": -3,
+          "leader_score": 4
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 1
+    },
+    {
+      "rank": 7,
+      "name": "商业航天",
+      "code": "886078",
+      "heat": 2398.0,
+      "change_pct": -0.008872,
+      "rank_change": 1,
+      "limitup_count": 2,
+      "tag": "2家涨停",
+      "hot_tag": "连续231天上榜",
+      "freq": 231,
+      "freq_kind": "连续",
+      "etf_symbol": "563530",
+      "etf_name": "卫星ETF",
+      "etf_change_pct": -0.010516,
+      "stocks": [
+        {
+          "code": "002202",
+          "name": "金风科技",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.007607,
+          "heat": 665665.0,
+          "rank": 94,
+          "rank_change": 1,
+          "leader_score": 14
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 8,
+      "name": "PCB概念",
+      "code": "885959",
+      "heat": 2352.0,
+      "change_pct": -0.023412,
+      "rank_change": -1,
+      "limitup_count": 2,
+      "tag": "2家涨停",
+      "hot_tag": "连续125天上榜",
+      "freq": 125,
+      "freq_kind": "连续",
+      "etf_symbol": "159178",
+      "etf_name": "消费电子ETF",
+      "etf_change_pct": -0.01127,
+      "stocks": [
+        {
+          "code": "605058",
+          "name": "澳弘电子",
+          "tier": "龙头",
+          "board": 8,
+          "popularity_tag": "13天8板",
+          "dual_board": false,
+          "change_pct": -0.1,
+          "heat": 825389.0,
+          "rank": 63,
+          "rank_change": -1,
+          "leader_score": 174
+        },
+        {
+          "code": "000823",
+          "name": "超声电子",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "2天1板",
+          "dual_board": false,
+          "change_pct": -0.045902,
+          "heat": 762589.0,
+          "rank": 76,
+          "rank_change": -2,
+          "leader_score": 32
+        },
+        {
+          "code": "600176",
+          "name": "中国巨石",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.007055,
+          "heat": 735239.0,
+          "rank": 79,
+          "rank_change": -2,
+          "leader_score": 10
+        },
+        {
+          "code": "300476",
+          "name": "胜宏科技",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": -0.029803,
+          "heat": 726878.0,
+          "rank": 82,
+          "rank_change": 12,
+          "leader_score": 16
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 1
+    },
+    {
+      "rank": 9,
+      "name": "超级品牌",
+      "code": "885761",
+      "heat": 1770.5,
+      "change_pct": 0.014843,
+      "rank_change": 0,
+      "limitup_count": 1,
+      "tag": "1家涨停",
+      "hot_tag": null,
+      "freq": 0,
+      "freq_kind": "",
+      "etf_symbol": "159151",
+      "etf_name": "食品ETF",
+      "etf_change_pct": 0.015504,
+      "stocks": [
+        {
+          "code": "600059",
+          "name": "古越龙山",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.100448,
+          "heat": 1166524.0,
+          "rank": 37,
+          "rank_change": -3,
+          "leader_score": 32
+        },
+        {
+          "code": "600519",
+          "name": "贵州茅台",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.018647,
+          "heat": 1282740.0,
+          "rank": 28,
+          "rank_change": 1,
+          "leader_score": 10
+        },
+        {
+          "code": "002594",
+          "name": "比亚迪",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.015728,
+          "heat": 1256949.0,
+          "rank": 32,
+          "rank_change": 1,
+          "leader_score": 8
+        },
+        {
+          "code": "000858",
+          "name": "五粮液",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.018758,
+          "heat": 933283.0,
+          "rank": 51,
+          "rank_change": 1,
+          "leader_score": 6
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 10,
+      "name": "黄金概念",
+      "code": "885530",
+      "heat": 1632.0,
+      "change_pct": 0.004183,
+      "rank_change": 0,
+      "limitup_count": 0,
+      "tag": null,
+      "hot_tag": "5天4次上榜",
+      "freq": 4,
+      "freq_kind": "频次",
+      "etf_symbol": "517400",
+      "etf_name": "黄金股ETF",
+      "etf_change_pct": 0.014384,
+      "stocks": [
+        {
+          "code": "601899",
+          "name": "紫金矿业",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.011202,
+          "heat": 902745.0,
+          "rank": 54,
+          "rank_change": 5,
+          "leader_score": 10
+        }
+      ],
+      "strength": "弱",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 11,
+      "name": "风电",
+      "code": "885641",
+      "heat": 1477.0,
+      "change_pct": 0.000624,
+      "rank_change": 0,
+      "limitup_count": 8,
+      "tag": "8家涨停",
+      "hot_tag": "10天8次上榜",
+      "freq": 8,
+      "freq_kind": "频次",
+      "etf_symbol": "159158",
+      "etf_name": "电力ETF",
+      "etf_change_pct": 0.007114,
+      "stocks": [
+        {
+          "code": "601218",
+          "name": "吉鑫科技",
+          "tier": "龙头",
+          "board": 2,
+          "popularity_tag": "4天2板",
+          "dual_board": false,
+          "change_pct": -0.008157,
+          "heat": 732892.0,
+          "rank": 80,
+          "rank_change": -2,
+          "leader_score": 66
+        },
+        {
+          "code": "002487",
+          "name": "大金重工",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.078267,
+          "heat": 4274510.0,
+          "rank": 2,
+          "rank_change": 0,
+          "leader_score": 24
+        },
+        {
+          "code": "002531",
+          "name": "天顺风能",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.044503,
+          "heat": 766203.0,
+          "rank": 75,
+          "rank_change": -4,
+          "leader_score": 22
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 12,
+      "name": "AI应用",
+      "code": "886108",
+      "heat": 1370.5,
+      "change_pct": -0.005406,
+      "rank_change": 1,
+      "limitup_count": 4,
+      "tag": "4家涨停",
+      "hot_tag": "连续60天上榜",
+      "freq": 60,
+      "freq_kind": "连续",
+      "etf_symbol": "516190",
+      "etf_name": "传媒ETF",
+      "etf_change_pct": -0.006218,
+      "stocks": [],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 13,
+      "name": "新能源汽车",
+      "code": "885431",
+      "heat": 1350.5,
+      "change_pct": -0.005817,
+      "rank_change": -1,
+      "limitup_count": 10,
+      "tag": "10家涨停",
+      "hot_tag": null,
+      "freq": 0,
+      "freq_kind": "",
+      "etf_symbol": "515030",
+      "etf_name": "新能源车ETF",
+      "etf_change_pct": 0.007612,
+      "stocks": [
+        {
+          "code": "002058",
+          "name": "紫竹高科",
+          "tier": "龙头",
+          "board": 2,
+          "popularity_tag": "2天2板",
+          "dual_board": false,
+          "change_pct": 0.100218,
+          "heat": 915460.0,
+          "rank": 53,
+          "rank_change": -3,
+          "leader_score": 70
+        },
+        {
+          "code": "002388",
+          "name": "新亚制程",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.100363,
+          "heat": 935292.0,
+          "rank": 49,
+          "rank_change": 0,
+          "leader_score": 48
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 14,
+      "name": "猪肉",
+      "code": "885573",
+      "heat": 1308.0,
+      "change_pct": 0.003049,
+      "rank_change": 0,
+      "limitup_count": 0,
+      "tag": null,
+      "hot_tag": "10天9次上榜",
+      "freq": 9,
+      "freq_kind": "频次",
+      "etf_symbol": "159023",
+      "etf_name": "养殖ETF",
+      "etf_change_pct": 0.005693,
+      "stocks": [],
+      "strength": "弱",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 15,
+      "name": "人形机器人",
+      "code": "886069",
+      "heat": 1279.5,
+      "change_pct": -0.006035,
+      "rank_change": 1,
+      "limitup_count": 3,
+      "tag": "3家涨停",
+      "hot_tag": "10天8次上榜",
+      "freq": 8,
+      "freq_kind": "频次",
+      "etf_symbol": "159050",
+      "etf_name": "机器人ETF",
+      "etf_change_pct": -0.00369,
+      "stocks": [
+        {
+          "code": "002164",
+          "name": "宁波东力",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.100415,
+          "heat": 769854.0,
+          "rank": 74,
+          "rank_change": -2,
+          "leader_score": 36
+        },
+        {
+          "code": "002050",
+          "name": "三花智控",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.005066,
+          "heat": 633414.0,
+          "rank": 100,
+          "rank_change": 7,
+          "leader_score": 14
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 16,
+      "name": "人工智能",
+      "code": "885728",
+      "heat": 1278.0,
+      "change_pct": -0.004074,
+      "rank_change": -1,
+      "limitup_count": 8,
+      "tag": "8家涨停",
+      "hot_tag": "10天9次上榜",
+      "freq": 9,
+      "freq_kind": "频次",
+      "etf_symbol": "159142",
+      "etf_name": "科创创业人工智能ETF",
+      "etf_change_pct": -0.021515,
+      "stocks": [],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 17,
+      "name": "白酒概念",
+      "code": "885525",
+      "heat": 1180.5,
+      "change_pct": 0.02073,
+      "rank_change": 0,
+      "limitup_count": 4,
+      "tag": "4家涨停",
+      "hot_tag": "5天4次上榜",
+      "freq": 4,
+      "freq_kind": "频次",
+      "etf_symbol": "515170",
+      "etf_name": "食品饮料ETF",
+      "etf_change_pct": 0.02,
+      "stocks": [
+        {
+          "code": "605388",
+          "name": "均瑶健康",
+          "tier": "龙头",
+          "board": 2,
+          "popularity_tag": "2天2板",
+          "dual_board": false,
+          "change_pct": 0.099702,
+          "heat": 692675.0,
+          "rank": 88,
+          "rank_change": -3,
+          "leader_score": 58
+        },
+        {
+          "code": "600059",
+          "name": "古越龙山",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.100448,
+          "heat": 1166524.0,
+          "rank": 37,
+          "rank_change": -3,
+          "leader_score": 36
+        },
+        {
+          "code": "600519",
+          "name": "贵州茅台",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.018647,
+          "heat": 1282740.0,
+          "rank": 28,
+          "rank_change": 1,
+          "leader_score": 14
+        },
+        {
+          "code": "601579",
+          "name": "会稽山",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.009559,
+          "heat": 1097220.0,
+          "rank": 40,
+          "rank_change": -2,
+          "leader_score": 12
+        },
+        {
+          "code": "000858",
+          "name": "五粮液",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": 0.018758,
+          "heat": 933283.0,
+          "rank": 51,
+          "rank_change": 1,
+          "leader_score": 10
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 18,
+      "name": "细胞免疫治疗",
+      "code": "885769",
+      "heat": 1180.5,
+      "change_pct": 0.034528,
+      "rank_change": 0,
+      "limitup_count": 2,
+      "tag": "2家涨停",
+      "hot_tag": null,
+      "freq": 0,
+      "freq_kind": "",
+      "etf_symbol": "159839",
+      "etf_name": "生物医药ETF",
+      "etf_change_pct": 0.035326,
+      "stocks": [
+        {
+          "code": "000504",
+          "name": "南华生物",
+          "tier": "龙头",
+          "board": 5,
+          "popularity_tag": "9天5板",
+          "dual_board": false,
+          "change_pct": 0.100089,
+          "heat": 1264754.0,
+          "rank": 31,
+          "rank_change": -3,
+          "leader_score": 114
+        },
+        {
+          "code": "603127",
+          "name": "昭衍新药",
+          "tier": "首板",
+          "board": 1,
+          "popularity_tag": "首板涨停",
+          "dual_board": false,
+          "change_pct": 0.099955,
+          "heat": 1265067.0,
+          "rank": 30,
+          "rank_change": 0,
+          "leader_score": 32
+        },
+        {
+          "code": "688137",
+          "name": "近岸蛋白",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.134701,
+          "heat": 1509578.0,
+          "rank": 20,
+          "rank_change": -2,
+          "leader_score": 18
+        },
+        {
+          "code": "301080",
+          "name": "百普赛斯",
+          "tier": "跟风",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": true,
+          "change_pct": 0.146911,
+          "heat": 1014579.0,
+          "rank": 44,
+          "rank_change": 0,
+          "leader_score": 16
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 2
+    },
+    {
+      "rank": 19,
+      "name": "染料",
+      "code": "885633",
+      "heat": 1083.5,
+      "change_pct": 0.019023,
+      "rank_change": 0,
+      "limitup_count": 2,
+      "tag": "2家涨停",
+      "hot_tag": "首次上榜",
+      "freq": 0,
+      "freq_kind": "",
+      "etf_symbol": "516020",
+      "etf_name": "化工ETF",
+      "etf_change_pct": 0.011465,
+      "stocks": [
+        {
+          "code": "603188",
+          "name": "亚邦股份",
+          "tier": "龙头",
+          "board": 2,
+          "popularity_tag": "2天2板",
+          "dual_board": false,
+          "change_pct": 0.099796,
+          "heat": 664005.0,
+          "rank": 95,
+          "rank_change": -3,
+          "leader_score": 54
+        }
+      ],
+      "strength": "中",
+      "dual_board_count": 0
+    },
+    {
+      "rank": 20,
+      "name": "粮食概念",
+      "code": "885995",
+      "heat": 1010.5,
+      "change_pct": 0.020634,
+      "rank_change": 0,
+      "limitup_count": 3,
+      "tag": "3家涨停",
+      "hot_tag": "10天9次上榜",
+      "freq": 9,
+      "freq_kind": "频次",
+      "etf_symbol": "159825",
+      "etf_name": "农业ETF",
+      "etf_change_pct": 0.012623,
+      "stocks": [
+        {
+          "code": "600127",
+          "name": "金健米业",
+          "tier": "中军",
+          "board": 0,
+          "popularity_tag": null,
+          "dual_board": false,
+          "change_pct": -0.016467,
+          "heat": 1819842.0,
+          "rank": 14,
+          "rank_change": 0,
+          "leader_score": 16
+        }
+      ],
+      "strength": "强",
+      "dual_board_count": 0
+    }
+  ],
+  "uncovered_stocks": [
+    {
+      "code": "601811",
+      "name": "新华文轩",
+      "board": 6,
+      "popularity_tag": "8天6板",
+      "change_pct": 0.036819,
+      "heat": 1364067.0,
+      "concept_tags": [
+        "高股息精选",
+        "体育产业"
+      ]
+    },
+    {
+      "code": "001216",
+      "name": "华瓷股份",
+      "board": 6,
+      "popularity_tag": "11天6板",
+      "change_pct": -0.100034,
+      "heat": 1027914.0,
+      "concept_tags": [
+        "牙科医疗",
+        "跨境电商"
+      ]
+    },
+    {
+      "code": "603230",
+      "name": "内蒙新华",
+      "board": 6,
+      "popularity_tag": "10天6板",
+      "change_pct": -0.084912,
+      "heat": 793601.0,
+      "concept_tags": [
+        "文化传媒概念",
+        "国企改革"
+      ]
+    },
+    {
+      "code": "000678",
+      "name": "襄阳轴承",
+      "board": 4,
+      "popularity_tag": "4天4板",
+      "change_pct": 0.099829,
+      "heat": 2833838.0,
+      "concept_tags": [
+        "减速器",
+        "农机"
+      ]
+    },
+    {
+      "code": "603949",
+      "name": "雪龙集团",
+      "board": 4,
+      "popularity_tag": "5天4板",
+      "change_pct": -0.099756,
+      "heat": 874975.0,
+      "concept_tags": [
+        "汽车热管理",
+        "专精特新"
+      ]
+    },
+    {
+      "code": "600418",
+      "name": "江淮汽车",
+      "board": 3,
+      "popularity_tag": "6天3板",
+      "change_pct": 0.054916,
+      "heat": 3851866.0,
+      "concept_tags": [
+        "百度概念",
+        "DeepSeek概念"
+      ]
+    },
+    {
+      "code": "002242",
+      "name": "九阳股份",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "change_pct": 0.100352,
+      "heat": 2516647.0,
+      "concept_tags": [
+        "绿色电力",
+        "净水概念"
+      ]
+    },
+    {
+      "code": "000011",
+      "name": "深物业A",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "change_pct": 0.09973,
+      "heat": 2097028.0,
+      "concept_tags": [
+        "深圳国企改革",
+        "物业管理"
+      ]
+    },
+    {
+      "code": "301190",
+      "name": "善水科技",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "change_pct": 0.200067,
+      "heat": 1594191.0,
+      "concept_tags": [
+        "幽门螺杆菌概念",
+        "参股银行"
+      ]
+    },
+    {
+      "code": "600241",
+      "name": "时代万恒",
+      "board": 3,
+      "popularity_tag": "3天3板",
+      "change_pct": 0.099548,
+      "heat": 970413.0,
+      "concept_tags": [
+        "国企改革",
+        "锂电池概念"
+      ]
+    },
+    {
+      "code": "600802",
+      "name": "福建水泥",
+      "board": 3,
+      "popularity_tag": "5天3板",
+      "change_pct": 0.043228,
+      "heat": 723865.0,
+      "concept_tags": [
+        "福建自贸区",
+        "水泥概念"
+      ]
+    },
+    {
+      "code": "002866",
+      "name": "传艺科技",
+      "board": 2,
+      "popularity_tag": "2天2板",
+      "change_pct": 0.10026,
+      "heat": 1305807.0,
+      "concept_tags": [
+        "钠离子电池",
+        "华为概念"
+      ]
+    },
+    {
+      "code": "002962",
+      "name": "五方光电",
+      "board": 2,
+      "popularity_tag": "3天2板",
+      "change_pct": 0.1,
+      "heat": 839196.0,
+      "concept_tags": [
+        "MR(混合现实)",
+        "消费电子概念"
+      ]
+    },
+    {
+      "code": "000002",
+      "name": "万科A",
+      "board": 1,
+      "popularity_tag": "2天1板",
+      "change_pct": 0.044118,
+      "heat": 4117778.0,
+      "concept_tags": [
+        "租售同权",
+        "物业管理"
+      ]
+    },
+    {
+      "code": "002074",
+      "name": "国轩高科",
+      "board": 1,
+      "popularity_tag": "2天1板",
+      "change_pct": 0.028591,
+      "heat": 1434948.0,
+      "concept_tags": [
+        "动力电池回收",
+        "钠离子电池"
+      ]
+    },
+    {
+      "code": "688185",
+      "name": "康希诺",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.200047,
+      "heat": 1205994.0,
+      "concept_tags": [
+        "生物疫苗",
+        "猴痘概念"
+      ]
+    },
+    {
+      "code": "605577",
+      "name": "龙版传媒",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.1,
+      "heat": 1113344.0,
+      "concept_tags": [
+        "IP经济(谷子经济)",
+        "文化传媒概念"
+      ]
+    },
+    {
+      "code": "000710",
+      "name": "贝瑞基因",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.100202,
+      "heat": 940650.0,
+      "concept_tags": [
+        "基因测序",
+        "辅助生殖"
+      ]
+    },
+    {
+      "code": "603906",
+      "name": "龙蟠科技",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.099942,
+      "heat": 837342.0,
+      "concept_tags": [
+        "钠离子电池",
+        "磷化工"
+      ]
+    },
+    {
+      "code": "600072",
+      "name": "中船科技",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.099773,
+      "heat": 829986.0,
+      "concept_tags": [
+        "国产航母",
+        "央企国企改革"
+      ]
+    },
+    {
+      "code": "601118",
+      "name": "海南橡胶",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.100173,
+      "heat": 800071.0,
+      "concept_tags": [
+        "土地流转",
+        "海南自贸区"
+      ]
+    },
+    {
+      "code": "601238",
+      "name": "广汽集团",
+      "board": 1,
+      "popularity_tag": "2天1板",
+      "change_pct": 0.042857,
+      "heat": 785317.0,
+      "concept_tags": [
+        "国企改革",
+        "网约车"
+      ]
+    },
+    {
+      "code": "002226",
+      "name": "江南化工",
+      "board": 1,
+      "popularity_tag": "首板涨停",
+      "change_pct": 0.101031,
+      "heat": 663070.0,
+      "concept_tags": [
+        "新疆振兴",
+        "国企改革"
+      ]
+    },
+    {
+      "code": "601127",
+      "name": "赛力斯",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.002777,
+      "heat": 10455011.0,
+      "concept_tags": [
+        "参股银行",
+        "西部大开发"
+      ]
+    },
+    {
+      "code": "001246",
+      "name": "力勤资源",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 2.065944,
+      "heat": 3189195.0,
+      "concept_tags": [
+        "新股与次新股",
+        "注册制次新股"
+      ]
+    },
+    {
+      "code": "600825",
+      "name": "新华传媒",
+      "board": 0,
+      "popularity_tag": "持续上榜",
+      "change_pct": 0.099894,
+      "heat": 2488157.0,
+      "concept_tags": [
+        "无人零售",
+        "文化传媒概念"
+      ]
+    },
+    {
+      "code": "601091",
+      "name": "沈鼓集团",
+      "board": 0,
+      "popularity_tag": "持续上榜",
+      "change_pct": -0.080985,
+      "heat": 2110503.0,
+      "concept_tags": [
+        "注册制次新股",
+        "煤化工概念"
+      ]
+    },
+    {
+      "code": "688836",
+      "name": "宇树科技",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.001375,
+      "heat": 2019656.0,
+      "concept_tags": [
+        "注册制次新股",
+        "科创次新股"
+      ]
+    },
+    {
+      "code": "300750",
+      "name": "宁德时代",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.015028,
+      "heat": 1792301.0,
+      "concept_tags": [
+        "同花顺漂亮100",
+        "同花顺出海50"
+      ]
+    },
+    {
+      "code": "688825",
+      "name": "长鑫科技",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.013681,
+      "heat": 1508156.0,
+      "concept_tags": [
+        "国家大基金持股",
+        "消费电子概念"
+      ]
+    },
+    {
+      "code": "000560",
+      "name": "我爱我家",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.015957,
+      "heat": 1300431.0,
+      "concept_tags": [
+        "租售同权",
+        "物业管理"
+      ]
+    },
+    {
+      "code": "300207",
+      "name": "欣旺达",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.023256,
+      "heat": 1243839.0,
+      "concept_tags": [
+        "动力电池回收",
+        "钠离子电池"
+      ]
+    },
+    {
+      "code": "000993",
+      "name": "闽东电力",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.049754,
+      "heat": 1167406.0,
+      "concept_tags": [
+        "航运概念",
+        "碳交易"
+      ]
+    },
+    {
+      "code": "000592",
+      "name": "平潭发展",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.024027,
+      "heat": 1066859.0,
+      "concept_tags": [
+        "福建自贸区",
+        "海峡两岸"
+      ]
+    },
+    {
+      "code": "600363",
+      "name": "ST联光",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.099631,
+      "heat": 1052140.0,
+      "concept_tags": [
+        "同花顺新质50",
+        "超导概念"
+      ]
+    },
+    {
+      "code": "600707",
+      "name": "彩虹股份",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.053292,
+      "heat": 1014253.0,
+      "concept_tags": [
+        "玻璃基板",
+        "OLED"
+      ]
+    },
+    {
+      "code": "600699",
+      "name": "均胜电子",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.031209,
+      "heat": 998414.0,
+      "concept_tags": [
+        "汽车热管理",
+        "华为汽车"
+      ]
+    },
+    {
+      "code": "000725",
+      "name": "京东方A",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.001751,
+      "heat": 934429.0,
+      "concept_tags": [
+        "先进封装",
+        "OLED"
+      ]
+    },
+    {
+      "code": "600900",
+      "name": "长江电力",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.005638,
+      "heat": 927206.0,
+      "concept_tags": [
+        "高股息精选",
+        "同花顺中特估100"
+      ]
+    },
+    {
+      "code": "601086",
+      "name": "国芳集团",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.065872,
+      "heat": 896411.0,
+      "concept_tags": [
+        "IP经济(谷子经济)",
+        "参股券商"
+      ]
+    },
+    {
+      "code": "605366",
+      "name": "宏柏新材",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.067692,
+      "heat": 895213.0,
+      "concept_tags": [
+        "有机硅概念",
+        "光纤概念"
+      ]
+    },
+    {
+      "code": "600206",
+      "name": "有研新材",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.061972,
+      "heat": 863363.0,
+      "concept_tags": [
+        "中芯国际概念",
+        "国家大基金持股"
+      ]
+    },
+    {
+      "code": "601869",
+      "name": "长飞光纤",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.007869,
+      "heat": 817919.0,
+      "concept_tags": [
+        "光纤概念",
+        "铜缆高速连接"
+      ]
+    },
+    {
+      "code": "600172",
+      "name": "黄河旋风",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.052349,
+      "heat": 807914.0,
+      "concept_tags": [
+        "培育钻石",
+        "第三代半导体"
+      ]
+    },
+    {
+      "code": "688256",
+      "name": "寒武纪",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.035363,
+      "heat": 794865.0,
+      "concept_tags": [
+        "先进封装",
+        "汽车芯片"
+      ]
+    },
+    {
+      "code": "688981",
+      "name": "中芯国际",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.046975,
+      "heat": 784467.0,
+      "concept_tags": [
+        "国家大基金持股",
+        "中芯国际概念"
+      ]
+    },
+    {
+      "code": "600371",
+      "name": "万向德农",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.052181,
+      "heat": 728147.0,
+      "concept_tags": [
+        "转基因",
+        "玉米"
+      ]
+    },
+    {
+      "code": "601012",
+      "name": "隆基绿能",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.029385,
+      "heat": 726497.0,
+      "concept_tags": [
+        "同花顺漂亮100",
+        "绿色电力"
+      ]
+    },
+    {
+      "code": "301218",
+      "name": "华是科技",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.158445,
+      "heat": 722674.0,
+      "concept_tags": [
+        "数据安全",
+        "网络安全"
+      ]
+    },
+    {
+      "code": "000980",
+      "name": "众泰汽车",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.018018,
+      "heat": 685660.0,
+      "concept_tags": [
+        "中俄贸易概念",
+        "一带一路"
+      ]
+    },
+    {
+      "code": "002580",
+      "name": "圣阳股份",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.04385,
+      "heat": 681367.0,
+      "concept_tags": [
+        "钠离子电池",
+        "动力电池回收"
+      ]
+    },
+    {
+      "code": "601398",
+      "name": "工商银行",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.014706,
+      "heat": 673963.0,
+      "concept_tags": [
+        "高股息精选",
+        "同花顺中特估100"
+      ]
+    },
+    {
+      "code": "600584",
+      "name": "长电科技",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": -0.021613,
+      "heat": 669676.0,
+      "concept_tags": [
+        "国家大基金持股",
+        "中芯国际概念"
+      ]
+    },
+    {
+      "code": "600036",
+      "name": "招商银行",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.018514,
+      "heat": 648982.0,
+      "concept_tags": [
+        "高股息精选",
+        "同花顺中特估100"
+      ]
+    },
+    {
+      "code": "601318",
+      "name": "中国平安",
+      "board": 0,
+      "popularity_tag": null,
+      "change_pct": 0.015048,
+      "heat": 642733.0,
+      "concept_tags": [
+        "同花顺中特估100",
+        "证金持股"
+      ]
+    }
+  ],
+  "topics": [
+    {
+      "rank": 1,
+      "title": "9月收官，一起来晒收益！",
+      "summary": "9月收官，这个月你在股市中赚了多少？一起来晒晒吧！",
+      "heat": 990031.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Telyxob",
+      "related_stocks": []
+    },
+    {
+      "rank": 2,
+      "title": "财政部：购房贷款贴息政策落地",
+      "summary": "财政部推出居民购房贷款贴息政策，年化贴息1%、期限最长5年。你认为该政策对购房意愿和房地产板块将产生怎样的影响？",
+      "heat": 933956.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Taq3gj3",
+      "related_stocks": [
+        {
+          "code": "000002",
+          "name": "万科Ａ",
+          "change_pct": 0.044118
+        },
+        {
+          "code": "000560",
+          "name": "我爱我家",
+          "change_pct": -0.015957
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "title": "国庆假期，两大重磅数据来袭！",
+      "summary": "PCE和非农轮番登场 黄金迎大考",
+      "heat": 892939.0,
+      "url": "https://mams.10jqka.com.cn/new/server/html/112940.html?injectAdaptive=true",
+      "related_stocks": []
+    },
+    {
+      "rank": 4,
+      "title": "特朗普开绿灯：AI监管无需立法",
+      "summary": "9月29日，特朗普与AI巨头闭门会晤，定调AI无需立法监管；同日签署行政令，将政府文件中的“人工智能”更名为“超级智能”，并推出政务AI门户。一手放行一手下场，AI怀疑论的影响正考验这轮行情。",
+      "heat": 852995.0,
+      "url": "https://news.10jqka.com.cn/deep-topic/topic/dt_01M3QZJ7BMT2BRZXP301DK9A1H",
+      "related_stocks": []
+    },
+    {
+      "rank": 5,
+      "title": "创新药出海加速价值重估！",
+      "summary": "9月医药BD交易密集落地，创新药与类似药出海加速。你认为这将如何影响行业价值重估与板块表现？",
+      "heat": 799813.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Tuvdaig",
+      "related_stocks": []
+    },
+    {
+      "rank": 6,
+      "title": "中信证券：预计地产销售将出现回暖",
+      "summary": "中信证券研报表示，房贷贴息政策落地，预计可节约利息成本三分之一左右，预计对四季度低线城市的地产成交有明显促进作用。",
+      "heat": 764072.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Tmxb6em",
+      "related_stocks": []
+    },
+    {
+      "rank": 7,
+      "title": "央行将“六张网”纳入抵押贷款支持",
+      "summary": "央行将“六张网”建设纳入抵押补充贷款支持范围，引导政策性金融助力投资。你怎么看其对相关板块的带动潜力？",
+      "heat": 730000.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Tglxnfk",
+      "related_stocks": []
+    },
+    {
+      "rank": 8,
+      "title": "OpenAI推出全天候自主智能体Dots",
+      "summary": "OpenAI推出GPT-6.1 Sol模型，其性能接近Astra，但标准词元价格仅为Astra的五分之一。",
+      "heat": 685169.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Tb793ec",
+      "related_stocks": []
+    },
+    {
+      "rank": 9,
+      "title": "气象局：11月将形成超强厄尔尼诺事件",
+      "summary": "根据中国气象局国家气候中心监测，海温指数峰值预计出现在11月前后，为3.2℃～3.5℃，将形成一次有监测记录以来最强的超强厄尔尼诺事件。",
+      "heat": 648838.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Twnmzvx",
+      "related_stocks": []
+    },
+    {
+      "rank": 10,
+      "title": "券商：AI院线电影元年来临",
+      "summary": "首部AI院线电影定档，AI技术推动影视全链条变革。你认为AI对影视产业的降本增效影响会有多深？",
+      "heat": 620327.0,
+      "url": "https://t.10jqka.com.cn/lgt/main/frontend-main-service/topic/index.html?code=Th2wq89",
+      "related_stocks": [
+        {
+          "code": "001330",
+          "name": "博纳影业",
+          "change_pct": -0.007541
+        }
+      ]
+    }
+  ]
+}

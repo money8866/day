@@ -22,11 +22,11 @@ class HvtEvent:
 
     # HVT 判定
     hvt_grade: str = ''             # A / B / C
-    hvt_rank_250: int = 0           # T0换手在250日内的排名（1=最高）
-    hvt_rank_anchor: int = 0        # T0换手自anchor_date以来的排名（1=最高；0=锚点口径未启用）
-    turnover_pct_120: float = 0.0   # 120日分位(%)
-    turnover_ratio_20: float = 0.0  # 当日换手/20日均换手
-    amount_ratio_20: float = 0.0
+    hvt_rank_250: int = 0           # T0成交额在250日内的排名（1=最高；20261001 由换手率改为成交金额）
+    hvt_rank_anchor: int = 0        # T0成交额自anchor_date以来的排名（1=最高；0=锚点口径未启用）
+    turnover_pct_120: float = 0.0   # T0成交额120日分位(%)（字段名沿革，口径已改按成交金额）
+    turnover_ratio_20: float = 0.0  # 当日成交额/20日均成交额（字段名沿革，口径已改按成交金额）
+    amount_ratio_20: float = 0.0    # 同 turnover_ratio_20（成交额口径下两者同值）
     t0_turnover: float = 0.0
     t0_amount: float = 0.0
 
@@ -38,7 +38,8 @@ class HvtEvent:
     t0_high: float = 0.0
     t0_low: float = 0.0
     t0_mid: float = 0.0
-    t0_prev_limit_up: bool = False  # T-1 收盘涨停（涨停次日豁免依据）
+    t0_prev_strong: bool = False    # T-1 涨幅 > 10%（20261001 口径，原为 T-1 收盘涨停；方向豁免依据）
+    t0_limit_down: bool = False     # T0 是否跌停（豁免方向后仍不得跌停）
 
     # 前期趋势
     ma20: float = 0.0

@@ -310,10 +310,19 @@ def _build_decision_table(md_text: str, facts: dict = None) -> str:
     import re
     ents = []   # (pri, 动作, 代码, 名称, 关键价, 买区/支撑, 止损, 说明)
 
-    # A. 第一梯队 PRIMARY_BUY（可买 / 等确认 / 回避）
+    # A. 第一梯队 PRIMARY_BUY（可买 / 确认后买 / 等确认 / 回避）
     for r in _table_rows(_find_sec(secs, '## A.'))[1:]:
         st = _cell(r, 9)
-        act = '可买' if st in ('READY_BUY', 'PULLBACK_BUY') else ('回避' if st == 'SKIP' else '等确认')
+        # 20261001：状态列可能带 action（如 READY_BUY/BUY_ON_CONFIRM）——BUY_ON_CONFIRM
+        # 当日不可直接执行（需次日开盘确认），不得标为「可买」，与 TE/FE 落库口径一致
+        if 'BUY_ON_CONFIRM' in st:
+            act = '确认后买'
+        elif st in ('READY_BUY', 'PULLBACK_BUY'):
+            act = '可买'
+        elif st == 'SKIP':
+            act = '回避'
+        else:
+            act = '等确认'
         f = (facts or {}).get(_cell(r, 2)) or {}
         if act == '回避':
             note = _clip(_cell(r, 15), 26)

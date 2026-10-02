@@ -3800,21 +3800,22 @@ class RealtimeThemeMonitor:
             self.disconnect()
 
     def is_trading_time(self, dt):
-        """判断是否在交易时段内"""
+        """判断是否在交易时段内(含节假日过滤)"""
         if dt.weekday() >= 5:
             return False
         h, m = dt.hour, dt.minute
-        if (h == 9 and m >= 30) or (h == 10) or (h == 11 and m <= 30):
-            return True
-        if h == 11 and m > 30:
+        # 先做便宜的时段判断(非交易时段直接返回, 避免非必要请求交易日历)
+        in_session = (
+            (h == 9 and m >= 30) or (h == 10) or (h == 11 and m <= 30)
+            or h == 13 or h == 14
+        )
+        if not in_session:
             return False
-        if h == 12:
+        # 交易日历过滤: 命中非交易日(节假日)视为休市, 日历不可用(None)时退化为仅按周末判断
+        days = self._load_trade_cal()
+        if days and dt.strftime('%Y%m%d') not in days:
             return False
-        if h == 13 or h == 14:
-            return True
-        if h == 15:
-            return False
-        return False
+        return True
 
     # ════════════════════════════════════════════
     # 分时快照采集(尾盘多策略共用:猎尾突袭/V3评分)

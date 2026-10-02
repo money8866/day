@@ -59,6 +59,20 @@ def _is_limit_up_close(close: float, pre_close: float, ts_code: str) -> bool:
     return close >= lim - 1e-9
 
 
+def _limit_down_ratio(ts_code: str) -> str:
+    """板块跌停倍数（Decimal 乘数）：科创板/创业板 20cm，主板 10cm"""
+    return '0.8' if str(ts_code or '')[:3] in ('688', '689', '300', '301', '302') else '0.9'
+
+
+def _is_limit_down_close(close: float, pre_close: float, ts_code: str) -> bool:
+    """收盘跌停判定（交易所口径）：Close <= round(PreClose×(1-涨跌幅限制), 2)，四舍五入"""
+    if not (np.isfinite(close) and np.isfinite(pre_close)) or pre_close <= 0:
+        return False
+    lim = float((Decimal(str(pre_close)) * Decimal(_limit_down_ratio(ts_code)))
+                .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    return close <= lim + 1e-9
+
+
 class HvtBullEngine:
     """单股 HVT-BULL 事件引擎"""
 
@@ -83,38 +97,36 @@ class HvtBullEngine:
     def detect_hvt(self, df: pd.DataFrame, idx: int):
         """判断 df 第 idx 行（T0）是否构成 HVT 事件。返回事件或 None。
 
-        天量口径 rank_mode（hvt 配置段）：
-          anchor  : T0 换手率 = anchor_date 以来最高（rank_anchor == 1），按 20 日量比分 A/B/C
-          rolling : 250 日滚动窗口排名口径（rank_a/b + pct120 分级，V1 遗留）
-          both    : 两者并集，anchor 优先定级；anchor 不通过时回退 rolling 判定
-        未配置 rank_mode 时向后兼容：anchor_date 非空 -> anchor，否则 -> rolling。
+        天量口径（20261001 用户裁定：不再比换手率，整维改按成交金额）：
+          rank_mode（hvt 配置段）：
+            anchor  : T0 成交额 = anchor_date 以来最高（rank_anchor == 1），按 20 日成交额倍数分 A/B/C
+            rolling : 250 日滚动窗口排名口径（rank_a/b + pct120 分级，V1 遗留）
+            both    : 两者并集，anchor 优先定级；anchor 不通过时回退 rolling 判定
+          未配置 rank_mode 时向后兼容：anchor_date 非空 -> anchor，否则 -> rolling。
         """
         if idx < 30 or idx >= len(df):
             return None
-        turnover = _arr(df, 'turnover_rate')
+        turnover = _arr(df, 'turnover_rate')   # 仅用于展示 t0_turnover（天量口径已改按成交金额）
         amount = _arr(df, 'amount')
-        if not np.isfinite(turnover[idx]) or turnover[idx] <= 0:
+        if not np.isfinite(amount[idx]) or amount[idx] <= 0:
             return None
 
         lb = int(self.hvt_cfg.get('lookback_250', 250))
         lo = max(0, idx - lb)
-        hist = turnover[lo:idx]
+        hist = amount[lo:idx]
         if len(hist) < 60:
             return None
 
-        rank = int(np.sum(hist >= turnover[idx])) + 1  # 250日窗口排名（参考）
-        h120 = turnover[max(0, idx - 120):idx]
+        rank = int(np.sum(hist >= amount[idx])) + 1  # 250日窗口成交额排名（参考）
+        h120 = amount[max(0, idx - 120):idx]
         if len(h120) < 60:
             return None
-        pct120 = float(np.mean(h120 < turnover[idx]) * 100.0)
+        pct120 = float(np.mean(h120 < amount[idx]) * 100.0)
 
-        h20 = turnover[max(0, idx - 20):idx]
+        h20 = amount[max(0, idx - 20):idx]
         ma20t = float(np.nanmean(h20)) if len(h20) >= 10 else 0.0
-        tratio = turnover[idx] / ma20t if ma20t > 0 else 0.0
-
-        a20 = amount[max(0, idx - 20):idx]
-        ma20a = float(np.nanmean(a20)) if len(a20) >= 10 else 0.0
-        aratio = amount[idx] / ma20a if ma20a > 0 else 0.0
+        tratio = amount[idx] / ma20t if ma20t > 0 else 0.0
+        aratio = tratio  # 20261001：口径统一为成交额，20日倍数与成交额倍数同值
 
         ratio_a = float(self.hvt_cfg.get('ratio_a', 3.0))
         ratio_b = float(self.hvt_cfg.get('ratio_b', 2.0))
@@ -133,9 +145,9 @@ class HvtBullEngine:
             a0 = next((i for i, d in enumerate(dates) if str(d) >= anchor), None)
             anchor_ok = a0 is not None and a0 <= idx
             if anchor_ok:
-                hist_a = turnover[a0:idx]
+                hist_a = amount[a0:idx]
                 if len(hist_a) >= int(self.hvt_cfg.get('anchor_min_hist', 60)):
-                    rank_anchor = int(np.sum(hist_a >= turnover[idx])) + 1
+                    rank_anchor = int(np.sum(hist_a >= amount[idx])) + 1
                     anchor_ok = rank_anchor == 1 and tratio >= ratio_c
                 else:
                     anchor_ok = False
@@ -194,15 +206,17 @@ class HvtBullEngine:
         ev.t0_close_pos = (close[idx] - low[idx]) / rng if rng > 0 else 0.5
         ev.t0_body = (close[idx] - open_[idx]) / rng if rng > 0 else 0.0
 
-        # 涨停次日标记：T-1 收盘涨停（交易所口径），供 price_strength 豁免使用
-        ev.t0_prev_limit_up = False
+        # 方向豁免标记（20261001 用户口径）：由「T-1 收盘涨停」改为「T-1 涨幅 > 10%」；
+        # 豁免只免方向，T0 仍不得跌停（不烂尾底线，见 price_strength_ok）。
+        ev.t0_prev_strong = bool(idx >= 1 and np.isfinite(pct[idx - 1]) and pct[idx - 1] > 10.0)
+        ev.t0_limit_down = False
         if idx >= 1:
             try:
-                pre_v = float(df['pre_close'].iloc[idx - 1])
+                pre_v = float(df['pre_close'].iloc[idx])
             except (TypeError, ValueError):
                 pre_v = float('nan')
-            ev.t0_prev_limit_up = _is_limit_up_close(float(close[idx - 1]), pre_v,
-                                                     str(df['ts_code'].iloc[0]))
+            ev.t0_limit_down = _is_limit_down_close(float(close[idx]), pre_v,
+                                                    str(df['ts_code'].iloc[0]))
 
         def _ma(n):
             if idx + 1 >= n and _dense(dates, idx + 1 - n, idx):
@@ -260,14 +274,16 @@ class HvtBullEngine:
     def price_strength_ok(self, ev: HvtEvent) -> bool:
         """天量当天必须“价格强”（规格§4 + §5 平台突破豁免）
 
-        涨停次日豁免：T-1 收盘涨停时，T0 放量分歧（滞涨/长上影）不构成否决，
-        仅保留底线 limit_next_day_min_pct_chg / limit_next_day_min_close_pos。
+        20261001 用户口径：T-1 涨幅 > 10% 时豁免 T0 方向（不要求上涨/下跌），
+        仅保留「不烂尾」底线——T0 不跌停 且 收盘位置 >= limit_next_day_min_close_pos。
         """
         min_pct = float(self.ps_cfg.get('min_pct_chg', 3.0))
         min_pos = float(self.ps_cfg.get('min_close_pos', 0.70))
-        if getattr(ev, 't0_prev_limit_up', False) \
+        if getattr(ev, 't0_prev_strong', False) \
                 and bool(self.ps_cfg.get('limit_next_day_exempt', False)):
-            min_pct = float(self.ps_cfg.get('limit_next_day_min_pct_chg', 0.0))
+            if getattr(ev, 't0_limit_down', False):
+                return False
+            min_pct = float('-inf')  # 方向豁免（不要求上涨/下跌）
             min_pos = float(self.ps_cfg.get('limit_next_day_min_close_pos', 0.30))
         ok_chg = ev.t0_pct_chg >= min_pct
         ok_pos = ev.t0_close_pos >= min_pos

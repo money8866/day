@@ -48,6 +48,7 @@ hvt_bull.context._HEAT_PREFIX 同步改为 v24；theme_heat_v23_* 为历史遗�
 import os
 import sys
 import json
+import time
 
 # Windows GBK 控制台
 if sys.platform == 'win32':
@@ -104,6 +105,134 @@ AUDIT_STOCKS = {'600186.SH': '莲花控股', '002851.SZ': '麦格米特',
                 '300033.SZ': '同花顺', '300059.SZ': '东方财富'}
 # 已人工裁定但核验未完成（保留在主题内、层级不变），审计行附提示，避免被读成「已确认」
 PENDING_REVIEW = {('002851.SZ', '汽车'): '待核验（人工裁定 20260930：暂时保留，电控占比未核）'}
+
+# ── §V2.5 主题演变引擎（Theme Evolution Engine）常量 ──
+# V2.5 不修改主题定义、成份股与热度基础计算（§一/§二），只在已有热度序列上做「变化」分析。
+EVO_SERIES_DAYS = 60             # §三 序列保留交易日数（至少 60，最好 120）
+EVO_LOOKBACK = 20                # §四~§八 演变回溯窗口（HM20 / Persistence 窗口）
+EVO_TOP5, EVO_TOP10, EVO_TOP20 = 5, 10, 20   # §八 Persistence 的三个名次门槛
+EVO_STRONG_RANK = 10             # §九 Rank ≤ 10 → 视为「靠前 / 强势区」
+EVO_COOL_RANK = 15               # §九 Rank ≥ 15 → 视为「已降温」
+EVO_HM_EPS = 0.5                 # §四 |HM| ≤ 0.5 → 「基本持平」噪声带
+EVO_HM_ACCEL = 5.0               # §五 HM5 ≥ 5.0 → 「明显升温」（加速判定）
+EVO_BREADTH_EPS = 0.5            # §六 |ΔBreadth| ≤ 0.5pp → 「持平」
+EVO_PERSIST_HI = 8               # §八 近20日 ≥8 天处于 TOP10 → 已在强势区且具备持续性
+EVO_PERSIST_LO = 2               # §八 近20日 ≤2 天处于 TOP10 → 低持续性
+EVO_STREAK_MIN = 3               # §八 连续 TOP10 天数 ≥3 → 视为已站稳强势区
+EVO_LOWSAMPLE_N = 15             # §十 N < 15 → LOW_SAMPLE（V2.5 更严格口径）
+EVO_REL_MIN = 0.50               # §十 reliability < 0.50 → LOW_SAMPLE
+EVO_HIST_MIN = EVO_LOOKBACK + 1  # §三/§四 序列少于该天数 → EVOLUTION_INSUFFICIENT
+EVO_MIN_TRANS_N = 8              # §十二 状态迁移最小样本量（不足 → 只作观察信号）
+EVO_PERTURB = (0.8, 1.2)         # §十二 参数扰动系数（阈值缩放，检验状态稳定性）
+EVO_HORIZONS = (5, 10, 20)       # §十一 未来 T+5 / T+10 / T+20
+
+# 序列落盘（长表：一行 = 一个主题一个交易日）
+SERIES_PATH = os.path.join(REPORT_DIR, 'theme_heat_series.csv')
+SERIES_FIELDS = ('date', 'theme', 'heat', 'base_heat', 'reliability', 'rank',
+                 'breadth', 'up_ratio', 'activity', 'n', 'flags')
+
+SCHEMA_VERSION = 'V2.5.1'         # 清洗版：只统一口径，不新增因子
+EVO_RELAUNCH_STREAK = 2          # 再启动确认：连续 TOP10 天数 ≥2
+EVO_RELAUNCH_PERSIST = 5         # 再启动确认：近20日 TOP10 天数 ≥5
+
+# §九 生命周期（底层英文状态；中文+Emoji 只用于展示层）
+# V2.5.1：六状态「定义」不变，「二次启动」拆为 RELAUNCH（真正再启动）/ REBOUND（反弹）→ 共 7 态
+STATE_INFO = {
+    'LEADING':      ('当前主线',   '🔥'),
+    'ACCELERATING': ('加速升温',   '🚀'),
+    'RELAUNCH':     ('真正再启动', '🔄'),
+    'REBOUND':      ('反弹',       '↩️'),
+    'EMERGING':     ('新出现',     '🌱'),
+    'PEAKING':      ('高位钝化',   '⚠️'),
+    'COOLING':      ('降温',       '❄️'),
+}
+STATE_ORDER = ('LEADING', 'ACCELERATING', 'RELAUNCH', 'REBOUND',
+               'EMERGING', 'PEAKING', 'COOLING')
+
+# §九 标准解释（只用已计算出来的数据，不含任何预测性断言）
+STATE_DESC = {
+    'LEADING':      '目前仍处于市场强势区域，而且已经持续了一段时间；不过强势并不等于未来一定继续上涨，需要继续观察热度是否维持。',
+    'ACCELERATING': '近期热度明显上升、排名持续改善，上涨范围也在扩大；目前更像是「正在升温」，而不是已经完全确认的主线。',
+    'RELAUNCH':     '此前经历过一轮热度下降，最近重新升温、重新回到强势区，并且上涨范围同步扩大；属于结构与扩散都得到确认的再启动。',
+    'REBOUND':      '此前经历过一轮热度下降，最近虽然重新升温，但要么还没回到强势区，要么上涨范围没有同步扩大；目前更像反弹，还不能当作真正的再启动。',
+    'EMERGING':     '近期开始受到资金关注，热度和参与股票数量都有改善，但历史持续性还不足，需要继续观察。',
+    'PEAKING':      '目前排名仍然靠前，但最近的升温速度已经明显放缓，内部扩散也开始减弱；重点不是立即判断见顶，而是观察它能否重新恢复升温。',
+    'COOLING':      '近期热度、排名和内部参与度都在下降，说明市场关注度正在减弱。',
+}
+
+# 「边际状态」：只看最近 5 日的方向，与主题当前处于哪个层级无关（↗转强 / →持平 / ↘转弱）
+MARGINAL_INFO = {'IMPROVING': ('转强', '↗'),
+                 'FLAT': ('持平', '→'),
+                 'DETERIORATING': ('转弱', '↘')}
+
+# 短期（约5个交易日）/ 中期（约20个交易日）各自独立的状态倾向，不做 T+5→T+10→T+20 串联
+NEXT_STATE = {
+    'LEADING':      {'up': 'LEADING',      'flat': 'LEADING',      'down': 'PEAKING'},
+    'ACCELERATING': {'up': 'LEADING',      'flat': 'ACCELERATING', 'down': 'PEAKING'},
+    'RELAUNCH':     {'up': 'LEADING',      'flat': 'RELAUNCH',     'down': 'COOLING'},
+    'REBOUND':      {'up': 'RELAUNCH',     'flat': 'REBOUND',      'down': 'COOLING'},
+    'EMERGING':     {'up': 'ACCELERATING', 'flat': 'EMERGING',     'down': 'COOLING'},
+    'PEAKING':      {'up': 'LEADING',      'flat': 'PEAKING',      'down': 'COOLING'},
+    'COOLING':      {'up': 'REBOUND',      'flat': 'COOLING',      'down': 'COOLING'},
+}
+
+# 自然语言四段之「确认条件 / 失效条件」：短期（约5个交易日）与中期（约20个交易日）严格分开
+CONFIRM_INVALID = {
+    'LEADING': (
+        '未来约5个交易日，热度继续上升（近5日热度维持为正）且上涨股票数量继续扩大 → 主线延续得到确认。',
+        '未来约5个交易日，热度转为明显下降、或参与上涨的股票数量开始收缩 → 主线延续的判断失效。',
+        '未来约20个交易日，排名保持在前十、且近20日处于前十的天数继续增加 → 中期主线地位巩固。',
+        '未来约20个交易日，排名持续下滑并跌出强势区、参与度同步收缩 → 中期主线地位失效。'),
+    'ACCELERATING': (
+        '未来约5个交易日，热度继续加速上升且上涨股票数量继续扩大 → 加速升温得到确认。',
+        '未来约5个交易日，热度回落或上涨股票数量不再扩大 → 加速升温未能延续。',
+        '未来约20个交易日，排名进入并站稳前十、持续性天数增加 → 向主线转化得到确认。',
+        '未来约20个交易日，仍未进入强势区且热度回落 → 加速升温失效。'),
+    'RELAUNCH': (
+        '未来约5个交易日，热度继续上升、上涨股票数量继续扩大 → 再启动得到确认。',
+        '未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。',
+        '未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。',
+        '未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。'),
+    'REBOUND': (
+        '未来约5个交易日，热度继续上升且上涨股票数量开始扩大 → 反弹有望升级为再启动。',
+        '未来约5个交易日，仅少数股票上涨、上涨股票数量没有扩大 → 仍是反弹，未升级为再启动。',
+        '未来约20个交易日，排名回到前十并保持 → 反弹升级为再启动。',
+        '未来约20个交易日，排名未能回到强势区、热度重新回落 → 反弹结束。'),
+    'EMERGING': (
+        '未来约5个交易日，热度与上涨股票数量继续改善 → 本次升温得到确认。',
+        '未来约5个交易日，热度或上涨股票数量回落 → 本次升温未能形成。',
+        '未来约20个交易日，排名进入前十并具备持续性 → 由新出现转为强势方向。',
+        '未来约20个交易日，热度回落且未进入强势区 → 新出现未能延续。'),
+    'PEAKING': (
+        '未来约5个交易日，热度重新加速、上涨股票数量重新扩大 → 高位钝化被修复。',
+        '未来约5个交易日，热度继续走弱、上涨股票数量继续收缩 → 钝化转为降温。',
+        '未来约20个交易日，排名维持在前十且热度重新上行 → 中期强势延续。',
+        '未来约20个交易日，排名跌出前十并持续下滑 → 中期转入降温。'),
+    'COOLING': (
+        '未来约5个交易日，热度止跌回升且上涨股票数量改善 → 出现重新活跃迹象。',
+        '未来约5个交易日，热度继续下降 → 降温仍在延续。',
+        '未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。',
+        '未来约20个交易日，热度与排名继续下降 → 降温过程延续。'),
+}
+
+# §十六 禁止 AI 使用的表达（自然语言层生成后校验；模板本身即规避）
+BANNED_PHRASES = ('必涨', '必跌', '确定成为主线', '下个月一定爆发', '资金已经全面进场',
+                  '主力正在布局', '庄家吸筹', '即将起飞', '板块见顶', '绝对安全',
+                  '最佳板块', '最值得买')
+
+# V2.5.1 落盘 Schema（所有主题共用；save_evolution 逐行强校验，缺一即报错）
+EVO_FIELDS = (
+    'schema_version', 'theme', 'state', 'state_cn', 'emoji',
+    'marginal', 'marginal_cn',
+    'heat', 'base_heat', 'hm5', 'hm10', 'hm20', 'acc',
+    'breadth', 'breadth_d5', 'breadth_d20',
+    'rank_today', 'rank_5d', 'rank_10d', 'rank_20d', 'rank_gain20', 'rank_pool_today',
+    'top5_count_20d', 'top10_count_20d', 'top20_count_20d', 'top10_streak', 'days_20d',
+    'reliability', 'n', 'history_ok', 'flags',
+    'outlook_short_dir', 'outlook_short_state', 'outlook_long_dir', 'outlook_long_state',
+    'status', 'evidence', 'confirm_short', 'invalid_short', 'confirm_long', 'invalid_long',
+    'radar')
+
 
 # ── §3/§19/§20/§21 V2.0 成员池与排名引擎（AI 五主题四级成员体系）──
 N_CORE_MIN = 3                   # §3  CORE ≥ 3 → 允许进入主题排名（取代旧「N ≥ 5」硬门槛）
@@ -545,7 +674,16 @@ def v2_to_heat(score):
 
 # ═════════════════════════ 主流程 ═════════════════════════
 
-def run(trade_date=None):
+def compute_core(trade_date=None, verbose=True, df_override=None):
+    """V2.4 热度核心计算（不产出报告，不落盘）
+
+    计算逻辑与 V2.4 完全一致（§二：V2.5 不修改主题定义、成份股与热度基础计算），
+    只是把中间结果整体返回，供 run() 与 V2.5 序列回补/演变复用。
+
+    df_override：已预取的日线长表（覆盖该日窗口即可）。回补序列时整段一次预取、
+    逐日切片，避免每日重复的「逐代码 SQL + 缺口预取」，结果与逐日单独取数完全一致
+    （build_matrices 会按当日窗口日期过滤，Activity 的 20 日回看仍在窗口内）。
+    """
     from stock_cache import get_recent_trade_dates
     trade_date = resolve_trade_date(trade_date)
     all_dates = [str(d) for d in get_recent_trade_dates(n=HIST_DAYS, end_date=trade_date)]
@@ -596,24 +734,26 @@ def run(trade_date=None):
     n_ok = sum(1 for m in mapping.values() if m['status'] == 'OK')
     n_warn = sum(1 for m in mapping.values() if m['status'] == 'WARN')
     n_bad = sum(1 for m in mapping.values() if m['status'] == 'BAD')
-    print(f"[V2.4] 交易日 {trade_date}｜主题 {len(theme_members)} 个｜映射 {os.path.basename(map_path)}")
-    print(f"[V2.4] 交易日历 {dates[0]} ~ {dates[-1]}（{n} 日）｜映射成员 {n_map} 条"
-          f"｜排名池成员 {len(all_codes)} 只")
-    print(f"[V2.4] MappingQuality OK {n_ok} / WARN {n_warn} / BAD {n_bad}"
-          f"｜成员数量异常 {sum(1 for m in mapping.values() if m['count_anomaly'])} 个主题")
-    if mv2:
-        print(f"[V2.4] 成员体系 V2.0：{len(mv2)} 个主题读 theme_membership_v2.json"
-              f"（CORE≥{N_CORE_MIN} 准入；AdjustedHeat = RawHeat × sample_reliability × "
-              f"membership_quality）")
-    for t, cs in miss_map.items():
-        print(f"[V2.4] 提示：{t} 有 {len(cs)} 只 V2.0 核验成员不在 theme_stock_map"
-              f"（{'、'.join(cs[:5])}{'…' if len(cs) > 5 else ''}）")
+    if verbose:
+        print(f"[V2.4] 交易日 {trade_date}｜主题 {len(theme_members)} 个｜映射 {os.path.basename(map_path)}")
+        print(f"[V2.4] 交易日历 {dates[0]} ~ {dates[-1]}（{n} 日）｜映射成员 {n_map} 条"
+              f"｜排名池成员 {len(all_codes)} 只")
+        print(f"[V2.4] MappingQuality OK {n_ok} / WARN {n_warn} / BAD {n_bad}"
+              f"｜成员数量异常 {sum(1 for m in mapping.values() if m['count_anomaly'])} 个主题")
+        if mv2:
+            print(f"[V2.4] 成员体系 V2.0：{len(mv2)} 个主题读 theme_membership_v2.json"
+                  f"（CORE≥{N_CORE_MIN} 准入；AdjustedHeat = RawHeat × sample_reliability × "
+                  f"membership_quality）")
+        for t, cs in miss_map.items():
+            print(f"[V2.4] 提示：{t} 有 {len(cs)} 只 V2.0 核验成员不在 theme_stock_map"
+                  f"（{'、'.join(cs[:5])}{'…' if len(cs) > 5 else ''}）")
 
     if not all_codes:
-        print('[V2.4] DATA_INSUFFICIENT：排名池为空，无法计算热度')
+        if verbose:
+            print('[V2.4] DATA_INSUFFICIENT：排名池为空，无法计算热度')
         return None
 
-    df = fetch_kline(all_codes, dates[0], dates[-1])
+    df = df_override if df_override is not None else fetch_kline(all_codes, dates[0], dates[-1])
     P, C, ACT = build_matrices(df, dates)
 
     windows = {'TODAY': 1, 'WEEK': WIN_WEEK, 'MONTH': WIN_MONTH}
@@ -711,10 +851,27 @@ def run(trade_date=None):
     # ── 三窗口都可排名的共同样本池（跨周期观察表在此池内定义，避免缺数据歧义）──
     universe = [t for t, v in scored.items() if all(wk in v for wk in windows)]
 
-    report = build_report(trade_date, theme_members, scored, universe, missing_themes,
-                          windows, small_watch, mapping, inflation, no_valid, config, mainbiz)
-    save_outputs(report, scored, universe, trade_date, small_watch, mapping, inflation)
+    return {'trade_date': trade_date, 'dates': dates, 'n_days': n,
+            'theme_members': theme_members, 'scored': scored, 'universe': universe,
+            'missing_themes': missing_themes, 'windows': windows,
+            'small_watch': small_watch, 'mapping': mapping, 'inflation': inflation,
+            'no_valid': no_valid, 'config': config, 'mainbiz': mainbiz,
+            'map_path': map_path}
+
+
+def run(trade_date=None):
+    """V2.4 报告 + V2.5 演变报告（共用同一份热度核心；V2.4 口径与产物完全不变）"""
+    core = compute_core(trade_date, verbose=True)
+    if core is None:
+        return None
+    report = build_report(core['trade_date'], core['theme_members'], core['scored'],
+                          core['universe'], core['missing_themes'], core['windows'],
+                          core['small_watch'], core['mapping'], core['inflation'],
+                          core['no_valid'], core['config'], core['mainbiz'])
+    save_outputs(report, core['scored'], core['universe'], core['trade_date'],
+                 core['small_watch'], core['mapping'], core['inflation'])
     print(report['text'])
+    run_evolution(core)                       # §V2.5 主题演变 + 自然语言解释层
     return report
 
 
@@ -1212,8 +1369,856 @@ def scoring_skipped(scored, small_watch, mapping):
     return [t for t in mapping if t not in scored and t not in small_watch]
 
 
+# ═════════════════════════ §V2.5 主题演变引擎 ═════════════════════════
+#
+# 计算与解释严格分离（§二）：
+#   计算层：HM5/HM10/HM20、ACC、Breadth 变化、Rank 迁移、Persistence、
+#          Lifecycle State、Historical Transition —— 全部由本模块算出并落盘；
+#   解释层：narrate_* 只把已算出的字段翻译成自然语言，不新增任何数据、
+#          不修改主题状态、不预测涨跌幅/收益率（§十一/§十四/§十五）。
+
+def _val(seq, k):
+    """序列倒数第 k+1 个元素（k=0 即最新）；越界 / None / NaN → None"""
+    if seq is None or len(seq) <= k:
+        return None
+    x = seq[-1 - k]
+    if x is None:
+        return None
+    try:
+        f = float(x)
+    except (TypeError, ValueError):
+        return None
+    return None if np.isnan(f) else f
+
+
+def _delta(seq, a, b):
+    """seq[今-a] − seq[今-b]；任一缺失 → None"""
+    x, y = _val(seq, a), _val(seq, b)
+    return None if (x is None or y is None) else x - y
+
+
+def _snapshot_row(date, theme, d):
+    """当日 TODAY 指标 → 序列长表一行（§三 的 11 个字段）"""
+    act = d['activity']
+    act = None if (isinstance(act, float) and np.isnan(act)) else round(float(act), 4)
+    return {'date': date, 'theme': theme,
+            'heat': round(float(d['score']), 4),
+            'base_heat': round(float(d['heat_raw']), 4),
+            'reliability': round(float(d['reliability']), 4),
+            'rank': int(d['rank']),
+            'breadth': round(float(d['breadth']) * 100.0, 4),
+            'up_ratio': round(float(d['up_ratio']) * 100.0, 4),
+            'activity': act, 'n': int(d['n']),
+            'flags': str(d.get('flags') or '')}
+
+
+def _series_load():
+    """读取序列 CSV → {(date, theme): row}；缺失/损坏 → {}"""
+    if not os.path.exists(SERIES_PATH):
+        return {}
+    try:
+        df = pd.read_csv(SERIES_PATH, dtype={'date': str})
+    except Exception:
+        return {}
+    out = {}
+    for r in df.to_dict('records'):
+        d, t = str(r.get('date') or ''), str(r.get('theme') or '')
+        if d and t:
+            out[(d, t)] = r
+    return out
+
+
+def _series_save(store):
+    """整表重写（按 date, theme 排序；同日重跑幂等覆盖）"""
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    rows = [store[k] for k in sorted(store)]
+    pd.DataFrame(rows, columns=list(SERIES_FIELDS)).to_csv(
+        SERIES_PATH, index=False, encoding='utf-8-sig')
+    return len(rows)
+
+
+def series_append(core):
+    """§三 把当日 TODAY 快照写入时间序列（同日期覆盖）"""
+    td, store = core['trade_date'], _series_load()
+    for t, v in core['scored'].items():
+        d = v.get('TODAY')
+        if d:
+            store[(td, t)] = _snapshot_row(td, t, d)
+    _series_save(store)
+    return store
+
+
+def backfill_series(n_days=EVO_SERIES_DAYS, end_date=None):
+    """§三 回补主题热度序列：逐日重跑 V2.4 热度核心，只落盘 TODAY 快照（不出报告）
+
+    只使用本地 daily_cache；不使用任何未来数据（每日快照仅依赖 ≤ 当日的数据）。
+    性能：整段区间只做一次日线预取（覆盖最早一日窗口的起点 ~ 最后一个交易日），
+    之后逐日切片计算，避免逐日重复的「逐代码 SQL + 缺口预取」。
+    """
+    from stock_cache import get_recent_trade_dates
+    dates = [str(d) for d in get_recent_trade_dates(n=n_days, end_date=end_date)]
+    if not dates:
+        raise SystemExit('daily_cache 无交易日数据，无法回补序列')
+    print(f"[V2.5 回补] 目标 {len(dates)} 个交易日：{dates[0]} ~ {dates[-1]}")
+
+    # ── 一次性预取：并集代码 × [最早窗口起点, 最后交易日] ──
+    theme_members, _mp, _raw = load_theme_members(dates[-1])
+    mv2, _ = load_membership_v2()
+    codes = {c for recs in theme_members.values() for c in recs}
+    codes |= {c for v in mv2.values() for c in (v['cores'] | v['extensions'])}
+    w0 = str(get_recent_trade_dates(n=HIST_DAYS, end_date=dates[0])[0])
+    print(f"[V2.5 回补] 预取日线：{len(codes)} 只 × {w0} ~ {dates[-1]}（一次预取，逐日切片）")
+    t0 = time.time()
+    df_all = fetch_kline(sorted(codes), w0, dates[-1])
+    print(f"[V2.5 回补] 预取完成：{len(df_all)} 行，用时 {time.time()-t0:.0f}s")
+
+    store, ok = _series_load(), 0
+    for i, d in enumerate(dates, 1):
+        try:
+            core = compute_core(d, verbose=False, df_override=df_all)
+        except SystemExit as e:
+            print(f"  [{i}/{len(dates)}] {d} 跳过：{e}")
+            continue
+        if core is None:
+            print(f"  [{i}/{len(dates)}] {d} 跳过：排名池为空")
+            continue
+        for t, v in core['scored'].items():
+            dd = v.get('TODAY')
+            if dd:
+                store[(d, t)] = _snapshot_row(d, t, dd)
+        ok += 1
+        if i % 10 == 0 or i == len(dates):
+            _series_save(store)
+            print(f"  [{i}/{len(dates)}] {d} 完成（已写 {ok} 日，用时 {time.time()-t0:.0f}s）")
+    n_row = _series_save(store)
+    print(f"[V2.5 回补] 完成：{ok}/{len(dates)} 个交易日 → {os.path.basename(SERIES_PATH)}"
+          f"（共 {n_row} 行，用时 {time.time()-t0:.0f}s）")
+
+
+def load_evolution(trade_date):
+    """消费端入口：读取 theme_heat_v25_{trade_date}.json；缺失 → None
+
+    只输出「状态类」字段（Theme State / Momentum / Rank Migration / Persistence /
+    Future Evolution），供下游主题层使用；不含任何 BUY（§二十一）。
+    """
+    path = os.path.join(REPORT_DIR, f'theme_heat_v25_{trade_date}.json')
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            rows = json.load(f)
+    except Exception:
+        return None
+    return {str(r.get('theme')): r for r in rows if r.get('theme')} or None
+
+
+def evolution_summary(evo):
+    """§二十 一句话市场总结（消费端可直接调用；evo = load_evolution() 结果）
+
+    与 V2.5 报告正文使用同一函数，避免下游重复实现导致口径分叉。
+    """
+    if not evo:
+        return ''
+    rows = [{'theme': r.get('theme'), 'state': r.get('state'),
+             'metrics': {'heat': r.get('heat')}}
+            for r in evo.values() if r.get('theme')]
+    return _market_summary(rows) if rows else ''
+
+
+def build_panel(end_date, themes):
+    """§三 构建 [交易日历 × 主题] 演变面板（值来自序列 CSV；缺失 → None）
+
+    同时返回逐日「排名池大小」pool（当日有有效 Heat 的主题数）。V2.5.1 起 Rank 语义为
+    「当日 Heat 在当日排名池内的名次（1 = 最强）」，缺少池大小则名次不可解释。
+    """
+    from stock_cache import get_recent_trade_dates
+    dates = [str(d) for d in get_recent_trade_dates(n=EVO_LOOKBACK + 1, end_date=end_date)]
+    store = _series_load()
+    panel = {}
+    for t in themes:
+        seq = []
+        for d in dates:
+            r = store.get((d, t))
+            flags = str((r or {}).get('flags') or '')
+            seq.append({'heat': _num(r.get('heat')) if r else None,
+                        'base_heat': _num(r.get('base_heat')) if r else None,
+                        'breadth': _num(r.get('breadth')) if r else None,
+                        'rank': _num(r.get('rank')) if r else None,
+                        'n': _num(r.get('n')) if r else None,
+                        'reliability': _num(r.get('reliability')) if r else None,
+                        'flags': flags})
+        panel[t] = seq
+    pool = {}
+    for j, d in enumerate(dates):
+        pool[d] = sum(1 for t in themes
+                      if j < len(panel[t]) and panel[t][j]['rank'] is not None)
+    return dates, panel, pool
+
+
+def compute_evolution_metrics(seq, rank_pool=None):
+    """§四~§八 单主题变化指标（全部为已有数据的确定性计算）
+
+    rank_pool：「当日排名池大小」（当日有有效 Heat 的主题数）。V2.5.1 起 Rank 语义为
+    「当日 Heat 在当日排名池内的名次（1 = 最强）」，缺少池大小则名次不可解释。
+    """
+    heat = [x['heat'] for x in seq]
+    rank = [x['rank'] for x in seq]
+    br = [x['breadth'] for x in seq]
+    m = {'heat': _val(heat, 0),
+         'base_heat': _val([x.get('base_heat') for x in seq], 0),
+         'rank_today': _val(rank, 0), 'rank_5d': _val(rank, 5),
+         'rank_10d': _val(rank, 10), 'rank_20d': _val(rank, 20),
+         'hm5': _delta(heat, 0, 5), 'hm10': _delta(heat, 0, 10),
+         'hm20': _delta(heat, 0, 20),
+         'breadth': _val(br, 0), 'breadth_d5': _delta(br, 0, 5),
+         'breadth_d20': _delta(br, 0, 20),
+         'n': _val([x['n'] for x in seq], 0),
+         'reliability': _val([x['reliability'] for x in seq], 0),
+         'flags': seq[-1]['flags'] if seq else ''}
+    # §五 ACC = HM5 − (HM10 − HM5)
+    m['acc'] = (None if (m['hm5'] is None or m['hm10'] is None)
+                else m['hm5'] - (m['hm10'] - m['hm5']))
+    # §七 RankGain20 = 20日前排名 − 今日排名（>0 → 排名提升）
+    m['rank_gain20'] = (None if (m['rank_today'] is None or m['rank_20d'] is None)
+                        else m['rank_20d'] - m['rank_today'])
+    # §八 Persistence：近 20 个交易日的 TOP5 / TOP10 / TOP20 天数与连续 TOP10
+    rk = [_val(rank, k) for k in range(EVO_LOOKBACK)]
+    m['top5_count_20d'] = sum(1 for x in rk if x is not None and x <= EVO_TOP5)
+    m['top10_count_20d'] = sum(1 for x in rk if x is not None and x <= EVO_TOP10)
+    m['top20_count_20d'] = sum(1 for x in rk if x is not None and x <= EVO_TOP20)
+    m['days_20d'] = sum(1 for x in rk if x is not None)
+    streak = 0
+    for x in rk:
+        if x is not None and x <= EVO_TOP10:
+            streak += 1
+        else:
+            break
+    m['top10_streak'] = streak
+    m['ranks_recent'] = list(reversed(rk))          # 时间正序（旧 → 新）
+    m['history_ok'] = m['days_20d'] >= EVO_LOOKBACK and m['hm20'] is not None
+    # §八「边际状态」（V2.5.1 新增）：只看最近 5 日方向，与当前处于哪个层级无关
+    h5, b5 = m['hm5'], m['breadth_d5']
+    if h5 is not None and h5 > EVO_HM_EPS and (b5 is None or b5 > -EVO_BREADTH_EPS):
+        m['marginal'] = 'IMPROVING'
+    elif h5 is not None and h5 < -EVO_HM_EPS:
+        m['marginal'] = 'DETERIORATING'
+    else:
+        m['marginal'] = 'FLAT'
+    m['rank_pool_today'] = rank_pool
+    return m
+
+
+def classify_state(m, scale=1.0):
+    """§九 生命周期判定（纯规则、可由数据复现；scale 仅用于 §十二 参数扰动）
+
+    判定顺序：LEADING/PEAKING/COOLING（当前已在强势区且具备持续性）
+              → RELAUNCH/REBOUND（曾强→中间降温→重新升温；按「是否已重回强势区 + 是否扩散确认」拆分）
+              → ACCELERATING → EMERGING → COOLING。
+    V2.5.1：状态定义不变，「二次启动」拆为 RELAUNCH（真正再启动）/ REBOUND（反弹）两个并列状态。
+    数据不足时 conservatively 归入 EMERGING/COOLING，并由 LOW_SAMPLE /
+    EVOLUTION_INSUFFICIENT 标记提示可信度（§十）。
+    """
+    r_strong = EVO_STRONG_RANK * scale
+    r_cool = EVO_COOL_RANK * scale
+    hm_accel = EVO_HM_ACCEL * scale
+    hm5 = m['hm5'] if m['hm5'] is not None else 0.0
+    hm10 = m['hm10'] if m['hm10'] is not None else 0.0
+    acc = m['acc'] if m['acc'] is not None else 0.0
+    bd5 = m['breadth_d5'] if m['breadth_d5'] is not None else 0.0
+    r_now, r5 = m['rank_today'], m['rank_5d']
+
+    strong_now = r_now is not None and r_now <= r_strong
+    heating = hm5 > EVO_HM_EPS
+    diffusing = bd5 > EVO_BREADTH_EPS
+    contracting = bd5 < -EVO_BREADTH_EPS
+    accelerating = heating and hm5 >= hm_accel and acc > 0
+    rank_improving = (r5 is not None and r_now is not None and r_now < r5)
+    rank_worse = (r5 is not None and r_now is not None and r_now > r5)
+    hm5_slow = hm10 > 0 and hm5 < 0.4 * hm10
+
+    days = max(1, m['days_20d'])
+    top10 = m['top10_count_20d']
+    streak = m.get('top10_streak', 0)
+    persist_hi = top10 >= max(2, round(days * (EVO_PERSIST_HI / float(EVO_LOOKBACK)) * scale))
+    persist_lo = top10 <= round(days * (EVO_PERSIST_LO / float(EVO_LOOKBACK)) * scale)
+    established = persist_hi or streak >= EVO_STREAK_MIN   # 已在强势区且具备一定持续性
+
+    rr = m['ranks_recent']
+    was_strong = len(rr) >= 8 and any(x is not None and x <= r_strong for x in rr[:-6])
+    cooled_mid = len(rr) >= 8 and any(x is not None and x >= r_cool for x in rr[-6:-2])
+
+    # ① 当前就在强势区且有一定持续性 → 主线 / 高位钝化 / 已转弱
+    if strong_now and established:
+        if acc < 0 and (contracting or (hm5_slow and not diffusing)):
+            return 'PEAKING'
+        if hm5 < 0 and (contracting or rank_worse):
+            return 'COOLING'
+        return 'LEADING'
+    # ② 曾强 → 中间明显降温 → 重新升温（且当前尚未形成持续强势）→ 二次启动
+    #    V2.5.1：拆为「真正再启动」（已重回强势区 + 上涨范围同步扩大）
+    #            与「反弹」（重新升温但未回到强势区，或扩散未确认）
+    if (was_strong and cooled_mid and heating and (diffusing or rank_improving)
+            and r_now is not None and r_now <= r_cool):
+        back_strong = (strong_now or streak >= EVO_RELAUNCH_STREAK
+                       or top10 >= EVO_RELAUNCH_PERSIST)
+        return 'RELAUNCH' if (back_strong and diffusing) else 'REBOUND'
+    # ③ 正在加速升温
+    if accelerating and (diffusing or strong_now or rank_improving):
+        return 'ACCELERATING'
+    # ④ 刚开始活跃 / 新出现
+    if heating and (rank_improving or diffusing or (strong_now and persist_lo)):
+        return 'EMERGING'
+    # ⑤ 降温
+    if hm5 < 0 and (contracting or rank_worse):
+        return 'COOLING'
+    return 'EMERGING' if heating else 'COOLING'
+
+
+def project_states(state, m):
+    """§十一 短期（约5个交易日）与中期（约20个交易日）状态倾向
+
+    V2.5.1：短期与中期严格分开、各自查 NEXT_STATE，不做 T+5→T+10→T+20 串联；
+    只给「状态倾向」，不预测涨跌幅 / 收益率。
+    短期方向看最近 5 日动量（HM5 / ACC），中期方向看近 20 日动量（HM20）。
+    """
+    h5 = m['hm5'] if m['hm5'] is not None else 0.0
+    a5 = m['acc'] if m['acc'] is not None else 0.0
+    h20 = m['hm20'] if m['hm20'] is not None else 0.0
+    if h5 > EVO_HM_EPS or (a5 > 0 and h5 >= -EVO_HM_EPS):
+        short_dir = 'up'
+    elif h5 < -EVO_HM_EPS and a5 <= 0:
+        short_dir = 'down'
+    else:
+        short_dir = 'flat'
+    long_dir = 'up' if h20 > EVO_HM_EPS else ('down' if h20 < -EVO_HM_EPS else 'flat')
+    row = NEXT_STATE.get(state) or NEXT_STATE['EMERGING']
+    return {'short_dir': short_dir, 'short_state': row[short_dir],
+            'long_dir': long_dir, 'long_state': row[long_dir]}
+
+
+def _state_series(store, dates, themes):
+    """Walk-forward 计算每个主题在每个交易日的状态（只依赖 ≤ 当日数据）"""
+    arr = {}
+    for t in themes:
+        col = {k: [] for k in ('heat', 'rank', 'breadth', 'n', 'reliability')}
+        for d in dates:
+            r = store.get((d, t))
+            for k in col:
+                col[k].append(_num(r.get(k)) if r else None)
+        arr[t] = col
+    states = {t: [None] * len(dates) for t in themes}
+    for t in themes:
+        col = arr[t]
+        for i in range(len(dates)):
+            if i < EVO_LOOKBACK:
+                continue
+            seq = [{'heat': col['heat'][k], 'rank': col['rank'][k],
+                    'breadth': col['breadth'][k], 'n': col['n'][k],
+                    'reliability': col['reliability'][k], 'flags': ''}
+                   for k in range(i - EVO_LOOKBACK, i + 1)]
+            mm = compute_evolution_metrics(seq)
+            if mm['heat'] is None or mm['rank_today'] is None or not mm['history_ok']:
+                continue
+            states[t][i] = classify_state(mm)
+    return states
+
+
+def _transition_counts(states, dates, idxs, h):
+    """给定样本区间 idxs 的状态迁移计数（(from, to) → n）"""
+    cnt, tot = {}, 0
+    for t, st in states.items():
+        for i in idxs:
+            j = i + h
+            if j >= len(dates) or st[i] is None or st[j] is None:
+                continue
+            cnt[(st[i], st[j])] = cnt.get((st[i], st[j]), 0) + 1
+            tot += 1
+    return cnt, tot
+
+
+def compute_transitions():
+    """§十二 历史状态迁移（Walk-forward / 不使用未来数据 / IS-OOS 分离 /
+    参数扰动 / 最小样本量 / Null Model）
+
+    返回 {horizons: {h: {state: {...}}}, stability, is_oos, obs, dates_used, themes_used}
+    """
+    store = _series_load()
+    if not store:
+        return {}
+    dates = sorted({d for (d, _t) in store})
+    themes = sorted({t for (_d, t) in store})
+    if len(dates) < EVO_LOOKBACK + max(EVO_HORIZONS) + 1:
+        return {'obs': 0, 'dates_used': len(dates), 'themes_used': len(themes),
+                'series_days': len(dates), 'series_span': (dates[0], dates[-1]),
+                'horizons': {}, 'stability': None, 'is_oos': {}, 'insufficient': True}
+    states = _state_series(store, dates, themes)
+    usable = [i for i, d in enumerate(dates)
+              if i >= EVO_LOOKBACK and any(states[t][i] is not None for t in themes)]
+
+    used = [t for t in themes if any(states[t][i] is not None for i in usable)]
+    out = {'obs': 0, 'dates_used': len(usable), 'themes_used': len(used),
+           'series_days': len(dates), 'series_span': (dates[0], dates[-1]),
+           'horizons': {}, 'stability': None, 'is_oos': {}, 'insufficient': False,
+           'span': (dates[usable[0]] if usable else None,
+                    dates[usable[-1]] if usable else None)}
+    # 参数扰动：阈值 ×0.8 / ×1.2 后状态不变的比例（状态稳定性）
+    if usable:
+        base_states = {t: [states[t][i] for i in usable] for t in themes}
+        agree = tot = 0
+        for s in EVO_PERTURB:
+            alt_states = _state_series_scaled(store, dates, themes, s)
+            for t in themes:
+                for k, i in enumerate(usable):
+                    a, b = base_states[t][k], alt_states[t][i]
+                    if a is None or b is None:
+                        continue
+                    tot += 1
+                    agree += int(a == b)
+        out['stability'] = (agree / tot) if tot else None
+
+    split = usable[:max(1, int(len(usable) * 0.6))], usable[max(1, int(len(usable) * 0.6)):]
+    for h in EVO_HORIZONS:
+        cnt, tot = _transition_counts(states, dates, usable, h)
+        out['obs'] = max(out['obs'], tot)
+        base = {}
+        for (a, b), c in cnt.items():
+            base[b] = base.get(b, 0) + c
+        per = {}
+        for (a, b), c in cnt.items():
+            d = per.setdefault(a, {'n': 0, 'to': {}})
+            d['n'] += c
+            d['to'][b] = d['to'].get(b, 0) + c
+        for a, d in per.items():
+            top = max(d['to'].items(), key=lambda kv: kv[1])
+            d['top'] = top[0]
+            d['rate'] = top[1] / d['n']
+            d['base_rate'] = base.get(top[0], 0) / tot if tot else 0.0
+            d['lift'] = d['rate'] - d['base_rate']
+            if d['n'] < EVO_MIN_TRANS_N:
+                d['confidence'] = 'LOW'
+            elif d['n'] >= 30 and d['rate'] >= 0.50:
+                d['confidence'] = 'HIGH'
+            else:
+                d['confidence'] = 'MEDIUM'
+        # IS / OOS 分离：分别统计「按 IS 选出的主路径」在 IS 与 OOS 上的命中次数
+        is_cnt, is_tot = _transition_counts(states, dates, split[0], h)
+        oos_cnt, oos_tot = _transition_counts(states, dates, split[1], h)
+        is_oos = {a: {'is_n': is_cnt.get((a, d['top']), 0),
+                      'oos_n': oos_cnt.get((a, d['top']), 0)}
+                  for a, d in per.items()}
+        out['horizons'][h] = {'per': per, 'total': tot, 'is_total': is_tot,
+                              'oos_total': oos_tot, 'is_oos': is_oos}
+    return out
+
+
+def _state_series_scaled(store, dates, themes, scale):
+    """参数扰动版状态序列（§十二 robustness check）"""
+    arr = {}
+    for t in themes:
+        col = {k: [] for k in ('heat', 'rank', 'breadth', 'n', 'reliability')}
+        for d in dates:
+            r = store.get((d, t))
+            for k in col:
+                col[k].append(_num(r.get(k)) if r else None)
+        arr[t] = col
+    states = {t: [None] * len(dates) for t in themes}
+    for t in themes:
+        col = arr[t]
+        for i in range(len(dates)):
+            if i < EVO_LOOKBACK:
+                continue
+            seq = [{'heat': col['heat'][k], 'rank': col['rank'][k],
+                    'breadth': col['breadth'][k], 'n': col['n'][k],
+                    'reliability': col['reliability'][k], 'flags': ''}
+                   for k in range(i - EVO_LOOKBACK, i + 1)]
+            mm = compute_evolution_metrics(seq)
+            if mm['heat'] is None or mm['rank_today'] is None or not mm['history_ok']:
+                continue
+            states[t][i] = classify_state(mm, scale=scale)
+    return states
+
+
+# ── §十四/§十五 自然语言解释层（只翻译已算出的字段）──
+
+def _trend_cn(x):
+    """热度动量 → 散户可读的定性措辞（不暴露 HM 数值）"""
+    if x is None:
+        return '不明显'
+    if x > 5.0:
+        return '明显上升'
+    if x > EVO_HM_EPS:
+        return '小幅上升'
+    if x < -5.0:
+        return '明显下降'
+    if x < -EVO_HM_EPS:
+        return '小幅下降'
+    return '基本持平'
+
+
+def _sanitize(text):
+    """§十六 禁止表达校验（模板本身即规避，此处作为硬性护栏）"""
+    hits = [w for w in BANNED_PHRASES if w in text]
+    if hits:
+        raise AssertionError(f'V2.5 自然语言层出现禁止表达：{hits}')
+    return text
+
+
+def _reasons(m, st):
+    """§十七 第二层：只挑 3 条最重要的「为什么」（用可读措辞，不用专业字段名）"""
+    cand = []
+    if m['hm5'] is not None:
+        cand.append(f"最近5日热度{_trend_cn(m['hm5'])}")
+    if m['breadth_d5'] is not None:
+        if m['breadth_d5'] > EVO_BREADTH_EPS:
+            cand.append('上涨正在向更多成份股扩散')
+        elif m['breadth_d5'] < -EVO_BREADTH_EPS:
+            cand.append('参与上涨的股票数量在减少' if st in ('COOLING', 'PEAKING')
+                        else '参与上涨的股票数量没有同步增加')
+    if m['rank_today'] is not None:
+        if m['rank_gain20'] is not None and m['rank_gain20'] >= 3:
+            cand.append(f"排名相对一个月前提升 {int(m['rank_gain20'])} 位")
+        elif m['rank_gain20'] is not None and m['rank_gain20'] <= -3:
+            if st in ('COOLING', 'PEAKING'):     # 非降温状态不把「排名回落」列为走强原因
+                cand.append(f"排名相对一个月前回落 {int(-m['rank_gain20'])} 位")
+        else:
+            cand.append(f"当前市场排名第 {int(m['rank_today'])} 位")
+    if m['top10_count_20d']:
+        cand.append(f"过去20个交易日中有 {int(m['top10_count_20d'])} 天处于前十")
+    if m['acc'] is not None and abs(m['acc']) > EVO_HM_EPS:
+        cand.append('最近5天的升温速度比前期更快' if m['acc'] > 0 else '最近5天的升温速度比前期放缓')
+    if m['hm20'] is not None and abs(m['hm20']) > EVO_HM_EPS:
+        cand.append(f"过去一个月总体{'升温' if m['hm20'] > 0 else '降温'}")
+    if not cand:
+        cand.append('当前变化不明显，主题处于横盘观察状态')
+    return cand[:3]
+
+
+def narrate(theme, row):
+    """§十四/§十五 结构化字段 → 自然语言
+
+    V2.5.1：只输出四段 —— 当前状态 + 支持证据 + 确认条件 + 失效条件；
+    「确认 / 失效」条件短期（约5个交易日）与中期（约20个交易日）严格分开。
+    历史迁移统计不再进入自然语言，只在报告「状态迁移参考」中作参考展示。
+    """
+    m, st = row['metrics'], row['state']
+    label = STATE_INFO[st][0]
+    marg_cn = MARGINAL_INFO.get(m.get('marginal'), ('持平', ''))[0]
+    low = 'LOW_SAMPLE' in row['flags']
+    insufficient = 'EVOLUTION_INSUFFICIENT' in row['flags']
+
+    status = f"{theme}目前处于「{label}」，边际状态为「{marg_cn}」。{STATE_DESC[st]}"
+    if low:
+        status += '（注意：该主题参与股票数量较少，热度变化容易受到少数股票影响，当前信号可信度有限。）'
+    if insufficient:
+        status += '（注意：该主题的历史热度序列还不足 20 个交易日，变化指标暂不完整。）'
+
+    why = _reasons(m, st)
+    evidence = '支持证据：' + '；'.join(
+        f'{chr(0x2460 + i)}{t}' for i, t in enumerate(why)) + '。'
+    cs, ivs, cl, ivl = CONFIRM_INVALID[st]
+    out = {'label': label, 'emoji': STATE_INFO[st][1],
+           'status': status, 'evidence': evidence,
+           'confirm_short': cs, 'invalid_short': ivs,
+           'confirm_long': cl, 'invalid_long': ivl}
+    for k in ('status', 'evidence', 'confirm_short', 'invalid_short',
+              'confirm_long', 'invalid_long'):
+        _sanitize(out[k])
+    return out
+
+def _radar_text(row):
+    """§十八 主题雷达「人话」列（一句话、口语化、不含预测）"""
+    m, st = row['metrics'], row['state']
+    dec = m['acc'] is not None and m['acc'] < -EVO_HM_EPS
+    acc_up = m['acc'] is not None and m['acc'] > EVO_HM_EPS
+    con = m['breadth_d5'] is not None and m['breadth_d5'] < -EVO_BREADTH_EPS
+    if st == 'LEADING':
+        if dec:
+            return '目前仍然强，但升温速度有所放缓'
+        return '目前仍然强，而且还在继续升温' if acc_up else '目前仍然强，热度维持'
+    if st == 'ACCELERATING':
+        return '最近明显升温，正在进入市场关注范围'
+    if st == 'RELAUNCH':
+        return '调整后重新回到强势区，上涨范围同步扩大'
+    if st == 'REBOUND':
+        return '调整后重新升温，但还没有回到强势区'
+    if st == 'EMERGING':
+        return '刚开始活跃，还需要持续性验证'
+    if st == 'PEAKING':
+        return '仍然强，但参与度开始下降' if con else '仍然强，但升温速度慢下来了'
+    return '热度和排名都在下降'
+
+
+def _mk_table(headers, data):
+    ws = [max([_dw(h)] + [_dw(r[i]) for r in data]) if data else _dw(h)
+          for i, h in enumerate(headers)]
+    out = [SEP_THIN, '  ' + '  '.join(_pad(h, ws[i]) for i, h in enumerate(headers))]
+    for r in data:
+        out.append('  ' + '  '.join(_pad(r[i], ws[i]) for i in range(len(headers))))
+    out.append(SEP_THIN)
+    return out
+
+
+def build_evolution_report(trade_date, rows, trans, core, dates):
+    """§十七/§十八/§十九/§二十 面向普通投资者的演变报告（V2.5.1 清洗版）"""
+    L = [SEP_FULL, '主题热度 V2.5.1 —— 未来一个月演变', f'交易日 {trade_date}', SEP_FULL]
+    L.append('* 本模块只描述「主题热度正在往哪里移动」，不含任何买卖决策；'
+             '个股买卖由独立的量价与趋势模块决定。')
+    L.append(f'* 状态 = 基于最近 5/10/{EVO_LOOKBACK} 日热度变化、排名迁移、内部扩散与持续性，'
+             f'判定的七种生命周期：{"/".join(STATE_INFO[s][0] for s in STATE_ORDER)}。')
+    L.append('* 边际状态 = 只看最近 5 日方向，与当前层级无关：'
+             + "/".join(f'{MARGINAL_INFO[k][1]}{MARGINAL_INFO[k][0]}' for k in
+                        ('IMPROVING', 'FLAT', 'DETERIORATING')) + '。')
+    L.append('* Rank = 当日 Heat 在当日排名池内的名次（1 = 最强），排名池 = 当日有有效 Heat 的主题数。')
+    L.append('* 只预测「热度状态」可能如何变化，不预测涨跌幅、收益率或「一定上涨」（§十一）。')
+    L.append('* 短期（约5个交易日）与中期（约20个交易日）严格分开，不做 T+5→T+10→T+20 串联。')
+    L.append(f'* 低样本保护：N<{EVO_LOWSAMPLE_N} 或 reliability<{EVO_REL_MIN:.2f} → LOW_SAMPLE，'
+             '只作观察，不据此判断后续走势（§十）。')
+    L.append('')
+
+    low = [r for r in rows if 'LOW_SAMPLE' in r['flags']]
+    insuff = [r for r in rows if 'EVOLUTION_INSUFFICIENT' in r['flags']]
+    L.append('【演变数据质量】')
+    sspan = trans.get('series_span') or (None, None)
+    L.append(f'主题热度序列：{trans.get("series_days") or 0} 个交易日'
+             f'（{sspan[0]} ~ {sspan[1]}，来源 {os.path.basename(SERIES_PATH)}）')
+    L.append(f'演变分析窗口：最近 {len(dates)} 个交易日（{dates[0]} ~ {dates[-1]}）'
+             f'｜状态迁移观测：{trans.get("obs") or 0} 次｜主题 {trans.get("themes_used") or 0} 个'
+             f'｜最小样本 {EVO_MIN_TRANS_N}')
+    stab = trans.get('stability')
+    L.append(f'参数扰动稳定性（阈值 ×{EVO_PERTURB[0]} / ×{EVO_PERTURB[1]}）：'
+             f'{stab*100:.0f}%' if stab is not None else '参数扰动稳定性：样本不足')
+    L.append(f'LOW_SAMPLE：{len(low)} 个主题｜EVOLUTION_INSUFFICIENT：{len(insuff)} 个主题'
+             '（序列不足 20 个交易日）')
+    L.append('')
+
+    # ── §十九 分组自然语言（每状态最多 6 个主题，按热度降序）──
+    L.append('【主题热度——未来一个月演变】')
+    L.append(SEP_THIN)
+    for st in STATE_ORDER:
+        grp = sorted([r for r in rows if r['state'] == st],
+                     key=lambda r: -(r['metrics']['heat'] or 0.0))
+        if not grp:
+            continue
+        L.append('')
+        L.append(f'{STATE_INFO[st][1]} {STATE_INFO[st][0]}（{len(grp)} 个）')
+        for r in grp[:6]:
+            n = r['narr']
+            L.append(f'**{r["theme"]}**')
+            L.append(f'> 当前状态：{n["status"]}')
+            L.append(f'> {n["evidence"]}')
+            L.append(f'> 确认条件（短期）：{n["confirm_short"]}')
+            L.append(f'> 失效条件（短期）：{n["invalid_short"]}')
+            L.append(f'> 确认条件（中期）：{n["confirm_long"]}')
+            L.append(f'> 失效条件（中期）：{n["invalid_long"]}')
+        if len(grp) > 6:
+            L.append(f'  （其余 {len(grp) - 6} 个同类主题见下方量化明细）')
+    L.append('')
+
+    # ── §十八 主题雷达（展示层 Emoji；底层仍为英文状态）──
+    radar = []
+    for st in STATE_ORDER:
+        grp = sorted([r for r in rows if r['state'] == st],
+                     key=lambda r: -(r['metrics']['heat'] or 0.0))
+        for r in grp[:5]:
+            mi = MARGINAL_INFO.get(r['metrics'].get('marginal'), ('持平', ''))
+            radar.append([f'{STATE_INFO[st][1]}{STATE_INFO[st][0]}',
+                          f'{mi[1]}{mi[0]}', r['theme'], _radar_text(r)])
+    if radar:
+        L.append('【主题雷达】')
+        L += _mk_table(['状态', '边际', '主题', '人话'], radar)
+    else:
+        L.append('【主题雷达】')
+        L.append('  （无）')
+    L.append('')
+
+    # ── §十二/§十三 状态迁移（本节为统计口径，仅作参考；散户正文不给概率数字）──
+    L.append('【状态迁移参考（历史统计口径，仅作参考，不构成概率判断）】')
+    L.append('* 以下为历史上「同一状态」在 5 个交易日后的状态分布，只用于事后对照，'
+             '不得作为当前主题的预测或确认/失效依据。')
+    L.append(SEP_THIN)
+    hblk = (trans.get('horizons') or {}).get(5, {})
+    per5, io5 = hblk.get('per', {}), hblk.get('is_oos', {})
+    shown = 0
+    for st in STATE_ORDER:
+        d = per5.get(st)
+        if not d or d['n'] < EVO_MIN_TRANS_N:
+            continue
+        nxt = STATE_INFO.get(d['top'], (d['top'], ''))[0]
+        io = io5.get(st, {})
+        L.append(f'  · 「{STATE_INFO[st][0]}」→ 5 个交易日后更常见状态「{nxt}」'
+                 f'｜transition_n={d["n"]}｜transition_rate={d["rate"]*100:.0f}%'
+                 f'（整体基准 {d["base_rate"]*100:.0f}%，lift {d["lift"]*100:+.0f}pp）'
+                 f'｜confidence={d["confidence"]}'
+                 f'｜IS 命中 {io.get("is_n", 0)} 次 / OOS 命中 {io.get("oos_n", 0)} 次')
+        shown += 1
+    if not shown:
+        L.append('  历史样本不足，目前只能作为观察信号，不能据此判断后续走势。')
+    if trans.get('insufficient'):
+        L.append('  （序列长度不足，尚未开始统计状态迁移。）')
+    L.append(SEP_THIN)
+    L.append('')
+
+    # ── §二十 一句话市场总结（只允许一段）──
+    L.append('【一句话市场总结】')
+    L.append('> ' + _market_summary(rows))
+    L.append('')
+
+    # ── 附：量化明细（供复核；普通阅读可跳过）──
+    det = []
+    for r in sorted(rows, key=lambda r: (STATE_ORDER.index(r['state']),
+                                         -(r['metrics']['heat'] or 0.0))):
+        m, p = r['metrics'], r['proj']
+        mi = MARGINAL_INFO.get(m.get('marginal'), ('持平', ''))
+        det.append([r['theme'], f'{STATE_INFO[r["state"]][1]}{STATE_INFO[r["state"]][0]}',
+                    f'{mi[1]}{mi[0]}',
+                    _f(m['heat'], 1), _f(m['hm5'], 1), _f(m['hm10'], 1), _f(m['hm20'], 1),
+                    _f(m['acc'], 1), _f(m['breadth_d5'], 1),
+                    f"{_f(m['rank_today'],0)}/{_f(m['rank_5d'],0)}/{_f(m['rank_10d'],0)}/"
+                    f"{_f(m['rank_20d'],0)}",
+                    _f(m.get('rank_pool_today'), 0),
+                    str(int(m['top10_count_20d'])), str(int(m['top5_count_20d'])),
+                    _f(m['reliability'], 2), str(int(m['n'] or 0)),
+                    f"{STATE_INFO[p['short_state']][1]}{STATE_INFO[p['short_state']][0]}",
+                    f"{STATE_INFO[p['long_state']][1]}{STATE_INFO[p['long_state']][0]}",
+                    'LOW_SAMPLE' if 'LOW_SAMPLE' in r['flags'] else ''])
+    L.append('【附：量化明细（供复核，普通阅读可跳过）】')
+    L += _mk_table(['主题', '状态', '边际', 'Heat', 'HM5', 'HM10', 'HM20', 'ACC', 'ΔBr5',
+                    'Rank今/5/10/20', '池N', 'TOP10', 'TOP5', 'Rel', 'N',
+                    '短期倾向', '中期倾向', 'Flag'], det)
+    L.append(SEP_FULL)
+    return '\n'.join(L)
+
+
+def _market_summary(rows):
+    def top(st, k):
+        sel = sorted([r for r in rows if r['state'] == st],
+                     key=lambda r: -(r['metrics']['heat'] or 0.0))
+        return [r['theme'] for r in sel[:k]]
+    cur = top('LEADING', 2)
+    nxt = top('ACCELERATING', 2) + top('RELAUNCH', 1) + top('EMERGING', 1)
+    dn = top('COOLING', 2)
+    txt = f"当前市场主题正在从【{'、'.join(cur) or '暂无明确主线'}】向" \
+          f"【{'、'.join(nxt) or '暂未出现新的升温方向'}】扩散"
+    if dn:
+        txt += f"，同时【{'、'.join(dn)}】开始降温"
+    txt += ('。未来一个月最值得观察的不是当前热度最高的主题，而是'
+            '「热度持续上升 + 排名提升 + 成份股同步扩散」的方向。')
+    return _sanitize(txt)
+
+
+def save_evolution(trade_date, rows):
+    """落盘 theme_heat_v25_{date}.json（V2.5.1 统一 Schema，供 AI 解释层与下游消费）
+
+    所有主题共用同一套字段（EVO_FIELDS）；缺失字段显式写 null（不省略、不变形）；
+    逐行强校验，字段集合与 EVO_FIELDS 不一致即报错。
+    """
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    out = []
+    for r in sorted(rows, key=lambda x: (STATE_ORDER.index(x['state']),
+                                         -(x['metrics']['heat'] or 0.0))):
+        m, p = r['metrics'], r['proj']
+        row = {
+            'schema_version': SCHEMA_VERSION,
+            'theme': r['theme'], 'state': r['state'],
+            'state_cn': STATE_INFO[r['state']][0], 'emoji': STATE_INFO[r['state']][1],
+            'marginal': m.get('marginal'),
+            'marginal_cn': MARGINAL_INFO.get(m.get('marginal'), (None, ''))[0],
+            'heat': _r(m['heat']), 'base_heat': _r(m.get('base_heat')),
+            'hm5': _r(m['hm5']), 'hm10': _r(m['hm10']), 'hm20': _r(m['hm20']),
+            'acc': _r(m['acc']),
+            'breadth': _r(m['breadth']), 'breadth_d5': _r(m['breadth_d5']),
+            'breadth_d20': _r(m['breadth_d20']),
+            'rank_today': _ri(m['rank_today']), 'rank_5d': _ri(m['rank_5d']),
+            'rank_10d': _ri(m['rank_10d']), 'rank_20d': _ri(m['rank_20d']),
+            'rank_gain20': _ri(m['rank_gain20']),
+            'rank_pool_today': _ri(m.get('rank_pool_today')),
+            'top5_count_20d': int(m['top5_count_20d']),
+            'top10_count_20d': int(m['top10_count_20d']),
+            'top20_count_20d': int(m['top20_count_20d']),
+            'top10_streak': int(m['top10_streak']),
+            'days_20d': int(m['days_20d']),
+            'reliability': _r(m['reliability']), 'n': _ri(m['n']),
+            'history_ok': bool(m['history_ok']),
+            'flags': r['flags'],
+            'outlook_short_dir': p['short_dir'], 'outlook_short_state': p['short_state'],
+            'outlook_long_dir': p['long_dir'], 'outlook_long_state': p['long_state'],
+            'status': r['narr']['status'], 'evidence': r['narr']['evidence'],
+            'confirm_short': r['narr']['confirm_short'], 'invalid_short': r['narr']['invalid_short'],
+            'confirm_long': r['narr']['confirm_long'], 'invalid_long': r['narr']['invalid_long'],
+            'radar': _radar_text(r),
+        }
+        missing = [f for f in EVO_FIELDS if f not in row]
+        extra = [f for f in row if f not in EVO_FIELDS]
+        if missing or extra:
+            raise AssertionError(
+                f'V2.5.1 Schema 不一致（主题 {r["theme"]}）：缺 {missing}｜多 {extra}')
+        out.append({f: row[f] for f in EVO_FIELDS})
+    base = os.path.join(REPORT_DIR, f'theme_heat_v25_{trade_date}')
+    with open(base + '.json', 'w', encoding='utf-8') as f:
+        json.dump(out, f, ensure_ascii=False, indent=1)
+    print(f"\n[保存] {os.path.basename(base)}.json / {os.path.basename(SERIES_PATH)}")
+    return out
+
+
+def _r(x, d=4):
+    return None if x is None else round(float(x), d)
+
+
+def _ri(x):
+    return None if x is None else int(round(float(x)))
+
+
+def run_evolution(core):
+    """§V2.5 主入口：序列落盘 → 指标/状态 → 迁移统计 → 自然语言 → 报告"""
+    trade_date = core['trade_date']
+    series_append(core)                                   # §三 当日快照
+    themes = sorted(core['scored'])
+    dates, panel, pool = build_panel(trade_date, themes)
+    pool_today = pool.get(dates[-1]) if dates else None
+    mapping = core['mapping']
+    rows = []
+    for t in themes:
+        m = compute_evolution_metrics(panel[t], rank_pool=pool_today)
+        if m['heat'] is None:
+            continue
+        st = classify_state(m)
+        flags = set()
+        if _evolution_low_sample(m, t, mapping):
+            flags.add('LOW_SAMPLE')
+        if not m['history_ok']:
+            flags.add('EVOLUTION_INSUFFICIENT')
+        rows.append({'theme': t, 'state': st, 'metrics': m, 'flags': sorted(flags),
+                     'proj': project_states(st, m)})
+    trans = compute_transitions()
+    for r in rows:
+        r['narr'] = narrate(r['theme'], r)
+    md = build_evolution_report(trade_date, rows, trans, core, dates)
+    save_evolution(trade_date, rows)
+    base = os.path.join(REPORT_DIR, f'theme_heat_v25_{trade_date}')
+    with open(base + '.md', 'w', encoding='utf-8') as f:
+        f.write(md + '\n')
+    print(md)
+    return {'trade_date': trade_date, 'rows': rows, 'transitions': trans}
+
+
+def _evolution_low_sample(m, t, mapping):
+    """§十 低样本保护（N<15 或 reliability<0.50 或 V2.4 已判 LOW_SAMPLE）"""
+    mq = mapping.get(t) or {}
+    n = m.get('n')
+    rel = m.get('reliability')
+    if rel is None:
+        rel = mq.get('sample_reliability')
+    return (n is None or n < EVO_LOWSAMPLE_N
+            or (rel is not None and rel < EVO_REL_MIN)
+            or str(mq.get('sample_flag') or '') == 'LOW_SAMPLE')
+
+
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else None
+    if arg and str(arg).lower() in ('backfill', 'back', '回补'):
+        n = int(sys.argv[2]) if len(sys.argv) > 2 else EVO_SERIES_DAYS
+        backfill_series(n)
+        return
     run(arg)
 
 

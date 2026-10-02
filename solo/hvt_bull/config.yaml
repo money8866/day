@@ -10,15 +10,17 @@ universe:
   allow_star_growth: true       # 科创板/创业板纳入
 
 hvt:
+  # 20261001 用户裁定：天量判定不再比换手率，整维改按成交金额（amount）。
+  #   下列 rank / pct / ratio 均为成交额口径，阈值数值沿用（1.8/2.0/3.0）。
   lookback_250: 250             # 历史排名窗口
-  anchor_date: '20240801'       # 天量锚点口径：T0换手须为该日以来最高（空=退回250日滚动窗口口径）
+  anchor_date: '20240801'       # 天量锚点口径：T0成交额须为该日以来最高（空=退回250日滚动窗口口径）
   anchor_min_hist: 60           # 锚点口径下 T0 之前至少需要的有效交易日数
   rank_mode: both               # 天量口径：anchor=锚点以来最高 | rolling=250日滚动窗口排名 | both=严格并集（两类各自独立冷却10日，anchor优先定级）
   percentile_120: 98            # 120日分位阈值(%)
-  ratio_20: 2.0                 # 当日换手 / 20日均换手
+  ratio_20: 2.0                 # 当日成交额 / 20日均成交额
   amount_ratio_20: 2.0          # 当日成交额 / 20日均成交额
-  rank_a: 1                     # HVT-A: 250日最高
-  rank_b: 2                     # HVT-B: 250日最高或第二高
+  rank_a: 1                     # HVT-A: 250日成交额最高
+  rank_b: 2                     # HVT-B: 250日成交额最高或第二高
   pct_a: 99
   pct_b: 98
   ratio_a: 3.0
@@ -35,10 +37,9 @@ price_strength:
   strong_close_pos: 0.80
   super_close_pos: 0.85
   min_body: 0.30                # 实体强度 (Close-Open)/(High-Low)
-  # 涨停次日豁免：T-1 收盘涨停时，T0 放量分歧（滞涨/长上影派发形态）不构成价格强度否决；
-  # 仅保留底线：T0 不收跌 + 收盘位置不低于 limit_next_day_min_close_pos（防烂尾大阴）
+  # 前一日大涨豁免（20261001 口径）：T-1 涨幅 > 10% 时，T0 放量分歧（滞涨/长上影/收阴派发形态）
+  # 不构成价格强度否决（方向豁免）；仅保留底线：T0 不跌停 + 收盘位置不低于 limit_next_day_min_close_pos（防烂尾大阴）
   limit_next_day_exempt: true
-  limit_next_day_min_pct_chg: 0.0
   limit_next_day_min_close_pos: 0.30
 
 trend:

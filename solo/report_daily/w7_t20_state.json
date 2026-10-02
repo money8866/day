@@ -52,8 +52,8 @@
   },
   "000021.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000021.SZ_20260519",
    "event_date": "20260519"
   },
@@ -66,8 +66,8 @@
   },
   "000026.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000026.SZ_20260525",
    "event_date": "20260525"
   },
@@ -89,8 +89,8 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "000029.SZ_20260512",
-   "event_date": "20260512"
+   "event_key": "000029.SZ_20260513",
+   "event_date": "20260513"
   },
   "000030.SZ": {
    "prev_streak": 5,
@@ -178,8 +178,8 @@
   },
   "000050.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "000050.SZ_20260624",
    "event_date": "20260624"
   },
@@ -199,8 +199,8 @@
   },
   "000060.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "000060.SZ_20260511",
    "event_date": "20260511"
   },
@@ -213,17 +213,17 @@
   },
   "000062.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000062.SZ_20260424",
    "event_date": "20260424"
   },
   "000063.SZ": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "000063.SZ_20260722",
-   "event_date": "20260722"
+   "streak": 0,
+   "r1": false,
+   "event_key": "000063.SZ_20260709",
+   "event_date": "20260709"
   },
   "000065.SZ": {
    "prev_streak": 5,
@@ -311,10 +311,10 @@
   },
   "000158.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000158.SZ_20260901",
-   "event_date": "20260901"
+   "event_date": ""
   },
   "000166.SZ": {
    "prev_streak": 18,
@@ -360,8 +360,8 @@
   },
   "000402.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "000402.SZ_20260506",
    "event_date": "20260506"
   },
@@ -433,7 +433,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "000425.SZ_20260901",
-   "event_date": "20260901"
+   "event_date": ""
   },
   "000426.SZ": {
    "prev_streak": 18,
@@ -516,15 +516,15 @@
    "prev_streak": 11,
    "streak": 0,
    "r1": false,
-   "event_key": "000523.SZ_20260820",
-   "event_date": "20260820"
+   "event_key": "000523.SZ_20260910",
+   "event_date": "20260910"
   },
   "000524.SZ": {
    "prev_streak": 10,
    "streak": 11,
    "r1": true,
    "event_key": "000524.SZ_20260710",
-   "event_date": "20260710"
+   "event_date": ""
   },
   "000528.SZ": {
    "prev_streak": 6,
@@ -570,8 +570,8 @@
   },
   "000538.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "000538.SZ_20260716",
    "event_date": "20260716"
   },
@@ -591,7 +591,7 @@
   },
   "000543.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "000543.SZ_20260529",
    "event_date": "20260529"
@@ -720,7 +720,7 @@
    "streak": 8,
    "r1": true,
    "event_key": "000572.SZ_20260917",
-   "event_date": "20260917"
+   "event_date": ""
   },
   "000581.SZ": {
    "prev_streak": 18,
@@ -731,10 +731,10 @@
   },
   "000582.SZ": {
    "prev_streak": 17,
-   "streak": 18,
-   "r1": true,
-   "event_key": "000582.SZ_20260604",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "000582.SZ_20260603",
+   "event_date": "20260603"
   },
   "000589.SZ": {
    "prev_streak": 0,
@@ -755,7 +755,7 @@
    "streak": 13,
    "r1": true,
    "event_key": "000592.SZ_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "000593.SZ": {
    "prev_streak": 18,
@@ -766,17 +766,17 @@
   },
   "000595.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000595.SZ_20260727",
    "event_date": "20260727"
   },
   "000596.SZ": {
    "prev_streak": 1,
-   "streak": 2,
+   "streak": 0,
    "r1": false,
-   "event_key": "000596.SZ_20260722",
-   "event_date": "20260722"
+   "event_key": "000596.SZ_20260721",
+   "event_date": "20260721"
   },
   "000597.SZ": {
    "prev_streak": 0,
@@ -808,7 +808,7 @@
   },
   "000603.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "000603.SZ_20260807",
    "event_date": "20260807"
@@ -850,10 +850,10 @@
   },
   "000628.SZ": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "000628.SZ_20260824",
-   "event_date": "20260824"
+   "streak": 0,
+   "r1": false,
+   "event_key": "000628.SZ_20260506",
+   "event_date": "20260506"
   },
   "000629.SZ": {
    "prev_streak": 18,
@@ -906,10 +906,10 @@
   },
   "000657.SZ": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "000657.SZ_20260806",
-   "event_date": "20260806"
+   "streak": 0,
+   "r1": false,
+   "event_key": "000657.SZ_20260417",
+   "event_date": "20260417"
   },
   "000661.SZ": {
    "prev_streak": 0,
@@ -929,8 +929,8 @@
    "prev_streak": 3,
    "streak": 0,
    "r1": false,
-   "event_key": "000672.SZ_20260512",
-   "event_date": "20260512"
+   "event_key": "000672.SZ_20260519",
+   "event_date": "20260519"
   },
   "000676.SZ": {
    "prev_streak": 4,
@@ -948,10 +948,10 @@
   },
   "000680.SZ": {
    "prev_streak": 17,
-   "streak": 0,
-   "r1": false,
+   "streak": 18,
+   "r1": true,
    "event_key": "000680.SZ_20260608",
-   "event_date": "20260608"
+   "event_date": ""
   },
   "000681.SZ": {
    "prev_streak": 18,
@@ -1172,8 +1172,8 @@
   },
   "000756.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "000756.SZ_20260624",
    "event_date": "20260624"
   },
@@ -1189,12 +1189,12 @@
    "streak": 1,
    "r1": false,
    "event_key": "000761.SZ_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "000762.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "000762.SZ_20260410",
    "event_date": "20260410"
   },
@@ -1221,8 +1221,8 @@
   },
   "000776.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "000776.SZ_20260622",
    "event_date": "20260622"
   },
@@ -1279,8 +1279,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "000795.SZ_20260702",
-   "event_date": "20260702"
+   "event_key": "000795.SZ_20260622",
+   "event_date": "20260622"
   },
   "000799.SZ": {
    "prev_streak": 18,
@@ -1301,7 +1301,7 @@
    "streak": 1,
    "r1": false,
    "event_key": "000801.SZ_20260702",
-   "event_date": "20260702"
+   "event_date": ""
   },
   "000807.SZ": {
    "prev_streak": 0,
@@ -1312,8 +1312,8 @@
   },
   "000810.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000810.SZ_20260622",
    "event_date": "20260622"
   },
@@ -1322,7 +1322,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "000811.SZ_20260623",
-   "event_date": ""
+   "event_date": "20260623"
   },
   "000813.SZ": {
    "prev_streak": 0,
@@ -1382,24 +1382,24 @@
   },
   "000831.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000831.SZ_20260616",
-   "event_date": "20260616"
+   "event_date": ""
   },
   "000833.SZ": {
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
    "event_key": "000833.SZ_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "000837.SZ": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "000837.SZ_20260818",
-   "event_date": "20260818"
+   "event_key": "000837.SZ_20260609",
+   "event_date": "20260609"
   },
   "000839.SZ": {
    "prev_streak": 15,
@@ -1480,10 +1480,10 @@
   },
   "000878.SZ": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "000878.SZ_20260828",
-   "event_date": "20260828"
+   "event_date": ""
   },
   "000880.SZ": {
    "prev_streak": 15,
@@ -1515,7 +1515,7 @@
   },
   "000887.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000887.SZ_20260605",
    "event_date": "20260605"
@@ -1571,7 +1571,7 @@
   },
   "000905.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "000905.SZ_20260924",
    "event_date": "20260924"
@@ -1608,20 +1608,20 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "000917.SZ_20260901",
-   "event_date": "20260901"
+   "event_key": "000917.SZ_20260831",
+   "event_date": "20260831"
   },
   "000920.SZ": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "000920.SZ_20260630",
    "event_date": "20260630"
   },
   "000921.SZ": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "000921.SZ_20260611",
    "event_date": "20260611"
   },
@@ -1655,10 +1655,10 @@
   },
   "000928.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000928.SZ_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "000930.SZ": {
    "prev_streak": 11,
@@ -1669,10 +1669,10 @@
   },
   "000932.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "000932.SZ_20260629",
-   "event_date": "20260629"
+   "event_date": ""
   },
   "000933.SZ": {
    "prev_streak": 0,
@@ -1683,10 +1683,10 @@
   },
   "000935.SZ": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "000935.SZ_20260721",
-   "event_date": "20260721"
+   "streak": 0,
+   "r1": false,
+   "event_key": "000935.SZ_20260513",
+   "event_date": "20260513"
   },
   "000937.SZ": {
    "prev_streak": 1,
@@ -1753,17 +1753,17 @@
   },
   "000960.SZ": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "000960.SZ_20260623",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "000960.SZ_20260603",
+   "event_date": "20260603"
   },
   "000962.SZ": {
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
    "event_key": "000962.SZ_20260806",
-   "event_date": "20260806"
+   "event_date": ""
   },
   "000963.SZ": {
    "prev_streak": 1,
@@ -1783,8 +1783,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "000967.SZ_20260414",
-   "event_date": "20260414"
+   "event_key": "000967.SZ_20260422",
+   "event_date": "20260422"
   },
   "000968.SZ": {
    "prev_streak": 11,
@@ -1802,8 +1802,8 @@
   },
   "000970.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "000970.SZ_20260610",
    "event_date": "20260610"
   },
@@ -1819,21 +1819,21 @@
    "streak": 3,
    "r1": true,
    "event_key": "000975.SZ_20260706",
-   "event_date": "20260706"
+   "event_date": ""
   },
   "000977.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "000977.SZ_20260709",
    "event_date": "20260709"
   },
   "000980.SZ": {
    "prev_streak": 8,
-   "streak": 0,
-   "r1": false,
+   "streak": 9,
+   "r1": true,
    "event_key": "000980.SZ_20260911",
-   "event_date": "20260911"
+   "event_date": ""
   },
   "000981.SZ": {
    "prev_streak": 18,
@@ -1921,10 +1921,10 @@
   },
   "001212.SZ": {
    "prev_streak": 11,
-   "streak": 12,
-   "r1": true,
-   "event_key": "001212.SZ_20260618",
-   "event_date": "20260618"
+   "streak": 0,
+   "r1": false,
+   "event_key": "001212.SZ_20260603",
+   "event_date": "20260603"
   },
   "001213.SZ": {
    "prev_streak": 4,
@@ -2019,35 +2019,35 @@
   },
   "001309.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "001309.SZ_20260721",
-   "event_date": "20260721"
+   "event_date": ""
   },
   "001313.SZ": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "001313.SZ_20260513",
-   "event_date": "20260513"
+   "event_key": "001313.SZ_20260508",
+   "event_date": "20260508"
   },
   "001314.SZ": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "001314.SZ_20260603",
    "event_date": "20260603"
   },
   "001317.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "001317.SZ_20260924",
    "event_date": "20260924"
   },
   "001322.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "001322.SZ_20260922",
    "event_date": "20260922"
@@ -2056,8 +2056,8 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "001323.SZ_20260731",
-   "event_date": "20260731"
+   "event_key": "001323.SZ_20260730",
+   "event_date": "20260730"
   },
   "001328.SZ": {
    "prev_streak": 0,
@@ -2070,8 +2070,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "001330.SZ_20260901",
-   "event_date": "20260901"
+   "event_key": "001330.SZ_20260929",
+   "event_date": "20260929"
   },
   "001331.SZ": {
    "prev_streak": 18,
@@ -2096,8 +2096,8 @@
   },
   "001389.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "001389.SZ_20260626",
    "event_date": "20260626"
   },
@@ -2180,8 +2180,8 @@
   },
   "002008.SZ": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "002008.SZ_20260624",
    "event_date": "20260624"
   },
@@ -2271,7 +2271,7 @@
   },
   "002029.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "002029.SZ_20260924",
    "event_date": "20260924"
@@ -2285,7 +2285,7 @@
   },
   "002031.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "002031.SZ_20260515",
    "event_date": "20260515"
@@ -2306,10 +2306,10 @@
   },
   "002036.SZ": {
    "prev_streak": 4,
-   "streak": 5,
-   "r1": true,
-   "event_key": "002036.SZ_20260525",
-   "event_date": "20260525"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002036.SZ_20260522",
+   "event_date": "20260522"
   },
   "002039.SZ": {
    "prev_streak": 6,
@@ -2383,10 +2383,10 @@
   },
   "002052.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002052.SZ_20260506",
-   "event_date": "20260506"
+   "event_date": ""
   },
   "002053.SZ": {
    "prev_streak": 10,
@@ -2421,7 +2421,7 @@
    "streak": 3,
    "r1": true,
    "event_key": "002062.SZ_20260417",
-   "event_date": "20260417"
+   "event_date": ""
   },
   "002063.SZ": {
    "prev_streak": 17,
@@ -2453,8 +2453,8 @@
   },
   "002068.SZ": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "002068.SZ_20260910",
    "event_date": "20260910"
   },
@@ -2467,24 +2467,24 @@
   },
   "002074.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "002074.SZ_20260413",
-   "event_date": "20260413"
+   "event_date": ""
   },
   "002075.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002075.SZ_20260804",
-   "event_date": "20260804"
+   "event_date": ""
   },
   "002077.SZ": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002077.SZ_20260910",
-   "event_date": "20260910"
+   "event_key": "002077.SZ_20260709",
+   "event_date": "20260709"
   },
   "002078.SZ": {
    "prev_streak": 0,
@@ -2502,24 +2502,24 @@
   },
   "002080.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "002080.SZ_20260921",
-   "event_date": "20260921"
+   "event_date": ""
   },
   "002081.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "002081.SZ_20260818",
-   "event_date": "20260818"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002081.SZ_20260513",
+   "event_date": "20260513"
   },
   "002083.SZ": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
    "event_key": "002083.SZ_20260727",
-   "event_date": ""
+   "event_date": "20260727"
   },
   "002085.SZ": {
    "prev_streak": 15,
@@ -2624,7 +2624,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "002119.SZ_20260928",
-   "event_date": "20260928"
+   "event_date": ""
   },
   "002120.SZ": {
    "prev_streak": 0,
@@ -2645,14 +2645,14 @@
    "streak": 2,
    "r1": false,
    "event_key": "002123.SZ_20260720",
-   "event_date": "20260720"
+   "event_date": ""
   },
   "002125.SZ": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002125.SZ_20260605",
-   "event_date": "20260605"
+   "event_key": "002125.SZ_20260611",
+   "event_date": "20260611"
   },
   "002126.SZ": {
    "prev_streak": 3,
@@ -2687,14 +2687,14 @@
    "streak": 4,
    "r1": true,
    "event_key": "002130.SZ_20260911",
-   "event_date": "20260911"
+   "event_date": ""
   },
   "002131.SZ": {
    "prev_streak": 2,
    "streak": 3,
    "r1": true,
    "event_key": "002131.SZ_20260813",
-   "event_date": "20260813"
+   "event_date": ""
   },
   "002132.SZ": {
    "prev_streak": 2,
@@ -2726,10 +2726,10 @@
   },
   "002139.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002139.SZ_20260703",
-   "event_date": "20260703"
+   "event_date": ""
   },
   "002140.SZ": {
    "prev_streak": 3,
@@ -2757,7 +2757,7 @@
    "streak": 6,
    "r1": true,
    "event_key": "002145.SZ_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "002146.SZ": {
    "prev_streak": 1,
@@ -2910,8 +2910,8 @@
    "prev_streak": 5,
    "streak": 0,
    "r1": false,
-   "event_key": "002180.SZ_20260630",
-   "event_date": "20260630"
+   "event_key": "002180.SZ_20260629",
+   "event_date": "20260629"
   },
   "002181.SZ": {
    "prev_streak": 15,
@@ -2943,17 +2943,17 @@
   },
   "002189.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002189.SZ_20260508",
-   "event_date": "20260508"
+   "event_date": ""
   },
   "002190.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "002190.SZ_20260814",
-   "event_date": "20260814"
+   "event_date": ""
   },
   "002192.SZ": {
    "prev_streak": 15,
@@ -2985,8 +2985,8 @@
   },
   "002203.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002203.SZ_20260615",
    "event_date": "20260615"
   },
@@ -2994,8 +2994,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002204.SZ_20260910",
-   "event_date": "20260910"
+   "event_key": "002204.SZ_20260911",
+   "event_date": "20260911"
   },
   "002206.SZ": {
    "prev_streak": 15,
@@ -3036,8 +3036,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002214.SZ_20260602",
-   "event_date": "20260602"
+   "event_key": "002214.SZ_20260807",
+   "event_date": "20260807"
   },
   "002215.SZ": {
    "prev_streak": 0,
@@ -3090,7 +3090,7 @@
   },
   "002226.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "002226.SZ_20260520",
    "event_date": "20260520"
@@ -3181,15 +3181,15 @@
   },
   "002245.SZ": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "002245.SZ_20260526",
-   "event_date": "20260526"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002245.SZ_20260527",
+   "event_date": "20260527"
   },
   "002246.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002246.SZ_20260922",
    "event_date": "20260922"
   },
@@ -3209,10 +3209,10 @@
   },
   "002251.SZ": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "002251.SZ_20260601",
-   "event_date": "20260601"
+   "event_date": ""
   },
   "002252.SZ": {
    "prev_streak": 0,
@@ -3223,8 +3223,8 @@
   },
   "002254.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002254.SZ_20260609",
    "event_date": "20260609"
   },
@@ -3237,7 +3237,7 @@
   },
   "002258.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002258.SZ_20260818",
    "event_date": "20260818"
@@ -3296,14 +3296,14 @@
    "streak": 5,
    "r1": true,
    "event_key": "002270.SZ_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "002271.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002271.SZ_20260506",
-   "event_date": "20260506"
+   "event_date": ""
   },
   "002272.SZ": {
    "prev_streak": 15,
@@ -3314,17 +3314,17 @@
   },
   "002273.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002273.SZ_20260409",
    "event_date": "20260409"
   },
   "002274.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002274.SZ_20260825",
-   "event_date": "20260825"
+   "event_date": ""
   },
   "002275.SZ": {
    "prev_streak": 15,
@@ -3391,15 +3391,15 @@
   },
   "002289.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002289.SZ_20260508",
    "event_date": "20260508"
   },
   "002290.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002290.SZ_20260507",
    "event_date": "20260507"
   },
@@ -3426,10 +3426,10 @@
   },
   "002297.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "002297.SZ_20260421",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "002297.SZ_20260423",
+   "event_date": "20260423"
   },
   "002298.SZ": {
    "prev_streak": 15,
@@ -3506,7 +3506,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "002312.SZ_20260909",
-   "event_date": ""
+   "event_date": "20260909"
   },
   "002315.SZ": {
    "prev_streak": 0,
@@ -3531,8 +3531,8 @@
   },
   "002320.SZ": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "002320.SZ_20260910",
    "event_date": "20260910"
   },
@@ -3629,10 +3629,10 @@
   },
   "002351.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002351.SZ_20260717",
-   "event_date": "20260717"
+   "event_date": ""
   },
   "002352.SZ": {
    "prev_streak": 0,
@@ -3650,10 +3650,10 @@
   },
   "002354.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "002354.SZ_20260904",
-   "event_date": "20260904"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002354.SZ_20260612",
+   "event_date": "20260612"
   },
   "002361.SZ": {
    "prev_streak": 2,
@@ -3720,10 +3720,10 @@
   },
   "002378.SZ": {
    "prev_streak": 6,
-   "streak": 7,
-   "r1": true,
-   "event_key": "002378.SZ_20260615",
-   "event_date": "20260615"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002378.SZ_20260612",
+   "event_date": "20260612"
   },
   "002379.SZ": {
    "prev_streak": 9,
@@ -3769,8 +3769,8 @@
   },
   "002387.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002387.SZ_20260605",
    "event_date": "20260605"
   },
@@ -3835,7 +3835,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "002407.SZ_20260807",
-   "event_date": "20260807"
+   "event_date": ""
   },
   "002408.SZ": {
    "prev_streak": 15,
@@ -3846,10 +3846,10 @@
   },
   "002409.SZ": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "002409.SZ_20260612",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "002409.SZ_20260514",
+   "event_date": "20260514"
   },
   "002410.SZ": {
    "prev_streak": 15,
@@ -3860,10 +3860,10 @@
   },
   "002413.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "002413.SZ_20260924",
-   "event_date": "20260924"
+   "event_date": ""
   },
   "002414.SZ": {
    "prev_streak": 3,
@@ -3909,17 +3909,17 @@
   },
   "002423.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002423.SZ_20260825",
-   "event_date": "20260825"
+   "event_date": ""
   },
   "002426.SZ": {
    "prev_streak": 5,
    "streak": 6,
    "r1": true,
    "event_key": "002426.SZ_20260605",
-   "event_date": "20260605"
+   "event_date": ""
   },
   "002428.SZ": {
    "prev_streak": 15,
@@ -3958,15 +3958,15 @@
   },
   "002436.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "002436.SZ_20260908",
-   "event_date": "20260908"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002436.SZ_20260414",
+   "event_date": "20260414"
   },
   "002437.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002437.SZ_20260817",
    "event_date": "20260817"
   },
@@ -4000,8 +4000,8 @@
   },
   "002444.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002444.SZ_20260625",
    "event_date": "20260625"
   },
@@ -4035,14 +4035,14 @@
   },
   "002456.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002456.SZ_20260709",
    "event_date": "20260709"
   },
   "002458.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002458.SZ_20260706",
    "event_date": "20260706"
@@ -4098,8 +4098,8 @@
   },
   "002468.SZ": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "002468.SZ_20260416",
    "event_date": "20260416"
   },
@@ -4147,8 +4147,8 @@
   },
   "002484.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002484.SZ_20260415",
    "event_date": "20260415"
   },
@@ -4175,10 +4175,10 @@
   },
   "002491.SZ": {
    "prev_streak": 9,
-   "streak": 10,
-   "r1": true,
-   "event_key": "002491.SZ_20260821",
-   "event_date": "20260821"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002491.SZ_20260409",
+   "event_date": "20260409"
   },
   "002493.SZ": {
    "prev_streak": 11,
@@ -4231,10 +4231,10 @@
   },
   "002510.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "002510.SZ_20260917",
-   "event_date": "20260917"
+   "event_date": ""
   },
   "002511.SZ": {
    "prev_streak": 15,
@@ -4252,8 +4252,8 @@
   },
   "002516.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002516.SZ_20260907",
    "event_date": "20260907"
   },
@@ -4266,10 +4266,10 @@
   },
   "002518.SZ": {
    "prev_streak": 9,
-   "streak": 10,
-   "r1": true,
-   "event_key": "002518.SZ_20260914",
-   "event_date": "20260914"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002518.SZ_20260519",
+   "event_date": "20260519"
   },
   "002519.SZ": {
    "prev_streak": 15,
@@ -4311,7 +4311,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "002534.SZ_20260731",
-   "event_date": "20260731"
+   "event_date": ""
   },
   "002536.SZ": {
    "prev_streak": 15,
@@ -4350,10 +4350,10 @@
   },
   "002545.SZ": {
    "prev_streak": 9,
-   "streak": 0,
-   "r1": false,
+   "streak": 10,
+   "r1": true,
    "event_key": "002545.SZ_20260612",
-   "event_date": "20260612"
+   "event_date": ""
   },
   "002546.SZ": {
    "prev_streak": 15,
@@ -4401,8 +4401,8 @@
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "002558.SZ_20260707",
-   "event_date": "20260707"
+   "event_key": "002558.SZ_20260716",
+   "event_date": "20260716"
   },
   "002563.SZ": {
    "prev_streak": 15,
@@ -4434,10 +4434,10 @@
   },
   "002572.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002572.SZ_20260729",
-   "event_date": "20260729"
+   "event_date": ""
   },
   "002577.SZ": {
    "prev_streak": 7,
@@ -4469,10 +4469,10 @@
   },
   "002585.SZ": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "002585.SZ_20260916",
-   "event_date": "20260916"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002585.SZ_20260527",
+   "event_date": "20260527"
   },
   "002588.SZ": {
    "prev_streak": 5,
@@ -4518,17 +4518,17 @@
   },
   "002602.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002602.SZ_20260904",
-   "event_date": "20260904"
+   "event_date": ""
   },
   "002603.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002603.SZ_20260715",
-   "event_date": "20260715"
+   "event_date": ""
   },
   "002605.SZ": {
    "prev_streak": 15,
@@ -4567,10 +4567,10 @@
   },
   "002617.SZ": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "002617.SZ_20260629",
-   "event_date": "20260629"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002617.SZ_20260527",
+   "event_date": "20260527"
   },
   "002624.SZ": {
    "prev_streak": 15,
@@ -4588,10 +4588,10 @@
   },
   "002626.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002626.SZ_20260514",
-   "event_date": "20260514"
+   "event_date": ""
   },
   "002631.SZ": {
    "prev_streak": 15,
@@ -4602,15 +4602,15 @@
   },
   "002632.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "002632.SZ_20260717",
-   "event_date": "20260717"
+   "event_date": ""
   },
   "002635.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002635.SZ_20260629",
    "event_date": "20260629"
   },
@@ -4633,11 +4633,11 @@
    "streak": 16,
    "r1": true,
    "event_key": "002639.SZ_20260903",
-   "event_date": "20260903"
+   "event_date": ""
   },
   "002640.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002640.SZ_20260511",
    "event_date": "20260511"
@@ -4658,8 +4658,8 @@
   },
   "002647.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "002647.SZ_20260421",
    "event_date": "20260421"
   },
@@ -4667,8 +4667,8 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "002648.SZ_20260625",
-   "event_date": "20260625"
+   "event_key": "002648.SZ_20260624",
+   "event_date": "20260624"
   },
   "002649.SZ": {
    "prev_streak": 0,
@@ -4686,15 +4686,15 @@
   },
   "002654.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002654.SZ_20260520",
    "event_date": "20260520"
   },
   "002655.SZ": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "002655.SZ_20260429",
    "event_date": "20260429"
   },
@@ -4714,8 +4714,8 @@
   },
   "002670.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002670.SZ_20260903",
    "event_date": "20260903"
   },
@@ -4752,7 +4752,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "002681.SZ_20260605",
-   "event_date": "20260605"
+   "event_date": ""
   },
   "002683.SZ": {
    "prev_streak": 11,
@@ -4793,8 +4793,8 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "002698.SZ_20260807",
-   "event_date": "20260807"
+   "event_key": "002698.SZ_20260812",
+   "event_date": "20260812"
   },
   "002701.SZ": {
    "prev_streak": 15,
@@ -4828,8 +4828,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002708.SZ_20260903",
-   "event_date": "20260903"
+   "event_key": "002708.SZ_20260904",
+   "event_date": "20260904"
   },
   "002709.SZ": {
    "prev_streak": 15,
@@ -4849,15 +4849,15 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002714.SZ_20260701",
-   "event_date": "20260701"
+   "event_key": "002714.SZ_20260629",
+   "event_date": "20260629"
   },
   "002716.SZ": {
    "prev_streak": 1,
    "streak": 2,
    "r1": false,
    "event_key": "002716.SZ_20260824",
-   "event_date": "20260824"
+   "event_date": ""
   },
   "002718.SZ": {
    "prev_streak": 15,
@@ -4868,10 +4868,10 @@
   },
   "002721.SZ": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
-   "event_key": "002721.SZ_20260810",
-   "event_date": ""
+   "event_key": "002721.SZ_20260807",
+   "event_date": "20260807"
   },
   "002730.SZ": {
    "prev_streak": 10,
@@ -4931,8 +4931,8 @@
   },
   "002745.SZ": {
    "prev_streak": 9,
-   "streak": 0,
-   "r1": false,
+   "streak": 10,
+   "r1": true,
    "event_key": "002745.SZ_20260527",
    "event_date": "20260527"
   },
@@ -4969,7 +4969,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "002757.SZ_20260923",
-   "event_date": "20260923"
+   "event_date": ""
   },
   "002761.SZ": {
    "prev_streak": 0,
@@ -4980,8 +4980,8 @@
   },
   "002768.SZ": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "002768.SZ_20260708",
    "event_date": "20260708"
   },
@@ -5004,12 +5004,12 @@
    "streak": 4,
    "r1": true,
    "event_key": "002779.SZ_20260430",
-   "event_date": "20260430"
+   "event_date": ""
   },
   "002782.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002782.SZ_20260520",
    "event_date": "20260520"
   },
@@ -5032,7 +5032,7 @@
    "streak": 11,
    "r1": true,
    "event_key": "002792.SZ_20260813",
-   "event_date": "20260813"
+   "event_date": ""
   },
   "002793.SZ": {
    "prev_streak": 0,
@@ -5050,24 +5050,24 @@
   },
   "002797.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002797.SZ_20260408",
    "event_date": "20260408"
   },
   "002803.SZ": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "002803.SZ_20260804",
-   "event_date": "20260804"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002803.SZ_20260625",
+   "event_date": "20260625"
   },
   "002807.SZ": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002807.SZ_20260424",
-   "event_date": "20260424"
+   "event_key": "002807.SZ_20260901",
+   "event_date": "20260901"
   },
   "002810.SZ": {
    "prev_streak": 15,
@@ -5085,8 +5085,8 @@
   },
   "002815.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002815.SZ_20260710",
    "event_date": "20260710"
   },
@@ -5120,10 +5120,10 @@
   },
   "002831.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "002831.SZ_20260316",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "002831.SZ_20260611",
+   "event_date": "20260611"
   },
   "002832.SZ": {
    "prev_streak": 0,
@@ -5148,10 +5148,10 @@
   },
   "002838.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002838.SZ_20260817",
-   "event_date": "20260817"
+   "event_date": ""
   },
   "002839.SZ": {
    "prev_streak": 7,
@@ -5165,7 +5165,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "002840.SZ_20260408",
-   "event_date": ""
+   "event_date": "20260408"
   },
   "002841.SZ": {
    "prev_streak": 0,
@@ -5190,8 +5190,8 @@
   },
   "002850.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002850.SZ_20260702",
    "event_date": "20260702"
   },
@@ -5281,8 +5281,8 @@
   },
   "002897.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002897.SZ_20260512",
    "event_date": "20260512"
   },
@@ -5295,10 +5295,10 @@
   },
   "002906.SZ": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
-   "event_key": "002906.SZ_20260825",
-   "event_date": ""
+   "event_key": "002906.SZ_20260618",
+   "event_date": "20260618"
   },
   "002907.SZ": {
    "prev_streak": 0,
@@ -5316,8 +5316,8 @@
   },
   "002913.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "002913.SZ_20260918",
    "event_date": "20260918"
   },
@@ -5360,8 +5360,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "002928.SZ_20260526",
-   "event_date": "20260526"
+   "event_key": "002928.SZ_20260525",
+   "event_date": "20260525"
   },
   "002929.SZ": {
    "prev_streak": 4,
@@ -5372,10 +5372,10 @@
   },
   "002931.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "002931.SZ_20260703",
-   "event_date": "20260703"
+   "event_date": ""
   },
   "002935.SZ": {
    "prev_streak": 15,
@@ -5393,10 +5393,10 @@
   },
   "002937.SZ": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "002937.SZ_20260923",
-   "event_date": "20260923"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002937.SZ_20260615",
+   "event_date": "20260615"
   },
   "002938.SZ": {
    "prev_streak": 3,
@@ -5435,15 +5435,15 @@
   },
   "002946.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "002946.SZ_20260626",
-   "event_date": "20260626"
+   "event_date": ""
   },
   "002947.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002947.SZ_20260409",
    "event_date": "20260409"
   },
@@ -5463,17 +5463,17 @@
   },
   "002955.SZ": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "002955.SZ_20260615",
    "event_date": "20260615"
   },
   "002956.SZ": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "002956.SZ_20260917",
-   "event_date": "20260917"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002956.SZ_20260429",
+   "event_date": "20260429"
   },
   "002957.SZ": {
    "prev_streak": 15,
@@ -5505,10 +5505,10 @@
   },
   "002965.SZ": {
    "prev_streak": 5,
-   "streak": 6,
-   "r1": true,
-   "event_key": "002965.SZ_20260921",
-   "event_date": "20260921"
+   "streak": 0,
+   "r1": false,
+   "event_key": "002965.SZ_20260625",
+   "event_date": "20260625"
   },
   "002966.SZ": {
    "prev_streak": 0,
@@ -5547,8 +5547,8 @@
   },
   "002975.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "002975.SZ_20260410",
    "event_date": "20260410"
   },
@@ -5603,8 +5603,8 @@
   },
   "002990.SZ": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "002990.SZ_20260415",
    "event_date": "20260415"
   },
@@ -5617,8 +5617,8 @@
   },
   "002993.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "002993.SZ_20260422",
    "event_date": "20260422"
   },
@@ -5645,10 +5645,10 @@
   },
   "003010.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "003010.SZ_20260720",
-   "event_date": "20260720"
+   "event_date": ""
   },
   "003012.SZ": {
    "prev_streak": 0,
@@ -5680,8 +5680,8 @@
   },
   "003022.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "003022.SZ_20260514",
    "event_date": "20260514"
   },
@@ -5708,8 +5708,8 @@
   },
   "003036.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "003036.SZ_20260413",
    "event_date": "20260413"
   },
@@ -5722,8 +5722,8 @@
   },
   "003040.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "003040.SZ_20260902",
    "event_date": "20260902"
   },
@@ -5771,8 +5771,8 @@
   },
   "300005.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300005.SZ_20260721",
    "event_date": "20260721"
   },
@@ -5792,14 +5792,14 @@
   },
   "300008.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300008.SZ_20260910",
-   "event_date": "20260910"
+   "event_date": ""
   },
   "300009.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "300009.SZ_20260820",
    "event_date": "20260820"
@@ -5827,8 +5827,8 @@
   },
   "300016.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300016.SZ_20260821",
    "event_date": "20260821"
   },
@@ -5907,7 +5907,7 @@
    "streak": 3,
    "r1": true,
    "event_key": "300042.SZ_20260507",
-   "event_date": "20260507"
+   "event_date": ""
   },
   "300043.SZ": {
    "prev_streak": 15,
@@ -5946,10 +5946,10 @@
   },
   "300049.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300049.SZ_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "300053.SZ": {
    "prev_streak": 15,
@@ -5967,7 +5967,7 @@
   },
   "300057.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300057.SZ_20260427",
    "event_date": "20260427"
@@ -5984,7 +5984,7 @@
    "streak": 3,
    "r1": true,
    "event_key": "300059.SZ_20260623",
-   "event_date": "20260623"
+   "event_date": ""
   },
   "300063.SZ": {
    "prev_streak": 15,
@@ -6023,10 +6023,10 @@
   },
   "300073.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300073.SZ_20260427",
-   "event_date": "20260427"
+   "event_date": ""
   },
   "300075.SZ": {
    "prev_streak": 0,
@@ -6074,8 +6074,8 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "300088.SZ_20260603",
-   "event_date": "20260603"
+   "event_key": "300088.SZ_20260618",
+   "event_date": "20260618"
   },
   "300093.SZ": {
    "prev_streak": 2,
@@ -6184,10 +6184,10 @@
   },
   "300130.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300130.SZ_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "300131.SZ": {
    "prev_streak": 3,
@@ -6219,8 +6219,8 @@
   },
   "300137.SZ": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "300137.SZ_20260416",
    "event_date": "20260416"
   },
@@ -6240,8 +6240,8 @@
   },
   "300142.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "300142.SZ_20260821",
    "event_date": "20260821"
   },
@@ -6261,8 +6261,8 @@
   },
   "300145.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300145.SZ_20260609",
    "event_date": "20260609"
   },
@@ -6275,10 +6275,10 @@
   },
   "300151.SZ": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "300151.SZ_20260916",
-   "event_date": "20260916"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300151.SZ_20260703",
+   "event_date": "20260703"
   },
   "300153.SZ": {
    "prev_streak": 15,
@@ -6352,17 +6352,17 @@
   },
   "300179.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "300179.SZ_20260529",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "300179.SZ_20260525",
+   "event_date": "20260525"
   },
   "300180.SZ": {
    "prev_streak": 1,
    "streak": 2,
    "r1": false,
    "event_key": "300180.SZ_20260825",
-   "event_date": "20260825"
+   "event_date": ""
   },
   "300181.SZ": {
    "prev_streak": 0,
@@ -6401,10 +6401,10 @@
   },
   "300189.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300189.SZ_20260818",
-   "event_date": "20260818"
+   "event_date": ""
   },
   "300191.SZ": {
    "prev_streak": 15,
@@ -6439,12 +6439,12 @@
    "streak": 12,
    "r1": true,
    "event_key": "300201.SZ_20260721",
-   "event_date": "20260721"
+   "event_date": ""
   },
   "300203.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300203.SZ_20260521",
    "event_date": "20260521"
   },
@@ -6453,26 +6453,26 @@
    "streak": 3,
    "r1": true,
    "event_key": "300204.SZ_20260716",
-   "event_date": "20260716"
+   "event_date": ""
   },
   "300207.SZ": {
    "prev_streak": 10,
-   "streak": 11,
-   "r1": true,
-   "event_key": "300207.SZ_20260413",
-   "event_date": "20260413"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300207.SZ_20260410",
+   "event_date": "20260410"
   },
   "300209.SZ": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "300209.SZ_20260805",
    "event_date": "20260805"
   },
   "300221.SZ": {
    "prev_streak": 8,
-   "streak": 0,
-   "r1": false,
+   "streak": 9,
+   "r1": true,
    "event_key": "300221.SZ_20260609",
    "event_date": "20260609"
   },
@@ -6485,10 +6485,10 @@
   },
   "300223.SZ": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "300223.SZ_20260527",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "300223.SZ_20260526",
+   "event_date": "20260526"
   },
   "300224.SZ": {
    "prev_streak": 15,
@@ -6509,7 +6509,7 @@
    "streak": 1,
    "r1": false,
    "event_key": "300229.SZ_20260804",
-   "event_date": "20260804"
+   "event_date": ""
   },
   "300233.SZ": {
    "prev_streak": 0,
@@ -6583,15 +6583,15 @@
   },
   "300260.SZ": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "300260.SZ_20260626",
    "event_date": "20260626"
   },
   "300263.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300263.SZ_20260611",
    "event_date": "20260611"
   },
@@ -6599,8 +6599,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "300265.SZ_20260513",
+   "event_date": "20260513"
   },
   "300274.SZ": {
    "prev_streak": 3,
@@ -6625,10 +6625,10 @@
   },
   "300284.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300284.SZ_20260812",
-   "event_date": "20260812"
+   "event_date": ""
   },
   "300285.SZ": {
    "prev_streak": 15,
@@ -6716,8 +6716,8 @@
   },
   "300319.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300319.SZ_20260605",
    "event_date": "20260605"
   },
@@ -6737,8 +6737,8 @@
   },
   "300324.SZ": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "300324.SZ_20260922",
    "event_date": "20260922"
   },
@@ -6821,10 +6821,10 @@
   },
   "300353.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300353.SZ_20260605",
-   "event_date": "20260605"
+   "event_date": ""
   },
   "300357.SZ": {
    "prev_streak": 0,
@@ -6856,7 +6856,7 @@
   },
   "300364.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "300364.SZ_20260831",
    "event_date": "20260831"
@@ -6880,7 +6880,7 @@
    "streak": 3,
    "r1": true,
    "event_key": "300376.SZ_20260610",
-   "event_date": "20260610"
+   "event_date": ""
   },
   "300377.SZ": {
    "prev_streak": 15,
@@ -6956,8 +6956,8 @@
    "prev_streak": 15,
    "streak": 0,
    "r1": false,
-   "event_key": "300401.SZ_20260622",
-   "event_date": "20260622"
+   "event_key": "300401.SZ_20260623",
+   "event_date": "20260623"
   },
   "300406.SZ": {
    "prev_streak": 0,
@@ -6989,10 +6989,10 @@
   },
   "300415.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300415.SZ_20260703",
-   "event_date": "20260703"
+   "event_date": ""
   },
   "300416.SZ": {
    "prev_streak": 15,
@@ -7097,7 +7097,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "300450.SZ_20260930",
-   "event_date": "20260930"
+   "event_date": ""
   },
   "300451.SZ": {
    "prev_streak": 15,
@@ -7125,7 +7125,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "300456.SZ_20260828",
-   "event_date": "20260828"
+   "event_date": ""
   },
   "300457.SZ": {
    "prev_streak": 15,
@@ -7164,8 +7164,8 @@
   },
   "300468.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300468.SZ_20260904",
    "event_date": "20260904"
   },
@@ -7174,7 +7174,7 @@
    "streak": 3,
    "r1": true,
    "event_key": "300469.SZ_20260709",
-   "event_date": "20260709"
+   "event_date": ""
   },
   "300470.SZ": {
    "prev_streak": 11,
@@ -7195,7 +7195,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "300474.SZ_20260630",
-   "event_date": "20260630"
+   "event_date": ""
   },
   "300475.SZ": {
    "prev_streak": 15,
@@ -7248,15 +7248,15 @@
   },
   "300488.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300488.SZ_20260508",
    "event_date": "20260508"
   },
   "300489.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300489.SZ_20260417",
    "event_date": "20260417"
   },
@@ -7355,8 +7355,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "300529.SZ_20260612",
-   "event_date": "20260612"
+   "event_key": "300529.SZ_20260428",
+   "event_date": "20260428"
   },
   "300540.SZ": {
    "prev_streak": 2,
@@ -7374,8 +7374,8 @@
   },
   "300558.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "300558.SZ_20260618",
    "event_date": "20260618"
   },
@@ -7437,17 +7437,17 @@
   },
   "300580.SZ": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
-   "event_key": "300580.SZ_20260706",
-   "event_date": "20260706"
+   "event_key": "300580.SZ_20260703",
+   "event_date": "20260703"
   },
   "300581.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300581.SZ_20260615",
-   "event_date": "20260615"
+   "event_date": ""
   },
   "300592.SZ": {
    "prev_streak": 15,
@@ -7472,10 +7472,10 @@
   },
   "300596.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300596.SZ_20260428",
-   "event_date": "20260428"
+   "event_date": ""
   },
   "300598.SZ": {
    "prev_streak": 0,
@@ -7486,8 +7486,8 @@
   },
   "300601.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "300601.SZ_20260820",
    "event_date": "20260820"
   },
@@ -7514,8 +7514,8 @@
   },
   "300613.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300613.SZ_20260427",
    "event_date": "20260427"
   },
@@ -7524,7 +7524,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "300618.SZ_20260810",
-   "event_date": "20260810"
+   "event_date": ""
   },
   "300620.SZ": {
    "prev_streak": 15,
@@ -7587,7 +7587,7 @@
    "streak": 6,
    "r1": true,
    "event_key": "300638.SZ_20260722",
-   "event_date": "20260722"
+   "event_date": ""
   },
   "300641.SZ": {
    "prev_streak": 13,
@@ -7612,17 +7612,17 @@
   },
   "300657.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "300657.SZ_20260519",
    "event_date": "20260519"
   },
   "300660.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300660.SZ_20260703",
-   "event_date": "20260703"
+   "event_date": ""
   },
   "300661.SZ": {
    "prev_streak": 7,
@@ -7682,10 +7682,10 @@
   },
   "300679.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "300679.SZ_20260818",
-   "event_date": "20260818"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300679.SZ_20260409",
+   "event_date": "20260409"
   },
   "300681.SZ": {
    "prev_streak": 1,
@@ -7734,14 +7734,14 @@
    "streak": 3,
    "r1": true,
    "event_key": "300693.SZ_20260811",
-   "event_date": "20260811"
+   "event_date": ""
   },
   "300695.SZ": {
    "prev_streak": 1,
-   "streak": 2,
+   "streak": 0,
    "r1": false,
-   "event_key": "300695.SZ_20260703",
-   "event_date": "20260703"
+   "event_key": "300695.SZ_20260519",
+   "event_date": "20260519"
   },
   "300696.SZ": {
    "prev_streak": 15,
@@ -7780,10 +7780,10 @@
   },
   "300709.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "300709.SZ_20260831",
-   "event_date": "20260831"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300709.SZ_20260616",
+   "event_date": "20260616"
   },
   "300718.SZ": {
    "prev_streak": 1,
@@ -7832,7 +7832,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "300726.SZ_20260616",
-   "event_date": "20260616"
+   "event_date": ""
   },
   "300727.SZ": {
    "prev_streak": 10,
@@ -7850,8 +7850,8 @@
   },
   "300735.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "300735.SZ_20260525",
    "event_date": "20260525"
   },
@@ -7873,8 +7873,8 @@
    "prev_streak": 3,
    "streak": 0,
    "r1": false,
-   "event_key": "300740.SZ_20260703",
-   "event_date": "20260703"
+   "event_key": "300740.SZ_20260918",
+   "event_date": "20260918"
   },
   "300741.SZ": {
    "prev_streak": 5,
@@ -7899,8 +7899,8 @@
   },
   "300750.SZ": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "300750.SZ_20260416",
    "event_date": "20260416"
   },
@@ -7934,10 +7934,10 @@
   },
   "300760.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300760.SZ_20260716",
-   "event_date": "20260716"
+   "event_date": ""
   },
   "300761.SZ": {
    "prev_streak": 0,
@@ -8007,7 +8007,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "300773.SZ_20260904",
-   "event_date": "20260904"
+   "event_date": ""
   },
   "300775.SZ": {
    "prev_streak": 15,
@@ -8034,8 +8034,8 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "300779.SZ_20260526",
-   "event_date": "20260526"
+   "event_key": "300779.SZ_20260727",
+   "event_date": "20260727"
   },
   "300782.SZ": {
    "prev_streak": 2,
@@ -8055,13 +8055,13 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "300790.SZ_20260409",
-   "event_date": "20260409"
+   "event_key": "300790.SZ_20260617",
+   "event_date": "20260617"
   },
   "300792.SZ": {
    "prev_streak": 8,
-   "streak": 0,
-   "r1": false,
+   "streak": 9,
+   "r1": true,
    "event_key": "300792.SZ_20260901",
    "event_date": "20260901"
   },
@@ -8070,7 +8070,7 @@
    "streak": 12,
    "r1": true,
    "event_key": "300803.SZ_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "300806.SZ": {
    "prev_streak": 15,
@@ -8158,10 +8158,10 @@
   },
   "300841.SZ": {
    "prev_streak": 4,
-   "streak": 5,
-   "r1": true,
-   "event_key": "300841.SZ_20260821",
-   "event_date": "20260821"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300841.SZ_20260820",
+   "event_date": "20260820"
   },
   "300842.SZ": {
    "prev_streak": 15,
@@ -8188,8 +8188,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "300850.SZ_20260929",
+   "event_date": "20260929"
   },
   "300852.SZ": {
    "prev_streak": 15,
@@ -8230,8 +8230,8 @@
    "prev_streak": 6,
    "streak": 0,
    "r1": false,
-   "event_key": "300863.SZ_20260518",
-   "event_date": "20260518"
+   "event_key": "300863.SZ_20260602",
+   "event_date": "20260602"
   },
   "300866.SZ": {
    "prev_streak": 15,
@@ -8293,8 +8293,8 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "300905.SZ_20260415",
-   "event_date": "20260415"
+   "event_key": "300905.SZ_20260429",
+   "event_date": "20260429"
   },
   "300907.SZ": {
    "prev_streak": 0,
@@ -8307,8 +8307,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "300909.SZ_20260921",
+   "event_date": "20260921"
   },
   "300910.SZ": {
    "prev_streak": 0,
@@ -8326,10 +8326,10 @@
   },
   "300913.SZ": {
    "prev_streak": 12,
-   "streak": 13,
-   "r1": true,
-   "event_key": "300913.SZ_20260911",
-   "event_date": "20260911"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300913.SZ_20260604",
+   "event_date": "20260604"
   },
   "300917.SZ": {
    "prev_streak": 0,
@@ -8356,8 +8356,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "300938.SZ_20260416",
+   "event_date": "20260416"
   },
   "300939.SZ": {
    "prev_streak": 15,
@@ -8389,10 +8389,10 @@
   },
   "300959.SZ": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "300959.SZ_20260423",
-   "event_date": "20260423"
+   "event_date": ""
   },
   "300964.SZ": {
    "prev_streak": 15,
@@ -8441,12 +8441,12 @@
    "streak": 15,
    "r1": true,
    "event_key": "300981.SZ_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "300983.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "300983.SZ_20260519",
    "event_date": "20260519"
   },
@@ -8466,17 +8466,17 @@
   },
   "300990.SZ": {
    "prev_streak": 14,
-   "streak": 15,
-   "r1": true,
-   "event_key": "300990.SZ_20260714",
-   "event_date": "20260714"
+   "streak": 0,
+   "r1": false,
+   "event_key": "300990.SZ_20260903",
+   "event_date": "20260903"
   },
   "300997.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "300997.SZ_20260731",
-   "event_date": "20260731"
+   "event_date": ""
   },
   "300999.SZ": {
    "prev_streak": 15,
@@ -8508,8 +8508,8 @@
   },
   "301013.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "301013.SZ_20260522",
    "event_date": "20260522"
   },
@@ -8524,8 +8524,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301018.SZ_20260825",
+   "event_date": "20260825"
   },
   "301021.SZ": {
    "prev_streak": 15,
@@ -8545,8 +8545,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301031.SZ_20260427",
+   "event_date": "20260427"
   },
   "301035.SZ": {
    "prev_streak": 5,
@@ -8585,10 +8585,10 @@
   },
   "301061.SZ": {
    "prev_streak": 8,
-   "streak": 9,
-   "r1": true,
-   "event_key": "301061.SZ_20260729",
-   "event_date": "20260729"
+   "streak": 0,
+   "r1": false,
+   "event_key": "301061.SZ_20260915",
+   "event_date": "20260915"
   },
   "301069.SZ": {
    "prev_streak": 15,
@@ -8599,15 +8599,15 @@
   },
   "301070.SZ": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "301070.SZ_20260408",
    "event_date": "20260408"
   },
   "301071.SZ": {
    "prev_streak": 15,
-   "streak": 0,
-   "r1": false,
+   "streak": 16,
+   "r1": true,
    "event_key": "301071.SZ_20260526",
    "event_date": "20260526"
   },
@@ -8699,8 +8699,8 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "301122.SZ_20260727",
-   "event_date": "20260727"
+   "event_key": "301122.SZ_20260923",
+   "event_date": "20260923"
   },
   "301123.SZ": {
    "prev_streak": 15,
@@ -8735,14 +8735,14 @@
    "streak": 3,
    "r1": true,
    "event_key": "301137.SZ_20260804",
-   "event_date": "20260804"
+   "event_date": ""
   },
   "301150.SZ": {
    "prev_streak": 3,
    "streak": 0,
    "r1": false,
-   "event_key": "301150.SZ_20260923",
-   "event_date": "20260923"
+   "event_key": "301150.SZ_20260617",
+   "event_date": "20260617"
   },
   "301153.SZ": {
    "prev_streak": 15,
@@ -8756,7 +8756,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "301155.SZ_20260915",
-   "event_date": "20260915"
+   "event_date": ""
   },
   "301165.SZ": {
    "prev_streak": 15,
@@ -8811,8 +8811,8 @@
    "prev_streak": 15,
    "streak": 0,
    "r1": false,
-   "event_key": "301189.SZ_20260415",
-   "event_date": "20260415"
+   "event_key": "301189.SZ_20260416",
+   "event_date": "20260416"
   },
   "301190.SZ": {
    "prev_streak": 1,
@@ -8854,7 +8854,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "301207.SZ_20260820",
-   "event_date": "20260820"
+   "event_date": ""
   },
   "301209.SZ": {
    "prev_streak": 4,
@@ -8865,8 +8865,8 @@
   },
   "301211.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "301211.SZ_20260819",
    "event_date": "20260819"
   },
@@ -8889,19 +8889,19 @@
    "streak": 16,
    "r1": true,
    "event_key": "301217.SZ_20260807",
-   "event_date": "20260807"
+   "event_date": ""
   },
   "301218.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "301218.SZ_20260827",
    "event_date": "20260827"
   },
   "301219.SZ": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "301219.SZ_20260414",
    "event_date": "20260414"
   },
@@ -8949,10 +8949,10 @@
   },
   "301251.SZ": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "301251.SZ_20260807",
-   "event_date": "20260807"
+   "streak": 0,
+   "r1": false,
+   "event_key": "301251.SZ_20260709",
+   "event_date": "20260709"
   },
   "301261.SZ": {
    "prev_streak": 15,
@@ -8963,8 +8963,8 @@
   },
   "301263.SZ": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "301263.SZ_20260629",
    "event_date": "20260629"
   },
@@ -8979,8 +8979,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "301267.SZ_20260525",
-   "event_date": "20260525"
+   "event_key": "301267.SZ_20260424",
+   "event_date": "20260424"
   },
   "301269.SZ": {
    "prev_streak": 0,
@@ -8993,8 +8993,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301275.SZ_20260519",
+   "event_date": "20260519"
   },
   "301282.SZ": {
    "prev_streak": 15,
@@ -9007,8 +9007,8 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301285.SZ_20260513",
+   "event_date": "20260513"
   },
   "301286.SZ": {
    "prev_streak": 15,
@@ -9026,10 +9026,10 @@
   },
   "301293.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "301293.SZ_20260728",
-   "event_date": "20260728"
+   "event_date": ""
   },
   "301297.SZ": {
    "prev_streak": 15,
@@ -9040,10 +9040,10 @@
   },
   "301301.SZ": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "301301.SZ_20260818",
-   "event_date": "20260818"
+   "event_date": ""
   },
   "301306.SZ": {
    "prev_streak": 15,
@@ -9082,8 +9082,8 @@
   },
   "301316.SZ": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "301316.SZ_20260506",
    "event_date": "20260506"
   },
@@ -9106,7 +9106,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "301326.SZ_20260807",
-   "event_date": "20260807"
+   "event_date": ""
   },
   "301327.SZ": {
    "prev_streak": 13,
@@ -9145,7 +9145,7 @@
   },
   "301339.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "301339.SZ_20260924",
    "event_date": "20260924"
@@ -9187,7 +9187,7 @@
   },
   "301369.SZ": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "301369.SZ_20260511",
    "event_date": "20260511"
@@ -9197,7 +9197,7 @@
    "streak": 8,
    "r1": true,
    "event_key": "301373.SZ_20260916",
-   "event_date": "20260916"
+   "event_date": ""
   },
   "301377.SZ": {
    "prev_streak": 15,
@@ -9208,8 +9208,8 @@
   },
   "301381.SZ": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "301381.SZ_20260715",
    "event_date": "20260715"
   },
@@ -9231,15 +9231,15 @@
    "prev_streak": 15,
    "streak": 0,
    "r1": false,
-   "event_key": "301392.SZ_20260617",
-   "event_date": "20260617"
+   "event_key": "301392.SZ_20260626",
+   "event_date": "20260626"
   },
   "301396.SZ": {
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301396.SZ_20260805",
+   "event_date": "20260805"
   },
   "301486.SZ": {
    "prev_streak": 15,
@@ -9260,7 +9260,7 @@
    "streak": 16,
    "r1": true,
    "event_key": "301489.SZ_20260903",
-   "event_date": "20260903"
+   "event_date": ""
   },
   "301498.SZ": {
    "prev_streak": 5,
@@ -9294,15 +9294,15 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301526.SZ_20260730",
+   "event_date": "20260730"
   },
   "301529.SZ": {
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301529.SZ_20260706",
+   "event_date": "20260706"
   },
   "301536.SZ": {
    "prev_streak": 15,
@@ -9320,22 +9320,22 @@
   },
   "301558.SZ": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "301558.SZ_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "301566.SZ": {
    "prev_streak": 8,
-   "streak": 9,
-   "r1": true,
-   "event_key": "301566.SZ_20260811",
-   "event_date": "20260811"
+   "streak": 0,
+   "r1": false,
+   "event_key": "301566.SZ_20260603",
+   "event_date": "20260603"
   },
   "301571.SZ": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "301571.SZ_20260612",
    "event_date": "20260612"
   },
@@ -9344,7 +9344,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "301580.SZ_20260623",
-   "event_date": ""
+   "event_date": "20260623"
   },
   "301589.SZ": {
    "prev_streak": 10,
@@ -9385,15 +9385,15 @@
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301629.SZ_20260427",
+   "event_date": "20260427"
   },
   "301678.SZ": {
    "prev_streak": 15,
    "streak": 16,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "301678.SZ_20260630",
+   "event_date": "20260630"
   },
   "302132.SZ": {
    "prev_streak": 0,
@@ -9407,7 +9407,7 @@
    "streak": 1,
    "r1": false,
    "event_key": "600000.SH_20260515",
-   "event_date": "20260515"
+   "event_date": ""
   },
   "600004.SH": {
    "prev_streak": 0,
@@ -9469,8 +9469,8 @@
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "600015.SH_20260901",
-   "event_date": "20260901"
+   "event_key": "600015.SH_20260831",
+   "event_date": "20260831"
   },
   "600016.SH": {
    "prev_streak": 8,
@@ -9523,17 +9523,17 @@
   },
   "600023.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "600023.SH_20260519",
    "event_date": "20260519"
   },
   "600025.SH": {
    "prev_streak": 15,
-   "streak": 16,
-   "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "600025.SH_20260720",
+   "event_date": "20260720"
   },
   "600026.SH": {
    "prev_streak": 15,
@@ -9572,8 +9572,8 @@
   },
   "600031.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "600031.SH_20260608",
    "event_date": "20260608"
   },
@@ -9754,8 +9754,8 @@
   },
   "600081.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "600081.SH_20260507",
    "event_date": "20260507"
   },
@@ -9820,7 +9820,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "600103.SH_20260901",
-   "event_date": "20260901"
+   "event_date": ""
   },
   "600104.SH": {
    "prev_streak": 0,
@@ -9873,10 +9873,10 @@
   },
   "600113.SH": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "600113.SH_20260623",
-   "event_date": "20260623"
+   "event_date": ""
   },
   "600114.SH": {
    "prev_streak": 18,
@@ -9943,10 +9943,10 @@
   },
   "600126.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "600126.SH_20260409",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "600126.SH_20260424",
+   "event_date": "20260424"
   },
   "600127.SH": {
    "prev_streak": 18,
@@ -10008,8 +10008,8 @@
    "prev_streak": 16,
    "streak": 0,
    "r1": false,
-   "event_key": "600150.SH_20260428",
-   "event_date": "20260428"
+   "event_key": "600150.SH_20260904",
+   "event_date": "20260904"
   },
   "600151.SH": {
    "prev_streak": 18,
@@ -10027,10 +10027,10 @@
   },
   "600155.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600155.SH_20260826",
-   "event_date": "20260826"
+   "event_date": ""
   },
   "600157.SH": {
    "prev_streak": 15,
@@ -10048,8 +10048,8 @@
   },
   "600160.SH": {
    "prev_streak": 12,
-   "streak": 0,
-   "r1": false,
+   "streak": 13,
+   "r1": true,
    "event_key": "600160.SH_20260603",
    "event_date": "20260603"
   },
@@ -10072,7 +10072,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "600163.SH_20260915",
-   "event_date": "20260915"
+   "event_date": ""
   },
   "600166.SH": {
    "prev_streak": 0,
@@ -10106,15 +10106,15 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "600172.SH_20260512",
-   "event_date": "20260512"
+   "event_key": "600172.SH_20260514",
+   "event_date": "20260514"
   },
   "600176.SH": {
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
    "event_key": "600176.SH_20260414",
-   "event_date": ""
+   "event_date": "20260414"
   },
   "600177.SH": {
    "prev_streak": 0,
@@ -10169,8 +10169,8 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "600189.SH_20260924",
-   "event_date": "20260924"
+   "event_key": "600189.SH_20260930",
+   "event_date": "20260930"
   },
   "600195.SH": {
    "prev_streak": 12,
@@ -10209,8 +10209,8 @@
   },
   "600206.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "600206.SH_20260611",
    "event_date": "20260611"
   },
@@ -10293,15 +10293,15 @@
   },
   "600233.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600233.SH_20260423",
    "event_date": "20260423"
   },
   "600234.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "600234.SH_20260421",
    "event_date": "20260421"
   },
@@ -10349,8 +10349,8 @@
   },
   "600255.SH": {
    "prev_streak": 12,
-   "streak": 0,
-   "r1": false,
+   "streak": 13,
+   "r1": true,
    "event_key": "600255.SH_20260604",
    "event_date": "20260604"
   },
@@ -10377,8 +10377,8 @@
   },
   "600266.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "600266.SH_20260812",
    "event_date": "20260812"
   },
@@ -10489,8 +10489,8 @@
   },
   "600301.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "600301.SH_20260507",
    "event_date": "20260507"
   },
@@ -10653,14 +10653,14 @@
    "streak": 11,
    "r1": true,
    "event_key": "600346.SH_20260615",
-   "event_date": "20260615"
+   "event_date": ""
   },
   "600348.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600348.SH_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "600350.SH": {
    "prev_streak": 0,
@@ -10701,8 +10701,8 @@
    "prev_streak": 11,
    "streak": 0,
    "r1": false,
-   "event_key": "600362.SH_20260827",
-   "event_date": "20260827"
+   "event_key": "600362.SH_20260622",
+   "event_date": "20260622"
   },
   "600363.SH": {
    "prev_streak": 0,
@@ -10713,10 +10713,10 @@
   },
   "600366.SH": {
    "prev_streak": 4,
-   "streak": 5,
-   "r1": true,
-   "event_key": "600366.SH_20260701",
-   "event_date": "20260701"
+   "streak": 0,
+   "r1": false,
+   "event_key": "600366.SH_20260702",
+   "event_date": "20260702"
   },
   "600367.SH": {
    "prev_streak": 18,
@@ -10765,7 +10765,7 @@
    "streak": 2,
    "r1": false,
    "event_key": "600376.SH_20260731",
-   "event_date": "20260731"
+   "event_date": ""
   },
   "600377.SH": {
    "prev_streak": 0,
@@ -10776,10 +10776,10 @@
   },
   "600378.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "600378.SH_20260831",
-   "event_date": "20260831"
+   "streak": 0,
+   "r1": false,
+   "event_key": "600378.SH_20260616",
+   "event_date": "20260616"
   },
   "600380.SH": {
    "prev_streak": 0,
@@ -10848,8 +10848,8 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "600397.SH_20260807",
-   "event_date": "20260807"
+   "event_key": "600397.SH_20260624",
+   "event_date": "20260624"
   },
   "600398.SH": {
    "prev_streak": 5,
@@ -10869,8 +10869,8 @@
    "prev_streak": 14,
    "streak": 0,
    "r1": false,
-   "event_key": "600400.SH_20260515",
-   "event_date": "20260515"
+   "event_key": "600400.SH_20260624",
+   "event_date": "20260624"
   },
   "600403.SH": {
    "prev_streak": 18,
@@ -10905,7 +10905,7 @@
    "streak": 9,
    "r1": true,
    "event_key": "600415.SH_20260729",
-   "event_date": "20260729"
+   "event_date": ""
   },
   "600416.SH": {
    "prev_streak": 18,
@@ -10925,8 +10925,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "600420.SH_20260702",
-   "event_date": "20260702"
+   "event_key": "600420.SH_20260413",
+   "event_date": "20260413"
   },
   "600422.SH": {
    "prev_streak": 0,
@@ -10940,14 +10940,14 @@
    "streak": 2,
    "r1": false,
    "event_key": "600425.SH_20260923",
-   "event_date": "20260923"
+   "event_date": ""
   },
   "600426.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "600426.SH_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "600428.SH": {
    "prev_streak": 0,
@@ -11021,8 +11021,8 @@
   },
   "600458.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "600458.SH_20260616",
    "event_date": "20260616"
   },
@@ -11035,8 +11035,8 @@
   },
   "600460.SH": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "600460.SH_20260617",
    "event_date": "20260617"
   },
@@ -11059,7 +11059,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "600475.SH_20260514",
-   "event_date": "20260514"
+   "event_date": ""
   },
   "600477.SH": {
    "prev_streak": 0,
@@ -11168,15 +11168,15 @@
   },
   "600499.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "600499.SH_20260805",
    "event_date": "20260805"
   },
   "600500.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "600500.SH_20260615",
    "event_date": "20260615"
   },
@@ -11217,7 +11217,7 @@
   },
   "600510.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600510.SH_20260423",
    "event_date": "20260423"
@@ -11238,10 +11238,10 @@
   },
   "600516.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600516.SH_20260608",
-   "event_date": "20260608"
+   "event_date": ""
   },
   "600517.SH": {
    "prev_streak": 18,
@@ -11252,10 +11252,10 @@
   },
   "600518.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600518.SH_20260716",
-   "event_date": "20260716"
+   "event_date": ""
   },
   "600519.SH": {
    "prev_streak": 18,
@@ -11304,7 +11304,7 @@
    "streak": 6,
    "r1": true,
    "event_key": "600531.SH_20260625",
-   "event_date": "20260625"
+   "event_date": ""
   },
   "600535.SH": {
    "prev_streak": 0,
@@ -11437,14 +11437,14 @@
    "streak": 5,
    "r1": true,
    "event_key": "600570.SH_20260803",
-   "event_date": "20260803"
+   "event_date": ""
   },
   "600572.SH": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "600572.SH_20260415",
-   "event_date": "20260415"
+   "event_key": "600572.SH_20260416",
+   "event_date": "20260416"
   },
   "600575.SH": {
    "prev_streak": 5,
@@ -11458,7 +11458,7 @@
    "streak": 6,
    "r1": true,
    "event_key": "600577.SH_20260921",
-   "event_date": "20260921"
+   "event_date": ""
   },
   "600578.SH": {
    "prev_streak": 5,
@@ -11490,8 +11490,8 @@
   },
   "600584.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "600584.SH_20260526",
    "event_date": "20260526"
   },
@@ -11511,8 +11511,8 @@
   },
   "600587.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "600587.SH_20260921",
    "event_date": "20260921"
   },
@@ -11576,8 +11576,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "600598.SH_20260908",
-   "event_date": "20260908"
+   "event_key": "600598.SH_20260819",
+   "event_date": "20260819"
   },
   "600600.SH": {
    "prev_streak": 2,
@@ -11588,10 +11588,10 @@
   },
   "600601.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "600601.SH_20260512",
-   "event_date": "20260512"
+   "streak": 0,
+   "r1": false,
+   "event_key": "600601.SH_20260702",
+   "event_date": "20260702"
   },
   "600602.SH": {
    "prev_streak": 17,
@@ -11616,15 +11616,15 @@
   },
   "600605.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "600605.SH_20260923",
    "event_date": "20260923"
   },
   "600606.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "600606.SH_20260921",
    "event_date": "20260921"
   },
@@ -11639,8 +11639,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "600611.SH_20260812",
-   "event_date": "20260812"
+   "event_key": "600611.SH_20260525",
+   "event_date": "20260525"
   },
   "600612.SH": {
    "prev_streak": 11,
@@ -11672,8 +11672,8 @@
   },
   "600621.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "600621.SH_20260918",
    "event_date": "20260918"
   },
@@ -11714,8 +11714,8 @@
   },
   "600639.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "600639.SH_20260414",
    "event_date": "20260414"
   },
@@ -11759,7 +11759,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "600645.SH_20260814",
-   "event_date": "20260814"
+   "event_date": ""
   },
   "600648.SH": {
    "prev_streak": 18,
@@ -11840,8 +11840,8 @@
   },
   "600667.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "600667.SH_20260513",
    "event_date": "20260513"
   },
@@ -11861,8 +11861,8 @@
   },
   "600675.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "600675.SH_20260923",
    "event_date": "20260923"
   },
@@ -11913,14 +11913,14 @@
    "streak": 1,
    "r1": false,
    "event_key": "600690.SH_20260428",
-   "event_date": "20260428"
+   "event_date": ""
   },
   "600691.SH": {
    "prev_streak": 12,
    "streak": 13,
    "r1": true,
    "event_key": "600691.SH_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "600693.SH": {
    "prev_streak": 18,
@@ -11948,7 +11948,7 @@
    "streak": 2,
    "r1": false,
    "event_key": "600699.SH_20260928",
-   "event_date": "20260928"
+   "event_date": ""
   },
   "600702.SH": {
    "prev_streak": 18,
@@ -11959,10 +11959,10 @@
   },
   "600703.SH": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "600703.SH_20260625",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "600703.SH_20260423",
+   "event_date": "20260423"
   },
   "600704.SH": {
    "prev_streak": 0,
@@ -12029,7 +12029,7 @@
   },
   "600721.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600721.SH_20260827",
    "event_date": "20260827"
@@ -12043,17 +12043,17 @@
   },
   "600724.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600724.SH_20260625",
-   "event_date": "20260625"
+   "event_date": ""
   },
   "600726.SH": {
    "prev_streak": 12,
    "streak": 13,
    "r1": true,
    "event_key": "600726.SH_20260427",
-   "event_date": "20260427"
+   "event_date": ""
   },
   "600728.SH": {
    "prev_streak": 18,
@@ -12120,8 +12120,8 @@
   },
   "600743.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "600743.SH_20260410",
    "event_date": "20260410"
   },
@@ -12197,10 +12197,10 @@
   },
   "600763.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600763.SH_20260820",
-   "event_date": "20260820"
+   "event_date": ""
   },
   "600764.SH": {
    "prev_streak": 0,
@@ -12211,15 +12211,15 @@
   },
   "600765.SH": {
    "prev_streak": 9,
-   "streak": 0,
-   "r1": false,
+   "streak": 10,
+   "r1": true,
    "event_key": "600765.SH_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "600769.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "600769.SH_20260522",
    "event_date": "20260522"
   },
@@ -12309,10 +12309,10 @@
   },
   "600790.SH": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "600790.SH_20260923",
-   "event_date": "20260923"
+   "streak": 0,
+   "r1": false,
+   "event_key": "600790.SH_20260508",
+   "event_date": "20260508"
   },
   "600792.SH": {
    "prev_streak": 8,
@@ -12337,10 +12337,10 @@
   },
   "600801.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600801.SH_20260713",
-   "event_date": "20260713"
+   "event_date": ""
   },
   "600803.SH": {
    "prev_streak": 18,
@@ -12358,10 +12358,10 @@
   },
   "600809.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600809.SH_20260625",
-   "event_date": "20260625"
+   "event_date": ""
   },
   "600810.SH": {
    "prev_streak": 18,
@@ -12372,8 +12372,8 @@
   },
   "600812.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "600812.SH_20260910",
    "event_date": "20260910"
   },
@@ -12498,17 +12498,17 @@
   },
   "600850.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "600850.SH_20260519",
-   "event_date": "20260519"
+   "event_date": ""
   },
   "600851.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "600851.SH_20260625",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "600851.SH_20260622",
+   "event_date": "20260622"
   },
   "600855.SH": {
    "prev_streak": 18,
@@ -12960,24 +12960,24 @@
   },
   "600975.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "600975.SH_20260907",
    "event_date": "20260907"
   },
   "600977.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600977.SH_20260623",
-   "event_date": "20260623"
+   "event_date": ""
   },
   "600981.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600981.SH_20260611",
-   "event_date": "20260611"
+   "event_date": ""
   },
   "600982.SH": {
    "prev_streak": 10,
@@ -13030,10 +13030,10 @@
   },
   "600993.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "600993.SH_20260716",
-   "event_date": "20260716"
+   "event_date": ""
   },
   "600995.SH": {
    "prev_streak": 4,
@@ -13128,10 +13128,10 @@
   },
   "601011.SH": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
    "event_key": "601011.SH_20260820",
-   "event_date": ""
+   "event_date": "20260820"
   },
   "601012.SH": {
    "prev_streak": 18,
@@ -13191,10 +13191,10 @@
   },
   "601038.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601038.SH_20260827",
-   "event_date": "20260827"
+   "event_date": ""
   },
   "601058.SH": {
    "prev_streak": 0,
@@ -13345,24 +13345,24 @@
   },
   "601121.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601121.SH_20260708",
-   "event_date": "20260708"
+   "event_date": ""
   },
   "601126.SH": {
    "prev_streak": 2,
    "streak": 3,
    "r1": true,
    "event_key": "601126.SH_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "601127.SH": {
    "prev_streak": 12,
-   "streak": 13,
-   "r1": true,
-   "event_key": "601127.SH_20260730",
-   "event_date": "20260730"
+   "streak": 0,
+   "r1": false,
+   "event_key": "601127.SH_20260521",
+   "event_date": "20260521"
   },
   "601128.SH": {
    "prev_streak": 0,
@@ -13376,7 +13376,7 @@
    "streak": 7,
    "r1": true,
    "event_key": "601133.SH_20260630",
-   "event_date": ""
+   "event_date": "20260630"
   },
   "601136.SH": {
    "prev_streak": 2,
@@ -13466,8 +13466,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "601177.SH_20260706",
-   "event_date": "20260706"
+   "event_key": "601177.SH_20260528",
+   "event_date": "20260528"
   },
   "601179.SH": {
    "prev_streak": 18,
@@ -13534,7 +13534,7 @@
   },
   "601218.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601218.SH_20260928",
    "event_date": "20260928"
@@ -13597,7 +13597,7 @@
   },
   "601238.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601238.SH_20260820",
    "event_date": "20260820"
@@ -13625,7 +13625,7 @@
   },
   "601311.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601311.SH_20260422",
    "event_date": "20260422"
@@ -13688,10 +13688,10 @@
   },
   "601360.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601360.SH_20260831",
-   "event_date": "20260831"
+   "event_date": ""
   },
   "601369.SH": {
    "prev_streak": 6,
@@ -13828,15 +13828,15 @@
   },
   "601579.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "601579.SH_20260922",
    "event_date": "20260922"
   },
   "601595.SH": {
    "prev_streak": 12,
-   "streak": 0,
-   "r1": false,
+   "streak": 13,
+   "r1": true,
    "event_key": "601595.SH_20260908",
    "event_date": "20260908"
   },
@@ -13856,17 +13856,17 @@
   },
   "601601.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601601.SH_20260511",
    "event_date": "20260511"
   },
   "601606.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "601606.SH_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "601607.SH": {
    "prev_streak": 18,
@@ -13989,7 +13989,7 @@
   },
   "601686.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601686.SH_20260602",
    "event_date": "20260602"
@@ -14003,10 +14003,10 @@
   },
   "601689.SH": {
    "prev_streak": 12,
-   "streak": 13,
-   "r1": true,
-   "event_key": "601689.SH_20260703",
-   "event_date": "20260703"
+   "streak": 0,
+   "r1": false,
+   "event_key": "601689.SH_20260515",
+   "event_date": "20260515"
   },
   "601696.SH": {
    "prev_streak": 3,
@@ -14073,15 +14073,15 @@
   },
   "601777.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "601777.SH_20260521",
-   "event_date": "20260521"
+   "streak": 0,
+   "r1": false,
+   "event_key": "601777.SH_20260514",
+   "event_date": "20260514"
   },
   "601778.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "601778.SH_20260423",
    "event_date": "20260423"
   },
@@ -14090,7 +14090,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "601788.SH_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "601799.SH": {
    "prev_streak": 18,
@@ -14101,15 +14101,15 @@
   },
   "601800.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "601800.SH_20260617",
-   "event_date": "20260617"
+   "event_date": ""
   },
   "601801.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "601801.SH_20260922",
    "event_date": "20260922"
   },
@@ -14269,10 +14269,10 @@
   },
   "601888.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "601888.SH_20260529",
-   "event_date": "20260529"
+   "event_date": ""
   },
   "601890.SH": {
    "prev_streak": 11,
@@ -14283,10 +14283,10 @@
   },
   "601898.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "601898.SH_20260601",
-   "event_date": "20260601"
+   "event_date": ""
   },
   "601899.SH": {
    "prev_streak": 18,
@@ -14314,7 +14314,7 @@
    "streak": 1,
    "r1": false,
    "event_key": "601908.SH_20260514",
-   "event_date": "20260514"
+   "event_date": ""
   },
   "601916.SH": {
    "prev_streak": 18,
@@ -14486,10 +14486,10 @@
   },
   "601998.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "601998.SH_20260608",
+   "event_date": "20260608"
   },
   "603000.SH": {
    "prev_streak": 3,
@@ -14507,8 +14507,8 @@
   },
   "603005.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603005.SH_20260522",
    "event_date": "20260522"
   },
@@ -14528,10 +14528,10 @@
   },
   "603011.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "603011.SH_20260810",
-   "event_date": "20260810"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603011.SH_20260602",
+   "event_date": "20260602"
   },
   "603012.SH": {
    "prev_streak": 0,
@@ -14579,8 +14579,8 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "603031.SH_20260513",
+   "event_date": "20260513"
   },
   "603033.SH": {
    "prev_streak": 5,
@@ -14591,17 +14591,17 @@
   },
   "603039.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "603039.SH_20260804",
    "event_date": "20260804"
   },
   "603040.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "603040.SH_20260521",
-   "event_date": "20260521"
+   "event_date": ""
   },
   "603043.SH": {
    "prev_streak": 18,
@@ -14621,13 +14621,13 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "603049.SH_20260803",
+   "event_date": "20260803"
   },
   "603050.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "603050.SH_20260506",
    "event_date": "20260506"
   },
@@ -14661,15 +14661,15 @@
   },
   "603061.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "603061.SH_20260722",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "603061.SH_20260416",
+   "event_date": "20260416"
   },
   "603063.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "603063.SH_20260417",
    "event_date": "20260417"
   },
@@ -14682,15 +14682,15 @@
   },
   "603067.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "603067.SH_20260701",
    "event_date": "20260701"
   },
   "603068.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603068.SH_20260806",
    "event_date": "20260806"
   },
@@ -14717,8 +14717,8 @@
   },
   "603083.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "603083.SH_20260415",
    "event_date": "20260415"
   },
@@ -14745,8 +14745,8 @@
   },
   "603099.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "603099.SH_20260921",
    "event_date": "20260921"
   },
@@ -14780,8 +14780,8 @@
   },
   "603112.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "603112.SH_20260409",
    "event_date": "20260409"
   },
@@ -14815,24 +14815,24 @@
   },
   "603123.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603123.SH_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "603124.SH": {
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "603124.SH_20260907",
-   "event_date": "20260907"
+   "event_key": "603124.SH_20260609",
+   "event_date": "20260609"
   },
   "603125.SH": {
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "603125.SH_20260428",
+   "event_date": "20260428"
   },
   "603127.SH": {
    "prev_streak": 7,
@@ -14860,7 +14860,7 @@
    "streak": 1,
    "r1": false,
    "event_key": "603130.SH_20260421",
-   "event_date": "20260421"
+   "event_date": ""
   },
   "603132.SH": {
    "prev_streak": 18,
@@ -14892,17 +14892,17 @@
   },
   "603155.SH": {
    "prev_streak": 8,
-   "streak": 9,
-   "r1": true,
-   "event_key": "603155.SH_20260611",
-   "event_date": "20260611"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603155.SH_20260630",
+   "event_date": "20260630"
   },
   "603156.SH": {
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "603156.SH_20260518",
-   "event_date": "20260518"
+   "event_key": "603156.SH_20260519",
+   "event_date": "20260519"
   },
   "603158.SH": {
    "prev_streak": 1,
@@ -14920,8 +14920,8 @@
   },
   "603162.SH": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "603162.SH_20260904",
    "event_date": "20260904"
   },
@@ -14962,10 +14962,10 @@
   },
   "603179.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "603179.SH_20260521",
-   "event_date": "20260521"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603179.SH_20260522",
+   "event_date": "20260522"
   },
   "603181.SH": {
    "prev_streak": 2,
@@ -15025,17 +15025,17 @@
   },
   "603203.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "603203.SH_20260515",
    "event_date": "20260515"
   },
   "603211.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "603211.SH_20260707",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "603211.SH_20260420",
+   "event_date": "20260420"
   },
   "603212.SH": {
    "prev_streak": 8,
@@ -15088,8 +15088,8 @@
   },
   "603223.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "603223.SH_20260625",
    "event_date": "20260625"
   },
@@ -15102,8 +15102,8 @@
   },
   "603226.SH": {
    "prev_streak": 9,
-   "streak": 0,
-   "r1": false,
+   "streak": 10,
+   "r1": true,
    "event_key": "603226.SH_20260911",
    "event_date": "20260911"
   },
@@ -15116,7 +15116,7 @@
   },
   "603228.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "603228.SH_20260717",
    "event_date": "20260717"
@@ -15167,13 +15167,13 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "603260.SH_20260616",
-   "event_date": "20260616"
+   "event_key": "603260.SH_20260617",
+   "event_date": "20260617"
   },
   "603267.SH": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "603267.SH_20260602",
    "event_date": "20260602"
   },
@@ -15188,8 +15188,8 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "603269.SH_20260513",
-   "event_date": "20260513"
+   "event_key": "603269.SH_20260902",
+   "event_date": "20260902"
   },
   "603277.SH": {
    "prev_streak": 0,
@@ -15207,7 +15207,7 @@
   },
   "603281.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603281.SH_20260626",
    "event_date": "20260626"
@@ -15235,22 +15235,22 @@
   },
   "603290.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603290.SH_20260513",
    "event_date": "20260513"
   },
   "603296.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "603296.SH_20260602",
    "event_date": "20260602"
   },
   "603297.SH": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "603297.SH_20260511",
    "event_date": "20260511"
   },
@@ -15284,8 +15284,8 @@
   },
   "603303.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "603303.SH_20260611",
    "event_date": "20260611"
   },
@@ -15301,14 +15301,14 @@
    "streak": 8,
    "r1": true,
    "event_key": "603306.SH_20260810",
-   "event_date": "20260810"
+   "event_date": ""
   },
   "603308.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "603308.SH_20260618",
-   "event_date": "20260618"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603308.SH_20260423",
+   "event_date": "20260423"
   },
   "603311.SH": {
    "prev_streak": 0,
@@ -15354,31 +15354,31 @@
   },
   "603333.SH": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
    "event_key": "603333.SH_20260520",
-   "event_date": ""
+   "event_date": "20260520"
   },
   "603336.SH": {
    "prev_streak": 9,
    "streak": 0,
    "r1": false,
-   "event_key": "603336.SH_20260428",
-   "event_date": "20260428"
+   "event_key": "603336.SH_20260914",
+   "event_date": "20260914"
   },
   "603337.SH": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "603337.SH_20260703",
-   "event_date": "20260703"
+   "event_key": "603337.SH_20260803",
+   "event_date": "20260803"
   },
   "603338.SH": {
    "prev_streak": 9,
-   "streak": 10,
-   "r1": true,
-   "event_key": "603338.SH_20260706",
-   "event_date": "20260706"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603338.SH_20260703",
+   "event_date": "20260703"
   },
   "603341.SH": {
    "prev_streak": 5,
@@ -15392,7 +15392,7 @@
    "streak": 6,
    "r1": true,
    "event_key": "603345.SH_20260918",
-   "event_date": "20260918"
+   "event_date": ""
   },
   "603353.SH": {
    "prev_streak": 18,
@@ -15417,10 +15417,10 @@
   },
   "603360.SH": {
    "prev_streak": 12,
-   "streak": 0,
-   "r1": false,
+   "streak": 13,
+   "r1": true,
    "event_key": "603360.SH_20260519",
-   "event_date": "20260519"
+   "event_date": ""
   },
   "603363.SH": {
    "prev_streak": 18,
@@ -15434,7 +15434,7 @@
    "streak": 12,
    "r1": true,
    "event_key": "603366.SH_20260910",
-   "event_date": "20260910"
+   "event_date": ""
   },
   "603367.SH": {
    "prev_streak": 0,
@@ -15466,8 +15466,8 @@
   },
   "603380.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603380.SH_20260622",
    "event_date": "20260622"
   },
@@ -15480,10 +15480,10 @@
   },
   "603386.SH": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "603386.SH_20260916",
-   "event_date": "20260916"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603386.SH_20260915",
+   "event_date": "20260915"
   },
   "603387.SH": {
    "prev_streak": 0,
@@ -15515,10 +15515,10 @@
   },
   "603399.SH": {
    "prev_streak": 0,
-   "streak": 1,
+   "streak": 0,
    "r1": false,
-   "event_key": "603399.SH_20260612",
-   "event_date": "20260612"
+   "event_key": "603399.SH_20260508",
+   "event_date": "20260508"
   },
   "603408.SH": {
    "prev_streak": 0,
@@ -15536,10 +15536,10 @@
   },
   "603439.SH": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "603439.SH_20260916",
-   "event_date": "20260916"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603439.SH_20260529",
+   "event_date": "20260529"
   },
   "603444.SH": {
    "prev_streak": 0,
@@ -15550,8 +15550,8 @@
   },
   "603456.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "603456.SH_20260813",
    "event_date": "20260813"
   },
@@ -15564,8 +15564,8 @@
   },
   "603477.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603477.SH_20260414",
    "event_date": "20260414"
   },
@@ -15592,8 +15592,8 @@
   },
   "603499.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "603499.SH_20260511",
    "event_date": "20260511"
   },
@@ -15606,8 +15606,8 @@
   },
   "603505.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "603505.SH_20260702",
    "event_date": "20260702"
   },
@@ -15644,7 +15644,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "603516.SH_20260605",
-   "event_date": "20260605"
+   "event_date": ""
   },
   "603529.SH": {
    "prev_streak": 8,
@@ -15662,8 +15662,8 @@
   },
   "603533.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603533.SH_20260901",
    "event_date": "20260901"
   },
@@ -15690,10 +15690,10 @@
   },
   "603568.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603568.SH_20260608",
-   "event_date": "20260608"
+   "event_date": ""
   },
   "603580.SH": {
    "prev_streak": 0,
@@ -15707,7 +15707,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "603583.SH_20260902",
-   "event_date": "20260902"
+   "event_date": ""
   },
   "603587.SH": {
    "prev_streak": 0,
@@ -15718,17 +15718,17 @@
   },
   "603588.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "603588.SH_20260409",
    "event_date": "20260409"
   },
   "603589.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "603589.SH_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "603590.SH": {
    "prev_streak": 0,
@@ -15753,10 +15753,10 @@
   },
   "603599.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603599.SH_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "603601.SH": {
    "prev_streak": 12,
@@ -15776,8 +15776,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "603606.SH_20260611",
-   "event_date": "20260611"
+   "event_key": "603606.SH_20260423",
+   "event_date": "20260423"
   },
   "603608.SH": {
    "prev_streak": 18,
@@ -15802,7 +15802,7 @@
   },
   "603613.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "603613.SH_20260904",
    "event_date": "20260904"
@@ -15823,17 +15823,17 @@
   },
   "603626.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "603626.SH_20260825",
-   "event_date": "20260825"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603626.SH_20260824",
+   "event_date": "20260824"
   },
   "603629.SH": {
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "603629.SH_20260817",
+   "event_date": "20260817"
   },
   "603638.SH": {
    "prev_streak": 0,
@@ -15851,10 +15851,10 @@
   },
   "603657.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "603657.SH_20260629",
-   "event_date": "20260629"
+   "event_date": ""
   },
   "603658.SH": {
    "prev_streak": 4,
@@ -15930,13 +15930,13 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "603685.SH_20260527",
+   "event_date": "20260527"
   },
   "603686.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "603686.SH_20260916",
    "event_date": "20260916"
   },
@@ -15956,7 +15956,7 @@
   },
   "603690.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603690.SH_20260626",
    "event_date": "20260626"
@@ -15977,7 +15977,7 @@
   },
   "603699.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603699.SH_20260430",
    "event_date": "20260430"
@@ -16026,14 +16026,14 @@
   },
   "603730.SH": {
    "prev_streak": 11,
-   "streak": 0,
-   "r1": false,
+   "streak": 12,
+   "r1": true,
    "event_key": "603730.SH_20260616",
    "event_date": "20260616"
   },
   "603733.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "603733.SH_20260612",
    "event_date": "20260612"
@@ -16043,7 +16043,7 @@
    "streak": 14,
    "r1": true,
    "event_key": "603737.SH_20260930",
-   "event_date": "20260930"
+   "event_date": ""
   },
   "603738.SH": {
    "prev_streak": 6,
@@ -16068,8 +16068,8 @@
   },
   "603773.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "603773.SH_20260413",
    "event_date": "20260413"
   },
@@ -16091,15 +16091,15 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "603786.SH_20260703",
-   "event_date": "20260703"
+   "event_key": "603786.SH_20260521",
+   "event_date": "20260521"
   },
   "603799.SH": {
    "prev_streak": 3,
    "streak": 4,
    "r1": true,
    "event_key": "603799.SH_20260810",
-   "event_date": "20260810"
+   "event_date": ""
   },
   "603800.SH": {
    "prev_streak": 2,
@@ -16131,8 +16131,8 @@
   },
   "603823.SH": {
    "prev_streak": 12,
-   "streak": 0,
-   "r1": false,
+   "streak": 13,
+   "r1": true,
    "event_key": "603823.SH_20260526",
    "event_date": "20260526"
   },
@@ -16145,17 +16145,17 @@
   },
   "603833.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603833.SH_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "603848.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603848.SH_20260819",
-   "event_date": "20260819"
+   "event_date": ""
   },
   "603855.SH": {
    "prev_streak": 0,
@@ -16208,10 +16208,10 @@
   },
   "603871.SH": {
    "prev_streak": 8,
-   "streak": 9,
-   "r1": true,
-   "event_key": "603871.SH_20260526",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "603871.SH_20260826",
+   "event_date": "20260826"
   },
   "603876.SH": {
    "prev_streak": 18,
@@ -16250,24 +16250,24 @@
   },
   "603885.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603885.SH_20260625",
-   "event_date": "20260625"
+   "event_date": ""
   },
   "603888.SH": {
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "603888.SH_20260921",
-   "event_date": "20260921"
+   "event_key": "603888.SH_20260908",
+   "event_date": "20260908"
   },
   "603889.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
+   "streak": 0,
+   "r1": false,
    "event_key": "603889.SH_20260413",
-   "event_date": ""
+   "event_date": "20260413"
   },
   "603890.SH": {
    "prev_streak": 18,
@@ -16278,8 +16278,8 @@
   },
   "603893.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "603893.SH_20260709",
    "event_date": "20260709"
   },
@@ -16327,17 +16327,17 @@
   },
   "603920.SH": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "603920.SH_20260409",
    "event_date": "20260409"
   },
   "603927.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603927.SH_20260721",
-   "event_date": "20260721"
+   "event_date": ""
   },
   "603929.SH": {
    "prev_streak": 2,
@@ -16365,7 +16365,7 @@
    "streak": 13,
    "r1": true,
    "event_key": "603938.SH_20260909",
-   "event_date": "20260909"
+   "event_date": ""
   },
   "603939.SH": {
    "prev_streak": 0,
@@ -16378,15 +16378,15 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "603950.SH_20260413",
-   "event_date": "20260413"
+   "event_key": "603950.SH_20260414",
+   "event_date": "20260414"
   },
   "603969.SH": {
    "prev_streak": 1,
    "streak": 2,
    "r1": false,
    "event_key": "603969.SH_20260825",
-   "event_date": "20260825"
+   "event_date": ""
   },
   "603976.SH": {
    "prev_streak": 7,
@@ -16407,7 +16407,7 @@
    "streak": 7,
    "r1": true,
    "event_key": "603978.SH_20260903",
-   "event_date": "20260903"
+   "event_date": ""
   },
   "603979.SH": {
    "prev_streak": 0,
@@ -16446,24 +16446,24 @@
   },
   "603989.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "603989.SH_20260526",
    "event_date": "20260526"
   },
   "603990.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "603990.SH_20260526",
    "event_date": "20260526"
   },
   "603991.SH": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "603991.SH_20260701",
-   "event_date": "20260701"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603991.SH_20260702",
+   "event_date": "20260702"
   },
   "603992.SH": {
    "prev_streak": 16,
@@ -16474,10 +16474,10 @@
   },
   "603993.SH": {
    "prev_streak": 3,
-   "streak": 4,
-   "r1": true,
-   "event_key": "603993.SH_20260622",
-   "event_date": "20260622"
+   "streak": 0,
+   "r1": false,
+   "event_key": "603993.SH_20260615",
+   "event_date": "20260615"
   },
   "603995.SH": {
    "prev_streak": 5,
@@ -16502,10 +16502,10 @@
   },
   "605006.SH": {
    "prev_streak": 11,
-   "streak": 12,
-   "r1": true,
-   "event_key": "605006.SH_20260910",
-   "event_date": "20260910"
+   "streak": 0,
+   "r1": false,
+   "event_key": "605006.SH_20260512",
+   "event_date": "20260512"
   },
   "605007.SH": {
    "prev_streak": 15,
@@ -16523,15 +16523,15 @@
   },
   "605009.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "605009.SH_20260623",
-   "event_date": "20260623"
+   "event_date": ""
   },
   "605011.SH": {
    "prev_streak": 8,
-   "streak": 0,
-   "r1": false,
+   "streak": 9,
+   "r1": true,
    "event_key": "605011.SH_20260914",
    "event_date": "20260914"
   },
@@ -16544,8 +16544,8 @@
   },
   "605018.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "605018.SH_20260605",
    "event_date": "20260605"
   },
@@ -16581,8 +16581,8 @@
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "605090.SH_20260715",
-   "event_date": "20260715"
+   "event_key": "605090.SH_20260714",
+   "event_date": "20260714"
   },
   "605098.SH": {
    "prev_streak": 0,
@@ -16665,8 +16665,8 @@
    "prev_streak": 15,
    "streak": 0,
    "r1": false,
-   "event_key": "605168.SH_20260429",
-   "event_date": "20260429"
+   "event_key": "605168.SH_20260430",
+   "event_date": "20260430"
   },
   "605178.SH": {
    "prev_streak": 18,
@@ -16679,15 +16679,15 @@
    "prev_streak": 3,
    "streak": 0,
    "r1": false,
-   "event_key": "605179.SH_20260811",
-   "event_date": "20260811"
+   "event_key": "605179.SH_20260814",
+   "event_date": "20260814"
   },
   "605183.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "605183.SH_20260625",
-   "event_date": "20260625"
+   "event_date": ""
   },
   "605188.SH": {
    "prev_streak": 18,
@@ -16698,15 +16698,15 @@
   },
   "605196.SH": {
    "prev_streak": 10,
-   "streak": 11,
-   "r1": true,
-   "event_key": "605196.SH_20260720",
-   "event_date": "20260720"
+   "streak": 0,
+   "r1": false,
+   "event_key": "605196.SH_20260601",
+   "event_date": "20260601"
   },
   "605198.SH": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "605198.SH_20260617",
    "event_date": "20260617"
   },
@@ -16733,10 +16733,10 @@
   },
   "605277.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "605277.SH_20260601",
-   "event_date": "20260601"
+   "event_date": ""
   },
   "605287.SH": {
    "prev_streak": 0,
@@ -16761,8 +16761,8 @@
   },
   "605296.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "605296.SH_20260904",
    "event_date": "20260904"
   },
@@ -16796,10 +16796,10 @@
   },
   "605333.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "605333.SH_20260901",
-   "event_date": "20260901"
+   "event_date": ""
   },
   "605339.SH": {
    "prev_streak": 0,
@@ -16824,22 +16824,22 @@
   },
   "605366.SH": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "605366.SH_20260626",
-   "event_date": "20260626"
+   "streak": 0,
+   "r1": false,
+   "event_key": "605366.SH_20260629",
+   "event_date": "20260629"
   },
   "605376.SH": {
    "prev_streak": 5,
    "streak": 0,
    "r1": false,
-   "event_key": "605376.SH_20260519",
-   "event_date": "20260519"
+   "event_key": "605376.SH_20260525",
+   "event_date": "20260525"
   },
   "605389.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "605389.SH_20260506",
    "event_date": "20260506"
   },
@@ -16859,8 +16859,8 @@
   },
   "605507.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "605507.SH_20260915",
    "event_date": "20260915"
   },
@@ -16880,15 +16880,15 @@
   },
   "605580.SH": {
    "prev_streak": 17,
-   "streak": 18,
-   "r1": true,
-   "event_key": "605580.SH_20260907",
-   "event_date": "20260907"
+   "streak": 0,
+   "r1": false,
+   "event_key": "605580.SH_20260529",
+   "event_date": "20260529"
   },
   "605589.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "605589.SH_20260427",
    "event_date": "20260427"
   },
@@ -16910,8 +16910,8 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "688001.SH_20260427",
-   "event_date": "20260427"
+   "event_key": "688001.SH_20260428",
+   "event_date": "20260428"
   },
   "688002.SH": {
    "prev_streak": 0,
@@ -16938,8 +16938,8 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "688006.SH_20260528",
-   "event_date": "20260528"
+   "event_key": "688006.SH_20260529",
+   "event_date": "20260529"
   },
   "688008.SH": {
    "prev_streak": 5,
@@ -16950,10 +16950,10 @@
   },
   "688009.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "688009.SH_20260529",
-   "event_date": "20260529"
+   "event_date": ""
   },
   "688011.SH": {
    "prev_streak": 15,
@@ -16988,7 +16988,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "688018.SH_20260420",
-   "event_date": "20260420"
+   "event_date": ""
   },
   "688019.SH": {
    "prev_streak": 6,
@@ -17016,14 +17016,14 @@
    "streak": 4,
    "r1": true,
    "event_key": "688027.SH_20260525",
-   "event_date": "20260525"
+   "event_date": ""
   },
   "688028.SH": {
    "prev_streak": 11,
    "streak": 0,
    "r1": false,
-   "event_key": "688028.SH_20260909",
-   "event_date": "20260909"
+   "event_key": "688028.SH_20260626",
+   "event_date": "20260626"
   },
   "688029.SH": {
    "prev_streak": 11,
@@ -17037,7 +17037,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "688031.SH_20260604",
-   "event_date": "20260604"
+   "event_date": ""
   },
   "688032.SH": {
    "prev_streak": 18,
@@ -17132,10 +17132,10 @@
   },
   "688059.SH": {
    "prev_streak": 10,
-   "streak": 11,
-   "r1": true,
-   "event_key": "688059.SH_20260721",
-   "event_date": "20260721"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688059.SH_20260429",
+   "event_date": "20260429"
   },
   "688062.SH": {
    "prev_streak": 18,
@@ -17153,10 +17153,10 @@
   },
   "688065.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688065.SH_20260622",
-   "event_date": "20260622"
+   "event_date": ""
   },
   "688068.SH": {
    "prev_streak": 13,
@@ -17174,8 +17174,8 @@
   },
   "688072.SH": {
    "prev_streak": 10,
-   "streak": 0,
-   "r1": false,
+   "streak": 11,
+   "r1": true,
    "event_key": "688072.SH_20260525",
    "event_date": "20260525"
   },
@@ -17251,10 +17251,10 @@
   },
   "688097.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688097.SH_20260313",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688097.SH_20260603",
+   "event_date": "20260603"
   },
   "688099.SH": {
    "prev_streak": 5,
@@ -17279,10 +17279,10 @@
   },
   "688103.SH": {
    "prev_streak": 14,
-   "streak": 15,
-   "r1": true,
-   "event_key": "688103.SH_20260710",
-   "event_date": "20260710"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688103.SH_20260709",
+   "event_date": "20260709"
   },
   "688105.SH": {
    "prev_streak": 4,
@@ -17295,8 +17295,8 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "688106.SH_20260424",
-   "event_date": "20260424"
+   "event_key": "688106.SH_20260702",
+   "event_date": "20260702"
   },
   "688107.SH": {
    "prev_streak": 4,
@@ -17330,20 +17330,20 @@
    "prev_streak": 0,
    "streak": 0,
    "r1": false,
-   "event_key": "688111.SH_20260731",
-   "event_date": "20260731"
+   "event_key": "688111.SH_20260803",
+   "event_date": "20260803"
   },
   "688112.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "688112.SH_20260923",
    "event_date": "20260923"
   },
   "688114.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688114.SH_20260821",
    "event_date": "20260821"
   },
@@ -17387,12 +17387,12 @@
    "streak": 15,
    "r1": true,
    "event_key": "688125.SH_20260721",
-   "event_date": "20260721"
+   "event_date": ""
   },
   "688126.SH": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "688126.SH_20260520",
    "event_date": "20260520"
   },
@@ -17419,8 +17419,8 @@
   },
   "688135.SH": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "688135.SH_20260520",
    "event_date": "20260520"
   },
@@ -17496,10 +17496,10 @@
   },
   "688155.SH": {
    "prev_streak": 9,
-   "streak": 10,
-   "r1": true,
-   "event_key": "688155.SH_20260827",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688155.SH_20260506",
+   "event_date": "20260506"
   },
   "688158.SH": {
    "prev_streak": 18,
@@ -17510,10 +17510,10 @@
   },
   "688160.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688160.SH_20260703",
+   "event_date": "20260703"
   },
   "688161.SH": {
    "prev_streak": 0,
@@ -17538,10 +17538,10 @@
   },
   "688167.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688167.SH_20260813",
-   "event_date": "20260813"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688167.SH_20260616",
+   "event_date": "20260616"
   },
   "688169.SH": {
    "prev_streak": 0,
@@ -17555,7 +17555,7 @@
    "streak": 19,
    "r1": true,
    "event_key": "688170.SH_20260904",
-   "event_date": "20260904"
+   "event_date": ""
   },
   "688172.SH": {
    "prev_streak": 18,
@@ -17594,10 +17594,10 @@
   },
   "688180.SH": {
    "prev_streak": 6,
-   "streak": 7,
-   "r1": true,
-   "event_key": "688180.SH_20260401",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688180.SH_20260820",
+   "event_date": "20260820"
   },
   "688181.SH": {
    "prev_streak": 10,
@@ -17608,8 +17608,8 @@
   },
   "688182.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "688182.SH_20260520",
    "event_date": "20260520"
   },
@@ -17657,8 +17657,8 @@
   },
   "688192.SH": {
    "prev_streak": 5,
-   "streak": 0,
-   "r1": false,
+   "streak": 6,
+   "r1": true,
    "event_key": "688192.SH_20260715",
    "event_date": "20260715"
   },
@@ -17695,21 +17695,21 @@
    "streak": 19,
    "r1": true,
    "event_key": "688205.SH_20260904",
-   "event_date": "20260904"
+   "event_date": ""
   },
   "688206.SH": {
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "688206.SH_20260525",
-   "event_date": "20260525"
+   "event_key": "688206.SH_20260526",
+   "event_date": "20260526"
   },
   "688207.SH": {
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "688207.SH_20260609",
-   "event_date": "20260609"
+   "event_key": "688207.SH_20260610",
+   "event_date": "20260610"
   },
   "688208.SH": {
    "prev_streak": 0,
@@ -17727,7 +17727,7 @@
   },
   "688213.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688213.SH_20260514",
    "event_date": "20260514"
@@ -17741,15 +17741,15 @@
   },
   "688220.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "688220.SH_20260630",
    "event_date": "20260630"
   },
   "688221.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "688221.SH_20260427",
    "event_date": "20260427"
   },
@@ -17776,17 +17776,17 @@
   },
   "688226.SH": {
    "prev_streak": 13,
-   "streak": 0,
-   "r1": false,
+   "streak": 14,
+   "r1": true,
    "event_key": "688226.SH_20260408",
    "event_date": "20260408"
   },
   "688227.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688227.SH_20260511",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688227.SH_20260420",
+   "event_date": "20260420"
   },
   "688228.SH": {
    "prev_streak": 10,
@@ -17806,15 +17806,15 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688231.SH_20260706",
+   "event_date": "20260706"
   },
   "688232.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688232.SH_20260731",
-   "event_date": "20260731"
+   "event_date": ""
   },
   "688233.SH": {
    "prev_streak": 18,
@@ -17827,8 +17827,8 @@
    "prev_streak": 7,
    "streak": 0,
    "r1": false,
-   "event_key": "688234.SH_20260514",
-   "event_date": "20260514"
+   "event_key": "688234.SH_20260515",
+   "event_date": "20260515"
   },
   "688235.SH": {
    "prev_streak": 0,
@@ -17867,8 +17867,8 @@
   },
   "688249.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "688249.SH_20260520",
    "event_date": "20260520"
   },
@@ -17888,10 +17888,10 @@
   },
   "688256.SH": {
    "prev_streak": 11,
-   "streak": 12,
-   "r1": true,
-   "event_key": "688256.SH_20260506",
-   "event_date": "20260506"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688256.SH_20260430",
+   "event_date": "20260430"
   },
   "688257.SH": {
    "prev_streak": 18,
@@ -17916,10 +17916,10 @@
   },
   "688261.SH": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "688261.SH_20260918",
-   "event_date": "20260918"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688261.SH_20260707",
+   "event_date": "20260707"
   },
   "688262.SH": {
    "prev_streak": 18,
@@ -17996,7 +17996,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "688281.SH_20260515",
-   "event_date": ""
+   "event_date": "20260515"
   },
   "688289.SH": {
    "prev_streak": 4,
@@ -18042,21 +18042,21 @@
   },
   "688301.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "688301.SH_20260525",
    "event_date": "20260525"
   },
   "688303.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "688303.SH_20260604",
    "event_date": "20260604"
   },
   "688305.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688305.SH_20260702",
    "event_date": "20260702"
@@ -18094,7 +18094,7 @@
    "streak": 4,
    "r1": true,
    "event_key": "688312.SH_20260923",
-   "event_date": "20260923"
+   "event_date": ""
   },
   "688313.SH": {
    "prev_streak": 18,
@@ -18119,8 +18119,8 @@
   },
   "688319.SH": {
    "prev_streak": 6,
-   "streak": 0,
-   "r1": false,
+   "streak": 7,
+   "r1": true,
    "event_key": "688319.SH_20260630",
    "event_date": "20260630"
   },
@@ -18135,8 +18135,8 @@
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "688321.SH_20260715",
-   "event_date": "20260715"
+   "event_key": "688321.SH_20260716",
+   "event_date": "20260716"
   },
   "688322.SH": {
    "prev_streak": 0,
@@ -18191,15 +18191,15 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688332.SH_20260615",
+   "event_date": "20260615"
   },
   "688333.SH": {
    "prev_streak": 14,
    "streak": 15,
    "r1": true,
    "event_key": "688333.SH_20260710",
-   "event_date": "20260710"
+   "event_date": ""
   },
   "688334.SH": {
    "prev_streak": 18,
@@ -18217,7 +18217,7 @@
   },
   "688337.SH": {
    "prev_streak": 1,
-   "streak": 0,
+   "streak": 2,
    "r1": false,
    "event_key": "688337.SH_20260924",
    "event_date": "20260924"
@@ -18238,10 +18238,10 @@
   },
   "688349.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688349.SH_20260626",
-   "event_date": "20260626"
+   "event_date": ""
   },
   "688351.SH": {
    "prev_streak": 0,
@@ -18273,22 +18273,22 @@
   },
   "688359.SH": {
    "prev_streak": 14,
-   "streak": 15,
-   "r1": true,
-   "event_key": "688359.SH_20260721",
-   "event_date": "20260721"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688359.SH_20260417",
+   "event_date": "20260417"
   },
   "688361.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688361.SH_20260520",
    "event_date": "20260520"
   },
   "688362.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688362.SH_20260526",
    "event_date": "20260526"
   },
@@ -18308,22 +18308,22 @@
   },
   "688366.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688366.SH_20260708",
-   "event_date": "20260708"
+   "event_date": ""
   },
   "688368.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688368.SH_20260514",
    "event_date": "20260514"
   },
   "688371.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688371.SH_20260520",
    "event_date": "20260520"
   },
@@ -18364,8 +18364,8 @@
   },
   "688381.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688381.SH_20260506",
    "event_date": "20260506"
   },
@@ -18429,13 +18429,13 @@
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "688400.SH_20260430",
-   "event_date": "20260430"
+   "event_key": "688400.SH_20260506",
+   "event_date": "20260506"
   },
   "688401.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "688401.SH_20260422",
    "event_date": "20260422"
   },
@@ -18448,10 +18448,10 @@
   },
   "688408.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688408.SH_20260624",
-   "event_date": "20260624"
+   "event_date": ""
   },
   "688409.SH": {
    "prev_streak": 18,
@@ -18497,10 +18497,10 @@
   },
   "688428.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688428.SH_20260924",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688428.SH_20260811",
+   "event_date": "20260811"
   },
   "688432.SH": {
    "prev_streak": 10,
@@ -18511,10 +18511,10 @@
   },
   "688433.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688433.SH_20260622",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688433.SH_20260522",
+   "event_date": "20260522"
   },
   "688439.SH": {
    "prev_streak": 18,
@@ -18525,15 +18525,15 @@
   },
   "688448.SH": {
    "prev_streak": 16,
-   "streak": 17,
-   "r1": true,
-   "event_key": "688448.SH_20260708",
-   "event_date": "20260708"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688448.SH_20260709",
+   "event_date": "20260709"
   },
   "688449.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688449.SH_20260430",
    "event_date": "20260430"
   },
@@ -18609,8 +18609,8 @@
   },
   "688498.SH": {
    "prev_streak": 2,
-   "streak": 0,
-   "r1": false,
+   "streak": 3,
+   "r1": true,
    "event_key": "688498.SH_20260721",
    "event_date": "20260721"
   },
@@ -18619,21 +18619,21 @@
    "streak": 1,
    "r1": false,
    "event_key": "688499.SH_20260930",
-   "event_date": "20260930"
+   "event_date": ""
   },
   "688502.SH": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "688502.SH_20260506",
    "event_date": "20260506"
   },
   "688503.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688503.SH_20260818",
-   "event_date": "20260818"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688503.SH_20260701",
+   "event_date": "20260701"
   },
   "688505.SH": {
    "prev_streak": 4,
@@ -18688,8 +18688,8 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "688515.SH_20260511",
-   "event_date": "20260511"
+   "event_key": "688515.SH_20260603",
+   "event_date": "20260603"
   },
   "688516.SH": {
    "prev_streak": 6,
@@ -18751,20 +18751,20 @@
    "prev_streak": 14,
    "streak": 0,
    "r1": false,
-   "event_key": "688531.SH_20260430",
-   "event_date": "20260430"
+   "event_key": "688531.SH_20260506",
+   "event_date": "20260506"
   },
   "688535.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688535.SH_20260518",
-   "event_date": "20260518"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688535.SH_20260515",
+   "event_date": "20260515"
   },
   "688536.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "688536.SH_20260430",
    "event_date": "20260430"
   },
@@ -18784,10 +18784,10 @@
   },
   "688545.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688545.SH_20260512",
-   "event_date": "20260512"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688545.SH_20260612",
+   "event_date": "20260612"
   },
   "688548.SH": {
    "prev_streak": 18,
@@ -18798,10 +18798,10 @@
   },
   "688549.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688549.SH_20260806",
-   "event_date": "20260806"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688549.SH_20260609",
+   "event_date": "20260609"
   },
   "688550.SH": {
    "prev_streak": 3,
@@ -18833,14 +18833,14 @@
   },
   "688559.SH": {
    "prev_streak": 2,
-   "streak": 3,
-   "r1": true,
-   "event_key": "688559.SH_20260909",
-   "event_date": "20260909"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688559.SH_20260605",
+   "event_date": "20260605"
   },
   "688561.SH": {
    "prev_streak": 0,
-   "streak": 0,
+   "streak": 1,
    "r1": false,
    "event_key": "688561.SH_20260828",
    "event_date": "20260828"
@@ -18856,8 +18856,8 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688563.SH_20260914",
+   "event_date": "20260914"
   },
   "688566.SH": {
    "prev_streak": 3,
@@ -18882,8 +18882,8 @@
   },
   "688575.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "688575.SH_20260827",
    "event_date": "20260827"
   },
@@ -18910,8 +18910,8 @@
   },
   "688584.SH": {
    "prev_streak": 14,
-   "streak": 0,
-   "r1": false,
+   "streak": 15,
+   "r1": true,
    "event_key": "688584.SH_20260629",
    "event_date": "20260629"
   },
@@ -18954,8 +18954,8 @@
    "prev_streak": 18,
    "streak": 0,
    "r1": false,
-   "event_key": "688598.SH_20260618",
-   "event_date": "20260618"
+   "event_key": "688598.SH_20260622",
+   "event_date": "20260622"
   },
   "688599.SH": {
    "prev_streak": 18,
@@ -18973,8 +18973,8 @@
   },
   "688603.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688603.SH_20260514",
    "event_date": "20260514"
   },
@@ -18990,7 +18990,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "688608.SH_20260922",
-   "event_date": "20260922"
+   "event_date": ""
   },
   "688610.SH": {
    "prev_streak": 18,
@@ -19018,7 +19018,7 @@
    "streak": 5,
    "r1": true,
    "event_key": "688615.SH_20260731",
-   "event_date": "20260731"
+   "event_date": ""
   },
   "688617.SH": {
    "prev_streak": 0,
@@ -19029,8 +19029,8 @@
   },
   "688620.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688620.SH_20260701",
    "event_date": "20260701"
   },
@@ -19045,15 +19045,15 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688625.SH_20260615",
+   "event_date": "20260615"
   },
   "688626.SH": {
    "prev_streak": 4,
    "streak": 5,
    "r1": true,
    "event_key": "688626.SH_20260922",
-   "event_date": "20260922"
+   "event_date": ""
   },
   "688627.SH": {
    "prev_streak": 18,
@@ -19066,15 +19066,15 @@
    "prev_streak": 1,
    "streak": 0,
    "r1": false,
-   "event_key": "688628.SH_20260923",
-   "event_date": "20260923"
+   "event_key": "688628.SH_20260924",
+   "event_date": "20260924"
   },
   "688629.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688629.SH_20260424",
-   "event_date": "20260424"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688629.SH_20260629",
+   "event_date": "20260629"
   },
   "688630.SH": {
    "prev_streak": 18,
@@ -19092,8 +19092,8 @@
   },
   "688652.SH": {
    "prev_streak": 7,
-   "streak": 0,
-   "r1": false,
+   "streak": 8,
+   "r1": true,
    "event_key": "688652.SH_20260701",
    "event_date": "20260701"
   },
@@ -19113,10 +19113,10 @@
   },
   "688658.SH": {
    "prev_streak": 4,
-   "streak": 5,
-   "r1": true,
-   "event_key": "688658.SH_20260824",
-   "event_date": ""
+   "streak": 0,
+   "r1": false,
+   "event_key": "688658.SH_20260821",
+   "event_date": "20260821"
   },
   "688660.SH": {
    "prev_streak": 1,
@@ -19136,8 +19136,8 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688662.SH_20260616",
+   "event_date": "20260616"
   },
   "688663.SH": {
    "prev_streak": 18,
@@ -19150,8 +19150,8 @@
    "prev_streak": 4,
    "streak": 0,
    "r1": false,
-   "event_key": "688667.SH_20260413",
-   "event_date": "20260413"
+   "event_key": "688667.SH_20260414",
+   "event_date": "20260414"
   },
   "688668.SH": {
    "prev_streak": 18,
@@ -19176,38 +19176,38 @@
   },
   "688677.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688677.SH_20260818",
    "event_date": "20260818"
   },
   "688678.SH": {
    "prev_streak": 5,
-   "streak": 6,
-   "r1": true,
-   "event_key": "688678.SH_20260921",
-   "event_date": "20260921"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688678.SH_20260923",
+   "event_date": "20260923"
   },
   "688679.SH": {
    "prev_streak": 1,
    "streak": 2,
    "r1": false,
    "event_key": "688679.SH_20260818",
-   "event_date": "20260818"
+   "event_date": ""
   },
   "688685.SH": {
    "prev_streak": 1,
-   "streak": 2,
+   "streak": 0,
    "r1": false,
-   "event_key": "688685.SH_20260930",
-   "event_date": "20260930"
+   "event_key": "688685.SH_20260703",
+   "event_date": "20260703"
   },
   "688686.SH": {
    "prev_streak": 2,
    "streak": 0,
    "r1": false,
-   "event_key": "688686.SH_20260522",
-   "event_date": "20260522"
+   "event_key": "688686.SH_20260525",
+   "event_date": "20260525"
   },
   "688689.SH": {
    "prev_streak": 11,
@@ -19256,7 +19256,7 @@
    "streak": 13,
    "r1": true,
    "event_key": "688699.SH_20260506",
-   "event_date": "20260506"
+   "event_date": ""
   },
   "688700.SH": {
    "prev_streak": 3,
@@ -19284,7 +19284,7 @@
    "streak": 14,
    "r1": true,
    "event_key": "688708.SH_20260612",
-   "event_date": "20260612"
+   "event_date": ""
   },
   "688709.SH": {
    "prev_streak": 18,
@@ -19295,8 +19295,8 @@
   },
   "688710.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688710.SH_20260713",
    "event_date": "20260713"
   },
@@ -19312,7 +19312,7 @@
    "streak": 8,
    "r1": true,
    "event_key": "688719.SH_20260908",
-   "event_date": "20260908"
+   "event_date": ""
   },
   "688726.SH": {
    "prev_streak": 18,
@@ -19330,22 +19330,22 @@
   },
   "688729.SH": {
    "prev_streak": 7,
-   "streak": 8,
-   "r1": true,
-   "event_key": "688729.SH_20260622",
-   "event_date": "20260622"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688729.SH_20260709",
+   "event_date": "20260709"
   },
   "688733.SH": {
    "prev_streak": 3,
-   "streak": 0,
-   "r1": false,
+   "streak": 4,
+   "r1": true,
    "event_key": "688733.SH_20260611",
    "event_date": "20260611"
   },
   "688739.SH": {
    "prev_streak": 4,
-   "streak": 0,
-   "r1": false,
+   "streak": 5,
+   "r1": true,
    "event_key": "688739.SH_20260511",
    "event_date": "20260511"
   },
@@ -19358,10 +19358,10 @@
   },
   "688766.SH": {
    "prev_streak": 18,
-   "streak": 0,
-   "r1": false,
+   "streak": 19,
+   "r1": true,
    "event_key": "688766.SH_20260730",
-   "event_date": "20260730"
+   "event_date": ""
   },
   "688767.SH": {
    "prev_streak": 18,
@@ -19381,8 +19381,8 @@
    "prev_streak": 18,
    "streak": 19,
    "r1": true,
-   "event_key": "",
-   "event_date": ""
+   "event_key": "688775.SH_20260716",
+   "event_date": "20260716"
   },
   "688776.SH": {
    "prev_streak": 7,
@@ -19428,17 +19428,17 @@
   },
   "688789.SH": {
    "prev_streak": 6,
-   "streak": 7,
-   "r1": true,
-   "event_key": "688789.SH_20260506",
-   "event_date": "20260506"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688789.SH_20260430",
+   "event_date": "20260430"
   },
   "688798.SH": {
    "prev_streak": 18,
-   "streak": 19,
-   "r1": true,
-   "event_key": "688798.SH_20260831",
-   "event_date": "20260831"
+   "streak": 0,
+   "r1": false,
+   "event_key": "688798.SH_20260527",
+   "event_date": "20260527"
   },
   "688799.SH": {
    "prev_streak": 17,
