@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "date": "20260930",
+  "next_trade_date": "next_open",
+  "instrument": {
+    "code": "159531.SZ",
+    "name": "中证2000ETF",
+    "price_source": "INDEX_PROXY"
+  },
+  "market_gate": {
+    "regime": "RANGE",
+    "target_position_pct": 30.0,
+    "allowed_min_pct": 25.0,
+    "allowed_max_pct": 45.0,
+    "full_exposure_eligible": false,
+    "riskoff_count": 2,
+    "reason": "RANGE | Risk-Off=2"
+  },
+  "execution": {
+    "action": "HOLD",
+    "current_position_pct": 30.0,
+    "raw_delta_pct": 0.0,
+    "planned_delta_pct": 0.0,
+    "min_rebalance_pct": 3.0,
+    "max_single_adjust_pct": 20.0,
+    "account_size": null,
+    "close": 3107.2648,
+    "target_value": null,
+    "current_value": null,
+    "target_shares": null,
+    "trade_shares": null,
+    "trade_lots": null
+  },
+  "risk_control": {
+    "atr_window": 14,
+    "atr": 61.3462,
+    "atr_pct": 1.97,
+    "atr_multiplier": 2.0,
+    "volatility_stop": 2984.5724,
+    "risk_per_trade_pct": 1.0,
+    "logic_invalidations": [
+      "Risk-Off>=2，优先降风险",
+      "宽度5日快速恶化",
+      "中证2000收盘跌破MA20"
+    ],
+    "price_note": "ETF本地行情缺失，使用中证2000指数代理；不换算ETF份额/手数"
+  },
+  "checklist": [
+    "仓位偏差未达到调仓阈值，保持当前仓位",
+    "开盘前确认 ETF 溢折价和成交额，避免流动性明显异常时一次性成交",
+    "只按计划差额调仓；若开盘跳空超过 1.5*ATR，等待 15~30 分钟重新确认",
+    "收盘后用新的 Gate 信号复核，不因盘中情绪临时扩大仓位"
+  ]
+}

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三级行业共振 · 股票研究站点</title>
+<style>
+:root{
+  --bg:#f2f4f7; --card:#fff; --line:#e6e9ef; --ink:#1f2430; --dim:#7a8496;
+  --brand:#1a5fb4; --brand2:#3584e4; --chip:#eef3fb; --up:#d32029;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--ink);font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:1000px;margin:0 auto;padding:14px}
+a{color:var(--brand);text-decoration:none}
+.num{font-variant-numeric:tabular-nums}
+
+.head{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;
+  border-radius:12px;padding:18px 20px;box-shadow:0 2px 10px rgba(26,95,180,.22)}
+.head h1{font-size:20px;font-weight:600}
+.head .sub{font-size:13.5px;opacity:.9;margin-top:4px}
+.head .meta{font-size:12.5px;opacity:.85;margin-top:10px;padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.25);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.head .meta a,.head .meta button{font-size:13px;padding:6px 12px;border-radius:7px;
+  border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.14);color:#fff;
+  font-family:inherit;cursor:pointer}
+.head .meta a:hover,.head .meta button:hover{background:rgba(255,255,255,.28)}
+.head .meta button.on{background:#fff;color:var(--brand);font-weight:600;border-color:#fff}
+.head .meta .gap{flex:1 1 auto}
+.head .meta .lbl{opacity:.8}
+
+#days{margin-top:14px}
+.day{background:var(--card);border-radius:12px;box-shadow:0 1px 5px rgba(20,35,60,.07);
+  overflow:hidden;margin-bottom:12px}
+.dh{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:13px 16px;
+  background:linear-gradient(180deg,#f7faff,#fff);border-bottom:1px solid var(--line)}
+.dh .d{font-size:17.5px;font-weight:600;letter-spacing:.3px}
+.dh .w{font-size:13px;color:var(--brand);background:var(--chip);border-radius:6px;padding:2px 8px}
+.dh .gap{flex:1 1 auto}
+.dh .s{font-size:12.5px;color:var(--dim)}
+.dh .s b{color:var(--ink);font-weight:600}
+
+.body{padding:4px 16px 12px}
+.ind{padding:10px 0;border-bottom:1px solid var(--line)}
+.ind:last-child{border-bottom:none}
+.indh{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.indh .rk{width:22px;height:22px;flex:0 0 22px;border-radius:6px;background:var(--brand);
+  color:#fff;font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.indh .nm{font-size:16.5px;font-weight:600}
+.indh .sub{font-size:12px;color:var(--dim)}
+.indh .gap{flex:1 1 auto}
+.pill{font-size:12.5px;border-radius:6px;padding:2px 8px;background:var(--chip);color:var(--brand);white-space:nowrap}
+.pill.hot{background:#fdeaea;color:var(--up);font-weight:600}
+.pill.up{background:#fdeaea;color:var(--up)}
+.pill.dn{background:#e9f6ee;color:#1a7f45}
+
+.stk{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;padding:8px 0 6px;
+  border-top:1px dashed var(--line);margin-top:8px}
+.stk:first-of-type{border-top:none;margin-top:4px}
+.stk .nm{font-size:15px;font-weight:600;color:var(--ink)}
+.stk .code{font-size:11.5px;color:var(--dim)}
+.stk a.nm,.stk a.code{text-decoration:none}
+.stk a.nm:hover,.stk a.code:hover{text-decoration:underline;color:var(--brand)}
+.stk .gap{flex:1 1 auto}
+.stk .pc{font-size:15px;font-weight:600}
+.stk .pc.up{color:var(--up)}
+.stk .pc.dn{color:#1a7f45}
+.stk .bd{font-size:11.5px;border-radius:5px;padding:1px 6px;background:var(--chip);color:var(--brand)}
+.stk .bd.first{background:#f0f1f4;color:var(--dim)}
+.stk .meta{width:100%;font-size:12px;color:var(--dim);display:flex;flex-wrap:wrap;gap:12px}
+
+.empty{padding:28px 16px;color:var(--dim);text-align:center;font-size:15px;background:var(--card);
+  border-radius:12px}
+.foot{color:var(--dim);font-size:13px;text-align:center;padding:14px 0 26px}
+.foot p{margin-top:4px}
+
+/* 近一月均涨幅曲线 */
+.chart{margin:2px 0 8px;padding:9px 11px 7px;background:#fafbfd;border:1px solid var(--line);
+  border-radius:10px}
+.chart .ct{font-size:12.5px;color:var(--dim);display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.chart .ct .gap{flex:1 1 auto}
+.chart svg{display:block;width:100%;height:132px;margin-top:7px}
+.lg{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:7px;font-size:12.5px}
+.lg span{white-space:nowrap}
+.lg i{display:inline-block;width:13px;height:3px;border-radius:2px;margin-right:5px;
+  vertical-align:middle}
+.lg .v{color:var(--dim);margin-left:5px}
+
+@media (max-width:600px){
+  body{font-size:16px}
+  .wrap{padding:10px}
+  .dh{padding:11px 13px}
+  .dh .d{font-size:16.5px}
+  .body{padding:2px 13px 10px}
+  .indh .nm{font-size:15.5px}
+  .pill{font-size:12px;padding:2px 7px}
+  .stk{gap:3px 7px}
+  .stk .nm{font-size:14.5px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>三级行业共振</h1>
+    <div class="sub">当日同一申万三级行业 ≥2 家收盘涨停 · 按交易日倒序 · 行业榜与涨停股明细</div>
+    <div class="meta">
+      <span id="mstat">加载中…</span>
+      <span class="gap"></span>
+      <span class="lbl">显示</span>
+      <button class="daysbtn" data-n="10">最近10日</button>
+      <button class="daysbtn" data-n="20">20日</button>
+      <button class="daysbtn" data-n="0">全部</button>
+      <span class="gap"></span>
+      <a href="/">首页</a>
+      <a href="/review/">每日复盘</a>
+    </div>
+  </div>
+
+  <div id="days"></div>
+
+  <div class="foot">
+    <p>口径：涨停 = 收盘价封住涨停价（主板 10%、创业板/科创板 20%）；成分取申万三级（SW2021），已剔除 ST / 北交所。</p>
+    <p>行业按「行业均涨幅」从大到小排序；涨跌停家数与占比仅供参考。</p>
+    <p>曲线为该日排名前 5 行业的近 22 个交易日「行业均涨幅」，行业当日未达标则该日断点；虚线为零轴。</p>
+    <p>上次涨停 = 回溯 250 个交易日内上一个收盘涨停日（不含当日）；市值 = 总市值；PE 取 PE(TTM)，亏损或缺失显示 —。</p>
+    <p>数据为盘后脚本产出原文，本页不做任何改写。</p>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => Array.prototype.slice.call(document.querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let LIMIT = 10;
+
+const f2 = v => (v == null || isNaN(v)) ? '—' : Number(v).toFixed(2);
+const pct = v => (v == null || isNaN(v)) ? '—'
+  : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
+const cls = v => (v == null || isNaN(v)) ? '' : (v > 0 ? 'up' : (v < 0 ? 'dn' : ''));
+const ratio = v => (v == null || isNaN(v)) ? '—' : (Number(v) * 100).toFixed(1) + '%';
+const streak = n => (!n || n <= 1) ? '首板' : (n + ' 连板');
+
+function dstr(d){ return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6); }
+
+// 同花顺个股页（默认展示K线图）：库中代码形如 605388.SH，URL 只取 6 位数字
+const klineUrl = c => 'https://stockpage.10jqka.com.cn/' + String(c || '').split('.')[0] + '/';
+// 20260929 -> 09-29
+const ztDate = d => (d && String(d).length === 8) ? (String(d).slice(4,6) + '-' + String(d).slice(6,8)) : '—';
+
+function stockHTML(s){
+  const url = klineUrl(s.ts_code);
+  return '<div class="stk">' +
+    '<a class="nm" href="' + url + '" target="_blank" rel="noopener">' + esc(s.name) + '</a>' +
+    '<a class="code num" href="' + url + '" target="_blank" rel="noopener">' + esc(s.ts_code) + '</a>' +
+    '<span class="gap"></span>' +
+    '<span class="pc num ' + cls(s.pct_chg) + '">' + pct(s.pct_chg) + '</span>' +
+    '<span class="bd' + ((!s.streak || s.streak <= 1) ? ' first' : '') + '">' + streak(s.streak) + '</span>' +
+    '<span class="meta num">' +
+      '<span>收盘 ' + f2(s.close) + '</span>' +
+      '<span>成交 ' + f2(s.amount_yi) + ' 亿</span>' +
+      '<span>上次涨停 ' + ztDate(s.last_zt_date) + '</span>' +
+      '<span>市值 ' + f2(s.total_mv_yi) + ' 亿</span>' +
+      '<span>PE ' + f2(s.pe) + '</span>' +
+    '</span>' +
+  '</div>';
+}
+
+function industryHTML(g){
+  const pc = cls(g.avg_pct);
+  const stocks = (g.stocks || []).map(stockHTML).join('');
+  return '<div class="ind">' +
+    '<div class="indh">' +
+      '<span class="rk">' + g.rank + '</span>' +
+      '<span class="nm">' + esc(g.l3_name) + '</span>' +
+      '<span class="sub">' + esc(g.l2_name || '') + '</span>' +
+      '<span class="gap"></span>' +
+      '<span class="pill hot num">涨停 ' + g.n_zt + '</span>' +
+      '<span class="pill num">成分 ' + g.n_members + '</span>' +
+      '<span class="pill num">占比 ' + ratio(g.zt_ratio) + '</span>' +
+      '<span class="pill num">最高 ' + g.max_streak + ' 连板</span>' +
+      '<span class="pill ' + (pc || '') + ' num">均涨 ' + pct(g.avg_pct) + '</span>' +
+    '</div>' +
+    (stocks || '<div class="stk"><span class="code">无涨停股明细</span></div>') +
+  '</div>';
+}
+
+const CH_COLORS = ['#d32029', '#1a5fb4', '#e08c00', '#7c5cff', '#12a594'];
+const CH_WINDOW = 22;   // 「近一个月」按 22 个交易日取
+let MATRIX = null;
+
+function prepareMatrix(m){
+  if (!m || !m.dates || !m.dates.length) return null;
+  m._pos = {};
+  m.dates.forEach(function(d, i){ m._pos[d] = i; });
+  m._byCode = {};
+  (m.industries || []).forEach(function(r){ m._byCode[r.l3_code] = r; });
+  return m;
+}
+
+// 近一月「行业均涨幅」折线：只画当日排名前 5 的三级行业
+function chartHTML(day, mat){
+  if (!mat || !day.industries || !day.industries.length) return '';
+  const end = mat._pos[day.date];
+  if (end === undefined) return '';
+  const start = Math.max(0, end - CH_WINDOW + 1);
+  const xs = mat.dates.slice(start, end + 1);
+  if (xs.length < 3) return '';
+
+  const lines = [];
+  day.industries.slice(0, 5).forEach(function(g, k){
+    const rec = mat._byCode[g.l3_code];
+    if (!rec) return;
+    lines.push({name: g.l3_name, color: CH_COLORS[k % CH_COLORS.length],
+                vals: rec.avg.slice(start, end + 1), last: g.avg_pct});
+  });
+  if (!lines.length) return '';
+
+  let lo = Infinity, hi = -Infinity;
+  lines.forEach(function(l){
+    l.vals.forEach(function(v){
+      if (v == null) return;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    });
+  });
+  if (!isFinite(lo)) return '';
+  lo = Math.min(lo, 0);
+  hi = Math.max(hi, 0);
+  if (hi - lo < 0.5){ const mid = (hi + lo) / 2; lo = mid - 0.25; hi = mid + 0.25; }
+
+  const W = 720, H = 150, P = 8;
+  const X = i => P + (W - 2 * P) * i / (xs.length - 1);
+  const Y = v => P + (H - 2 * P) * (1 - (v - lo) / (hi - lo));
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+  const y0 = Y(0).toFixed(1);
+  svg += '<line x1="0" y1="' + y0 + '" x2="' + W + '" y2="' + y0 +
+         '" stroke="#c6cfdc" stroke-width="1" stroke-dasharray="5 5"' +
+         ' vector-effect="non-scaling-stroke"/>';
+  lines.forEach(function(l){
+    let d = '', pen = false;
+    l.vals.forEach(function(v, i){
+      if (v == null){ pen = false; return; }
+      d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1) + ' ';
+      pen = true;
+    });
+    if (!d) return;
+    svg += '<path d="' + d.trim() + '" fill="none" stroke="' + l.color +
+           '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' +
+           ' vector-effect="non-scaling-stroke"/>';
+  });
+  svg += '</svg>';
+
+  const lg = lines.map(function(l){
+    return '<span><i style="background:' + l.color + '"></i>' + esc(l.name) +
+           '<span class="v num">' + pct(l.last) + '</span></span>';
+  }).join('');
+
+  return '<div class="chart">' +
+    '<div class="ct"><span>近 1 个月行业均涨幅 · 当日前 ' + lines.length + ' 行业</span>' +
+      '<span class="gap"></span>' +
+      '<span class="num">' + ztDate(xs[0]) + ' ~ ' + ztDate(xs[xs.length - 1]) + '</span></div>' +
+    svg +
+    '<div class="lg">' + lg + '</div>' +
+  '</div>';
+}
+
+function dayHTML(d){
+  const s = d.summary || {};
+  const body = (d.industries || []).length
+    ? d.industries.map(industryHTML).join('')
+    : '<div class="ind"><div class="stk"><span class="code">当日无达标三级行业</span></div></div>';
+  return '<div class="day">' +
+    '<div class="dh">' +
+      '<span class="d num">' + dstr(d.date) + '</span>' +
+      '<span class="w">周' + esc(d.week) + '</span>' +
+      '<span class="gap"></span>' +
+      '<span class="s">全市场涨停 <b class="num">' + (s.n_zt_total || 0) + '</b> · ' +
+        '达标行业 <b class="num">' + (s.n_industries_hit || 0) + '</b> · ' +
+        '涨停股 <b class="num">' + (s.n_industry_zt_stocks || 0) + '</b></span>' +
+    '</div>' +
+    '<div class="body">' + chartHTML(d, MATRIX) + body + '</div>' +
+  '</div>';
+}
+
+async function load(){
+  $('#days').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const res = await Promise.all([
+      fetch('api/feed?limit=' + (LIMIT || 250), {cache: 'no-store'}).then(r => r.json()),
+      fetch('api/matrix', {cache: 'no-store'}).then(r => r.json()).catch(() => null),
+    ]);
+    const d = res[0];
+    MATRIX = prepareMatrix(res[1]);
+    const days = d.days || [];
+    if (!days.length){
+      $('#days').innerHTML = '<div class="empty">暂无共振数据：尚未生成任何交易日文件。</div>';
+      $('#mstat').textContent = '暂无数据';
+      return;
+    }
+    $('#days').innerHTML = days.map(dayHTML).join('');
+    $('#mstat').textContent = '共 ' + d.available + ' 个交易日 · 最新 ' + days[0].date +
+      ' · 当前显示最近 ' + days.length + ' 日';
+  } catch (err) {
+    $('#days').innerHTML = '<div class="empty">数据加载失败：' + esc(err.message) + '</div>';
+    $('#mstat').textContent = '加载失败';
+  }
+}
+
+function markBtn(){
+  $$('.daysbtn').forEach(function(b){
+    b.classList.toggle('on', Number(b.dataset.n) === LIMIT);
+  });
+}
+
+$$('.daysbtn').forEach(function(b){
+  b.addEventListener('click', function(){
+    LIMIT = Number(b.dataset.n);
+    markBtn();
+    load();
+  });
+});
+
+markBtn();
+load();
+</script>
+</body>
+</html>

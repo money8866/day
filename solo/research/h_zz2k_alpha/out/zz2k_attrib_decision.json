@@ -1,0 +1,154 @@
+{
+ "weight": {
+  "domain": "common_sample (v2)",
+  "baseline": "W0_curr",
+  "baseline_IS_ic": 0.02645638692856433,
+  "baseline_VALID_ic": 0.02123970846677248,
+  "baseline_OOS_ic": 0.005635006523607722,
+  "best_on_IS": "W8_curr_rawC",
+  "best_IS_ic": 0.10586120738770231,
+  "checks": {
+   "is_gain": true,
+   "valid_same_sign": true,
+   "oos_ge_w0": true
+  },
+  "verdict": "GO -> 采用 W8_curr_rawC",
+  "ranking": [
+   {
+    "cand": "W8_curr_rawC",
+    "IS_ic_cs": 0.10586120738770231
+   },
+   {
+    "cand": "W7_all5_sgn",
+    "IS_ic_cs": 0.08268269912476568
+   },
+   {
+    "cand": "W6_curr_pA345",
+    "IS_ic_cs": 0.05100453661963782
+   },
+   {
+    "cand": "W5_curr_pA34",
+    "IS_ic_cs": 0.04542578926356452
+   },
+   {
+    "cand": "W4_curr_pA3",
+    "IS_ic_cs": 0.03140091066065914
+   },
+   {
+    "cand": "W2_a2only",
+    "IS_ic_cs": 0.02669850233955424
+   },
+   {
+    "cand": "W0_curr",
+    "IS_ic_cs": 0.02645638692856433
+   },
+   {
+    "cand": "W1_eq",
+    "IS_ic_cs": 0.022151909416668992
+   },
+   {
+    "cand": "W3_a1only",
+    "IS_ic_cs": 0.004723237665480839
+   }
+  ]
+ },
+ "trend_filter": {
+  "baseline_IS_ic": 0.02645638692856433,
+  "baseline_IS_net30": 0.0036592205637871523,
+  "candidates": [
+   {
+    "filter": "F1_ma20",
+    "IS_ic": 0.02477872516791155,
+    "VALID_ic": 0.019923879462014005,
+    "OOS_ic": -0.002322253929323536,
+    "IS_net30": 0.00479175875999348,
+    "top20_kept": 7,
+    "checks": {
+     "ic_not_worse": false,
+     "spread_gain": false,
+     "sign_same": false
+    },
+    "go": false
+   },
+   {
+    "filter": "F2_slope",
+    "IS_ic": 0.02119262699356345,
+    "VALID_ic": 0.021083991875169277,
+    "OOS_ic": 0.0016442335001474351,
+    "IS_net30": 0.004780704529065646,
+    "top20_kept": 12,
+    "checks": {
+     "ic_not_worse": false,
+     "spread_gain": false,
+     "sign_same": true
+    },
+    "go": false
+   },
+   {
+    "filter": "F3_ret20",
+    "IS_ic": 0.021707057478113943,
+    "VALID_ic": 0.027677143669566064,
+    "OOS_ic": 0.0035525442950879826,
+    "IS_net30": -3.959440710968494e-05,
+    "top20_kept": 9,
+    "checks": {
+     "ic_not_worse": false,
+     "spread_gain": false,
+     "sign_same": true
+    },
+    "go": false
+   }
+  ],
+  "verdict": "NO-GO -> 不增加趋势过滤 (无候选同时满足 IC 不劣化 + net30 改善 + 三段同号)"
+ },
+ "coverage": {
+  "domain": "coverage_gain=full nmean; ic_ok=common_sample (v2)",
+  "baseline_IS_nmean": 626.8638497652582,
+  "baseline_IS_ic_cs": 0.02645638692856433,
+  "candidates": [
+   {
+    "mech": "M_none",
+    "IS_nmean": 1952.620178041543,
+    "IS_ic_cs": 0.10586120738770231,
+    "VALID_ic_cs": 0.08014078027083149,
+    "OOS_ic_cs": 0.04855458588736756,
+    "IS_ic_full": 0.09123744981954718,
+    "checks": {
+     "coverage_gain": true,
+     "ic_ok": true,
+     "no_sign_conflict": true
+    },
+    "go": true
+   },
+   {
+    "mech": "M_use",
+    "IS_nmean": 1181.4510385756676,
+    "IS_ic_cs": 0.08692702851830321,
+    "VALID_ic_cs": 0.07127509328759812,
+    "OOS_ic_cs": 0.038356411257160876,
+    "IS_ic_full": 0.08323498081238016,
+    "checks": {
+     "coverage_gain": true,
+     "ic_ok": true,
+     "no_sign_conflict": true
+    },
+    "go": true
+   },
+   {
+    "mech": "M_use3",
+    "IS_nmean": 628.3615023474179,
+    "IS_ic_cs": 0.05129728287439826,
+    "VALID_ic_cs": 0.04145193842182807,
+    "OOS_ic_cs": 0.021067371629089556,
+    "IS_ic_full": 0.0513088537125744,
+    "checks": {
+     "coverage_gain": false,
+     "ic_ok": true,
+     "no_sign_conflict": true
+    },
+    "go": false
+   }
+  ],
+  "verdict": "GO -> 采用 M_none,M_use"
+ }
+}

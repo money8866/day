@@ -1,0 +1,14 @@
+[Unit]
+Description=ETF 每日复盘 (FastAPI, read-only position_gate output dir)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/EtfWeb
+ExecStart=/usr/bin/python3 /var/www/EtfWeb/app.py --data /var/www/StockPick/etf --host 127.0.0.1 --port 8005
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

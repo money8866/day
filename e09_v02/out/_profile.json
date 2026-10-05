@@ -1,0 +1,20 @@
+{
+  "data_range": [
+    20210104,
+    20260930
+  ],
+  "panel_rows": 7119601,
+  "universe_rows": 6480467,
+  "total_stocks": 5780,
+  "universe_stocks": 5480,
+  "delisted_stocks": 11,
+  "board_counts": {
+    "MAIN": 3982348,
+    "GEM": 1600035,
+    "STAR": 649098,
+    "BJ": 248986
+  },
+  "n_events": 310419,
+  "n_is": 139827,
+  "n_oos": 170592
+}

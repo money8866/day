@@ -1,0 +1,20 @@
+{
+ "scan": {
+  "truncation_invariance": [
+   true,
+   "cols=2000 mismatched=none"
+  ],
+  "backward_window_proof": [
+   true,
+   "min_peak_off=5  neckline==high[peak_day]=True (n=20000)"
+  ],
+  "forward_window_isolation": [
+   true,
+   "signal/label intersection=empty"
+  ],
+  "label_columns_marked": [
+   true,
+   "unmarked=none"
+  ]
+ }
+}

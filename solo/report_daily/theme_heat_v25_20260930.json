@@ -41,7 +41,13 @@
   "invalid_short": "未来约5个交易日，热度转为明显下降、或参与上涨的股票数量开始收缩 → 主线延续的判断失效。",
   "confirm_long": "未来约20个交易日，排名保持在前十、且近20日处于前十的天数继续增加 → 中期主线地位巩固。",
   "invalid_long": "未来约20个交易日，排名持续下滑并跌出强势区、参与度同步收缩 → 中期主线地位失效。",
-  "radar": "目前仍然强，但升温速度有所放缓"
+  "radar": "目前仍然强，但升温速度有所放缓",
+  "leader_code": "688137.SH",
+  "leader_name": "近岸蛋白",
+  "leader_note": "近20日 +121.3%、连板 0 天、当日 +13.5%，主题内强度居首",
+  "anchor_code": "603259.SH",
+  "anchor_name": "药明康德",
+  "anchor_note": "大形态与主题接近（同步性 0.88）、总市值 5079 亿、近5日放量 1.05 倍、成交额居主题成员上半区"
  },
  {
   "schema_version": "V2.5.1",
@@ -85,7 +91,13 @@
   "invalid_short": "未来约5个交易日，热度转为明显下降、或参与上涨的股票数量开始收缩 → 主线延续的判断失效。",
   "confirm_long": "未来约20个交易日，排名保持在前十、且近20日处于前十的天数继续增加 → 中期主线地位巩固。",
   "invalid_long": "未来约20个交易日，排名持续下滑并跌出强势区、参与度同步收缩 → 中期主线地位失效。",
-  "radar": "目前仍然强，而且还在继续升温"
+  "radar": "目前仍然强，而且还在继续升温",
+  "leader_code": "601328.SH",
+  "leader_name": "交通银行",
+  "leader_note": "近20日 +5.3%、连板 0 天、当日 +1.7%，主题内强度居首",
+  "anchor_code": "601398.SH",
+  "anchor_name": "工商银行",
+  "anchor_note": "大形态与主题接近（同步性 0.70）、总市值 29510 亿、近5日放量 0.97 倍、成交额居主题成员上半区"
  },
  {
   "schema_version": "V2.5.1",
@@ -129,7 +141,13 @@
   "invalid_short": "未来约5个交易日，热度转为明显下降、或参与上涨的股票数量开始收缩 → 主线延续的判断失效。",
   "confirm_long": "未来约20个交易日，排名保持在前十、且近20日处于前十的天数继续增加 → 中期主线地位巩固。",
   "invalid_long": "未来约20个交易日，排名持续下滑并跌出强势区、参与度同步收缩 → 中期主线地位失效。",
-  "radar": "目前仍然强，而且还在继续升温"
+  "radar": "目前仍然强，而且还在继续升温",
+  "leader_code": "600019.SH",
+  "leader_name": "宝钢股份",
+  "leader_note": "近20日 +1.2%、连板 0 天、当日 +1.4%，主题内强度居首",
+  "anchor_code": "600010.SH",
+  "anchor_name": "包钢股份",
+  "anchor_note": "大形态与主题接近（同步性 0.82）、总市值 945 亿、近5日放量 0.83 倍、成交额居主题成员上半区"
  },
  {
   "schema_version": "V2.5.1",
@@ -173,7 +191,13 @@
   "invalid_short": "未来约5个交易日，热度转为明显下降、或参与上涨的股票数量开始收缩 → 主线延续的判断失效。",
   "confirm_long": "未来约20个交易日，排名保持在前十、且近20日处于前十的天数继续增加 → 中期主线地位巩固。",
   "invalid_long": "未来约20个交易日，排名持续下滑并跌出强势区、参与度同步收缩 → 中期主线地位失效。",
-  "radar": "目前仍然强，而且还在继续升温"
+  "radar": "目前仍然强，而且还在继续升温",
+  "leader_code": "000011.SZ",
+  "leader_name": "深物业A",
+  "leader_note": "近20日 +33.6%、连板 3 天、当日 +10.0%，主题内强度居首",
+  "anchor_code": "000002.SZ",
+  "anchor_name": "万科A",
+  "anchor_note": "大形态与主题接近（同步性 0.82）、总市值 508 亿、近5日放量 4.46 倍、成交额居主题成员上半区"
  },
  {
   "schema_version": "V2.5.1",
@@ -217,7 +241,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量不再扩大 → 加速升温未能延续。",
   "confirm_long": "未来约20个交易日，排名进入并站稳前十、持续性天数增加 → 向主线转化得到确认。",
   "invalid_long": "未来约20个交易日，仍未进入强势区且热度回落 → 加速升温失效。",
-  "radar": "最近明显升温，正在进入市场关注范围"
+  "radar": "最近明显升温，正在进入市场关注范围",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -261,7 +291,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量不再扩大 → 加速升温未能延续。",
   "confirm_long": "未来约20个交易日，排名进入并站稳前十、持续性天数增加 → 向主线转化得到确认。",
   "invalid_long": "未来约20个交易日，仍未进入强势区且热度回落 → 加速升温失效。",
-  "radar": "最近明显升温，正在进入市场关注范围"
+  "radar": "最近明显升温，正在进入市场关注范围",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -305,7 +341,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。",
   "confirm_long": "未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。",
   "invalid_long": "未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。",
-  "radar": "调整后重新回到强势区，上涨范围同步扩大"
+  "radar": "调整后重新回到强势区，上涨范围同步扩大",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -351,7 +393,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。",
   "confirm_long": "未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。",
   "invalid_long": "未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。",
-  "radar": "调整后重新回到强势区，上涨范围同步扩大"
+  "radar": "调整后重新回到强势区，上涨范围同步扩大",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -397,7 +445,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。",
   "confirm_long": "未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。",
   "invalid_long": "未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。",
-  "radar": "调整后重新回到强势区，上涨范围同步扩大"
+  "radar": "调整后重新回到强势区，上涨范围同步扩大",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -441,7 +495,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。",
   "confirm_long": "未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。",
   "invalid_long": "未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。",
-  "radar": "调整后重新回到强势区，上涨范围同步扩大"
+  "radar": "调整后重新回到强势区，上涨范围同步扩大",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -485,7 +545,13 @@
   "invalid_short": "未来约5个交易日，热度回落或上涨股票数量收缩 → 本次再启动不成立。",
   "confirm_long": "未来约20个交易日，排名维持或重回前十、持续性天数增加 → 第二轮行情成立。",
   "invalid_long": "未来约20个交易日，排名重新跌出强势区、扩散收缩 → 第二轮行情不成立。",
-  "radar": "调整后重新回到强势区，上涨范围同步扩大"
+  "radar": "调整后重新回到强势区，上涨范围同步扩大",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -529,7 +595,13 @@
   "invalid_short": "未来约5个交易日，仅少数股票上涨、上涨股票数量没有扩大 → 仍是反弹，未升级为再启动。",
   "confirm_long": "未来约20个交易日，排名回到前十并保持 → 反弹升级为再启动。",
   "invalid_long": "未来约20个交易日，排名未能回到强势区、热度重新回落 → 反弹结束。",
-  "radar": "调整后重新升温，但还没有回到强势区"
+  "radar": "调整后重新升温，但还没有回到强势区",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -575,7 +647,13 @@
   "invalid_short": "未来约5个交易日，仅少数股票上涨、上涨股票数量没有扩大 → 仍是反弹，未升级为再启动。",
   "confirm_long": "未来约20个交易日，排名回到前十并保持 → 反弹升级为再启动。",
   "invalid_long": "未来约20个交易日，排名未能回到强势区、热度重新回落 → 反弹结束。",
-  "radar": "调整后重新升温，但还没有回到强势区"
+  "radar": "调整后重新升温，但还没有回到强势区",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -621,7 +699,13 @@
   "invalid_short": "未来约5个交易日，仅少数股票上涨、上涨股票数量没有扩大 → 仍是反弹，未升级为再启动。",
   "confirm_long": "未来约20个交易日，排名回到前十并保持 → 反弹升级为再启动。",
   "invalid_long": "未来约20个交易日，排名未能回到强势区、热度重新回落 → 反弹结束。",
-  "radar": "调整后重新升温，但还没有回到强势区"
+  "radar": "调整后重新升温，但还没有回到强势区",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -665,7 +749,13 @@
   "invalid_short": "未来约5个交易日，仅少数股票上涨、上涨股票数量没有扩大 → 仍是反弹，未升级为再启动。",
   "confirm_long": "未来约20个交易日，排名回到前十并保持 → 反弹升级为再启动。",
   "invalid_long": "未来约20个交易日，排名未能回到强势区、热度重新回落 → 反弹结束。",
-  "radar": "调整后重新升温，但还没有回到强势区"
+  "radar": "调整后重新升温，但还没有回到强势区",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -709,7 +799,13 @@
   "invalid_short": "未来约5个交易日，热度或上涨股票数量回落 → 本次升温未能形成。",
   "confirm_long": "未来约20个交易日，排名进入前十并具备持续性 → 由新出现转为强势方向。",
   "invalid_long": "未来约20个交易日，热度回落且未进入强势区 → 新出现未能延续。",
-  "radar": "刚开始活跃，还需要持续性验证"
+  "radar": "刚开始活跃，还需要持续性验证",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -753,7 +849,13 @@
   "invalid_short": "未来约5个交易日，热度或上涨股票数量回落 → 本次升温未能形成。",
   "confirm_long": "未来约20个交易日，排名进入前十并具备持续性 → 由新出现转为强势方向。",
   "invalid_long": "未来约20个交易日，热度回落且未进入强势区 → 新出现未能延续。",
-  "radar": "刚开始活跃，还需要持续性验证"
+  "radar": "刚开始活跃，还需要持续性验证",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -799,7 +901,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -843,7 +951,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -887,7 +1001,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -933,7 +1053,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -977,7 +1103,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1021,7 +1153,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1065,7 +1203,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1109,7 +1253,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1153,7 +1303,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1197,7 +1353,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1241,7 +1403,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1285,7 +1453,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1329,7 +1503,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1375,7 +1555,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1419,7 +1605,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1465,7 +1657,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1509,7 +1707,13 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  },
  {
   "schema_version": "V2.5.1",
@@ -1555,6 +1759,12 @@
   "invalid_short": "未来约5个交易日，热度继续下降 → 降温仍在延续。",
   "confirm_long": "未来约20个交易日，热度与排名同步回升并重回强势区 → 可能形成二次启动。",
   "invalid_long": "未来约20个交易日，热度与排名继续下降 → 降温过程延续。",
-  "radar": "热度和排名都在下降"
+  "radar": "热度和排名都在下降",
+  "leader_code": null,
+  "leader_name": null,
+  "leader_note": null,
+  "anchor_code": null,
+  "anchor_name": null,
+  "anchor_note": null
  }
 ]

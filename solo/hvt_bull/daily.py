@@ -45,7 +45,7 @@ def _universe(loader: HvtDataLoader, trade_date: str, cfg: dict):
     if sb is None or sb.empty:
         return []
     sb = sb.copy()
-    cs = loader.query_cross_section(trade_date, fields=('ts_code', 'turnover_rate', 'amount', 'total_mv', 'vol', 'close'))
+    cs = loader.query_cross_section(trade_date, fields=('ts_code', 'turnover_rate', 'amount', 'total_mv', 'circ_mv', 'vol', 'close'))
     if cs is None or cs.empty:
         return []
     cs = cs.dropna(subset=['close'])
@@ -98,7 +98,9 @@ def _universe(loader: HvtDataLoader, trade_date: str, cfg: dict):
         if np.isfinite(avg_amt_w) and avg_amt_w < min_amt:
             continue
         out.append({'ts_code': code, 'name': name, 'small_cap': small_cap,
-                    'total_mv': float(total_mv), 'avg_amount': avg_amt_w})
+                    'total_mv': float(total_mv),
+                    'circ_mv': float(r.get('circ_mv')) if np.isfinite(r.get('circ_mv', np.nan)) else np.nan,
+                    'avg_amount': avg_amt_w})
     return out
 
 
@@ -249,12 +251,11 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     # 选股池准入：sli_v2 细分龙头 Top5 ∪ 热点主题(V2.4)全部成员
     leader_codes = _load_leader_codes(trade_date, cfg)
     allow_codes = _load_allow_codes(trade_date, cfg, leader_codes)
+    uni_all = uni  # 20261002：准入过滤前的全池快照，供「右底低吸」池外扫描（不受 sli 龙头池限制）
     if allow_codes is not None:
         n_uni = len(uni)
         uni = [u for u in uni if u['ts_code'] in allow_codes]
         print(f"[HVT-BULL] 选股池准入过滤: {n_uni} -> {len(uni)}只")
-        if not uni:
-            return {'trade_date': trade_date, 'events': []}
 
     # IGE 行业景气因子（仅参与 execution_score 排序，不做池子过滤）
     ige_map = _load_ige_map(trade_date, cfg)
@@ -292,6 +293,9 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     if trade_date in cal_all:
         cal_pos = cal_all.index(trade_date)
     win_start_date = cal_all[max(60, cal_pos - lookback_days)]
+    # 20261002 右底低吸池外扫描窗口：right_bottom 只需最近 ~105 根（含 MA60 前复权口径），
+    # 取 200 根留足余量；前复权缩放锚定序列末位（=trade_date），缩短窗口不改变判定结果。
+    rb_start_date = cal_all[max(0, cal_pos - 200)] if cal_all else hist_start
 
     # V3.6 再入 streak 基准：读取昨日报告的 BUY 池（te_buy_pool，与回测 _cand_top_mask 口径一致
     # ——连续处于每日 cand 池的决策日数，首次入池=0、连续入池+1、中断归零）
@@ -408,6 +412,89 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
         if i % 500 == 0:
             print(f"[HVT-BULL] 进度 {i}/{total}，事件 {len(events)}")
 
+    # 20261002 用户口径：右底低吸（RIGHT_BOTTOM）不受 sli_v2 龙头池/热点主题扩池准入限制——
+    # 对池外标的单独扫描，命中即单列成节（报告「I. 右底低吸信号」）并同步跟踪池
+    # （strategy_id=hvt_bull_rb）。判定直接复用 W7 的 right_bottom 九条规则
+    # （前波大涨≥25% → 回落≥10% → 反弹≥8% → 右底为近3根最低且不破左底[−2%,+8%] →
+    #  自颈线回撤≥10% → 缩量≤0.75×20日均量 → 收盘≥MA60 且 ≤MA10），口径与 W7 完全一致。
+    # 20261003 用户口径：右底低吸也必须「基于 HVT 入选」——除几何外，还须近 40 个交易日内
+    # 存在合格天量事件（detect_hvt + 天量日价格强度），窗口与主通道一致；
+    # 但「低吸买点」不套用主通道硬否决（DISTRIBUTION/突破失败等门槛针对突破交易，不适用低吸）。
+    rb_extra = []
+    if allow_codes is not None:
+        try:
+            from w7_second_wave_engine import (right_bottom as _w7_right_bottom,
+                                               _fill_ma_columns as _w7_fill_ma)
+        except Exception as _imp_err:
+            print(f"[HVT-BULL] 右底低吸判定不可用（{_imp_err}），跳过池外扫描")
+            _w7_right_bottom = None
+        if _w7_right_bottom is not None:
+            RB_MIN_CIRC_MV = 500_000.0  # 万元：流通市值 ≥50亿，与 W7 MIN_CIRC_MV 同口径
+            _n_rb_geo = 0   # 通过右底几何的池外标的数
+            _n_rb_hvt = 0   # 其中进一步满足 HVT 天量入选的
+            for u in uni_all:
+                code = u['ts_code']
+                if code in allow_codes:
+                    continue  # 池内标的已由 HVT 事件通道处理，此处只补池外
+                # 50亿市值门槛（流通市值优先，缺失回退总市值）——先于行情加载，省 IO
+                _circ = u.get('circ_mv')
+                _mv = _circ if (_circ is not None and np.isfinite(_circ)) else u.get('total_mv')
+                if _mv is None or not np.isfinite(_mv) or float(_mv) < RB_MIN_CIRC_MV:
+                    continue
+                df = loader.load(code, rb_start_date, trade_date)
+                if df is None or len(df) < 70:
+                    continue
+                ok, info = _w7_right_bottom(_w7_fill_ma(df.reset_index(drop=True)), len(df) - 1)
+                if not ok:
+                    continue
+                _n_rb_geo += 1
+                # HVT 天量入选（20261003）：近 40 个交易日内须存在合格天量事件。
+                # 排名/分位/锚点口径依赖锚点日以来全历史，故此处按 hist_start 重新加载，
+                # 与主通道 detect_hvt 的输入完全一致（rb_start_date 的 200 根不足以定型 rank）。
+                # 20261003 用户口径：右底低吸是「低吸买点」，与突破型主通道不同——天量事件
+                # 只用于确认「有真实天量」，故只用 detect_hvt + 天量日价格强度；不再套用主通道
+                # 硬否决（结构状态 DISTRIBUTION / 突破失败等门槛针对突破交易，不适用低吸）。
+                dfx = loader.load(code, hist_start, trade_date)
+                if dfx is None or len(dfx) < 260:
+                    continue
+                dfx = dfx.reset_index(drop=True)
+                _end = len(dfx) - 1
+                _s0 = int(dfx['trade_date'].searchsorted(win_start_date, side='left'))
+                _ev = None
+                for _idx in range(_end, max(60, _s0) - 1, -1):
+                    if str(dfx['trade_date'].iloc[_idx]) > trade_date:
+                        continue
+                    _cand = engine.detect_hvt(dfx, _idx)
+                    if _cand is None:
+                        continue
+                    engine.evaluate_event(dfx, _cand)
+                    if not engine.price_strength_ok(_cand):
+                        continue
+                    _ev = _cand
+                    break
+                if _ev is None:
+                    continue
+                _n_rb_hvt += 1
+                rb_extra.append({
+                    'ts_code': code, 'name': u['name'],
+                    'close': float(df.iloc[-1]['close']),
+                    'total_mv': u.get('total_mv'), 'circ_mv': u.get('circ_mv'),
+                    'rb_h0_date': str(info['rb_h0_date']), 'rb_h0_high': float(info['rb_h0_high']),
+                    'rb_left_date': str(info['rb_left_date']), 'rb_left_low': float(info['rb_left_low']),
+                    'rb_mid_date': str(info['rb_mid_date']), 'rb_mid_high': float(info['rb_mid_high']),
+                    'rb_right_low': float(info['rb_right_low']), 'rb_ratio': float(info['rb_ratio']),
+                    'rb_prior_rise': float(info['rb_prior_rise']), 'rb_retrace': float(info['rb_retrace']),
+                    'volr': float(info['rb_volr20']), 'rb_offpool': True,
+                    't0_date': str(_ev.t0_date), 't0_grade': str(_ev.hvt_grade),
+                })
+            if _n_rb_geo:
+                print(f"[HVT-BULL] 池外右底低吸：几何命中 {_n_rb_geo} 只 → "
+                      f"满足 HVT 天量入选 {_n_rb_hvt} 只")
+            rb_extra.sort(key=lambda x: -x['rb_prior_rise'])  # 前波涨幅降序：越大越符合“大涨后深调”
+            if rb_extra:
+                print(f"[HVT-BULL] 龙头池外右底低吸 {len(rb_extra)} 只: "
+                      f"{[x['ts_code'] for x in rb_extra]}")
+
     if v3_enabled:
         # V3 排序原则（V3§22）：TAIL > 期望收益 > ENTRY > 风险收益比 > 市场
         events.sort(key=lambda e: (-e.tail_score, -e.expansion_score, -e.entry_score, -e.score))
@@ -446,6 +533,11 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     }
     if theme_meta is not None:
         result['theme_expand_codes'] = sorted(theme_meta['codes'])
+    # 20261002：右底低吸（龙头池外单列）落盘。与 te/fe 池互补、互不混档，
+    # 供 run_daily_push 落 stock_pick_db strategy_id=hvt_bull_rb、报告「I.」节与下游引用。
+    if rb_extra:
+        result['rb_offpool_pool'] = rb_extra
+        result['n_rb_offpool'] = len(rb_extra)
     if te_enabled:
         result['te_enabled'] = True
         result['te_max_buy'] = int(te_cfg.get('max_buy_candidates', 3))
@@ -841,6 +933,9 @@ def _render_md(result: dict, all_events, detail_events, theme_meta=None) -> str:
     # ========== H2. 热点主题新增跟踪（V2.4 热点主题扩池纳入，独立成节） ==========
     lines.extend(_render_theme_watch(result, all_events, theme_meta))
 
+    # ========== I. 右底低吸信号（20261002 单列·不受龙头池限制） ==========
+    lines.extend(_render_right_bottom(result))
+
     # ========== 全部事件明细（含 V3 双评分分解） ==========
     lines.append('## 全部事件明细（按 TAIL > EXPANSION > ENTRY > HVT分 排序）')
     lines.append('')
@@ -944,6 +1039,53 @@ def _render_theme_watch(result: dict, all_events, theme_meta) -> list:
     if len(hits) > cap:
         lines.append(f'（仅显示前{cap}只，共{len(hits)}只；完整名单见 JSON 字段 theme_expand_codes）')
         lines.append('')
+    return lines
+
+
+def _render_right_bottom(result: dict) -> list:
+    """右底低吸信号（20261002 单列节）。
+
+    判定复用 W7 的 `w7_second_wave_engine.right_bottom` 九条规则（口径完全一致）：
+    前波大涨≥25% → H0 回落≥10% → L1→颈线反弹≥8% → 当日为近3根最低且不破左底
+    [−2%, +8%] → 自颈线回撤≥10% → 缩量≤0.75×20日均量 → 收盘≥MA60 且 ≤MA10。
+    该形态**不受 sli_v2 龙头池 / 热点主题扩池准入限制**，但 20261003 起**必须基于 HVT 入选**——
+    须近 40 个交易日内存在合格天量事件（detect_hvt + 天量日价格强度），故表中附 T0（天量日）；
+    低吸买点不套用主通道硬否决（DISTRIBUTION/突破失败等门槛针对突破交易，不适用低吸）。
+    池外命中一并列示并同步跟踪池（strategy_id=hvt_bull_rb）。数据源：result['rb_offpool_pool']。
+    """
+    pool = result.get('rb_offpool_pool') or []
+    if not pool:
+        return []
+    lines = [f'## I. 右底低吸信号｜HVT-BULL-RIGHT_BOTTOM（单列 · 不受龙头池限制，{len(pool)}只）', '']
+    lines.append('说明：前波大涨 → 回落 → 双底；右底缩量（≤0.75×20日均量）、不破左底（前低）当日即低吸买点，'
+                 '收盘 ≤MA10 且在 MA60 上方。本节为**龙头池外**独立扫描结果（不受 sli_v2 龙头池/'
+                 '热点主题扩池准入限制），市值门槛与 W7 同口径（流通市值≥50亿）；'
+                 '并**基于 HVT 入选**——须近 40 个交易日内存在合格天量事件（T0，天量日价格强度合格；'
+                 '低吸买点不套用主通道硬否决），已同步跟踪池 hvt_bull_rb。')
+    lines.append('')
+    lines.append('| # | 代码 | 名称 | 现价 | 左底(前低) | 颈线 | 右底/左底 | 量比 | 前波涨幅 | T0(天量日) | 流通市值(亿) | 来源 |')
+    lines.append('|---|---|---|---|---|---|---|---|---|---|---|---|')
+    for i, x in enumerate(pool, 1):
+        def _n(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return 0.0
+        _circ = x.get('circ_mv')
+        _circ_e = (_n(_circ) / 10000.0) if (_circ is not None and _n(_circ) > 0) else None
+        _t0 = str(x.get('t0_date') or '-')
+        _t0g = str(x.get('t0_grade') or '')
+        _t0c = f"{_t0}({_t0g})" if (_t0g and _t0 != '-') else _t0
+        lines.append(f"| {i} | {x.get('ts_code')} | {x.get('name')} | {_n(x.get('close')):.2f} "
+                     f"| {_n(x.get('rb_left_low')):.2f} | {_n(x.get('rb_mid_high')):.2f} "
+                     f"| {_n(x.get('rb_ratio')):.3f} | ×{_n(x.get('volr')):.1f} "
+                     f"| {_n(x.get('rb_prior_rise')) * 100:.1f}% "
+                     f"| {_t0c} "
+                     f"| {('%.1f' % _circ_e) if _circ_e else '-'} | 龙头池外 |")
+    lines.append('')
+    lines.append('操作：右底低吸买点，可按计划分批建仓；放量（量比≥1.2）站上颈线＝转突破/二波，可加仓。'
+                 '失效：收盘跌破左底（前低）离场。')
+    lines.append('')
     return lines
 
 

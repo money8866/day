@@ -107,6 +107,30 @@ def _theme_watch_section(md_text: str):
     return out if len(out) > 1 else []
 
 
+def _right_bottom_section(md_text: str):
+    """抽取报告的「④ 右底低吸信号」节（### ④ 右底低吸信号｜W7-RIGHT_BOTTOM…）整节。
+
+    该节独立列出「前波大涨 → 回落 → 双底」的右底低吸买点（不受 sli 龙头池/热点主题扩池限制），
+    邮件 AI 指令按「今日可操作榜/C池」组织，会漏掉它，故原样接进邮件正文。
+    节标题为 ###（三级），至下一个任意级别标题止；其间父节的「优先=/操作口径/形态分布」
+    尾部说明不属本小节，遇之即截断。
+    """
+    out, hit = [], False
+    for ln in md_text.splitlines():
+        if ln.startswith('#') and '右底低吸信号' in ln:
+            hit, out = True, [ln]
+            continue
+        if hit and ln.startswith('#'):
+            break
+        if hit:
+            if ln.startswith('优先=') or ln.startswith('形态分布'):
+                break
+            out.append(ln)
+    while out and not out[-1].strip():   # 去尾部空行，保留段内空行（表格前需空行）
+        out.pop()
+    return out if len(out) > 1 else []
+
+
 SYSTEM_PROMPT = (
     '你是A股短线交易执行助理。严格基于用户提供的量化报告数据输出，'
     '禁止编造任何数据、价格、新闻或消息面；股票名称与代码必须严格引用报告原文。'
@@ -114,11 +138,14 @@ SYSTEM_PROMPT = (
     '\n- 报告中 T120/ENTRY/HVT/吸收/生命/空间/加速/RS/基本面/DRisk/总分 等均为0-100评分，'
     '**不是股价**，绝对禁止把它们当作价格输出；'
     '\n- 报告中的【现价】【触发价】【MA20】是真实股价（元）：触发价=原策略买点触发位'
-    '（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位；MIDLINE_HOLD 不破中位=放量长阳日最高价），'
+    '（BREAKOUT_RETEST 回踩买点=放量突破日收盘=回踩位；MIDLINE_HOLD 不破中位=放量长阳日最高价；'
+    'RIGHT_BOTTOM 右底低吸=双底颈线即中间高点），'
     '可直接引用，但禁止自行计算、修改或四舍五入任何价格；'
     '\n- **执行状态优先于 W7 总分**：报告「W7 二波·今日执行状态」已把标的分为三档，'
     '必须严格照抄报告给出的状态，禁止因总分高就把 TRIGGER_WATCH/PULLBACK_WATCH 写成可立即买入：'
     '\n  · EXECUTION＝已站上触发价且量比≥1.2、结构未破坏，可按原仓位规则执行；'
+    '\n    （RIGHT_BOTTOM 右底低吸为 EXECUTION 的例外形态：买点＝当日右底本身，现价低于颈线属正常，'
+    '缩量不破左底即成立，写"右底低吸买点，可分批建仓"；防线＝收盘跌破左底/前低）'
     '\n  · EXECUTION_WAIT_VOLUME＝已站上触发价但量比未达 1.2，'
     '**禁止写成"可买入/已确认买入"**，只能写"已进入价格执行区，待量能确认"；'
     '\n  · TRIGGER_WATCH＝现价仍低于触发价（距触发 ≤3%），只能写"等放量站上触发价XX.XX（量比≥1.2）"，'
@@ -126,6 +153,7 @@ SYSTEM_PROMPT = (
     '\n  · PULLBACK_WATCH＝距触发位 >3%，仍在回踩/未突破，只能写"观察，等重新站上关键位并满足量能"；'
     '\n- 量能阀门恒为量比≥1.2，任何情况下禁止放宽或省略；报告标的的形态状态'
     '（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/BREAKOUT_RETEST=已突破；MIDLINE_HOLD=未突破缩量回踩；'
+    'RIGHT_BOTTOM=前波大涨后双底右底、缩量不破左底的低吸买点；'
     '其余=未突破）只用于补充措辞，不得用来改变上述执行状态；'
     '\n- 巨量日（量比≥3）或单日涨幅>10%不追，只写回踩方案。'
     '\n\n输出要求：'
@@ -136,7 +164,9 @@ SYSTEM_PROMPT = (
     '【可执行（EXECUTION）】报告中 EXECUTION 与 EXECUTION_WAIT_VOLUME 标的逐只单独成行，'
     '按报告顺序从1开始连续编号，禁止用"统一规则+合并价格列表"的省略写法；每行格式：'
     '"序号. 代码 名称｜状态：EXECUTION（或 EXECUTION_WAIT_VOLUME）｜现价XX.XX、触发价XX.XX，'
-    '收盘跌回触发价XX.XX下方离场，失效位XX.XX"；'
+    '收盘跌回触发价XX.XX下方离场，失效位XX.XX"'
+    '（RIGHT_BOTTOM 右底低吸改为："…｜状态：EXECUTION（右底低吸）｜现价XX.XX、颈线XX.XX，'
+    '右底缩量不破左底即成立、可分批建仓，放量站上颈线转突破，失效位＝左底（前低）XX.XX"）；'
     'EXECUTION_WAIT_VOLUME 的操作必须写"待量比≥1.2确认后再执行"；无 EXECUTION 时该节写"无"→'
     '【等待触发（TRIGGER_WATCH）】逐只一句"放量站上触发价XX.XX（量比≥1.2）才触发，不追价"→'
     '【等待回踩（PULLBACK_WATCH）】逐只一句"距触发XX.XX%，观察，等重新站上关键位"→'
@@ -293,6 +323,10 @@ def main():
     tw = _theme_watch_section(md_text)
     if tw:
         header += tw
+        header.append('')
+    rb = _right_bottom_section(md_text)
+    if rb:
+        header += rb
         header.append('')
     header.append('---')
     header.append(f'*W7 Second Wave V4.2 · {datetime.now().strftime("%Y-%m-%d %H:%M")} 自动推送*')

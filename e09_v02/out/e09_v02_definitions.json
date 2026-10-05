@@ -1,0 +1,165 @@
+{
+  "study": "E09-V02",
+  "title": "A股 启动 → 缩量消化 → 二次放量突破 事件研究（预注册）",
+  "frozen_at": "2026-10-02",
+  "frozen_before_viewing_outcomes": true,
+  "verdict_allowed": ["ROBUST", "PROMISING", "FRAGILE", "NO EDGE"],
+
+  "data": {
+    "source": "项目现有 Tushare 本地缓存，未更换数据源",
+    "db": "D:\\mystock\\cache_daily\\stock_data.db",
+    "tables_used": ["daily_cache", "daily_basic_cache", "index_daily_cache"],
+    "panel": "D:\\mystock\\hve_research\\data\\panel.parquet（由上述缓存构建，已通过 Look-ahead 审计）",
+    "requested_range": {"IS": "2018-01-01~2023-12-31", "OOS": "2024-01-01~最新"},
+    "actual_range": {"start": 20210104, "end": 20260930},
+    "deviation_note": "daily_cache 最早交易日为 2021-01-04；stk_factor_pro 虽自 1990 年起但 2023 年前仅覆盖 ~80 只股票，不可用于全市场。故 IS 实际为 2021-01-04~2023-12-31（3.0 年），OOS 为 2024-01-01~2026-09-30（2.75 年）。spec 要求的 2018 起点无法满足，如实披露。",
+    "is_end": 20231231,
+    "is_actual": "2021-01-04 ~ 2023-12-31",
+    "oos_actual": "2024-01-01 ~ 2026-09-30",
+    "universe_stocks": 5480,
+    "total_stocks": 5780,
+    "delisted_stocks": 11,
+    "survivorship_bias": "HIGH —— 缓存中退市股票仅 11 只，样本几乎不含退市股，真实收益只会更低",
+    "boards_included": ["MAIN", "GEM", "STAR", "BJ"],
+    "boards_note": "spec 未要求排除北交所，故纳入；BJ 流动性差、涨跌幅 30%，结果单列备查"
+  },
+
+  "universe_filter": {
+    "exclude_st": true,
+    "exclude_delist": false,
+    "min_obs_days": 60,
+    "exclude_bad_bars": "vol<=0 或 close<=0 或 high<low 或 pct_chg 缺失"
+  },
+
+  "event_definition": {
+    "S_start_day": {
+      "ret_1d_pct": ">= 3.0",
+      "volume_ratio": "Volume[S] / MA20_Volume[S] >= 1.5  （MA20 含当日）",
+      "price": "Close[S] > MA20[S]  （MA20 含当日）",
+      "note": "全部条件在 S 日收盘后即可判定，无未来函数"
+    },
+    "consolidation_window": {
+      "L_primary": 3,
+      "L_grid": [2, 3, 4],
+      "note": "L=3 为中位主定义，预先冻结，不根据 OOS 结果挑选；L=5 仅作稳健性扰动"
+    },
+    "volume_contraction": {
+      "primary": 0.70,
+      "formula": "Mean(Volume[S+1..S+L]) / Volume[S] <= 0.70",
+      "grid": [0.60, 0.70, 0.80],
+      "note": "预注册扰动，禁止依据 OOS 选择"
+    },
+    "structure_intact": {
+      "primary_drawdown": 0.05,
+      "formula": "Min(Low[S+1..S+L]) >= Close[S] * 0.95",
+      "grid": [0.03, 0.05, 0.07],
+      "note": "回撤 3%/5%/7% 仅作稳健性扰动"
+    },
+    "structure_damage_labels_only": [
+      "是否跌破MA20", "是否跌破启动日Low", "是否跌破启动日实体中位", "是否跌破启动日Close"
+    ],
+    "confirm_day_B": {
+      "primary_window": "[S+L+1, S+10]",
+      "primary_reason": "缩量窗口必须在入场时已完整观察到，否则使用入场后才发生的成交量，违反 §37.7 禁止未来信息",
+      "literal_spec_window": "[S+2, S+10]",
+      "literal_note": "spec §11 字面口径；当 L=4 时 B 可能落在缩量窗内，构成未来函数，故仅作对照变体，不作为主口径",
+      "B1_price": "Close[B] > High[S]",
+      "B2_volume": "Close[B] > High[S] AND Volume[B]/MA20_Volume[B] >= 1.2",
+      "B3_strong_volume": "Close[B] > High[S] AND Volume[B]/MA20_Volume[B] >= 1.5",
+      "selection_rule": "窗口内首个满足条件的交易日"
+    },
+    "versions": {
+      "E09-A": "启动 + 缩量 + 结构保持 + B1 价格突破",
+      "E09-B": "启动 + 缩量 + 结构保持 + B2 放量突破",
+      "E09-C": "启动 + 缩量 + 结构保持 + B3 强放量突破",
+      "note": "三个版本一次性冻结，禁止事后挑选表现最好的一档作为正式定义"
+    }
+  },
+
+  "outcomes": {
+    "S_entry_horizons": [1, 3, 5, 10, 20],
+    "B_entry_horizons": [1, 3, 5, 10],
+    "return_def": "后复权收盘价之比；S 与 B 分开统计，不混合",
+    "mfe": "区间最高价 / 入场价 - 1",
+    "mae": "区间最低价 / 入场价 - 1",
+    "excess": "个券收益 - 同期全市场等权收益（同一日历窗口）；另提供中位数口径超额作为严格基准",
+    "entry_price_primary": "信号确认日收盘价",
+    "entry_price_alt": "次日开盘价（敏感性）"
+  },
+
+  "costs_bp": [0, 15, 30, 50],
+  "cost_primary_bp": 30,
+  "cost_note": "往返成本；主口径 30bp；必须同时输出 gross 与 net",
+
+  "benchmarks": {
+    "A": "全A随机交易日（同日随机股票，等数量）",
+    "B": "满足启动日三条件但不具备完整 E09 结构的样本",
+    "C": "与 E09 样本在 市值分位 / MOM5 / MOM20 / Volume Ratio / Market Regime / Year 上分层匹配"
+  },
+
+  "null_models": {
+    "Null1": "随机抽取相同数量 股票×日期",
+    "Null2": "在 (年份 × 动量分位 × 量比分位 × 市场状态) 层内随机重抽，保持分布",
+    "Null3": "把真实 E09 日期在同一股票内随机平移 ±60 个交易日"
+  },
+
+  "statistics": {
+    "metrics": ["Mean", "Median", "Win Rate", "t-stat", "Bootstrap 95% CI"],
+    "bootstrap_times": 5000,
+    "cluster_bootstrap": "按 ts_code 聚类抽样（事件存在股票聚集）",
+    "multiple_testing": "Benjamini-Hochberg FDR，输出 raw p 与 adjusted p"
+  },
+
+  "market_regime": {
+    "index": "000001.SH 上证指数",
+    "Bull": "Index > MA20 > MA60",
+    "Bear": "Index < MA20 < MA60",
+    "Neutral": "其他"
+  },
+
+  "size_groups": {
+    "primary": "20 日均成交额的当日横截面分位三分组（Small/Mid/Large）—— 全样本可用",
+    "validation": "真实 total_mv 三分组（daily_basic_cache 仅 2023-01 起可用，仅作校验）",
+    "note": "total_mv 在 2021-2022 缺失，故主口径用成交额分位代理"
+  },
+
+  "parameter_stability_grid": {
+    "start_ret_pct": [2.5, 3.0, 3.5, 4.0],
+    "start_volume_ratio": [1.3, 1.5, 1.8, 2.0],
+    "contraction": [0.60, 0.70, 0.80],
+    "L": [2, 3, 4, 5],
+    "max_drawdown": [0.03, 0.05, 0.07],
+    "rule": "仅用于鲁棒性；禁止依据 OOS 表现重新选择正式参数"
+  },
+
+  "momentum_models": {
+    "A": "Momentum (MOM5/MOM10/MOM20)",
+    "B": "Momentum + Volume",
+    "C": "Momentum + Volume + E09",
+    "D": "Momentum + Volume + E09 + Market Regime",
+    "key_step": "B → C（E09 是否提供超越简单量价因子的独立信息）"
+  },
+
+  "mechanism_groups": {
+    "G1": "启动 + 缩量 + 结构保持 + 突破",
+    "G2": "启动 + 缩量 + 结构破坏 + 突破",
+    "G3": "启动 + 非缩量 + 结构保持 + 突破",
+    "G4": "启动 + 非缩量 + 结构破坏 + 突破",
+    "question": "真正重要的是 缩量 / 结构保持 / 二次突破 / 还是组合"
+  },
+
+  "event_cluster": {
+    "VersionA": "允许同一股票全部事件",
+    "VersionB": "同一股票相邻事件至少间隔 10 个交易日",
+    "report": ["unique_stocks", "events_per_stock", "top1_stock_contribution", "top5_stock_contribution"]
+  },
+
+  "prohibitions_honored": [
+    "未查看 OOS 即冻结全部定义与阈值",
+    "不把缩量等同于卖压衰减，只陈述统计关系",
+    "不把形态解释为主力行为",
+    "不使用未来信息定义启动日",
+    "不使用确认日数据预测启动日收益",
+    "不删除失败样本，不挑选成功案例"
+  ]
+}

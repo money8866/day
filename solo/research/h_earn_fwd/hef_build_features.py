@@ -77,13 +77,13 @@ def _ind_at(pack, dates_int):
             np.where(ok, l2[jj], 'UNKNOWN'))
 
 
-def main():
+def main(events_path=None, out_path=None, offsets=None):
     cal = load_calendar()
-    offs = PREREG['prediction_offsets']
+    offs = tuple(offsets) if offsets else PREREG['prediction_offsets']
     lg('PREREG offsets %s primary %s' % (offs, PREREG['primary_offset']))
 
     # ---------------- forecast units: (ts, target T) ----------------
-    ev = pd.read_parquet(os.path.join(DATA, 'events.parquet'))
+    ev = pd.read_parquet(events_path or os.path.join(DATA, 'events.parquet'))
     ev['ts_code'] = ev['ts_code'].astype(str)
     ev['end_date'] = ev['end_date'].astype(str)
     ev['ann'] = ev['ann'].astype(str)
@@ -599,7 +599,7 @@ def main():
     f = f.loc[~leak].reset_index(drop=True)
 
     # ---------------- save + coverage ----------------
-    feat_path = os.path.join(DATA, 'features_company.parquet')
+    feat_path = out_path or os.path.join(DATA, 'features_company.parquet')
     f.to_parquet(feat_path, index=False)
     lg('saved %s rows %d cols %d' % (feat_path, len(f), f.shape[1]))
     cov_spots = ['L_np_sq', 'np_yoy', 'np_yoy_med8', 'gm_trend', 'ocf_np',

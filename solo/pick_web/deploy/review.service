@@ -1,0 +1,14 @@
+[Unit]
+Description=Review 每日复盘 (FastAPI, read-only report dir)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/Review
+ExecStart=/usr/bin/python3 /var/www/Review/app.py --reports /var/www/StockPick/reports --host 127.0.0.1 --port 8003
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -11,6 +11,8 @@
           daily_cache           OHLCV / vol / pct_chg（均线、量能、ATR）
           daily_basic_cache     换手率、量比、总市值、PE_TTM、PB、股息率
           fina_indicator_cache  ROE、营收/净利同比、毛利率、现金流比、负债率
+  tushare_quant 复盘  D:\\mystock\\report_daily\\Final_Self_{date}.md
+          （tushare_quant.py 当日产出，原文照录为报告末段；无产出则跳过）
 
 打分口径：
   技术面 100 = 趋势结构30 + 量价配合25 + 位置空间20 + 动能15 + 风险健康10
@@ -54,6 +56,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PICK_DB = os.environ.get('PICK_DB_PATH', os.path.join(BASE_DIR, 'picks_db', 'stock_picks.db'))
 MARKET_DB = os.environ.get('PICK_MARKET_DB', r'D:\mystock\cache_daily\stock_data.db')
 REPORT_DIR = os.path.join(BASE_DIR, 'report_daily')
+TQ_REPORT_DIR = os.environ.get('TQ_REPORT_DIR', r'D:\mystock\report_daily')  # tushare_quant.py 产出目录
 
 MAIL_CLI = r'C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd'
 MAIL_TO = os.environ.get('SIGNAL_REVIEW_MAIL_TO', 'stock1975@qq.com')
@@ -185,6 +188,22 @@ def load_fina(codes: list[str], trade_date: str) -> dict[str, dict]:
     df = df.sort_values(['ts_code', 'end_date'])
     last = df.groupby('ts_code').tail(1)
     return {r['ts_code']: r.to_dict() for _, r in last.iterrows()}
+
+
+def load_tq_review(trade_date: str) -> tuple[str, str] | None:
+    """读取 tushare_quant.py 当日复盘产出 Final_Self_{date}.md。
+
+    返回 (来源文件名, 正文)；无产出返回 None（fail-soft，不影响复核报告主体）。
+    """
+    path = os.path.join(TQ_REPORT_DIR, 'Final_Self_%s.md' % trade_date)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            text = f.read().strip()
+    except OSError:
+        return None
+    return (os.path.basename(path), text) if text else None
 
 
 # ──────────────────────────── 指标计算 ────────────────────────────
@@ -575,6 +594,18 @@ def build_markdown(trade_date: str, sigs: list[dict], data_date: str) -> tuple[s
               '财务数据为最近一期公告值，存在滞后。',
               '- 剔除名单仅代表未通过本复核口径，不代表个股基本面恶化。',
               '']
+
+    # 末段：tushare_quant 每日复盘（20261003 用户要求，原文照录；无产出则跳过）
+    _tq = load_tq_review(trade_date)
+    if _tq:
+        _tq_src, _tq_body = _tq
+        lines += ['## 四、tushare_quant 每日复盘（大盘 · 主题 · ETF · 中长线池）', '',
+                  '> 数据源：report_daily/%s（tushare_quant.py 当日产出，原文照录）' % _tq_src, '',
+                  _tq_body, '']
+    else:
+        print('[信号复核] 未找到 tushare_quant 当日复盘（%s），跳过末段'
+              % os.path.join(TQ_REPORT_DIR, 'Final_Self_%s.md' % trade_date))
+
     return '\n'.join(lines), '优选 %d / 观察 %d / 剔除 %d' % (len(t1), len(t2), len(t3))
 
 

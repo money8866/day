@@ -34,6 +34,11 @@ echo =============================================
 python solo\market_analysis.py
 echo.
 
+echo [Step 2.5/7] 中证2000ETF仓位管理...
+echo =============================================
+python -m solo.position_gate.daily --save-plan
+echo.
+
 echo [Step 3/7] ETF分析（引用主题）...
 echo =============================================
 rem python solo\etf_quant_theme.py
@@ -72,6 +77,11 @@ python solo\volume_surge_select.py
 
 echo =============================================
 python solo\tushare_quant.py
+
+echo [Step 5.4/7] 三级行业共振选股（当日涨停 ≥2 家的三级行业）...
+echo =============================================
+REM 依赖 daily_cache（上一步 tushare_quant 已写入当日行情），故必须排在此处
+python -X utf8 solo\l3_resonance_scanner.py
 echo.
 echo [Step 6/7] 汇总输出...
 echo =============================================

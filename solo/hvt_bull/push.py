@@ -499,11 +499,29 @@ def _theme_watch_section(md_text: str):
     return '', []
 
 
+def _right_bottom_section(md_text: str):
+    """抽取报告中的「右底低吸信号」节（RIGHT_BOTTOM），返回 (标题, 正文行)。
+
+    该节列出龙头池外独立扫描命中的右底低吸标的（不受 sli_v2 龙头池/热点主题扩池准入限制，
+    strategy_id=hvt_bull_rb）；邮件决策速览表按 HVT 事件动作分池、会漏掉它，故单独接进邮件。
+    """
+    for k, v in _split_sections(md_text).items():
+        if 'RIGHT_BOTTOM' in k:
+            body = list(v)
+            while body and not body[0].strip():   # 去首尾空行，保留段内空行（表格前需空行）
+                body.pop(0)
+            while body and not body[-1].strip():
+                body.pop()
+            return k.lstrip('#').strip(), body
+    return '', []
+
+
 def _compose_email(md_text: str, ai_text: str, trade_date: str) -> str:
-    """邮件正文组装：一句话清单置顶 → 决策速览表 → 热点主题新增跟踪 → AI 白话复盘"""
+    """邮件正文组装：一句话清单置顶 → 决策速览表 → 热点主题新增跟踪 → 右底低吸 → AI 白话复盘"""
     facts = _load_trigger_facts(trade_date)
     head, body, rest = _extract_one_liner(_strip_ai_headings(ai_text))
     tw_head, tw_body = _theme_watch_section(md_text)
+    rb_head, rb_body = _right_bottom_section(md_text)
     parts = [f'# {trade_date} HVT-BULL 天量牛股决策简报', '']
     if body:
         parts += [f'## {head}', ''] + body + ['']
@@ -511,6 +529,8 @@ def _compose_email(md_text: str, ai_text: str, trade_date: str) -> str:
               _build_decision_table(md_text, facts), '']
     if tw_body:
         parts += [f'## {tw_head}', ''] + tw_body + ['']
+    if rb_body:
+        parts += [f'## {rb_head}', ''] + rb_body + ['']
     parts += ['## 白话复盘', '', rest]
     return '\n'.join(parts)
 

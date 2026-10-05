@@ -78,8 +78,6 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
 .wrbar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--brand2),var(--brand));border-radius:4px}
 .wrbar span{position:relative;z-index:1;font-size:11px;padding-left:6px;font-variant-numeric:tabular-nums}
 .warn{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:10px}
-.reportbox{width:100%;height:calc(100vh - 268px);min-height:620px;border:1px solid var(--line);
-  border-radius:12px;background:#fff;display:block}
 .note{color:var(--dim);font-size:12px;padding:12px 14px;line-height:1.7}
 .empty{text-align:center;color:var(--dim);padding:40px 16px;font-size:13.5px}
 .foot{text-align:center;color:var(--dim);font-size:11.5px;padding:16px 8px 26px}
@@ -100,6 +98,7 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
     <h1>选股信号查询</h1>
     <div class="sub">按交易日查历史落库信号 · 叠加 T+3 跟踪收益与策略胜率</div>
     <div class="meta" id="meta">加载中…</div>
+    <div style="font-size:11.5px;margin-top:6px"><a href="/review/" style="color:#fff">每日复盘 »</a>　<a href="/news/" style="color:#fff">资讯与热度 »</a></div>
   </div>
 
   <div class="bar">
@@ -112,7 +111,6 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
   <div class="tabs">
     <button class="tab on" data-tab="list">信号明细</button>
     <button class="tab" data-tab="stat">策略胜率</button>
-    <button class="tab" data-tab="report">复盘报告</button>
   </div>
 
   <div id="tab-list">
@@ -149,15 +147,6 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
     </table></div></div>
     <div class="note">胜率主口径为 <b>ret_1d &gt; 0</b>（全量样本可用）；3日/5日胜率随回填推进样本逐步增加，已标注样本数；<b>20日均值</b>需回填满 20 个交易日才有值，覆盖样本最少。达标/止损为跟踪状态统计。未以「最大浮盈」作为胜率口径，避免最大值期望偏差。<br>
       <b>注意样本不可比</b>：3日/5日胜率只覆盖已回填满对应天数的较早批次，与全量样本不是同一批票，不能直接横向比较「拿得越久越好」。当前全量 1 日胜率 34.0%，而「有 3 日样本」那一批（n=142）自身的 1 日胜率是 56.3%——差异主要来自批次构成，而非持有期长短。</div>
-  </div>
-
-  <div id="tab-report" style="display:none">
-    <div class="bar" style="margin-top:0">
-      <select id="rdate"></select>
-      <button id="ropen">新窗口打开</button>
-    </div>
-    <div id="r-warn"></div>
-    <iframe id="rframe" class="reportbox" title="复盘报告"></iframe>
   </div>
 
   <div class="foot" id="foot"></div>
@@ -368,31 +357,7 @@ async function loadStat() {
     sorted.map(r => row(r, false)).join('');
 }
 
-// ── 复盘报告（tushare_quant.py 每日生成的 Final_Self_<date>.html）──
-let RPT_LOADED = false;
-const rptUrl = d => 'api/report' + (d ? '?date=' + d : '');
-
-async function loadReports() {
-  if (RPT_LOADED) return;
-  try {
-    const rs = (await jget('api/reports')).reports;
-    if (!rs.length) {
-      $('#r-warn').innerHTML = '<div class="warn">报告目录为空：尚未生成任何复盘报告。</div>';
-      $('#rdate').innerHTML = '<option value="">（暂无）</option>';
-      $('#rframe').src = rptUrl('');
-      RPT_LOADED = true;
-      return;
-    }
-    opt($('#rdate'), rs.map(r => ({v: r.date, t: r.date + '（' + r.size_kb + ' KB · ' + r.mtime + '）'})), '最新一期');
-    $('#rdate').value = rs[0].date;
-    $('#rframe').src = rptUrl(rs[0].date);
-    RPT_LOADED = true;
-  } catch (err) {
-    $('#r-warn').innerHTML = '<div class="warn">报告列表加载失败：' + esc(err.message) + '</div>';
-    RPT_LOADED = true;
-  }
-}
-
+// ── 复盘报告已独立为单独入口：/review/ ──
 $('#date').addEventListener('change', e => { state.date = e.target.value; loadList(); });
 $('#strategy').addEventListener('change', e => { state.strategy = e.target.value; loadList(); });
 $('#scope').addEventListener('change', loadStat);
@@ -413,13 +378,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   const tab = t.dataset.tab;
   $('#tab-list').style.display = tab === 'list' ? '' : 'none';
   $('#tab-stat').style.display = tab === 'stat' ? '' : 'none';
-  $('#tab-report').style.display = tab === 'report' ? '' : 'none';
-  if (tab === 'report') loadReports();
 }));
-$('#rdate').addEventListener('change', e => { $('#rframe').src = rptUrl(e.target.value); });
-$('#ropen').addEventListener('click', () => {
-  window.open(rptUrl($('#rdate').value), '_blank');
-});
 
 boot().catch(err => {
   $('#meta').textContent = '加载失败：' + err.message;

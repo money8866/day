@@ -165,6 +165,45 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
         print(f'[RUN-PUSH] hvt_bull_fe 写入失败(不影响推送): {e}')
 
 
+def _record_right_bottom_to_db(trade_date: str, report: dict):
+    """右底低吸（龙头池外单列）独立落库：strategy_id=hvt_bull_rb
+
+    20261002 用户口径：右底低吸不受 sli_v2 龙头池/热点主题扩池准入限制，独立扫描并单列成节
+    （报告「I. 右底低吸信号」）。该池当日收盘即低吸买点（现价即买区），故 action 统一记
+    'RIGHT_BOTTOM'；与前两池 hvt_bull_te（TE 执行池）/ hvt_bull_fe（第一梯队）互不混档。
+    stop_price 取结构失效位=左底（前低，收盘跌破即离场）；其余右底结构字段经 record_picks
+    自动打包进 indicators（不改表结构）。
+    """
+    if record_picks is None or not report:
+        return
+    try:
+        pool = report.get('rb_offpool_pool') or []
+        if not pool:
+            print('[RUN-PUSH] rb_offpool_pool 为空（当日无龙头池外右底低吸），跳过落库')
+            return
+        rows = []
+        for i, it in enumerate(pool, 1):
+            try:
+                rise = float(it.get('rb_prior_rise') or 0.0) * 100
+                ratio = float(it.get('rb_ratio') or 0.0)
+                volr = float(it.get('volr') or 0.0)
+                mve = float(it.get('circ_mv') or 0.0) / 10000.0
+            except (TypeError, ValueError):
+                rise, ratio, volr, mve = 0.0, 0.0, 0.0, 0.0
+            rows.append(dict(it, rank_no=i, action='RIGHT_BOTTOM',
+                             stop_price=it.get('rb_left_low'),
+                             reason=(f"右底低吸：前波涨幅{rise:.1f}%、右底/左底{ratio:.3f}、"
+                                     f"缩量{volr:.2f}×20日均量、流通市值{mve:.1f}亿")))
+        if PICK_DB_PATH:
+            os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
+        n = record_picks('hvt_bull_rb', 'HVT-BULL 右底低吸（龙头池外单列）', rows,
+                         pick_date=trade_date)
+        print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
+              f'(strategy=hvt_bull_rb pick_date={trade_date})')
+    except Exception as e:
+        print(f'[RUN-PUSH] hvt_bull_rb 写入失败(不影响推送): {e}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--date', default=None)
@@ -178,6 +217,7 @@ def main():
     report = run_daily(trade_date=trade_date)
     _record_picks_to_db(trade_date, report)
     _record_first_echelon_to_db(trade_date, report)
+    _record_right_bottom_to_db(trade_date, report)
     push_daily_report(trade_date=trade_date)
 
 

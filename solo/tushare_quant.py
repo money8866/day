@@ -92,6 +92,34 @@ DOUBAO_MODEL = os.getenv("DOUBAO_MODEL", "ark-code-latest")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+_V24_MAP_CACHE = None
+
+
+def _load_v24_map_raw():
+    """加载 V2.4 生产映射原始 JSON，进程内缓存（避免同一文件被反复解析）。
+
+    文件：cache_daily/theme_stock_map_latest.json —— 即 V2.4 主题分析的当日产物
+    （每日另存 theme_stock_map_v2_{date}.json，latest 为当日副本）。
+    结构：{themes: {主题: [成员...]}, stocks: {代码: {name, industry, themes, concepts}}}
+    注意：V2.4 只覆盖 35 个主题 / 约 3000 只，非全市场；读取失败返回 {}（fail-soft）。
+    """
+    global _V24_MAP_CACHE
+    if _V24_MAP_CACHE is not None:
+        return _V24_MAP_CACHE
+    _V24_MAP_CACHE = {}
+    json_path = os.path.join(
+        os.path.dirname(BASE_DIR), "cache_daily", "theme_stock_map_latest.json"
+    )
+    if not os.path.exists(json_path):
+        return _V24_MAP_CACHE
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            _V24_MAP_CACHE = json.load(f) or {}
+    except (json.JSONDecodeError, OSError):
+        _V24_MAP_CACHE = {}
+    return _V24_MAP_CACHE
+
+
 def _load_theme_stock_map_from_json():
     """直接从 JSON 文件加载主题-个股映射。
 
@@ -102,17 +130,8 @@ def _load_theme_stock_map_from_json():
     stock_basic_industry = {}
     stock_concepts = {}
 
-    json_path = os.path.join(
-        os.path.dirname(BASE_DIR), "cache_daily", "theme_stock_map_latest.json"
-    )
-
-    if not os.path.exists(json_path):
-        return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
-
-    try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    data = _load_v24_map_raw()
+    if not data:
         return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
 
     themes = data.get("themes", {}) or {}
@@ -1167,6 +1186,93 @@ def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
     except Exception:
         pass
     
+    return result
+
+
+# =========================
+# 双底调整到位（右底低吸）检测 —— 口径完全复用 W7/HVT 的 right_bottom 九条硬条件
+# =========================
+# 20261003：突破股池选股主轴由「放量突破」改为「一波大涨后双底调整到位」。
+# 判定直接调用 w7_second_wave_engine.right_bottom（HVT 龙头池外右底低吸亦复用同一函数），
+# 三处口径完全一致：前波涨幅≥25% → 回落≥10% → 颈线反弹≥8% → 右底为近3根最低
+# → 不破左底[−2%,+8%] → 自颈线回撤≥10% → 缩量≤0.75×20日均量
+# → 收盘≥MA60 且 MA60 不弱 → 收盘≤MA10（低吸位置）。
+_w7_right_bottom_fn = None
+_w7_fill_ma_fn = None
+try:
+    from w7_second_wave_engine import (
+        right_bottom as _w7_right_bottom_fn,
+        _fill_ma_columns as _w7_fill_ma_fn,
+    )
+except Exception as _rb_imp_err:
+    print(f"[双底股池] W7 双底判定不可用：{_rb_imp_err}")
+
+
+def detect_right_bottom(ts_code, trade_date=None):
+    """「一波大涨后双底调整到位」检测（返回结构与 W7 right_bottom 对齐）。
+
+    返回 dict（未命中时 dbl_hit=False，其余为 0）：
+      dbl_hit / dbl_h0_high / dbl_left_low / dbl_mid_high / dbl_right_low
+      / dbl_ratio(右底÷左底) / dbl_prior_rise(前波涨幅) / dbl_retrace(自颈线回撤)
+      / dbl_volr20(右底缩量比) / dbl_h0_date / dbl_left_date / dbl_mid_date
+    """
+    result = {
+        "dbl_hit": False,
+        "dbl_h0_high": 0.0, "dbl_left_low": 0.0, "dbl_mid_high": 0.0,
+        "dbl_right_low": 0.0, "dbl_ratio": 0.0, "dbl_prior_rise": 0.0,
+        "dbl_retrace": 0.0, "dbl_volr20": 0.0,
+        "dbl_h0_date": "", "dbl_left_date": "", "dbl_mid_date": "",
+    }
+    if _w7_right_bottom_fn is None:
+        return result
+    try:
+        end_date = str(trade_date or TRADE_DATE)
+        start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=400)).strftime('%Y%m%d')
+        df = sc.cached_daily(ts_code, start_date, end_date)
+        if df is None or df.empty:
+            return result
+        df['trade_date'] = df['trade_date'].astype(str)
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        mask = df['trade_date'] == end_date
+        if not mask.any():
+            return result
+        df = df.iloc[:mask.idxmax() + 1].reset_index(drop=True)
+        # 几何需要「检测日前 45 根找左侧主高 + 其前 60 根算前波涨幅」，至少 ~130 根
+        if len(df) < 130:
+            return result
+        # 前复权对齐（与 detect_breakout 同口径）：几何比值与均线须与行情软件一致
+        try:
+            adj_df = sc.cached_adj_factor(ts_code, start_date, end_date)
+            if adj_df is not None and not adj_df.empty:
+                adj_map = adj_df.set_index('trade_date')['adj_factor']
+                ratio = df['trade_date'].map(adj_map).ffill().bfill()
+                anchor = float(ratio.iloc[-1])
+                if anchor and anchor > 0:
+                    ratio = ratio / anchor
+                    for _col in ('open', 'high', 'low', 'close'):
+                        df[_col] = (df[_col] * ratio).round(4)
+        except Exception:
+            pass
+        filled = _w7_fill_ma_fn(df)
+        ok, info = _w7_right_bottom_fn(filled, len(filled) - 1)
+        if not ok or not info:
+            return result
+        result.update({
+            "dbl_hit": True,
+            "dbl_h0_high": float(info['rb_h0_high']),
+            "dbl_left_low": float(info['rb_left_low']),
+            "dbl_mid_high": float(info['rb_mid_high']),
+            "dbl_right_low": float(info['rb_right_low']),
+            "dbl_ratio": float(info['rb_ratio']),
+            "dbl_prior_rise": float(info['rb_prior_rise']),
+            "dbl_retrace": float(info['rb_retrace']),
+            "dbl_volr20": float(info['rb_volr20']),
+            "dbl_h0_date": str(info['rb_h0_date']),
+            "dbl_left_date": str(info['rb_left_date']),
+            "dbl_mid_date": str(info['rb_mid_date']),
+        })
+    except Exception:
+        pass
     return result
 
 
@@ -4096,6 +4202,55 @@ def build_ige_adj_map(trade_date):
         if pd.notna(_v):
             _map[_c] = float(_v)
     return _map
+
+
+def build_industry_map():
+    """加载全市场「所属行业」映射 {ts_code: industry}（主题字段兜底用）。
+
+    背景（20261003）：主题字段来自 theme_stock_map_latest.json（约 3000 只、且只认
+    当日热点主题 Top10 并集）；双底池改为全市场独立扫描后，大量标的既不在该映射内、
+    或所属主题未进当日热点，主题会整列为空，报告无从展示。此处用 stock_cache 的
+    全市场 stock_basic 行业做兜底，保证「主题」字段至少有板块归属。
+    数据缺失时返回 {}（fail-soft，不影响主流程）。
+    """
+    try:
+        from stock_cache import load_stock_basic
+        _sb = load_stock_basic()
+        if _sb is None or len(_sb) == 0 or 'industry' not in _sb.columns:
+            print("[双底股池] 警告: 无本地 stock_basic 行业数据，主题兜底不可用")
+            return {}
+        _map = {}
+        for _c, _i in zip(_sb['ts_code'], _sb['industry']):
+            _cs, _is = str(_c).strip(), str(_i).strip()
+            if _cs and _i is not None and _is and _is.lower() != 'nan':
+                _map[_cs] = _is
+        return _map
+    except Exception as e:
+        print(f"[双底股池] 警告: 所属行业映射加载失败 {e}，主题兜底不可用")
+        return {}
+
+
+def build_stock_theme_index():
+    """{ts_code: [主题名, ...]} —— 直接取 V2.4 已建立的「个股 ↔ 主题」对照关系。
+
+    V2.4 生产映射（cache_daily/theme_stock_map_v2_{date}.json）的 stocks[code] 里本就带
+    themes 字段，这就是现成对照，无需再扫描 themes 反推。此处只是把它取出来，供全市场
+    独立扫描的双底池在「所属主题未进当日热点」时兜底展示（仍注明未入热点）。
+    V2.4 未覆盖的票（不在其 35 个主题宇宙内）不会出现在索引里。
+    """
+    try:
+        _stocks = _load_v24_map_raw().get("stocks", {}) or {}
+        _idx = {}
+        for _c, _info in _stocks.items():
+            if not isinstance(_info, dict):
+                continue
+            _tls = [str(_t).strip() for _t in (_info.get("themes") or []) if str(_t).strip()]
+            if _tls:
+                _idx[_c] = _tls
+        return _idx
+    except Exception as e:
+        print(f"[双底股池] 警告: V2.4 主题对照索引构建失败 {e}")
+        return {}
 
 
 def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0,
@@ -7894,7 +8049,8 @@ def _build_theme_advice_feed(trade_date):
 
     数据源 = report_daily/theme_heat_v25_{date}.json，经 _load_theme_evolution() 读取。
     只描述「主题热度正在往哪里移动」，不含个股、不含买卖建议：
-      · ◆ 主题雷达   —— 状态｜边际状态｜主题｜人话，按状态分组、组内按 Heat 降序
+      · ◆ 主题雷达   —— 状态分组，组内按 (边际状态, 人话) 归并后只写一次人话
+                        （边际/人话是「状态级」描述，逐只重复属冗余）
       · ◆ 重点解读   —— 非降温状态的 Heat 头部主题：当前状态 + 支持证据 +
                         确认条件/失效条件（短期约5日、中期约20日严格分开）
       · ◆ 正在降温   —— 只列名字，不展开
@@ -7941,17 +8097,28 @@ def _build_theme_advice_feed(trade_date):
                        ('IMPROVING', 'FLAT', 'DETERIORATING')) + "。",
             "本段只描述「主题热度正在往哪里移动」，不预测涨跌幅与收益率，也不构成买卖建议。"]
 
-    # ◆ 主题雷达（状态 ｜ 边际状态 ｜ 主题 ｜ 人话）
+    # ◆ 主题雷达（状态分组；同一「边际·人话」的主题合并为一段，人话只写一次）
+    # 20261003 精简：边际/人话是「状态级」描述（同一状态下除 LEADING 有 2 种人话外
+    # 其余全部相同），逐只重复纯属冗余 → 按 (边际, 人话) 归并后再输出。
+    # COOLING 不在此列（另有"◆ 正在降温"单独一行）；空状态固定输出"（无）"，
+    # 保证下游报告模板的取值是确定性的。
     feed.append("")
-    feed.append("◆ 主题雷达（状态｜边际｜主题（人话））")
+    feed.append("◆ 主题雷达（分组：主题名（边际·人话）；同一「边际·人话」的主题已合并）")
     for s in order:
+        if s == 'COOLING':
+            continue
         sel = [r for r in rows if r.get('state') == s]
         if not sel:
+            feed.append(f"{info[s][1]}{info[s][0]}：（无）")
             continue
-        cells = "｜".join(
-            f"{r['theme']}（{(minfo.get(r.get('marginal')) or ('', ''))[0] or '-'}·{r.get('radar') or '-'}）"
-            for r in sel)
-        feed.append(f"{info[s][1]} {info[s][0]}（{len(sel)}个）：{cells}")
+        _merged = {}
+        for r in sel:
+            _key = ((minfo.get(r.get('marginal')) or ('', ''))[0] or '-',
+                    r.get('radar') or '-')
+            _merged.setdefault(_key, []).append(r['theme'])
+        cells = "｜".join(f"{'、'.join(_names)}（{_lab}·{_radar}）"
+                          for (_lab, _radar), _names in _merged.items())
+        feed.append(f"{info[s][1]}{info[s][0]}：{cells}")
 
     # ◆ 重点主题解读（非降温状态各取 Heat 头部，合计不超过 8 个）
     cap = {'LEADING': 3, 'ACCELERATING': 2, 'RELAUNCH': 2, 'REBOUND': 2,
@@ -8788,29 +8955,48 @@ def run(target_date=None, simple_mode=False):
 
             if hist is None or len(hist) < 80:
                 continue
-            #print(f"[{idx+1}/{total}] {ts_code}")
-            ok = strategy(
-                hist,
-                ts_code,
-                emotion_stage,
-                total_mv=row.get('total_mv', 0),
-                p0_enabled=_p0_on
-            )
-            
-            if ok:
 
-                result.append({
-                    '代码': ts_code,
-                    '名称': row.get('name', ''),
-                    '现价': row.get('close', 0),
-                    '涨跌幅': row.get('pct_chg', 0),
-                    '成交额': row.get('amount', 0),
-                    '总市值（亿元）': row.get('total_mv', 0)/10000,
-                    'total_market_cap': row.get('total_mv', 0) * 10000,  # 转换为元
-                    'market_cap': row.get('total_mv', 0) * 10000,       # 兼容字段
-                })
+            # ============================================================
+            # 20261003：候选来源改为「全市场独立双底扫描」。
+            # 原 strategy() 是「放量突破」口径的强股前置过滤（总市值≥80亿、60日
+            # 振幅、均线多头、不涨停等），挑的是"高位突破强股"；而双底是"大涨后
+            # 深调、右底低吸"，两者语义互斥——实跑证实当日全市场双底命中集合与
+            # strategy() 候选池零重叠，只要双底检测还挂在 strategy() 下游就必然
+            # 空池。故此处不再调用 strategy()。
+            # 主题共振同样不再作准入（仅作排名加分，见 _apply_pool_rank_score）。
+            # 保留本池既有硬约束：总市值≥80亿 / 排除北交所 / 排除 ST / 排除今日涨停。
+            # ============================================================
+            if (row.get('total_mv', 0) or 0) / 10000 < 80:
+                continue
+            if ts_code.startswith('1') or ts_code.startswith('2'):      # 北交所
+                continue
+            _nm = str(row.get('name', ''))
+            if _nm.upper().startswith('ST') or _nm.upper().startswith('*ST'):
+                continue
+            _is_cyb_kcb = (ts_code.startswith('3') or ts_code.startswith('688')
+                           or ts_code.startswith('689'))
+            _zt_line = 1.198 if _is_cyb_kcb else 1.098
+            if len(hist) >= 2 and float(hist['close'].iloc[-2]) > 0:
+                if float(hist['close'].iloc[-1]) / float(hist['close'].iloc[-2]) >= _zt_line:
+                    continue                                            # 今日已涨停 → 低吸无买点
 
-                print("✅ 命中突破:", ts_code, row.get('name', ''))
+            _dbl_row = detect_right_bottom(ts_code)
+            if not _dbl_row.get('dbl_hit'):
+                continue
+
+            result.append({
+                '代码': ts_code,
+                '名称': row.get('name', ''),
+                '现价': row.get('close', 0),
+                '涨跌幅': row.get('pct_chg', 0),
+                '成交额': row.get('amount', 0),
+                '总市值（亿元）': row.get('total_mv', 0)/10000,
+                'total_market_cap': row.get('total_mv', 0) * 10000,  # 转换为元
+                'market_cap': row.get('total_mv', 0) * 10000,       # 兼容字段
+                '双底结构': _dbl_row,                                # 双底几何（下游直接复用）
+            })
+
+            print("✅ 命中双底:", ts_code, row.get('name', ''))
                
         except Exception as e:
 
@@ -8834,6 +9020,15 @@ def run(target_date=None, simple_mode=False):
     if not result_df.empty:
         result_df = filter_by_top_themes(result_df, mode='resonance')
 
+    # 20261003：全市场扫描后主题常为空（映射未覆盖 / 所属主题未进当日热点），
+    # 用所属行业兜底，保证报告第7段「主题」字段有内容可写。
+    _industry_map = build_industry_map()
+    if _industry_map:
+        print(f"[双底股池] 所属行业兜底映射已加载 {len(_industry_map)} 只")
+    _theme_index = build_stock_theme_index()
+    if _theme_index:
+        print(f"[双底股池] V2.4 个股↔主题对照索引已加载 {len(_theme_index)} 只")
+    
 
     # =========================
     # 突破股池：统一评分 + 二波形态 + 筹码
@@ -8893,11 +9088,18 @@ def run(target_date=None, simple_mode=False):
             tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
             # 基本面 Bull 评分（无则回退 details，均无视为数据不足）
             _bull_rc = bull_score_map.get(str(ts_code).split('.')[0].zfill(6), (0, ''))
+            # 20261003：主题展示三级兜底 —— 当日热点主题 → V2.4 个股↔主题对照 → 所属行业
+            _industry_name = _industry_map.get(str(ts_code).strip(), '')
+            _v24_theme_str = '/'.join(_theme_index.get(str(ts_code).strip(), [])[:3])
+            _theme_disp = theme_name or (
+                f"{_v24_theme_str}（未入当前热点主题）" if _v24_theme_str
+                else (f"{_industry_name}（未入当前热点主题）" if _industry_name else "未匹配主题"))
             
             stock_data = {
                 '代码': ts_code, '名称': name, '现价': today_close,
                 '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
-                '所属主题': theme_name, '整合评分': integrated_score, '失败概率': failure_prob,
+                '所属主题': theme_name, '所属行业': _industry_name, '主题展示': _theme_disp,
+                '整合评分': integrated_score, '失败概率': failure_prob,
                 '推荐理由': recommendation,
                 'Alpha评分': _bull_rc[0] if _bull_rc[0] else details.get('Alpha评分', 0),
                 'Alpha信号': _bull_rc[1] or details.get('Alpha信号', ''),
@@ -8922,6 +9124,9 @@ def run(target_date=None, simple_mode=False):
                 '距MA10_pct': _calc_dist_ma(df, 10),
                 '距MA20_pct': _calc_dist_ma(df, 20),
                 '近20日涨幅_pct': _calc_pct_n(df, 20),
+                # 20261003：候选阶段已扫过全市场双底，此处按当前 row 携带几何
+                # （必须在本循环内取 row，下游循环无 row 变量）
+                '双底结构': (row.get('双底结构') if isinstance(row.get('双底结构'), dict) else {}),
             }
             ranked_stocks.append(stock_data)
         except Exception as e:
@@ -8955,86 +9160,72 @@ def run(target_date=None, simple_mode=False):
             s['失败概率'] = calc_t5_breakout_failure_risk(
                 get_hist_data(s['代码']), s.get('评分详情', {}))
             s['评分详情']['失败概率模型'] = 'T+5突破有效性风险模型（连续2日守位口径）'
+
+            # 双底调整到位（右底低吸）—— 本池主口径（20261003）
+            # 候选阶段已对全市场扫过双底，几何已挂在本只 s 上，直接复用避免重复计算
+            _dbl = s.get('双底结构')
+            if not isinstance(_dbl, dict) or not _dbl.get('dbl_hit'):
+                _dbl = detect_right_bottom(s['代码'])
+            s['双底命中'] = bool(_dbl.get('dbl_hit'))
+            s['双底结构'] = _dbl
         except Exception:
             s['突破信号'] = ''; s['突破评分'] = 0; s['突破类型'] = ''; s['距阻力_pct'] = 0
             s['二波信号'] = '非二波形态'; s['二波评分'] = 0
+            s['双底命中'] = False; s['双底结构'] = {}
             s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
 
     # ====================================================================
-    # IGE 行业弹性硬过滤：三级行业 ige_adj < IGE_ADJ_MIN 的股票直接剔除
-    # ige_adj 是三级行业级指标（同行业成分股同值），该过滤等价于
-    # 「只在高景气行业里选股」；无 IGE 覆盖的股票一并剔除（与 hvt_bull 口径一致）。
-    # 取不到当日 IGE 产出则整体跳过（fail-soft）。
-    #
-    # 2026-09-28 位置调整：原先放在「每主题保留失败概率最低3只」之后，导致每个
-    # 主题先按失败概率挑出3只、再被 IGE 砍掉，主题没有第二次挑选机会；小池子
-    # （0928 仅4只）叠加 23.1% 的历史留存率会被整体清零。现前移到 top3 之前，
-    # 语义变为「先在高景气行业里选股，再按失败概率取每主题3只」。
+    # 20261003：原「IGE 行业弹性硬过滤(ige_adj≥75)」已移除。
+    # 该过滤是「放量突破」口径下"只在高景气行业里选股"的闸门，与双底低吸口径
+    # 冲突——双底标的多处于调整充分的非热门行业，叠加该闸门会重现
+    # 「候选池与双底命中集合零重叠 → 空池」的问题。行业弹性不再作硬门槛。
+    # （build_ige_adj_map / IGE_ADJ_MIN 保留定义，供其他池与排查复用。）
     # ====================================================================
-    ige_adj_map = build_ige_adj_map(TRADE_DATE)
-    if ige_adj_map:
-        before_ige = len(ranked_stocks)
-        _cut_low = 0
-        _cut_miss = 0
-        _ige_pass = []
-        for s in ranked_stocks:
-            _v = ige_adj_map.get(str(s.get('代码', '')).strip())
-            if _v is None:
-                _cut_miss += 1
-                continue
-            if _v < IGE_ADJ_MIN:
-                _cut_low += 1
-                continue
-            _ige_pass.append(s)
-        ranked_stocks = _ige_pass
-        print(f"[突破股池] IGE 硬过滤(ige_adj≥{IGE_ADJ_MIN:.0f}): {before_ige} -> {len(ranked_stocks)} 只"
-              f" (低弹性剔除{_cut_low}只 / 无IGE覆盖剔除{_cut_miss}只)")
+    # ====================================================================
+    # 双底调整到位兜底门槛（20261003）：候选阶段已按「全市场独立双底扫描」准入，
+    # 正常情况下此处不会再剔除任何票，保留作一致性校验（若上游有票未携带双底
+    # 几何则在此兜底判定）。口径完全复用 W7/HVT 的 right_bottom 九条硬条件；
+    # 无命中即空池（允许为空，如实提示）。
+    # ====================================================================
+    _before_dbl = len(ranked_stocks)
+    ranked_stocks = [s for s in ranked_stocks if s.get('双底命中')]
+    print(f"[双底股池] 双底调整到位门槛校验: {_before_dbl} -> {len(ranked_stocks)} 只")
+    if not ranked_stocks:
+        print("[双底股池] 今日无双底调整到位标的（空池，不落库）")
 
-    # 每个主题只保留失败概率最低的3只（口径=上面的T+5风险模型，与展示一致）
-    theme_groups = {}
-    for s in ranked_stocks:
-        theme = s['所属主题']
-        theme_groups.setdefault(theme, []).append(s)
-    filtered_stocks = []
-    for theme, stocks in theme_groups.items():
-        filtered_stocks.extend(sorted(stocks, key=lambda x: x['失败概率'])[:3])
-    ranked_stocks = filtered_stocks
+    # 20261003：原「每个主题只保留失败概率最低的3只」已移除——该规则建立在
+    # 「候选池按主题分组」的假设上；本池已改为全市场独立双底扫描，主题不再是
+    # 准入条件（仅作排名加分），若仍按主题分组会把无主题标签的双底票强行压缩到3只。
+    # 去重与截断统一交由最终「双底排名分」排序决定。
 
-    # 过滤掉假突破的股票
-    before_filter = len(ranked_stocks)
-    ranked_stocks = [s for s in ranked_stocks if '假突破' not in s.get('突破信号', '')]
-    after_filter = len(ranked_stocks)
-    if before_filter != after_filter:
-        print(f"[突破股池] 过滤假突破: {before_filter} -> {after_filter} 只")
+    # 20261003：原「过滤假突破」已移除——假突破判定属于放量突破口径，
+    # 本池选股主轴已改为双底调整到位（低吸买点），不再以突破形态作否决。
 
     # ====================================================================
-    # 强势股池硬过滤优化
+    # 双底股池硬过滤（沿用原强势股池口径，20261003 迁移）
     # 1. 近20日涨幅 ≤ 80%  —— 涨幅透支后进场即被套
     # 2. 距MA20 ≤ 30%      —— 远离均线表示追高过度
-    # 3. 距MA10 ≥ 0%      —— 跌破MA10表示趋势走弱
+    # （原「距MA10 ≥ 0」已移除：双底调整到位的硬条件本就要求收盘 ≤MA10，
+    #   即右底必然在 MA10 下方，该条与低吸口径直接冲突，会清零全池。20261003）
     # ====================================================================
     before_strong_filter = len(ranked_stocks)
     strong_pass = []
-    strong_filtered_reasons = {'近20日涨幅>80%': 0, '距MA20>30%': 0, '距MA10<0%': 0}
+    strong_filtered_reasons = {'近20日涨幅>80%': 0, '距MA20>30%': 0}
     for s in ranked_stocks:
         pct_20d = s.get('近20日涨幅_pct', 0) or 0
         dist_ma20 = s.get('距MA20_pct', 0) or 0
-        dist_ma10 = s.get('距MA10_pct', 0) or 0
         if pct_20d > 80:
             strong_filtered_reasons['近20日涨幅>80%'] += 1
             continue
         if dist_ma20 > 30:
             strong_filtered_reasons['距MA20>30%'] += 1  
             continue
-        if dist_ma10 < 0:
-            strong_filtered_reasons['距MA10<0%'] += 1
-            continue
         strong_pass.append(s)
     ranked_stocks = strong_pass
     after_strong_filter = len(ranked_stocks)
     if before_strong_filter != after_strong_filter:
         reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
-        print(f"[强势股池优化] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
+        print(f"[双底股池] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
 
     # =========================
     # Chip Alpha 注入（突破股池）
@@ -9052,21 +9243,20 @@ def run(target_date=None, simple_mode=False):
             s['ChipSuggestionReason'] = _reason
 
     # ====================================================================
-    # 突破池排名分 RankScore —— 排序口径统一（v2 修正版）
-    # 旧口径直接按「整合评分」排序，而 整合评分 = 基础裸分 × 主题层级系数 × 共振系数
-    # 再经软天花板压缩。共振系数会把分数压掉过半（例 300628 亿联网络
-    # 基础裸分 77.9 → 整合评分 18.7），导致「非突破形态 + 77% 失败概率」的票
-    # 占据第1名，真正「即将突破」的票排最后，与本池「突破」定位不符。
-    # 新口径：以未受系数污染的基础裸分（=原始整合评分）为主导，
-    # 叠加突破质量门控与 T+5 失败概率修正。
-    #
-    # v2 修正（回测归因驱动，样本 601579.SH 会稽山 20260901）：
-    #   旧版把「有效突破 +8」当作奖励，等于系统性偏袒"已突破/已充分定价"的高位票，
-    #   而 0901 当日处于「二波启动、尚未突破」状态的会稽山被一刀切判为
-    #   "非突破形态 -12" 压到池尾 —— 实际该股此后 11 个交易日 +46%。
-    #   故本版把"是否已延伸"纳入门控：已突破的降权，贴阻力位待突破的升权。
-    #   原「二波形态修正」项因阈值(≥50/+3、≥70/+6)与 detect_wave2_reversal
-    #   实际分数尺度(7~40)不匹配、历史快照 92 个样本命中数恒为 0，已移除。
+    # 双底池排名分 RankScore —— 排序口径（v3：双底调整到位版，20261003）
+    # 池定位由「放量突破」改为「一波大涨后双底调整到位」，故原「突破质量门控」
+    # （假突破/有效突破/即将突破/距阻力位）整体作废——它衡量的是"突破前夜"，
+    # 与本池的低吸买点语义相反（低吸必然在 MA10 下方、不可能贴着突破位）。
+    # 新口径：以未受系数污染的基础裸分（=原始整合评分，共振系数会压掉过半）为主导，
+    # 叠加「双底几何质量」修正，从四个维度刻画"大涨 → 深调 → 右底到位"的成色：
+    #   ① 前波涨幅：H0 相对其前 60 根最低的涨幅 —— "一波大涨"的幅度；
+    #   ② 右底贴合：右底/左底比值 —— 越贴近 1 越标准（不破左底且不过高）；
+    #   ③ 右底缩量：当日量/前20日均量 —— 越缩量说明抛压越枯竭；
+    #   ④ 上行空间：颈线（触发位）距现价的幅度 —— 站上颈线后的空间；
+    #     以及自颈线回撤深度（调整更充分）。
+    # T+5 失败概率不再参与本池排序：该模型口径是"突破后连续2日守位"，
+    # 对低吸买点不适用（与 W7 引擎对 RIGHT_BOTTOM 豁免 dist_risk 同理）；
+    # 失败概率仍照常计算并展示，仅作风险参考。
     # ====================================================================
     def _apply_pool_rank_score(_s):
         _base = float(_s.get('原始整合评分', 0) or 0)
@@ -9074,32 +9264,54 @@ def run(target_date=None, simple_mode=False):
             _base = float(_s.get('整合评分', 0) or 0)
         _adj = 0.0
         _reasons = []
+        _d = _s.get('双底结构', {}) or {}
 
-        # 1) 突破质量门控：让排名与本池「突破」定位对齐，
-        #    并用「距阻力位距离」区分"突破前夜"与"远离阻力/已延伸"
-        _btype = str(_s.get('突破类型', ''))
-        _bsc = float(_s.get('突破评分', 0) or 0)
-        _dist = float(_s.get('距阻力_pct', 0) or 0)   # 负数=尚在阻力位下方
-        if _btype == '假突破':
-            _adj -= 25; _reasons.append('假突破-25')
-        elif _btype == '有效突破' or _bsc >= 70:
-            # 已突破=已定价，不奖励（甚至小幅降权，避免追高已延伸票）
-            _adj -= 5; _reasons.append('已突破(已延伸)-5')
-        elif _btype == '即将突破':
-            _adj += 6; _reasons.append('即将突破+6')
-        elif abs(_dist) < 8:
-            # 形态未成但紧贴阻力位 → 突破前夜，优先关注
-            _adj += 6; _reasons.append('贴阻力位(突破前夜)+6')
+        _rise = float(_d.get('dbl_prior_rise', 0) or 0)   # 前波涨幅
+        _ratio = float(_d.get('dbl_ratio', 0) or 0)       # 右底/左底
+        _volr = float(_d.get('dbl_volr20', 0) or 0)       # 右底缩量比
+        _retr = float(_d.get('dbl_retrace', 0) or 0)      # 自颈线回撤
+        _mid = float(_d.get('dbl_mid_high', 0) or 0)      # 颈线=触发位
+        _cls = float(_s.get('现价', 0) or 0)
+
+        # 1) 前波涨幅：大涨幅度越大，「大涨后深调」的前提越扎实
+        if _rise >= 0.60:
+            _adj += 6; _reasons.append('前波涨幅≥60%+6')
+        elif _rise >= 0.40:
+            _adj += 4; _reasons.append('前波涨幅≥40%+4')
         else:
-            # 形态未成且远离阻力位 → 既非突破也非临突破，降权
-            _adj -= 5; _reasons.append('远离阻力位-5')
+            _adj += 2; _reasons.append('前波涨幅≥25%+2')
 
-        # 2) T+5 失败概率修正（基础裸分已剔除 risk_penalty，此处补回风险定价）
-        _fp = float(_s.get('失败概率', 50) or 50)
-        if _fp >= 65:
-            _adj -= 8; _reasons.append('T+5失败率≥65%-8')
-        elif _fp <= 45:
-            _adj += 5; _reasons.append('T+5失败率≤45%+5')
+        # 2) 右底贴合度：越贴近左底越标准（不破左底、也不过高于左底）
+        if 0.98 <= _ratio <= 1.02:
+            _adj += 4; _reasons.append('右底贴合左底+4')
+        elif 0.95 <= _ratio <= 1.05:
+            _adj += 2; _reasons.append('右底贴近左底+2')
+
+        # 3) 右底缩量成色
+        if _volr <= 0.50:
+            _adj += 4; _reasons.append('右底极缩量+4')
+        elif _volr <= 0.65:
+            _adj += 2; _reasons.append('右底缩量+2')
+
+        # 4) 站上颈线后的上行空间
+        if _mid > 0 and _cls > 0:
+            _space = _mid / _cls - 1
+            if _space >= 0.25:
+                _adj += 4; _reasons.append('距颈线空间≥25%+4')
+            elif _space >= 0.15:
+                _adj += 2; _reasons.append('距颈线空间≥15%+2')
+
+        # 5) 自颈线回撤更充分（调整更到位）
+        if _retr >= 0.20:
+            _adj += 2; _reasons.append('自颈线回撤≥20%(调整更充分)+2')
+
+        # 6) 主题共振（20261003：不作准入，仅作加分——本池已改为全市场独立双底
+        #    扫描，主题命中说明该双底票同时处在热点方向上，给优先级而非门槛）
+        _res = float(_s.get('共振系数', 1.0) or 1.0)
+        if _res >= 1.30:
+            _adj += 4; _reasons.append('主题强共振+4')
+        elif _res >= 1.10:
+            _adj += 2; _reasons.append('主题共振+2')
 
         _s['排名分'] = round(max(0.0, _base + _adj), 1)
         _s['排名分_原始'] = round(_base, 1)
@@ -9133,6 +9345,9 @@ def run(target_date=None, simple_mode=False):
                 '突破评分': _st.get('突破评分', 0),
                 '二波信号': _st.get('二波信号', ''),
                 '二波评分': _st.get('二波评分', 0),
+                # 20261003：本池主口径——双底调整到位（右底低吸）几何
+                '双底命中': bool(_st.get('双底命中')),
+                '双底结构': _st.get('双底结构', {}),
                 '入选Top10': _rk <= 10,
             })
         _snap_path = os.path.join(_snap_dir, "breakout_pool_snapshot_{}.json".format(TRADE_DATE))
@@ -9153,7 +9368,10 @@ def run(target_date=None, simple_mode=False):
             from stock_pick_db import record_picks as _pick_record
             _rows = []
             for _rk, _st in enumerate(_top10, 1):
-                _sig = (_st.get('突破信号') or _st.get('二波信号') or _st.get('突破类型') or 'BREAKOUT_POOL')
+                # 20261003：本池主口径已是双底调整到位（右底低吸），signal 以其为准
+                _sig = '双底调整到位' if _st.get('双底命中') else (
+                    _st.get('突破信号') or _st.get('二波信号') or '双底调整到位')
+                _dbl = _st.get('双底结构', {}) or {}
                 _rows.append({
                     'ts_code': _st.get('代码', ''),
                     'stock_name': _st.get('名称', ''),
@@ -9163,7 +9381,7 @@ def run(target_date=None, simple_mode=False):
                     'action': _st.get('ChipSuggestion') or '观察',
                     'score': _st.get('排名分', 0),
                     'rank_no': _rk,
-                    'industry': _st.get('所属主题', ''),
+                    'industry': _st.get('所属主题', '') or _st.get('所属行业', ''),
                     'reason': _st.get('排名分_明细', ''),
                     'stop_price': _st.get('止损价'),
                     'target_price': _st.get('目标价'),
@@ -9185,19 +9403,31 @@ def run(target_date=None, simple_mode=False):
                     'ChipTrendScore': _st.get('ChipTrendScore', 50),
                     'CRE_Score': _st.get('CRE_Score', 50),
                     'ChipMomentum_Score': _st.get('ChipMomentum_Score', 50),
+                    # 20261003：双底调整到位（本池主口径）结构证据
+                    '双底命中': bool(_st.get('双底命中')),
+                    '双底_前波涨幅': round(float(_dbl.get('dbl_prior_rise', 0) or 0) * 100, 1),
+                    '双底_左底': _dbl.get('dbl_left_low', 0),
+                    '双底_颈线': _dbl.get('dbl_mid_high', 0),
+                    '双底_右底': _dbl.get('dbl_right_low', 0),
+                    '双底_右底左底比': round(float(_dbl.get('dbl_ratio', 0) or 0), 3),
+                    '双底_缩量比': round(float(_dbl.get('dbl_volr20', 0) or 0), 2),
+                    '双底_左底日期': _dbl.get('dbl_left_date', ''),
                     '入选Top10': True,
                 })
-            _n = _pick_record('breakout_pool', '突破股池', _rows, pick_date=TRADE_DATE)
-            print(f"[突破股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
+            _n = _pick_record('breakout_pool', '双底调整到位股池', _rows, pick_date=TRADE_DATE)
+            print(f"[双底股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
     except Exception as _e:
         print(f"[突破股池] stock_pick_db 落库失败: {_e}")
 
     lines = []
     lines.append("")
-    lines.append("🔥 突破股池 (按突破池排名分排序)")
+    lines.append("🔥 双底调整到位股池 (一波大涨后回落成双底、右底缩量不破左底；按双底排名分排序)")
     lines.append("")
-    
+
     top_stocks = ranked_stocks[:10]
+    if not top_stocks:
+        lines.append("  今日无双底调整到位标的（空池）。")
+        lines.append("")
     for i, s in enumerate(top_stocks, 1):
         alpha_val = s.get('Alpha评分', 0)
         alpha_sig = s.get('Alpha信号', '')
@@ -9243,18 +9473,32 @@ def run(target_date=None, simple_mode=False):
         _ml_str = f"主线:{_ml_type}(质量{_ml_qual:.0f})" if _ml_type else ""
         _tt_s = float(s.get('主题趋势分', 0) or 0)
         _ts_s = float(s.get('主题情绪分', 0) or 0)
-        _ts_str = f"趋势分{_tt_s:.0f}/情绪分{_ts_s:.0f}"
-        info_parts = [s['所属主题']]
+        # 20261003：主题字段展示（命中当日热点主题 → 全市场所属行业兜底）。未命中热点
+        # 主题时不追加「趋势分0/情绪分0」，避免把无意义的 0 分当成有效主题强度喂给 AI。
+        _theme_hit = str(s.get('所属主题', '') or '')
+        info_parts = [str(s.get('主题展示', '') or _theme_hit or '未匹配主题')]
         if _ml_str: info_parts.append(_ml_str)
         if cycle_str: info_parts.append(cycle_str)
         if days_str: info_parts.append(days_str)
         if leader_str: info_parts.append(leader_str)
-        info_parts.append(_ts_str)
+        if _theme_hit:
+            info_parts.append(f"趋势分{_tt_s:.0f}/情绪分{_ts_s:.0f}")
         lines.append(f"  主题: {' | '.join(info_parts)}")
         # 突破
         bs = s.get('突破信号', '')
         bsc = s.get('突破评分', 0)
         lines.append(f"  突破: 评分={bsc} | {bs}" if bs else f"  突破: 评分={bsc}")
+        # 双底调整到位（本池主口径，20261003）
+        _dbl = s.get('双底结构', {}) or {}
+        if _dbl.get('dbl_hit'):
+            lines.append(
+                f"  双底: 前波涨幅={_dbl.get('dbl_prior_rise', 0) * 100:.1f}%"
+                f" 左底={_dbl.get('dbl_left_low', 0):.2f}({_dbl.get('dbl_left_date', '')})"
+                f" 颈线={_dbl.get('dbl_mid_high', 0):.2f}"
+                f" 右底={_dbl.get('dbl_right_low', 0):.2f}"
+                f" 右底/左底={_dbl.get('dbl_ratio', 0):.3f}"
+                f" 缩量={_dbl.get('dbl_volr20', 0):.2f}"
+                f" 自颈线回撤={_dbl.get('dbl_retrace', 0) * 100:.1f}%")
         # YRI
         yri_total = s.get('YRI历史总分', 0)
         if yri_total > 0:
@@ -9263,8 +9507,9 @@ def run(target_date=None, simple_mode=False):
             lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
         lines.append("")
     
-    # 突破池明细仅在控制台输出供排查（报告与 AI prompt 已不再包含"今日突破股池分析"段）
+    # 突破池明细：控制台输出供排查 + 作为报告第7段【双底调整到位股池】的喂料
     print("\n".join(lines))
+    double_bottom_pool_text = "\n".join(lines)
     
     icpm_top10_list = []
     for s in ranked_stocks[:20]:
@@ -9380,12 +9625,12 @@ def run(target_date=None, simple_mode=False):
         print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
 
     # =========================
-    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」六态；
+    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」七态；
     # 原 A/B/MID 全池铺开已由 W7 引擎 V5.1 收口，只同步当日可执行信号）
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        六态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)。
+        七态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)/RIGHT_BOTTOM(W7-右底低吸)。
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
         def _num(v):
@@ -9421,6 +9666,8 @@ def run(target_date=None, simple_mode=False):
                         "mid_line": _num(s.get("mid_line")),
                         # BREAKOUT_RETEST（放量突破后缩量回踩）专属：放量突破日低点=回踩平台防线
                         "retest_low": _num(s.get("retest_low")),
+                        # RIGHT_BOTTOM（W7-右底低吸）专属：左底（前低）=结构防线
+                        "rb_left_low": _num(s.get("rb_left_low")),
                     })
                 break
             except (json.JSONDecodeError, OSError, ValueError) as e:
@@ -9456,7 +9703,8 @@ def run(target_date=None, simple_mode=False):
                     _cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
                            "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
                            "BREAKOUT_RETEST": "放量突破后缩量回踩买点",
-                           "MIDLINE_HOLD": "W7-不破中位"}
+                           "MIDLINE_HOLD": "W7-不破中位",
+                           "RIGHT_BOTTOM": "W7-右底低吸"}
 
                     def _cv(cells, name):
                         return cells[col_idx[name]] if name in col_idx else ""
@@ -9469,8 +9717,8 @@ def run(target_date=None, simple_mode=False):
                             "type": _cv(c, "类型"), "state": state, "state_cn": _cn.get(state, state),
                             "close": _num(_cv(c, "现价")), "pressure": _num(_cv(c, "触发价")),
                             "ma20": _num(_cv(c, "MA20")), "volr": _num(_cv(c, "量比")),
-                            # md 表格无「半分位/回踩低点」列：回退路径取不到，如实留空
-                            "mid_line": None, "retest_low": None,
+                            # md 表格无「半分位/回踩低点/左底」列：回退路径取不到，如实留空
+                            "mid_line": None, "retest_low": None, "rb_left_low": None,
                         })
                 except OSError:
                     pass
@@ -9496,21 +9744,24 @@ def run(target_date=None, simple_mode=False):
 
         def _struct_line(it):
             """该票的结构防线（失效位）与名称：MIDLINE_HOLD=长阳半分位；
-            BREAKOUT_RETEST=放量突破日低点；其余=MA20 总防线。"""
+            BREAKOUT_RETEST=放量突破日低点；RIGHT_BOTTOM=左底（前低）；其余=MA20 总防线。"""
             st = it["state"]
             if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0:
                 return it["mid_line"], "长阳半分位"
             if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0:
                 return it["retest_low"], "放量突破日低点"
+            if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0:
+                return it["rb_left_low"], "左底（前低）"
             if isinstance(it.get("ma20"), (int, float)) and it["ma20"] > 0:
                 return it["ma20"], "MA20总防线"
             return None, ""
 
         def _classify(it):
             """返回 (W7_STATUS, invalid_reason, d, def_buffer, line, line_nm)。d=距触发价比例。
-            口径与 W7 引擎 w7_exec_status 完全一致（20261001 裁定）：
-            · 失效位按各形态自身口径，MIDLINE_HOLD/回踩低点严格跌破，MA20 总防线留 MA20_BREAK_TOL 容差；
-            · 状态一律按「距触发价」纯距离分档，BREAKOUT_RETEST 现价低于触发价不因「在买点区」升级。"""
+            口径与 W7 引擎 w7_exec_status 完全一致（20261001 裁定 + 20261002 RIGHT_BOTTOM 例外）：
+            · 失效位按各形态自身口径，MIDLINE_HOLD/回踩低点/左底严格跌破，MA20 总防线留 MA20_BREAK_TOL 容差；
+            · 状态一律按「距触发价」纯距离分档，BREAKOUT_RETEST 现价低于触发价不因「在买点区」升级；
+            · RIGHT_BOTTOM（右底低吸）例外：买点＝当日右底本身，不以距颈线分档，结构未失效即归 EXECUTION。"""
             close, trig, st = it["close"], it["pressure"], it["state"]
             line, line_nm = _struct_line(it)
             ma20 = it.get("ma20")
@@ -9525,11 +9776,18 @@ def run(target_date=None, simple_mode=False):
                 if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0 and close < it["retest_low"]:
                     return ("INVALID", f"收盘 {close:.2f} 跌破放量突破日低点 {it['retest_low']:.2f}（突破后跌回关键平台）",
                             None, dbuf, line, line_nm)
-                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST 已按自身失效位判定
-                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST") \
+                if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0 and close < it["rb_left_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破左底（前低）{it['rb_left_low']:.2f}（双底结构失效）",
+                            None, dbuf, line, line_nm)
+                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST/RIGHT_BOTTOM 已按自身失效位判定
+                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST", "RIGHT_BOTTOM") \
                         and isinstance(ma20, (int, float)) and ma20 > 0 and close < ma20 * (1 - MA20_BREAK_TOL):
                     return ("INVALID", f"收盘 {close:.2f} 明确跌破 MA20 总防线 {ma20:.2f}（低于 {MA20_BREAK_TOL * 100:.0f}% 以上）",
                             None, dbuf, line, line_nm)
+            # RIGHT_BOTTOM：买点＝当日右底本身（现价即低吸区），结构未失效即进入执行区；
+            # 右底须缩量，不适用放量阀门，故不做量比判定。
+            if st == "RIGHT_BOTTOM":
+                return "EXECUTION", "", None, dbuf, line, line_nm
             if not isinstance(trig, (int, float)) or trig <= 0 or not isinstance(close, (int, float)):
                 return "PULLBACK_WATCH", "", None, dbuf, line, line_nm
             d = (trig - close) / trig
@@ -9562,7 +9820,9 @@ def run(target_date=None, simple_mode=False):
             d = r["d"] if isinstance(r["d"], (int, float)) else 9.9
             dbuf = r["def_buffer"] if isinstance(r["def_buffer"], (int, float)) else -1e9
             if so <= 1:   # EXECUTION：量能确认程度优先；其次距触发价越近越不追高
-                return (so, -volr, abs(d), -ige, -sc)
+                # 20261002：RIGHT_BOTTOM（右底低吸）当日即无等待条件的买点，排 EXECUTION 组内最前
+                rb = 0 if it.get("state") == "RIGHT_BOTTOM" else 1
+                return (so, rb, -volr, abs(d), -ige, -sc)
             if so == 2:   # TRIGGER_WATCH：距触发价最近优先，其次量能越接近阀门越好
                 return (so, d, -volr, -ige, -sc)
             return (so, -dbuf, d, -ige, -sc)   # PULLBACK_WATCH：结构完整度优先
@@ -9574,6 +9834,8 @@ def run(target_date=None, simple_mode=False):
         pull_rows = [r for r in rows if r["status"] == "PULLBACK_WATCH"]
         n_exec = len(exec_rows)
         n_wait = len([r for r in exec_rows if r["status"] == "EXECUTION_WAIT_VOLUME"])
+        # 20261002：RIGHT_BOTTOM（右底低吸）不适用放量阀门，单独计数（不计入「量能已确认」）
+        n_rb = len([r for r in exec_rows if r["it"].get("state") == "RIGHT_BOTTOM"])
 
         def _struct_txt(r):
             line, nm = r["line"], r["line_nm"]
@@ -9587,8 +9849,10 @@ def run(target_date=None, simple_mode=False):
                 _f1(it["volr"]), _f1(it["ige_adj"]), _f1(it["score"]))
 
         def _vol_short(it):
-            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）"""
+            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）；RIGHT_BOTTOM（右底低吸）走缩量口径"""
             volr = it["volr"]
+            if it.get("state") == "RIGHT_BOTTOM":
+                return "右底缩量（量比×{}）".format(_f1(volr))
             if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
                 return "量能未确认"
             if volr >= VOLR_HUGE:
@@ -9599,15 +9863,18 @@ def run(target_date=None, simple_mode=False):
             "【W7 二波·今日执行状态（三状态分层 V1.0）】",
             "候选{}只（其中结构失效{}只已移出）。状态只由「距触发价 + 结构是否失效 + 量能」决定，与总分无关；"
             "执行状态优先于总分。".format(len(items), len(invalid_rows)),
-            "口径：EXECUTION=现价≥触发价且结构未坏；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
+            "口径：EXECUTION=现价≥触发价且结构未坏（RIGHT_BOTTOM右底低吸例外：买点＝当日右底本身，"
+            "不以距颈线分档，缩量不破左底即入执行区）；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
             "禁止写成“已确认买入/立即买入”）；TRIGGER_WATCH=距触发≤3%；PULLBACK_WATCH=距触发>3%（需等待回踩/重新确认）。",
             "规则：放量突破需量比≥1.2（不可绕过）；量比≥3 的巨量日不追高、只等回踩；"
-            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
+            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / RIGHT_BOTTOM左底（前低） / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
                 MA20_BREAK_TOL * 100),
-            "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，末位 IGE_ADJ / W7总分）。",
+            "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，"
+            "RIGHT_BOTTOM 置 EXECUTION 组内最前，末位 IGE_ADJ / W7总分）。",
             "",
-            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
-                n_exec, n_exec - n_wait, n_wait, len(trig_rows), len(pull_rows)),
+            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只{}）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
+                n_exec, n_exec - n_wait - n_rb, n_wait,
+                "／右底低吸 {}只".format(n_rb) if n_rb else "", len(trig_rows), len(pull_rows)),
             "速览-今日真正进入执行区：{}只　速览-今日等待触发：{}只　速览-今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
                 n_exec, len(trig_rows), len(pull_rows), len(items)),
         ]
@@ -9620,12 +9887,18 @@ def run(target_date=None, simple_mode=False):
                 it, status = r["it"], r["status"]
                 if status == "EXECUTION_WAIT_VOLUME":
                     how = "做法：已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"
+                elif it.get("state") == "RIGHT_BOTTOM":
+                    how = ("做法：右底低吸买点，可按计划分批建仓；放量站上双底颈线{}（量比≥{:.1f}）"
+                           "＝转突破/二波，可加仓").format(_f2(it["pressure"]), VOLR_MIN)
                 else:
                     how = "做法：可按计划买入，单只不超过10%"
                 p.append("{}. **{}({})**（{}｜EXECUTION｜{}）".format(
                     k, it["name"], it["code"], it["type"], _vol_short(it)))
                 p.append(_price_line(it))
                 p.append(how)
+                if it.get("state") == "RIGHT_BOTTOM":
+                    p.append("说明：触发价＝双底颈线（中间高点），现价位于右底区（左底上方）属正常；"
+                             "右底缩量、不破左底＝结构成立")
                 p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
                 p.append("")
 
@@ -9810,6 +10083,61 @@ def run(target_date=None, simple_mode=False):
         print(f"[ETF提示] 读取失败: {e}")
 
 
+    # =========================
+    # 量能放大信号选股（VSW 量能爆发+宽幅震荡策略·下蹲买点池）
+    # 数据源：picks_db/stock_picks.db（strategy_id='vsw'，由 volume_surge_select.py 收盘后落库）
+    # 作为报告第 8 段【量能放大信号选股】的喂料（20261003 用户要求：加在 AI prompt 最后一段）
+    # =========================
+    def _load_vsw_squat_signals(trade_date: str) -> str:
+        """读取当日 VSW 下蹲买点信号并格式化；无信号返回空池提示行（fail-soft）。"""
+        db = os.path.join(BASE_DIR, 'picks_db', 'stock_picks.db')
+        rows = []
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % db.replace("\\", "/"), uri=True, timeout=5)
+            con.row_factory = sqlite3.Row
+            try:
+                rows = con.execute(
+                    "select * from stock_pick where strategy_id='vsw' and pick_date=? "
+                    "order by score desc, rank_no", (trade_date,)).fetchall()
+            finally:
+                con.close()
+        except Exception as e:
+            print(f"[量能放大信号] 读取 stock_pick 失败: {e}")
+
+        out = ["【量能放大信号选股】",
+               f"数据来源：picks_db/stock_picks.db（strategy_id=vsw, pick_date={trade_date}，"
+               "volume_surge_select.py 收盘后落库；signal 后缀 (优选)/(扩大) 为形态分支）",
+               ""]
+        if not rows:
+            out.append(f"  今日（{trade_date}）无 VSW 下蹲买点信号（空池）。")
+            out.append("")
+            return "\n".join(out).strip()
+
+        for i, r in enumerate(rows, 1):
+            try:
+                ind = json.loads(r['indicators']) if r['indicators'] else {}
+            except Exception:
+                ind = {}
+            if not isinstance(ind, dict):
+                ind = {}
+            _burst, _fes = ind.get('量能爆发评分'), ind.get('FinalEntryScore')
+            _rating = ind.get('Rating') or ''
+            _theme = ind.get('所属主题') or '未匹配主题'
+            _num = lambda v: isinstance(v, (int, float))
+            line1 = (f"【第{i}名】{r['stock_name']} ({r['ts_code']}) [{r['signal']}] "
+                     f"收盘={r['close']:.2f} 涨跌幅={r['pct_chg']:+.2f}%"
+                     + (f" 量能爆发评分={_burst:.1f}" if _num(_burst) else "")
+                     + (f" 选股总分={_fes:.1f}({_rating})" if _num(_fes) else ""))
+            line2 = f"  {r['reason'] or ''}"
+            line3 = (f"  操作：{r['action'] or ''} | 主题：{_theme}"
+                     + (f" | 止损位={r['stop_price']:.2f}" if _num(r['stop_price']) else ""))
+            out += [line1, line2, line3, ""]
+        return "\n".join(out).strip()
+
+    vsw_squat_text = _load_vsw_squat_signals(TRADE_DATE)
+    print(f"[量能放大信号] 已加载 VSW 下蹲买点池（{vsw_squat_text.count('【第')}只）")
+
+
     #return
 
     prompt = f"""
@@ -9842,14 +10170,15 @@ def run(target_date=None, simple_mode=False):
 ** 策略：XXXX
 * 最终：XXXXXX
 2、**主题分析**
-【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式。所有主题名/状态/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
-** 主线（照抄"◆ 主题雷达"的 🔥当前主线 整行，逐条一行）：{{主题名}}（{{边际}}·{{人话}}）
-** 升温梯队（照抄"◆ 主题雷达"分组，按 🚀加速升温 / 🔄真正再启动 / ↩️反弹 / 🌱新出现 各一行，**只写「主题名（边际·人话）」，不要写 Heat/HM5/ACC/Rank 等任何数字**）：🚀加速升温：{{主题名（边际·人话）}}；🔄真正再启动：{{…}}；↩️反弹：{{…}}；🌱新出现：{{…}}（某类为空写"无"）
-** 高位钝化：{{⚠️高位钝化主题名；无则写"无"}}
-** 正在降温：{{照抄"◆ 正在降温"整行，只列名，不展开}}
-** 看什么（从"◆ 重点主题解读"里挑 1–2 只最重要的主题，各一句话）：{{主题名}}：支持证据…；确认看…；失效看…（照抄数据块原文，禁止改写）
+【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符（每个"**"行独立成段），禁止自由发挥格式。所有主题名/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
+** 主线：{{照抄"◆ 主题雷达"中 🔥当前主线 行冒号之后的全部内容——已按「边际·人话」合并，禁止拆开、禁止逐只重复人话、禁止补写}}
+** 升温梯队：🚀{{照抄 🚀加速升温 行冒号后内容}}｜🔄{{照抄 🔄真正再启动 行冒号后内容}}｜↩️{{照抄 ↩️反弹 行冒号后内容}}｜🌱{{照抄 🌱新出现 行冒号后内容}}（某类在数据块中为"（无）"则写"无"）
+** 高位钝化：{{照抄 ⚠️高位钝化 行冒号后内容；为"（无）"则写"无"}}
+** 正在降温：{{照抄"◆ 正在降温"行冒号后的主题名，只列名、不展开、不加人话}}
+** 看什么（从"◆ 重点主题解读"里挑 1–2 只最重要的主题，每只一行）：{{主题名}}：{{照抄该主题的"支持证据"整句}}
 ** 一句话市场总结：{{照抄"◆ 一句话市场总结"整行}}
-（缺值处理：某行显示"（无）"或数据块无该行则写"无"，不得用其它主题填补；状态与数值一律不得改写或重算。仅当数据块标题为 V2.4 三窗口（theme_heat_v24）时，才改按"◆ 本日/本周/本月热度 Top5"逐组引用。）
+（缺值处理：某行显示"（无）"或数据块无该行则写"无"，不得用其它主题填补；主题名/边际/人话一律不得改写或重算。仅当数据块标题为 V2.4 三窗口（theme_heat_v24）时，才改按"◆ 本日/本周/本月热度 Top5"逐组引用。）
+（【禁止啰嗦】"看什么"每只主题只写「主题名：+ 支持证据一句」，**禁止输出"当前状态/确认条件/失效条件"及任何数字指标**；"主线"与"升温梯队"直接照抄数据块里已合并好的分组，**禁止把同一句人话在多个主题上重复展开**。）
 
 3、**【ETF操作建议】**
 {etf_tips_text}
@@ -9890,13 +10219,28 @@ def run(target_date=None, simple_mode=False):
 ⑥ 若 EXECUTION（含量能未确认）为 0，必须明确写出"今日 W7 无 EXECUTION 标的。结论：不强行交易。"，禁止人为制造买入信号；
 ⑦ 数据块末尾如给出【已失效｜不参与排名】，照抄该行，不得给它排名；禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
 
+7、**【双底调整到位股池】**（一波大涨后回落成双底、右底缩量不破左底的低吸口径；按双底排名分从高到低排序）：
+{double_bottom_pool_text}
+（【数据边界】本段只分析上方"🔥 双底调整到位股池"数据块中列出的股票；数据块显示"今日无双底调整到位标的（空池）"时必须原样提示，禁止用第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第7段】本段是**低吸买点**口径，不是突破追高，全部结论只能依据数据块给出的「主题」与「双底」几何：
+① 按数据块顺序（排名分从高到低）逐只输出，每只固定 5 行、个股之间空一行：第1行加粗"序号. 名称(代码)（双底低吸）"；第2行"主题：XXX"，**照抄数据块"  主题: ..."行的主题名，一字不差**（形如"元器件（未入当前热点主题）"就原样写，数据块写"未匹配主题"就写"未匹配主题"），该行若还带"主线:xxx(质量N)""趋势分X/情绪分Y"则一并引用；禁止自己编造概念名、行业名或换用同义词；数据块没有主题信息时写"主题：数据块未给出"，不得推测；第3行照抄价格数据（现价/涨跌幅/排名分/双底前波涨幅/左底/颈线/右底/缩量）；第4行一句大白话讲结构——前期大涨了多少、之后回落做成右底、右底缩量且不破左底，所以现在是低吸位；并点明该主题当前是否属于热点主线（数据块主题名带"未入当前热点主题"即为非热点，须明说"主题不在当前热点上，属于纯技术面低吸"）；第5行"防线：收盘跌破左底X.XX 就出局"；
+② 所有价格与比例一律照抄数据块的"  双底: ..."行，价格保留两位小数，禁止改动、重算或四舍五入错位；禁止把"颈线"写成触发买点——
+本段的低吸买点是右底本身，"站上颈线"属于后续转突破的加仓条件，不是本段买入门槛；
+③ 禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话，只用散户看得懂的话讲双底结构；
+④ 数据块为空（空池）时只输出一句"今日无双底调整到位标的"，不得强行编造买点。
+
+8、**【量能放大信号选股】**（VSW 量能爆发+宽幅震荡策略·下蹲买点池：量能爆发/宽幅震荡结构已成立、当日缩量回踩不破 30 日均线，提前于突破日给出的低吸买点。signal 后缀 (优选)/(扩大) 为形态分支——优选=MA5>MA10>MA20 多头 + 缩量回踩MA5；扩大=回调后小阴/小阳/十字星（小实体K线）企稳、MA5 可已跌破 MA10，均视为有效下蹲买点）：
+{vsw_squat_text}
+（【数据边界】本段只分析上方"【量能放大信号选股】"数据块中列出的股票；数据块显示"无 VSW 下蹲买点信号（空池）"时必须原样提示"今日无下蹲买点信号，不强行交易"，禁止用第4段第一梯队、第4B段执行买点池、第5/6/7段任何其它股池的股票填补。）
+【输出要求-第8段】按数据块顺序（选股总分从高到低）逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（下蹲买点·优选/扩大）"；②一行数据（收盘/涨跌幅/量能爆发评分/选股总分，一律照抄数据块，价格保留两位小数，禁止改动或重算）；③一句大白话讲下蹲形态——把"下蹲买点…"括号内的信息翻译成散户话（缩量回踩、量比多少、距20日高还有多远、距T0开盘即止损空间多少），禁止只罗列术语；④"怎么买卖：止损位X.XX元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加"。禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话。
+
 ------------------
 以上全局格式要求：
 - 股票分析另起一行，分点说明
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态）；**报告开头禁止输出【W7 状态汇总】小节**
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态、第 7 段 双底调整到位股池、第 8 段 量能放大信号选股）；**报告开头禁止输出【W7 状态汇总】小节**
 
 """
     if not simple_mode:

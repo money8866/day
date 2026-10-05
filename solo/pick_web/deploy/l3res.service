@@ -1,0 +1,14 @@
+[Unit]
+Description=L3Res 三级行业共振 (FastAPI, read-only resonance json dir)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/L3Res
+ExecStart=/usr/bin/python3 /var/www/L3Res/app.py --data /var/www/StockPick/l3res --host 127.0.0.1 --port 8004
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

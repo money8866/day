@@ -3,7 +3,7 @@
   "data": {
     "data": [
       {
-        "created_at": "2026-10-01T14:01:23Z",
+        "created_at": "2026-10-04T14:01:12Z",
         "dir": {
           "dir_id": 3,
           "dir_name": "sent"
@@ -14,9 +14,9 @@
         },
         "has_attachments": false,
         "is_read": true,
-        "message_id": "msg_LYLsp6RACXZM-ZiKBcXVDuWlE34pBqEZM27n_a9cATR91g",
-        "snippet": "📅 明日行程提醒（2026-10-02 周五） 共 1 项安排    18:00 聚餐     生成时间 2026-10-01 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
-        "subject": "📅 明日行程提醒 10-02 周五",
+        "message_id": "msg_9inoHEXL66mmy38QGK4BunskCuVoWj56R3WxzaMNEvCNqQ",
+        "snippet": "📅 明日行程提醒（2026-10-05 周一） 共 1 项安排    18:00 永加强海鲜楼晚餐（202包厢） 📍 龙湾区永中西路1111号     生成时间 2026-10-04 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
+        "subject": "📅 明日行程提醒 10-05 周一",
         "to": [
           {
             "email": "stock1975@qq.com",
@@ -25,7 +25,7 @@
         ]
       },
       {
-        "created_at": "2026-09-30T15:24:41Z",
+        "created_at": "2026-10-03T14:01:11Z",
         "dir": {
           "dir_id": 3,
           "dir_name": "sent"
@@ -36,9 +36,9 @@
         },
         "has_attachments": false,
         "is_read": true,
-        "message_id": "msg_Joh5Qm2TIWMxCn2zHeeQnUXGcmf9jxmPzGj9dhKueies5Q",
-        "snippet": "链路测试 23:26     此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
-        "subject": "agenda push link test",
+        "message_id": "msg_xaNMOFBtcIK-a3iRJle7Nf5zi-M6OPULi8qVnDwzFdYS1Q",
+        "snippet": "📅 明日行程提醒（2026-10-04 周日） 共 1 项安排    09:20 出发送儿子去机场 （家庭日历）     生成时间 2026-10-03 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
+        "subject": "📅 明日行程提醒 10-04 周日",
         "to": [
           {
             "email": "stock1975@qq.com",
@@ -53,10 +53,3 @@
     }
   }
 }
-agently-cli.cmd : tip: agently-cli message +read --id msg_LYLsp6RACXZM-ZiKBcXVDuWlE34pBqEZM27n_a9cATR91g
-所在位置 行:445 字符: 59
-+ ... ing]::UTF8; & "C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd" me ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (tip: agently-cl...ZM27n_a9cATR91g:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 

@@ -9,17 +9,28 @@ SQLite 的 backup API 生成「一致性快照」，校验通过后再上传。
 连接读库，替换文件后自动生效、无需重启；而直接覆盖目标文件时，若恰好
 有请求落在写入中途，会读到损坏的库。
 
-只读取本地库、只往服务器写一个数据文件，不改动任何选股脚本。
+只读取本地库、只往服务器写数据文件，不改动任何选股脚本。
+
+同步的产物文件：
+  - 复盘报告 Final_Self_<date>.html      → 远端 reports/（网页「每日复盘」），按大小比对
+  - 三级行业共振 l3_resonance_<date>.json → 远端 l3res/（网页「三级行业共振」），按 MD5 比对
+  - 中证2000 仓位 Gate 每日输出           → 远端 etf/（网页「ETF 每日复盘」），按 MD5 比对
+       csi2000_position_gate_daily.csv / csi2000_position_gate_events.csv
+       csi2000_etf_trade_plan.json
 
 用法：
     python sync_db.py --check          # 只测连通性，不上传
     python sync_db.py --dry-run        # 只生成并校验快照，不上传
     python sync_db.py                  # 快照 + 上传 + 原子替换
+    python sync_db.py --reports-only    # 只同步复盘报告 HTML
+    python sync_db.py --l3res-only      # 只同步三级行业共振 JSON
+    python sync_db.py --etf-only        # 只同步 ETF 每日复盘数据
     python sync_db.py --local-db <path> --remote-dir /opt/stockweb/data
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -35,6 +46,8 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "sync.log")
 DEFAULT_LOCAL_DB = os.path.join(os.path.dirname(BASE_DIR), "picks_db", "stock_picks.db")
 DEFAULT_REPORTS_SRC = r"d:\mystock\report_daily"
+DEFAULT_L3RES_SRC = os.path.join(os.path.dirname(BASE_DIR), "report_daily")
+DEFAULT_ETF_SRC = os.path.join(os.path.dirname(BASE_DIR), "position_gate", "output")
 
 SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
@@ -57,6 +70,8 @@ def load_config(args) -> dict:
         "remote_name": "stock_picks.db", "identity_file": "",
         "strict_host_key": False, "local_db": DEFAULT_LOCAL_DB,
         "reports_src": DEFAULT_REPORTS_SRC, "reports_remote_dir": "",
+        "l3res_src": DEFAULT_L3RES_SRC, "l3res_remote_dir": "",
+        "etf_src": DEFAULT_ETF_SRC, "etf_remote_dir": "",
     }
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, encoding="utf-8") as fh:
@@ -67,6 +82,10 @@ def load_config(args) -> dict:
         cfg["remote_dir"] = args.remote_dir
     if getattr(args, "reports_src", None):
         cfg["reports_src"] = args.reports_src
+    if getattr(args, "l3res_src", None):
+        cfg["l3res_src"] = args.l3res_src
+    if getattr(args, "etf_src", None):
+        cfg["etf_src"] = args.etf_src
     return cfg
 
 
@@ -190,6 +209,140 @@ def sync_reports(cfg: dict, remote_dir: str) -> bool:
     return True
 
 
+L3RES_PREFIX = "l3_resonance_"
+L3RES_SUFFIX = ".json"
+L3RES_BATCH = 60
+
+
+def local_l3res(src_dir: str) -> list[str]:
+    """本地三级行业共振文件名（l3_resonance_<8位日期>.json）。"""
+    if not src_dir or not os.path.isdir(src_dir):
+        return []
+    out = []
+    for name in os.listdir(src_dir):
+        if not (name.startswith(L3RES_PREFIX) and name.endswith(L3RES_SUFFIX)):
+            continue
+        date = name[len(L3RES_PREFIX):-len(L3RES_SUFFIX)]
+        if len(date) == 8 and date.isdigit():
+            out.append(name)
+    return sorted(out)
+
+
+def _md5_file(path: str) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sync_l3res(cfg: dict, remote_dir: str) -> bool:
+    """把三级行业共振 JSON 增量同步到服务器（供「三级行业共振」页面展示）。"""
+    src = cfg.get("l3res_src") or ""
+    files = local_l3res(src)
+    if not src or not os.path.isdir(src):
+        log("共振目录不存在，跳过同步：%s" % (src or "(未配置)"))
+        return True
+    if not files:
+        log("本地无共振 JSON，跳过同步：%s" % src)
+        return True
+
+    rdir = cfg.get("l3res_remote_dir") or \
+        os.path.dirname(remote_dir.rstrip("/")) + "/l3res"
+    tgt = target(cfg)
+    ssh, scp = ssh_base(cfg), scp_base(cfg)
+
+    rc, out = run(ssh + [tgt,
+                         "mkdir -p '%s' && cd '%s' && (md5sum *.json 2>/dev/null || true)"
+                         % (rdir, rdir)])
+    if rc != 0:
+        log("共振目录创建失败（exit %s）：%s" % (rc, out[:300]))
+        return False
+
+    # 按内容（MD5）比对：共振 JSON 每日整体重写，同尺寸不代表同内容
+    remote_md5 = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and len(parts[0]) == 32:
+            remote_md5[parts[1]] = parts[0]
+
+    todo = [f for f in files
+            if remote_md5.get(f) != _md5_file(os.path.join(src, f))]
+    log("三级行业共振：本地 %d 期，远端 %d 期，待上传 %d 期"
+        % (len(files), len(remote_md5), len(todo)))
+
+    if todo:
+        for i in range(0, len(todo), L3RES_BATCH):
+            batch = todo[i:i + L3RES_BATCH]
+            rc, out = run(scp + batch + ["%s:%s/" % (tgt, rdir)], timeout=600, cwd=src)
+            if rc != 0:
+                log("共振 JSON 上传失败（exit %s）：%s" % (rc, out[:300]))
+                return False
+        rc, out = run(ssh + [tgt, "ls '%s' | wc -l" % rdir])
+        log("共振 JSON 上传完成，远端现有 %s 期（%s）"
+            % ((out or "?").strip().splitlines()[-1] if out else "?", rdir))
+    else:
+        log("共振 JSON 已是最新，无需上传。")
+    return True
+
+
+# 中证2000 仓位 Gate 每日输出（固定文件名，每日整体重写，故按 MD5 比对）
+ETF_FILES = (
+    "csi2000_position_gate_daily.csv",
+    "csi2000_position_gate_events.csv",
+    "csi2000_etf_trade_plan.json",
+)
+
+
+def sync_etf(cfg: dict, remote_dir: str) -> bool:
+    """把中证2000 仓位 Gate 的每日输出同步到服务器（供「ETF 每日复盘」页面展示）。
+
+    三个文件都是固定文件名、每日整体重写，尺寸相同不代表内容相同，
+    因此按内容（MD5）比对，只传真正变更的文件。
+    """
+    src = cfg.get("etf_src") or ""
+    if not src or not os.path.isdir(src):
+        log("ETF 数据目录不存在，跳过同步：%s" % (src or "(未配置)"))
+        return True
+    files = [f for f in ETF_FILES if os.path.exists(os.path.join(src, f))]
+    if not files:
+        log("本地无 ETF 数据文件，跳过同步：%s" % src)
+        return True
+
+    rdir = cfg.get("etf_remote_dir") or \
+        os.path.dirname(remote_dir.rstrip("/")) + "/etf"
+    tgt = target(cfg)
+    ssh, scp = ssh_base(cfg), scp_base(cfg)
+
+    rc, out = run(ssh + [tgt,
+                         "mkdir -p '%s' && cd '%s' && (md5sum %s 2>/dev/null || true)"
+                         % (rdir, rdir, " ".join(files))])
+    if rc != 0:
+        log("ETF 数据目录创建失败（exit %s）：%s" % (rc, out[:300]))
+        return False
+
+    remote_md5 = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and len(parts[0]) == 32:
+            remote_md5[parts[1]] = parts[0]
+
+    todo = [f for f in files
+            if remote_md5.get(f) != _md5_file(os.path.join(src, f))]
+    log("ETF 每日复盘：本地 %d 个，远端 %d 个，待上传 %d 个"
+        % (len(files), len(remote_md5), len(todo)))
+
+    if todo:
+        rc, out = run(scp + todo + ["%s:%s/" % (tgt, rdir)], timeout=300, cwd=src)
+        if rc != 0:
+            log("ETF 数据上传失败（exit %s）：%s" % (rc, out[:300]))
+            return False
+        log("ETF 数据上传完成（%s）：%s" % (rdir, "、".join(todo)))
+    else:
+        log("ETF 数据已是最新，无需上传。")
+    return True
+
+
 def make_snapshot(src_db: str, dst: str) -> dict:
     """用 SQLite backup API 生成一致性快照，并校验。"""
     if not os.path.exists(src_db):
@@ -236,6 +389,12 @@ def main(argv=None) -> int:
     ap.add_argument("--no-reports", action="store_true", help="跳过复盘报告同步")
     ap.add_argument("--reports-only", action="store_true",
                     help="只同步复盘报告 HTML，不传数据库（供 tushare_quant.py 报告生成后调用）")
+    ap.add_argument("--l3res-src", default=None, help="本地三级行业共振 JSON 目录（覆盖配置）")
+    ap.add_argument("--no-l3res", action="store_true", help="跳过三级行业共振同步")
+    ap.add_argument("--l3res-only", action="store_true", help="只同步三级行业共振 JSON，不传数据库")
+    ap.add_argument("--etf-src", default=None, help="本地中证2000仓位 Gate 输出目录（覆盖配置）")
+    ap.add_argument("--no-etf", action="store_true", help="跳过 ETF 每日复盘数据同步")
+    ap.add_argument("--etf-only", action="store_true", help="只同步 ETF 每日复盘数据，不传数据库")
     args = ap.parse_args(argv)
 
     global CONFIG_PATH
@@ -263,6 +422,16 @@ def main(argv=None) -> int:
     if args.reports_only:
         ok = sync_reports(cfg, remote_dir)
         log("报告同步完成。" if ok else "[WARN] 报告同步未成功，请检查上方日志。")
+        return 0 if ok else 1
+
+    if args.l3res_only:
+        ok = sync_l3res(cfg, remote_dir)
+        log("共振同步完成。" if ok else "[WARN] 共振同步未成功，请检查上方日志。")
+        return 0 if ok else 1
+
+    if args.etf_only:
+        ok = sync_etf(cfg, remote_dir)
+        log("ETF 数据同步完成。" if ok else "[WARN] ETF 数据同步未成功，请检查上方日志。")
         return 0 if ok else 1
 
     if args.check:
@@ -309,14 +478,29 @@ def main(argv=None) -> int:
         log("服务器已就绪：%s" % (out.split()[-1] if out else remote_final))
 
         # 复盘报告（tushare_quant.py 每日生成的 Final_Self_<date>.html）
+        ok = True
         if args.no_reports:
             log("--no-reports：跳过复盘报告同步。")
-            log("同步完成。服务端读新连接即生效，无需重启 app.py。")
-        elif sync_reports(cfg, remote_dir):
-            log("同步完成。服务端读新连接即生效，无需重启 app.py。")
-        else:
+        elif not sync_reports(cfg, remote_dir):
+            ok = False
             log("[WARN] 选股库已同步，但复盘报告未同步成功，网页「复盘报告」页签可能缺最新一期。")
-        return 0
+
+        # 三级行业共振 JSON（l3_resonance_scanner.py 每日生成）
+        if args.no_l3res:
+            log("--no-l3res：跳过三级行业共振同步。")
+        elif not sync_l3res(cfg, remote_dir):
+            ok = False
+            log("[WARN] 三级行业共振 JSON 未同步成功，网页「三级行业共振」页签可能缺最新一期。")
+
+        # 中证2000 仓位 Gate 每日输出（position_gate/daily.py 生成）
+        if args.no_etf:
+            log("--no-etf：跳过 ETF 每日复盘数据同步。")
+        elif not sync_etf(cfg, remote_dir):
+            ok = False
+            log("[WARN] ETF 每日复盘数据未同步成功，网页「ETF 每日复盘」页可能缺最新一期。")
+
+        log("同步完成。服务端读新连接即生效，无需重启 app.py。")
+        return 0 if ok else 1
     finally:
         if os.path.exists(tmp.name):
             if args.keep:

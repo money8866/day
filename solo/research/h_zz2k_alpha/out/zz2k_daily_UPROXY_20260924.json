@@ -1,0 +1,355 @@
+{
+ "research_id": "H-ZZ2K-A1",
+ "version": "1.1",
+ "product": "zz2k_daily 盘后候选排名 (方案 A)",
+ "trading_authorization": "NO",
+ "run_at": "2026-10-05 09:05:34",
+ "asof": "20260924",
+ "data_last_date": "20260924",
+ "pool": "U-PROXY",
+ "pool_size": 1300,
+ "n_ranked": 380,
+ "n_output": 20,
+ "asof_coverage": {
+  "pool": 1300,
+  "ranked": 380,
+  "joint": 380,
+  "binding": "A3",
+  "c_in": {
+   "A1": 734,
+   "A2": 1297,
+   "A3": 685,
+   "A4": 1283,
+   "A5": 1300
+  },
+  "perp_valid": {
+   "A1": 380,
+   "A2": 380,
+   "A3": 380,
+   "A4": 380,
+   "A5": 380
+  }
+ },
+ "top": 20,
+ "score": {
+  "panel": "Cperp_k (类间 cross_orth 残差)",
+  "legs": [
+   "A1",
+   "A2"
+  ],
+  "weight_source": "zz2k_common.COMP_PRIOR",
+  "weights_raw": {
+   "A1": 0.1,
+   "A2": 0.3
+  },
+  "weights_normalized": {
+   "A1": 0.25,
+   "A2": 0.75
+  },
+  "note": "score_grp 为 C_k (类内 Löwdin 组复合) 同权重对照列"
+ },
+ "groups_excluded": {
+  "A3": "NOT_SELECTED (§14 判决 FRAGILE/NO EDGE)",
+  "A4": "NOT_SELECTED (§14 判决 FRAGILE/NO EDGE)",
+  "A5": "NOT_SELECTED (§14 判决 FRAGILE/NO EDGE)"
+ },
+ "independent_factors": [
+  "A1_V_EP",
+  "A1_V_BP",
+  "A1_V_DP",
+  "A1_Q_ROIC",
+  "A1_Q_OCF",
+  "A1_Q_LEV",
+  "A1_G_NPY",
+  "A2_REV_1",
+  "A2_REV_5",
+  "A2_REV_10"
+ ],
+ "inherited_verdicts": {
+  "C_A1": {
+   "verdict": "ROBUST",
+   "notes": "",
+   "ALL_ic": 0.0541672231624696,
+   "dedup_ALL_ic": 0.0063824729369372,
+   "IS_ic": 0.0555829304800919,
+   "OOS_ic": 0.050667582836315
+  },
+  "C_A2": {
+   "verdict": "PROMISING",
+   "notes": "EPISODE_SENSITIVE",
+   "ALL_ic": 0.0881850806856159,
+   "dedup_ALL_ic": -0.0230332717895625,
+   "IS_ic": 0.0946702075856116,
+   "OOS_ic": 0.0622647009484692
+  },
+  "C_A3": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.0907861484604188,
+   "dedup_ALL_ic": -0.066266841824134,
+   "IS_ic": -0.090526992167299,
+   "OOS_ic": -0.0869187578216377
+  },
+  "C_A4": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.1465485317482107,
+   "dedup_ALL_ic": -0.0866213374211069,
+   "IS_ic": -0.1527065349859206,
+   "OOS_ic": -0.0965025551372796
+  },
+  "C_A5": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.1426494401718724,
+   "dedup_ALL_ic": -0.0518691328572121,
+   "IS_ic": -0.1510771008286273,
+   "OOS_ic": -0.119096087591148
+  },
+  "Cperp_A1": {
+   "verdict": "PROMISING",
+   "notes": "EPISODE_SENSITIVE",
+   "ALL_ic": 0.0269246292433632,
+   "dedup_ALL_ic": -0.0056043877430849,
+   "IS_ic": 0.03028076154602,
+   "OOS_ic": 0.0228344633737497
+  },
+  "Cperp_A2": {
+   "verdict": "PROMISING",
+   "notes": "EPISODE_SENSITIVE",
+   "ALL_ic": 0.0151542212521522,
+   "dedup_ALL_ic": -0.0246446464423278,
+   "IS_ic": 0.0178508734882742,
+   "OOS_ic": 0.0091206872962744
+  },
+  "Cperp_A3": {
+   "verdict": "PROMISING",
+   "notes": "",
+   "ALL_ic": 0.0119563188069062,
+   "dedup_ALL_ic": 0.0215368438481067,
+   "IS_ic": 0.011692851414108,
+   "OOS_ic": 0.018064115457855
+  },
+  "Cperp_A4": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.0654397573961231,
+   "dedup_ALL_ic": -0.0518255585455893,
+   "IS_ic": -0.0710625259114244,
+   "OOS_ic": -0.045453975316732
+  },
+  "Cperp_A5": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.0729637871184351,
+   "dedup_ALL_ic": -0.0216092822287619,
+   "IS_ic": -0.0729732145014954,
+   "OOS_ic": -0.0716756244238682
+  },
+  "COMP_EQ": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.1075895601642306,
+   "dedup_ALL_ic": -0.0330226849100523,
+   "IS_ic": -0.1157439632979264,
+   "OOS_ic": -0.0933839027854608
+  },
+  "COMP_PRIOR": {
+   "verdict": "FRAGILE",
+   "notes": "SIGN_CONFLICT",
+   "ALL_ic": -0.0769812778952508,
+   "dedup_ALL_ic": -0.0287160644535308,
+   "IS_ic": -0.082924469216865,
+   "OOS_ic": -0.0732855508681705
+  }
+ },
+ "factor_coverage": {
+  "A1_V_EP": {
+   "cov": 0.7294661081977853,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_V_BP": {
+   "cov": 0.9970405900925355,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_V_SP": {
+   "cov": 0.17252457455165282,
+   "days": 334,
+   "flag": "LOW_COVERAGE"
+  },
+  "A1_V_DP": {
+   "cov": 0.6239524917276039,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_Q_ROE": {
+   "cov": 0.9395584314748371,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_Q_ROIC": {
+   "cov": 0.9221409052169931,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_Q_GM": {
+   "cov": 0.9219725759832096,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_Q_OCF": {
+   "cov": 0.9391982675737236,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_Q_LEV": {
+   "cov": 0.9225677942197864,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_G_NPY": {
+   "cov": 0.9225677942197864,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_G_OR": {
+   "cov": 0.9222341687113866,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A1_G_TR": {
+   "cov": 0.9222341687113866,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_REV_1": {
+   "cov": 1.0,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_REV_5": {
+   "cov": 0.9998149894907965,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_REV_10": {
+   "cov": 0.9994517926305159,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_REV_20": {
+   "cov": 0.9985836080688846,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_ON_5": {
+   "cov": 0.9994525508703076,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_ID_5": {
+   "cov": 0.9996064735480467,
+   "days": 1239,
+   "flag": "OK"
+  },
+  "A2_MAX20": {
+   "cov": 0.9954027921422094,
+   "days": 1239,
+   "flag": "OK"
+  }
+ },
+ "orth_diag": {
+  "A1": {
+   "keep": [
+    "A1_G_NPY",
+    "A1_G_OR",
+    "A1_G_TR",
+    "A1_Q_GM",
+    "A1_Q_LEV",
+    "A1_Q_OCF",
+    "A1_Q_ROE",
+    "A1_Q_ROIC",
+    "A1_V_BP",
+    "A1_V_DP",
+    "A1_V_EP"
+   ],
+   "drop": [
+    "A1_V_SP"
+   ],
+   "days": 1,
+   "trunc_ratio": 0.0
+  },
+  "A2": {
+   "keep": [
+    "A2_ID_5",
+    "A2_MAX20",
+    "A2_ON_5",
+    "A2_REV_1",
+    "A2_REV_10",
+    "A2_REV_20",
+    "A2_REV_5"
+   ],
+   "drop": [],
+   "days": 1,
+   "trunc_ratio": 0.0
+  },
+  "A3": {
+   "keep": [
+    "A3_RM_120",
+    "A3_RM_20",
+    "A3_RM_60",
+    "A3_RM_SHARPE60"
+   ],
+   "drop": [],
+   "days": 1,
+   "trunc_ratio": 0.0
+  },
+  "A4": {
+   "keep": [
+    "A4_AMP20",
+    "A4_AMT20",
+    "A4_ATR_R",
+    "A4_MA20_DEV",
+    "A4_MA20_SLOPE",
+    "A4_MA60_DEV",
+    "A4_TURN_CHG",
+    "A4_TURN_L",
+    "A4_VR20",
+    "A4_VR5"
+   ],
+   "drop": [],
+   "days": 1,
+   "trunc_ratio": 0.0
+  },
+  "A5": {
+   "keep": [
+    "A5_DRVOL_60",
+    "A5_IVOL_SHARE60",
+    "A5_RVOL_120",
+    "A5_RVOL_20",
+    "A5_RVOL_60"
+   ],
+   "drop": [],
+   "days": 1,
+   "trunc_ratio": 0.0
+  }
+ },
+ "orth_scope": "single_day(asof)",
+ "risk_labels": [
+  "MEMBER_HISTORY_SHORT",
+  "OOS_SHORT",
+  "FACTOR_LEVEL_ONLY",
+  "NO_TRADABILITY_MODEL",
+  "NO_INTRADAY_TIMING"
+ ],
+ "limitations": [
+  "因子级验证 != 策略级验证; COMP_PRIOR/COMP_EQ 判决 FRAGILE+SIGN_CONFLICT",
+  "成本口径无冲击成本/涨跌停/融券约束",
+  "MEMBER_HISTORY_SHORT: 中证2000 月度快照仅 37 期",
+  "OOS_SHORT: OOS 段约 8 个月",
+  "A2 为短期反转 (低吸) 风格, 与追强势偏好相反",
+  "输出仅为研究观察名单, 不得直接作为交易依据"
+ ]
+}

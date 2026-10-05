@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股资讯与热度</title>
+<style>
+:root{
+  --bg:#f2f4f7; --card:#fff; --line:#e6e9ef; --ink:#1f2430; --dim:#7a8496;
+  --brand:#1a5fb4; --brand2:#3584e4; --up:#d93025; --down:#12805c;
+  --chip:#eef3fb; --warn:#b26a00; --warnbg:#fff6e6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--ink);font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:1000px;margin:0 auto;padding:14px}
+.head{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;
+  border-radius:12px;padding:18px 20px;box-shadow:0 2px 10px rgba(26,95,180,.22)}
+.head h1{font-size:20px;font-weight:600}
+.head .sub{font-size:13px;opacity:.9;margin-top:4px}
+.head .meta{font-size:12px;opacity:.8;margin-top:8px;padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.25);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.head a{color:#fff;text-decoration:underline}
+.tabs{display:flex;gap:8px;margin:14px 0 10px}
+.tab{padding:9px 20px;border-radius:9px;background:#fff;border:1px solid var(--line);
+  cursor:pointer;font-size:15px;color:var(--dim);font-family:inherit}
+.tab.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.bar button{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--brand);cursor:pointer;min-height:40px}
+.bar button:hover{background:var(--chip)}
+.bar button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.bar input{font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:8px;min-height:40px;flex:1 1 130px;min-width:110px}
+.bar .gap{flex:1 1 auto}
+.stamp{font-size:12.5px;color:var(--dim)}
+.card{background:var(--card);border-radius:12px;box-shadow:0 1px 5px rgba(20,35,60,.07);
+  overflow:hidden;margin-bottom:14px}
+.card h2{font-size:16px;padding:12px 16px;border-bottom:1px solid var(--line);
+  color:var(--brand);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.card h2 .n{font-size:12.5px;color:var(--dim);font-weight:400}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#f7f9fc;color:var(--dim);font-weight:600;font-size:12.5px;white-space:nowrap}
+tbody tr:hover{background:#fafbfe}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.rk{width:44px;color:var(--dim);font-variant-numeric:tabular-nums}
+.code{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
+.name{font-weight:600}
+.up{color:var(--up)}
+.down{color:var(--down)}
+.mute{color:var(--dim)}
+.news{list-style:none}
+.news li{padding:12px 16px;border-bottom:1px solid var(--line)}
+.news li:last-child{border-bottom:none}
+.news .t{font-size:12.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.news .h{font-size:16px;font-weight:600;margin:3px 0}
+.news .p{font-size:15px;color:#414c60;white-space:pre-wrap}
+.news .tg{display:inline-block;background:var(--chip);color:var(--brand);border-radius:999px;
+  padding:1px 9px;font-size:12px;margin-right:6px}
+.news .imp{display:inline-block;background:var(--warnbg);color:var(--warn);border-radius:999px;
+  padding:1px 9px;font-size:12px;margin-left:6px}
+.news .more{font-size:13.5px;color:var(--brand);cursor:pointer;margin-top:5px;display:inline-block}
+.empty{padding:28px 16px;color:var(--dim);text-align:center;font-size:14px}
+.err{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:12px 16px;
+  font-size:14px;margin-bottom:12px;word-break:break-all}
+.foot{color:var(--dim);font-size:12.5px;text-align:center;padding:10px 0 26px}
+
+/* 日榜题材归类 */
+.clsbar{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px}
+.clschip{font:inherit;font-size:13.5px;padding:6px 12px;border-radius:999px;background:var(--chip);
+  color:var(--brand);border:1px solid #dbe6f7;cursor:pointer;min-height:34px;
+  display:inline-flex;align-items:center;gap:7px}
+.clschip:hover{background:#e2ecfa}
+.clschip.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.clschip .c{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.clschip.on .c{color:rgba(255,255,255,.9)}
+.clsdet{padding:0 16px 12px}
+.clsdet .hd{font-size:13px;color:var(--dim);padding:9px 0;border-top:1px solid var(--line)}
+.clsdet ul{list-style:none}
+.clsdet li{display:flex;align-items:baseline;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--line);font-size:14px}
+.clsdet li:last-child{border-bottom:none}
+.clsdet .rk{width:22px;color:var(--dim);font-variant-numeric:tabular-nums;font-size:13px}
+.clsdet .cn{font-weight:600}
+.clsdet .cn .code{font-weight:400;margin-left:6px}
+.clsdet .m{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--dim);font-size:13px}
+
+@media (max-width:600px){
+  .wrap{padding:10px}
+  .tab{padding:8px 14px;font-size:14px}
+  table{font-size:13px}
+  th,td{padding:8px 9px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>A股资讯与热度</h1>
+    <div class="sub">实时快讯 · 政策信号 · 打板与市场热度</div>
+    <div class="meta">
+      <span id="stamp">加载中…</span>
+      <span class="gap"></span>
+      <span>数据源：财联社 / 东方财富 / 华尔街见闻 / 央视网 / 同花顺</span>
+      <a href="/picks/">选股信号查询 »</a>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" data-col="news">资讯流</button>
+    <button class="tab" data-col="hot">市场热度</button>
+  </div>
+
+  <!-- 资讯流 -->
+  <div id="panel-news">
+    <div class="bar">
+      <button class="src on" data-src="cls">财联社电报</button>
+      <button class="src" data-src="em">东财 7×24</button>
+      <button class="src" data-src="wscn">华尔街见闻</button>
+      <button class="src" data-src="cctv">新闻联播</button>
+      <span class="gap"></span>
+      <button id="btn-refresh">刷新</button>
+    </div>
+    <div id="news-err"></div>
+    <div class="card">
+      <h2><span id="news-title">财联社电报</span><span class="n" id="news-count"></span></h2>
+      <ul class="news" id="news-list"><li class="empty">加载中…</li></ul>
+    </div>
+  </div>
+
+  <!-- 市场热度 -->
+  <div id="panel-hot" style="display:none">
+    <div class="card">
+      <h2><span>同花顺日榜 · 题材归类</span><span class="n" id="cls-count"></span></h2>
+      <div class="clsbar" id="cls-chips"><span class="mute" style="font-size:14px">加载中…</span></div>
+      <div class="clsdet" id="cls-det" style="display:none"></div>
+    </div>
+    <div class="bar">
+      <button class="src on" data-src="ths_hour">同花顺热榜·小时</button>
+      <button class="src" data-src="ths_day">同花顺热榜·日</button>
+      <button id="btn-refresh-hot">刷新</button>
+    </div>
+    <div class="card">
+      <h2><span>同花顺热榜</span><span class="n" id="ths-count"></span></h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>#</th><th>代码</th><th>名称</th><th>人气值</th><th>涨幅</th>
+            <th>排名变化</th><th>概念</th></tr></thead>
+          <tbody id="ths-body"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2><span>东财人气榜</span><span class="n" id="em-count"></span></h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>#</th><th>代码</th><th>名称</th><th>价格</th><th>涨幅</th><th>排名变化</th></tr></thead>
+          <tbody id="em-body"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2><span>个股热门概念</span><span class="n">输入 6 位代码</span></h2>
+      <div style="padding:12px 16px">
+        <div class="bar" style="margin-bottom:10px">
+          <input id="q-code" placeholder="如 601127 / 002594" inputmode="numeric" maxlength="6">
+          <button id="btn-concept">查询</button>
+        </div>
+        <div id="concept-out" class="mute" style="font-size:14px">看这只票当下被市场归到哪些概念在炒。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">每 5 分钟自动刷新 · 数据来自公开接口，仅供研究参考，不构成投资建议</div>
+</div>
+
+<script>
+var S = {col:'news', src:'cls', hot:'ths_hour', timer:null};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function fmtPct(v){
+  if(v==null||v==='') return '<span class="mute">—</span>';
+  var n=Number(v); if(isNaN(n)) return esc(v);
+  var cls=n>0?'up':(n<0?'down':'mute');
+  return '<span class="'+cls+'">'+(n>0?'+':'')+n.toFixed(2)+'%</span>';
+}
+function fmtChg(v){
+  if(v==null||v==='') return '<span class="mute">—</span>';
+  var n=Number(v); if(isNaN(n)||n===0) return '<span class="mute">0</span>';
+  return '<span class="'+(n>0?'up':'down')+'">'+(n>0?'▲':'▼')+Math.abs(n)+'</span>';
+}
+function api(path){return fetch(path,{cache:'no-store'}).then(function(r){return r.json();});}
+
+/* ---------------- 资讯流 ---------------- */
+function renderNews(d){
+  document.getElementById('news-title').textContent = d.name||'';
+  document.getElementById('news-count').textContent = (d.count||0)+' 条'+
+    (d.cached_age!=null ? ' · 缓存'+d.cached_age+'s' : '');
+  var el = document.getElementById('news-list');
+  var items = d.items||[];
+  if(!items.length){ el.innerHTML='<li class="empty">暂无数据</li>'; return; }
+  el.innerHTML = items.map(function(x,i){
+    var tags = (x.tags||[]).filter(Boolean).map(function(t){
+      return '<span class="tg">'+esc(typeof t==='string'?t:JSON.stringify(t))+'</span>';}).join('');
+    var imp = x.importance===2 ? '<span class="imp">重要</span>' : '';
+    var title = x.title ? '<div class="h">'+esc(x.title)+'</div>' : '';
+    var text = x.text ? '<div class="p">'+esc(x.text)+'</div>' : '';
+    var more = (S.src==='cctv' && x.url)
+      ? '<span class="more" data-url="'+esc(x.url)+'" data-i="'+i+'">展开全文 ▾</span>' : '';
+    var src = x.url && S.src!=='cctv'
+      ? ' <a href="'+esc(x.url)+'" target="_blank" rel="noopener">原文</a>' : '';
+    return '<li><div class="t">'+esc(x.time)+tags+imp+src+'</div>'+title+text+more+'</li>';
+  }).join('');
+  Array.prototype.forEach.call(el.querySelectorAll('.more'), function(a){
+    a.onclick = function(){ loadCctv(a); };
+  });
+}
+function loadCctv(a){
+  var url=a.getAttribute('data-url');
+  if(a.dataset.loaded){ a.parentNode.querySelector('.p').style.display='block'; a.remove(); return; }
+  a.textContent='加载中…';
+  api('api/cctv_content?url='+encodeURIComponent(url)).then(function(r){
+    var li=a.parentNode; var p=li.querySelector('.p');
+    if(!p){ p=document.createElement('div'); p.className='p'; li.appendChild(p); }
+    p.textContent = r.ok ? r.text : ('（正文获取失败：'+r.error+'）');
+    if(!r.ok) p.className='p mute';
+    a.remove();
+  });
+}
+function loadNews(){
+  var err=document.getElementById('news-err'); err.innerHTML='';
+  document.getElementById('news-list').innerHTML='<li class="empty">加载中…</li>';
+  api('api/feed?column=news&source='+S.src+'&limit=60').then(function(d){
+    if(!d.ok){ err.innerHTML='<div class="err">'+esc(d.error)+'</div>';
+      document.getElementById('news-list').innerHTML='<li class="empty">该来源暂时不可用</li>'; return; }
+    renderNews(d); stamp(d.fetched_at);
+  }).catch(function(e){
+    err.innerHTML='<div class="err">请求失败：'+esc(e)+'</div>';
+  });
+}
+
+/* ---------------- 市场热度 ---------------- */
+function renderThs(d){
+  document.getElementById('ths-count').textContent=(d.count||0)+' 条';
+  var el=document.getElementById('ths-body'); var it=d.items||[];
+  if(!it.length){ el.innerHTML='<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+  el.innerHTML=it.map(function(x){
+    var cs=(x.concepts||[]).map(function(c){return '<span class="tg">'+esc(c)+'</span>';}).join('');
+    return '<tr><td class="rk">'+esc(x.rank)+'</td><td class="code">'+esc(x.code)+'</td>'+
+      '<td class="name">'+esc(x.name)+'</td><td class="num">'+esc(x.heat)+'</td>'+
+      '<td class="num">'+fmtPct(x.pct)+'</td><td class="num">'+fmtChg(x.rank_chg)+'</td>'+
+      '<td>'+cs+'</td></tr>';
+  }).join('');
+}
+function renderEm(d){
+  document.getElementById('em-count').textContent=(d.count||0)+' 条';
+  var el=document.getElementById('em-body'); var it=d.items||[];
+  if(!it.length){ el.innerHTML='<tr><td colspan="6" class="empty">暂无数据</td></tr>'; return; }
+  el.innerHTML=it.map(function(x){
+    return '<tr><td class="rk">'+esc(x.rank)+'</td><td class="code">'+esc(x.code)+'</td>'+
+      '<td class="name">'+esc(x.name)+'</td><td class="num">'+esc(x.price==null?'—':x.price)+'</td>'+
+      '<td class="num">'+fmtPct(x.pct)+'</td><td class="num">'+fmtChg(x.rank_chg)+'</td></tr>';
+  }).join('');
+}
+/* ---------------- 日榜题材归类 ---------------- */
+var CLS = {list:null, sel:null};
+function fmtHeat(v){
+  v = Number(v)||0;
+  if(v>=1e8) return (v/1e8).toFixed(2)+'亿';
+  if(v>=1e4) return Math.round(v/1e4)+'万';
+  return String(Math.round(v));
+}
+function clsAgg(items){
+  var map = {};
+  items.forEach(function(x){
+    (x.concepts||[]).forEach(function(c){
+      if(!c) return;
+      var o = map[c] || (map[c] = {name:c, n:0, heat:0, stocks:[]});
+      o.n++; o.heat += Number(x.heat)||0; o.stocks.push(x);
+    });
+  });
+  return Object.keys(map).map(function(k){return map[k];})
+    .filter(function(o){return o.n>=2;})
+    .sort(function(a,b){ return b.n-a.n || b.heat-a.heat; });
+}
+function renderCls(){
+  var chips = document.getElementById('cls-chips');
+  var list = CLS.list||[];
+  if(!list.length){ chips.innerHTML='<span class="mute" style="font-size:14px">暂无可归类的题材</span>'; return; }
+  chips.innerHTML = list.map(function(o){
+    var on = CLS.sel===o.name ? ' on' : '';
+    return '<button class="clschip'+on+'" data-c="'+esc(o.name)+'">'+
+      '<span>'+esc(o.name)+'</span><span class="c">'+o.n+'只 · '+fmtHeat(o.heat)+'</span></button>';
+  }).join('');
+  Array.prototype.forEach.call(chips.querySelectorAll('.clschip'), function(b){
+    b.onclick = function(){
+      var c = b.getAttribute('data-c');
+      CLS.sel = (CLS.sel===c) ? null : c;
+      renderCls();
+    };
+  });
+  var det = document.getElementById('cls-det');
+  var o = null;
+  for(var i=0;i<list.length;i++){ if(list[i].name===CLS.sel){ o=list[i]; break; } }
+  if(!o){ det.style.display='none'; det.innerHTML=''; return; }
+  det.style.display='block';
+  det.innerHTML = '<div class="hd">「'+esc(o.name)+'」上榜 '+o.n+' 只 · 人气合计 '+fmtHeat(o.heat)+
+    ' · 点击题材名可收起</div><ul>'+o.stocks.map(function(x){
+      return '<li><span class="rk">'+esc(x.rank)+'</span>'+
+        '<span class="cn">'+esc(x.name)+'<span class="code">'+esc(x.code)+'</span></span>'+
+        '<span class="m">'+fmtPct(x.pct)+' · '+fmtHeat(x.heat)+'</span></li>';
+    }).join('')+'</ul>';
+}
+function loadCls(){
+  api('api/feed?column=hot&source=ths_day').then(function(d){
+    if(!d.ok){ document.getElementById('cls-chips').innerHTML=
+      '<span class="mute" style="font-size:14px">归类失败：'+esc(d.error)+'</span>'; return; }
+    CLS.list = clsAgg(d.items||[]);
+    document.getElementById('cls-count').textContent =
+      (d.count||0)+' 只 · '+CLS.list.length+' 个题材(≥2只)';
+    renderCls();
+  }).catch(function(e){
+    document.getElementById('cls-chips').innerHTML=
+      '<span class="mute" style="font-size:14px">请求失败：'+esc(e)+'</span>';
+  });
+}
+function loadHot(){
+  loadCls();
+  api('api/feed?column=hot&source='+S.hot).then(function(d){
+    if(d.ok) renderThs(d);
+    else document.getElementById('ths-body').innerHTML=
+      '<tr><td colspan="7" class="empty">'+esc(d.error)+'</td></tr>';
+  }).catch(function(e){
+    document.getElementById('ths-body').innerHTML=
+      '<tr><td colspan="7" class="empty">请求失败：'+esc(e)+'</td></tr>';
+  });
+  api('api/feed?column=hot&source=em&top=50').then(function(d){
+    if(d.ok){ renderEm(d); stamp(d.fetched_at); }
+    else document.getElementById('em-body').innerHTML=
+      '<tr><td colspan="6" class="empty">'+esc(d.error)+'</td></tr>';
+  }).catch(function(e){
+    document.getElementById('em-body').innerHTML=
+      '<tr><td colspan="6" class="empty">请求失败：'+esc(e)+'</td></tr>';
+  });
+}
+function loadConcept(){
+  var code=document.getElementById('q-code').value.replace(/\D/g,'');
+  var out=document.getElementById('concept-out');
+  if(code.length!==6){ out.innerHTML='<span class="err">请输入 6 位股票代码</span>'; return; }
+  out.innerHTML='查询中…';
+  api('api/concept?code='+code).then(function(r){
+    if(!r.ok){ out.innerHTML='<div class="err">'+esc(r.error)+'</div>'; return; }
+    if(!r.items.length){ out.innerHTML='<span class="mute">未查到该股的热门概念命中</span>'; return; }
+    out.innerHTML = '<table><thead><tr><th>概念</th><th>BK</th><th>命中热度</th></tr></thead><tbody>'+
+      r.items.map(function(x){return '<tr><td>'+esc(x.concept)+'</td><td class="code">'+esc(x.bk)+
+        '</td><td class="num">'+esc(x.hit)+'</td></tr>';}).join('')+'</tbody></table>';
+  }).catch(function(e){ out.innerHTML='<div class="err">请求失败：'+esc(e)+'</div>'; });
+}
+
+/* ---------------- 交互 ---------------- */
+function stamp(t){
+  if(t) document.getElementById('stamp').textContent='更新于 '+t+' · 每5分钟自动刷新';
+}
+function load(){
+  if(S.col==='news') loadNews(); else loadHot();
+}
+document.querySelectorAll('.tab').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on'); S.col=b.getAttribute('data-col');
+    document.getElementById('panel-news').style.display = S.col==='news'?'':'none';
+    document.getElementById('panel-hot').style.display = S.col==='hot'?'':'none';
+    load();
+  };
+});
+document.querySelectorAll('#panel-news .src').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('#panel-news .src').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on'); S.src=b.getAttribute('data-src'); loadNews();
+  };
+});
+document.querySelectorAll('#panel-hot .src').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('#panel-hot .src').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on'); S.hot=b.getAttribute('data-src'); loadHot();
+  };
+});
+document.getElementById('btn-refresh').onclick=loadNews;
+document.getElementById('btn-refresh-hot').onclick=loadHot;
+document.getElementById('btn-concept').onclick=loadConcept;
+document.getElementById('q-code').onkeydown=function(e){ if(e.key==='Enter') loadConcept(); };
+
+load();
+S.timer=setInterval(load, 300000);      /* 5 分钟 */
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) load(); });
+</script>
+</body>
+</html>

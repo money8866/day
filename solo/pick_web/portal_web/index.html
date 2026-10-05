@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 股票研究站点</title>
+<style>
+:root{
+  --bg:#f2f4f7; --card:#fff; --line:#e6e9ef; --ink:#1f2430; --dim:#7a8496;
+  --brand:#1a5fb4; --brand2:#3584e4; --up:#d93025; --down:#12805c;
+  --chip:#eef3fb; --warn:#b26a00; --warnbg:#fff6e6; --ok:#12805c; --okbg:#eaf7f1;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--ink);font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:1000px;margin:0 auto;padding:14px}
+button{font-family:inherit;cursor:pointer}
+
+/* ---------------- 登录页 ---------------- */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{width:100%;max-width:400px;background:var(--card);border-radius:14px;
+  box-shadow:0 6px 26px rgba(20,35,60,.12);overflow:hidden}
+.login-card .top{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:26px 24px}
+.login-card .top h1{font-size:22px;font-weight:600}
+.login-card .top p{font-size:14px;opacity:.9;margin-top:6px}
+.login-card .body{padding:24px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:14.5px;color:var(--dim);margin-bottom:6px}
+.field input{width:100%;font:inherit;font-size:17px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:10px;background:#fbfcfe;min-height:50px}
+.field input:focus{outline:none;border-color:var(--brand2);background:#fff;
+  box-shadow:0 0 0 3px rgba(53,132,228,.14)}
+.btn{font:inherit;font-size:17px;font-weight:600;padding:13px 18px;border:none;border-radius:10px;
+  background:var(--brand);color:#fff;min-height:50px;width:100%}
+.btn:hover{background:var(--brand2)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:#fff;color:var(--brand);border:1px solid var(--line);font-weight:500;width:auto}
+.btn.ghost:hover{background:var(--chip)}
+.btn.sm{font-size:14px;padding:7px 12px;min-height:38px;border-radius:8px;width:auto;font-weight:500}
+.btn.danger{background:#fff;color:var(--up);border:1px solid #f2d3cf}
+.btn.danger:hover{background:#fdf3f2}
+.msg{border-radius:10px;padding:11px 14px;font-size:15px;margin-bottom:16px;word-break:break-all}
+.msg.err{background:var(--warnbg);color:var(--warn)}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.hint{font-size:13.5px;color:var(--dim);text-align:center;margin-top:16px;line-height:1.7}
+
+/* ---------------- 门户 ---------------- */
+.head{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;
+  border-radius:12px;padding:18px 20px;box-shadow:0 2px 10px rgba(26,95,180,.22)}
+.head h1{font-size:20px;font-weight:600}
+.head .sub{font-size:13.5px;opacity:.9;margin-top:4px}
+.head .meta{font-size:12.5px;opacity:.85;margin-top:10px;padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.25);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.head .meta .gap{flex:1 1 auto}
+.head .meta button{font-size:13px;padding:6px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.5);
+  background:rgba(255,255,255,.14);color:#fff}
+.head .meta button:hover{background:rgba(255,255,255,.28)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:16px}
+.entry{display:flex;gap:14px;align-items:flex-start;background:var(--card);border-radius:12px;
+  padding:18px;box-shadow:0 1px 5px rgba(20,35,60,.07);text-decoration:none;color:inherit;
+  border:1px solid transparent;transition:.15s}
+.entry:hover{border-color:var(--brand2);box-shadow:0 4px 16px rgba(26,95,180,.16);transform:translateY(-2px)}
+.entry .badge{flex:0 0 46px;height:46px;border-radius:11px;background:var(--chip);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;letter-spacing:1px}
+.entry:hover .badge{background:var(--brand);color:#fff}
+.entry .tt{font-size:17.5px;font-weight:600}
+.entry .dd{font-size:14.5px;color:var(--dim);margin-top:3px}
+.entry .go{font-size:13.5px;color:var(--brand);margin-top:7px}
+.entry.admin .badge{background:#fff2df;color:var(--warn)}
+.entry.admin:hover .badge{background:var(--warn);color:#fff}
+
+.panel{background:var(--card);border-radius:12px;box-shadow:0 1px 5px rgba(20,35,60,.07);
+  margin-top:16px;overflow:hidden}
+.panel h2{font-size:16.5px;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--brand);
+  font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.panel .body{padding:16px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{background:#f7f9fc;color:var(--dim);font-weight:600;font-size:13.5px;white-space:nowrap}
+tbody tr:hover{background:#fafbfe}
+td.ops{white-space:nowrap}
+td.ops button{margin-right:6px}
+td input,td select{font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);
+  border-radius:7px;background:#fbfcfe;min-height:40px;width:100%;min-width:96px}
+td input:focus,td select:focus{outline:none;border-color:var(--brand2);background:#fff}
+.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12.5px;white-space:nowrap}
+.tag.admin{background:#fff2df;color:var(--warn)}
+.tag.op{background:var(--chip);color:var(--brand)}
+.tag.off{background:#f0f1f4;color:var(--dim)}
+.form-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.form-row .f{flex:1 1 150px;min-width:130px}
+.form-row label{display:block;font-size:13.5px;color:var(--dim);margin-bottom:5px}
+.form-row input,.form-row select{width:100%;font:inherit;font-size:16px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:9px;background:#fbfcfe;min-height:46px}
+.form-row input:focus,.form-row select:focus{outline:none;border-color:var(--brand2);background:#fff}
+.empty{padding:24px 16px;color:var(--dim);text-align:center;font-size:15px}
+.foot{color:var(--dim);font-size:13px;text-align:center;padding:14px 0 26px}
+@media (max-width:600px){
+  body{font-size:16px}
+  .wrap{padding:10px}
+  .cards{grid-template-columns:1fr;gap:12px}
+  .entry{padding:15px}
+  table{font-size:14px}
+  th,td{padding:9px 8px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ 登录 ══════════════ -->
+<div class="login-wrap" id="v-login">
+  <div class="login-card">
+    <div class="top">
+      <h1>股票研究站点</h1>
+      <p>请登录后使用</p>
+    </div>
+    <div class="body">
+      <div id="login-msg"></div>
+      <div class="field">
+        <label for="acc">手机号 / 用户名</label>
+        <input id="acc" type="text" autocomplete="username" placeholder="手机号或用户名" autofocus>
+      </div>
+      <div class="field">
+        <label for="pwd">密码</label>
+        <input id="pwd" type="password" autocomplete="current-password" placeholder="请输入密码">
+      </div>
+      <button class="btn" id="btn-login">登 录</button>
+      <div class="hint">首次使用请用管理员账号登录后，在「操作员管理」中添加账号</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 门户 ══════════════ -->
+<div id="v-app" style="display:none">
+<div class="wrap">
+  <div class="head">
+    <h1>股票研究站点</h1>
+    <div class="sub">登录后统一入口</div>
+    <div class="meta">
+      <span id="whoami"></span>
+      <span class="gap"></span>
+      <button id="btn-home">首页</button>
+      <button id="btn-chpwd">修改密码</button>
+      <button id="btn-logout">退出登录</button>
+    </div>
+  </div>
+
+  <!-- 入口 -->
+  <div id="v-portal">
+    <div class="cards" id="entry-cards"></div>
+  </div>
+
+  <!-- 操作员管理 -->
+  <div id="v-users" style="display:none">
+    <div class="panel">
+      <h2><span>操作员管理</span><span class="tag admin" id="user-count"></span></h2>
+      <div class="body">
+        <div id="users-msg"></div>
+        <div class="form-row" style="margin-bottom:16px">
+          <div class="f"><label>账号（手机号 / 用户名）</label><input id="nu-acc" placeholder="如 13800138000"></div>
+          <div class="f"><label>姓名</label><input id="nu-name" placeholder="选填"></div>
+          <div class="f"><label>手机号</label><input id="nu-phone" placeholder="选填"></div>
+          <div class="f"><label>角色</label>
+            <select id="nu-role"><option value="operator">操作员</option><option value="admin">管理员</option></select>
+          </div>
+          <div class="f"><label>初始密码</label><input id="nu-pwd" type="text" placeholder="至少 6 位"></div>
+          <button class="btn sm" id="btn-add" style="min-height:46px;padding:0 20px">新增</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr>
+              <th>账号</th><th>姓名</th><th>手机号</th><th>角色</th><th>状态</th>
+              <th>最后登录</th><th>操作</th>
+            </tr></thead>
+            <tbody id="user-body"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="reset-panel" style="display:none">
+      <h2><span id="reset-title">重置密码</span></h2>
+      <div class="body">
+        <div id="reset-msg"></div>
+        <div class="form-row">
+          <div class="f"><label>新密码（至少 6 位）</label><input id="reset-pwd" type="text" placeholder="新密码"></div>
+          <button class="btn sm" id="btn-reset-ok" style="min-height:46px;padding:0 20px">确认重置</button>
+          <button class="btn sm ghost" id="btn-reset-cancel" style="min-height:46px;padding:0 20px">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改密码 -->
+  <div id="v-pwd" style="display:none">
+    <div class="panel">
+      <h2><span>修改密码</span></h2>
+      <div class="body">
+        <div id="pwd-msg"></div>
+        <div class="form-row">
+          <div class="f"><label>原密码</label><input id="cp-old" type="password" autocomplete="current-password"></div>
+          <div class="f"><label>新密码（至少 6 位）</label><input id="cp-new" type="password" autocomplete="new-password"></div>
+          <div class="f"><label>确认新密码</label><input id="cp-new2" type="password" autocomplete="new-password"></div>
+          <button class="btn sm" id="btn-cp" style="min-height:46px;padding:0 20px">确认修改</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">股票研究站点 · 统一入口</div>
+</div>
+</div>
+
+<script>
+var S = {user:null, entries:[], resetUid:null};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(id){return document.getElementById(id);}
+function msg(el,text,ok){
+  $(el).innerHTML = text ? '<div class="msg '+(ok?'ok':'err')+'">'+esc(text)+'</div>' : '';
+}
+function api(path,method,body){
+  return fetch(path,{method:method||'GET',cache:'no-store',
+    headers:body?{'Content-Type':'application/json'}:undefined,
+    body:body?JSON.stringify(body):undefined
+  }).then(function(r){ return r.json().catch(function(){return {ok:false,error:'HTTP '+r.status};}); });
+}
+
+/* ---------------- 登录 ---------------- */
+function showLogin(){
+  $('v-login').style.display='flex';
+  $('v-app').style.display='none';
+}
+function enterApp(){
+  $('v-login').style.display='none';
+  $('v-app').style.display='';
+  $('whoami').textContent = '当前用户：' + (S.user.name||S.user.account) +
+    '（' + (S.user.role==='admin'?'管理员':'操作员') + '）';
+  renderEntries(); showView('portal');
+}
+function doLogin(){
+  var acc=$('acc').value.trim(), pwd=$('pwd').value;
+  if(!acc||!pwd){ msg('login-msg','请输入账号和密码'); return; }
+  var b=$('btn-login'); b.disabled=true; b.textContent='登录中…'; msg('login-msg','');
+  api('api/login','POST',{account:acc,password:pwd}).then(function(r){
+    b.disabled=false; b.textContent='登 录';
+    if(!r.ok){ msg('login-msg', r.error||'登录失败'); return; }
+    $('pwd').value='';
+    S.user=r.user;
+    return api('api/me').then(function(m){ S.entries=(m.entries||[]); enterApp(); });
+  }).catch(function(e){ b.disabled=false; b.textContent='登 录'; msg('login-msg','请求失败：'+e); });
+}
+$('btn-login').onclick=doLogin;
+$('pwd').onkeydown=function(e){ if(e.key==='Enter') doLogin(); };
+$('acc').onkeydown=function(e){ if(e.key==='Enter') $('pwd').focus(); };
+
+/* ---------------- 门户 ---------------- */
+function renderEntries(){
+  var html = S.entries.map(function(e){
+    return '<a class="entry" href="'+esc(e.url)+'">'+
+      '<div class="badge">'+esc(e.badge||'入口')+'</div>'+
+      '<div><div class="tt">'+esc(e.title)+'</div>'+
+      '<div class="dd">'+esc(e.desc||'')+'</div>'+
+      '<div class="go">进入 »</div></div></a>';
+  }).join('');
+  if(S.user.role==='admin'){
+    html += '<a class="entry admin" href="#" id="card-users">'+
+      '<div class="badge">管理</div>'+
+      '<div><div class="tt">操作员管理</div>'+
+      '<div class="dd">新增 / 编辑 / 启停账号，重置密码</div>'+
+      '<div class="go">进入 »</div></div></a>';
+  }
+  $('entry-cards').innerHTML = html || '<div class="empty">暂无可访问入口</div>';
+  var cu=$('card-users');
+  if(cu) cu.onclick=function(ev){ ev.preventDefault(); showView('users'); };
+}
+function showView(v){
+  $('v-portal').style.display = v==='portal'?'':'none';
+  $('v-users').style.display  = v==='users' ?'':'none';
+  $('v-pwd').style.display    = v==='pwd'   ?'':'none';
+  if(v==='users') loadUsers();
+  if(v==='pwd')   msg('pwd-msg','');
+}
+$('btn-home').onclick=function(){ showView('portal'); };
+$('btn-chpwd').onclick=function(){ showView('pwd'); };
+$('btn-logout').onclick=function(){
+  api('api/logout','POST').then(function(){ S.user=null; S.entries=[]; showLogin(); });
+};
+
+/* ---------------- 操作员管理 ---------------- */
+function loadUsers(){
+  api('api/users').then(function(r){
+    if(!r.ok){ $('user-body').innerHTML='<tr><td colspan="7" class="empty">'+esc(r.error)+'</td></tr>'; return; }
+    var it=r.items||[];
+    $('user-count').textContent = it.length + ' 个账号';
+    if(!it.length){ $('user-body').innerHTML='<tr><td colspan="7" class="empty">暂无账号</td></tr>'; return; }
+    $('user-body').innerHTML = it.map(function(u){
+      var tag = u.role==='admin' ? '<span class="tag admin">管理员</span>'
+                                 : '<span class="tag op">操作员</span>';
+      return '<tr>'+
+        '<td>'+esc(u.account)+'</td>'+
+        '<td><input data-f="name" data-id="'+u.id+'" value="'+esc(u.name)+'"></td>'+
+        '<td><input data-f="phone" data-id="'+u.id+'" value="'+esc(u.phone)+'"></td>'+
+        '<td><select data-f="role" data-id="'+u.id+'">'+
+          '<option value="operator"'+(u.role!=='admin'?' selected':'')+'>操作员</option>'+
+          '<option value="admin"'+(u.role==='admin'?' selected':'')+'>管理员</option></select></td>'+
+        '<td><select data-f="active" data-id="'+u.id+'">'+
+          '<option value="1"'+(u.active?' selected':'')+'>启用</option>'+
+          '<option value="0"'+(u.active?'':' selected')+'>停用</option></select></td>'+
+        '<td class="mute">'+esc(u.last_login||'—')+'</td>'+
+        '<td class="ops">'+
+          '<button class="btn sm" data-act="save" data-id="'+u.id+'">保存</button>'+
+          '<button class="btn sm ghost" data-act="reset" data-id="'+u.id+'" data-acc="'+esc(u.account)+'">重置密码</button>'+
+          '<button class="btn sm danger" data-act="del" data-id="'+u.id+'" data-acc="'+esc(u.account)+'">删除</button>'+
+        '</td></tr>';
+    }).join('');
+    bindUserRows();
+  });
+}
+function bindUserRows(){
+  Array.prototype.forEach.call($('user-body').querySelectorAll('button'), function(b){
+    b.onclick=function(){
+      var uid=Number(b.getAttribute('data-id')), act=b.getAttribute('data-act');
+      if(act==='save'){
+        var g=function(f){ var el=document.querySelector('[data-f="'+f+'"][data-id="'+uid+'"]'); return el?el.value:''; };
+        api('api/users/'+uid+'/update','POST',{name:g('name'),phone:g('phone'),
+          role:g('role'),active:g('active')==='1'}).then(function(r){
+          msg('users-msg', r.ok?'已保存':(r.error||'保存失败'), r.ok); loadUsers();
+        });
+      } else if(act==='reset'){
+        S.resetUid=uid;
+        $('reset-title').textContent='重置密码：'+b.getAttribute('data-acc');
+        $('reset-pwd').value=''; msg('reset-msg','');
+        $('reset-panel').style.display='';
+        $('reset-pwd').focus();
+      } else if(act==='del'){
+        if(!confirm('确认删除账号「'+b.getAttribute('data-acc')+'」？此操作不可恢复。')) return;
+        api('api/users/'+uid,'DELETE').then(function(r){
+          msg('users-msg', r.ok?'已删除':(r.error||'删除失败'), r.ok); loadUsers();
+        });
+      }
+    };
+  });
+}
+$('btn-add').onclick=function(){
+  var b=$('btn-add'); b.disabled=true;
+  api('api/users','POST',{account:$('nu-acc').value.trim(),name:$('nu-name').value.trim(),
+    phone:$('nu-phone').value.trim(),role:$('nu-role').value,password:$('nu-pwd').value
+  }).then(function(r){
+    b.disabled=false;
+    msg('users-msg', r.ok?'已新增账号':(r.error||'新增失败'), r.ok);
+    if(r.ok){ $('nu-acc').value=''; $('nu-name').value=''; $('nu-phone').value=''; $('nu-pwd').value=''; loadUsers(); }
+  }).catch(function(e){ b.disabled=false; msg('users-msg','请求失败：'+e); });
+};
+$('btn-reset-ok').onclick=function(){
+  if(!S.resetUid) return;
+  api('api/users/'+S.resetUid+'/password','POST',{password:$('reset-pwd').value}).then(function(r){
+    msg('reset-msg', r.ok?'密码已重置':(r.error||'重置失败'), r.ok);
+    if(r.ok){ $('reset-panel').style.display='none'; S.resetUid=null; }
+  });
+};
+$('btn-reset-cancel').onclick=function(){ $('reset-panel').style.display='none'; S.resetUid=null; };
+
+/* ---------------- 修改密码 ---------------- */
+$('btn-cp').onclick=function(){
+  var o=$('cp-old').value, n=$('cp-new').value, n2=$('cp-new2').value;
+  if(n.length<6){ msg('pwd-msg','新密码至少 6 位'); return; }
+  if(n!==n2){ msg('pwd-msg','两次输入的新密码不一致'); return; }
+  api('api/password','POST',{old:o,new:n}).then(function(r){
+    msg('pwd-msg', r.ok?'密码修改成功，请重新登录':(r.error||'修改失败'), r.ok);
+    if(r.ok){ $('cp-old').value=''; $('cp-new').value=''; $('cp-new2').value='';
+      setTimeout(function(){ api('api/logout','POST').then(function(){ showLogin(); }); }, 1200); }
+  });
+};
+
+/* ---------------- 启动 ---------------- */
+api('api/me').then(function(m){
+  if(m && m.authed){ S.user=m.user; S.entries=m.entries||[]; enterApp(); }
+  else showLogin();
+}).catch(showLogin);
+</script>
+</body>
+</html>

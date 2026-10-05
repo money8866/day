@@ -33,3 +33,13 @@
 - 2026-10-01 22:01：查询 2026-10-02（周五）日程，命中 1 项（18:00 聚餐），邮件推送成功。
   exit 0；sent 目录复核确认 subject「📅 明日行程提醒 10-02 周五」created_at 2026-10-01T14:01:23Z。
   token 仍有效（未触发 auth login）。执行方式沿用 PowerShell + 编码三件套 + Out-File utf8 重定向。
+- 2026-10-02 22:01：查询 2026-10-03（周六）日程，结果为空，邮件推送成功。
+  exit 0；sent 复核 subject「📅 明日行程提醒 10-03 周六」created_at 2026-10-02T14:01:15Z。
+  token 仍有效，无需 auth login。流程已稳定，无新坑。
+- 2026-10-03 22:00：查询 2026-10-04（周日）日程，命中 1 项（09:20 出发送儿子去机场，家庭日历），
+  邮件推送成功。exit 0；sent 复核 subject「📅 明日行程提醒 10-04 周日」created_at 2026-10-03T14:01:11Z、
+  收件人 stock1975@qq.com。token 仍有效，无需 auth login，流程无变化。
+  注：`message +list` 的 tip 行会被 PS 当 stderr 报 RemoteException，但 JSON 结果仍正常落盘，不影响判断。
+- 2026-10-04 22:00：查询 2026-10-05（周一）日程，命中 1 项（18:00 永加强海鲜楼晚餐（202包厢），📍龙湾区永中西路1111号），
+  邮件推送成功。exit 0；sent 复核 subject「📅 明日行程提醒 10-05 周一」created_at 2026-10-04T14:01:12Z、
+  收件人 stock1975@qq.com。token 仍有效，无需 auth login，流程无变化。（加分：list 时用 2>$null 屏蔽 tip 行更干净。）

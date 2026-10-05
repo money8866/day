@@ -1,0 +1,14 @@
+[Unit]
+Description=Portal 登录与总入口 (FastAPI, session + entries)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/Portal
+ExecStart=/usr/bin/python3 /var/www/Portal/app.py --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

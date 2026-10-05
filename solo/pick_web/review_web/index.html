@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日复盘 · 股票研究站点</title>
+<style>
+:root{
+  --bg:#f2f4f7; --card:#fff; --line:#e6e9ef; --ink:#1f2430; --dim:#7a8496;
+  --brand:#1a5fb4; --brand2:#3584e4; --chip:#eef3fb;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--ink);font-size:17px;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:1000px;margin:0 auto;padding:14px}
+a{color:var(--brand);text-decoration:none}
+
+.head{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;
+  border-radius:12px;padding:18px 20px;box-shadow:0 2px 10px rgba(26,95,180,.22)}
+.head h1{font-size:20px;font-weight:600}
+.head .sub{font-size:13.5px;opacity:.9;margin-top:4px}
+.head .meta{font-size:12.5px;opacity:.85;margin-top:10px;padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.25);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.head .meta a,.head .meta button{font-size:13px;padding:6px 12px;border-radius:7px;
+  border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.14);color:#fff;font-family:inherit}
+.head .meta a:hover,.head .meta button:hover{background:rgba(255,255,255,.28)}
+.head .meta .gap{flex:1 1 auto}
+
+.list{margin-top:14px}
+.month{font-size:14px;font-weight:600;color:var(--dim);padding:14px 4px 6px;
+  display:flex;justify-content:space-between;align-items:baseline}
+.month .n{font-weight:400;font-size:13px}
+.card{background:var(--card);border-radius:12px;box-shadow:0 1px 5px rgba(20,35,60,.07);
+  overflow:hidden;margin-bottom:10px}
+.day{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);
+  color:inherit;transition:.12s}
+.day:last-child{border-bottom:none}
+.day:hover{background:#f7faff}
+.day .d{font-size:17.5px;font-weight:600;letter-spacing:.3px}
+.day .w{font-size:13.5px;color:var(--brand);background:var(--chip);border-radius:6px;
+  padding:2px 8px;white-space:nowrap}
+.day .gap{flex:1 1 auto}
+.day .s{font-size:13px;color:var(--dim);text-align:right;white-space:nowrap}
+.day::after{content:'›';color:var(--dim);font-size:20px;line-height:1}
+
+.empty{padding:28px 16px;color:var(--dim);text-align:center;font-size:15px}
+
+#v-view{display:none}
+.viewbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+.viewbar .t{font-size:17px;font-weight:600}
+.viewbar .gap{flex:1 1 auto}
+.btn{font-family:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
+  background:#fff;color:var(--brand);min-height:40px;cursor:pointer}
+.btn:hover{background:var(--chip)}
+.rframe{width:100%;height:calc(100vh - 210px);min-height:420px;margin-top:12px;border:1px solid var(--line);
+  border-radius:12px;background:#fff}
+.foot{color:var(--dim);font-size:13px;text-align:center;padding:14px 0 26px}
+
+@media (max-width:600px){
+  body{font-size:16px}
+  .wrap{padding:10px}
+  .day{padding:13px 13px;gap:9px}
+  .day .d{font-size:16.5px}
+  .day .s{font-size:12px}
+  .rframe{height:calc(100vh - 190px)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>每日复盘</h1>
+    <div class="sub">盘后自动生成 · 按交易日倒序 · 点日期查看当日复盘</div>
+    <div class="meta">
+      <span id="mstat">加载中…</span>
+      <span class="gap"></span>
+      <a href="/">首页</a>
+      <a href="/picks/">选股信号</a>
+    </div>
+  </div>
+
+  <div id="v-list">
+    <div id="list"></div>
+  </div>
+
+  <div id="v-view">
+    <div class="viewbar">
+      <span class="t" id="vtitle"></span>
+      <span class="gap"></span>
+      <button class="btn" id="back">‹ 返回列表</button>
+      <a class="btn" id="raw" target="_blank" rel="noopener">新窗口打开</a>
+    </div>
+    <iframe class="rframe" id="frame" title="复盘报告"></iframe>
+  </div>
+
+  <div class="foot">报告为盘后脚本产出原文，本页不做任何改写</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let ITEMS = null;
+
+function monthLabel(ym){
+  return ym.slice(0,4) + ' 年 ' + ym.slice(4,6) + ' 月';
+}
+
+function renderList(){
+  const byMonth = [];
+  ITEMS.forEach(function(r){
+    const g = byMonth[byMonth.length - 1];
+    if (g && g.ym === r.ym) g.items.push(r);
+    else byMonth.push({ym: r.ym, items: [r]});
+  });
+
+  $('#list').innerHTML = byMonth.map(function(g){
+    return '<div class="month"><span>' + monthLabel(g.ym) + '</span>' +
+      '<span class="n">' + g.items.length + ' 期</span></div>' +
+      '<div class="card">' + g.items.map(function(r){
+        return '<a class="day" href="#/' + r.date + '">' +
+          '<span class="d">' + r.date.slice(0,4) + '-' + r.date.slice(4,6) + '-' + r.date.slice(6) + '</span>' +
+          '<span class="w">周' + esc(r.week) + '</span>' +
+          '<span class="gap"></span>' +
+          '<span class="s">' + r.size_kb + ' KB · 生成 ' + esc(r.mtime_date) + '</span>' +
+        '</a>';
+      }).join('') + '</div>';
+  }).join('');
+
+  $('#mstat').textContent = '共 ' + ITEMS.length + ' 期 · 最新 ' + ITEMS[0].date;
+}
+
+function showList(){
+  $('#v-list').style.display = 'block';
+  $('#v-view').style.display = 'none';
+  $('#frame').src = 'about:blank';
+  document.title = '每日复盘 · 股票研究站点';
+  window.scrollTo(0, 0);
+}
+
+function showReport(date){
+  const r = ITEMS.filter(function(x){ return x.date === date; })[0];
+  const d = date.slice(0,4) + '-' + date.slice(4,6) + '-' + date.slice(6);
+  $('#vtitle').textContent = d + (r ? '（周' + r.week + '）' : '');
+  $('#raw').href = 'api/report?date=' + date;
+  $('#frame').src = 'api/report?date=' + date;
+  $('#v-list').style.display = 'none';
+  $('#v-view').style.display = 'block';
+  document.title = d + ' 复盘 · 股票研究站点';
+}
+
+function route(){
+  const m = location.hash.match(/^#\/(\d{8})$/);
+  if (m && ITEMS.some(function(x){ return x.date === m[1]; })) showReport(m[1]);
+  else showList();
+}
+
+async function boot(){
+  try {
+    const res = await fetch('api/reports', {cache: 'no-store'});
+    const d = await res.json();
+    ITEMS = d.reports || [];
+  } catch (err) {
+    $('#list').innerHTML = '<div class="empty">报告清单加载失败：' + esc(err.message) + '</div>';
+    $('#mstat').textContent = '加载失败';
+    return;
+  }
+  if (!ITEMS.length){
+    $('#list').innerHTML = '<div class="empty">报告目录为空：尚未生成任何复盘报告。</div>';
+    $('#mstat').textContent = '暂无报告';
+    return;
+  }
+  renderList();
+  route();
+}
+
+$('#back').addEventListener('click', function(){
+  if (location.hash) location.hash = '';
+  else showList();
+});
+window.addEventListener('hashchange', route);
+boot();
+</script>
+</body>
+</html>

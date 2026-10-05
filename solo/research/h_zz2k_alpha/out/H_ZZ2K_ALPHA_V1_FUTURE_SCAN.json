@@ -1,0 +1,18 @@
+{
+ "forward_window_isolation": {
+  "ok": true,
+  "evidence": "[]"
+ },
+ "label_columns_marked": {
+  "ok": true,
+  "evidence": "['y_h', 'y_ex_zz', 'y_ex_mkt', 'y_ex_sec']"
+ },
+ "truncation_invariance": {
+  "ok": true,
+  "evidence": 0
+ },
+ "pit_fundamental_proof": {
+  "ok": true,
+  "evidence": "{'checked': 500, 'viol': 0}"
+ }
+}

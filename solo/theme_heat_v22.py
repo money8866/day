@@ -126,6 +126,17 @@ EVO_MIN_TRANS_N = 8              # §十二 状态迁移最小样本量（不足
 EVO_PERTURB = (0.8, 1.2)         # §十二 参数扰动系数（阈值缩放，检验状态稳定性）
 EVO_HORIZONS = (5, 10, 20)       # §十一 未来 T+5 / T+10 / T+20
 
+# ── §V2.5.1 主线主题「龙头 / 中军」标注（只标注 LEADING；不改热度、不改状态、不构成买卖建议）──
+LC_WINDOW = 20                   # 识别窗口（交易日）
+LC_MIN_PAIRS = 10                # 同步性相关系数的最小有效样本
+LC_CORR_MIN = 0.60               # 中军「大形态接近」下限（低于此视为「不跟着主题走」）
+LC_ANCH_MV_W = 35.0              # 中军权重：市值大
+LC_ANCH_AMT_W = 35.0             # 中军权重：成交金额高
+LC_ANCH_VR_W = 20.0              # 中军权重：放量明显（近5日 ÷ 前20日成交额）
+LC_LB_W = {3: 1.00, 2: 0.75, 1: 0.45, 0: 0.00}   # 连板数 → 龙头强度折算
+LC_LIMIT_BOARD, LC_LIMIT_MAIN = 19.5, 9.8        # 20%板（创业/科创）、10%板 的涨停判定阈值（%）
+LC_LIMIT_ST, LC_LIMIT_BJ = 4.8, 29.5             # ST 5%板、北交所 30%板
+
 # 序列落盘（长表：一行 = 一个主题一个交易日）
 SERIES_PATH = os.path.join(REPORT_DIR, 'theme_heat_series.csv')
 SERIES_FIELDS = ('date', 'theme', 'heat', 'base_heat', 'reliability', 'rank',
@@ -231,7 +242,9 @@ EVO_FIELDS = (
     'reliability', 'n', 'history_ok', 'flags',
     'outlook_short_dir', 'outlook_short_state', 'outlook_long_dir', 'outlook_long_state',
     'status', 'evidence', 'confirm_short', 'invalid_short', 'confirm_long', 'invalid_long',
-    'radar')
+    'radar',
+    'leader_code', 'leader_name', 'leader_note',
+    'anchor_code', 'anchor_name', 'anchor_note')
 
 
 # ── §3/§19/§20/§21 V2.0 成员池与排名引擎（AI 五主题四级成员体系）──
@@ -755,6 +768,19 @@ def compute_core(trade_date=None, verbose=True, df_override=None):
 
     df = df_override if df_override is not None else fetch_kline(all_codes, dates[0], dates[-1])
     P, C, ACT = build_matrices(df, dates)
+    # §V2.5.1 龙头/中军标注需要原始成交额矩阵（ACT 是活跃度比值，不能当成交额用）
+    A = df.pivot(index='trade_date', columns='ts_code', values='amount').reindex(dates)
+    # §V2.5.1 中军「市值大」要件：当日总市值（读 daily_basic_cache，不新增外部取数）
+    MV = None
+    try:
+        from stock_cache import fetch_market_by_date
+        _mb = fetch_market_by_date(trade_date, ts_codes=all_codes, cols=['total_mv'])
+        if _mb is not None and not _mb.empty and 'total_mv' in _mb.columns:
+            MV = _mb.dropna(subset=['total_mv']).set_index('ts_code')['total_mv'].astype(float)
+    except Exception:
+        MV = None
+    if verbose and (MV is None or MV.empty):
+        print('[V2.5.1] 提示：当日总市值不可用，中军判定降级（不放「市值大」项）')
 
     windows = {'TODAY': 1, 'WEEK': WIN_WEEK, 'MONTH': WIN_MONTH}
     raw = {wk: {} for wk in windows}
@@ -852,11 +878,13 @@ def compute_core(trade_date=None, verbose=True, df_override=None):
     universe = [t for t, v in scored.items() if all(wk in v for wk in windows)]
 
     return {'trade_date': trade_date, 'dates': dates, 'n_days': n,
-            'theme_members': theme_members, 'scored': scored, 'universe': universe,
+            'theme_members': theme_members, 'rank_members': rank_members,
+            'scored': scored, 'universe': universe,
             'missing_themes': missing_themes, 'windows': windows,
             'small_watch': small_watch, 'mapping': mapping, 'inflation': inflation,
             'no_valid': no_valid, 'config': config, 'mainbiz': mainbiz,
-            'map_path': map_path}
+            'map_path': map_path,
+            'P': P, 'C': C, 'A': A, 'MV': MV}   # §V2.5.1 龙头/中军标注复用（不额外取数）
 
 
 def run(trade_date=None):
@@ -1948,6 +1976,165 @@ def _radar_text(row):
     return '热度和排名都在下降'
 
 
+# ═════════════════════════ §V2.5.1 主线主题：龙头 / 中军 标注 ═════════════════════════
+# 只对「当前主线（LEADING）」主题做事后标注：从主题成员里挑 1 只最强龙头 + 1 只最同步中军。
+# 口径来自经验规律，不是热度公式的一部分：不改热度、不改状态、不做任何择时或买卖建议。
+
+def _limit_thr(code, name):
+    """该个股「涨停」判定阈值（%）。只用于连板计数，不是交易规则。"""
+    nm = str(name or '').upper().replace(' ', '')
+    if 'ST' in nm:
+        return LC_LIMIT_ST
+    c = str(code or '')
+    if c.startswith(('30', '68')):
+        return LC_LIMIT_BOARD
+    if c.startswith(('4', '8')):
+        return LC_LIMIT_BJ
+    return LC_LIMIT_MAIN
+
+
+def _streak(pcts, thr):
+    """从最后一日起往前数连续涨停天数（遇首个未涨停或缺失即停）"""
+    k = 0
+    for x in reversed(list(pcts)):
+        if x is None or not pd.notna(x) or float(x) < thr:
+            break
+        k += 1
+    return k
+
+
+def pick_leader_anchor(theme, members, P, C, A, n, window=LC_WINDOW, MV=None):
+    """§V2.5.1 主线主题 → 1 只「最强龙头」+ 1 只「最同步中军」
+
+    只用 compute_core 已载入的行情矩阵 + 当日总市值，不改热度与状态。
+    龙头：连板数是第一判据——主题内出现 2 连板及以上时，先压到「最高连板档」，
+          档内再比 近20日涨幅 → 近5日涨幅 → 当日强度 → 成交额；
+    中军：先要求「大形态接近主题」（与主题「成员涨幅每日中位数」的近20日同步性 ≥ LC_CORR_MIN），
+          再在通过者里比「市值大 + 成交金额高 + 放量明显（近5日成交额均值 / 前20日成交额均值）」；
+          硬门槛：连板 ≤1（已连板的是龙头不是中军）、成交额 ≥ 主题成员中位数。
+
+    返回 {theme, window, leader:{code,name,note,...}, anchor:{...}|None}；数据不足返回 None。
+    """
+    cols = [c for c in members if c in P.columns]
+    if len(cols) < 3 or n < window + 2:
+        return None
+    lo = n - window
+    Pw = P.iloc[lo:][cols]
+    tmed = Pw.median(axis=1)                     # 主题每日「成员涨幅中位数」= 主题走势
+    if int(tmed.notna().sum()) < LC_MIN_PAIRS:
+        return None
+    c_now = C.iloc[-1][cols].astype(float)
+    c_w = C.iloc[n - window - 1][cols].astype(float)
+    c_5 = C.iloc[n - 6][cols].astype(float)
+    amt = A.iloc[lo:][cols].mean()
+    # 放量：近 5 日成交额均值 ÷ 前 20 日成交额均值（>1 = 相比前期明显放量）
+    a5 = A.iloc[-5:][cols].mean()
+    a20p = A.iloc[n - window - 5:n - 5][cols].mean() if n >= window + 5 else None
+    vr = (a5 / a20p).replace([np.inf, -np.inf], np.nan) if a20p is not None else None
+
+    rows = []
+    for c in cols:
+        nm = (members.get(c) or {}).get('name') or ''
+        p = P.iloc[lo:][c]
+        okp = p.notna() & tmed.notna()
+        corr = (float(p[okp].corr(tmed[okp])) if int(okp.sum()) >= LC_MIN_PAIRS
+                else float('nan'))
+        rec = {'code': c, 'name': nm, 'lb': _streak(P[c], _limit_thr(c, nm)),
+               'corr': corr,
+               'amt': float(amt[c]) if pd.notna(amt.get(c)) else float('nan'),
+               'mv': (float(MV[c]) if MV is not None and c in MV.index
+                      and pd.notna(MV[c]) else float('nan')),
+               'vr': (float(vr[c]) if vr is not None and pd.notna(vr.get(c))
+                      else float('nan')),
+               'today': float(P[c].iloc[-1]) if pd.notna(P[c].iloc[-1]) else float('nan')}
+        p_now, p_w, p_5 = c_now.get(c), c_w.get(c), c_5.get(c)
+        rec['ret20'] = ((float(p_now) / float(p_w) - 1.0) * 100.0
+                        if pd.notna(p_now) and pd.notna(p_w) and float(p_w) != 0
+                        else float('nan'))
+        rec['ret5'] = ((float(p_now) / float(p_5) - 1.0) * 100.0
+                       if pd.notna(p_now) and pd.notna(p_5) and float(p_5) != 0
+                       else float('nan'))
+        rows.append(rec)
+
+    def _col(key):
+        arr = [r[key] for r in rows]
+        good = [x for x in arr if pd.notna(x)]
+        med = float(np.median(good)) if good else 0.0
+        return np.asarray([med if not pd.notna(x) else float(x) for x in arr], dtype=float)
+
+    q20, q5, qd = pct_rank(_col('ret20')), pct_rank(_col('ret5')), pct_rank(_col('today'))
+    qam = pct_rank(_col('amt'))
+    qmv, qvr = pct_rank(_col('mv')), pct_rank(_col('vr'))
+    am = _col('amt')
+    lbw = np.asarray([LC_LB_W.get(int(r['lb']), 0.0) for r in rows])
+
+    lead_score = 40.0 * lbw + 25.0 * q20 + 15.0 * q5 + 10.0 * qd + 10.0 * qam
+    # 连板数是龙头的第一判据：主题内出现 2 连板及以上时，只在「最高连板档」里取人，
+    # 档内再比强度；只有零星 1 个板（或全部没板）时不足以定性，退化为纯强度排序。
+    # （这样「高分高量但没有连板」的权重票不会被误标成龙头，会留给中军。）
+    lb_arr = np.asarray([int(r['lb']) for r in rows])
+    lb_max = int(lb_arr.max())
+    if lb_max >= 2:
+        gate = lb_arr >= 2
+    else:
+        gate = np.ones(len(rows), dtype=bool)
+    i_lead = int(np.argmax(np.where(gate, lead_score, -np.inf)))
+
+    amt_med = float(np.median(am))
+    # 中军候选：不是龙头、连板 ≤1、大形态接近主题（corr ≥ LC_CORR_MIN）、成交额不低于成员中位数
+    cand = [i for i, r in enumerate(rows)
+            if i != i_lead and r['lb'] <= 1 and pd.notna(r['corr'])
+            and r['corr'] >= LC_CORR_MIN and am[i] >= amt_med]
+    # 中军打分：市值大 + 成交金额高 + 放量明显
+    anch_score = {i: (LC_ANCH_MV_W * qmv[i] + LC_ANCH_AMT_W * qam[i] + LC_ANCH_VR_W * qvr[i])
+                  for i in cand}
+    i_anch = max(anch_score, key=lambda i: anch_score[i]) if anch_score else None
+
+    def _pct(x):
+        return f'{x:+.1f}%' if pd.notna(x) else '-'
+
+    def _yi(x):
+        return f'{x / 10000.0:.0f} 亿' if pd.notna(x) and x > 0 else '-'
+
+    def _pack(i, note):
+        r = rows[i]
+        return {'code': r['code'], 'name': r['name'], 'lb': int(r['lb']),
+                'ret20': None if not pd.notna(r['ret20']) else round(r['ret20'], 1),
+                'ret5': None if not pd.notna(r['ret5']) else round(r['ret5'], 1),
+                'corr': None if not pd.notna(r['corr']) else round(r['corr'], 2),
+                'mv': None if not pd.notna(r['mv']) else round(r['mv'] / 10000.0, 1),
+                'vr': None if not pd.notna(r['vr']) else round(r['vr'], 2),
+                'today': None if not pd.notna(r['today']) else round(r['today'], 1),
+                'note': note}
+
+    lr = rows[i_lead]
+    leader = _pack(i_lead, f'近{window}日 {_pct(lr["ret20"])}、连板 {int(lr["lb"])} 天、'
+                           f'当日 {_pct(lr["today"])}，主题内强度居首')
+    anchor = None
+    if i_anch is not None:
+        ar = rows[i_anch]
+        anchor = _pack(i_anch, f'大形态与主题接近（同步性 {ar["corr"]:.2f}）、'
+                               f'总市值 {_yi(ar["mv"])}、近5日放量 {ar["vr"]:.2f} 倍、'
+                               f'成交额居主题成员上半区')
+    return {'theme': theme, 'window': window, 'leader': leader, 'anchor': anchor}
+
+
+def leader_anchor_for(core, themes):
+    """对给定主题（调用方只传 LEADING）批量标注，返回 {theme: 结果}"""
+    P, C, A = core.get('P'), core.get('C'), core.get('A')
+    if P is None or C is None or A is None:
+        return {}
+    n = len(core.get('dates') or [])
+    MV = core.get('MV')
+    pool = core.get('rank_members') or core.get('theme_members') or {}
+    out = {}
+    for t in themes:
+        r = pick_leader_anchor(t, pool.get(t) or {}, P, C, A, n, MV=MV)
+        if r:
+            out[t] = r
+    return out
+
+
 def _mk_table(headers, data):
     ws = [max([_dw(h)] + [_dw(r[i]) for r in data]) if data else _dw(h)
           for i, h in enumerate(headers)]
@@ -1973,6 +2160,9 @@ def build_evolution_report(trade_date, rows, trans, core, dates):
     L.append('* 短期（约5个交易日）与中期（约20个交易日）严格分开，不做 T+5→T+10→T+20 串联。')
     L.append(f'* 低样本保护：N<{EVO_LOWSAMPLE_N} 或 reliability<{EVO_REL_MIN:.2f} → LOW_SAMPLE，'
              '只作观察，不据此判断后续走势（§十）。')
+    L.append(f'* 主线主题附「龙头 / 中军」标注（近{LC_WINDOW}日口径）：'
+             '龙头 = 连板数与强度居首；中军 = 大形态与主题接近、市值大、成交金额高、放量明显的权重票；'
+             '两者都只是观察标注，不是买卖建议。')
     L.append('')
 
     low = [r for r in rows if 'LOW_SAMPLE' in r['flags']]
@@ -2010,6 +2200,13 @@ def build_evolution_report(trade_date, rows, trans, core, dates):
             L.append(f'> 失效条件（短期）：{n["invalid_short"]}')
             L.append(f'> 确认条件（中期）：{n["confirm_long"]}')
             L.append(f'> 失效条件（中期）：{n["invalid_long"]}')
+            ld = ((r.get('lc') or {}).get('leader') or {})
+            an = ((r.get('lc') or {}).get('anchor') or {})
+            if st == 'LEADING' and ld.get('code'):
+                L.append(f'> 龙头（最强）：{ld.get("name")}（{ld.get("code")}）— {ld.get("note")}')
+                if an.get('code'):
+                    L.append(f'> 中军（大市值·放量）：{an.get("name")}（{an.get("code")}）— '
+                             f'{an.get("note")}')
         if len(grp) > 6:
             L.append(f'  （其余 {len(grp) - 6} 个同类主题见下方量化明细）')
     L.append('')
@@ -2147,6 +2344,14 @@ def save_evolution(trade_date, rows):
             'confirm_long': r['narr']['confirm_long'], 'invalid_long': r['narr']['invalid_long'],
             'radar': _radar_text(r),
         }
+        lc = r.get('lc') or {}
+        ld, an = lc.get('leader') or {}, lc.get('anchor') or {}
+        row['leader_code'] = ld.get('code')
+        row['leader_name'] = ld.get('name')
+        row['leader_note'] = ld.get('note')
+        row['anchor_code'] = an.get('code')
+        row['anchor_name'] = an.get('name')
+        row['anchor_note'] = an.get('note')
         missing = [f for f in EVO_FIELDS if f not in row]
         extra = [f for f in row if f not in EVO_FIELDS]
         if missing or extra:
@@ -2189,6 +2394,10 @@ def run_evolution(core):
             flags.add('EVOLUTION_INSUFFICIENT')
         rows.append({'theme': t, 'state': st, 'metrics': m, 'flags': sorted(flags),
                      'proj': project_states(st, m)})
+    # §V2.5.1 只对「当前主线（LEADING）」做事后标注：1 只最强龙头 + 1 只最同步中军
+    lc = leader_anchor_for(core, [r['theme'] for r in rows if r['state'] == 'LEADING'])
+    for r in rows:
+        r['lc'] = lc.get(r['theme'])
     trans = compute_transitions()
     for r in rows:
         r['narr'] = narrate(r['theme'], r)

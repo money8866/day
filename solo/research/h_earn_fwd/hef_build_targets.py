@@ -41,8 +41,8 @@ from hef_common import (DATA, PREREG, Log, q_add, winsorize)
 lg = Log('hef_build_targets')
 
 
-def main():
-    feats = os.path.join(DATA, 'features_company.parquet')
+def main(feats_path=None, out_path=None):
+    feats = feats_path or os.path.join(DATA, 'features_company.parquet')
     vers = os.path.join(DATA, 'quarterly_versions.parquet')
     lg('PREREG target_a=%s target_b=%s target_c=%s strong_q=%s floor=%s'
        % (PREREG['target_a'], PREREG['target_b'], PREREG['target_c'],
@@ -134,8 +134,9 @@ def main():
                 'model_surprise_pct', 'positive_surprise', 'strong_surprise',
                 'surp_pct_rank']
     t = f[out_cols].copy()
-    t.to_parquet(os.path.join(DATA, 'targets.parquet'), index=False)
-    lg('saved targets.parquet rows %d cols %d' % (len(t), t.shape[1]))
+    tgt_path = out_path or os.path.join(DATA, 'targets.parquet')
+    t.to_parquet(tgt_path, index=False)
+    lg('saved %s rows %d cols %d' % (tgt_path, len(t), t.shape[1]))
 
     lab = base & f['np_T'].notna()
     lg('labelled rows %d (%.3f of features)' % (int(lab.sum()),

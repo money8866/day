@@ -1,0 +1,86 @@
+{
+ "trade_date": "20260930",
+ "universe": 2107,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688608.SH",
+   "name": "恒玄科技",
+   "date_t0": "20260922",
+   "days_pullback": 5,
+   "gap": 0.03,
+   "gap_top": 104.85,
+   "break_price": 118.98,
+   "total_mv_wan": 2596507.0,
+   "vol_avg_ratio": 0.341,
+   "earliest_in": 1,
+   "latest_in": 2
+  },
+  {
+   "code": "688018.SH",
+   "name": "乐鑫科技",
+   "date_t0": "20260922",
+   "days_pullback": 5,
+   "gap": 0.0127,
+   "gap_top": 113.17,
+   "break_price": 125.85,
+   "total_mv_wan": 2697295.0,
+   "vol_avg_ratio": 0.352,
+   "earliest_in": 1,
+   "latest_in": 2
+  },
+  {
+   "code": "600835.SH",
+   "name": "上海机电",
+   "date_t0": "20260921",
+   "days_pullback": 6,
+   "gap": 0.0117,
+   "gap_top": 17.99,
+   "break_price": 19.0,
+   "total_mv_wan": 1842342.0,
+   "vol_avg_ratio": 0.493,
+   "earliest_in": 1,
+   "latest_in": 1
+  },
+  {
+   "code": "300224.SZ",
+   "name": "正海磁材",
+   "date_t0": "20260921",
+   "days_pullback": 6,
+   "gap": 0.0105,
+   "gap_top": 11.43,
+   "break_price": 12.17,
+   "total_mv_wan": 1076820.0,
+   "vol_avg_ratio": 0.52,
+   "earliest_in": 1,
+   "latest_in": 1
+  },
+  {
+   "code": "300378.SZ",
+   "name": "鼎捷数智",
+   "date_t0": "20260921",
+   "days_pullback": 6,
+   "gap": 0.0111,
+   "gap_top": 36.98,
+   "break_price": 39.11,
+   "total_mv_wan": 1022136.0,
+   "vol_avg_ratio": 0.703,
+   "earliest_in": 1,
+   "latest_in": 1
+  },
+  {
+   "code": "688261.SH",
+   "name": "东微半导",
+   "date_t0": "20260918",
+   "days_pullback": 7,
+   "gap": 0.012,
+   "gap_top": 72.62,
+   "break_price": 84.79,
+   "total_mv_wan": 891877.0,
+   "vol_avg_ratio": 0.356,
+   "earliest_in": 1,
+   "latest_in": 0
+  }
+ ],
+ "early": []
+}

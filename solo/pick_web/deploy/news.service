@@ -1,0 +1,15 @@
+[Unit]
+Description=StockNews A股资讯与热度 (FastAPI, live public APIs)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/StockPick/news
+Environment=NEWS_TTL=300
+ExecStart=/usr/bin/python3 /var/www/StockPick/news/app.py --host 127.0.0.1 --port 8002
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

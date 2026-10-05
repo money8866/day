@@ -1,0 +1,2067 @@
+{
+  "trade_date": "20260901",
+  "generated_at": "2026-10-03 14:17:44",
+  "params": {
+    "min_zt": 2,
+    "streak_window": 12,
+    "limit_main": 0.1,
+    "limit_gem": 0.2,
+    "industry_standard": "SW2021_L3",
+    "list_all": false
+  },
+  "summary": {
+    "n_zt_total": 83,
+    "n_industries": 15,
+    "n_industries_hit": 15,
+    "n_industry_zt_stocks": 42
+  },
+  "industries": [
+    {
+      "rank": 1,
+      "l3_code": "110101",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "n_zt": 7,
+      "n_members": 7,
+      "zt_ratio": 1.0,
+      "max_streak": 6,
+      "avg_pct": 11.448
+    },
+    {
+      "rank": 2,
+      "l3_code": "110502",
+      "l3_name": "粮油加工",
+      "l2_name": "农产品加工",
+      "n_zt": 3,
+      "n_members": 7,
+      "zt_ratio": 0.4286,
+      "max_streak": 1,
+      "avg_pct": 5.409
+    },
+    {
+      "rank": 3,
+      "l3_code": "450301",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "n_zt": 5,
+      "n_members": 20,
+      "zt_ratio": 0.25,
+      "max_streak": 3,
+      "avg_pct": 4.815
+    },
+    {
+      "rank": 4,
+      "l3_code": "490302",
+      "l3_name": "金融控股",
+      "l2_name": "多元金融",
+      "n_zt": 2,
+      "n_members": 8,
+      "zt_ratio": 0.25,
+      "max_streak": 1,
+      "avg_pct": 4.263
+    },
+    {
+      "rank": 5,
+      "l3_code": "720601",
+      "l3_name": "影视动漫制作",
+      "l2_name": "影视院线",
+      "n_zt": 3,
+      "n_members": 14,
+      "zt_ratio": 0.2143,
+      "max_streak": 2,
+      "avg_pct": 4.135
+    },
+    {
+      "rank": 6,
+      "l3_code": "340702",
+      "l3_name": "乳品",
+      "l2_name": "饮料乳品",
+      "n_zt": 2,
+      "n_members": 18,
+      "zt_ratio": 0.1111,
+      "max_streak": 1,
+      "avg_pct": 3.163
+    },
+    {
+      "rank": 7,
+      "l3_code": "720902",
+      "l3_name": "大众出版",
+      "l2_name": "出版",
+      "n_zt": 2,
+      "n_members": 18,
+      "zt_ratio": 0.1111,
+      "max_streak": 3,
+      "avg_pct": 2.922
+    },
+    {
+      "rank": 8,
+      "l3_code": "370402",
+      "l3_name": "医药流通",
+      "l2_name": "医药商业",
+      "n_zt": 2,
+      "n_members": 23,
+      "zt_ratio": 0.087,
+      "max_streak": 1,
+      "avg_pct": 2.302
+    },
+    {
+      "rank": 9,
+      "l3_code": "720401",
+      "l3_name": "游戏Ⅲ",
+      "l2_name": "游戏Ⅱ",
+      "n_zt": 2,
+      "n_members": 26,
+      "zt_ratio": 0.0769,
+      "max_streak": 2,
+      "avg_pct": 2.16
+    },
+    {
+      "rank": 10,
+      "l3_code": "370201",
+      "l3_name": "中药Ⅲ",
+      "l2_name": "中药Ⅱ",
+      "n_zt": 3,
+      "n_members": 60,
+      "zt_ratio": 0.05,
+      "max_streak": 1,
+      "avg_pct": 1.599
+    },
+    {
+      "rank": 11,
+      "l3_code": "710301",
+      "l3_name": "IT服务Ⅲ",
+      "l2_name": "IT服务Ⅱ",
+      "n_zt": 3,
+      "n_members": 112,
+      "zt_ratio": 0.0268,
+      "max_streak": 3,
+      "avg_pct": 1.454
+    },
+    {
+      "rank": 12,
+      "l3_code": "280206",
+      "l3_name": "汽车电子电气系统",
+      "l2_name": "汽车零部件",
+      "n_zt": 2,
+      "n_members": 38,
+      "zt_ratio": 0.0526,
+      "max_streak": 1,
+      "avg_pct": 0.671
+    },
+    {
+      "rank": 13,
+      "l3_code": "730206",
+      "l3_name": "通信终端及配件",
+      "l2_name": "通信设备",
+      "n_zt": 2,
+      "n_members": 24,
+      "zt_ratio": 0.0833,
+      "max_streak": 1,
+      "avg_pct": 0.391
+    },
+    {
+      "rank": 14,
+      "l3_code": "270301",
+      "l3_name": "面板",
+      "l2_name": "光学光电子",
+      "n_zt": 2,
+      "n_members": 36,
+      "zt_ratio": 0.0556,
+      "max_streak": 1,
+      "avg_pct": -0.391
+    },
+    {
+      "rank": 15,
+      "l3_code": "270504",
+      "l3_name": "消费电子零部件及组装",
+      "l2_name": "消费电子",
+      "n_zt": 2,
+      "n_members": 78,
+      "zt_ratio": 0.0256,
+      "max_streak": 6,
+      "avg_pct": -1.171
+    }
+  ],
+  "industry_avg": [
+    {
+      "l3_code": "110101",
+      "l3_name": "种子",
+      "avg_pct": 11.448
+    },
+    {
+      "l3_code": "110103",
+      "l3_name": "其他种植业",
+      "avg_pct": 4.195
+    },
+    {
+      "l3_code": "110202",
+      "l3_name": "水产养殖",
+      "avg_pct": 3.556
+    },
+    {
+      "l3_code": "110402",
+      "l3_name": "畜禽饲料",
+      "avg_pct": 2.462
+    },
+    {
+      "l3_code": "110501",
+      "l3_name": "果蔬加工",
+      "avg_pct": 0.649
+    },
+    {
+      "l3_code": "110502",
+      "l3_name": "粮油加工",
+      "avg_pct": 5.409
+    },
+    {
+      "l3_code": "110504",
+      "l3_name": "其他农产品加工",
+      "avg_pct": 1.489
+    },
+    {
+      "l3_code": "110702",
+      "l3_name": "生猪养殖",
+      "avg_pct": 0.933
+    },
+    {
+      "l3_code": "110703",
+      "l3_name": "肉鸡养殖",
+      "avg_pct": 1.804
+    },
+    {
+      "l3_code": "110801",
+      "l3_name": "动物保健Ⅲ",
+      "avg_pct": 2.358
+    },
+    {
+      "l3_code": "220202",
+      "l3_name": "氯碱",
+      "avg_pct": 0.896
+    },
+    {
+      "l3_code": "220203",
+      "l3_name": "无机盐",
+      "avg_pct": -0.037
+    },
+    {
+      "l3_code": "220204",
+      "l3_name": "其他化学原料",
+      "avg_pct": 1.793
+    },
+    {
+      "l3_code": "220205",
+      "l3_name": "煤化工",
+      "avg_pct": 2.728
+    },
+    {
+      "l3_code": "220206",
+      "l3_name": "钛白粉",
+      "avg_pct": 0.376
+    },
+    {
+      "l3_code": "220305",
+      "l3_name": "涂料油墨",
+      "avg_pct": -0.071
+    },
+    {
+      "l3_code": "220307",
+      "l3_name": "民爆制品",
+      "avg_pct": 1.379
+    },
+    {
+      "l3_code": "220308",
+      "l3_name": "纺织化学制品",
+      "avg_pct": 2.883
+    },
+    {
+      "l3_code": "220309",
+      "l3_name": "其他化学制品",
+      "avg_pct": -0.522
+    },
+    {
+      "l3_code": "220311",
+      "l3_name": "氟化工",
+      "avg_pct": -2.123
+    },
+    {
+      "l3_code": "220313",
+      "l3_name": "聚氨酯",
+      "avg_pct": 1.098
+    },
+    {
+      "l3_code": "220315",
+      "l3_name": "食品及饲料添加剂",
+      "avg_pct": 1.117
+    },
+    {
+      "l3_code": "220316",
+      "l3_name": "有机硅",
+      "avg_pct": -0.061
+    },
+    {
+      "l3_code": "220401",
+      "l3_name": "涤纶",
+      "avg_pct": 0.216
+    },
+    {
+      "l3_code": "220403",
+      "l3_name": "粘胶",
+      "avg_pct": 2.8
+    },
+    {
+      "l3_code": "220501",
+      "l3_name": "其他塑料制品",
+      "avg_pct": -0.337
+    },
+    {
+      "l3_code": "220503",
+      "l3_name": "改性塑料",
+      "avg_pct": -1.264
+    },
+    {
+      "l3_code": "220504",
+      "l3_name": "合成树脂",
+      "avg_pct": -0.23
+    },
+    {
+      "l3_code": "220505",
+      "l3_name": "膜材料",
+      "avg_pct": -1.623
+    },
+    {
+      "l3_code": "220602",
+      "l3_name": "其他橡胶制品",
+      "avg_pct": -0.023
+    },
+    {
+      "l3_code": "220603",
+      "l3_name": "炭黑",
+      "avg_pct": 1.652
+    },
+    {
+      "l3_code": "220801",
+      "l3_name": "氮肥",
+      "avg_pct": 2.465
+    },
+    {
+      "l3_code": "220802",
+      "l3_name": "磷肥及磷化工",
+      "avg_pct": 1.044
+    },
+    {
+      "l3_code": "220803",
+      "l3_name": "农药",
+      "avg_pct": 1.918
+    },
+    {
+      "l3_code": "220805",
+      "l3_name": "复合肥",
+      "avg_pct": 3.323
+    },
+    {
+      "l3_code": "220901",
+      "l3_name": "非金属材料Ⅲ",
+      "avg_pct": -3.028
+    },
+    {
+      "l3_code": "230402",
+      "l3_name": "板材",
+      "avg_pct": 0.999
+    },
+    {
+      "l3_code": "240201",
+      "l3_name": "其他金属新材料",
+      "avg_pct": -1.732
+    },
+    {
+      "l3_code": "240202",
+      "l3_name": "磁性材料",
+      "avg_pct": -2.251
+    },
+    {
+      "l3_code": "240301",
+      "l3_name": "铝",
+      "avg_pct": -0.079
+    },
+    {
+      "l3_code": "240302",
+      "l3_name": "铜",
+      "avg_pct": 0.507
+    },
+    {
+      "l3_code": "240303",
+      "l3_name": "铅锌",
+      "avg_pct": 0.176
+    },
+    {
+      "l3_code": "240401",
+      "l3_name": "黄金",
+      "avg_pct": -1.157
+    },
+    {
+      "l3_code": "240504",
+      "l3_name": "其他小金属",
+      "avg_pct": -1.98
+    },
+    {
+      "l3_code": "270102",
+      "l3_name": "分立器件",
+      "avg_pct": -3.084
+    },
+    {
+      "l3_code": "270103",
+      "l3_name": "半导体材料",
+      "avg_pct": -4.42
+    },
+    {
+      "l3_code": "270104",
+      "l3_name": "数字芯片设计",
+      "avg_pct": -1.842
+    },
+    {
+      "l3_code": "270105",
+      "l3_name": "模拟芯片设计",
+      "avg_pct": -2.314
+    },
+    {
+      "l3_code": "270107",
+      "l3_name": "集成电路封测",
+      "avg_pct": -2.475
+    },
+    {
+      "l3_code": "270108",
+      "l3_name": "半导体设备",
+      "avg_pct": -3.485
+    },
+    {
+      "l3_code": "270202",
+      "l3_name": "印制电路板",
+      "avg_pct": -3.716
+    },
+    {
+      "l3_code": "270203",
+      "l3_name": "被动元件",
+      "avg_pct": -4.389
+    },
+    {
+      "l3_code": "270301",
+      "l3_name": "面板",
+      "avg_pct": -0.391
+    },
+    {
+      "l3_code": "270302",
+      "l3_name": "LED",
+      "avg_pct": 0.032
+    },
+    {
+      "l3_code": "270303",
+      "l3_name": "光学元件",
+      "avg_pct": -1.96
+    },
+    {
+      "l3_code": "270401",
+      "l3_name": "其他电子Ⅲ",
+      "avg_pct": -1.673
+    },
+    {
+      "l3_code": "270503",
+      "l3_name": "品牌消费电子",
+      "avg_pct": 1.354
+    },
+    {
+      "l3_code": "270504",
+      "l3_name": "消费电子零部件及组装",
+      "avg_pct": -1.171
+    },
+    {
+      "l3_code": "270601",
+      "l3_name": "电子化学品Ⅲ",
+      "avg_pct": -3.93
+    },
+    {
+      "l3_code": "280202",
+      "l3_name": "车身附件及饰件",
+      "avg_pct": 0.862
+    },
+    {
+      "l3_code": "280203",
+      "l3_name": "底盘与发动机系统",
+      "avg_pct": 0.294
+    },
+    {
+      "l3_code": "280204",
+      "l3_name": "轮胎轮毂",
+      "avg_pct": 0.564
+    },
+    {
+      "l3_code": "280205",
+      "l3_name": "其他汽车零部件",
+      "avg_pct": -0.015
+    },
+    {
+      "l3_code": "280206",
+      "l3_name": "汽车电子电气系统",
+      "avg_pct": 0.671
+    },
+    {
+      "l3_code": "280302",
+      "l3_name": "汽车经销商",
+      "avg_pct": 1.355
+    },
+    {
+      "l3_code": "280303",
+      "l3_name": "汽车综合服务",
+      "avg_pct": 0.919
+    },
+    {
+      "l3_code": "280401",
+      "l3_name": "其他运输设备",
+      "avg_pct": 0.284
+    },
+    {
+      "l3_code": "280402",
+      "l3_name": "摩托车",
+      "avg_pct": 0.48
+    },
+    {
+      "l3_code": "280502",
+      "l3_name": "综合乘用车",
+      "avg_pct": 1.041
+    },
+    {
+      "l3_code": "280601",
+      "l3_name": "商用载货车",
+      "avg_pct": 1.469
+    },
+    {
+      "l3_code": "280602",
+      "l3_name": "商用载客车",
+      "avg_pct": 2.076
+    },
+    {
+      "l3_code": "330102",
+      "l3_name": "空调",
+      "avg_pct": 0.37
+    },
+    {
+      "l3_code": "330106",
+      "l3_name": "冰洗",
+      "avg_pct": 0.951
+    },
+    {
+      "l3_code": "330202",
+      "l3_name": "其他黑色家电",
+      "avg_pct": 1.821
+    },
+    {
+      "l3_code": "330301",
+      "l3_name": "厨房小家电",
+      "avg_pct": 0.179
+    },
+    {
+      "l3_code": "330401",
+      "l3_name": "厨房电器",
+      "avg_pct": 2.736
+    },
+    {
+      "l3_code": "330501",
+      "l3_name": "照明设备Ⅲ",
+      "avg_pct": -0.26
+    },
+    {
+      "l3_code": "330601",
+      "l3_name": "家电零部件Ⅲ",
+      "avg_pct": -0.149
+    },
+    {
+      "l3_code": "340401",
+      "l3_name": "肉制品",
+      "avg_pct": 0.691
+    },
+    {
+      "l3_code": "340406",
+      "l3_name": "预加工食品",
+      "avg_pct": 2.166
+    },
+    {
+      "l3_code": "340407",
+      "l3_name": "保健品",
+      "avg_pct": 2.112
+    },
+    {
+      "l3_code": "340501",
+      "l3_name": "白酒Ⅲ",
+      "avg_pct": 2.849
+    },
+    {
+      "l3_code": "340601",
+      "l3_name": "啤酒",
+      "avg_pct": 0.735
+    },
+    {
+      "l3_code": "340602",
+      "l3_name": "其他酒类",
+      "avg_pct": 2.852
+    },
+    {
+      "l3_code": "340701",
+      "l3_name": "软饮料",
+      "avg_pct": 2.195
+    },
+    {
+      "l3_code": "340702",
+      "l3_name": "乳品",
+      "avg_pct": 3.163
+    },
+    {
+      "l3_code": "340801",
+      "l3_name": "零食",
+      "avg_pct": 1.065
+    },
+    {
+      "l3_code": "340802",
+      "l3_name": "烘焙食品",
+      "avg_pct": 1.53
+    },
+    {
+      "l3_code": "340901",
+      "l3_name": "调味发酵品Ⅲ",
+      "avg_pct": 1.36
+    },
+    {
+      "l3_code": "350102",
+      "l3_name": "棉纺",
+      "avg_pct": 1.143
+    },
+    {
+      "l3_code": "350104",
+      "l3_name": "印染",
+      "avg_pct": -0.191
+    },
+    {
+      "l3_code": "350105",
+      "l3_name": "辅料",
+      "avg_pct": -0.994
+    },
+    {
+      "l3_code": "350106",
+      "l3_name": "其他纺织",
+      "avg_pct": 0.421
+    },
+    {
+      "l3_code": "350205",
+      "l3_name": "鞋帽及其他",
+      "avg_pct": -0.367
+    },
+    {
+      "l3_code": "350206",
+      "l3_name": "家纺",
+      "avg_pct": 0.797
+    },
+    {
+      "l3_code": "350209",
+      "l3_name": "非运动服装",
+      "avg_pct": 1.377
+    },
+    {
+      "l3_code": "350301",
+      "l3_name": "钟表珠宝",
+      "avg_pct": 2.339
+    },
+    {
+      "l3_code": "360102",
+      "l3_name": "大宗用纸",
+      "avg_pct": 1.385
+    },
+    {
+      "l3_code": "360103",
+      "l3_name": "特种纸",
+      "avg_pct": 0.965
+    },
+    {
+      "l3_code": "360202",
+      "l3_name": "印刷",
+      "avg_pct": 2.276
+    },
+    {
+      "l3_code": "360203",
+      "l3_name": "金属包装",
+      "avg_pct": 0.713
+    },
+    {
+      "l3_code": "360204",
+      "l3_name": "塑料包装",
+      "avg_pct": 0.772
+    },
+    {
+      "l3_code": "360205",
+      "l3_name": "纸包装",
+      "avg_pct": 0.368
+    },
+    {
+      "l3_code": "360306",
+      "l3_name": "瓷砖地板",
+      "avg_pct": 0.901
+    },
+    {
+      "l3_code": "360307",
+      "l3_name": "成品家居",
+      "avg_pct": 0.216
+    },
+    {
+      "l3_code": "360308",
+      "l3_name": "定制家居",
+      "avg_pct": -0.132
+    },
+    {
+      "l3_code": "360309",
+      "l3_name": "卫浴制品",
+      "avg_pct": 1.764
+    },
+    {
+      "l3_code": "360311",
+      "l3_name": "其他家居用品",
+      "avg_pct": 0.111
+    },
+    {
+      "l3_code": "360502",
+      "l3_name": "娱乐用品",
+      "avg_pct": 1.651
+    },
+    {
+      "l3_code": "370101",
+      "l3_name": "原料药",
+      "avg_pct": 0.739
+    },
+    {
+      "l3_code": "370102",
+      "l3_name": "化学制剂",
+      "avg_pct": 1.096
+    },
+    {
+      "l3_code": "370201",
+      "l3_name": "中药Ⅲ",
+      "avg_pct": 1.599
+    },
+    {
+      "l3_code": "370302",
+      "l3_name": "血液制品",
+      "avg_pct": 1.265
+    },
+    {
+      "l3_code": "370303",
+      "l3_name": "疫苗",
+      "avg_pct": 0.693
+    },
+    {
+      "l3_code": "370304",
+      "l3_name": "其他生物制品",
+      "avg_pct": 0.612
+    },
+    {
+      "l3_code": "370402",
+      "l3_name": "医药流通",
+      "avg_pct": 2.302
+    },
+    {
+      "l3_code": "370403",
+      "l3_name": "线下药店",
+      "avg_pct": 1.086
+    },
+    {
+      "l3_code": "370502",
+      "l3_name": "医疗设备",
+      "avg_pct": 0.289
+    },
+    {
+      "l3_code": "370503",
+      "l3_name": "医疗耗材",
+      "avg_pct": 0.623
+    },
+    {
+      "l3_code": "370504",
+      "l3_name": "体外诊断",
+      "avg_pct": 1.764
+    },
+    {
+      "l3_code": "370603",
+      "l3_name": "医疗研发外包",
+      "avg_pct": -0.612
+    },
+    {
+      "l3_code": "370604",
+      "l3_name": "医院",
+      "avg_pct": 1.799
+    },
+    {
+      "l3_code": "410101",
+      "l3_name": "火力发电",
+      "avg_pct": 1.043
+    },
+    {
+      "l3_code": "410102",
+      "l3_name": "水力发电",
+      "avg_pct": 1.177
+    },
+    {
+      "l3_code": "410104",
+      "l3_name": "热力服务",
+      "avg_pct": 1.405
+    },
+    {
+      "l3_code": "410106",
+      "l3_name": "光伏发电",
+      "avg_pct": 1.389
+    },
+    {
+      "l3_code": "410107",
+      "l3_name": "风力发电",
+      "avg_pct": 0.806
+    },
+    {
+      "l3_code": "410110",
+      "l3_name": "电能综合服务",
+      "avg_pct": 1.492
+    },
+    {
+      "l3_code": "410301",
+      "l3_name": "燃气Ⅲ",
+      "avg_pct": 0.763
+    },
+    {
+      "l3_code": "420802",
+      "l3_name": "原材料供应链服务",
+      "avg_pct": 1.584
+    },
+    {
+      "l3_code": "420803",
+      "l3_name": "中间产品及消费品供应链服务",
+      "avg_pct": 1.438
+    },
+    {
+      "l3_code": "420804",
+      "l3_name": "快递",
+      "avg_pct": 0.818
+    },
+    {
+      "l3_code": "420805",
+      "l3_name": "跨境物流",
+      "avg_pct": 0.281
+    },
+    {
+      "l3_code": "420806",
+      "l3_name": "仓储物流",
+      "avg_pct": 1.392
+    },
+    {
+      "l3_code": "420807",
+      "l3_name": "公路货运",
+      "avg_pct": 1.285
+    },
+    {
+      "l3_code": "420901",
+      "l3_name": "高速公路",
+      "avg_pct": 1.049
+    },
+    {
+      "l3_code": "420902",
+      "l3_name": "公交",
+      "avg_pct": 2.088
+    },
+    {
+      "l3_code": "420903",
+      "l3_name": "铁路运输",
+      "avg_pct": 1.053
+    },
+    {
+      "l3_code": "421001",
+      "l3_name": "航空运输",
+      "avg_pct": 0.625
+    },
+    {
+      "l3_code": "421101",
+      "l3_name": "航运",
+      "avg_pct": 0.263
+    },
+    {
+      "l3_code": "421102",
+      "l3_name": "港口",
+      "avg_pct": 1.899
+    },
+    {
+      "l3_code": "430101",
+      "l3_name": "住宅开发",
+      "avg_pct": -0.084
+    },
+    {
+      "l3_code": "430102",
+      "l3_name": "商业地产",
+      "avg_pct": 0.644
+    },
+    {
+      "l3_code": "430103",
+      "l3_name": "产业地产",
+      "avg_pct": 1.287
+    },
+    {
+      "l3_code": "430301",
+      "l3_name": "物业管理",
+      "avg_pct": -0.156
+    },
+    {
+      "l3_code": "450201",
+      "l3_name": "贸易Ⅲ",
+      "avg_pct": 1.029
+    },
+    {
+      "l3_code": "450301",
+      "l3_name": "百货",
+      "avg_pct": 4.815
+    },
+    {
+      "l3_code": "450302",
+      "l3_name": "超市",
+      "avg_pct": 4.743
+    },
+    {
+      "l3_code": "450303",
+      "l3_name": "多业态零售",
+      "avg_pct": 3.428
+    },
+    {
+      "l3_code": "450304",
+      "l3_name": "商业物业经营",
+      "avg_pct": 2.069
+    },
+    {
+      "l3_code": "450401",
+      "l3_name": "专业连锁Ⅲ",
+      "avg_pct": 2.312
+    },
+    {
+      "l3_code": "450602",
+      "l3_name": "跨境电商",
+      "avg_pct": 1.131
+    },
+    {
+      "l3_code": "450603",
+      "l3_name": "电商服务",
+      "avg_pct": 3.705
+    },
+    {
+      "l3_code": "460802",
+      "l3_name": "检测服务",
+      "avg_pct": -0.268
+    },
+    {
+      "l3_code": "460803",
+      "l3_name": "会展服务",
+      "avg_pct": -0.184
+    },
+    {
+      "l3_code": "460901",
+      "l3_name": "酒店",
+      "avg_pct": 1.69
+    },
+    {
+      "l3_code": "461002",
+      "l3_name": "人工景区",
+      "avg_pct": 1.979
+    },
+    {
+      "l3_code": "461003",
+      "l3_name": "自然景区",
+      "avg_pct": 1.724
+    },
+    {
+      "l3_code": "461004",
+      "l3_name": "旅游综合",
+      "avg_pct": 2.13
+    },
+    {
+      "l3_code": "461102",
+      "l3_name": "培训教育",
+      "avg_pct": 2.894
+    },
+    {
+      "l3_code": "480201",
+      "l3_name": "国有大型银行Ⅲ",
+      "avg_pct": 2.028
+    },
+    {
+      "l3_code": "480301",
+      "l3_name": "股份制银行Ⅲ",
+      "avg_pct": 1.834
+    },
+    {
+      "l3_code": "480401",
+      "l3_name": "城商行Ⅲ",
+      "avg_pct": 1.997
+    },
+    {
+      "l3_code": "480501",
+      "l3_name": "农商行Ⅲ",
+      "avg_pct": 2.752
+    },
+    {
+      "l3_code": "490101",
+      "l3_name": "证券Ⅲ",
+      "avg_pct": 1.149
+    },
+    {
+      "l3_code": "490201",
+      "l3_name": "保险Ⅲ",
+      "avg_pct": 3.164
+    },
+    {
+      "l3_code": "490302",
+      "l3_name": "金融控股",
+      "avg_pct": 4.263
+    },
+    {
+      "l3_code": "490307",
+      "l3_name": "资产管理",
+      "avg_pct": 1.53
+    },
+    {
+      "l3_code": "510101",
+      "l3_name": "综合Ⅲ",
+      "avg_pct": 1.125
+    },
+    {
+      "l3_code": "610101",
+      "l3_name": "水泥制造",
+      "avg_pct": 0.903
+    },
+    {
+      "l3_code": "610102",
+      "l3_name": "水泥制品",
+      "avg_pct": 1.655
+    },
+    {
+      "l3_code": "610201",
+      "l3_name": "玻璃制造",
+      "avg_pct": 0.496
+    },
+    {
+      "l3_code": "610202",
+      "l3_name": "玻纤制造",
+      "avg_pct": -3.265
+    },
+    {
+      "l3_code": "610301",
+      "l3_name": "耐火材料",
+      "avg_pct": 0.729
+    },
+    {
+      "l3_code": "610302",
+      "l3_name": "管材",
+      "avg_pct": 1.804
+    },
+    {
+      "l3_code": "610303",
+      "l3_name": "其他建材",
+      "avg_pct": 0.049
+    },
+    {
+      "l3_code": "620101",
+      "l3_name": "房屋建设Ⅲ",
+      "avg_pct": 1.288
+    },
+    {
+      "l3_code": "620201",
+      "l3_name": "装修装饰Ⅲ",
+      "avg_pct": -1.272
+    },
+    {
+      "l3_code": "620306",
+      "l3_name": "基建市政工程",
+      "avg_pct": 1.168
+    },
+    {
+      "l3_code": "620307",
+      "l3_name": "园林工程",
+      "avg_pct": 1.542
+    },
+    {
+      "l3_code": "620401",
+      "l3_name": "钢结构",
+      "avg_pct": 0.41
+    },
+    {
+      "l3_code": "620402",
+      "l3_name": "化学工程",
+      "avg_pct": 0.654
+    },
+    {
+      "l3_code": "620403",
+      "l3_name": "国际工程",
+      "avg_pct": 0.908
+    },
+    {
+      "l3_code": "620404",
+      "l3_name": "其他专业工程",
+      "avg_pct": -1.138
+    },
+    {
+      "l3_code": "620601",
+      "l3_name": "工程咨询服务Ⅲ",
+      "avg_pct": 0.569
+    },
+    {
+      "l3_code": "630101",
+      "l3_name": "电机Ⅲ",
+      "avg_pct": -0.41
+    },
+    {
+      "l3_code": "630304",
+      "l3_name": "火电设备",
+      "avg_pct": 1.246
+    },
+    {
+      "l3_code": "630306",
+      "l3_name": "其他电源设备Ⅲ",
+      "avg_pct": -1.627
+    },
+    {
+      "l3_code": "630502",
+      "l3_name": "光伏电池组件",
+      "avg_pct": -0.053
+    },
+    {
+      "l3_code": "630504",
+      "l3_name": "光伏辅材",
+      "avg_pct": -0.962
+    },
+    {
+      "l3_code": "630505",
+      "l3_name": "光伏加工设备",
+      "avg_pct": -3.155
+    },
+    {
+      "l3_code": "630602",
+      "l3_name": "风电零部件",
+      "avg_pct": -0.363
+    },
+    {
+      "l3_code": "630701",
+      "l3_name": "锂电池",
+      "avg_pct": -0.977
+    },
+    {
+      "l3_code": "630702",
+      "l3_name": "电池化学品",
+      "avg_pct": -1.288
+    },
+    {
+      "l3_code": "630703",
+      "l3_name": "锂电专用设备",
+      "avg_pct": -1.346
+    },
+    {
+      "l3_code": "630705",
+      "l3_name": "蓄电池及其他电池",
+      "avg_pct": 0.121
+    },
+    {
+      "l3_code": "630801",
+      "l3_name": "输变电设备",
+      "avg_pct": 0.06
+    },
+    {
+      "l3_code": "630802",
+      "l3_name": "配电设备",
+      "avg_pct": 0.007
+    },
+    {
+      "l3_code": "630803",
+      "l3_name": "电网自动化设备",
+      "avg_pct": -0.412
+    },
+    {
+      "l3_code": "630804",
+      "l3_name": "电工仪器仪表",
+      "avg_pct": 0.63
+    },
+    {
+      "l3_code": "630805",
+      "l3_name": "线缆部件及其他",
+      "avg_pct": 0.132
+    },
+    {
+      "l3_code": "640101",
+      "l3_name": "机床工具",
+      "avg_pct": -1.698
+    },
+    {
+      "l3_code": "640103",
+      "l3_name": "磨具磨料",
+      "avg_pct": -1.566
+    },
+    {
+      "l3_code": "640105",
+      "l3_name": "制冷空调设备",
+      "avg_pct": -0.875
+    },
+    {
+      "l3_code": "640106",
+      "l3_name": "其他通用设备",
+      "avg_pct": -0.973
+    },
+    {
+      "l3_code": "640107",
+      "l3_name": "仪器仪表",
+      "avg_pct": -1.469
+    },
+    {
+      "l3_code": "640108",
+      "l3_name": "金属制品",
+      "avg_pct": -1.083
+    },
+    {
+      "l3_code": "640203",
+      "l3_name": "能源及重型设备",
+      "avg_pct": 0.032
+    },
+    {
+      "l3_code": "640204",
+      "l3_name": "楼宇设备",
+      "avg_pct": 0.64
+    },
+    {
+      "l3_code": "640206",
+      "l3_name": "纺织服装设备",
+      "avg_pct": -0.335
+    },
+    {
+      "l3_code": "640208",
+      "l3_name": "印刷包装机械",
+      "avg_pct": 0.747
+    },
+    {
+      "l3_code": "640209",
+      "l3_name": "其他专用设备",
+      "avg_pct": -0.894
+    },
+    {
+      "l3_code": "640501",
+      "l3_name": "轨交设备Ⅲ",
+      "avg_pct": 0.788
+    },
+    {
+      "l3_code": "640601",
+      "l3_name": "工程机械整机",
+      "avg_pct": 0.843
+    },
+    {
+      "l3_code": "640602",
+      "l3_name": "工程机械器件",
+      "avg_pct": 0.29
+    },
+    {
+      "l3_code": "640701",
+      "l3_name": "机器人",
+      "avg_pct": -1.276
+    },
+    {
+      "l3_code": "640702",
+      "l3_name": "工控设备",
+      "avg_pct": -1.264
+    },
+    {
+      "l3_code": "640703",
+      "l3_name": "激光设备",
+      "avg_pct": -3.241
+    },
+    {
+      "l3_code": "640704",
+      "l3_name": "其他自动化设备",
+      "avg_pct": -2.124
+    },
+    {
+      "l3_code": "650101",
+      "l3_name": "航天装备Ⅲ",
+      "avg_pct": 0.056
+    },
+    {
+      "l3_code": "650201",
+      "l3_name": "航空装备Ⅲ",
+      "avg_pct": 0.313
+    },
+    {
+      "l3_code": "650301",
+      "l3_name": "地面兵装Ⅲ",
+      "avg_pct": 2.902
+    },
+    {
+      "l3_code": "650401",
+      "l3_name": "航海装备Ⅲ",
+      "avg_pct": 0.003
+    },
+    {
+      "l3_code": "650501",
+      "l3_name": "军工电子Ⅲ",
+      "avg_pct": -0.224
+    },
+    {
+      "l3_code": "710102",
+      "l3_name": "安防设备",
+      "avg_pct": 0.021
+    },
+    {
+      "l3_code": "710103",
+      "l3_name": "其他计算机设备",
+      "avg_pct": 0.761
+    },
+    {
+      "l3_code": "710301",
+      "l3_name": "IT服务Ⅲ",
+      "avg_pct": 1.454
+    },
+    {
+      "l3_code": "710401",
+      "l3_name": "垂直应用软件",
+      "avg_pct": 1.461
+    },
+    {
+      "l3_code": "710402",
+      "l3_name": "横向通用软件",
+      "avg_pct": 1.563
+    },
+    {
+      "l3_code": "720401",
+      "l3_name": "游戏Ⅲ",
+      "avg_pct": 2.16
+    },
+    {
+      "l3_code": "720501",
+      "l3_name": "营销代理",
+      "avg_pct": 3.515
+    },
+    {
+      "l3_code": "720601",
+      "l3_name": "影视动漫制作",
+      "avg_pct": 4.135
+    },
+    {
+      "l3_code": "720704",
+      "l3_name": "门户网站",
+      "avg_pct": 1.87
+    },
+    {
+      "l3_code": "720901",
+      "l3_name": "教育出版",
+      "avg_pct": 2.598
+    },
+    {
+      "l3_code": "720902",
+      "l3_name": "大众出版",
+      "avg_pct": 2.922
+    },
+    {
+      "l3_code": "721001",
+      "l3_name": "电视广播Ⅲ",
+      "avg_pct": 0.844
+    },
+    {
+      "l3_code": "730103",
+      "l3_name": "通信工程及服务",
+      "avg_pct": 1.04
+    },
+    {
+      "l3_code": "730104",
+      "l3_name": "通信应用增值服务",
+      "avg_pct": 0.08
+    },
+    {
+      "l3_code": "730204",
+      "l3_name": "通信网络设备及器件",
+      "avg_pct": -1.917
+    },
+    {
+      "l3_code": "730205",
+      "l3_name": "通信线缆及配套",
+      "avg_pct": -1.212
+    },
+    {
+      "l3_code": "730206",
+      "l3_name": "通信终端及配件",
+      "avg_pct": 0.391
+    },
+    {
+      "l3_code": "730207",
+      "l3_name": "其他通信设备",
+      "avg_pct": -0.578
+    },
+    {
+      "l3_code": "740101",
+      "l3_name": "动力煤",
+      "avg_pct": -1.529
+    },
+    {
+      "l3_code": "740102",
+      "l3_name": "焦煤",
+      "avg_pct": -2.185
+    },
+    {
+      "l3_code": "740201",
+      "l3_name": "焦炭Ⅲ",
+      "avg_pct": 2.515
+    },
+    {
+      "l3_code": "750201",
+      "l3_name": "油田服务",
+      "avg_pct": 0.079
+    },
+    {
+      "l3_code": "750202",
+      "l3_name": "油气及炼化工程",
+      "avg_pct": 0.477
+    },
+    {
+      "l3_code": "750301",
+      "l3_name": "炼油化工",
+      "avg_pct": 0.368
+    },
+    {
+      "l3_code": "750302",
+      "l3_name": "油品石化贸易",
+      "avg_pct": -0.647
+    },
+    {
+      "l3_code": "750303",
+      "l3_name": "其他石化",
+      "avg_pct": 0.198
+    },
+    {
+      "l3_code": "760101",
+      "l3_name": "大气治理",
+      "avg_pct": 0.39
+    },
+    {
+      "l3_code": "760102",
+      "l3_name": "水务及水治理",
+      "avg_pct": 0.661
+    },
+    {
+      "l3_code": "760103",
+      "l3_name": "固废治理",
+      "avg_pct": -0.127
+    },
+    {
+      "l3_code": "760104",
+      "l3_name": "综合环境治理",
+      "avg_pct": 0.954
+    },
+    {
+      "l3_code": "760201",
+      "l3_name": "环保设备Ⅲ",
+      "avg_pct": 0.001
+    },
+    {
+      "l3_code": "770101",
+      "l3_name": "生活用纸",
+      "avg_pct": 0.581
+    },
+    {
+      "l3_code": "770201",
+      "l3_name": "化妆品制造及其他",
+      "avg_pct": 0.566
+    },
+    {
+      "l3_code": "770202",
+      "l3_name": "品牌化妆品",
+      "avg_pct": 2.091
+    }
+  ],
+  "stocks": [
+    {
+      "ts_code": "600371.SH",
+      "name": "万向德农",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 13.96,
+      "pct_chg": 10.008,
+      "streak": 6,
+      "amount_yi": 6.281,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 40.84,
+      "pe": 736.87,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "300189.SZ",
+      "name": "神农种业",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 7.55,
+      "pct_chg": 20.032,
+      "streak": 1,
+      "amount_yi": 23.414,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 77.31,
+      "pe": 71.57,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "000998.SZ",
+      "name": "隆平高科",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 9.97,
+      "pct_chg": 10.044,
+      "streak": 1,
+      "amount_yi": 8.78,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 146.5,
+      "pe": 257.04,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "600313.SH",
+      "name": "农发种业",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 7.9,
+      "pct_chg": 10.028,
+      "streak": 1,
+      "amount_yi": 7.056,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 91.75,
+      "pe": 125.52,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "000713.SZ",
+      "name": "国投丰乐",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 7.14,
+      "pct_chg": 10.015,
+      "streak": 1,
+      "amount_yi": 5.076,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 56.99,
+      "pe": 90.69,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "600354.SH",
+      "name": "敦煌种业",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 9.12,
+      "pct_chg": 10.012,
+      "streak": 1,
+      "amount_yi": 11.206,
+      "last_zt_date": "20260828",
+      "total_mv_yi": 48.14,
+      "pe": 35.02,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "002041.SZ",
+      "name": "登海种业",
+      "l3_name": "种子",
+      "l2_name": "种植业",
+      "close": 11.88,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 7.991,
+      "last_zt_date": "20260825",
+      "total_mv_yi": 104.54,
+      "pe": 98.57,
+      "industry_rank": 1
+    },
+    {
+      "ts_code": "000019.SZ",
+      "name": "深粮控股",
+      "l3_name": "粮油加工",
+      "l2_name": "农产品加工",
+      "close": 7.92,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 1.938,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 91.28,
+      "pe": 50.98,
+      "industry_rank": 2
+    },
+    {
+      "ts_code": "600127.SH",
+      "name": "金健米业",
+      "l3_name": "粮油加工",
+      "l2_name": "农产品加工",
+      "close": 13.24,
+      "pct_chg": 9.967,
+      "streak": 1,
+      "amount_yi": 17.697,
+      "last_zt_date": "20260827",
+      "total_mv_yi": 84.97,
+      "pe": 2252.24,
+      "industry_rank": 2
+    },
+    {
+      "ts_code": "000505.SZ",
+      "name": "京粮控股",
+      "l3_name": "粮油加工",
+      "l2_name": "农产品加工",
+      "close": 7.74,
+      "pct_chg": 9.943,
+      "streak": 1,
+      "amount_yi": 3.286,
+      "last_zt_date": "20260819",
+      "total_mv_yi": 56.27,
+      "pe": null,
+      "industry_rank": 2
+    },
+    {
+      "ts_code": "601086.SH",
+      "name": "国芳集团",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "close": 10.09,
+      "pct_chg": 10.033,
+      "streak": 3,
+      "amount_yi": 3.04,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 67.2,
+      "pe": 56.58,
+      "industry_rank": 3
+    },
+    {
+      "ts_code": "600828.SH",
+      "name": "茂业商业",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "close": 4.37,
+      "pct_chg": 10.076,
+      "streak": 1,
+      "amount_yi": 0.698,
+      "last_zt_date": "20260604",
+      "total_mv_yi": 75.69,
+      "pe": null,
+      "industry_rank": 3
+    },
+    {
+      "ts_code": "603123.SH",
+      "name": "翠微股份",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "close": 10.44,
+      "pct_chg": 10.011,
+      "streak": 1,
+      "amount_yi": 5.467,
+      "last_zt_date": "20260806",
+      "total_mv_yi": 83.39,
+      "pe": null,
+      "industry_rank": 3
+    },
+    {
+      "ts_code": "600693.SH",
+      "name": "东百集团",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "close": 10.24,
+      "pct_chg": 9.989,
+      "streak": 1,
+      "amount_yi": 4.525,
+      "last_zt_date": "20260729",
+      "total_mv_yi": 89.07,
+      "pe": 182.0,
+      "industry_rank": 3
+    },
+    {
+      "ts_code": "000564.SZ",
+      "name": "供销大集",
+      "l3_name": "百货",
+      "l2_name": "一般零售",
+      "close": 1.66,
+      "pct_chg": 9.934,
+      "streak": 1,
+      "amount_yi": 7.734,
+      "last_zt_date": "20260817",
+      "total_mv_yi": 299.76,
+      "pe": null,
+      "industry_rank": 3
+    },
+    {
+      "ts_code": "600830.SH",
+      "name": "香溢融通",
+      "l3_name": "金融控股",
+      "l2_name": "多元金融",
+      "close": 9.23,
+      "pct_chg": 10.012,
+      "streak": 1,
+      "amount_yi": 1.339,
+      "last_zt_date": "20260427",
+      "total_mv_yi": 41.93,
+      "pe": 49.34,
+      "industry_rank": 4
+    },
+    {
+      "ts_code": "600318.SH",
+      "name": "新力金融",
+      "l3_name": "金融控股",
+      "l2_name": "多元金融",
+      "close": 7.49,
+      "pct_chg": 9.985,
+      "streak": 1,
+      "amount_yi": 2.337,
+      "last_zt_date": "",
+      "total_mv_yi": 38.4,
+      "pe": 90.16,
+      "industry_rank": 4
+    },
+    {
+      "ts_code": "000892.SZ",
+      "name": "欢瑞世纪",
+      "l3_name": "影视动漫制作",
+      "l2_name": "影视院线",
+      "close": 4.73,
+      "pct_chg": 10.0,
+      "streak": 2,
+      "amount_yi": 0.616,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 46.4,
+      "pe": null,
+      "industry_rank": 5
+    },
+    {
+      "ts_code": "603721.SH",
+      "name": "中广天择",
+      "l3_name": "影视动漫制作",
+      "l2_name": "影视院线",
+      "close": 21.01,
+      "pct_chg": 10.0,
+      "streak": 2,
+      "amount_yi": 1.02,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 27.31,
+      "pe": 101.64,
+      "industry_rank": 5
+    },
+    {
+      "ts_code": "001330.SZ",
+      "name": "博纳影业",
+      "l3_name": "影视动漫制作",
+      "l2_name": "影视院线",
+      "close": 6.17,
+      "pct_chg": 9.982,
+      "streak": 2,
+      "amount_yi": 14.259,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 84.81,
+      "pe": null,
+      "industry_rank": 5
+    },
+    {
+      "ts_code": "605300.SH",
+      "name": "佳禾食品",
+      "l3_name": "乳品",
+      "l2_name": "饮料乳品",
+      "close": 10.73,
+      "pct_chg": 10.051,
+      "streak": 1,
+      "amount_yi": 0.856,
+      "last_zt_date": "20260629",
+      "total_mv_yi": 48.76,
+      "pe": 103.72,
+      "industry_rank": 6
+    },
+    {
+      "ts_code": "605179.SH",
+      "name": "一鸣食品",
+      "l3_name": "乳品",
+      "l2_name": "饮料乳品",
+      "close": 34.67,
+      "pct_chg": 9.994,
+      "streak": 1,
+      "amount_yi": 12.086,
+      "last_zt_date": "20260818",
+      "total_mv_yi": 139.03,
+      "pe": 239.75,
+      "industry_rank": 6
+    },
+    {
+      "ts_code": "600551.SH",
+      "name": "时代出版",
+      "l3_name": "大众出版",
+      "l2_name": "出版",
+      "close": 9.08,
+      "pct_chg": 10.061,
+      "streak": 3,
+      "amount_yi": 9.764,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 61.57,
+      "pe": 15.29,
+      "industry_rank": 7
+    },
+    {
+      "ts_code": "002181.SZ",
+      "name": "粤传媒",
+      "l3_name": "大众出版",
+      "l2_name": "出版",
+      "close": 9.58,
+      "pct_chg": 9.989,
+      "streak": 1,
+      "amount_yi": 3.87,
+      "last_zt_date": "20260601",
+      "total_mv_yi": 111.23,
+      "pe": 120.8,
+      "industry_rank": 7
+    },
+    {
+      "ts_code": "002589.SZ",
+      "name": "瑞康医药",
+      "l3_name": "医药流通",
+      "l2_name": "医药商业",
+      "close": 3.5,
+      "pct_chg": 10.063,
+      "streak": 1,
+      "amount_yi": 4.915,
+      "last_zt_date": "20260812",
+      "total_mv_yi": 52.66,
+      "pe": 582.57,
+      "industry_rank": 8
+    },
+    {
+      "ts_code": "600272.SH",
+      "name": "开开实业",
+      "l3_name": "医药流通",
+      "l2_name": "医药商业",
+      "close": 20.09,
+      "pct_chg": 10.022,
+      "streak": 1,
+      "amount_yi": 9.502,
+      "last_zt_date": "20260826",
+      "total_mv_yi": 52.77,
+      "pe": 225.87,
+      "industry_rank": 8
+    },
+    {
+      "ts_code": "600892.SH",
+      "name": "大晟文化",
+      "l3_name": "游戏Ⅲ",
+      "l2_name": "游戏Ⅱ",
+      "close": 4.86,
+      "pct_chg": 9.955,
+      "streak": 2,
+      "amount_yi": 0.391,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 27.19,
+      "pe": null,
+      "industry_rank": 9
+    },
+    {
+      "ts_code": "002425.SZ",
+      "name": "凯撒文化",
+      "l3_name": "游戏Ⅲ",
+      "l2_name": "游戏Ⅱ",
+      "close": 3.6,
+      "pct_chg": 10.092,
+      "streak": 1,
+      "amount_yi": 3.621,
+      "last_zt_date": "20260806",
+      "total_mv_yi": 34.44,
+      "pe": null,
+      "industry_rank": 9
+    },
+    {
+      "ts_code": "600479.SH",
+      "name": "千金药业",
+      "l3_name": "中药Ⅲ",
+      "l2_name": "中药Ⅱ",
+      "close": 13.37,
+      "pct_chg": 10.041,
+      "streak": 1,
+      "amount_yi": 13.459,
+      "last_zt_date": "20260828",
+      "total_mv_yi": 65.81,
+      "pe": 19.39,
+      "industry_rank": 10
+    },
+    {
+      "ts_code": "002107.SZ",
+      "name": "沃华医药",
+      "l3_name": "中药Ⅲ",
+      "l2_name": "中药Ⅱ",
+      "close": 7.37,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 3.122,
+      "last_zt_date": "20260828",
+      "total_mv_yi": 42.54,
+      "pe": 35.87,
+      "industry_rank": 10
+    },
+    {
+      "ts_code": "002349.SZ",
+      "name": "精华制药",
+      "l3_name": "中药Ⅲ",
+      "l2_name": "中药Ⅱ",
+      "close": 8.36,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 7.154,
+      "last_zt_date": "20260828",
+      "total_mv_yi": 69.48,
+      "pe": 30.91,
+      "industry_rank": 10
+    },
+    {
+      "ts_code": "003005.SZ",
+      "name": "竞业达",
+      "l3_name": "IT服务Ⅲ",
+      "l2_name": "IT服务Ⅱ",
+      "close": 18.18,
+      "pct_chg": 9.982,
+      "streak": 3,
+      "amount_yi": 0.737,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 42.07,
+      "pe": 490.09,
+      "industry_rank": 11
+    },
+    {
+      "ts_code": "000158.SZ",
+      "name": "常山北明",
+      "l3_name": "IT服务Ⅲ",
+      "l2_name": "IT服务Ⅱ",
+      "close": 13.88,
+      "pct_chg": 9.984,
+      "streak": 1,
+      "amount_yi": 12.67,
+      "last_zt_date": "20260609",
+      "total_mv_yi": 221.89,
+      "pe": 1701.0,
+      "industry_rank": 11
+    },
+    {
+      "ts_code": "600410.SH",
+      "name": "华胜天成",
+      "l3_name": "IT服务Ⅲ",
+      "l2_name": "IT服务Ⅱ",
+      "close": 15.22,
+      "pct_chg": 9.971,
+      "streak": 1,
+      "amount_yi": 20.111,
+      "last_zt_date": "20260804",
+      "total_mv_yi": 166.89,
+      "pe": 602.6,
+      "industry_rank": 11
+    },
+    {
+      "ts_code": "603293.SH",
+      "name": "埃泰克",
+      "l3_name": "汽车电子电气系统",
+      "l2_name": "汽车零部件",
+      "close": 39.45,
+      "pct_chg": 10.011,
+      "streak": 1,
+      "amount_yi": 1.977,
+      "last_zt_date": "",
+      "total_mv_yi": 70.65,
+      "pe": 28.33,
+      "industry_rank": 12
+    },
+    {
+      "ts_code": "603376.SH",
+      "name": "大明电子",
+      "l3_name": "汽车电子电气系统",
+      "l2_name": "汽车零部件",
+      "close": 28.48,
+      "pct_chg": 10.004,
+      "streak": 1,
+      "amount_yi": 1.397,
+      "last_zt_date": "20260820",
+      "total_mv_yi": 113.92,
+      "pe": 68.58,
+      "industry_rank": 12
+    },
+    {
+      "ts_code": "002104.SZ",
+      "name": "恒宝股份",
+      "l3_name": "通信终端及配件",
+      "l2_name": "通信设备",
+      "close": 12.28,
+      "pct_chg": 10.036,
+      "streak": 1,
+      "amount_yi": 4.851,
+      "last_zt_date": "20260806",
+      "total_mv_yi": 86.99,
+      "pe": 148.08,
+      "industry_rank": 13
+    },
+    {
+      "ts_code": "003040.SZ",
+      "name": "楚天龙",
+      "l3_name": "通信终端及配件",
+      "l2_name": "通信设备",
+      "close": 19.58,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 17.513,
+      "last_zt_date": "20260827",
+      "total_mv_yi": 90.29,
+      "pe": 1262.64,
+      "industry_rank": 13
+    },
+    {
+      "ts_code": "002955.SZ",
+      "name": "鸿合科技",
+      "l3_name": "面板",
+      "l2_name": "光学光电子",
+      "close": 39.12,
+      "pct_chg": 10.011,
+      "streak": 1,
+      "amount_yi": 3.026,
+      "last_zt_date": "20260630",
+      "total_mv_yi": 92.57,
+      "pe": 503.02,
+      "industry_rank": 14
+    },
+    {
+      "ts_code": "000536.SZ",
+      "name": "华映科技",
+      "l3_name": "面板",
+      "l2_name": "光学光电子",
+      "close": 3.96,
+      "pct_chg": 10.0,
+      "streak": 1,
+      "amount_yi": 6.865,
+      "last_zt_date": "20260826",
+      "total_mv_yi": 109.53,
+      "pe": null,
+      "industry_rank": 14
+    },
+    {
+      "ts_code": "002855.SZ",
+      "name": "捷荣技术",
+      "l3_name": "消费电子零部件及组装",
+      "l2_name": "消费电子",
+      "close": 17.71,
+      "pct_chg": 10.0,
+      "streak": 6,
+      "amount_yi": 4.346,
+      "last_zt_date": "20260831",
+      "total_mv_yi": 43.64,
+      "pe": null,
+      "industry_rank": 15
+    },
+    {
+      "ts_code": "600130.SH",
+      "name": "波导股份",
+      "l3_name": "消费电子零部件及组装",
+      "l2_name": "消费电子",
+      "close": 4.93,
+      "pct_chg": 10.045,
+      "streak": 1,
+      "amount_yi": 1.981,
+      "last_zt_date": "20260805",
+      "total_mv_yi": 36.98,
+      "pe": 743.48,
+      "industry_rank": 15
+    }
+  ]
+}

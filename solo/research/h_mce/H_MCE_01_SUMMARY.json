@@ -1,0 +1,190 @@
+{
+ "hypothesis_id": "H-MCE-01",
+ "spec_sha256": "49E64CE9D7CCABCAADC81C0F03BF000F36E52834805B130120DC11499C7D4A2E",
+ "universe": {
+  "U1_cells": 7946658,
+  "U2_definition": "traded & ~st & (board != 'BSE')"
+ },
+ "survivor_meta": {
+  "panel_keeps_delisted_history": true,
+  "delist_flag": "DELIST_PIT_UNAVAILABLE",
+  "gone_codes": 242,
+  "survivorship_bias": "partially mitigated, not eliminated"
+ },
+ "n_primary_tests": 50,
+ "n_fdr_significant": 20,
+ "counts": {
+  "ROBUST": 1,
+  "PROMISING": 3,
+  "FRAGILE": 0,
+  "NO EDGE": 6
+ },
+ "oos_positive_events": [
+  "E02",
+  "E03",
+  "E04",
+  "E08"
+ ],
+ "cost_positive_events_H5": [
+  "E02",
+  "E03",
+  "E04",
+  "E08"
+ ],
+ "verdicts": {
+  "E01": "NO EDGE",
+  "E02": "PROMISING",
+  "E03": "PROMISING",
+  "E04": "PROMISING",
+  "E05": "NO EDGE",
+  "E06": "NO EDGE",
+  "E07": "NO EDGE",
+  "E08": "ROBUST",
+  "E09": "NO EDGE",
+  "E10": "NO EDGE"
+ },
+ "bits": {
+  "E01": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": false,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  },
+  "E02": {
+   "b1_is_pos": true,
+   "b2_oos_pos": true,
+   "b3_full_pos": true,
+   "b4_boot_ci_pos": true,
+   "b5_fdr_sig": true,
+   "b6_years_consist": true,
+   "b7_param_stable": true,
+   "b8_regime_ok": true,
+   "b9_null_ok": true,
+   "b10_not_tail": true,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": true
+  },
+  "E03": {
+   "b1_is_pos": true,
+   "b2_oos_pos": true,
+   "b3_full_pos": true,
+   "b4_boot_ci_pos": true,
+   "b5_fdr_sig": true,
+   "b6_years_consist": true,
+   "b7_param_stable": true,
+   "b8_regime_ok": true,
+   "b9_null_ok": true,
+   "b10_not_tail": true,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": true
+  },
+  "E04": {
+   "b1_is_pos": true,
+   "b2_oos_pos": true,
+   "b3_full_pos": true,
+   "b4_boot_ci_pos": true,
+   "b5_fdr_sig": true,
+   "b6_years_consist": true,
+   "b7_param_stable": true,
+   "b8_regime_ok": true,
+   "b9_null_ok": true,
+   "b10_not_tail": true,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": true
+  },
+  "E05": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": false,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  },
+  "E06": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": true,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  },
+  "E07": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": true,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  },
+  "E08": {
+   "b1_is_pos": true,
+   "b2_oos_pos": true,
+   "b3_full_pos": true,
+   "b4_boot_ci_pos": true,
+   "b5_fdr_sig": true,
+   "b6_years_consist": true,
+   "b7_param_stable": true,
+   "b8_regime_ok": true,
+   "b9_null_ok": true,
+   "b10_not_tail": true,
+   "b11_beats_bench": true,
+   "b12_momentum_incr": true
+  },
+  "E09": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": true,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  },
+  "E10": {
+   "b1_is_pos": false,
+   "b2_oos_pos": false,
+   "b3_full_pos": false,
+   "b4_boot_ci_pos": false,
+   "b5_fdr_sig": false,
+   "b6_years_consist": false,
+   "b7_param_stable": false,
+   "b8_regime_ok": false,
+   "b9_null_ok": false,
+   "b10_not_tail": false,
+   "b11_beats_bench": false,
+   "b12_momentum_incr": false
+  }
+ },
+ "overall": "candidate(s) require independent phase-2 validation",
+ "trading_authorization": "NO"
+}

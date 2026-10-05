@@ -9,5 +9,9 @@
   "strict_host_key": false,
   "local_db": "d:/mystock/solo/picks_db/stock_picks.db",
   "reports_src": "d:/mystock/report_daily",
-  "reports_remote_dir": "/var/www/StockPick/reports"
+  "reports_remote_dir": "/var/www/StockPick/reports",
+  "l3res_src": "d:/mystock/solo/report_daily",
+  "l3res_remote_dir": "/var/www/StockPick/l3res",
+  "etf_src": "d:/mystock/solo/position_gate/output",
+  "etf_remote_dir": "/var/www/StockPick/etf"
 }
