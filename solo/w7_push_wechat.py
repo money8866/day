@@ -207,12 +207,15 @@ def _md_to_email_html(md_text: str, title: str) -> str:
         '<hr>': '<hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0;">',
         '<strong>': '<strong style="color:#0b4fd6;">',
         '<em>': '<em style="font-style:normal;color:#94a3b8;font-size:19px;">',
-        '<table>': '<table style="border-collapse:collapse;width:100%;font-size:20px;">',
-        '<th>': '<th style="background:#1677ff;color:#fff;padding:10px;border:1px solid #b9c6d6;">',
-        '<td>': '<td style="padding:10px;border:1px solid #b9c6d6;">',
+        '<table>': '<table style="border-collapse:collapse;width:100%;font-size:16px;word-break:break-word;">',
+        '<th>': '<th style="background:#1677ff;color:#fff;padding:5px 6px;border:1px solid #b9c6d6;font-size:16px;">',
+        '<td>': '<td style="padding:5px 6px;border:1px solid #b9c6d6;font-size:16px;">',
     }
     for k, v in inline.items():
         body = body.replace(k, v)
+    # 宽表在手机上会撑破卡片宽度，导致整封邮件上下宽度不一致：套横向滚动容器兜底
+    body = body.replace('<table ', '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:12px 0;">' + '<table ')
+    body = body.replace('</table>', '</table></div>')
     body = body.replace('｜', '<br>')   # 全角竖线竖排，避免手机端长行折行错乱
     head = _html.escape(title)
     return f"""<!DOCTYPE html>
@@ -233,9 +236,9 @@ h2 {{ font-size: 23px; color: #0b4fd6; margin: 22px 0 10px; padding-left: 10px; 
 h3 {{ font-size: 22px; color: #334155; margin: 16px 0 8px; }}
 p, li, td, th, div {{ font-size: 22px; line-height: 1.8; color: #1f2937; }}
 strong {{ color: #0b4fd6; }}
-table {{ border-collapse: collapse; width: 100%; font-size: 20px; }}
-th {{ background: #1677ff; color: #fff; padding: 10px; border: 1px solid #b9c6d6; }}
-td {{ padding: 10px; border: 1px solid #b9c6d6; }}
+table {{ border-collapse: collapse; width: 100%; font-size: 16px; word-break: break-word; }}
+th {{ background: #1677ff; color: #fff; padding: 5px 6px; border: 1px solid #b9c6d6; font-size: 16px; }}
+td {{ padding: 5px 6px; border: 1px solid #b9c6d6; font-size: 16px; }}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#eef2f7;font-size:22px;line-height:1.8;color:#1f2937;">
