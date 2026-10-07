@@ -3,6 +3,28 @@
   "data": {
     "data": [
       {
+        "created_at": "2026-10-06T14:01:24Z",
+        "dir": {
+          "dir_id": 3,
+          "dir_name": "sent"
+        },
+        "from": {
+          "email": "kongxiangpu9703@agent.qq.com",
+          "name": "kongxiangpu9703"
+        },
+        "has_attachments": false,
+        "is_read": true,
+        "message_id": "msg_0e-IGkeqBuwYyZdwEjbRpobf4oKJIEptTK7LgeNJ3dWKsQ",
+        "snippet": "📅 明日行程提醒（2026-10-07 周三） 明日无安排    ✨ 明日暂无安排，好好休息！    生成时间 2026-10-06 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
+        "subject": "📅 明日行程提醒 10-07 周三",
+        "to": [
+          {
+            "email": "stock1975@qq.com",
+            "name": "stock1975"
+          }
+        ]
+      },
+      {
         "created_at": "2026-10-05T14:00:59Z",
         "dir": {
           "dir_id": 3,
@@ -39,28 +61,6 @@
         "message_id": "msg_ZH3kDW6TR-QlQYULjmOYqVRBSXnWww1wC7FpZEPmVIJoaA",
         "snippet": "每日复盘 - 20260930  A股每日复盘 · 自动推送     这是大盘和个股推送微信消息 每日复盘(20260930) 1、大盘分析 市场分析  上证指数：3842.19（+0.31%） | 成交额：1.45万亿 | 涨跌比 48%  市场：震荡有主线 | 赚钱：中  风险：正常风险 | 节奏：D2 确认期  仓位建议  当前目标：28% 可加仓空间：32%  正常区间：25%～40% 确认上限：60%  一句话：震荡市有主线机会，只做主线，不追杂毛。  策略：D1-D2 确认",
         "subject": "每日复盘 - 20260930",
-        "to": [
-          {
-            "email": "stock1975@qq.com",
-            "name": "stock1975"
-          }
-        ]
-      },
-      {
-        "created_at": "2026-10-04T14:01:12Z",
-        "dir": {
-          "dir_id": 3,
-          "dir_name": "sent"
-        },
-        "from": {
-          "email": "kongxiangpu9703@agent.qq.com",
-          "name": "kongxiangpu9703"
-        },
-        "has_attachments": false,
-        "is_read": true,
-        "message_id": "msg_9inoHEXL66mmy38QGK4BunskCuVoWj56R3WxzaMNEvCNqQ",
-        "snippet": "📅 明日行程提醒（2026-10-05 周一） 共 1 项安排    18:00 永加强海鲜楼晚餐（202包厢） 📍 龙湾区永中西路1111号     生成时间 2026-10-04 22:01 本邮件由 明日行程提醒 自动化任务推送      此邮件由kongxiangpu9703@agent.qq.com通过Agent Mail自动发送。举报退订    ",
-        "subject": "📅 明日行程提醒 10-05 周一",
         "to": [
           {
             "email": "stock1975@qq.com",

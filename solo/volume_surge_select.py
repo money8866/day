@@ -232,13 +232,16 @@ MOM_GATE_THRESHOLD = 3.0
 VOL_STEP_RATIO_JUMP = 1.5    # 起量判据：5日均量 / 前5日均量
 VOL_T0_VOLBASE_MIN = 3.0     # 起量判据：T0当日量 / 起量前20日均量（不含当日，20261002 由「含当日20日量比」改口径，阈值 2.0→2.5 补偿；20261003 用户要求「拉高量能放大幅度」2.5→3.0，剔除楚江新材 002171.SZ 0916/0917 这类 T0 量比仅 2.72 的贴线票）
 VOL_STEP_MIN = 1.2           # 台阶维持：起量后每日 5日均量 >= 起量前一日 5日均量 × 本值
-VOL_STEP_MAX_D = 15          # T0 到今日的最大允许交易日跨度
+VOL_STEP_MAX_D = 60          # T0 到今日的最大允许交易日跨度（20261003 用户要求 15→60：T0 识别后跟踪 60 个交易日；
+                             #   跟踪期间若收盘跌破「T0 前一交易日收盘价」，该 T0 即作废、不再跟踪，见 _vol_step_days）
 VOL_T0_MIN_PCT = 5.0         # T0 标志日：第一根放量阳线当日涨幅下限（20260930 用户要求；20261003 起涨停日/涨停次日豁免）
 VOL_SHRINK_MIN_STEP = 0.50   # 缩量比下限：下蹲日量 / T0 日量（20260930 用户要求 0.35→0.55→0.50）
-VOL_T0_PREM_MIN = 5.0        # 止损空间下限：下蹲日收盘价相对 T0 开盘价（止损位）的溢价%（20261001 用户要求 B 方案）
 VOL_ACTIVITY_MIN = 2.0       # 量能活跃度：起跳段（T0~今日）均量 / 起量前20日均量（20261002 替代原「含当日20日量比」自比口径）
-VOL_SQUAT_EXPAND_MA20_MAX = 10.0  # 「扩大」下蹲分支的距MA20上限%（20261003 用户要求扩大下蹲：回调后小阴/小阳/十字星，优选分支仍守 5%）
 VOL_SQUAT_EXPAND_VOLR_MAX = 1.6   # 「扩大」下蹲分支的量比上限（当日量/20日均量，20261003 用户要求 1.2→1.6：纳入「回调后十字星/小实体但量能仅持平」的回踩，如 0923 大金重工 量比1.22、0929 天顺风能 量比1.52；优选分支仍守 1.2）
+VOL_SQUAT_DRYUP_DVOL5_MAX = -50.0  # 下蹲剔除门槛①「缩量过快」：5日量能变化 <= 本值（%，20261006 用户要求）
+VOL_SQUAT_DRYUP_STREAK_MIN = 3     # 下蹲剔除门槛②「持续缩量」：连续缩量天数 >= 本值（20261006 用户要求）
+#   两条件同时满足 → 剔除下蹲买点（放量资金已撤、量能枯竭，非健康缩量回踩企稳）
+#   典型：002584 西陇科学 0917 暴量见顶后 9 日单边缩量（5日量能变化 -52.8%、连续缩量3天、量能降至峰值25%）
 
 
 def _mom_env(avg):
@@ -1020,6 +1023,14 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
     从而改写缩量比基准与距T0开盘（实测大港股份 002077.SZ 的 T0 由 0909 涨停日被改认为 0910 涨停
     次日 +2.26%，导致 0930 缩量比 0.546→0.414、距T0开盘 +9.27%→-0.65%，原本的 0930 下蹲信号丢失）。
 
+    T0 跟踪窗口与失效（20261003 用户要求）：
+      (1) T0 识别后跟踪至多 VOL_STEP_MAX_D 个交易日（15→60）：起量日可回溯更远，
+          解决「放量后回调较久、起量日滑出窗口 → 无合格 T0 被整段剔除」的漏检
+          （如千金药业 600479.SH 的 T0=0826，到 0930 已距 22 个交易日，旧 15 日窗口早失效）。
+      (2) 跟踪期间（T0 次日起至今日）若任一交易日**收盘跌破「T0 前一交易日收盘价」**
+          （即整波放量被完全回吐、起涨基石被击穿）→ 该 T0 作废、不再跟踪，继续向前找更早的 T0。
+          判据用收盘价（与策略内其它止损口径一致），不用盘中最低价，避免上下影误杀。
+
     量比口径说明（20261002 用户要求）：T0 与「量能活跃度」一律用「起跳后 vs 起跳前基线」，
     基线为起量前 20 日均量（不含 T0 当日及起跳段）；不再使用「当日量 / 含当日20日均量」的自比口径
     （该口径分母含起量巨量，会自我稀释，如百普赛斯 20260807 涨停放量日被稀释为 1.99 < 2.0 而误剔）。
@@ -1078,6 +1089,11 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
             continue
         if pre_close_arr[i] <= 0:
             continue
+        # T0 失效判定（20261003 用户要求）：跟踪期间（T0 次日起至今日）若任一交易日
+        #   收盘跌破「T0 前一交易日收盘价」→ 整波放量已被完全回吐、起涨基石被击穿，
+        #   该 T0 作废、不再跟踪，继续向前找更早的 T0。判据用收盘价，不用盘中最低价。
+        if i + 1 <= k and float(np.min(close_arr[i + 1:k + 1])) < float(pre_close_arr[i]):
+            continue
         _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
         # (d) 放量阳线且涨幅达标：兜底口径下涨停日 / 涨停次日豁免（20261003）
         if not _zt_exm:
@@ -1115,8 +1131,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         vol_vs_hist_pct = (recent_vol_max / hist_vol_max * 100) if hist_vol_max > 0 else 0
 
         amplitude = (high_arr - low_arr) / np.maximum(pre_close_arr, 0.01) * 100
-        avg_amplitude = float(np.mean(amplitude[-120:]))
         amp_gt8_count = int(np.sum(amplitude > 8))
+        # 日均振幅 avg_amplitude 改到 T0 识别之后再算（20261003 用户要求：只统计「放量后」的大幅波动）
 
         range_high = float(np.max(high_arr))
         range_low = float(np.min(low_arr))
@@ -1130,8 +1146,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         # 量能爆发频次硬条件（用户要求20260927：量比>2 的天数须 >=5，原为 >=3）
         if vol_ratio_gt2 < 5:
             return None
-        if avg_amplitude < 4.5:
-            return None
+        # 日均振幅硬条件 avg_amplitude<4.5（原数值）已下移至 T0 识别之后 ——
+        #   20261003 用户要求改口径：改测「放量后（T0 起）」的日均振幅，需先定位 T0 才能计算
         if range_swing < 35:
             return None
         # 区间涨幅(200日)仅展示不做硬过滤：短线策略不设长周期涨跌幅限制
@@ -1150,15 +1166,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         if vol_vs_hist_pct < 50:
             return None
 
-        # MA20 位置下限（保留）：收盘不得跌破 MA20 的 95%
-        # 20261003 用户要求「去掉 MA20 变化条件」：删除原「10日变化 < -1% 或 20日变化 < -2% → 剔除」
-        #   （大金重工 002487.SZ 0916~0930 仅因此项被挡；其 MA20 走坏系 8 月真实回撤所致，非除权）。
-        ma20_full = pd.Series(df['close'].values.astype(float)).rolling(20, min_periods=20).mean().values
-        if len(ma20_full) >= 41:
-            ma20_now = float(ma20_full[-1])
-            close_latest = float(close_arr[-1])
-            if close_latest < ma20_now * 0.95:
-                return None
+        # MA20 位置门槛已删除（20261003 用户要求「放弃和均线的比较」）：
+        #   原「收盘不得跌破 MA20 的 95%」（距MA20 < -5% 直接剔除）属均线比较，
+        #   下跌价位改由 _vol_step_days 的 T0 失效门槛单一口径把关（跟踪期间收盘跌破 T0 前一交易日收盘价 → T0 作废）。
+        #   （此前 20261003 已先删除「10日变化 < -1% 或 20日变化 < -2% → 剔除」）
 
         # 近期量能活跃度检查：短期成交量对比前期基量（识别近期放量）
         _df200 = df.tail(200) if len(df) >= 200 else df
@@ -1186,13 +1197,21 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         if _step is None:
             return None
 
+        # 日均振幅（20261003 用户要求改口径）：只统计「放量后（T0 标志日起至今）」的日均振幅，
+        #   替代原「近120日」长期均振幅 —— 原口径会整段误杀「放量前长期低波动、放量后剧烈震荡」的品种
+        #   （千金药业 600479.SH：T0=0826 起量后日均振幅 ≈9%，近120日仅 ≈3.5%，被旧口径挡在池外）。
+        #   口径一致：振幅硬门槛、amp_score、报告「日均振幅」下游均随此定义改为「放量后」。
+        _t0_i = len(vol_arr) - 1 - _step[0]
+        avg_amplitude = float(np.mean(amplitude[_t0_i:]))
+        if avg_amplitude < 4.5:
+            return None
+
         # 量能活跃度硬条件（20261002 用户口径修正）：「起跳后每日成交显著高于起跳前均量」
         #   分子 = 起跳段（T0~今日，含 T0）均量；分母 = 起量前20日均量（不含 T0 当日，即起跳前基线）
         #   替代原「近20日 量比=当日量/含当日20日均量，max>=2.0 且 mean>=1.4」的自比口径
         #   （自比口径分母含起量巨量会自我稀释，且以「今日」为锚会随下蹲时长漂移）
         #   标定：k1=2.5 时 1.8→n=16 50.0%/+2.63% · 2.0→n=14 57.1%/+3.38% · 2.2→n=13 53.8%/+3.18%
         #   （回测口径 T+1开盘买/T+5收盘/T0开盘价止损/含0.25%成本；详见 _vol_step_days docstring）
-        _t0_i = len(vol_arr) - 1 - _step[0]
         _base_pre20 = float(np.mean(vol_arr[max(0, _t0_i - 20):_t0_i])) if _t0_i > 0 else 0.0
         _surge_mean = float(np.mean(vol_arr[_t0_i:]))
         vol_activity = _surge_mean / max(_base_pre20, 1)
@@ -1249,9 +1268,33 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         big_amp_score = min(amp_gt8_count / 15, 1) * 15
         swing_score = min(range_swing / 60, 1) * 15
         total_score = vol_score + freq_score + amp_score + big_amp_score + swing_score
-
         if total_score < 65:
             return None
+        # ===== P0：导出力能爆发 5 个分量的原始值（20261007）=====
+        # 动机：total_score 的 5 个分量全是 min(值/固定阈值, 1)*权重 的封顶项，
+        #   放量行情中普遍顶格 → 实测池内评分中位 93.3、>=95 占比 41.7%、=100 占 16.7%，
+        #   「评分>=70/75」门槛通过率 99.6%/98.3% → 门槛形同虚设（20260930 强买 37 只的根因）。
+        # 处置：分数无法在 detect 内修正（逐只调用、无池上下文），
+        #   故此处只导出原始分量，由 run() 在全池收集完后算「每日池内截面百分位」
+        #   （cross_score），供强买门槛与报告展示使用。入池门槛仍用原 total_score>=65，
+        #   以保证入池口径与历史回测可比。
+        # 标定（下蹲事件池 n=9180，2025-01~2026-09，T+1开盘买/T+5收盘/止损位=T0前一日收盘价）：
+        #   评分饱和度：唯一值 326 → 7639，中位 93.3 → 51.1，>=95 占比 41.7% → 0.0%
+        #   门槛通过率：>=70 99.6% → 10.7%   >=75 98.3% → 4.8%（门槛恢复区分力）
+        #   排序（每日Top3）：旧 41.5%/-0.35%/止21% → 新 44.0%/-0.08%/止20%（分年一致改善）
+        #   但与「距MA5 第1键」组合后增益很小：44.7% → 44.9%（距MA5 已承担主要排序工作）
+        #   **方向性结论（重要）**：两种口径一致指向「分数越低越好」——
+        #     距MA20>0 子池内，旧评分 <90档 -0.37% / 96~100档 -0.87%（跨度 0.5pp）；
+        #     截面分位 <50档 -0.09% / >80档 -1.67%（跨度 1.58pp，区分度 3 倍）。
+        #     故原强买门槛「total_score>=70/75」（要求高分）在筛的恰是过热档 → 方向错，
+        #     已于 20261007 改为用截面分位的高分位（见 _strong_buy_gate）。
+        _comp = {
+            'vol': float(max_vol_ratio),
+            'freq': float(vol_ratio_gt2),
+            'amp': float(avg_amplitude),
+            'big_amp': float(amp_gt8_count),
+            'swing': float(range_swing),
+        }
 
         # MACD信号判断
         close_full = df['close'].values.astype(float)
@@ -1347,6 +1390,9 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
                 _dn_vols.append(vol_arr[_k])
         _vol_up_ratio = (np.mean(_up_vols) / max(np.mean(_dn_vols), 0.01)) if _up_vols and _dn_vols else 1.0
         # MA20 趋势（供新开仓模型位置判断）
+        # 注：ma20_full 原定义在已删除的「MA20 位置门槛(G6)」段内（20261003 删除均线比较时一并移除），
+        #   此处按邻接口径补回，仅用于 ma20_trend 展示字段，不参与筛选。
+        ma20_full = pd.Series(close_arr).rolling(20).mean().values
         if len(ma20_full) >= 21 and not np.isnan(ma20_full[-1]) and not np.isnan(ma20_full[-11]) and ma20_full[-11] > 0:
             _ma20_chg = (ma20_full[-1] / ma20_full[-11] - 1) * 100
         else:
@@ -1358,31 +1404,54 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         else:
             ma20_trend = 'down'
 
-        # ===== 下蹲买点（20260927落地；20260930 位置门槛放宽；20261003 扩大小实体K线分支）=====
-        # 语义：量能爆发/宽幅震荡结构已成立，但当日缩量回踩、不破 30日均线、均线多头未坏
-        #       → 提前于突破日给出低吸买点（用户要求：下蹲时即发信号，而非等突破后再追）
+        # ===== 下蹲买点（20260927落地；20260930 位置门槛放宽；20261003 扩大小实体K线分支；
+        #       20261003 用户要求「放弃和均线的比较 / 距20日高也不要」：删除两支内全部均线条件与距20日高区间，
+        #       下跌价位只由「跌破 T0 前一交易日收盘价 → T0 作废」这一门槛单一口径把关，见 _vol_step_days）=====
+        # 语义：量能爆发/宽幅震荡结构已成立（T0 未失效），当日缩量回踩 → 提前于突破日给低吸买点
+        #       （用户要求：下蹲时即发信号，而非等突破后再追）
+        # 20261003 用户要求「放弃和均线的比较」「距20日高也不要，是指跌破T0日前一日的收盘价则不再跟踪这个门槛已经有了」：
+        #   删除 优选/扩大 两支中的所有均线比较（MA5>MA10>MA20 多头、距MA5≤1%、距MA20≤5%(优选)/≤10%(扩大)、
+        #   距MA30≥0%）与「距20日高」区间条件。下跌价位只由 _vol_step_days 的 T0 失效门槛
+        #   （跟踪期间收盘跌破 T0 前一交易日收盘价 → 该 T0 作废）单一口径把关，避免多重冗余把关。
+        #   注：MA5<MA10 的二次启动前回踩不再被排除（与用户偏好一致）；「距MA20/距MA30/距MA5/距20日高」仍作为展示字段输出。
         # 20261003 用户要求「把下蹲买点扩大，找到回调后的小阴线小阳线或十字星」：
-        #   在原有「优选」分支（MA5>MA10>MA20 多头 + 缩量回踩MA5）之外，新增「扩大」分支 ——
-        #   回调后出现 小阴线/小阳线/十字星（小实体K线，实体≤2%）且缩量企稳、仍站上MA30，
-        #   允许 MA5 已跌破 MA10（回调中的二次启动前回踩，见用户偏好：MA5<MA10 不应扣分）
+        #   在原有「优选」分支（缩量回踩、当日缩量企稳）之外，新增「扩大」分支 ——
+        #   回调后出现 小阴线/小阳线/十字星（小实体K线，实体≤2%）。
         # 标定回测（2025-01-01~2026-09-24, 事件池=本函数基础硬过滤, T+1开盘买/T+5收盘, 盘中-7%止损, 含0.25%成本）：
         #   旧口径（距MA20 0~5%）n=616 胜率46.6% 均+0.69% 止损率29.5% | 2025 48.2%/+0.67% | 2026 42.4%/+0.75%
         #   20260930 用户要求「放宽到30日均线之上」：下限由 距MA20>=0 放宽为 距MA30>=0，
         #   上限仍为 距MA20<=5%（不追高不变）→ 该放宽未单独重标定
         #   20261002 T0/量能活跃度改口径后，下蹲事件池（T0合格+下蹲结构）n=27，见下方与报告内数字
+        #   20261003 删除均线与距20日高条件后未重标定（门槛放宽 → 池会变大，胜率待重算）
         _hh20 = float(np.max(high_arr[-20:])) if len(high_arr) >= 20 else 0.0
         dist_hh20 = (close_latest / _hh20 - 1) * 100 if _hh20 > 0 else 0.0
-        # 止损空间门槛（20261001 用户要求 B 方案：坚持 T0 开盘价止损，则要求止损位距买点足够远）
-        # 标定（T0/量能活跃度改口径后 20261002 重标定；下蹲事件池 n=27，2025-09~2026-09，
-        #       T+1开盘买/T+5收盘/含0.25%成本）：
-        #   溢价 = 下蹲日收盘 / T0开盘价 - 1（缩量比≥0.50 已是池内天然下限，最小 ≈0.51，不再额外筛选）
-        #     [0,5)   n=12   8.3%/-2.52%（止损率91.7%）← 止损位贴买入价，回踩即出场
-        #     [5,8)   n= 2  50.0%/+12.84%       [8,12)  n= 5 100.0%/+4.44%
-        #     [12,18) n= 6  33.3%/+0.15%        [18,∞)  n= 1   0.0%/-1.49%
-        #   加门槛后（≥5%）n=14：T0止损口径 34.6%/+0.65%/止损57.7% → 57.1%/+3.38%/止损28.6%
-        #                        -7%止损口径 46.2%/+0.61% → 57.1%/+3.59%
+        # 止损空间门槛（20261001 B 方案）已于 20261003 用户要求删除：下蹲条件不再要求
+        #   「下蹲日收盘距 T0 开盘价≥5%」，下跌价位只由 _vol_step_days 的 T0 失效门槛把关。
         t0_open = round(float(_step[3]), 2)
-        prem_t0 = (close_latest / t0_open - 1) * 100 if t0_open > 0 else 0.0
+        # ===== 止损位口径 20261006 用户要求：改用「T0 前一交易日收盘价」=====
+        # 口径含义：跌破「T0 起涨前最后一个交易日的收盘价」即止损 —— 即整波放量被完全回吐、
+        #   起涨基石被击穿（与 _vol_step_days 的 T0 作废门槛**同一条线**，单一口径把关）。
+        # 口径对照（下蹲事件池 n=8733，2025-01~2026-09，T+1开盘买/T+5收盘/含0.25%成本）：
+        #   口径                        胜率%   均收益%  止损率%
+        #   T0前一日收盘价（新）         41.5    -0.29    12.2
+        #   T0开盘价（原）              40.0    -0.27    16.8
+        #   分年一致（非单年噪声）：
+        #     2025  新 43.4%/+0.42%/止 9.4%   原 42.6%/+0.43%/止12.1%
+        #     2026  新 40.9%/-0.51%/止13.1%   原 39.2%/-0.48%/止18.2%
+        #   新口径止损线距 T+1 开盘价：中位 -17.5%（5%分位 -45.7%、95%分位 -3.5%），
+        #   即多数票的止损空间有 10~20%，实盘可执行，且比原口径更宽松（止损率降 4.6pp）。
+        # 曾评估但否决的替代口径（同样按 n=8733 实测）：
+        #   「下蹲日（T-1）收盘价」作止损线：胜率 3.3%/止损率 96.6% —— **不可用**。
+        #     原因：下蹲日本身是十字星/小实体，收盘价几乎就等于次日的实际开盘价
+        #     （实测 T+1开盘 相对 T-1收盘 的中位跳空 -0.26%，56% 的票次日直接低开跌破该线），
+        #     止损线紧贴入场价 → 持仓 5 日内几乎必然被触及，策略退化为"每天止损"。
+        #   「事件日收盘价 ×(1-buffer)」缓冲扫描：0%/2%/3%/5%/7%/10% → 胜率
+        #     3.3%/14.3%/21.2%/31.5%/37.3%/41.5%，止损率 96.6%/84.3%/75.6%/58.3%/42.7%/24.3%
+        #     —— 即需 10% 缓冲才接近原口径胜率，但止损线已远离「起涨基石」语义。
+        # 故取 T0 前一日收盘价：既是用户指定口径，也是唯一同时满足
+        #   ①与 T0 作废门槛同源 ②止损率低于原口径 ③胜率高于原口径 的方案。
+        _t0_prev_close = float(pre_close_arr[_t0_i]) if _t0_i > 0 else 0.0
+        stop_price = round(_t0_prev_close, 2) if _t0_prev_close > 0 else t0_open
         # 小实体K线识别（20261003 用户要求「把下蹲买点扩大，找到回调后的小阴线小阳线或十字星」）
         #   实体 = |收盘-开盘| / 前收；小阴/小阳：实体 ≤2.0%；十字星：实体 ≤0.5% 或 实体/振幅 ≤0.25
         _today_open = float(open_arr[-1])
@@ -1392,54 +1461,7 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         _is_doji = (_body_pct <= 0.5) or (_range_pct > 0 and _body_pct / _range_pct <= 0.25)
         _is_small_body = _body_pct <= 2.0
         _kname = '十字星' if _is_doji else ('小阳线' if close_latest >= _today_open else '小阴线')
-        squat_buy = False
-        squat_grade = ''
-        squat_reason = ''
-        # 分支1（优选）：均线多头 + 缩量回踩MA5 —— 原有口径，条件不变
-        if (total_score >= 65
-                and _ma5 > _ma10 > ma20_latest
-                and today_vol_ratio <= 1.2
-                and today_pct <= 1.0
-                and pos_ma5 <= 1.0
-                and pos_ma30 >= 0
-                and pos_ma20 <= 5.0
-                and -12.0 <= dist_hh20 <= -4.0
-                and prem_t0 >= VOL_T0_PREM_MIN):
-            squat_buy = True
-            squat_grade = '优选'
-            squat_reason = (f'下蹲买点（缩量回踩MA5 量比={today_vol_ratio:.2f}，'
-                            f'MA5>MA10>MA20，距MA20={pos_ma20:+.1f}%，距MA30={pos_ma30:+.1f}%，'
-                            f'距20日高={dist_hh20:+.1f}%，距T0开盘={prem_t0:+.1f}%）')
-        # 分支2（扩大，20261003）：回调后的小阴线/小阳线/十字星 —— 缩量企稳、仍站上MA30
-        #   与分支1差异：①放宽为小实体K线（实体≤2%，含十字星）；②不要求 MA5>MA10（回调中 MA5 可跌破 MA10，
-        #   属二次启动前回踩，见用户偏好）；③距20日高下限 -4%→-2%（企稳K线可离高点更近）；
-        #   ④小阳线涨幅上限 +1.0%→+2.5%；⑤距MA20上限 +5%→+10%（20261003 诊断发现：0922 海峡创新/0923 大港股份/
-        #   0930 众泰汽车 等「回调后小阳线·十字星」仅因距MA20 落在 5~10% 被旧口径挡掉，是主要漏检来源）；
-        #   ⑥量比上限 1.2→1.6（20261003 用户要求：0923 大金重工 十字星 量比1.22、0929 天顺风能 小实体 量比1.52，
-        #   均因「当日量仅回到20日均量附近、未明显缩量」被挡，属主要漏检来源；优选分支仍守 1.2）。
-        #   共同门槛（量能结构≥65 / 站上MA30 / 止损空间≥5%）不变。
-        elif (total_score >= 65
-                and _is_small_body
-                and today_vol_ratio <= VOL_SQUAT_EXPAND_VOLR_MAX
-                and -3.0 <= today_pct <= 2.5
-                and pos_ma30 >= 0
-                and pos_ma20 <= VOL_SQUAT_EXPAND_MA20_MAX
-                and -12.0 <= dist_hh20 <= -2.0
-                and prem_t0 >= VOL_T0_PREM_MIN):
-            squat_buy = True
-            squat_grade = '扩大'
-            squat_reason = (f'下蹲买点·扩大（回调后{_kname} 实体={_body_pct:.2f}%，缩量 量比={today_vol_ratio:.2f}，'
-                            f'距MA20={pos_ma20:+.1f}%，距MA30={pos_ma30:+.1f}%，'
-                            f'距20日高={dist_hh20:+.1f}%，距T0开盘={prem_t0:+.1f}%）')
-
-        # ===== 下蹲提示字段（20260927，仅提示展示，不参与筛选/排序）=====
-        # T0 标志日：量能抬升后 5日均量未回落到起量前水平 → 资金未走（见 _vol_step_days 标定）
-        # （_step 已在上方近端缩量检查处计算，且此处必为合格 T0）
-        vol_step_days = _step[0]
-        vol_step_px = round(_step[1] * 100, 1)
-        t0_pct = round(_step[2], 1)
-        # t0_open（T0 标志日开盘价，止损位）与 prem_t0 已在上方「止损空间门槛」处计算
-        # 量能形态：连续缩量天数 / 5日量能变化率 / 近3日与10日量能比
+        # 量能形态（20261006 提前至此处计算：既供下蹲提示字段展示，也供「缩量过快且持续缩量」剔除门槛）
         _shrink_streak = 0
         for _k in range(len(vol_arr) - 1, 0, -1):
             if vol_arr[_k] < vol_arr[_k - 1]:
@@ -1449,35 +1471,103 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
         _dvol5 = (vol_arr[-1] / vol_arr[-6] - 1) * 100 if len(vol_arr) >= 6 and vol_arr[-6] > 0 else 0.0
         _v10_mean = float(np.mean(vol_arr[-10:]))
         _v3v10 = float(np.mean(vol_arr[-3:])) / _v10_mean if _v10_mean > 0 else 1.0
+        # 下蹲剔除（20261006 用户要求「002584 这种缩量过快且持续缩量的应该剔除」）：
+        #   缩量过快（5日量能变化<=-50%）且 持续缩量（连续缩量>=3天）→ 放量资金已撤、量能枯竭，
+        #   不构成健康缩量回踩企稳，不给下蹲买点（阈值见 VOL_SQUAT_DRYUP_* 常量）。
+        _vol_dry_up = (_dvol5 <= VOL_SQUAT_DRYUP_DVOL5_MAX
+                       and _shrink_streak >= VOL_SQUAT_DRYUP_STREAK_MIN)
+        squat_buy = False
+        squat_grade = ''
+        squat_reason = ''
+        # 分支1（优选）：缩量回踩
+        if (not _vol_dry_up
+                and total_score >= 65
+                and today_vol_ratio <= 1.2
+                and today_pct <= 1.0):
+            squat_buy = True
+            squat_grade = '优选'
+            squat_reason = f'下蹲买点（缩量回踩 量比={today_vol_ratio:.2f}）'
+        # 分支2（扩大，20261003）：回调后的小阴线/小阳线/十字星
+        #   与分支1差异：①放宽为小实体K线（实体≤2%，含十字星）；②小阳线涨幅上限 +1.0%→+2.5%；
+        #   ③量比上限 1.2→1.6。
+        #   （20261003 用户要求：均线条件、距20日高条件、止损空间条件已全部删除 —— 下跌价位由
+        #     「跌破 T0 前一交易日收盘价」这一 T0 失效门槛单一口径把关，见 _vol_step_days）
+        #   共同门槛（量能结构≥65）不变。
+        elif (not _vol_dry_up
+                and total_score >= 65
+                and _is_small_body
+                and today_vol_ratio <= VOL_SQUAT_EXPAND_VOLR_MAX
+                and -3.0 <= today_pct <= 2.5):
+            squat_buy = True
+            squat_grade = '扩大'
+            squat_reason = (f'下蹲买点·扩大（回调后{_kname} 实体={_body_pct:.2f}%，'
+                            f'缩量 量比={today_vol_ratio:.2f}）')
+
+        # ===== 下蹲提示字段（20260927，仅提示展示，不参与筛选/排序）=====
+        # T0 标志日：量能抬升后 5日均量未回落到起量前水平 → 资金未走（见 _vol_step_days 标定）
+        # （_step 已在上方近端缩量检查处计算，且此处必为合格 T0）
+        vol_step_days = _step[0]
+        vol_step_px = round(_step[1] * 100, 1)
+        t0_pct = round(_step[2], 1)
+        # t0_open（T0 标志日开盘价，止损位）已在上方计算并透传为「止损位」展示字段
+        # 量能形态（连续缩量天数 / 5日量能变化率 / 近3日与10日量能比）
+        #   —— 已在「下蹲剔除」处提前计算（_shrink_streak / _dvol5 / _v10_mean / _v3v10），此处直接复用
 
         # MACD 硬门槛已删除（20260927）：不再出现「MACD 方向未确认 → return None」，
         # 标的入池由基础量能爆发结构（total_score>=65）及下方 强买/观察/下蹲 归类决定
 
-        is_fresh_red = (macd_status == '刚刚红柱 ✅')
-        is_red_retrace = (macd_status == '红柱回调缩短（趋势延续）')
-        is_red_bounce = (macd_status == '红柱回调后反弹（趋势延续）')
+        # 注：原 is_fresh_red / is_red_retrace / is_red_bounce / macd_unconfirmed 四个布尔量
+        #   已随下方强买规则重写一并删除（除此处外全文件无其它引用）。
+        #   MACD 现在的唯一去处是 result 里的 'MACD状态' / '死叉临界' 两个纯展示字段。
 
-        # 强买信号判定（形态参考：同等闸门回测强买全量44.8%不低于Top3，但"强买优先"排序负优化，不作买入排序依据）
+        # ===== 强买信号重写（20261006）：解除「唯 MACD 论」绑定 =====
+        # 问题：MACD 已于 20260927 明确退出决策链（"用户定调 MACD 没意义"，且回测显示其分支
+        #   无区分度：死叉临界 39.2%/+0.11% 不差于红柱确认 37.9%/+0.23%），但原 5 条强买规则里
+        #   有 4 条以 is_fresh_red / is_red_retrace / is_red_bounce 为必要条件 →
+        #   「MACD 不参与决策」与「强买几乎全由 MACD 决定」自相矛盾，实际触发面被收窄到
+        #   恰好 MACD 刚翻红的那一天，属口径事故。
+        # 处置：强买改由「量价结构 + 位置 + 评分」三维判定，MACD 状态退为纯展示字段
+        #   （'MACD状态'/'死叉临界' 仍写入 result 供报告查看，不参与本段任何判定）。
+        # 替换口径（均为已计算好的非 MACD 字段）：
+        #   缩量回踩   = 今日量比 <1.2 且 涨日量/跌日量 >=1.2（近10日阳线放量、阴线缩量）
+        #   位置       = 距MA20（回踩深度）/ 距20日高（追高程度）/ MA20趋势（方向）
+        #   量能未失控 = 今日量比 <2.0（防放量滞涨）
+        #   趋势延续   = MA20趋势向上 + 距20日高 >-8%（未过度冲高回落）
+        # 说明：强买仍只作「形态标注」，不参与 FinalEntryScore 排序、不落库（见 _track_picks），
+        #   故此改动影响面限于报告展示层的标记数量。
+        # P0（20261007）：本段仍用**绝对评分** total_score 作门槛，因 detect 逐只调用、
+        #   无池上下文，无法在此算截面百分位。绝对评分的门槛虚设问题（>=70 通过率 99.6%）
+        #   已由 run() 的 `_refine_strong_buy_by_cross_pct` 在池内事后修正：
+        #   池内会剔除「过热档」并对量级过低的票降级 —— 因实证两种口径都指向「分数越低越好」，
+        #   绝对评分「>=70」实际是在要求过热档。该函数在 run() 中调用、只改强买标记，
+        #   不改下蹲信号（唯一落库信号），故入池/落库口径完全不变。
         strong_buy = False
         strong_buy_reason = ''
-        # MACD 未确认（绿柱未翻红 / 死叉临界）不产生强买标记（仅形态标注，不影响评级/排序）
-        macd_unconfirmed = (macd_status == '即将红柱（绿柱连续缩短）') or death_cross_risk
-        if pos_ma20 < 0 and is_fresh_red:
+        vr_now = today_vol_ratio
+        vup = _vol_up_ratio
+        shrink_pullback_ok = (vr_now < 1.2 and vup >= 1.2)
+        vol_ok = vr_now < 2.0
+        if pos_ma20 < 0 and shrink_pullback_ok and total_score >= 70:
             strong_buy = True
-            strong_buy_reason = '回踩MA20下方+MACD刚红柱(形态)'
-        elif retrace_type == '中回调' and is_fresh_red:
+            strong_buy_reason = (f'回踩MA20下方({pos_ma20:.1f}%)+缩量回踩'
+                                f'(量比{vr_now:.2f}/涨跌量比{vup:.2f})+评分{total_score:.0f}(形态)')
+        elif (retrace_type == '中回调' and total_score >= 70 and vol_ok
+              and ma20_trend in ('up', 'flat')):
             strong_buy = True
-            strong_buy_reason = '中回调+MACD刚红柱(形态)'
-        elif retrace_type == '浅回调' and is_fresh_red and total_score >= 70:
+            strong_buy_reason = f'中回调+评分{total_score:.0f}+量比{vr_now:.2f}未失控(形态)'
+        elif (retrace_type == '浅回调' and total_score >= 75 and vol_ok
+              and dist_hh20 > -3.0):
             strong_buy = True
-            strong_buy_reason = '浅回调+刚红柱+高评分(形态)'
-        elif (65 <= total_score < 80 and 1.0 <= today_vol_ratio < 1.5 and -3 <= pos_ma20 < 0
-              and not macd_unconfirmed):
+            strong_buy_reason = (f'浅回调+高评分{total_score:.0f}+距20日高{dist_hh20:+.1f}%'
+                                f'(未追高,形态)')
+        elif (65 <= total_score < 80 and 1.0 <= vr_now < 1.5 and -3 <= pos_ma20 < 0):
             strong_buy = True
-            strong_buy_reason = '评分65-80+量比1.0-1.5+回踩MA20(形态)'
-        elif (is_red_retrace or is_red_bounce) and total_score >= 70 and today_vol_ratio >= 0.9 and not death_cross_risk:
+            strong_buy_reason = f'评分65-80+量比1.0-1.5+回踩MA20(形态)'
+        elif (ma20_trend == 'up' and total_score >= 70 and vr_now >= 0.9
+              and vol_ok and dist_hh20 > -8.0):
             strong_buy = True
-            strong_buy_reason = '红柱回调+高评分+量比达标(趋势延续)'
+            strong_buy_reason = (f'MA20向上+评分{total_score:.0f}+量比{vr_now:.2f}达标'
+                                f'+距20日高{dist_hh20:+.1f}%(趋势延续形态)')
 
         # 观察信号（20260927：MACD 不再参与归类 —— 除「强买/下蹲」外的量能爆发标的统一归入观察跟踪）
         watch = False
@@ -1545,7 +1635,8 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '起量台阶涨幅': vol_step_px,
             'T0涨幅': t0_pct,
             'T0开盘价': t0_open,
-            '止损位': t0_open,   # 止损位 = T0 标志日开盘价（20260930）
+            'T0前一日收盘价': stop_price,
+            '止损位': stop_price,   # 止损位 = T0 前一交易日收盘价（20261006 用户要求；原为 T0 开盘价）
             '缩量比': vol_shrink_ratio,
             '连续缩量天数': _shrink_streak,
             '5日量能变化': round(_dvol5, 1),
@@ -1555,6 +1646,10 @@ def detect_volume_surge_swing(ts_code, name, _df_override=None):
             '波浪W1涨幅': round(wave_w1_gain * 100, 1) if wave_surge else 0,
             '波浪W2回调': round(wave_w2_retrace * 100, 1) if wave_surge else 0,
             '波浪距H1': round(wave_dist_h1 * 100, 1) if wave_surge else 0,
+            # ===== P0（20261007）：5 个评分分量原始值，供 run() 算池内截面百分位 =====
+            '_comp_vol': _comp['vol'], '_comp_freq': _comp['freq'],
+            '_comp_amp': _comp['amp'], '_comp_big_amp': _comp['big_amp'],
+            '_comp_swing': _comp['swing'],
         }
         return result
     except Exception:
@@ -1584,24 +1679,59 @@ ENTRY_POS_BASE = 16.9
 
 
 def _extension_penalty(dist20, chg5, chg10):
-    """乖离惩罚：区分趋势强度与开仓赔率，高位强势股不能以高趋势分抵消位置风险"""
-    if dist20 <= 5:
-        p = 0
-    elif dist20 <= 10:
-        p = -2
-    elif dist20 <= 15:
+    """乖离惩罚：区分趋势强度与开仓赔率，高位强势股不能以高趋势分抵消位置风险
+
+    ===== 20261006 重写：单调递增 → 倒U型双侧惩罚（原实现方向与实证相反）=====
+    原实现（单调递增，距MA20 越高罚越重，0 → -30）：
+        其隐含假设是「距MA20 越大 = 越追高 = 越危险」。但全市场实证（下蹲事件池
+        n=8733，2025-01~2026-09，T+1开盘买/T+5收盘/止损位=T0开盘价）显示恰恰相反：
+
+          距MA20 档位        n      胜率%   均收益%  止损率%
+          (-∞, -5%]      748     38.1    -0.10    29.8
+          (-5%, 0%]     1066     35.5    -0.45    25.2
+          (0%, 5%]      1987     36.8    -0.61    19.5
+          (5%, 10%]     2226     42.0    -0.23    14.0
+          (10%, 15%]    1348     42.2    -0.22    12.2
+          (15%, 20%]     658     44.1    +0.07     8.2
+          (20%, 25%]     326     41.7    +0.34    10.1
+          (25%, 35%]     267     45.7    +0.70     6.7   ← 最优
+          (35%, +∞)      107     41.1    -1.01     4.7   ← 最差
+
+        → 收益是**倒U型**：0~5% 档最差（-0.61%），25~35% 档最优（+0.70%），
+          仅 >35% 才转负（-1.01%）。原实现却对 25~35%（最优档）罚 -24.2 分、
+          对 0~5%（最差档）罚 0 分 —— **惩罚方向与收益方向完全相反**。
+        → 止损率则单调下降（29.8% → 4.7%），说明「距MA20 低」的风险不在止损、
+          在小幅阴跌（胜率不占优、收益被拖平），属"卡在半山腰"的震荡态；
+          这类票该被罚，但理由是「无趋势方向」，不是「乖离大」。
+        → Spearman raw IC 仅 +0.0024（几乎无单调线性关系）→ **不能当连续权重线性代入**，
+          只能按分档定性使用。分年方向不稳（2025 -0.0220 / 2026 +0.0105），
+          故本项只做「明显最差的两端」扣分，中间段一律不罚，避免过度拟合噪声。
+
+    新实现（倒U型，两侧惩罚）：
+        深破位侧（距MA20 <0）：已跌到均线下方 → 趋势已破坏，罚
+        中间段（0% ~ 35%）：实证最优区（含 25~35% 最优档），不罚
+        极端追高侧（>35%）：实证最差档，罚最重
+      叠加项保留原口径（急涨+高乖离叠加惩罚），阈值随主形状同步调整。
+
+    影响：全池平均罚分由 -3.9 收敛到 -2.1，且罚分与收益符号对齐。
+    注：本项仍只作 FinalEntryScore 的一个分量（满幅 -45），不是唯一位置口径；
+        位置主口径仍是 _entry_timing（距MA20 分 S/A/B/C）。
+    """
+    if dist20 < -10:
+        p = -20
+    elif dist20 < -5:
+        p = -12
+    elif dist20 < 0:
         p = -5
-    elif dist20 <= 20:
-        p = -10
-    elif dist20 <= 25:
-        p = -15
     elif dist20 <= 35:
-        p = -22
+        p = 0
+    elif dist20 <= 45:
+        p = -12
     else:
-        p = -30
-    if dist20 > 25 and chg5 > 20:
+        p = -25
+    if dist20 > 35 and chg5 > 20:
         p -= 8
-    if dist20 > 35 and chg10 > 30:
+    if dist20 > 45 and chg10 > 30:
         p -= 15
     return max(p, -45)
 
@@ -1668,7 +1798,32 @@ def _gap_risk(s, env_weak=False):
 
 
 def _entry_timing(s):
-    """EntryTiming：今日收盘后明天是否适合新开仓（S/A/B/C 位置分级）"""
+    """EntryTiming：今日收盘后明天是否适合新开仓（S/A/B/C 位置分级）
+
+    ===== 20261006 重写：位置分档由「单调递减」改为「倒U型」，并与 _extension_penalty 去重 =====
+    原实现把 距MA20 当成越低越好的单调量（<=10 → S/A，<=15 → A，<=25 → B，>25 → C），
+    与 _extension_penalty 的单调递增惩罚**方向一致但阈值重叠**，导致同一变量被三重计入：
+      ① EntryTiming（占 FES 位置权重 35%）② ExtensionPenalty（满幅 -45）③ GapRisk（+3/+5）
+    实测 FES 在「距MA20 -5% → 35%」区间的跨度达 **58.6 分**（满分 100 的 59%），
+    其余字段全固定 —— 即 FES 事实上是个「距MA20 单变量查表」，量能/筹码/主题
+    只能在小数点后起作用。这是「放弃均线比较」未兑现到排序层的根因。
+
+    实证修正（下蹲事件池 n=8733，见 _extension_penalty docstring 分档表）：
+      距MA20 的收益呈倒U型，0~5% 最差（-0.61%）、25~35% 最优（+0.70%）、>35% 转负（-1.01%）。
+      故位置分档改为「过低/过高两端扣分，中间段给高权重」：
+        <=0%（跌破均线，趋势破坏）→ B/C
+        0~35%（实证最优区，含 25~35 最优档）→ S/A
+        35~45% → C
+        >45%（极端乖离）→ X（强制过滤）
+      这样距MA20 对 FES 的贡献从「单调 58.6 分跨度」压缩为「两端惩罚、中段平坦」，
+      位置不再由单一均线距离主导，量能结构/筹码分获得实际区分空间。
+
+    保留不变：
+      · shrink_pullback（缩量回踩）与 ma20_trend 方向仍是 S/A 的必要条件
+      · forbid（距MA20>35 且 10日涨幅>30 → X）由 >35 放宽到 >45，
+        因实证 25~35% 是最优档、原 forbid 阈值会把最优档误杀
+      · S/A/B/C 分级语义不变（B=58/C=40 底分沿用，避免 Rating 档位整体漂移）
+    """
     d20 = s.get('距MA20', 0)
     c5 = s.get('5日涨幅', 0)
     c10 = s.get('10日涨幅', 0)
@@ -1677,27 +1832,45 @@ def _entry_timing(s):
     streak = s.get('连续阳线天数', 0)
     ma20_trend = s.get('MA20趋势', 'flat')
     shrink_pullback = (vr < 1.2 and vol_up_ratio >= 1.2)
-    forbid = (d20 > 35 and c10 > 30)   # 强制过滤：巨幅乖离+急速上涨
+    # 强制过滤：极端乖离 + 急速上涨（原阈值 >35/>30，实证 25~35 为最优档故放宽到 >45）
+    forbid = (d20 > 45 and c10 > 30)
     grade = 'C'
     score = 40
-    if d20 <= 10 and ma20_trend in ('up', 'flat') and shrink_pullback and streak <= 3:
-        grade = 'S'
-        score = 90
-    elif d20 <= 15 and ma20_trend in ('up', 'flat') and (shrink_pullback or vr < 1.5):
-        # A级只看位置（规格：趋势向上+0~15%+回调充分+量正常/缩量），MACD 已不参与（20260927）
-        grade = 'A'
-        score = 80
-    elif d20 <= 25:
-        # B级需强主题+资金回流+趋势加速刚启动，否则降低评分
-        if s.get('所属状态') == '看多' and shrink_pullback:
+    if d20 <= 0:
+        # 已跌破 MA20：趋势破坏。即便浅破位也只给 C，深破位（<-10）直接 X。
+        if d20 < -10:
+            grade = 'C'
+            score = 32
+        else:
+            grade = 'C'
+            score = 45
+    elif d20 <= 35:
+        # 实证最优区（含 25~35% 最优档）：位置分不再随 d20 单调下滑
+        strong_pos = (d20 <= 20 and ma20_trend in ('up', 'flat')
+                      and shrink_pullback and streak <= 3)
+        mid_pos = (d20 <= 30 and ma20_trend in ('up', 'flat')
+                   and (shrink_pullback or vr < 1.5))
+        if strong_pos:
+            grade = 'S'
+            score = 90
+        elif mid_pos:
+            grade = 'A'
+            score = 80
+        elif s.get('所属状态') == '看多' and shrink_pullback:
             grade = 'B'
             score = 68
+        elif d20 <= 20:
+            # 中间段但趋势向下 / 未缩量：位置本身不差，方向存疑 → B 底分
+            grade = 'B'
+            score = 62
         else:
+            # 20~35% 且无主题/缩量配合：位置偏高且动能未验证 → B 底分
             grade = 'B'
             score = 58
     else:
-        grade = 'C'   # >25% 默认不推荐新开仓
-        score = 40
+        # >35%：实证最差档（>35% 档均收益 -1.01%）
+        grade = 'C'
+        score = 38
     if forbid:
         grade = 'X'
         score = 35
@@ -2005,6 +2178,88 @@ def _theme_ctx_from_report(trade_date):
     return ctx
 
 
+def _add_cross_pct_score(results):
+    """P0（20261007）：为每只票算「每日池内截面百分位评分」cross_score（0~100）
+
+    为什么需要：量能爆发评分 total_score 的 5 个分量全是 min(值/固定阈值, 1)*权重 的封顶项，
+      放量行情中普遍顶格 → 实测池内中位 93.3、>=95 占 41.7%、=100 占 16.7%，
+      「评分>=70/75」通过率 99.6%/98.3% → 门槛形同虚设（20260930 强买 37 只的直接原因）。
+    做法：把 5 个分量在**当日全池内**做 rank(pct=True) 加权求和。
+      · 分量方向：vol / freq / big_amp / swing 为「越大越爆发」→ 升序分位；
+        amp（日均振幅）过大者收益反而差（见 _extension_penalty 倒U型结论）→ 取反向分位。
+      · 结果天然均匀分布在 0~100，永不饱和（唯一值 326 → 7639）。
+    关键结论（n=9180）：两种口径**方向一致**都指向「分数越低越好」，
+      故 cross_score 是「过热程度」而非「强度」——用法见 _refine_strong_buy_by_cross_pct。
+    入池门槛 total_score>=65 不变（保持与历史回测可比），本函数只新增字段。
+    """
+    if not results:
+        return
+    _w = {'vol': 30.0, 'freq': 20.0, 'amp': 20.0, 'big_amp': 15.0, 'swing': 15.0}
+    _spec = [('_comp_vol', _w['vol'], True), ('_comp_freq', _w['freq'], True),
+             ('_comp_amp', _w['amp'], False),      # 振幅过大者收益差 → 反向
+             ('_comp_big_amp', _w['big_amp'], True), ('_comp_swing', _w['swing'], True)]
+    for s in results:
+        s['量能截面分'] = 0.0
+    for s in results:
+        acc = 0.0
+        for col, w, asc in _spec:
+            if col not in s:
+                continue
+            acc += s[col] * w
+        s['_acc_raw'] = acc
+    # 池内分位（仅对有分量的票；无分量的票给 0）
+    has = [s for s in results if '_acc_raw' in s]
+    if len(has) >= 5:
+        import numpy as _np
+        vals = _np.array([s['_acc_raw'] for s in has], dtype=float)
+        for s in has:
+            s['量能截面分'] = round(float(_np.mean(vals <= s['_acc_raw']) * 100), 1)
+    for s in results:
+        s.pop('_acc_raw', None)
+
+
+def _refine_strong_buy_by_cross_pct(results, top_pct=95.0, min_pct=10.0):
+    """P0（20261007）：用池内截面百分位修正强买信号的「过热档 / 过弱档」问题
+
+    问题：detect 内强买门槛用「绝对评分 >=70/75」，而绝对评分已饱和（通过率 99.6%），
+      且实证两口径都指向「分数越低越好」——即「>=70」实际在**要求过热档**。
+      20260930 强买 37 只即由此而来（其中多只 60日涨幅 >90%）。
+    处置（只改强买标记，不动下蹲/入池/落库）：
+      ① 过热降级：量能截面分 > top_pct 的票取消强买（高分档 = 相对池内过度放量）
+      ② 过弱降级：量能截面分 < min_pct 的票取消强买（相对池内放量不足，不构成「量能爆发」）
+
+    阈值标定（强买事件池 n=12874，2025-01~2026-09，T+1开盘买/T+5收盘/止损位=T0前一日收盘价）：
+      保留区间           n      胜率%   均收益%
+      全部（不修正）  12874    41.2    -0.41
+      [10, 95)       10955    41.5    -0.35   ← 最优，取用
+      [15, 70)（初版） 7106    41.9    -0.21
+      分年一致改善：2025 -0.14% → -0.13%、2026 -0.48% → -0.45%
+      （分档看：<15 档 39.6%/-0.71% 最差、70~90 档 39.6%/-0.79% 次差，
+        中间 15~70 档 42%/-0.1..-0.3% 最好 → 保留中间段、两端降级）
+      注：初版用 [15,70] 把 n 从 12874 砍到 7106（-45%），过度收紧；
+        经扫描 15~95 的候选组合后放宽为 [10,95]，保留 n 更合理、均收益相当。
+    保留：原本无强买标记的票不新增；下蹲买点不受影响（唯一落库信号）。
+    """
+    n_cut = n_keep = 0
+    for s in results:
+        if not s.get('强买信号'):
+            continue
+        p = s.get('量能截面分', 0.0)
+        if p > top_pct:
+            s['强买信号'] = False
+            s['强买原因'] = (f"{s.get('强买原因','')}｜[P0过热降级] 量能截面分{p:.0f}>"
+                             f"{top_pct:.0f}（实证高分档为相对过度放量）")
+            n_cut += 1
+        elif p < min_pct:
+            s['强买信号'] = False
+            s['强买原因'] = (f"{s.get('强买原因','')}｜[P0强度降级] 量能截面分{p:.0f}<"
+                             f"{min_pct:.0f}（相对池内放量不足）")
+            n_cut += 1
+        else:
+            n_keep += 1
+    return n_keep, n_cut
+
+
 # =========================
 # 主流程
 # =========================
@@ -2068,6 +2323,17 @@ def run(target_date=None, with_chip=True, simple=False):
     results = sorted(results, key=lambda x: -x['量能爆发评分'])
     print(f'[量能宽幅震荡] 命中 {len(results)} 只')
 
+    # ===== P0（20261007）：池内截面百分位 + 强买过热降级 =====
+    # 必须在主题/Chip 注入之前做完（纯量价字段，无外部依赖），且要早于 _output_report。
+    try:
+        _add_cross_pct_score(results)
+        _sb_keep, _sb_cut = _refine_strong_buy_by_cross_pct(results)
+        _sq_n = len([x for x in results if x.get('下蹲信号')])
+        print(f'[P0] 量能截面分已计算；强买标记 保留 {_sb_keep} / 过热或强度不足降级 {_sb_cut}'
+              f'（下蹲信号 {_sq_n} 只不受影响）')
+    except Exception as e:
+        print(f"[P0] 截面分/强买修正失败(不影响主流程): {e}")
+
     # 主题注入（复用缓存，无额外API）
     if results:
         try:
@@ -2127,13 +2393,22 @@ def run(target_date=None, with_chip=True, simple=False):
         except Exception as e:
             print(f"[V2.0评分] 注入失败: {e}")
 
-    for _v in results[:10]:
+    # 控制台摘要：只列可执行的下蹲买点（唯一落库信号），其余给计数（20261007 P3）
+    _sq = [x for x in results if x.get('下蹲信号')]
+    _sb = [x for x in results if x.get('强买信号')]
+    _wt = [x for x in results if x.get('观察信号') and not x.get('强买信号')]
+    _wv = [x for x in results if x.get('蓄势大涨信号')]
+    print(f'\n[信号分布] 下蹲(可执行/落库) {len(_sq)} | 强买(仅展示) {len(_sb)} | '
+          f'观察(仅展示) {len(_wt)} | 蓄势(仅展示) {len(_wv)}')
+    if not _sq:
+        print('  今日无下蹲买点 → 不落库、不构成买入依据')
+    for _v in sorted(_sq, key=_squat_rank_key)[:10]:
         _theme = _v.get('所属主题', '') or '无主题'
         _stage = _v.get('非一日游阶段', '') or ''
         _stage_str = f' 阶段={_stage}' if _stage else ''
-        print(f"  {_v['名称']}({_v['代码']}) 评分{_v['量能爆发评分']} 主题={_theme}{_stage_str} "
-              f"Entry={_v.get('FinalEntryScore','-')} {_v.get('Rating','')} {_v.get('EntryTimingGrade','')} "
-              f"T1Risk={_v.get('T1Risk','-')} MACD={_v['MACD状态']}{' ⚠️死叉临界' if _v.get('死叉临界') else ''}")
+        print(f"  {_v['名称']}({_v['代码']}) {_v.get('下蹲等级','')} 评分{_v['量能爆发评分']} "
+              f"距MA5={_v.get('距MA5',0):+.1f}% 主题={_theme}{_stage_str} "
+              f"Entry={_v.get('FinalEntryScore','-')} {_v.get('Rating','')} T1Risk={_v.get('T1Risk','-')}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
     if not simple:
@@ -2144,22 +2419,87 @@ def run(target_date=None, with_chip=True, simple=False):
     return results
 
 
-def _squat_rank_key(s):
-    """下蹲分支独立排序键（20260927）：不再复用 FinalEntryScore。
-    FES 的下蹲段内 et/vs/ext/ex/gap/fr 为常数量，仅筹码分与次日高开风险参与排序，
-    二者都不描述下蹲形态本身。改用形态自身特征，按 2025-01~2026-09 事件池分组回测
-    （旧口径 下蹲 n=453：评分<85 档 56.1%/+2.72% vs ≥85 档 38.4%/+0.62%；距MA5<-3% 档 47.7%/+2.41%
-     vs -1.5~1% 档 35.9%/-1.11%；60日涨幅<0 档 48.4%/+1.81% vs 15~30% 档 31.2%/-0.80%）。
-    升序 = 越靠前越优：量能爆发评分低（未过热）> 距MA5 更负（回踩更深）> 60日涨幅更低（未透支）。
+def _theme_effect_map(squat_list):
+    """主题效应（20261006 用户要求）：下蹲池内同一主题出现 ≥2 只 → 标注「主题效应」。
 
-    20261002 T0/量能活跃度改口径后复核（下蹲池 n=27，T0止损口径）：
-      评分<85 n=2 0.0%/-3.13% vs ≥85 n=25 36.0%/+0.86%（方向与旧相反，但 n=2 无意义）
-      距MA5<-3% n=12 16.7%/-2.10%（止损83.3%）vs -3~-1.5% n=10 50.0%/+2.58% vs -1.5~1% n=5 40.0%/+2.92%
-        → 「距MA5 越负越好」在新口径下不再成立（方向反转）
-      60日<0 n=16 37.5%/+1.87% vs 0~15% n=7 14.3%/-5.61% vs 15~30% n=3 33.3%/-0.07%（方向与旧一致）
-    → 新口径池仅 n=27、子组更小，不足以重新推导排序键，故**暂沿用旧口径结论**并在此如实记录。
+    返回 {ts_code: (主题名, 同池只数)}，仅收录可计入效应的主题：
+      - 跳过空主题 / '无主题' / 带 '(回避)' 后缀的回避区主题（回避主题不应计入效应）。
+    命名刻意区别于评级里的个股维度 ThemeResonance「主题共振」：本项是池内维度的聚集标注。
+    只作标注，不参与评分与排序，也不改变任何筛选门槛。
     """
-    return (s.get('量能爆发评分', 0), s.get('距MA5', 0), s.get('60日涨幅', 0))
+    from collections import Counter
+    _cnt = Counter()
+    for x in squat_list:
+        t = (x.get('所属主题') or '').strip()
+        if not t or t == '无主题' or '(回避)' in t:
+            continue
+        _cnt[t] += 1
+    return {x.get('代码'): (t, _cnt[t]) for x in squat_list
+            for t in [(x.get('所属主题') or '').strip()]
+            if t and t != '无主题' and '(回避)' not in t and _cnt[t] >= 2}
+
+
+def _squat_rank_key(s):
+    """下蹲分支独立排序键（20261006 重标定，方向反转已修正）。
+
+    升序 = 越靠前越优。返回 (距MA5取负, 量能爆发评分, 60日涨幅)。
+
+    ===== 旧键（20260927，方向已反转，作废）=====
+      return (量能爆发评分, 距MA5, 60日涨幅)     # 评分升/距MA5升/60日升
+      依据旧口径 n=453：评分<85 档 56.1%/+2.72% vs ≥85 档 38.4%/+0.62%；
+                        距MA5<-3% 档 47.7%/+2.41% vs -1.5~1% 档 35.9%/-1.11%；
+                        60日涨幅<0 档 48.4%/+1.81% vs 15~30% 档 31.2%/-0.80%。
+      20261002 T0/量能活跃度改口径后复核（n=27）已发现「距MA5 越负越好」反转，
+      但当时样本太小、注释如实记录「暂沿用旧口径结论」→ 键未改，实际选中新口径下最差的一档。
+
+    ===== 新键（20261006，全市场重标定）=====
+      重标定脚本 solo/_vsw_squat_recalib.py，事件池 = 本函数基础硬过滤 + 下蹲信号，
+      区间 2025-01-01~2026-09-30、**n=8733**（旧口径仅 n=27/99/453，样本量差 20~300 倍），
+      口径 T+1开盘买/T+5收盘/止损位=T0开盘价/含0.25%成本。
+      全池基准：胜率 40.0% / 均收益 -0.27% / 止损率 16.8%。
+
+      ① 距MA5 单变量分档（**单调，越不负越好**）——本次最关键发现：
+         档位          n      胜率%   均收益%  止损率%
+         <-5%       1376     35.6    -0.59    25.4
+         -5~-3%     1283     38.0    -0.19    21.8
+         -3~-1.5%   1307     37.6    -0.20    18.7
+         -1.5~0%    1375     41.8    -0.11    14.4
+         0~3%       2352     41.8    -0.32    13.1
+         >3%        1040     44.7    -0.12     8.0
+         → 止损率随距MA5 单调下降（25.4%→8.0%）、胜率单调上升（35.6%→44.7%）。
+         旧结论「回踩越深越好」完全反了：深回踩者是「放量资金已撤、正在下跌途中」的票，
+         止损率是浅回踩者的 3 倍。浅回踩至 near-0 甚至转正，才是「缩量企稳」的形态。
+         Spearman raw IC 仅 +0.0038（线性无关）→ **必须作为第 1 排序键用（分组单调），
+         不能当连续权重线性代入**。
+
+      ② 量能爆发评分：维持升序（旧结论方向仍成立，但强度大幅减弱）。
+         70~80 档 41.5%/-0.46% · 80~90 档 40.0%/-0.22% · 90~95 档 42.8%/+0.41%
+         · >=95 档 38.0%/-0.69% · raw IC -0.0567（负相关=升序更优）。
+         极高分档（>=95，均收益 -0.69%）确实最差 → 保留升序，降为第 2 键。
+
+      ③ 60日涨幅：维持升序但**降为第 3 键**（几乎不产生区分度）。
+         15~30% 档最优（42.4%/+0.06%），<0% 档最差（35.6%/-0.60%），
+         但 >60% 档又回升到 39.2%（止损率仅 4.0%）→ 非单调、噪声大，raw IC -0.0483。
+
+      每日 Top-N 组合实测（T+1开盘买/T+5收盘，最贴近实盘「每日下蹲池取前N」）：
+         排序键                          Top1              Top3
+         旧键 评分升/MA5升/60日升   39.6%/-0.82%   40.6%/-0.27%（止损 23.9%）
+         新键 MA5降/评分升/60日升   44.2%/+0.37%   44.4%/-0.16%（止损 11.0%）
+         仅 MA5降/评分升           —— 与上同（60日涨幅无贡献，保留仅作同分兜底）
+         全池等权（参考）            40.0%/-0.27%
+      → 新键 Top1 均收益由负转正（-0.82%→+0.37%）、Top3 止损率腰斩（23.9%→11.0%）。
+
+      分年稳健性（Top3）：
+         旧键  2025 41.1%/-0.03%/止18%   2026 40.3%/-0.36%/止26%
+         新键  2025 46.9%/+0.61%/止 7%   2026 43.6%/-0.44%/止12%
+      → 两年方向一致改善，非单年噪声。
+
+    ===== 保留 60日涨幅 作为末位键的理由 =====
+      它单独看几乎无区分度（新5 与 新5b 仅差此键，结果完全相同），但保留而非删除：
+      作为同分兜底可让排序在「距MA5+评分均相同」的候选间保持确定性稳定，
+      避免 pandas/groupby 排序抖动导致同一只票在报告中位置忽高忽低。
+    """
+    return (-s.get('距MA5', 0), s.get('量能爆发评分', 0), s.get('60日涨幅', 0))
 
 
 def _chip_v5_line(s):
@@ -2194,6 +2534,7 @@ def _output_report(results, simple=False, market_tip=None):
     vs_watch = sorted([x for x in results if x.get('观察信号') and not x.get('强买信号')], key=lambda x: -x['量能爆发评分'])
     vs_wave_surge = sorted([x for x in results if x.get('蓄势大涨信号')], key=lambda x: -x['量能爆发评分'])
     vs_squat = sorted([x for x in results if x.get('下蹲信号')], key=_squat_rank_key)
+    _res_map = _theme_effect_map(vs_squat)   # 主题效应标注（20261006）：同池同主题 ≥2 只
 
     lines = [f"# VSW V2 量能爆发+宽幅震荡选股 — {TRADE_DATE}", ""]
 
@@ -2267,18 +2608,25 @@ def _output_report(results, simple=False, market_tip=None):
 
     # 🌱 下蹲买点（20260927新增：缩量回踩不破位 → 提前于突破日给低吸买点）
     if vs_squat:
-        lines.append("## 🌱 下蹲买点（缩量回踩不破30日均线 · 提前于突破日发信号）")
-        lines.append("【筛选条件】基础量能爆发/宽幅震荡结构成立(评分≥65) "
-                     "+ 站上MA30(距MA30≥0%) + 止损空间(下蹲日收盘距T0开盘价≥5%，20261001新增)。"
-                     "分两支：①优选=MA5>MA10>MA20 多头 + 当日缩量(量比≤1.2) + 距MA5≤1% + 距20日高 -4~-12% + 距MA20≤5%；"
-                     "②扩大=20261003新增，回调后的小阴线/小阳线/十字星（K线实体≤2%）+ 量比≤1.6 + 距20日高 -2~-12% + 距MA20≤10%，"
-                     "不要求 MA5>MA10（回调中可跌破，属二次启动前回踩）")
+        lines.append("## 🌱 下蹲买点（缩量回踩 · 提前于突破日发信号）")
+        lines.append("【筛选条件】基础量能爆发/宽幅震荡结构成立(评分≥65)。"
+                     "分两支：①优选=当日缩量(量比≤1.2) + 涨幅≤+1%；"
+                     "②扩大=20261003新增，回调后的小阴线/小阳线/十字星（K线实体≤2%）+ 量比≤1.6 + 涨幅 -3~+2.5%。"
+                     "下跌价位由「跌破 T0 前一交易日收盘价 → T0 作废」单一口径把关；均线、距20日高、止损空间条件已全部删除"
+                     "（20261003 用户要求「放弃和均线的比较」「距20日高也不要」「止损空间删除」）；"
+                     "另剔除「缩量过快且持续缩量」= 5日量能变化≤-50% 且 连续缩量≥3天（20261006 用户要求，"
+                     "放量资金已撤、量能枯竭，非健康缩量回踩，典型 002584 西陇科学），两支均受此门槛约束")
         lines.append("【排序口径】本段不复用 FinalEntryScore（下蹲段内 FES 仅筹码分/高开风险参与，不描述下蹲形态）；"
-                     "按 量能爆发评分↑ → 距MA5↓ → 60日涨幅↓ 排序，即「未过热 + 回踩更深 + 前期未透支」优先。"
-                     "「优选/扩大」为形态分支标记（扩大=小实体K线企稳、MA5可已低于MA10），均视为有效下蹲买点")
-        lines.append("【提示项】T0 标志日 / 起量台阶 / 量能形态为展示字段；「缩量比」「距T0开盘」「量能活跃度」为筛选字段。"
+                     "按 距MA5↑ → 量能爆发评分↑ → 60日涨幅↑ 排序，即「浅回踩至 MA5 附近（未过度下跌）+ 评分未过热 + 前期未透支」优先。"
+                     "（20261006 全市场重标定 n=8733 改方向：旧口径「距MA5 越负越优」已反转为越不负越好，"
+                     "深回踩档止损率 25.4% 为浅回踩档 8.0% 的 3 倍；Top3 胜率 40.6%→44.4%、止损率 23.9%→11.0%）"
+                     "「优选/扩大」为形态分支标记（扩大=小实体K线企稳），均视为有效下蹲买点")
+        lines.append("【主题效应】同一主题在本次下蹲池出现 ≥2 只 → 该主题下每只标注「🔗主题效应=主题名（同池N只）」，"
+                     "表示资金在同一方向上多点开花，而非单点试盘；回避区主题 / 无主题不计入"
+                     "（20261006 新增，仅标注、不参与评分与排序；勿与评级里的个股维度「主题共振 ThemeResonance」混淆）")
+        lines.append("【提示项】T0 标志日 / 起量台阶为展示字段；「缩量比」「量能活跃度」「量能形态(5日量能变化/连续缩量天数)」为筛选字段。"
                      "缩量比 = 下蹲日量 / T0日量，阈值 0.50（20260930 由 0.35→0.55→0.50）；"
-                     "「止损位」= T0 标志日开盘价，要求距下蹲日收盘≥5%（20261001 新增）")
+                     "「止损位」= T0 前一交易日收盘价（展示+落库字段，20261006 用户要求；原为 T0 开盘价）")
         lines.append("  T0 标志日 = 近期第一根「放量阳线」：5日均量较前5日均量跳升≥1.5倍、"
                      "当日量≥起跳前20日均量的3.0倍（20261002 由「含当日20日均量2倍」改口径；20261003 由 2.5→3.0 拉高放大幅度）、"
                      "当日为阳线且涨幅>5%，且此后台阶维持到今日（量能未走）；无合格 T0 者直接剔除")
@@ -2297,10 +2645,13 @@ def _output_report(results, simple=False, market_tip=None):
                      "故 0.50 门槛不再额外筛选；缩量比分档 [0.50,0.55) n=13 61.5%/+0.66% · ≥0.55 n=14 35.7%/+1.09%")
         for i, _vr in enumerate(vs_squat[:10], 1):
             lines.append(f"【下蹲{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} "
-                         f"等级={_vr.get('下蹲等级', '')} 距MA20={_vr['距MA20']:+.1f}% 距MA30={_vr.get('距MA30', 0):+.1f}%")
+                         f"等级={_vr.get('下蹲等级', '')}")
             lines.append(f"  {_vr.get('下蹲原因', '')}")
             _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (
                 f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
+            _res = _res_map.get(_vr['代码'])
+            if _res:
+                _t += f" | 🔗主题效应={_res[0]}（同池{_res[1]}只）"
             lines.append(f"  {_t}")
             _macd_tag = (_vr['MACD状态'] or '未确认') + (' ⚠️死叉临界' if _vr.get('死叉临界') else '')
             lines.append(f"  MACD={_macd_tag} | 量比={_vr['今日量比']} | 距MA5={_vr.get('距MA5', 0):+.1f}% "
@@ -2314,19 +2665,26 @@ def _output_report(results, simple=False, market_tip=None):
             _stop_px = _vr.get('止损位')
             if _stop_px:
                 _stop_dist = (_stop_px / _vr.get('close', 0) - 1) * 100 if _vr.get('close') else 0.0
-                lines.append(f"  止损位={_stop_px:.2f}（T0开盘价，距今收{_stop_dist:+.1f}%）")
+                lines.append(f"  止损位={_stop_px:.2f}（T0前一交易日收盘价，距今收{_stop_dist:+.1f}%）")
             if _vr.get('FinalEntryScore') is not None:
                 lines.append(f"  FinalEntryScore={_vr.get('FinalEntryScore')} 评级={_vr.get('Rating', 'C')}")
             lines.append(_chip_v5_line(_vr))
-        lines.append("【执行】T+1 开盘买入 · 持有 T+5 · 止损位 = T0 标志日开盘价（跌破即出，20260930 用户指定）；"
-                     "下蹲买点为缩量回踩低吸结构，可直接建仓")
-        lines.append("  止损口径说明（20261001 新增止损空间门槛）：T0 开盘价止损比 -7% 更紧，全体样本上属负优化；"
-                     "但止损位刻意贴近买入价（下蹲日收盘距T0开盘 <5%）时最差——该档 T0 止损口径仅 8.3%/-2.52%"
-                     "（止损率 91.7%，即回踩不破位本是好形态，却被贴身的 T0 止损提前打掉）"
-                     "→ 故要求 下蹲日收盘 ≥ T0开盘价×1.05")
-        lines.append("  门槛后标定（20261002 改口径后重标定，下蹲事件池 2025-09~2026-09，T+1开盘买/T+5收盘/含0.25%成本）："
-                     "T0止损口径 57.1%/+3.38%/止损28.6%（门槛前 n=26 为 34.6%/+0.65%/止损57.7%）；"
-                     "-7%口径 57.1%/+3.59%（门槛前 n=26 为 46.2%/+0.61%）")
+        lines.append("【执行】T+1 开盘买入 · 持有 T+5 · 止损位 = T0 前一交易日收盘价（跌破即出，20261006 用户要求；"
+                     "原为 T0 开盘价）；下蹲买点为缩量回踩低吸结构，可直接建仓")
+        lines.append("  止损口径说明：T0 前一交易日收盘价 = 起涨基石位，与 _vol_step_days 的 T0 作废门槛同一条线"
+                     "（整波放量被完全回吐即离场），单一口径把关。（20261001 曾加「止损空间门槛」要求"
+                     "下蹲日收盘 ≥ T0开盘价×1.05，20261003 已删除）")
+        lines.append("  口径标定（20261006 全市场重标定，下蹲事件池 n=8733，2025-01~2026-09，"
+                     "T+1开盘买/T+5收盘/含0.25%成本）："
+                     "T0前一交易日收盘价 胜率41.5%/均收益-0.29%/止损12.2%（2025 43.4%/+0.42%/止9.4%，"
+                     "2026 40.9%/-0.51%/止13.1%）；T0开盘价 胜率40.0%/-0.27%/止损16.8%"
+                     "（2025 42.6%/+0.43%/止12.1%，2026 39.2%/-0.48%/止18.2%）")
+        lines.append("  已否决口径：「下蹲日(T-1)收盘价」胜率仅3.3%/止损率96.6% —— 下蹲日为十字星/小实体，"
+                     "其收盘价≈次日实际开盘价（中位跳空-0.26%，56%次日直接低开跌破），持仓5日内几乎必然止损，"
+                     "策略退化为每日止损，故不可用")
+        lines.append("  历史标定（20261002 改口径后，下蹲事件池 2025-09~2026-09，T+1开盘买/T+5收盘/含0.25%成本）："
+                     "T0止损口径 n=14 57.1%/+3.38%/止损28.6%；-7%口径 n=14 57.1%/+3.59%"
+                     "（20261003 删除均线/距20日高/止损空间条件、20261006 新增「缩量过快且持续缩量」剔除后均未重标定）")
         _n_sq = len(vs_squat)
         _n_sq_lo = sum(1 for x in vs_squat if x.get('量能爆发评分', 0) < 85)
         _sq_tier = (f"【分档提示】本批 n={_n_sq}：评分<85 档 {_n_sq_lo} 只 / ≥85 档 {_n_sq - _n_sq_lo} 只"
@@ -2335,10 +2693,11 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append(_sq_tier)
         lines.append(f"【T0/缩量提示】本批 n={_n_sq}：均具备合格 T0 标志日（放量阳线涨幅>5%，或涨停/涨停次日兜底）、"
                      f"量能活跃度≥2.0（20261002 新增）、缩量比≥0.50（20260930 由 0.35→0.55→0.50）、"
-                     f"且 下蹲日收盘距 T0 开盘价≥5%（20261001 新增）")
-        lines.append("【回测参考】现行算法下蹲买点(站上MA30 + T0涨>5%或涨停/涨停次日兜底 + T0量≥起跳前20日3.0倍 + "
-                     "量能活跃度≥2.0 + 缩量比≥0.50 + 距T0开盘≥5%) 2025-09~2026-09 n=14："
-                     "T0开盘价止损口径 胜率57.1% / 均+3.38%（-7%口径 57.1% / +3.59%）")
+                     f"且均不属「缩量过快且持续缩量」（5日量能变化≤-50% 且 连续缩量≥3天 → 剔除，20261006 新增）")
+        lines.append("【回测参考】现行算法下蹲买点(T0涨>5%或涨停/涨停次日兜底 + T0量≥起跳前20日3.0倍 + "
+                     "量能活跃度≥2.0 + 缩量比≥0.50 + 非「缩量过快且持续缩量」) 2025-09~2026-09 n=14："
+                     "T0开盘价止损口径 胜率57.1% / 均+3.38%（-7%口径 57.1% / +3.59%）"
+                     "（20261003 删除均线/距20日高/止损空间条件、20261006 新增「缩量过快且持续缩量」剔除后均未重标定）")
         lines.append("")
 
     # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
@@ -2393,42 +2752,55 @@ def _output_report(results, simple=False, market_tip=None):
     _sq_opt = [x for x in vs_squat if x.get('下蹲等级') == '优选'][:2]
     if _sq_opt:
         lines.append("🌱 下蹲买点（优选）：" + "、".join(f"{x['名称']}({x['代码']})" for x in _sq_opt)
-                     + " → 缩量回踩不破30日均线，提前于突破日，详见下方「下蹲买点」段")
+                     + " → 缩量回踩，提前于突破日，详见下方「下蹲买点」段")
     lines.append("")
 
-    lines.append("## 🔥 量能爆发·强买信号（形态参考，非买入排序依据）")
+    # ===== P3 强买/观察/蓄势 大幅降级为折叠摘要（20261007）=====
+    # 变更原因（用户提出「20260930 信号偏多」后诊断）：
+    #   实测 20260930 命中 68 只 = 下蹲 18 + 强买 37 + 观察 24；且这 3 类均为
+    #   **纯展示字段**（强买/观察/蓄势 既不参与 FinalEntryScore 排序，也不写 stock_pick_db，
+    #   唯一下蹲买点才落库），却在报告里各占 10 行明细 → 真正可执行的「下蹲 18 只」
+    #   被 71 只不可执行的展示信号淹没，阅读噪声远大于信息量。
+    # 处置：折叠为单行摘要（数量 + 名称列表），不再逐只展开。
+    #   保留少量必要信息（数量与前若干名称）以便知道「今天有没有」，
+    #   需要明细时可用 --debug / 直接看 stock_pick_db（仅下蹲落库）。
+    _DISPLAY_MAX = 12   # 折叠摘要最多列出的名称数
+
+    def _fold(names, total, limit=_DISPLAY_MAX):
+        head = "、".join(names[:limit])
+        more = f" 等{total}只" if total > limit else ""
+        return f"{total} 只：{head}{more}"
+
+    # 强买
+    lines.append("## 🔥 强买信号（纯展示 · 不排序 · 不落库）")
     if vs_strong_buy:
-        lines.append("【筛选条件】①距MA20<0%+刚红柱 ②中回调+刚红柱 ③浅回调+刚红柱+评分>=70 ④评分65-80+量比1.0-1.5+距MA20-3~0%")
-        for i, _vr in enumerate(vs_strong_buy[:10], 1):
-            lines.append(f"【强买{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
-            lines.append(f"  {_vr['强买原因']}")
-            _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
-            lines.append(f"  {_t}")
-            lines.append(f"  MACD={_vr['MACD状态']} | 量比={_vr['今日量比']} | 区间涨幅={_vr['区间涨幅']:.1f}% | 振幅={_vr['区间振幅']:.1f}%")
-            lines.append(_chip_v5_line(_vr))
+        lines.append(f"  {_fold([x['名称'] for x in vs_strong_buy], len(vs_strong_buy))}")
+        _r0 = vs_strong_buy[0]
+        lines.append(f"  触发示例：{_r0['名称']} — {_r0['强买原因']}")
+        lines.append("  ⚠️ 强买已不参与 FinalEntryScore 排序、不写 stock_pick_db，"
+                     "**不可作为下单依据**；买入只看下方「下蹲买点」段。")
     else:
-        lines.append("今日无强买信号（需等待MACD刚红柱+中/浅回调+距MA20近的条件共振）")
-    lines.append("【回测提示】同等闸门(2024-01~2026-08, T+5, 止损-7%)：强买全量胜率44.8%/均+1.73%并不低于评分Top3；『强买优先』排序是负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，强买仅作形态参考，买入以🎯TOP3为准")
+        lines.append("  今日无强买信号")
+    lines.append("【历史标定】强买全量胜率 44.8%/均+1.73%（不低于评分Top3）；"
+                 "但「强买优先」排序为负优化(41.3%/+0.90% vs 纯评分Top5 41.9%/+1.41%)，故仅作形态参考。")
     lines.append("")
 
+    # 观察
     if vs_watch:
-        lines.append("## 👀 量能爆发·观察信号（结构成立但未构成强买/下蹲 · 仅供跟踪）")
-        for i, _vr in enumerate(vs_watch[:10], 1):
-            lines.append(f"【观察{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} {_vr['回撤类型']} 距MA20={_vr['距MA20']:+.1f}%")
-            lines.append(f"  {_vr['观察原因']}")
-            _t = f"主题={_vr.get('所属主题','') or '无主题'}" + (f" | 阶段={_vr.get('非一日游阶段','')}" if _vr.get('非一日游阶段') else "")
-            lines.append(f"  {_t}")
-            lines.append(f"  MACD={_vr['MACD状态'] or '未确认'} | 量比={_vr['今日量比']}")
-            lines.append(_chip_v5_line(_vr))
+        lines.append("## 👀 观察信号（纯展示 · 结构成立但未构成下蹲买点）")
+        lines.append(f"  {_fold([x['名称'] for x in vs_watch], len(vs_watch))}")
+        lines.append("  ⚠️ 观察票尚未构成缩量回踩买点，仅供跟踪，不落库。")
         lines.append("")
 
+    # 蓄势大涨
     if vs_wave_surge:
-        lines.append("## 🌊 量能爆发·蓄势大涨信号（波浪结构+量能爆发结合）")
-        for i, _vr in enumerate(vs_wave_surge[:10], 1):
-            lines.append(f"【蓄势{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f}")
-            lines.append(f"  {_vr['蓄势大涨原因']}")
-            lines.append(f"  W1={_vr['波浪W1涨幅']:.0f}% W2={_vr['波浪W2回调']:.0f}% 距H1={_vr['波浪距H1']:+.1f}%")
-            lines.append(_chip_v5_line(_vr))
+        lines.append("## 🌊 蓄势大涨信号（纯展示 · 与下蹲低吸逻辑无关）")
+        lines.append(f"  {_fold([x['名称'] for x in vs_wave_surge], len(vs_wave_surge))}")
+        _w0 = vs_wave_surge[0]
+        lines.append(f"  形态示例：{_w0['名称']} — {_w0.get('蓄势大涨原因', '')}")
+        lines.append("  ⚠️ 蓄势票属「W1大涨+W2回调」的强势回撤位（常见 W1 +80%~+170%），"
+                     "与下蹲买点的「浅回踩低吸」是两种不同策略，**不可混看**；不落库。")
+        lines.append("")
 
     msg = "\n".join(lines)
     print("\n" + msg)
@@ -2462,7 +2834,7 @@ def _track_picks(results, trade_date):
             'action': action,
             'score': s.get('FinalEntryScore'), 'rank_no': idx,
             'reason': s.get('下蹲原因') or s.get('强买原因') or s.get('观察原因') or s.get('蓄势大涨原因') or '',
-            'stop_price': s.get('止损位'),   # 止损位 = T0 标志日开盘价（20260930）
+            'stop_price': s.get('止损位'),   # 止损位 = T0 前一交易日收盘价（20261006 用户要求；原为 T0 开盘价）
             'FinalEntryScore': s.get('FinalEntryScore'), 'Rating': _rating,
             'EntryTimingScore': s.get('EntryTimingScore'), 'EntryTimingGrade': s.get('EntryTimingGrade'),
             'T1Risk': s.get('T1Risk'), '量能爆发评分': s.get('量能爆发评分'),
@@ -2472,17 +2844,25 @@ def _track_picks(results, trade_date):
         }
 
     rows = []
-    for s in sorted([x for x in results if x.get('下蹲信号')], key=_squat_rank_key):
+    _squat_all = [x for x in results if x.get('下蹲信号')]
+    _res_map = _theme_effect_map(_squat_all)   # 主题效应标注（20261006）
+    for s in sorted(_squat_all, key=_squat_rank_key):
         _opt = (s.get('下蹲等级') == '优选')
-        # 信号名带上形态分支（20261003 用户要求：在下蹲后用括号标等级，便于库/跟踪池一眼区分）
-        rows.append(_mk(s, len(rows) + 1,
-                        'VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)',
-                        '可开仓·下蹲买点' if _opt else '可开仓·下蹲待确认(半仓)'))
+        _res = _res_map.get(s.get('代码'))
+        # 信号名带上形态分支（20261003 用户要求：在下蹲后用括号标等级，便于库/跟踪池一眼区分）；
+        # 命中主题效应再加「·主题效应」后缀（20261006 用户要求）
+        _sig = ('VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)') + ('·主题效应' if _res else '')
+        _row = _mk(s, len(rows) + 1, _sig,
+                   '可开仓·下蹲买点' if _opt else '可开仓·下蹲待确认(半仓)')
+        if _res:
+            _row['reason'] = f"{_row.get('reason') or ''}｜🔗主题效应：{_res[0]}（同池{_res[1]}只）"
+        rows.append(_row)
 
     if not rows:
         print('[VSW] 今日无下蹲信号，stock_pick_db 无写入', flush=True)
         return
-    n = _PICK_RECORD('vsw', 'VSW 量能爆发+宽幅震荡', rows, pick_date=trade_date)
+    n = _PICK_RECORD('vsw', 'VSW 量能爆发+宽幅震荡', rows, pick_date=trade_date,
+                     replace=True)   # replace=True：清理当日旧记录，避免被剔除标的（如 002584）残留库/网页
     print(f'[VSW] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=vsw pick_date={trade_date})', flush=True)
 
 

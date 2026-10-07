@@ -224,7 +224,15 @@ def _to_dict(item):
     raise TypeError(f'unsupported pick type: {type(item)}')
 
 
-def record_picks(strategy_id, strategy_name='', picks=(), pick_date=None, field_map=None):
+def record_picks(strategy_id, strategy_name='', picks=(), pick_date=None, field_map=None,
+                 replace=False):
+    """写入选股结果（幂等 upsert）。
+
+    replace=True（20261006 新增，默认 False 保持既有行为）：写入后，把该
+      (pick_date, strategy_id) 下「本次未出现」的旧记录从 stock_pick 及派生的
+      pick_tracking 中删除。用于当日信号池会缩小的场景（如 VSW 下蹲池新增剔除门槛后），
+      避免被剔除标的仍残留在库/网页。默认 False 时不删任何旧行。
+    """
     if pick_date is None:
         pick_date = date.today().strftime('%Y%m%d')
     field_map = dict(field_map or {})
@@ -282,6 +290,16 @@ def record_picks(strategy_id, strategy_name='', picks=(), pick_date=None, field_
                 indicators = excluded.indicators,
                 details = excluded.details
         """, rows)
+        if replace:
+            # 清理本次未出现的旧记录（stock_pick + 派生的 pick_tracking）
+            codes = [r[2] for r in rows if r[2]]
+            if codes:
+                ph = ",".join("?" * len(codes))
+                for tbl in ("stock_pick", "pick_tracking"):
+                    conn.execute(
+                        "DELETE FROM %s WHERE pick_date=? AND strategy_id=? "
+                        "AND ts_code NOT IN (%s)" % (tbl, ph),
+                        [pick_date, strategy_id] + codes)
     return len(rows)
 
 
