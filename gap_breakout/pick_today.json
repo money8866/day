@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-30",
+  "market": {
+    "code": "sh000852",
+    "name": "中证1000",
+    "close": 7298.82,
+    "pct": -0.36,
+    "ma20": 7557.2,
+    "ret20": -5.1,
+    "above_ma20": false,
+    "date": "2026-09-30",
+    "threshold": 0.0,
+    "pass": true
+  },
+  "can_trade": true,
+  "picks": [
+    {
+      "code": "002051",
+      "name": "中工国际",
+      "close": 8.74,
+      "pct": 1.746,
+      "gap_pct": 0.93,
+      "vol_ratio": 0.8,
+      "amount_yi": 1.54,
+      "float_cap_yi": 107.2,
+      "prev_high": 8.6,
+      "stop": 8.47,
+      "target_1r": 8.88,
+      "gap_type": "持续缺口",
+      "vol_level": "很缩(优)",
+      "score": 63.4,
+      "detail": {
+        "量比档": "很缩(优)",
+        "缺口类型": "持续缺口"
+      }
+    },
+    {
+      "code": "300395",
+      "name": "菲利华",
+      "close": 94.92,
+      "pct": 2.395,
+      "gap_pct": 0.86,
+      "vol_ratio": 0.9,
+      "amount_yi": 20.36,
+      "float_cap_yi": 486.3,
+      "prev_high": 93.96,
+      "stop": 92.55,
+      "target_1r": 95.88,
+      "gap_type": "持续缺口",
+      "vol_level": "很缩(优)",
+      "score": 59.9,
+      "detail": {
+        "量比档": "很缩(优)",
+        "缺口类型": "持续缺口"
+      }
+    }
+  ],
+  "stats": {
+    "no_gap": 2279,
+    "gap_small": 171,
+    "gap_big": 0,
+    "vol_fail": 4,
+    "amount": 2825,
+    "limit": 80,
+    "fund": 0,
+    "kline_err": 1,
+    "pass": 2
+  }
+}

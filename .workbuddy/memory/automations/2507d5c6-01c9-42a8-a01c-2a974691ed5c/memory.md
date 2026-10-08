@@ -40,6 +40,9 @@
   邮件推送成功。exit 0；sent 复核 subject「📅 明日行程提醒 10-04 周日」created_at 2026-10-03T14:01:11Z、
   收件人 stock1975@qq.com。token 仍有效，无需 auth login，流程无变化。
   注：`message +list` 的 tip 行会被 PS 当 stderr 报 RemoteException，但 JSON 结果仍正常落盘，不影响判断。
+- 2026-10-07 22:00：查询 2026-10-08（周四）日程，结果为空（明日暂无安排），邮件推送成功。
+  exit 0；sent 复核 subject「📅 明日行程提醒 10-08 周四」created_at 2026-10-07T14:01:00Z、
+  收件人 stock1975@qq.com。token 仍有效，无需 auth login，流程无变化。
 - 2026-10-05 22:00：查询 2026-10-06（周二）日程，结果为空（明日暂无安排），邮件推送成功。
   exit 0；sent 复核 subject「📅 明日行程提醒 10-06 周二」created_at 2026-10-05T14:00:59Z、
   收件人 stock1975@qq.com。token 仍有效，无需 auth login，流程无变化。（list 用 2>$null 屏蔽 tip 行，输出更干净。）
