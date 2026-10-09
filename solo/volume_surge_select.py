@@ -243,6 +243,24 @@ VOL_SQUAT_DRYUP_STREAK_MIN = 3     # 下蹲剔除门槛②「持续缩量」：�
 #   两条件同时满足 → 剔除下蹲买点（放量资金已撤、量能枯竭，非健康缩量回踩企稳）
 #   典型：002584 西陇科学 0917 暴量见顶后 9 日单边缩量（5日量能变化 -52.8%、连续缩量3天、量能降至峰值25%）
 
+# ===== 基本面否决层（20261008 用户要求）=====
+# 用户明确「不要把基本面做成复杂评分，只做 3级 Gate」，故只用少量财务判据做定性分档，
+# 不引入任何加权系数、不参与 FinalEntryScore / 量能爆发评分：
+#   F0 恶化 → 命中「任意 2 条 F0 判据」→ 下蹲信号剔除出池（降级，不再可执行/落库）
+#   F1 中性 → 正常进入技术模型（默认档，数据缺失亦归此档，fail-soft 不误判 F0）
+#   F2 改善 → 命中「F2 判据（A 口径：扣非同比>+15% 必需 + 营收/现金流至少 1 条）」→ 下蹲池内进入优先池（排序前置），并在报告标注
+# 判据（3 条财务，20261008 口径拍板：行业景气改善先不做）：
+#   F0：①扣非利润同比 <-30%  ②营收同比 <-20%  ③经营现金流为负且同比 <-50%  ④最近两期ROE为负且恶化（任意 2 条）
+#   F2：①扣非利润同比 >+15%（硬门槛，必需）+ ②营收同比 >0 / ③经营现金流为正 至少 1 条
+# 数据源（20261008 口径拍板「两者结合」，见 _load_fundamental_gate）：
+#   实盘 = fin_ind_*_full.parquet 快照的 dt_netprofit_yoy（扣非同比）；
+#   回测/兜底 = stock_data.db :: fina_indicator_cache 按 ann_date as-of 的 netprofit_yoy（净利同比代理）。
+FIN_GATE_DT_YOY_F0 = -30.0    # F0①：扣非利润同比下限
+FIN_GATE_OR_YOY_F0 = -20.0    # F0②：营收同比下限
+FIN_GATE_OCF_YOY_F0 = -50.0   # F0③：经营现金流同比下限（须同时为负）
+FIN_GATE_DT_YOY_F2 = 15.0     # F2①：扣非利润同比下限
+FIN_GATE_DB_PATH = r"D:\mystock\cache_daily\stock_data.db"   # fina_indicator_cache 所在库（= stock_cache.DB_PATH）
+
 
 def _mom_env(avg):
     """按三指数20日动量均值返回环境档位 (label, 回测胜率参考)"""
@@ -1023,6 +1041,13 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
     从而改写缩量比基准与距T0开盘（实测大港股份 002077.SZ 的 T0 由 0909 涨停日被改认为 0910 涨停
     次日 +2.26%，导致 0930 缩量比 0.546→0.414、距T0开盘 +9.27%→-0.65%，原本的 0930 下蹲信号丢失）。
 
+    优先认涨停日本身（20261006 用户要求，天龙股份 603266.SH 案例）：兜底拆成两轮扫，
+      第一轮只豁免「涨停日本身」（_zt_exm = is_zt[i]），第二轮才放宽到「涨停日或涨停次日」。
+      原因：单轮由近及远扫描会先撞上「涨停次日」并立即返回 —— 天龙股份 0915 涨停（5日均量比
+      仅 1.38 不足 1.5，严格口径不认），单轮兜底把 T0 认到 0916（涨停次日，当日量为全段最大），
+      缩量比基准被抬高 1.49 倍，把 0923/0924 的缩量比从 0.70 压到 0.47，误剔两个下蹲买点；
+      两轮后 0915（涨停日本身）被正确认作 T0。
+
     T0 跟踪窗口与失效（20261003 用户要求）：
       (1) T0 识别后跟踪至多 VOL_STEP_MAX_D 个交易日（15→60）：起量日可回溯更远，
           解决「放量后回调较久、起量日滑出窗口 → 无合格 T0 被整段剔除」的漏检
@@ -1072,35 +1097,41 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
                         (close_arr / np.maximum(pre_close_arr, 1e-9) - 1) * 100, -999.0)
     is_zt = _pct_all >= zt_line
     k = n - 1
-    for i in range(k - 1, max(-1, k - 1 - VOL_STEP_MAX_D), -1):
-        if i - 1 < 0 or np.isnan(ratio[i]) or np.isnan(ratio[i - 1]):
-            continue
-        _zt_t0 = bool(is_zt[i])
-        _zt_prev = bool(is_zt[i - 1])
-        # 兜底口径下涨停日 / 涨停次日豁免 (a)(d)（涨停本身即标志性放量）
-        _zt_exm = allow_zt and (_zt_t0 or _zt_prev)
-        if not _zt_exm:
-            if ratio[i] < VOL_STEP_RATIO_JUMP or ratio[i - 1] >= VOL_STEP_RATIO_JUMP:
+    # 兜底豁免模式（20261006 用户要求，天龙股份 603266.SH 案例）：严格口径只有一轮（无豁免）；
+    #   兜底口径分两轮扫——第一轮只豁免「涨停日本身」（优先认涨停日），第二轮才放宽到
+    #   「涨停日或涨停次日」。单轮由近及远会先撞上「涨停次日」并立即返回，从而把 T0 认错
+    #   （天龙股份 0915 涨停被跳过、认到 0916 涨停次日，缩量比基准抬高 1.49 倍、误剔 0923/0924）。
+    _exm_modes = [(False, False)] if not allow_zt else [(True, False), (True, True)]
+    for _use_zt, _allow_prev_zt in _exm_modes:
+        for i in range(k - 1, max(-1, k - 1 - VOL_STEP_MAX_D), -1):
+            if i - 1 < 0 or np.isnan(ratio[i]) or np.isnan(ratio[i - 1]):
                 continue
-        if np.isnan(v_t0[i]) or v_t0[i] < VOL_T0_VOLBASE_MIN or not (ma5[i - 1] > 0):
-            continue
-        seg = ma5[i:k + 1] / ma5[i - 1]
-        if np.isnan(seg).any() or seg.min() < VOL_STEP_MIN:
-            continue
-        if pre_close_arr[i] <= 0:
-            continue
-        # T0 失效判定（20261003 用户要求）：跟踪期间（T0 次日起至今日）若任一交易日
-        #   收盘跌破「T0 前一交易日收盘价」→ 整波放量已被完全回吐、起涨基石被击穿，
-        #   该 T0 作废、不再跟踪，继续向前找更早的 T0。判据用收盘价，不用盘中最低价。
-        if i + 1 <= k and float(np.min(close_arr[i + 1:k + 1])) < float(pre_close_arr[i]):
-            continue
-        _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
-        # (d) 放量阳线且涨幅达标：兜底口径下涨停日 / 涨停次日豁免（20261003）
-        if not _zt_exm:
-            if close_arr[i] <= open_arr[i] or _t0_pct <= VOL_T0_MIN_PCT:
+            _zt_t0 = bool(is_zt[i])
+            _zt_prev = bool(is_zt[i - 1])
+            # 兜底口径下涨停日（第二轮起含涨停次日）豁免 (a)(d)（涨停本身即标志性放量）
+            _zt_exm = _use_zt and (_zt_t0 or (_allow_prev_zt and _zt_prev))
+            if not _zt_exm:
+                if ratio[i] < VOL_STEP_RATIO_JUMP or ratio[i - 1] >= VOL_STEP_RATIO_JUMP:
+                    continue
+            if np.isnan(v_t0[i]) or v_t0[i] < VOL_T0_VOLBASE_MIN or not (ma5[i - 1] > 0):
                 continue
-        return (k - i, float(close_arr[k] / close_arr[i] - 1), float(_t0_pct),
-                float(open_arr[i]))
+            seg = ma5[i:k + 1] / ma5[i - 1]
+            if np.isnan(seg).any() or seg.min() < VOL_STEP_MIN:
+                continue
+            if pre_close_arr[i] <= 0:
+                continue
+            # T0 失效判定（20261003 用户要求）：跟踪期间（T0 次日起至今日）若任一交易日
+            #   收盘跌破「T0 前一交易日收盘价」→ 整波放量已被完全回吐、起涨基石被击穿，
+            #   该 T0 作废、不再跟踪，继续向前找更早的 T0。判据用收盘价，不用盘中最低价。
+            if i + 1 <= k and float(np.min(close_arr[i + 1:k + 1])) < float(pre_close_arr[i]):
+                continue
+            _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
+            # (d) 放量阳线且涨幅达标：兜底口径下涨停日 / 涨停次日豁免（20261003）
+            if not _zt_exm:
+                if close_arr[i] <= open_arr[i] or _t0_pct <= VOL_T0_MIN_PCT:
+                    continue
+            return (k - i, float(close_arr[k] / close_arr[i] - 1), float(_t0_pct),
+                    float(open_arr[i]))
     return None
 
 
@@ -2284,13 +2315,14 @@ def run(target_date=None, with_chip=True, simple=False):
         print("❌ 市场数据为空，无法选股")
         return []
 
-    # 目标股池：总市值 > 50亿（剔除北交所 .BJ，用户规则：不碰北交所）+ 剔除 ST（20261003 用户要求）
-    _filtered = market[market['total_mv'].fillna(0) > 500000]
+    # 目标股池：总市值 > 30亿（剔除北交所 .BJ，用户规则：不碰北交所）+ 剔除 ST（20261003 用户要求；
+    #   20261006 用户要求门槛由 50亿 下调至 30亿，使天龙股份 603266.SH 等中小盘可进池）
+    _filtered = market[market['total_mv'].fillna(0) > 300000]
     _filtered = _filtered[~_filtered['ts_code'].str.endswith('.BJ')]
     if 'name' in _filtered.columns:
         _filtered = _filtered[~_filtered['name'].fillna('').astype(str).str.upper().str.contains('ST')]
     _filtered_codes = set(_filtered['ts_code'].tolist())
-    print(f'\n[目标股池] 总市值>50亿共 {len(_filtered_codes)} 只（已剔除北交所/ST），开始扫描...')
+    print(f'\n[目标股池] 总市值>30亿共 {len(_filtered_codes)} 只（已剔除北交所/ST），开始扫描...')
 
     # 大盘环境提示（三指数动量，仅作参考，不拦截输出）
     market_tip = None
@@ -2393,6 +2425,37 @@ def run(target_date=None, with_chip=True, simple=False):
         except Exception as e:
             print(f"[V2.0评分] 注入失败: {e}")
 
+    # ===== 基本面否决层（20261008 用户要求）：F0 恶化剔除 / F1 中性 / F2 改善优先 =====
+    #   只作用于「下蹲信号」（唯一可执行+落库信号）：强买/观察/蓄势不动。
+    #   F0 命中 → 该股下蹲信号置 False（自动从报告下蹲段/控制台摘要/落库中剔除），另立「基本面否决」段展示；
+    #   F2 命中 → 打标 基本面Gate='F2'，由 _squat_rank_key 第 0 键前置为优先池。
+    #   数据缺失一律归 F1（fail-soft），异常不阻塞主流程。
+    try:
+        _sq_codes = [x.get('代码') for x in results if x.get('下蹲信号')]
+        if _sq_codes:
+            _fin_map = _load_fundamental_gate(TRADE_DATE, _sq_codes)
+            _n_f0 = _n_f2 = 0
+            for x in results:
+                _rec = _fin_map.get(x.get('代码'))
+                _g, _rs = _fin_gate_decision(_rec) if _rec else ('F1', [])
+                x['基本面Gate'] = _g
+                x['基本面Gate原因'] = '｜'.join(_rs)
+                if _rec:
+                    x['基本面_扣非同比'] = _rec.get('dt_yoy')
+                    x['基本面_营收同比'] = _rec.get('or_yoy')
+                    x['基本面_现金流为正'] = _rec.get('ocf_pos')
+                    x['基本面_现金流同比'] = _rec.get('ocf_yoy')
+                if _g == 'F0' and x.get('下蹲信号'):
+                    x['下蹲信号'] = False
+                    x['基本面否决'] = True
+                    _n_f0 += 1
+                elif _g == 'F2':
+                    _n_f2 += 1
+            print(f'[基本面Gate] 下蹲池 {len(_sq_codes)} 只：'
+                  f'F0 恶化否决剔除 {_n_f0} 只 | F2 改善优先 {_n_f2} 只 | 其余 F1 中性')
+    except Exception as e:
+        print(f"[基本面Gate] 计算失败(不影响主流程，全部按 F1 处理): {e}")
+
     # 控制台摘要：只列可执行的下蹲买点（唯一落库信号），其余给计数（20261007 P3）
     _sq = [x for x in results if x.get('下蹲信号')]
     _sb = [x for x in results if x.get('强买信号')]
@@ -2407,7 +2470,7 @@ def run(target_date=None, with_chip=True, simple=False):
         _stage = _v.get('非一日游阶段', '') or ''
         _stage_str = f' 阶段={_stage}' if _stage else ''
         print(f"  {_v['名称']}({_v['代码']}) {_v.get('下蹲等级','')} 评分{_v['量能爆发评分']} "
-              f"距MA5={_v.get('距MA5',0):+.1f}% 主题={_theme}{_stage_str} "
+              f"距MA5={_v.get('距MA5',0):+.1f}% 基本面={_v.get('基本面Gate','F1')} 主题={_theme}{_stage_str} "
               f"Entry={_v.get('FinalEntryScore','-')} {_v.get('Rating','')} T1Risk={_v.get('T1Risk','-')}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
@@ -2498,8 +2561,167 @@ def _squat_rank_key(s):
       它单独看几乎无区分度（新5 与 新5b 仅差此键，结果完全相同），但保留而非删除：
       作为同分兜底可让排序在「距MA5+评分均相同」的候选间保持确定性稳定，
       避免 pandas/groupby 排序抖动导致同一只票在报告中位置忽高忽低。
+
+    ===== 第 0 键：基本面 Gate（20261008 用户要求）=====
+      在最前追加 (基本面Gate != 'F2')：F2 改善股（优先池）整体前置，F1 中性随后。
+      F0 恶化股在 run() 中已把「下蹲信号」置 False，不会进入本池，故此处无需考虑。
     """
-    return (-s.get('距MA5', 0), s.get('量能爆发评分', 0), s.get('60日涨幅', 0))
+    _g0 = 0 if s.get('基本面Gate') == 'F2' else 1
+    return (_g0, -s.get('距MA5', 0), s.get('量能爆发评分', 0), s.get('60日涨幅', 0))
+
+
+def _fin_num(v):
+    """安全取数：NaN/None/非数 → None（用于基本面 Gate 的 fail-soft 判据）"""
+    try:
+        if v is None:
+            return None
+        f = float(v)
+        if f != f:   # NaN
+            return None
+        return f
+    except Exception:
+        return None
+
+
+def _load_fin_snapshot(trade_date):
+    """最新一期全字段财务快照（含扣非同比 dt_netprofit_yoy），点内可用（end_date/ann_date 均 <= 决策日）。
+
+    数据源：CACHE_DIR/fin_ind_*_full.parquet（backfill_fin_ind_2026H1.py 生成）。
+    返回 (period, DataFrame) 或 None；仅用于实盘取「扣非同比」，回测历史期无快照时自动跳过。
+    """
+    import glob
+    best = None
+    for fp in glob.glob(os.path.join(CACHE_DIR, 'fin_ind_*_full.parquet')):
+        try:
+            _df = pd.read_parquet(fp)
+        except Exception:
+            continue
+        if 'end_date' not in _df.columns or _df.empty:
+            continue
+        _df['end_date'] = _df['end_date'].astype(str)
+        if 'ann_date' in _df.columns:
+            _df = _df[_df['ann_date'].fillna('').astype(str) <= str(trade_date)]
+        _df = _df[_df['end_date'] <= str(trade_date)]
+        if _df.empty:
+            continue
+        _per = _df['end_date'].max()
+        if best is None or _per > best[0]:
+            best = (_per, _df[_df['end_date'] == _per].copy())
+    return best
+
+
+def _load_fin_db(trade_date, codes):
+    """fina_indicator_cache 按 ann_date as-of 取每只最近两期（点内，可回测）。
+
+    返回 {ts_code: {'netprofit_yoy','or_yoy','ocf_to_or','ocf_yoy','roe_now','roe_prev'}}。
+    取最近两期 ROE 供 F0④「连续亏损扩大」判定；任一步失败均返回 {}（fail-soft）。
+    """
+    if not codes:
+        return {}
+    try:
+        import sqlite3
+        _ph = ','.join(['?'] * len(codes))
+        con = sqlite3.connect(FIN_GATE_DB_PATH)
+        try:
+            _df = pd.read_sql_query(
+                "SELECT ts_code, end_date, ann_date, netprofit_yoy, or_yoy, ocf_to_or, ocf_yoy, roe "
+                f"FROM fina_indicator_cache WHERE ts_code IN ({_ph}) "
+                "AND COALESCE(ann_date,'') <= ?",
+                con, params=list(codes) + [str(trade_date)])
+        finally:
+            con.close()
+    except Exception:
+        return {}
+    if _df is None or _df.empty:
+        return {}
+    _df = _df.sort_values(['ts_code', 'end_date'])
+    out = {}
+    for _code, _g in _df.groupby('ts_code'):
+        _last = _g.iloc[-1]
+        _prev_roe = _fin_num(_g.iloc[-2]['roe']) if len(_g) >= 2 else None
+        out[_code] = {
+            'netprofit_yoy': _fin_num(_last.get('netprofit_yoy')),
+            'or_yoy': _fin_num(_last.get('or_yoy')),
+            'ocf_to_or': _fin_num(_last.get('ocf_to_or')),
+            'ocf_yoy': _fin_num(_last.get('ocf_yoy')),
+            'roe_now': _fin_num(_last.get('roe')),
+            'roe_prev': _prev_roe,
+        }
+    return out
+
+
+def _load_fundamental_gate(trade_date, codes):
+    """基本面数据装配（20261008「两者结合」）：实盘快照扣非同比优先，DB 兜底并补最近两期 ROE。"""
+    codes = [c for c in codes if c]
+    if not codes:
+        return {}
+    _snap = _load_fin_snapshot(trade_date)   # (period, df) or None
+    _db = _load_fin_db(trade_date, codes)
+    out = {}
+    for _code in codes:
+        rec = {'dt_yoy': None, 'or_yoy': None, 'ocf_pos': None, 'ocf_yoy': None,
+               'roe_now': None, 'roe_prev': None, 'src': ''}
+        if _snap is not None:
+            _row = _snap[1][_snap[1]['ts_code'] == _code]
+            if not _row.empty:
+                _r = _row.iloc[-1]
+                rec['dt_yoy'] = _fin_num(_r.get('dt_netprofit_yoy'))
+                rec['or_yoy'] = _fin_num(_r.get('or_yoy'))
+                if rec['or_yoy'] is None:
+                    rec['or_yoy'] = _fin_num(_r.get('tr_yoy'))
+                _ocfps = _fin_num(_r.get('ocfps'))
+                rec['ocf_pos'] = (_ocfps > 0) if _ocfps is not None else None
+                rec['ocf_yoy'] = _fin_num(_r.get('ocf_yoy'))
+                rec['src'] = f"snapshot_{_snap[0]}"
+        _d = _db.get(_code)
+        if _d:
+            if rec['dt_yoy'] is None:      # 回测/无快照：以净利同比为扣非同比代理
+                rec['dt_yoy'] = _d.get('netprofit_yoy')
+                rec['src'] = (rec['src'] + '+') if rec['src'] else ''
+                rec['src'] += 'db_netprofit_yoy'
+            if rec['or_yoy'] is None:
+                rec['or_yoy'] = _d.get('or_yoy')
+            if rec['ocf_pos'] is None:
+                _o = _d.get('ocf_to_or')
+                rec['ocf_pos'] = (_o > 0) if _o is not None else None
+            if rec['ocf_yoy'] is None:
+                rec['ocf_yoy'] = _d.get('ocf_yoy')
+            rec['roe_now'] = _d.get('roe_now')
+            rec['roe_prev'] = _d.get('roe_prev')
+        out[_code] = rec
+    return out
+
+
+def _fin_gate_decision(rec):
+    """按已确认口径判 F0/F1/F2，返回 (gate, [命中原因])。数据缺失一律不计命中（fail-soft）。"""
+    if not rec:
+        return 'F1', []
+    _f0 = []
+    if rec.get('dt_yoy') is not None and rec['dt_yoy'] < FIN_GATE_DT_YOY_F0:
+        _f0.append(f"扣非利润同比{rec['dt_yoy']:+.1f}%(<-30%)")
+    if rec.get('or_yoy') is not None and rec['or_yoy'] < FIN_GATE_OR_YOY_F0:
+        _f0.append(f"营收同比{rec['or_yoy']:+.1f}%(<-20%)")
+    if (rec.get('ocf_pos') is False and rec.get('ocf_yoy') is not None
+            and rec['ocf_yoy'] < FIN_GATE_OCF_YOY_F0):
+        _f0.append(f"经营现金流为负且同比{rec['ocf_yoy']:+.1f}%(<-50%)")
+    if (rec.get('roe_now') is not None and rec.get('roe_prev') is not None
+            and rec['roe_now'] < 0 and rec['roe_prev'] < 0 and rec['roe_now'] < rec['roe_prev']):
+        _f0.append(f"最近两期ROE为负且恶化({rec['roe_prev']:.1f}%→{rec['roe_now']:.1f}%)")
+    if len(_f0) >= 2:
+        return 'F0', _f0
+    _f2 = []
+    if rec.get('dt_yoy') is not None and rec['dt_yoy'] > FIN_GATE_DT_YOY_F2:
+        _f2.append(f"扣非利润同比{rec['dt_yoy']:+.1f}%(>+15%)")
+    if rec.get('or_yoy') is not None and rec['or_yoy'] > 0:
+        _f2.append(f"营收同比{rec['or_yoy']:+.1f}%(>0)")
+    if rec.get('ocf_pos') is True:
+        _f2.append("经营现金流为正")
+    # A 口径（20261008 拍板）：F2 须以「扣非利润同比>+15%」为硬门槛，再叠加 ②/③ 至少 1 条；
+    #   否则「营收>0 + 现金流为正」两条常见项即可凑满 2 条，F2 会覆盖全库约一半（区分度被稀释）。
+    if (rec.get('dt_yoy') is not None and rec['dt_yoy'] > FIN_GATE_DT_YOY_F2
+            and len(_f2) >= 2):
+        return 'F2', _f2
+    return 'F1', []
 
 
 def _chip_v5_line(s):
@@ -2624,6 +2846,12 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append("【主题效应】同一主题在本次下蹲池出现 ≥2 只 → 该主题下每只标注「🔗主题效应=主题名（同池N只）」，"
                      "表示资金在同一方向上多点开花，而非单点试盘；回避区主题 / 无主题不计入"
                      "（20261006 新增，仅标注、不参与评分与排序；勿与评级里的个股维度「主题共振 ThemeResonance」混淆）")
+        lines.append("【基本面Gate】简单 3 级否决层，不做复杂评分（20261008 用户要求）；只作用于下蹲信号，"
+                     "强买/观察/蓄势不受影响。F0 恶化 → 满足任意 2 条即从下蹲池剔除（不落库，另见文末「基本面否决」段）；"
+                     "F1 中性 → 正常入池；F2 改善 → 进入优先池（排序前置，标注在个股行）。"
+                     "判据 F0：①扣非利润同比<-30% ②营收同比<-20% ③经营现金流为负且同比<-50% ④最近两期ROE为负且恶化（任意 2 条）；"
+                     "F2（A 口径）：①扣非利润同比>+15%（硬门槛，必需）+ ②营收同比>0 / ③经营现金流为正 至少 1 条。"
+                     "数据缺失一律归 F1（fail-soft，不误判 F0）；「行业景气改善」本版先不做（20261008 口径拍板）")
         lines.append("【提示项】T0 标志日 / 起量台阶为展示字段；「缩量比」「量能活跃度」「量能形态(5日量能变化/连续缩量天数)」为筛选字段。"
                      "缩量比 = 下蹲日量 / T0日量，阈值 0.50（20260930 由 0.35→0.55→0.50）；"
                      "「止损位」= T0 前一交易日收盘价（展示+落库字段，20261006 用户要求；原为 T0 开盘价）")
@@ -2644,8 +2872,12 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append("  改口径后重标定（20261002，下蹲事件池 2025-09~2026-09 n=27）：池内缩量比最小值≈0.51，"
                      "故 0.50 门槛不再额外筛选；缩量比分档 [0.50,0.55) n=13 61.5%/+0.66% · ≥0.55 n=14 35.7%/+1.09%")
         for i, _vr in enumerate(vs_squat[:10], 1):
+            _fg = _vr.get('基本面Gate', 'F1')
+            _fg_tag = ' ⭐F2优先' if _fg == 'F2' else ''
             lines.append(f"【下蹲{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} "
-                         f"等级={_vr.get('下蹲等级', '')}")
+                         f"等级={_vr.get('下蹲等级', '')} | 基本面={_fg}{_fg_tag}")
+            if _fg == 'F2' and _vr.get('基本面Gate原因'):
+                lines.append(f"  基本面改善：{_vr.get('基本面Gate原因')}")
             lines.append(f"  {_vr.get('下蹲原因', '')}")
             _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (
                 f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
@@ -2698,6 +2930,18 @@ def _output_report(results, simple=False, market_tip=None):
                      "量能活跃度≥2.0 + 缩量比≥0.50 + 非「缩量过快且持续缩量」) 2025-09~2026-09 n=14："
                      "T0开盘价止损口径 胜率57.1% / 均+3.38%（-7%口径 57.1% / +3.59%）"
                      "（20261003 删除均线/距20日高/止损空间条件、20261006 新增「缩量过快且持续缩量」剔除后均未重标定）")
+        lines.append("")
+
+    # 🧱 基本面否决（F0）：原下蹲候选被基本面恶化剔除，列此供复核（20261008 用户要求）
+    _f0_list = sorted([x for x in results if x.get('基本面否决')], key=lambda x: -x.get('量能爆发评分', 0))
+    if _f0_list:
+        lines.append("## 🧱 基本面否决（F0 恶化 · 已从下蹲池剔除，不构成买入依据）")
+        lines.append("说明：下列标的量能结构上本可给出下蹲买点，但基本面 Gate 判为 F0（满足任意 2 条恶化判据），"
+                     "按 20261008 用户要求「基本面恶化 → VSW信号直接降级」剔除出池、不落库。")
+        for i, _x in enumerate(_f0_list, 1):
+            lines.append(f"【否决{i}】{_x['名称']}({_x['代码']}) 评分{_x.get('量能爆发评分', 0):.0f} "
+                         f"等级={_x.get('下蹲等级', '')}")
+            lines.append(f"  基本面原因：{_x.get('基本面Gate原因') or '（数据缺失未计入，异常）'}")
         lines.append("")
 
     # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
@@ -2841,6 +3085,7 @@ def _track_picks(results, trade_date):
             '距MA20': s.get('距MA20'), '5日涨幅': s.get('5日涨幅'),
             '所属主题': s.get('所属主题'), '非一日游阶段': s.get('非一日游阶段'),
             'ChipSuggestion': s.get('ChipSuggestion'),
+            '基本面Gate': s.get('基本面Gate', 'F1'),   # 基本面否决层分档（20261008）：F2 优先 / F1 中性
         }
 
     rows = []
@@ -2851,7 +3096,8 @@ def _track_picks(results, trade_date):
         _res = _res_map.get(s.get('代码'))
         # 信号名带上形态分支（20261003 用户要求：在下蹲后用括号标等级，便于库/跟踪池一眼区分）；
         # 命中主题效应再加「·主题效应」后缀（20261006 用户要求）
-        _sig = ('VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)') + ('·主题效应' if _res else '')
+        _sig = ('VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)') + ('·主题效应' if _res else '') \
+            + ('·F2优先' if s.get('基本面Gate') == 'F2' else '')
         _row = _mk(s, len(rows) + 1, _sig,
                    '可开仓·下蹲买点' if _opt else '可开仓·下蹲待确认(半仓)')
         if _res:

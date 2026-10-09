@@ -166,9 +166,9 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
 
 
 def _record_right_bottom_to_db(trade_date: str, report: dict):
-    """右底低吸（龙头池外单列）独立落库：strategy_id=hvt_bull_rb
+    """右底低吸（全市场单列）独立落库：strategy_id=hvt_bull_rb
 
-    20261002 用户口径：右底低吸不受 sli_v2 龙头池/热点主题扩池准入限制，独立扫描并单列成节
+    20261008 用户口径：删除 sli_v2 龙头池/热点主题扩池准入后对全市场扫描，独立成节
     （报告「I. 右底低吸信号」）。该池当日收盘即低吸买点（现价即买区），故 action 统一记
     'RIGHT_BOTTOM'；与前两池 hvt_bull_te（TE 执行池）/ hvt_bull_fe（第一梯队）互不混档。
     stop_price 取结构失效位=左底（前低，收盘跌破即离场）；其余右底结构字段经 record_picks
@@ -179,7 +179,7 @@ def _record_right_bottom_to_db(trade_date: str, report: dict):
     try:
         pool = report.get('rb_offpool_pool') or []
         if not pool:
-            print('[RUN-PUSH] rb_offpool_pool 为空（当日无龙头池外右底低吸），跳过落库')
+            print('[RUN-PUSH] rb_offpool_pool 为空（当日无右底低吸），跳过落库')
             return
         rows = []
         for i, it in enumerate(pool, 1):
@@ -196,7 +196,7 @@ def _record_right_bottom_to_db(trade_date: str, report: dict):
                                      f"缩量{volr:.2f}×20日均量、流通市值{mve:.1f}亿")))
         if PICK_DB_PATH:
             os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
-        n = record_picks('hvt_bull_rb', 'HVT-BULL 右底低吸（龙头池外单列）', rows,
+        n = record_picks('hvt_bull_rb', 'HVT-BULL 右底低吸（全市场单列）', rows,
                          pick_date=trade_date)
         print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
               f'(strategy=hvt_bull_rb pick_date={trade_date})')

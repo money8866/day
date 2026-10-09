@@ -29,12 +29,7 @@ STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP"
 # 20260930 新增 MIDLINE_HOLD「W7-不破中位」：放量长阳（须创60日新高）后缩量回踩、收盘不破长阳半分位（中红医疗 9/23~9/24）
 # 20261002 新增 RIGHT_BOTTOM「W7-右底低吸」：前波大涨后回落形成双底，右底缩量、不破左底（百普赛斯 301080.SZ 9/11）
 ACTION_BUY_STATES = ("SECOND_WAVE", "BREAKOUT_CONFIRM", "RE_EXPANSION", "T0_CONFIRM", "BREAKOUT_RETEST", "MIDLINE_HOLD", "RIGHT_BOTTOM")
-# 20261001 热点主题扩池（与 HVT-BULL 同口径）：V2.4 热点主题全部成员并入准入池，
-# 与 sli_v2 龙头取并集，解决"非龙头但属强势主题"漏选（诺唯赞 688105.SH / 创新药）。
-THEME_EXPAND_ENABLED = True
-THEME_EXPAND_WINDOW = "month"
-THEME_EXPAND_HEAT_MIN = 80.0
-W7_THEME_WATCH_CAP = 20  # 报告「热点主题新增跟踪」节展示上限（20261001）
+W7_THEME_WATCH_CAP = 20  # 报告「热点主题新增跟踪」节展示上限（20261001；20261008 起该节随准入池一并停用）
 # 20260909 用户口径「T0 确认买点」（我爱我家 8/19→8/27）：天量 T0 之后出现首根收盘回到
 # T0 收盘价之上的“重夺日”（8/25），随后连续 ≥2 根收盘站稳 T0 收盘价（8/26/8/27），
 # 确认日当日即视为有效买点（旁路 <5 根K线等待期与 major_risk 的早期误判）。仅限事件后
@@ -277,44 +272,6 @@ def w7_exec_sort_key(x):
     close = finite(x.get("close"), 0.0)
     dbuf = (close - line) / line if line > 0 and close > 0 else -1e9
     return (rank, -dbuf, d, -ige, -sc)
-
-
-def load_sli_codes(date):
-    """加载 SLI V2 细分赛道 Top5 龙头代码集合（V4.4：不在票池中的候选直接过滤）
-    标准接口 sli.reader.get_subsector_top5（asof 自动对齐最近快照）；无快照时返回 None 不启用过滤"""
-    try:
-        from sli.reader import get_subsector_top5
-        panel = get_subsector_top5(asof=date)
-    except Exception as exc:  # 快照缺失/包未生成时降级，不中断主流程
-        print(f"[w7] 警告：SLI 龙头票池加载失败({exc})，跳过联动过滤", flush=True)
-        return None
-    codes = set(panel["ts_code"].astype(str).str.strip())
-    codes.discard("")
-    print(f"[w7] SLI 龙头票池 {len(codes)} 只，启用联动过滤", flush=True)
-    return codes
-
-
-def build_allow_codes(date, sli_codes):
-    """准入池 = sli_v2 龙头票池 ∪ 热点主题(V2.4)全部成员；sli_codes 为 None 时不过滤。
-
-    与 HVT-BULL 同口径（theme_hot_pool.hot_theme_codes）。扩池数据缺失时退回纯龙头过滤。
-    """
-    if sli_codes is None:  # 龙头过滤不可用 -> 池子本就未过滤，无需扩池
-        return None
-    allow = set(sli_codes)
-    if THEME_EXPAND_ENABLED:
-        try:
-            from theme_hot_pool import hot_theme_codes
-            hot = hot_theme_codes(date, window=THEME_EXPAND_WINDOW,
-                                  heat_min=THEME_EXPAND_HEAT_MIN)
-        except Exception as exc:
-            print(f"[w7] 警告：热点主题扩池加载失败({exc})，维持龙头过滤", flush=True)
-            hot = None
-        if hot:
-            print(f"[w7] 热点主题扩池：+{len(hot - allow)} 只非龙头"
-                  f"（{THEME_EXPAND_WINDOW}热度>={THEME_EXPAND_HEAT_MIN:g}）", flush=True)
-            allow |= hot
-    return allow or None
 
 
 def load_ige_adj(asof=""):
@@ -1797,7 +1754,7 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
     lines.append(f"今日可操作（当日买点）＝ {n_action + n_rb_off} 只：二波/突破确认/重新扩张/T0天量确认/放量突破后缩量回踩/W7-不破中位/W7-右底低吸"
                  + (f"（其中右底低吸 龙头池外 {n_rb_off} 只，见本节④）" if n_rb_off else "")
                  + f"；其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
-    lines.append(f"V5.2 质量过滤（仅龙头池内候选）：当日买点原始 {len(_buy_signal)} 只 → 通过 {n_action} 只、过滤 {n_gated} 只"
+    lines.append(f"V5.2 质量过滤（全市场候选）：当日买点原始 {len(_buy_signal)} 只 → 通过 {n_action} 只、过滤 {n_gated} 只"
                  + (f"；另龙头池外右底低吸 {n_rb_off} 只豁免准入、直接进本节④" if n_rb_off else "")
                  + f"（剔除 BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION 三态；要求信号日收盘＞天量标志日开盘价"
                  f"（RIGHT_BOTTOM 右底低吸豁免此条，结构质量由 right_bottom 九条硬条件保证）；"
@@ -1943,18 +1900,17 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
     if rb_show:
         def _px(v):
             return f"{v:.2f}" if isinstance(v, (int, float)) else "-"
-        lines.append(f"### ④ 右底低吸信号｜W7-RIGHT_BOTTOM（单列 · 不受龙头池限制，{n_rb_show}只）\n")
+        lines.append(f"### ④ 右底低吸信号｜W7-RIGHT_BOTTOM（单列 · 全市场，{n_rb_show}只）\n")
         lines.append("说明：前波大涨 → 回落 → 双底；右底缩量（≤0.75×20日均量）、不破左底（前低）当日即低吸买点，"
-                     "收盘 ≤MA10 且在 MA60 上方。含「不在 sli 细分龙头池 / 热点主题扩池」的标的，"
-                     "本节独立列示并同步跟踪池（不受 V4.4 准入限制）。\n")
-        lines.append("| # | 代码 | 名称 | 现价 | 左底(前低) | 颈线 | 右底/左底 | 量比 | 总分 | 类型 | 来源 |")
-        lines.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | -- | -- |")
+                     "收盘 ≤MA10 且在 MA60 上方。本节独立列示并同步跟踪池。\n")
+        lines.append("| # | 代码 | 名称 | 现价 | 左底(前低) | 颈线 | 右底/左底 | 量比 | 总分 | 类型 |")
+        lines.append("| -- | -- | -- | --: | --: | --: | --: | --: | --: | -- |")
         for k, x in enumerate(sorted(rb_show, key=lambda y: -finite(y.get("score"), 0.0)), 1):
             lo, hi, rl = x.get("rb_left_low"), x.get("rb_mid_high"), x.get("rb_right_low")
             ratio = (rl / lo) if (isinstance(lo, (int, float)) and lo and isinstance(rl, (int, float))) else None
             lines.append(f"| {k} | {x['code']} | {x['name']} | {x['close']:.2f} | {_px(lo)} | {_px(hi)} "
                          f"| {('%.3f' % ratio) if ratio else '-'} | ×{x['volr']:.1f} | {x['score']:.1f} "
-                         f"| {x['type']} | {'龙头池外' if x.get('rb_offpool') else '候选池内'} |")
+                         f"| {x['type']} |")
         lines.append("")
         lines.append("操作：右底低吸买点，可按计划分批建仓；放量（量比≥1.2）站上颈线＝转突破/二波，可加仓。"
                      "失效：收盘跌破左底（前低）离场。")
@@ -2186,21 +2142,7 @@ def main():
     sector_strength = {ind: clip(50 + float(np.median(v)) * 150) for ind, v in by_ind.items() if len(v) >= 3}
     sector_growth = {ind: clip(50 + float(np.median(v)) * 1.1) for ind, v in fin_ind.items() if len(v) >= 3}
     print(f"[w7] 财务覆盖={nfina} 行业强度={len(sector_strength)} 行业景气={len(sector_growth)}", flush=True)
-    sli_codes = load_sli_codes(date)  # V4.4：SLI 龙头票池联动过滤
-    allow_codes = build_allow_codes(date, sli_codes)  # V4.4 龙头 ∪ V2.4 热点主题扩池
-    # 热点主题扩池新增跟踪节元数据（供报告独立成节：列出扩池纳入、不在 sli 龙头池的候选）
-    theme_meta = None
-    if THEME_EXPAND_ENABLED and sli_codes is not None and allow_codes is not None:
-        _added = set(allow_codes) - set(sli_codes)
-        try:
-            from theme_hot_pool import stock_hot_themes
-            _info = stock_hot_themes(date, window=THEME_EXPAND_WINDOW, heat_min=THEME_EXPAND_HEAT_MIN)
-        except Exception as exc:
-            print(f"[w7] 警告：热点主题明细加载失败({exc})，新增跟踪节仅列代码", flush=True)
-            _info = None
-        _wincn = {"today": "日", "week": "周", "month": "月"}.get(THEME_EXPAND_WINDOW, THEME_EXPAND_WINDOW)
-        theme_meta = {"codes": _added, "info": _info or {},
-                      "label": f"{_wincn}热度≥{THEME_EXPAND_HEAT_MIN:g}"}
+    # 20261008 用户口径：删除 SLI 龙头池阀门条件（含热点主题扩池）——全市场标的均进入分析，不再按票池过滤。
     ige_info, ige_snap = load_ige_adj(date)  # IGE_ADJ 行业增长弹性接入（高弹性行业候选优先）
     results = []
     rows = universe.to_dict("records")
@@ -2235,29 +2177,12 @@ def main():
     for n, row in enumerate(rows):
         if n and n % 500 == 0:
             print(f"[w7] 分析进度 {n}/{len(rows)} 耗时={time.time()-t_start:.1f}s", flush=True)
-        code = str(row.get("ts_code", ""))
-        if allow_codes is not None and code not in allow_codes:  # V4.4 龙头 ∪ V2.4 热点主题
-            continue
         result = _analyze_row(row)
         if result:
             results.append(result)
-    # 20261002 用户口径：右底低吸（RIGHT_BOTTOM）不受 V4.4 龙头池/热点主题扩池准入限制——
-    # 池外标的单独扫描，命中即单列（报告「④ 右底低吸信号」节）并同步跟踪池。
-    rb_extra = []
-    if allow_codes is not None:
-        for row in rows:
-            if str(row.get("ts_code", "")) in allow_codes:
-                continue  # 池内已在 results 里，由常规通道处理，避免重复
-            result = _analyze_row(row)
-            if result and result.get("state") == "RIGHT_BOTTOM" and w7_quality_gate(result)[0]:
-                result["rb_offpool"] = True
-                _st, _fl, _fn = w7_exec_status(result)
-                result["w7_status"], result["w7_fail_line"], result["w7_fail_name"] = _st, _fl, _fn
-                rb_extra.append(result)
-        if rb_extra:
-            print(f"[w7] 龙头池外右底低吸 {len(rb_extra)} 只: "
-                  f"{[x['code'] for x in rb_extra]}", flush=True)
-    text = markdown(results, date, theme_meta, rb_extra=rb_extra)
+    # 20261008 用户口径：删除 SLI 龙头池阀门后全市场标的均在 results 内，
+    # 右底低吸（RIGHT_BOTTOM）由常规通道产出、报告「④ 右底低吸信号」节统一列示。
+    text = markdown(results, date)
     output = os.path.abspath(args.output or os.path.join(OUTPUT_DIR, f"w7_second_wave_{date}.md"))
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "w", encoding="utf-8") as fh:
@@ -2282,7 +2207,7 @@ def main():
     }
     print(json.dumps(stats, ensure_ascii=False))
     if not args.limit:  # V5.1：完整跑批才同步下游（--limit 调试跑不污染跟踪表/JSON）
-        sync_downstream(date, results, output, rb_extra=rb_extra)
+        sync_downstream(date, results, output)
     reader.close()
 
 

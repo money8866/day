@@ -92,9 +92,11 @@ state_machine:
   primary_hold_days: 60         # PRIMARY_BUY/CONFIRMED 最短持有观察期
 
 sli_v2:
-  leader_filter: true           # 关联 sli_v2 细分龙头 Top5（标准接口），不在表中的股票直接过滤
+  # 20261008 用户口径：删除 SLI 龙头池阀门条件（含热点主题扩池）——全市场标的均进入分析，不再按票池过滤。
+  # 以下开关仅作历史留存，代码已不再读取（daily.py 已移除 _load_leader_codes/_load_allow_codes）。
+  leader_filter: false          # 关联 sli_v2 细分龙头 Top5（标准接口），不在表中的股票直接过滤
   theme_expand:                 # 20261001：热点主题扩池 —— V2.4 热点主题全部成员并入准入池
-    enabled: true               #   （与龙头池取并集，解决"非龙头但属强势主题"漏选，如诺唯赞/创新药）
+    enabled: false              #   （与龙头池取并集，解决"非龙头但属强势主题"漏选，如诺唯赞/创新药）
     window: month               #   热度窗口：today | week | month（theme_heat_v24_*）
     heat_min: 80.0              #   热度阈值（0~100 分位口径，<=阈值不纳入）
 

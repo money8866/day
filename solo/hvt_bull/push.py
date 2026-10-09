@@ -502,7 +502,7 @@ def _theme_watch_section(md_text: str):
 def _right_bottom_section(md_text: str):
     """抽取报告中的「右底低吸信号」节（RIGHT_BOTTOM），返回 (标题, 正文行)。
 
-    该节列出龙头池外独立扫描命中的右底低吸标的（不受 sli_v2 龙头池/热点主题扩池准入限制，
+    该节列出独立扫描命中的右底低吸标的（20261008 起全市场扫描，
     strategy_id=hvt_bull_rb）；邮件决策速览表按 HVT 事件动作分池、会漏掉它，故单独接进邮件。
     """
     for k, v in _split_sections(md_text).items():

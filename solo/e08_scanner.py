@@ -41,6 +41,14 @@ import time
 import numpy as np
 import pandas as pd
 
+# 选股落库跟踪（失败不阻塞主流程）：完全符合信号 + 回踩中跟踪池 → picks_db/stock_picks.db
+# 盘后由 `python stock_pick_db.py tracking` 回填 T+N 收益与胜率
+try:
+    from stock_pick_db import record_picks as _PICK_RECORD
+except Exception:
+    _PICK_RECORD = None
+
+
 # ─────────────────────────────────────────────
 # 路径与数据源
 # ─────────────────────────────────────────────
@@ -786,6 +794,74 @@ def send_email(md_text, trade_date, subject, subtitle='', mail_to=MAIL_TO):
 
 
 # ─────────────────────────────────────────────
+# 统一选股库落库（picks_db/stock_picks.db）
+# ─────────────────────────────────────────────
+PICK_STRATEGY_ID = 'e08'
+PICK_STRATEGY_NAME = 'E08 跳空不补缺·缩量回踩'
+
+
+def record_e08_picks(date, signals, watch_list):
+    """把当日「完全符合信号」与「回踩中跟踪池」落统一选股库。
+
+    strategy_id='e08'，signal 字段区分 E08_再突破 / E08_回踩中；
+    止损位用缺口上沿，触发位（target）用 T0 最高价；跟踪回填由
+    `python stock_pick_db.py tracking` 完成。落库失败不阻塞主流程。
+    """
+    if _PICK_RECORD is None:
+        print('[e08-db] stock_pick_db 不可用，跳过落库', flush=True)
+        return 0
+    rows = []
+    for i, (s, sc, g, _items, plan) in enumerate(signals, 1):
+        rows.append({
+            'ts_code': s['code'], 'stock_name': s['name'], 'industry': s['industry'],
+            'close': plan['close'], 'pct_chg': round(s['rb_pct'], 2),
+            'signal': 'E08_再突破', 'action': '再突破买点·%s' % g,
+            'score': sc, 'rank_no': i,
+            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 回踩%d日 再突破量%.2fx' % (
+                s['gap'] * 100, s['t0_pct'], s['n'], s['rb_vol_mult']),
+            'stop_price': plan['hard_stop'], 'target_price': plan['target1'],
+            # 自有字段（自动打包进 indicators JSON）
+            'grade': g, 'date_t0': s['date_t0'], 'date_rb': s['date_rb'],
+            'gap_pct': round(s['gap'] * 100, 2), 'gap_top': round(s['gap_top_raw'], 3),
+            'break_price': round(s['t0_high_raw'], 3), 'pullback_n': s['n'],
+            'vol_avg_ratio': round(s['vol_avg_ratio'], 3),
+            'vol_min_ratio': round(s['vol_min_ratio'], 3),
+            't0_vol_mult': round(s['t0_vol_mult'], 2),
+            'rb_vol_mult': round(s['rb_vol_mult'], 2),
+            'ma_bullish': s['ma']['bullish'], 'theme_hit': s['theme_hit'],
+            'winner': (round(s['winner'], 4) if s['winner'] is not None else None),
+            'total_mv_wan': (round(s['total_mv'], 0) if s.get('total_mv') else None),
+            'entry_low': plan['entry_low'], 'entry_high': plan['entry_high'],
+            'trail_stop': plan['trail_stop'], 'target2': plan['target2'],
+        })
+    for i, w in enumerate(watch_list, 1):
+        rows.append({
+            'ts_code': w['code'], 'stock_name': w['name'], 'industry': w['industry'],
+            'close': w['close_raw'], 'pct_chg': round(w['pct_raw'], 2),
+            'signal': 'E08_回踩中', 'action': '跟踪·等待放量再突破',
+            'rank_no': i,
+            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 已回踩%d日 均量%.2fx' % (
+                w['gap'] * 100, w['t0_pct'], w['days_pullback'], w['vol_avg_ratio']),
+            'stop_price': round(w['gap_top_raw'], 3),
+            'target_price': round(w['break_price_raw'], 3),
+            'date_t0': w['date_t0'], 'days_pullback': w['days_pullback'],
+            'gap_pct': round(w['gap'] * 100, 2), 'gap_top': round(w['gap_top_raw'], 3),
+            'break_price': round(w['break_price_raw'], 3),
+            'vol_avg_ratio': round(w['vol_avg_ratio'], 3),
+            'earliest_in': w['earliest_in'], 'latest_in': w['latest_in'],
+            'total_mv_wan': (round(w['total_mv'], 0) if w.get('total_mv') else None),
+        })
+    if not rows:
+        print('[e08-db] 今日无信号/回踩池，stock_pick_db 无写入', flush=True)
+        return 0
+    n = _PICK_RECORD(PICK_STRATEGY_ID, PICK_STRATEGY_NAME, rows,
+                     pick_date=date, replace=True)
+    print('[e08-db] stock_pick_db 写入 %d 条 (strategy=%s pick_date=%s)'
+          % (n, PICK_STRATEGY_ID, date), flush=True)
+    return n
+
+
+# ─────────────────────────────────────────────
 # 主流程
 # ─────────────────────────────────────────────
 def main():
@@ -800,6 +876,8 @@ def main():
     ap.add_argument('--push', action='store_true', help='扫描完成后邮件推送日报（HTML 正文 22px）')
     ap.add_argument('--mail-to', default=MAIL_TO, help='推送邮箱（默认 %s）' % MAIL_TO)
     ap.add_argument('--verbose', action='store_true')
+    ap.add_argument('--no-db', action='store_true',
+                    help='跳过 picks_db/stock_picks.db 落库（默认落库）')
     args = ap.parse_args()
 
     t0 = time.time()
@@ -919,6 +997,8 @@ def main():
             watch['gap_top_raw'] = float(a.h[wi0 - 1])               # 缺口上沿（原始价）
             watch['break_price_raw'] = float(a.h[wi0])               # T0 最高价（原始价）
             watch['total_mv'] = (float(mv) if mv is not None else None)
+            watch['close_raw'] = float(a.c[i1])                      # 回踩日收盘（原始价，落库跟踪基准）
+            watch['pct_raw'] = float(a.pct[i1])                      # 回踩日涨跌幅（%）
             watch_list.append(watch)
         if early:
             early['code'], early['name'], early['industry'] = code, name or code, industry
@@ -989,8 +1069,17 @@ def main():
         json.dump(payload, fh, ensure_ascii=False, indent=1)
 
     conn.close()
+
+    db_n = 0
+    if not args.no_db:
+        try:
+            db_n = record_e08_picks(date, signals, watch_list)
+        except Exception as exc:
+            print('[e08-db] 落库异常: %s' % exc, flush=True)
+
     stats = {'date': date, 'universe': universe, 'hit': n_ok,
              'signals': len(signals), 'watch': len(watch_list), 'early': len(early_list),
+             'db_written': db_n,
              'output': output, 'json': jpath, 'elapsed_s': round(time.time() - t0, 1)}
 
     if args.push:

@@ -232,6 +232,29 @@ def run_idx_thresholds(df, sig_mask, baseline, ths=(0.0, -3.0, -5.0, -8.0)):
     return pd.DataFrame(rows).set_index("idx<")
 
 
+def update_cache(day):
+    """把指定交易日（默认按 15:00 分界线取最近交易日）的行情增量拉进本地缓存（幂等）"""
+    import stock_cache as sc
+    day = day or sc.get_effective_date()
+    print(f"[增量更新] 目标交易日 {day}")
+    steps = (
+        ("日线", sc.daily_market, sc.get_daily_by_date_count),
+        ("指标", sc.daily_basic_market, sc.get_daily_basic_by_date_count),
+        ("复权因子", sc.adj_factor_market, sc.get_adj_factor_by_date_count),
+    )
+    for label, fetch, count in steps:
+        try:
+            fetch(day, silent=False)
+            n = count(day)
+            print(f"  {label}: {n:,} 行" if n else f"  {label}: 无数据（非交易日？）")
+        except Exception as e:
+            print(f"  {label}: 失败 {e}")
+    try:
+        sc.backfill_index_daily(start_date=day, end_date=day, codes=[IDX_CODE], silent=False)
+    except Exception as e:
+        print(f"  指数 {IDX_CODE}: 失败 {e}")
+
+
 def run_scan(df, uni, sb, args, default_date):
     """盘后扫描：对指定交易日跑落地规则，输出次日候选清单（不依赖未来数据）"""
     sdate = args.date or default_date
@@ -288,9 +311,13 @@ def main():
     ap.add_argument("--gap-max", type=float, default=GAP_MAX, help=f"缺口幅度上限，单位百分点（默认 {GAP_MAX}）")
     ap.add_argument("--scan", action="store_true", help="盘后扫描：输出指定交易日命中清单（不含未来收益）")
     ap.add_argument("--date", default="", help="扫描日 YYYYMMDD，默认取缓存最新交易日")
+    ap.add_argument("--update", action="store_true", help="先把目标交易日行情增量拉进本地缓存（幂等）")
     ap.add_argument("--dump", default="")
     ap.add_argument("--probe", action="store_true")
     args = ap.parse_args()
+
+    if args.update:
+        update_cache(args.date)
 
     conn = sqlite3.connect(DB)
 
