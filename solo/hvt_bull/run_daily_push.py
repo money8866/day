@@ -204,6 +204,46 @@ def _record_right_bottom_to_db(trade_date: str, report: dict):
         print(f'[RUN-PUSH] hvt_bull_rb 写入失败(不影响推送): {e}')
 
 
+def _record_midline_hold_to_db(trade_date: str, report: dict):
+    """中位低吸（全市场单列）独立落库：strategy_id=hvt_bull_mh
+
+    20261009 用户口径：HVT-BULL 新增「低吸分支」——与右底低吸并列的第二种低吸结构，
+    判定复用 W7 的 midline_hold（放量长阳 ≥7% + 其后缩量回踩不破半分位），全市场扫描、
+    流通市值≥50亿、且须基于 HVT 入选（近 40 个交易日内存在合格天量事件）。该池当日收盘
+    即低吸买点（现价即买区），故 action 统一记 'MIDLINE_HOLD'；与 hvt_bull_te（TE 执行池）/
+    hvt_bull_fe（第一梯队）/ hvt_bull_rb（右底低吸）互不混档。
+    stop_price 取结构失效位=长阳半分位（收盘跌破即离场）；其余中位低吸字段经 record_picks
+    自动打包进 indicators（不改表结构）。
+    """
+    if record_picks is None or not report:
+        return
+    try:
+        pool = report.get('mh_offpool_pool') or []
+        if not pool:
+            print('[RUN-PUSH] mh_offpool_pool 为空（当日无中位低吸），跳过落库')
+            return
+        rows = []
+        for i, it in enumerate(pool, 1):
+            try:
+                up = float(it.get('mid_day_pct') or 0.0)
+                volr = float(it.get('volr') or 0.0)
+                mve = float(it.get('circ_mv') or 0.0) / 10000.0
+            except (TypeError, ValueError):
+                up, volr, mve = 0.0, 0.0, 0.0
+            rows.append(dict(it, rank_no=i, action='MIDLINE_HOLD',
+                             stop_price=it.get('mid_line'),
+                             reason=(f"中位低吸：长阳日{it.get('mid_date')} 涨幅{up:.1f}%、"
+                                     f"缩量{volr:.2f}×长阳量、流通市值{mve:.1f}亿")))
+        if PICK_DB_PATH:
+            os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
+        n = record_picks('hvt_bull_mh', 'HVT-BULL 中位低吸（全市场单列）', rows,
+                         pick_date=trade_date)
+        print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
+              f'(strategy=hvt_bull_mh pick_date={trade_date})')
+    except Exception as e:
+        print(f'[RUN-PUSH] hvt_bull_mh 写入失败(不影响推送): {e}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--date', default=None)
@@ -218,6 +258,7 @@ def main():
     _record_picks_to_db(trade_date, report)
     _record_first_echelon_to_db(trade_date, report)
     _record_right_bottom_to_db(trade_date, report)
+    _record_midline_hold_to_db(trade_date, report)
     push_daily_report(trade_date=trade_date)
 
 

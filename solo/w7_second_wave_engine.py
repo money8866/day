@@ -35,6 +35,12 @@ W7_THEME_WATCH_CAP = 20  # 报告「热点主题新增跟踪」节展示上限�
 # 确认日当日即视为有效买点（旁路 <5 根K线等待期与 major_risk 的早期误判）。仅限事件后
 # 早期窗口，且真实放量突破（BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION）仍优先。
 T0_CONFIRM_MAX_BARS = 10
+# 20261008 用户口径「T0 日到买点信号之间一定要有大阴线大阳线交织」：
+# 中间段（T0 之后、买点当日之前，不含两端）须至少各有 1 根大阳线与 1 根大阴线，剔除 T0 后
+# 单边阴跌（无大阳）/单边直上（无大阴）的平滑结构。仅作用于 T0 锚定的买点分支
+#（T0_CONFIRM/BREAKOUT_CONFIRM/SECOND_WAVE/RE_EXPANSION/BREAKOUT_RETEST）；
+# 无天量 T0 锚的 MIDLINE_HOLD/RIGHT_BOTTOM 不适用（其结构本就无关 T0 段）。
+BIG_BAR_PCT = 3.0  # 大阳线/大阴线：日涨跌幅阈值（%，正负同值）
 # 20260914 用户口径「天量T0 → 放量突破 → 缩量回踩买点」门槛（移远通信 603236.SH：
 # 8/14 天量T0(P99, 3.83×量) → 8/31 放量涨停突破日 → 9/3 起缩量、9/9 回踩至突破日收盘附近不破 = 买点）
 BREAKOUT_DAY_PCT = 5.0  # 放量突破日：强势阳线涨幅下限（涨停/大涨）
@@ -84,6 +90,10 @@ RIGHT_BOTTOM_LOOKBACK = 60    # 计算前波涨幅的回看窗口（根）
 RIGHT_BOTTOM_PRIOR_RISE = 0.25  # 前波涨幅下限（H0 前 LOOKBACK 内最低 → H0；与长期口径「≥25% 才算趋势确认」一致）
 RIGHT_BOTTOM_PULLBACK = 0.10  # H0 → L1 回落下限（左底须是真实回调）
 RIGHT_BOTTOM_REBOUND = 0.08   # L1 → M 反弹下限（颈线成立）
+# 20261010 用户口径「二波（L1→M 中间反弹）量能太少 → 双底失效」：中间反弹段须有放量承接，
+# 段内最大量比 ≥ 本阈才算真二波；纯缩量反抽（价格反弹但全程不放量）视为无量二波，双底不成立。
+# 与 W7_VOL_CONFIRM（1.2）同口径。典型样本：美格智能 002881.SZ（0914~0922 反弹 +22%，段内最大量比仅 1.07）。
+RIGHT_BOTTOM_REBOUND_VOLR = 1.2  # 二波放量：L1→M 段内最大量比 ≥1.2
 RIGHT_BOTTOM_TOL_LO = 0.02    # 不破左底：low[T] ≥ L1×(1-2%)
 RIGHT_BOTTOM_TOL_HI = 0.08    # 右底不高出左底太多：low[T] ≤ L1×(1+8%)（超出即为「回踩不到位」，非同一底）
 RIGHT_BOTTOM_RETRACE = 0.10   # 自 M 的回撤下限
@@ -633,13 +643,17 @@ def extreme_event(df, i, window=None):
     # window=None：V5 主口径——事件日前 120 日分位（HVT-V3 规格：成交量≥120日99%分位；量能+成交额双≥P99）
     # window=250：锚点口径——事件日前 250 日分位（与锚点识别时的历史口径一致）
     # 20261001 用户口径（两项变更）：
-    #   ① 天量判定不再比换手率，改比成交金额：换手率维度整维替换为 amount（成交额），
-    #      仍保留 vol（成交量）维度；两维历史分位双 ≥ P99。
+    #   ① 天量判定第二维改比成交金额：换手率维度由 amount（成交额）承担，仍保留 vol（成交量）维度。
     #   ② 天量标志日前一日涨幅 > 10% 时，当日方向豁免（不再要求收阳）；
     #      豁免只免方向、保留「不烂尾」底线：T0 不跌停 且 收盘位置 ≥ 0.30（防巨量大阴线）。
     #   原口径（20260930）：须收阳（close>open），巨量大阴线不计入极端换手事件。
     #   案例：300458 全志科技 7/30 巨量 -19.93% 阴线原被锚为 T0（锚点 P99@20260730），
     #   加「须收阳」后 7/30 被剔除，最近一簇回退到 7/22 放量长阳（+11.14%，量能更大）。
+    # 20261009 用户口径「恢复换手率维度」：第二维改为「成交额 P99 或 换手率 P99」的并集。
+    #   20261001 整维替换后，中红医疗 300981 的 20260730（换手/量双 P99、成交额仅 98.3 分位）
+    #   失去 T0 锚 → find_event_anchor 返回 None → analyze() 提前 return None，连带屏蔽了
+    #   本应独立于 T0 锚的 MIDLINE_HOLD / RIGHT_BOTTOM 分支（该分支注释即以此为对标样本）。
+    #   故保留 20261001 的成交额维度，同时恢复换手率维度，使旧锚点重新进入候选。
     window = 120 if window is None else window
     start = i - window
     if start < 0 or i - start < min(window, MIN_BARS):
@@ -657,12 +671,24 @@ def extreme_event(df, i, window=None):
         return False, 0.0
     amt = finite(row.amount)
     vol = finite(row.vol)
+    turn = finite(row.get("turnover_rate")) if "turnover_rate" in df.columns else 0.0
     amts = pd.to_numeric(df.amount.iloc[start:i], errors="coerce").fillna(0).values
     vols = pd.to_numeric(df.vol.iloc[start:i], errors="coerce").fillna(0).values
     p_amt = percentile_rank(amts, amt)
     p_vol = percentile_rank(vols, vol)
+    p_turn = 0.0
+    if turn > 0:
+        turns = pd.to_numeric(df.turnover_rate.iloc[start:i], errors="coerce").fillna(0).values
+        p_turn = percentile_rank(turns, turn)
     # V4.3→V5：OR≥P98 命中面过大 → AND≥P99；窗口由全历史改为 120 日（规格口径）
-    return min(p_amt, p_vol) >= MAIN_EVENT_PCT, max(p_amt, p_vol)
+    # 20261009：必要条件 = 成交量 P99；第二维取「成交额 P99 或 换手率 P99」并集（见上方口径注释）
+    if p_vol < MAIN_EVENT_PCT:
+        return False, 0.0
+    if p_amt >= MAIN_EVENT_PCT:
+        return True, max(p_amt, p_vol)
+    if p_turn >= MAIN_EVENT_PCT:
+        return True, max(p_turn, p_vol)
+    return False, 0.0
 
 
 def extreme_cluster_anchor(df, candidates, merge_gap=2):
@@ -924,6 +950,15 @@ def right_bottom(df, end):
         return False, None
     if lows[l1] <= 0 or highs[m] / lows[l1] - 1 < RIGHT_BOTTOM_REBOUND:
         return False, None
+    # ③b 二波放量（20261010 用户口径）：L1→M 中间反弹段须有放量承接（段内最大量比 ≥ RIGHT_BOTTOM_REBOUND_VOLR），
+    #     否则即「二波量能太少」的缩量反抽 → 双底失效，直接剔除。
+    v20 = safe_mean(df.vol.iloc[max(0, end - 20):end])
+    if v20 <= 0:
+        return False, None
+    seg_vol = df.vol.iloc[l1:m + 1].to_numpy(dtype=float)
+    seg_vol = seg_vol[np.isfinite(seg_vol)]
+    if seg_vol.size == 0 or seg_vol.max() < v20 * RIGHT_BOTTOM_REBOUND_VOLR:
+        return False, None
     if lows[end] > lows[max(0, end - RIGHT_BOTTOM_NEAR + 1):end + 1].min() + 1e-9:
         return False, None
     if lows[end] < lows[l1] * (1 - RIGHT_BOTTOM_TOL_LO):
@@ -932,8 +967,7 @@ def right_bottom(df, end):
         return False, None
     if highs[m] <= 0 or 1 - lows[end] / highs[m] < RIGHT_BOTTOM_RETRACE:
         return False, None
-    v20 = safe_mean(df.vol.iloc[max(0, end - 20):end])
-    if v20 <= 0 or finite(df.iloc[end].vol) > v20 * RIGHT_BOTTOM_VOL_DRYUP:
+    if finite(df.iloc[end].vol) > v20 * RIGHT_BOTTOM_VOL_DRYUP:
         return False, None
     ma10 = finite(df.iloc[end].ma_bfq_10, 0.0)
     ma60 = finite(df.iloc[end].ma_bfq_60, 0.0)
@@ -954,6 +988,24 @@ def right_bottom(df, end):
     }
 
 
+def big_bar_alt(df, event_idx, end):
+    """20261008 用户口径：T0(event_idx) 到买点日(end) 之间须「大阴线/大阳线交织」。
+
+    只考察中间段（T0 之后、买点当日之前，不含两端）：至少各有 1 根大阳线（pct_chg ≥ BIG_BAR_PCT）
+    与 1 根大阴线（pct_chg ≤ -BIG_BAR_PCT）；段长不足（≤2 根）无法交织时返回 False。
+    """
+    if end - event_idx <= 2:
+        return False
+    seg = df.iloc[event_idx + 1:end]
+    if len(seg) == 0:
+        return False
+    pc = seg["pct_chg"].to_numpy(dtype=float)
+    fin = pc[np.isfinite(pc)]
+    if fin.size == 0:
+        return False
+    return bool((fin >= BIG_BAR_PCT).any()) and bool((fin <= -BIG_BAR_PCT).any())
+
+
 def state_and_features(df, event_idx, event_percentile, end=None):
     end = len(df) - 1 if end is None else min(end, len(df) - 1)
     base = behavior_features(df, event_idx, event_percentile, end=end)
@@ -963,6 +1015,8 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     event_close = base["event_close"]
     core = base["core"]
     post = df.iloc[event_idx + 1:end + 1]
+    # 20261008 用户口径：T0 到买点当日之间须大阴线/大阳线交织（仅约束下方 T0 锚定买点分支）
+    alt_ok = big_bar_alt(df, event_idx, end)
     recent = df.iloc[max(event_idx + 1, end - 4):end + 1]
     down = post[post.close < post.open]
     ratios = post.vol / finite(event.vol, 1)
@@ -1036,18 +1090,18 @@ def state_and_features(df, event_idx, event_percentile, end=None):
     if len(post) < 5 and not t0_hold:
         # V4.2 放宽：事件太新不判死，仅持续放量抛压标记观察；其余等待验证期
         state = "FAILED" if persistent_sell else "EXTREME_CHURN"
-    elif breakout and len(post) >= 5 and (pp_ok or reexp) and base["lock"] >= 70:
+    elif breakout and len(post) >= 5 and (pp_ok or reexp) and base["lock"] >= 70 and alt_ok:
         state = "SECOND_WAVE"
-    elif breakout or reexp:
+    elif (breakout or reexp) and alt_ok:
         # V4.2 修复突破：重新放量突破压力位即算有效信号（优先于 FAILED/DISTRIBUTION）
         state = "BREAKOUT_CONFIRM" if breakout else "RE_EXPANSION"
-    elif t0_hold:
+    elif t0_hold and alt_ok:
         # 20260909：T0 天量锚定 + 重夺站稳≥2根 → 确认日当日有效买点（旁路等待期/派发误判）
         state = "T0_CONFIRM"
-    elif breakout_now:
+    elif breakout_now and alt_ok:
         # 20260914：放量突破日当日（强势阳线≥5% + 量≥1.3×20日均量 + 站上 T0 收盘线/近10日新高）
         state = "BREAKOUT_CONFIRM"
-    elif retest:
+    elif retest and alt_ok:
         # 20260914：放量突破后缩量回踩，回踩期每个交易日均为有效买点
         state = "BREAKOUT_RETEST"
     elif midhold:

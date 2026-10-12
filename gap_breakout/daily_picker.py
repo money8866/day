@@ -43,11 +43,19 @@ P = {
     "gap_min": 0.8,              # 最小缺口幅度(%)
     "gap_max": 9.0,              # 最大缺口幅度(%)
     # 条件①量比（回测最强者，方向是「缩量」）
-    # 阈值经细分档位回测校准：<1.5 档 +3.58%/胜率56.6%，1.5~2.0 档仅 +1.03%/胜率40.1%。
-    # 原定 2.0 过宽，纳入大量弱档，现收紧到 1.5。
+    # 阈值经细分档位回测校准。极缩量(<0.6)是六时段全部最优的档位：
+    #   量比区间      笔数    均收益   胜率
+    #   0~0.6 极缩     848    +8.89%   59.8%   ← 最优，六个独立时段全部第一
+    #   0.6~0.9       1019    +2.61%   58.1%
+    #   0.9~1.2       1525    +2.44%   57.4%
+    #   1.2~1.5       1277    +2.18%   52.2%
+    #   1.5~1.7        636    +1.38%   41.2%
+    #   1.7~2.0        792    +0.75%   39.1%
+    # 收益与胜率随量比单调递减，故阈值收紧（2.0 → 1.5），并对极缩量单独加分。
     "vol_lookback": 20,          # 均量回溯交易日
-    "vol_ratio_max": 1.5,        # 量比上限（收紧：1.5~2.0 档胜率仅40%）
-    "vol_ratio_strong": 1.0,     # 强确认档（<1.0 为极缩量，历史最优）
+    "vol_ratio_max": 1.5,        # 硬门槛：量比上限，超过即淘汰
+    "vol_ratio_extreme": 0.6,    # 极缩量阈值：此档六时段全部最优，额外加分
+    "vol_ratio_strong": 1.0,     # 强确认档（<1.0）
     # 条件②大盘
     "mkt_code_sina": "sh000852",     # 中证1000（风格匹配）
     "mkt_code_tencent": "sh000852",
@@ -304,17 +312,21 @@ def pick(market: list[dict], mkt: dict[str, Any],
         stop = round(prev_high * (1 - P["stop_buffer"] / 100), 2)
         r1 = q["close"] - prev_high
         gap_type = "突破缺口" if gap >= 2.0 else "持续缺口"
-        if vol_ratio < 0.6:
+
+        # 量比分档（对应回测档位）
+        if vol_ratio < P["vol_ratio_extreme"]:
             vol_level = "极缩量(最优)"
-        elif vol_ratio < 1.0:
+        elif vol_ratio < 0.9:
             vol_level = "很缩(优)"
         elif vol_ratio < P["vol_ratio_strong"]:
             vol_level = "缩量(良)"
         else:
             vol_level = "偏缩(弱)"
 
-        # 打分：量比越低越好（回测单调递减），缺口适中最好
-        vol_s = max(0, (P["vol_ratio_max"] - vol_ratio) / P["vol_ratio_max"] * 45)
+        # 打分：量比越低越好（回测单调递减），极缩量额外加分
+        vol_s = max(0, (P["vol_ratio_max"] - vol_ratio) / P["vol_ratio_max"] * 35)
+        if vol_ratio < P["vol_ratio_extreme"]:
+            vol_s += 15          # 极缩量：六时段全部最优，单独加分
         gap_s = 25 if 1.5 <= gap <= 4 else max(0, 25 - abs(gap - 2.5) * 8)
         cap_s = 20 if 30 <= q["float_cap"] / 1e8 <= 500 else 10
         hard_s = 10 if not any(t in q["name"] for t in ("ST", "退")) else 0
@@ -334,6 +346,8 @@ def pick(market: list[dict], mkt: dict[str, Any],
             print(f"    ... 已通过 {len(cands)} 只（{time.time()-t0:.0f}s）")
 
     cands.sort(key=lambda x: -x.score)      # Pick 是 dataclass，须用属性访问
+    # 极缩量优先：六时段全部最优，排在最前
+    cands.sort(key=lambda x: (0 if x.vol_ratio < P["vol_ratio_extreme"] else 1, -x.score))
     top = cands[:P["max_picks"]]
 
     print(f"\n  淘汰明细：无缺口 {stats['no_gap']}，缺口过小 {stats['gap_small']}，"
@@ -342,6 +356,16 @@ def pick(market: list[dict], mkt: dict[str, Any],
           f"成交额不足 {stats['amount']}，涨停剔除 {stats['limit']}，"
           f"基金剔除 {stats['fund']}，K线异常 {stats['kline_err']}")
     print(f"  耗时 {time.time() - t0:.0f}s")
+    # 缺口命中但被量比卡掉的明细，便于判断是「没机会」还是「门槛太严」
+    gap_ok = stats["pass"] + stats["vol_fail"]
+    if stats["pass"] == 0:
+        if gap_ok == 0:
+            print(f"\n  ⓘ 全市场当日无符合条件的上跳缺口（精确命中 0 只）")
+            print(f"     → 属正常现象：跳空信号本身每日仅数只，不必每日有输出")
+        else:
+            print(f"\n  ⓘ 有 {gap_ok} 只命中缺口，但量比均 ≥ "
+                  f"{P['vol_ratio_max']}（放量剔除），无缩量标的")
+            print(f"     → 今日属「有缺口但无缩量」，选择空仓")
 
     # ---- 输出
     can_trade = mkt["pass"] and bool(top)
@@ -351,11 +375,16 @@ def pick(market: list[dict], mkt: dict[str, Any],
     elif not top:
         print("  无符合条件的标的 → 今日空仓")
     else:
+        extreme = [c for c in top if c.vol_ratio < P["vol_ratio_extreme"]]
         state = "✅ 可开仓" if can_trade else "⛔ 今日空仓"
         print(f"  候选池（通过缺口+缩量：{len(cands)} 只，展示前 {len(top)}）  {state}")
+        if extreme:
+            print(f"  ★ 极缩量（量比<{P['vol_ratio_extreme']}，六时段最优档）：{len(extreme)} 只")
         print("=" * 72)
         for i, c in enumerate(top, 1):
-            print(f"\n  【{i}】{c.name}({c.code})  {c.score} 分   {c.gap_type} · {c.vol_level}")
+            star = "★" if c.vol_ratio < P["vol_ratio_extreme"] else " "
+            print(f"\n  {star}【{i}】{c.name}({c.code})  {c.score} 分   "
+                  f"{c.gap_type} · {c.vol_level}")
             print(f"       现价 {c.close}（{c.pct:+.2f}%）  缺口 {c.gap_pct}%  "
                   f"量比 {c.vol_ratio}")
             print(f"       成交额 {c.amount_yi}亿  流通市值 {c.float_cap_yi}亿")
@@ -384,8 +413,19 @@ def main() -> None:
     ap.add_argument("-d", "--date", help="交易日（仅记录用，实时接口取最新）")
     ap.add_argument("--json", help="导出结果 JSON")
     ap.add_argument("--no-trade", action="store_true", help="只做大盘体检")
+    ap.add_argument("--extreme-only", action="store_true",
+                    help="只输出极缩量（量比<%.1f）标的" % P["vol_ratio_extreme"])
+    ap.add_argument("--max-vol", type=float, help="覆盖量比上限（默认 %.1f）"
+                    % P["vol_ratio_max"])
     a = ap.parse_args()
     try:
+        if a.extreme_only:
+            # 只保留极缩量：把硬门槛压到极缩量阈值
+            P["vol_ratio_max"] = P["vol_ratio_extreme"]
+            print(f"[模式] 仅极缩量：量比 < {P['vol_ratio_extreme']}（六时段最优档）")
+        if a.max_vol:
+            P["vol_ratio_max"] = a.max_vol
+            print(f"[模式] 量比上限覆盖为 {a.max_vol}")
         mkt = market_gate()
         if a.no_trade:
             print("=" * 72)

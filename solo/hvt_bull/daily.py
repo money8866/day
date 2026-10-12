@@ -423,6 +423,85 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
             print(f"[HVT-BULL] 右底低吸 {len(rb_extra)} 只: "
                   f"{[x['ts_code'] for x in rb_extra]}")
 
+    # 中位低吸（MIDLINE_HOLD）：20261009 新增「低吸分支」——与右底低吸（RIGHT_BOTTOM）并列的
+    # 第二种低吸结构，判定直接复用 W7 的 midline_hold（近 10 根内放量长阳≥7% + 其后缩量回踩、
+    # 收盘不破长阳半分位、未拉开且未创长阳新高）。与右底低吸同口径：全市场扫描、流通市值≥50亿、
+    # 且须「基于 HVT 入选」——近 40 个交易日内存在合格天量事件（detect_hvt + 天量日价格强度）；
+    # 低吸买点不套用主通道硬否决（DISTRIBUTION/突破失败等门槛针对突破交易）。
+    # 命中单列成节（报告「J. 中位低吸信号」）并同步跟踪池（strategy_id=hvt_bull_mh）。
+    # 典型样本：中红医疗 300981.SZ（W7 侧 20260924~0926 的 MIDLINE_HOLD 即源于此分支）。
+    mh_extra = []
+    try:
+        from w7_second_wave_engine import (midline_hold as _w7_midline_hold,
+                                           _fill_ma_columns as _w7_fill_ma)
+    except Exception as _imp_err:
+        print(f"[HVT-BULL] 中位低吸判定不可用（{_imp_err}），跳过扫描")
+        _w7_midline_hold = None
+    if _w7_midline_hold is not None:
+        MH_MIN_CIRC_MV = 500_000.0  # 万元：流通市值 ≥50亿，与 W7 / 右底低吸同口径
+        _n_mh_geo = 0   # 通过中位低吸几何的标的数
+        _n_mh_hvt = 0   # 其中进一步满足 HVT 天量入选的
+        for u in uni:
+            code = u['ts_code']
+            _circ = u.get('circ_mv')
+            _mv = _circ if (_circ is not None and np.isfinite(_circ)) else u.get('total_mv')
+            if _mv is None or not np.isfinite(_mv) or float(_mv) < MH_MIN_CIRC_MV:
+                continue
+            df = loader.load(code, rb_start_date, trade_date)
+            # midline_hold 需 MIDLINE_NH60=60 的历史最高价 + 前20日均量，留足 90 根
+            if df is None or len(df) < 90:
+                continue
+            df = df.reset_index(drop=True)
+            ok, _bj = _w7_midline_hold(_w7_fill_ma(df), len(df) - 1)
+            if not ok or _bj < 0:
+                continue
+            _n_mh_geo += 1
+            # HVT 天量入选（与右底低吸同口径）：近 40 个交易日内须存在合格天量事件；
+            # 排名/分位/锚点口径依赖锚点日以来全历史，故按 hist_start 重新加载。
+            dfx = loader.load(code, hist_start, trade_date)
+            if dfx is None or len(dfx) < 260:
+                continue
+            dfx = dfx.reset_index(drop=True)
+            _end = len(dfx) - 1
+            _s0 = int(dfx['trade_date'].searchsorted(win_start_date, side='left'))
+            _ev = None
+            for _idx in range(_end, max(60, _s0) - 1, -1):
+                if str(dfx['trade_date'].iloc[_idx]) > trade_date:
+                    continue
+                _cand = engine.detect_hvt(dfx, _idx)
+                if _cand is None:
+                    continue
+                engine.evaluate_event(dfx, _cand)
+                if not engine.price_strength_ok(_cand):
+                    continue
+                _ev = _cand
+                break
+            if _ev is None:
+                continue
+            _n_mh_hvt += 1
+            _b = df.iloc[_bj]
+            _b_high, _b_low = float(_b['high']), float(_b['low'])
+            mh_extra.append({
+                'ts_code': code, 'name': u['name'],
+                'close': float(df.iloc[-1]['close']),
+                'total_mv': u.get('total_mv'), 'circ_mv': u.get('circ_mv'),
+                'mid_date': str(_b['trade_date']), 'mid_close': float(_b['close']),
+                'mid_high': _b_high, 'mid_low': _b_low,
+                'mid_line': (_b_high + _b_low) / 2.0,
+                'mid_day_pct': float(_b['pct_chg']),
+                'volr': float(df.iloc[-1]['vol']) / max(float(_b['vol']), 1e-9),
+                'mh_offpool': True,
+                't0_date': str(_ev.t0_date), 't0_grade': str(_ev.hvt_grade),
+            })
+        if _n_mh_geo:
+            print(f"[HVT-BULL] 中位低吸：几何命中 {_n_mh_geo} 只 → "
+                  f"满足 HVT 天量入选 {_n_mh_hvt} 只")
+        # 长阳日越新越优先（同日内长阳涨幅越大越强）：跨日稳定
+        mh_extra.sort(key=lambda x: (x['mid_date'], x['mid_day_pct']), reverse=True)
+        if mh_extra:
+            print(f"[HVT-BULL] 中位低吸 {len(mh_extra)} 只: "
+                  f"{[x['ts_code'] for x in mh_extra]}")
+
     if v3_enabled:
         # V3 排序原则（V3§22）：TAIL > 期望收益 > ENTRY > 风险收益比 > 市场
         events.sort(key=lambda e: (-e.tail_score, -e.expansion_score, -e.entry_score, -e.score))
@@ -466,6 +545,11 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     if rb_extra:
         result['rb_offpool_pool'] = rb_extra
         result['n_rb_offpool'] = len(rb_extra)
+    # 20261009：中位低吸（MIDLINE_HOLD，全市场单列）落盘。与 rb_offpool 同构，
+    # 供 run_daily_push 落 stock_pick_db strategy_id=hvt_bull_mh、报告「J.」节引用。
+    if mh_extra:
+        result['mh_offpool_pool'] = mh_extra
+        result['n_mh_offpool'] = len(mh_extra)
     if te_enabled:
         result['te_enabled'] = True
         result['te_max_buy'] = int(te_cfg.get('max_buy_candidates', 3))
@@ -864,6 +948,9 @@ def _render_md(result: dict, all_events, detail_events, theme_meta=None) -> str:
     # ========== I. 右底低吸信号（20261002 单列·全市场，20261008 删除龙头池阀门） ==========
     lines.extend(_render_right_bottom(result))
 
+    # ========== J. 中位低吸信号（20261009 单列·全市场） ==========
+    lines.extend(_render_midline_hold(result))
+
     # ========== 全部事件明细（含 V3 双评分分解） ==========
     lines.append('## 全部事件明细（按 TAIL > EXPANSION > ENTRY > HVT分 排序）')
     lines.append('')
@@ -1012,6 +1099,52 @@ def _render_right_bottom(result: dict) -> list:
     lines.append('')
     lines.append('操作：右底低吸买点，可按计划分批建仓；放量（量比≥1.2）站上颈线＝转突破/二波，可加仓。'
                  '失效：收盘跌破左底（前低）离场。')
+    lines.append('')
+    return lines
+
+
+def _render_midline_hold(result: dict) -> list:
+    """中位低吸信号（20261009 单列节）。
+
+    判定复用 W7 的 `w7_second_wave_engine.midline_hold`（口径完全一致）：近 10 根内放量长阳
+    （收阳、涨幅≥7%、量≥1.3×前20日均量、收盘位于振幅上1/3、且收盘≥前60根最高价）之后的缩量回踩
+    （≤0.6×长阳量）、收盘不破长阳半分位、未创长阳新高且未拉开（≤长阳收盘×1.10）当日即低吸买点。
+    该形态 20261009 起对**全市场**扫描，且同右底低吸——**必须基于 HVT 入选**：须近 40 个交易日内
+    存在合格天量事件（detect_hvt + 天量日价格强度），故表中附 T0（天量日）；低吸买点不套用主通道
+    硬否决。命中一并列示并同步跟踪池（strategy_id=hvt_bull_mh）。数据源：result['mh_offpool_pool']。
+    """
+    pool = result.get('mh_offpool_pool') or []
+    if not pool:
+        return []
+    lines = [f'## J. 中位低吸信号｜HVT-BULL-MIDLINE_HOLD（单列 · 全市场，{len(pool)}只）', '']
+    lines.append('说明：放量长阳突破平台后缩量回踩，收盘不破长阳半分位＝中位低吸买点；'
+                 '现价未创长阳新高、未拉开（≤长阳收盘×1.10）。本节为**全市场**独立扫描结果，'
+                 '市值门槛与 W7 同口径（流通市值≥50亿）；并**基于 HVT 入选**——须近 40 个交易日内'
+                 '存在合格天量事件（T0，天量日价格强度合格；低吸买点不套用主通道硬否决），'
+                 '已同步跟踪池 hvt_bull_mh。')
+    lines.append('')
+    lines.append('| # | 代码 | 名称 | 现价 | 长阳日 | 长阳涨幅 | 长阳收盘 | 中位(半分位) | 量比 | T0(天量日) | 流通市值(亿) |')
+    lines.append('|---|---|---|---|---|---|---|---|---|---|---|')
+    for i, x in enumerate(pool, 1):
+        def _n(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return 0.0
+        _circ = x.get('circ_mv')
+        _circ_e = (_n(_circ) / 10000.0) if (_circ is not None and _n(_circ) > 0) else None
+        _t0 = str(x.get('t0_date') or '-')
+        _t0g = str(x.get('t0_grade') or '')
+        _t0c = f"{_t0}({_t0g})" if (_t0g and _t0 != '-') else _t0
+        lines.append(f"| {i} | {x.get('ts_code')} | {x.get('name')} | {_n(x.get('close')):.2f} "
+                     f"| {x.get('mid_date')} | {_n(x.get('mid_day_pct')):.1f}% "
+                     f"| {_n(x.get('mid_close')):.2f} | {_n(x.get('mid_line')):.2f} "
+                     f"| ×{_n(x.get('volr')):.2f} "
+                     f"| {_t0c} "
+                     f"| {('%.1f' % _circ_e) if _circ_e else '-'} |")
+    lines.append('')
+    lines.append('操作：中位低吸买点，可按计划分批建仓；放量（量比≥1.2）站上长阳高点＝转突破/二波，可加仓。'
+                 '失效：收盘跌破中位（半分位）离场。')
     lines.append('')
     return lines
 

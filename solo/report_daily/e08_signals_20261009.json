@@ -1,0 +1,48 @@
+{
+ "trade_date": "20261009",
+ "universe": 2092,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688608.SH",
+   "name": "恒玄科技",
+   "date_t0": "20260922",
+   "days_pullback": 7,
+   "gap": 0.03,
+   "gap_top": 104.85,
+   "break_price": 118.98,
+   "total_mv_wan": 2597218.0,
+   "vol_avg_ratio": 0.357,
+   "earliest_in": 1,
+   "latest_in": 0
+  },
+  {
+   "code": "688018.SH",
+   "name": "乐鑫科技",
+   "date_t0": "20260922",
+   "days_pullback": 7,
+   "gap": 0.0127,
+   "gap_top": 113.17,
+   "break_price": 125.85,
+   "total_mv_wan": 2739952.0,
+   "vol_avg_ratio": 0.445,
+   "earliest_in": 1,
+   "latest_in": 0
+  }
+ ],
+ "early": [
+  {
+   "code": "300072.SZ",
+   "name": "海新能科",
+   "date_t0": "20261008",
+   "days_pullback": 1,
+   "gap": 0.0116,
+   "gap_top": 3.45,
+   "break_price": 3.95,
+   "total_mv_wan": 895243.0,
+   "vol_avg_ratio": 0.567,
+   "earliest_in": 2,
+   "latest_in": 6
+  }
+ ]
+}
