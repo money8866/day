@@ -48,6 +48,39 @@ def _watch_rows(pool) -> list:
     return [dict(it, rank_no=i + 1) for i, it in enumerate(kept)]
 
 
+# ── 20261014 第一梯队落库质量门（依据 _fe_ret_analysis.py 对 70 条 fe_watch 跟踪记录的分类收益率分析）──
+# ① SKIP 剔除：12 条 3日 -4.46%、止损率 83%，引擎硬风控已否决（突破失效），不构成任何买点；
+# ② HVT 等级只留 A：A 档 3日 +0.24% vs B -5.35%（止损率69%）、C -6.49%（10日 -20%）；
+# ③ 执行分 ≥75：唯一正期望档（3日 +2.82%/胜67%）vs 70~75 -4.62%、<70 -5.22%（止损率88%）。
+# 三道全过才落库（宁缺毋滥，与第一梯队定位一致）。离线验证：70 条历史门后保留 11 条
+# 3日 +7.24%（胜88%）、止损率 0%、maxDD 2.8%；门外 59 条 3日 -5.02%（胜20%）。
+# 报告「★ 第一梯队重点解读」展示口径不变，仅落库/跟踪口径收窄。
+FE_GATE_HVT_GRADES = ('A',)
+FE_GATE_MIN_EXEC = 75.0
+
+
+def _fe_gate_rows(pool) -> tuple:
+    """第一梯队落库质量门：返回 (通过行, [(淘汰行, 原因)])"""
+    kept, dropped = [], []
+    for it in pool:
+        nda = (it.get('next_day_action') or '')
+        st = (it.get('execution_state') or '')
+        try:
+            exec_s = float(it.get('execution_score') or 0.0)
+        except (TypeError, ValueError):
+            exec_s = 0.0
+        hg = (it.get('hvt_grade') or '').upper()
+        if 'SKIP' in nda or 'SKIP' in st:
+            dropped.append((it, 'SKIP硬风控已否决（历史止损率83%）'))
+        elif hg not in FE_GATE_HVT_GRADES:
+            dropped.append((it, f'HVT等级{hg or "?"}非A（历史B/C 3日-5.4%/-6.5%）'))
+        elif exec_s < FE_GATE_MIN_EXEC:
+            dropped.append((it, f'执行分{exec_s:.1f}<75（历史<75档3日-4.6%~-5.2%）'))
+        else:
+            kept.append(it)
+    return kept, dropped
+
+
 def _ensure_data(trade_date: str):
     """三张普通日线缓存表（daily / daily_basic / adj_factor）当日数据不足时自动补全
 
@@ -134,6 +167,10 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
     NO_CHASE/WAIT 档，唯一可执行的 BUY_ON_CONFIRM 只有 +1.31%）。两个 id 各自
     档位同质，与 hvt_bull_te（执行池）也各自独立；档位值仍保留在 action 列。
     结构成立与否看报告「★ 第一梯队重点解读」。
+
+    20261014 落库质量门（_fe_gate_rows）：①剔除 SKIP ②HVT 等级只留 A ③执行分≥75，
+    三道全过才落库；报告展示口径不变。落库改 replace=True：质量门使当日池缩小的
+    重跑场景，被剔除标的须从 stock_pick 与 pick_tracking 一并清除（含门后为 0 的日期）。
     """
     if record_picks is None or not report:
         return
@@ -142,16 +179,21 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
         if not pool:
             print('[RUN-PUSH] first_echelon_pool 为空（当日无第一梯队），跳过落库')
             return
+        kept, dropped = _fe_gate_rows(pool)
+        for it, why in dropped:
+            print(f"[RUN-PUSH] 第一梯队质量门剔除 {it.get('ts_code')} {it.get('name')} "
+                  f"({it.get('next_day_action') or '-'}/{it.get('execution_state') or '-'}/"
+                  f"HVT-{it.get('hvt_grade') or '?'}/exec{it.get('execution_score')}): {why}")
+        print(f"[RUN-PUSH] 第一梯队质量门: {len(pool)} → {len(kept)} 只（拦下 {len(dropped)} 只）")
+        pool = kept
         if PICK_DB_PATH:
             os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
         for sid, sname, rows in (
             ('hvt_bull_fe', 'HVT-BULL 第一梯队·可执行档', _executable_rows(pool)),
             ('hvt_bull_fe_watch', 'HVT-BULL 第一梯队·结构观察档', _watch_rows(pool)),
         ):
-            if not rows:
-                print(f'[RUN-PUSH] {sid} 当日无可落库档位，跳过')
-                continue
-            n = record_picks(sid, sname, rows, pick_date=trade_date,
+            # 20261014：replace=True —— 门后池（含空池）完整替换当日记录，旧残留一并清除
+            n = record_picks(sid, sname, rows, pick_date=trade_date, replace=True,
                              field_map={'next_day_action': 'action',
                                         'te_decision_point': 'signal',
                                         'execution_score': 'score',

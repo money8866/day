@@ -1,0 +1,21 @@
+{
+ "trade_date": "20261013",
+ "universe": 2078,
+ "signals": [],
+ "watch": [
+  {
+   "code": "300072.SZ",
+   "name": "海新能科",
+   "date_t0": "20261008",
+   "days_pullback": 3,
+   "gap": 0.0116,
+   "gap_top": 3.45,
+   "break_price": 3.95,
+   "total_mv_wan": 928140.0,
+   "vol_avg_ratio": 0.573,
+   "earliest_in": 1,
+   "latest_in": 4
+  }
+ ],
+ "early": []
+}

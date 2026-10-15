@@ -232,6 +232,8 @@ def record_picks(strategy_id, strategy_name='', picks=(), pick_date=None, field_
       (pick_date, strategy_id) 下「本次未出现」的旧记录从 stock_pick 及派生的
       pick_tracking 中删除。用于当日信号池会缩小的场景（如 VSW 下蹲池新增剔除门槛后），
       避免被剔除标的仍残留在库/网页。默认 False 时不删任何旧行。
+      20261014：replace=True 且 picks 为空时，清空该 (pick_date, strategy_id) 全部旧记录
+      （replace 语义 = 当日池完整替换为本次结果，包括空）。
     """
     if pick_date is None:
         pick_date = date.today().strftime('%Y%m%d')
@@ -267,6 +269,14 @@ def record_picks(strategy_id, strategy_name='', picks=(), pick_date=None, field_
             continue
         rows.append(row)
     if not rows:
+        if replace:
+            # replace=True 且本次为空：清空该 (pick_date, strategy_id) 全部旧记录。
+            # 20261014：当日信号池被质量门收缩为 0 的重跑场景，旧行同样须清除
+            # （replace 语义 = 当日池完整替换为本次结果，包括空）。
+            with get_conn() as conn:
+                for tbl in ("stock_pick", "pick_tracking"):
+                    conn.execute("DELETE FROM %s WHERE pick_date=? AND strategy_id=?"
+                                 % tbl, [pick_date, strategy_id])
         return 0
     with get_conn() as conn:
         conn.executemany("""

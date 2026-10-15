@@ -265,6 +265,24 @@ FIN_GATE_OCF_YOY_F0 = -50.0   # F0③：经营现金流同比下限（须同时�
 FIN_GATE_DT_YOY_F2 = 15.0     # F2①：扣非利润同比下限
 FIN_GATE_DB_PATH = r"D:\mystock\cache_daily\stock_data.db"   # fina_indicator_cache 所在库（= stock_cache.DB_PATH）
 
+# ===== 主题共振三段式（20261011 用户要求「主题匹配非常重要」）=====
+# 用「前 20 个交易日主题热度」（theme_heat_v24 的 month_heat，WIN_MONTH=20）对下蹲票做三段式分层，
+# 数据源 report_daily/theme_heat_v24_{date}.json（as-of ≤ 决策日最近一期，防未来函数），零新增数据源：
+#   ① 前20日热度 TOP-N 主题 → ⭐强优先：_squat_rank_key 第 0 键前置 + 报告/落库标注
+#   ② 其余（含无主题）→ 中性：不剔除，仅标注
+#   ③ 回避/退潮主题 → 剔除下蹲信号（theme_score_v2 的 ✕ 回避区，或 month_heat 环比骤降）
+# 说明：不做硬门槛（TOP-N 之外不剔除）——20261008 实测落库 20 只中 9 只无任何主题映射、
+#   且 TOP10 命中的 10 只已占一半；硬过滤会把池子砍半并误杀 超频三/千金药业 等强票。
+THEME_HEAT_TOP_N = 10         # 前20日热度(month_heat) TOP-N → ⭐强优先
+THEME_HEAT_FADE_DROP = 10.0   # month_heat 环比上期下降 ≥ 本值 → 判「退潮」剔除（%）
+
+# ===== L3 三级行业共振「第二通道」（20261011 用户要求：接 l3_resonance 作为主题共振的补充信号）=====
+# 数据源 report_daily/l3_resonance_{date}.json（l3_resonance_scanner.py 生成，as-of ≤ 决策日最近一期，防未来函数）。
+# 语义：下蹲票所属「申万三级行业」当日有 ≥2 家收盘涨停（scanner 默认 MIN_ZT=2，资金在行业内多点开花）→ 判「L3 共振」。
+#   - 只做「加优先」，不做任何剔除；与主题热度 TOP-N 通道并列进入「⭐强优先」池（_squat_rank_key 第 0 键）。
+#   - 个股→申万三级归属经 ige.data.build_universe(决策日) 取（零 API，cache-first）；缺失则本通道整体降级关闭。
+L3_RESONANCE_ENABLE = True
+
 
 def _mom_env(avg):
     """按三指数20日动量均值返回环境档位 (label, 回测胜率参考)"""
@@ -538,6 +556,178 @@ def _load_mainline_rotation_themes(trade_date):
                     'trade_signal': '回避',
                 }
     return themes
+
+
+def _load_theme_heat_asof(trade_date, skip=0):
+    """读取 report_daily/theme_heat_v24_{date}.json（as-of ≤ trade_date 最近一期）。
+
+    skip=0 → 最近一期；skip=1 → 再往前一期（供「退潮」环比判定）。
+    只认 8 位纯日期文件名，排除 theme_heat_v24_hc_* 人工复核层。缺失返回 {}。
+    返回 {主题: {'month_rank','month_heat','week_heat','today_heat'}}
+    """
+    import glob
+    cands = []
+    for p in glob.glob(os.path.join(BASE_DIR, 'report_daily', 'theme_heat_v24_*.json')):
+        d = os.path.basename(p)[len('theme_heat_v24_'):-len('.json')]
+        if not (len(d) == 8 and d.isdigit()):
+            continue
+        if trade_date and d > str(trade_date):
+            continue
+        cands.append((d, p))
+    if len(cands) <= skip:
+        return {}
+    cands.sort(key=lambda x: x[0])
+    path = cands[-1 - skip][1]
+    try:
+        with open(path, encoding='utf-8') as f:
+            rows = json.load(f)
+    except Exception:
+        return {}
+    out = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        t = r.get('theme')
+        if not t:
+            continue
+        out[str(t)] = {
+            'month_rank': int(r.get('month_rank') or 999),
+            'month_heat': float(r.get('month_heat') or 0.0),
+            'week_heat': float(r.get('week_heat') or 0.0),
+            'today_heat': float(r.get('today_heat') or 0.0),
+        }
+    return out
+
+
+def _theme_resonance_tier(trade_date, top_n=THEME_HEAT_TOP_N):
+    """主题共振三段式分层（20261011 用户要求）。返回 (hi_map, junk_map, meta)。
+
+    hi_map   = {ts_code: (主题名, month_rank, month_heat)}  该股任一主题进「前20日热度 TOP-N」
+    junk_map = {ts_code: 主题名}                             该股主题命中 回避(theme_score_v2 ✕) / 退潮(month_heat 环比骤降)
+    meta     = {'n_themes', 'top_themes', 'fade_themes'}
+    数据缺失一律返回空 map（fail-soft，不误杀任何票，调用方降级为「全部中性」）。
+    """
+    heat = _load_theme_heat_asof(trade_date, skip=0)
+    if not heat:
+        return {}, {}, {'n_themes': 0, 'top_themes': [], 'fade_themes': []}
+    prev = _load_theme_heat_asof(trade_date, skip=1)
+    # 退潮主题：month_heat 环比上期下降 >= THEME_HEAT_FADE_DROP
+    fade = set()
+    if prev:
+        for t, h in heat.items():
+            if t in prev and (prev[t]['month_heat'] - h['month_heat']) >= THEME_HEAT_FADE_DROP:
+                fade.add(t)
+    # 回避主题：theme_score_v2 的 ✕ 回避区 / 退潮/降温 阶段
+    junk = set()
+    try:
+        for t, r in _load_mainline_rotation_themes(trade_date).items():
+            _st = str(r.get('stage', ''))
+            if r.get('kind') == 'junk' or '退潮' in _st or '降温' in _st:
+                junk.add(t)
+    except Exception:
+        pass
+    try:
+        theme_stock_map, _, _, _ = _load_theme_stock_map_from_json()
+    except Exception:
+        theme_stock_map = {}
+    top_themes = sorted([t for t in heat if heat[t]['month_rank'] <= top_n],
+                        key=lambda t: heat[t]['month_rank'])
+    hi_map, junk_map = {}, {}
+    for t in top_themes:
+        for code in theme_stock_map.get(t, {}):
+            r = heat[t]['month_rank']
+            if code not in hi_map or r < hi_map[code][1]:
+                hi_map[code] = (t, r, heat[t]['month_heat'])
+    for t in (junk | fade):
+        for code in theme_stock_map.get(t, {}):
+            junk_map[code] = t
+    return hi_map, junk_map, {'n_themes': len(heat), 'top_themes': top_themes,
+                              'fade_themes': sorted(fade)}
+
+
+def _load_l3_resonance_asof(trade_date):
+    """读取 report_daily/l3_resonance_{date}.json（as-of ≤ trade_date 最近一期，防未来函数）。
+
+    返回 (hot, asof)：
+      hot  = {l3_code: {'l3_name','l2_name','n_zt','max_streak','avg_pct','rank'}}，仅含达标共振行业；
+      asof = 实际取用的日期字符串（无文件为空串）。
+    文件缺失/解析失败返回 ({}, '')（调用方降级关闭本通道）。
+    """
+    import glob
+    cands = []
+    for p in glob.glob(os.path.join(BASE_DIR, 'report_daily', 'l3_resonance_*.json')):
+        d = os.path.basename(p)[len('l3_resonance_'):-len('.json')]
+        if not (len(d) == 8 and d.isdigit()):
+            continue
+        if trade_date and d > str(trade_date):
+            continue
+        cands.append((d, p))
+    if not cands:
+        return {}, ''
+    cands.sort(key=lambda x: x[0])
+    asof, path = cands[-1]
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return {}, ''
+    try:
+        min_zt = int(((data.get('params') or {}).get('min_zt')) or 2)
+    except Exception:
+        min_zt = 2
+    out = {}
+    for r in (data.get('industries') or []):
+        if not isinstance(r, dict):
+            continue
+        code = str(r.get('l3_code') or '')
+        if not code or int(r.get('n_zt') or 0) < min_zt:
+            continue
+        out[code] = {
+            'l3_name': str(r.get('l3_name') or ''),
+            'l2_name': str(r.get('l2_name') or ''),
+            'n_zt': int(r.get('n_zt') or 0),
+            'max_streak': int(r.get('max_streak') or 0),
+            'avg_pct': float(r.get('avg_pct') or 0.0),
+            'rank': int(r.get('rank') or 0),
+        }
+    return out, asof
+
+
+def _l3_resonance_map(trade_date):
+    """L3 三级行业共振「第二通道」（20261011 用户要求：作为主题共振的补充信号）。
+
+    返回 (l3_map, meta)：
+      l3_map = {ts_code: (行业名, 涨停家数, 最高连板, 行业均涨幅, 行业排名)}  下蹲票所属申万三级行业当日 ≥2 家涨停
+      meta   = {'n_industries', 'industries': [行业名...], 'asof': 'YYYYMMDD'|''}
+    只标注/加优先、不参与剔除；任何环节失败返回 ({}, meta)（fail-soft，关闭本通道）。
+    """
+    meta = {'n_industries': 0, 'industries': [], 'asof': ''}
+    if not L3_RESONANCE_ENABLE:
+        return {}, meta
+    hot, asof = _load_l3_resonance_asof(trade_date)
+    meta['asof'] = asof
+    if not hot:
+        return {}, meta
+    try:
+        import sys as _sys
+        if BASE_DIR not in _sys.path:
+            _sys.path.insert(0, BASE_DIR)
+        from ige.data import build_universe
+        uni = build_universe(trade_date)
+    except Exception as e:
+        print(f"[L3共振] 申万三级成分读取失败(关闭本通道): {e}")
+        return {}, meta
+    l3_map = {}
+    for r in uni.itertuples(index=False):
+        code = str(getattr(r, 'ts_code', '') or '')
+        l3c = str(getattr(r, 'l3_code', '') or '')
+        if not code or l3c not in hot:
+            continue
+        h = hot[l3c]
+        l3_map[code] = (h['l3_name'], h['n_zt'], h['max_streak'], h['avg_pct'], h['rank'])
+    meta['n_industries'] = len(hot)
+    meta['industries'] = [hot[c]['l3_name'] for c in sorted(hot, key=lambda c: hot[c]['rank'])]
+    return l3_map, meta
 
 
 def _v8_stage_to_signal(d_stage, score):
@@ -2499,6 +2689,64 @@ def run(target_date=None, with_chip=True, simple=False):
     except Exception as e:
         print(f"[基本面Gate] 计算失败(不影响主流程，全部按 F1 处理): {e}")
 
+    # ===== 主题共振三段式（20261011 用户要求「主题匹配非常重要」）=====
+    #   ① 前20日热度(month_heat) TOP-N 主题 → ⭐强优先（_squat_rank_key 第 0 键前置 + 报告/落库标注）
+    #   ② 其余（含无主题）→ 中性（不剔除）
+    #   ③ 回避/退潮主题 → 剔除下蹲信号（另立「主题否决」段展示）
+    #   只作用于「下蹲信号」；强买/观察/蓄势不动。数据缺失一律降级为全中性，异常不阻塞主流程。
+    try:
+        _tsq = [x.get('代码') for x in results if x.get('下蹲信号')]
+        if _tsq:
+            _hi_map, _junk_map, _tmeta = _theme_resonance_tier(TRADE_DATE)
+            _n_hi = _n_junk = 0
+            for x in results:
+                if not x.get('下蹲信号'):
+                    continue
+                _code = x.get('代码')
+                if _code in _junk_map:          # ③ 回避/退潮优先于 ① → 剔除
+                    x['下蹲信号'] = False
+                    x['主题否决'] = True
+                    x['主题否决原因'] = f"{_junk_map[_code]} 回避/退潮"
+                    _n_junk += 1
+                elif _code in _hi_map:          # ① 强优先
+                    _tt, _rr, _hh = _hi_map[_code]
+                    x['主题共振'] = True
+                    x['主题共振主题'] = _tt
+                    x['主题共振月榜'] = _rr
+                    x['主题共振热度'] = _hh
+                    _n_hi += 1
+            print(f'[主题共振] 下蹲池 {len(_tsq)} 只（前20日热度 TOP{THEME_HEAT_TOP_N} 共 {len(_tmeta["top_themes"])} 主题）：'
+                  f'⭐强优先 {_n_hi} 只 | 回避/退潮剔除 {_n_junk} 只 | 其余中性')
+    except Exception as e:
+        print(f"[主题共振] 计算失败(不影响主流程，全部按中性处理): {e}")
+
+    # ===== L3 三级行业共振「第二通道」（20261011 用户要求：作为主题共振的补充信号）=====
+    #   只加优先、不剔除：下蹲票所属申万三级行业当日 ≥2 家涨停 → 与主题热度 TOP-N 并列进「⭐强优先」池。
+    try:
+        if any(x.get('下蹲信号') for x in results):
+            _l3_map, _l3meta = _l3_resonance_map(TRADE_DATE)
+            _n_l3 = _n_l3_new = 0
+            for x in results:
+                if not x.get('下蹲信号'):
+                    continue
+                _hit = _l3_map.get(x.get('代码'))
+                if not _hit:
+                    continue
+                x['L3共振'] = True
+                x['L3共振行业'] = _hit[0]
+                x['L3共振涨停数'] = _hit[1]
+                x['L3共振最高连板'] = _hit[2]
+                x['L3共振行业涨幅'] = _hit[3]
+                x['L3共振行业排名'] = _hit[4]
+                _n_l3 += 1
+                if not x.get('主题共振'):
+                    _n_l3_new += 1
+            print(f"[L3共振] 申万三级共振行业 {_l3meta['n_industries']} 个"
+                  f"（{'、'.join(_l3meta['industries'][:8])}{'…' if _l3meta['n_industries'] > 8 else ''}，"
+                  f"as-of {_l3meta['asof'] or '—'}）：命中下蹲 {_n_l3} 只（其中主题通道未覆盖 {_n_l3_new} 只）")
+    except Exception as e:
+        print(f"[L3共振] 计算失败(不影响主流程，关闭本通道): {e}")
+
     # 控制台摘要：只列可执行的下蹲买点（唯一落库信号），其余给计数（20261007 P3）
     _sq = [x for x in results if x.get('下蹲信号')]
     _sb = [x for x in results if x.get('强买信号')]
@@ -2512,8 +2760,9 @@ def run(target_date=None, with_chip=True, simple=False):
         _theme = _v.get('所属主题', '') or '无主题'
         _stage = _v.get('非一日游阶段', '') or ''
         _stage_str = f' 阶段={_stage}' if _stage else ''
+        _res_str = (' ⭐主线共振' if _v.get('主题共振') else '') + (' ⭐L3共振' if _v.get('L3共振') else '')
         print(f"  {_v['名称']}({_v['代码']}) {_v.get('下蹲等级','')} 评分{_v['量能爆发评分']} "
-              f"距MA5={_v.get('距MA5',0):+.1f}% 基本面={_v.get('基本面Gate','F1')} 主题={_theme}{_stage_str} "
+              f"距MA5={_v.get('距MA5',0):+.1f}% 基本面={_v.get('基本面Gate','F1')} 主题={_theme}{_stage_str}{_res_str} "
               f"Entry={_v.get('FinalEntryScore','-')} {_v.get('Rating','')} T1Risk={_v.get('T1Risk','-')}")
 
     _output_report(results, simple=simple, market_tip=market_tip)
@@ -2608,9 +2857,16 @@ def _squat_rank_key(s):
     ===== 第 0 键：基本面 Gate（20261008 用户要求）=====
       在最前追加 (基本面Gate != 'F2')：F2 改善股（优先池）整体前置，F1 中性随后。
       F0 恶化股在 run() 中已把「下蹲信号」置 False，不会进入本池，故此处无需考虑。
+
+    ===== 最前键：主题共振 / L3 共振（20261011 用户要求「主题匹配非常重要」+ 接 l3_resonance 第二通道）=====
+      新增真正第 0 键 (主题共振 or L3共振)：属「前20日热度 TOP-N 主题」或「申万三级行业当日 ≥2 家涨停」的
+      下蹲票整体前置（两通道并列，任一命中即进 ⭐强优先 池）。
+      该键为用户指定优先级，未做历史标定（用户明确「主题匹配非常重要」）。
+      主题否决（回避/退潮）股已在 run() 中把「下蹲信号」置 False，不进入本池；L3 通道只加优先、不剔除。
     """
+    _t0 = 0 if (s.get('主题共振') or s.get('L3共振')) else 1
     _g0 = 0 if s.get('基本面Gate') == 'F2' else 1
-    return (_g0, -s.get('距MA5', 0), s.get('量能爆发评分', 0), s.get('60日涨幅', 0))
+    return (_t0, _g0, -s.get('距MA5', 0), s.get('量能爆发评分', 0), s.get('60日涨幅', 0))
 
 
 def _fin_num(v):
@@ -2896,6 +3152,29 @@ def _output_report(results, simple=False, market_tip=None):
         lines.append("【主题效应】同一主题在本次下蹲池出现 ≥2 只 → 该主题下每只标注「🔗主题效应=主题名（同池N只）」，"
                      "表示资金在同一方向上多点开花，而非单点试盘；回避区主题 / 无主题不计入"
                      "（20261006 新增，仅标注、不参与评分与排序；勿与评级里的个股维度「主题共振 ThemeResonance」混淆）")
+        try:
+            _heat_now = _load_theme_heat_asof(TRADE_DATE)
+            _top_tt = sorted([t for t in _heat_now if _heat_now[t]['month_rank'] <= THEME_HEAT_TOP_N],
+                             key=lambda t: _heat_now[t]['month_rank'])
+        except Exception:
+            _top_tt = []
+        lines.append(f"【主题共振·三段式】对下蹲信号按「前20日主题热度」（theme_heat_v24 的 month_heat，窗口=20 交易日）"
+                     f"分层（20261011 用户要求「主题匹配非常重要」）："
+                     f"① 主题进 TOP{THEME_HEAT_TOP_N} → ⭐强优先（排序最前置、个股行标注，落库信号加「·主线共振」）；"
+                     f"② 其余（含无主题）→ 中性（不剔除）；"
+                     f"③ 回避/退潮主题（theme_score_v2 的 ✕ ，或 month_heat 环比上期骤降 ≥{THEME_HEAT_FADE_DROP:.0f}）→ 剔除下蹲信号（见「主题否决」段）。"
+                     f"本期 TOP{THEME_HEAT_TOP_N} 主题：{'、'.join(_top_tt) if _top_tt else '（热度数据缺失，全中性）'}")
+        try:
+            _l3hot, _l3asof = _load_l3_resonance_asof(TRADE_DATE)
+            _l3_names = [_l3hot[c]['l3_name'] for c in sorted(_l3hot, key=lambda c: _l3hot[c]['rank'])]
+        except Exception:
+            _l3_names, _l3asof = [], ''
+        lines.append(f"【L3共振·第二通道】补充信号（20261011 用户要求，接入 l3_resonance_scanner）："
+                     f"下蹲票所属「申万三级行业」当日收盘涨停 ≥2 家（资金在行业内多点开花）→ 标注 ⭐L3共振，"
+                     f"与主题通道并列进「⭐强优先」池（只加优先、不剔除下蹲信号）；"
+                     f"个股归属经 ige.data.build_universe 取申万三级（口径与 l3_resonance 同源）。"
+                     f"本期共振行业 {len(_l3_names)} 个：{'、'.join(_l3_names) if _l3_names else '（无，或数据缺失）'}"
+                     f"（as-of {_l3asof or '—'}）")
         lines.append("【基本面Gate】简单 3 级否决层，不做复杂评分（20261008 用户要求）；只作用于下蹲信号，"
                      "强买/观察/蓄势不受影响。F0 恶化 → 满足任意 2 条即从下蹲池剔除（不落库，另见文末「基本面否决」段）；"
                      "F1 中性 → 正常入池；F2 改善 → 进入优先池（排序前置，标注在个股行）。"
@@ -2924,13 +3203,22 @@ def _output_report(results, simple=False, market_tip=None):
         for i, _vr in enumerate(vs_squat[:10], 1):
             _fg = _vr.get('基本面Gate', 'F1')
             _fg_tag = ' ⭐F2优先' if _fg == 'F2' else ''
+            _hi_tag = ' ⭐主线共振' if _vr.get('主题共振') else ''
+            _l3_tag = ' ⭐L3共振' if _vr.get('L3共振') else ''
             lines.append(f"【下蹲{i}】{_vr['名称']}({_vr['代码']}) 评分{_vr['量能爆发评分']:.0f} "
-                         f"等级={_vr.get('下蹲等级', '')} | 基本面={_fg}{_fg_tag}")
+                         f"等级={_vr.get('下蹲等级', '')} | 基本面={_fg}{_fg_tag}{_hi_tag}{_l3_tag}")
             if _fg == 'F2' and _vr.get('基本面Gate原因'):
                 lines.append(f"  基本面改善：{_vr.get('基本面Gate原因')}")
             lines.append(f"  {_vr.get('下蹲原因', '')}")
             _t = f"主题={_vr.get('所属主题', '') or '无主题'}" + (
                 f" | 阶段={_vr.get('非一日游阶段', '')}" if _vr.get('非一日游阶段') else "")
+            if _vr.get('主题共振'):
+                _t += (f" | ⭐主线共振={_vr.get('主题共振主题', '')}"
+                       f"（前20日热度#{_vr.get('主题共振月榜', '-')} 热度{_vr.get('主题共振热度', 0):.0f}）")
+            if _vr.get('L3共振'):
+                _t += (f" | ⭐L3共振={_vr.get('L3共振行业', '')}"
+                       f"（当日{_vr.get('L3共振涨停数', 0)}家涨停/最高{_vr.get('L3共振最高连板', 0)}连板"
+                       f"/行业均涨{_vr.get('L3共振行业涨幅', 0):+.2f}%）")
             _res = _res_map.get(_vr['代码'])
             if _res:
                 _t += f" | 🔗主题效应={_res[0]}（同池{_res[1]}只）"
@@ -2994,6 +3282,19 @@ def _output_report(results, simple=False, market_tip=None):
             lines.append(f"  基本面原因：{_x.get('基本面Gate原因') or '（数据缺失未计入，异常）'}")
         lines.append("")
 
+    # 🧭 主题否决：原下蹲候选因主题回避/退潮被剔除，列此供复核（20261011 用户要求）
+    _th_list = sorted([x for x in results if x.get('主题否决')], key=lambda x: -x.get('量能爆发评分', 0))
+    if _th_list:
+        lines.append("## 🧭 主题否决（回避/退潮 · 已从下蹲池剔除，不构成买入依据）")
+        lines.append("说明：下列标的量能结构上本可给出下蹲买点，但其主题命中「回避/退潮」"
+                     "（theme_score_v2 的 ✕ 回避区，或前20日热度 month_heat 环比骤降），"
+                     "按 20261011 用户要求「主题共振三段式 → 回避/退潮剔除」出池、不落库。")
+        for i, _x in enumerate(_th_list, 1):
+            lines.append(f"【主题否决{i}】{_x['名称']}({_x['代码']}) 评分{_x.get('量能爆发评分', 0):.0f} "
+                         f"等级={_x.get('下蹲等级', '')}")
+            lines.append(f"  主题原因：{_x.get('主题否决原因') or '（回避/退潮）'}")
+        lines.append("")
+
     # 🚨 排除的高分股票（V2.0：趋势强但位置/主题/风险不适合次日新开仓）
     # 只列「未进入 TOP3」的高分股，TOP3 已按 FinalEntryScore 排序，不在排除清单中重复出现
     _top3_codes = {x['代码'] for x in vs_top3}
@@ -3003,6 +3304,8 @@ def _output_report(results, simple=False, market_tip=None):
             continue
         if _x.get('下蹲信号'):
             continue   # 下蹲买点单独成段，不在排除清单重复出现
+        if _x.get('基本面否决') or _x.get('主题否决'):
+            continue   # 已被专项否决段列出，不重复
         if _x.get('ForbidTOP'):
             _excluded.append((_x, '巨幅乖离+急速上涨（强制过滤）'))
         elif _x.get('Rating') == 'C' and _x.get('量能爆发评分', 0) >= 85:
@@ -3145,11 +3448,21 @@ def _track_picks(results, trade_date):
         _opt = (s.get('下蹲等级') == '优选')
         _res = _res_map.get(s.get('代码'))
         # 信号名带上形态分支（20261003 用户要求：在下蹲后用括号标等级，便于库/跟踪池一眼区分）；
-        # 命中主题效应再加「·主题效应」后缀（20261006 用户要求）
-        _sig = ('VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)') + ('·主题效应' if _res else '') \
+        # 命中主题效应再加「·主题效应」后缀（20261006 用户要求）；
+        # 命中前20日热度 TOP-N 主题加「·主线共振」后缀；命中 L3 三级行业共振加「·L3共振」后缀（20261011 用户要求）
+        _sig = ('VSW_下蹲(优选)' if _opt else 'VSW_下蹲(扩大)') \
+            + ('·主线共振' if s.get('主题共振') else '') \
+            + ('·L3共振' if s.get('L3共振') else '') \
+            + ('·主题效应' if _res else '') \
             + ('·F2优先' if s.get('基本面Gate') == 'F2' else '')
         _row = _mk(s, len(rows) + 1, _sig,
                    '可开仓·下蹲买点' if _opt else '可开仓·下蹲待确认(半仓)')
+        if s.get('主题共振'):
+            _row['reason'] = (f"{_row.get('reason') or ''}｜⭐主线共振：{s.get('主题共振主题','')}"
+                              f"（前20日热度#{s.get('主题共振月榜','-')}）")
+        if s.get('L3共振'):
+            _row['reason'] = (f"{_row.get('reason') or ''}｜⭐L3共振：{s.get('L3共振行业','')}"
+                              f"（当日{s.get('L3共振涨停数',0)}家涨停/最高{s.get('L3共振最高连板',0)}连板）")
         if _res:
             _row['reason'] = f"{_row.get('reason') or ''}｜🔗主题效应：{_res[0]}（同池{_res[1]}只）"
         rows.append(_row)

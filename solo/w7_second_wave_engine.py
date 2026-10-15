@@ -29,6 +29,9 @@ STATES = ["DOWNTREND", "BASE", "IMPULSE", "EXTREME_CHURN", "ABSORPTION", "DRYUP"
 # 20260930 新增 MIDLINE_HOLD「W7-不破中位」：放量长阳（须创60日新高）后缩量回踩、收盘不破长阳半分位（中红医疗 9/23~9/24）
 # 20261002 新增 RIGHT_BOTTOM「W7-右底低吸」：前波大涨后回落形成双底，右底缩量、不破左底（百普赛斯 301080.SZ 9/11）
 ACTION_BUY_STATES = ("SECOND_WAVE", "BREAKOUT_CONFIRM", "RE_EXPANSION", "T0_CONFIRM", "BREAKOUT_RETEST", "MIDLINE_HOLD", "RIGHT_BOTTOM")
+# 20261014：T0_CONFIRM / MIDLINE_HOLD 仍留在本表（状态机与候选池展示沿用，退化为「观察」），
+# 但在 w7_quality_gate 中由 W7_GATE_DROP_STATES 剔除，不再产出可操作买点、不再落库
+# （依据分类收益率分析：两者 T+3 -7.89% / -8.50%，胜率 0~11%，盈亏比 ≤0.23，为全场最亏两类）。
 W7_THEME_WATCH_CAP = 20  # 报告「热点主题新增跟踪」节展示上限（20261001；20261008 起该节随准入池一并停用）
 # 20260909 用户口径「T0 确认买点」（我爱我家 8/19→8/27）：天量 T0 之后出现首根收盘回到
 # T0 收盘价之上的“重夺日”（8/25），随后连续 ≥2 根收盘站稳 T0 收盘价（8/26/8/27），
@@ -150,6 +153,19 @@ W7_STOP_MAX_PCT = 0.08
 W7_TRIGGER_BAND = 0.03
 W7_MA20_BREAK_TOL = 0.03
 W7_VOL_CONFIRM = 1.2
+# 20261014 用户口径「按分类收益率分析剔除亏损大的」（样本：stock_pick w7_hvt 已跟踪 135 条，
+# 基准=选股日收盘价，收益=其后第 N 个交易日收盘涨幅；分组明细见 _w7_class_analysis.py）：
+#   ① 执行状态：TRIGGER_WATCH / PULLBACK_WATCH 组 T+3 -2.21% / -2.91%、盈亏比 0.70 / 0.81、
+#      止损率最高 58.3%；仅 EXECUTION 组为正期望（T+5 +2.76%、T+10 +8.45%、盈亏比 1.25），
+#      EXECUTION_WAIT_VOLUME 中性（盈亏比 0.97）→ 只保留执行区两态进可操作榜。
+#   ② 买点档：w7_assign_status 的 WATCH 档（三因子 0 命中）T+3 -4.39%、胜率 18.5%、
+#      盈亏比 0.53，整个档位不落库。
+#   ③④ 分支：T0_CONFIRM T+3 -7.89% / T+5 -13.91%、盈亏比 0.23；MIDLINE_HOLD T+3 -8.50%、
+#      胜率 0%、盈亏比 0.11（全场最亏）→ 两者不再产出可操作买点。
+#   四道过滤叠加实测：全样本 135 → 89 条，T+3 由 +0.45%（胜 49.6%）升到 +1.95%（胜 60%+）。
+W7_GATE_DROP_STATES = ("T0_CONFIRM", "MIDLINE_HOLD")
+W7_EXEC_KEEP = ("EXECUTION", "EXECUTION_WAIT_VOLUME")
+W7_GATE_DROP_BUY = ("WATCH",)
 W7_EXEC_RANK = {"EXECUTION": 0, "EXECUTION_WAIT_VOLUME": 1, "TRIGGER_WATCH": 2, "PULLBACK_WATCH": 3}
 WANTED_COLS = ["ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "turnover_rate", "turnover_rate_f", "circ_mv", "ma_bfq_10", "ma_bfq_20", "ma_bfq_60", "ma_bfq_120"]
 
@@ -1735,9 +1751,22 @@ def w7_quality_gate(x):
     仅对 ACTION_BUY_STATES 内的标的做二次筛选，依据见文件头 W7_EXCLUDE_STATES 注释。
     20261002：RIGHT_BOTTOM（右底低吸）豁免④——该形态是深度回调后的双底，信号日收盘本就
     可能低于天量标志日开盘价（301080 9/11 收 78.70 < 8/20 天量日开 92.00），
-    结构质量由 right_bottom 的九条硬条件保证。"""
+    结构质量由 right_bottom 的九条硬条件保证。
+    20261014 增补（用户口径「按分类收益率分析剔除亏损大的」，证据见 W7_GATE_DROP_STATES 注释）：
+      A 分支剔除：T0_CONFIRM / MIDLINE_HOLD 不再产出可操作买点；
+      B 买点档剔除：w7_assign_status 定为 WATCH（三因子 0 命中）者不落库；
+      C 执行状态硬门：仅 EXECUTION / EXECUTION_WAIT_VOLUME 进可操作榜，两类 *_WATCH 仅观察。
+      报告「今日可操作榜」（markdown）与 stock_pick_db 落库共用本门，二者口径严格一致；
+      RIGHT_BOTTOM 恒为 EXECUTION，A/B/C 对其无额外影响（仅沿用下方豁免④）。"""
     if x.get("state") in W7_EXCLUDE_STATES:
         return False, f"状态{x['state']}历史弱（库内 T+3 -0.29%~+1.26%）"
+    if x.get("state") in W7_GATE_DROP_STATES:
+        return False, f"状态{x['state']}分类收益复核剔除（库内 T+3 -7.89%~-8.50%、盈亏比 ≤0.23）"
+    if x.get("buy") in W7_GATE_DROP_BUY:
+        return False, "买点档 WATCH（三因子 0 命中，库内 T+3 -4.39%、胜率 18.5%）"
+    _st = w7_exec_status(x)[0]
+    if _st not in W7_EXEC_KEEP:
+        return False, f"执行状态{_st}（未进入价格/量能执行区，库内 T+3 负期望）"
     if x.get("state") == "RIGHT_BOTTOM":
         return True, ""
     # 20260930 用户口径：信号日收盘必须大于天量标志日开盘价（价格须站回天量事件起点上方）
@@ -2148,7 +2177,9 @@ def sync_downstream(date, results, output, rb_extra=None):
                 "w7_status": x["w7_status"], "distance_to_trigger": x["distance_to_trigger"],
                 "w7_fail_line": x["w7_fail_line"], "w7_fail_name": x["w7_fail_name"],
             })
-        n = record_picks("w7_hvt", "W7 二波/突破当日买点", rows, pick_date=date)
+        # 20261014：replace=True —— 当日信号池会缩小的场景（新增 A/B/C 三道剔除门后重跑同一天，
+        # 被剔除标的须从 stock_pick 与 pick_tracking 一并清除，否则仍残留在库/网页）。
+        n = record_picks("w7_hvt", "W7 二波/突破当日买点", rows, pick_date=date, replace=True)
         print(f"[w7] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=w7_hvt pick_date={date})", flush=True)
     except Exception as exc:
         print(f"[w7] stock_pick_db 写入失败(不影响报告): {exc}", flush=True)
