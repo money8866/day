@@ -22,7 +22,9 @@
   ④ report_daily/e08_scan_{date}.md + report_daily/e08_signals_{date}.json
 
 数据源：本地 stock_data.db（daily_cache + adj_factor_cache + index_daily_cache）优先，
-        基本面/名称读 stock_basic.csv，缺失不补网（本脚本默认零 API 调用）。
+        基本面/名称读 stock_basic.csv。个股日线/复权/基本面缺失不补网（零 API）；
+        仅 index_daily_cache 会按需增量补齐到目标交易日（与 market_analysis.py 共用
+        stock_cache.cached_index_daily，谁先跑谁先下载），补齐失败只告警、不中断扫描。
 
 用法：
     python e08_scanner.py                    # 扫最新交易日
@@ -117,6 +119,35 @@ def _trade_dates(conn, end_date, bars):
         return sorted(str(r[0]) for r in rows)
     except Exception:
         return []
+
+
+def _ensure_index_cache(end_date):
+    """把 index_daily_cache 增量补齐到 end_date（谁先跑谁先下载）
+
+    直接复用 stock_cache.cached_index_daily（缓存优先 + 尾部缺口增量补 + 回写），
+    与本项目其它策略（market_analysis.py 等）读写同一张表，从而消除 E08 对外部
+    程序运行先后的隐性依赖（曾因该表未更新到当日导致交易日窗口取到前一交易日）。
+    缓存已覆盖目标日时零 API 调用；补齐失败只告警，不中断扫描。
+    """
+    try:
+        import stock_cache as sc
+    except Exception as e:
+        print('[e08] 指数缓存补齐跳过：stock_cache 不可用(%s)' % e, flush=True)
+        return
+    codes = list(getattr(sc, 'INDEX_CODES', None) or [MARKET_INDEX, GEM_INDEX])
+    start = getattr(sc, 'INDEX_HISTORY_START', '20210104')
+    filled = []
+    for code in codes:
+        try:
+            _, before = sc.get_index_cache_range(code)
+            sc.cached_index_daily(code, start, str(end_date))
+            _, after = sc.get_index_cache_range(code)
+            if str(after or '') != str(before or ''):
+                filled.append('%s(%s→%s)' % (code, before or '-', after or '-'))
+        except Exception as e:
+            print('[e08] 指数缓存补齐失败 %s(%s)，继续' % (code, e), flush=True)
+    if filled:
+        print('[e08] index_daily_cache 增量补齐至 %s: %s' % (end_date, ' '.join(filled)), flush=True)
 
 
 def _load_window(conn, start_date, end_date):
@@ -890,6 +921,8 @@ def main():
             print('[] daily_cache 无数据')
             return
 
+        # 谁先跑谁先下载：先把 index_daily_cache 补到目标日，再取交易日窗口
+        _ensure_index_cache(date)
         dates = _trade_dates(conn, date, args.lookback)
         if len(dates) < 70:
             print('[] 交易日窗口不足: %d' % len(dates))

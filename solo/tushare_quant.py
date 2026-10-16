@@ -6508,6 +6508,37 @@ _ST_DIV_STYLE = ("class=\"st\" style=\"font-size:22px;font-weight:700;color:#0b4
 _PSEUDO_HEADING_RE = re.compile(r"^\*\*[ \u3000]+([^*\n]+?)[ \u3000]*$", re.M)
 _INNER_UNDERSCORE_RE = re.compile(r"(?<=\w)_(?=\w)")
 
+# 第 1 段「大盘分析 · 仓位建议」的仓位数值标红（仅渲染层，不改 markdown 原文）
+_POS_HEADING_RE = re.compile(r"^\s*(?:\*\*?\s*)?仓位建议")
+_POS_PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+_POS_SPAN_STYLE = "color:#e11d48;font-weight:700;"
+_POS_SPAN_RE = re.compile(r'<span style="%s">(.*?)</span>' % re.escape(_POS_SPAN_STYLE))
+
+
+def _highlight_position_values(md):
+    """把「仓位建议」小节里的仓位数值包成红色 span。
+
+    只作用于渲染前的一份副本：报告原文（.txt / 推送 markdown）保持纯净，
+    邮件 HTML / 网页 HTML 由本函数加红，PDF 由 _pdf_inline 转成 <font color>。
+    """
+    lines = md.split("\n")
+    out, in_block, n = [], False, 0
+    for ln in lines:
+        if _POS_HEADING_RE.match(ln):
+            in_block, n = True, 0
+            out.append(ln)
+            continue
+        if in_block:
+            s = ln.strip()
+            if s and not s.startswith(("*", "-", "•")):
+                in_block = False        # 遇到非列表行（如下一个"** 策略"）即结束
+            elif s and "一句话" not in s and n < 3:
+                n += 1
+                ln = _POS_PCT_RE.sub(
+                    lambda m: '<span style="%s">%s%%</span>' % (_POS_SPAN_STYLE, m.group(1)), ln)
+        out.append(ln)
+    return "\n".join(out)
+
 
 def _prep_email_markdown(md):
     """修正 AI 复盘 markdown 的两类渲染缺陷（不改内容，只保证能被 HTML 正确表达）：
@@ -6589,7 +6620,7 @@ def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
     - 不依赖外部 CSS/图片，QQ 邮箱等客户端直接渲染
     """
     body = markdown2.markdown(
-        _prep_email_markdown(markdown_text),
+        _prep_email_markdown(_highlight_position_values(markdown_text)),
         extras=["tables", "fenced-code-blocks", "strike", "task_list"]
     )
     body = _inline_email_styles(_wrap_email_tables(body))
@@ -6645,10 +6676,19 @@ def _pdf_cjk_font():
 
 
 def _pdf_inline(text):
-    """行内标记：先转义 XML 实体，再恢复 **粗体** 与 `代码`。"""
-    t = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    """行内标记：先转义 XML 实体，再恢复 **粗体**、`代码` 与仓位红标。"""
+    keep = []
+
+    def _stash(m):
+        keep.append(m.group(1))
+        return "\x00P%d\x00" % (len(keep) - 1)
+
+    t = _POS_SPAN_RE.sub(_stash, text)
+    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
-    return re.sub(r"`(.+?)`", r"\1", t)
+    t = re.sub(r"`(.+?)`", r"\1", t)
+    return re.sub(r"\x00P(\d+)\x00",
+                  lambda m: '<font color="#e11d48"><b>%s</b></font>' % keep[int(m.group(1))], t)
 
 
 def markdown_to_email_pdf(markdown_text, pdf_path, title="每日复盘"):
@@ -6681,7 +6721,8 @@ def markdown_to_email_pdf(markdown_text, pdf_path, title="每日复盘"):
         "cellh": ParagraphStyle("cellh", fontName=font, fontSize=8, leading=11, textColor=colors.white),
     }
 
-    md = markdown_text.replace("\r\n", "\n").replace("\r", "\n")
+    md = _highlight_position_values(
+        markdown_text.replace("\r\n", "\n").replace("\r", "\n"))
     lines = md.split("\n")
     avail = A4[0] - 3.2 * cm
     story, i = [], 0
@@ -6848,7 +6889,7 @@ def markdown_to_html_report(
 
     # ========= Markdown 转 HTML =========
     body = markdown2.markdown(
-        markdown_text,
+        _highlight_position_values(markdown_text),
         extras=[
             "tables",
             "fenced-code-blocks",

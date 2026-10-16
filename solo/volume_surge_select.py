@@ -3413,10 +3413,41 @@ def _output_report(results, simple=False, market_tip=None):
         print(f"⚠️ 报告保存失败: {e}")
 
 
+# ── 20261015 VSW 落库质量门 ──
+# 依据：_vsw_class_analysis.py / _vsw_combo.py 对 154 条 vsw 跟踪记录（20260904~20261015）的分类收益率分析。
+# ① 剔除「扩大」档（可开仓·下蹲待确认(半仓)）：41 条 3日 -2.41%、止损率 51%
+#    vs 优选档 113 条 3日 -0.94%、止损率 30%；
+# ② 剔除 F2优先：31 条 3日 -4.87%、胜率 17%、盈亏比 0.49（全部标签里最差，且修饰个数越多收益越差）；
+# ③ 剔除 T1Risk High/Extreme：9 条 -7.98% / 5 条 -7.63%、盈亏比 0.28/0.12，风险等级与收益严格单调；
+# ④ 剔除 距MA20 >= 6%：6~10% 档 3日 -2.25%、>=10% 档 -4.78%（追高最差），
+#    甜蜜区仅 0~3%（11 条 3日 +4.70%、盈亏比 4.11、止损率 18%），偏离越远越差。
+# 四道全过才落库。离线验证：154 → 53 条保留（3日 -1.45% → +1.83%），
+# 剔除的 101 条 3日 -2.98%、5日 -4.17%。
+# 报告展示口径不变：下蹲/强买/观察等信号仍在报告中完整呈现，仅落库/跟踪口径收窄。
+VSW_GATE_DROP_RISK = ('High', 'Extreme')
+VSW_GATE_DROP_DMA20 = 6.0
+
+
+def _vsw_gate_keep(s):
+    """VSW 落库质量门：返回 (是否保留, 剔除原因)"""
+    if s.get('下蹲等级') != '优选':
+        return False, '扩大档（历史3日-2.41%、止损率51%）'
+    if s.get('基本面Gate') == 'F2':
+        return False, 'F2优先（历史3日-4.87%、胜率17%、盈亏比0.49）'
+    _risk = s.get('T1Risk')
+    if _risk in VSW_GATE_DROP_RISK:
+        return False, f'T1Risk={_risk}（历史3日-7.6%~-8.0%、盈亏比≤0.28）'
+    _dma = s.get('距MA20')
+    if _dma is not None and _dma >= VSW_GATE_DROP_DMA20:
+        return False, f'距MA20={_dma:.1f}%≥6（甜蜜区仅0~3%，追高档3日-2.2%~-4.8%）'
+    return True, ''
+
+
 def _track_picks(results, trade_date):
     """当日信号落库 stock_pick_db（20260930 收敛）：
     只保留下蹲买点（与评级解耦：下蹲日 FES 常被死叉惩罚压低，但信号本身有独立回测支撑）；
     原先「Eligible 且 Rating∈(S,A,B)」的 TOP6 已不再落库，仅留在报告里。
+    20261015 起叠加落库质量门 _vsw_gate_keep（见上方常量注释，四道全过才落库）；
     其余评级/择时/主题/距MA 等字段自动进 indicators；失败不阻塞主流程。
     """
     if _PICK_RECORD is None or not results:
@@ -3444,7 +3475,12 @@ def _track_picks(results, trade_date):
     rows = []
     _squat_all = [x for x in results if x.get('下蹲信号')]
     _res_map = _theme_effect_map(_squat_all)   # 主题效应标注（20261006）
+    _dropped = []
     for s in sorted(_squat_all, key=_squat_rank_key):
+        _ok, _why = _vsw_gate_keep(s)
+        if not _ok:
+            _dropped.append((s, _why))
+            continue
         _opt = (s.get('下蹲等级') == '优选')
         _res = _res_map.get(s.get('代码'))
         # 信号名带上形态分支（20261003 用户要求：在下蹲后用括号标等级，便于库/跟踪池一眼区分）；
@@ -3467,11 +3503,19 @@ def _track_picks(results, trade_date):
             _row['reason'] = f"{_row.get('reason') or ''}｜🔗主题效应：{_res[0]}（同池{_res[1]}只）"
         rows.append(_row)
 
-    if not rows:
+    if _dropped:
+        for s, _why in _dropped:
+            print(f"[VSW] 质量门剔除 {s.get('代码')} {s.get('名称')} "
+                  f"({s.get('下蹲等级')}/{s.get('基本面Gate')}/T1Risk={s.get('T1Risk')}/"
+                  f"距MA20={s.get('距MA20')}): {_why}", flush=True)
+        print(f'[VSW] 质量门: {len(_squat_all)} → {len(rows)} 只（拦下 {len(_dropped)} 只）', flush=True)
+    if not rows and not _dropped:
         print('[VSW] 今日无下蹲信号，stock_pick_db 无写入', flush=True)
         return
+    # replace=True：清理当日旧记录，避免被剔除标的（如 002584）残留库/网页；
+    # 20261015 起门后池可能为空（全部被质量门拦下），此时同样靠 replace 清空当日旧行
     n = _PICK_RECORD('vsw', 'VSW 量能爆发+宽幅震荡', rows, pick_date=trade_date,
-                     replace=True)   # replace=True：清理当日旧记录，避免被剔除标的（如 002584）残留库/网页
+                     replace=True)
     print(f'[VSW] stock_pick_db 写入 {n}/{len(rows)} 条 (strategy=vsw pick_date={trade_date})', flush=True)
 
 

@@ -99,7 +99,11 @@ def get_last_trade_date():
 
 
 TRADE_DATE = get_last_trade_date()
-START_DATE = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=90)).strftime('%Y%m%d')
+# 指数K线取数窗口（自然日）：calc_ma_scores 需 ≥60 根K线，否则 L1 指数趋势层整体退化为
+# 中性50分（ma60_slope 还需 ≥70 根）。90 自然日 ≈ 61 交易日，恰好卡在门槛上——
+# 20261013 等日期曾整层失效。放宽到 180 自然日（≈120 交易日）留足缓冲。
+INDEX_KLINE_LOOKBACK_DAYS = 180
+START_DATE = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=INDEX_KLINE_LOOKBACK_DAYS)).strftime('%Y%m%d')
 print(f"[Init] 交易日: {TRADE_DATE}  分析区间: {START_DATE} ~ {TRADE_DATE}")
 
 # ================
@@ -190,25 +194,28 @@ init_db()
 # ================
 # 获取指数数据
 # ================
+# 指数K线缓存校验：不足此根数视为窗宽不足的旧缓存，强制重取
+INDEX_KLINE_MIN_BARS = 100
+
+
 def get_index_kline(ts_code="000300.SH", trade_date=None):
     if trade_date is None:
         trade_date = TRADE_DATE
-        start_date = START_DATE
-    else:
-        start_date = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
-    
-    cache_key = f"index_kline_{ts_code}_{start_date}_{trade_date}"
+    start_date = (datetime.strptime(trade_date, "%Y%m%d")
+                  - timedelta(days=INDEX_KLINE_LOOKBACK_DAYS)).strftime("%Y%m%d")
+
     cached = cache_get(name="index_kline", trade_date=trade_date, ts_code=ts_code)
-    
-    # 检查缓存数据是否包含目标日期（避免缓存其他日期的数据）
+
+    # 检查缓存数据是否包含目标日期且窗宽达标（避免复用按旧窗宽缓存的短序列）
     if cached is not None:
         if 'trade_date' in cached.columns and not cached.empty:
             max_date = str(cached['trade_date'].max())
-            if max_date == str(trade_date):
+            if max_date == str(trade_date) and len(cached) >= INDEX_KLINE_MIN_BARS:
                 print(f"[Index] 缓存命中且包含目标日期: {ts_code} ({trade_date})")
                 return cached
             else:
-                print(f"[Index] 缓存数据不匹配（最新日期: {max_date}, 需要: {trade_date}），重新拉取")
+                print(f"[Index] 缓存不可用（最新日期: {max_date}, 根数: {len(cached)}, "
+                      f"需要: {trade_date} 且 ≥{INDEX_KLINE_MIN_BARS}根），重新拉取")
         else:
             print(f"[Index] 缓存数据格式异常，重新拉取")
     
@@ -747,8 +754,37 @@ def _get_prev_position(trade_date=None):
         ''', (trade_date,))
         row = cursor.fetchone()
         conn.close()
-        if row and row[0]:
+        # ★ 修 A：0 是合法仓位（空仓），不能被 `if row and row[0]` 当成"无数据"
+        #   否则前一日空仓会被判为 prev=None，次日直接跳到 base_target 造成"一日跳档"
+        if row is not None and row[0] is not None:
             return int(row[0])
+    except Exception:
+        pass
+    return None
+
+
+def _get_prev_up_ratio(trade_date=None):
+    """从 limit_stats 读取前一交易日的上涨家数占比（%）。
+
+    用于 V9.9 广度一票否决的「钝化解除」：昨日仍在否决区(<35%)时，
+    今日仅勉强过线(<55%)不立刻解除防守，避免单日广度翻转造成仓位跳档。"""
+    if trade_date is None:
+        trade_date = TRADE_DATE
+    try:
+        db_path = os.path.join(safe_cache_dir, "market_analysis.db")
+        if not os.path.exists(db_path):
+            return None
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT up_ratio FROM limit_stats
+            WHERE trade_date < ?
+            ORDER BY trade_date DESC LIMIT 1
+        ''', (trade_date,))
+        row = cursor.fetchone()
+        conn.close()
+        if row is not None and row[0] is not None:
+            return float(row[0])
     except Exception:
         pass
     return None
@@ -1133,6 +1169,11 @@ def analyze_market(trade_date=None):
             v99_data.max_limit_height = max_lb
             v99_data.theme_top3_scores = theme_top3_scores or []
             v99_data.hist_limit = hist_limit
+            # ★ 修 C：前一日上涨家数占比，供「广度一票否决」钝化解除使用
+            try:
+                v99_data.prev_up_ratio = _get_prev_up_ratio(trade_date)
+            except Exception:
+                v99_data.prev_up_ratio = None
             
             v99_result = v99_engine.analyze(v99_data, prev_position)
             v99_report = v99_engine.generate_report(v99_result)

@@ -1,0 +1,21 @@
+{
+ "trade_date": "20261016",
+ "universe": 2010,
+ "signals": [],
+ "watch": [],
+ "early": [
+  {
+   "code": "688018.SH",
+   "name": "乐鑫科技",
+   "date_t0": "20261014",
+   "days_pullback": 2,
+   "gap": 0.0254,
+   "gap_top": 109.89,
+   "break_price": 124.61,
+   "total_mv_wan": 2775813.0,
+   "vol_avg_ratio": 0.662,
+   "earliest_in": 1,
+   "latest_in": 5
+  }
+ ]
+}

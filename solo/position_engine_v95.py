@@ -146,8 +146,15 @@ class PositionV99Result:
     liquidity_env: str = "正常量能"
     amount_ratio: float = 1.0
     up_ratio: float = 0.5
+    prev_up_ratio: Optional[float] = None   # 前一交易日上涨占比（一票否决钝化用）
     bomb_ratio: float = 0.2
     weak_veto: bool = False
+
+    # ★ 跌破日线级别关键低点（未收复）→ 强制空仓闸门
+    breakdown_active: bool = False
+    breakdown_key_low: Optional[float] = None
+    breakdown_key_low_date: str = ""
+    breakdown_reason: str = ""
 
     base_position: int = 20
     money_adj: int = 0
@@ -206,6 +213,20 @@ def _judge_risk(v9):
         if up < 45 and zb > 30:
             return "高风险"
     return "高风险" if (r >= 50 or brake in ("LEVEL2","LEVEL3","LEVEL4")) else "正常风险"
+
+def _is_weak_veto(up_ratio, prev_up_ratio=None):
+    """广度一票否决判定（★ 修 C：含「钝化解除」）。
+
+    入场：当日上涨占比 < 35% → 一票否决。
+    出场钝化：昨日仍在否决区(<35%)时，今日须 ≥55% 才直接解除；
+             仅"勉强过线"(35%~55%)视为未确认，继续防守。
+    """
+    if up_ratio < 0.35:
+        return True
+    if prev_up_ratio is not None and prev_up_ratio < 0.35 and up_ratio < 0.55:
+        return True
+    return False
+
 
 def _judge_liquidity_env(v9):
     """量价环境判断：复用 V9.0 L6 流动性层的相对量能数据（5日/20日量比 + 涨跌方向）
@@ -405,6 +426,92 @@ def _apply_hysteresis(target, prev, emergency, action):
 
 
 # ============================================================
+# 八·二、日线级别关键低点跌破检测（强制空仓闸门）
+# ============================================================
+
+BREAKDOWN_FRACTAL_K = 5   # 分形口径：前后各 5 根K线内的最低 → 日线级别低点
+
+
+def _detect_key_low_breakdown(index_data, k=BREAKDOWN_FRACTAL_K):
+    """检测「跌破日线级别关键低点且未收复」的强制空仓状态（以上证指数为准）。
+
+    口径：
+      1. 日线级别低点 = 分形低点：该K线 low 为其前 k 根、后 k 根范围内的最低
+         （后 k 根须已出现 → 该低点已"确认"，不含未来函数）。
+      2. 关键低点 = 当前时点「最近一个已确认」的分形低点（随行情滚动，不做冻结）。
+         早期版本在空仓期间冻结锚点，但冻结会使结果依赖「取数窗口从哪天开始」
+         （同一个低点是否落在窗口前 k 根之外，会决定它能否成为候选），
+         窗宽一变判定就跳变；改为滚动锚点后与窗宽无关，且语义更直白：
+         「跌破最近一个支撑就空仓，重新站上最近一个支撑（或底分型）就解除」。
+      3. 跌破有效 = 当日收盘价 < 关键低点（收盘未收回，非仅盘中插针）。
+      4. 解除条件 = 出现"底分型"（近3根中间K线的最低与最高均低于左右两根）
+         或"右侧买入信号"（收盘重新站上关键低点）。
+
+    逐日推进的状态机，结果与"当日实时判断"完全一致（无未来函数）。
+    返回 dict(avail, active, key_low, key_low_date, reason)
+    """
+    res = {"avail": False, "active": False, "key_low": None,
+           "key_low_date": "", "reason": ""}
+    df = (index_data or {}).get("上证指数")
+    if df is None or len(df) < 2 * k + 3:
+        return res
+    try:
+        d = df.reset_index(drop=True)
+        low = d["low"].astype(float).tolist()
+        high = d["high"].astype(float).tolist()
+        close = d["close"].astype(float).tolist()
+        dts = (d["trade_date"].astype(str).tolist()
+               if "trade_date" in d.columns else [""] * len(d))
+    except Exception:
+        return res
+
+    n = len(low)
+    res["avail"] = True
+
+    # 已确认的分形低点（须已有后 k 根 → 不含未来数据）
+    swing = [i for i in range(k, n - k)
+             if low[i] == min(low[i - k:i + k + 1])]
+    if not swing:
+        return res
+
+    def _bottom_fractal_at(j):
+        return (1 <= j <= n - 2
+                and low[j] < low[j - 1] and low[j] < low[j + 1]
+                and high[j] < high[j - 1] and high[j] < high[j + 1])
+
+    state = False
+    key_low = None
+    key_date = ""
+
+    for t in range(1, n):
+        # 1) 关键低点 = 当前时点最近一个已确认的分形低点（滚动，不冻结）
+        confirmed = [i for i in swing if i <= t - k]
+        if confirmed:
+            ci = confirmed[-1]
+            key_low, key_date = low[ci], dts[ci]
+        if key_low is None:
+            continue
+        # 2) 收盘跌破关键低点 → 进入空仓
+        if close[t] < key_low:
+            state = True
+        elif state:
+            # 3) 解除：收盘重新站上关键低点（右侧信号）或出现已确认底分型
+            if close[t] > key_low or _bottom_fractal_at(t - 1):
+                state = False
+
+    if state:
+        res["active"] = True
+        res["key_low"] = round(key_low, 2)
+        res["key_low_date"] = key_date
+        res["reason"] = "收盘%.2f跌破关键低点%.2f（%s）后未收复" % (
+            close[-1], key_low, key_date)
+    elif key_low is not None:
+        res["key_low"] = round(key_low, 2)
+        res["key_low_date"] = key_date
+    return res
+
+
+# ============================================================
 # 九、大盘基础行情提取
 # ============================================================
 
@@ -501,8 +608,8 @@ def _extract_overview(data, v9):
 def _run_consistency_checks(r, v9):
     checks = {}
 
-    # 检查1：仓位一致（目标在正常区间内，极端风险/一票否决除外）
-    if r.emergency_brake or r.weak_veto:
+    # 检查1：仓位一致（目标在正常区间内，极端风险/一票否决/跌破关键低点除外）
+    if r.emergency_brake or r.weak_veto or r.breakdown_active:
         checks["仓位一致"] = "PASS"
     elif r.position_normal_min <= r.position_target <= r.position_normal_max:
         checks["仓位一致"] = "PASS"
@@ -544,22 +651,23 @@ def _run_consistency_checks(r, v9):
     else:
         checks["风险优先"] = "PASS"
 
-    # 检查6：星级一致
+    # 检查6：星级一致（跌破关键低点/一票否决时星级由风控锁定，不参与区间核对）
     star_count = r.final_grade.count("★")
-    if r.market_regime == "强趋势":
-        expected_min, expected_max = 4, 5
-    elif r.market_regime in ("震荡有主线", "高位分歧", "冰点修复"):
-        expected_min, expected_max = 3, 4
-    elif r.market_regime in ("震荡无主线",):
-        expected_min, expected_max = 2, 3
-    elif r.market_regime in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
-        expected_min, expected_max = 1, 2
-    else:
-        expected_min, expected_max = 1, 2
-    if expected_min <= star_count <= expected_max:
+    if r.breakdown_active or r.weak_veto:
         checks["星级一致"] = "PASS"
     else:
-        checks["星级一致"] = "FAIL（%s，星级%d）" % (r.market_regime, star_count)
+        if r.market_regime == "强趋势":
+            expected_min, expected_max = 4, 5
+        elif r.market_regime in ("震荡有主线", "高位分歧", "冰点修复"):
+            expected_min, expected_max = 3, 4
+        elif r.market_regime in ("震荡无主线",):
+            expected_min, expected_max = 2, 3
+        else:
+            expected_min, expected_max = 1, 2
+        if expected_min <= star_count <= expected_max:
+            checks["星级一致"] = "PASS"
+        else:
+            checks["星级一致"] = "FAIL（%s，星级%d）" % (r.market_regime, star_count)
 
     # 检查7：基础行情完整
     ov = r.overview
@@ -601,7 +709,10 @@ class PositionEngineV99:
         bomb_ratio = v9.l4_sentiment.details.get('broken_rate', 0) / 100.0
         r.up_ratio = up_ratio
         r.bomb_ratio = bomb_ratio
-        weak_veto = up_ratio < 0.35
+        prev_up_ratio = getattr(data, 'prev_up_ratio', None)
+        r.prev_up_ratio = (None if prev_up_ratio is None else float(prev_up_ratio) / 100.0)
+        # ★ 修 C 广度钝化：入场 35% 悬崖，出场需"连续2日 ≥35%"（钝化一票否决的解除）
+        weak_veto = _is_weak_veto(up_ratio, r.prev_up_ratio)
         r.weak_veto = weak_veto
         # 一票否决时赚钱效应降级为"低"（上涨占比仅30%的盘面，不能再标"中"）
         if weak_veto:
@@ -623,6 +734,15 @@ class PositionEngineV99:
             normal_max = min(normal_max, 15)
             if normal_min > normal_max:
                 normal_min = normal_max
+
+        # ★ 新增：跌破日线级别关键低点且未收复 → 强制空仓（直到底分型/右侧买入信号）
+        brk = _detect_key_low_breakdown(getattr(data, 'index_data', {}) or {})
+        r.breakdown_active = bool(brk.get("active"))
+        r.breakdown_key_low = brk.get("key_low")
+        r.breakdown_key_low_date = brk.get("key_low_date", "")
+        r.breakdown_reason = brk.get("reason", "")
+        if r.breakdown_active:
+            r.position_confirm_cap = min(r.position_confirm_cap, 10)
 
         # 环境调整
         r.money_adj = MONEY_EFFECT_ADJ.get(r.money_effect, 0)
@@ -652,7 +772,12 @@ class PositionEngineV99:
         # 一票否决：上涨家数<35% → 减仓/防守（优先于一切）
         if weak_veto:
             r.action = "减仓/防守"
-            r.action_detail = "极弱风控（上涨%.0f%%＜35%%）" % (up_ratio * 100)
+            if up_ratio < 0.35:
+                r.action_detail = "极弱风控（上涨%.0f%%＜35%%）" % (up_ratio * 100)
+            else:
+                # 广度刚刚翻上 35% 但前一日仍在否决区 → 钝化，需连续2日 ≥35%
+                r.action_detail = "广度未确认（昨%.0f%%→今%.0f%%，需连续≥35%%）" % (
+                    (r.prev_up_ratio or 0.0) * 100, up_ratio * 100)
         elif up_ratio > 0.55 and bomb_ratio < 0.20:
             # 加仓必须赚钱效应确认：上涨>55% 且 炸板率<20%（修复"弱势却加仓"BUG）
             if _check_level2_add(v9):
@@ -683,43 +808,52 @@ class PositionEngineV99:
             r.action_detail = ""
 
         # 目标仓位计算：
-        # - 维持：目标 = 基准目标（市场状态的合理持仓水平，作为指引）
-        #   不等于立即调仓，只是告诉用户"这种环境下大概应该持有多少"
-        # - 加仓：从prev逐步加，单日不超过8%
-        # - 减仓：从prev快速减
-        if r.action == "维持":
-            target = base_target
-        elif r.action == "加仓" and prev_pos is not None:
-            max_add_target = min(potential_target, normal_max)
-            diff = max_add_target - prev_pos
-            if diff > 0:
-                actual_add = min(diff, 8)
-                target = prev_pos + actual_add
-            else:
-                target = prev_pos
-                r.action = "维持"
-                r.action_detail = ""
-        elif r.action == "减仓" and prev_pos is not None:
-            target = _apply_hysteresis(target, prev_pos, r.emergency_brake, r.action)
-        elif r.action == "快速减仓" and prev_pos is not None:
-            target = _apply_hysteresis(target, prev_pos, r.emergency_brake, r.action)
-        elif r.action in ("减仓/防守", "减仓/控仓") and prev_pos is not None:
-            # 目标 = 当前减10%，且不超过风控上限（一票否决15%/普通确认上限）
+        # 1) 各动作先给出「期望目标」（基于当日市场状态的合理持仓水平）
+        # 2) ★ 统一以 prev 为锚做「单日变化上限」夹紧，杜绝"一日跳档"
+        if r.action == "加仓":
+            target = min(potential_target, normal_max, base_target + 10)
+        elif r.action == "快速减仓":
+            target = max(0, base_target - 15)
+        elif r.action == "减仓":
+            target = max(0, base_target - 8)
+        elif r.action in ("减仓/防守", "减仓/控仓"):
+            # 防守/控仓：在当前仓位上减 10%，且不超过风控上限（一票否决15%/普通确认上限）
             cap = r.position_confirm_cap
-            target = max(0, min(prev_pos - 10, cap))
+            target = (max(0, min(prev_pos - 10, cap))
+                      if prev_pos is not None else min(base_target, cap))
+        else:  # 维持
+            target = base_target
 
-        # 最终限制
+        # 最终上限
         target = max(0, min(r.position_confirm_cap, target))
-        target = int(round(target))
 
-        # 目标仓位必须落在正常区间内（极端风险/一票否决除外）
-        if not r.emergency_brake and not r.weak_veto and r.action != "快速减仓":
-            if target < normal_min:
-                # 低于正常区间下限：如果没有明显高风险，修正到下限；否则保持（说明状态需要降级）
-                if r.risk_state != "高风险":
-                    target = normal_min
+        # ★ 单日变化上限统一化（以 prev 为锚；极端风险制动与跌破关键低点除外）
+        #   加仓 ≤ +8%；减仓/防守 ≤ -15%；维持 仅在 prev 附近 ±5% 内收敛
+        if prev_pos is not None and not r.emergency_brake and not r.breakdown_active:
+            if "加仓" in r.action:
+                target = min(target, prev_pos + 8)
+            elif "减仓" in r.action or "空仓" in r.action:
+                target = max(target, prev_pos - 15)
+            else:  # 维持
+                target = max(prev_pos - 5, min(prev_pos + 5, target))
+
+        # 目标仓位落在正常区间内：normal_max 作硬顶；normal_min 仅作「指引」
+        # （不再把 normal_min 当作当日硬地板——否则状态切档会凭空制造 25pp 台阶）
+        if not r.emergency_brake and not r.weak_veto and not r.breakdown_active \
+                and r.action != "快速减仓":
             if target > normal_max:
                 target = normal_max
+
+        target = int(round(target))
+
+        # ★ 跌破日线级别关键低点且未收复 → 强制空仓（覆盖以上全部结果）
+        if r.breakdown_active:
+            target = 0
+            r.action = "空仓/等待"
+            r.action_detail = "跌破关键低点%.2f（%s）未收复，等底分型/右侧信号" % (
+                r.breakdown_key_low, r.breakdown_key_low_date)
+            normal_min = 0
+            normal_max = min(normal_max, 10)
 
         r.position_target = target
         r.position_normal_min = normal_min
@@ -729,10 +863,14 @@ class PositionEngineV99:
         r.add_room = r.position_confirm_cap - r.position_target
 
         # 一句话
-        r.one_sentence = _one_sentence(
-            r.market_regime, r.market_trend, r.money_effect,
-            r.mainline_strength, r.risk_state, r.liquidity_env
-        )
+        if r.breakdown_active:
+            r.one_sentence = "跌破日线级别关键低点%.2f（%s）后未收复，空仓等待，直到底分型或右侧买入信号。" % (
+                r.breakdown_key_low, r.breakdown_key_low_date)
+        else:
+            r.one_sentence = _one_sentence(
+                r.market_regime, r.market_trend, r.money_effect,
+                r.mainline_strength, r.risk_state, r.liquidity_env
+            )
 
         # 加减仓条件
         r.add_conditions = self._build_add_conditions(v9)
@@ -741,8 +879,8 @@ class PositionEngineV99:
         # 短线策略
         r.short_term_hint = self._build_short_term_hint(r)
 
-        # 评级（一票否决时直接锁定防守星级）
-        if r.weak_veto:
+        # 评级（跌破关键低点/一票否决时直接锁定防守星级）
+        if r.breakdown_active or r.weak_veto:
             r.final_grade = "★ 防守为主"
         else:
             r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.position_target, r.liquidity_env)
@@ -778,6 +916,8 @@ class PositionEngineV99:
         return conds[:3]
 
     def _build_short_term_hint(self, r):
+        if r.breakdown_active:
+            return "空仓等待：跌破关键低点未收复，等底分型/右侧信号再入场"
         if r.market_regime in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
             return "空仓观望为主，不抄底"
         if r.mainline_strength == "无":
@@ -841,6 +981,9 @@ class PositionEngineV99:
         if r.amount_ratio > 0:
             liq_line += "（量比%.2f）" % r.amount_ratio
         L.append("%s | 风险：%s | 节奏：%s" % (liq_line, r.risk_state, r.d_day_desc))
+        if r.breakdown_active:
+            L.append("⚠ 关键低点：%s已跌破且未收复（%s）" % (
+                r.breakdown_key_low, r.breakdown_key_low_date))
         L.append("")
         L.append("当前目标：%d%%   可加仓空间：%d%%" % (r.position_target, r.add_room))
         L.append("正常区间：%d%%～%d%%   确认上限：%d%%" % (r.position_normal_min, r.position_normal_max, r.position_confirm_cap))
@@ -869,7 +1012,7 @@ class PositionEngineV99:
 
         # 策略
         L.append("【策略】%s" % r.short_term_hint)
-        if r.weak_veto:
+        if r.breakdown_active or r.weak_veto:
             L.append("主线：少做  非主线：不做")
         elif r.mainline_strength in ("强", "中"):
             L.append("主线：做    非主线：少做")

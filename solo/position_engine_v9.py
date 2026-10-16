@@ -77,6 +77,8 @@ class MarketDataBundle:
     hist_limit: Optional[pd.DataFrame] = None
     # 前一日引擎结果（用于状态迁移和滞回）
     prev_result: Optional["EngineV9Result"] = None
+    # 前一交易日上涨家数占比（0~100；用于广度一票否决的钝化解除）
+    prev_up_ratio: Optional[float] = None
     # 组合最大回撤（可选）
     portfolio_drawdown: float = 0.0
 
@@ -160,8 +162,32 @@ INDEX_LIST_V9 = [
 def calc_ma_scores(df: pd.DataFrame) -> Dict[str, float]:
     """计算单指数的多周期MA得分"""
     if df is None or len(df) < 60:
-        return {"total": 50.0, "ma5": 50, "ma10": 50, "ma20": 50, "ma60": 50, "ma120": 50,
-                "ma20_slope": 0, "ma60_slope": 0, "dist_ma20": 0, "dist_ma60": 0}
+        # 数据不足 60 根：MA 体系退化为中性分（50），但返回值 key 必须与完整路径一致——
+        # 消费方 calc_l1_index_trend 按固定 schema 读取 ret1/ret3，缺键会直接 KeyError
+        # （索引窗口 90 自然日 ≈ 60 交易日，处在临界值，历史上曾因此崩溃）
+        close = None
+        if df is not None and 'close' in getattr(df, 'columns', []):
+            close = df['close'].astype(float).reset_index(drop=True)
+
+        def _ret(n):
+            if close is None or len(close) <= n:
+                return 0
+            prev = close.iloc[-1 - n]
+            if pd.isna(prev) or pd.isna(close.iloc[-1]) or prev == 0:
+                return 0
+            return round((close.iloc[-1] / prev - 1.0) * 100.0, 2)
+
+        dd_20 = 0.0
+        if close is not None and len(close) >= 20:
+            tail = close.tail(20)
+            roll_max = tail.cummax()
+            dd_20 = round(((tail - roll_max) / roll_max * 100.0).min(), 2)
+
+        return {"total": 50.0, "ma5": 50, "ma10": 50, "ma20": 50, "ma60": 50,
+                "ma120": 50, "ma250": 50,
+                "ma20_slope": 0, "ma60_slope": 0, "dist_ma20": 0, "dist_ma60": 0,
+                "ret1": _ret(1), "ret3": _ret(3), "ret5": _ret(5), "ret20": _ret(20),
+                "dd_20": dd_20}
     
     close = df['close'].astype(float)
     latest = close.iloc[-1]
