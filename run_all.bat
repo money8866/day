@@ -78,6 +78,14 @@ python solo\volume_surge_select.py
 echo =============================================
 python solo\tushare_quant.py
 
+echo [Step 5.35/7] 入场信号记分卡（追加进 Final_Self，含与昨日对比）...
+echo =============================================
+REM 只做记分卡追加（--skip-gen 不重跑 tushare_quant、不重复发邮件；
+REM --allow-stale-date 让周末补跑时也执行）。必须排在 tushare_quant 之后、
+REM genindex/push 之前，否则 index.html 与推送内容不含记分卡。
+python _daily_review.py --skip-gen --allow-stale-date
+echo.
+
 echo [Step 5.4/7] 三级行业共振选股（当日涨停 ≥2 家的三级行业）...
 echo =============================================
 REM 依赖 daily_cache（上一步 tushare_quant 已写入当日行情），故必须排在此处
