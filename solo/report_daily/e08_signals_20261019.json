@@ -1,0 +1,35 @@
+{
+ "trade_date": "20261019",
+ "universe": 2007,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688018.SH",
+   "name": "乐鑫科技",
+   "date_t0": "20261014",
+   "days_pullback": 3,
+   "gap": 0.0254,
+   "gap_top": 109.89,
+   "break_price": 124.61,
+   "total_mv_wan": 2822456.0,
+   "vol_avg_ratio": 0.605,
+   "earliest_in": 1,
+   "latest_in": 4
+  }
+ ],
+ "early": [
+  {
+   "code": "688385.SH",
+   "name": "复旦微电",
+   "date_t0": "20261016",
+   "days_pullback": 1,
+   "gap": 0.0159,
+   "gap_top": 48.4,
+   "break_price": 56.76,
+   "total_mv_wan": 4316289.0,
+   "vol_avg_ratio": 0.544,
+   "earliest_in": 2,
+   "latest_in": 6
+  }
+ ]
+}
