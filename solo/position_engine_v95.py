@@ -94,110 +94,6 @@ REGIME_MAP = {
 }
 
 # ============================================================
-# 一·五、P0 优化 V2：位置修正项（默认关闭，回测验证后开启）
-# ------------------------------------------------------------
-# 回测依据（2026-10-18，样本 2024-01 ~ 2026-10 三指数 575 个交易日）：
-#   1. 距60日高点回撤 >15% 的日子，未来5日收益 +3.55%、胜率 76%（2026样本 n=17）；
-#      回撤 <8% 的日子，未来5日 -2.46%、胜率 26%（n=23）—— 完美单调。
-#   2. 575 日独立样本：回撤>12% 触发日未来5日 +1.088%/胜率62.6%，
-#      未触发日 +0.199%/52.7%，Welch t 检验 p=0.0043，2024/2025/2026 三年方向一致。
-#   3. 2026 样本相关性：corr(回撤, 未来5日) = +0.370，而 corr(涨家占比) = +0.004、
-#      corr(炸板率) = -0.044 —— 现有情绪指标预测力≈0，位置因子显著。
-#   4. 深跌日打板环境不差（炸板率24.1% vs 非深跌27.0%），游资可参与。
-# 语义：5日持有期尺度上指数呈强均值回复 → 仓位与位置负相关；
-#       高位赶顶（强趋势+零回撤）是最大亏损来源（20260622 给90%仓位，未来5日-4.85%）。
-# 注意：这是「指数层面」规律；游资打板账户的适用性仅有 2026 年 85 天间接支持。
-# ============================================================
-
-OPT_V2_CONFIG = {
-    "enabled": True,               # 总开关（当前默认 = 预设 A：高位防守）
-    "deep_add_enabled": False,     # 深跌加仓独立开关：False=预设A / True=预设B
-    "pos_index": "上证指数",    # 位置计算基准指数
-    "lookback": 60,            # 高点回看窗口
-    "deep_dd": 0.10,           # 深跌阈值：距60日高点回撤 > 10% → 均值回复加仓
-    "high_dd": 0.05,           # 高位阈值：回撤 < 5% → 防赶顶减仓
-    "deep_bonus": 10,          # 深跌加仓幅度
-    "high_penalty": 10,        # 高位减仓幅度
-    "top_cap_dd": 0.03,        # 赶顶判定：回撤 < 3%（几乎在最高点）
-    "top_cap": 25,             # 赶顶封顶仓位（强趋势+零回撤时）
-}
-
-# 三态预设（2026-10-18 决策，用户确认 A/B 先做）：
-#   off — 完全关闭，等价旧引擎
-#   A   — 只开高位防守（高位减仓 + 赶顶封顶），深跌加仓关闭【当前默认】
-#   B   — 全开（A + 深跌加仓）。深跌加仓有 575 日指数统计支持（回撤>12% 触发日
-#         未来5日 +1.088%/胜率62.6%, p=0.0043）；deep_dd 取 10% 而非 15% 的原因：
-#         上证指数 15% 回撤在 2024-2025 触发 0 天（死开关），10% 触发 23 天、
-#         +1.76%/胜率74%；2026-06~10 样本回撤从未>10%，故 B 在本样本不可实测。
-OPT_V2_PRESETS = {
-    "off": {"enabled": False, "deep_add_enabled": False},
-    "A":   {"enabled": True,  "deep_add_enabled": False},
-    "B":   {"enabled": True,  "deep_add_enabled": True},
-}
-
-
-def set_opt_v2_preset(preset):
-    """切换 OPT_V2 预设（'off' / 'A' / 'B'），返回当前配置副本。"""
-    if preset not in OPT_V2_PRESETS:
-        raise ValueError("unknown preset: %r (choose from %s)" % (preset, list(OPT_V2_PRESETS)))
-    OPT_V2_CONFIG.update(OPT_V2_PRESETS[preset])
-    return dict(OPT_V2_CONFIG)
-
-
-def _calc_drawdown_from_high(index_data, index_name=None, lookback=60):
-    """距 lookback 日最高价的回撤（0~1，越大越深跌）。数据不足返回 None。"""
-    index_name = index_name or OPT_V2_CONFIG.get("pos_index", "上证指数")
-    df = (index_data or {}).get(index_name)
-    if df is None or len(df) < lookback:
-        return None
-    try:
-        closes = df['close'].astype(float)
-        highs = df['high'].astype(float).tail(lookback)
-        hi = float(highs.max())
-        if hi <= 0:
-            return None
-        return 1.0 - float(closes.iloc[-1]) / hi
-    except Exception:
-        return None
-
-
-def apply_opt_v2_gate(target, index_data, regime_key=None, opt=None,
-                      apply_adj=True, apply_top_cap=True):
-    """位置修正门：深跌加仓 / 高位减仓 / 强趋势赶顶封顶。
-
-    Args:
-        target: 引擎当日目标仓位（%）
-        index_data: {指数名: DataFrame(含 close/high)}
-        regime_key: 当前 regime（赶顶封顶仅对 STRONG_TREND 生效）
-        opt: 配置覆盖
-        apply_adj: 是否应用深跌/高位加减（当日目标修正，走限速平滑）
-        apply_top_cap: 是否应用赶顶封顶（风控硬顶，绕过限速）
-    Returns:
-        修正后的目标仓位（%）
-    """
-    opt = opt or OPT_V2_CONFIG
-    if not opt.get("enabled"):
-        return target
-    dd = _calc_drawdown_from_high(index_data, opt.get("pos_index"), opt.get("lookback", 60))
-    if dd is None:
-        return target
-    # 1) 均值回复：深跌加仓（冰点反弹逻辑，回测 +3.55%/胜率76%）
-    #    仅预设 B 启用；预设 A 不加仓（2026 样本 0 天触发，未经实测）
-    if (apply_adj and opt.get("deep_add_enabled", False)
-            and dd > opt.get("deep_dd", 0.15)):
-        target += opt.get("deep_bonus", 10)
-    # 2) 防赶顶：高位减仓（2026 样本高位未来5日 -2.46%/胜率26%）
-    elif apply_adj and dd < opt.get("high_dd", 0.05):
-        target -= opt.get("high_penalty", 10)
-    # 3) 赶顶封顶：强趋势 + 几乎零回撤 → 强制封顶（绕过限速的风控硬顶）
-    #    （20260622: trend_score 91.3、回撤0%、仓位90% → 未来5日 -4.85%）
-    if (apply_top_cap and regime_key == "STRONG_TREND"
-            and dd < opt.get("top_cap_dd", 0.03)):
-        target = min(target, opt.get("top_cap", 25))
-    return target
-
-
-# ============================================================
 # 二、环境调整参数（简单 ±5% 体系）
 # ============================================================
 
@@ -931,12 +827,6 @@ class PositionEngineV99:
         # 最终上限
         target = max(0, min(r.position_confirm_cap, target))
 
-        # ★ P0 位置修正（限速前）：深跌加仓 / 高位减仓，作为当日目标修正，走限速平滑
-        target = apply_opt_v2_gate(
-            target, getattr(data, 'index_data', {}) or {}, regime_key,
-            apply_adj=True, apply_top_cap=False)
-        target = max(0, min(r.position_confirm_cap, target))
-
         # ★ 单日变化上限统一化（以 prev 为锚；极端风险制动与跌破关键低点除外）
         #   加仓 ≤ +8%；减仓/防守 ≤ -15%；维持 仅在 prev 附近 ±5% 内收敛
         if prev_pos is not None and not r.emergency_brake and not r.breakdown_active:
@@ -955,14 +845,6 @@ class PositionEngineV99:
                 target = normal_max
 
         target = int(round(target))
-
-        # ★ P0 赶顶封顶（限速后、风控硬顶）：强趋势+几乎零回撤 → 强制封顶，绕过限速
-        #    （否则从 70% 爬到封顶需多日，顶已过；20260622 给 90% 未来5日 -4.85%）
-        if OPT_V2_CONFIG.get("enabled"):
-            _dd = _calc_drawdown_from_high(getattr(data, 'index_data', {}) or {})
-            if _dd is not None and regime_key == "STRONG_TREND" \
-                    and _dd < OPT_V2_CONFIG.get("top_cap_dd", 0.03):
-                target = min(target, OPT_V2_CONFIG.get("top_cap", 25))
 
         # ★ 跌破日线级别关键低点且未收复 → 强制空仓（覆盖以上全部结果）
         if r.breakdown_active:
