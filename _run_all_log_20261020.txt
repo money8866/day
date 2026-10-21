@@ -3239,3 +3239,146 @@ m:[36m103[0m - [34m[1m缓存已保存: daily_20261020[0m
 =============================================
 [32m2026-10-20 19:20:01.260[0m | [34m[1mDEBUG   [0m | [36mdata_fetcher[0m:[36msave_cache[0m:[36m103[0m - [3
 4m[1m缓存已保存: trade_cal_20250101_20261020_1[0m
+当前交易日1: 20261020
+[缓存] 换手率已加载: 5568 只
+
+【ER20 TOP2 次日信号】
+暂无 ER20 Top2 次日信号
+
+
+========== 主题状态全景（来自 Theme Score V2 引擎）==========
+
+[V2评分] 加载完成: 36 个主题 (日期 20261020)
+[MarketAnalysis] 已加载 20261020 大盘分析报告（仓位0%）
+[P0环境] 总趋势分50 市场状态:震荡 → 大周期趋势硬门槛关闭(弱市保留超跌反弹)
+══════════════════════════════════════════
+       A股短线仓位建议  V9.9
+══════════════════════════════════════════
+上证3735.37（+0.12%）  沪深300 4152.11（-0.54%）  中证2000 2902.70（+1.65%）
+成交14715亿  涨3778/跌1668  涨54/跌6
+炸板29（34.9%）  最高连板4板
+──────────────────────────────────────────
+市场：震荡有主线 | 赚钱：中 | 主线：中
+量价：缩量上涨（量比0.89） | 风险：正常风险 | 节奏：D2 确认期
+⚠ 关键低点：3842.72已跌破且未收复（20260916）
+
+当前目标：0%   可加仓空间：10%
+正常区间：0%～10%   确认上限：10%
+
+一句话：跌破日线级别关键低点3842.72（20260916）后未收复，空仓等待，直到底分型或右侧买入信号。
+──────────────────────────────────────────
+【动作】空仓/等待（跌破关键低点3842.72（20260916）未收复，等底分型/右侧信号）
+
+加仓：
+  ① 炸板率 <25%（当前 35%）
+  ② 主线强度继续提升
+减仓：
+  ① 上涨家数 <40%（当前 69%）
+  ② 炸板率 >35%（当前 35%）
+  ③ 主线龙头破位或退潮
+──────────────────────────────────────────
+【策略】空仓等待：跌破关键低点未收复，等底分型/右侧信号再入场
+主线：少做  非主线：不做
+最终：★ 防守为主
+══════════════════════════════════════════
+
+[批量预取] 共 5568 只股票，开始下载历史数据...
+  批量预取: 5568 只均已含 20250101~20261020 数据，跳过
+[批量预取] 完成，后续循环将命中本地缓存
+
+无结果
+[Step 5.35/7] 入场信号记分卡（追加进 Final_Self，含与昨日对比）...
+=============================================
+{"ok": false, "date": "20261020", "duration_sec": 0.0, "returncode": 0, "log": "d:\\mystock\\_gen_20261020.log", "mail_sent": false, "mail_to": null, "attachment": null, "remote_sync_failed": false, "entry_tracker": {"error": "[Errno 2] No such file or directory: 'd:\\\\mystock\\\\report_daily\\\\Final_Self_20261020.md'"}}
+
+[Step 5.4/7] 三级行业共振选股（当日涨停 ≥2 家的三级行业）...
+=============================================
+无 members_20261020 快照，申万成分回退 members_20260930（行情按 20261020 计算）
+交易日 20261020｜宇宙 4753 只（申万三级，剔 ST/北交所）｜全市场收盘涨停 55 家
+共振门槛 ≥2 家：达标三级行业 10 个，涉及涨停股 25 家
+  数字芯片设计    （半导体）涨停 2 家 / 成分 54｜占比 3.7%｜最高 1 连板｜均涨 +4.33%
+  通信终端及配件   （通信设备）涨停 3 家 / 成分 24｜占比 12.5%｜最高 1 连板｜均涨 +3.67%
+  工程机械器件    （工程机械）涨停 2 家 / 成分 9｜占比 22.2%｜最高 1 连板｜均涨 +3.39%
+  厨房小家电     （小家电）涨停 2 家 / 成分 9｜占比 22.2%｜最高 1 连板｜均涨 +3.29%
+  消费电子零部件及组装（消费电子）涨停 3 家 / 成分 78｜占比 3.8%｜最高 2 连板｜均涨 +3.07%
+  金属制品      （通用设备）涨停 5 家 / 成分 69｜占比 7.2%｜最高 3 连板｜均涨 +2.95%
+  IT服务Ⅲ     （IT服务Ⅱ）涨停 2 家 / 成分 112｜占比 1.8%｜最高 1 连板｜均涨 +2.84%
+  照明设备Ⅲ     （照明设备Ⅱ）涨停 2 家 / 成分 12｜占比 16.7%｜最高 2 连板｜均涨 +2.80%
+  底盘与发动机系统  （汽车零部件）涨停 2 家 / 成分 90｜占比 2.2%｜最高 3 连板｜均涨 +1.72%
+  化学制剂      （化学制药）涨停 2 家 / 成分 103｜占比 1.9%｜最高 2 连板｜均涨 +0.72%
+
+[Step 6/7] 汇总输出...
+=============================================
+
+[Step 7/7] 主题成份生成...
+=============================================
+[Step 8/7] 生成index.html  
+=============================================
+索引页面已生成: d:\mystock\report_daily\index.html
+根目录索引已生成: d:\mystock\index.html
+
+warning: in the working copy of 'solo/build_theme_config_v3_1.py', LF will be replaced by CRLF the next time Git touche
+s it
+warning: in the working copy of 'solo/e08_scanner.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/position_engine_v9.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/position_engine_v95.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/volume_surge_select.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/_algo_audit2.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/_xxdq.py', LF will be replaced by CRLF the next time Git touches it
+[main 6d312d1] update all
+ Author: money8866 <foreversmile1970q@gmail.com>
+ 44 files changed, 78328 insertions(+), 52599 deletions(-)
+ create mode 100644 _run_all_log_20261020.txt
+ create mode 100644 report_daily/entry_tracker_20261020.json
+ create mode 100644 report_daily/entry_tracker_20261020.md
+ create mode 100644 report_daily/etf_mainline_summary_20261020.txt
+ create mode 100644 report_daily/volume_surge_20261020.md
+ create mode 100644 solo/.trae-html-share-packages/report_daily/signal_review_20261020.html.zip
+ create mode 100644 solo/_algo_audit2.py
+ create mode 100644 solo/_bsj_sens2.py
+ create mode 100644 solo/_xxdq.py
+ delete mode 100644 solo/picks_db/stock_picks.db-shm
+ delete mode 100644 solo/picks_db/stock_picks.db-wal
+ create mode 100644 solo/realtime_theme_monitor.lock
+ create mode 100644 solo/report_daily/hvt_bull_20261020.json
+ create mode 100644 solo/report_daily/hvt_bull_ai_20261020.md
+ create mode 100644 solo/report_daily/hvt_bull_report_20261020.md
+ create mode 100644 "solo/report_daily/ige_tech_timing_\346\214\207\344\273\244_20261020.md"
+ create mode 100644 solo/report_daily/l3_resonance_20261020.json
+ create mode 100644 solo/report_daily/l3_resonance_20261020.md
+ create mode 100644 solo/report_daily/signal_review_20261020.html
+ create mode 100644 solo/report_daily/signal_review_20261020.md
+ create mode 100644 solo/report_daily/theme_analysis_v2_20261020.txt
+ create mode 100644 solo/report_daily/theme_heat_v24_20261020.json
+ create mode 100644 solo/report_daily/theme_heat_v24_20261020.md
+ create mode 100644 solo/report_daily/theme_heat_v25_20261020.json
+ create mode 100644 solo/report_daily/theme_heat_v25_20261020.md
+ create mode 100644 solo/report_daily/theme_v21_20261020.json
+ create mode 100644 solo/report_daily/theme_v21_20261020.md
+ create mode 100644 solo/report_daily/w7_second_wave_20261020.md
+ create mode 100644 solo/report_daily/w7_t20_right_tail_20261020.md
+ create mode 100644 "solo/report_daily/w7_t20_\346\214\207\344\273\244_20261020.md"
+ create mode 100644 solo/report_daily/w7_today_action_20261020.json
+ create mode 100644 "solo/report_daily/w7_\346\214\207\344\273\244_20261020.md"
+To github.com:money8866/day.git
+   83b52ea..6d312d1  main -> main
+=============================================
+[Step 9/7] 选股库 + 复盘报告同步到云服务器...
+=============================================
+[2026-10-20 19:23:12] 目标 root@115.159.221.46:/var/www/StockPick/data  目录 /var/www/StockPick/data
+[2026-10-20 19:23:12] 生成本地快照（backup API，WAL 安全）…
+[2026-10-20 19:23:12] 快照 OK：0.684 MB  信号 602 条  跟踪 625 条  20260825~20261020
+[2026-10-20 19:23:13] 上传到 /var/www/StockPick/data/.stock_picks.db.tmp …
+[2026-10-20 19:23:14] 上传完成，原子替换为 /var/www/StockPick/data/stock_picks.db
+[2026-10-20 19:23:14] 服务器已就绪：/var/www/StockPick/data/stock_picks.db
+[2026-10-20 19:23:14] 复盘报告：本地 107 期，远端 107 期，待上传 0 期
+[2026-10-20 19:23:14] 报告已是最新，无需上传。
+[2026-10-20 19:23:15] 三级行业共振：本地 35 期，远端 34 期，待上传 1 期
+[2026-10-20 19:23:16] 共振 JSON 上传完成，远端现有 35 期（/var/www/StockPick/l3res）
+[2026-10-20 19:23:16] ETF 每日复盘：本地 3 个，远端 3 个，待上传 0 个
+[2026-10-20 19:23:16] ETF 数据已是最新，无需上传。
+[2026-10-20 19:23:16] 同步完成。服务端读新连接即生效，无需重启 app.py。
+=============================================
+ 全流程完成 - 周二 2026/10/20 19:23:16.38
+=============================================
+Press any key to continue . . . 

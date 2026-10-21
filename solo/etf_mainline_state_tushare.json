@@ -1,11 +1,11 @@
 {
-  "last_rebalance_date": "2026-10-14",
-  "holding_code": "515220",
-  "holding_name": "煤炭",
-  "buy_price": 1.303,
-  "score_at_buy": 92.36,
-  "momentum_at_buy": 0.08,
-  "rsi_at_buy": 56.83,
-  "ige_at_buy": 86.25557647488569,
-  "rebalance_count": 9
+  "last_rebalance_date": "2026-10-21",
+  "holding_code": "159883",
+  "holding_name": "医疗器械",
+  "buy_price": 0.432,
+  "score_at_buy": 91.18,
+  "momentum_at_buy": 1.65,
+  "rsi_at_buy": 40.28,
+  "ige_at_buy": 66.82927705741635,
+  "rebalance_count": 10
 }

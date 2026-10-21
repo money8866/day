@@ -113,8 +113,12 @@ def _num(v):
 # 数据源实现
 # ══════════════════════════════════════════════════════════════════════
 def fetch_cls(page_size: int = 50) -> list[dict]:
-    """财联社电报（v1 API + 本地签名，零 key）。"""
-    page_size = max(1, min(int(page_size), 100))
+    """财联社电报（v1 API + 本地签名，零 key）。
+
+    只保留标题带【】的栏目稿（【金牌纪要库】【公告全知道】【风口研报·洞察】等），
+    普通电报快讯全部过滤。
+    """
+    page_size = max(1, min(int(page_size), 50))      # 该接口 rn 上限 50，超过直接返回空
     params = {"appName": "CailianpressWeb", "os": "web", "sv": "7.7.5",
               "last_time": "", "refresh_type": "1", "rn": str(page_size)}
     qs = "&".join(f"{k}={params[k]}" for k in sorted(params))
@@ -125,11 +129,14 @@ def fetch_cls(page_size: int = 50) -> list[dict]:
     items = data.get("roll_data") or []
     out = []
     for it in items:
+        title = (it.get("title") or "").strip()
+        if "【" not in title or "】" not in title:
+            continue
         ts = it.get("ctime")
         t = datetime.fromtimestamp(ts, CN_TZ).strftime("%Y-%m-%d %H:%M:%S") if ts else ""
         out.append({
             "time": t,
-            "title": it.get("title") or it.get("brief") or "",
+            "title": title,
             "text": (it.get("content") or it.get("brief") or "").strip(),
             "url": it.get("shareurl") or "",
             "tags": [x.get("name") for x in (it.get("subjects") or []) if isinstance(x, dict)][:3],

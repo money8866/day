@@ -9053,7 +9053,7 @@ def run(target_date=None, simple_mode=False):
 
     if result_df.empty:
         print("无结果")
-        return
+
 
     # =========================
     # 主题过滤：注入所属主题等字段

@@ -1,0 +1,104 @@
+{
+  "preregistration": {
+    "created_at": "2026-10-20",
+    "strategy_id": "msw",
+    "version": "1.0.0",
+    "status": "FROZEN_BEFORE_TESTING",
+    "note": "本文件在任何测试集结果产生前冻结（任务书 §9.1）。此后禁止修改定义、参数与阈值；如需变更必须新增版本号并重新声明，旧版本结果保留。"
+  },
+
+  "universe_definition": {
+    "market": "沪深A股（SH/SZ），剔除北交所（代码前缀 8/4/9）",
+    "exclude_st": "按 stock_basic.csv 当前名称含 ST/退 剔除（已知局限：无 PIT 名称历史，回测早期 ST 样本无法按当时状态剔除，报告中披露）",
+    "min_listed_days": 250,
+    "liquidity": "过去20日成交额中位数 >= 3000万元",
+    "min_total_mv": ">= 30亿元",
+    "delisted": "保留历史退市股票（daily_cache 含 204 只最后交易日早于 2025-01-01 的样本），按历史日期还原股票池，缓解幸存者偏差"
+  },
+
+  "data": {
+    "source": "D:\\mystock\\cache_daily\\stock_data.db（只读，零网络）",
+    "price_basis": "后复权 hfq = close × adj_factor（已验证与 stk_factor_pro.close_hfq 一致）；2023-01-03 前 adj 缺失用不复权价（仅热身期）",
+    "tables": ["daily_cache", "adj_factor_cache", "daily_basic_cache", "fina_indicator_cache", "index_daily_cache"],
+    "stock_basic": "D:\\mystock\\cache_daily\\stock_basic.csv（name/industry/list_date）",
+    "fundamental_pit": "fina_indicator_cache 按 ann_date <= 当日过滤，严禁使用未来正式季报"
+  },
+
+  "time_split": {
+    "warmup_end": "2023-12-29",
+    "is_range": ["2024-01-02", "2025-12-31"],
+    "oos_range": ["2026-01-01", "2026-10-20"],
+    "rationale": "adj_factor 起于 2023-01-03，MA250 需 250 个交易日后才可计算，故信号自 2024-01-02 起；IS 用于假设形成与报告，OOS 为唯一独立证据"
+  },
+
+  "feature_list": {
+    "trend": ["ma20/60/120/250 及 20 日斜率", "MA 排列", "距 60/120/250 日高点幅度", "趋势波动率(ATR20/close)", "250 日最大回撤与修复时间"],
+    "relative_strength": ["120日/250日个股复权收益 - 000300.SH 复权收益", "行业代理（个股 industry 字段等权中位数）相对收益"],
+    "swing_history_PIT": ["已确认 ZigZag 波段数量(250/500日)", "上涨段平均/中位涨幅", "回撤深度与持续日数", "修复时间与修复率", "突破失败频率", "回调缩量幅度"],
+    "volume_price": ["上涨段均量/回撤段均量比值", "量比 vr20", "CLV", "突破量能恢复度"],
+    "fundamental_PIT": ["or_yoy", "netprofit_yoy", "grossprofit_margin", "ocf_to_or", "roe", "debt_to_assets", "A/B 类分层"]
+  },
+
+  "signal_definitions": {
+    "C1_pullback": "趋势过滤通过 + 阶段高点回撤 6%~18% 或 1.5~2.5×ATR20 + 接近 MA20/MA60（3%内）+ 5日均量 <= 0.75×回撤前均量 + 收复 MA5 或突破近10日高点",
+    "C2_meanrev": "趋势过滤通过 + (RSI6<=30 或 低于 MA20 8%+ 或 BOLL 位置<=0.2) + 回撤期量比<=1.5",
+    "C3_breakout": "回调后 5~20 日整理（振幅<=8%）+ 缩量整理（<=0.8×）+ 放量突破（>=1.2×20日均量 且涨幅>=2%），跳空>5% 不追",
+    "priority": "C1 > C3 > C2；单股同时只允许一个持仓/挂单",
+    "exit": "+1×ATR 兑现50%；+2×ATR/接近前高兑现剩余；追踪止盈2.5×ATR；失效=收盘跌破MA120 或跌破回撤低点-3% 或相对强度连续10日恶化；最长持仓120日；冷却5日 + 风险收益比>=1.5 再入场"
+  },
+
+  "quality_score": {
+    "weights_frozen": {"trend_quality": 0.25, "swing_space": 0.20, "recovery": 0.20, "frequency": 0.15, "volume_structure": 0.10, "liquidity_risk": 0.10},
+    "min_score": 55.0,
+    "tags": ["长期趋势型", "高波段频率型", "回撤修复型"]
+  },
+
+  "cost_and_execution": {
+    "round_trip_bp_base": 30.0,
+    "sensitivity_bp": [20.0, 30.0, 50.0, 80.0],
+    "slippage_bp_per_side": 5.0,
+    "t_plus_1": true,
+    "limit_up_no_buy": true,
+    "limit_down_no_sell": true,
+    "limits": "主板±10%，创业板/科创板±20%，ST±5%",
+    "exec": "信号日T收盘确认，T+1开盘价成交"
+  },
+
+  "portfolio": {
+    "mode": "vol_weighted（ATR 风险预算）",
+    "max_positions": 10,
+    "max_single_frac": 0.15,
+    "max_sector_frac": 0.35
+  },
+
+  "metrics": {
+    "per_round": ["净收益均值/中位数/分位数", "盈利比例", "平均盈利/平均亏损"],
+    "portfolio": ["年化收益", "Sharpe", "Calmar", "最大回撤", "资金利用率", "空仓时间占比"],
+    "efficiency": ["年均完整交易轮数", "平均持仓天数", "卖出到下一买点等待时间", "成本占毛利润比例", "净利润因子"],
+    "selector": ["未来3/6/12月收益分布", "相对行业/宽基超额", "候选池规模与换手率", "行业集中度"]
+  },
+
+  "acceptance_thresholds": {
+    "rule": "任务书 §10.3 六条全部满足才可进入实盘观察；任一不满足输出 UNPROVEN/FAIL",
+    "criteria": [
+      "样本外（OOS）30bp 成本后每轮期望收益 > 0",
+      "多个年度（IS/OOS）表现稳定，非仅单一牛市有效",
+      "相较匹配买入持有与 MA 趋势基线，在收益/风险/资金效率/回撤控制上至少一项有清晰增量",
+      "剔除收益贡献最高 5% 股票后主要结果仍可解释",
+      "参数适度变化（±1 档）结论不崩溃",
+      "无未来数据泄漏、幸存者偏差、不现实成交假设"
+    ]
+  },
+
+  "baselines": ["buy_hold", "ma_trend", "momentum", "pure_meanrev", "matched_control"],
+  "ablation_modules": ["trend_filter", "fundamental", "quality_score", "c1_volume_cond", "c3_breakout", "regime_filter", "vol_position"],
+  "stress_tests": ["参数扰动", "成本梯度 20/30/50/80bp", "剔除 Top5% 收益股票", "匹配对照", "分年度/行业/市值", "市场状态切片", "极端盈利依赖", "滑点敏感性"],
+
+  "leakage_guards": [
+    "ZigZag 转折点必须事后确认（确认滞后>=1日）才进入统计",
+    "财务数据按 ann_date PIT 过滤",
+    "信号日T只用<=T数据，T+1开盘成交（测试：修改T+1后数据不得改变T及之前的信号）",
+    "股票池按历史日期还原，不用今日名单覆盖历史",
+    "退市股保留在历史股票池中"
+  ]
+}

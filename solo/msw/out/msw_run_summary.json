@@ -1,0 +1,269 @@
+{
+  "verdict": "FAIL",
+  "reasons": [
+    "① 样本外每轮期望收益（30bp 成本后）= -0.002052369747899158 ✗",
+    "② IS 每轮期望 0.029160358823529416 / 总收益 0.5736996492655171；OOS 每轮期望 -0.002052369747899158 / 总收益 -0.05678897137003769 ✗",
+    "③ 基线增量：Sharpe 0.185 vs B&H 0.437; MaxDD -0.447 vs B&H -0.226; 总收益 0.016 vs B&H 0.202; Sharpe vs MA趋势 0.543 ✗",
+    "④ 剔除收益贡献最高 5% 股票后期望收益 = -0.005932549763033174 ✗",
+    "⑤ 参数扰动 6 组，符号一致率 6/6 ✓",
+    "⑥ 30bp 成本档期望收益 ✓"
+  ],
+  "msw": {
+    "equity": {
+      "n_days": 675,
+      "total_return": 0.015894754489605978,
+      "max_drawdown": -0.4466511204917243,
+      "avg_positions": 9.225185185185186,
+      "zero_position_ratio": 0.04148148148148148,
+      "ann_return": 0.005651824812683337,
+      "ann_vol": 0.3356424783671091,
+      "sharpe": 0.1846491407417756,
+      "calmar": 0.012653779546016064,
+      "capital_utilization": 0.9248413682230596
+    },
+    "rounds": {
+      "n_rounds": 227,
+      "win_rate": 0.44493392070484583,
+      "net_mean": 0.0042435638766519825,
+      "net_median": -0.028167,
+      "net_p10": -0.1439042,
+      "net_p90": 0.16171960000000002,
+      "avg_win": 0.1261132772277228,
+      "avg_loss": -0.09344565079365082,
+      "profit_factor": 1.0818138750034823,
+      "gross_total": 1.864638,
+      "cost_total": 68793.6,
+      "cost_share_of_gross": 0.6379037423118723,
+      "expectancy": 0.0042435638766519825,
+      "avg_hold_days": 25.45374449339207,
+      "rounds_per_year": 81.12695694716243
+    }
+  },
+  "is": {
+    "equity_metrics": {
+      "n_days": 485,
+      "total_return": 0.5736996492655171,
+      "max_drawdown": -0.27803515819251123,
+      "avg_positions": 8.921649484536083,
+      "zero_position_ratio": 0.0577319587628866,
+      "ann_return": 0.25505719711736385,
+      "ann_vol": 0.3583504739362109,
+      "sharpe": 0.837127621272476,
+      "calmar": 0.9173559156168392,
+      "capital_utilization": 0.9034987442762124
+    },
+    "round_metrics": {
+      "n_rounds": 170,
+      "win_rate": 0.45294117647058824,
+      "net_mean": 0.029160358823529416,
+      "net_median": -0.024711999999999998,
+      "net_p10": -0.1232109,
+      "net_p90": 0.16560179999999997,
+      "avg_win": 0.16109796103896104,
+      "avg_loss": -0.08007830107526881,
+      "profit_factor": 1.6656470105469352,
+      "gross_total": 5.641286999999999,
+      "cost_total": 49606.39,
+      "cost_share_of_gross": 0.0775020840063116,
+      "expectancy": 0.029160358823529416,
+      "avg_hold_days": 23.929411764705883,
+      "rounds_per_year": 85.17489711934157
+    }
+  },
+  "oos": {
+    "equity_metrics": {
+      "n_days": 190,
+      "total_return": -0.05678897137003769,
+      "max_drawdown": -0.2100260899173284,
+      "avg_positions": 9.673684210526316,
+      "zero_position_ratio": 0.005263157894736842,
+      "ann_return": -0.07146510693676278,
+      "ann_vol": 0.3233191575830732,
+      "sharpe": -0.07989211571124291,
+      "calmar": -0.3402677589479157,
+      "capital_utilization": 0.9612427855298912
+    },
+    "round_metrics": {
+      "n_rounds": 119,
+      "win_rate": 0.44537815126050423,
+      "net_mean": -0.002052369747899158,
+      "net_median": -0.025432,
+      "net_p10": -0.1404196,
+      "net_p90": 0.15729780000000004,
+      "avg_win": 0.10614918867924528,
+      "avg_loss": -0.0889415,
+      "profit_factor": 0.9583941709046411,
+      "gross_total": 0.21709599999999984,
+      "cost_total": 37741.3,
+      "cost_share_of_gross": null,
+      "expectancy": -0.002052369747899158,
+      "avg_hold_days": 15.361344537815127,
+      "rounds_per_year": 148.85188356164383
+    }
+  },
+  "baselines": {
+    "buy_hold": {
+      "equity": {
+        "n_days": 675,
+        "total_return": 0.2023904457983874,
+        "max_drawdown": -0.22595709482344772,
+        "avg_positions": 69.97185185185185,
+        "zero_position_ratio": 0.04148148148148148,
+        "ann_return": 0.06808856406542252,
+        "ann_vol": 0.2067335786561778,
+        "sharpe": 0.4370214550894407,
+        "calmar": 0.3013340391839598,
+        "capital_utilization": 0.9163794632600331
+      },
+      "rounds": {
+        "n_rounds": 72,
+        "win_rate": 0.5277777777777778,
+        "net_mean": 0.21565022222222222,
+        "net_median": 0.0330155,
+        "net_p10": -0.3935338,
+        "net_p90": 1.0422791999999996,
+        "avg_win": 0.6421963421052632,
+        "avg_loss": -0.26107779411764703,
+        "profit_factor": 2.7491761808656316,
+        "gross_total": 15.745808,
+        "cost_total": 1401.6100000000001,
+        "cost_share_of_gross": 0.006861271283263478,
+        "expectancy": 0.21565022222222222,
+        "avg_hold_days": 646.0,
+        "rounds_per_year": 25.731898238747554
+      }
+    },
+    "ma_trend": {
+      "equity": {
+        "n_days": 675,
+        "total_return": 0.3348634508619699,
+        "max_drawdown": -0.2523138387184056,
+        "avg_positions": 27.511111111111113,
+        "zero_position_ratio": 0.04148148148148148,
+        "ann_return": 0.10873959273120604,
+        "ann_vol": 0.2627677429396333,
+        "sharpe": 0.5427343999909696,
+        "calmar": 0.43096959438901267,
+        "capital_utilization": 0.9585185185185185
+      },
+      "rounds": {
+        "n_rounds": 252,
+        "win_rate": 0.3968253968253968,
+        "net_mean": 0.04599050396825396,
+        "net_median": -0.017964,
+        "net_p10": -0.1392542,
+        "net_p90": 0.2106367,
+        "avg_win": 0.23696982000000003,
+        "avg_loss": -0.07965378289473685,
+        "profit_factor": 1.957235321446639,
+        "gross_total": 12.603218000000002,
+        "cost_total": 29000.660000000003,
+        "cost_share_of_gross": 0.07763932769727477,
+        "expectancy": 0.04599050396825396,
+        "avg_hold_days": 73.57539682539682,
+        "rounds_per_year": 90.06164383561644
+      }
+    },
+    "momentum": {
+      "equity": {
+        "n_days": 675,
+        "total_return": -0.5948653356289446,
+        "max_drawdown": -0.6216061670046367,
+        "avg_positions": 6.180740740740741,
+        "zero_position_ratio": 0.0014814814814814814,
+        "ann_return": -0.2759626975673104,
+        "ann_vol": 0.34031318592469095,
+        "sharpe": -0.8222392144148913,
+        "calmar": -0.44395102914938095,
+        "capital_utilization": 0.6308161858404452
+      },
+      "rounds": {
+        "n_rounds": 118,
+        "win_rate": 0.2627118644067797,
+        "net_mean": -0.06664389830508471,
+        "net_median": -0.11646100000000001,
+        "net_p10": -0.31561320000000004,
+        "net_p90": 0.2707905,
+        "avg_win": 0.26394416129032255,
+        "avg_loss": -0.1844396436781609,
+        "profit_factor": 0.5099178630469963,
+        "gross_total": -7.429244000000001,
+        "cost_total": 23817.880000000005,
+        "cost_share_of_gross": null,
+        "expectancy": -0.06664389830508471,
+        "avg_hold_days": 35.313559322033896,
+        "rounds_per_year": 42.17172211350294
+      }
+    },
+    "pure_meanrev": {
+      "equity": {
+        "n_days": 675,
+        "total_return": 0.025550232536724726,
+        "max_drawdown": -0.25457521737700295,
+        "avg_positions": 24.084444444444443,
+        "zero_position_ratio": 0.013333333333333334,
+        "ann_return": 0.00905740122050469,
+        "ann_vol": 0.25830994815091124,
+        "sharpe": 0.16627647246827282,
+        "calmar": 0.03557848762274254,
+        "capital_utilization": 0.985739209474447
+      },
+      "rounds": {
+        "n_rounds": 1369,
+        "win_rate": 0.48429510591672753,
+        "net_mean": 0.0014686493791088377,
+        "net_median": -0.001545,
+        "net_p10": -0.0858774,
+        "net_p90": 0.07562340000000001,
+        "avg_win": 0.060714131221719474,
+        "avg_loss": -0.05416839660056656,
+        "profit_factor": 1.0525739844752315,
+        "gross_total": 7.464041000000001,
+        "cost_total": 169643.90000000002,
+        "cost_share_of_gross": 0.6738793616836013,
+        "expectancy": 0.0014686493791088377,
+        "avg_hold_days": 11.85536888239591,
+        "rounds_per_year": 489.26345401174166
+      }
+    },
+    "matched_control": {
+      "equity": {
+        "n_days": 675,
+        "total_return": -0.06472222830238372,
+        "max_drawdown": -0.3769504101389254,
+        "avg_positions": 8.948148148148148,
+        "zero_position_ratio": 0.04148148148148148,
+        "ann_return": -0.023629747813769253,
+        "ann_vol": 0.300186267593552,
+        "sharpe": 0.06642681700360428,
+        "calmar": -0.06268662184254022,
+        "capital_utilization": 0.9141946381679127
+      },
+      "rounds": {
+        "n_rounds": 303,
+        "win_rate": 0.3696369636963696,
+        "net_mean": 0.0005321518151815186,
+        "net_median": -0.019244,
+        "net_p10": -0.0927574,
+        "net_p90": 0.08224200000000007,
+        "avg_win": 0.09764610714285712,
+        "avg_loss": -0.05641425130890052,
+        "profit_factor": 1.0149642853231728,
+        "gross_total": 1.3608220000000002,
+        "cost_total": 80360.43999999999,
+        "cost_share_of_gross": 1.8941778862778227,
+        "expectancy": 0.0005321518151815186,
+        "avg_hold_days": 19.904290429042906,
+        "rounds_per_year": 108.28840508806262
+      }
+    },
+    "index_buy_hold": {
+      "equity": {
+        "total_return": 0.22612977027893066
+      },
+      "rounds": null
+    }
+  },
+  "n_walked": 4730,
+  "n_event_stocks": 3445
+}

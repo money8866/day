@@ -1,0 +1,35 @@
+{
+ "trade_date": "20261021",
+ "universe": 2018,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688385.SH",
+   "name": "复旦微电",
+   "date_t0": "20261016",
+   "days_pullback": 3,
+   "gap": 0.0159,
+   "gap_top": 48.4,
+   "break_price": 56.76,
+   "total_mv_wan": 4318760.0,
+   "vol_avg_ratio": 0.413,
+   "earliest_in": 1,
+   "latest_in": 4
+  }
+ ],
+ "early": [
+  {
+   "code": "000408.SZ",
+   "name": "藏格矿业",
+   "date_t0": "20261019",
+   "days_pullback": 2,
+   "gap": 0.0149,
+   "gap_top": 70.7,
+   "break_price": 73.98,
+   "total_mv_wan": 11092228.0,
+   "vol_avg_ratio": 0.551,
+   "earliest_in": 1,
+   "latest_in": 5
+  }
+ ]
+}
