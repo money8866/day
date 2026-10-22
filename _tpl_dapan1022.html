@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1526">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1526'/%3E%3Cpath d='M7 22 L14 14 L19 18 L26 9' stroke='%23ffd76e' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>2026-10-22 大盘推演 · SIMON 量化工作矩阵</title>
+<style>
+:root{
+  --bg:#f3f5f8; --card:#ffffff; --line:#e6e9ef; --ink:#16181d; --ink2:#6a7280;
+  --up:#0e9f6e; --upbg:#e9f8f2; --down:#dc2626; --downbg:#fdecec;
+  --rise:#dc2626; --risebg:#fdecec; --fall:#0e9f6e; --fallbg:#e9f8f2;
+  --head:#0d1526; --head2:#16233f; --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06);
+  --gold:#b98a44; --goldbg:#f8f0df;
+}
+[data-theme="dark"]{
+  --bg:#0b0f17; --card:#121826; --line:#232c3f; --ink:#e7ecf5; --ink2:#8b95a7;
+  --upbg:rgba(14,159,110,.12); --downbg:rgba(220,38,38,.12);
+  --risebg:rgba(220,38,38,.12); --fallbg:rgba(14,159,110,.12);
+  --goldbg:rgba(185,138,68,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.55}
+.pos{color:var(--rise);font-weight:600}
+.neg{color:var(--fall);font-weight:600}
+.j-x{display:inline-block;width:16px;height:16px;vertical-align:-3px;margin-right:2px;flex:0 0 auto}
+.j-x circle{fill:var(--down)}
+.j-x path{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round}
+.topbar{position:sticky;top:0;z-index:50;background:var(--head);color:#fff}
+.topbar-inner{max-width:640px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:12px 16px 10px}
+.brand{font-size:14px;font-weight:800;letter-spacing:.02em}
+.tbtn{border-radius:999px;padding:0 14px;font-size:12.5px;cursor:pointer;min-height:44px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff}
+.stknav{max-width:640px;margin:0 auto;display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px;scrollbar-width:none}
+.stknav::-webkit-scrollbar{display:none}
+.stknav a{flex:0 0 auto;color:#c8d4e8;background:rgba(255,255,255,.08);border-radius:999px;padding:0 16px;font-size:13px;min-height:44px;display:inline-flex;align-items:center;text-decoration:none}
+.stknav a.on{background:#fff;color:#0d1526;font-weight:600}
+main{max-width:640px;margin:0 auto;padding:12px 12px 40px}
+@media (min-width:700px){main{max-width:760px}}
+.part{margin-top:14px}
+.phead{background:linear-gradient(135deg,var(--head),var(--head2));color:#fff;border-radius:18px;padding:16px 18px}
+.pnum{font-size:11px;font-weight:800;color:#ffd76e;border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:2px 8px}
+.phead h2{font-size:19px;font-weight:800;margin-top:8px}
+.pmeta{display:flex;gap:6px;flex-wrap:wrap;font-size:11.5px;color:#9fb0cc;margin-top:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);margin:12px 0;padding:16px}
+.sec-ttl{font-size:13.5px;font-weight:800;color:var(--ink2);letter-spacing:.06em;margin-bottom:12px}
+.sec-ttl::before{content:"";width:4px;height:14px;border-radius:2px;background:var(--ink);display:inline-block;margin-right:8px}
+.concl{background:linear-gradient(135deg,#1b2437,#0d1526);color:#fff;border-radius:14px;padding:14px 16px}
+.concl-ttl{font-size:12px;font-weight:800;color:#ffd76e;letter-spacing:.08em;margin-bottom:7px}
+.concl-body{font-size:13.5px;line-height:1.65}
+.concl-body .pos{color:#ff8a8a}
+.concl-body .neg{color:#7fe0b2}
+.route-trig{font-size:12px;color:var(--ink2);background:var(--line);border-radius:8px;padding:6px 10px;margin-bottom:12px}
+.rt-stk{margin:10px 0}
+.rt-name{font-size:12.5px;font-weight:800;margin-bottom:6px}
+.rt-path{display:flex;flex-wrap:wrap;gap:6px}
+.rt-chip{border:1px solid var(--line);border-radius:9px;padding:5px 9px;font-size:12px;font-weight:700;color:var(--ink);background:var(--card)}
+.rt-chip.star{border-color:var(--gold);background:var(--goldbg);color:#8a5f1e}
+[data-theme="dark"] .rt-chip.star{color:#ffd76e}
+.rt-desc{display:block;font-size:10.5px;font-weight:500;color:var(--ink2);margin-top:2px}
+.rt-range{margin-top:8px;font-size:12px;font-weight:700;color:var(--ink);background:var(--risebg);border-radius:8px;padding:5px 10px;display:inline-block}
+.tw-stk{margin:10px 0}
+.tw-row{display:flex;flex-wrap:wrap;gap:6px}
+.tw-chip{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--ink)}
+.tw-chip.s1{font-weight:600}
+.tw-chip.s2{border-color:var(--gold);background:var(--goldbg);font-weight:800;color:#8a5f1e}
+[data-theme="dark"] .tw-chip.s2{color:#ffd76e}
+.tw-chip.s3{background:linear-gradient(135deg,#1b2437,#0d1526);color:#ffd76e;font-weight:800}
+.tw-note{display:block;font-size:10px;font-weight:500;color:var(--ink2);margin-top:2px}
+.tw-res{margin-top:10px;font-size:12px;font-weight:700;color:#8a5f1e;background:var(--goldbg);border:1px solid rgba(180,83,9,.35);border-radius:10px;padding:9px 12px}
+[data-theme="dark"] .tw-res{color:#ffd76e}
+.sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sig{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.sig-b{border-top:3px solid var(--fall)}
+.sig-t{border-top:3px solid var(--rise)}
+.sig-ttl{font-size:12.5px;font-weight:800;color:var(--ink)}
+.sig ul{margin:7px 0 0;padding-left:16px}
+.sig li{font-size:12px;line-height:1.55;margin:5px 0}
+.disc{display:flex;gap:9px;margin:8px 0;font-size:12.5px}
+.disc .no{flex:0 0 auto;width:20px;height:20px;border-radius:6px;background:var(--head);color:#ffd76e;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.disc div{line-height:1.55}
+.tb{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+.tb th{font-size:11px;color:var(--ink2);text-align:left;padding:5px 6px;border-bottom:1.5px solid var(--line)}
+.tb td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.45}
+.ext{margin-top:11px;font-size:12px;background:var(--upbg);border-radius:10px;padding:8px 11px;line-height:1.6}
+.note{font-size:12px;color:#8a5f1e;background:var(--goldbg);border:1px solid rgba(180,83,9,.35);border-radius:10px;padding:9px 12px;margin-top:11px}
+[data-theme="dark"] .note{color:#ffd76e}
+.ql{font-size:12.5px;padding:8px 0;border-bottom:1px dashed var(--line);line-height:1.6}
+.ql:last-child{border-bottom:none}
+.lv-mid td{background:var(--goldbg);color:#8a5f1e;font-weight:700}
+[data-theme="dark"] .lv-mid td{color:#ffd76e}
+.tb td.lv-p{font-weight:700}
+.foot{max-width:640px;margin:0 auto;padding:4px 16px 30px;font-size:11px;color:var(--ink2);line-height:1.7}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner"><div class="brand">SIMON 量化工作矩阵 · 大盘</div><button class="tbtn" id="tbtn">深色</button></div>
+  <nav class="stknav" id="stknav"><a href="#p1">结论操作</a><a href="#p2">数据依据</a></nav>
+</header>
+<main>
+<section class="part" id="p1"><div class="phead"><span class="pnum">01</span><h2>结论与操作</h2><div class="pmeta">一句话结论 · 双路径推演 · 时间窗口 · 见底见顶 · 纪律</div></div><div class="card"><div class="concl"><div class="concl-ttl">一句话结论</div><div class="concl-body">美股虽强，韩股拖累，A 股小幅低开，并直接贴在裁决线上——09:45 是全天方向裁决点。守住 3703 / 2682 则弱势修复至 3723 / 2725；一旦跌破，则下看 3683 / 2651。底气候双 <svg class="j-x" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/></svg>，任何反弹只做减仓，不做建仓。</div></div></div><div class="card"><div class="sec-ttl">A 路 · 守住裁决线 → 修复</div><div class="route-trig">触发：守住裁决线（3703.12 / 2682.71），弱势修复</div><div class="rt-stk"><div class="rt-name">上证</div><div class="rt-path"><span class="rt-chip star">3713.1 ★★<span class="rt-desc">首档，开盘上摸即到</span></span><span class="rt-chip">3718.4</span><span class="rt-chip star">3723.1 ★★</span><span class="rt-chip star">3727.8 ★★</span><span class="rt-chip star">3733.1 ★★</span><span class="rt-chip">3743.08<span class="rt-desc">极限（10/21 全天高）</span></span></div><div class="rt-range">收盘区间：3710 – 3735</div></div><div class="rt-stk"><div class="rt-name">创业板</div><div class="rt-path"><span class="rt-chip star">2704.0 ★★</span><span class="rt-chip star">2715.0 ★★</span><span class="rt-chip star">2724.8 ★★</span><span class="rt-chip star">2734.7 ★★</span><span class="rt-chip">2745.8</span><span class="rt-chip">2766.81<span class="rt-desc">极限（10/21 全天高）</span></span></div><div class="rt-range">收盘区间：2700 – 2745</div></div></div><div class="card"><div class="sec-ttl">B 路 · 跌破裁决线 → 延续</div><div class="route-trig">触发：跌破裁决线（3703.12 / 2682.71），弱势延续</div><div class="rt-stk"><div class="rt-name">上证</div><div class="rt-path"><span class="rt-chip">3693.1</span><span class="rt-chip">3687.9</span><span class="rt-chip">3683.1</span><span class="rt-chip">3678.4<span class="rt-desc">极限</span></span></div><div class="rt-range">收盘区间：3680 – 3705</div></div><div class="rt-stk"><div class="rt-name">创业板</div><div class="rt-path"><span class="rt-chip">2662.1</span><span class="rt-chip">2651.1<span class="rt-desc">生死线</span></span><span class="rt-chip">2641.2<span class="rt-desc">极限</span></span></div><div class="rt-range">收盘区间：2640 – 2680</div></div></div><div class="card"><div class="sec-ttl">时间窗口（±5 分钟）</div><div class="tw-stk"><div class="rt-name">上证</div><div class="tw-row"><span class="tw-chip s2">09:45 ★★<span class="tw-note">主窗</span></span><span class="tw-chip s1">10:00 ★</span><span class="tw-chip s1">10:25 ★</span><span class="tw-chip s2">10:45 ★★<span class="tw-note">主窗</span></span><span class="tw-chip s2">11:05 ★★<span class="tw-note">主窗</span></span><span class="tw-chip s1">13:20 ★</span><span class="tw-chip s1">14:55 ★</span></div></div><div class="tw-stk"><div class="rt-name">创业板</div><div class="tw-row"><span class="tw-chip s2">09:40 ★★</span><span class="tw-chip s3">09:45 ★★★<span class="tw-note">双指数共振，全天最重</span></span><span class="tw-chip s2">10:25 ★★</span><span class="tw-chip s2">11:00 ★★</span><span class="tw-chip s2">11:30 ★★</span><span class="tw-chip s2">13:45 ★★</span></div></div><div class="tw-res">共振点：09:45 — 两指数同时指向，是当日第一个也是最关键的方向裁决点。</div></div><div class="card"><div class="sec-ttl">见底 / 见顶信号</div><div class="sig-grid"><div class="sig sig-b"><div class="sig-ttl">见底（B 路止跌，可回补）</div><ul><li>09:45 窗口内出现低点，且 10:00 不再破</li><li>5MIN 中轨收复（上证 3713.5 / 创业板 2701）</li><li>ΔMA5 负值连续 2 根收窄</li></ul></div><div class="sig sig-t"><div class="sig-ttl">见顶（A 路衰竭，减仓）</div><ul><li>上攻触及 3723.1 / 2724.8 后 ΔMA5 由正转负</li><li>5MIN 收阴且量能低于前 3 根均量</li><li>触及 3733.1 / 2734.7 后滞涨</li></ul></div></div></div><div class="card"><div class="sec-ttl">纪律</div><div class="disc"><span class="no">1</span><div>双底气候 <svg class="j-x" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/></svg>：只做反 T，不做正 T 开仓</div></div><div class="disc"><span class="no">2</span><div>单票仓位 ≤ 2/3；14:30 后不开新组；收盘敞口归零</div></div><div class="disc"><span class="no">3</span><div>触及即成交，成交后不可撤销；破生死线则未成交挂单作废</div></div><div class="disc"><span class="no">4</span><div>09:45 窗口未给方向 → 全天按震荡对待，只做区间</div></div></div></section>
+<section class="part" id="p2"><div class="phead"><span class="pnum">02</span><h2>数据与依据</h2><div class="pmeta">基准 · 外盘 · 开盘定位 · 定性 · 裁决线 · 关键价位</div></div><div class="card"><div class="sec-ttl">基准（10/21 收盘确认）</div><table class="tb"><colgroup><col style="width:20%"><col style="width:40%"><col style="width:40%"></colgroup><thead><tr><th></th><th>上证 000001.SH</th><th>创业板 399006.SZ</th></tr></thead><tbody><tr><td>前收</td><td>3713.03（<span class="neg">−0.60</span>%）</td><td>2694.71（<span class="neg">−1.63</span>%）</td></tr><tr><td>当日高</td><td>3743.08（09:40）</td><td>2766.81（10:00）</td></tr><tr><td>当日低</td><td>3703.12（14:50）</td><td>2682.71（14:50）</td></tr><tr><td>成交额</td><td>6427.5 亿</td><td>3989.6 亿</td></tr></tbody></table><div class="ext">外盘：道指 <span class="pos">+0.69</span>%、纳指 <span class="pos">+1.05</span>%、标普 <span class="pos">+0.58</span>%（三指数齐涨）｜KOSPI 前收 5735.66 → 今开 5670.11（<span class="neg">−1.14</span>%）</div></div><div class="card"><div class="sec-ttl">开盘定位</div><table class="tb"><colgroup><col style="width:20%"><col style="width:30%"><col style="width:50%"></colgroup><thead><tr><th></th><th>中枢</th><th>核心区间</th></tr></thead><tbody><tr><td>上证</td><td>3707（<span class="neg">−0.17</span>%）</td><td>3694 – 3720</td></tr><tr><td>创业板</td><td>2689（<span class="neg">−0.20</span>%）</td><td>2663 – 2716</td></tr></tbody></table><div class="note">极端日阈值未触发（最大值 1.14% < 2.5%）；形态判读：美股全线走强，而韩国股市低开走弱，A 股小幅低开。亚太市场拖累强于美股带动，开盘后更可能处于弱势，而非顺势上攻。</div></div><div class="card"><div class="sec-ttl">定性</div><div class="ql">底气候 <svg class="j-x" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/></svg> 双指数仅卖（上证在 MA20 下方 3.4%，创业板在 MA20 下方 13.5%，两处 MA20 均下行）</div><div class="ql">→ 本轮所有反弹按减仓处理，不新增隔夜多头</div><div class="ql">→ 低点窗是反 T 回补时点，不是建仓买点</div></div><div class="card"><div class="sec-ttl">裁决线（以 30MIN 收盘价为准）</div><table class="tb"><colgroup><col style="width:20%"><col style="width:40%"><col style="width:40%"></colgroup><thead><tr><th></th><th>裁决线</th><th>生死线</th></tr></thead><tbody><tr><td>上证</td><td>3703.12</td><td>3674.82</td></tr><tr><td>创业板</td><td>2682.71</td><td>2651.1</td></tr></tbody></table><div class="note">两线均为 10/21 的日内低点。开盘即贴近裁决线（上证差 4 点，差距 0.11%；创业板差 7 点，差距 0.25%）→ 开盘首格就决定方向。</div></div><div class="card"><div class="sec-ttl">关键价位分级 · 上证</div><table class="tb"><colgroup><col style="width:18%"><col style="width:40%"><col style="width:42%"></colgroup><thead><tr><th>档</th><th>价格</th><th>级别</th></tr></thead><tbody><tr class=""><td>压力</td><td class="lv-p">3743.08</td><td>🔴 极限</td></tr><tr class=""><td>压力</td><td class="lv-p">3733.1</td><td>🟡</td></tr><tr class=""><td>压力</td><td class="lv-p">3727.8</td><td>🟡</td></tr><tr class=""><td>压力</td><td class="lv-p">3723.1</td><td>🟢</td></tr><tr class=""><td>压力</td><td class="lv-p">3718.4</td><td>🟢</td></tr><tr class=""><td>压力</td><td class="lv-p">3713.1</td><td>🟢</td></tr><tr class="lv-mid"><td>—</td><td class="lv-p">3703.12</td><td>裁决线</td></tr><tr class=""><td>支撑</td><td class="lv-p">3693.1</td><td>🟢</td></tr><tr class=""><td>支撑</td><td class="lv-p">3687.9</td><td>🟡</td></tr><tr class=""><td>支撑</td><td class="lv-p">3683.1</td><td>🟡</td></tr><tr class=""><td>支撑</td><td class="lv-p">3674.82</td><td>🔴 生死线</td></tr></tbody></table></div><div class="card"><div class="sec-ttl">关键价位分级 · 创业板</div><table class="tb"><colgroup><col style="width:18%"><col style="width:40%"><col style="width:42%"></colgroup><thead><tr><th>档</th><th>价格</th><th>级别</th></tr></thead><tbody><tr class=""><td>压力</td><td class="lv-p">2766.81</td><td>🔴 极限</td></tr><tr class=""><td>压力</td><td class="lv-p">2745.8</td><td>🟡</td></tr><tr class=""><td>压力</td><td class="lv-p">2734.7</td><td>🟡</td></tr><tr class=""><td>压力</td><td class="lv-p">2724.8</td><td>🟢</td></tr><tr class=""><td>压力</td><td class="lv-p">2715.0</td><td>🟢</td></tr><tr class=""><td>压力</td><td class="lv-p">2704.0</td><td>🟢</td></tr><tr class="lv-mid"><td>—</td><td class="lv-p">2682.71</td><td>裁决线</td></tr><tr class=""><td>支撑</td><td class="lv-p">2662.1</td><td>🟢</td></tr><tr class=""><td>支撑</td><td class="lv-p">2651.1</td><td>🟡 生死线</td></tr><tr class=""><td>支撑</td><td class="lv-p">2641.2</td><td>🔴 极限</td></tr></tbody></table></div></section>
+</main>
+<footer class="foot">内容整理自《大盘推演1022》原文档 ｜ 数据来源：常闻数据 ｜ 技术面判断，不构成投资建议 ｜ 样本未达转正门径（n≥20 / 命中≥60% / 误报≤40%），命中率类数字不对外引用</footer>
+<script>
+var nav = document.getElementById('stknav');
+var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+var sections = links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+function onScroll(){
+  var pos = window.scrollY + 90, cur = 0;
+  sections.forEach(function(sec,i){ if(sec && sec.offsetTop <= pos) cur = i; });
+  links.forEach(function(a,i){a.classList.toggle('on', i===cur);});
+}
+window.addEventListener('scroll', onScroll, {passive:true});
+onScroll();
+var tbtn = document.getElementById('tbtn');
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  tbtn.textContent = (t==='dark') ? '浅色' : '深色';
+  try{localStorage.setItem('t9r', t);}catch(e){}
+}
+var saved = null; try{saved = localStorage.getItem('t9r');}catch(e){}
+applyTheme(saved === 'dark' ? 'dark' : 'light');
+tbtn.addEventListener('click', function(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{
+ "trade_date": "20261022",
+ "universe": 1977,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688385.SH",
+   "name": "复旦微电",
+   "date_t0": "20261016",
+   "days_pullback": 4,
+   "gap": 0.0159,
+   "gap_top": 48.4,
+   "break_price": 56.76,
+   "total_mv_wan": 4225680.0,
+   "vol_avg_ratio": 0.383,
+   "earliest_in": 1,
+   "latest_in": 3
+  }
+ ],
+ "early": [
+  {
+   "code": "600267.SH",
+   "name": "海正药业",
+   "date_t0": "20261021",
+   "days_pullback": 1,
+   "gap": 0.0136,
+   "gap_top": 13.27,
+   "break_price": 14.28,
+   "total_mv_wan": 1612252.0,
+   "vol_avg_ratio": 0.453,
+   "earliest_in": 2,
+   "latest_in": 6
+  },
+  {
+   "code": "603341.SH",
+   "name": "龙旗科技",
+   "date_t0": "20261021",
+   "days_pullback": 1,
+   "gap": 0.0123,
+   "gap_top": 38.26,
+   "break_price": 40.86,
+   "total_mv_wan": 2095599.0,
+   "vol_avg_ratio": 0.645,
+   "earliest_in": 2,
+   "latest_in": 6
+  },
+  {
+   "code": "002428.SZ",
+   "name": "云南锗业",
+   "date_t0": "20261021",
+   "days_pullback": 1,
+   "gap": 0.0322,
+   "gap_top": 80.0,
+   "break_price": 86.5,
+   "total_mv_wan": 5226266.0,
+   "vol_avg_ratio": 0.726,
+   "earliest_in": 2,
+   "latest_in": 6
+  },
+  {
+   "code": "600888.SH",
+   "name": "新疆众和",
+   "date_t0": "20261021",
+   "days_pullback": 1,
+   "gap": 0.0114,
+   "gap_top": 8.81,
+   "break_price": 9.23,
+   "total_mv_wan": 1382246.0,
+   "vol_avg_ratio": 0.591,
+   "earliest_in": 2,
+   "latest_in": 6
+  },
+  {
+   "code": "603859.SH",
+   "name": "能科科技",
+   "date_t0": "20261020",
+   "days_pullback": 2,
+   "gap": 0.0201,
+   "gap_top": 38.82,
+   "break_price": 41.8,
+   "total_mv_wan": 1054940.0,
+   "vol_avg_ratio": 0.8,
+   "earliest_in": 1,
+   "latest_in": 5
+  }
+ ]
+}

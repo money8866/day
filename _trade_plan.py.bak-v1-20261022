@@ -1,0 +1,743 @@
+# -*- coding: utf-8 -*-
+"""
+_trade_plan.py —— 每日 08:30「当天操作推演」生成器
+
+模板：main/morning-brief-YYYYMMDD.txt（段式晨报结构），但在其基础上
+      增加「三情景推演 + 自选股逐只操作预案」，从「信息汇总」升级为「决策推演」。
+数据：mystock 既有接口与缓存——
+      接口 lib/astock_data.py：a50_futures / tencent_quote / cls_telegraph /
+        eastmoney_global_news / wallstreetcn_lives / cctv_news / macro_calendar /
+        earnings_forecast / lockup_expiry / ipo_calendar / em_hot_rank /
+        hsgt_realtime / eastmoney_stock_news / eastmoney_reports
+      缓存 cache_daily/（日K，74000+）、cache_fundamental/（基本面快照）、
+        news_cache/（个股资讯热度分）
+      自选 miaoxiang/self_select/self_select_06989293.csv（东财自选导出）
+
+产物（与晨报/复盘邮件同目录同风格）：
+  C:/Users/kongx/WorkBuddy/main/trade-plan-YYYYMMDD.txt
+  C:/Users/kongx/WorkBuddy/main/trade-plan-YYYYMMDD.html
+
+用法：
+  py -3 -X utf8 D:/mystock/_trade_plan.py            # 今天
+  py -3 -X utf8 D:/mystock/_trade_plan.py 20261023   # 指定日期（回放/补跑）
+
+设计原则：所有外部调用独立容错（单个接口挂掉只缺该模块，标注「暂缺」），
+          不让整个推演失败；8:30 前跑完（整体超时预算 5 分钟内）。
+"""
+import csv
+import datetime as dt
+import glob
+import html
+import json
+import os
+import re
+import sys
+import time
+import traceback
+
+import pandas as pd
+import requests
+
+sys.path.insert(0, r"D:/mystock/lib")
+import astock_data as A  # noqa: E402
+
+# ---------------------------------------------------------------- 常量
+ROOT = r"D:/mystock"
+CACHE_DAILY = os.path.join(ROOT, "cache_daily")
+CACHE_FUND = os.path.join(ROOT, "cache_fundamental")
+SELF_SELECT = os.path.join(ROOT, "miaoxiang", "self_select", "self_select_06989293.csv")
+VOLMA_WATCH = os.path.join(CACHE_DAILY, "VolMaSync_WatchList.json")
+OUT_DIR = r"C:/Users/kongx/WorkBuddy/main"
+
+INDEX_CODES = {  # 名称 -> (tushare 码, 腾讯码)
+    "上证指数": ("000001.SH", "sh000001"),
+    "深证成指": ("399001.SZ", "sz399001"),
+    "创业板指": ("399006.SZ", "sz399006"),
+    "科创50": ("000688.SH", "sh000688"),
+    "沪深300": ("000300.SH", "sh000300"),
+    "上证50": ("000016.SH", "sh000016"),
+}
+
+# 隔夜要闻关键词打分（越高越可能影响 A 股当日）
+KW_WEIGHT = {
+    "A股": 6, "A 股": 6, "大盘": 5, "沪指": 6, "创业板": 4, "央行": 6, "降准": 7, "降息": 6,
+    "证监会": 6, "关税": 6, "特朗普": 4, "美联储": 6, "鲍威尔": 5, "美联储议息": 7,
+    "AI": 4, "算力": 5, "光模块": 5, "英伟达": 6, "OpenAI": 5, "半导体": 5, "芯片": 4,
+    "存储": 5, "台积电": 5, "机器人": 4, "新能源": 3, "锂电": 4, "宁德时代": 6, "比亚迪": 4,
+    "光伏": 4, "稀土": 4, "黄金": 4, "原油": 4, "地缘": 4, "中东": 4, "俄乌": 3,
+    " IPO ": 3, "新股": 3, "解禁": 4, "减持": 4, "增持": 4, "回购": 3,
+    "美元": 3, "人民币": 4, "汇率": 4, "美债": 5, "纳斯达克": 3, "标普": 3, "道琼斯": 3,
+    "通胀": 5, "CPI": 5, "PPI": 4, "PMI": 5, "非农": 5, "GDP": 5, "社融": 5, "LPR": 5,
+    "涨停": 4, "跌停": 4, "龙虎榜": 3, "北向": 4, "南向": 3, "两融": 3, "融资余额": 3,
+}
+
+TODAY_TAG = ""  # 运行时填充 YYYYMMDD
+TODAY_CN = ""  # 运行时填充 YYYY-MM-DD
+
+
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+# ---------------------------------------------------------------- 工具
+def safe(fn, default=None, tag=""):
+    """统一容错：外部接口失败只返回默认值并打标"""
+    try:
+        return fn()
+    except Exception as e:
+        log(f"  [缺数据] {tag or fn.__name__ if hasattr(fn, '__name__') else tag}: "
+            f"{type(e).__name__} {str(e)[:80]}")
+        return default
+
+
+def tx_to_ts(code_tx: str) -> str:
+    """腾讯码 -> tushare 码：sh000001 -> 000001.SH"""
+    m = re.match(r"^(sh|sz)(\d{6})$", code_tx or "")
+    if not m:
+        return code_tx
+    return f"{m.group(2)}.{m.group(1).upper()}"
+
+
+def kline_tech(code_tx: str, n: int = 60) -> tuple[pd.DataFrame | None, str]:
+    """近期日K：腾讯源优先（实时），cache_daily 回退。
+    返回 (df, 来源标注)。缓存超过 10 个自然日未更新会在标注里体现。"""
+    df = safe(lambda: A.tencent_kline(code_tx, period="day", count=n + 10),
+              None, f"tencent_kline {code_tx}")
+    if df is not None and len(df) >= 5:
+        d = df.rename(columns={"date": "trade_date"}).copy()
+        d["trade_date"] = d["trade_date"].astype(str).str.replace("-", "", regex=False)
+        return d.sort_values("trade_date").reset_index(drop=True), "腾讯实时"
+    dc = load_daily(tx_to_ts(code_tx))
+    if dc is not None and len(dc) >= 5:
+        last = str(dc["trade_date"].iloc[-1])
+        try:
+            gap = (dt.date.today() - dt.date(int(last[:4]), int(last[4:6]), int(last[6:]))).days
+        except Exception:
+            gap = -1
+        tag = f"缓存(截至{last[:4]}-{last[4:6]}-{last[6:]}" + (f",旧{gap}天" if gap > 10 else "") + ")"
+        return dc, tag
+    return None, "无数据"
+
+
+def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """cache_daily 列名归一化：兼容 vol/volume、amt/amount、chg/pct_chg 等差异"""
+    ren = {}
+    for c in df.columns:
+        cl = str(c).strip().lower()
+        if cl in ("vol", "volume", "vol_") and "volume" not in df.columns:
+            ren[c] = "volume"
+        elif cl in ("amt", "amount", "amount_") and "amount" not in df.columns:
+            ren[c] = "amount"
+        elif cl in ("chg", "pct_chg", "pctchange", "change_pct") and "pct_chg" not in df.columns:
+            ren[c] = "pct_chg"
+    return df.rename(columns=ren) if ren else df
+
+
+def load_daily(code_ts: str) -> pd.DataFrame | None:
+    """读日K缓存，兼容 000001_SH.csv 与 000001.SH.csv 两种命名"""
+    stem = code_ts.replace(".", "_")
+    dotted = code_ts
+    for cand in (os.path.join(CACHE_DAILY, stem + ".csv"),
+                 os.path.join(CACHE_DAILY, dotted + ".csv")):
+        if os.path.exists(cand):
+            try:
+                df = pd.read_csv(cand)
+                if df.empty:
+                    return None
+                df["trade_date"] = df["trade_date"].astype(str)
+                df = _norm_cols(df)
+                return df.sort_values("trade_date").reset_index(drop=True)
+            except Exception:
+                return None
+    return None
+
+
+def tech_stats(df: pd.DataFrame | None, n: int = 20):
+    """日K -> 技术位摘要（MA5/10/20、近 n 日高低点、量能、连涨跌）"""
+    if df is None or len(df) < 5:
+        return None
+    c = df["close"].astype(float)
+    v = df["volume"].astype(float) if "volume" in df.columns else None
+    out = {
+        "close": float(c.iloc[-1]),
+        "ma5": float(c.rolling(5).mean().iloc[-1]) if len(c) >= 5 else None,
+        "ma10": float(c.rolling(10).mean().iloc[-1]) if len(c) >= 10 else None,
+        "ma20": float(c.rolling(20).mean().iloc[-1]) if len(c) >= 20 else None,
+        "hi20": float(df["high"].astype(float).tail(n).max()) if "high" in df.columns else None,
+        "lo20": float(df["low"].astype(float).tail(n).min()) if "low" in df.columns else None,
+        "vol_ma5": float(v.rolling(5).mean().iloc[-1]) if v is not None and len(v) >= 5 else None,
+        "vol_last": float(v.iloc[-1]) if v is not None else None,
+        "chg_last": (float(c.iloc[-1] / c.iloc[-2] - 1) * 100
+                     if "pct_chg" not in df.columns and len(c) >= 2
+                     else (float(df["pct_chg"].astype(float).iloc[-1])
+                           if "pct_chg" in df.columns else 0.0)),
+        "dates": len(df),
+    }
+    # 连涨/连跌天数（无 pct_chg 列时用收盘价差分）
+    if "pct_chg" in df.columns:
+        chg = df["pct_chg"].astype(float).tolist()
+    else:
+        cc = c.tolist()
+        chg = [0.0] + [(cc[i] - cc[i - 1]) / cc[i - 1] * 100 if cc[i - 1] else 0.0
+                       for i in range(1, len(cc))]
+    streak = 0
+    for x in reversed(chg):
+        if x > 0:
+            streak = streak + 1 if streak >= 0 else 1
+        elif x < 0:
+            streak = streak - 1 if streak <= 0 else -1
+        else:
+            break
+    out["streak"] = streak
+    return out
+
+
+def fmt(v, nd=2):
+    return f"{v:.{nd}f}" if isinstance(v, (int, float)) and v is not None else "-"
+
+
+# ---------------------------------------------------------------- 1 自选股
+def load_watchlist() -> list[dict]:
+    """东财自选 CSV -> [{name, code, mkt}]"""
+    rows = []
+    try:
+        with open(SELF_SELECT, encoding="utf-8-sig") as f:
+            r = csv.reader(f)
+            next(r, None)
+            for row in r:
+                if len(row) < 2 or not row[0].strip():
+                    continue
+                m = re.search(r"\d{6}", row[1])
+                if not m:
+                    continue
+                code = m.group(0)
+                mkt = row[2].strip().upper() if len(row) > 2 else ""
+                if not mkt:
+                    mkt = "SH" if code.startswith("6") else "SZ"
+                rows.append({"name": row[0].strip(), "code": code, "mkt": mkt,
+                             "px": (row[3].strip() if len(row) > 3 else ""),
+                             "chg": (row[4].strip() if len(row) > 4 else "")})
+    except Exception as e:
+        log(f"  [自选] 读取失败 {type(e).__name__}")
+    log(f"  自选股 {len(rows)} 只")
+    return rows
+
+
+def load_volma_scores() -> dict:
+    """VolMaSync 评分缓存 -> {code: {score, macd_status, ...}}"""
+    try:
+        d = json.load(open(VOLMA_WATCH, encoding="utf-8"))
+        out = {}
+        for code, days in d.items():
+            if not days:
+                continue
+            latest = days[sorted(days)[-1]]
+            out[code] = latest
+        return out
+    except Exception as e:
+        log(f"  [评分] VolMaSync 缓存读取失败 {type(e).__name__}")
+        return {}
+
+
+# ---------------------------------------------------------------- 2 外围与资讯
+def fetch_external() -> dict:
+    ex = {}
+    log("  取 A50 期货…")
+    a50 = safe(lambda: A.a50_futures(), None, "a50_futures")
+    if a50 is not None and len(a50):
+        r = a50.iloc[0].to_dict()
+        ex["a50"] = {k: r.get(k) for k in r}
+    log("  取财联社电报…")
+    cls = safe(lambda: A.cls_telegraph(), None, "cls_telegraph")
+    ex["cls"] = []
+    if cls is not None:
+        try:
+            ex["cls"] = (cls.to_dict("records") if hasattr(cls, "to_dict") else list(cls))[:40]
+        except Exception:
+            ex["cls"] = []
+    log("  取全球财经…")
+    gn = safe(lambda: A.eastmoney_global_news(page_size=20), None, "eastmoney_global_news")
+    ex["global"] = []
+    if gn is not None:
+        try:
+            ex["global"] = gn.to_dict("records") if hasattr(gn, "to_dict") else list(gn)
+        except Exception:
+            ex["global"] = []
+    log("  取华尔街见闻…")
+    wsc = safe(lambda: A.wallstreetcn_lives(), None, "wallstreetcn_lives")
+    ex["wscn"] = []
+    if wsc is not None:
+        try:
+            ex["wscn"] = (wsc.to_dict("records") if hasattr(wsc, "to_dict") else list(wsc))[:30]
+        except Exception:
+            ex["wscn"] = []
+    log("  取央视新闻…")
+    cctv = safe(lambda: A.cctv_news(TODAY_CN, with_content=False), None, "cctv_news")
+    ex["cctv"] = []
+    if cctv is not None:
+        try:
+            ex["cctv"] = (cctv.to_dict("records") if hasattr(cctv, "to_dict") else list(cctv))[:20]
+        except Exception:
+            ex["cctv"] = []
+    log("  取北向实时…")
+    hsgt = safe(lambda: A.hsgt_realtime(), None, "hsgt_realtime")
+    ex["hsgt"] = hsgt
+    log("  取热榜…")
+    hot = safe(lambda: A.em_hot_rank(), None, "em_hot_rank")
+    ex["hot"] = []
+    if hot is not None:
+        try:
+            ex["hot"] = (hot.to_dict("records") if hasattr(hot, "to_dict") else list(hot))[:15]
+        except Exception:
+            ex["hot"] = []
+    return ex
+
+
+def score_news(item: dict) -> tuple:
+    """新闻打分 -> (score, title, digest)"""
+    title = (item.get("title") or item.get("Name") or "").strip()
+    digest = (item.get("digest") or item.get("content") or item.get("brief") or "").strip()
+    if not title and digest:
+        title = digest.split("\n")[0][:40]
+    digest = re.sub(r"\s+", " ", digest)
+    text = f"{title} {digest}"
+    s = 0
+    for kw, w in KW_WEIGHT.items():
+        if kw in text:
+            s += w
+    return s, title, digest
+
+
+def top_news(ex: dict, k: int = 14) -> list[tuple]:
+    pool = []
+    for src in ("cls", "global", "wscn", "cctv"):
+        for it in ex.get(src) or []:
+            if isinstance(it, dict):
+                pool.append(score_news(it))
+    pool.sort(key=lambda x: -x[0])
+    return [t for t in pool if t[0] > 0][:k]
+
+
+# ---------------------------------------------------------------- 3 今日事件
+def fetch_events(day: str) -> dict:
+    ev = {}
+    log("  取宏观日历…")
+    mc = safe(lambda: A.macro_calendar(day, day), None, "macro_calendar")
+    ev["macro"] = mc
+    log("  取财报预告/今日财报…")
+    ef = safe(lambda: A.earnings_forecast(limit=60), None, "earnings_forecast")
+    ev["earnings"] = ef
+    log("  取解禁…")
+    lk = safe(lambda: A.lockup_expiry(TODAY_CN, TODAY_CN), None, "lockup_expiry")
+    ev["lockup"] = lk
+    log("  取新股…")
+    ipo = safe(lambda: A.ipo_calendar(), None, "ipo_calendar")
+    ev["ipo"] = ipo
+    return ev
+
+
+# ---------------------------------------------------------------- 4 大盘技术位
+def index_block() -> list[dict]:
+    out = []
+    for name, (_ts, tx) in INDEX_CODES.items():
+        df, src = kline_tech(tx, 60)
+        st = tech_stats(df, 20)
+        if st:
+            st["name"] = name
+            st["src"] = src
+            st["last_date"] = str(df["trade_date"].iloc[-1])
+            out.append(st)
+    return out
+
+
+# ---------------------------------------------------------------- 5 自选股推演
+def plan_rule(st: dict, price: float | None) -> dict:
+    """规则引擎：均线结构 + 关键位 + 偏离度 -> 动作/触发位/理由"""
+    ma5, ma10, ma20 = st.get("ma5"), st.get("ma10"), st.get("ma20")
+    hi20, lo20 = st.get("hi20"), st.get("lo20")
+    p = price if price else st["close"]
+    dev20 = (p - ma20) / ma20 * 100 if ma20 else 0.0
+
+    if None in (ma5, ma10, ma20):
+        return {"trend": "数据不足", "action": "观察", "trig": "-", "why": "缓存不足，按现价观察"}
+
+    if p > ma5 > ma10 > ma20:
+        trend = "多头排列"
+        if dev20 > 18:
+            action, why = "持有不追", "多头但偏离 20 日线过大，回踩再看"
+            trig = f"回踩 {fmt(ma5)} 不破可低吸；跌破 {fmt(ma10)} 减"
+        else:
+            action, why = "持有/回踩低吸", "均线多头排列，趋势未破"
+            trig = f"守 {fmt(ma5)} 持有；失守 {fmt(ma10)} 减半"
+    elif p < ma5 < ma10 < ma20:
+        trend = "空头排列"
+        action, why = "反抽减仓/回避", "均线空头，不接飞刀"
+        trig = f"反抽 {fmt(ma5)}~{fmt(ma10)} 压力减仓；站回 {fmt(ma20)} 再谈修复"
+    else:
+        trend = "震荡"
+        pos = (p - lo20) / (hi20 - lo20) * 100 if hi20 > lo20 else 50
+        if pos < 25:
+            action, why = "区间下沿试仓", "震荡区间下沿，盈亏比好"
+            trig = f"{fmt(lo20)} 附近试；跌破 {fmt(lo20*0.98)} 止损"
+        elif pos > 75:
+            action, why = "区间上沿兑现", "震荡区间上沿，先兑现再看"
+            trig = f"{fmt(hi20)} 附近减；放量破 {fmt(hi20)} 再追"
+        else:
+            action, why = "持有观察", "区间中段，等方向"
+            trig = f"{fmt(lo20)}~{fmt(hi20)} 区间操作"
+    # 极端偏离修正
+    if dev20 > 25:
+        action, why = "不追高", "偏离 20 日线超 25%，波动会放大"
+    elif dev20 < -15:
+        action = action + "（超跌）"
+        why += "；已深度超跌，仅做反抽不做反转"
+    return {"trend": trend, "action": action, "trig": trig, "why": why, "dev20": dev20}
+
+
+def stock_block(watch: list[dict], scores: dict) -> tuple[list[dict], int]:
+    """重点池：异动 Top（涨跌幅绝对值）+ 评分 Top，去重约 18 只"""
+    def abs_chg(r):
+        try:
+            return abs(float(r["chg"]))
+        except Exception:
+            return -1
+    by_move = sorted([r for r in watch if abs_chg(r) > 0],
+                     key=abs_chg, reverse=True)[:12]
+    pool_codes = {r["code"] for r in by_move}
+    scored = sorted(scores.items(), key=lambda kv: -(kv[1].get("score") or 0))
+    extra = []
+    for code, meta in scored:
+        if code not in pool_codes:
+            extra.append((code, meta))
+        if len(extra) >= 6:
+            break
+    name_map = {r["code"]: r for r in watch}
+    for code, meta in extra:
+        if code in name_map:
+            by_move.append(name_map[code])
+            pool_codes.add(code)
+
+    plans = []
+    for r in by_move:
+        tx = f"{'sh' if r['mkt'] == 'SH' else 'sz'}{r['code']}"
+        df, src = kline_tech(tx, 60)
+        st = tech_stats(df, 20)
+        meta = scores.get(f'{r["code"]}.{r["mkt"]}') or scores.get(r["code"]) or {}
+        if not st:
+            plans.append({"name": r["name"], "code": r["code"], "px": r["px"],
+                          "chg": r["chg"], "trend": "无K线数据", "action": "观察",
+                          "trig": "-", "why": "实时与缓存均未取到，仅按自选价观察",
+                          "dev20": None, "score": meta.get("score"),
+                          "macd": meta.get("macd_status")})
+            continue
+        price = None
+        try:
+            price = float(r["px"]) if r["px"] else None
+        except Exception:
+            pass
+        rule = plan_rule(st, price)
+        rule.update({"name": r["name"], "code": r["code"], "px": r["px"],
+                     "chg": r["chg"], "close": st["close"], "streak": st["streak"],
+                     "score": meta.get("score"), "macd": meta.get("macd_status"),
+                     "src": src})
+        plans.append(rule)
+    return plans, len(watch)
+
+
+# ---------------------------------------------------------------- 6 三情景推演
+def scenario_block(ex: dict, idx: list[dict]) -> list[dict]:
+    """基于 A50 夜盘 + 外围涨跌 + 昨日结构推演三情景"""
+    a50_chg = None
+    a50 = ex.get("a50")
+    if a50:
+        last, pre = a50.get("last"), a50.get("pre_settle")
+        try:
+            last, pre = float(last), float(pre)
+            if pre:
+                a50_chg = (last - pre) / pre * 100
+        except (TypeError, ValueError):
+            a50_chg = None
+    sh = next((x for x in idx if x["name"] == "上证指数"), None)
+    close5 = sh["ma5"] if sh and sh.get("ma5") else None
+    close_last = sh["close"] if sh else None
+    # 外围基调
+    bull = bear = 0
+    for it in (ex.get("global") or [])[:8]:
+        t = (it.get("title") or "")
+        if any(w in t for w in ("涨", "升", "反弹", "超预期")):
+            bull += 1
+        if any(w in t for w in ("跌", "降", "不及预期", "裁员")):
+            bear += 1
+    tone = "偏多" if bull > bear + 2 else ("偏空" if bear > bull + 2 else "中性")
+
+    scen = []
+    if a50_chg is not None and a50_chg > 0.4:
+        scen.append({"name": f"高开走强（A50 夜盘 {a50_chg:+.2f}%，外围{tone}）",
+                     "prob": "35%",
+                     "act": "高开不追：冲高看 5 日线压力，缩量高开以持仓为主；"
+                            "放量站稳再加。若高开低走翻绿，减弱势题材。"})
+        scen.append({"name": "高开低走（外围利好兑现）", "prob": "30%",
+                     "act": "低开/翻绿即减仓追高品种；守住昨日低点则观望，破位止损。"})
+        scen.append({"name": "低开震荡（资金谨慎）", "prob": "20%",
+                     "act": "低开不恐慌，看自选池区间下沿机会；不放量不接。"})
+        scen.append({"name": "单边下行（外围逆转）", "prob": "15%",
+                     "act": "跌破 5 日线且跌停扩散则全面降至观察仓，等 15/30 分钟 MACD 底背离。"})
+    elif a50_chg is not None and a50_chg < -0.4:
+        scen.append({"name": f"低开下探（A50 夜盘 {a50_chg:+.2f}%，外围{tone}）",
+                     "prob": "35%",
+                     "act": "低开不急于抄底；等 10 点前后企稳信号（分时背离+跌停收窄）。"})
+        scen.append({"name": "低开高走（利空兑现）", "prob": "25%",
+                     "act": "若放量收复 5 日线可试仓强势板块；只做最强的那一个方向。"})
+        scen.append({"name": "低位震荡（磨底）", "prob": "25%",
+                     "act": "区间下沿分批，单一标的不超过计划仓位一半。"})
+        scen.append({"name": "继续单边下跌", "prob": "15%",
+                     "act": "破昨日低点止损离场，等右侧信号，不猜底。"})
+    else:
+        scen.append({"name": f"平开震荡（A50 夜盘 {a50_chg if a50_chg is not None else '暂缺'}，外围{tone}）",
+                     "prob": "45%",
+                     "act": "无外围指引则按 A 股自身节奏：5 日线上方持股，下方观望；"
+                            "重板块轻指数，只做资金净流入方向。"})
+        scen.append({"name": "放量选择方向", "prob": "30%",
+                     "act": "早盘半小时放量上 5 日线跟进；放量下破止损，不犹豫。"})
+        scen.append({"name": "缩量整理", "prob": "25%",
+                     "act": "缩量则不动，等明日事件催化；仓位不超五成。"})
+    return scen
+
+
+# ---------------------------------------------------------------- 7 渲染
+def render_txt(ex, idx, plans, watch_n, events, scen, news) -> str:
+    L = []
+    L.append(f"当天操作推演 | {TODAY_CN}（{'一二三四五六日'[dt.date.fromisoformat(TODAY_CN).weekday()]}）")
+    L.append("")
+    # ① 外围
+    a50 = ex.get("a50")
+    a50_txt = "A50 期指：暂缺"
+    if a50:
+        try:
+            last, pre = float(a50.get("last")), float(a50.get("pre_settle"))
+            chg_v = (last - pre) / pre * 100 if pre else None
+            a50_txt = f"A50 期指：{last:.2f}（{chg_v:+.2f}% vs 前收 {pre:.0f}）"
+        except (TypeError, ValueError):
+            a50_txt = "A50 期指：解析失败"
+    hsgt_n = 0
+    try:
+        hsgt_n = 0 if ex.get("hsgt") is None else len(ex["hsgt"])
+    except Exception:
+        hsgt_n = 0
+    L.append(f"① 夜盘与外围：{a50_txt}；北向实时：{'在更' if hsgt_n else '暂缺'}；"
+             f"隔夜要闻 {len(news)} 条命中 A 股关键词。")
+    L.append("")
+    # ② 大盘技术位
+    L.append("② 大盘技术位（腾讯实时日K，cache_daily 回退）：")
+    for st in idx:
+        ma = f"MA5 {fmt(st['ma5'])} / MA10 {fmt(st['ma10'])} / MA20 {fmt(st['ma20'])}"
+        vol_txt = ""
+        if st.get("vol_ma5"):
+            vol_txt = f"；量能 {st['vol_last']/st['vol_ma5']*100:.0f}%的5日均量"
+        L.append(f"  {st['name']}：现 {fmt(st['close'])}（{st['chg_last']:+.2f}%），{ma}；"
+                 f"近20日区间 {fmt(st['lo20'])}~{fmt(st['hi20'])}{vol_txt}；"
+                 f"数据截至 {st['last_date'][:4]}-{st['last_date'][4:6]}-{st['last_date'][6:]}（{st['src']}）")
+    L.append("")
+    # ③ 昨日情绪
+    zt = ex.get("hot") or []
+    hot_txt = ("、".join(str(h.get("name") or h.get("stock_name") or "?") for h in zt[:5])
+               if zt else "暂缺（东财人气榜接口异常）")
+    cls_n = len(ex.get("cls") or [])
+    L.append(f"③ 情绪与热点：热榜 {len(zt)} 只（{hot_txt}）；财联社电报 {cls_n} 条。")
+    L.append("")
+    # ④ 隔夜要闻
+    L.append("④ 隔夜要闻（与 A 股相关度排序）：")
+    for i, (s, t, d) in enumerate(news[:10], 1):
+        brief = (d or t)[:70]
+        L.append(f"  {i}. {t}｜{brief}")
+    if not news:
+        L.append("  （暂无命中资讯，接口可能暂缺）")
+    L.append("")
+    # ⑤ 今日事件雷区
+    L.append("⑤ 今日事件雷区（按时间排，避开/利用）：")
+    ev_n = 0
+    mc = events.get("macro")
+    if mc is not None and len(mc):
+        rows_mc = mc.to_dict("records") if hasattr(mc, "to_dict") else mc
+        for row in rows_mc:
+            t = str(row.get("time") or "")
+            try:  # UTC -> 北京 +8h
+                tt = dt.datetime.fromisoformat(t) + dt.timedelta(hours=8)
+                t_show = tt.strftime("%H:%M")
+            except Exception:
+                t_show = t[-5:]
+            title = str(row.get("title") or "")
+            imp = row.get("importance") or 0
+            star = "★" * int(imp) if str(imp).isdigit() else ""
+            extra = ""
+            if row.get("actual") not in (None, "") and str(row.get("actual")) != "nan":
+                extra = f" 实际{row.get('actual')}"
+                if row.get("forecast") not in (None, "") and str(row.get("forecast")) != "nan":
+                    extra += f"/预期{row.get('forecast')}"
+            if title:
+                L.append(f"  宏观 {t_show} {star} {title}{extra}")
+                ev_n += 1
+            if ev_n >= 10:
+                break
+    ef = events.get("earnings")
+    if ef is not None and len(ef):
+        cnt = 0
+        rows_ef = ef.to_dict("records") if hasattr(ef, "to_dict") else ef
+        for row in rows_ef[:200]:
+            d = str(row.get("report_date") or row.get("publish_date") or "")
+            if TODAY_CN.replace("-", "") in d.replace("-", "") or TODAY_CN in d:
+                nm = row.get("name") or row.get("stock_name") or row.get("code") or ""
+                L.append(f"  财报 {nm}（{d[:10]}）")
+                cnt += 1
+                if cnt >= 6:
+                    break
+        ev_n += cnt
+    lk = events.get("lockup")
+    rows_lk = []
+    if isinstance(lk, dict):
+        rows_lk = lk.get("upcoming") or lk.get("history") or []
+    elif lk is not None:
+        try:
+            rows_lk = lk.to_dict("records") if hasattr(lk, "to_dict") else list(lk)
+        except Exception:
+            rows_lk = []
+    for row in rows_lk[:4]:
+        nm = row.get("name") or row.get("stock_name") or ""
+        cd = row.get("code") or ""
+        ratio = row.get("ratio") or row.get("unlock_ratio") or row.get("lift_ratio") or ""
+        sh = row.get("shares") or row.get("unlock_shares") or ""
+        L.append(f"  解禁 {nm}({cd})" + (f" 占比{ratio}%" if ratio else "")
+                 + (f" {sh}股" if sh else ""))
+        ev_n += 1
+    if not ev_n:
+        L.append("  今日无重大事件日历（或接口暂缺），按常态节奏应对。")
+    L.append("")
+    # ⑥ 自选股推演
+    L.append(f"⑥ 自选股操作预案（{watch_n} 只自选，重点 {len(plans)} 只；自选价为最近导出快照，"
+             f"技术位取腾讯实时日K）：")
+    for p in plans:
+        head = f"  {p['name']}({p['code']}) 现{p['px'] or fmt(p.get('close'))} {p['chg'] or ''}%"
+        tail = f"｜{p['trend']}｜{p['action']}｜{p['trig']}"
+        extra = ""
+        if p.get("macd"):
+            extra += f"｜MACD:{p['macd']}"
+        if p.get("score"):
+            extra += f"｜评分{p['score']}"
+        L.append(head + tail + extra)
+        L.append(f"      理由：{p['why']}")
+    L.append("")
+    # ⑦ 三情景
+    L.append("⑦ 全天三情景推演与应对：")
+    for s in scen:
+        L.append(f"  【{s['name']}】概率 {s['prob']}")
+        L.append(f"      应对：{s['act']}")
+    L.append("")
+    # ⑧ 总纲
+    L.append("⑧ 一句话总纲与仓位：")
+    sh = next((x for x in idx if x["name"] == "上证指数"), None)
+    if sh and sh.get("ma5"):
+        pos = "站上" if sh["close"] >= sh["ma5"] else "跌破"
+        L.append(f"  上证 {fmt(sh['close'])} {pos} 5 日线 {fmt(sh['ma5'])}；"
+                 f"深创低点未创新低前按反弹对待，创新低按二次探底对待。")
+    L.append("  节奏：早盘 9:30-10:00 定方向，10:00 前不重仓押注；"
+             "午盘 11:00-11:20 与尾盘 14:30-15:00 为关键决策窗；"
+             "单日总仓位上限五成，单票不超过两成，设好止损再动手。")
+    L.append("")
+    L.append("以上内容基于公开数据与规则引擎生成，仅供参考，不构成投资建议。市场有风险，投资需谨慎。")
+    return "\n".join(L)
+
+
+def render_html(txt: str) -> str:
+    """txt -> 邮件 HTML（20px 内联样式，与既有复盘邮件一致）"""
+    def esc(s):
+        return html.escape(s, quote=False)
+
+    body = []
+    for line in txt.splitlines():
+        if not line.strip():
+            continue
+        s = esc(line)
+        if line.startswith("当天操作推演"):
+            body.append(f'<div style="font-size:26px;font-weight:700;color:#1a1a2e;'
+                        f'margin:0 0 18px 0;padding-bottom:12px;'
+                        f'border-bottom:3px solid #e94560;">{s}</div>')
+        elif re.match(r"^[①②③④⑤⑥⑦⑧]", line):
+            body.append(f'<div style="font-size:21px;font-weight:700;color:#e94560;'
+                        f'margin:20px 0 10px 0;">{s}</div>')
+        elif re.match(r"^  【", line):
+            body.append(f'<div style="font-size:20px;font-weight:600;color:#0f3460;'
+                        f'margin:12px 0 4px 0;">{s.strip()}</div>')
+        elif line.startswith("      "):
+            body.append(f'<div style="font-size:18px;color:#555;margin:2px 0 2px 18px;">'
+                        f'{s.strip()}</div>')
+        elif line.startswith("  "):
+            body.append(f'<div style="font-size:19px;color:#222;margin:6px 0;'
+                        f'line-height:1.6;">{s.strip()}</div>')
+        else:
+            body.append(f'<div style="font-size:19px;color:#222;margin:6px 0;'
+                        f'line-height:1.6;">{s}</div>')
+    return (
+        '<html><body style="margin:0;padding:24px;background:#f5f6fa;'
+        'font-family:\'Microsoft YaHei\',\'PingFang SC\',sans-serif;">'
+        '<div style="max-width:860px;margin:0 auto;background:#ffffff;'
+        'border-radius:12px;padding:32px 36px;'
+        'box-shadow:0 2px 12px rgba(0,0,0,0.08);">'
+        + "".join(body) +
+        '<div style="margin-top:28px;padding-top:14px;border-top:1px solid #ddd;'
+        'font-size:15px;color:#999;">由 mystock _trade_plan.py 自动生成 · '
+        f'{time.strftime("%Y-%m-%d %H:%M")}</div>'
+        '</div></body></html>'
+    )
+
+
+# ---------------------------------------------------------------- 主流程
+def main():
+    global TODAY_TAG, TODAY_CN
+    day = sys.argv[1] if len(sys.argv) > 1 else time.strftime("%Y%m%d")
+    TODAY_TAG = day
+    TODAY_CN = f"{day[:4]}-{day[4:6]}-{day[6:]}"
+    t0 = time.time()
+    log(f"=== 当天操作推演生成 {TODAY_CN} ===")
+
+    watch = load_watchlist()
+    scores = load_volma_scores()
+
+    log("== 外围与资讯 ==")
+    ex = fetch_external()
+    news = top_news(ex)
+
+    log("== 今日事件 ==")
+    events = fetch_events(day)
+
+    log("== 大盘技术位 ==")
+    idx = index_block()
+    log(f"  指数 {len(idx)} 个就绪")
+
+    log("== 自选股推演 ==")
+    plans, watch_n = stock_block(watch, scores)
+    log(f"  重点预案 {len(plans)} 只")
+
+    log("== 三情景 ==")
+    scen = scenario_block(ex, idx)
+
+    txt = render_txt(ex, idx, plans, watch_n, events, scen, news)
+    htm = render_html(txt)
+
+    out_txt = os.path.join(OUT_DIR, f"trade-plan-{day}.txt")
+    out_html = os.path.join(OUT_DIR, f"trade-plan-{day}.html")
+    with open(out_txt, "w", encoding="utf-8") as f:
+        f.write(txt)
+    with open(out_html, "w", encoding="utf-8") as f:
+        f.write(htm)
+
+    log(f"=== 完成 {time.time()-t0:.1f}s ===")
+    log(f"产物：{out_txt}")
+    log(f"      {out_html}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
