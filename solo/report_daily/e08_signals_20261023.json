@@ -1,0 +1,48 @@
+{
+ "trade_date": "20261023",
+ "universe": 2011,
+ "signals": [],
+ "watch": [
+  {
+   "code": "688385.SH",
+   "name": "复旦微电",
+   "date_t0": "20261016",
+   "days_pullback": 5,
+   "gap": 0.0159,
+   "gap_top": 48.4,
+   "break_price": 56.76,
+   "total_mv_wan": 4451379.0,
+   "vol_avg_ratio": 0.391,
+   "earliest_in": 1,
+   "latest_in": 2
+  }
+ ],
+ "early": [
+  {
+   "code": "600267.SH",
+   "name": "海正药业",
+   "date_t0": "20261021",
+   "days_pullback": 2,
+   "gap": 0.0136,
+   "gap_top": 13.27,
+   "break_price": 14.28,
+   "total_mv_wan": 1664184.0,
+   "vol_avg_ratio": 0.439,
+   "earliest_in": 1,
+   "latest_in": 5
+  },
+  {
+   "code": "600888.SH",
+   "name": "新疆众和",
+   "date_t0": "20261021",
+   "days_pullback": 2,
+   "gap": 0.0114,
+   "gap_top": 8.81,
+   "break_price": 9.23,
+   "total_mv_wan": 1405543.0,
+   "vol_avg_ratio": 0.695,
+   "earliest_in": 1,
+   "latest_in": 5
+  }
+ ]
+}

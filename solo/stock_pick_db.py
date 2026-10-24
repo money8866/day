@@ -70,6 +70,8 @@ MARKET_DB_PATH = os.environ.get('PICK_MARKET_DB', r"D:\mystock\cache_daily\stock
 
 HORIZONS = (1, 3, 5, 10, 20)
 TRACK_WINDOW = 20
+CONCEPT_TAG = '走势最相关'   # 腾讯板块快照里标记"走势最相关"的概念
+_FX_CLIENT = None           # FinchX 惰性单例（补所属概念时初始化）
 
 STD_COLS = frozenset({
     'pick_date', 'strategy_id', 'ts_code', 'stock_name', 'close', 'pct_chg',
@@ -103,6 +105,7 @@ CREATE TABLE IF NOT EXISTS stock_pick (
     score         REAL,
     rank_no       INTEGER,
     industry      TEXT DEFAULT '',
+    concept       TEXT DEFAULT '',
     reason        TEXT DEFAULT '',
     stop_price    REAL,
     target_price  REAL,
@@ -142,7 +145,7 @@ CREATE INDEX IF NOT EXISTS ix_track_status ON pick_tracking (status);
 DROP VIEW IF EXISTS v_pick_full;
 CREATE VIEW v_pick_full AS
 SELECT p.pick_date, p.strategy_id, s.strategy_name, p.ts_code, p.stock_name, p.close, p.pct_chg,
-       p.signal, p.action, p.score, p.rank_no, p.industry, p.reason,
+       p.signal, p.action, p.score, p.rank_no, p.industry, p.concept, p.reason,
        p.stop_price, p.target_price, p.indicators, p.created_at,
        t.base_close, t.last_date, t.last_close,
        t.ret_1d, t.ret_3d, t.ret_5d, t.ret_10d, t.ret_20d,
@@ -187,10 +190,18 @@ def get_conn():
         conn.close()
 
 
+def _ensure_columns(conn):
+    """老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列。"""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(stock_pick)")}
+    if cols and 'concept' not in cols:
+        conn.execute("ALTER TABLE stock_pick ADD COLUMN concept TEXT DEFAULT ''")
+
+
 def init_db(path=None):
     if path:
         set_db_path(path)
     with get_conn() as conn:
+        _ensure_columns(conn)
         conn.executescript(SCHEMA)
     return DB_PATH
 
@@ -348,6 +359,91 @@ def _load_bars(ts_codes, start_date, end_date):
     return out
 
 
+def _last_pct(bars):
+    """行情库最后一根 K 线相对前一根的涨跌幅（%），作为概念匹配的参照。"""
+    if bars is None or len(bars) < 2:
+        return None
+    c_prev, c_last = float(bars['close'].iloc[-2]), float(bars['close'].iloc[-1])
+    if c_prev <= 0:
+        return None
+    return (c_last / c_prev - 1) * 100
+
+
+def _fx():
+    """惰性初始化 FinchX：仅补所属概念时需要，避免模块级硬依赖。"""
+    global _FX_CLIENT
+    if _FX_CLIENT is None:
+        from finchx import FinchX
+        _FX_CLIENT = FinchX()
+    return _FX_CLIENT
+
+
+def _sector_rows(ts_code):
+    """取个股所属板块，归一化为 (类型, 名称, tag, 涨跌幅%)。
+
+    兼容 finchx 两套接口：新版 market.instrument_sector_snapshot 与
+    3.1.x 的 sector.tx_sectors（腾讯 plateNew 同一数据源）。
+    """
+    fx = _fx()
+    bare = str(ts_code).split('.')[0]
+    snap = getattr(fx.market, 'instrument_sector_snapshot', None)
+    if snap is not None:
+        data = snap(bare).to_dicts()
+        sectors = (data[0].get('sectors') or []) if data else []
+        out = []
+        for s in sectors:
+            pct = _f(s.get('changePct'))
+            out.append((s.get('sectorType'), s.get('sectorName'), s.get('tag'),
+                        None if pct is None else pct * 100))
+        return out
+    out = []
+    for s in fx.sector.tx_sectors(bare):
+        out.append((s.get('sector_type'), s.get('sector_name'), s.get('tag'),
+                    _f(s.get('change_percent'))))
+    return out
+
+
+def _pick_concept(ts_code, ref_pct=None):
+    """腾讯板块快照中取所属概念。
+
+    优先 tag=「走势最相关」的概念；腾讯未标记时，退化为涨跌幅与 ref_pct
+    最接近的概念（两者都取不到则返回空串）。
+    """
+    try:
+        sectors = _sector_rows(ts_code)
+    except Exception:
+        return ''
+    concepts = [(name, pct) for stype, name, tag, pct in sectors
+                if stype == 'concept' and name and (tag or '').strip() == CONCEPT_TAG]
+    if concepts:
+        return concepts[0][0]
+    if ref_pct is None:
+        return ''
+    best, best_gap = '', None
+    for stype, name, _tag, pct in sectors:
+        if stype != 'concept' or not name or pct is None:
+            continue
+        gap = abs(pct - ref_pct)
+        if best_gap is None or gap < best_gap:
+            best, best_gap = name, gap
+    return best
+
+
+def _fill_concepts(codes, bars_map):
+    """给尚无概念的选股补齐「所属概念」（同代码保留首次结果）。"""
+    if not codes:
+        return 0
+    updates = []
+    for code in codes:
+        name = _pick_concept(code, _last_pct(bars_map.get(code)))
+        if name:
+            updates.append((name, code))
+    if updates:
+        with get_conn() as conn:
+            conn.executemany("UPDATE stock_pick SET concept = ? WHERE ts_code = ?", updates)
+    return len(updates)
+
+
 def _calc_tracking(bars, pick_date, base_close, stop_price, target_price):
     if bars is None or bars.empty or not base_close:
         return None
@@ -395,6 +491,7 @@ def _calc_tracking(bars, pick_date, base_close, stop_price, target_price):
 def update_tracking(lookback_days=120):
     window_start = (date.today() - timedelta(days=lookback_days)).strftime('%Y%m%d')
     with get_conn() as conn:
+        _ensure_columns(conn)
         rows = conn.execute("""
             SELECT p.pick_date, p.strategy_id, p.ts_code, p.close,
                    p.stop_price, p.target_price, t.status
@@ -404,12 +501,24 @@ def update_tracking(lookback_days=120):
              AND t.ts_code = p.ts_code
             WHERE p.pick_date >= ?
         """, (window_start,)).fetchall()
+        pending = [r[0] for r in conn.execute(
+            "SELECT DISTINCT ts_code FROM stock_pick "
+            "WHERE pick_date >= ? AND (concept IS NULL OR concept = '')",
+            (window_start,))]
     tasks = [r for r in rows if r[6] != 'EXPIRED']
+
+    # 所属概念：腾讯板块快照（tag=走势最相关；未标记时取涨跌幅最接近的概念）
+    start = (date.today() - timedelta(days=12)).strftime('%Y%m%d')
+    if tasks:
+        start = min(start, min(r[0] for r in tasks))
+    end = date.today().strftime('%Y%m%d')
+    bars_map = _load_bars({r[2] for r in tasks} | set(pending), start, end)
+    filled = _fill_concepts(pending, bars_map)
+    if filled:
+        print(f'[所属概念] 已补 {filled} 只')
+
     if not tasks:
         return 0
-    start = min(r[0] for r in tasks)
-    end = date.today().strftime('%Y%m%d')
-    bars_map = _load_bars({r[2] for r in tasks}, start, end)
 
     updates = []
     for pick_date, strategy_id, ts_code, close, stop_price, target_price, _ in tasks:

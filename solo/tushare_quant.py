@@ -6430,7 +6430,7 @@ def send_pushplus(msg, token):
         print(f"⚠️ PushPlus 请求异常: {e}")
 
 
-# ---- Agent Mail CLI 邮件推送（20260925 起替代 Server酱/PushPlus 微信推送） ----
+# ---- Agent Mail CLI 邮件推送（与 Server酱/PushPlus 微信推送并行发送） ----
 AGENT_MAIL_CLI = r"C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd"
 AGENT_MAIL_TO = "stock1975@qq.com"
 _MAIL_ATT_MAX_BYTES = 20 * 1024 * 1024   # 单附件上限 20MB（agently-cli +me 的 max_attachment_size_bytes）
@@ -10318,7 +10318,12 @@ def run(target_date=None, simple_mode=False):
                     _etf_head = _etf_sec.split('\n', 1)[0]
                     final_report = final_report[:_m_etf.start()] + f"{_etf_head}\n\n{etf_tips_text}\n\n" + final_report[_m_etf.end():]
 
-        # 先发送邮件（即使报告保存失败也要发送）
+        # 先发送微信（即使报告保存失败也要发送）
+        send_wechat(final_report, os.getenv("WECHAT_SCKEY"))
+        # PushPlus 推送（支持markdown，增强阅读体验）
+        send_pushplus(final_report, os.getenv("PUSHPLUS"))
+
+        # 邮件推送（正文 HTML + PDF 附件）并行保留，与微信推送互不影响
         send_agent_mail(final_report)
 
         # 保存报告（带异常处理）

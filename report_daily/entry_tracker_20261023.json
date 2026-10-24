@@ -1,0 +1,44 @@
+{
+ "date": "20261023",
+ "sh_close": 3690.48,
+ "breakdown": {
+  "active": true,
+  "key_low": 3842.72,
+  "close": 3690.48,
+  "seg_start": "20260928",
+  "seg_days": 15,
+  "need_pct": 4.13
+ },
+ "history": {
+  "segments": 12,
+  "done_segments": 11,
+  "dur_median": 5,
+  "dur_min": 1,
+  "dur_max": 14,
+  "relief_r5_mean": 2.33,
+  "relief_r5_win": 64.0,
+  "relief_n": 11
+ },
+ "sentiment": {
+  "up": 81.2,
+  "zb": 12.9,
+  "zt": 81,
+  "height": 6
+ },
+ "level1": {
+  "up_gt55": true,
+  "zb_lt25": true,
+  "mainline_strong": false,
+  "l1_pass": true
+ },
+ "level2": {
+  "up_gt60": true,
+  "zb_lt20": true,
+  "zt_gt60": true,
+  "top1_gt80": false,
+  "l2_pass": true
+ },
+ "gate1_clear": false,
+ "gate2_clear": true,
+ "gate3_clear": true
+}

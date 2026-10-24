@@ -391,11 +391,9 @@ def events_lines(ev: dict) -> list[str]:
         rows = mc.to_dict("records") if hasattr(mc, "to_dict") else mc
         for row in rows[:6]:
             t = str(row.get("time") or "")
-            try:
-                tt = dt.datetime.fromisoformat(t) + dt.timedelta(hours=8)
-                t_show = tt.strftime("%H:%M")
-            except Exception:
-                t_show = t[-5:]
+            # 接口时间窗口为北京当天（start/end 对应 UTC+8 全天），time 字段即北京时间，直接取
+            t_show = t[-8:-3] if len(t) >= 8 and t[-8] == " " else (t[-5:] or "")
+            cty = str(row.get("country") or "")
             title = str(row.get("title") or row.get("event") or "")
             imp = row.get("importance") or 0
             star = "★" * int(imp) if str(imp).isdigit() else ""
@@ -405,7 +403,7 @@ def events_lines(ev: dict) -> list[str]:
                 if row.get("forecast") not in (None, "") and str(row.get("forecast")) != "nan":
                     extra += f"/预期{row.get('forecast')}"
             if title:
-                L.append(f"宏观 {t_show} {star} {title}{extra}")
+                L.append(f"宏观 {t_show} {star} {f'{cty} ' if cty else ''}{title}{extra}")
     ef = ev.get("earnings")
     if ef is not None and len(ef):
         rows = ef.to_dict("records") if hasattr(ef, "to_dict") else ef
@@ -564,13 +562,13 @@ def build_plan(idx: dict, ex: dict, news: list, ev: dict) -> dict:
         return f"{side} {abs(dev):.1f}%，MA20 {trend}"
 
     if both_bear:
-        climate = f"底气候 ✗ 双指数仅卖（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
+        climate = f"双底气候 ✗ 双指数仅卖（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
         rules = ["→ 本轮所有反弹按减仓处理，不新增隔夜多头",
                  "→ 低点窗是反 T 回补时点，不是建仓买点"]
         tail = "任何反弹只做减仓，不做建仓"
         disc1 = "双底气候 ✗：只做反 T，不做正 T 开仓"
     elif both_bull:
-        climate = f"底气候 ✓ 双指数仅买（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
+        climate = f"双底气候 ✓ 双指数仅买（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
         rules = ["→ 趋势未破，回踩 5 日线不破可低吸，不追高",
                  "→ 冲高放量滞涨即为减仓点"]
         tail = "回踩可低吸，不追高"
@@ -578,7 +576,7 @@ def build_plan(idx: dict, ex: dict, news: list, ev: dict) -> dict:
     else:
         icons = ("✗" if c_sh == "bear" else ("✓" if c_sh == "bull" else "◇"))
         iconc = ("✗" if c_cy == "bear" else ("✓" if c_cy == "bull" else "◇"))
-        climate = f"底气候 {icons}{iconc} 多空分歧（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
+        climate = f"双底气候 {icons}{iconc} 多空分歧（上证{dist_txt(sh, dev_sh)}，创业板{dist_txt(cy, dev_cy)}）"
         rules = ["→ 只做站上 MA20 的一侧，另一侧仅反 T", "→ 无共振方向前不加总仓位"]
         tail = "只做强势一侧，不逆势"
         disc1 = "气候分歧：只做强势一侧，另一侧观望"
@@ -1018,7 +1016,10 @@ def render_txt(p: dict) -> str:
         L.append(f"  {nm}: {chips}")
         L.append(f"      收盘区间 {st['range_b'][0]} – {st['range_b'][1]}")
     L.append("")
-    L.append("【时间窗口】上证 09:45/10:45/11:05 主窗；创业板 09:45 双指数共振（全天最重）")
+    def _win(rows):
+        return "，".join(f"{t}{star}" + (f"（{note}）" if note else "") for t, s, star, note in rows)
+    L.append(f"【时间窗口】上证 {_win(WIN_SZ)}；创业板 {_win(WIN_CY)}")
+    L.append("  共振点：09:45 — 两指数同时指向，是当日第一个也是最关键的方向裁决点。")
     L.append("【见底信号】" + "；".join(p["bottom_sig"]))
     L.append("【见顶信号】" + "；".join(p["top_sig"]))
     L.append("")
