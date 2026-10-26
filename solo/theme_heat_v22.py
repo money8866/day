@@ -125,6 +125,10 @@ EVO_HIST_MIN = EVO_LOOKBACK + 1  # §三/§四 序列少于该天数 → EVOLUTI
 EVO_MIN_TRANS_N = 8              # §十二 状态迁移最小样本量（不足 → 只作观察信号）
 EVO_PERTURB = (0.8, 1.2)         # §十二 参数扰动系数（阈值缩放，检验状态稳定性）
 EVO_HORIZONS = (5, 10, 20)       # §十一 未来 T+5 / T+10 / T+20
+# §九·当日强度（up_ratio，单位 %）：只用于「当日确认 / 当日否决」，不进入多日动量
+EVO_UP_STRONG = 70.0             # 当日成员上涨占比 ≥70% → 当日确认强势
+EVO_UP_WEAK = 40.0               # 当日成员上涨占比 <40% → 当日否决一切升温类状态
+EVO_UP_TOP_RANK = 3              # 当日排名 ≤3 → 可用于「当日强度覆盖」判主线
 
 # ── §V2.5.1 主线主题「龙头 / 中军」标注（只标注 LEADING；不改热度、不改状态、不构成买卖建议）──
 LC_WINDOW = 20                   # 识别窗口（交易日）
@@ -1571,6 +1575,7 @@ def build_panel(end_date, themes):
             seq.append({'heat': _num(r.get('heat')) if r else None,
                         'base_heat': _num(r.get('base_heat')) if r else None,
                         'breadth': _num(r.get('breadth')) if r else None,
+                        'up_ratio': _num(r.get('up_ratio')) if r else None,
                         'rank': _num(r.get('rank')) if r else None,
                         'n': _num(r.get('n')) if r else None,
                         'reliability': _num(r.get('reliability')) if r else None,
@@ -1600,6 +1605,8 @@ def compute_evolution_metrics(seq, rank_pool=None):
          'hm20': _delta(heat, 0, 20),
          'breadth': _val(br, 0), 'breadth_d5': _delta(br, 0, 5),
          'breadth_d20': _delta(br, 0, 20),
+         # 当日上涨占比（%）：当日强度，用于避免「多日累计量好看但当天已经走弱」
+         'up_ratio': _val([x.get('up_ratio') for x in seq], 0),
          'n': _val([x['n'] for x in seq], 0),
          'reliability': _val([x['reliability'] for x in seq], 0),
          'flags': seq[-1]['flags'] if seq else ''}
@@ -1643,6 +1650,8 @@ def classify_state(m, scale=1.0):
               → RELAUNCH/REBOUND（曾强→中间降温→重新升温；按「是否已重回强势区 + 是否扩散确认」拆分）
               → ACCELERATING → EMERGING → COOLING。
     V2.5.1：状态定义不变，「二次启动」拆为 RELAUNCH（真正再启动）/ REBOUND（反弹）两个并列状态。
+    V2.5.1 补：「当日强度」（up_ratio）只作当日确认/否决 —— 排名≤3 且当日上涨占比≥70% 直接判主线；
+    当日上涨占比<40% 且排名已掉出强势区时不给任何升温类状态（修掉单日跳水仍显示"加速升温"）。
     数据不足时 conservatively 归入 EMERGING/COOLING，并由 LOW_SAMPLE /
     EVOLUTION_INSUFFICIENT 标记提示可信度（§十）。
     """
@@ -1675,6 +1684,21 @@ def classify_state(m, scale=1.0):
     was_strong = len(rr) >= 8 and any(x is not None and x <= r_strong for x in rr[:-6])
     cooled_mid = len(rr) >= 8 and any(x is not None and x >= r_cool for x in rr[-6:-2])
 
+    # 当日强度（up_ratio 单位 %）：只作「当日确认/否决」，不参与多日动量计算
+    up_today = m.get('up_ratio')
+    strong_today = up_today is not None and up_today >= EVO_UP_STRONG
+    weak_today = up_today is not None and up_today < EVO_UP_WEAK
+    # 当日多数成员下跌且排名已掉出强势区 → 当天确实没有在升温，不给任何「升温类」状态。
+    # （只按 up_ratio 一刀切会在普跌日误伤「排名仍最前列」的主题，故额外要求排名掉队）
+    stalled = weak_today and (r_now is None or r_now > r_cool)
+
+    # ⓿ 当日强度覆盖：当日排在最前列 + 近5日升温 + 升温在加速 + 当日成员普遍上涨
+    #    → 直接判主线。用于修正「单日排名掉队 → established=False → 锁死在 RELAUNCH」
+    #    这类迟滞：多日指标仍好、当日也确实最强时，不该因为缺持续性记录而进不了主线。
+    if (r_now is not None and r_now <= EVO_UP_TOP_RANK and heating and acc > 0
+            and strong_today):
+        return 'LEADING'
+
     # ① 当前就在强势区且有一定持续性 → 主线 / 高位钝化 / 已转弱
     if strong_now and established:
         if acc < 0 and (contracting or (hm5_slow and not diffusing)):
@@ -1690,16 +1714,16 @@ def classify_state(m, scale=1.0):
         back_strong = (strong_now or streak >= EVO_RELAUNCH_STREAK
                        or top10 >= EVO_RELAUNCH_PERSIST)
         return 'RELAUNCH' if (back_strong and diffusing) else 'REBOUND'
-    # ③ 正在加速升温
-    if accelerating and (diffusing or strong_now or rank_improving):
+    # ③ 正在加速升温（当日多数成员下跌且排名掉队时不算升温：HM5/ACC 是5~10日累计量）
+    if accelerating and not stalled and (diffusing or strong_now or rank_improving):
         return 'ACCELERATING'
     # ④ 刚开始活跃 / 新出现
-    if heating and (rank_improving or diffusing or (strong_now and persist_lo)):
+    if heating and not stalled and (rank_improving or diffusing or (strong_now and persist_lo)):
         return 'EMERGING'
     # ⑤ 降温
     if hm5 < 0 and (contracting or rank_worse):
         return 'COOLING'
-    return 'EMERGING' if heating else 'COOLING'
+    return 'EMERGING' if (heating and not stalled) else 'COOLING'
 
 
 def project_states(state, m):
@@ -1728,7 +1752,7 @@ def _state_series(store, dates, themes):
     """Walk-forward 计算每个主题在每个交易日的状态（只依赖 ≤ 当日数据）"""
     arr = {}
     for t in themes:
-        col = {k: [] for k in ('heat', 'rank', 'breadth', 'n', 'reliability')}
+        col = {k: [] for k in ('heat', 'rank', 'breadth', 'up_ratio', 'n', 'reliability')}
         for d in dates:
             r = store.get((d, t))
             for k in col:
@@ -1741,7 +1765,8 @@ def _state_series(store, dates, themes):
             if i < EVO_LOOKBACK:
                 continue
             seq = [{'heat': col['heat'][k], 'rank': col['rank'][k],
-                    'breadth': col['breadth'][k], 'n': col['n'][k],
+                    'breadth': col['breadth'][k], 'up_ratio': col['up_ratio'][k],
+                    'n': col['n'][k],
                     'reliability': col['reliability'][k], 'flags': ''}
                    for k in range(i - EVO_LOOKBACK, i + 1)]
             mm = compute_evolution_metrics(seq)
@@ -1843,7 +1868,7 @@ def _state_series_scaled(store, dates, themes, scale):
     """参数扰动版状态序列（§十二 robustness check）"""
     arr = {}
     for t in themes:
-        col = {k: [] for k in ('heat', 'rank', 'breadth', 'n', 'reliability')}
+        col = {k: [] for k in ('heat', 'rank', 'breadth', 'up_ratio', 'n', 'reliability')}
         for d in dates:
             r = store.get((d, t))
             for k in col:
@@ -1856,7 +1881,8 @@ def _state_series_scaled(store, dates, themes, scale):
             if i < EVO_LOOKBACK:
                 continue
             seq = [{'heat': col['heat'][k], 'rank': col['rank'][k],
-                    'breadth': col['breadth'][k], 'n': col['n'][k],
+                    'breadth': col['breadth'][k], 'up_ratio': col['up_ratio'][k],
+                    'n': col['n'][k],
                     'reliability': col['reliability'][k], 'flags': ''}
                    for k in range(i - EVO_LOOKBACK, i + 1)]
             mm = compute_evolution_metrics(seq)
@@ -2291,10 +2317,11 @@ def _market_summary(rows):
         sel = sorted([r for r in rows if r['state'] == st],
                      key=lambda r: -(r['metrics']['heat'] or 0.0))
         return [r['theme'] for r in sel[:k]]
-    cur = top('LEADING', 2)
+    cur = top('LEADING', 3)
     nxt = top('ACCELERATING', 2) + top('RELAUNCH', 1) + top('EMERGING', 1)
     dn = top('COOLING', 2)
-    txt = f"当前市场主题正在从【{'、'.join(cur) or '暂无明确主线'}】向" \
+    # 起点写「主线」而不是「从A向B」：当日最强常常就是主线榜首，用「从…向…」会读成它已是要扩散出去的旧方向
+    txt = f"主线【{'、'.join(cur) or '暂无明确主线'}】正在向" \
           f"【{'、'.join(nxt) or '暂未出现新的升温方向'}】扩散"
     if dn:
         txt += f"，同时【{'、'.join(dn)}】开始降温"

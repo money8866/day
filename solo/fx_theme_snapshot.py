@@ -1,26 +1,25 @@
 # -*- coding: utf-8 -*-
-"""FinchX 热榜 -> 题材热度 -> 龙头 · 每日快照
+"""FinchX 3.x 题材热度 -> 龙头 · 每日/盘中快照
 
-数据来源（finchx / 同花顺热榜，均由 FinchX 归一化）:
-  hotlist.sectors  概念板块热榜（热度 / 涨停家数 / 上榜频次 / 关联 ETF）
-  hotlist.stocks   热股榜（人气标签=连板高度 / 概念标签 / 热度）
-  hotlist.content  内容热榜 topic（当日热门话题 + 关联个股）
+数据来源（finchx 3.1.x，均直接返回原生 dict / list）:
+  hotlist.sectors          概念板块热榜（热度 / 涨停家数 / 上榜频次 / 关联 ETF）
+  hotlist.stocks           热股榜（人气标签=连板高度 / 概念标签 / 热度）
+  articles.hot_content     热门话题 topic（话题 + 关联个股）
+  盘中模式另加:
+  sector.ths_concept_list / ths_concept_quote_snapshot   全量概念实时快照
+  market.agp_sentiment / em_breadth                      情绪与涨跌分布
+  market.limit_up_pool / broken_limit_pool               连板梯队与炸板
 
-三路合成:
-  1) 概念板块热榜 = 题材热度底座（同花顺热度序即为题材强弱序）
-  2) 热股的 conceptTags 把个股挂回题材
-  3) 热股 popularityTag 里的连板高度判「龙头 / 首板 / 中军 / 跟风」
+注意：3.x 的 *change_percent / *percent 字段已经是百分数（2.46 表示 +2.46%），
+不再像 2.x 那样是比例小数，展示时不要再乘 100。
 
 leader_score 口径（显式、可审计）:
   连板高度 x 20  +  双创加成(300/301/688) 8
   + 题材涨停家数 x 2  + 题材内热度排名分(max(2, 10 - 2*位次))
 
-输出（与脚本同目录）:
-  fx_theme_snapshot_{date}.json
-  fx_theme_snapshot_{date}.html   （移动端卡片式，正文 22px）
-
 用法:
-  python fx_theme_snapshot.py
+  python fx_theme_snapshot.py                        # 热榜版
+  python fx_theme_snapshot.py --mode intraday        # 盘中全景版
   python fx_theme_snapshot.py --sectors 40 --stocks 80 --topics 10
 """
 from __future__ import annotations
@@ -29,6 +28,8 @@ import argparse
 import json
 import re
 import sys
+import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -52,12 +53,41 @@ _RE_LIMITUP = re.compile(r"(\d+)\s*家涨停")
 SEP = "\u2500" * 46
 SEP2 = "\u2550" * 46
 
+# 直连兜底：finchx 3.1.1 的 hot_content 只认 topic/deep_topic，
+# 上游一旦出现新的业务类型（如 special 专题页）整份榜单就会抛错，这里自行取数。
+_THS_TOPIC_URL = "https://dq.10jqka.com.cn/fuyao/hot_list_data/out/hot_list/v1/topic"
+_THS_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    ),
+    "Referer": "https://eq.10jqka.com.cn/",
+}
+
 
 def to_float(value) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def fmt_yi(value) -> str:
+    """元 -> 亿。"""
+    if value is None:
+        return "-"
+    return f"{float(value) / 1e8:.2f}亿"
+
+
+def pct(value) -> str:
+    """百分数 -> 带符号文本（输入已是 2.46 这种百分点）。"""
+    return f"{to_float(value):+.2f}%"
+
+
+def fmt_pct(value, digits: int = 1) -> str:
+    if value is None:
+        return "-"
+    return f"{float(value):.{digits}f}%"
 
 
 def is_dual_board(code: str) -> bool:
@@ -77,7 +107,7 @@ def parse_board_height(popularity_tag) -> int:
 
 
 def parse_theme_freq(hot_tag) -> tuple[int, str]:
-    """板块 hotTag -> 上榜强度: '连续132天上榜'->(132,'连续'); '10天9次上榜'->(9,'频次')。"""
+    """板块 hot_tag -> 上榜强度: '连续132天上榜'->(132,'连续')；'10天9次上榜'->(9,'频次')。"""
     if not hot_tag:
         return 0, ""
     m = _RE_UP_CONSEC.search(hot_tag)
@@ -96,20 +126,14 @@ def parse_limitup_count(tag) -> int:
     return int(m.group(1)) if m else 0
 
 
-def normalize_date(value) -> str:
-    if isinstance(value, str):
-        return value[:10]
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)
-
-
 def resolve_trade_date(fx: FinchX, warnings: list[str]) -> str:
     """取 <= 今天的最近一个 A 股交易日，作为快照标签。"""
     today = datetime.now(CN_TZ).date()
     try:
         rows = fx.reference.trading_calendar(
             (today - timedelta(days=25)).isoformat(), today.isoformat()
-        ).to_dicts()
-        days = [normalize_date(r["date"]) for r in rows if r.get("isTradingDay")]
+        )
+        days = [r["date"] for r in rows if r.get("is_trading_day")]
         if days:
             return max(days)
     except Exception as exc:  # noqa: BLE001
@@ -134,32 +158,34 @@ def leader_score(board: int, dual_board: bool, limitup_count: int, position: int
     )
 
 
+# ============================ 热榜模式 ============================
+
 def fetch_theme_base(fx: FinchX, limit: int, warnings: list[str]) -> list[dict]:
     try:
-        rows = fx.hotlist.sectors("concept", limit).to_dicts()
+        rows = fx.hotlist.sectors("concept", limit)
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"hotlist.sectors 失败: {type(exc).__name__}: {exc}")
         return []
 
     themes: list[dict] = []
     for row in rows:
-        freq, freq_kind = parse_theme_freq(row.get("hotTag"))
+        freq, freq_kind = parse_theme_freq(row.get("hot_tag"))
         themes.append(
             {
                 "rank": row.get("rank"),
                 "name": row.get("name"),
-                "code": row.get("sectorCode"),
+                "code": row.get("sector_code"),
                 "heat": to_float(row.get("heat")),
-                "change_pct": to_float(row.get("changePct")),
-                "rank_change": row.get("rankChange") or 0,
+                "change_pct": to_float(row.get("change_percent")),
+                "rank_change": row.get("rank_change") or 0,
                 "limitup_count": parse_limitup_count(row.get("tag")),
                 "tag": row.get("tag"),
-                "hot_tag": row.get("hotTag"),
+                "hot_tag": row.get("hot_tag"),
                 "freq": freq,
                 "freq_kind": freq_kind,
-                "etf_symbol": row.get("relatedEtfSymbol"),
-                "etf_name": row.get("relatedEtfName"),
-                "etf_change_pct": to_float(row.get("relatedEtfChangePct")),
+                "etf_symbol": row.get("related_etf_code"),
+                "etf_name": row.get("related_etf_name"),
+                "etf_change_pct": to_float(row.get("related_etf_change_percent")),
                 "stocks": [],
             }
         )
@@ -167,26 +193,31 @@ def fetch_theme_base(fx: FinchX, limit: int, warnings: list[str]) -> list[dict]:
 
 
 def fetch_hot_stocks(fx: FinchX, limit: int, warnings: list[str]) -> list[dict]:
-    try:
-        rows = fx.hotlist.stocks("popular", "24h", limit).to_dicts()
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"hotlist.stocks 失败: {type(exc).__name__}: {exc}")
+    rows = None
+    for period in ("24h", "1h"):
+        try:
+            rows = fx.hotlist.stocks("popular", period, limit)
+            break
+        except Exception as exc:  # noqa: BLE001
+            # 3.1.1 的 market 映射只有 17/33/151，日榜偶有风险警示板(22)会整份失败
+            warnings.append(f"hotlist.stocks({period}) 失败: {type(exc).__name__}: {exc}")
+    if rows is None:
         return []
 
     stocks: list[dict] = []
     for row in rows:
-        code = row.get("symbol") or ""
+        code = row.get("code") or ""
         stocks.append(
             {
                 "code": code,
                 "name": row.get("name"),
                 "heat": to_float(row.get("heat")),
-                "change_pct": to_float(row.get("changePct")),
-                "board": parse_board_height(row.get("popularityTag")),
-                "popularity_tag": row.get("popularityTag"),
+                "change_pct": to_float(row.get("change_percent")),
+                "board": parse_board_height(row.get("popularity_tag")),
+                "popularity_tag": row.get("popularity_tag"),
                 "rank": row.get("rank"),
-                "rank_change": row.get("rankChange") or 0,
-                "concept_tags": row.get("conceptTags") or [],
+                "rank_change": row.get("rank_change") or 0,
+                "concept_tags": row.get("concept_tags") or [],
                 "dual_board": is_dual_board(code),
                 "themes": [],
             }
@@ -250,12 +281,57 @@ def attach_stocks_to_themes(themes: list[dict], stocks: list[dict]) -> None:
         theme["dual_board_count"] = sum(1 for v in views if v["dual_board"])
 
 
+def fetch_topics_direct(limit: int, warnings: list[str]) -> list[dict]:
+    """直连同花顺话题榜，跳过库不认识的业务类型（如 special 专题页）。"""
+    try:
+        req = urllib.request.Request(
+            f"{_THS_TOPIC_URL}?page=1&page_size=30", headers=_THS_HEADERS
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        raw_rows = payload["data"]["topic_list"]
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"话题榜直连失败: {type(exc).__name__}: {exc}")
+        return []
+
+    topics: list[dict] = []
+    skipped = 0
+    for raw in raw_rows:
+        if raw.get("type") not in {"topic", "deep_topic"}:
+            skipped += 1
+            continue
+        info = raw.get("attach_info") or {}
+        topics.append(
+            {
+                "rank": len(topics) + 1,
+                "title": raw.get("title"),
+                "summary": raw.get("description"),
+                "heat": to_float(raw.get("hot_value")),
+                "url": raw.get("jump_url"),
+                "related_stocks": [
+                    {
+                        "code": item.get("code"),
+                        "name": (item.get("name") or "").replace(" ", ""),
+                        "change_pct": to_float(item.get("rise_and_fall")),
+                    }
+                    for item in (info.get("att_stock") or [])
+                    if isinstance(item, dict)
+                ],
+            }
+        )
+        if len(topics) >= limit:
+            break
+    if skipped:
+        warnings.append(f"话题榜跳过 {skipped} 条未识别业务类型")
+    return topics
+
+
 def fetch_topics(fx: FinchX, limit: int, warnings: list[str]) -> list[dict]:
     try:
-        rows = fx.hotlist.content("topic", limit).to_dicts()
+        rows = fx.articles.hot_content("topic", limit)
     except Exception as exc:  # noqa: BLE001
-        warnings.append(f"hotlist.content 失败: {type(exc).__name__}: {exc}")
-        return []
+        warnings.append(f"articles.hot_content 失败，转直连: {type(exc).__name__}: {exc}")
+        return fetch_topics_direct(limit, warnings)
 
     topics = []
     for row in rows:
@@ -268,11 +344,11 @@ def fetch_topics(fx: FinchX, limit: int, warnings: list[str]) -> list[dict]:
                 "url": row.get("url"),
                 "related_stocks": [
                     {
-                        "code": item.get("symbol"),
+                        "code": item.get("code"),
                         "name": (item.get("name") or "").replace(" ", ""),
-                        "change_pct": to_float(item.get("changePct")),
+                        "change_pct": to_float(item.get("change_percent")),
                     }
-                    for item in (row.get("relatedStocks") or [])
+                    for item in (row.get("related_securities") or [])
                 ],
             }
         )
@@ -335,7 +411,7 @@ def build_snapshot(sector_limit: int, stock_limit: int, topic_limit: int) -> dic
     return {
         "generated_at": datetime.now(CN_TZ).isoformat(),
         "trade_date": trade_date,
-        "source": "finchx / tonghuashun.hotlist",
+        "source": "finchx 3.x / tonghuashun.hotlist + articles",
         "params": {
             "sector_limit": sector_limit,
             "stock_limit": stock_limit,
@@ -358,10 +434,6 @@ def build_snapshot(sector_limit: int, stock_limit: int, topic_limit: int) -> dic
         ],
         "topics": topics,
     }
-
-
-def pct(value: float) -> str:
-    return f"{value * 100:+.2f}%"
 
 
 def print_summary(snapshot: dict) -> None:
@@ -549,7 +621,6 @@ def render_html(snapshot: dict) -> str:
         f"{lead_rows}</table></div></div>"
     )
 
-
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head>
 <meta charset="utf-8">
@@ -618,64 +689,78 @@ font-size:20px;margin-bottom:12px}}
 {topic_parts}
 <div class="sec">未归类热股</div>
 {unc}
-<div class="ft">数据来源 finchx / tonghuashun.hotlist · 仅供研究，不构成投资建议</div>
+<div class="ft">数据来源 finchx 3.x / tonghuashun.hotlist · 仅供研究，不构成投资建议</div>
 </body></html>"""
 
 
-def _to_yi(value: float) -> str:
-    """元 -> 亿。"""
-    return f"{value / 1e8:.2f}亿"
-
+# ============================ 盘中模式 ============================
 
 def _concept_row(record: dict | None) -> dict | None:
     if not record:
         return None
-    concept = record.get("concept") or {}
-    name = concept.get("sectorName")
+    name = record.get("name")
     if not name:
         return None
+    stamp = " ".join(
+        part for part in (record.get("date"), record.get("time")) if part
+    )
     return {
         "name": name,
-        "code": concept.get("providerSectorId"),
-        "change_rate": to_float(record.get("changeRate")),
-        "index_level": to_float(record.get("indexLevel")),
-        "amount": to_float(record.get("amount")),
-        "net_money_flow": to_float(record.get("netMoneyFlow")),
-        "rise_count": record.get("riseCount"),
-        "fall_count": record.get("fallCount"),
-        "source_timestamp": record.get("sourceTimestamp"),
+        "code": record.get("code"),
+        "change_rate": to_float(record.get("change_percent")),
+        "index_level": to_float(record.get("index_level")),
+        "amount": record.get("amount"),
+        "net_money_flow": record.get("net_inflow"),
+        "rise_count": record.get("up_count"),
+        "fall_count": record.get("down_count"),
+        "source_timestamp": stamp or None,
     }
 
 
 def fetch_concept_panorama(fx: FinchX, workers: int, warnings: list[str]) -> list[dict]:
-    """全量概念实时快照（同花顺概念目录 -> 逐个 concept_quote_snapshot，并发）。"""
+    """全量概念实时快照：概念目录(代码/名称) -> 逐个 ths_concept_quote_snapshot，并发。"""
     try:
-        names = [r["sectorName"] for r in fx.market.concept_list().to_dicts()]
+        catalog = fx.sector.ths_concept_list()
     except Exception as exc:  # noqa: BLE001
-        warnings.append(f"concept_list 失败: {type(exc).__name__}: {exc}")
+        warnings.append(f"ths_concept_list 失败: {type(exc).__name__}: {exc}")
         return []
 
-    def one(name: str):
+    def one(item: dict):
         try:
-            rows = fx.market.concept_quote_snapshot(name).to_dicts()
-            return rows[0] if rows else None
-        except Exception:  # noqa: BLE001
-            return None
+            return _concept_row(fx.sector.ths_concept_quote_snapshot(item["code"])), None
+        except Exception as exc:  # noqa: BLE001
+            return None, f"{type(exc).__name__}: {exc}"
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(one, names))
+        first = list(pool.map(one, catalog))
 
-    rows = [r for r in (_concept_row(x) for x in results) if r]
-    if len(rows) != len(names):
-        warnings.append(f"概念快照缺失 {len(names) - len(rows)}/{len(names)} 个")
+    rows = [r for r, _ in first if r]
+    pending = [(item, err) for item, (_, err) in zip(catalog, first) if err]
+    for _ in range(2):
+        if not pending:
+            break
+        # 首轮失败多为并发下的偶发响应异常，降半速补两轮
+        time.sleep(0.3)
+        with ThreadPoolExecutor(max_workers=max(1, workers // 2)) as pool:
+            again = list(pool.map(one, [item for item, _ in pending]))
+        rows.extend(r for r, _ in again if r)
+        pending = [
+            (item, err)
+            for (item, _), (_, err) in zip(pending, again)
+            if err
+        ]
+    if pending:
+        warnings.append(
+            f"概念快照缺失 {len(pending)}/{len(catalog)} 个"
+            f"（已重试 2 轮，样例 {pending[0][1][:60]}）"
+        )
     rows.sort(key=lambda r: r["change_rate"], reverse=True)
     return rows
 
 
 def fetch_object(fx: FinchX, method: str, warnings: list[str]) -> dict:
     try:
-        rows = getattr(fx.market, method)().to_dicts()
-        return rows[0] if rows else {}
+        return getattr(fx.market, method)() or {}
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"{method} 失败: {type(exc).__name__}: {exc}")
         return {}
@@ -683,7 +768,7 @@ def fetch_object(fx: FinchX, method: str, warnings: list[str]) -> dict:
 
 def fetch_rows(fx: FinchX, method: str, warnings: list[str]) -> list[dict]:
     try:
-        return getattr(fx.market, method)().to_dicts()
+        return getattr(fx.market, method)() or []
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"{method} 失败: {type(exc).__name__}: {exc}")
         return []
@@ -692,7 +777,7 @@ def fetch_rows(fx: FinchX, method: str, warnings: list[str]) -> list[dict]:
 def build_ladder(limit_up: list[dict]) -> dict[int, list[dict]]:
     ladder: dict[int, list[dict]] = {}
     for row in limit_up:
-        days = int(row.get("consecutiveLimitUpDays") or 1)
+        days = int(row.get("consecutive_limit_up_days") or 1)
         ladder.setdefault(days, []).append(row)
     return dict(sorted(ladder.items(), reverse=True))
 
@@ -702,15 +787,15 @@ def build_intraday(workers: int, top: int) -> dict:
     warnings: list[str] = []
     trade_date = resolve_trade_date(fx, warnings)
     concepts = fetch_concept_panorama(fx, workers, warnings)
-    sentiment = fetch_object(fx, "sentiment", warnings)
-    breadth = fetch_object(fx, "breadth", warnings)
+    sentiment = fetch_object(fx, "agp_sentiment", warnings)
+    breadth = fetch_object(fx, "em_breadth", warnings)
     limit_up = fetch_rows(fx, "limit_up_pool", warnings)
     broken = fetch_rows(fx, "broken_limit_pool", warnings)
 
     return {
         "generated_at": datetime.now(CN_TZ).isoformat(),
         "trade_date": trade_date,
-        "source": "finchx intraday panorama (tonghuashun.concept / eastmoney / aigupiao)",
+        "source": "finchx 3.x intraday (tonghuashun.concept / eastmoney / aigupiao)",
         "params": {"workers": workers, "top": top},
         "warnings": warnings,
         "concept_count": len(concepts),
@@ -735,23 +820,25 @@ def print_intraday(snapshot: dict) -> None:
 
     print("情绪仪表盘")
     print(
-        f"  市场温度 {s.get('marketTemperature', '-')}"
-        f" | 总成交 {_to_yi(to_float(s.get('totalTurnover')))}"
-        f" | 较昨 {_to_yi(to_float(s.get('turnoverChangeAmount')))}"
+        f"  市场温度 {s.get('market_temperature', '-')}"
+        f" | 总成交 {fmt_yi(s.get('total_turnover'))}"
+        f" | 较昨 {fmt_yi(s.get('turnover_change_amount'))}"
     )
     print(
-        f"  涨停 {b.get('limitUpCount', '-')} | 跌停 {b.get('limitDownCount', '-')}"
+        f"  涨停 {b.get('limit_up_count', '-')} | 跌停 {b.get('limit_down_count', '-')}"
         f" | 涨 {b.get('advancing', '-')} | 跌 {b.get('declining', '-')}"
-        f" | 炸板率 {to_float(s.get('blastBreakRatio')) * 100:.1f}%"
+        f" | 炸板率 {fmt_pct(s.get('blast_break_percent'))}"
     )
     print(
-        f"  连板分布 1板 {s.get('oneLimitUpCount', '-')} / 2板 {s.get('twoLimitUpCount', '-')}"
-        f" / 3板 {s.get('threeLimitUpCount', '-')} / 高位 {s.get('highLimitUpCount', '-')}"
+        f"  连板分布 1板 {s.get('one_limit_up_count', '-')}"
+        f" / 2板 {s.get('two_limit_up_count', '-')}"
+        f" / 3板 {s.get('three_limit_up_count', '-')}"
+        f" / 高位 {s.get('high_limit_up_count', '-')}"
     )
     print(
-        f"  晋级率 二板 {to_float(s.get('twoLimitUpPromotionRatio')) * 100:.1f}%"
-        f" | 三板 {to_float(s.get('threeLimitUpPromotionRatio')) * 100:.1f}%"
-        f" | 高位 {to_float(s.get('highLimitUpPromotionRatio')) * 100:.1f}%"
+        f"  晋级率 二板 {fmt_pct(s.get('two_limit_up_promotion_percent'))}"
+        f" | 三板 {fmt_pct(s.get('three_limit_up_promotion_percent'))}"
+        f" | 高位 {fmt_pct(s.get('high_limit_up_promotion_percent'))}"
     )
     print(SEP)
 
@@ -759,9 +846,9 @@ def print_intraday(snapshot: dict) -> None:
     for i, row in enumerate(snapshot["concepts"], 1):
         print(
             f"  #{i} {row['name']} {pct(row['change_rate'])}"
-            f" 净流入 {_to_yi(row['net_money_flow'])}"
+            f" 净流入 {fmt_yi(row['net_money_flow'])}"
             f" 涨{row['rise_count']}/跌{row['fall_count']}"
-            f" 成交 {_to_yi(row['amount'])}"
+            f" 成交 {fmt_yi(row['amount'])}"
         )
     print(SEP)
 
@@ -775,9 +862,9 @@ def print_intraday(snapshot: dict) -> None:
         print("炸板池")
         for row in snapshot["broken"]:
             print(
-                f"  {row['name']} {pct(to_float(row.get('changeRate')))}"
-                f" 封板价 {to_float(row.get('limitUpPrice')):.2f}"
-                f" 炸板 {row.get('limitUpBreakCount')} 次"
+                f"  {row['name']} {pct(row.get('change_percent'))}"
+                f" 封板价 {to_float(row.get('limit_up_price')):.2f}"
+                f" 炸板 {row.get('limit_up_break_count')} 次"
             )
         print(SEP)
 
@@ -790,14 +877,14 @@ def render_intraday_html(snapshot: dict) -> str:
     b = snapshot["breadth"]
 
     metrics = [
-        ("市场温度", esc(s.get("marketTemperature", "-"))),
-        ("涨停", esc(b.get("limitUpCount", "-"))),
-        ("跌停", esc(b.get("limitDownCount", "-"))),
-        ("炸板率", f"{to_float(s.get('blastBreakRatio')) * 100:.1f}%"),
-        ("二板晋级", f"{to_float(s.get('twoLimitUpPromotionRatio')) * 100:.0f}%"),
-        ("三板晋级", f"{to_float(s.get('threeLimitUpPromotionRatio')) * 100:.0f}%"),
-        ("总成交", _to_yi(to_float(s.get("totalTurnover")))),
-        ("较昨增量", _to_yi(to_float(s.get("turnoverChangeAmount")))),
+        ("市场温度", esc(s.get("market_temperature", "-"))),
+        ("涨停", esc(b.get("limit_up_count", "-"))),
+        ("跌停", esc(b.get("limit_down_count", "-"))),
+        ("炸板率", fmt_pct(s.get("blast_break_percent"))),
+        ("二板晋级", fmt_pct(s.get("two_limit_up_promotion_percent"), 0)),
+        ("三板晋级", fmt_pct(s.get("three_limit_up_promotion_percent"), 0)),
+        ("总成交", fmt_yi(s.get("total_turnover"))),
+        ("较昨增量", fmt_yi(s.get("turnover_change_amount"))),
     ]
     metric_html = "".join(
         f'<div class="m"><div class="mv">{value}</div><div class="ml">{label}</div></div>'
@@ -807,15 +894,15 @@ def render_intraday_html(snapshot: dict) -> str:
     concept_rows = ""
     for i, row in enumerate(snapshot["concepts"], 1):
         up = "up" if row["change_rate"] >= 0 else "down"
-        flow_cls = "up" if row["net_money_flow"] >= 0 else "down"
+        flow_cls = "up" if to_float(row["net_money_flow"]) >= 0 else "down"
         concept_rows += (
             "<tr>"
             f'<td class="rk">{i}</td>'
             f'<td class="nm">{esc(row["name"])}</td>'
             f'<td class="{up}">{pct(row["change_rate"])}</td>'
-            f'<td class="{flow_cls}">{_to_yi(row["net_money_flow"])}</td>'
+            f'<td class="{flow_cls}">{fmt_yi(row["net_money_flow"])}</td>'
             f'<td>{row["rise_count"]}/{row["fall_count"]}</td>'
-            f'<td>{_to_yi(row["amount"])}</td>'
+            f'<td>{fmt_yi(row["amount"])}</td>'
             "</tr>"
         )
 
@@ -834,9 +921,9 @@ def render_intraday_html(snapshot: dict) -> str:
         broken_html += (
             '<div class="bk">'
             f'<b>{esc(row["name"])}</b>'
-            f'<span class="down">{pct(to_float(row.get("changeRate")))}</span>'
-            f'<span class="sm">封板价 {to_float(row.get("limitUpPrice")):.2f}'
-            f' · 炸板 {row.get("limitUpBreakCount")} 次'
+            f'<span class="down">{pct(row.get("change_percent"))}</span>'
+            f'<span class="sm">封板价 {to_float(row.get("limit_up_price")):.2f}'
+            f' · 炸板 {row.get("limit_up_break_count")} 次'
             f' · {esc(row.get("industry") or "-")}</span></div>'
         )
     if not broken_html:
@@ -905,9 +992,9 @@ font-size:20px;margin-bottom:12px}}
 <div class="card"><table>
 <tr><th>指标</th><th>数值</th></tr>
 <tr><td>上涨 / 下跌 / 平盘</td><td>{esc(b.get('advancing', '-'))} / {esc(b.get('declining', '-'))} / {esc(b.get('unchanged', '-'))}</td></tr>
-<tr><td>连板分布 1/2/3/高位</td><td>{esc(s.get('oneLimitUpCount', '-'))} / {esc(s.get('twoLimitUpCount', '-'))} / {esc(s.get('threeLimitUpCount', '-'))} / {esc(s.get('highLimitUpCount', '-'))}</td></tr>
-<tr><td>高位晋级率</td><td>{to_float(s.get('highLimitUpPromotionRatio')) * 100:.1f}%</td></tr>
-<tr><td>停牌 / 异动监控</td><td>{esc(s.get('stopTradingCount', '-'))} / {esc(s.get('previousLimitUpBreakChangeRatio', '-'))}</td></tr>
+<tr><td>连板分布 1/2/3/高位</td><td>{esc(s.get('one_limit_up_count', '-'))} / {esc(s.get('two_limit_up_count', '-'))} / {esc(s.get('three_limit_up_count', '-'))} / {esc(s.get('high_limit_up_count', '-'))}</td></tr>
+<tr><td>高位晋级率</td><td>{fmt_pct(s.get('high_limit_up_promotion_percent'))}</td></tr>
+<tr><td>停牌 / 昨日涨停破板变化</td><td>{esc(s.get('stop_trading_count', '-'))} / {fmt_pct(s.get('previous_limit_up_break_change_percent'))}</td></tr>
 </table></div>
 <div class="sec">题材强度榜（按涨幅 · 共 {snapshot['concept_count']} 个概念）</div>
 <div class="card"><table>
@@ -917,7 +1004,7 @@ font-size:20px;margin-bottom:12px}}
 {ladder_html}
 <div class="sec">炸板池</div>
 {broken_html}
-<div class="ft">数据来源 finchx · 同花顺概念 / 东方财富 / 爱股票 · 仅供研究，不构成投资建议</div>
+<div class="ft">数据来源 finchx 3.x · 同花顺概念 / 东方财富 / 爱股票 · 仅供研究，不构成投资建议</div>
 </body></html>"""
 
 

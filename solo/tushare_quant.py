@@ -554,6 +554,65 @@ def _load_market_analysis_result(trade_date):
     return ma_txt, ma_position, ma_reason
 
 
+def _load_marketnode_block(trade_date):
+    """MarketNode V1 大盘节点结论 -> 【大盘节点】数据块（fail-soft，失败返回空串）。
+
+    直接调用 marketnode 规则引擎（复用 features.parquet 缓存，不重复下载行情），
+    输出节点类型 / 进攻-观察-防守 / 情绪子状态 / 强度 / 置信度 / 触发原因 / 失效条件，
+    供报告第一段「大盘分析」引用。
+    """
+    try:
+        from marketnode import load_config
+        from marketnode.features import build_features
+        from marketnode.engine import MarketNodeEngine
+        from marketnode.report import NODE_NAME, REASON_TEXT, NEXT_ACTION
+    except Exception as e:
+        print(f"[MarketNode] 模块不可用: {e}")
+        return ""
+
+    try:
+        cfg = load_config()
+        feat = build_features(cfg)
+        td = str(trade_date)
+        if td not in feat.index:
+            print(f"[MarketNode] 特征无 {td}（缓存末日 {feat.index[-1]}），跳过节点结论")
+            return ""
+        eng = MarketNodeEngine(cfg, feat)
+        det = eng.detect_date(td)
+        i = feat.index.get_loc(td)
+        prev_nt = eng.detect_date(feat.index[i - 1])["node_type"] if i > 0 else None
+    except Exception as e:
+        print(f"[MarketNode] 计算失败（fail-soft，跳过节点结论）: {e}")
+        return ""
+
+    nt = det.get("node_type")
+    node_txt = f"{nt} {NODE_NAME[nt]}" if nt else "无新节点"
+    is_new = bool(nt) and nt != prev_nt
+    codes = det.get("reason_codes") or []
+    reasons = "、".join(f"{c}({REASON_TEXT.get(c, c)})" for c in codes) if codes else "—"
+    # 判断理由：去掉与节点名同义的首项，避免「冰点修复——冰点修复、…」
+    _nm = NODE_NAME.get(nt, "")
+    core = "、".join(t for t in (REASON_TEXT.get(c, c) for c in codes) if t != _nm)
+    reason_line = f"{_nm}——{core}，短线情绪温度 {det['node_score']:.0f}。" if nt else \
+        "短线情绪与市场广度均未触发节点阈值，处于常态。"
+
+    lines = [
+        "【大盘节点】(MarketNode V1 规则引擎)",
+        f"交易日: {td} | 当前节点: {node_txt} | 是否新节点: {'是' if is_new else '否'}",
+        f"市场状态: {det['market_state']} | 情绪子状态: {det['sentiment_state']} | "
+        f"节点强度: {det['node_score']:.0f}/100 | 置信度: {det['confidence']}",
+        f"触发原因: {reasons}",
+        f"判断理由: {reason_line}",
+        f"下一步: {NEXT_ACTION.get(det['market_state'], '—')}",
+        f"失效条件: {det.get('invalidation_conditions') or '—'}",
+    ]
+    if det.get("missing_fields"):
+        lines.append(f"数据缺失(已降置信度): {', '.join(det['missing_fields'])}")
+    print(f"[MarketNode] {node_txt} | {det['market_state']}/{det['sentiment_state']} | "
+          f"强度{det['node_score']:.0f} | 置信度{det['confidence']}")
+    return "\n".join(lines)
+
+
 # 缓存/报告目录统一到 d:\mystock\ 下
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
@@ -8138,6 +8197,15 @@ def _build_theme_advice_feed(trade_date):
                        ('IMPROVING', 'FLAT', 'DETERIORATING')) + "。",
             "本段只描述「主题热度正在往哪里移动」，不预测涨跌幅与收益率，也不构成买卖建议。"]
 
+    # ◆ 当日最强（独立于状态分组）：Heat 第一名，防止「当天最热但状态不是主线」被埋没
+    if rows:
+        _top = max(rows, key=lambda r: (r.get('heat') if r.get('heat') is not None else -1.0))
+        _st = _top.get('state')
+        _st_txt = f"{info[_st][1]}{info[_st][0]}" if _st in info else '-'
+        feed.append("")
+        feed.append(f"◆ 当日最强：{_top['theme']}（Heat {_f(_top.get('heat'))}"
+                    f"·第{_i(_top.get('rank_today'))}｜{_st_txt}）")
+
     # ◆ 主题雷达（状态分组；同一「边际·人话」的主题合并为一段，人话只写一次）
     # 20261003 精简：边际/人话是「状态级」描述（同一状态下除 LEADING 有 2 种人话外
     # 其余全部相同），逐只重复纯属冗余 → 按 (边际, 人话) 归并后再输出。
@@ -8962,7 +9030,12 @@ def run(target_date=None, simple_mode=False):
     emotion_text = _re.sub(
         r'【市场情绪】[^\n]*\n?', '', emotion_text
     )
-    
+
+    # 追加 MarketNode 大盘节点结论（第一段「大盘分析」的数据补充）
+    _mn_block = _load_marketnode_block(TRADE_DATE)
+    if _mn_block:
+        emotion_text = f"{emotion_text}\n\n{_mn_block}"
+
     print(emotion_text)
 
     result = []
@@ -9671,7 +9744,7 @@ def run(target_date=None, simple_mode=False):
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        七态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)/RIGHT_BOTTOM(W7-右底低吸)。
+        九态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)/SHAKEOUT_HOLD(W7-放量洗盘)/RIGHT_BOTTOM(W7-右底低吸)/SQUAT_SHRINK(W7-缩量十字星下蹲)。
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
         def _num(v):
@@ -9709,6 +9782,8 @@ def run(target_date=None, simple_mode=False):
                         "retest_low": _num(s.get("retest_low")),
                         # RIGHT_BOTTOM（W7-右底低吸）专属：左底（前低）=结构防线
                         "rb_left_low": _num(s.get("rb_left_low")),
+                        # SQUAT_SHRINK（W7-缩量十字星下蹲）专属：下蹲日最低价=结构防线
+                        "squat_low": _num(s.get("squat_low")),
                     })
                 break
             except (json.JSONDecodeError, OSError, ValueError) as e:
@@ -9745,7 +9820,8 @@ def run(target_date=None, simple_mode=False):
                            "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
                            "BREAKOUT_RETEST": "放量突破后缩量回踩买点",
                            "MIDLINE_HOLD": "W7-不破中位",
-                           "RIGHT_BOTTOM": "W7-右底低吸"}
+                           "RIGHT_BOTTOM": "W7-右底低吸",
+                           "SQUAT_SHRINK": "W7-缩量十字星下蹲"}
 
                     def _cv(cells, name):
                         return cells[col_idx[name]] if name in col_idx else ""
@@ -9758,8 +9834,8 @@ def run(target_date=None, simple_mode=False):
                             "type": _cv(c, "类型"), "state": state, "state_cn": _cn.get(state, state),
                             "close": _num(_cv(c, "现价")), "pressure": _num(_cv(c, "触发价")),
                             "ma20": _num(_cv(c, "MA20")), "volr": _num(_cv(c, "量比")),
-                            # md 表格无「半分位/回踩低点/左底」列：回退路径取不到，如实留空
-                            "mid_line": None, "retest_low": None, "rb_left_low": None,
+                            # md 表格无「半分位/回踩低点/左底/下蹲低点」列：回退路径取不到，如实留空
+                            "mid_line": None, "retest_low": None, "rb_left_low": None, "squat_low": None,
                         })
                 except OSError:
                     pass
@@ -9785,7 +9861,8 @@ def run(target_date=None, simple_mode=False):
 
         def _struct_line(it):
             """该票的结构防线（失效位）与名称：MIDLINE_HOLD=长阳半分位；
-            BREAKOUT_RETEST=放量突破日低点；RIGHT_BOTTOM=左底（前低）；其余=MA20 总防线。"""
+            BREAKOUT_RETEST=放量突破日低点；RIGHT_BOTTOM=左底（前低）；
+            SQUAT_SHRINK=下蹲日最低价；其余=MA20 总防线。"""
             st = it["state"]
             if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0:
                 return it["mid_line"], "长阳半分位"
@@ -9793,6 +9870,8 @@ def run(target_date=None, simple_mode=False):
                 return it["retest_low"], "放量突破日低点"
             if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0:
                 return it["rb_left_low"], "左底（前低）"
+            if st == "SQUAT_SHRINK" and isinstance(it.get("squat_low"), (int, float)) and it["squat_low"] > 0:
+                return it["squat_low"], "下蹲日最低价"
             if isinstance(it.get("ma20"), (int, float)) and it["ma20"] > 0:
                 return it["ma20"], "MA20总防线"
             return None, ""
@@ -9802,7 +9881,8 @@ def run(target_date=None, simple_mode=False):
             口径与 W7 引擎 w7_exec_status 完全一致（20261001 裁定 + 20261002 RIGHT_BOTTOM 例外）：
             · 失效位按各形态自身口径，MIDLINE_HOLD/回踩低点/左底严格跌破，MA20 总防线留 MA20_BREAK_TOL 容差；
             · 状态一律按「距触发价」纯距离分档，BREAKOUT_RETEST 现价低于触发价不因「在买点区」升级；
-            · RIGHT_BOTTOM（右底低吸）例外：买点＝当日右底本身，不以距颈线分档，结构未失效即归 EXECUTION。"""
+            · RIGHT_BOTTOM（右底低吸）例外：买点＝当日右底本身，不以距颈线分档，结构未失效即归 EXECUTION。
+            · SQUAT_SHRINK（缩量十字星下蹲）同理：买点＝当日下蹲本身，结构未失效即归 EXECUTION。"""
             close, trig, st = it["close"], it["pressure"], it["state"]
             line, line_nm = _struct_line(it)
             ma20 = it.get("ma20")
@@ -9820,14 +9900,18 @@ def run(target_date=None, simple_mode=False):
                 if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0 and close < it["rb_left_low"]:
                     return ("INVALID", f"收盘 {close:.2f} 跌破左底（前低）{it['rb_left_low']:.2f}（双底结构失效）",
                             None, dbuf, line, line_nm)
-                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST/RIGHT_BOTTOM 已按自身失效位判定
-                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST", "RIGHT_BOTTOM") \
+                if st == "SQUAT_SHRINK" and isinstance(it.get("squat_low"), (int, float)) and it["squat_low"] > 0 and close < it["squat_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破下蹲日最低价 {it['squat_low']:.2f}（下蹲形态失效）",
+                            None, dbuf, line, line_nm)
+                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST/RIGHT_BOTTOM/SQUAT_SHRINK 已按自身失效位判定
+                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST", "RIGHT_BOTTOM", "SQUAT_SHRINK") \
                         and isinstance(ma20, (int, float)) and ma20 > 0 and close < ma20 * (1 - MA20_BREAK_TOL):
                     return ("INVALID", f"收盘 {close:.2f} 明确跌破 MA20 总防线 {ma20:.2f}（低于 {MA20_BREAK_TOL * 100:.0f}% 以上）",
                             None, dbuf, line, line_nm)
             # RIGHT_BOTTOM：买点＝当日右底本身（现价即低吸区），结构未失效即进入执行区；
             # 右底须缩量，不适用放量阀门，故不做量比判定。
-            if st == "RIGHT_BOTTOM":
+            # SQUAT_SHRINK：买点＝当日缩量十字星下蹲（极致缩量），同样不适用放量阀门。
+            if st in ("RIGHT_BOTTOM", "SQUAT_SHRINK"):
                 return "EXECUTION", "", None, dbuf, line, line_nm
             if not isinstance(trig, (int, float)) or trig <= 0 or not isinstance(close, (int, float)):
                 return "PULLBACK_WATCH", "", None, dbuf, line, line_nm
@@ -9862,7 +9946,8 @@ def run(target_date=None, simple_mode=False):
             dbuf = r["def_buffer"] if isinstance(r["def_buffer"], (int, float)) else -1e9
             if so <= 1:   # EXECUTION：量能确认程度优先；其次距触发价越近越不追高
                 # 20261002：RIGHT_BOTTOM（右底低吸）当日即无等待条件的买点，排 EXECUTION 组内最前
-                rb = 0 if it.get("state") == "RIGHT_BOTTOM" else 1
+                # 20261026：SQUAT_SHRINK（缩量十字星下蹲）同属当日即买点，与其并列最前
+                rb = 0 if it.get("state") in ("RIGHT_BOTTOM", "SQUAT_SHRINK") else 1
                 return (so, rb, -volr, abs(d), -ige, -sc)
             if so == 2:   # TRIGGER_WATCH：距触发价最近优先，其次量能越接近阀门越好
                 return (so, d, -volr, -ige, -sc)
@@ -9877,6 +9962,8 @@ def run(target_date=None, simple_mode=False):
         n_wait = len([r for r in exec_rows if r["status"] == "EXECUTION_WAIT_VOLUME"])
         # 20261002：RIGHT_BOTTOM（右底低吸）不适用放量阀门，单独计数（不计入「量能已确认」）
         n_rb = len([r for r in exec_rows if r["it"].get("state") == "RIGHT_BOTTOM"])
+        # 20261026：SQUAT_SHRINK（缩量十字星下蹲）同理，单独计数
+        n_sq = len([r for r in exec_rows if r["it"].get("state") == "SQUAT_SHRINK"])
 
         def _struct_txt(r):
             line, nm = r["line"], r["line_nm"]
@@ -9890,10 +9977,13 @@ def run(target_date=None, simple_mode=False):
                 _f1(it["volr"]), _f1(it["ige_adj"]), _f1(it["score"]))
 
         def _vol_short(it):
-            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）；RIGHT_BOTTOM（右底低吸）走缩量口径"""
+            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）；RIGHT_BOTTOM（右底低吸）走缩量口径；
+            SQUAT_SHRINK（缩量十字星下蹲）走极致缩量口径"""
             volr = it["volr"]
             if it.get("state") == "RIGHT_BOTTOM":
                 return "右底缩量（量比×{}）".format(_f1(volr))
+            if it.get("state") == "SQUAT_SHRINK":
+                return "下蹲极致缩量（量比×{}）".format(_f2(volr))
             if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
                 return "量能未确认"
             if volr >= VOLR_HUGE:
@@ -9905,17 +9995,21 @@ def run(target_date=None, simple_mode=False):
             "候选{}只（其中结构失效{}只已移出）。状态只由「距触发价 + 结构是否失效 + 量能」决定，与总分无关；"
             "执行状态优先于总分。".format(len(items), len(invalid_rows)),
             "口径：EXECUTION=现价≥触发价且结构未坏（RIGHT_BOTTOM右底低吸例外：买点＝当日右底本身，"
-            "不以距颈线分档，缩量不破左底即入执行区）；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
+            "不以距颈线分档，缩量不破左底即入执行区；SQUAT_SHRINK缩量十字星下蹲例外：买点＝当日下蹲本身，"
+            "不破下蹲日最低价即入执行区）；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
             "禁止写成“已确认买入/立即买入”）；TRIGGER_WATCH=距触发≤3%；PULLBACK_WATCH=距触发>3%（需等待回踩/重新确认）。",
             "规则：放量突破需量比≥1.2（不可绕过）；量比≥3 的巨量日不追高、只等回踩；"
-            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / RIGHT_BOTTOM左底（前低） / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
+            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / RIGHT_BOTTOM左底（前低） / "
+            "SQUAT_SHRINK下蹲日最低价 / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
                 MA20_BREAK_TOL * 100),
             "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，"
-            "RIGHT_BOTTOM 置 EXECUTION 组内最前，末位 IGE_ADJ / W7总分）。",
+            "RIGHT_BOTTOM / SQUAT_SHRINK 置 EXECUTION 组内最前，末位 IGE_ADJ / W7总分）。",
             "",
-            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只{}）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
-                n_exec, n_exec - n_wait - n_rb, n_wait,
-                "／右底低吸 {}只".format(n_rb) if n_rb else "", len(trig_rows), len(pull_rows)),
+            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只{}{}）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
+                n_exec, n_exec - n_wait - n_rb - n_sq, n_wait,
+                "／右底低吸 {}只".format(n_rb) if n_rb else "",
+                "／缩量下蹲 {}只".format(n_sq) if n_sq else "",
+                len(trig_rows), len(pull_rows)),
             "速览-今日真正进入执行区：{}只　速览-今日等待触发：{}只　速览-今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
                 n_exec, len(trig_rows), len(pull_rows), len(items)),
         ]
@@ -9928,6 +10022,9 @@ def run(target_date=None, simple_mode=False):
                 it, status = r["it"], r["status"]
                 if status == "EXECUTION_WAIT_VOLUME":
                     how = "做法：已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"
+                elif it.get("state") == "SQUAT_SHRINK":
+                    how = ("做法：缩量十字星下蹲低吸买点，可按计划分批建仓（该形态需 3~10 日发酵，"
+                           "非次日冲高型）；站上下蹲日最高价{}＝下蹲结束、转突破/二波，可加仓").format(_f2(it["pressure"]))
                 elif it.get("state") == "RIGHT_BOTTOM":
                     how = ("做法：右底低吸买点，可按计划分批建仓；放量站上双底颈线{}（量比≥{:.1f}）"
                            "＝转突破/二波，可加仓").format(_f2(it["pressure"]), VOLR_MIN)
@@ -9940,6 +10037,9 @@ def run(target_date=None, simple_mode=False):
                 if it.get("state") == "RIGHT_BOTTOM":
                     p.append("说明：触发价＝双底颈线（中间高点），现价位于右底区（左底上方）属正常；"
                              "右底缩量、不破左底＝结构成立")
+                elif it.get("state") == "SQUAT_SHRINK":
+                    p.append("说明：触发价＝下蹲日最高价（站上即下蹲结束），现价低于触发价属正常（当日即买点）；"
+                             "极致缩量窄幅十字星、跌破MA20仍守MA60＝下蹲成立")
                 p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
                 p.append("")
 
@@ -10201,9 +10301,11 @@ def run(target_date=None, simple_mode=False):
 内容(分成以下部分，输出中也显示序号1、2、3、4、....段落名称及换行)：
 1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
 ** 市场分析
+* 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
 * 上证指数：XXXX | 成交额：XX万亿 | 涨跌比 X%
 * 市场：XXXXX | 赚钱：XX 
 * 风险：XXXXXX | 节奏：XXXXXX
+* 节点风险：{{照抄"大盘节点"数据块的「失效条件」；数据块无此行则写"无"}}
 ** 仓位建议
 * 当前目标：xx%   可加仓空间：xx%
 * 正常区间：xx%～xx%   确认上限：xx%
@@ -10213,7 +10315,7 @@ def run(target_date=None, simple_mode=False):
 * 最终：XXXXXX
 2、**主题分析**
 【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符（每个"**"行独立成段），禁止自由发挥格式。所有主题名/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
-** 主线：{{照抄"◆ 主题雷达"中 🔥当前主线 行冒号之后的全部内容——已按「边际·人话」合并，禁止拆开、禁止逐只重复人话、禁止补写}}
+** 主线：{{照抄"◆ 主题雷达"中 🔥当前主线 行冒号之后的全部内容——已按「边际·人话」合并，禁止拆开、禁止逐只重复人话、禁止补写}}{{若"◆ 当日最强"的主题不在上面这段里，就在结尾追加"、该主题（当日最强）"；若🔥当前主线为"（无）"，则主线只写"该主题（当日最强）"}}
 ** 升温梯队：🚀{{照抄 🚀加速升温 行冒号后内容}}｜🔄{{照抄 🔄真正再启动 行冒号后内容}}｜↩️{{照抄 ↩️反弹 行冒号后内容}}｜🌱{{照抄 🌱新出现 行冒号后内容}}（某类在数据块中为"（无）"则写"无"）
 ** 高位钝化：{{照抄 ⚠️高位钝化 行冒号后内容；为"（无）"则写"无"}}
 ** 正在降温：{{照抄"◆ 正在降温"行冒号后的主题名，只列名、不展开、不加人话}}

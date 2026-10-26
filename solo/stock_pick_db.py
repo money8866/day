@@ -47,6 +47,7 @@
     python stock_pick_db.py demo        # 演示全链路 (临时库, 不污染正式库)
 """
 import os
+import re
 import sys
 import json
 import shutil
@@ -71,6 +72,26 @@ MARKET_DB_PATH = os.environ.get('PICK_MARKET_DB', r"D:\mystock\cache_daily\stock
 HORIZONS = (1, 3, 5, 10, 20)
 TRACK_WINDOW = 20
 CONCEPT_TAG = '走势最相关'   # 腾讯板块快照里标记"走势最相关"的概念
+# 腾讯概念里混着大量「交易属性/风格/指数」标签，不是行业或题材，直接排除
+CONCEPT_SKIP = re.compile(
+    r'股通|融资融券|转融券|转融通|融券标的|同股同权|龙头|大盘股|中盘股|小盘股|'
+    r'高价股|低价股|微利股|白马股|茅指数|MSCI|标普|富时|上证50|沪深\d|中证\d|深成|'
+    r'AH股|B股|次新股|涨停|高振幅|股权激励|高送转|纳入|央企央资|政府控股|'
+    r'双百企业|出海\d|独角兽|分拆上市|中科院系|高校|国企改革|中特估|专精特新|创投|顺周期|周期股'
+)
+CONCEPT_HOT = re.compile(r'涨停\s*(\d+)')   # tag 形如「涨停45」= 板块内涨停家数，用作热度
+# 大而全的宽泛板块：几乎什么股都能挂，热度常年靠前，容易盖过真正的细分题材
+CONCEPT_BROAD = re.compile(
+    r'人工智能|大数据|云计算|TMT|自主可控|信创|国产软件|数字经济|AIGC|DeepSeek|'
+    r'机器人概念|华为概念|消费电子产业|半导体产业|新能源车|大消费|国企改革|中特估|专精特新|'
+    r'芯片概念|无人驾驶|车联网|智能汽车|激光雷达|电子后视镜|液冷概念|数据中心|5G概念'
+)
+# 他人概念：挂在别家公司/巨头供应链下的标签，不如自身细分题材贴切
+CONCEPT_OTHER = re.compile(
+    r'英伟达|谷歌|华为|苹果|特斯拉|小米|阿里|腾讯|百度|字节|抖音|快手|小红书|'
+    r'蔚来|宁德时代|比亚迪|宇树科技|OpenAI|AMD|英特尔|台积电|三星|Meta|微软'
+)
+CONCEPT_WEAK_FACTOR = 0.4   # 宽泛/他人概念的涨幅折算系数，压住它们对细分题材的干扰
 _FX_CLIENT = None           # FinchX 惰性单例（补所属概念时初始化）
 
 STD_COLS = frozenset({
@@ -359,16 +380,6 @@ def _load_bars(ts_codes, start_date, end_date):
     return out
 
 
-def _last_pct(bars):
-    """行情库最后一根 K 线相对前一根的涨跌幅（%），作为概念匹配的参照。"""
-    if bars is None or len(bars) < 2:
-        return None
-    c_prev, c_last = float(bars['close'].iloc[-2]), float(bars['close'].iloc[-1])
-    if c_prev <= 0:
-        return None
-    return (c_last / c_prev - 1) * 100
-
-
 def _fx():
     """惰性初始化 FinchX：仅补所属概念时需要，避免模块级硬依赖。"""
     global _FX_CLIENT
@@ -403,39 +414,42 @@ def _sector_rows(ts_code):
     return out
 
 
-def _pick_concept(ts_code, ref_pct=None):
-    """腾讯板块快照中取所属概念。
+def _pick_concept(ts_code):
+    """腾讯板块快照中取所属概念：先剔除属性类标签，再在细分题材里取当日最热。
 
-    优先 tag=「走势最相关」的概念；腾讯未标记时，退化为涨跌幅与 ref_pct
-    最接近的概念（两者都取不到则返回空串）。
+    宽泛大板块（人工智能/大数据等）打半折且不计涨停加成，避免盖过细分题材。
+    取不到合适的返回空串（宁可不显示，也不要「沪股通」这类噪声）。
     """
     try:
         sectors = _sector_rows(ts_code)
     except Exception:
         return ''
-    concepts = [(name, pct) for stype, name, tag, pct in sectors
-                if stype == 'concept' and name and (tag or '').strip() == CONCEPT_TAG]
-    if concepts:
-        return concepts[0][0]
-    if ref_pct is None:
+    concepts = [(name, (tag or '').strip(), pct) for stype, name, tag, pct in sectors
+                if stype == 'concept' and name and not CONCEPT_SKIP.search(name)]
+    if not concepts:
         return ''
-    best, best_gap = '', None
-    for stype, name, _tag, pct in sectors:
-        if stype != 'concept' or not name or pct is None:
-            continue
-        gap = abs(pct - ref_pct)
-        if best_gap is None or gap < best_gap:
-            best, best_gap = name, gap
-    return best
+    # 腾讯自己标了「走势最相关」就直接用它
+    for name, tag, _pct in concepts:
+        if tag == CONCEPT_TAG:
+            return name
+
+    def heat(item):
+        name, tag, pct = item
+        pct = pct or 0.0
+        if CONCEPT_BROAD.search(name) or CONCEPT_OTHER.search(name):
+            return pct * CONCEPT_WEAK_FACTOR
+        m = CONCEPT_HOT.search(tag)
+        return pct + (int(m.group(1)) * 0.1 if m else 0.0)
+    return max(concepts, key=heat)[0]
 
 
-def _fill_concepts(codes, bars_map):
-    """给尚无概念的选股补齐「所属概念」（同代码保留首次结果）。"""
+def _fill_concepts(codes):
+    """给空概念或存量为噪声概念的选股重新补齐（同代码保留首次结果）。"""
     if not codes:
         return 0
     updates = []
     for code in codes:
-        name = _pick_concept(code, _last_pct(bars_map.get(code)))
+        name = _pick_concept(code)
         if name:
             updates.append((name, code))
     if updates:
@@ -501,19 +515,20 @@ def update_tracking(lookback_days=120):
              AND t.ts_code = p.ts_code
             WHERE p.pick_date >= ?
         """, (window_start,)).fetchall()
-        pending = [r[0] for r in conn.execute(
-            "SELECT DISTINCT ts_code FROM stock_pick "
-            "WHERE pick_date >= ? AND (concept IS NULL OR concept = '')",
-            (window_start,))]
+        pairs = conn.execute(
+            "SELECT DISTINCT ts_code, concept FROM stock_pick WHERE pick_date >= ?",
+            (window_start,)).fetchall()
+    pending = sorted({code for code, concept in pairs
+                      if not concept or CONCEPT_SKIP.search(concept)})
     tasks = [r for r in rows if r[6] != 'EXPIRED']
 
-    # 所属概念：腾讯板块快照（tag=走势最相关；未标记时取涨跌幅最接近的概念）
+    # 所属概念：腾讯板块快照（剔除属性类标签，取当日最热的概念）
     start = (date.today() - timedelta(days=12)).strftime('%Y%m%d')
     if tasks:
         start = min(start, min(r[0] for r in tasks))
     end = date.today().strftime('%Y%m%d')
     bars_map = _load_bars({r[2] for r in tasks} | set(pending), start, end)
-    filled = _fill_concepts(pending, bars_map)
+    filled = _fill_concepts(pending)
     if filled:
         print(f'[所属概念] 已补 {filled} 只')
 

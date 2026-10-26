@@ -1,0 +1,59 @@
+{
+  "data": {
+    "db_path": "D:/mystock/cache_daily/stock_data.db",
+    "stats_dir": "d:/mystock/solo/cache_daily",
+    "output_dir": "d:/mystock/solo/marketnode/output",
+    "small_cap_index": "000852.SH",
+    "large_cap_index": "000300.SH",
+    "benchmark_index": "000001.SH",
+    "limit_20pct_prefix": ["300", "301", "688"],
+    "feature_cache_file": "features.parquet"
+  },
+  "percentile": {
+    "window": 250,
+    "min_history": 60
+  },
+  "trend": {
+    "index_ma_short": 5,
+    "index_ma_long": 20
+  },
+  "thresholds": {
+    "zt_extreme_pct": 90,
+    "zt_low_pct": 30,
+    "zt_deep_low_pct": 15,
+    "max_board_extreme": 6,
+    "zhaban_high": 35.0,
+    "zhaban_low": 15.0,
+    "amount_expand_ratio": 1.15,
+    "amount_shrink_ratio": 0.75,
+    "up_ratio_strong": 60.0,
+    "up_ratio_weak": 40.0,
+    "above_ma20_strong": 55.0,
+    "above_ma20_weak": 45.0,
+    "promo12_strong": 30.0,
+    "promo23_strong": 30.0,
+    "promo_weak": 30.0,
+    "feedback_neutral": 0.0,
+    "feedback_neg": -1.5,
+    "feedback_strong_neg": -4.0,
+    "dt_extreme": 30,
+    "new_low_extreme": 150,
+    "divergence_zhaban_jump": 10.0,
+    "divergence_promo_drop": 15.0,
+    "ice_recover_up_ratio": 55.0,
+    "n2_min_dims": 3,
+    "cooldown_days": 3
+  },
+  "dedup": {
+    "min_days_between_same_node": 3
+  },
+  "confidence": {
+    "require_fields": ["zt_count", "dt_count", "board1", "board2", "board3", "max_board",
+      "promo12", "promo23", "zhaban_rate", "zt_y_pcnt", "lb_y_pcnt",
+      "up_ratio", "above_ma20_ratio", "amount_total", "index_pct"],
+    "warn_missing_any": true
+  },
+  "mail": {
+    "to": "stock1975@qq.com"
+  }
+}

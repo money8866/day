@@ -1,0 +1,59 @@
+<!DOCTYPE html><html lang='zh'><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{margin:0;background:#f4f6fb;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+       color:#1a2233;font-size:22px;line-height:1.8;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:760px;margin:0 auto;padding:0 0 40px;}
+  .hero{background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;padding:28px 20px;}
+  .hero h1{margin:0;font-size:28px;line-height:1.35;}
+  .hero p{margin:8px 0 0;font-size:20px;opacity:.92;}
+  .card{background:#fff;margin:14px;padding:20px 18px;border-radius:14px;box-shadow:0 3px 14px rgba(30,50,90,.08);}
+  .card h2{margin:0 0 12px;font-size:24px;border-left:6px solid #2563eb;padding-left:10px;}
+  .verdict{background:#fff7ed;border:2px solid #f59e0b;color:#9a3412;}
+  .kv{font-size:20px;color:#374151;margin:4px 0;}
+  .b{font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:16px;line-height:1.5;word-break:break-word;}
+  .tbl-scroll{overflow-x:auto;}
+  th,td{border:1px solid #dbe2ee;padding:8px 8px;text-align:left;font-size:16px;}
+  th{background:#eef2f9;font-weight:700;}
+  .muted{color:#6b7280;}
+  .foot{color:#6b7280;font-size:18px;text-align:center;padding:18px;}
+</style>
+</head><body><div class='wrap'>
+<div class='hero'><h1>EOD-RB 缩量回踩后的尾盘再启动</h1><p>量化策略研究报告 · 参数 v1.0-baseline</p></div>
+<div class='card verdict'><h2>最终结论</h2><div class='b'>UNPROVEN</div><p>第三层「尾盘再启动」依赖分钟级真实行情（禁止用日线伪造尾盘信号）。本机通达信 5 分钟线（.lc5）实测仅覆盖约 60 个交易日（20260224 ~ 20260522），无法满足统计有效的样本量，更无法做有意义的样本外验证。按策略规范：分钟级历史数据不足时必须输出 UNPROVEN。因此本策略当前既不能被判定为 PASS，也不能被判定为 FAIL，结论为 UNPROVEN（证据不足，待更长分钟数据后复测）。</p>
+<p class='muted'>作为参考（不构成尾盘策略验证）：日线层 L1+L2（前期强势 + 缩量回踩，T+1 开盘入场）在 2025-01~2026-09 三段长历史中样本外产生 1779 个信号、平均净收益 -64.2bp。该结果仅用于说明「缩量回踩」这一日线结构本身是否具有统计意义，不能替代 EOD-RB 的尾盘择时效果。</p>
+</div>
+<div class='card'><h2>1. 数据可用性检查</h2>
+<div class="tbl-scroll"><table><thead><tr><th>数据源</th><th>区间</th><th>口径</th><th>说明</th></tr></thead><tbody><tr><td>SQLite daily_cache 日线（前复权）</td><td>20210104 ~ 20261023</td><td>前复权</td><td>约 5792 只股票</td></tr><tr><td>index_daily_cache 交易日历</td><td>20210104 ~ 20261023</td><td>—</td><td>用于交易日切分</td></tr><tr><td>通达信 .lc5 5分钟线（不复权）</td><td>20260224 ~ 20260522</td><td>不复权</td><td>抽样 30/30 只有分钟数据（约60个交易日）</td></tr><tr><td>Tushare stk_mins</td><td>可用</td><td>限频 1次/分钟</td><td>无法用于批量分钟回测</td></tr></tbody></table></div>
+</div>
+<div class='card'><h2>2. 日线层历史回测（L1+L2，仅供参考）</h2>
+<div class="tbl-scroll"><table><thead><tr><th>区段</th><th>时间窗</th><th>信号</th><th>成交</th><th>平均净</th><th>中位净</th><th>胜率</th><th>最大回撤</th></tr></thead><tbody><tr><td>train</td><td>20250102 ~ 20251231</td><td>5023</td><td>5023</td><td>+4.2bp</td><td>-39.2bp</td><td>44.0%</td><td>-100.0%</td></tr><tr><td>val</td><td>20260101 ~ 20260430</td><td>1585</td><td>1585</td><td>+20.7bp</td><td>-23.8bp</td><td>47.4%</td><td>-99.2%</td></tr><tr><td>oos</td><td>20260501 ~ 20260930</td><td>1779</td><td>1779</td><td>-64.2bp</td><td>-56.2bp</td><td>44.2%</td><td>-100.0%</td></tr></tbody></table></div>
+</div>
+<div class='card'><h2>4. 四组消融实验</h2>
+<div class="tbl-scroll"><table><thead><tr><th>实验</th><th>层级</th><th>时间窗</th><th>信号</th><th>平均净</th><th>胜率</th><th>说明</th></tr></thead><tbody><tr><td>A_minute</td><td>L1 前期强势</td><td>20260224 ~ 20260522</td><td>12652</td><td>+36.3bp</td><td>48.7%</td><td>T+1开盘入场(日线级,无分钟数据)</td></tr><tr><td>B_minute</td><td>L1+L2 缩量回踩</td><td>20260224 ~ 20260522</td><td>1041</td><td>+33.5bp</td><td>49.2%</td><td>T+1开盘入场(日线级,无分钟数据)</td></tr><tr><td>C_minute</td><td>L1+L2+L3 尾盘</td><td>20260224 ~ 20260522</td><td>305</td><td>-10.6bp</td><td>41.3%</td><td>T日尾盘入场(分钟级)</td></tr><tr><td>D_minute</td><td>L1+L2+L3+L4 板块</td><td>20260224 ~ 20260522</td><td>138</td><td>-7.7bp</td><td>38.4%</td><td>T日尾盘入场(分钟级)</td></tr><tr><td>A_train</td><td>L1 前期强势</td><td>20250102 ~ 20251231</td><td>44344</td><td>+11.8bp</td><td>44.4%</td><td>日线层</td></tr><tr><td>A_val</td><td>L1 前期强势</td><td>20260101 ~ 20260430</td><td>17991</td><td>+51.0bp</td><td>48.7%</td><td>日线层</td></tr><tr><td>A_oos</td><td>L1 前期强势</td><td>20260501 ~ 20260930</td><td>18590</td><td>-46.8bp</td><td>42.9%</td><td>日线层</td></tr><tr><td>B_train</td><td>L1+L2 缩量回踩</td><td>20250102 ~ 20251231</td><td>5023</td><td>+4.2bp</td><td>44.0%</td><td>日线层</td></tr><tr><td>B_val</td><td>L1+L2 缩量回踩</td><td>20260101 ~ 20260430</td><td>1585</td><td>+20.7bp</td><td>47.4%</td><td>日线层</td></tr><tr><td>B_oos</td><td>L1+L2 缩量回踩</td><td>20260501 ~ 20260930</td><td>1779</td><td>-64.2bp</td><td>44.2%</td><td>日线层</td></tr></tbody></table></div>
+</div>
+<div class='card'><h2>5. 参数稳定性扰动</h2>
+<p class='muted'>时间段：20250102 ~ 20251231｜9 组扰动</p>
+<div class="tbl-scroll"><table><thead><tr><th>配置</th><th>信号数</th><th>平均净(bp)</th><th>胜率</th><th>最大回撤</th></tr></thead><tbody><tr><td>baseline</td><td>5023</td><td>4.2</td><td>44.0%</td><td>-100.0%</td></tr><tr><td>回踩深度[1%,8%]</td><td>5268</td><td>2.9</td><td>43.8%</td><td>-100.0%</td></tr><tr><td>回踩深度[3%,10%]</td><td>5274</td><td>12.7</td><td>44.6%</td><td>-100.0%</td></tr><tr><td>回踩窗口3日</td><td>8307</td><td>-1.7</td><td>43.6%</td><td>-100.0%</td></tr><tr><td>回踩窗口7日</td><td>3324</td><td>-5.8</td><td>43.0%</td><td>-99.8%</td></tr><tr><td>缩量比率0.70</td><td>3158</td><td>-2.9</td><td>43.3%</td><td>-99.9%</td></tr><tr><td>缩量比率0.90</td><td>7090</td><td>5.1</td><td>44.3%</td><td>-100.0%</td></tr><tr><td>退出NEXT_OPEN</td><td>5023</td><td>4.2</td><td>44.0%</td><td>-100.0%</td></tr><tr><td>退出T2_CLOSE</td><td>5023</td><td>4.2</td><td>44.0%</td><td>-100.0%</td></tr></tbody></table></div>
+</div>
+<div class='card'><h2>6. 每日信号输出示例</h2>
+<p class='kv'>示例交易日：<b>20260522</b>｜市场状态：neutral｜候选 3 条</p>
+排名｜股票代码｜股票名称｜当前价格｜当日涨幅%｜前期涨幅%｜回踩幅度%｜缩量比率｜尾盘收益%｜尾盘量比｜分时均价线｜突破状态｜板块相对强度%｜支撑位｜失效位｜信号类型｜决策｜主要风险<br>---<br>1｜001359.SZ｜平安电工｜104.57｜5.53｜42.24｜6.95｜0.587｜0.36｜1.913｜高于VWAP｜突破｜-0.98｜99.0｜99.0｜整理平台突破｜BUY｜无（风险在止损位）<br>2｜300868.SZ｜杰美特｜98.1｜9.63｜48.04｜7.65｜0.464｜-0.47｜0.901｜高于VWAP｜无｜0.18｜89.31｜89.31｜无｜WATCH｜尾盘信号不成立<br>3｜601727.SH｜上海电气｜8.94｜3.0｜18.85｜7.65｜0.604｜0.34｜0.734｜高于VWAP｜回抽｜0.23｜8.63｜8.63｜重新站回分时均价线并反转｜WATCH｜尾盘量能确认不足
+</div>
+<div class='card'><h2>7. 运行说明</h2>
+<pre style='white-space:pre-wrap;font-size:18px;font-family:inherit;'>1) 依赖：pandas / numpy / mootdx；复用 bts 数据层（bts.data）与本地通达信数据。
+2) 一键全量回测 + 报告：python -X utf8 -m eod_rb.run
+3) 每日信号（当日分钟数据到位后）：
+     from eod_rb.daily import generate_daily_signals, build_table
+     sigs, regime = generate_daily_signals('20260522', EOD_RB_CONFIG)
+     print(build_table(sigs))
+4) 消融实验：from eod_rb.ablation import run_ablation
+5) 参数稳定性：from eod_rb.stability import run_stability
+6) 全部阈值集中在 eod_rb/config.py 的 EOD_RB_CONFIG，禁止散落硬编码。
+7) 成本：单边 15bp + 分钟内滑点 5bp；净收益已扣佣金/印花税/过户费/滑点。
+8) 每份 results.json 记录数据日期、信号生成时间、参数版本、成交假设与退出基准。</pre>
+</div>
+<div class='foot'>非投资建议 · 本报告仅用于策略研究方法验证</div>
+</div></body></html>

@@ -142,18 +142,6 @@ MARKET_AMOUNT_MIN_MINUTES = 5
 # 量能因子参与评分/仓位时要求的最小已交易分钟数(比展示更严格, 避免早盘外推误差扰动分数)
 MARKET_AMOUNT_MIN_MINUTES_SCORE = 30
 
-# SLI 中长线潜力池(NEXT_LEADER_V2): 盘中涨幅首次达到该值即预警
-# (尾盘扫描只认回踩, 盘中拉起会被当追高剔除, 需提前告知)
-# 池子口径 sli.reader.get_next_leaders(), 即 config.POOL_MIDLONG_V2 全池, 约200只
-# (按 mid_long_score 降序); 预警侧不再叠加分数门槛, 与池定义保持一致。
-SLI_LAUNCH_PCT = 3.0
-# 池子行情全量刷新间隔(秒): 池子不在主题池内, 需自行补拉; 全池约200只仍只1个HTTP请求, 可每分钟跑
-SLI_POOL_QUOTE_REFRESH_SEC = 60
-# 启动预警推送冷却(秒): 汇总后限流, 冷却期内触发累积到下一次汇总
-SLI_LAUNCH_PUSH_COOLDOWN = 600
-# 单条汇总最多列出只数(其余只报数量)
-SLI_LAUNCH_TOP_N = 10
-
 
 def elapsed_trade_minutes(now):
     """当日开盘后已完成的交易分钟数(0~240), 午休 11:30~13:00 不计入"""
@@ -301,19 +289,12 @@ class RealtimeThemeMonitor:
         # ── 冷却控制(避免重复推送) ──
         self.last_theme_alert = {}      # theme_name -> timestamp
         self.last_market_alert = 0
-        self.last_score_alert = 0       # 趋势总评分预警冷却
 
         # ── 开盘参考价(昨日收盘) ──
         self.ref_prices = {}            # ts_code -> yesterday_close
 
         # ── 开盘分析标记 ──
         self.opening_analysis_done = False
-
-        # ── 主题生命周期 & T+1预测 ──
-        self.stock_zt_first_time = {}      # ts_code -> 首次涨停时间(datetime)
-        self.theme_amount_at_1430 = {}     # theme_name -> 14:30成交额基准
-        self.theme_lifecycle_cache = {}    # theme_name -> (stage, score, detail)
-        self.theme_forward_cache = {}      # theme_name -> t1_score (前瞻分)
 
         # ── 分时快照(猎尾突袭/V3评分等尾盘策略共用) ──
         # ts_code -> {'morning_pct':, 'morning_low':, 'morning_amount':, 'morning_vol':, 'noon_pct':, 'noon_amount':, 'noon_vol':, 'tail_base_pct':, 'tail_base_amount':, 'tail_base_vol':, 'tail_base_price':}
@@ -322,15 +303,6 @@ class RealtimeThemeMonitor:
         self.snapshot_noon_done = False       # 14:00后采集午盘数据
         self.snapshot_tail_done = False       # 14:30基准已采集
         self.tail_entry_debug_printed = False  # 尾盘突袭首次扫描输出统计
-        self.last_market_action_alert = 0      # 大盘动作信号冷却
-        self._market_action_triggered = {}     # 防重复: {条件名: 触发时间}
-        # SLI 中长线潜力池盘中启动预警: 池子/行情独立于 self.quotes(避免污染市场广度与涨跌停统计)
-        self._sli_pool_cache = None            # (当日, 池子DataFrame, 快照meta)
-        self.sli_pool_quotes = {}              # ts_code -> quote(池子专用行情)
-        self._sli_pool_quote_time = 0          # 池子行情上次全量刷新时间
-        self._sli_launched = {}                # ts_code -> 首次触发时间(当日去重), '_date' 记日期
-        self._sli_launch_pending = []          # 冷却期内累积的触发, 下次汇总一并推送
-        self._sli_launch_push_time = 0         # 上次汇总推送时间(冷却用)
         # 尾盘信号跟踪表(用于未来交易日盘后回填和胜率分析)
         self.tail_tracker_db = os.path.join(BASE_DIR, '..', 'cache_daily', 'tail_signal_tracker.db')
         self._init_tail_tracker()
@@ -343,6 +315,15 @@ class RealtimeThemeMonitor:
         self.fox_ctx = None           # 盘中复用上下文(reader/主题池),首个猎狐扫描构建,定稿后释放
         self._fox_pre_pushed = {}     # code->已推预检的信号日(盘中预检同日只推一次;14:50定稿独立推送)
         self.fox_next_pre_time = 0.0  # 下次盘中预检时间戳(约10分钟节奏)
+
+        # ── 尾盘「猎狐V6」趋势延续·缩量回踩不破位→尾盘重新走强 信号 (fox_v6 形态引擎) ──
+        self.fox6_run_date = ""       # 当日已扫描日期YYYYMMDD(跨日重置)
+        self._fox6_done = False       # 当日是否已执行猎狐V6定稿扫描
+        self.fox6_state_path = os.path.join(BASE_DIR, '..', 'cache_daily', 'fox_v6_state.json')  # code->信号日,防止重复触发
+        self.fox6_signals_cache = []  # 最近一次猎狐V6触发信号(便于日终复核)
+        self.fox6_ctx = None          # 盘中复用上下文(reader/主题池),首个猎狐V6扫描构建,定稿后释放
+        self._fox6_pre_pushed = {}    # code->已推预检的信号日(盘中预检同日只推一次;14:50定稿独立推送)
+        self.fox6_next_pre_time = 0.0  # 下次盘中预检时间戳(约10分钟节奏)
 
         # ── 同花顺扶摇 MCP 补充数据 ──
         self.fuyao = FuyaoMCPClient()
@@ -1070,324 +1051,8 @@ class RealtimeThemeMonitor:
                 print(f"⚠ 总市值加载失败: {e}")
 
     # ── 计算主题趋势/情绪/综合分(每15分钟) ──
-    # ── 主题生命周期判定(启动/主升/分歧/退潮) ──
-    def classify_theme_lifecycle(self, theme_name):
-        """
-        判定主题生命周期阶段,基于实时行情+历史强度趋势
-        
-        返回: (stage, score, detail)
-        stage: '启动期'/'主升期'/'分歧期'/'退潮期'
-        score: 0-100, 越高越适合次日买入
-        """
-        stocks = self.theme_stocks.get(theme_name, [])
-        if not stocks:
-            return '未知', 0, {}
-
-        zt_count = 0
-        strong_count = 0       # 涨幅>=5%
-        up_count = 0
-        down_count = 0
-        total_amount = 0
-        leader_amount = 0
-        leader_pct = None
-        leader_name = ''
-        pcts = []
-        valid = 0
-        zt_layers = []         # 涨停股的层级列表
-
-        for ts_code, name, layer in stocks:
-            q = self.quotes.get(ts_code)
-            if not q:
-                continue
-            pct = q.get('pct_chg', 0)
-            amount = q.get('amount', 0)
-            pcts.append(pct)
-            total_amount += amount
-            valid += 1
-
-            if pct > 0: up_count += 1
-            elif pct < 0: down_count += 1
-
-            # 涨停判定(差异化: 主板10%, 双创20%)
-            zt_threshold = 19.5 if ts_code.startswith(('300', '688')) else 9.5
-            if pct >= zt_threshold:
-                zt_count += 1
-                zt_layers.append(layer)
-                # 记录首次涨停时间
-                if ts_code not in self.stock_zt_first_time:
-                    self.stock_zt_first_time[ts_code] = datetime.now()
-
-            if pct >= 5:
-                strong_count += 1
-
-            if layer == 'leader':
-                leader_amount += amount
-                if leader_pct is None or pct > leader_pct:
-                    leader_pct = pct
-                    leader_name = name
-
-        if valid == 0:
-            return '未知', 0, {}
-
-        avg_pct = sum(pcts) / valid
-        up_ratio = up_count / valid
-        leader_concentration = leader_amount / total_amount if total_amount > 0 else 0
-        # 扩散度: 涨停股中非龙头的比例
-        non_leader_zt = sum(1 for l in zt_layers if l != 'leader')
-        diffusion = non_leader_zt / zt_count if zt_count > 0 else 0
-
-        # 历史趋势变化(用 theme_score_history)
-        history = list(self.theme_score_history.get(theme_name, []))
-        score_accel = 0.0
-        if len(history) >= 6:
-            score_accel = sum(history[-3:]) / 3 - sum(history[-6:-3]) / 3
-        elif len(history) >= 3:
-            score_accel = history[-1] - history[0]
-
-        # 量能变化
-        vol_history = list(self.theme_volume_history.get(theme_name, []))
-        vol_change = 0.0
-        if len(vol_history) >= 4:
-            recent_vol = sum(vol_history[-2:]) / 2
-            prev_vol = sum(vol_history[-4:-2]) / 2
-            vol_change = (recent_vol - prev_vol) / prev_vol if prev_vol > 0 else 0
-
-        detail = {
-            'avg_pct': round(avg_pct, 2), 'zt_count': zt_count,
-            'strong_count': strong_count, 'up_ratio': round(up_ratio, 2),
-            'leader_conc': round(leader_concentration, 2),
-            'diffusion': round(diffusion, 2),
-            'score_accel': round(score_accel, 2),
-            'vol_change': round(vol_change, 2),
-            'leader_pct': round(leader_pct, 2) if leader_pct is not None else None,
-            'leader_name': leader_name,
-        }
-
-        # ========== 生命周期判定 ==========
-
-        # 退潮期: 整体下跌
-        if avg_pct < -1.5 or (zt_count == 0 and down_count > up_count and avg_pct < -0.5):
-            return '退潮期', 15, detail
-
-        # 分歧期: 涨幅放缓+加速度转负, 或量价背离
-        if score_accel < -0.3 and avg_pct < 1.5:
-            return '分歧期', 35, detail
-        # 量价背离: 涨幅为正但量能萎缩
-        if avg_pct > 1.0 and vol_change < -0.15:
-            return '分歧期', 30, detail
-
-        # 主升期: 涨停>=3 + 涨幅>2 + 加速度>=0
-        if zt_count >= 3 and avg_pct >= 2.0 and score_accel >= 0:
-            # 扩散度高 = 主升中后段(减分)
-            if diffusion >= 0.4:
-                return '主升期', 68, detail
-            return '主升期', 80, detail
-
-        # 启动期: 涨停1-2只 + 量能放大/加速度为正
-        if zt_count >= 1 and avg_pct >= 0.5:
-            if vol_change > 0.1 or score_accel > 0.2:
-                return '启动期', 88, detail
-            return '启动期', 72, detail
-
-        # 温和上涨但无涨停: 潜在启动
-        if avg_pct > 0.5 and up_ratio > 0.5:
-            return '启动期', 62, detail
-
-        # 震荡
-        if abs(avg_pct) <= 0.5:
-            return '分歧期', 45, detail
-
-        # 默认: 上涨但特征不明显
-        return '启动期', 55, detail
-
-    # ── T+1预测因子: 尾盘资金流向 + 龙头涨停时间 ──
-    def calc_t1_prediction_factors(self, theme_name):
-        """
-        计算T+1预测因子:
-        1. 尾盘资金流向(14:30基准 vs 当前成交额增量)
-        2. 龙头涨停时间(早盘涨停=次日高溢价)
-        
-        返回: (score, detail)  score: 0-100
-        """
-        now = datetime.now()
-        stocks = self.theme_stocks.get(theme_name, [])
-
-        # 1. 尾盘资金流向
-        current_amount = 0
-        for ts_code, name, layer in stocks:
-            q = self.quotes.get(ts_code)
-            if q:
-                current_amount += q.get('amount', 0)
-
-        # 14:30记录基准成交额(仅记录一次)
-        if now.hour == 14 and now.minute >= 30 and theme_name not in self.theme_amount_at_1430:
-            self.theme_amount_at_1430[theme_name] = current_amount
-
-        late_flow_score = 50  # 默认中性
-        flow_ratio = None
-        if theme_name in self.theme_amount_at_1430 and self.theme_amount_at_1430[theme_name] > 0:
-            base = self.theme_amount_at_1430[theme_name]
-            increment = current_amount - base
-            flow_ratio = increment / base if base > 0 else 0
-            # 尾盘增量越大 = 资金流入越强
-            if flow_ratio > 0.30:
-                late_flow_score = 85
-            elif flow_ratio > 0.15:
-                late_flow_score = 70
-            elif flow_ratio > 0.05:
-                late_flow_score = 55
-            else:
-                late_flow_score = 35
-
-        # 2. 龙头涨停时间
-        zt_time_score = 50  # 默认中性(龙头未涨停)
-        leader_zt_time = None
-        for ts_code, name, layer in stocks:
-            if layer != 'leader':
-                continue
-            q = self.quotes.get(ts_code)
-            if not q:
-                continue
-            pct = q.get('pct_chg', 0)
-            zt_threshold = 19.5 if ts_code.startswith(('300', '688')) else 9.5
-            if pct >= zt_threshold and ts_code in self.stock_zt_first_time:
-                leader_zt_time = self.stock_zt_first_time[ts_code]
-                break
-
-        if leader_zt_time:
-            # 早盘涨停 = 次日高溢价
-            if leader_zt_time.hour < 10:
-                zt_time_score = 90
-            elif leader_zt_time.hour == 10:
-                zt_time_score = 75
-            elif leader_zt_time.hour == 13 and leader_zt_time.minute < 30:
-                zt_time_score = 60
-            else:
-                zt_time_score = 40  # 尾盘涨停 = 低溢价
-
-        score = late_flow_score * 0.5 + zt_time_score * 0.5
-        detail = {
-            'late_flow_score': late_flow_score,
-            'zt_time_score': zt_time_score,
-            'flow_ratio': round(flow_ratio, 3) if flow_ratio is not None else None,
-            'leader_zt_time': leader_zt_time.strftime('%H:%M') if leader_zt_time else None,
-        }
-        return round(score, 1), detail
-
-    # ── 次日套利Alpha得分 ──
-    def calc_next_day_alpha(self, theme_name, trend_score, sentiment_score):
-        """
-        计算次日套利Alpha得分
-        
-        = 生命周期分(30%) + T+1预测分(25%) + 未充分定价分(20%)
-          + 联动强度分(15%) + 大盘环境分(10%) - 见顶风险扣分
-        
-        返回: dict(alpha, stage, signal, ...)
-        """
-        # 1. 生命周期
-        stage, lifecycle_score, lc_detail = self.classify_theme_lifecycle(theme_name)
-        self.theme_lifecycle_cache[theme_name] = (stage, lifecycle_score, lc_detail)
-
-        # 2. T+1预测因子
-        t1_score, t1_detail = self.calc_t1_prediction_factors(theme_name)
-        self.theme_forward_cache[theme_name] = t1_score
-
-        # 3. 未充分定价(逆向因子)
-        # 热度低 + 龙头未超买 = 未充分定价
-        pricing_score = 50
-        leader_pct = lc_detail.get('leader_pct')
-        zt_count = lc_detail.get('zt_count', 0)
-        avg_pct = lc_detail.get('avg_pct', 0)
-
-        # 龙头未超买(涨幅<3%)加分,超买(>8%)减分
-        if leader_pct is not None:
-            if leader_pct < 3:
-                pricing_score += 15
-            elif leader_pct > 8:
-                pricing_score -= 20
-
-        # 无涨停=未被市场关注(未充分定价)加分
-        if zt_count == 0 and avg_pct > 0:
-            pricing_score += 10
-        elif zt_count >= 5:
-            pricing_score -= 15  # 过多涨停=已充分定价
-
-        pricing_score = max(0, min(100, pricing_score))
-
-        # 4. 联动强度
-        up_ratio = lc_detail.get('up_ratio', 0.5)
-        strong_count = lc_detail.get('strong_count', 0)
-        linkage_score = 0
-        if avg_pct > 2: linkage_score += 40
-        elif avg_pct > 1: linkage_score += 25
-        elif avg_pct > 0: linkage_score += 15
-        if up_ratio > 0.7: linkage_score += 30
-        elif up_ratio > 0.5: linkage_score += 20
-        elif up_ratio > 0.4: linkage_score += 10
-        if zt_count >= 3: linkage_score += 30
-        elif zt_count >= 1: linkage_score += 15
-        linkage_score = min(100, linkage_score)
-
-        # 5. 大盘环境
-        report = getattr(self, '_last_report', None)
-        market_score = 50
-        if report:
-            ts = report.get('trend_score', 50)
-            if ts >= 75: market_score = 85
-            elif ts >= 60: market_score = 65
-            elif ts >= 45: market_score = 40
-            else: market_score = 20
-
-        # 见顶风险扣分
-        risk_penalty = 0
-        if stage == '退潮期':
-            risk_penalty += 30
-        elif stage == '分歧期':
-            risk_penalty += 15
-
-        # 量价背离扣分
-        vol_change = lc_detail.get('vol_change', 0)
-        if avg_pct > 1.0 and vol_change < -0.15:
-            risk_penalty += 10
-
-        # 计算Alpha
-        alpha = (
-            lifecycle_score * 0.30 +
-            t1_score * 0.25 +
-            pricing_score * 0.20 +
-            linkage_score * 0.15 +
-            market_score * 0.10
-        ) - risk_penalty
-        alpha = max(0, min(100, alpha))
-
-        # 买入信号
-        if alpha >= 75 and stage == '启动期':
-            signal = '买入'
-        elif alpha >= 65 and stage in ('启动期', '主升期'):
-            signal = '关注'
-        elif stage == '退潮期' or alpha < 40:
-            signal = '回避'
-        else:
-            signal = '观望'
-
-        return {
-            'alpha': round(alpha, 1),
-            'stage': stage,
-            'lifecycle_score': lifecycle_score,
-            't1_score': t1_score,
-            'pricing_score': pricing_score,
-            'linkage_score': linkage_score,
-            'market_score': market_score,
-            'risk_penalty': risk_penalty,
-            'signal': signal,
-            'leader_pct': leader_pct,
-            'leader_name': lc_detail.get('leader_name', ''),
-            'zt_count': zt_count,
-            'detail': {**lc_detail, **t1_detail}
-        }
-
     def compute_theme_scores_realtime(self):
-        """使用实时行情计算各主题的综合评分并输出TOP10"""
+        """使用实时行情计算各主题的综合评分"""
         if not THEME_SCORE_AVAILABLE:
             return
 
@@ -1461,9 +1126,6 @@ class RealtimeThemeMonitor:
                 total_stocks=len(stock_feats)
             )
 
-            # 计算次日套利Alpha(生命周期+T+1预测+未充分定价+联动+大盘)
-            alpha_info = self.calc_next_day_alpha(theme_name, t_score, s_score)
-
             results.append({
                 'theme': theme_name,
                 'n_stocks': len(stock_feats),
@@ -1474,23 +1136,10 @@ class RealtimeThemeMonitor:
                 'hot_percentile': hot_percentile,
                 'hot_phase': hot_phase,
                 'hot_warning': hot_warning,
-                # 次日套利Alpha相关
-                'alpha': alpha_info['alpha'],
-                'stage': alpha_info['stage'],
-                'signal': alpha_info['signal'],
-                'lifecycle_score': alpha_info['lifecycle_score'],
-                't1_score': alpha_info['t1_score'],
-                'pricing_score': alpha_info['pricing_score'],
-                'linkage_score': alpha_info['linkage_score'],
-                'risk_penalty': alpha_info['risk_penalty'],
-                'leader_name': alpha_info['leader_name'],
-                'leader_pct': alpha_info['leader_pct'],
-                'zt_count': alpha_info['zt_count'],
-                'alpha_detail': alpha_info['detail'],
             })
 
-        # 按次日套利Alpha排序(优先) + 综合分(次优)
-        results.sort(key=lambda x: (x.get('alpha', 0), x.get('composite_score', 0)), reverse=True)
+        # 按综合分排序
+        results.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
 
         return results
 
@@ -1725,295 +1374,7 @@ class RealtimeThemeMonitor:
 
         if alerts:
             self.last_market_alert = now_ts                   
-            self.last_score_alert = now_ts
         return alerts
-
-    # ════════════════════════════════════════════
-    # 大盘动作信号监测（解析V9.9报告，盘中跟进加仓/减仓条件）
-    # ════════════════════════════════════════════
-
-    def _parse_market_action_report(self):
-        """
-        解析最新 V9.9 市场分析报告，提取动作条件。
-        返回: {action, add_conditions, reduce_conditions, position, market_regime, ...}
-        条件格式: [(label, op, threshold, current), ...]
-        """
-        import re, os
-        report_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
-        files = [f for f in os.listdir(report_dir)
-                 if f.startswith('market_analysis_') and f.endswith('.txt')
-                 and not f.endswith('_v8.txt') and not f.endswith('_v9.txt')]
-        if not files:
-            self._parsed_action = None
-            return None
-        files.sort(reverse=True)
-        report_path = os.path.join(report_dir, files[0])
-
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                text = f.read()
-        except Exception:
-            self._parsed_action = None
-            return None
-
-        result = {
-            'action': '维持',
-            'add_conditions': [],
-            'reduce_conditions': [],
-            'position': 0,
-            'market_regime': '',
-            'report_date': files[0].replace('market_analysis_', '').replace('.txt', ''),
-        }
-
-        # 提取动作
-        m = re.search(r'【动作】(\S+)', text)
-        if m:
-            result['action'] = m.group(1)
-
-        # 提取仓位目标
-        m = re.search(r'当前目标：(\d+)%', text)
-        if m:
-            result['position'] = int(m.group(1))
-
-        # 提取市场状态
-        m = re.search(r'市场：(\S+)', text)
-        if m:
-            result['market_regime'] = m.group(1)
-
-        # 提取加仓条件
-        in_add = False
-        in_reduce = False
-        for line in text.split('\n'):
-            line = line.strip()
-            if line == '加仓：':
-                in_add = True
-                in_reduce = False
-                continue
-            if line == '减仓：':
-                in_add = False
-                in_reduce = True
-                continue
-            if line.startswith('【') or line.startswith('─'):
-                in_add = False
-                in_reduce = False
-                continue
-
-            if in_add and line:
-                cond = self._parse_action_condition(line)
-                if cond:
-                    result['add_conditions'].append(cond)
-            if in_reduce and line:
-                cond = self._parse_action_condition(line)
-                if cond:
-                    result['reduce_conditions'].append(cond)
-
-        self._parsed_action = result
-        return result
-
-    def _parse_action_condition(self, line):
-        """解析单行条件: '① 上涨家数 >55%（当前 53%）' → (label, op, threshold, current)"""
-        import re
-        # 去掉序号 ① ② ③
-        line = re.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩]\s*', '', line.strip())
-        # 匹配: 标签 操作符 阈值%（当前 XX%） 或 标签 描述
-        m = re.search(r'(.+?)\s*([><])\s*([\d.]+)%\s*[（(]当前\s*([\d.]+)%\s*[）)]', line)
-        if m:
-            return (m.group(1).strip(), m.group(2), float(m.group(3)), float(m.group(4)))
-        # 无数字条件: "主线强度继续提升" / "主线龙头破位或退潮"
-        m = re.search(r'(.+?)(继续提升|破位或退潮|退潮|破位)', line)
-        if m:
-            return (m.group(1).strip() + m.group(2), 'qualitative', None, None)
-        return None
-
-    def _check_market_action_signals(self):
-        """
-        盘中实时检查大盘动作信号。
-        对比报告中的加仓/减仓条件 vs 实时数据。
-        触发时返回预警消息列表。
-        30分钟冷却，同日同条件不重复触发。
-        """
-        now_ts = time.time()
-        now_dt = datetime.now()
-
-        # 冷却: 30分钟
-        if now_ts - self.last_market_action_alert < 1800:
-            return []
-
-        # 解析报告（每天只解析一次，缓存）
-        if not hasattr(self, '_parsed_action') or self._parsed_action is None:
-            parsed = self._parse_market_action_report()
-            if parsed is None:
-                return []
-        else:
-            parsed = self._parsed_action
-
-        # 获取实时数据
-        full = self.full_market_stats if hasattr(self, 'full_market_stats') and self.full_market_stats else {}
-        rt_up_ratio = full.get('up_ratio', 0)
-        rt_zt_count = full.get('zt_count', 0)
-        rt_dt_count = full.get('dt_count', 0)
-
-        if rt_up_ratio <= 0:
-            # 无全市场数据，用主题池数据近似
-            ms = self.compute_market_overview()
-            rt_up_ratio = ms.get('up_ratio', 50)
-            rt_zt_count = ms.get('zt', 0)
-            rt_dt_count = ms.get('dt', 0)
-
-        # 获取昨日炸板率（从market_analysis.db）
-        yesterday_broken = self._get_yesterday_broken_rate()
-        rt_broken = yesterday_broken  # 实时炸板率暂无精确数据，用昨日值
-
-        # 主线强度: 实时主题评分
-        mainline_score = self._get_mainline_strength()
-
-        alerts = []
-
-        # ── 检查加仓条件 ──
-        add_met = []
-        for label, op, threshold, current in parsed.get('add_conditions', []):
-            if op == 'qualitative':
-                continue  # "主线强度继续提升" 由下方单独判断
-            val = None
-            if '上涨家数' in label:
-                val = rt_up_ratio
-            elif '炸板率' in label:
-                val = rt_broken
-            if val is not None and threshold is not None:
-                if op == '>' and val > threshold:
-                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ✅)")
-                elif op == '<' and val < threshold:
-                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ✅)")
-                elif op == '>' and val <= threshold:
-                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ❌)")
-                elif op == '<' and val >= threshold:
-                    add_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ❌)")
-
-        # 主线强度判断: 量化评分≥70且较昨日提升
-        if mainline_score >= 70:
-            add_met.append("主线强度: 强(≥70) ✅")
-        elif mainline_score >= 55:
-            add_met.append(f"主线强度: 中({mainline_score:.0f}) ⚠")
-        else:
-            add_met.append(f"主线强度: 弱({mainline_score:.0f}) ❌")
-
-        # ── 检查减仓条件 ──
-        reduce_met = []
-        for label, op, threshold, current in parsed.get('reduce_conditions', []):
-            if op == 'qualitative':
-                continue
-            val = None
-            if '上涨家数' in label:
-                val = rt_up_ratio
-            elif '炸板率' in label:
-                val = rt_broken
-            if val is not None and threshold is not None:
-                if op == '<' and val < threshold:
-                    reduce_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ⚠)")
-                elif op == '>' and val > threshold:
-                    reduce_met.append(f"{label} {op} {threshold}% (实时{val:.0f}% ⚠)")
-
-        # 主线退潮判断
-        if mainline_score < 35:
-            reduce_met.append(f"主线强度: 极度弱({mainline_score:.0f}) ⚠")
-        elif mainline_score < 45:
-            reduce_met.append(f"主线强度: 弱({mainline_score:.0f}) ⚠")
-
-        # ── 生成预警 ──
-        n_add_met = sum(1 for m in add_met if '✅' in m)
-        n_reduce_met = sum(1 for m in reduce_met if '⚠' in m)
-
-        if n_add_met >= 2:
-            # 加仓信号触发
-            key = f"add_{now_dt.strftime('%Y%m%d')}"
-            if key not in self._market_action_triggered:
-                self._market_action_triggered[key] = now_ts
-                msg = self._build_action_alert(parsed, '加仓', add_met, reduce_met,
-                                               rt_up_ratio, rt_zt_count, rt_dt_count, mainline_score)
-                alerts.append({'type': 'market_action_add', 'msg': msg})
-        elif n_reduce_met >= 2:
-            # 减仓信号触发
-            key = f"reduce_{now_dt.strftime('%Y%m%d')}"
-            if key not in self._market_action_triggered:
-                self._market_action_triggered[key] = now_ts
-                msg = self._build_action_alert(parsed, '减仓', add_met, reduce_met,
-                                               rt_up_ratio, rt_zt_count, rt_dt_count, mainline_score)
-                alerts.append({'type': 'market_action_reduce', 'msg': msg})
-
-        if alerts:
-            self.last_market_action_alert = now_ts
-
-        return alerts
-
-    def _build_action_alert(self, parsed, signal_type, add_met, reduce_met,
-                            up_ratio, zt, dt, mainline):
-        """构建大盘动作预警消息"""
-        now = datetime.now()
-        lines = [
-            f"📊 大盘动作预警 [{now.strftime('%H:%M')}]",
-            f"报告: {parsed.get('report_date', '?')} 原建议: {parsed.get('action', '维持')}",
-            f"市场: {parsed.get('market_regime', '?')} 目标仓位: {parsed.get('position', '?')}%",
-            f"─" * 30,
-            f"实时: 上涨{up_ratio:.0f}% 涨停{zt} 跌停{dt} 主线{mainline:.0f}",
-            f"",
-        ]
-        if signal_type == '加仓':
-            lines.append(f"🟢 【动作】加仓信号触发！")
-            lines.append(f"加仓条件检查:")
-            for m in add_met:
-                lines.append(f"  {m}")
-            lines.append(f"减仓条件检查:")
-            for m in reduce_met:
-                lines.append(f"  {m}")
-        else:
-            lines.append(f"🔴 【动作】减仓信号触发！")
-            lines.append(f"减仓条件检查:")
-            for m in reduce_met:
-                lines.append(f"  {m}")
-            lines.append(f"加仓条件检查:")
-            for m in add_met:
-                lines.append(f"  {m}")
-
-        lines.append(f"─" * 30)
-        lines.append(f"⚠ 炸板率数据为前日值({parsed.get('report_date', '?')})，实时炸板率需人工确认")
-
-        return '\n'.join(lines)
-
-    def _get_yesterday_broken_rate(self):
-        """从 market_analysis.db 获取昨日炸板率"""
-        import sqlite3
-        try:
-            db_path = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'market_analysis.db')
-            if not os.path.exists(db_path):
-                return 25  # 默认值
-            conn = sqlite3.connect(db_path)
-            row = conn.execute(
-                "SELECT broken_rate FROM limit_stats ORDER BY trade_date DESC LIMIT 1"
-            ).fetchone()
-            conn.close()
-            if row and row[0] is not None:
-                return float(row[0])
-        except Exception:
-            pass
-        return 25
-
-    def _get_mainline_strength(self):
-        """实时主线强度: 取TOP3主题量化评分均值"""
-        # 优先用 _last_theme_results (由 compute_theme_scores_realtime 设置)
-        if hasattr(self, '_last_theme_results') and self._last_theme_results:
-            top3 = sorted(self._last_theme_results,
-                          key=lambda x: x.get('alpha', 0), reverse=True)[:3]
-            if top3:
-                return sum(r.get('alpha', 0) for r in top3) / len(top3)
-        # 回退: theme_scores dict
-        if hasattr(self, 'theme_scores') and self.theme_scores:
-            try:
-                top3 = sorted(self.theme_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-                if top3:
-                    return sum(v for _, v in top3) / len(top3)
-            except Exception:
-                pass
-        return 50
 
     def get_yesterday_market_data(self):
         """获取上一个交易日市场分析数据(用于盘前/盘中对比)
@@ -3681,71 +3042,12 @@ class RealtimeThemeMonitor:
                     print(f"⏳ 后台更新全市场统计...")
                     self.fetch_full_market_stats_realtime()
 
-                    # ── 每15分钟计算并输出主题综合分TOP10 ──
-                    theme_scores = self.compute_theme_scores_realtime()
-                    self._last_theme_results = theme_scores  # 供大盘动作信号监测使用
-                    if theme_scores:
-                        print(f"\n{'='*90}")
-                        print(f"📊 次日套利Alpha TOP10 [{now.strftime('%H:%M:%S')}]")
-                        print(f"{'排名':<4} {'主题':<14} {'Alpha':>6} {'信号':<4} {'阶段':<6} {'生命':>4} {'T+1':>4} {'定价':>4} {'联动':>4} {'风险':>4} {'龙头':<14} {'涨停'}")
-                        print(f"{'-'*90}")
-                        for i, r in enumerate(theme_scores[:10], 1):
-                            signal_emoji = {'买入': '✅', '关注': '👀', '观望': '⏸', '回避': '❌'}.get(r.get('signal', ''), '')
-                            leader_str = f"{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else '-'
-                            print(f"{i:<4} {r['theme']:<14} {r.get('alpha', 0):>5.1f} {signal_emoji:<4} {r.get('stage', ''):<6} {r.get('lifecycle_score', 0):>4.0f} {r.get('t1_score', 0):>4.0f} {r.get('pricing_score', 0):>4.0f} {r.get('linkage_score', 0):>4.0f} {r.get('risk_penalty', 0):>4.0f} {leader_str:<14} {r.get('zt_count', 0)}")
-                        print(f"{'='*90}")
-
-                        # 买入/关注信号汇总
-                        buy_signals = [r for r in theme_scores if r.get('signal') in ('买入', '关注')]
-                        if buy_signals:
-                            print(f"📌 次日套利候选({len(buy_signals)}个):")
-                            for r in buy_signals[:5]:
-                                leader_str = f"龙头:{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else ''
-                                print(f"   {r.get('signal')} {r['theme']} Alpha{r.get('alpha', 0):.0f} {r.get('stage')} {leader_str} 涨停{r.get('zt_count', 0)}只")
-
-                        print(f"{'='*90}\n")
-
-                        # ── 推送次日套利Alpha TOP10到微信(至少30分钟冷却) ──
-                        if time.time() - self.last_score_alert >= 1800:
-                            lines = []
-                            for i, r in enumerate(theme_scores[:10], 1):
-                                signal_tag = r.get('signal', '')
-                                stage_tag = r.get('stage', '')
-                                leader_str = f" 龙头:{r.get('leader_name', '')}" if r.get('leader_name') else ''
-                                zt_str = f" 涨停{r.get('zt_count', 0)}只" if r.get('zt_count', 0) > 0 else ''
-                                lines.append(f"{i}. [{signal_tag}]{r['theme']} Alpha{r.get('alpha', 0):.0f} {stage_tag}{leader_str}{zt_str}")
-                            # 买入信号单独高亮
-                            buy_lines = [r for r in theme_scores[:20] if r.get('signal') == '买入']
-                            if buy_lines:
-                                lines.append("---")
-                                lines.append("✅ 次日买入候选:")
-                                for r in buy_lines[:3]:
-                                    leader_str = f" 龙头:{r.get('leader_name', '')}({r.get('leader_pct', 0):+.1f}%)" if r.get('leader_name') else ''
-                                    lines.append(f"  {r['theme']} Alpha{r.get('alpha', 0):.0f} {r.get('stage')}{leader_str}")
-                            content = f"📊 次日套利Alpha TOP10 [{now.strftime('%H:%M')}]\n" + "\n".join(lines)
-                            self.send_wechat(f"📊 次日套利Alpha {now.strftime('%H:%M')}", content)
-                            self.last_score_alert = time.time()
-
                 # ── 大盘情绪检测 → 推送 ──
                 all_alerts = []
                 all_alerts.extend(self.detect_market_sentiment(results))
 
-                # ── 大盘动作信号(加仓/减仓) → 推送 ──
-                action_alerts = self._check_market_action_signals()
-                if action_alerts:
-                    all_alerts.extend(action_alerts)
-
                 if all_alerts:
                     self.push_alerts(all_alerts, now)
-
-                # ── SLI下一代龙头池盘中启动预警(涨幅>=3%) → 推送 ──
-                try:
-                    launch_alerts = self.check_sli_launch_alerts(now)
-                except Exception as e:
-                    launch_alerts = []
-                    print(f"  ⚠ SLI启动预警异常: {e}")
-                if launch_alerts:
-                    self.push_alerts(launch_alerts, now)
 
                 # ── 14:50后每3分钟扫描「猎尾V5」ND2次日Alpha ──
                 if now.hour == 14 and now.minute >= 50:
@@ -3790,6 +3092,31 @@ class RealtimeThemeMonitor:
                     except Exception as e:
                         import traceback
                         print(f"⚠ 猎狐定稿扫描异常: {e}")
+                        traceback.print_exc()
+
+                # ── 13:30-14:40 每10分钟「猎狐V6」盘中预检(实时价近似收盘,尾盘回落可能作废,14:50定稿为准) ──
+                if not self._fox6_done and pre_win and time.time() - self.fox6_next_pre_time >= 600:
+                    self.fox6_next_pre_time = time.time()
+                    try:
+                        self.scan_fox_v6(now, pre=True)
+                    except Exception as e:
+                        import traceback
+                        print(f"⚠ 猎狐V6盘中预检异常: {e}")
+                        traceback.print_exc()
+
+                # ── 14:50后执行「猎狐V6」定稿扫描(每交易日一次,实时价近似收盘) ──
+                if now.hour == 14 and now.minute >= 50 and not self._fox6_done:
+                    self._fox6_done = True
+                    self.fox6_run_date = now.strftime('%Y%m%d')
+                    try:
+                        fox6_signals = self.scan_fox_v6(now)
+                        if fox6_signals:
+                            self.fox6_signals_cache = fox6_signals
+                            self._save_fox_v6_picks_to_pickdb(fox6_signals)
+                        self._fox6_close_ctx()   # 定稿完成,释放SQLite连接避免占用至收盘写库
+                    except Exception as e:
+                        import traceback
+                        print(f"⚠ 猎狐V6定稿扫描异常: {e}")
                         traceback.print_exc()
 
                 time.sleep(60 - (datetime.now().second % 60))
@@ -4860,265 +4187,6 @@ class RealtimeThemeMonitor:
         except Exception as e:
             print(f"⚠ V3尾盘信号写入跟踪表失败: {e}")
 
-    # ════════════════════════════════════════════
-    # SLI 中长线潜力池: 池专用行情 + 盘中启动预警
-    # ════════════════════════════════════════════
-
-    def _fetch_sina_quotes(self, codes, batch_size=80):
-        """批量拉取新浪实时行情, 返回 {ts_code: quote}; 不写入任何状态(调用方决定并入哪里)"""
-        quote_map = {}
-        for offset in range(0, len(codes), batch_size):
-            batch = codes[offset:offset + batch_size]
-            sina_list = []
-            for code in batch:
-                if code.endswith('.SH'):
-                    sina_list.append('sh' + code.replace('.SH', ''))
-                elif code.endswith('.SZ'):
-                    sina_list.append('sz' + code.replace('.SZ', ''))
-                else:
-                    sina_list.append('sz' + code)  # 无后缀默认深市
-            url = f"https://hq.sinajs.cn/list={','.join(sina_list)}"
-            try:
-                resp = requests.get(url, headers={
-                    'Referer': 'https://finance.sina.com.cn',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }, timeout=8)
-                resp.encoding = 'gbk'
-                for line in resp.text.strip().split('\n'):
-                    line = line.strip()
-                    if not line or '=' not in line:
-                        continue
-                    try:
-                        var_part = line.split('=', 1)[1]
-                        if var_part.count('"') < 2:
-                            continue
-                        fields = var_part.split('"')[1].split(',')
-                        var_name = line.split('hq_str_')[1].split('=')[0]
-                        if var_name.startswith('sz'):
-                            ts_c = var_name[2:].zfill(6) + '.SZ'
-                        elif var_name.startswith('sh'):
-                            ts_c = var_name[2:].zfill(6) + '.SH'
-                        else:
-                            continue
-                        if len(fields) < 32:
-                            continue
-                        open_px = float(fields[1])
-                        prev_close = float(fields[2])
-                        price = float(fields[3])
-                        high = float(fields[4])
-                        low = float(fields[5])
-                        volume = float(fields[8])
-                        amount = float(fields[9])
-                        if prev_close > 0 and price > 0:
-                            pct_chg = (price - prev_close) / prev_close * 100
-                        else:
-                            pct_chg = 0
-                        quote_map[ts_c] = {
-                            'price': price, 'pct_chg': round(pct_chg, 2),
-                            'amount': amount, 'vol': int(volume),
-                            'last_close': prev_close, 'open': open_px,
-                            'high': high, 'low': low,
-                        }
-                    except (IndexError, ValueError):
-                        continue
-            except Exception as e:
-                print(f"  ⚠ 批量补拉行情失败: {e}")
-        return quote_map
-
-    def _refresh_sli_pool_quotes(self, pool, force=False):
-        """
-        刷新 SLI 池专用实时行情(供盘中启动预警使用)
-
-        写入 self.sli_pool_quotes 而非 self.quotes —— 池成员多为非主题池股票, 混入主行情
-        会污染市场广度/涨跌停/市场情绪统计。按 SLI_POOL_QUOTE_REFRESH_SEC 限频。
-        """
-        if not force and time.time() - self._sli_pool_quote_time < SLI_POOL_QUOTE_REFRESH_SEC:
-            return
-        fetched = self._fetch_sina_quotes(list(pool['ts_code']), batch_size=180)
-        if fetched:
-            self.sli_pool_quotes.update(fetched)
-        self._sli_pool_quote_time = time.time()
-
-    def _load_sli_pool(self):
-        """
-        加载 SLI 中长线潜力池(NEXT_LEADER_V2, 供盘中启动预警使用)
-
-        口径: sli.reader.get_next_leaders —— 全池(config.POOL_MIDLONG_V2)一次取回,
-        由景气档位下的 SLI_V2/Growth/Product 三硬门槛 + SLI_V2 60日动量门槛 +
-        mid_long_score≥score_min 决定, 按 mid_long_score 降序; 约200只
-        (每日随快照更新, 非固定池)。预警侧不再按分数收口, 与池定义保持一致。
-        结果按当日缓存(快照盘后重算, 日内不变)。
-        返回 (pool_df, meta); 无快照或加载失败返回 (None, {})
-        """
-        today = datetime.now().strftime('%Y%m%d')
-        if self._sli_pool_cache and self._sli_pool_cache[0] == today:
-            return self._sli_pool_cache[1], self._sli_pool_cache[2]
-        try:
-            from sli.reader import get_next_leaders
-            panel = get_next_leaders(asof=today, top=None)
-        except Exception as e:
-            print(f"  ⚠ SLI 中长线潜力池加载失败, 跳过: {e}")
-            return None, {}
-        cols = [c for c in ('ts_code', 'name', 'subsector', 'l3_name', 'rank',
-                            'mid_long_score', 'sli_v2', 'sub_rank',
-                            'leader_type_v2') if c in panel.columns]
-        pool = panel[cols].copy()
-        pool['ts_code'] = pool['ts_code'].astype(str).str.strip()
-        pool = pool[pool['ts_code'] != '']
-        # rank 是池内排名(按中长线潜力分, 1=综合最强), 与赛道内 sub_rank 区分开
-        pool = pool.rename(columns={'rank': 'nl_rank'})
-        meta = dict(panel.attrs.get('_sli_meta', {}) or {})
-        self._sli_pool_cache = (today, pool, meta)
-        age = meta.get('age_days')
-        warn = f" ⚠快照已{age}天未更新" if isinstance(age, int) and age > 5 else ''
-        print(f"  [SLI] 中长线潜力池 {len(pool)}只(NEXT_LEADER_V2 全池)"
-              f" 快照{meta.get('snapshot_date', '?')}{warn}")
-        return pool, meta
-
-    def check_sli_launch_alerts(self, now):
-        """
-        SLI 中长线潜力池「盘中启动预警」
-
-        池成员盘中直接拉起时, 盯盘者若无专门预警会全程无感知;
-        故盘中涨幅首次达到 SLI_LAUNCH_PCT(3%) 即记录并汇总推送。
-        池子取 NEXT_LEADER_V2 全池(约200只, 不再按 mid_long_score 收口),
-        单看3%日均40只量级, 由汇总+冷却+每只每日一次控制推送频率。
-
-        池子行情单独维护在 self.sli_pool_quotes(不并入 self.quotes, 避免污染市场广度/涨跌停
-        统计), 每 SLI_POOL_QUOTE_REFRESH_SEC 全量刷新一次; 主题池内的成员直接用主循环的实时
-        行情(更新鲜)。冷却期内触发累积到下一次汇总; 每只股票每交易日只报一次。
-
-        返回 alerts 列表({type:'sli_launch', msg})
-        """
-        if now.hour >= 15 or (now.hour == 9 and now.minute < 35):
-            return []
-
-        today = now.strftime('%Y%m%d')
-        if self._sli_launched.get('_date') != today:   # 跨日: 重置去重与汇总缓冲
-            self._sli_launched = {'_date': today}
-            self._sli_launch_pending = []
-            self._sli_launch_push_time = 0
-
-        pool, _meta = self._load_sli_pool()
-        if pool is None or pool.empty:
-            return []
-
-        self._refresh_sli_pool_quotes(pool)
-
-        last_trade_date = self._get_last_trade_date()
-
-        def _num(v):
-            try:
-                f = float(v)
-            except (TypeError, ValueError):
-                return 0.0
-            return 0.0 if f != f else f     # NaN 归零
-
-        for _, row in pool.iterrows():
-            ts_code = row['ts_code']
-            if ts_code in self._sli_launched:
-                continue
-            q = self.quotes.get(ts_code) or self.sli_pool_quotes.get(ts_code)
-            if not q or q.get('price', 0) <= 0:
-                continue
-            pct = float(q.get('pct_chg') or 0)
-            if pct < SLI_LAUNCH_PCT:
-                continue
-            self._sli_launched[ts_code] = now.strftime('%H:%M')
-
-            sub_rank = _num(row.get('sub_rank'))
-            nl_rank = _num(row.get('nl_rank'))
-            ltype = str(row.get('leader_type_v2') or '').strip()
-            self._sli_launch_pending.append({
-                'name': str(row.get('name', '')).strip(),
-                'ts_code': ts_code,
-                'pct': pct,
-                'time': now.strftime('%H:%M'),
-                'sector': str(row.get('subsector') or row.get('l3_name') or '').strip(),
-                'rank': f"·赛道第{int(sub_rank)}" if sub_rank > 0 else '',
-                'nl_rank': f" 下一代#{int(nl_rank)}" if nl_rank > 0 else '',
-                'sli': _num(row.get('sli_v2')),
-                'ltype': f" {ltype}" if ltype and ltype != 'NONE' else '',
-            })
-
-        if not self._sli_launch_pending:
-            return []
-        if time.time() - self._sli_launch_push_time < SLI_LAUNCH_PUSH_COOLDOWN:
-            return []      # 冷却中: 本轮触发留在缓冲里, 下次汇总一并推送
-
-        hits = sorted(self._sli_launch_pending, key=lambda x: -x['pct'])
-        self._sli_launch_pending = []
-        self._sli_launch_push_time = time.time()
-
-        # 组装文案(乖离只算展示的前N只, 控制日线缓存查询量)
-        out_lines = []
-        for h in hits[:SLI_LAUNCH_TOP_N]:
-            q = self.quotes.get(h['ts_code']) or self.sli_pool_quotes.get(h['ts_code']) or {}
-            price = float(q.get('price') or 0)
-            bl = self._pullback_baselines(h['ts_code'], last_trade_date) or {}
-            ma20 = bl.get('ma20') or 0
-            ma20_gap = (price / ma20 - 1) * 100 if ma20 > 0 else 0
-            ma_txt = '破位MA20' if ma20_gap < -3 else f"乖离MA20{ma20_gap:+.1f}%"
-            out_lines.append(
-                f"🚀 {h['name']}({h['ts_code']}) +{h['pct']:.1f}% [{h['time']}] "
-                f"{h['sector']}{h['rank']}{h['nl_rank']} SLI{h['sli']:.0f}{h['ltype']} {ma_txt}"
-            )
-        rest = len(hits) - SLI_LAUNCH_TOP_N
-        if rest > 0:
-            others = '、'.join(f"{h['name']}+{h['pct']:.1f}%" for h in hits[SLI_LAUNCH_TOP_N:])
-            out_lines.append(f"…另有{rest}只: {others}")
-        return [{'type': 'sli_launch',
-                 'msg': (f"🚀 SLI下一代龙头启动预警 [{now.strftime('%H:%M')}] "
-                         f"新增{len(hits)}只\n" + '\n'.join(out_lines))}]
-
-    def _pullback_baselines(self, ts_code, end_date, n=20):
-        """
-        从 daily_cache 重算回踩基准: 昨收(end_date当日收盘) / MA20 / 20日VWAP / ATR14
-
-        口径与 enhanced_timing_bull_all 报告一致(已逐只比对, 与报告 MA20/VWAP 完全吻合):
-            MA20 = 近20个交易日收盘均价
-            VWAP = Σamount*1000 / Σvol*100  (amount千元, vol手)
-            ATR14 = 近14根TR均值, TR=max(高-低, |高-昨收|, |低-昨收|)
-                    (同 enhanced_timing_analysis._calc_atr 口径)
-        报告与实时行情均不可靠时, 提供与最新交易日对齐的当日基准。
-        返回 {'prev_close','ma20','vwap','atr'} 或 None(数据不足)
-        """
-        try:
-            from stock_cache import get_daily_cache
-            start = (datetime.strptime(str(end_date), '%Y%m%d')
-                     - timedelta(days=45)).strftime('%Y%m%d')
-            df = get_daily_cache(ts_code, start, str(end_date))
-            if df is None or len(df) < n:
-                return None
-            d = df.tail(n)
-            if d['close'].isna().any():
-                return None
-            vwap = 0.0
-            if d['vol'].sum() > 0:
-                vwap = float(d['amount'].sum() * 1000 / (d['vol'].sum() * 100))
-            # ATR14: 需14根TR, 每根用前一日收盘, 故至少15根K线
-            atr = 0.0
-            d14 = df.tail(14)
-            off = len(df) - len(d14)
-            if off >= 1:
-                trs = []
-                for k in range(len(d14)):
-                    j = off + k
-                    hi = float(df.iloc[j]['high'])
-                    lo = float(df.iloc[j]['low'])
-                    pc = float(df.iloc[j - 1]['close'])
-                    trs.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
-                if trs:
-                    atr = sum(trs) / len(trs)
-            return {
-                'prev_close': float(df.iloc[-1]['close']),
-                'ma20': float(d['close'].mean()),
-                'vwap': vwap,
-                'atr': atr,
-            }
-        except Exception:
-            return None
-
     def _save_fox_picks_to_pickdb(self, signals):
         """
         「猎狐V4」缩量回调→首根放量中阳(定稿)信号写入统一选股库 stock_pick_db
@@ -5173,6 +4241,62 @@ class RealtimeThemeMonitor:
             print(f"[选股库·猎狐V4] 已写入{n}只形态信号 (strategy_id=fox_v4, pick_date={pick_date})")
         except Exception as e:
             print(f"⚠ 猎狐V4信号写入选股库失败: {e}")
+
+    def _save_fox_v6_picks_to_pickdb(self, signals):
+        """
+        「猎狐V6」趋势延续·缩量回踩不破位→尾盘重新走强(定稿)信号写入统一选股库 stock_pick_db
+        (表 stock_pick, 盘后由 stock_pick_db.update_tracking() 回填 pick_tracking)
+
+        仅在 14:50 定稿通道调用(盘中预检不落库);候选池已限定主题池沪深标的。
+        收益基准 = 定稿时实时价近似的当日收盘。
+        """
+        if not signals:
+            return
+        try:
+            from stock_pick_db import record_picks
+            pick_date = self._get_last_trade_date(include_today=True)   # 14:50定稿信号属于当日
+            picks = []
+            for s in signals:
+                code = s.get('code', '')
+                if not code:
+                    continue
+                picks.append({
+                    'ts_code': code,
+                    'stock_name': s.get('name', ''),
+                    'close': s.get('close'),
+                    'pct_chg': s.get('pct_chg'),
+                    'signal': 'FOX_V6',
+                    'action': s.get('tier', ''),
+                    'score': s.get('score'),
+                    'industry': s.get('industry', ''),
+                    'reason': s.get('reason', ''),
+                    'target_price': s.get('tp1') or None,
+                    # ── 策略自有字段(自动序列化进 indicators) ──
+                    'theme': s.get('theme', ''),
+                    'tier': s.get('tier', ''),
+                    'ret20': s.get('ret20'),
+                    'pb_depth': s.get('pb_depth'),
+                    'shrink': s.get('shrink'),
+                    'low_ma20': s.get('low_ma20'),
+                    'ma20_ratio': s.get('ma20_ratio'),
+                    'close_pos': s.get('close_pos'),
+                    'volr': s.get('volr'),
+                    'vol20r': s.get('vol20r'),
+                    'shadow': s.get('shadow'),
+                    'gap': s.get('gap'),
+                    'prior_cnt': s.get('prior_cnt'),
+                    'stop': s.get('stop'),
+                    'tp1': s.get('tp1'),
+                    'tp2': s.get('tp2'),
+                    'peak_date': s.get('peak_date'),
+                    'peak_close': s.get('peak_close'),
+                })
+            if not picks:
+                return
+            n = record_picks('fox_v6', '猎狐V6 趋势延续缩量回踩不破位', picks, pick_date=pick_date)
+            print(f"[选股库·猎狐V6] 已写入{n}只形态信号 (strategy_id=fox_v6, pick_date={pick_date})")
+        except Exception as e:
+            print(f"⚠ 猎狐V6信号写入选股库失败: {e}")
 
     def _pickdb_write(self, strategy_id, strategy_name, picks):
         """通用: 尾盘策略选股结果写入统一选股库 stock_pick_db(盘后 update_tracking 回填跟踪)"""
@@ -5520,10 +4644,6 @@ class RealtimeThemeMonitor:
             theme_name = themes[0]  # 取最强主题
             # 获取排名
             theme_rank = theme_rank_map.get(theme_name, 99)
-            # 获取生命周期和前瞻分
-            lc = self.theme_lifecycle_cache.get(theme_name)
-            lifecycle_score = lc[1] if lc else 0
-            forward_score = self.theme_forward_cache.get(theme_name, 0) if hasattr(self, 'theme_forward_cache') else 0
             # 获取layer
             layer = 'follower'
             for code, name, ly in self.theme_stocks.get(theme_name, []):
@@ -6106,6 +5226,222 @@ class RealtimeThemeMonitor:
             self._fox_close_ctx()   # 上下文可能不完整,关闭后下次重建
             return []
 
+    # ════════════════════════════════════════════
+    # 「猎狐V6」趋势延续·缩量回踩不破位→尾盘重新走强 信号 (fox_v6 形态引擎)
+    # ════════════════════════════════════════════
+
+    def _fox6_load_state(self):
+        try:
+            if os.path.exists(self.fox6_state_path):
+                with open(self.fox6_state_path, 'r', encoding='utf-8') as fh:
+                    return json.load(fh)
+        except Exception:
+            pass
+        return {}
+
+    def _fox6_save_state(self, state):
+        try:
+            os.makedirs(os.path.dirname(self.fox6_state_path), exist_ok=True)
+            with open(self.fox6_state_path, 'w', encoding='utf-8') as fh:
+                json.dump(state, fh, ensure_ascii=False, indent=1)
+        except Exception as exc:
+            print(f"⚠ [猎狐V6] 状态保存失败: {exc}")
+
+    def _fox6_close_ctx(self):
+        """关闭并丢弃猎狐V6盘中复用上下文(异常/定稿后调用)"""
+        ctx = self.fox6_ctx
+        self.fox6_ctx = None
+        if ctx and ctx.get('reader') is not None:
+            try:
+                ctx['reader'].close()
+            except Exception:
+                pass
+
+    def _fox6_ensure_ctx(self, now):
+        """构建/复用猎狐V6 盘中上下文:同一缓存日期(end_db)全天复用。
+
+        reader 只加载一次——单次全池历史 SQL 加载是扫描耗时的主要瓶颈。
+        与猎狐V4共用主题池,但独立 reader/上下文,避免相互影响。
+        返回 dict 或 None。"""
+        import w7_second_wave_engine as w7
+        if self.fox6_ctx is not None:
+            return self.fox6_ctx
+        ctx = {'reader': None, 'end_db': '', 'loaded_miss': set()}
+        reader = None
+        try:
+            reader = w7.CacheReader()
+            end_db = reader.latest_date()
+            if not end_db:
+                print("⚠ [猎狐V6] W7缓存库无数据,跳过")
+                reader.close()
+                return None
+            live = {c: q for c, q in self.quotes.items()
+                    if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
+            if not live:
+                print(f"⚠ [猎狐V6] {now.strftime('%H:%M:%S')} 无实时行情,跳过扫描")
+                reader.close()
+                return None
+            candidates = sorted(live.keys())
+            print(f"🕐 [猎狐V6] 首次加载主题池历史(截至{end_db}, {len(candidates)}只),耗时可能数十秒~数分钟,盘中仅此一次...", flush=True)
+            reader.load_all(end_db, codes=candidates, min_date=w7.DATA_START)
+            ctx.update({'reader': reader, 'end_db': end_db})
+            self.fox6_ctx = ctx
+            return ctx
+        except Exception as exc:
+            print(f"⚠ [猎狐V6] 上下文构建失败: {exc}")
+            import traceback
+            traceback.print_exc()
+            if reader is not None:
+                try:
+                    reader.close()
+                except Exception:
+                    pass
+            return None
+
+    def scan_fox_v6(self, now, pre=False):
+        """「猎狐V6」上升趋势中「缩量回踩不破位 → 尾盘重新走强」的趋势延续买点。
+
+        形态与阈值统一定义在 fox_v6(见 fox_v6.DEFAULT_PARAMS 内逐条回放注释)。
+        pre=True  盘中预检(13:30起每10分钟):以实时价虚拟当日K线近似收盘做形态判定,
+                 当日首次满足即推送(尾盘回落可能作废,以 14:50 定稿为准);不写定稿状态。
+        pre=False 尾盘定稿(14:50,每交易日一次):按信号日防重复,落定稿状态。
+        返回: 本轮新触发信号列表"""
+        import pandas as pd
+        import w7_second_wave_engine as w7
+        import fox_v6
+
+        fp = fox_v6.DEFAULT_PARAMS
+        need_bars = max(int(w7.MIN_BARS), int(fp['min_bars']))
+        today = now.strftime('%Y%m%d')
+        ctx = self._fox6_ensure_ctx(now)
+        if ctx is None:
+            return []
+        reader = ctx['reader']
+        end_db = ctx['end_db']
+        # 盘中缓存被 EOD 写库更新(end_db 翻日)时,重建一次上下文
+        if reader.latest_date() != end_db:
+            self._fox6_close_ctx()
+            ctx = self._fox6_ensure_ctx(now)
+            if ctx is None:
+                return []
+            reader = ctx['reader']
+            end_db = ctx['end_db']
+
+        live = {c: q for c, q in self.quotes.items()
+                if q and (q.get('price') or 0) > 0 and c in self.stock_themes and c.endswith(('.SZ', '.SH'))}
+        if not live:
+            print(f"⚠ [猎狐V6] {now.strftime('%H:%M:%S')} 无实时行情,跳过扫描")
+            return []
+
+        loaded_miss = ctx['loaded_miss']
+        candidates = sorted(live.keys())
+
+        fired_map = None if pre else self._fox6_load_state()
+        pre_pushed = self._fox6_pre_pushed if pre else None
+        new_signals = []
+        stale = []   # 同日已推送过的信号(重复,不推送)
+
+        try:
+            for n, code in enumerate(candidates):
+                if n and n % 500 == 0:
+                    print(f"   [猎狐V6] 进度 {n}/{len(candidates)}", flush=True)
+                q = live[code]
+                df0 = reader.bars(code, end_db)
+                if df0 is None or df0.empty:
+                    # 上下文构建后新入池股票,补一次单只历史加载
+                    if code not in loaded_miss:
+                        loaded_miss.add(code)
+                        try:
+                            f2 = reader.bars_sql(code, end_db)
+                            if f2 is not None and not f2.empty:
+                                reader.frames[code] = f2
+                                df0 = f2
+                        except Exception:
+                            pass
+                    if df0 is None or df0.empty or len(df0) < need_bars:
+                        continue
+                if len(df0) < need_bars:
+                    continue
+                last_db = str(df0.iloc[-1].trade_date)
+                if last_db < today:
+                    prev = df0.iloc[-1]
+                    px = float(q.get('price') or 0.0)
+                    amt = float(q.get('amount') or 0.0)
+                    if px <= 0:
+                        continue
+                    vh = int(amt / px / 100) if amt > 0 else int((q.get('vol') or 0) / 100)
+                    # 以昨日收盘行为基底构造今日虚拟K线,保留完整schema(仅覆盖实时字段)
+                    row = dict(prev)
+                    row.update({'ts_code': code, 'trade_date': today,
+                                'open': float(q.get('open') or prev.open or px),
+                                'high': float(q.get('high') or prev.high or px),
+                                'low': float(q.get('low') or prev.low or px),
+                                'close': px,
+                                'pct_chg': float(q.get('pct_chg') or 0.0),
+                                'vol': vh, 'amount': amt})
+                    df = pd.concat([df0, pd.DataFrame([row])], ignore_index=True)
+                    for col in df.columns:
+                        if col not in ('ts_code', 'trade_date'):
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                    df = df.dropna(subset=['close', 'high', 'low', 'vol']).reset_index(drop=True)
+                else:
+                    df = df0
+                # 形态判定:只判末根K线是否满足「趋势延续·缩量回踩不破位→尾盘重新走强」
+                sig = fox_v6.compute_fox_v6(df, fp)
+                if not sig:
+                    continue
+                sd = str(sig.get('signal_date') or today)
+                if pre:
+                    if pre_pushed.get(code) == sd:
+                        stale.append(code)
+                        continue
+                    pre_pushed[code] = sd
+                else:
+                    if fired_map.get(code) == sd:
+                        stale.append(code)
+                        continue
+                    fired_map[code] = sd
+                name, theme = self._fox_stock_info(code)
+                sig['name'] = name or sig.get('name') or code
+                sig['theme'] = theme
+                sig['trade_date'] = today
+                new_signals.append(sig)
+
+            if not pre:
+                self._fox6_save_state(fired_map)
+            # 核心买点 > 买点池 > 观察池,同档内按评分降序
+            _rank = {'核心买点': 0, '买点池': 1, '观察池': 2}
+            new_signals.sort(key=lambda s: (_rank.get(s.get('tier'), 3), -(s.get('score') or 0)))
+
+            mode_tag = '盘中预检' if pre else '定稿'
+            hhmmss = now.strftime('%H:%M:%S')
+
+            # ── 控制台输出 ──
+            if new_signals:
+                n_core = sum(1 for s in new_signals if s.get('tier') == '核心买点')
+                n_pool = sum(1 for s in new_signals if s.get('tier') == '买点池')
+                print(f"\n🦊 [猎狐V6] {hhmmss} {mode_tag}: 命中{len(new_signals)}只"
+                      f"(核心{n_core}/买点{n_pool}/观察{len(new_signals) - n_core - n_pool})"
+                      + (f" 本日盘中已推{len(pre_pushed)}只" if pre else f" 重复{len(stale)}只"))
+                print(fox_v6.format_console(new_signals, ts=hhmmss, pre=pre))
+            elif pre:
+                print(f"🦊 [猎狐V6] {hhmmss} 盘中预检:{len(candidates)}只主题股暂无新形态(本日已推{len(pre_pushed)}只)")
+            else:
+                print(f"🦊 [猎狐V6] {hhmmss} 定稿扫描完成:{len(candidates)}只主题股无新形态(重复{len(stale)}只)")
+
+            # ── 微信推送 ──
+            if new_signals:
+                content = "\n".join(fox_v6.format_wechat_lines(new_signals, pre=pre))
+                self.send_wechat(f"🦊 猎狐V6·{mode_tag} {now.strftime('%m-%d %H:%M')}", content)
+
+            return new_signals
+        except Exception as exc:
+            print(f"⚠ [猎狐V6] 扫描异常: {exc}")
+            import traceback
+            traceback.print_exc()
+            self._fox6_close_ctx()   # 上下文可能不完整,关闭后下次重建
+            return []
+
     def print_summary(self, results):
         """控制台输出摘要(含趋势评分+仓位建议+扶摇MCP数据)"""
         now = datetime.now().strftime('%H:%M:%S')
@@ -6160,9 +5496,7 @@ class RealtimeThemeMonitor:
         ts = now.strftime('%H:%M:%S')
 
         # 分类
-        market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_') and
-                       not a['type'].startswith('market_action_')]
-        action_alerts = [a for a in alerts if a['type'].startswith('market_action_')]
+        market_msgs = [a['msg'] for a in alerts if a['type'].startswith('market_')]
 
         # ── 市场情绪预警 ──
         if market_msgs:
@@ -6178,17 +5512,6 @@ class RealtimeThemeMonitor:
                 f"📊 数据基于实时主题成分股统计",
             ])
             self.send_wechat(title, '\n'.join(content_lines))
-
-        # ── 大盘动作信号(加仓/减仓) 独立推送 ──
-        for a in action_alerts:
-            prefix = '🟢 加仓' if a['type'] == 'market_action_add' else '🔴 减仓'
-            title = f"{prefix}信号 {ts}"
-            self.send_wechat(title, a['msg'])
-
-        # ── SLI下一代龙头池盘中启动预警 (msgs 已含标题与明细) ──
-        launch_msgs = [a['msg'] for a in alerts if a['type'] == 'sli_launch']
-        if launch_msgs:
-            self.send_wechat(f"🚀 SLI下一代龙头启动预警 {ts}", '\n'.join(launch_msgs))
 
         # ── 控制台输出 ──
         print(f"\n📱 [{ts}] 推送:")

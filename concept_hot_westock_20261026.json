@@ -1,0 +1,73 @@
+{
+ "date": "20261026",
+ "snapshot": "2026-10-26 17:10:00",
+ "rows": [
+  {
+   "rank": 7,
+   "name": "人形机器人",
+   "symbol": "pt02GN2238",
+   "zdf": -0.81,
+   "rankdelta": 0,
+   "members": 460,
+   "zt": 14,
+   "zt_names": [
+    "光洋股份",
+    "杰克科技",
+    "泛亚微透",
+    "赛福天"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 10,
+   "name": "物理AI",
+   "symbol": "pt02GN2442",
+   "zdf": 1.8,
+   "rankdelta": 2,
+   "members": 12,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 11,
+   "name": "机器人概念",
+   "symbol": "pt02003640",
+   "zdf": -0.71,
+   "rankdelta": -1,
+   "members": 1227,
+   "zt": 23,
+   "zt_names": [
+    "上纬新材",
+    "锋龙股份",
+    "赛福天",
+    "永创智能"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 13,
+   "name": "覆铜板",
+   "symbol": "pt02GN0012",
+   "zdf": -9.35,
+   "rankdelta": 0,
+   "members": 5,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 36,
+   "name": "共封装光模块(CPO）",
+   "symbol": "pt02GN2211",
+   "zdf": -3.77,
+   "rankdelta": -3,
+   "members": 205,
+   "zt": 1,
+   "zt_names": [
+    "达瑞电子"
+   ],
+   "max_lbc": 1
+  }
+ ]
+}

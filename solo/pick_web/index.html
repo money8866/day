@@ -37,7 +37,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Microsoft Y
 .chip.r{background:#fdecea;color:var(--up)}
 .card{background:var(--card);border-radius:12px;box-shadow:0 1px 5px rgba(20,35,60,.07);overflow:hidden}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;width:100%;min-width:1030px;font-size:13px}
+table{border-collapse:collapse;width:100%;min-width:960px;font-size:13px}
 th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
 th{background:#f7f9fc;color:var(--dim);font-weight:600;font-size:12px;position:sticky;top:0;z-index:2}
 tbody tr:hover{background:#fafbfe}
@@ -59,6 +59,8 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
 .mute{color:var(--dim)}
 .score{font-weight:600;font-variant-numeric:tabular-nums}
 .tag{display:inline-block;border-radius:5px;padding:1px 6px;font-size:11px;background:#eef0f4;color:var(--dim)}
+.cn{display:inline-block;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:800;
+  background:#e8f0ff;color:#1447c9;letter-spacing:.3px;white-space:nowrap}
 .st-ACTIVE{background:#eef3fb;color:var(--brand)}
 .st-TARGET_HIT{background:#fdecea;color:var(--up)}
 .st-STOP_HIT{background:#e8f6f0;color:var(--down)}
@@ -118,13 +120,13 @@ a.scode:hover,a.name:hover{text-decoration:underline;color:var(--brand)}
     <div class="card"><div class="scroll"><table id="tbl">
       <thead><tr>
         <th class="sticky">日期 / 标的</th>
-        <th>策略</th><th>信号</th><th>所属概念</th><th>执行状态</th><th>现价</th><th>分数</th><th>涨跌</th>
-        <th class="c-hide">止损</th><th class="c-hide">目标</th>
+        <th>策略</th><th>信号</th><th>所属概念</th><th>执行状态</th><th>现价</th><th>涨跌</th>
+        <th class="c-hide">止损</th>
         <th>R1d</th><th class="c-hide">R3d</th><th class="c-hide">R5d</th><th class="c-hide">最大回撤</th><th>跟踪</th><th></th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table></div></div>
-    <div class="note">R1d/R3d/R5d = 以选股日收盘为成本的跟踪收益（%）；「最大回撤」为跟踪期内自成本的最大回撤幅度；「跟踪」状态由盘后回填更新。分数、买卖位均为各策略落库原始值，本页不做任何再计算。</div>
+    <div class="note">R1d/R3d/R5d = 以选股日收盘为成本的跟踪收益（%）；「最大回撤」为跟踪期内自成本的最大回撤幅度；「跟踪」状态由盘后回填更新。买卖位均为各策略落库原始值，本页不做任何再计算。</div>
   </div>
 
   <div id="tab-stat" style="display:none">
@@ -220,7 +222,7 @@ function sortKeyOf(rows) {
 }
 
 async function loadList() {
-  $('#tbody').innerHTML = '<tr><td colspan="16" class="empty">查询中…</td></tr>';
+  $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">查询中…</td></tr>';
   const p = new URLSearchParams();
   if (state.date) p.set('date', state.date);
   if (state.strategy) p.set('strategy', state.strategy);
@@ -244,7 +246,7 @@ async function loadList() {
   $('#foot').textContent = '查询时间 ' + new Date().toLocaleString('zh-CN');
 
   if (!ROWS.length) {
-    $('#tbody').innerHTML = '<tr><td colspan="16" class="empty">该条件下无落库信号</td></tr>';
+    $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">该条件下无落库信号</td></tr>';
     return;
   }
   $('#tbody').innerHTML = ROWS.map((r, i) => {
@@ -255,13 +257,11 @@ async function loadList() {
         '<a class="name" href="' + thsUrl(r.ts_code) + '" target="_blank" rel="noopener">' + esc(r.stock_name) + '</a></td>' +
       '<td><span class="strat">' + esc(r.strategy_name) + '</span></td>' +
       '<td class="sig' + (r.pct_chg < 0 ? ' sell' : '') + '">' + esc(r.signal || '—') + '</td>' +
-      '<td>' + (r.concept ? '<span class="tag">' + esc(r.concept) + '</span>' : '<span class="mute">—</span>') + '</td>' +
+      '<td>' + (r.concept ? '<span class="cn">' + esc(r.concept) + '</span>' : '<span class="mute">—</span>') + '</td>' +
       '<td>' + w7Badge(ind) + '</td>' +
       '<td class="num">' + fmt(r.close, 2) + '</td>' +
-      '<td class="num score">' + fmt(r.score, 1) + '</td>' +
       '<td class="num">' + pct(r.pct_chg) + '</td>' +
       '<td class="num c-hide">' + fmt(r.stop_price, 2) + '</td>' +
-      '<td class="num c-hide">' + fmt(r.target_price, 2) + '</td>' +
       '<td class="num">' + pct(r.ret_1d) + '</td>' +
       '<td class="num c-hide">' + pct(r.ret_3d) + '</td>' +
       '<td class="num c-hide">' + pct(r.ret_5d) + '</td>' +
@@ -302,7 +302,7 @@ function detailRow(r) {
       '　回填于 ' + esc(r.track_updated || '—') + '</div>');
   }
   if (!kv.length) kv.push('<div class="kv mute">无更多明细</div>');
-  return '<tr class="det"><td colspan="16">' + kv.join('') + '</td></tr>';
+  return '<tr class="det"><td colspan="14">' + kv.join('') + '</td></tr>';
 }
 
 document.addEventListener('click', e => {
@@ -383,7 +383,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 
 boot().catch(err => {
   $('#meta').textContent = '加载失败：' + err.message;
-  $('#tbody').innerHTML = '<tr><td colspan="16" class="empty">接口异常，请确认 app.py 服务已启动</td></tr>';
+  $('#tbody').innerHTML = '<tr><td colspan="14" class="empty">接口异常，请确认 app.py 服务已启动</td></tr>';
 });
 </script>
 </body>

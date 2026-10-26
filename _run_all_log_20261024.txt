@@ -3645,3 +3645,278 @@ m:[36m103[0m - [34m[1m缓存已保存: daily_20261023[0m
   计算因子 9/10 - Multi-Day Consistency...
   计算因子 10/10 - Chip Momentum (Kalman Filter)...
 [突破股池] 每日快照已保存: d:\mystock\solo\report_daily\breakout_pool_snapshot_20261023.json (1只)
+[双底股池] stock_pick_db 写入 1/1 条 (strategy=breakout_pool pick_date=20261023)
+
+🔥 双底调整到位股池 (一波大涨后回落成双底、右底缩量不破左底；按双底排名分排序)
+
+【第1名】皖新传媒 (601801.SH) 现价=5.48 涨跌幅=+0.55% 成交额=0.97亿 量能爆发=21.40 (Alpha=54.8 观察名单) 筹码=62/CRE=50/动量=50
+  排名分: 59.7 (原始53.7 修正+6.0: 前波涨幅≥25%+2 右底贴近左底+2 右底缩量+2)
+  整合评分: 38.1 | 失败概率(T+5): 35.5% | T+5状态: C6_远距未突破（距关键位-9.72%，守位0日）
+  V10: 动量=60 资金=56 位置=66 热度=44 基本面=44
+  资金: 斜率=0.3/持续=25%/扩散=42% | 量比=0.9 | 惩罚=0 龙头=0 辨识=1
+  基本面因子: 利润大降: -28% | ROE: 4.1%(偏低) | 大宗: 折价0.0%(正常)
+  筹码建议: 左侧关注 | 吸筹中+吸筹质量尚可，早期趋势，等待启动信号
+  主题: 传媒 | 主线:趋势主线(质量54) | 非一日游:主升 | 龙头:华数传媒 | 趋势分44/情绪分57
+  突破: 评分=25 | 非突破形态
+  双底: 前波涨幅=29.4% 左底=5.14(20260928) 颈线=5.85 右底=5.25 右底/左底=1.021 缩量=0.58 自颈线回撤=10.3%
+
+[主题热度V2.5] 已加载 35 个主题状态 (日期 20261023)
+[实盘建议] 主题喂料(热度V2.5主题雷达): 4367字
+[W7今日执行状态] 已加载二波当日买点（1只） | 
+[HVT 第一梯队] 已加载天量牛股 PRIMARY_BUY 层级
+[HVT 执行买点池] 已加载 te_buy_pool 可直接执行（ACTION=BUY）候选（1只；BUY_ON_CONFIRM 已排除）
+[ETF提示] 汇总报告缩略: D:\mystock\report_daily\etf_mainline_summary_20261023.txt
+[量能放大信号] 已加载 VSW 下蹲买点池（5只）
+
+========== Deepseek AI分析 ==========
+
+[DEBUG] Prompt已保存: d:\mystock\cache_daily\prompt_debug_20261023.txt
+这是大盘和个股推送微信消息
+
+**每日复盘(20261023)**
+
+**1、大盘分析**
+
+** 市场分析
+* 上证指数：3690.48（+0.89%） | 成交额：1.97万亿 | 涨跌比 83%
+* 市场：震荡有主线 | 赚钱：强
+* 风险：正常风险 | 节奏：D2 确认期
+
+** 仓位建议
+* 当前目标：0%   可加仓空间：10%
+* 正常区间：0%～10%   确认上限：10%
+* 触发原因：跌破关键低点3842.72（20260916）未收复 → 强制0仓，等底分型或右侧信号
+* 一句话：跌破日线级别关键低点3842.72（20260916）后未收复，空仓等待，直到底分型或右侧买入信号。
+
+** 策略：空仓等待：跌破关键低点未收复，等底分型/右侧信号再入场
+* 最终：★ 防守为主
+
+**2、主题分析**
+
+** 主线：信创、AI应用、游戏（转强·目前仍然强，而且还在继续升温）
+
+** 升温梯队：🚀战略与小金属、医疗器械、CPO、证券（转强·最近明显升温，正在进入市场关注范围）｜🔄机器人、汽车、半导体、算力运营、脑机接口、AI服务器、消费电子、传媒、创新药（转强·调整后重新回到强势区，上涨范围同步扩大）｜↩️液冷（转强·调整后重新升温，但还没有回到强势区）｜🌱无
+
+** 高位钝化：无
+
+** 正在降温：低空经济、商业航天、军工、高端材料、可控核聚变、电力设备、工业金属、消费、建筑装饰、黄金、化工、节能环保、地产链、钢铁、煤炭、银行、PCB、电力运营
+
+** 看什么
+信创：①最近5日热度明显上升；②上涨正在向更多成份股扩散；③排名相对一个月前提升 17 位。
+机器人：①最近5日热度明显上升；②上涨正在向更多成份股扩散；③排名相对一个月前提升 6 位。
+
+** 一句话市场总结：当前市场主题正在从【信创、AI应用】向【战略与小金属、医疗器械、机器人】扩散，同时【低空经济、商业航天】开始降温。未来一个月最值得观察的不是当前热度最高的主题，而是「热度持续上升 + 排名提升 + 成份股同步扩散」的方向。
+
+**3、ETF操作建议**
+
+**当前持仓**：医疗器械（159883），买入价 0.432，已过 2/30 个交易日，持仓收益 +2.08%
+
+**操作建议**：距下次调仓还有 28 个交易日，无需操作。
+
+**选品排名 TOP5（市场状态：下跌，沪深300 -8.92%）**
+1. 医疗器械（159883） 动量 +3.76% 景气 67.7
+2. 软件（515230） 动量 +3.18% 景气 59.0
+3. 金融科技（159851） 动量 +1.53% 景气 65.7
+4. 酒（512690） 动量 +1.72% 景气 53.0
+5. 消费（159928） 动量 +2.16% 景气 39.1
+
+**共振确认**：持仓医疗器械（159883）同时是动量榜第1名，且对应主题「医疗器械」在今日雷达中处于🚀加速升温（转强），技术与主题方向一致。
+
+**4、中长线股票池**
+
+**今日无第一梯队，不强行交易。** 全股票池无个股同时满足四要素门槛（ENTRY≥70 × 供给吸收≥12 × 放量A/A+ × RS20≥70，无硬否决），不强行产生买点；下一层级跟踪观察池不构成买点。
+
+**4B、次日执行买点池**
+
+**北京银行（601169.SH）｜NEW_TREND｜T60｜动作：BUY**
+- 触发价 5.43｜买区 5.39~5.47｜失效位 5.19｜不追高 5.52｜建议仓位 A 5%~8%
+- 执行理由：高质量回踩（缩量比 0.48、低点守住 T0_High、收复突破收盘），执行分 81 ≥ 75，回踩买点优先于追涨。
+- 开盘纪律：正常高开不破 5.19 且量价健康→分批执行，首次 2.0%~3.2%；高开>+5% 默认不追，等回踩 5.39~5.47 缩量企稳再接；低开缩量下探不破 5.19 并重新走强→回踩买入；低开放量跌破 5.19 且无法收复→撤销。
+
+**5、V7 严格拉升回调买点**
+
+今日无 V7 严格拉升回调买点信号。
+
+**6、W7 二波·今日执行状态**
+
+**【EXECUTION｜已进入执行区】**
+
+**1. 上海电影(601595.SH)（MID｜EXECUTION｜量能未确认）**
+现价 28.38｜触发价 27.21｜MA20 25.75｜量比 0.9｜IGE_ADJ 38.7
+做法：已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买
+防线：收盘跌破 24.77 就出局
+
+**【TRIGGER_WATCH｜等待触发】** 无
+
+**【PULLBACK_WATCH｜等待回踩/重新确认】** 无
+
+**7、双底调整到位股池**
+
+**1. 皖新传媒(601801.SH)（双底低吸）**
+主题：传媒｜主线:趋势主线(质量54)｜趋势分44/情绪分57
+现价 5.48｜涨跌幅 +0.55%｜排名分 59.7｜前波涨幅 29.4%｜左底 5.14｜颈线 5.85｜右底 5.25｜缩量 0.58
+结构：前期涨了近三成后回落，右底 5.25 贴着左底 5.14 没破、且明显缩量，属于回落后的低吸位；传媒在今日雷达中处于🔄真正再启动方向，属热点方向。
+防线：收盘跌破左底 5.14 就出局
+
+**8、量能放大信号选股**
+
+**1. 国新健康(000503.SZ)（下蹲买点·优选）**
+收盘 7.64｜涨跌幅 -0.78%｜量能爆发评分 98.0｜选股总分 67.5(B)
+形态：前期放过大量，今天缩量小幅回踩，离5日均线只差3.6%，量比1.08，属于典型的缩量下蹲、没走坏。
+怎么买卖：止损位 6.76 元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加
+
+**2. 新华文轩(601811.SH)（下蹲买点·优选）**
+收盘 20.45｜涨跌幅 -4.22%｜量能爆发评分 100.0｜选股总分 41.3(C)
+形态：缩量回踩，量比1.14，距5日均线-9.29%，回踩幅度偏深；传媒方向同池出现2只，属主题共振。
+怎么买卖：止损位 13.90 元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加
+
+**3. 龙版传媒(605577.SH)（下蹲买点·优选）**
+收盘 14.04｜涨跌幅 -6.59%｜量能爆发评分 96.6｜选股总分 19.5(C)
+形态：缩量回踩，量比0.94，距5日均线-7.79%，跟着传媒方向一起蹲，跌得比较急、要留意承接。
+怎么买卖：止损位 11.68 元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加
+
+**4. 天龙股份(603266.SH)（下蹲买点·优选）**
+收盘 16.84｜涨跌幅 +0.30%｜量能爆发评分 90.2｜选股总分 16.8(C)
+形态：缩量回踩，量比0.93，距5日均线-4.10%，今天小阳线企稳，蹲得不深、走得不难看。
+怎么买卖：止损位 15.21 元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加
+
+**5. 芯能科技(603105.SH)（下蹲买点·优选）**
+收盘 7.58｜涨跌幅 -5.13%｜量能爆发评分 93.0｜选股总分 16.7(C)
+形态：缩量回踩，量比0.94，但距5日均线已到-13.35%，回踩很深，需要看能不能尽快收回。
+怎么买卖：止损位 7.04 元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加
+✅ Deepseek报告已保存: d:\mystock\cache_daily\Deepseek_Self_20261023.md
+✅ Server酱 已发送
+✅ PushPlus 已发送
+📎 邮件附件已生成: _mail_att_20261023.pdf（207KB）
+✅ Agent Mail 已发送: stock1975@qq.com（含附件 _mail_att_20261023.pdf）
+✅ 报告已保存: d:\mystock\report_daily\Final_Self_20261023.md
+HTML报告已生成: d:\mystock\report_daily\Final_Self_20261023.html
+[2026-10-24 10:36:05] 目标 root@115.159.221.46:/var/www/StockPick/data  目录 /var/www/StockPick/data
+[2026-10-24 10:36:05] 复盘报告：本地 111 期，远端 110 期，待上传 1 期
+[2026-10-24 10:36:06] 报告上传完成，远端现有 111 期（/var/www/StockPick/reports）
+[2026-10-24 10:36:06] 报告同步完成。
+✅ 报告 HTML 已同步到服务器
+[Step 5.35/7] 入场信号记分卡（追加进 Final_Self，含与昨日对比）...
+=============================================
+{"ok": true, "date": "20261023", "duration_sec": 0.0, "returncode": 0, "log": "d:\\mystock\\_gen_20261023.log", "mail_sent": false, "mail_to": null, "attachment": null, "remote_sync_failed": false, "md": "d:\\mystock\\report_daily\\Final_Self_20261023.md", "html": "d:\\mystock\\report_daily\\Final_Self_20261023.html", "size": 3140, "mtime": "2026-10-24T10:36:05", "sections": 70, "entry_tracker": {"md": "d:\\mystock\\report_daily\\entry_tracker_20261023.md", "gates": {"gate1_breakdown": "locked", "gate2_level1": "pass", "gate3_level2": "pass"}, "conclusion": "结论：🔴 闸一未过 → 强制空仓等待（收复关键低点或底分型）"}}
+
+[Step 5.4/7] 三级行业共振选股（当日涨停 ≥2 家的三级行业）...
+=============================================
+无 members_20261023 快照，申万成分回退 members_20260930（行情按 20261023 计算）
+交易日 20261023｜宇宙 4753 只（申万三级，剔 ST/北交所）｜全市场收盘涨停 79 家
+共振门槛 ≥2 家：达标三级行业 16 个，涉及涨停股 44 家
+  机器人       （自动化设备）涨停 4 家 / 成分 18｜占比 22.2%｜最高 1 连板｜均涨 +7.81%
+  横向通用软件    （软件开发）涨停 2 家 / 成分 33｜占比 6.1%｜最高 1 连板｜均涨 +5.86%
+  电机Ⅲ       （电机Ⅱ）涨停 2 家 / 成分 26｜占比 7.7%｜最高 2 连板｜均涨 +4.99%
+  影视动漫制作    （影视院线）涨停 2 家 / 成分 14｜占比 14.3%｜最高 1 连板｜均涨 +4.85%
+  模拟芯片设计    （半导体）涨停 2 家 / 成分 35｜占比 5.7%｜最高 1 连板｜均涨 +4.80%
+  垂直应用软件    （软件开发）涨停 4 家 / 成分 93｜占比 4.3%｜最高 2 连板｜均涨 +4.44%
+  IT服务Ⅲ     （IT服务Ⅱ）涨停 5 家 / 成分 112｜占比 4.5%｜最高 1 连板｜均涨 +4.10%
+  纺织服装设备    （专用设备）涨停 2 家 / 成分 11｜占比 18.2%｜最高 1 连板｜均涨 +3.78%
+  金属制品      （通用设备）涨停 4 家 / 成分 69｜占比 5.8%｜最高 6 连板｜均涨 +3.55%
+  其他电子Ⅲ     （其他电子Ⅱ）涨停 2 家 / 成分 33｜占比 6.1%｜最高 2 连板｜均涨 +3.12%
+  多业态零售     （一般零售）涨停 2 家 / 成分 14｜占比 14.3%｜最高 3 连板｜均涨 +2.95%
+  底盘与发动机系统  （汽车零部件）涨停 4 家 / 成分 90｜占比 4.4%｜最高 2 连板｜均涨 +2.89%
+  消费电子零部件及组装（消费电子）涨停 2 家 / 成分 78｜占比 2.6%｜最高 1 连板｜均涨 +2.75%
+  其他专用设备    （专用设备）涨停 3 家 / 成分 77｜占比 3.9%｜最高 1 连板｜均涨 +2.64%
+  膜材料       （塑料）涨停 2 家 / 成分 21｜占比 9.5%｜最高 1 连板｜均涨 +2.41%
+
+[Step 6/7] 汇总输出...
+=============================================
+
+[Step 7/7] 主题成份生成...
+=============================================
+[Step 8/7] 生成index.html  
+=============================================
+索引页面已生成: d:\mystock\report_daily\index.html
+根目录索引已生成: d:\mystock\index.html
+
+warning: in the working copy of '_trade_plan.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/hvt_bull/daily.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/pick_web/app.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/pick_web/index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/stock_pick_db.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/w7_second_wave_engine.py', LF will be replaced by CRLF the next time Git touches 
+it
+warning: in the working copy of '.workbuddy/memory/2026-10-23.md', LF will be replaced by CRLF the next time Git touche
+s it
+warning: in the working copy of '.workbuddy/memory/2026-10-24.md', LF will be replaced by CRLF the next time Git touche
+s it
+warning: in the working copy of '_finchx_analysis.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_finchx_hotlist.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_finchx_probe.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_finchx_probe2.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'solo/report_daily/ige_tech_timing_指令_20261023.md', LF will be replaced by CRLF the nex
+t time Git touches it
+[main 20284f8] update all
+ Author: money8866 <foreversmile1970q@gmail.com>
+ 58 files changed, 151802 insertions(+), 62800 deletions(-)
+ create mode 100644 .workbuddy/memory/2026-10-23.md
+ create mode 100644 .workbuddy/memory/2026-10-24.md
+ create mode 100644 _finchx_analysis.md
+ create mode 100644 _finchx_concept_hotlist_20261024.json
+ create mode 100644 _finchx_hotlist.py
+ create mode 100644 _finchx_probe.py
+ create mode 100644 _finchx_probe2.py
+ create mode 100644 _run_all_log_20261024.txt
+ create mode 100644 cache_fundamental/601801.SH_fund_v3.json
+ create mode 100644 report_daily/Final_Self_20261023.html
+ create mode 100644 report_daily/Final_Self_20261023.md
+ create mode 100644 report_daily/entry_tracker_20261023.json
+ create mode 100644 report_daily/entry_tracker_20261023.md
+ create mode 100644 report_daily/etf_mainline_summary_20261023.txt
+ create mode 100644 report_daily/hotlist/concept_hotlist_20261024.json
+ create mode 100644 report_daily/hotlist/concept_hotlist_20261024.md
+ create mode 100644 report_daily/volume_surge_20261023.md
+ create mode 100644 solo/_tmp_ab_on_20261022.md
+ create mode 100644 solo/_tmp_nomv_20261022.md
+ create mode 100644 solo/_tmp_rbvol.py
+ create mode 100644 solo/_tmp_w7_totmv_20261022.md
+ create mode 100644 solo/_tmp_yd.py
+ create mode 100644 solo/report_daily/breakout_pool_snapshot_20261023.json
+ create mode 100644 solo/report_daily/e08_scan_20261023.md
+ create mode 100644 solo/report_daily/e08_signals_20261023.json
+ create mode 100644 solo/report_daily/hvt_bull_20261023.json
+ create mode 100644 solo/report_daily/hvt_bull_ai_20261023.md
+ create mode 100644 solo/report_daily/hvt_bull_report_20261023.md
+ create mode 100644 "solo/report_daily/ige_tech_timing_\346\214\207\344\273\244_20261023.md"
+ create mode 100644 solo/report_daily/l3_resonance_20261023.json
+ create mode 100644 solo/report_daily/l3_resonance_20261023.md
+ create mode 100644 solo/report_daily/signal_review_20261022.html
+ create mode 100644 solo/report_daily/signal_review_20261022.md
+ create mode 100644 solo/report_daily/signal_review_20261023.html
+ create mode 100644 solo/report_daily/signal_review_20261023.md
+ create mode 100644 solo/report_daily/theme_analysis_v2_20261023.txt
+ create mode 100644 solo/report_daily/theme_heat_v24_20261023.json
+ create mode 100644 solo/report_daily/theme_heat_v24_20261023.md
+ create mode 100644 solo/report_daily/theme_heat_v25_20261023.json
+ create mode 100644 solo/report_daily/theme_heat_v25_20261023.md
+ create mode 100644 solo/report_daily/theme_v21_20261023.json
+ create mode 100644 solo/report_daily/theme_v21_20261023.md
+ create mode 100644 solo/report_daily/w7_second_wave_20261023.md
+ create mode 100644 solo/report_daily/w7_t20_right_tail_20261023.md
+ create mode 100644 "solo/report_daily/w7_t20_\346\214\207\344\273\244_20261023.md"
+ create mode 100644 solo/report_daily/w7_today_action_20261023.json
+ create mode 100644 "solo/report_daily/w7_\346\214\207\344\273\244_20261023.md"
+To github.com:money8866/day.git
+   4b3c8fa..20284f8  main -> main
+=============================================
+[Step 9/7] 选股库 + 复盘报告同步到云服务器...
+=============================================
+[2026-10-24 10:36:28] 目标 root@115.159.221.46:/var/www/StockPick/data  目录 /var/www/StockPick/data
+[2026-10-24 10:36:28] 生成本地快照（backup API，WAL 安全）…
+[2026-10-24 10:36:28] 快照 OK：0.766 MB  信号 670 条  跟踪 674 条  20260825~20261023
+[2026-10-24 10:36:29] 上传到 /var/www/StockPick/data/.stock_picks.db.tmp …
+[2026-10-24 10:36:30] 上传完成，原子替换为 /var/www/StockPick/data/stock_picks.db
+[2026-10-24 10:36:30] 服务器已就绪：/var/www/StockPick/data/stock_picks.db
+[2026-10-24 10:36:31] 复盘报告：本地 111 期，远端 111 期，待上传 0 期
+[2026-10-24 10:36:31] 报告已是最新，无需上传。
+[2026-10-24 10:36:31] 三级行业共振：本地 38 期，远端 37 期，待上传 1 期
+[2026-10-24 10:36:32] 共振 JSON 上传完成，远端现有 38 期（/var/www/StockPick/l3res）
+[2026-10-24 10:36:32] ETF 每日复盘：本地 3 个，远端 3 个，待上传 0 个
+[2026-10-24 10:36:32] ETF 数据已是最新，无需上传。
+[2026-10-24 10:36:32] 同步完成。服务端读新连接即生效，无需重启 app.py。
+=============================================
+ 全流程完成 - 周六 2026/10/24 10:36:32.82
+=============================================
+Press any key to continue . . . 
