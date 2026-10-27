@@ -761,8 +761,15 @@ def extreme_event(df, i, window=None):
         span = finite(row.high) - finite(row.low)
         if span > 0 and (finite(row.close) - finite(row.low)) / span < 0.30:
             return False, 0.0
-    elif finite(row.close) <= finite(row.open):
-        return False, 0.0
+    elif finite(row.pct_chg) <= 0.0:
+        # 20261026 用户口径：方向判定由「收阳(close>open)」放宽为「收涨(pct_chg>0)」，
+        # 高开低走的假阴线不再被判成大阴线剔除。案例：新产业 300832 的 20260814，
+        # vol/amount/turnover 三项均在近 120 日 P99 以上（量比20 2.51x），
+        # 但 open 51.50 > close 51.24（当日实际 +3.22%），原口径漏掉了这个最近的天量 T0。
+        # 保留「不烂尾」底线：收盘位置 < 0.30 的巨量日视为派发，不计入 T0。
+        span = finite(row.high) - finite(row.low)
+        if span > 0 and (finite(row.close) - finite(row.low)) / span < 0.30:
+            return False, 0.0
     amt = finite(row.amount)
     vol = finite(row.vol)
     turn = finite(row.get("turnover_rate")) if "turnover_rate" in df.columns else 0.0
@@ -1157,10 +1164,18 @@ def right_bottom(df, end, event_idx=None):
       ⑧ 中期趋势未破：收盘 ≥MA60 且 MA60 近 5 根不弱；
       ⑨ 低吸位置：收盘 ≤MA10；
       ⑩ 20261023 出货尾部否决：T0 起连续放量根数 ≤RIGHT_BOTTOM_MAX_CHURN_RUN。
+      ⑪ 20261027 跌停否决：当日跌幅不得触及跌停（主板 ≤-9.5%、创业板/科创板 ≤-19.0%）。
     满足即当日为右底低吸买点；红线为左底（收盘跌破即结构失效）。
     event_idx：W7 主链传入的 T0 天量锚下标；未传（如 HVT-BULL 独立调用）时退化为前波高点 H0。
     """
     if end < RIGHT_BOTTOM_WINDOW + 25:
+        return False, None
+    # ⑪ 20261027 用户口径：跌停日不得作为右底买点。跌停当天的「缩量」是卖不出去、不是抛压衰竭，
+    #    右侧根本没有承接。案例：000993.SZ 闽东电力 20261019 一字跌停 -10.00%
+    #    （close=low=16.38、量比 0.71）原被当作右底低吸，次日 20261020 继续 -10.01%。
+    #    跌停幅度按板块判定：主板 -9.5%、创业板/科创板 -19.0% 起算。
+    row_end = df.iloc[end]
+    if finite(row_end.pct_chg) <= -(limit_down_pct(row_end.get("ts_code")) - 0.5):
         return False, None
     lows = df.low.to_numpy(dtype=float)
     highs = df.high.to_numpy(dtype=float)

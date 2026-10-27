@@ -70,6 +70,7 @@ def main():
     # 目标交易日
     trade_date = args.date if args.date else str(feat.index[-1])
     detect = engine.detect_date(trade_date)
+    detect["dynamics"] = engine.node_dynamics(trade_date)
 
     # 是否为新节点日（对比前一交易日节点）
     prev_node = engine.detect_date(feat.index[feat.index.get_loc(trade_date) - 1]).get("node_type") \
@@ -89,6 +90,9 @@ def main():
     print(f"当前状态: {detect['market_state']}   情绪: {detect['sentiment_state']}   "
           f"强度: {detect['node_score']:.0f}   置信度: {detect['confidence']}")
     print(f"触发原因: {'、'.join(detect['reason_codes']) if detect['reason_codes'] else '—'}")
+    dyn = detect.get("dynamics") or {}
+    if dyn:
+        print(f"节点动态: {dyn.get('summary', '')}（第 {dyn.get('days', 0)} 日）")
     if detect.get("missing_fields"):
         print(f"缺失字段(已降置信度): {', '.join(detect['missing_fields'])}")
     print(f"\n报告已生成: {path}")

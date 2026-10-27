@@ -1,0 +1,109 @@
+{
+ "date": "20261027",
+ "snapshot": "2026-10-27 15:40:00",
+ "rows": [
+  {
+   "rank": 6,
+   "name": "轮毂电机",
+   "symbol": "pt02GN2241",
+   "zdf": 3.28,
+   "rankdelta": 0,
+   "members": 6,
+   "zt": 1,
+   "zt_names": [
+    "亚太股份"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 13,
+   "name": "轮边电机",
+   "symbol": "pt02GN2207",
+   "zdf": 1.49,
+   "rankdelta": -1,
+   "members": 18,
+   "zt": 2,
+   "zt_names": [
+    "亚太股份",
+    "大洋电机"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 20,
+   "name": "电子签名",
+   "symbol": "pt02GN2325",
+   "zdf": -7.26,
+   "rankdelta": 0,
+   "members": 5,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 21,
+   "name": "人形机器人",
+   "symbol": "pt02GN2238",
+   "zdf": -2.78,
+   "rankdelta": 0,
+   "members": 461,
+   "zt": 7,
+   "zt_names": [
+    "光洋股份",
+    "沪光股份",
+    "赛福天",
+    "多伦科技"
+   ],
+   "max_lbc": 4
+  },
+  {
+   "rank": 26,
+   "name": "银行概念",
+   "symbol": "pt02021386",
+   "zdf": 1.34,
+   "rankdelta": -1,
+   "members": 42,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 28,
+   "name": "物理AI",
+   "symbol": "pt02GN2442",
+   "zdf": -5.93,
+   "rankdelta": 1,
+   "members": 12,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 40,
+   "name": "共封装光模块(CPO）",
+   "symbol": "pt02GN2211",
+   "zdf": -3.84,
+   "rankdelta": 2,
+   "members": 205,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 41,
+   "name": "机器人概念",
+   "symbol": "pt02003640",
+   "zdf": -2.98,
+   "rankdelta": 0,
+   "members": 1227,
+   "zt": 11,
+   "zt_names": [
+    "大洋电机",
+    "襄阳轴承",
+    "光洋股份",
+    "东贝集团"
+   ],
+   "max_lbc": 4
+  }
+ ]
+}

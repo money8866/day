@@ -739,7 +739,13 @@ def analyze_t20(code, name, industry, df, reader, mkt, sector_strength, sector_g
             if c >= prev_hi or (prev_c > 0 and prev_c <= ref_high):
                 breakout_idx = ev_idx + k
                 break
-    if breakout_idx < 0 and plat:
+    # 20261026 收紧路径②「仅破平台」：必须同时站上 T0 收盘价才承认突破。
+    # 原口径只要 close > 平台高点就给 BREAKOUT，导致天量套牢盘一根未解放的下跌反弹平台
+    # 也被判成 T20 右尾（华厦眼科 301267 20261026：仅破 10 日平台 15.23，收盘 15.26 距
+    # T0(20260525) 收盘 17.85 还差 -14.5%，原口径仍进 PRIMARY_BUY/BUY；同日 7 只 BREAKOUT
+    # 里只有招商蛇口真正站上 T0 后 10 日最高价）。T0 缺失时无参照价，保持原逻辑。
+    t0_close = finite(ev["close"], 0.0) if ev else 0.0
+    if breakout_idx < 0 and plat and (t0_close <= 0 or close >= t0_close):
         if close > plat["high"]:
             breakout_price = plat["high"]
             breakout_idx = i

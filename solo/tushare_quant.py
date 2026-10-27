@@ -565,7 +565,7 @@ def _load_marketnode_block(trade_date):
         from marketnode import load_config
         from marketnode.features import build_features
         from marketnode.engine import MarketNodeEngine
-        from marketnode.report import NODE_NAME, REASON_TEXT, NEXT_ACTION
+        from marketnode.report import NODE_NAME, REASON_TEXT, NEXT_ACTION, dynamic_summary_parts
     except Exception as e:
         print(f"[MarketNode] 模块不可用: {e}")
         return ""
@@ -579,6 +579,7 @@ def _load_marketnode_block(trade_date):
             return ""
         eng = MarketNodeEngine(cfg, feat)
         det = eng.detect_date(td)
+        dyn = eng.node_dynamics(td)
         i = feat.index.get_loc(td)
         prev_nt = eng.detect_date(feat.index[i - 1])["node_type"] if i > 0 else None
     except Exception as e:
@@ -596,11 +597,23 @@ def _load_marketnode_block(trade_date):
     reason_line = f"{_nm}——{core}，短线情绪温度 {det['node_score']:.0f}。" if nt else \
         "短线情绪与市场广度均未触发节点阈值，处于常态。"
 
+    dyn_lines = []
+    if dyn:
+        _p = dynamic_summary_parts(dyn, det, node_txt, nt)
+        _trail = f"轨迹 {_p['trail']}｜" if _p["trail"] else ""
+        dyn_lines = [
+            f"节点动态: {_trail}{_p['head']}",
+            f"强度与状态: {_p['score_state']}",
+            f"指标边际: {_p['metrics']}",
+            f"动态解读: {_p['summary']}",
+        ]
+
     lines = [
         "【大盘节点】(MarketNode V1 规则引擎)",
         f"交易日: {td} | 当前节点: {node_txt} | 是否新节点: {'是' if is_new else '否'}",
         f"市场状态: {det['market_state']} | 情绪子状态: {det['sentiment_state']} | "
         f"节点强度: {det['node_score']:.0f}/100 | 置信度: {det['confidence']}",
+        *dyn_lines,
         f"触发原因: {reasons}",
         f"判断理由: {reason_line}",
         f"下一步: {NEXT_ACTION.get(det['market_state'], '—')}",
@@ -610,6 +623,8 @@ def _load_marketnode_block(trade_date):
         lines.append(f"数据缺失(已降置信度): {', '.join(det['missing_fields'])}")
     print(f"[MarketNode] {node_txt} | {det['market_state']}/{det['sentiment_state']} | "
           f"强度{det['node_score']:.0f} | 置信度{det['confidence']}")
+    if dyn:
+        print(f"[MarketNode] 节点动态: {dyn.get('summary', '')}（第 {dyn.get('days', 0)} 日）")
     return "\n".join(lines)
 
 
@@ -10302,6 +10317,7 @@ def run(target_date=None, simple_mode=False):
 1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
 ** 市场分析
 * 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
+* 节点动态：{{照抄"大盘节点"数据块的「节点动态」冒号后的全部内容（含轨迹与今日节点·第N日）；数据块无此行则写"无"}}
 * 上证指数：XXXX | 成交额：XX万亿 | 涨跌比 X%
 * 市场：XXXXX | 赚钱：XX 
 * 风险：XXXXXX | 节奏：XXXXXX

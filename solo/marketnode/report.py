@@ -49,6 +49,64 @@ def _reason_text(codes):
     return "、".join(REASON_TEXT.get(c, c) for c in codes)
 
 
+def _d2(td):
+    td = str(td or "")
+    return f"{td[:4]}-{td[4:6]}-{td[6:8]}" if len(td) == 8 else (td or "—")
+
+
+def dynamic_summary_parts(dyn, detect, cur_node, nt):
+    """把 node_dynamics() 结果整理为纯文本四段，供 Markdown 报告与 tushare 数据块共用。"""
+    days = int(dyn.get("days") or 0)
+    prev_node = dyn.get("prev_node")
+
+    path = dyn.get("path") or []
+    trail = " → ".join(f"{str(d)[4:6]}-{str(d)[6:8]} {n or '无'}" for d, n in path)
+    head = f"{cur_node} · 第 {days} 日" if nt else "无新节点（常态）"
+    if prev_node and prev_node != nt:
+        if nt:
+            head += f"（切换，上一交易日为 {prev_node} {NODE_NAME.get(prev_node, '')}）"
+        else:
+            head += f"；上一交易日 {prev_node} {NODE_NAME.get(prev_node, '')} 于今日结束"
+    elif prev_node and prev_node == nt:
+        head += "（较上一交易日延续）"
+    else:
+        head += "（上一交易日亦无节点）"
+    last_node, last_date = dyn.get("last_other_node"), dyn.get("last_other_date")
+    if last_node and last_node not in (nt, prev_node):
+        head += f"；上一节点 {last_node} {NODE_NAME.get(last_node, '')} 于 {_d2(last_date)} 结束"
+
+    ps = dyn.get("prev_score")
+    if nt and prev_node == nt and ps is not None:
+        score_txt = f"{ps:.0f}→{detect['node_score']:.0f}（{detect['node_score'] - ps:+.0f}）"
+    else:
+        score_txt = f"{detect['node_score']:.0f}"
+
+    return {
+        "trail": trail,
+        "head": head,
+        "score_state": f"强度 {score_txt}｜状态 {dyn.get('state_text', '')}",
+        "metrics": f"改善 {dyn.get('improved', 0)} 项 / 恶化 {dyn.get('worsened', 0)} 项"
+                   f"（{dyn.get('metrics_text') or '—'}）",
+        "summary": dyn.get("summary", ""),
+    }
+
+
+def _dynamic_lines(dyn, detect, cur_node, nt):
+    """节点延续/切换动态：轨迹 + 今日节点 · 延续天数 + 强度状态 + 指标边际 + 解读。"""
+    p = dynamic_summary_parts(dyn, detect, cur_node, nt)
+    dyn_line = f"**节点动态：** {('轨迹 ' + p['trail'] + '｜') if p['trail'] else ''}{p['head']}"
+    return [
+        dyn_line,
+        "",
+        f"**强度状态：** {p['score_state']}",
+        "",
+        f"**指标边际：** {p['metrics']}",
+        "",
+        f"**动态解读：** {p['summary']}",
+        "",
+    ]
+
+
 def generate_daily_report(detect, feat, cfg):
     """detect = engine.detect_date(date) 的结果字典。"""
     td = detect["trade_date"]
@@ -71,6 +129,9 @@ def generate_daily_report(detect, feat, cfg):
     lines.append("")
     lines.append(f"**置信度：** {detect['confidence']}")
     lines.append("")
+    dyn = detect.get("dynamics") or {}
+    if dyn:
+        lines.extend(_dynamic_lines(dyn, detect, cur_node, nt))
     lines.append("**关键证据：**")
     lines.append("")
     # 涨停/跌停及连板梯队

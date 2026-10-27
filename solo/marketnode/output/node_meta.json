@@ -2418,7 +2418,14 @@
     "node_type":"N2",
     "first_detected":"20261023",
     "confirmed_date":"20261023",
-    "invalidated_date":null,
+    "invalidated_date":"20261026",
     "trigger_reason":"ICE_REPAIR;DT_DECREASE;ZT_SPREAD;BREADTH_RECOVER"
+  },
+  {
+    "node_type":"N1",
+    "first_detected":"20261027",
+    "confirmed_date":"20261027",
+    "invalidated_date":null,
+    "trigger_reason":"ZT_DEEP_LOW;DT_SURGE;PROMO_WEAK"
   }
 ]

@@ -317,6 +317,124 @@ class MarketNodeEngine:
         }.get(node_type, "")
 
     # ------------------------------------------------------------------
+    # 节点延续 / 切换动态（相对上一交易日，只用当日及更早数据）
+    # ------------------------------------------------------------------
+    def node_dynamics(self, trade_date, max_back=15):
+        """返回当日节点与上一交易日的对比：延续天数、切换关系、强度与状态变化、指标边际。"""
+        td = str(trade_date)
+        idx = list(self.feat.index)
+        if td not in idx:
+            return {}
+
+        i = idx.index(td)
+        cur = self.detect_date(td)
+        prev_date = idx[i - 1] if i > 0 else None
+        prev = self.detect_date(prev_date) if prev_date else None
+        cn = cur["node_type"]
+        pn = prev["node_type"] if prev else None
+
+        # 当前节点连续天数（中间断档即停），同时回溯上一个不同节点
+        days = 1 if cn else 0
+        broken = False
+        last_other = None
+        k = i - 1
+        while k >= 0 and k >= i - max_back:
+            r = self.detect_date(idx[k])
+            if cn and r["node_type"] == cn:
+                if not broken:
+                    days += 1
+            elif r["node_type"]:
+                last_other = (idx[k], r["node_type"])
+                break
+            elif cn:
+                broken = True
+            k -= 1
+
+        # 指标边际（涨停/跌停/最高连板/炸板率/上涨占比/成交额倍数）
+        metrics = [
+            ("zt_count", "涨停", 0, 1),
+            ("dt_count", "跌停", 0, -1),
+            ("max_board", "最高连板", 0, 1),
+            ("zhaban_rate", "炸板率", 1, -1),
+            ("up_ratio", "上涨占比", 1, 1),
+            ("amount_ratio", "成交额倍数", 2, 1),
+        ]
+        improved = worsened = 0
+        parts = []
+        prev_score = None
+        if prev_date:
+            a, b = self.feat.loc[prev_date], self.feat.loc[td]
+            prev_score = prev["node_score"] if prev else None
+            for col, name, nd, direction in metrics:
+                v0, v1 = a.get(col), b.get(col)
+                if pd.isna(v0) or pd.isna(v1):
+                    continue
+                dlt = float(v1) - float(v0)
+                if abs(dlt) < 1e-9:
+                    continue
+                if dlt * direction > 0:
+                    improved += 1
+                else:
+                    worsened += 1
+                suffix = "%" if col in ("zhaban_rate", "up_ratio") else ""
+                parts.append(f"{name} {float(v0):.{nd}f}{suffix}→{float(v1):.{nd}f}{suffix}")
+
+        # 状态迁移
+        prev_state = prev["market_state"] if prev else None
+        state_txt = cur["market_state"]
+        state_level = {"防守": 0, "观察": 1, "进攻": 2}
+        if prev_state:
+            state_txt = f"{prev_state}→{cur['market_state']}"
+            if prev_state != cur["market_state"]:
+                if state_level.get(cur["market_state"], 1) > state_level.get(prev_state, 1):
+                    state_txt += "（升级）"
+                else:
+                    state_txt += "（降级）"
+            else:
+                state_txt += "（持平）"
+
+        # 定性解读
+        if cn and pn and cn != pn:
+            summary = f"节点由 {pn} 切换为 {cn}"
+        elif cn and cn == pn:
+            summary = f"{cn} 延续第 {days} 日"
+        elif cn:
+            summary = f"切入 {cn}（上一交易日无节点）"
+        elif pn:
+            summary = f"节点 {pn} 结束，回到常态"
+        else:
+            summary = "连续处于常态，无节点信号"
+        if cn:
+            if improved > worsened:
+                summary += "，指标边际改善"
+            elif worsened > improved:
+                summary += "，指标边际转弱"
+            else:
+                summary += "，指标边际持平"
+            if cn == pn and prev_score is not None and abs(cur["node_score"] - prev_score) >= 1:
+                direction = "走强" if cur["node_score"] > prev_score else "走弱"
+                summary += f"，节点强度{direction}"
+
+        return {
+            "prev_date": prev_date,
+            "prev_node": pn,
+            "prev_state": prev_state,
+            "prev_score": prev_score,
+            "today_node": cn,
+            "days": days,
+            "last_other_node": last_other[1] if last_other else None,
+            "last_other_date": last_other[0] if last_other else None,
+            "improved": improved,
+            "worsened": worsened,
+            "metrics_text": "、".join(parts),
+            "state_text": state_txt,
+            "summary": summary,
+            # 最近 5 个交易日节点轨迹（便于看节点延续与切换）
+            "path": [(idx[k], self.detect_date(idx[k])["node_type"])
+                     for k in range(max(0, i - 4), i + 1)],
+        }
+
+    # ------------------------------------------------------------------
     # 回填历史节点（去重）
     # ------------------------------------------------------------------
     def backfill(self):

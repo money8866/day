@@ -75,22 +75,26 @@ def parse_sections(md_text):
     lines = md_text.splitlines()
     top_rows = []          # TOP_PICK 表格行(原样, 含表头)
     in_top = False
+    in_pb = False
     pb_items = []          # (标题行, [bullet 列表])
     cur = None
     for s in lines:
         st = s.strip()
-        if st.startswith('## 【TOP_PICK】'):
-            in_top = True
+        if st.startswith('## '):
+            # 章节切换必须重置游标，否则 PRIMARY_BUY 之后其他章节的 bullet
+            # 会被并进最后一只标的，导致 CONFIRMED_NEXT 等被误当可买标的推送
+            in_top = st.startswith('## 【TOP_PICK】')
+            in_pb = st.startswith('## 【PRIMARY_BUY】')
+            if not in_pb:
+                cur = None
             continue
         if in_top:
-            if st.startswith('## '):
-                in_top = False
-            elif st.startswith('|'):
+            if st.startswith('|'):
                 top_rows.append(st)
             elif st.startswith('无') and not pb_items:
                 top_rows = ['（无达标标的）']
             continue
-        if st.startswith('## 【PRIMARY_BUY】'):
+        if not in_pb:
             continue
         if st.startswith('### '):
             cur = (st[4:].strip(), [])
